@@ -2254,10 +2254,33 @@ void CVideoProcessorDlg::OnPaint()
 	}
 	else
 	{
-		if (m_videoRenderer)
-			m_videoRenderer->OnPaint();
 
-		CDialog::OnPaint();
+		if (m_videoRenderer )
+		{
+			
+			int queueSize = 0;
+			try
+			{
+				queueSize = m_videoRenderer->GetFrameQueueSize();
+				m_videoRenderer->OnPaint();
+			}
+			catch(std::runtime_error& e)
+			{
+			
+					//log some issue
+			}
+			
+
+				
+			
+
+		}
+				
+
+			CDialog::OnPaint();
+
+		
+		
 	}
 }
 

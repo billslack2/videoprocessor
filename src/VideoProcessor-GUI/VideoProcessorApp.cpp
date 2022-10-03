@@ -235,6 +235,10 @@ BOOL CVideoProcessorApp::InitInstance()
 				{
 					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_THEO_NONE;
 				}
+				else if (wcscmp(pArgs[i + 1], L"NONE") == 0)
+				{
+					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_NONE;
+				}
 				else
 				{
 					throw std::runtime_error("Invalid option for /renderer_start_stop_time_method");
