@@ -77,6 +77,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_TOGGLE, &CVideoProcessorDlg::OnCommandFullScreenToggle)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_EXIT, &CVideoProcessorDlg::OnCommandFullScreenExit)
 	ON_COMMAND(ID_COMMAND_RENDERER_RESET, &CVideoProcessorDlg::OnCommandRendererReset)
+	ON_COMMAND(ID_COMMAND_PQ_TOGGLE, &CVideoProcessorDlg::OnCommandPQToggle)
 
 END_MESSAGE_MAP()
 
@@ -776,6 +777,24 @@ void CVideoProcessorDlg::OnCommandRendererReset()
 	}
 }
 
+
+void CVideoProcessorDlg::OnCommandPQToggle()
+{
+	if (DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown)
+	{
+		DIRECTSHOW_VIDEOTRANSFUNC_2084;
+		OnBnClickedRendererRestart();
+	}
+	else if (DIRECTSHOW_VIDEOTRANSFUNC_2084)
+	{
+		DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown;
+		OnBnClickedRendererRestart();
+	}
+	else
+	{
+
+	}
+}
 
 
 //

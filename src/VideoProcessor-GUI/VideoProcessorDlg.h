@@ -125,6 +125,7 @@ public:
 	void OnCommandFullScreenToggle();
 	void OnCommandFullScreenExit();
 	void OnCommandRendererReset();
+	void OnCommandPQToggle();
 
 	// ICaptureDeviceDiscovererCallback
 	void OnCaptureDeviceFound(ACaptureDeviceComPtr& captureDevice) override;
