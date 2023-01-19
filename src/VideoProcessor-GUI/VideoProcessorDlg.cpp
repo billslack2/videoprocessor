@@ -26,7 +26,6 @@
 
 #include "VideoProcessorDlg.h"
 
-
 const static UINT_PTR TIMER_ID_1SECOND = 1;
 
 
@@ -780,19 +779,15 @@ void CVideoProcessorDlg::OnCommandRendererReset()
 
 void CVideoProcessorDlg::OnCommandPQToggle()
 {
-	if (DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown)
+	if (m_defaultTransferFunction == DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown)
 	{
-		DIRECTSHOW_VIDEOTRANSFUNC_2084;
-		OnBnClickedRendererRestart();
-	}
-	else if (DIRECTSHOW_VIDEOTRANSFUNC_2084)
-	{
-		DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown;
+		m_defaultTransferFunction = DIRECTSHOW_VIDEOTRANSFUNC_2084;
 		OnBnClickedRendererRestart();
 	}
 	else
 	{
-
+		m_defaultTransferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown;
+		OnBnClickedRendererRestart();
 	}
 }
 
