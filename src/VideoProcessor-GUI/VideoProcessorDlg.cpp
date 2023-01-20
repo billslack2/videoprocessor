@@ -781,20 +781,14 @@ void CVideoProcessorDlg::OnCommandRendererReset()
 void CVideoProcessorDlg::OnCommandPQSet()
 {
 	m_rendererTransferFunctionCombo.SetCurSel(1);
-	if (m_videoRenderer)
-	{
-		m_videoRenderer->Reset();
-	}
+	OnBnClickedRendererRestart();
 }
 
 
 void CVideoProcessorDlg::OnCommandAutoSet()
 {
 	m_rendererTransferFunctionCombo.SetCurSel(0);
-	if (m_videoRenderer)
-	{
-		m_videoRenderer->Reset();
-	}
+	OnBnClickedRendererRestart();
 }
 
 //
