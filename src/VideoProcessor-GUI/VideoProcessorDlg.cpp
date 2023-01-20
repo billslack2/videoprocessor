@@ -76,7 +76,8 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_TOGGLE, &CVideoProcessorDlg::OnCommandFullScreenToggle)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_EXIT, &CVideoProcessorDlg::OnCommandFullScreenExit)
 	ON_COMMAND(ID_COMMAND_RENDERER_RESET, &CVideoProcessorDlg::OnCommandRendererReset)
-	ON_COMMAND(ID_COMMAND_PQ_TOGGLE, &CVideoProcessorDlg::OnCommandPQToggle)
+	ON_COMMAND(ID_COMMAND_PQ_SET, &CVideoProcessorDlg::OnCommandPQSet)
+	ON_COMMAND(ID_COMMAND_AUTO_SET, &CVideoProcessorDlg::OnCommandAutoSet)
 
 END_MESSAGE_MAP()
 
@@ -777,20 +778,16 @@ void CVideoProcessorDlg::OnCommandRendererReset()
 }
 
 
-void CVideoProcessorDlg::OnCommandPQToggle()
+void CVideoProcessorDlg::OnCommandPQSet()
 {
-	if (m_defaultTransferFunction == DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown)
-	{
-		m_defaultTransferFunction = DIRECTSHOW_VIDEOTRANSFUNC_2084;
-		OnBnClickedRendererRestart();
-	}
-	else
-	{
-		m_defaultTransferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown;
-		OnBnClickedRendererRestart();
-	}
+	m_rendererTransferFunctionCombo.SetCurSel(1);
 }
 
+
+void CVideoProcessorDlg::OnCommandAutoSet()
+{
+	m_rendererTransferFunctionCombo.SetCurSel(0);
+}
 
 //
 // ICaptureDeviceDiscovererCallback
