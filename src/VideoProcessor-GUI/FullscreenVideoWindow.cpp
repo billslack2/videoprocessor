@@ -80,7 +80,7 @@ void FullscreenVideoWindow::Create(HMONITOR hmon, HWND parentWindow)
 #endif
 
     m_hwnd = CreateWindowEx(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_ACCEPTFILES | WS_EX_NOPARENTNOTIFY,
+        WS_EX_TOOLWINDOW | WS_EX_ACCEPTFILES | WS_EX_NOPARENTNOTIFY,
         FULLSCREEN_WINDOW_CLASS_NAME,
         TEXT("Waiting for renderer to start."),
         WS_POPUP | WS_VISIBLE,
