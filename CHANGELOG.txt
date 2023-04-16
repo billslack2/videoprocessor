@@ -1,3 +1,18 @@
+1.0.0.14-beta
+- Can now switch between windowed and exclusive fullscreen in the gui
+- Added help dialog at command line (/help)
+- Added command line parameter for windowed fullscreen mode (/windowedfullscreenmode)
+
+1.0.0-13-beta
+- Removes the topmost flag from the window builder. This is untested, so use at your own risk. If you find issues, please give me feedback in the AVSForum thread.
+
+1.0.0-12-beta
+- Added keyboard shortcuts to set transfer function to PQ (ctrl+shift+p) and to Auto (ctrl+shift+a)
+
+1.0.0-11
+- Updated fork to be current with bbspills's crash fix. 
+- bugfix: Added a command line parameter for the start-stop clock to be set to none, which was missed when the official parameters were added.
+
 1.0.1
 - Updated to BlackMagic SDK 12.4
 - Fix for Blackmagic Rec601 486 line error popup
