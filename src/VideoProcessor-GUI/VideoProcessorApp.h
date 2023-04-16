@@ -14,9 +14,9 @@ class CVideoProcessorApp:
 {
 public:
 	virtual BOOL InitInstance();
+	bool m_helpcalled = false;
 
 	DECLARE_MESSAGE_MAP()
 };
-
 
 extern CVideoProcessorApp videoProcessorApp;

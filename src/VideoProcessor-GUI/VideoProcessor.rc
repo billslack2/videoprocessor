@@ -75,7 +75,7 @@ IDR_MAINFRAME           ICON                    "..\\..\\images\\VideoProcessor.
 // Dialog
 //
 
-IDD_VIDEOPROCESSOR_DIALOG DIALOGEX 0, 0, 825, 314
+IDD_VIDEOPROCESSOR_DIALOG DIALOGEX 0, 0, 825, 330
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_APPWINDOW
 CAPTION "VideoProcessor"
@@ -84,7 +84,7 @@ BEGIN
     COMBOBOX        IDC_CAPTURE_DEVICE_COMBO,12,18,126,50,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     COMBOBOX        IDC_CAPTURE_INPUT_COMBO,12,36,126,50,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     GROUPBOX        "Color space",IDC_VIDEO_DATA_GROUP,150,0,204,24
-    GROUPBOX        "Renderer",IDC_RENDERER_GROUP,360,0,462,312
+    GROUPBOX        "Renderer",IDC_RENDERER_GROUP,360,0,462,323
     CTEXT           "<renderer output>",IDC_RENDERER_WINDOWED_VIDEO_WINDOW,516,30,300,276,SS_CENTERIMAGE
     RTEXT           "Disp.Mstr.",IDC_STATIC,150,91,39,8
     RTEXT           "MaxCLL",IDC_STATIC,159,77,30,8
@@ -147,16 +147,16 @@ BEGIN
     LTEXT           "0",IDC_INPUT_VIDEO_FRAME_COUNT_STATIC,48,163,36,8
     LTEXT           "0",IDC_INPUT_VIDEO_FRAME_MISSED_STATIC,111,163,24,8
     COMBOBOX        IDC_RENDERER_COMBO,366,12,198,50,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    CONTROL         "Auto",IDC_TIMING_CLOCK_FRAME_OFFSET_AUTO_CHECK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,72,297,31,10
+    CONTROL         "Auto",IDC_TIMING_CLOCK_FRAME_OFFSET_AUTO_CHECK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,73,298,31,10
     CONTROL         "Auto",IDC_RENDERER_RESET_AUTO_CHECK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,420,88,31,10
     LTEXT           "<renderer detail string>",IDC_RENDERER_DETAIL_STRING_STATIC,569,15,199,8
     GROUPBOX        "Queue",IDC_STATIC_RENDERER_QUEUE_GROUP,366,54,144,48
     GROUPBOX        "DirectShow override",IDC_STATIC_RENDERER_DIRECTSHOW_GROUP,366,139,144,102
-    CONTROL         "Full screen",IDC_RENDERER_FULL_SCREEN_CHECK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,372,289,50,10
+    CONTROL         "Fullscreen",IDC_RENDERER_FULL_SCREEN_CHECK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,370,303,48,10
     GROUPBOX        "Video conversion",IDC_STATIC_RENDERER_VIDEO_CONVERSION_GROUP,366,102,144,36
     COMBOBOX        IDC_RENDERER_VIDEO_CONVERSION_COMBO,372,115,132,50,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     RTEXT           "ms",IDC_STATIC,97,174,10,8
-    GROUPBOX        "Output",IDC_STATIC_LATENCY_GROUP2,366,276,144,24
+    GROUPBOX        "Output",IDC_STATIC_LATENCY_GROUP2,366,276,144,39
     RTEXT           "R",IDC_STATIC,153,37,8,8
     RTEXT           "G",IDC_STATIC,219,38,8,8
     RTEXT           "B",IDC_STATIC,288,38,8,8
@@ -176,43 +176,21 @@ BEGIN
     GROUPBOX        "HDR Color space",IDC_VIDEO_DATA_GROUP2,150,24,204,42
     COMBOBOX        IDC_HDR_LUMINANCE_COMBO,300,91,49,50,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     PUSHBUTTON      "Restart",IDC_CAPTURE_RESTART_BUTTON,96,54,42,12,WS_DISABLED
+    COMBOBOX        IDC_FULLSCREENMODE_COMBO,432,288,72,50,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Fullscreen mode",IDC_STATIC,372,289,56,11
 END
 
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// Version
-//
-
-VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,0,0,0
- PRODUCTVERSION 0,0,0,0
- FILEFLAGSMASK 0x3fL
-#ifdef _DEBUG
- FILEFLAGS 0x1L
-#else
- FILEFLAGS 0x0L
-#endif
- FILEOS 0x4L
- FILETYPE 0x1L
- FILESUBTYPE 0x0L
+IDD_HELP_DIALOG DIALOGEX 0, 0, 249, 408
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Help"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    BLOCK "StringFileInfo"
-    BEGIN
-        BLOCK "040904e4"
-        BEGIN
-            VALUE "CompanyName", "Dennis Fleurbaaij"
-            VALUE "FileDescription", "VideoProcessor main executable"
-            VALUE "InternalName", "VideoProcessor.exe"
-            VALUE "LegalCopyright", "Copyright © 2021 Dennis Fleurbaaij."
-            VALUE "OriginalFilename", "VideoProcessor.exe"
-            VALUE "ProductName", "VideoProcessor"
-        END
-    END
-    BLOCK "VarFileInfo"
-    BEGIN
-        VALUE "Translation", 0x409, 1252
-    END
+    LTEXT           "Start fullscreen\n/fullscreen\n\nSet Fullscreen mode to windowed\n/windowedfullscreenmode\n\nSet renderer\n/renderer ""name""\n\nSet frame offset\n/frame_offset [value|auto]\n\nEnable video conversion overrides\n/video_conversion V210_TO_P010",IDC_STATIC,7,7,114,117,SS_NOPREFIX
+    LTEXT           "Set container colorspace\n/container_colorspace\nBT2020\nP3_D65\nP3_DCI\nP3_D60\nREC709\nREC601_525\nREC601_625\n\nSet HDR color space\n/hdr_colorspace\nFOLLOW_INPUT\nFOLLOW_INPUT_LLDV\nFOLLOW_CONTAINER\nBT2020\nP3\nREC709",IDC_STATIC,7,126,115,150
+    LTEXT           "Set HDR luminance\n/hdr_luminance\nFOLLOW_INPUT\nFOLLOW_INPUT_LLDV\nHDR_LUMINANCE_USER\n\nSet renderer start-stop time method\n/renderer_start_stop_time_method\nCLOCK_SMART\nCLOCK_THEO\nCLOCK_CLOCK\nTHEO_THEO\nCLOCK_NONE\nTHEO_NONE\nNONE",IDC_STATIC,7,281,126,120
+    LTEXT           "Set nominal range\n/renderer_nominal_range\nFULL\nLIMITED\nSMALL",IDC_STATIC,134,7,97,42
+    LTEXT           "Set transfer function\n/renderer_transfer_function\nAUTO\nPQ\nREC709\nBT2020_CONST\nGAMMA_1.8\nGAMMA_2.0\nGAMMA_2.2\nGAMMA_2.6\nGAMMA_2.8\nLINEAR_RGB\n204M\n8BIT_GAMMA_2.2\nLOG_100_1\nLOG_316_1\nREC709\nBT2020\nHYBRID_LOG_GAMMA",IDC_STATIC,134,53,101,155
+    LTEXT           "Set transfer matrix\n/renderer_transfer_matrix\nAUTO\nBT2020_10\nBT2020_12\nBT709\nBT601\n240M\nFCC\nYCgCo\n\nSet primaries\n/renderer_primaries\nAUTO\nBT2020\nDCI-P3\nBT709\nNTSC_SYSM\nNYSC_SYSBG\nCIE1931_ZYX\nACES",IDC_STATIC,132,214,102,176
 END
 
 
@@ -228,7 +206,15 @@ BEGIN
     BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 817
-        BOTTOMMARGIN, 307
+        BOTTOMMARGIN, 323
+    END
+
+    IDD_HELP_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 242
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 401
     END
 END
 #endif    // APSTUDIO_INVOKED
@@ -336,7 +322,14 @@ BEGIN
     0, 0, 0, 0,
     0, 0, 0, 0,
     0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
     0, 0, 0, 0
+END
+
+IDD_HELP_DIALOG AFX_DIALOG_LAYOUT
+BEGIN
+    0
 END
 
 
@@ -357,11 +350,32 @@ IDB_LOGO                BITMAP                  "..\\..\\images\\logo.bmp"
 
 IDR_ACCELERATOR1 ACCELERATORS
 BEGIN
+    "A",            ID_COMMAND_AUTO_SET,    VIRTKEY, SHIFT, CONTROL, NOINVERT
     VK_ESCAPE,      ID_COMMAND_FULLSCREEN_EXIT, VIRTKEY, NOINVERT
     VK_RETURN,      ID_COMMAND_FULLSCREEN_TOGGLE, VIRTKEY, ALT, NOINVERT
     "P",            ID_COMMAND_PQ_SET,      VIRTKEY, SHIFT, CONTROL, NOINVERT
     "R",            ID_COMMAND_RENDERER_RESET, VIRTKEY, NOINVERT
-    "A",            ID_COMMAND_AUTO_SET,    VIRTKEY, SHIFT, CONTROL, NOINVERT
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,0,0,0
+ PRODUCTVERSION 0,0,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
 END
 
 #endif    // English (United States) resources

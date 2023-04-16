@@ -27,6 +27,7 @@ public:
 
     // Register and create this window
     void Create(HMONITOR hmon, HWND parentWindow);
+    void CreateWindowedFullscreen(HMONITOR hmon, HWND parentWindow);
 
     // Get the window handler
     HWND GetHWND() const { return m_hwnd; }

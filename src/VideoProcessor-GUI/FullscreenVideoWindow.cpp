@@ -50,6 +50,53 @@ LRESULT CALLBACK FullscreenVideoWindow::WindowProc(HWND hwnd, UINT uMsg, WPARAM 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
+// Same as create, but this time it's not exclusive
+void FullscreenVideoWindow::CreateWindowedFullscreen(HMONITOR hmon, HWND parentWindow)
+{
+    //
+    // Register the window class
+    //
+
+    WNDCLASS wc = { 0 };
+
+    wc.lpfnWndProc = FullscreenVideoWindow::WindowProc;
+    wc.hInstance = GetModuleHandle(nullptr);
+    wc.lpszClassName = FULLSCREEN_WINDOW_CLASS_NAME;
+
+    RegisterClass(&wc);
+
+    //
+    // Create the window
+    //
+
+    MONITORINFO mi = { sizeof(mi) };
+    if (!GetMonitorInfo(hmon, &mi))
+        throw std::runtime_error("Failed to get monitor info");
+
+    LONG width = mi.rcMonitor.right - mi.rcMonitor.left;
+#ifdef _DEBUG
+    // When debugging it's REALLY handy to not cover the whole screen and capture key inputs...
+   //  width = width  / 5;
+#endif
+    m_hwnd = CreateWindowEx(
+        WS_EX_TOOLWINDOW | WS_EX_ACCEPTFILES | WS_EX_NOPARENTNOTIFY,
+        FULLSCREEN_WINDOW_CLASS_NAME,
+        TEXT("Waiting for renderer to start."),
+        WS_POPUP | WS_VISIBLE,
+        mi.rcMonitor.left,
+        mi.rcMonitor.top,
+        width,
+        mi.rcMonitor.bottom - mi.rcMonitor.top,
+        parentWindow,
+        nullptr,  // hMenu
+        GetModuleHandle(nullptr),  // Parent process
+        this);
+
+
+    if (!m_hwnd)
+        throw std::runtime_error("Failed to create window");
+}
+
 
 void FullscreenVideoWindow::Create(HMONITOR hmon, HWND parentWindow)
 {
@@ -76,11 +123,10 @@ void FullscreenVideoWindow::Create(HMONITOR hmon, HWND parentWindow)
     LONG width = mi.rcMonitor.right - mi.rcMonitor.left;
 #ifdef _DEBUG
     // When debugging it's REALLY handy to not cover the whole screen and capture key inputs...
-    width = width  / 5;
+   //  width = width  / 5;
 #endif
-
     m_hwnd = CreateWindowEx(
-        WS_EX_TOOLWINDOW | WS_EX_ACCEPTFILES | WS_EX_NOPARENTNOTIFY,
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_ACCEPTFILES | WS_EX_NOPARENTNOTIFY,
         FULLSCREEN_WINDOW_CLASS_NAME,
         TEXT("Waiting for renderer to start."),
         WS_POPUP | WS_VISIBLE,
@@ -93,6 +139,7 @@ void FullscreenVideoWindow::Create(HMONITOR hmon, HWND parentWindow)
         GetModuleHandle(nullptr),  // Parent process
         this);
 
+    
     if(!m_hwnd)
         throw std::runtime_error("Failed to create window");
 }

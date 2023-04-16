@@ -75,6 +75,7 @@ public:
 
 	// Option handlers
 	void StartFullScreen();
+	void WindowedFullScreenMode();
 	void DefaultRendererName(const CString&);
 	void StartFrameOffsetAuto();
 	void StartFrameOffset(const CString&);
@@ -109,6 +110,8 @@ public:
 	afx_msg void OnRendererDirectShowTransferMatrixSelected();
 	afx_msg void OnRendererDirectShowPrimariesSelected();
 	afx_msg void OnBnClickedRendererFullScreenCheck();
+	afx_msg void OnCbnSelchangeFullscreenmodeCombo();
+
 
 	// Custom message handlers
 	afx_msg LRESULT OnMessageCaptureDeviceFound(WPARAM wParam, LPARAM lParam);
@@ -228,6 +231,7 @@ protected:
 
 	// Renderer output group
 	CButton m_rendererFullscreenCheck;
+	CComboBox m_fullScreenModeCombo;
 
 	CSize m_minDialogSize;
 	HICON m_hIcon;
@@ -251,6 +255,7 @@ protected:
 
 	// Startup options
 	bool m_rendererFullScreenStart = false;
+	bool m_windowedFullScreenMode = false;
 	CString m_defaultRendererName;
 	bool m_frameOffsetAutoStart = false;
 	CString m_defaultFrameOffset = TEXT("90");
@@ -326,4 +331,5 @@ protected:
 	void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
 
 	DECLARE_MESSAGE_MAP()
+
 };

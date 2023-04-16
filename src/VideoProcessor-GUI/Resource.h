@@ -2,11 +2,13 @@
 // Microsoft Visual C++ generated include file.
 // Used by VideoProcessor.rc
 //
+#define VS_VERSION_INFO                 1
 #define IDD_VIDEOPROCESSOR_DIALOG       102
 #define IDR_MAINFRAME                   128
 #define IDB_CIE1931XY                   129
 #define IDR_ACCELERATOR1                130
 #define IDB_LOGO                        133
+#define IDD_HELP_DIALOG                 138
 #define IDC_CAPTURE_DEVICE_COMBO        1000
 #define IDC_RENDERER_DIRECTSHOW_NOMINAL_RANGE_COMBO 1001
 #define IDC_RENDERER_DIRECTSHOW_TRANSFER_FUNCTION_COMBO 1002
@@ -73,19 +75,21 @@
 #define IDC_HDR_COLORSPACE_WP_EDIT      1080
 #define IDC_HDR_LUMINANCE_MASTER_MIN_EDIT 1081
 #define IDC_HDR_LUMINANCE_MASTER_MAX_EDIT 1082
+#define IDC_FULLSCREENMODE_COMBO        1084
 #define ID_COMMAND_FULLSCREEN_TOGGLE    32772
 #define ID_COMMAND_FULLSCREEN_EXIT      32778
 #define ID_COMMAND_RENDERER_RESET       32780
 #define ID_COMMAND_PQ_SET               32781
 #define ID_COMMAND_AUTO_SET             32786
+#define ID_ACCELERATOR32788             32788
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        134
-#define _APS_NEXT_COMMAND_VALUE         32788
-#define _APS_NEXT_CONTROL_VALUE         1073
+#define _APS_NEXT_RESOURCE_VALUE        140
+#define _APS_NEXT_COMMAND_VALUE         32790
+#define _APS_NEXT_CONTROL_VALUE         1085
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

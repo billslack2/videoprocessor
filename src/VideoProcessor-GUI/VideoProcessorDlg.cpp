@@ -60,6 +60,8 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_CBN_SELCHANGE(IDC_RENDERER_DIRECTSHOW_TRANSFER_MATRIX_COMBO, &CVideoProcessorDlg::OnRendererDirectShowTransferMatrixSelected)
 	ON_CBN_SELCHANGE(IDC_RENDERER_DIRECTSHOW_PRIMARIES_COMBO, &CVideoProcessorDlg::OnRendererDirectShowPrimariesSelected)
 	ON_BN_CLICKED(IDC_RENDERER_FULL_SCREEN_CHECK, &CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck)
+	ON_CBN_SELCHANGE(IDC_FULLSCREENMODE_COMBO, &CVideoProcessorDlg::OnCbnSelchangeFullscreenmodeCombo)
+
 
 	// Custom messages
 	ON_MESSAGE(WM_MESSAGE_CAPTURE_DEVICE_FOUND, &CVideoProcessorDlg::OnMessageCaptureDeviceFound)
@@ -193,6 +195,11 @@ static const std::vector<VideoConversionOverride> RENDERER_VIDEO_CONVERSION =
 	VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010
 };
 
+//static const std::vector<std::string> FULLSCREEN_MODES =
+//{
+//	"Exclusive",
+//	"Windowed"
+//};
 
 //
 // Constructor/destructor
@@ -223,6 +230,12 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 void CVideoProcessorDlg::StartFullScreen()
 {
 	m_rendererFullScreenStart = true;
+}
+
+
+void CVideoProcessorDlg::WindowedFullScreenMode()
+{
+	m_windowedFullScreenMode = true;
 }
 
 
@@ -295,7 +308,6 @@ void CVideoProcessorDlg::DefaultRendererPrimaries(DXVA_VideoPrimaries primaries)
 {
 	m_defaultPrimaries = primaries;
 }
-
 
 //
 // UI-related handlers
@@ -475,6 +487,22 @@ void CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()
 	UpdateState();
 }
 
+void CVideoProcessorDlg::OnCbnSelchangeFullscreenmodeCombo()
+{
+	int p = m_fullScreenModeCombo.GetCurSel();
+	if (p == 0)
+		m_windowedFullScreenMode = false;
+	if (p == 1)
+		m_windowedFullScreenMode = true;
+
+	if (m_fullScreenVideoWindow)
+	{
+		FullScreenVideoWindowDestroy();
+		Sleep(1000);
+		OnBnClickedRendererRestart();
+	}
+
+}
 
 //
 // Custom message handlers
@@ -1600,8 +1628,10 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 	m_fullScreenVideoWindow = new FullscreenVideoWindow();
 	if (!m_fullScreenVideoWindow)
 		FatalError(TEXT("Failed to create full screen renderer window"));
-
-	m_fullScreenVideoWindow->Create(hmon, this->GetSafeHwnd());
+	if (m_windowedFullScreenMode == false)
+		m_fullScreenVideoWindow->Create(hmon, this->GetSafeHwnd());
+	if (m_windowedFullScreenMode == true)
+		m_fullScreenVideoWindow->CreateWindowedFullscreen(hmon, this->GetSafeHwnd());
 }
 
 
@@ -2056,6 +2086,7 @@ void CVideoProcessorDlg::DoDataExchange(CDataExchange* pDX)
 
 	// Renderer output group
 	DDX_Control(pDX, IDC_RENDERER_FULL_SCREEN_CHECK, m_rendererFullscreenCheck);
+	DDX_Control(pDX, IDC_FULLSCREENMODE_COMBO, m_fullScreenModeCombo);
 }
 
 
@@ -2171,6 +2202,26 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 		if (p == m_defaultVideoConversionOverride)
 			m_rendererVideoConversionCombo.SetCurSel(index);
 	}
+
+	//for (const auto& p : FULLSCREEN_MODES)
+	//{
+	//	int index = m_fullScreenModeCombo.AddString(p.c_str);
+	//	 m_fullScreenModeCombo.SetItemData(index, p.c_str);
+
+	//	if (m_windowedFullScreenMode == false)
+	//		m_fullScreenModeCombo.SetCurSel(0);
+
+	//	if (m_windowedFullScreenMode == true)
+	//		m_fullScreenModeCombo.SetCurSel(1);
+
+	//}
+	m_fullScreenModeCombo.AddString(L"Exclusive");
+	m_fullScreenModeCombo.AddString(L"Windowed");
+	if (m_windowedFullScreenMode == false)
+		m_fullScreenModeCombo.SetCurSel(0);
+	if (m_windowedFullScreenMode == true)
+		m_fullScreenModeCombo.SetCurSel(1);
+
 
 	// Start discovery services
 	m_blackMagicDeviceDiscoverer->Start();

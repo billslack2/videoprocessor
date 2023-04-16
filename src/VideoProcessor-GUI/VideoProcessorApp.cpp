@@ -15,7 +15,7 @@ extern "C" {
 
 #include <VideoProcessorDlg.h>
 #include <VideoConversionOverride.h>
-
+#include <HelpDialog.h>
 
 #include "VideoProcessorApp.h"
 
@@ -42,6 +42,7 @@ BOOL CVideoProcessorApp::InitInstance()
 	av_log_set_level(AV_LOG_TRACE);
 #endif
 
+	CHelpDialog help;
 	CVideoProcessorDlg dlg;
 	m_pMainWnd = &dlg;
 
@@ -65,6 +66,18 @@ BOOL CVideoProcessorApp::InitInstance()
 			if (wcscmp(pArgs[i], L"/fullscreen") == 0)
 			{
 				dlg.StartFullScreen();
+			}
+
+			// /windowedfullscreenmode
+			if (wcscmp(pArgs[i], L"/windowedfullscreenmode") == 0)
+			{
+				dlg.WindowedFullScreenMode();
+			}
+
+			// /help
+			if (wcscmp(pArgs[i], L"/help") == 0)
+			{
+				m_helpcalled = true;
 			}
 
 			// /renderer "name"
@@ -425,7 +438,7 @@ BOOL CVideoProcessorApp::InitInstance()
 				{
 					primaries = DXVA_VideoPrimaries::DXVA_VideoPrimaries_BT470_2_SysM;
 				}
-				else if (wcscmp(pArgs[i + 1], L"NYSC_SYSBG") == 0)
+				else if (wcscmp(pArgs[i + 1], L"NTSC_SYSBG") == 0)
 				{
 					primaries = DXVA_VideoPrimaries::DXVA_VideoPrimaries_BT470_2_SysBG;
 				}
@@ -449,8 +462,14 @@ BOOL CVideoProcessorApp::InitInstance()
 		// Set set ourselves to high prio.
 		if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS))
 			throw std::runtime_error("Failed to set process priority");
+		if (m_helpcalled)
+		{
+			help.DoModal();
+			return FALSE;
+		}
 
 		dlg.DoModal();
+		
 	}
 	catch (std::runtime_error& e)
 	{

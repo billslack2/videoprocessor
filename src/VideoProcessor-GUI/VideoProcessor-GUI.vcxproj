@@ -23,6 +23,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="HelpDialog.cpp" />
     <ClCompile Include="FullscreenVideoWindow.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
@@ -50,6 +51,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CCie1931Control.h" />
+    <ClInclude Include="HelpDialog.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="FullscreenVideoWindow.h" />
     <ClInclude Include="Resource.h" />
