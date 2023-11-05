@@ -86,6 +86,12 @@ BOOL CVideoProcessorApp::InitInstance()
 				dlg.DefaultRendererName(pArgs[i + 1]);
 			}
 
+			// /set_queue "[value|32]"
+			if (wcscmp(pArgs[i], L"/queue_size") == 0 && (i + 1) < iNumOfArgs)
+			{
+				dlg.SetQueueSize(pArgs[i + 1]);
+			}
+
 			// /frame_offset [value|"auto"]
 			if (wcscmp(pArgs[i], L"/frame_offset") == 0 && (i + 1) < iNumOfArgs)
 			{

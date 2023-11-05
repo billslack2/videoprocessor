@@ -77,6 +77,7 @@ public:
 	void StartFullScreen();
 	void WindowedFullScreenMode();
 	void DefaultRendererName(const CString&);
+	void SetQueueSize(const CString&);
 	void StartFrameOffsetAuto();
 	void StartFrameOffset(const CString&);
 	void DefaultVideoConversionOverride(VideoConversionOverride);
@@ -259,6 +260,7 @@ protected:
 	CString m_defaultRendererName;
 	bool m_frameOffsetAutoStart = false;
 	CString m_defaultFrameOffset = TEXT("90");
+	CString m_defaultQueueSize = TEXT("32");
 	VideoConversionOverride m_defaultVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;
 	ColorSpace m_defaultContainerColorSpace = ColorSpace::UNKNOWN;
 	HdrColorspaceOptions m_defaultHDRColorSpaceOption = HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT;

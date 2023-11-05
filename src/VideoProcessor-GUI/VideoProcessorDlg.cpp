@@ -256,6 +256,11 @@ void CVideoProcessorDlg::StartFrameOffset(const CString& frameOffset)
 	m_defaultFrameOffset = frameOffset;
 }
 
+void CVideoProcessorDlg::SetQueueSize(const CString& queueSize)
+{
+	m_defaultQueueSize = queueSize;
+}
+
 
 void CVideoProcessorDlg::DefaultVideoConversionOverride(VideoConversionOverride videoConversionOverride)
 {
@@ -2233,7 +2238,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	CaptureGUIClear();
 	RenderGUIClear();
 
-	m_rendererVideoFrameQueueSizeMaxEdit.SetWindowText(TEXT("32"));
+	m_rendererVideoFrameQueueSizeMaxEdit.SetWindowText(m_defaultQueueSize);
 	m_timingClockFrameOffsetEdit.SetWindowText(m_defaultFrameOffset);
 	m_rendererVideoFrameUseQeueueCheck.SetCheck(true);
 	m_rendererResetAutoCheck.SetCheck(true);

@@ -185,8 +185,8 @@ STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | DS_CENTER | WS_POPUP | WS_CAPTI
 CAPTION "Help"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    LTEXT           "Start fullscreen\n/fullscreen\n\nSet Fullscreen mode to windowed\n/windowedfullscreenmode\n\nSet renderer\n/renderer ""name""\n\nSet frame offset\n/frame_offset [value|auto]\n\nEnable video conversion overrides\n/video_conversion V210_TO_P010",IDC_STATIC,7,7,114,117,SS_NOPREFIX
-    LTEXT           "Set container colorspace\n/container_colorspace\nBT2020\nP3_D65\nP3_DCI\nP3_D60\nREC709\nREC601_525\nREC601_625\n\nSet HDR color space\n/hdr_colorspace\nFOLLOW_INPUT\nFOLLOW_INPUT_LLDV\nFOLLOW_CONTAINER\nBT2020\nP3\nREC709",IDC_STATIC,7,126,115,150
+    LTEXT           "Start fullscreen\n/fullscreen\n\nSet Fullscreen mode to windowed\n/windowedfullscreenmode\n\nSet renderer\n/renderer ""name""\n\nSet queue size\n/queue_size [value|32]\n\nSet frame offset\n/frame_offset [value|auto]\n\nEnable video conversion overrides\n/video_conversion V210_TO_P010",IDC_STATIC,7,7,144,137,SS_NOPREFIX
+    LTEXT           "Set container colorspace\n/container_colorspace\nBT2020\nP3_D65\nP3_DCI\nP3_D60\nREC709\nREC601_525\nREC601_625\n\nSet HDR color space\n/hdr_colorspace\nFOLLOW_INPUT\nFOLLOW_INPUT_LLDV\nFOLLOW_CONTAINER\nBT2020\nP3\nREC709",IDC_STATIC,7,146,115,150
     LTEXT           "Set HDR luminance\n/hdr_luminance\nFOLLOW_INPUT\nFOLLOW_INPUT_LLDV\nHDR_LUMINANCE_USER\n\nSet renderer start-stop time method\n/renderer_start_stop_time_method\nCLOCK_SMART\nCLOCK_THEO\nCLOCK_CLOCK\nTHEO_THEO\nCLOCK_NONE\nTHEO_NONE\nNONE",IDC_STATIC,7,281,126,120
     LTEXT           "Set nominal range\n/renderer_nominal_range\nFULL\nLIMITED\nSMALL",IDC_STATIC,134,7,97,42
     LTEXT           "Set transfer function\n/renderer_transfer_function\nAUTO\nPQ\nREC709\nBT2020_CONST\nGAMMA_1.8\nGAMMA_2.0\nGAMMA_2.2\nGAMMA_2.6\nGAMMA_2.8\nLINEAR_RGB\n204M\n8BIT_GAMMA_2.2\nLOG_100_1\nLOG_316_1\nREC709\nBT2020\nHYBRID_LOG_GAMMA",IDC_STATIC,134,53,101,155
