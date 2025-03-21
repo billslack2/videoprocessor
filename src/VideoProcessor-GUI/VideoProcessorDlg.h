@@ -77,6 +77,9 @@ public:
 	void StartFullScreen();
 	void WindowedFullScreenMode();
 	void DefaultRendererName(const CString&);
+	void SetQueueSize(const CString&);
+	void SetCaptureDevice(const CString&);
+
 	void StartFrameOffsetAuto();
 	void StartFrameOffset(const CString&);
 	void DefaultVideoConversionOverride(VideoConversionOverride);
@@ -153,6 +156,8 @@ protected:
 	//
 
 	// Capture device group
+	CString m_initialCaptureDevice = TEXT("");
+
 	CComboBox m_captureDeviceCombo;
 	CComboBox m_captureInputCombo;
 	CStatic m_captureDeviceStateText;
@@ -177,8 +182,9 @@ protected:
 
 	// Timing clock group
 	CStatic m_timingClockDescriptionText;
-	CEdit m_timingClockFrameOffsetEdit;
 	CButton m_timingClockFrameOffsetAutoCheck;
+	CEdit m_timingClockFrameOffsetEdit;
+
 
 	// Colorspace group
 	CComboBox m_colorspaceContainerCombo;
@@ -207,6 +213,7 @@ protected:
 	CStatic m_rendererStateText;
 	WindowedVideoWindow	m_windowedVideoWindow;
 
+	
 	// Renderer Queue group
 	CButton m_rendererVideoFrameUseQeueueCheck;
 	CStatic m_rendererVideoFrameQueueSizeText;
@@ -259,6 +266,7 @@ protected:
 	CString m_defaultRendererName;
 	bool m_frameOffsetAutoStart = false;
 	CString m_defaultFrameOffset = TEXT("90");
+	CString m_defaultQueueSize = TEXT("32");
 	VideoConversionOverride m_defaultVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;
 	ColorSpace m_defaultContainerColorSpace = ColorSpace::UNKNOWN;
 	HdrColorspaceOptions m_defaultHDRColorSpaceOption = HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT;
@@ -290,6 +298,18 @@ protected:
 
 	// Helpers
 	void RefreshCaptureDeviceList();
+
+	
+
+	afx_msg void OnSelectCaptureDevice(UINT nID); // Handler for ON_COMMAND_RANGE
+	afx_msg void OnSetFrameOffset(UINT nID); // Handler for ON_COMMAND_RANGE
+
+	void SelectCaptureDevice(int n); // Function to process capture selection
+	void SelectCaptureDevice(CString& captureDeviceName);
+	void SetClockSmart();
+	void SetClockNone();
+	void SetVideoConversionOff();
+	void SetVideoConversionP010();
 	void RefreshInputConnectionCombo();
 	void CaptureStart();
 	void CaptureStop();
@@ -307,6 +327,10 @@ protected:
 	double GetWindowTextAsDouble(CEdit&);
 	int GetTimingClockFrameOffsetMs();
 	void SetTimingClockFrameOffsetMs(int timingClockFrameOffsetMs);
+	std::vector<int> GetFrameOffsetByRefresh();
+	void SetFrameOffsetByRefresh(std::vector<int> offsets);
+
+
 	void UpdateTimingClockFrameOffset();
 	void RebuildRendererCombo();
 	void ClearRendererCombo();
@@ -320,6 +344,8 @@ protected:
 	// CDialog
 	void DoDataExchange(CDataExchange* pDX) override;
 	BOOL OnInitDialog() override;
+	std::atomic<bool> m_needsRenderRestart = false;
+	std::atomic<bool> m_isRestartingRender = false;
 	BOOL PreTranslateMessage(MSG* pMsg) override;
 	void OnOK() override;
 	void OnPaint();
@@ -329,6 +355,7 @@ protected:
 	void OnTimer(UINT_PTR nIDEvent);
 	HCURSOR	OnQueryDragIcon();
 	void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
+	#define RESIZE_DEBOUNCE_TIMER_ID 1  // Unique timer ID
 
 	DECLARE_MESSAGE_MAP()
 
