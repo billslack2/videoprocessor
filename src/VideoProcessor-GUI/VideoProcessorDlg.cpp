@@ -81,17 +81,9 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_PQ_SET, &CVideoProcessorDlg::OnCommandPQSet)
 	ON_COMMAND(ID_COMMAND_AUTO_SET, &CVideoProcessorDlg::OnCommandAutoSet)
 
-	//ON_COMMAND(ID_COMMAND_CLOCK_SMART, &CVideoProcessorDlg::SetClockSmart)
-	//ON_COMMAND(ID_COMMAND_CLOCK_NONE, &CVideoProcessorDlg::SetClockNone)
-
 	ON_COMMAND(ID_COMMAND_VC_NONE, &CVideoProcessorDlg::SetVideoConversionOff)
 	ON_COMMAND(ID_COMMAND_VC_P010, &CVideoProcessorDlg::SetVideoConversionP010)
-
-
-
-
-	//ON_COMMAND_RANGE(ID_COMMAND_CAPTURE_1, ID_COMMAND_CAPTURE_4, &CVideoProcessorDlg::OnSelectCaptureDevice)
-	//ON_COMMAND_RANGE(ID_COMMAND_FRAME_OFFSET_1, ID_COMMAND_FRAME_OFFSET_2, &CVideoProcessorDlg::OnSetFrameOffset)
+	ON_COMMAND_RANGE(ID_COMMAND_CAPTURE_1, ID_COMMAND_CAPTURE_4, &CVideoProcessorDlg::OnSelectCaptureDevice)
 
 
 
@@ -256,6 +248,11 @@ void CVideoProcessorDlg::SetCaptureDevice(const CString& initialCaptureDevice)
 	m_initialCaptureDevice = initialCaptureDevice;
 }
 
+void CVideoProcessorDlg::HideUI()
+{
+	m_hideUI = true;
+}
+
 
 void CVideoProcessorDlg::WindowedFullScreenMode()
 {
@@ -325,27 +322,6 @@ void CVideoProcessorDlg::SetVideoConversionP010()
 		OnBnClickedCaptureRestart();
 	}
 }
-
-void CVideoProcessorDlg::SetClockSmart()
-{
-	int clockSmartID = m_rendererDirectShowStartStopTimeMethodCombo.FindString(0, TEXT("Clock-Smart"));
-
-	if (m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel() != clockSmartID) {
-		m_rendererDirectShowStartStopTimeMethodCombo.SetCurSel(clockSmartID);
-		OnBnClickedCaptureRestart();
-	}
-}
-
-void CVideoProcessorDlg::SetClockNone()
-{
-	int clockNoneID = m_rendererDirectShowStartStopTimeMethodCombo.FindString(0, TEXT("Clock-None"));
-	
-	if (m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel() != clockNoneID) {
-		m_rendererDirectShowStartStopTimeMethodCombo.SetCurSel(clockNoneID);
-		OnBnClickedCaptureRestart();
-	}
-}
-
 
 void CVideoProcessorDlg::DefaultRendererStartStopTimeMethod(DirectShowStartStopTimeMethod dsssTimeMethod)
 {
@@ -1239,21 +1215,6 @@ void CVideoProcessorDlg::UpdateState()
 // Helpers
 //
 
-void CVideoProcessorDlg::OnSetFrameOffset(UINT nID)
-{
-	int deviceIndex = nID - ID_COMMAND_FRAME_OFFSET_1 + 1; // Convert ID to device number
-	int offsetMs = 90;
-	if (deviceIndex == 1) offsetMs = 90;
-	if (deviceIndex == 2) offsetMs = 30;
-
-	SetTimingClockFrameOffsetMs(offsetMs);
-
-
-	if (GetTimingClockFrameOffsetMs() != offsetMs) {
-		SetTimingClockFrameOffsetMs(offsetMs);
-		//OnBnClickedCaptureRestart();
-	}
-}
 
 
 void CVideoProcessorDlg::OnSelectCaptureDevice(UINT nID)
@@ -2380,15 +2341,16 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 
 	// Start timers
 	SetTimer(TIMER_ID_1SECOND, 1000, nullptr);
-	/*
-	// Hide all UI elements except m_windowedVideoWindow
-	for (CWnd* pWnd = GetWindow(GW_CHILD); pWnd; pWnd = pWnd->GetNextWindow())
-	{
-		if (pWnd != &m_windowedVideoWindow)
+	
+	if (m_hideUI) {
+		// Hide all UI elements except m_windowedVideoWindow
+		for (CWnd* pWnd = GetWindow(GW_CHILD); pWnd; pWnd = pWnd->GetNextWindow())
 		{
-			pWnd->ShowWindow(SW_HIDE);
+			if (pWnd != &m_windowedVideoWindow)
+			{
+				pWnd->ShowWindow(SW_HIDE);
+			}
 		}
-	}
 
 
 		// Get the dialog's current client size
@@ -2402,15 +2364,8 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 		{
 			m_windowedVideoWindow.MoveWindow(0, 0, width, height, TRUE);
 		}
-
+	}
 		
-
-
-		// Ensure the video window fills the entire dialog
-		if (m_windowedVideoWindow.GetSafeHwnd())
-		{
-			m_windowedVideoWindow.MoveWindow(0, 0, width, height, TRUE);
-		}*/
 
 
 
@@ -2517,54 +2472,37 @@ void CVideoProcessorDlg::OnPaint()
 	}
 }
 
-
 void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 {
-	CDialog::OnSize(nType, cx, cy);
+	
 
-	if (m_windowedVideoWindow.GetSafeHwnd())
-	{
-		m_windowedVideoWindow.MoveWindow(0, 0, cx, cy, TRUE);
-	}
+	if (m_hideUI) {
+		// Get the dialog's current client size
+		CRect clientRect;
+		GetClientRect(&clientRect);
+		int width = clientRect.Width();
+		int height = clientRect.Height();
 
-	static bool isMaximized = false;
 
-	if (nType == SIZE_MAXIMIZED && !isMaximized)
-	{
-		isMaximized = true;
-
-		RECT workArea;
-		SystemParametersInfo(SPI_GETWORKAREA, 0, &workArea, 0); // Get screen size excluding taskbar
-
-		// Remove ONLY the title bar (keep the borders so taskbar is respected)
-		LONG lStyle = GetWindowLong(m_hWnd, GWL_STYLE);
-		lStyle &= ~WS_CAPTION;  // Hide title bar but keep resize/move functionality
-		SetWindowLong(m_hWnd, GWL_STYLE, lStyle);
-
-		// Resize the window to fit the screen without covering the taskbar
-		SetWindowPos(NULL, workArea.left, workArea.top,
-			workArea.right - workArea.left,
-			workArea.bottom - workArea.top,
-			SWP_NOZORDER | SWP_FRAMECHANGED);
-	}
-	else if (nType == SIZE_RESTORED && isMaximized)
-	{
-		isMaximized = false;
-
-		// Show all UI elements again
-		for (CWnd* pWnd = GetWindow(GW_CHILD); pWnd; pWnd = pWnd->GetNextWindow())
+		// Resize the video window to fill the entire dialog
+		if (m_windowedVideoWindow.GetSafeHwnd())
 		{
-			if (pWnd != &m_windowedVideoWindow)
-			{
-				pWnd->ShowWindow(SW_SHOW);
-			}
+			m_windowedVideoWindow.MoveWindow(0, 0, width, height, TRUE);
 		}
 	}
 
-	// Reset the debounce timer to restart rendering after resizing settles
-	KillTimer(RESIZE_DEBOUNCE_TIMER_ID);
-	SetTimer(RESIZE_DEBOUNCE_TIMER_ID, 1000, NULL);
+	if (m_videoRenderer)
+		m_videoRenderer->OnSize();
+
+	CDialog::OnSize(nType, cx, cy);
 }
+
+
+
+
+
+
+
 
 
 
@@ -2608,11 +2546,16 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	CString cstring;
 
-	if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
+
+	/*if (needRenderRestart)
 	{
-		KillTimer(RESIZE_DEBOUNCE_TIMER_ID);  // Stop the timer
+		needRenderRestart = false;
 		OnBnClickedCaptureRestart();  // Restart rendering
 	}
+	else {
+		needRenderRestart = false;
+	}
+	*/
 
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
 	{
@@ -2745,6 +2688,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			*/
 		}
 	}
+
 	
 	++m_timerSeconds;
 }
@@ -2760,7 +2704,13 @@ void CVideoProcessorDlg::OnGetMinMaxInfo(MINMAXINFO* minMaxInfo)
 {
 	CDialog::OnGetMinMaxInfo(minMaxInfo);
 
-	// Guarantee minimum size of window
-	minMaxInfo->ptMinTrackSize.x = std::max(minMaxInfo->ptMinTrackSize.x, m_minDialogSize.cx);
-	minMaxInfo->ptMinTrackSize.y = std::max(minMaxInfo->ptMinTrackSize.y, m_minDialogSize.cy);
+	if (m_hideUI) {
+		minMaxInfo->ptMinTrackSize.x = 100;
+		minMaxInfo->ptMinTrackSize.y = 100;
+	}
+	else {
+		// Guarantee minimum size of window
+		minMaxInfo->ptMinTrackSize.x = std::max(minMaxInfo->ptMinTrackSize.x, m_minDialogSize.cx);
+		minMaxInfo->ptMinTrackSize.y = std::max(minMaxInfo->ptMinTrackSize.y, m_minDialogSize.cy);
+	}
 }

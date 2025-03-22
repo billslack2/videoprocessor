@@ -76,6 +76,7 @@ public:
 	// Option handlers
 	void StartFullScreen();
 	void WindowedFullScreenMode();
+	void HideUI();
 	void DefaultRendererName(const CString&);
 	void SetQueueSize(const CString&);
 	void SetCaptureDevice(const CString&);
@@ -263,6 +264,8 @@ protected:
 	// Startup options
 	bool m_rendererFullScreenStart = false;
 	bool m_windowedFullScreenMode = false;
+	bool m_hideUI = false;
+
 	CString m_defaultRendererName;
 	bool m_frameOffsetAutoStart = false;
 	CString m_defaultFrameOffset = TEXT("90");
@@ -299,15 +302,10 @@ protected:
 	// Helpers
 	void RefreshCaptureDeviceList();
 
-	
-
 	afx_msg void OnSelectCaptureDevice(UINT nID); // Handler for ON_COMMAND_RANGE
-	afx_msg void OnSetFrameOffset(UINT nID); // Handler for ON_COMMAND_RANGE
 
 	void SelectCaptureDevice(int n); // Function to process capture selection
 	void SelectCaptureDevice(CString& captureDeviceName);
-	void SetClockSmart();
-	void SetClockNone();
 	void SetVideoConversionOff();
 	void SetVideoConversionP010();
 	void RefreshInputConnectionCombo();

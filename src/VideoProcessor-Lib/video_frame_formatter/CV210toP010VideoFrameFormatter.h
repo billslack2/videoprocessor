@@ -31,4 +31,6 @@ public:
 private:
 	uint32_t m_height = 0;
 	uint32_t m_width = 0;
+	uint32_t m_alignedWidth;
+	uint32_t m_stride;
 };
