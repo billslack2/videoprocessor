@@ -484,7 +484,7 @@ BOOL CVideoProcessorApp::InitInstance()
 
 
 			// hide the UI except the video window
-			if (wcscmp(pArgs[i], L"/noui") == 0 || wcscmp(pArgs[i], L"/crazyeddie") == 0)
+			if (wcscmp(pArgs[i], L"/noui") == 0 || wcscmp(pArgs[i], L"/czeddie") == 0)
 			{
 				dlg.HideUI();
 			}

@@ -186,7 +186,7 @@ CAPTION "Help"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
     LTEXT           "Start fullscreen\n/fullscreen\n\nSet Fullscreen mode to windowed\n/windowedfullscreenmode\n\nSet capture device\n/capture_device ""name""\n\nSet renderer\n/renderer ""name""",IDC_STATIC,7,7,106,105,SS_NOPREFIX
-    LTEXT           "Set queue size\n/queue_size [value|32]\n\nHide UI/Only Video\n/hideui\n\nSet frame offset\n/frame_offset [value|auto]",IDC_STATIC,7,113,99,77,SS_NOPREFIX
+    LTEXT           "Set queue size\n/queue_size [value|32]\n\nHide UI/Only Video\n/noui\n\nSet frame offset\n/frame_offset [value|auto]",IDC_STATIC,7,113,99,77,SS_NOPREFIX
     LTEXT           "Set container colorspace\n/container_colorspace\nBT2020\nP3_D65\nP3_DCI\nP3_D60\nREC709\nREC601_525\nREC601_625\n\nSet HDR color space\n/hdr_colorspace\nFOLLOW_INPUT\nFOLLOW_INPUT_LLDV\nFOLLOW_CONTAINER\nBT2020\nP3\nREC709",IDC_STATIC,7,185,115,150
     LTEXT           "Set HDR luminance\n/hdr_luminance\nFOLLOW_INPUT\nFOLLOW_INPUT_LLDV\nHDR_LUMINANCE_USER\n\nSet renderer start-stop time method\n/renderer_start_stop_time_method\nCLOCK_SMART\nCLOCK_THEO\nCLOCK_CLOCK\nTHEO_THEO\nCLOCK_NONE\nTHEO_NONE\nNONE",IDC_STATIC,7,339,126,120
     LTEXT           "Set nominal range\n/renderer_nominal_range\nFULL\nLIMITED\nSMALL",IDC_STATIC,134,7,97,42
