@@ -81,7 +81,17 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_PQ_SET, &CVideoProcessorDlg::OnCommandPQSet)
 	ON_COMMAND(ID_COMMAND_AUTO_SET, &CVideoProcessorDlg::OnCommandAutoSet)
 
+	ON_COMMAND(ID_COMMAND_VC_NONE, &CVideoProcessorDlg::SetVideoConversionOff)
+	ON_COMMAND(ID_COMMAND_VC_P010, &CVideoProcessorDlg::SetVideoConversionP010)
+	ON_COMMAND_RANGE(ID_COMMAND_CAPTURE_1, ID_COMMAND_CAPTURE_4, &CVideoProcessorDlg::OnSelectCaptureDevice)
+
+
+
+
+
 END_MESSAGE_MAP()
+
+
 
 
 static const std::vector<std::pair<LPCTSTR, ColorSpace>> COLOLORSPACE_CONTAINER_OPTIONS =
@@ -232,6 +242,17 @@ void CVideoProcessorDlg::StartFullScreen()
 	m_rendererFullScreenStart = true;
 }
 
+void CVideoProcessorDlg::SetCaptureDevice(const CString& initialCaptureDevice)
+{
+
+	m_initialCaptureDevice = initialCaptureDevice;
+}
+
+void CVideoProcessorDlg::HideUI()
+{
+	m_hideUI = true;
+}
+
 
 void CVideoProcessorDlg::WindowedFullScreenMode()
 {
@@ -285,11 +306,31 @@ void CVideoProcessorDlg::DefaultHDRLuminance(HdrLuminanceOptions hdrLuminanceOpt
 	m_defaultHDRLuminanceOption = hdrLuminanceOption;
 }
 
+void CVideoProcessorDlg::SetVideoConversionOff()
+{
+	if (m_rendererVideoConversionCombo.GetCurSel() != 0) {
+
+		m_rendererVideoConversionCombo.SetCurSel(0);
+		OnBnClickedCaptureRestart();
+	}
+}
+
+void CVideoProcessorDlg::SetVideoConversionP010()
+{
+	if (m_rendererVideoConversionCombo.GetCurSel() != 1) {
+		m_rendererVideoConversionCombo.SetCurSel(1);
+		OnBnClickedCaptureRestart();
+	}
+}
 
 void CVideoProcessorDlg::DefaultRendererStartStopTimeMethod(DirectShowStartStopTimeMethod dsssTimeMethod)
 {
 	m_defaultDSSSTimeMethod = dsssTimeMethod;
 }
+
+//				dlg.DefaultRendererStartStopTimeMethod(dsssTimeMethod);
+
+
 
 void CVideoProcessorDlg::DefaultRendererNominalRange(DXVA_NominalRange nominalRange)
 {
@@ -320,8 +361,11 @@ void CVideoProcessorDlg::DefaultRendererPrimaries(DXVA_VideoPrimaries primaries)
 
 
 void CVideoProcessorDlg::OnCaptureDeviceSelected()
+
+
 {
 	const int captureDeviceIndex = m_captureDeviceCombo.GetCurSel();
+
 	if (captureDeviceIndex < 0)
 		return;
 
@@ -1172,6 +1216,38 @@ void CVideoProcessorDlg::UpdateState()
 //
 
 
+
+void CVideoProcessorDlg::OnSelectCaptureDevice(UINT nID)
+{
+	int deviceIndex = nID - ID_COMMAND_CAPTURE_1 + 1; // Convert ID to device number
+	SelectCaptureDevice(deviceIndex);
+}
+
+void CVideoProcessorDlg::SelectCaptureDevice(int n)
+{
+	// Logic to select the capture device
+	CString captureDeviceName;
+	captureDeviceName.Format(_T("DeckLink Quad HDMI Recorder (%d)"), n);
+	SelectCaptureDevice(captureDeviceName);
+}
+
+
+
+void CVideoProcessorDlg::SelectCaptureDevice(CString& captureDeviceName)
+{
+
+	// really should combine with with RefreshCaptureDeviceList -- but.. oh well.
+	int initialDeviceSelection = 0;
+
+	if (captureDeviceName.GetLength() > 0) initialDeviceSelection = m_captureDeviceCombo.FindString(0, captureDeviceName);
+
+	m_captureDeviceCombo.SetCurSel(initialDeviceSelection);
+	OnCaptureDeviceSelected();
+	
+}
+
+
+
 void CVideoProcessorDlg::RefreshCaptureDeviceList()
 {
 	// Rebuild combo box with all devices which can capture
@@ -1198,7 +1274,11 @@ void CVideoProcessorDlg::RefreshCaptureDeviceList()
 		const int index = m_captureDeviceCombo.GetCurSel();
 		if (index == CB_ERR)
 		{
-			m_captureDeviceCombo.SetCurSel(0);
+			int initialDeviceSelection = 0;
+			
+			if (m_initialCaptureDevice.GetLength() > 0) initialDeviceSelection = m_captureDeviceCombo.FindString(0, m_initialCaptureDevice);
+
+			m_captureDeviceCombo.SetCurSel(initialDeviceSelection);
 			OnCaptureDeviceSelected();
 		}
 	}
@@ -1689,9 +1769,21 @@ double CVideoProcessorDlg::GetWindowTextAsDouble(CEdit& edit)
 	return _wtof(text);
 }
 
+std::vector<int> m_frame_offsets_by_refresh;
+
+std::vector<int> CVideoProcessorDlg::GetFrameOffsetByRefresh() {
+	return m_frame_offsets_by_refresh;
+}
+
+void CVideoProcessorDlg::SetFrameOffsetByRefresh(std::vector<int> offsets) {
+	m_frame_offsets_by_refresh = offsets;
+}
+
 
 int CVideoProcessorDlg::GetTimingClockFrameOffsetMs()
 {
+
+
 	CString text;
 	m_timingClockFrameOffsetEdit.GetWindowText(text);
 
@@ -1714,7 +1806,7 @@ void CVideoProcessorDlg::SetTimingClockFrameOffsetMs(int timingClockFrameOffsetM
 
 void CVideoProcessorDlg::UpdateTimingClockFrameOffset()
 {
-	if (m_captureDevice)
+	if (m_captureDevice) 
 		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
 
 	if (m_videoRenderer)
@@ -2249,6 +2341,33 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 
 	// Start timers
 	SetTimer(TIMER_ID_1SECOND, 1000, nullptr);
+	
+	if (m_hideUI) {
+		// Hide all UI elements except m_windowedVideoWindow
+		for (CWnd* pWnd = GetWindow(GW_CHILD); pWnd; pWnd = pWnd->GetNextWindow())
+		{
+			if (pWnd != &m_windowedVideoWindow)
+			{
+				pWnd->ShowWindow(SW_HIDE);
+			}
+		}
+
+
+		// Get the dialog's current client size
+		CRect clientRect;
+		GetClientRect(&clientRect);
+		int width = clientRect.Width();
+		int height = clientRect.Height();
+
+		// Resize the video window to fill the entire dialog
+		if (m_windowedVideoWindow.GetSafeHwnd())
+		{
+			m_windowedVideoWindow.MoveWindow(0, 0, width, height, TRUE);
+		}
+	}
+		
+
+
 
 	return TRUE;
 }
@@ -2353,14 +2472,43 @@ void CVideoProcessorDlg::OnPaint()
 	}
 }
 
-
 void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 {
+	
+
+	if (m_hideUI) {
+		// Get the dialog's current client size
+		CRect clientRect;
+		GetClientRect(&clientRect);
+		int width = clientRect.Width();
+		int height = clientRect.Height();
+
+
+		// Resize the video window to fill the entire dialog
+		if (m_windowedVideoWindow.GetSafeHwnd())
+		{
+			m_windowedVideoWindow.MoveWindow(0, 0, width, height, TRUE);
+		}
+	}
+
 	if (m_videoRenderer)
 		m_videoRenderer->OnSize();
 
 	CDialog::OnSize(nType, cx, cy);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 void CVideoProcessorDlg::OnSetFocus(CWnd* pOldWnd)
@@ -2397,6 +2545,17 @@ void CVideoProcessorDlg::OnClose()
 void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	CString cstring;
+
+
+	/*if (needRenderRestart)
+	{
+		needRenderRestart = false;
+		OnBnClickedCaptureRestart();  // Restart rendering
+	}
+	else {
+		needRenderRestart = false;
+	}
+	*/
 
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
 	{
@@ -2493,26 +2652,44 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		const bool timingClockFrameOffsetAuto = m_timingClockFrameOffsetAutoCheck.GetCheck();
 		if (queueOk && timingClockFrameOffsetAuto)
 		{
-			const double videoFrameLead = -(m_videoRenderer->ExitLatencyMs());
-			const double frameDurationMs = 1000.0 / m_captureDeviceVideoState->displayMode->RefreshRateHz();
 
-			const bool needsAdjusting =
-				videoFrameLead < 0 ||
-				videoFrameLead >(frameDurationMs * 2);
 
-			if (needsAdjusting)
-			{
-				DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Adjusting clock frame offset + reset")));
+			int newOffset = GetTimingClockFrameOffsetMs();
+			if (m_captureDeviceVideoState->displayMode->RefreshRateHz() <= 30) {
+				newOffset = 90;
+			}
+			else {
+				newOffset = 30;
+			}
 
-				const int delta = (int)round(-videoFrameLead);
-				const int newOffset = GetTimingClockFrameOffsetMs() + delta;
-
+			if (newOffset != GetTimingClockFrameOffsetMs()) {
 				SetTimingClockFrameOffsetMs(newOffset);
 				UpdateTimingClockFrameOffset();
 			}
+
+			/*	const double videoFrameLead = -(m_videoRenderer->ExitLatencyMs());
+				const double frameDurationMs = 1000.0 / m_captureDeviceVideoState->displayMode->RefreshRateHz();
+
+				const bool needsAdjusting =
+					videoFrameLead < 0 ||
+					videoFrameLead >(frameDurationMs * 2);
+
+				if (needsAdjusting)
+				{
+					DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Adjusting clock frame offset + reset")));
+
+					const int delta = (int)round(-videoFrameLead);
+					const int newOffset = GetTimingClockFrameOffsetMs() + delta;
+
+					SetTimingClockFrameOffsetMs(newOffset);
+					UpdateTimingClockFrameOffset();
+				}
+			}
+			*/
 		}
 	}
 
+	
 	++m_timerSeconds;
 }
 
@@ -2527,7 +2704,13 @@ void CVideoProcessorDlg::OnGetMinMaxInfo(MINMAXINFO* minMaxInfo)
 {
 	CDialog::OnGetMinMaxInfo(minMaxInfo);
 
-	// Guarantee minimum size of window
-	minMaxInfo->ptMinTrackSize.x = std::max(minMaxInfo->ptMinTrackSize.x, m_minDialogSize.cx);
-	minMaxInfo->ptMinTrackSize.y = std::max(minMaxInfo->ptMinTrackSize.y, m_minDialogSize.cy);
+	if (m_hideUI) {
+		minMaxInfo->ptMinTrackSize.x = 100;
+		minMaxInfo->ptMinTrackSize.y = 100;
+	}
+	else {
+		// Guarantee minimum size of window
+		minMaxInfo->ptMinTrackSize.x = std::max(minMaxInfo->ptMinTrackSize.x, m_minDialogSize.cx);
+		minMaxInfo->ptMinTrackSize.y = std::max(minMaxInfo->ptMinTrackSize.y, m_minDialogSize.cy);
+	}
 }

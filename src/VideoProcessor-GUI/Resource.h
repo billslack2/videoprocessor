@@ -82,6 +82,18 @@
 #define ID_COMMAND_PQ_SET               32781
 #define ID_COMMAND_AUTO_SET             32786
 #define ID_ACCELERATOR32788             32788
+\
+#define ID_COMMAND_CAPTURE_1			32791
+#define ID_COMMAND_CAPTURE_2			32792
+#define ID_COMMAND_CAPTURE_3			32793
+#define ID_COMMAND_CAPTURE_4			32794
+
+#define ID_COMMAND_VC_NONE				32810
+#define ID_COMMAND_VC_P010				32811
+	
+
+
+
 
 // Next default values for new objects
 // 

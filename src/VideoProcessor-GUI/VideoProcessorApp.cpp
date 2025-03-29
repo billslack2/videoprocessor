@@ -18,10 +18,11 @@ extern "C" {
 #include <HelpDialog.h>
 
 #include "VideoProcessorApp.h"
+using namespace std;
 
 
 BEGIN_MESSAGE_MAP(CVideoProcessorApp, CWinAppEx)
-	ON_COMMAND(ID_HELP, &CWinApp::OnHelp)
+	//ON_COMMAND(ID_HELP, &CWinApp::OnHelp)
 END_MESSAGE_MAP()
 
 
@@ -91,6 +92,15 @@ BOOL CVideoProcessorApp::InitInstance()
 			{
 				dlg.SetQueueSize(pArgs[i + 1]);
 			}
+
+
+			// /set_queue "[useless with mini, up to 4 on Quad.. I mean, it is 'Quad'... ]"
+			if (wcscmp(pArgs[i], L"/capture_device") == 0 && (i + 1) < iNumOfArgs)
+			{
+				dlg.SetCaptureDevice(pArgs[i + 1]);
+				
+			}
+
 
 			// /frame_offset [value|"auto"]
 			if (wcscmp(pArgs[i], L"/frame_offset") == 0 && (i + 1) < iNumOfArgs)
@@ -463,6 +473,14 @@ BOOL CVideoProcessorApp::InitInstance()
 
 				dlg.DefaultRendererPrimaries(primaries);
 			}
+
+
+			// hide the UI except the video window
+			if (wcscmp(pArgs[i], L"/noui") == 0 || wcscmp(pArgs[i], L"/czeddie") == 0)
+			{
+				dlg.HideUI();
+			}
+
 		}
 
 		// Set set ourselves to high prio.
@@ -495,6 +513,34 @@ BOOL CVideoProcessorApp::InitInstance()
 
 	return FALSE;
 }
+
+// Function to check if a CString contains only numeric characters
+bool is_number(const CString& str) {
+	for (int i = 0; i < str.GetLength(); i++) {
+		if (!_istdigit(str[i])) { // Check if character is not a digit
+			return false;
+		}
+	}
+	return !str.IsEmpty(); // Ensure it's not an empty string
+}
+
+/*// Function to split CString into a vector of integers with validation
+std::vector<int> split_cstring_ints(const CString& input, const CString& delimiter = _T(",")) {
+	std::vector<int> numbers;
+	int curPos = 0;
+	CString token = input.Tokenize(delimiter, curPos);
+
+	while (!token.IsEmpty()) {
+		if (!is_number(token)) { // Validation check
+			return {}; // Return empty vector if invalid token found
+		}
+		numbers.push_back(_ttoi(token)); // Convert CString to int
+		token = input.Tokenize(delimiter, curPos);
+	}
+
+	return numbers;
+}
+*/
 
 
 // Only here for debugging purposes where the application is compiled as a console application.

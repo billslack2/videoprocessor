@@ -76,8 +76,11 @@ public:
 	// Option handlers
 	void StartFullScreen();
 	void WindowedFullScreenMode();
+	void HideUI();
 	void DefaultRendererName(const CString&);
 	void SetQueueSize(const CString&);
+	void SetCaptureDevice(const CString&);
+
 	void StartFrameOffsetAuto();
 	void StartFrameOffset(const CString&);
 	void DefaultVideoConversionOverride(VideoConversionOverride);
@@ -154,6 +157,8 @@ protected:
 	//
 
 	// Capture device group
+	CString m_initialCaptureDevice = TEXT("");
+
 	CComboBox m_captureDeviceCombo;
 	CComboBox m_captureInputCombo;
 	CStatic m_captureDeviceStateText;
@@ -178,8 +183,9 @@ protected:
 
 	// Timing clock group
 	CStatic m_timingClockDescriptionText;
-	CEdit m_timingClockFrameOffsetEdit;
 	CButton m_timingClockFrameOffsetAutoCheck;
+	CEdit m_timingClockFrameOffsetEdit;
+
 
 	// Colorspace group
 	CComboBox m_colorspaceContainerCombo;
@@ -208,6 +214,7 @@ protected:
 	CStatic m_rendererStateText;
 	WindowedVideoWindow	m_windowedVideoWindow;
 
+	
 	// Renderer Queue group
 	CButton m_rendererVideoFrameUseQeueueCheck;
 	CStatic m_rendererVideoFrameQueueSizeText;
@@ -257,6 +264,8 @@ protected:
 	// Startup options
 	bool m_rendererFullScreenStart = false;
 	bool m_windowedFullScreenMode = false;
+	bool m_hideUI = false;
+
 	CString m_defaultRendererName;
 	bool m_frameOffsetAutoStart = false;
 	CString m_defaultFrameOffset = TEXT("90");
@@ -292,6 +301,13 @@ protected:
 
 	// Helpers
 	void RefreshCaptureDeviceList();
+
+	afx_msg void OnSelectCaptureDevice(UINT nID); // Handler for ON_COMMAND_RANGE
+
+	void SelectCaptureDevice(int n); // Function to process capture selection
+	void SelectCaptureDevice(CString& captureDeviceName);
+	void SetVideoConversionOff();
+	void SetVideoConversionP010();
 	void RefreshInputConnectionCombo();
 	void CaptureStart();
 	void CaptureStop();
@@ -309,6 +325,10 @@ protected:
 	double GetWindowTextAsDouble(CEdit&);
 	int GetTimingClockFrameOffsetMs();
 	void SetTimingClockFrameOffsetMs(int timingClockFrameOffsetMs);
+	std::vector<int> GetFrameOffsetByRefresh();
+	void SetFrameOffsetByRefresh(std::vector<int> offsets);
+
+
 	void UpdateTimingClockFrameOffset();
 	void RebuildRendererCombo();
 	void ClearRendererCombo();
@@ -322,6 +342,8 @@ protected:
 	// CDialog
 	void DoDataExchange(CDataExchange* pDX) override;
 	BOOL OnInitDialog() override;
+	std::atomic<bool> m_needsRenderRestart = false;
+	std::atomic<bool> m_isRestartingRender = false;
 	BOOL PreTranslateMessage(MSG* pMsg) override;
 	void OnOK() override;
 	void OnPaint();
@@ -331,6 +353,7 @@ protected:
 	void OnTimer(UINT_PTR nIDEvent);
 	HCURSOR	OnQueryDragIcon();
 	void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
+	#define RESIZE_DEBOUNCE_TIMER_ID 1  // Unique timer ID
 
 	DECLARE_MESSAGE_MAP()
 
