@@ -93,6 +93,7 @@ BOOL CVideoProcessorApp::InitInstance()
 				dlg.SetQueueSize(pArgs[i + 1]);
 			}
 
+
 			// /set_queue "[useless with mini, up to 4 on Quad.. I mean, it is 'Quad'... ]"
 			if (wcscmp(pArgs[i], L"/capture_device") == 0 && (i + 1) < iNumOfArgs)
 			{
@@ -100,16 +101,7 @@ BOOL CVideoProcessorApp::InitInstance()
 				
 			}
 
-			// // /frame_offset [value|"auto"]
-			if (wcscmp(pArgs[i], L"/frame_offset_by_refresh") == 0 && (i + 1) < iNumOfArgs)
-			{
-				/*std::vector<int> frame_offsets = split_cstring_ints(pArgs[i + 1]);
-				if (frame_offsets.size() == 0 || frame_offsets.size() % 2 == 0) {
 
-				}
-				*/
-
-			}
 			// /frame_offset [value|"auto"]
 			if (wcscmp(pArgs[i], L"/frame_offset") == 0 && (i + 1) < iNumOfArgs)
 			{
