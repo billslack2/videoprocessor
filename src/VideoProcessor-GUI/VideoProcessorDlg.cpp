@@ -24,6 +24,9 @@
 #include <microsoft_directshow/video_renderers/DirectShowGenericHDRVideoRenderer.h>
 #include <guid.h>
 
+#include <regex> // Include for regex
+
+
 #include "VideoProcessorDlg.h"
 
 const static UINT_PTR TIMER_ID_1SECOND = 1;
@@ -1227,25 +1230,44 @@ void CVideoProcessorDlg::SelectCaptureDevice(int n)
 {
 	// Logic to select the capture device
 	CString captureDeviceName;
-	captureDeviceName.Format(_T("DeckLink Quad HDMI Recorder (%d)"), n);
+	captureDeviceName.Format(_T(".*?DeckLink.*?\\(%d\\)"), n);
 	SelectCaptureDevice(captureDeviceName);
 }
 
-
-
 void CVideoProcessorDlg::SelectCaptureDevice(CString& captureDeviceName)
 {
-
-	// really should combine with with RefreshCaptureDeviceList -- but.. oh well.
 	int initialDeviceSelection = 0;
+	bool found = false;
 
-	if (captureDeviceName.GetLength() > 0) initialDeviceSelection = m_captureDeviceCombo.FindString(0, captureDeviceName);
+	std::wregex pattern;
+	try
+	{
+		pattern = std::wregex((LPCWSTR)captureDeviceName, std::regex_constants::icase);
+	}
+	catch (const std::regex_error&)
+	{
+		// If regex is invalid, fall back to substring search
+		pattern = std::wregex(L".*"); // Match anything
+	}
+
+	int itemCount = m_captureDeviceCombo.GetCount();
+	for (int i = 0; i < itemCount; ++i)
+	{
+		CString itemText;
+		m_captureDeviceCombo.GetLBText(i, itemText);
+
+		std::wstring witem((LPCWSTR)itemText);
+		if (std::regex_search(witem, pattern))
+		{
+			initialDeviceSelection = i;
+			found = true;
+			break; // Stop at first match, or keep going to find best
+		}
+	}
 
 	m_captureDeviceCombo.SetCurSel(initialDeviceSelection);
 	OnCaptureDeviceSelected();
-	
 }
-
 
 
 void CVideoProcessorDlg::RefreshCaptureDeviceList()
@@ -2659,7 +2681,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				newOffset = 90;
 			}
 			else {
-				newOffset = 30;
+				newOffset = 45;
 			}
 
 			if (newOffset != GetTimingClockFrameOffsetMs()) {
