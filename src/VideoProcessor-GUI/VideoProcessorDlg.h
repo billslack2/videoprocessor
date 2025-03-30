@@ -77,6 +77,7 @@ public:
 	void StartFullScreen();
 	void WindowedFullScreenMode();
 	void HideUI();
+	void StartMinimized();
 	void DefaultRendererName(const CString&);
 	void SetQueueSize(const CString&);
 	void SetCaptureDevice(const CString&);
@@ -265,6 +266,8 @@ protected:
 	bool m_rendererFullScreenStart = false;
 	bool m_windowedFullScreenMode = false;
 	bool m_hideUI = false;
+	bool m_startMinimized = false;
+	
 
 	CString m_defaultRendererName;
 	bool m_frameOffsetAutoStart = false;

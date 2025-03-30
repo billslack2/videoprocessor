@@ -481,6 +481,12 @@ BOOL CVideoProcessorApp::InitInstance()
 				dlg.HideUI();
 			}
 
+			// start minimized
+			if (wcscmp(pArgs[i], L"/startminimized") == 0)
+			{
+				dlg.StartMinimized();
+			}
+
 		}
 
 		// Set set ourselves to high prio.

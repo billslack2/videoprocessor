@@ -256,6 +256,11 @@ void CVideoProcessorDlg::HideUI()
 	m_hideUI = true;
 }
 
+void CVideoProcessorDlg::StartMinimized()
+{
+	m_startMinimized = true;
+}
+
 
 void CVideoProcessorDlg::WindowedFullScreenMode()
 {
@@ -2213,7 +2218,7 @@ void CVideoProcessorDlg::DoDataExchange(CDataExchange* pDX)
 // Called when the dialog box is initialized
 BOOL CVideoProcessorDlg::OnInitDialog()
 {
-	if (!CDialog::OnInitDialog())
+		if (!CDialog::OnInitDialog())
 		return FALSE;
 
 	CString title;
@@ -2387,10 +2392,14 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 			m_windowedVideoWindow.MoveWindow(0, 0, width, height, TRUE);
 		}
 	}
-		
 
 
-
+	
+	// If full screen is requested, we don't want to see the dialog pop-up, so start minimized
+	if (m_startMinimized) {
+		ShowWindow(SW_MINIMIZE);
+	}
+	
 	return TRUE;
 }
 
@@ -2496,9 +2505,9 @@ void CVideoProcessorDlg::OnPaint()
 
 void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 {
-	
 
-	if (m_hideUI) {
+
+	 if (m_hideUI) {
 		// Get the dialog's current client size
 		CRect clientRect;
 		GetClientRect(&clientRect);
