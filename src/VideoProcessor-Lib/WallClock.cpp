@@ -17,10 +17,11 @@ timestamp_t GetWallClockTime()
 	//  -- https://zetcode.com/gui/winapi/datetime/ (2020)
 	FILETIME ft;
 
-	// "High-accuracy function gives you the best of both worlds: Time correlated with real-world clocks,
-	//  but with the accuracy of the system performance counter."
-	//   -- https://devblogs.microsoft.com/oldnewthing/20170921-00/?p=97057 (Raymond Chen, 2017)
-	GetSystemTimeAsFileTime(&ft);
+	// GetSystemTimePreciseAsFileTime provides sub-microsecond precision (Windows 8+)
+	// Falls back to GetSystemTimeAsFileTime on older systems
+	// "Retrieves the current system date and time with the highest possible level of precision (<1us)"
+	//  -- https://docs.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtimepreciseasfiletime
+	GetSystemTimePreciseAsFileTime(&ft);
 
 	timestamp_t t = (timestamp_t)ft.dwHighDateTime << 32 | ft.dwLowDateTime;
 	t -= 11644473600000000Ui64;  // start of the windows time (1601-01-01) to epoch (1970-01-01)

@@ -56,6 +56,7 @@ public:
 	void SetCaptureInput(const CaptureInputId) override;
 	ITimingClock* GetTimingClock() override;
 	void SetFrameOffsetMs(int) override;
+	int GetFrameOffsetMs() const override;
 	double HardwareLatencyMs() const override { return m_hardwareLatencyMs; }
 	uint64_t VideoFrameCapturedCount() const override { return m_capturedVideoFrameCount; }
 	uint64_t VideoFrameMissedCount() const override { return m_missedVideoFrameCount; }
@@ -94,6 +95,7 @@ private:
 	std::vector<CaptureInput> m_captureInputSet;
 
 	timingclocktime_t m_frameOffsetTicks = 0;
+	int m_frameOffsetMs = 0;  // Store the ms value for GetFrameOffsetMs()
 	double m_hardwareLatencyMs = 0;
 
 	// If false this will not send any more frames out.

@@ -186,6 +186,9 @@ public:
 	// if postitive (or more in the past, but that makes little sense).
 	// Value in whole milliseconds
 	virtual void SetFrameOffsetMs(int) = 0;
+	
+	// Get the current frame offset in milliseconds
+	virtual int GetFrameOffsetMs() const = 0;
 
 	//
 	// Metrics

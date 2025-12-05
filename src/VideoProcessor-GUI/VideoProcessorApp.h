@@ -14,6 +14,7 @@ class CVideoProcessorApp:
 {
 public:
 	virtual BOOL InitInstance();
+	virtual int ExitInstance();
 	bool m_helpcalled = false;
 
 	DECLARE_MESSAGE_MAP()

@@ -9,6 +9,7 @@
 #include <pch.h>
 
 #include <winnt.h>
+#include <timeapi.h>  // For timeBeginPeriod/timeEndPeriod
 extern "C" {
 #include <libavutil/log.h>
 }
@@ -240,7 +241,11 @@ BOOL CVideoProcessorApp::InitInstance()
 			{
 				DirectShowStartStopTimeMethod dsssTimeMethod;
 
-				if (wcscmp(pArgs[i + 1], L"CLOCK_SMART") == 0)
+				if (wcscmp(pArgs[i + 1], L"CLOCK_RATIONAL") == 0)
+				{
+					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL;
+				}
+				else if (wcscmp(pArgs[i + 1], L"CLOCK_SMART") == 0)
 				{
 					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART;
 				}
@@ -492,6 +497,23 @@ BOOL CVideoProcessorApp::InitInstance()
 		// Set set ourselves to high prio.
 		if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS))
 			throw std::runtime_error("Failed to set process priority");
+		
+		// Set system timer resolution to 1ms for low-latency multimedia
+		// This improves accuracy of Sleep(), WaitForSingleObject() timeouts, and other timing APIs
+		TIMECAPS tc;
+		if (timeGetDevCaps(&tc, sizeof(TIMECAPS)) == TIMERR_NOERROR)
+		{
+			UINT wTimerRes = (std::min)((std::max)(tc.wPeriodMin, (UINT)1), tc.wPeriodMax);
+			if (timeBeginPeriod(wTimerRes) == TIMERR_NOERROR)
+			{
+				DbgLog((LOG_TRACE, 1, TEXT("VideoProcessorApp: Set system timer resolution to %u ms"), wTimerRes));
+			}
+			else
+			{
+				DbgLog((LOG_ERROR, 1, TEXT("VideoProcessorApp: Failed to set timer resolution")));
+			}
+		}
+		
 		if (m_helpcalled)
 		{
 			help.DoModal();
@@ -518,6 +540,16 @@ BOOL CVideoProcessorApp::InitInstance()
 	CoUninitialize();
 
 	return FALSE;
+}
+
+int CVideoProcessorApp::ExitInstance()
+{
+	// Restore default system timer resolution
+	timeEndPeriod(1);
+	
+	DbgLog((LOG_TRACE, 1, TEXT("VideoProcessorApp: Restored system timer resolution")));
+	
+	return CWinAppEx::ExitInstance();
 }
 
 // Function to check if a CString contains only numeric characters

@@ -15,11 +15,11 @@
 DirectShowTimingClock::DirectShowTimingClock(ITimingClock& timingClock):
 	CBaseReferenceClock(DIRECTSHOW_TIMING_CLOCK_NAME, nullptr, nullptr, nullptr),
 	m_timingClock(timingClock),
-	m_ticksPer100ns(m_timingClock.TimingClockTicksPerSecond() / 10000000.0)
+	m_ticksPerSecond(m_timingClock.TimingClockTicksPerSecond())
 {
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowTimingClock::DirectShowTimingClock()")));
 
-	assert(m_ticksPer100ns > 0);
+	assert(m_ticksPerSecond > 0);
 }
 
 
@@ -31,7 +31,16 @@ DirectShowTimingClock::~DirectShowTimingClock()
 
 REFERENCE_TIME DirectShowTimingClock::GetPrivateTime()
 {
-	const REFERENCE_TIME rt = (REFERENCE_TIME)(m_timingClock.TimingClockNow() / m_ticksPer100ns);
+	const timingclocktime_t now = m_timingClock.TimingClockNow();
+	
+	// Convert to 100ns units using integer arithmetic to avoid floating point errors
+	// REFERENCE_TIME is in 100ns units (10,000,000 per second)
+	// To avoid overflow, we use: (now / ticks) * 10^7 + (now % ticks) * 10^7 / ticks
+	// This maintains precision while preventing overflow
+	const timingclocktime_t wholePart = now / m_ticksPerSecond;
+	const timingclocktime_t remainder = now % m_ticksPerSecond;
+	
+	const REFERENCE_TIME rt = (wholePart * 10000000LL) + ((remainder * 10000000LL) / m_ticksPerSecond);
 	assert(rt > 0);
 
 	return rt;

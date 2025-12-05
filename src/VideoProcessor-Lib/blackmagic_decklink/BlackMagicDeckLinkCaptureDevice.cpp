@@ -344,9 +344,17 @@ void BlackMagicDeckLinkCaptureDevice::SetFrameOffsetMs(int frameOffsetMs)
 {
 	DbgLog((LOG_TRACE, 1, TEXT("BlackMagicDeckLinkCaptureDevice::SetFrameOffsetMs() to %i"), frameOffsetMs));
 
+	m_frameOffsetMs = frameOffsetMs;
+	
 	static_assert(DECKLINK_CLOCK_MAX_TICKS_SECOND % 1000 == 0, "DECKLINK_CLOCK_MAX_TICKS_SECOND  must be mod 1k for optimization here");
 	const timingclocktime_t ticksPerMs = DECKLINK_CLOCK_MAX_TICKS_SECOND / 1000;
 	m_frameOffsetTicks = frameOffsetMs * ticksPerMs;
+}
+
+
+int BlackMagicDeckLinkCaptureDevice::GetFrameOffsetMs() const
+{
+	return m_frameOffsetMs;
 }
 
 
@@ -482,7 +490,20 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFormatChang
 		ResetVideoState();
 		m_bmdPixelFormat = bmdPixelFormat;
 		m_bmdDisplayMode = newMode->GetDisplayMode();
-		m_ticksPerFrame = (timingclocktime_t)round((1.0 / FPS(m_bmdDisplayMode)) * TimingClockTicksPerSecond());
+		
+		// Calculate ticks per frame using rational arithmetic to avoid floating point errors
+		BMDTimeScale fpsNum, fpsDen;
+		if (GetRationalFrameRate(m_bmdDisplayMode, fpsNum, fpsDen))
+		{
+			// Exact calculation: (ticksPerSecond * frameDuration) / timeScale
+			// For 59.94Hz: (1000000 * 1001) / 60000 = 16683.333... ticks per frame
+			m_ticksPerFrame = (TimingClockTicksPerSecond() * fpsDen) / fpsNum;
+		}
+		else
+		{
+			// Fallback to floating point if mode not found (should never happen)
+			m_ticksPerFrame = (timingclocktime_t)round((1.0 / FPS(m_bmdDisplayMode)) * TimingClockTicksPerSecond());
+		}
 
 		// Inform callback handlers that stream will be invalid before re-starting
 		if (!SendVideoStateCallback())
@@ -911,10 +932,16 @@ void BlackMagicDeckLinkCaptureDevice::ResetVideoState()
 	m_videoFrameSeen = false;
 	m_bmdPixelFormat = BMD_PIXEL_FORMAT_INVALID;
 	m_bmdDisplayMode = BMD_DISPLAY_MODE_INVALID;
+	m_ticksPerFrame = TIMING_CLOCK_TIME_INVALID;
 	m_videoHasInputSource = false;
 	m_videoEotf = BMD_EOTF_INVALID;
 	m_videoColorSpace = BMD_COLOR_SPACE_INVALID;
 	m_videoHasHdrData = false;
+	
+	// CRITICAL: Reset timing state to prevent timestamp corruption across format changes
+	m_previousTimingClockFrameTime = TIMING_CLOCK_TIME_INVALID;
+	m_capturedVideoFrameCount = 0;
+	m_missedVideoFrameCount = 0;
 
 	ZeroMemory(&m_videoHdrData, sizeof(m_videoHdrData));
 }

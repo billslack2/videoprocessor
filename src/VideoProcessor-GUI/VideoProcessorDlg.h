@@ -277,7 +277,7 @@ protected:
 	ColorSpace m_defaultContainerColorSpace = ColorSpace::UNKNOWN;
 	HdrColorspaceOptions m_defaultHDRColorSpaceOption = HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT;
 	HdrLuminanceOptions m_defaultHDRLuminanceOption = HdrLuminanceOptions::HDR_LUMINANCE_FOLLOW_INPUT;
-	DirectShowStartStopTimeMethod m_defaultDSSSTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART;
+	DirectShowStartStopTimeMethod m_defaultDSSSTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL;
 	DXVA_NominalRange m_defaultNominalRange = DXVA_NominalRange::DXVA_NominalRange_Unknown;  // Auto
 	DXVA_VideoTransferFunction m_defaultTransferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown;  // Auto
 	DXVA_VideoTransferMatrix m_defaultTransferMatrix = DXVA_VideoTransferMatrix::DXVA_VideoTransferMatrix_Unknown;  // Auto

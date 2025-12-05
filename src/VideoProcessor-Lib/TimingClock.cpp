@@ -15,7 +15,8 @@
 double TimingClockDiffMs(timingclocktime_t start, timingclocktime_t stop, timingclocktime_t ticksPerSecond)
 {
 	const timingclocktime_t diff = stop - start;
-	const double ticksPerMs = ticksPerSecond / 1000.0;
-
-	return diff / ticksPerMs;
+	
+	// Convert to milliseconds using integer arithmetic first, then to double
+	// This avoids precision loss from dividing ticksPerSecond by 1000.0 first
+	return (diff * 1000.0) / ticksPerSecond;
 }

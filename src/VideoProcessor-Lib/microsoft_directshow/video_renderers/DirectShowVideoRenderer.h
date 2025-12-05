@@ -55,6 +55,8 @@ public:
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;
+	uint64_t LatencyMeasurementFrameCounter() const override;
+	uint64_t CurrentFrameCounter() const override;
 	uint64_t DroppedFrameCount() const override;
 
 protected:

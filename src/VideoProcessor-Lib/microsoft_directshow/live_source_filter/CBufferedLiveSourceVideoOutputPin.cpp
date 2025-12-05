@@ -17,11 +17,42 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 	HRESULT* phr):
 	ALiveSourceVideoOutputPin(filter, pLock, phr)
 {
+	// Create auto-reset event for efficient thread signaling
+	m_hFrameAvailableEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	if (!m_hFrameAvailableEvent)
+	{
+		DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Failed to create frame event, error: %d"), GetLastError()));
+		if (phr)
+			*phr = E_OUTOFMEMORY;
+		return;
+	}
+
+	// Create manual-reset event for clean shutdown signaling
+	m_hShutdownEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+	if (!m_hShutdownEvent)
+	{
+		DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Failed to create shutdown event, error: %d"), GetLastError()));
+		if (phr)
+			*phr = E_OUTOFMEMORY;
+		return;
+	}
 }
 
 
 CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 {
+	if (m_hShutdownEvent)
+	{
+		CloseHandle(m_hShutdownEvent);
+		m_hShutdownEvent = nullptr;
+	}
+
+	if (m_hFrameAvailableEvent)
+	{
+		CloseHandle(m_hFrameAvailableEvent);
+		m_hFrameAvailableEvent = nullptr;
+	}
+	
 	PurgeQueue();
 }
 
@@ -30,6 +61,13 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 {
 	if (m_frameQueueMaxSize == 0)
 		throw std::runtime_error("Call SetFrameQueueMaxSize() before activating the graph");
+
+	// CRITICAL: Verify events were created successfully in constructor
+	if (!m_hFrameAvailableEvent || !m_hShutdownEvent)
+	{
+		DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin::Active(): Event handles not initialized")));
+		return E_FAIL;
+	}
 
 	{
 		CAutoLock lock(m_pLock);
@@ -45,6 +83,10 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			return hr;
 
 		assert(!ThreadExists());
+
+		// CRITICAL: Reset the shutdown event before starting the thread!
+		// It may still be signaled from a previous Inactive() call
+		ResetEvent(m_hShutdownEvent);
 
 		{
 			CAutoLock lock2(&m_filterCritSec);
@@ -80,6 +122,12 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 			m_isActive = false;
 
 			PurgeQueue();
+		}
+
+		// Signal shutdown event to wake the thread immediately
+		if (m_hShutdownEvent)
+		{
+			SetEvent(m_hShutdownEvent);
 		}
 
 		if (ThreadExists())
@@ -130,6 +178,12 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		m_videoFrameQueue.push_back(videoFrame);
 	}
 
+	// Signal event EVERY time a frame is added (auto-reset event handles rest)
+	if (m_hFrameAvailableEvent)
+	{
+		SetEvent(m_hFrameAvailableEvent);
+	}
+
 	return S_OK;
 }
 
@@ -176,19 +230,50 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 {
 	// ! WARNING: Runs in inner thread
 
-	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin worker thread starting")));
+	// Elevate thread priority to TIME_CRITICAL for low-latency video delivery
+	if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL))
+	{
+		DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Failed to set thread priority, error: %d"), GetLastError()));
+	}
+
+	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin worker thread starting at TIME_CRITICAL priority")));
+
+	// CRITICAL: Check if events exist before using them
+	if (!m_hFrameAvailableEvent || !m_hShutdownEvent)
+	{
+		DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Events not initialized, thread exiting")));
+		return -100;
+	}
+
+	// Prepare array of events to wait on
+	HANDLE waitHandles[2] = { m_hFrameAvailableEvent, m_hShutdownEvent };
 
 	while (true)
 	{
-		// TODO: Sleep thread on empty queue and wake if frames arrive
-		Sleep(1);
+		// **CLOCK_SMART COMPATIBILITY**: Keep 100ms timeout for modes that need to peek at next frame
+		// CLOCK_RATIONAL doesn't have this limitation and could use INFINITE, but we use 100ms for all modes for simplicity
+		DWORD waitResult = WaitForMultipleObjects(2, waitHandles, FALSE, 100);
+		
+		// Check if shutdown was signaled
+		if (waitResult == WAIT_OBJECT_0 + 1)
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Shutdown event signaled")));
+			break;
+		}
+
+		if (waitResult == WAIT_FAILED)
+		{
+			DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin: WaitForMultipleObjects failed, error: %d"), GetLastError()));
+			break;
+		}
 
 		VideoFrame videoFrame;
+		bool hasFrame = false;
 
 		{
 			CAutoLock lock(&m_filterCritSec);
 
-			// Stop thread
+			// Double-check active state (important for timeout case)
 			if (!m_isActive)
 				break;
 
@@ -196,20 +281,21 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			// we need to keep one frame in.
 			if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK)
 			{
-				if (m_videoFrameQueue.size() <= 1)
-					continue;
+				hasFrame = (m_videoFrameQueue.size() > 1);
 			}
 			else
 			{
-				if (m_videoFrameQueue.empty())
-					continue;
+				hasFrame = !m_videoFrameQueue.empty();
 			}
+			
+			if (!hasFrame)
+				continue;  // Spurious wake-up or timeout, retry
 
 			// Get the front frame (oldest)
 			videoFrame = m_videoFrameQueue.front();
 			m_videoFrameQueue.pop_front();
 
-			// Get the current front's start time
+			// Get the current front's start time for CLOCK_SMART and CLOCK_CLOCK modes
 			switch (m_timestamp)
 			{
 			case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
@@ -220,10 +306,21 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 				if (!m_videoFrameQueue.empty())
 				{
-					m_nextVideoFrameStartTime =
-						(REFERENCE_TIME)(
-						m_videoFrameQueue.front().GetTimingTimestamp() *
-						(10000000.0 / m_timingClock->TimingClockTicksPerSecond()));
+					// Use integer arithmetic to avoid floating point rounding errors
+					const timingclocktime_t nextFrameTicks = m_videoFrameQueue.front().GetTimingTimestamp();
+					
+					// CRITICAL: Check if timing clock is valid before using it
+					// This can happen during shutdown when the graph is being torn down
+					if (m_timingClock)
+					{
+						const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
+						m_nextVideoFrameStartTime = (REFERENCE_TIME)((nextFrameTicks * 10000000LL) / ticksPerSecond);
+					}
+					else
+					{
+						DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Timing clock is null, using INVALID for next frame")));
+						m_nextVideoFrameStartTime = REFERENCE_TIME_INVALID;
+					}
 				}
 				else
 				{
@@ -240,6 +337,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		if (FAILED(hr))
 		{
 			videoFrame.SourceBufferRelease();
+			DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin: GetDeliveryBuffer failed, error: %d"), hr));
 			return -1;
 		}
 
@@ -249,6 +347,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		{
 			videoFrame.SourceBufferRelease();
 			pSample->Release();
+			DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin: RenderVideoFrameIntoSample failed, error: %d"), hr));
 			return -2;
 		}
 		if (hr == S_FRAME_NOT_RENDERED)

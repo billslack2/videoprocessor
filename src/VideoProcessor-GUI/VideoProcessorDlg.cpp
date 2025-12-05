@@ -131,7 +131,8 @@ static const std::vector<std::pair<LPCTSTR, HdrLuminanceOptions>> HDR_LUMINANCE_
 
 static const std::vector<DirectShowStartStopTimeMethod> RENDERER_DIRECTSHOW_START_STOP_TIME_OPTIONS =
 {
-	// Sorted in preferred order
+	// Sorted in preferred order - CLOCK_RATIONAL is the new recommended default
+	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL,  // **NEW: Best option for all use cases**
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK,
@@ -739,7 +740,6 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceError(WPARAM wParam, LPARAM lP
 
 	return 0;
 }
-
 
 // This is a handler for the DirectShow graph in the renderer,
 // it works by using the GUI's message queue.

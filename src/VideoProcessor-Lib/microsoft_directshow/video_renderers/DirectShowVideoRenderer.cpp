@@ -16,6 +16,57 @@
 
 #include "DirectShowVideoRenderer.h"
 
+namespace
+{
+	struct FrameRateRational
+	{
+		double    hz;
+		int64_t   num;  // fps numerator
+		int64_t   den;  // fps denominator
+	};
+
+	// Common video rates (Blackmagic / HDMI typical modes)
+	static const FrameRateRational kCommonRates[] =
+	{
+		{ 23.976, 24000, 1001 },
+		{ 24.000,    24,    1 },
+		{ 25.000,    25,    1 },
+		{ 29.970, 30000, 1001 },
+		{ 30.000,    30,    1 },
+		{ 50.000,    50,    1 },
+		{ 59.940, 60000, 1001 },
+		{ 60.000,    60,    1 },
+	};
+
+	// Try to map a measured Hz to a known rational fps, e.g. 59.94 -> 60000/1001.
+	// Returns true if matched, false if we should fall back to raw double math.
+	static bool ChooseFrameRateRational(double hz, int64_t& num, int64_t& den)
+	{
+		const double maxDiffHz = 0.10; // tolerate small float error
+		double bestDiff = 1e9;
+		int bestIndex = -1;
+
+		for (size_t i = 0; i < _countof(kCommonRates); ++i)
+		{
+			const double diff = fabs(hz - kCommonRates[i].hz);
+			if (diff < bestDiff)
+			{
+				bestDiff = diff;
+				bestIndex = static_cast<int>(i);
+			}
+		}
+
+		if (bestIndex >= 0 && bestDiff <= maxDiffHz)
+		{
+			num = kCommonRates[bestIndex].num;
+			den = kCommonRates[bestIndex].den;
+			return true;
+		}
+
+		return false;
+	}
+}
+
 
 DirectShowVideoRenderer::DirectShowVideoRenderer(
 	IRendererCallback& callback,
@@ -65,25 +116,32 @@ bool DirectShowVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 	if (!videoState)
 		throw std::runtime_error("null video state is invalid");
 
+	// SIMPLE HEAVY-HANDED APPROACH:
+	// If we already have a video state, ALWAYS reject any change.
+	// This forces a complete rebuild for ANY state change.
+	// The rebuild path (delete renderer, create new one) is proven to work.
 	if (m_videoState)
 	{
-		// Unacceptable changes to this renderer, return false and get cleaned up
-		if (videoState->valid == false ||
+		// ANY difference = rebuild required
+		const bool anythingChanged = 
+			videoState->valid != m_videoState->valid ||
 			videoState->colorspace != m_videoState->colorspace ||
 			videoState->eotf != m_videoState->eotf ||
 			*(videoState->displayMode) != *(m_videoState->displayMode) ||
-			videoState->videoFrameEncoding != m_videoState->videoFrameEncoding)
+			videoState->videoFrameEncoding != m_videoState->videoFrameEncoding;
+
+		if (anythingChanged)
 		{
+			DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::OnVideoState(): REJECTING - state changed, full rebuild required")));
 			return false;
 		}
-	}
-	else
-	{
-		// No video state yet, initialize
-		m_videoState = videoState;
+
+		// No change at all - accept
+		return true;
 	}
 
-	// All good, continue
+	// First time - store the state
+	m_videoState = videoState;
 	return true;
 }
 
@@ -227,6 +285,21 @@ double DirectShowVideoRenderer::ExitLatencyMs() const
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
 	return m_liveSource->ExitLatencyMs();
+}
+
+
+uint64_t DirectShowVideoRenderer::LatencyMeasurementFrameCounter() const
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		return 0;
+
+	return m_liveSource->LatencyMeasurementFrameCounter();
+}
+
+
+uint64_t DirectShowVideoRenderer::CurrentFrameCounter() const
+{
+	return m_frameCounter;
 }
 
 
@@ -409,6 +482,12 @@ void DirectShowVideoRenderer::GraphTeardown()
 		m_pmt.pbFormat = nullptr;
 	}
 
+	// CRITICAL: Clear video state and counters to ensure fresh state on next build
+	// This is essential for proper refresh rate change handling
+	m_videoState = nullptr;
+	m_frameCounter = 0;
+	m_frameLatencyEntry = 0.0;
+
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::GraphTeardown(): End")));
 }
 
@@ -525,7 +604,10 @@ void DirectShowVideoRenderer::GraphStop()
 	if (FAILED(m_pControl->Stop()))
 		throw std::runtime_error("Failed to Stop() graph");
 
-	m_liveSource->Reset();
+	// NOTE: We do NOT call m_liveSource->Reset() here
+	// The full teardown + rebuild cycle creates a fresh liveSource with clean state
+	// Calling Reset() here can cause timestamp corruption because it zeros offsets
+	// while the capture device's clock keeps running
 
 	// Check if filter really stopped
 	OAFilterState filterState = -1;  // Known invalid state
@@ -534,8 +616,6 @@ void DirectShowVideoRenderer::GraphStop()
 
 	if((FILTER_STATE)filterState != FILTER_STATE::State_Stopped)
 		throw std::runtime_error("Filter graph was not stopped");
-
-	assert(m_liveSource->GetFrameQueueSize() == 0);
 
 	SetState(RendererState::RENDERSTATE_STOPPED);
 }
@@ -578,6 +658,8 @@ void DirectShowVideoRenderer::WindowTeardown()
 void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 {
 	assert(!m_liveSource);
+	assert(m_videoState);
+	assert(m_videoState->displayMode);
 
 	m_liveSource = dynamic_cast<CLiveSource*>(CLiveSource::CreateInstance(nullptr, nullptr));
 	if (!m_liveSource)
@@ -585,13 +667,63 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 
 	m_liveSource->AddRef();
 
-	const timestamp_t frameDuration100ns =
-		(timestamp_t)round((1.0 / m_videoState->displayMode->RefreshRateHz()) * UNITS);
+	//
+	// Compute frame duration based on a stable rational FPS.
+	//
+
+	const double refreshHz = m_videoState->displayMode->RefreshRateHz();
+	if (refreshHz <= 0.0)
+		throw std::runtime_error("Invalid RefreshRateHz() <= 0");
+
+	// This is now just an approximate duration used for logging / fallback.
+	timestamp_t approxFrameDuration100ns = 0;
+
+	int64_t fpsNum = 0;
+	int64_t fpsDen = 0;
+
+	if (ChooseFrameRateRational(refreshHz, fpsNum, fpsDen))
+	{
+		// For logging only: integer-rounded duration
+		const int64_t units = UNITS;          // 10,000,000
+		const int64_t numerator = units * fpsDen; // still fits in 64-bit for common rates
+		const int64_t base = numerator / fpsNum;
+		const int64_t rem = numerator % fpsNum;
+
+		approxFrameDuration100ns = static_cast<timestamp_t>(base);
+
+		DbgLog((LOG_TRACE, 1,
+			TEXT("LiveSourceBuildAndConnect(): snapped %.6f Hz to %lld/%lld fps, ")
+			TEXT("baseDuration=%lld (100ns), remainder=%lld"),
+			refreshHz,
+			static_cast<LONGLONG>(fpsNum),
+			static_cast<LONGLONG>(fpsDen),
+			static_cast<LONGLONG>(base),
+			static_cast<LONGLONG>(rem)));
+	}
+	else
+	{
+		// Fallback: no nice rational; just use raw double.
+		approxFrameDuration100ns = static_cast<timestamp_t>(
+			llround((1.0 / refreshHz) * UNITS));
+
+		fpsNum = 0;
+		fpsDen = 0;
+
+		DbgLog((LOG_TRACE, 1,
+			TEXT("LiveSourceBuildAndConnect(): using raw %.6f Hz, frameDuration=%lld (100ns)"),
+			refreshHz,
+			static_cast<LONGLONG>(approxFrameDuration100ns)));
+	}
+
+	if (approxFrameDuration100ns <= 0)
+		throw std::runtime_error("Computed non-positive frame duration");
 
 	m_liveSource->Initialize(
 		m_videoFramFormatter,
 		m_pmt,
-		frameDuration100ns,
+		approxFrameDuration100ns,  // for fallback / logging
+		fpsNum,                    // exact rational numerator (or 0)
+		fpsDen,                    // exact rational denominator (or 0)
 		m_timingClock,
 		m_timestamp,
 		m_useFrameQueue,
@@ -600,6 +732,7 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 	if (m_pGraph->AddFilter(m_liveSource, L"LiveSource") != S_OK)
 	{
 		m_liveSource->Release();
+		m_liveSource = nullptr;
 		throw std::runtime_error("Failed to add LiveSource to the graph");
 	}
 }

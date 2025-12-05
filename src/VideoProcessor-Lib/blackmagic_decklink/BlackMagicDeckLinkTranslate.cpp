@@ -320,3 +320,15 @@ double FPS(BMDDisplayMode displayMode)
 
 	return (double)(it->second.timeScale) / (double)(it->second.frameDuration);
 }
+
+
+bool GetRationalFrameRate(BMDDisplayMode displayMode, BMDTimeScale& fpsNum, BMDTimeScale& fpsDen)
+{
+	const auto& it = BD_DISPLAY_MODE_DATA.find(displayMode);
+	if (it == BD_DISPLAY_MODE_DATA.end())
+		return false;
+
+	fpsNum = it->second.timeScale;
+	fpsDen = it->second.frameDuration;
+	return true;
+}

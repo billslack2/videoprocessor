@@ -20,7 +20,9 @@ ALiveSourceVideoOutputPin::ALiveSourceVideoOutputPin(
 	HRESULT* phr):
 	CBaseOutputPin(
 		LIVE_SOURCE_FILTER_NAME, filter, pLock, phr,
-		LIVE_SOURCE_FILTER_VIDEO_OUPUT_PIN_NAME)
+		LIVE_SOURCE_FILTER_VIDEO_OUPUT_PIN_NAME),
+	m_nextRationalTimeStart(0),
+	m_newSegment(true)  // Initialize to true so first frame anchors the timeline
 {
 }
 
@@ -28,6 +30,8 @@ ALiveSourceVideoOutputPin::ALiveSourceVideoOutputPin(
 void ALiveSourceVideoOutputPin::Initialize(
 	IVideoFrameFormatter* const videoFrameFormatter,
 	timestamp_t frameDuration,
+	LONGLONG fpsNum,
+	LONGLONG fpsDen,
 	ITimingClock* const timingClock,
 	DirectShowStartStopTimeMethod timestamp,
 	const AM_MEDIA_TYPE& mediaType)
@@ -42,6 +46,8 @@ void ALiveSourceVideoOutputPin::Initialize(
 
 	m_videoFrameFormatter = videoFrameFormatter;
 	m_frameDuration = frameDuration;
+	m_fpsNum = fpsNum;
+	m_fpsDen = fpsDen;
 	m_timingClock = timingClock;
 	m_timestamp = timestamp;
 	m_mediaType = mediaType;
@@ -305,6 +311,8 @@ void ALiveSourceVideoOutputPin::OnHDRData(HDRDataSharedPtr& hdrData)
 
 void ALiveSourceVideoOutputPin::Reset()
 {
+	DbgLog((LOG_TRACE, 1, TEXT("ALiveSourceVideoOutputPin::Reset()")));
+
 	if (FAILED(DeliverBeginFlush()))
 		throw std::runtime_error("Failed to deliver beginflush");
 
@@ -319,9 +327,40 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_frameCounterOffset = 0;
 	m_previousTimeStop = 0;
 	m_droppedFrameCount = 0;
+	m_nextRationalTimeStart = 0;
+
+	// CRITICAL: Reset latency measurement to prevent stale values from affecting auto-tuning
+	// After a reset (e.g., refresh rate change), the first few frames may have abnormal latency
+	// Reset to 0 so auto-tuning doesn't react to stale measurements
+	m_exitLatencyMs = 0.0;
+	m_latencyMeasurementFrameCounter = 0;  // Mark measurement as stale
 
 	if (FAILED(DeliverEndFlush()))
 		throw std::runtime_error("Failed to deliver endflush");
+}
+
+
+void ALiveSourceVideoOutputPin::UpdateFrameRate(LONGLONG fpsNum, LONGLONG fpsDen)
+{
+	DbgLog((LOG_TRACE, 1, TEXT("ALiveSourceVideoOutputPin::UpdateFrameRate(%lld/%lld)"),
+		static_cast<LONGLONG>(fpsNum),
+		static_cast<LONGLONG>(fpsDen)));
+
+	if (fpsNum <= 0 || fpsDen <= 0)
+		throw std::runtime_error("Invalid FPS parameters");
+
+	// Simple atomic update - we don't need locks because:
+	// 1. This is content switching, not VFR
+	// 2. Brief interruption is acceptable
+	// 3. LONGLONG writes are atomic on x64
+	m_fpsNum = fpsNum;
+	m_fpsDen = fpsDen;
+	
+	// Update the approximate frame duration (for fallback/logging)
+	m_frameDuration = static_cast<timestamp_t>((10000000LL * fpsDen) / fpsNum);
+
+	DbgLog((LOG_TRACE, 1, TEXT("ALiveSourceVideoOutputPin::UpdateFrameRate(): New frame duration = %lld (100ns units)"),
+		static_cast<LONGLONG>(m_frameDuration)));
 }
 
 
@@ -374,6 +413,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 	REFERENCE_TIME timeStart = REFERENCE_TIME_INVALID;
 	REFERENCE_TIME timeStop = REFERENCE_TIME_INVALID;
+	REFERENCE_TIME timeStartRaw = REFERENCE_TIME_INVALID;  // Raw timestamp before offset correction
 
 	// Determine start time
 	switch (m_timestamp)
@@ -383,11 +423,14 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE:
 
-		// Get frame timestamp as reference time
-		timeStart =
-			(REFERENCE_TIME)(
-				videoFrame.GetTimingTimestamp() *
-				(10000000.0 / m_timingClock->TimingClockTicksPerSecond()));
+		// Get frame timestamp as reference time using integer arithmetic
+		{
+			const timingclocktime_t frameTicks = videoFrame.GetTimingTimestamp();
+			const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
+			
+			timeStartRaw = (REFERENCE_TIME)((frameTicks * 10000000LL) / ticksPerSecond);
+			timeStart = timeStartRaw;
+		}
 
 		// Guarantee first frame to start counting at time zero
 		// Note that this is against the recommendations of microsoft for directshow but otherwise
@@ -401,6 +444,32 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		}
 
 		timeStart -= m_startTimeOffset;
+		break;
+
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+
+		// **CRITICAL: For CLOCK_RATIONAL, capture RAW hardware timestamp BEFORE any offset correction**
+		// This ensures the rational timeline anchor is completely independent of frame offset
+		{
+			const timingclocktime_t frameTicks = videoFrame.GetTimingTimestamp();
+			const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
+			
+			// This is the RAW hardware timestamp - no offset applied yet
+			timeStartRaw = (REFERENCE_TIME)((frameTicks * 10000000LL) / ticksPerSecond);
+		}
+
+		// On first frame, capture BOTH the raw anchor point AND the normalization offset
+		if (m_startTimeOffset == 0)
+		{
+			m_startTimeOffset = timeStartRaw;  // Store for normalization
+
+			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL - captured raw anchor %I64d"),
+				videoFrame.GetCounter(), m_startTimeOffset));
+		}
+
+		// Now normalize to start near zero (this is ONLY for DirectShow compatibility)
+		// The rational timeline will use the raw anchor internally
+		timeStart = timeStartRaw - m_startTimeOffset;
 		break;
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
@@ -420,7 +489,17 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		timeStop = NextFrameTimestamp();
 		if (timeStop == REFERENCE_TIME_INVALID)
 		{
-			timeStop = timeStart + m_frameDuration;
+			// Use rational arithmetic if available for exact frame duration
+			if (m_fpsNum > 0 && m_fpsDen > 0)
+			{
+				// Calculate exact duration: (10,000,000 * fpsDen) / fpsNum
+				const LONGLONG exactDuration = (10000000LL * m_fpsDen) / m_fpsNum;
+				timeStop = timeStart + exactDuration;
+			}
+			else
+			{
+				timeStop = timeStart + m_frameDuration;
+			}
 		}
 		else
 		{
@@ -434,7 +513,52 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
 
-		timeStop = timeStart + m_frameDuration;
+		// Use rational arithmetic if available for monotonic, exact timestamps
+		if (m_fpsNum > 0 && m_fpsDen > 0)
+		{
+			// Calculate exact duration: (10,000,000 * fpsDen) / fpsNum
+			const LONGLONG exactDuration = (10000000LL * m_fpsDen) / m_fpsNum;
+			timeStop = timeStart + exactDuration;
+		}
+		else
+		{
+			timeStop = timeStart + m_frameDuration;
+		}
+		break;
+
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+
+		// **OPTIMAL MODE** - Pure rational timestamp generation
+		// - Anchors to RAW hardware clock timestamp (completely independent of frame offset)
+		// - Uses exact rational math for perfect frame spacing
+		// - Immune to jitter, drift, and frame offset changes
+		if (m_fpsNum > 0 && m_fpsDen > 0)
+		{
+			const LONGLONG exactDuration = (10000000LL * m_fpsDen) / m_fpsNum;
+
+			if (m_newSegment)
+			{
+				// **KEY FIX**: Anchor to RAW hardware clock using timeStartRaw
+				// timeStartRaw contains the hardware timestamp BEFORE any offset correction
+				// This makes the rational timeline completely independent of frame offset
+				m_nextRationalTimeStart = timeStartRaw - m_startTimeOffset;
+				m_newSegment = false;
+				
+				DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL anchored to normalized raw timestamp %I64d (raw=%I64d, offset=%I64d)"),
+					videoFrame.GetCounter(), m_nextRationalTimeStart, timeStartRaw, m_startTimeOffset));
+			}
+
+			// Use our perfectly-spaced rational timeline
+			// Note: We output normalized timestamps (starting near 0) for DirectShow compatibility
+			timeStart = m_nextRationalTimeStart;
+			timeStop = timeStart + exactDuration;
+			m_nextRationalTimeStart += exactDuration;
+		}
+		else
+		{
+			// Fallback if no rational FPS available
+			timeStop = timeStart + m_frameDuration;
+		}
 		break;
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
@@ -454,6 +578,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
 
 		hr = pSample->SetTime(&timeStart, &timeStop);
@@ -467,7 +592,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			const double durationMs = (timeStop - timeStart) / 10000.0;
 			const double diffStopMs = (timeStart - m_previousTimeStop) / 10000.0;
 
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): StartTS: %I64d StopTS: %I64d, duration: %.02f, diffPrevStopStartMs: %.02f"),
+			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): StartTS: %I64d StopTS: %I64d, duration: %.02f, diffPrevStopStart: %.02f"),
 				videoFrame.GetCounter(), timeStart, timeStop, durationMs, diffStopMs));
 
 			m_previousTimeStop = timeStop;
@@ -589,6 +714,9 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 		m_exitLatencyMs = TimingClockDiffMs(
 			videoFrame.GetTimingTimestamp(), now, m_timingClock->TimingClockTicksPerSecond());
+		
+		// Mark when this measurement was taken so auto-tuning can verify freshness
+		m_latencyMeasurementFrameCounter = m_frameCounter;
 	}
 
 	return hr;

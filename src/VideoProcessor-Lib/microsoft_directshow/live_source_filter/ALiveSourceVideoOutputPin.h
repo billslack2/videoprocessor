@@ -39,6 +39,8 @@ public:
 	void Initialize(
 		IVideoFrameFormatter* const videoFrameFormatter,
 		timestamp_t frameDuration,
+		LONGLONG fpsNum,
+		LONGLONG fpsDen,
 		ITimingClock* const timingClock,
 		DirectShowStartStopTimeMethod timestamp,
 		const AM_MEDIA_TYPE& mediaType);
@@ -85,6 +87,9 @@ public:
 	// Zero means no queueing going on.
 	virtual size_t GetFrameQueueSize() = 0;
 
+	// Update frame rate parameters dynamically (for refresh rate changes)
+	void UpdateFrameRate(LONGLONG fpsNum, LONGLONG fpsDen);
+
 	// Reset the internal state and the video stream.
 	virtual void Reset();
 
@@ -94,8 +99,16 @@ public:
 
 	// Get the exit latency in ms, which the amount of time between the frame timestamp
 	// and when the frame is delivered to the DirectShow renderer.
-	// This is sampled.
+	// This is sampled every 20 frames.
 	double ExitLatencyMs() const { return m_exitLatencyMs;  }
+
+	// Get the frame counter at which the last latency measurement was taken.
+	// Returns 0 if no measurement has been taken yet (e.g., after Reset()).
+	// Auto-tuning should only use latency values when this counter is recent.
+	uint64_t LatencyMeasurementFrameCounter() const { return m_latencyMeasurementFrameCounter; }
+
+	// Get the current frame counter (frames processed since last Reset)
+	uint64_t CurrentFrameCounter() const { return m_frameCounter; }
 
 	// Get the amount of dropped frames due to queue actions
 	uint64_t DroppedFrameCount() const { return m_droppedFrameCount; }
@@ -114,6 +127,8 @@ protected:
 
 	IVideoFrameFormatter* m_videoFrameFormatter;
 	timestamp_t m_frameDuration;
+	LONGLONG m_fpsNum = 0;  // Rational FPS numerator (e.g., 60000 for 59.94Hz) - atomic writes on x64
+	LONGLONG m_fpsDen = 0;  // Rational FPS denominator (e.g., 1001 for 59.94Hz) - atomic writes on x64
 	ITimingClock* m_timingClock;
 	DirectShowStartStopTimeMethod m_timestamp;
 	AM_MEDIA_TYPE m_mediaType;
@@ -126,8 +141,12 @@ protected:
 	uint64_t m_previousFrameCounter = 0;
 	bool m_newSegment = false;
 
+	// Hybrid CLOCK_RATIONAL mode state
+	REFERENCE_TIME m_nextRationalTimeStart = 0;
+
 	HDRDataSharedPtr m_hdrData = nullptr;
 	bool m_hdrChanged = false;
 
 	double m_exitLatencyMs = 0.0;
+	uint64_t m_latencyMeasurementFrameCounter = 0;  // Frame counter when latency was last measured
 };

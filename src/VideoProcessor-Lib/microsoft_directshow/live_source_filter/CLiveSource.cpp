@@ -49,6 +49,8 @@ STDMETHODIMP CLiveSource::Initialize(
 	IVideoFrameFormatter* videoFrameFormatter,
 	const AM_MEDIA_TYPE& mediaType,
 	timestamp_t frameDuration,
+	LONGLONG fpsNum,
+	LONGLONG fpsDen,
 	ITimingClock* timingClock,
 	DirectShowStartStopTimeMethod timestamp,
 	bool useFrameQueue,
@@ -85,6 +87,8 @@ STDMETHODIMP CLiveSource::Initialize(
 	m_videoOutputPin->Initialize(
 		videoFrameFormatter,
 		frameDuration,
+		fpsNum,
+		fpsDen,
 		timingClock,
 		timestamp,
 		mediaType);
@@ -128,6 +132,19 @@ STDMETHODIMP CLiveSource::SetFrameQueueMaxSize(size_t frameQueueMaxSize)
 		throw std::runtime_error("Queue must be >= 0");
 
 	m_videoOutputPin->SetFrameQueueMaxSize(frameQueueMaxSize);
+	return S_OK;
+}
+
+
+STDMETHODIMP CLiveSource::UpdateFrameRate(LONGLONG fpsNum, LONGLONG fpsDen)
+{
+	if (!m_videoOutputPin)
+		throw std::runtime_error("Cannot update frame rate before Initialize()");
+
+	if (fpsNum <= 0 || fpsDen <= 0)
+		throw std::runtime_error("Invalid FPS parameters");
+
+	m_videoOutputPin->UpdateFrameRate(fpsNum, fpsDen);
 	return S_OK;
 }
 
@@ -184,6 +201,12 @@ int CLiveSource::GetFrameQueueSize()
 double CLiveSource::ExitLatencyMs() const
 {
 	return m_videoOutputPin->ExitLatencyMs();
+}
+
+
+uint64_t CLiveSource::LatencyMeasurementFrameCounter() const
+{
+	return m_videoOutputPin->LatencyMeasurementFrameCounter();
 }
 
 

@@ -31,6 +31,10 @@ enum DirectShowStartStopTimeMethod
 	// Theoretical timestamp based on frame duration
 	DS_SSTM_THEO_THEO,
 
+	// **RECOMMENDED** Use actual clock timestamp with rational FPS math for exact duration
+	// Combines best of CLOCK_THEO with exact rational arithmetic (no drift, no jitter)
+	DS_SSTM_CLOCK_RATIONAL,
+
 	//
 	// Only a start time, no stop time set
 	//

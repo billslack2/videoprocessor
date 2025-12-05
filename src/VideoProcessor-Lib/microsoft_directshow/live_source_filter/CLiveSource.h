@@ -49,6 +49,8 @@ public:
 		IVideoFrameFormatter* videoFrameFormatter,
 		const AM_MEDIA_TYPE& mediaType,
 		timestamp_t frameDuration,
+		LONGLONG fpsNum,
+		LONGLONG fpsDen,
 		ITimingClock* timingClock,
 		DirectShowStartStopTimeMethod timestamp,
 		bool useFrameQueue,
@@ -57,6 +59,7 @@ public:
 	STDMETHODIMP OnHDRData(HDRDataSharedPtr&) override;
 	STDMETHODIMP OnVideoFrame(VideoFrame&) override;
 	STDMETHODIMP SetFrameQueueMaxSize(size_t) override;
+	STDMETHODIMP UpdateFrameRate(LONGLONG fpsNum, LONGLONG fpsDen) override;
 	STDMETHODIMP Reset() override;
 
 	// CBaseFilter
@@ -88,6 +91,8 @@ public:
 	// This is sampled.
 	double ExitLatencyMs() const;
 
+	// Get the frame counter at which latency was last measured (for freshness checking)
+	uint64_t LatencyMeasurementFrameCounter() const;
 
 	// Get the amount of dropped frames due to queue actions
 	uint64_t DroppedFrameCount() const;

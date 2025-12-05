@@ -30,6 +30,8 @@ DECLARE_INTERFACE_(ILiveSource, IUnknown)
 		IVideoFrameFormatter* videoFrameFormatter,
 		const AM_MEDIA_TYPE& mediaSubType,
 		timestamp_t frameDuration,
+		LONGLONG fpsNum,
+		LONGLONG fpsDen,
 		ITimingClock * timingClock,
 		DirectShowStartStopTimeMethod timestamp,
 		bool useFrameQueue,
@@ -50,6 +52,9 @@ DECLARE_INTERFACE_(ILiveSource, IUnknown)
 	// Only valid te be called if the RendererState called back RENDERSTATE_RENDERING
 	// Queues might not be implemented by all renderers, this will throw if it cannot be set
 	STDMETHOD(SetFrameQueueMaxSize)(size_t) PURE;
+
+	// Update frame rate parameters (for CLOCK_RATIONAL mode when refresh rate changes)
+	STDMETHOD(UpdateFrameRate)(LONGLONG fpsNum, LONGLONG fpsDen) PURE;
 
 	// Reset the internal state and the video stream.
 	STDMETHOD(Reset)(void) PURE;

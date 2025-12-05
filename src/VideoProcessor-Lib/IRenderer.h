@@ -127,6 +127,12 @@ public:
 	// Only valid te be called if the RendererState called back RENDERSTATE_RENDERING
 	virtual double ExitLatencyMs() const = 0;
 
+	// Get the frame counter at which latency was last measured (for freshness checking)
+	virtual uint64_t LatencyMeasurementFrameCounter() const = 0;
+
+	// Get the current frame counter (total frames processed)
+	virtual uint64_t CurrentFrameCounter() const = 0;
+
 	// Get the amount of dropped frames due to queue actions
 	virtual uint64_t DroppedFrameCount() const = 0;
 };

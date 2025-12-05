@@ -32,3 +32,8 @@ ColorSpace Translate(BMDColorspace, uint32_t verticalLines);
 DisplayModeSharedPtr Translate(BMDDisplayMode);
 
 double FPS(BMDDisplayMode displayMode);
+
+// Get rational frame rate data for a display mode
+// Returns true if mode found, false otherwise
+// fpsNum and fpsDen will contain the exact rational frame rate (e.g., 60000/1001 for 59.94Hz)
+bool GetRationalFrameRate(BMDDisplayMode displayMode, BMDTimeScale& fpsNum, BMDTimeScale& fpsDen);
