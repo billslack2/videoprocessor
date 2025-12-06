@@ -675,27 +675,50 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 				const LONGLONG drift = m_nextRationalTimeStart - timeStart;
 				m_timestampDriftMs = static_cast<double>(drift) / 10000.0;
 				
-				// GENTLE PROPORTIONAL CORRECTION for hardware clock drift
-				// The remainder tracking eliminates mathematical drift, but the hardware
-				// clock may still drift slightly. Apply tiny corrections.
+				// ADAPTIVE PROPORTIONAL CORRECTION for hardware clock drift
+				// Use aggressive correction for the first ~2 seconds (120 frames at 60Hz)
+				// to quickly settle after refresh rate changes, then switch to gentle correction
+				// for steady-state stability.
 				//
-				// Correction rate: 0.5% of drift per frame (1/200)
-				// This is faster than before (was 0.1%) to respond to real drift
-				// At 60fps, this is ~30% correction per second
+				// First 120 frames: 5% correction per frame (~97% settled in 1 second)
+				// After 120 frames: 0.5% correction per frame (gentle steady-state)
 				
-				LONGLONG correction = drift / 200;  // 0.5% of total drift
+				LONGLONG correction;
+				LONGLONG maxCorrection;
 				
-				// Clamp correction to max ±0.5ms per frame (prevents instability)
-				const LONGLONG maxCorrection = 5000;  // 0.5ms in 100ns units
+				if (m_frameCounter <= 120)
+				{
+					// FAST SETTLING: 5% per frame for first 2 seconds
+					correction = drift / 20;  // 5% of total drift
+					maxCorrection = 50000;    // 5ms max per frame during settling
+				}
+				else
+				{
+					// STEADY STATE: 0.5% per frame
+					correction = drift / 200;  // 0.5% of total drift
+					maxCorrection = 5000;      // 0.5ms max per frame
+				}
+				
+				// Clamp correction
 				if (correction > maxCorrection) correction = maxCorrection;
 				if (correction < -maxCorrection) correction = -maxCorrection;
 				
 				// Apply correction to duration
 				LONGLONG adjustedDuration = exactDuration - correction;
 				
-				// Sanity bounds: duration must be between 95% and 105% of nominal
-				const LONGLONG minDuration = (baseDuration * 95) / 100;
-				const LONGLONG maxDuration = (baseDuration * 105) / 100;
+				// Sanity bounds: duration must be between 90% and 110% of nominal during settling,
+				// tighter 95%-105% bounds in steady state
+				LONGLONG minDuration, maxDuration;
+				if (m_frameCounter <= 120)
+				{
+					minDuration = (baseDuration * 90) / 100;
+					maxDuration = (baseDuration * 110) / 100;
+				}
+				else
+				{
+					minDuration = (baseDuration * 95) / 100;
+					maxDuration = (baseDuration * 105) / 100;
+				}
 				if (adjustedDuration < minDuration) adjustedDuration = minDuration;
 				if (adjustedDuration > maxDuration) adjustedDuration = maxDuration;
 				
@@ -709,13 +732,14 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 				// Advance timeline for next frame
 				m_nextRationalTimeStart = timeStop;
 				
-				// Log every 5 seconds or on significant drift
-				if (m_frameCounter % 300 == 0 || 
+				// Log during settling or on significant drift
+				if (m_frameCounter <= 120 || m_frameCounter % 300 == 0 || 
 				    (m_frameCounter % 60 == 0 && (m_timestampDriftMs > 0.5 || m_timestampDriftMs < -0.5)))
 				{
-					DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL drift=%.3fms, correction=%.1fus, rem=%I64d/%I64d"),
+					DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL drift=%.3fms, correction=%.1fus, rem=%I64d/%I64d%s"),
 						videoFrame.GetCounter(), m_timestampDriftMs, static_cast<double>(correction) / 10.0,
-						m_rationalRemainder, m_fpsNum));
+						m_rationalRemainder, m_fpsNum,
+						m_frameCounter <= 120 ? TEXT(" [SETTLING]") : TEXT("")));
 				}
 			}
 		}
