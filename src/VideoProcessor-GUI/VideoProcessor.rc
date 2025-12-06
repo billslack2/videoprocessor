@@ -341,6 +341,20 @@ BEGIN
     0, 0, 0, 0,
     0, 0, 0, 0,
     0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
     0, 0, 0, 0
 END
 
@@ -372,7 +386,7 @@ BEGIN
     VK_RETURN,      ID_COMMAND_FULLSCREEN_TOGGLE, VIRTKEY, ALT, NOINVERT
     "P",            ID_COMMAND_PQ_SET,      VIRTKEY, SHIFT, CONTROL, NOINVERT
     "R",            ID_COMMAND_RENDERER_RESET, VIRTKEY, NOINVERT
-    "U",            ID_COMMAND_STATS_OVERLAY, VIRTKEY, CONTROL, NOINVERT
+    "I",            ID_COMMAND_STATS_OVERLAY, VIRTKEY, CONTROL, NOINVERT
     "1",            ID_COMMAND_CAPTURE_1,   VIRTKEY, CONTROL, NOINVERT
     "2",            ID_COMMAND_CAPTURE_2,   VIRTKEY, CONTROL, NOINVERT
     "3",            ID_COMMAND_CAPTURE_3,   VIRTKEY, CONTROL, NOINVERT
