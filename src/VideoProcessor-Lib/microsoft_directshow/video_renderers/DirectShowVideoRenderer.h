@@ -59,6 +59,11 @@ public:
 	uint64_t CurrentFrameCounter() const override;
 	uint64_t DroppedFrameCount() const override;
 
+	// CLOCK_RATIONAL Diagnostics
+	uint64_t DiscontinuityCount() const override;
+	uint64_t ReAnchorCount() const override;
+	double TimestampDriftMs() const override;
+
 protected:
 
 	IRendererCallback& m_callback;

@@ -97,6 +97,11 @@ public:
 	// Get the amount of dropped frames due to queue actions
 	uint64_t DroppedFrameCount() const;
 
+	// CLOCK_RATIONAL Diagnostics
+	uint64_t DiscontinuityCount() const;
+	uint64_t ReAnchorCount() const;
+	double TimestampDriftMs() const;
+
 private:
 	ALiveSourceVideoOutputPin* m_videoOutputPin = nullptr;
 

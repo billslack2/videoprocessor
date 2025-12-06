@@ -15,6 +15,7 @@
 #include <blackmagic_decklink/BlackMagicDeckLinkCaptureDeviceDiscoverer.h>
 #include <PixelValueRange.h>
 #include <CCie1931Control.h>
+#include "StatsOverlayWindow.h"
 #include <IRenderer.h>
 #include <VideoFrame.h>
 #include <FullscreenVideoWindow.h>
@@ -135,6 +136,7 @@ public:
 	void OnCommandRendererReset();
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
+	afx_msg void OnCommandToggleStatsOverlay();
 
 	// ICaptureDeviceDiscovererCallback
 	void OnCaptureDeviceFound(ACaptureDeviceComPtr& captureDevice) override;
@@ -207,6 +209,7 @@ protected:
 
 	// CIE1931 graph
 	CCie1931Control m_colorspaceCie1931xy;
+	StatsOverlayWindow m_statsOverlay;
 
 	// Renderer group
 	CComboBox m_rendererCombo;

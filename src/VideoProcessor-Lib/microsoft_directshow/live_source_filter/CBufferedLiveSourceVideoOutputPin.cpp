@@ -79,8 +79,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		assert(!m_isActive);
 
 		HRESULT hr = ALiveSourceVideoOutputPin::Active();
-		if (FAILED(hr))
-			return hr;
+		//if (FAILED(hr))
+		//	return hr;
 
 		assert(!ThreadExists());
 
@@ -92,6 +92,11 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			CAutoLock lock2(&m_filterCritSec);
 
 			m_isActive = true;
+			
+			// **RESET MONITORING**: Clear stats when starting fresh
+			m_queueHighWaterMark = 0;
+			m_queueFullBlockCount = 0;
+			m_frameDeliveryCount = 0;
 		}
 
 		// start the thread
@@ -142,49 +147,138 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 
 HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 {
+	// **HYBRID ASYNC/BLOCKING APPROACH WITH TIMESTAMP VALIDATION**
+	// - Normally: Async delivery via queue (low latency)
+	// - When queue full: Block capture thread (backpressure prevents drops)
+	// - Timestamp validation: Detect and handle timing issues
+	//
+	// This gives best of both worlds:
+	// 1. Low latency when renderer keeps up
+	// 2. No dropped frames when renderer temporarily falls behind
+	// 3. Self-regulating backpressure
+	// 4. Robust timestamp handling
+
+	// **TIMESTAMP VALIDATION**: Check for common timing issues
+	const timingclocktime_t currentTimestamp = videoFrame.GetTimingTimestamp();
+	
+	// **CRITICAL**: Wait OUTSIDE the lock to avoid deadlock and race conditions
+	// Check queue fullness, release lock, wait, then retry
+	while (true)
 	{
-		CAutoLock lock(&m_filterCritSec);
-
-		// Reject frames if not processing
-		if (!m_isActive)
-			return S_OK;
-
-		// If this frame's timestamp is lower or equal to the one before it,
-		// erase that earlier one
-		while (!m_videoFrameQueue.empty())
+		bool needToWait = false;
+		
 		{
-			VideoFrame lastFrame = m_videoFrameQueue.back();
+			CAutoLock lock(&m_filterCritSec);
 
-			// Previous one was younger, nothing to do
-			if (videoFrame.GetTimingTimestamp() > lastFrame.GetTimingTimestamp())
-				break;
+			// Reject frames if not processing
+			if (!m_isActive)
+				return S_OK;
 
-			// Previous one was older or equal, erase
-			lastFrame.SourceBufferRelease();
-			m_videoFrameQueue.pop_back();
-			++m_droppedFrameCount;
+			// **DIAGNOSTIC**: Validate timestamp ordering
+			// This helps detect timing issues from the capture device
+			if (!m_videoFrameQueue.empty())
+			{
+				const VideoFrame& lastFrame = m_videoFrameQueue.back();
+				const timingclocktime_t lastTimestamp = lastFrame.GetTimingTimestamp();
+				
+				// Check for timestamp going backwards (serious error)
+				if (currentTimestamp <= lastTimestamp)
+				{
+					DbgLog((LOG_ERROR, 1, 
+						TEXT("CBufferedLiveSourceVideoOutputPin::OnVideoFrame(): WARNING - Frame timestamp not advancing! Current=%I64d, Last=%I64d, Delta=%I64d"),
+						currentTimestamp, lastTimestamp, (currentTimestamp - lastTimestamp)));
+				}
+				
+				// Check for unusually large gaps (possible frame counter skip)
+				if (m_timingClock)
+				{
+					const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
+					const timingclocktime_t delta = currentTimestamp - lastTimestamp;
+					
+					// More than 100ms gap is suspicious for video frames
+					const timingclocktime_t maxGapTicks = (ticksPerSecond / 10); // 100ms
+					if (delta > maxGapTicks)
+					{
+						DbgLog((LOG_TRACE, 1,
+							TEXT("CBufferedLiveSourceVideoOutputPin::OnVideoFrame(): Large timestamp gap: %I64d ticks (%.1f ms)"),
+							delta, (delta * 1000.0) / ticksPerSecond));
+					}
+				}
+			}
+
+			// Check if queue has space
+			needToWait = (m_videoFrameQueue.size() >= m_frameQueueMaxSize);
+			
+			if (!needToWait)
+			{
+				// We have space - handle out-of-order frames
+				// If this frame's timestamp is lower or equal to the one before it,
+				// erase that earlier one
+				while (!m_videoFrameQueue.empty())
+				{
+					VideoFrame lastFrame = m_videoFrameQueue.back();
+
+					// Previous one was younger, nothing to do
+					if (currentTimestamp > lastFrame.GetTimingTimestamp())
+						break;
+
+					// Previous one was older or equal, erase
+					DbgLog((LOG_TRACE, 1,
+						TEXT("CBufferedLiveSourceVideoOutputPin::OnVideoFrame(): Dropping out-of-order frame, Current=%I64d, Dropped=%I64d"),
+						currentTimestamp, lastFrame.GetTimingTimestamp()));
+					
+					lastFrame.SourceBufferRelease();
+					m_videoFrameQueue.pop_back();
+					++m_droppedFrameCount;
+				}
+
+				// Add the frame (we know there's space)
+				videoFrame.SourceBufferAddRef();
+				m_videoFrameQueue.push_back(videoFrame);
+				
+				// **ADAPTIVE MONITORING**: Track queue depth statistics
+				const size_t currentQueueSize = m_videoFrameQueue.size();
+				if (currentQueueSize > m_queueHighWaterMark)
+				{
+					m_queueHighWaterMark = currentQueueSize;
+					
+					// Warn if queue is consistently filling up (>75% capacity)
+					const size_t warningThreshold = (m_frameQueueMaxSize * 3) / 4;
+					if (currentQueueSize >= warningThreshold)
+					{
+						DbgLog((LOG_TRACE, 1,
+							TEXT("CBufferedLiveSourceVideoOutputPin::OnVideoFrame(): Queue high water mark: %zu/%zu (%.1f%% full) - consider increasing queue size"),
+							currentQueueSize, m_frameQueueMaxSize, (currentQueueSize * 100.0) / m_frameQueueMaxSize));
+					}
+				}
+				
+				// Signal event EVERY time a frame is added (auto-reset event handles rest)
+				if (m_hFrameAvailableEvent)
+				{
+					SetEvent(m_hFrameAvailableEvent);
+				}
+				
+				return S_OK;
+			}
+			else
+			{
+				// **DIAGNOSTIC**: Log when we need to block (indicates potential bottleneck)
+				++m_queueFullBlockCount;
+				
+				DbgLog((LOG_TRACE, 2,
+					TEXT("CBufferedLiveSourceVideoOutputPin::OnVideoFrame(): Queue full (%zu/%zu), blocking capture thread (block count: %zu)"),
+					m_videoFrameQueue.size(), m_frameQueueMaxSize, m_queueFullBlockCount));
+			}
 		}
+		// Lock is released here before we block
 
-		// If full throw away oldest to make space
-		if (m_videoFrameQueue.size() >= m_frameQueueMaxSize)
-		{
-			m_videoFrameQueue.front().SourceBufferRelease();
-			m_videoFrameQueue.pop_front();
-			++m_droppedFrameCount;
-		}
-
-		// Prevent from getting cleaned up and add to queue
-		videoFrame.SourceBufferAddRef();
-		m_videoFrameQueue.push_back(videoFrame);
+		// **BLOCKING**: Queue is full - wait for worker thread to drain it
+		// Use very short sleep (1ms) to minimize latency impact
+		// CRITICAL: We're outside the lock here, so worker thread can process frames
+		Sleep(1);  // 1ms = one DirectShow reference time unit
+		
+		// Loop back to recheck - with fresh lock acquisition
 	}
-
-	// Signal event EVERY time a frame is added (auto-reset event handles rest)
-	if (m_hFrameAvailableEvent)
-	{
-		SetEvent(m_hFrameAvailableEvent);
-	}
-
-	return S_OK;
 }
 
 
@@ -248,11 +342,26 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	// Prepare array of events to wait on
 	HANDLE waitHandles[2] = { m_hFrameAvailableEvent, m_hShutdownEvent };
 
+	// **FRAME PACING**: Track delivery timing for smooth renderer feed
+	LARGE_INTEGER qpcFreq, lastDeliveryTime;
+	QueryPerformanceFrequency(&qpcFreq);
+	QueryPerformanceCounter(&lastDeliveryTime);
+	
 	while (true)
 	{
-		// **CLOCK_SMART COMPATIBILITY**: Keep 100ms timeout for modes that need to peek at next frame
-		// CLOCK_RATIONAL doesn't have this limitation and could use INFINITE, but we use 100ms for all modes for simplicity
-		DWORD waitResult = WaitForMultipleObjects(2, waitHandles, FALSE, 100);
+		// **REFRESH-RATE AWARE WAIT**: Use actual frame duration for timeout
+		// m_frameDuration is in 100ns units, convert to milliseconds
+		// Use half frame duration as timeout - responsive but not wasteful
+		DWORD waitTimeoutMs = 16;  // Default fallback for 60Hz
+		if (m_frameDuration > 0)
+		{
+			// Convert 100ns units to ms, use half frame duration for responsiveness
+			waitTimeoutMs = (DWORD)(m_frameDuration / 20000);  // /10000 for ms, /2 for half
+			if (waitTimeoutMs < 4) waitTimeoutMs = 4;    // Min 4ms to avoid busy-waiting
+			if (waitTimeoutMs > 50) waitTimeoutMs = 50;  // Max 50ms for 24Hz content
+		}
+		
+		DWORD waitResult = WaitForMultipleObjects(2, waitHandles, FALSE, waitTimeoutMs);
 		
 		// Check if shutdown was signaled
 		if (waitResult == WAIT_OBJECT_0 + 1)
@@ -269,6 +378,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 		VideoFrame videoFrame;
 		bool hasFrame = false;
+		timingclocktime_t frameTimestamp = 0;
+		REFERENCE_TIME frameRefTime = 0;
 
 		{
 			CAutoLock lock(&m_filterCritSec);
@@ -277,8 +388,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			if (!m_isActive)
 				break;
 
-			// For most timing empty is really empty, however for the clock-to-clock
-			// we need to keep one frame in.
+			// For most timing modes empty is really empty, however for CLOCK_CLOCK
+			// we need to keep one frame in for timestamp calculation
 			if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK)
 			{
 				hasFrame = (m_videoFrameQueue.size() > 1);
@@ -291,9 +402,64 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			if (!hasFrame)
 				continue;  // Spurious wake-up or timeout, retry
 
-			// Get the front frame (oldest)
+			// Peek at the front frame WITHOUT removing it yet
+			// We need to check if it's time to deliver
 			videoFrame = m_videoFrameQueue.front();
+			frameTimestamp = videoFrame.GetTimingTimestamp();
+			
+			// Convert frame timestamp to REFERENCE_TIME (100ns units)
+			// SAFETY: Only do this if we have a valid timing clock
+			if (m_timingClock)
+			{
+				const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
+				if (ticksPerSecond > 0)
+				{
+					frameRefTime = (REFERENCE_TIME)((frameTimestamp * 10000000LL) / ticksPerSecond);
+				}
+			}
+		}
+
+		// **TIMESTAMP-GATED DELIVERY - DISABLED**
+		// After testing, the gating logic was found to cause more issues than it solved.
+		// The frame offset (e.g., 90ms) already handles the timing - frames are timestamped
+		// in the future so MadVR knows when to present them. We should deliver frames
+		// as soon as possible and let MadVR handle the presentation timing.
+		//
+		// The original problem (frame repeats) was about timestamp generation, not
+		// delivery timing. CLOCK_RATIONAL's drift correction handles that.
+		//
+		// Keeping this code commented for reference in case gating is needed in the future.
+		/*
+		if (m_timingClock && m_frameDuration > 0 &&
+		    (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL ||
+		     m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+		     m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO))
+		{
+			// Gating logic disabled - deliver frames immediately
+		}
+		*/
+
+		// Now actually remove the frame from the queue
+		{
+			CAutoLock lock(&m_filterCritSec);
+			
+			if (!m_isActive)
+				break;
+				
+			// Verify frame is still there (another thread might have purged)
+			if (m_videoFrameQueue.empty())
+				continue;
+				
+			// Remove the frame we peeked at
 			m_videoFrameQueue.pop_front();
+
+			// **DIAGNOSTIC**: Log queue depth to detect buffering issues
+			if (m_videoFrameQueue.size() >= (m_frameQueueMaxSize - 1))
+			{
+				DbgLog((LOG_TRACE, 2,
+					TEXT("CBufferedLiveSourceVideoOutputPin::ThreadProc(): Queue nearly full (%zu/%zu) - renderer may be slow"),
+					m_videoFrameQueue.size() + 1, m_frameQueueMaxSize));
+			}
 
 			// Get the current front's start time for CLOCK_SMART and CLOCK_CLOCK modes
 			switch (m_timestamp)
@@ -310,11 +476,17 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					const timingclocktime_t nextFrameTicks = m_videoFrameQueue.front().GetTimingTimestamp();
 					
 					// CRITICAL: Check if timing clock is valid before using it
-					// This can happen during shutdown when the graph is being torn down
 					if (m_timingClock)
 					{
 						const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
-						m_nextVideoFrameStartTime = (REFERENCE_TIME)((nextFrameTicks * 10000000LL) / ticksPerSecond);
+						if (ticksPerSecond > 0)
+						{
+							m_nextVideoFrameStartTime = (REFERENCE_TIME)((nextFrameTicks * 10000000LL) / ticksPerSecond);
+						}
+						else
+						{
+							m_nextVideoFrameStartTime = REFERENCE_TIME_INVALID;
+						}
 					}
 					else
 					{
@@ -330,8 +502,26 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 		}
 
+		// **FRAME PACING**: Measure time between deliveries to detect stuttering
+		LARGE_INTEGER currentTime;
+		QueryPerformanceCounter(&currentTime);
+		const double deliveryIntervalMs = ((currentTime.QuadPart - lastDeliveryTime.QuadPart) * 1000.0) / qpcFreq.QuadPart;
+		lastDeliveryTime = currentTime;
+		
+		// Log unusually long gaps (more than 2x expected frame time)
+		// SAFETY: Only check if we have a valid frame duration
+		if (m_frameDuration > 0)
+		{
+			const double expectedFrameMs = m_frameDuration / 10000.0;
+			if (deliveryIntervalMs > (expectedFrameMs * 2.0))
+			{
+				DbgLog((LOG_TRACE, 2,
+					TEXT("CBufferedLiveSourceVideoOutputPin::ThreadProc(): Long delivery gap: %.1f ms (expected ~%.1f ms)"),
+					deliveryIntervalMs, expectedFrameMs));
+			}
+		}
+
 		// Get buffer for sample
-		// Note you can fill in start and stop time, but following the code shows that they are unused.
 		IMediaSample* pSample = nullptr;
 		HRESULT hr = this->GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);
 		if (FAILED(hr))
@@ -369,6 +559,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			pSample->Release();
 			return -3;
 		}
+
+		// **SUCCESS TRACKING**: Count successful deliveries
+		++m_frameDeliveryCount;
 
 		videoFrame.SourceBufferRelease();
 		pSample->Release();

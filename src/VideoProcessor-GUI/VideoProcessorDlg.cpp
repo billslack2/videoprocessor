@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -83,6 +83,8 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_RENDERER_RESET, &CVideoProcessorDlg::OnCommandRendererReset)
 	ON_COMMAND(ID_COMMAND_PQ_SET, &CVideoProcessorDlg::OnCommandPQSet)
 	ON_COMMAND(ID_COMMAND_AUTO_SET, &CVideoProcessorDlg::OnCommandAutoSet)
+	ON_COMMAND(ID_COMMAND_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
+	ON_COMMAND(ID_COMMAND_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
 
 	ON_COMMAND(ID_COMMAND_VC_NONE, &CVideoProcessorDlg::SetVideoConversionOff)
 	ON_COMMAND(ID_COMMAND_VC_P010, &CVideoProcessorDlg::SetVideoConversionP010)
@@ -131,9 +133,9 @@ static const std::vector<std::pair<LPCTSTR, HdrLuminanceOptions>> HDR_LUMINANCE_
 
 static const std::vector<DirectShowStartStopTimeMethod> RENDERER_DIRECTSHOW_START_STOP_TIME_OPTIONS =
 {
-	// Sorted in preferred order - CLOCK_RATIONAL is the new recommended default
-	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL,  // **NEW: Best option for all use cases**
+	// Sorted in preferred order - CLOCK_SMART is the safe default until CLOCK_RATIONAL is proven stable
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART,
+	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL,  // Experimental: smooth drift correction
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK,
 	DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO,
@@ -156,7 +158,7 @@ static const std::vector<std::pair<LPCTSTR, DXVA_VideoTransferFunction>> DIRECTS
 {
 	std::make_pair(TEXT("Auto"),                      DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown),
 	std::make_pair(TEXT("PQ"),                        DIRECTSHOW_VIDEOTRANSFUNC_2084),
-	std::make_pair(TEXT("Rec 709 (γ=2.2)"),           DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_709),
+	std::make_pair(TEXT("Rec 709 (?=2.2)"),           DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_709),
 	std::make_pair(TEXT("Bt.2020 constant"),          DIRECTSHOW_VIDEOTRANSFUNC_2020_const),
 
 	std::make_pair(TEXT("True gamma 1.8"),            DXVA_VideoTransferFunction::DXVA_VideoTransFunc_18),
@@ -165,12 +167,12 @@ static const std::vector<std::pair<LPCTSTR, DXVA_VideoTransferFunction>> DIRECTS
 	std::make_pair(TEXT("True gamma 2.6"),            DIRECTSHOW_VIDEOTRANSFUNC_26),
 	std::make_pair(TEXT("True gamma 2.8"),            DXVA_VideoTransferFunction::DXVA_VideoTransFunc_28),
 
-	std::make_pair(TEXT("Linear RGB (γ=1.0)"),        DXVA_VideoTransferFunction::DXVA_VideoTransFunc_10),
-	std::make_pair(TEXT("204M (γ=2.2)"),              DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_240M),
+	std::make_pair(TEXT("Linear RGB (?=1.0)"),        DXVA_VideoTransferFunction::DXVA_VideoTransFunc_10),
+	std::make_pair(TEXT("204M (?=2.2)"),              DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_240M),
 	std::make_pair(TEXT("8-bit gamma 2.2"),           DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_8bit_sRGB),
 	std::make_pair(TEXT("Log 100:1 H.264"),           DIRECTSHOW_VIDEOTRANSFUNC_Log_100),
 	std::make_pair(TEXT("Log 316:1 H.264"),           DIRECTSHOW_VIDEOTRANSFUNC_Log_316),
-	std::make_pair(TEXT("Rec 709 (γ=2.2) symmetric"), DIRECTSHOW_VIDEOTRANSFUNC_709_sym),
+	std::make_pair(TEXT("Rec 709 (?=2.2) symmetric"), DIRECTSHOW_VIDEOTRANSFUNC_709_sym),
 	std::make_pair(TEXT("Bt.2020 non-const"),         DIRECTSHOW_VIDEOTRANSFUNC_2020),
 	std::make_pair(TEXT("Hybrid log"),                DIRECTSHOW_VIDEOTRANSFUNC_HLG)
 };
@@ -874,6 +876,12 @@ void CVideoProcessorDlg::OnCommandAutoSet()
 {
 	m_rendererTransferFunctionCombo.SetCurSel(0);
 	OnBnClickedRendererRestart();
+}
+
+void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
+{
+	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnCommandToggleStatsOverlay()")));
+	m_statsOverlay.Toggle();
 }
 
 //
@@ -1833,6 +1841,7 @@ void CVideoProcessorDlg::SetTimingClockFrameOffsetMs(int timingClockFrameOffsetM
 
 void CVideoProcessorDlg::UpdateTimingClockFrameOffset()
 {
+
 	if (m_captureDevice) 
 		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
 
@@ -2366,6 +2375,12 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	m_timingClockFrameOffsetAutoCheck.SetCheck(m_frameOffsetAutoStart);
 	OnBnClickedTimingClockFrameOffsetAutoCheck();
 
+	// Create stats overlay window (initially hidden)
+	if (!m_statsOverlay.Create(this))
+	{
+		DbgLog((LOG_ERROR, 1, TEXT("Failed to create stats overlay window")));
+	}
+
 	// Start timers
 	SetTimer(TIMER_ID_1SECOND, 1000, nullptr);
 	
@@ -2529,19 +2544,6 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 void CVideoProcessorDlg::OnSetFocus(CWnd* pOldWnd)
 {
 	CDialog::OnSetFocus(pOldWnd);
@@ -2613,6 +2615,54 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 		cstring.Format(_T("%lu"), m_videoRenderer->DroppedFrameCount());
 		m_rendererDroppedFrameCountText.SetWindowText(cstring);
+
+		// Update stats overlay if visible
+		if (m_statsOverlay.IsVisible() && m_captureDevice && m_videoRenderer)
+		{
+			try
+			{
+				// Get clock description
+				CString clockDesc = m_captureDevice->GetTimingClock()->TimingClockDescription();
+				
+				// Get Start/Stop method description
+				int ssIndex = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
+				CString startStopMethod = _T("Unknown");
+				if (ssIndex >= 0)
+				{
+					DirectShowStartStopTimeMethod method = 
+						(DirectShowStartStopTimeMethod)m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(ssIndex);
+					startStopMethod = ToString(method);
+				}
+				
+				// Check if queue is near full (>75% capacity)
+				size_t queueSize = m_videoRenderer->GetFrameQueueSize();
+				size_t queueMax = GetRendererVideoFrameQueueSizeMax();
+				bool isQueueNearFull = (queueSize >= (queueMax * 3) / 4);
+				
+				m_statsOverlay.UpdateStats(
+					queueSize,
+					queueMax,
+					m_videoRenderer->ExitLatencyMs(),
+					m_videoRenderer->EntryLatencyMs(),
+					m_captureDevice->VideoFrameMissedCount(),
+					m_videoRenderer->DroppedFrameCount(),
+					GetTimingClockFrameOffsetMs(),
+					0,  // rationalOffset - unused
+					m_captureDevice->VideoFrameCapturedCount(),
+					m_captureDevice->HardwareLatencyMs(),
+					clockDesc,
+					startStopMethod,
+					m_videoRenderer->DiscontinuityCount(),
+					m_videoRenderer->ReAnchorCount(),
+					isQueueNearFull,
+					m_videoRenderer->TimestampDriftMs());
+			}
+			catch (std::runtime_error& e)
+			{
+				// Log error but don't crash
+				DbgLog((LOG_ERROR, 1, TEXT("CVideoProcessorDlg::OnTimer(): Stats overlay update failed: %S"), e.what()));
+			}
+		}
 	}
 	else
 	{
@@ -2715,7 +2765,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					SetTimingClockFrameOffsetMs(newOffset);
 					UpdateTimingClockFrameOffset();
 				}
-			}
 			*/
 		}
 	}

@@ -222,6 +222,13 @@ void DirectShowVideoRenderer::Stop()
 
 void DirectShowVideoRenderer::Reset()
 {
+	// Safety check - Reset can be called before graph is fully built
+	if (!m_pControl || !m_liveSource)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::Reset(): Not fully initialized, skipping")));
+		return;
+	}
+
 	// Stop directshow graph
 	if (FAILED(m_pControl->Stop()))
 		throw std::runtime_error("Failed to Stop() graph");
@@ -309,6 +316,33 @@ uint64_t DirectShowVideoRenderer::DroppedFrameCount() const
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
 	return m_liveSource->DroppedFrameCount();
+}
+
+
+uint64_t DirectShowVideoRenderer::DiscontinuityCount() const
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		return 0;
+
+	return m_liveSource->DiscontinuityCount();
+}
+
+
+uint64_t DirectShowVideoRenderer::ReAnchorCount() const
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		return 0;
+
+	return m_liveSource->ReAnchorCount();
+}
+
+
+double DirectShowVideoRenderer::TimestampDriftMs() const
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		return 0.0;
+
+	return m_liveSource->TimestampDriftMs();
 }
 
 

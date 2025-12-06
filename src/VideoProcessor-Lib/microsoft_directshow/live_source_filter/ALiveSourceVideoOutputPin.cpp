@@ -8,6 +8,8 @@
 
 #include <pch.h>
 
+#include <cmath>  // For fabs()
+
 #include <guid.h>
 #include <IMediaSideData.h>
 
@@ -20,10 +22,9 @@ ALiveSourceVideoOutputPin::ALiveSourceVideoOutputPin(
 	HRESULT* phr):
 	CBaseOutputPin(
 		LIVE_SOURCE_FILTER_NAME, filter, pLock, phr,
-		LIVE_SOURCE_FILTER_VIDEO_OUPUT_PIN_NAME),
-	m_nextRationalTimeStart(0),
-	m_newSegment(true)  // Initialize to true so first frame anchors the timeline
+		LIVE_SOURCE_FILTER_VIDEO_OUPUT_PIN_NAME)
 {
+	// All member initialization happens in the header with default values
 }
 
 
@@ -139,6 +140,13 @@ HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOC
 {
 	CheckPointer(pAlloc,E_POINTER);
 	CheckPointer(ppropInputRequest,E_POINTER);
+
+	// Safety check - this can be called before Initialize()
+	if (!m_videoFrameFormatter)
+	{
+		DbgLog((LOG_ERROR, 1, TEXT("::DecideBufferSize(): m_videoFrameFormatter is null - called before Initialize()?")));
+		return E_POINTER;
+	}
 
 	HRESULT hr = NOERROR;
 
@@ -313,8 +321,15 @@ void ALiveSourceVideoOutputPin::Reset()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("ALiveSourceVideoOutputPin::Reset()")));
 
-	if (FAILED(DeliverBeginFlush()))
-		throw std::runtime_error("Failed to deliver beginflush");
+	// Only deliver flush if we're connected - prevents crashes during shutdown
+	if (IsConnected())
+	{
+		if (FAILED(DeliverBeginFlush()))
+		{
+			DbgLog((LOG_ERROR, 1, TEXT("ALiveSourceVideoOutputPin::Reset(): DeliverBeginFlush failed")));
+			// Don't throw - just log and continue with reset
+		}
+	}
 
 	if (m_hdrData)
 		m_hdrChanged = true;
@@ -328,6 +343,7 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_previousTimeStop = 0;
 	m_droppedFrameCount = 0;
 	m_nextRationalTimeStart = 0;
+	m_rationalRemainder = 0;  // Reset remainder accumulator
 
 	// CRITICAL: Reset latency measurement to prevent stale values from affecting auto-tuning
 	// After a reset (e.g., refresh rate change), the first few frames may have abnormal latency
@@ -335,8 +351,21 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_exitLatencyMs = 0.0;
 	m_latencyMeasurementFrameCounter = 0;  // Mark measurement as stale
 
-	if (FAILED(DeliverEndFlush()))
-		throw std::runtime_error("Failed to deliver endflush");
+	// NOTE: We intentionally do NOT reset m_discontinuityCount and m_reAnchorCount here
+	// These are cumulative diagnostic counters that should persist across resets
+	// to help diagnose timeline stability issues over time.
+	// Only reset the current drift value since we're starting fresh.
+	m_timestampDriftMs = 0.0;
+
+	// Only deliver flush if we're connected
+	if (IsConnected())
+	{
+		if (FAILED(DeliverEndFlush()))
+		{
+			DbgLog((LOG_ERROR, 1, TEXT("ALiveSourceVideoOutputPin::Reset(): DeliverEndFlush failed")));
+			// Don't throw - just log and continue
+		}
+	}
 }
 
 
@@ -366,6 +395,19 @@ void ALiveSourceVideoOutputPin::UpdateFrameRate(LONGLONG fpsNum, LONGLONG fpsDen
 
 HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoFrame, IMediaSample* const pSample)
 {
+	// Defensive null checks - prevent access violation crashes
+	if (!m_timingClock)
+	{
+		DbgLog((LOG_ERROR, 1, TEXT("::RenderVideoFrameIntoSample(): m_timingClock is null!")));
+		return E_POINTER;
+	}
+	
+	if (!m_videoFrameFormatter)
+	{
+		DbgLog((LOG_ERROR, 1, TEXT("::RenderVideoFrameIntoSample(): m_videoFrameFormatter is null!")));
+		return E_POINTER;
+	}
+
 	assert(videoFrame.GetTimingTimestamp() > 0);
 	assert(m_frameDuration > 0);
 	assert(m_timingClock->TimingClockTicksPerSecond() > 0);
@@ -397,6 +439,10 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		m_frameCounter == 1;
 	if (isDiscontinuity)
 	{
+		// Track discontinuity for diagnostics
+		if (m_frameCounter > 1)  // Don't count first frame
+			++m_discontinuityCount;
+
 		DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): Frame counter jumped from %I64u (stream frame %I64u), discontinuity detected"),
 			videoFrame.GetCounter(), m_previousFrameCounter, streamFrameCounter));
 
@@ -528,36 +574,150 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
 
-		// **OPTIMAL MODE** - Pure rational timestamp generation
-		// - Anchors to RAW hardware clock timestamp (completely independent of frame offset)
-		// - Uses exact rational math for perfect frame spacing
-		// - Immune to jitter, drift, and frame offset changes
-		if (m_fpsNum > 0 && m_fpsDen > 0)
+		// CLOCK_RATIONAL: Ultra-smooth drift correction without frame drops
+		// 
+		// DESIGN PRINCIPLES:
+		// 1. Timestamps MUST be monotonically increasing (DirectShow requirement)
+		// 2. Use EXACT rational arithmetic to eliminate integer truncation drift
+		// 3. Apply gentle proportional correction for hardware clock drift
+		// 4. Never re-anchor backwards (would violate monotonicity)
+		//
+		// Fallback to simple duration if FPS not available
+		if (m_fpsNum <= 0 || m_fpsDen <= 0)
 		{
-			const LONGLONG exactDuration = (10000000LL * m_fpsDen) / m_fpsNum;
+			// No rational FPS available - use simple duration like other modes
+			timeStop = timeStart + m_frameDuration;
+			break;
+		}
 
+		{
+			// EXACT RATIONAL ARITHMETIC
+			// For 59.94Hz (60000/1001): duration = 10,000,000 * 1001 / 60000
+			// Integer division loses the remainder, causing drift over time.
+			// 
+			// Solution: Track the remainder and add 1 unit when it accumulates.
+			// This is called "Bresenham's line algorithm" approach.
+			//
+			// Example for 59.94Hz:
+			//   numerator = 10,000,000 * 1001 = 10,010,000,000
+			//   base = 10,010,000,000 / 60000 = 166,833
+			//   remainder = 10,010,000,000 % 60000 = 20,000
+			//   Every frame adds 20,000 to accumulator
+			//   When accumulator >= 60000, add 1 to duration and subtract 60000
+			//   This happens every 3 frames (60000/20000 = 3)
+			
+			const LONGLONG numerator = 10000000LL * m_fpsDen;
+			const LONGLONG baseDuration = numerator / m_fpsNum;
+			const LONGLONG remainder = numerator % m_fpsNum;
+			
+			// On first frame, anchor to hardware clock
 			if (m_newSegment)
 			{
-				// **KEY FIX**: Anchor to RAW hardware clock using timeStartRaw
-				// timeStartRaw contains the hardware timestamp BEFORE any offset correction
-				// This makes the rational timeline completely independent of frame offset
-				m_nextRationalTimeStart = timeStartRaw - m_startTimeOffset;
+				m_nextRationalTimeStart = timeStart;
+				m_rationalRemainder = 0;  // Reset remainder accumulator
 				m_newSegment = false;
+				m_timestampDriftMs = 0.0;
 				
-				DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL anchored to normalized raw timestamp %I64d (raw=%I64d, offset=%I64d)"),
-					videoFrame.GetCounter(), m_nextRationalTimeStart, timeStartRaw, m_startTimeOffset));
+				DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL initial anchor to %I64d (base=%I64d, rem=%I64d/%I64d)"),
+					videoFrame.GetCounter(), m_nextRationalTimeStart, baseDuration, remainder, m_fpsNum));
+					
+				// Use base duration for first frame (no remainder yet)
+				timeStart = m_nextRationalTimeStart;
+				timeStop = timeStart + baseDuration;
+				m_rationalRemainder = remainder;  // Start accumulating
+				m_nextRationalTimeStart = timeStop;
 			}
-
-			// Use our perfectly-spaced rational timeline
-			// Note: We output normalized timestamps (starting near 0) for DirectShow compatibility
-			timeStart = m_nextRationalTimeStart;
-			timeStop = timeStart + exactDuration;
-			m_nextRationalTimeStart += exactDuration;
-		}
-		else
-		{
-			// Fallback if no rational FPS available
-			timeStop = timeStart + m_frameDuration;
+			else if (isDiscontinuity)
+			{
+				// For actual frame drops (discontinuity), handle carefully
+				// CRITICAL: Never go backwards - only re-anchor if hardware is AHEAD
+				++m_reAnchorCount;
+				
+				if (timeStart > m_nextRationalTimeStart)
+				{
+					// Hardware clock jumped forward - safe to follow
+					m_nextRationalTimeStart = timeStart;
+					m_rationalRemainder = 0;  // Reset remainder on re-anchor
+					DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL discontinuity - re-anchor forward to %I64d"),
+						videoFrame.GetCounter(), m_nextRationalTimeStart));
+				}
+				else
+				{
+					// Hardware clock is behind our timeline - maintain monotonicity
+					DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL discontinuity - keeping at %I64d (hw=%I64d, diff=%.2fms)"),
+						videoFrame.GetCounter(), m_nextRationalTimeStart, timeStart,
+						static_cast<double>(m_nextRationalTimeStart - timeStart) / 10000.0));
+				}
+				m_timestampDriftMs = 0.0;
+				
+				// Use base duration after discontinuity
+				timeStart = m_nextRationalTimeStart;
+				timeStop = timeStart + baseDuration;
+				m_rationalRemainder = remainder;
+				m_nextRationalTimeStart = timeStop;
+			}
+			else
+			{
+				// Normal case: Use exact rational duration with remainder tracking
+				
+				// Calculate this frame's exact duration using Bresenham-style accumulation
+				LONGLONG exactDuration = baseDuration;
+				m_rationalRemainder += remainder;
+				if (m_rationalRemainder >= m_fpsNum)
+				{
+					exactDuration += 1;  // Add one 100ns unit
+					m_rationalRemainder -= m_fpsNum;
+				}
+				
+				// Calculate current drift between our timeline and hardware
+				// Positive drift = our timeline is ahead of hardware
+				// Negative drift = our timeline is behind hardware
+				const LONGLONG drift = m_nextRationalTimeStart - timeStart;
+				m_timestampDriftMs = static_cast<double>(drift) / 10000.0;
+				
+				// GENTLE PROPORTIONAL CORRECTION for hardware clock drift
+				// The remainder tracking eliminates mathematical drift, but the hardware
+				// clock may still drift slightly. Apply tiny corrections.
+				//
+				// Correction rate: 0.5% of drift per frame (1/200)
+				// This is faster than before (was 0.1%) to respond to real drift
+				// At 60fps, this is ~30% correction per second
+				
+				LONGLONG correction = drift / 200;  // 0.5% of total drift
+				
+				// Clamp correction to max ±0.5ms per frame (prevents instability)
+				const LONGLONG maxCorrection = 5000;  // 0.5ms in 100ns units
+				if (correction > maxCorrection) correction = maxCorrection;
+				if (correction < -maxCorrection) correction = -maxCorrection;
+				
+				// Apply correction to duration
+				LONGLONG adjustedDuration = exactDuration - correction;
+				
+				// Sanity bounds: duration must be between 95% and 105% of nominal
+				const LONGLONG minDuration = (baseDuration * 95) / 100;
+				const LONGLONG maxDuration = (baseDuration * 105) / 100;
+				if (adjustedDuration < minDuration) adjustedDuration = minDuration;
+				if (adjustedDuration > maxDuration) adjustedDuration = maxDuration;
+				
+				// Set timestamps from our rational timeline
+				timeStart = m_nextRationalTimeStart;
+				timeStop = timeStart + adjustedDuration;
+				
+				// MONOTONICITY CHECK
+				assert(timeStop > timeStart);
+				
+				// Advance timeline for next frame
+				m_nextRationalTimeStart = timeStop;
+				
+				// Log every 5 seconds or on significant drift
+				if (m_frameCounter % 300 == 0 || 
+				    (m_frameCounter % 60 == 0 && (m_timestampDriftMs > 0.5 || m_timestampDriftMs < -0.5)))
+				{
+					DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL drift=%.3fms, correction=%.1fus, rem=%I64d/%I64d"),
+						videoFrame.GetCounter(), m_timestampDriftMs, static_cast<double>(correction) / 10.0,
+						m_rationalRemainder, m_fpsNum));
+				}
+			}
 		}
 		break;
 

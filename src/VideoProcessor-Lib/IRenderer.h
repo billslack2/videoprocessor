@@ -135,4 +135,9 @@ public:
 
 	// Get the amount of dropped frames due to queue actions
 	virtual uint64_t DroppedFrameCount() const = 0;
+
+	// CLOCK_RATIONAL Diagnostics - track timeline health
+	virtual uint64_t DiscontinuityCount() const = 0;
+	virtual uint64_t ReAnchorCount() const = 0;
+	virtual double TimestampDriftMs() const = 0;
 };

@@ -115,6 +115,9 @@ STDMETHODIMP CLiveSource::Destroy()
 
 STDMETHODIMP CLiveSource::OnHDRData(HDRDataSharedPtr& hdrData)
 {
+	if (!m_videoOutputPin)
+		return E_POINTER;
+	
 	m_videoOutputPin->OnHDRData(hdrData);
 	return S_OK;
 }
@@ -122,6 +125,9 @@ STDMETHODIMP CLiveSource::OnHDRData(HDRDataSharedPtr& hdrData)
 
 STDMETHODIMP CLiveSource::OnVideoFrame(VideoFrame& videoFrame)
 {
+	if (!m_videoOutputPin)
+		return E_POINTER;
+	
 	return m_videoOutputPin->OnVideoFrame(videoFrame);
 }
 
@@ -130,6 +136,9 @@ STDMETHODIMP CLiveSource::SetFrameQueueMaxSize(size_t frameQueueMaxSize)
 {
 	if (frameQueueMaxSize < 0)
 		throw std::runtime_error("Queue must be >= 0");
+
+	if (!m_videoOutputPin)
+		return E_POINTER;
 
 	m_videoOutputPin->SetFrameQueueMaxSize(frameQueueMaxSize);
 	return S_OK;
@@ -151,6 +160,13 @@ STDMETHODIMP CLiveSource::UpdateFrameRate(LONGLONG fpsNum, LONGLONG fpsDen)
 
 STDMETHODIMP CLiveSource::Reset()
 {
+	// Safety check - Reset can be called during shutdown or before full initialization
+	if (!m_videoOutputPin)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("CLiveSource::Reset(): m_videoOutputPin is null, skipping")));
+		return S_OK;
+	}
+
 	m_videoOutputPin->Reset();
 	return S_OK;
 }
@@ -194,23 +210,62 @@ ULONG CLiveSource::GetMiscFlags()
 
 int CLiveSource::GetFrameQueueSize()
 {
+	if (!m_videoOutputPin)
+		return 0;
+	
 	return (int)m_videoOutputPin->GetFrameQueueSize();
 }
 
 
 double CLiveSource::ExitLatencyMs() const
 {
+	if (!m_videoOutputPin)
+		return 0.0;
+	
 	return m_videoOutputPin->ExitLatencyMs();
 }
 
 
 uint64_t CLiveSource::LatencyMeasurementFrameCounter() const
 {
+	if (!m_videoOutputPin)
+		return 0;
+	
 	return m_videoOutputPin->LatencyMeasurementFrameCounter();
 }
 
 
 uint64_t CLiveSource::DroppedFrameCount() const
 {
+	if (!m_videoOutputPin)
+		return 0;
+	
 	return m_videoOutputPin->DroppedFrameCount();
+}
+
+
+uint64_t CLiveSource::DiscontinuityCount() const
+{
+	if (!m_videoOutputPin)
+		return 0;
+	
+	return m_videoOutputPin->DiscontinuityCount();
+}
+
+
+uint64_t CLiveSource::ReAnchorCount() const
+{
+	if (!m_videoOutputPin)
+		return 0;
+	
+	return m_videoOutputPin->ReAnchorCount();
+}
+
+
+double CLiveSource::TimestampDriftMs() const
+{
+	if (!m_videoOutputPin)
+		return 0.0;
+	
+	return m_videoOutputPin->TimestampDriftMs();
 }

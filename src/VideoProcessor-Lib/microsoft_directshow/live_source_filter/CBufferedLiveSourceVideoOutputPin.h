@@ -63,6 +63,11 @@ private:
 	// Event signaled to shutdown worker thread immediately
 	HANDLE m_hShutdownEvent = nullptr;
 
+	// **ADAPTIVE QUEUE MONITORING**: Track queue health over time
+	size_t m_queueHighWaterMark = 0;          // Highest queue depth seen
+	size_t m_queueFullBlockCount = 0;         // How many times we had to block due to full queue
+	size_t m_frameDeliveryCount = 0;          // Total frames delivered successfully
+
 	// Thread function, upon return thread exist.
 	// Return codes > 0 indicate an error occured
 	DWORD ThreadProc();

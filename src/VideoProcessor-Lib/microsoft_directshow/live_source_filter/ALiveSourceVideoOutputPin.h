@@ -113,9 +113,19 @@ public:
 	// Get the amount of dropped frames due to queue actions
 	uint64_t DroppedFrameCount() const { return m_droppedFrameCount; }
 
+	// CLOCK_RATIONAL Diagnostics - track timeline health
+	uint64_t DiscontinuityCount() const { return m_discontinuityCount; }
+	uint64_t ReAnchorCount() const { return m_reAnchorCount; }
+	double TimestampDriftMs() const { return m_timestampDriftMs; }
+
 protected:
 
 	uint64_t m_droppedFrameCount = 0;
+
+	// CLOCK_RATIONAL diagnostic counters
+	uint64_t m_discontinuityCount = 0;  // Tracks frame counter jumps
+	uint64_t m_reAnchorCount = 0;       // Tracks timeline re-anchoring events  
+	double m_timestampDriftMs = 0.0;    // Drift between rational timeline and hardware clock
 
 	// Render function to render a videoFrame onto a IMediaSample.
 	// Will not release the sample or dec videoframe nor do the Deliver()
@@ -125,13 +135,13 @@ protected:
 	// Get the next frame timestamp. If it doesn't know it's invalid. Overridden by implementations
 	virtual REFERENCE_TIME NextFrameTimestamp() const { return REFERENCE_TIME_INVALID; }
 
-	IVideoFrameFormatter* m_videoFrameFormatter;
-	timestamp_t m_frameDuration;
+	IVideoFrameFormatter* m_videoFrameFormatter = nullptr;
+	timestamp_t m_frameDuration = 0;
 	LONGLONG m_fpsNum = 0;  // Rational FPS numerator (e.g., 60000 for 59.94Hz) - atomic writes on x64
 	LONGLONG m_fpsDen = 0;  // Rational FPS denominator (e.g., 1001 for 59.94Hz) - atomic writes on x64
-	ITimingClock* m_timingClock;
-	DirectShowStartStopTimeMethod m_timestamp;
-	AM_MEDIA_TYPE m_mediaType;
+	ITimingClock* m_timingClock = nullptr;
+	DirectShowStartStopTimeMethod m_timestamp = DirectShowStartStopTimeMethod::DS_SSTM_NONE;
+	AM_MEDIA_TYPE m_mediaType = {};
 	bool m_useHDRData = false;
 
 	REFERENCE_TIME m_previousTimeStop = 0;
@@ -139,10 +149,11 @@ protected:
 	uint64_t m_frameCounterOffset = 0;
 	uint64_t m_frameCounter = 0;
 	uint64_t m_previousFrameCounter = 0;
-	bool m_newSegment = false;
+	bool m_newSegment = true;  // Start true so first frame anchors the timeline
 
 	// Hybrid CLOCK_RATIONAL mode state
 	REFERENCE_TIME m_nextRationalTimeStart = 0;
+	LONGLONG m_rationalRemainder = 0;  // Bresenham-style remainder for exact rational timing
 
 	HDRDataSharedPtr m_hdrData = nullptr;
 	bool m_hdrChanged = false;
