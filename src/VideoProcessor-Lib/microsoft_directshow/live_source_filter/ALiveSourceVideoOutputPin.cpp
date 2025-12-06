@@ -532,14 +532,33 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	{
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
 
+		// CLOCK_SMART: Uses next frame's actual timestamp when available (from queue),
+		// otherwise falls back to rational duration calculation with Bresenham remainder tracking.
+		//
+		// This combines the best of both worlds:
+		// - When queue has next frame: uses actual hardware timestamps (most accurate)
+		// - When queue is empty: uses Bresenham-style rational timing (no drift)
+		
 		timeStop = NextFrameTimestamp();
 		if (timeStop == REFERENCE_TIME_INVALID)
 		{
-			// Use rational arithmetic if available for exact frame duration
+			// No next frame available - use rational arithmetic with remainder tracking
 			if (m_fpsNum > 0 && m_fpsDen > 0)
 			{
-				// Calculate exact duration: (10,000,000 * fpsDen) / fpsNum
-				const LONGLONG exactDuration = (10000000LL * m_fpsDen) / m_fpsNum;
+				// Bresenham-style exact duration calculation
+				const LONGLONG numerator = 10000000LL * m_fpsDen;
+				const LONGLONG baseDuration = numerator / m_fpsNum;
+				const LONGLONG remainder = numerator % m_fpsNum;
+				
+				// Calculate exact duration for this frame
+				LONGLONG exactDuration = baseDuration;
+				m_rationalRemainder += remainder;
+				if (m_rationalRemainder >= m_fpsNum)
+				{
+					exactDuration += 1;  // Add one 100ns unit
+					m_rationalRemainder -= m_fpsNum;
+				}
+				
 				timeStop = timeStart + exactDuration;
 			}
 			else
@@ -551,6 +570,9 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		{
 			assert(m_startTimeOffset > 0);
 			timeStop -= m_startTimeOffset;
+			
+			// Reset remainder when we get actual timestamps (re-sync with hardware)
+			m_rationalRemainder = 0;
 		}
 
 		assert(timeStop > timeStart);
