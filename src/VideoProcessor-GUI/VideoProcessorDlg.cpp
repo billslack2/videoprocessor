@@ -133,9 +133,9 @@ static const std::vector<std::pair<LPCTSTR, HdrLuminanceOptions>> HDR_LUMINANCE_
 
 static const std::vector<DirectShowStartStopTimeMethod> RENDERER_DIRECTSHOW_START_STOP_TIME_OPTIONS =
 {
-	// Sorted in preferred order - CLOCK_SMART is the safe default until CLOCK_RATIONAL is proven stable
+	// CLOCK_RATIONAL is the preferred method - smooth drift correction with exact rational timing
+	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART,
-	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL,  // Experimental: smooth drift correction
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK,
 	DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO,
@@ -511,6 +511,41 @@ void CVideoProcessorDlg::OnBnClickedRendererResetAutoCheck()
 
 void CVideoProcessorDlg::OnRendererDirectShowStartStopTimeMethodSelected()
 {
+	// Get selected timing method
+	int index = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
+	if (index >= 0)
+	{
+		DirectShowStartStopTimeMethod method = 
+			(DirectShowStartStopTimeMethod)m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(index);
+		
+		// CLOCK_RATIONAL manages its own timing internally via drift correction
+		// The frame offset control should be disabled to avoid user confusion
+		const bool isRational = (method == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL);
+		
+		if (isRational)
+		{
+			// Make controls read-only - CLOCK_RATIONAL uses adaptive timing
+			m_timingClockFrameOffsetEdit.SetWindowText(_T("(auto)"));
+			m_timingClockFrameOffsetEdit.EnableWindow(FALSE);
+			m_timingClockFrameOffsetAutoCheck.EnableWindow(FALSE);
+		}
+		else
+		{
+			// Restore default offset value if switching away from CLOCK_RATIONAL
+			CString currentText;
+			m_timingClockFrameOffsetEdit.GetWindowText(currentText);
+			if (currentText == _T("(auto)"))
+			{
+				m_timingClockFrameOffsetEdit.SetWindowText(m_defaultFrameOffset);
+			}
+			
+			// For other methods, allow manual control unless Auto is checked
+			const bool autoOffset = m_timingClockFrameOffsetAutoCheck.GetCheck();
+			m_timingClockFrameOffsetEdit.EnableWindow(!autoOffset);
+			m_timingClockFrameOffsetAutoCheck.EnableWindow(TRUE);
+		}
+	}
+	
 	OnBnClickedRendererRestart();
 }
 
@@ -1288,11 +1323,22 @@ void CVideoProcessorDlg::RefreshCaptureDeviceList()
 	// Rebuild combo box with all devices which can capture
 	m_captureDeviceCombo.ResetContent();
 
+	// Build a sorted list of capture devices by name
+	std::vector<ACaptureDeviceComPtr> sortedDevices;
 	for (auto& captureDevice : m_captureDevices)
 	{
-		if (!captureDevice->CanCapture())
-			continue;
+		if (captureDevice->CanCapture())
+			sortedDevices.push_back(captureDevice);
+	}
 
+	// Sort by device name
+	std::sort(sortedDevices.begin(), sortedDevices.end(),
+		[](const ACaptureDeviceComPtr& a, const ACaptureDeviceComPtr& b) {
+			return a->GetName().CompareNoCase(b->GetName()) < 0;
+		});
+
+	for (auto& captureDevice : sortedDevices)
+	{
 		const int index = m_captureDeviceCombo.AddString(captureDevice->GetName());
 		m_captureDeviceCombo.SetItemDataPtr(index, (void*)captureDevice.p);
 
@@ -1467,9 +1513,9 @@ void CVideoProcessorDlg::CaptureGUIClear()
 	m_inputDisplayModeText.SetWindowText(TEXT(""));
 	m_inputEncodingText.SetWindowText(TEXT(""));
 	m_inputBitDepthText.SetWindowText(TEXT(""));
-	m_inputVideoFrameCountText.SetWindowText(TEXT(""));
-	m_inputVideoFrameMissedText.SetWindowText(TEXT(""));
-	m_inputLatencyMsText.SetWindowText(TEXT(""));
+
+	// Other
+	m_captureDeviceOtherList.ResetContent();
 
 	// Captured video group
 	m_videoValidText.SetWindowText(TEXT(""));
@@ -1729,6 +1775,7 @@ void CVideoProcessorDlg::RenderGUIClear()
 
 	// Renderer Queue group
 	m_rendererVideoFrameQueueSizeText.SetWindowText(TEXT(""));
+//	m_rendererVideoFrameQueueSizeStatic.SetWindowText(TEXT(""));
 	m_rendererDroppedFrameCountText.SetWindowText(TEXT(""));
 
 	// Renderer latency (ms) group
@@ -1783,7 +1830,7 @@ HWND CVideoProcessorDlg::GetRenderWindow()
 
 size_t CVideoProcessorDlg::GetRendererVideoFrameQueueSizeMax()
 {
-	// Note that this field is marked as numbers only so guaranteed to convert corrrectly
+	// Note that this field is marked as numbers only so guaranteed to convert corrtectly
 
 	CString text;
 	m_rendererVideoFrameQueueSizeMaxEdit.GetWindowText(text);
@@ -1817,10 +1864,28 @@ void CVideoProcessorDlg::SetFrameOffsetByRefresh(std::vector<int> offsets) {
 
 int CVideoProcessorDlg::GetTimingClockFrameOffsetMs()
 {
-
+	// Check if CLOCK_RATIONAL is selected - it manages timing internally
+	// Use safe access to avoid crashes if combo box isn't fully initialized
+	int index = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
+	if (index >= 0 && index < m_rendererDirectShowStartStopTimeMethodCombo.GetCount())
+	{
+		DirectShowStartStopTimeMethod method = 
+			(DirectShowStartStopTimeMethod)m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(index);
+		if (method == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL)
+		{
+			// CLOCK_RATIONAL doesn't use manual frame offset - return 0
+			return 0;
+		}
+	}
 
 	CString text;
 	m_timingClockFrameOffsetEdit.GetWindowText(text);
+
+	// Check if text is "(auto)" - don't try to parse or overwrite it
+	if (text == _T("(auto)"))
+	{
+		return 0;
+	}
 
 	// ttoi throws non-parsed stuff away so in case there is crap set the output to the
 	// used value, this way the user always knows what's going on.
@@ -2227,6 +2292,7 @@ void CVideoProcessorDlg::DoDataExchange(CDataExchange* pDX)
 // Called when the dialog box is initialized
 BOOL CVideoProcessorDlg::OnInitDialog()
 {
+
 		if (!CDialog::OnInitDialog())
 		return FALSE;
 
@@ -2374,6 +2440,15 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 
 	m_timingClockFrameOffsetAutoCheck.SetCheck(m_frameOffsetAutoStart);
 	OnBnClickedTimingClockFrameOffsetAutoCheck();
+
+	// If CLOCK_RATIONAL is the default timing method, disable frame offset controls
+	// CLOCK_RATIONAL manages timing internally via drift correction
+	if (m_defaultDSSSTimeMethod == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL)
+	{
+		m_timingClockFrameOffsetEdit.SetWindowText(_T("(auto)"));
+		m_timingClockFrameOffsetEdit.EnableWindow(FALSE);
+		m_timingClockFrameOffsetAutoCheck.EnableWindow(FALSE);
+	}
 
 	// Create stats overlay window (initially hidden)
 	if (!m_statsOverlay.Create(this))
@@ -2634,6 +2709,16 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					startStopMethod = ToString(method);
 				}
 				
+				// Get video conversion setting
+				int vcIndex = m_rendererVideoConversionCombo.GetCurSel();
+				CString videoConversion = _T("");
+				if (vcIndex >= 0)
+				{
+					VideoConversionOverride vcOverride = 
+						(VideoConversionOverride)m_rendererVideoConversionCombo.GetItemData(vcIndex);
+					videoConversion = ToString(vcOverride);
+				}
+				
 				// Check if queue is near full (>75% capacity)
 				size_t queueSize = m_videoRenderer->GetFrameQueueSize();
 				size_t queueMax = GetRendererVideoFrameQueueSizeMax();
@@ -2655,7 +2740,15 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					m_videoRenderer->DiscontinuityCount(),
 					m_videoRenderer->ReAnchorCount(),
 					isQueueNearFull,
-					m_videoRenderer->TimestampDriftMs());
+					m_videoRenderer->TimestampDriftMs(),
+					// Video state parameters
+					m_captureDeviceVideoState ? m_captureDeviceVideoState->displayMode->RefreshRateHz() : 0.0,
+					m_captureDeviceVideoState ? m_captureDeviceVideoState->displayMode->FrameWidth() : 0,
+					m_captureDeviceVideoState ? m_captureDeviceVideoState->displayMode->FrameHeight() : 0,
+					m_captureDeviceVideoState ? ToString(m_captureDeviceVideoState->eotf) : _T(""),
+					m_captureDeviceVideoState ? ToString(m_captureDeviceVideoState->colorspace) : _T(""),
+					m_captureDeviceVideoState ? ToString(m_captureDeviceVideoState->videoFrameEncoding) : _T(""),
+					videoConversion);
 			}
 			catch (std::runtime_error& e)
 			{
@@ -2729,50 +2822,41 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		}
 
 		// Auto update the clock frame offset to get just over zero
-		// only do this if the queue is ok as it will have a major impact on the offset(or unmanaged)
+		// only do this if the queue is ok as it will have a major impact on the offset
+		// SKIP auto-tuning for CLOCK_RATIONAL - it manages timing internally
 		const bool timingClockFrameOffsetAuto = m_timingClockFrameOffsetAutoCheck.GetCheck();
 		if (queueOk && timingClockFrameOffsetAuto)
 		{
-
-
-			int newOffset = GetTimingClockFrameOffsetMs();
-			if (m_captureDeviceVideoState->displayMode->RefreshRateHz() <= 30) {
-				newOffset = 90;
-			}
-			else {
-				newOffset = 45;
-			}
-
-			if (newOffset != GetTimingClockFrameOffsetMs()) {
-				SetTimingClockFrameOffsetMs(newOffset);
-				UpdateTimingClockFrameOffset();
-			}
-
-			/*	const double videoFrameLead = -(m_videoRenderer->ExitLatencyMs());
-				const double frameDurationMs = 1000.0 / m_captureDeviceVideoState->displayMode->RefreshRateHz();
-
-				const bool needsAdjusting =
-					videoFrameLead < 0 ||
-					videoFrameLead >(frameDurationMs * 2);
-
-				if (needsAdjusting)
+			// Check if CLOCK_RATIONAL is selected - skip auto-tuning if so
+			int index = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
+			if (index >= 0)
+			{
+				DirectShowStartStopTimeMethod method = 
+					(DirectShowStartStopTimeMethod)m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(index);
+				
+				// CLOCK_RATIONAL manages timing internally - don't auto-tune
+				if (method != DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL)
 				{
-					DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Adjusting clock frame offset + reset")));
+					int newOffset = GetTimingClockFrameOffsetMs();
+					if (m_captureDeviceVideoState->displayMode->RefreshRateHz() <= 30) {
+						newOffset = 90;
+					}
+					else {
+						newOffset = 45;
+					}
 
-					const int delta = (int)round(-videoFrameLead);
-					const int newOffset = GetTimingClockFrameOffsetMs() + delta;
-
-					SetTimingClockFrameOffsetMs(newOffset);
-					UpdateTimingClockFrameOffset();
+					if (newOffset != GetTimingClockFrameOffsetMs()) {
+						SetTimingClockFrameOffsetMs(newOffset);
+						UpdateTimingClockFrameOffset();
+					}
 				}
-			*/
+			}
 		}
 	}
 
 	
 	++m_timerSeconds;
 }
-
 
 HCURSOR CVideoProcessorDlg::OnQueryDragIcon()
 {

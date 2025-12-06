@@ -31,7 +31,14 @@ StatsOverlayWindow::StatsOverlayWindow() :
     m_discontinuityCount(0),
     m_reAnchorCount(0),
     m_isQueueNearFull(false),
-    m_timestampDriftMs(0.0)
+    m_timestampDriftMs(0.0),
+    m_refreshRateHz(0.0),
+    m_frameWidth(0),
+    m_frameHeight(0),
+    m_eotf(_T("")),
+    m_colorSpace(_T("")),
+    m_pixelFormat(_T("")),
+    m_videoConversion(_T(""))
 {
 }
 
@@ -50,7 +57,7 @@ BOOL StatsOverlayWindow::Create(CWnd* pParentWnd)
         (HBRUSH)GetStockObject(NULL_BRUSH),  // Transparent background
         NULL);
 
-    // Create window: 350px wide, 400px tall (taller for diagnostic stats)
+    // Create window: 380px wide, 520px tall (taller to accommodate new stats)
     // WS_EX_LAYERED allows transparency
     // WS_EX_TOPMOST keeps it on top of everything
     // WS_EX_TRANSPARENT allows clicks to pass through to video player
@@ -60,7 +67,7 @@ BOOL StatsOverlayWindow::Create(CWnd* pParentWnd)
         className,
         _T("Stats Overlay"),
         WS_POPUP,
-        0, 0, 350, 400,  // Taller to accommodate diagnostic stats
+        0, 0, 380, 520,  // Wider and taller to accommodate new stats
         pParentWnd->GetSafeHwnd(),
         NULL);
 
@@ -105,11 +112,14 @@ void StatsOverlayWindow::Toggle()
         int monitorWidth = mi.rcMonitor.right - mi.rcMonitor.left;
         int monitorHeight = mi.rcMonitor.bottom - mi.rcMonitor.top;
 
-        // Position: 100px from right edge, 300px from bottom
-        int windowWidth = 350;
-        int windowHeight = 400;  // Match new height
+        int windowWidth = 380;
+        int windowHeight = 520;
         int x = mi.rcMonitor.left + (monitorWidth - windowWidth - 100);  // 100px from right edge
-        int y = mi.rcMonitor.top + (monitorHeight - windowHeight - 300);  // 300px from bottom
+        
+        // Fixed 300px offset from bottom to ensure overlay is never cut off by CIH black bars
+        int bottomOffset = 300;
+        
+        int y = mi.rcMonitor.top + (monitorHeight - windowHeight - bottomOffset);
 
         SetWindowPos(&wndTopMost, x, y, windowWidth, windowHeight, SWP_NOACTIVATE);
 
@@ -138,7 +148,14 @@ void StatsOverlayWindow::UpdateStats(
     uint64_t discontinuityCount,
     uint64_t reAnchorCount,
     bool isQueueNearFull,
-    double timestampDriftMs)
+    double timestampDriftMs,
+    double refreshRateHz,
+    int frameWidth,
+    int frameHeight,
+    const CString& eotf,
+    const CString& colorSpace,
+    const CString& pixelFormat,
+    const CString& videoConversion)
 {
     m_queueSize = queueSize;
     m_queueMax = queueMax;
@@ -156,6 +173,13 @@ void StatsOverlayWindow::UpdateStats(
     m_reAnchorCount = reAnchorCount;
     m_isQueueNearFull = isQueueNearFull;
     m_timestampDriftMs = timestampDriftMs;
+    m_refreshRateHz = refreshRateHz;
+    m_frameWidth = frameWidth;
+    m_frameHeight = frameHeight;
+    m_eotf = eotf;
+    m_colorSpace = colorSpace;
+    m_pixelFormat = pixelFormat;
+    m_videoConversion = videoConversion;
 
     // Redraw if visible
     if (m_isVisible && m_hWnd)
@@ -188,34 +212,110 @@ void StatsOverlayWindow::OnPaint()
     // Build queue status indicator  
     CString queueStatus = m_isQueueNearFull ? _T(" [FULL]") : _T("");
 
+    // Build resolution string
+    CString resolutionStr;
+    if (m_frameWidth > 0 && m_frameHeight > 0)
+        resolutionStr.Format(_T("%dx%d"), m_frameWidth, m_frameHeight);
+    else
+        resolutionStr = _T("Unknown");
+
+    // Build refresh rate string
+    CString refreshStr;
+    if (m_refreshRateHz > 0)
+        refreshStr.Format(_T("%.3f Hz"), m_refreshRateHz);
+    else
+        refreshStr = _T("Unknown");
+
+    // Determine timing correction mode from startStopMethod
+    // Clock-Rational and Clock-Smart have jitter correction; others are "OFF"
+    bool isRational = (m_startStopMethod.Find(_T("Rational")) >= 0);
+    bool isSmart = (m_startStopMethod.Find(_T("Smart")) >= 0);
+    bool hasDriftCorrection = isRational || isSmart;
+
+    // Build offset string - show "auto" for CLOCK_RATIONAL since it manages timing internally
+    CString offsetStr;
+    if (isRational)
+        offsetStr = _T("auto");
+    else
+        offsetStr.Format(_T("%d ms"), m_frameOffsetMs);
+
+    // Build the base stats - Video Info section
     stats.Format(
-        _T("Clock: %s\n")
-        _T("Method: %s\n")
+        _T("--- Video Info ---\n")
+        _T("Resolution: %s\n")
+        _T("Refresh:    %s\n")
+        _T("EOTF:       %s\n")
+        _T("ColorSpace: %s\n")
+        _T("PixelFmt:   %s\n"),
+        resolutionStr,
+        refreshStr,
+        m_eotf.IsEmpty() ? _T("Unknown") : m_eotf,
+        m_colorSpace.IsEmpty() ? _T("Unknown") : m_colorSpace,
+        m_pixelFormat.IsEmpty() ? _T("Unknown") : m_pixelFormat);
+
+    // Add conversion line if active
+    if (!m_videoConversion.IsEmpty() && m_videoConversion != _T("No override"))
+    {
+        CString convLine;
+        convLine.Format(_T("Convert:    %s\n"), m_videoConversion);
+        stats += convLine;
+    }
+
+    // Add Timing section
+    CString timingStats;
+    timingStats.Format(
+        _T("\n")
+        _T("--- Timing ---\n")
+        _T("Clock:    %s\n")
+        _T("Method:   %s\n")
+        _T("Offset:   %s\n"),
+        m_clockDescription.IsEmpty() ? _T("Unknown") : m_clockDescription,
+        m_startStopMethod.IsEmpty() ? _T("Unknown") : m_startStopMethod,
+        offsetStr);
+    stats += timingStats;
+
+    // Add drift line if using drift correction timing methods
+    if (hasDriftCorrection)
+    {
+        CString driftLine;
+        driftLine.Format(_T("Drift:    %+.2f ms\n"), m_timestampDriftMs);
+        stats += driftLine;
+    }
+
+    // Add Pipeline section
+    CString pipelineStats;
+    pipelineStats.Format(
+        _T("\n")
+        _T("--- Pipeline ---\n")
         _T("V Frames: %I64u\n")
         _T("Queue:    %zu / %zu%s\n")
         _T("HW Lat:   %.1f ms\n")
         _T("VP Lat:   %.1f ms\n")
         _T("DS Lat:   %.1f ms\n")
         _T("Cap Drop: %I64u\n")
-        _T("Que Drop: %I64u\n")
-        _T("Offset:   %d ms\n")
-        _T("--- CLOCK_RATIONAL Diagnostics ---\n")
-        _T("Discontin: %I64u\n")
-        _T("Re-Anchor: %I64u\n")
-        _T("Drift:     %.2f ms\n"),
-        m_clockDescription.IsEmpty() ? _T("Unknown") : m_clockDescription,
-        m_startStopMethod.IsEmpty() ? _T("Unknown") : m_startStopMethod,
+        _T("Que Drop: %I64u\n"),
         m_vFramesCaptured,
         m_queueSize, m_queueMax, queueStatus,
         m_hardwareLatencyMs,
         m_entryLatencyMs,
         m_exitLatencyMs,
         m_captureDrops,
-        m_queueDrops,
-        m_frameOffsetMs,
-        m_discontinuityCount,
-        m_reAnchorCount,
-        m_timestampDriftMs);
+        m_queueDrops);
+    stats += pipelineStats;
+
+    // Add jitter correction details section only if CLOCK_RATIONAL or CLOCK_SMART is active
+    if (hasDriftCorrection)
+    {
+        CString jitterStats;
+        jitterStats.Format(
+            _T("\n")
+            _T("--- Drift Correction ---\n")
+            _T("Discontin: %I64u\n")
+            _T("Re-Anchor: %I64u\n"),
+            m_discontinuityCount,
+            m_reAnchorCount);
+        stats += jitterStats;
+    }
 
     // Draw text with some padding
     CRect textRect = rect;

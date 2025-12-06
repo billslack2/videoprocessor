@@ -8,7 +8,12 @@
 
 #include <pch.h>
 
+#include <resource.h>  // For ID_COMMAND_* defines
+
 #include "FullscreenVideoWindow.h"
+
+// Timer ID for delayed focus
+#define TIMER_ID_FOCUS 100
 
 
 FullscreenVideoWindow::FullscreenVideoWindow()
@@ -20,6 +25,7 @@ FullscreenVideoWindow::~FullscreenVideoWindow()
 {
     if (m_hwnd)
     {
+        ::KillTimer(m_hwnd, TIMER_ID_FOCUS);
         ::DestroyWindow(m_hwnd);
         ::UnregisterClassW(FULLSCREEN_WINDOW_CLASS_NAME, GetModuleHandle(nullptr));
     }
@@ -95,6 +101,17 @@ void FullscreenVideoWindow::CreateWindowedFullscreen(HMONITOR hmon, HWND parentW
 
     if (!m_hwnd)
         throw std::runtime_error("Failed to create window");
+
+    // Store parent for keyboard message forwarding
+    m_parentWindow = parentWindow;
+
+    // Show window
+    ::ShowWindow(m_hwnd, SW_SHOW);
+    ::UpdateWindow(m_hwnd);
+    
+    // Set a timer to force focus after 3 seconds (3000ms)
+    // This gives the renderer time to fully initialize
+    ::SetTimer(m_hwnd, TIMER_ID_FOCUS, 3000, nullptr);
 }
 
 
@@ -142,6 +159,17 @@ void FullscreenVideoWindow::Create(HMONITOR hmon, HWND parentWindow)
     
     if(!m_hwnd)
         throw std::runtime_error("Failed to create window");
+
+    // Store parent for keyboard message forwarding
+    m_parentWindow = parentWindow;
+
+    // Show window
+    ::ShowWindow(m_hwnd, SW_SHOW);
+    ::UpdateWindow(m_hwnd);
+    
+    // Set a timer to force focus after 3 seconds (3000ms)
+    // This gives the renderer time to fully initialize
+    ::SetTimer(m_hwnd, TIMER_ID_FOCUS, 3000, nullptr);
 }
 
 
@@ -149,10 +177,78 @@ LRESULT __forceinline FullscreenVideoWindow::HandleMessage(UINT uMsg, WPARAM wPa
 {
     switch (uMsg)
     {
+    case WM_TIMER:
+        if (wParam == TIMER_ID_FOCUS)
+        {
+            // Kill the timer - we only need this once
+            ::KillTimer(m_hwnd, TIMER_ID_FOCUS);
+            
+            // Force this window to the foreground and give it focus
+            // Use AllowSetForegroundWindow trick to ensure it works
+            ::AllowSetForegroundWindow(ASFW_ANY);
+            ::SetForegroundWindow(m_hwnd);
+            ::SetFocus(m_hwnd);
+            ::SetActiveWindow(m_hwnd);
+            
+            return 0;
+        }
+        break;
+
+    case WM_LBUTTONDOWN:
+    case WM_RBUTTONDOWN:
+        // Clicking on the window should give it focus
+        ::SetForegroundWindow(m_hwnd);
+        ::SetFocus(m_hwnd);
+        break;
+
+    case WM_KEYDOWN:
+        // Handle accelerator keys directly by posting WM_COMMAND to parent
+        if (m_parentWindow)
+        {
+            bool ctrlDown = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+            
+            // Ctrl+I = Stats Overlay toggle
+            if (ctrlDown && wParam == 'I')
+            {
+                ::PostMessage(m_parentWindow, WM_COMMAND, MAKEWPARAM(ID_COMMAND_STATS_OVERLAY, 0), 0);
+                return 0;
+            }
+            // Ctrl+F = Fullscreen toggle
+            if (ctrlDown && wParam == 'F')
+            {
+                ::PostMessage(m_parentWindow, WM_COMMAND, MAKEWPARAM(ID_COMMAND_FULLSCREEN_TOGGLE, 0), 0);
+                return 0;
+            }
+            // Escape = Exit fullscreen
+            if (wParam == VK_ESCAPE)
+            {
+                ::PostMessage(m_parentWindow, WM_COMMAND, MAKEWPARAM(ID_COMMAND_FULLSCREEN_EXIT, 0), 0);
+                return 0;
+            }
+            // Ctrl+R = Renderer reset
+            if (ctrlDown && wParam == 'R')
+            {
+                ::PostMessage(m_parentWindow, WM_COMMAND, MAKEWPARAM(ID_COMMAND_RENDERER_RESET, 0), 0);
+                return 0;
+            }
+            // Ctrl+P = PQ set
+            if (ctrlDown && wParam == 'P')
+            {
+                ::PostMessage(m_parentWindow, WM_COMMAND, MAKEWPARAM(ID_COMMAND_PQ_SET, 0), 0);
+                return 0;
+            }
+            // Ctrl+A = Auto set
+            if (ctrlDown && wParam == 'A')
+            {
+                ::PostMessage(m_parentWindow, WM_COMMAND, MAKEWPARAM(ID_COMMAND_AUTO_SET, 0), 0);
+                return 0;
+            }
+        }
+        break;
 
     case WM_DESTROY:
+        ::KillTimer(m_hwnd, TIMER_ID_FOCUS);
         return 0;  // no PostQuitMessage, not it's own thread
-
     }
 
     return DefWindowProc(m_hwnd, uMsg, wParam, lParam);

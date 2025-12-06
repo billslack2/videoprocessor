@@ -12,7 +12,7 @@
 
 /**
  * Transparent overlay window that displays rendering statistics
- * Toggleable via Ctrl+I keyboard shortcut
+ * Toggleable via Ctrl+I keyboard shortcut (global hotkey works even when window loses focus)
  * Positioned in right center of screen (100px from right edge)
  */
 class StatsOverlayWindow : public CWnd
@@ -45,7 +45,14 @@ public:
         uint64_t discontinuityCount,
         uint64_t reAnchorCount,
         bool isQueueNearFull,
-        double timestampDriftMs);
+        double timestampDriftMs,
+        double refreshRateHz,
+        int frameWidth,
+        int frameHeight,
+        const CString& eotf,
+        const CString& colorSpace,
+        const CString& pixelFormat,
+        const CString& videoConversion);
 
 protected:
     DECLARE_MESSAGE_MAP()
@@ -78,4 +85,19 @@ private:
     uint64_t m_reAnchorCount;
     bool m_isQueueNearFull;
     double m_timestampDriftMs;
+
+    // Video state statistics
+    double m_refreshRateHz;
+    int m_frameWidth;
+    int m_frameHeight;
+    CString m_eotf;
+    CString m_colorSpace;
+    CString m_pixelFormat;
+    CString m_videoConversion;
+
+    // Update overlay position (with black bar detection in fullscreen mode)
+    void UpdateOverlayPosition();
+
+    // Check if parent window is in fullscreen mode
+    bool IsFullscreen(const MONITORINFO& mi);
 };

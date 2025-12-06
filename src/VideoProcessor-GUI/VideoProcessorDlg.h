@@ -38,6 +38,9 @@
 #define WM_MESSAGE_RENDERER_STATE_CHANGE                (WM_APP + 8)
 #define WM_MESSAGE_RENDERER_DETAIL_STRING               (WM_APP + 9)
 
+// Global hotkey IDs
+#define HOTKEY_ID_STATS_OVERLAY 1
+
 
 enum class HdrColorspaceOptions
 {
@@ -137,6 +140,9 @@ public:
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
 	afx_msg void OnCommandToggleStatsOverlay();
+	
+	// Global hotkey handler
+	afx_msg void OnHotKey(UINT nHotKeyId, UINT nKey1, UINT nKey2);
 
 	// ICaptureDeviceDiscovererCallback
 	void OnCaptureDeviceFound(ACaptureDeviceComPtr& captureDevice) override;
