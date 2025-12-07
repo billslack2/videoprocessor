@@ -51,6 +51,7 @@ public:
 	void Stop() override;
 	void Reset() override;
 	void OnSize() override;
+	void OnPaint() override { /* No-op for DirectShow - renderer handles its own painting */ }
 	void SetFrameQueueMaxSize(size_t) override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
@@ -63,6 +64,12 @@ public:
 	uint64_t DiscontinuityCount() const override;
 	uint64_t ReAnchorCount() const override;
 	double TimestampDriftMs() const override;
+
+	// CLOCK_PLL Diagnostics
+	double EstimatedFrameRateHz() const override;
+	double EstimatedPeriodDriftPpm() const override;
+	double PhaseErrorMs() const override;
+	double AverageFrameRateHz() const;
 
 protected:
 

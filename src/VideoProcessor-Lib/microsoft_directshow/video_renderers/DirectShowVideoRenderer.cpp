@@ -346,6 +346,42 @@ double DirectShowVideoRenderer::TimestampDriftMs() const
 }
 
 
+double DirectShowVideoRenderer::EstimatedFrameRateHz() const
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		return 0.0;
+
+	return m_liveSource->EstimatedFrameRateHz();
+}
+
+
+double DirectShowVideoRenderer::EstimatedPeriodDriftPpm() const
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		return 0.0;
+
+	return m_liveSource->EstimatedPeriodDriftPpm();
+}
+
+
+double DirectShowVideoRenderer::PhaseErrorMs() const
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		return 0.0;
+
+	return m_liveSource->PhaseErrorMs();
+}
+
+
+double DirectShowVideoRenderer::AverageFrameRateHz() const
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		return 0.0;
+
+	return m_liveSource->AverageFrameRateHz();
+}
+
+
 void DirectShowVideoRenderer::OnGraphEvent(long evCode, LONG_PTR param1, LONG_PTR param2)
 {
 	// ! Do not tear down graph here

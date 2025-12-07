@@ -38,7 +38,11 @@ StatsOverlayWindow::StatsOverlayWindow() :
     m_eotf(_T("")),
     m_colorSpace(_T("")),
     m_pixelFormat(_T("")),
-    m_videoConversion(_T(""))
+    m_videoConversion(_T("")),
+    m_estimatedFrameRateHz(0.0),
+    m_averageFrameRateHz(0.0),
+    m_periodDriftPpm(0.0),
+    m_phaseErrorMs(0.0)
 {
 }
 
@@ -57,7 +61,7 @@ BOOL StatsOverlayWindow::Create(CWnd* pParentWnd)
         (HBRUSH)GetStockObject(NULL_BRUSH),  // Transparent background
         NULL);
 
-    // Create window: 380px wide, 520px tall (taller to accommodate new stats)
+    // Create window: 380px wide, 620px tall (taller to accommodate all stats)
     // WS_EX_LAYERED allows transparency
     // WS_EX_TOPMOST keeps it on top of everything
     // WS_EX_TRANSPARENT allows clicks to pass through to video player
@@ -67,7 +71,7 @@ BOOL StatsOverlayWindow::Create(CWnd* pParentWnd)
         className,
         _T("Stats Overlay"),
         WS_POPUP,
-        0, 0, 380, 520,  // Wider and taller to accommodate new stats
+        0, 0, 380, 620,  // Taller to accommodate all stats
         pParentWnd->GetSafeHwnd(),
         NULL);
 
@@ -113,13 +117,56 @@ void StatsOverlayWindow::Toggle()
         int monitorHeight = mi.rcMonitor.bottom - mi.rcMonitor.top;
 
         int windowWidth = 380;
-        int windowHeight = 520;
+        
+        // Create a temporary DC to measure actual text dimensions
+        CPaintDC dcTemp(this);
+        CFont* pOldFont = dcTemp.SelectObject(&m_font);
+        TEXTMETRIC tm;
+        dcTemp.GetTextMetrics(&tm);
+        int lineHeight = tm.tmHeight + tm.tmExternalLeading;
+        dcTemp.SelectObject(pOldFont);
+        
+        // Calculate actual number of lines in the stats text
+        // Build the same stats text to count lines
+        CRect testRect(0, 0, windowWidth - 20, 10000);  // Wide rect for testing
+        
+        // Count lines in each section
+        int totalLines = 0;
+        
+        // Video Info section header + 5-6 lines (resolution, refresh, eotf, colorspace, pixelfmt, optional convert)
+        totalLines += 1 + 6;
+        
+        // Timing section: blank + header + clock + method + offset + drift/pll (up to 6 lines)
+        totalLines += 1 + 5;
+        
+        // Pipeline section: blank + header + 8 lines (v frames, queue, hw lat, vp lat, ds lat, cap drop, que drop)
+        totalLines += 1 + 8;
+        
+        // Drift Correction OR PLL Diagnostics: blank + header + 2-3 lines
+        totalLines += 1 + 3;
+        
+        // Add extra margin for padding and safety
+        int padding = 20;
+        int calculatedHeight = (totalLines * lineHeight) + padding;
+        
+        // Clamp to reasonable bounds
+        int minHeight = 300;
+        int maxHeight = (monitorHeight * 85) / 100;  // 85% of screen
+        
+        int windowHeight = calculatedHeight;
+        if (windowHeight < minHeight) windowHeight = minHeight;
+        if (windowHeight > maxHeight) windowHeight = maxHeight;
+        
         int x = mi.rcMonitor.left + (monitorWidth - windowWidth - 100);  // 100px from right edge
         
         // Fixed 300px offset from bottom to ensure overlay is never cut off by CIH black bars
         int bottomOffset = 300;
         
         int y = mi.rcMonitor.top + (monitorHeight - windowHeight - bottomOffset);
+        
+        // Clamp Y to ensure window doesn't go off-screen
+        if (y < mi.rcMonitor.top)
+            y = mi.rcMonitor.top + 10;
 
         SetWindowPos(&wndTopMost, x, y, windowWidth, windowHeight, SWP_NOACTIVATE);
 
@@ -155,7 +202,11 @@ void StatsOverlayWindow::UpdateStats(
     const CString& eotf,
     const CString& colorSpace,
     const CString& pixelFormat,
-    const CString& videoConversion)
+    const CString& videoConversion,
+    double estimatedFrameRateHz,
+    double averageFrameRateHz,
+    double periodDriftPpm,
+    double phaseErrorMs)
 {
     m_queueSize = queueSize;
     m_queueMax = queueMax;
@@ -180,6 +231,10 @@ void StatsOverlayWindow::UpdateStats(
     m_colorSpace = colorSpace;
     m_pixelFormat = pixelFormat;
     m_videoConversion = videoConversion;
+    m_estimatedFrameRateHz = estimatedFrameRateHz;
+    m_averageFrameRateHz = averageFrameRateHz;
+    m_periodDriftPpm = periodDriftPpm;
+    m_phaseErrorMs = phaseErrorMs;
 
     // Redraw if visible
     if (m_isVisible && m_hWnd)
@@ -210,7 +265,7 @@ void StatsOverlayWindow::OnPaint()
     CString stats;
     
     // Build queue status indicator  
-    CString queueStatus = m_isQueueNearFull ? _T(" [FULL]") : _T("");
+    CString queueStatus = m_isQueueNearFull ? _T(" [FULL]") : _T("");;
 
     // Build resolution string
     CString resolutionStr;
@@ -230,6 +285,7 @@ void StatsOverlayWindow::OnPaint()
     // Clock-Rational and Clock-Smart have jitter correction; others are "OFF"
     bool isRational = (m_startStopMethod.Find(_T("Rational")) >= 0);
     bool isSmart = (m_startStopMethod.Find(_T("Smart")) >= 0);
+    bool isPLL = (m_startStopMethod.Find(_T("PLL")) >= 0);
     bool hasDriftCorrection = isRational || isSmart;
 
     // Build offset string - show "auto" for CLOCK_RATIONAL since it manages timing internally
@@ -280,6 +336,30 @@ void StatsOverlayWindow::OnPaint()
         CString driftLine;
         driftLine.Format(_T("Drift:    %+.2f ms\n"), m_timestampDriftMs);
         stats += driftLine;
+    }
+
+    // Add PLL diagnostics section if CLOCK_PLL is active
+    if (isPLL)
+    {
+        CString pllStats;
+        
+        // Show "Calculating..." if average rate is still warming up (-1.0 or 0.0 means not ready yet)
+        CString avgRateStr;
+        if (m_averageFrameRateHz > 0.0)
+            avgRateStr.Format(_T("%.4f Hz"), m_averageFrameRateHz);
+        else
+            avgRateStr = _T("Calculating...");
+        
+        pllStats.Format(
+            _T("Inst Rate: %.4f Hz\n")
+            _T("Avg Rate:  %s\n")
+            _T("Drift:    %+.1f ppm\n")
+            _T("Phase:    %+.2f ms\n"),
+            m_estimatedFrameRateHz,
+            avgRateStr,
+            m_periodDriftPpm,
+            m_phaseErrorMs);
+        stats += pllStats;
     }
 
     // Add Pipeline section

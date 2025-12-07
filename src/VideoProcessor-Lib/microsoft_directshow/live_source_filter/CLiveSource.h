@@ -102,6 +102,12 @@ public:
 	uint64_t ReAnchorCount() const;
 	double TimestampDriftMs() const;
 
+	// CLOCK_PLL Diagnostics
+	double EstimatedFrameRateHz() const;
+	double EstimatedPeriodDriftPpm() const;
+	double PhaseErrorMs() const;
+	double AverageFrameRateHz() const;
+
 private:
 	ALiveSourceVideoOutputPin* m_videoOutputPin = nullptr;
 

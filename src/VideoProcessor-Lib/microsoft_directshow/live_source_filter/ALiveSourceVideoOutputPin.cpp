@@ -52,6 +52,33 @@ void ALiveSourceVideoOutputPin::Initialize(
 	m_timingClock = timingClock;
 	m_timestamp = timestamp;
 	m_mediaType = mediaType;
+
+	// Initialize hardware timer frequency for CLOCK_PLL mode
+	// QueryPerformanceFrequency returns ticks per second
+	LARGE_INTEGER freq;
+	if (QueryPerformanceFrequency(&freq))
+	{
+		m_pllClock.hwTimerFrequency = freq.QuadPart;
+		DbgLog((LOG_TRACE, 1, TEXT("ALiveSourceVideoOutputPin::Initialize(): Hardware timer frequency = %I64d Hz"),
+			m_pllClock.hwTimerFrequency));
+	}
+	else
+	{
+		m_pllClock.hwTimerFrequency = 0;
+		DbgLog((LOG_ERROR, 1, TEXT("ALiveSourceVideoOutputPin::Initialize(): QueryPerformanceFrequency failed!")));
+	}
+
+	// Compute nominal frame period in 100ns units for CLOCK_PLL
+	if (fpsNum > 0 && fpsDen > 0)
+	{
+		m_pllClock.nominalPeriod100ns = (10000000LL * fpsDen) / fpsNum;
+		DbgLog((LOG_TRACE, 1, TEXT("ALiveSourceVideoOutputPin::Initialize(): Nominal period = %I64d (100ns units) for %I64d/%I64d fps"),
+			m_pllClock.nominalPeriod100ns, fpsNum, fpsDen));
+	}
+	else
+	{
+		m_pllClock.nominalPeriod100ns = frameDuration;
+	}
 }
 
 
@@ -345,11 +372,31 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_nextRationalTimeStart = 0;
 	m_rationalRemainder = 0;  // Reset remainder accumulator
 
+	// Reset CLOCK_PLL state
+	m_pllClock.initialized = false;
+	m_pllClock.estimatedPeriodDouble = static_cast<double>(m_pllClock.nominalPeriod100ns);
+	m_pllClock.estimatedPeriod100ns = m_pllClock.nominalPeriod100ns;
+	m_pllClock.baseTimestamp = 0;
+	m_pllClock.baseFrameIndex = 0;
+	m_pllClock.lastHwTimerValue = 0;
+	m_pllClock.lastFrameIndex = 0;
+	m_pllClock.phaseErrorAccum = 0.0;
+	m_pllClock.lastGeneratedTimestamp = 0;
+	m_pllClock.lastFrameTimestamp = 0;
+	m_pllClock.measurementBaseTimestamp = 0;
+	m_pllClock.measurementBaseFrameIndex = 0;
+	m_pllClock.measurementFrameCount = 0;
+
 	// CRITICAL: Reset latency measurement to prevent stale values from affecting auto-tuning
 	// After a reset (e.g., refresh rate change), the first few frames may have abnormal latency
 	// Reset to 0 so auto-tuning doesn't react to stale measurements
 	m_exitLatencyMs = 0.0;
 	m_latencyMeasurementFrameCounter = 0;  // Mark measurement as stale
+
+	// Reset average frame rate tracking - will restart after warm-up period
+	m_avgRateStartTime = 0;
+	m_avgRateLastTime = 0;
+	m_avgRateFrameCount = 0;
 
 	// NOTE: We intentionally do NOT reset m_discontinuityCount and m_reAnchorCount here
 	// These are cumulative diagnostic counters that should persist across resets
@@ -414,6 +461,40 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 	++m_frameCounter;
 
+	// Average frame rate tracking - uses FRAME timestamps for accuracy
+	// This measures the TRUE capture rate, not affected by GUI thread timing
+	const uint64_t AVG_RATE_START_FRAME = 300;
+	const timingclocktime_t frameTimestamp = videoFrame.GetTimingTimestamp();
+	
+	if (m_frameCounter == AVG_RATE_START_FRAME)
+	{
+		// Start measurement at frame 300
+		m_avgRateStartTime = frameTimestamp;
+		m_avgRateLastTime = frameTimestamp;
+		m_avgRateFrameCount = 0;  // Will be incremented below
+		
+		DbgLog((LOG_TRACE, 1, TEXT("::RenderVideoFrameIntoSample(#%I64u): Starting average frame rate measurement at frame_ts=%I64d"),
+			videoFrame.GetCounter(), frameTimestamp));
+	}
+	else if (m_frameCounter > AVG_RATE_START_FRAME)
+	{
+		// Update last frame timestamp and increment count
+		m_avgRateLastTime = frameTimestamp;
+		++m_avgRateFrameCount;
+		
+		// Periodically log for debugging
+		if (m_frameCounter % 300 == 0)
+		{
+			const timingclocktime_t elapsedTicks = m_avgRateLastTime - m_avgRateStartTime;
+			const double elapsedSeconds = static_cast<double>(elapsedTicks) / 1000000.0;  // DeckLink is microseconds
+			const double avgRate = (elapsedSeconds > 0) ? 
+				static_cast<double>(m_avgRateFrameCount) / elapsedSeconds : 0.0;
+			
+			DbgLog((LOG_TRACE, 1, TEXT("::RenderVideoFrameIntoSample(#%I64u): Avg Rate Debug - frames=%I64u, elapsed_ticks=%I64d, elapsed_sec=%.6f, avg_rate=%.6f Hz"),
+				videoFrame.GetCounter(), m_avgRateFrameCount, elapsedTicks, elapsedSeconds, avgRate));
+		}
+	}
+
 	HRESULT hr;
 
 	//
@@ -467,7 +548,8 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_PLL:
 
 		// Get frame timestamp as reference time using integer arithmetic
 		{
@@ -492,32 +574,6 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		timeStart -= m_startTimeOffset;
 		break;
 
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
-
-		// **CRITICAL: For CLOCK_RATIONAL, capture RAW hardware timestamp BEFORE any offset correction**
-		// This ensures the rational timeline anchor is completely independent of frame offset
-		{
-			const timingclocktime_t frameTicks = videoFrame.GetTimingTimestamp();
-			const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
-			
-			// This is the RAW hardware timestamp - no offset applied yet
-			timeStartRaw = (REFERENCE_TIME)((frameTicks * 10000000LL) / ticksPerSecond);
-		}
-
-		// On first frame, capture BOTH the raw anchor point AND the normalization offset
-		if (m_startTimeOffset == 0)
-		{
-			m_startTimeOffset = timeStartRaw;  // Store for normalization
-
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL - captured raw anchor %I64d"),
-				videoFrame.GetCounter(), m_startTimeOffset));
-		}
-
-		// Now normalize to start near zero (this is ONLY for DirectShow compatibility)
-		// The rational timeline will use the raw anchor internally
-		timeStart = timeStartRaw - m_startTimeOffset;
-		break;
-
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_NONE:
 
@@ -527,7 +583,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 	}
 
-	// Determine stop time
+// Determine stop time
 	switch (m_timestamp)
 	{
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
@@ -776,6 +832,162 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		assert(m_startTimeOffset > 0);
 		timeStop -= m_startTimeOffset;
 		break;
+
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_PLL:
+
+		// CLOCK_PLL: Phase-Locked Loop - dynamically estimate frame period from hardware frame timestamps
+		// 
+		// DESIGN PRINCIPLES:
+		// 1. Track actual capture hardware clock rate using FRAME timestamps (not QPC!)
+		// 2. Measure period over multiple frames (15) for stable readings
+		// 3. Use exponential moving average to smooth period estimates
+		// 4. Apply gentle phase correction to prevent long-term drift
+		// 5. Clamp estimate within ±200 ppm of nominal to prevent runaway
+		// 6. Ensure monotonically increasing timestamps
+		//
+		{
+			const timingclocktime_t currentFrameTimestamp = videoFrame.GetTimingTimestamp();
+			const uint64_t currentFrameIndex = videoFrame.GetCounter();
+			const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
+
+			// Initialize on first frame
+			if (!m_pllClock.initialized)
+			{
+				m_pllClock.initialized = true;
+				m_pllClock.estimatedPeriodDouble = static_cast<double>(m_pllClock.nominalPeriod100ns);
+				m_pllClock.estimatedPeriod100ns = m_pllClock.nominalPeriod100ns;
+				m_pllClock.baseTimestamp = timeStart;
+				m_pllClock.baseFrameIndex = currentFrameIndex;
+				m_pllClock.lastFrameTimestamp = currentFrameTimestamp;
+				m_pllClock.lastFrameIndex = currentFrameIndex;
+				m_pllClock.phaseErrorAccum = 0.0;
+				m_pllClock.lastGeneratedTimestamp = timeStart;
+				
+				// Initialize multi-frame measurement window
+				m_pllClock.measurementBaseTimestamp = currentFrameTimestamp;
+				m_pllClock.measurementBaseFrameIndex = currentFrameIndex;
+				m_pllClock.measurementFrameCount = 0;
+
+				DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_PLL initialized - nominal period=%I64d (100ns), base=%I64d"),
+					videoFrame.GetCounter(), m_pllClock.nominalPeriod100ns, m_pllClock.baseTimestamp));
+
+				// First frame: use nominal period
+				timeStop = timeStart + m_pllClock.estimatedPeriod100ns;
+			}
+			else
+			{
+				// Increment measurement frame counter
+				++m_pllClock.measurementFrameCount;
+
+				// Only update period estimate every PLL_MEASUREMENT_FRAMES frames
+				// This averages over ~250ms at 60Hz for stable readings
+				if (m_pllClock.measurementFrameCount >= PLL_MEASUREMENT_FRAMES)
+				{
+					// Calculate deltas over the measurement window
+					const timingclocktime_t timestampDelta = currentFrameTimestamp - m_pllClock.measurementBaseTimestamp;
+					const int64_t frameIndexDelta = static_cast<int64_t>(currentFrameIndex) - 
+					                                 static_cast<int64_t>(m_pllClock.measurementBaseFrameIndex);
+
+					// Only process valid forward progress
+					if (timestampDelta > 0 && frameIndexDelta > 0)
+					{
+						// Convert frame timestamp delta to 100ns units (as double for precision)
+						// timestampDelta is in hardware clock ticks (microseconds for DeckLink)
+						const double timerDelta100ns = (static_cast<double>(timestampDelta) * 10000000.0) / 
+						                                static_cast<double>(ticksPerSecond);
+						
+						// Measured frame period in 100ns units - averaged over multiple frames!
+						const double measuredPeriod = timerDelta100ns / static_cast<double>(frameIndexDelta);
+						const double measuredHz = 10000000.0 / measuredPeriod;
+
+						// Check if measurement is within acceptable range (outlier rejection)
+						const double nominalPeriod = static_cast<double>(m_pllClock.nominalPeriod100ns);
+						const double minPeriod = nominalPeriod * (1.0 - PLL_OUTLIER_THRESHOLD);
+						const double maxPeriod = nominalPeriod * (1.0 + PLL_OUTLIER_THRESHOLD);
+
+						if (measuredPeriod >= minPeriod && measuredPeriod <= maxPeriod)
+						{
+							// Valid measurement - apply exponential moving average
+							const double alpha = PLL_ALPHA;
+							const double newEstimate = (1.0 - alpha) * m_pllClock.estimatedPeriodDouble +
+							                           alpha * measuredPeriod;
+
+							// Limit maximum change per update (prevents jumps)
+							const double maxChange = m_pllClock.estimatedPeriodDouble * PLL_MAX_PERIOD_CHANGE;
+							double change = newEstimate - m_pllClock.estimatedPeriodDouble;
+							if (change > maxChange) change = maxChange;
+							if (change < -maxChange) change = -maxChange;
+
+							// Update the double-precision estimate
+							double updatedEstimate = m_pllClock.estimatedPeriodDouble + change;
+							
+							// CLAMP within ±PLL_MAX_DEVIATION_PPM of nominal
+							// This prevents runaway estimates from bad measurements
+							const double maxDeviationFactor = PLL_MAX_DEVIATION_PPM / 1000000.0;
+							const double minAllowed = nominalPeriod * (1.0 - maxDeviationFactor);
+							const double maxAllowed = nominalPeriod * (1.0 + maxDeviationFactor);
+							if (updatedEstimate < minAllowed) updatedEstimate = minAllowed;
+							if (updatedEstimate > maxAllowed) updatedEstimate = maxAllowed;
+							
+							m_pllClock.estimatedPeriodDouble = updatedEstimate;
+							
+							// Update the integer version for timestamp generation (rounded)
+							m_pllClock.estimatedPeriod100ns = static_cast<LONGLONG>(m_pllClock.estimatedPeriodDouble + 0.5);
+
+							// Log every measurement update
+							const double estimatedHz = 10000000.0 / m_pllClock.estimatedPeriodDouble;
+							const double nominalHz = 10000000.0 / nominalPeriod;
+							const double driftPpm = ((estimatedHz - nominalHz) / nominalHz) * 1000000.0;
+
+							DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_PLL update - measured=%.4fHz, filtered=%.4fHz, drift=%.1f ppm, period=%.2f (over %I64u frames)"),
+								videoFrame.GetCounter(), measuredHz, estimatedHz, driftPpm, 
+								m_pllClock.estimatedPeriodDouble, frameIndexDelta));
+						}
+						else
+						{
+							// Outlier - log but don't update estimate
+							DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_PLL outlier rejected - measured=%.4fHz (%.2f period), range=[%.2f,%.2f]"),
+								videoFrame.GetCounter(), measuredHz, measuredPeriod, minPeriod, maxPeriod));
+						}
+					}
+
+					// Reset measurement window for next batch
+					m_pllClock.measurementBaseTimestamp = currentFrameTimestamp;
+					m_pllClock.measurementBaseFrameIndex = currentFrameIndex;
+					m_pllClock.measurementFrameCount = 0;
+				}
+
+				// Compute phase error and apply gentle correction (every frame)
+				// Phase error = predicted timestamp vs actual hardware time
+				const uint64_t frameOffset = currentFrameIndex - m_pllClock.baseFrameIndex;
+				const REFERENCE_TIME predictedTimestamp = m_pllClock.baseTimestamp + 
+					static_cast<LONGLONG>(static_cast<double>(frameOffset) * m_pllClock.estimatedPeriodDouble);
+				
+				const double phaseError = static_cast<double>(predictedTimestamp - timeStart);
+
+				// Accumulate phase error with very small correction factor
+				m_pllClock.phaseErrorAccum = (1.0 - PLL_PHASE_ALPHA) * m_pllClock.phaseErrorAccum +
+				                                   PLL_PHASE_ALPHA * phaseError;
+
+				// Apply small phase correction to base timestamp (prevents long-term drift)
+				const double phaseCorrection = m_pllClock.phaseErrorAccum * 0.01;  // 1% of accumulated error
+				m_pllClock.baseTimestamp -= static_cast<LONGLONG>(phaseCorrection);
+
+				// Update last frame tracking
+				m_pllClock.lastFrameTimestamp = currentFrameTimestamp;
+				m_pllClock.lastFrameIndex = currentFrameIndex;
+
+				// Generate timestamp using integer period (for DirectShow compatibility)
+				timeStop = timeStart + m_pllClock.estimatedPeriod100ns;
+
+				// Track generated timestamp for monotonicity check next frame
+				m_pllClock.lastGeneratedTimestamp = timeStart;
+
+				// Track drift for diagnostics
+				m_timestampDriftMs = static_cast<double>(timeStart - (timeStartRaw - m_startTimeOffset)) / 10000.0;
+			}
+		}
+		break;
 	}
 
 	// Set right amount of values
@@ -785,6 +997,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_PLL:
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
 
 		hr = pSample->SetTime(&timeStart, &timeStop);
@@ -822,7 +1035,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	// Get target data buffer
 	BYTE* pData = nullptr;
 	hr = pSample->GetPointer(&pData);
-	if (FAILED(hr))
+if (FAILED(hr))
 		return hr;
 
 	assert(pData);

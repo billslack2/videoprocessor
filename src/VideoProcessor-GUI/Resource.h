@@ -91,10 +91,7 @@
 
 #define ID_COMMAND_VC_NONE				32810
 #define ID_COMMAND_VC_P010				32811
-	
-
-
-
+#define ID_COMMAND_CAPTURE_RESTART      32812
 
 // Next default values for new objects
 // 

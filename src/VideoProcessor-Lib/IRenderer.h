@@ -140,4 +140,10 @@ public:
 	virtual uint64_t DiscontinuityCount() const = 0;
 	virtual uint64_t ReAnchorCount() const = 0;
 	virtual double TimestampDriftMs() const = 0;
+
+	// CLOCK_PLL Diagnostics - track hardware clock estimation
+	virtual double EstimatedFrameRateHz() const = 0;
+	virtual double EstimatedPeriodDriftPpm() const = 0;
+	virtual double PhaseErrorMs() const = 0;
+	virtual double AverageFrameRateHz() const = 0;
 };
