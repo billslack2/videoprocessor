@@ -49,6 +49,8 @@ public:
 		IVideoFrameFormatter* videoFrameFormatter,
 		const AM_MEDIA_TYPE& mediaType,
 		timestamp_t frameDuration,
+		unsigned int timeScale,
+		unsigned int frameDurationTicks,
 		ITimingClock* timingClock,
 		DirectShowStartStopTimeMethod timestamp,
 		bool useFrameQueue,

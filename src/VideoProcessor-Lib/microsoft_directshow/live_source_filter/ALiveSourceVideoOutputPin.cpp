@@ -28,6 +28,8 @@ ALiveSourceVideoOutputPin::ALiveSourceVideoOutputPin(
 void ALiveSourceVideoOutputPin::Initialize(
 	IVideoFrameFormatter* const videoFrameFormatter,
 	timestamp_t frameDuration,
+	unsigned int timeScale,
+	unsigned int frameDurationTicks,
 	ITimingClock* const timingClock,
 	DirectShowStartStopTimeMethod timestamp,
 	const AM_MEDIA_TYPE& mediaType)
@@ -40,8 +42,15 @@ void ALiveSourceVideoOutputPin::Initialize(
 	assert(frameDuration > 50000LL); // 5ms frame is 200Hz, probably a reasonable upper bound
 	assert(frameDuration < 10000000LL);  // 1Hz, reasonable lower bound
 
+	if (timeScale == 0)
+		throw std::runtime_error("timeScale must be > 0");
+	if (frameDurationTicks == 0)
+		throw std::runtime_error("frameDurationTicks must be > 0");
+
 	m_videoFrameFormatter = videoFrameFormatter;
 	m_frameDuration = frameDuration;
+	m_timeScale = timeScale;
+	m_frameDurationTicks = frameDurationTicks;
 	m_timingClock = timingClock;
 	m_timestamp = timestamp;
 	m_mediaType = mediaType;
@@ -155,7 +164,6 @@ HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOC
 
 	return S_OK;
 }
-
 
 //
 // IAMPushSource
@@ -378,6 +386,40 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	// Determine start time
 	switch (m_timestamp)
 	{
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+	{
+		// CLOCK_RATIONAL: Use Bresenham-style exact integer math for drift-free timing.
+		// This ensures smooth playback in madVR without jitter or long-term drift.
+		//
+		// Formula: timestamp = frameNumber * 10,000,000 * frameDurationTicks / timeScale
+		// Using integer math to avoid floating-point accumulation errors.
+		//
+		// Examples:
+		//   23.976fps: timeScale=24000, frameDurationTicks=1001
+		//   29.97fps:  timeScale=30000, frameDurationTicks=1001
+		//   59.94fps:  timeScale=60000, frameDurationTicks=1001
+		//   24fps:     timeScale=24,    frameDurationTicks=1
+		//   60fps:     timeScale=60,    frameDurationTicks=1
+		
+		// Use our internal frame counter for absolutely monotonic timestamps
+		// m_frameCounter is incremented at the top of this function, so subtract 1
+		const uint64_t frameNum = m_frameCounter - 1;
+		
+		// Exact integer calculation: (frameNum * 10,000,000 * frameDurationTicks) / timeScale
+		// Using 64-bit math to prevent overflow
+		// 10,000,000 is REFERENCE_TIME units per second (100ns ticks)
+		timeStart = (REFERENCE_TIME)((frameNum * 10000000ULL * m_frameDurationTicks) / m_timeScale);
+		
+		// On first frame, capture the hardware timestamp as our anchor point for debugging
+		if (m_frameCounter == 1)
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL started - timeScale=%u, frameDurationTicks=%u, rate=%.6f fps"),
+				videoFrame.GetCounter(), m_timeScale, m_frameDurationTicks, 
+				(double)m_timeScale / (double)m_frameDurationTicks));
+		}
+		break;
+	}
+
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
@@ -415,6 +457,15 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	// Determine stop time
 	switch (m_timestamp)
 	{
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+	{
+		// For rational timing, calculate the next frame's exact timestamp
+		// This ensures perfect frame pacing at the exact rational rate
+		const uint64_t nextFrameNum = m_frameCounter;  // m_frameCounter was already incremented
+		timeStop = (REFERENCE_TIME)((nextFrameNum * 10000000ULL * m_frameDurationTicks) / m_timeScale);
+		break;
+	}
+
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
 
 		timeStop = NextFrameTimestamp();
@@ -451,6 +502,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	// Set right amount of values
 	switch (m_timestamp)
 	{
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:

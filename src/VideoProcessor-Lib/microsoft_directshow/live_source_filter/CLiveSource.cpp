@@ -49,6 +49,8 @@ STDMETHODIMP CLiveSource::Initialize(
 	IVideoFrameFormatter* videoFrameFormatter,
 	const AM_MEDIA_TYPE& mediaType,
 	timestamp_t frameDuration,
+	unsigned int timeScale,
+	unsigned int frameDurationTicks,
 	ITimingClock* timingClock,
 	DirectShowStartStopTimeMethod timestamp,
 	bool useFrameQueue,
@@ -58,6 +60,8 @@ STDMETHODIMP CLiveSource::Initialize(
 	assert(videoFrameFormatter);
 	assert(mediaType.majortype.Data1 > 0);
 	assert(frameDuration > 0);
+	assert(timeScale > 0);
+	assert(frameDurationTicks > 0);
 
 	HRESULT hr = S_OK;
 
@@ -85,6 +89,8 @@ STDMETHODIMP CLiveSource::Initialize(
 	m_videoOutputPin->Initialize(
 		videoFrameFormatter,
 		frameDuration,
+		timeScale,
+		frameDurationTicks,
 		timingClock,
 		timestamp,
 		mediaType);

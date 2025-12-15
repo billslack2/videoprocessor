@@ -585,6 +585,12 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 
 	m_liveSource->AddRef();
 
+	// Get the exact rational timing values from the DisplayMode
+	// These are used for Bresenham-style exact integer math in CLOCK_RATIONAL mode
+	const unsigned int timeScale = m_videoState->displayMode->TimeScale();
+	const unsigned int frameDurationTicks = m_videoState->displayMode->FrameDuration();
+
+	// Calculate frame duration in 100ns units (for backward compatibility with other timing modes)
 	const timestamp_t frameDuration100ns =
 		(timestamp_t)round((1.0 / m_videoState->displayMode->RefreshRateHz()) * UNITS);
 
@@ -592,6 +598,8 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 		m_videoFramFormatter,
 		m_pmt,
 		frameDuration100ns,
+		timeScale,
+		frameDurationTicks,
 		m_timingClock,
 		m_timestamp,
 		m_useFrameQueue,

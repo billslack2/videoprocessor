@@ -39,6 +39,8 @@ public:
 	void Initialize(
 		IVideoFrameFormatter* const videoFrameFormatter,
 		timestamp_t frameDuration,
+		unsigned int timeScale,
+		unsigned int frameDurationTicks,
 		ITimingClock* const timingClock,
 		DirectShowStartStopTimeMethod timestamp,
 		const AM_MEDIA_TYPE& mediaType);
@@ -118,6 +120,11 @@ protected:
 	DirectShowStartStopTimeMethod m_timestamp;
 	AM_MEDIA_TYPE m_mediaType;
 	bool m_useHDRData = false;
+
+	// Rational timing parameters for CLOCK_RATIONAL mode (Bresenham-style exact integer math)
+	// These come from DisplayMode and allow drift-free timing for rates like 23.976, 29.97, 59.94
+	unsigned int m_timeScale = 0;           // Ticks per second (e.g., 24000 for 23.976fps)
+	unsigned int m_frameDurationTicks = 0;  // Ticks per frame (e.g., 1001 for 23.976fps)
 
 	REFERENCE_TIME m_previousTimeStop = 0;
 	timestamp_t m_startTimeOffset = 0;
