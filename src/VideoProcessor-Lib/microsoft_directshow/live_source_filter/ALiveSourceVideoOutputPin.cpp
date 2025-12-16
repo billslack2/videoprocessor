@@ -627,8 +627,12 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			//   Every frame adds 20,000 to accumulator
 			//   When accumulator >= 60000, add 1 to duration and subtract 60000
 			//   This happens every 3 frames (60000/20000 = 3)
+			//
+			// DECKLINK HARDWARE COMPENSATION: Apply 1.000000668x timing correction
+			// to compensate for Decklink hardware timing drift.
+			// Formula: numerator = (10,000,000 * fpsDen * 1000000668) / 1000000000
 			
-			const LONGLONG numerator = 10000000LL * m_fpsDen;
+			const LONGLONG numerator = (10000000LL * m_fpsDen * 1000000668LL) / 1000000000LL;
 			const LONGLONG baseDuration = numerator / m_fpsNum;
 			const LONGLONG remainder = numerator % m_fpsNum;
 			
