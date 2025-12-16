@@ -170,6 +170,7 @@
     <ClInclude Include="CaptureInput.h" />
     <ClInclude Include="cie.h" />
     <ClInclude Include="ColorSpace.h" />
+    <ClInclude Include="DebugLog.h" />
     <ClInclude Include="DisplayMode.h" />
     <ClInclude Include="ColorFormat.h" />
     <ClInclude Include="EOTF.h" />

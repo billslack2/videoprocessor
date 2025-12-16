@@ -574,6 +574,39 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 
 			m_capturedVideoFrameCount += frames;
 			m_missedVideoFrameCount += std::max((frames - 1), 0);
+
+			// Track actual vs expected tick rate for DeckLink compensation
+			// This allows us to measure if the hardware is ticking fast or slow
+			if (frames == 1)  // Only measure when we have exactly one frame (no dropped frames for accuracy)
+			{
+				const timingclocktime_t expectedTicks = m_ticksPerFrame;
+				const timingclocktime_t actualTicks = (timingclocktime_t)(frameDiffTicks + 0.5);
+				const timingclocktime_t tickDifference = actualTicks - expectedTicks;
+
+				m_accumulatedTickDifference += tickDifference;
+				++m_frameIntervalSampleCount;
+
+				// Once we have enough samples, update the correction factor
+				if (m_frameIntervalSampleCount >= TICK_RATE_AVERAGING_WINDOW)
+				{
+					const double avgTickDifference = (double)m_accumulatedTickDifference / m_frameIntervalSampleCount;
+					const double correctionPPM = (avgTickDifference / m_ticksPerFrame) * 1000000.0;  // parts per million
+
+					// Calculate correction factor: if DeckLink is ticking 10 PPM fast, multiply by 1.00001
+					m_tickRateCorrectionFactor = 1.0 + (correctionPPM / 1000000.0);
+
+					// Log the measurement occasionally for debugging
+					if (m_capturedVideoFrameCount % 1000 == 0)
+					{
+						DbgLog((LOG_TRACE, 1, TEXT("DeckLink tick rate: %+.2f PPM, correction factor: %.8f"),
+							correctionPPM, m_tickRateCorrectionFactor));
+					}
+
+					// Reset accumulators for next averaging window
+					m_accumulatedTickDifference = 0;
+					m_frameIntervalSampleCount = 0;
+				}
+			}
 		}
 
 		m_previousTimingClockFrameTime = timingClockFrameTime;

@@ -90,6 +90,9 @@ public:
 	// Reset the internal state and the video stream.
 	virtual void Reset();
 
+	// Set the tick rate correction factor (for compensating hardware clock drift)
+	void SetTickRateCorrectionFactor(double factor) { m_tickRateCorrectionFactor = factor; }
+
 	//
 	// Metrics
 	//
@@ -125,6 +128,7 @@ protected:
 	// These come from DisplayMode and allow drift-free timing for rates like 23.976, 29.97, 59.94
 	unsigned int m_timeScale = 0;           // Ticks per second (e.g., 24000 for 23.976fps)
 	unsigned int m_frameDurationTicks = 0;  // Ticks per frame (e.g., 1001 for 23.976fps)
+	double m_tickRateCorrectionFactor = 1.0;  // Measured correction for hardware clock drift
 
 	REFERENCE_TIME m_previousTimeStop = 0;
 	timestamp_t m_startTimeOffset = 0;

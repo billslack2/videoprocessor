@@ -65,6 +65,9 @@ public:
 	timingclocktime_t TimingClockTicksPerSecond() const override;
 	const TCHAR* TimingClockDescription() override;
 
+	// Get the measured tick rate correction factor (for rational timing compensation)
+	double GetTickRateCorrectionFactor() const { return m_tickRateCorrectionFactor; }
+
 	// IDeckLinkInputCallback
 	HRESULT VideoInputFormatChanged(BMDVideoInputFormatChangedEvents notificationEvents, IDeckLinkDisplayMode* newDisplayMode, BMDDetectedVideoInputFormatFlags detectedSignalFlags) override;
 	HRESULT VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame, IDeckLinkAudioInputPacket* audioPacket) override;
@@ -123,6 +126,13 @@ private:
 	uint64_t m_capturedVideoFrameCount = 0;
 	uint64_t m_missedVideoFrameCount = 0;
 	timingclocktime_t m_previousTimingClockFrameTime = TIMING_CLOCK_TIME_INVALID;
+
+	// DeckLink hardware tick rate compensation
+	// Measures actual vs expected frame intervals to detect if the card is ticking fast/slow
+	double m_tickRateCorrectionFactor = 1.0;  // starts at 1.0 (no correction)
+	timingclocktime_t m_accumulatedTickDifference = 0;  // running total of tick deviations
+	int m_frameIntervalSampleCount = 0;  // how many samples we've collected
+	static const int TICK_RATE_AVERAGING_WINDOW = 100;  // samples to average over
 
 	void ResetVideoState();
 

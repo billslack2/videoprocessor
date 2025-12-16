@@ -394,6 +394,8 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		// Formula: timestamp = frameNumber * 10,000,000 * frameDurationTicks / timeScale
 		// Using integer math to avoid floating-point accumulation errors.
 		//
+		// Apply correction factor to compensate for hardware clock drift measured from actual frame intervals
+		//
 		// Examples:
 		//   23.976fps: timeScale=24000, frameDurationTicks=1001
 		//   29.97fps:  timeScale=30000, frameDurationTicks=1001
@@ -405,17 +407,18 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		// m_frameCounter is incremented at the top of this function, so subtract 1
 		const uint64_t frameNum = m_frameCounter - 1;
 		
-		// Exact integer calculation: (frameNum * 10,000,000 * frameDurationTicks) / timeScale
+		// Exact integer calculation: (frameNum * 10,000,000 * frameDurationTicks * correction) / timeScale
 		// Using 64-bit math to prevent overflow
 		// 10,000,000 is REFERENCE_TIME units per second (100ns ticks)
-		timeStart = (REFERENCE_TIME)((frameNum * 10000010ULL * m_frameDurationTicks) / m_timeScale);
+		const uint64_t referenceTimePerSecond = 10000000ULL;
+		timeStart = (REFERENCE_TIME)(frameNum * referenceTimePerSecond * m_frameDurationTicks * m_tickRateCorrectionFactor / m_timeScale);
 		
 		// On first frame, capture the hardware timestamp as our anchor point for debugging
 		if (m_frameCounter == 1)
 		{
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL started - timeScale=%u, frameDurationTicks=%u, rate=%.6f fps"),
+			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL started - timeScale=%u, frameDurationTicks=%u, rate=%.6f fps, correction=%.8f"),
 				videoFrame.GetCounter(), m_timeScale, m_frameDurationTicks, 
-				(double)m_timeScale / (double)m_frameDurationTicks));
+				(double)m_timeScale / (double)m_frameDurationTicks, m_tickRateCorrectionFactor));
 		}
 		break;
 	}
@@ -462,7 +465,8 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		// For rational timing, calculate the next frame's exact timestamp
 		// This ensures perfect frame pacing at the exact rational rate
 		const uint64_t nextFrameNum = m_frameCounter;  // m_frameCounter was already incremented
-		timeStop = (REFERENCE_TIME)((nextFrameNum * 10000010ULL * m_frameDurationTicks) / m_timeScale);
+		const uint64_t referenceTimePerSecond = 10000000ULL;
+		timeStop = (REFERENCE_TIME)(nextFrameNum * referenceTimePerSecond * m_frameDurationTicks * m_tickRateCorrectionFactor / m_timeScale);
 		break;
 	}
 
