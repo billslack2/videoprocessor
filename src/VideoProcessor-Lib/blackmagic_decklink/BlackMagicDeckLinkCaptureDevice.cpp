@@ -608,7 +608,11 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 		}
 
 		// Offset timestamp. Do this after getting the hardware latency else it'll account for this as well
-		timingClockFrameTime += m_frameOffsetTicks;
+		// CRITICAL: Only apply frame offset if non-zero. CLOCK_RATIONAL uses 0 and manages timing internally.
+		if (m_frameOffsetTicks != 0)
+		{
+			timingClockFrameTime += m_frameOffsetTicks;
+		}
 
 		// Check if vertical inverted
 		const bool videoInvertedVertical = (videoFrame->GetFlags() & bmdFrameFlagFlipVertical) != 0;

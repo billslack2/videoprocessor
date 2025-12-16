@@ -52,7 +52,14 @@ public:
         const CString& eotf,
         const CString& colorSpace,
         const CString& pixelFormat,
-        const CString& videoConversion);
+        const CString& videoConversion,
+        double estimatedFrameRateHz = 0.0,
+        double averageFrameRateHz = 0.0,
+        double periodDriftPpm = 0.0,
+        double phaseErrorMs = 0.0);
+
+    // Calculate the required window height based on content
+    int CalculateRequiredHeight() const;
 
 protected:
     DECLARE_MESSAGE_MAP()
@@ -94,6 +101,12 @@ private:
     CString m_colorSpace;
     CString m_pixelFormat;
     CString m_videoConversion;
+
+    // PLL diagnostic statistics
+    double m_estimatedFrameRateHz;
+    double m_averageFrameRateHz;
+    double m_periodDriftPpm;
+    double m_phaseErrorMs;
 
     // Update overlay position (with black bar detection in fullscreen mode)
     void UpdateOverlayPosition();

@@ -85,6 +85,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_AUTO_SET, &CVideoProcessorDlg::OnCommandAutoSet)
 	ON_COMMAND(ID_COMMAND_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
 	ON_COMMAND(ID_COMMAND_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
+	ON_COMMAND(ID_COMMAND_CAPTURE_RESTART, &CVideoProcessorDlg::OnBnClickedCaptureRestart)
 
 	ON_COMMAND(ID_COMMAND_VC_NONE, &CVideoProcessorDlg::SetVideoConversionOff)
 	ON_COMMAND(ID_COMMAND_VC_P010, &CVideoProcessorDlg::SetVideoConversionP010)
@@ -133,9 +134,16 @@ static const std::vector<std::pair<LPCTSTR, HdrLuminanceOptions>> HDR_LUMINANCE_
 
 static const std::vector<DirectShowStartStopTimeMethod> RENDERER_DIRECTSHOW_START_STOP_TIME_OPTIONS =
 {
-	// CLOCK_RATIONAL is the preferred method - smooth drift correction with exact rational timing
+	// **RECOMMENDED** CLOCK_RATIONAL is the preferred method - smooth drift correction with exact rational timing
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL,
+	
+	// CLOCK_SMART - Uses next frame's timestamp when available, falls back to rational timing
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART,
+	
+	// **DIAGNOSTIC** CLOCK_PLL - Tracks actual hardware clock rate for diagnostics
+	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_PLL,
+	
+	// Legacy timing methods below
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK,
 	DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO,
@@ -236,7 +244,6 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 	for (auto& captureDevice : m_captureDevices)
 		(*captureDevice).Release();
 }
-
 
 //
 // Option handlers
@@ -340,7 +347,6 @@ void CVideoProcessorDlg::DefaultRendererStartStopTimeMethod(DirectShowStartStopT
 }
 
 //				dlg.DefaultRendererStartStopTimeMethod(dsssTimeMethod);
-
 
 
 void CVideoProcessorDlg::DefaultRendererNominalRange(DXVA_NominalRange nominalRange)
@@ -470,6 +476,10 @@ void CVideoProcessorDlg::OnBnClickedRendererRestart()
 	if (m_rendererState == RendererState::RENDERSTATE_FAILED)
 		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 
+	// Only reset renderer if it exists
+	if (m_videoRenderer)
+		m_videoRenderer->Reset();
+
 	m_wantToRestartRenderer = true;
 	UpdateState();
 }
@@ -518,20 +528,21 @@ void CVideoProcessorDlg::OnRendererDirectShowStartStopTimeMethodSelected()
 		DirectShowStartStopTimeMethod method = 
 			(DirectShowStartStopTimeMethod)m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(index);
 		
-		// CLOCK_RATIONAL manages its own timing internally via drift correction
+		// CLOCK_RATIONAL and CLOCK_PLL manage their own timing internally
 		// The frame offset control should be disabled to avoid user confusion
-		const bool isRational = (method == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL);
+		const bool isAutoManaged = (method == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL ||
+		                             method == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_PLL);
 		
-		if (isRational)
+		if (isAutoManaged)
 		{
-			// Make controls read-only - CLOCK_RATIONAL uses adaptive timing
+			// Make controls read-only - these modes use adaptive timing
 			m_timingClockFrameOffsetEdit.SetWindowText(_T("(auto)"));
 			m_timingClockFrameOffsetEdit.EnableWindow(FALSE);
 			m_timingClockFrameOffsetAutoCheck.EnableWindow(FALSE);
 		}
 		else
 		{
-			// Restore default offset value if switching away from CLOCK_RATIONAL
+			// Restore default offset value if switching away from auto-managed mode
 			CString currentText;
 			m_timingClockFrameOffsetEdit.GetWindowText(currentText);
 			if (currentText == _T("(auto)"))
@@ -694,7 +705,10 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(WPARAM wParam,
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(): Locked=%s, DisplayMode=%s"),
 		ToString(cardState->inputLocked),
-		cardState->inputDisplayMode ? cardState->inputDisplayMode->ToString() : TEXT("")
+		cardState->inputDisplayMode ? cardState->inputDisplayMode->ToString() : TEXT(""),
+		//cardState->inputEncoding != ColorFormat::UNKNOWN ? toString(cardState->inputEncoding) : TEXT(""),
+		//cardState->inputBitDepth != BitDepth::UNKNOWN ? toString(cardState->inputBitDepth) : TEXT(""),
+		//cardState->other.size() > 0 ? TEXT("yes") : TEXT("no")
 		));
 
 	// Input fields
@@ -737,6 +751,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Valid=%s"),
 		videoState->valid ? TEXT("Yes") : TEXT("No")));
+
 
 	assert(videoState);
 	assert(m_captureDevice);
@@ -867,11 +882,9 @@ LRESULT CVideoProcessorDlg::OnMessageRendererDetailString(WPARAM wParam, LPARAM 
 	return 0;
 }
 
-
 //
 // Command handlers
 //
-
 
 void CVideoProcessorDlg::OnCommandFullScreenToggle()
 {
@@ -948,7 +961,6 @@ void CVideoProcessorDlg::OnCaptureDeviceLost(ACaptureDeviceComPtr& captureDevice
 		(WPARAM)captureDevice.Detach(),
 		0);
 }
-
 
 //
 // ICaptureDeviceCallback
@@ -1260,7 +1272,6 @@ void CVideoProcessorDlg::UpdateState()
 
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::UpdateState(): - No changes")));
 }
-
 
 //
 // Helpers
@@ -1775,7 +1786,6 @@ void CVideoProcessorDlg::RenderGUIClear()
 
 	// Renderer Queue group
 	m_rendererVideoFrameQueueSizeText.SetWindowText(TEXT(""));
-//	m_rendererVideoFrameQueueSizeStatic.SetWindowText(TEXT(""));
 	m_rendererDroppedFrameCountText.SetWindowText(TEXT(""));
 
 	// Renderer latency (ms) group
@@ -1864,16 +1874,18 @@ void CVideoProcessorDlg::SetFrameOffsetByRefresh(std::vector<int> offsets) {
 
 int CVideoProcessorDlg::GetTimingClockFrameOffsetMs()
 {
-	// Check if CLOCK_RATIONAL is selected - it manages timing internally
+	// Check if method manages timing internally - it manages timing internally
 	// Use safe access to avoid crashes if combo box isn't fully initialized
 	int index = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
 	if (index >= 0 && index < m_rendererDirectShowStartStopTimeMethodCombo.GetCount())
 	{
 		DirectShowStartStopTimeMethod method = 
 			(DirectShowStartStopTimeMethod)m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(index);
-		if (method == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL)
+		
+		// CLOCK_RATIONAL and CLOCK_PLL don't use manual frame offset - return 0
+		if (method == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL ||
+		    method == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_PLL)
 		{
-			// CLOCK_RATIONAL doesn't use manual frame offset - return 0
 			return 0;
 		}
 	}
@@ -2153,7 +2165,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	}
 
 	//
-	// Push
+	//// Push
 	//
 
 	// Push to renderer if that's running, if the renderer does not accept the update, return false
@@ -2441,9 +2453,10 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	m_timingClockFrameOffsetAutoCheck.SetCheck(m_frameOffsetAutoStart);
 	OnBnClickedTimingClockFrameOffsetAutoCheck();
 
-	// If CLOCK_RATIONAL is the default timing method, disable frame offset controls
-	// CLOCK_RATIONAL manages timing internally via drift correction
-	if (m_defaultDSSSTimeMethod == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL)
+	// If CLOCK_RATIONAL or CLOCK_PLL is the default timing method, disable frame offset controls
+	// Both manage timing internally (CLOCK_RATIONAL via drift correction, CLOCK_PLL via hardware tracking)
+	if (m_defaultDSSSTimeMethod == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL ||
+	    m_defaultDSSSTimeMethod == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_PLL)
 	{
 		m_timingClockFrameOffsetEdit.SetWindowText(_T("(auto)"));
 		m_timingClockFrameOffsetEdit.EnableWindow(FALSE);
@@ -2580,8 +2593,6 @@ void CVideoProcessorDlg::OnPaint()
 			}
 			
 
-				
-			
 
 		}
 				
@@ -2748,7 +2759,12 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					m_captureDeviceVideoState ? ToString(m_captureDeviceVideoState->eotf) : _T(""),
 					m_captureDeviceVideoState ? ToString(m_captureDeviceVideoState->colorspace) : _T(""),
 					m_captureDeviceVideoState ? ToString(m_captureDeviceVideoState->videoFrameEncoding) : _T(""),
-					videoConversion);
+					videoConversion,
+					// PLL diagnostic parameters
+					m_videoRenderer->EstimatedFrameRateHz(),
+					m_videoRenderer->AverageFrameRateHz(),
+					m_videoRenderer->EstimatedPeriodDriftPpm(),
+					m_videoRenderer->PhaseErrorMs());
 			}
 			catch (std::runtime_error& e)
 			{

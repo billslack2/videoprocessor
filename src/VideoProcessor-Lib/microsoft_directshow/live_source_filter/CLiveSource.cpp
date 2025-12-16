@@ -269,3 +269,39 @@ double CLiveSource::TimestampDriftMs() const
 	
 	return m_videoOutputPin->TimestampDriftMs();
 }
+
+
+double CLiveSource::EstimatedFrameRateHz() const
+{
+	if (!m_videoOutputPin)
+		return 0.0;
+	
+	return m_videoOutputPin->EstimatedFrameRateHz();
+}
+
+
+double CLiveSource::EstimatedPeriodDriftPpm() const
+{
+	if (!m_videoOutputPin)
+		return 0.0;
+	
+	return m_videoOutputPin->EstimatedPeriodDriftPpm();
+}
+
+
+double CLiveSource::PhaseErrorMs() const
+{
+	if (!m_videoOutputPin)
+		return 0.0;
+	
+	return m_videoOutputPin->PhaseErrorMs();
+}
+
+
+double CLiveSource::AverageFrameRateHz() const
+{
+	if (!m_videoOutputPin)
+		return 0.0;
+	
+	return m_videoOutputPin->AverageFrameRateHz();
+}

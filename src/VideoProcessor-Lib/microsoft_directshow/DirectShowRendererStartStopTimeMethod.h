@@ -35,6 +35,11 @@ enum DirectShowStartStopTimeMethod
 	// Combines best of CLOCK_THEO with exact rational arithmetic (no drift, no jitter)
 	DS_SSTM_CLOCK_RATIONAL,
 
+	// **EXPERIMENTAL** Use Phase-Locked Loop (PLL) based on hardware timer measurements
+	// Tracks actual capture hardware clock rate and adapts timestamp generation accordingly
+	// Best for systems where capture clock may drift relative to display clock
+	DS_SSTM_CLOCK_PLL,
+
 	//
 	// Only a start time, no stop time set
 	//

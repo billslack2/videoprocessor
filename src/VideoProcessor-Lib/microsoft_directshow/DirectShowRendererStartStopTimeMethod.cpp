@@ -30,6 +30,9 @@ const TCHAR* ToString(const DirectShowStartStopTimeMethod rendererTimestamp)
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
 		return TEXT("Clock-Rational");
 
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_PLL:
+		return TEXT("Clock-PLL");
+
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE:
 		return TEXT("Clock-None");
 

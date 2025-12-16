@@ -66,22 +66,24 @@ void BlackMagicDeckLinkCaptureDeviceDiscoverer::Stop()
 }
 
 
-HRESULT	STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDeviceDiscoverer::DeckLinkDeviceArrived(IDeckLink* deckLinkDevice)
+HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDeviceDiscoverer::DeckLinkDeviceArrived(IDeckLink* deckLinkDevice)
 {
 	assert(m_deckLinkDiscovery);
 	assert(m_captureDeviceMap.find(deckLinkDevice) == m_captureDeviceMap.end());
 
-	// Build device
+	// Accept only devices that expose IDeckLinkInput (capture)
+	IDeckLinkInput* inputIface = nullptr;
+	if (deckLinkDevice->QueryInterface(IID_IDeckLinkInput, (void**)&inputIface) != S_OK || !inputIface)
+		return S_OK; // ignore playback-only cards
+	inputIface->Release();
+
 	ACaptureDeviceComPtr captureDevice;
 	captureDevice.Attach(new BlackMagicDeckLinkCaptureDevice(deckLinkDevice));
 
 	m_captureDeviceMap[deckLinkDevice] = captureDevice;
-
 	m_callback.OnCaptureDeviceFound(captureDevice);
-
 	return S_OK;
 }
-
 
 HRESULT	STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDeviceDiscoverer::DeckLinkDeviceRemoved(IDeckLink* deckLinkDevice)
 {
