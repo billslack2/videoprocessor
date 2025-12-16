@@ -57,6 +57,9 @@ private:
 
 	REFERENCE_TIME m_nextVideoFrameStartTime = REFERENCE_TIME_INVALID;
 
+	// Event signaled when frames are added to the queue (event-driven instead of polling)
+	HANDLE m_hFrameAvailableEvent = nullptr;
+
 	// Thread function, upon return thread exist.
 	// Return codes > 0 indicate an error occured
 	DWORD ThreadProc();

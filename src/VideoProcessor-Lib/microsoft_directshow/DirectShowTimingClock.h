@@ -34,5 +34,5 @@ public:
 
 private:
 	ITimingClock& m_timingClock;
-	const double m_ticksPer100ns;
+	const timingclocktime_t m_ticksPerSecond;
 };

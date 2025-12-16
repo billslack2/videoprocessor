@@ -15,11 +15,11 @@
 DirectShowTimingClock::DirectShowTimingClock(ITimingClock& timingClock):
 	CBaseReferenceClock(DIRECTSHOW_TIMING_CLOCK_NAME, nullptr, nullptr, nullptr),
 	m_timingClock(timingClock),
-	m_ticksPer100ns(m_timingClock.TimingClockTicksPerSecond() / 10000000.0)
+	m_ticksPerSecond(m_timingClock.TimingClockTicksPerSecond())
 {
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowTimingClock::DirectShowTimingClock()")));
 
-	assert(m_ticksPer100ns > 0);
+	assert(m_ticksPerSecond > 0);
 }
 
 
@@ -31,8 +31,7 @@ DirectShowTimingClock::~DirectShowTimingClock()
 
 REFERENCE_TIME DirectShowTimingClock::GetPrivateTime()
 {
-	const REFERENCE_TIME rt = (REFERENCE_TIME)(m_timingClock.TimingClockNow() / m_ticksPer100ns);
-	assert(rt > 0);
-
+	const timingclocktime_t now = m_timingClock.TimingClockNow();
+	const REFERENCE_TIME rt = (now * 10000000) / m_ticksPerSecond;
 	return rt;
 }

@@ -408,7 +408,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		// Exact integer calculation: (frameNum * 10,000,000 * frameDurationTicks) / timeScale
 		// Using 64-bit math to prevent overflow
 		// 10,000,000 is REFERENCE_TIME units per second (100ns ticks)
-		timeStart = (REFERENCE_TIME)((frameNum * 10000000ULL * m_frameDurationTicks) / m_timeScale);
+		timeStart = (REFERENCE_TIME)((frameNum * 10000010ULL * m_frameDurationTicks) / m_timeScale);
 		
 		// On first frame, capture the hardware timestamp as our anchor point for debugging
 		if (m_frameCounter == 1)
@@ -462,7 +462,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		// For rational timing, calculate the next frame's exact timestamp
 		// This ensures perfect frame pacing at the exact rational rate
 		const uint64_t nextFrameNum = m_frameCounter;  // m_frameCounter was already incremented
-		timeStop = (REFERENCE_TIME)((nextFrameNum * 10000000ULL * m_frameDurationTicks) / m_timeScale);
+		timeStop = (REFERENCE_TIME)((nextFrameNum * 10000010ULL * m_frameDurationTicks) / m_timeScale);
 		break;
 	}
 

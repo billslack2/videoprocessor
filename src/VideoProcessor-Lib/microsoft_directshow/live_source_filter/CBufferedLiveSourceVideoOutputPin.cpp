@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -17,12 +17,23 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 	HRESULT* phr):
 	ALiveSourceVideoOutputPin(filter, pLock, phr)
 {
+	// Create auto-reset event for frame availability signaling
+	// Auto-reset: automatically resets to non-signaled after a waiting thread is released
+	m_hFrameAvailableEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	if (!m_hFrameAvailableEvent)
+		throw std::runtime_error("Failed to create frame available event");
 }
 
 
 CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 {
 	PurgeQueue();
+	
+	if (m_hFrameAvailableEvent)
+	{
+		CloseHandle(m_hFrameAvailableEvent);
+		m_hFrameAvailableEvent = nullptr;
+	}
 }
 
 
@@ -130,6 +141,10 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		m_videoFrameQueue.push_back(videoFrame);
 	}
 
+	// Signal that a frame is available (outside lock to prevent contention)
+	// Event-driven: wakes up ThreadProc instead of polling with Sleep(1)
+	SetEvent(m_hFrameAvailableEvent);
+
 	return S_OK;
 }
 
@@ -176,12 +191,28 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 {
 	// ! WARNING: Runs in inner thread
 
-	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin worker thread starting")));
+	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin worker thread starting (event-driven)")));
 
 	while (true)
 	{
-		// TODO: Sleep thread on empty queue and wake if frames arrive
-		Sleep(1);
+		// Wait for frame to be available (event-driven, not polling!)
+		// Timeout after 100ms to check if thread should exit
+		DWORD waitResult = WaitForSingleObject(m_hFrameAvailableEvent, 100);
+		
+		if (waitResult == WAIT_TIMEOUT)
+		{
+			// Check if we should exit
+			if (!m_isActive)
+				break;
+			continue;
+		}
+		
+		if (waitResult != WAIT_OBJECT_0)
+		{
+			// Unexpected error
+			DbgLog((LOG_ERROR, 1, TEXT("::ThreadProc: WaitForSingleObject failed with %d"), waitResult));
+			break;
+		}
 
 		VideoFrame videoFrame;
 
@@ -233,23 +264,32 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 		}
 
-		// Get buffer for sample
-		// Note you can fill in start and stop time, but following the code shows that they are unused.
+		// Get buffer for sample - may block if madVR's allocator is full (natural backpressure)
 		IMediaSample* pSample = nullptr;
 		HRESULT hr = this->GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);
 		if (FAILED(hr))
 		{
+			DbgLog((LOG_TRACE, 1,
+				TEXT("::ThreadProc(#%I64u): GetDeliveryBuffer() failed (HRESULT=0x%08x)"),
+				videoFrame.GetCounter(), hr));
+			
 			videoFrame.SourceBufferRelease();
-			return -1;
+			++m_droppedFrameCount;
+			continue;  // Don't exit thread
 		}
 
 		// Convert
 		hr = RenderVideoFrameIntoSample(videoFrame, pSample);
 		if (FAILED(hr))
 		{
+			DbgLog((LOG_TRACE, 1,
+				TEXT("::ThreadProc(#%I64u): RenderVideoFrameIntoSample() failed (HRESULT=0x%08x)"),
+				videoFrame.GetCounter(), hr));
+			
 			videoFrame.SourceBufferRelease();
 			pSample->Release();
-			return -2;
+			++m_droppedFrameCount;
+			continue;  // Don't exit thread
 		}
 		if (hr == S_FRAME_NOT_RENDERED)
 		{
@@ -263,14 +303,16 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		if (FAILED(hr))
 		{
 			DbgLog((LOG_TRACE, 1,
-				TEXT("::FillBuffer(#%I64u): Failed to deliver sample, error: %i"),
+				TEXT("::ThreadProc(#%I64u): Deliver() failed (HRESULT=0x%08x) - dropping frame"),
 				videoFrame.GetCounter(), hr));
 
 			videoFrame.SourceBufferRelease();
 			pSample->Release();
-			return -3;
+			++m_droppedFrameCount;
+			continue;  // Don't exit thread
 		}
 
+		// Success - clean up and continue
 		videoFrame.SourceBufferRelease();
 		pSample->Release();
 	}
