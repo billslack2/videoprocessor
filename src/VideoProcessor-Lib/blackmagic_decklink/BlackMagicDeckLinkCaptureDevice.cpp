@@ -8,6 +8,7 @@
 
 #include <pch.h>
 
+#include <DebugLog.h>
 
 #pragma warning(disable : 26812)  // class enum over class in BM API
 
@@ -243,6 +244,11 @@ void BlackMagicDeckLinkCaptureDevice::StartCapture()
 
 	// From here on out data can egress
 	m_outputCaptureData.store(true, std::memory_order_release);
+
+	// Log startup information
+	DEBUGLOG("=== DeckLink Capture Starting ===");
+	DEBUGLOG("Log file location: %s", DEBUGLOG_PATH().c_str());
+	DEBUGLOG("Device: %s", CStringA(GetName()).GetString());
 
 	IF_NOT_S_OK(m_deckLinkInput->StartStreams())
 	{
@@ -586,6 +592,12 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 				m_accumulatedTickDifference += tickDifference;
 				++m_frameIntervalSampleCount;
 
+				// Log the start of compensation tracking
+				if (m_frameIntervalSampleCount == 1)
+				{
+					DEBUGLOG("Starting DeckLink tick rate compensation tracking - expected ticks per frame: %lld", m_ticksPerFrame);
+				}
+
 				// Once we have enough samples, update the correction factor
 				if (m_frameIntervalSampleCount >= TICK_RATE_AVERAGING_WINDOW)
 				{
@@ -595,12 +607,13 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 					// Calculate correction factor: if DeckLink is ticking 10 PPM fast, multiply by 1.00001
 					m_tickRateCorrectionFactor = 1.0 + (correctionPPM / 1000000.0);
 
-					// Log the measurement occasionally for debugging
-					if (m_capturedVideoFrameCount % 1000 == 0)
-					{
-						DbgLog((LOG_TRACE, 1, TEXT("DeckLink tick rate: %+.2f PPM, correction factor: %.8f"),
-							correctionPPM, m_tickRateCorrectionFactor));
-					}
+					// Log the measurement for debugging
+					DEBUGLOG("DeckLink Compensation Update: Tick rate deviation: %+.2f PPM, correction factor: %.8f, frames sampled: %d", 
+						correctionPPM, m_tickRateCorrectionFactor, m_frameIntervalSampleCount);
+
+					// Also log to debug output if available
+					DbgLog((LOG_TRACE, 1, TEXT("DeckLink tick rate: %+.2f PPM, correction factor: %.8f"),
+						correctionPPM, m_tickRateCorrectionFactor));
 
 					// Reset accumulators for next averaging window
 					m_accumulatedTickDifference = 0;
