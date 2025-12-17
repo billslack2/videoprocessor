@@ -1481,8 +1481,6 @@ void CVideoProcessorDlg::CaptureGUIClear()
 	// Input group
 	m_inputLockedText.SetWindowText(TEXT(""));
 	m_inputDisplayModeText.SetWindowText(TEXT(""));
-	m_inputEncodingText.SetWindowText(TEXT(""));
-	m_inputBitDepthText.SetWindowText(TEXT(""));
 
 	// Other
 	m_captureDeviceOtherList.ResetContent();
@@ -2647,18 +2645,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 			}
 		}
-		else if (m_rendererState == RendererState::RENDERSTATE_RENDERING && !m_rendererFullscreenCheck.GetCheck())
-		{
-			// In windowed mode, ensure main dialog has focus
-			HWND foregroundWindow = ::GetForegroundWindow();
-			HWND mainHwnd = this->GetSafeHwnd();
-
-			if (foregroundWindow != mainHwnd && IsWindow(mainHwnd))
-			{
-				::SetForegroundWindow(mainHwnd);
-				::SetFocus(mainHwnd);
-			}
-		}
 	}
 
 	// Prevent screensaver
@@ -2748,7 +2734,38 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	StatsData stats;
 
-	// Collect stats from renderer
+	// Video format info
+	if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
+	{
+		// Resolution
+		stats.resolution.Format(_T("%u x %u"), 
+			m_captureDeviceVideoState->displayMode->FrameWidth(),
+			m_captureDeviceVideoState->displayMode->FrameHeight());
+		
+		// Refresh rate
+		stats.refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
+		
+		// EOTF
+		stats.eotf = ToString(m_captureDeviceVideoState->eotf);
+		
+		// Colorspace
+		stats.colorspace = ToString(m_captureDeviceVideoState->colorspace);
+		
+		// Pixel Format
+		stats.pixelFormat = ToString(m_captureDeviceVideoState->videoFrameEncoding);
+	}
+
+	// Renderer settings and capture metrics
+	if (m_captureDevice)
+	{
+		stats.frameOffsetMs = GetTimingClockFrameOffsetMs();
+		stats.hwLatencyMs = m_captureDevice->HardwareLatencyMs();
+	}
+
+	// Method - would need to add from renderer settings
+	stats.method = TEXT("---");
+
+	// Queue stats
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
 	{
 		stats.currentQueueSize = m_videoRenderer->GetFrameQueueSize();
@@ -2760,17 +2777,11 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 	}
 
-	// Collect stats from capture device
+	// Capture device frame counts
 	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING && m_captureDevice)
 	{
 		stats.capturedFrames = m_captureDevice->VideoFrameCapturedCount();
 		stats.capturedDroppedFrames = m_captureDevice->VideoFrameMissedCount();
-	}
-
-	// Video information
-	if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
-	{
-		stats.refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
 	}
 
 	// Video conversion

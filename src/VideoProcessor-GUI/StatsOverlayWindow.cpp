@@ -96,7 +96,7 @@ bool StatsOverlayWindow::Create(HWND parentHwnd)
 	// Set up layered window for transparency
 	SetLayeredWindowAttributes(m_hwnd, RGB(0, 0, 0), 240, LWA_ALPHA); // 240/255 = ~94% opacity
 
-	// Create fonts
+	// Create fonts - match MadVR stats overlay style
 	HDC hdc = GetDC(m_hwnd);
 	if (!hdc)
 	{
@@ -105,17 +105,18 @@ bool StatsOverlayWindow::Create(HWND parentHwnd)
 		return false;
 	}
 	
-	int fontHeight = -MulDiv(16, GetDeviceCaps(hdc, LOGPIXELSY), 72); // 16pt monospace font (50% larger)
+	// MadVR uses a monospace font, approximately 22-23 pixels tall (25% larger than before)
+	int fontHeight = 22;
 
 	m_font = CreateFont(
 		fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Courier New"));
+		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
 
 	m_boldFont = CreateFont(
 		fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Courier New"));
+		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
 
 	ReleaseDC(m_hwnd, hdc);
 
@@ -315,66 +316,79 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	int y = PADDING;
 	SetTextColor(hdc, TEXT_COLOR);
 
-	// Queue information
-	DrawText(hdc, FormatQueueStatus(), PADDING, y);
+	// Fixed-width format with labels and values separated for alignment
+	CString line;
+
+	// Resolution
+	line.Format(TEXT("Resolution:        %-20s"), m_stats.resolution.IsEmpty() ? TEXT("---") : m_stats.resolution);
+	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	CString queueFull;
-	queueFull.Format(TEXT("Queue Full: %s"), m_stats.isQueueFull ? TEXT("YES") : TEXT("No"));
-	DrawText(hdc, queueFull, PADDING, y);
+	// Refresh rate
+	line.Format(TEXT("Refresh:         %7.2f Hz"), m_stats.refreshRate);
+	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	// Reset tracking
-	CString resetInfo;
-	resetInfo.Format(TEXT("Since Reset: %llu frames, %s"),
-		m_stats.framesSinceReset, FormatTime(m_stats.secondsSinceReset));
-	DrawText(hdc, resetInfo, PADDING, y);
+	// EOTF
+	line.Format(TEXT("EOTF:              %-20s"), m_stats.eotf.IsEmpty() ? TEXT("---") : m_stats.eotf);
+	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	CString maxQueue;
-	maxQueue.Format(TEXT("Max Queue: %zu"), m_stats.maxQueueSizeSinceReset);
-	DrawText(hdc, maxQueue, PADDING, y);
+	// Colorspace
+	line.Format(TEXT("Colorspace:        %-20s"), m_stats.colorspace.IsEmpty() ? TEXT("---") : m_stats.colorspace);
+	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	// Separator line
-	y += 2;
-
-	// Video information
-	CString refresh;
-	refresh.Format(TEXT("Refresh Rate: %.2f Hz"), m_stats.refreshRate);
-	DrawText(hdc, refresh, PADDING, y);
+	// Pixel Format
+	line.Format(TEXT("Pixel Format:      %-20s"), m_stats.pixelFormat.IsEmpty() ? TEXT("---") : m_stats.pixelFormat);
+	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	CString conversion;
-	conversion.Format(TEXT("Video Conv: %s"), m_stats.videoConversion);
-	DrawText(hdc, conversion, PADDING, y);
+	// Separator
+	y += 4;
+
+	// Method
+	line.Format(TEXT("Method:            %-20s"), m_stats.method.IsEmpty() ? TEXT("---") : m_stats.method);
+	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	y += 2;
-
-	// Latency stats
-	CString entryLat;
-	entryLat.Format(TEXT("Entry Latency: %.1f ms"), m_stats.entryLatencyMs);
-	DrawText(hdc, entryLat, PADDING, y);
+	// Frame Offset
+	line.Format(TEXT("Offset:           %7d ms"), m_stats.frameOffsetMs);
+	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	CString exitLat;
-	exitLat.Format(TEXT("Exit Latency: %.1f ms"), m_stats.exitLatencyMs);
-	DrawText(hdc, exitLat, PADDING, y);
+	// Separator
+	y += 4;
+
+	// VP Latency
+	line.Format(TEXT("VP Lat:           %7.2f ms"), m_stats.entryLatencyMs);
+	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	y += 2;
-
-	// Frame statistics
-	CString captured;
-	captured.Format(TEXT("Captured: %llu"), m_stats.capturedFrames);
-	DrawText(hdc, captured, PADDING, y);
+	// DS Latency
+	line.Format(TEXT("DS Lat:           %7.2f ms"), m_stats.exitLatencyMs);
+	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	CString dropped;
-	dropped.Format(TEXT("Dropped: %llu (cap) + %llu (queue)"),
-		m_stats.capturedDroppedFrames, m_stats.queueDroppedFrames);
-	DrawText(hdc, dropped, PADDING, y);
+	// Separator
+	y += 4;
+
+	// Queue info
+	line.Format(TEXT("Queue:             %3zu / %3zu"), m_stats.currentQueueSize, m_stats.maxQueueSize);
+	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
+
+	line.Format(TEXT("Queue Full:        %s"), m_stats.isQueueFull ? TEXT("YES") : TEXT("No "));
+	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
+
+	// Frame stats
+	line.Format(TEXT("VFrames:           %llu"), m_stats.capturedFrames);
+	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
+
+	line.Format(TEXT("Dropped:           %llu/%llu"), m_stats.capturedDroppedFrames, m_stats.queueDroppedFrames);
+	DrawText(hdc, line, PADDING, y);
 
 	SelectObject(hdc, oldFont);
 }

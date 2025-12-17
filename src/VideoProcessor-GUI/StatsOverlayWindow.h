@@ -15,21 +15,26 @@
 // Simple stats data structure - no complex types that need initialization
 struct StatsData
 {
+	// Video format info
+	CString resolution;        // e.g., "3840x2160"
+	double refreshRate = 0.0;  // Hz
+	CString eotf;              // e.g., "PQ"
+	CString colorspace;        // e.g., "BT.2020"
+	CString pixelFormat;       // e.g., "P010"
+
+	// Renderer settings
+	CString method;            // e.g., "Rational-Rational"
+	int frameOffsetMs = 0;
+	double hwLatencyMs = 0.0;  // Hardware latency
+
 	// Queue stats
 	size_t currentQueueSize = 0;
 	size_t maxQueueSize = 0;
 	bool isQueueFull = false;
 
-	// Reset tracking - use simple types only
-	uint64_t framesSinceReset = 0;
-	double secondsSinceReset = 0.0;
-	size_t maxQueueSizeSinceReset = 0;
-	uint64_t capturedFramesAtReset = 0;
-	ULONGLONG lastResetTickCount = 0;  // Use GetTickCount64() instead of chrono
-
 	// Latency
-	double entryLatencyMs = 0.0;
-	double exitLatencyMs = 0.0;
+	double entryLatencyMs = 0.0;  // VP Latency
+	double exitLatencyMs = 0.0;   // DS Latency
 
 	// Frame counts
 	uint64_t capturedFrames = 0;
@@ -37,8 +42,14 @@ struct StatsData
 	uint64_t queueDroppedFrames = 0;
 
 	// Video info
-	double refreshRate = 0.0;
 	CString videoConversion;
+
+	// Reset tracking - use simple types only
+	uint64_t framesSinceReset = 0;
+	double secondsSinceReset = 0.0;
+	size_t maxQueueSizeSinceReset = 0;
+	uint64_t capturedFramesAtReset = 0;
+	ULONGLONG lastResetTickCount = 0;  // Use GetTickCount64() instead of chrono
 
 	void OnReset()
 	{
