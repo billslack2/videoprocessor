@@ -344,6 +344,11 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
+	// Video Conversion
+	line.Format(TEXT("Video Conv:        %-20s"), m_stats.videoConversion.IsEmpty() ? TEXT("---") : m_stats.videoConversion);
+	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
+
 	// Separator
 	y += 4;
 

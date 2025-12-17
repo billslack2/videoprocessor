@@ -1304,7 +1304,16 @@ void CVideoProcessorDlg::RefreshCaptureDeviceList()
 	// Rebuild combo box with all devices which can capture
 	m_captureDeviceCombo.ResetContent();
 
-	for (auto& captureDevice : m_captureDevices)
+	// Convert set to vector for sorting
+	std::vector<ACaptureDeviceComPtr> sortedDevices(m_captureDevices.begin(), m_captureDevices.end());
+
+	// Sort devices by name
+	std::sort(sortedDevices.begin(), sortedDevices.end(),
+		[](const ACaptureDeviceComPtr& a, const ACaptureDeviceComPtr& b) {
+			return wcscmp(a->GetName(), b->GetName()) < 0;
+		});
+
+	for (auto& captureDevice : sortedDevices)
 	{
 		if (!captureDevice->CanCapture())
 			continue;
@@ -1326,7 +1335,7 @@ void CVideoProcessorDlg::RefreshCaptureDeviceList()
 		if (index == CB_ERR)
 		{
 			int initialDeviceSelection = 0;
-			
+
 			if (m_initialCaptureDevice.GetLength() > 0) initialDeviceSelection = m_captureDeviceCombo.FindString(0, m_initialCaptureDevice);
 
 			m_captureDeviceCombo.SetCurSel(initialDeviceSelection);
@@ -1344,7 +1353,6 @@ void CVideoProcessorDlg::RefreshCaptureDeviceList()
 		}
 	}
 }
-
 
 void CVideoProcessorDlg::RefreshInputConnectionCombo()
 {
@@ -2688,6 +2696,12 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		{
 			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Queue=%zu frames (%s, threshold=%zu)"),
 				currentQueueSize, isStartupPeriod ? TEXT("startup") : TEXT("operational"), operationalThreshold));
+		}
+
+		// Simple: reset when queue >= 4 frames
+		if (currentQueueSize >= 4)
+		{
+			m_videoRenderer->Reset();
 		}
 		
 		// Auto-reset logic

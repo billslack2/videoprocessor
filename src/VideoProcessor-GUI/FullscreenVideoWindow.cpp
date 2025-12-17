@@ -145,10 +145,24 @@ void FullscreenVideoWindow::Create(HMONITOR hmon, HWND parentWindow)
 }
 
 
+void FullscreenVideoWindow::OnClose()
+{
+	// Redirect Alt-F4 to close the main application window instead
+	CWnd* pMainWindow = AfxGetApp()->GetMainWnd();
+	if (pMainWindow && IsWindow(pMainWindow->GetSafeHwnd()))
+	{
+		pMainWindow->PostMessage(WM_CLOSE);
+	}
+}
+
+
 LRESULT __forceinline FullscreenVideoWindow::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
     {
+	case WM_CLOSE:
+		OnClose();
+		return 0;
 
     case WM_DESTROY:
         return 0;  // no PostQuitMessage, not it's own thread

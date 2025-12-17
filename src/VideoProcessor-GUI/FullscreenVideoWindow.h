@@ -37,4 +37,6 @@ protected:
     LRESULT __forceinline HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam);
 
     HWND m_hwnd = nullptr;
+
+    void OnClose();
 };
