@@ -374,13 +374,13 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += 4;
 
 	// Queue info
-	line.Format(TEXT("Queue:             %3zu / %3zu"), m_stats.currentQueueSize, m_stats.maxQueueSize);
+	line.Format(TEXT("Queue:             %llu/%llu %s"), m_stats.currentQueueSize, m_stats.maxQueueSize, m_stats.isQueueFull ? TEXT( "[FULL]") : TEXT(""));
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	line.Format(TEXT("Queue Full:        %s"), m_stats.isQueueFull ? TEXT("YES") : TEXT("No "));
-	DrawText(hdc, line, PADDING, y);
-	y += LINE_HEIGHT;
+	//line.Format(TEXT("Queue Full:        %s"), m_stats.isQueueFull ? TEXT("YES") : TEXT("No "));
+	//DrawText(hdc, line, PADDING, y);
+	//y += LINE_HEIGHT;
 
 	// Frame stats
 	line.Format(TEXT("VFrames:           %llu"), m_stats.capturedFrames);

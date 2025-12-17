@@ -1480,25 +1480,25 @@ void CVideoProcessorDlg::CaptureGUIClear()
 
 	// Input group
 	m_inputLockedText.SetWindowText(TEXT(""));
-	m_inputDisplayModeText.SetWindowText(TEXT(""));
+	m_inputDisplayModeText.SetWindowText(TEXT("")) ;
 
 	// Other
 	m_captureDeviceOtherList.ResetContent();
 
 	// Timing clock
-	m_timingClockDescriptionText.SetWindowText(TEXT(""));
+	m_timingClockDescriptionText.SetWindowText(TEXT("")) ;
 
 	// HDR colorSpace group
 	m_hdrColorspaceREdit.SetWindowText(TEXT(""));
 	m_hdrColorspaceGEdit.SetWindowText(TEXT(""));
 	m_hdrColorspaceBEdit.SetWindowText(TEXT(""));
-	m_hdrColorspaceWPEdit.SetWindowText(TEXT(""));
+	m_hdrColorspaceWPEdit.SetWindowText(TEXT("")) ;
 
 	// HDR Lumiance group
 	m_hdrLuminanceMaxCll.SetWindowText(TEXT(""));
 	m_hdrLuminanceMaxFall.SetWindowText(TEXT(""));
 	m_hdrLuminanceMasterMin.SetWindowText(TEXT(""));
-	m_hdrLuminanceMasterMax.SetWindowText(TEXT(""));
+	m_hdrLuminanceMasterMax.SetWindowText(TEXT("")) ;
 
 	// CIE1931 graph
 	m_colorspaceCie1931xy.SetColorSpace(ColorSpace::UNKNOWN);
@@ -1732,15 +1732,15 @@ void CVideoProcessorDlg::RenderRemove()
 void CVideoProcessorDlg::RenderGUIClear()
 {
 	// Renderer group
-	m_rendererDetailStringStatic.SetWindowText(TEXT(""));
+	m_rendererDetailStringStatic.SetWindowText(TEXT("")) ;
 
 	// Renderer Queue group
-	m_rendererVideoFrameQueueSizeText.SetWindowText(TEXT(""));
-	m_rendererDroppedFrameCountText.SetWindowText(TEXT(""));
+	m_rendererVideoFrameQueueSizeText.SetWindowText(TEXT("")) ;
+	m_rendererDroppedFrameCountText.SetWindowText(TEXT("")) ;
 
 	// Renderer latency (ms) group
-	m_rendererLatencyToVPText.SetWindowText(TEXT(""));
-	m_rendererLatencyToDSText.SetWindowText(TEXT(""));
+	m_rendererLatencyToVPText.SetWindowText(TEXT("")) ;
+	m_rendererLatencyToDSText.SetWindowText(TEXT("")) ;
 
 	m_windowedVideoWindow.ShowLogo(true);
 }
@@ -2762,8 +2762,17 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.hwLatencyMs = m_captureDevice->HardwareLatencyMs();
 	}
 
-	// Method - would need to add from renderer settings
-	stats.method = TEXT("---");
+	// Method - get from renderer DirectShow start/stop time method combo
+	int methodIndex = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
+	if (methodIndex >= 0)
+	{
+		DirectShowStartStopTimeMethod method = (DirectShowStartStopTimeMethod)m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(methodIndex);
+		stats.method = ToString(method);
+	}
+	else
+	{
+		stats.method = TEXT("---");
+	}
 
 	// Queue stats
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
