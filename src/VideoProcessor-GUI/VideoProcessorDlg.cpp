@@ -741,7 +741,6 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceError(WPARAM wParam, LPARAM lP
 	return 0;
 }
 
-
 // This is a handler for the DirectShow graph in the renderer,
 // it works by using the GUI's message queue.
 LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam)
@@ -1095,7 +1094,7 @@ void CVideoProcessorDlg::UpdateState()
 		return;
 	}
 
-	// If we don't have a capture card here we don't want to.
+	// If we don't have a capture card here we we don't want to.
 	if (!m_captureDevice)
 	{
 		assert(!m_desiredCaptureDevice);
@@ -1459,16 +1458,9 @@ void CVideoProcessorDlg::CaptureGUIClear()
 	m_inputDisplayModeText.SetWindowText(TEXT(""));
 	m_inputEncodingText.SetWindowText(TEXT(""));
 	m_inputBitDepthText.SetWindowText(TEXT(""));
-	m_inputVideoFrameCountText.SetWindowText(TEXT(""));
-	m_inputVideoFrameMissedText.SetWindowText(TEXT(""));
-	m_inputLatencyMsText.SetWindowText(TEXT(""));
 
-	// Captured video group
-	m_videoValidText.SetWindowText(TEXT(""));
-	m_videoDisplayModeText.SetWindowText(TEXT(""));
-	m_videoPixelFormatText.SetWindowText(TEXT(""));
-	m_videoEotfText.SetWindowText(TEXT(""));
-	m_videoColorSpaceText.SetWindowText(TEXT(""));
+	// Other
+	m_captureDeviceOtherList.ResetContent();
 
 	// Timing clock
 	m_timingClockDescriptionText.SetWindowText(TEXT(""));
@@ -1836,8 +1828,9 @@ void CVideoProcessorDlg::UpdateTimingClockFrameOffset()
 	if (m_captureDevice) 
 		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
 
-	if (m_videoRenderer)
-		m_videoRenderer->Reset();
+	//TODO: PLL
+	//if (m_videoRenderer)
+	//	m_videoRenderer->Reset();
 }
 
 
@@ -2529,17 +2522,26 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 }
 
 
+HCURSOR CVideoProcessorDlg::OnQueryDragIcon()
+{
+	return static_cast<HCURSOR>(m_hIcon);
+}
 
 
+void CVideoProcessorDlg::OnGetMinMaxInfo(MINMAXINFO* minMaxInfo)
+{
+	CDialog::OnGetMinMaxInfo(minMaxInfo);
 
-
-
-
-
-
-
-
-
+	if (m_hideUI) {
+		minMaxInfo->ptMinTrackSize.x = 100;
+		minMaxInfo->ptMinTrackSize.y = 100;
+	}
+	else {
+		// Guarantee minimum size of window
+		minMaxInfo->ptMinTrackSize.x = std::max(minMaxInfo->ptMinTrackSize.x, m_minDialogSize.cx);
+		minMaxInfo->ptMinTrackSize.y = std::max(minMaxInfo->ptMinTrackSize.y, m_minDialogSize.cy);
+	}
+}
 
 
 void CVideoProcessorDlg::OnSetFocus(CWnd* pOldWnd)
@@ -2577,17 +2579,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	CString cstring;
 
-
-	/*if (needRenderRestart)
-	{
-		needRenderRestart = false;
-		OnBnClickedCaptureRestart();  // Restart rendering
-	}
-	else {
-		needRenderRestart = false;
-	}
-	*/
-
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
 	{
 		cstring.Format(_T("%lu"), m_videoRenderer->GetFrameQueueSize());
@@ -2598,18 +2589,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 		cstring.Format(_T("%.01f"), m_videoRenderer->ExitLatencyMs());
 		m_rendererLatencyToDSText.SetWindowText(cstring);
-
-		const double frameMs = 1000.0 / m_captureDeviceVideoState->displayMode->RefreshRateHz();
-
-		// TODO: Find a way to show this information again
-		//if (m_videoRenderer->ExitLatencyMs() < (-3*frameMs) ||
-		//	m_videoRenderer->ExitLatencyMs() > 10)
-		//	m_rendererLatencyToDSText.SetTextColor(CColorStatic::RED);
-		//else if (m_videoRenderer->ExitLatencyMs() < (-2*frameMs) ||
-		//	     m_videoRenderer->ExitLatencyMs() > -5)
-		//	m_rendererLatencyToDSText.SetTextColor(CColorStatic::ORANGE);
-		//else
-		//	m_rendererLatencyToDSText.SetTextColor(CColorStatic::GREEN);
 
 		cstring.Format(_T("%lu"), m_videoRenderer->DroppedFrameCount());
 		m_rendererDroppedFrameCountText.SetWindowText(cstring);
@@ -2632,14 +2611,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 		cstring.Format(_T("%.01f"), m_captureDevice->HardwareLatencyMs());
 		m_inputLatencyMsText.SetWindowText(cstring);
-
-		// TODO: Find a way to show this information again
-		//if (m_captureDevice->HardwareLatencyMs() < 10)
-		//	m_inputLatencyMsText.SetTextColor(CColorStatic::GREEN);
-		//else if (m_captureDevice->HardwareLatencyMs() < 15)
-		//	m_inputLatencyMsText.SetTextColor(CColorStatic::ORANGE);
-		//else
-		//	m_inputLatencyMsText.SetTextColor(CColorStatic::RED);
 	}
 	else
 	{
@@ -2648,100 +2619,76 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		m_inputLatencyMsText.SetWindowText(_T(""));
 	}
 
-	// Prevent screensaver, this should be called "periodically" for whatever that means
+	// Prevent screensaver
 	if (m_timerSeconds % 60 == 0)
 	{
 		SetThreadExecutionState(ES_DISPLAY_REQUIRED);
 	}
 
-
-	// Auto adjust
+	// Monitor queue health periodically but allow PLL to settle
+	// During startup: allow higher buildup, during operation: keep queue lean
 	if (m_timerSeconds % 5 == 0 &&
-		m_rendererState == RendererState::RENDERSTATE_RENDERING)
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_videoRenderer &&
+		m_captureDevice &&
+		m_captureDeviceVideoState)
 	{
-		assert(m_videoRenderer);
-		assert(m_captureDevice);
-
-		bool queueOk = true;
-
-		// Auto-click reset on renderer if requested
+		const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
+		const double refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
+		
+		// Startup grace period: first 30 seconds allow PLL to settle
+		const bool isStartupPeriod = m_timerSeconds < 30;
+		
+		size_t operationalThreshold;
+		size_t criticalThreshold;
+		
+		if (isStartupPeriod)
+		{
+			// Startup: allow more queue buildup for PLL settling
+			operationalThreshold = (size_t)std::max(10.0, refreshRate * 0.5); // 0.5 seconds max
+			criticalThreshold = (size_t)std::max(20.0, refreshRate * 1.0);    // 1 second critical
+		}
+		else
+		{
+			// Normal operation: keep queue lean (1-5 frames)
+			operationalThreshold = 6;  // Reset at 6+ frames
+			criticalThreshold = 10;    // Hard limit at 10 frames
+		}
+		
+		// Log warnings for high queues
+		if (currentQueueSize > operationalThreshold)
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Queue=%zu frames (%s, threshold=%zu)"),
+				currentQueueSize, isStartupPeriod ? TEXT("startup") : TEXT("operational"), operationalThreshold));
+		}
+		
+		// Auto-reset logic
 		const bool rendererResetAuto = m_rendererResetAutoCheck.GetCheck();
 		if (rendererResetAuto)
 		{
-			const bool needsReset = m_videoRenderer->GetFrameQueueSize() >= 3;
-			queueOk = !needsReset;
-
-			if (needsReset)
+			bool shouldReset = false;
+			
+			if (isStartupPeriod && currentQueueSize > criticalThreshold)
 			{
-				DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Resetting renderer")));
+				// Startup: only reset on critical buildup
+				shouldReset = true;
+				DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): STARTUP RESET - Queue=%zu exceeds critical threshold %zu"),
+					currentQueueSize, criticalThreshold));
+			}
+			else if (!isStartupPeriod && currentQueueSize > operationalThreshold)
+			{
+				// Normal operation: reset quickly to maintain low latency
+				shouldReset = true;
+				DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): OPERATIONAL RESET - Queue=%zu exceeds lean threshold %zu"),
+					currentQueueSize, operationalThreshold));
+			}
+			
+			if (shouldReset)
+			{
 				m_videoRenderer->Reset();
 			}
 		}
-
-		// Auto update the clock frame offset to get just over zero
-		// only do this if the queue is ok as it will have a major impact on the offset(or unmanaged)
-		const bool timingClockFrameOffsetAuto = m_timingClockFrameOffsetAutoCheck.GetCheck();
-		if (queueOk && timingClockFrameOffsetAuto)
-		{
-
-
-			int newOffset = GetTimingClockFrameOffsetMs();
-			if (m_captureDeviceVideoState->displayMode->RefreshRateHz() <= 30) {
-				newOffset = 90;
-			}
-			else {
-				newOffset = 45;
-			}
-
-			if (newOffset != GetTimingClockFrameOffsetMs()) {
-				SetTimingClockFrameOffsetMs(newOffset);
-				UpdateTimingClockFrameOffset();
-			}
-
-			/*	const double videoFrameLead = -(m_videoRenderer->ExitLatencyMs());
-				const double frameDurationMs = 1000.0 / m_captureDeviceVideoState->displayMode->RefreshRateHz();
-
-				const bool needsAdjusting =
-					videoFrameLead < 0 ||
-					videoFrameLead >(frameDurationMs * 2);
-
-				if (needsAdjusting)
-				{
-					DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Adjusting clock frame offset + reset")));
-
-					const int delta = (int)round(-videoFrameLead);
-					const int newOffset = GetTimingClockFrameOffsetMs() + delta;
-
-					SetTimingClockFrameOffsetMs(newOffset);
-					UpdateTimingClockFrameOffset();
-				}
-			}
-			*/
-		}
 	}
 
-	
 	++m_timerSeconds;
-}
-
-
-HCURSOR CVideoProcessorDlg::OnQueryDragIcon()
-{
-	return static_cast<HCURSOR>(m_hIcon);
-}
-
-
-void CVideoProcessorDlg::OnGetMinMaxInfo(MINMAXINFO* minMaxInfo)
-{
-	CDialog::OnGetMinMaxInfo(minMaxInfo);
-
-	if (m_hideUI) {
-		minMaxInfo->ptMinTrackSize.x = 100;
-		minMaxInfo->ptMinTrackSize.y = 100;
-	}
-	else {
-		// Guarantee minimum size of window
-		minMaxInfo->ptMinTrackSize.x = std::max(minMaxInfo->ptMinTrackSize.x, m_minDialogSize.cx);
-		minMaxInfo->ptMinTrackSize.y = std::max(minMaxInfo->ptMinTrackSize.y, m_minDialogSize.cy);
-	}
 }

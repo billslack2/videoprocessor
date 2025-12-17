@@ -10,6 +10,7 @@
 
 #include <guid.h>
 #include <IMediaSideData.h>
+#include <DebugLog.h>
 
 #include "ALiveSourceVideoOutputPin.h"
 
@@ -388,37 +389,68 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	{
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
 	{
-		// CLOCK_RATIONAL: Use Bresenham-style exact integer math for drift-free timing.
-		// This ensures smooth playback in madVR without jitter or long-term drift.
+		// PLL-enhanced rational timing: Uses exact integer math with hardware-tracked correction
+		// This ensures smooth playback in madVR without jitter while adapting to actual hardware clock rate
 		//
-		// Formula: timestamp = frameNumber * 10,000,000 * frameDurationTicks / timeScale
-		// Using integer math to avoid floating-point accumulation errors.
+		// CRITICAL: The PLL measures the ACTUAL hardware frame interval vs THEORETICAL.
+		// - If hardware is FAST (actual < theoretical), correction < 1.0
+		// - If hardware is SLOW (actual > theoretical), correction > 1.0
 		//
-		// Apply correction factor to compensate for hardware clock drift measured from actual frame intervals
+		// BUT: We need timestamps to match the DIRECTSHOW CLOCK (which is hardware-based)
+		// So we should NOT apply correction to timestamps - the hardware clock IS the reference!
+		// The correction factor should only be used for diagnostics.
 		//
-		// Examples:
-		//   23.976fps: timeScale=24000, frameDurationTicks=1001
-		//   29.97fps:  timeScale=30000, frameDurationTicks=1001
-		//   59.94fps:  timeScale=60000, frameDurationTicks=1001
-		//   24fps:     timeScale=24,    frameDurationTicks=1
-		//   60fps:     timeScale=60,    frameDurationTicks=1
+		// Instead: Use pure rational math for perfectly evenly-spaced timestamps
+		// The DirectShow reference clock (hardware) will naturally stay in sync
+		// because BOTH the frame arrival and the clock come from the SAME hardware!
 		
 		// Use our internal frame counter for absolutely monotonic timestamps
 		// m_frameCounter is incremented at the top of this function, so subtract 1
 		const uint64_t frameNum = m_frameCounter - 1;
 		
-		// Exact integer calculation: (frameNum * 10,000,000 * frameDurationTicks * correction) / timeScale
-		// Using 64-bit math to prevent overflow
-		// 10,000,000 is REFERENCE_TIME units per second (100ns ticks)
+		// Pure rational calculation WITHOUT correction factor
+		// This produces perfectly evenly-spaced timestamps at the exact theoretical rate
+		// The hardware clock will stay in sync because it's the same source
 		const uint64_t referenceTimePerSecond = 10000000ULL;
-		timeStart = (REFERENCE_TIME)(frameNum * referenceTimePerSecond * m_frameDurationTicks * m_tickRateCorrectionFactor / m_timeScale);
+		timeStart = (REFERENCE_TIME)((frameNum * referenceTimePerSecond * m_frameDurationTicks) / m_timeScale);
 		
-		// On first frame, capture the hardware timestamp as our anchor point for debugging
+		// MONOTONICITY GUARANTEE: This timestamp MUST be >= previous timestamp
+		// With pure integer math and monotonic frame counter, this should always hold
+		if (m_frameCounter > 1 && timeStart <= m_previousTimeStop)
+		{
+			// This should NEVER happen with correct logic
+			DbgLog((LOG_ERROR, 1, TEXT("::FillBuffer(#%I64u): CRITICAL - Timestamp inversion detected! Current: %I64d, Previous: %I64d"),
+				videoFrame.GetCounter(), timeStart, m_previousTimeStop));
+			
+			DEBUGLOG("CRITICAL: Timestamp inversion! frame %llu, timestamp %lld <= previous %lld",
+				videoFrame.GetCounter(), timeStart, m_previousTimeStop);
+			
+			// Force monotonicity by using previous + 1 tick (emergency fallback)
+			timeStart = m_previousTimeStop + 1;
+		}
+		
+		// On first frame, log startup information
 		if (m_frameCounter == 1)
 		{
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL started - timeScale=%u, frameDurationTicks=%u, rate=%.6f fps, correction=%.8f"),
+			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL started - timeScale=%u, frameDurationTicks=%u, rate=%.6f fps"),
 				videoFrame.GetCounter(), m_timeScale, m_frameDurationTicks, 
-				(double)m_timeScale / (double)m_frameDurationTicks, m_tickRateCorrectionFactor));
+				(double)m_timeScale / (double)m_frameDurationTicks));
+			
+			DEBUGLOG("CLOCK_RATIONAL started: timeScale=%u, frameDurationTicks=%u, theoretical rate=%.6f fps (pure rational, no drift correction)",
+				m_timeScale, m_frameDurationTicks, (double)m_timeScale / (double)m_frameDurationTicks);
+		}
+		
+		// Log periodic diagnostics every 10 seconds (include PLL info for monitoring only)
+		if (m_frameCounter % 600 == 0)
+		{
+			const double theoreticalRate = (double)m_timeScale / (double)m_frameDurationTicks;
+			const double ppmDrift = (m_tickRateCorrectionFactor - 1.0) * 1000000.0;
+			
+			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL - frame %I64u, timestamp %I64d, rate: %.6f fps, PLL measured drift: %+.2f PPM (not applied)"),
+				videoFrame.GetCounter(), m_frameCounter, timeStart, theoreticalRate, ppmDrift));
+			
+			DEBUGLOG("CLOCK_RATIONAL frame %llu: timestamp %lld, rate %.6f fps, PLL drift %+.2f PPM (diagnostic only, not applied to timestamps)",
+				m_frameCounter, timeStart, theoreticalRate, ppmDrift);
 		}
 		break;
 	}
@@ -463,10 +495,10 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
 	{
 		// For rational timing, calculate the next frame's exact timestamp
-		// This ensures perfect frame pacing at the exact rational rate
+		// Pure rational math without correction factor
 		const uint64_t nextFrameNum = m_frameCounter;  // m_frameCounter was already incremented
 		const uint64_t referenceTimePerSecond = 10000000ULL;
-		timeStop = (REFERENCE_TIME)(nextFrameNum * referenceTimePerSecond * m_frameDurationTicks * m_tickRateCorrectionFactor / m_timeScale);
+		timeStop = (REFERENCE_TIME)((nextFrameNum * referenceTimePerSecond * m_frameDurationTicks) / m_timeScale);
 		break;
 	}
 

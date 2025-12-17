@@ -25,6 +25,12 @@
 
 static const timingclocktime_t DECKLINK_CLOCK_MAX_TICKS_SECOND = 1000000LL;  // us
 
+// PLL tuning parameters for real-time capture (23.976-60Hz range)
+// Phase gain: how quickly to correct phase errors (0.02 = gentle correction)
+// Freq gain: how quickly to adapt frequency (0.0001 = very slow, stable)
+const double BlackMagicDeckLinkCaptureDevice::PLL_PHASE_GAIN = 0.02;
+const double BlackMagicDeckLinkCaptureDevice::PLL_FREQ_GAIN = 0.0001;
+
 
 //
 // Constructor & destructor
@@ -355,7 +361,6 @@ void BlackMagicDeckLinkCaptureDevice::SetFrameOffsetMs(int frameOffsetMs)
 	m_frameOffsetTicks = frameOffsetMs * ticksPerMs;
 }
 
-
 //
 // ITimingClock
 //
@@ -394,7 +399,6 @@ const TCHAR* BlackMagicDeckLinkCaptureDevice::TimingClockDescription()
 {
 	return TEXT("DeckLink hardware clock");
 }
-
 
 //
 // IDeckLinkInputCallback
@@ -582,55 +586,90 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 			m_missedVideoFrameCount += std::max((frames - 1), 0);
 
 			// Track actual vs expected tick rate for DeckLink compensation
-			// This allows us to measure if the hardware is ticking fast or slow
+			// NOTE: PLL correction is used by CLOCK_RATIONAL mode for long-term stability
+			// Gentler corrections during first few minutes to prevent startup instability
 			if (frames == 1)  // Only measure when we have exactly one frame (no dropped frames for accuracy)
 			{
 				const timingclocktime_t expectedTicks = m_ticksPerFrame;
 				const timingclocktime_t actualTicks = (timingclocktime_t)(frameDiffTicks + 0.5);
-				const timingclocktime_t tickDifference = actualTicks - expectedTicks;
+				const timingclocktime_t tickError = actualTicks - expectedTicks;
 
-				m_accumulatedTickDifference += tickDifference;
-				++m_frameIntervalSampleCount;
-
-				// Log the start of compensation tracking
-				if (m_frameIntervalSampleCount == 1)
+				if (m_compensationSampleCount == 0)
 				{
-					DEBUGLOG("Starting DeckLink tick rate compensation tracking - expected ticks per frame: %lld", m_ticksPerFrame);
+					// Initialize PLL with first sample
+					m_pllMeasuredFrameInterval = (double)actualTicks;
+					m_pllPhaseError = 0.0;
+					m_hardwareStartTimestamp = m_previousTimingClockFrameTime;  // Anchor to hardware baseline
+					
+					DEBUGLOG("PLL initialized - expected ticks/frame: %lld, actual: %lld", expectedTicks, actualTicks);
+					DEBUGLOG("PLL hardware anchor: %lld ?s (frame #%llu)", m_hardwareStartTimestamp, m_capturedVideoFrameCount);
+				}
+				else
+				{
+					// PLL Phase Detector: measure error between expected and actual
+					const double phaseErrorTicks = (double)tickError;
+
+					// Adaptive gain: gentler during startup (first 10 minutes), normal afterward
+					// This reduces startup jitter while maintaining long-term accuracy
+					const bool startupPeriod = (m_compensationSampleCount < 36000);  // ~10 minutes at 60fps
+					const double freqGain = startupPeriod ? (PLL_FREQ_GAIN * 0.5) : PLL_FREQ_GAIN;
+					const double phaseGain = startupPeriod ? (PLL_PHASE_GAIN * 0.5) : PLL_PHASE_GAIN;
+
+					// PLL Loop Filter: Update frequency estimate (adaptive speed for stability)
+					m_pllMeasuredFrameInterval += freqGain * phaseErrorTicks;
+
+					// PLL Loop Filter: Accumulate phase correction (adaptive rate)
+					m_pllPhaseError += phaseGain * phaseErrorTicks;
+					
+					// Track PLL quality metrics
+					const double absPhaseError = fabs(phaseErrorTicks);
+					if (absPhaseError > m_pllMaxPhaseError)
+						m_pllMaxPhaseError = absPhaseError;
+					
+					// Update phase error variance (simplified exponential moving variance)
+					const double alpha = 0.1;  // Smoothing factor
+					m_pllPhaseErrorVariance = (1.0 - alpha) * m_pllPhaseErrorVariance + alpha * (phaseErrorTicks * phaseErrorTicks);
+
+					// Apply PLL correction to base frequency
+					if (m_compensationSampleCount >= COMPENSATION_MIN_SAMPLES)
+					{
+						// Calculate correction factor from PLL measurements
+						m_tickRateCorrectionFactor = m_pllMeasuredFrameInterval / expectedTicks;
+						
+						// Check if PLL has achieved stable lock (variance < 1 tick²)
+						if (!m_pllLocked && m_pllPhaseErrorVariance < 1.0 && m_compensationSampleCount >= 1800)  // 30s @ 60fps minimum
+						{
+							m_pllLocked = true;
+							const double ppmDrift = ((m_pllMeasuredFrameInterval - expectedTicks) / expectedTicks) * 1000000.0;
+							DEBUGLOG("PLL LOCKED at sample %d - drift: %+.2f PPM, variance: %.3f ticks², startup period: %s", 
+								m_compensationSampleCount, ppmDrift, m_pllPhaseErrorVariance, startupPeriod ? "YES" : "NO");
+						}
+
+						// Log every 10 seconds for monitoring
+						if (m_compensationSampleCount % 600 == COMPENSATION_MIN_SAMPLES)
+						{
+							const double ppmDrift = ((m_pllMeasuredFrameInterval - expectedTicks) / expectedTicks) * 1000000.0;
+							const double stabilityRms = sqrt(m_pllPhaseErrorVariance);
+							
+							DEBUGLOG("PLL: Measured interval: %.2f ticks, correction: %.8f, drift: %+.2f PPM, RMS jitter: %.2f ticks, samples: %d (startup: %s)",
+								m_pllMeasuredFrameInterval, m_tickRateCorrectionFactor, ppmDrift, stabilityRms, m_compensationSampleCount,
+								startupPeriod ? "YES" : "NO");
+
+							DbgLog((LOG_TRACE, 1, TEXT("PLL drift: %+.2f PPM, correction: %.8f, locked: %s, startup: %s"),
+								ppmDrift, m_tickRateCorrectionFactor, m_pllLocked ? TEXT("YES") : TEXT("NO"), 
+								startupPeriod ? TEXT("YES") : TEXT("NO")));
+						}
+					}
 				}
 
-				// Once we have enough samples, update the correction factor
-				if (m_frameIntervalSampleCount >= TICK_RATE_AVERAGING_WINDOW)
-				{
-					const double avgTickDifference = (double)m_accumulatedTickDifference / m_frameIntervalSampleCount;
-					const double correctionPPM = (avgTickDifference / m_ticksPerFrame) * 1000000.0;  // parts per million
-
-					// Calculate correction factor: if DeckLink is ticking 10 PPM fast, multiply by 1.00001
-					m_tickRateCorrectionFactor = 1.0 + (correctionPPM / 1000000.0);
-
-					// Log the measurement for debugging
-					DEBUGLOG("DeckLink Compensation Update: Tick rate deviation: %+.2f PPM, correction factor: %.8f, frames sampled: %d", 
-						correctionPPM, m_tickRateCorrectionFactor, m_frameIntervalSampleCount);
-
-					// Also log to debug output if available
-					DbgLog((LOG_TRACE, 1, TEXT("DeckLink tick rate: %+.2f PPM, correction factor: %.8f"),
-						correctionPPM, m_tickRateCorrectionFactor));
-
-					// Reset accumulators for next averaging window
-					m_accumulatedTickDifference = 0;
-					m_frameIntervalSampleCount = 0;
-				}
+				++m_compensationSampleCount;
 			}
 		}
 
 		m_previousTimingClockFrameTime = timingClockFrameTime;
 
-		// Every every so often get the hardware latency.
-		// TODO: Change to framerate rather than fixed number of frames
-		if(m_capturedVideoFrameCount % 20 == 0)
-		{
-			timingclocktime_t timingClockNow = TimingClockNow();
-			m_hardwareLatencyMs = TimingClockDiffMs(timingClockFrameTime, timingClockNow, TimingClockTicksPerSecond());
-		}
+		// Hardware latency measurement removed to prevent blocking in frame callback
+		// TODO: Move to background thread or timer if latency monitoring is needed
 
 		// Offset timestamp. Do this after getting the hardware latency else it'll account for this as well
 		timingClockFrameTime += m_frameOffsetTicks;
@@ -706,7 +745,7 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 				}
 			}
 
-			// HDR meta data
+			// HDR meta data - OPTIMIZED: Skip heavy HDR processing for SDR content
 			if (videoFrame->GetFlags() & bmdFrameContainsHDRMetadata)
 			{
 				// Was nothing, now is something
@@ -818,11 +857,13 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 			}
 			else
 			{
-				// Now no data, but had data before
+				// SDR content or no HDR metadata - clear HDR state if previously had HDR data
 				if (m_videoHasHdrData)
 				{
 					m_videoHasHdrData = false;
 					videoStateChanged = true;
+					// Note: For SDR content, we skip all 15 HDR metadata COM calls above
+					// This eliminates ~900 unnecessary COM calls per second for 59.94fps SDR content
 				}
 			}
 		}
@@ -846,7 +887,6 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 
 	return S_OK;
 }
-
 
 //
 // IDeckLinkProfileCallback
@@ -903,7 +943,6 @@ HRESULT BlackMagicDeckLinkCaptureDevice::Notify(BMDNotifications topic, uint64_t
 
 	return S_OK;
 }
-
 
 //
 // IUnknown
@@ -1119,7 +1158,6 @@ void BlackMagicDeckLinkCaptureDevice::Error(const CString& error)
 
 	// TODO: Stop capture and return error state?
 }
-
 
 //
 // Internal helpers

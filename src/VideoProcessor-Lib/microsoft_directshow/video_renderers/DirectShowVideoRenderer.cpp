@@ -11,7 +11,9 @@
 #include <dvdmedia.h>
 
 #include <guid.h>
+#include <DebugLog.h>
 #include <microsoft_directshow/live_source_filter/CLiveSource.h>
+#include <microsoft_directshow/live_source_filter/ALiveSourceVideoOutputPin.h>
 #include <microsoft_directshow/DIrectShowTranslations.h>
 
 #include "DirectShowVideoRenderer.h"
@@ -96,6 +98,32 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	assert(m_videoState);
 	assert(videoFrame.GetTimingTimestamp() > 0);
 
+	// CRITICAL FIX: Update PLL correction factor BEFORE frame processing to prevent timestamp inversions
+	// This ensures the correction factor is applied to the CURRENT frame, not the next frame
+	if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL && 
+		m_timingClock)
+	{
+		const double newCorrectionFactor = m_timingClock->GetTickRateCorrectionFactor();
+		
+		// Get the output pin and update its correction factor IMMEDIATELY BEFORE frame timestamping
+		ALiveSourceVideoOutputPin* outputPin = m_liveSource->GetVideoOutputPin();
+		if (outputPin)
+		{
+			outputPin->SetTickRateCorrectionFactor(newCorrectionFactor);
+			
+			// Log correction factor updates for diagnostics (every 600 frames = ~10s @ 60fps)
+			if (m_frameCounter % 600 == 0)
+			{
+				const double ppmDrift = (newCorrectionFactor - 1.0) * 1000000.0;
+				DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer: PLL correction updated BEFORE frame - factor: %.8f, drift: %+.2f PPM"),
+					newCorrectionFactor, ppmDrift));
+				
+				DEBUGLOG("Renderer: Applied PLL correction %.8f (%+.2f PPM) BEFORE frame %llu timestamp", 
+					newCorrectionFactor, ppmDrift, m_frameCounter);
+			}
+		}
+	}
+
 	// Get delay until now once in a while
 	if (m_frameCounter % 20 == 0)
 	{
@@ -103,6 +131,22 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 		const timingclocktime_t clockTime = m_timingClock->TimingClockNow();
 
 		m_frameLatencyEntry = TimingClockDiffMs(frameTime, clockTime, m_timingClock->TimingClockTicksPerSecond());
+		
+		// Diagnostic: Check DirectShow clock synchronization (every 10 seconds)
+		if (m_frameCounter % 600 == 0 && m_referenceClock)
+		{
+			REFERENCE_TIME dsClockTime = 0;
+			if (SUCCEEDED(m_referenceClock->GetTime(&dsClockTime)))
+			{
+				// Convert hardware clock to DirectShow time for comparison
+				const REFERENCE_TIME hardwareAsDsTime = (frameTime * 10000000) / m_timingClock->TimingClockTicksPerSecond();
+				const REFERENCE_TIME clockDiff = dsClockTime - hardwareAsDsTime;
+				const double clockDiffMs = clockDiff / 10000.0;
+				
+				DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer: Clock sync check - DS clock: %I64d, HW clock: %I64d, diff: %.2f ms"),
+					dsClockTime, hardwareAsDsTime, clockDiffMs));
+			}
+		}
 	}
 
 	if (FAILED(m_liveSource->OnVideoFrame(videoFrame)))

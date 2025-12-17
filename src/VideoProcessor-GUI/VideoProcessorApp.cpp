@@ -16,6 +16,7 @@ extern "C" {
 #include <VideoProcessorDlg.h>
 #include <VideoConversionOverride.h>
 #include <HelpDialog.h>
+#include <DebugLog.h>
 
 #include "VideoProcessorApp.h"
 using namespace std;
@@ -42,6 +43,9 @@ BOOL CVideoProcessorApp::InitInstance()
 #ifdef _DEBUG
 	av_log_set_level(AV_LOG_TRACE);
 #endif
+
+	// Initialize async debug logger
+	DEBUGLOG_INIT();
 
 	CHelpDialog help;
 	CVideoProcessorDlg dlg;
@@ -520,6 +524,9 @@ BOOL CVideoProcessorApp::InitInstance()
 	}
 
 	CoUninitialize();
+
+	// Shutdown async debug logger
+	DEBUGLOG_SHUTDOWN();
 
 	return FALSE;
 }

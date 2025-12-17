@@ -112,17 +112,32 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		if (!m_isActive)
 			return S_OK;
 
-		// If this frame's timestamp is lower or equal to the one before it,
-		// erase that earlier one
+		// More tolerant timestamp handling for long-term stability
+		// Allow small backwards timestamps (within 1/2 frame duration) to handle PLL jitter
+		const timingclocktime_t currentTimestamp = videoFrame.GetTimingTimestamp();
+		const timingclocktime_t toleranceThreshold = m_timingClock ? 
+			(m_timingClock->TimingClockTicksPerSecond() / 120) : 8333;  // ~8ms tolerance at 1MHz, fallback to 8ms
+
+		// Only drop frames with significantly older timestamps (more than tolerance)
 		while (!m_videoFrameQueue.empty())
 		{
 			VideoFrame lastFrame = m_videoFrameQueue.back();
+			const timingclocktime_t lastTimestamp = lastFrame.GetTimingTimestamp();
 
-			// Previous one was younger, nothing to do
-			if (videoFrame.GetTimingTimestamp() > lastFrame.GetTimingTimestamp())
+			// If new frame is significantly newer, keep processing
+			if (currentTimestamp > (lastTimestamp + toleranceThreshold))
 				break;
 
-			// Previous one was older or equal, erase
+			// If new frame is significantly older, drop it and keep the newer one
+			if ((currentTimestamp + toleranceThreshold) < lastTimestamp)
+			{
+				// Drop the incoming frame (it's too old)
+				DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Dropping old frame - current: %lld, last: %lld, diff: %lld"),
+					currentTimestamp, lastTimestamp, lastTimestamp - currentTimestamp));
+				return S_OK;
+			}
+
+			// Timestamps are very close - drop the older one in queue and accept new one
 			lastFrame.SourceBufferRelease();
 			m_videoFrameQueue.pop_back();
 			++m_droppedFrameCount;
@@ -191,13 +206,23 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 {
 	// ! WARNING: Runs in inner thread
 
+	// Set thread priority to above normal for time-critical frame delivery
+	if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL))
+	{
+		DbgLog((LOG_WARNING, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Failed to set thread priority to above normal")));
+	}
+	else
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Thread priority set to above normal")));
+	}
+
 	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin worker thread starting (event-driven)")));
 
 	while (true)
 	{
 		// Wait for frame to be available (event-driven, not polling!)
-		// Timeout after 100ms to check if thread should exit
-		DWORD waitResult = WaitForSingleObject(m_hFrameAvailableEvent, 100);
+		// Timeout after 5ms to check if thread should exit
+		DWORD waitResult = WaitForSingleObject(m_hFrameAvailableEvent, 5);
 		
 		if (waitResult == WAIT_TIMEOUT)
 		{

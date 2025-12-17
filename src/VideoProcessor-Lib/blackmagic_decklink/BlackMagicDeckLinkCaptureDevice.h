@@ -66,7 +66,7 @@ public:
 	const TCHAR* TimingClockDescription() override;
 
 	// Get the measured tick rate correction factor (for rational timing compensation)
-	double GetTickRateCorrectionFactor() const { return m_tickRateCorrectionFactor; }
+	double GetTickRateCorrectionFactor() const override { return m_tickRateCorrectionFactor; }
 
 	// IDeckLinkInputCallback
 	HRESULT VideoInputFormatChanged(BMDVideoInputFormatChangedEvents notificationEvents, IDeckLinkDisplayMode* newDisplayMode, BMDDetectedVideoInputFormatFlags detectedSignalFlags) override;
@@ -127,12 +127,27 @@ private:
 	uint64_t m_missedVideoFrameCount = 0;
 	timingclocktime_t m_previousTimingClockFrameTime = TIMING_CLOCK_TIME_INVALID;
 
-	// DeckLink hardware tick rate compensation
-	// Measures actual vs expected frame intervals to detect if the card is ticking fast/slow
-	double m_tickRateCorrectionFactor = 1.0;  // starts at 1.0 (no correction)
-	timingclocktime_t m_accumulatedTickDifference = 0;  // running total of tick deviations
-	int m_frameIntervalSampleCount = 0;  // how many samples we've collected
-	static const int TICK_RATE_AVERAGING_WINDOW = 100;  // samples to average over
+	// DeckLink Phase-Locked Loop (PLL) for smooth timestamp generation
+	// PLL tracks actual hardware clock rate while filtering jitter, providing stable timestamps
+	// that adapt to hardware reality for real-time capture across 23.976-60Hz range
+	double m_tickRateCorrectionFactor = 1.0;  // Current PLL frequency correction
+	double m_pllPhaseError = 0.0;  // Accumulated phase error in ticks
+	double m_pllMeasuredFrameInterval = 0.0;  // Smoothed measured frame interval in ticks
+	int m_compensationSampleCount = 0;  // Total samples for PLL stabilization
+	
+	// Hardware timestamp anchoring for absolute time correlation
+	timingclocktime_t m_hardwareStartTimestamp = TIMING_CLOCK_TIME_INVALID;  // First frame hardware time
+	timingclocktime_t m_previousHardwareTimestamp = TIMING_CLOCK_TIME_INVALID;  // Last frame for monotonicity check
+	
+	// PLL quality metrics for diagnostics
+	double m_pllPhaseErrorVariance = 0.0;  // Variance of phase error (stability indicator)
+	double m_pllMaxPhaseError = 0.0;  // Maximum observed phase error
+	bool m_pllLocked = false;  // True when PLL has achieved stable lock
+	
+	// PLL tuning parameters - optimized for real-time capture with 23.976-60Hz range
+	static const int COMPENSATION_MIN_SAMPLES = 30;  // Fast initial lock (0.5s @ 60fps)
+	static const double PLL_PHASE_GAIN;  // Phase correction speed (defined in .cpp)
+	static const double PLL_FREQ_GAIN;   // Frequency adaptation speed (defined in .cpp)
 
 	void ResetVideoState();
 
