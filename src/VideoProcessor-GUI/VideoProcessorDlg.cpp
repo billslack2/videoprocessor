@@ -2627,6 +2627,40 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		m_inputLatencyMsText.SetWindowText(_T(""));
 	}
 
+	// Ensure video window maintains focus for keyboard shortcuts (like Ctrl+I)
+// Check every 2 seconds to avoid excessive focus stealing
+	if (m_timerSeconds % 2 == 0)
+	{
+		if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow)
+		{
+			// In fullscreen mode, ensure fullscreen window has focus
+			HWND foregroundWindow = ::GetForegroundWindow();
+			HWND fullscreenHwnd = m_fullScreenVideoWindow->GetHWND();
+
+			if (foregroundWindow != fullscreenHwnd && IsWindow(fullscreenHwnd))
+			{
+				// Bring fullscreen window to front and give it focus
+				::SetForegroundWindow(fullscreenHwnd);
+				::SetFocus(fullscreenHwnd);
+				// Also ensure it stays on top
+				::SetWindowPos(fullscreenHwnd, HWND_TOPMOST, 0, 0, 0, 0,
+					SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+			}
+		}
+		else if (m_rendererState == RendererState::RENDERSTATE_RENDERING && !m_rendererFullscreenCheck.GetCheck())
+		{
+			// In windowed mode, ensure main dialog has focus
+			HWND foregroundWindow = ::GetForegroundWindow();
+			HWND mainHwnd = this->GetSafeHwnd();
+
+			if (foregroundWindow != mainHwnd && IsWindow(mainHwnd))
+			{
+				::SetForegroundWindow(mainHwnd);
+				::SetFocus(mainHwnd);
+			}
+		}
+	}
+
 	// Prevent screensaver
 	if (m_timerSeconds % 60 == 0)
 	{
