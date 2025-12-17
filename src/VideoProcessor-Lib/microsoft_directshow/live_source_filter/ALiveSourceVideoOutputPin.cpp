@@ -387,7 +387,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	// Determine start time
 	switch (m_timestamp)
 	{
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
 	{
 		// PLL-enhanced rational timing: Uses exact integer math with hardware-tracked correction
 		// This ensures smooth playback in madVR without jitter while adapting to actual hardware clock rate
@@ -432,11 +432,11 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		// On first frame, log startup information
 		if (m_frameCounter == 1)
 		{
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL started - timeScale=%u, frameDurationTicks=%u, rate=%.6f fps"),
+			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): RATIONAL_RATIONAL started - timeScale=%u, frameDurationTicks=%u, rate=%.6f fps"),
 				videoFrame.GetCounter(), m_timeScale, m_frameDurationTicks, 
 				(double)m_timeScale / (double)m_frameDurationTicks));
 			
-			DEBUGLOG("CLOCK_RATIONAL started: timeScale=%u, frameDurationTicks=%u, theoretical rate=%.6f fps (pure rational, no drift correction)",
+			DEBUGLOG("RATIONAL_RATIONAL started: timeScale=%u, frameDurationTicks=%u, theoretical rate=%.6f fps (pure rational, no drift correction)",
 				m_timeScale, m_frameDurationTicks, (double)m_timeScale / (double)m_frameDurationTicks);
 		}
 		
@@ -446,10 +446,10 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			const double theoreticalRate = (double)m_timeScale / (double)m_frameDurationTicks;
 			const double ppmDrift = (m_tickRateCorrectionFactor - 1.0) * 1000000.0;
 			
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): CLOCK_RATIONAL - frame %I64u, timestamp %I64d, rate: %.6f fps, PLL measured drift: %+.2f PPM (not applied)"),
+			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): RATIONAL_RATIONAL - frame %I64u, timestamp %I64d, rate: %.6f fps, PLL measured drift: %+.2f PPM (not applied)"),
 				videoFrame.GetCounter(), m_frameCounter, timeStart, theoreticalRate, ppmDrift));
 			
-			DEBUGLOG("CLOCK_RATIONAL frame %llu: timestamp %lld, rate %.6f fps, PLL drift %+.2f PPM (diagnostic only, not applied to timestamps)",
+			DEBUGLOG("RATIONAL_RATIONAL frame %llu: timestamp %lld, rate %.6f fps, PLL drift %+.2f PPM (diagnostic only, not applied to timestamps)",
 				m_frameCounter, timeStart, theoreticalRate, ppmDrift);
 		}
 		break;
@@ -492,7 +492,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	// Determine stop time
 	switch (m_timestamp)
 	{
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
 	{
 		// For rational timing, calculate the next frame's exact timestamp
 		// Pure rational math without correction factor
@@ -538,7 +538,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	// Set right amount of values
 	switch (m_timestamp)
 	{
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:

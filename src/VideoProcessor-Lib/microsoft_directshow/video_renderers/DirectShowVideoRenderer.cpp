@@ -100,7 +100,7 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 
 	// CRITICAL FIX: Update PLL correction factor BEFORE frame processing to prevent timestamp inversions
 	// This ensures the correction factor is applied to the CURRENT frame, not the next frame
-	if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL && 
+	if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL && 
 		m_timingClock)
 	{
 		const double newCorrectionFactor = m_timingClock->GetTickRateCorrectionFactor();
@@ -630,7 +630,7 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 	m_liveSource->AddRef();
 
 	// Get the exact rational timing values from the DisplayMode
-	// These are used for Bresenham-style exact integer math in CLOCK_RATIONAL mode
+	// These are used for Bresenham-style exact integer math in RATIONAL_RATIONAL mode
 	const unsigned int timeScale = m_videoState->displayMode->TimeScale();
 	const unsigned int frameDurationTicks = m_videoState->displayMode->FrameDuration();
 

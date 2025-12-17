@@ -131,8 +131,8 @@ static const std::vector<std::pair<LPCTSTR, HdrLuminanceOptions>> HDR_LUMINANCE_
 
 static const std::vector<DirectShowStartStopTimeMethod> RENDERER_DIRECTSHOW_START_STOP_TIME_OPTIONS =
 {
-	// CLOCK_RATIONAL uses defined rational frame rates instead of hardware timestamps
-	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL,
+	// RATIONAL_RATIONAL uses defined rational frame rates instead of hardware timestamps
+	DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK,
@@ -2574,8 +2574,81 @@ void CVideoProcessorDlg::OnClose()
 	ClearRendererCombo();
 }
 
-
 void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
+{
+	CString cstring;
+
+	if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
+	{
+		cstring.Format(_T("%lu"), m_videoRenderer->GetFrameQueueSize());
+		m_rendererVideoFrameQueueSizeText.SetWindowText(cstring);
+
+		cstring.Format(_T("%.01f"), m_videoRenderer->EntryLatencyMs());
+		m_rendererLatencyToVPText.SetWindowText(cstring);
+
+		cstring.Format(_T("%.01f"), m_videoRenderer->ExitLatencyMs());
+		m_rendererLatencyToDSText.SetWindowText(cstring);
+
+		cstring.Format(_T("%lu"), m_videoRenderer->DroppedFrameCount());
+		m_rendererDroppedFrameCountText.SetWindowText(cstring);
+	}
+	else
+	{
+		m_rendererVideoFrameQueueSizeText.SetWindowText(_T(""));
+		m_rendererLatencyToVPText.SetWindowText(_T(""));
+		m_rendererLatencyToDSText.SetWindowText(_T(""));
+		m_rendererDroppedFrameCountText.SetWindowText(TEXT(""));
+	}
+
+	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING)
+	{
+		cstring.Format(_T("%lu"), m_captureDevice->VideoFrameCapturedCount());
+		m_inputVideoFrameCountText.SetWindowText(cstring);
+
+		cstring.Format(_T("%lu"), m_captureDevice->VideoFrameMissedCount());
+		m_inputVideoFrameMissedText.SetWindowText(cstring);
+
+		cstring.Format(_T("%.01f"), m_captureDevice->HardwareLatencyMs());
+		m_inputLatencyMsText.SetWindowText(cstring);
+	}
+	else
+	{
+		m_inputVideoFrameCountText.SetWindowText(TEXT(""));
+		m_inputVideoFrameMissedText.SetWindowText(TEXT(""));
+		m_inputLatencyMsText.SetWindowText(_T(""));
+	}
+
+	// Prevent screensaver
+	if (m_timerSeconds % 60 == 0)
+	{
+		SetThreadExecutionState(ES_DISPLAY_REQUIRED);
+	}
+
+	// Auto-reset if queue size reaches or exceeds 4 frames
+	if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_videoRenderer &&
+		m_captureDevice &&
+		m_captureDeviceVideoState &&
+		m_rendererResetAutoCheck.GetCheck())
+	{
+		const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
+
+		if (currentQueueSize >= 4)
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Queue=%zu - Calling Reset()"),
+				currentQueueSize));
+
+			//DEBUGLOG("OnTimer: Queue size %zu >= 4 - calling Reset()", currentQueueSize);
+
+
+			m_videoRenderer->Reset();
+		}
+	}
+
+	++m_timerSeconds;
+}
+
+/*void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	CString cstring;
 
@@ -2691,4 +2764,4 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	}
 
 	++m_timerSeconds;
-}
+}*/

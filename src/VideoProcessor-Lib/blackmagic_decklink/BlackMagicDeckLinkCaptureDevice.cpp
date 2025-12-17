@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -586,7 +586,7 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 			m_missedVideoFrameCount += std::max((frames - 1), 0);
 
 			// Track actual vs expected tick rate for DeckLink compensation
-			// NOTE: PLL correction is used by CLOCK_RATIONAL mode for long-term stability
+			// NOTE: PLL correction is used by RATIONAL_RATIONAL mode for long-term stability
 			// Gentler corrections during first few minutes to prevent startup instability
 			if (frames == 1)  // Only measure when we have exactly one frame (no dropped frames for accuracy)
 			{
@@ -602,7 +602,7 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 					m_hardwareStartTimestamp = m_previousTimingClockFrameTime;  // Anchor to hardware baseline
 					
 					DEBUGLOG("PLL initialized - expected ticks/frame: %lld, actual: %lld", expectedTicks, actualTicks);
-					DEBUGLOG("PLL hardware anchor: %lld ?s (frame #%llu)", m_hardwareStartTimestamp, m_capturedVideoFrameCount);
+					DEBUGLOG("PLL hardware anchor: %lld μs (frame #%llu)", m_hardwareStartTimestamp, m_capturedVideoFrameCount);
 				}
 				else
 				{
@@ -636,12 +636,12 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 						// Calculate correction factor from PLL measurements
 						m_tickRateCorrectionFactor = m_pllMeasuredFrameInterval / expectedTicks;
 						
-						// Check if PLL has achieved stable lock (variance < 1 tick�)
+						// Check if PLL has achieved stable lock (variance < 1 tick²)
 						if (!m_pllLocked && m_pllPhaseErrorVariance < 1.0 && m_compensationSampleCount >= 1800)  // 30s @ 60fps minimum
 						{
 							m_pllLocked = true;
 							const double ppmDrift = ((m_pllMeasuredFrameInterval - expectedTicks) / expectedTicks) * 1000000.0;
-							DEBUGLOG("PLL LOCKED at sample %d - drift: %+.2f PPM, variance: %.3f ticks�, startup period: %s", 
+							DEBUGLOG("PLL LOCKED at sample %d - drift: %+.2f PPM, variance: %.3f ticks², startup period: %s", 
 								m_compensationSampleCount, ppmDrift, m_pllPhaseErrorVariance, startupPeriod ? "YES" : "NO");
 						}
 

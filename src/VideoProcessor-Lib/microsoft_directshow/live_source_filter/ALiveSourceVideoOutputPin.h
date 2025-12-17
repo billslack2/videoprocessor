@@ -124,7 +124,7 @@ protected:
 	AM_MEDIA_TYPE m_mediaType;
 	bool m_useHDRData = false;
 
-	// Rational timing parameters for CLOCK_RATIONAL mode (Bresenham-style exact integer math)
+	// Rational timing parameters for RATIONAL_RATIONAL mode (Bresenham-style exact integer math)
 	// These come from DisplayMode and allow drift-free timing for rates like 23.976, 29.97, 59.94
 	unsigned int m_timeScale = 0;           // Ticks per second (e.g., 24000 for 23.976fps)
 	unsigned int m_frameDurationTicks = 0;  // Ticks per frame (e.g., 1001 for 23.976fps)
