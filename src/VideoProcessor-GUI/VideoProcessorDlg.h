@@ -22,6 +22,8 @@
 #include <WindowedVideoWindow.h>
 #include <microsoft_directshow/DirectShowRendererStartStopTimeMethod.h>
 #include <microsoft_directshow/DirectShowDefines.h>
+#include <microsoft_directshow/video_renderers/DirectShowVideoRenderer.h>
+#include <StatsOverlayWindow.h>
 
 #include "resource.h"
 
@@ -135,6 +137,7 @@ public:
 	void OnCommandRendererReset();
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
+	void OnCommandToggleStatsOverlay();
 
 	// ICaptureDeviceDiscovererCallback
 	void OnCaptureDeviceFound(ACaptureDeviceComPtr& captureDevice) override;
@@ -300,6 +303,11 @@ protected:
 	bool m_wantToRestartCapture = false;
 	bool m_wantToRestartRenderer = false;
 	bool m_wantToTerminate = false;
+
+	// Stats overlay
+	StatsOverlayWindow* m_statsOverlay = nullptr;
+	StatsData* m_lastStatsData = nullptr;
+
 	void UpdateState();
 
 	// Helpers
@@ -335,6 +343,7 @@ protected:
 	void UpdateTimingClockFrameOffset();
 	void RebuildRendererCombo();
 	void ClearRendererCombo();
+	void UpdateStatsOverlay();
 
 	bool BuildPushVideoState();
 	void BuildPushRestartVideoState();

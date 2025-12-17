@@ -86,9 +86,8 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 
 	ON_COMMAND(ID_COMMAND_VC_NONE, &CVideoProcessorDlg::SetVideoConversionOff)
 	ON_COMMAND(ID_COMMAND_VC_P010, &CVideoProcessorDlg::SetVideoConversionP010)
+	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
 	ON_COMMAND_RANGE(ID_COMMAND_CAPTURE_1, ID_COMMAND_CAPTURE_4, &CVideoProcessorDlg::OnSelectCaptureDevice)
-
-
 
 
 
@@ -209,12 +208,6 @@ static const std::vector<VideoConversionOverride> RENDERER_VIDEO_CONVERSION =
 	VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010
 };
 
-//static const std::vector<std::string> FULLSCREEN_MODES =
-//{
-//	"Exclusive",
-//	"Windowed"
-//};
-
 //
 // Constructor/destructor
 //
@@ -226,6 +219,10 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 
 	m_blackMagicDeviceDiscoverer = new BlackMagicDeckLinkCaptureDeviceDiscoverer(*this);
+	
+	// Initialize stats overlay
+	m_statsOverlay = new StatsOverlayWindow();
+	m_lastStatsData = new StatsData();
 }
 
 
@@ -233,6 +230,18 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 {
 	for (auto& captureDevice : m_captureDevices)
 		(*captureDevice).Release();
+	
+	// Clean up stats overlay
+	if (m_statsOverlay)
+	{
+		delete m_statsOverlay;
+		m_statsOverlay = nullptr;
+	}
+	if (m_lastStatsData)
+	{
+		delete m_lastStatsData;
+		m_lastStatsData = nullptr;
+	}
 }
 
 
@@ -338,7 +347,6 @@ void CVideoProcessorDlg::DefaultRendererStartStopTimeMethod(DirectShowStartStopT
 }
 
 //				dlg.DefaultRendererStartStopTimeMethod(dsssTimeMethod);
-
 
 
 void CVideoProcessorDlg::DefaultRendererNominalRange(DXVA_NominalRange nominalRange)
@@ -873,6 +881,23 @@ void CVideoProcessorDlg::OnCommandAutoSet()
 {
 	m_rendererTransferFunctionCombo.SetCurSel(0);
 	OnBnClickedRendererRestart();
+}
+
+void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
+{
+	if (m_statsOverlay)
+	{
+		// Lazy creation - only create the window when first toggled
+		if (!m_statsOverlay->IsCreated())
+		{
+			if (!m_statsOverlay->Create(this->GetSafeHwnd()))
+			{
+				// Creation failed, silently ignore
+				return;
+			}
+		}
+		m_statsOverlay->Toggle();
+	}
 }
 
 //
@@ -1767,7 +1792,7 @@ HWND CVideoProcessorDlg::GetRenderWindow()
 
 size_t CVideoProcessorDlg::GetRendererVideoFrameQueueSizeMax()
 {
-	// Note that this field is marked as numbers only so guaranteed to convert corrrectly
+	// Note that this field is marked as numbers only so guaranteed to convert corrtectly
 
 	CString text;
 	m_rendererVideoFrameQueueSizeMaxEdit.GetWindowText(text);
@@ -2362,30 +2387,8 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	// Start timers
 	SetTimer(TIMER_ID_1SECOND, 1000, nullptr);
 	
-	if (m_hideUI) {
-		// Hide all UI elements except m_windowedVideoWindow
-		for (CWnd* pWnd = GetWindow(GW_CHILD); pWnd; pWnd = pWnd->GetNextWindow())
-		{
-			if (pWnd != &m_windowedVideoWindow)
-			{
-				pWnd->ShowWindow(SW_HIDE);
-			}
-		}
-
-
-		// Get the dialog's current client size
-		CRect clientRect;
-		GetClientRect(&clientRect);
-		int width = clientRect.Width();
-		int height = clientRect.Height();
-
-		// Resize the video window to fill the entire dialog
-		if (m_windowedVideoWindow.GetSafeHwnd())
-		{
-			m_windowedVideoWindow.MoveWindow(0, 0, width, height, TRUE);
-		}
-	}
-
+	// Stats overlay will be created lazily on first toggle (Ctrl+I)
+	// No initialization needed here
 
 	
 	// If full screen is requested, we don't want to see the dialog pop-up, so start minimized
@@ -2518,6 +2521,12 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 	if (m_videoRenderer)
 		m_videoRenderer->OnSize();
 
+	// Update stats overlay position
+	if (m_statsOverlay && m_statsOverlay->IsVisible())
+	{
+		m_statsOverlay->UpdatePosition(this->GetSafeHwnd());
+	}
+
 	CDialog::OnSize(nType, cx, cy);
 }
 
@@ -2575,80 +2584,6 @@ void CVideoProcessorDlg::OnClose()
 }
 
 void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
-{
-	CString cstring;
-
-	if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
-	{
-		cstring.Format(_T("%lu"), m_videoRenderer->GetFrameQueueSize());
-		m_rendererVideoFrameQueueSizeText.SetWindowText(cstring);
-
-		cstring.Format(_T("%.01f"), m_videoRenderer->EntryLatencyMs());
-		m_rendererLatencyToVPText.SetWindowText(cstring);
-
-		cstring.Format(_T("%.01f"), m_videoRenderer->ExitLatencyMs());
-		m_rendererLatencyToDSText.SetWindowText(cstring);
-
-		cstring.Format(_T("%lu"), m_videoRenderer->DroppedFrameCount());
-		m_rendererDroppedFrameCountText.SetWindowText(cstring);
-	}
-	else
-	{
-		m_rendererVideoFrameQueueSizeText.SetWindowText(_T(""));
-		m_rendererLatencyToVPText.SetWindowText(_T(""));
-		m_rendererLatencyToDSText.SetWindowText(_T(""));
-		m_rendererDroppedFrameCountText.SetWindowText(TEXT(""));
-	}
-
-	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING)
-	{
-		cstring.Format(_T("%lu"), m_captureDevice->VideoFrameCapturedCount());
-		m_inputVideoFrameCountText.SetWindowText(cstring);
-
-		cstring.Format(_T("%lu"), m_captureDevice->VideoFrameMissedCount());
-		m_inputVideoFrameMissedText.SetWindowText(cstring);
-
-		cstring.Format(_T("%.01f"), m_captureDevice->HardwareLatencyMs());
-		m_inputLatencyMsText.SetWindowText(cstring);
-	}
-	else
-	{
-		m_inputVideoFrameCountText.SetWindowText(TEXT(""));
-		m_inputVideoFrameMissedText.SetWindowText(TEXT(""));
-		m_inputLatencyMsText.SetWindowText(_T(""));
-	}
-
-	// Prevent screensaver
-	if (m_timerSeconds % 60 == 0)
-	{
-		SetThreadExecutionState(ES_DISPLAY_REQUIRED);
-	}
-
-	// Auto-reset if queue size reaches or exceeds 4 frames
-	if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
-		m_videoRenderer &&
-		m_captureDevice &&
-		m_captureDeviceVideoState &&
-		m_rendererResetAutoCheck.GetCheck())
-	{
-		const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
-
-		if (currentQueueSize >= 4)
-		{
-			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Queue=%zu - Calling Reset()"),
-				currentQueueSize));
-
-			//DEBUGLOG("OnTimer: Queue size %zu >= 4 - calling Reset()", currentQueueSize);
-
-
-			m_videoRenderer->Reset();
-		}
-	}
-
-	++m_timerSeconds;
-}
-
-/*void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	CString cstring;
 
@@ -2763,5 +2698,76 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		}
 	}
 
+	// Update stats overlay
+	if (m_statsOverlay && m_statsOverlay->IsVisible())
+	{
+		UpdateStatsOverlay();
+	}
+
 	++m_timerSeconds;
-}*/
+}
+
+void CVideoProcessorDlg::UpdateStatsOverlay()
+{
+	if (!m_statsOverlay || !m_statsOverlay->IsVisible() || !m_lastStatsData)
+		return;
+
+	StatsData stats;
+
+	// Collect stats from renderer
+	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
+	{
+		stats.currentQueueSize = m_videoRenderer->GetFrameQueueSize();
+		stats.maxQueueSize = GetRendererVideoFrameQueueSizeMax();
+		stats.isQueueFull = (stats.currentQueueSize >= stats.maxQueueSize);
+		
+		stats.entryLatencyMs = m_videoRenderer->EntryLatencyMs();
+		stats.exitLatencyMs = m_videoRenderer->ExitLatencyMs();
+		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
+	}
+
+	// Collect stats from capture device
+	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING && m_captureDevice)
+	{
+		stats.capturedFrames = m_captureDevice->VideoFrameCapturedCount();
+		stats.capturedDroppedFrames = m_captureDevice->VideoFrameMissedCount();
+	}
+
+	// Video information
+	if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
+	{
+		stats.refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
+	}
+
+	// Video conversion
+	if (m_rendererVideoConversionCombo.GetCurSel() >= 0)
+	{
+		m_rendererVideoConversionCombo.GetLBText(m_rendererVideoConversionCombo.GetCurSel(), stats.videoConversion);
+	}
+
+	// Handle reset tracking
+	if (stats.queueDroppedFrames < m_lastStatsData->queueDroppedFrames)
+	{
+		// Reset detected (dropped frame count decreased)
+		stats.OnReset();
+		stats.capturedFramesAtReset = stats.capturedFrames;
+		*m_lastStatsData = stats;
+	}
+	else
+	{
+		// Update from last known state
+		stats.lastResetTickCount = m_lastStatsData->lastResetTickCount;
+		stats.capturedFramesAtReset = m_lastStatsData->capturedFramesAtReset;
+		stats.framesSinceReset = stats.capturedFrames - stats.capturedFramesAtReset;
+		stats.maxQueueSizeSinceReset = m_lastStatsData->maxQueueSizeSinceReset;
+	}
+
+	stats.UpdateTimeSinceReset();
+	stats.UpdateMaxQueueSize();
+
+	// Update overlay
+	m_statsOverlay->UpdateStats(stats);
+	
+	// Save current stats for next update
+	*m_lastStatsData = stats;
+}
