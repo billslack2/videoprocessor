@@ -36,11 +36,11 @@ public:
 	static void Log(const char* format, Args... args)
 	{
 		// Format message immediately (fast operation)
-		char buffer[4096];
-		snprintf(buffer, sizeof(buffer), format, args...);
+		//char buffer[4096];
+		//snprintf(buffer, sizeof(buffer), format, args...);
 		
 		// Queue for background writing (non-blocking)
-		QueueMessage(buffer);
+		//QueueMessage(buffer);
 	}
 
 	/**

@@ -218,6 +218,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin worker thread starting (event-driven)")));
 
+	// Track consecutive delivery failures to prevent burst retries
+	int consecutiveFailures = 0;
+	const int maxConsecutiveFailures = 3;
+
 	while (true)
 	{
 		// Wait for frame to be available (event-driven, not polling!)
@@ -240,6 +244,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		}
 
 		VideoFrame videoFrame;
+		size_t currentQueueSize = 0;
 
 		{
 			CAutoLock lock(&m_filterCritSec);
@@ -261,7 +266,22 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					continue;
 			}
 
-			// Get the front frame (oldest)
+			currentQueueSize = m_videoFrameQueue.size();
+
+			// IMPROVED BURST HANDLING: More gradual queue reduction
+			if (currentQueueSize > 5 && consecutiveFailures < maxConsecutiveFailures)  // Raised from 3 to 5
+			{
+				// Drop only 1-2 old frames, not everything down to 2
+				while (m_videoFrameQueue.size() > 4)  // Keep 4 frames instead of 2
+				{
+					VideoFrame oldFrame = m_videoFrameQueue.front();
+					oldFrame.SourceBufferRelease();
+					m_videoFrameQueue.pop_front();
+					++m_droppedFrameCount;
+				}
+			}
+
+			// Get the front frame (oldest remaining)
 			videoFrame = m_videoFrameQueue.front();
 			m_videoFrameQueue.pop_front();
 
@@ -289,18 +309,24 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 		}
 
-		// Get buffer for sample - may block if madVR's allocator is full (natural backpressure)
+		// ADAPTIVE TIMEOUT: Use shorter timeout if queue is backing up
+		DWORD bufferTimeout = (currentQueueSize > 2) ? 1 : 5;  // 1ms when under pressure
+
+		// Get buffer for sample - reduced timeout when under pressure
 		IMediaSample* pSample = nullptr;
-		HRESULT hr = this->GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);
+		HRESULT hr = this->GetDeliveryBuffer(&pSample, nullptr, nullptr, bufferTimeout);
 		if (FAILED(hr))
 		{
-			DbgLog((LOG_TRACE, 1,
-				TEXT("::ThreadProc(#%I64u): GetDeliveryBuffer() failed (HRESULT=0x%08x)"),
-				videoFrame.GetCounter(), hr));
-			
 			videoFrame.SourceBufferRelease();
 			++m_droppedFrameCount;
-			continue;  // Don't exit thread
+			consecutiveFailures++;
+			
+			// If we're consistently failing, back off slightly to prevent tight retry loop
+			if (consecutiveFailures >= maxConsecutiveFailures)
+			{
+				Sleep(1);  // 1ms backoff
+			}
+			continue;
 		}
 
 		// Convert
@@ -314,16 +340,18 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			videoFrame.SourceBufferRelease();
 			pSample->Release();
 			++m_droppedFrameCount;
-			continue;  // Don't exit thread
+			consecutiveFailures++;
+			continue;
 		}
 		if (hr == S_FRAME_NOT_RENDERED)
 		{
 			videoFrame.SourceBufferRelease();
 			pSample->Release();
+			consecutiveFailures++;
 			continue;
 		}
 
-		// Deliver frame to renderer
+		// Deliver frame to renderer - this is the main blocking point
 		hr = this->Deliver(pSample);
 		if (FAILED(hr))
 		{
@@ -334,8 +362,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			videoFrame.SourceBufferRelease();
 			pSample->Release();
 			++m_droppedFrameCount;
-			continue;  // Don't exit thread
+			consecutiveFailures++;
+			continue;
 		}
+
+		// Success - reset failure counter
+		consecutiveFailures = 0;
 
 		// Success - clean up and continue
 		videoFrame.SourceBufferRelease();

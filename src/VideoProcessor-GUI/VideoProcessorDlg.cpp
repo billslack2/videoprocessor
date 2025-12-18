@@ -29,8 +29,6 @@
 
 #include "VideoProcessorDlg.h"
 
-const static UINT_PTR TIMER_ID_1SECOND = 1;
-
 
 BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 
@@ -86,14 +84,12 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 
 	ON_COMMAND(ID_COMMAND_VC_NONE, &CVideoProcessorDlg::SetVideoConversionOff)
 	ON_COMMAND(ID_COMMAND_VC_P010, &CVideoProcessorDlg::SetVideoConversionP010)
-	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
+	//ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
 	ON_COMMAND_RANGE(ID_COMMAND_CAPTURE_1, ID_COMMAND_CAPTURE_4, &CVideoProcessorDlg::OnSelectCaptureDevice)
 
 
 
 END_MESSAGE_MAP()
-
-
 
 
 static const std::vector<std::pair<LPCTSTR, ColorSpace>> COLOLORSPACE_CONTAINER_OPTIONS =
@@ -221,8 +217,8 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 	m_blackMagicDeviceDiscoverer = new BlackMagicDeckLinkCaptureDeviceDiscoverer(*this);
 	
 	// Initialize stats overlay
-	m_statsOverlay = new StatsOverlayWindow();
-	m_lastStatsData = new StatsData();
+	//m_statsOverlay = new StatsOverlayWindow();
+	//m_lastStatsData = new StatsData();
 }
 
 
@@ -232,7 +228,7 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 		(*captureDevice).Release();
 	
 	// Clean up stats overlay
-	if (m_statsOverlay)
+	/*if (m_statsOverlay)
 	{
 		delete m_statsOverlay;
 		m_statsOverlay = nullptr;
@@ -242,6 +238,7 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 		delete m_lastStatsData;
 		m_lastStatsData = nullptr;
 	}
+	*/
 }
 
 
@@ -885,7 +882,7 @@ void CVideoProcessorDlg::OnCommandAutoSet()
 
 void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
 {
-	if (m_statsOverlay)
+	/*if (m_statsOverlay)
 	{
 		// Lazy creation - only create the window when first toggled
 		if (!m_statsOverlay->IsCreated())
@@ -898,6 +895,7 @@ void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
 		}
 		m_statsOverlay->Toggle();
 	}
+	*/
 }
 
 //
@@ -1822,11 +1820,11 @@ double CVideoProcessorDlg::GetWindowTextAsDouble(CEdit& edit)
 std::vector<int> m_frame_offsets_by_refresh;
 
 std::vector<int> CVideoProcessorDlg::GetFrameOffsetByRefresh() {
-	return m_frame_offsets_by_refresh;
+	return m_frameOffsetsByRefresh;
 }
 
 void CVideoProcessorDlg::SetFrameOffsetByRefresh(std::vector<int> offsets) {
-	m_frame_offsets_by_refresh = offsets;
+	m_frameOffsetsByRefresh = offsets;
 }
 
 
@@ -2528,11 +2526,31 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 		m_videoRenderer->OnSize();
 
 	// Update stats overlay position
-	if (m_statsOverlay && m_statsOverlay->IsVisible())
+	/*if (m_statsOverlay && m_statsOverlay->IsVisible())
 	{
 		m_statsOverlay->UpdatePosition(this->GetSafeHwnd());
 	}
+	*/
 
+	// Track if this is a significant resize (not just minimize/restore)
+	static CSize lastSize(0, 0);
+	CSize currentSize(cx, cy);
+
+	bool significantResize = (abs(currentSize.cx - lastSize.cx) > 50 ||
+		abs(currentSize.cy - lastSize.cy) > 50) &&
+		lastSize.cx > 0 && lastSize.cy > 0;
+
+	// ... existing OnSize code ...
+
+	// Reset madVR after significant scaling changes
+	if (significantResize && m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING)
+	{
+		// Debounced reset to let scaling operations complete
+		SetTimer(RESIZE_DEBOUNCE_TIMER_ID, 250, nullptr);
+	}
+
+	lastSize = currentSize;
 	CDialog::OnSize(nType, cx, cy);
 }
 
@@ -2591,251 +2609,184 @@ void CVideoProcessorDlg::OnClose()
 
 void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
-	CString cstring;
-
-	if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
+	// Handle resize debounce timer
+	if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 	{
-		cstring.Format(_T("%lu"), m_videoRenderer->GetFrameQueueSize());
-		m_rendererVideoFrameQueueSizeText.SetWindowText(cstring);
+		KillTimer(RESIZE_DEBOUNCE_TIMER_ID);
 
-		cstring.Format(_T("%.01f"), m_videoRenderer->EntryLatencyMs());
-		m_rendererLatencyToVPText.SetWindowText(cstring);
-
-		cstring.Format(_T("%.01f"), m_videoRenderer->ExitLatencyMs());
-		m_rendererLatencyToDSText.SetWindowText(cstring);
-
-		cstring.Format(_T("%lu"), m_videoRenderer->DroppedFrameCount());
-		m_rendererDroppedFrameCountText.SetWindowText(cstring);
-	}
-	else
-	{
-		m_rendererVideoFrameQueueSizeText.SetWindowText(_T(""));
-		m_rendererLatencyToVPText.SetWindowText(_T(""));
-		m_rendererLatencyToDSText.SetWindowText(_T(""));
-		m_rendererDroppedFrameCountText.SetWindowText(TEXT(""));
-	}
-
-	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING)
-	{
-		cstring.Format(_T("%lu"), m_captureDevice->VideoFrameCapturedCount());
-		m_inputVideoFrameCountText.SetWindowText(cstring);
-
-		cstring.Format(_T("%lu"), m_captureDevice->VideoFrameMissedCount());
-		m_inputVideoFrameMissedText.SetWindowText(cstring);
-
-		cstring.Format(_T("%.01f"), m_captureDevice->HardwareLatencyMs());
-		m_inputLatencyMsText.SetWindowText(cstring);
-	}
-	else
-	{
-		m_inputVideoFrameCountText.SetWindowText(TEXT(""));
-		m_inputVideoFrameMissedText.SetWindowText(TEXT(""));
-		m_inputLatencyMsText.SetWindowText(_T(""));
-	}
-
-	// Ensure video window maintains focus for keyboard shortcuts (like Ctrl+I)
-// Check every 2 seconds to avoid excessive focus stealing
-	if (m_timerSeconds % 2 == 0)
-	{
-		if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow)
+		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
 		{
-			// In fullscreen mode, ensure fullscreen window has focus
-			HWND foregroundWindow = ::GetForegroundWindow();
-			HWND fullscreenHwnd = m_fullScreenVideoWindow->GetHWND();
-
-			if (foregroundWindow != fullscreenHwnd && IsWindow(fullscreenHwnd))
-			{
-				// Bring fullscreen window to front and give it focus
-				::SetForegroundWindow(fullscreenHwnd);
-				::SetFocus(fullscreenHwnd);
-				// Also ensure it stays on top
-				::SetWindowPos(fullscreenHwnd, HWND_TOPMOST, 0, 0, 0, 0,
-					SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-			}
+			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): RESIZE RESET - Re-establishing madVR queues after scaling")));
+			m_videoRenderer->Reset();
 		}
+		return;
 	}
 
-	// Prevent screensaver
-	if (m_timerSeconds % 60 == 0)
+	// NEW: Handle delayed queue reset timer
+	if (nIDEvent == QUEUE_RESET_DELAY_TIMER_ID)
 	{
-		SetThreadExecutionState(ES_DISPLAY_REQUIRED);
-	}
+		KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
 
-	// Monitor queue health periodically but allow PLL to settle
-	// During startup: allow higher buildup, during operation: keep queue lean
-	if (m_timerSeconds % 5 == 0 &&
-		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
-		m_videoRenderer &&
-		m_captureDevice &&
-		m_captureDeviceVideoState)
-	{
-		const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
-		const double refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
-		
-		// Startup grace period: first 30 seconds allow PLL to settle
-		const bool isStartupPeriod = m_timerSeconds < 30;
-		
-		size_t operationalThreshold;
-		size_t criticalThreshold;
-		
-		if (isStartupPeriod)
+		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
 		{
-			// Startup: allow more queue buildup for PLL settling
-			operationalThreshold = (size_t)std::max(10.0, refreshRate * 0.5); // 0.5 seconds max
-			criticalThreshold = (size_t)std::max(20.0, refreshRate * 1.0);    // 1 second critical
+			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): DELAYED QUEUE RESET - MadVR stabilization complete")));
+			m_videoRenderer->Reset();
+			
+			// Reset tracking counters after delayed reset
+			m_consecutiveFullSeconds = 0;
+			m_consecutiveStuckSeconds = 0;
+			m_pendingQueueReset = false;
+		}
+		return;
+	}
+
+	// Handle regular 1-second timer for UI updates
+	if (nIDEvent == TIMER_ID_1SECOND)
+	{
+		CString cstring;
+
+		if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
+		{
+			const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
+			const uint64_t droppedFrames = m_videoRenderer->DroppedFrameCount();
+
+			cstring.Format(_T("%lu"), currentQueueSize);
+			m_rendererVideoFrameQueueSizeText.SetWindowText(cstring);
+
+			cstring.Format(_T("%.01f"), m_videoRenderer->EntryLatencyMs());
+			m_rendererLatencyToVPText.SetWindowText(cstring);
+
+			cstring.Format(_T("%.01f"), m_videoRenderer->ExitLatencyMs());
+			m_rendererLatencyToDSText.SetWindowText(cstring);
+
+			cstring.Format(_T("%lu"), droppedFrames);
+			m_rendererDroppedFrameCountText.SetWindowText(cstring);
+
+			// INTELLIGENT QUEUE HEALTH MONITORING
+			MonitorQueueHealth(currentQueueSize, droppedFrames);
 		}
 		else
 		{
-			// Normal operation: keep queue lean (1-5 frames)
-			operationalThreshold = 6;  // Reset at 6+ frames
-			criticalThreshold = 10;    // Hard limit at 10 frames
-		}
-		
-		// Log warnings for high queues
-		if (currentQueueSize > operationalThreshold)
-		{
-			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Queue=%zu frames (%s, threshold=%zu)"),
-				currentQueueSize, isStartupPeriod ? TEXT("startup") : TEXT("operational"), operationalThreshold));
+			m_rendererVideoFrameQueueSizeText.SetWindowText(_T(""));
+			m_rendererLatencyToVPText.SetWindowText(_T(""));
+			m_rendererLatencyToDSText.SetWindowText(_T(""));
+			m_rendererDroppedFrameCountText.SetWindowText(TEXT(""));
 		}
 
-		// Simple: reset when queue >= 4 frames
-		if (currentQueueSize >= 4)
+		if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING)
 		{
-			m_videoRenderer->Reset();
+			cstring.Format(_T("%lu"), m_captureDevice->VideoFrameCapturedCount());
+			m_inputVideoFrameCountText.SetWindowText(cstring);
+
+			cstring.Format(_T("%lu"), m_captureDevice->VideoFrameMissedCount());
+			m_inputVideoFrameMissedText.SetWindowText(cstring);
+
+			cstring.Format(_T("%.01f"), m_captureDevice->HardwareLatencyMs());
+			m_inputLatencyMsText.SetWindowText(cstring);
 		}
-		
-		// Auto-reset logic
-		const bool rendererResetAuto = m_rendererResetAutoCheck.GetCheck();
-		if (rendererResetAuto)
+		else
 		{
-			bool shouldReset = false;
-			
-			if (isStartupPeriod && currentQueueSize > criticalThreshold)
+			m_inputVideoFrameCountText.SetWindowText(TEXT(""));
+			m_inputVideoFrameMissedText.SetWindowText(TEXT(""));
+			m_inputLatencyMsText.SetWindowText(_T(""));
+		}
+
+		// Prevent screensaver
+		if (m_timerSeconds % 60 == 0)
+		{
+			SetThreadExecutionState(ES_DISPLAY_REQUIRED);
+		}
+
+		// MODIFIED: More conservative queue monitoring with delayed reset
+		if (m_timerSeconds % 5 == 0 &&
+			m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			m_videoRenderer &&
+			m_captureDevice &&
+			m_captureDeviceVideoState &&
+			!m_pendingQueueReset)  // Don't trigger multiple resets
+		{
+			const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
+
+			// More conservative threshold: reset when queue >= 8 frames (increased from 4)
+			// This gives MadVR more time to process its internal queues
+			if (currentQueueSize >= 8)
 			{
-				// Startup: only reset on critical buildup
-				shouldReset = true;
-				DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): STARTUP RESET - Queue=%zu exceeds critical threshold %zu"),
-					currentQueueSize, criticalThreshold));
-			}
-			else if (!isStartupPeriod && currentQueueSize > operationalThreshold)
-			{
-				// Normal operation: reset quickly to maintain low latency
-				shouldReset = true;
-				DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): OPERATIONAL RESET - Queue=%zu exceeds lean threshold %zu"),
-					currentQueueSize, operationalThreshold));
-			}
-			
-			if (shouldReset)
-			{
-				m_videoRenderer->Reset();
+				DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Queue overload detected (%zu frames), scheduling delayed reset in 3 seconds"), currentQueueSize));
+				
+				// Set timer for delayed reset (3 seconds)
+				SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 3000, nullptr);
+				m_pendingQueueReset = true;
 			}
 		}
+
+		++m_timerSeconds;
 	}
 
-	// Update stats overlay
-	if (m_statsOverlay && m_statsOverlay->IsVisible())
-	{
-		UpdateStatsOverlay();
-	}
-
-	++m_timerSeconds;
+	CDialog::OnTimer(nIDEvent);
 }
 
-void CVideoProcessorDlg::UpdateStatsOverlay()
+// Add this new method to the class
+void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t droppedFrames)
 {
-	if (!m_statsOverlay || !m_statsOverlay->IsVisible() || !m_lastStatsData)
+	const size_t maxQueueSize = GetRendererVideoFrameQueueSizeMax();
+
+	// Skip monitoring if we already have a pending reset
+	if (m_pendingQueueReset)
 		return;
 
-	StatsData stats;
-
-	// Video format info
-	if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
+	// CONDITION 1: Queue is consistently full (indicates delivery problems)
+	if (currentQueueSize >= (maxQueueSize - 1))
 	{
-		// Resolution
-		stats.resolution.Format(_T("%u x %u"), 
-			m_captureDeviceVideoState->displayMode->FrameWidth(),
-			m_captureDeviceVideoState->displayMode->FrameHeight());
-		
-		// Refresh rate
-		stats.refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
-		
-		// EOTF
-		stats.eotf = ToString(m_captureDeviceVideoState->eotf);
-		
-		// Colorspace
-		stats.colorspace = ToString(m_captureDeviceVideoState->colorspace);
-		
-		// Pixel Format
-		stats.pixelFormat = ToString(m_captureDeviceVideoState->videoFrameEncoding);
+		m_consecutiveFullSeconds++;
+		m_consecutiveStuckSeconds = 0;  // Reset stuck counter
 	}
-
-	// Renderer settings and capture metrics
-	if (m_captureDevice)
+	// CONDITION 2: Queue is stuck at low level with ongoing drops (indicates sync problems)
+	else if (currentQueueSize <= 2 && droppedFrames > m_lastDroppedFrames && currentQueueSize == m_lastQueueSize)
 	{
-		stats.frameOffsetMs = GetTimingClockFrameOffsetMs();
-		stats.hwLatencyMs = m_captureDevice->HardwareLatencyMs();
-	}
-
-	// Method - get from renderer DirectShow start/stop time method combo
-	int methodIndex = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
-	if (methodIndex >= 0)
-	{
-		DirectShowStartStopTimeMethod method = (DirectShowStartStopTimeMethod)m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(methodIndex);
-		stats.method = ToString(method);
+		m_consecutiveStuckSeconds++;
+		m_consecutiveFullSeconds = 0;  // Reset full counter
 	}
 	else
 	{
-		stats.method = TEXT("---");
+		// Queue is healthy, reset counters
+		m_consecutiveFullSeconds = 0;
+		m_consecutiveStuckSeconds = 0;
 	}
 
-	// Queue stats
-	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
+	// RESET TRIGGERS:
+	bool shouldReset = false;
+	const char* resetReason = nullptr;
+
+	// Trigger 1: Queue has been full for 5+ seconds (increased from 3 for MadVR stability)
+	if (m_consecutiveFullSeconds >= 5)
 	{
-		stats.currentQueueSize = m_videoRenderer->GetFrameQueueSize();
-		stats.maxQueueSize = GetRendererVideoFrameQueueSizeMax();
-		stats.isQueueFull = (stats.currentQueueSize >= stats.maxQueueSize);
-		
-		stats.entryLatencyMs = m_videoRenderer->EntryLatencyMs();
-		stats.exitLatencyMs = m_videoRenderer->ExitLatencyMs();
-		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
+		shouldReset = true;
+		resetReason = "Queue consistently full";
 	}
-
-	// Capture device frame counts
-	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING && m_captureDevice)
+	// Trigger 2: Queue stuck at low level for 12+ seconds with active drops (increased from 8)
+	else if (m_consecutiveStuckSeconds >= 12)
 	{
-		stats.capturedFrames = m_captureDevice->VideoFrameCapturedCount();
-		stats.capturedDroppedFrames = m_captureDevice->VideoFrameMissedCount();
+		shouldReset = true;
+		resetReason = "Queue stuck with ongoing drops";
 	}
-
-	// Video conversion
-	if (m_rendererVideoConversionCombo.GetCurSel() >= 0)
+	// Trigger 3: Massive queue spike (sudden burst) - immediate, but with delay
+	else if (currentQueueSize >= maxQueueSize && m_lastQueueSize <= (maxQueueSize / 2))
 	{
-		m_rendererVideoConversionCombo.GetLBText(m_rendererVideoConversionCombo.GetCurSel(), stats.videoConversion);
+		shouldReset = true;
+		resetReason = "Sudden queue burst";
 	}
 
-	// Handle reset tracking
-	if (stats.queueDroppedFrames < m_lastStatsData->queueDroppedFrames)
+	if (shouldReset && m_videoRenderer)
 	{
-		// Reset detected (dropped frame count decreased)
-		stats.OnReset();
-		stats.capturedFramesAtReset = stats.capturedFrames;
-		*m_lastStatsData = stats;
-	}
-	else
-	{
-		// Update from last known state
-		stats.lastResetTickCount = m_lastStatsData->lastResetTickCount;
-		stats.capturedFramesAtReset = m_lastStatsData->capturedFramesAtReset;
-		stats.framesSinceReset = stats.capturedFrames - stats.capturedFramesAtReset;
-		stats.maxQueueSizeSinceReset = m_lastStatsData->maxQueueSizeSinceReset;
+		DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::MonitorQueueHealth(): SCHEDULING DELAYED RESET - %s (queue: %zu/%zu, drops: %llu)"),
+			CString(resetReason), currentQueueSize, maxQueueSize, droppedFrames - m_lastDroppedFrames));
+
+		// Instead of immediate reset, schedule a delayed reset
+		SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 3000, nullptr);  // 3-second delay
+		m_pendingQueueReset = true;
 	}
 
-	stats.UpdateTimeSinceReset();
-	stats.UpdateMaxQueueSize();
-
-	// Update overlay
-	m_statsOverlay->UpdateStats(stats);
-	
-	// Save current stats for next update
-	*m_lastStatsData = stats;
+	// Update tracking variables
+	m_lastDroppedFrames = droppedFrames;
+	m_lastQueueSize = currentQueueSize;
 }

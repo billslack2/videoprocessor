@@ -75,6 +75,11 @@ public:
 	// Dialog Data
 	enum { IDD = IDD_VIDEOPROCESSOR_DIALOG };
 
+	// Timer ID constants
+	static const UINT_PTR TIMER_ID_1SECOND = 1;
+	static const UINT_PTR RESIZE_DEBOUNCE_TIMER_ID = 2;
+	static const UINT_PTR QUEUE_RESET_DELAY_TIMER_ID = 3;
+
 	// Option handlers
 	void StartFullScreen();
 	void WindowedFullScreenMode();
@@ -270,6 +275,16 @@ protected:
 	bool m_windowedFullScreenMode = false;
 	bool m_hideUI = false;
 	bool m_startMinimized = false;
+
+	// Queue health monitoring variables
+	size_t m_consecutiveFullSeconds = 0;
+	size_t m_consecutiveStuckSeconds = 0;
+	uint64_t m_lastDroppedFrames = 0;
+	size_t m_lastQueueSize = 0;
+	bool m_pendingQueueReset = false;  // Flag to prevent multiple concurrent resets
+
+	// Frame offset by refresh data
+	std::vector<int> m_frameOffsetsByRefresh;
 	
 
 	CString m_defaultRendererName;
@@ -343,7 +358,9 @@ protected:
 	void UpdateTimingClockFrameOffset();
 	void RebuildRendererCombo();
 	void ClearRendererCombo();
-	void UpdateStatsOverlay();
+	//void UpdateStatsOverlay();
+	void MonitorQueueHealth(size_t currentQueueSize, uint64_t droppedFrames);
+
 
 	bool BuildPushVideoState();
 	void BuildPushRestartVideoState();
@@ -358,14 +375,14 @@ protected:
 	std::atomic<bool> m_isRestartingRender = false;
 	BOOL PreTranslateMessage(MSG* pMsg) override;
 	void OnOK() override;
-	void OnPaint();
-	void OnSize(UINT nType, int cx, int cy);
-	void OnSetFocus(CWnd* pOldWnd);
-	void OnClose();
-	void OnTimer(UINT_PTR nIDEvent);
-	HCURSOR	OnQueryDragIcon();
-	void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
-	#define RESIZE_DEBOUNCE_TIMER_ID 1  // Unique timer ID
+	afx_msg void OnPaint();
+	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnSetFocus(CWnd* pOldWnd);
+	afx_msg void OnClose();
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
+	afx_msg HCURSOR	OnQueryDragIcon();
+	afx_msg void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
+
 
 	DECLARE_MESSAGE_MAP()
 

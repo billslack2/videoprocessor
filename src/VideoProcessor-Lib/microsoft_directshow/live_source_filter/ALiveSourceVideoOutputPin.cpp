@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -146,7 +146,7 @@ HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOC
 
 	HRESULT hr = NOERROR;
 
-	ppropInputRequest->cBuffers = 1;
+	ppropInputRequest->cBuffers = 96;  // Your fix
 	ppropInputRequest->cbBuffer = m_videoFrameFormatter->GetOutFrameSize();
 
 	ASSERT(ppropInputRequest->cbBuffer);
@@ -162,6 +162,10 @@ HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOC
 	{
 		return E_FAIL;
 	}
+
+	// ✅ Add this logging to verify the fix
+	DbgLog((LOG_TRACE, 1, TEXT("DecideBufferSize: Requested %d buffers, got %d buffers, size %d bytes"), 
+		ppropInputRequest->cBuffers, Actual.cBuffers, Actual.cbBuffer));
 
 	return S_OK;
 }
@@ -320,8 +324,6 @@ void ALiveSourceVideoOutputPin::Reset()
 	if (m_hdrData)
 		m_hdrChanged = true;
 
-	m_newSegment = true;
-
 	m_frameCounter = 0;
 	m_previousFrameCounter = 0;
 	m_startTimeOffset = 0;
@@ -331,6 +333,12 @@ void ALiveSourceVideoOutputPin::Reset()
 
 	if (FAILED(DeliverEndFlush()))
 		throw std::runtime_error("Failed to deliver endflush");
+
+	// Deliver new segment to establish timing baseline with DirectShow reference clock
+	if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
+		throw std::runtime_error("Failed to deliver new segment");
+		
+	m_newSegment = false;  // Clear flag after successful delivery
 }
 
 
@@ -389,28 +397,14 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	{
 	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
 	{
-		// PLL-enhanced rational timing: Uses exact integer math with hardware-tracked correction
-		// This ensures smooth playback in madVR without jitter while adapting to actual hardware clock rate
-		//
-		// CRITICAL: The PLL measures the ACTUAL hardware frame interval vs THEORETICAL.
-		// - If hardware is FAST (actual < theoretical), correction < 1.0
-		// - If hardware is SLOW (actual > theoretical), correction > 1.0
-		//
-		// BUT: We need timestamps to match the DIRECTSHOW CLOCK (which is hardware-based)
-		// So we should NOT apply correction to timestamps - the hardware clock IS the reference!
-		// The correction factor should only be used for diagnostics.
-		//
-		// Instead: Use pure rational math for perfectly evenly-spaced timestamps
-		// The DirectShow reference clock (hardware) will naturally stay in sync
-		// because BOTH the frame arrival and the clock come from the SAME hardware!
+		// Pure rational timing: Use exact integer math for perfectly evenly-spaced timestamps
+		// starting from zero. This produces monotonic, jitter-free timestamps.
 		
 		// Use our internal frame counter for absolutely monotonic timestamps
 		// m_frameCounter is incremented at the top of this function, so subtract 1
 		const uint64_t frameNum = m_frameCounter - 1;
 		
-		// Pure rational calculation WITHOUT correction factor
-		// This produces perfectly evenly-spaced timestamps at the exact theoretical rate
-		// The hardware clock will stay in sync because it's the same source
+		// Pure rational calculation: frame N starts at N * frameDuration
 		const uint64_t referenceTimePerSecond = 10000000ULL;
 		timeStart = (REFERENCE_TIME)((frameNum * referenceTimePerSecond * m_frameDurationTicks) / m_timeScale);
 		
@@ -418,14 +412,12 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		// With pure integer math and monotonic frame counter, this should always hold
 		if (m_frameCounter > 1 && timeStart <= m_previousTimeStop)
 		{
-			// This should NEVER happen with correct logic
 			DbgLog((LOG_ERROR, 1, TEXT("::FillBuffer(#%I64u): CRITICAL - Timestamp inversion detected! Current: %I64d, Previous: %I64d"),
 				videoFrame.GetCounter(), timeStart, m_previousTimeStop));
 			
 			DEBUGLOG("CRITICAL: Timestamp inversion! frame %llu, timestamp %lld <= previous %lld",
 				videoFrame.GetCounter(), timeStart, m_previousTimeStop);
 			
-			// Force monotonicity by using previous + 1 tick (emergency fallback)
 			timeStart = m_previousTimeStop + 1;
 		}
 		
@@ -436,22 +428,10 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 				videoFrame.GetCounter(), m_timeScale, m_frameDurationTicks, 
 				(double)m_timeScale / (double)m_frameDurationTicks));
 			
-			DEBUGLOG("RATIONAL_RATIONAL started: timeScale=%u, frameDurationTicks=%u, theoretical rate=%.6f fps (pure rational, no drift correction)",
+			DEBUGLOG("RATIONAL_RATIONAL started: timeScale=%u, frameDurationTicks=%u, theoretical rate=%.6f fps",
 				m_timeScale, m_frameDurationTicks, (double)m_timeScale / (double)m_frameDurationTicks);
 		}
 		
-		// Log periodic diagnostics every 10 seconds (include PLL info for monitoring only)
-		if (m_frameCounter % 600 == 0)
-		{
-			const double theoreticalRate = (double)m_timeScale / (double)m_frameDurationTicks;
-			const double ppmDrift = (m_tickRateCorrectionFactor - 1.0) * 1000000.0;
-			
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): RATIONAL_RATIONAL - frame %I64u, timestamp %I64d, rate: %.6f fps, PLL measured drift: %+.2f PPM (not applied)"),
-				videoFrame.GetCounter(), m_frameCounter, timeStart, theoreticalRate, ppmDrift));
-			
-			DEBUGLOG("RATIONAL_RATIONAL frame %llu: timestamp %lld, rate %.6f fps, PLL drift %+.2f PPM (diagnostic only, not applied to timestamps)",
-				m_frameCounter, timeStart, theoreticalRate, ppmDrift);
-		}
 		break;
 	}
 
@@ -495,7 +475,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
 	{
 		// For rational timing, calculate the next frame's exact timestamp
-		// Pure rational math without correction factor
+		// Pure rational math: frame N+1 starts at (N+1) * frameDuration
 		const uint64_t nextFrameNum = m_frameCounter;  // m_frameCounter was already incremented
 		const uint64_t referenceTimePerSecond = 10000000ULL;
 		timeStop = (REFERENCE_TIME)((nextFrameNum * referenceTimePerSecond * m_frameDurationTicks) / m_timeScale);
