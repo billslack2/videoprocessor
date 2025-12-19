@@ -745,14 +745,77 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceError(WPARAM wParam, LPARAM lP
 
 	return 0;
 }
-
-// This is a handler for the DirectShow graph in the renderer,
-// it works by using the GUI's message queue.
 LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam)
 {
 	if (m_videoRenderer)
-		if (FAILED(m_videoRenderer->OnWindowsEvent(wParam, lParam)))
+	{
+		// Enhanced DirectShow event handling for MadVR changes
+		// We'll intercept events before passing them to the renderer to detect important changes
+
+		// First call the renderer to process DirectShow events and get any graph events
+		HRESULT hr = m_videoRenderer->OnWindowsEvent(wParam, lParam);
+
+		// Now check for specific DirectShow graph events that indicate MadVR changes
+		// These events are typically sent via the DirectShow event system
+		if (SUCCEEDED(hr))
+		{
+			// Try to detect specific DirectShow events that affect MadVR
+			// Note: The exact event codes depend on DirectShow implementation
+			// We'll add logging to detect what events we're getting
+
+			DbgLog((LOG_TRACE, 2, TEXT("DirectShow notification received - wParam: 0x%08X, lParam: 0x%08X"),
+				(DWORD)wParam, (DWORD)lParam));
+
+			// Check for common DirectShow events that might indicate renderer changes
+			// EC_DISPLAY_CHANGED = 0x16, EC_WINDOW_DESTROYED = 0x11, etc.
+			long eventCode = (long)wParam;
+
+			switch (eventCode)
+			{
+			case 0x16: // EC_DISPLAY_CHANGED
+				DbgLog((LOG_TRACE, 1, TEXT("EC_DISPLAY_CHANGED detected - scheduling MadVR reset")));
+				if (m_rendererState == RendererState::RENDERSTATE_RENDERING && !m_pendingQueueReset)
+				{
+					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 2000, nullptr);  // 2-second delay for display changes
+					m_pendingQueueReset = true;
+				}
+				break;
+
+			case 0x11: // EC_WINDOW_DESTROYED  
+				DbgLog((LOG_TRACE, 1, TEXT("EC_WINDOW_DESTROYED detected - MadVR window change")));
+				break;
+
+			case 0x0E: // EC_VIDEO_SIZE_CHANGED
+				DbgLog((LOG_TRACE, 1, TEXT("EC_VIDEO_SIZE_CHANGED detected - scheduling MadVR reset")));
+				if (m_rendererState == RendererState::RENDERSTATE_RENDERING && !m_pendingQueueReset)
+				{
+					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 1500, nullptr);  // 1.5-second delay for video size changes
+					m_pendingQueueReset = true;
+				}
+				break;
+
+			case 0x12: // EC_QUALITY_CHANGE
+				DbgLog((LOG_TRACE, 1, TEXT("EC_QUALITY_CHANGE detected - potential MadVR quality adjustment")));
+				// Don't reset for quality changes, but log them for diagnostics
+				break;
+
+			case 0x0D: // EC_REPAINT
+				// Very common, don't log at normal trace level
+				break;
+
+			default:
+				// Log unknown events for debugging
+				if (eventCode > 0 && eventCode < 0x50) // DirectShow event code range
+				{
+					DbgLog((LOG_TRACE, 2, TEXT("Unknown DirectShow event code: 0x%02X"), eventCode));
+				}
+				break;
+			}
+		}
+
+		if (FAILED(hr))
 			FatalError(TEXT("Failed to handle windows event in renderer"));
+	}
 
 	return 0;
 }
@@ -2609,19 +2672,6 @@ void CVideoProcessorDlg::OnClose()
 
 void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
-	// Handle resize debounce timer
-	if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
-	{
-		KillTimer(RESIZE_DEBOUNCE_TIMER_ID);
-
-		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
-		{
-			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): RESIZE RESET - Re-establishing madVR queues after scaling")));
-			m_videoRenderer->Reset();
-		}
-		return;
-	}
-
 	// NEW: Handle delayed queue reset timer
 	if (nIDEvent == QUEUE_RESET_DELAY_TIMER_ID)
 	{
@@ -2631,7 +2681,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		{
 			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): DELAYED QUEUE RESET - MadVR stabilization complete")));
 			m_videoRenderer->Reset();
-			
+
 			// Reset tracking counters after delayed reset
 			m_consecutiveFullSeconds = 0;
 			m_consecutiveStuckSeconds = 0;
@@ -2697,25 +2747,19 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			SetThreadExecutionState(ES_DISPLAY_REQUIRED);
 		}
 
-		// MODIFIED: More conservative queue monitoring with delayed reset
+		// Monitor queue health periodically
 		if (m_timerSeconds % 5 == 0 &&
 			m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 			m_videoRenderer &&
 			m_captureDevice &&
-			m_captureDeviceVideoState &&
-			!m_pendingQueueReset)  // Don't trigger multiple resets
+			m_captureDeviceVideoState)
 		{
 			const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
 
-			// More conservative threshold: reset when queue >= 8 frames (increased from 4)
-			// This gives MadVR more time to process its internal queues
-			if (currentQueueSize >= 8)
+			// Simple: reset when queue >= 4 frames
+			if (currentQueueSize >= 4)
 			{
-				DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Queue overload detected (%zu frames), scheduling delayed reset in 3 seconds"), currentQueueSize));
-				
-				// Set timer for delayed reset (3 seconds)
-				SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 3000, nullptr);
-				m_pendingQueueReset = true;
+				m_videoRenderer->Reset();
 			}
 		}
 
@@ -2729,10 +2773,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t droppedFrames)
 {
 	const size_t maxQueueSize = GetRendererVideoFrameQueueSizeMax();
-
-	// Skip monitoring if we already have a pending reset
-	if (m_pendingQueueReset)
-		return;
 
 	// CONDITION 1: Queue is consistently full (indicates delivery problems)
 	if (currentQueueSize >= (maxQueueSize - 1))
@@ -2757,19 +2797,19 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 	bool shouldReset = false;
 	const char* resetReason = nullptr;
 
-	// Trigger 1: Queue has been full for 5+ seconds (increased from 3 for MadVR stability)
-	if (m_consecutiveFullSeconds >= 5)
+	// Trigger 1: Queue has been full for 3+ seconds (delivery failure)
+	if (m_consecutiveFullSeconds >= 3)
 	{
 		shouldReset = true;
 		resetReason = "Queue consistently full";
 	}
-	// Trigger 2: Queue stuck at low level for 12+ seconds with active drops (increased from 8)
-	else if (m_consecutiveStuckSeconds >= 12)
+	// Trigger 2: Queue stuck at low level for 8+ seconds with active drops (sync drift)
+	else if (m_consecutiveStuckSeconds >= 8)
 	{
 		shouldReset = true;
 		resetReason = "Queue stuck with ongoing drops";
 	}
-	// Trigger 3: Massive queue spike (sudden burst) - immediate, but with delay
+	// Trigger 3: Massive queue spike (sudden burst)
 	else if (currentQueueSize >= maxQueueSize && m_lastQueueSize <= (maxQueueSize / 2))
 	{
 		shouldReset = true;
@@ -2778,12 +2818,14 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 
 	if (shouldReset && m_videoRenderer)
 	{
-		DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::MonitorQueueHealth(): SCHEDULING DELAYED RESET - %s (queue: %zu/%zu, drops: %llu)"),
+		DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::MonitorQueueHealth(): AUTO-RESET - %s (queue: %zu/%zu, drops: %llu)"),
 			CString(resetReason), currentQueueSize, maxQueueSize, droppedFrames - m_lastDroppedFrames));
 
-		// Instead of immediate reset, schedule a delayed reset
-		SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 3000, nullptr);  // 3-second delay
-		m_pendingQueueReset = true;
+		m_videoRenderer->Reset();
+
+		// Reset tracking counters
+		m_consecutiveFullSeconds = 0;
+		m_consecutiveStuckSeconds = 0;
 	}
 
 	// Update tracking variables

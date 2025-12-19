@@ -169,18 +169,40 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 	if (frameQueueMaxSize <= 0)
 		throw std::runtime_error("Frame queue size must be > 0");
 
+	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize() - Changing queue size from %zu to %zu"), 
+		m_frameQueueMaxSize, frameQueueMaxSize));
+
 	{
 		CAutoLock lock(&m_filterCritSec);
 
 		m_frameQueueMaxSize = frameQueueMaxSize;
 
-		// If full throw away oldest to make space if needed
-		while (m_videoFrameQueue.size() >= m_frameQueueMaxSize)
+		// CRITICAL: Queue size change indicates renderer state change (like MadVR quality settings)
+		// We need to reset timeline state and signal MadVR properly
+		
+		// Purge all frames from queue
+		while (!m_videoFrameQueue.empty())
 		{
-			m_videoFrameQueue.front().SourceBufferRelease();
+			VideoFrame popFrame = m_videoFrameQueue.front();
+			popFrame.SourceBufferRelease();
 			m_videoFrameQueue.pop_front();
 			++m_droppedFrameCount;
 		}
+		
+		// Reset timeline state to force clean restart
+		// This ensures RATIONAL_RATIONAL gets clean mathematical progression after MadVR changes
+		m_frameCounter = 0;
+		m_previousFrameCounter = 0;
+		m_startTimeOffset = 0;
+		m_frameCounterOffset = 0;
+		m_previousTimeStop = 0;
+		
+		// CRITICAL FOR RATIONAL_RATIONAL: Signal both discontinuity AND new segment
+		// THEO_THEO works with just discontinuity, but RATIONAL_RATIONAL needs the official segment restart
+		m_forceDiscontinuity = true;
+		m_deliverNewSegment = true;  // This is what the Reset button does that we were missing!
+		
+		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Queue purged, timeline reset, will deliver NEW SEGMENT on next frame (RATIONAL_RATIONAL fix)")));
 	}
 }
 

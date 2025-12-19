@@ -78,7 +78,6 @@ public:
 	// Timer ID constants
 	static const UINT_PTR TIMER_ID_1SECOND = 1;
 	static const UINT_PTR RESIZE_DEBOUNCE_TIMER_ID = 2;
-	static const UINT_PTR QUEUE_RESET_DELAY_TIMER_ID = 3;
 
 	// Option handlers
 	void StartFullScreen();
@@ -281,7 +280,7 @@ protected:
 	size_t m_consecutiveStuckSeconds = 0;
 	uint64_t m_lastDroppedFrames = 0;
 	size_t m_lastQueueSize = 0;
-	bool m_pendingQueueReset = false;  // Flag to prevent multiple concurrent resets
+	boolean m_pendingQueueReset = false;
 
 	// Frame offset by refresh data
 	std::vector<int> m_frameOffsetsByRefresh;
@@ -383,7 +382,10 @@ protected:
 	afx_msg HCURSOR	OnQueryDragIcon();
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
 
+	#define RESIZE_DEBOUNCE_TIMER_ID 1002
+	#define QUEUE_RESET_DELAY_TIMER_ID 1003
 
 	DECLARE_MESSAGE_MAP()
+
 
 };

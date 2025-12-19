@@ -108,6 +108,14 @@ public:
 protected:
 
 	uint64_t m_droppedFrameCount = 0;
+	
+	// Flag to force discontinuity on next frame after timeline reset
+	// This tells MadVR that the timeline was reset and it should resync
+	bool m_forceDiscontinuity = false;
+	
+	// Flag to deliver new segment on next frame after timeline reset
+	// This officially notifies MadVR of timeline restart (critical for RATIONAL_RATIONAL)
+	bool m_deliverNewSegment = false;
 
 	// Render function to render a videoFrame onto a IMediaSample.
 	// Will not release the sample or dec videoframe nor do the Deliver()

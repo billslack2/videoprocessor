@@ -324,12 +324,16 @@ void ALiveSourceVideoOutputPin::Reset()
 	if (m_hdrData)
 		m_hdrChanged = true;
 
+	// CRITICAL: Reset ALL timeline state to ensure clean restart
+	// This is especially important for RATIONAL_RATIONAL which expects pristine mathematical state
 	m_frameCounter = 0;
 	m_previousFrameCounter = 0;
 	m_startTimeOffset = 0;
 	m_frameCounterOffset = 0;
 	m_previousTimeStop = 0;
 	m_droppedFrameCount = 0;
+
+	DbgLog((LOG_TRACE, 1, TEXT("ALiveSourceVideoOutputPin::Reset() - Complete timeline reset for mode %d"), m_timestamp));
 
 	if (FAILED(DeliverEndFlush()))
 		throw std::runtime_error("Failed to deliver endflush");
@@ -348,9 +352,30 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	assert(m_frameDuration > 0);
 	assert(m_timingClock->TimingClockTicksPerSecond() > 0);
 
-	++m_frameCounter;
+	// RATIONAL_RATIONAL TIMELINE PROTECTION: Detect and recover from timeline corruption BEFORE incrementing frame counter
+	// This is critical because the frame counter increment at the start of the function means we need to detect
+	// corruption BEFORE that increment, not after.
+	if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL)
+	{
+		// RATIONAL_RATIONAL should NEVER have m_startTimeOffset set (that's for CLOCK modes)
+		// If non-zero, it indicates corruption from a previous timing mode that wasn't properly reset
+		// This can happen after renderer changes or improper shutdown/restart
+		if (m_startTimeOffset != 0)
+		{
+			DbgLog((LOG_WARNING, 1, TEXT("::FillBuffer(#%I64u): RATIONAL_RATIONAL timeline CORRUPTION DETECTED - m_startTimeOffset=%I64d (should be 0)"),
+				videoFrame.GetCounter(), m_startTimeOffset));
+			
+			// Force COMPLETE timeline reset to restore RATIONAL_RATIONAL integrity
+			m_startTimeOffset = 0;
+			m_previousTimeStop = 0;
+			m_forceDiscontinuity = true;
+			m_deliverNewSegment = true;
+			
+			DbgLog((LOG_WARNING, 1, TEXT("  Timeline RESET: m_startTimeOffset cleared, discontinuity and new segment flagged")));
+		}
+	}
 
-	HRESULT hr;
+	++m_frameCounter;
 
 	//
 	// Media time
@@ -365,22 +390,49 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	// Set frame counter
 	LONGLONG mediaTimeStart = streamFrameCounter;
 	LONGLONG mediaTimeStop = mediaTimeStart + 1;
-	hr = pSample->SetMediaTime(&mediaTimeStart, &mediaTimeStop);
+	HRESULT hr = pSample->SetMediaTime(&mediaTimeStart, &mediaTimeStop);
 	if (FAILED(hr))
 		return hr;
 
 	// Discontinuity check
 	const bool isDiscontinuity =
 		videoFrame.GetCounter() != (m_previousFrameCounter + 1) ||
-		m_frameCounter == 1;
+		m_frameCounter == 1 ||
+		m_forceDiscontinuity;  // Force discontinuity after timeline reset
+		
 	if (isDiscontinuity)
 	{
-		DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): Frame counter jumped from %I64u (stream frame %I64u), discontinuity detected"),
-			videoFrame.GetCounter(), m_previousFrameCounter, streamFrameCounter));
+		DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): Frame counter jumped from %I64u (stream frame %I64u), discontinuity detected%s"),
+			videoFrame.GetCounter(), m_previousFrameCounter, streamFrameCounter,
+			m_forceDiscontinuity ? TEXT(" (FORCED after timeline reset)") : TEXT("")));
 
 		hr = pSample->SetDiscontinuity(TRUE);
 		if (FAILED(hr))
 			return hr;
+			
+		// Clear the force flag after setting discontinuity
+		m_forceDiscontinuity = false;
+	}
+	
+	// CRITICAL FOR RATIONAL_RATIONAL: Deliver new segment after timeline reset
+	// This officially notifies MadVR that the timeline has restarted from 0
+	// Without this, RATIONAL_RATIONAL's strict mathematical timing confuses MadVR
+	if (m_deliverNewSegment)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): Delivering NEW SEGMENT to restart timeline (critical for RATIONAL_RATIONAL)"),
+			videoFrame.GetCounter()));
+			
+		if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
+		{
+			DbgLog((LOG_ERROR, 1, TEXT("::FillBuffer(#%I64u): Failed to deliver new segment!"), videoFrame.GetCounter()));
+		}
+		else
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): New segment delivered successfully - MadVR timeline restarted"),
+				videoFrame.GetCounter()));
+		}
+		
+		m_deliverNewSegment = false;
 	}
 
 	m_previousFrameCounter = videoFrame.GetCounter();
@@ -400,36 +452,57 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		// Pure rational timing: Use exact integer math for perfectly evenly-spaced timestamps
 		// starting from zero. This produces monotonic, jitter-free timestamps.
 		
-		// Use our internal frame counter for absolutely monotonic timestamps
-		// m_frameCounter is incremented at the top of this function, so subtract 1
-		const uint64_t frameNum = m_frameCounter - 1;
+		// CRITICAL: Use streamFrameCounter (derived from the SOURCE), NOT m_frameCounter
+		// m_frameCounter is just a local incrementer and can desync from the actual stream
+		// streamFrameCounter comes directly from videoFrame.GetCounter() adjusted by offset
+		
+		const uint64_t frameNum = streamFrameCounter;  // Frame number relative to stream start (frame 0, 1, 2, ...)
 		
 		// Pure rational calculation: frame N starts at N * frameDuration
+		// timeStart = (frameNum / timeScale) * 10000000 in 100-nanosecond units
 		const uint64_t referenceTimePerSecond = 10000000ULL;
 		timeStart = (REFERENCE_TIME)((frameNum * referenceTimePerSecond * m_frameDurationTicks) / m_timeScale);
 		
+		// SANITY CHECK: For RATIONAL_RATIONAL on first frame, frameNum should be 0
+		if (streamFrameCounter == 0 && frameNum != 0)
+		{
+			DbgLog((LOG_ERROR, 1, TEXT("::FillBuffer(#%I64u): CRITICAL - First frame but frameNum=%I64u"), 
+				videoFrame.GetCounter(), frameNum));
+		}
+		
 		// MONOTONICITY GUARANTEE: This timestamp MUST be >= previous timestamp
 		// With pure integer math and monotonic frame counter, this should always hold
-		if (m_frameCounter > 1 && timeStart <= m_previousTimeStop)
+		// If inversion occurs, it indicates a fundamental math error
+		if (streamFrameCounter > 0 && timeStart <= m_previousTimeStop)
 		{
-			DbgLog((LOG_ERROR, 1, TEXT("::FillBuffer(#%I64u): CRITICAL - Timestamp inversion detected! Current: %I64d, Previous: %I64d"),
-				videoFrame.GetCounter(), timeStart, m_previousTimeStop));
+			DbgLog((LOG_ERROR, 1, TEXT("::FillBuffer(#%I64u): CRITICAL - RATIONAL_RATIONAL timestamp inversion! Current: %I64d, Previous: %I64d, streamFrameNum: %I64u"),
+				videoFrame.GetCounter(), timeStart, m_previousTimeStop, streamFrameCounter));
 			
-			DEBUGLOG("CRITICAL: Timestamp inversion! frame %llu, timestamp %lld <= previous %lld",
-				videoFrame.GetCounter(), timeStart, m_previousTimeStop);
+			DbgLog((LOG_ERROR, 1, TEXT("Timeline state - m_frameCounter=%I64u, streamFrameCounter=%I64u, frameCounterOffset=%I64u, timeScale=%u, frameDurationTicks=%u"),
+				m_frameCounter, streamFrameCounter, m_frameCounterOffset, m_timeScale, m_frameDurationTicks));
 			
+			DbgLog((LOG_ERROR, 1, TEXT("Calculation: frameNum=%I64u, refTime=%I64u, frameDurationTicks=%u, timeScale=%u"),
+				frameNum, referenceTimePerSecond, m_frameDurationTicks, m_timeScale));
+			
+			// This should never happen if math is correct, but if it does, force monotonic progression
 			timeStart = m_previousTimeStop + 1;
 		}
 		
-		// On first frame, log startup information
-		if (m_frameCounter == 1)
+		// Detailed logging on first frame for debugging
+		if (streamFrameCounter == 0)
 		{
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): RATIONAL_RATIONAL started - timeScale=%u, frameDurationTicks=%u, rate=%.6f fps"),
+			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): RATIONAL_RATIONAL STARTED - timeScale=%u, frameDurationTicks=%u, rate=%.6f fps"),
 				videoFrame.GetCounter(), m_timeScale, m_frameDurationTicks, 
 				(double)m_timeScale / (double)m_frameDurationTicks));
-			
-			DEBUGLOG("RATIONAL_RATIONAL started: timeScale=%u, frameDurationTicks=%u, theoretical rate=%.6f fps",
-				m_timeScale, m_frameDurationTicks, (double)m_timeScale / (double)m_frameDurationTicks);
+		}
+		
+		// Every 100 frames, log timing state for monitoring
+		if (streamFrameCounter % 100 == 0 && streamFrameCounter > 0)
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): RATIONAL_RATIONAL frame %I64u - timeStart=%I64d, timeStop will be %I64d, prevStop=%I64d"),
+				videoFrame.GetCounter(), streamFrameCounter, timeStart, 
+				(REFERENCE_TIME)(((streamFrameCounter + 1) * referenceTimePerSecond * m_frameDurationTicks) / m_timeScale),
+				m_previousTimeStop));
 		}
 		
 		break;
@@ -475,8 +548,9 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
 	{
 		// For rational timing, calculate the next frame's exact timestamp
-		// Pure rational math: frame N+1 starts at (N+1) * frameDuration
-		const uint64_t nextFrameNum = m_frameCounter;  // m_frameCounter was already incremented
+		// Pure rational math: frame N+1 starts at ((N+1) * frameDurationTicks / timeScale) * 10000000
+		// Using streamFrameCounter ensures we're always in sync with the actual stream
+		const uint64_t nextFrameNum = streamFrameCounter + 1;
 		const uint64_t referenceTimePerSecond = 10000000ULL;
 		timeStop = (REFERENCE_TIME)((nextFrameNum * referenceTimePerSecond * m_frameDurationTicks) / m_timeScale);
 		break;
@@ -528,19 +602,9 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		if (FAILED(hr))
 			return hr;
 
-#ifdef _DEBUG
-		// Every n frames output a bunch of consecutive frames to check start/stop for all applicable formats
-		if (m_frameCounter % 200 < 5)
-		{
-			const double durationMs = (timeStop - timeStart) / 10000.0;
-			const double diffStopMs = (timeStart - m_previousTimeStop) / 10000.0;
-
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): StartTS: %I64d StopTS: %I64d, duration: %.02f, diffPrevStopStartMs: %.02f"),
-				videoFrame.GetCounter(), timeStart, timeStop, durationMs, diffStopMs));
-
-			m_previousTimeStop = timeStop;
-		}
-#endif // _DEBUG
+		// Track previous stop time for RATIONAL_RATIONAL monotonicity checking
+		// This must be done for ALL builds, not just debug, to enable timeline validation
+		m_previousTimeStop = timeStop;
 		break;
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE:
