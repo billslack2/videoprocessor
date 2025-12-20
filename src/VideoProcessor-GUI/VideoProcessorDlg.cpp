@@ -2606,7 +2606,7 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 	// ... existing OnSize code ...
 
 	// Reset madVR after significant scaling changes
-	if (significantResize && m_videoRenderer &&
+	if (m_rendererFullscreenCheck.GetCheck() && significantResize && m_videoRenderer &&
 		m_rendererState == RendererState::RENDERSTATE_RENDERING)
 	{
 		// Debounced reset to let scaling operations complete

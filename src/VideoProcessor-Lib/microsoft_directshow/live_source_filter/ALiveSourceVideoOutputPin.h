@@ -143,7 +143,7 @@ protected:
 	unsigned int m_timeScale = 0;           // Ticks per second (e.g., 24000 for 23.976fps)
 	unsigned int m_frameDurationTicks = 0;  // Ticks per frame (e.g., 1001 for 23.976fps)
 	double m_tickRateCorrectionFactor = 1.0;  // Measured correction for hardware clock drift
-	bool m_applyPllCorrectionToRational = true;  // Toggle PLL drift correction for RATIONAL_RATIONAL (default: enabled)
+	bool m_applyPllCorrectionToRational = false;  // Toggle PLL drift correction for RATIONAL_RATIONAL (default: enabled)
 
 	REFERENCE_TIME m_previousTimeStop = 0;
 	timestamp_t m_startTimeOffset = 0;

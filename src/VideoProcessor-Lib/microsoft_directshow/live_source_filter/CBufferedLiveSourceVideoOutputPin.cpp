@@ -204,6 +204,28 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 		
 		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Queue purged, timeline reset, will deliver NEW SEGMENT on next frame (RATIONAL_RATIONAL fix)")));
 	}
+	
+	// CRITICAL FIX: If we're connected and active, we need to properly initialize the DirectShow timeline
+	// This fixes the issue when starting directly in fullscreen mode where SetFrameQueueMaxSize is called
+	// during initialization but the timeline never gets properly established with DirectShow
+	if (IsConnected() && m_isActive)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Connected and active during queue resize - delivering timeline initialization")));
+		
+		// Deliver new segment to establish timing baseline with DirectShow reference clock
+		// This is what was missing when starting directly in fullscreen mode
+		if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
+		{
+			DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Failed to deliver new segment during queue resize!")));
+		}
+		else
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: New segment delivered successfully - DirectShow timeline properly initialized")));
+			
+			// Clear the flag since we just delivered it
+			m_deliverNewSegment = false;
+		}
+	}
 }
 
 
@@ -246,21 +268,16 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 	while (true)
 	{
-		// Wait for frame to be available (event-driven, not polling!)
-		// Timeout after 5ms to check if thread should exit
-		DWORD waitResult = WaitForSingleObject(m_hFrameAvailableEvent, 5);
+		DWORD waitResult = WaitForSingleObject(m_hFrameAvailableEvent, 1);
 		
 		if (waitResult == WAIT_TIMEOUT)
 		{
-			// Check if we should exit
 			if (!m_isActive)
 				break;
-			continue;
+			continue;  // Nothing signaled, keep waiting
 		}
-		
-		if (waitResult != WAIT_OBJECT_0)
+		else if (waitResult != WAIT_OBJECT_0)
 		{
-			// Unexpected error
 			DbgLog((LOG_ERROR, 1, TEXT("::ThreadProc: WaitForSingleObject failed with %d"), waitResult));
 			break;
 		}
@@ -271,22 +288,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		{
 			CAutoLock lock(&m_filterCritSec);
 
-			// Stop thread
 			if (!m_isActive)
 				break;
-
-			// For most timing empty is really empty, however for the clock-to-clock
-			// we need to keep one frame in.
-			if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK)
-			{
-				if (m_videoFrameQueue.size() <= 1)
-					continue;
-			}
-			else
-			{
-				if (m_videoFrameQueue.empty())
-					continue;
-			}
 
 			currentQueueSize = m_videoFrameQueue.size();
 
@@ -332,11 +335,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		}
 
 		// ADAPTIVE TIMEOUT: Use shorter timeout if queue is backing up
-		DWORD bufferTimeout = (currentQueueSize > 2) ? 1 : 5;  // 1ms when under pressure
+		//DWORD bufferTimeout = (currentQueueSize > 2) ? 2 : 5;  // 1ms when under pressure //TODO: Updated
 
 		// Get buffer for sample - reduced timeout when under pressure
 		IMediaSample* pSample = nullptr;
-		HRESULT hr = this->GetDeliveryBuffer(&pSample, nullptr, nullptr, bufferTimeout);
+		HRESULT hr = this->GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);// bufferTimeout); //TODO: IS THAT EVEN A TIMEOUT!?
 		if (FAILED(hr))
 		{
 			videoFrame.SourceBufferRelease();
