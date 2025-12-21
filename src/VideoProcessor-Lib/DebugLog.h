@@ -28,6 +28,7 @@
 class DebugLog
 {
 public:
+
 	/**
 	 * Log a message to debug.log with timestamp (async, non-blocking)
 	 * Thread-safe
@@ -35,12 +36,15 @@ public:
 	template<typename... Args>
 	static void Log(const char* format, Args... args)
 	{
-		// Format message immediately (fast operation)
-		//char buffer[4096];
-		//snprintf(buffer, sizeof(buffer), format, args...);
-		
-		// Queue for background writing (non-blocking)
-		//QueueMessage(buffer);
+			
+		if (false) {
+			// Format message immediately (fast operation)
+			char buffer[4096];
+			snprintf(buffer, sizeof(buffer), format, args...);
+
+			// Queue for background writing (non-blocking)
+			QueueMessage(buffer);
+		}
 	}
 
 	/**

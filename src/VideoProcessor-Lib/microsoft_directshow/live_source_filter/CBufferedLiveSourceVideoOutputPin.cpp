@@ -205,6 +205,10 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Queue purged, timeline reset, will deliver NEW SEGMENT on next frame (RATIONAL_RATIONAL fix)")));
 	}
 	
+	// CRITICAL: Wake the consumer thread after purge to ensure it's ready for new frames
+	// Without this, if the event was already reset, new frames arriving won't wake the thread
+	SetEvent(m_hFrameAvailableEvent);
+	
 	// CRITICAL FIX: If we're connected and active, we need to properly initialize the DirectShow timeline
 	// This fixes the issue when starting directly in fullscreen mode where SetFrameQueueMaxSize is called
 	// during initialization but the timeline never gets properly established with DirectShow
@@ -291,6 +295,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			if (!m_isActive)
 				break;
 
+			// Safety check: if queue is empty after resolution change, keep waiting
+			if (m_videoFrameQueue.empty())
+				continue;
+
 			currentQueueSize = m_videoFrameQueue.size();
 
 			// IMPROVED BURST HANDLING: More gradual queue reduction
@@ -337,9 +345,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		// ADAPTIVE TIMEOUT: Use shorter timeout if queue is backing up
 		//DWORD bufferTimeout = (currentQueueSize > 2) ? 2 : 5;  // 1ms when under pressure //TODO: Updated
 
-		// Get buffer for sample - reduced timeout when under pressure
+		// Get buffer for sample (flags parameter, not timeout)
 		IMediaSample* pSample = nullptr;
-		HRESULT hr = this->GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);// bufferTimeout); //TODO: IS THAT EVEN A TIMEOUT!?
+		HRESULT hr = this->GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);
 		if (FAILED(hr))
 		{
 			videoFrame.SourceBufferRelease();

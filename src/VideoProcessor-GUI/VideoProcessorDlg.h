@@ -357,7 +357,7 @@ protected:
 	void UpdateTimingClockFrameOffset();
 	void RebuildRendererCombo();
 	void ClearRendererCombo();
-	//void UpdateStatsOverlay();
+	void UpdateStatsOverlay();
 	void MonitorQueueHealth(size_t currentQueueSize, uint64_t droppedFrames);
 
 
@@ -384,6 +384,7 @@ protected:
 
 	#define RESIZE_DEBOUNCE_TIMER_ID 1002
 	#define QUEUE_RESET_DELAY_TIMER_ID 1003
+    #define FULLSCREEN_FOCUS_TIMER_ID 1004  
 
 	DECLARE_MESSAGE_MAP()
 
