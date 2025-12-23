@@ -129,4 +129,17 @@ public:
 
 	// Get the amount of dropped frames due to queue actions
 	virtual uint64_t DroppedFrameCount() const = 0;
+	
+	// Get conversion performance metrics (if available from the video frame formatter)
+	// Returns true if data is available, false if no conversion or no performance tracking
+	// currentUs: Latest frame conversion time in microseconds
+	// avg10s: Average conversion time over last 10 seconds (?s)
+	// max10s: Maximum conversion time over last 10 seconds (?s)
+	virtual bool GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const
+	{
+		currentUs = 0.0;
+		avg10s = 0.0;
+		max10s = 0.0;
+		return false;  // No data available by default
+	}
 };

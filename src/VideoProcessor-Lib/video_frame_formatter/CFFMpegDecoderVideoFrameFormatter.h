@@ -57,4 +57,10 @@ private:
 	AVPacket* mPkt;
 
 	void Cleanup();
+	
+	// Performance optimization methods
+	void OptimizedFrameCopy(uint8_t* dst, uint8_t* const src[4], const int srcLinesize[4],
+	                       AVPixelFormat pixFmt, int width, int height);
+	void OptimizedMemcpy(void* dst, const void* src, size_t size);
+	bool HasAVX2_Safe() const;
 };

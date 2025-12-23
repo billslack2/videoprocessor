@@ -44,6 +44,12 @@ struct StatsData
 	// Video info
 	CString videoConversion;
 
+	// Conversion performance (NEW - for V210?P010 etc.)
+	double currentConversionTimeUs = 0.0;      // Latest conversion time in microseconds
+	double avgConversionTime10s = 0.0;         // 10-second rolling average (?s)
+	double maxConversionTime10s = 0.0;         // 10-second rolling maximum (?s)
+	bool hasConversionData = false;            // Whether conversion performance data is available
+
 	// Reset tracking - use simple types only
 	uint64_t framesSinceReset = 0;
 	double secondsSinceReset = 0.0;

@@ -2171,15 +2171,17 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	// Push
 	//
 
-	// Push to renderer if that's running, if the renderer does not accept the update, return false
-	// such that the caller can take action
-	bool rendererAcceptedState = true;
-	if (m_deliverCaptureDataToRenderer.load(std::memory_order_acquire))
+	// Push to renderer if available
+	if (m_videoRenderer)
 	{
-		return m_videoRenderer->OnVideoState(m_builtVideoState);
+		m_videoRenderer->OnVideoState(m_builtVideoState);
+		return true;
 	}
-
-	return true;
+	else
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::BuildPushVideoState(): Renderer did not accept state")));
+		return false;
+	}
 }
 
 
@@ -2863,6 +2865,19 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	if (m_rendererVideoConversionCombo.GetCurSel() >= 0)
 	{
 		m_rendererVideoConversionCombo.GetLBText(m_rendererVideoConversionCombo.GetCurSel(), stats.videoConversion);
+	}
+	
+	// Conversion performance (NEW - V210→P010 etc.)
+	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
+	{
+		double currentUs, avg10s, max10s;
+		stats.hasConversionData = m_videoRenderer->GetConversionPerformance(currentUs, avg10s, max10s);
+		if (stats.hasConversionData)
+		{
+			stats.currentConversionTimeUs = currentUs;
+			stats.avgConversionTime10s = avg10s;
+			stats.maxConversionTime10s = max10s;
+		}
 	}
 
 	// Handle reset tracking

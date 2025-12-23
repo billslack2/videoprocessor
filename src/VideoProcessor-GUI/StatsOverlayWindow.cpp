@@ -348,6 +348,21 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	line.Format(TEXT("Video Conv:        %-20s"), m_stats.videoConversion.IsEmpty() ? TEXT("---") : m_stats.videoConversion);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
+	
+	// Conversion Performance (NEW - show if available)
+	if (m_stats.hasConversionData)
+	{
+		// Current conversion time (convert ?s to ms)
+		line.Format(TEXT("Conv Time:        %7.2f ms"), m_stats.currentConversionTimeUs / 1000.0);
+		DrawText(hdc, line, PADDING, y);
+		y += LINE_HEIGHT;
+		
+		// 10-second average and max on one line (convert ?s to ms)
+		line.Format(TEXT("10s Avg/Max:      %7.2f / %7.2f ms"), 
+			m_stats.avgConversionTime10s / 1000.0, m_stats.maxConversionTime10s / 1000.0);
+		DrawText(hdc, line, PADDING, y);
+		y += LINE_HEIGHT;
+	}
 
 	// Separator
 	y += 4;
