@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -90,14 +90,10 @@ public:
 	// Reset the internal state and the video stream.
 	virtual void Reset();
 
-	// Set the tick rate correction factor (for compensating hardware clock drift)
-	void SetTickRateCorrectionFactor(double factor) { m_tickRateCorrectionFactor = factor; }
-
-	// Enable/disable PLL drift correction for RATIONAL_RATIONAL timing (default: true)
-	// When enabled, RATIONAL_RATIONAL mode will apply hardware clock drift compensation
-	// When disabled, uses pure mathematical rational timing without compensation
-	void SetApplyPllCorrectionToRational(bool apply) { m_applyPllCorrectionToRational = apply; }
-	bool GetApplyPllCorrectionToRational() const { return m_applyPllCorrectionToRational; }
+	// Set fixed pipeline offset for RATIONAL_RATIONAL mode (in 100ns units)
+	// This compensates for processing delays by shifting the timeline forward
+	void SetRationalPipelineOffset(REFERENCE_TIME offset) { m_rationalPipelineOffset = offset; }
+	REFERENCE_TIME GetRationalPipelineOffset() const { return m_rationalPipelineOffset; }
 
 	//
 	// Metrics
@@ -122,6 +118,11 @@ protected:
 	// Flag to deliver new segment on next frame after timeline reset
 	// This officially notifies MadVR of timeline restart (critical for RATIONAL_RATIONAL)
 	bool m_deliverNewSegment = false;
+	
+	// Flag to temporarily disable pipeline offset after timeline reset
+	// This prevents time gaps that cause repeat loops during restart
+	bool m_disablePipelineOffsetTemporarily = false;
+	int m_framesAfterReset = 0;  // Counter to track frames since reset
 
 	// Render function to render a videoFrame onto a IMediaSample.
 	// Will not release the sample or dec videoframe nor do the Deliver()
@@ -142,8 +143,11 @@ protected:
 	// These come from DisplayMode and allow drift-free timing for rates like 23.976, 29.97, 59.94
 	unsigned int m_timeScale = 0;           // Ticks per second (e.g., 24000 for 23.976fps)
 	unsigned int m_frameDurationTicks = 0;  // Ticks per frame (e.g., 1001 for 23.976fps)
-	double m_tickRateCorrectionFactor = 1.0;  // Measured correction for hardware clock drift
-	bool m_applyPllCorrectionToRational = false;  // Toggle PLL drift correction for RATIONAL_RATIONAL (default: enabled)
+	
+	// Fixed pipeline offset for RATIONAL_RATIONAL mode compensation
+	// Applied as a forward shift to account for processing delays
+	// Will be calculated dynamically based on frame rate during initialization
+	REFERENCE_TIME m_rationalPipelineOffset = 0;  // Pipeline offset in 100ns units (calculated at runtime)
 
 	REFERENCE_TIME m_previousTimeStop = 0;
 	timestamp_t m_startTimeOffset = 0;

@@ -52,6 +52,9 @@ DirectShowVideoRenderer::DirectShowVideoRenderer(
 	if (!useFrameQueue && timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK)
 		throw std::runtime_error("No queue cannot be used with clock-clock, pick another mode and restart");
 
+	// RATIONAL_RATIONAL mode timing clock will be created when video state is available
+	// We need the exact rational frame rate from DisplayMode to create the perfect mathematical clock
+
 	ZeroMemory(&m_pmt, sizeof(AM_MEDIA_TYPE));
 }
 
@@ -83,6 +86,18 @@ bool DirectShowVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 	{
 		// No video state yet, initialize
 		m_videoState = videoState;
+		
+		// RATIONAL_RATIONAL mode uses the same hardware timing clock
+		// The rational timestamp calculation happens in ALiveSourceVideoOutputPin
+		// using pure integer math for perfect frame spacing
+		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL)
+		{
+			const uint32_t timeScale = m_videoState->displayMode->TimeScale();
+			const uint32_t frameDurationTicks = m_videoState->displayMode->FrameDuration();
+			const double frameRate = (double)timeScale / (double)frameDurationTicks;
+			
+			DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer: Using RATIONAL_RATIONAL timing for %.6f fps (hardware clock with integer math)"), frameRate));
+		}
 	}
 
 	// All good, continue
@@ -97,32 +112,6 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	assert(m_state == RendererState::RENDERSTATE_RENDERING);
 	assert(m_videoState);
 	assert(videoFrame.GetTimingTimestamp() > 0);
-
-	// CRITICAL FIX: Update PLL correction factor BEFORE frame processing to prevent timestamp inversions
-	// This ensures the correction factor is applied to the CURRENT frame, not the next frame
-	if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL && 
-		m_timingClock)
-	{
-		const double newCorrectionFactor = m_timingClock->GetTickRateCorrectionFactor();
-		
-		// Get the output pin and update its correction factor IMMEDIATELY BEFORE frame timestamping
-		ALiveSourceVideoOutputPin* outputPin = m_liveSource->GetVideoOutputPin();
-		if (outputPin)
-		{
-			outputPin->SetTickRateCorrectionFactor(newCorrectionFactor);
-			
-			// Log correction factor updates for diagnostics (every 600 frames = ~10s @ 60fps)
-			if (m_frameCounter % 600 == 0)
-			{
-				const double ppmDrift = (newCorrectionFactor - 1.0) * 1000000.0;
-				DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer: PLL correction updated BEFORE frame - factor: %.8f, drift: %+.2f PPM"),
-					newCorrectionFactor, ppmDrift));
-				
-				DEBUGLOG("Renderer: Applied PLL correction %.8f (%+.2f PPM) BEFORE frame %llu timestamp", 
-					newCorrectionFactor, ppmDrift, m_frameCounter);
-			}
-		}
-	}
 
 	// Get delay until now once in a while
 	if (m_frameCounter % 20 == 0)

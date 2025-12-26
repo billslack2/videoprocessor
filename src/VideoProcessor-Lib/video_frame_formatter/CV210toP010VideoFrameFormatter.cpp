@@ -123,9 +123,7 @@ void CV210toP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& videoState)
 }
 
 // ---------------------------------------------------------------------
-// FormatVideoFrame: For 720p, decode an extra 4 pixels per line (to form a full pack)
-// and then copy the central m_width pixels into the destination with border fixes.
-// Non-720p processing remains unchanged.
+// FormatVideoFrame: Simple, fast, reliable conversion
 bool CV210toP010VideoFrameFormatter::FormatVideoFrame(
     const VideoFrame& inFrame,
     BYTE* outBuffer)
@@ -277,7 +275,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_720p(
 }
 
 // ---------------------------------------------------------------------
-// Standard resolution conversion - CLEAN SCALAR IMPLEMENTATION
+// Standard resolution conversion - ORIGINAL SIMPLE VERSION
 bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Standard(
     const uint8_t* srcData,
     uint32_t srcStride,

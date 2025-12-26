@@ -324,25 +324,18 @@ void ALiveSourceVideoOutputPin::Reset()
 	if (m_hdrData)
 		m_hdrChanged = true;
 
-	// CRITICAL: Reset ALL timeline state to ensure clean restart
-	// This is especially important for RATIONAL_RATIONAL which expects pristine mathematical state
 	m_frameCounter = 0;
 	m_previousFrameCounter = 0;
-	m_startTimeOffset = 0;
 	m_frameCounterOffset = 0;
 	m_previousTimeStop = 0;
+	m_startTimeOffset = 0;
 	m_droppedFrameCount = 0;
-
-	DbgLog((LOG_TRACE, 1, TEXT("ALiveSourceVideoOutputPin::Reset() - Complete timeline reset for mode %d"), m_timestamp));
 
 	if (FAILED(DeliverEndFlush()))
 		throw std::runtime_error("Failed to deliver endflush");
 
-	// Deliver new segment to establish timing baseline with DirectShow reference clock
 	if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
 		throw std::runtime_error("Failed to deliver new segment");
-		
-	m_newSegment = false;  // Clear flag after successful delivery
 }
 
 
@@ -384,7 +377,13 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	// Guarantee first frame to start counting at zero
 	uint64_t streamFrameCounter = videoFrame.GetCounter();
 	if (m_frameCounterOffset == 0)
+	{
 		m_frameCounterOffset = streamFrameCounter;
+		
+		// Log the frame counter offset being set (happens after reset)
+		DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): Frame counter offset set to %I64u (first frame after reset)"),
+			videoFrame.GetCounter(), m_frameCounterOffset));
+	}
 	streamFrameCounter -= m_frameCounterOffset;
 
 	// Set frame counter
@@ -449,84 +448,22 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	{
 	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
 	{
-		// Pure rational timing: Use exact integer math for perfectly evenly-spaced timestamps
-		// starting from zero. This produces monotonic, jitter-free timestamps.
-		
-		// CRITICAL: Use streamFrameCounter (derived from the SOURCE), NOT m_frameCounter
-		// m_frameCounter is just a local incrementer and can desync from the actual stream
-		// streamFrameCounter comes directly from videoFrame.GetCounter() adjusted by offset
-		
-		const uint64_t frameNum = streamFrameCounter;  // Frame number relative to stream start (frame 0, 1, 2, ...)
-		
-		// Pure rational calculation with optional PLL drift compensation
-		// timeStart = (frameNum / timeScale) * 10000000 in 100-nanosecond units
+		const uint64_t frameNum = streamFrameCounter;
 		const uint64_t referenceTimePerSecond = 10000000ULL;
+		const REFERENCE_TIME baseTimeStart = (REFERENCE_TIME)((frameNum * referenceTimePerSecond * m_frameDurationTicks) / m_timeScale);
 		
-		// Apply optional PLL hardware clock drift correction if enabled
-		// The correction factor is measured by the DeckLink PLL and accounts for
-		// slight hardware clock variations from the nominal rate
-		uint64_t adjustedFrameDurationTicks = m_frameDurationTicks;
-		if (m_applyPllCorrectionToRational && m_tickRateCorrectionFactor != 1.0)
-		{
-			adjustedFrameDurationTicks = (uint64_t)round((double)m_frameDurationTicks * m_tickRateCorrectionFactor);
-			
-			// Log correction on first frame only
-			if (streamFrameCounter == 0 && m_tickRateCorrectionFactor != 1.0)
-			{
-				const double correctionPpm = ((m_tickRateCorrectionFactor - 1.0) * 1000000.0);
-				DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): RATIONAL_RATIONAL PLL correction ENABLED - factor: %.8f (%+.2f PPM)"),
-					videoFrame.GetCounter(), m_tickRateCorrectionFactor, correctionPpm));
-			}
-		}
-		else if (streamFrameCounter == 0)
-		{
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): RATIONAL_RATIONAL PLL correction DISABLED - using pure mathematical timing"),
-				videoFrame.GetCounter()));
-		}
+		timeStart = baseTimeStart + m_rationalPipelineOffset;
 		
-		timeStart = (REFERENCE_TIME)((frameNum * referenceTimePerSecond * adjustedFrameDurationTicks) / m_timeScale);
-		
-		// SANITY CHECK: For RATIONAL_RATIONAL on first frame, frameNum should be 0
-		if (streamFrameCounter == 0 && frameNum != 0)
-		{
-			DbgLog((LOG_ERROR, 1, TEXT("::FillBuffer(#%I64u): CRITICAL - First frame but frameNum=%I64u"), 
-				videoFrame.GetCounter(), frameNum));
-		}
-		
-		// MONOTONICITY GUARANTEE: This timestamp MUST be >= previous timestamp
-		// With pure integer math and monotonic frame counter, this should always hold
-		// If inversion occurs, it indicates a fundamental math error
-		if (streamFrameCounter > 0 && timeStart <= m_previousTimeStop)
-		{
-			DbgLog((LOG_ERROR, 1, TEXT("::FillBuffer(#%I64u): CRITICAL - RATIONAL_RATIONAL timestamp inversion! Current: %I64d, Previous: %I64d, streamFrameNum: %I64u"),
-				videoFrame.GetCounter(), timeStart, m_previousTimeStop, streamFrameCounter));
-			
-			DbgLog((LOG_ERROR, 1, TEXT("Timeline state - m_frameCounter=%I64u, streamFrameCounter=%I64u, frameCounterOffset=%I64u, timeScale=%u, frameDurationTicks=%u, correction=%.8f"),
-				m_frameCounter, streamFrameCounter, m_frameCounterOffset, m_timeScale, m_frameDurationTicks, m_tickRateCorrectionFactor));
-			
-			DbgLog((LOG_ERROR, 1, TEXT("Calculation: frameNum=%I64u, refTime=%I64u, adjustedTicks=%I64u, timeScale=%u"),
-				frameNum, referenceTimePerSecond, adjustedFrameDurationTicks, m_timeScale));
-			
-			// This should never happen if math is correct, but if it does, force monotonic progression
-			timeStart = m_previousTimeStop + 1;
-		}
-		
-		// Detailed logging on first frame for debugging
+		// On first frame after reset, ensure timeStart is > 0 (even if frameNum is 0)
+		// The offset ensures this since offset is always positive
 		if (streamFrameCounter == 0)
 		{
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): RATIONAL_RATIONAL STARTED - timeScale=%u, frameDurationTicks=%u, rate=%.6f fps, pllCorrectionEnabled=%s"),
-				videoFrame.GetCounter(), m_timeScale, m_frameDurationTicks, 
-				(double)m_timeScale / (double)m_frameDurationTicks,
-				m_applyPllCorrectionToRational ? TEXT("YES") : TEXT("NO")));
+			m_previousTimeStop = 0;  // Guarantee: first frame always > 0 (due to offset)
 		}
-		
-		// Every 100 frames, log timing state for monitoring
-		if (streamFrameCounter % 100 == 0 && streamFrameCounter > 0)
+		else if (timeStart <= m_previousTimeStop)
 		{
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): RATIONAL_RATIONAL frame %I64u - timeStart=%I64d, timeStop will be %I64d, prevStop=%I64d, correction=%.8f"),
-				videoFrame.GetCounter(), streamFrameCounter, timeStart, 
-				(REFERENCE_TIME)(((streamFrameCounter + 1) * referenceTimePerSecond * adjustedFrameDurationTicks) / m_timeScale),
-				m_previousTimeStop, m_tickRateCorrectionFactor));
+			// Force monotonic progression if somehow inverted
+			timeStart = m_previousTimeStop + 1;
 		}
 		
 		break;
@@ -572,18 +509,14 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
 	{
 		// For rational timing, calculate the next frame's exact timestamp
-		// Apply same PLL correction as start time for consistency
 		const uint64_t nextFrameNum = streamFrameCounter + 1;
 		const uint64_t referenceTimePerSecond = 10000000ULL;
 		
-		// Apply same correction as start time
-		uint64_t adjustedFrameDurationTicks = m_frameDurationTicks;
-		if (m_applyPllCorrectionToRational && m_tickRateCorrectionFactor != 1.0)
-		{
-			adjustedFrameDurationTicks = (uint64_t)round((double)m_frameDurationTicks * m_tickRateCorrectionFactor);
-		}
+		// Calculate base rational timestamp for next frame
+		const REFERENCE_TIME baseTimeStop = (REFERENCE_TIME)((nextFrameNum * referenceTimePerSecond * m_frameDurationTicks) / m_timeScale);
 		
-		timeStop = (REFERENCE_TIME)((nextFrameNum * referenceTimePerSecond * adjustedFrameDurationTicks) / m_timeScale);
+		// Apply same pipeline offset as start time
+		timeStop = baseTimeStop + m_rationalPipelineOffset;
 		break;
 	}
 

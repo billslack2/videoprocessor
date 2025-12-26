@@ -39,11 +39,4 @@ public:
 	 * Get a description of what the clock represents.
 	 */
 	virtual const TCHAR* TimingClockDescription() = 0;
-
-	/**
-	 * Get the tick rate correction factor for PLL-based timestamp compensation.
-	 * This is used by RATIONAL_RATIONAL mode to adapt to hardware clock drift.
-	 * Returns 1.0 if no correction is needed or PLL is not active. Only for debugging now.
-	 */
-	virtual double GetTickRateCorrectionFactor() const = 0;
 };

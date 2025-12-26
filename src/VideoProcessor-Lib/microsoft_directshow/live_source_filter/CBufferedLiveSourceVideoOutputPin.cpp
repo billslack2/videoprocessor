@@ -112,52 +112,21 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		if (!m_isActive)
 			return S_OK;
 
-		// More tolerant timestamp handling for long-term stability
-		// Allow small backwards timestamps (within 1/2 frame duration) to handle PLL jitter
-		const timingclocktime_t currentTimestamp = videoFrame.GetTimingTimestamp();
-		const timingclocktime_t toleranceThreshold = m_timingClock ? 
-			(m_timingClock->TimingClockTicksPerSecond() / 120) : 8333;  // ~8ms tolerance at 1MHz, fallback to 8ms
-
-		// Only drop frames with significantly older timestamps (more than tolerance)
-		while (!m_videoFrameQueue.empty())
-		{
-			VideoFrame lastFrame = m_videoFrameQueue.back();
-			const timingclocktime_t lastTimestamp = lastFrame.GetTimingTimestamp();
-
-			// If new frame is significantly newer, keep processing
-			if (currentTimestamp > (lastTimestamp + toleranceThreshold))
-				break;
-
-			// If new frame is significantly older, drop it and keep the newer one
-			if ((currentTimestamp + toleranceThreshold) < lastTimestamp)
-			{
-				// Drop the incoming frame (it's too old)
-				DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Dropping old frame - current: %lld, last: %lld, diff: %lld"),
-					currentTimestamp, lastTimestamp, lastTimestamp - currentTimestamp));
-				return S_OK;
-			}
-
-			// Timestamps are very close - drop the older one in queue and accept new one
-			lastFrame.SourceBufferRelease();
-			m_videoFrameQueue.pop_back();
-			++m_droppedFrameCount;
-		}
-
-		// If full throw away oldest to make space
+		// If queue is full, drop the oldest frame to make space
 		if (m_videoFrameQueue.size() >= m_frameQueueMaxSize)
 		{
-			m_videoFrameQueue.front().SourceBufferRelease();
+			VideoFrame oldFrame = m_videoFrameQueue.front();
+			oldFrame.SourceBufferRelease();
 			m_videoFrameQueue.pop_front();
 			++m_droppedFrameCount;
 		}
 
-		// Prevent from getting cleaned up and add to queue
+		// Add the new frame to the queue
 		videoFrame.SourceBufferAddRef();
 		m_videoFrameQueue.push_back(videoFrame);
 	}
 
 	// Signal that a frame is available (outside lock to prevent contention)
-	// Event-driven: wakes up ThreadProc instead of polling with Sleep(1)
 	SetEvent(m_hFrameAvailableEvent);
 
 	return S_OK;
@@ -169,7 +138,7 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 	if (frameQueueMaxSize <= 0)
 		throw std::runtime_error("Frame queue size must be > 0");
 
-	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize() - Changing queue size from %zu to %zu"), 
+	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize() - Changing from %zu to %zu"), 
 		m_frameQueueMaxSize, frameQueueMaxSize));
 
 	{
@@ -177,10 +146,7 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 
 		m_frameQueueMaxSize = frameQueueMaxSize;
 
-		// CRITICAL: Queue size change indicates renderer state change (like MadVR quality settings)
-		// We need to reset timeline state and signal MadVR properly
-		
-		// Purge all frames from queue
+		// Purge all frames
 		while (!m_videoFrameQueue.empty())
 		{
 			VideoFrame popFrame = m_videoFrameQueue.front();
@@ -189,45 +155,24 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 			++m_droppedFrameCount;
 		}
 		
-		// Reset timeline state to force clean restart
-		// This ensures RATIONAL_RATIONAL gets clean mathematical progression after MadVR changes
+		// Zero out timeline state for fresh start
 		m_frameCounter = 0;
 		m_previousFrameCounter = 0;
-		m_startTimeOffset = 0;
 		m_frameCounterOffset = 0;
 		m_previousTimeStop = 0;
+		m_startTimeOffset = 0;
 		
-		// CRITICAL FOR RATIONAL_RATIONAL: Signal both discontinuity AND new segment
-		// THEO_THEO works with just discontinuity, but RATIONAL_RATIONAL needs the official segment restart
-		m_forceDiscontinuity = true;
-		m_deliverNewSegment = true;  // This is what the Reset button does that we were missing!
-		
-		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Queue purged, timeline reset, will deliver NEW SEGMENT on next frame (RATIONAL_RATIONAL fix)")));
+		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize() - Queue purged, timeline zeroed")));
 	}
 	
-	// CRITICAL: Wake the consumer thread after purge to ensure it's ready for new frames
-	// Without this, if the event was already reset, new frames arriving won't wake the thread
 	SetEvent(m_hFrameAvailableEvent);
 	
-	// CRITICAL FIX: If we're connected and active, we need to properly initialize the DirectShow timeline
-	// This fixes the issue when starting directly in fullscreen mode where SetFrameQueueMaxSize is called
-	// during initialization but the timeline never gets properly established with DirectShow
+	// Deliver new segment if active
 	if (IsConnected() && m_isActive)
 	{
-		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Connected and active during queue resize - delivering timeline initialization")));
-		
-		// Deliver new segment to establish timing baseline with DirectShow reference clock
-		// This is what was missing when starting directly in fullscreen mode
 		if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
 		{
-			DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin: Failed to deliver new segment during queue resize!")));
-		}
-		else
-		{
-			DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: New segment delivered successfully - DirectShow timeline properly initialized")));
-			
-			// Clear the flag since we just delivered it
-			m_deliverNewSegment = false;
+			DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize() - Failed to deliver new segment")));
 		}
 	}
 }
@@ -245,7 +190,32 @@ size_t CBufferedLiveSourceVideoOutputPin::GetFrameQueueSize()
 
 void CBufferedLiveSourceVideoOutputPin::Reset()
 {
-	PurgeQueue();
+	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::Reset() - Purging queue and resetting timeline")));
+	
+	{
+		// Hold lock while purging queue and resetting state
+		CAutoLock lock(&m_filterCritSec);
+		
+		// Purge all frames
+		while (!m_videoFrameQueue.empty())
+		{
+			VideoFrame popFrame = m_videoFrameQueue.front();
+			popFrame.SourceBufferRelease();
+			m_videoFrameQueue.pop_front();
+			++m_droppedFrameCount;
+		}
+		
+		// Zero out timeline state - fresh start
+		m_frameCounter = 0;
+		m_previousFrameCounter = 0;
+		m_frameCounterOffset = 0;
+		m_previousTimeStop = 0;
+		m_startTimeOffset = 0;
+		
+		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::Reset() - Queue purged, timeline zeroed")));
+	}
+	
+	// Call base Reset() for DirectShow signaling
 	ALiveSourceVideoOutputPin::Reset();
 }
 
@@ -266,10 +236,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin worker thread starting (event-driven)")));
 
-	// Track consecutive delivery failures to prevent burst retries
-	int consecutiveFailures = 0;
-	const int maxConsecutiveFailures = 3;
-
 	while (true)
 	{
 		DWORD waitResult = WaitForSingleObject(m_hFrameAvailableEvent, 1);
@@ -287,122 +253,76 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		}
 
 		VideoFrame videoFrame;
-		size_t currentQueueSize = 0;
-
 		{
 			CAutoLock lock(&m_filterCritSec);
 
 			if (!m_isActive)
 				break;
 
-			// Safety check: if queue is empty after resolution change, keep waiting
+			// Safety check: if queue is empty, keep waiting
 			if (m_videoFrameQueue.empty())
 				continue;
 
-			currentQueueSize = m_videoFrameQueue.size();
-
-			// IMPROVED BURST HANDLING: More gradual queue reduction
-			if (currentQueueSize > 5 && consecutiveFailures < maxConsecutiveFailures)  // Raised from 3 to 5
-			{
-				// Drop only 1-2 old frames, not everything down to 2
-				while (m_videoFrameQueue.size() > 4)  // Keep 4 frames instead of 2
-				{
-					VideoFrame oldFrame = m_videoFrameQueue.front();
-					oldFrame.SourceBufferRelease();
-					m_videoFrameQueue.pop_front();
-					++m_droppedFrameCount;
-				}
-			}
-
-			// Get the front frame (oldest remaining)
+			// Get and remove the front frame (oldest) - ATOMIC within lock
 			videoFrame = m_videoFrameQueue.front();
 			m_videoFrameQueue.pop_front();
 
-			// Get the current front's start time
-			switch (m_timestamp)
+			// Update next frame timestamp for CLOCK_SMART/CLOCK_CLOCK modes
+			if (!m_videoFrameQueue.empty())
 			{
-			case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
-				assert(!m_videoFrameQueue.empty());
-				// break;  not here intentionally
-
-			case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
-
-				if (!m_videoFrameQueue.empty())
-				{
-					m_nextVideoFrameStartTime =
-						(REFERENCE_TIME)(
-						m_videoFrameQueue.front().GetTimingTimestamp() *
-						(10000000.0 / m_timingClock->TimingClockTicksPerSecond()));
-				}
-				else
-				{
-					m_nextVideoFrameStartTime = REFERENCE_TIME_INVALID;
-				}
-				break;
+				m_nextVideoFrameStartTime =
+					(REFERENCE_TIME)(
+					m_videoFrameQueue.front().GetTimingTimestamp() *
+					(10000000.0 / m_timingClock->TimingClockTicksPerSecond()));
 			}
-		}
+			else
+			{
+				m_nextVideoFrameStartTime = REFERENCE_TIME_INVALID;
+			}
+		}  // ← UNLOCK before expensive operations
 
-		// ADAPTIVE TIMEOUT: Use shorter timeout if queue is backing up
-		//DWORD bufferTimeout = (currentQueueSize > 2) ? 2 : 5;  // 1ms when under pressure //TODO: Updated
-
-		// Get buffer for sample (flags parameter, not timeout)
+		// Get buffer for sample (outside lock - can block)
 		IMediaSample* pSample = nullptr;
 		HRESULT hr = this->GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);
 		if (FAILED(hr))
 		{
-			videoFrame.SourceBufferRelease();
-			++m_droppedFrameCount;
-			consecutiveFailures++;
-			
-			// If we're consistently failing, back off slightly to prevent tight retry loop
-			if (consecutiveFailures >= maxConsecutiveFailures)
-			{
-				Sleep(1);  // 1ms backoff
-			}
-			continue;
-		}
-
-		// Convert
-		hr = RenderVideoFrameIntoSample(videoFrame, pSample);
-		if (FAILED(hr))
-		{
-			DbgLog((LOG_TRACE, 1,
-				TEXT("::ThreadProc(#%I64u): RenderVideoFrameIntoSample() failed (HRESULT=0x%08x)"),
+			DbgLog((LOG_TRACE, 1, TEXT("::ThreadProc(#%I64u): GetDeliveryBuffer() failed (HRESULT=0x%08x)"),
 				videoFrame.GetCounter(), hr));
-			
 			videoFrame.SourceBufferRelease();
-			pSample->Release();
 			++m_droppedFrameCount;
-			consecutiveFailures++;
-			continue;
-		}
-		if (hr == S_FRAME_NOT_RENDERED)
-		{
-			videoFrame.SourceBufferRelease();
-			pSample->Release();
-			consecutiveFailures++;
 			continue;
 		}
 
-		// Deliver frame to renderer - this is the main blocking point
+		// Render frame into sample
+		hr = RenderVideoFrameIntoSample(videoFrame, pSample);
+		if (FAILED(hr) || hr == S_FRAME_NOT_RENDERED)
+		{
+			if (FAILED(hr))
+			{
+				DbgLog((LOG_TRACE, 1,
+					TEXT("::ThreadProc(#%I64u): RenderVideoFrameIntoSample() failed (HRESULT=0x%08x)"),
+					videoFrame.GetCounter(), hr));
+			}
+			videoFrame.SourceBufferRelease();
+			pSample->Release();
+			++m_droppedFrameCount;
+			continue;
+		}
+
+		// Deliver frame to renderer
 		hr = this->Deliver(pSample);
 		if (FAILED(hr))
 		{
 			DbgLog((LOG_TRACE, 1,
-				TEXT("::ThreadProc(#%I64u): Deliver() failed (HRESULT=0x%08x) - dropping frame"),
+				TEXT("::ThreadProc(#%I64u): Deliver() failed (HRESULT=0x%08x)"),
 				videoFrame.GetCounter(), hr));
-
 			videoFrame.SourceBufferRelease();
 			pSample->Release();
 			++m_droppedFrameCount;
-			consecutiveFailures++;
 			continue;
 		}
 
-		// Success - reset failure counter
-		consecutiveFailures = 0;
-
-		// Success - clean up and continue
+		// Success - clean up and continue to next frame
 		videoFrame.SourceBufferRelease();
 		pSample->Release();
 	}

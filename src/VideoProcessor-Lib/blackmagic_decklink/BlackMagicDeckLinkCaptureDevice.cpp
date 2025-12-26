@@ -25,13 +25,6 @@
 
 static const timingclocktime_t DECKLINK_CLOCK_MAX_TICKS_SECOND = 1000000LL;  // us
 
-// PLL tuning parameters for real-time capture (23.976-60Hz range)
-// Phase gain: how quickly to correct phase errors (0.02 = gentle correction)
-// Freq gain: how quickly to adapt frequency (0.0001 = very slow, stable)
-const double BlackMagicDeckLinkCaptureDevice::PLL_PHASE_GAIN = 0.02;
-const double BlackMagicDeckLinkCaptureDevice::PLL_FREQ_GAIN = 0.0001;
-
-
 //
 // Constructor & destructor
 //
@@ -585,85 +578,8 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 			m_capturedVideoFrameCount += frames;
 			m_missedVideoFrameCount += std::max((frames - 1), 0);
 
-			// Track actual vs expected tick rate for DeckLink compensation
-			// NOTE: PLL correction is used by RATIONAL_RATIONAL mode for long-term stability
-			// Gentler corrections during first few minutes to prevent startup instability
-			if (frames == 1)  // Only measure when we have exactly one frame (no dropped frames for accuracy)
-			{
-				const timingclocktime_t expectedTicks = m_ticksPerFrame;
-				const timingclocktime_t actualTicks = (timingclocktime_t)(frameDiffTicks + 0.5);
-				const timingclocktime_t tickError = actualTicks - expectedTicks;
-
-				if (m_compensationSampleCount == 0)
-				{
-					// Initialize PLL with first sample
-					m_pllMeasuredFrameInterval = (double)actualTicks;
-					m_pllPhaseError = 0.0;
-					m_hardwareStartTimestamp = m_previousTimingClockFrameTime;  // Anchor to hardware baseline
-					
-					DEBUGLOG("PLL initialized - expected ticks/frame: %lld, actual: %lld", expectedTicks, actualTicks);
-					DEBUGLOG("PLL hardware anchor: %lld μs (frame #%llu)", m_hardwareStartTimestamp, m_capturedVideoFrameCount);
-				}
-				else
-				{
-					// PLL Phase Detector: measure error between expected and actual
-					const double phaseErrorTicks = (double)tickError;
-
-					// Adaptive gain: gentler during startup (first 10 minutes), normal afterward
-					// This reduces startup jitter while maintaining long-term accuracy
-					const bool startupPeriod = (m_compensationSampleCount < 36000);  // ~10 minutes at 60fps
-					const double freqGain = startupPeriod ? (PLL_FREQ_GAIN * 0.5) : PLL_FREQ_GAIN;
-					const double phaseGain = startupPeriod ? (PLL_PHASE_GAIN * 0.5) : PLL_PHASE_GAIN;
-
-					// PLL Loop Filter: Update frequency estimate (adaptive speed for stability)
-					m_pllMeasuredFrameInterval += freqGain * phaseErrorTicks;
-
-					// PLL Loop Filter: Accumulate phase correction (adaptive rate)
-					m_pllPhaseError += phaseGain * phaseErrorTicks;
-					
-					// Track PLL quality metrics
-					const double absPhaseError = fabs(phaseErrorTicks);
-					if (absPhaseError > m_pllMaxPhaseError)
-						m_pllMaxPhaseError = absPhaseError;
-					
-					// Update phase error variance (simplified exponential moving variance)
-					const double alpha = 0.1;  // Smoothing factor
-					m_pllPhaseErrorVariance = (1.0 - alpha) * m_pllPhaseErrorVariance + alpha * (phaseErrorTicks * phaseErrorTicks);
-
-					// Apply PLL correction to base frequency
-					if (m_compensationSampleCount >= COMPENSATION_MIN_SAMPLES)
-					{
-						// Calculate correction factor from PLL measurements
-						m_tickRateCorrectionFactor = m_pllMeasuredFrameInterval / expectedTicks;
-						
-						// Check if PLL has achieved stable lock (variance < 1 tick²)
-						if (!m_pllLocked && m_pllPhaseErrorVariance < 1.0 && m_compensationSampleCount >= 1800)  // 30s @ 60fps minimum
-						{
-							m_pllLocked = true;
-							const double ppmDrift = ((m_pllMeasuredFrameInterval - expectedTicks) / expectedTicks) * 1000000.0;
-							DEBUGLOG("PLL LOCKED at sample %d - drift: %+.2f PPM, variance: %.3f ticks², startup period: %s", 
-								m_compensationSampleCount, ppmDrift, m_pllPhaseErrorVariance, startupPeriod ? "YES" : "NO");
-						}
-
-						// Log every 10 seconds for monitoring
-						if (m_compensationSampleCount % 600 == COMPENSATION_MIN_SAMPLES)
-						{
-							const double ppmDrift = ((m_pllMeasuredFrameInterval - expectedTicks) / expectedTicks) * 1000000.0;
-							const double stabilityRms = sqrt(m_pllPhaseErrorVariance);
-							
-							DEBUGLOG("PLL: Measured interval: %.2f ticks, correction: %.8f, drift: %+.2f PPM, RMS jitter: %.2f ticks, samples: %d (startup: %s)",
-								m_pllMeasuredFrameInterval, m_tickRateCorrectionFactor, ppmDrift, stabilityRms, m_compensationSampleCount,
-								startupPeriod ? "YES" : "NO");
-
-							DbgLog((LOG_TRACE, 1, TEXT("PLL drift: %+.2f PPM, correction: %.8f, locked: %s, startup: %s"),
-								ppmDrift, m_tickRateCorrectionFactor, m_pllLocked ? TEXT("YES") : TEXT("NO"), 
-								startupPeriod ? TEXT("YES") : TEXT("NO")));
-						}
-					}
-				}
-
-				++m_compensationSampleCount;
-			}
+			// Simple frame counting without PLL correction
+			// PLL correction system has been removed for simplicity
 		}
 
 		m_previousTimingClockFrameTime = timingClockFrameTime;
