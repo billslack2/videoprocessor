@@ -689,3 +689,39 @@ void DirectShowVideoRenderer::RendererDestroy()
 		m_pRenderer = nullptr;
 	}
 }
+
+// Get current PPM correction information (override for RATIONAL_RATIONAL support)
+bool DirectShowVideoRenderer::GetPPMCorrectionInfo(int& ppmValue, bool& hasCorrection, CString& source) const
+{
+	if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL && m_liveSource)
+	{
+		// Get PPM correction info from the live source pin
+		IEnumPins* pEnum = nullptr;
+		if (SUCCEEDED(m_liveSource->EnumPins(&pEnum)))
+		{
+			IPin* pLiveSourceOutputPin = nullptr;
+			if (pEnum->Next(1, &pLiveSourceOutputPin, nullptr) == S_OK)
+			{
+				ALiveSourceVideoOutputPin* pPin = static_cast<ALiveSourceVideoOutputPin*>(pLiveSourceOutputPin);
+				if (pPin)
+				{
+					// Get PPM correction information from the pin
+					ppmValue = pPin->GetCurrentPPMCorrection();
+					hasCorrection = pPin->HasPPMCorrection();
+					source = pPin->GetPPMCorrectionSource() ? TEXT("correction.cfg") : TEXT("default");
+					
+					pLiveSourceOutputPin->Release();
+					pEnum->Release();
+					return true;
+				}
+				pLiveSourceOutputPin->Release();
+			}
+			pEnum->Release();
+		}
+	}
+	
+	ppmValue = 0;
+	hasCorrection = false;
+	source = TEXT("N/A");
+	return false;
+}

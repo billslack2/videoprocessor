@@ -12,6 +12,7 @@
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowRendererStartStopTimeMethod.h>
 #include <microsoft_directshow/DirectShowDefines.h>
+#include <PPMCorrectionLoader.h>
 
 #include "CLiveSource.h"
 
@@ -107,7 +108,49 @@ public:
 	// Get the amount of dropped frames due to queue actions
 	uint64_t DroppedFrameCount() const { return m_droppedFrameCount; }
 
+	// PPM correction information access (NEW)
+	// Get the current PPM correction value being applied
+	int GetCurrentPPMCorrection() const 
+	{ 
+		return (int)(RATIONAL_TRIM_DENOMINATOR - m_currentRationalTrimNumerator); 
+	}
+	
+	// Check if PPM correction is active (non-zero)
+	bool HasPPMCorrection() const 
+	{ 
+		return m_currentRationalTrimNumerator != RATIONAL_TRIM_DENOMINATOR; 
+	}
+	
+	// Get PPM correction source information
+	bool GetPPMCorrectionSource() const 
+	{ 
+		return m_ppmCorrectionLoader.HasCorrections(); 
+	}
+
 protected:
+
+	// Constants for CLOCK_SMART duration tracking
+	static const size_t DURATION_HISTORY_SIZE = 100;  // Track last 100 frame durations
+	static const int64_t REFERENCE_TIME_TICKS_PER_SECOND = 10000000LL;  // 100ns ticks per second
+
+	// RATIONAL_RATIONAL timing trim constants - now dynamically loaded from correction.cfg
+	static const uint64_t RATIONAL_TRIM_DENOMINATOR = 1000000ULL;  // PPM base (parts per million)
+	// Note: RATIONAL_TRIM_PPM_FASTER and RATIONAL_TRIM_NUMERATOR are now calculated dynamically
+
+	// PPM correction support
+	PPMCorrectionLoader m_ppmCorrectionLoader;
+	uint64_t m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // Default: no correction
+	
+	/**
+	 * Load PPM corrections and calculate trim values for current refresh rate
+	 * @param refreshRate Current refresh rate in Hz
+	 */
+	void LoadPPMCorrections(double refreshRate);
+	
+	/**
+	 * Get the current rational trim numerator (calculated from PPM correction)
+	 */
+	uint64_t GetRationalTrimNumerator() const { return m_currentRationalTrimNumerator; }
 
 	uint64_t m_droppedFrameCount = 0;
 	
@@ -132,12 +175,40 @@ protected:
 	// Get the next frame timestamp. If it doesn't know it's invalid. Overridden by implementations
 	virtual REFERENCE_TIME NextFrameTimestamp() const { return REFERENCE_TIME_INVALID; }
 
+	// Smart duration calculation for CLOCK_SMART mode
+	REFERENCE_TIME CalculateSmartFrameDuration() const;
+	void UpdateFrameDurationHistory(REFERENCE_TIME actualDuration);
+
+	// Integer math utilities for precise timing calculations
+	static REFERENCE_TIME ConvertTimingClockToReferenceTime(timingclocktime_t timestamp, timingclocktime_t ticksPerSecond)
+	{
+		// Use integer math to avoid floating point precision issues
+		return (REFERENCE_TIME)((timestamp * REFERENCE_TIME_TICKS_PER_SECOND) / ticksPerSecond);
+	}
+
+	static bool IsMonotonicProgression(REFERENCE_TIME current, REFERENCE_TIME previous)
+	{
+		return current > previous;
+	}
+
+	static REFERENCE_TIME EnforceMonotonicProgression(REFERENCE_TIME proposed, REFERENCE_TIME previous)
+	{
+		return (proposed <= previous) ? (previous + 1) : proposed;
+	}
+
 	IVideoFrameFormatter* m_videoFrameFormatter;
 	timestamp_t m_frameDuration;
 	ITimingClock* m_timingClock;
 	DirectShowStartStopTimeMethod m_timestamp;
 	AM_MEDIA_TYPE m_mediaType;
 	bool m_useHDRData = false;
+
+	// Duration tracking for CLOCK_SMART improvements
+	// Circular buffer of actual frame durations (in 100ns units) for averaging
+	REFERENCE_TIME m_durationHistory[DURATION_HISTORY_SIZE] = {};
+	size_t m_durationHistoryIndex = 0;  // Current write position in circular buffer
+	size_t m_durationHistoryCount = 0;  // Number of valid entries (up to DURATION_HISTORY_SIZE)
+	REFERENCE_TIME m_lastHardwareTimestamp = 0;  // Previous hardware timestamp for duration calculation
 
 	// Rational timing parameters for RATIONAL_RATIONAL mode (Bresenham-style exact integer math)
 	// These come from DisplayMode and allow drift-free timing for rates like 23.976, 29.97, 59.94
@@ -148,6 +219,14 @@ protected:
 	// Applied as a forward shift to account for processing delays
 	// Will be calculated dynamically based on frame rate during initialization
 	REFERENCE_TIME m_rationalPipelineOffset = 0;  // Pipeline offset in 100ns units (calculated at runtime)
+
+	// Hybrid timing state variables for DS_SSTM_HARDWARE_RATIONAL mode
+	// This mode uses hardware timestamps for start time and rational math for frame duration
+	REFERENCE_TIME m_previousHardwareTimestamp = 0;  // Track hardware timestamp progression
+	uint32_t m_hardwareTimingAnomalyCount = 0;       // Count backwards/invalid timestamps
+	REFERENCE_TIME m_rationalFrameDuration = 0;      // Calculated rational frame duration in 100ns units
+	REFERENCE_TIME m_minFrameAdvance = 0;            // Minimum time between frames (25% of rational duration)
+	REFERENCE_TIME m_maxFrameAdvance = 0;            // Maximum time between frames (200% of rational duration)
 
 	REFERENCE_TIME m_previousTimeStop = 0;
 	timestamp_t m_startTimeOffset = 0;

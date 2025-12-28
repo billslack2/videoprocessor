@@ -11,8 +11,42 @@
 #include <guid.h>
 #include <IMediaSideData.h>
 #include <DebugLog.h>
+#include <PPMCorrectionLoader.h>
 
 #include "ALiveSourceVideoOutputPin.h"
+
+#include <intrin.h>
+#pragma intrinsic(_umul128)
+
+#include <intrin.h>
+
+static inline uint64_t U64_MulDiv(uint64_t a, uint64_t b, uint64_t div)
+{
+	if (div == 0) return 0;
+	uint64_t hi = 0;
+	uint64_t lo = _umul128(a, b, &hi);
+	return _udiv128(hi, lo, div, nullptr);
+}
+
+// Computes:
+// floor( frameIndex * 10,000,000 * frameDurationTicks / timeScale * trimNum / trimDen )
+static inline uint64_t RationalTimestampTrimmed(
+	uint64_t frameIndex,
+	uint64_t frameDurationTicks,
+	uint64_t timeScale,
+	uint64_t trimNum,
+	uint64_t trimDen)
+{
+	constexpr uint64_t ticksPerSec = 10000000ULL;
+
+	uint64_t t = frameIndex;
+
+	t = U64_MulDiv(t, ticksPerSec, 1ULL);                 // * 10,000,000
+	t = U64_MulDiv(t, frameDurationTicks, timeScale);    // * duration rational
+	t = U64_MulDiv(t, trimNum, trimDen);                 // apply ppm trim
+
+	return t;
+}
 
 
 ALiveSourceVideoOutputPin::ALiveSourceVideoOutputPin(
@@ -55,6 +89,14 @@ void ALiveSourceVideoOutputPin::Initialize(
 	m_timingClock = timingClock;
 	m_timestamp = timestamp;
 	m_mediaType = mediaType;
+
+	// Load PPM corrections for RATIONAL_RATIONAL mode
+	if (timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL)
+	{
+		// Calculate refresh rate from timing parameters
+		double refreshRate = (double)timeScale / (double)frameDurationTicks;
+		LoadPPMCorrections(refreshRate);
+	}
 }
 
 
@@ -331,11 +373,114 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_startTimeOffset = 0;
 	m_droppedFrameCount = 0;
 
+	// Reset hybrid timing state for DS_SSTM_HARDWARE_RATIONAL mode
+	m_previousHardwareTimestamp = 0;
+	m_hardwareTimingAnomalyCount = 0;
+	m_rationalFrameDuration = 0;
+	m_minFrameAdvance = 0;
+	m_maxFrameAdvance = 0;
+
+	// Reset CLOCK_SMART duration tracking
+	memset(m_durationHistory, 0, sizeof(m_durationHistory));
+	m_durationHistoryIndex = 0;
+	m_durationHistoryCount = 0;
+	m_lastHardwareTimestamp = 0;
+
+	// Log timing mode information
+	if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Reset(): ENHANCED CLOCK_SMART mode active - will use:")));
+		DbgLog((LOG_TRACE, 1, TEXT("  1) Hardware stop timestamps when available (from frame queue)")));
+		DbgLog((LOG_TRACE, 1, TEXT("  2) Average of last %d actual durations when no hardware stop time"), DURATION_HISTORY_SIZE));
+		DbgLog((LOG_TRACE, 1, TEXT("  3) Integer-only math for monotonic timing")));
+		DbgLog((LOG_TRACE, 1, TEXT("  4) Rational duration fallback when no history available")));
+	}
+	else if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Reset(): RATIONAL_RATIONAL mode active - using correction.cfg PPM:")));
+		if (m_ppmCorrectionLoader.HasCorrections())
+		{
+			int ppmCorrection = RATIONAL_TRIM_DENOMINATOR - GetRationalTrimNumerator();
+			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: %d (from correction.cfg)"), ppmCorrection));
+			DbgLog((LOG_TRACE, 1, TEXT("  Trim ratio: %llu/%llu = %.6f%%"), 
+				GetRationalTrimNumerator(), RATIONAL_TRIM_DENOMINATOR,
+				(100.0 * GetRationalTrimNumerator()) / RATIONAL_TRIM_DENOMINATOR));
+		}
+		else
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: 0 (no correction.cfg found, using default)")));
+		}
+		DbgLog((LOG_TRACE, 1, TEXT("  Consistent across start/stop time calculations")));
+		DbgLog((LOG_TRACE, 1, TEXT("  Pipeline offset: %I64d (100ns units)"), m_rationalPipelineOffset));
+	}
+
 	if (FAILED(DeliverEndFlush()))
 		throw std::runtime_error("Failed to deliver endflush");
 
 	if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
 		throw std::runtime_error("Failed to deliver new segment");
+}
+
+
+REFERENCE_TIME ALiveSourceVideoOutputPin::CalculateSmartFrameDuration() const
+{
+	// If we don't have enough history, fall back to rational duration
+	if (m_durationHistoryCount == 0)
+	{
+		// Use rational math for theoretical duration (integer-only calculation)
+		return (REFERENCE_TIME)((REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) / m_timeScale);
+	}
+
+	// Calculate average duration using integer math to avoid floating point precision issues
+	int64_t totalDuration = 0;
+	const size_t sampleCount = (m_durationHistoryCount < DURATION_HISTORY_SIZE) ? m_durationHistoryCount : DURATION_HISTORY_SIZE;
+	
+	for (size_t i = 0; i < sampleCount; i++)
+	{
+		totalDuration += m_durationHistory[i];
+	}
+
+	// Use integer division for average (avoiding floating point)
+	const REFERENCE_TIME averageDuration = totalDuration / sampleCount;
+
+	DbgLog((LOG_TRACE, 1, TEXT("CalculateSmartFrameDuration(): Average of %zu samples = %I64d (%.3fms)"),
+		sampleCount, averageDuration, averageDuration / 10000.0));
+
+	return averageDuration;
+}
+
+
+void ALiveSourceVideoOutputPin::UpdateFrameDurationHistory(REFERENCE_TIME actualDuration)
+{
+	// Validate duration is reasonable (between 5ms and 1 second)
+	if (actualDuration < 50000LL || actualDuration > 10000000LL)
+	{
+		DbgLog((LOG_WARNING, 1, TEXT("UpdateFrameDurationHistory(): Rejecting invalid duration %I64d (%.3fms) - outside range 5ms-1000ms"), 
+			actualDuration, actualDuration / 10000.0));
+		return;
+	}
+
+	// Store duration in circular buffer
+	m_durationHistory[m_durationHistoryIndex] = actualDuration;
+	m_durationHistoryIndex = (m_durationHistoryIndex + 1) % DURATION_HISTORY_SIZE;
+	
+	if (m_durationHistoryCount < DURATION_HISTORY_SIZE)
+	{
+		m_durationHistoryCount++;
+	}
+
+	// Log periodic statistics (every 50 frames for better visibility during testing)
+	if (m_durationHistoryCount > 0 && (m_durationHistoryCount % 50) == 0)
+	{
+		const REFERENCE_TIME avgDuration = CalculateSmartFrameDuration();
+		const REFERENCE_TIME theoreticalDuration = (REFERENCE_TIME)((REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) / m_timeScale);
+		
+		DbgLog((LOG_TRACE, 1, TEXT("CLOCK_SMART Duration Stats: %zu samples, average=%.3fms, theoretical=%.3fms, diff=%.3fms"),
+			m_durationHistoryCount, 
+			avgDuration / 10000.0,
+			theoreticalDuration / 10000.0,
+			(avgDuration - theoreticalDuration) / 10000.0));
+	}
 }
 
 
@@ -449,23 +594,104 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
 	{
 		const uint64_t frameNum = streamFrameCounter;
-		const uint64_t referenceTimePerSecond = 10000000ULL;
-		const REFERENCE_TIME baseTimeStart = (REFERENCE_TIME)((frameNum * referenceTimePerSecond * m_frameDurationTicks) / m_timeScale);
-		
-		timeStart = baseTimeStart + m_rationalPipelineOffset;
-		
-		// On first frame after reset, ensure timeStart is > 0 (even if frameNum is 0)
-		// The offset ensures this since offset is always positive
+
+		// Use dynamically loaded PPM correction instead of hardcoded constants
+		const uint64_t baseStart =
+			RationalTimestampTrimmed(
+				frameNum,
+				(uint64_t)m_frameDurationTicks,
+				(uint64_t)m_timeScale,
+				GetRationalTrimNumerator(),
+				RATIONAL_TRIM_DENOMINATOR);
+
+		REFERENCE_TIME tsStart =
+			(REFERENCE_TIME)baseStart + m_rationalPipelineOffset;
+
+		// ---- MONOTONIC SAFETY ----
 		if (streamFrameCounter == 0)
 		{
-			m_previousTimeStop = 0;  // Guarantee: first frame always > 0 (due to offset)
+			// first frame after reset
+			m_previousTimeStop = tsStart - 1;
 		}
-		else if (timeStart <= m_previousTimeStop)
+		else if (tsStart <= m_previousTimeStop)
 		{
-			// Force monotonic progression if somehow inverted
-			timeStart = m_previousTimeStop + 1;
+			tsStart = m_previousTimeStop + 1;
+		}
+
+		timeStart = tsStart;
+		break;
+	}
+
+
+
+	case DirectShowStartStopTimeMethod::DS_SSTM_HARDWARE_RATIONAL:
+	{
+		// HYBRID MODE: Hardware timestamp for start time, rational math for duration, monotonic enforcement
+		
+		// Get raw hardware timestamp
+		REFERENCE_TIME rawHardwareTime = (REFERENCE_TIME)(videoFrame.GetTimingTimestamp() * (10000000.0 / m_timingClock->TimingClockTicksPerSecond()));
+		
+		// Initialize rational frame duration and limits on first frame
+		if (m_rationalFrameDuration == 0)
+		{
+			const uint64_t referenceTimePerSecond = 10000000ULL;
+			m_rationalFrameDuration = (REFERENCE_TIME)((referenceTimePerSecond * m_frameDurationTicks) / m_timeScale);
+			m_minFrameAdvance = m_rationalFrameDuration / 4;      // 25% of rational duration
+			m_maxFrameAdvance = m_rationalFrameDuration * 2;      // 200% of rational duration
+			
+			DbgLog((LOG_TRACE, 1, TEXT("::HardwareRational(#%I64u): Initialized rational duration=%I64d (%.3fms), limits=[%I64d, %I64d]"),
+				videoFrame.GetCounter(), m_rationalFrameDuration, m_rationalFrameDuration / 10000.0,
+				m_minFrameAdvance, m_maxFrameAdvance));
 		}
 		
+		// Handle first frame - establish timeline baseline
+		if (m_startTimeOffset == 0)
+		{
+			m_startTimeOffset = rawHardwareTime;
+			m_previousHardwareTimestamp = rawHardwareTime;
+			timeStart = 0;  // Start timeline at zero
+			
+			DbgLog((LOG_TRACE, 1, TEXT("::HardwareRational(#%I64u): First frame - baseline set to %I64d, timeline starts at 0"),
+				videoFrame.GetCounter(), m_startTimeOffset));
+		}
+		else
+		{
+			// Calculate hardware-based start time
+			timeStart = rawHardwareTime - m_startTimeOffset;
+			
+			// MONOTONIC ENFORCEMENT: Ensure timeline never goes backwards or jumps unreasonably
+			const REFERENCE_TIME timeSincePrevious = timeStart - (m_previousTimeStop - m_rationalFrameDuration);
+			
+			if (timeSincePrevious < m_minFrameAdvance)
+			{
+				// Hardware timestamp went backwards or too close - enforce minimum progression
+				timeStart = m_previousTimeStop - m_rationalFrameDuration + m_minFrameAdvance;
+				m_hardwareTimingAnomalyCount++;
+				
+				DbgLog((LOG_WARNING, 1, TEXT("::HardwareRational(#%I64u): Hardware time too close/backwards (diff=%I64d), enforced to %I64d (anomaly #%u)"),
+					videoFrame.GetCounter(), timeSincePrevious, timeStart, m_hardwareTimingAnomalyCount));
+			}
+			else if (timeSincePrevious > m_maxFrameAdvance)
+			{
+				// Hardware timestamp jumped too far - limit to reasonable advance
+				timeStart = m_previousTimeStop - m_rationalFrameDuration + m_maxFrameAdvance;
+				m_hardwareTimingAnomalyCount++;
+				
+				DbgLog((LOG_WARNING, 1, TEXT("::HardwareRational(#%I64u): Hardware time jumped too far (diff=%I64d), limited to %I64d (anomaly #%u)"),
+					videoFrame.GetCounter(), timeSincePrevious, timeStart, m_hardwareTimingAnomalyCount));
+			}
+			
+			// Final monotonic check - ensure we never go backwards from previous stop time
+			if (timeStart <= (m_previousTimeStop - m_rationalFrameDuration))
+			{
+				timeStart = m_previousTimeStop - m_rationalFrameDuration + 1;
+				
+				DbgLog((LOG_WARNING, 1, TEXT("::HardwareRational(#%I64u): Final monotonic enforcement - adjusted to %I64d"),
+					videoFrame.GetCounter(), timeStart));
+			}
+		}
+		
+		m_previousHardwareTimestamp = rawHardwareTime;
 		break;
 	}
 
@@ -474,11 +700,10 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE:
 
-		// Get frame timestamp as reference time
-		timeStart =
-			(REFERENCE_TIME)(
-				videoFrame.GetTimingTimestamp() *
-				(10000000.0 / m_timingClock->TimingClockTicksPerSecond()));
+		// Get frame timestamp as reference time using integer math utility
+		timeStart = ConvertTimingClockToReferenceTime(
+			videoFrame.GetTimingTimestamp(), 
+			m_timingClock->TimingClockTicksPerSecond());
 
 		// Guarantee first frame to start counting at time zero
 		// Note that this is against the recommendations of microsoft for directshow but otherwise
@@ -492,6 +717,14 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		}
 
 		timeStart -= m_startTimeOffset;
+		
+		// Store current hardware timestamp for CLOCK_SMART duration tracking
+		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART)
+		{
+			m_lastHardwareTimestamp = ConvertTimingClockToReferenceTime(
+				videoFrame.GetTimingTimestamp(),
+				m_timingClock->TimingClockTicksPerSecond());
+		}
 		break;
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
@@ -508,15 +741,41 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	{
 	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
 	{
-		// For rational timing, calculate the next frame's exact timestamp
 		const uint64_t nextFrameNum = streamFrameCounter + 1;
-		const uint64_t referenceTimePerSecond = 10000000ULL;
-		
-		// Calculate base rational timestamp for next frame
-		const REFERENCE_TIME baseTimeStop = (REFERENCE_TIME)((nextFrameNum * referenceTimePerSecond * m_frameDurationTicks) / m_timeScale);
-		
-		// Apply same pipeline offset as start time
+		const uint64_t ticksPerSec = 10000000ULL;
+
+		// Use dynamically loaded PPM correction for consistent start/stop calculations
+		uint64_t t = nextFrameNum;
+
+		// t = t * ticksPerSec
+		t = U64_MulDiv(t, ticksPerSec, 1ULL);
+
+		// t = t * m_frameDurationTicks / m_timeScale
+		t = U64_MulDiv(t, (uint64_t)m_frameDurationTicks, (uint64_t)m_timeScale);
+
+		// Apply dynamic PPM trim on duration (same numerator/denominator as start time)
+		t = U64_MulDiv(t, GetRationalTrimNumerator(), RATIONAL_TRIM_DENOMINATOR);
+
+		const REFERENCE_TIME baseTimeStop = (REFERENCE_TIME)t;
+
+		// Apply pipeline offset (currently unused / 0)
 		timeStop = baseTimeStop + m_rationalPipelineOffset;
+		break;
+	}
+
+
+
+	case DirectShowStartStopTimeMethod::DS_SSTM_HARDWARE_RATIONAL:
+	{
+		// HYBRID MODE: Use rational math for perfect frame duration
+		timeStop = timeStart + m_rationalFrameDuration;
+		
+		// Log periodic timing info for debugging
+		if (streamFrameCounter % 300 == 0)  // Every 5 seconds at 60fps
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("::HardwareRational(#%I64u): timeStart=%I64d, duration=%I64d, timeStop=%I64d (anomalies=%u)"),
+				videoFrame.GetCounter(), timeStart, m_rationalFrameDuration, timeStop, m_hardwareTimingAnomalyCount));
+		}
 		break;
 	}
 
@@ -525,12 +784,51 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		timeStop = NextFrameTimestamp();
 		if (timeStop == REFERENCE_TIME_INVALID)
 		{
-			timeStop = timeStart + m_frameDuration;
+			// ENHANCED CLOCK_SMART: Instead of using theoretical duration,
+			// use average of last 100 actual frame durations for better accuracy
+			const REFERENCE_TIME smartDuration = CalculateSmartFrameDuration();
+			timeStop = timeStart + smartDuration;
+			
+			// Update duration history if we have previous hardware timestamp
+			if (m_lastHardwareTimestamp > 0)
+			{
+				// Calculate actual duration from hardware timestamps (integer math)
+				const REFERENCE_TIME currentHardwareTime = ConvertTimingClockToReferenceTime(
+					videoFrame.GetTimingTimestamp(),
+					m_timingClock->TimingClockTicksPerSecond());
+				const REFERENCE_TIME measuredDuration = currentHardwareTime - m_lastHardwareTimestamp;
+				
+				UpdateFrameDurationHistory(measuredDuration);
+			}
+			
+			// Ensure monotonic progression using utility function
+			const REFERENCE_TIME monotonicTimeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
+			if (monotonicTimeStop != timeStop)
+			{
+				DbgLog((LOG_WARNING, 1, TEXT("CLOCK_SMART(#%I64u): Enforced monotonic progression, adjusted stop time from %I64d to %I64d"), 
+					videoFrame.GetCounter(), timeStop, monotonicTimeStop));
+				timeStop = monotonicTimeStop;
+			}
+			
+			DbgLog((LOG_TRACE, 1, TEXT("CLOCK_SMART(#%I64u): No hardware stop time, using smart duration=%.3fms, stop=%I64d"), 
+				videoFrame.GetCounter(), smartDuration / 10000.0, timeStop));
 		}
 		else
 		{
 			assert(m_startTimeOffset > 0);
 			timeStop -= m_startTimeOffset;
+			
+			// Ensure hardware-based stop time is also monotonic using utility function
+			const REFERENCE_TIME monotonicTimeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
+			if (monotonicTimeStop != timeStop)
+			{
+				DbgLog((LOG_WARNING, 1, TEXT("CLOCK_SMART(#%I64u): Hardware stop time not monotonic, enforced progression from %I64d to %I64d"), 
+					videoFrame.GetCounter(), timeStop, monotonicTimeStop));
+				timeStop = monotonicTimeStop;
+			}
+			
+			DbgLog((LOG_TRACE, 1, TEXT("CLOCK_SMART(#%I64u): Using hardware stop time=%I64d"), 
+				videoFrame.GetCounter(), timeStop));
 		}
 
 		assert(timeStop > timeStart);
@@ -557,6 +855,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	switch (m_timestamp)
 	{
 	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
+	case DirectShowStartStopTimeMethod::DS_SSTM_HARDWARE_RATIONAL:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
@@ -566,7 +865,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		if (FAILED(hr))
 			return hr;
 
-		// Track previous stop time for RATIONAL_RATIONAL monotonicity checking
+		// Track previous stop time for monotonicity checking (important for both rational modes)
 		// This must be done for ALL builds, not just debug, to enable timeline validation
 		m_previousTimeStop = timeStop;
 		break;
@@ -688,4 +987,37 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	}
 
 	return hr;
+}
+
+void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
+{
+	// Attempt to load correction.cfg file
+	bool loaded = m_ppmCorrectionLoader.LoadCorrectionFile();
+	
+	if (loaded)
+	{
+		// Get PPM correction for this refresh rate
+		int ppmCorrection = m_ppmCorrectionLoader.GetPPMCorrection(refreshRate);
+		
+		// Calculate the trim numerator based on PPM correction
+		// Positive PPM makes stream faster (smaller numerator), negative makes it slower (larger numerator)
+		if (ppmCorrection == 0)
+		{
+			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // No correction
+			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - using default timing (0 PPM)"), refreshRate));
+		}
+		else
+		{
+			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR - ppmCorrection;
+			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - applying %d PPM correction (trim numerator: %llu/%llu = %.6f%%)"), 
+				refreshRate, ppmCorrection, m_currentRationalTrimNumerator, RATIONAL_TRIM_DENOMINATOR,
+				(100.0 * m_currentRationalTrimNumerator) / RATIONAL_TRIM_DENOMINATOR));
+		}
+	}
+	else
+	{
+		// No correction file, use default (no correction)
+		m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;
+		DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction.cfg found, using default timing"), refreshRate));
+	}
 }

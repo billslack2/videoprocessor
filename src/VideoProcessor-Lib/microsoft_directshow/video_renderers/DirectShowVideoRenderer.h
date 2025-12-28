@@ -68,6 +68,9 @@ public:
 		return false;
 	}
 
+	// Get current PPM correction information (override for RATIONAL_RATIONAL support)
+	bool GetPPMCorrectionInfo(int& ppmValue, bool& hasCorrection, CString& source) const override;
+
 protected:
 
 	IRendererCallback& m_callback;

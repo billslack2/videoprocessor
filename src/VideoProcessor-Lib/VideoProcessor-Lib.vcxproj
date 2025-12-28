@@ -202,6 +202,7 @@
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowVideoRenderers.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="PixelValueRange.h" />
+    <ClInclude Include="PPMCorrectionLoader.h" />
     <ClInclude Include="RendererId.h" />
     <ClInclude Include="StringUtils.h" />
     <ClInclude Include="TimingClock.h" />
@@ -255,6 +256,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="PixelValueRange.cpp" />
+    <ClCompile Include="PPMCorrectionLoader.cpp" />
     <ClCompile Include="RendererId.cpp" />
     <ClCompile Include="StringUtils.cpp" />
     <ClCompile Include="TimingClock.cpp" />

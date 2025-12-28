@@ -128,6 +128,8 @@ static const std::vector<DirectShowStartStopTimeMethod> RENDERER_DIRECTSHOW_STAR
 {
 	// RATIONAL_RATIONAL uses defined rational frame rates instead of hardware timestamps
 	DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL,
+	// HARDWARE_RATIONAL combines hardware sync with rational duration (new hybrid mode)
+	DirectShowStartStopTimeMethod::DS_SSTM_HARDWARE_RATIONAL,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK,
@@ -663,7 +665,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(WPARAM wParam,
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(): Locked=%s, DisplayMode=%s"),
 		ToString(cardState->inputLocked),
-		cardState->inputDisplayMode ? cardState->inputDisplayMode->ToString() : TEXT("")
+		cardState->inputDisplayMode ? cardState->inputDisplayMode->ToString() : TEXT(""),
 		));
 
 	// Input fields
@@ -2899,6 +2901,20 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	stats.UpdateTimeSinceReset();
 	stats.UpdateMaxQueueSize();
+
+	// PPM Correction info (NEW)
+	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
+	{
+		int ppmValue;
+		bool hasCorrection;
+		CString source;
+		if (m_videoRenderer->GetPPMCorrectionInfo(ppmValue, hasCorrection, source))
+		{
+			stats.ppmCorrection = ppmValue;
+			stats.hasPPMCorrection = hasCorrection;
+			stats.ppmSource = source;
+		}
+	}
 
 	// Update overlay
 	m_statsOverlay->UpdateStats(stats);

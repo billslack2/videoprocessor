@@ -44,7 +44,7 @@ public:
 	void SetFrameQueueMaxSize(size_t) override;
 	size_t GetFrameQueueSize() override;
 	void Reset() override;
-	REFERENCE_TIME NextFrameTimestamp() const override { return m_nextVideoFrameStartTime; }
+	REFERENCE_TIME NextFrameTimestamp() const override;
 
 private:
 
@@ -55,15 +55,42 @@ private:
 
 	CCritSec m_filterCritSec;
 
-	REFERENCE_TIME m_nextVideoFrameStartTime = REFERENCE_TIME_INVALID;
+	// Enhanced state for CLOCK_SMART timing improvements
+	mutable REFERENCE_TIME m_nextVideoFrameStartTime = REFERENCE_TIME_INVALID;
+	mutable bool m_hasValidNextTimestamp = false;
 
-	// Event signaled when frames are added to the queue (event-driven instead of polling)
-	HANDLE m_hFrameAvailableEvent = nullptr;
-
+	// Core proactive frame management
+	HANDLE m_hFrameAvailableEvent = nullptr;  // Event signaled when frames are added to the queue
+	HANDLE m_hShutdownEvent = nullptr;        // Event signaled when thread should exit
+	
+	// Essential metrics for proactive decisions (simplified)
+	std::atomic<uint32_t> m_recentDeliveryFailures = 0;   // Simple failure counter (reset periodically)
+	DWORD m_lastQueueWarning = 0;                         // Throttle warnings only
+	
 	// Thread function, upon return thread exist.
 	// Return codes > 0 indicate an error occured
 	DWORD ThreadProc();
 
 	// Remove all items from the videoFrameQueue
 	void PurgeQueue();
+
+	// Calculate next frame timestamp with enhanced logic for CLOCK_SMART
+	REFERENCE_TIME CalculateEnhancedNextTimestamp() const;
+	
+	// Simplified proactive frame management
+	size_t GetProactiveQueueTarget() const;
+	bool ShouldProactivelyDrop() const;
+
+	// Simple health monitoring for proactive management
+	struct ProactiveQueueMetrics
+	{
+		size_t currentSize;
+		size_t maxSize;
+		size_t proactiveTarget;
+		uint64_t totalDropped;
+		uint32_t recentFailures;
+		bool isHealthy;
+	};
+	
+	ProactiveQueueMetrics GetProactiveMetrics() const;
 };

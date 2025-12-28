@@ -372,6 +372,20 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
+	// PPM Correction (NEW)
+	if (m_stats.hasPPMCorrection)
+	{
+		line.Format(TEXT("PPM Correction:   %+7d"), m_stats.ppmCorrection);
+		DrawText(hdc, line, PADDING, y);
+		y += LINE_HEIGHT;
+	}
+	else if (!m_stats.ppmSource.IsEmpty() && m_stats.ppmSource != TEXT("N/A"))
+	{
+		line.Format(TEXT("PPM Correction:        0 (off)"));
+		DrawText(hdc, line, PADDING, y);
+		y += LINE_HEIGHT;
+	}
+
 	// Frame Offset
 	line.Format(TEXT("Offset:           %7d ms"), m_stats.frameOffsetMs);
 	DrawText(hdc, line, PADDING, y);

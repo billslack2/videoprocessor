@@ -142,4 +142,17 @@ public:
 		max10s = 0.0;
 		return false;  // No data available by default
 	}
+	
+	// Get PPM correction information (if supported by the timing mode)
+	// Returns true if PPM correction data is available, false if not supported
+	// ppmValue: Current PPM correction value being applied (positive = faster, negative = slower)
+	// hasCorrection: Whether a non-zero PPM correction is being applied
+	// source: Source of the PPM correction ("correction.cfg", "default", "N/A")
+	virtual bool GetPPMCorrectionInfo(int& ppmValue, bool& hasCorrection, CString& source) const
+	{
+		ppmValue = 0;
+		hasCorrection = false;
+		source = TEXT("N/A");
+		return false;  // No PPM correction support by default
+	}
 };
