@@ -37,6 +37,9 @@ enum DirectShowStartStopTimeMethod
 	// HYBRID: Use hardware timestamps for start time, rational math for duration, with monotonic enforcement
 	DS_SSTM_CLOCK_RATIONAL,
 
+	// Enhanced Clock-Smart: Uses average of last 100 actual frame durations for fallback
+	DS_SSTM_CLOCK_SMART2,
+
 	//
 	// Only a start time, no stop time set
 	//

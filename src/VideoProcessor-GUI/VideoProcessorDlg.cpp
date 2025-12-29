@@ -126,11 +126,12 @@ static const std::vector<std::pair<LPCTSTR, HdrLuminanceOptions>> HDR_LUMINANCE_
 
 static const std::vector<DirectShowStartStopTimeMethod> RENDERER_DIRECTSHOW_START_STOP_TIME_OPTIONS =
 {
+	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART,
+	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2,
 	// RATIONAL_RATIONAL uses defined rational frame rates instead of hardware timestamps
 	DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL,
 	// CLOCK_RATIONAL combines hardware sync with rational duration (new hybrid mode)
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL,
-	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK,
 	DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO,

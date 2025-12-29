@@ -396,7 +396,14 @@ void ALiveSourceVideoOutputPin::Reset()
 	// Log timing mode information
 	if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART)
 	{
-		DbgLog((LOG_TRACE, 1, TEXT("Reset(): ENHANCED CLOCK_SMART mode active - will use:")));
+		DbgLog((LOG_TRACE, 1, TEXT("Reset(): ORIGINAL CLOCK_SMART mode active - will use:")));
+		DbgLog((LOG_TRACE, 1, TEXT("  1) Hardware stop timestamps when available (from frame queue)")));
+		DbgLog((LOG_TRACE, 1, TEXT("  2) Theoretical frame duration as fallback when no hardware stop time")));
+		DbgLog((LOG_TRACE, 1, TEXT("  3) Simple and reliable for basic timing needs")));
+	}
+	else if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Reset(): ENHANCED CLOCK_SMART2 mode active - will use:")));
 		DbgLog((LOG_TRACE, 1, TEXT("  1) Hardware stop timestamps when available (from frame queue)")));
 		DbgLog((LOG_TRACE, 1, TEXT("  2) Average of last %d actual durations when no hardware stop time"), DURATION_HISTORY_SIZE));
 		DbgLog((LOG_TRACE, 1, TEXT("  3) Integer-only math for monotonic timing")));
@@ -463,7 +470,7 @@ void ALiveSourceVideoOutputPin::Reset()
 		{
 			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: 0 (no correction.cfg found, using default)")));
 		}
-		DbgLog((LOG_TRACE, 1, TEXT("  Rational duration with PPM trim for frame intervals")));
+		DbgLog((LOG_TRACE, 1, TEXT("  Hardware timestamps for start, rational duration with PPM trim for frame intervals")));
 	}
 
 	if (FAILED(DeliverEndFlush()))
@@ -755,6 +762,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	}
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE:
@@ -777,8 +785,9 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 		timeStart -= m_startTimeOffset;
 		
-		// Store current hardware timestamp for CLOCK_SMART duration tracking
-		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART)
+		// Store current hardware timestamp for CLOCK_SMART/CLOCK_SMART2 duration tracking
+		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+		    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
 		{
 			m_lastHardwareTimestamp = ConvertTimingClockToReferenceTime(
 				videoFrame.GetTimingTimestamp(),
@@ -843,7 +852,21 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		timeStop = NextFrameTimestamp();
 		if (timeStop == REFERENCE_TIME_INVALID)
 		{
-			// ENHANCED CLOCK_SMART: Instead of using theoretical duration,
+			timeStop = timeStart + m_frameDuration;
+		}
+		else
+		{
+			assert(m_startTimeOffset > 0);
+			timeStop -= m_startTimeOffset;
+		}
+		break;
+
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
+
+		timeStop = NextFrameTimestamp();
+		if (timeStop == REFERENCE_TIME_INVALID)
+		{
+			// ENHANCED CLOCK_SMART2: Instead of using theoretical duration,
 			// use average of last 100 actual frame durations for better accuracy
 			const REFERENCE_TIME smartDuration = CalculateSmartFrameDuration();
 			timeStop = timeStart + smartDuration;
@@ -864,13 +887,10 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			const REFERENCE_TIME monotonicTimeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
 			if (monotonicTimeStop != timeStop)
 			{
-				DbgLog((LOG_WARNING, 1, TEXT("CLOCK_SMART(#%I64u): Enforced monotonic progression, adjusted stop time from %I64d to %I64d"), 
+				DbgLog((LOG_WARNING, 1, TEXT("CLOCK_SMART2(#%I64u): Enforced monotonic progression, adjusted stop time from %I64d to %I64d"), 
 					videoFrame.GetCounter(), timeStop, monotonicTimeStop));
 				timeStop = monotonicTimeStop;
 			}
-			
-			DbgLog((LOG_TRACE, 1, TEXT("CLOCK_SMART(#%I64u): No hardware stop time, using smart duration=%.3fms, stop=%I64d"), 
-				videoFrame.GetCounter(), smartDuration / 10000.0, timeStop));
 		}
 		else
 		{
@@ -881,32 +901,13 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			const REFERENCE_TIME monotonicTimeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
 			if (monotonicTimeStop != timeStop)
 			{
-				DbgLog((LOG_WARNING, 1, TEXT("CLOCK_SMART(#%I64u): Hardware stop time not monotonic, enforced progression from %I64d to %I64d"), 
+				DbgLog((LOG_WARNING, 1, TEXT("CLOCK_SMART2(#%I64u): Hardware stop time not monotonic, enforced progression from %I64d to %I64d"), 
 					videoFrame.GetCounter(), timeStop, monotonicTimeStop));
 				timeStop = monotonicTimeStop;
 			}
-			
-			DbgLog((LOG_TRACE, 1, TEXT("CLOCK_SMART(#%I64u): Using hardware stop time=%I64d"), 
-				videoFrame.GetCounter(), timeStop));
 		}
 
 		assert(timeStop > timeStart);
-		break;
-
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
-	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
-
-		timeStop = timeStart + m_frameDuration;
-		break;
-
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
-
-		timeStop = NextFrameTimestamp();
-		assert(timeStop != REFERENCE_TIME_INVALID);
-		assert(timeStop > timeStart);
-
-		assert(m_startTimeOffset > 0);
-		timeStop -= m_startTimeOffset;
 		break;
 	}
 
@@ -916,6 +917,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:

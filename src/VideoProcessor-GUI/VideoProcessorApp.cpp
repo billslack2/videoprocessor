@@ -248,6 +248,10 @@ BOOL CVideoProcessorApp::InitInstance()
 				{
 					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART;
 				}
+				else if (wcscmp(pArgs[i + 1], L"CLOCK_SMART2") == 0)
+				{
+					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2;
+				}
 				else if (wcscmp(pArgs[i + 1], L"CLOCK_THEO") == 0)
 				{
 					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO;
