@@ -128,8 +128,8 @@ static const std::vector<DirectShowStartStopTimeMethod> RENDERER_DIRECTSHOW_STAR
 {
 	// RATIONAL_RATIONAL uses defined rational frame rates instead of hardware timestamps
 	DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL,
-	// HARDWARE_RATIONAL combines hardware sync with rational duration (new hybrid mode)
-	DirectShowStartStopTimeMethod::DS_SSTM_HARDWARE_RATIONAL,
+	// CLOCK_RATIONAL combines hardware sync with rational duration (new hybrid mode)
+	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK,

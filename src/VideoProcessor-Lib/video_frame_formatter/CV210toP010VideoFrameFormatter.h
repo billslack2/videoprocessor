@@ -48,9 +48,16 @@ private:
 	// ========================================
 	// Thread pool for parallel processing
 	// Uses simple spin-wait pattern for low latency
+	// Dynamically scales based on available CPU cores
 	// ========================================
-	static constexpr uint32_t MAX_THREADS = 4;
-	static constexpr uint32_t MIN_LINES_FOR_THREADING = 1080; // Only thread 1080p and above
+	static uint32_t GetMaxThreadCount()
+	{
+		uint32_t cores = std::thread::hardware_concurrency();
+		if (cores == 0) cores = 4;  // Fallback
+		return std::max(4u, cores - 2);  // Leave 2 cores for OS/UI
+	}
+	static constexpr uint32_t MAX_THREADS = 8;  // Will be dynamically selected at runtime
+	static constexpr uint32_t MIN_LINES_FOR_THREADING = 720;  // Enable threading for 720p and above
 	
 	struct ThreadWorkItem
 	{
@@ -144,10 +151,12 @@ private:
 	mutable bool m_cpuFeaturesChecked = false;
 	mutable bool m_hasAVX2 = false;
 	mutable bool m_hasAVX2MemoryOps = false;
+	mutable uint32_t m_actualMaxThreads = 0;
 	
 	// Performance optimization methods
 	bool CheckCPUFeatures() const;
 	bool HasAVX2MemoryOps() const;
+	uint32_t GetActualMaxThreads() const;
 	void LogPerformanceStats() const;
 	
 public:
@@ -168,7 +177,7 @@ private:
 	bool ConvertV210ToP010_Standard(const uint8_t* srcData, uint32_t srcStride,
 	                               uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	bool ConvertV210ToP010_Optimized(const uint8_t* srcData, uint32_t srcStride,
-	                               uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
+	                                  uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	bool ConvertV210ToP010_SIMD(const uint8_t* srcData, uint32_t srcStride,
 	                           uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	bool ConvertV210ToP010_Threaded(const uint8_t* srcData, uint32_t srcStride,

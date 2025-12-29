@@ -35,7 +35,7 @@ enum DirectShowStartStopTimeMethod
 	DS_SSTM_RATIONAL_RATIONAL,
 
 	// HYBRID: Use hardware timestamps for start time, rational math for duration, with monotonic enforcement
-	DS_SSTM_HARDWARE_RATIONAL,
+	DS_SSTM_CLOCK_RATIONAL,
 
 	//
 	// Only a start time, no stop time set

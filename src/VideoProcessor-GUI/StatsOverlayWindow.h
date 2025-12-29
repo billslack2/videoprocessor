@@ -145,16 +145,16 @@ private:
 	std::mutex m_statsMutex;
 	StatsData m_stats;
 
-	// Window constants
+	// Window constants - adjusted for 23px font
 	static const int MARGIN_RIGHT = 100;
 	static const int MARGIN_BOTTOM = 300;
-	static const int WINDOW_WIDTH = 400;
-	static const int WINDOW_HEIGHT = 350;
+	static const int WINDOW_WIDTH = 420;   // Slightly wider to accommodate text properly
+	static const int WINDOW_HEIGHT = 450;  // Adjusted for smaller line height
 	static const int PADDING = 10;
-	static const int LINE_HEIGHT = 22;
+	static const int LINE_HEIGHT = 23;     // Match font size for better spacing
 
-	// Colors - MadVR style
-	static const COLORREF BACKGROUND_COLOR = RGB(50, 50, 50);
-	static const COLORREF TEXT_COLOR = RGB(220, 220, 220);
-	static const COLORREF HIGHLIGHT_COLOR = RGB(220, 220, 220);
+	// Colors - MadVR style with 15% darker background and bright white text
+	static const COLORREF BACKGROUND_COLOR = RGB(43, 43, 43);  // 15% darker than RGB(50,50,50)
+	static const COLORREF TEXT_COLOR = RGB(255, 255, 255);     // Bright white for better visibility
+	static const COLORREF HIGHLIGHT_COLOR = RGB(255, 255, 255); // Bright white for highlights
 };

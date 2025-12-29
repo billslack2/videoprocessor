@@ -33,6 +33,14 @@
 #include <mutex>
 #include <stdexcept>
 #include <assert.h>
+
+// Standard C++ headers needed by video frame formatters
+#include <vector>
+#include <thread>
+#include <atomic>
+#include <functional>
+#include <memory>
+
 #include <afxwin.h>
 #include <afxext.h>
 #include <afxwinappex.h>

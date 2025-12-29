@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -12,7 +12,6 @@
 #include <immintrin.h>
 #include <intrin.h> // For __cpuid
 
-// ---------------------------------------------------------------------
 // Macros for V210 unpacking
 #define V210_READ_PACK_BLOCK(a, b, c) \
     do {                              \
@@ -63,10 +62,11 @@ void CV210toP010VideoFrameFormatter::InitializeThreadPool()
 {
     if (m_threadsInitialized)
         return;
-        
-    m_threadContexts = std::make_unique<ThreadContext[]>(MAX_THREADS);
     
-    for (uint32_t i = 0; i < MAX_THREADS; i++)
+    uint32_t threadCount = GetActualMaxThreads();
+    m_threadContexts = std::make_unique<ThreadContext[]>(threadCount);
+    
+    for (uint32_t i = 0; i < threadCount; i++)
     {
         m_threadContexts[i].state.store(0); // idle
         m_threadContexts[i].thread = std::thread(ThreadWorkerStatic, this, i);
@@ -79,15 +79,17 @@ void CV210toP010VideoFrameFormatter::ShutdownThreadPool()
 {
     if (!m_threadsInitialized)
         return;
-        
+    
+    uint32_t threadCount = GetActualMaxThreads();
+    
     // Signal all threads to exit
-    for (uint32_t i = 0; i < MAX_THREADS; i++)
+    for (uint32_t i = 0; i < threadCount; i++)
     {
         m_threadContexts[i].state.store(2); // exit
     }
     
     // Wait for all threads to finish
-    for (uint32_t i = 0; i < MAX_THREADS; i++)
+    for (uint32_t i = 0; i < threadCount; i++)
     {
         if (m_threadContexts[i].thread.joinable())
         {
@@ -131,8 +133,6 @@ void CV210toP010VideoFrameFormatter::ThreadWorkerStatic(CV210toP010VideoFrameFor
 
 // =====================================================================
 // Process a segment of line pairs (used by threads and main thread)
-// This processes lines from startLine to endLine (exclusive)
-// startLine MUST be even, endLine MUST be even or equal to height
 // =====================================================================
 void CV210toP010VideoFrameFormatter::ProcessLineSegment(
     const uint8_t* srcData, uint32_t srcStride,
@@ -328,14 +328,16 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Threaded(
         InitializeThreadPool();
     }
     
+    uint32_t threadCount = GetActualMaxThreads();
+    
     // Calculate line pairs per thread (must be even for P010 4:2:0)
     const uint32_t totalLinePairs = height / 2;
-    const uint32_t linePairsPerThread = totalLinePairs / (MAX_THREADS + 1); // +1 for main thread
+    const uint32_t linePairsPerThread = totalLinePairs / (threadCount + 1); // +1 for main thread
     const uint32_t linesPerThread = linePairsPerThread * 2;
     
     // Distribute work to worker threads
     uint32_t currentLine = 0;
-    for (uint32_t i = 0; i < MAX_THREADS; i++)
+    for (uint32_t i = 0; i < threadCount; i++)
     {
         ThreadContext& ctx = m_threadContexts[i];
         
@@ -358,7 +360,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Threaded(
     ProcessLineSegment(srcData, srcStride, dstY, dstUV, width, currentLine, height);
     
     // Wait for all worker threads to complete (spin-wait)
-    for (uint32_t i = 0; i < MAX_THREADS; i++)
+    for (uint32_t i = 0; i < threadCount; i++)
     {
         while (m_threadContexts[i].state.load(std::memory_order_acquire) != 0)
         {
@@ -381,12 +383,13 @@ bool CV210toP010VideoFrameFormatter::CheckCPUFeatures() const
 
         m_hasAVX2 = false;
         m_hasAVX2MemoryOps = false;
+        m_actualMaxThreads = GetMaxThreadCount();
 
         if (nIds >= 7)
         {
             __cpuidex(cpuInfo, 7, 0);
             m_hasAVX2 = (cpuInfo[1] & (1 << 5)) != 0; // EBX bit 5 is AVX2
-            m_hasAVX2MemoryOps = m_hasAVX2; // Assuming if AVX2 is present, we can use it for memory ops
+            m_hasAVX2MemoryOps = m_hasAVX2;
         }
         
         m_cpuFeaturesChecked = true;
@@ -398,6 +401,15 @@ bool CV210toP010VideoFrameFormatter::HasAVX2MemoryOps() const
 {
     CheckCPUFeatures();
     return m_hasAVX2MemoryOps;
+}
+
+uint32_t CV210toP010VideoFrameFormatter::GetActualMaxThreads() const
+{
+    if (m_actualMaxThreads == 0)
+    {
+        CheckCPUFeatures();
+    }
+    return m_actualMaxThreads;
 }
 
 void CV210toP010VideoFrameFormatter::LogPerformanceStats() const
@@ -412,7 +424,7 @@ void CV210toP010VideoFrameFormatter::LogPerformanceStats() const
 #endif
 }
 
-// ---------------------------------------------------------------------
+// =====================================================================
 void CV210toP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& videoState)
 {
     if (!videoState)
@@ -462,8 +474,7 @@ void CV210toP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& videoState)
     m_width = origWidth;
 }
 
-// ---------------------------------------------------------------------
-// FormatVideoFrame: Simple, fast, reliable conversion
+// =====================================================================
 bool CV210toP010VideoFrameFormatter::FormatVideoFrame(
     const VideoFrame& inFrame,
     BYTE* outBuffer)
@@ -502,7 +513,7 @@ LONG CV210toP010VideoFrameFormatter::GetOutFrameSize() const
         (pixels / 2 / 2 * (2 * sizeof(uint16_t)));
 }
 
-// ---------------------------------------------------------------------
+// =====================================================================
 bool CV210toP010VideoFrameFormatter::ConvertV210ToP010(
     const uint8_t* srcData,
     uint32_t srcStride, 
@@ -517,7 +528,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010(
     }
     else if (height >= MIN_LINES_FOR_THREADING && CheckCPUFeatures())
     {
-        // Use threaded SIMD for large frames (1080p and above)
+        // Use threaded SIMD for 720p and above
         return ConvertV210ToP010_Threaded(srcData, srcStride, dstY, dstUV, width, height);
     }
     else
@@ -527,8 +538,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010(
     }
 }
 
-// ---------------------------------------------------------------------
-// 720p conversion with border handling
+// =====================================================================
 bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_720p(
     const uint8_t* srcData,
     uint32_t srcStride,
@@ -620,292 +630,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_720p(
     return true;
 }
 
-// ====================================================================
-// OPTIMIZED STANDARD CONVERSION - Single-threaded, fast scalar
-// ====================================================================
-bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Optimized(
-    const uint8_t* srcData,
-    uint32_t srcStride,
-    uint16_t* dstY,
-    uint16_t* dstUV, 
-    uint32_t width,
-    uint32_t height) noexcept
-{
-    const uint32_t packsPerLine = width / PIXELS_PER_PACK;
-    
-    // Process 2 lines at a time to improve cache locality and reduce loop overhead
-    // Since P010 is 4:2:0, UV plane is shared for 2 lines
-    for (uint32_t line = 0; line < height; line += 2)
-    {
-        const uint8_t* srcLine1 = srcData + static_cast<ptrdiff_t>(line) * srcStride;
-        const uint8_t* srcLine2 = srcData + static_cast<ptrdiff_t>(line + 1) * srcStride;
-        
-        uint16_t* dstY1 = dstY + static_cast<ptrdiff_t>(line) * width;
-        uint16_t* dstY2 = dstY + static_cast<ptrdiff_t>(line + 1) * width;
-        uint16_t* dstUV_line = dstUV + static_cast<ptrdiff_t>(line >> 1) * width;
-        
-        const uint32_t* src1 = reinterpret_cast<const uint32_t*>(srcLine1);
-        const uint32_t* src2 = reinterpret_cast<const uint32_t*>(srcLine2);
-        
-        // Process 4 packs (24 pixels) per iteration to unroll loops
-        // This reduces branch prediction pressure and allows better pipelining
-        uint32_t pack = 0;
-        const uint32_t* src = src1; // Initialize src for the macro
-        for (; pack + 3 < packsPerLine; pack += 4)
-        {
-            // Process 4 packs for line 1 (Even line - extracts Y and UV)
-            // Pack 0
-            {
-                uint32_t val;
-                uint16_t u, y1, y2, v;
-                
-                // Block 1
-                V210_READ_PACK_BLOCK(u, y1, v);
-                dstUV_line[0] = u << 6; dstY1[0] = y1 << 6; dstUV_line[1] = v << 6;
-                
-                // Block 2
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                dstY1[1] = y1 << 6; dstUV_line[2] = u << 6; dstY1[2] = y2 << 6;
-                
-                // Block 3
-                V210_READ_PACK_BLOCK(v, y1, u);
-                dstUV_line[3] = v << 6; dstY1[3] = y1 << 6; dstUV_line[4] = u << 6;
-                
-                // Block 4
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                dstY1[4] = y1 << 6; dstUV_line[5] = v << 6; dstY1[5] = y2 << 6;
-            }
-            
-            // Pack 1
-            {
-                uint32_t val;
-                uint16_t u, y1, y2, v;
-                
-                V210_READ_PACK_BLOCK(u, y1, v);
-                dstUV_line[6] = u << 6; dstY1[6] = y1 << 6; dstUV_line[7] = v << 6;
-                
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                dstY1[7] = y1 << 6; dstUV_line[8] = u << 6; dstY1[8] = y2 << 6;
-                
-                V210_READ_PACK_BLOCK(v, y1, u);
-                dstUV_line[9] = v << 6; dstY1[9] = y1 << 6; dstUV_line[10] = u << 6;
-                
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                dstY1[10] = y1 << 6; dstUV_line[11] = v << 6; dstY1[11] = y2 << 6;
-            }
-            
-            // Pack 2
-            {
-                uint32_t val;
-                uint16_t u, y1, y2, v;
-                
-                V210_READ_PACK_BLOCK(u, y1, v);
-                dstUV_line[12] = u << 6; dstY1[12] = y1 << 6; dstUV_line[13] = v << 6;
-                
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                dstY1[13] = y1 << 6; dstUV_line[14] = u << 6; dstY1[14] = y2 << 6;
-                
-                V210_READ_PACK_BLOCK(v, y1, u);
-                dstUV_line[15] = v << 6; dstY1[15] = y1 << 6; dstUV_line[16] = u << 6;
-                
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                dstY1[16] = y1 << 6; dstUV_line[17] = v << 6; dstY1[17] = y2 << 6;
-            }
-            
-            // Pack 3
-            {
-                uint32_t val;
-                uint16_t u, y1, y2, v;
-                
-                V210_READ_PACK_BLOCK(u, y1, v);
-                dstUV_line[18] = u << 6; dstY1[18] = y1 << 6; dstUV_line[19] = v << 6;
-                
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                dstY1[19] = y1 << 6; dstUV_line[20] = u << 6; dstY1[20] = y2 << 6;
-                
-                V210_READ_PACK_BLOCK(v, y1, u);
-                dstUV_line[21] = v << 6; dstY1[21] = y1 << 6; dstUV_line[22] = u << 6;
-                
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                dstY1[22] = y1 << 6; dstUV_line[23] = v << 6; dstY1[23] = y2 << 6;
-            }
-            
-            // Process 4 packs for line 2 (Odd line - extracts Y only)
-            // Use a separate pointer for src to avoid confusion
-            src = src2 + (pack * 4); // Re-assign src for the macro
-            
-            // Pack 0
-            {
-                uint32_t val;
-                uint16_t a, b, c; // Generic names since we discard chroma
-                
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[0] = b << 6;
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[1] = a << 6; dstY2[2] = c << 6;
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[3] = b << 6;
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[4] = a << 6; dstY2[5] = c << 6;
-            }
-            
-            // Pack 1
-            {
-                uint32_t val;
-                uint16_t a, b, c;
-                
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[6] = b << 6;
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[7] = a << 6; dstY2[8] = c << 6;
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[9] = b << 6;
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[10] = a << 6; dstY2[11] = c << 6;
-            }
-            
-            // Pack 2
-            {
-                uint32_t val;
-                uint16_t a, b, c;
-                
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[12] = b << 6;
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[13] = a << 6; dstY2[14] = c << 6;
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[15] = b << 6;
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[16] = a << 6; dstY2[17] = c << 6;
-            }
-            
-            // Pack 3
-            {
-                uint32_t val;
-                uint16_t a, b, c;
-                
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[18] = b << 6;
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[19] = a << 6; dstY2[20] = c << 6;
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[21] = b << 6;
-                V210_READ_PACK_BLOCK(a, b, c); dstY2[22] = a << 6; dstY2[23] = c << 6;
-            }
-            
-            // Advance pointers
-            dstY1 += 24;
-            dstY2 += 24;
-            dstUV_line += 24;
-            src = src1 + ((pack + 4) * 4); // Update src for next iteration of line 1
-        }
-        
-        // Handle remaining packs
-        src = src1 + (pack * 4); // Reset src for remaining packs of line 1
-        for (; pack < packsPerLine; pack++)
-        {
-            // Line 1 (Even)
-            {
-                uint32_t val;
-                uint16_t u, y1, y2, v;
-                
-                V210_READ_PACK_BLOCK(u, y1, v);
-                *dstUV_line++ = u << 6; *dstY1++ = y1 << 6; *dstUV_line++ = v << 6;
-                
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                *dstY1++ = y1 << 6; *dstUV_line++ = u << 6; *dstY1++ = y2 << 6;
-                
-                V210_READ_PACK_BLOCK(v, y1, u);
-                *dstUV_line++ = v << 6; *dstY1++ = y1 << 6; *dstUV_line++ = u << 6;
-                
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                *dstY1++ = y1 << 6; *dstUV_line++ = v << 6; *dstY1++ = y2 << 6;
-            }
-            
-            // Line 2 (Odd)
-            {
-                const uint32_t* src_odd = src2 + (pack * 4);
-                const uint32_t* src_saved = src; // Save src
-                src = src_odd; // Temporarily switch src for macro
-                
-                uint32_t val;
-                uint16_t a, b, c;
-                
-                V210_READ_PACK_BLOCK(a, b, c); *dstY2++ = b << 6;
-                V210_READ_PACK_BLOCK(a, b, c); *dstY2++ = a << 6; *dstY2++ = c << 6;
-                V210_READ_PACK_BLOCK(a, b, c); *dstY2++ = b << 6;
-                V210_READ_PACK_BLOCK(a, b, c); *dstY2++ = a << 6; *dstY2++ = c << 6;
-                
-                src = src_saved; // Restore src
-            }
-        }
-    }
-    
-    return true;
-}
-
-bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Standard(
-    const uint8_t* srcData,
-    uint32_t srcStride,
-    uint16_t* dstY,
-    uint16_t* dstUV, 
-    uint32_t width,
-    uint32_t height) noexcept
-{
-    const uint32_t packsPerLine = width / PIXELS_PER_PACK;
-    
-    for (uint32_t line = 0; line < height; line++)
-    {
-        const uint32_t* src = reinterpret_cast<const uint32_t*>(
-            srcData + line * srcStride);
-        const bool isEvenLine = (line & 1) == 0;
-        
-        uint16_t* lineY = dstY + static_cast<ptrdiff_t>(line) * width;
-        uint16_t* lineUV = isEvenLine ? (dstUV + static_cast<ptrdiff_t>(line >> 1) * width) : nullptr;
-        
-        uint16_t* dstY_ptr = lineY;
-        uint16_t* dstUV_ptr = lineUV;
-        
-        // Tight loop - one pack per iteration
-        for (uint32_t pack = 0; pack < packsPerLine; pack++)
-        {
-            uint32_t val;
-            uint16_t u, y1, y2, v;
-            
-            if (isEvenLine)
-            {
-                // Even line: write both Y and UV
-                V210_READ_PACK_BLOCK(u, y1, v);
-                *dstUV_ptr++ = u << 6; 
-                *dstY_ptr++ = y1 << 6; 
-                *dstUV_ptr++ = v << 6;
-                
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                *dstY_ptr++ = y1 << 6; 
-                *dstUV_ptr++ = u << 6; 
-                *dstY_ptr++ = y2 << 6;
-                
-                V210_READ_PACK_BLOCK(v, y1, u);
-                *dstUV_ptr++ = v << 6; 
-                *dstY_ptr++ = y1 << 6; 
-                *dstUV_ptr++ = u << 6;
-                
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                *dstY_ptr++ = y1 << 6; 
-                *dstUV_ptr++ = v << 6; 
-                *dstY_ptr++ = y2 << 6;
-            }
-            else
-            {
-                // Odd line: Y only
-                V210_READ_PACK_BLOCK(u, y1, v);
-                *dstY_ptr++ = y1 << 6;
-                
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                *dstY_ptr++ = y1 << 6; 
-                *dstY_ptr++ = y2 << 6;
-                
-                V210_READ_PACK_BLOCK(v, y1, u);
-                *dstY_ptr++ = y1 << 6;
-                
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                *dstY_ptr++ = y1 << 6; 
-                *dstY_ptr++ = y2 << 6;
-            }
-        }
-    }
-    
-    return true;
-}
-
-// ---------------------------------------------------------------------
-// SIMD implementation - Paired even/odd lines for better parallelism
-// ====================================================================
+// =====================================================================
 bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMD(
     const uint8_t* srcData,
     uint32_t srcStride,
@@ -1082,9 +807,86 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMD(
             }
         }
     }
+
+    return true;
 }
 
-// ---------------------------------------------------------------------
+// =====================================================================
+bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Optimized(
+    const uint8_t* srcData,
+    uint32_t srcStride,
+    uint16_t* dstY,
+    uint16_t* dstUV, 
+    uint32_t width,
+    uint32_t height) noexcept
+{
+    const uint32_t packsPerLine = width / PIXELS_PER_PACK;
+    
+    for (uint32_t line = 0; line < height; line++)
+    {
+        const uint32_t* src = reinterpret_cast<const uint32_t*>(
+            srcData + line * srcStride);
+        const bool isEvenLine = (line & 1) == 0;
+        
+        uint16_t* lineY = dstY + static_cast<ptrdiff_t>(line) * width;
+        uint16_t* lineUV = isEvenLine ? (dstUV + static_cast<ptrdiff_t>(line >> 1) * width) : nullptr;
+        
+        uint16_t* dstY_ptr = lineY;
+        uint16_t* dstUV_ptr = lineUV;
+        
+        // Tight loop - one pack per iteration
+        for (uint32_t pack = 0; pack < packsPerLine; pack++)
+        {
+            uint32_t val;
+            uint16_t u, y1, y2, v;
+            
+            if (isEvenLine)
+            {
+                // Even line: write both Y and UV
+                V210_READ_PACK_BLOCK(u, y1, v);
+                *dstUV_ptr++ = u << 6; 
+                *dstY_ptr++ = y1 << 6; 
+                *dstUV_ptr++ = v << 6;
+                
+                V210_READ_PACK_BLOCK(y1, u, y2);
+                *dstY_ptr++ = y1 << 6; 
+                *dstUV_ptr++ = u << 6; 
+                *dstY_ptr++ = y2 << 6;
+                
+                V210_READ_PACK_BLOCK(v, y1, u);
+                *dstUV_ptr++ = v << 6; 
+                *dstY_ptr++ = y1 << 6; 
+                *dstUV_ptr++ = u << 6;
+                
+                V210_READ_PACK_BLOCK(y1, v, y2);
+                *dstY_ptr++ = y1 << 6; 
+                *dstUV_ptr++ = v << 6; 
+                *dstY_ptr++ = y2 << 6;
+            }
+            else
+            {
+                // Odd line: Y only
+                V210_READ_PACK_BLOCK(u, y1, v);
+                *dstY_ptr++ = y1 << 6;
+                
+                V210_READ_PACK_BLOCK(y1, u, y2);
+                *dstY_ptr++ = y1 << 6; 
+                *dstY_ptr++ = y2 << 6;
+                
+                V210_READ_PACK_BLOCK(v, y1, u);
+                *dstY_ptr++ = y1 << 6;
+                
+                V210_READ_PACK_BLOCK(y1, v, y2);
+                *dstY_ptr++ = y1 << 6; 
+                *dstY_ptr++ = y2 << 6;
+            }
+        }
+    }
+    
+    return true;
+}
+
+// =====================================================================
 void CV210toP010VideoFrameFormatter::LogConversionPerformance(uint64_t conversionTimeUs, bool success) const
 {
     m_performanceWindow.AddSample(static_cast<double>(conversionTimeUs));

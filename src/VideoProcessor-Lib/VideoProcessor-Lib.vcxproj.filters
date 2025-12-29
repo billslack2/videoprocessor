@@ -206,9 +206,6 @@
     <ClCompile Include="pch.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="video_frame_formatter\CV210toP010VideoFrameFormatter.cpp">
-      <Filter>Source Files\video_frame_formatter</Filter>
-    </ClCompile>
     <ClCompile Include="video_frame_formatter\CV210toP210VideoFrameFormatter.cpp">
       <Filter>Source Files\video_frame_formatter</Filter>
     </ClCompile>
@@ -336,6 +333,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="PPMCorrectionLoader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="video_frame_formatter\CV210toP010VideoFrameFormatter.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

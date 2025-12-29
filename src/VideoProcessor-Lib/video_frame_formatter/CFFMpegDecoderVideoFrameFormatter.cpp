@@ -20,8 +20,10 @@ static const int OUTPUT_LINESIZE_ALIGNMENT = 1;
 
 CFFMpegDecoderVideoFrameFormatter::CFFMpegDecoderVideoFrameFormatter(
 	AVCodecID inputCodecId,
-	AVPixelFormat targetPixelFormat):
-	mTargetPixelFormat(targetPixelFormat)
+	AVPixelFormat targetPixelFormat,
+	bool useHardwareDecoding):
+	mTargetPixelFormat(targetPixelFormat),
+	m_enableHardwareDecoding(useHardwareDecoding)
 {
 	// Check params
 
@@ -47,6 +49,27 @@ CFFMpegDecoderVideoFrameFormatter::CFFMpegDecoderVideoFrameFormatter(
 	// This is a non-standard ffmpeg extension signalling no use of other threads
 	mAVCodecContext->thread_count = -1;
 
+	// Attempt hardware decoding initialization if enabled
+	if (m_enableHardwareDecoding)
+	{
+		if (TryInitializeHardwareDecoding(inputCodecId))
+		{
+			m_usingHardwareDecoding = true;
+			m_decoderType = "Hardware (D3D11VA)";
+		}
+		else
+		{
+			// Hardware decoding failed, fall back to software
+			m_usingHardwareDecoding = false;
+			m_decoderType = "Software (fallback from hardware attempt)";
+		}
+	}
+	else
+	{
+		m_usingHardwareDecoding = false;
+		m_decoderType = "Software (hardware disabled)";
+	}
+
 	if (avcodec_open2(mAVCodecContext, avCodecDecoder, nullptr) < 0)
 		throw std::runtime_error("Could not open codec");
 
@@ -62,6 +85,14 @@ CFFMpegDecoderVideoFrameFormatter::CFFMpegDecoderVideoFrameFormatter(
 	mOutputFrame = av_frame_alloc();
 	if (!mOutputFrame)
 		throw std::runtime_error("Failed to alloc output frame");
+
+	// Allocate frame for hardware to CPU transfer if using hardware decoding
+	if (m_usingHardwareDecoding)
+	{
+		m_swFrameForHWDecode = av_frame_alloc();
+		if (!m_swFrameForHWDecode)
+			throw std::runtime_error("Failed to alloc frame for hardware decode transfer");
+	}
 
 	mPkt = av_packet_alloc();
 	if (!mPkt)
@@ -85,8 +116,18 @@ CFFMpegDecoderVideoFrameFormatter::~CFFMpegDecoderVideoFrameFormatter()
 	if (mOutputFrame)
 		av_frame_free(&mOutputFrame);
 
+	if (m_swFrameForHWDecode)
+		av_frame_free(&m_swFrameForHWDecode);
+
 	if (mPkt)
 		av_packet_free(&mPkt);
+
+	// Clean up hardware device context
+	if (m_hwDeviceCtx)
+	{
+		av_buffer_unref(&m_hwDeviceCtx);
+		m_hwDeviceCtx = nullptr;
+	}
 }
 
 
@@ -150,6 +191,8 @@ bool CFFMpegDecoderVideoFrameFormatter::FormatVideoFrame(
 	if (mWidth == 0 || mHeight == 0 || mInputBytesPerVideoFrame == 0)
 		throw std::runtime_error("Width, height or bytes per frame not known, call OnVideoState() first");
 
+	const auto startTime = GetWallClockTime();
+
 	mPkt->data = (uint8_t*)inFrame.GetData();
 	mPkt->size = mInputBytesPerVideoFrame;
 
@@ -166,199 +209,136 @@ bool CFFMpegDecoderVideoFrameFormatter::FormatVideoFrame(
 	if (ret < 0)
 		throw std::runtime_error("avcodec_receive_frame errored");
 
-	// ?? OPTIMIZATION 1: Direct scaling to output buffer when possible
-	// Check if we can scale directly to the output buffer to eliminate the extra copy
-	const bool canScaleDirectly = (mTargetPixelFormat == AV_PIX_FMT_P010LE || 
-	                               mTargetPixelFormat == AV_PIX_FMT_YUV420P10LE) &&
-	                              (mOutputFrame->linesize[0] == mWidth * 2); // 16-bit format check
-
-	if (canScaleDirectly)
+	// Handle hardware decoded frame transfer
+	AVFrame* decodedFrame = mInputFrame;
+	if (m_usingHardwareDecoding && mInputFrame->format == AV_PIX_FMT_D3D11)
 	{
-		// ?? ZERO-COPY: Scale directly into the output buffer
-		// Set up temporary data pointers to output buffer
-		uint8_t* tempData[4] = { nullptr, nullptr, nullptr, nullptr };
-		int tempLinesize[4] = { 0, 0, 0, 0 };
-		
-		// Calculate proper linesize and data pointers for P010/YUV420P10LE
-		const int ySize = mWidth * mHeight * 2;  // 16-bit Y plane
-		const int uvSize = (mWidth/2) * (mHeight/2) * 2;  // 16-bit UV planes
-		
-		if (mTargetPixelFormat == AV_PIX_FMT_P010LE)
+		// Transfer hardware frame to CPU memory for further processing
+		if (!TransferHardwareFrameToCPU(mInputFrame, m_swFrameForHWDecode))
 		{
-			tempData[0] = outBuffer;              // Y plane
-			tempData[1] = outBuffer + ySize;      // Interleaved UV plane
-			tempLinesize[0] = mWidth * 2;
-			tempLinesize[1] = mWidth * 2;
+			DbgLog((LOG_TRACE, 1, TEXT("Warning: Hardware frame transfer failed, using original frame")));
+			// Continue with original frame, may have partial data
 		}
-		else // AV_PIX_FMT_YUV420P10LE
+		else
 		{
-			tempData[0] = outBuffer;                    // Y plane
-			tempData[1] = outBuffer + ySize;            // U plane  
-			tempData[2] = outBuffer + ySize + uvSize;   // V plane
-			tempLinesize[0] = mWidth * 2;
-			tempLinesize[1] = mWidth;
-			tempLinesize[2] = mWidth;
+			decodedFrame = m_swFrameForHWDecode;
 		}
-
-		// Scale directly to output buffer - ELIMINATES COPY!
-		int scaled_lines = sws_scale(
-			mSws,
-			mInputFrame->data, mInputFrame->linesize,
-			0, mHeight,
-			tempData, tempLinesize);
-			
-		if (scaled_lines != mHeight)
-			throw std::runtime_error("Failed to sws_scale all lines");
-			
-		// No copy needed! Data is already in the output buffer
-		return true;
 	}
-	else
-	{
-		// ?? OPTIMIZATION 2: Use optimized memory copy for fallback case
-		// Convert to intermediate buffer first (existing path)
-		int scaled_lines = sws_scale(
-			mSws,
-			mInputFrame->data, mInputFrame->linesize,
-			0, mHeight,
-			mOutputFrame->data, mOutputFrame->linesize);
-		if (scaled_lines != mHeight)
-			throw std::runtime_error("Failed to sws_scale all lines");
 
-		// ?? OPTIMIZED COPY: Use platform-specific optimized copy instead of av_image_copy_to_buffer
-		OptimizedFrameCopy(outBuffer, mOutputFrame->data, mOutputFrame->linesize, 
-		                  mTargetPixelFormat, mWidth, mHeight);
-		return true;
-	}
+	// Convert to intermediate buffer
+	int scaled_lines = sws_scale(
+		mSws,
+		decodedFrame->data, decodedFrame->linesize,
+		0, mHeight,
+		mOutputFrame->data, mOutputFrame->linesize);
+	if (scaled_lines != mHeight)
+		throw std::runtime_error("Failed to sws_scale all lines");
+
+	// Copy to output buffer
+	int ret2 = av_image_copy_to_buffer(
+		outBuffer, mOutFrameSize,
+		(const uint8_t* const*)mOutputFrame->data, mOutputFrame->linesize,
+		mTargetPixelFormat,
+		mWidth, mHeight,
+		OUTPUT_LINESIZE_ALIGNMENT);
+	if (ret2 < 0)
+		throw std::runtime_error("Failed to copy image to buffer");
+
+	const auto endTime = GetWallClockTime();
+	const uint64_t conversionTimeUs = (endTime - startTime) / 10;
+	m_performanceWindow.AddSample(static_cast<double>(conversionTimeUs));
+
+	return true;
 }
 
-// ?? NEW: Platform-optimized copy function
-void CFFMpegDecoderVideoFrameFormatter::OptimizedFrameCopy(
-	uint8_t* dst, uint8_t* const src[4], const int srcLinesize[4],
-	AVPixelFormat pixFmt, int width, int height)
+// Hardware decoding initialization
+bool CFFMpegDecoderVideoFrameFormatter::TryInitializeHardwareDecoding(AVCodecID inputCodecId)
 {
-	// Use SIMD-optimized memory copy operations
-	switch (pixFmt)
+	// Attempt to find hardware decoder for D3D11VA (Windows)
+	const char* hwDecoderName = nullptr;
+	AVHWDeviceType deviceType = AV_HWDEVICE_TYPE_NONE;
+
+	// Map codec to hardware decoder name
+	switch (inputCodecId)
 	{
-	case AV_PIX_FMT_P010LE:
-	{
-		// P010: Y plane + interleaved UV plane
-		const int yPlaneSize = width * height * 2;
-		const int uvPlaneSize = width * (height / 2) * 2;
-		
-		// Copy Y plane with optimized copy
-		OptimizedMemcpy(dst, src[0], yPlaneSize);
-		
-		// Copy UV plane
-		OptimizedMemcpy(dst + yPlaneSize, src[1], uvPlaneSize);
+	case AV_CODEC_ID_H264:
+		hwDecoderName = "h264_d3d11va";
+		deviceType = AV_HWDEVICE_TYPE_D3D11VA;
 		break;
-	}
-	case AV_PIX_FMT_YUV420P10LE:
-	{
-		// YUV420P10LE: Separate Y, U, V planes
-		const int yPlaneSize = width * height * 2;
-		const int uvPlaneSize = (width / 2) * (height / 2) * 2;
-		
-		OptimizedMemcpy(dst, src[0], yPlaneSize);
-		OptimizedMemcpy(dst + yPlaneSize, src[1], uvPlaneSize);
-		OptimizedMemcpy(dst + yPlaneSize + uvPlaneSize, src[2], uvPlaneSize);
+	case AV_CODEC_ID_HEVC:
+		hwDecoderName = "hevc_d3d11va";
+		deviceType = AV_HWDEVICE_TYPE_D3D11VA;
 		break;
-	}
+	case AV_CODEC_ID_VP9:
+		hwDecoderName = "vp9_d3d11va";
+		deviceType = AV_HWDEVICE_TYPE_D3D11VA;
+		break;
+	case AV_CODEC_ID_AV1:
+		hwDecoderName = "av1_d3d11va";
+		deviceType = AV_HWDEVICE_TYPE_D3D11VA;
+		break;
 	default:
-		// Fallback to original method for other formats
-		av_image_copy_to_buffer(dst, mOutFrameSize, src, srcLinesize,
-		                       pixFmt, width, height, OUTPUT_LINESIZE_ALIGNMENT);
-		break;
+		// No hardware decoder available for this codec
+		DbgLog((LOG_TRACE, 1, TEXT("Hardware decoding not available for codec ID %d"), inputCodecId));
+		return false;
 	}
+
+	if (!hwDecoderName || deviceType == AV_HWDEVICE_TYPE_NONE)
+		return false;
+
+	// Try to find the hardware decoder
+	const AVCodec* hwCodec = avcodec_find_decoder_by_name(hwDecoderName);
+	if (!hwCodec)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Hardware decoder '%s' not found on this system"), 
+			hwDecoderName));
+		return false;
+	}
+
+	// Create hardware device context
+	int ret = av_hwdevice_ctx_create(&m_hwDeviceCtx, deviceType, nullptr, nullptr, 0);
+	if (ret < 0)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Failed to create hardware device context for D3D11VA (error %d)"), ret));
+		return false;
+	}
+
+	// Update codec context to use hardware device
+	mAVCodecContext->hw_device_ctx = av_buffer_ref(m_hwDeviceCtx);
+	if (!mAVCodecContext->hw_device_ctx)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Failed to reference hardware device context")));
+		av_buffer_unref(&m_hwDeviceCtx);
+		m_hwDeviceCtx = nullptr;
+		return false;
+	}
+
+	DbgLog((LOG_TRACE, 1, TEXT("Hardware decoding (D3D11VA) initialized for codec '%s'"), hwDecoderName));
+	return true;
 }
 
-// ?? NEW: SIMD-optimized memory copy
-void CFFMpegDecoderVideoFrameFormatter::OptimizedMemcpy(void* dst, const void* src, size_t size)
+// Frame transfer from hardware to CPU memory
+bool CFFMpegDecoderVideoFrameFormatter::TransferHardwareFrameToCPU(AVFrame* hwFrame, AVFrame* swFrame)
 {
-	// Use safe AVX2 approach - same as other formatters
-    if (size >= 128 && HasAVX2_Safe())
-    {
-        const size_t avx2Chunks = size / 32;
-        const size_t remainder = size % 32;
-        
-        const __m256i* srcVec = (const __m256i*)src;
-        __m256i* dstVec = (__m256i*)dst;
-        
-        // Process in blocks of 4 AVX2 registers (128 bytes) with prefetching
-        const size_t blockSize = 4;
-        const size_t blocks = avx2Chunks / blockSize;
-        
-        for (size_t block = 0; block < blocks; ++block)
-        {
-            const size_t i = block * blockSize;
-            
-            // Prefetch next block
-            if (block + 2 < blocks)
-            {
-                _mm_prefetch((const char*)(srcVec + (block + 2) * blockSize), _MM_HINT_T0);
-            }
-            
-            // Copy 4 x 32-byte chunks (128 bytes total)
-            _mm256_storeu_si256(dstVec + i + 0, _mm256_loadu_si256(srcVec + i + 0));
-            _mm256_storeu_si256(dstVec + i + 1, _mm256_loadu_si256(srcVec + i + 1));
-            _mm256_storeu_si256(dstVec + i + 2, _mm256_loadu_si256(srcVec + i + 2));
-            _mm256_storeu_si256(dstVec + i + 3, _mm256_loadu_si256(srcVec + i + 3));
-        }
-        
-        // Handle remaining full AVX2 chunks
-        for (size_t i = blocks * blockSize; i < avx2Chunks; ++i)
-        {
-            _mm256_storeu_si256(dstVec + i, _mm256_loadu_si256(srcVec + i));
-        }
-        
-        // Handle remainder
-        if (remainder > 0)
-        {
-            memcpy((uint8_t*)dst + avx2Chunks * 32, 
-                   (const uint8_t*)src + avx2Chunks * 32, remainder);
-        }
-    }
-    else
-    {
-        // Use standard memcpy for smaller sizes or when AVX2 unavailable
-        memcpy(dst, src, size);
-    }
-}
+	if (!hwFrame || !swFrame)
+		return false;
 
-// Safe CPU feature detection for FFmpeg formatter
-bool CFFMpegDecoderVideoFrameFormatter::HasAVX2_Safe() const
-{
-    static int checked = -1;
-    
-    if (checked == -1)
-    {
-        int cpuInfo[4];
-        __cpuid(cpuInfo, 0);
-        if (cpuInfo[0] >= 7)
-        {
-            __cpuid(cpuInfo, 7);
-            bool hasAVX2 = (cpuInfo[1] & (1 << 5)) != 0;
-            __cpuid(cpuInfo, 1);
-            bool hasAVX = (cpuInfo[2] & (1 << 28)) != 0;
-            bool osSupportsAVX = (cpuInfo[2] & (1 << 27)) != 0;
-            checked = (hasAVX2 && hasAVX && osSupportsAVX) ? 1 : 0;
-        }
-        else
-        {
-            checked = 0;
-        }
-        
-        #ifdef _DEBUG
-        static bool logged = false;
-        if (!logged) {
-            DbgLog((LOG_TRACE, 1, TEXT("CFFMpegDecoderVideoFrameFormatter: Safe AVX2 Memory Operations - %s"), 
-                    checked == 1 ? TEXT("ENABLED") : TEXT("DISABLED")));
-            logged = true;
-        }
-        #endif
-    }
-    
-    return checked == 1;
+	// Check if frame is on hardware
+	if (hwFrame->format != AV_PIX_FMT_D3D11)
+	{
+		// Frame is already on CPU, no transfer needed
+		return true;
+	}
+
+	// Transfer data from GPU to CPU
+	int ret = av_hwframe_transfer_data(swFrame, hwFrame, 0);
+	if (ret < 0)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Failed to transfer hardware frame to CPU memory (error %d)"), ret));
+		return false;
+	}
+
+	return true;
 }
 
 LONG CFFMpegDecoderVideoFrameFormatter::GetOutFrameSize() const
@@ -366,6 +346,7 @@ LONG CFFMpegDecoderVideoFrameFormatter::GetOutFrameSize() const
 	assert(mOutFrameSize > 0);
 	return mOutFrameSize;
 }
+
 
 void CFFMpegDecoderVideoFrameFormatter::Cleanup()
 {

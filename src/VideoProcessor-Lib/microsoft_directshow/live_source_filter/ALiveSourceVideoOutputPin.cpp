@@ -97,6 +97,13 @@ void ALiveSourceVideoOutputPin::Initialize(
 		double refreshRate = (double)timeScale / (double)frameDurationTicks;
 		LoadPPMCorrections(refreshRate);
 	}
+	// Also load PPM corrections for CLOCK_RATIONAL mode for consistent timing
+	else if (timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL)
+	{
+		// Calculate refresh rate from timing parameters
+		double refreshRate = (double)timeScale / (double)frameDurationTicks;
+		LoadPPMCorrections(refreshRate);
+	}
 }
 
 
@@ -427,6 +434,37 @@ void ALiveSourceVideoOutputPin::Reset()
 		DbgLog((LOG_TRACE, 1, TEXT("  Consistent across start/stop time calculations")));
 		DbgLog((LOG_TRACE, 1, TEXT("  Pipeline offset: %I64d (100ns units)"), m_rationalPipelineOffset));
 	}
+	else if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Reset(): CLOCK_RATIONAL mode active - using correction.cfg PPM:")));
+		if (m_ppmCorrectionLoader.HasCorrections())
+		{
+			int ppmCorrection = RATIONAL_TRIM_DENOMINATOR - GetRationalTrimNumerator();
+			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: %d (from correction.cfg)"), ppmCorrection));
+			
+			// Show trim ratio with context
+			double trimPercentage = (100.0 * GetRationalTrimNumerator()) / RATIONAL_TRIM_DENOMINATOR;
+			if (ppmCorrection > 0)
+			{
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Stream runs %d PPM FASTER (trim %.6f%% = slight slowdown to compensate)"), 
+					ppmCorrection, trimPercentage));
+			}
+			else if (ppmCorrection < 0)
+			{
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Stream runs %d PPM SLOWER (trim %.6f%% = slight speedup to compensate)"), 
+					ppmCorrection, trimPercentage));
+			}
+			else
+			{
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: No PPM correction (trim = 100.000000%)")));
+			}
+		}
+		else
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: 0 (no correction.cfg found, using default)")));
+		}
+		DbgLog((LOG_TRACE, 1, TEXT("  Rational duration with PPM trim for frame intervals")));
+	}
 
 	if (FAILED(DeliverEndFlush()))
 		throw std::runtime_error("Failed to deliver endflush");
@@ -449,7 +487,7 @@ REFERENCE_TIME ALiveSourceVideoOutputPin::CalculateSmartFrameDuration() const
 	int64_t totalDuration = 0;
 	const size_t sampleCount = (m_durationHistoryCount < DURATION_HISTORY_SIZE) ? m_durationHistoryCount : DURATION_HISTORY_SIZE;
 	
-	for (size_t i = 0; i < sampleCount; i++)
+for (size_t i = 0; i < sampleCount; i++)
 	{
 		totalDuration += m_durationHistory[i];
 	}
@@ -638,7 +676,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 
 
-	case DirectShowStartStopTimeMethod::DS_SSTM_HARDWARE_RATIONAL:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
 	{
 		// HYBRID MODE: Hardware timestamp for start time, rational math for duration, monotonic enforcement
 		
@@ -649,11 +687,18 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		if (m_rationalFrameDuration == 0)
 		{
 			const uint64_t referenceTimePerSecond = 10000000ULL;
-			m_rationalFrameDuration = (REFERENCE_TIME)((referenceTimePerSecond * m_frameDurationTicks) / m_timeScale);
+			
+			// Apply PPM trim correction to frame duration (consistent with RATIONAL_RATIONAL mode)
+			uint64_t trimmedDurationTicks = U64_MulDiv(
+				(uint64_t)m_frameDurationTicks,
+				GetRationalTrimNumerator(),
+				RATIONAL_TRIM_DENOMINATOR);
+			
+			m_rationalFrameDuration = (REFERENCE_TIME)((referenceTimePerSecond * trimmedDurationTicks) / m_timeScale);
 			m_minFrameAdvance = m_rationalFrameDuration / 4;      // 25% of rational duration
 			m_maxFrameAdvance = m_rationalFrameDuration * 2;      // 200% of rational duration
 			
-			DbgLog((LOG_TRACE, 1, TEXT("::HardwareRational(#%I64u): Initialized rational duration=%I64d (%.3fms), limits=[%I64d, %I64d]"),
+			DbgLog((LOG_TRACE, 1, TEXT("::HardwareRational(#%I64u): Initialized rational duration=%I64d (%.3fms) with PPM trim, limits=[%I64d, %I64d]"),
 				videoFrame.GetCounter(), m_rationalFrameDuration, m_rationalFrameDuration / 10000.0,
 				m_minFrameAdvance, m_maxFrameAdvance));
 		}
@@ -779,7 +824,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 
 
-	case DirectShowStartStopTimeMethod::DS_SSTM_HARDWARE_RATIONAL:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
 	{
 		// HYBRID MODE: Use rational math for perfect frame duration
 		timeStop = timeStart + m_rationalFrameDuration;
@@ -869,7 +914,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	switch (m_timestamp)
 	{
 	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
-	case DirectShowStartStopTimeMethod::DS_SSTM_HARDWARE_RATIONAL:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:

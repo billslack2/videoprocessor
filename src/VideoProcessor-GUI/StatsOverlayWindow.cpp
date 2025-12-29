@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright(C) 2025 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -94,9 +94,9 @@ bool StatsOverlayWindow::Create(HWND parentHwnd)
 	}
 
 	// Set up layered window for transparency
-	SetLayeredWindowAttributes(m_hwnd, RGB(0, 0, 0), 240, LWA_ALPHA); // 240/255 = ~94% opacity
+	SetLayeredWindowAttributes(m_hwnd, RGB(0, 0, 0), 120, LWA_ALPHA); // 120/255 = ~47% opacity (50% more transparent than 240/255)
 
-	// Create fonts - match MadVR stats overlay style
+	// Create fonts - match MadVR stats overlay style but 50% larger
 	HDC hdc = GetDC(m_hwnd);
 	if (!hdc)
 	{
@@ -105,8 +105,8 @@ bool StatsOverlayWindow::Create(HWND parentHwnd)
 		return false;
 	}
 	
-	// MadVR uses a monospace font, approximately 22-23 pixels tall (25% larger than before)
-	int fontHeight = 22;
+	// Reduce font size by 10%: 25 -> 23 pixels (25 * 0.9 = 22.5, rounded to 23)
+	int fontHeight = 23;
 
 	m_font = CreateFont(
 		fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
@@ -114,7 +114,7 @@ bool StatsOverlayWindow::Create(HWND parentHwnd)
 		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
 
 	m_boldFont = CreateFont(
-		fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+		fontHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
 
@@ -287,23 +287,12 @@ void StatsOverlayWindow::DrawBackground(HDC hdc)
 	RECT rect;
 	GetClientRect(m_hwnd, &rect);
 
-	// Create semi-transparent background
+	// Create semi-transparent background (no border)
 	HBRUSH brush = CreateSolidBrush(BACKGROUND_COLOR);
 	FillRect(hdc, &rect, brush);
 	DeleteObject(brush);
 
-	// Draw border
-	HPEN pen = CreatePen(PS_SOLID, 1, RGB(80, 80, 80));
-	HPEN oldPen = (HPEN)SelectObject(hdc, pen);
-
-	MoveToEx(hdc, 0, 0, nullptr);
-	LineTo(hdc, rect.right - 1, 0);
-	LineTo(hdc, rect.right - 1, rect.bottom - 1);
-	LineTo(hdc, 0, rect.bottom - 1);
-	LineTo(hdc, 0, 0);
-
-	SelectObject(hdc, oldPen);
-	DeleteObject(pen);
+	// Border removed as requested
 }
 
 void StatsOverlayWindow::DrawStats(HDC hdc)
@@ -316,49 +305,49 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	int y = PADDING;
 	SetTextColor(hdc, TEXT_COLOR);
 
-	// Fixed-width format with labels and values separated for alignment
+	// Fixed-width format with consistent spacing - use 18 chars for label, then value
 	CString line;
 
 	// Resolution
-	line.Format(TEXT("Resolution:        %-20s"), m_stats.resolution.IsEmpty() ? TEXT("---") : m_stats.resolution);
+	line.Format(TEXT("Resolution:       %-s"), m_stats.resolution.IsEmpty() ? TEXT("---") : m_stats.resolution);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
 	// Refresh rate
-	line.Format(TEXT("Refresh:         %7.2f Hz"), m_stats.refreshRate);
+	line.Format(TEXT("Refresh:          %.2f Hz"), m_stats.refreshRate);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
 	// EOTF
-	line.Format(TEXT("EOTF:              %-20s"), m_stats.eotf.IsEmpty() ? TEXT("---") : m_stats.eotf);
+	line.Format(TEXT("EOTF:             %-s"), m_stats.eotf.IsEmpty() ? TEXT("---") : m_stats.eotf);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
 	// Colorspace
-	line.Format(TEXT("Colorspace:        %-20s"), m_stats.colorspace.IsEmpty() ? TEXT("---") : m_stats.colorspace);
+	line.Format(TEXT("Colorspace:       %-s"), m_stats.colorspace.IsEmpty() ? TEXT("---") : m_stats.colorspace);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
 	// Pixel Format
-	line.Format(TEXT("Pixel Format:      %-20s"), m_stats.pixelFormat.IsEmpty() ? TEXT("---") : m_stats.pixelFormat);
+	line.Format(TEXT("Pixel Format:     %-s"), m_stats.pixelFormat.IsEmpty() ? TEXT("---") : m_stats.pixelFormat);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
 	// Video Conversion
-	line.Format(TEXT("Video Conv:        %-20s"), m_stats.videoConversion.IsEmpty() ? TEXT("---") : m_stats.videoConversion);
+	line.Format(TEXT("Video Conv:       %-s"), m_stats.videoConversion.IsEmpty() ? TEXT("---") : m_stats.videoConversion);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 	
-	// Conversion Performance (NEW - show if available)
+	// Conversion Performance (show if available)
 	if (m_stats.hasConversionData)
 	{
-		// Current conversion time (convert ?s to ms)
-		line.Format(TEXT("Conv Time:        %7.2f ms"), m_stats.currentConversionTimeUs / 1000.0);
+		// Current conversion time (convert μs to ms)
+		line.Format(TEXT("Conv Time:        %.2f ms"), m_stats.currentConversionTimeUs / 1000.0);
 		DrawText(hdc, line, PADDING, y);
 		y += LINE_HEIGHT;
 		
-		// 10-second average and max on one line (convert ?s to ms)
-		line.Format(TEXT("10s Avg/Max:      %7.2f / %7.2f ms"), 
+		// 10-second average and max on one line (convert μs to ms)
+		line.Format(TEXT("10s Avg/Max:      %.2f / %.2f ms"), 
 			m_stats.avgConversionTime10s / 1000.0, m_stats.maxConversionTime10s / 1000.0);
 		DrawText(hdc, line, PADDING, y);
 		y += LINE_HEIGHT;
@@ -368,26 +357,33 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += 4;
 
 	// Method
-	line.Format(TEXT("Method:            %-20s"), m_stats.method.IsEmpty() ? TEXT("---") : m_stats.method);
+	line.Format(TEXT("Method:           %-s"), m_stats.method.IsEmpty() ? TEXT("---") : m_stats.method);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	// PPM Correction (NEW)
+	// PPM Correction
 	if (m_stats.hasPPMCorrection)
 	{
-		line.Format(TEXT("PPM Correction:   %+7d"), m_stats.ppmCorrection);
+		line.Format(TEXT("PPM Correction:   %+d"), m_stats.ppmCorrection);
 		DrawText(hdc, line, PADDING, y);
 		y += LINE_HEIGHT;
 	}
 	else if (!m_stats.ppmSource.IsEmpty() && m_stats.ppmSource != TEXT("N/A"))
 	{
-		line.Format(TEXT("PPM Correction:        0 (off)"));
+		line.Format(TEXT("PPM Correction:   0 (off)"));
 		DrawText(hdc, line, PADDING, y);
 		y += LINE_HEIGHT;
 	}
 
-	// Frame Offset
-	line.Format(TEXT("Offset:           %7d ms"), m_stats.frameOffsetMs);
+	// Frame Offset - show N/A for methods that don't support offset
+	if (m_stats.method == TEXT("Rational-Rational") || m_stats.method == TEXT("Clock-Rational"))
+	{
+		line.Format(TEXT("Offset:           N/A"));
+	}
+	else
+	{
+		line.Format(TEXT("Offset:           %d ms"), m_stats.frameOffsetMs);
+	}
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
@@ -395,12 +391,12 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += 4;
 
 	// VP Latency
-	line.Format(TEXT("VP Lat:           %7.2f ms"), m_stats.entryLatencyMs);
+	line.Format(TEXT("VP Lat:           %.2f ms"), m_stats.entryLatencyMs);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
 	// DS Latency
-	line.Format(TEXT("DS Lat:           %7.2f ms"), m_stats.exitLatencyMs);
+	line.Format(TEXT("DS Lat:           %.2f ms"), m_stats.exitLatencyMs);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
@@ -408,20 +404,16 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += 4;
 
 	// Queue info
-	line.Format(TEXT("Queue:             %llu/%llu %s"), m_stats.currentQueueSize, m_stats.maxQueueSize, m_stats.isQueueFull ? TEXT( "[FULL]") : TEXT(""));
+	line.Format(TEXT("Queue:            %llu/%llu%s"), m_stats.currentQueueSize, m_stats.maxQueueSize, m_stats.isQueueFull ? TEXT(" [FULL]") : TEXT(""));
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
-
-	//line.Format(TEXT("Queue Full:        %s"), m_stats.isQueueFull ? TEXT("YES") : TEXT("No "));
-	//DrawText(hdc, line, PADDING, y);
-	//y += LINE_HEIGHT;
 
 	// Frame stats
-	line.Format(TEXT("VFrames:           %llu"), m_stats.capturedFrames);
+	line.Format(TEXT("VFrames:          %llu"), m_stats.capturedFrames);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	line.Format(TEXT("Dropped:           %llu/%llu"), m_stats.capturedDroppedFrames, m_stats.queueDroppedFrames);
+	line.Format(TEXT("Dropped:          %llu/%llu"), m_stats.capturedDroppedFrames, m_stats.queueDroppedFrames);
 	DrawText(hdc, line, PADDING, y);
 
 	SelectObject(hdc, oldFont);
