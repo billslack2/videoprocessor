@@ -55,10 +55,6 @@ private:
 
 	CCritSec m_filterCritSec;
 
-	// Enhanced state for CLOCK_SMART timing improvements
-	mutable REFERENCE_TIME m_nextVideoFrameStartTime = REFERENCE_TIME_INVALID;
-	mutable bool m_hasValidNextTimestamp = false;
-
 	// Core proactive frame management
 	HANDLE m_hFrameAvailableEvent = nullptr;  // Event signaled when frames are added to the queue
 	HANDLE m_hShutdownEvent = nullptr;        // Event signaled when thread should exit

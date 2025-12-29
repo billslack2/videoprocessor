@@ -162,11 +162,6 @@ protected:
 	// This officially notifies MadVR of timeline restart (critical for RATIONAL_RATIONAL)
 	bool m_deliverNewSegment = false;
 	
-	// Flag to temporarily disable pipeline offset after timeline reset
-	// This prevents time gaps that cause repeat loops during restart
-	bool m_disablePipelineOffsetTemporarily = false;
-	int m_framesAfterReset = 0;  // Counter to track frames since reset
-
 	// Render function to render a videoFrame onto a IMediaSample.
 	// Will not release the sample or dec videoframe nor do the Deliver()
 	// Will return S_FRAME_NOT_RENDERED if frame could not be renderered, not an error per-se
@@ -233,7 +228,6 @@ protected:
 	uint64_t m_frameCounterOffset = 0;
 	uint64_t m_frameCounter = 0;
 	uint64_t m_previousFrameCounter = 0;
-	bool m_newSegment = false;
 
 	HDRDataSharedPtr m_hdrData = nullptr;
 	bool m_hdrChanged = false;

@@ -169,7 +169,18 @@ void CV210toP010VideoFrameFormatter::ProcessLineSegment(
         uint16_t* lineUV = dstUV + static_cast<ptrdiff_t>(line >> 1) * width;
 
         // Prefetch next lines to hide memory latency
-        if (line + 2 < endLine)
+        // MEMORY OPTIMIZATION: Deeper prefetch for Ryzen's large L3 cache (32MB on 5800G)
+        // Prefetch 4-6 lines ahead instead of 2 to better utilize memory bandwidth
+        // Modern DDR4 benefits from further-ahead prefetching to hide latency
+        if (line + 6 < endLine)
+        {
+            _mm_prefetch(reinterpret_cast<const char*>(srcData + static_cast<ptrdiff_t>(line + 4) * srcStride), _MM_HINT_T0);
+            _mm_prefetch(reinterpret_cast<const char*>(srcData + static_cast<ptrdiff_t>(line + 5) * srcStride), _MM_HINT_T0);
+            _mm_prefetch(reinterpret_cast<const char*>(srcData + static_cast<ptrdiff_t>(line + 6) * srcStride), _MM_HINT_T0);
+            _mm_prefetch(reinterpret_cast<const char*>(srcData + static_cast<ptrdiff_t>(line + 7) * srcStride), _MM_HINT_T0);
+        }
+        // Roll back prefetch optimization to original 2-line distance
+        else if (line + 2 < endLine)
         {
             _mm_prefetch(reinterpret_cast<const char*>(srcData + static_cast<ptrdiff_t>(line + 2) * srcStride), _MM_HINT_T0);
             _mm_prefetch(reinterpret_cast<const char*>(srcData + static_cast<ptrdiff_t>(line + 3) * srcStride), _MM_HINT_T0);
@@ -530,6 +541,8 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010(
     {
         // Use threaded SIMD for 720p and above
         return ConvertV210ToP010_Threaded(srcData, srcStride, dstY, dstUV, width, height);
+        //return ConvertV210ToP010_Standard(srcData, srcStride, dstY, dstUV, width, height);
+        
     }
     else
     {
@@ -878,6 +891,83 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Optimized(
                 
                 V210_READ_PACK_BLOCK(y1, v, y2);
                 *dstY_ptr++ = y1 << 6; 
+                *dstY_ptr++ = y2 << 6;
+            }
+        }
+    }
+    
+    return true;
+}
+
+// =====================================================================
+bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Standard(
+    const uint8_t* srcData,
+    uint32_t srcStride,
+    uint16_t* dstY,
+    uint16_t* dstUV,
+    uint32_t width,
+    uint32_t height) noexcept
+{
+    // Standard implementation matching the reference optimization level
+    // Uses the same macros and logic flow as the original reference code
+    // but without 720p special casing or SIMD optimizations
+    
+    const uint32_t packsPerLine = width / PIXELS_PER_PACK;
+    
+    for (uint32_t line = 0; line < height; line++)
+    {
+        const uint32_t* src = reinterpret_cast<const uint32_t*>(
+            srcData + line * srcStride);
+        const bool isEvenLine = (line & 1) == 0;
+        
+        // Set destination pointers for this line (matches reference logic)
+        uint16_t* dstY_ptr = dstY + static_cast<ptrdiff_t>(line) * width;
+        uint16_t* dstUV_ptr = isEvenLine ? (dstUV + static_cast<ptrdiff_t>(line >> 1) * width) : nullptr;
+        
+        // Process each pack using the same macro-based approach as reference
+        for (uint32_t pack = 0; pack < packsPerLine; pack++)
+        {
+            uint32_t val;
+            uint16_t u, y1, y2, v;
+            
+            if (isEvenLine)
+            {
+                // Even line: write both Y and UV (matches reference exactly)
+                V210_READ_PACK_BLOCK(u, y1, v);
+                *dstUV_ptr++ = u << 6;
+                *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr++ = v << 6;
+                
+                V210_READ_PACK_BLOCK(y1, u, y2);
+                *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr++ = u << 6;
+                *dstY_ptr++ = y2 << 6;
+                
+                V210_READ_PACK_BLOCK(v, y1, u);
+                *dstUV_ptr++ = v << 6;
+                *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr++ = u << 6;
+                
+                V210_READ_PACK_BLOCK(y1, v, y2);
+                *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr++ = v << 6;
+                *dstY_ptr++ = y2 << 6;
+            }
+            else
+            {
+                // Odd line: Y only (matches reference exactly)
+                V210_READ_PACK_BLOCK(u, y1, v);
+                *dstY_ptr++ = y1 << 6;
+                
+                V210_READ_PACK_BLOCK(y1, u, y2);
+                *dstY_ptr++ = y1 << 6;
+                *dstY_ptr++ = y2 << 6;
+                
+                V210_READ_PACK_BLOCK(v, y1, u);
+                *dstY_ptr++ = y1 << 6;
+                
+                V210_READ_PACK_BLOCK(y1, v, y2);
+                *dstY_ptr++ = y1 << 6;
                 *dstY_ptr++ = y2 << 6;
             }
         }

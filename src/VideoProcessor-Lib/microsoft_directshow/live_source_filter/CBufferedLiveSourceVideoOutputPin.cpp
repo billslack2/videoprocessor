@@ -443,18 +443,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				
 				m_lastHardwareTimestamp = ConvertTimingClockToReferenceTime(
 					videoFrame.GetTimingTimestamp(), m_timingClock->TimingClockTicksPerSecond());
-
-				// Update next frame timestamp
-				if (!m_videoFrameQueue.empty())
-				{
-					m_nextVideoFrameStartTime = (REFERENCE_TIME)(
-						m_videoFrameQueue.front().GetTimingTimestamp() *
-						(10000000.0 / m_timingClock->TimingClockTicksPerSecond()));
-				}
-				else
-				{
-					m_nextVideoFrameStartTime = REFERENCE_TIME_INVALID;
-				}
 			}
 
 			// Goal 1: Ensure timely delivery - process frame efficiently
