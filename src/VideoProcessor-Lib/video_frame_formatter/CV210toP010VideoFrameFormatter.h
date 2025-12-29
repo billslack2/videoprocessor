@@ -11,6 +11,10 @@
 
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 #include <vector>
+#include <thread>
+#include <atomic>
+#include <mutex>
+#include <functional>
 
 
  /**
@@ -22,7 +26,8 @@ class CV210toP010VideoFrameFormatter:
 {
 public:
 
-	virtual ~CV210toP010VideoFrameFormatter() {}
+	CV210toP010VideoFrameFormatter();
+	virtual ~CV210toP010VideoFrameFormatter();
 
 	// IVideoFrameFormatter
 	void OnVideoState(VideoStateComPtr& videoState) override;
@@ -40,14 +45,59 @@ private:
 	std::vector<uint16_t> m_tempY;
 	std::vector<uint16_t> m_tempUV;
 
+	// ========================================
+	// Thread pool for parallel processing
+	// Uses simple spin-wait pattern for low latency
+	// ========================================
+	static constexpr uint32_t MAX_THREADS = 4;
+	static constexpr uint32_t MIN_LINES_FOR_THREADING = 1080; // Only thread 1080p and above
+	
+	struct ThreadWorkItem
+	{
+		const uint8_t* srcData = nullptr;
+		uint32_t srcStride = 0;
+		uint16_t* dstY = nullptr;
+		uint16_t* dstUV = nullptr;
+		uint32_t width = 0;
+		uint32_t startLine = 0;
+		uint32_t endLine = 0;
+	};
+	
+	struct ThreadContext
+	{
+		std::thread thread;
+		std::atomic<int> state{0};  // 0=idle, 1=working, 2=exit
+		ThreadWorkItem work;
+		
+		ThreadContext() = default;
+		~ThreadContext() = default;
+		ThreadContext(const ThreadContext&) = delete;
+		ThreadContext& operator=(const ThreadContext&) = delete;
+		ThreadContext(ThreadContext&&) = delete;
+		ThreadContext& operator=(ThreadContext&&) = delete;
+	};
+	
+	std::unique_ptr<ThreadContext[]> m_threadContexts;
+	bool m_threadsInitialized = false;
+	
+	void InitializeThreadPool();
+	void ShutdownThreadPool();
+	static void ThreadWorkerStatic(CV210toP010VideoFrameFormatter* self, uint32_t threadIndex);
+	
+	// Process a segment of lines (used by both main thread and worker threads)
+	void ProcessLineSegment(
+		const uint8_t* srcData, uint32_t srcStride,
+		uint16_t* dstY, uint16_t* dstUV,
+		uint32_t width, uint32_t startLine, uint32_t endLine) noexcept;
+
 	// Performance tracking and optimization features
 #ifdef _DEBUG
 	mutable uint64_t m_totalConversions = 0;
 	mutable uint64_t m_totalConversionTimeUs = 0;
-	mutable uint64_t m_simdConversions = 0;        // Track SIMD usage
-	mutable uint64_t m_scalarConversions = 0;      // Track scalar fallbacks
-	mutable uint64_t m_avx2ConversionTimeUs = 0;   // Track AVX2 performance
-	mutable uint64_t m_scalarConversionTimeUs = 0; // Track scalar performance
+	mutable uint64_t m_simdConversions = 0;
+	mutable uint64_t m_scalarConversions = 0;
+	mutable uint64_t m_avx2ConversionTimeUs = 0;
+	mutable uint64_t m_scalarConversionTimeUs = 0;
 #endif
 
 	// Rolling window performance tracking (for stats overlay)
@@ -92,12 +142,12 @@ private:
 
 	// CPU feature caching for performance
 	mutable bool m_cpuFeaturesChecked = false;
-	mutable bool m_hasAVX2 = false;              // For V210 SIMD (disabled)
-	mutable bool m_hasAVX2MemoryOps = false;     // For safe memory operations
+	mutable bool m_hasAVX2 = false;
+	mutable bool m_hasAVX2MemoryOps = false;
 	
 	// Performance optimization methods
 	bool CheckCPUFeatures() const;
-	bool HasAVX2MemoryOps() const;               // Safe memory operations check
+	bool HasAVX2MemoryOps() const;
 	void LogPerformanceStats() const;
 	
 public:
@@ -110,14 +160,18 @@ public:
 	}
 	
 private:
-	// ?? COMPILER-FRIENDLY: Cleaner conversion methods (optimized for /O2 /Ob2 /Oi /Ot)
+	// Conversion methods
 	bool ConvertV210ToP010(const uint8_t* srcData, uint32_t srcStride, 
 	                      uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	bool ConvertV210ToP010_720p(const uint8_t* srcData, uint32_t srcStride,
 	                           uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	bool ConvertV210ToP010_Standard(const uint8_t* srcData, uint32_t srcStride,
 	                               uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
+	bool ConvertV210ToP010_Optimized(const uint8_t* srcData, uint32_t srcStride,
+	                               uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	bool ConvertV210ToP010_SIMD(const uint8_t* srcData, uint32_t srcStride,
 	                           uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
+	bool ConvertV210ToP010_Threaded(const uint8_t* srcData, uint32_t srcStride,
+	                               uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	void LogConversionPerformance(uint64_t conversionTimeUs, bool success) const;
 };

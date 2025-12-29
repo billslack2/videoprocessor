@@ -402,9 +402,23 @@ void ALiveSourceVideoOutputPin::Reset()
 		{
 			int ppmCorrection = RATIONAL_TRIM_DENOMINATOR - GetRationalTrimNumerator();
 			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: %d (from correction.cfg)"), ppmCorrection));
-			DbgLog((LOG_TRACE, 1, TEXT("  Trim ratio: %llu/%llu = %.6f%%"), 
-				GetRationalTrimNumerator(), RATIONAL_TRIM_DENOMINATOR,
-				(100.0 * GetRationalTrimNumerator()) / RATIONAL_TRIM_DENOMINATOR));
+			
+			// Show trim ratio with context
+			double trimPercentage = (100.0 * GetRationalTrimNumerator()) / RATIONAL_TRIM_DENOMINATOR;
+			if (ppmCorrection > 0)
+			{
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Stream runs %d PPM FASTER (trim %.6f%% = slight slowdown to compensate)"), 
+					ppmCorrection, trimPercentage));
+			}
+			else if (ppmCorrection < 0)
+			{
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Stream runs %d PPM SLOWER (trim %.6f%% = slight speedup to compensate)"), 
+					ppmCorrection, trimPercentage));
+			}
+			else
+			{
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: No PPM correction (trim = 100.000000%)")));
+			}
 		}
 		else
 		{
