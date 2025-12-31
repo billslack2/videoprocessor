@@ -30,12 +30,46 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 		CloseHandle(m_hFrameAvailableEvent);
 		throw std::runtime_error("Failed to create shutdown event");
 	}
+	
+	// Create shutdown event for conversion worker thread
+	m_hConversionShutdownEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+	if (!m_hConversionShutdownEvent)
+	{
+		CloseHandle(m_hShutdownEvent);
+		CloseHandle(m_hFrameAvailableEvent);
+		throw std::runtime_error("Failed to create conversion shutdown event");
+	}
+	
+	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: ASYNC conversion architecture initialized")));
 }
 
 
 CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 {
+	// Signal conversion thread to shutdown
+	if (m_hConversionShutdownEvent)
+	{
+		SetEvent(m_hConversionShutdownEvent);
+	}
+	
+	// Wait for conversion thread to exit
+	if (m_hConversionThread)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("~CBufferedLiveSourceVideoOutputPin: Waiting for conversion thread to exit...")));
+		WaitForSingleObject(m_hConversionThread, 5000);  // 5 second timeout
+		CloseHandle(m_hConversionThread);
+		m_hConversionThread = nullptr;
+	}
+	
+	// Purge both queues
+	PurgeConvertedQueue();
 	PurgeQueue();
+	
+	if (m_hConversionShutdownEvent)
+	{
+		CloseHandle(m_hConversionShutdownEvent);
+		m_hConversionShutdownEvent = nullptr;
+	}
 	
 	if (m_hShutdownEvent)
 	{
@@ -48,6 +82,8 @@ CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 		CloseHandle(m_hFrameAvailableEvent);
 		m_hFrameAvailableEvent = nullptr;
 	}
+	
+	DbgLog((LOG_TRACE, 1, TEXT("~CBufferedLiveSourceVideoOutputPin: Async conversion shutdown complete")));
 }
 
 
@@ -77,16 +113,44 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			m_isActive = true;
 		}
 
-		// Log PROACTIVE approach being activated
-		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::Active() - PROACTIVE frame management:")));
-		DbgLog((LOG_TRACE, 1, TEXT("  Goal 1: Ensure timely delivery (60% queue target, 8ms timeouts)")));
-		DbgLog((LOG_TRACE, 1, TEXT("  Goal 2: Ensure single delivery (atomic dequeue operations)")));
-		DbgLog((LOG_TRACE, 1, TEXT("  Goal 3: Accurate timestamps (integer math, monotonic enforcement)")));
-		DbgLog((LOG_TRACE, 1, TEXT("  Simplified: No complex reactive recovery - prevention focused")));
+		// Log ASYNC conversion approach
+		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::Active() - ASYNC conversion architecture:")));
+		DbgLog((LOG_TRACE, 1, TEXT("  Raw frames → Conversion Worker (OFF critical path) → Pre-Converted Queue → Delivery Thread → MadVR")));
+		DbgLog((LOG_TRACE, 1, TEXT("  Benefit: MadVR gets 100%% of frame time (conversion happens in parallel)")));
+		DbgLog((LOG_TRACE, 1, TEXT("  Result: Zero conversion latency on delivery path")));
 		
-		// start the thread
-		if (!Create())
+		// Start conversion worker thread FIRST (before delivery thread)
+		// This ensures conversions can happen immediately
+		ResetEvent(m_hConversionShutdownEvent);
+		m_hConversionThread = CreateThread(
+			nullptr,
+			0,
+			ConversionThreadProc,
+			this,
+			0,
+			&m_conversionThreadId);
+		
+		if (!m_hConversionThread)
+		{
+			DbgLog((LOG_ERROR, 1, TEXT("Active(): Failed to create conversion thread")));
+			m_isActive = false;
 			return E_FAIL;
+		}
+		
+		DbgLog((LOG_TRACE, 1, TEXT("Active(): Conversion worker thread started (ID: %d)"), m_conversionThreadId));
+		
+		// Start the delivery thread
+		if (!Create())
+		{
+			// Cleanup conversion thread
+			SetEvent(m_hConversionShutdownEvent);
+			WaitForSingleObject(m_hConversionThread, 1000);
+			CloseHandle(m_hConversionThread);
+			m_hConversionThread = nullptr;
+			
+			m_isActive = false;
+			return E_FAIL;
+		}
 
 		return S_OK;
 	}
@@ -112,18 +176,40 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 			m_isActive = false;
 
 			PurgeQueue();
+			PurgeConvertedQueue();
 		}
 
-		// Signal shutdown event before waiting for thread to exit
+		// Signal shutdown events before waiting for threads to exit
+		if (m_hConversionShutdownEvent)
+			SetEvent(m_hConversionShutdownEvent);
+		
 		if (m_hShutdownEvent)
 			SetEvent(m_hShutdownEvent);
 
+		// Wait for conversion thread to exit FIRST
+		if (m_hConversionThread)
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("Inactive(): Waiting for conversion thread to exit...")));
+			DWORD waitResult = WaitForSingleObject(m_hConversionThread, 2000);
+			if (waitResult == WAIT_TIMEOUT)
+			{
+				DbgLog((LOG_WARNING, 1, TEXT("Inactive(): Conversion thread did not exit cleanly")));
+			}
+			CloseHandle(m_hConversionThread);
+			m_hConversionThread = nullptr;
+		}
+		
+		// Then wait for delivery thread
 		if (ThreadExists())
 		{
+			DbgLog((LOG_TRACE, 1, TEXT("Inactive(): Waiting for delivery thread to exit...")));
 			Close();  // This waits for thread to exit
 		}
 
-		// Reset shutdown event for next activation
+		// Reset shutdown events for next activation
+		if (m_hConversionShutdownEvent)
+			ResetEvent(m_hConversionShutdownEvent);
+		
 		if (m_hShutdownEvent)
 			ResetEvent(m_hShutdownEvent);
 	}
@@ -240,12 +326,12 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 
 void CBufferedLiveSourceVideoOutputPin::Reset()
 {
-	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::Reset() - PROACTIVE system reset")));
+	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::Reset() - ASYNC conversion reset")));
 	
 	{
 		CAutoLock lock(&m_filterCritSec);
 		
-		// Purge all frames efficiently
+		// Purge all raw frames efficiently
 		size_t purgedFrames = 0;
 		while (!m_videoFrameQueue.empty())
 		{
@@ -254,17 +340,43 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 			m_videoFrameQueue.pop_front();
 			++purgedFrames;
 		}
-		m_droppedFrameCount += purgedFrames;
 		
-		// Reset timeline state
+		DbgLog((LOG_TRACE, 1, TEXT("Reset(): Purged %zu raw frames"), purgedFrames));
+	}
+	
+	// Also purge converted sample queue
+	{
+		CAutoLock lock(&m_convertedQueueLock);
+		
+		size_t purgedSamples = 0;
+		while (!m_convertedSampleQueue.empty())
+		{
+			IMediaSample* pSample = m_convertedSampleQueue.front();
+			m_convertedSampleQueue.pop_front();
+			if (pSample)
+			{
+				pSample->Release();
+				++purgedSamples;
+			}
+		}
+		
+		DbgLog((LOG_TRACE, 1, TEXT("Reset(): Purged %zu pre-converted samples"), purgedSamples));
+	}
+	
+	// Reset timeline state
+	{
+		CAutoLock lock(&m_filterCritSec);
+		
 		m_frameCounter = 0;
 		m_previousFrameCounter = 0;
 		m_frameCounterOffset = 0;
 		m_previousTimeStop = 0;
 		m_startTimeOffset = 0;
-		
-		DbgLog((LOG_TRACE, 1, TEXT("Reset(): Purged %zu frames, timeline reset"), purgedFrames));
 	}
+	
+	// Reset conversion metrics
+	m_totalConversionTimeUs = 0;
+	m_conversionFrameCount = 0;
 	
 	// Reset simple proactive state
 	m_recentDeliveryFailures = 0;
@@ -312,7 +424,34 @@ void CBufferedLiveSourceVideoOutputPin::PurgeQueue()
 	
 	if (purgedFrames > 0)
 	{
-		DbgLog((LOG_TRACE, 1, TEXT("PurgeQueue(): Purged %zu frames"), purgedFrames));
+		DbgLog((LOG_TRACE, 1, TEXT("PurgeQueue(): Purged %zu raw frames"), purgedFrames));
+	}
+}
+
+
+void CBufferedLiveSourceVideoOutputPin::PurgeConvertedQueue()
+{
+	size_t purgedSamples = 0;
+	
+	{
+		CAutoLock lock(&m_convertedQueueLock);
+
+		while (!m_convertedSampleQueue.empty())
+		{
+			IMediaSample* pSample = m_convertedSampleQueue.front();
+			m_convertedSampleQueue.pop_front();
+			
+			if (pSample)
+			{
+				pSample->Release();
+				++purgedSamples;
+			}
+		}
+	}
+	
+	if (purgedSamples > 0)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("PurgeConvertedQueue(): Purged %zu pre-converted samples"), purgedSamples));
 	}
 }
 
@@ -376,13 +515,26 @@ CBufferedLiveSourceVideoOutputPin::ProactiveQueueMetrics CBufferedLiveSourceVide
 		metrics.currentSize = m_videoFrameQueue.size();
 	}
 	
+	{
+		CAutoLock lock(const_cast<CCritSec*>(&m_convertedQueueLock));
+		metrics.convertedQueueSize = m_convertedSampleQueue.size();
+	}
+	
 	metrics.maxSize = m_frameQueueMaxSize;
 	metrics.proactiveTarget = GetProactiveQueueTarget();
 	metrics.totalDropped = m_droppedFrameCount;
 	metrics.recentFailures = m_recentDeliveryFailures;
 	
-	// Simple health check: queue below target and no recent failures
-	metrics.isHealthy = (metrics.currentSize <= metrics.proactiveTarget) && (metrics.recentFailures < 3);
+	// Calculate average conversion time
+	if (m_conversionFrameCount > 0)
+	{
+		metrics.avgConversionTimeUs = m_totalConversionTimeUs / m_conversionFrameCount;
+	}
+	
+	// Simple health check: queues below target and no recent failures
+	metrics.isHealthy = (metrics.currentSize <= metrics.proactiveTarget) && 
+	                    (metrics.recentFailures < 3) &&
+	                    (metrics.convertedQueueSize < m_frameQueueMaxSize);
 	
 	return metrics;
 }
@@ -392,7 +544,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	// Set thread priority for time-critical frame delivery
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 	
-	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: PROACTIVE thread started - focus: timely delivery, no duplicates, accurate timestamps")));
+	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: DELIVERY thread started - pulls PRE-CONVERTED samples")));
+	DbgLog((LOG_TRACE, 1, TEXT("Delivery thread: ZERO conversion latency - samples already converted by worker")));
 
 	// Multi-event synchronization
 	HANDLE events[2] = { m_hFrameAvailableEvent, m_hShutdownEvent };
@@ -417,68 +570,36 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			break;
 		}
 
-		// Process available frames with simple batching limit
+		// Process available PRE-CONVERTED frames
 		const DWORD startTime = GetTickCount();
 		
 		while (true)
 		{
-			VideoFrame videoFrame;
+			IMediaSample* pSample = nullptr;
+			
+			// Get pre-converted sample from queue (INSTANT - no blocking!)
 			{
-				CAutoLock lock(&m_filterCritSec);
-				if (!m_isActive || m_videoFrameQueue.empty()) 
+				CAutoLock lock(&m_convertedQueueLock);
+				if (m_convertedSampleQueue.empty()) 
 					break;
 
-				// Goal 2: Ensure single delivery - atomic dequeue
-				videoFrame = m_videoFrameQueue.front();
-				m_videoFrameQueue.pop_front();
-
-				// Update timing for CLOCK_SMART (essential only)
-				if (m_lastHardwareTimestamp > 0)
-				{
-					const REFERENCE_TIME currentTimestamp = ConvertTimingClockToReferenceTime(
-						videoFrame.GetTimingTimestamp(), m_timingClock->TimingClockTicksPerSecond());
-					const REFERENCE_TIME actualDuration = currentTimestamp - m_lastHardwareTimestamp;
-					UpdateFrameDurationHistory(actualDuration);
-				}
-				
-				m_lastHardwareTimestamp = ConvertTimingClockToReferenceTime(
-					videoFrame.GetTimingTimestamp(), m_timingClock->TimingClockTicksPerSecond());
+				// CRITICAL: Pull pre-converted sample (no conversion here!)
+				pSample = m_convertedSampleQueue.front();
+				m_convertedSampleQueue.pop_front();
 			}
 
-			// Goal 1: Ensure timely delivery - process frame efficiently
-			IMediaSample* pSample = nullptr;
-			HRESULT hr = GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);
+			// Deliver sample to MadVR (ZERO conversion latency!)
+			HRESULT hr = Deliver(pSample);
 			if (FAILED(hr))
 			{
-				videoFrame.SourceBufferRelease();
-				++m_droppedFrameCount;
-				m_recentDeliveryFailures++;
-				continue;
-			}
-
-			// Goal 3: Ensure accurate timestamps - render with proper timing
-			hr = RenderVideoFrameIntoSample(videoFrame, pSample);
-			if (FAILED(hr))
-			{
-				videoFrame.SourceBufferRelease();
 				pSample->Release();
 				++m_droppedFrameCount;
 				m_recentDeliveryFailures++;
+				DbgLog((LOG_WARNING, 1, TEXT("ThreadProc: Deliver failed, hr=0x%x"), hr));
 				continue;
 			}
 
-			hr = Deliver(pSample);
-			if (FAILED(hr))
-			{
-				videoFrame.SourceBufferRelease();
-				pSample->Release();
-				++m_droppedFrameCount;
-				m_recentDeliveryFailures++;
-				continue;
-			}
-
-			// Success - clean delivery
-			videoFrame.SourceBufferRelease();
+			// Success - clean delivery with ZERO conversion overhead
 			pSample->Release();
 			m_recentDeliveryFailures = 0;  // Reset on success
 			
@@ -488,6 +609,112 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		}
 	}
 
-	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: PROACTIVE thread exiting")));
+	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: DELIVERY thread exiting")));
+	return 0;
+}
+
+DWORD WINAPI CBufferedLiveSourceVideoOutputPin::ConversionThreadProc(LPVOID lpParameter)
+{
+	CBufferedLiveSourceVideoOutputPin* pPin = static_cast<CBufferedLiveSourceVideoOutputPin*>(lpParameter);
+	return pPin->ConversionWorker();
+}
+
+
+DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
+{
+	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+	
+	DbgLog((LOG_TRACE, 1, TEXT("ConversionWorker: ASYNC conversion thread started - conversion OFF critical path")));
+	DbgLog((LOG_TRACE, 1, TEXT("ConversionWorker: MadVR gets 100%% of frame time for rendering")));
+	
+	while (true)
+	{
+		// Check for shutdown
+		if (WaitForSingleObject(m_hConversionShutdownEvent, 0) == WAIT_OBJECT_0)
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("ConversionWorker: Shutdown signal received, exiting")));
+			break;
+		}
+		
+		// Get next raw frame to convert
+		VideoFrame videoFrame;
+		bool hasFrame = false;
+		{
+			CAutoLock lock(&m_filterCritSec);
+			
+			if (!m_isActive)
+				break;
+			
+			if (!m_videoFrameQueue.empty())
+			{
+				videoFrame = m_videoFrameQueue.front();
+				m_videoFrameQueue.pop_front();
+				hasFrame = true;
+			}
+		}
+		
+		// No frame available - sleep briefly
+		if (!hasFrame)
+		{
+			Sleep(1);  // 1ms sleep to avoid busy-wait
+			continue;
+		}
+		
+		// Allocate sample for conversion
+		IMediaSample* pSample = nullptr;
+		HRESULT hr = GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);
+		if (FAILED(hr))
+		{
+			DbgLog((LOG_WARNING, 1, TEXT("ConversionWorker: Failed to get delivery buffer, dropping frame")));
+			videoFrame.SourceBufferRelease();
+			++m_droppedFrameCount;
+			continue;
+		}
+		
+		// ASYNC CONVERSION: This happens OFF the critical rendering path
+		// MadVR delivery continues uninterrupted in parallel
+		const auto convStartTime = GetWallClockTime();
+		
+		hr = RenderVideoFrameIntoSample(videoFrame, pSample);
+		
+		const auto convEndTime = GetWallClockTime();
+		const uint64_t convTimeUs = (convEndTime - convStartTime) / 10;
+		
+		// Track conversion time for metrics
+		m_totalConversionTimeUs += convTimeUs;
+		++m_conversionFrameCount;
+		
+		// Log periodically
+		if ((m_conversionFrameCount % 300) == 0)  // Every 5 seconds at 60fps
+		{
+			const uint64_t avgConvUs = m_totalConversionTimeUs / m_conversionFrameCount;
+			DbgLog((LOG_TRACE, 1, TEXT("ConversionWorker: Converted %I64u frames, avg %.2f ms (OFF critical path)"),
+				m_conversionFrameCount, avgConvUs / 1000.0));
+		}
+		
+		if (FAILED(hr))
+		{
+			DbgLog((LOG_WARNING, 1, TEXT("ConversionWorker: Conversion failed for frame #%I64u"), 
+				videoFrame.GetCounter()));
+			videoFrame.SourceBufferRelease();
+			pSample->Release();
+			++m_droppedFrameCount;
+			continue;
+		}
+		
+		// Frame converted successfully - add to converted queue
+		{
+			CAutoLock lock(&m_convertedQueueLock);
+			m_convertedSampleQueue.push_back(pSample);  // Store pre-converted sample
+		}
+		
+		// Release raw frame
+		videoFrame.SourceBufferRelease();
+		
+		// Signal frame available to delivery thread
+		SetEvent(m_hFrameAvailableEvent);
+	}
+	
+	DbgLog((LOG_TRACE, 1, TEXT("ConversionWorker: Thread exiting")));
 	return 0;
 }

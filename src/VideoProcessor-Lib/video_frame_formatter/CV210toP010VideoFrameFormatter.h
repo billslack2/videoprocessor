@@ -65,8 +65,8 @@ private:
 
 	// Configuration for conversion method and threading
 	ConversionMethod m_conversionMethod = ConversionMethod::AUTO;
-	uint32_t m_minCoreCount = 2;    // Minimum cores to use (default: 2)
-	uint32_t m_maxCoreCount = 0;    // Maximum cores to use (0 = auto-detect, leave 2 for OS)
+	uint32_t m_minCoreCount = 1;    // Minimum cores to use (default: 1)
+	uint32_t m_maxCoreCount = 2;    // Maximum cores to use (default: 2, 0 = auto-detect)
 
 	// Pre-allocated buffers to avoid per-frame allocation
 	std::vector<uint16_t> m_tempY;

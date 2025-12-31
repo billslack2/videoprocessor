@@ -321,12 +321,12 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	// Measured refresh rate (calculated from frame arrivals)
 	if (m_stats.measuredRefreshRate > 0.0)
 	{
-		line.Format(TEXT("Capture Rate:     %.6f Hz"), m_stats.measuredRefreshRate);
+		line.Format(TEXT("~ Capture Rate:   %.6f Hz"), m_stats.measuredRefreshRate);
 		DrawText(hdc, line, PADDING, y);
 		y += LINE_HEIGHT;
 		
 		// PPM deviation between theoretical and measured rates
-		line.Format(TEXT("Deviation:        %+d ppm"), m_stats.ppmDeviation);
+		line.Format(TEXT("~ Deviation:      %+d ppm"), m_stats.ppmDeviation);
 		DrawText(hdc, line, PADDING, y);
 		y += LINE_HEIGHT;
 	}
@@ -354,8 +354,15 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	// Conversion Performance (show if available)
 	if (m_stats.hasConversionData)
 	{
-		// Current conversion time (convert μs to ms)
-		line.Format(TEXT("Conv Time:        %.2f ms"), m_stats.currentConversionTimeUs / 1000.0);
+		// Calculate frame time and conversion percentage
+		double frameTimeMs = 1000.0 / m_stats.refreshRate;
+		double currentConvMs = m_stats.currentConversionTimeUs / 1000.0;
+		double conversionPct = (currentConvMs / frameTimeMs) * 100.0;
+	
+		
+			line.Format(TEXT("Conv Time:        %.2f ms"), 
+				currentConvMs, conversionPct);
+		
 		DrawText(hdc, line, PADDING, y);
 		y += LINE_HEIGHT;
 		

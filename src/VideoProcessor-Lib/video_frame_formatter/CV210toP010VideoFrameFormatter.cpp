@@ -68,7 +68,10 @@ void CV210toP010VideoFrameFormatter::LoadConfigurationFile()
     
     if (!configFile.is_open())
     {
-        // Config file optional - use defaults
+        // Config file not found - use explicit defaults as specified
+        m_conversionMethod = ConversionMethod::AUTO;
+        m_minCoreCount = 1;
+        m_maxCoreCount = 2;
         return;
     }
 
