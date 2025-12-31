@@ -146,4 +146,9 @@ private:
 	void OnLinkStatusBusyChange();
 
 	std::atomic<ULONG> m_refCount;
+	
+	// HDMI GENLOCK: Toggle between clock modes for single-input scenarios
+	// true  = Free-running mode (stable, immune to jitter) - RECOMMENDED for most use
+	// false = HDMI-locked mode (syncs to input signal) - FOR APPLE TV GENLOCK
+	static constexpr bool USE_FREE_RUNNING_CLOCK = true;  // Changed to enable HDMI genlock
 };

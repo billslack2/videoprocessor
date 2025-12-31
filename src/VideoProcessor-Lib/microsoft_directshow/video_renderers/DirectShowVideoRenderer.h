@@ -70,6 +70,9 @@ public:
 
 	// Get current PPM correction information (override for RATIONAL_RATIONAL support)
 	bool GetPPMCorrectionInfo(int& ppmValue, bool& hasCorrection, CString& source) const override;
+	
+	// Get frame rate measurement and PPM deviation (for timing diagnostics)
+	bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const override;
 
 protected:
 
@@ -109,6 +112,14 @@ protected:
 	uint64_t m_missingFrameCounter = 0;
 	double m_frameLatencyEntry = 0.0;
 
+	// PPM measurement variables
+	mutable timingclocktime_t m_firstFrameTime = 0;
+	mutable timingclocktime_t m_lastFrameTime = 0;  
+	mutable uint64_t m_frameCountForPPM = 0;
+	mutable double m_measuredFrameRate = 0.0;
+	mutable int m_ppmDeviation = 0;
+	mutable bool m_hasPPMData = false;
+
 	// Handle Directshow graph events
 	void OnGraphEvent(long evCode, LONG_PTR param1, LONG_PTR param2);
 
@@ -145,6 +156,8 @@ protected:
 
 	virtual void MediaTypeGenerate() = 0;
 
+	// PPM calculation helper
+	void UpdatePPMMeasurement(timingclocktime_t frameTime) const;
 
 private:
 

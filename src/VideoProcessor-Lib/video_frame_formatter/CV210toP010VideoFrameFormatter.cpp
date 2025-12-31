@@ -11,6 +11,9 @@
 #include <vector>
 #include <immintrin.h>
 #include <intrin.h> // For __cpuid
+#include <fstream>
+#include <sstream>
+#include <iomanip>  // For std::setprecision
 
 // Macros for V210 unpacking
 #define V210_READ_PACK_BLOCK(a, b, c) \
@@ -48,11 +51,83 @@
 CV210toP010VideoFrameFormatter::CV210toP010VideoFrameFormatter()
 {
     // Thread pool will be initialized lazily on first large frame
+    LoadConfigurationFile();
 }
 
 CV210toP010VideoFrameFormatter::~CV210toP010VideoFrameFormatter()
 {
     ShutdownThreadPool();
+}
+
+// =====================================================================
+// Configuration File Loading
+// =====================================================================
+void CV210toP010VideoFrameFormatter::LoadConfigurationFile()
+{
+    std::ifstream configFile("p010_conversion.cfg");
+    
+    if (!configFile.is_open())
+    {
+        // Config file optional - use defaults
+        return;
+    }
+
+    std::string line;
+    int lineNumber = 0;
+
+    while (std::getline(configFile, line))
+    {
+        lineNumber++;
+        
+        // Skip empty lines and comments
+        if (line.empty() || line[0] == '#')
+            continue;
+
+        // Find the '=' separator
+        size_t equalPos = line.find('=');
+        if (equalPos == std::string::npos)
+            continue;
+
+        std::string key = line.substr(0, equalPos);
+        std::string value = line.substr(equalPos + 1);
+
+        // Trim whitespace from key and value
+        key.erase(0, key.find_first_not_of(" \t"));
+        key.erase(key.find_last_not_of(" \t") + 1);
+        value.erase(0, value.find_first_not_of(" \t"));
+        value.erase(value.find_last_not_of(" \t") + 1);
+
+        try
+        {
+            if (key == "ConversionMethod")
+            {
+                if (value == "AUTO")
+                    m_conversionMethod = ConversionMethod::AUTO;
+                else if (value == "SIMD")
+                    m_conversionMethod = ConversionMethod::SIMD;
+                else if (value == "OPTIMIZED")
+                    m_conversionMethod = ConversionMethod::OPTIMIZED;
+                else if (value == "STANDARD")
+                    m_conversionMethod = ConversionMethod::STANDARD;
+            }
+            else if (key == "MinCoreCount")
+            {
+                uint32_t minCores = std::stoul(value);
+                m_minCoreCount = std::max(1u, minCores);
+            }
+            else if (key == "MaxCoreCount")
+            {
+                uint32_t maxCores = std::stoul(value);
+                m_maxCoreCount = maxCores;
+            }
+        }
+        catch (const std::exception&)
+        {
+            // Invalid value, skip and use default
+        }
+    }
+
+    configFile.close();
 }
 
 // =====================================================================
@@ -533,21 +608,55 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010(
     uint32_t width,
     uint32_t height) noexcept
 {
+    // 720p uses special-case handling regardless of method selection
     if (m_special720)
     {
         return ConvertV210ToP010_720p(srcData, srcStride, dstY, dstUV, width, height);
     }
-    else if (height >= MIN_LINES_FOR_THREADING && CheckCPUFeatures())
+
+    // For non-720p, respect the configured conversion method
+    ConversionMethod method = m_conversionMethod;
+
+    // AUTO mode: select based on CPU features and frame size
+    if (method == ConversionMethod::AUTO)
     {
-        // Use threaded SIMD for 720p and above
-        return ConvertV210ToP010_Threaded(srcData, srcStride, dstY, dstUV, width, height);
-        //return ConvertV210ToP010_Standard(srcData, srcStride, dstY, dstUV, width, height);
-        
+        // Use threaded SIMD for 720p and above (if AVX2 available)
+        if (height >= MIN_LINES_FOR_THREADING && CheckCPUFeatures())
+        {
+            method = ConversionMethod::SIMD;
+        }
+        else if (CheckCPUFeatures())
+        {
+            // Use non-threaded SIMD for smaller frames with AVX2
+            method = ConversionMethod::OPTIMIZED;
+        }
+        else
+        {
+            // Fall back to standard scalar
+            method = ConversionMethod::STANDARD;
+        }
     }
-    else
+
+    // Execute the selected conversion method
+    switch (method)
     {
-        // Use single-threaded SIMD for smaller frames
-        return ConvertV210ToP010_SIMD(srcData, srcStride, dstY, dstUV, width, height);
+        case ConversionMethod::SIMD:
+            // Threaded SIMD conversion (requires AVX2)
+            if (!CheckCPUFeatures())
+            {
+                // Fall back if AVX2 not available
+                return ConvertV210ToP010_Optimized(srcData, srcStride, dstY, dstUV, width, height);
+            }
+            return ConvertV210ToP010_Threaded(srcData, srcStride, dstY, dstUV, width, height);
+
+        case ConversionMethod::OPTIMIZED:
+            // Non-threaded scalar with optimizations
+            return ConvertV210ToP010_Optimized(srcData, srcStride, dstY, dstUV, width, height);
+
+        case ConversionMethod::STANDARD:
+        default:
+            // Standard scalar baseline
+            return ConvertV210ToP010_Standard(srcData, srcStride, dstY, dstUV, width, height);
     }
 }
 

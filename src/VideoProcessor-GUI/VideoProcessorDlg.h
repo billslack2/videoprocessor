@@ -39,6 +39,12 @@
 #define WM_MESSAGE_RENDERER_STATE_CHANGE                (WM_APP + 8)
 #define WM_MESSAGE_RENDERER_DETAIL_STRING               (WM_APP + 9)
 
+// Timer IDs
+#define TIMER_ID_1SECOND 1
+#define RESIZE_DEBOUNCE_TIMER_ID 2
+#define QUEUE_RESET_DELAY_TIMER_ID 3
+#define FULLSCREEN_FOCUS_TIMER_ID 4
+
 
 enum class HdrColorspaceOptions
 {
@@ -74,10 +80,6 @@ public:
 
 	// Dialog Data
 	enum { IDD = IDD_VIDEOPROCESSOR_DIALOG };
-
-	// Timer ID constants
-	static const UINT_PTR TIMER_ID_1SECOND = 1;
-	static const UINT_PTR RESIZE_DEBOUNCE_TIMER_ID = 2;
 
 	// Option handlers
 	void StartFullScreen();
@@ -280,7 +282,7 @@ protected:
 	size_t m_consecutiveStuckSeconds = 0;
 	uint64_t m_lastDroppedFrames = 0;
 	size_t m_lastQueueSize = 0;
-	boolean m_pendingQueueReset = false;
+	bool m_pendingQueueReset = false;
 
 	// Frame offset by refresh data
 	std::vector<int> m_frameOffsetsByRefresh;
@@ -381,10 +383,6 @@ protected:
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg HCURSOR	OnQueryDragIcon();
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
-
-	#define RESIZE_DEBOUNCE_TIMER_ID 1002
-	#define QUEUE_RESET_DELAY_TIMER_ID 1003
-    #define FULLSCREEN_FOCUS_TIMER_ID 1004  
 
 	DECLARE_MESSAGE_MAP()
 

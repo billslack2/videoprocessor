@@ -17,10 +17,15 @@ struct StatsData
 {
 	// Video format info
 	CString resolution;        // e.g., "3840x2160"
-	double refreshRate = 0.0;  // Hz
+	double refreshRate = 0.0;  // Hz (legacy - still used for display)
 	CString eotf;              // e.g., "PQ"
 	CString colorspace;        // e.g., "BT.2020"
 	CString pixelFormat;       // e.g., "P010"
+
+	// Frame rate measurement and PPM tracking (NEW)
+	double theoreticalRefreshRate = 0.0;  // Expected refresh rate from display mode (Hz)
+	double measuredRefreshRate = 0.0;     // Actual measured frame rate (Hz)
+	int ppmDeviation = 0;                 // PPM deviation between theoretical and measured
 
 	// Renderer settings
 	CString method;            // e.g., "Rational-Rational"

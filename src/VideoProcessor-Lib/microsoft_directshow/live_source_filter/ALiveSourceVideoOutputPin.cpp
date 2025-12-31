@@ -765,7 +765,6 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE:
 
 		// Get frame timestamp as reference time using integer math utility
 		timeStart = ConvertTimingClockToReferenceTime(
@@ -784,6 +783,23 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		}
 
 		timeStart -= m_startTimeOffset;
+		
+		// CRITICAL MONOTONIC ENFORCEMENT FOR START TIME (CLOCK_SMART2)
+		// Even with free-running clock, ensure timeStart never goes backwards
+		// This prevents invalid frame intervals where start > stop
+		if (m_previousTimeStop > 0)
+		{
+			// Calculate what the minimum start time should be based on previous stop
+			// Use theoretical frame duration as minimum progression
+			const REFERENCE_TIME minStartTime = m_previousTimeStop - m_frameDuration;
+			
+			if (timeStart < minStartTime)
+			{
+				DbgLog((LOG_WARNING, 1, TEXT("CLOCK_SMART2(#%I64u): timeStart=%I64d < minStartTime=%I64d, enforcing monotonic (prevStop=%I64d)"), 
+					videoFrame.GetCounter(), timeStart, minStartTime, m_previousTimeStop));
+				timeStart = minStartTime;
+			}
+		}
 		
 		// Store current hardware timestamp for CLOCK_SMART/CLOCK_SMART2 duration tracking
 		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
@@ -909,6 +925,18 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 		assert(timeStop > timeStart);
 		break;
+	
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
+		
+		timeStop = timeStart + m_frameDuration;
+		break;
+
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
+
+		// These modes use the next frame timestamp or theoretical duration
+		// Implementation needed if these modes are used
+		timeStop = timeStart + m_frameDuration;
+		break;
 	}
 
 	// Set right amount of values
@@ -922,6 +950,16 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
 
+		// FINAL MONOTONIC VALIDATION: Ensure frame interval is always valid
+		// This is the last line of defense against any timing anomalies
+		if (timeStop <= timeStart)
+		{
+			// Emergency correction: force minimum 1-tick interval
+			timeStop = timeStart + 1;
+			DbgLog((LOG_ERROR, 1, TEXT("::FillBuffer(#%I64u): CRITICAL - timeStop <= timeStart! Forced to %I64d (start=%I64d)"),
+				videoFrame.GetCounter(), timeStop, timeStart));
+		}
+		
 		hr = pSample->SetTime(&timeStart, &timeStop);
 		if (FAILED(hr))
 			return hr;
@@ -942,7 +980,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 	//
 	// Data copy/formatting
-	//
+//
 
 	// Get target data buffer
 	BYTE* pData = nullptr;

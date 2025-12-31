@@ -160,27 +160,35 @@ int PPMCorrectionLoader::FindBestMatch(double targetRate) const
     int bestMatch = 0;
     double bestDistance = 1000000.0; // Large initial value
 
-    for (const auto& correction : m_corrections)
+    // FIRST: Try truncated rate (first two digits before decimal)
+    // e.g., 59.94 Hz ? 59 (not 60)
+    // e.g., 29.97 Hz ? 29 (not 30)
+    int truncatedRate = static_cast<int>(targetRate);
+    auto it = m_corrections.find(truncatedRate);
+    if (it != m_corrections.end())
     {
-        double distance = std::abs(targetRate - correction.first);
-        
-        // Accept matches within tolerance
-        if (distance <= REFRESH_RATE_TOLERANCE && distance < bestDistance)
+        double truncDistance = std::abs(targetRate - truncatedRate);
+        if (truncDistance < bestDistance)
         {
-            bestMatch = correction.first;
-            bestDistance = distance;
+            bestMatch = truncatedRate;
+            bestDistance = truncDistance;
         }
     }
 
-    // Also try exact integer match (e.g., 59.94 -> 60)
-    int roundedRate = static_cast<int>(std::round(targetRate));
-    auto it = m_corrections.find(roundedRate);
-    if (it != m_corrections.end())
+    // SECOND: Fall back to tolerance-based matching if truncation didn't find anything
+    // Only use tolerance matching if we haven't already found a truncated match
+    if (bestMatch == 0)
     {
-        double roundDistance = std::abs(targetRate - roundedRate);
-        if (roundDistance < bestDistance)
+        for (const auto& correction : m_corrections)
         {
-            bestMatch = roundedRate;
+            double distance = std::abs(targetRate - correction.first);
+            
+            // Accept matches within tolerance
+            if (distance <= REFRESH_RATE_TOLERANCE && distance < bestDistance)
+            {
+                bestMatch = correction.first;
+                bestDistance = distance;
+            }
         }
     }
 

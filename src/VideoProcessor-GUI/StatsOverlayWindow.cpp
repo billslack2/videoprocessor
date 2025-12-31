@@ -314,9 +314,22 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += LINE_HEIGHT;
 
 	// Refresh rate
-	line.Format(TEXT("Refresh:          %.2f Hz"), m_stats.refreshRate);
+	line.Format(TEXT("Refresh:          %.6f Hz"), m_stats.refreshRate);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
+
+	// Measured refresh rate (calculated from frame arrivals)
+	if (m_stats.measuredRefreshRate > 0.0)
+	{
+		line.Format(TEXT("Capture Rate:     %.6f Hz"), m_stats.measuredRefreshRate);
+		DrawText(hdc, line, PADDING, y);
+		y += LINE_HEIGHT;
+		
+		// PPM deviation between theoretical and measured rates
+		line.Format(TEXT("Deviation:        %+d ppm"), m_stats.ppmDeviation);
+		DrawText(hdc, line, PADDING, y);
+		y += LINE_HEIGHT;
+	}
 
 	// EOTF
 	line.Format(TEXT("EOTF:             %-s"), m_stats.eotf.IsEmpty() ? TEXT("---") : m_stats.eotf);
@@ -362,15 +375,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += LINE_HEIGHT;
 
 	// PPM Correction
-	if (m_stats.hasPPMCorrection)
+	if (m_stats.hasPPMCorrection || (!m_stats.ppmSource.IsEmpty() && m_stats.ppmSource != TEXT("N/A")))
 	{
 		line.Format(TEXT("PPM Correction:   %+d"), m_stats.ppmCorrection);
-		DrawText(hdc, line, PADDING, y);
-		y += LINE_HEIGHT;
-	}
-	else if (!m_stats.ppmSource.IsEmpty() && m_stats.ppmSource != TEXT("N/A"))
-	{
-		line.Format(TEXT("PPM Correction:   0 (off)"));
 		DrawText(hdc, line, PADDING, y);
 		y += LINE_HEIGHT;
 	}

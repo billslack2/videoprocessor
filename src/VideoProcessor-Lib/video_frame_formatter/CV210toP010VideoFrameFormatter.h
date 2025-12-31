@@ -29,10 +29,32 @@ public:
 	CV210toP010VideoFrameFormatter();
 	virtual ~CV210toP010VideoFrameFormatter();
 
+	// Conversion method enumeration for high-res (non-720p) paths
+	enum class ConversionMethod
+	{
+		AUTO,           // Automatically select based on CPU features and frame size
+		SIMD,           // AVX2 SIMD with threading support
+		OPTIMIZED,      // Optimized scalar implementation
+		STANDARD,       // Standard scalar implementation (baseline)
+	};
+
 	// IVideoFrameFormatter
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
 	LONG GetOutFrameSize() const override;
+
+	// Configuration methods for conversion behavior
+	void SetConversionMethod(ConversionMethod method) { m_conversionMethod = method; }
+	ConversionMethod GetConversionMethod() const { return m_conversionMethod; }
+	
+	void SetMinCoreCount(uint32_t minCores) { m_minCoreCount = std::max(1u, minCores); }
+	uint32_t GetMinCoreCount() const { return m_minCoreCount; }
+	
+	void SetMaxCoreCount(uint32_t maxCores) { m_maxCoreCount = std::max(m_minCoreCount, maxCores); }
+	uint32_t GetMaxCoreCount() const { return m_maxCoreCount; }
+
+	// Configuration file loading
+	void LoadConfigurationFile();
 
 private:
 	uint32_t m_height = 0;
@@ -40,6 +62,11 @@ private:
 	uint32_t m_alignedWidth;
 	uint32_t m_stride;
 	bool m_special720 = false;
+
+	// Configuration for conversion method and threading
+	ConversionMethod m_conversionMethod = ConversionMethod::AUTO;
+	uint32_t m_minCoreCount = 2;    // Minimum cores to use (default: 2)
+	uint32_t m_maxCoreCount = 0;    // Maximum cores to use (0 = auto-detect, leave 2 for OS)
 
 	// Pre-allocated buffers to avoid per-frame allocation
 	std::vector<uint16_t> m_tempY;
@@ -50,11 +77,27 @@ private:
 	// Uses simple spin-wait pattern for low latency
 	// Dynamically scales based on available CPU cores
 	// ========================================
-	static uint32_t GetMaxThreadCount()
+	uint32_t GetMaxThreadCount() const
 	{
 		uint32_t cores = std::thread::hardware_concurrency();
 		if (cores == 0) cores = 4;  // Fallback
-		return std::max(4u, cores - 2);  // Leave 2 cores for OS/UI
+
+		// Apply configured limits
+		uint32_t minCores = m_minCoreCount;
+		uint32_t maxCores = m_maxCoreCount;
+		
+		// If maxCores is 0 (auto), leave 2 cores for OS/UI
+		if (maxCores == 0)
+		{
+			maxCores = std::max(minCores, cores >= 2 ? cores - 2 : cores);
+		}
+
+		// Ensure min <= max and both are valid
+		minCores = std::min(minCores, cores);
+		maxCores = std::min(maxCores, cores);
+		maxCores = std::max(maxCores, minCores);
+
+		return std::min(8u, maxCores);  // Cap at 8 threads
 	}
 	static constexpr uint32_t MAX_THREADS = 8;  // Will be dynamically selected at runtime
 	static constexpr uint32_t MIN_LINES_FOR_THREADING = 720;  // Enable threading for 720p and above
@@ -183,4 +226,17 @@ private:
 	bool ConvertV210ToP010_Threaded(const uint8_t* srcData, uint32_t srcStride,
 	                               uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	void LogConversionPerformance(uint64_t conversionTimeUs, bool success) const;
+
+public:
+	// Load configuration from a file
+	bool LoadConfigurationFile(const char* filename);
+	
+private:
+	// Configuration values
+	uint32_t m_configuredMinCoreCount = 2;
+	uint32_t m_configuredMaxCoreCount = 0;
+	ConversionMethod m_configuredConversionMethod = ConversionMethod::AUTO;
+	
+	// Apply the current configuration settings
+	void ApplyConfiguration();
 };

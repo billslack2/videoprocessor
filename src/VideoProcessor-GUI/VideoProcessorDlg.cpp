@@ -2682,6 +2682,18 @@ void CVideoProcessorDlg::OnClose()
 void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	
+	// Handle resize debounce timer
+if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
+{
+    KillTimer(RESIZE_DEBOUNCE_TIMER_ID);
+    
+    if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
+    {
+        DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): RESIZE DEBOUNCE - Resetting renderer after resize")));
+        m_videoRenderer->Reset();
+    }
+    return;
+}
 	
 	// Handle fullscreen focus grab
 	if (nIDEvent == FULLSCREEN_FOCUS_TIMER_ID)
@@ -2917,6 +2929,29 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		}
 	}
 
+	// Frame rate and PPM measurement (NEW)
+	if (m_videoRenderer && m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
+	{
+		// Get theoretical refresh rate from display mode
+		stats.theoreticalRefreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
+
+		// Get measured frame rate and PPM from the renderer
+		double measuredFps = 0.0;
+		int ppmDeviation = 0;
+
+		if (m_videoRenderer->GetFrameRateAndPPM(measuredFps, ppmDeviation))
+		{
+			stats.measuredRefreshRate = measuredFps;
+			stats.ppmDeviation = ppmDeviation;
+		}
+		else
+		{
+			// Fallback: use theoretical rate if measured rate not available yet
+			stats.measuredRefreshRate = stats.theoreticalRefreshRate;
+			stats.ppmDeviation = 0;
+		}
+	}
+
 	// Update overlay
 	m_statsOverlay->UpdateStats(stats);
 
@@ -2927,65 +2962,67 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 // Add this new method to the class
 void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t droppedFrames)
 {
+	// Enhanced intelligent queue monitoring with multiple detection strategies
 	const size_t maxQueueSize = GetRendererVideoFrameQueueSizeMax();
+	const bool isQueueFull = (currentQueueSize >= maxQueueSize);
+	const bool droppedFramesIncreased = (droppedFrames > m_lastDroppedFrames);
+	const bool queueStuck = (currentQueueSize == m_lastQueueSize && currentQueueSize > 2);
 
-	// CONDITION 1: Queue is consistently full (indicates delivery problems)
-	if (currentQueueSize >= (maxQueueSize - 1))
+	// STRATEGY 1: Immediate reset on queue full
+	if (isQueueFull)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Queue health: Full queue detected (%zu/%zu) - immediate reset"), currentQueueSize, maxQueueSize));
+
+		if (m_videoRenderer)
+		{
+			m_videoRenderer->Reset();
+			m_consecutiveFullSeconds = 0;
+			m_consecutiveStuckSeconds = 0;
+		}
+	}
+	// STRATEGY 2: Track consecutive full seconds for progressive overload
+	else if (currentQueueSize >= (maxQueueSize * 3) / 4)  // 75% threshold
 	{
 		m_consecutiveFullSeconds++;
-		m_consecutiveStuckSeconds = 0;  // Reset stuck counter
-	}
-	// CONDITION 2: Queue is stuck at low level with ongoing drops (indicates sync problems)
-	else if (currentQueueSize <= 2 && droppedFrames > m_lastDroppedFrames && currentQueueSize == m_lastQueueSize)
-	{
-		m_consecutiveStuckSeconds++;
-		m_consecutiveFullSeconds = 0;  // Reset full counter
+		if (m_consecutiveFullSeconds >= 3)  // 3 seconds of high queue
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("Queue health: Sustained high queue (%zu for %zu seconds) - reset"), currentQueueSize, m_consecutiveFullSeconds));
+
+			if (m_videoRenderer)
+			{
+				m_videoRenderer->Reset();
+				m_consecutiveFullSeconds = 0;
+			}
+		}
 	}
 	else
 	{
-		// Queue is healthy, reset counters
-		m_consecutiveFullSeconds = 0;
-		m_consecutiveStuckSeconds = 0;
+		m_consecutiveFullSeconds = 0;  // Reset counter when queue is healthy
 	}
 
-	// RESET TRIGGERS:
-	bool shouldReset = false;
-	const char* resetReason = nullptr;
-
-	// Trigger 1: Queue has been full for 3+ seconds (delivery failure)
-	if (m_consecutiveFullSeconds >= 3)
+	// STRATEGY 3: Detect stuck queues (same size for multiple seconds)
+	if (queueStuck)
 	{
-		shouldReset = true;
-		resetReason = "Queue consistently full";
+		m_consecutiveStuckSeconds++;
+		if (m_consecutiveStuckSeconds >= 4)  // 4 seconds stuck
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("Queue health: Stuck queue detected (%zu for %zu seconds) - reset"), currentQueueSize, m_consecutiveStuckSeconds));
+
+			if (m_videoRenderer)
+			{
+				m_videoRenderer->Reset();
+				m_consecutiveStuckSeconds = 0;
+			}
+		}
 	}
-	// Trigger 2: Queue stuck at low level for 8+ seconds with active drops (sync drift)
-	else if (m_consecutiveStuckSeconds >= 8)
+	else
 	{
-		shouldReset = true;
-		resetReason = "Queue stuck with ongoing drops";
-	}
-	// Trigger 3: Massive queue spike (sudden burst)
-	else if (currentQueueSize >= maxQueueSize && m_lastQueueSize <= (maxQueueSize / 2))
-	{
-		shouldReset = true;
-		resetReason = "Sudden queue burst";
+		m_consecutiveStuckSeconds = 0;  // Reset stuck counter
 	}
 
-	if (shouldReset && m_videoRenderer)
-	{
-		DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::MonitorQueueHealth(): AUTO-RESET - %s (queue: %zu/%zu, drops: %llu)"),
-			CString(resetReason), currentQueueSize, maxQueueSize, droppedFrames - m_lastDroppedFrames));
-
-		m_videoRenderer->Reset();
-
-		// Reset tracking counters
-		m_consecutiveFullSeconds = 0;
-		m_consecutiveStuckSeconds = 0;
-	}
-
-	// Update tracking variables
-	m_lastDroppedFrames = droppedFrames;
+	// Update tracking variables for next cycle
 	m_lastQueueSize = currentQueueSize;
+	m_lastDroppedFrames = droppedFrames;
 }
 
 

@@ -187,6 +187,62 @@ void BlackMagicDeckLinkCaptureDevice::StartCapture()
 	m_deckLinkInput->SetCallback(this);
 
 	//
+	// DECKLINK BEST PRACTICE: Configure hardware reference clock for stable timing
+	// Critical for preventing clock resets during format changes (23.976↔29.97↔59.94fps)
+	// and HDMI signal transitions. Without this, MadVR sees clock deviation warnings.
+	//
+	
+	// Manual constant definitions for DeckLink SDK versions that don't have these enums
+	// These values are supported by the hardware even if not defined in older SDK headers
+#ifndef bmdDeckLinkConfigReferenceInput
+	static const LONGLONG DECKLINK_CONFIG_REFERENCE_INPUT = 0x7265666ELL;  // 'refn' in hex
+	static const LONGLONG DECKLINK_REFERENCE_FREE_RUNNING = 1LL;
+	static const LONGLONG DECKLINK_REFERENCE_HDMI = 2LL;  // HDMI-locked mode (for testing)
+	static const LONGLONG DECKLINK_CONFIG_REFERENCE_TIMING_OFFSET = 0x726F6666LL;  // 'roff'
+#else
+	static const LONGLONG DECKLINK_CONFIG_REFERENCE_INPUT = bmdDeckLinkConfigReferenceInput;
+	static const LONGLONG DECKLINK_REFERENCE_FREE_RUNNING = bmdReferenceInputFreeRunning;
+	static const LONGLONG DECKLINK_REFERENCE_HDMI = bmdReferenceInputHDMI;
+	static const LONGLONG DECKLINK_CONFIG_REFERENCE_TIMING_OFFSET = bmdDeckLinkConfigReferenceInputTimingOffset;
+#endif
+
+	// CONFIGURABLE CLOCK MODE: Toggle at top of BlackMagicDeckLinkCaptureDevice.h
+	// USE_FREE_RUNNING_CLOCK = true  → Free-running (stable, recommended)
+	// USE_FREE_RUNNING_CLOCK = false → HDMI-locked (for testing/comparison)
+	const LONGLONG clockMode = USE_FREE_RUNNING_CLOCK ? DECKLINK_REFERENCE_FREE_RUNNING : DECKLINK_REFERENCE_HDMI;
+	const TCHAR* clockModeName = USE_FREE_RUNNING_CLOCK ? TEXT("FREE-RUNNING") : TEXT("HDMI-LOCKED");
+
+	// Set reference clock mode
+	// Free-running: Clock never resets, immune to signal loss and format changes
+	// HDMI-locked: Clock syncs to HDMI signal timing (may cause jitter/resets)
+	HRESULT hrRefClock = m_deckLinkConfiguration->SetInt(
+		(BMDDeckLinkConfigurationID)DECKLINK_CONFIG_REFERENCE_INPUT,
+		clockMode);
+
+	if (SUCCEEDED(hrRefClock))
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("DeckLink: Reference clock set to %s mode"), clockModeName));
+		
+		// Set timing offset to zero (no hardware delay compensation)
+		HRESULT hrOffset = m_deckLinkConfiguration->SetInt(
+			(BMDDeckLinkConfigurationID)DECKLINK_CONFIG_REFERENCE_TIMING_OFFSET,
+			0LL);
+			
+		if (SUCCEEDED(hrOffset))
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("DeckLink: Reference timing offset set to 0")));
+		}
+	}
+	else
+	{
+		// Log warning but continue - older SDK/firmware may not support this
+		// If this fails, clock will use default mode (likely HDMI-locked)
+		DbgLog((LOG_WARNING, 1, TEXT("DeckLink: Could not set %s reference clock (error 0x%08X)"), clockModeName, hrRefClock));
+		DbgLog((LOG_WARNING, 1, TEXT("         Using default clock mode - may see MadVR clock deviation")));
+		DbgLog((LOG_WARNING, 1, TEXT("         Consider updating DeckLink firmware/drivers for best timing stability")));
+	}
+
+	//
 	// Enable video input
 	//
 	CComQIPtr<IDeckLinkDisplayMode> displayMode;
@@ -369,11 +425,42 @@ timingclocktime_t BlackMagicDeckLinkCaptureDevice::TimingClockNow()
 		m_state == CaptureDeviceState::CAPTUREDEVICESTATE_READY );  // TODO: We will also get called if we're ready not sure if we want to be more strict on this and not allow it + tighten up state machine
 
 	BMDTimeValue currentTimeTicks;
+	BMDTimeValue ticksPerFrame = 0;
+	BMDTimeScale timeScale = 0;
+	
+	// DECKLINK BEST PRACTICE: Capture all clock parameters for drift detection
+	// ticksPerFrame and timeScale can indicate clock instability or genlock issues
 	IF_NOT_S_OK(m_deckLinkInput->GetHardwareReferenceClock(
 		TimingClockTicksPerSecond(),
 		&currentTimeTicks,
-		nullptr, nullptr))
+		&ticksPerFrame,  // Now capturing frame timing info
+		&timeScale))     // Now capturing time scale info
 		throw std::runtime_error("Could not get the hardware clock timestamp");
+
+#ifdef _DEBUG
+	// CLOCK DRIFT DETECTION: Warn if hardware clock reports unexpected time scale
+	// This can indicate genlock problems, signal instability, or firmware issues
+	static bool firstCall = true;
+	static BMDTimeScale expectedTimeScale = TimingClockTicksPerSecond();
+	
+	if (firstCall)
+	{
+		expectedTimeScale = timeScale;
+		firstCall = false;
+		
+		if (timeScale != 0)
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("DeckLink hardware clock: timeScale=%I64d, ticksPerFrame=%I64d"),
+				timeScale, ticksPerFrame));
+		}
+	}
+	else if (timeScale != 0 && timeScale != expectedTimeScale)
+	{
+		// Clock drift detected - log warning
+		DbgLog((LOG_WARNING, 1, TEXT("DeckLink clock drift detected: timeScale=%I64d (expected %I64d), ticksPerFrame=%I64d"),
+			timeScale, expectedTimeScale, ticksPerFrame));
+	}
+#endif
 
 	return currentTimeTicks;
 }

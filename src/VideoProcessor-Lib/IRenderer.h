@@ -155,4 +155,15 @@ public:
 		source = TEXT("N/A");
 		return false;  // No PPM correction support by default
 	}
+
+	// Get frame rate measurement and PPM deviation (for timing diagnostics)
+	// Returns true if frame rate measurement data is available, false if not supported
+	// measuredFps: Actual measured frame rate (Hz)
+	// ppmDeviation: PPM deviation between theoretical and measured rates (parts per million)
+	virtual bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const
+	{
+		measuredFps = 0.0;
+		ppmDeviation = 0;
+		return false;  // No frame rate measurement by default
+	}
 };

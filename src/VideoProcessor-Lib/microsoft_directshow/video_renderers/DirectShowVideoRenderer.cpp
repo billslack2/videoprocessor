@@ -113,10 +113,14 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	assert(m_videoState);
 	assert(videoFrame.GetTimingTimestamp() > 0);
 
+	const timingclocktime_t frameTime = videoFrame.GetTimingTimestamp();
+
+	// Update PPM measurement with each frame
+	UpdatePPMMeasurement(frameTime);
+
 	// Get delay until now once in a while
 	if (m_frameCounter % 20 == 0)
 	{
-		const timingclocktime_t frameTime = videoFrame.GetTimingTimestamp();
 		const timingclocktime_t clockTime = m_timingClock->TimingClockNow();
 
 		m_frameLatencyEntry = TimingClockDiffMs(frameTime, clockTime, m_timingClock->TimingClockTicksPerSecond());
@@ -127,8 +131,10 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 			REFERENCE_TIME dsClockTime = 0;
 			if (SUCCEEDED(m_referenceClock->GetTime(&dsClockTime)))
 			{
+				// HIGH-PRECISION CONVERSION: Use the same banker's rounding as everywhere else
 				// Convert hardware clock to DirectShow time for comparison
-				const REFERENCE_TIME hardwareAsDsTime = (frameTime * 10000000) / m_timingClock->TimingClockTicksPerSecond();
+				const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
+				const REFERENCE_TIME hardwareAsDsTime = ((frameTime * 10000000LL) + (ticksPerSecond / 2)) / ticksPerSecond;
 				const REFERENCE_TIME clockDiff = dsClockTime - hardwareAsDsTime;
 				const double clockDiffMs = clockDiff / 10000.0;
 				
@@ -690,10 +696,12 @@ void DirectShowVideoRenderer::RendererDestroy()
 	}
 }
 
-// Get current PPM correction information (override for RATIONAL_RATIONAL support)
+// Get current PPM correction information (override for RATIONAL_RATIONAL and CLOCK_RATIONAL support)
 bool DirectShowVideoRenderer::GetPPMCorrectionInfo(int& ppmValue, bool& hasCorrection, CString& source) const
 {
-	if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL && m_liveSource)
+	// Both RATIONAL_RATIONAL and CLOCK_RATIONAL use PPM corrections
+	if ((m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL || 
+	     m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL) && m_liveSource)
 	{
 		// Get PPM correction info from the live source pin
 		IEnumPins* pEnum = nullptr;
@@ -724,4 +732,63 @@ bool DirectShowVideoRenderer::GetPPMCorrectionInfo(int& ppmValue, bool& hasCorre
 	hasCorrection = false;
 	source = TEXT("N/A");
 	return false;
+}
+
+// Get frame rate measurement and PPM deviation (for timing diagnostics)
+bool DirectShowVideoRenderer::GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const
+{
+	if (!m_hasPPMData || !m_videoState)
+	{
+		measuredFps = 0.0;
+		ppmDeviation = 0;
+		return false;
+	}
+
+	measuredFps = m_measuredFrameRate;
+	ppmDeviation = m_ppmDeviation;
+	return true;
+}
+
+void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) const
+{
+	// Initialize on first frame
+	if (m_firstFrameTime == 0)
+	{
+		m_firstFrameTime = frameTime;
+		m_lastFrameTime = frameTime;
+		m_frameCountForPPM = 1;
+		return;
+	}
+
+	// Update last frame time
+	m_lastFrameTime = frameTime;
+	m_frameCountForPPM++;
+
+	// Calculate measured frame rate only after we have enough samples (need at least 2+ frames for meaningful calculation)
+	// Recalculate every ~30 frames or more frequently for better responsiveness
+	if (m_frameCountForPPM >= 30 && m_frameCountForPPM % 30 == 0)
+	{
+		const timingclocktime_t elapsedTicks = m_lastFrameTime - m_firstFrameTime;
+		
+		if (elapsedTicks > 0)
+		{
+			const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
+			
+			// Calculate measured FPS: frames / seconds
+			// m_frameCountForPPM includes both first and last frame
+			const double elapsedSeconds = (double)elapsedTicks / (double)ticksPerSecond;
+			const double measuredFps = (double)(m_frameCountForPPM - 1) / elapsedSeconds;
+			
+			// Get theoretical refresh rate
+			const double theoreticalFps = m_videoState->displayMode->RefreshRateHz();
+			
+			// Calculate PPM deviation: (measured - theoretical) * 1e6 / theoretical
+			// This is the parts-per-million deviation
+			const double deviation = (measuredFps - theoreticalFps) / theoreticalFps;
+			m_ppmDeviation = (int)round(deviation * 1e6);
+			m_measuredFrameRate = measuredFps;
+			
+			m_hasPPMData = true;
+		}
+	}
 }
