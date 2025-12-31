@@ -757,38 +757,45 @@ void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) 
 		m_firstFrameTime = frameTime;
 		m_lastFrameTime = frameTime;
 		m_frameCountForPPM = 1;
+		
+		// Initialize rolling window
+		m_rollingWindowStartTime = frameTime;
+		m_rollingWindowFrameCount = 1;
 		return;
 	}
 
 	// Update last frame time
 	m_lastFrameTime = frameTime;
 	m_frameCountForPPM++;
+	m_rollingWindowFrameCount++;
 
-	// Calculate measured frame rate only after we have enough samples (need at least 2+ frames for meaningful calculation)
-	// Recalculate every ~30 frames or more frequently for better responsiveness
-	if (m_frameCountForPPM >= 30 && m_frameCountForPPM % 30 == 0)
+	// ROLLING WINDOW: Reset measurement window every 5 seconds
+	const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
+	const timingclocktime_t fiveSecondTicks = ticksPerSecond * 5;  // 5 seconds in ticks
+	
+	if ((frameTime - m_rollingWindowStartTime) >= fiveSecondTicks)
 	{
-		const timingclocktime_t elapsedTicks = m_lastFrameTime - m_firstFrameTime;
+		// Calculate FPS for this 5-second window
+		const timingclocktime_t windowElapsedTicks = frameTime - m_rollingWindowStartTime;
 		
-		if (elapsedTicks > 0)
+		if (windowElapsedTicks > 0)
 		{
-			const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
-			
-			// Calculate measured FPS: frames / seconds
-			// m_frameCountForPPM includes both first and last frame
-			const double elapsedSeconds = (double)elapsedTicks / (double)ticksPerSecond;
-			const double measuredFps = (double)(m_frameCountForPPM - 1) / elapsedSeconds;
+			const double windowElapsedSeconds = (double)windowElapsedTicks / (double)ticksPerSecond;
+			const double measuredFps = (double)(m_rollingWindowFrameCount - 1) / windowElapsedSeconds;
 			
 			// Get theoretical refresh rate
 			const double theoreticalFps = m_videoState->displayMode->RefreshRateHz();
 			
 			// Calculate PPM deviation: (measured - theoretical) * 1e6 / theoretical
-			// This is the parts-per-million deviation
 			const double deviation = (measuredFps - theoreticalFps) / theoreticalFps;
 			m_ppmDeviation = (int)round(deviation * 1e6);
 			m_measuredFrameRate = measuredFps;
 			
 			m_hasPPMData = true;
 		}
+		
+		// Reset rolling window for next 5-second period
+		m_rollingWindowStartTime = frameTime;
+		m_rollingWindowFrameCount = 1;
 	}
 }

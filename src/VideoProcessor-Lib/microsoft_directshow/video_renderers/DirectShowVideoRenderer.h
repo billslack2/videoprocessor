@@ -119,6 +119,10 @@ protected:
 	mutable double m_measuredFrameRate = 0.0;
 	mutable int m_ppmDeviation = 0;
 	mutable bool m_hasPPMData = false;
+	
+	// Rolling 5-second window for accurate recent measurements
+	mutable timingclocktime_t m_rollingWindowStartTime = 0;
+	mutable uint64_t m_rollingWindowFrameCount = 0;
 
 	// Handle Directshow graph events
 	void OnGraphEvent(long evCode, LONG_PTR param1, LONG_PTR param2);

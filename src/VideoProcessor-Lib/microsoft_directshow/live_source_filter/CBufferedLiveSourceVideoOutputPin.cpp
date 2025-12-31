@@ -152,6 +152,34 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			return E_FAIL;
 		}
 
+		// MINIMAL STARTUP SYNC: Just ensure threads are created, no artificial delays
+		// Threads will synchronize naturally through events and queues
+		
+		// Ensure both queues start empty and clean (no sleep needed)
+		{
+			CAutoLock lock2(&m_filterCritSec);
+			// Raw queue should already be empty, but ensure it
+			while (!m_videoFrameQueue.empty())
+			{
+				VideoFrame popFrame = m_videoFrameQueue.front();
+				popFrame.SourceBufferRelease();
+				m_videoFrameQueue.pop_front();
+			}
+		}
+		
+		{
+			CAutoLock lock2(&m_convertedQueueLock);
+			// Converted queue should already be empty, but ensure it
+			while (!m_convertedSampleQueue.empty())
+			{
+				IMediaSample* pSample = m_convertedSampleQueue.front();
+				m_convertedSampleQueue.pop_front();
+				if (pSample) pSample->Release();
+			}
+		}
+		
+		DbgLog((LOG_TRACE, 1, TEXT("Active(): Startup complete - threads ready, queues clean")));
+
 		return S_OK;
 	}
 }
@@ -552,8 +580,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	
 	while (true)
 	{
-		// Simple frame-rate aware timeout: 8ms for responsive delivery
-		DWORD waitResult = WaitForMultipleObjects(2, events, FALSE, 8);
+		// LOW LATENCY: Immediate response to events with minimal timeout
+		// Only timeout to prevent busy-wait when no frames are available
+		DWORD waitResult = WaitForMultipleObjects(2, events, FALSE, 1);  // 1ms minimal timeout
 		
 		if (waitResult == WAIT_OBJECT_0 + 1)  // Shutdown
 			break;
@@ -561,7 +590,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		if (waitResult == WAIT_TIMEOUT)
 		{
 			if (!m_isActive) break;
-			continue;
+			continue;  // Quick check for frames
 		}
 		
 		if (waitResult != WAIT_OBJECT_0)
@@ -570,9 +599,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			break;
 		}
 
-		// Process available PRE-CONVERTED frames
-		const DWORD startTime = GetTickCount();
-		
+		// IMMEDIATE DELIVERY: Deliver all available frames without delay
 		while (true)
 		{
 			IMediaSample* pSample = nullptr;
@@ -581,7 +608,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			{
 				CAutoLock lock(&m_convertedQueueLock);
 				if (m_convertedSampleQueue.empty()) 
-					break;
+					break;  // No more samples, exit loop
 
 				// CRITICAL: Pull pre-converted sample (no conversion here!)
 				pSample = m_convertedSampleQueue.front();
@@ -596,16 +623,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				++m_droppedFrameCount;
 				m_recentDeliveryFailures++;
 				DbgLog((LOG_WARNING, 1, TEXT("ThreadProc: Deliver failed, hr=0x%x"), hr));
-				continue;
+				continue;  // Try next sample
 			}
 
 			// Success - clean delivery with ZERO conversion overhead
 			pSample->Release();
 			m_recentDeliveryFailures = 0;  // Reset on success
 			
-			// Simple time limit to prevent starvation
-			if ((GetTickCount() - startTime) > 8)  // 8ms max batch time
-				break;
+			// Continue immediately to next sample - no delays!
 		}
 	}
 
@@ -636,6 +661,19 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			break;
 		}
 		
+		// BACKPRESSURE CONTROL: Don't convert if converted queue is getting full
+		// This prevents unbounded queue growth and maintains steady flow
+		{
+			CAutoLock lock(&m_convertedQueueLock);
+			if (m_convertedSampleQueue.size() >= m_frameQueueMaxSize)
+			{
+				// Queue full - minimal yield to let delivery catch up
+				// Use SwitchToThread() for zero-delay cooperative yield
+				SwitchToThread();
+				continue;
+			}
+		}
+		
 		// Get next raw frame to convert
 		VideoFrame videoFrame;
 		bool hasFrame = false;
@@ -653,10 +691,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			}
 		}
 		
-		// No frame available - sleep briefly
+		// No frame available - minimal yield without sleep
 		if (!hasFrame)
 		{
-			Sleep(1);  // 1ms sleep to avoid busy-wait
+			SwitchToThread();  // Zero-delay yield instead of Sleep(2)
 			continue;
 		}
 		
@@ -711,7 +749,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 		// Release raw frame
 		videoFrame.SourceBufferRelease();
 		
-		// Signal frame available to delivery thread
+		// IMMEDIATE SIGNALING: Signal frame available after successful conversion
 		SetEvent(m_hFrameAvailableEvent);
 	}
 	

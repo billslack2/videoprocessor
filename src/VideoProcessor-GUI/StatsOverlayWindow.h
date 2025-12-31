@@ -151,7 +151,7 @@ private:
 	StatsData m_stats;
 
 	// Window constants - adjusted for 23px font
-	static const int MARGIN_RIGHT = 100;
+	static const int MARGIN_RIGHT = 500;
 	static const int MARGIN_BOTTOM = 300;
 	static const int WINDOW_WIDTH = 420;   // Slightly wider to accommodate text properly
 	static const int WINDOW_HEIGHT = 450;  // Adjusted for smaller line height
