@@ -995,7 +995,6 @@ void CVideoProcessorDlg::OnCaptureDeviceLost(ACaptureDeviceComPtr& captureDevice
 		0);
 }
 
-
 //
 // ICaptureDeviceCallback
 //
@@ -1307,12 +1306,84 @@ void CVideoProcessorDlg::UpdateState()
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::UpdateState(): - No changes")));
 }
 
-
 //
 // Helpers
 //
 
+int CVideoProcessorDlg::CalculateAutoFrameOffset()
+{
+	// Return default if no capture device/video state
+	if (!m_captureDevice || !m_captureDeviceVideoState || !m_captureDeviceVideoState->valid)
+		return 50;  // Safe default
 
+	// Base hardware latency
+	const double hwLatency = m_captureDevice->HardwareLatencyMs();
+	int offset = static_cast<int>(hwLatency + 0.5);  // Round up
+	offset = std::max(offset, 1);  // Minimum 1ms
+
+	// Refresh rate consideration
+	const double refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
+
+	// Queue configuration impact
+	const bool isAsync = GetRendererVideoFrameUseQueue();
+	const size_t queueMaxSize = GetRendererVideoFrameQueueSizeMax();
+
+	int queueBuffer = 0;
+	if (isAsync && queueMaxSize > 0)
+	{
+		// Async: Queue provides buffering, less offset needed
+		queueBuffer = 8 + static_cast<int>(queueMaxSize * 0.3);  // ~8-18ms range
+	}
+	else
+	{
+		// Sync: No queue buffering, need more safety margin
+		queueBuffer = 20;
+	}
+	offset += queueBuffer;
+
+	// Timing method consideration
+	int methodIndex = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
+	int safetyMargin = 5;  // Default
+
+	if (methodIndex >= 0)
+	{
+		DirectShowStartStopTimeMethod method =
+			static_cast<DirectShowStartStopTimeMethod>(
+				m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(methodIndex));
+
+		switch (method)
+		{
+		case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
+		case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+			safetyMargin = 3;  // Precise timing needs less margin
+			break;
+		case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
+		case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
+			safetyMargin = 5;  // Moderate
+			break;
+		case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
+		case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
+			safetyMargin = 7;  // Conservative timing needs more margin
+			break;
+		}
+	}
+	offset += safetyMargin;
+
+	// Refresh rate scaling
+	if (refreshRate >= 100.0)
+		offset = static_cast<int>(offset * 0.9);  // High refresh: tighter timing
+	else if (refreshRate <= 30.0)
+		offset = static_cast<int>(offset * 1.1);  // Low refresh: more conservative
+
+	// Clamp to reasonable range
+	offset = std::max(offset, 15);   // Minimum for reliable operation
+	offset = std::min(offset, 100);  // Maximum to avoid excessive latency
+
+	DbgLog((LOG_TRACE, 1, TEXT("Auto frame offset: %dms (async=%d, queue=%zu, fps=%.1f)"),
+		offset, isAsync, queueMaxSize, refreshRate));
+
+	return offset;
+}
 
 void CVideoProcessorDlg::OnSelectCaptureDevice(UINT nID)
 {
@@ -2309,7 +2380,7 @@ void CVideoProcessorDlg::DoDataExchange(CDataExchange* pDX)
 
 
 
-// Called when the dialog box is initialized
+//// Called when the dialog box is initialized
 BOOL CVideoProcessorDlg::OnInitDialog()
 {
 		if (!CDialog::OnInitDialog())
@@ -2560,10 +2631,7 @@ void CVideoProcessorDlg::OnPaint()
 			
 					//log some issue
 			}
-			
-
-				
-			
+			 
 
 		}
 				
@@ -2735,6 +2803,25 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
 		{
+
+			// Auto-offset recalculation every 5 seconds (if enabled)
+			if (m_timerSeconds % 5 == 0 &&
+				m_timingClockFrameOffsetAutoCheck.GetCheck() &&
+				m_captureDevice &&
+				m_captureDeviceVideoState &&
+				m_captureDeviceVideoState->valid)
+			{
+				int currentOffset = GetTimingClockFrameOffsetMs();
+				int autoOffset = CalculateAutoFrameOffset();
+
+				// Only update if offset changed by >= 2ms to avoid jitter
+				if (abs(autoOffset - currentOffset) >= 2)
+				{
+					SetTimingClockFrameOffsetMs(autoOffset);
+					UpdateTimingClockFrameOffset();
+					DbgLog((LOG_TRACE, 1, TEXT("Auto-offset updated: %dms -> %dms"), currentOffset, autoOffset));
+				}
+			}
 			const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
 			const uint64_t droppedFrames = m_videoRenderer->DroppedFrameCount();
 

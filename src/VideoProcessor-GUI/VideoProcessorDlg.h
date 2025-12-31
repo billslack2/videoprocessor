@@ -81,6 +81,8 @@ public:
 	// Dialog Data
 	enum { IDD = IDD_VIDEOPROCESSOR_DIALOG };
 
+	int CalculateAutoFrameOffset();
+
 	// Option handlers
 	void StartFullScreen();
 	void WindowedFullScreenMode();
