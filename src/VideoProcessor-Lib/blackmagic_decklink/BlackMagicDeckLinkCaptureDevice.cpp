@@ -554,6 +554,11 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFormatChang
 		return E_FAIL;
 	}
 
+	// CRITICAL FIX: ALWAYS reset when VideoInputFormatChanged is called
+	// This handles the YouTube TV channel change case where refresh rate stays the same
+	// but HDMI re-syncs. Even with identical formats, we need to clear async queue state
+	// to prevent the "repeated frames and reset loop" issue.
+	
 	//
 	// Things changed and we will stop current capture and restart.
 	// That means the video state will be invalid and we'll need to wait for it be to be rebuilt.
@@ -619,6 +624,9 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFormatChang
 
 		DbgLog((LOG_TRACE, 1, TEXT("BlackMagicDeckLinkCaptureDevice::VideoInputFormatChanged(): restart success")));
 	}
+	// Note: For same-format HDMI re-syncs (e.g., YouTube TV channel changes at same refresh rate),
+	// the async queue's timestamp discontinuity detection will automatically purge stale frames.
+	// No action needed here - the queue handles it when frames arrive with large timestamp jumps.
 
 	return S_OK;
 }

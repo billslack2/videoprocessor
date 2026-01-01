@@ -165,8 +165,11 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 				popFrame.SourceBufferRelease();
 				m_videoFrameQueue.pop_front();
 			}
+			// STARTUP STATE: Enter buffering, reset counter tracking
+			m_lastSeenFrameCounter = 0;
+			m_isBuffering = true;
 		}
-		
+
 		{
 			CAutoLock lock2(&m_convertedQueueLock);
 			// Converted queue should already be empty, but ensure it
@@ -178,7 +181,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			}
 		}
 		
-		DbgLog((LOG_TRACE, 1, TEXT("Active(): Startup complete - threads ready, queues clean")));
+		DbgLog((LOG_TRACE, 1, TEXT("Active(): Startup complete - threads ready, queues clean, buffering enabled")));
 
 		return S_OK;
 	}
@@ -255,40 +258,64 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		if (!m_isActive)
 			return S_OK;
 
-		const size_t currentQueueSize = m_videoFrameQueue.size();
-		const size_t proactiveTarget = GetProactiveQueueTarget();
-		
-		// PROACTIVE: Drop frames BEFORE queue becomes problematic
-		// Goal 1: Ensure timely delivery by preventing queue overload
-		if (currentQueueSize >= proactiveTarget)
+		const uint64_t newCounter = videoFrame.GetCounter();
+
+		// SIMPLE DISCONTINUITY DETECTION - if counter jumps or resets, trigger recovery
+		// No cooldown needed - the buffering flag prevents re-entry
+		if (m_lastSeenFrameCounter > 0 && !m_isBuffering)
 		{
-			// Simple proactive dropping: remove 1-2 oldest frames
-			const size_t framesToDrop = ShouldProactivelyDrop() ? 2 : 1;
-			
-			for (size_t i = 0; i < framesToDrop && !m_videoFrameQueue.empty(); i++)
+			const bool largeGap     = (newCounter > m_lastSeenFrameCounter) && ((newCounter - m_lastSeenFrameCounter) > 10);
+			const bool counterReset = (newCounter < m_lastSeenFrameCounter);
+
+			if (largeGap || counterReset)
 			{
-				VideoFrame oldFrame = m_videoFrameQueue.front();
-				oldFrame.SourceBufferRelease();
-				m_videoFrameQueue.pop_front();
-				++m_droppedFrameCount;
-			}
-			
-			// Throttled logging
-			const DWORD currentTime = GetTickCount();
-			if (currentTime - m_lastQueueWarning > 3000)  // Every 3 seconds max
-			{
-				m_lastQueueWarning = currentTime;
-				DbgLog((LOG_TRACE, 1, TEXT("OnVideoFrame(): PROACTIVE drop - %zu frames removed, queue %zu/%zu"), 
-					framesToDrop, currentQueueSize, m_frameQueueMaxSize));
+				DbgLog((LOG_TRACE, 1, TEXT("OnVideoFrame(): DISCONTINUITY DETECTED - triggering startup-like recovery")));
+				DbgLog((LOG_TRACE, 1, TEXT("  Last counter: %I64u, New counter: %I64u"), m_lastSeenFrameCounter, newCounter));
+
+				// PURGE BOTH QUEUES - identical to startup
+				while (!m_videoFrameQueue.empty())
+				{
+					VideoFrame oldFrame = m_videoFrameQueue.front();
+					oldFrame.SourceBufferRelease();
+					m_videoFrameQueue.pop_front();
+				}
+
+				{
+					CAutoLock lock2(&m_convertedQueueLock);
+					while (!m_convertedSampleQueue.empty())
+					{
+						IMediaSample* pSample = m_convertedSampleQueue.front();
+						m_convertedSampleQueue.pop_front();
+						if (pSample) pSample->Release();
+					}
+				}
+
+				// ENTER BUFFERING - this is the KEY. Don't deliver until queue fills!
+				// The delivery thread will reset timeline when it exits buffering
+				m_isBuffering = true;
+				m_lastSeenFrameCounter = 0;  // Reset so we don't immediately trigger again
+				
+				DbgLog((LOG_TRACE, 1, TEXT("OnVideoFrame(): Recovery triggered - buffering enabled, queues purged")));
 			}
 		}
+
+		// Update counter for next frame
+		m_lastSeenFrameCounter = newCounter;
+
+		// Simple overflow protection - drop oldest if queue too full
+		if (m_videoFrameQueue.size() >= m_frameQueueMaxSize)
+		{
+			VideoFrame oldFrame = m_videoFrameQueue.front();
+			oldFrame.SourceBufferRelease();
+			m_videoFrameQueue.pop_front();
+			++m_droppedFrameCount;
+		}
 		
-		// Goal 2: Ensure frames only delivered once - Add new frame atomically
+		// Add new frame
 		videoFrame.SourceBufferAddRef();
 		m_videoFrameQueue.push_back(videoFrame);
-	}  // Release lock before signaling
+	}
 
-	// Signal frame available
 	SetEvent(m_hFrameAvailableEvent);
 	return S_OK;
 }
@@ -296,48 +323,39 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 
 void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMaxSize)
 {
-	if (frameQueueMaxSize <= 0)
-		throw std::runtime_error("Frame queue size must be > 0");
+    if (frameQueueMaxSize <= 0)
+        throw std::runtime_error("Frame queue size must be > 0");
 
-	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize() - Changing from %zu to %zu"), 
-		m_frameQueueMaxSize, frameQueueMaxSize));
+    DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize() - Changing from %zu to %zu"),
+        m_frameQueueMaxSize, frameQueueMaxSize));
 
-	{
-		CAutoLock lock(&m_filterCritSec);
+    {
+        CAutoLock lock(&m_filterCritSec);
 
-		const size_t oldQueueSize = m_frameQueueMaxSize;
-		m_frameQueueMaxSize = frameQueueMaxSize;
+        const size_t oldQueueSize = m_frameQueueMaxSize;
+        m_frameQueueMaxSize = frameQueueMaxSize;
 
-		// If reducing queue size, intelligently purge excess frames
-		if (m_videoFrameQueue.size() > frameQueueMaxSize)
-		{
-			const size_t framesToPurge = m_videoFrameQueue.size() - frameQueueMaxSize;
-			
-			DbgLog((LOG_TRACE, 1, TEXT("SetFrameQueueMaxSize(): Purging %zu excess frames due to size reduction"), 
-				framesToPurge));
-			
-			for (size_t i = 0; i < framesToPurge && !m_videoFrameQueue.empty(); i++)
-			{
-				VideoFrame popFrame = m_videoFrameQueue.front();
-				popFrame.SourceBufferRelease();
-				m_videoFrameQueue.pop_front();
-				++m_droppedFrameCount;
-			}
-		}
-		
-		// Reset simple proactive state
-		m_recentDeliveryFailures = 0;
-		m_lastQueueWarning = 0;
-		
-		// Zero out timeline state for fresh start
-		m_frameCounter = 0;
-		m_previousFrameCounter = 0;
-		m_frameCounterOffset = 0;
-		m_previousTimeStop = 0;
-		m_startTimeOffset = 0;
-		
-		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize() - Queue configured, timeline zeroed")));
-	}
+        // If reducing queue size, intelligently purge excess frames
+        if (m_videoFrameQueue.size() > frameQueueMaxSize)
+        {
+            const size_t framesToPurge = m_videoFrameQueue.size() - frameQueueMaxSize;
+
+            DbgLog((LOG_TRACE, 1, TEXT("SetFrameQueueMaxSize(): Purging %zu excess frames due to size reduction"),
+                framesToPurge));
+
+            for (size_t i = 0; i < framesToPurge && !m_videoFrameQueue.empty(); i++)
+            {
+                VideoFrame popFrame = m_videoFrameQueue.front();
+                popFrame.SourceBufferRelease();
+                m_videoFrameQueue.pop_front();
+                ++m_droppedFrameCount;
+            }
+        }
+
+        // Reset simple proactive state only
+        m_recentDeliveryFailures = 0;
+        m_lastQueueWarning = 0;
+    }
 	
 	SetEvent(m_hFrameAvailableEvent);
 	
@@ -359,7 +377,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	{
 		CAutoLock lock(&m_filterCritSec);
 		
-		// Purge all raw frames efficiently
+		// Purge all raw frames
 		size_t purgedFrames = 0;
 		while (!m_videoFrameQueue.empty())
 		{
@@ -372,7 +390,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		DbgLog((LOG_TRACE, 1, TEXT("Reset(): Purged %zu raw frames"), purgedFrames));
 	}
 	
-	// Also purge converted sample queue
+	// Purge converted sample queue
 	{
 		CAutoLock lock(&m_convertedQueueLock);
 		
@@ -400,13 +418,15 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		m_frameCounterOffset = 0;
 		m_previousTimeStop = 0;
 		m_startTimeOffset = 0;
+		m_lastSeenFrameCounter = 0;
+		m_isBuffering = true;             // IDENTICAL TO STARTUP - enter buffering
 	}
 	
 	// Reset conversion metrics
 	m_totalConversionTimeUs = 0;
 	m_conversionFrameCount = 0;
 	
-	// Reset simple proactive state
+	// Reset proactive state
 	m_recentDeliveryFailures = 0;
 	m_lastQueueWarning = 0;
 	
@@ -602,20 +622,51 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		// IMMEDIATE DELIVERY: Deliver all available frames without delay
 		while (true)
 		{
+			// BUFFERING CHECK: If in buffering mode (startup or recovery), wait for queue to fill
+			// This is the KEY - identical behavior for startup and recovery
+			if (m_isBuffering)
+			{
+				size_t queueSize = 0;
+				{
+					CAutoLock lock(&m_convertedQueueLock);
+					queueSize = m_convertedSampleQueue.size();
+				}
+				
+				if (queueSize < BUFFERING_TARGET_FRAMES)
+				{
+					// Not enough frames yet, keep buffering
+					break; 
+				}
+				
+				// Queue filled! Now reset timeline and start delivering - IDENTICAL TO STARTUP
+				DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: Buffering complete (%zu frames) - resetting timeline"), queueSize));
+				
+				{
+					CAutoLock lock(&m_filterCritSec);
+					m_frameCounter = 0;
+					m_previousFrameCounter = 0;
+					m_frameCounterOffset = 0;
+					m_previousTimeStop = 0;
+					m_startTimeOffset = 0;
+				}
+				
+				m_isBuffering = false;
+				DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: Timeline reset complete - starting delivery")));
+			}
+
 			IMediaSample* pSample = nullptr;
 			
-			// Get pre-converted sample from queue (INSTANT - no blocking!)
+			// Get pre-converted sample from queue
 			{
 				CAutoLock lock(&m_convertedQueueLock);
 				if (m_convertedSampleQueue.empty()) 
-					break;  // No more samples, exit loop
+					break;
 
-				// CRITICAL: Pull pre-converted sample (no conversion here!)
 				pSample = m_convertedSampleQueue.front();
 				m_convertedSampleQueue.pop_front();
 			}
 
-			// Deliver sample to MadVR (ZERO conversion latency!)
+			// Deliver sample
 			HRESULT hr = Deliver(pSample);
 			if (FAILED(hr))
 			{
@@ -623,14 +674,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				++m_droppedFrameCount;
 				m_recentDeliveryFailures++;
 				DbgLog((LOG_WARNING, 1, TEXT("ThreadProc: Deliver failed, hr=0x%x"), hr));
-				continue;  // Try next sample
+				continue;
 			}
 
-			// Success - clean delivery with ZERO conversion overhead
 			pSample->Release();
-			m_recentDeliveryFailures = 0;  // Reset on success
-			
-			// Continue immediately to next sample - no delays!
+			m_recentDeliveryFailures = 0;
 		}
 	}
 

@@ -79,6 +79,13 @@ private:
 	std::atomic<uint32_t> m_recentDeliveryFailures = 0;   // Simple failure counter (reset periodically)
 	DWORD m_lastQueueWarning = 0;                         // Throttle warnings only
 	
+	// Timeline discontinuity detection
+	uint64_t m_lastSeenFrameCounter = 0;  // Track frame counter for discontinuity detection
+	
+	// Buffering state for startup and recovery - THE KEY TO MAKING RECOVERY WORK LIKE STARTUP
+	std::atomic_bool m_isBuffering = false;
+	static constexpr size_t BUFFERING_TARGET_FRAMES = 3; // Wait for 3 frames before delivering
+	
 	// Thread function, upon return thread exist.
 	// Return codes > 0 indicate an error occured
 	DWORD ThreadProc();
