@@ -632,14 +632,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					queueSize = m_convertedSampleQueue.size();
 				}
 				
-				if (queueSize < BUFFERING_TARGET_FRAMES)
+				const size_t bufferingTarget = GetBufferingTarget();
+				if (queueSize < bufferingTarget)
 				{
 					// Not enough frames yet, keep buffering
 					break; 
 				}
 				
 				// Queue filled! Now reset timeline and start delivering - IDENTICAL TO STARTUP
-				DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: Buffering complete (%zu frames) - resetting timeline"), queueSize));
+				DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: Buffering complete (%zu/%zu frames) - resetting timeline"), queueSize, bufferingTarget));
 				
 				{
 					CAutoLock lock(&m_filterCritSec);

@@ -84,8 +84,14 @@ private:
 	
 	// Buffering state for startup and recovery - THE KEY TO MAKING RECOVERY WORK LIKE STARTUP
 	std::atomic_bool m_isBuffering = false;
-	static constexpr size_t BUFFERING_TARGET_FRAMES = 3; // Wait for 3 frames before delivering
 	
+	// Helper to get effective buffering target (half of queue size, at least 3 frames)
+	size_t GetBufferingTarget() const 
+	{ 
+		const size_t halfQueue = m_frameQueueMaxSize / 2;
+		return (halfQueue > 3) ? halfQueue : 3;
+	}
+
 	// Thread function, upon return thread exist.
 	// Return codes > 0 indicate an error occured
 	DWORD ThreadProc();
