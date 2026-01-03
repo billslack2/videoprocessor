@@ -606,7 +606,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	// 60 Hz → 70ms startup, 100ms reset
 	// 24 Hz → 34ms startup, 51ms reset
 	const int startupDelayMs = (int)std::round(refreshRate) + 10;
-	const int resetDelayMs = (int)std::round(startupDelayMs * 2);
+	const int resetDelayMs = (int)std::round(startupDelayMs + 50);
 
 	DebugLog::Log("ThreadProc: Frame rate %.1f Hz -> startup delay %dms, reset delay %dms",
 		refreshRate, startupDelayMs, resetDelayMs);
