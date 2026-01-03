@@ -203,17 +203,60 @@ void DirectShowVideoRenderer::Stop()
 
 void DirectShowVideoRenderer::Reset()
 {
-	// Stop directshow graph
-	if (FAILED(m_pControl->Stop()))
-		throw std::runtime_error("Failed to Stop() graph");
-
-	m_liveSource->Reset();
-
+	DebugLog::Log("DirectShowVideoRenderer::Reset() called, m_liveSource=%p", m_liveSource);
+	
+	if (!m_liveSource)
+	{
+		DebugLog::Log("DirectShowVideoRenderer::Reset() - m_liveSource is NULL, returning");
+		return;
+	}
+	
+	// CRITICAL FIX: The only way to properly reset MadVR's internal state is to 
+	// completely stop and restart the graph. MadVR doesn't respond to mid-stream
+	// reset signals - it needs to be re-initialized from scratch.
+	// This mimics what happens during fullscreen toggle which works correctly.
+	
+	DebugLog::Log("DirectShowVideoRenderer::Reset() - Stopping graph for complete restart");
+	
+	if (m_pControl)
+	{
+		HRESULT hr = m_pControl->Stop();
+		if (FAILED(hr))
+		{
+			DebugLog::Log("DirectShowVideoRenderer::Reset() - Stop failed, hr=0x%x", hr);
+		}
+		else
+		{
+			DebugLog::Log("DirectShowVideoRenderer::Reset() - Graph stopped");
+			
+			// Brief delay to ensure MadVR fully stops
+			Sleep(100);
+			
+			// Reset the source while graph is stopped
+			DebugLog::Log("DirectShowVideoRenderer::Reset() - Resetting source");
+			m_liveSource->Reset();
+			
+			// Restart the graph
+			hr = m_pControl->Run();
+			if (FAILED(hr))
+			{
+				DebugLog::Log("DirectShowVideoRenderer::Reset() - Run failed, hr=0x%x", hr);
+			}
+			else
+			{
+				DebugLog::Log("DirectShowVideoRenderer::Reset() - Graph restarted");
+			}
+		}
+	}
+	else
+	{
+		// Fallback if no graph control
+		DebugLog::Log("DirectShowVideoRenderer::Reset() - No pControl, just resetting source");
+		m_liveSource->Reset();
+	}
+	
 	m_frameCounter = 0;
-
-	// Run directshow graph again
-	if (FAILED(m_pControl->Run()))
-		throw std::runtime_error("Failed to Run() graph");
+	DebugLog::Log("DirectShowVideoRenderer::Reset() - complete");
 }
 
 
@@ -463,6 +506,12 @@ void DirectShowVideoRenderer::GraphRun()
 		throw std::runtime_error("Failed to Run() graph");
 
 	SetState(RendererState::RENDERSTATE_RENDERING);
+	
+	// NOTE: DO NOT call m_liveSource->Reset() here!
+	// The Active() method has already done a complete reset of all state
+	// before the threads were started. Calling Reset() here races with
+	// the active conversion/delivery threads and causes timeline corruption.
+	// Let the threads work with the clean state provided by Active();
 }
 
 
@@ -564,7 +613,9 @@ void DirectShowVideoRenderer::GraphStop()
 	if (FAILED(m_pControl->Stop()))
 		throw std::runtime_error("Failed to Stop() graph");
 
-	m_liveSource->Reset();
+	// NOTE: Do NOT call m_liveSource->Reset() here
+	// Reset is handled by DirectShowVideoRenderer::Reset() when needed
+	// Calling it here causes duplicate resets on fullscreen transitions
 
 	// Check if filter really stopped
 	OAFilterState filterState = -1;  // Known invalid state
@@ -703,29 +754,11 @@ bool DirectShowVideoRenderer::GetPPMCorrectionInfo(int& ppmValue, bool& hasCorre
 	if ((m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL || 
 	     m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL) && m_liveSource)
 	{
-		// Get PPM correction info from the live source pin
-		IEnumPins* pEnum = nullptr;
-		if (SUCCEEDED(m_liveSource->EnumPins(&pEnum)))
-		{
-			IPin* pLiveSourceOutputPin = nullptr;
-			if (pEnum->Next(1, &pLiveSourceOutputPin, nullptr) == S_OK)
-			{
-				ALiveSourceVideoOutputPin* pPin = static_cast<ALiveSourceVideoOutputPin*>(pLiveSourceOutputPin);
-				if (pPin)
-				{
-					// Get PPM correction information from the pin
-					ppmValue = pPin->GetCurrentPPMCorrection();
-					hasCorrection = pPin->HasPPMCorrection();
-					source = pPin->GetPPMCorrectionSource() ? TEXT("correction.cfg") : TEXT("default");
-					
-					pLiveSourceOutputPin->Release();
-					pEnum->Release();
-					return true;
-				}
-				pLiveSourceOutputPin->Release();
-			}
-			pEnum->Release();
-		}
+		// Get PPM correction info directly from CLiveSource
+		ppmValue = m_liveSource->GetCurrentPPMCorrection();
+		hasCorrection = m_liveSource->HasPPMCorrection();
+		source = m_liveSource->GetPPMCorrectionSource() ? TEXT("correction.cfg") : TEXT("default");
+		return true;
 	}
 	
 	ppmValue = 0;

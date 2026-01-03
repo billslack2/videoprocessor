@@ -111,6 +111,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			CAutoLock lock2(&m_filterCritSec);
 
 			m_isActive = true;
+			m_isBuffering.store(true, std::memory_order_release);
 		}
 
 		// Log ASYNC conversion approach
@@ -419,7 +420,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		m_previousTimeStop = 0;
 		m_startTimeOffset = 0;
 		m_lastSeenFrameCounter = 0;
-		m_isBuffering = true;             // IDENTICAL TO STARTUP - enter buffering
+		m_isBuffering.store(true, std::memory_order_release);             // IDENTICAL TO STARTUP - enter buffering
 	}
 	
 	// Reset conversion metrics
@@ -589,85 +590,105 @@ CBufferedLiveSourceVideoOutputPin::ProactiveQueueMetrics CBufferedLiveSourceVide
 
 DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 {
-	// Set thread priority for time-critical frame delivery
+	//TODO: There must be a better way than these delays to get the queues to sync as we want
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 	
 	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin: DELIVERY thread started - pulls PRE-CONVERTED samples")));
-	DbgLog((LOG_TRACE, 1, TEXT("Delivery thread: ZERO conversion latency - samples already converted by worker")));
 
-	// Multi-event synchronization
+	// Calculate frame rate from timing parameters  
+	const double refreshRate = (m_timeScale > 0 && m_frameDurationTicks > 0) 
+		? (double)m_timeScale / (double)m_frameDurationTicks 
+		: 60.0;  // Default fallback
+
+	DebugLog::Log("refreshRate=%.1f Hz", refreshRate);
+
+	// SMART STARTUP DELAY: Use refresh rate directly as milliseconds, plus 10ms buffer
+	// 60 Hz → 70ms startup, 100ms reset
+	// 24 Hz → 34ms startup, 51ms reset
+	const int startupDelayMs = (int)std::round(refreshRate) + 10;
+	const int resetDelayMs = (int)std::round(startupDelayMs * 2);
+
+	DebugLog::Log("ThreadProc: Frame rate %.1f Hz -> startup delay %dms, reset delay %dms",
+		refreshRate, startupDelayMs, resetDelayMs);
+	Sleep(startupDelayMs);
+	DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: Startup delay complete, starting delivery")));
+
 	HANDLE events[2] = { m_hFrameAvailableEvent, m_hShutdownEvent };
 	
 	while (true)
 	{
-		// LOW LATENCY: Immediate response to events with minimal timeout
-		// Only timeout to prevent busy-wait when no frames are available
-		DWORD waitResult = WaitForMultipleObjects(2, events, FALSE, 1);  // 1ms minimal timeout
-		
-		if (waitResult == WAIT_OBJECT_0 + 1)  // Shutdown
+		DWORD waitResult = WaitForMultipleObjects(2, events, FALSE, 1);
+		if (waitResult == WAIT_OBJECT_0 + 1) // shutdown
 			break;
-		
 		if (waitResult == WAIT_TIMEOUT)
 		{
-			if (!m_isActive) break;
-			continue;  // Quick check for frames
+			if (!m_isActive.load(std::memory_order_acquire)) break;
+			continue;
 		}
-		
 		if (waitResult != WAIT_OBJECT_0)
 		{
 			DbgLog((LOG_ERROR, 1, TEXT("ThreadProc: Wait failed %d"), waitResult));
 			break;
 		}
 
-		// IMMEDIATE DELIVERY: Deliver all available frames without delay
-		while (true)
+		// BUFFERING STATE CHECK: Don't deliver frames until buffering is complete
+		// This ensures startup-like behavior after reset/discontinuity
+		if (m_isBuffering.load(std::memory_order_acquire))
 		{
-			// BUFFERING CHECK: If in buffering mode (startup or recovery), wait for queue to fill
-			// This is the KEY - identical behavior for startup and recovery
-			if (m_isBuffering)
+			size_t convertedQueueSize = 0;
 			{
-				size_t queueSize = 0;
-				{
-					CAutoLock lock(&m_convertedQueueLock);
-					queueSize = m_convertedSampleQueue.size();
-				}
-				
-				const size_t bufferingTarget = GetBufferingTarget();
-				if (queueSize < bufferingTarget)
-				{
-					// Not enough frames yet, keep buffering
-					break; 
-				}
-				
-				// Queue filled! Now reset timeline and start delivering - IDENTICAL TO STARTUP
-				DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: Buffering complete (%zu/%zu frames) - resetting timeline"), queueSize, bufferingTarget));
-				
+				CAutoLock lock(&m_convertedQueueLock);
+				convertedQueueSize = m_convertedSampleQueue.size();
+			}
+			
+			// EXIT BUFFERING: When converted queue reaches buffering target
+			const size_t bufferingTarget = GetBufferingTarget();
+			if (convertedQueueSize >= bufferingTarget)
+			{
+				// ATOMIC BUFFERING EXIT: Reset timeline state and exit buffering
 				{
 					CAutoLock lock(&m_filterCritSec);
+					
+					// Reset timeline state for clean restart (matches startup behavior)
 					m_frameCounter = 0;
 					m_previousFrameCounter = 0;
 					m_frameCounterOffset = 0;
 					m_previousTimeStop = 0;
 					m_startTimeOffset = 0;
+					
+					// Exit buffering mode
+					m_isBuffering.store(false, std::memory_order_release);
 				}
 				
-				m_isBuffering = false;
-				DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: Timeline reset complete - starting delivery")));
+				DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: BUFFERING COMPLETE - converted queue reached target (%zu/%zu), timeline reset"), 
+					convertedQueueSize, bufferingTarget));
+				
+				// SMART RESET DELAY: 1.5x startup delay for reset recovery
+				DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: Post-reset delay %dms (1.5x startup)"), resetDelayMs));
+				Sleep(resetDelayMs);
+				DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: Post-reset delay complete, delivery resuming")));
 			}
+			else
+			{
+				// Still buffering - continue waiting
+				DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: BUFFERING - waiting for converted queue to fill (%zu/%zu)"), 
+					convertedQueueSize, bufferingTarget));
+				continue;
+			}
+		}
 
+		// Deliver all available converted frames
+		while (true)
+		{
 			IMediaSample* pSample = nullptr;
-			
-			// Get pre-converted sample from queue
 			{
 				CAutoLock lock(&m_convertedQueueLock);
-				if (m_convertedSampleQueue.empty()) 
+				if (m_convertedSampleQueue.empty())
 					break;
-
 				pSample = m_convertedSampleQueue.front();
 				m_convertedSampleQueue.pop_front();
 			}
 
-			// Deliver sample
 			HRESULT hr = Deliver(pSample);
 			if (FAILED(hr))
 			{
@@ -721,6 +742,40 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				SwitchToThread();
 				continue;
 			}
+		}
+		
+		// BUFFERING COORDINATION: During buffering, prioritize filling converted queue
+		// Don't waste cycles when delivery thread is waiting for sufficient samples
+		const bool isBuffering = m_isBuffering.load(std::memory_order_acquire);
+		if (isBuffering)
+		{
+			size_t rawQueueSize = 0;
+			size_t convertedQueueSize = 0;
+			
+			{
+				CAutoLock lock(&m_filterCritSec);
+				rawQueueSize = m_videoFrameQueue.size();
+			}
+			
+			{
+				CAutoLock lock(&m_convertedQueueLock);
+				convertedQueueSize = m_convertedSampleQueue.size();
+			}
+			
+			const size_t bufferingTarget = GetBufferingTarget();
+			
+			// During buffering, focus on building up converted queue efficiently
+			if (convertedQueueSize >= bufferingTarget)
+			{
+				// Converted queue is ready - let delivery thread exit buffering
+				// Briefly yield to allow delivery thread to process the buffering exit
+				SwitchToThread();
+				continue;
+			}
+			
+			// Need more converted samples for buffering - proceed with conversion
+			DbgLog((LOG_TRACE, 1, TEXT("ConversionWorker: BUFFERING mode - building converted queue (%zu/%zu, raw=%zu)"), 
+				convertedQueueSize, bufferingTarget, rawQueueSize));
 		}
 		
 		// Get next raw frame to convert
@@ -781,7 +836,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 		
 		if (FAILED(hr))
 		{
-			DbgLog((LOG_WARNING, 1, TEXT("ConversionWorker: Conversion failed for frame #%I64u"), 
+			DbgLog((LOG_TRACE, 1, TEXT("ConversionWorker: Conversion failed for frame #%I64u"), 
 				videoFrame.GetCounter()));
 			videoFrame.SourceBufferRelease();
 			pSample->Release();
@@ -799,6 +854,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 		videoFrame.SourceBufferRelease();
 		
 		// IMMEDIATE SIGNALING: Signal frame available after successful conversion
+		// This ensures delivery thread can respond quickly to converted samples
 		SetEvent(m_hFrameAvailableEvent);
 	}
 	

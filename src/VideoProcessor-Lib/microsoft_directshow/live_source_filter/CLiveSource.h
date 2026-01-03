@@ -94,6 +94,19 @@ public:
 	// Get the amount of dropped frames due to queue actions
 	uint64_t DroppedFrameCount() const;
 
+	//
+	// PPM Correction (forwarded from video output pin)
+	//
+
+	// Get the current PPM correction value being applied
+	int GetCurrentPPMCorrection() const;
+	
+	// Check if PPM correction is active (non-zero)
+	bool HasPPMCorrection() const;
+	
+	// Get PPM correction source information (true if from file)
+	bool GetPPMCorrectionSource() const;
+
 private:
 	ALiveSourceVideoOutputPin* m_videoOutputPin = nullptr;
 

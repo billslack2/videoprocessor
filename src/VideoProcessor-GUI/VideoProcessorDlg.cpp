@@ -245,7 +245,6 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 	}
 }
 
-
 //
 // Option handlers
 //
@@ -502,11 +501,24 @@ void CVideoProcessorDlg::OnBnClickedRendererVideoFrameUseQueueCheck()
 void CVideoProcessorDlg::OnBnClickedRendererReset()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnBnClickedRendererReset()")));
+	
+	DebugLog::Log("UI: OnBnClickedRendererReset() - button clicked");
 
 	if (!m_videoRenderer)
+	{
+		DebugLog::Log("UI: OnBnClickedRendererReset() - ERROR: m_videoRenderer is null!");
 		return;
+	}
+	
+	DebugLog::Log("UI: OnBnClickedRendererReset() - calling m_videoRenderer->Reset()");
+
+	// Disable auto-reset timer while manual reset is in progress
+	KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
+	m_pendingQueueReset = false;
 
 	m_videoRenderer->Reset();
+	
+	DebugLog::Log("UI: OnBnClickedRendererReset() - Reset() returned");
 }
 
 
@@ -565,7 +577,7 @@ void CVideoProcessorDlg::OnCbnSelchangeFullscreenmodeCombo()
 	if (m_fullScreenVideoWindow)
 	{
 		FullScreenVideoWindowDestroy();
-		Sleep(1000);
+		//Sleep(1000);
 		OnBnClickedRendererRestart();
 	}
 
@@ -724,6 +736,8 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 			TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange():  - Renderer did not accept state, m_wantToRestartRenderer=true")));
 		m_wantToRestartRenderer = true;
 	}
+	// Note: Automatic reset for signal changes is now handled at the lower level
+	// by CBufferedLiveSourceVideoOutputPin detecting frame counter changes
 
 	// New round, new chances, reset state here
 	if (m_rendererState == RendererState::RENDERSTATE_FAILED)
@@ -732,7 +746,6 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	}
 
 	UpdateState();
-
 
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Done")));
 	return 0;
@@ -780,7 +793,7 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 				DbgLog((LOG_TRACE, 1, TEXT("EC_DISPLAY_CHANGED detected - scheduling MadVR reset")));
 				if (m_rendererState == RendererState::RENDERSTATE_RENDERING && !m_pendingQueueReset)
 				{
-					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 2000, nullptr);  // 2-second delay for display changes
+					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 4000, nullptr);  // 2-second delay for display changes
 					m_pendingQueueReset = true;
 				}
 				break;
@@ -1842,6 +1855,12 @@ void CVideoProcessorDlg::RenderStop()
 	assert(m_rendererState == RendererState::RENDERSTATE_RENDERING);
 	assert(m_deliverCaptureDataToRenderer.load(std::memory_order_acquire));
 
+	assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
+
+	assert(m_videoRenderer);
+	assert(m_rendererState == RendererState::RENDERSTATE_RENDERING);
+	assert(m_deliverCaptureDataToRenderer.load(std::memory_order_acquire));
+
 	// After this call no frames will ever go through to the renderer
 	m_deliverCaptureDataToRenderer.store(false, std::memory_order_release);
 
@@ -2233,7 +2252,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 		m_hdrLuminanceMaxCll.SetWindowText(_T(""));
 		m_hdrLuminanceMaxFall.SetWindowText(_T(""));
 		m_hdrLuminanceMasterMin.SetWindowText(_T(""));
-		m_hdrLuminanceMasterMax.SetWindowText(_T(""));
+		m_hdrLuminanceMasterMax.SetWindowText(_T("")) ;
 
 		m_hdrColorspaceREdit.SetWindowTextW(_T(""));
 		m_hdrColorspaceGEdit.SetWindowTextW(_T(""));
@@ -2285,7 +2304,6 @@ void CVideoProcessorDlg::_FatalError(int line, const std::string& functionName, 
 
 	CDialog::EndDialog(S_FALSE);
 }
-
 
 //
 // CDialog
@@ -2383,6 +2401,7 @@ void CVideoProcessorDlg::DoDataExchange(CDataExchange* pDX)
 //// Called when the dialog box is initialized
 BOOL CVideoProcessorDlg::OnInitDialog()
 {
+
 		if (!CDialog::OnInitDialog())
 		return FALSE;
 
@@ -2504,6 +2523,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	//		m_fullScreenModeCombo.SetCurSel(1);
 
 	//}
+
 	m_fullScreenModeCombo.AddString(L"Exclusive");
 	m_fullScreenModeCombo.AddString(L"Windowed");
 	if (m_windowedFullScreenMode == false)
@@ -2635,6 +2655,7 @@ void CVideoProcessorDlg::OnPaint()
 
 		}
 				
+		
 
 			CDialog::OnPaint();
 
@@ -2757,7 +2778,7 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
     
     if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
     {
-        DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): RESIZE DEBOUNCE - Resetting renderer after resize")));
+        DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Resetting renderer after resize")));
         m_videoRenderer->Reset();
     }
     return;
@@ -2881,8 +2902,9 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 		{
 			const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
 
-			// Simple: reset when queue >= 4 frames
-			if (currentQueueSize >= 4)
+			//TODO: Adjust threshold and duration based on testing
+			// Simple: reset when queue >= 16 frames
+			if (currentQueueSize >= 32)
 			{
 				m_videoRenderer->Reset();
 			}
@@ -3070,16 +3092,11 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 	// STRATEGY 2: Track consecutive full seconds for progressive overload
 	else if (currentQueueSize >= (maxQueueSize * 3) / 4)  // 75% threshold
 	{
-		m_consecutiveFullSeconds++;
-		if (m_consecutiveFullSeconds >= 3)  // 3 seconds of high queue
+		//TODO: Adjust threshold and duration based on testing
+		// Simple: reset when queue >= 16 frames
+		if (currentQueueSize >= 32)
 		{
-			DbgLog((LOG_TRACE, 1, TEXT("Queue health: Sustained high queue (%zu for %zu seconds) - reset"), currentQueueSize, m_consecutiveFullSeconds));
-
-			if (m_videoRenderer)
-			{
-				m_videoRenderer->Reset();
-				m_consecutiveFullSeconds = 0;
-			}
+			m_videoRenderer->Reset();
 		}
 	}
 	else
@@ -3111,5 +3128,6 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 	m_lastQueueSize = currentQueueSize;
 	m_lastDroppedFrames = droppedFrames;
 }
+
 
 

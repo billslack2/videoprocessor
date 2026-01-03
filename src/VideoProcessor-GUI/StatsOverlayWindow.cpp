@@ -384,7 +384,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	// PPM Correction
 	if (m_stats.hasPPMCorrection || (!m_stats.ppmSource.IsEmpty() && m_stats.ppmSource != TEXT("N/A")))
 	{
-		line.Format(TEXT("PPM Correction:   %+d"), m_stats.ppmCorrection);
+		line.Format(TEXT("PPM Correction:   %+d ppm"), m_stats.ppmCorrection);
 		DrawText(hdc, line, PADDING, y);
 		y += LINE_HEIGHT;
 	}

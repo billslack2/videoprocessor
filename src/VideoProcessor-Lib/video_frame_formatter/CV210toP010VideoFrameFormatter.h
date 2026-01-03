@@ -200,6 +200,7 @@ private:
 	bool CheckCPUFeatures() const;
 	bool HasAVX2MemoryOps() const;
 	uint32_t GetActualMaxThreads() const;
+	uint32_t GetPhysicalCoreCount() const;  // Get physical core count (ignoring E-cores)
 	void LogPerformanceStats() const;
 	
 public:

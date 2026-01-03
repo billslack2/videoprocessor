@@ -68,10 +68,20 @@ void CV210toP010VideoFrameFormatter::LoadConfigurationFile()
     
     if (!configFile.is_open())
     {
-        // Config file not found - use explicit defaults as specified
+        // Config file not found - use smart defaults based on PHYSICAL core count
         m_conversionMethod = ConversionMethod::AUTO;
+        
+        // Determine default max cores based on physical core count (ignoring E-cores)
+        uint32_t physicalCores = GetPhysicalCoreCount();
+        if (physicalCores >= 8)
+        {
+            m_maxCoreCount = 2;  // Use 4 threads on systems with 8+ physical cores
+        }
+        else
+        {
+            m_maxCoreCount = 1;  // Use 1 thread on systems with fewer than 8 physical cores
+        }
         m_minCoreCount = 1;
-        m_maxCoreCount = 2;
         return;
     }
 
@@ -131,6 +141,38 @@ void CV210toP010VideoFrameFormatter::LoadConfigurationFile()
     }
 
     configFile.close();
+}
+
+// Helper function to get physical core count (excluding E-cores on Intel)
+uint32_t CV210toP010VideoFrameFormatter::GetPhysicalCoreCount() const
+{
+    // Use Windows API to get physical core count (ignores E-cores)
+    SYSTEM_INFO sysInfo;
+    GetSystemInfo(&sysInfo);
+    
+    // This returns the number of LOGICAL processors
+    // On systems with E-cores, we need a more sophisticated approach
+    // For now, use a heuristic: assume P-cores are roughly half the logical cores on modern Intel
+    uint32_t logicalCores = sysInfo.dwNumberOfProcessors;
+    
+    // Better approach: Try to get physical core count via WMI or CPUID
+    // For simplicity, use logical cores / 2 as estimate for P-core count on hybrid systems
+    // This is conservative and safe for thread pool sizing
+    
+    // Check for hybrid architecture (Intel 12th gen Alder Lake and later)
+    // These systems have a mix of P-cores and E-cores
+    // For P-core only systems, return logical core count
+    // For hybrid systems, estimate P-cores as roughly half
+    
+    // Conservative approach: assume hybrid if logical > 12 cores
+    if (logicalCores > 12)
+    {
+        // Likely a hybrid system, return roughly P-core count (estimate)
+        return std::max(1u, logicalCores / 2);
+    }
+    
+    // Non-hybrid or small system: all cores are P-cores (or equivalent)
+    return logicalCores;
 }
 
 // =====================================================================

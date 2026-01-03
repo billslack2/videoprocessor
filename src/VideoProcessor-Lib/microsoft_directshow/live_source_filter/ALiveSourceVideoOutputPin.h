@@ -108,11 +108,14 @@ public:
 	// Get the amount of dropped frames due to queue actions
 	uint64_t DroppedFrameCount() const { return m_droppedFrameCount; }
 
-	// PPM correction information access (NEW)
+	// PPM correction information access
 	// Get the current PPM correction value being applied
+	// Returns the PPM value from config: positive = faster, negative = slower
 	int GetCurrentPPMCorrection() const 
 	{ 
-		return (int)(RATIONAL_TRIM_DENOMINATOR - m_currentRationalTrimNumerator); 
+		// m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR + ppmCorrection
+		// So: ppmCorrection = m_currentRationalTrimNumerator - RATIONAL_TRIM_DENOMINATOR
+		return (int)(m_currentRationalTrimNumerator - RATIONAL_TRIM_DENOMINATOR); 
 	}
 	
 	// Check if PPM correction is active (non-zero)

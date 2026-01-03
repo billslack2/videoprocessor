@@ -140,7 +140,9 @@ STDMETHODIMP CLiveSource::SetFrameQueueMaxSize(size_t frameQueueMaxSize)
 
 STDMETHODIMP CLiveSource::Reset()
 {
+	DebugLog::Log("CLiveSource::Reset() called - calling m_videoOutputPin->Reset()");
 	m_videoOutputPin->Reset();
+	DebugLog::Log("CLiveSource::Reset() - m_videoOutputPin->Reset() returned");
 	return S_OK;
 }
 
@@ -196,4 +198,28 @@ double CLiveSource::ExitLatencyMs() const
 uint64_t CLiveSource::DroppedFrameCount() const
 {
 	return m_videoOutputPin->DroppedFrameCount();
+}
+
+
+int CLiveSource::GetCurrentPPMCorrection() const
+{
+	if (!m_videoOutputPin)
+		return 0;
+	return m_videoOutputPin->GetCurrentPPMCorrection();
+}
+
+
+bool CLiveSource::HasPPMCorrection() const
+{
+	if (!m_videoOutputPin)
+		return false;
+	return m_videoOutputPin->HasPPMCorrection();
+}
+
+
+bool CLiveSource::GetPPMCorrectionSource() const
+{
+	if (!m_videoOutputPin)
+		return false;
+	return m_videoOutputPin->GetPPMCorrectionSource();
 }

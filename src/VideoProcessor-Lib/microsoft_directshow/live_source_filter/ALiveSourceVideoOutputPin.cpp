@@ -379,6 +379,9 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_previousTimeStop = 0;
 	m_startTimeOffset = 0;
 	m_droppedFrameCount = 0;
+	// Force downstream to treat next frame as a fresh timeline
+	m_forceDiscontinuity = true;
+	m_deliverNewSegment = true;
 
 	// Reset hybrid timing state for DS_SSTM_HARDWARE_RATIONAL mode
 	m_previousHardwareTimestamp = 0;
@@ -414,19 +417,20 @@ void ALiveSourceVideoOutputPin::Reset()
 		DbgLog((LOG_TRACE, 1, TEXT("Reset(): RATIONAL_RATIONAL mode active - using correction.cfg PPM:")));
 		if (m_ppmCorrectionLoader.HasCorrections())
 		{
-			int ppmCorrection = RATIONAL_TRIM_DENOMINATOR - GetRationalTrimNumerator();
+			// CORRECT SIGN: ppmCorrection = trimNumerator - RATIONAL_TRIM_DENOMINATOR
+			int ppmCorrection = GetRationalTrimNumerator() - RATIONAL_TRIM_DENOMINATOR;
 			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: %d (from correction.cfg)"), ppmCorrection));
 			
 			// Show trim ratio with context
 			double trimPercentage = (100.0 * GetRationalTrimNumerator()) / RATIONAL_TRIM_DENOMINATOR;
 			if (ppmCorrection > 0)
 			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Stream runs %d PPM FASTER (trim %.6f%% = slight slowdown to compensate)"), 
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware +%d PPM faster -> Timeline %.6f%% faster to match"), 
 					ppmCorrection, trimPercentage));
 			}
 			else if (ppmCorrection < 0)
 			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Stream runs %d PPM SLOWER (trim %.6f%% = slight speedup to compensate)"), 
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware %d PPM slower -> Timeline %.6f%% slower to match"), 
 					ppmCorrection, trimPercentage));
 			}
 			else
@@ -446,24 +450,25 @@ void ALiveSourceVideoOutputPin::Reset()
 		DbgLog((LOG_TRACE, 1, TEXT("Reset(): CLOCK_RATIONAL mode active - using correction.cfg PPM:")));
 		if (m_ppmCorrectionLoader.HasCorrections())
 		{
-			int ppmCorrection = RATIONAL_TRIM_DENOMINATOR - GetRationalTrimNumerator();
+			// CORRECT SIGN: ppmCorrection = trimNumerator - RATIONAL_TRIM_DENOMINATOR
+			int ppmCorrection = GetRationalTrimNumerator() - RATIONAL_TRIM_DENOMINATOR;
 			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: %d (from correction.cfg)"), ppmCorrection));
 			
 			// Show trim ratio with context
 			double trimPercentage = (100.0 * GetRationalTrimNumerator()) / RATIONAL_TRIM_DENOMINATOR;
 			if (ppmCorrection > 0)
 			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Stream runs %d PPM FASTER (trim %.6f%% = slight slowdown to compensate)"), 
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware +%d PPM faster -> Duration %.6f%% faster to match"), 
 					ppmCorrection, trimPercentage));
 			}
 			else if (ppmCorrection < 0)
 			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Stream runs %d PPM SLOWER (trim %.6f%% = slight speedup to compensate)"), 
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware %d PPM slower -> Duration %.6f%% slower to match"), 
 					ppmCorrection, trimPercentage));
 			}
 			else
 			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: No PPM correction (trim = 100.000000%)")));
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: No PPM correction (duration = 100.000000%)")));
 			}
 		}
 		else
@@ -783,32 +788,6 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		}
 
 		timeStart -= m_startTimeOffset;
-		
-		// CRITICAL MONOTONIC ENFORCEMENT FOR START TIME (CLOCK_SMART2)
-		// Even with free-running clock, ensure timeStart never goes backwards
-		// This prevents invalid frame intervals where start > stop
-		if (m_previousTimeStop > 0)
-		{
-			// Calculate what the minimum start time should be based on previous stop
-			// Use theoretical frame duration as minimum progression
-			const REFERENCE_TIME minStartTime = m_previousTimeStop - m_frameDuration;
-			
-			if (timeStart < minStartTime)
-			{
-				DbgLog((LOG_WARNING, 1, TEXT("CLOCK_SMART2(#%I64u): timeStart=%I64d < minStartTime=%I64d, enforcing monotonic (prevStop=%I64d)"), 
-					videoFrame.GetCounter(), timeStart, minStartTime, m_previousTimeStop));
-				timeStart = minStartTime;
-			}
-		}
-		
-		// Store current hardware timestamp for CLOCK_SMART/CLOCK_SMART2 duration tracking
-		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
-		    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
-		{
-			m_lastHardwareTimestamp = ConvertTimingClockToReferenceTime(
-				videoFrame.GetTimingTimestamp(),
-				m_timingClock->TimingClockTicksPerSecond());
-		}
 		break;
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
@@ -1099,18 +1078,40 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 		int ppmCorrection = m_ppmCorrectionLoader.GetPPMCorrection(refreshRate);
 		
 		// Calculate the trim numerator based on PPM correction
-		// Positive PPM makes stream faster (smaller numerator), negative makes it slower (larger numerator)
+		// SIGN CONVENTION:
+		//   Positive PPM in config = hardware runs FASTER than expected
+		//   -> Timeline must run FASTER to match = LARGER trim numerator
+		//   
+		//   Negative PPM in config = hardware runs SLOWER than expected
+		//   -> Timeline must run SLOWER to match = SMALLER trim numerator
+		//
+		// Formula: trimNum = RATIONAL_TRIM_DENOMINATOR + ppmCorrection
+		//   Example: +6 PPM -> 1000006/1000000 = 1.000006x speed (faster)
+		//   Example: -6 PPM -> 999994/1000000 = 0.999994x speed (slower)
+		
 		if (ppmCorrection == 0)
 		{
 			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // No correction
-			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - using default timing (0 PPM)"), refreshRate));
+			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction (0 PPM)"), refreshRate));
 		}
 		else
 		{
-			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR - ppmCorrection;
-			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - applying %d PPM correction (trim numerator: %llu/%llu = %.6f%%)"), 
-				refreshRate, ppmCorrection, m_currentRationalTrimNumerator, RATIONAL_TRIM_DENOMINATOR,
+			// CORRECT SIGN: Add ppmCorrection to make faster, subtract to make slower
+			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR + ppmCorrection;
+			
+			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - applying %d PPM correction"), refreshRate, ppmCorrection));
+			DbgLog((LOG_TRACE, 1, TEXT("  Trim ratio: %llu/%llu = %.6f%%"), 
+				m_currentRationalTrimNumerator, RATIONAL_TRIM_DENOMINATOR,
 				(100.0 * m_currentRationalTrimNumerator) / RATIONAL_TRIM_DENOMINATOR));
+			
+			if (ppmCorrection > 0)
+			{
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware +%d PPM faster -> Timeline runs faster to match"), ppmCorrection));
+			}
+			else
+			{
+				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware %d PPM slower -> Timeline runs slower to match"), ppmCorrection));
+			}
 		}
 	}
 	else
