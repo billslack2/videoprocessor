@@ -318,15 +318,36 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
+
+
 	// Measured refresh rate (calculated from frame arrivals)
 	if (m_stats.measuredRefreshRate > 0.0)
 	{
-		line.Format(TEXT("~ Capture Rate:   %.6f Hz"), m_stats.measuredRefreshRate);
+		line.Format(TEXT("- Est. Rate:      %.6f Hz"), m_stats.measuredRefreshRate);
 		DrawText(hdc, line, PADDING, y);
 		y += LINE_HEIGHT;
 		
 		// PPM deviation between theoretical and measured rates
-		line.Format(TEXT("~ Deviation:      %+d ppm"), m_stats.ppmDeviation);
+		line.Format(TEXT("- Est. PPM:       %+d ppm"), m_stats.ppmDeviation);
+		DrawText(hdc, line, PADDING, y);
+		y += LINE_HEIGHT;
+	}
+
+	// PPM Correction
+	if (m_stats.hasPPMCorrection || (!m_stats.ppmSource.IsEmpty() && m_stats.ppmSource != TEXT("N/A")))
+	{
+		line.Format(TEXT("- Applied PPM:    %+d ppm"), m_stats.ppmCorrection);
+		DrawText(hdc, line, PADDING, y);
+		y += LINE_HEIGHT;
+	}
+
+	// Corrected refresh rate (only for rational modes with PPM correction)
+	if ((m_stats.method == TEXT("Rational-Rational") || m_stats.method == TEXT("Clock-Rational")) &&
+		m_stats.hasPPMCorrection)
+	{
+		// Calculate corrected rate: nominal + (nominal * PPM / 1000000)
+		double correctedRate = m_stats.refreshRate * (1.0 + (double)m_stats.ppmCorrection / 1000000.0);
+		line.Format(TEXT("- Delivery Rate:  %.6f Hz"), correctedRate);
 		DrawText(hdc, line, PADDING, y);
 		y += LINE_HEIGHT;
 	}
@@ -381,13 +402,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	// PPM Correction
-	if (m_stats.hasPPMCorrection || (!m_stats.ppmSource.IsEmpty() && m_stats.ppmSource != TEXT("N/A")))
-	{
-		line.Format(TEXT("PPM Correction:   %+d ppm"), m_stats.ppmCorrection);
-		DrawText(hdc, line, PADDING, y);
-		y += LINE_HEIGHT;
-	}
+
 
 	// Frame Offset - show N/A for methods that don't support offset
 	if (m_stats.method == TEXT("Rational-Rational") || m_stats.method == TEXT("Clock-Rational"))

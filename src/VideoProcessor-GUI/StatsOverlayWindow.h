@@ -150,11 +150,11 @@ private:
 	std::mutex m_statsMutex;
 	StatsData m_stats;
 
-	// Window constants - adjusted for 23px font
+	// Window constants - adjusted for 23px font and additional lines
 	static const int MARGIN_RIGHT = 500;
-	static const int MARGIN_BOTTOM = 300;
-	static const int WINDOW_WIDTH = 420;   // Slightly wider to accommodate text properly
-	static const int WINDOW_HEIGHT = 450;  // Adjusted for smaller line height
+	static const int MARGIN_BOTTOM = 320;    // Move up 20 pixels (was 300)
+	static const int WINDOW_WIDTH = 420;     // Keep width the same
+	static const int WINDOW_HEIGHT = 470;    // Make 20 pixels taller (was 450)
 	static const int PADDING = 10;
 	static const int LINE_HEIGHT = 23;     // Match font size for better spacing
 
