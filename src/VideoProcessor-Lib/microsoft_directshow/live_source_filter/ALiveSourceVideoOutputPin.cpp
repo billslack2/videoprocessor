@@ -396,18 +396,34 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_durationHistoryCount = 0;
 	m_lastHardwareTimestamp = 0;
 
+	// Reset smart timing statistics
+	m_smartHardwareTimestampCount = 0;
+	m_smartSyntheticTimestampCount = 0;
+	m_smartRejectedTimestampCount = 0;
+	
+	// Reset timestamp queue (thread-safe)
+	{
+		std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
+		m_hardwareTimestampQueue.clear();
+	}
+	
+	// Reset validation parameters (will be recalculated on first enqueue)
+	m_expectedFrameDuration = 0;
+	m_minValidDuration = 0;
+	m_maxValidDuration = 0;
+
 	// Log timing mode information
 	if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART)
 	{
 		DbgLog((LOG_TRACE, 1, TEXT("Reset(): ORIGINAL CLOCK_SMART mode active - will use:")));
-		DbgLog((LOG_TRACE, 1, TEXT("  1) Hardware stop timestamps when available (from frame queue)")));
+		DbgLog((LOG_TRACE, 1, TEXT("  1) Hardware stop timestamps when available - from frame queue")));
 		DbgLog((LOG_TRACE, 1, TEXT("  2) Theoretical frame duration as fallback when no hardware stop time")));
 		DbgLog((LOG_TRACE, 1, TEXT("  3) Simple and reliable for basic timing needs")));
 	}
 	else if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
 	{
 		DbgLog((LOG_TRACE, 1, TEXT("Reset(): ENHANCED CLOCK_SMART2 mode active - will use:")));
-		DbgLog((LOG_TRACE, 1, TEXT("  1) Hardware stop timestamps when available (from frame queue)")));
+		DbgLog((LOG_TRACE, 1, TEXT("  1) Hardware stop timestamps when available - from frame queue")));
 		DbgLog((LOG_TRACE, 1, TEXT("  2) Average of last %d actual durations when no hardware stop time"), DURATION_HISTORY_SIZE));
 		DbgLog((LOG_TRACE, 1, TEXT("  3) Integer-only math for monotonic timing")));
 		DbgLog((LOG_TRACE, 1, TEXT("  4) Rational duration fallback when no history available")));
@@ -843,91 +859,111 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	}
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
+	{
+		// Convert current frame's hardware timestamp to reference time
+		REFERENCE_TIME currentFrameTime = ConvertTimingClockToReferenceTime(
+			videoFrame.GetTimingTimestamp(),
+			m_timingClock->TimingClockTicksPerSecond()) - m_startTimeOffset;
 
-		timeStop = NextFrameTimestamp();
-		if (timeStop == REFERENCE_TIME_INVALID)
+		// Enqueue current timestamp for future use (with validation)
+		EnqueueHardwareTimestamp(currentFrameTime);
+		
+		// Try to dequeue a timestamp for this frame's stop time
+		REFERENCE_TIME hardwareStopTime = DequeueHardwareTimestamp();
+		
+		if (hardwareStopTime != REFERENCE_TIME_INVALID)
 		{
-			timeStop = timeStart + m_frameDuration;
+			timeStop = hardwareStopTime;
+			
+			// Ensure monotonic progression
+			timeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
+			
+			++m_smartHardwareTimestampCount;
 		}
 		else
 		{
-			assert(m_startTimeOffset > 0);
-			timeStop -= m_startTimeOffset;
+			// Fallback to theoretical duration (first frame or queue empty)
+			timeStop = timeStart + m_frameDuration;
+			++m_smartSyntheticTimestampCount;
+		}
+		
+		// Log timing stats every 10 seconds (600 frames at 60fps)
+		if ((m_smartHardwareTimestampCount + m_smartSyntheticTimestampCount) % 600 == 0)
+		{
+			DebugLog::Log("CLOCK_SMART: HW=%llu, Syn=%llu, Rejected=%llu, Total=%llu (%.1f%% HW)",
+				m_smartHardwareTimestampCount, m_smartSyntheticTimestampCount, m_smartRejectedTimestampCount,
+				m_smartHardwareTimestampCount + m_smartSyntheticTimestampCount,
+				(m_smartHardwareTimestampCount * 100.0) / (m_smartHardwareTimestampCount + m_smartSyntheticTimestampCount));
 		}
 		break;
+	}
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
+	{
+		// Convert current frame's hardware timestamp to reference time
+		REFERENCE_TIME currentFrameTime = ConvertTimingClockToReferenceTime(
+			videoFrame.GetTimingTimestamp(),
+			m_timingClock->TimingClockTicksPerSecond()) - m_startTimeOffset;
 
-		timeStop = NextFrameTimestamp();
-		if (timeStop == REFERENCE_TIME_INVALID)
+		// Enqueue current timestamp for future use (with validation)
+		EnqueueHardwareTimestamp(currentFrameTime);
+		
+		// Try to dequeue a timestamp for this frame's stop time
+		REFERENCE_TIME hardwareStopTime = DequeueHardwareTimestamp();
+		
+		if (hardwareStopTime != REFERENCE_TIME_INVALID)
 		{
-			// ENHANCED CLOCK_SMART2: Instead of using theoretical duration,
-			// use average of last 100 actual frame durations for better accuracy
-			const REFERENCE_TIME smartDuration = CalculateSmartFrameDuration();
-			timeStop = timeStart + smartDuration;
+			timeStop = hardwareStopTime;
 			
-			// Update duration history if we have previous hardware timestamp
+			// Ensure monotonic progression
+			timeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
+			
+			++m_smartHardwareTimestampCount;
+			
+			// Update duration history for SMART2 (if we have previous timestamp)
 			if (m_lastHardwareTimestamp > 0)
 			{
-				// Calculate actual duration from hardware timestamps (integer math)
-				const REFERENCE_TIME currentHardwareTime = ConvertTimingClockToReferenceTime(
-					videoFrame.GetTimingTimestamp(),
-					m_timingClock->TimingClockTicksPerSecond());
-				const REFERENCE_TIME measuredDuration = currentHardwareTime - m_lastHardwareTimestamp;
-				
+				REFERENCE_TIME measuredDuration = currentFrameTime - m_lastHardwareTimestamp;
 				UpdateFrameDurationHistory(measuredDuration);
-			}
-			
-			// Ensure monotonic progression using utility function
-			const REFERENCE_TIME monotonicTimeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
-			if (monotonicTimeStop != timeStop)
-			{
-				DbgLog((LOG_WARNING, 1, TEXT("CLOCK_SMART2(#%I64u): Enforced monotonic progression, adjusted stop time from %I64d to %I64d"), 
-					videoFrame.GetCounter(), timeStop, monotonicTimeStop));
-				timeStop = monotonicTimeStop;
 			}
 		}
 		else
 		{
-			assert(m_startTimeOffset > 0);
-			timeStop -= m_startTimeOffset;
+			// Fallback - use smart duration calculation (averaged from history)
+			const REFERENCE_TIME smartDuration = CalculateSmartFrameDuration();
+			timeStop = timeStart + smartDuration;
+			timeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
 			
-			// Ensure hardware-based stop time is also monotonic using utility function
-			const REFERENCE_TIME monotonicTimeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
-			if (monotonicTimeStop != timeStop)
-			{
-				DbgLog((LOG_WARNING, 1, TEXT("CLOCK_SMART2(#%I64u): Hardware stop time not monotonic, enforced progression from %I64d to %I64d"), 
-					videoFrame.GetCounter(), timeStop, monotonicTimeStop));
-				timeStop = monotonicTimeStop;
-			}
+			++m_smartSyntheticTimestampCount;
+		}
+		
+		// Store for duration history tracking
+		m_lastHardwareTimestamp = currentFrameTime;
+		
+		// Log timing stats every 10 seconds (600 frames at 60fps)
+		if ((m_smartHardwareTimestampCount + m_smartSyntheticTimestampCount) % 600 == 0)
+		{
+			DebugLog::Log("CLOCK_SMART2: HW=%llu, Syn=%llu, Rejected=%llu, Total=%llu (%.1f%% HW)",
+				m_smartHardwareTimestampCount, m_smartSyntheticTimestampCount, m_smartRejectedTimestampCount,
+				m_smartHardwareTimestampCount + m_smartSyntheticTimestampCount,
+				(m_smartHardwareTimestampCount * 100.0) / (m_smartHardwareTimestampCount + m_smartSyntheticTimestampCount));
 		}
 
 		assert(timeStop > timeStart);
 		break;
-	
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
-		
-		timeStop = timeStart + m_frameDuration;
-		break;
-
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
-
-		// These modes use the next frame timestamp or theoretical duration
-		// Implementation needed if these modes are used
-		timeStop = timeStart + m_frameDuration;
-		break;
 	}
+}
 
-	// Set right amount of values
-	switch (m_timestamp)
-	{
-	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
-	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
-	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
+// Set right amount of values
+switch (m_timestamp)
+{
+case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
+case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
+case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
+case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
+case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
+case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
 
 		// FINAL MONOTONIC VALIDATION: Ensure frame interval is always valid
 		// This is the last line of defense against any timing anomalies
@@ -943,7 +979,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		if (FAILED(hr))
 			return hr;
 
-		// Track previous stop time for monotonicity checking (important for both rational modes)
+		// Track previous stop time for monotonicity (important for both rational modes)
 		// This must be done for ALL builds, not just debug, to enable timeline validation
 		m_previousTimeStop = timeStop;
 		break;
@@ -1120,4 +1156,76 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 		m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;
 		DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction.cfg found, using default timing"), refreshRate));
 	}
+}
+
+
+bool ALiveSourceVideoOutputPin::EnqueueHardwareTimestamp(REFERENCE_TIME timestamp)
+{
+	std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
+	
+	// Initialize validation parameters on first call
+	if (m_expectedFrameDuration == 0)
+	{
+		m_expectedFrameDuration = m_frameDuration;
+		m_minValidDuration = m_expectedFrameDuration / 2;   // 50% of expected (e.g., 8.3ms for 16.7ms frame)
+		m_maxValidDuration = m_expectedFrameDuration * 2;   // 200% of expected (e.g., 33.4ms for 16.7ms frame)
+		
+		DbgLog((LOG_TRACE, 1, TEXT("EnqueueHardwareTimestamp: Initialized validation - expected=%.3fms, range=[%.3fms, %.3fms]"),
+			m_expectedFrameDuration / 10000.0,
+			m_minValidDuration / 10000.0,
+			m_maxValidDuration / 10000.0));
+	}
+	
+	// Validate timestamp delta if we have history
+	if (!m_hardwareTimestampQueue.empty())
+	{
+		REFERENCE_TIME lastTimestamp = m_hardwareTimestampQueue.back();
+		REFERENCE_TIME duration = timestamp - lastTimestamp;
+		
+		// Reject obviously bad timestamps (non-monotonic or out of reasonable range)
+		if (duration <= 0)
+		{
+			DebugLog::Log("CLOCK_SMART: Rejecting non-monotonic timestamp delta=%.3fms",
+				duration / 10000.0);
+			++m_smartRejectedTimestampCount;
+			return false;
+		}
+		
+		if (duration < m_minValidDuration || duration > m_maxValidDuration)
+		{
+			DebugLog::Log("CLOCK_SMART: Rejecting bad timestamp delta=%.3fms (expected %.3fms, range [%.3fms, %.3fms])",
+				duration / 10000.0,
+				m_expectedFrameDuration / 10000.0,
+				m_minValidDuration / 10000.0,
+				m_maxValidDuration / 10000.0);
+			++m_smartRejectedTimestampCount;
+			return false;
+		}
+	}
+	
+	// Add to queue
+	m_hardwareTimestampQueue.push_back(timestamp);
+	
+	// Limit queue size (drop oldest if too large) - keeps latency low
+	while (m_hardwareTimestampQueue.size() > MAX_TIMESTAMP_QUEUE_SIZE)
+	{
+		m_hardwareTimestampQueue.pop_front();
+		DbgLog((LOG_TRACE, 1, TEXT("EnqueueHardwareTimestamp: Queue full, dropped oldest timestamp")));
+	}
+	
+	return true;
+}
+
+
+REFERENCE_TIME ALiveSourceVideoOutputPin::DequeueHardwareTimestamp()
+{
+	std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
+	
+	if (m_hardwareTimestampQueue.empty())
+		return REFERENCE_TIME_INVALID;
+	
+	REFERENCE_TIME timestamp = m_hardwareTimestampQueue.front();
+	m_hardwareTimestampQueue.pop_front();
+	
+	return timestamp;
 }

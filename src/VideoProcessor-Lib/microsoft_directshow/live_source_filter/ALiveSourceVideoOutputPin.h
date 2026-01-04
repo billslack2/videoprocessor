@@ -256,4 +256,23 @@ protected:
 	bool m_hdrChanged = false;
 
 	double m_exitLatencyMs = 0.0;
+	
+	// Smart timing statistics for CLOCK_SMART/SMART2 modes
+	uint64_t m_smartHardwareTimestampCount = 0;
+	uint64_t m_smartSyntheticTimestampCount = 0;
+	uint64_t m_smartRejectedTimestampCount = 0;  // Track rejected bad timestamps
+	
+	// Thread-safe FIFO queue for hardware timestamps (replaces single-value storage)
+	std::mutex m_timestampQueueMutex;
+	std::deque<REFERENCE_TIME> m_hardwareTimestampQueue;
+	static const size_t MAX_TIMESTAMP_QUEUE_SIZE = 3;  // Keep small for low latency
+	
+	// Validation parameters for timestamp sanity checking
+	REFERENCE_TIME m_expectedFrameDuration = 0;  // Calculated once at init
+	REFERENCE_TIME m_minValidDuration = 0;       // 50% of expected
+	REFERENCE_TIME m_maxValidDuration = 0;       // 200% of expected
+	
+	// Helper methods for queue management
+	bool EnqueueHardwareTimestamp(REFERENCE_TIME timestamp);
+	REFERENCE_TIME DequeueHardwareTimestamp();
 };
