@@ -717,7 +717,7 @@ DWORD WINAPI CBufferedLiveSourceVideoOutputPin::ConversionThreadProc(LPVOID lpPa
 
 DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 {
-	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+	//SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
 	
 	DbgLog((LOG_TRACE, 1, TEXT("ConversionWorker: ASYNC conversion thread started - conversion OFF critical path")));
 	DbgLog((LOG_TRACE, 1, TEXT("ConversionWorker: MadVR gets 100%% of frame time for rendering")));

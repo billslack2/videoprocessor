@@ -555,11 +555,12 @@ void ALiveSourceVideoOutputPin::UpdateFrameDurationHistory(REFERENCE_TIME actual
 		const REFERENCE_TIME avgDuration = CalculateSmartFrameDuration();
 		const REFERENCE_TIME theoreticalDuration = (REFERENCE_TIME)((REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) / m_timeScale);
 		
-		DbgLog((LOG_TRACE, 1, TEXT("CLOCK_SMART Duration Stats: %zu samples, average=%.3fms, theoretical=%.3fms, diff=%.3fms"),
+		/*DebugLog::Log(("CLOCK_SMART Duration Stats: %zu samples, average=%.3fms, theoretical=%.3fms, diff=%.3fms"),
 			m_durationHistoryCount, 
 			avgDuration / 10000.0,
 			theoreticalDuration / 10000.0,
-			(avgDuration - theoreticalDuration) / 10000.0));
+			(avgDuration - theoreticalDuration) / 10000.0);
+		*/
 	}
 }
 
@@ -865,14 +866,15 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			videoFrame.GetTimingTimestamp(),
 			m_timingClock->TimingClockTicksPerSecond()) - m_startTimeOffset;
 
-		// Enqueue current timestamp for future use (with validation)
-		EnqueueHardwareTimestamp(currentFrameTime);
-		
-		// Try to dequeue a timestamp for this frame's stop time
+		// CORRECTED LOGIC: Try to dequeue FIRST (for this frame's stop time)
 		REFERENCE_TIME hardwareStopTime = DequeueHardwareTimestamp();
+		
+		// THEN enqueue current timestamp (for next frame's stop time)
+		EnqueueHardwareTimestamp(currentFrameTime);
 		
 		if (hardwareStopTime != REFERENCE_TIME_INVALID)
 		{
+			// Use hardware timestamp from previous frame
 			timeStop = hardwareStopTime;
 			
 			// Ensure monotonic progression
@@ -882,7 +884,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		}
 		else
 		{
-			// Fallback to theoretical duration (first frame or queue empty)
+			// First frame or queue was empty - fallback to theoretical duration
 			timeStop = timeStart + m_frameDuration;
 			++m_smartSyntheticTimestampCount;
 		}
@@ -905,14 +907,15 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			videoFrame.GetTimingTimestamp(),
 			m_timingClock->TimingClockTicksPerSecond()) - m_startTimeOffset;
 
-		// Enqueue current timestamp for future use (with validation)
-		EnqueueHardwareTimestamp(currentFrameTime);
-		
-		// Try to dequeue a timestamp for this frame's stop time
+		// CORRECTED LOGIC: Try to dequeue FIRST (for this frame's stop time)
 		REFERENCE_TIME hardwareStopTime = DequeueHardwareTimestamp();
+		
+		// THEN enqueue current timestamp (for next frame's stop time)
+		EnqueueHardwareTimestamp(currentFrameTime);
 		
 		if (hardwareStopTime != REFERENCE_TIME_INVALID)
 		{
+			// Use hardware timestamp from previous frame
 			timeStop = hardwareStopTime;
 			
 			// Ensure monotonic progression
@@ -929,7 +932,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		}
 		else
 		{
-			// Fallback - use smart duration calculation (averaged from history)
+			// First frame or queue was empty - use smart duration calculation (averaged from history)
 			const REFERENCE_TIME smartDuration = CalculateSmartFrameDuration();
 			timeStop = timeStart + smartDuration;
 			timeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);

@@ -22,16 +22,7 @@ DirectShowTimingClock::DirectShowTimingClock(ITimingClock& timingClock)
 	// Initialize critical section for thread-safe statistics
 	InitializeCriticalSection(&m_statisticsLock);
 	
-	// Boost clock thread priority for minimal latency
-	HANDLE clockThread = GetCurrentThread();
-	if (!SetThreadPriority(clockThread, THREAD_PRIORITY_TIME_CRITICAL))
-	{
-		DbgLog((LOG_WARNING, 1, TEXT("DirectShowTimingClock: Failed to set TIME_CRITICAL priority (error %d)"), GetLastError()));
-	}
-	else
-	{
-		DbgLog((LOG_TRACE, 1, TEXT("DirectShowTimingClock: Enhanced professional timing clock ready")));
-	}
+	
 }
 
 DirectShowTimingClock::~DirectShowTimingClock()
