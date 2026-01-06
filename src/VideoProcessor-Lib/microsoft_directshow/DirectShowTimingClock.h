@@ -106,6 +106,8 @@ private:
 	// DirectShow-standard timing methods
 	REFERENCE_TIME ApplyDirectShowJitterReduction(REFERENCE_TIME rawTime) const;
 	REFERENCE_TIME ApplyLightJitterReduction(REFERENCE_TIME rawTime) const;  // CRITICAL FIX: New light jitter reduction
+	REFERENCE_TIME ApplyUltraLightSmoothing(REFERENCE_TIME rawTime) const;   // SMOOTHNESS PRIORITY: Ultra-light micro-jitter smoothing
 	void UpdateDirectShowTimingQuality(REFERENCE_TIME currentTime, REFERENCE_TIME rawTime) const;
+	void UpdateMinimalStatistics(REFERENCE_TIME currentTime, REFERENCE_TIME rawTime) const;  // PERFORMANCE: Minimal statistics
 	bool DetectTimingDiscontinuity(REFERENCE_TIME rawTime) const;
 };

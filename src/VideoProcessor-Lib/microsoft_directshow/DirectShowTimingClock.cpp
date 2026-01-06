@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -26,6 +26,12 @@ DirectShowTimingClock::DirectShowTimingClock(ITimingClock& timingClock)
 	{
 		// Fallback to standard critical section if advanced version fails
 		InitializeCriticalSection(&m_statisticsLock);
+		DebugLog::Log("DirectShowTimingClock: FAILED AND FALLING BACK TO STANDARD CLOCK");
+
+
+	}
+	else {
+		DebugLog::Log("DirectShowTimingClock: Initialized critical section with spin count for high-frequency timing calls");
 	}
 }
 
@@ -43,106 +49,46 @@ REFERENCE_TIME DirectShowTimingClock::GetPrivateTime()
 	REFERENCE_TIME rt;
 	if (now > (INT64_MAX / 10000000LL))
 	{
-		// Overflow protection - less precise but prevents catastrophic failure
+		// LOG OVERFLOW - this could be your 30-40 minute issue!
+		DebugLog::Log("DirectShowTimingClock: OVERFLOW THRESHOLD - switching to lower precision (now=%lld)", now);
 		rt = (now / m_ticksPerSecond) * 10000000LL;
 	}
 	else
 	{
-		// Normal path: High-precision conversion with banker's rounding
+		// Normal path: High-precision conversion
 		rt = ((now * 10000000LL) + (m_ticksPerSecond / 2)) / m_ticksPerSecond;
 	}
 	
-	// CRITICAL FIX: Detect timing discontinuities first
-	const bool discontinuityDetected = DetectTimingDiscontinuity(rt);
-	
-	// CRITICAL FIX: Only apply light jitter reduction, not aggressive smoothing
+	// SMOOTHNESS PRIORITY: Ultra-light smoothing only for micro-jitter
 	const REFERENCE_TIME rawTime = rt;
-	if (!discontinuityDetected && m_jitterBufferCount >= 4)  // Only with enough samples
+	if (m_jitterBufferCount >= 3)  // Lower threshold for quicker response
 	{
-		// Light jitter reduction - much less aggressive
-		rt = ApplyLightJitterReduction(rt);
+		rt = ApplyUltraLightSmoothing(rt);
 	}
 	
-	bool monotonicCorrected = false;
-	
-	// CRITICAL SECTION: Protect shared state from race conditions
+	// MINIMAL CRITICAL SECTION
 	EnterCriticalSection(&m_statisticsLock);
 	
-	// CRITICAL FIX: Reset state properly on discontinuities
-	if (discontinuityDetected)
-	{
-		DbgLog((LOG_TRACE, 1, TEXT("DirectShowTimingClock: DISCONTINUITY DETECTED - Resetting all timing state")));
-		m_expectedClockProgression = 0;
-		m_discontinuityDetected = true;
-		
-		// CRITICAL: Reset jitter buffer to prevent accumulating bad data
-		m_jitterBufferCount = 0;
-		m_jitterBufferIndex = 0;
-		m_smoothedTime = 0;
-		
-		// Use raw time after discontinuity
-		rt = rawTime;
-	}
-	
-	// PROFESSIONAL MONOTONIC ENFORCEMENT
+	// SMOOTHNESS PRIORITY: Only ensure forward progression, no complex corrections
 	if (rt <= m_lastReturnedTime)
 	{
-		if (m_expectedClockProgression > 0)
-		{
-			const REFERENCE_TIME expectedTime = m_lastReturnedTime + m_expectedClockProgression;
-			const REFERENCE_TIME drift = expectedTime - rt;
-			
-			// CRITICAL FIX: Much tighter tolerance to prevent massive drift
-			if (drift < 16667)  // Less than 1.67ms drift (1/10th frame at 59.94fps)
-			{
-				rt = expectedTime;
-			}
-			else
-			{
-				// CRITICAL FIX: Smaller increment to prevent runaway timing
-				const REFERENCE_TIME minIncrement = std::min((REFERENCE_TIME)1000, m_expectedClockProgression / 20);
-				rt = m_lastReturnedTime + std::max((REFERENCE_TIME)10, minIncrement);
-			}
-		}
-		else
-		{
-			rt = m_lastReturnedTime + 10;  // 1�s minimum increment (much smaller)
-		}
-		monotonicCorrected = true;
-	}
-	
-	// CRITICAL FIX: Much more conservative progression tracking
-	if (!monotonicCorrected && m_lastReturnedTime > 0 && !discontinuityDetected)
-	{
-		const REFERENCE_TIME actualProgression = rt - m_lastReturnedTime;
-		
-		// CRITICAL FIX: Only update if progression is reasonable
-		if (actualProgression > 0 && actualProgression < 1000000)  // Between 0 and 100ms
-		{
-			if (m_expectedClockProgression == 0)
-			{
-				m_expectedClockProgression = actualProgression;
-			}
-			else
-			{
-				// CRITICAL FIX: Much lighter smoothing to prevent drift accumulation
-				// 99% old + 1% new - prevents runaway drift
-				m_expectedClockProgression = (m_expectedClockProgression * 99 + actualProgression) / 100;
-			}
-		}
+		// MINIMAL CORRECTION: Just ensure we move forward by a tiny amount
+		rt = m_lastReturnedTime + 1;  // 0.1µs increment - imperceptible but forward
 	}
 	
 	m_lastReturnedTime = rt;
 	
-	// Statistics updates (unchanged)
+	// PERFORMANCE: Very infrequent statistics updates
 	static thread_local uint32_t callCount = 0;
-	if ((++callCount & 0xF) == 0)
-	{
-		UpdateStatisticsInternal(rt, rawTime, monotonicCorrected);
-		UpdateDirectShowTimingQuality(rt, rawTime);
-	}
+	const bool shouldUpdateStats = ((++callCount & 0xFF) == 0); // Every 256 calls
 	
 	LeaveCriticalSection(&m_statisticsLock);
+	
+	// Update statistics outside lock, very infrequently
+	if (shouldUpdateStats)
+	{
+		UpdateMinimalStatistics(rt, rawTime);
+	}
 	
 	return rt;
 }
@@ -429,7 +375,7 @@ bool DirectShowTimingClock::DetectTimingDiscontinuity(REFERENCE_TIME rawTime) co
 		discontinuity = true;
 	}
 	// Very small or zero progression (clock reset or pause)
-	else if (timeDelta <= 1 && m_statistics.totalQueries > 10)  // 0.1�s or less after initial settle
+	else if (timeDelta <= 1 && m_statistics.totalQueries > 10)  // 0.1µs or less after initial settle
 	{
 		discontinuity = true;
 	}
@@ -443,8 +389,8 @@ bool DirectShowTimingClock::DetectTimingDiscontinuity(REFERENCE_TIME rawTime) co
 	
 	if (discontinuity)
 	{
-		DbgLog((LOG_ERROR, 1, TEXT("DirectShowTimingClock: CRITICAL DISCONTINUITY - delta=%I64d (%.2fms)"), 
-			timeDelta, (double)timeDelta / 10000.0));
+		DebugLog::Log("DirectShowTimingClock: CRITICAL DISCONTINUITY - delta=%I64d (%.2fms)", 
+			timeDelta, (double)timeDelta / 10000.0);
 	}
 	
 	return discontinuity;
@@ -462,8 +408,8 @@ CString DirectShowTimingClock::GetTimingDebugInfo() const
 	debugInfo.Format(
 		TEXT("DirectShow Timing Clock Debug Info:\n")
 		TEXT("  Clock Quality: %.2f%% (%s)\n")
-		TEXT("  Average Drift: %.2f �s\n")
-		TEXT("  Max Jitter: %.2f �s\n")
+		TEXT("  Average Drift: %.2f µs\n")
+		TEXT("  Max Jitter: %.2f µs\n")
 		TEXT("  Jitter Reduction: %.1f%%\n")
 		TEXT("  Frame Rate: %.3f Hz\n")
 		TEXT("  Genlock Status: %s\n")
@@ -494,21 +440,21 @@ void DirectShowTimingClock::LogTimingStatistics() const
 	const TimingStatistics stats = GetTimingStatistics();
 	const double quality = GetTimingQuality();
 	
-	DbgLog((LOG_TRACE, 1, TEXT("=== DirectShow Timing Clock Statistics ===")));
-	DbgLog((LOG_TRACE, 1, TEXT("Clock Quality: %.1f%% (%s)"), 
+	DebugLog::Log("=== DirectShow Timing Clock Statistics ===");
+	DebugLog::Log("Clock Quality: %.1f%% (%s)",
 		quality * 100.0,
-		quality > 0.8 ? TEXT("Excellent") : quality > 0.6 ? TEXT("Good") : quality > 0.4 ? TEXT("Fair") : TEXT("Poor")));
-	DbgLog((LOG_TRACE, 1, TEXT("Average Drift: %.2f �s, Max Jitter: %.2f �s"), 
-		stats.averageClockDrift, stats.maxClockJitter));
-	DbgLog((LOG_TRACE, 1, TEXT("Jitter Reduction Effectiveness: %.1f%%"), 
-		stats.jitterReductionRatio * 100.0));
-	DbgLog((LOG_TRACE, 1, TEXT("Detected Frame Rate: %.3f Hz, Genlock: %s"), 
-		stats.detectedFrameRate, stats.isGenlocked ? TEXT("Yes") : TEXT("No")));
-	DbgLog((LOG_TRACE, 1, TEXT("Total Queries: %u, Corrections: %u (%.2f%%), Discontinuities: %u"),
+		quality > 0.8 ? TEXT("Excellent") : quality > 0.6 ? TEXT("Good") : quality > 0.4 ? TEXT("Fair") : TEXT("Poor"));
+		DebugLog::Log("Average Drift: %.2f µs, Max Jitter: %.2f µs",
+		stats.averageClockDrift, stats.maxClockJitter);
+		DebugLog::Log("Jitter Reduction Effectiveness: %.1f%%",
+		stats.jitterReductionRatio * 100.0);
+		DebugLog::Log("Detected Frame Rate: %.3f Hz, Genlock: %s",
+		stats.detectedFrameRate, stats.isGenlocked ? TEXT("Yes") : TEXT("No"));
+		DebugLog::Log("Total Queries: %u, Corrections: %u (%.2f%%), Discontinuities: %u",
 		stats.totalQueries, stats.clockResetCount,
 		stats.totalQueries > 0 ? (stats.clockResetCount * 100.0 / stats.totalQueries) : 0.0,
-		stats.discontinuityCount));
-	DbgLog((LOG_TRACE, 1, TEXT("===========================================")));
+		stats.discontinuityCount);
+		DebugLog::Log("===========================================");
 }
 
 void DirectShowTimingClock::LogCriticalTimingIssue(REFERENCE_TIME rawTime, REFERENCE_TIME processedTime, const char* reason) const
@@ -517,13 +463,13 @@ void DirectShowTimingClock::LogCriticalTimingIssue(REFERENCE_TIME rawTime, REFER
 	const double deviationMs = (double)(processedTime - rawTime) / 10000.0;
 	const double percentDeviation = (deviationMs / ((double)processedTime / 10000.0)) * 100.0;
 	
-	DbgLog((LOG_ERROR, 1, TEXT("?? CRITICAL TIMING DEVIATION DETECTED ??")));
-	DbgLog((LOG_ERROR, 1, TEXT("Reason: %S"), reason));
-	DbgLog((LOG_ERROR, 1, TEXT("Raw Time: %I64d, Processed Time: %I64d"), rawTime, processedTime));
-	DbgLog((LOG_ERROR, 1, TEXT("Deviation: %.2f ms (%.2f%%)"), deviationMs, percentDeviation));
-	DbgLog((LOG_ERROR, 1, TEXT("Expected Progression: %I64d"), m_expectedClockProgression));
-	DbgLog((LOG_ERROR, 1, TEXT("Jitter Buffer Count: %d"), m_jitterBufferCount));
-	DbgLog((LOG_ERROR, 1, TEXT("Last Raw Time: %I64d"), m_lastRawTime));
+	DebugLog::Log("🚨 CRITICAL TIMING DEVIATION DETECTED 🚨");
+	DebugLog::Log("Reason: %S", reason);
+	DebugLog::Log("Raw Time: %I64d, Processed Time: %I64d", rawTime, processedTime);
+	DebugLog::Log("Deviation: %.2f ms (%.2f%%)", deviationMs, percentDeviation);
+	DebugLog::Log("Expected Progression: %I64d", m_expectedClockProgression);
+	DebugLog::Log("Jitter Buffer Count: %d", m_jitterBufferCount);
+	DebugLog::Log("Last Raw Time: %I64d", m_lastRawTime);
 }
 
 REFERENCE_TIME DirectShowTimingClock::ApplyLightJitterReduction(REFERENCE_TIME rawTime) const
@@ -573,4 +519,65 @@ REFERENCE_TIME DirectShowTimingClock::ApplyLightJitterReduction(REFERENCE_TIME r
 		// Large difference - use raw time to avoid drift
 		return rawTime;
 	}
+}
+
+REFERENCE_TIME DirectShowTimingClock::ApplyUltraLightSmoothing(REFERENCE_TIME rawTime) const
+{
+	// SMOOTHNESS PRIORITY: Only smooth micro-jitter (< 50µs), preserve hardware cadence
+	
+	// Simple 3-sample moving average for minimal latency
+	m_jitterBuffer[m_jitterBufferIndex] = rawTime;
+	m_jitterBufferIndex = (m_jitterBufferIndex + 1) % 3; // Only 3 samples
+	
+	if (m_jitterBufferCount < 3)
+	{
+		m_jitterBufferCount++;
+		return rawTime; // Not enough samples yet
+	}
+	
+	// Calculate simple average of last 3 samples
+	const REFERENCE_TIME avg = (m_jitterBuffer[0] + m_jitterBuffer[1] + m_jitterBuffer[2]) / 3;
+	const REFERENCE_TIME diff = abs(rawTime - avg);
+	
+	// SMOOTHNESS PRIORITY: Only smooth tiny variations (< 50µs = 0.05ms)
+	if (diff < 500)  // Less than 50µs - apply ultra-light smoothing
+	{
+		// Ultra-light smoothing: 90% raw + 10% avg - preserves hardware timing
+		return (rawTime * 9 + avg) / 10;
+	}
+	else
+	{
+		// Any larger difference - use raw time to preserve hardware cadence
+		return rawTime;
+	}
+}
+
+void DirectShowTimingClock::UpdateMinimalStatistics(REFERENCE_TIME currentTime, REFERENCE_TIME rawTime) const
+{
+	// PERFORMANCE: Minimal statistics tracking - just the basics
+	EnterCriticalSection(&m_statisticsLock);
+	
+	m_statistics.totalQueries++;
+	m_statistics.lastUpdateTime = currentTime;
+	
+	// Very basic drift tracking
+	if (m_statistics.totalQueries > 1)
+	{
+		const double driftUs = (double)(rawTime - currentTime) / 10.0;
+		const double absoluteDrift = fabs(driftUs);
+		
+		// Simple running average for drift (very light smoothing)
+		m_statistics.averageClockDrift = (m_statistics.averageClockDrift * 0.99) + (driftUs * 0.01);
+		
+		// Track maximum jitter
+		if (absoluteDrift > m_statistics.maxClockJitter)
+		{
+			m_statistics.maxClockJitter = absoluteDrift;
+		}
+	}
+	
+	// Simple quality metric: lower jitter = higher quality
+	m_statistics.timingQuality = std::max(0.0, 1.0 - (m_statistics.maxClockJitter / 1000.0)); // 1ms jitter = 0 quality
+	
+	LeaveCriticalSection(&m_statisticsLock);
 }

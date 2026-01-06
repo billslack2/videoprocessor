@@ -265,7 +265,8 @@ protected:
 	// Thread-safe FIFO queue for hardware timestamps (replaces single-value storage)
 	std::mutex m_timestampQueueMutex;
 	std::deque<REFERENCE_TIME> m_hardwareTimestampQueue;
-	static const size_t MAX_TIMESTAMP_QUEUE_SIZE = 3;  // Keep small for low latency
+	static const size_t MAX_TIMESTAMP_QUEUE_SIZE = 8;  // INCREASED: Larger queue ensures availability
+	static const size_t MIN_TIMESTAMP_QUEUE_SIZE = 4;  // ADDED: Minimum before we dequeue
 	
 	// Validation parameters for timestamp sanity checking
 	REFERENCE_TIME m_expectedFrameDuration = 0;  // Calculated once at init

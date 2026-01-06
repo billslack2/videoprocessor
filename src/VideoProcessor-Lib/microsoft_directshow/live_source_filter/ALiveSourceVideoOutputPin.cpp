@@ -404,7 +404,13 @@ void ALiveSourceVideoOutputPin::Reset()
 	// Reset timestamp queue (thread-safe)
 	{
 		std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
+		size_t queueSizeBefore = m_hardwareTimestampQueue.size();
 		m_hardwareTimestampQueue.clear();
+		
+		if (queueSizeBefore > 0)
+		{
+			DebugLog::Log("CLOCK_SMART: Reset() cleared timestamp queue - had %zu timestamps", queueSizeBefore);
+		}
 	}
 	
 	// Reset validation parameters (will be recalculated on first enqueue)
@@ -467,7 +473,7 @@ void ALiveSourceVideoOutputPin::Reset()
 		if (m_ppmCorrectionLoader.HasCorrections())
 		{
 			// CORRECT SIGN: ppmCorrection = trimNumerator - RATIONAL_TRIM_DENOMINATOR
-			int ppmCorrection = GetRationalTrimNumerator() - RATIONAL_TRIM_DENOMINATOR;
+		 int ppmCorrection = GetRationalTrimNumerator() - RATIONAL_TRIM_DENOMINATOR;
 			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: %d (from correction.cfg)"), ppmCorrection));
 			
 			// Show trim ratio with context
@@ -866,35 +872,64 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			videoFrame.GetTimingTimestamp(),
 			m_timingClock->TimingClockTicksPerSecond()) - m_startTimeOffset;
 
-		// CORRECTED LOGIC: Try to dequeue FIRST (for this frame's stop time)
-		REFERENCE_TIME hardwareStopTime = DequeueHardwareTimestamp();
-		
-		// THEN enqueue current timestamp (for next frame's stop time)
+		// CORRECTED LOGIC: ENQUEUE FIRST (for future frames) THEN DEQUEUE (for current frame)
 		EnqueueHardwareTimestamp(currentFrameTime);
+		REFERENCE_TIME hardwareStopTime = DequeueHardwareTimestamp();
 		
 		if (hardwareStopTime != REFERENCE_TIME_INVALID)
 		{
-			// Use hardware timestamp from previous frame
+			// Use hardware timestamp from queue (properly aged timestamp)
 			timeStop = hardwareStopTime;
 			
 			// Ensure monotonic progression
+			REFERENCE_TIME originalStop = timeStop;
 			timeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
 			
 			++m_smartHardwareTimestampCount;
+			
+			// DIAGNOSTIC: Log hardware end time usage
+			/*if ((m_smartHardwareTimestampCount % 100) == 0)  // Every 100 hardware frames
+			{
+				DebugLog::Log("CLOCK_SMART: Frame #%llu - HW end time %.3fms (HW count: %llu)",
+					videoFrame.GetCounter(), timeStop / 10000.0, m_smartHardwareTimestampCount);
+			}
+			
+			// Log when monotonic correction is applied
+			if (timeStop != originalStop)
+			{
+				DebugLog::Log("CLOCK_SMART: Frame #%llu - HW end time monotonic correction: %.3fms -> %.3fms",
+					videoFrame.GetCounter(),
+					originalStop / 10000.0, timeStop / 10000.0);
+			}
+			*/
 		}
 		else
 		{
-			// First frame or queue was empty - fallback to theoretical duration
+			// Queue not ready yet - fallback to theoretical duration
 			timeStop = timeStart + m_frameDuration;
 			++m_smartSyntheticTimestampCount;
+			
+			// DIAGNOSTIC: Log synthetic end time usage
+			if ((m_smartSyntheticTimestampCount % 10) == 1)  // Every 10 synthetic frames
+			/* {
+				DebugLog::Log("CLOCK_SMART: Frame #%llu - SYNTHETIC end time %.3fms (theoretical, fallback count: %llu)",
+					videoFrame.GetCounter(), timeStop / 10000.0, m_smartSyntheticTimestampCount);
+			}
+			*/
+			DbgLog((LOG_TRACE, 1, TEXT("CLOCK_SMART: Queue not ready, using theoretical duration")));
 		}
 		
 		// Log timing stats every 10 seconds (600 frames at 60fps)
 		if ((m_smartHardwareTimestampCount + m_smartSyntheticTimestampCount) % 600 == 0)
 		{
-			DebugLog::Log("CLOCK_SMART: HW=%llu, Syn=%llu, Rejected=%llu, Total=%llu (%.1f%% HW)",
-				m_smartHardwareTimestampCount, m_smartSyntheticTimestampCount, m_smartRejectedTimestampCount,
-				m_smartHardwareTimestampCount + m_smartSyntheticTimestampCount,
+			size_t queueSize = 0;
+			{
+				std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
+				queueSize = m_hardwareTimestampQueue.size();
+			}
+			
+			DebugLog::Log("CLOCK_SMART: HW=%llu, SYN=%llu, Rej=%llu, QSize=%zu (%.1f%% HW endtime)",
+				m_smartHardwareTimestampCount, m_smartSyntheticTimestampCount, m_smartRejectedTimestampCount, queueSize,
 				(m_smartHardwareTimestampCount * 100.0) / (m_smartHardwareTimestampCount + m_smartSyntheticTimestampCount));
 		}
 		break;
@@ -907,21 +942,36 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			videoFrame.GetTimingTimestamp(),
 			m_timingClock->TimingClockTicksPerSecond()) - m_startTimeOffset;
 
-		// CORRECTED LOGIC: Try to dequeue FIRST (for this frame's stop time)
-		REFERENCE_TIME hardwareStopTime = DequeueHardwareTimestamp();
-		
-		// THEN enqueue current timestamp (for next frame's stop time)
+		// CORRECTED LOGIC: ENQUEUE FIRST (for future frames) THEN DEQUEUE (for current frame)
 		EnqueueHardwareTimestamp(currentFrameTime);
+		REFERENCE_TIME hardwareStopTime = DequeueHardwareTimestamp();
 		
 		if (hardwareStopTime != REFERENCE_TIME_INVALID)
 		{
-			// Use hardware timestamp from previous frame
+			// Use hardware timestamp from queue (properly aged timestamp)
 			timeStop = hardwareStopTime;
 			
 			// Ensure monotonic progression
+			REFERENCE_TIME originalStop = timeStop;
 			timeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
 			
 			++m_smartHardwareTimestampCount;
+			
+			// DIAGNOSTIC: Log hardware end time usage
+			/*if ((m_smartHardwareTimestampCount % 100) == 0)  // Every 100 hardware frames
+			{
+				DebugLog::Log("CLOCK_SMART2: Frame #%llu - HW end time %.3fms (HW count: %llu)",
+					videoFrame.GetCounter(), timeStop / 10000.0, m_smartHardwareTimestampCount);
+			}
+			
+			// Log when monotonic correction is applied
+			if (timeStop != originalStop)
+			{
+				DebugLog::Log("CLOCK_SMART2: Frame #%llu - HW end time monotonic correction: %.3fms -> %.3fms",
+					videoFrame.GetCounter(),
+					originalStop / 10000.0, timeStop / 10000.0);
+			}
+			*/
 			
 			// Update duration history for SMART2 (if we have previous timestamp)
 			if (m_lastHardwareTimestamp > 0)
@@ -932,12 +982,22 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		}
 		else
 		{
-			// First frame or queue was empty - use smart duration calculation (averaged from history)
+			// Queue not ready yet - use smart duration calculation (averaged from history)
 			const REFERENCE_TIME smartDuration = CalculateSmartFrameDuration();
 			timeStop = timeStart + smartDuration;
 			timeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
 			
 			++m_smartSyntheticTimestampCount;
+			
+			// DIAGNOSTIC: Log synthetic end time usage
+			/*if ((m_smartSyntheticTimestampCount % 10) == 1)  // Every 10 synthetic frames
+			{
+				DebugLog::Log("CLOCK_SMART2: Frame #%llu - SYNTHETIC end time %.3fms (from history avg, fallback count: %llu)",
+					videoFrame.GetCounter(), timeStop / 10000.0, m_smartSyntheticTimestampCount);
+			}
+			*/
+			
+			DbgLog((LOG_TRACE, 1, TEXT("CLOCK_SMART2: Queue not ready, using smart duration")));
 		}
 		
 		// Store for duration history tracking
@@ -946,9 +1006,14 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		// Log timing stats every 10 seconds (600 frames at 60fps)
 		if ((m_smartHardwareTimestampCount + m_smartSyntheticTimestampCount) % 600 == 0)
 		{
-			DebugLog::Log("CLOCK_SMART2: HW=%llu, Syn=%llu, Rejected=%llu, Total=%llu (%.1f%% HW)",
-				m_smartHardwareTimestampCount, m_smartSyntheticTimestampCount, m_smartRejectedTimestampCount,
-				m_smartHardwareTimestampCount + m_smartSyntheticTimestampCount,
+			size_t queueSize = 0;
+			{
+				std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
+				queueSize = m_hardwareTimestampQueue.size();
+			}
+			
+			DebugLog::Log("CLOCK_SMART2: HW=%llu, SYN=%llu, Rej=%llu, QSize=%zu (%.1f%% HW endtime)",
+				m_smartHardwareTimestampCount, m_smartSyntheticTimestampCount, m_smartRejectedTimestampCount, queueSize,
 				(m_smartHardwareTimestampCount * 100.0) / (m_smartHardwareTimestampCount + m_smartSyntheticTimestampCount));
 		}
 
@@ -1173,6 +1238,11 @@ bool ALiveSourceVideoOutputPin::EnqueueHardwareTimestamp(REFERENCE_TIME timestam
 		m_minValidDuration = m_expectedFrameDuration / 2;   // 50% of expected (e.g., 8.3ms for 16.7ms frame)
 		m_maxValidDuration = m_expectedFrameDuration * 2;   // 200% of expected (e.g., 33.4ms for 16.7ms frame)
 		
+		DebugLog::Log("CLOCK_SMART: Queue initialized - expected=%.3fms, range=[%.3fms, %.3fms]",
+			m_expectedFrameDuration / 10000.0,
+			m_minValidDuration / 10000.0,
+			m_maxValidDuration / 10000.0);
+		
 		DbgLog((LOG_TRACE, 1, TEXT("EnqueueHardwareTimestamp: Initialized validation - expected=%.3fms, range=[%.3fms, %.3fms]"),
 			m_expectedFrameDuration / 10000.0,
 			m_minValidDuration / 10000.0,
@@ -1209,10 +1279,24 @@ bool ALiveSourceVideoOutputPin::EnqueueHardwareTimestamp(REFERENCE_TIME timestam
 	// Add to queue
 	m_hardwareTimestampQueue.push_back(timestamp);
 	
+	// DIAGNOSTIC: Log queue state changes (limited to avoid spam)
+	const size_t newQueueSize = m_hardwareTimestampQueue.size();
+	/*
+	if (newQueueSize <= 6 || (newQueueSize % 10 == 0))  // Log when small or at intervals
+	{
+		DebugLog::Log("CLOCK_SMART: Enqueued timestamp %.3fms, queue size now %zu",
+			timestamp / 10000.0, newQueueSize);
+	}
+	*/
 	// Limit queue size (drop oldest if too large) - keeps latency low
 	while (m_hardwareTimestampQueue.size() > MAX_TIMESTAMP_QUEUE_SIZE)
 	{
+		REFERENCE_TIME droppedTimestamp = m_hardwareTimestampQueue.front();
 		m_hardwareTimestampQueue.pop_front();
+		
+		DebugLog::Log("CLOCK_SMART: Queue full (%zu), dropped oldest timestamp %.3fms", 
+			MAX_TIMESTAMP_QUEUE_SIZE, droppedTimestamp / 10000.0);
+		
 		DbgLog((LOG_TRACE, 1, TEXT("EnqueueHardwareTimestamp: Queue full, dropped oldest timestamp")));
 	}
 	
@@ -1224,11 +1308,31 @@ REFERENCE_TIME ALiveSourceVideoOutputPin::DequeueHardwareTimestamp()
 {
 	std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
 	
-	if (m_hardwareTimestampQueue.empty())
-		return REFERENCE_TIME_INVALID;
+	const size_t currentQueueSize = m_hardwareTimestampQueue.size();
 	
+	// CRITICAL FIX: Only dequeue if we have MORE than minimum required
+	// This ensures the queue stays filled and timestamps are always available
+	if (currentQueueSize <= MIN_TIMESTAMP_QUEUE_SIZE)
+	{
+		// Queue not sufficiently filled - keep building it up
+		DebugLog::Log("CLOCK_SMART: Queue not ready for dequeue - size %zu <= min %zu (building up)",
+			currentQueueSize, MIN_TIMESTAMP_QUEUE_SIZE);
+		return REFERENCE_TIME_INVALID;
+	}
+	
+	// Queue is adequately filled - safe to dequeue oldest timestamp
 	REFERENCE_TIME timestamp = m_hardwareTimestampQueue.front();
 	m_hardwareTimestampQueue.pop_front();
+	
+	const size_t newQueueSize = m_hardwareTimestampQueue.size();
+	
+	// DIAGNOSTIC: Log dequeue activity (limited to avoid spam)
+	/*if ((m_smartHardwareTimestampCount % 100) == 0)  // Every 100 hardware frames
+	{
+		DebugLog::Log("CLOCK_SMART: Dequeued timestamp %.3fms, queue size now %zu",
+			timestamp / 10000.0, newQueueSize);
+	}
+	*/
 	
 	return timestamp;
 }

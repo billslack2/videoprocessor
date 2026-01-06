@@ -37,7 +37,7 @@ public:
 	static void Log(const char* format, Args... args)
 	{
 			
-		if (true) {
+		if (false) {
 			// Format message immediately (fast operation)
 			char buffer[4096];
 			snprintf(buffer, sizeof(buffer), format, args...);
