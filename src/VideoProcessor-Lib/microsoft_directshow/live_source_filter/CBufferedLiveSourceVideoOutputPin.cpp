@@ -373,7 +373,7 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 
 void CBufferedLiveSourceVideoOutputPin::Reset()
 {
-	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::Reset() - ASYNC conversion reset")));
+	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Reset() - HDMI resync async queue reset starting");
 	
 	{
 		CAutoLock lock(&m_filterCritSec);
@@ -388,7 +388,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 			++purgedFrames;
 		}
 		
-		DbgLog((LOG_TRACE, 1, TEXT("Reset(): Purged %zu raw frames"), purgedFrames));
+		DebugLog::Log("Reset(): Purged %zu raw frames from HDMI resync", purgedFrames);
 	}
 	
 	// Purge converted sample queue
@@ -407,10 +407,10 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 			}
 		}
 		
-		DbgLog((LOG_TRACE, 1, TEXT("Reset(): Purged %zu pre-converted samples"), purgedSamples));
+		DebugLog::Log("Reset(): Purged %zu pre-converted samples from HDMI resync", purgedSamples);
 	}
 	
-	// Reset timeline state
+	// CRITICAL: Reset timeline state and enter buffering mode (identical to startup)
 	{
 		CAutoLock lock(&m_filterCritSec);
 		
@@ -420,7 +420,11 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		m_previousTimeStop = 0;
 		m_startTimeOffset = 0;
 		m_lastSeenFrameCounter = 0;
-		m_isBuffering.store(true, std::memory_order_release);             // IDENTICAL TO STARTUP - enter buffering
+		
+		// HDMI RESYNC: Enter buffering mode to rebuild queue state cleanly
+		m_isBuffering.store(true, std::memory_order_release);
+		
+		DebugLog::Log("Reset(): Timeline reset and buffering enabled for HDMI resync recovery");
 	}
 	
 	// Reset conversion metrics
@@ -433,6 +437,8 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	
 	// Call base Reset for DirectShow signaling
 	ALiveSourceVideoOutputPin::Reset();
+	
+	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Reset() - HDMI resync async queue reset completed");
 }
 
 

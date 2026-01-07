@@ -104,18 +104,46 @@ DXVA_VideoTransferFunction TranslateVideoTranferFunction(EOTF eotf, ColorSpace c
 	switch (eotf)
 	{
 	case EOTF::SDR:
-		if (colorSpace == ColorSpace::REC_709)
+		// SDR content can use different color spaces - the transfer function should match
+		// the color space, not just assume REC.709
+		switch (colorSpace)
+		{
+		case ColorSpace::REC_709:
 			return DXVA_VideoTransFunc_22_709;
-		else
-			throw std::runtime_error("Don't know video transfer function for SDR outside of REC 709");
+		case ColorSpace::BT_2020:
+			// BT.2020 SDR uses the same gamma 2.4 transfer function as REC.709
+			return DXVA_VideoTransFunc_22_709;
+		case ColorSpace::REC_601_525:
+		case ColorSpace::REC_601_625:
+			// REC.601 also uses similar gamma 2.2/2.4 transfer function
+			return DXVA_VideoTransFunc_22_709;
+		case ColorSpace::P3_D65:
+		case ColorSpace::P3_DCI:
+		case ColorSpace::P3_D60:
+			// P3 colorspaces with SDR also use gamma 2.4
+			return DXVA_VideoTransFunc_22_709;
+		default:
+			// For unknown colorspaces with SDR, default to REC.709 transfer function
+			return DXVA_VideoTransFunc_22_709;
+		}
 		break;
 
 	case EOTF::PQ:
 		return DIRECTSHOW_VIDEOTRANSFUNC_2084;
 		break;
+
+	case EOTF::HDR:
+		// Traditional HDR (non-PQ) - use appropriate gamma curve
+		return DXVA_VideoTransFunc_22_709;
+		break;
+
+	case EOTF::HLG:
+		// Hybrid Log-Gamma
+		return DIRECTSHOW_VIDEOTRANSFUNC_HLG;
+		break;
 	}
 
-	throw std::runtime_error("TranslateVideoTranferFunction cannot translate");
+	throw std::runtime_error("TranslateVideoTranferFunction cannot translate unknown EOTF");
 }
 
 

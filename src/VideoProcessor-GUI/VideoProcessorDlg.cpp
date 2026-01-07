@@ -807,7 +807,7 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 				if (m_rendererState == RendererState::RENDERSTATE_RENDERING && !m_pendingQueueReset)
 				{
 					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 1500, nullptr);  // 1.5-second delay for video size changes
-					m_pendingQueueReset = true;
+					//m_pendingQueueReset = true;
 				}
 				break;
 
@@ -2778,8 +2778,8 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
     
     if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
     {
-        DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Resetting renderer after resize")));
-        m_videoRenderer->Reset();
+    //    DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Resetting renderer after resize")));
+    //    m_videoRenderer->Reset();
     }
     return;
 }
@@ -3114,7 +3114,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 
 			if (m_videoRenderer)
 			{
-				m_videoRenderer->Reset();
+				//m_videoRenderer->Reset();
 				m_consecutiveStuckSeconds = 0;
 			}
 		}

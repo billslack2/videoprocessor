@@ -503,17 +503,53 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFormatChang
 	// but HDMI re-syncs. Even with identical formats, we need to clear async queue state
 	// to prevent the "repeated frames and reset loop" issue.
 	
+	// ENHANCED HDMI RESYNC DETECTION: Check for any format parameter changes OR timing discontinuities
+	bool formatChanged = (m_bmdPixelFormat != bmdPixelFormat) ||
+		(notificationEvents & bmdVideoInputDisplayModeChanged) ||
+		(notificationEvents & bmdVideoInputColorspaceChanged) ||
+		(notificationEvents & bmdVideoInputFieldDominanceChanged);
+	
+	// ADDITIONAL RESYNC TRIGGERS: Detect subtle HDMI handshake resyncs
+	bool timingDiscontinuity = false;
+	if (m_previousTimingClockFrameTime != TIMING_CLOCK_TIME_INVALID)
+	{
+		BMDTimeValue currentTimeTicks;
+		BMDTimeValue ticksPerFrame = 0;
+		BMDTimeScale timeScale = 0;
+		
+		if (SUCCEEDED(m_deckLinkInput->GetHardwareReferenceClock(
+			TimingClockTicksPerSecond(), &currentTimeTicks, &ticksPerFrame, &timeScale)))
+		{
+			// Check for large timing jumps that indicate HDMI resync
+			const timingclocktime_t timeDelta = abs(currentTimeTicks - m_previousTimingClockFrameTime);
+			const timingclocktime_t maxNormalDelta = m_ticksPerFrame * 5; // 5 frame periods
+			
+			if (timeDelta > maxNormalDelta)
+			{
+				timingDiscontinuity = true;
+				DebugLog::Log("BlackMagic: HDMI timing discontinuity detected - delta=%lld ticks (%.2fms)", 
+					timeDelta, timeDelta / (double)(TimingClockTicksPerSecond() / 1000));
+			}
+		}
+	}
+	
 	//
 	// Things changed and we will stop current capture and restart.
 	// That means the video state will be invalid and we'll need to wait for it be to be rebuilt.
 	//
-	if ((m_bmdPixelFormat != bmdPixelFormat) ||
-		(notificationEvents & bmdVideoInputDisplayModeChanged) ||
-		(notificationEvents & bmdVideoInputColorspaceChanged) ||
-		(notificationEvents & bmdVideoInputFieldDominanceChanged))
+	if (formatChanged || timingDiscontinuity)
 	{
-		DbgLog((LOG_TRACE, 1, TEXT("BlackMagicDeckLinkCaptureDevice::VideoInputFormatChanged(): detected change")));
-
+		if (formatChanged)
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("BlackMagicDeckLinkCaptureDevice::VideoInputFormatChanged(): format change detected")));
+		}
+		if (timingDiscontinuity)
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("BlackMagicDeckLinkCaptureDevice::VideoInputFormatChanged(): timing discontinuity detected - HDMI resync")));
+		}
+		
+		DebugLog::Log("BlackMagic: HDMI format change/resync - forcing complete restart (format=%d, timing=%d)", 
+			formatChanged, timingDiscontinuity);
 		//
 		// Wipe internal state & store what we know
 		//

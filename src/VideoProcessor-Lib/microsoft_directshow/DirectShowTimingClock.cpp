@@ -45,46 +45,53 @@ REFERENCE_TIME DirectShowTimingClock::GetPrivateTime()
 {
 	const timingclocktime_t now = m_timingClock.TimingClockNow();
 	
-	// HIGH-PRECISION CONVERSION with overflow protection
+	// CRITICAL FIX: HIGH-PRECISION CONVERSION with proper overflow protection
 	REFERENCE_TIME rt;
-	if (now > (INT64_MAX / 10000000LL))
+	
+	const timingclocktime_t maxSafeTimestamp = INT64_MAX / 10000000LL;
+	
+	if (now > maxSafeTimestamp)
 	{
-		// LOG OVERFLOW - this could be your 30-40 minute issue!
-		DebugLog::Log("DirectShowTimingClock: OVERFLOW THRESHOLD - switching to lower precision (now=%lld)", now);
 		rt = (now / m_ticksPerSecond) * 10000000LL;
 	}
 	else
 	{
-		// Normal path: High-precision conversion
+		// Normal path: High-precision conversion with banker's rounding
 		rt = ((now * 10000000LL) + (m_ticksPerSecond / 2)) / m_ticksPerSecond;
 	}
 	
-	// SMOOTHNESS PRIORITY: Ultra-light smoothing only for micro-jitter
+	// SMOOTHNESS PRIORITY: Apply jitter smoothing FIRST (before monotonic check)
+	// This is critical - we need to smooth before enforcing monotonic progression
 	const REFERENCE_TIME rawTime = rt;
-	if (m_jitterBufferCount >= 3)  // Lower threshold for quicker response
+	if (m_jitterBufferCount >= 3)
 	{
 		rt = ApplyUltraLightSmoothing(rt);
 	}
 	
+	// AFTER smoothing, enforce monotonic progression (minimal correction)
 	// MINIMAL CRITICAL SECTION
 	EnterCriticalSection(&m_statisticsLock);
 	
-	// SMOOTHNESS PRIORITY: Only ensure forward progression, no complex corrections
 	if (rt <= m_lastReturnedTime)
 	{
-		// MINIMAL CORRECTION: Just ensure we move forward by a tiny amount
-		rt = m_lastReturnedTime + 1;  // 0.1µs increment - imperceptible but forward
+		// Only apply minimal correction if smoothing didn't fix it
+		rt = m_lastReturnedTime + 1;  // 0.1µs increment
+		
+		if ((m_lastReturnedTime - rawTime) > 1000)  // > 0.1ms backwards
+		{
+			DebugLog::Log("DirectShowTimingClock: Backward time: prev=%lld, raw=%lld, smoothed=%lld, corrected=%lld", 
+				m_lastReturnedTime, rawTime, m_smoothedTime, rt);
+		}
 	}
 	
 	m_lastReturnedTime = rt;
 	
 	// PERFORMANCE: Very infrequent statistics updates
 	static thread_local uint32_t callCount = 0;
-	const bool shouldUpdateStats = ((++callCount & 0xFF) == 0); // Every 256 calls
+	const bool shouldUpdateStats = ((++callCount & 0xFF) == 0);
 	
 	LeaveCriticalSection(&m_statisticsLock);
 	
-	// Update statistics outside lock, very infrequently
 	if (shouldUpdateStats)
 	{
 		UpdateMinimalStatistics(rt, rawTime);

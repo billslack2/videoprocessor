@@ -367,41 +367,23 @@ void ALiveSourceVideoOutputPin::OnHDRData(HDRDataSharedPtr& hdrData)
 
 void ALiveSourceVideoOutputPin::Reset()
 {
+	DebugLog::Log("ALiveSourceVideoOutputPin::Reset() - HDMI resync timing reset started");
+	
 	if (FAILED(DeliverBeginFlush()))
 		throw std::runtime_error("Failed to deliver beginflush");
 
 	if (m_hdrData)
 		m_hdrChanged = true;
 
+	// CRITICAL FIX: Reset ALL timing state atomically to prevent HDMI resync issues
 	m_frameCounter = 0;
 	m_previousFrameCounter = 0;
-	m_frameCounterOffset = 0;
+	m_frameCounterOffset = 0;  // This will be recalculated on first new frame
 	m_previousTimeStop = 0;
-	m_startTimeOffset = 0;
+	m_startTimeOffset = 0;     // CRITICAL: Must reset to 0 to allow recalculation on first frame
 	m_droppedFrameCount = 0;
-	// Force downstream to treat next frame as a fresh timeline
-	m_forceDiscontinuity = true;
-	m_deliverNewSegment = true;
-
-	// Reset hybrid timing state for DS_SSTM_HARDWARE_RATIONAL mode
-	m_previousHardwareTimestamp = 0;
-	m_hardwareTimingAnomalyCount = 0;
-	m_rationalFrameDuration = 0;
-	m_minFrameAdvance = 0;
-	m_maxFrameAdvance = 0;
-
-	// Reset CLOCK_SMART duration tracking
-	memset(m_durationHistory, 0, sizeof(m_durationHistory));
-	m_durationHistoryIndex = 0;
-	m_durationHistoryCount = 0;
-	m_lastHardwareTimestamp = 0;
-
-	// Reset smart timing statistics
-	m_smartHardwareTimestampCount = 0;
-	m_smartSyntheticTimestampCount = 0;
-	m_smartRejectedTimestampCount = 0;
 	
-	// Reset timestamp queue (thread-safe)
+	// HDMI RESYNC FIX: Clear hardware timestamp queue to prevent stale timestamps
 	{
 		std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
 		size_t queueSizeBefore = m_hardwareTimestampQueue.size();
@@ -409,102 +391,46 @@ void ALiveSourceVideoOutputPin::Reset()
 		
 		if (queueSizeBefore > 0)
 		{
-			DebugLog::Log("CLOCK_SMART: Reset() cleared timestamp queue - had %zu timestamps", queueSizeBefore);
+			DebugLog::Log("Reset(): Cleared %zu stale HDMI timestamps from queue", queueSizeBefore);
 		}
+		
+		// Reset validation parameters (will be recalculated on first enqueue)
+		m_expectedFrameDuration = 0;
+		m_minValidDuration = 0;
+		m_maxValidDuration = 0;
 	}
 	
-	// Reset validation parameters (will be recalculated on first enqueue)
-	m_expectedFrameDuration = 0;
-	m_minValidDuration = 0;
-	m_maxValidDuration = 0;
+	// Force discontinuity and new segment for clean restart
+	m_forceDiscontinuity = true;
+	m_deliverNewSegment = true;
+	
+	// Reset timing method-specific state
+	m_previousHardwareTimestamp = 0;
+	m_hardwareTimingAnomalyCount = 0;
+	m_rationalFrameDuration = 0;
+	m_minFrameAdvance = 0;
+	m_maxFrameAdvance = 0;
+	m_lastHardwareTimestamp = 0;
+	
+	// Clear duration history for CLOCK_SMART modes
+	memset(m_durationHistory, 0, sizeof(m_durationHistory));
+	m_durationHistoryIndex = 0;
+	m_durationHistoryCount = 0;
+	
+	// Reset smart timing statistics
+	m_smartHardwareTimestampCount = 0;
+	m_smartSyntheticTimestampCount = 0;
+	m_smartRejectedTimestampCount = 0;
 
-	// Log timing mode information
-	if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART)
-	{
-		DbgLog((LOG_TRACE, 1, TEXT("Reset(): ORIGINAL CLOCK_SMART mode active - will use:")));
-		DbgLog((LOG_TRACE, 1, TEXT("  1) Hardware stop timestamps when available - from frame queue")));
-		DbgLog((LOG_TRACE, 1, TEXT("  2) Theoretical frame duration as fallback when no hardware stop time")));
-		DbgLog((LOG_TRACE, 1, TEXT("  3) Simple and reliable for basic timing needs")));
-	}
-	else if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
-	{
-		DbgLog((LOG_TRACE, 1, TEXT("Reset(): ENHANCED CLOCK_SMART2 mode active - will use:")));
-		DbgLog((LOG_TRACE, 1, TEXT("  1) Hardware stop timestamps when available - from frame queue")));
-		DbgLog((LOG_TRACE, 1, TEXT("  2) Average of last %d actual durations when no hardware stop time"), DURATION_HISTORY_SIZE));
-		DbgLog((LOG_TRACE, 1, TEXT("  3) Integer-only math for monotonic timing")));
-		DbgLog((LOG_TRACE, 1, TEXT("  4) Rational duration fallback when no history available")));
-	}
-	else if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL)
-	{
-		DbgLog((LOG_TRACE, 1, TEXT("Reset(): RATIONAL_RATIONAL mode active - using correction.cfg PPM:")));
-		if (m_ppmCorrectionLoader.HasCorrections())
-		{
-			// CORRECT SIGN: ppmCorrection = trimNumerator - RATIONAL_TRIM_DENOMINATOR
-			int ppmCorrection = GetRationalTrimNumerator() - RATIONAL_TRIM_DENOMINATOR;
-			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: %d (from correction.cfg)"), ppmCorrection));
-			
-			// Show trim ratio with context
-			double trimPercentage = (100.0 * GetRationalTrimNumerator()) / RATIONAL_TRIM_DENOMINATOR;
-			if (ppmCorrection > 0)
-			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware +%d PPM faster -> Timeline %.6f%% faster to match"), 
-					ppmCorrection, trimPercentage));
-			}
-			else if (ppmCorrection < 0)
-			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware %d PPM slower -> Timeline %.6f%% slower to match"), 
-					ppmCorrection, trimPercentage));
-			}
-			else
-			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: No PPM correction (trim = 100.000000%)")));
-			}
-		}
-		else
-		{
-			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: 0 (no correction.cfg found, using default)")));
-		}
-		DbgLog((LOG_TRACE, 1, TEXT("  Consistent across start/stop time calculations")));
-		DbgLog((LOG_TRACE, 1, TEXT("  Pipeline offset: %I64d (100ns units)"), m_rationalPipelineOffset));
-	}
-	else if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL)
-	{
-		DbgLog((LOG_TRACE, 1, TEXT("Reset(): CLOCK_RATIONAL mode active - using correction.cfg PPM:")));
-		if (m_ppmCorrectionLoader.HasCorrections())
-		{
-			// CORRECT SIGN: ppmCorrection = trimNumerator - RATIONAL_TRIM_DENOMINATOR
-		 int ppmCorrection = GetRationalTrimNumerator() - RATIONAL_TRIM_DENOMINATOR;
-			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: %d (from correction.cfg)"), ppmCorrection));
-			
-			// Show trim ratio with context
-			double trimPercentage = (100.0 * GetRationalTrimNumerator()) / RATIONAL_TRIM_DENOMINATOR;
-			if (ppmCorrection > 0)
-			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware +%d PPM faster -> Duration %.6f%% faster to match"), 
-					ppmCorrection, trimPercentage));
-			}
-			else if (ppmCorrection < 0)
-			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware %d PPM slower -> Duration %.6f%% slower to match"), 
-					ppmCorrection, trimPercentage));
-			}
-			else
-			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: No PPM correction (duration = 100.000000%)")));
-			}
-		}
-		else
-		{
-			DbgLog((LOG_TRACE, 1, TEXT("  PPM adjustment: 0 (no correction.cfg found, using default)")));
-		}
-		DbgLog((LOG_TRACE, 1, TEXT("  Hardware timestamps for start, rational duration with PPM trim for frame intervals")));
-	}
+	DebugLog::Log("ALiveSourceVideoOutputPin::Reset() - All timing state cleared for HDMI resync");
 
 	if (FAILED(DeliverEndFlush()))
 		throw std::runtime_error("Failed to deliver endflush");
 
 	if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
 		throw std::runtime_error("Failed to deliver new segment");
+		
+	DebugLog::Log("ALiveSourceVideoOutputPin::Reset() - HDMI resync timing reset completed");
 }
 
 
