@@ -1175,8 +1175,13 @@ bool ALiveSourceVideoOutputPin::EnqueueHardwareTimestamp(REFERENCE_TIME timestam
 			m_maxValidDuration / 10000.0));
 	}
 	
-	// Validate timestamp delta if we have history
-	if (!m_hardwareTimestampQueue.empty())
+	// BOOTSTRAP MODE: Skip validation when queue is nearly empty (just rebuilt after recovery)
+	// This prevents the feedback loop where recovery clears the queue, then new timestamps
+	// are rejected because there's no valid reference point
+	const bool isBootstrapping = m_hardwareTimestampQueue.size() < MIN_TIMESTAMP_QUEUE_SIZE;
+	
+	// Validate timestamp delta if we have history AND we're not bootstrapping
+	if (!m_hardwareTimestampQueue.empty() && !isBootstrapping)
 	{
 		REFERENCE_TIME lastTimestamp = m_hardwareTimestampQueue.back();
 		REFERENCE_TIME duration = timestamp - lastTimestamp;
@@ -1189,6 +1194,7 @@ bool ALiveSourceVideoOutputPin::EnqueueHardwareTimestamp(REFERENCE_TIME timestam
 			++m_smartRejectedTimestampCount;
 			
 			// Notify subclass of bad timestamp for recovery
+			OnBadTimestampDetected();
 			
 			return false;
 		}
@@ -1203,6 +1209,7 @@ bool ALiveSourceVideoOutputPin::EnqueueHardwareTimestamp(REFERENCE_TIME timestam
 			++m_smartRejectedTimestampCount;
 			
 			// Notify subclass of bad timestamp for recovery
+			OnBadTimestampDetected();
 			
 			return false;
 		}

@@ -276,4 +276,7 @@ protected:
 	// Helper methods for queue management
 	bool EnqueueHardwareTimestamp(REFERENCE_TIME timestamp);
 	REFERENCE_TIME DequeueHardwareTimestamp();
+	
+	// Virtual method for bad timestamp recovery (overridden in buffered implementation)
+	virtual void OnBadTimestampDetected() {}
 };

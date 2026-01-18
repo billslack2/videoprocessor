@@ -3117,7 +3117,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 
 			if (m_videoRenderer)
 			{
-				//m_videoRenderer->Reset();
+				m_videoRenderer->Reset();
 				m_consecutiveStuckSeconds = 0;
 			}
 		}

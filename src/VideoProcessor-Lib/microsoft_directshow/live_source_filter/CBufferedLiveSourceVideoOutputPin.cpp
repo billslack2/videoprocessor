@@ -290,6 +290,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 			{
 				DbgLog((LOG_TRACE, 1, TEXT("OnVideoFrame(): DISCONTINUITY DETECTED - triggering startup-like recovery")));
 				DbgLog((LOG_TRACE, 1, TEXT("  Last counter: %I64u, New counter: %I64u"), m_lastSeenFrameCounter, newCounter));
+				DebugLog::Log("OnVideoFrame: Frame counter discontinuity detected (last=%llu, new=%llu) - triggering recovery", m_lastSeenFrameCounter, newCounter);
 
 				// PURGE BOTH QUEUES - identical to startup
 				while (!m_videoFrameQueue.empty())
@@ -319,6 +320,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 				
 				
 				DbgLog((LOG_TRACE, 1, TEXT("OnVideoFrame(): Recovery triggered - buffering enabled, queues purged")));
+				DebugLog::Log("OnVideoFrame: Recovery complete - buffering enabled, queues purged");
 			}
 		}
 
@@ -332,11 +334,33 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 			oldFrame.SourceBufferRelease();
 			m_videoFrameQueue.pop_front();
 			++m_droppedFrameCount;
+			
+			DbgLog((LOG_WARNING, 1, TEXT("OnVideoFrame(): Raw queue overflow - dropped frame, size=%ze"), m_videoFrameQueue.size()));
+			DebugLog::Log("OnVideoFrame: Raw queue overflow (size=%ze) - dropped frame", m_frameQueueMaxSize);
 		}
 		
 		// Add new frame
 		videoFrame.SourceBufferAddRef();
 		m_videoFrameQueue.push_back(videoFrame);
+
+		// DIAGNOSTIC: Log when raw queue is backing up
+		if (m_videoFrameQueue.size() >= (m_frameQueueMaxSize * 3) / 4)  // 75% threshold
+		{
+			static DWORD lastBackupLog = 0;
+			DWORD now = GetTickCount();
+			if (now - lastBackupLog >= 5000)  // Log at most every 5 seconds
+			{
+				uint64_t convFrames = m_conversionFrameCount.load();
+				DbgLog((LOG_WARNING, 1, TEXT("OnVideoFrame(): Raw queue backup - size=%ze/%ze, buffering=%d"),
+					m_videoFrameQueue.size(), m_frameQueueMaxSize,
+					m_isBuffering.load(std::memory_order_acquire) ? 1 : 0));
+				DebugLog::Log("OnVideoFrame: Raw queue backing up (size=%ze/%ze, buffering=%d, convFrames=%llu)",
+					m_videoFrameQueue.size(), m_frameQueueMaxSize,
+					m_isBuffering.load(std::memory_order_acquire) ? 1 : 0,
+					convFrames);
+				lastBackupLog = now;
+			}
+		}
 	}
 
 	SetEvent(m_hFrameAvailableEvent);
@@ -646,6 +670,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	// Wait only for converted samples or shutdown. No timeout, no polling.
 	HANDLE events[2] = { m_hConvertedAvailableEvent, m_hShutdownEvent };
 
+	// Latency tracking for diagnostics
+	DWORD lastLatencyLogTime = 0;
+	uint64_t framesSinceLastLog = 0;
+	uint64_t totalDeliveryTimeUs = 0;
+
 	while (true)
 	{
 		DWORD waitResult = WaitForMultipleObjects(2, events, FALSE, INFINITE);
@@ -696,7 +725,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 			DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: BUFFERING COMPLETE (%zu/%zu) - delivery starting"),
 				convertedQueueSize, bufferingTarget));
+			DebugLog::Log("ThreadProc: Buffering complete with queue size %zu - exiting buffering mode", convertedQueueSize);
 		}
+
+		// Delivery timing measurement
+		DWORD deliveryStartTime = GetTickCount();
 
 		// Deliver everything currently available.
 		for (;;)
@@ -712,22 +745,103 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				m_convertedSampleQueue.pop_front();
 			}
 
+			DWORD deliverStartTime = GetTickCount();
 			HRESULT hr = Deliver(pSample);
+			DWORD deliverEndTime = GetTickCount();
+			uint32_t deliverTimeMs = deliverEndTime - deliverStartTime;
+			
 			pSample->Release();
 
 			if (FAILED(hr))
 			{
 				++m_droppedFrameCount;
 				++m_recentDeliveryFailures;
-				DbgLog((LOG_WARNING, 1, TEXT("ThreadProc: Deliver failed, hr=0x%08x"), hr));
-
-				// Optional: break out on terminal graph states.
-				// if (hr == VFW_E_WRONG_STATE || hr == VFW_E_NOT_CONNECTED) break;
+				
+				// CRITICAL: Log the actual error code with description
+				const char* hrDesc = "";
+				switch (hr)
+				{
+				case VFW_E_NOT_CONNECTED:
+					hrDesc = "NOT_CONNECTED";
+					break;
+				case VFW_E_WRONG_STATE:
+					hrDesc = "WRONG_STATE";
+					break;
+				case VFW_E_NO_ALLOCATOR:
+					hrDesc = "NO_ALLOCATOR";
+					break;
+				case E_INVALIDARG:
+					hrDesc = "INVALID_ARG";
+					break;
+				case S_FALSE:
+					hrDesc = "S_FALSE (downstream rejected)";
+					break;
+				case E_UNEXPECTED:
+					hrDesc = "UNEXPECTED";
+					break;
+				default:
+					hrDesc = "UNKNOWN";
+				}
+				
+				DbgLog((LOG_WARNING, 1, TEXT("ThreadProc: Deliver FAILED hr=0x%08x (%S) - took %ums"),
+					hr, hrDesc, deliverTimeMs));
+				DebugLog::Log("ThreadProc: Deliver() FAILED hr=0x%08x (%s) - took %ums (failures=%u)",
+					hr, hrDesc, deliverTimeMs, m_recentDeliveryFailures.load());
 
 				continue;
 			}
 
+			//TODO: Just back pressure?
+			// Log slow Deliver() calls (taking >5ms is unusual)
+			//if (deliverTimeMs > 5)
+			//{
+			////	DebugLog::Log("ThreadProc: Deliver() took %ums (slow) - downstream latency?", deliverTimeMs);
+			//}
+
 			m_recentDeliveryFailures = 0;
+			++framesSinceLastLog;
+		}
+
+		// Log delivery performance periodically
+		DWORD now = GetTickCount();
+		DWORD deliveryEndTime = now;
+		uint32_t deliveryTimeMs = deliveryEndTime - deliveryStartTime;
+
+		if (now - lastLatencyLogTime >= 10000)  // Every 10 seconds
+		{
+			size_t rawQueueSize = 0;
+			size_t convertedQueueSize = 0;
+			{
+				CAutoLock lock(&m_filterCritSec);
+				rawQueueSize = m_videoFrameQueue.size();
+			}
+			{
+				CAutoLock lock(&m_convertedQueueLock);
+				convertedQueueSize = m_convertedSampleQueue.size();
+			}
+
+			uint64_t avgConversionTimeUs = 0;
+			if (m_conversionFrameCount > 0)
+			{
+				avgConversionTimeUs = m_totalConversionTimeUs / m_conversionFrameCount;
+			}
+
+			DebugLog::Log("DELIVERY THREAD STATS (10s): Frames=%llu, RawQueue=%zu, ConvertedQueue=%zu, AvgConvUs=%llu, IsBuffering=%d, DroppedFrames=%llu, RecentFailures=%u, DeliveryTimeMs=%u",
+				framesSinceLastLog,
+				rawQueueSize,
+				convertedQueueSize,
+				avgConversionTimeUs,
+				m_isBuffering.load(std::memory_order_acquire) ? 1 : 0,
+				m_droppedFrameCount,
+				m_recentDeliveryFailures.load(),
+				deliveryTimeMs);
+
+			DbgLog((LOG_TRACE, 1, TEXT("ThreadProc: DELIVERY STATS - Frames=%llu, RawQ=%zu, ConvQ=%zu, AvgConvUs=%llu, Buffering=%d"),
+				framesSinceLastLog, rawQueueSize, convertedQueueSize, avgConversionTimeUs,
+				m_isBuffering.load(std::memory_order_acquire) ? 1 : 0));
+
+			framesSinceLastLog = 0;
+			lastLatencyLogTime = now;
 		}
 	}
 
@@ -747,6 +861,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 	// Wait for raw frames (m_hFrameAvailableEvent) or conversion shutdown.
 	HANDLE events[2] = { m_hFrameAvailableEvent, m_hConversionShutdownEvent };
+
+	// Conversion performance tracking
+	DWORD lastConversionLogTime = 0;
+	uint64_t framesSinceLastLog = 0;
+	uint64_t totalTimeUs = 0;
+	uint64_t maxTimeUs = 0;
+	uint64_t minTimeUs = UINT64_MAX;
 
 	for (;;)
 	{
@@ -775,7 +896,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			{
 				CAutoLock lock(&m_convertedQueueLock);
 				if (m_convertedSampleQueue.size() >= m_frameQueueMaxSize)
+				{
+					DbgLog((LOG_TRACE, 2, TEXT("ConversionWorker: Backpressure hit - converted queue full (%zu/%zu)"),
+						m_convertedSampleQueue.size(), m_frameQueueMaxSize));
 					break;
+				}
 			}
 
 			// Pop one raw frame.
@@ -805,6 +930,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			if (FAILED(hr))
 			{
 				DbgLog((LOG_WARNING, 1, TEXT("ConversionWorker: GetDeliveryBuffer failed, dropping frame")));
+				DebugLog::Log("ConversionWorker: GetDeliveryBuffer failed hr=0x%08x, dropping frame", hr);
 				videoFrame.SourceBufferRelease();
 				++m_droppedFrameCount;
 				continue;
@@ -817,20 +943,18 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 			m_totalConversionTimeUs += convTimeUs;
 			++m_conversionFrameCount;
+			++framesSinceLastLog;
 
-			if ((m_conversionFrameCount % 300) == 0)
-			{
-				const uint64_t avgConvUs = (m_conversionFrameCount > 0)
-					? (m_totalConversionTimeUs / m_conversionFrameCount)
-					: 0;
-				DbgLog((LOG_TRACE, 1, TEXT("ConversionWorker: Converted %I64u frames, avg %.2f ms"),
-					m_conversionFrameCount, avgConvUs / 1000.0));
-			}
+			totalTimeUs += convTimeUs;
+			maxTimeUs = std::max(maxTimeUs, convTimeUs);
+			if (convTimeUs > 0)
+				minTimeUs = std::min(minTimeUs, convTimeUs);
 
 			if (FAILED(hr))
 			{
 				DbgLog((LOG_TRACE, 1, TEXT("ConversionWorker: Conversion failed for frame #%I64u"),
 					videoFrame.GetCounter()));
+				DebugLog::Log("ConversionWorker: Conversion failed for frame #%llu, hr=0x%08x", videoFrame.GetCounter(), hr);
 
 				videoFrame.SourceBufferRelease();
 				pSample->Release();
@@ -842,6 +966,74 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			{
 				CAutoLock lock(&m_convertedQueueLock);
 				m_convertedSampleQueue.push_back(pSample);
+				
+				// AUTO-RESET: If converted queue grows too large, latency is building up
+				// This indicates downstream (MadVR) isn't consuming fast enough
+				// BUT: Don't trigger during startup - MadVR needs time to stabilize
+				// AND: Add cooldown to prevent rapid-fire purges
+				static DWORD lastPurgeTime = 0;
+				DWORD now = GetTickCount();
+				
+				// Calculate time since we exited buffering (use 3 second grace period after any buffering exit)
+				// This handles both initial startup AND refresh rate changes
+				static DWORD bufferingExitTime = 0;
+				bool isInGracePeriod = false;
+				
+				if (m_isBuffering.load(std::memory_order_acquire))
+				{
+					// Currently in buffering - reset the grace period timer
+					bufferingExitTime = 0;
+					isInGracePeriod = true;
+				}
+				else
+				{
+					// Not in buffering - check if we just exited
+					if (bufferingExitTime == 0)
+					{
+						// First frame after exiting buffering - start the grace period
+						bufferingExitTime = now;
+						DebugLog::Log("ConversionWorker: Exited buffering - starting 3 second grace period");
+					}
+					
+					// Check if we're still in the grace period
+					isInGracePeriod = (now - bufferingExitTime) < 3000;
+				}
+				
+				// Skip auto-purge during grace period (startup or after refresh rate change)
+				if (isInGracePeriod)
+				{
+					// During grace period, just let the queue grow - MadVR is still stabilizing
+				}
+				// Skip if we purged recently (cooldown: 5 seconds between resets to let system stabilize)
+				else if (now - lastPurgeTime < 5000)
+				{
+					// Too soon since last purge
+				}
+				// Threshold: more than 12 frames = ~200ms latency
+				else if (m_convertedSampleQueue.size() > 12)
+				{
+					DebugLog::Log("ConversionWorker: Converted queue too large (%zu > 12) - triggering FULL RESET (like manual reset)",
+						m_convertedSampleQueue.size());
+					
+					// Purge ALL converted samples
+					size_t purged = 0;
+					while (!m_convertedSampleQueue.empty())
+					{
+						IMediaSample* pOldSample = m_convertedSampleQueue.front();
+						m_convertedSampleQueue.pop_front();
+						if (pOldSample) pOldSample->Release();
+						++purged;
+						++m_droppedFrameCount;
+					}
+					
+					lastPurgeTime = now;
+					bufferingExitTime = 0;  // Reset grace period timer for when we exit buffering again
+					DebugLog::Log("ConversionWorker: Purged all %zu converted samples, entering buffering mode", purged);
+					
+					// CRITICAL: Enter buffering mode to re-synchronize timeline (like manual reset does)
+					// This is what fixes the latency - not just purging, but re-syncing the timeline
+					m_isBuffering.store(true, std::memory_order_release);
+				}
 			}
 
 			// Release raw frame now that conversion is done.
@@ -849,6 +1041,48 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 			// Signal delivery thread that converted samples are available.
 			SetEvent(m_hConvertedAvailableEvent);
+		}
+
+		// Log conversion worker performance periodically
+		DWORD now = GetTickCount();
+		if (now - lastConversionLogTime >= 10000)  // Every 10 seconds
+		{
+			size_t rawQueueSize = 0;
+			size_t convertedQueueSize = 0;
+			{
+				CAutoLock lock(&m_filterCritSec);
+				rawQueueSize = m_videoFrameQueue.size();
+			}
+			{
+				CAutoLock lock(&m_convertedQueueLock);
+				convertedQueueSize = m_convertedSampleQueue.size();
+			}
+
+			uint64_t avgTimeUs = (framesSinceLastLog > 0) ? (totalTimeUs / framesSinceLastLog) : 0;
+			uint64_t totalConvFrames = m_conversionFrameCount.load();
+
+			DebugLog::Log("CONVERSION WORKER STATS (10s): Frames=%llu, Avg=%.2fms, Min=%.2fms, Max=%.2fms, RawQueue=%zu, ConvertedQueue=%zu, TotalConverted=%llu",
+				framesSinceLastLog,
+				avgTimeUs / 1000.0,
+				(minTimeUs == UINT64_MAX ? 0.0 : minTimeUs / 1000.0),
+				maxTimeUs / 1000.0,
+				rawQueueSize,
+				convertedQueueSize,
+				totalConvFrames);
+
+			DbgLog((LOG_TRACE, 1, TEXT("ConversionWorker: STATS - Frames=%llu, Avg=%.2fms, Min=%.2fms, Max=%.2fms, RawQ=%zu, ConvQ=%zu"),
+				framesSinceLastLog,
+				avgTimeUs / 1000.0,
+				(minTimeUs == UINT64_MAX ? 0.0 : minTimeUs / 1000.0),
+				maxTimeUs / 1000.0,
+				rawQueueSize,
+				convertedQueueSize));
+
+			framesSinceLastLog = 0;
+			totalTimeUs = 0;
+			maxTimeUs = 0;
+			minTimeUs = UINT64_MAX;
+			lastConversionLogTime = now;
 		}
 	}
 
@@ -882,6 +1116,1063 @@ size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget()
 
 	return frames;
 }
+
+void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
+{
+	// COOLDOWN: Prevent rapid-fire recovery triggers
+	static DWORD lastRecoveryTime = 0;
+	DWORD now = GetTickCount();
+	
+	// Only allow recovery once per 500ms to prevent feedback loops
+	if (now - lastRecoveryTime < 500)
+	{
+		return;  // Skip - too soon since last recovery
+	}
+	lastRecoveryTime = now;
+
+	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected() - Bad CLOCK_SMART timestamp detected, triggering recovery");
+	
+	{
+		CAutoLock lock(&m_filterCritSec);
+		
+		// Purge raw frames
+		while (!m_videoFrameQueue.empty())
+		{
+			VideoFrame oldFrame = m_videoFrameQueue.front();
+			oldFrame.SourceBufferRelease();
+			m_videoFrameQueue.pop_front();
+		}
+		
+		SetEvent(m_hConvertedAvailableEvent); // Wake delivery thread
+	}
+	
+	// Purge converted queue
+	{
+		CAutoLock lock(&m_convertedQueueLock);
+		while (!m_convertedSampleQueue.empty())
+		{
+			IMediaSample* pSample = m_convertedSampleQueue.front();
+			m_convertedSampleQueue.pop_front();
+			if (pSample) pSample->Release();
+		}
+	}
+	
+	// CRITICAL: Clear hardware timestamp queue to prevent stale timestamps causing repeated rejections
+	{
+		std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
+		size_t queueSizeBefore = m_hardwareTimestampQueue.size();
+		m_hardwareTimestampQueue.clear();
+		
+		// Reset validation parameters (will be recalculated on first enqueue)
+		m_expectedFrameDuration = 0;
+		m_minValidDuration = 0;
+		m_maxValidDuration = 0;
+		
+		if (queueSizeBefore > 0)
+		{
+			DebugLog::Log("OnBadTimestampDetected(): Cleared %zu stale timestamps from queue", queueSizeBefore);
+		}
+	}
+	
+	// Enter buffering mode
+	{
+		CAutoLock lock(&m_filterCritSec);
+		m_isBuffering = true;
+		m_lastSeenFrameCounter = 0;
+	}
+	
+	DebugLog::Log("OnBadTimestampDetected(): Recovery complete - buffering enabled, queues purged");
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

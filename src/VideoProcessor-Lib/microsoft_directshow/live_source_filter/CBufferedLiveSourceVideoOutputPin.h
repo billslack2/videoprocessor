@@ -48,6 +48,7 @@ public:
 	size_t GetFrameQueueSize() override;
 	void Reset() override;
 	REFERENCE_TIME NextFrameTimestamp() const override;
+	void OnBadTimestampDetected() override;
 
 private:
 
