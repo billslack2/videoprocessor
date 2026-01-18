@@ -2017,9 +2017,9 @@ void CVideoProcessorDlg::UpdateTimingClockFrameOffset()
 	if (m_captureDevice) 
 		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
 
-	//TODO: PLL
-	//if (m_videoRenderer)
-	//	m_videoRenderer->Reset();
+	//TODO
+	if (m_videoRenderer)
+		m_videoRenderer->Reset();
 }
 
 
@@ -2774,12 +2774,13 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	// Handle resize debounce timer
 if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 {
-    KillTimer(RESIZE_DEBOUNCE_TIMER_ID);
     
     if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
     {
-    //    DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Resetting renderer after resize")));
-    //    m_videoRenderer->Reset();
+		KillTimer(RESIZE_DEBOUNCE_TIMER_ID); //TODO: MOVED KILL INSIDE
+
+        DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Resetting renderer after resize")));
+        m_videoRenderer->Reset();
     }
     return;
 }
@@ -2802,10 +2803,12 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 	// NEW: Handle delayed queue reset timer
 	if (nIDEvent == QUEUE_RESET_DELAY_TIMER_ID)
 	{
-		KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
 
 		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
 		{
+
+			KillTimer(QUEUE_RESET_DELAY_TIMER_ID); //TODO: MOVED KILL INSIDE
+			 
 			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): DELAYED QUEUE RESET - MadVR stabilization complete")));
 			m_videoRenderer->Reset();
 
@@ -3110,7 +3113,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 		m_consecutiveStuckSeconds++;
 		if (m_consecutiveStuckSeconds >= 4)  // 4 seconds stuck
 		{
-			DbgLog((LOG_TRACE, 1, TEXT("Queue health: Stuck queue detected (%zu for %zu seconds) - reset"), currentQueueSize, m_consecutiveStuckSeconds));
+			DEBUGLOG("DISABLED: Queue health: Stuck queue detected (%zu for %zu seconds) - reset", currentQueueSize, m_consecutiveStuckSeconds);
 
 			if (m_videoRenderer)
 			{

@@ -1187,6 +1187,9 @@ bool ALiveSourceVideoOutputPin::EnqueueHardwareTimestamp(REFERENCE_TIME timestam
 			DebugLog::Log("CLOCK_SMART: Rejecting non-monotonic timestamp delta=%.3fms",
 				duration / 10000.0);
 			++m_smartRejectedTimestampCount;
+			
+			// Notify subclass of bad timestamp for recovery
+			
 			return false;
 		}
 		
@@ -1198,6 +1201,9 @@ bool ALiveSourceVideoOutputPin::EnqueueHardwareTimestamp(REFERENCE_TIME timestam
 				m_minValidDuration / 10000.0,
 				m_maxValidDuration / 10000.0);
 			++m_smartRejectedTimestampCount;
+			
+			// Notify subclass of bad timestamp for recovery
+			
 			return false;
 		}
 	}

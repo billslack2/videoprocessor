@@ -317,6 +317,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 				m_isBuffering = true;
 				m_lastSeenFrameCounter = 0;  // Reset so we don't immediately trigger again
 				
+				
 				DbgLog((LOG_TRACE, 1, TEXT("OnVideoFrame(): Recovery triggered - buffering enabled, queues purged")));
 			}
 		}
@@ -468,6 +469,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	
 	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Reset() - HDMI resync async queue reset completed");
 }
+
 
 
 size_t CBufferedLiveSourceVideoOutputPin::GetFrameQueueSize()
