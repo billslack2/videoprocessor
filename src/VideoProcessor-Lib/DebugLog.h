@@ -24,6 +24,9 @@
 /**
  * Async debug logger that writes to debug.log in the executable directory
  * Thread-safe file logging with timestamps - non-blocking for caller
+ * 
+ * OPTIMIZATION: Keeps file open in writer thread and batches writes to reduce I/O overhead
+ * BEHAVIOR: Clears log file on Initialize() call (each restart)
  */
 class DebugLog
 {
@@ -45,23 +48,6 @@ public:
 			// Queue for background writing (non-blocking)
 			QueueMessage(buffer);
 		}
-	}
-
-	/**
-	 * Clear the debug log file (synchronous operation)
-	 */
-	static void Clear()
-	{
-		std::lock_guard<std::mutex> lock(GetQueueMutex());
-		
-		// Clear any pending messages
-		std::queue<LogMessage> emptyQueue;
-		std::swap(GetMessageQueue(), emptyQueue);
-		
-		// Clear the file
-		std::string logPath = GetLogFilePath();
-		std::ofstream file(logPath, std::ios::trunc);
-		file.close();
 	}
 
 	/**
@@ -100,12 +86,30 @@ public:
 
 	/**
 	 * Initialize the async logger (call once at startup)
+	 * This also clears the log file from any previous session
 	 */
 	static void Initialize()
 	{
 		std::lock_guard<std::mutex> lock(GetQueueMutex());
 		if (!GetWriterThread().joinable())
 		{
+			// Clear log file (fresh start for this session)
+			std::string logPath = GetLogFilePath();
+			std::ofstream file(logPath, std::ios::trunc);
+			if (file.is_open())
+			{
+				// Write session start marker
+				struct tm tm;
+				auto now = std::time(nullptr);
+				localtime_s(&tm, &now);
+				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " | === DEBUG LOG SESSION START ===\n";
+				file.close();
+			}
+
+			// Clear any pending messages from previous run
+			std::queue<LogMessage> emptyQueue;
+			std::swap(GetMessageQueue(), emptyQueue);
+
 			GetShutdownFlag() = false;
 			GetWriterThread() = std::thread(WriterThreadProc);
 		}
@@ -137,6 +141,10 @@ private:
 		LogMessage(const std::string& msg) : message(msg), timestamp(std::time(nullptr)) {}
 	};
 
+	// Batch configuration
+	static constexpr size_t BATCH_SIZE = 50;              // Flush after 50 messages
+	static constexpr int FLUSH_INTERVAL_MS = 100;         // Or every 100ms, whichever comes first
+
 	static void QueueMessage(const std::string& message)
 	{
 		{
@@ -157,14 +165,29 @@ private:
 	{
 		std::string logPath = GetLogFilePath();
 		
+		// Open file once for the entire session (append mode after initialization truncate)
+		std::ofstream file(logPath, std::ios::app);
+		if (!file.is_open())
+		{
+			// Can't write to log, just return
+			return;
+		}
+
+		auto lastFlushTime = std::chrono::steady_clock::now();
+		size_t messagesSinceFlush = 0;
+
 		while (true)
 		{
 			std::unique_lock<std::mutex> lock(GetQueueMutex());
 			
-			// Wait for messages or shutdown signal
-			GetConditionVariable().wait(lock, []() {
-				return !GetMessageQueue().empty() || GetShutdownFlag();
-			});
+			// Wait for messages or shutdown signal with timeout for periodic flushing
+			auto waitResult = GetConditionVariable().wait_for(
+				lock,
+				std::chrono::milliseconds(FLUSH_INTERVAL_MS),
+				[]() {
+					return !GetMessageQueue().empty() || GetShutdownFlag();
+				}
+			);
 
 			// Process all pending messages
 			while (!GetMessageQueue().empty())
@@ -175,24 +198,47 @@ private:
 				// Release lock while writing to file
 				lock.unlock();
 				
-				// Write to file
-				std::ofstream file(logPath, std::ios::app);
+				// Write to file (file is already open)
 				if (file.is_open())
 				{
 					struct tm tm;
 					localtime_s(&tm, &msg.timestamp);
 					
 					file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " | " << msg.message << "\n";
-					file.close();
+					messagesSinceFlush++;
+
+					// Flush periodically to ensure data is written
+					if (messagesSinceFlush >= BATCH_SIZE)
+					{
+						file.flush();
+						messagesSinceFlush = 0;
+						lastFlushTime = std::chrono::steady_clock::now();
+					}
 				}
 				
 				// Re-acquire lock for next iteration
 				lock.lock();
 			}
 
+			// Flush if timeout occurred (periodic flush interval)
+			auto now = std::chrono::steady_clock::now();
+			if (file.is_open() && messagesSinceFlush > 0 &&
+				std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFlushTime).count() >= FLUSH_INTERVAL_MS)
+			{
+				file.flush();
+				messagesSinceFlush = 0;
+				lastFlushTime = now;
+			}
+
 			// Exit if shutdown requested and queue is empty
 			if (GetShutdownFlag() && GetMessageQueue().empty())
 			{
+				// Final flush and close
+				if (file.is_open())
+				{
+					file.flush();
+					file.close();
+				}
 				break;
 			}
 		}

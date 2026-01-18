@@ -793,7 +793,7 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 				DbgLog((LOG_TRACE, 1, TEXT("EC_DISPLAY_CHANGED detected - scheduling MadVR reset")));
 				if (m_rendererState == RendererState::RENDERSTATE_RENDERING && !m_pendingQueueReset)
 				{
-					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 4000, nullptr);  // 2-second delay for display changes
+					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);  // 2-second delay for display changes
 					m_pendingQueueReset = true;
 				}
 				break;
@@ -806,7 +806,7 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 				DbgLog((LOG_TRACE, 1, TEXT("EC_VIDEO_SIZE_CHANGED detected - scheduling MadVR reset")));
 				if (m_rendererState == RendererState::RENDERSTATE_RENDERING && !m_pendingQueueReset)
 				{
-					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 1500, nullptr);  // 1.5-second delay for video size changes
+					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);  // 1.5-second delay for video size changes
 					//m_pendingQueueReset = true;
 				}
 				break;
@@ -3094,7 +3094,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 	{
 		//TODO: Adjust threshold and duration based on testing
 		// Simple: reset when queue >= 16 frames
-		if (currentQueueSize >= 32)
+		if (currentQueueSize >= 16)
 		{
 			m_videoRenderer->Reset();
 		}

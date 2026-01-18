@@ -51,7 +51,9 @@ public:
 
 private:
 
-	size_t m_frameQueueMaxSize = 0;
+	HANDLE m_hConvertedAvailableEvent = nullptr;  // auto-reset: converted samples available
+
+	size_t m_frameQueueMaxSize = 8;
 
 	// Raw frame queue (input from capture device)
 	std::deque<VideoFrame> m_videoFrameQueue;
@@ -68,6 +70,7 @@ private:
 	// Core proactive frame management
 	HANDLE m_hFrameAvailableEvent = nullptr;  // Event signaled when frames are added to the queue
 	HANDLE m_hShutdownEvent = nullptr;        // Event signaled when thread should exit
+
 	
 	// Async conversion infrastructure
 	HANDLE m_hConversionThread = nullptr;             // Conversion worker thread handle
@@ -87,7 +90,9 @@ private:
 	
 
 	// Helper to get effective buffering target (half of queue size, at least 3 frames)
-	size_t GetBufferingTarget() const { const size_t half = m_frameQueueMaxSize / 2; return std::max<size_t>(16, half); }
+	size_t GetBufferingTarget();
+
+
 
 	// Thread function, upon return thread exist.
 	// Return codes > 0 indicate an error occured
