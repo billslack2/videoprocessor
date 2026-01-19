@@ -798,6 +798,24 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	uint64_t minDeliveryTimeUs = UINT64_MAX;
 	uint64_t bufferUnderrunCount = 0;
 
+	// Delivery categorization (frame-rate aware)
+	uint64_t instantDeliveryCount = 0;   // < 2ms
+	uint64_t normalDeliveryCount = 0;    // >= 2ms AND <= 150% of frame interval
+	uint64_t slowDeliveryCount = 0;      // > 150% of frame interval
+	uint64_t totalDeliveryCount = 0;
+	
+	// 1-minute aggregation
+	uint64_t instantDeliveryCount1Min = 0;
+	uint64_t normalDeliveryCount1Min = 0;
+	uint64_t slowDeliveryCount1Min = 0;
+	uint64_t totalDeliveryCount1Min = 0;
+	DWORD lastDeliveryStatsLogTime = GetTickCount();
+
+	// Calculate frame interval thresholds (updated periodically from timing clock)
+	uint64_t frameIntervalUs = 16667;  // Default: ~60fps = 16.667ms
+	uint64_t slowDeliveryThresholdUs = 25000;  // 150% of 60fps frame = 25ms
+	DWORD lastFrameIntervalUpdateTime = GetTickCount();
+
 	while (true)
 	{
 		// Wait for converted samples or shutdown
@@ -819,6 +837,23 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		{
 			DebugLog::Log("DELIVERY THREAD: Not active, exiting");
 			break;
+		}
+
+		// Update frame interval thresholds periodically (every 5 seconds)
+		DWORD now = GetTickCount();
+		if (now - lastFrameIntervalUpdateTime >= 5000)
+		{
+			if (m_frameDuration > 0)
+			{
+				// Convert REFERENCE_TIME (100ns units) to microseconds
+				frameIntervalUs = m_frameDuration / 10;
+				// Slow threshold: 150% of frame interval
+				slowDeliveryThresholdUs = (frameIntervalUs * 150) / 100;
+				
+				DbgLog((LOG_TRACE, 1, TEXT("DELIVERY THREAD: Updated frame interval to %.2fms, slow threshold=%.2fms"),
+					frameIntervalUs / 1000.0, slowDeliveryThresholdUs / 1000.0));
+			}
+			lastFrameIntervalUpdateTime = now;
 		}
 
 		// BUFFERING PHASE: do not deliver until we have enough converted samples
@@ -891,6 +926,26 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			if (deliveryTimeUs > 0)
 				minDeliveryTimeUs = std::min(minDeliveryTimeUs, deliveryTimeUs);
 
+			// Categorize delivery time
+			++totalDeliveryCount;
+			++totalDeliveryCount1Min;
+			
+			if (deliveryTimeUs < 2000)  // < 2ms = instant
+			{
+				++instantDeliveryCount;
+				++instantDeliveryCount1Min;
+			}
+			else if (deliveryTimeUs <= slowDeliveryThresholdUs)  // 2ms to 150% of frame = normal
+			{
+				++normalDeliveryCount;
+				++normalDeliveryCount1Min;
+			}
+			else  // > 150% of frame = slow
+			{
+				++slowDeliveryCount;
+				++slowDeliveryCount1Min;
+			}
+
 			if (FAILED(hr))
 			{
 				++m_droppedFrameCount;
@@ -906,20 +961,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				++deliverySuccessCount;
 			}
 
-			// Log slow deliveries (similar to conversion worker)
-			if (deliveryTimeUs > 20000)  // > 20ms is unusual for Deliver()
-			{
-				DebugLog::Log("DELIVERY THREAD: Slow delivery took %.2fms (MadVR blocking?)",
-					deliveryTimeUs / 1000.0);
-			}
-
 			if (!m_isActive.load(std::memory_order_acquire))
 				break;
 		}
 
 		// Log delivery worker performance periodically (match conversion worker format)
-		DWORD now = GetTickCount();
-		if (now - lastLatencyLogTime >= 10000)
+		DWORD nowLog = GetTickCount();
+		if (nowLog - lastLatencyLogTime >= 10000)
 		{
 			size_t rawQueueSize = 0;
 			size_t convertedQueueSize = 0;
@@ -943,7 +991,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			uint64_t totalDeliveryAttempts = deliverySuccessCount + deliveryFailureCount;
 
 			// Delivery worker stats (matching conversion worker format)
-			DebugLog::Log("DELIVERY THREAD STATS (10s): Frames=%llu, Successes=%llu, Failures=%llu, Avg=%.2fms, Min=%.2fms, Max=%.2fms, RawQueue=%zu, ConvertedQueue=%zu, DroppedFrames=%llu",
+			DebugLog::Log("DELIVERY THREAD STATS (10s): Frames=%llu, Successes=%llu, Failures=%llu, Avg=%.2fms, Min=%.2fms, Max=%.2fms, RawQueue=%zu, ConvertedQueue=%zu, DroppedFrames=%llu, Delivery[Instant=%llu/Normal=%llu/Slow=%llu]",
 				totalDeliveryAttempts,
 				deliverySuccessCount,
 				deliveryFailureCount,
@@ -952,9 +1000,43 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				maxDeliveryTimeUs / 1000.0,
 				rawQueueSize,
 				convertedQueueSize,
-				m_droppedFrameCount);
+				m_droppedFrameCount,
+				instantDeliveryCount,
+				normalDeliveryCount,
+				slowDeliveryCount);
 
-			// Reset counters for next period
+			// Log 1-minute delivery summary
+			DWORD now1Min = GetTickCount();
+			if (now1Min - lastDeliveryStatsLogTime >= 10000)
+			{
+				double slowPercent = (totalDeliveryCount1Min > 0)
+					? (100.0 * slowDeliveryCount1Min / totalDeliveryCount1Min)
+					: 0.0;
+				double normalPercent = (totalDeliveryCount1Min > 0)
+					? (100.0 * normalDeliveryCount1Min / totalDeliveryCount1Min)
+					: 0.0;
+				double instantPercent = (totalDeliveryCount1Min > 0)
+					? (100.0 * instantDeliveryCount1Min / totalDeliveryCount1Min)
+					: 0.0;
+				
+				DebugLog::Log("DELIVERY THREAD SUMMARY: Total=%llu, Instant=%.1f%% (<2ms), Normal=%.1f%% (2-%.0fms), Slow=%.1f%% (>%.0fms) - Frame interval threshold: %.2fms",
+					totalDeliveryCount1Min,
+					instantPercent,
+					normalPercent,
+					slowDeliveryThresholdUs / 1000.0,
+					slowPercent,
+					slowDeliveryThresholdUs / 1000.0,
+					frameIntervalUs / 1000.0);
+				
+				// Reset 1-minute counters
+				instantDeliveryCount1Min = 0;
+				normalDeliveryCount1Min = 0;
+				slowDeliveryCount1Min = 0;
+				totalDeliveryCount1Min = 0;
+				lastDeliveryStatsLogTime = now1Min;
+			}
+
+			// Reset 10-second counters for next period
 			framesSinceLastLog = 0;
 			deliverySuccessCount = 0;
 			deliveryFailureCount = 0;
@@ -962,7 +1044,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			maxDeliveryTimeUs = 0;
 			minDeliveryTimeUs = UINT64_MAX;
 			bufferUnderrunCount = 0;
-			lastLatencyLogTime = now;
+			instantDeliveryCount = 0;
+			normalDeliveryCount = 0;
+			slowDeliveryCount = 0;
+			totalDeliveryCount = 0;
+			lastLatencyLogTime = nowLog;
 		}
 	}
 
