@@ -42,6 +42,8 @@ public:
 		VideoConversionOverride videoConversionOverride);
 	virtual ~DirectShowVideoRenderer();
 
+	size_t GetConvertedQueueSize() override;
+
 	// IVideoRenderer
 	bool OnVideoState(VideoStateComPtr&) override;
 	void OnVideoFrame(VideoFrame& videoFrame) override;

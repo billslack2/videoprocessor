@@ -41,6 +41,9 @@ public:
 
 	static CUnknown* WINAPI CreateInstance(LPUNKNOWN pUnk, HRESULT* phr);
 
+	// Add to the Queue section
+	int GetConvertedQueueSize();
+
 	// IUnknown
 	DECLARE_IUNKNOWN;
 

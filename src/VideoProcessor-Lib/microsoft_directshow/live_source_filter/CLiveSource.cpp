@@ -223,3 +223,15 @@ bool CLiveSource::GetPPMCorrectionSource() const
 		return false;
 	return m_videoOutputPin->GetPPMCorrectionSource();
 }
+
+int CLiveSource::GetConvertedQueueSize()
+{
+	// Cast to buffered pin to access converted queue size
+	CBufferedLiveSourceVideoOutputPin* bufferedPin =
+		dynamic_cast<CBufferedLiveSourceVideoOutputPin*>(m_videoOutputPin);
+
+	if (bufferedPin)
+		return (int)bufferedPin->GetConvertedQueueSize();
+
+	return 0; // Unbuffered pins have no converted queue
+}

@@ -50,6 +50,9 @@ public:
 	REFERENCE_TIME NextFrameTimestamp() const override;
 	void OnBadTimestampDetected() override;
 
+	// Add this public method declaration in the public section
+	size_t GetConvertedQueueSize();
+
 private:
 
 	HANDLE m_hConvertedAvailableEvent = nullptr;  // auto-reset: converted samples available
@@ -86,6 +89,10 @@ private:
 	
 	// Timeline discontinuity detection
 	uint64_t m_lastSeenFrameCounter = 0;  // Track frame counter for discontinuity detection
+	
+	// Auto-purge timing state (moved from static locals to member variables for thread safety)
+	DWORD m_lastAutoPurgeTime = 0;        // Last time we auto-purged the converted queue
+	DWORD m_bufferingExitTime = 0;        // When we last exited buffering mode (for grace period)
 	
 	// Buffering state for startup and recovery - THE KEY TO MAKING RECOVERY WORK LIKE STARTUP
 	

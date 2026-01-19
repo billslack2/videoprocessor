@@ -2846,7 +2846,8 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 					DbgLog((LOG_TRACE, 1, TEXT("Auto-offset updated: %dms -> %dms"), currentOffset, autoOffset));
 				}
 			}
-			const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
+			const size_t currentQueueSize = m_videoRenderer->GetConvertedQueueSize(); //GetFrameQueueSize();
+			
 			const uint64_t droppedFrames = m_videoRenderer->DroppedFrameCount();
 
 			cstring.Format(_T("%lu"), currentQueueSize);
@@ -3078,7 +3079,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 	const size_t maxQueueSize = GetRendererVideoFrameQueueSizeMax();
 	const bool isQueueFull = (currentQueueSize >= maxQueueSize);
 	const bool droppedFramesIncreased = (droppedFrames > m_lastDroppedFrames);
-	const bool queueStuck = (currentQueueSize == m_lastQueueSize && currentQueueSize > 2);
+	const bool queueStuck = false; // (currentQueueSize == m_lastQueueSize && currentQueueSize > 2);
 
 	// STRATEGY 1: Immediate reset on queue full
 	if (isQueueFull)

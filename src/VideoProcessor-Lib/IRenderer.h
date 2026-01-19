@@ -55,6 +55,9 @@ public:
 
 	virtual ~IVideoRenderer() {}
 
+	// Add to the Queues section
+	virtual size_t GetConvertedQueueSize() = 0;
+
 	//
 	// Runtime
 	//

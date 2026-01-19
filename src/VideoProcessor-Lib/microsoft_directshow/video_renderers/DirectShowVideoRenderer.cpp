@@ -832,3 +832,11 @@ void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) 
 		m_rollingWindowFrameCount = 1;
 	}
 }
+
+size_t DirectShowVideoRenderer::GetConvertedQueueSize()
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		throw std::runtime_error("Invalid state, can only be called while rendering");
+
+	return m_liveSource->GetConvertedQueueSize();
+}
