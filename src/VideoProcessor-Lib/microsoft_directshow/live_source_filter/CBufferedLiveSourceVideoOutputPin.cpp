@@ -100,8 +100,14 @@ CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 	// Purge both queues - with null checks for safety
 	try 
 	{
-		PurgeConvertedQueue();
-		PurgeQueue();
+		{
+			CAutoLock lock(&m_convertedQueueLock);
+			PurgeConvertedQueue();
+		}
+		{
+			CAutoLock lock(&m_rawQueueLock);
+			PurgeQueue();
+		}
 	}
 	catch (...)
 	{
@@ -166,18 +172,19 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 
 		assert(!ThreadExists());
 
+		// Update state atomics
+		m_isActive.store(true, std::memory_order_release);
+		m_isBuffering.store(true, std::memory_order_release);
+		
+		// Reset auto-purge timing state for clean startup
 		{
-			CAutoLock lock2(&m_filterCritSec);
-
-			m_isActive = true;
-			m_isBuffering.store(true, std::memory_order_release);
-			
-			// Reset auto-purge timing state for clean startup
+			CAutoLock stateLock(&m_stateLock);
 			m_lastAutoPurgeTime = 0;
 			m_bufferingExitTime = 0;
-			
-			DebugLog::Log("Active(): Set m_isActive=true, m_isBuffering=true, reset timing state");
+			m_lastSeenFrameCounter = 0;
 		}
+		
+		DebugLog::Log("Active(): Set m_isActive=true, m_isBuffering=true, reset timing state");
 
 		// Log ASYNC conversion approach
 		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::Active() - ASYNC conversion architecture:")));
@@ -193,7 +200,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			DbgLog((LOG_ERROR, 1, TEXT("Active(): Critical events not initialized")));
 			DebugLog::Log("Active(): CRITICAL EVENTS NOT INITIALIZED - ConvShutdown=%p, FrameAvailable=%p, ConvertedAvailable=%p",
 				m_hConversionShutdownEvent, m_hFrameAvailableEvent, m_hConvertedSemaphore);
-			m_isActive = false;
+			m_isActive.store(false, std::memory_order_release);
 			return E_FAIL;
 		}
 		
@@ -212,7 +219,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		{
 			DbgLog((LOG_ERROR, 1, TEXT("Active(): Failed to create conversion thread")));
 			DebugLog::Log("Active(): FAILED to create conversion thread, GetLastError=%lu", GetLastError());
-			m_isActive = false;
+			m_isActive.store(false, std::memory_order_release);
 			return E_FAIL;
 		}
 		
@@ -229,7 +236,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			CloseHandle(m_hConversionThread);
 			m_hConversionThread = nullptr;
 			
-			m_isActive = false;
+			m_isActive.store(false, std::memory_order_release);
 			return E_FAIL;
 		}
 
@@ -241,7 +248,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		// Ensure both queues start empty and clean (no sleep needed)
 		size_t purgedRaw = 0, purgedConverted = 0;
 		{
-			CAutoLock lock2(&m_filterCritSec);
+			CAutoLock lock(&m_rawQueueLock);
 			// Raw queue should already be empty, but ensure it
 			while (!m_videoFrameQueue.empty())
 			{
@@ -250,13 +257,10 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 				m_videoFrameQueue.pop_front();
 				++purgedRaw;
 			}
-			// STARTUP STATE: Enter buffering, reset counter tracking
-			m_lastSeenFrameCounter = 0;
-			m_isBuffering = true;
 		}
 
 		{
-			CAutoLock lock2(&m_convertedQueueLock);
+			CAutoLock lock(&m_convertedQueueLock);
 			// Converted queue should already be empty, but ensure it
 			while (!m_convertedSampleQueue.empty())
 			{
@@ -271,12 +275,10 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		DebugLog::Log("Active(): Startup complete - purged %zu raw + %zu converted, buffering enabled", 
 			purgedRaw, purgedConverted);
 
-		// Kick both threads once so they observe the fresh startup state.
-		// They will just block again if no work exists yet.
-		SetEvent(m_hFrameAvailableEvent);        // conversion thread
-		//SetEvent(m_hConvertedAvailableEvent);    // delivery thread
+		// Kick conversion thread once so it observes the fresh startup state.
+		SetEvent(m_hFrameAvailableEvent);
 		
-		DebugLog::Log("Active(): Signaled both threads to start, activation complete");
+		DebugLog::Log("Active(): Signaled conversion thread to start, activation complete");
 
 		return S_OK;
 	}
@@ -296,12 +298,15 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 		if (FAILED(hr))
 			return hr;
 
+		m_isActive.store(false, std::memory_order_release);
+
+		// Purge queues with proper locking
 		{
-			CAutoLock lock2(&m_filterCritSec);
-
-			m_isActive = false;
-
+			CAutoLock rawLock(&m_rawQueueLock);
 			PurgeQueue();
+		}
+		{
+			CAutoLock convLock(&m_convertedQueueLock);
 			PurgeConvertedQueue();
 		}
 
@@ -346,26 +351,27 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 
 HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 {
+	// Check active state (atomic, no lock needed)
+	if (!m_isActive.load(std::memory_order_acquire))
 	{
-		CAutoLock lock(&m_filterCritSec);
-
-		// Reject frames if not processing
-		if (!m_isActive)
+		static DWORD lastInactiveLog = 0;
+		DWORD now = GetTickCount();
+		if (now - lastInactiveLog >= 5000)  // Log every 5s when inactive
 		{
-			static DWORD lastInactiveLog = 0;
-			DWORD now = GetTickCount();
-			if (now - lastInactiveLog >= 5000)  // Log every 5s when inactive
-			{
-				DebugLog::Log("OnVideoFrame: Rejecting frame #%llu - not active", videoFrame.GetCounter());
-				lastInactiveLog = now;
-			}
-			return S_OK;
+			DebugLog::Log("OnVideoFrame: Rejecting frame #%llu - not active", videoFrame.GetCounter());
+			lastInactiveLog = now;
 		}
+		return S_OK;
+	}
 
-		const uint64_t newCounter = videoFrame.GetCounter();
+	const uint64_t newCounter = videoFrame.GetCounter();
+	bool triggerRecovery = false;
 
-		// SIMPLE DISCONTINUITY DETECTION - if counter jumps or resets, trigger recovery
-		if (m_lastSeenFrameCounter > 0 && !m_isBuffering)
+	// Check for discontinuity (needs state lock for m_lastSeenFrameCounter)
+	{
+		CAutoLock stateLock(&m_stateLock);
+		
+		if (m_lastSeenFrameCounter > 0 && !m_isBuffering.load(std::memory_order_acquire))
 		{
 			const bool largeGap     = (newCounter > m_lastSeenFrameCounter) && ((newCounter - m_lastSeenFrameCounter) > 10);
 			const bool counterReset = (newCounter < m_lastSeenFrameCounter);
@@ -374,43 +380,56 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 			{
 				DbgLog((LOG_TRACE, 1, TEXT("OnVideoFrame(): DISCONTINUITY DETECTED - triggering startup-like recovery")));
 				DebugLog::Log("OnVideoFrame: Frame counter discontinuity detected (last=%llu, new=%llu) - triggering recovery", m_lastSeenFrameCounter, newCounter);
+				triggerRecovery = true;
+			}
+		}
+		
+		// Update counter for next frame
+		m_lastSeenFrameCounter = newCounter;
+	}
 
-				// PURGE BOTH QUEUES - identical to startup
-				size_t purgedRaw = 0;
-				while (!m_videoFrameQueue.empty())
-				{
-					VideoFrame oldFrame = m_videoFrameQueue.front();
-					oldFrame.SourceBufferRelease();
-					m_videoFrameQueue.pop_front();
-					++purgedRaw;
-				}
-
-				//SetEvent(m_hConvertedAvailableEvent);
-
-				size_t purgedConverted = 0;
-				{
-					CAutoLock lock2(&m_convertedQueueLock);
-					while (!m_convertedSampleQueue.empty())
-					{
-						IMediaSample* pSample = m_convertedSampleQueue.front();
-						m_convertedSampleQueue.pop_front();
-						if (pSample) pSample->Release();
-						++purgedConverted;
-					}
-				}
-
-				// ENTER BUFFERING
-				m_isBuffering = true;
-				m_lastSeenFrameCounter = 0;
-				
-				DebugLog::Log("OnVideoFrame: Recovery complete - buffering enabled, purged %zu raw + %zu converted frames", 
-					purgedRaw, purgedConverted);
+	// Handle recovery if needed (purge both queues)
+	if (triggerRecovery)
+	{
+		size_t purgedRaw = 0;
+		{
+			CAutoLock rawLock(&m_rawQueueLock);
+			while (!m_videoFrameQueue.empty())
+			{
+				VideoFrame oldFrame = m_videoFrameQueue.front();
+				oldFrame.SourceBufferRelease();
+				m_videoFrameQueue.pop_front();
+				++purgedRaw;
 			}
 		}
 
-		// Update counter for next frame
-		m_lastSeenFrameCounter = newCounter;
+		size_t purgedConverted = 0;
+		{
+			CAutoLock convLock(&m_convertedQueueLock);
+			while (!m_convertedSampleQueue.empty())
+			{
+				IMediaSample* pSample = m_convertedSampleQueue.front();
+				m_convertedSampleQueue.pop_front();
+				if (pSample) pSample->Release();
+				++purgedConverted;
+			}
+		}
 
+		// Enter buffering
+		m_isBuffering.store(true, std::memory_order_release);
+		{
+			CAutoLock stateLock(&m_stateLock);
+			m_lastSeenFrameCounter = 0;
+		}
+		
+		DebugLog::Log("OnVideoFrame: Recovery complete - buffering enabled, purged %zu raw + %zu converted frames", 
+			purgedRaw, purgedConverted);
+	}
+
+	// Add frame to raw queue
+	{
+		CAutoLock rawLock(&m_rawQueueLock);
+		
 		// Simple overflow protection - drop oldest if queue too full
 		if (m_videoFrameQueue.size() >= m_frameQueueMaxSize)
 		{
@@ -437,7 +456,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 				uint64_t convFrames = m_conversionFrameCount.load();
 				size_t convertedSize = 0;
 				{
-					CAutoLock lock2(&m_convertedQueueLock);
+					CAutoLock convLock(&m_convertedQueueLock);
 					convertedSize = m_convertedSampleQueue.size();
 				}
 				
@@ -466,7 +485,7 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 		m_frameQueueMaxSize, frameQueueMaxSize);
 
     {
-        CAutoLock lock(&m_filterCritSec);
+        CAutoLock rawLock(&m_rawQueueLock);
 
         const size_t oldQueueSize = m_frameQueueMaxSize;
         m_frameQueueMaxSize = frameQueueMaxSize;
@@ -492,18 +511,18 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 			DebugLog::Log("SetFrameQueueMaxSize: Purged %zu frames, queue now has %zu frames", 
 				framesToPurge, m_videoFrameQueue.size());
         }
-
-        // Reset simple proactive state only
-        m_recentDeliveryFailures = 0;
-        m_lastQueueWarning = 0;
-		
-		DebugLog::Log("SetFrameQueueMaxSize: Queue size changed, reset failure counters");
     }
+
+    // Reset simple proactive state only
+    m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
+    m_lastQueueWarning = 0;
+	
+	DebugLog::Log("SetFrameQueueMaxSize: Queue size changed, reset failure counters");
 	
 	SetEvent(m_hFrameAvailableEvent);
 	
 	// Deliver new segment if active
-	if (IsConnected() && m_isActive)
+	if (IsConnected() && m_isActive.load(std::memory_order_acquire))
 	{
 		if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
 		{
@@ -528,10 +547,10 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 {
 	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Reset() - HDMI resync async queue reset starting");
 	
+	// Purge raw frames
 	{
-		CAutoLock lock(&m_filterCritSec);
+		CAutoLock rawLock(&m_rawQueueLock);
 		
-		// Purge all raw frames
 		size_t purgedFrames = 0;
 		while (!m_videoFrameQueue.empty())
 		{
@@ -540,20 +559,17 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 			m_videoFrameQueue.pop_front();
 			++purgedFrames;
 		}
-
-		// Wake both threads so they re-check state immediately after reset.
-		// - Conversion thread may need to observe buffering/raw-empty and just block cleanly.
-		// - Delivery thread may be waiting in INFINITE wait and should re-check buffering state.
-		if (m_hFrameAvailableEvent)        SetEvent(m_hFrameAvailableEvent);
-		//if (m_hConvertedAvailableEvent)    SetEvent(m_hConvertedAvailableEvent);
-
 		
-		DebugLog::Log("Reset(): Purged %zu raw frames from HDMI resync, signaled threads", purgedFrames);
+		DebugLog::Log("Reset(): Purged %zu raw frames from HDMI resync", purgedFrames);
 	}
+
+	// Wake conversion thread so it re-checks state immediately after reset.
+	if (m_hFrameAvailableEvent)
+		SetEvent(m_hFrameAvailableEvent);
 	
 	// Purge converted sample queue
 	{
-		CAutoLock lock(&m_convertedQueueLock);
+		CAutoLock convLock(&m_convertedQueueLock);
 		
 		size_t purgedSamples = 0;
 		while (!m_convertedSampleQueue.empty())
@@ -571,32 +587,30 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	}
 	
 	// CRITICAL: Reset timeline state and enter buffering mode (identical to startup)
+	m_frameCounter = 0;
+	m_previousFrameCounter = 0;
+	m_frameCounterOffset = 0;
+	m_previousTimeStop = 0;
+	m_startTimeOffset = 0;
+	
 	{
-		CAutoLock lock(&m_filterCritSec);
-		
-		m_frameCounter = 0;
-		m_previousFrameCounter = 0;
-		m_frameCounterOffset = 0;
-		m_previousTimeStop = 0;
-		m_startTimeOffset = 0;
+		CAutoLock stateLock(&m_stateLock);
 		m_lastSeenFrameCounter = 0;
-		
-		// Reset auto-purge timing state for clean recovery
 		m_lastAutoPurgeTime = 0;
 		m_bufferingExitTime = 0;
-		
-		// HDMI RESYNC: Enter buffering mode to rebuild queue state cleanly
-		m_isBuffering.store(true, std::memory_order_release);
-		
-		DebugLog::Log("Reset(): Timeline reset, timing state cleared, buffering ENABLED for HDMI resync recovery");
 	}
 	
+	// HDMI RESYNC: Enter buffering mode to rebuild queue state cleanly
+	m_isBuffering.store(true, std::memory_order_release);
+	
+	DebugLog::Log("Reset(): Timeline reset, timing state cleared, buffering ENABLED for HDMI resync recovery");
+	
 	// Reset conversion metrics
-	m_totalConversionTimeUs = 0;
-	m_conversionFrameCount = 0;
+	m_totalConversionTimeUs.store(0, std::memory_order_relaxed);
+	m_conversionFrameCount.store(0, std::memory_order_relaxed);
 	
 	// Reset proactive state
-	m_recentDeliveryFailures = 0;
+	m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
 	m_lastQueueWarning = 0;
 	
 	DebugLog::Log("Reset(): Metrics and state reset complete");
@@ -608,41 +622,34 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 }
 
 
-
 size_t CBufferedLiveSourceVideoOutputPin::GetFrameQueueSize()
 {
-	{
-		CAutoLock lock(&m_filterCritSec);
-
-		return m_videoFrameQueue.size();
-	}
+	CAutoLock rawLock(&m_rawQueueLock);
+	return m_videoFrameQueue.size();
 }
 
 
 void CBufferedLiveSourceVideoOutputPin::PurgeQueue()
 {
+	// NOTE: Caller MUST hold m_rawQueueLock
 	size_t purgedFrames = 0;
-	
-	{
-		CAutoLock lock(&m_filterCritSec);
 
-		while (!m_videoFrameQueue.empty())
+	while (!m_videoFrameQueue.empty())
+	{
+		VideoFrame popFrame = m_videoFrameQueue.front();
+		m_videoFrameQueue.pop_front();
+		
+		try
 		{
-			VideoFrame popFrame = m_videoFrameQueue.front();
-			m_videoFrameQueue.pop_front();
-			
-			try
-			{
-				popFrame.SourceBufferRelease();
-				++purgedFrames;
-			}
-			catch (...)
-			{
-				DbgLog((LOG_WARNING, 1, TEXT("PurgeQueue(): Exception during frame release %zu"), purgedFrames));
-			}
+			popFrame.SourceBufferRelease();
+			++purgedFrames;
 		}
-		m_droppedFrameCount += purgedFrames;
+		catch (...)
+		{
+			DbgLog((LOG_WARNING, 1, TEXT("PurgeQueue(): Exception during frame release %zu"), purgedFrames));
+		}
 	}
+	m_droppedFrameCount += purgedFrames;
 	
 	if (purgedFrames > 0)
 	{
@@ -653,21 +660,18 @@ void CBufferedLiveSourceVideoOutputPin::PurgeQueue()
 
 void CBufferedLiveSourceVideoOutputPin::PurgeConvertedQueue()
 {
+	// NOTE: Caller MUST hold m_convertedQueueLock
 	size_t purgedSamples = 0;
-	
-	{
-		CAutoLock lock(&m_convertedQueueLock);
 
-		while (!m_convertedSampleQueue.empty())
+	while (!m_convertedSampleQueue.empty())
+	{
+		IMediaSample* pSample = m_convertedSampleQueue.front();
+		m_convertedSampleQueue.pop_front();
+		
+		if (pSample)
 		{
-			IMediaSample* pSample = m_convertedSampleQueue.front();
-			m_convertedSampleQueue.pop_front();
-			
-			if (pSample)
-			{
-				pSample->Release();
-				++purgedSamples;
-			}
+			pSample->Release();
+			++purgedSamples;
 		}
 	}
 	
@@ -686,8 +690,7 @@ REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::NextFrameTimestamp() const
 
 REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::CalculateEnhancedNextTimestamp() const
 {
-	// Remove const from lock since we need non-const access
-	CAutoLock lock(const_cast<CCritSec*>(&m_filterCritSec));
+	CAutoLock rawLock(const_cast<CCritSec*>(&m_rawQueueLock));
 
 	// SAFETY: Check if timing clock is initialized
 	if (!m_timingClock)
@@ -712,8 +715,7 @@ REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::CalculateEnhancedNextTimestamp
 		return hardwareStopTime;
 	}
 
-	// No hardware stop timestamp available - this is the case mentioned in the requirements
-	// Instead of using theoretical duration, use average of last 100 durations if available
+	// No hardware stop timestamp available
 	DbgLog((LOG_TRACE, 1, TEXT("NextFrameTimestamp(): No hardware stop time available, returning INVALID")));
 	
 	return REFERENCE_TIME_INVALID;
@@ -731,7 +733,7 @@ size_t CBufferedLiveSourceVideoOutputPin::GetProactiveQueueTarget() const
 bool CBufferedLiveSourceVideoOutputPin::ShouldProactivelyDrop() const
 {
 	// Drop more aggressively only if recent delivery failures
-	return m_recentDeliveryFailures > 2;
+	return m_recentDeliveryFailures.load(std::memory_order_relaxed) > 2;
 }
 
 
@@ -740,24 +742,25 @@ CBufferedLiveSourceVideoOutputPin::ProactiveQueueMetrics CBufferedLiveSourceVide
 	ProactiveQueueMetrics metrics = {};
 	
 	{
-		CAutoLock lock(const_cast<CCritSec*>(&m_filterCritSec));
+		CAutoLock rawLock(const_cast<CCritSec*>(&m_rawQueueLock));
 		metrics.currentSize = m_videoFrameQueue.size();
 	}
 	
 	{
-		CAutoLock lock(const_cast<CCritSec*>(&m_convertedQueueLock));
+		CAutoLock convLock(const_cast<CCritSec*>(&m_convertedQueueLock));
 		metrics.convertedQueueSize = m_convertedSampleQueue.size();
 	}
 	
 	metrics.maxSize = m_frameQueueMaxSize;
 	metrics.proactiveTarget = GetProactiveQueueTarget();
 	metrics.totalDropped = m_droppedFrameCount;
-	metrics.recentFailures = m_recentDeliveryFailures;
+	metrics.recentFailures = m_recentDeliveryFailures.load(std::memory_order_relaxed);
 	
 	// Calculate average conversion time
-	if (m_conversionFrameCount > 0)
+	uint64_t convCount = m_conversionFrameCount.load(std::memory_order_relaxed);
+	if (convCount > 0)
 	{
-		metrics.avgConversionTimeUs = m_totalConversionTimeUs / m_conversionFrameCount;
+		metrics.avgConversionTimeUs = m_totalConversionTimeUs.load(std::memory_order_relaxed) / convCount;
 	}
 	
 	// Simple health check: queues below target and no recent failures
@@ -768,25 +771,13 @@ CBufferedLiveSourceVideoOutputPin::ProactiveQueueMetrics CBufferedLiveSourceVide
 	return metrics;
 }
 
-// NOTE: This update removes ALL startup/reset sleeps and removes polling.
-// It makes the threads event-driven:
-//   - Conversion thread waits for RAW frames (m_hFrameAvailableEvent) or shutdown.
-//   - Delivery thread waits for CONVERTED samples (m_hConvertedAvailableEvent) or shutdown.
-// You MUST add/create/close a new event handle:
-//   HANDLE m_hConvertedAvailableEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr); // auto-reset
-// And signal it ONLY when a converted sample is enqueued.
-//
-// Also recommended: in Reset(), after purging queues + setting buffering=true, call:
-//   SetEvent(m_hFrameAvailableEvent);
-//   SetEvent(m_hConvertedAvailableEvent);
-// so both threads wake and re-check state immediately.
 
 DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 {
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 	DebugLog::Log("DELIVERY THREAD: Started - event-driven with adaptive buffer management");
 
-	HANDLE events[2] = { m_hShutdownEvent, m_hConvertedSemaphore  };
+	HANDLE events[2] = { m_hShutdownEvent, m_hConvertedSemaphore };
 	DWORD lastLatencyLogTime = 0;
 	uint64_t framesSinceLastLog = 0;
 
@@ -861,7 +852,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		{
 			size_t convertedQueueSize = 0;
 			{
-				CAutoLock lock(&m_convertedQueueLock);
+				CAutoLock convLock(&m_convertedQueueLock);
 				convertedQueueSize = m_convertedSampleQueue.size();
 			}
 
@@ -873,16 +864,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				continue; // Keep waiting for more samples
 			}
 
-			// Exit buffering
-			{
-				CAutoLock lock(&m_filterCritSec);
-				m_frameCounter = 0;
-				m_previousFrameCounter = 0;
-				m_frameCounterOffset = 0;
-				m_previousTimeStop = 0;
-				m_startTimeOffset = 0;
-				m_isBuffering.store(false, std::memory_order_release);
-			}
+			// Exit buffering - reset timeline state
+			m_frameCounter = 0;
+			m_previousFrameCounter = 0;
+			m_frameCounterOffset = 0;
+			m_previousTimeStop = 0;
+			m_startTimeOffset = 0;
+			m_isBuffering.store(false, std::memory_order_release);
 
 			DebugLog::Log("DELIVERY THREAD: BUFFERING COMPLETE (%zu/%zu) - delivery starting",
 				convertedQueueSize, bufferingTarget);
@@ -896,7 +884,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			IMediaSample* pSample = nullptr;
 
 			{
-				CAutoLock lock(&m_convertedQueueLock);
+				CAutoLock convLock(&m_convertedQueueLock);
 				currentQueueSize = m_convertedSampleQueue.size();
 
 				// Dequeue if we have ANY samples
@@ -956,7 +944,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 			else
 			{
-				m_recentDeliveryFailures = 0;
+				m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
 				++framesSinceLastLog;
 				++deliverySuccessCount;
 			}
@@ -972,18 +960,19 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			size_t rawQueueSize = 0;
 			size_t convertedQueueSize = 0;
 			{
-				CAutoLock lock(&m_filterCritSec);
+				CAutoLock rawLock(&m_rawQueueLock);
 				rawQueueSize = m_videoFrameQueue.size();
 			}
 			{
-				CAutoLock lock(&m_convertedQueueLock);
+				CAutoLock convLock(&m_convertedQueueLock);
 				convertedQueueSize = m_convertedSampleQueue.size();
 			}
 
 			uint64_t avgConversionTimeUs = 0;
-			if (m_conversionFrameCount > 0)
+			uint64_t convCount = m_conversionFrameCount.load(std::memory_order_relaxed);
+			if (convCount > 0)
 			{
-				avgConversionTimeUs = m_totalConversionTimeUs / m_conversionFrameCount;
+				avgConversionTimeUs = m_totalConversionTimeUs.load(std::memory_order_relaxed) / convCount;
 			}
 
 			// Calculate delivery statistics
@@ -1005,7 +994,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				normalDeliveryCount,
 				slowDeliveryCount);
 
-			// Log 1-minute delivery summary
+			// Log delivery summary
 			DWORD now1Min = GetTickCount();
 			if (now1Min - lastDeliveryStatsLogTime >= 10000)
 			{
@@ -1109,7 +1098,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			// BACKPRESSURE: If converted queue is full, stop converting and let delivery drain.
 			size_t currentConvertedSize = 0;
 			{
-				CAutoLock lock(&m_convertedQueueLock);
+				CAutoLock convLock(&m_convertedQueueLock);
 				currentConvertedSize = m_convertedSampleQueue.size();
 				if (currentConvertedSize >= m_frameQueueMaxSize)
 				{
@@ -1126,9 +1115,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			size_t rawQueueSize = 0;
 
 			{
-				CAutoLock lock(&m_filterCritSec);
+				CAutoLock rawLock(&m_rawQueueLock);
 
-				if (!m_isActive)
+				if (!m_isActive.load(std::memory_order_acquire))
 				{
 					DebugLog::Log("CONVERSION WORKER: Not active during raw frame check, returning");
 					return 0;
@@ -1165,7 +1154,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			const auto convEndTime = GetWallClockTime();
 			const uint64_t convTimeUs = (convEndTime - convStartTime) / 10;
 
-			m_totalConversionTimeUs += convTimeUs;
+			m_totalConversionTimeUs.fetch_add(convTimeUs, std::memory_order_relaxed);
 			++m_conversionFrameCount;
 			++framesSinceLastLog;
 
@@ -1190,12 +1179,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 			// Add converted sample to queue
 			{
-				CAutoLock lock(&m_convertedQueueLock);
+				CAutoLock convLock(&m_convertedQueueLock);
 				m_convertedSampleQueue.push_back(pSample);
 			}
 
 			// Signal delivery thread that a converted sample is available
-			//SetEvent(m_hConvertedAvailableEvent);
 			if (!ReleaseSemaphore(m_hConvertedSemaphore, 1, nullptr))
 			{
 				DebugLog::Log("CONVERSION WORKER: ReleaseSemaphore FAILED gle=%lu", GetLastError());
@@ -1217,16 +1205,16 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			size_t rawQueueSize = 0;
 			size_t convertedQueueSize = 0;
 			{
-				CAutoLock lock(&m_filterCritSec);
+				CAutoLock rawLock(&m_rawQueueLock);
 				rawQueueSize = m_videoFrameQueue.size();
 			}
 			{
-				CAutoLock lock(&m_convertedQueueLock);
+				CAutoLock convLock(&m_convertedQueueLock);
 				convertedQueueSize = m_convertedSampleQueue.size();
 			}
 
 			uint64_t avgTimeUs = (framesSinceLastLog > 0) ? (totalTimeUs / framesSinceLastLog) : 0;
-			uint64_t totalConvFrames = m_conversionFrameCount.load();
+			uint64_t totalConvFrames = m_conversionFrameCount.load(std::memory_order_relaxed);
 
 			DebugLog::Log("CONVERSION WORKER STATS (10s): Frames=%llu, Avg=%.2fms, Min=%.2fms, Max=%.2fms, RawQueue=%zu, ConvertedQueue=%zu, TotalConverted=%llu, BackpressureHits=%llu",
 				framesSinceLastLog,
@@ -1259,7 +1247,6 @@ size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget()
 	if (m_timeScale == 0 || m_frameDurationTicks == 0)
 	{
 		// Fallback to safe default when not initialized
-		// Use reasonable defaults: 3 frames for typical content
 		DbgLog((LOG_TRACE, 1, TEXT("GetBufferingTarget(): Timing not initialized, using safe default of 3 frames")));
 		return 3;
 	}
@@ -1304,23 +1291,20 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 
 	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected() - Bad CLOCK_SMART timestamp detected, triggering recovery");
 	
+	// Purge raw frames
 	{
-		CAutoLock lock(&m_filterCritSec);
-		
-		// Purge raw frames
+		CAutoLock rawLock(&m_rawQueueLock);
 		while (!m_videoFrameQueue.empty())
 		{
 			VideoFrame oldFrame = m_videoFrameQueue.front();
 			oldFrame.SourceBufferRelease();
 			m_videoFrameQueue.pop_front();
 		}
-		
-		//SetEvent(m_hConvertedAvailableEvent); // Wake delivery thread
 	}
 	
 	// Purge converted queue
 	{
-		CAutoLock lock(&m_convertedQueueLock);
+		CAutoLock convLock(&m_convertedQueueLock);
 		while (!m_convertedSampleQueue.empty())
 		{
 			IMediaSample* pSample = m_convertedSampleQueue.front();
@@ -1347,9 +1331,9 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 	} 
 	
 	// Enter buffering mode
+	m_isBuffering.store(true, std::memory_order_release);
 	{
-		CAutoLock lock(&m_filterCritSec);
-		m_isBuffering = true;
+		CAutoLock stateLock(&m_stateLock);
 		m_lastSeenFrameCounter = 0;
 	}
 	
@@ -1358,6 +1342,6 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 
 size_t CBufferedLiveSourceVideoOutputPin::GetConvertedQueueSize()
 {
-	CAutoLock lock(&m_convertedQueueLock);
+	CAutoLock convLock(&m_convertedQueueLock);
 	return m_convertedSampleQueue.size();
 }

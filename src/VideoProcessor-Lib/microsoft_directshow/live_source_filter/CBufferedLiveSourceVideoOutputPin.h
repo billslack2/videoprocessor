@@ -25,6 +25,13 @@
  * Raw frames ? Conversion Worker Thread ? Pre-Converted Samples ? Delivery Thread ? Renderer
  * 
  * This removes conversion time from the critical rendering path.
+ *
+ * THREAD SAFETY:
+ * - m_rawQueueLock: Protects m_videoFrameQueue (raw frames from capture device)
+ * - m_convertedQueueLock: Protects m_convertedSampleQueue (converted samples for delivery)
+ * - m_stateLock: Protects shared state variables (m_isBuffering, m_lastSeenFrameCounter, etc.)
+ * 
+ * Lock ordering (to prevent deadlock): rawQueueLock ? convertedQueueLock ? stateLock
  */
 class CBufferedLiveSourceVideoOutputPin:
 	public ALiveSourceVideoOutputPin,
@@ -55,21 +62,34 @@ public:
 
 private:
 
-	HANDLE m_hConvertedSemaphore = nullptr;  // auto-reset: converted samples available
+	HANDLE m_hConvertedSemaphore = nullptr;  // Semaphore: count of converted samples available
 
 	size_t m_frameQueueMaxSize = 8;
 
+	//
+	// QUEUE INFRASTRUCTURE (with dedicated locks)
+	//
+	
 	// Raw frame queue (input from capture device)
+	// Protected by: m_rawQueueLock
 	std::deque<VideoFrame> m_videoFrameQueue;
+	CCritSec m_rawQueueLock;  // Protects m_videoFrameQueue only
 	
 	// Pre-converted sample queue (output from conversion worker)
+	// Protected by: m_convertedQueueLock
 	std::deque<IMediaSample*> m_convertedSampleQueue;
-	CCritSec m_convertedQueueLock;
+	CCritSec m_convertedQueueLock;  // Protects m_convertedSampleQueue only
+	
+	//
+	// SHARED STATE (protected by m_stateLock)
+	//
+	CCritSec m_stateLock;  // Protects shared state variables below
 	
 	std::atomic_bool m_isActive = false;
 	std::atomic_bool m_isBuffering = false; // gate delivery until converted queue is primed
-	
-	CCritSec m_filterCritSec;
+	uint64_t m_lastSeenFrameCounter = 0;    // Track frame counter for discontinuity detection
+	DWORD m_lastAutoPurgeTime = 0;          // Last time we auto-purged the converted queue
+	DWORD m_bufferingExitTime = 0;          // When we last exited buffering mode (for grace period)
 
 	// Core proactive frame management
 	HANDLE m_hFrameAvailableEvent = nullptr;  // Event signaled when frames are added to the queue
@@ -86,21 +106,9 @@ private:
 	// Essential metrics for proactive decisions (simplified)
 	std::atomic<uint32_t> m_recentDeliveryFailures = 0;   // Simple failure counter (reset periodically)
 	DWORD m_lastQueueWarning = 0;                         // Throttle warnings only
-	
-	// Timeline discontinuity detection
-	uint64_t m_lastSeenFrameCounter = 0;  // Track frame counter for discontinuity detection
-	
-	// Auto-purge timing state (moved from static locals to member variables for thread safety)
-	DWORD m_lastAutoPurgeTime = 0;        // Last time we auto-purged the converted queue
-	DWORD m_bufferingExitTime = 0;        // When we last exited buffering mode (for grace period)
-	
-	// Buffering state for startup and recovery - THE KEY TO MAKING RECOVERY WORK LIKE STARTUP
-	
 
 	// Helper to get effective buffering target (half of queue size, at least 3 frames)
 	size_t GetBufferingTarget();
-
-
 
 	// Thread function, upon return thread exist.
 	// Return codes > 0 indicate an error occured
@@ -111,9 +119,11 @@ private:
 	DWORD ConversionWorker();
 
 	// Remove all items from the videoFrameQueue
+	// CALLER MUST HOLD m_rawQueueLock
 	void PurgeQueue();
 	
 	// Purge converted sample queue
+	// CALLER MUST HOLD m_convertedQueueLock
 	void PurgeConvertedQueue();
 
 	// Calculate next frame timestamp with enhanced logic for CLOCK_SMART

@@ -143,6 +143,7 @@ public:
 	void OnCommandFullScreenToggle();
 	void OnCommandFullScreenExit();
 	void OnCommandRendererReset();
+	void OnCommandRendererRestart();
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
 	void OnCommandToggleStatsOverlay();
@@ -367,6 +368,14 @@ protected:
 
 	bool BuildPushVideoState();
 	void BuildPushRestartVideoState();
+
+	// Track effective EOTF the renderer is currently configured for (post-UI overrides)
+	EOTF m_lastEffectiveEotf = EOTF::UNKNOWN;
+	bool m_hasLastEffectiveEotf = false;
+
+	// Optional: prevent spam if capture toggles rapidly
+	bool m_restartQueuedBecauseEotf = false;
+
 
 #define FatalError(error) (_FatalError(__LINE__, __FUNCTION__, error))
 	void _FatalError(int line, const std::string& functionName, const CString& error);

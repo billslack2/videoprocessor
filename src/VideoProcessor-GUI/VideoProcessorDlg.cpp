@@ -79,6 +79,8 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_TOGGLE, &CVideoProcessorDlg::OnCommandFullScreenToggle)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_EXIT, &CVideoProcessorDlg::OnCommandFullScreenExit)
 	ON_COMMAND(ID_COMMAND_RENDERER_RESET, &CVideoProcessorDlg::OnCommandRendererReset)
+	ON_COMMAND(ID_COMMAND_RENDERER_RESTART, &CVideoProcessorDlg::OnCommandRendererRestart)
+
 	ON_COMMAND(ID_COMMAND_PQ_SET, &CVideoProcessorDlg::OnCommandPQSet)
 	ON_COMMAND(ID_COMMAND_AUTO_SET, &CVideoProcessorDlg::OnCommandAutoSet)
 
@@ -945,6 +947,15 @@ void CVideoProcessorDlg::OnCommandRendererReset()
 		m_videoRenderer->Reset();
 	}
 }
+
+void CVideoProcessorDlg::OnCommandRendererRestart()
+{
+		
+	m_wantToRestartRenderer = true;
+	UpdateState();
+	
+}
+
 
 
 void CVideoProcessorDlg::OnCommandPQSet()
@@ -2905,10 +2916,12 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 			m_captureDeviceVideoState)
 		{
 			const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
+			
 
-			//TODO: Adjust threshold and duration based on testing
-			// Simple: reset when queue >= 16 frames
-			if (currentQueueSize >= 32)
+			//TODO: Adjust threshold and duration based on testing -- really we need to ensure 
+			//TODO: there is no seriously delay and latency and this is my best solution for now.
+			// Simple: reset when queue e.g.,  >= 16 frames
+			if (currentQueueSize >= (GetRendererVideoFrameQueueSizeMax()/2))
 			{
 				m_videoRenderer->Reset();
 			}
@@ -3094,11 +3107,11 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 		}
 	}
 	// STRATEGY 2: Track consecutive full seconds for progressive overload
-	else if (currentQueueSize >= 16)  // 75% threshold
+	else if (currentQueueSize >= 10)  // 75% threshold
 	{
 		//TODO: Adjust threshold and duration based on testing
 		// Simple: reset when queue >= 16 frames
-		if (currentQueueSize >= 16)
+		if (currentQueueSize >= 10)
 		{
 			m_videoRenderer->Reset();
 		}
