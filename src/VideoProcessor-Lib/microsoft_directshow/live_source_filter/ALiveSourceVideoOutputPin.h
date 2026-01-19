@@ -135,6 +135,12 @@ public:
 	bool IsAutoCalibrating() const { return m_useAutoCalibration; }
 	AutoPpmCalibrator::CalibrationStats GetAutoCalibrationStats() const { return m_autoPpmCalibrator.GetStats(); }
 
+	// Frame duration statistics tracking
+	// Returns average frame duration in milliseconds
+	double GetAverageFrameDurationMs() const { return m_avgFrameDurationMs; }
+	double GetMinFrameDurationMs() const { return m_minFrameDurationMs; }
+	double GetMaxFrameDurationMs() const { return m_maxFrameDurationMs; }
+
 protected:
 
 	// Constants for CLOCK_SMART duration tracking
@@ -288,4 +294,15 @@ protected:
 	
 	// Virtual method for bad timestamp recovery (overridden in buffered implementation)
 	virtual void OnBadTimestampDetected() {}
+
+	// Frame duration statistics tracking
+	// These track the actual tick rate of timeStart/timeStop intervals
+	double m_avgFrameDurationMs = 0.0;          // Running average frame duration in milliseconds
+	double m_minFrameDurationMs = 0.0;          // Minimum frame duration observed
+	double m_maxFrameDurationMs = 0.0;          // Maximum frame duration observed
+	uint64_t m_durationSampleCount = 0;         // Number of samples taken
+	uint64_t m_lastDurationLogFrame = 0;        // Last frame number when we logged stats
+	
+	// Helper method to track and log frame duration statistics
+	void TrackFrameDuration(REFERENCE_TIME timeStart, REFERENCE_TIME timeStop, uint64_t frameNumber);
 };

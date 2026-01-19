@@ -18,6 +18,15 @@
 
 // Computes:
 // floor( frameIndex * 10,000,000 * frameDurationTicks / timeScale * trimNum / trimDen )
+//
+// BRESENHAM-STYLE REMAINDER TRACKING:
+// This is NOT needed because each frame timestamp is calculated independently from frame 0.
+// Bresenham-style accumulation is only useful for ITERATIVE calculations (frame N = frame N-1 + delta).
+// Since we calculate: timestamp[N] = f(N), NOT timestamp[N] = timestamp[N-1] + duration,
+// simple truncating division is correct and does NOT accumulate error.
+//
+// The math is DETERMINISTIC: frame 100 always produces the same timestamp regardless of
+// how frames 0-99 were calculated.
 static inline uint64_t RationalTimestampTrimmed(
 	uint64_t frameIndex,
 	uint64_t frameDurationTicks,
@@ -27,12 +36,12 @@ static inline uint64_t RationalTimestampTrimmed(
 {
 	constexpr uint64_t ticksPerSec = 10000000ULL;
 
+	// Sequential truncating integer division - correct for timestamp calculations
+	// Each frame timestamp is calculated from frame 0, so truncation does NOT accumulate error
 	uint64_t t = frameIndex;
-
 	t = U64_MulDiv(t, ticksPerSec, 1ULL);                 // * 10,000,000
 	t = U64_MulDiv(t, frameDurationTicks, timeScale);    // * duration rational
 	t = U64_MulDiv(t, trimNum, trimDen);                 // apply ppm trim
-
 	return t;
 }
 
@@ -977,18 +986,54 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		assert(timeStop > timeStart);
 		break;
 	}
-}
 
-// Set right amount of values
-switch (m_timestamp)
-{
-case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
-case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
-case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
-case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
-case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
-case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
-case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE:
+	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_NONE:
+		// Theo methods: stop time = start + theoretical frame duration
+		timeStop = timeStart + m_frameDuration;
+		break;
+
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
+	{
+		// Use next frame's hardware timestamp for stop time
+		REFERENCE_TIME nextFrameTime = NextFrameTimestamp();
+		if (nextFrameTime != REFERENCE_TIME_INVALID)
+		{
+			timeStop = nextFrameTime - m_startTimeOffset;
+			timeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
+		}
+		else
+		{
+			// Fallback to theoretical duration if next timestamp unavailable
+			timeStop = timeStart + m_frameDuration;
+		}
+		break;
+	}
+
+	case DirectShowStartStopTimeMethod::DS_SSTM_NONE:
+		// No timestamps at all
+		break;
+	}
+
+	// Track frame duration statistics for all timing methods that set timestamps
+	if (m_timestamp != DirectShowStartStopTimeMethod::DS_SSTM_NONE &&
+		timeStart != REFERENCE_TIME_INVALID && 
+		timeStop != REFERENCE_TIME_INVALID)
+	{
+		TrackFrameDuration(timeStart, timeStop, streamFrameCounter);
+	}
+
+	// Set right amount of values
+	switch (m_timestamp)
+	{
+	case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
+	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
 
 		// FINAL MONOTONIC VALIDATION: Ensure frame interval is always valid
 		// This is the last line of defense against any timing anomalies
@@ -1020,7 +1065,7 @@ case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
 
 	//
 	// Data copy/formatting
-//
+	//
 
 	// Get target data buffer
 	BYTE* pData = nullptr;
@@ -1076,7 +1121,7 @@ case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
 	// HDR metadata
 	//
 
-	// Note: This can be updatedcalled from a different thread, can go wrong but never saw
+	// Note: This can be updated from a different thread, can go wrong but never saw
 	//       it happen so leaving this as-is.
 	if (m_hdrData)
 	{
@@ -1214,6 +1259,59 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 	}
 }
 
+void ALiveSourceVideoOutputPin::TrackFrameDuration(REFERENCE_TIME timeStart, REFERENCE_TIME timeStop, uint64_t frameNumber)
+{
+	// Calculate frame duration in 100ns ticks
+	REFERENCE_TIME durationTicks = timeStop - timeStart;
+	
+	// Convert to milliseconds with high precision
+	double durationMs = durationTicks / 10000.0;
+	
+	// Initialize min/max on first sample
+	if (m_durationSampleCount == 0)
+	{
+		m_minFrameDurationMs = durationMs;
+		m_maxFrameDurationMs = durationMs;
+		m_avgFrameDurationMs = durationMs;
+	}
+	else
+	{
+		// Update min/max
+		if (durationMs < m_minFrameDurationMs)
+			m_minFrameDurationMs = durationMs;
+		if (durationMs > m_maxFrameDurationMs)
+			m_maxFrameDurationMs = durationMs;
+		
+		// Update running average (incremental mean formula to avoid overflow)
+		m_avgFrameDurationMs = m_avgFrameDurationMs + (durationMs - m_avgFrameDurationMs) / (m_durationSampleCount + 1);
+	}
+	
+	m_durationSampleCount++;
+	
+	// Log statistics every 10 seconds at 60fps (600 frames)
+	// For other frame rates, adjust: 10 seconds * fps
+	// Approximate with: log every 600 frames regardless of actual rate
+	if (m_lastDurationLogFrame == 0)
+	{
+		m_lastDurationLogFrame = frameNumber;
+	}
+	else if ((frameNumber - m_lastDurationLogFrame) >= 600)
+	{
+		// Log with high precision to detect rational vs hardware timing differences
+		DEBUGLOG("Frame Duration Stats [%s]: avg=%.6fms, min=%.6fms, max=%.6fms, samples=%I64u",ToString(m_timestamp),m_avgFrameDurationMs,m_minFrameDurationMs,m_maxFrameDurationMs,m_durationSampleCount);
+		
+		// Calculate frame rate from average duration
+		double avgFps = (m_avgFrameDurationMs > 0.0) ? (1000.0 / m_avgFrameDurationMs) : 0.0;
+		DEBUGLOG("  - Calculated rate: %.6f fps (from avg duration)", avgFps);
+		
+		// Reset for next 10-second window
+		m_lastDurationLogFrame = frameNumber;
+		m_durationSampleCount = 0;
+		m_minFrameDurationMs = 0.0;
+		m_maxFrameDurationMs = 0.0;
+		m_avgFrameDurationMs = 0.0;
+	}
+}
 
 bool ALiveSourceVideoOutputPin::EnqueueHardwareTimestamp(REFERENCE_TIME timestamp)
 {
@@ -1304,7 +1402,6 @@ bool ALiveSourceVideoOutputPin::EnqueueHardwareTimestamp(REFERENCE_TIME timestam
 	return true;
 }
 
-
 REFERENCE_TIME ALiveSourceVideoOutputPin::DequeueHardwareTimestamp()
 {
 	std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
@@ -1315,8 +1412,8 @@ REFERENCE_TIME ALiveSourceVideoOutputPin::DequeueHardwareTimestamp()
 	// This ensures the queue stays filled and timestamps are always available
 	if (currentQueueSize <= MIN_TIMESTAMP_QUEUE_SIZE)
 	{
-		// Queue not sufficiently filled - keep building it up
-		DebugLog::Log("CLOCK_SMART: Queue not ready for dequeue - size %zu <= min %zu (building up)",
+		// Queue not sufficiently filled - skip dequeue
+		DebugLog::Log("CLOCK_SMART: Queue not ready for dequeue - size %zu <= min %zu (waiting)",
 			currentQueueSize, MIN_TIMESTAMP_QUEUE_SIZE);
 		return REFERENCE_TIME_INVALID;
 	}

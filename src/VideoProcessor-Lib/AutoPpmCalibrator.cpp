@@ -111,6 +111,7 @@ void AutoPpmCalibrator::AnalyzeMeasurementWindow()
     const int remainingPpm = (int)(rawDriftPpm - m_trimTotalPpm);
 
     // DIAGNOSTIC LOGGING
+    /*
     DEBUGLOG("AutoPpmCalibrator: === DIAGNOSTIC ===");
     DEBUGLOG("  Measurement window: frames %llu to %llu (%llu intervals)",
         m_measurementWindowStartFrame, m_measurementWindowEndFrame, intervals);
@@ -127,7 +128,7 @@ void AutoPpmCalibrator::AnalyzeMeasurementWindow()
     DEBUGLOG("  Current correction: %d PPM", m_trimTotalPpm);
     DEBUGLOG("  Remaining correction needed: %d PPM", remainingPpm);
     DEBUGLOG("AutoPpmCalibrator: === END DIAGNOSTIC ===");
-
+    */
     // Check consistency
     if (!CheckConsistency(remainingPpm))
     {
