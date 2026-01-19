@@ -31,7 +31,7 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 	m_hFrameAvailableEvent = nullptr;
 	m_hShutdownEvent = nullptr;
 	m_hConversionShutdownEvent = nullptr;
-	m_hConvertedAvailableEvent = nullptr;
+	m_hConvertedSemaphore = nullptr;
 	
 	// Initialize auto-purge timing state
 	m_lastAutoPurgeTime = 0;
@@ -63,8 +63,8 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 		throw std::runtime_error("Failed to create conversion shutdown event");
 	}
 
-	m_hConvertedAvailableEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-	if (!m_hConvertedAvailableEvent)
+	m_hConvertedSemaphore = CreateSemaphore(nullptr, 0, 0x7fffffff, nullptr);
+	if (!m_hConvertedSemaphore)
 	{
 		CloseHandle(m_hConversionShutdownEvent);
 		m_hConversionShutdownEvent = nullptr;
@@ -127,10 +127,10 @@ CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 		m_hFrameAvailableEvent = nullptr;
 	}
 
-	if (m_hConvertedAvailableEvent)
+	if (m_hConvertedSemaphore)
 	{
-		CloseHandle(m_hConvertedAvailableEvent);
-		m_hConvertedAvailableEvent = nullptr;
+		CloseHandle(m_hConvertedSemaphore);
+		m_hConvertedSemaphore = nullptr;
 	}
 
 	
@@ -188,11 +188,11 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		DebugLog::Log("Active(): ASYNC architecture - Raw->Convert->Queue->Deliver->MadVR with queue size %zu", m_frameQueueMaxSize);
 		
 		// SAFETY: Ensure all events are created before starting threads
-		if (!m_hConversionShutdownEvent || !m_hFrameAvailableEvent || !m_hConvertedAvailableEvent)
+		if (!m_hConversionShutdownEvent || !m_hFrameAvailableEvent || !m_hConvertedSemaphore)
 		{
 			DbgLog((LOG_ERROR, 1, TEXT("Active(): Critical events not initialized")));
 			DebugLog::Log("Active(): CRITICAL EVENTS NOT INITIALIZED - ConvShutdown=%p, FrameAvailable=%p, ConvertedAvailable=%p",
-				m_hConversionShutdownEvent, m_hFrameAvailableEvent, m_hConvertedAvailableEvent);
+				m_hConversionShutdownEvent, m_hFrameAvailableEvent, m_hConvertedSemaphore);
 			m_isActive = false;
 			return E_FAIL;
 		}
@@ -274,8 +274,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		// Kick both threads once so they observe the fresh startup state.
 		// They will just block again if no work exists yet.
 		SetEvent(m_hFrameAvailableEvent);        // conversion thread
-		SetEvent(m_hConvertedAvailableEvent);    // delivery thread
-
+		//SetEvent(m_hConvertedAvailableEvent);    // delivery thread
+		
 		DebugLog::Log("Active(): Signaled both threads to start, activation complete");
 
 		return S_OK;
@@ -385,7 +385,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 					++purgedRaw;
 				}
 
-				SetEvent(m_hConvertedAvailableEvent);
+				//SetEvent(m_hConvertedAvailableEvent);
 
 				size_t purgedConverted = 0;
 				{
@@ -545,7 +545,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		// - Conversion thread may need to observe buffering/raw-empty and just block cleanly.
 		// - Delivery thread may be waiting in INFINITE wait and should re-check buffering state.
 		if (m_hFrameAvailableEvent)        SetEvent(m_hFrameAvailableEvent);
-		if (m_hConvertedAvailableEvent)    SetEvent(m_hConvertedAvailableEvent);
+		//if (m_hConvertedAvailableEvent)    SetEvent(m_hConvertedAvailableEvent);
 
 		
 		DebugLog::Log("Reset(): Purged %zu raw frames from HDMI resync, signaled threads", purgedFrames);
@@ -786,7 +786,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 	DebugLog::Log("DELIVERY THREAD: Started - event-driven with adaptive buffer management");
 
-	HANDLE events[2] = { m_hConvertedAvailableEvent, m_hShutdownEvent };
+	HANDLE events[2] = { m_hShutdownEvent, m_hConvertedSemaphore  };
 	DWORD lastLatencyLogTime = 0;
 	uint64_t framesSinceLastLog = 0;
 
@@ -803,13 +803,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		// Wait for converted samples or shutdown
 		DWORD waitResult = WaitForMultipleObjects(2, events, FALSE, INFINITE);
 
-		if (waitResult == WAIT_OBJECT_0 + 1) // shutdown
+		if (waitResult == WAIT_OBJECT_0) // shutdown
 		{
 			DebugLog::Log("DELIVERY THREAD: Shutdown signal received");
 			break;
 		}
 
-		if (waitResult != WAIT_OBJECT_0)
+		if (waitResult != WAIT_OBJECT_0 + 1)
 		{
 			DebugLog::Log("DELIVERY THREAD: WaitForMultipleObjects FAILED result=%lu", waitResult);
 			break;
@@ -1109,7 +1109,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			}
 
 			// Signal delivery thread that a converted sample is available
-			SetEvent(m_hConvertedAvailableEvent);
+			//SetEvent(m_hConvertedAvailableEvent);
+			if (!ReleaseSemaphore(m_hConvertedSemaphore, 1, nullptr))
+			{
+				DebugLog::Log("CONVERSION WORKER: ReleaseSemaphore FAILED gle=%lu", GetLastError());
+			}
 			++batchCount;
 
 			// Log slow conversions
@@ -1225,7 +1229,7 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 			m_videoFrameQueue.pop_front();
 		}
 		
-		SetEvent(m_hConvertedAvailableEvent); // Wake delivery thread
+		//SetEvent(m_hConvertedAvailableEvent); // Wake delivery thread
 	}
 	
 	// Purge converted queue

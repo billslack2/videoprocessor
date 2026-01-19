@@ -55,7 +55,7 @@ public:
 
 private:
 
-	HANDLE m_hConvertedAvailableEvent = nullptr;  // auto-reset: converted samples available
+	HANDLE m_hConvertedSemaphore = nullptr;  // auto-reset: converted samples available
 
 	size_t m_frameQueueMaxSize = 8;
 
