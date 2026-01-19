@@ -346,7 +346,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		m_stats.hasPPMCorrection)
 	{
 		// Calculate corrected rate: nominal + (nominal * PPM / 1000000)
-		double correctedRate = m_stats.refreshRate * (1.0 + (double)m_stats.ppmCorrection / 1000000.0);
+		double correctedRate = m_stats.refreshRate * (1.0 + (double) (m_stats.ppmCorrection*-1) / 1000000.0); //TODO: thats a hacky way to calc by applying -1; oh well
 		line.Format(TEXT("- Delivery Rate:  %.6f Hz"), correctedRate);
 		DrawText(hdc, line, PADDING, y);
 		y += LINE_HEIGHT;

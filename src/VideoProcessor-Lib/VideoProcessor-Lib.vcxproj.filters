@@ -201,6 +201,12 @@
     <ClInclude Include="PPMCorrectionLoader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="AutoPpmCalibrator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="IntegerMath.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -336,6 +342,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="video_frame_formatter\CV210toP010VideoFrameFormatter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="AutoPpmCalibrator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

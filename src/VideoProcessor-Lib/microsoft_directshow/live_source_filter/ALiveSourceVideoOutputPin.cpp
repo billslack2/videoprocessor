@@ -12,21 +12,9 @@
 #include <IMediaSideData.h>
 #include <DebugLog.h>
 #include <PPMCorrectionLoader.h>
+#include <IntegerMath.h>
 
 #include "ALiveSourceVideoOutputPin.h"
-
-#include <intrin.h>
-#pragma intrinsic(_umul128)
-
-#include <intrin.h>
-
-static inline uint64_t U64_MulDiv(uint64_t a, uint64_t b, uint64_t div)
-{
-	if (div == 0) return 0;
-	uint64_t hi = 0;
-	uint64_t lo = _umul128(a, b, &hi);
-	return _udiv128(hi, lo, div, nullptr);
-}
 
 // Computes:
 // floor( frameIndex * 10,000,000 * frameDurationTicks / timeScale * trimNum / trimDen )
@@ -421,6 +409,25 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_smartHardwareTimestampCount = 0;
 	m_smartSyntheticTimestampCount = 0;
 	m_smartRejectedTimestampCount = 0;
+	
+	// AUTO-CALIBRATION: Reset calibrator state on stream change
+	// This ensures clean measurement after format changes or HDMI reconnections
+	if (m_useAutoCalibration)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Reset(): Resetting auto-calibrator for clean restart")));
+		m_autoPpmCalibrator.Reset();
+		
+		// Re-initialize calibrator with current timing parameters
+		if (m_timeScale > 0 && m_frameDurationTicks > 0 && m_timingClock)
+		{
+			m_autoPpmCalibrator.Initialize(
+				(uint64_t)m_frameDurationTicks,
+				(uint64_t)m_timeScale,
+				m_timingClock->TimingClockTicksPerSecond()
+			);
+			DbgLog((LOG_TRACE, 1, TEXT("Reset(): Auto-calibrator re-initialized")));
+		}
+	}
 
 	DebugLog::Log("ALiveSourceVideoOutputPin::Reset() - All timing state cleared for HDMI resync");
 
@@ -523,6 +530,30 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			m_deliverNewSegment = true;
 			
 			DbgLog((LOG_WARNING, 1, TEXT("  Timeline RESET: m_startTimeOffset cleared, discontinuity and new segment flagged")));
+		}
+		
+		// AUTO-CALIBRATION: Feed frame data to calibrator for PPM drift measurement
+		if (m_useAutoCalibration)
+		{
+			// Feed raw hardware timestamp and frame counter to auto-calibrator
+			m_autoPpmCalibrator.OnFrame(
+				videoFrame.GetCounter(),
+				videoFrame.GetTimingTimestamp()
+			);
+			
+			// Update trim numerator from calibrator (may have been adjusted)
+			int autoPpm = m_autoPpmCalibrator.GetTotalPpmCorrection();
+			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR + autoPpm;
+			
+			// Periodic logging of auto-calibration status (every 10 seconds at 60fps)
+			static uint64_t lastLogFrame = 0;
+			if ((videoFrame.GetCounter() - lastLogFrame) >= 600)
+			{
+				auto stats = m_autoPpmCalibrator.GetStats();
+				DbgLog((LOG_TRACE, 1, TEXT("Auto-PPM: Total=%d PPM, Remaining=%d PPM, Consistent=%u, Oscillations=%u"),
+					stats.currentTotalPpm, stats.lastRemainingPpm, stats.consistentCount, stats.oscillationCount));
+				lastLogFrame = videoFrame.GetCounter();
+			}
 		}
 	}
 
@@ -1107,48 +1138,79 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 		// Get PPM correction for this refresh rate
 		int ppmCorrection = m_ppmCorrectionLoader.GetPPMCorrection(refreshRate);
 		
-		// Calculate the trim numerator based on PPM correction
-		// SIGN CONVENTION:
-		//   Positive PPM in config = hardware runs FASTER than expected
-		//   -> Timeline must run FASTER to match = LARGER trim numerator
-		//   
-		//   Negative PPM in config = hardware runs SLOWER than expected
-		//   -> Timeline must run SLOWER to match = SMALLER trim numerator
-		//
-		// Formula: trimNum = RATIONAL_TRIM_DENOMINATOR + ppmCorrection
-		//   Example: +6 PPM -> 1000006/1000000 = 1.000006x speed (faster)
-		//   Example: -6 PPM -> 999994/1000000 = 0.999994x speed (slower)
-		
-		if (ppmCorrection == 0)
+		// Check if AUTO mode is specified (ppm value = 999999 as sentinel)
+		if (ppmCorrection == 999999)
 		{
-			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // No correction
-			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction (0 PPM)"), refreshRate));
+			// AUTO mode - use auto-calibration
+			m_useAutoCalibration = true;
+			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // Start with no correction
+			
+			// Initialize auto-calibrator
+			m_autoPpmCalibrator.Initialize(
+				(uint64_t)m_frameDurationTicks,
+				(uint64_t)m_timeScale,
+				m_timingClock->TimingClockTicksPerSecond()
+			);
+			
+			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - AUTO mode enabled, starting auto-calibration"), refreshRate));
 		}
 		else
 		{
-			// CORRECT SIGN: Add ppmCorrection to make faster, subtract to make slower
-			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR + ppmCorrection;
+			// Manual PPM correction from config file
+			m_useAutoCalibration = false;
 			
-			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - applying %d PPM correction"), refreshRate, ppmCorrection));
-			DbgLog((LOG_TRACE, 1, TEXT("  Trim ratio: %llu/%llu = %.6f%%"), 
-				m_currentRationalTrimNumerator, RATIONAL_TRIM_DENOMINATOR,
-				(100.0 * m_currentRationalTrimNumerator) / RATIONAL_TRIM_DENOMINATOR));
+			// Calculate the trim numerator based on PPM correction
+			// SIGN CONVENTION:
+			//   Positive PPM in config = hardware runs FASTER than expected
+			//   -> Timeline must run FASTER to match = LARGER trim numerator
+			//   
+			//   Negative PPM in config = hardware runs SLOWER than expected
+			//   -> Timeline must run SLOWER to match = SMALLER trim numerator
+			//
+			// Formula: trimNum = RATIONAL_TRIM_DENOMINATOR + ppmCorrection
+			//   Example: +6 PPM -> 1000006/1000000 = 1.000006x speed (faster)
+			//   Example: -6 PPM -> 999994/1000000 = 0.999994x speed (slower)
 			
-			if (ppmCorrection > 0)
+			if (ppmCorrection == 0)
 			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware +%d PPM faster -> Timeline runs faster to match"), ppmCorrection));
+				m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // No correction
+				DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction (0 PPM)"), refreshRate));
 			}
 			else
 			{
-				DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware %d PPM slower -> Timeline runs slower to match"), ppmCorrection));
+				// CORRECT SIGN: Add ppmCorrection to make faster, subtract to make slower
+				m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR + ppmCorrection;
+				
+				DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - applying %d PPM correction"), refreshRate, ppmCorrection));
+				DbgLog((LOG_TRACE, 1, TEXT("  Trim ratio: %llu/%llu = %.6f%%"), 
+					m_currentRationalTrimNumerator, RATIONAL_TRIM_DENOMINATOR,
+					(100.0 * m_currentRationalTrimNumerator) / RATIONAL_TRIM_DENOMINATOR));
+				
+				if (ppmCorrection > 0)
+				{
+					DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware +%d PPM faster -> Timeline runs faster to match"), ppmCorrection));
+				}
+				else
+				{
+					DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware %d PPM slower -> Timeline runs slower to match"), ppmCorrection));
+				}
 			}
 		}
 	}
 	else
 	{
-		// No correction file, use default (no correction)
-		m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;
-		DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction.cfg found, using default timing"), refreshRate));
+		// No correction file - default to auto-calibration
+		m_useAutoCalibration = true;
+		m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // Start with no correction
+		
+		// Initialize auto-calibrator
+		m_autoPpmCalibrator.Initialize(
+			(uint64_t)m_frameDurationTicks,
+			(uint64_t)m_timeScale,
+			m_timingClock->TimingClockTicksPerSecond()
+		);
+		
+		DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction.cfg found, using auto-calibration"), refreshRate));
 	}
 }
 

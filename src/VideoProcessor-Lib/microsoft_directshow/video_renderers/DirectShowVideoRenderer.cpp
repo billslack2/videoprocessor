@@ -821,7 +821,7 @@ void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) 
 			
 			// Calculate PPM deviation: (measured - theoretical) * 1e6 / theoretical
 			const double deviation = (measuredFps - theoreticalFps) / theoreticalFps;
-			m_ppmDeviation = (int)round(deviation * 1e6);
+			m_ppmDeviation = ((int)round(deviation * 1e6))*-1;
 			m_measuredFrameRate = measuredFps;
 			
 			m_hasPPMData = true;

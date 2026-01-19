@@ -13,6 +13,7 @@
 #include <microsoft_directshow/DirectShowRendererStartStopTimeMethod.h>
 #include <microsoft_directshow/DirectShowDefines.h>
 #include <PPMCorrectionLoader.h>
+#include <AutoPpmCalibrator.h>
 
 #include "CLiveSource.h"
 
@@ -115,7 +116,7 @@ public:
 	{ 
 		// m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR + ppmCorrection
 		// So: ppmCorrection = m_currentRationalTrimNumerator - RATIONAL_TRIM_DENOMINATOR
-		return (int)(m_currentRationalTrimNumerator - RATIONAL_TRIM_DENOMINATOR); 
+		return (int)((m_currentRationalTrimNumerator - RATIONAL_TRIM_DENOMINATOR)); 
 	}
 	
 	// Check if PPM correction is active (non-zero)
@@ -129,6 +130,10 @@ public:
 	{ 
 		return m_ppmCorrectionLoader.HasCorrections(); 
 	}
+	
+	// Auto-calibration status access
+	bool IsAutoCalibrating() const { return m_useAutoCalibration; }
+	AutoPpmCalibrator::CalibrationStats GetAutoCalibrationStats() const { return m_autoPpmCalibrator.GetStats(); }
 
 protected:
 
@@ -144,6 +149,10 @@ protected:
 	PPMCorrectionLoader m_ppmCorrectionLoader;
 	uint64_t m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // Default: no correction
 	
+	// Auto-calibration support
+	AutoPpmCalibrator m_autoPpmCalibrator;
+	bool m_useAutoCalibration = false;  // True if using auto-calibration (no config value or AUTO specified)
+	
 	/**
 	 * Load PPM corrections and calculate trim values for current refresh rate
 	 * @param refreshRate Current refresh rate in Hz
@@ -151,7 +160,7 @@ protected:
 	void LoadPPMCorrections(double refreshRate);
 	
 	/**
-	 * Get the current rational trim numerator (calculated from PPM correction)
+	 * Get the current rational trim numerator (calculated from PPM correction or auto-calibration)
 	 */
 	uint64_t GetRationalTrimNumerator() const { return m_currentRationalTrimNumerator; }
 

@@ -19,6 +19,11 @@
  * 
  * Where left side is refresh rate (Hz) and right side is PPM adjustment value.
  * Positive values make the stream faster, negative values make it slower.
+ * 
+ * Special value "AUTO" enables automatic calibration:
+ * 60=AUTO 59=AUTO 50=AUTO
+ * 
+ * The system will measure actual hardware drift and automatically adjust PPM over time.
  */
 class PPMCorrectionLoader
 {

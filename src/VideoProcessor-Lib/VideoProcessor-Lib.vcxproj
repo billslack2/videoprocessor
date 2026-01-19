@@ -167,6 +167,7 @@
   <ItemGroup>
     <ClInclude Include="ACaptureDevice.h" />
     <ClInclude Include="ACaptureDeviceDiscoverer.h" />
+    <ClInclude Include="AutoPpmCalibrator.h" />
     <ClInclude Include="BitDepth.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDevice.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDeviceDiscoverer.h" />
@@ -182,6 +183,7 @@
     <ClInclude Include="guid.h" />
     <ClInclude Include="HDRData.h" />
     <ClInclude Include="InputLocked.h" />
+    <ClInclude Include="IntegerMath.h" />
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="ITimingClock.h" />
     <ClInclude Include="microsoft_directshow\DirectShowDefines.h" />
@@ -221,6 +223,7 @@
   <ItemGroup>
     <ClCompile Include="ACaptureDevice.cpp" />
     <ClCompile Include="ACaptureDeviceDiscoverer.cpp" />
+    <ClCompile Include="AutoPpmCalibrator.cpp" />
     <ClCompile Include="BitDepth.cpp" />
     <ClCompile Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDevice.cpp" />
     <ClCompile Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDeviceDiscoverer.cpp" />

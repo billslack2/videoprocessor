@@ -107,6 +107,16 @@ bool PPMCorrectionLoader::ParseConfigLine(const std::string& line)
                 continue;
             }
 
+            // Check for AUTO keyword
+            if (ppmStr == "AUTO" || ppmStr == "auto")
+            {
+                // Store 999999 as sentinel value for AUTO mode
+                m_corrections[refreshRate] = 999999;
+                parsedAny = true;
+                DbgLog((LOG_TRACE, 2, TEXT("PPMCorrectionLoader: Parsed %d Hz = AUTO (auto-calibration)"), refreshRate));
+                continue;
+            }
+
             // Parse PPM value (can be negative)
             int ppmValue = std::stoi(ppmStr);
             if (ppmValue < -1000000 || ppmValue > 1000000)
