@@ -784,15 +784,19 @@ CBufferedLiveSourceVideoOutputPin::ProactiveQueueMetrics CBufferedLiveSourceVide
 DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 {
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
-	DebugLog::Log("DELIVERY THREAD: Started - event-driven with minimum buffer maintenance");
+	DebugLog::Log("DELIVERY THREAD: Started - event-driven with adaptive buffer management");
 
 	HANDLE events[2] = { m_hConvertedAvailableEvent, m_hShutdownEvent };
 	DWORD lastLatencyLogTime = 0;
 	uint64_t framesSinceLastLog = 0;
-	
-	// Minimum buffer to maintain after initial buffering
-	// This ensures we always have frames ready for MadVR
-	const size_t MIN_BUFFER_TARGET = 6;
+
+	// Enhanced delivery performance tracking
+	uint64_t deliverySuccessCount = 0;
+	uint64_t deliveryFailureCount = 0;
+	uint64_t totalDeliveryTimeUs = 0;
+	uint64_t maxDeliveryTimeUs = 0;
+	uint64_t minDeliveryTimeUs = UINT64_MAX;
+	uint64_t bufferUnderrunCount = 0;
 
 	while (true)
 	{
@@ -817,7 +821,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			break;
 		}
 
-		// BUFFERING: do not deliver until we have enough converted samples
+		// BUFFERING PHASE: do not deliver until we have enough converted samples
 		if (m_isBuffering.load(std::memory_order_acquire))
 		{
 			size_t convertedQueueSize = 0;
@@ -826,6 +830,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				convertedQueueSize = m_convertedSampleQueue.size();
 			}
 
+			// DYNAMIC BUFFERING: Use GetBufferingTarget() for consistency
 			const size_t bufferingTarget = GetBufferingTarget();
 
 			if (convertedQueueSize < bufferingTarget)
@@ -848,34 +853,49 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				convertedQueueSize, bufferingTarget);
 		}
 
-		// STEADY-STATE: Maintain minimum buffer while delivering
-		// Only deliver if we have more than MIN_BUFFER_TARGET frames
-		// This keeps a cushion to absorb timing jitter
+		// STEADY-STATE: Deliver as long as samples are available
+		// No minimum threshold - just drain the queue naturally
 		for (;;)
 		{
 			size_t currentQueueSize = 0;
 			IMediaSample* pSample = nullptr;
-			
+
 			{
 				CAutoLock lock(&m_convertedQueueLock);
 				currentQueueSize = m_convertedSampleQueue.size();
-				
-				// Only deliver if we have buffer to spare
-				if (currentQueueSize <= MIN_BUFFER_TARGET)
-					break;
+
+				// Dequeue if we have ANY samples
+				if (currentQueueSize == 0)
+				{
+					break; // Queue empty, wait for more
+				}
 
 				pSample = m_convertedSampleQueue.front();
 				m_convertedSampleQueue.pop_front();
 			}
 
+			// Measure delivery time (time spent in Deliver() call)
+			const auto deliveryStartTime = GetWallClockTime();
+
 			// Deliver() will block if MadVR isn't ready
 			HRESULT hr = Deliver(pSample);
+
+			const auto deliveryEndTime = GetWallClockTime();
+			const uint64_t deliveryTimeUs = (deliveryEndTime - deliveryStartTime) / 10;
+
 			pSample->Release();
+
+			// Track delivery performance statistics
+			totalDeliveryTimeUs += deliveryTimeUs;
+			maxDeliveryTimeUs = std::max(maxDeliveryTimeUs, deliveryTimeUs);
+			if (deliveryTimeUs > 0)
+				minDeliveryTimeUs = std::min(minDeliveryTimeUs, deliveryTimeUs);
 
 			if (FAILED(hr))
 			{
 				++m_droppedFrameCount;
 				++m_recentDeliveryFailures;
+				++deliveryFailureCount;
 				DebugLog::Log("DELIVERY THREAD: Deliver() FAILED hr=0x%08x (failures=%u)",
 					hr, m_recentDeliveryFailures.load());
 			}
@@ -883,13 +903,21 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			{
 				m_recentDeliveryFailures = 0;
 				++framesSinceLastLog;
+				++deliverySuccessCount;
+			}
+
+			// Log slow deliveries (similar to conversion worker)
+			if (deliveryTimeUs > 20000)  // > 20ms is unusual for Deliver()
+			{
+				DebugLog::Log("DELIVERY THREAD: Slow delivery took %.2fms (MadVR blocking?)",
+					deliveryTimeUs / 1000.0);
 			}
 
 			if (!m_isActive.load(std::memory_order_acquire))
 				break;
 		}
 
-		// Log delivery performance periodically
+		// Log delivery worker performance periodically (match conversion worker format)
 		DWORD now = GetTickCount();
 		if (now - lastLatencyLogTime >= 10000)
 		{
@@ -910,10 +938,30 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				avgConversionTimeUs = m_totalConversionTimeUs / m_conversionFrameCount;
 			}
 
-			DebugLog::Log("DELIVERY THREAD STATS (10s): Frames=%llu, RawQueue=%zu, ConvertedQueue=%zu (min=%zu), AvgConvUs=%llu, DroppedFrames=%llu",
-				framesSinceLastLog, rawQueueSize, convertedQueueSize, MIN_BUFFER_TARGET, avgConversionTimeUs, m_droppedFrameCount);
+			// Calculate delivery statistics
+			uint64_t avgDeliveryTimeUs = (deliverySuccessCount > 0) ? (totalDeliveryTimeUs / deliverySuccessCount) : 0;
+			uint64_t totalDeliveryAttempts = deliverySuccessCount + deliveryFailureCount;
 
+			// Delivery worker stats (matching conversion worker format)
+			DebugLog::Log("DELIVERY THREAD STATS (10s): Frames=%llu, Successes=%llu, Failures=%llu, Avg=%.2fms, Min=%.2fms, Max=%.2fms, RawQueue=%zu, ConvertedQueue=%zu, DroppedFrames=%llu",
+				totalDeliveryAttempts,
+				deliverySuccessCount,
+				deliveryFailureCount,
+				avgDeliveryTimeUs / 1000.0,
+				(minDeliveryTimeUs == UINT64_MAX ? 0.0 : minDeliveryTimeUs / 1000.0),
+				maxDeliveryTimeUs / 1000.0,
+				rawQueueSize,
+				convertedQueueSize,
+				m_droppedFrameCount);
+
+			// Reset counters for next period
 			framesSinceLastLog = 0;
+			deliverySuccessCount = 0;
+			deliveryFailureCount = 0;
+			totalDeliveryTimeUs = 0;
+			maxDeliveryTimeUs = 0;
+			minDeliveryTimeUs = UINT64_MAX;
+			bufferUnderrunCount = 0;
 			lastLatencyLogTime = now;
 		}
 	}
@@ -1206,7 +1254,7 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 		{
 			DebugLog::Log("OnBadTimestampDetected(): Cleared %zu stale timestamps from queue", queueSizeBefore);
 		}
-	}
+	} 
 	
 	// Enter buffering mode
 	{

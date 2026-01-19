@@ -2846,7 +2846,7 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 					DbgLog((LOG_TRACE, 1, TEXT("Auto-offset updated: %dms -> %dms"), currentOffset, autoOffset));
 				}
 			}
-			const size_t currentQueueSize = m_videoRenderer->GetConvertedQueueSize(); //GetFrameQueueSize();
+			const size_t currentQueueSize = m_videoRenderer->GetConvertedQueueSize() + m_videoRenderer->GetFrameQueueSize();
 			
 			const uint64_t droppedFrames = m_videoRenderer->DroppedFrameCount();
 
@@ -3094,7 +3094,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 		}
 	}
 	// STRATEGY 2: Track consecutive full seconds for progressive overload
-	else if (currentQueueSize >= (maxQueueSize * 3) / 4)  // 75% threshold
+	else if (currentQueueSize >= 16)  // 75% threshold
 	{
 		//TODO: Adjust threshold and duration based on testing
 		// Simple: reset when queue >= 16 frames

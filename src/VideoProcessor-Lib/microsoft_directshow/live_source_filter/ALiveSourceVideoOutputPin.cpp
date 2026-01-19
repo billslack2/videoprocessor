@@ -195,7 +195,7 @@ HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOC
 
 	HRESULT hr = NOERROR;
 
-	ppropInputRequest->cBuffers = 8;  // Your fix
+	ppropInputRequest->cBuffers = 128;  // Your fix
 	ppropInputRequest->cbBuffer = m_videoFrameFormatter->GetOutFrameSize();
 
 	ASSERT(ppropInputRequest->cbBuffer);
