@@ -731,6 +731,35 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 
 	const bool rendererAcceptedState = BuildPushVideoState();
 
+	// --- EOTF change detection after rendering started ---
+	if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
+	{
+		const EOTF newEffectiveEotf = m_builtVideoState ? m_builtVideoState->eotf : EOTF::UNKNOWN;
+
+		if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
+		{
+			if (m_hasLastEffectiveEotf && newEffectiveEotf != m_lastEffectiveEotf)
+			{
+				DEBUGLOG("EOTF changed while rendering: %s -> %s. Restarting renderer.",
+					ToString(m_lastEffectiveEotf),
+					ToString(newEffectiveEotf));
+
+				// Debounce so we don't queue multiple restarts in one burst
+				if (!m_restartQueuedBecauseEotf)
+				{
+					m_restartQueuedBecauseEotf = true;
+					OnCommandRendererRestart();   // sets m_wantToRestartRenderer + UpdateState()
+				}
+			}
+		}
+
+		// Always update last-known EOTF once we have a valid effective state.
+		// (Even if we just queued a restart, this prevents repeated triggers.)
+		m_lastEffectiveEotf = newEffectiveEotf;
+		m_hasLastEffectiveEotf = (newEffectiveEotf != EOTF::UNKNOWN);
+	}
+	// --- END EOTF ---
+
 	// If the renderer did not accept the new state we need to restart the renderer
 	if (!rendererAcceptedState)
 	{
@@ -867,7 +896,10 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 	// Renderer ready, can be started if wanted
 	case RendererState::RENDERSTATE_READY:
 
+		
 		assert(oldRendererState == RendererState::RENDERSTATE_STARTING);
+
+		m_restartQueuedBecauseEotf = false;
 
 		m_rendererStateText.SetWindowText(TEXT("Ready"));
 		break;
@@ -875,7 +907,11 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 	// Renderer running, ready for frames
 	case RendererState::RENDERSTATE_RENDERING:
 
+
+
 		assert(oldRendererState == RendererState::RENDERSTATE_READY);
+
+		m_restartQueuedBecauseEotf = false;
 
 		m_deliverCaptureDataToRenderer.store(true, std::memory_order_release);
 		enableButtons = true;
@@ -886,7 +922,10 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 	// Stopped rendering, can be cleaned up
 	case RendererState::RENDERSTATE_STOPPED:
 
+		
 		assert(oldRendererState == RendererState::RENDERSTATE_STOPPING);
+
+		m_restartQueuedBecauseEotf = false;
 
 		RenderRemove();
 		RenderGUIClear();
@@ -2196,6 +2235,8 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	}
 
 	m_builtVideoState = videoState;
+	m_lastEffectiveEotf = m_builtVideoState->eotf;
+	
 
 	//
 	// GUI
@@ -2986,7 +3027,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	// Queue stats
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
 	{
-		stats.currentQueueSize = m_videoRenderer->GetFrameQueueSize();
+		stats.currentQueueSize = m_videoRenderer->GetFrameQueueSize() + m_videoRenderer->GetConvertedQueueSize();
 		stats.maxQueueSize = GetRendererVideoFrameQueueSizeMax();
 		stats.isQueueFull = (stats.currentQueueSize >= stats.maxQueueSize);
 
