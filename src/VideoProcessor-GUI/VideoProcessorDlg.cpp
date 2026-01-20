@@ -1373,9 +1373,29 @@ void CVideoProcessorDlg::UpdateState()
 // Helpers
 //
 
-int CVideoProcessorDlg::CalculateAutoFrameOffset()
-{
-	// Return default if no capture device/video state
+int CVideoProcessorDlg::CalculateAutoFrameOffset() {
+
+	size_t m_frameQueueMaxSize = GetRendererVideoFrameQueueSizeMax();
+
+
+	size_t nominalTarget = (m_frameQueueMaxSize / 8);
+	double fps = m_captureDeviceVideoState->displayMode->RefreshRateHz();
+	size_t frames = fps > 30.0 ? nominalTarget + 1 : nominalTarget / 2;
+	DEBUGLOG("Frames calculated: %zu (fps=%.2f, nominalTarget=%zu)", frames, fps, nominalTarget);
+	//return frames;
+	//---
+
+	double frameTime = 1000.0 / fps;
+	int offset = frames * frameTime;
+	offset = ((offset + 4) / 5) * 5; // round up to 5's
+
+
+	DEBUGLOG("Auto frame offset calc: queueMax=%zu, nominalTarget=%zu, refresh=%.1f, frames=%zu, frameTime=%.2f, offset=%zu",
+		m_frameQueueMaxSize, nominalTarget, fps, frames, frameTime, offset);
+
+	return offset;
+
+/*	// Return default if no capture device/video state
 	if (!m_captureDevice || !m_captureDeviceVideoState || !m_captureDeviceVideoState->valid)
 		return 50;  // Safe default
 
@@ -1446,6 +1466,7 @@ int CVideoProcessorDlg::CalculateAutoFrameOffset()
 		offset, isAsync, queueMaxSize, refreshRate));
 
 	return offset;
+	*/
 }
 
 void CVideoProcessorDlg::OnSelectCaptureDevice(UINT nID)
@@ -3148,11 +3169,11 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 		}
 	}
 	// STRATEGY 2: Track consecutive full seconds for progressive overload
-	else if (currentQueueSize >= 10)  // 75% threshold
+	else if (currentQueueSize >= 24)  // 75% threshold
 	{
 		//TODO: Adjust threshold and duration based on testing
 		// Simple: reset when queue >= 16 frames
-		if (currentQueueSize >= 10)
+		if (currentQueueSize >= 24)
 		{
 			m_videoRenderer->Reset();
 		}

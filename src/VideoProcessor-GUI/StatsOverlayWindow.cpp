@@ -404,15 +404,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 
 
-	// Frame Offset - show N/A for methods that don't support offset
-	if (m_stats.method == TEXT("Rational-Rational") || m_stats.method == TEXT("Clock-Rational"))
-	{
-		line.Format(TEXT("Offset:           N/A"));
-	}
-	else
-	{
-		line.Format(TEXT("Offset:           %d ms"), m_stats.frameOffsetMs);
-	}
+	// Frame Offset
+	line.Format(TEXT("Offset:           %d ms"), m_stats.frameOffsetMs);
+
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 

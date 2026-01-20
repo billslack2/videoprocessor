@@ -857,7 +857,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 
 			// DYNAMIC BUFFERING: Use GetBufferingTarget() for consistency
-			const size_t bufferingTarget = GetBufferingTarget();
+			DEBUGLOG("TEST GetBufferingTarget2 %zu", GetBufferingTarget());
+
+			const size_t bufferingTarget = 1;// GetBufferingTarget();// (m_frameQueueMaxSize / 8) + 1;//GetBufferingTarget();
 
 			if (convertedQueueSize < bufferingTarget)
 			{
@@ -876,6 +878,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				convertedQueueSize, bufferingTarget);
 		}
 
+		
+		DEBUGLOG("TEST GetBufferingTarget %zu", GetBufferingTarget());
+		size_t minimumBufferLevel = 1;// GetBufferingTarget();// m_frameQueueMaxSize / 8;  // Keep ~1.5 frames buffered
+
+
 		// STEADY-STATE: Deliver as long as samples are available
 		// No minimum threshold - just drain the queue naturally
 		for (;;)
@@ -887,10 +894,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				CAutoLock convLock(&m_convertedQueueLock);
 				currentQueueSize = m_convertedSampleQueue.size();
 
-				// Dequeue if we have ANY samples
-				if (currentQueueSize == 0)
+				// Stop delivering if queue drops to minimum threshold
+				if (currentQueueSize <= minimumBufferLevel)
 				{
-					break; // Queue empty, wait for more
+					break; // Let conversion worker refill before draining more
 				}
 
 				pSample = m_convertedSampleQueue.front();
@@ -1240,7 +1247,21 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 	return 0;
 }
 
-size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget() 
+
+
+size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget() {
+
+	size_t nominalTarget = (m_frameQueueMaxSize / 8);
+	double fps = 60.0;
+	if (m_timeScale > 0 && m_frameDurationTicks > 0) fps = (double)m_timeScale / (double)m_frameDurationTicks;
+
+	size_t frames = fps > 30.0 ? nominalTarget + 1 : nominalTarget/2;
+	//DEBUGLOG("Frames calculated: %zu (fps=%.2f, nominalTarget=%zu)", frames, fps, nominalTarget);
+	return frames;
+}
+
+
+/*size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTargetOLD()
 {
 	// SAFETY: Check if timing parameters are initialized
 	// This prevents crashes when GetBufferingTarget() is called before Initialize()
@@ -1275,7 +1296,7 @@ size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget()
 
 	return frames;
 }
-
+*/
 void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 {
 	// COOLDOWN: Prevent rapid-fire recovery triggers
