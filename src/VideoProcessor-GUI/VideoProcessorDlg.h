@@ -286,6 +286,7 @@ protected:
 	uint64_t m_lastDroppedFrames = 0;
 	size_t m_lastQueueSize = 0;
 	bool m_pendingQueueReset = false;
+	UINT_PTR m_rendererStartTime = 0;  // Tick count when renderer started rendering
 
 	// Frame offset by refresh data
 	std::vector<int> m_frameOffsetsByRefresh;

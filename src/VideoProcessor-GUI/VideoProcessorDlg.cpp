@@ -917,6 +917,10 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		enableButtons = true;
 		m_windowedVideoWindow.ShowLogo(false);
 		m_rendererStateText.SetWindowText(TEXT("Rendering"));
+
+		m_rendererStartTime = GetTickCount();
+		SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);
+
 		break;
 
 	// Stopped rendering, can be cleaned up
@@ -3154,7 +3158,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 	const size_t maxQueueSize = GetRendererVideoFrameQueueSizeMax();
 	const bool isQueueFull = (currentQueueSize >= maxQueueSize);
 	const bool droppedFramesIncreased = (droppedFrames > m_lastDroppedFrames);
-	const bool queueStuck = false; // (currentQueueSize == m_lastQueueSize && currentQueueSize > 2);
+	const bool queueStuck = (currentQueueSize >= m_lastQueueSize && currentQueueSize > 9);
 
 	// STRATEGY 1: Immediate reset on queue full
 	if (isQueueFull)
@@ -3186,10 +3190,10 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 	// STRATEGY 3: Detect stuck queues (same size for multiple seconds)
 	if (queueStuck)
 	{
-		m_consecutiveStuckSeconds++;
-		if (m_consecutiveStuckSeconds >= 4)  // 4 seconds stuck
+		m_consecutiveFullSeconds++;
+		if (m_consecutiveStuckSeconds >= 5)  // 5 seconds stuck
 		{
-			DEBUGLOG("DISABLED: Queue health: Stuck queue detected (%zu for %zu seconds) - reset", currentQueueSize, m_consecutiveStuckSeconds);
+			DEBUGLOG("Queue health: Stuck queue detected (%zu for %zu seconds) - reset", currentQueueSize, m_consecutiveStuckSeconds);
 
 			if (m_videoRenderer)
 			{

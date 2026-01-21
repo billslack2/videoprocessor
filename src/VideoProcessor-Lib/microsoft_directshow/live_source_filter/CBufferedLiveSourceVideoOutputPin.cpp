@@ -82,10 +82,25 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 
 CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 {
+	// CRITICAL: Set inactive FIRST to stop all worker threads from accessing queues
+	m_isActive.store(false, std::memory_order_release);
+	
 	// Signal conversion thread to shutdown
 	if (m_hConversionShutdownEvent)
 	{
 		SetEvent(m_hConversionShutdownEvent);
+	}
+	
+	// Signal delivery thread shutdown
+	if (m_hShutdownEvent)
+	{
+		SetEvent(m_hShutdownEvent);
+	}
+	
+	// Also signal semaphore to unblock delivery thread if waiting
+	if (m_hConvertedSemaphore)
+	{
+		ReleaseSemaphore(m_hConvertedSemaphore, 1, nullptr);
 	}
 	
 	// Wait for conversion thread to exit
@@ -298,24 +313,24 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 		if (FAILED(hr))
 			return hr;
 
+		// CRITICAL: Set inactive FIRST before signaling shutdown
+		// This ensures worker threads stop accessing queues immediately
 		m_isActive.store(false, std::memory_order_release);
 
-		// Purge queues with proper locking
-		{
-			CAutoLock rawLock(&m_rawQueueLock);
-			PurgeQueue();
-		}
-		{
-			CAutoLock convLock(&m_convertedQueueLock);
-			PurgeConvertedQueue();
-		}
-
-		// Signal shutdown events before waiting for threads to exit
+		// Signal shutdown events AFTER setting inactive
 		if (m_hConversionShutdownEvent)
 			SetEvent(m_hConversionShutdownEvent);
 		
 		if (m_hShutdownEvent)
 			SetEvent(m_hShutdownEvent);
+		
+		// Signal semaphore to unblock delivery thread if waiting
+		if (m_hConvertedSemaphore)
+			ReleaseSemaphore(m_hConvertedSemaphore, 1, nullptr);
+		
+		// Signal frame available event to unblock conversion thread if waiting
+		if (m_hFrameAvailableEvent)
+			SetEvent(m_hFrameAvailableEvent);
 
 		// Wait for conversion thread to exit FIRST
 		if (m_hConversionThread)
@@ -335,6 +350,16 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 		{
 			DbgLog((LOG_TRACE, 1, TEXT("Inactive(): Waiting for delivery thread to exit...")));
 			Close();  // This waits for thread to exit
+		}
+
+		// Purge queues AFTER threads have exited
+		{
+			CAutoLock rawLock(&m_rawQueueLock);
+			PurgeQueue();
+		}
+		{
+			CAutoLock convLock(&m_convertedQueueLock);
+			PurgeConvertedQueue();
 		}
 
 		// Reset shutdown events for next activation
@@ -777,6 +802,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 	DebugLog::Log("DELIVERY THREAD: Started - event-driven with adaptive buffer management");
 
+	// SAFETY: Validate handles before entering loop
+	if (!m_hShutdownEvent || !m_hConvertedSemaphore)
+	{
+		DebugLog::Log("DELIVERY THREAD: Invalid event handles, exiting immediately");
+		return 1;
+	}
+
 	HANDLE events[2] = { m_hShutdownEvent, m_hConvertedSemaphore };
 	DWORD lastLatencyLogTime = 0;
 	uint64_t framesSinceLastLog = 0;
@@ -809,6 +841,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 	while (true)
 	{
+		// SAFETY: Check shutdown before waiting
+		if (!m_isActive.load(std::memory_order_acquire))
+		{
+			DebugLog::Log("DELIVERY THREAD: Not active before wait, exiting");
+			break;
+		}
+		
 		// Wait for converted samples or shutdown
 		DWORD waitResult = WaitForMultipleObjects(2, events, FALSE, INFINITE);
 
@@ -857,7 +896,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 
 			// DYNAMIC BUFFERING: Use GetBufferingTarget() for consistency
-			DEBUGLOG("TEST GetBufferingTarget2 %zu", GetBufferingTarget());
+			//DEBUGLOG("TEST GetBufferingTarget2 %zu", GetBufferingTarget());
 
 			const size_t bufferingTarget = 1;// GetBufferingTarget();// (m_frameQueueMaxSize / 8) + 1;//GetBufferingTarget();
 
@@ -878,9 +917,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				convertedQueueSize, bufferingTarget);
 		}
 
-		
-		DEBUGLOG("TEST GetBufferingTarget %zu", GetBufferingTarget());
-		size_t minimumBufferLevel = 1;// GetBufferingTarget();// m_frameQueueMaxSize / 8;  // Keep ~1.5 frames buffered
+		//DEBUGLOG("TEST GetBufferingTarget %zu", GetBufferingTarget());
+		size_t minimumBufferLevel = 4;// GetBufferingTarget();// m_frameQueueMaxSize / 8;  // Keep ~1.5 frames buffered
 
 
 		// STEADY-STATE: Deliver as long as samples are available
@@ -1065,6 +1103,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 	// Wait for raw frames (m_hFrameAvailableEvent) or conversion shutdown.
 	HANDLE events[2] = { m_hFrameAvailableEvent, m_hConversionShutdownEvent };
+	
+	// SAFETY: Validate handles before entering loop
+	if (!events[0] || !events[1])
+	{
+		DebugLog::Log("CONVERSION WORKER: Invalid event handles, exiting immediately");
+		return 1;
+	}
 
 	// Conversion performance tracking
 	DWORD lastConversionLogTime = 0;
@@ -1076,6 +1121,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 	for (;;)
 	{
+		// SAFETY: Check shutdown before waiting
+		if (!m_isActive.load(std::memory_order_acquire))
+		{
+			DebugLog::Log("CONVERSION WORKER: Not active before wait, exiting");
+			break;
+		}
+		
 		DWORD wr = WaitForMultipleObjects(2, events, FALSE, INFINITE);
 
 		if (wr == WAIT_OBJECT_0 + 1) // conversion shutdown
@@ -1089,6 +1141,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 		{
 			DbgLog((LOG_ERROR, 1, TEXT("ConversionWorker: WaitForMultipleObjects failed %lu"), wr));
 			DebugLog::Log("CONVERSION WORKER: WaitForMultipleObjects FAILED result=%lu", wr);
+			break;
+		}
+		
+		// SAFETY: Check active again after waking
+		if (!m_isActive.load(std::memory_order_acquire))
+		{
+			DebugLog::Log("CONVERSION WORKER: Not active after wake, exiting");
 			break;
 		}
 
@@ -1191,9 +1250,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			}
 
 			// Signal delivery thread that a converted sample is available
-			if (!ReleaseSemaphore(m_hConvertedSemaphore, 1, nullptr))
+			// SAFETY: Check handle is still valid before use
+			if (m_hConvertedSemaphore && m_isActive.load(std::memory_order_acquire))
 			{
-				DebugLog::Log("CONVERSION WORKER: ReleaseSemaphore FAILED gle=%lu", GetLastError());
+				if (!ReleaseSemaphore(m_hConvertedSemaphore, 1, nullptr))
+				{
+					DebugLog::Log("CONVERSION WORKER: ReleaseSemaphore FAILED gle=%lu", GetLastError());
+				}
 			}
 			++batchCount;
 

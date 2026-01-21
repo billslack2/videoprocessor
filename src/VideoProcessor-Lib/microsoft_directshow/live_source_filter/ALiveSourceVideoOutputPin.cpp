@@ -402,9 +402,11 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_deliverNewSegment = true;
 	
 	// Reset timing method-specific state
+	// CLOCK_RATIONAL SPECIAL: Reset m_rationalFrameDuration = 0 to trigger re-initialization
+	// on next frame, which will re-apply the 40ms lead offset at baseline
 	m_previousHardwareTimestamp = 0;
 	m_hardwareTimingAnomalyCount = 0;
-	m_rationalFrameDuration = 0;
+	m_rationalFrameDuration = 0;  // CRITICAL: Forces re-init with lead offset on next frame
 	m_minFrameAdvance = 0;
 	m_maxFrameAdvance = 0;
 	m_lastHardwareTimestamp = 0;
@@ -707,12 +709,17 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		// Handle first frame - establish timeline baseline
 		if (m_startTimeOffset == 0)
 		{
-			m_startTimeOffset = rawHardwareTime;
+			// CLOCK_RATIONAL: Apply lead offset at baseline initialization
+			// This ensures frames arrive slightly ahead for MadVR buffering
+			// while maintaining the mathematical correctness of hardware-relative timing
+			constexpr REFERENCE_TIME kLeadTime = 400000LL /2;  // 40ms lead for buffering
+			
+			m_startTimeOffset = rawHardwareTime - kLeadTime;
 			m_previousHardwareTimestamp = rawHardwareTime;
 			timeStart = 0;  // Start timeline at zero
 			
-			DbgLog((LOG_TRACE, 1, TEXT("::HardwareRational(#%I64u): First frame - baseline set to %I64d, timeline starts at 0"),
-				videoFrame.GetCounter(), m_startTimeOffset));
+			DbgLog((LOG_TRACE, 1, TEXT("::HardwareRational(#%I64u): First frame - baseline set to %I64d with %I64d lead offset, timeline starts at 0"),
+				videoFrame.GetCounter(), m_startTimeOffset, kLeadTime));
 		}
 		else
 		{
@@ -1043,6 +1050,19 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			timeStop = timeStart + 1;
 			DbgLog((LOG_ERROR, 1, TEXT("::FillBuffer(#%I64u): CRITICAL - timeStop <= timeStart! Forced to %I64d (start=%I64d)"),
 				videoFrame.GetCounter(), timeStop, timeStart));
+
+		}
+
+		// MODE-SPECIFIC LEAD OFFSET HANDLING
+		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+		    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2 ||
+		    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO ||
+		    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK)
+		{
+			// HARDWARE-BASED MODES: Apply lead offset here (safe for hardware-relative timestamps)
+			constexpr REFERENCE_TIME kLeadTime = 400000LL;  // 40ms lead
+			timeStart += kLeadTime;
+			timeStop += kLeadTime;
 		}
 		
 		hr = pSample->SetTime(&timeStart, &timeStop);
@@ -1055,7 +1075,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		break;
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE:
-	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_NONE:
+	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_NONE:	
 
 		hr = pSample->SetTime(&timeStart, nullptr);
 		if (FAILED(hr))
