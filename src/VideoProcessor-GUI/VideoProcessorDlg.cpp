@@ -518,7 +518,7 @@ void CVideoProcessorDlg::OnBnClickedRendererReset()
 	KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
 	m_pendingQueueReset = false;
 
-	m_videoRenderer->Reset();
+	//m_videoRenderer->Reset();
 	
 	DebugLog::Log("UI: OnBnClickedRendererReset() - Reset() returned");
 }
@@ -2887,7 +2887,7 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 			KillTimer(QUEUE_RESET_DELAY_TIMER_ID); //TODO: MOVED KILL INSIDE
 			 
 			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): DELAYED QUEUE RESET - MadVR stabilization complete")));
-			m_videoRenderer->Reset();
+			//m_videoRenderer->Reset(); TODO: REMOVED RESET ON DELAYED TIMER
 
 			// Reset tracking counters after delayed reset
 			m_consecutiveFullSeconds = 0;

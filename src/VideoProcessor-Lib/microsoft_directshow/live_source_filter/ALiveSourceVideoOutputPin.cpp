@@ -660,7 +660,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 				RATIONAL_TRIM_DENOMINATOR);
 
 		REFERENCE_TIME tsStart =
-			(REFERENCE_TIME)baseStart + m_rationalPipelineOffset;
+			(REFERENCE_TIME)baseStart + m_rationalPipelineOffset + GetRampedLeadTime();
 
 		// ---- MONOTONIC SAFETY ----
 		if (streamFrameCounter == 0)
@@ -672,6 +672,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		{
 			tsStart = m_previousTimeStop + 1;
 		}
+
 
 		timeStart = tsStart;
 		break;
@@ -712,7 +713,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			// CLOCK_RATIONAL: Apply lead offset at baseline initialization
 			// This ensures frames arrive slightly ahead for MadVR buffering
 			// while maintaining the mathematical correctness of hardware-relative timing
-			constexpr REFERENCE_TIME kLeadTime = 400000LL /2;  // 40ms lead for buffering
+			constexpr REFERENCE_TIME kLeadTime = 200000LL;// 400000LL / 2;  // 40ms lead for buffering TODO: DO WE STIL NEED THIS?
 			
 			m_startTimeOffset = rawHardwareTime - kLeadTime;
 			m_previousHardwareTimestamp = rawHardwareTime;
@@ -1060,11 +1061,11 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK)
 		{
 			// HARDWARE-BASED MODES: Apply lead offset here (safe for hardware-relative timestamps)
-			constexpr REFERENCE_TIME kLeadTime = 400000LL;  // 40ms lead
+			REFERENCE_TIME kLeadTime = GetRampedLeadTime();
 			timeStart += kLeadTime;
 			timeStop += kLeadTime;
 		}
-		
+		 
 		hr = pSample->SetTime(&timeStart, &timeStop);
 		if (FAILED(hr))
 			return hr;
@@ -1453,4 +1454,31 @@ REFERENCE_TIME ALiveSourceVideoOutputPin::DequeueHardwareTimestamp()
 	*/
 	
 	return timestamp;
+}
+
+
+// How many frames to ramp over (hard-coded as requested)
+static constexpr int kLeadRampFrames = 8;
+
+REFERENCE_TIME ALiveSourceVideoOutputPin::GetRampedLeadTime()
+{
+
+	REFERENCE_TIME targetLeadTicks = LEADTIME;
+
+	// If ramping disabled or target is zero
+	if (kLeadRampFrames <= 0 || targetLeadTicks <= 0)
+		return targetLeadTicks;
+
+	// Clamp frame index into [0, rampFrames]
+	const LONGLONG frame = std::min<LONGLONG>(m_frameCounter, kLeadRampFrames);
+
+
+	// Integer math, no floating point
+	REFERENCE_TIME leadTime = (targetLeadTicks * frame) / kLeadRampFrames;
+
+	if (leadTime < targetLeadTicks) {
+		DEBUGLOG("Lead time ramp: frame %lld/%d -> lead %.3fms", frame, kLeadRampFrames, leadTime / 10000.0);
+	}
+
+	return leadTime;
 }

@@ -291,6 +291,10 @@ protected:
 	// Helper methods for queue management
 	bool EnqueueHardwareTimestamp(REFERENCE_TIME timestamp);
 	REFERENCE_TIME DequeueHardwareTimestamp();
+
+	static const REFERENCE_TIME LEADTIME = 200000LL;  // 100ns ticks per second
+	REFERENCE_TIME GetRampedLeadTime();
+
 	
 	// Virtual method for bad timestamp recovery (overridden in buffered implementation)
 	virtual void OnBadTimestampDetected() {}
@@ -305,4 +309,6 @@ protected:
 	
 	// Helper method to track and log frame duration statistics
 	void TrackFrameDuration(REFERENCE_TIME timeStart, REFERENCE_TIME timeStop, uint64_t frameNumber);
+	
+
 };

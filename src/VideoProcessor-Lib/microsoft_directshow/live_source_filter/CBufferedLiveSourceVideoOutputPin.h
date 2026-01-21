@@ -60,6 +60,9 @@ public:
 	// Add this public method declaration in the public section
 	size_t GetConvertedQueueSize();
 
+	REFERENCE_TIME NowStreamTime(CBaseFilter* f);
+
+
 private:
 
 	HANDLE m_hConvertedSemaphore = nullptr;  // Semaphore: count of converted samples available

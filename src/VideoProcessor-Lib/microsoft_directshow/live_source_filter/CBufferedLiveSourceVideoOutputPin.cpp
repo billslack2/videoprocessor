@@ -918,7 +918,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		}
 
 		//DEBUGLOG("TEST GetBufferingTarget %zu", GetBufferingTarget());
-		size_t minimumBufferLevel = 4;// GetBufferingTarget();// m_frameQueueMaxSize / 8;  // Keep ~1.5 frames buffered
+		size_t minimumBufferLevel = 1;// GetBufferingTarget();// m_frameQueueMaxSize / 8;  // Keep ~1.5 frames buffered
 
 
 		// STEADY-STATE: Deliver as long as samples are available
@@ -1428,4 +1428,12 @@ size_t CBufferedLiveSourceVideoOutputPin::GetConvertedQueueSize()
 {
 	CAutoLock convLock(&m_convertedQueueLock);
 	return m_convertedSampleQueue.size();
+}
+
+REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::NowStreamTime(CBaseFilter* f)
+{
+
+	CRefTime now;
+	if (f) f->StreamTime(now); // baseclasses typically expose this
+	return now;
 }
