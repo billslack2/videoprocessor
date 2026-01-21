@@ -274,6 +274,7 @@ protected:
 
 	VideoStateComPtr m_builtVideoState = nullptr;  // This is what we make of it
 
+
 	// Startup options
 	bool m_rendererFullScreenStart = false;
 	bool m_windowedFullScreenMode = false;
