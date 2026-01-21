@@ -822,9 +822,9 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 			{
 			case 0x16: // EC_DISPLAY_CHANGED
 				DbgLog((LOG_TRACE, 1, TEXT("EC_DISPLAY_CHANGED detected - scheduling MadVR reset")));
-				if (m_rendererState == RendererState::RENDERSTATE_RENDERING && !m_pendingQueueReset)
+				if (m_rendererState == RendererState::RENDERSTATE_RENDERING)// && !m_pendingQueueReset)
 				{
-					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);  // 2-second delay for display changes
+					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 10000, nullptr);  // 2-second delay for display changes
 					m_pendingQueueReset = true;
 				}
 				break;
