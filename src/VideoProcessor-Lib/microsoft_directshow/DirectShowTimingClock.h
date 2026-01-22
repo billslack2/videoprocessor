@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include <atomic>
 #include <refclock.h>
 #include <ITimingClock.h>
 
@@ -16,13 +15,11 @@
 
  /**
   * DirectShow timing clock using pure hardware time.
-  * SIMPLIFIED: High-performance conversion with minimal overhead
+  * ULTRA-SIMPLIFIED: Dumb hardware timestamp converter
   *
-  * Features:
-  * - Pure hardware timestamps (no smoothing, no filtering)
-  * - High-precision timestamp conversion with overflow protection
-  * - Lock-free monotonic enforcement using atomics
-  * - Minimal CPU overhead on hot path
+  * This class does ONE thing: convert hardware ticks to DirectShow 100ns ticks.
+  * No rounding, no monotonic enforcement, no fancy logic.
+  * Consumers (ALiveSourceVideoOutputPin) handle all timing logic.
   */
 class DirectShowTimingClock : public CBaseReferenceClock
 {
@@ -30,13 +27,10 @@ public:
 	DirectShowTimingClock(ITimingClock& timingClock);
 	virtual ~DirectShowTimingClock();
 
-	// CBaseReferenceClock override - HOT PATH
+	// CBaseReferenceClock override - pure integer conversion
 	REFERENCE_TIME GetPrivateTime() override;
 
 private:
 	ITimingClock& m_timingClock;
 	const timingclocktime_t m_ticksPerSecond;
-
-	// Lock-free monotonic enforcement
-	std::atomic<REFERENCE_TIME> m_lastReturnedTime;
 };

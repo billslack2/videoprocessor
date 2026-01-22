@@ -292,7 +292,7 @@ protected:
 	bool EnqueueHardwareTimestamp(REFERENCE_TIME timestamp);
 	REFERENCE_TIME DequeueHardwareTimestamp();
 
-	static const REFERENCE_TIME LEADTIME = 200000LL;  // 100ns ticks per second
+	static const REFERENCE_TIME LEADTIME = 200LL * 10000LL;  // 100ns ticks per second
 	REFERENCE_TIME GetRampedLeadTime();
 
 	

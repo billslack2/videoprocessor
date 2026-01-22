@@ -89,6 +89,8 @@ private:
 	CCritSec m_stateLock;  // Protects shared state variables below
 	
 	std::atomic_bool m_isActive = false;
+	std::atomic_bool m_stopping = false;
+	
 	std::atomic_bool m_isBuffering = false; // gate delivery until converted queue is primed
 	uint64_t m_lastSeenFrameCounter = 0;    // Track frame counter for discontinuity detection
 	DWORD m_lastAutoPurgeTime = 0;          // Last time we auto-purged the converted queue

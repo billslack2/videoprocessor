@@ -518,7 +518,7 @@ void CVideoProcessorDlg::OnBnClickedRendererReset()
 	KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
 	m_pendingQueueReset = false;
 
-	//m_videoRenderer->Reset();
+	m_videoRenderer->Reset();
 	
 	DebugLog::Log("UI: OnBnClickedRendererReset() - Reset() returned");
 }
@@ -988,6 +988,7 @@ void CVideoProcessorDlg::OnCommandRendererReset()
 	if (m_videoRenderer)
 	{
 		m_videoRenderer->Reset();
+		DEBUGLOG("OnCommandRendererReset");
 	}
 }
 
@@ -2095,6 +2096,9 @@ void CVideoProcessorDlg::UpdateTimingClockFrameOffset()
 	//TODO
 	if (m_videoRenderer)
 		m_videoRenderer->Reset();
+
+	DEBUGLOG("Tming CLock Frame Reset");
+
 }
 
 
@@ -2858,6 +2862,9 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 
         DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Resetting renderer after resize")));
         m_videoRenderer->Reset();
+
+		DEBUGLOG("RESIZE RESET");
+
     }
     return;
 }
@@ -2887,7 +2894,7 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 			KillTimer(QUEUE_RESET_DELAY_TIMER_ID); //TODO: MOVED KILL INSIDE
 			 
 			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): DELAYED QUEUE RESET - MadVR stabilization complete")));
-			//m_videoRenderer->Reset(); TODO: REMOVED RESET ON DELAYED TIMER
+			m_videoRenderer->Reset();// TODO: REMOVED RESET ON DELAYED TIMER
 
 			// Reset tracking counters after delayed reset
 			m_consecutiveFullSeconds = 0;
@@ -2990,6 +2997,7 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 			if (currentQueueSize >= (GetRendererVideoFrameQueueSizeMax()/2))
 			{
 				m_videoRenderer->Reset();
+				DEBUGLOG("Queue 50% reset");
 			}
 		}
 
@@ -3170,6 +3178,8 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 			m_videoRenderer->Reset();
 			m_consecutiveFullSeconds = 0;
 			m_consecutiveStuckSeconds = 0;
+
+			DEBUGLOG("Queue health: Full queue detected (%zu/%zu) - immediate reset", currentQueueSize, maxQueueSize);
 		}
 	}
 	// STRATEGY 2: Track consecutive full seconds for progressive overload
@@ -3180,6 +3190,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 		if (currentQueueSize >= 24)
 		{
 			m_videoRenderer->Reset();
+			DEBUGLOG("Queue health > 24 Rest hardcoded and should be changed");
 		}
 	}
 	else
@@ -3193,12 +3204,13 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 		m_consecutiveFullSeconds++;
 		if (m_consecutiveStuckSeconds >= 5)  // 5 seconds stuck
 		{
-			DEBUGLOG("Queue health: Stuck queue detected (%zu for %zu seconds) - reset", currentQueueSize, m_consecutiveStuckSeconds);
 
 			if (m_videoRenderer)
 			{
 				m_videoRenderer->Reset();
 				m_consecutiveStuckSeconds = 0;
+
+				DEBUGLOG("Queue health: Stuck queue detected (%zu for %zu seconds) - reset", currentQueueSize, m_consecutiveStuckSeconds);
 			}
 		}
 	}
