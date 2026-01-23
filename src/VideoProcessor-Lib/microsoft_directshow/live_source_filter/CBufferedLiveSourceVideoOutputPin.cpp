@@ -614,6 +614,9 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		DebugLog::Log("Reset(): Purged %zu pre-converted samples from HDMI resync", purgedSamples);
 	}
 	
+	// Clear pending timestamp history for CLOCK_SMART modes
+	ClearPendingTimestamps();
+	
 	// CRITICAL: Reset timeline state and enter buffering mode (identical to startup)
 	m_frameCounter = 0;
 	m_previousFrameCounter = 0;
@@ -918,8 +921,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				convertedQueueSize, bufferingTarget);
 		}
 
-		// DRAIN LOOP: With auto-reset event, drain entire queue then wait again
-		// This is the correct pattern for event-based signaling (vs semaphore counting)
+		// DRAIN LOOP: With auto-reset event, drain queue completely (no need to keep frames)
+		// We use the pending timestamp history for late-binding instead
 		for (;;)
 		{
 			if (!m_isActive.load(std::memory_order_acquire) || m_stopping.load(std::memory_order_acquire))
@@ -931,7 +934,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				CAutoLock convLock(&m_convertedQueueLock);
 
 				if (m_convertedSampleQueue.empty())
-					break;  // Queue empty - go back to waiting for event
+					break;  // No more samples, wait for more
 
 				pSample = m_convertedSampleQueue.front();
 				m_convertedSampleQueue.pop_front();
@@ -945,100 +948,20 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			REFERENCE_TIME currentStart = 0, currentStop = 0;
 			pSample->GetTime(&currentStart, &currentStop);
 
-			// LATE BIND STOP TIME: find best-fit next start time in queue AND history
+			// LATE BIND STOP TIME: Search pending timestamp history for best-fit next frame
 			if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
 			    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
 			{
 				// Calculate the theoretical stop time (next frame's start time)
-				// NOTE: Lead time is NOT applied here because:
-				// - currentStart is the RAW hardware timestamp (no lead time yet)
-				// - Candidates in the queue also have RAW hardware timestamps
-				// - Lead time is only applied later during actual delivery
-				// So we compare raw-to-raw for the search
 				REFERENCE_TIME theoreticalStop = currentStart + m_frameDuration;
 				
-				// Search tolerance: 10% of frame duration should be plenty for hardware timestamps
-				// At 23.976fps (41.7ms frames): 10% = 4.17ms tolerance
-				// At 59.94fps (16.7ms frames): 10% = 1.67ms tolerance
+				// Search tolerance: 10% of frame duration
 				static const double SEARCH_TOLERANCE_PERCENT = 0.10; // 10%
 				const REFERENCE_TIME searchTolerance = (REFERENCE_TIME)(m_frameDuration * SEARCH_TOLERANCE_PERCENT);
 				
-				REFERENCE_TIME bestStart = REFERENCE_TIME_INVALID;
-				REFERENCE_TIME bestDelta = REFERENCE_TIME_INVALID;
-				size_t queueSize = 0;
-				size_t candidatesFound = 0;
-				size_t candidatesInRange = 0;
-				bool foundInHistory = false;
-
-				// FIRST: Search the converted queue (frames waiting to be delivered)
-				// Queue is ordered, so we just need the FIRST frame (which is the next one)
-				{
-					CAutoLock convLock(&m_convertedQueueLock);
-					queueSize = m_convertedSampleQueue.size();
-					
-					// The first frame in the queue IS the next frame - just use it if it's close enough
-					if (!m_convertedSampleQueue.empty())
-					{
-						IMediaSample* nextSample = m_convertedSampleQueue.front();
-						REFERENCE_TIME nextStart = 0, nextStop = 0;
-						if (SUCCEEDED(nextSample->GetTime(&nextStart, &nextStop)))
-						{
-							candidatesFound = 1;
-							const REFERENCE_TIME delta = abs(nextStart - theoreticalStop);
-							
-							// Sanity check: next frame must be AFTER current frame
-							if (nextStart > currentStart && delta <= searchTolerance)
-							{
-								bestStart = nextStart;
-								bestDelta = delta;
-								candidatesInRange = 1;
-							}
-						}
-					}
-				}
-
-				// SECOND: If not found in queue, search delivered history
-				// This handles the case where next frame was already delivered
-				// IMPORTANT: Only accept timestamps GREATER than currentStart (future frames)
-				if (bestStart == REFERENCE_TIME_INVALID)
-				{
-					REFERENCE_TIME historyStart = REFERENCE_TIME_INVALID;
-					
-					// Search for the smallest timestamp that is:
-					// 1. Greater than currentStart (in the future)
-					// 2. Within tolerance of theoreticalStop
-					{
-						std::lock_guard<std::mutex> lock(m_deliveredHistoryMutex);
-						
-						for (size_t i = 0; i < DELIVERED_HISTORY_SIZE; i++)
-						{
-							const auto& record = m_deliveredHistory[i];
-							if (record.timeStart == 0)
-								continue;  // Uninitialized slot
-							
-							// CRITICAL: Only consider timestamps AFTER current frame
-							if (record.timeStart <= currentStart)
-								continue;  // Skip past/current frames
-						
-							const REFERENCE_TIME delta = abs(record.timeStart - theoreticalStop);
-							if (delta <= searchTolerance)
-							{
-								if (historyStart == REFERENCE_TIME_INVALID || record.timeStart < historyStart)
-								{
-									historyStart = record.timeStart;
-									bestDelta = delta;
-								}
-							}
-						}
-					}
-					
-					if (historyStart != REFERENCE_TIME_INVALID)
-					{
-						bestStart = historyStart;
-						foundInHistory = true;
-					}
-				}
-
+				// Search the pending timestamp history
+				REFERENCE_TIME bestStart = FindNextPendingTimestamp(currentStart, theoreticalStop, searchTolerance);
+				
 				if (bestStart != REFERENCE_TIME_INVALID)
 				{
 					// Found a good match - use the real next frame's start time as our stop time
@@ -1047,7 +970,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					// Final safety: stop must be after start
 					if (newStop <= currentStart)
 					{
-						// This shouldn't happen with the above checks, but just in case
 						newStop = currentStart + m_frameDuration;
 					}
 					
@@ -1065,11 +987,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					if (lateBindTotalCount - lastLateBindLogCount >= 600)
 					{
 						double successRate = (lateBindSuccessCount * 100.0) / lateBindTotalCount;
-						DebugLog::Log("LATE-BIND STATS: %llu/%llu (%.1f%%) success, last delta=%.3fms, source=%s, queueSize=%zu",
-							lateBindSuccessCount, lateBindTotalCount, successRate,
-							bestDelta / 10000.0,
-							foundInHistory ? "history" : "queue",
-							queueSize);
+						REFERENCE_TIME actualDelta = abs(bestStart - theoreticalStop);
+						DebugLog::Log("LATE-BIND STATS: %llu/%llu (%.1f%%) success, last delta=%.3fms",
+							lateBindSuccessCount, lateBindTotalCount, successRate, actualDelta / 10000.0);
 						lastLateBindLogCount = lateBindTotalCount;
 					}
 				}
@@ -1080,11 +1000,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					++lateBindFailCount;
 					
 					// Log every failure since they should be rare
-					DebugLog::Log("LATE-BIND MISS #%llu: No match for target=%.3fms within ±%.3fms (queue=%zu, checked=%zu)",
-						lateBindFailCount,
-						theoreticalStop / 10000.0, 
-						searchTolerance / 10000.0,
-						queueSize, candidatesFound);
+					DebugLog::Log("LATE-BIND MISS #%llu: No match for target=%.3fms within ±%.3fms (searching pending history)",
+						lateBindFailCount, theoreticalStop / 10000.0, searchTolerance / 10000.0);
 				}
 			}
 
@@ -1093,15 +1010,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			HRESULT hr = Deliver(pSample);
 			const auto deliveryEndTime = GetWallClockTime();
 			const uint64_t deliveryTimeUs = (deliveryEndTime - deliveryStartTime) / 10;
-
-			// 5) RECORD delivered timestamp for future late-binding lookups
-			if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
-			    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
-			{
-				REFERENCE_TIME deliveredStart = 0, deliveredStop = 0;
-				pSample->GetTime(&deliveredStart, &deliveredStop);
-				RecordDeliveredTimestamp(deliveredStart, deliveredStop);
-			}
 
 			// Log CLOCK_SMART timing stats periodically
 			static uint64_t smartLogCounter = 0;
@@ -1114,7 +1022,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				REFERENCE_TIME duration = stop - start;
 				DebugLog::Log("CLOCK_SMART%s: duration=%.3fms, start=%.3fms, stop=%.3fms, lateBound=%s",
 					(m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2) ? "2" : "",
-					duration / 10000.0, start / 10000.0, stop / 10000.0,
+					duration / 1000.0, start / 1000.0, stop / 1000.0,
 					usedLateBoundStop ? "YES" : "NO");
 			}
 
@@ -1337,6 +1245,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				m_convertedSampleQueue.push_back(pSample);
 			}
 
+			// CRITICAL: ALWAYS record timestamps in pending history (not just for CLOCK_SMART modes)
+			// This eliminates race conditions and overhead is negligible (just writing a REFERENCE_TIME)
+			// The search only happens for CLOCK_SMART modes, so recording for all modes is harmless
+			REFERENCE_TIME sampleStart = 0, sampleStop = 0;
+			if (SUCCEEDED(pSample->GetTime(&sampleStart, &sampleStop)))
+			{
+				RecordPendingTimestamp(sampleStart);
+			}
+
 			// Signal delivery thread that a converted sample is available
 			// SAFETY: Check handle is still valid before use
 			if (m_hConvertedAvailableEvent && m_isActive.load(std::memory_order_acquire))
@@ -1476,6 +1393,9 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 		m_timestampHistoryIndex = 0;
 	}
 	
+	// Clear pending timestamp history
+	ClearPendingTimestamps();
+	
 	// Enter buffering mode
 	m_isBuffering.store(true, std::memory_order_release);
 	{
@@ -1494,8 +1414,115 @@ size_t CBufferedLiveSourceVideoOutputPin::GetConvertedQueueSize()
 
 REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::NowStreamTime(CBaseFilter* f)
 {
-
 	CRefTime now;
 	if (f) f->StreamTime(now); // baseclasses typically expose this
 	return now;
+}
+
+//
+// PENDING TIMESTAMP HISTORY - Record timestamps as frames flow through conversion
+// This allows late-binding to find "next frame" timestamps even when queue is empty
+//
+
+void CBufferedLiveSourceVideoOutputPin::RecordPendingTimestamp(REFERENCE_TIME timeStart)
+{
+	std::lock_guard<std::mutex> lock(m_pendingTimestampMutex);
+	m_pendingTimestamps[m_pendingTimestampIndex].timeStart = timeStart;
+	m_pendingTimestamps[m_pendingTimestampIndex].sequenceNumber = m_pendingSequenceCounter++;
+	
+	size_t oldIndex = m_pendingTimestampIndex;
+	m_pendingTimestampIndex = (m_pendingTimestampIndex + 1) % PENDING_TIMESTAMP_SIZE;
+	
+	// DIAGNOSTIC: Log every 10 records to verify recording is working
+	static uint64_t recordCount = 0;
+	++recordCount;
+	if (recordCount % 10 == 0)
+	{
+		// Count how many valid entries we have
+		size_t validCount = 0;
+		for (size_t i = 0; i < PENDING_TIMESTAMP_SIZE; i++)
+		{
+			if (m_pendingTimestamps[i].timeStart != 0)
+				++validCount;
+		}
+		
+		DebugLog::Log("PENDING-RECORD #%llu: timestamp=%.3fms, seq=%llu, index=%zu, validEntries=%zu/%zu",
+			recordCount, timeStart / 10000.0, m_pendingSequenceCounter - 1, oldIndex, validCount, PENDING_TIMESTAMP_SIZE);
+	}
+}
+
+REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::FindNextPendingTimestamp(
+	REFERENCE_TIME currentStart, REFERENCE_TIME theoreticalStop, REFERENCE_TIME tolerance) const
+{
+	std::lock_guard<std::mutex> lock(m_pendingTimestampMutex);
+	
+	REFERENCE_TIME bestMatch = REFERENCE_TIME_INVALID;
+	REFERENCE_TIME bestDelta = REFERENCE_TIME_INVALID;
+	size_t candidatesFound = 0;
+	size_t candidatesInRange = 0;
+	size_t candidatesAfterCurrent = 0;
+	REFERENCE_TIME minTimestamp = REFERENCE_TIME_INVALID;
+	REFERENCE_TIME maxTimestamp = REFERENCE_TIME_INVALID;
+	
+	// Search all pending timestamps for best match
+	for (size_t i = 0; i < PENDING_TIMESTAMP_SIZE; i++)
+	{
+		const auto& record = m_pendingTimestamps[i];
+		if (record.timeStart == 0)
+			continue;  // Uninitialized slot
+		
+		++candidatesFound;
+		
+		// Track min/max for diagnostics
+		if (minTimestamp == REFERENCE_TIME_INVALID || record.timeStart < minTimestamp)
+			minTimestamp = record.timeStart;
+		if (maxTimestamp == REFERENCE_TIME_INVALID || record.timeStart > maxTimestamp)
+			maxTimestamp = record.timeStart;
+		
+		// CRITICAL: Must be AFTER current frame (in the future)
+		if (record.timeStart <= currentStart)
+			continue;
+		
+		++candidatesAfterCurrent;
+		
+		// Check if within tolerance of theoretical next
+		const REFERENCE_TIME delta = abs(record.timeStart - theoreticalStop);
+		if (delta <= tolerance)
+		{
+			++candidatesInRange;
+			
+			// Take the smallest timestamp that's greater than current AND closest to theoretical
+			if (bestMatch == REFERENCE_TIME_INVALID || delta < bestDelta)
+			{
+				bestMatch = record.timeStart;
+				bestDelta = delta;
+			}
+		}
+	}
+	
+	// DIAGNOSTIC: Log search details every 10 searches (more frequent for debugging)
+	static uint64_t searchCount = 0;
+	++searchCount;
+	if (searchCount % 10 == 0 || bestMatch == REFERENCE_TIME_INVALID)
+	{
+		DebugLog::Log("PENDING-SEARCH #%llu: current=%.3fms, target=%.3fms, tolerance=±%.3fms",
+			searchCount, currentStart / 10000.0, theoreticalStop / 10000.0, tolerance / 10000.0);
+		DebugLog::Log("  History: total=%zu, afterCurrent=%zu, inRange=%zu, min=%.3fms, max=%.3fms",
+			candidatesFound, candidatesAfterCurrent, candidatesInRange,
+			(minTimestamp != REFERENCE_TIME_INVALID) ? (minTimestamp / 10000.0) : 0.0,
+			(maxTimestamp != REFERENCE_TIME_INVALID) ? (maxTimestamp / 10000.0) : 0.0);
+		DebugLog::Log("  Result: bestMatch=%s (delta=%.3fms)",
+			(bestMatch != REFERENCE_TIME_INVALID) ? "YES" : "NO",
+			(bestDelta != REFERENCE_TIME_INVALID) ? (bestDelta / 10000.0) : 0.0);
+	}
+	
+	return bestMatch;
+}
+
+void CBufferedLiveSourceVideoOutputPin::ClearPendingTimestamps()
+{
+	std::lock_guard<std::mutex> lock(m_pendingTimestampMutex);
+	memset(m_pendingTimestamps, 0, sizeof(m_pendingTimestamps));
+	m_pendingTimestampIndex = 0;
+	// Don't reset sequence counter - it's monotonic across the lifetime
 }

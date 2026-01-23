@@ -154,4 +154,29 @@ private:
 	};
 	
 	ProactiveQueueMetrics GetProactiveMetrics() const;
+
+	//
+	// PENDING TIMESTAMP HISTORY for late-binding
+	// Records timestamps as samples are added to converted queue.
+	// Allows late-binding to find "next frame" timestamps even when queue is empty.
+	// This is the key fix for CLOCK_SMART/SMART2 at low frame rates (23.976Hz).
+	//
+	struct PendingTimestamp {
+		REFERENCE_TIME timeStart = 0;
+		uint64_t sequenceNumber = 0;  // Monotonic to track ordering
+	};
+	static const size_t PENDING_TIMESTAMP_SIZE = 64;  // Keep last 64 pending timestamps
+	PendingTimestamp m_pendingTimestamps[PENDING_TIMESTAMP_SIZE] = {};
+	size_t m_pendingTimestampIndex = 0;
+	uint64_t m_pendingSequenceCounter = 0;
+	mutable std::mutex m_pendingTimestampMutex;
+	
+	// Record a pending timestamp when sample is added to converted queue
+	void RecordPendingTimestamp(REFERENCE_TIME timeStart);
+	
+	// Find the next pending timestamp after currentStart that's close to theoreticalStop within tolerance
+	REFERENCE_TIME FindNextPendingTimestamp(REFERENCE_TIME currentStart, REFERENCE_TIME theoreticalStop, REFERENCE_TIME tolerance) const;
+	
+	// Clear pending timestamp history (called on reset/discontinuity)
+	void ClearPendingTimestamps();
 };
