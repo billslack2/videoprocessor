@@ -918,39 +918,20 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				convertedQueueSize, bufferingTarget);
 		}
 
-		// MINIMUM BUFFER MAINTENANCE: Keep a minimum number of frames buffered during delivery
-		// This prevents MadVR queue starvation and repeated frames
-		const size_t minimumBufferLevel = 2;// GetBufferingTarget();
-
+		// DRAIN LOOP: With auto-reset event, drain entire queue then wait again
+		// This is the correct pattern for event-based signaling (vs semaphore counting)
 		for (;;)
 		{
 			if (!m_isActive.load(std::memory_order_acquire) || m_stopping.load(std::memory_order_acquire))
 				break;
 
-			size_t currentQueueSize = 0;
-
-			// 1) Check queue has samples AND maintain minimum buffer
-			{
-				CAutoLock convLock(&m_convertedQueueLock);
-				currentQueueSize = m_convertedSampleQueue.size();
-				
-				// Keep minimum buffer to prevent MadVR starvation
-				if (currentQueueSize <= minimumBufferLevel)
-					break; // Wait for more frames to build up buffer again
-					
-				if (currentQueueSize == 0)
-					break; // empty queue, wait for conversion
-			}
-
-			// 2) Get the current sample AND peek at next samples for late-binding stop time
+			// Pop one sample under lock
 			IMediaSample* pSample = nullptr;
-			bool usedLateBoundStop = false;
-			REFERENCE_TIME currentStart = 0, currentStop = 0;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
 
 				if (m_convertedSampleQueue.empty())
-					break;
+					break;  // Queue empty - go back to waiting for event
 
 				pSample = m_convertedSampleQueue.front();
 				m_convertedSampleQueue.pop_front();
@@ -959,9 +940,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			if (!pSample)
 				continue;
 
+			// Get timestamps for late-binding
+			bool usedLateBoundStop = false;
+			REFERENCE_TIME currentStart = 0, currentStop = 0;
 			pSample->GetTime(&currentStart, &currentStop);
 
-			// 3) LATE BIND STOP TIME: find best-fit next start time in queue AND history
+			// LATE BIND STOP TIME: find best-fit next start time in queue AND history
 			if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
 			    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
 			{
