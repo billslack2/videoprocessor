@@ -26,44 +26,40 @@ DirectShowTimingClock::~DirectShowTimingClock()
 
 REFERENCE_TIME DirectShowTimingClock::GetPrivateTime()
 {
-	// Get current hardware timestamp
-	const timingclocktime_t now = m_timingClock.TimingClockNow();
+    // 1) Read hardware tick counter
+    const timingclocktime_t now = m_timingClock.TimingClockNow();
 
-	// High-precision conversion with overflow protection
-	REFERENCE_TIME rt;
-	const timingclocktime_t maxSafeTimestamp = INT64_MAX / 10000000LL;
+    // 2) Convert ticks -> 100ns REFERENCE_TIME safely (no overflow, keeps precision)
+    //    rt = (now / tps) * 10,000,000 + (now % tps) * 10,000,000 / tps (rounded)
+    const timingclocktime_t tps = m_ticksPerSecond; // ticks per second (must be > 0)
+    const timingclocktime_t q = now / tps;         // whole seconds
+    const timingclocktime_t r = now - (q * tps);   // remainder ticks (avoid % weirdness for some types)
 
-	if (now > maxSafeTimestamp)
-	{
-		// Overflow protection: less precise but stable
-		// This only triggers after ~10 days of continuous operation at 1MHz clock
-		rt = (now / m_ticksPerSecond) * 10000000LL;
-	}
-	else
-	{
-		// Normal path: High-precision conversion with banker's rounding
-		// Add half divisor before division to round to nearest (not truncate)
-		rt = ((now * 10000000LL) + (m_ticksPerSecond / 2)) / m_ticksPerSecond;
-	}
+    REFERENCE_TIME rt =
+        (REFERENCE_TIME)(q * 10000000LL) +
+        (REFERENCE_TIME)((r * 10000000LL + (tps / 2)) / tps); // round-to-nearest
 
-	// Lock-free monotonic enforcement using compare-and-swap
-	// Ensures timeline never goes backwards even if hardware clock jitters
-	REFERENCE_TIME lastTime = m_lastReturnedTime.load(std::memory_order_acquire);
-	while (rt <= lastTime)
-	{
-		// Hardware went backwards or returned same value - enforce progression
-		// Try to update to lastTime + 1 (0.1µs minimum increment)
-		REFERENCE_TIME newTime = lastTime + 1;
-		if (m_lastReturnedTime.compare_exchange_weak(lastTime, newTime,
-			std::memory_order_release, std::memory_order_acquire))
-		{
-			return newTime;
-		}
-		// CAS failed - another thread updated lastTime, retry with new value
-	}
+    // 3) Monotonic, thread-safe, NON-DECREASING:
+    //    - Never allow time to go backwards
+    //    - Do NOT "invent" time when hardware repeats the same value
+    REFERENCE_TIME prev = m_lastReturnedTime.load(std::memory_order_relaxed);
 
-	// Normal case: hardware time is monotonically increasing
-	// Update last returned time and return
-	m_lastReturnedTime.store(rt, std::memory_order_release);
-	return rt;
+    for (;;)
+    {
+        REFERENCE_TIME out = rt;
+
+        // Clamp only if hardware went backwards (allow equality)
+        if (out < prev)
+            out = prev;
+
+        // Atomically publish out; if another thread won the race, prev gets updated and we retry
+        if (m_lastReturnedTime.compare_exchange_weak(
+            prev, out,
+            std::memory_order_release,
+            std::memory_order_relaxed))
+        {
+            return out;
+        }
+        // else: CAS failed; 'prev' now holds the newer value -> loop to clamp against it
+    }
 }

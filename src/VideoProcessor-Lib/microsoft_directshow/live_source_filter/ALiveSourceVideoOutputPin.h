@@ -14,6 +14,7 @@
 #include <microsoft_directshow/DirectShowDefines.h>
 #include <PPMCorrectionLoader.h>
 #include <AutoPpmCalibrator.h>
+#include <IntegerMath.h>
 
 #include "CLiveSource.h"
 
@@ -268,14 +269,13 @@ protected:
 			return (timestamp / ticksPerSecond) * REFERENCE_TIME_TICKS_PER_SECOND;
 		}
 		
-		// NORMAL PATH: High-precision conversion with banker's rounding
-		// Add half the divisor before division to round to nearest (not truncate)
+		// NORMAL PATH: High-precision conversion with exact U64_MulDiv to prevent duplicate timestamps
 		// This eliminates cumulative precision loss at high refresh rates (120Hz+)
 		//
 		// Example at 120Hz: 8.333ms frame period
 		// Old truncation: loses ~0.03µs per frame → 200µs drift per minute
 		// New rounding: maintains <10µs precision indefinitely
-		return ((timestamp * REFERENCE_TIME_TICKS_PER_SECOND) + (ticksPerSecond / 2)) / ticksPerSecond;
+		return U64_MulDiv(timestamp, REFERENCE_TIME_TICKS_PER_SECOND, ticksPerSecond);
 	}
 
 	static bool IsMonotonicProgression(REFERENCE_TIME current, REFERENCE_TIME previous)
