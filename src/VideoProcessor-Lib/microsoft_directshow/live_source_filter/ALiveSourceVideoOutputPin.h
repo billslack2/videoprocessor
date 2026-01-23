@@ -357,7 +357,7 @@ protected:
 	// Lead time configuration for frame delivery timing
 	// This adds a buffer time to prevent late deliveries to MadVR
 	// Ramped from 0 to target over first 85 frames for smooth startup
-	static const REFERENCE_TIME LEADTIME = 200LL * 10000LL;  // 20ms in 100ns ticks
+	static const REFERENCE_TIME LEADTIME = 120LL * 10000LL;  // 20ms in 100ns ticks
 	REFERENCE_TIME GetRampedLeadTime();
 
 	

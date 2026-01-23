@@ -31,7 +31,7 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 	m_hFrameAvailableEvent = nullptr;
 	m_hShutdownEvent = nullptr;
 	m_hConversionShutdownEvent = nullptr;
-	m_hConvertedSemaphore = nullptr;
+	m_hConvertedAvailableEvent = nullptr;
 	
 	// Initialize auto-purge timing state
 	m_lastAutoPurgeTime = 0;
@@ -63,8 +63,10 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 		throw std::runtime_error("Failed to create conversion shutdown event");
 	}
 
-	m_hConvertedSemaphore = CreateSemaphore(nullptr, 0, 0x7fffffff, nullptr);
-	if (!m_hConvertedSemaphore)
+	// Create auto-reset event for converted sample availability
+	// Auto-reset: automatically resets after delivery thread wakes
+	m_hConvertedAvailableEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	if (!m_hConvertedAvailableEvent)
 	{
 		CloseHandle(m_hConversionShutdownEvent);
 		m_hConversionShutdownEvent = nullptr;
@@ -97,10 +99,10 @@ CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 		SetEvent(m_hShutdownEvent);
 	}
 	
-	// Also signal semaphore to unblock delivery thread if waiting
-	if (m_hConvertedSemaphore)
+	// Signal converted available event to unblock delivery thread if waiting
+	if (m_hConvertedAvailableEvent)
 	{
-		ReleaseSemaphore(m_hConvertedSemaphore, 1, nullptr);
+		SetEvent(m_hConvertedAvailableEvent);
 	}
 	
 	// Wait for conversion thread to exit
@@ -148,10 +150,10 @@ CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 		m_hFrameAvailableEvent = nullptr;
 	}
 
-	if (m_hConvertedSemaphore)
+	if (m_hConvertedAvailableEvent)
 	{
-		CloseHandle(m_hConvertedSemaphore);
-		m_hConvertedSemaphore = nullptr;
+		CloseHandle(m_hConvertedAvailableEvent);
+		m_hConvertedAvailableEvent = nullptr;
 	}
 
 	
@@ -210,11 +212,11 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		DebugLog::Log("Active(): ASYNC architecture - Raw->Convert->Queue->Deliver->MadVR with queue size %zu", m_frameQueueMaxSize);
 		
 		// SAFETY: Ensure all events are created before starting threads
-		if (!m_hConversionShutdownEvent || !m_hFrameAvailableEvent || !m_hConvertedSemaphore)
+		if (!m_hConversionShutdownEvent || !m_hFrameAvailableEvent || !m_hConvertedAvailableEvent)
 		{
 			DbgLog((LOG_ERROR, 1, TEXT("Active(): Critical events not initialized")));
 			DebugLog::Log("Active(): CRITICAL EVENTS NOT INITIALIZED - ConvShutdown=%p, FrameAvailable=%p, ConvertedAvailable=%p",
-				m_hConversionShutdownEvent, m_hFrameAvailableEvent, m_hConvertedSemaphore);
+				m_hConversionShutdownEvent, m_hFrameAvailableEvent, m_hConvertedAvailableEvent);
 			m_isActive.store(false, std::memory_order_release);
 			return E_FAIL;
 		}
@@ -325,9 +327,9 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 		if (m_hShutdownEvent)
 			SetEvent(m_hShutdownEvent);
 		
-		// Signal semaphore to unblock delivery thread if waiting
-		if (m_hConvertedSemaphore)
-			ReleaseSemaphore(m_hConvertedSemaphore, 1, nullptr);
+		// Signal converted available event to unblock delivery thread if waiting
+		if (m_hConvertedAvailableEvent)
+			SetEvent(m_hConvertedAvailableEvent);
 		
 		// Signal frame available event to unblock conversion thread if waiting
 		if (m_hFrameAvailableEvent)
@@ -804,13 +806,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	DebugLog::Log("DELIVERY THREAD: Started - event-driven with adaptive buffer management");
 
 	// SAFETY: Validate handles before entering loop
-	if (!m_hShutdownEvent || !m_hConvertedSemaphore)
+	if (!m_hShutdownEvent || !m_hConvertedAvailableEvent)
 	{
 		DebugLog::Log("DELIVERY THREAD: Invalid event handles, exiting immediately");
 		return 1;
 	}
 
-	HANDLE events[2] = { m_hShutdownEvent, m_hConvertedSemaphore };
+	HANDLE events[2] = { m_hShutdownEvent, m_hConvertedAvailableEvent };
 	DWORD lastLatencyLogTime = 0;
 	uint64_t framesSinceLastLog = 0;
 
@@ -918,7 +920,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 		// MINIMUM BUFFER MAINTENANCE: Keep a minimum number of frames buffered during delivery
 		// This prevents MadVR queue starvation and repeated frames
-		const size_t minimumBufferLevel = GetBufferingTarget();
+		const size_t minimumBufferLevel = 2;// GetBufferingTarget();
 
 		for (;;)
 		{
@@ -985,40 +987,70 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				bool foundInHistory = false;
 
 				// FIRST: Search the converted queue (frames waiting to be delivered)
+				// Queue is ordered, so we just need the FIRST frame (which is the next one)
 				{
 					CAutoLock convLock(&m_convertedQueueLock);
 					queueSize = m_convertedSampleQueue.size();
-					for (IMediaSample* candidate : m_convertedSampleQueue)
+					
+					// The first frame in the queue IS the next frame - just use it if it's close enough
+					if (!m_convertedSampleQueue.empty())
 					{
-						REFERENCE_TIME candStart = 0, candStop = 0;
-						if (FAILED(candidate->GetTime(&candStart, &candStop)))
-							continue;
-
-						candidatesFound++;
-						
-						// Calculate how close this candidate's START time is to our theoretical STOP time
-						const REFERENCE_TIME delta = abs(candStart - theoreticalStop);
-						
-						if (delta <= searchTolerance)
+						IMediaSample* nextSample = m_convertedSampleQueue.front();
+						REFERENCE_TIME nextStart = 0, nextStop = 0;
+						if (SUCCEEDED(nextSample->GetTime(&nextStart, &nextStop)))
 						{
-							candidatesInRange++;
-							if (bestStart == REFERENCE_TIME_INVALID || delta < bestDelta)
+							candidatesFound = 1;
+							const REFERENCE_TIME delta = abs(nextStart - theoreticalStop);
+							
+							// Sanity check: next frame must be AFTER current frame
+							if (nextStart > currentStart && delta <= searchTolerance)
 							{
-								bestStart = candStart;
+								bestStart = nextStart;
 								bestDelta = delta;
+								candidatesInRange = 1;
 							}
 						}
 					}
 				}
 
-				// SECOND: If not found in queue, search delivered history (frames already sent to MadVR)
+				// SECOND: If not found in queue, search delivered history
+				// This handles the case where next frame was already delivered
+				// IMPORTANT: Only accept timestamps GREATER than currentStart (future frames)
 				if (bestStart == REFERENCE_TIME_INVALID)
 				{
 					REFERENCE_TIME historyStart = REFERENCE_TIME_INVALID;
-					if (FindDeliveredTimestampNear(theoreticalStop, searchTolerance, historyStart))
+					
+					// Search for the smallest timestamp that is:
+					// 1. Greater than currentStart (in the future)
+					// 2. Within tolerance of theoreticalStop
+					{
+						std::lock_guard<std::mutex> lock(m_deliveredHistoryMutex);
+						
+						for (size_t i = 0; i < DELIVERED_HISTORY_SIZE; i++)
+						{
+							const auto& record = m_deliveredHistory[i];
+							if (record.timeStart == 0)
+								continue;  // Uninitialized slot
+							
+							// CRITICAL: Only consider timestamps AFTER current frame
+							if (record.timeStart <= currentStart)
+								continue;  // Skip past/current frames
+						
+							const REFERENCE_TIME delta = abs(record.timeStart - theoreticalStop);
+							if (delta <= searchTolerance)
+							{
+								if (historyStart == REFERENCE_TIME_INVALID || record.timeStart < historyStart)
+								{
+									historyStart = record.timeStart;
+									bestDelta = delta;
+								}
+							}
+						}
+					}
+					
+					if (historyStart != REFERENCE_TIME_INVALID)
 					{
 						bestStart = historyStart;
-						bestDelta = abs(historyStart - theoreticalStop);
 						foundInHistory = true;
 					}
 				}
@@ -1027,8 +1059,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				{
 					// Found a good match - use the real next frame's start time as our stop time
 					REFERENCE_TIME newStop = bestStart;
+					
+					// Final safety: stop must be after start
 					if (newStop <= currentStart)
-						newStop = currentStart + 1;
+					{
+						// This shouldn't happen with the above checks, but just in case
+						newStop = currentStart + m_frameDuration;
+					}
 					
 					pSample->SetTime(&currentStart, &newStop);
 					usedLateBoundStop = true;
@@ -1318,12 +1355,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 			// Signal delivery thread that a converted sample is available
 			// SAFETY: Check handle is still valid before use
-			if (m_hConvertedSemaphore && m_isActive.load(std::memory_order_acquire))
+			if (m_hConvertedAvailableEvent && m_isActive.load(std::memory_order_acquire))
 			{
-				if (!ReleaseSemaphore(m_hConvertedSemaphore, 1, nullptr))
-				{
-					DebugLog::Log("CONVERSION WORKER: ReleaseSemaphore FAILED gle=%lu", GetLastError());
-				}
+				SetEvent(m_hConvertedAvailableEvent);
 			}
 			++batchCount;
 
@@ -1378,7 +1412,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 }
 
 
-
 size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget() {
 
 	size_t nominalTarget = (m_frameQueueMaxSize / 8);
@@ -1386,56 +1419,35 @@ size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget() {
 	if (m_timeScale > 0 && m_frameDurationTicks > 0) fps = (double)m_timeScale / (double)m_frameDurationTicks;
 
 	// Calculate frame-rate appropriate target with MINIMUM of 3 frames
-	// Low FPS (< 30fps like 23.976): Need fewer frames but more total time buffered
+	// Low FPS (< 30fps like 23.976): Need MORE frames for stable buffering at higher lead times
 	// High FPS (>= 30fps): Need more frames for smooth playback
-	size_t frames = fps > 30.0 ? nominalTarget + 1 : nominalTarget/2;
-	
-	// CRITICAL: Ensure minimum of 3 frames for MadVR buffering stability
-	// At 23.976fps: 3 frames = ~125ms buffer (good for MadVR startup)
-	// At 59.94fps: nominalTarget+1 = 5 frames = ~83ms buffer (already sufficient)
-	frames = std::max<size_t>(3, frames);
-	//DebugLog::Log("GetBufferingTarget(): fps=%.2f, nominalTarget=%zu, finalTarget=%zu", fps, nominalTarget, frames);
-	
-	return frames;
-}
-
-
-/*size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTargetOLD()
-{
-	// SAFETY: Check if timing parameters are initialized
-	// This prevents crashes when GetBufferingTarget() is called before Initialize()
-	if (m_timeScale == 0 || m_frameDurationTicks == 0)
+	size_t frames;
+	if (fps < 30.0)
 	{
-		// Fallback to safe default when not initialized
-		DbgLog((LOG_TRACE, 1, TEXT("GetBufferingTarget(): Timing not initialized, using safe default of 3 frames")));
-		return 3;
+		// LOW FPS: At 23.976fps, each frame is ~42ms. With 200ms lead time, we need
+		// at least 5 frames buffered (5 * 42ms = 210ms > 200ms lead time)
+		// Use nominalTarget directly (no halving) for low fps
+		frames = std::max<size_t>(5, nominalTarget);
+	}
+	else
+	{
+		frames = nominalTarget + 1;
 	}
 	
-	// Compute fps from the format (preferred), fallback to 60.
-	double fps = 60.0;
-	if (m_timeScale > 0 && m_frameDurationTicks > 0)
-		fps = (double)m_timeScale / (double)m_frameDurationTicks;
-
-	// Target buffering time (ms). Keep live latency low.
-	// 60p -> 50ms => ~3 frames
-	// 24p -> 80ms => ~2 frames (since each is ~41.7ms)
-	double targetMs = 50.0;
-	if (fps < 30.0) targetMs = 85.0;     // 23.976/24p needs fewer frames but more ms per frame
-	if (fps > 90.0) targetMs = 35.0;     // high fps, lower ms target
-
-	// Convert ms to frames: frames = ceil(fps * targetMs / 1000)
-	size_t frames = (size_t)std::ceil((fps * targetMs) / 1000.0);
-
-	// Clamp: never less than 2 frames, never more than 6 (keeps latency sane)
-	frames = std::max<size_t>(2, std::min<size_t>(6, frames));
-
-	// Also respect queue max size (leave headroom; don't require full queue)
-	// If user set a tiny queue, don't demand more than it can hold.
-	frames = std::min<size_t>(frames, (m_frameQueueMaxSize > 0) ? m_frameQueueMaxSize : frames);
-
+	// CRITICAL: Ensure minimum of 3 frames for MadVR buffering stability
+	frames = std::max<size_t>(3, frames);
+	
+	// Log the buffering target periodically
+	static double lastLoggedFps = 0.0;
+	if (abs(fps - lastLoggedFps) > 1.0)
+	{
+		DebugLog::Log("GetBufferingTarget(): fps=%.2f, nominalTarget=%zu, finalTarget=%zu", fps, nominalTarget, frames);
+		lastLoggedFps = fps;
+	}
+	
 	return frames;
 }
-*/
+
 void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 {
 	// COOLDOWN: Prevent rapid-fire recovery triggers
