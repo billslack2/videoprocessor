@@ -925,7 +925,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		// We use the pending timestamp history for late-binding instead
 		for (;;)
 		{
-			if (!m_isActive.load(std::memory_order_acquire) || m_stopping.load(std::memory_order_acquire))
+			if (!m_isActive.load(std::memory_order_acquire) || m_stopping.load(std::memory_order_acquire) || GetConvertedQueueSize() <= 1)
 				break;
 
 			// Pop one sample under lock
@@ -1446,8 +1446,7 @@ void CBufferedLiveSourceVideoOutputPin::RecordPendingTimestamp(REFERENCE_TIME ti
 				++validCount;
 		}
 		
-		DebugLog::Log("PENDING-RECORD #%llu: timestamp=%.3fms, seq=%llu, index=%zu, validEntries=%zu/%zu",
-			recordCount, timeStart / 10000.0, m_pendingSequenceCounter - 1, oldIndex, validCount, PENDING_TIMESTAMP_SIZE);
+		//DebugLog::Log("PENDING-RECORD #%llu: timestamp=%.3fms, seq=%llu, index=%zu, validEntries=%zu/%zu",recordCount, timeStart / 10000.0, m_pendingSequenceCounter - 1, oldIndex, validCount, PENDING_TIMESTAMP_SIZE);
 	}
 }
 
@@ -1505,7 +1504,7 @@ REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::FindNextPendingTimestamp(
 	++searchCount;
 	if (searchCount % 10 == 0 || bestMatch == REFERENCE_TIME_INVALID)
 	{
-		DebugLog::Log("PENDING-SEARCH #%llu: current=%.3fms, target=%.3fms, tolerance=±%.3fms",
+		/*DebugLog::Log("PENDING-SEARCH #%llu: current=%.3fms, target=%.3fms, tolerance=±%.3fms",
 			searchCount, currentStart / 10000.0, theoreticalStop / 10000.0, tolerance / 10000.0);
 		DebugLog::Log("  History: total=%zu, afterCurrent=%zu, inRange=%zu, min=%.3fms, max=%.3fms",
 			candidatesFound, candidatesAfterCurrent, candidatesInRange,
@@ -1514,6 +1513,7 @@ REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::FindNextPendingTimestamp(
 		DebugLog::Log("  Result: bestMatch=%s (delta=%.3fms)",
 			(bestMatch != REFERENCE_TIME_INVALID) ? "YES" : "NO",
 			(bestDelta != REFERENCE_TIME_INVALID) ? (bestDelta / 10000.0) : 0.0);
+			*/
 	}
 	
 	return bestMatch;

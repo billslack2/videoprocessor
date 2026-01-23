@@ -662,13 +662,6 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		}
 		else if (tsStart <= m_previousTimeStop)
 		{
-			// Log when monotonic correction is applied - this should be RARE
-			static uint64_t monotonicCorrectionCount = 0;
-			++monotonicCorrectionCount;
-			
-			DebugLog::Log("RATIONAL_RATIONAL MONOTONIC CORRECTION #%llu: frame=%llu, tsStart=%I64d <= previousTimeStop=%I64d, forcing to %I64d",
-				monotonicCorrectionCount, streamFrameCounter, tsStart, m_previousTimeStop, m_previousTimeStop + 1);
-			
 			tsStart = m_previousTimeStop + 1;
 		}
 
