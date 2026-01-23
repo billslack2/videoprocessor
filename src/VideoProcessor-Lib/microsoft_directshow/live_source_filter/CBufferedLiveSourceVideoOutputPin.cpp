@@ -486,7 +486,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 					convertedSize = m_convertedSampleQueue.size();
 				}
 				
-				DebugLog::Log("OnVideoFrame: Raw queue BACKING UP (raw=%zu/%ze, converted=%ze, buffering=%d, convFrames=%llu)",
+				DebugLog::Log("OnVideoFrame: Raw queue BACKING UP (raw=%zu/%zu, converted=%zu, buffering=%d, convFrames=%llu)",
 					m_videoFrameQueue.size(), m_frameQueueMaxSize, convertedSize,
 					m_isBuffering.load(std::memory_order_acquire) ? 1 : 0,
 					convFrames);
@@ -786,7 +786,7 @@ CBufferedLiveSourceVideoOutputPin::ProactiveQueueMetrics CBufferedLiveSourceVide
 	uint64_t convCount = m_conversionFrameCount.load(std::memory_order_relaxed);
 	if (convCount > 0)
 	{
-		metrics.avgConversionTimeUs = m_totalConversionTimeUs.load(std::memory_order_relaxed) / convCount;
+	 metrics.avgConversionTimeUs = m_totalConversionTimeUs.load(std::memory_order_relaxed) / convCount;
 	}
 	
 	// Simple health check: queues below target and no recent failures
@@ -940,8 +940,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					break; // empty queue, wait for conversion
 			}
 
-			// 2) Get the next sample (NO PEEKING, NO TIME CHECKS)
+			// 2) Get the current sample AND peek at next samples for late-binding stop time
 			IMediaSample* pSample = nullptr;
+			bool usedLateBoundStop = false;
+			REFERENCE_TIME currentStart = 0, currentStop = 0;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
 
@@ -955,13 +957,145 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			if (!pSample)
 				continue;
 
-			// 3) DELIVER IMMEDIATELY - Let MadVR handle timing and buffering
-			// MadVR is designed to buffer internally and will display frames at the right time
-			// Our job is just to feed it continuously
+			pSample->GetTime(&currentStart, &currentStop);
+
+			// 3) LATE BIND STOP TIME: find best-fit next start time in queue AND history
+			if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+			    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
+			{
+				// Calculate the theoretical stop time (next frame's start time)
+				// NOTE: Lead time is NOT applied here because:
+				// - currentStart is the RAW hardware timestamp (no lead time yet)
+				// - Candidates in the queue also have RAW hardware timestamps
+				// - Lead time is only applied later during actual delivery
+				// So we compare raw-to-raw for the search
+				REFERENCE_TIME theoreticalStop = currentStart + m_frameDuration;
+				
+				// Search tolerance: 10% of frame duration should be plenty for hardware timestamps
+				// At 23.976fps (41.7ms frames): 10% = 4.17ms tolerance
+				// At 59.94fps (16.7ms frames): 10% = 1.67ms tolerance
+				static const double SEARCH_TOLERANCE_PERCENT = 0.10; // 10%
+				const REFERENCE_TIME searchTolerance = (REFERENCE_TIME)(m_frameDuration * SEARCH_TOLERANCE_PERCENT);
+				
+				REFERENCE_TIME bestStart = REFERENCE_TIME_INVALID;
+				REFERENCE_TIME bestDelta = REFERENCE_TIME_INVALID;
+				size_t queueSize = 0;
+				size_t candidatesFound = 0;
+				size_t candidatesInRange = 0;
+				bool foundInHistory = false;
+
+				// FIRST: Search the converted queue (frames waiting to be delivered)
+				{
+					CAutoLock convLock(&m_convertedQueueLock);
+					queueSize = m_convertedSampleQueue.size();
+					for (IMediaSample* candidate : m_convertedSampleQueue)
+					{
+						REFERENCE_TIME candStart = 0, candStop = 0;
+						if (FAILED(candidate->GetTime(&candStart, &candStop)))
+							continue;
+
+						candidatesFound++;
+						
+						// Calculate how close this candidate's START time is to our theoretical STOP time
+						const REFERENCE_TIME delta = abs(candStart - theoreticalStop);
+						
+						if (delta <= searchTolerance)
+						{
+							candidatesInRange++;
+							if (bestStart == REFERENCE_TIME_INVALID || delta < bestDelta)
+							{
+								bestStart = candStart;
+								bestDelta = delta;
+							}
+						}
+					}
+				}
+
+				// SECOND: If not found in queue, search delivered history (frames already sent to MadVR)
+				if (bestStart == REFERENCE_TIME_INVALID)
+				{
+					REFERENCE_TIME historyStart = REFERENCE_TIME_INVALID;
+					if (FindDeliveredTimestampNear(theoreticalStop, searchTolerance, historyStart))
+					{
+						bestStart = historyStart;
+						bestDelta = abs(historyStart - theoreticalStop);
+						foundInHistory = true;
+					}
+				}
+
+				if (bestStart != REFERENCE_TIME_INVALID)
+				{
+					// Found a good match - use the real next frame's start time as our stop time
+					REFERENCE_TIME newStop = bestStart;
+					if (newStop <= currentStart)
+						newStop = currentStart + 1;
+					
+					pSample->SetTime(&currentStart, &newStop);
+					usedLateBoundStop = true;
+					
+					// Track success rate for periodic logging
+					static uint64_t lateBindSuccessCount = 0;
+					static uint64_t lateBindTotalCount = 0;
+					static uint64_t lastLateBindLogCount = 0;
+					++lateBindSuccessCount;
+					++lateBindTotalCount;
+					
+					// Log summary every 600 frames (~10 seconds at 60fps, ~25 seconds at 24fps)
+					if (lateBindTotalCount - lastLateBindLogCount >= 600)
+					{
+						double successRate = (lateBindSuccessCount * 100.0) / lateBindTotalCount;
+						DebugLog::Log("LATE-BIND STATS: %llu/%llu (%.1f%%) success, last delta=%.3fms, source=%s, queueSize=%zu",
+							lateBindSuccessCount, lateBindTotalCount, successRate,
+							bestDelta / 10000.0,
+							foundInHistory ? "history" : "queue",
+							queueSize);
+						lastLateBindLogCount = lateBindTotalCount;
+					}
+				}
+				else
+				{
+					// Track failure for periodic logging
+					static uint64_t lateBindFailCount = 0;
+					++lateBindFailCount;
+					
+					// Log every failure since they should be rare
+					DebugLog::Log("LATE-BIND MISS #%llu: No match for target=%.3fms within ±%.3fms (queue=%zu, checked=%zu)",
+						lateBindFailCount,
+						theoreticalStop / 10000.0, 
+						searchTolerance / 10000.0,
+						queueSize, candidatesFound);
+				}
+			}
+
+			// 4) DELIVER - Let MadVR handle timing and buffering
 			const auto deliveryStartTime = GetWallClockTime();
 			HRESULT hr = Deliver(pSample);
 			const auto deliveryEndTime = GetWallClockTime();
 			const uint64_t deliveryTimeUs = (deliveryEndTime - deliveryStartTime) / 10;
+
+			// 5) RECORD delivered timestamp for future late-binding lookups
+			if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+			    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
+			{
+				REFERENCE_TIME deliveredStart = 0, deliveredStop = 0;
+				pSample->GetTime(&deliveredStart, &deliveredStop);
+				RecordDeliveredTimestamp(deliveredStart, deliveredStop);
+			}
+
+			// Log CLOCK_SMART timing stats periodically
+			static uint64_t smartLogCounter = 0;
+			if ((m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+			     m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2) &&
+			    ++smartLogCounter % 600 == 0)
+			{
+				REFERENCE_TIME start = 0, stop = 0;
+				pSample->GetTime(&start, &stop);
+				REFERENCE_TIME duration = stop - start;
+				DebugLog::Log("CLOCK_SMART%s: duration=%.3fms, start=%.3fms, stop=%.3fms, lateBound=%s",
+					(m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2) ? "2" : "",
+					duration / 10000.0, start / 10000.0, stop / 10000.0,
+					usedLateBoundStop ? "YES" : "NO");
+			}
 
 			pSample->Release();
 
@@ -1260,8 +1394,7 @@ size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget() {
 	// At 23.976fps: 3 frames = ~125ms buffer (good for MadVR startup)
 	// At 59.94fps: nominalTarget+1 = 5 frames = ~83ms buffer (already sufficient)
 	frames = std::max<size_t>(3, frames);
-	DebugLog::Log("GetBufferingTarget(): fps=%.2f, nominalTarget=%zu, finalTarget=%zu", 
-		fps, nominalTarget, frames);
+	//DebugLog::Log("GetBufferingTarget(): fps=%.2f, nominalTarget=%zu, finalTarget=%zu", fps, nominalTarget, frames);
 	
 	return frames;
 }
@@ -1340,22 +1473,12 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 		}
 	}
 	
-	// CRITICAL: Clear hardware timestamp queue to prevent stale timestamps causing repeated rejections
+	// Clear timestamp history for CLOCK_SMART modes
 	{
-		std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
-		size_t queueSizeBefore = m_hardwareTimestampQueue.size();
-		m_hardwareTimestampQueue.clear();
-		
-		// Reset validation parameters (will be recalculated on first enqueue)
-		m_expectedFrameDuration = 0;
-		m_minValidDuration = 0;
-		m_maxValidDuration = 0;
-		
-		if (queueSizeBefore > 0)
-		{
-			DebugLog::Log("OnBadTimestampDetected(): Cleared %zu stale timestamps from queue", queueSizeBefore);
-		}
-	} 
+		std::lock_guard<std::mutex> lock(m_timestampHistoryMutex);
+		memset(m_timestampHistory, 0, sizeof(m_timestampHistory));
+		m_timestampHistoryIndex = 0;
+	}
 	
 	// Enter buffering mode
 	m_isBuffering.store(true, std::memory_order_release);

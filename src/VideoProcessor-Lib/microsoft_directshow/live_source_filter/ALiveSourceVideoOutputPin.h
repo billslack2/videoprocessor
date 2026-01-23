@@ -141,6 +141,65 @@ public:
 	double GetMinFrameDurationMs() const { return m_minFrameDurationMs; }
 	double GetMaxFrameDurationMs() const { return m_maxFrameDurationMs; }
 
+	// Get the converted queue size (buffered mode only)
+	virtual size_t GetConvertedQueueSize() const { return 0; }
+
+	// Delivered timestamp history for late-binding lookup
+	// CLOCK_SMART/SMART2 need to look up "next frame" timestamps, but that frame
+	// may have already been delivered. Keep a circular buffer of recent deliveries.
+	struct DeliveredTimestamp {
+		REFERENCE_TIME timeStart = 0;
+		REFERENCE_TIME timeStop = 0;
+		uint64_t deliveryOrder = 0;  // Monotonic counter to track delivery order
+	};
+	static const size_t DELIVERED_HISTORY_SIZE = 100;
+	DeliveredTimestamp m_deliveredHistory[DELIVERED_HISTORY_SIZE] = {};
+	size_t m_deliveredHistoryIndex = 0;
+	uint64_t m_deliveryCounter = 0;  // Monotonic counter
+	mutable std::mutex m_deliveredHistoryMutex;
+	
+	// Record a timestamp after delivery
+	void RecordDeliveredTimestamp(REFERENCE_TIME timeStart, REFERENCE_TIME timeStop)
+	{
+		std::lock_guard<std::mutex> lock(m_deliveredHistoryMutex);
+		m_deliveredHistory[m_deliveredHistoryIndex].timeStart = timeStart;
+		m_deliveredHistory[m_deliveredHistoryIndex].timeStop = timeStop;
+		m_deliveredHistory[m_deliveredHistoryIndex].deliveryOrder = m_deliveryCounter++;
+		m_deliveredHistoryIndex = (m_deliveredHistoryIndex + 1) % DELIVERED_HISTORY_SIZE;
+	}
+	
+	// Find a delivered timestamp near the target (for late-binding)
+	bool FindDeliveredTimestampNear(REFERENCE_TIME target, REFERENCE_TIME tolerance, REFERENCE_TIME& outStart) const
+	{
+		std::lock_guard<std::mutex> lock(m_deliveredHistoryMutex);
+		
+		REFERENCE_TIME bestStart = REFERENCE_TIME_INVALID;
+		REFERENCE_TIME bestDelta = REFERENCE_TIME_INVALID;
+		
+		for (size_t i = 0; i < DELIVERED_HISTORY_SIZE; i++)
+		{
+			const auto& record = m_deliveredHistory[i];
+			if (record.timeStart == 0)
+				continue;  // Uninitialized slot
+			
+			const REFERENCE_TIME delta = abs(record.timeStart - target);
+			if (delta <= tolerance)
+			{
+				if (bestStart == REFERENCE_TIME_INVALID || delta < bestDelta)
+				{
+					bestStart = record.timeStart;
+					bestDelta = delta;
+				}
+			}
+		}
+		
+		if (bestStart != REFERENCE_TIME_INVALID)
+		{
+			outStart = bestStart;
+			return true;
+		}
+		return false;
+	}
 protected:
 
 	// Constants for CLOCK_SMART duration tracking
@@ -277,22 +336,28 @@ protected:
 	uint64_t m_smartSyntheticTimestampCount = 0;
 	uint64_t m_smartRejectedTimestampCount = 0;  // Track rejected bad timestamps
 	
-	// Thread-safe FIFO queue for hardware timestamps (replaces single-value storage)
-	std::mutex m_timestampQueueMutex;
-	std::deque<REFERENCE_TIME> m_hardwareTimestampQueue;
-	static const size_t MAX_TIMESTAMP_QUEUE_SIZE = 8;  // INCREASED: Larger queue ensures availability
-	static const size_t MIN_TIMESTAMP_QUEUE_SIZE = 4;  // ADDED: Minimum before we dequeue
+	// SIMPLE TIMESTAMP LOOKUP: Rolling history of recent hardware timestamps
+	// Instead of complex queue synchronization, just record timestamps as they arrive
+	// and search for the first one that's reasonably larger than current
+	struct TimestampRecord {
+		uint64_t frameCounter = 0;
+		REFERENCE_TIME timestamp = 0;
+	};
+	static const size_t TIMESTAMP_HISTORY_SIZE = 16;  // Keep last 16 frames
+	TimestampRecord m_timestampHistory[TIMESTAMP_HISTORY_SIZE] = {};
+	size_t m_timestampHistoryIndex = 0;
+	std::mutex m_timestampHistoryMutex;
 	
-	// Validation parameters for timestamp sanity checking
-	REFERENCE_TIME m_expectedFrameDuration = 0;  // Calculated once at init
-	REFERENCE_TIME m_minValidDuration = 0;       // 50% of expected
-	REFERENCE_TIME m_maxValidDuration = 0;       // 200% of expected
+	// Helper to record a timestamp
+	void RecordHardwareTimestamp(uint64_t frameCounter, REFERENCE_TIME timestamp);
 	
-	// Helper methods for queue management
-	bool EnqueueHardwareTimestamp(REFERENCE_TIME timestamp);
-	REFERENCE_TIME DequeueHardwareTimestamp();
+	// Helper to find next timestamp greater than current
+	REFERENCE_TIME FindNextHardwareTimestamp(REFERENCE_TIME currentTimestamp) const;
 
-	static const REFERENCE_TIME LEADTIME = 200LL * 10000LL;  // 100ns ticks per second
+	// Lead time configuration for frame delivery timing
+	// This adds a buffer time to prevent late deliveries to MadVR
+	// Ramped from 0 to target over first 85 frames for smooth startup
+	static const REFERENCE_TIME LEADTIME = 200LL * 10000LL;  // 20ms in 100ns ticks
 	REFERENCE_TIME GetRampedLeadTime();
 
 	

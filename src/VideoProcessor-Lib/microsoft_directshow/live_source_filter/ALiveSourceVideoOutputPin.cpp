@@ -382,23 +382,6 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_startTimeOffset = 0;     // CRITICAL: Must reset to 0 to allow recalculation on first frame
 	m_droppedFrameCount = 0;
 	
-	// HDMI RESYNC FIX: Clear hardware timestamp queue to prevent stale timestamps
-	{
-		std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
-		size_t queueSizeBefore = m_hardwareTimestampQueue.size();
-		m_hardwareTimestampQueue.clear();
-		
-		if (queueSizeBefore > 0)
-		{
-			DebugLog::Log("Reset(): Cleared %zu stale HDMI timestamps from queue", queueSizeBefore);
-		}
-		
-		// Reset validation parameters (will be recalculated on first enqueue)
-		m_expectedFrameDuration = 0;
-		m_minValidDuration = 0;
-		m_maxValidDuration = 0;
-	}
-	
 	// Force discontinuity and new segment for clean restart
 	m_forceDiscontinuity = true;
 	m_deliverNewSegment = true;
@@ -422,6 +405,13 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_smartHardwareTimestampCount = 0;
 	m_smartSyntheticTimestampCount = 0;
 	m_smartRejectedTimestampCount = 0;
+	
+	// Clear timestamp history for CLOCK_SMART modes
+	{
+		std::lock_guard<std::mutex> lock(m_timestampHistoryMutex);
+		memset(m_timestampHistory, 0, sizeof(m_timestampHistory));
+		m_timestampHistoryIndex = 0;
+	}
 	
 	// AUTO-CALIBRATION: Reset calibrator state on stream change
 	// This ensures clean measurement after format changes or HDMI reconnections
@@ -842,57 +832,12 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
 	{
-		// Convert current frame's hardware timestamp to reference time
-		REFERENCE_TIME currentFrameTime = ConvertTimingClockToReferenceTime(
-			videoFrame.GetTimingTimestamp(),
-			m_timingClock->TimingClockTicksPerSecond()) - m_startTimeOffset;
-
-		// Enqueue current frame's timestamp for future use as next frame's stop time
-		EnqueueHardwareTimestamp(currentFrameTime);
+		// Placeholder stop time; actual stop will be late-bound in buffered delivery thread
+		timeStop = timeStart + m_frameDuration;
 		
-		// Dequeue next frame's hardware timestamp for use as current frame's stop time
-		REFERENCE_TIME nextFrameTime = DequeueHardwareTimestamp();
-		
-		if (nextFrameTime != REFERENCE_TIME_INVALID)
-		{
-			// Use dequeued hardware timestamp from next frame
-			timeStop = nextFrameTime;
-			
-			// MONOTONIC ENFORCEMENT: Hardware timestamp must be greater than start time
-			if (timeStop <= timeStart)
-			{
-				// Bad timestamp - use theoretical duration as fallback
-				timeStop = timeStart + m_frameDuration;
-				DebugLog::Log("CLOCK_SMART: Bad dequeued timestamp (%.3fms <= %.3fms), using theoretical duration",
-					timeStop / 10000.0, timeStart / 10000.0);
-			}
-		}
-		else
-		{
-			// Queue not ready yet (first few frames) - use theoretical duration
-			timeStop = timeStart + m_frameDuration;
-		}
-		
-		// FINAL MONOTONIC CHECK: Never collide with or go backwards from previous frame
 		if (timeStop <= m_previousTimeStop)
 		{
 			timeStop = m_previousTimeStop + 1;
-			DebugLog::Log("CLOCK_SMART: Monotonic enforcement - adjusted to %.3fms (prev=%.3fms)",
-				timeStop / 10000.0, m_previousTimeStop / 10000.0);
-		}
-		
-		// Log timing stats every 10 seconds (600 frames at 60fps)
-		if (m_frameCounter % 600 == 0)
-		{
-			size_t queueSize = 0;
-			{
-				std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
-				queueSize = m_hardwareTimestampQueue.size();
-			}
-			
-			const REFERENCE_TIME duration = timeStop - timeStart;
-			DebugLog::Log("CLOCK_SMART: QSize=%zu, duration=%.3fms, timeStart=%.3fms, timeStop=%.3fms",
-				queueSize, duration / 10000.0, timeStart / 10000.0, timeStop / 10000.0);
 		}
 
 		assert(timeStop > timeStart);
@@ -901,13 +846,10 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
 	{
-		// Convert current frame's hardware timestamp to reference time
+		// Track measured durations for stats
 		REFERENCE_TIME currentFrameTime = ConvertTimingClockToReferenceTime(
 			videoFrame.GetTimingTimestamp(),
 			m_timingClock->TimingClockTicksPerSecond()) - m_startTimeOffset;
-
-		// Update duration history with actual measured duration between consecutive hardware frames
-		// (used for fallback when queue not ready)
 		if (m_lastHardwareTimestamp > 0)
 		{
 			REFERENCE_TIME measuredDuration = currentFrameTime - m_lastHardwareTimestamp;
@@ -915,55 +857,13 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		}
 		m_lastHardwareTimestamp = currentFrameTime;
 
-		// Enqueue current frame's timestamp for future use as next frame's stop time
-		EnqueueHardwareTimestamp(currentFrameTime);
+		// Placeholder stop time using averaged duration
+		const REFERENCE_TIME avgDuration = CalculateSmartFrameDuration();
+		timeStop = timeStart + avgDuration;
 		
-		// Dequeue next frame's hardware timestamp for use as current frame's stop time
-		REFERENCE_TIME nextFrameTime = DequeueHardwareTimestamp();
-		
-		if (nextFrameTime != REFERENCE_TIME_INVALID)
-		{
-			// PREFERRED: Use dequeued hardware timestamp from next frame
-			timeStop = nextFrameTime;
-			
-			// MONOTONIC ENFORCEMENT: Hardware timestamp must be greater than start time
-			if (timeStop <= timeStart)
-			{
-				// Bad timestamp - SMART2 fallback: use averaged hardware duration
-				const REFERENCE_TIME avgDuration = CalculateSmartFrameDuration();
-				timeStop = timeStart + avgDuration;
-				DebugLog::Log("CLOCK_SMART2: Bad dequeued timestamp, using avg duration %.3fms",
-					avgDuration / 10000.0);
-			}
-		}
-		else
-		{
-			// Queue not ready yet - SMART2 fallback: use averaged hardware duration
-			const REFERENCE_TIME avgDuration = CalculateSmartFrameDuration();
-			timeStop = timeStart + avgDuration;
-		}
-		
-		// FINAL MONOTONIC CHECK: Never collide with or go backwards from previous frame
 		if (timeStop <= m_previousTimeStop)
 		{
 			timeStop = m_previousTimeStop + 1;
-			DebugLog::Log("CLOCK_SMART2: Monotonic enforcement - adjusted to %.3fms (prev=%.3fms)",
-				timeStop / 10000.0, m_previousTimeStop / 10000.0);
-		}
-		
-		// Log timing stats every 10 seconds (600 frames at 60fps)
-		if (m_frameCounter % 600 == 0)
-		{
-			size_t queueSize = 0;
-			{
-				std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
-				queueSize = m_hardwareTimestampQueue.size();
-			}
-			
-			const REFERENCE_TIME duration = timeStop - timeStart;
-			const REFERENCE_TIME avgDuration = CalculateSmartFrameDuration();
-			DebugLog::Log("CLOCK_SMART2: QSize=%zu, duration=%.3fms, avgDuration=%.3fms, samples=%zu",
-				queueSize, duration / 10000.0, avgDuration / 10000.0, m_durationHistoryCount);
 		}
 
 		assert(timeStop > timeStart);
@@ -1307,129 +1207,6 @@ void ALiveSourceVideoOutputPin::TrackFrameDuration(REFERENCE_TIME timeStart, REF
 	}
 }
 
-bool ALiveSourceVideoOutputPin::EnqueueHardwareTimestamp(REFERENCE_TIME timestamp)
-{
-	std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
-	
-	// Initialize validation parameters on first call
-	if (m_expectedFrameDuration == 0)
-	{
-		m_expectedFrameDuration = m_frameDuration;
-		m_minValidDuration = m_expectedFrameDuration / 2;   // 50% of expected (e.g., 8.3ms for 16.7ms frame)
-		m_maxValidDuration = m_expectedFrameDuration * 2;   // 200% of expected (e.g., 33.4ms for 16.7ms frame)
-		
-		DebugLog::Log("CLOCK_SMART: Queue initialized - expected=%.3fms, range=[%.3fms, %.3fms]",
-			m_expectedFrameDuration / 10000.0,
-			m_minValidDuration / 10000.0,
-			m_maxValidDuration / 10000.0);
-		
-		DbgLog((LOG_TRACE, 1, TEXT("EnqueueHardwareTimestamp: Initialized validation - expected=%.3fms, range=[%.3fms, %.3fms]"),
-			m_expectedFrameDuration / 10000.0,
-			m_minValidDuration / 10000.0,
-			m_maxValidDuration / 10000.0));
-	}
-	
-	// BOOTSTRAP MODE: Skip validation when queue is nearly empty (just rebuilt after recovery)
-	// This prevents the feedback loop where recovery clears the queue, then new timestamps
-	// are rejected because there's no valid reference point
-	const bool isBootstrapping = m_hardwareTimestampQueue.size() < MIN_TIMESTAMP_QUEUE_SIZE;
-	
-	// Validate timestamp delta if we have history AND we're not bootstrapping
-	if (!m_hardwareTimestampQueue.empty() && !isBootstrapping)
-	{
-		REFERENCE_TIME lastTimestamp = m_hardwareTimestampQueue.back();
-		REFERENCE_TIME duration = timestamp - lastTimestamp;
-		
-		// Reject obviously bad timestamps (non-monotonic or out of reasonable range)
-		if (duration <= 0)
-		{
-			DebugLog::Log("CLOCK_SMART: Rejecting non-monotonic timestamp delta=%.3fms",
-				duration / 10000.0);
-			++m_smartRejectedTimestampCount;
-			
-			// Notify subclass of bad timestamp for recovery
-			OnBadTimestampDetected();
-			
-			return false;
-		}
-		
-		if (duration < m_minValidDuration || duration > m_maxValidDuration)
-		{
-			DebugLog::Log("CLOCK_SMART: Rejecting bad timestamp delta=%.3fms (expected %.3fms, range [%.3fms, %.3fms])",
-				duration / 10000.0,
-				m_expectedFrameDuration / 10000.0,
-				m_minValidDuration / 10000.0,
-				m_maxValidDuration / 10000.0);
-			++m_smartRejectedTimestampCount;
-			
-			// Notify subclass of bad timestamp for recovery
-			OnBadTimestampDetected();
-			
-			return false;
-		}
-	}
-	
-	// Add to queue
-	m_hardwareTimestampQueue.push_back(timestamp);
-	
-	// DIAGNOSTIC: Log queue state changes (limited to avoid spam)
-	const size_t newQueueSize = m_hardwareTimestampQueue.size();
-	/*
-	if (newQueueSize <= 6 || (newQueueSize % 10 == 0))  // Log when small or at intervals
-	{
-		DebugLog::Log("CLOCK_SMART: Enqueued timestamp %.3fms, queue size now %zu",
-			timestamp / 10000.0, newQueueSize);
-	}
-	*/
-	// Limit queue size (drop oldest if too large) - keeps latency low
-	while (m_hardwareTimestampQueue.size() > MAX_TIMESTAMP_QUEUE_SIZE)
-	{
-		REFERENCE_TIME droppedTimestamp = m_hardwareTimestampQueue.front();
-		m_hardwareTimestampQueue.pop_front();
-		
-		DebugLog::Log("CLOCK_SMART: Queue full (%zu), dropped oldest timestamp %.3fms", 
-			MAX_TIMESTAMP_QUEUE_SIZE, droppedTimestamp / 10000.0);
-		
-		DbgLog((LOG_TRACE, 1, TEXT("EnqueueHardwareTimestamp: Queue full, dropped oldest timestamp")));
-	}
-	
-	return true;
-}
-
-REFERENCE_TIME ALiveSourceVideoOutputPin::DequeueHardwareTimestamp()
-{
-	std::lock_guard<std::mutex> lock(m_timestampQueueMutex);
-	
-	const size_t currentQueueSize = m_hardwareTimestampQueue.size();
-	
-	// CRITICAL FIX: Only dequeue if we have MORE than minimum required
-	// This ensures the queue stays filled and timestamps are always available
-	if (currentQueueSize <= MIN_TIMESTAMP_QUEUE_SIZE)
-	{
-		// Queue not sufficiently filled - skip dequeue
-		DebugLog::Log("CLOCK_SMART: Queue not ready for dequeue - size %zu <= min %zu (waiting)",
-			currentQueueSize, MIN_TIMESTAMP_QUEUE_SIZE);
-		return REFERENCE_TIME_INVALID;
-	}
-	
-	// Queue is adequately filled - safe to dequeue oldest timestamp
-	REFERENCE_TIME timestamp = m_hardwareTimestampQueue.front();
-	m_hardwareTimestampQueue.pop_front();
-	
-	const size_t newQueueSize = m_hardwareTimestampQueue.size();
-	
-	// DIAGNOSTIC: Log dequeue activity (limited to avoid spam)
-	/*if ((m_smartHardwareTimestampCount % 100) == 0)  // Every 100 hardware frames
-	{
-		DebugLog::Log("CLOCK_SMART: Dequeued timestamp %.3fms, queue size now %zu",
-			timestamp / 10000.0, newQueueSize);
-	}
-	*/
-	
-	return timestamp;
-}
-
-
 // How many frames to ramp over (hard-coded as requested)
 static constexpr int kLeadRampFrames = 85;
 
@@ -1455,6 +1232,810 @@ REFERENCE_TIME ALiveSourceVideoOutputPin::GetRampedLeadTime()
 
 	return leadTime;
 }
+
+
+void ALiveSourceVideoOutputPin::RecordHardwareTimestamp(uint64_t frameCounter, REFERENCE_TIME timestamp)
+{
+	std::lock_guard<std::mutex> lock(m_timestampHistoryMutex);
+	
+	// Store in circular buffer
+	m_timestampHistory[m_timestampHistoryIndex].frameCounter = frameCounter;
+	m_timestampHistory[m_timestampHistoryIndex].timestamp = timestamp;
+	
+	// Advance index (wrap around)
+	m_timestampHistoryIndex = (m_timestampHistoryIndex + 1) % TIMESTAMP_HISTORY_SIZE;
+}
+
+REFERENCE_TIME ALiveSourceVideoOutputPin::FindNextHardwareTimestamp(REFERENCE_TIME currentTimestamp) const
+{
+	std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(m_timestampHistoryMutex));
+	
+	// Search for first timestamp that's reasonably larger than current
+	// "Reasonably larger" = between 0.5x and 2.0x expected frame duration
+	const REFERENCE_TIME minDelta = m_frameDuration / 2;   // 50% of expected
+	const REFERENCE_TIME maxDelta = m_frameDuration * 2;   // 200% of expected
+	
+	REFERENCE_TIME bestMatch = REFERENCE_TIME_INVALID;
+	REFERENCE_TIME bestDelta = REFERENCE_TIME_INVALID;
+	
+	// Search entire history for best match
+	for (size_t i = 0; i < TIMESTAMP_HISTORY_SIZE; i++)
+	{
+		const REFERENCE_TIME recorded = m_timestampHistory[i].timestamp;
+		
+		// Skip invalid/uninitialized entries
+		if (recorded == 0)
+			continue;
+		
+		// Calculate delta
+		const REFERENCE_TIME delta = recorded - currentTimestamp;
+		
+		// Must be positive (in the future)
+		if (delta <= 0)
+			continue;
+		
+		// Check if in reasonable range
+		if (delta >= minDelta && delta <= maxDelta)
+		{
+			// Found a valid candidate - keep closest one
+			if (bestMatch == REFERENCE_TIME_INVALID || delta < bestDelta)
+			{
+				bestMatch = recorded;
+				bestDelta = delta;
+			}
+		}
+	}
+	
+	return bestMatch;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
