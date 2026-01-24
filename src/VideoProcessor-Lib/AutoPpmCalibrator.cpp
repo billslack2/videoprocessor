@@ -52,6 +52,18 @@ void AutoPpmCalibrator::OnFrame(uint64_t frameCounter, uint64_t hwTimestamp)
     if (!m_isInitialized)
         return;
 
+    // ROBUST FIX: Hardware timestamp-based reset every 4 hours
+    static const uint64_t RESET_INTERVAL_HW_TICKS = m_hwTicksPerSec * 4ULL * 3600ULL; // 4 hours in HW ticks
+    
+    // Reset if we've been running for more than 4 hours
+    if (m_measurementWindowStartTimestamp > 0 && 
+        (hwTimestamp - m_measurementWindowStartTimestamp) >= RESET_INTERVAL_HW_TICKS) {
+        DEBUGLOG("AutoPpmCalibrator: 4-hour hardware timestamp reset (ran for %llu HW ticks)", 
+                 hwTimestamp - m_measurementWindowStartTimestamp);
+        ResetMeasurementWindow(frameCounter, hwTimestamp);
+        return;
+    }
+
     // Initialize measurement window on first frame
     if (m_measurementWindowStartFrame == 0)
     {
