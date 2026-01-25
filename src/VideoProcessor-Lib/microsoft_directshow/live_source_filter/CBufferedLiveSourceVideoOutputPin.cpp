@@ -904,6 +904,30 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			// DYNAMIC BUFFERING: Use GetBufferingTarget() for fps-aware buffering
 			const size_t bufferingTarget = GetBufferingTarget();
 
+			const size_t minFrames = GetBufferingTarget();              // your existing low-water mark
+			const size_t maxFrames = std::max(minFrames + 2,   (size_t)((minFrames + frameIntervalUs - 1) / frameIntervalUs));
+
+			size_t q = 0;
+			{
+				CAutoLock lock(&m_convertedQueueLock);
+				q = m_convertedSampleQueue.size();
+
+				if (q > maxFrames)
+				{
+					const size_t toDrop = q - maxFrames;
+					for (size_t i = 0; i < toDrop; ++i)
+					{
+						IMediaSample* s = m_convertedSampleQueue.front();
+						m_convertedSampleQueue.pop_front();
+						if (s) s->Release();
+					}
+					++bufferUnderrunCount; // or better: add a new bufferOverrunDropCount
+					DebugLog::Log("DELIVERY THREAD: MAX BUFFER hit: dropped %zu old frames (q=%zu max=%zu)",
+						toDrop, q, maxFrames);
+				}
+			}
+
+
 			if (convertedQueueSize < bufferingTarget)
 			{
 				continue; // Keep waiting for more samples

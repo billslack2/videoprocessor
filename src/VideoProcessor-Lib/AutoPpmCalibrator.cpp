@@ -52,10 +52,128 @@ void AutoPpmCalibrator::OnFrame(uint64_t frameCounter, uint64_t hwTimestamp)
     if (!m_isInitialized)
         return;
 
-    // ROBUST FIX: Hardware timestamp-based reset every 4 hours
-    static const uint64_t RESET_INTERVAL_HW_TICKS = m_hwTicksPerSec * 4ULL * 3600ULL; // 4 hours in HW ticks
+    // **ROBUSTNESS FIX 1: FRAME COUNTER DISCONTINUITY DETECTION**
+    // Detect dropped frames, renderer resets, or timeline corruption
+    // NOTE: Using member variables instead of static to allow proper Reset()
     
-    // Reset if we've been running for more than 4 hours
+    if (!m_firstFrame) // Not first frame
+    {
+        // Expected: frameCounter should be lastFrameCounter + 1 (or close for minor drops)
+        const uint64_t frameDelta = (frameCounter > m_lastFrameCounter) ? 
+            (frameCounter - m_lastFrameCounter) : 0;
+        
+        // Detect frame counter discontinuities (drops, resets, jumps)
+        if (frameDelta != 1)
+        {
+            if (frameDelta == 0)
+            {
+                DEBUGLOG("AutoPpmCalibrator: DUPLICATE frame counter %llu - possible timing corruption, resetting measurement", frameCounter);
+            }
+            else if (frameDelta > 100)  // Large jump indicates reset/restart
+            {
+                DEBUGLOG("AutoPpmCalibrator: LARGE frame counter jump %llu->%llu (delta=%llu) - renderer restart detected, resetting measurement", 
+                    m_lastFrameCounter, frameCounter, frameDelta);
+            }
+            else if (frameDelta > 5)    // Moderate jump indicates frame drops
+            {
+                DEBUGLOG("AutoPpmCalibrator: Frame drops detected %llu->%llu (dropped=%llu frames) - resetting measurement window", 
+                    m_lastFrameCounter, frameCounter, frameDelta - 1);
+            }
+            
+            // Reset measurement window to avoid corrupted PPM calculations
+            ResetMeasurementWindow(frameCounter, hwTimestamp);
+            m_lastFrameCounter = frameCounter;
+            m_lastHwTimestamp = hwTimestamp;
+            return;
+        }
+    }
+    else
+    {
+        m_firstFrame = false;
+    }
+    m_lastFrameCounter = frameCounter;
+    
+    // **ROBUSTNESS FIX 2: HARDWARE TIMESTAMP SANITY CHECKS**
+    // Detect timestamp corruption from HDMI issues, driver problems, etc.
+    
+    if (!m_firstTimestamp) // Not first timestamp
+    {
+        // Timestamps should always advance
+        if (hwTimestamp <= m_lastHwTimestamp)
+        {
+            DEBUGLOG("AutoPpmCalibrator: Hardware timestamp went BACKWARDS or stalled %llu->%llu - HDMI/driver issue, resetting measurement", 
+                m_lastHwTimestamp, hwTimestamp);
+            ResetMeasurementWindow(frameCounter, hwTimestamp);
+            m_lastHwTimestamp = hwTimestamp;
+            return;
+        }
+        
+        // Check for unreasonable timestamp jumps (>10x expected frame period)
+        const uint64_t expectedFramePeriodTicks = m_hwTicksPerSec / 30;  // Assume at least 30fps minimum
+        const uint64_t timestampDelta = hwTimestamp - m_lastHwTimestamp;
+        const uint64_t maxReasonableJump = expectedFramePeriodTicks * 10;  // 10x frame period
+        
+        if (timestampDelta > maxReasonableJump)
+        {
+            DEBUGLOG("AutoPpmCalibrator: Hardware timestamp JUMPED unreasonably %llu->%llu (delta=%llu, max_reasonable=%llu) - timing corruption, resetting", 
+                m_lastHwTimestamp, hwTimestamp, timestampDelta, maxReasonableJump);
+            ResetMeasurementWindow(frameCounter, hwTimestamp);
+            m_lastHwTimestamp = hwTimestamp;
+            return;
+        }
+    }
+    else
+    {
+        m_firstTimestamp = false;
+    }
+    m_lastHwTimestamp = hwTimestamp;
+    
+    // **ROBUSTNESS FIX 3: MEASUREMENT WINDOW CORRUPTION DETECTION**
+    if (m_measurementWindowStartFrame > 0)
+    {
+        // Sanity check: frame counter should be >= start frame
+        if (frameCounter < m_measurementWindowStartFrame)
+        {
+            DEBUGLOG("AutoPpmCalibrator: Current frame %llu < measurement start %llu - timeline corruption detected, resetting", 
+                frameCounter, m_measurementWindowStartFrame);
+            ResetMeasurementWindow(frameCounter, hwTimestamp);
+            return;
+        }
+        
+        // Sanity check: hardware timestamp should be >= start timestamp  
+        if (hwTimestamp < m_measurementWindowStartTimestamp)
+        {
+            DEBUGLOG("AutoPpmCalibrator: Current timestamp %llu < measurement start %llu - timestamp corruption detected, resetting", 
+                hwTimestamp, m_measurementWindowStartTimestamp);
+            ResetMeasurementWindow(frameCounter, hwTimestamp);
+            return;
+        }
+        
+        // Detect measurement window that has grown too large (indicates stale/stuck state)
+        const uint64_t windowFrames = frameCounter - m_measurementWindowStartFrame;
+        const uint64_t maxWindowFrames = MEASUREMENT_INTERVAL_FRAMES * 3;  // 3x normal window size
+        
+        if (windowFrames > maxWindowFrames)
+        {
+            DEBUGLOG("AutoPpmCalibrator: Measurement window too large %llu frames (max=%llu) - stuck/stale state, forcing analysis and reset", 
+                windowFrames, maxWindowFrames);
+            
+            m_measurementWindowEndFrame = frameCounter;
+            m_measurementWindowEndTimestamp = hwTimestamp;
+            
+            if (windowFrames >= MIN_MEASUREMENT_FRAMES)
+            {
+                AnalyzeMeasurementWindow();
+            }
+            
+            ResetMeasurementWindow(frameCounter, hwTimestamp);
+            return;
+        }
+    }
+
+    // 4-hour reset to prevent overflow issues
+    const uint64_t RESET_INTERVAL_HW_TICKS = m_hwTicksPerSec * 4ULL * 3600ULL; // 4 hours in HW ticks
+    
     if (m_measurementWindowStartTimestamp > 0 && 
         (hwTimestamp - m_measurementWindowStartTimestamp) >= RESET_INTERVAL_HW_TICKS) {
         DEBUGLOG("AutoPpmCalibrator: 4-hour hardware timestamp reset (ran for %llu HW ticks)", 
@@ -98,12 +216,29 @@ void AutoPpmCalibrator::AnalyzeMeasurementWindow()
         return;
     }
 
+    // **ROBUSTNESS: Validate measurement window integrity**
+    const uint64_t actualTicks = m_measurementWindowEndTimestamp - m_measurementWindowStartTimestamp;
+    
+    // Calculate expected measurement duration
+    const double expectedSeconds = (double)intervals / ((double)m_timeScale / (double)m_frameDurationTicks);
+    const uint64_t expectedTicks = (uint64_t)(expectedSeconds * m_hwTicksPerSec);
+    
+    // Check if measurement is reasonable (within 50% of expected)
+    const uint64_t minExpected = expectedTicks / 2;
+    const uint64_t maxExpected = expectedTicks * 2;
+    
+    if (actualTicks < minExpected || actualTicks > maxExpected)
+    {
+        DEBUGLOG("AutoPpmCalibrator: INVALID measurement window - actual=%llu ticks, expected=%llu±50%% - discarding corrupted data", 
+            actualTicks, expectedTicks);
+        return;
+    }
+
     // DIAGNOSTIC: Check current state at entry
     DEBUGLOG("AutoPpmCalibrator: AnalyzeMeasurementWindow ENTRY - m_trimTotalPpm=%d, m_hasAppliedFirstCorrection=%d",
         m_trimTotalPpm, m_hasAppliedFirstCorrection ? 1 : 0);
 
     // Calculate actual hardware ticks elapsed
-    const uint64_t actualTicks = m_measurementWindowEndTimestamp - m_measurementWindowStartTimestamp;
     const double measuredTicksPerFrame = (double)actualTicks / intervals;
 
     // Calculate theoretical ticks per frame from configured rational rate
@@ -385,6 +520,8 @@ void AutoPpmCalibrator::Reset()
     m_frameDurationTicks = 0;
     m_timeScale = 0;
     m_hwTicksPerSec = 0;
+    
+    DEBUGLOG("AutoPpmCalibrator: Complete state reset - ready for new timing parameters");
 }
 
 AutoPpmCalibrator::CalibrationStats AutoPpmCalibrator::GetStats() const

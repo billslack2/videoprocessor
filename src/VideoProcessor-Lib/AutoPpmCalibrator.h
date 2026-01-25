@@ -111,6 +111,15 @@ private:
     uint64_t m_timeScale = 0;
     uint64_t m_hwTicksPerSec = 0;
 
+    // **ROBUSTNESS STATE** - Replaced static variables to allow proper Reset()
+    // Frame counter tracking for discontinuity detection
+    uint64_t m_lastFrameCounter = 0;
+    bool m_firstFrame = true;
+    
+    // Hardware timestamp tracking for corruption detection
+    uint64_t m_lastHwTimestamp = 0;
+    bool m_firstTimestamp = true;
+
     // Helper methods
     void AnalyzeMeasurementWindow();
     int64_t CalculateRawDriftPpm() const;

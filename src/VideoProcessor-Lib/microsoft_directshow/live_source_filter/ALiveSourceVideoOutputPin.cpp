@@ -1102,55 +1102,45 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 			m_useAutoCalibration = true;
 			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // Start with no correction
 			
-			// Initialize auto-calibrator
-			m_autoPpmCalibrator.Initialize(
-				(uint64_t)m_frameDurationTicks,
-				(uint64_t)m_timeScale,
-				m_timingClock->TimingClockTicksPerSecond()
-			);
+			// **CRITICAL FIX: Reset and re-initialize auto-calibrator with new timing parameters**
+			// This prevents wild PPM swings when refresh rate changes (e.g., 60Hz -> 23.976Hz)
+			m_autoPpmCalibrator.Reset();
 			
-			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - AUTO mode enabled, starting auto-calibration"), refreshRate));
+			// Re-initialize with current timing parameters for new refresh rate
+			if (m_timeScale > 0 && m_frameDurationTicks > 0 && m_timingClock)
+			{
+				m_autoPpmCalibrator.Initialize(
+					(uint64_t)m_frameDurationTicks,
+					(uint64_t)m_timeScale,
+					m_timingClock->TimingClockTicksPerSecond()
+				);
+			}
+			
+			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - AUTO mode enabled, auto-calibrator RESET and re-initialized for new refresh rate"), refreshRate));
 		}
 		else
 		{
 			// Manual PPM correction from config file
 			m_useAutoCalibration = false;
 			
-			// Calculate the trim numerator based on PPM correction
-			// SIGN CONVENTION:
-			//   Positive PPM in config = hardware runs FASTER than expected
-			//   -> Timeline must run FASTER to match = LARGER trim numerator
-			//   
-			//   Negative PPM in config = hardware runs SLOWER than expected
-			//   -> Timeline must run SLOWER to match = SMALLER trim numerator
-			//
-			// Formula: trimNum = RATIONAL_TRIM_DENOMINATOR + ppmCorrection
-			//   Example: +6 PPM -> 1000006/1000000 = 1.000006x speed (faster)
-			//   Example: -6 PPM -> 999994/1000000 = 0.999994x speed (slower)
+			// **FIX: Reset auto-calibrator when switching to manual mode**
+			// This cleans up any stale auto-calibration state
+			m_autoPpmCalibrator.Reset();
 			
+			// Calculate the trim numerator based on PPM correction
 			if (ppmCorrection == 0)
 			{
 				m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // No correction
-				DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction (0 PPM)"), refreshRate));
+				DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction (0 PPM), auto-calibrator reset"), refreshRate));
 			}
 			else
 			{
-				// CORRECT SIGN: Add ppmCorrection to make faster, subtract to make slower
 				m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR + ppmCorrection;
 				
-				DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - applying %d PPM correction"), refreshRate, ppmCorrection));
+				DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - applying %d PPM correction, auto-calibrator reset"), refreshRate, ppmCorrection));
 				DbgLog((LOG_TRACE, 1, TEXT("  Trim ratio: %llu/%llu = %.6f%%"), 
 					m_currentRationalTrimNumerator, RATIONAL_TRIM_DENOMINATOR,
 					(100.0 * m_currentRationalTrimNumerator) / RATIONAL_TRIM_DENOMINATOR));
-				
-				if (ppmCorrection > 0)
-				{
-					DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware +%d PPM faster -> Timeline runs faster to match"), ppmCorrection));
-				}
-				else
-				{
-					DbgLog((LOG_TRACE, 1, TEXT("  Effect: Hardware %d PPM slower -> Timeline runs slower to match"), ppmCorrection));
-				}
 			}
 		}
 	}
@@ -1160,14 +1150,20 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 		m_useAutoCalibration = true;
 		m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // Start with no correction
 		
-		// Initialize auto-calibrator
-		m_autoPpmCalibrator.Initialize(
-			(uint64_t)m_frameDurationTicks,
-			(uint64_t)m_timeScale,
-			m_timingClock->TimingClockTicksPerSecond()
-		);
+		// **CRITICAL FIX: Reset and re-initialize auto-calibrator for new refresh rate**
+		m_autoPpmCalibrator.Reset();
 		
-		DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction.cfg found, using auto-calibration"), refreshRate));
+		// Initialize auto-calibrator with current timing parameters
+		if (m_timeScale > 0 && m_frameDurationTicks > 0 && m_timingClock)
+		{
+			m_autoPpmCalibrator.Initialize(
+				(uint64_t)m_frameDurationTicks,
+				(uint64_t)m_timeScale,
+				m_timingClock->TimingClockTicksPerSecond()
+			);
+		}
+		
+		DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction.cfg found, auto-calibrator RESET and initialized for new refresh rate"), refreshRate));
 	}
 }
 
@@ -1226,7 +1222,7 @@ void ALiveSourceVideoOutputPin::TrackFrameDuration(REFERENCE_TIME timeStart, REF
 }
 
 // How many frames to ramp over (hard-coded as requested)
-static constexpr int kLeadRampFrames = 85;
+static constexpr int kLeadRampFrames = 1000;
 
 REFERENCE_TIME ALiveSourceVideoOutputPin::GetRampedLeadTime()
 {
