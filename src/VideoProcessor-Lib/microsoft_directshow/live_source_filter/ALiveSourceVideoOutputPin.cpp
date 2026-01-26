@@ -438,17 +438,15 @@ void ALiveSourceVideoOutputPin::Reset()
 		DbgLog((LOG_TRACE, 1, TEXT("Reset(): Resetting auto-calibrator for clean restart")));
 		m_autoPpmCalibrator.Reset();
 		
-		// Re-initialize calibrator with current timing parameters
-		if (m_timeScale > 0 && m_frameDurationTicks > 0 && m_timingClock)
-		{
-			m_autoPpmCalibrator.Initialize(
-				(uint64_t)m_frameDurationTicks,
-				(uint64_t)m_timeScale,
-				m_timingClock->TimingClockTicksPerSecond()
-			);
-			DbgLog((LOG_TRACE, 1, TEXT("Reset(): Auto-calibrator re-initialized")));
-		}
+		// Re-initialize calibrator with simplified API
+		m_autoPpmCalibrator.Initialize();
+		DbgLog((LOG_TRACE, 1, TEXT("Reset(): Auto-calibrator re-initialized")));
 	}
+
+	// LEAD RAMP: Reset ramp state but preserve user configuration
+	// m_leadRampDurationMs is NOT reset (user's configurable preference)
+	m_leadRampStartTimeMs = 0;      // Reset ramp timing to restart from frame 0
+	m_leadRampActive = false;       // Mark ramp as needing re-initialization
 
 	DebugLog::Log("ALiveSourceVideoOutputPin::Reset() - All timing state cleared for HDMI resync");
 
@@ -553,29 +551,9 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			DbgLog((LOG_WARNING, 1, TEXT("  Timeline RESET: m_startTimeOffset cleared, discontinuity and new segment flagged")));
 		}
 		
-		// AUTO-CALIBRATION: Feed frame data to calibrator for PPM drift measurement
-		if (m_useAutoCalibration)
-		{
-			// Feed raw hardware timestamp and frame counter to auto-calibrator
-			m_autoPpmCalibrator.OnFrame(
-				videoFrame.GetCounter(),
-				videoFrame.GetTimingTimestamp()
-			);
-			
-			// Update trim numerator from calibrator (may have been adjusted)
-			int autoPpm = m_autoPpmCalibrator.GetTotalPpmCorrection();
-			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR + autoPpm;
-			
-			// Periodic logging of auto-calibration status (every 10 seconds at 60fps)
-			static uint64_t lastLogFrame = 0;
-			if ((videoFrame.GetCounter() - lastLogFrame) >= 600)
-			{
-				auto stats = m_autoPpmCalibrator.GetStats();
-				DbgLog((LOG_TRACE, 1, TEXT("Auto-PPM: Total=%d PPM, Remaining=%d PPM, Consistent=%u, Oscillations=%u"),
-					stats.currentTotalPpm, stats.lastRemainingPpm, stats.consistentCount, stats.oscillationCount));
-				lastLogFrame = videoFrame.GetCounter();
-			}
-		}
+		// NOTE: AutoPpmCalibrator is now fed by DirectShowVideoRenderer::UpdatePPMMeasurement()
+		// No need to call OnFrame() here - the calibrator receives pre-calculated PPM values
+		// every 5 seconds from the renderer's rolling window measurement.
 	}
 
 	++m_frameCounter;
@@ -1102,21 +1080,11 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 			m_useAutoCalibration = true;
 			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // Start with no correction
 			
-			// **CRITICAL FIX: Reset and re-initialize auto-calibrator with new timing parameters**
-			// This prevents wild PPM swings when refresh rate changes (e.g., 60Hz -> 23.976Hz)
+			// **CRITICAL FIX: Reset and re-initialize auto-calibrator with simplified API**
 			m_autoPpmCalibrator.Reset();
+			m_autoPpmCalibrator.Initialize();  // Simplified initialization - no timing parameters needed
 			
-			// Re-initialize with current timing parameters for new refresh rate
-			if (m_timeScale > 0 && m_frameDurationTicks > 0 && m_timingClock)
-			{
-				m_autoPpmCalibrator.Initialize(
-					(uint64_t)m_frameDurationTicks,
-					(uint64_t)m_timeScale,
-					m_timingClock->TimingClockTicksPerSecond()
-				);
-			}
-			
-			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - AUTO mode enabled, auto-calibrator RESET and re-initialized for new refresh rate"), refreshRate));
+			DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - AUTO mode enabled, auto-calibrator RESET and initialized"), refreshRate));
 		}
 		else
 		{
@@ -1124,7 +1092,6 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 			m_useAutoCalibration = false;
 			
 			// **FIX: Reset auto-calibrator when switching to manual mode**
-			// This cleans up any stale auto-calibration state
 			m_autoPpmCalibrator.Reset();
 			
 			// Calculate the trim numerator based on PPM correction
@@ -1150,20 +1117,11 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 		m_useAutoCalibration = true;
 		m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // Start with no correction
 		
-		// **CRITICAL FIX: Reset and re-initialize auto-calibrator for new refresh rate**
+		// **CRITICAL FIX: Reset and initialize with simplified API**
 		m_autoPpmCalibrator.Reset();
+		m_autoPpmCalibrator.Initialize();  // Simplified initialization
 		
-		// Initialize auto-calibrator with current timing parameters
-		if (m_timeScale > 0 && m_frameDurationTicks > 0 && m_timingClock)
-		{
-			m_autoPpmCalibrator.Initialize(
-				(uint64_t)m_frameDurationTicks,
-				(uint64_t)m_timeScale,
-				m_timingClock->TimingClockTicksPerSecond()
-			);
-		}
-		
-		DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction.cfg found, auto-calibrator RESET and initialized for new refresh rate"), refreshRate));
+		DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction.cfg found, auto-calibrator RESET and initialized"), refreshRate));
 	}
 }
 
@@ -1222,7 +1180,7 @@ void ALiveSourceVideoOutputPin::TrackFrameDuration(REFERENCE_TIME timeStart, REF
 }
 
 // How many frames to ramp over (hard-coded as requested)
-static constexpr int kLeadRampFrames = 1000;
+static constexpr int kLeadRampFrames = 500;
 
 REFERENCE_TIME ALiveSourceVideoOutputPin::GetRampedLeadTime()
 {
@@ -1230,18 +1188,40 @@ REFERENCE_TIME ALiveSourceVideoOutputPin::GetRampedLeadTime()
 	REFERENCE_TIME targetLeadTicks = LEADTIME;
 
 	// If ramping disabled or target is zero
-	if (kLeadRampFrames <= 0 || targetLeadTicks <= 0)
+	if (m_leadRampDurationMs <= 0 || targetLeadTicks <= 0)
 		return targetLeadTicks;
 
-	// Clamp frame index into [0, rampFrames]
-	const LONGLONG frame = std::min<LONGLONG>(m_frameCounter, kLeadRampFrames);
+	// Initialize ramp on first call
+	if (!m_leadRampActive)
+	{
+		m_leadRampStartTimeMs = GetWallClockTime() / 10000;  // Convert from 100ns ticks to milliseconds
+		m_leadRampActive = true;
+		
+		DEBUGLOG("GetRampedLeadTime: Initializing lead ramp - duration=%.0f ms, target=%.2f ms", (double)m_leadRampDurationMs, targetLeadTicks / 10000.0);
+	}
 
+	// Calculate elapsed time since ramp started
+	uint64_t currentTimeMs = GetWallClockTime() / 10000;  // Convert from 100ns ticks to milliseconds
+	uint64_t elapsedMs = currentTimeMs - m_leadRampStartTimeMs;
 
-	// Integer math, no floating point
-	REFERENCE_TIME leadTime = (targetLeadTicks * frame) / kLeadRampFrames;
+	// If ramp duration has elapsed, return full lead time
+	if (elapsedMs >= m_leadRampDurationMs)
+	{
+		return targetLeadTicks;
+	}
 
-	if ((leadTime < targetLeadTicks) && (frame % 10 == 0)) {
-		DEBUGLOG("Lead time ramp: frame %lld/%d -> lead %.3fms.", frame, kLeadRampFrames, leadTime / 10000.0);
+	// Linear interpolation: (elapsed / total) * target
+	// Using integer math to maintain precision
+	REFERENCE_TIME leadTime = (targetLeadTicks * elapsedMs) / m_leadRampDurationMs;
+
+	// Periodic logging (every 500ms during ramp)
+	static uint64_t lastLogTime = 0;
+	if ((currentTimeMs - lastLogTime) >= 500)
+	{
+		DEBUGLOG("Lead time ramp: %.0f/%.0f ms elapsed -> lead %.3f/%.3f ms",
+			(double)elapsedMs, (double)m_leadRampDurationMs,
+			leadTime / 10000.0, targetLeadTicks / 10000.0);
+		lastLogTime = currentTimeMs;
 	}
 
 	return leadTime;

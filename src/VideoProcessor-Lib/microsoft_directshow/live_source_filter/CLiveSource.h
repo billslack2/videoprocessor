@@ -43,6 +43,9 @@ public:
 
 	// Add to the Queue section
 	int GetConvertedQueueSize();
+	
+	// Access the video output pin for advanced operations
+	ALiveSourceVideoOutputPin* GetVideoOutputPin() { return m_videoOutputPin; }
 
 	// IUnknown
 	DECLARE_IUNKNOWN;

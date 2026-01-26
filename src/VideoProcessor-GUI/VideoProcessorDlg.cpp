@@ -3164,9 +3164,9 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 {
 	// Enhanced intelligent queue monitoring with multiple detection strategies
 	const size_t maxQueueSize = GetRendererVideoFrameQueueSizeMax();
-	const bool isQueueFull = (currentQueueSize >= maxQueueSize);
+	const bool isQueueFull = false; (currentQueueSize >= maxQueueSize);
 	const bool droppedFramesIncreased = (droppedFrames > m_lastDroppedFrames);
-	const bool queueStuck = (currentQueueSize >= m_lastQueueSize && currentQueueSize > 9);
+	const bool queueStuck = false; (currentQueueSize >= m_lastQueueSize && currentQueueSize > 9);
 
 	// STRATEGY 1: Immediate reset on queue full
 	if (isQueueFull)

@@ -8,7 +8,6 @@
 
 #include <pch.h>
 #include <DebugLog.h>
-#include <IntegerMath.h>
 
 #include "AutoPpmCalibrator.h"
 
@@ -17,265 +16,51 @@ AutoPpmCalibrator::AutoPpmCalibrator()
     Reset();
 }
 
-void AutoPpmCalibrator::Initialize(
-    uint64_t frameDurationTicks,
-    uint64_t timeScale,
-    uint64_t hwTicksPerSec)
+void AutoPpmCalibrator::Initialize()
 {
-    if (timeScale == 0 || hwTicksPerSec == 0)
-    {
-        DbgLog((LOG_ERROR, 1, TEXT("AutoPpmCalibrator::Initialize: Invalid parameters (zero timeScale or hwTicksPerSec)")));
-        return;
-    }
-
-    m_frameDurationTicks = frameDurationTicks;
-    m_timeScale = timeScale;
-    m_hwTicksPerSec = hwTicksPerSec;
     m_isInitialized = true;
     m_trimTotalPpm = 0;  // Start with no correction
+    m_measurementCount = 0;
 
-    // Calculate expected frame rate and frame period for verification
-    const double frameRate = (double)timeScale / frameDurationTicks;
-    const double framePeriodMs = 1000.0 / frameRate;
-    const double hwFramePeriodTicks = (double)hwTicksPerSec / frameRate;
-
-    DEBUGLOG("AutoPpmCalibrator: Initialized for %llu/%llu ticks/sec (%.6f Hz, %.3f ms/frame)",frameDurationTicks, timeScale, frameRate, framePeriodMs);
-    DEBUGLOG("AutoPpmCalibrator: Hardware clock %llu Hz (%.3f ticks/frame)",hwTicksPerSec, hwFramePeriodTicks);
-    DEBUGLOG("AutoPpmCalibrator: Expected measurement: 600 frames = %.3f seconds = %llu hardware ticks", 600.0 / frameRate, (uint64_t)(hwFramePeriodTicks * 600));
-    DEBUGLOG("AutoPpmCalibrator: IMPORTANT: Measuring hardware timestamp PROGRESSION rate, not clock accuracy");
-    DEBUGLOG("AutoPpmCalibrator: Positive drift = timestamps advancing FASTER than theoretical frame rate");
-    DEBUGLOG("AutoPpmCalibrator: Negative drift = timestamps advancing SLOWER than theoretical frame rate");
+    DEBUGLOG("AutoPpmCalibrator: Initialized to consume pre-calculated PPM values from renderer");
+    DEBUGLOG("AutoPpmCalibrator: Will apply filtering, smoothing, and convergence logic");
 }
 
-void AutoPpmCalibrator::OnFrame(uint64_t frameCounter, uint64_t hwTimestamp)
+void AutoPpmCalibrator::OnPPM(int measuredPpm)
 {
     if (!m_isInitialized)
-        return;
-
-    // **ROBUSTNESS FIX 1: FRAME COUNTER DISCONTINUITY DETECTION**
-    // Detect dropped frames, renderer resets, or timeline corruption
-    // NOTE: Using member variables instead of static to allow proper Reset()
-    
-    if (!m_firstFrame) // Not first frame
     {
-        // Expected: frameCounter should be lastFrameCounter + 1 (or close for minor drops)
-        const uint64_t frameDelta = (frameCounter > m_lastFrameCounter) ? 
-            (frameCounter - m_lastFrameCounter) : 0;
-        
-        // Detect frame counter discontinuities (drops, resets, jumps)
-        if (frameDelta != 1)
-        {
-            if (frameDelta == 0)
-            {
-                DEBUGLOG("AutoPpmCalibrator: DUPLICATE frame counter %llu - possible timing corruption, resetting measurement", frameCounter);
-            }
-            else if (frameDelta > 100)  // Large jump indicates reset/restart
-            {
-                DEBUGLOG("AutoPpmCalibrator: LARGE frame counter jump %llu->%llu (delta=%llu) - renderer restart detected, resetting measurement", 
-                    m_lastFrameCounter, frameCounter, frameDelta);
-            }
-            else if (frameDelta > 5)    // Moderate jump indicates frame drops
-            {
-                DEBUGLOG("AutoPpmCalibrator: Frame drops detected %llu->%llu (dropped=%llu frames) - resetting measurement window", 
-                    m_lastFrameCounter, frameCounter, frameDelta - 1);
-            }
-            
-            // Reset measurement window to avoid corrupted PPM calculations
-            ResetMeasurementWindow(frameCounter, hwTimestamp);
-            m_lastFrameCounter = frameCounter;
-            m_lastHwTimestamp = hwTimestamp;
-            return;
-        }
-    }
-    else
-    {
-        m_firstFrame = false;
-    }
-    m_lastFrameCounter = frameCounter;
-    
-    // **ROBUSTNESS FIX 2: HARDWARE TIMESTAMP SANITY CHECKS**
-    // Detect timestamp corruption from HDMI issues, driver problems, etc.
-    
-    if (!m_firstTimestamp) // Not first timestamp
-    {
-        // Timestamps should always advance
-        if (hwTimestamp <= m_lastHwTimestamp)
-        {
-            DEBUGLOG("AutoPpmCalibrator: Hardware timestamp went BACKWARDS or stalled %llu->%llu - HDMI/driver issue, resetting measurement", 
-                m_lastHwTimestamp, hwTimestamp);
-            ResetMeasurementWindow(frameCounter, hwTimestamp);
-            m_lastHwTimestamp = hwTimestamp;
-            return;
-        }
-        
-        // Check for unreasonable timestamp jumps (>10x expected frame period)
-        const uint64_t expectedFramePeriodTicks = m_hwTicksPerSec / 30;  // Assume at least 30fps minimum
-        const uint64_t timestampDelta = hwTimestamp - m_lastHwTimestamp;
-        const uint64_t maxReasonableJump = expectedFramePeriodTicks * 10;  // 10x frame period
-        
-        if (timestampDelta > maxReasonableJump)
-        {
-            DEBUGLOG("AutoPpmCalibrator: Hardware timestamp JUMPED unreasonably %llu->%llu (delta=%llu, max_reasonable=%llu) - timing corruption, resetting", 
-                m_lastHwTimestamp, hwTimestamp, timestampDelta, maxReasonableJump);
-            ResetMeasurementWindow(frameCounter, hwTimestamp);
-            m_lastHwTimestamp = hwTimestamp;
-            return;
-        }
-    }
-    else
-    {
-        m_firstTimestamp = false;
-    }
-    m_lastHwTimestamp = hwTimestamp;
-    
-    // **ROBUSTNESS FIX 3: MEASUREMENT WINDOW CORRUPTION DETECTION**
-    if (m_measurementWindowStartFrame > 0)
-    {
-        // Sanity check: frame counter should be >= start frame
-        if (frameCounter < m_measurementWindowStartFrame)
-        {
-            DEBUGLOG("AutoPpmCalibrator: Current frame %llu < measurement start %llu - timeline corruption detected, resetting", 
-                frameCounter, m_measurementWindowStartFrame);
-            ResetMeasurementWindow(frameCounter, hwTimestamp);
-            return;
-        }
-        
-        // Sanity check: hardware timestamp should be >= start timestamp  
-        if (hwTimestamp < m_measurementWindowStartTimestamp)
-        {
-            DEBUGLOG("AutoPpmCalibrator: Current timestamp %llu < measurement start %llu - timestamp corruption detected, resetting", 
-                hwTimestamp, m_measurementWindowStartTimestamp);
-            ResetMeasurementWindow(frameCounter, hwTimestamp);
-            return;
-        }
-        
-        // Detect measurement window that has grown too large (indicates stale/stuck state)
-        const uint64_t windowFrames = frameCounter - m_measurementWindowStartFrame;
-        const uint64_t maxWindowFrames = MEASUREMENT_INTERVAL_FRAMES * 3;  // 3x normal window size
-        
-        if (windowFrames > maxWindowFrames)
-        {
-            DEBUGLOG("AutoPpmCalibrator: Measurement window too large %llu frames (max=%llu) - stuck/stale state, forcing analysis and reset", 
-                windowFrames, maxWindowFrames);
-            
-            m_measurementWindowEndFrame = frameCounter;
-            m_measurementWindowEndTimestamp = hwTimestamp;
-            
-            if (windowFrames >= MIN_MEASUREMENT_FRAMES)
-            {
-                AnalyzeMeasurementWindow();
-            }
-            
-            ResetMeasurementWindow(frameCounter, hwTimestamp);
-            return;
-        }
-    }
-
-    // 4-hour reset to prevent overflow issues
-    const uint64_t RESET_INTERVAL_HW_TICKS = m_hwTicksPerSec * 4ULL * 3600ULL; // 4 hours in HW ticks
-    
-    if (m_measurementWindowStartTimestamp > 0 && 
-        (hwTimestamp - m_measurementWindowStartTimestamp) >= RESET_INTERVAL_HW_TICKS) {
-        DEBUGLOG("AutoPpmCalibrator: 4-hour hardware timestamp reset (ran for %llu HW ticks)", 
-                 hwTimestamp - m_measurementWindowStartTimestamp);
-        ResetMeasurementWindow(frameCounter, hwTimestamp);
+        DEBUGLOG("AutoPpmCalibrator: OnPPM called but not initialized! Ignoring measurement.");
         return;
     }
 
-    // Initialize measurement window on first frame
-    if (m_measurementWindowStartFrame == 0)
-    {
-        ResetMeasurementWindow(frameCounter, hwTimestamp);
-        return;
-    }
-
-    // Update end of measurement window
-    m_measurementWindowEndFrame = frameCounter;
-    m_measurementWindowEndTimestamp = hwTimestamp;
-
-    // Check if we've reached measurement interval
-    const uint64_t framesInWindow = m_measurementWindowEndFrame - m_measurementWindowStartFrame;
+    m_measurementCount++;
     
-    if (framesInWindow >= MEASUREMENT_INTERVAL_FRAMES)
+    // **CRITICAL FIX: Calculate remaining drift CORRECTLY**
+    // measuredPpm is the RAW measurement from the renderer (e.g., +10 PPM hardware drift)
+    // m_trimTotalPpm is the correction we've ALREADY applied (e.g., +9 PPM)
+    // remainingPpm is what's LEFT to correct (e.g., +10 - 9 = +1 PPM)
+    const int remainingPpm = measuredPpm - m_trimTotalPpm;
+
+    DEBUGLOG("AutoPpmCalibrator: PPM measurement #%llu - measured=%d, currentCorrection=%d, remaining=%d, consistent=%u",
+        m_measurementCount, measuredPpm, m_trimTotalPpm, remainingPpm, m_consistentCount);
+
+    // **SPIKE DETECTION: Warn if remaining drift is unusually large after calibration started**
+    if (m_hasAppliedFirstCorrection && abs(remainingPpm) > 30)
     {
-        // Analyze the measurement window and potentially apply correction
-        AnalyzeMeasurementWindow();
-        
-        // Reset window to start a new measurement interval
-        ResetMeasurementWindow(frameCounter, hwTimestamp);
+        DEBUGLOG("AutoPpmCalibrator: WARNING - Large remaining drift detected (%d PPM) after calibration started!", remainingPpm);
     }
+
+    // Analyze and potentially apply correction
+    AnalyzeMeasurement(remainingPpm);
+    
+    // Log final state after analysis
+    DEBUGLOG("AutoPpmCalibrator: After analysis - totalCorrection=%d, consistent=%u, firstApplied=%d",
+        m_trimTotalPpm, m_consistentCount, m_hasAppliedFirstCorrection);
 }
 
-void AutoPpmCalibrator::AnalyzeMeasurementWindow()
+void AutoPpmCalibrator::AnalyzeMeasurement(int remainingPpm)
 {
-    const uint64_t intervals = m_measurementWindowEndFrame - m_measurementWindowStartFrame;
-    
-    if (intervals < MIN_MEASUREMENT_FRAMES)
-    {
-        DEBUGLOG("AutoPpmCalibrator: Insufficient frames (%llu) for analysis", intervals);
-        return;
-    }
-
-    // **ROBUSTNESS: Validate measurement window integrity**
-    const uint64_t actualTicks = m_measurementWindowEndTimestamp - m_measurementWindowStartTimestamp;
-    
-    // Calculate expected measurement duration
-    const double expectedSeconds = (double)intervals / ((double)m_timeScale / (double)m_frameDurationTicks);
-    const uint64_t expectedTicks = (uint64_t)(expectedSeconds * m_hwTicksPerSec);
-    
-    // Check if measurement is reasonable (within 50% of expected)
-    const uint64_t minExpected = expectedTicks / 2;
-    const uint64_t maxExpected = expectedTicks * 2;
-    
-    if (actualTicks < minExpected || actualTicks > maxExpected)
-    {
-        DEBUGLOG("AutoPpmCalibrator: INVALID measurement window - actual=%llu ticks, expected=%llu±50%% - discarding corrupted data", 
-            actualTicks, expectedTicks);
-        return;
-    }
-
-    // DIAGNOSTIC: Check current state at entry
-    DEBUGLOG("AutoPpmCalibrator: AnalyzeMeasurementWindow ENTRY - m_trimTotalPpm=%d, m_hasAppliedFirstCorrection=%d",
-        m_trimTotalPpm, m_hasAppliedFirstCorrection ? 1 : 0);
-
-    // Calculate actual hardware ticks elapsed
-    const double measuredTicksPerFrame = (double)actualTicks / intervals;
-
-    // Calculate theoretical ticks per frame from configured rational rate
-    // theoreticalTicksPerFrame = (frameDurationTicks / timeScale) * hwTicksPerSec
-    const double theoreticalTicksPerFrame = 
-        ((double)m_frameDurationTicks / (double)m_timeScale) * (double)m_hwTicksPerSec;
-
-    // Calculate drift: (measured - theoretical) / theoretical
-    // This gives us the hardware clock drift relative to the configured rational rate
-    const double driftRatio = (measuredTicksPerFrame - theoreticalTicksPerFrame) / theoreticalTicksPerFrame;
-    const double driftPpmFloat = driftRatio * 1000000.0;
-    
-    // Round to nearest integer instead of truncating
-    int64_t rawDriftPpm = (int64_t)(driftPpmFloat + (driftPpmFloat >= 0 ? 0.5 : -0.5));
-
-    // Apply current correction to get remaining drift
-    const int remainingPpm = (int)(rawDriftPpm - m_trimTotalPpm);
-
-    // DIAGNOSTIC LOGGING
-    /*
-    DEBUGLOG("AutoPpmCalibrator: === DIAGNOSTIC ===");
-    DEBUGLOG("  Measurement window: frames %llu to %llu (%llu intervals)",
-        m_measurementWindowStartFrame, m_measurementWindowEndFrame, intervals);
-    DEBUGLOG("  Hardware timestamps: %llu to %llu (%llu ticks elapsed)",
-        m_measurementWindowStartTimestamp, m_measurementWindowEndTimestamp, actualTicks);
-    DEBUGLOG("  Measured ticks/frame: %.9f (%.9f Hz)",
-        measuredTicksPerFrame, m_hwTicksPerSec / measuredTicksPerFrame);
-    DEBUGLOG("  Theoretical ticks/frame: %.9f (%.9f Hz)",
-        theoreticalTicksPerFrame, m_hwTicksPerSec / theoreticalTicksPerFrame);
-    DEBUGLOG("  Difference: %.9f ticks/frame", measuredTicksPerFrame - theoreticalTicksPerFrame);
-    DEBUGLOG("  Drift ratio: %.12f", driftRatio);
-    DEBUGLOG("  Drift PPM (float): %.3f", driftPpmFloat);
-    DEBUGLOG("  Raw drift (rounded): %I64d PPM", rawDriftPpm);
-    DEBUGLOG("  Current correction: %d PPM", m_trimTotalPpm);
-    DEBUGLOG("  Remaining correction needed: %d PPM", remainingPpm);
-    DEBUGLOG("AutoPpmCalibrator: === END DIAGNOSTIC ===");
-    */
     // Check consistency
     if (!CheckConsistency(remainingPpm))
     {
@@ -321,49 +106,13 @@ void AutoPpmCalibrator::AnalyzeMeasurementWindow()
     }
     else
     {
-        DEBUGLOG("AutoPpmCalibrator: Remaining drift %d PPM, waiting for more consistent measurements (count=%u, need=%u for fine-tune)",
-            remainingPpm, m_consistentCount, 
-            abs(remainingPpm) >= APPLY_THRESHOLD_PPM ? CONSISTENT_COUNT_REQUIRED : FINE_TUNE_CONSISTENT_COUNT);
+        // **IMPROVED LOGGING: Show actual thresholds being used**
+        const uint32_t requiredCount = (abs(remainingPpm) >= APPLY_THRESHOLD_PPM) ? 
+            CONSISTENT_COUNT_REQUIRED : FINE_TUNE_CONSISTENT_COUNT;
+        
+        DEBUGLOG("AutoPpmCalibrator: Remaining drift %d PPM, waiting for more consistent measurements (count=%u/%u)",
+            remainingPpm, m_consistentCount, requiredCount);
     }
-}
-
-int64_t AutoPpmCalibrator::CalculateRawDriftPpm() const
-{
-    const uint64_t intervals = m_measurementWindowEndFrame - m_measurementWindowStartFrame;
-    
-    // Calculate expected hardware ticks
-    uint64_t expectedTicks = U64_MulDiv(intervals, m_frameDurationTicks, m_timeScale);
-    expectedTicks = U64_MulDiv(expectedTicks, m_hwTicksPerSec, 1ULL);
-
-    // Calculate actual hardware ticks
-    const uint64_t actualTicks = m_measurementWindowEndTimestamp - m_measurementWindowStartTimestamp;
-
-    // Calculate drift: (actual - expected) / expected * 1,000,000
-    // Use signed arithmetic for proper negative drift handling
-    const int64_t diff = (int64_t)actualTicks - (int64_t)expectedTicks;
-    
-    // Avoid division by zero
-    if (expectedTicks == 0)
-        return 0;
-
-    // Calculate PPM with proper rounding for both positive and negative values
-    // PPM = (diff * 1000000) / expected
-    // For positive diff: add half divisor to round up
-    // For negative diff: subtract half divisor to round down (more negative)
-    int64_t ppm;
-    if (diff >= 0)
-    {
-        // Hardware running faster than expected (positive drift)
-        ppm = ((diff * 1000000LL) + ((int64_t)expectedTicks / 2)) / (int64_t)expectedTicks;
-    }
-    else
-    {
-        // Hardware running slower than expected (negative drift)
-        // Subtract half to round away from zero (more negative)
-        ppm = ((diff * 1000000LL) - ((int64_t)expectedTicks / 2)) / (int64_t)expectedTicks;
-    }
-
-    return ppm;
 }
 
 int AutoPpmCalibrator::CalculateIncrementalCorrection(int remainingPpm)
@@ -376,14 +125,16 @@ int AutoPpmCalibrator::CalculateIncrementalCorrection(int remainingPpm)
         correction = (remainingPpm * FIRST_CORRECTION_PERCENT) / 100;
         m_hasAppliedFirstCorrection = true;
         
-        DEBUGLOG("AutoPpmCalibrator: First correction - applying %d%% of %d PPM = %d PPM",FIRST_CORRECTION_PERCENT, remainingPpm, correction);
+        DEBUGLOG("AutoPpmCalibrator: First correction - applying %d%% of %d PPM = %d PPM",
+            FIRST_CORRECTION_PERCENT, remainingPpm, correction);
     }
     else
     {
         // Later corrections: apply ~25% of remaining drift (gentler adjustments)
         correction = (remainingPpm * LATER_CORRECTION_PERCENT) / 100;
         
-        DEBUGLOG("AutoPpmCalibrator: Incremental correction - applying %d%% of %d PPM = %d PPM",LATER_CORRECTION_PERCENT, remainingPpm, correction);
+        DEBUGLOG("AutoPpmCalibrator: Incremental correction - applying %d%% of %d PPM = %d PPM",
+            LATER_CORRECTION_PERCENT, remainingPpm, correction);
     }
 
     // Round to nearest integer (already done by integer division, but ensure non-zero if meaningful)
@@ -400,28 +151,32 @@ bool AutoPpmCalibrator::CheckConsistency(int remainingPpm)
 {
     const int diff = abs(remainingPpm - m_lastRemainingPpm);
     
-    if (m_lastRemainingPpm == 0)
+    if (m_isFirstMeasurement)
     {
-        // First measurement - automatically consistent
+        // First measurement after reset/correction - automatically consistent
         m_lastRemainingPpm = remainingPpm;
         m_consistentCount = 1;
+        m_isFirstMeasurement = false;
+        DEBUGLOG("AutoPpmCalibrator: First measurement after reset/correction: %d PPM", remainingPpm);
         return true;
     }
 
-    if (diff < CONSISTENCY_BAND_PPM)
+    if (diff <= CONSISTENCY_BAND_PPM)
     {
         // Measurement is consistent with previous
         m_consistentCount++;
         m_lastRemainingPpm = remainingPpm;
         
-        DEBUGLOG("AutoPpmCalibrator: Consistent measurement #%u (diff=%d PPM within %d PPM band)", m_consistentCount, diff, CONSISTENCY_BAND_PPM);
+        DEBUGLOG("AutoPpmCalibrator: Consistent measurement #%u (diff=%d PPM within %d PPM band)",
+            m_consistentCount, diff, CONSISTENCY_BAND_PPM);
         
         return true;
     }
     else
     {
         // Measurement not consistent - reset counter
-        DEBUGLOG("AutoPpmCalibrator: Inconsistent measurement (diff=%d PPM exceeds %d PPM band) - resetting consistency",diff, CONSISTENCY_BAND_PPM);
+        DEBUGLOG("AutoPpmCalibrator: Inconsistent measurement (diff=%d PPM exceeds %d PPM band) - resetting consistency",
+            diff, CONSISTENCY_BAND_PPM);
         
         m_consistentCount = 1;
         m_lastRemainingPpm = remainingPpm;
@@ -478,56 +233,47 @@ void AutoPpmCalibrator::ApplyCorrection(int correction)
     // Clamp to maximum allowed PPM
     if (newTotalPpm > MAX_PPM_LIMIT)
     {
-        DEBUGLOG("AutoPpmCalibrator: Correction would exceed max limit (%d > %d), clamping", newTotalPpm, MAX_PPM_LIMIT);
+        DEBUGLOG("AutoPpmCalibrator: Correction would exceed max limit (%d > %d), clamping",
+            newTotalPpm, MAX_PPM_LIMIT);
         newTotalPpm = MAX_PPM_LIMIT;
     }
     else if (newTotalPpm < -MAX_PPM_LIMIT)
     {
-        DEBUGLOG("AutoPpmCalibrator: Correction would exceed min limit (%d < %d), clamping",newTotalPpm, -MAX_PPM_LIMIT);
+        DEBUGLOG("AutoPpmCalibrator: Correction would exceed min limit (%d < %d), clamping",
+            newTotalPpm, -MAX_PPM_LIMIT);
         newTotalPpm = -MAX_PPM_LIMIT;
     }
 
-    DEBUGLOG("AutoPpmCalibrator: Applying correction: %d PPM -> %d PPM (delta: %d PPM)",m_trimTotalPpm, newTotalPpm, correction);
+    DEBUGLOG("AutoPpmCalibrator: Applying correction: %d PPM -> %d PPM (delta: %d PPM)",
+        m_trimTotalPpm, newTotalPpm, correction);
 
     m_trimTotalPpm = newTotalPpm;
     
     // Reset consistency tracking after applying correction
     m_consistentCount = 0;
     m_lastRemainingPpm = 0;
-}
-
-void AutoPpmCalibrator::ResetMeasurementWindow(uint64_t frameCounter, uint64_t hwTimestamp)
-{
-    m_measurementWindowStartFrame = frameCounter;
-    m_measurementWindowEndFrame = frameCounter;
-    m_measurementWindowStartTimestamp = hwTimestamp;
-    m_measurementWindowEndTimestamp = hwTimestamp;
+    m_isFirstMeasurement = true;
 }
 
 void AutoPpmCalibrator::Reset()
 {
     m_isInitialized = false;
     m_trimTotalPpm = 0;
-    m_measurementWindowStartFrame = 0;
-    m_measurementWindowEndFrame = 0;
-    m_measurementWindowStartTimestamp = 0;
-    m_measurementWindowEndTimestamp = 0;
+    m_measurementCount = 0;
     m_lastRemainingPpm = 0;
     m_consistentCount = 0;
     m_oscillationCount = 0;
     m_lastSignOfRemaining = 0;
     m_hasAppliedFirstCorrection = false;
-    m_frameDurationTicks = 0;
-    m_timeScale = 0;
-    m_hwTicksPerSec = 0;
+    m_isFirstMeasurement = true;
     
-    DEBUGLOG("AutoPpmCalibrator: Complete state reset - ready for new timing parameters");
+    DEBUGLOG("AutoPpmCalibrator: Complete state reset - ready for new PPM measurements");
 }
 
 AutoPpmCalibrator::CalibrationStats AutoPpmCalibrator::GetStats() const
 {
     CalibrationStats stats;
-    stats.measurementCount = m_measurementWindowEndFrame - m_measurementWindowStartFrame;
+    stats.measurementCount = m_measurementCount;
     stats.currentTotalPpm = m_trimTotalPpm;
     stats.lastRemainingPpm = m_lastRemainingPpm;
     stats.consistentCount = m_consistentCount;

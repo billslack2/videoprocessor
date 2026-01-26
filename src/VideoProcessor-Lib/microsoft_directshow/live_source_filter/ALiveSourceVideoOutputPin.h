@@ -135,7 +135,23 @@ public:
 	// Auto-calibration status access
 	bool IsAutoCalibrating() const { return m_useAutoCalibration; }
 	AutoPpmCalibrator::CalibrationStats GetAutoCalibrationStats() const { return m_autoPpmCalibrator.GetStats(); }
-
+	
+	// Feed PPM measurement from renderer to auto-calibrator
+	// This is the single source of truth for PPM - calculated by DirectShowVideoRenderer::UpdatePPMMeasurement()
+	void FeedPPMToCalibrator(int measuredPpm)
+	{
+		if (m_useAutoCalibration && m_autoPpmCalibrator.IsActive())
+		{
+			// Feed the raw measured PPM to the calibrator
+			// The calibrator will calculate remaining drift internally
+			m_autoPpmCalibrator.OnPPM(measuredPpm);
+			
+			// Update trim numerator from calibrator (may have been adjusted)
+			int autoPpm = m_autoPpmCalibrator.GetTotalPpmCorrection();
+			m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR + autoPpm;
+		}
+	}
+	
 	// Frame duration statistics tracking
 	// Returns average frame duration in milliseconds
 	double GetAverageFrameDurationMs() const { return m_avgFrameDurationMs; }
@@ -356,10 +372,29 @@ protected:
 
 	// Lead time configuration for frame delivery timing
 	// This adds a buffer time to prevent late deliveries to MadVR
-	// Ramped from 0 to target over first 85 frames for smooth startup
-	static const REFERENCE_TIME LEADTIME = 225LL * 10000LL;  // 20ms in 100ns ticks
+	// Ramped from 0 to target over configurable duration for smooth startup
+	static const REFERENCE_TIME LEADTIME = 200LL * 10000LL;  // 20ms in 100ns ticks
+	
+	// Lead ramp duration configuration (in milliseconds)
+	// Specifies how long to ramp from 0 to LEADTIME
+	// Default: 5000ms (5 seconds) - can be changed via SetLeadRampDurationMs()
+	uint64_t m_leadRampDurationMs = 30000;  // Configurable lead ramp duration
+	uint64_t m_leadRampStartTimeMs = 0;    // Timestamp when ramp started (for time-based calculation)
+	bool m_leadRampActive = false;         // Track if ramp has been initialized
+	
+	// Configure lead ramp duration
+	// @param durationMs Duration in milliseconds to ramp from 0 to full LEADTIME (e.g., 5000 for 5 seconds)
+	void SetLeadRampDurationMs(uint64_t durationMs) 
+	{ 
+		m_leadRampDurationMs = (durationMs > 0) ? durationMs : 5000;  // Clamp to minimum 1ms, default 5s
+	}
+	
+	uint64_t GetLeadRampDurationMs() const 
+	{ 
+		return m_leadRampDurationMs; 
+	}
+	
 	REFERENCE_TIME GetRampedLeadTime();
-
 	
 	// Virtual method for bad timestamp recovery (overridden in buffered implementation)
 	virtual void OnBadTimestampDetected() {}

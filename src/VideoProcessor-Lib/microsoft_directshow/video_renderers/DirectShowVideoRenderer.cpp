@@ -825,6 +825,36 @@ void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) 
 			m_measuredFrameRate = measuredFps;
 			
 			m_hasPPMData = true;
+			
+			// **NEW: Feed PPM measurement to auto-calibrator if active**
+			if (m_liveSource)
+			{
+				// Get the output pin to check if auto-calibration is active
+				ALiveSourceVideoOutputPin* outputPin = m_liveSource->GetVideoOutputPin();
+				
+				DebugLog::Log("DirectShow: 5-second PPM window complete - outputPin=%p, deviation=%d PPM",
+					outputPin, m_ppmDeviation);
+				
+				if (outputPin && outputPin->IsAutoCalibrating())
+				{
+					DebugLog::Log("DirectShow: Auto-calibration ACTIVE - feeding %d PPM to calibrator", m_ppmDeviation);
+					
+					// Feed the PPM deviation to the calibrator
+					// The calibrator will handle filtering, smoothing, and applying corrections
+					outputPin->FeedPPMToCalibrator(m_ppmDeviation);
+					
+					DebugLog::Log("DirectShow: PPM fed to calibrator successfully");
+				}
+				else
+				{
+					DebugLog::Log("DirectShow: Auto-calibration INACTIVE - outputPin=%p, IsAutoCalibrating=%d",
+						outputPin, outputPin ? outputPin->IsAutoCalibrating() : -1);
+				}
+			}
+			else
+			{
+				DebugLog::Log("DirectShow: m_liveSource is NULL - cannot feed PPM");
+			}
 		}
 		
 		// Reset rolling window for next 5-second period

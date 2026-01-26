@@ -13,10 +13,19 @@
 /**
  * Automatic PPM (Parts Per Million) calibrator for hardware timestamp drift correction.
  * 
- * Measures the drift between theoretical frame timing and actual hardware timestamps,
- * then automatically adjusts the PPM correction value to compensate for the detected drift.
+ * Consumes PRE-CALCULATED PPM values from DirectShowVideoRenderer::UpdatePPMMeasurement()
+ * and applies filtering, smoothing, and convergence logic to automatically adjust timing.
  * 
- * This is used when no manual correction.cfg value is present, or when the config specifies "AUTO".
+ * This eliminates duplicate PPM calculation - the renderer's 5-second rolling window
+ * measurement is the single source of truth, and this class just filters/applies it.
+ * 
+ * CALIBRATION STRATEGY:
+ * - Measurement window: Every PPM update (~5 seconds from renderer)
+ * - Initial convergence: 2 consistent measurements
+ * - First correction: Applies 95% of detected drift
+ * - Fine-tuning: 6 consistent measurements for remaining <2 PPM drift
+ * - Later corrections: Apply 25% of remaining drift to avoid oscillation
+ * - Maximum correction: ±100 PPM
  */
 class AutoPpmCalibrator
 {
@@ -25,22 +34,18 @@ public:
     ~AutoPpmCalibrator() = default;
 
     /**
-     * Initialize the calibrator with timing parameters
-     * @param frameDurationTicks Frame duration in timing clock ticks (numerator)
-     * @param timeScale Timing clock ticks per second (denominator)
-     * @param hwTicksPerSec Hardware clock ticks per second (e.g., 1000000 for DeckLink)
+     * Initialize the calibrator (now simpler - no timing parameters needed)
      */
-    void Initialize(
-        uint64_t frameDurationTicks,
-        uint64_t timeScale,
-        uint64_t hwTicksPerSec);
+    void Initialize();
 
     /**
-     * Feed a frame measurement into the calibrator
-     * @param frameCounter Current frame counter (sequential)
-     * @param hwTimestamp Raw hardware timestamp (in hardware clock ticks)
+     * Feed a pre-calculated PPM measurement into the calibrator
+     * @param measuredPpm Current PPM deviation from renderer (positive = faster, negative = slower)
+     * 
+     * This replaces the old OnFrame() method. The PPM calculation is now done externally
+     * by DirectShowVideoRenderer::UpdatePPMMeasurement() using a 5-second rolling window.
      */
-    void OnFrame(uint64_t frameCounter, uint64_t hwTimestamp);
+    void OnPPM(int measuredPpm);
 
     /**
      * Get the current total PPM correction value
@@ -52,7 +57,7 @@ public:
      * Check if calibrator is active (has been initialized and collecting data)
      * @return true if calibrator is actively measuring
      */
-    bool IsActive() const { return m_isInitialized && m_measurementWindowStartFrame > 0; }
+    bool IsActive() const { return m_isInitialized; }  // Fixed: Don't require measurements - they come AFTER initialization
 
     /**
      * Reset the calibrator to initial state (clears all measurements)
@@ -64,7 +69,7 @@ public:
      */
     struct CalibrationStats
     {
-        uint64_t measurementCount;        // Number of frames measured
+        uint64_t measurementCount;        // Number of PPM measurements received
         int currentTotalPpm;               // Current total PPM correction
         int lastRemainingPpm;              // Last measured remaining drift
         uint32_t consistentCount;          // Consecutive consistent measurements
@@ -76,28 +81,20 @@ public:
 
 private:
     // Calibration constants
-    static const uint64_t MEASUREMENT_INTERVAL_FRAMES = 600;    // Measure every 600 frames (~10 sec at 60fps)
-    static const uint64_t MIN_MEASUREMENT_FRAMES = 300;         // Minimum frames before first measurement
     static const int64_t CONSISTENCY_BAND_PPM = 2;              // ±2 PPM consistency tolerance
     static const int64_t APPLY_THRESHOLD_PPM = 3;               // Apply correction if |remaining| >= 3 PPM
     static const int64_t FINE_TUNE_THRESHOLD_PPM = 2;           // Fine-tune threshold for final convergence
-    static const uint32_t CONSISTENT_COUNT_REQUIRED = 3;        // Need 3 consistent measurements
+    static const uint32_t CONSISTENT_COUNT_REQUIRED = 2;        // 2 consistent measurements to apply correction
     static const uint32_t FINE_TUNE_CONSISTENT_COUNT = 6;       // Need 6 consistent for fine-tuning
     static const int64_t FLIP_THRESHOLD_PPM = 5;                // Oscillation detection threshold
     static const int MAX_PPM_LIMIT = 100;                       // Maximum allowed PPM correction (±100)
     static const int FIRST_CORRECTION_PERCENT = 95;             // First correction applies 95% of drift
     static const int LATER_CORRECTION_PERCENT = 25;             // Later corrections apply 25% of drift
-    static const int FINE_TUNE_CORRECTION_PERCENT = 100;        // Fine-tune applies 100% of remaining drift
 
     // Core state
     bool m_isInitialized = false;
     int m_trimTotalPpm = 0;  // Total accumulated PPM correction
-
-    // Measurement window (tracks one interval of frames)
-    uint64_t m_measurementWindowStartFrame = 0;
-    uint64_t m_measurementWindowEndFrame = 0;
-    uint64_t m_measurementWindowStartTimestamp = 0;
-    uint64_t m_measurementWindowEndTimestamp = 0;
+    uint64_t m_measurementCount = 0;  // Number of PPM samples received
 
     // Control state
     int m_lastRemainingPpm = 0;        // Previous remaining drift measurement
@@ -105,27 +102,12 @@ private:
     uint32_t m_oscillationCount = 0;   // Count of sign flips for oscillation detection
     int m_lastSignOfRemaining = 0;     // Sign of last remaining PPM (+1, -1, or 0)
     bool m_hasAppliedFirstCorrection = false;  // Track if we've done initial 95% correction
-
-    // Timing parameters (set during Initialize)
-    uint64_t m_frameDurationTicks = 0;
-    uint64_t m_timeScale = 0;
-    uint64_t m_hwTicksPerSec = 0;
-
-    // **ROBUSTNESS STATE** - Replaced static variables to allow proper Reset()
-    // Frame counter tracking for discontinuity detection
-    uint64_t m_lastFrameCounter = 0;
-    bool m_firstFrame = true;
-    
-    // Hardware timestamp tracking for corruption detection
-    uint64_t m_lastHwTimestamp = 0;
-    bool m_firstTimestamp = true;
+    bool m_isFirstMeasurement = true;  // Proper flag for first measurement after reset/correction
 
     // Helper methods
-    void AnalyzeMeasurementWindow();
-    int64_t CalculateRawDriftPpm() const;
+    void AnalyzeMeasurement(int measuredPpm);
     int CalculateIncrementalCorrection(int remainingPpm);
     bool CheckConsistency(int remainingPpm);
     bool CheckOscillation(int remainingPpm);
     void ApplyCorrection(int correction);
-    void ResetMeasurementWindow(uint64_t frameCounter, uint64_t hwTimestamp);
 };
