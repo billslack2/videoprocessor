@@ -373,12 +373,12 @@ protected:
 	// Lead time configuration for frame delivery timing
 	// This adds a buffer time to prevent late deliveries to MadVR
 	// Ramped from 0 to target over configurable duration for smooth startup
-	static const REFERENCE_TIME LEADTIME = 200LL * 10000LL;  // 20ms in 100ns ticks
+	static const REFERENCE_TIME LEADTIME = 90LL * 10000LL;  // 20ms in 100ns ticks
 	
 	// Lead ramp duration configuration (in milliseconds)
 	// Specifies how long to ramp from 0 to LEADTIME
 	// Default: 5000ms (5 seconds) - can be changed via SetLeadRampDurationMs()
-	uint64_t m_leadRampDurationMs = 30000;  // Configurable lead ramp duration
+	uint64_t m_leadRampDurationMs = 0;  // Configurable lead ramp duration
 	uint64_t m_leadRampStartTimeMs = 0;    // Timestamp when ramp started (for time-based calculation)
 	bool m_leadRampActive = false;         // Track if ramp has been initialized
 	

@@ -17,6 +17,9 @@
 
 const GUID TranslateToMediaSubType(VideoFrameEncoding videoFrameEncoding)
 {
+
+
+	DEBUGLOG("TranslateToMediaSubType: Translating VideoFrameEncoding %d", static_cast<int>(videoFrameEncoding));
 	switch (videoFrameEncoding)
 	{
 	case VideoFrameEncoding::UYVY:

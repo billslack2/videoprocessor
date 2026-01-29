@@ -243,6 +243,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		DbgLog((LOG_TRACE, 1, TEXT("Active(): Conversion worker thread started (ID: %d)"), m_conversionThreadId));
 		DebugLog::Log("Active(): Conversion worker thread started (ID: %lu)", m_conversionThreadId);
 
+
 		// Start the delivery thread
 		if (!Create())
 		{
@@ -573,6 +574,8 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 
 void CBufferedLiveSourceVideoOutputPin::Reset()
 {
+
+	if (true) {
 	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Reset() - HDMI resync async queue reset starting");
 
 	// Purge raw frames
@@ -612,6 +615,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		}
 
 		DebugLog::Log("Reset(): Purged %zu pre-converted samples from HDMI resync", purgedSamples);
+	}
 	}
 
 	// Clear pending timestamp history for CLOCK_SMART modes

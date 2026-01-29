@@ -847,8 +847,7 @@ void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) 
 				}
 				else
 				{
-					DebugLog::Log("DirectShow: Auto-calibration INACTIVE - outputPin=%p, IsAutoCalibrating=%d",
-						outputPin, outputPin ? outputPin->IsAutoCalibrating() : -1);
+					//DebugLog::Log("DirectShow: Auto-calibration INACTIVE - outputPin=%p, IsAutoCalibrating=%d", outputPin, outputPin ? outputPin->IsAutoCalibrating() : -1);
 				}
 			}
 			else

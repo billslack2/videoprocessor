@@ -2907,6 +2907,39 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 	// Handle regular 1-second timer for UI updates
 	if (nIDEvent == TIMER_ID_1SECOND)
 	{
+
+		// --- PERIODIC EOTF CHECK (NEW) ---
+// Check for EOTF changes every second while rendering
+// This catches mid-stream SDR/HDR switches that may not trigger VideoInputFormatChanged
+		if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
+		{
+			const EOTF newEffectiveEotf = m_builtVideoState ? m_builtVideoState->eotf : EOTF::UNKNOWN;
+
+			if (m_hasLastEffectiveEotf && newEffectiveEotf != m_lastEffectiveEotf)
+			{
+				DEBUGLOG("EOTF changed (periodic check): %s -> %s. Restarting renderer.",
+					ToString(m_lastEffectiveEotf),
+					ToString(newEffectiveEotf));
+
+				// Debounce so we don't queue multiple restarts in a burst
+				if (!m_restartQueuedBecauseEotf)
+				{
+					m_restartQueuedBecauseEotf = true;
+					OnCommandRendererRestart();
+				}
+				else
+				{
+					DEBUGLOG("EOTF restart already queued (periodic check), skipping duplicate");
+				}
+			}
+
+			// Update the last known EOTF for next iteration
+			m_lastEffectiveEotf = newEffectiveEotf;
+			m_hasLastEffectiveEotf = (newEffectiveEotf != EOTF::UNKNOWN);
+		}
+		// --- END PERIODIC EOTF CHECK ---
+
+
 		CString cstring;
 
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING)

@@ -55,6 +55,11 @@ public:
 	 */
 	static std::string GetLogFilePath()
 	{
+
+		if (true) {
+			return "c:/logs/vp_debug.log";
+
+		}
 		static std::string cachedPath;
 		if (!cachedPath.empty())
 			return cachedPath;
