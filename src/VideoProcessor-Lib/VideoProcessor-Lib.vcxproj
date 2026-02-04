@@ -214,6 +214,7 @@
     <ClInclude Include="VideoState.h" />
     <ClInclude Include="video_frame_formatter\CFFMpegDecoderVideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CNoopVideoFrameFormatter.h" />
+    <ClInclude Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CV210toP010VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CV210toP010VideoFrameFormatterSIMD.h" />
     <ClInclude Include="video_frame_formatter\CV210toP210VideoFrameFormatter.h" />
@@ -269,6 +270,7 @@
     <ClCompile Include="VideoState.cpp" />
     <ClCompile Include="video_frame_formatter\CFFMpegDecoderVideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CNoopVideoFrameFormatter.cpp" />
+    <ClCompile Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CV210toP010VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CV210toP210VideoFrameFormatter.cpp" />
     <ClCompile Include="WallClock.cpp" />

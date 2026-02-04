@@ -714,9 +714,11 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(WPARAM wParam,
 	return 0;
 }
 
-
 LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam, LPARAM lParam)
 {
+
+
+
 	VideoStateComPtr videoState;
 	videoState.Attach((VideoState*)wParam);
 
@@ -729,36 +731,47 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 
 	m_captureDeviceVideoState = videoState;
 
-	const bool rendererAcceptedState = BuildPushVideoState();
+	// Reset refresh rate tracking on video state change to prevent false positive detection
+	m_lastKnownRefreshRate = 0.0;
+	m_resyncPendingResetSeconds = -1;
+	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Reset refresh rate tracking")));
 
-	// --- EOTF change detection after rendering started ---
-	if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
+	// EOTF CHANGE DETECTION: Check if EOTF changed during active stream (e.g., SDR↔HDR switching)
+	// Only check if renderer is actively rendering and feature is enabled
+	if (m_enableEotfChangeRestart &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		videoState->valid &&
+		m_eotfChangeRestartCooldownSeconds < 0)  // Not in cooldown period
 	{
-		const EOTF newEffectiveEotf = m_builtVideoState ? m_builtVideoState->eotf : EOTF::UNKNOWN;
-
-		if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
+		// Initialize on first valid state
+		if (m_lastKnownEotf == EOTF::UNKNOWN && videoState->eotf != EOTF::UNKNOWN)
 		{
-			if (m_hasLastEffectiveEotf && newEffectiveEotf != m_lastEffectiveEotf)
-			{
-				DEBUGLOG("EOTF changed while rendering: %s -> %s. Restarting renderer.",
-					ToString(m_lastEffectiveEotf),
-					ToString(newEffectiveEotf));
-
-				// Debounce so we don't queue multiple restarts in one burst
-				if (!m_restartQueuedBecauseEotf)
-				{
-					m_restartQueuedBecauseEotf = true;
-					OnCommandRendererRestart();   // sets m_wantToRestartRenderer + UpdateState()
-				}
-			}
+			m_lastKnownEotf = videoState->eotf;
+			DbgLog((LOG_TRACE, 1, TEXT("VideoStateChange: Initialized EOTF tracking to %s"),
+				ToString(videoState->eotf)));
 		}
+		// Detect actual EOTF change (not initialization)
+		else if (m_lastKnownEotf != EOTF::UNKNOWN &&
+			videoState->eotf != EOTF::UNKNOWN &&
+			m_lastKnownEotf != videoState->eotf)
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("VideoStateChange: EOTF changed %s -> %s - scheduling renderer restart in 3 seconds"),
+				ToString(m_lastKnownEotf), ToString(videoState->eotf)));
 
-		// Always update last-known EOTF once we have a valid effective state.
-		// (Even if we just queued a restart, this prevents repeated triggers.)
-		m_lastEffectiveEotf = newEffectiveEotf;
-		m_hasLastEffectiveEotf = (newEffectiveEotf != EOTF::UNKNOWN);
+			DebugLog::Log("EOTF change detected: %s -> %s - renderer restart in 3 seconds",
+				CStringA(ToString(m_lastKnownEotf)).GetString(),
+				CStringA(ToString(videoState->eotf)).GetString());
+
+			// Update tracked EOTF immediately to prevent re-triggering
+			m_lastKnownEotf = videoState->eotf;
+
+			// Schedule restart with 3-second delay to allow signal to stabilize
+			m_eotfChangeRestartCooldownSeconds = 5;
+			SetTimer(EOTF_CHANGE_RESTART_TIMER_ID, 1000, nullptr);  // 1-second tick
+		}
 	}
-	// --- END EOTF ---
+
+	const bool rendererAcceptedState = BuildPushVideoState();
 
 	// If the renderer did not accept the new state we need to restart the renderer
 	if (!rendererAcceptedState)
@@ -781,6 +794,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Done")));
 	return 0;
 }
+
 
 
 LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceError(WPARAM wParam, LPARAM lParam)
@@ -2097,7 +2111,7 @@ void CVideoProcessorDlg::UpdateTimingClockFrameOffset()
 	if (m_videoRenderer)
 		m_videoRenderer->Reset();
 
-	DEBUGLOG("Tming CLock Frame Reset");
+	DEBUGLOG("Tming Clok Frame Reset");
 
 }
 
@@ -2853,21 +2867,19 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	
 	// Handle resize debounce timer
-if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
-{
-    
-    if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
-    {
-		KillTimer(RESIZE_DEBOUNCE_TIMER_ID); //TODO: MOVED KILL INSIDE
+	if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
+	{
+		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
+		{
+			KillTimer(RESIZE_DEBOUNCE_TIMER_ID);
 
-        DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Resetting renderer after resize")));
-        m_videoRenderer->Reset();
+			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Resetting renderer after resize")));
+			m_videoRenderer->Reset();
 
-		DEBUGLOG("RESIZE RESET");
-
-    }
-    return;
-}
+			DEBUGLOG("RESIZE RESET");
+		}
+		return;
+	}
 	
 	// Handle fullscreen focus grab
 	if (nIDEvent == FULLSCREEN_FOCUS_TIMER_ID)
@@ -2883,18 +2895,15 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 		return;
 	}
 
-
-	// NEW: Handle delayed queue reset timer
+	// Handle delayed queue reset timer
 	if (nIDEvent == QUEUE_RESET_DELAY_TIMER_ID)
 	{
-
 		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
 		{
-
-			KillTimer(QUEUE_RESET_DELAY_TIMER_ID); //TODO: MOVED KILL INSIDE
+			KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
 			 
 			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): DELAYED QUEUE RESET - MadVR stabilization complete")));
-			m_videoRenderer->Reset();// TODO: REMOVED RESET ON DELAYED TIMER
+			m_videoRenderer->Reset();
 
 			// Reset tracking counters after delayed reset
 			m_consecutiveFullSeconds = 0;
@@ -2904,40 +2913,77 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 		return;
 	}
 
+	// EOTF CHANGE RESTART TIMER: Countdown to renderer restart after EOTF change
+	if (nIDEvent == EOTF_CHANGE_RESTART_TIMER_ID)
+	{
+		if (m_eotfChangeRestartCooldownSeconds > 0)
+		{
+			m_eotfChangeRestartCooldownSeconds--;
+
+			if (m_eotfChangeRestartCooldownSeconds == 0)
+			{
+				// Cooldown complete - execute restart
+				KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
+
+				if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
+				{
+					DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): EOTF_CHANGE - Executing renderer restart")));
+					DebugLog::Log("EOTF change: Executing renderer restart after stabilization period");
+
+					m_wantToRestartRenderer = true;
+					UpdateState();
+				}
+
+				m_eotfChangeRestartCooldownSeconds = -1;  // Reset cooldown
+			}
+		}
+		else
+		{
+			// Cooldown is -1, kill the timer
+			KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
+			m_eotfChangeRestartCooldownSeconds = -1;
+		}
+		return;
+	}
+
 	// Handle regular 1-second timer for UI updates
 	if (nIDEvent == TIMER_ID_1SECOND)
 	{
 
 		// --- PERIODIC EOTF CHECK (NEW) ---
-// Check for EOTF changes every second while rendering
-// This catches mid-stream SDR/HDR switches that may not trigger VideoInputFormatChanged
-		if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
+		// EOTF CHANGE RESTART TIMER: Countdown to renderer restart after EOTF change
+		if (nIDEvent == EOTF_CHANGE_RESTART_TIMER_ID)
 		{
-			const EOTF newEffectiveEotf = m_builtVideoState ? m_builtVideoState->eotf : EOTF::UNKNOWN;
-
-			if (m_hasLastEffectiveEotf && newEffectiveEotf != m_lastEffectiveEotf)
+			if (m_eotfChangeRestartCooldownSeconds > 0)
 			{
-				DEBUGLOG("EOTF changed (periodic check): %s -> %s. Restarting renderer.",
-					ToString(m_lastEffectiveEotf),
-					ToString(newEffectiveEotf));
+				m_eotfChangeRestartCooldownSeconds--;
 
-				// Debounce so we don't queue multiple restarts in a burst
-				if (!m_restartQueuedBecauseEotf)
+				if (m_eotfChangeRestartCooldownSeconds == 0)
 				{
-					m_restartQueuedBecauseEotf = true;
-					OnCommandRendererRestart();
-				}
-				else
-				{
-					DEBUGLOG("EOTF restart already queued (periodic check), skipping duplicate");
+					// Cooldown complete - execute restart
+					KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
+
+					if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
+					{
+						DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): EOTF_CHANGE - Executing renderer restart")));
+						DebugLog::Log("EOTF change: Executing renderer restart after stabilization period");
+
+						m_wantToRestartRenderer = true;
+						UpdateState();
+					}
+
+					m_eotfChangeRestartCooldownSeconds = -1;  // Reset cooldown
 				}
 			}
-
-			// Update the last known EOTF for next iteration
-			m_lastEffectiveEotf = newEffectiveEotf;
-			m_hasLastEffectiveEotf = (newEffectiveEotf != EOTF::UNKNOWN);
+			else
+			{
+				// Cooldown is -1, kill the timer
+				KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
+				m_eotfChangeRestartCooldownSeconds = -1;
+			}
+			return;
 		}
-		// --- END PERIODIC EOTF CHECK ---
+
 
 
 		CString cstring;
@@ -2963,6 +3009,44 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 					DbgLog((LOG_TRACE, 1, TEXT("Auto-offset updated: %dms -> %dms"), currentOffset, autoOffset));
 				}
 			}
+
+			// PERIODIC EOTF CHANGE DETECTION (every 5 seconds)
+			// Catches EOTF changes that don't trigger full video state updates
+			if (m_timerSeconds % 5 == 0 &&
+				m_enableEotfChangeRestart &&
+				m_captureDeviceVideoState &&
+				m_captureDeviceVideoState->valid &&
+				m_eotfChangeRestartCooldownSeconds < 0)  // Not in cooldown
+			{
+				EOTF currentEotf = m_captureDeviceVideoState->eotf;
+				
+				// Initialize tracking on first valid check
+				if (m_lastKnownEotf == EOTF::UNKNOWN && currentEotf != EOTF::UNKNOWN)
+				{
+					m_lastKnownEotf = currentEotf;
+					DbgLog((LOG_TRACE, 1, TEXT("Periodic EOTF check: Initialized to %s"), ToString(currentEotf)));
+				}
+				// Detect EOTF change
+				else if (m_lastKnownEotf != EOTF::UNKNOWN &&
+						 currentEotf != EOTF::UNKNOWN &&
+						 m_lastKnownEotf != currentEotf)
+				{
+					DbgLog((LOG_TRACE, 1, TEXT("Periodic EOTF check: EOTF changed %s -> %s - scheduling renderer restart"),
+						ToString(m_lastKnownEotf), ToString(currentEotf)));
+
+					DebugLog::Log("Periodic EOTF change detected: %s -> %s - renderer restart in 5 seconds",
+						CStringA(ToString(m_lastKnownEotf)).GetString(),
+						CStringA(ToString(currentEotf)).GetString());
+
+					// Update tracked EOTF immediately
+					m_lastKnownEotf = currentEotf;
+
+					// Schedule restart with delay
+					m_eotfChangeRestartCooldownSeconds = 5;
+					SetTimer(EOTF_CHANGE_RESTART_TIMER_ID, 1000, nullptr);
+				}
+			}
+
 			const size_t currentQueueSize = m_videoRenderer->GetConvertedQueueSize() + m_videoRenderer->GetFrameQueueSize();
 			
 			const uint64_t droppedFrames = m_videoRenderer->DroppedFrameCount();
@@ -3023,9 +3107,7 @@ if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 		{
 			const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
 			
-
-			//TODO: Adjust threshold and duration based on testing -- really we need to ensure 
-			//TODO: there is no seriously delay and latency and this is my best solution for now.
+			// TODO: Adjust threshold and duration based on testing
 			// Simple: reset when queue e.g.,  >= 16 frames
 			if (currentQueueSize >= (GetRendererVideoFrameQueueSizeMax()/2))
 			{
@@ -3219,7 +3301,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 	else if (currentQueueSize >= 24)  // 75% threshold
 	{
 		//TODO: Adjust threshold and duration based on testing
-		// Simple: reset when queue >= 16 frames
+		// Simple: reset when queue e.g.,  >= 16 frames
 		if (currentQueueSize >= 24)
 		{
 			m_videoRenderer->Reset();

@@ -44,6 +44,9 @@
 #define RESIZE_DEBOUNCE_TIMER_ID 2
 #define QUEUE_RESET_DELAY_TIMER_ID 3
 #define FULLSCREEN_FOCUS_TIMER_ID 4
+#define EOTF_CHANGE_RESTART_TIMER_ID 4
+
+
 
 
 enum class HdrColorspaceOptions
@@ -164,6 +167,15 @@ public:
 	void OnRendererDetailString(const CString& details) override;
 
 protected:
+
+	int m_resyncPendingResetSeconds = -1;  // Countdown timer for scheduled reset after resync/refresh rate change (-1 = no reset pending)
+	double m_lastKnownRefreshRate = 0.0;  // Track last refresh rate for change detection (0 = not initialized)
+
+	// EOTF change detection for SDR/HDR switching
+	// Feature flag: Set to true to enable automatic renderer restart on EOTF change
+	bool m_enableEotfChangeRestart = true;  // TODO: Make this configurable via UI or config file
+	EOTF m_lastKnownEotf = EOTF::UNKNOWN;  // Track last EOTF for change detection
+	int m_eotfChangeRestartCooldownSeconds = -1;  // Cooldown timer to prevent restart loops (-1 = no cooldown active
 
 	//
 	// UI elements

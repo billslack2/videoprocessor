@@ -13,6 +13,7 @@
 #include <guid.h>
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CFFMpegDecoderVideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowTranslations.h>
 
@@ -109,14 +110,28 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 	int bitCount;
 	LONG heightMultiplier = 1;
 
-	// v210 (YUV422) to p010 (YUV420)
-	// This is lossy, only use to revert decklink upscaling
-	if (m_videoState->videoFrameEncoding == VideoFrameEncoding::V210 &&
-		m_videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010)
+	// Smart P010 conversion: Auto-detect input format (V210 or UYVY) and convert to P010
+	// User selects "V210 > P010" in UI, we intelligently pick the right converter
+	if (m_videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010)
 	{
 		mediaSubType = MEDIASUBTYPE_P010;
 		bitCount = 10;
-		m_videoFramFormatter = new CV210toP010VideoFrameFormatter();
+		
+		// Auto-detect input format and use appropriate converter
+		if (m_videoState->videoFrameEncoding == VideoFrameEncoding::V210)
+		{
+			// V210 (10-bit 4:2:2) ? P010 (10-bit 4:2:0)
+			m_videoFramFormatter = new CV210toP010VideoFrameFormatter();
+		}
+		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::UYVY)
+		{
+			// UYVY (8-bit 4:2:2) ? P010 (10-bit 4:2:0)
+			m_videoFramFormatter = new CUYVYtoP010VideoFrameFormatter();
+		}
+		else
+		{
+			throw std::runtime_error("V210 > P010 conversion only supports V210 or UYVY input");
+		}
 	}
 
 	// Default conversions

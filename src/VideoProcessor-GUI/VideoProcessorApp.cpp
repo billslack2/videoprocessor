@@ -128,6 +128,11 @@ BOOL CVideoProcessorApp::InitInstance()
 				{
 					videoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
 				}
+				else if (wcscmp(pArgs[i + 1], L"UYVY_TO_P010") == 0)
+				{
+					// UYVY_TO_P010 is an alias for V210_TO_P010 (smart auto-detection)
+					videoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
+				}
 				else
 				{
 					throw std::runtime_error("Invalid option for /video_conversion");
@@ -360,7 +365,7 @@ BOOL CVideoProcessorApp::InitInstance()
 					transferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_28;
 				}
 
-				else if (wcscmp(pArgs[i + 1], L"LINEAR_RGB") == 0)
+				if (wcscmp(pArgs[i + 1], L"LINEAR_RGB") == 0)
 				{
 					transferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_10;
 				}
