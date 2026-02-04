@@ -210,6 +210,9 @@
     <ClInclude Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -351,6 +354,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

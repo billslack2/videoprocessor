@@ -12,6 +12,12 @@
 // UYVY format: [U0 Y0 V0 Y1] [U2 Y2 V2 Y3] ... (4:2:2, 8-bit per component)
 // Each macropixel (4 bytes) contains 2 pixels worth of Y and 1 shared U/V pair
 // P010 format: Planar 4:2:0, 10-bit in 16-bit words (data in high 10 bits)
+//
+// Why no SIMD optimization needed:
+// - UYVY is simple byte-aligned access (vs V210's complex 10-bit-in-32-bit packing)
+// - Memory bandwidth is the bottleneck, not ALU operations
+// - The simple loop is already very cache-friendly with sequential access
+// - 8-bit shifts are trivial compared to V210's bit extraction
 
 void CUYVYtoP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& videoState)
 {
@@ -37,6 +43,8 @@ bool CUYVYtoP010VideoFrameFormatter::FormatVideoFrame(
 	const VideoFrame& inFrame,
 	BYTE* outBuffer)
 {
+	const auto startTime = GetWallClockTime();
+
 	// UYVY is packed: U Y V Y (4:2:2 - chroma sampled every 2 pixels horizontally)
 	// P010 is planar: Y plane (full res) + interleaved UV plane (half res both dimensions)
 
@@ -74,8 +82,6 @@ bool CUYVYtoP010VideoFrameFormatter::FormatVideoFrame(
 
 			// Write Y values (8-bit to P010: shift left 8 bits)
 			// P010 stores 10-bit in upper bits of 16-bit words
-			// 8-bit (0-255) << 8 = 16-bit value with 8-bit data in upper byte
-			// This matches how 10-bit data would be stored: value << 6
 			// For 8-bit: (value << 2) << 6 = value << 8 to scale and position correctly
 			*dstY0++ = static_cast<uint16_t>(y0_line0) << 8;
 			*dstY0++ = static_cast<uint16_t>(y1_line0) << 8;
@@ -94,6 +100,11 @@ bool CUYVYtoP010VideoFrameFormatter::FormatVideoFrame(
 			srcLine1 += 4;
 		}
 	}
+
+	// Track performance
+	const auto endTime = GetWallClockTime();
+	const uint64_t conversionTimeUs = (endTime - startTime) / 10;  // 100ns ticks to microseconds
+	m_performanceWindow.AddSample(static_cast<double>(conversionTimeUs));
 
 	return true;
 }

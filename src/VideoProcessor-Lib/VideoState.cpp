@@ -76,14 +76,14 @@ uint32_t VideoState::BytesPerRow() const
 	{
 	case VideoFrameEncoding::UYVY:
 	case VideoFrameEncoding::HDYC:
-		return displayMode->FrameWidth() * 16 / 8;
+		return displayMode->FrameWidth() * 16 / 8;  // 2 bytes per pixel
 
 	case VideoFrameEncoding::V210:
 		return ((displayMode->FrameWidth() + 47) / 48) * 128;
 
 	case VideoFrameEncoding::ARGB_8BIT:
 	case VideoFrameEncoding::BGRA_8BIT:
-		return ((displayMode->FrameWidth() + 32) / 8);
+		return displayMode->FrameWidth() * 4;  // 4 bytes per pixel (32-bit ARGB/BGRA)
 
 	case VideoFrameEncoding::R210:
 	case VideoFrameEncoding::R10b:

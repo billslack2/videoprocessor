@@ -11,26 +11,25 @@
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 
 /**
- * Video frame formatter which reads UYVY (8-bit 4:2:2) and writes to P010 (10-bit 4:2:0 planar)
- * Upscales 8-bit to 10-bit by bit-shifting
- * Downsamples chroma from 4:2:2 to 4:2:0 by averaging vertical pairs
+ * Video frame formatter which reads ARGB/BGRA (8-bit 4:4:4:4 RGB) and writes to P010 (10-bit 4:2:0 YUV planar)
  * 
- * Note: This is simpler than V210?P010 because UYVY is a straightforward packed format
- * without the complex 10-bit-in-32-bit packing that V210 uses. No SIMD optimization
- * needed as the simple byte access pattern is already cache-friendly.
+ * Performs RGB to YUV color space conversion using BT.709 or BT.2020 matrix (based on colorspace),
+ * then downsamples chroma from 4:4:4 to 4:2:0 by averaging 2x2 pixel blocks.
+ * 
+ * Supports both ARGB (A R G B byte order) and BGRA (B G R A byte order) input formats.
  */
-class CUYVYtoP010VideoFrameFormatter : public IVideoFrameFormatter
+class CARGBtoP010VideoFrameFormatter : public IVideoFrameFormatter
 {
 public:
-	CUYVYtoP010VideoFrameFormatter() = default;
-	virtual ~CUYVYtoP010VideoFrameFormatter() = default;
+	CARGBtoP010VideoFrameFormatter() = default;
+	virtual ~CARGBtoP010VideoFrameFormatter() = default;
 
 	// IVideoFrameFormatter
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
 	LONG GetOutFrameSize() const override;
 	
-	// Performance metrics (matches V210 interface)
+	// Performance metrics
 	void GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override
 	{
 		currentUs = m_performanceWindow.lastTimeUs;
@@ -41,9 +40,13 @@ public:
 private:
 	uint32_t m_height = 0;
 	uint32_t m_width = 0;
-	uint32_t m_srcStride = 0;  // Source stride from VideoState
+	uint32_t m_srcStride = 0;
+	bool m_isBGRA = false;  // true for BGRA, false for ARGB
 	
-	// Rolling window performance tracking (matches V210 pattern)
+	// BT.709 vs BT.2020 selection based on colorspace
+	bool m_useBT2020 = false;
+	
+	// Rolling window performance tracking
 	struct RollingPerformanceWindow
 	{
 		static const size_t WINDOW_SIZE = 600;  // 10 seconds @ 60fps

@@ -19,7 +19,7 @@ const TCHAR* ToString(const VideoConversionOverride videoConversionOverride)
 		return TEXT("No override");
 
 	case VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010:
-		return TEXT("V210 > P010");
+		return TEXT("YUV/RGB > P010");
 	}
 
 	throw std::runtime_error("VideoConversionOverride ToString() failed, value not recognized");
