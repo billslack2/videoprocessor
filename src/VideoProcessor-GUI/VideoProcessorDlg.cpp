@@ -926,11 +926,11 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		assert(oldRendererState == RendererState::RENDERSTATE_READY);
 
 		m_restartQueuedBecauseEotf = false;
-
 		// EOTF TRACKING: Store the EOTF the renderer was started with
 		if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
 		{
 			m_rendererStartedWithEotf = m_captureDeviceVideoState->eotf;
+			m_lastKnownEotf = m_captureDeviceVideoState->eotf;  // Sync to prevent false detection
 			m_eotfCheckCooldownSeconds = 5;  // Wait 5 seconds before checking for changes
 			DbgLog((LOG_TRACE, 1, TEXT("Renderer started with EOTF: %s, will check for changes in 5 seconds"), ToString(m_rendererStartedWithEotf)));
 		}
@@ -1951,6 +1951,11 @@ void CVideoProcessorDlg::RenderStop()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStop(): Begin")));
 
+	// Cancel any pending EOTF change restart timer - a restart is already happening
+	KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
+	m_eotfChangeRestartCooldownSeconds = -1;
+	m_eotfCheckCooldownSeconds = 0;
+
 	assert(m_captureDevice);
 	assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
 
@@ -2969,7 +2974,13 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		// SIMPLE EOTF CHANGE DETECTION: Every 5 seconds, check if EOTF changed since renderer started
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 			m_timerSeconds % 5 == 0 &&
-			m_eotfChangeRestartCooldownSeconds == 0)  // Cooldown expired
+			m_eotfCheckCooldownSeconds == 0 &&  // Cooldown expired
+			m_captureDeviceVideoState &&
+			m_captureDeviceVideoState->valid &&
+			m_rendererStartedWithEotf != EOTF::UNKNOWN &&
+			m_captureDeviceVideoState->eotf != EOTF::UNKNOWN &&
+			!m_wantToRestartCapture &&  // Don't trigger if restart already pending
+			!m_wantToRestartRenderer)   // Don't trigger if restart already pending
 		{
 			// Check if EOTF changed since renderer started
 			if (m_captureDeviceVideoState->eotf != m_rendererStartedWithEotf)
@@ -2989,7 +3000,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				UpdateState();
 
 				// Reset cooldown to prevent rapid restarts
-				m_eotfChangeRestartCooldownSeconds = 2;
+				m_eotfCheckCooldownSeconds = 5;
 			}
 		}
 
@@ -3324,7 +3335,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t dr
 	// STRATEGY 3: Detect stuck queues (same size for multiple seconds)
 	if (queueStuck)
 	{
-		m_consecutiveFullSeconds++;
+		m_consecutiveStuckSeconds++;
 		if (m_consecutiveStuckSeconds >= 5)  // 5 seconds stuck
 		{
 
