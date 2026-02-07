@@ -15,14 +15,15 @@
  * Upscales 8-bit to 10-bit by bit-shifting
  * Downsamples chroma from 4:2:2 to 4:2:0 by averaging vertical pairs
  * 
- * Note: This is simpler than V210?P010 because UYVY is a straightforward packed format
- * without the complex 10-bit-in-32-bit packing that V210 uses. No SIMD optimization
- * needed as the simple byte access pattern is already cache-friendly.
+ * AVX2 optimization provides significant speedup by:
+ * - Processing 32 pixels per iteration (vs 2 in scalar)
+ * - Using SIMD for 8-bit to 16-bit expansion (_mm256_cvtepu8_epi16)
+ * - Vectorized vertical chroma averaging
  */
 class CUYVYtoP010VideoFrameFormatter : public IVideoFrameFormatter
 {
 public:
-	CUYVYtoP010VideoFrameFormatter() = default;
+	CUYVYtoP010VideoFrameFormatter();
 	virtual ~CUYVYtoP010VideoFrameFormatter() = default;
 
 	// IVideoFrameFormatter
@@ -42,6 +43,16 @@ private:
 	uint32_t m_height = 0;
 	uint32_t m_width = 0;
 	uint32_t m_srcStride = 0;  // Source stride from VideoState
+	
+	// CPU feature detection (cached)
+	mutable bool m_cpuFeaturesChecked = false;
+	mutable bool m_hasAVX2 = false;
+	
+	bool CheckCPUFeatures() const;
+	
+	// Conversion implementations
+	void ConvertScalar(const uint8_t* src, uint16_t* dstY, uint16_t* dstUV) const;
+	void ConvertAVX2(const uint8_t* src, uint16_t* dstY, uint16_t* dstUV) const;
 	
 	// Rolling window performance tracking (matches V210 pattern)
 	struct RollingPerformanceWindow
