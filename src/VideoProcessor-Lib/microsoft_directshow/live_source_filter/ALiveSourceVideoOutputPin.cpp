@@ -1180,7 +1180,7 @@ void ALiveSourceVideoOutputPin::TrackFrameDuration(REFERENCE_TIME timeStart, REF
 }
 
 // How many frames to ramp over (hard-coded as requested)
-static constexpr int kLeadRampFrames = 500;
+static constexpr int kLeadRampFrames = 0;
 
 REFERENCE_TIME ALiveSourceVideoOutputPin::GetRampedLeadTime()
 {
