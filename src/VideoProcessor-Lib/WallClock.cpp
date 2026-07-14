@@ -13,17 +13,19 @@
 
 timestamp_t GetWallClockTime()
 {
-	// The FILETIME structure contains a 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601 (UTC).
-	//  -- https://zetcode.com/gui/winapi/datetime/ (2020)
-	FILETIME ft;
+	// Use QueryPerformanceCounter for high-resolution timing (nanosecond precision)
+	// instead of GetSystemTimeAsFileTime which has ~15-16ms resolution
+	static LARGE_INTEGER frequency = { 0 };
+	if (frequency.QuadPart == 0)
+	{
+		QueryPerformanceFrequency(&frequency);
+	}
 
-	// "High-accuracy function gives you the best of both worlds: Time correlated with real-world clocks,
-	//  but with the accuracy of the system performance counter."
-	//   -- https://devblogs.microsoft.com/oldnewthing/20170921-00/?p=97057 (Raymond Chen, 2017)
-	GetSystemTimeAsFileTime(&ft);
+	LARGE_INTEGER counter;
+	QueryPerformanceCounter(&counter);
 
-	timestamp_t t = (timestamp_t)ft.dwHighDateTime << 32 | ft.dwLowDateTime;
-	t -= 11644473600000000Ui64;  // start of the windows time (1601-01-01) to epoch (1970-01-01)
-
-	return t;
+	// Convert to 100ns increments (ticks) for compatibility with existing code
+	// counter.QuadPart / frequency.QuadPart = seconds
+	// seconds * 10,000,000 = 100ns ticks
+	return (counter.QuadPart * 10000000) / frequency.QuadPart;
 }

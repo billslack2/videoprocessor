@@ -7,6 +7,8 @@
  */
 
 #include <pch.h>
+#include <immintrin.h>  // AVX2 intrinsics
+#include <intrin.h>     // CPU feature detection
 
 #include <libavutil/error.h>
 
@@ -18,8 +20,10 @@ static const int OUTPUT_LINESIZE_ALIGNMENT = 1;
 
 CFFMpegDecoderVideoFrameFormatter::CFFMpegDecoderVideoFrameFormatter(
 	AVCodecID inputCodecId,
-	AVPixelFormat targetPixelFormat):
-	mTargetPixelFormat(targetPixelFormat)
+	AVPixelFormat targetPixelFormat,
+	bool useHardwareDecoding):
+	mTargetPixelFormat(targetPixelFormat),
+	m_enableHardwareDecoding(useHardwareDecoding)
 {
 	// Check params
 
@@ -45,6 +49,27 @@ CFFMpegDecoderVideoFrameFormatter::CFFMpegDecoderVideoFrameFormatter(
 	// This is a non-standard ffmpeg extension signalling no use of other threads
 	mAVCodecContext->thread_count = -1;
 
+	// Attempt hardware decoding initialization if enabled
+	if (m_enableHardwareDecoding)
+	{
+		if (TryInitializeHardwareDecoding(inputCodecId))
+		{
+			m_usingHardwareDecoding = true;
+			m_decoderType = "Hardware (D3D11VA)";
+		}
+		else
+		{
+			// Hardware decoding failed, fall back to software
+			m_usingHardwareDecoding = false;
+			m_decoderType = "Software (fallback from hardware attempt)";
+		}
+	}
+	else
+	{
+		m_usingHardwareDecoding = false;
+		m_decoderType = "Software (hardware disabled)";
+	}
+
 	if (avcodec_open2(mAVCodecContext, avCodecDecoder, nullptr) < 0)
 		throw std::runtime_error("Could not open codec");
 
@@ -60,6 +85,14 @@ CFFMpegDecoderVideoFrameFormatter::CFFMpegDecoderVideoFrameFormatter(
 	mOutputFrame = av_frame_alloc();
 	if (!mOutputFrame)
 		throw std::runtime_error("Failed to alloc output frame");
+
+	// Allocate frame for hardware to CPU transfer if using hardware decoding
+	if (m_usingHardwareDecoding)
+	{
+		m_swFrameForHWDecode = av_frame_alloc();
+		if (!m_swFrameForHWDecode)
+			throw std::runtime_error("Failed to alloc frame for hardware decode transfer");
+	}
 
 	mPkt = av_packet_alloc();
 	if (!mPkt)
@@ -83,8 +116,18 @@ CFFMpegDecoderVideoFrameFormatter::~CFFMpegDecoderVideoFrameFormatter()
 	if (mOutputFrame)
 		av_frame_free(&mOutputFrame);
 
+	if (m_swFrameForHWDecode)
+		av_frame_free(&m_swFrameForHWDecode);
+
 	if (mPkt)
 		av_packet_free(&mPkt);
+
+	// Clean up hardware device context
+	if (m_hwDeviceCtx)
+	{
+		av_buffer_unref(&m_hwDeviceCtx);
+		m_hwDeviceCtx = nullptr;
+	}
 }
 
 
@@ -148,6 +191,8 @@ bool CFFMpegDecoderVideoFrameFormatter::FormatVideoFrame(
 	if (mWidth == 0 || mHeight == 0 || mInputBytesPerVideoFrame == 0)
 		throw std::runtime_error("Width, height or bytes per frame not known, call OnVideoState() first");
 
+	const auto startTime = GetWallClockTime();
+
 	mPkt->data = (uint8_t*)inFrame.GetData();
 	mPkt->size = mInputBytesPerVideoFrame;
 
@@ -164,29 +209,137 @@ bool CFFMpegDecoderVideoFrameFormatter::FormatVideoFrame(
 	if (ret < 0)
 		throw std::runtime_error("avcodec_receive_frame errored");
 
-	// Convert
+	// Handle hardware decoded frame transfer
+	AVFrame* decodedFrame = mInputFrame;
+	if (m_usingHardwareDecoding && mInputFrame->format == AV_PIX_FMT_D3D11)
+	{
+		// Transfer hardware frame to CPU memory for further processing
+		if (!TransferHardwareFrameToCPU(mInputFrame, m_swFrameForHWDecode))
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("Warning: Hardware frame transfer failed, using original frame")));
+			// Continue with original frame, may have partial data
+		}
+		else
+		{
+			decodedFrame = m_swFrameForHWDecode;
+		}
+	}
+
+	// Convert to intermediate buffer
 	int scaled_lines = sws_scale(
 		mSws,
-		mInputFrame->data, mInputFrame->linesize,
+		decodedFrame->data, decodedFrame->linesize,
 		0, mHeight,
 		mOutputFrame->data, mOutputFrame->linesize);
 	if (scaled_lines != mHeight)
 		throw std::runtime_error("Failed to sws_scale all lines");
 
-	int copiedSize = av_image_copy_to_buffer(
-		(uint8_t*)outBuffer,
-		mOutFrameSize,
-		mOutputFrame->data, mOutputFrame->linesize,
+	// Copy to output buffer
+	int ret2 = av_image_copy_to_buffer(
+		outBuffer, mOutFrameSize,
+		(const uint8_t* const*)mOutputFrame->data, mOutputFrame->linesize,
 		mTargetPixelFormat,
 		mWidth, mHeight,
 		OUTPUT_LINESIZE_ALIGNMENT);
+	if (ret2 < 0)
+		throw std::runtime_error("Failed to copy image to buffer");
 
-	if (copiedSize != mOutFrameSize)
-		throw std::runtime_error("Failed to av_image_copy_to_buffer");
+	const auto endTime = GetWallClockTime();
+	const uint64_t conversionTimeUs = (endTime - startTime) / 10;
+	m_performanceWindow.AddSample(static_cast<double>(conversionTimeUs));
 
 	return true;
 }
 
+// Hardware decoding initialization
+bool CFFMpegDecoderVideoFrameFormatter::TryInitializeHardwareDecoding(AVCodecID inputCodecId)
+{
+	// Attempt to find hardware decoder for D3D11VA (Windows)
+	const char* hwDecoderName = nullptr;
+	AVHWDeviceType deviceType = AV_HWDEVICE_TYPE_NONE;
+
+	// Map codec to hardware decoder name
+	switch (inputCodecId)
+	{
+	case AV_CODEC_ID_H264:
+		hwDecoderName = "h264_d3d11va";
+		deviceType = AV_HWDEVICE_TYPE_D3D11VA;
+		break;
+	case AV_CODEC_ID_HEVC:
+		hwDecoderName = "hevc_d3d11va";
+		deviceType = AV_HWDEVICE_TYPE_D3D11VA;
+		break;
+	case AV_CODEC_ID_VP9:
+		hwDecoderName = "vp9_d3d11va";
+		deviceType = AV_HWDEVICE_TYPE_D3D11VA;
+		break;
+	case AV_CODEC_ID_AV1:
+		hwDecoderName = "av1_d3d11va";
+		deviceType = AV_HWDEVICE_TYPE_D3D11VA;
+		break;
+	default:
+		// No hardware decoder available for this codec
+		DbgLog((LOG_TRACE, 1, TEXT("Hardware decoding not available for codec ID %d"), inputCodecId));
+		return false;
+	}
+
+	if (!hwDecoderName || deviceType == AV_HWDEVICE_TYPE_NONE)
+		return false;
+
+	// Try to find the hardware decoder
+	const AVCodec* hwCodec = avcodec_find_decoder_by_name(hwDecoderName);
+	if (!hwCodec)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Hardware decoder '%s' not found on this system"), 
+			hwDecoderName));
+		return false;
+	}
+
+	// Create hardware device context
+	int ret = av_hwdevice_ctx_create(&m_hwDeviceCtx, deviceType, nullptr, nullptr, 0);
+	if (ret < 0)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Failed to create hardware device context for D3D11VA (error %d)"), ret));
+		return false;
+	}
+
+	// Update codec context to use hardware device
+	mAVCodecContext->hw_device_ctx = av_buffer_ref(m_hwDeviceCtx);
+	if (!mAVCodecContext->hw_device_ctx)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Failed to reference hardware device context")));
+		av_buffer_unref(&m_hwDeviceCtx);
+		m_hwDeviceCtx = nullptr;
+		return false;
+	}
+
+	DbgLog((LOG_TRACE, 1, TEXT("Hardware decoding (D3D11VA) initialized for codec '%s'"), hwDecoderName));
+	return true;
+}
+
+// Frame transfer from hardware to CPU memory
+bool CFFMpegDecoderVideoFrameFormatter::TransferHardwareFrameToCPU(AVFrame* hwFrame, AVFrame* swFrame)
+{
+	if (!hwFrame || !swFrame)
+		return false;
+
+	// Check if frame is on hardware
+	if (hwFrame->format != AV_PIX_FMT_D3D11)
+	{
+		// Frame is already on CPU, no transfer needed
+		return true;
+	}
+
+	// Transfer data from GPU to CPU
+	int ret = av_hwframe_transfer_data(swFrame, hwFrame, 0);
+	if (ret < 0)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Failed to transfer hardware frame to CPU memory (error %d)"), ret));
+		return false;
+	}
+
+	return true;
+}
 
 LONG CFFMpegDecoderVideoFrameFormatter::GetOutFrameSize() const
 {

@@ -16,6 +16,7 @@ extern "C" {
 #include <VideoProcessorDlg.h>
 #include <VideoConversionOverride.h>
 #include <HelpDialog.h>
+#include <DebugLog.h>
 
 #include "VideoProcessorApp.h"
 using namespace std;
@@ -42,6 +43,9 @@ BOOL CVideoProcessorApp::InitInstance()
 #ifdef _DEBUG
 	av_log_set_level(AV_LOG_TRACE);
 #endif
+
+	// Initialize async debug logger
+	DEBUGLOG_INIT();
 
 	CHelpDialog help;
 	CVideoProcessorDlg dlg;
@@ -122,6 +126,11 @@ BOOL CVideoProcessorApp::InitInstance()
 
 				if (wcscmp(pArgs[i + 1], L"V210_TO_P010") == 0)
 				{
+					videoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
+				}
+				else if (wcscmp(pArgs[i + 1], L"UYVY_TO_P010") == 0)
+				{
+					// UYVY_TO_P010 is an alias for V210_TO_P010 (smart auto-detection)
 					videoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
 				}
 				else
@@ -244,6 +253,10 @@ BOOL CVideoProcessorApp::InitInstance()
 				{
 					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART;
 				}
+				else if (wcscmp(pArgs[i + 1], L"CLOCK_SMART2") == 0)
+				{
+					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2;
+				}
 				else if (wcscmp(pArgs[i + 1], L"CLOCK_THEO") == 0)
 				{
 					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO;
@@ -255,6 +268,14 @@ BOOL CVideoProcessorApp::InitInstance()
 				else if (wcscmp(pArgs[i + 1], L"THEO_THEO") == 0)
 				{
 					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO;
+				}
+				else if (wcscmp(pArgs[i + 1], L"RATIONAL_RATIONAL") == 0)
+				{
+					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL;
+				}
+				else if (wcscmp(pArgs[i + 1], L"CLOCK_RATIONAL") == 0)
+				{
+					dsssTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL;
 				}
 				else if (wcscmp(pArgs[i + 1], L"CLOCK_NONE") == 0)
 				{
@@ -344,7 +365,7 @@ BOOL CVideoProcessorApp::InitInstance()
 					transferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_28;
 				}
 
-				else if (wcscmp(pArgs[i + 1], L"LINEAR_RGB") == 0)
+				if (wcscmp(pArgs[i + 1], L"LINEAR_RGB") == 0)
 				{
 					transferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_10;
 				}
@@ -516,6 +537,9 @@ BOOL CVideoProcessorApp::InitInstance()
 	}
 
 	CoUninitialize();
+
+	// Shutdown async debug logger
+	DEBUGLOG_SHUTDOWN();
 
 	return FALSE;
 }

@@ -124,6 +124,9 @@ private:
 	uint64_t m_missedVideoFrameCount = 0;
 	timingclocktime_t m_previousTimingClockFrameTime = TIMING_CLOCK_TIME_INVALID;
 
+	// DeckLink hardware timing for basic frame rate calculation 
+	double m_tickRateCorrectionFactor = 1.0;  // Legacy PLL correction (no longer used)
+
 	void ResetVideoState();
 
 	// Try to create and send a VideoState callback, upon failure will internally call Error() and return false

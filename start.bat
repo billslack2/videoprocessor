@@ -1,0 +1,1 @@
+VideoProcessor-GUI.exe /capture_device "Decklink Quad HDMI Recorder (2)"  /renderer "DirectShow - madVR" /video_conversion V210_TO_P010 /hdr_colorspace FOLLOW_INPUT_LLDV /hdr_luminance FOLLOW_INPUT_LLDV /renderer_start_stop_time_method RATIONAL_RATIONAL  /queue_size 32  /renderer_nominal_range LIMITED 

@@ -41,6 +41,12 @@ public:
 
 	static CUnknown* WINAPI CreateInstance(LPUNKNOWN pUnk, HRESULT* phr);
 
+	// Add to the Queue section
+	int GetConvertedQueueSize();
+	
+	// Access the video output pin for advanced operations
+	ALiveSourceVideoOutputPin* GetVideoOutputPin() { return m_videoOutputPin; }
+
 	// IUnknown
 	DECLARE_IUNKNOWN;
 
@@ -49,6 +55,8 @@ public:
 		IVideoFrameFormatter* videoFrameFormatter,
 		const AM_MEDIA_TYPE& mediaType,
 		timestamp_t frameDuration,
+		unsigned int timeScale,
+		unsigned int frameDurationTicks,
 		ITimingClock* timingClock,
 		DirectShowStartStopTimeMethod timestamp,
 		bool useFrameQueue,
@@ -91,6 +99,19 @@ public:
 
 	// Get the amount of dropped frames due to queue actions
 	uint64_t DroppedFrameCount() const;
+
+	//
+	// PPM Correction (forwarded from video output pin)
+	//
+
+	// Get the current PPM correction value being applied
+	int GetCurrentPPMCorrection() const;
+	
+	// Check if PPM correction is active (non-zero)
+	bool HasPPMCorrection() const;
+	
+	// Get PPM correction source information (true if from file)
+	bool GetPPMCorrectionSource() const;
 
 private:
 	ALiveSourceVideoOutputPin* m_videoOutputPin = nullptr;

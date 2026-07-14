@@ -29,8 +29,6 @@
 
 #include "VideoProcessorDlg.h"
 
-const static UINT_PTR TIMER_ID_1SECOND = 1;
-
 
 BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 
@@ -81,20 +79,19 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_TOGGLE, &CVideoProcessorDlg::OnCommandFullScreenToggle)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_EXIT, &CVideoProcessorDlg::OnCommandFullScreenExit)
 	ON_COMMAND(ID_COMMAND_RENDERER_RESET, &CVideoProcessorDlg::OnCommandRendererReset)
+	ON_COMMAND(ID_COMMAND_RENDERER_RESTART, &CVideoProcessorDlg::OnCommandRendererRestart)
+
 	ON_COMMAND(ID_COMMAND_PQ_SET, &CVideoProcessorDlg::OnCommandPQSet)
 	ON_COMMAND(ID_COMMAND_AUTO_SET, &CVideoProcessorDlg::OnCommandAutoSet)
 
 	ON_COMMAND(ID_COMMAND_VC_NONE, &CVideoProcessorDlg::SetVideoConversionOff)
 	ON_COMMAND(ID_COMMAND_VC_P010, &CVideoProcessorDlg::SetVideoConversionP010)
+	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
 	ON_COMMAND_RANGE(ID_COMMAND_CAPTURE_1, ID_COMMAND_CAPTURE_4, &CVideoProcessorDlg::OnSelectCaptureDevice)
 
 
 
-
-
 END_MESSAGE_MAP()
-
-
 
 
 static const std::vector<std::pair<LPCTSTR, ColorSpace>> COLOLORSPACE_CONTAINER_OPTIONS =
@@ -131,8 +128,12 @@ static const std::vector<std::pair<LPCTSTR, HdrLuminanceOptions>> HDR_LUMINANCE_
 
 static const std::vector<DirectShowStartStopTimeMethod> RENDERER_DIRECTSHOW_START_STOP_TIME_OPTIONS =
 {
-	// Sorted in preferred order
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART,
+	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2,
+	// RATIONAL_RATIONAL uses defined rational frame rates instead of hardware timestamps
+	DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL,
+	// CLOCK_RATIONAL combines hardware sync with rational duration (new hybrid mode)
+	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO,
 	DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK,
 	DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO,
@@ -208,12 +209,6 @@ static const std::vector<VideoConversionOverride> RENDERER_VIDEO_CONVERSION =
 	VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010
 };
 
-//static const std::vector<std::string> FULLSCREEN_MODES =
-//{
-//	"Exclusive",
-//	"Windowed"
-//};
-
 //
 // Constructor/destructor
 //
@@ -225,6 +220,10 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 
 	m_blackMagicDeviceDiscoverer = new BlackMagicDeckLinkCaptureDeviceDiscoverer(*this);
+	
+	// Initialize stats overlay
+	m_statsOverlay = new StatsOverlayWindow();
+	m_lastStatsData = new StatsData();
 }
 
 
@@ -232,8 +231,21 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 {
 	for (auto& captureDevice : m_captureDevices)
 		(*captureDevice).Release();
-}
 
+	// Clean up stats overlay
+	if (m_statsOverlay)
+	{
+		delete m_statsOverlay;
+		m_statsOverlay = nullptr;
+	}
+	if (m_lastStatsData)
+	{
+		delete m_lastStatsData;
+		m_lastStatsData = nullptr;
+
+
+	}
+}
 
 //
 // Option handlers
@@ -337,7 +349,6 @@ void CVideoProcessorDlg::DefaultRendererStartStopTimeMethod(DirectShowStartStopT
 }
 
 //				dlg.DefaultRendererStartStopTimeMethod(dsssTimeMethod);
-
 
 
 void CVideoProcessorDlg::DefaultRendererNominalRange(DXVA_NominalRange nominalRange)
@@ -492,11 +503,24 @@ void CVideoProcessorDlg::OnBnClickedRendererVideoFrameUseQueueCheck()
 void CVideoProcessorDlg::OnBnClickedRendererReset()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnBnClickedRendererReset()")));
+	
+	DebugLog::Log("UI: OnBnClickedRendererReset() - button clicked");
 
 	if (!m_videoRenderer)
+	{
+		DebugLog::Log("UI: OnBnClickedRendererReset() - ERROR: m_videoRenderer is null!");
 		return;
+	}
+	
+	DebugLog::Log("UI: OnBnClickedRendererReset() - calling m_videoRenderer->Reset()");
+
+	// Disable auto-reset timer while manual reset is in progress
+	KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
+	m_pendingQueueReset = false;
 
 	m_videoRenderer->Reset();
+	
+	DebugLog::Log("UI: OnBnClickedRendererReset() - Reset() returned");
 }
 
 
@@ -555,7 +579,7 @@ void CVideoProcessorDlg::OnCbnSelchangeFullscreenmodeCombo()
 	if (m_fullScreenVideoWindow)
 	{
 		FullScreenVideoWindowDestroy();
-		Sleep(1000);
+		//Sleep(1000);
 		OnBnClickedRendererRestart();
 	}
 
@@ -656,7 +680,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(WPARAM wParam,
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(): Locked=%s, DisplayMode=%s"),
 		ToString(cardState->inputLocked),
-		cardState->inputDisplayMode ? cardState->inputDisplayMode->ToString() : TEXT("")
+		cardState->inputDisplayMode ? cardState->inputDisplayMode->ToString() : TEXT(""),
 		));
 
 	// Input fields
@@ -690,9 +714,11 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(WPARAM wParam,
 	return 0;
 }
 
-
 LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam, LPARAM lParam)
 {
+
+
+
 	VideoStateComPtr videoState;
 	videoState.Attach((VideoState*)wParam);
 
@@ -705,6 +731,46 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 
 	m_captureDeviceVideoState = videoState;
 
+	// Reset refresh rate tracking on video state change to prevent false positive detection
+	m_lastKnownRefreshRate = 0.0;
+	m_resyncPendingResetSeconds = -1;
+	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Reset refresh rate tracking")));
+
+	// EOTF CHANGE DETECTION: Check if EOTF changed during active stream (e.g., SDR↔HDR switching)
+	// Only check if renderer is actively rendering and feature is enabled
+	if (m_enableEotfChangeRestart &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		videoState->valid &&
+		m_eotfChangeRestartCooldownSeconds < 0)  // Not in cooldown period
+	{
+		// Initialize on first valid state
+		if (m_lastKnownEotf == EOTF::UNKNOWN && videoState->eotf != EOTF:: UNKNOWN)
+		{
+			m_lastKnownEotf = videoState->eotf;
+			DbgLog((LOG_TRACE, 1, TEXT("VideoStateChange: Initialized EOTF tracking to %s"),
+				ToString(videoState->eotf)));
+		}
+		// Detect actual EOTF change (not initialization)
+		else if (m_lastKnownEotf != EOTF::UNKNOWN &&
+			videoState->eotf != EOTF::UNKNOWN &&
+			m_lastKnownEotf != videoState->eotf)
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("VideoStateChange: EOTF changed %s -> %s - scheduling renderer restart in 3 seconds"),
+				ToString(m_lastKnownEotf), ToString(videoState->eotf)));
+
+			DebugLog::Log("EOTF change detected: %s -> %s - renderer restart in 3 seconds",
+				CStringA(ToString(m_lastKnownEotf)).GetString(),
+				CStringA(ToString(videoState->eotf)).GetString());
+
+			// Update tracked EOTF immediately to prevent re-triggering
+			m_lastKnownEotf = videoState->eotf;
+
+			// Schedule restart with 3-second delay to allow signal to stabilize
+			m_eotfChangeRestartCooldownSeconds = 5;
+			SetTimer(EOTF_CHANGE_RESTART_TIMER_ID, 1000, nullptr);  // 1-second tick
+		}
+	}
+
 	const bool rendererAcceptedState = BuildPushVideoState();
 
 	// If the renderer did not accept the new state we need to restart the renderer
@@ -714,6 +780,8 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 			TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange():  - Renderer did not accept state, m_wantToRestartRenderer=true")));
 		m_wantToRestartRenderer = true;
 	}
+	// Note: Automatic reset for signal changes is now handled at the lower level
+	// by CBufferedLiveSourceVideoOutputPin detecting frame counter changes
 
 	// New round, new chances, reset state here
 	if (m_rendererState == RendererState::RENDERSTATE_FAILED)
@@ -723,10 +791,10 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 
 	UpdateState();
 
-
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Done")));
 	return 0;
 }
+
 
 
 LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceError(WPARAM wParam, LPARAM lParam)
@@ -739,15 +807,77 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceError(WPARAM wParam, LPARAM lP
 
 	return 0;
 }
-
-
-// This is a handler for the DirectShow graph in the renderer,
-// it works by using the GUI's message queue.
 LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam)
 {
 	if (m_videoRenderer)
-		if (FAILED(m_videoRenderer->OnWindowsEvent(wParam, lParam)))
+	{
+		// Enhanced DirectShow event handling for MadVR changes
+		// We'll intercept events before passing them to the renderer to detect important changes
+
+		// First call the renderer to process DirectShow events and get any graph events
+		HRESULT hr = m_videoRenderer->OnWindowsEvent(wParam, lParam);
+
+		// Now check for specific DirectShow graph events that indicate MadVR changes
+		// These events are typically sent via the DirectShow event system
+		if (SUCCEEDED(hr))
+		{
+			// Try to detect specific DirectShow events that affect MadVR
+			// Note: The exact event codes depend on DirectShow implementation
+			// We'll add logging to detect what events we're getting
+
+			DbgLog((LOG_TRACE, 2, TEXT("DirectShow notification received - wParam: 0x%08X, lParam: 0x%08X"),
+				(DWORD)wParam, (DWORD)lParam));
+
+			// Check for common DirectShow events that might indicate renderer changes
+			// EC_DISPLAY_CHANGED = 0x16, EC_WINDOW_DESTROYED = 0x11, etc.
+			long eventCode = (long)wParam;
+
+			switch (eventCode)
+			{
+			case 0x16: // EC_DISPLAY_CHANGED
+				DbgLog((LOG_TRACE, 1, TEXT("EC_DISPLAY_CHANGED detected - scheduling MadVR reset")));
+				if (m_rendererState == RendererState::RENDERSTATE_RENDERING)// && !m_pendingQueueReset)
+				{
+					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 10000, nullptr);  // 2-second delay for display changes
+					m_pendingQueueReset = true;
+				}
+				break;
+
+			case 0x11: // EC_WINDOW_DESTROYED  
+				DbgLog((LOG_TRACE, 1, TEXT("EC_WINDOW_DESTROYED detected - MadVR window change")));
+				break;
+
+			case 0x0E: // EC_VIDEO_SIZE_CHANGED
+				DbgLog((LOG_TRACE, 1, TEXT("EC_VIDEO_SIZE_CHANGED detected - scheduling MadVR reset")));
+				if (m_rendererState == RendererState::RENDERSTATE_RENDERING && !m_pendingQueueReset)
+				{
+					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);  // 1.5-second delay for video size changes
+					//m_pendingQueueReset = true;
+				}
+				break;
+
+			case 0x12: // EC_QUALITY_CHANGE
+				DbgLog((LOG_TRACE, 1, TEXT("EC_QUALITY_CHANGE detected - potential MadVR quality adjustment")));
+				// Don't reset for quality changes, but log them for diagnostics
+				break;
+
+			case 0x0D: // EC_REPAINT
+				// Very common, don't log at normal trace level
+				break;
+
+			default:
+				// Log unknown events for debugging
+				if (eventCode > 0 && eventCode < 0x50) // DirectShow event code range
+				{
+					DbgLog((LOG_TRACE, 2, TEXT("Unknown DirectShow event code: 0x%02X"), eventCode));
+				}
+				break;
+			}
+		}
+
+		if (FAILED(hr))
 			FatalError(TEXT("Failed to handle windows event in renderer"));
+	}
 
 	return 0;
 }
@@ -780,7 +910,10 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 	// Renderer ready, can be started if wanted
 	case RendererState::RENDERSTATE_READY:
 
+		
 		assert(oldRendererState == RendererState::RENDERSTATE_STARTING);
+
+		m_restartQueuedBecauseEotf = false;
 
 		m_rendererStateText.SetWindowText(TEXT("Ready"));
 		break;
@@ -788,18 +921,42 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 	// Renderer running, ready for frames
 	case RendererState::RENDERSTATE_RENDERING:
 
+
+
 		assert(oldRendererState == RendererState::RENDERSTATE_READY);
+
+		m_restartQueuedBecauseEotf = false;
+		// EOTF TRACKING: Store the EOTF the renderer was started with
+		if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
+		{
+			m_rendererStartedWithEotf = m_captureDeviceVideoState->eotf;
+			m_lastKnownEotf = m_captureDeviceVideoState->eotf;  // Sync to prevent false detection
+			m_eotfCheckCooldownSeconds = 5;  // Wait 5 seconds before checking for changes
+			DbgLog((LOG_TRACE, 1, TEXT("Renderer started with EOTF: %s, will check for changes in 5 seconds"), ToString(m_rendererStartedWithEotf)));
+		}
+		else
+		{
+			m_rendererStartedWithEotf = EOTF::UNKNOWN;
+			m_eotfCheckCooldownSeconds = 0;
+		}
 
 		m_deliverCaptureDataToRenderer.store(true, std::memory_order_release);
 		enableButtons = true;
 		m_windowedVideoWindow.ShowLogo(false);
 		m_rendererStateText.SetWindowText(TEXT("Rendering"));
+
+		m_rendererStartTime = GetTickCount();
+		SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);
+
 		break;
 
 	// Stopped rendering, can be cleaned up
 	case RendererState::RENDERSTATE_STOPPED:
 
+		
 		assert(oldRendererState == RendererState::RENDERSTATE_STOPPING);
+
+		m_restartQueuedBecauseEotf = false;
 
 		RenderRemove();
 		RenderGUIClear();
@@ -830,7 +987,6 @@ LRESULT CVideoProcessorDlg::OnMessageRendererDetailString(WPARAM wParam, LPARAM 
 	return 0;
 }
 
-
 //
 // Command handlers
 //
@@ -859,8 +1015,18 @@ void CVideoProcessorDlg::OnCommandRendererReset()
 	if (m_videoRenderer)
 	{
 		m_videoRenderer->Reset();
+		DEBUGLOG("OnCommandRendererReset");
 	}
 }
+
+void CVideoProcessorDlg::OnCommandRendererRestart()
+{
+		
+	m_wantToRestartRenderer = true;
+	UpdateState();
+	
+}
+
 
 
 void CVideoProcessorDlg::OnCommandPQSet()
@@ -874,6 +1040,24 @@ void CVideoProcessorDlg::OnCommandAutoSet()
 {
 	m_rendererTransferFunctionCombo.SetCurSel(0);
 	OnBnClickedRendererRestart();
+}
+
+void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
+{
+	if (m_statsOverlay)
+	{
+		// Lazy creation - only create the window when first toggled
+		if (!m_statsOverlay->IsCreated())
+		{
+			if (!m_statsOverlay->Create(this->GetSafeHwnd()))
+			{
+				// Creation failed, silently ignore
+				return;
+			}
+		}
+		m_statsOverlay->Toggle();
+	}
+	
 }
 
 //
@@ -905,7 +1089,6 @@ void CVideoProcessorDlg::OnCaptureDeviceLost(ACaptureDeviceComPtr& captureDevice
 		(WPARAM)captureDevice.Detach(),
 		0);
 }
-
 
 //
 // ICaptureDeviceCallback
@@ -1095,7 +1278,7 @@ void CVideoProcessorDlg::UpdateState()
 		return;
 	}
 
-	// If we don't have a capture card here we don't want to.
+	// If we don't have a capture card here we we don't want to.
 	if (!m_captureDevice)
 	{
 		assert(!m_desiredCaptureDevice);
@@ -1218,12 +1401,105 @@ void CVideoProcessorDlg::UpdateState()
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::UpdateState(): - No changes")));
 }
 
-
 //
 // Helpers
 //
 
+int CVideoProcessorDlg::CalculateAutoFrameOffset() {
 
+	size_t m_frameQueueMaxSize = GetRendererVideoFrameQueueSizeMax();
+
+
+	size_t nominalTarget = (m_frameQueueMaxSize / 8);
+	double fps = m_captureDeviceVideoState->displayMode->RefreshRateHz();
+	size_t frames = fps > 30.0 ? nominalTarget + 1 : nominalTarget / 2;
+	DEBUGLOG("Frames calculated: %zu (fps=%.2f, nominalTarget=%zu)", frames, fps, nominalTarget);
+	//return frames;
+	//---
+
+	double frameTime = 1000.0 / fps;
+	int offset = frames * frameTime;
+	offset = ((offset + 4) / 5) * 5; // round up to 5's
+
+
+	DEBUGLOG("Auto frame offset calc: queueMax=%zu, nominalTarget=%zu, refresh=%.1f, frames=%zu, frameTime=%.2f, offset=%zu",
+		m_frameQueueMaxSize, nominalTarget, fps, frames, frameTime, offset);
+
+	return offset;
+
+/*	// Return default if no capture device/video state
+	if (!m_captureDevice || !m_captureDeviceVideoState || !m_captureDeviceVideoState->valid)
+		return 50;  // Safe default
+
+	// Base hardware latency
+	const double hwLatency = m_captureDevice->HardwareLatencyMs();
+	int offset = static_cast<int>(hwLatency + 0.5);  // Round up
+	offset = std::max(offset, 1);  // Minimum 1ms
+
+	// Refresh rate consideration
+	const double refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
+
+	// Queue configuration impact
+	const bool isAsync = GetRendererVideoFrameUseQueue();
+	const size_t queueMaxSize = GetRendererVideoFrameQueueSizeMax();
+
+	int queueBuffer = 0;
+	if (isAsync && queueMaxSize > 0)
+	{
+		// Async: Queue provides buffering, less offset needed
+		queueBuffer = 8 + static_cast<int>(queueMaxSize * 0.3);  // ~8-18ms range
+	}
+	else
+	{
+		// Sync: No queue buffering, need more safety margin
+		queueBuffer = 20;
+	}
+	offset += queueBuffer;
+
+	// Timing method consideration
+	int methodIndex = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
+	int safetyMargin = 5;  // Default
+
+	if (methodIndex >= 0)
+	{
+		DirectShowStartStopTimeMethod method =
+			static_cast<DirectShowStartStopTimeMethod>(
+				m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(methodIndex));
+
+		switch (method)
+		{
+		case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
+		case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
+			safetyMargin = 3;  // Precise timing needs less margin
+			break;
+		case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
+		case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
+			safetyMargin = 5;  // Moderate
+			break;
+		case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
+		case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
+			safetyMargin = 7;  // Conservative timing needs more margin
+			break;
+		}
+	}
+	offset += safetyMargin;
+
+	// Refresh rate scaling
+	if (refreshRate >= 100.0)
+		offset = static_cast<int>(offset * 0.9);  // High refresh: tighter timing
+	else if (refreshRate <= 30.0)
+		offset = static_cast<int>(offset * 1.1);  // Low refresh: more conservative
+
+	// Clamp to reasonable range
+	offset = std::max(offset, 15);   // Minimum for reliable operation
+	offset = std::min(offset, 100);  // Maximum to avoid excessive latency
+
+	DbgLog((LOG_TRACE, 1, TEXT("Auto frame offset: %dms (async=%d, queue=%zu, fps=%.1f)"),
+		offset, isAsync, queueMaxSize, refreshRate));
+
+	return offset;
+	*/
+}
 
 void CVideoProcessorDlg::OnSelectCaptureDevice(UINT nID)
 {
@@ -1280,7 +1556,16 @@ void CVideoProcessorDlg::RefreshCaptureDeviceList()
 	// Rebuild combo box with all devices which can capture
 	m_captureDeviceCombo.ResetContent();
 
-	for (auto& captureDevice : m_captureDevices)
+	// Convert set to vector for sorting
+	std::vector<ACaptureDeviceComPtr> sortedDevices(m_captureDevices.begin(), m_captureDevices.end());
+
+	// Sort devices by name
+	std::sort(sortedDevices.begin(), sortedDevices.end(),
+		[](const ACaptureDeviceComPtr& a, const ACaptureDeviceComPtr& b) {
+			return wcscmp(a->GetName(), b->GetName()) < 0;
+		});
+
+	for (auto& captureDevice : sortedDevices)
 	{
 		if (!captureDevice->CanCapture())
 			continue;
@@ -1302,7 +1587,7 @@ void CVideoProcessorDlg::RefreshCaptureDeviceList()
 		if (index == CB_ERR)
 		{
 			int initialDeviceSelection = 0;
-			
+
 			if (m_initialCaptureDevice.GetLength() > 0) initialDeviceSelection = m_captureDeviceCombo.FindString(0, m_initialCaptureDevice);
 
 			m_captureDeviceCombo.SetCurSel(initialDeviceSelection);
@@ -1320,7 +1605,6 @@ void CVideoProcessorDlg::RefreshCaptureDeviceList()
 		}
 	}
 }
-
 
 void CVideoProcessorDlg::RefreshInputConnectionCombo()
 {
@@ -1456,34 +1740,25 @@ void CVideoProcessorDlg::CaptureGUIClear()
 
 	// Input group
 	m_inputLockedText.SetWindowText(TEXT(""));
-	m_inputDisplayModeText.SetWindowText(TEXT(""));
-	m_inputEncodingText.SetWindowText(TEXT(""));
-	m_inputBitDepthText.SetWindowText(TEXT(""));
-	m_inputVideoFrameCountText.SetWindowText(TEXT(""));
-	m_inputVideoFrameMissedText.SetWindowText(TEXT(""));
-	m_inputLatencyMsText.SetWindowText(TEXT(""));
+	m_inputDisplayModeText.SetWindowText(TEXT("")) ;
 
-	// Captured video group
-	m_videoValidText.SetWindowText(TEXT(""));
-	m_videoDisplayModeText.SetWindowText(TEXT(""));
-	m_videoPixelFormatText.SetWindowText(TEXT(""));
-	m_videoEotfText.SetWindowText(TEXT(""));
-	m_videoColorSpaceText.SetWindowText(TEXT(""));
+	// Other
+	m_captureDeviceOtherList.ResetContent();
 
 	// Timing clock
-	m_timingClockDescriptionText.SetWindowText(TEXT(""));
+	m_timingClockDescriptionText.SetWindowText(TEXT("")) ;
 
 	// HDR colorSpace group
 	m_hdrColorspaceREdit.SetWindowText(TEXT(""));
 	m_hdrColorspaceGEdit.SetWindowText(TEXT(""));
 	m_hdrColorspaceBEdit.SetWindowText(TEXT(""));
-	m_hdrColorspaceWPEdit.SetWindowText(TEXT(""));
+	m_hdrColorspaceWPEdit.SetWindowText(TEXT("")) ;
 
 	// HDR Lumiance group
 	m_hdrLuminanceMaxCll.SetWindowText(TEXT(""));
 	m_hdrLuminanceMaxFall.SetWindowText(TEXT(""));
 	m_hdrLuminanceMasterMin.SetWindowText(TEXT(""));
-	m_hdrLuminanceMasterMax.SetWindowText(TEXT(""));
+	m_hdrLuminanceMasterMax.SetWindowText(TEXT("")) ;
 
 	// CIE1931 graph
 	m_colorspaceCie1931xy.SetColorSpace(ColorSpace::UNKNOWN);
@@ -1676,7 +1951,18 @@ void CVideoProcessorDlg::RenderStop()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStop(): Begin")));
 
+	// Cancel any pending EOTF change restart timer - a restart is already happening
+	KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
+	m_eotfChangeRestartCooldownSeconds = -1;
+	m_eotfCheckCooldownSeconds = 0;
+
 	assert(m_captureDevice);
+	assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
+
+	assert(m_videoRenderer);
+	assert(m_rendererState == RendererState::RENDERSTATE_RENDERING);
+	assert(m_deliverCaptureDataToRenderer.load(std::memory_order_acquire));
+
 	assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
 
 	assert(m_videoRenderer);
@@ -1717,15 +2003,15 @@ void CVideoProcessorDlg::RenderRemove()
 void CVideoProcessorDlg::RenderGUIClear()
 {
 	// Renderer group
-	m_rendererDetailStringStatic.SetWindowText(TEXT(""));
+	m_rendererDetailStringStatic.SetWindowText(TEXT("")) ;
 
 	// Renderer Queue group
-	m_rendererVideoFrameQueueSizeText.SetWindowText(TEXT(""));
-	m_rendererDroppedFrameCountText.SetWindowText(TEXT(""));
+	m_rendererVideoFrameQueueSizeText.SetWindowText(TEXT("")) ;
+	m_rendererDroppedFrameCountText.SetWindowText(TEXT("")) ;
 
 	// Renderer latency (ms) group
-	m_rendererLatencyToVPText.SetWindowText(TEXT(""));
-	m_rendererLatencyToDSText.SetWindowText(TEXT(""));
+	m_rendererLatencyToVPText.SetWindowText(TEXT("")) ;
+	m_rendererLatencyToDSText.SetWindowText(TEXT("")) ;
 
 	m_windowedVideoWindow.ShowLogo(true);
 }
@@ -1744,6 +2030,9 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 		m_fullScreenVideoWindow->Create(hmon, this->GetSafeHwnd());
 	if (m_windowedFullScreenMode == true)
 		m_fullScreenVideoWindow->CreateWindowedFullscreen(hmon, this->GetSafeHwnd());
+
+	SetTimer(FULLSCREEN_FOCUS_TIMER_ID, 5000, nullptr);
+
 }
 
 
@@ -1775,7 +2064,7 @@ HWND CVideoProcessorDlg::GetRenderWindow()
 
 size_t CVideoProcessorDlg::GetRendererVideoFrameQueueSizeMax()
 {
-	// Note that this field is marked as numbers only so guaranteed to convert corrrectly
+	// Note that this field is marked as numbers only so guaranteed to convert corrtectly
 
 	CString text;
 	m_rendererVideoFrameQueueSizeMaxEdit.GetWindowText(text);
@@ -1799,11 +2088,11 @@ double CVideoProcessorDlg::GetWindowTextAsDouble(CEdit& edit)
 std::vector<int> m_frame_offsets_by_refresh;
 
 std::vector<int> CVideoProcessorDlg::GetFrameOffsetByRefresh() {
-	return m_frame_offsets_by_refresh;
+	return m_frameOffsetsByRefresh;
 }
 
 void CVideoProcessorDlg::SetFrameOffsetByRefresh(std::vector<int> offsets) {
-	m_frame_offsets_by_refresh = offsets;
+	m_frameOffsetsByRefresh = offsets;
 }
 
 
@@ -1836,8 +2125,12 @@ void CVideoProcessorDlg::UpdateTimingClockFrameOffset()
 	if (m_captureDevice) 
 		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
 
+	//TODO
 	if (m_videoRenderer)
 		m_videoRenderer->Reset();
+
+	DEBUGLOG("Tming Clok Frame Reset");
+
 }
 
 
@@ -1866,9 +2159,7 @@ void CVideoProcessorDlg::RebuildRendererCombo()
 		m_rendererCombo.SetItemData(comboIndex, (DWORD_PTR)clsid);
 
 		if (rendererEntry.name.CompareNoCase(m_defaultRendererName) == 0)
-		{
-			m_rendererCombo.SetCurSel(comboIndex);
-		}
+		 m_rendererCombo.SetCurSel(comboIndex);
 	}
 }
 
@@ -2003,6 +2294,8 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	}
 
 	m_builtVideoState = videoState;
+	m_lastEffectiveEotf = m_builtVideoState->eotf;
+	
 
 	//
 	// GUI
@@ -2070,7 +2363,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 		m_hdrLuminanceMaxCll.SetWindowText(_T(""));
 		m_hdrLuminanceMaxFall.SetWindowText(_T(""));
 		m_hdrLuminanceMasterMin.SetWindowText(_T(""));
-		m_hdrLuminanceMasterMax.SetWindowText(_T(""));
+		m_hdrLuminanceMasterMax.SetWindowText(_T("")) ;
 
 		m_hdrColorspaceREdit.SetWindowTextW(_T(""));
 		m_hdrColorspaceGEdit.SetWindowTextW(_T(""));
@@ -2082,15 +2375,17 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	// Push
 	//
 
-	// Push to renderer if that's running, if the renderer does not accept the update, return false
-	// such that the caller can take action
-	bool rendererAcceptedState = true;
-	if (m_deliverCaptureDataToRenderer.load(std::memory_order_acquire))
+	// Push to renderer if available
+	if (m_videoRenderer)
 	{
-		return m_videoRenderer->OnVideoState(m_builtVideoState);
+		m_videoRenderer->OnVideoState(m_builtVideoState);
+		return true;
 	}
-
-	return true;
+	else
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::BuildPushVideoState(): Renderer did not accept state")));
+		return false;
+	}
 }
 
 
@@ -2120,7 +2415,6 @@ void CVideoProcessorDlg::_FatalError(int line, const std::string& functionName, 
 
 	CDialog::EndDialog(S_FALSE);
 }
-
 
 //
 // CDialog
@@ -2215,9 +2509,10 @@ void CVideoProcessorDlg::DoDataExchange(CDataExchange* pDX)
 
 
 
-// Called when the dialog box is initialized
+//// Called when the dialog box is initialized
 BOOL CVideoProcessorDlg::OnInitDialog()
 {
+
 		if (!CDialog::OnInitDialog())
 		return FALSE;
 
@@ -2339,6 +2634,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	//		m_fullScreenModeCombo.SetCurSel(1);
 
 	//}
+
 	m_fullScreenModeCombo.AddString(L"Exclusive");
 	m_fullScreenModeCombo.AddString(L"Windowed");
 	if (m_windowedFullScreenMode == false)
@@ -2369,30 +2665,8 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	// Start timers
 	SetTimer(TIMER_ID_1SECOND, 1000, nullptr);
 	
-	if (m_hideUI) {
-		// Hide all UI elements except m_windowedVideoWindow
-		for (CWnd* pWnd = GetWindow(GW_CHILD); pWnd; pWnd = pWnd->GetNextWindow())
-		{
-			if (pWnd != &m_windowedVideoWindow)
-			{
-				pWnd->ShowWindow(SW_HIDE);
-			}
-		}
-
-
-		// Get the dialog's current client size
-		CRect clientRect;
-		GetClientRect(&clientRect);
-		int width = clientRect.Width();
-		int height = clientRect.Height();
-
-		// Resize the video window to fill the entire dialog
-		if (m_windowedVideoWindow.GetSafeHwnd())
-		{
-			m_windowedVideoWindow.MoveWindow(0, 0, width, height, TRUE);
-		}
-	}
-
+	// Stats overlay will be created lazily on first toggle (Ctrl+I)
+	// No initialization needed here
 
 	
 	// If full screen is requested, we don't want to see the dialog pop-up, so start minimized
@@ -2488,13 +2762,11 @@ void CVideoProcessorDlg::OnPaint()
 			
 					//log some issue
 			}
-			
-
-				
-			
+			 
 
 		}
 				
+		
 
 			CDialog::OnPaint();
 
@@ -2525,21 +2797,56 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 	if (m_videoRenderer)
 		m_videoRenderer->OnSize();
 
+	// Update stats overlay position
+	if (m_statsOverlay && m_statsOverlay->IsVisible())
+	{
+		m_statsOverlay->UpdatePosition(this->GetSafeHwnd());
+	}
+	
+
+	// Track if this is a significant resize (not just minimize/restore)
+	static CSize lastSize(0, 0);
+	CSize currentSize(cx, cy);
+
+	bool significantResize = (abs(currentSize.cx - lastSize.cx) > 50 ||
+		abs(currentSize.cy - lastSize.cy) > 50) &&
+		lastSize.cx > 0 && lastSize.cy > 0;
+
+	// ... existing OnSize code ...
+
+	// Reset madVR after significant scaling changes
+	if (m_rendererFullscreenCheck.GetCheck() && significantResize && m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING)
+	{
+		// Debounced reset to let scaling operations complete
+		SetTimer(RESIZE_DEBOUNCE_TIMER_ID, 250, nullptr);
+	}
+
+	lastSize = currentSize;
 	CDialog::OnSize(nType, cx, cy);
 }
 
 
+HCURSOR CVideoProcessorDlg::OnQueryDragIcon()
+{
+	return static_cast<HCURSOR>(m_hIcon);
+}
 
 
+void CVideoProcessorDlg::OnGetMinMaxInfo(MINMAXINFO* minMaxInfo)
+{
+	CDialog::OnGetMinMaxInfo(minMaxInfo);
 
-
-
-
-
-
-
-
-
+	if (m_hideUI) {
+		minMaxInfo->ptMinTrackSize.x = 100;
+		minMaxInfo->ptMinTrackSize.y = 100;
+	}
+	else {
+		// Guarantee minimum size of window
+		minMaxInfo->ptMinTrackSize.x = std::max(minMaxInfo->ptMinTrackSize.x, m_minDialogSize.cx);
+		minMaxInfo->ptMinTrackSize.y = std::max(minMaxInfo->ptMinTrackSize.y, m_minDialogSize.cy);
+	}
+}
 
 
 void CVideoProcessorDlg::OnSetFocus(CWnd* pOldWnd)
@@ -2572,176 +2879,484 @@ void CVideoProcessorDlg::OnClose()
 	ClearRendererCombo();
 }
 
-
 void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
-	CString cstring;
-
-
-	/*if (needRenderRestart)
+	
+	// Handle resize debounce timer
+	if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 	{
-		needRenderRestart = false;
-		OnBnClickedCaptureRestart();  // Restart rendering
-	}
-	else {
-		needRenderRestart = false;
-	}
-	*/
-
-	if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
-	{
-		cstring.Format(_T("%lu"), m_videoRenderer->GetFrameQueueSize());
-		m_rendererVideoFrameQueueSizeText.SetWindowText(cstring);
-
-		cstring.Format(_T("%.01f"), m_videoRenderer->EntryLatencyMs());
-		m_rendererLatencyToVPText.SetWindowText(cstring);
-
-		cstring.Format(_T("%.01f"), m_videoRenderer->ExitLatencyMs());
-		m_rendererLatencyToDSText.SetWindowText(cstring);
-
-		const double frameMs = 1000.0 / m_captureDeviceVideoState->displayMode->RefreshRateHz();
-
-		// TODO: Find a way to show this information again
-		//if (m_videoRenderer->ExitLatencyMs() < (-3*frameMs) ||
-		//	m_videoRenderer->ExitLatencyMs() > 10)
-		//	m_rendererLatencyToDSText.SetTextColor(CColorStatic::RED);
-		//else if (m_videoRenderer->ExitLatencyMs() < (-2*frameMs) ||
-		//	     m_videoRenderer->ExitLatencyMs() > -5)
-		//	m_rendererLatencyToDSText.SetTextColor(CColorStatic::ORANGE);
-		//else
-		//	m_rendererLatencyToDSText.SetTextColor(CColorStatic::GREEN);
-
-		cstring.Format(_T("%lu"), m_videoRenderer->DroppedFrameCount());
-		m_rendererDroppedFrameCountText.SetWindowText(cstring);
-	}
-	else
-	{
-		m_rendererVideoFrameQueueSizeText.SetWindowText(_T(""));
-		m_rendererLatencyToVPText.SetWindowText(_T(""));
-		m_rendererLatencyToDSText.SetWindowText(_T(""));
-		m_rendererDroppedFrameCountText.SetWindowText(TEXT(""));
-	}
-
-	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING)
-	{
-		cstring.Format(_T("%lu"), m_captureDevice->VideoFrameCapturedCount());
-		m_inputVideoFrameCountText.SetWindowText(cstring);
-
-		cstring.Format(_T("%lu"), m_captureDevice->VideoFrameMissedCount());
-		m_inputVideoFrameMissedText.SetWindowText(cstring);
-
-		cstring.Format(_T("%.01f"), m_captureDevice->HardwareLatencyMs());
-		m_inputLatencyMsText.SetWindowText(cstring);
-
-		// TODO: Find a way to show this information again
-		//if (m_captureDevice->HardwareLatencyMs() < 10)
-		//	m_inputLatencyMsText.SetTextColor(CColorStatic::GREEN);
-		//else if (m_captureDevice->HardwareLatencyMs() < 15)
-		//	m_inputLatencyMsText.SetTextColor(CColorStatic::ORANGE);
-		//else
-		//	m_inputLatencyMsText.SetTextColor(CColorStatic::RED);
-	}
-	else
-	{
-		m_inputVideoFrameCountText.SetWindowText(TEXT(""));
-		m_inputVideoFrameMissedText.SetWindowText(TEXT(""));
-		m_inputLatencyMsText.SetWindowText(_T(""));
-	}
-
-	// Prevent screensaver, this should be called "periodically" for whatever that means
-	if (m_timerSeconds % 60 == 0)
-	{
-		SetThreadExecutionState(ES_DISPLAY_REQUIRED);
-	}
-
-
-	// Auto adjust
-	if (m_timerSeconds % 5 == 0 &&
-		m_rendererState == RendererState::RENDERSTATE_RENDERING)
-	{
-		assert(m_videoRenderer);
-		assert(m_captureDevice);
-
-		bool queueOk = true;
-
-		// Auto-click reset on renderer if requested
-		const bool rendererResetAuto = m_rendererResetAutoCheck.GetCheck();
-		if (rendererResetAuto)
+		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
 		{
-			const bool needsReset = m_videoRenderer->GetFrameQueueSize() >= 3;
-			queueOk = !needsReset;
+			KillTimer(RESIZE_DEBOUNCE_TIMER_ID);
 
-			if (needsReset)
+			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Resetting renderer after resize")));
+			m_videoRenderer->Reset();
+
+			DEBUGLOG("RESIZE RESET");
+		}
+		return;
+	}
+	
+	// Handle fullscreen focus grab
+	if (nIDEvent == FULLSCREEN_FOCUS_TIMER_ID)
+	{
+		KillTimer(FULLSCREEN_FOCUS_TIMER_ID);
+
+		if (m_fullScreenVideoWindow && IsWindow(m_fullScreenVideoWindow->GetHWND()))
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Grabbing focus")));
+			::SetForegroundWindow(m_fullScreenVideoWindow->GetHWND());
+			::SetFocus(m_fullScreenVideoWindow->GetHWND());
+		}
+		return;
+	}
+
+	// Handle delayed queue reset timer
+	if (nIDEvent == QUEUE_RESET_DELAY_TIMER_ID)
+	{
+		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
+		{
+			KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
+			 
+			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): DELAYED QUEUE RESET - MadVR stabilization complete")));
+			m_videoRenderer->Reset();
+
+			// Reset tracking counters after delayed reset
+			m_consecutiveFullSeconds = 0;
+			m_consecutiveStuckSeconds = 0;
+			m_pendingQueueReset = false;
+		}
+		return;
+	}
+
+	// EOTF CHANGE RESTART TIMER: Countdown to renderer restart after EOTF change
+	if (nIDEvent == EOTF_CHANGE_RESTART_TIMER_ID)
+	{
+		if (m_eotfChangeRestartCooldownSeconds > 0)
+		{
+			m_eotfChangeRestartCooldownSeconds--;
+
+			if (m_eotfChangeRestartCooldownSeconds == 0)
 			{
-				DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Resetting renderer")));
-				m_videoRenderer->Reset();
+				// Cooldown complete - execute restart
+				KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
+
+				if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
+				{
+					DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): EOTF_CHANGE - Executing renderer restart")));
+					DebugLog::Log("EOTF change: Executing renderer restart after stabilization period");
+
+					m_wantToRestartRenderer = true;
+					UpdateState();
+				}
+
+				m_eotfChangeRestartCooldownSeconds = -1;  // Reset cooldown
+			}
+		}
+		else
+		{
+			// Cooldown is -1, kill the timer
+			KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
+			m_eotfChangeRestartCooldownSeconds = -1;
+		}
+		return;
+	}
+
+	// Handle regular 1-second timer for UI updates
+	if (nIDEvent == TIMER_ID_1SECOND)
+	{
+		// EOTF CHANGE CHECK: Decrement cooldown timer if set
+		if (m_eotfCheckCooldownSeconds > 0)
+		{
+			m_eotfCheckCooldownSeconds--;
+		}
+
+		// SIMPLE EOTF CHANGE DETECTION: Every 5 seconds, check if EOTF changed since renderer started
+		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			m_timerSeconds % 5 == 0 &&
+			m_eotfCheckCooldownSeconds == 0 &&  // Cooldown expired
+			m_captureDeviceVideoState &&
+			m_captureDeviceVideoState->valid &&
+			m_rendererStartedWithEotf != EOTF::UNKNOWN &&
+			m_captureDeviceVideoState->eotf != EOTF::UNKNOWN &&
+			!m_wantToRestartCapture &&  // Don't trigger if restart already pending
+			!m_wantToRestartRenderer)   // Don't trigger if restart already pending
+		{
+			// Check if EOTF changed since renderer started
+			if (m_captureDeviceVideoState->eotf != m_rendererStartedWithEotf)
+			{
+				DbgLog((LOG_TRACE, 1, TEXT("EOTF changed %s -> %s while rendering - restarting capture"),
+					ToString(m_rendererStartedWithEotf), ToString(m_captureDeviceVideoState->eotf)));
+
+				DebugLog::Log("EOTF changed %s -> %s - restarting capture",
+					CStringA(ToString(m_rendererStartedWithEotf)).GetString(),
+					CStringA(ToString(m_captureDeviceVideoState->eotf)).GetString());
+
+				// Trigger capture restart (which will restart renderer)
+				if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_FAILED)
+					m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_UNKNOWN;
+
+				m_wantToRestartCapture = true;
+				UpdateState();
+
+				// Reset cooldown to prevent rapid restarts
+				m_eotfCheckCooldownSeconds = 5;
 			}
 		}
 
-		// Auto update the clock frame offset to get just over zero
-		// only do this if the queue is ok as it will have a major impact on the offset(or unmanaged)
-		const bool timingClockFrameOffsetAuto = m_timingClockFrameOffsetAutoCheck.GetCheck();
-		if (queueOk && timingClockFrameOffsetAuto)
+		CString cstring;
+
+		if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
 		{
 
+			// Auto-offset recalculation every 5 seconds (if enabled)
+			if (m_timerSeconds % 5 == 0 &&
+				m_timingClockFrameOffsetAutoCheck.GetCheck() &&
+				m_captureDevice &&
+				m_captureDeviceVideoState &&
+				m_captureDeviceVideoState->valid)
+			{
+				int currentOffset = GetTimingClockFrameOffsetMs();
+				int autoOffset = CalculateAutoFrameOffset();
 
-			int newOffset = GetTimingClockFrameOffsetMs();
-			if (m_captureDeviceVideoState->displayMode->RefreshRateHz() <= 30) {
-				newOffset = 90;
-			}
-			else {
-				newOffset = 45;
-			}
-
-			if (newOffset != GetTimingClockFrameOffsetMs()) {
-				SetTimingClockFrameOffsetMs(newOffset);
-				UpdateTimingClockFrameOffset();
-			}
-
-			/*	const double videoFrameLead = -(m_videoRenderer->ExitLatencyMs());
-				const double frameDurationMs = 1000.0 / m_captureDeviceVideoState->displayMode->RefreshRateHz();
-
-				const bool needsAdjusting =
-					videoFrameLead < 0 ||
-					videoFrameLead >(frameDurationMs * 2);
-
-				if (needsAdjusting)
+				// Only update if offset changed by >= 2ms to avoid jitter
+				if (abs(autoOffset - currentOffset) >= 2)
 				{
-					DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): Adjusting clock frame offset + reset")));
-
-					const int delta = (int)round(-videoFrameLead);
-					const int newOffset = GetTimingClockFrameOffsetMs() + delta;
-
-					SetTimingClockFrameOffsetMs(newOffset);
+					SetTimingClockFrameOffsetMs(autoOffset);
 					UpdateTimingClockFrameOffset();
+					DbgLog((LOG_TRACE, 1, TEXT("Auto-offset updated: %dms -> %dms"), currentOffset, autoOffset));
 				}
 			}
-			*/
+
+			// PERIODIC EOTF CHANGE DETECTION (every 5 seconds)
+			// Catches EOTF changes that don't trigger full video state updates
+			if (m_timerSeconds % 5 == 0 &&
+				m_enableEotfChangeRestart &&
+				m_captureDeviceVideoState &&
+				m_captureDeviceVideoState->valid &&
+				m_eotfChangeRestartCooldownSeconds < 0)  // Not in cooldown
+			{
+				EOTF currentEotf = m_captureDeviceVideoState->eotf;
+				
+				// Initialize tracking on first valid check
+				if (m_lastKnownEotf == EOTF::UNKNOWN && currentEotf != EOTF::UNKNOWN)
+				{
+					m_lastKnownEotf = currentEotf;
+					DbgLog((LOG_TRACE, 1, TEXT("Periodic EOTF check: Initialized to %s"), ToString(currentEotf)));
+				}
+				// Detect EOTF change
+				else if (m_lastKnownEotf != EOTF::UNKNOWN &&
+						 currentEotf != EOTF::UNKNOWN &&
+						 m_lastKnownEotf != currentEotf)
+				{
+					DbgLog((LOG_TRACE, 1, TEXT("Periodic EOTF check: EOTF changed %s -> %s - scheduling renderer restart"),
+						ToString(m_lastKnownEotf), ToString(currentEotf)));
+
+					DebugLog::Log("Periodic EOTF change detected: %s -> %s - renderer restart in 5 seconds",
+						CStringA(ToString(m_lastKnownEotf)).GetString(),
+						CStringA(ToString(currentEotf)).GetString());
+
+					// Update tracked EOTF immediately
+					m_lastKnownEotf = currentEotf;
+
+					// Schedule restart with delay
+					m_eotfChangeRestartCooldownSeconds = 5;
+					SetTimer(EOTF_CHANGE_RESTART_TIMER_ID, 1000, nullptr);
+				}
+			}
+
+			const size_t currentQueueSize = m_videoRenderer->GetConvertedQueueSize() + m_videoRenderer->GetFrameQueueSize();
+			
+			const uint64_t droppedFrames = m_videoRenderer->DroppedFrameCount();
+
+			cstring.Format(_T("%lu"), currentQueueSize);
+			m_rendererVideoFrameQueueSizeText.SetWindowText(cstring);
+
+			cstring.Format(_T("%.01f"), m_videoRenderer->EntryLatencyMs());
+			m_rendererLatencyToVPText.SetWindowText(cstring);
+
+			cstring.Format(_T("%.01f"), m_videoRenderer->ExitLatencyMs());
+			m_rendererLatencyToDSText.SetWindowText(cstring);
+
+			cstring.Format(_T("%lu"), droppedFrames);
+			m_rendererDroppedFrameCountText.SetWindowText(cstring);
+
+			// INTELLIGENT QUEUE HEALTH MONITORING
+			MonitorQueueHealth(currentQueueSize, droppedFrames);
+		}
+		else
+		{
+			m_rendererVideoFrameQueueSizeText.SetWindowText(_T(""));
+			m_rendererLatencyToVPText.SetWindowText(_T(""));
+			m_rendererLatencyToDSText.SetWindowText(_T(""));
+			m_rendererDroppedFrameCountText.SetWindowText(TEXT(""));
+		}
+
+		if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING)
+		{
+			cstring.Format(_T("%lu"), m_captureDevice->VideoFrameCapturedCount());
+			m_inputVideoFrameCountText.SetWindowText(cstring);
+
+			cstring.Format(_T("%lu"), m_captureDevice->VideoFrameMissedCount());
+			m_inputVideoFrameMissedText.SetWindowText(cstring);
+
+			cstring.Format(_T("%.01f"), m_captureDevice->HardwareLatencyMs());
+			m_inputLatencyMsText.SetWindowText(cstring);
+		}
+		else
+		{
+			m_inputVideoFrameCountText.SetWindowText(TEXT(""));
+			m_inputVideoFrameMissedText.SetWindowText(TEXT(""));
+			m_inputLatencyMsText.SetWindowText(_T(""));
+		}
+
+		// Prevent screensaver
+		if (m_timerSeconds % 60 == 0)
+		{
+			SetThreadExecutionState(ES_DISPLAY_REQUIRED);
+		}
+
+		// Monitor queue health periodically
+		if (m_timerSeconds % 5 == 0 &&
+			m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			m_videoRenderer &&
+			m_captureDevice &&
+			m_captureDeviceVideoState)
+		{
+			const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
+			const size_t maxQueueSize = GetRendererVideoFrameQueueSizeMax();
+			
+			// TODO: Adjust threshold and duration based on testing
+			// Simple: reset when queue e.g.,  >= 16 frames
+			if (currentQueueSize >= (maxQueueSize/2))
+			{
+				m_videoRenderer->Reset();
+				DEBUGLOG("Queue 50%% reset: %zu/%zu", currentQueueSize, maxQueueSize);
+			}
+		}
+			
+		UpdateStatsOverlay();
+
+
+		++m_timerSeconds;
+	}
+
+	CDialog::OnTimer(nIDEvent);
+}
+
+void CVideoProcessorDlg::UpdateStatsOverlay()
+{
+	if (!m_statsOverlay || !m_statsOverlay->IsVisible() || !m_lastStatsData)
+		return;
+
+	StatsData stats;
+
+	// Video format info
+	if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
+	{
+		// Resolution
+		stats.resolution.Format(_T("%u x %u"),
+			m_captureDeviceVideoState->displayMode->FrameWidth(),
+			m_captureDeviceVideoState->displayMode->FrameHeight());
+
+		// Refresh rate
+		stats.refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
+
+		// EOTF
+		stats.eotf = ToString(m_captureDeviceVideoState->eotf);
+
+		// Colorspace
+		stats.colorspace = ToString(m_captureDeviceVideoState->colorspace);
+
+		// Pixel Format
+		stats.pixelFormat = ToString(m_captureDeviceVideoState->videoFrameEncoding);
+	}
+
+	// Renderer settings and capture metrics
+	if (m_captureDevice)
+	{
+		stats.frameOffsetMs = GetTimingClockFrameOffsetMs();
+		stats.hwLatencyMs = m_captureDevice->HardwareLatencyMs();
+	}
+
+	// Method - get from renderer DirectShow start/stop time method combo
+	int methodIndex = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
+	if (methodIndex >= 0)
+	{
+		DirectShowStartStopTimeMethod method = (DirectShowStartStopTimeMethod)m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(methodIndex);
+		stats.method = ToString(method);
+	}
+	else
+	{
+		stats.method = TEXT("---");
+	}
+
+	// Queue stats
+	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
+	{
+		stats.currentQueueSize = m_videoRenderer->GetFrameQueueSize() + m_videoRenderer->GetConvertedQueueSize();
+		stats.maxQueueSize = GetRendererVideoFrameQueueSizeMax();
+		stats.isQueueFull = (stats.currentQueueSize >= stats.maxQueueSize);
+
+		stats.entryLatencyMs = m_videoRenderer->EntryLatencyMs();
+		stats.exitLatencyMs = m_videoRenderer->ExitLatencyMs();
+		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
+	}
+
+	// Capture device frame counts
+	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING && m_captureDevice)
+	{
+		stats.capturedFrames = m_captureDevice->VideoFrameCapturedCount();
+		stats.capturedDroppedFrames = m_captureDevice->VideoFrameMissedCount();
+	}
+
+	// Video conversion
+	if (m_rendererVideoConversionCombo.GetCurSel() >= 0)
+	{
+		m_rendererVideoConversionCombo.GetLBText(m_rendererVideoConversionCombo.GetCurSel(), stats.videoConversion);
+	}
+	
+	// Conversion performance (NEW - V210→P010 etc.)
+	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
+	{
+		double currentUs, avg10s, max10s;
+		stats.hasConversionData = m_videoRenderer->GetConversionPerformance(currentUs, avg10s, max10s);
+		if (stats.hasConversionData)
+		{
+			stats.currentConversionTimeUs = currentUs;
+			stats.avgConversionTime10s = avg10s;
+			stats.maxConversionTime10s = max10s;
 		}
 	}
 
-	
-	++m_timerSeconds;
-}
-
-
-HCURSOR CVideoProcessorDlg::OnQueryDragIcon()
-{
-	return static_cast<HCURSOR>(m_hIcon);
-}
-
-
-void CVideoProcessorDlg::OnGetMinMaxInfo(MINMAXINFO* minMaxInfo)
-{
-	CDialog::OnGetMinMaxInfo(minMaxInfo);
-
-	if (m_hideUI) {
-		minMaxInfo->ptMinTrackSize.x = 100;
-		minMaxInfo->ptMinTrackSize.y = 100;
+	// Handle reset tracking
+	if (stats.queueDroppedFrames < m_lastStatsData->queueDroppedFrames)
+	{
+		// Reset detected (dropped frame count decreased)
+		stats.OnReset();
+		stats.capturedFramesAtReset = stats.capturedFrames;
+		*m_lastStatsData = stats;
 	}
-	else {
-		// Guarantee minimum size of window
-		minMaxInfo->ptMinTrackSize.x = std::max(minMaxInfo->ptMinTrackSize.x, m_minDialogSize.cx);
-		minMaxInfo->ptMinTrackSize.y = std::max(minMaxInfo->ptMinTrackSize.y, m_minDialogSize.cy);
+	else
+	{
+		// Update from last known state
+		stats.lastResetTickCount = m_lastStatsData->lastResetTickCount;
+		stats.capturedFramesAtReset = m_lastStatsData->capturedFramesAtReset;
+		stats.framesSinceReset = stats.capturedFrames - stats.capturedFramesAtReset;
+		stats.maxQueueSizeSinceReset = m_lastStatsData->maxQueueSizeSinceReset;
 	}
+
+	stats.UpdateTimeSinceReset();
+	stats.UpdateMaxQueueSize();
+
+	// PPM Correction info (NEW)
+	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
+	{
+		int ppmValue;
+		bool hasCorrection;
+		CString source;
+		if (m_videoRenderer->GetPPMCorrectionInfo(ppmValue, hasCorrection, source))
+		{
+			stats.ppmCorrection = ppmValue;
+			stats.hasPPMCorrection = hasCorrection;
+			stats.ppmSource = source;
+		}
+	}
+
+	// Frame rate and PPM measurement (NEW)
+	if (m_videoRenderer && m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
+	{
+		// Get theoretical refresh rate from display mode
+		stats.theoreticalRefreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
+
+		// Get measured frame rate and PPM from the renderer
+		double measuredFps = 0.0;
+		int ppmDeviation = 0;
+
+		if (m_videoRenderer->GetFrameRateAndPPM(measuredFps, ppmDeviation))
+		{
+			stats.measuredRefreshRate = measuredFps;
+			stats.ppmDeviation = ppmDeviation;
+		}
+		else
+		{
+			// Fallback: use theoretical rate if measured rate not available yet
+			stats.measuredRefreshRate = stats.theoreticalRefreshRate;
+			stats.ppmDeviation = 0;
+		}
+	}
+
+	// Update overlay
+	m_statsOverlay->UpdateStats(stats);
+
+	// Save current stats for next update
+	*m_lastStatsData = stats;
 }
+
+// Add this new method to the class
+void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t droppedFrames)
+{
+	// Enhanced intelligent queue monitoring with multiple detection strategies
+	const size_t maxQueueSize = GetRendererVideoFrameQueueSizeMax();
+	const bool isQueueFull = (currentQueueSize >= maxQueueSize);
+	const bool droppedFramesIncreased = (droppedFrames > m_lastDroppedFrames);
+	const bool queueStuck = (currentQueueSize >= m_lastQueueSize && currentQueueSize > 12);
+
+	// STRATEGY 1: Immediate reset on queue full
+	if (isQueueFull)
+	{
+		DbgLog((LOG_TRACE, 1, TEXT("Queue health: Full queue detected (%zu/%zu) - immediate reset"), currentQueueSize, maxQueueSize));
+
+		if (m_videoRenderer)
+		{
+			m_videoRenderer->Reset();
+			m_consecutiveFullSeconds = 0;
+			m_consecutiveStuckSeconds = 0;
+
+			DEBUGLOG("Queue health: Full queue detected (%zu/%zu) - immediate reset", currentQueueSize, maxQueueSize);
+		}
+	}
+	// STRATEGY 2: Track consecutive full seconds for progressive overload
+	else if (currentQueueSize >= 24)  // 75% threshold
+	{
+		//TODO: Adjust threshold and duration based on testing
+		// Simple: reset when queue e.g.,  >= 16 frames
+		if (currentQueueSize >= 24)
+		{
+			m_videoRenderer->Reset();
+			DEBUGLOG("Queue health > 24 Rest hardcoded and should be changed");
+		}
+	}
+	else
+	{
+		m_consecutiveFullSeconds = 0;  // Reset counter when queue is healthy
+	}
+
+	// STRATEGY 3: Detect stuck queues (same size for multiple seconds)
+	if (queueStuck)
+	{
+		m_consecutiveStuckSeconds++;
+		if (m_consecutiveStuckSeconds >= 5)  // 5 seconds stuck
+		{
+
+			if (m_videoRenderer)
+			{
+				m_videoRenderer->Reset();
+				m_consecutiveStuckSeconds = 0;
+
+				DEBUGLOG("Queue health: Stuck queue detected (%zu for %zu seconds) - reset", currentQueueSize, m_consecutiveStuckSeconds);
+			}
+		}
+	}
+	else
+	{
+		m_consecutiveStuckSeconds = 0;  // Reset stuck counter
+	}
+
+	// Update tracking variables for next cycle
+	m_lastQueueSize = currentQueueSize;
+	m_lastDroppedFrames = droppedFrames;
+}
+
+
+

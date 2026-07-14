@@ -37,6 +37,7 @@
 #include <afxext.h>
 #include <afxwinappex.h>
 #include <streams.h>
+#include <DebugLog.h>
 
 
 // Helper macros for HRESULT functions

@@ -150,7 +150,11 @@
       <AdditionalIncludeDirectories>.;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\ffmpeg\include;..\..\3rdparty\mpc_video_renderer</AdditionalIncludeDirectories>
       <LanguageStandard>Default</LanguageStandard>
       <LanguageStandard_C>Default</LanguageStandard_C>
-      <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -163,6 +167,7 @@
   <ItemGroup>
     <ClInclude Include="ACaptureDevice.h" />
     <ClInclude Include="ACaptureDeviceDiscoverer.h" />
+    <ClInclude Include="AutoPpmCalibrator.h" />
     <ClInclude Include="BitDepth.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDevice.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDeviceDiscoverer.h" />
@@ -170,6 +175,7 @@
     <ClInclude Include="CaptureInput.h" />
     <ClInclude Include="cie.h" />
     <ClInclude Include="ColorSpace.h" />
+    <ClInclude Include="DebugLog.h" />
     <ClInclude Include="DisplayMode.h" />
     <ClInclude Include="ColorFormat.h" />
     <ClInclude Include="EOTF.h" />
@@ -177,6 +183,7 @@
     <ClInclude Include="guid.h" />
     <ClInclude Include="HDRData.h" />
     <ClInclude Include="InputLocked.h" />
+    <ClInclude Include="IntegerMath.h" />
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="ITimingClock.h" />
     <ClInclude Include="microsoft_directshow\DirectShowDefines.h" />
@@ -197,6 +204,7 @@
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowVideoRenderers.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="PixelValueRange.h" />
+    <ClInclude Include="PPMCorrectionLoader.h" />
     <ClInclude Include="RendererId.h" />
     <ClInclude Include="StringUtils.h" />
     <ClInclude Include="TimingClock.h" />
@@ -204,9 +212,12 @@
     <ClInclude Include="VideoFrame.h" />
     <ClInclude Include="VideoFrameEncoding.h" />
     <ClInclude Include="VideoState.h" />
+    <ClInclude Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CFFMpegDecoderVideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CNoopVideoFrameFormatter.h" />
+    <ClInclude Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CV210toP010VideoFrameFormatter.h" />
+    <ClInclude Include="video_frame_formatter\CV210toP010VideoFrameFormatterSIMD.h" />
     <ClInclude Include="video_frame_formatter\CV210toP210VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\IVideoFrameFormatter.h" />
     <ClInclude Include="WallClock.h" />
@@ -214,6 +225,7 @@
   <ItemGroup>
     <ClCompile Include="ACaptureDevice.cpp" />
     <ClCompile Include="ACaptureDeviceDiscoverer.cpp" />
+    <ClCompile Include="AutoPpmCalibrator.cpp" />
     <ClCompile Include="BitDepth.cpp" />
     <ClCompile Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDevice.cpp" />
     <ClCompile Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDeviceDiscoverer.cpp" />
@@ -249,6 +261,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="PixelValueRange.cpp" />
+    <ClCompile Include="PPMCorrectionLoader.cpp" />
     <ClCompile Include="RendererId.cpp" />
     <ClCompile Include="StringUtils.cpp" />
     <ClCompile Include="TimingClock.cpp" />
@@ -256,8 +269,10 @@
     <ClCompile Include="VideoFrame.cpp" />
     <ClCompile Include="VideoFrameEncoding.cpp" />
     <ClCompile Include="VideoState.cpp" />
+    <ClCompile Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CFFMpegDecoderVideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CNoopVideoFrameFormatter.cpp" />
+    <ClCompile Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CV210toP010VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CV210toP210VideoFrameFormatter.cpp" />
     <ClCompile Include="WallClock.cpp" />
@@ -280,6 +295,9 @@
     <ProjectReference Include="..\..\3rdparty\mpc_video_renderer\mpc_video_renderer.vcxproj">
       <Project>{0b36de56-2a17-4819-82a9-c21caa5fdd2b}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin_tracking_snippet.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

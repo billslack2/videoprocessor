@@ -28,7 +28,14 @@ bool CNoopVideoFrameFormatter::FormatVideoFrame(
 	if (m_bytesPerVideoFrame == 0)
 		throw std::runtime_error("bytes per frame not known, call OnVideoState() first");
 
+	const auto startTime = GetWallClockTime();
+
 	memcpy(outBuffer, inFrame.GetData(), m_bytesPerVideoFrame);
+
+	const auto endTime = GetWallClockTime();
+	const uint64_t conversionTimeUs = (endTime - startTime) / 10;
+	m_performanceWindow.AddSample(static_cast<double>(conversionTimeUs));
+
 	return true;
 }
 

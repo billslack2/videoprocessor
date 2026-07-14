@@ -34,4 +34,15 @@ public:
 	// Get size of frame that will be put in FormatVideoFrame()'s outBuffer, in bytes
 	// Can only be called after OnVideoState()
 	virtual LONG GetOutFrameSize() const = 0;
+	
+	// Get conversion performance metrics (optional, default implementation returns no data)
+	// currentUs: Latest frame conversion time in microseconds
+	// avg10s: Average conversion time over last 10 seconds (?s)
+	// max10s: Maximum conversion time over last 10 seconds (?s)
+	virtual void GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const
+	{
+		currentUs = 0.0;
+		avg10s = 0.0;
+		max10s = 0.0;
+	}
 };

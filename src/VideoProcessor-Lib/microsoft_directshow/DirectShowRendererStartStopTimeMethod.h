@@ -31,6 +31,15 @@ enum DirectShowStartStopTimeMethod
 	// Theoretical timestamp based on frame duration
 	DS_SSTM_THEO_THEO,
 
+	// Use rational frame rates (23.976, 24, 25, etc.) for timing instead of hardware timestamps
+	DS_SSTM_RATIONAL_RATIONAL,
+
+	// HYBRID: Use hardware timestamps for start time, rational math for duration, with monotonic enforcement
+	DS_SSTM_CLOCK_RATIONAL,
+
+	// Enhanced Clock-Smart: Uses average of last 100 actual frame durations for fallback
+	DS_SSTM_CLOCK_SMART2,
+
 	//
 	// Only a start time, no stop time set
 	//

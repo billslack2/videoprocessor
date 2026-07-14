@@ -13,6 +13,8 @@
 #include <strsafe.h>
 #include <checkbmi.h>
 
+
+
 static UINT MsgDestroy;
 
 // Constructor
@@ -629,6 +631,8 @@ HRESULT CBaseWindow::DoCreateWindow()
         DWORD Error = GetLastError();
         return AmHresultFromWin32(Error);
     }
+
+	
 
     // Check the window LONG is the object who created us
     ASSERT(GetWindowLongPtr(hwnd, 0) == (LONG_PTR)this);

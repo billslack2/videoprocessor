@@ -55,6 +55,9 @@ public:
 
 	virtual ~IVideoRenderer() {}
 
+	// Add to the Queues section
+	virtual size_t GetConvertedQueueSize() = 0;
+
 	//
 	// Runtime
 	//
@@ -129,4 +132,41 @@ public:
 
 	// Get the amount of dropped frames due to queue actions
 	virtual uint64_t DroppedFrameCount() const = 0;
+	
+	// Get conversion performance metrics (if available from the video frame formatter)
+	// Returns true if data is available, false if no conversion or no performance tracking
+	// currentUs: Latest frame conversion time in microseconds
+	// avg10s: Average conversion time over last 10 seconds (?s)
+	// max10s: Maximum conversion time over last 10 seconds (?s)
+	virtual bool GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const
+	{
+		currentUs = 0.0;
+		avg10s = 0.0;
+		max10s = 0.0;
+		return false;  // No data available by default
+	}
+	
+	// Get PPM correction information (if supported by the timing mode)
+	// Returns true if PPM correction data is available, false if not supported
+	// ppmValue: Current PPM correction value being applied (positive = faster, negative = slower)
+	// hasCorrection: Whether a non-zero PPM correction is being applied
+	// source: Source of the PPM correction ("correction.cfg", "default", "N/A")
+	virtual bool GetPPMCorrectionInfo(int& ppmValue, bool& hasCorrection, CString& source) const
+	{
+		ppmValue = 0;
+		hasCorrection = false;
+		source = TEXT("N/A");
+		return false;  // No PPM correction support by default
+	}
+
+	// Get frame rate measurement and PPM deviation (for timing diagnostics)
+	// Returns true if frame rate measurement data is available, false if not supported
+	// measuredFps: Actual measured frame rate (Hz)
+	// ppmDeviation: PPM deviation between theoretical and measured rates (parts per million)
+	virtual bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const
+	{
+		measuredFps = 0.0;
+		ppmDeviation = 0;
+		return false;  // No frame rate measurement by default
+	}
 };

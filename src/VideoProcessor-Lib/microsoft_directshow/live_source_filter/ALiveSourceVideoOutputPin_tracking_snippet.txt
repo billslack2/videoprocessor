@@ -1,0 +1,20 @@
+// Location to insert frame duration tracking call:
+// After the switch determines timeStop for all timing methods
+// Right before pSample->SetTime(&timeStart, &timeStop) is called
+
+		// FINAL MONOTONIC VALIDATION: Ensure frame interval is always valid
+		// This is the last line of defense against any timing anomalies
+		if (timeStop <= timeStart)
+		{
+			// Emergency correction: force minimum 1-tick interval
+			timeStop = timeStart + 1;
+			DbgLog((LOG_ERROR, 1, TEXT("::FillBuffer(#%I64u): CRITICAL - timeStop <= timeStart! Forced to %I64d (start=%I64d)"),
+				videoFrame.GetCounter(), timeStop, timeStart));
+		}
+		
+		// Track frame duration statistics for monitoring actual tick rate
+		TrackFrameDuration(timeStart, timeStop, streamFrameCounter);
+		
+		hr = pSample->SetTime(&timeStart, &timeStop);
+		if (FAILED(hr))
+			return hr;

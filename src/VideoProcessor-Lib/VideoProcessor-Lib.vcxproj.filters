@@ -192,13 +192,31 @@
     <ClInclude Include="cie.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="DebugLog.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="video_frame_formatter\CV210toP010VideoFrameFormatterSIMD.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="PPMCorrectionLoader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="AutoPpmCalibrator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="IntegerMath.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="video_frame_formatter\CV210toP010VideoFrameFormatter.cpp">
-      <Filter>Source Files\video_frame_formatter</Filter>
     </ClCompile>
     <ClCompile Include="video_frame_formatter\CV210toP210VideoFrameFormatter.cpp">
       <Filter>Source Files\video_frame_formatter</Filter>
@@ -326,5 +344,23 @@
     <ClCompile Include="cie.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="PPMCorrectionLoader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="video_frame_formatter\CV210toP010VideoFrameFormatter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="AutoPpmCalibrator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin_tracking_snippet.txt" />
   </ItemGroup>
 </Project>

@@ -27,6 +27,54 @@ public:
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
 	LONG GetOutFrameSize() const override;
 
+	// Public method to get conversion performance metrics
+	void GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const
+	{
+		currentUs = m_performanceWindow.lastTimeUs;
+		avg10s = m_performanceWindow.GetAverage();
+		max10s = m_performanceWindow.GetMax();
+	}
+
 private:
 	int m_bytesPerVideoFrame = 0;
+
+	// Rolling window performance tracking (for stats overlay)
+	struct RollingPerformanceWindow
+	{
+		static const size_t WINDOW_SIZE = 600;  // 10 seconds @ 60fps
+		double times[WINDOW_SIZE];
+		size_t currentIndex = 0;
+		size_t samplesCollected = 0;
+		double lastTimeUs = 0.0;
+		
+		void AddSample(double timeUs)
+		{
+			lastTimeUs = timeUs;
+			times[currentIndex] = timeUs;
+			currentIndex = (currentIndex + 1) % WINDOW_SIZE;
+			if (samplesCollected < WINDOW_SIZE)
+				samplesCollected++;
+		}
+		
+		double GetAverage() const
+		{
+			if (samplesCollected == 0) return 0.0;
+			double sum = 0.0;
+			for (size_t i = 0; i < samplesCollected; i++)
+				sum += times[i];
+			return sum / samplesCollected;
+		}
+		
+		double GetMax() const
+		{
+			if (samplesCollected == 0) return 0.0;
+			double maxVal = times[0];
+			for (size_t i = 1; i < samplesCollected; i++)
+				if (times[i] > maxVal)
+					maxVal = times[i];
+			return maxVal;
+		}
+	};
+	
+	mutable RollingPerformanceWindow m_performanceWindow;
 };

@@ -11,7 +11,9 @@
 #include <dvdmedia.h>
 
 #include <guid.h>
+#include <DebugLog.h>
 #include <microsoft_directshow/live_source_filter/CLiveSource.h>
+#include <microsoft_directshow/live_source_filter/ALiveSourceVideoOutputPin.h>
 #include <microsoft_directshow/DIrectShowTranslations.h>
 
 #include "DirectShowVideoRenderer.h"
@@ -50,6 +52,9 @@ DirectShowVideoRenderer::DirectShowVideoRenderer(
 	if (!useFrameQueue && timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK)
 		throw std::runtime_error("No queue cannot be used with clock-clock, pick another mode and restart");
 
+	// RATIONAL_RATIONAL mode timing clock will be created when video state is available
+	// We need the exact rational frame rate from DisplayMode to create the perfect mathematical clock
+
 	ZeroMemory(&m_pmt, sizeof(AM_MEDIA_TYPE));
 }
 
@@ -81,6 +86,18 @@ bool DirectShowVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 	{
 		// No video state yet, initialize
 		m_videoState = videoState;
+		
+		// RATIONAL_RATIONAL mode uses the same hardware timing clock
+		// The rational timestamp calculation happens in ALiveSourceVideoOutputPin
+		// using pure integer math for perfect frame spacing
+		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL)
+		{
+			const uint32_t timeScale = m_videoState->displayMode->TimeScale();
+			const uint32_t frameDurationTicks = m_videoState->displayMode->FrameDuration();
+			const double frameRate = (double)timeScale / (double)frameDurationTicks;
+			
+			DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer: Using RATIONAL_RATIONAL timing for %.6f fps (hardware clock with integer math)"), frameRate));
+		}
 	}
 
 	// All good, continue
@@ -96,13 +113,35 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	assert(m_videoState);
 	assert(videoFrame.GetTimingTimestamp() > 0);
 
+	const timingclocktime_t frameTime = videoFrame.GetTimingTimestamp();
+
+	// Update PPM measurement with each frame
+	UpdatePPMMeasurement(frameTime);
+
 	// Get delay until now once in a while
 	if (m_frameCounter % 20 == 0)
 	{
-		const timingclocktime_t frameTime = videoFrame.GetTimingTimestamp();
 		const timingclocktime_t clockTime = m_timingClock->TimingClockNow();
 
 		m_frameLatencyEntry = TimingClockDiffMs(frameTime, clockTime, m_timingClock->TimingClockTicksPerSecond());
+		
+		// Diagnostic: Check DirectShow clock synchronization (every 10 seconds)
+		if (m_frameCounter % 600 == 0 && m_referenceClock)
+		{
+			REFERENCE_TIME dsClockTime = 0;
+			if (SUCCEEDED(m_referenceClock->GetTime(&dsClockTime)))
+			{
+				// HIGH-PRECISION CONVERSION: Use the same banker's rounding as everywhere else
+				// Convert hardware clock to DirectShow time for comparison
+				const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
+				const REFERENCE_TIME hardwareAsDsTime = ((frameTime * 10000000LL) + (ticksPerSecond / 2)) / ticksPerSecond;
+				const REFERENCE_TIME clockDiff = dsClockTime - hardwareAsDsTime;
+				const double clockDiffMs = clockDiff / 10000.0;
+				
+				DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer: Clock sync check - DS clock: %I64d, HW clock: %I64d, diff: %.2f ms"),
+					dsClockTime, hardwareAsDsTime, clockDiffMs));
+			}
+		}
 	}
 
 	if (FAILED(m_liveSource->OnVideoFrame(videoFrame)))
@@ -164,17 +203,60 @@ void DirectShowVideoRenderer::Stop()
 
 void DirectShowVideoRenderer::Reset()
 {
-	// Stop directshow graph
-	if (FAILED(m_pControl->Stop()))
-		throw std::runtime_error("Failed to Stop() graph");
-
-	m_liveSource->Reset();
-
+	DebugLog::Log("DirectShowVideoRenderer::Reset() called, m_liveSource=%p", m_liveSource);
+	
+	if (!m_liveSource)
+	{
+		DebugLog::Log("DirectShowVideoRenderer::Reset() - m_liveSource is NULL, returning");
+		return;
+	}
+	
+	// CRITICAL FIX: The only way to properly reset MadVR's internal state is to 
+	// completely stop and restart the graph. MadVR doesn't respond to mid-stream
+	// reset signals - it needs to be re-initialized from scratch.
+	// This mimics what happens during fullscreen toggle which works correctly.
+	
+	DebugLog::Log("DirectShowVideoRenderer::Reset() - Stopping graph for complete restart");
+	
+	if (m_pControl)
+	{
+		HRESULT hr = m_pControl->Stop();
+		if (FAILED(hr))
+		{
+			DebugLog::Log("DirectShowVideoRenderer::Reset() - Stop failed, hr=0x%x", hr);
+		}
+		else
+		{
+			DebugLog::Log("DirectShowVideoRenderer::Reset() - Graph stopped");
+			
+			// Brief delay to ensure MadVR fully stops
+			Sleep(100);
+			
+			// Reset the source while graph is stopped
+			DebugLog::Log("DirectShowVideoRenderer::Reset() - Resetting source");
+			m_liveSource->Reset();
+			
+			// Restart the graph
+			hr = m_pControl->Run();
+			if (FAILED(hr))
+			{
+				DebugLog::Log("DirectShowVideoRenderer::Reset() - Run failed, hr=0x%x", hr);
+			}
+			else
+			{
+				DebugLog::Log("DirectShowVideoRenderer::Reset() - Graph restarted");
+			}
+		}
+	}
+	else
+	{
+		// Fallback if no graph control
+		DebugLog::Log("DirectShowVideoRenderer::Reset() - No pControl, just resetting source");
+		m_liveSource->Reset();
+	}
+	
 	m_frameCounter = 0;
-
-	// Run directshow graph again
-	if (FAILED(m_pControl->Run()))
-		throw std::runtime_error("Failed to Run() graph");
+	DebugLog::Log("DirectShowVideoRenderer::Reset() - complete");
 }
 
 
@@ -424,6 +506,12 @@ void DirectShowVideoRenderer::GraphRun()
 		throw std::runtime_error("Failed to Run() graph");
 
 	SetState(RendererState::RENDERSTATE_RENDERING);
+	
+	// NOTE: DO NOT call m_liveSource->Reset() here!
+	// The Active() method has already done a complete reset of all state
+	// before the threads were started. Calling Reset() here races with
+	// the active conversion/delivery threads and causes timeline corruption.
+	// Let the threads work with the clean state provided by Active();
 }
 
 
@@ -525,7 +613,9 @@ void DirectShowVideoRenderer::GraphStop()
 	if (FAILED(m_pControl->Stop()))
 		throw std::runtime_error("Failed to Stop() graph");
 
-	m_liveSource->Reset();
+	// NOTE: Do NOT call m_liveSource->Reset() here
+	// Reset is handled by DirectShowVideoRenderer::Reset() when needed
+	// Calling it here causes duplicate resets on fullscreen transitions
 
 	// Check if filter really stopped
 	OAFilterState filterState = -1;  // Known invalid state
@@ -585,6 +675,12 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 
 	m_liveSource->AddRef();
 
+	// Get the exact rational timing values from the DisplayMode
+	// These are used for Bresenham-style exact integer math in RATIONAL_RATIONAL mode
+	const unsigned int timeScale = m_videoState->displayMode->TimeScale();
+	const unsigned int frameDurationTicks = m_videoState->displayMode->FrameDuration();
+
+	// Calculate frame duration in 100ns units (for backward compatibility with other timing modes)
 	const timestamp_t frameDuration100ns =
 		(timestamp_t)round((1.0 / m_videoState->displayMode->RefreshRateHz()) * UNITS);
 
@@ -592,6 +688,8 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 		m_videoFramFormatter,
 		m_pmt,
 		frameDuration100ns,
+		timeScale,
+		frameDurationTicks,
 		m_timingClock,
 		m_timestamp,
 		m_useFrameQueue,
@@ -647,4 +745,127 @@ void DirectShowVideoRenderer::RendererDestroy()
 		m_pRenderer->Release();
 		m_pRenderer = nullptr;
 	}
+}
+
+// Get current PPM correction information (override for RATIONAL_RATIONAL and CLOCK_RATIONAL support)
+bool DirectShowVideoRenderer::GetPPMCorrectionInfo(int& ppmValue, bool& hasCorrection, CString& source) const
+{
+	// Both RATIONAL_RATIONAL and CLOCK_RATIONAL use PPM corrections
+	if ((m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL || 
+	     m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL) && m_liveSource)
+	{
+		// Get PPM correction info directly from CLiveSource
+		ppmValue = m_liveSource->GetCurrentPPMCorrection();
+		hasCorrection = m_liveSource->HasPPMCorrection();
+		source = m_liveSource->GetPPMCorrectionSource() ? TEXT("correction.cfg") : TEXT("default");
+		return true;
+	}
+	
+	ppmValue = 0;
+	hasCorrection = false;
+	source = TEXT("N/A");
+	return false;
+}
+
+// Get frame rate measurement and PPM deviation (for timing diagnostics)
+bool DirectShowVideoRenderer::GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const
+{
+	if (!m_hasPPMData || !m_videoState)
+	{
+		measuredFps = 0.0;
+		ppmDeviation = 0;
+		return false;
+	}
+
+	measuredFps = m_measuredFrameRate;
+	ppmDeviation = m_ppmDeviation;
+	return true;
+}
+
+void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) const
+{
+	// Initialize on first frame
+	if (m_firstFrameTime == 0)
+	{
+		m_firstFrameTime = frameTime;
+		m_lastFrameTime = frameTime;
+		m_frameCountForPPM = 1;
+		
+		// Initialize rolling window
+		m_rollingWindowStartTime = frameTime;
+		m_rollingWindowFrameCount = 1;
+		return;
+	}
+
+	// Update last frame time
+	m_lastFrameTime = frameTime;
+	m_frameCountForPPM++;
+	m_rollingWindowFrameCount++;
+
+	// ROLLING WINDOW: Reset measurement window every 5 seconds
+	const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
+	const timingclocktime_t fiveSecondTicks = ticksPerSecond * 5;  // 5 seconds in ticks
+	
+	if ((frameTime - m_rollingWindowStartTime) >= fiveSecondTicks)
+	{
+		// Calculate FPS for this 5-second window
+		const timingclocktime_t windowElapsedTicks = frameTime - m_rollingWindowStartTime;
+		
+		if (windowElapsedTicks > 0)
+		{
+			const double windowElapsedSeconds = (double)windowElapsedTicks / (double)ticksPerSecond;
+			const double measuredFps = (double)(m_rollingWindowFrameCount - 1) / windowElapsedSeconds;
+			
+			// Get theoretical refresh rate
+			const double theoreticalFps = m_videoState->displayMode->RefreshRateHz();
+			
+			// Calculate PPM deviation: (measured - theoretical) * 1e6 / theoretical
+			const double deviation = (measuredFps - theoreticalFps) / theoreticalFps;
+			m_ppmDeviation = ((int)round(deviation * 1e6))*-1;
+			m_measuredFrameRate = measuredFps;
+			
+			m_hasPPMData = true;
+			
+			// **NEW: Feed PPM measurement to auto-calibrator if active**
+			if (m_liveSource)
+			{
+				// Get the output pin to check if auto-calibration is active
+				ALiveSourceVideoOutputPin* outputPin = m_liveSource->GetVideoOutputPin();
+				
+				DebugLog::Log("DirectShow: 5-second PPM window complete - outputPin=%p, deviation=%d PPM",
+					outputPin, m_ppmDeviation);
+				
+				if (outputPin && outputPin->IsAutoCalibrating())
+				{
+					DebugLog::Log("DirectShow: Auto-calibration ACTIVE - feeding %d PPM to calibrator", m_ppmDeviation);
+					
+					// Feed the PPM deviation to the calibrator
+					// The calibrator will handle filtering, smoothing, and applying corrections
+					outputPin->FeedPPMToCalibrator(m_ppmDeviation);
+					
+					DebugLog::Log("DirectShow: PPM fed to calibrator successfully");
+				}
+				else
+				{
+					//DebugLog::Log("DirectShow: Auto-calibration INACTIVE - outputPin=%p, IsAutoCalibrating=%d", outputPin, outputPin ? outputPin->IsAutoCalibrating() : -1);
+				}
+			}
+			else
+			{
+				DebugLog::Log("DirectShow: m_liveSource is NULL - cannot feed PPM");
+			}
+		}
+		
+		// Reset rolling window for next 5-second period
+		m_rollingWindowStartTime = frameTime;
+		m_rollingWindowFrameCount = 1;
+	}
+}
+
+size_t DirectShowVideoRenderer::GetConvertedQueueSize()
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		throw std::runtime_error("Invalid state, can only be called while rendering");
+
+	return m_liveSource->GetConvertedQueueSize();
 }

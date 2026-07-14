@@ -15,6 +15,8 @@
 #include <guid.h>
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
 #include <video_frame_formatter/CFFMpegDecoderVideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowTranslations.h>
@@ -151,17 +153,43 @@ void DirectShowMPCVideoRenderer::MediaTypeGenerate()
 	int bitCount;
 	LONG heightMultiplier = 1;
 
-	// v210 (YUV422) to p010 (YUV420)
-	// This is lossy, only use to revert decklink upscaling
-	if (m_videoState->videoFrameEncoding == VideoFrameEncoding::V210 &&
-		m_videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010)
+	// Smart P010 conversion: Auto-detect input format and convert to P010
+	// User selects "YUV/RGB > P010" in UI, we intelligently pick the right converter
+	// Also auto-enable for ARGB/BGRA even without explicit selection (makes it "just work")
+	const bool needsP010Conversion = 
+		(m_videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010) ||
+		(m_videoState->videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT) ||
+		(m_videoState->videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT);
+
+	if (needsP010Conversion)
 	{
 		mediaSubType = MEDIASUBTYPE_P010;
 		bitCount = 10;
-		m_videoFramFormatter = new CV210toP010VideoFrameFormatter();
+		
+		// Auto-detect input format and use appropriate converter
+		if (m_videoState->videoFrameEncoding == VideoFrameEncoding::V210)
+		{
+			// V210 (10-bit 4:2:2) ? P010 (10-bit 4:2:0)
+			m_videoFramFormatter = new CV210toP010VideoFrameFormatter();
+		}
+		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::UYVY)
+		{
+			// UYVY (8-bit 4:2:2) ? P010 (10-bit 4:2:0)
+			m_videoFramFormatter = new CUYVYtoP010VideoFrameFormatter();
+		}
+		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT ||
+		         m_videoState->videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT)
+		{
+			// ARGB/BGRA (8-bit 4:4:4 RGB) ? P010 (10-bit 4:2:0 YUV)
+			m_videoFramFormatter = new CARGBtoP010VideoFrameFormatter();
+		}
+		else
+		{
+			throw std::runtime_error("P010 conversion only supports V210, UYVY, ARGB, or BGRA input");
+		}
 	}
 
-	// Default conversions
+	// Default conversions (non-P010)
 	else
 	{
 		switch (m_videoState->videoFrameEncoding)

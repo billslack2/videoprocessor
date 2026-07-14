@@ -22,6 +22,8 @@
 #include <WindowedVideoWindow.h>
 #include <microsoft_directshow/DirectShowRendererStartStopTimeMethod.h>
 #include <microsoft_directshow/DirectShowDefines.h>
+#include <microsoft_directshow/video_renderers/DirectShowVideoRenderer.h>
+#include <StatsOverlayWindow.h>
 
 #include "resource.h"
 
@@ -36,6 +38,15 @@
 #define WM_MESSAGE_DIRECTSHOW_NOTIFICATION              (WM_APP + 7)
 #define WM_MESSAGE_RENDERER_STATE_CHANGE                (WM_APP + 8)
 #define WM_MESSAGE_RENDERER_DETAIL_STRING               (WM_APP + 9)
+
+// Timer IDs
+#define TIMER_ID_1SECOND 1
+#define RESIZE_DEBOUNCE_TIMER_ID 2
+#define QUEUE_RESET_DELAY_TIMER_ID 3
+#define FULLSCREEN_FOCUS_TIMER_ID 4
+#define EOTF_CHANGE_RESTART_TIMER_ID 5  // Was 4, now unique
+
+
 
 
 enum class HdrColorspaceOptions
@@ -72,6 +83,8 @@ public:
 
 	// Dialog Data
 	enum { IDD = IDD_VIDEOPROCESSOR_DIALOG };
+
+	int CalculateAutoFrameOffset();
 
 	// Option handlers
 	void StartFullScreen();
@@ -133,8 +146,10 @@ public:
 	void OnCommandFullScreenToggle();
 	void OnCommandFullScreenExit();
 	void OnCommandRendererReset();
+	void OnCommandRendererRestart();
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
+	void OnCommandToggleStatsOverlay();
 
 	// ICaptureDeviceDiscovererCallback
 	void OnCaptureDeviceFound(ACaptureDeviceComPtr& captureDevice) override;
@@ -152,6 +167,19 @@ public:
 	void OnRendererDetailString(const CString& details) override;
 
 protected:
+
+	int m_resyncPendingResetSeconds = -1;  // Countdown timer for scheduled reset after resync/refresh rate change (-1 = no reset pending)
+	double m_lastKnownRefreshRate = 0.0;  // Track last refresh rate for change detection (0 = not initialized)
+
+	// EOTF change detection for SDR/HDR switching
+	// Feature flag: Set to true to enable automatic renderer restart on EOTF change
+	bool m_enableEotfChangeRestart = true;  // TODO: Make this configurable via UI or config file
+	EOTF m_lastKnownEotf = EOTF::UNKNOWN;  // Track last EOTF for change detection
+	int m_eotfChangeRestartCooldownSeconds = -1;  // Cooldown timer to prevent restart loops (-1 = no cooldown active
+	
+	// SIMPLIFIED EOTF TRACKING: Store the EOTF when renderer starts, detect changes while rendering
+	EOTF m_rendererStartedWithEotf = EOTF::UNKNOWN;
+	int m_eotfCheckCooldownSeconds = 0;  // Cooldown to wait before checking EOTF changes (starts at 5 seconds after renderer start)
 
 	//
 	// UI elements
@@ -262,11 +290,23 @@ protected:
 
 	VideoStateComPtr m_builtVideoState = nullptr;  // This is what we make of it
 
+
 	// Startup options
 	bool m_rendererFullScreenStart = false;
 	bool m_windowedFullScreenMode = false;
 	bool m_hideUI = false;
 	bool m_startMinimized = false;
+
+	// Queue health monitoring variables
+	size_t m_consecutiveFullSeconds = 0;
+	size_t m_consecutiveStuckSeconds = 0;
+	uint64_t m_lastDroppedFrames = 0;
+	size_t m_lastQueueSize = 0;
+	bool m_pendingQueueReset = false;
+	UINT_PTR m_rendererStartTime = 0;  // Tick count when renderer started rendering
+
+	// Frame offset by refresh data
+	std::vector<int> m_frameOffsetsByRefresh;
 	
 
 	CString m_defaultRendererName;
@@ -300,6 +340,11 @@ protected:
 	bool m_wantToRestartCapture = false;
 	bool m_wantToRestartRenderer = false;
 	bool m_wantToTerminate = false;
+
+	// Stats overlay
+	StatsOverlayWindow* m_statsOverlay = nullptr;
+	StatsData* m_lastStatsData = nullptr;
+
 	void UpdateState();
 
 	// Helpers
@@ -335,9 +380,20 @@ protected:
 	void UpdateTimingClockFrameOffset();
 	void RebuildRendererCombo();
 	void ClearRendererCombo();
+	void UpdateStatsOverlay();
+	void MonitorQueueHealth(size_t currentQueueSize, uint64_t droppedFrames);
+
 
 	bool BuildPushVideoState();
 	void BuildPushRestartVideoState();
+
+	// Track effective EOTF the renderer is currently configured for (post-UI overrides)
+	EOTF m_lastEffectiveEotf = EOTF::UNKNOWN;
+	bool m_hasLastEffectiveEotf = false;
+
+	// Optional: prevent spam if capture toggles rapidly
+	bool m_restartQueuedBecauseEotf = false;
+
 
 #define FatalError(error) (_FatalError(__LINE__, __FUNCTION__, error))
 	void _FatalError(int line, const std::string& functionName, const CString& error);
@@ -349,15 +405,15 @@ protected:
 	std::atomic<bool> m_isRestartingRender = false;
 	BOOL PreTranslateMessage(MSG* pMsg) override;
 	void OnOK() override;
-	void OnPaint();
-	void OnSize(UINT nType, int cx, int cy);
-	void OnSetFocus(CWnd* pOldWnd);
-	void OnClose();
-	void OnTimer(UINT_PTR nIDEvent);
-	HCURSOR	OnQueryDragIcon();
-	void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
-	#define RESIZE_DEBOUNCE_TIMER_ID 1  // Unique timer ID
+	afx_msg void OnPaint();
+	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnSetFocus(CWnd* pOldWnd);
+	afx_msg void OnClose();
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
+	afx_msg HCURSOR	OnQueryDragIcon();
+	afx_msg void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
 
 	DECLARE_MESSAGE_MAP()
+
 
 };

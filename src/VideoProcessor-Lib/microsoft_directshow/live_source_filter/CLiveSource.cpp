@@ -49,6 +49,8 @@ STDMETHODIMP CLiveSource::Initialize(
 	IVideoFrameFormatter* videoFrameFormatter,
 	const AM_MEDIA_TYPE& mediaType,
 	timestamp_t frameDuration,
+	unsigned int timeScale,
+	unsigned int frameDurationTicks,
 	ITimingClock* timingClock,
 	DirectShowStartStopTimeMethod timestamp,
 	bool useFrameQueue,
@@ -58,6 +60,8 @@ STDMETHODIMP CLiveSource::Initialize(
 	assert(videoFrameFormatter);
 	assert(mediaType.majortype.Data1 > 0);
 	assert(frameDuration > 0);
+	assert(timeScale > 0);
+	assert(frameDurationTicks > 0);
 
 	HRESULT hr = S_OK;
 
@@ -85,6 +89,8 @@ STDMETHODIMP CLiveSource::Initialize(
 	m_videoOutputPin->Initialize(
 		videoFrameFormatter,
 		frameDuration,
+		timeScale,
+		frameDurationTicks,
 		timingClock,
 		timestamp,
 		mediaType);
@@ -134,7 +140,9 @@ STDMETHODIMP CLiveSource::SetFrameQueueMaxSize(size_t frameQueueMaxSize)
 
 STDMETHODIMP CLiveSource::Reset()
 {
+	DebugLog::Log("CLiveSource::Reset() called - calling m_videoOutputPin->Reset()");
 	m_videoOutputPin->Reset();
+	DebugLog::Log("CLiveSource::Reset() - m_videoOutputPin->Reset() returned");
 	return S_OK;
 }
 
@@ -190,4 +198,40 @@ double CLiveSource::ExitLatencyMs() const
 uint64_t CLiveSource::DroppedFrameCount() const
 {
 	return m_videoOutputPin->DroppedFrameCount();
+}
+
+
+int CLiveSource::GetCurrentPPMCorrection() const
+{
+	if (!m_videoOutputPin)
+		return 0;
+	return m_videoOutputPin->GetCurrentPPMCorrection();
+}
+
+
+bool CLiveSource::HasPPMCorrection() const
+{
+	if (!m_videoOutputPin)
+		return false;
+	return m_videoOutputPin->HasPPMCorrection();
+}
+
+
+bool CLiveSource::GetPPMCorrectionSource() const
+{
+	if (!m_videoOutputPin)
+		return false;
+	return m_videoOutputPin->GetPPMCorrectionSource();
+}
+
+int CLiveSource::GetConvertedQueueSize()
+{
+	// Cast to buffered pin to access converted queue size
+	CBufferedLiveSourceVideoOutputPin* bufferedPin =
+		dynamic_cast<CBufferedLiveSourceVideoOutputPin*>(m_videoOutputPin);
+
+	if (bufferedPin)
+		return (int)bufferedPin->GetConvertedQueueSize();
+
+	return 0; // Unbuffered pins have no converted queue
 }

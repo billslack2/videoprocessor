@@ -42,6 +42,8 @@ public:
 		VideoConversionOverride videoConversionOverride);
 	virtual ~DirectShowVideoRenderer();
 
+	size_t GetConvertedQueueSize() override;
+
 	// IVideoRenderer
 	bool OnVideoState(VideoStateComPtr&) override;
 	void OnVideoFrame(VideoFrame& videoFrame) override;
@@ -56,6 +58,23 @@ public:
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;
 	uint64_t DroppedFrameCount() const override;
+	
+	// Get conversion performance from the video frame formatter
+	bool GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override
+	{
+		if (m_videoFramFormatter)
+		{
+			m_videoFramFormatter->GetConversionPerformance(currentUs, avg10s, max10s);
+			return (currentUs > 0.0 || avg10s > 0.0 || max10s > 0.0);
+		}
+		return false;
+	}
+
+	// Get current PPM correction information (override for RATIONAL_RATIONAL support)
+	bool GetPPMCorrectionInfo(int& ppmValue, bool& hasCorrection, CString& source) const override;
+	
+	// Get frame rate measurement and PPM deviation (for timing diagnostics)
+	bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const override;
 
 protected:
 
@@ -95,6 +114,18 @@ protected:
 	uint64_t m_missingFrameCounter = 0;
 	double m_frameLatencyEntry = 0.0;
 
+	// PPM measurement variables
+	mutable timingclocktime_t m_firstFrameTime = 0;
+	mutable timingclocktime_t m_lastFrameTime = 0;  
+	mutable uint64_t m_frameCountForPPM = 0;
+	mutable double m_measuredFrameRate = 0.0;
+	mutable int m_ppmDeviation = 0;
+	mutable bool m_hasPPMData = false;
+	
+	// Rolling 5-second window for accurate recent measurements
+	mutable timingclocktime_t m_rollingWindowStartTime = 0;
+	mutable uint64_t m_rollingWindowFrameCount = 0;
+
 	// Handle Directshow graph events
 	void OnGraphEvent(long evCode, LONG_PTR param1, LONG_PTR param2);
 
@@ -131,6 +162,8 @@ protected:
 
 	virtual void MediaTypeGenerate() = 0;
 
+	// PPM calculation helper
+	void UpdatePPMMeasurement(timingclocktime_t frameTime) const;
 
 private:
 

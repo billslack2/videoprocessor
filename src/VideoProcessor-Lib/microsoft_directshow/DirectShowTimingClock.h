@@ -8,31 +8,35 @@
 
 #pragma once
 
-
+#include <atomic>
 #include <refclock.h>
-
 #include <ITimingClock.h>
-
 
 #define DIRECTSHOW_TIMING_CLOCK_NAME TEXT("TimingClock")
 
-
-/**
- * Clock which can get the time from an timingclock interface.
- * To be used in Directshow graphs
- */
-class DirectShowTimingClock:
-	public CBaseReferenceClock
+ /**
+  * DirectShow timing clock using pure hardware time.
+  * SIMPLIFIED: High-performance conversion with minimal overhead
+  *
+  * Features:
+  * - Pure hardware timestamps (no smoothing, no filtering)
+  * - High-precision timestamp conversion with overflow protection
+  * - Lock-free monotonic enforcement using atomics
+  * - Minimal CPU overhead on hot path
+  */
+class DirectShowTimingClock : public CBaseReferenceClock
 {
 public:
-
 	DirectShowTimingClock(ITimingClock& timingClock);
 	virtual ~DirectShowTimingClock();
 
-	// CBaseReferenceClock
+	// CBaseReferenceClock override - HOT PATH
 	REFERENCE_TIME GetPrivateTime() override;
 
 private:
 	ITimingClock& m_timingClock;
-	const double m_ticksPer100ns;
+	const timingclocktime_t m_ticksPerSecond;
+
+	// Lock-free monotonic enforcement
+	std::atomic<REFERENCE_TIME> m_lastReturnedTime;
 };
