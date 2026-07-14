@@ -17,7 +17,7 @@ $VerDescribePost = "`");`n"
 $VerBy       = (git log -n 1 --format=format:"static const TCHAR* VERSION_AUTHOR=TEXT(`\`"%an `<%ae`>`\`");%n") | Out-String
 $VerUrl      = (git log -n 1 --format=format:"static const TCHAR* VERSION_URL=TEXT(`\`"$VerPrefix%H`\`");%n") | Out-String
 $VerDate     = (git log -n 1 --format=format:"static const TCHAR* VERSION_DATE=TEXT(`\`"%ai`\`");%n") | Out-String
-$VerDescribe = (git describe --tags --long).Trim() | Out-String
+$VerDescribe = (git describe --tags).Trim() | Out-String
 $VerDescribe = $VerDescribe.TrimEnd()
 
 $VerChgs = ((git ls-files --exclude-standard -d -m -o -k) | Measure-Object -Line).Lines
