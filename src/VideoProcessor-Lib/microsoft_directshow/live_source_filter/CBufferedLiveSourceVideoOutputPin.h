@@ -54,6 +54,7 @@ public:
 	HRESULT OnVideoFrame(VideoFrame&) override;
 	void SetFrameQueueMaxSize(size_t) override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
+	uint64_t SceneAwareCorrectionDropCount() const override { return m_sceneAwareCorrectionDropCount.load(std::memory_order_relaxed); }
 	size_t GetFrameQueueSize() override;
 	void Reset() override;
 	REFERENCE_TIME NextFrameTimestamp() const override;
@@ -95,6 +96,7 @@ private:
 	// no scene analysis and delivery follows the pre-existing path exactly.
 	std::atomic_bool m_sceneAwareTimingCorrection = false;
 	std::atomic<uint64_t> m_sceneDetectorGeneration = 0;
+	std::atomic<uint64_t> m_sceneAwareCorrectionDropCount = 0;
 	DWORD m_lastSceneAwareCorrectionTime = 0;
 	
 	//

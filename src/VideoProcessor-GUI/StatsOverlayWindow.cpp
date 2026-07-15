@@ -438,6 +438,13 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 	line.Format(TEXT("Dropped:          %llu/%llu"), m_stats.capturedDroppedFrames, m_stats.queueDroppedFrames);
 	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
+
+	// Scene Detect intentionally drops a safe-boundary frame. MadVR then keeps
+	// the previous image for that refresh; VideoProcessor does not inject a
+	// repeat sample, so the repeat count is always zero here.
+	line.Format(TEXT("Scene Detect D/R: %llu / 0"), m_stats.sceneDetectCorrectionDrops);
+	DrawText(hdc, line, PADDING, y);
 
 	SelectObject(hdc, oldFont);
 }

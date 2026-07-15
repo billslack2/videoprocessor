@@ -92,6 +92,7 @@ public:
 	void HideUI();
 	void StartMinimized();
 	void SceneDetect();
+	void EnableNewLldvHeuristic();
 	void DefaultRendererName(const CString&);
 	void SetQueueSize(const CString&);
 	void SetCaptureDevice(const CString&);
@@ -182,6 +183,13 @@ protected:
 	// SIMPLIFIED EOTF TRACKING: Store the EOTF when renderer starts, detect changes while rendering
 	EOTF m_rendererStartedWithEotf = EOTF::UNKNOWN;
 	int m_eotfCheckCooldownSeconds = 0;  // Cooldown to wait before checking EOTF changes (starts at 5 seconds after renderer start)
+
+	// Optional LLDV heuristic.  DeckLink does not expose the HDMI VSIF, so
+	// BT.2020 + SDR + no static HDR metadata is only a best-effort signal.
+	bool m_useNewLldvHeuristic = false;
+	bool m_newLldvCandidateActive = false;
+	bool m_newLldvCandidateConfirmed = false;
+	DWORD m_newLldvCandidateSince = 0;
 
 	//
 	// UI elements
@@ -387,6 +395,8 @@ protected:
 	void UpdateStatsOverlay();
 	void MonitorQueueHealth(size_t currentQueueSize, uint64_t droppedFrames);
 	void ApplyNoUiLayout();
+	bool UpdateNewLldvCandidate();
+	bool IsNewLldvModeSelected();
 
 
 	bool BuildPushVideoState();

@@ -329,6 +329,14 @@ uint64_t DirectShowVideoRenderer::DroppedFrameCount() const
 	return m_liveSource->DroppedFrameCount();
 }
 
+uint64_t DirectShowVideoRenderer::SceneAwareCorrectionDropCount() const
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		throw std::runtime_error("Invalid state, can only be called while rendering");
+
+	return m_liveSource->GetVideoOutputPin()->SceneAwareCorrectionDropCount();
+}
+
 
 void DirectShowVideoRenderer::OnGraphEvent(long evCode, LONG_PTR param1, LONG_PTR param2)
 {
