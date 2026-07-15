@@ -867,6 +867,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	uint64_t slowDeliveryCount1Min = 0;
 	uint64_t totalDeliveryCount1Min = 0;
 	DWORD lastDeliveryStatsLogTime = GetTickCount();
+	DWORD lastLateBindMissLogTime = 0;
+	uint64_t lateBindMissesSinceLastLog = 0;
+	DWORD lastDeliveryFailureLogTime = 0;
+	uint64_t deliveryFailuresSinceLastLog = 0;
 
 	// Calculate frame interval thresholds (updated periodically from timing clock)
 	uint64_t frameIntervalUs = 16667;  // Default: ~60fps = 16.667ms
@@ -1058,13 +1062,18 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				}
 				else
 				{
-					// Track failure for periodic logging
-					static uint64_t lateBindFailCount = 0;
-					++lateBindFailCount;
-
-					// Log every failure since they should be rare
-					DebugLog::Log("LATE-BIND MISS #%llu: No match for target=%.3fms within ±%.3fms (searching pending history)",
-						lateBindFailCount, theoreticalStop / 10000.0, searchTolerance / 10000.0);
+					// A timestamp miss often occurs in bursts while the graph is
+					// recovering.  Logging every frame can then make the timing issue
+					// worse, so report a bounded summary instead.
+					++lateBindMissesSinceLastLog;
+					const DWORD now = GetTickCount();
+					if (lastLateBindMissLogTime == 0 || now - lastLateBindMissLogTime >= 5000)
+					{
+						DebugLog::Log("LATE-BIND MISS: %llu miss(es) in the last interval; target=%.3fms within ±%.3fms (searching pending history)",
+							lateBindMissesSinceLastLog, theoreticalStop / 10000.0, searchTolerance / 10000.0);
+						lateBindMissesSinceLastLog = 0;
+						lastLateBindMissLogTime = now;
+					}
 				}
 			}
 
@@ -1143,8 +1152,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				++m_droppedFrameCount;
 				++m_recentDeliveryFailures;
 				++deliveryFailureCount;
-				DebugLog::Log("DELIVERY THREAD: Deliver() FAILED hr=0x%08x (failures=%u)",
-					hr, m_recentDeliveryFailures.load());
+				++deliveryFailuresSinceLastLog;
+				const DWORD now = GetTickCount();
+				if (lastDeliveryFailureLogTime == 0 || now - lastDeliveryFailureLogTime >= 5000)
+				{
+					DebugLog::Log("DELIVERY THREAD: Deliver() failed %llu time(s) in the last interval; last hr=0x%08x (consecutive=%u)",
+						deliveryFailuresSinceLastLog, hr, m_recentDeliveryFailures.load());
+					deliveryFailuresSinceLastLog = 0;
+					lastDeliveryFailureLogTime = now;
+				}
 			}
 			else
 			{
@@ -1187,6 +1203,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 	uint64_t maxTimeUs = 0;
 	uint64_t minTimeUs = UINT64_MAX;
 	uint64_t backpressureHits = 0;
+	DWORD lastSlowConversionLogTime = 0;
+	uint64_t slowConversionsSinceLastLog = 0;
+	uint64_t maxSlowConversionUs = 0;
 	SceneSignature sceneSignature;
 	uint64_t sceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
 
@@ -1348,11 +1367,21 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			}
 			++batchCount;
 
-			// Log slow conversions
+			// Slow conversions may occur in sustained bursts.  Do not make a
+			// saturated CPU/disk path worse by logging once per frame.
 			if (convTimeUs > 5000)  // > 5ms is unusual
 			{
-				DebugLog::Log("CONVERSION WORKER: Slow conversion took %.2fms for frame #%llu",
-					convTimeUs / 1000.0, videoFrame.GetCounter());
+				++slowConversionsSinceLastLog;
+				maxSlowConversionUs = std::max(maxSlowConversionUs, convTimeUs);
+				const DWORD now = GetTickCount();
+				if (lastSlowConversionLogTime == 0 || now - lastSlowConversionLogTime >= 5000)
+				{
+					DebugLog::Log("CONVERSION WORKER: %llu slow conversion(s) in the last interval; max=%.2fms, latest frame #%llu",
+						slowConversionsSinceLastLog, maxSlowConversionUs / 1000.0, videoFrame.GetCounter());
+					slowConversionsSinceLastLog = 0;
+					maxSlowConversionUs = 0;
+					lastSlowConversionLogTime = now;
+				}
 			}
 		}
 
