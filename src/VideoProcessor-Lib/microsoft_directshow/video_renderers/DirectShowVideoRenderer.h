@@ -59,6 +59,7 @@ public:
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;
 	uint64_t DroppedFrameCount() const override;
+	uint64_t SceneAwareCorrectionDropCount() const override;
 	
 	// Get conversion performance from the video frame formatter
 	bool GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override

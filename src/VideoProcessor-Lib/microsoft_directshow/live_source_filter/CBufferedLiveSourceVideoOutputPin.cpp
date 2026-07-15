@@ -27,6 +27,7 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 	m_lastSeenFrameCounter = 0;
 	m_totalConversionTimeUs.store(0, std::memory_order_relaxed);
 	m_conversionFrameCount.store(0, std::memory_order_relaxed);
+	m_sceneAwareCorrectionDropCount.store(0, std::memory_order_relaxed);
 	m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
 	m_lastQueueWarning = 0;
 	m_hConversionThread = nullptr;
@@ -667,6 +668,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	// Reset conversion metrics
 	m_totalConversionTimeUs.store(0, std::memory_order_relaxed);
 	m_conversionFrameCount.store(0, std::memory_order_relaxed);
+	m_sceneAwareCorrectionDropCount.store(0, std::memory_order_relaxed);
 
 	// Reset proactive state
 	m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
@@ -1093,6 +1095,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			{
 				m_lastSceneAwareCorrectionTime = correctionNow;
 				++m_droppedFrameCount;
+				m_sceneAwareCorrectionDropCount.fetch_add(1, std::memory_order_relaxed);
 				DebugLog::Log("SCENE-AWARE CORRECTION: dropped late frame at safe boundary (late=%.3fms)",
 					(nowStreamTime - currentStart) / 10000.0);
 				pSample->Release();

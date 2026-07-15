@@ -114,6 +114,9 @@ public:
 	// Get the amount of dropped frames due to queue actions
 	uint64_t DroppedFrameCount() const { return m_droppedFrameCount; }
 
+	// Buffered pins override this with intentional Scene Detect correction drops.
+	virtual uint64_t SceneAwareCorrectionDropCount() const { return 0; }
+
 	// PPM correction information access
 	// Get the current PPM correction value being applied
 	// Returns the PPM value from config: positive = faster, negative = slower

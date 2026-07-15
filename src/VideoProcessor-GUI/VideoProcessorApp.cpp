@@ -56,6 +56,9 @@ Options:
   /scene_detect
       Prefer visually-safe scene boundaries when correcting late queued frames.
 
+  /newlldv
+      Enable the opt-in BT.2020 + SDR LLDV heuristic (requires both LLDV follow modes).
+
   /noui
       Hide the user interface; show video only.
 
@@ -219,6 +222,8 @@ void ValidateCommandLineConfigKeys(const ConfigFile& config)
 		"renderer_primaries",
 		"scene_detect",
 		"scene",
+		"newlldv",
+		"new_lldv",
 		"noui",
 		"no_ui",
 		"startminimized",
@@ -297,6 +302,7 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigStringOption(arguments, config, { "renderer_transfer_matrix" }, L"/renderer_transfer_matrix");
 	AppendConfigStringOption(arguments, config, { "renderer_primaries" }, L"/renderer_primaries");
 	AppendConfigBoolOption(arguments, config, { "scene_detect", "scene" }, L"/scene_detect");
+	AppendConfigBoolOption(arguments, config, { "newlldv", "new_lldv" }, L"/newlldv");
 	AppendConfigBoolOption(arguments, config, { "noui", "no_ui" }, L"/noui");
 	AppendConfigBoolOption(arguments, config, { "startminimized", "start_minimized" }, L"/startminimized");
 
@@ -872,6 +878,12 @@ BOOL CVideoProcessorApp::InitInstance()
 			if (wcscmp(pArgs[i], L"/scene_detect") == 0 || wcscmp(pArgs[i], L"/scene") == 0)
 			{
 				dlg.SceneDetect();
+			}
+
+			// Opt-in LLDV detection for DeckLink's BT.2020 + SDR reporting.
+			if (wcscmp(pArgs[i], L"/newlldv") == 0)
+			{
+				dlg.EnableNewLldvHeuristic();
 			}
 
 			// start minimized

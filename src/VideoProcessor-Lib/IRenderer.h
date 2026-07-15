@@ -136,6 +136,10 @@ public:
 
 	// Get the amount of dropped frames due to queue actions
 	virtual uint64_t DroppedFrameCount() const = 0;
+
+	// Intentional late-frame drops performed by Scene Detect. The renderer
+	// repeats the previous image naturally; VideoProcessor injects no repeat sample.
+	virtual uint64_t SceneAwareCorrectionDropCount() const { return 0; }
 	
 	// Get conversion performance metrics (if available from the video frame formatter)
 	// Returns true if data is available, false if no conversion or no performance tracking

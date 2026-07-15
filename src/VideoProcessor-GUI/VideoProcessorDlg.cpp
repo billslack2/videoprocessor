@@ -280,6 +280,11 @@ void CVideoProcessorDlg::SceneDetect()
 	m_sceneAwareTimingCorrection = true;
 }
 
+void CVideoProcessorDlg::EnableNewLldvHeuristic()
+{
+	m_useNewLldvHeuristic = true;
+}
+
 
 void CVideoProcessorDlg::WindowedFullScreenMode()
 {
@@ -745,6 +750,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	assert(m_captureDevice);
 
 	m_captureDeviceVideoState = videoState;
+	UpdateNewLldvCandidate();
 
 	// Reset refresh rate tracking on video state change to prevent false positive detection
 	m_lastKnownRefreshRate = 0.0;
@@ -2228,6 +2234,63 @@ void CVideoProcessorDlg::ClearRendererCombo()
 }
 
 
+bool CVideoProcessorDlg::IsNewLldvModeSelected()
+{
+	if (m_hdrColorspaceCombo.GetCurSel() < 0 || m_hdrLuminanceCombo.GetCurSel() < 0)
+		return false;
+
+	return
+		static_cast<HdrColorspaceOptions>(m_hdrColorspaceCombo.GetItemData(m_hdrColorspaceCombo.GetCurSel())) ==
+			HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT_LLDV &&
+		static_cast<HdrLuminanceOptions>(m_hdrLuminanceCombo.GetItemData(m_hdrLuminanceCombo.GetCurSel())) ==
+			HdrLuminanceOptions::HDR_LUMINANCE_FOLLOW_INPUT_LLDV;
+}
+
+bool CVideoProcessorDlg::UpdateNewLldvCandidate()
+{
+	if (!m_useNewLldvHeuristic || !m_captureDeviceVideoState || !m_captureDeviceVideoState->valid)
+	{
+		m_newLldvCandidateActive = false;
+		m_newLldvCandidateConfirmed = false;
+		m_newLldvCandidateSince = 0;
+		return false;
+	}
+
+	const bool isCandidate =
+		m_captureDeviceVideoState->colorspace == ColorSpace::BT_2020 &&
+		m_captureDeviceVideoState->eotf == EOTF::SDR &&
+		!m_captureDeviceVideoState->hdrData;
+
+	if (!isCandidate)
+	{
+		if (m_newLldvCandidateActive)
+			DebugLog::Log("New LLDV heuristic: BT.2020/SDR candidate cleared before confirmation");
+
+		m_newLldvCandidateActive = false;
+		m_newLldvCandidateConfirmed = false;
+		m_newLldvCandidateSince = 0;
+		return false;
+	}
+
+	const DWORD now = GetTickCount();
+	if (!m_newLldvCandidateActive)
+	{
+		m_newLldvCandidateActive = true;
+		m_newLldvCandidateSince = now;
+		DebugLog::Log("New LLDV heuristic: BT.2020/SDR candidate seen; waiting 1500ms before treating it as LLDV");
+		return false;
+	}
+
+	if (!m_newLldvCandidateConfirmed && now - m_newLldvCandidateSince >= 1500)
+	{
+		m_newLldvCandidateConfirmed = true;
+		DebugLog::Log("New LLDV heuristic: BT.2020/SDR candidate confirmed after stabilization period");
+		return true;
+	}
+
+	return false;
+}
+
 bool CVideoProcessorDlg::BuildPushVideoState()
 {
 	VideoStateComPtr videoState = new VideoState(*m_captureDeviceVideoState);
@@ -2238,13 +2301,23 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	// Alterations
 	//
 
-	// The HDFury range of devices can be made to identify themselves as LLDV capable
-	// sinks, causing LLDV capable devices to output Dolby Vision LLDV, which is close to normal HDR.
-	// In that mode there will be no hdr block sent out but PQ and colorspace will be set.
-	const bool isHDFuryLLDV =
+	// Legacy behavior: a HDFury LLDV source was identified as BT.2020 + PQ
+	// without static HDR metadata.  Keep this path exactly when /newlldv is off.
+	const bool isLegacyHDFuryLLDV =
 		m_captureDeviceVideoState->colorspace == ColorSpace::BT_2020 &&
 		m_captureDeviceVideoState->eotf == EOTF::PQ &&
 		!m_captureDeviceVideoState->hdrData;
+
+	// New behavior: DeckLink reports LLDV as BT.2020 + SDR without static HDR
+	// metadata.  There is no exposed VSIF to prove this, so only apply the
+	// heuristic when explicitly enabled, the user selected both LLDV follow
+	// modes, and the candidate has remained stable for 1.5 seconds.
+	const bool isHDFuryLLDV = m_useNewLldvHeuristic
+		? (m_newLldvCandidateConfirmed && IsNewLldvModeSelected())
+		: isLegacyHDFuryLLDV;
+
+	if (m_useNewLldvHeuristic && isHDFuryLLDV)
+		videoState->eotf = EOTF::PQ;
 
 	// Change container colorspace
 	int i = m_colorspaceContainerCombo.GetCurSel();
@@ -2322,10 +2395,20 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 				if (!videoState->hdrData)
 					videoState->hdrData = std::make_shared<HDRData>();
 
-				videoState->hdrData->maxCll = 1000;
-				videoState->hdrData->maxFall = 1000;
-				videoState->hdrData->masteringDisplayMinLuminance = 0.0001;
-				videoState->hdrData->masteringDisplayMaxLuminance = 1000;
+				if (m_useNewLldvHeuristic)
+				{
+					videoState->hdrData->maxCll = 1000;
+					videoState->hdrData->maxFall = 401;
+					videoState->hdrData->masteringDisplayMinLuminance = 0.001;
+					videoState->hdrData->masteringDisplayMaxLuminance = 4000;
+				}
+				else
+				{
+					videoState->hdrData->maxCll = 1000;
+					videoState->hdrData->maxFall = 1000;
+					videoState->hdrData->masteringDisplayMinLuminance = 0.0001;
+					videoState->hdrData->masteringDisplayMaxLuminance = 1000;
+				}
 			}
 			break;
 
@@ -3036,6 +3119,15 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	// Handle regular 1-second timer for UI updates
 	if (nIDEvent == TIMER_ID_1SECOND)
 	{
+		// A source can publish its BT.2020/SDR state only once at startup.
+		// Re-evaluate the opt-in LLDV candidate here so confirmation does not
+		// depend on receiving a second video-state notification.
+		if (UpdateNewLldvCandidate() && IsNewLldvModeSelected())
+		{
+			DbgLog((LOG_TRACE, 1, TEXT("New LLDV heuristic confirmed; applying PQ and synthetic HDR metadata")));
+			BuildPushRestartVideoState();
+		}
+
 		// EOTF CHANGE CHECK: Decrement cooldown timer if set
 		if (m_eotfCheckCooldownSeconds > 0)
 		{
@@ -3272,6 +3364,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.entryLatencyMs = m_videoRenderer->EntryLatencyMs();
 		stats.exitLatencyMs = m_videoRenderer->ExitLatencyMs();
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
+		stats.sceneDetectCorrectionDrops = m_videoRenderer->SceneAwareCorrectionDropCount();
 	}
 
 	// Capture device frame counts
