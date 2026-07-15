@@ -54,6 +54,7 @@ public:
 	void Reset() override;
 	void OnSize() override;
 	void SetFrameQueueMaxSize(size_t) override;
+	void SetSceneAwareTimingCorrection(bool) override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;

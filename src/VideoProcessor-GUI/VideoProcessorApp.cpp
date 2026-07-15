@@ -15,7 +15,6 @@ extern "C" {
 
 #include <VideoProcessorDlg.h>
 #include <VideoConversionOverride.h>
-#include <HelpDialog.h>
 #include <DebugLog.h>
 
 #include "VideoProcessorApp.h"
@@ -29,6 +28,161 @@ END_MESSAGE_MAP()
 
 CVideoProcessorApp videoProcessorApp;
 
+namespace
+{
+const wchar_t COMMAND_LINE_HELP[] = LR"(VideoProcessor GUI command-line help
+
+Usage:
+  VideoProcessor-GUI.exe /help
+
+Options:
+  /fullscreen
+      Start fullscreen.
+
+  /windowedfullscreenmode
+      Use windowed fullscreen mode.
+
+  /capture_device "name"
+      Select the capture device.
+
+  /renderer "name"
+      Select the renderer.
+
+  /queue_size [value|32]
+      Set the renderer frame queue size.
+
+  /noui
+      Hide the user interface; show video only.
+
+  /startminimized
+      Start the application minimized.
+
+  /frame_offset [value|auto]
+      Set the timing-clock frame offset in milliseconds, or enable automatic offset.
+
+  /video_conversion V210_TO_P010
+      Convert supported YUV/RGB input to P010.
+      UYVY_TO_P010 is accepted as an alias.
+
+  /container_colorspace <value>
+      BT2020 | P3_D65 | P3_DCI | P3_D60 | REC709 | REC601_525 | REC601_625
+
+  /hdr_colorspace <value>
+      FOLLOW_INPUT | FOLLOW_INPUT_LLDV | FOLLOW_CONTAINER | BT2020 | P3 | REC709
+
+  /hdr_luminance <value>
+      FOLLOW_INPUT | FOLLOW_INPUT_LLDV | HDR_LUMINANCE_USER
+
+  /renderer_start_stop_time_method <value>
+      CLOCK_SMART | CLOCK_THEO | CLOCK_CLOCK | THEO_THEO | CLOCK_NONE | THEO_NONE | NONE
+
+  /renderer_nominal_range <value>
+      FULL | LIMITED | SMALL
+
+  /renderer_transfer_function <value>
+      AUTO | PQ | REC709 | BT2020_CONST | GAMMA_1.8 | GAMMA_2.0 | GAMMA_2.2 |
+      GAMMA_2.6 | GAMMA_2.8 | LINEAR_RGB | 204M | 8BIT_GAMMA_2.2 | LOG_100_1 |
+      LOG_316_1 | BT2020 | HYBRID_LOG_GAMMA
+
+  /renderer_transfer_matrix <value>
+      AUTO | BT2020_10 | BT2020_12 | BT709 | BT601 | 240M | FCC | YCgCo
+
+  /renderer_primaries <value>
+      AUTO | BT2020 | DCI-P3 | BT709 | NTSC_SYSM | NTSC_SYSBG | CIE1931_ZYX | ACES
+)";
+
+bool ClearCurrentConsoleLine(HANDLE output)
+{
+	CONSOLE_SCREEN_BUFFER_INFO screenBufferInfo = {};
+	if (!GetConsoleScreenBufferInfo(output, &screenBufferInfo))
+		return false;
+
+	const COORD lineStart = { 0, screenBufferInfo.dwCursorPosition.Y };
+	DWORD ignored = 0;
+	FillConsoleOutputCharacterW(output, L' ', screenBufferInfo.dwSize.X, lineStart, &ignored);
+	FillConsoleOutputAttribute(output, screenBufferInfo.wAttributes, screenBufferInfo.dwSize.X, lineStart, &ignored);
+	SetConsoleCursorPosition(output, lineStart);
+
+	return screenBufferInfo.dwCursorPosition.X > 0;
+}
+
+void SendConsoleEnter()
+{
+	HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+	bool closeInput = false;
+	if (input == nullptr || input == INVALID_HANDLE_VALUE)
+	{
+		input = CreateFileW(L"CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+		closeInput = true;
+	}
+
+	DWORD consoleMode = 0;
+	if (input != INVALID_HANDLE_VALUE && GetConsoleMode(input, &consoleMode))
+	{
+		INPUT_RECORD records[2] = {};
+		records[0].EventType = KEY_EVENT;
+		records[0].Event.KeyEvent.bKeyDown = TRUE;
+		records[0].Event.KeyEvent.wRepeatCount = 1;
+		records[0].Event.KeyEvent.wVirtualKeyCode = VK_RETURN;
+		records[0].Event.KeyEvent.wVirtualScanCode = MapVirtualKeyW(VK_RETURN, MAPVK_VK_TO_VSC);
+		records[0].Event.KeyEvent.uChar.UnicodeChar = L'\r';
+
+		records[1] = records[0];
+		records[1].Event.KeyEvent.bKeyDown = FALSE;
+
+		DWORD ignored = 0;
+		WriteConsoleInputW(input, records, ARRAYSIZE(records), &ignored);
+	}
+
+	if (closeInput && input != INVALID_HANDLE_VALUE)
+		CloseHandle(input);
+}
+
+void PrintCommandLineHelp()
+{
+	// This is a Windows-subsystem GUI executable. Attach to the invoking shell
+	// so /help behaves like a normal CLI command without opening any dialog.
+	const bool hasConsole = AttachConsole(ATTACH_PARENT_PROCESS) || GetLastError() == ERROR_ACCESS_DENIED;
+
+	HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+	bool closeOutput = false;
+	if (output == nullptr || output == INVALID_HANDLE_VALUE)
+	{
+		if (!hasConsole)
+			return;
+
+		output = CreateFileW(L"CONOUT$", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+		closeOutput = true;
+	}
+
+	if (output == INVALID_HANDLE_VALUE)
+		return;
+
+	DWORD ignored = 0;
+	DWORD consoleMode = 0;
+	if (GetConsoleMode(output, &consoleMode))
+	{
+		const bool shellPromptAlreadyShown = ClearCurrentConsoleLine(output);
+		WriteConsoleW(output, COMMAND_LINE_HELP, static_cast<DWORD>(wcslen(COMMAND_LINE_HELP)), &ignored, nullptr);
+		if (shellPromptAlreadyShown)
+			SendConsoleEnter();
+	}
+	else
+	{
+		const int bytesRequired = WideCharToMultiByte(CP_UTF8, 0, COMMAND_LINE_HELP, -1, nullptr, 0, nullptr, nullptr);
+		if (bytesRequired > 1)
+		{
+			std::vector<char> utf8(static_cast<size_t>(bytesRequired));
+			WideCharToMultiByte(CP_UTF8, 0, COMMAND_LINE_HELP, -1, utf8.data(), bytesRequired, nullptr, nullptr);
+			WriteFile(output, utf8.data(), static_cast<DWORD>(bytesRequired - 1), &ignored, nullptr);
+		}
+	}
+
+	if (closeOutput)
+		CloseHandle(output);
+}
+}
+
 
 void av_log_callback(void* ptr, int level, const char* fmt, va_list vargs)
 {
@@ -38,6 +192,29 @@ void av_log_callback(void* ptr, int level, const char* fmt, va_list vargs)
 
 BOOL CVideoProcessorApp::InitInstance()
 {
+	// Handle /help before creating any UI, COM objects, or background workers.
+	int argumentCount = 0;
+	LPWSTR* arguments = CommandLineToArgvW(GetCommandLine(), &argumentCount);
+	if (!arguments)
+		return FALSE;
+
+	bool helpRequested = false;
+	for (int i = 1; i < argumentCount; ++i)
+	{
+		if (wcscmp(arguments[i], L"/help") == 0)
+		{
+			helpRequested = true;
+			break;
+		}
+	}
+	LocalFree(arguments);
+
+	if (helpRequested)
+	{
+		PrintCommandLineHelp();
+		return FALSE;
+	}
+
 	// Setup ffmpeg logging
 	av_log_set_callback(av_log_callback);
 #ifdef _DEBUG
@@ -47,7 +224,6 @@ BOOL CVideoProcessorApp::InitInstance()
 	// Initialize async debug logger
 	DEBUGLOG_INIT();
 
-	CHelpDialog help;
 	CVideoProcessorDlg dlg;
 	m_pMainWnd = &dlg;
 
@@ -65,6 +241,9 @@ BOOL CVideoProcessorApp::InitInstance()
 		// https://docs.microsoft.com/en-us/cpp/c-runtime-library/argc-argv-wargv
 		int iNumOfArgs;
 		LPWSTR* pArgs = CommandLineToArgvW(GetCommandLine(), &iNumOfArgs);
+		if (!pArgs)
+			throw std::runtime_error("Failed to parse command line");
+
 		for (int i = 1; i < iNumOfArgs; i++)
 		{
 			// /fullscreen
@@ -77,12 +256,6 @@ BOOL CVideoProcessorApp::InitInstance()
 			if (wcscmp(pArgs[i], L"/windowedfullscreenmode") == 0)
 			{
 				dlg.WindowedFullScreenMode();
-			}
-
-			// /help
-			if (wcscmp(pArgs[i], L"/help") == 0)
-			{
-				m_helpcalled = true;
 			}
 
 			// /renderer "name"
@@ -509,15 +682,11 @@ BOOL CVideoProcessorApp::InitInstance()
 			}
 
 		}
+		LocalFree(pArgs);
 
 		// Set set ourselves to high prio.
 		if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS))
 			throw std::runtime_error("Failed to set process priority");
-		if (m_helpcalled)
-		{
-			help.DoModal();
-			return FALSE;
-		}
 
 		dlg.DoModal();
 		

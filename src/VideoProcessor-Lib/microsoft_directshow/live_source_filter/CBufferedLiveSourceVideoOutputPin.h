@@ -10,6 +10,7 @@
 
 
 #include <deque>
+#include <array>
 
 #include <microsoft_directshow/DirectShowDefines.h>
 #include "ALiveSourceVideoOutputPin.h"
@@ -52,6 +53,7 @@ public:
 	// ALiveSourceVideoOutputPin
 	HRESULT OnVideoFrame(VideoFrame&) override;
 	void SetFrameQueueMaxSize(size_t) override;
+	void SetSceneAwareTimingCorrection(bool enabled) override;
 	size_t GetFrameQueueSize() override;
 	void Reset() override;
 	REFERENCE_TIME NextFrameTimestamp() const override;
@@ -81,8 +83,19 @@ private:
 	
 	// Pre-converted sample queue (output from conversion worker)
 	// Protected by: m_convertedQueueLock
-	std::deque<IMediaSample*> m_convertedSampleQueue;
+	struct ConvertedSample
+	{
+		IMediaSample* sample = nullptr;
+		bool isSafeCorrectionPoint = false;
+	};
+	std::deque<ConvertedSample> m_convertedSampleQueue;
 	CCritSec m_convertedQueueLock;  // Protects m_convertedSampleQueue only
+
+	// This option is deliberately off by default.  When false, conversion does
+	// no scene analysis and delivery follows the pre-existing path exactly.
+	std::atomic_bool m_sceneAwareTimingCorrection = false;
+	std::atomic<uint64_t> m_sceneDetectorGeneration = 0;
+	DWORD m_lastSceneAwareCorrectionTime = 0;
 	
 	//
 	// SHARED STATE (protected by m_stateLock)
@@ -123,6 +136,18 @@ private:
 	// Conversion worker thread function
 	static DWORD WINAPI ConversionThreadProc(LPVOID lpParameter);
 	DWORD ConversionWorker();
+
+	struct SceneSignature
+	{
+		static constexpr size_t COLUMNS = 24;
+		static constexpr size_t ROWS = 14;
+		std::array<uint16_t, COLUMNS * ROWS> luma{};
+		bool valid = false;
+	};
+
+	// Reads a sparse luma grid from P010 output.  It is intentionally called
+	// only by the conversion worker and only while the feature is enabled.
+	bool IsSafeSceneAwareCorrectionPoint(IMediaSample* sample, SceneSignature& previous);
 
 	// Remove all items from the videoFrameQueue
 	// CALLER MUST HOLD m_rawQueueLock

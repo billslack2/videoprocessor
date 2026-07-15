@@ -53,6 +53,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_BN_CLICKED(IDC_RENDERER_RESTART_BUTTON, &CVideoProcessorDlg::OnBnClickedRendererRestart)
 	ON_CBN_SELCHANGE(IDC_RENDERER_VIDEO_CONVERSION_COMBO, &CVideoProcessorDlg::OnRendererVideoConversionSelected)
 	ON_BN_CLICKED(IDC_RENDERER_VIDEO_FRAME_USE_QUEUE_CHECK, &CVideoProcessorDlg::OnBnClickedRendererVideoFrameUseQueueCheck)
+	ON_BN_CLICKED(IDC_RENDERER_SCENE_AWARE_TIMING_CHECK, &CVideoProcessorDlg::OnBnClickedRendererSceneAwareTimingCheck)
 	ON_BN_CLICKED(IDC_RENDERER_RESET_BUTTON, &CVideoProcessorDlg::OnBnClickedRendererReset)
 	ON_BN_CLICKED(IDC_RENDERER_RESET_AUTO_CHECK, &CVideoProcessorDlg::OnBnClickedRendererResetAutoCheck)
 	ON_CBN_SELCHANGE(IDC_RENDERER_DIRECTSHOW_START_STOP_TIME_METHOD_COMBO, &CVideoProcessorDlg::OnRendererDirectShowStartStopTimeMethodSelected)
@@ -497,6 +498,14 @@ void CVideoProcessorDlg::OnBnClickedRendererVideoFrameUseQueueCheck()
 
 	m_wantToRestartRenderer = true;
 	UpdateState();
+}
+
+
+void CVideoProcessorDlg::OnBnClickedRendererSceneAwareTimingCheck()
+{
+	m_sceneAwareTimingCorrection = m_rendererSceneAwareTimingCheck.GetCheck() == BST_CHECKED;
+	if (m_videoRenderer)
+		m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
 }
 
 
@@ -1853,6 +1862,7 @@ void CVideoProcessorDlg::RenderStart()
 
 		m_videoRenderer->Build();
 		m_videoRenderer->Start();
+		m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
 
 		m_rendererStateText.SetWindowText(TEXT("Started HDR renderer, waiting for image..."));
 
@@ -1918,6 +1928,7 @@ void CVideoProcessorDlg::RenderStart()
 
 			m_videoRenderer->Build();
 			m_videoRenderer->Start();
+			m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
 
 			m_rendererStateText.SetWindowText(TEXT("Started, waiting for image..."));
 		}
@@ -2482,6 +2493,7 @@ void CVideoProcessorDlg::DoDataExchange(CDataExchange* pDX)
 
 	// Renderer Queue group
 	DDX_Control(pDX, IDC_RENDERER_VIDEO_FRAME_USE_QUEUE_CHECK, m_rendererVideoFrameUseQeueueCheck);
+	DDX_Control(pDX, IDC_RENDERER_SCENE_AWARE_TIMING_CHECK, m_rendererSceneAwareTimingCheck);
 	DDX_Control(pDX, IDC_RENDERER_VIDEO_FRAME_QUEUE_SIZE_STATIC, m_rendererVideoFrameQueueSizeText);
 	DDX_Control(pDX, IDC_RENDERER_VIDEO_FRAME_QUEUE_SIZE_MAX_EDIT, m_rendererVideoFrameQueueSizeMaxEdit);
 	DDX_Control(pDX, IDC_RENDERER_DROPPED_FRAME_COUNT_STATIC, m_rendererDroppedFrameCountText);
@@ -2656,6 +2668,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	m_rendererVideoFrameQueueSizeMaxEdit.SetWindowText(m_defaultQueueSize);
 	m_timingClockFrameOffsetEdit.SetWindowText(m_defaultFrameOffset);
 	m_rendererVideoFrameUseQeueueCheck.SetCheck(true);
+	m_rendererSceneAwareTimingCheck.SetCheck(m_sceneAwareTimingCorrection ? BST_CHECKED : BST_UNCHECKED);
 	m_rendererResetAutoCheck.SetCheck(true);
 	m_rendererFullscreenCheck.SetCheck(m_rendererFullScreenStart);
 

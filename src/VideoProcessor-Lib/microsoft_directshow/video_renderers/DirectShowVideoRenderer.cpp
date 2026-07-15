@@ -285,6 +285,15 @@ void DirectShowVideoRenderer::SetFrameQueueMaxSize(size_t frameMaxQueueSize)
 }
 
 
+void DirectShowVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
+{
+	if (!m_liveSource)
+		return;
+
+	m_liveSource->GetVideoOutputPin()->SetSceneAwareTimingCorrection(enabled);
+}
+
+
 size_t DirectShowVideoRenderer::GetFrameQueueSize()
 {
 	if (m_state != RendererState::RENDERSTATE_RENDERING)

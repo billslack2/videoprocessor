@@ -86,6 +86,10 @@ public:
 	// Zero means no queueing, might not be legal
 	virtual void SetFrameQueueMaxSize(size_t) = 0;
 
+	// Buffered pins override this.  Keeping the default no-op preserves the
+	// unbuffered source behaviour and avoids changing the COM interface.
+	virtual void SetSceneAwareTimingCorrection(bool) {}
+
 	// Get the size of the queue.
 	// Zero means no queueing going on.
 	virtual size_t GetFrameQueueSize() = 0;

@@ -120,6 +120,7 @@ public:
 	afx_msg void OnBnClickedRendererRestart();
 	afx_msg void OnRendererVideoConversionSelected();
 	afx_msg void OnBnClickedRendererVideoFrameUseQueueCheck();
+	afx_msg void OnBnClickedRendererSceneAwareTimingCheck();
 	afx_msg void OnBnClickedRendererReset();
 	afx_msg void OnBnClickedRendererResetAutoCheck();
 	afx_msg void OnRendererDirectShowStartStopTimeMethodSelected();
@@ -246,6 +247,7 @@ protected:
 	
 	// Renderer Queue group
 	CButton m_rendererVideoFrameUseQeueueCheck;
+	CButton m_rendererSceneAwareTimingCheck;
 	CStatic m_rendererVideoFrameQueueSizeText;
 	CEdit m_rendererVideoFrameQueueSizeMaxEdit;
 	CStatic m_rendererDroppedFrameCountText;
@@ -313,6 +315,7 @@ protected:
 	bool m_frameOffsetAutoStart = false;
 	CString m_defaultFrameOffset = TEXT("90");
 	CString m_defaultQueueSize = TEXT("32");
+	bool m_sceneAwareTimingCorrection = false;
 	VideoConversionOverride m_defaultVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;
 	ColorSpace m_defaultContainerColorSpace = ColorSpace::UNKNOWN;
 	HdrColorspaceOptions m_defaultHDRColorSpaceOption = HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT;
