@@ -11,9 +11,8 @@
 #include <vector>
 #include <immintrin.h>
 #include <intrin.h> // For __cpuid
-#include <fstream>
-#include <sstream>
 #include <iomanip>  // For std::setprecision
+#include <ConfigFile.h>
 
 // Macros for V210 unpacking
 #define V210_READ_PACK_BLOCK(a, b, c) \
@@ -64,83 +63,88 @@ CV210toP010VideoFrameFormatter::~CV210toP010VideoFrameFormatter()
 // =====================================================================
 void CV210toP010VideoFrameFormatter::LoadConfigurationFile()
 {
-    std::ifstream configFile("p010_conversion.cfg");
-    
-    if (!configFile.is_open())
+    auto useSmartDefaults = [this]()
     {
-        // Config file not found - use smart defaults based on PHYSICAL core count
         m_conversionMethod = ConversionMethod::AUTO;
-        
-        // Determine default max cores based on physical core count (ignoring E-cores)
+
         uint32_t physicalCores = GetPhysicalCoreCount();
         if (physicalCores >= 8)
-        {
-            m_maxCoreCount = 2;  // Use 4 threads on systems with 8+ physical cores
-        }
+            m_maxCoreCount = 2;
         else
-        {
-            m_maxCoreCount = 1;  // Use 1 thread on systems with fewer than 8 physical cores
-        }
+            m_maxCoreCount = 1;
+
         m_minCoreCount = 1;
+    };
+
+    ConfigFile unifiedConfig;
+    if (unifiedConfig.Load())
+    {
+        if (!unifiedConfig.GetWarnings().empty())
+        {
+            for (const auto& warning : unifiedConfig.GetWarnings())
+            {
+                DbgLog((LOG_WARNING, 1, TEXT("CV210toP010VideoFrameFormatter: Invalid VideoProcessor.cfg syntax: %S"), warning.c_str()));
+            }
+
+            DbgLog((LOG_WARNING, 1, TEXT("CV210toP010VideoFrameFormatter: VideoProcessor.cfg has syntax errors - using smart defaults")));
+            useSmartDefaults();
+            return;
+        }
+
+        if (!unifiedConfig.HasSection("p010_conversion"))
+        {
+            useSmartDefaults();
+            return;
+        }
+
+        const auto* conversionSettings = unifiedConfig.GetSectionValues("p010_conversion");
+        if (conversionSettings)
+        {
+            for (const auto& setting : *conversionSettings)
+            {
+                try
+                {
+                    if (setting.first == "conversionmethod")
+                    {
+                        const std::string conversionMethod = ConfigFile::NormalizeName(setting.second);
+                        if (conversionMethod == "auto")
+                            m_conversionMethod = ConversionMethod::AUTO;
+                        else if (conversionMethod == "simd")
+                            m_conversionMethod = ConversionMethod::SIMD;
+                        else if (conversionMethod == "optimized")
+                            m_conversionMethod = ConversionMethod::OPTIMIZED;
+                        else if (conversionMethod == "standard")
+                            m_conversionMethod = ConversionMethod::STANDARD;
+                        else
+                            DbgLog((LOG_WARNING, 1, TEXT("CV210toP010VideoFrameFormatter: Invalid ConversionMethod in VideoProcessor.cfg: %S"), setting.second.c_str()));
+                    }
+                    else if (setting.first == "mincorecount")
+                    {
+                        uint32_t minCores = std::stoul(setting.second);
+                        m_minCoreCount = std::max(1u, minCores);
+                    }
+                    else if (setting.first == "maxcorecount")
+                    {
+                        uint32_t maxCores = std::stoul(setting.second);
+                        m_maxCoreCount = maxCores;
+                    }
+                    else
+                    {
+                        DbgLog((LOG_WARNING, 1, TEXT("CV210toP010VideoFrameFormatter: Unknown VideoProcessor.cfg [p010_conversion] key: %S"), setting.first.c_str()));
+                    }
+                }
+                catch (const std::exception&)
+                {
+                    DbgLog((LOG_WARNING, 1, TEXT("CV210toP010VideoFrameFormatter: Invalid VideoProcessor.cfg [p010_conversion] value: %S=%S"),
+                        setting.first.c_str(), setting.second.c_str()));
+                }
+            }
+        }
+
         return;
     }
 
-    std::string line;
-    int lineNumber = 0;
-
-    while (std::getline(configFile, line))
-    {
-        lineNumber++;
-        
-        // Skip empty lines and comments
-        if (line.empty() || line[0] == '#')
-            continue;
-
-        // Find the '=' separator
-        size_t equalPos = line.find('=');
-        if (equalPos == std::string::npos)
-            continue;
-
-        std::string key = line.substr(0, equalPos);
-        std::string value = line.substr(equalPos + 1);
-
-        // Trim whitespace from key and value
-        key.erase(0, key.find_first_not_of(" \t"));
-        key.erase(key.find_last_not_of(" \t") + 1);
-        value.erase(0, value.find_first_not_of(" \t"));
-        value.erase(value.find_last_not_of(" \t") + 1);
-
-        try
-        {
-            if (key == "ConversionMethod")
-            {
-                if (value == "AUTO")
-                    m_conversionMethod = ConversionMethod::AUTO;
-                else if (value == "SIMD")
-                    m_conversionMethod = ConversionMethod::SIMD;
-                else if (value == "OPTIMIZED")
-                    m_conversionMethod = ConversionMethod::OPTIMIZED;
-                else if (value == "STANDARD")
-                    m_conversionMethod = ConversionMethod::STANDARD;
-            }
-            else if (key == "MinCoreCount")
-            {
-                uint32_t minCores = std::stoul(value);
-                m_minCoreCount = std::max(1u, minCores);
-            }
-            else if (key == "MaxCoreCount")
-            {
-                uint32_t maxCores = std::stoul(value);
-                m_maxCoreCount = maxCores;
-            }
-        }
-        catch (const std::exception&)
-        {
-            // Invalid value, skip and use default
-        }
-    }
-
-    configFile.close();
+    useSmartDefaults();
 }
 
 // Helper function to get physical core count (excluding E-cores on Intel)

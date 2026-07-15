@@ -227,6 +227,9 @@
     <PreBuildEvent>
       <Command>powershell.exe -ExecutionPolicy RemoteSigned -File "$(SolutionDir)tools\generate_version.ps1" "$(ProjectDir)\" "$(SolutionDir)\"</Command>
     </PreBuildEvent>
+    <PostBuildEvent>
+      <Command>if exist "$(SolutionDir)VideoProcessor.cfg" copy /Y "$(SolutionDir)VideoProcessor.cfg" "$(OutDir)VideoProcessor.cfg"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

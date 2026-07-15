@@ -14,7 +14,7 @@
 /**
  * PPM (Parts Per Million) correction loader for refresh rate specific timing adjustments.
  * 
- * Loads correction values from a "correction.cfg" file with format:
+ * Loads correction values from VideoProcessor.cfg [ppm_correction] with format:
  * 60=5 59=5 50=5 30=5 24=0 23=0
  * 
  * Where left side is refresh rate (Hz) and right side is PPM adjustment value.
@@ -32,7 +32,7 @@ public:
     ~PPMCorrectionLoader() = default;
 
     /**
-     * Load PPM corrections from correction.cfg file
+     * Load PPM corrections from VideoProcessor.cfg
      * @return true if file was loaded successfully, false if file doesn't exist or has errors
      */
     bool LoadCorrectionFile();

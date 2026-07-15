@@ -154,7 +154,7 @@ public:
 	// Returns true if PPM correction data is available, false if not supported
 	// ppmValue: Current PPM correction value being applied (positive = faster, negative = slower)
 	// hasCorrection: Whether a non-zero PPM correction is being applied
-	// source: Source of the PPM correction ("correction.cfg", "default", "N/A")
+	// source: Source of the PPM correction ("VideoProcessor.cfg", "default", "N/A")
 	virtual bool GetPPMCorrectionInfo(int& ppmValue, bool& hasCorrection, CString& source) const
 	{
 		ppmValue = 0;
