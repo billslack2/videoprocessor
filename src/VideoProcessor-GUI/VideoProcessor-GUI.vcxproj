@@ -228,7 +228,7 @@
       <Command>powershell.exe -ExecutionPolicy RemoteSigned -File "$(SolutionDir)tools\generate_version.ps1" "$(ProjectDir)\" "$(SolutionDir)\"</Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>if exist "$(SolutionDir)VideoProcessor.cfg" copy /Y "$(SolutionDir)VideoProcessor.cfg" "$(OutDir)VideoProcessor.cfg"</Command>
+      <Command>if exist "$(SolutionDir)VideoProcessor.cfg" copy /Y "$(SolutionDir)VideoProcessor.cfg" "$(OutDir)VideoProcessor.cfg" &amp; if exist "$(SolutionDir)CONFIGURATION.html" copy /Y "$(SolutionDir)CONFIGURATION.html" "$(OutDir)CONFIGURATION.html"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

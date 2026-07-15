@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VideoProcessor configuration</title>
+  <style>
+    body { font: 16px/1.5 "Segoe UI", Arial, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    h1, h2 { color: #17365d; } code, pre { font-family: Consolas, monospace; }
+    code { background: #f2f2f2; padding: .1rem .25rem; } pre { background: #f2f2f2; padding: 1rem; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; } th, td { border: 1px solid #ccc; padding: .55rem; text-align: left; vertical-align: top; }
+    th { background: #eaf1f8; } .note { background: #fff4ce; border-left: 4px solid #d6a700; padding: .8rem 1rem; }
+  </style>
+</head>
+<body>
+  <h1>VideoProcessor configuration</h1>
+  <p><code>VideoProcessor.cfg</code> is an optional UTF-8 text file read from the application's working directory. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
+  <p>The shipped file contains common <code>[command_line]</code> settings only. The optional <code>[p010_conversion]</code> and <code>[ppm_correction]</code> sections can be added when needed.</p>
+  <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override a string setting. Boolean settings are enabled by setting them to <code>true</code> in the config or adding their command-line switch.</p>
+
+  <h2>[command_line]</h2>
+  <p>Boolean values accept <code>true</code>/<code>false</code>, <code>yes</code>/<code>no</code>, <code>on</code>/<code>off</code>, or <code>1</code>/<code>0</code>.</p>
+  <table>
+    <thead><tr><th>Key</th><th>Type and values</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td><code>capture_device</code></td><td>Device name</td><td>Capture device to select.</td></tr>
+      <tr><td><code>renderer</code></td><td>Renderer name</td><td>Renderer to select, for example <code>DirectShow - madVR</code>.</td></tr>
+      <tr><td><code>fullscreen</code></td><td>Boolean</td><td>Start in fullscreen mode.</td></tr>
+      <tr><td><code>windowedfullscreenmode</code></td><td>Boolean</td><td>Use windowed rather than exclusive fullscreen.</td></tr>
+      <tr><td><code>queue_size</code></td><td>Positive integer</td><td>Maximum renderer frame-queue size.</td></tr>
+      <tr><td><code>scene_detect</code></td><td>Boolean</td><td>Enable visually safe late-frame correction.</td></tr>
+      <tr><td><code>newlldv</code></td><td>Boolean</td><td>Enable the opt-in BT.2020 + SDR LLDV heuristic.</td></tr>
+      <tr><td><code>noui</code></td><td>Boolean</td><td>Show only the windowed video panel.</td></tr>
+      <tr><td><code>startminimized</code></td><td>Boolean</td><td>Start minimized.</td></tr>
+      <tr><td><code>frame_offset</code></td><td>Milliseconds or <code>auto</code></td><td>Timing-clock frame offset or automatic offset selection.</td></tr>
+      <tr><td><code>video_conversion</code></td><td><code>V210_TO_P010</code></td><td>Convert supported YUV/RGB input to P010. <code>UYVY_TO_P010</code> is accepted as an alias.</td></tr>
+      <tr><td><code>container_colorspace</code></td><td><code>BT2020</code>, <code>P3_D65</code>, <code>P3_DCI</code>, <code>P3_D60</code>, <code>REC709</code>, <code>REC601_525</code>, <code>REC601_625</code></td><td>Force the output container colorspace.</td></tr>
+      <tr><td><code>hdr_colorspace</code></td><td><code>FOLLOW_INPUT</code>, <code>FOLLOW_INPUT_LLDV</code>, <code>FOLLOW_CONTAINER</code>, <code>BT2020</code>, <code>P3</code>, <code>REC709</code></td><td>HDR display-primaries handling.</td></tr>
+      <tr><td><code>hdr_luminance</code></td><td><code>FOLLOW_INPUT</code>, <code>FOLLOW_INPUT_LLDV</code>, <code>HDR_LUMINANCE_USER</code></td><td>HDR luminance handling. User mode uses values entered in the GUI.</td></tr>
+      <tr><td><code>renderer_start_stop_time_method</code></td><td><code>CLOCK_SMART</code>, <code>CLOCK_SMART2</code>, <code>CLOCK_THEO</code>, <code>CLOCK_CLOCK</code>, <code>THEO_THEO</code>, <code>RATIONAL_RATIONAL</code>, <code>CLOCK_RATIONAL</code>, <code>CLOCK_NONE</code>, <code>THEO_NONE</code>, <code>NONE</code></td><td>DirectShow timestamp method.</td></tr>
+      <tr><td><code>renderer_nominal_range</code></td><td><code>FULL</code>, <code>LIMITED</code>, <code>SMALL</code></td><td>Override nominal video range.</td></tr>
+      <tr><td><code>renderer_transfer_function</code></td><td><code>AUTO</code>, <code>PQ</code>, <code>REC709</code>, <code>BT2020_CONST</code>, <code>GAMMA_1.8</code>, <code>GAMMA_2.0</code>, <code>GAMMA_2.2</code>, <code>GAMMA_2.6</code>, <code>GAMMA_2.8</code>, <code>LINEAR_RGB</code>, <code>204M</code>, <code>8BIT_GAMMA_2.2</code>, <code>LOG_100_1</code>, <code>LOG_316_1</code>, <code>BT2020</code>, <code>HYBRID_LOG_GAMMA</code></td><td>Override the DirectShow transfer function.</td></tr>
+      <tr><td><code>renderer_transfer_matrix</code></td><td><code>AUTO</code>, <code>BT2020_10</code>, <code>BT2020_12</code>, <code>BT709</code>, <code>BT601</code>, <code>240M</code>, <code>FCC</code>, <code>YCgCo</code></td><td>Override the DirectShow transfer matrix.</td></tr>
+      <tr><td><code>renderer_primaries</code></td><td><code>AUTO</code>, <code>BT2020</code>, <code>DCI-P3</code>, <code>BT709</code>, <code>NTSC_SYSM</code>, <code>NTSC_SYSBG</code>, <code>CIE1931_ZYX</code>, <code>ACES</code></td><td>Override DirectShow video primaries.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>LLDV</h2>
+  <div class="note">DeckLink does not expose the HDMI Dolby Vision VSIF. The <code>newlldv</code> option is a heuristic, not definitive detection.</div>
+  <p>With <code>newlldv=true</code>, VideoProcessor treats stable <code>BT.2020 + SDR + no static HDR metadata</code> as LLDV only when both <code>hdr_colorspace=FOLLOW_INPUT_LLDV</code> and <code>hdr_luminance=FOLLOW_INPUT_LLDV</code> are selected. After a 1.5-second confirmation it switches output to PQ and supplies synthetic metadata: MaxCLL 1000, MaxFALL 401, mastering minimum 0.001, and mastering maximum 4000.</p>
+  <p>Leave <code>newlldv</code> disabled for legacy behavior or whenever genuine BT.2020 SDR could be mistaken for LLDV.</p>
+
+  <h2>[p010_conversion] (optional)</h2>
+  <p>This section is used only by the V210-to-P010 formatter. When it is omitted, VideoProcessor uses smart defaults: <code>AUTO</code> conversion, one minimum core, and one or two maximum cores based on physical-core count.</p>
+  <table><thead><tr><th>Key</th><th>Values</th></tr></thead><tbody>
+    <tr><td><code>ConversionMethod</code></td><td><code>AUTO</code>, <code>SIMD</code>, <code>OPTIMIZED</code>, <code>STANDARD</code></td></tr>
+    <tr><td><code>MinCoreCount</code></td><td>Integer, at least <code>1</code></td></tr>
+    <tr><td><code>MaxCoreCount</code></td><td>Integer</td></tr>
+  </tbody></table>
+  <pre>[p010_conversion]
+ConversionMethod=SIMD
+MinCoreCount=1
+MaxCoreCount=2</pre>
+
+  <h2>[ppm_correction] (optional)</h2>
+  <p>This section provides per-refresh-rate timing corrections for rational timing modes. Keys are truncated refresh rates; values are PPM corrections or <code>AUTO</code>. If the section is absent or has no valid matching entry, VideoProcessor enables automatic PPM calibration with an initial zero correction.</p>
+  <pre>[ppm_correction]
+59=5
+29=AUTO
+23=0</pre>
+  <ul>
+    <li><code>59</code> matches 59.94 Hz, <code>29</code> matches 29.97 Hz, and <code>23</code> matches 23.976 Hz.</li>
+    <li>Positive PPM makes the stream faster; negative PPM makes it slower.</li>
+    <li><code>AUTO</code> enables automatic calibration for that refresh rate.</li>
+  </ul>
+
+  <h2>Minimal example</h2>
+  <pre>[command_line]
+capture_device=Decklink Quad HDMI Recorder (1)
+renderer=DirectShow - madVR
+queue_size=32
+scene_detect=false</pre>
+</body>
+</html>
