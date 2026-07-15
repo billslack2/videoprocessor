@@ -1065,7 +1065,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 {
-	// Attempt to load correction.cfg file
+	// Attempt to load PPM corrections from VideoProcessor.cfg.
 	bool loaded = m_ppmCorrectionLoader.LoadCorrectionFile();
 	
 	if (loaded)
@@ -1088,7 +1088,7 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 		}
 		else
 		{
-			// Manual PPM correction from config file
+		// Manual PPM correction from VideoProcessor.cfg.
 			m_useAutoCalibration = false;
 			
 			// **FIX: Reset auto-calibrator when switching to manual mode**
@@ -1113,7 +1113,7 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 	}
 	else
 	{
-		// No correction file - default to auto-calibration
+		// No PPM correction config - default to auto-calibration.
 		m_useAutoCalibration = true;
 		m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // Start with no correction
 		
@@ -1121,7 +1121,7 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 		m_autoPpmCalibrator.Reset();
 		m_autoPpmCalibrator.Initialize();  // Simplified initialization
 		
-		DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no correction.cfg found, auto-calibrator RESET and initialized"), refreshRate));
+		DbgLog((LOG_TRACE, 1, TEXT("LoadPPMCorrections: %.3f Hz - no VideoProcessor.cfg PPM correction found, auto-calibrator RESET and initialized"), refreshRate));
 	}
 }
 

@@ -7,11 +7,11 @@
  */
 
 #include <pch.h>
-#include <fstream>
 #include <sstream>
 #include <algorithm>
 #include <cmath>
 #include <DebugLog.h>
+#include <ConfigFile.h>
 
 #include "PPMCorrectionLoader.h"
 
@@ -24,52 +24,62 @@ bool PPMCorrectionLoader::LoadCorrectionFile()
     // Clear any existing corrections
     Clear();
 
-    // Try to open correction.cfg in the current directory
-    std::ifstream configFile("correction.cfg");
-    
-    if (!configFile.is_open())
+    ConfigFile unifiedConfig;
+    if (unifiedConfig.Load())
     {
-        DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: correction.cfg not found - using default PPM values")));
+        if (!unifiedConfig.GetWarnings().empty())
+        {
+            for (const auto& warning : unifiedConfig.GetWarnings())
+            {
+                DbgLog((LOG_WARNING, 1, TEXT("PPMCorrectionLoader: Invalid VideoProcessor.cfg syntax: %S"), warning.c_str()));
+            }
+
+            DbgLog((LOG_WARNING, 1, TEXT("PPMCorrectionLoader: VideoProcessor.cfg has syntax errors - using default PPM values")));
+            return false;
+        }
+
+        if (!unifiedConfig.HasSection("ppm_correction"))
+        {
+            DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: VideoProcessor.cfg [ppm_correction] not found - using default PPM values")));
+            return false;
+        }
+
+        DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: Loading VideoProcessor.cfg [ppm_correction]")));
+
+        int validEntries = 0;
+        const auto* ppmCorrections = unifiedConfig.GetSectionValues("ppm_correction");
+        if (ppmCorrections)
+        {
+            for (const auto& correction : *ppmCorrections)
+            {
+                if (ParseConfigLine(correction.first + "=" + correction.second))
+                    validEntries++;
+                else
+                    DbgLog((LOG_WARNING, 1, TEXT("PPMCorrectionLoader: Invalid VideoProcessor.cfg ppm_correction entry: %S=%S"),
+                        correction.first.c_str(), correction.second.c_str()));
+            }
+        }
+
+        if (validEntries > 0)
+        {
+            DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: Loaded %d PPM corrections from VideoProcessor.cfg"), validEntries));
+
+            for (const auto& correction : m_corrections)
+            {
+                DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: %d Hz = %d PPM"),
+                    correction.first, correction.second));
+            }
+
+            return true;
+        }
+
+        Clear();
+        DbgLog((LOG_WARNING, 1, TEXT("PPMCorrectionLoader: VideoProcessor.cfg [ppm_correction] had no valid entries - using default PPM values")));
         return false;
     }
 
-    DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: Loading correction.cfg")));
-
-    std::string line;
-    int lineNumber = 0;
-    int validEntries = 0;
-
-    while (std::getline(configFile, line))
-    {
-        lineNumber++;
-        
-        // Skip empty lines and comments (lines starting with #)
-        if (line.empty() || line[0] == '#')
-            continue;
-
-        if (ParseConfigLine(line))
-        {
-            validEntries++;
-        }
-        else
-        {
-            DbgLog((LOG_WARNING, 1, TEXT("PPMCorrectionLoader: Invalid line %d in correction.cfg: %S"), 
-                lineNumber, line.c_str()));
-        }
-    }
-
-    configFile.close();
-
-    DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: Loaded %d PPM corrections from correction.cfg"), validEntries));
-
-    // Log all loaded corrections
-    for (const auto& correction : m_corrections)
-    {
-        DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: %d Hz = %d PPM"), 
-            correction.first, correction.second));
-    }
-
-    return validEntries > 0;
+    DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: VideoProcessor.cfg not found - using default PPM values")));
+    return false;
 }
 
 bool PPMCorrectionLoader::ParseConfigLine(const std::string& line)

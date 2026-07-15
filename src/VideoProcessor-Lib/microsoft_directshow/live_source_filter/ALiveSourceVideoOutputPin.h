@@ -227,7 +227,7 @@ protected:
 	static const size_t DURATION_HISTORY_SIZE = 100;  // Track last 100 frame durations
 	static const int64_t REFERENCE_TIME_TICKS_PER_SECOND = 10000000LL;  // 100ns ticks per second
 
-	// RATIONAL_RATIONAL timing trim constants - now dynamically loaded from correction.cfg
+	// RATIONAL_RATIONAL timing trim constants - dynamically loaded from VideoProcessor.cfg
 	static const uint64_t RATIONAL_TRIM_DENOMINATOR = 1000000ULL;  // PPM base (parts per million)
 	// Note: RATIONAL_TRIM_PPM_FASTER and RATIONAL_TRIM_NUMERATOR are now calculated dynamically
 

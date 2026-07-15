@@ -33,9 +33,9 @@ struct StatsData
 	double hwLatencyMs = 0.0;  // Hardware latency
 
 	// PPM Correction info (NEW)
-	int ppmCorrection = 0;           // PPM value from correction.cfg (e.g., 5, -3, 0)
+	int ppmCorrection = 0;           // PPM value from VideoProcessor.cfg (e.g., 5, -3, 0)
 	bool hasPPMCorrection = false;   // Whether PPM correction is being applied
-	CString ppmSource;               // Source of PPM value (e.g., "correction.cfg", "default")
+	CString ppmSource;               // Source of PPM value (e.g., "VideoProcessor.cfg", "default")
 
 	// Queue stats
 	size_t currentQueueSize = 0;

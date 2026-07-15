@@ -16,6 +16,7 @@ extern "C" {
 #include <VideoProcessorDlg.h>
 #include <VideoConversionOverride.h>
 #include <DebugLog.h>
+#include <ConfigFile.h>
 
 #include "VideoProcessorApp.h"
 using namespace std;
@@ -34,6 +35,7 @@ const wchar_t COMMAND_LINE_HELP[] = LR"(VideoProcessor GUI command-line help
 
 Usage:
   VideoProcessor-GUI.exe /help
+  VideoProcessor-GUI.exe help
 
 Options:
   /fullscreen
@@ -50,6 +52,9 @@ Options:
 
   /queue_size [value|32]
       Set the renderer frame queue size.
+
+  /scene_detect
+      Prefer visually-safe scene boundaries when correcting late queued frames.
 
   /noui
       Hide the user interface; show video only.
@@ -74,7 +79,8 @@ Options:
       FOLLOW_INPUT | FOLLOW_INPUT_LLDV | HDR_LUMINANCE_USER
 
   /renderer_start_stop_time_method <value>
-      CLOCK_SMART | CLOCK_THEO | CLOCK_CLOCK | THEO_THEO | CLOCK_NONE | THEO_NONE | NONE
+      CLOCK_SMART | CLOCK_SMART2 | CLOCK_THEO | CLOCK_CLOCK | THEO_THEO |
+      RATIONAL_RATIONAL | CLOCK_RATIONAL | CLOCK_NONE | THEO_NONE | NONE
 
   /renderer_nominal_range <value>
       FULL | LIMITED | SMALL
@@ -89,6 +95,11 @@ Options:
 
   /renderer_primaries <value>
       AUTO | BT2020 | DCI-P3 | BT709 | NTSC_SYSM | NTSC_SYSBG | CIE1931_ZYX | ACES
+
+Config file:
+  VideoProcessor.cfg
+      Optional unified config file in the working directory.
+      Command-line switches override matching config values.
 )";
 
 bool ClearCurrentConsoleLine(HANDLE output)
@@ -136,6 +147,171 @@ void SendConsoleEnter()
 
 	if (closeInput && input != INVALID_HANDLE_VALUE)
 		CloseHandle(input);
+}
+
+std::wstring StringToWideString(const std::string& value)
+{
+	if (value.empty())
+		return {};
+
+	const int requiredLength = MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, nullptr, 0);
+	if (requiredLength <= 0)
+		return std::wstring(value.begin(), value.end());
+
+	std::wstring wideValue(static_cast<size_t>(requiredLength), L'\0');
+	MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, &wideValue[0], requiredLength);
+	wideValue.resize(static_cast<size_t>(requiredLength - 1));
+	return wideValue;
+}
+
+bool TryGetFirstConfigString(const ConfigFile& config, const std::initializer_list<const char*> keys, std::string& value)
+{
+	for (const char* key : keys)
+	{
+		if (config.TryGetString("command_line", key, value))
+			return true;
+	}
+
+	return false;
+}
+
+std::string ConfigLocation(const ConfigFile& config)
+{
+	return config.GetLoadedPath().empty() ? ConfigFile::DEFAULT_FILENAME : config.GetLoadedPath();
+}
+
+void ThrowIfConfigHasSyntaxWarnings(const ConfigFile& config)
+{
+	const auto& warnings = config.GetWarnings();
+	if (warnings.empty())
+		return;
+
+	std::string error = "Invalid " + ConfigLocation(config) + " syntax:";
+	for (const auto& warning : warnings)
+		error += "\n" + warning;
+
+	throw std::runtime_error(error);
+}
+
+void ValidateCommandLineConfigKeys(const ConfigFile& config)
+{
+	const auto* commandLineValues = config.GetSectionValues("command_line");
+	if (!commandLineValues)
+		return;
+
+	const std::set<std::string> allowedKeys =
+	{
+		"fullscreen",
+		"windowedfullscreenmode",
+		"windowed_fullscreen_mode",
+		"renderer",
+		"queue_size",
+		"capture_device",
+		"frame_offset",
+		"video_conversion",
+		"container_colorspace",
+		"hdr_colorspace",
+		"hdr_luminance",
+		"renderer_start_stop_time_method",
+		"renderer_nominal_range",
+		"renderer_transfer_function",
+		"renderer_transfer_matrix",
+		"renderer_primaries",
+		"scene_detect",
+		"scene",
+		"noui",
+		"no_ui",
+		"startminimized",
+		"start_minimized"
+	};
+
+	for (const auto& setting : *commandLineValues)
+	{
+		if (allowedKeys.find(setting.first) == allowedKeys.end())
+			throw std::runtime_error("Unknown " + ConfigLocation(config) + " [command_line] key: " + setting.first);
+	}
+}
+
+bool TryGetFirstConfigBool(const ConfigFile& config, const std::initializer_list<const char*> keys, bool& value)
+{
+	for (const char* key : keys)
+	{
+		std::string rawValue;
+		if (!config.TryGetString("command_line", key, rawValue))
+			continue;
+
+		if (config.TryGetBool("command_line", key, value))
+			return true;
+
+		throw std::runtime_error("Invalid boolean value in " + ConfigLocation(config) +
+			" [command_line] for " + key + ": " + rawValue +
+			" (expected true/false, yes/no, on/off, or 1/0)");
+	}
+
+	return false;
+}
+
+void AppendConfigBoolOption(std::vector<std::wstring>& arguments, const ConfigFile& config, const std::initializer_list<const char*> keys, const wchar_t* commandLineSwitch)
+{
+	bool enabled = false;
+	if (TryGetFirstConfigBool(config, keys, enabled) && enabled)
+		arguments.emplace_back(commandLineSwitch);
+}
+
+void AppendConfigStringOption(std::vector<std::wstring>& arguments, const ConfigFile& config, const std::initializer_list<const char*> keys, const wchar_t* commandLineSwitch)
+{
+	std::string value;
+	if (TryGetFirstConfigString(config, keys, value) && !value.empty())
+	{
+		arguments.emplace_back(commandLineSwitch);
+		arguments.emplace_back(StringToWideString(value));
+	}
+}
+
+std::vector<std::wstring> LoadConfiguredCommandLineArguments()
+{
+	ConfigFile config;
+	std::vector<std::wstring> arguments;
+	if (!config.Load())
+		return arguments;
+
+	ThrowIfConfigHasSyntaxWarnings(config);
+	ValidateCommandLineConfigKeys(config);
+
+	if (!config.HasSection("command_line"))
+		return arguments;
+
+	AppendConfigBoolOption(arguments, config, { "fullscreen" }, L"/fullscreen");
+	AppendConfigBoolOption(arguments, config, { "windowedfullscreenmode", "windowed_fullscreen_mode" }, L"/windowedfullscreenmode");
+	AppendConfigStringOption(arguments, config, { "renderer" }, L"/renderer");
+	AppendConfigStringOption(arguments, config, { "queue_size" }, L"/queue_size");
+	AppendConfigStringOption(arguments, config, { "capture_device" }, L"/capture_device");
+	AppendConfigStringOption(arguments, config, { "frame_offset" }, L"/frame_offset");
+	AppendConfigStringOption(arguments, config, { "video_conversion" }, L"/video_conversion");
+	AppendConfigStringOption(arguments, config, { "container_colorspace" }, L"/container_colorspace");
+	AppendConfigStringOption(arguments, config, { "hdr_colorspace" }, L"/hdr_colorspace");
+	AppendConfigStringOption(arguments, config, { "hdr_luminance" }, L"/hdr_luminance");
+	AppendConfigStringOption(arguments, config, { "renderer_start_stop_time_method" }, L"/renderer_start_stop_time_method");
+	AppendConfigStringOption(arguments, config, { "renderer_nominal_range" }, L"/renderer_nominal_range");
+	AppendConfigStringOption(arguments, config, { "renderer_transfer_function" }, L"/renderer_transfer_function");
+	AppendConfigStringOption(arguments, config, { "renderer_transfer_matrix" }, L"/renderer_transfer_matrix");
+	AppendConfigStringOption(arguments, config, { "renderer_primaries" }, L"/renderer_primaries");
+	AppendConfigBoolOption(arguments, config, { "scene_detect", "scene" }, L"/scene_detect");
+	AppendConfigBoolOption(arguments, config, { "noui", "no_ui" }, L"/noui");
+	AppendConfigBoolOption(arguments, config, { "startminimized", "start_minimized" }, L"/startminimized");
+
+	return arguments;
+}
+
+bool IsHelpArgument(const wchar_t* argument)
+{
+	return argument != nullptr &&
+		(_wcsicmp(argument, L"/help") == 0 ||
+		 _wcsicmp(argument, L"help") == 0 ||
+		 _wcsicmp(argument, L"-help") == 0 ||
+		 _wcsicmp(argument, L"--help") == 0 ||
+		 _wcsicmp(argument, L"/?") == 0 ||
+		 _wcsicmp(argument, L"?") == 0);
 }
 
 void PrintCommandLineHelp()
@@ -192,7 +368,7 @@ void av_log_callback(void* ptr, int level, const char* fmt, va_list vargs)
 
 BOOL CVideoProcessorApp::InitInstance()
 {
-	// Handle /help before creating any UI, COM objects, or background workers.
+	// Handle help before creating any UI, COM objects, or background workers.
 	int argumentCount = 0;
 	LPWSTR* arguments = CommandLineToArgvW(GetCommandLine(), &argumentCount);
 	if (!arguments)
@@ -201,7 +377,7 @@ BOOL CVideoProcessorApp::InitInstance()
 	bool helpRequested = false;
 	for (int i = 1; i < argumentCount; ++i)
 	{
-		if (wcscmp(arguments[i], L"/help") == 0)
+		if (IsHelpArgument(arguments[i]))
 		{
 			helpRequested = true;
 			break;
@@ -239,10 +415,27 @@ BOOL CVideoProcessorApp::InitInstance()
 
 		// Parse command line
 		// https://docs.microsoft.com/en-us/cpp/c-runtime-library/argc-argv-wargv
-		int iNumOfArgs;
-		LPWSTR* pArgs = CommandLineToArgvW(GetCommandLine(), &iNumOfArgs);
-		if (!pArgs)
+		std::vector<std::wstring> configuredArguments = LoadConfiguredCommandLineArguments();
+
+		int parsedArgumentCount = 0;
+		LPWSTR* parsedArguments = CommandLineToArgvW(GetCommandLine(), &parsedArgumentCount);
+		if (!parsedArguments)
 			throw std::runtime_error("Failed to parse command line");
+
+		std::vector<std::wstring> mergedArguments;
+		mergedArguments.emplace_back(parsedArgumentCount > 0 ? parsedArguments[0] : L"VideoProcessor-GUI.exe");
+
+		mergedArguments.insert(mergedArguments.end(), configuredArguments.begin(), configuredArguments.end());
+		for (int i = 1; i < parsedArgumentCount; ++i)
+			mergedArguments.emplace_back(parsedArguments[i]);
+
+		std::vector<const wchar_t*> pArgs;
+		pArgs.reserve(mergedArguments.size());
+		for (const auto& argument : mergedArguments)
+			pArgs.push_back(argument.c_str());
+
+		const int iNumOfArgs = static_cast<int>(pArgs.size());
+		LocalFree(parsedArguments);
 
 		for (int i = 1; i < iNumOfArgs; i++)
 		{
@@ -675,6 +868,12 @@ BOOL CVideoProcessorApp::InitInstance()
 				dlg.HideUI();
 			}
 
+			// scene-aware timing correction
+			if (wcscmp(pArgs[i], L"/scene_detect") == 0 || wcscmp(pArgs[i], L"/scene") == 0)
+			{
+				dlg.SceneDetect();
+			}
+
 			// start minimized
 			if (wcscmp(pArgs[i], L"/startminimized") == 0)
 			{
@@ -682,7 +881,6 @@ BOOL CVideoProcessorApp::InitInstance()
 			}
 
 		}
-		LocalFree(pArgs);
 
 		// Set set ourselves to high prio.
 		if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS))

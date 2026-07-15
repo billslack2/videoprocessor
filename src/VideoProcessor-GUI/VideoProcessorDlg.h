@@ -91,6 +91,7 @@ public:
 	void WindowedFullScreenMode();
 	void HideUI();
 	void StartMinimized();
+	void SceneDetect();
 	void DefaultRendererName(const CString&);
 	void SetQueueSize(const CString&);
 	void SetCaptureDevice(const CString&);
@@ -385,6 +386,7 @@ protected:
 	void ClearRendererCombo();
 	void UpdateStatsOverlay();
 	void MonitorQueueHealth(size_t currentQueueSize, uint64_t droppedFrames);
+	void ApplyNoUiLayout();
 
 
 	bool BuildPushVideoState();

@@ -267,11 +267,17 @@ void CVideoProcessorDlg::SetCaptureDevice(const CString& initialCaptureDevice)
 void CVideoProcessorDlg::HideUI()
 {
 	m_hideUI = true;
+	m_rendererFullScreenStart = false;
 }
 
 void CVideoProcessorDlg::StartMinimized()
 {
 	m_startMinimized = true;
+}
+
+void CVideoProcessorDlg::SceneDetect()
+{
+	m_sceneAwareTimingCorrection = true;
 }
 
 
@@ -2027,6 +2033,42 @@ void CVideoProcessorDlg::RenderGUIClear()
 	m_windowedVideoWindow.ShowLogo(true);
 }
 
+void CVideoProcessorDlg::ApplyNoUiLayout()
+{
+	if (!m_windowedVideoWindow.GetSafeHwnd())
+		return;
+
+	CRect videoScreenRect;
+	m_windowedVideoWindow.GetWindowRect(&videoScreenRect);
+
+	for (CWnd* child = GetWindow(GW_CHILD); child; child = child->GetNextWindow())
+	{
+		if (child->GetSafeHwnd() != m_windowedVideoWindow.GetSafeHwnd())
+			child->ShowWindow(SW_HIDE);
+	}
+
+	const int videoWidth = videoScreenRect.Width();
+	const int videoHeight = videoScreenRect.Height();
+
+	CRect adjustedWindowRect(0, 0, videoWidth, videoHeight);
+	AdjustWindowRectEx(
+		&adjustedWindowRect,
+		static_cast<DWORD>(GetWindowLongPtr(GetSafeHwnd(), GWL_STYLE)),
+		FALSE,
+		static_cast<DWORD>(GetWindowLongPtr(GetSafeHwnd(), GWL_EXSTYLE)));
+
+	SetWindowPos(
+		nullptr,
+		videoScreenRect.left + adjustedWindowRect.left,
+		videoScreenRect.top + adjustedWindowRect.top,
+		adjustedWindowRect.Width(),
+		adjustedWindowRect.Height(),
+		SWP_NOZORDER | SWP_NOACTIVATE);
+
+	m_windowedVideoWindow.ShowWindow(SW_SHOW);
+	m_windowedVideoWindow.MoveWindow(0, 0, videoWidth, videoHeight, TRUE);
+}
+
 
 void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 {
@@ -2670,7 +2712,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	m_rendererVideoFrameUseQeueueCheck.SetCheck(true);
 	m_rendererSceneAwareTimingCheck.SetCheck(m_sceneAwareTimingCorrection ? BST_CHECKED : BST_UNCHECKED);
 	m_rendererResetAutoCheck.SetCheck(true);
-	m_rendererFullscreenCheck.SetCheck(m_rendererFullScreenStart);
+	m_rendererFullscreenCheck.SetCheck(m_hideUI ? BST_UNCHECKED : m_rendererFullScreenStart);
 
 	m_timingClockFrameOffsetAutoCheck.SetCheck(m_frameOffsetAutoStart);
 	OnBnClickedTimingClockFrameOffsetAutoCheck();
@@ -2682,7 +2724,10 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	// No initialization needed here
 
 	
-	// If full screen is requested, we don't want to see the dialog pop-up, so start minimized
+	if (m_hideUI)
+		ApplyNoUiLayout();
+
+	// If requested, minimize after the startup layout is applied.
 	if (m_startMinimized) {
 		ShowWindow(SW_MINIMIZE);
 	}
@@ -2790,25 +2835,38 @@ void CVideoProcessorDlg::OnPaint()
 
 void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 {
-
-
-	 if (m_hideUI) {
-		// Get the dialog's current client size
-		CRect clientRect;
-		GetClientRect(&clientRect);
-		int width = clientRect.Width();
-		int height = clientRect.Height();
-
-
-		// Resize the video window to fill the entire dialog
+	if (m_hideUI)
+	{
 		if (m_windowedVideoWindow.GetSafeHwnd())
-		{
-			m_windowedVideoWindow.MoveWindow(0, 0, width, height, TRUE);
-		}
+			m_windowedVideoWindow.MoveWindow(0, 0, cx, cy, TRUE);
 	}
 
 	if (m_videoRenderer)
 		m_videoRenderer->OnSize();
+
+	// Some windowed DirectShow renderers can disturb sibling child-window
+	// positions while handling WM_SIZE.  Keep these two controls anchored to
+	// their dialog-template coordinates so they cannot wander over the video
+	// surface after a resize.
+	if (!m_hideUI)
+	{
+		auto moveDialogControl = [this](CWnd& control, int x, int y, int width, int height)
+		{
+			CRect rect(x, y, x + width, y + height);
+			MapDialogRect(&rect);
+			control.MoveWindow(&rect, TRUE);
+		};
+
+		moveDialogControl(m_rendererSceneAwareTimingCheck, 456, 88, 66, 10);
+		moveDialogControl(m_rendererVideoConversionCombo, 372, 115, 132, 50);
+		moveDialogControl(m_rendererCombo, 366, 12, 198, 50);
+
+		// madVR can complete its repaint after the parent WM_SIZE has returned.
+		// Explicitly invalidate the renderer selector so its selection field is
+		// redrawn immediately rather than waiting for a user click.
+		m_rendererCombo.RedrawWindow(nullptr, nullptr,
+			RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW);
+	}
 
 	// Update stats overlay position
 	if (m_statsOverlay && m_statsOverlay->IsVisible())

@@ -175,6 +175,7 @@
     <ClInclude Include="CaptureInput.h" />
     <ClInclude Include="cie.h" />
     <ClInclude Include="ColorSpace.h" />
+    <ClInclude Include="ConfigFile.h" />
     <ClInclude Include="DebugLog.h" />
     <ClInclude Include="DisplayMode.h" />
     <ClInclude Include="ColorFormat.h" />
@@ -235,6 +236,7 @@
     <ClCompile Include="ColorSpace.cpp" />
     <ClCompile Include="DisplayMode.cpp" />
     <ClCompile Include="ColorFormat.cpp" />
+    <ClCompile Include="ConfigFile.cpp" />
     <ClCompile Include="EOTF.cpp" />
     <ClCompile Include="guid.cpp" />
     <ClCompile Include="HDRData.cpp" />

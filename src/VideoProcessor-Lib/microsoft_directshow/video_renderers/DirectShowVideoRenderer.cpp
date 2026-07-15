@@ -766,7 +766,7 @@ bool DirectShowVideoRenderer::GetPPMCorrectionInfo(int& ppmValue, bool& hasCorre
 		// Get PPM correction info directly from CLiveSource
 		ppmValue = m_liveSource->GetCurrentPPMCorrection();
 		hasCorrection = m_liveSource->HasPPMCorrection();
-		source = m_liveSource->GetPPMCorrectionSource() ? TEXT("correction.cfg") : TEXT("default");
+		source = m_liveSource->GetPPMCorrectionSource() ? TEXT("VideoProcessor.cfg") : TEXT("default");
 		return true;
 	}
 	
