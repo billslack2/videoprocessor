@@ -36,9 +36,6 @@
     <ClCompile Include="VideoProcessorApp.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="HelpDialog.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="StatsOverlayWindow.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -72,9 +69,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="VideoProcessorDlg.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="HelpDialog.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="StatsOverlayWindow.h">

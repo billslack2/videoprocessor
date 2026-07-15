@@ -8,6 +8,9 @@
 
 #include <pch.h>
 
+#include <dvdmedia.h>
+#include <guid.h>
+
 #include "CBufferedLiveSourceVideoOutputPin.h"
 
 
@@ -283,7 +286,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			// Converted queue should already be empty, but ensure it
 			while (!m_convertedSampleQueue.empty())
 			{
-				IMediaSample* pSample = m_convertedSampleQueue.front();
+				IMediaSample* pSample = m_convertedSampleQueue.front().sample;
 				m_convertedSampleQueue.pop_front();
 				if (pSample) pSample->Release();
 				++purgedConverted;
@@ -437,7 +440,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 			CAutoLock convLock(&m_convertedQueueLock);
 			while (!m_convertedSampleQueue.empty())
 			{
-				IMediaSample* pSample = m_convertedSampleQueue.front();
+				IMediaSample* pSample = m_convertedSampleQueue.front().sample;
 				m_convertedSampleQueue.pop_front();
 				if (pSample) pSample->Release();
 				++purgedConverted;
@@ -450,6 +453,9 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 			CAutoLock stateLock(&m_stateLock);
 			m_lastSeenFrameCounter = 0;
 		}
+
+		if (purgedConverted > 0 && m_hFrameAvailableEvent)
+			SetEvent(m_hFrameAvailableEvent);
 
 		DebugLog::Log("OnVideoFrame: Recovery complete - buffering enabled, purged %zu raw + %zu converted frames",
 			purgedRaw, purgedConverted);
@@ -572,11 +578,25 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 }
 
 
+void CBufferedLiveSourceVideoOutputPin::SetSceneAwareTimingCorrection(bool enabled)
+{
+	const bool wasEnabled = m_sceneAwareTimingCorrection.exchange(enabled, std::memory_order_acq_rel);
+	if (wasEnabled == enabled)
+		return;
+
+	// The conversion worker owns its signature buffer.  A generation change lets
+	// it discard that buffer at a frame boundary without taking another lock.
+	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
+	DebugLog::Log("SCENE-AWARE CORRECTION: %s", enabled ? "enabled" : "disabled");
+}
+
+
 void CBufferedLiveSourceVideoOutputPin::Reset()
 {
 
 	if (true) {
 	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Reset() - HDMI resync async queue reset starting");
+	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
 
 	// Purge raw frames
 	{
@@ -605,7 +625,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		size_t purgedSamples = 0;
 		while (!m_convertedSampleQueue.empty())
 		{
-			IMediaSample* pSample = m_convertedSampleQueue.front();
+			IMediaSample* pSample = m_convertedSampleQueue.front().sample;
 			m_convertedSampleQueue.pop_front();
 			if (pSample)
 			{
@@ -637,6 +657,10 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 
 	// HDMI RESYNC: Enter buffering mode to rebuild queue state cleanly
 	m_isBuffering.store(true, std::memory_order_release);
+
+	// Wake conversion after freeing converted queue space and restoring reset state.
+	if (m_hFrameAvailableEvent)
+		SetEvent(m_hFrameAvailableEvent);
 
 	DebugLog::Log("Reset(): Timeline reset, timing state cleared, buffering ENABLED for HDMI resync recovery");
 
@@ -700,7 +724,7 @@ void CBufferedLiveSourceVideoOutputPin::PurgeConvertedQueue()
 
 	while (!m_convertedSampleQueue.empty())
 	{
-		IMediaSample* pSample = m_convertedSampleQueue.front();
+		IMediaSample* pSample = m_convertedSampleQueue.front().sample;
 		m_convertedSampleQueue.pop_front();
 
 		if (pSample)
@@ -899,17 +923,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		// BUFFERING PHASE: do not deliver until we have enough converted samples
 		if (m_isBuffering.load(std::memory_order_acquire))
 		{
+			bool freedConvertedQueueSpace = false;
 			size_t convertedQueueSize = 0;
-			{
-				CAutoLock convLock(&m_convertedQueueLock);
-				convertedQueueSize = m_convertedSampleQueue.size();
-			}
 
 			// DYNAMIC BUFFERING: Use GetBufferingTarget() for fps-aware buffering
 			const size_t bufferingTarget = GetBufferingTarget();
 
-			const size_t minFrames = GetBufferingTarget();              // your existing low-water mark
-			const size_t maxFrames = std::max(minFrames + 2, (size_t)((minFrames + frameIntervalUs - 1) / frameIntervalUs));
+			const size_t maxFrames = std::max(bufferingTarget,
+				std::min(m_frameQueueMaxSize, bufferingTarget + std::max<size_t>(2, bufferingTarget / 2)));
 
 			size_t q = 0;
 			{
@@ -921,15 +942,21 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					const size_t toDrop = q - maxFrames;
 					for (size_t i = 0; i < toDrop; ++i)
 					{
-						IMediaSample* s = m_convertedSampleQueue.front();
+						IMediaSample* s = m_convertedSampleQueue.front().sample;
 						m_convertedSampleQueue.pop_front();
 						if (s) s->Release();
 					}
 					++bufferUnderrunCount; // or better: add a new bufferOverrunDropCount
 					DebugLog::Log("DELIVERY THREAD: MAX BUFFER hit: dropped %zu old frames (q=%zu max=%zu)",
 						toDrop, q, maxFrames);
+					freedConvertedQueueSpace = true;
 				}
+
+				convertedQueueSize = m_convertedSampleQueue.size();
 			}
+
+			if (freedConvertedQueueSpace && m_hFrameAvailableEvent)
+				SetEvent(m_hFrameAvailableEvent);
 
 
 			if (convertedQueueSize < bufferingTarget)
@@ -953,20 +980,28 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		// We use the pending timestamp history for late-binding instead
 		for (;;)
 		{
-			if (!m_isActive.load(std::memory_order_acquire) || m_stopping.load(std::memory_order_acquire) || GetConvertedQueueSize() <= 1)
+			if (!m_isActive.load(std::memory_order_acquire) || m_stopping.load(std::memory_order_acquire))
 				break;
 
 			// Pop one sample under lock
 			IMediaSample* pSample = nullptr;
+			bool isSafeCorrectionPoint = false;
+			bool freedConvertedQueueSpace = false;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
 
 				if (m_convertedSampleQueue.empty())
 					break;  // No more samples, wait for more
 
-				pSample = m_convertedSampleQueue.front();
+				const ConvertedSample convertedSample = m_convertedSampleQueue.front();
+				pSample = convertedSample.sample;
+				isSafeCorrectionPoint = convertedSample.isSafeCorrectionPoint;
 				m_convertedSampleQueue.pop_front();
+				freedConvertedQueueSpace = true;
 			}
+
+			if (freedConvertedQueueSpace && m_hFrameAvailableEvent)
+				SetEvent(m_hFrameAvailableEvent);
 
 			if (!pSample)
 				continue;
@@ -1031,6 +1066,28 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					DebugLog::Log("LATE-BIND MISS #%llu: No match for target=%.3fms within ±%.3fms (searching pending history)",
 						lateBindFailCount, theoreticalStop / 10000.0, searchTolerance / 10000.0);
 				}
+			}
+
+			// If the sample is already late, a normal delivery would make the
+			// renderer display stale content.  With the optional mode enabled, drop
+			// only at a detected cut/near-black frame; MadVR then naturally keeps the
+			// previous image for that refresh interval.  No repeat sample is injected.
+			const REFERENCE_TIME nowStreamTime = NowStreamTime(m_pFilter);
+			const REFERENCE_TIME lateThreshold = std::max<REFERENCE_TIME>(1, (m_frameDuration * 3) / 4);
+			const DWORD correctionNow = GetTickCount();
+			const bool correctionCooldownElapsed =
+				(correctionNow - m_lastSceneAwareCorrectionTime) >= 1000;
+			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire) &&
+				isSafeCorrectionPoint &&
+				correctionCooldownElapsed &&
+				currentStart + lateThreshold < nowStreamTime)
+			{
+				m_lastSceneAwareCorrectionTime = correctionNow;
+				++m_droppedFrameCount;
+				DebugLog::Log("SCENE-AWARE CORRECTION: dropped late frame at safe boundary (late=%.3fms)",
+					(nowStreamTime - currentStart) / 10000.0);
+				pSample->Release();
+				continue;
 			}
 
 			// 4) DELIVER - Let MadVR handle timing and buffering
@@ -1130,6 +1187,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 	uint64_t maxTimeUs = 0;
 	uint64_t minTimeUs = UINT64_MAX;
 	uint64_t backpressureHits = 0;
+	SceneSignature sceneSignature;
+	uint64_t sceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
 
 	for (;;)
 	{
@@ -1167,6 +1226,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 		size_t batchCount = 0;
 		for (;;)
 		{
+			const uint64_t currentSceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
+			if (currentSceneDetectorGeneration != sceneDetectorGeneration)
+			{
+				sceneSignature = {};
+				sceneDetectorGeneration = currentSceneDetectorGeneration;
+			}
 			if (!m_isActive.load(std::memory_order_acquire))
 			{
 				DebugLog::Log("CONVERSION WORKER: Not active, returning");
@@ -1178,25 +1243,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
 				currentConvertedSize = m_convertedSampleQueue.size();
+			}
 
-				// ENHANCED BACKPRESSURE: Multiple throttling levels based on queue fullness
-				if (currentConvertedSize >= m_frameQueueMaxSize)
-				{
-					++backpressureHits;
-					DebugLog::Log("CONVERSION WORKER: BACKPRESSURE hit - converted queue full (%zu/%zu), stopping conversion",
-						currentConvertedSize, m_frameQueueMaxSize);
-					break;  // Stop conversion completely
-				}
-				else if (currentConvertedSize >= (m_frameQueueMaxSize * 3) / 4)  // 75% full
-				{
-					// MODERATE BACKPRESSURE: Slow down conversion when queue is 75% full
-					Sleep(2);  // 2ms pause to let delivery catch up
-				}
-				else if (currentConvertedSize >= (m_frameQueueMaxSize / 2))  // 50% full
-				{
-					// LIGHT BACKPRESSURE: Small pause when queue is 50% full
-					Sleep(1);  // 1ms pause
-				}
+			if (currentConvertedSize >= m_frameQueueMaxSize)
+			{
+				++backpressureHits;
+				DebugLog::Log("CONVERSION WORKER: BACKPRESSURE hit - converted queue full (%zu/%zu), stopping conversion until delivery frees space",
+					currentConvertedSize, m_frameQueueMaxSize);
+				break;  // Stop conversion until a frame arrives or delivery frees converted space.
 			}
 
 			// Pop one raw frame.
@@ -1267,10 +1321,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			// Release raw frame - we're done with it
 			videoFrame.SourceBufferRelease();
 
+			bool isSafeCorrectionPoint = false;
+			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire))
+				isSafeCorrectionPoint = IsSafeSceneAwareCorrectionPoint(pSample, sceneSignature);
+
 			// Add converted sample to queue
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
-				m_convertedSampleQueue.push_back(pSample);
+				m_convertedSampleQueue.push_back({ pSample, isSafeCorrectionPoint });
 			}
 
 			// CRITICAL: ALWAYS record timestamps in pending history (not just for CLOCK_SMART modes)
@@ -1341,6 +1399,93 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 }
 
 
+bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
+	IMediaSample* sample,
+	SceneSignature& previous)
+{
+	// The HDR and MadVR paths use P010.  P010's luma plane is first, tightly
+	// packed, and has 10-bit values in the high bits of each 16-bit word.  Do not
+	// guess at other layouts: an unsupported format is simply not a safe point.
+	if (!sample || !IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010) || !m_mediaType.pbFormat)
+		return false;
+
+	LONG width = 0;
+	LONG height = 0;
+	if (IsEqualGUID(m_mediaType.formattype, FORMAT_VideoInfo2) &&
+		m_mediaType.cbFormat >= sizeof(VIDEOINFOHEADER2))
+	{
+		const VIDEOINFOHEADER2* videoInfo = reinterpret_cast<const VIDEOINFOHEADER2*>(m_mediaType.pbFormat);
+		width = videoInfo->bmiHeader.biWidth;
+		height = videoInfo->bmiHeader.biHeight;
+	}
+	else if (IsEqualGUID(m_mediaType.formattype, FORMAT_VideoInfo) &&
+		m_mediaType.cbFormat >= sizeof(VIDEOINFOHEADER))
+	{
+		const VIDEOINFOHEADER* videoInfo = reinterpret_cast<const VIDEOINFOHEADER*>(m_mediaType.pbFormat);
+		width = videoInfo->bmiHeader.biWidth;
+		height = videoInfo->bmiHeader.biHeight;
+	}
+
+	if (width <= 0 || height == 0)
+		return false;
+
+	const size_t lumaWidth = static_cast<size_t>(width);
+	const size_t lumaHeight = static_cast<size_t>(height > 0 ? height : -height);
+	const size_t lumaBytes = lumaWidth * lumaHeight * sizeof(uint16_t);
+	if (sample->GetActualDataLength() < lumaBytes)
+		return false;
+
+	BYTE* data = nullptr;
+	if (FAILED(sample->GetPointer(&data)) || !data)
+		return false;
+
+	SceneSignature current;
+	uint64_t totalLuma = 0;
+	size_t darkSampleCount = 0;
+	for (size_t row = 0; row < SceneSignature::ROWS; ++row)
+	{
+		const size_t y = ((row * 2 + 1) * lumaHeight) / (SceneSignature::ROWS * 2);
+		const uint16_t* line = reinterpret_cast<const uint16_t*>(data + (y * lumaWidth * sizeof(uint16_t)));
+		for (size_t column = 0; column < SceneSignature::COLUMNS; ++column)
+		{
+			const size_t x = ((column * 2 + 1) * lumaWidth) / (SceneSignature::COLUMNS * 2);
+			const uint16_t luma = static_cast<uint16_t>(line[x] >> 6);
+			const size_t index = row * SceneSignature::COLUMNS + column;
+			current.luma[index] = luma;
+			totalLuma += luma;
+			if (luma <= 112)
+				++darkSampleCount;
+		}
+	}
+
+	current.valid = true;
+	const size_t sampleCount = current.luma.size();
+	const uint64_t averageLuma = totalLuma / sampleCount;
+	const bool nearBlack = averageLuma <= 96 && darkSampleCount >= (sampleCount * 9) / 10;
+
+	bool hardSceneCut = false;
+	if (previous.valid)
+	{
+		uint64_t totalDifference = 0;
+		size_t changedSampleCount = 0;
+		for (size_t i = 0; i < sampleCount; ++i)
+		{
+			const uint16_t difference = static_cast<uint16_t>(abs(
+				static_cast<int>(current.luma[i]) - static_cast<int>(previous.luma[i])));
+			totalDifference += difference;
+			if (difference >= 56)
+				++changedSampleCount;
+		}
+
+		const uint64_t averageDifference = totalDifference / sampleCount;
+		hardSceneCut = averageDifference >= 96 && changedSampleCount >= (sampleCount * 2) / 3;
+	}
+
+	previous = current;
+	return nearBlack || hardSceneCut;
+}
+
+
 size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget() {
 
 	size_t nominalTarget = (m_frameQueueMaxSize / 8);
@@ -1408,7 +1553,7 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 		CAutoLock convLock(&m_convertedQueueLock);
 		while (!m_convertedSampleQueue.empty())
 		{
-			IMediaSample* pSample = m_convertedSampleQueue.front();
+			IMediaSample* pSample = m_convertedSampleQueue.front().sample;
 			m_convertedSampleQueue.pop_front();
 			if (pSample) pSample->Release();
 		}
@@ -1430,6 +1575,9 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 		CAutoLock stateLock(&m_stateLock);
 		m_lastSeenFrameCounter = 0;
 	}
+
+	if (m_hFrameAvailableEvent)
+		SetEvent(m_hFrameAvailableEvent);
 
 	DebugLog::Log("OnBadTimestampDetected(): Recovery complete - buffering enabled, queues purged");
 }

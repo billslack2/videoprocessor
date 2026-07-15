@@ -109,6 +109,10 @@ public:
 	// Queues might not be implemented by all renderers, this will throw if it cannot be set
 	virtual void SetFrameQueueMaxSize(size_t) = 0;
 
+	// Prefer visually-safe scene boundaries when dropping a late queued frame.
+	// Disabled by default; enabled only by the renderer queue UI.
+	virtual void SetSceneAwareTimingCorrection(bool) = 0;
+
 	// Get the current frame queue size, negative means no queue
 	// Only valid te be called if the RendererState called back RENDERSTATE_RENDERING
 	// Queues might not be implemented by all renderers, this will return 0 if there is no queueing possible.
