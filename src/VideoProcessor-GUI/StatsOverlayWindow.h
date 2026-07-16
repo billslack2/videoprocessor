@@ -51,6 +51,8 @@ struct StatsData
 	uint64_t capturedDroppedFrames = 0;
 	uint64_t queueDroppedFrames = 0;
 	uint64_t sceneDetectCorrectionDrops = 0;
+	uint64_t sceneDetectDetected = 0;
+	uint64_t sceneDetectLateCandidates = 0;
 
 	// Video info
 	CString videoConversion;
@@ -155,7 +157,7 @@ private:
 	static const int MARGIN_RIGHT = 500;
 	static const int MARGIN_BOTTOM = 320;    // Move up 20 pixels (was 300)
 	static const int WINDOW_WIDTH = 420;     // Keep width the same
-	static const int WINDOW_HEIGHT = 495;    // Extra row for Scene Detect correction statistics
+	static const int WINDOW_HEIGHT = 518;    // Scene Detect statistics row
 	static const int PADDING = 10;
 	static const int LINE_HEIGHT = 23;     // Match font size for better spacing
 

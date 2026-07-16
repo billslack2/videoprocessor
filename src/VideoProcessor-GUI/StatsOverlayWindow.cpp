@@ -445,6 +445,12 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	// repeat sample, so the repeat count is always zero here.
 	line.Format(TEXT("Scene Detect D/R: %llu / 0"), m_stats.sceneDetectCorrectionDrops);
 	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
+
+	line.Format(TEXT("Scene Detect:     %llu detected, %llu late"),
+		m_stats.sceneDetectDetected, m_stats.sceneDetectLateCandidates);
+	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
 
 	SelectObject(hdc, oldFont);
 }

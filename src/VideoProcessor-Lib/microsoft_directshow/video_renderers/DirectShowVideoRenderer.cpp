@@ -338,6 +338,24 @@ uint64_t DirectShowVideoRenderer::SceneAwareCorrectionDropCount() const
 }
 
 
+uint64_t DirectShowVideoRenderer::SceneAwareDetectedCount() const
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		throw std::runtime_error("Invalid state, can only be called while rendering");
+
+	return m_liveSource->SceneAwareDetectedCount();
+}
+
+
+uint64_t DirectShowVideoRenderer::SceneAwareLateCandidateCount() const
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		throw std::runtime_error("Invalid state, can only be called while rendering");
+
+	return m_liveSource->SceneAwareLateCandidateCount();
+}
+
+
 void DirectShowVideoRenderer::OnGraphEvent(long evCode, LONG_PTR param1, LONG_PTR param2)
 {
 	// ! Do not tear down graph here

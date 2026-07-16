@@ -3365,6 +3365,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.exitLatencyMs = m_videoRenderer->ExitLatencyMs();
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 		stats.sceneDetectCorrectionDrops = m_videoRenderer->SceneAwareCorrectionDropCount();
+		stats.sceneDetectDetected = m_videoRenderer->SceneAwareDetectedCount();
+		stats.sceneDetectLateCandidates = m_videoRenderer->SceneAwareLateCandidateCount();
 	}
 
 	// Capture device frame counts

@@ -201,6 +201,18 @@ uint64_t CLiveSource::DroppedFrameCount() const
 }
 
 
+uint64_t CLiveSource::SceneAwareDetectedCount() const
+{
+	return m_videoOutputPin ? m_videoOutputPin->SceneAwareDetectedCount() : 0;
+}
+
+
+uint64_t CLiveSource::SceneAwareLateCandidateCount() const
+{
+	return m_videoOutputPin ? m_videoOutputPin->SceneAwareLateCandidateCount() : 0;
+}
+
+
 int CLiveSource::GetCurrentPPMCorrection() const
 {
 	if (!m_videoOutputPin)

@@ -54,7 +54,8 @@ Options:
       Set the renderer frame queue size.
 
   /scene_detect
-      Prefer visually-safe scene boundaries when correcting late queued frames.
+      Opt in to scene-aware late-frame correction at visually-safe boundaries.
+      If omitted or disabled, no scene analysis or scene-aware drop/repeat correction occurs.
 
   /newlldv
       Enable the opt-in BT.2020 + SDR LLDV heuristic (requires both LLDV follow modes).

@@ -109,13 +109,15 @@ public:
 	// Get the exit latency in ms, which the amount of time between the frame timestamp
 	// and when the frame is delivered to the DirectShow renderer.
 	// This is sampled.
-	double ExitLatencyMs() const { return m_exitLatencyMs;  }
+	double ExitLatencyMs() const { return m_exitLatencyMs.load(std::memory_order_relaxed);  }
 
 	// Get the amount of dropped frames due to queue actions
-	uint64_t DroppedFrameCount() const { return m_droppedFrameCount; }
+	uint64_t DroppedFrameCount() const { return m_droppedFrameCount.load(std::memory_order_relaxed); }
 
 	// Buffered pins override this with intentional Scene Detect correction drops.
 	virtual uint64_t SceneAwareCorrectionDropCount() const { return 0; }
+	virtual uint64_t SceneAwareDetectedCount() const { return 0; }
+	virtual uint64_t SceneAwareLateCandidateCount() const { return 0; }
 
 	// PPM correction information access
 	// Get the current PPM correction value being applied
@@ -147,6 +149,7 @@ public:
 	// This is the single source of truth for PPM - calculated by DirectShowVideoRenderer::UpdatePPMMeasurement()
 	void FeedPPMToCalibrator(int measuredPpm)
 	{
+		CAutoLock timingLock(&m_timingStateLock);
 		if (m_useAutoCalibration && m_autoPpmCalibrator.IsActive())
 		{
 			// Feed the raw measured PPM to the calibrator
@@ -167,6 +170,10 @@ public:
 
 	// Get the converted queue size (buffered mode only)
 	virtual size_t GetConvertedQueueSize() const { return 0; }
+
+	// Bound allocator memory while leaving enough samples for the queue and
+	// downstream renderer. Buffered pins override this from their queue size.
+	virtual LONG GetAllocatorBufferCount() const { return 16; }
 
 	// Delivered timestamp history for late-binding lookup
 	// CLOCK_SMART/SMART2 need to look up "next frame" timestamps, but that frame
@@ -253,7 +260,7 @@ protected:
 	 */
 	uint64_t GetRationalTrimNumerator() const { return m_currentRationalTrimNumerator; }
 
-	uint64_t m_droppedFrameCount = 0;
+	std::atomic<uint64_t> m_droppedFrameCount = 0;
 	
 	// Flag to force discontinuity on next frame after timeline reset
 	// This tells MadVR that the timeline was reset and it should resync
@@ -352,7 +359,7 @@ protected:
 	HDRDataSharedPtr m_hdrData = nullptr;
 	bool m_hdrChanged = false;
 
-	double m_exitLatencyMs = 0.0;
+	std::atomic<double> m_exitLatencyMs = 0.0;
 	
 	// Smart timing statistics for CLOCK_SMART/SMART2 modes
 	uint64_t m_smartHardwareTimestampCount = 0;
@@ -416,6 +423,10 @@ protected:
 	
 	// Helper method to track and log frame duration statistics
 	void TrackFrameDuration(REFERENCE_TIME timeStart, REFERENCE_TIME timeStop, uint64_t frameNumber);
+
+	// Serializes timing-state mutation with frame conversion. Reset, HDR updates,
+	// PPM updates, and RenderVideoFrameIntoSample all use this lock.
+	CCritSec m_timingStateLock;
 	
 
 };

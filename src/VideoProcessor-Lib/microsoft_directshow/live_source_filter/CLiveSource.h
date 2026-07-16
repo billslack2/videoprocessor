@@ -99,6 +99,8 @@ public:
 
 	// Get the amount of dropped frames due to queue actions
 	uint64_t DroppedFrameCount() const;
+	uint64_t SceneAwareDetectedCount() const;
+	uint64_t SceneAwareLateCandidateCount() const;
 
 	//
 	// PPM Correction (forwarded from video output pin)
