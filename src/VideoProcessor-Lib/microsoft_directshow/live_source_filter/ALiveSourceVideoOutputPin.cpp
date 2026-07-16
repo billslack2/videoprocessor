@@ -212,7 +212,17 @@ HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOC
 
 	HRESULT hr = NOERROR;
 
-	ppropInputRequest->cBuffers = 128;  // Your fix
+	// Keep allocator memory bounded. A 4K P010 frame is roughly 25 MB, so the
+	// former fixed request for 128 buffers could commit several gigabytes.
+	// Preserve downstream minimums, but cap the request to a practical queue
+	// headroom limit; SetProperties reports the actual count below.
+	constexpr LONG kMinimumBuffers = 8;
+	constexpr LONG kMaximumBuffers = 48;
+	const LONG requestedBuffers = ppropInputRequest->cBuffers;
+	const LONG recommendedBuffers = std::max(kMinimumBuffers, GetAllocatorBufferCount());
+	ppropInputRequest->cBuffers = std::min(
+		kMaximumBuffers,
+		std::max(kMinimumBuffers, std::max(requestedBuffers, recommendedBuffers)));
 	ppropInputRequest->cbBuffer = m_videoFrameFormatter->GetOutFrameSize();
 
 	ASSERT(ppropInputRequest->cbBuffer);
@@ -377,6 +387,7 @@ void ALiveSourceVideoOutputPin::OnHDRData(HDRDataSharedPtr& hdrData)
 	if (!hdrData)
 		throw std::runtime_error("Setting HDRData to null is not allowed");
 
+	CAutoLock timingLock(&m_timingStateLock);
 	m_hdrData = hdrData;
 	m_hdrChanged = true;
 }
@@ -384,6 +395,7 @@ void ALiveSourceVideoOutputPin::OnHDRData(HDRDataSharedPtr& hdrData)
 
 void ALiveSourceVideoOutputPin::Reset()
 {
+	CAutoLock timingLock(&m_timingStateLock);
 	DebugLog::Log("ALiveSourceVideoOutputPin::Reset() - HDMI resync timing reset started");
 	
 	if (FAILED(DeliverBeginFlush()))
@@ -525,6 +537,7 @@ void ALiveSourceVideoOutputPin::UpdateFrameDurationHistory(REFERENCE_TIME actual
 
 HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoFrame, IMediaSample* const pSample)
 {
+	CAutoLock timingLock(&m_timingStateLock);
 	assert(videoFrame.GetTimingTimestamp() > 0);
 	assert(m_frameDuration > 0);
 	assert(m_timingClock->TimingClockTicksPerSecond() > 0);
@@ -1056,8 +1069,10 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 		const timingclocktime_t now = m_timingClock->TimingClockNow();
 
-		m_exitLatencyMs = TimingClockDiffMs(
-			videoFrame.GetTimingTimestamp(), now, m_timingClock->TimingClockTicksPerSecond());
+		m_exitLatencyMs.store(
+			TimingClockDiffMs(videoFrame.GetTimingTimestamp(), now,
+				m_timingClock->TimingClockTicksPerSecond()),
+			std::memory_order_relaxed);
 	}
 
 	return hr;

@@ -53,8 +53,11 @@ public:
 	// ALiveSourceVideoOutputPin
 	HRESULT OnVideoFrame(VideoFrame&) override;
 	void SetFrameQueueMaxSize(size_t) override;
+	LONG GetAllocatorBufferCount() const override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	uint64_t SceneAwareCorrectionDropCount() const override { return m_sceneAwareCorrectionDropCount.load(std::memory_order_relaxed); }
+	uint64_t SceneAwareDetectedCount() const override { return m_sceneAwareDetectedCount.load(std::memory_order_relaxed); }
+	uint64_t SceneAwareLateCandidateCount() const override { return m_sceneAwareLateCandidateCount.load(std::memory_order_relaxed); }
 	size_t GetFrameQueueSize() override;
 	void Reset() override;
 	REFERENCE_TIME NextFrameTimestamp() const override;
@@ -71,7 +74,7 @@ private:
 	HANDLE m_hConvertedAvailableEvent = nullptr;  // Auto-reset event: signaled when converted samples are available
 	HANDLE m_hConvertedSemaphore = nullptr;  // Semaphore: count of converted samples available
 
-	size_t m_frameQueueMaxSize = 8;
+	std::atomic<size_t> m_frameQueueMaxSize = 8;
 
 	//
 	// QUEUE INFRASTRUCTURE (with dedicated locks)
@@ -88,6 +91,7 @@ private:
 	{
 		IMediaSample* sample = nullptr;
 		bool isSafeCorrectionPoint = false;
+		uint64_t sceneEventId = 0;
 	};
 	std::deque<ConvertedSample> m_convertedSampleQueue;
 	CCritSec m_convertedQueueLock;  // Protects m_convertedSampleQueue only
@@ -96,8 +100,14 @@ private:
 	// no scene analysis and delivery follows the pre-existing path exactly.
 	std::atomic_bool m_sceneAwareTimingCorrection = false;
 	std::atomic<uint64_t> m_sceneDetectorGeneration = 0;
+	std::atomic<uint64_t> m_sceneEventSequence = 0;
+	std::atomic<uint64_t> m_sceneAwareDetectedCount = 0;
+	std::atomic<uint64_t> m_sceneAwareLateCandidateCount = 0;
 	std::atomic<uint64_t> m_sceneAwareCorrectionDropCount = 0;
-	DWORD m_lastSceneAwareCorrectionTime = 0;
+	// Delivery and reset can run concurrently.  Keep correction history atomic
+	// so a resync cannot race the delivery thread or require another queue lock.
+	std::atomic<DWORD> m_lastSceneAwareCorrectionTime = 0;
+	std::atomic<uint64_t> m_lastCorrectedSceneEventId = 0;
 	
 	//
 	// SHARED STATE (protected by m_stateLock)
@@ -141,15 +151,26 @@ private:
 
 	struct SceneSignature
 	{
-		static constexpr size_t COLUMNS = 24;
-		static constexpr size_t ROWS = 14;
+		static constexpr size_t COLUMNS = 32;
+		static constexpr size_t ROWS = 18;
+		static constexpr size_t HISTOGRAM_BINS = 16;
 		std::array<uint16_t, COLUMNS * ROWS> luma{};
+		std::array<uint16_t, HISTOGRAM_BINS> histogram{};
+		uint32_t averageLuma = 0;
 		bool valid = false;
+	};
+
+	struct SceneDetectorState
+	{
+		SceneSignature previous;
+		SceneSignature baseline;
+		uint32_t gradualCandidateFrames = 0;
+		bool previousNearBlack = false;
 	};
 
 	// Reads a sparse luma grid from P010 output.  It is intentionally called
 	// only by the conversion worker and only while the feature is enabled.
-	bool IsSafeSceneAwareCorrectionPoint(IMediaSample* sample, SceneSignature& previous);
+	bool IsSafeSceneAwareCorrectionPoint(IMediaSample* sample, SceneDetectorState& state, uint64_t& sceneEventId);
 
 	// Remove all items from the videoFrameQueue
 	// CALLER MUST HOLD m_rawQueueLock

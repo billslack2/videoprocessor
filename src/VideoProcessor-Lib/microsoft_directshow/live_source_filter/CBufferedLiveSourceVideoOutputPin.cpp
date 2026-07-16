@@ -21,12 +21,14 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 	ALiveSourceVideoOutputPin(filter, pLock, phr)
 {
 	// Initialize all member variables BEFORE creating events/threads
-	m_frameQueueMaxSize = 32;  // Default safe value
+	m_frameQueueMaxSize.store(32, std::memory_order_relaxed);  // Default safe value
 	m_isActive.store(false, std::memory_order_relaxed);
 	m_isBuffering.store(true, std::memory_order_relaxed);  // Start in buffering mode
 	m_lastSeenFrameCounter = 0;
 	m_totalConversionTimeUs.store(0, std::memory_order_relaxed);
 	m_conversionFrameCount.store(0, std::memory_order_relaxed);
+	m_sceneAwareDetectedCount.store(0, std::memory_order_relaxed);
+	m_sceneAwareLateCandidateCount.store(0, std::memory_order_relaxed);
 	m_sceneAwareCorrectionDropCount.store(0, std::memory_order_relaxed);
 	m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
 	m_lastQueueWarning = 0;
@@ -113,10 +115,18 @@ CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 	if (m_hConversionThread)
 	{
 		DbgLog((LOG_TRACE, 1, TEXT("~CBufferedLiveSourceVideoOutputPin: Waiting for conversion thread to exit...")));
-		WaitForSingleObject(m_hConversionThread, 5000);  // 5 second timeout
+		// Do not close a live thread handle and then destroy the queues it may
+		// still be using. Shutdown is signaled above, so this wait is expected to
+		// complete promptly while guaranteeing object lifetime safety.
+		WaitForSingleObject(m_hConversionThread, INFINITE);
 		CloseHandle(m_hConversionThread);
 		m_hConversionThread = nullptr;
 	}
+
+	// CAMThread's base destructor also calls Close(), but queue cleanup below
+	// must not race the delivery thread during this destructor body.
+	if (ThreadExists())
+		Close();
 
 	// Purge both queues - with null checks for safety
 	try
@@ -167,10 +177,10 @@ CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 
 HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 {
-	if (m_frameQueueMaxSize == 0)
+	if (m_frameQueueMaxSize.load(std::memory_order_relaxed) == 0)
 		throw std::runtime_error("Call SetFrameQueueMaxSize() before activating the graph");
 
-	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Active() - Starting activation with queue size %zu", m_frameQueueMaxSize);
+	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Active() - Starting activation with queue size %zu", m_frameQueueMaxSize.load(std::memory_order_relaxed));
 
 	{
 		CAutoLock lock(m_pLock);
@@ -213,7 +223,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		DbgLog((LOG_TRACE, 1, TEXT("  Benefit: MadVR gets 100%% of frame time (conversion happens in parallel)")));
 		DbgLog((LOG_TRACE, 1, TEXT("  Result: Zero conversion latency on delivery path")));
 
-		DebugLog::Log("Active(): ASYNC architecture - Raw->Convert->Queue->Deliver->MadVR with queue size %zu", m_frameQueueMaxSize);
+		DebugLog::Log("Active(): ASYNC architecture - Raw->Convert->Queue->Deliver->MadVR with queue size %zu", m_frameQueueMaxSize.load(std::memory_order_relaxed));
 
 		// SAFETY: Ensure all events are created before starting threads
 		if (!m_hConversionShutdownEvent || !m_hFrameAvailableEvent || !m_hConvertedAvailableEvent)
@@ -344,11 +354,9 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 		if (m_hConversionThread)
 		{
 			DbgLog((LOG_TRACE, 1, TEXT("Inactive(): Waiting for conversion thread to exit...")));
-			DWORD waitResult = WaitForSingleObject(m_hConversionThread, 2000);
-			if (waitResult == WAIT_TIMEOUT)
-			{
-				DbgLog((LOG_WARNING, 1, TEXT("Inactive(): Conversion thread did not exit cleanly")));
-			}
+			// Closing the handle while the worker is still running is unsafe: the
+			// worker can touch this pin and its queues after Inactive() returns.
+			WaitForSingleObject(m_hConversionThread, INFINITE);
 			CloseHandle(m_hConversionThread);
 			m_hConversionThread = nullptr;
 		}
@@ -465,17 +473,18 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	// Add frame to raw queue
 	{
 		CAutoLock rawLock(&m_rawQueueLock);
+		const size_t queueMaxSize = m_frameQueueMaxSize.load(std::memory_order_relaxed);
 
 		// Simple overflow protection - drop oldest if queue too full
-		if (m_videoFrameQueue.size() >= m_frameQueueMaxSize)
+		if (m_videoFrameQueue.size() >= queueMaxSize)
 		{
 			VideoFrame oldFrame = m_videoFrameQueue.front();
 			oldFrame.SourceBufferRelease();
 			m_videoFrameQueue.pop_front();
-			++m_droppedFrameCount;
+			m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 
 			DebugLog::Log("OnVideoFrame: Raw queue OVERFLOW - dropped frame #%llu, size=%ze/%ze",
-				oldFrame.GetCounter(), m_videoFrameQueue.size(), m_frameQueueMaxSize);
+				oldFrame.GetCounter(), m_videoFrameQueue.size(), queueMaxSize);
 		}
 
 		// Add new frame
@@ -483,7 +492,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		m_videoFrameQueue.push_back(videoFrame);
 
 		// DIAGNOSTIC: Log when raw queue is backing up
-		if (m_videoFrameQueue.size() >= (m_frameQueueMaxSize * 3) / 4)  // 75% threshold
+		if (m_videoFrameQueue.size() >= (queueMaxSize * 3) / 4)  // 75% threshold
 		{
 			static DWORD lastBackupLog = 0;
 			DWORD now = GetTickCount();
@@ -497,7 +506,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 				}
 
 				DebugLog::Log("OnVideoFrame: Raw queue BACKING UP (raw=%zu/%zu, converted=%zu, buffering=%d, convFrames=%llu)",
-					m_videoFrameQueue.size(), m_frameQueueMaxSize, convertedSize,
+					m_videoFrameQueue.size(), queueMaxSize, convertedSize,
 					m_isBuffering.load(std::memory_order_acquire) ? 1 : 0,
 					convFrames);
 				lastBackupLog = now;
@@ -516,15 +525,14 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 		throw std::runtime_error("Frame queue size must be > 0");
 
 	DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize() - Changing from %zu to %zu"),
-		m_frameQueueMaxSize, frameQueueMaxSize));
+		m_frameQueueMaxSize.load(std::memory_order_relaxed), frameQueueMaxSize));
 	DebugLog::Log("SetFrameQueueMaxSize: Changing queue size from %zu to %zu",
-		m_frameQueueMaxSize, frameQueueMaxSize);
+		m_frameQueueMaxSize.load(std::memory_order_relaxed), frameQueueMaxSize);
 
 	{
 		CAutoLock rawLock(&m_rawQueueLock);
 
-		const size_t oldQueueSize = m_frameQueueMaxSize;
-		m_frameQueueMaxSize = frameQueueMaxSize;
+		m_frameQueueMaxSize.store(frameQueueMaxSize, std::memory_order_release);
 
 		// If reducing queue size, intelligently purge excess frames
 		if (m_videoFrameQueue.size() > frameQueueMaxSize)
@@ -541,7 +549,7 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 				VideoFrame popFrame = m_videoFrameQueue.front();
 				popFrame.SourceBufferRelease();
 				m_videoFrameQueue.pop_front();
-				++m_droppedFrameCount;
+				m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 			}
 
 			DebugLog::Log("SetFrameQueueMaxSize: Purged %zu frames, queue now has %zu frames",
@@ -576,6 +584,16 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 	}
 
 	DebugLog::Log("SetFrameQueueMaxSize: Complete - signaled conversion thread");
+}
+
+
+LONG CBufferedLiveSourceVideoOutputPin::GetAllocatorBufferCount() const
+{
+	// Keep a few samples of headroom beyond the converted queue without
+	// allowing a user queue setting to recreate the former 128-buffer spike.
+	const size_t queueSize = m_frameQueueMaxSize.load(std::memory_order_relaxed);
+	const size_t recommended = std::min<size_t>(48, std::max<size_t>(8, queueSize + 4));
+	return static_cast<LONG>(recommended);
 }
 
 
@@ -642,18 +660,13 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	// Clear pending timestamp history for CLOCK_SMART modes
 	ClearPendingTimestamps();
 
-	// CRITICAL: Reset timeline state and enter buffering mode (identical to startup)
-	m_frameCounter = 0;
-	m_previousFrameCounter = 0;
-	m_frameCounterOffset = 0;
-	m_previousTimeStop = 0;
-	m_startTimeOffset = 0;
-
 	{
 		CAutoLock stateLock(&m_stateLock);
 		m_lastSeenFrameCounter = 0;
 		m_lastAutoPurgeTime = 0;
 		m_bufferingExitTime = 0;
+		m_lastSceneAwareCorrectionTime.store(0, std::memory_order_relaxed);
+		m_lastCorrectedSceneEventId.store(0, std::memory_order_relaxed);
 	}
 
 	// HDMI RESYNC: Enter buffering mode to rebuild queue state cleanly
@@ -669,6 +682,8 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	m_totalConversionTimeUs.store(0, std::memory_order_relaxed);
 	m_conversionFrameCount.store(0, std::memory_order_relaxed);
 	m_sceneAwareCorrectionDropCount.store(0, std::memory_order_relaxed);
+	m_sceneAwareDetectedCount.store(0, std::memory_order_relaxed);
+	m_sceneAwareLateCandidateCount.store(0, std::memory_order_relaxed);
 
 	// Reset proactive state
 	m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
@@ -710,7 +725,7 @@ void CBufferedLiveSourceVideoOutputPin::PurgeQueue()
 			DbgLog((LOG_WARNING, 1, TEXT("PurgeQueue(): Exception during frame release %zu"), purgedFrames));
 		}
 	}
-	m_droppedFrameCount += purgedFrames;
+	m_droppedFrameCount.fetch_add(purgedFrames, std::memory_order_relaxed);
 
 	if (purgedFrames > 0)
 	{
@@ -787,7 +802,7 @@ size_t CBufferedLiveSourceVideoOutputPin::GetProactiveQueueTarget() const
 {
 	// Simple proactive target: 60% of max capacity
 	// Leaves 40% headroom to prevent reactive scenarios
-	return (m_frameQueueMaxSize * 3) / 5;
+	return (m_frameQueueMaxSize.load(std::memory_order_relaxed) * 3) / 5;
 }
 
 
@@ -812,9 +827,9 @@ CBufferedLiveSourceVideoOutputPin::ProactiveQueueMetrics CBufferedLiveSourceVide
 		metrics.convertedQueueSize = m_convertedSampleQueue.size();
 	}
 
-	metrics.maxSize = m_frameQueueMaxSize;
+	metrics.maxSize = m_frameQueueMaxSize.load(std::memory_order_relaxed);
 	metrics.proactiveTarget = GetProactiveQueueTarget();
-	metrics.totalDropped = m_droppedFrameCount;
+	metrics.totalDropped = m_droppedFrameCount.load(std::memory_order_relaxed);
 	metrics.recentFailures = m_recentDeliveryFailures.load(std::memory_order_relaxed);
 
 	// Calculate average conversion time
@@ -827,7 +842,7 @@ CBufferedLiveSourceVideoOutputPin::ProactiveQueueMetrics CBufferedLiveSourceVide
 	// Simple health check: queues below target and no recent failures
 	metrics.isHealthy = (metrics.currentSize <= metrics.proactiveTarget) &&
 		(metrics.recentFailures < 3) &&
-		(metrics.convertedQueueSize < m_frameQueueMaxSize);
+		(metrics.convertedQueueSize < metrics.maxSize);
 
 	return metrics;
 }
@@ -936,7 +951,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			const size_t bufferingTarget = GetBufferingTarget();
 
 			const size_t maxFrames = std::max(bufferingTarget,
-				std::min(m_frameQueueMaxSize, bufferingTarget + std::max<size_t>(2, bufferingTarget / 2)));
+				std::min(m_frameQueueMaxSize.load(std::memory_order_relaxed), bufferingTarget + std::max<size_t>(2, bufferingTarget / 2)));
 
 			size_t q = 0;
 			{
@@ -992,6 +1007,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			// Pop one sample under lock
 			IMediaSample* pSample = nullptr;
 			bool isSafeCorrectionPoint = false;
+			uint64_t sceneEventId = 0;
 			bool freedConvertedQueueSpace = false;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
@@ -1002,6 +1018,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				const ConvertedSample convertedSample = m_convertedSampleQueue.front();
 				pSample = convertedSample.sample;
 				isSafeCorrectionPoint = convertedSample.isSafeCorrectionPoint;
+				sceneEventId = convertedSample.sceneEventId;
 				m_convertedSampleQueue.pop_front();
 				freedConvertedQueueSpace = true;
 			}
@@ -1083,23 +1100,38 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			// renderer display stale content.  With the optional mode enabled, drop
 			// only at a detected cut/near-black frame; MadVR then naturally keeps the
 			// previous image for that refresh interval.  No repeat sample is injected.
-			const REFERENCE_TIME nowStreamTime = NowStreamTime(m_pFilter);
-			const REFERENCE_TIME lateThreshold = std::max<REFERENCE_TIME>(1, (m_frameDuration * 3) / 4);
-			const DWORD correctionNow = GetTickCount();
-			const bool correctionCooldownElapsed =
-				(correctionNow - m_lastSceneAwareCorrectionTime) >= 1000;
-			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire) &&
-				isSafeCorrectionPoint &&
-				correctionCooldownElapsed &&
-				currentStart + lateThreshold < nowStreamTime)
+			// Scene-only timing work is deliberately skipped when the feature is
+			// disabled.  This preserves the old delivery path at essentially zero
+			// additional cost.
+			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire))
 			{
-				m_lastSceneAwareCorrectionTime = correctionNow;
-				++m_droppedFrameCount;
-				m_sceneAwareCorrectionDropCount.fetch_add(1, std::memory_order_relaxed);
-				DebugLog::Log("SCENE-AWARE CORRECTION: dropped late frame at safe boundary (late=%.3fms)",
-					(nowStreamTime - currentStart) / 10000.0);
-				pSample->Release();
-				continue;
+				const REFERENCE_TIME nowStreamTime = NowStreamTime(m_pFilter);
+				const REFERENCE_TIME lateThreshold = std::max<REFERENCE_TIME>(1, (m_frameDuration * 3) / 4);
+				const DWORD correctionNow = GetTickCount();
+				// Scene events are explicitly identified by the conversion worker.  A
+				// correction can occur at most once for each event, while the short
+				// interval guard prevents two genuinely distinct cuts from causing
+				// back-to-back corrections on adjacent delivery iterations.
+				const bool correctionIntervalElapsed =
+					(correctionNow - m_lastSceneAwareCorrectionTime.load(std::memory_order_relaxed)) >= 250;
+				const bool newSceneEvent = sceneEventId != 0 &&
+					sceneEventId != m_lastCorrectedSceneEventId.load(std::memory_order_relaxed);
+				const bool lateAtSafePoint = isSafeCorrectionPoint &&
+					currentStart + lateThreshold < nowStreamTime;
+				if (lateAtSafePoint)
+					m_sceneAwareLateCandidateCount.fetch_add(1, std::memory_order_relaxed);
+
+				if (lateAtSafePoint && newSceneEvent && correctionIntervalElapsed)
+				{
+					m_lastSceneAwareCorrectionTime.store(correctionNow, std::memory_order_relaxed);
+					m_lastCorrectedSceneEventId.store(sceneEventId, std::memory_order_relaxed);
+					m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
+					m_sceneAwareCorrectionDropCount.fetch_add(1, std::memory_order_relaxed);
+					DebugLog::Log("SCENE-AWARE CORRECTION: dropped late frame at safe boundary (late=%.3fms, event=%llu)",
+						(nowStreamTime - currentStart) / 10000.0, sceneEventId);
+					pSample->Release();
+					continue;
+				}
 			}
 
 			// 4) DELIVER - Let MadVR handle timing and buffering
@@ -1152,7 +1184,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 			if (FAILED(hr))
 			{
-				++m_droppedFrameCount;
+				m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 				++m_recentDeliveryFailures;
 				++deliveryFailureCount;
 				++deliveryFailuresSinceLastLog;
@@ -1209,7 +1241,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 	DWORD lastSlowConversionLogTime = 0;
 	uint64_t slowConversionsSinceLastLog = 0;
 	uint64_t maxSlowConversionUs = 0;
-	SceneSignature sceneSignature;
+	SceneDetectorState sceneDetectorState;
 	uint64_t sceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
 
 	for (;;)
@@ -1251,7 +1283,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			const uint64_t currentSceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
 			if (currentSceneDetectorGeneration != sceneDetectorGeneration)
 			{
-				sceneSignature = {};
+				sceneDetectorState = {};
 				sceneDetectorGeneration = currentSceneDetectorGeneration;
 			}
 			if (!m_isActive.load(std::memory_order_acquire))
@@ -1267,11 +1299,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				currentConvertedSize = m_convertedSampleQueue.size();
 			}
 
-			if (currentConvertedSize >= m_frameQueueMaxSize)
+			const size_t queueMaxSize = m_frameQueueMaxSize.load(std::memory_order_relaxed);
+			if (currentConvertedSize >= queueMaxSize)
 			{
 				++backpressureHits;
 				DebugLog::Log("CONVERSION WORKER: BACKPRESSURE hit - converted queue full (%zu/%zu), stopping conversion until delivery frees space",
-					currentConvertedSize, m_frameQueueMaxSize);
+					currentConvertedSize, queueMaxSize);
 				break;  // Stop conversion until a frame arrives or delivery frees converted space.
 			}
 
@@ -1311,7 +1344,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				DebugLog::Log("CONVERSION WORKER: GetDeliveryBuffer FAILED hr=0x%08x, dropping frame counter=%llu",
 					hr, videoFrame.GetCounter());
 				videoFrame.SourceBufferRelease();
-				++m_droppedFrameCount;
+				m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 				continue;
 			}
 
@@ -1336,7 +1369,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 				videoFrame.SourceBufferRelease();
 				pSample->Release();
-				++m_droppedFrameCount;
+				m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 				continue;
 			}
 
@@ -1344,22 +1377,27 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			videoFrame.SourceBufferRelease();
 
 			bool isSafeCorrectionPoint = false;
+			uint64_t sceneEventId = 0;
 			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire))
-				isSafeCorrectionPoint = IsSafeSceneAwareCorrectionPoint(pSample, sceneSignature);
+				isSafeCorrectionPoint = IsSafeSceneAwareCorrectionPoint(pSample, sceneDetectorState, sceneEventId);
 
-			// Add converted sample to queue
+			// Pending timestamp history is only consumed by CLOCK_SMART/SMART2.
+			// Publish it before enqueueing the sample so the delivery thread can
+			// never consume a sample whose late-bind timestamp is not visible yet.
+			// Avoid both operations for the other timing modes.
+			if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+				m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
 			{
-				CAutoLock convLock(&m_convertedQueueLock);
-				m_convertedSampleQueue.push_back({ pSample, isSafeCorrectionPoint });
+				REFERENCE_TIME sampleStart = 0, sampleStop = 0;
+				if (SUCCEEDED(pSample->GetTime(&sampleStart, &sampleStop)))
+					RecordPendingTimestamp(sampleStart);
 			}
 
-			// CRITICAL: ALWAYS record timestamps in pending history (not just for CLOCK_SMART modes)
-			// This eliminates race conditions and overhead is negligible (just writing a REFERENCE_TIME)
-			// The search only happens for CLOCK_SMART modes, so recording for all modes is harmless
-			REFERENCE_TIME sampleStart = 0, sampleStop = 0;
-			if (SUCCEEDED(pSample->GetTime(&sampleStart, &sampleStop)))
+			// Add converted sample to queue only after its timestamp history is
+			// published. The delivery thread is then free to drain immediately.
 			{
-				RecordPendingTimestamp(sampleStart);
+				CAutoLock convLock(&m_convertedQueueLock);
+				m_convertedSampleQueue.push_back({ pSample, isSafeCorrectionPoint, sceneEventId });
 			}
 
 			// Signal delivery thread that a converted sample is available
@@ -1433,11 +1471,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 	IMediaSample* sample,
-	SceneSignature& previous)
+	SceneDetectorState& state,
+	uint64_t& sceneEventId)
 {
-	// The HDR and MadVR paths use P010.  P010's luma plane is first, tightly
-	// packed, and has 10-bit values in the high bits of each 16-bit word.  Do not
-	// guess at other layouts: an unsupported format is simply not a safe point.
+	sceneEventId = 0;
+	// The HDR and MadVR paths use P010.  Keep scene analysis on the converted
+	// sample so the detector sees exactly the format that is delivered, while
+	// avoiding any work for unsupported render formats.
 	if (!sample || !IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010) || !m_mediaType.pbFormat)
 		return false;
 
@@ -1484,43 +1524,124 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 			const uint16_t luma = static_cast<uint16_t>(line[x] >> 6);
 			const size_t index = row * SceneSignature::COLUMNS + column;
 			current.luma[index] = luma;
+			current.histogram[std::min<size_t>(luma / 64, SceneSignature::HISTOGRAM_BINS - 1)]++;
 			totalLuma += luma;
 			if (luma <= 112)
 				++darkSampleCount;
 		}
 	}
 
+	current.averageLuma = static_cast<uint32_t>(totalLuma / current.luma.size());
 	current.valid = true;
 	const size_t sampleCount = current.luma.size();
-	const uint64_t averageLuma = totalLuma / sampleCount;
-	const bool nearBlack = averageLuma <= 96 && darkSampleCount >= (sampleCount * 9) / 10;
+	const bool nearBlack = current.averageLuma <= 96 && darkSampleCount >= (sampleCount * 9) / 10;
 
-	bool hardSceneCut = false;
-	if (previous.valid)
+	struct Difference
 	{
+		uint32_t averageLumaDifference = 0;
+		uint32_t changedSampleCount = 0;
+		uint32_t histogramDistance = 1000; // 0 = identical, 1000 = no overlap
+	};
+
+	const auto compare = [sampleCount](const SceneSignature& a, const SceneSignature& b,
+		uint16_t changeThreshold) -> Difference
+	{
+		Difference result;
 		uint64_t totalDifference = 0;
-		size_t changedSampleCount = 0;
 		for (size_t i = 0; i < sampleCount; ++i)
 		{
 			const uint16_t difference = static_cast<uint16_t>(abs(
-				static_cast<int>(current.luma[i]) - static_cast<int>(previous.luma[i])));
+				static_cast<int>(a.luma[i]) - static_cast<int>(b.luma[i])));
 			totalDifference += difference;
-			if (difference >= 56)
-				++changedSampleCount;
+			if (difference >= changeThreshold)
+				++result.changedSampleCount;
 		}
+		result.averageLumaDifference = static_cast<uint32_t>(totalDifference / sampleCount);
 
-		const uint64_t averageDifference = totalDifference / sampleCount;
-		hardSceneCut = averageDifference >= 96 && changedSampleCount >= (sampleCount * 2) / 3;
+		uint64_t intersection = 0;
+		uint64_t bTotal = 0;
+		for (size_t i = 0; i < SceneSignature::HISTOGRAM_BINS; ++i)
+		{
+			intersection += std::min(a.histogram[i], b.histogram[i]);
+			bTotal += b.histogram[i];
+		}
+		if (bTotal > 0)
+			result.histogramDistance = static_cast<uint32_t>(1000 - ((intersection * 1000) / bTotal));
+		return result;
+	};
+
+	bool sceneEvent = false;
+	if (state.previous.valid)
+	{
+		const Difference immediate = compare(current, state.previous, 48);
+		const Difference baseline = state.baseline.valid ? compare(current, state.baseline, 32) : immediate;
+
+		// Hard cuts have a large immediate structural change.  The histogram
+		// guard rejects ordinary camera motion with a large local difference.
+		const bool hardSceneCut =
+			immediate.averageLumaDifference >= 80 &&
+			immediate.changedSampleCount >= (sampleCount * 55) / 100 &&
+			immediate.histogramDistance >= 100;
+
+		// A fade/dissolve may never produce a large one-frame difference.  The
+		// slowly adapting baseline catches that case, while requiring a small
+		// amount of frame-to-frame movement and three confirming frames avoids
+		// treating normal motion as a scene boundary.
+		const bool gradualCandidate =
+			baseline.averageLumaDifference >= 52 &&
+			baseline.changedSampleCount >= (sampleCount * 45) / 100 &&
+			baseline.histogramDistance >= 70 &&
+			immediate.averageLumaDifference >= 8 &&
+			immediate.histogramDistance >= 10;
+
+		if (gradualCandidate)
+			++state.gradualCandidateFrames;
+		else
+			state.gradualCandidateFrames = 0;
+
+		sceneEvent = hardSceneCut || state.gradualCandidateFrames >= 3;
+		if (sceneEvent)
+		{
+			state.gradualCandidateFrames = 0;
+			state.baseline = current;
+		}
+	}
+	else
+	{
+		state.baseline = current;
 	}
 
-	previous = current;
-	return nearBlack || hardSceneCut;
+	// Adapt the baseline slowly between events.  This is intentionally done
+	// only by the conversion worker, with no queue lock held.
+	if (!sceneEvent && state.baseline.valid)
+	{
+		for (size_t i = 0; i < sampleCount; ++i)
+			state.baseline.luma[i] = static_cast<uint16_t>((state.baseline.luma[i] * 15u + current.luma[i] + 8u) / 16u);
+		for (size_t i = 0; i < SceneSignature::HISTOGRAM_BINS; ++i)
+			state.baseline.histogram[i] = static_cast<uint16_t>((state.baseline.histogram[i] * 15u + current.histogram[i] + 8u) / 16u);
+		state.baseline.averageLuma = (state.baseline.averageLuma * 15u + current.averageLuma + 8u) / 16u;
+	}
+
+	// Near-black is a safe boundary, but count one event per black interval
+	// rather than marking every black frame as a separate scene.
+	if (nearBlack && !state.previousNearBlack)
+		sceneEvent = true;
+	state.previousNearBlack = nearBlack;
+	state.previous = current;
+
+	if (sceneEvent)
+	{
+		sceneEventId = m_sceneEventSequence.fetch_add(1, std::memory_order_relaxed) + 1;
+		m_sceneAwareDetectedCount.fetch_add(1, std::memory_order_relaxed);
+	}
+
+	return sceneEvent;
 }
 
 
 size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget() {
 
-	size_t nominalTarget = (m_frameQueueMaxSize / 8);
+	size_t nominalTarget = (m_frameQueueMaxSize.load(std::memory_order_relaxed) / 8);
 	double fps = 60.0;
 	if (m_timeScale > 0 && m_frameDurationTicks > 0) fps = (double)m_timeScale / (double)m_frameDurationTicks;
 
@@ -1638,24 +1759,8 @@ void CBufferedLiveSourceVideoOutputPin::RecordPendingTimestamp(REFERENCE_TIME ti
 	m_pendingTimestamps[m_pendingTimestampIndex].timeStart = timeStart;
 	m_pendingTimestamps[m_pendingTimestampIndex].sequenceNumber = m_pendingSequenceCounter++;
 
-	size_t oldIndex = m_pendingTimestampIndex;
 	m_pendingTimestampIndex = (m_pendingTimestampIndex + 1) % PENDING_TIMESTAMP_SIZE;
 
-	// DIAGNOSTIC: Log every 10 records to verify recording is working
-	static uint64_t recordCount = 0;
-	++recordCount;
-	if (recordCount % 10 == 0)
-	{
-		// Count how many valid entries we have
-		size_t validCount = 0;
-		for (size_t i = 0; i < PENDING_TIMESTAMP_SIZE; i++)
-		{
-			if (m_pendingTimestamps[i].timeStart != 0)
-				++validCount;
-		}
-
-		//DebugLog::Log("PENDING-RECORD #%llu: timestamp=%.3fms, seq=%llu, index=%zu, validEntries=%zu/%zu",recordCount, timeStart / 10000.0, m_pendingSequenceCounter - 1, oldIndex, validCount, PENDING_TIMESTAMP_SIZE);
-	}
 }
 
 REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::FindNextPendingTimestamp(
