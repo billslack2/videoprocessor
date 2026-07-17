@@ -10,19 +10,6 @@
 
 #include "FullscreenVideoWindow.h"
 
-#include <windows.h>
-#include <dxgi1_2.h>
-#include <wrl/client.h>
-#include <vector>
-#include <cmath>
-
-#include <windows.h>
-#include <dxgi1_2.h>
-#include <wrl/client.h>
-
-#pragma comment(lib, "dxgi.lib")
-
-using Microsoft::WRL::ComPtr;
 
 FullscreenVideoWindow::FullscreenVideoWindow()
 {
@@ -39,69 +26,6 @@ FullscreenVideoWindow::~FullscreenVideoWindow()
 }
 
 
-
-static bool GetOutputForWindow(HWND hwnd, ComPtr<IDXGIOutput>& outOutput)
-{
-    HMONITOR targetMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-
-    ComPtr<IDXGIFactory1> factory;
-    if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
-        return false;
-
-    for (UINT a = 0;; a++)
-    {
-        ComPtr<IDXGIAdapter1> adapter;
-        if (factory->EnumAdapters1(a, &adapter) == DXGI_ERROR_NOT_FOUND)
-            break;
-
-        for (UINT o = 0;; o++)
-        {
-            ComPtr<IDXGIOutput> output;
-            if (adapter->EnumOutputs(o, &output) == DXGI_ERROR_NOT_FOUND)
-                break;
-
-            DXGI_OUTPUT_DESC desc{};
-            if (FAILED(output->GetDesc(&desc)))
-                continue;
-
-            if (desc.Monitor == targetMon)
-            {
-                outOutput = output;
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-static double MeasureRefreshHz_WaitForVBlank(HWND hwnd, int warmupVBlanks = 5, int sampleVBlanks = 240)
-{
-    ComPtr<IDXGIOutput> output;
-    if (!GetOutputForWindow(hwnd, output))
-        return 0.0;
-
-    LARGE_INTEGER freq{};
-    QueryPerformanceFrequency(&freq);
-
-    // Warm up: sync onto vblank boundary
-    for (int i = 0; i < warmupVBlanks; i++)
-        output->WaitForVBlank();
-
-    LARGE_INTEGER t0{}, t1{};
-    QueryPerformanceCounter(&t0);
-
-    for (int i = 0; i < sampleVBlanks; i++)
-        output->WaitForVBlank();
-
-    QueryPerformanceCounter(&t1);
-
-    const double seconds = double(t1.QuadPart - t0.QuadPart) / double(freq.QuadPart);
-    if (seconds <= 0.0)
-        return 0.0;
-
-    // sampleVBlanks vblanks elapsed => Hz = vblanks / seconds
-    return double(sampleVBlanks) / seconds;
-}
 
 LRESULT CALLBACK FullscreenVideoWindow::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -173,10 +97,6 @@ void FullscreenVideoWindow::CreateWindowedFullscreen(HMONITOR hmon, HWND parentW
     if (!m_hwnd)
         throw std::runtime_error("Failed to create window");
 
-    double measuredRefreshRate = MeasureRefreshHz_WaitForVBlank(m_hwnd);
-    DebugLog::Log("Calculated measuredRefreshRate = % .2f Hz", measuredRefreshRate);
-
-    
 }
 
 

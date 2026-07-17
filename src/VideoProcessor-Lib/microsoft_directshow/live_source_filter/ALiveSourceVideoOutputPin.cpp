@@ -88,6 +88,8 @@ void ALiveSourceVideoOutputPin::Initialize(
 {
 	if (!videoFrameFormatter)
 		throw std::runtime_error("Cannot set null IVideoFrameFormatter");
+	if (!timingClock)
+		throw std::runtime_error("Cannot set null ITimingClock");
 
 	if (frameDuration <= 0)
 		throw std::runtime_error("Duration must be > 0");
@@ -98,6 +100,8 @@ void ALiveSourceVideoOutputPin::Initialize(
 		throw std::runtime_error("timeScale must be > 0");
 	if (frameDurationTicks == 0)
 		throw std::runtime_error("frameDurationTicks must be > 0");
+	if (timingClock->TimingClockTicksPerSecond() == 0)
+		throw std::runtime_error("Timing clock tick rate must be > 0");
 
 	m_videoFrameFormatter = videoFrameFormatter;
 	m_frameDuration = frameDuration;
@@ -126,6 +130,7 @@ void ALiveSourceVideoOutputPin::Initialize(
 
 HRESULT ALiveSourceVideoOutputPin::GetMediaType(int iPosition, CMediaType* pmt)
 {
+	CheckPointer(pmt, E_POINTER);
 	if (iPosition < 0)
 		return E_INVALIDARG;
 	if (iPosition > 0)
@@ -163,6 +168,8 @@ HRESULT ALiveSourceVideoOutputPin::CheckMediaType(const CMediaType* pmt)
 HRESULT ALiveSourceVideoOutputPin::DecideAllocator(IMemInputPin* pPin, IMemAllocator** ppAlloc)
 {
 	// TODO: We can be more lenient here if this comes from a VideoInfo1 renderer as we're not using the HDR data extensions
+	CheckPointer(pPin, E_POINTER);
+	CheckPointer(ppAlloc, E_POINTER);
 
 	HRESULT hr = NOERROR;
 	*ppAlloc = nullptr;
@@ -174,7 +181,12 @@ HRESULT ALiveSourceVideoOutputPin::DecideAllocator(IMemInputPin* pPin, IMemAlloc
 	ALLOCATOR_PROPERTIES prop;
 	ZeroMemory(&prop, sizeof(prop));
 
-	pPin->GetAllocatorRequirements(&prop);
+	hr = pPin->GetAllocatorRequirements(&prop);
+	// Some downstream pins do not implement allocator requirements.  In that
+	// case the zeroed defaults are valid and DecideBufferSize supplies the
+	// actual request; other failures should be reported to the caller.
+	if (FAILED(hr) && hr != E_NOTIMPL)
+		return hr;
 
 	if (prop.cbAlign == 0)
 		prop.cbAlign = 1;
@@ -209,6 +221,7 @@ HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOC
 {
 	CheckPointer(pAlloc,E_POINTER);
 	CheckPointer(ppropInputRequest,E_POINTER);
+	CheckPointer(m_videoFrameFormatter, E_UNEXPECTED);
 
 	HRESULT hr = NOERROR;
 
@@ -227,7 +240,7 @@ HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOC
 
 	ASSERT(ppropInputRequest->cbBuffer);
 
-	ALLOCATOR_PROPERTIES Actual;
+	ALLOCATOR_PROPERTIES Actual = {};
 	hr = pAlloc->SetProperties(ppropInputRequest,&Actual);
 	if(FAILED(hr))
 	{
@@ -253,6 +266,7 @@ HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOC
 
 STDMETHODIMP ALiveSourceVideoOutputPin::GetMaxStreamOffset(REFERENCE_TIME *prtMaxOffset)
 {
+	CheckPointer(prtMaxOffset, E_POINTER);
 	*prtMaxOffset = 0;
 	return S_OK;
 }
@@ -262,6 +276,7 @@ STDMETHODIMP ALiveSourceVideoOutputPin::GetPushSourceFlags(ULONG *pFlags)
 {
 	// Return (* pFlags) = 0 [if this is a iAMPushSource]
 	// https://docs.microsoft.com/en-us/windows/win32/api/strmif/nn-strmif-ireferenceclock
+	CheckPointer(pFlags, E_POINTER);
 	*pFlags = 0;
 	return S_OK;
 }
@@ -269,6 +284,7 @@ STDMETHODIMP ALiveSourceVideoOutputPin::GetPushSourceFlags(ULONG *pFlags)
 
 STDMETHODIMP ALiveSourceVideoOutputPin::GetStreamOffset(REFERENCE_TIME *prtOffset)
 {
+	CheckPointer(prtOffset, E_POINTER);
 	*prtOffset = 0;
 	return S_OK;
 }
@@ -295,6 +311,7 @@ STDMETHODIMP ALiveSourceVideoOutputPin::SetStreamOffset(REFERENCE_TIME rtOffset)
 STDMETHODIMP ALiveSourceVideoOutputPin::GetLatency(REFERENCE_TIME *prtLatency)
 {
 	// latency in 100-nanosecond units.
+	CheckPointer(prtLatency, E_POINTER);
 	*prtLatency = 0;  // TODO: Just a guess
 	return S_OK;
 }
@@ -408,6 +425,7 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_frameCounter = 0;
 	m_previousFrameCounter = 0;
 	m_frameCounterOffset = 0;  // This will be recalculated on first new frame
+	m_frameCounterOffsetValid = false;
 	m_previousTimeStop = 0;
 	m_startTimeOffset = 0;     // CRITICAL: Must reset to 0 to allow recalculation on first frame
 	m_droppedFrameCount = 0;
@@ -430,6 +448,7 @@ void ALiveSourceVideoOutputPin::Reset()
 	memset(m_durationHistory, 0, sizeof(m_durationHistory));
 	m_durationHistoryIndex = 0;
 	m_durationHistoryCount = 0;
+	m_durationHistorySum = 0;
 	
 	// Reset smart timing statistics
 	m_smartHardwareTimestampCount = 0;
@@ -481,20 +500,10 @@ REFERENCE_TIME ALiveSourceVideoOutputPin::CalculateSmartFrameDuration() const
 		return (REFERENCE_TIME)((REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) / m_timeScale);
 	}
 
-	// Calculate average duration using integer math to avoid floating point precision issues
-	int64_t totalDuration = 0;
-	const size_t sampleCount = (m_durationHistoryCount < DURATION_HISTORY_SIZE) ? m_durationHistoryCount : DURATION_HISTORY_SIZE;
-	
-for (size_t i = 0; i < sampleCount; i++)
-	{
-		totalDuration += m_durationHistory[i];
-	}
-
-	// Use integer division for average (avoiding floating point)
-	const REFERENCE_TIME averageDuration = totalDuration / sampleCount;
-
-	DbgLog((LOG_TRACE, 1, TEXT("CalculateSmartFrameDuration(): Average of %zu samples = %I64d (%.3fms)"),
-		sampleCount, averageDuration, averageDuration / 10000.0));
+	// The history maintains a running sum, so CLOCK_SMART2 does not rescan
+	// the entire 100-entry window on every converted frame.
+	const size_t sampleCount = m_durationHistoryCount;
+	const REFERENCE_TIME averageDuration = m_durationHistorySum / sampleCount;
 
 	return averageDuration;
 }
@@ -510,14 +519,15 @@ void ALiveSourceVideoOutputPin::UpdateFrameDurationHistory(REFERENCE_TIME actual
 		return;
 	}
 
-	// Store duration in circular buffer
+	// Store duration in circular buffer and maintain the sum incrementally.
+	if (m_durationHistoryCount == DURATION_HISTORY_SIZE)
+		m_durationHistorySum -= m_durationHistory[m_durationHistoryIndex];
+	else
+		++m_durationHistoryCount;
+
 	m_durationHistory[m_durationHistoryIndex] = actualDuration;
+	m_durationHistorySum += actualDuration;
 	m_durationHistoryIndex = (m_durationHistoryIndex + 1) % DURATION_HISTORY_SIZE;
-	
-	if (m_durationHistoryCount < DURATION_HISTORY_SIZE)
-	{
-		m_durationHistoryCount++;
-	}
 
 	// Log periodic statistics (every 50 frames for better visibility during testing)
 	if (m_durationHistoryCount > 0 && (m_durationHistoryCount % 50) == 0)
@@ -537,10 +547,16 @@ void ALiveSourceVideoOutputPin::UpdateFrameDurationHistory(REFERENCE_TIME actual
 
 HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoFrame, IMediaSample* const pSample)
 {
+	CheckPointer(pSample, E_POINTER);
 	CAutoLock timingLock(&m_timingStateLock);
 	assert(videoFrame.GetTimingTimestamp() > 0);
 	assert(m_frameDuration > 0);
-	assert(m_timingClock->TimingClockTicksPerSecond() > 0);
+	// Initialize() validates this, but keep the render path defensive because
+	// this method is also reached from asynchronous worker threads.
+	if (!m_timingClock || m_timingClock->TimingClockTicksPerSecond() == 0)
+		return E_UNEXPECTED;
+	if (!m_videoFrameFormatter)
+		return E_UNEXPECTED;
 
 	// RATIONAL_RATIONAL TIMELINE PROTECTION: Detect and recover from timeline corruption BEFORE incrementing frame counter
 	// This is critical because the frame counter increment at the start of the function means we need to detect
@@ -577,9 +593,10 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 	// Guarantee first frame to start counting at zero
 	uint64_t streamFrameCounter = videoFrame.GetCounter();
-	if (m_frameCounterOffset == 0)
+	if (!m_frameCounterOffsetValid)
 	{
 		m_frameCounterOffset = streamFrameCounter;
+		m_frameCounterOffsetValid = true;
 		
 		// Log the frame counter offset being set (happens after reset)
 		DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): Frame counter offset set to %I64u (first frame after reset)"),
@@ -684,8 +701,12 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	{
 		// HYBRID MODE: Hardware timestamp for start time, rational math for duration, monotonic enforcement
 		
-		// Get raw hardware timestamp
-		REFERENCE_TIME rawHardwareTime = (REFERENCE_TIME)(videoFrame.GetTimingTimestamp() * (10000000.0 / m_timingClock->TimingClockTicksPerSecond()));
+		// Get raw hardware timestamp using the same integer conversion as the
+		// other clock-based modes.  The previous double conversion lost
+		// precision as the hardware clock value grew.
+		REFERENCE_TIME rawHardwareTime = ConvertTimingClockToReferenceTime(
+			videoFrame.GetTimingTimestamp(),
+			m_timingClock->TimingClockTicksPerSecond());
 		
 		// Initialize rational frame duration and limits on first frame
 		if (m_rationalFrameDuration == 0)
@@ -976,7 +997,8 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	if (FAILED(hr))
 		return hr;
 
-	assert(pData);
+	if (!pData)
+		return E_POINTER;
 
 	// Format (which can just be a copy or a full decode) the video frame to the
 	// DirectShow buffer
@@ -1024,39 +1046,63 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	// HDR metadata
 	//
 
-	// Note: This can be updated from a different thread, can go wrong but never saw
-	//       it happen so leaving this as-is.
+	// m_hdrData and m_hdrChanged are protected by m_timingStateLock held for
+	// this entire render operation.
 	if (m_hdrData)
 	{
 		if ((streamFrameCounter % 100) == 1 || m_hdrChanged)
 		{
 			IMediaSideData* pMediaSideData = nullptr;
-			if (FAILED(pSample->QueryInterface(&pMediaSideData)))
-				throw std::runtime_error("Failed to get IMediaSideData");
+			const HRESULT sideDataQueryResult = pSample->QueryInterface(&pMediaSideData);
+			if (FAILED(sideDataQueryResult))
+			{
+				// HDR side data is optional.  A renderer that does not expose
+				// IMediaSideData must not terminate the conversion worker.
+				DbgLog((LOG_WARNING, 1, TEXT("::FillBuffer(#%I64u): IMediaSideData unavailable (0x%08x); continuing without HDR metadata"),
+					videoFrame.GetCounter(), sideDataQueryResult));
+				m_hdrChanged = false;
+			}
+			else
+			{
+				bool sideDataWriteSucceeded = true;
 
-			MediaSideDataHDRContentLightLevel hdrLightLevel;
-			ZeroMemory(&hdrLightLevel, sizeof(hdrLightLevel));
-			hdrLightLevel.MaxCLL = (unsigned int)round(m_hdrData->maxCll);
-			hdrLightLevel.MaxFALL = (unsigned int)round(m_hdrData->maxFall);
-			pMediaSideData->SetSideData(IID_MediaSideDataHDRContentLightLevel, (const BYTE*)&hdrLightLevel, sizeof(hdrLightLevel));
+				MediaSideDataHDRContentLightLevel hdrLightLevel;
+				ZeroMemory(&hdrLightLevel, sizeof(hdrLightLevel));
+				hdrLightLevel.MaxCLL = (unsigned int)round(m_hdrData->maxCll);
+				hdrLightLevel.MaxFALL = (unsigned int)round(m_hdrData->maxFall);
+				HRESULT sideDataResult = pMediaSideData->SetSideData(IID_MediaSideDataHDRContentLightLevel, (const BYTE*)&hdrLightLevel, sizeof(hdrLightLevel));
+				if (FAILED(sideDataResult))
+				{
+					DbgLog((LOG_WARNING, 1, TEXT("::FillBuffer(#%I64u): HDR content-light side data failed (0x%08x)"),
+						videoFrame.GetCounter(), sideDataResult));
+					sideDataWriteSucceeded = false;
+				}
 
-			MediaSideDataHDR hdr;
-			ZeroMemory(&hdr, sizeof(hdr));
-			hdr.display_primaries_x[0] = m_hdrData->displayPrimaryGreenX;
-			hdr.display_primaries_x[1] = m_hdrData->displayPrimaryBlueX;
-			hdr.display_primaries_x[2] = m_hdrData->displayPrimaryRedX;
-			hdr.display_primaries_y[0] = m_hdrData->displayPrimaryGreenY;
-			hdr.display_primaries_y[1] = m_hdrData->displayPrimaryBlueY;
-			hdr.display_primaries_y[2] = m_hdrData->displayPrimaryRedY;
-			hdr.white_point_x = m_hdrData->whitePointX;
-			hdr.white_point_y = m_hdrData->whitePointY;
-			hdr.max_display_mastering_luminance = m_hdrData->masteringDisplayMaxLuminance;
-			hdr.min_display_mastering_luminance = m_hdrData->masteringDisplayMinLuminance;
-			pMediaSideData->SetSideData(IID_MediaSideDataHDR, (const BYTE*)&hdr, sizeof(hdr));
+				MediaSideDataHDR hdr;
+				ZeroMemory(&hdr, sizeof(hdr));
+				hdr.display_primaries_x[0] = m_hdrData->displayPrimaryGreenX;
+				hdr.display_primaries_x[1] = m_hdrData->displayPrimaryBlueX;
+				hdr.display_primaries_x[2] = m_hdrData->displayPrimaryRedX;
+				hdr.display_primaries_y[0] = m_hdrData->displayPrimaryGreenY;
+				hdr.display_primaries_y[1] = m_hdrData->displayPrimaryBlueY;
+				hdr.display_primaries_y[2] = m_hdrData->displayPrimaryRedY;
+				hdr.white_point_x = m_hdrData->whitePointX;
+				hdr.white_point_y = m_hdrData->whitePointY;
+				hdr.max_display_mastering_luminance = m_hdrData->masteringDisplayMaxLuminance;
+				hdr.min_display_mastering_luminance = m_hdrData->masteringDisplayMinLuminance;
+				sideDataResult = pMediaSideData->SetSideData(IID_MediaSideDataHDR, (const BYTE*)&hdr, sizeof(hdr));
+				if (FAILED(sideDataResult))
+				{
+					DbgLog((LOG_WARNING, 1, TEXT("::FillBuffer(#%I64u): HDR mastering-display side data failed (0x%08x)"),
+						videoFrame.GetCounter(), sideDataResult));
+					sideDataWriteSucceeded = false;
+				}
 
-			pMediaSideData->Release();
+				pMediaSideData->Release();
 
-			m_hdrChanged = false;
+				if (sideDataWriteSucceeded)
+					m_hdrChanged = false;
+			}
 		}
 	}
 

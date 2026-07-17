@@ -318,7 +318,13 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-
+	// Actual display refresh period as reported by the Desktop Window Manager.
+	if (m_stats.displayRefreshRate > 0.0)
+		line.Format(TEXT("- Display Rate:   %.6f Hz"), m_stats.displayRefreshRate);
+	else
+		line.Format(TEXT("- Display Rate:   ---"));
+	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
 
 	// Measured refresh rate (calculated from frame arrivals)
 	if (m_stats.measuredRefreshRate > 0.0)
@@ -427,7 +433,10 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += 4;
 
 	// Queue info
-	line.Format(TEXT("Queue:            %llu/%llu%s"), m_stats.currentQueueSize, m_stats.maxQueueSize, m_stats.isQueueFull ? TEXT(" [FULL]") : TEXT(""));
+	line.Format(TEXT("Queue R/C/T:      %zu/%zu/%zu/%zu%s"),
+		m_stats.rawQueueSize, m_stats.convertedQueueSize,
+		m_stats.currentQueueSize, m_stats.maxQueueSize,
+		m_stats.isQueueFull ? TEXT(" [FULL]") : TEXT(""));
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
@@ -447,8 +456,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	line.Format(TEXT("Scene Detect:     %llu detected, %llu late"),
-		m_stats.sceneDetectDetected, m_stats.sceneDetectLateCandidates);
+	line.Format(TEXT("Scene Detect:     %llu"), m_stats.sceneDetectDetected);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
@@ -487,6 +495,8 @@ CString StatsOverlayWindow::FormatTime(double seconds)
 CString StatsOverlayWindow::FormatQueueStatus()
 {
 	CString result;
-	result.Format(TEXT("Queue: %zu / %zu"), m_stats.currentQueueSize, m_stats.maxQueueSize);
+	result.Format(TEXT("Queue R/C/T: %zu/%zu/%zu/%zu"),
+		m_stats.rawQueueSize, m_stats.convertedQueueSize,
+		m_stats.currentQueueSize, m_stats.maxQueueSize);
 	return result;
 }
