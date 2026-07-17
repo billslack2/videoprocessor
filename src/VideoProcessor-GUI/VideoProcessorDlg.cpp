@@ -10,7 +10,17 @@
 
 #include <atlstr.h>
 #include <algorithm>
+#include <dwmapi.h>
+#include <dxgi1_2.h>
+#include <wrl/client.h>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 #include <vector>
+
+#pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "dxgi.lib")
 
 #include <version.h>
 #include <cie.h>
@@ -28,6 +38,167 @@
 
 
 #include "VideoProcessorDlg.h"
+
+namespace
+{
+using Microsoft::WRL::ComPtr;
+
+class DisplayRefreshRateSampler
+{
+public:
+	DisplayRefreshRateSampler()
+		: m_thread(&DisplayRefreshRateSampler::Run, this)
+	{
+	}
+
+	void SetWindow(HWND hwnd)
+	{
+		const HMONITOR monitor = hwnd ? MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) : nullptr;
+		{
+			std::lock_guard<std::mutex> lock(m_mutex);
+			if (m_monitor == monitor)
+				return;
+			m_monitor = monitor;
+			m_rate = 0.0;
+		}
+		m_wake.notify_one();
+	}
+
+	double GetRate() const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		return m_rate;
+	}
+
+private:
+	static bool FindOutput(HMONITOR monitor, ComPtr<IDXGIOutput>& result)
+	{
+		ComPtr<IDXGIFactory1> factory;
+		if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
+			return false;
+
+		for (UINT adapterIndex = 0;; ++adapterIndex)
+		{
+			ComPtr<IDXGIAdapter1> adapter;
+			if (factory->EnumAdapters1(adapterIndex, &adapter) == DXGI_ERROR_NOT_FOUND)
+				break;
+
+			for (UINT outputIndex = 0;; ++outputIndex)
+			{
+				ComPtr<IDXGIOutput> output;
+				if (adapter->EnumOutputs(outputIndex, &output) == DXGI_ERROR_NOT_FOUND)
+					break;
+
+				DXGI_OUTPUT_DESC desc = {};
+				if (SUCCEEDED(output->GetDesc(&desc)) && desc.Monitor == monitor)
+				{
+					result = output;
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	void Run()
+	{
+		CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
+		LARGE_INTEGER frequency = {};
+		QueryPerformanceFrequency(&frequency);
+
+		for (;;)
+		{
+			HMONITOR monitor = nullptr;
+			{
+				std::unique_lock<std::mutex> lock(m_mutex);
+				m_wake.wait(lock, [this] { return m_monitor != nullptr; });
+				monitor = m_monitor;
+			}
+
+			ComPtr<IDXGIOutput> output;
+			if (!FindOutput(monitor, output))
+			{
+				std::unique_lock<std::mutex> lock(m_mutex);
+				m_wake.wait_for(lock, std::chrono::seconds(1), [this, monitor] {
+					return m_monitor != monitor;
+				});
+				continue;
+			}
+
+			LARGE_INTEGER first = {};
+			LARGE_INTEGER last = {};
+			unsigned int samples = 0;
+			for (;;)
+			{
+				if (output->WaitForVBlank() != S_OK)
+					break;
+
+				LARGE_INTEGER now = {};
+				QueryPerformanceCounter(&now);
+				if (samples == 0)
+					first = now;
+				last = now;
+				++samples;
+
+				if (samples >= 120)
+				{
+					const double elapsed = static_cast<double>(last.QuadPart - first.QuadPart) /
+						static_cast<double>(frequency.QuadPart);
+					if (elapsed > 0.0)
+					{
+						const double rate = static_cast<double>(samples - 1) / elapsed;
+						if (rate >= 20.0 && rate <= 120.0)
+						{
+							std::lock_guard<std::mutex> lock(m_mutex);
+							m_rate = rate;
+						}
+					}
+					samples = 0;
+
+					// Display timing changes infrequently.  A 120-vblank measurement
+					// gives a stable value, then we leave the output alone for five
+					// seconds rather than continuously polling every refresh.
+					std::this_thread::sleep_for(std::chrono::seconds(5));
+				}
+
+				std::lock_guard<std::mutex> lock(m_mutex);
+				if (m_monitor != monitor)
+					break;
+			}
+		}
+	}
+
+	mutable std::mutex m_mutex;
+	std::condition_variable m_wake;
+	std::thread m_thread;
+	HMONITOR m_monitor = nullptr;
+	double m_rate = 0.0;
+};
+
+// IDXGIOutput::WaitForVBlank has no cancellation mechanism. Keep this sampler
+// alive for the process lifetime so application shutdown can never block while
+// joining the worker.
+DisplayRefreshRateSampler* g_displayRefreshRateSampler = new DisplayRefreshRateSampler();
+
+// DWM exposes the compositor's measured refresh period in QPC ticks.  This is
+// non-blocking and therefore safe to sample from the UI stats timer.
+double GetDisplayRefreshRateHz(HWND hwnd)
+{
+	DWM_TIMING_INFO timing = {};
+	timing.cbSize = sizeof(timing);
+	if (!hwnd || FAILED(DwmGetCompositionTimingInfo(hwnd, &timing)) || timing.qpcRefreshPeriod == 0)
+		return 0.0;
+
+	LARGE_INTEGER qpcFrequency = {};
+	if (!QueryPerformanceFrequency(&qpcFrequency) || qpcFrequency.QuadPart <= 0)
+		return 0.0;
+
+	const double refreshRate = static_cast<double>(qpcFrequency.QuadPart) /
+		static_cast<double>(timing.qpcRefreshPeriod);
+	return (refreshRate >= 20.0 && refreshRate <= 120.0) ? refreshRate : 0.0;
+}
+}
 
 
 BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
@@ -750,7 +921,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	assert(m_captureDevice);
 
 	m_captureDeviceVideoState = videoState;
-	UpdateNewLldvCandidate();
+	const bool newLldvJustConfirmed = UpdateNewLldvCandidate();
 
 	// Reset refresh rate tracking on video state change to prevent false positive detection
 	m_lastKnownRefreshRate = 0.0;
@@ -797,9 +968,18 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	// If the renderer did not accept the new state we need to restart the renderer
 	if (!rendererAcceptedState)
 	{
+		if (newLldvJustConfirmed && IsNewLldvModeSelected())
+		{
+			// BT.2020/SDR LLDV changes the effective output to PQ while the raw
+			// DeckLink EOTF remains SDR.  Use the stabilized LLDV restart path.
+			ScheduleNewLldvRendererRestart();
+		}
+		else
+		{
 		DbgLog((LOG_TRACE, 1,
 			TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange():  - Renderer did not accept state, m_wantToRestartRenderer=true")));
 		m_wantToRestartRenderer = true;
+		}
 	}
 	// Note: Automatic reset for signal changes is now handled at the lower level
 	// by CBufferedLiveSourceVideoOutputPin detecting frame counter changes
@@ -1976,7 +2156,9 @@ void CVideoProcessorDlg::RenderStop()
 
 	// Cancel any pending EOTF change restart timer - a restart is already happening
 	KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
+	KillTimer(LLDV_CHANGE_RESTART_TIMER_ID);
 	m_eotfChangeRestartCooldownSeconds = -1;
+	m_lldvChangeRestartDelaySeconds = -1;
 	m_eotfCheckCooldownSeconds = 0;
 
 	assert(m_captureDevice);
@@ -2539,6 +2721,16 @@ void CVideoProcessorDlg::BuildPushRestartVideoState()
 	}
 }
 
+void CVideoProcessorDlg::ScheduleNewLldvRendererRestart()
+{
+	if (m_rendererState != RendererState::RENDERSTATE_RENDERING ||
+		m_lldvChangeRestartDelaySeconds >= 0)
+		return;
+
+	m_lldvChangeRestartDelaySeconds = 2;
+	SetTimer(LLDV_CHANGE_RESTART_TIMER_ID, 1000, nullptr);
+}
+
 
 void CVideoProcessorDlg::_FatalError(int line, const std::string& functionName, const CString& error)
 {
@@ -3039,15 +3231,10 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	// Handle resize debounce timer
 	if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 	{
-		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
-		{
-			KillTimer(RESIZE_DEBOUNCE_TIMER_ID);
-
-			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Resetting renderer after resize")));
-			m_videoRenderer->Reset();
-
-			DEBUGLOG("RESIZE RESET");
-		}
+		// Resizing the host window does not change the live media timeline.  Do
+		// not reset the renderer here; that made fullscreen/windowed transitions
+		// unnecessarily rebuild and re-prime the DirectShow graph.
+		KillTimer(RESIZE_DEBOUNCE_TIMER_ID);
 		return;
 	}
 	
@@ -3116,6 +3303,28 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 
+	// DeckLink reports LLDV as BT.2020 + SDR, so the normal raw-EOTF change
+	// path cannot see the effective SDR-to-PQ transition.  Once the opt-in
+	// heuristic has been stable, rebuild the graph after a short delay; this is
+	// the same practical operation as Shift+R, but only for newlldv=true.
+	if (nIDEvent == LLDV_CHANGE_RESTART_TIMER_ID)
+	{
+		if (--m_lldvChangeRestartDelaySeconds <= 0)
+		{
+			KillTimer(LLDV_CHANGE_RESTART_TIMER_ID);
+			m_lldvChangeRestartDelaySeconds = -1;
+
+			if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
+			{
+				DbgLog((LOG_TRACE, 1, TEXT("New LLDV heuristic: restarting renderer after PQ/HDR metadata stabilization")));
+				DebugLog::Log("New LLDV heuristic confirmed: restarting renderer for effective PQ transition");
+				m_wantToRestartRenderer = true;
+				UpdateState();
+			}
+		}
+		return;
+	}
+
 	// Handle regular 1-second timer for UI updates
 	if (nIDEvent == TIMER_ID_1SECOND)
 	{
@@ -3124,8 +3333,14 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		// depend on receiving a second video-state notification.
 		if (UpdateNewLldvCandidate() && IsNewLldvModeSelected())
 		{
-			DbgLog((LOG_TRACE, 1, TEXT("New LLDV heuristic confirmed; applying PQ and synthetic HDR metadata")));
-			BuildPushRestartVideoState();
+			DbgLog((LOG_TRACE, 1, TEXT("New LLDV heuristic confirmed; preparing PQ and synthetic HDR metadata")));
+
+			// Build the effective PQ state now so the renderer will use it when
+			// the delayed restart starts a fresh DirectShow graph.  Do not rely on
+			// OnVideoState rejection alone: the existing graph may retain SDR media
+			// type details until an explicit restart, especially in fullscreen.
+			BuildPushVideoState();
+			ScheduleNewLldvRendererRestart();
 		}
 
 		// EOTF CHANGE CHECK: Decrement cooldown timer if set
@@ -3228,11 +3443,13 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				}
 			}
 
-			const size_t currentQueueSize = m_videoRenderer->GetConvertedQueueSize() + m_videoRenderer->GetFrameQueueSize();
+			const size_t rawQueueSize = m_videoRenderer->GetFrameQueueSize();
+			const size_t convertedQueueSize = m_videoRenderer->GetConvertedQueueSize();
+			const size_t currentQueueSize = rawQueueSize + convertedQueueSize;
 			
 			const uint64_t droppedFrames = m_videoRenderer->DroppedFrameCount();
 
-			cstring.Format(_T("%lu"), currentQueueSize);
+			cstring.Format(_T("%zu/%zu/%zu"), rawQueueSize, convertedQueueSize, currentQueueSize);
 			m_rendererVideoFrameQueueSizeText.SetWindowText(cstring);
 
 			cstring.Format(_T("%.01f"), m_videoRenderer->EntryLatencyMs());
@@ -3309,8 +3526,26 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 void CVideoProcessorDlg::UpdateStatsOverlay()
 {
+	HWND displayWindow = nullptr;
+	if (m_fullScreenVideoWindow && IsWindow(m_fullScreenVideoWindow->GetHWND()))
+		displayWindow = m_fullScreenVideoWindow->GetHWND();
+	else if (m_windowedVideoWindow.GetSafeHwnd())
+		displayWindow = m_windowedVideoWindow.GetSafeHwnd();
+	double displayRefreshRate = GetDisplayRefreshRateHz(displayWindow);
+	if (displayRefreshRate <= 0.0)
+	{
+		g_displayRefreshRateSampler->SetWindow(displayWindow);
+		displayRefreshRate = g_displayRefreshRateSampler->GetRate();
+	}
+
 	if (!m_statsOverlay || !m_statsOverlay->IsVisible() || !m_lastStatsData)
 		return;
+
+	// Fullscreen/windowed changes can put a no-activate layered overlay behind
+	// a renderer window.  Reassert topmost only every five seconds while it is
+	// visible; this is UI-only and does not touch the DirectShow graph.
+	if (m_timerSeconds % 5 == 0)
+		m_statsOverlay->UpdatePosition(displayWindow ? displayWindow : GetSafeHwnd());
 
 	StatsData stats;
 
@@ -3324,6 +3559,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 		// Refresh rate
 		stats.refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
+		stats.displayRefreshRate = displayRefreshRate;
 
 		// EOTF
 		stats.eotf = ToString(m_captureDeviceVideoState->eotf);
@@ -3357,7 +3593,9 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	// Queue stats
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
 	{
-		stats.currentQueueSize = m_videoRenderer->GetFrameQueueSize() + m_videoRenderer->GetConvertedQueueSize();
+		stats.rawQueueSize = m_videoRenderer->GetFrameQueueSize();
+		stats.convertedQueueSize = m_videoRenderer->GetConvertedQueueSize();
+		stats.currentQueueSize = stats.rawQueueSize + stats.convertedQueueSize;
 		stats.maxQueueSize = GetRendererVideoFrameQueueSizeMax();
 		stats.isQueueFull = (stats.currentQueueSize >= stats.maxQueueSize);
 
@@ -3366,7 +3604,6 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 		stats.sceneDetectCorrectionDrops = m_videoRenderer->SceneAwareCorrectionDropCount();
 		stats.sceneDetectDetected = m_videoRenderer->SceneAwareDetectedCount();
-		stats.sceneDetectLateCandidates = m_videoRenderer->SceneAwareLateCandidateCount();
 	}
 
 	// Capture device frame counts

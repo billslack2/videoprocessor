@@ -18,6 +18,7 @@ struct StatsData
 	// Video format info
 	CString resolution;        // e.g., "3840x2160"
 	double refreshRate = 0.0;  // Hz (legacy - still used for display)
+	double displayRefreshRate = 0.0; // Measured desktop/display refresh rate (Hz)
 	CString eotf;              // e.g., "PQ"
 	CString colorspace;        // e.g., "BT.2020"
 	CString pixelFormat;       // e.g., "P010"
@@ -38,6 +39,8 @@ struct StatsData
 	CString ppmSource;               // Source of PPM value (e.g., "VideoProcessor.cfg", "default")
 
 	// Queue stats
+	size_t rawQueueSize = 0;
+	size_t convertedQueueSize = 0;
 	size_t currentQueueSize = 0;
 	size_t maxQueueSize = 0;
 	bool isQueueFull = false;
@@ -52,7 +55,6 @@ struct StatsData
 	uint64_t queueDroppedFrames = 0;
 	uint64_t sceneDetectCorrectionDrops = 0;
 	uint64_t sceneDetectDetected = 0;
-	uint64_t sceneDetectLateCandidates = 0;
 
 	// Video info
 	CString videoConversion;
@@ -157,7 +159,7 @@ private:
 	static const int MARGIN_RIGHT = 500;
 	static const int MARGIN_BOTTOM = 320;    // Move up 20 pixels (was 300)
 	static const int WINDOW_WIDTH = 420;     // Keep width the same
-	static const int WINDOW_HEIGHT = 518;    // Scene Detect statistics row
+	static const int WINDOW_HEIGHT = 541;    // Display-rate and Scene Detect statistics rows
 	static const int PADDING = 10;
 	static const int LINE_HEIGHT = 23;     // Match font size for better spacing
 

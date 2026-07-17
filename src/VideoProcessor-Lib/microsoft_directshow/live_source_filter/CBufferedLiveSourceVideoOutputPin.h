@@ -56,6 +56,7 @@ public:
 	LONG GetAllocatorBufferCount() const override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	uint64_t SceneAwareCorrectionDropCount() const override { return m_sceneAwareCorrectionDropCount.load(std::memory_order_relaxed); }
+	uint64_t SceneAwareCorrectionRepeatCount() const override { return m_sceneAwareCorrectionRepeatCount.load(std::memory_order_relaxed); }
 	uint64_t SceneAwareDetectedCount() const override { return m_sceneAwareDetectedCount.load(std::memory_order_relaxed); }
 	uint64_t SceneAwareLateCandidateCount() const override { return m_sceneAwareLateCandidateCount.load(std::memory_order_relaxed); }
 	size_t GetFrameQueueSize() override;
@@ -87,11 +88,19 @@ private:
 	
 	// Pre-converted sample queue (output from conversion worker)
 	// Protected by: m_convertedQueueLock
+	enum class SceneCorrectionAction : uint8_t
+	{
+		None,
+		Drop,
+		Repeat
+	};
+
 	struct ConvertedSample
 	{
 		IMediaSample* sample = nullptr;
 		bool isSafeCorrectionPoint = false;
 		uint64_t sceneEventId = 0;
+		SceneCorrectionAction sceneCorrectionAction = SceneCorrectionAction::None;
 	};
 	std::deque<ConvertedSample> m_convertedSampleQueue;
 	CCritSec m_convertedQueueLock;  // Protects m_convertedSampleQueue only
@@ -104,6 +113,11 @@ private:
 	std::atomic<uint64_t> m_sceneAwareDetectedCount = 0;
 	std::atomic<uint64_t> m_sceneAwareLateCandidateCount = 0;
 	std::atomic<uint64_t> m_sceneAwareCorrectionDropCount = 0;
+	std::atomic<uint64_t> m_sceneAwareCorrectionRepeatCount = 0;
+	// Signed phase error in microframes.  The existing PPM trim remains the
+	// source of truth; this accumulator only permits a whole-frame correction
+	// at a confirmed scene boundary when scene detection is enabled.
+	std::atomic<int64_t> m_scenePhasePpmUnits = 0;
 	// Delivery and reset can run concurrently.  Keep correction history atomic
 	// so a resync cannot race the delivery thread or require another queue lock.
 	std::atomic<DWORD> m_lastSceneAwareCorrectionTime = 0;
@@ -163,14 +177,21 @@ private:
 	struct SceneDetectorState
 	{
 		SceneSignature previous;
-		SceneSignature baseline;
-		uint32_t gradualCandidateFrames = 0;
+		SceneSignature pendingHardCut;
+		uint8_t pendingHardCutFrames = 0;
+		uint32_t pendingInitialAverageLumaDifference = 0;
+		uint32_t pendingInitialChangedSampleCount = 0;
+		uint32_t framesUntilNextEvent = 0;
+		bool pendingHardCutValid = false;
 		bool previousNearBlack = false;
 	};
 
 	// Reads a sparse luma grid from P010 output.  It is intentionally called
 	// only by the conversion worker and only while the feature is enabled.
-	bool IsSafeSceneAwareCorrectionPoint(IMediaSample* sample, SceneDetectorState& state, uint64_t& sceneEventId);
+	bool IsSafeSceneAwareCorrectionPoint(IMediaSample* sample, SceneDetectorState& state,
+		uint64_t& sceneEventId, SceneCorrectionAction& correctionAction);
+	HRESULT CreateSyntheticRepeatSample(IMediaSample* source, REFERENCE_TIME start,
+		REFERENCE_TIME stop, IMediaSample** repeatSample);
 
 	// Remove all items from the videoFrameQueue
 	// CALLER MUST HOLD m_rawQueueLock

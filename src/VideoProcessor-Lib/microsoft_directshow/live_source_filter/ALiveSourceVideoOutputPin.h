@@ -116,12 +116,14 @@ public:
 
 	// Buffered pins override this with intentional Scene Detect correction drops.
 	virtual uint64_t SceneAwareCorrectionDropCount() const { return 0; }
+	virtual uint64_t SceneAwareCorrectionRepeatCount() const { return 0; }
 	virtual uint64_t SceneAwareDetectedCount() const { return 0; }
 	virtual uint64_t SceneAwareLateCandidateCount() const { return 0; }
 
 	// PPM correction information access
 	// Get the current PPM correction value being applied
-	// Returns the PPM value from config: positive = faster, negative = slower
+	// Returns the applied PPM value. It is added to the timestamp-trim
+	// numerator: positive = slower delivery, negative = faster delivery.
 	int GetCurrentPPMCorrection() const 
 	{ 
 		// m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR + ppmCorrection
@@ -286,6 +288,9 @@ protected:
 	// HIGH-PRECISION CONVERSION: Eliminates cumulative rounding errors at high refresh rates
 	static REFERENCE_TIME ConvertTimingClockToReferenceTime(timingclocktime_t timestamp, timingclocktime_t ticksPerSecond)
 	{
+		if (ticksPerSecond == 0)
+			return 0;
+
 		// OVERFLOW PROTECTION: DeckLink clock at 1MHz wraps after ~2.5 hours (9,223,372,036,854,775,807 ticks)
 		// Check if (timestamp * 10000000) would overflow int64_t
 		// Max safe value: INT64_MAX / 10000000 = 922,337,203,685 ticks (~10.7 days at 1MHz)
@@ -330,6 +335,7 @@ protected:
 	REFERENCE_TIME m_durationHistory[DURATION_HISTORY_SIZE] = {};
 	size_t m_durationHistoryIndex = 0;  // Current write position in circular buffer
 	size_t m_durationHistoryCount = 0;  // Number of valid entries (up to DURATION_HISTORY_SIZE)
+	REFERENCE_TIME m_durationHistorySum = 0; // Running sum for O(1) SMART2 averaging
 	REFERENCE_TIME m_lastHardwareTimestamp = 0;  // Previous hardware timestamp for duration calculation
 
 	// Rational timing parameters for RATIONAL_RATIONAL mode (Bresenham-style exact integer math)
@@ -353,6 +359,7 @@ protected:
 	REFERENCE_TIME m_previousTimeStop = 0;
 	timestamp_t m_startTimeOffset = 0;
 	uint64_t m_frameCounterOffset = 0;
+	bool m_frameCounterOffsetValid = false;
 	uint64_t m_frameCounter = 0;
 	uint64_t m_previousFrameCounter = 0;
 
@@ -386,13 +393,14 @@ protected:
 
 	// Lead time configuration for frame delivery timing
 	// This adds a buffer time to prevent late deliveries to MadVR
-	// Ramped from 0 to target over configurable duration for smooth startup
-	static const REFERENCE_TIME LEADTIME = 180LL * 10000LL;  // 20ms in 100ns ticks
+	// Can be ramped from 0 to target over a configurable duration for smooth
+	// startup; ramping is disabled by default.
+	static const REFERENCE_TIME LEADTIME = 180LL * 10000LL;  // 180ms in 100ns ticks
 	
 	// Lead ramp duration configuration (in milliseconds)
 	// Specifies how long to ramp from 0 to LEADTIME
-	// Default: 5000ms (5 seconds) - can be changed via SetLeadRampDurationMs()
-	uint64_t m_leadRampDurationMs = 0;  // Configurable lead ramp duration
+	// SetLeadRampDurationMs(0) selects the 5000ms (5 second) ramp default.
+	uint64_t m_leadRampDurationMs = 0;  // Configurable lead ramp duration; 0 disables ramping
 	uint64_t m_leadRampStartTimeMs = 0;    // Timestamp when ramp started (for time-based calculation)
 	bool m_leadRampActive = false;         // Track if ramp has been initialized
 	
@@ -400,7 +408,7 @@ protected:
 	// @param durationMs Duration in milliseconds to ramp from 0 to full LEADTIME (e.g., 5000 for 5 seconds)
 	void SetLeadRampDurationMs(uint64_t durationMs) 
 	{ 
-		m_leadRampDurationMs = (durationMs > 0) ? durationMs : 5000;  // Clamp to minimum 1ms, default 5s
+		m_leadRampDurationMs = (durationMs > 0) ? durationMs : 5000;  // Zero selects the 5s ramp default
 	}
 	
 	uint64_t GetLeadRampDurationMs() const 

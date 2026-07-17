@@ -45,6 +45,7 @@
 #define QUEUE_RESET_DELAY_TIMER_ID 3
 #define FULLSCREEN_FOCUS_TIMER_ID 4
 #define EOTF_CHANGE_RESTART_TIMER_ID 5  // Was 4, now unique
+#define LLDV_CHANGE_RESTART_TIMER_ID 6
 
 
 
@@ -190,6 +191,7 @@ protected:
 	bool m_newLldvCandidateActive = false;
 	bool m_newLldvCandidateConfirmed = false;
 	DWORD m_newLldvCandidateSince = 0;
+	int m_lldvChangeRestartDelaySeconds = -1;
 
 	//
 	// UI elements
@@ -401,6 +403,7 @@ protected:
 
 	bool BuildPushVideoState();
 	void BuildPushRestartVideoState();
+	void ScheduleNewLldvRendererRestart();
 
 	// Track effective EOTF the renderer is currently configured for (post-UI overrides)
 	EOTF m_lastEffectiveEotf = EOTF::UNKNOWN;
