@@ -59,8 +59,16 @@ Options:
       Set the maximum renderer frame queue size.
 
   /scene_detect
-      Opt in to scene-aware late-frame correction at visually-safe boundaries.
-      If omitted or disabled, no scene analysis or scene-aware drop/repeat correction occurs.
+      Lock output cadence to the measured display rate and prefer required
+      whole-frame repeat/drop corrections at detected scene boundaries.
+      A hard one-frame limit preserves queue and A/V alignment if no scene occurs.
+      If omitted or disabled, the legacy timestamp/delivery path is unchanged.
+
+  /scene_correction_mode <value>
+      RENDERER_GAP | UPSTREAM_SAMPLE
+      RENDERER_GAP is the default and asks madVR to repeat at the selected
+      boundary. UPSTREAM_SAMPLE experimentally supplies a real duplicate sample
+      so madVR may not need to report a repeat. Used only with /scene_detect.
 
   /newlldv
       Enable the opt-in BT.2020 + SDR LLDV heuristic (requires both LLDV follow modes).
@@ -236,6 +244,7 @@ void ValidateCommandLineConfigKeys(const ConfigFile& config)
 		"renderer_primaries",
 		"scene_detect",
 		"scene",
+		"scene_correction_mode",
 		"newlldv",
 		"new_lldv",
 		"noui",
@@ -317,6 +326,7 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigStringOption(arguments, config, { "renderer_transfer_matrix" }, L"/renderer_transfer_matrix");
 	AppendConfigStringOption(arguments, config, { "renderer_primaries" }, L"/renderer_primaries");
 	AppendConfigBoolOption(arguments, config, { "scene_detect", "scene" }, L"/scene_detect");
+	AppendConfigStringOption(arguments, config, { "scene_correction_mode" }, L"/scene_correction_mode");
 	AppendConfigBoolOption(arguments, config, { "newlldv", "new_lldv" }, L"/newlldv");
 	AppendConfigBoolOption(arguments, config, { "noui", "no_ui" }, L"/noui");
 	AppendConfigBoolOption(arguments, config, { "startminimized", "start_minimized" }, L"/startminimized");
@@ -429,6 +439,7 @@ bool RequiresCommandLineValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/hdr_colorspace") ||
 		IsCommandLineOption(argument, L"/hdr_luminance") ||
 		IsCommandLineOption(argument, L"/renderer_start_stop_time_method") ||
+		IsCommandLineOption(argument, L"/scene_correction_mode") ||
 		IsCommandLineOption(argument, L"/renderer_nominal_range") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_function") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_matrix") ||
@@ -443,6 +454,7 @@ bool HasCaseInsensitiveValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/hdr_colorspace") ||
 		IsCommandLineOption(argument, L"/hdr_luminance") ||
 		IsCommandLineOption(argument, L"/renderer_start_stop_time_method") ||
+		IsCommandLineOption(argument, L"/scene_correction_mode") ||
 		IsCommandLineOption(argument, L"/renderer_nominal_range") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_function") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_matrix") ||
@@ -492,6 +504,12 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 		if (IsCommandLineOption(argument, L"/frame_offset") &&
 			_wcsicmp(arguments[index + 1], L"auto") != 0 && !IsNonNegativeInteger(arguments[index + 1]))
 			throw std::runtime_error("Invalid /frame_offset: expected non-negative milliseconds or auto");
+
+		if (IsCommandLineOption(argument, L"/scene_correction_mode") &&
+			_wcsicmp(arguments[index + 1], L"RENDERER_GAP") != 0 &&
+			_wcsicmp(arguments[index + 1], L"UPSTREAM_SAMPLE") != 0)
+			throw std::runtime_error(
+				"Invalid /scene_correction_mode: expected RENDERER_GAP or UPSTREAM_SAMPLE");
 
 		++index;
 	}
@@ -1074,6 +1092,13 @@ BOOL CVideoProcessorApp::InitInstance()
 				ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/scene", booleanValue))
 			{
 				dlg.SceneDetect(booleanValue);
+			}
+
+			if (wcscmp(pArgs[i], L"/scene_correction_mode") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				dlg.SceneCorrectionUpstreamSample(
+					wcscmp(pArgs[i + 1], L"UPSTREAM_SAMPLE") == 0);
 			}
 
 			// Opt-in LLDV detection for DeckLink's BT.2020 + SDR reporting.

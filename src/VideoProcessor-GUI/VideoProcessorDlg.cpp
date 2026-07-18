@@ -540,6 +540,11 @@ void CVideoProcessorDlg::SceneDetect(bool enabled)
 	m_sceneAwareTimingCorrection = enabled;
 }
 
+void CVideoProcessorDlg::SceneCorrectionUpstreamSample(bool enabled)
+{
+	m_sceneCorrectionUpstreamSample = enabled;
+}
+
 void CVideoProcessorDlg::EnableNewLldvHeuristic(bool enabled)
 {
 	m_useNewLldvHeuristic = enabled;
@@ -776,7 +781,12 @@ void CVideoProcessorDlg::OnBnClickedRendererSceneAwareTimingCheck()
 {
 	m_sceneAwareTimingCorrection = m_rendererSceneAwareTimingCheck.GetCheck() == BST_CHECKED;
 	if (m_videoRenderer)
-		m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
+	{
+		// Scene Detect changes the presentation timestamp generator. Start it on
+		// a fresh DirectShow segment instead of switching timestamp domains while
+		// madVR still owns queued samples from the previous cadence.
+		OnBnClickedRendererRestart();
+	}
 }
 
 
@@ -2181,8 +2191,10 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->OnVideoState(m_builtVideoState);
 
 		m_videoRenderer->Build();
-		m_videoRenderer->Start();
 		m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
+		m_videoRenderer->SetSceneCorrectionUpstreamSample(
+			m_sceneCorrectionUpstreamSample);
+		m_videoRenderer->Start();
 
 		m_rendererStateText.SetWindowText(TEXT("Started HDR renderer, waiting for image..."));
 
@@ -2247,8 +2259,10 @@ void CVideoProcessorDlg::RenderStart()
 				m_videoRenderer->OnVideoState(m_builtVideoState);
 
 			m_videoRenderer->Build();
-			m_videoRenderer->Start();
 			m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
+			m_videoRenderer->SetSceneCorrectionUpstreamSample(
+				m_sceneCorrectionUpstreamSample);
+			m_videoRenderer->Start();
 
 			m_rendererStateText.SetWindowText(TEXT("Started, waiting for image..."));
 		}

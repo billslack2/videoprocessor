@@ -216,6 +216,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		{
 			CAutoLock rawLock(&m_rawQueueLock);
 			m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
+			m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
+			m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 			while (!m_videoFrameQueue.empty())
 			{
 				VideoFrame popFrame = m_videoFrameQueue.front();
@@ -243,6 +245,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		// Update state atomics
 		m_isActive.store(true, std::memory_order_release);
 		m_isBuffering.store(true, std::memory_order_release);
+		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 		m_scenePhasePpmUnits.store(0, std::memory_order_release);
 		m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
 		m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
@@ -444,46 +447,23 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		m_lastSeenFrameCounter = newCounter;
 	}
 
-	// Handle recovery if needed (purge both queues)
+	// Handle recovery through the same flush/delivery serialization as a UI
+	// reset. Waiting on m_deliveryGate directly could stall this real-time
+	// capture callback if madVR is blocked inside Receive.
 	if (triggerRecovery)
 	{
-		size_t purgedRaw = 0;
+		try
 		{
-			CAutoLock rawLock(&m_rawQueueLock);
-			m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
-			while (!m_videoFrameQueue.empty())
-			{
-				VideoFrame oldFrame = m_videoFrameQueue.front();
-				oldFrame.SourceBufferRelease();
-				m_videoFrameQueue.pop_front();
-				++purgedRaw;
-			}
+			Reset();
+		}
+		catch (const std::exception& ex)
+		{
+			DebugLog::Log(
+				"OnVideoFrame: serialized discontinuity reset failed: %s",
+				ex.what());
+			return E_FAIL;
 		}
 
-		size_t purgedConverted = 0;
-		{
-			CAutoLock convLock(&m_convertedQueueLock);
-			while (!m_convertedSampleQueue.empty())
-			{
-				IMediaSample* pSample = m_convertedSampleQueue.front().sample;
-				m_convertedSampleQueue.pop_front();
-				if (pSample) pSample->Release();
-				++purgedConverted;
-			}
-		}
-
-		// Enter buffering
-		m_isBuffering.store(true, std::memory_order_release);
-		{
-			CAutoLock stateLock(&m_stateLock);
-			m_lastSeenFrameCounter = 0;
-		}
-
-		if (purgedConverted > 0 && m_hFrameAvailableEvent)
-			SetEvent(m_hFrameAvailableEvent);
-
-		DebugLog::Log("OnVideoFrame: Recovery complete - buffering enabled, purged %zu raw + %zu converted frames",
-			purgedRaw, purgedConverted);
 		// This callback caused the recovery and its frame is the first valid
 		// candidate for the new epoch.
 		callbackEpoch = m_queueEpoch.load(std::memory_order_acquire);
@@ -609,25 +589,6 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 	DebugLog::Log("SetFrameQueueMaxSize: Queue size changed, reset failure counters");
 
 	SetEvent(m_hFrameAvailableEvent);
-
-	// Deliver new segment if active
-	if (IsConnected() && m_isActive.load(std::memory_order_acquire))
-	{
-		if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
-		{
-			DbgLog((LOG_ERROR, 1, TEXT("CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize() - Failed to deliver new segment")));
-			DebugLog::Log("SetFrameQueueMaxSize: FAILED to deliver new segment");
-		}
-		else
-		{
-			DebugLog::Log("SetFrameQueueMaxSize: New segment delivered successfully");
-		}
-	}
-	else
-	{
-		DebugLog::Log("SetFrameQueueMaxSize: Not connected or not active, skipping new segment delivery");
-	}
-
 	DebugLog::Log("SetFrameQueueMaxSize: Complete - signaled conversion thread");
 }
 
@@ -651,10 +612,35 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneAwareTimingCorrection(bool enabl
 	// The conversion worker owns its signature buffer.  A generation change lets
 	// it discard that buffer at a frame boundary without taking another lock.
 	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
+	m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 	m_scenePhasePpmUnits.store(0, std::memory_order_release);
 	m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
 	m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
 	DebugLog::Log("SCENE-AWARE CORRECTION: %s", enabled ? "enabled" : "disabled");
+}
+
+void CBufferedLiveSourceVideoOutputPin::SetSceneCorrectionUpstreamSample(bool enabled)
+{
+	const bool previous =
+		m_sceneCorrectionUpstreamSample.exchange(enabled, std::memory_order_acq_rel);
+	if (previous == enabled)
+	{
+		DebugLog::Log(
+			"SCENE-AWARE CORRECTION MODE: %s",
+			enabled ? "UPSTREAM_SAMPLE" : "RENDERER_GAP");
+		return;
+	}
+
+	// A mode switch changes how output slots are consumed. Force delivery-thread
+	// state to start a fresh generation; normal application use sets this before
+	// the graph starts.
+	m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
+	m_scenePhasePpmUnits.store(0, std::memory_order_release);
+	m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
+	m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
+	DebugLog::Log(
+		"SCENE-AWARE CORRECTION MODE: %s",
+		enabled ? "UPSTREAM_SAMPLE" : "RENDERER_GAP");
 }
 
 void CBufferedLiveSourceVideoOutputPin::SetSceneTimingRates(
@@ -666,8 +652,10 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneTimingRates(
 		deliveryRateHz >= 10.0 && deliveryRateHz <= 240.0;
 	if (!valid)
 	{
-		m_sceneDisplayRefreshRateHz.store(0.0, std::memory_order_release);
-		m_sceneDeliveryRateHz.store(0.0, std::memory_order_release);
+		// Display sampling can be briefly unavailable during fullscreen/DWM
+		// transitions. Keep the last stable lock instead of jumping back to the
+		// unrelated legacy timestamp sequence mid-segment. A subsequent valid,
+		// materially different rate starts a new timing generation below.
 		return;
 	}
 
@@ -676,8 +664,13 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneTimingRates(
 	const double previousDelivery =
 		m_sceneDeliveryRateHz.exchange(deliveryRateHz, std::memory_order_acq_rel);
 
-	if (previousDisplay <= 0.0 || previousDelivery <= 0.0)
+	const bool timingBecameValid = previousDisplay <= 0.0 || previousDelivery <= 0.0;
+	if (timingBecameValid)
 	{
+		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
+		m_scenePhasePpmUnits.store(0, std::memory_order_release);
+		m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
+		m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
 		const double mismatchPpm =
 			((displayRefreshRateHz / deliveryRateHz) - 1.0) * 1000000.0;
 		const double secondsPerWholeFrame =
@@ -695,9 +688,11 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneTimingRates(
 		return previous > 0.0 &&
 			abs(current - previous) / previous >= 0.0005;
 	};
-	if (materiallyChanged(previousDisplay, displayRefreshRateHz) ||
-		materiallyChanged(previousDelivery, deliveryRateHz))
+	if (!timingBecameValid &&
+		(materiallyChanged(previousDisplay, displayRefreshRateHz) ||
+			materiallyChanged(previousDelivery, deliveryRateHz)))
 	{
+		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 		m_scenePhasePpmUnits.store(0, std::memory_order_release);
 		m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
 		m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
@@ -734,92 +729,116 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneTimingPhase(
 
 void CBufferedLiveSourceVideoOutputPin::Reset()
 {
+	// Multiple reset sources exist (UI, timing recovery, frame-counter
+	// discontinuity, and the delivery thread). Keep their complete downstream
+	// flush transactions from overlapping.
+	CAutoLock resetTransactionLock(&m_resetTransactionGate);
 
-	if (true) {
 	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Reset() - HDMI resync async queue reset starting");
-	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
+	m_deliveryFlushing.store(true, std::memory_order_release);
 
-	// Purge raw frames
+	// BeginFlush must be sent before waiting for an in-flight Receive/Deliver;
+	// this is what unblocks a renderer that is waiting internally.
+	if (FAILED(DeliverBeginFlush()))
 	{
-		CAutoLock rawLock(&m_rawQueueLock);
-		m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
-
-		size_t purgedFrames = 0;
-		while (!m_videoFrameQueue.empty())
-		{
-			VideoFrame popFrame = m_videoFrameQueue.front();
-			popFrame.SourceBufferRelease();
-			m_videoFrameQueue.pop_front();
-			++purgedFrames;
-		}
-
-		DebugLog::Log("Reset(): Purged %zu raw frames from HDMI resync", purgedFrames);
+		m_deliveryFlushing.store(false, std::memory_order_release);
+		throw std::runtime_error("Failed to deliver beginflush");
 	}
 
-	// Wake conversion thread so it re-checks state immediately after reset.
-	if (m_hFrameAvailableEvent)
-		SetEvent(m_hFrameAvailableEvent);
-
-	// Purge converted sample queue
+	HRESULT endFlushHr = S_OK;
+	HRESULT newSegmentHr = S_OK;
+	try
 	{
-		CAutoLock convLock(&m_convertedQueueLock);
+		// No Deliver call can start while queues, timestamp state, and the
+		// DirectShow segment are changed below.
+		CAutoLock deliveryLock(&m_deliveryGate);
 
-		size_t purgedSamples = 0;
-		while (!m_convertedSampleQueue.empty())
+		m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
+		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
+
+		// Purge raw frames and establish the new queue epoch.
 		{
-			IMediaSample* pSample = m_convertedSampleQueue.front().sample;
-			m_convertedSampleQueue.pop_front();
-			if (pSample)
+			CAutoLock rawLock(&m_rawQueueLock);
+			m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
+
+			size_t purgedFrames = 0;
+			while (!m_videoFrameQueue.empty())
 			{
-				pSample->Release();
-				++purgedSamples;
+				VideoFrame popFrame = m_videoFrameQueue.front();
+				popFrame.SourceBufferRelease();
+				m_videoFrameQueue.pop_front();
+				++purgedFrames;
 			}
+			DebugLog::Log("Reset(): Purged %zu raw frames from HDMI resync", purgedFrames);
 		}
 
-		DebugLog::Log("Reset(): Purged %zu pre-converted samples from HDMI resync", purgedSamples);
-	}
-	}
+		// Purge converted samples from the old segment.
+		{
+			CAutoLock convLock(&m_convertedQueueLock);
+			size_t purgedSamples = 0;
+			while (!m_convertedSampleQueue.empty())
+			{
+				IMediaSample* pSample = m_convertedSampleQueue.front().sample;
+				m_convertedSampleQueue.pop_front();
+				if (pSample)
+				{
+					pSample->Release();
+					++purgedSamples;
+				}
+			}
+			DebugLog::Log("Reset(): Purged %zu pre-converted samples from HDMI resync", purgedSamples);
+		}
 
-	// Clear pending timestamp history for CLOCK_SMART modes
-	ClearPendingTimestamps();
+		ClearPendingTimestamps();
+		{
+			CAutoLock stateLock(&m_stateLock);
+			m_lastSeenFrameCounter = 0;
+			m_lastAutoPurgeTime = 0;
+			m_bufferingExitTime = 0;
+			m_lastSceneAwareCorrectionTime.store(0, std::memory_order_relaxed);
+			m_lastCorrectedSceneEventId.store(0, std::memory_order_relaxed);
+			m_scenePhasePpmUnits.store(0, std::memory_order_relaxed);
+		}
 
+		m_isBuffering.store(true, std::memory_order_release);
+		m_totalConversionTimeUs.store(0, std::memory_order_relaxed);
+		m_conversionFrameCount.store(0, std::memory_order_relaxed);
+		m_sceneAwareCorrectionDropCount.store(0, std::memory_order_relaxed);
+		m_sceneAwareCorrectionRepeatCount.store(0, std::memory_order_relaxed);
+		m_sceneAwareDetectedCount.store(0, std::memory_order_relaxed);
+		m_sceneAwareLateCandidateCount.store(0, std::memory_order_relaxed);
+		m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
+		m_lastQueueWarning = 0;
+
+		// Reset base timestamp/media-time state without sending another flush.
+		ResetTimingState();
+
+		endFlushHr = DeliverEndFlush();
+		if (SUCCEEDED(endFlushHr))
+			newSegmentHr = DeliverNewSegment(0, MAXLONGLONG, 1.0);
+	}
+	catch (...)
 	{
-		CAutoLock stateLock(&m_stateLock);
-		m_lastSeenFrameCounter = 0;
-		m_lastAutoPurgeTime = 0;
-		m_bufferingExitTime = 0;
-		m_lastSceneAwareCorrectionTime.store(0, std::memory_order_relaxed);
-		m_lastCorrectedSceneEventId.store(0, std::memory_order_relaxed);
-		m_scenePhasePpmUnits.store(0, std::memory_order_relaxed);
+		DeliverEndFlush();
+		m_deliveryFlushing.store(false, std::memory_order_release);
+		throw;
 	}
 
-	// HDMI RESYNC: Enter buffering mode to rebuild queue state cleanly
-	m_isBuffering.store(true, std::memory_order_release);
+	m_deliveryFlushing.store(false, std::memory_order_release);
 
-	// Wake conversion after freeing converted queue space and restoring reset state.
+	if (FAILED(endFlushHr))
+		throw std::runtime_error("Failed to deliver endflush");
+	if (FAILED(newSegmentHr))
+		throw std::runtime_error("Failed to deliver new segment");
+
+	// Wake both workers after the new segment is fully established.
 	if (m_hFrameAvailableEvent)
 		SetEvent(m_hFrameAvailableEvent);
+	if (m_hConvertedAvailableEvent)
+		SetEvent(m_hConvertedAvailableEvent);
 
-	DebugLog::Log("Reset(): Timeline reset, timing state cleared, buffering ENABLED for HDMI resync recovery");
-
-	// Reset conversion metrics
-	m_totalConversionTimeUs.store(0, std::memory_order_relaxed);
-	m_conversionFrameCount.store(0, std::memory_order_relaxed);
-	m_sceneAwareCorrectionDropCount.store(0, std::memory_order_relaxed);
-	m_sceneAwareCorrectionRepeatCount.store(0, std::memory_order_relaxed);
-	m_sceneAwareDetectedCount.store(0, std::memory_order_relaxed);
-	m_sceneAwareLateCandidateCount.store(0, std::memory_order_relaxed);
-
-	// Reset proactive state
-	m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
-	m_lastQueueWarning = 0;
-
-	DebugLog::Log("Reset(): Metrics and state reset complete");
-
-	// Call base Reset for DirectShow signaling
-	ALiveSourceVideoOutputPin::Reset();
-
-	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Reset() - HDMI resync async queue reset completed");
+	DebugLog::Log(
+		"CBufferedLiveSourceVideoOutputPin::Reset() - queues/timing reset, buffering enabled, new segment delivered");
 }
 
 
@@ -1018,13 +1037,59 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	uint64_t frameIntervalUs = 16667;  // Default: ~60fps = 16.667ms
 	uint64_t slowDeliveryThresholdUs = 25000;  // 150% of 60fps frame = 25ms
 	DWORD lastFrameIntervalUpdateTime = GetTickCount();
-	// Delivery-thread-only state. The retained sample is used solely for a rare
-	// local scene-boundary correction; no queue lock is held while it is copied
-	// or delivered.
-	IMediaSample* lastDeliveredSample = nullptr;
+	uint64_t lastSuccessfullyDeliveredEpoch = UINT64_MAX;
 
-	auto deliverTracked = [&](IMediaSample* sample) -> HRESULT
+	// When Scene Detect is enabled, madVR receives a coherent output cadence at
+	// the measured physical display rate. The content phase tracks the capture
+	// rate and is paid back with a whole-sample repeat/drop at a scene boundary.
+	// This is delivery-thread-only: conversion may run many frames ahead and
+	// must never advance presentation phase.
+	struct SceneOutputCadence
 	{
+		bool active = false;
+		uint64_t generation = 0;
+		uint64_t queueEpoch = 0;
+		double displayRateHz = 0.0;
+		long double anchor = 0.0L;
+		uint64_t nextOutputIndex = 0;
+		long double contentPhaseFrames = 0.0L;
+	};
+	SceneOutputCadence sceneCadence;
+	struct PendingUpstreamRepeat
+	{
+		IMediaSample* sample = nullptr;
+		uint64_t queueEpoch = 0;
+		uint64_t timingGeneration = 0;
+		uint64_t sceneEventId = 0;
+		long double phaseBefore = 0.0L;
+		bool atSceneBoundary = false;
+	};
+	PendingUpstreamRepeat pendingUpstreamRepeat;
+
+	const auto resetSceneCadence = [&]()
+	{
+		if (pendingUpstreamRepeat.sample)
+			pendingUpstreamRepeat.sample->Release();
+		pendingUpstreamRepeat = {};
+		sceneCadence = {};
+		m_scenePhasePpmUnits.store(0, std::memory_order_release);
+	};
+
+	const auto sceneOutputTime = [&sceneCadence](uint64_t outputIndex) -> REFERENCE_TIME
+	{
+		const long double ticks =
+			(static_cast<long double>(outputIndex) * REFERENCE_TIME_TICKS_PER_SECOND) /
+			sceneCadence.displayRateHz;
+		return static_cast<REFERENCE_TIME>(llround(sceneCadence.anchor + ticks));
+	};
+
+	auto deliverTracked = [&](IMediaSample* sample, uint64_t expectedQueueEpoch) -> HRESULT
+	{
+		CAutoLock deliveryLock(&m_deliveryGate);
+		if (m_deliveryFlushing.load(std::memory_order_acquire) ||
+			expectedQueueEpoch != m_queueEpoch.load(std::memory_order_acquire))
+			return VFW_E_WRONG_STATE;
+
 		const auto deliveryStartTime = GetWallClockTime();
 		const HRESULT result = Deliver(sample);
 		const auto deliveryEndTime = GetWallClockTime();
@@ -1076,6 +1141,17 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		return result;
 	};
 
+	const auto signalConvertedQueueIfNeeded = [&]()
+	{
+		bool hasQueuedSamples = false;
+		{
+			CAutoLock convertedLock(&m_convertedQueueLock);
+			hasQueuedSamples = !m_convertedSampleQueue.empty();
+		}
+		if (hasQueuedSamples && m_hConvertedAvailableEvent)
+			SetEvent(m_hConvertedAvailableEvent);
+	};
+
 	while (true)
 	{
 		// SAFETY: Check shutdown before waiting
@@ -1106,6 +1182,86 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			break;
 		}
 
+		if (pendingUpstreamRepeat.sample)
+		{
+			const uint64_t currentQueueEpoch =
+				m_queueEpoch.load(std::memory_order_acquire);
+			const uint64_t currentTimingGeneration =
+				m_sceneTimingGeneration.load(std::memory_order_acquire);
+			const bool pendingStillValid =
+				!m_isBuffering.load(std::memory_order_acquire) &&
+				m_sceneAwareTimingCorrection.load(std::memory_order_acquire) &&
+				m_sceneCorrectionUpstreamSample.load(std::memory_order_acquire) &&
+				pendingUpstreamRepeat.queueEpoch == currentQueueEpoch &&
+				pendingUpstreamRepeat.timingGeneration == currentTimingGeneration &&
+				sceneCadence.active;
+
+			if (!pendingStillValid)
+			{
+				resetSceneCadence();
+				signalConvertedQueueIfNeeded();
+				continue;
+			}
+
+			const HRESULT repeatHr = deliverTracked(
+				pendingUpstreamRepeat.sample,
+				pendingUpstreamRepeat.queueEpoch);
+			if (SUCCEEDED(repeatHr))
+			{
+				++sceneCadence.nextOutputIndex;
+				sceneCadence.contentPhaseFrames =
+					pendingUpstreamRepeat.phaseBefore - 1.0L;
+				m_scenePhasePpmUnits.store(
+					static_cast<int64_t>(llround(
+						sceneCadence.contentPhaseFrames * 1000000.0L)),
+					std::memory_order_release);
+				m_lastSceneAwareCorrectionTime.store(
+					GetTickCount(), std::memory_order_relaxed);
+				if (pendingUpstreamRepeat.atSceneBoundary)
+					m_lastCorrectedSceneEventId.store(
+						pendingUpstreamRepeat.sceneEventId,
+						std::memory_order_relaxed);
+				m_sceneAwareCorrectionRepeatCount.fetch_add(
+					1, std::memory_order_relaxed);
+				DebugLog::Log(
+					"SCENE-AWARE CORRECTION: deferred upstream sample at %s "
+					"(event=%llu, phase=%+.6Lf -> %+.6Lf frames)",
+					pendingUpstreamRepeat.atSceneBoundary ?
+						"scene boundary" : "hard phase limit",
+					pendingUpstreamRepeat.sceneEventId,
+					pendingUpstreamRepeat.phaseBefore,
+					sceneCadence.contentPhaseFrames);
+				pendingUpstreamRepeat.sample->Release();
+				pendingUpstreamRepeat = {};
+			}
+			else
+			{
+				DebugLog::Log(
+					"SCENE-AWARE CORRECTION: deferred upstream sample failed "
+					"(hr=0x%08x); resetting segment",
+					repeatHr);
+				pendingUpstreamRepeat.sample->Release();
+				pendingUpstreamRepeat = {};
+				try
+				{
+					Reset();
+				}
+				catch (const std::exception& ex)
+				{
+					DebugLog::Log(
+						"SCENE-AWARE CORRECTION: deferred-repeat reset failed: %s",
+						ex.what());
+				}
+			}
+
+			// At most one sample is submitted per wakeup in experimental mode.
+			// An auto-reset event is not a counting semaphore: explicitly retain
+			// the queue's readiness if conversion ran ahead while this duplicate
+			// was pending.
+			signalConvertedQueueIfNeeded();
+			continue;
+		}
+
 		// Update frame interval thresholds periodically (every 5 seconds)
 		DWORD now = GetTickCount();
 		if (now - lastFrameIntervalUpdateTime >= 5000)
@@ -1121,14 +1277,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					frameIntervalUs / 1000.0, slowDeliveryThresholdUs / 1000.0));
 			}
 			lastFrameIntervalUpdateTime = now;
-		}
-
-		// Reset() re-enters buffering before a new segment. A retained sample
-		// from the old segment must never be reused across that boundary.
-		if (m_isBuffering.load(std::memory_order_acquire) && lastDeliveredSample)
-		{
-			lastDeliveredSample->Release();
-			lastDeliveredSample = nullptr;
 		}
 
 		// BUFFERING PHASE: do not deliver until we have enough converted samples
@@ -1188,14 +1336,17 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		// We use the pending timestamp history for late-binding instead
 		for (;;)
 		{
-			if (!m_isActive.load(std::memory_order_acquire) || m_stopping.load(std::memory_order_acquire))
+			if (!m_isActive.load(std::memory_order_acquire) ||
+				m_stopping.load(std::memory_order_acquire) ||
+				m_isBuffering.load(std::memory_order_acquire))
 				break;
 
 			// Pop one sample under lock
 			IMediaSample* pSample = nullptr;
 			bool isSafeCorrectionPoint = false;
 			uint64_t sceneEventId = 0;
-			SceneCorrectionAction sceneCorrectionAction = SceneCorrectionAction::None;
+			uint64_t convertedQueueEpoch = 0;
+			uint64_t convertedSceneTimingGeneration = 0;
 			bool freedConvertedQueueSpace = false;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
@@ -1207,7 +1358,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				pSample = convertedSample.sample;
 				isSafeCorrectionPoint = convertedSample.isSafeCorrectionPoint;
 				sceneEventId = convertedSample.sceneEventId;
-				sceneCorrectionAction = convertedSample.sceneCorrectionAction;
+				convertedQueueEpoch = convertedSample.queueEpoch;
+				convertedSceneTimingGeneration = convertedSample.sceneTimingGeneration;
 				m_convertedSampleQueue.pop_front();
 				freedConvertedQueueSpace = true;
 			}
@@ -1216,12 +1368,113 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				SetEvent(m_hFrameAvailableEvent);
 
 			if (!pSample)
+				break;
+
+			if (m_deliverNewSegment.exchange(false, std::memory_order_acq_rel))
+			{
+				DebugLog::Log(
+					"DELIVERY THREAD: timing requested a new segment; performing serialized reset");
+				pSample->Release();
+				try
+				{
+					Reset();
+				}
+				catch (const std::exception& ex)
+				{
+					DebugLog::Log(
+						"DELIVERY THREAD: serialized timing reset failed: %s",
+						ex.what());
+				}
+				break;
+			}
+
+			const uint64_t currentQueueEpoch =
+				m_queueEpoch.load(std::memory_order_acquire);
+			const uint64_t currentSceneTimingGeneration =
+				m_sceneTimingGeneration.load(std::memory_order_acquire);
+			const bool sceneEnabled =
+				m_sceneAwareTimingCorrection.load(std::memory_order_acquire);
+
+			// A reset can purge the queues after this sample was converted but
+			// before delivery popped it. Never send an old-segment sample or reuse
+			// retained pixels across that boundary.
+			if (convertedQueueEpoch != currentQueueEpoch)
+			{
+				resetSceneCadence();
+				pSample->Release();
+				break;
+			}
+
+			if (!sceneEnabled)
+			{
+				if (sceneCadence.active)
+					resetSceneCadence();
+			}
+			else if (sceneCadence.active &&
+				sceneCadence.queueEpoch != currentQueueEpoch)
+			{
+				resetSceneCadence();
+			}
+			else if (sceneCadence.active &&
+				sceneCadence.generation != currentSceneTimingGeneration)
+			{
+				// Drain/discard queued decisions from the previous timing
+				// generation. The first current-generation sample continues at
+				// the exact next display-cadence timestamp, so no legacy/source
+				// timestamp is spliced into this DirectShow segment.
+				if (convertedSceneTimingGeneration != currentSceneTimingGeneration)
+				{
+					pSample->Release();
+					continue;
+				}
+
+				const REFERENCE_TIME continuousAnchor =
+					sceneOutputTime(sceneCadence.nextOutputIndex);
+				sceneCadence.generation = currentSceneTimingGeneration;
+				sceneCadence.anchor =
+					static_cast<long double>(continuousAnchor);
+				sceneCadence.nextOutputIndex = 0;
+				sceneCadence.contentPhaseFrames = 0.0L;
+				const double currentDisplayRate =
+					m_sceneDisplayRefreshRateHz.load(std::memory_order_acquire);
+				if (currentDisplayRate >= 10.0 && currentDisplayRate <= 240.0)
+					sceneCadence.displayRateHz = currentDisplayRate;
+				m_scenePhasePpmUnits.store(0, std::memory_order_release);
+				DebugLog::Log(
+					"SCENE-AWARE CADENCE: timing generation %llu continued without timestamp-domain splice",
+					currentSceneTimingGeneration);
+			}
+
+			if (!sceneCadence.active &&
+				convertedSceneTimingGeneration != currentSceneTimingGeneration)
+			{
+				isSafeCorrectionPoint = false;
+				sceneEventId = 0;
+			}
+			else if (sceneCadence.active &&
+				convertedSceneTimingGeneration != currentSceneTimingGeneration)
+			{
+				pSample->Release();
 				continue;
+			}
+
+			// Conversion can run ahead and its first discontinuous sample can be
+			// purged during buffering. Mark samples until one from this epoch is
+			// actually accepted downstream, so madVR always observes the segment
+			// discontinuity on the first delivered sample.
+			if (lastSuccessfullyDeliveredEpoch != currentQueueEpoch)
+			{
+				const HRESULT discontinuityHr = pSample->SetDiscontinuity(TRUE);
+				if (FAILED(discontinuityHr))
+					DebugLog::Log(
+						"DELIVERY THREAD: failed to mark first sample discontinuous (hr=0x%08x)",
+						discontinuityHr);
+			}
 
 			// Get timestamps for late-binding
 			bool usedLateBoundStop = false;
 			REFERENCE_TIME currentStart = 0, currentStop = 0;
-			pSample->GetTime(&currentStart, &currentStop);
+			HRESULT sampleTimeHr = pSample->GetTime(&currentStart, &currentStop);
 
 			// LATE BIND STOP TIME: Search pending timestamp history for best-fit next frame
 			if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
@@ -1285,172 +1538,312 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				}
 			}
 
-			// Scene-only timing work is deliberately skipped when the feature is
-			// disabled.  The experimental path below never applies a permanent
-			// timestamp offset.  It only acts when a measured vblank already falls
-			// in the exact local interval needed to relocate the renderer's natural
-			// repeat/drop onto this scene boundary.
-			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire))
+			// Scene Detect owns a separate, coherent output cadence. This makes
+			// each synthetic repeat/drop a real change in the number of samples
+			// madVR receives instead of squeezing two samples into one source
+			// interval. Content remains tied to capture/media time; the bounded
+			// phase is paid back at scene boundaries and cannot accumulate.
+			bool sceneCadenceForSample = false;
+			SceneCorrectionAction sceneCorrectionAction = SceneCorrectionAction::None;
+			bool correctionAtSceneBoundary = false;
+			bool sceneCorrectionCommitted = false;
+			bool contentPhasePending = false;
+			constexpr long double kHardCorrectionLimitFrames = 0.98L;
+			long double pendingContentPhaseFrames =
+				sceneCadence.contentPhaseFrames;
+			const double displayRateHz =
+				m_sceneDisplayRefreshRateHz.load(std::memory_order_acquire);
+			const double deliveryRateHz =
+				m_sceneDeliveryRateHz.load(std::memory_order_acquire);
+			sampleTimeHr = pSample->GetTime(&currentStart, &currentStop);
+			const bool validSceneTiming =
+				sceneEnabled &&
+				convertedSceneTimingGeneration == currentSceneTimingGeneration &&
+				SUCCEEDED(sampleTimeHr) &&
+				currentStop > currentStart &&
+				displayRateHz >= 10.0 && displayRateHz <= 240.0 &&
+				deliveryRateHz >= 10.0 && deliveryRateHz <= 240.0;
+
+			if (validSceneTiming)
 			{
-				const REFERENCE_TIME nowStreamTime = NowStreamTime(m_pFilter);
-				const REFERENCE_TIME lateThreshold = std::max<REFERENCE_TIME>(1, (m_frameDuration * 3) / 4);
-				// StreamTime() and sample timestamps must be in the same running
-				// timeline before they can be compared.  After a graph restart the
-				// filter clock can briefly be unavailable or belong to the previous
-				// segment.  Never treat that mismatch as a scene correction.
-				constexpr REFERENCE_TIME kMaxSaneSceneLateness =
-					2 * REFERENCE_TIME_TICKS_PER_SECOND;
-				const bool saneStreamComparison =
-					nowStreamTime != REFERENCE_TIME_INVALID &&
-					currentStart >= 0 &&
-					nowStreamTime >= currentStart &&
-					(nowStreamTime - currentStart) <= kMaxSaneSceneLateness;
-				const DWORD correctionNow = GetTickCount();
-				// Scene events are explicitly identified by the conversion worker.  A
-				// correction can occur at most once for each event, while the short
-				// interval guard prevents two genuinely distinct cuts from causing
-				// back-to-back corrections on adjacent delivery iterations.
-				const bool correctionIntervalElapsed =
-					(correctionNow - m_lastSceneAwareCorrectionTime.load(std::memory_order_relaxed)) >= 250;
-				const bool newSceneEvent = sceneEventId != 0 &&
-					sceneEventId != m_lastCorrectedSceneEventId.load(std::memory_order_relaxed);
-				const bool lateAtSafePoint = saneStreamComparison && isSafeCorrectionPoint &&
-					(nowStreamTime - currentStart) > lateThreshold;
-				if (lateAtSafePoint)
-					m_sceneAwareLateCandidateCount.fetch_add(1, std::memory_order_relaxed);
-
-				// Convert the latest physical vblank QPC snapshot into this graph's
-				// stream-time domain.  The mapping is sampled immediately, so it does
-				// not assume that the DirectShow clock is numerically identical to QPC.
-				auto nextVBlankAtOrAfter = [&](REFERENCE_TIME streamTime,
-					REFERENCE_TIME& vblankStreamTime,
-					REFERENCE_TIME& refreshPeriodStreamTime) -> bool
+				if (!sceneCadence.active)
 				{
-					const int64_t lastVBlankQpc = m_sceneLastVBlankQpc.load(std::memory_order_acquire);
-					const int64_t refreshPeriodQpc = m_sceneRefreshPeriodQpc.load(std::memory_order_acquire);
-					const int64_t qpcFrequency = m_sceneQpcFrequency.load(std::memory_order_acquire);
-					if (lastVBlankQpc <= 0 || refreshPeriodQpc <= 0 || qpcFrequency <= 0 ||
-						nowStreamTime == REFERENCE_TIME_INVALID)
-						return false;
-
-					LARGE_INTEGER qpcNow = {};
-					if (!QueryPerformanceCounter(&qpcNow))
-						return false;
-
-					// Do not extrapolate a dormant sampler snapshot across a display-mode
-					// or fullscreen transition.  The UI enables continuous sampling only
-					// while Scene Detect is active.
-					if (qpcNow.QuadPart < lastVBlankQpc ||
-						qpcNow.QuadPart - lastVBlankQpc > qpcFrequency * 2)
-						return false;
-
-					const long double targetQpc = static_cast<long double>(qpcNow.QuadPart) +
-						(static_cast<long double>(streamTime - nowStreamTime) * qpcFrequency) /
-						REFERENCE_TIME_TICKS_PER_SECOND;
-					const long double intervals =
-						(targetQpc - static_cast<long double>(lastVBlankQpc)) / refreshPeriodQpc;
-					const int64_t intervalCount = static_cast<int64_t>(ceil(intervals));
-					const int64_t vblankQpc = lastVBlankQpc +
-						std::max<int64_t>(0, intervalCount) * refreshPeriodQpc;
-
-					vblankStreamTime = nowStreamTime + static_cast<REFERENCE_TIME>(llround(
-						(static_cast<long double>(vblankQpc - qpcNow.QuadPart) *
-							REFERENCE_TIME_TICKS_PER_SECOND) / qpcFrequency));
-					refreshPeriodStreamTime = static_cast<REFERENCE_TIME>(llround(
-						(static_cast<long double>(refreshPeriodQpc) * REFERENCE_TIME_TICKS_PER_SECOND) /
-						qpcFrequency));
-					return refreshPeriodStreamTime > 0;
-				};
-
-				if (newSceneEvent && correctionIntervalElapsed && sceneCorrectionAction != SceneCorrectionAction::None)
+					sceneCadence.active = true;
+					sceneCadence.generation = currentSceneTimingGeneration;
+					sceneCadence.queueEpoch = currentQueueEpoch;
+					sceneCadence.displayRateHz = displayRateHz;
+					sceneCadence.anchor = static_cast<long double>(currentStart);
+					sceneCadence.nextOutputIndex = 0;
+					sceneCadence.contentPhaseFrames = 0.0L;
+					DebugLog::Log(
+						"SCENE-AWARE CADENCE: started at %.6f Hz (delivery %.6f Hz, epoch=%llu)",
+						displayRateHz, deliveryRateHz, currentSceneTimingGeneration);
+				}
+				else
 				{
-					REFERENCE_TIME vblankStreamTime = 0;
-					REFERENCE_TIME displayPeriod = 0;
-					if (!nextVBlankAtOrAfter(currentStart, vblankStreamTime, displayPeriod))
+					const double rateDeltaPpm =
+						abs(displayRateHz - sceneCadence.displayRateHz) /
+						sceneCadence.displayRateHz * 1000000.0;
+					if (rateDeltaPpm >= 0.5)
 					{
-						DebugLog::Log("SCENE-AWARE PHASE: event=%llu has no fresh vblank snapshot; no correction applied",
-							sceneEventId);
-					}
-					else if (sceneCorrectionAction == SceneCorrectionAction::Drop)
-					{
-						// The display is slower.  Drop only if this sample has no display
-						// slot at all: the next vblank is at/after its successor's start.
-						// That is an existing natural sink drop moved onto this boundary,
-						// not an additional source-side loss.
-						if (vblankStreamTime >= currentStop)
-						{
-							const int64_t phaseBeforeCorrection =
-								m_scenePhasePpmUnits.load(std::memory_order_relaxed);
-							m_lastSceneAwareCorrectionTime.store(correctionNow, std::memory_order_relaxed);
-							m_lastCorrectedSceneEventId.store(sceneEventId, std::memory_order_relaxed);
-							m_scenePhasePpmUnits.fetch_add(static_cast<int64_t>(RATIONAL_TRIM_DENOMINATOR), std::memory_order_relaxed);
-							m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
-							m_sceneAwareCorrectionDropCount.fetch_add(1, std::memory_order_relaxed);
-							DebugLog::Log("SCENE-AWARE CORRECTION: phase-confirmed source drop at scene boundary (event=%llu, phase_before=%lld, residual=%lld microframes)",
-								sceneEventId, phaseBeforeCorrection,
-								m_scenePhasePpmUnits.load(std::memory_order_relaxed));
-							pSample->Release();
-							continue;
-						}
-						DebugLog::Log("SCENE-AWARE PHASE: event=%llu expected drop, but sample contains a vblank; no correction applied",
-							sceneEventId);
-					}
-					else if (lastDeliveredSample)
-					{
-						// The display is faster.  A repeat is valid only when the current
-						// sample can begin immediately after one vblank and still cover the
-						// following vblank.  This preserves the full [start, stop] window
-						// and therefore cannot accumulate an A/V timestamp offset.
-						const REFERENCE_TIME splitTime = vblankStreamTime + 1;
-						if (splitTime > currentStart &&
-							splitTime < currentStop &&
-							currentStop >= splitTime + displayPeriod)
-						{
-							IMediaSample* repeatSample = nullptr;
-							if (SUCCEEDED(CreateSyntheticRepeatSample(
-								lastDeliveredSample, currentStart, splitTime, &repeatSample)))
-							{
-								REFERENCE_TIME adjustedCurrentStart = splitTime;
-								REFERENCE_TIME adjustedCurrentStop = currentStop;
-								if (SUCCEEDED(pSample->SetTime(&adjustedCurrentStart, &adjustedCurrentStop)))
-								{
-									const HRESULT repeatHr = deliverTracked(repeatSample);
-									if (SUCCEEDED(repeatHr))
-									{
-										const int64_t phaseBeforeCorrection =
-											m_scenePhasePpmUnits.load(std::memory_order_relaxed);
-										m_scenePhasePpmUnits.fetch_sub(static_cast<int64_t>(RATIONAL_TRIM_DENOMINATOR), std::memory_order_relaxed);
-										m_lastSceneAwareCorrectionTime.store(correctionNow, std::memory_order_relaxed);
-										m_lastCorrectedSceneEventId.store(sceneEventId, std::memory_order_relaxed);
-										m_sceneAwareCorrectionRepeatCount.fetch_add(1, std::memory_order_relaxed);
-										DebugLog::Log("SCENE-AWARE CORRECTION: phase-confirmed repeat at scene boundary (event=%llu, phase_before=%lld, residual=%lld microframes)",
-											sceneEventId, phaseBeforeCorrection,
-											m_scenePhasePpmUnits.load(std::memory_order_relaxed));
-									}
-									else
-									{
-										pSample->SetTime(&currentStart, &currentStop);
-										DebugLog::Log("SCENE-AWARE CORRECTION: phase-confirmed repeat delivery failed (event=%llu, hr=0x%08x); original interval restored",
-											sceneEventId, repeatHr);
-									}
-								}
-								repeatSample->Release();
-							}
-						}
-						else
-						{
-							DebugLog::Log("SCENE-AWARE PHASE: event=%llu expected repeat, but no whole display interval remains after the vblank; no correction applied",
-								sceneEventId);
-						}
+						// Preserve the next timestamp exactly while adopting the
+						// refined long-window display-rate measurement.
+						sceneCadence.anchor = static_cast<long double>(
+							sceneOutputTime(sceneCadence.nextOutputIndex));
+						sceneCadence.nextOutputIndex = 0;
+						sceneCadence.displayRateHz = displayRateHz;
+						DebugLog::Log(
+							"SCENE-AWARE CADENCE: refined display rate to %.6f Hz (delta %.2f ppm)",
+							displayRateHz, rateDeltaPpm);
 					}
 				}
 
-				// Lateness remains diagnostic only. It must never trigger a
-				// correction unless the display/delivery phase requested one.
+				sceneCadenceForSample = true;
+				pendingContentPhaseFrames =
+					sceneCadence.contentPhaseFrames +
+					(static_cast<long double>(displayRateHz) / deliveryRateHz) - 1.0L;
+				contentPhasePending = true;
+				m_scenePhasePpmUnits.store(
+					static_cast<int64_t>(llround(
+						pendingContentPhaseFrames * 1000000.0L)),
+					std::memory_order_release);
+
+				const DWORD correctionNow = GetTickCount();
+				const bool correctionIntervalElapsed =
+					(correctionNow -
+						m_lastSceneAwareCorrectionTime.load(std::memory_order_relaxed)) >= 250;
+				const bool newSceneEvent =
+					isSafeCorrectionPoint &&
+					sceneEventId != 0 &&
+					sceneEventId !=
+						m_lastCorrectedSceneEventId.load(std::memory_order_relaxed);
+
+				// Start looking for a safe boundary before a whole output slot is
+				// due. The resulting capture/audio mapping error remains bounded
+				// below one frame and is repaid by the continuing rate difference.
+				constexpr long double kCorrectionTriggerFrames = 0.75L;
+				if (newSceneEvent && correctionIntervalElapsed)
+				{
+					if (pendingContentPhaseFrames >= kCorrectionTriggerFrames)
+					{
+						sceneCorrectionAction = SceneCorrectionAction::Repeat;
+						correctionAtSceneBoundary = true;
+					}
+					else if (pendingContentPhaseFrames <= -kCorrectionTriggerFrames)
+					{
+						sceneCorrectionAction = SceneCorrectionAction::Drop;
+						correctionAtSceneBoundary = true;
+					}
+				}
+
+				// A scene is preferred, but waiting indefinitely would drain/fill
+				// queues and let capture content drift from the independent audio.
+				// At the hard bound, perform the same one-slot conversion on the
+				// current frame. This is no worse than madVR's unavoidable natural
+				// correction and keeps the mapping error below one frame.
+				if (sceneCorrectionAction == SceneCorrectionAction::None &&
+					correctionIntervalElapsed)
+				{
+					if (pendingContentPhaseFrames >= kHardCorrectionLimitFrames)
+						sceneCorrectionAction = SceneCorrectionAction::Repeat;
+					else if (pendingContentPhaseFrames <= -kHardCorrectionLimitFrames)
+						sceneCorrectionAction = SceneCorrectionAction::Drop;
+				}
+
+				if (sceneCorrectionAction == SceneCorrectionAction::Drop)
+				{
+					const long double phaseBefore =
+						pendingContentPhaseFrames;
+					sceneCadence.contentPhaseFrames =
+						pendingContentPhaseFrames + 1.0L;
+					sceneCorrectionCommitted = true;
+					m_scenePhasePpmUnits.store(
+						static_cast<int64_t>(llround(
+							sceneCadence.contentPhaseFrames * 1000000.0L)),
+						std::memory_order_release);
+					m_lastSceneAwareCorrectionTime.store(
+						correctionNow, std::memory_order_relaxed);
+					if (correctionAtSceneBoundary)
+						m_lastCorrectedSceneEventId.store(
+							sceneEventId, std::memory_order_relaxed);
+					m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
+					m_sceneAwareCorrectionDropCount.fetch_add(
+						1, std::memory_order_relaxed);
+					DebugLog::Log(
+						"SCENE-AWARE CORRECTION: output drop at %s "
+						"(event=%llu, phase=%+.6Lf -> %+.6Lf frames)",
+						correctionAtSceneBoundary ? "scene boundary" : "hard phase limit",
+						sceneEventId, phaseBefore,
+						sceneCadence.contentPhaseFrames);
+					pSample->Release();
+					continue;
+				}
+			}
+			else if (sceneEnabled && sceneCadence.active)
+			{
+				DebugLog::Log(
+					"SCENE-AWARE CADENCE: active timestamp became invalid; resetting segment");
+				pSample->Release();
+				try
+				{
+					Reset();
+				}
+				catch (const std::exception& ex)
+				{
+					DebugLog::Log(
+						"SCENE-AWARE CADENCE: invalid-timestamp reset failed: %s",
+						ex.what());
+				}
+				break;
 			}
 
-			// 4) DELIVER - Let MadVR handle timing and buffering
-			HRESULT hr = deliverTracked(pSample);
+			HRESULT hr = S_OK;
+			bool cadenceTimestampNeedsReset = false;
+			bool scheduledPresentationGapRepeat = false;
+			IMediaSample* deferredUpstreamRepeat = nullptr;
+			if (sceneCadenceForSample)
+			{
+				// A repeat is represented by one empty presentation slot. The
+				// renderer naturally holds the previous frame for that interval.
+				// This avoids allocating/copying a 4K sample and avoids pushing
+				// two Receive calls back-to-back into madVR.
+				const bool repeatRequested =
+					sceneCorrectionAction == SceneCorrectionAction::Repeat;
+				const bool useUpstreamSample =
+					repeatRequested &&
+					m_sceneCorrectionUpstreamSample.load(
+						std::memory_order_acquire);
+				if (useUpstreamSample)
+				{
+					const REFERENCE_TIME repeatStart =
+						sceneOutputTime(sceneCadence.nextOutputIndex + 1);
+					const REFERENCE_TIME repeatStop =
+						sceneOutputTime(sceneCadence.nextOutputIndex + 2);
+					const HRESULT cloneHr = CloneSampleForUpstreamRepeat(
+						pSample, repeatStart, repeatStop,
+						&deferredUpstreamRepeat);
+					if (FAILED(cloneHr) || !deferredUpstreamRepeat)
+					{
+						scheduledPresentationGapRepeat = true;
+						DebugLog::Log(
+							"SCENE-AWARE CORRECTION: upstream clone unavailable "
+							"(hr=0x%08x); falling back to renderer gap",
+							cloneHr);
+					}
+				}
+				else
+				{
+					scheduledPresentationGapRepeat = repeatRequested;
+				}
+				const uint64_t slotOffset =
+					scheduledPresentationGapRepeat ? 1ULL : 0ULL;
+				REFERENCE_TIME outputStart =
+					sceneOutputTime(sceneCadence.nextOutputIndex + slotOffset);
+				REFERENCE_TIME outputStop =
+					sceneOutputTime(sceneCadence.nextOutputIndex + slotOffset + 1);
+				if (FAILED(pSample->SetTime(&outputStart, &outputStop)))
+					cadenceTimestampNeedsReset = true;
+			}
+
+			if (cadenceTimestampNeedsReset)
+			{
+				if (deferredUpstreamRepeat)
+					deferredUpstreamRepeat->Release();
+				DebugLog::Log(
+					"SCENE-AWARE CADENCE: SetTime failed; resetting segment");
+				pSample->Release();
+				try
+				{
+					Reset();
+				}
+				catch (const std::exception& ex)
+				{
+					DebugLog::Log(
+						"SCENE-AWARE CORRECTION: partial-repeat reset failed: %s",
+						ex.what());
+				}
+				break;
+			}
+
+			// 4) DELIVER - Let madVR handle buffering and presentation.
+			hr = deliverTracked(pSample, currentQueueEpoch);
+
+			if (SUCCEEDED(hr) && sceneCadenceForSample &&
+				deferredUpstreamRepeat)
+			{
+				// The current sample consumed its normal slot. Submit the cloned
+				// repeat on the next capture wakeup rather than bursting two
+				// Receive calls into madVR in this delivery iteration.
+				++sceneCadence.nextOutputIndex;
+				pendingUpstreamRepeat.sample = deferredUpstreamRepeat;
+				pendingUpstreamRepeat.queueEpoch = currentQueueEpoch;
+				pendingUpstreamRepeat.timingGeneration =
+					currentSceneTimingGeneration;
+				pendingUpstreamRepeat.sceneEventId = sceneEventId;
+				pendingUpstreamRepeat.phaseBefore =
+					pendingContentPhaseFrames;
+				pendingUpstreamRepeat.atSceneBoundary =
+					correctionAtSceneBoundary;
+				deferredUpstreamRepeat = nullptr;
+
+				// Do not reset this auto-reset event: doing so can discard the
+				// only readiness notification for an already-populated converted
+				// queue and let madVR drain its entire downstream pipeline.
+				if (m_hConvertedAvailableEvent)
+					SetEvent(m_hConvertedAvailableEvent);
+			}
+			else if (SUCCEEDED(hr) && sceneCadenceForSample &&
+				scheduledPresentationGapRepeat)
+			{
+				// One sample was delivered, but two presentation slots were
+				// consumed: the deliberate hold/repeat gap and this sample.
+				sceneCadence.nextOutputIndex += 2;
+				const long double phaseBefore = pendingContentPhaseFrames;
+				sceneCadence.contentPhaseFrames =
+					pendingContentPhaseFrames - 1.0L;
+				sceneCorrectionCommitted = true;
+				m_scenePhasePpmUnits.store(
+					static_cast<int64_t>(llround(
+						sceneCadence.contentPhaseFrames * 1000000.0L)),
+					std::memory_order_release);
+				m_lastSceneAwareCorrectionTime.store(
+					GetTickCount(), std::memory_order_relaxed);
+				if (correctionAtSceneBoundary)
+					m_lastCorrectedSceneEventId.store(
+						sceneEventId, std::memory_order_relaxed);
+				m_sceneAwareCorrectionRepeatCount.fetch_add(
+					1, std::memory_order_relaxed);
+				DebugLog::Log(
+					"SCENE-AWARE CORRECTION: presentation-gap repeat at %s "
+					"(phase=%+.6Lf -> %+.6Lf frames)",
+					correctionAtSceneBoundary ?
+						"scene boundary" : "hard phase limit",
+					pendingContentPhaseFrames,
+					sceneCadence.contentPhaseFrames);
+			}
+			else if (SUCCEEDED(hr) && sceneCadenceForSample &&
+				contentPhasePending && !sceneCorrectionCommitted)
+			{
+				++sceneCadence.nextOutputIndex;
+				sceneCadence.contentPhaseFrames = pendingContentPhaseFrames;
+				m_scenePhasePpmUnits.store(
+					static_cast<int64_t>(llround(
+						sceneCadence.contentPhaseFrames * 1000000.0L)),
+					std::memory_order_release);
+			}
+			else if (FAILED(hr) && sceneCadenceForSample &&
+				!sceneCorrectionCommitted)
+			{
+				m_scenePhasePpmUnits.store(
+					static_cast<int64_t>(llround(
+						sceneCadence.contentPhaseFrames * 1000000.0L)),
+					std::memory_order_release);
+			}
+			if (deferredUpstreamRepeat)
+				deferredUpstreamRepeat->Release();
+
+			if (SUCCEEDED(hr))
+				lastSuccessfullyDeliveredEpoch = currentQueueEpoch;
 
 			// Log CLOCK_SMART timing stats periodically
 			static uint64_t smartLogCounter = 0;
@@ -1467,25 +1860,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					usedLateBoundStop ? "YES" : "NO");
 			}
 
-			if (SUCCEEDED(hr) && m_sceneAwareTimingCorrection.load(std::memory_order_acquire))
-			{
-				pSample->AddRef();
-				if (lastDeliveredSample)
-					lastDeliveredSample->Release();
-				lastDeliveredSample = pSample;
-			}
-			else if (!m_sceneAwareTimingCorrection.load(std::memory_order_acquire) && lastDeliveredSample)
-			{
-				lastDeliveredSample->Release();
-				lastDeliveredSample = nullptr;
-			}
 			pSample->Release();
+			if (pendingUpstreamRepeat.sample)
+				break;
 		}
 	}
 
 	DebugLog::Log("DELIVERY THREAD: Exiting");
-	if (lastDeliveredSample)
-		lastDeliveredSample->Release();
+	if (pendingUpstreamRepeat.sample)
+		pendingUpstreamRepeat.sample->Release();
 	return 0;
 }
 
@@ -1666,9 +2049,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 			bool isSafeCorrectionPoint = false;
 			uint64_t sceneEventId = 0;
-			SceneCorrectionAction sceneCorrectionAction = SceneCorrectionAction::None;
+			uint8_t sceneEventFramesBack = 0;
 			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire))
-				isSafeCorrectionPoint = IsSafeSceneAwareCorrectionPoint(pSample, sceneDetectorState, sceneEventId, sceneCorrectionAction);
+				isSafeCorrectionPoint = IsSafeSceneAwareCorrectionPoint(
+					pSample, sceneDetectorState, sceneEventId, sceneEventFramesBack);
+			const uint64_t sceneTimingGeneration =
+				m_sceneTimingGeneration.load(std::memory_order_acquire);
 
 			// Add converted sample to queue only after its timestamp history is
 			// published. The delivery thread is then free to drain immediately.
@@ -1686,7 +2072,35 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 						if (SUCCEEDED(pSample->GetTime(&sampleStart, &sampleStop)))
 							RecordPendingTimestamp(sampleStart);
 					}
-					m_convertedSampleQueue.push_back({ pSample, isSafeCorrectionPoint, sceneEventId, sceneCorrectionAction });
+
+					// Hard cuts are confirmed from one of the following frames.
+					// Conversion normally runs ahead of delivery, so move the event
+					// tag back to the actual first post-cut sample while it is still
+					// buffered. If delivery already consumed it, retain the current
+					// confirmation frame as a safe fallback.
+					if (isSafeCorrectionPoint && sceneEventFramesBack > 0 &&
+						m_convertedSampleQueue.size() >= sceneEventFramesBack)
+					{
+						ConvertedSample& cutSample =
+							m_convertedSampleQueue[
+								m_convertedSampleQueue.size() -
+								sceneEventFramesBack];
+						if (cutSample.queueEpoch == frameQueueEpoch &&
+							cutSample.sceneTimingGeneration ==
+								sceneTimingGeneration)
+						{
+							cutSample.isSafeCorrectionPoint = true;
+							cutSample.sceneEventId = sceneEventId;
+							isSafeCorrectionPoint = false;
+							sceneEventId = 0;
+						}
+					}
+					m_convertedSampleQueue.push_back({
+						pSample,
+						isSafeCorrectionPoint,
+						sceneEventId,
+						frameQueueEpoch,
+						sceneTimingGeneration });
 					pSample = nullptr; // Queue owns the sample reference.
 				}
 			}
@@ -1766,7 +2180,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 }
 
 
-HRESULT CBufferedLiveSourceVideoOutputPin::CreateSyntheticRepeatSample(
+HRESULT CBufferedLiveSourceVideoOutputPin::CloneSampleForUpstreamRepeat(
 	IMediaSample* source,
 	REFERENCE_TIME start,
 	REFERENCE_TIME stop,
@@ -1777,14 +2191,18 @@ HRESULT CBufferedLiveSourceVideoOutputPin::CreateSyntheticRepeatSample(
 	*repeatSample = nullptr;
 
 	IMediaSample* duplicate = nullptr;
-	HRESULT hr = GetDeliveryBuffer(&duplicate, nullptr, nullptr, 0);
+	// This optional correction must never block conversion or delivery waiting
+	// for a large allocator buffer. The normal allocator has correction
+	// headroom; if it is unavailable the caller falls back to RENDERER_GAP.
+	HRESULT hr = GetDeliveryBuffer(&duplicate, nullptr, nullptr, AM_GBF_NOWAIT);
 	if (FAILED(hr) || !duplicate)
 		return FAILED(hr) ? hr : E_FAIL;
 
 	BYTE* sourceData = nullptr;
 	BYTE* duplicateData = nullptr;
 	const long sourceLength = source->GetActualDataLength();
-	if (sourceLength < 0 || FAILED(source->GetPointer(&sourceData)) || !sourceData ||
+	if (sourceLength < 0 ||
+		FAILED(source->GetPointer(&sourceData)) || !sourceData ||
 		FAILED(duplicate->GetPointer(&duplicateData)) || !duplicateData ||
 		sourceLength > duplicate->GetSize())
 	{
@@ -1794,35 +2212,62 @@ HRESULT CBufferedLiveSourceVideoOutputPin::CreateSyntheticRepeatSample(
 
 	if (sourceLength > 0)
 		memcpy(duplicateData, sourceData, static_cast<size_t>(sourceLength));
-	duplicate->SetActualDataLength(sourceLength);
-	duplicate->SetTime(&start, &stop);
-	duplicate->SetSyncPoint(TRUE);
-	duplicate->SetPreroll(FALSE);
-	duplicate->SetDiscontinuity(FALSE);
+	hr = duplicate->SetActualDataLength(sourceLength);
+	if (SUCCEEDED(hr))
+		hr = duplicate->SetTime(&start, &stop);
+	if (SUCCEEDED(hr))
+		hr = duplicate->SetSyncPoint(TRUE);
+	if (SUCCEEDED(hr))
+		hr = duplicate->SetPreroll(FALSE);
+	if (SUCCEEDED(hr))
+		hr = duplicate->SetDiscontinuity(FALSE);
+	if (FAILED(hr))
+	{
+		duplicate->Release();
+		return hr;
+	}
 
-	// This is another presentation of the same content frame, not a new capture
-	// frame. Preserve its media-time identity while giving it a local
-	// presentation interval.
+	// This is a second presentation of the same captured frame. Retaining the
+	// media-time identity makes that explicit while its presentation interval
+	// remains a distinct, contiguous DirectShow output slot.
 	LONGLONG mediaStart = 0;
 	LONGLONG mediaStop = 0;
 	if (SUCCEEDED(source->GetMediaTime(&mediaStart, &mediaStop)))
-		duplicate->SetMediaTime(&mediaStart, &mediaStop);
+	{
+		hr = duplicate->SetMediaTime(&mediaStart, &mediaStop);
+		if (FAILED(hr))
+		{
+			duplicate->Release();
+			return hr;
+		}
+	}
 
-	// Preserve HDR metadata on the rare synthetic sample without adding any
-	// per-frame work to the normal path.  Side data is optional on DirectShow
-	// samples, so an unavailable interface is not a correction failure.
+	// Preserve HDR metadata on the rare cloned sample. Side data is optional,
+	// so an unsupported interface is not a correction failure.
 	IMediaSideData* sourceSideData = nullptr;
 	IMediaSideData* duplicateSideData = nullptr;
-	if (SUCCEEDED(source->QueryInterface(__uuidof(IMediaSideData), reinterpret_cast<void**>(&sourceSideData))) &&
-		SUCCEEDED(duplicate->QueryInterface(__uuidof(IMediaSideData), reinterpret_cast<void**>(&duplicateSideData))))
+	if (SUCCEEDED(source->QueryInterface(
+			__uuidof(IMediaSideData),
+			reinterpret_cast<void**>(&sourceSideData))) &&
+		SUCCEEDED(duplicate->QueryInterface(
+			__uuidof(IMediaSideData),
+			reinterpret_cast<void**>(&duplicateSideData))))
 	{
-		const GUID sideDataTypes[] = { IID_MediaSideDataHDRContentLightLevel, IID_MediaSideDataHDR };
+		const GUID sideDataTypes[] =
+		{
+			IID_MediaSideDataHDRContentLightLevel,
+			IID_MediaSideDataHDR
+		};
 		for (const GUID& type : sideDataTypes)
 		{
 			const BYTE* data = nullptr;
 			size_t size = 0;
-			if (SUCCEEDED(sourceSideData->GetSideData(type, &data, &size)) && data && size > 0)
+			if (SUCCEEDED(sourceSideData->GetSideData(
+					type, &data, &size)) &&
+				data && size > 0)
+			{
 				duplicateSideData->SetSideData(type, data, size);
+			}
 		}
 	}
 	if (duplicateSideData)
@@ -1839,10 +2284,10 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 	IMediaSample* sample,
 	SceneDetectorState& state,
 	uint64_t& sceneEventId,
-	SceneCorrectionAction& correctionAction)
+	uint8_t& eventFramesBack)
 {
 	sceneEventId = 0;
-	correctionAction = SceneCorrectionAction::None;
+	eventFramesBack = 0;
 	// The HDR and MadVR paths use P010.  Keep scene analysis on the converted
 	// sample so the detector sees exactly the format that is delivered, while
 	// avoiding any work for unsupported render formats.
@@ -1902,22 +2347,6 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 	current.averageLuma = static_cast<uint32_t>(totalLuma / current.luma.size());
 	current.valid = true;
 
-	// Integrate the actual display-versus-delivery mismatch. One unit is one
-	// millionth of a frame. Positive phase means the display is consuming
-	// refresh slots faster than samples arrive and will eventually repeat;
-	// negative phase means samples arrive faster and the sink will drop.
-	const double displayRateHz =
-		m_sceneDisplayRefreshRateHz.load(std::memory_order_acquire);
-	const double deliveryRateHz =
-		m_sceneDeliveryRateHz.load(std::memory_order_acquire);
-	if (displayRateHz > 0.0 && deliveryRateHz > 0.0)
-	{
-		const double mismatchPerFrame =
-			(displayRateHz / deliveryRateHz) - 1.0;
-		const int64_t phaseIncrement =
-			static_cast<int64_t>(llround(mismatchPerFrame * 1000000.0));
-		m_scenePhasePpmUnits.fetch_add(phaseIncrement, std::memory_order_relaxed);
-	}
 	const size_t sampleCount = current.luma.size();
 	const bool nearBlack = current.averageLuma <= 96 && darkSampleCount >= (sampleCount * 9) / 10;
 
@@ -1984,6 +2413,8 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 			if (settledAfterCandidate)
 			{
 				sceneEvent = true;
+				eventFramesBack =
+					static_cast<uint8_t>(state.pendingHardCutFrames + 1);
 				state.pendingHardCutValid = false;
 				state.pendingHardCutFrames = 0;
 			}
@@ -2045,38 +2476,6 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 		state.framesUntilNextEvent = static_cast<uint32_t>(std::min<uint64_t>(cooldownFrames64, 300));
 		sceneEventId = m_sceneEventSequence.fetch_add(1, std::memory_order_relaxed) + 1;
 		m_sceneAwareDetectedCount.fetch_add(1, std::memory_order_relaxed);
-		const int64_t accumulatedPhase = m_scenePhasePpmUnits.load(std::memory_order_relaxed);
-		// Arm close to the predicted event.  A rate estimate alone cannot safely
-		// move a correction tens of seconds early without temporarily shifting the
-		// video timeline; delivery performs the final vblank-phase eligibility
-		// check before any sample is changed.
-		constexpr int64_t kCorrectionTriggerMicroframes = 900000;
-		if (accumulatedPhase >= kCorrectionTriggerMicroframes)
-			correctionAction = SceneCorrectionAction::Repeat;
-		else if (accumulatedPhase <= -kCorrectionTriggerMicroframes)
-			correctionAction = SceneCorrectionAction::Drop;
-	}
-
-	// If no safe boundary was available before a whole frame accumulated,
-	// assume the sink performed its natural correction and retain only the
-	// fractional residual. This prevents a stale correction at a later scene.
-	if (correctionAction == SceneCorrectionAction::None)
-	{
-		constexpr int64_t kWholeFrameMicroframes = 1000000;
-		int64_t phase = m_scenePhasePpmUnits.load(std::memory_order_relaxed);
-		while (phase >= kWholeFrameMicroframes || phase <= -kWholeFrameMicroframes)
-		{
-			const bool expectedSinkRepeat = phase > 0;
-			const int64_t wrappedPhase = phase % kWholeFrameMicroframes;
-			if (m_scenePhasePpmUnits.compare_exchange_weak(
-				phase, wrappedPhase, std::memory_order_relaxed))
-			{
-				DebugLog::Log(
-					"SCENE-AWARE PHASE: no safe boundary; assumed natural sink %s, residual=%lld microframes",
-					expectedSinkRepeat ? "repeat" : "drop", wrappedPhase);
-				break;
-			}
-		}
 	}
 
 	return sceneEvent;
@@ -2133,51 +2532,21 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 	lastRecoveryTime = now;
 
 	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected() - Bad CLOCK_SMART timestamp detected, triggering recovery");
-
-	// Purge raw frames
+	try
 	{
-		CAutoLock rawLock(&m_rawQueueLock);
-		m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
-		while (!m_videoFrameQueue.empty())
-		{
-			VideoFrame oldFrame = m_videoFrameQueue.front();
-			oldFrame.SourceBufferRelease();
-			m_videoFrameQueue.pop_front();
-		}
+		// Reset begins a downstream flush before it waits for the delivery gate,
+		// so a renderer blocked in Receive can unwind instead of deadlocking this
+		// recovery path.
+		Reset();
+		DebugLog::Log(
+			"OnBadTimestampDetected(): serialized recovery complete");
 	}
-
-	// Purge converted queue
+	catch (const std::exception& ex)
 	{
-		CAutoLock convLock(&m_convertedQueueLock);
-		while (!m_convertedSampleQueue.empty())
-		{
-			IMediaSample* pSample = m_convertedSampleQueue.front().sample;
-			m_convertedSampleQueue.pop_front();
-			if (pSample) pSample->Release();
-		}
+		DebugLog::Log(
+			"OnBadTimestampDetected(): serialized recovery failed: %s",
+			ex.what());
 	}
-
-	// Clear timestamp history for CLOCK_SMART modes
-	{
-		std::lock_guard<std::mutex> lock(m_timestampHistoryMutex);
-		memset(m_timestampHistory, 0, sizeof(m_timestampHistory));
-		m_timestampHistoryIndex = 0;
-	}
-
-	// Clear pending timestamp history
-	ClearPendingTimestamps();
-
-	// Enter buffering mode
-	m_isBuffering.store(true, std::memory_order_release);
-	{
-		CAutoLock stateLock(&m_stateLock);
-		m_lastSeenFrameCounter = 0;
-	}
-
-	if (m_hFrameAvailableEvent)
-		SetEvent(m_hFrameAvailableEvent);
-
-	DebugLog::Log("OnBadTimestampDetected(): Recovery complete - buffering enabled, queues purged");
 }
 
 size_t CBufferedLiveSourceVideoOutputPin::GetConvertedQueueSize()
