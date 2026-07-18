@@ -162,6 +162,17 @@ private:
 				continue;
 			}
 
+			// Measure a long set of physical vblank intervals.  DWM's
+			// qpcRefreshPeriod is useful as a current phase snapshot, but its
+			// single-period integer value is not accurate enough for the OSD's
+			// "actual display rate" comparison with madVR.
+			// Publish a useful initial estimate after one second, then refine the
+			// same measurement cumulatively at 10 and 100 seconds.  The long
+			// window suppresses scheduler wake jitter at the two endpoints and
+			// makes the final OSD value comparable to madVR's display-rate estimate.
+			constexpr unsigned int kInitialIntervals = 60;
+			constexpr unsigned int kIntermediateIntervals = 600;
+			constexpr unsigned int kIntervalsPerMeasurement = 6000;
 			LARGE_INTEGER first = {};
 			LARGE_INTEGER last = {};
 			unsigned int samples = 0;
@@ -178,27 +189,41 @@ private:
 				last = now;
 				++samples;
 
-				if (samples >= 120)
+				// samples includes both endpoints, so 61, 601, and 6001 vblanks
+				// respectively measure 60, 600, and 6000 intervals.  All updates
+				// use the original first endpoint, avoiding a fence-post error and
+				// ensuring that the value becomes steadily less noisy over time.
+				const unsigned int intervals = samples - 1;
+				const bool publishRate =
+					intervals == kInitialIntervals ||
+					intervals == kIntermediateIntervals ||
+					intervals == kIntervalsPerMeasurement;
+				if (publishRate)
 				{
 					const double elapsed = static_cast<double>(last.QuadPart - first.QuadPart) /
 						static_cast<double>(frequency.QuadPart);
 					if (elapsed > 0.0)
 					{
-						const double rate = static_cast<double>(samples - 1) / elapsed;
+						const double rate = static_cast<double>(intervals) / elapsed;
 						if (rate >= 20.0 && rate <= 120.0)
 						{
 							std::lock_guard<std::mutex> lock(m_mutex);
 							m_rate = rate;
 							m_refreshPeriodQpc.store(
-								(last.QuadPart - first.QuadPart) / static_cast<LONGLONG>(samples - 1),
+								static_cast<int64_t>(llround(
+									static_cast<double>(last.QuadPart - first.QuadPart) /
+									static_cast<double>(intervals))),
 								std::memory_order_release);
 						}
 					}
+					if (intervals < kIntervalsPerMeasurement)
+						continue;
+
 					samples = 0;
 
 					// Phase tracking is only needed while Scene Detect is enabled. In
-					// that mode retain the most recent physical vblank; otherwise keep
-					// the old low-overhead five-second measurement cadence.
+					// that mode retain the most recent physical vblank; otherwise use
+					// a low-overhead ten-second update cadence.
 					bool phaseTracking = false;
 					{
 						std::lock_guard<std::mutex> lock(m_mutex);
@@ -207,7 +232,7 @@ private:
 					if (!phaseTracking)
 					{
 						std::unique_lock<std::mutex> lock(m_mutex);
-						m_wake.wait_for(lock, std::chrono::seconds(5), [this, monitor] {
+						m_wake.wait_for(lock, std::chrono::seconds(10), [this, monitor] {
 							return m_monitor != monitor || m_phaseTracking;
 						});
 					}
@@ -487,9 +512,9 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 //
 
 
-void CVideoProcessorDlg::StartFullScreen()
+void CVideoProcessorDlg::StartFullScreen(bool enabled)
 {
-	m_rendererFullScreenStart = true;
+	m_rendererFullScreenStart = enabled;
 }
 
 void CVideoProcessorDlg::SetCaptureDevice(const CString& initialCaptureDevice)
@@ -498,31 +523,32 @@ void CVideoProcessorDlg::SetCaptureDevice(const CString& initialCaptureDevice)
 	m_initialCaptureDevice = initialCaptureDevice;
 }
 
-void CVideoProcessorDlg::HideUI()
+void CVideoProcessorDlg::HideUI(bool enabled)
 {
-	m_hideUI = true;
-	m_rendererFullScreenStart = false;
+	m_hideUI = enabled;
+	if (enabled)
+		m_rendererFullScreenStart = false;
 }
 
-void CVideoProcessorDlg::StartMinimized()
+void CVideoProcessorDlg::StartMinimized(bool enabled)
 {
-	m_startMinimized = true;
+	m_startMinimized = enabled;
 }
 
-void CVideoProcessorDlg::SceneDetect()
+void CVideoProcessorDlg::SceneDetect(bool enabled)
 {
-	m_sceneAwareTimingCorrection = true;
+	m_sceneAwareTimingCorrection = enabled;
 }
 
-void CVideoProcessorDlg::EnableNewLldvHeuristic()
+void CVideoProcessorDlg::EnableNewLldvHeuristic(bool enabled)
 {
-	m_useNewLldvHeuristic = true;
+	m_useNewLldvHeuristic = enabled;
 }
 
 
-void CVideoProcessorDlg::WindowedFullScreenMode()
+void CVideoProcessorDlg::WindowedFullScreenMode(bool enabled)
 {
-	m_windowedFullScreenMode = true;
+	m_windowedFullScreenMode = enabled;
 }
 
 
@@ -1210,6 +1236,16 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		m_rendererStateText.SetWindowText(TEXT("Rendering"));
 
 		m_rendererStartTime = GetTickCount();
+		// LLDV can be confirmed while the graph is still starting. The
+		// effective PQ state has already been rebuilt, but this graph accepted
+		// the original SDR state, so restart once it is fully running.
+		if (m_lldvRestartPending)
+		{
+			m_lldvRestartPending = false;
+			m_wantToRestartRenderer = true;
+			DbgLog((LOG_TRACE, 1,
+				TEXT("LLDV confirmed during renderer startup - scheduling renderer restart")));
+		}
 		SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);
 
 		break;
@@ -1681,12 +1717,17 @@ int CVideoProcessorDlg::CalculateAutoFrameOffset() {
 	//return frames;
 	//---
 
-	double frameTime = 1000.0 / fps;
-	int offset = frames * frameTime;
-	offset = ((offset + 4) / 5) * 5; // round up to 5's
+	if (fps <= 0.0)
+		return 0;
+
+	const double frameTime = 1000.0 / fps;
+	const double roundedOffset = ceil((static_cast<double>(frames) * frameTime) / 5.0) * 5.0;
+	const int offset = roundedOffset >= static_cast<double>(INT_MAX)
+		? INT_MAX
+		: static_cast<int>(roundedOffset);
 
 
-	DEBUGLOG("Auto frame offset calc: queueMax=%zu, nominalTarget=%zu, refresh=%.1f, frames=%zu, frameTime=%.2f, offset=%zu",
+	DEBUGLOG("Auto frame offset calc: queueMax=%zu, nominalTarget=%zu, refresh=%.1f, frames=%zu, frameTime=%.2f, offset=%d",
 		m_frameQueueMaxSize, nominalTarget, fps, frames, frameTime, offset);
 
 	return offset;
@@ -1846,15 +1887,39 @@ void CVideoProcessorDlg::RefreshCaptureDeviceList()
 	{
 		m_captureDeviceCombo.EnableWindow(TRUE);
 
-		// Select first capture device if none is selected yet
-		const int index = m_captureDeviceCombo.GetCurSel();
-		if (index == CB_ERR)
+		// Discovery is asynchronous. Do not start the first card that happens
+		// to arrive while waiting for the configured card; otherwise a later
+		// matching device can never replace the already-active default.
+		if (m_initialCaptureDevice.GetLength() > 0)
 		{
-			int initialDeviceSelection = 0;
+			int configuredDeviceSelection = CB_ERR;
+			for (int deviceIndex = 0; deviceIndex < m_captureDeviceCombo.GetCount(); ++deviceIndex)
+			{
+				CString deviceName;
+				m_captureDeviceCombo.GetLBText(deviceIndex, deviceName);
+				if (deviceName.CompareNoCase(m_initialCaptureDevice) == 0)
+				{
+					configuredDeviceSelection = deviceIndex;
+					break;
+				}
+			}
 
-			if (m_initialCaptureDevice.GetLength() > 0) initialDeviceSelection = m_captureDeviceCombo.FindString(0, m_initialCaptureDevice);
+			if (configuredDeviceSelection == CB_ERR)
+				return;
 
-			m_captureDeviceCombo.SetCurSel(initialDeviceSelection);
+			if (m_captureDeviceCombo.GetCurSel() != configuredDeviceSelection)
+			{
+				DEBUGLOG("Selecting configured capture device: %s", CStringA(m_initialCaptureDevice).GetString());
+				m_captureDeviceCombo.SetCurSel(configuredDeviceSelection);
+				OnCaptureDeviceSelected();
+			}
+			return;
+		}
+
+		// No configured device: select the first capture device if none is selected yet.
+		if (m_captureDeviceCombo.GetCurSel() == CB_ERR)
+		{
+			m_captureDeviceCombo.SetCurSel(0);
 			OnCaptureDeviceSelected();
 		}
 	}
@@ -2222,6 +2287,7 @@ void CVideoProcessorDlg::RenderStop()
 	KillTimer(LLDV_CHANGE_RESTART_TIMER_ID);
 	m_eotfChangeRestartCooldownSeconds = -1;
 	m_lldvChangeRestartDelaySeconds = -1;
+	m_lldvRestartPending = false;
 	m_eotfCheckCooldownSeconds = 0;
 
 	assert(m_captureDevice);
@@ -2786,8 +2852,18 @@ void CVideoProcessorDlg::BuildPushRestartVideoState()
 
 void CVideoProcessorDlg::ScheduleNewLldvRendererRestart()
 {
-	if (m_rendererState != RendererState::RENDERSTATE_RENDERING ||
-		m_lldvChangeRestartDelaySeconds >= 0)
+	if (!m_videoRenderer)
+		return;
+
+	// If confirmation arrives before the renderer reaches RENDERING, carry
+	// the request into OnMessageRendererStateChange instead of dropping it.
+	if (m_rendererState != RendererState::RENDERSTATE_RENDERING)
+	{
+		m_lldvRestartPending = true;
+		return;
+	}
+
+	if (m_lldvChangeRestartDelaySeconds >= 0)
 		return;
 
 	m_lldvChangeRestartDelaySeconds = 2;
@@ -3147,13 +3223,11 @@ void CVideoProcessorDlg::OnPaint()
 		if (m_videoRenderer )
 		{
 			
-			int queueSize = 0;
 			try
 			{
-				queueSize = m_videoRenderer->GetFrameQueueSize();
 				m_videoRenderer->OnPaint();
 			}
-			catch(std::runtime_error& e)
+			catch (const std::runtime_error&)
 			{
 			
 					//log some issue
@@ -3599,9 +3673,21 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	// only while enabled; otherwise it remains on its low-overhead cadence.
 	g_displayRefreshRateSampler->SetWindow(displayWindow);
 	g_displayRefreshRateSampler->SetPhaseTracking(m_sceneAwareTimingCorrection);
+	// Use DWM for the newest vblank phase, but use the long vblank average for
+	// the displayed/diagnostic rate once it is available.  A mode change causes
+	// a large disagreement; keep the DWM fallback until the next long average
+	// has converged on the new mode.
 	DisplayTimingSnapshot displayTiming = GetDisplayTimingSnapshot(displayWindow);
+	const DisplayTimingSnapshot sampledDisplayTiming =
+		g_displayRefreshRateSampler->GetTimingSnapshot();
+	if (sampledDisplayTiming.refreshRateHz > 0.0 &&
+		(displayTiming.refreshRateHz <= 0.0 ||
+			fabs(sampledDisplayTiming.refreshRateHz - displayTiming.refreshRateHz) < 0.25))
+	{
+		displayTiming.refreshRateHz = sampledDisplayTiming.refreshRateHz;
+	}
 	if (displayTiming.refreshRateHz <= 0.0)
-		displayTiming = g_displayRefreshRateSampler->GetTimingSnapshot();
+		displayTiming = sampledDisplayTiming;
 	const double displayRefreshRate = displayTiming.refreshRateHz;
 
 	double theoreticalCaptureRate = 0.0;

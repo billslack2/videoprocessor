@@ -188,7 +188,6 @@
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="ITimingClock.h" />
     <ClInclude Include="microsoft_directshow\DirectShowDefines.h" />
-    <ClInclude Include="microsoft_directshow\DirectShowRenderers.h" />
     <ClInclude Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.h" />
     <ClInclude Include="microsoft_directshow\DirectShowTimingClock.h" />
     <ClInclude Include="microsoft_directshow\DirectShowTranslations.h" />
@@ -242,7 +241,6 @@
     <ClCompile Include="HDRData.cpp" />
     <ClCompile Include="InputLocked.cpp" />
     <ClCompile Include="IRenderer.cpp" />
-    <ClCompile Include="microsoft_directshow\DirectShowRenderers.cpp" />
     <ClCompile Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.cpp" />
     <ClCompile Include="microsoft_directshow\DirectShowTimingClock.cpp" />
     <ClCompile Include="microsoft_directshow\DirectShowTranslations.cpp" />

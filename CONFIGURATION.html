@@ -14,12 +14,12 @@
 </head>
 <body>
   <h1>VideoProcessor configuration</h1>
-  <p><code>VideoProcessor.cfg</code> is an optional UTF-8 text file read from the application's working directory. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
+  <p><code>VideoProcessor.cfg</code> is an optional UTF-8 text file searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
   <p>The shipped file contains common <code>[command_line]</code> settings only. The optional <code>[p010_conversion]</code> and <code>[ppm_correction]</code> sections can be added when needed.</p>
-  <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override a string setting. Boolean settings are enabled by setting them to <code>true</code> in the config or adding their command-line switch.</p>
+  <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override matching settings.</p>
 
   <h2>[command_line]</h2>
-  <p>Boolean values accept <code>true</code>/<code>false</code>, <code>yes</code>/<code>no</code>, <code>on</code>/<code>off</code>, or <code>1</code>/<code>0</code>.</p>
+  <p>Keys and option values, including device and renderer names, are case-insensitive. Boolean values accept <code>true</code>/<code>false</code>, <code>yes</code>/<code>no</code>, <code>on</code>/<code>off</code>, or <code>1</code>/<code>0</code>. On the command line, a bare Boolean switch enables it; append a Boolean value to explicitly enable or disable it, for example <code>/scene_detect false</code>.</p>
   <table>
     <thead><tr><th>Key</th><th>Type and values</th><th>Effect</th></tr></thead>
     <tbody>

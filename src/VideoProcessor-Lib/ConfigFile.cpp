@@ -47,22 +47,29 @@ std::string ParentDirectory(const std::string& path)
 std::vector<std::string> BuildConfigPathCandidates(const std::string& filename)
 {
 	std::vector<std::string> candidates;
-	candidates.push_back(filename);
 
 	if (IsAbsolutePath(filename))
+	{
+		candidates.push_back(filename);
 		return candidates;
+	}
 
 	char modulePath[MAX_PATH] = {};
 	const DWORD modulePathLength = GetModuleFileNameA(nullptr, modulePath, ARRAYSIZE(modulePath));
-	if (modulePathLength == 0 || modulePathLength >= ARRAYSIZE(modulePath))
-		return candidates;
-
-	std::string directory = ParentDirectory(modulePath);
-	for (int i = 0; i < 3 && !directory.empty(); ++i)
+	if (modulePathLength != 0 && modulePathLength < ARRAYSIZE(modulePath))
 	{
-		candidates.push_back(directory + "\\" + filename);
-		directory = ParentDirectory(directory);
+		// The deployed configuration belongs to the executable.  This avoids a
+		// shortcut's working directory silently selecting an unrelated config.
+		std::string directory = ParentDirectory(modulePath);
+		for (int i = 0; i < 3 && !directory.empty(); ++i)
+		{
+			candidates.push_back(directory + "\\" + filename);
+			directory = ParentDirectory(directory);
+		}
 	}
+
+	// Keep the working directory as a fallback for portable/manual launches.
+	candidates.push_back(filename);
 
 	return candidates;
 }

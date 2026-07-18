@@ -38,6 +38,7 @@ public:
 	virtual ~ALiveSourceVideoOutputPin() {}
 
 	DECLARE_IUNKNOWN;
+	STDMETHODIMP NonDelegatingQueryInterface(REFIID riid, void** ppv) override;
 
 	void Initialize(
 		IVideoFrameFormatter* const videoFrameFormatter,

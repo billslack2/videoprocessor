@@ -138,9 +138,6 @@
     <ClInclude Include="microsoft_directshow\DirectShowDefines.h">
       <Filter>Header Files\microsoft_directshow</Filter>
     </ClInclude>
-    <ClInclude Include="microsoft_directshow\DirectShowRenderers.h">
-      <Filter>Header Files\microsoft_directshow</Filter>
-    </ClInclude>
     <ClInclude Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.h">
       <Filter>Header Files\microsoft_directshow</Filter>
     </ClInclude>
@@ -297,9 +294,6 @@
       <Filter>Source Files\blackmagic_decklink</Filter>
     </ClCompile>
     <ClCompile Include="microsoft_directshow\DirectShowTranslations.cpp">
-      <Filter>Source Files\microsoft_directshow</Filter>
-    </ClCompile>
-    <ClCompile Include="microsoft_directshow\DirectShowRenderers.cpp">
       <Filter>Source Files\microsoft_directshow</Filter>
     </ClCompile>
     <ClCompile Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.cpp">

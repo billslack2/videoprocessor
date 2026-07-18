@@ -77,6 +77,23 @@ ALiveSourceVideoOutputPin::ALiveSourceVideoOutputPin(
 }
 
 
+STDMETHODIMP ALiveSourceVideoOutputPin::NonDelegatingQueryInterface(REFIID riid, void** ppv)
+{
+	CheckPointer(ppv, E_POINTER);
+
+	if (riid == IID_IAMPushSource)
+		return GetInterface(static_cast<IAMPushSource*>(this), ppv);
+
+	if (riid == IID_IAMLatency)
+		return GetInterface(static_cast<IAMLatency*>(this), ppv);
+
+	if (riid == IID_IKsPropertySet)
+		return GetInterface(static_cast<IKsPropertySet*>(this), ppv);
+
+	return CBaseOutputPin::NonDelegatingQueryInterface(riid, ppv);
+}
+
+
 void ALiveSourceVideoOutputPin::Initialize(
 	IVideoFrameFormatter* const videoFrameFormatter,
 	timestamp_t frameDuration,

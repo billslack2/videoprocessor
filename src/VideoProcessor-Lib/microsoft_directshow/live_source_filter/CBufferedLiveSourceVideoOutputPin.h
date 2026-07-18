@@ -140,11 +140,16 @@ private:
 	
 	std::atomic_bool m_isActive = false;
 	std::atomic_bool m_stopping = false;
+	// Identifies the current queue epoch. A conversion that began before a
+	// reset/recovery must not publish its sample into the new epoch.
+	std::atomic<uint64_t> m_queueEpoch = 0;
 	
 	std::atomic_bool m_isBuffering = false; // gate delivery until converted queue is primed
 	uint64_t m_lastSeenFrameCounter = 0;    // Track frame counter for discontinuity detection
 	DWORD m_lastAutoPurgeTime = 0;          // Last time we auto-purged the converted queue
 	DWORD m_bufferingExitTime = 0;          // When we last exited buffering mode (for grace period)
+	uint64_t m_rawOverflowLogCount = 0;      // Protected by m_rawQueueLock
+	DWORD m_lastRawOverflowLogTime = 0;      // Protected by m_rawQueueLock
 
 	// Core proactive frame management
 	HANDLE m_hFrameAvailableEvent = nullptr;  // Event signaled when frames are added to the queue
