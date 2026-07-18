@@ -55,6 +55,7 @@ public:
 	void SetFrameQueueMaxSize(size_t) override;
 	LONG GetAllocatorBufferCount() const override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
+	void SetSceneTimingRates(double displayRefreshRateHz, double deliveryRateHz) override;
 	uint64_t SceneAwareCorrectionDropCount() const override { return m_sceneAwareCorrectionDropCount.load(std::memory_order_relaxed); }
 	uint64_t SceneAwareCorrectionRepeatCount() const override { return m_sceneAwareCorrectionRepeatCount.load(std::memory_order_relaxed); }
 	uint64_t SceneAwareDetectedCount() const override { return m_sceneAwareDetectedCount.load(std::memory_order_relaxed); }
@@ -114,10 +115,12 @@ private:
 	std::atomic<uint64_t> m_sceneAwareLateCandidateCount = 0;
 	std::atomic<uint64_t> m_sceneAwareCorrectionDropCount = 0;
 	std::atomic<uint64_t> m_sceneAwareCorrectionRepeatCount = 0;
-	// Signed phase error in microframes.  The existing PPM trim remains the
-	// source of truth; this accumulator only permits a whole-frame correction
-	// at a confirmed scene boundary when scene detection is enabled.
+	// Signed display-versus-delivery phase error in microframes. Positive means
+	// the display has accumulated an extra refresh slot (sink repeat expected);
+	// negative means delivery has accumulated an extra frame (sink drop expected).
 	std::atomic<int64_t> m_scenePhasePpmUnits = 0;
+	std::atomic<double> m_sceneDisplayRefreshRateHz = 0.0;
+	std::atomic<double> m_sceneDeliveryRateHz = 0.0;
 	// Delivery and reset can run concurrently.  Keep correction history atomic
 	// so a resync cannot race the delivery thread or require another queue lock.
 	std::atomic<DWORD> m_lastSceneAwareCorrectionTime = 0;

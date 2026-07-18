@@ -55,11 +55,13 @@ public:
 	void OnSize() override;
 	void SetFrameQueueMaxSize(size_t) override;
 	void SetSceneAwareTimingCorrection(bool) override;
+	void SetSceneTimingRates(double displayRefreshRateHz, double measuredCaptureRateHz) override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;
 	uint64_t DroppedFrameCount() const override;
 	uint64_t SceneAwareCorrectionDropCount() const override;
+	uint64_t SceneAwareCorrectionRepeatCount() const override;
 	uint64_t SceneAwareDetectedCount() const override;
 	uint64_t SceneAwareLateCandidateCount() const override;
 	

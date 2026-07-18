@@ -113,6 +113,11 @@ public:
 	// Disabled by default; enabled only by the renderer queue UI.
 	virtual void SetSceneAwareTimingCorrection(bool) = 0;
 
+	// Supply the measured display refresh and capture rates used by the
+	// scene-aware whole-frame phase predictor. Renderers that do not implement
+	// scene correction may ignore these values.
+	virtual void SetSceneTimingRates(double, double) {}
+
 	// Get the current frame queue size, negative means no queue
 	// Only valid te be called if the RendererState called back RENDERSTATE_RENDERING
 	// Queues might not be implemented by all renderers, this will return 0 if there is no queueing possible.
@@ -137,9 +142,9 @@ public:
 	// Get the amount of dropped frames due to queue actions
 	virtual uint64_t DroppedFrameCount() const = 0;
 
-	// Intentional late-frame drops performed by Scene Detect. The renderer
-	// repeats the previous image naturally; VideoProcessor injects no repeat sample.
+	// Source-side whole-frame actions moved to a detected scene boundary.
 	virtual uint64_t SceneAwareCorrectionDropCount() const { return 0; }
+	virtual uint64_t SceneAwareCorrectionRepeatCount() const { return 0; }
 	virtual uint64_t SceneAwareDetectedCount() const { return 0; }
 	virtual uint64_t SceneAwareLateCandidateCount() const { return 0; }
 

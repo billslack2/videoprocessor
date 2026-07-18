@@ -33,6 +33,8 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 	m_sceneAwareCorrectionDropCount.store(0, std::memory_order_relaxed);
 	m_sceneAwareCorrectionRepeatCount.store(0, std::memory_order_relaxed);
 	m_scenePhasePpmUnits.store(0, std::memory_order_relaxed);
+	m_sceneDisplayRefreshRateHz.store(0.0, std::memory_order_relaxed);
+	m_sceneDeliveryRateHz.store(0.0, std::memory_order_relaxed);
 	m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
 	m_lastQueueWarning = 0;
 	m_hConversionThread = nullptr;
@@ -209,6 +211,9 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		// Update state atomics
 		m_isActive.store(true, std::memory_order_release);
 		m_isBuffering.store(true, std::memory_order_release);
+		m_scenePhasePpmUnits.store(0, std::memory_order_release);
+		m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
+		m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
 
 		// Reset auto-purge timing state for clean startup
 		{
@@ -609,9 +614,60 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneAwareTimingCorrection(bool enabl
 	// The conversion worker owns its signature buffer.  A generation change lets
 	// it discard that buffer at a frame boundary without taking another lock.
 	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
-	if (!enabled)
-		m_scenePhasePpmUnits.store(0, std::memory_order_release);
+	m_scenePhasePpmUnits.store(0, std::memory_order_release);
+	m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
+	m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
 	DebugLog::Log("SCENE-AWARE CORRECTION: %s", enabled ? "enabled" : "disabled");
+}
+
+void CBufferedLiveSourceVideoOutputPin::SetSceneTimingRates(
+	double displayRefreshRateHz,
+	double deliveryRateHz)
+{
+	const bool valid =
+		displayRefreshRateHz >= 10.0 && displayRefreshRateHz <= 240.0 &&
+		deliveryRateHz >= 10.0 && deliveryRateHz <= 240.0;
+	if (!valid)
+	{
+		m_sceneDisplayRefreshRateHz.store(0.0, std::memory_order_release);
+		m_sceneDeliveryRateHz.store(0.0, std::memory_order_release);
+		return;
+	}
+
+	const double previousDisplay =
+		m_sceneDisplayRefreshRateHz.exchange(displayRefreshRateHz, std::memory_order_acq_rel);
+	const double previousDelivery =
+		m_sceneDeliveryRateHz.exchange(deliveryRateHz, std::memory_order_acq_rel);
+
+	if (previousDisplay <= 0.0 || previousDelivery <= 0.0)
+	{
+		const double mismatchPpm =
+			((displayRefreshRateHz / deliveryRateHz) - 1.0) * 1000000.0;
+		const double secondsPerWholeFrame =
+			abs(displayRefreshRateHz - deliveryRateHz) > 0.0000001 ?
+			1.0 / abs(displayRefreshRateHz - deliveryRateHz) : 0.0;
+		DebugLog::Log(
+			"SCENE-AWARE RATES: display=%.6f Hz delivery=%.6f Hz mismatch=%+.1f ppm predicted_interval=%.1fs",
+			displayRefreshRateHz, deliveryRateHz, mismatchPpm, secondsPerWholeFrame);
+	}
+
+	// Normal measurements move by a few PPM and must not reset accumulated
+	// phase. A 500-PPM step indicates a real mode/rate change and establishes a
+	// new prediction epoch.
+	const auto materiallyChanged = [](double previous, double current) {
+		return previous > 0.0 &&
+			abs(current - previous) / previous >= 0.0005;
+	};
+	if (materiallyChanged(previousDisplay, displayRefreshRateHz) ||
+		materiallyChanged(previousDelivery, deliveryRateHz))
+	{
+		m_scenePhasePpmUnits.store(0, std::memory_order_release);
+		m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
+		m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
+		DebugLog::Log(
+			"SCENE-AWARE RATE CHANGE: display %.6f->%.6f Hz, delivery %.6f->%.6f Hz; phase reset",
+			previousDisplay, displayRefreshRateHz, previousDelivery, deliveryRateHz);
+	}
 }
 
 
@@ -900,12 +956,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	uint64_t frameIntervalUs = 16667;  // Default: ~60fps = 16.667ms
 	uint64_t slowDeliveryThresholdUs = 25000;  // 150% of 60fps frame = 25ms
 	DWORD lastFrameIntervalUpdateTime = GetTickCount();
-	// Delivery-thread-only state.  The retained sample is used solely for a
-	// rare scene-boundary repeat; no queue lock is held while it is copied or
-	// delivered.  The offset keeps all subsequent media timestamps monotonic
-	// after an inserted frame.
+	// Delivery-thread-only state. The retained sample is used solely for a rare
+	// local scene-boundary correction; no queue lock is held while it is copied
+	// or delivered.
 	IMediaSample* lastDeliveredSample = nullptr;
-	REFERENCE_TIME syntheticTimestampOffset = 0;
 
 	auto deliverTracked = [&](IMediaSample* sample) -> HRESULT
 	{
@@ -1007,17 +1061,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			lastFrameIntervalUpdateTime = now;
 		}
 
-		// Reset() re-enters buffering before new timestamps are produced.  Drop
-		// delivery-thread-only synthetic state at that boundary so an old repeat
-		// cannot shift a new DirectShow segment.
-		if (m_isBuffering.load(std::memory_order_acquire) && syntheticTimestampOffset != 0)
+		// Reset() re-enters buffering before a new segment. A retained sample
+		// from the old segment must never be reused across that boundary.
+		if (m_isBuffering.load(std::memory_order_acquire) && lastDeliveredSample)
 		{
-			syntheticTimestampOffset = 0;
-			if (lastDeliveredSample)
-			{
-				lastDeliveredSample->Release();
-				lastDeliveredSample = nullptr;
-			}
+			lastDeliveredSample->Release();
+			lastDeliveredSample = nullptr;
 		}
 
 		// BUFFERING PHASE: do not deliver until we have enough converted samples
@@ -1175,10 +1224,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 
 			// Scene-only timing work is deliberately skipped when the feature is
-			// disabled.  When enabled, a confirmed scene boundary may consume one
-			// accumulated whole-frame phase correction.  Drops do not alter the
-			// timeline; repeats advance a delivery-thread offset so all timestamps
-			// remain monotonic after the inserted frame.
+			// disabled. When enabled, a confirmed scene boundary may consume one
+			// accumulated whole-frame phase correction. Both operations are local
+			// to this boundary; all later capture timestamps remain unchanged.
 			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire))
 			{
 				const REFERENCE_TIME nowStreamTime = NowStreamTime(m_pFilter);
@@ -1205,7 +1253,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					sceneEventId != m_lastCorrectedSceneEventId.load(std::memory_order_relaxed);
 				const bool lateAtSafePoint = saneStreamComparison && isSafeCorrectionPoint &&
 					(nowStreamTime - currentStart) > lateThreshold;
-				bool sceneCorrectionApplied = false;
 				if (lateAtSafePoint)
 					m_sceneAwareLateCandidateCount.fetch_add(1, std::memory_order_relaxed);
 
@@ -1216,7 +1263,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					m_scenePhasePpmUnits.fetch_sub(static_cast<int64_t>(RATIONAL_TRIM_DENOMINATOR), std::memory_order_relaxed);
 					m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 					m_sceneAwareCorrectionDropCount.fetch_add(1, std::memory_order_relaxed);
-					DebugLog::Log("SCENE-AWARE CORRECTION: synthetic drop at scene boundary (event=%llu, phase=%lldppm)",
+					DebugLog::Log("SCENE-AWARE CORRECTION: source drop -> expected sink repeat at scene boundary (event=%llu, residual=%lld microframes)",
 						sceneEventId, m_scenePhasePpmUnits.load(std::memory_order_relaxed));
 					pSample->Release();
 					continue;
@@ -1224,55 +1271,37 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 				if (newSceneEvent && correctionIntervalElapsed && sceneCorrectionAction == SceneCorrectionAction::Repeat && lastDeliveredSample)
 				{
-					const REFERENCE_TIME nominalFrameDuration = std::max<REFERENCE_TIME>(1, m_frameDuration);
-					REFERENCE_TIME correctionFrameDuration = currentStop > currentStart ?
-						(currentStop - currentStart) : nominalFrameDuration;
-					// SMART late-binding can expose a transiently large interval while
-					// the graph recovers; never let that turn one repeat into a large
-					// timestamp jump.
-					correctionFrameDuration = std::max<REFERENCE_TIME>(1,
-						std::min(correctionFrameDuration, nominalFrameDuration * 2));
-					const REFERENCE_TIME repeatStart = currentStart + syntheticTimestampOffset;
-					const REFERENCE_TIME repeatStop = repeatStart + correctionFrameDuration;
-					IMediaSample* repeatSample = nullptr;
-					if (SUCCEEDED(CreateSyntheticRepeatSample(lastDeliveredSample, repeatStart, repeatStop, &repeatSample)))
+					const REFERENCE_TIME boundaryDuration = currentStop - currentStart;
+					if (boundaryDuration >= 2)
 					{
-						const HRESULT repeatHr = deliverTracked(repeatSample);
-						repeatSample->Release();
-						if (SUCCEEDED(repeatHr))
+						const REFERENCE_TIME splitTime = currentStart + boundaryDuration / 2;
+						IMediaSample* repeatSample = nullptr;
+						if (SUCCEEDED(CreateSyntheticRepeatSample(
+							lastDeliveredSample, currentStart, splitTime, &repeatSample)))
 						{
-							syntheticTimestampOffset += correctionFrameDuration;
-							m_scenePhasePpmUnits.fetch_add(static_cast<int64_t>(RATIONAL_TRIM_DENOMINATOR), std::memory_order_relaxed);
-							m_lastSceneAwareCorrectionTime.store(correctionNow, std::memory_order_relaxed);
-							m_lastCorrectedSceneEventId.store(sceneEventId, std::memory_order_relaxed);
-							m_sceneAwareCorrectionRepeatCount.fetch_add(1, std::memory_order_relaxed);
-							sceneCorrectionApplied = true;
-							DebugLog::Log("SCENE-AWARE CORRECTION: synthetic repeat at scene boundary (event=%llu, phase=%lldppm)",
-								sceneEventId, m_scenePhasePpmUnits.load(std::memory_order_relaxed));
+							const HRESULT repeatHr = deliverTracked(repeatSample);
+							repeatSample->Release();
+							REFERENCE_TIME adjustedCurrentStart = splitTime;
+							REFERENCE_TIME adjustedCurrentStop = currentStop;
+							if (SUCCEEDED(repeatHr) &&
+								SUCCEEDED(pSample->SetTime(
+									&adjustedCurrentStart, &adjustedCurrentStop)))
+							{
+								m_scenePhasePpmUnits.fetch_add(
+									static_cast<int64_t>(RATIONAL_TRIM_DENOMINATOR),
+									std::memory_order_relaxed);
+								m_lastSceneAwareCorrectionTime.store(correctionNow, std::memory_order_relaxed);
+								m_lastCorrectedSceneEventId.store(sceneEventId, std::memory_order_relaxed);
+								m_sceneAwareCorrectionRepeatCount.fetch_add(1, std::memory_order_relaxed);
+								DebugLog::Log("SCENE-AWARE CORRECTION: local extra sample -> expected sink drop at scene boundary (event=%llu, residual=%lld microframes)",
+									sceneEventId, m_scenePhasePpmUnits.load(std::memory_order_relaxed));
+							}
 						}
 					}
 				}
 
-				if (lateAtSafePoint && newSceneEvent && correctionIntervalElapsed && !sceneCorrectionApplied)
-				{
-					m_lastSceneAwareCorrectionTime.store(correctionNow, std::memory_order_relaxed);
-					m_lastCorrectedSceneEventId.store(sceneEventId, std::memory_order_relaxed);
-					m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
-					m_sceneAwareCorrectionDropCount.fetch_add(1, std::memory_order_relaxed);
-					DebugLog::Log("SCENE-AWARE CORRECTION: dropped late frame at safe boundary (late=%.3fms, event=%llu)",
-						(nowStreamTime - currentStart) / 10000.0, sceneEventId);
-					pSample->Release();
-					continue;
-				}
-			}
-
-			// Apply any offset created by a prior synthetic repeat only after the
-			// late-bind comparison above, which intentionally uses raw timestamps.
-			if (syntheticTimestampOffset != 0)
-			{
-				REFERENCE_TIME deliveryStart = currentStart + syntheticTimestampOffset;
-				REFERENCE_TIME deliveryStop = currentStop + syntheticTimestampOffset;
-				pSample->SetTime(&deliveryStart, &deliveryStop);
+				// Lateness remains diagnostic only. It must never trigger a
+				// correction unless the display/delivery phase requested one.
 			}
 
 			// 4) DELIVER - Let MadVR handle timing and buffering
@@ -1609,6 +1638,14 @@ HRESULT CBufferedLiveSourceVideoOutputPin::CreateSyntheticRepeatSample(
 	duplicate->SetPreroll(FALSE);
 	duplicate->SetDiscontinuity(FALSE);
 
+	// This is another presentation of the same content frame, not a new capture
+	// frame. Preserve its media-time identity while giving it a local
+	// presentation interval.
+	LONGLONG mediaStart = 0;
+	LONGLONG mediaStop = 0;
+	if (SUCCEEDED(source->GetMediaTime(&mediaStart, &mediaStop)))
+		duplicate->SetMediaTime(&mediaStart, &mediaStop);
+
 	// Preserve HDR metadata on the rare synthetic sample without adding any
 	// per-frame work to the normal path.  Side data is optional on DirectShow
 	// samples, so an unavailable interface is not a correction failure.
@@ -1702,19 +1739,22 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 
 	current.averageLuma = static_cast<uint32_t>(totalLuma / current.luma.size());
 	current.valid = true;
-	// Keep the existing rational PPM timestamp trim untouched.  This separate
-	// signed accumulator expresses the residual phase in microframes: a
-	// negative applied PPM makes timestamps run faster, so it accumulates toward
-	// a synthetic drop; a positive PPM accumulates toward a synthetic repeat.
-	const int64_t appliedPpm = static_cast<int64_t>(m_currentRationalTrimNumerator) -
-		static_cast<int64_t>(RATIONAL_TRIM_DENOMINATOR);
-	const int64_t phase = m_scenePhasePpmUnits.fetch_add(-appliedPpm, std::memory_order_relaxed) - appliedPpm;
-	constexpr int64_t kMaximumPhasePpmUnits = 8LL * 1000000LL;
-	if (phase > kMaximumPhasePpmUnits || phase < -kMaximumPhasePpmUnits)
+
+	// Integrate the actual display-versus-delivery mismatch. One unit is one
+	// millionth of a frame. Positive phase means the display is consuming
+	// refresh slots faster than samples arrive and will eventually repeat;
+	// negative phase means samples arrive faster and the sink will drop.
+	const double displayRateHz =
+		m_sceneDisplayRefreshRateHz.load(std::memory_order_acquire);
+	const double deliveryRateHz =
+		m_sceneDeliveryRateHz.load(std::memory_order_acquire);
+	if (displayRateHz > 0.0 && deliveryRateHz > 0.0)
 	{
-		const int64_t boundedPhase = phase > kMaximumPhasePpmUnits ? kMaximumPhasePpmUnits :
-			(phase < -kMaximumPhasePpmUnits ? -kMaximumPhasePpmUnits : phase);
-		m_scenePhasePpmUnits.store(boundedPhase, std::memory_order_relaxed);
+		const double mismatchPerFrame =
+			(displayRateHz / deliveryRateHz) - 1.0;
+		const int64_t phaseIncrement =
+			static_cast<int64_t>(llround(mismatchPerFrame * 1000000.0));
+		m_scenePhasePpmUnits.fetch_add(phaseIncrement, std::memory_order_relaxed);
 	}
 	const size_t sampleCount = current.luma.size();
 	const bool nearBlack = current.averageLuma <= 96 && darkSampleCount >= (sampleCount * 9) / 10;
@@ -1844,10 +1884,36 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 		sceneEventId = m_sceneEventSequence.fetch_add(1, std::memory_order_relaxed) + 1;
 		m_sceneAwareDetectedCount.fetch_add(1, std::memory_order_relaxed);
 		const int64_t accumulatedPhase = m_scenePhasePpmUnits.load(std::memory_order_relaxed);
-		if (accumulatedPhase >= static_cast<int64_t>(RATIONAL_TRIM_DENOMINATOR))
+		// Act slightly before the predicted sink event so the unavoidable
+		// repeat/drop lands on this safe boundary. Residual phase is retained;
+		// it is never reset to zero by a correction.
+		constexpr int64_t kCorrectionTriggerMicroframes = 900000;
+		if (accumulatedPhase >= kCorrectionTriggerMicroframes)
 			correctionAction = SceneCorrectionAction::Drop;
-		else if (accumulatedPhase <= -static_cast<int64_t>(RATIONAL_TRIM_DENOMINATOR))
+		else if (accumulatedPhase <= -kCorrectionTriggerMicroframes)
 			correctionAction = SceneCorrectionAction::Repeat;
+	}
+
+	// If no safe boundary was available before a whole frame accumulated,
+	// assume the sink performed its natural correction and retain only the
+	// fractional residual. This prevents a stale correction at a later scene.
+	if (correctionAction == SceneCorrectionAction::None)
+	{
+		constexpr int64_t kWholeFrameMicroframes = 1000000;
+		int64_t phase = m_scenePhasePpmUnits.load(std::memory_order_relaxed);
+		while (phase >= kWholeFrameMicroframes || phase <= -kWholeFrameMicroframes)
+		{
+			const bool expectedSinkRepeat = phase > 0;
+			const int64_t wrappedPhase = phase % kWholeFrameMicroframes;
+			if (m_scenePhasePpmUnits.compare_exchange_weak(
+				phase, wrappedPhase, std::memory_order_relaxed))
+			{
+				DebugLog::Log(
+					"SCENE-AWARE PHASE: no safe boundary; assumed natural sink %s, residual=%lld microframes",
+					expectedSinkRepeat ? "repeat" : "drop", wrappedPhase);
+				break;
+			}
+		}
 	}
 
 	return sceneEvent;

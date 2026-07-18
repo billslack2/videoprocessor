@@ -54,6 +54,7 @@ struct StatsData
 	uint64_t capturedDroppedFrames = 0;
 	uint64_t queueDroppedFrames = 0;
 	uint64_t sceneDetectCorrectionDrops = 0;
+	uint64_t sceneDetectCorrectionRepeats = 0;
 	uint64_t sceneDetectDetected = 0;
 
 	// Video info

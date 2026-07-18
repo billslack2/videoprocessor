@@ -89,6 +89,7 @@ public:
 	// Buffered pins override this.  Keeping the default no-op preserves the
 	// unbuffered source behaviour and avoids changing the COM interface.
 	virtual void SetSceneAwareTimingCorrection(bool) {}
+	virtual void SetSceneTimingRates(double, double) {}
 
 	// Get the size of the queue.
 	// Zero means no queueing going on.

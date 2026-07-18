@@ -3538,6 +3538,28 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		displayRefreshRate = g_displayRefreshRateSampler->GetRate();
 	}
 
+	double theoreticalCaptureRate = 0.0;
+	double measuredCaptureRate = 0.0;
+	int measuredCapturePpm = 0;
+	bool hasMeasuredCaptureRate = false;
+	if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_videoRenderer && m_captureDeviceVideoState &&
+		m_captureDeviceVideoState->valid &&
+		m_captureDeviceVideoState->displayMode)
+	{
+		theoreticalCaptureRate =
+			m_captureDeviceVideoState->displayMode->RefreshRateHz();
+		hasMeasuredCaptureRate = m_videoRenderer->GetFrameRateAndPPM(
+			measuredCaptureRate, measuredCapturePpm);
+		if (!hasMeasuredCaptureRate)
+			measuredCaptureRate = theoreticalCaptureRate;
+
+		// This remains active when the OSD is hidden. Scene correction must not
+		// depend on whether diagnostics are visible.
+		m_videoRenderer->SetSceneTimingRates(
+			displayRefreshRate, measuredCaptureRate);
+	}
+
 	if (!m_statsOverlay || !m_statsOverlay->IsVisible() || !m_lastStatsData)
 		return;
 
@@ -3603,6 +3625,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.exitLatencyMs = m_videoRenderer->ExitLatencyMs();
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 		stats.sceneDetectCorrectionDrops = m_videoRenderer->SceneAwareCorrectionDropCount();
+		stats.sceneDetectCorrectionRepeats = m_videoRenderer->SceneAwareCorrectionRepeatCount();
 		stats.sceneDetectDetected = m_videoRenderer->SceneAwareDetectedCount();
 	}
 
@@ -3669,24 +3692,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	// Frame rate and PPM measurement (NEW)
 	if (m_videoRenderer && m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
 	{
-		// Get theoretical refresh rate from display mode
-		stats.theoreticalRefreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
-
-		// Get measured frame rate and PPM from the renderer
-		double measuredFps = 0.0;
-		int ppmDeviation = 0;
-
-		if (m_videoRenderer->GetFrameRateAndPPM(measuredFps, ppmDeviation))
-		{
-			stats.measuredRefreshRate = measuredFps;
-			stats.ppmDeviation = ppmDeviation;
-		}
-		else
-		{
-			// Fallback: use theoretical rate if measured rate not available yet
-			stats.measuredRefreshRate = stats.theoreticalRefreshRate;
-			stats.ppmDeviation = 0;
-		}
+		stats.theoreticalRefreshRate = theoreticalCaptureRate;
+		stats.measuredRefreshRate = measuredCaptureRate > 0.0 ?
+			measuredCaptureRate : theoreticalCaptureRate;
+		stats.ppmDeviation = hasMeasuredCaptureRate ? measuredCapturePpm : 0;
 	}
 
 	// Update overlay
