@@ -324,15 +324,36 @@ STDMETHODIMP ALiveSourceVideoOutputPin::GetLatency(REFERENCE_TIME *prtLatency)
 
 STDMETHODIMP ALiveSourceVideoOutputPin::Notify(IBaseFilter* pSender, Quality q)
 {
-	// TODO
-	return S_OK;
+	// A live capture source cannot safely change the capture cadence in response
+	// to a renderer quality request.  Returning S_OK here previously claimed we
+	// had handled the request while silently discarding it, which can change a
+	// renderer's quality-control policy.  Keep the standard DirectShow meaning:
+	// record a bounded diagnostic and let the renderer handle quality itself.
+	UNREFERENCED_PARAMETER(pSender);
+	static std::atomic<DWORD> lastLogTime = 0;
+	static std::atomic<uint64_t> notificationCount = 0;
+	const uint64_t count = notificationCount.fetch_add(1, std::memory_order_relaxed) + 1;
+	const DWORD now = GetTickCount();
+	DWORD previous = lastLogTime.load(std::memory_order_relaxed);
+	if ((previous == 0 || now - previous >= 5000) &&
+		lastLogTime.compare_exchange_strong(previous, now, std::memory_order_relaxed))
+	{
+		DebugLog::Log("DIRECTSHOW QUALITY: %llu notification(s), type=%s proportion=%ld late=%.3fms timestamp=%.3fms",
+			count,
+			q.Type == Famine ? "Famine" : "Flood",
+			q.Proportion,
+			q.Late / 10000.0,
+			q.TimeStamp / 10000.0);
+	}
+	return E_NOTIMPL;
 }
 
 
 HRESULT STDMETHODCALLTYPE ALiveSourceVideoOutputPin::SetSink(IQualityControl* piqc)
 {
-	// TODO
-	return S_OK;
+	// Preserve the base-class ownership/delegation semantics if an application
+	// explicitly installs a quality manager.
+	return CBaseOutputPin::SetSink(piqc);
 }
 
 

@@ -43,6 +43,14 @@ namespace
 {
 using Microsoft::WRL::ComPtr;
 
+struct DisplayTimingSnapshot
+{
+	double refreshRateHz = 0.0;
+	int64_t lastVBlankQpc = 0;
+	int64_t refreshPeriodQpc = 0;
+	int64_t qpcFrequency = 0;
+};
+
 class DisplayRefreshRateSampler
 {
 public:
@@ -60,6 +68,19 @@ public:
 				return;
 			m_monitor = monitor;
 			m_rate = 0.0;
+			m_lastVBlankQpc.store(0, std::memory_order_release);
+			m_refreshPeriodQpc.store(0, std::memory_order_release);
+		}
+		m_wake.notify_one();
+	}
+
+	void SetPhaseTracking(bool enabled)
+	{
+		{
+			std::lock_guard<std::mutex> lock(m_mutex);
+			if (m_phaseTracking == enabled)
+				return;
+			m_phaseTracking = enabled;
 		}
 		m_wake.notify_one();
 	}
@@ -68,6 +89,17 @@ public:
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		return m_rate;
+	}
+
+	DisplayTimingSnapshot GetTimingSnapshot() const
+	{
+		DisplayTimingSnapshot result;
+		std::lock_guard<std::mutex> lock(m_mutex);
+		result.refreshRateHz = m_rate;
+		result.lastVBlankQpc = m_lastVBlankQpc.load(std::memory_order_acquire);
+		result.refreshPeriodQpc = m_refreshPeriodQpc.load(std::memory_order_acquire);
+		result.qpcFrequency = m_qpcFrequency;
+		return result;
 	}
 
 private:
@@ -106,6 +138,10 @@ private:
 
 		LARGE_INTEGER frequency = {};
 		QueryPerformanceFrequency(&frequency);
+		{
+			std::lock_guard<std::mutex> lock(m_mutex);
+			m_qpcFrequency = frequency.QuadPart;
+		}
 
 		for (;;)
 		{
@@ -136,6 +172,7 @@ private:
 
 				LARGE_INTEGER now = {};
 				QueryPerformanceCounter(&now);
+				m_lastVBlankQpc.store(now.QuadPart, std::memory_order_release);
 				if (samples == 0)
 					first = now;
 				last = now;
@@ -152,14 +189,28 @@ private:
 						{
 							std::lock_guard<std::mutex> lock(m_mutex);
 							m_rate = rate;
+							m_refreshPeriodQpc.store(
+								(last.QuadPart - first.QuadPart) / static_cast<LONGLONG>(samples - 1),
+								std::memory_order_release);
 						}
 					}
 					samples = 0;
 
-					// Display timing changes infrequently.  A 120-vblank measurement
-					// gives a stable value, then we leave the output alone for five
-					// seconds rather than continuously polling every refresh.
-					std::this_thread::sleep_for(std::chrono::seconds(5));
+					// Phase tracking is only needed while Scene Detect is enabled. In
+					// that mode retain the most recent physical vblank; otherwise keep
+					// the old low-overhead five-second measurement cadence.
+					bool phaseTracking = false;
+					{
+						std::lock_guard<std::mutex> lock(m_mutex);
+						phaseTracking = m_phaseTracking;
+					}
+					if (!phaseTracking)
+					{
+						std::unique_lock<std::mutex> lock(m_mutex);
+						m_wake.wait_for(lock, std::chrono::seconds(5), [this, monitor] {
+							return m_monitor != monitor || m_phaseTracking;
+						});
+					}
 				}
 
 				std::lock_guard<std::mutex> lock(m_mutex);
@@ -174,6 +225,10 @@ private:
 	std::thread m_thread;
 	HMONITOR m_monitor = nullptr;
 	double m_rate = 0.0;
+	bool m_phaseTracking = false;
+	int64_t m_qpcFrequency = 0;
+	std::atomic<int64_t> m_lastVBlankQpc = 0;
+	std::atomic<int64_t> m_refreshPeriodQpc = 0;
 };
 
 // IDXGIOutput::WaitForVBlank has no cancellation mechanism. Keep this sampler
@@ -183,20 +238,28 @@ DisplayRefreshRateSampler* g_displayRefreshRateSampler = new DisplayRefreshRateS
 
 // DWM exposes the compositor's measured refresh period in QPC ticks.  This is
 // non-blocking and therefore safe to sample from the UI stats timer.
-double GetDisplayRefreshRateHz(HWND hwnd)
+DisplayTimingSnapshot GetDisplayTimingSnapshot(HWND hwnd)
 {
+	DisplayTimingSnapshot result;
 	DWM_TIMING_INFO timing = {};
 	timing.cbSize = sizeof(timing);
 	if (!hwnd || FAILED(DwmGetCompositionTimingInfo(hwnd, &timing)) || timing.qpcRefreshPeriod == 0)
-		return 0.0;
+		return result;
 
 	LARGE_INTEGER qpcFrequency = {};
 	if (!QueryPerformanceFrequency(&qpcFrequency) || qpcFrequency.QuadPart <= 0)
-		return 0.0;
+		return result;
 
 	const double refreshRate = static_cast<double>(qpcFrequency.QuadPart) /
 		static_cast<double>(timing.qpcRefreshPeriod);
-	return (refreshRate >= 20.0 && refreshRate <= 120.0) ? refreshRate : 0.0;
+	if (refreshRate < 20.0 || refreshRate > 120.0 || timing.qpcVBlank == 0)
+		return result;
+
+	result.refreshRateHz = refreshRate;
+	result.lastVBlankQpc = timing.qpcVBlank;
+	result.refreshPeriodQpc = timing.qpcRefreshPeriod;
+	result.qpcFrequency = qpcFrequency.QuadPart;
+	return result;
 }
 }
 
@@ -3531,12 +3594,15 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		displayWindow = m_fullScreenVideoWindow->GetHWND();
 	else if (m_windowedVideoWindow.GetSafeHwnd())
 		displayWindow = m_windowedVideoWindow.GetSafeHwnd();
-	double displayRefreshRate = GetDisplayRefreshRateHz(displayWindow);
-	if (displayRefreshRate <= 0.0)
-	{
-		g_displayRefreshRateSampler->SetWindow(displayWindow);
-		displayRefreshRate = g_displayRefreshRateSampler->GetRate();
-	}
+	// Keep the fallback vblank sampler associated with the active render window
+	// even when DWM timing is available. Scene Detect uses the sampler's phase
+	// only while enabled; otherwise it remains on its low-overhead cadence.
+	g_displayRefreshRateSampler->SetWindow(displayWindow);
+	g_displayRefreshRateSampler->SetPhaseTracking(m_sceneAwareTimingCorrection);
+	DisplayTimingSnapshot displayTiming = GetDisplayTimingSnapshot(displayWindow);
+	if (displayTiming.refreshRateHz <= 0.0)
+		displayTiming = g_displayRefreshRateSampler->GetTimingSnapshot();
+	const double displayRefreshRate = displayTiming.refreshRateHz;
 
 	double theoreticalCaptureRate = 0.0;
 	double measuredCaptureRate = 0.0;
@@ -3558,6 +3624,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		// depend on whether diagnostics are visible.
 		m_videoRenderer->SetSceneTimingRates(
 			displayRefreshRate, measuredCaptureRate);
+		m_videoRenderer->SetSceneTimingPhase(
+			displayTiming.lastVBlankQpc,
+			displayTiming.refreshPeriodQpc,
+			displayTiming.qpcFrequency);
 	}
 
 	if (!m_statsOverlay || !m_statsOverlay->IsVisible() || !m_lastStatsData)

@@ -90,6 +90,7 @@ public:
 	// unbuffered source behaviour and avoids changing the COM interface.
 	virtual void SetSceneAwareTimingCorrection(bool) {}
 	virtual void SetSceneTimingRates(double, double) {}
+	virtual void SetSceneTimingPhase(int64_t, int64_t, int64_t) {}
 
 	// Get the size of the queue.
 	// Zero means no queueing going on.

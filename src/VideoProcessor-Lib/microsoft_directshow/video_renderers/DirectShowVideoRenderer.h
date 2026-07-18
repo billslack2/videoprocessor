@@ -56,6 +56,7 @@ public:
 	void SetFrameQueueMaxSize(size_t) override;
 	void SetSceneAwareTimingCorrection(bool) override;
 	void SetSceneTimingRates(double displayRefreshRateHz, double measuredCaptureRateHz) override;
+	void SetSceneTimingPhase(int64_t vblankQpc, int64_t refreshPeriodQpc, int64_t qpcFrequency) override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;
