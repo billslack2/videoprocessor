@@ -293,6 +293,38 @@ void DirectShowVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 	m_liveSource->GetVideoOutputPin()->SetSceneAwareTimingCorrection(enabled);
 }
 
+void DirectShowVideoRenderer::SetSceneTimingRates(
+	double displayRefreshRateHz,
+	double measuredCaptureRateHz)
+{
+	if (!m_liveSource || !m_liveSource->GetVideoOutputPin() || !m_videoState ||
+		!m_videoState->displayMode)
+		return;
+
+	const double nominalRateHz = m_videoState->displayMode->RefreshRateHz();
+	double deliveryRateHz = measuredCaptureRateHz > 0.0 ?
+		measuredCaptureRateHz : nominalRateHz;
+
+	// Rational-Rational timestamps are generated from the nominal rate and the
+	// applied trim, not directly from hardware arrival time.  Pass the rate the
+	// sink actually sees in sample timestamps.
+	if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL)
+	{
+		const int appliedPpm = m_liveSource->GetCurrentPPMCorrection();
+		const double durationScale = 1.0 + static_cast<double>(appliedPpm) / 1000000.0;
+		if (durationScale > 0.0)
+			deliveryRateHz = nominalRateHz / durationScale;
+	}
+	else if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_THEO_NONE)
+	{
+		deliveryRateHz = nominalRateHz;
+	}
+
+	m_liveSource->GetVideoOutputPin()->SetSceneTimingRates(
+		displayRefreshRateHz, deliveryRateHz);
+}
+
 
 size_t DirectShowVideoRenderer::GetFrameQueueSize()
 {
@@ -335,6 +367,14 @@ uint64_t DirectShowVideoRenderer::SceneAwareCorrectionDropCount() const
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
 	return m_liveSource->GetVideoOutputPin()->SceneAwareCorrectionDropCount();
+}
+
+uint64_t DirectShowVideoRenderer::SceneAwareCorrectionRepeatCount() const
+{
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		throw std::runtime_error("Invalid state, can only be called while rendering");
+
+	return m_liveSource->GetVideoOutputPin()->SceneAwareCorrectionRepeatCount();
 }
 
 
