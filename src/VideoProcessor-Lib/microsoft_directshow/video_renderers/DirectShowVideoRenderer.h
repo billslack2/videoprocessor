@@ -55,6 +55,7 @@ public:
 	void OnSize() override;
 	void SetFrameQueueMaxSize(size_t) override;
 	void SetSceneAwareTimingCorrection(bool) override;
+	void SetSceneCorrectionUpstreamSample(bool) override;
 	void SetSceneTimingRates(double displayRefreshRateHz, double measuredCaptureRateHz) override;
 	void SetSceneTimingPhase(int64_t vblankQpc, int64_t refreshPeriodQpc, int64_t qpcFrequency) override;
 	size_t GetFrameQueueSize() override;
@@ -125,9 +126,12 @@ protected:
 	mutable timingclocktime_t m_firstFrameTime = 0;
 	mutable timingclocktime_t m_lastFrameTime = 0;  
 	mutable uint64_t m_frameCountForPPM = 0;
-	mutable double m_measuredFrameRate = 0.0;
-	mutable int m_ppmDeviation = 0;
-	mutable bool m_hasPPMData = false;
+	// Updated on the capture callback and read by the UI/display-rate sampler.
+	// Keep this published snapshot race-free without adding a lock to the live
+	// frame path.
+	mutable std::atomic<double> m_measuredFrameRate = 0.0;
+	mutable std::atomic<int> m_ppmDeviation = 0;
+	mutable std::atomic_bool m_hasPPMData = false;
 	
 	// Rolling 5-second window for accurate recent measurements
 	mutable timingclocktime_t m_rollingWindowStartTime = 0;

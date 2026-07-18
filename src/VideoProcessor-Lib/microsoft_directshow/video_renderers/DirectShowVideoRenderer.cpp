@@ -293,6 +293,14 @@ void DirectShowVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 	m_liveSource->GetVideoOutputPin()->SetSceneAwareTimingCorrection(enabled);
 }
 
+void DirectShowVideoRenderer::SetSceneCorrectionUpstreamSample(bool enabled)
+{
+	if (!m_liveSource)
+		return;
+
+	m_liveSource->GetVideoOutputPin()->SetSceneCorrectionUpstreamSample(enabled);
+}
+
 void DirectShowVideoRenderer::SetSceneTimingRates(
 	double displayRefreshRateHz,
 	double measuredCaptureRateHz)
@@ -866,15 +874,15 @@ bool DirectShowVideoRenderer::GetPPMCorrectionInfo(int& ppmValue, bool& hasCorre
 // Get frame rate measurement and PPM deviation (for timing diagnostics)
 bool DirectShowVideoRenderer::GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const
 {
-	if (!m_hasPPMData || !m_videoState)
+	if (!m_hasPPMData.load(std::memory_order_acquire) || !m_videoState)
 	{
 		measuredFps = 0.0;
 		ppmDeviation = 0;
 		return false;
 	}
 
-	measuredFps = m_measuredFrameRate;
-	ppmDeviation = m_ppmDeviation;
+	measuredFps = m_measuredFrameRate.load(std::memory_order_relaxed);
+	ppmDeviation = m_ppmDeviation.load(std::memory_order_relaxed);
 	return true;
 }
 
@@ -917,10 +925,11 @@ void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) 
 			
 			// Calculate PPM deviation: (measured - theoretical) * 1e6 / theoretical
 			const double deviation = (measuredFps - theoreticalFps) / theoreticalFps;
-			m_ppmDeviation = ((int)round(deviation * 1e6))*-1;
-			m_measuredFrameRate = measuredFps;
-			
-			m_hasPPMData = true;
+			const int measuredPpmDeviation =
+				(static_cast<int>(round(deviation * 1e6))) * -1;
+			m_ppmDeviation.store(measuredPpmDeviation, std::memory_order_relaxed);
+			m_measuredFrameRate.store(measuredFps, std::memory_order_relaxed);
+			m_hasPPMData.store(true, std::memory_order_release);
 			
 			// **NEW: Feed PPM measurement to auto-calibrator if active**
 			if (m_liveSource)
@@ -929,15 +938,15 @@ void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) 
 				ALiveSourceVideoOutputPin* outputPin = m_liveSource->GetVideoOutputPin();
 				
 				DebugLog::Log("DirectShow: 5-second PPM window complete - outputPin=%p, deviation=%d PPM",
-					outputPin, m_ppmDeviation);
+					outputPin, measuredPpmDeviation);
 				
 				if (outputPin && outputPin->IsAutoCalibrating())
 				{
-					DebugLog::Log("DirectShow: Auto-calibration ACTIVE - feeding %d PPM to calibrator", m_ppmDeviation);
+					DebugLog::Log("DirectShow: Auto-calibration ACTIVE - feeding %d PPM to calibrator", measuredPpmDeviation);
 					
 					// Feed the PPM deviation to the calibrator
 					// The calibrator will handle filtering, smoothing, and applying corrections
-					outputPin->FeedPPMToCalibrator(m_ppmDeviation);
+					outputPin->FeedPPMToCalibrator(measuredPpmDeviation);
 					
 					DebugLog::Log("DirectShow: PPM fed to calibrator successfully");
 				}

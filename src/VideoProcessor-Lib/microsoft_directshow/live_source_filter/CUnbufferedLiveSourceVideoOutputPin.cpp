@@ -48,6 +48,13 @@ HRESULT CUnbufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame
 		return hr;
 	}
 
+	if (m_deliverNewSegment.exchange(false, std::memory_order_acq_rel))
+	{
+		pSample->Release();
+		ALiveSourceVideoOutputPin::Reset();
+		return S_OK;
+	}
+
 	// Deliver to downstream renderer (this will block)
 	hr = this->Deliver(pSample);
 	pSample->Release();

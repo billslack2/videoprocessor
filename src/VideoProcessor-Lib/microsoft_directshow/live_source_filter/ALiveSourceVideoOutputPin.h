@@ -90,6 +90,7 @@ public:
 	// Buffered pins override this.  Keeping the default no-op preserves the
 	// unbuffered source behaviour and avoids changing the COM interface.
 	virtual void SetSceneAwareTimingCorrection(bool) {}
+	virtual void SetSceneCorrectionUpstreamSample(bool) {}
 	virtual void SetSceneTimingRates(double, double) {}
 	virtual void SetSceneTimingPhase(int64_t, int64_t, int64_t) {}
 
@@ -237,6 +238,10 @@ public:
 		return false;
 	}
 protected:
+	// Reset timestamp/media-time state without sending flush or segment
+	// messages. Buffered pins use this while holding their serialized delivery
+	// gate; the public Reset() wraps it in the normal DirectShow flush sequence.
+	void ResetTimingState();
 
 	// Constants for CLOCK_SMART duration tracking
 	static const size_t DURATION_HISTORY_SIZE = 100;  // Track last 100 frame durations
@@ -273,7 +278,7 @@ protected:
 	
 	// Flag to deliver new segment on next frame after timeline reset
 	// This officially notifies MadVR of timeline restart (critical for RATIONAL_RATIONAL)
-	bool m_deliverNewSegment = false;
+	std::atomic_bool m_deliverNewSegment = false;
 	
 	// Render function to render a videoFrame onto a IMediaSample.
 	// Will not release the sample or dec videoframe nor do the Deliver()

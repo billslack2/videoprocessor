@@ -112,6 +112,7 @@ public:
 	// Prefer visually-safe scene boundaries when dropping a late queued frame.
 	// Disabled by default; enabled only by the renderer queue UI.
 	virtual void SetSceneAwareTimingCorrection(bool) = 0;
+	virtual void SetSceneCorrectionUpstreamSample(bool) {}
 
 	// Supply the measured display refresh and capture rates used by the
 	// scene-aware whole-frame phase predictor. Renderers that do not implement

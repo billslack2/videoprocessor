@@ -450,11 +450,27 @@ void ALiveSourceVideoOutputPin::OnHDRData(HDRDataSharedPtr& hdrData)
 
 void ALiveSourceVideoOutputPin::Reset()
 {
-	CAutoLock timingLock(&m_timingStateLock);
 	DebugLog::Log("ALiveSourceVideoOutputPin::Reset() - HDMI resync timing reset started");
-	
+
 	if (FAILED(DeliverBeginFlush()))
 		throw std::runtime_error("Failed to deliver beginflush");
+
+	ResetTimingState();
+
+	if (FAILED(DeliverEndFlush()))
+		throw std::runtime_error("Failed to deliver endflush");
+
+	if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
+		throw std::runtime_error("Failed to deliver new segment");
+	m_deliverNewSegment = false;
+
+	DebugLog::Log("ALiveSourceVideoOutputPin::Reset() - HDMI resync timing reset completed");
+}
+
+
+void ALiveSourceVideoOutputPin::ResetTimingState()
+{
+	CAutoLock timingLock(&m_timingStateLock);
 
 	if (m_hdrData)
 		m_hdrChanged = true;
@@ -468,9 +484,11 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_startTimeOffset = 0;     // CRITICAL: Must reset to 0 to allow recalculation on first frame
 	m_droppedFrameCount = 0;
 	
-	// Force discontinuity and new segment for clean restart
+	// Force discontinuity on the first new sample. Reset itself sends the new
+	// segment below; the conversion worker must not send a second NewSegment
+	// concurrently with delivery.
 	m_forceDiscontinuity = true;
-	m_deliverNewSegment = true;
+	m_deliverNewSegment = false;
 	
 	// Reset timing method-specific state
 	// CLOCK_RATIONAL SPECIAL: Reset m_rationalFrameDuration = 0 to trigger re-initialization
@@ -517,15 +535,7 @@ void ALiveSourceVideoOutputPin::Reset()
 	m_leadRampStartTimeMs = 0;      // Reset ramp timing to restart from frame 0
 	m_leadRampActive = false;       // Mark ramp as needing re-initialization
 
-	DebugLog::Log("ALiveSourceVideoOutputPin::Reset() - All timing state cleared for HDMI resync");
-
-	if (FAILED(DeliverEndFlush()))
-		throw std::runtime_error("Failed to deliver endflush");
-
-	if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
-		throw std::runtime_error("Failed to deliver new segment");
-		
-	DebugLog::Log("ALiveSourceVideoOutputPin::Reset() - HDMI resync timing reset completed");
+	DebugLog::Log("ALiveSourceVideoOutputPin::ResetTimingState() - All timing state cleared for HDMI resync");
 }
 
 
@@ -669,26 +679,9 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		m_forceDiscontinuity = false;
 	}
 	
-	// CRITICAL FOR RATIONAL_RATIONAL: Deliver new segment after timeline reset
-	// This officially notifies MadVR that the timeline has restarted from 0
-	// Without this, RATIONAL_RATIONAL's strict mathematical timing confuses MadVR
-	if (m_deliverNewSegment)
-	{
-		DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): Delivering NEW SEGMENT to restart timeline (critical for RATIONAL_RATIONAL)"),
-			videoFrame.GetCounter()));
-			
-		if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
-		{
-			DbgLog((LOG_ERROR, 1, TEXT("::FillBuffer(#%I64u): Failed to deliver new segment!"), videoFrame.GetCounter()));
-		}
-		else
-		{
-			DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): New segment delivered successfully - MadVR timeline restarted"),
-				videoFrame.GetCounter()));
-		}
-		
-		m_deliverNewSegment = false;
-	}
+	// If timing corruption requested a new segment, the concrete delivery path
+	// performs a serialized Reset before this sample can reach downstream.
+	// NewSegment must never be sent from the conversion thread.
 
 	m_previousFrameCounter = videoFrame.GetCounter();
 

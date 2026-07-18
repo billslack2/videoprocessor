@@ -55,6 +55,7 @@ public:
 	void SetFrameQueueMaxSize(size_t) override;
 	LONG GetAllocatorBufferCount() const override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
+	void SetSceneCorrectionUpstreamSample(bool enabled) override;
 	void SetSceneTimingRates(double displayRefreshRateHz, double deliveryRateHz) override;
 	void SetSceneTimingPhase(int64_t vblankQpc, int64_t refreshPeriodQpc, int64_t qpcFrequency) override;
 	uint64_t SceneAwareCorrectionDropCount() const override { return m_sceneAwareCorrectionDropCount.load(std::memory_order_relaxed); }
@@ -102,7 +103,8 @@ private:
 		IMediaSample* sample = nullptr;
 		bool isSafeCorrectionPoint = false;
 		uint64_t sceneEventId = 0;
-		SceneCorrectionAction sceneCorrectionAction = SceneCorrectionAction::None;
+		uint64_t queueEpoch = 0;
+		uint64_t sceneTimingGeneration = 0;
 	};
 	std::deque<ConvertedSample> m_convertedSampleQueue;
 	CCritSec m_convertedQueueLock;  // Protects m_convertedSampleQueue only
@@ -110,15 +112,20 @@ private:
 	// This option is deliberately off by default.  When false, conversion does
 	// no scene analysis and delivery follows the pre-existing path exactly.
 	std::atomic_bool m_sceneAwareTimingCorrection = false;
+	std::atomic_bool m_sceneCorrectionUpstreamSample = false;
 	std::atomic<uint64_t> m_sceneDetectorGeneration = 0;
+	// Invalidates queued scene decisions and the delivery-owned output cadence
+	// whenever the graph, display timing, or feature state changes.
+	std::atomic<uint64_t> m_sceneTimingGeneration = 0;
 	std::atomic<uint64_t> m_sceneEventSequence = 0;
 	std::atomic<uint64_t> m_sceneAwareDetectedCount = 0;
 	std::atomic<uint64_t> m_sceneAwareLateCandidateCount = 0;
 	std::atomic<uint64_t> m_sceneAwareCorrectionDropCount = 0;
 	std::atomic<uint64_t> m_sceneAwareCorrectionRepeatCount = 0;
-	// Signed display-versus-delivery phase error in microframes. Positive means
-	// the display has accumulated an extra refresh slot (sink repeat expected);
-	// negative means delivery has accumulated an extra frame (sink drop expected).
+	// Delivery-thread-owned display-versus-capture content phase, published for
+	// diagnostics in microframes. Positive means the display needs an extra
+	// output sample (repeat); negative means capture has supplied an extra
+	// content frame (drop).
 	std::atomic<int64_t> m_scenePhasePpmUnits = 0;
 	std::atomic<double> m_sceneDisplayRefreshRateHz = 0.0;
 	std::atomic<double> m_sceneDeliveryRateHz = 0.0;
@@ -140,6 +147,15 @@ private:
 	
 	std::atomic_bool m_isActive = false;
 	std::atomic_bool m_stopping = false;
+	// Serializes the entire downstream flush transaction. This is distinct
+	// from m_deliveryGate because BeginFlush must be sent before waiting for a
+	// Deliver/Receive call that may currently be blocked in the renderer.
+	CCritSec m_resetTransactionGate;
+	// Serializes downstream Deliver calls with flush/NewSegment during Reset.
+	// BeginFlush is sent before Reset takes this gate so a blocked renderer can
+	// return; no old-epoch sample can then cross the segment boundary.
+	CCritSec m_deliveryGate;
+	std::atomic_bool m_deliveryFlushing = false;
 	// Identifies the current queue epoch. A conversion that began before a
 	// reset/recovery must not publish its sample into the new epoch.
 	std::atomic<uint64_t> m_queueEpoch = 0;
@@ -204,9 +220,9 @@ private:
 	// Reads a sparse luma grid from P010 output.  It is intentionally called
 	// only by the conversion worker and only while the feature is enabled.
 	bool IsSafeSceneAwareCorrectionPoint(IMediaSample* sample, SceneDetectorState& state,
-		uint64_t& sceneEventId, SceneCorrectionAction& correctionAction);
-	HRESULT CreateSyntheticRepeatSample(IMediaSample* source, REFERENCE_TIME start,
-		REFERENCE_TIME stop, IMediaSample** repeatSample);
+		uint64_t& sceneEventId, uint8_t& eventFramesBack);
+	HRESULT CloneSampleForUpstreamRepeat(IMediaSample* source,
+		REFERENCE_TIME start, REFERENCE_TIME stop, IMediaSample** repeatSample);
 
 	// Remove all items from the videoFrameQueue
 	// CALLER MUST HOLD m_rawQueueLock
