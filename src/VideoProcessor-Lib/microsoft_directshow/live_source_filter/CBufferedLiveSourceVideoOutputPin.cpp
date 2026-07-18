@@ -670,6 +670,30 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneTimingRates(
 	}
 }
 
+void CBufferedLiveSourceVideoOutputPin::SetSceneTimingPhase(
+	int64_t vblankQpc,
+	int64_t refreshPeriodQpc,
+	int64_t qpcFrequency)
+{
+	// A valid refresh period is approximately 10-240 Hz. Reject stale or bogus
+	// UI/DWM data rather than allowing a timing diagnostic to perturb delivery.
+	const bool valid =
+		vblankQpc > 0 && qpcFrequency > 0 && refreshPeriodQpc > 0 &&
+		refreshPeriodQpc <= qpcFrequency / 10 &&
+		refreshPeriodQpc >= qpcFrequency / 240;
+	if (!valid)
+	{
+		m_sceneLastVBlankQpc.store(0, std::memory_order_release);
+		m_sceneRefreshPeriodQpc.store(0, std::memory_order_release);
+		m_sceneQpcFrequency.store(0, std::memory_order_release);
+		return;
+	}
+
+	m_sceneLastVBlankQpc.store(vblankQpc, std::memory_order_release);
+	m_sceneRefreshPeriodQpc.store(refreshPeriodQpc, std::memory_order_release);
+	m_sceneQpcFrequency.store(qpcFrequency, std::memory_order_release);
+}
+
 
 void CBufferedLiveSourceVideoOutputPin::Reset()
 {
@@ -1224,9 +1248,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 
 			// Scene-only timing work is deliberately skipped when the feature is
-			// disabled. When enabled, a confirmed scene boundary may consume one
-			// accumulated whole-frame phase correction. Both operations are local
-			// to this boundary; all later capture timestamps remain unchanged.
+			// disabled.  The experimental path below never applies a permanent
+			// timestamp offset.  It only acts when a measured vblank already falls
+			// in the exact local interval needed to relocate the renderer's natural
+			// repeat/drop onto this scene boundary.
 			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire))
 			{
 				const REFERENCE_TIME nowStreamTime = NowStreamTime(m_pFilter);
@@ -1256,46 +1281,128 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				if (lateAtSafePoint)
 					m_sceneAwareLateCandidateCount.fetch_add(1, std::memory_order_relaxed);
 
-				if (newSceneEvent && correctionIntervalElapsed && sceneCorrectionAction == SceneCorrectionAction::Drop)
+				// Convert the latest physical vblank QPC snapshot into this graph's
+				// stream-time domain.  The mapping is sampled immediately, so it does
+				// not assume that the DirectShow clock is numerically identical to QPC.
+				auto nextVBlankAtOrAfter = [&](REFERENCE_TIME streamTime,
+					REFERENCE_TIME& vblankStreamTime,
+					REFERENCE_TIME& refreshPeriodStreamTime) -> bool
 				{
-					m_lastSceneAwareCorrectionTime.store(correctionNow, std::memory_order_relaxed);
-					m_lastCorrectedSceneEventId.store(sceneEventId, std::memory_order_relaxed);
-					m_scenePhasePpmUnits.fetch_sub(static_cast<int64_t>(RATIONAL_TRIM_DENOMINATOR), std::memory_order_relaxed);
-					m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
-					m_sceneAwareCorrectionDropCount.fetch_add(1, std::memory_order_relaxed);
-					DebugLog::Log("SCENE-AWARE CORRECTION: source drop -> expected sink repeat at scene boundary (event=%llu, residual=%lld microframes)",
-						sceneEventId, m_scenePhasePpmUnits.load(std::memory_order_relaxed));
-					pSample->Release();
-					continue;
-				}
+					const int64_t lastVBlankQpc = m_sceneLastVBlankQpc.load(std::memory_order_acquire);
+					const int64_t refreshPeriodQpc = m_sceneRefreshPeriodQpc.load(std::memory_order_acquire);
+					const int64_t qpcFrequency = m_sceneQpcFrequency.load(std::memory_order_acquire);
+					if (lastVBlankQpc <= 0 || refreshPeriodQpc <= 0 || qpcFrequency <= 0 ||
+						nowStreamTime == REFERENCE_TIME_INVALID)
+						return false;
 
-				if (newSceneEvent && correctionIntervalElapsed && sceneCorrectionAction == SceneCorrectionAction::Repeat && lastDeliveredSample)
+					LARGE_INTEGER qpcNow = {};
+					if (!QueryPerformanceCounter(&qpcNow))
+						return false;
+
+					// Do not extrapolate a dormant sampler snapshot across a display-mode
+					// or fullscreen transition.  The UI enables continuous sampling only
+					// while Scene Detect is active.
+					if (qpcNow.QuadPart < lastVBlankQpc ||
+						qpcNow.QuadPart - lastVBlankQpc > qpcFrequency * 2)
+						return false;
+
+					const long double targetQpc = static_cast<long double>(qpcNow.QuadPart) +
+						(static_cast<long double>(streamTime - nowStreamTime) * qpcFrequency) /
+						REFERENCE_TIME_TICKS_PER_SECOND;
+					const long double intervals =
+						(targetQpc - static_cast<long double>(lastVBlankQpc)) / refreshPeriodQpc;
+					const int64_t intervalCount = static_cast<int64_t>(ceil(intervals));
+					const int64_t vblankQpc = lastVBlankQpc +
+						std::max<int64_t>(0, intervalCount) * refreshPeriodQpc;
+
+					vblankStreamTime = nowStreamTime + static_cast<REFERENCE_TIME>(llround(
+						(static_cast<long double>(vblankQpc - qpcNow.QuadPart) *
+							REFERENCE_TIME_TICKS_PER_SECOND) / qpcFrequency));
+					refreshPeriodStreamTime = static_cast<REFERENCE_TIME>(llround(
+						(static_cast<long double>(refreshPeriodQpc) * REFERENCE_TIME_TICKS_PER_SECOND) /
+						qpcFrequency));
+					return refreshPeriodStreamTime > 0;
+				};
+
+				if (newSceneEvent && correctionIntervalElapsed && sceneCorrectionAction != SceneCorrectionAction::None)
 				{
-					const REFERENCE_TIME boundaryDuration = currentStop - currentStart;
-					if (boundaryDuration >= 2)
+					REFERENCE_TIME vblankStreamTime = 0;
+					REFERENCE_TIME displayPeriod = 0;
+					if (!nextVBlankAtOrAfter(currentStart, vblankStreamTime, displayPeriod))
 					{
-						const REFERENCE_TIME splitTime = currentStart + boundaryDuration / 2;
-						IMediaSample* repeatSample = nullptr;
-						if (SUCCEEDED(CreateSyntheticRepeatSample(
-							lastDeliveredSample, currentStart, splitTime, &repeatSample)))
+						DebugLog::Log("SCENE-AWARE PHASE: event=%llu has no fresh vblank snapshot; no correction applied",
+							sceneEventId);
+					}
+					else if (sceneCorrectionAction == SceneCorrectionAction::Drop)
+					{
+						// The display is slower.  Drop only if this sample has no display
+						// slot at all: the next vblank is at/after its successor's start.
+						// That is an existing natural sink drop moved onto this boundary,
+						// not an additional source-side loss.
+						if (vblankStreamTime >= currentStop)
 						{
-							const HRESULT repeatHr = deliverTracked(repeatSample);
-							repeatSample->Release();
-							REFERENCE_TIME adjustedCurrentStart = splitTime;
-							REFERENCE_TIME adjustedCurrentStop = currentStop;
-							if (SUCCEEDED(repeatHr) &&
-								SUCCEEDED(pSample->SetTime(
-									&adjustedCurrentStart, &adjustedCurrentStop)))
+							const int64_t phaseBeforeCorrection =
+								m_scenePhasePpmUnits.load(std::memory_order_relaxed);
+							m_lastSceneAwareCorrectionTime.store(correctionNow, std::memory_order_relaxed);
+							m_lastCorrectedSceneEventId.store(sceneEventId, std::memory_order_relaxed);
+							m_scenePhasePpmUnits.fetch_add(static_cast<int64_t>(RATIONAL_TRIM_DENOMINATOR), std::memory_order_relaxed);
+							m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
+							m_sceneAwareCorrectionDropCount.fetch_add(1, std::memory_order_relaxed);
+							DebugLog::Log("SCENE-AWARE CORRECTION: phase-confirmed source drop at scene boundary (event=%llu, phase_before=%lld, residual=%lld microframes)",
+								sceneEventId, phaseBeforeCorrection,
+								m_scenePhasePpmUnits.load(std::memory_order_relaxed));
+							pSample->Release();
+							continue;
+						}
+						DebugLog::Log("SCENE-AWARE PHASE: event=%llu expected drop, but sample contains a vblank; no correction applied",
+							sceneEventId);
+					}
+					else if (lastDeliveredSample)
+					{
+						// The display is faster.  A repeat is valid only when the current
+						// sample can begin immediately after one vblank and still cover the
+						// following vblank.  This preserves the full [start, stop] window
+						// and therefore cannot accumulate an A/V timestamp offset.
+						const REFERENCE_TIME splitTime = vblankStreamTime + 1;
+						if (splitTime > currentStart &&
+							splitTime < currentStop &&
+							currentStop >= splitTime + displayPeriod)
+						{
+							IMediaSample* repeatSample = nullptr;
+							if (SUCCEEDED(CreateSyntheticRepeatSample(
+								lastDeliveredSample, currentStart, splitTime, &repeatSample)))
 							{
-								m_scenePhasePpmUnits.fetch_add(
-									static_cast<int64_t>(RATIONAL_TRIM_DENOMINATOR),
-									std::memory_order_relaxed);
-								m_lastSceneAwareCorrectionTime.store(correctionNow, std::memory_order_relaxed);
-								m_lastCorrectedSceneEventId.store(sceneEventId, std::memory_order_relaxed);
-								m_sceneAwareCorrectionRepeatCount.fetch_add(1, std::memory_order_relaxed);
-								DebugLog::Log("SCENE-AWARE CORRECTION: local extra sample -> expected sink drop at scene boundary (event=%llu, residual=%lld microframes)",
-									sceneEventId, m_scenePhasePpmUnits.load(std::memory_order_relaxed));
+								REFERENCE_TIME adjustedCurrentStart = splitTime;
+								REFERENCE_TIME adjustedCurrentStop = currentStop;
+								if (SUCCEEDED(pSample->SetTime(&adjustedCurrentStart, &adjustedCurrentStop)))
+								{
+									const HRESULT repeatHr = deliverTracked(repeatSample);
+									if (SUCCEEDED(repeatHr))
+									{
+										const int64_t phaseBeforeCorrection =
+											m_scenePhasePpmUnits.load(std::memory_order_relaxed);
+										m_scenePhasePpmUnits.fetch_sub(static_cast<int64_t>(RATIONAL_TRIM_DENOMINATOR), std::memory_order_relaxed);
+										m_lastSceneAwareCorrectionTime.store(correctionNow, std::memory_order_relaxed);
+										m_lastCorrectedSceneEventId.store(sceneEventId, std::memory_order_relaxed);
+										m_sceneAwareCorrectionRepeatCount.fetch_add(1, std::memory_order_relaxed);
+										DebugLog::Log("SCENE-AWARE CORRECTION: phase-confirmed repeat at scene boundary (event=%llu, phase_before=%lld, residual=%lld microframes)",
+											sceneEventId, phaseBeforeCorrection,
+											m_scenePhasePpmUnits.load(std::memory_order_relaxed));
+									}
+									else
+									{
+										pSample->SetTime(&currentStart, &currentStop);
+										DebugLog::Log("SCENE-AWARE CORRECTION: phase-confirmed repeat delivery failed (event=%llu, hr=0x%08x); original interval restored",
+											sceneEventId, repeatHr);
+									}
+								}
+								repeatSample->Release();
 							}
+						}
+						else
+						{
+							DebugLog::Log("SCENE-AWARE PHASE: event=%llu expected repeat, but no whole display interval remains after the vblank; no correction applied",
+								sceneEventId);
 						}
 					}
 				}
@@ -1884,14 +1991,15 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 		sceneEventId = m_sceneEventSequence.fetch_add(1, std::memory_order_relaxed) + 1;
 		m_sceneAwareDetectedCount.fetch_add(1, std::memory_order_relaxed);
 		const int64_t accumulatedPhase = m_scenePhasePpmUnits.load(std::memory_order_relaxed);
-		// Act slightly before the predicted sink event so the unavoidable
-		// repeat/drop lands on this safe boundary. Residual phase is retained;
-		// it is never reset to zero by a correction.
+		// Arm close to the predicted event.  A rate estimate alone cannot safely
+		// move a correction tens of seconds early without temporarily shifting the
+		// video timeline; delivery performs the final vblank-phase eligibility
+		// check before any sample is changed.
 		constexpr int64_t kCorrectionTriggerMicroframes = 900000;
 		if (accumulatedPhase >= kCorrectionTriggerMicroframes)
-			correctionAction = SceneCorrectionAction::Drop;
-		else if (accumulatedPhase <= -kCorrectionTriggerMicroframes)
 			correctionAction = SceneCorrectionAction::Repeat;
+		else if (accumulatedPhase <= -kCorrectionTriggerMicroframes)
+			correctionAction = SceneCorrectionAction::Drop;
 	}
 
 	// If no safe boundary was available before a whole frame accumulated,

@@ -118,6 +118,11 @@ public:
 	// scene correction may ignore these values.
 	virtual void SetSceneTimingRates(double, double) {}
 
+	// Supply the physical display vblank phase in QPC ticks.  This is optional
+	// diagnostic/control information for scene-aware timing correction; normal
+	// renderers may ignore it.
+	virtual void SetSceneTimingPhase(int64_t, int64_t, int64_t) {}
+
 	// Get the current frame queue size, negative means no queue
 	// Only valid te be called if the RendererState called back RENDERSTATE_RENDERING
 	// Queues might not be implemented by all renderers, this will return 0 if there is no queueing possible.
