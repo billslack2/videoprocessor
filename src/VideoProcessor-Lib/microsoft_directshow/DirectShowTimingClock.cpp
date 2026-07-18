@@ -12,14 +12,17 @@
 #include "DirectShowTimingClock.h"
 
 
-DirectShowTimingClock::DirectShowTimingClock(ITimingClock& timingClock) :
-	CBaseReferenceClock(DIRECTSHOW_TIMING_CLOCK_NAME, nullptr, nullptr, nullptr),
+DirectShowTimingClock::DirectShowTimingClock(ITimingClock& timingClock, HRESULT& result) :
+	CBaseReferenceClock(DIRECTSHOW_TIMING_CLOCK_NAME, nullptr, &result, nullptr),
 	m_timingClock(timingClock),
-	m_ticksPerSecond(m_timingClock.TimingClockTicksPerSecond())
+	m_ticksPerSecond(m_timingClock.TimingClockTicksPerSecond()),
+	m_lastReturnedTime(0)
 {
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowTimingClock::DirectShowTimingClock()")));
 
 	assert(m_ticksPerSecond > 0);
+	if (m_ticksPerSecond <= 0)
+		result = E_INVALIDARG;
 }
 
 
@@ -31,7 +34,19 @@ DirectShowTimingClock::~DirectShowTimingClock()
 
 REFERENCE_TIME DirectShowTimingClock::GetPrivateTime()
 {
-	const timingclocktime_t now = m_timingClock.TimingClockNow();
-	const REFERENCE_TIME rt = (now * 10000000) / m_ticksPerSecond;
-	return rt;
+	try
+	{
+		const timingclocktime_t now = m_timingClock.TimingClockNow();
+		const REFERENCE_TIME rt = (now * 10000000) / m_ticksPerSecond;
+		m_lastReturnedTime.store(rt, std::memory_order_relaxed);
+		return rt;
+	}
+	catch (...)
+	{
+		// IReferenceClock::GetTime is a COM boundary and must not allow a
+		// hardware/API exception to escape onto a DirectShow scheduler thread.
+		// Holding the last valid value makes GetTime return S_FALSE until the
+		// hardware clock is available again.
+		return m_lastReturnedTime.load(std::memory_order_relaxed);
+	}
 }

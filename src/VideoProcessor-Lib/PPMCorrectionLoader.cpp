@@ -118,7 +118,7 @@ bool PPMCorrectionLoader::ParseConfigLine(const std::string& line)
             }
 
             // Check for AUTO keyword
-            if (ppmStr == "AUTO" || ppmStr == "auto")
+            if (ConfigFile::NormalizeName(ppmStr) == "auto")
             {
                 // Store 999999 as sentinel value for AUTO mode
                 m_corrections[refreshRate] = 999999;

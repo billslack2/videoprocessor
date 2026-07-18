@@ -208,6 +208,38 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 
 		assert(!ThreadExists());
 
+		// Establish a clean queue epoch before capture callbacks or either worker
+		// can observe the active state. This avoids a startup race in which a
+		// worker consumes a frame while Active() is still purging old queues.
+		size_t purgedRaw = 0;
+		size_t purgedConverted = 0;
+		{
+			CAutoLock rawLock(&m_rawQueueLock);
+			m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
+			while (!m_videoFrameQueue.empty())
+			{
+				VideoFrame popFrame = m_videoFrameQueue.front();
+				popFrame.SourceBufferRelease();
+				m_videoFrameQueue.pop_front();
+				++purgedRaw;
+			}
+			m_rawOverflowLogCount = 0;
+			m_lastRawOverflowLogTime = 0;
+		}
+		{
+			CAutoLock convertedLock(&m_convertedQueueLock);
+			while (!m_convertedSampleQueue.empty())
+			{
+				IMediaSample* pSample = m_convertedSampleQueue.front().sample;
+				m_convertedSampleQueue.pop_front();
+				if (pSample)
+					pSample->Release();
+				++purgedConverted;
+			}
+		}
+		ResetEvent(m_hFrameAvailableEvent);
+		ResetEvent(m_hConvertedAvailableEvent);
+
 		// Update state atomics
 		m_isActive.store(true, std::memory_order_release);
 		m_isBuffering.store(true, std::memory_order_release);
@@ -285,32 +317,6 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 
 		// MINIMAL STARTUP SYNC: Just ensure threads are created, no artificial delays
 		// Threads will synchronize naturally through events and queues
-
-		// Ensure both queues start empty and clean (no sleep needed)
-		size_t purgedRaw = 0, purgedConverted = 0;
-		{
-			CAutoLock lock(&m_rawQueueLock);
-			// Raw queue should already be empty, but ensure it
-			while (!m_videoFrameQueue.empty())
-			{
-				VideoFrame popFrame = m_videoFrameQueue.front();
-				popFrame.SourceBufferRelease();
-				m_videoFrameQueue.pop_front();
-				++purgedRaw;
-			}
-		}
-
-		{
-			CAutoLock lock(&m_convertedQueueLock);
-			// Converted queue should already be empty, but ensure it
-			while (!m_convertedSampleQueue.empty())
-			{
-				IMediaSample* pSample = m_convertedSampleQueue.front().sample;
-				m_convertedSampleQueue.pop_front();
-				if (pSample) pSample->Release();
-				++purgedConverted;
-			}
-		}
 
 		DbgLog((LOG_TRACE, 1, TEXT("Active(): Startup complete - threads ready, queues clean, buffering enabled")));
 		DebugLog::Log("Active(): Startup complete - purged %zu raw + %zu converted, buffering enabled",
@@ -413,6 +419,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		return S_OK;
 	}
 
+	uint64_t callbackEpoch = m_queueEpoch.load(std::memory_order_acquire);
 	const uint64_t newCounter = videoFrame.GetCounter();
 	bool triggerRecovery = false;
 
@@ -443,6 +450,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		size_t purgedRaw = 0;
 		{
 			CAutoLock rawLock(&m_rawQueueLock);
+			m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
 			while (!m_videoFrameQueue.empty())
 			{
 				VideoFrame oldFrame = m_videoFrameQueue.front();
@@ -476,11 +484,25 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 
 		DebugLog::Log("OnVideoFrame: Recovery complete - buffering enabled, purged %zu raw + %zu converted frames",
 			purgedRaw, purgedConverted);
+		// This callback caused the recovery and its frame is the first valid
+		// candidate for the new epoch.
+		callbackEpoch = m_queueEpoch.load(std::memory_order_acquire);
 	}
 
 	// Add frame to raw queue
+	uint64_t overflowLogCount = 0;
+	uint64_t overflowFrameCounter = 0;
+	size_t overflowQueueSize = 0;
+	size_t overflowQueueMaxSize = 0;
 	{
 		CAutoLock rawLock(&m_rawQueueLock);
+		if (!m_isActive.load(std::memory_order_acquire))
+			return S_OK;
+		// A reset or a recovery initiated by another callback may have changed
+		// epochs while this callback was waiting for the raw queue.
+		if (callbackEpoch != m_queueEpoch.load(std::memory_order_acquire))
+			return S_OK;
+
 		const size_t queueMaxSize = m_frameQueueMaxSize.load(std::memory_order_relaxed);
 
 		// Simple overflow protection - drop oldest if queue too full
@@ -491,8 +513,17 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 			m_videoFrameQueue.pop_front();
 			m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 
-			DebugLog::Log("OnVideoFrame: Raw queue OVERFLOW - dropped frame #%llu, size=%ze/%ze",
-				oldFrame.GetCounter(), m_videoFrameQueue.size(), queueMaxSize);
+			++m_rawOverflowLogCount;
+			const DWORD now = GetTickCount();
+			if (m_lastRawOverflowLogTime == 0 || now - m_lastRawOverflowLogTime >= 5000)
+			{
+				overflowLogCount = m_rawOverflowLogCount;
+				overflowFrameCounter = oldFrame.GetCounter();
+				overflowQueueSize = m_videoFrameQueue.size();
+				overflowQueueMaxSize = queueMaxSize;
+				m_rawOverflowLogCount = 0;
+				m_lastRawOverflowLogTime = now;
+			}
 		}
 
 		// Add new frame
@@ -520,6 +551,12 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 				lastBackupLog = now;
 			}
 		}
+	}
+
+	if (overflowLogCount > 0)
+	{
+		DebugLog::Log("OnVideoFrame: Raw queue OVERFLOW - %llu frame(s) dropped in interval; last=#%llu, size=%zu/%zu",
+			overflowLogCount, overflowFrameCounter, overflowQueueSize, overflowQueueMaxSize);
 	}
 
 	SetEvent(m_hFrameAvailableEvent);
@@ -705,6 +742,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	// Purge raw frames
 	{
 		CAutoLock rawLock(&m_rawQueueLock);
+		m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
 
 		size_t purgedFrames = 0;
 		while (!m_videoFrameQueue.empty())
@@ -1544,8 +1582,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			if (currentConvertedSize >= queueMaxSize)
 			{
 				++backpressureHits;
-				DebugLog::Log("CONVERSION WORKER: BACKPRESSURE hit - converted queue full (%zu/%zu), stopping conversion until delivery frees space",
-					currentConvertedSize, queueMaxSize);
 				break;  // Stop conversion until a frame arrives or delivery frees converted space.
 			}
 
@@ -1553,6 +1589,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			VideoFrame videoFrame{};
 			bool hasFrame = false;
 			size_t rawQueueSize = 0;
+			uint64_t frameQueueEpoch = 0;
 
 			{
 				CAutoLock rawLock(&m_rawQueueLock);
@@ -1568,6 +1605,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				{
 					videoFrame = m_videoFrameQueue.front();
 					m_videoFrameQueue.pop_front();
+					frameQueueEpoch = m_queueEpoch.load(std::memory_order_relaxed);
 					hasFrame = true;
 				}
 			}
@@ -1617,29 +1655,46 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			// Release raw frame - we're done with it
 			videoFrame.SourceBufferRelease();
 
+			// A reset/recovery may have purged the queues while this expensive
+			// conversion was in flight. Never publish that old sample into the
+			// new queue epoch.
+			if (frameQueueEpoch != m_queueEpoch.load(std::memory_order_acquire))
+			{
+				pSample->Release();
+				continue;
+			}
+
 			bool isSafeCorrectionPoint = false;
 			uint64_t sceneEventId = 0;
 			SceneCorrectionAction sceneCorrectionAction = SceneCorrectionAction::None;
 			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire))
 				isSafeCorrectionPoint = IsSafeSceneAwareCorrectionPoint(pSample, sceneDetectorState, sceneEventId, sceneCorrectionAction);
 
-			// Pending timestamp history is only consumed by CLOCK_SMART/SMART2.
-			// Publish it before enqueueing the sample so the delivery thread can
-			// never consume a sample whose late-bind timestamp is not visible yet.
-			// Avoid both operations for the other timing modes.
-			if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
-				m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
-			{
-				REFERENCE_TIME sampleStart = 0, sampleStop = 0;
-				if (SUCCEEDED(pSample->GetTime(&sampleStart, &sampleStop)))
-					RecordPendingTimestamp(sampleStart);
-			}
-
 			// Add converted sample to queue only after its timestamp history is
 			// published. The delivery thread is then free to drain immediately.
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
-				m_convertedSampleQueue.push_back({ pSample, isSafeCorrectionPoint, sceneEventId, sceneCorrectionAction });
+				if (frameQueueEpoch == m_queueEpoch.load(std::memory_order_acquire))
+				{
+					// Publish SMART timestamp history inside the same epoch check
+					// as the queue insertion. This prevents a reset from rejecting
+					// the sample while leaving its stale timestamp behind.
+					if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+						m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
+					{
+						REFERENCE_TIME sampleStart = 0, sampleStop = 0;
+						if (SUCCEEDED(pSample->GetTime(&sampleStart, &sampleStop)))
+							RecordPendingTimestamp(sampleStart);
+					}
+					m_convertedSampleQueue.push_back({ pSample, isSafeCorrectionPoint, sceneEventId, sceneCorrectionAction });
+					pSample = nullptr; // Queue owns the sample reference.
+				}
+			}
+
+			if (pSample)
+			{
+				pSample->Release();
+				continue;
 			}
 
 			// Signal delivery thread that a converted sample is available
@@ -2082,6 +2137,7 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 	// Purge raw frames
 	{
 		CAutoLock rawLock(&m_rawQueueLock);
+		m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
 		while (!m_videoFrameQueue.empty())
 		{
 			VideoFrame oldFrame = m_videoFrameQueue.front();

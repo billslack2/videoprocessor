@@ -88,12 +88,12 @@ public:
 	int CalculateAutoFrameOffset();
 
 	// Option handlers
-	void StartFullScreen();
-	void WindowedFullScreenMode();
-	void HideUI();
-	void StartMinimized();
-	void SceneDetect();
-	void EnableNewLldvHeuristic();
+	void StartFullScreen(bool enabled = true);
+	void WindowedFullScreenMode(bool enabled = true);
+	void HideUI(bool enabled = true);
+	void StartMinimized(bool enabled = true);
+	void SceneDetect(bool enabled = true);
+	void EnableNewLldvHeuristic(bool enabled = true);
 	void DefaultRendererName(const CString&);
 	void SetQueueSize(const CString&);
 	void SetCaptureDevice(const CString&);
@@ -192,6 +192,7 @@ protected:
 	bool m_newLldvCandidateConfirmed = false;
 	DWORD m_newLldvCandidateSince = 0;
 	int m_lldvChangeRestartDelaySeconds = -1;
+	bool m_lldvRestartPending = false;
 
 	//
 	// UI elements

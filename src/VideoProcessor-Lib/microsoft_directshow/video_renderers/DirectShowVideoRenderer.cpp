@@ -469,14 +469,23 @@ void DirectShowVideoRenderer::GraphBuild()
 
 	if (m_timingClock)
 	{
-		m_referenceClock = new DirectShowTimingClock(*m_timingClock);
+		HRESULT clockResult = S_OK;
+		m_referenceClock = new DirectShowTimingClock(*m_timingClock, clockResult);
+		if (FAILED(clockResult))
+		{
+			delete static_cast<DirectShowTimingClock*>(m_referenceClock);
+			m_referenceClock = nullptr;
+			throw std::runtime_error("Failed to create DirectShow reference clock");
+		}
 		m_referenceClock->AddRef();
 
 		if (FAILED(m_mediaFilter->SetSyncSource(m_referenceClock)))
 			throw std::runtime_error("Failed to set sync source to our reference clock");
 
-		if (FAILED(m_amGraphStreams->SyncUsingStreamOffset(TRUE)))
-			throw std::runtime_error("Failed to call SyncUsingStreamOffset");
+		// This is a video-only live graph; audio travels outside this process.
+		// Keep the graph on the source/reference-clock timeline.  Enabling graph
+		// stream offsets would require IAMPushSource stream-offset mutation and
+		// provides no A/V synchronization benefit here.
 	}
 
 	//

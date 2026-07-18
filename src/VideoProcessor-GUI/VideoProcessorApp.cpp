@@ -34,8 +34,13 @@ namespace
 const wchar_t COMMAND_LINE_HELP[] = LR"(VideoProcessor GUI command-line help
 
 Usage:
-  VideoProcessor-GUI.exe /help
-  VideoProcessor-GUI.exe help
+  VideoProcessor.exe /help
+  VideoProcessor.exe help
+
+Boolean switches:
+  A bare switch enables the option. Append true or false to explicitly set it,
+  for example: /scene_detect false. Explicit command-line values override the
+  matching setting in VideoProcessor.cfg.
 
 Options:
   /fullscreen
@@ -50,8 +55,8 @@ Options:
   /renderer "name"
       Select the renderer.
 
-  /queue_size [value|32]
-      Set the renderer frame queue size.
+  /queue_size <positive integer>
+      Set the maximum renderer frame queue size.
 
   /scene_detect
       Opt in to scene-aware late-frame correction at visually-safe boundaries.
@@ -66,7 +71,7 @@ Options:
   /startminimized
       Start the application minimized.
 
-  /frame_offset [value|auto]
+  /frame_offset <milliseconds|auto>
       Set the timing-clock frame offset in milliseconds, or enable automatic offset.
 
   /video_conversion V210_TO_P010
@@ -166,6 +171,14 @@ std::wstring StringToWideString(const std::string& value)
 	MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, &wideValue[0], requiredLength);
 	wideValue.resize(static_cast<size_t>(requiredLength - 1));
 	return wideValue;
+}
+
+std::string NarrowCommandLineToken(const wchar_t* value)
+{
+	std::string result;
+	for (; value != nullptr && *value != L'\0'; ++value)
+		result.push_back(static_cast<char>(*value)); // Command-line switches are ASCII.
+	return result;
 }
 
 bool TryGetFirstConfigString(const ConfigFile& config, const std::initializer_list<const char*> keys, std::string& value)
@@ -281,6 +294,7 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	if (!config.Load())
 		return arguments;
 
+	DbgLog((LOG_TRACE, 1, TEXT("VideoProcessor: Loading configuration from %S"), config.GetLoadedPath().c_str()));
 	ThrowIfConfigHasSyntaxWarnings(config);
 	ValidateCommandLineConfigKeys(config);
 
@@ -319,6 +333,168 @@ bool IsHelpArgument(const wchar_t* argument)
 		 _wcsicmp(argument, L"--help") == 0 ||
 		 _wcsicmp(argument, L"/?") == 0 ||
 		 _wcsicmp(argument, L"?") == 0);
+}
+
+bool IsCommandLineSwitch(const wchar_t* argument)
+{
+	return argument != nullptr && (argument[0] == L'/' || argument[0] == L'-');
+}
+
+bool IsCommandLineOption(const wchar_t* argument, const wchar_t* option)
+{
+	return argument != nullptr && _wcsicmp(argument, option) == 0;
+}
+
+bool TryParseBooleanArgument(const wchar_t* argument, bool& value)
+{
+	if (argument == nullptr)
+		return false;
+
+	if (_wcsicmp(argument, L"true") == 0 || _wcsicmp(argument, L"yes") == 0 ||
+		_wcsicmp(argument, L"on") == 0 || wcscmp(argument, L"1") == 0)
+	{
+		value = true;
+		return true;
+	}
+
+	if (_wcsicmp(argument, L"false") == 0 || _wcsicmp(argument, L"no") == 0 ||
+		_wcsicmp(argument, L"off") == 0 || wcscmp(argument, L"0") == 0)
+	{
+		value = false;
+		return true;
+	}
+
+	return false;
+}
+
+bool ReadBooleanOption(const wchar_t* const* arguments, int& index, int argumentCount,
+	const wchar_t* option, bool& value)
+{
+	if (!IsCommandLineOption(arguments[index], option))
+		return false;
+
+	value = true;
+	if (index + 1 < argumentCount && !IsCommandLineSwitch(arguments[index + 1]))
+	{
+		if (!TryParseBooleanArgument(arguments[index + 1], value))
+			throw std::runtime_error("Invalid boolean value for " +
+				NarrowCommandLineToken(option) +
+				" (expected true/false, yes/no, on/off, or 1/0)");
+		++index;
+	}
+
+	return true;
+}
+
+bool IsPositiveInteger(const wchar_t* value)
+{
+	if (value == nullptr || value[0] == L'\0')
+		return false;
+
+	for (const wchar_t* current = value; *current != L'\0'; ++current)
+	{
+		if (!iswdigit(*current))
+			return false;
+	}
+
+	errno = 0;
+	const unsigned long long number = wcstoull(value, nullptr, 10);
+	return errno == 0 && number > 0 && number <= static_cast<unsigned long long>(INT_MAX);
+}
+
+bool IsNonNegativeInteger(const wchar_t* value)
+{
+	if (value == nullptr || value[0] == L'\0')
+		return false;
+
+	for (const wchar_t* current = value; *current != L'\0'; ++current)
+	{
+		if (!iswdigit(*current))
+			return false;
+	}
+
+	errno = 0;
+	const unsigned long long number = wcstoull(value, nullptr, 10);
+	return errno == 0 && number <= static_cast<unsigned long long>(INT_MAX);
+}
+
+bool RequiresCommandLineValue(const wchar_t* argument)
+{
+	return IsCommandLineOption(argument, L"/renderer") ||
+		IsCommandLineOption(argument, L"/queue_size") ||
+		IsCommandLineOption(argument, L"/capture_device") ||
+		IsCommandLineOption(argument, L"/frame_offset") ||
+		IsCommandLineOption(argument, L"/video_conversion") ||
+		IsCommandLineOption(argument, L"/container_colorspace") ||
+		IsCommandLineOption(argument, L"/hdr_colorspace") ||
+		IsCommandLineOption(argument, L"/hdr_luminance") ||
+		IsCommandLineOption(argument, L"/renderer_start_stop_time_method") ||
+		IsCommandLineOption(argument, L"/renderer_nominal_range") ||
+		IsCommandLineOption(argument, L"/renderer_transfer_function") ||
+		IsCommandLineOption(argument, L"/renderer_transfer_matrix") ||
+		IsCommandLineOption(argument, L"/renderer_primaries");
+}
+
+bool HasCaseInsensitiveValue(const wchar_t* argument)
+{
+	return IsCommandLineOption(argument, L"/frame_offset") ||
+		IsCommandLineOption(argument, L"/video_conversion") ||
+		IsCommandLineOption(argument, L"/container_colorspace") ||
+		IsCommandLineOption(argument, L"/hdr_colorspace") ||
+		IsCommandLineOption(argument, L"/hdr_luminance") ||
+		IsCommandLineOption(argument, L"/renderer_start_stop_time_method") ||
+		IsCommandLineOption(argument, L"/renderer_nominal_range") ||
+		IsCommandLineOption(argument, L"/renderer_transfer_function") ||
+		IsCommandLineOption(argument, L"/renderer_transfer_matrix") ||
+		IsCommandLineOption(argument, L"/renderer_primaries");
+}
+
+bool IsBooleanCommandLineOption(const wchar_t* argument)
+{
+	return IsCommandLineOption(argument, L"/fullscreen") ||
+		IsCommandLineOption(argument, L"/windowedfullscreenmode") ||
+		IsCommandLineOption(argument, L"/noui") ||
+		IsCommandLineOption(argument, L"/czeddie") ||
+		IsCommandLineOption(argument, L"/scene_detect") ||
+		IsCommandLineOption(argument, L"/scene") ||
+		IsCommandLineOption(argument, L"/newlldv") ||
+		IsCommandLineOption(argument, L"/startminimized");
+}
+
+void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
+{
+	for (int index = 1; index < static_cast<int>(arguments.size()); ++index)
+	{
+		const wchar_t* argument = arguments[index];
+		if (IsBooleanCommandLineOption(argument))
+		{
+			if (index + 1 < static_cast<int>(arguments.size()) && !IsCommandLineSwitch(arguments[index + 1]))
+			{
+				bool ignored = false;
+				if (!TryParseBooleanArgument(arguments[index + 1], ignored))
+					throw std::runtime_error("Invalid boolean value for command-line option");
+				++index;
+			}
+			continue;
+		}
+
+		if (!RequiresCommandLineValue(argument))
+			throw std::runtime_error("Unknown command-line option: " +
+				NarrowCommandLineToken(argument));
+
+		if (index + 1 >= static_cast<int>(arguments.size()) || IsCommandLineSwitch(arguments[index + 1]))
+			throw std::runtime_error("Missing value for command-line option: " +
+				NarrowCommandLineToken(argument));
+
+		if (IsCommandLineOption(argument, L"/queue_size") && !IsPositiveInteger(arguments[index + 1]))
+			throw std::runtime_error("Invalid /queue_size: expected a positive integer");
+
+		if (IsCommandLineOption(argument, L"/frame_offset") &&
+			_wcsicmp(arguments[index + 1], L"auto") != 0 && !IsNonNegativeInteger(arguments[index + 1]))
+			throw std::runtime_error("Invalid /frame_offset: expected non-negative milliseconds or auto");
+
+		++index;
+	}
 }
 
 void PrintCommandLineHelp()
@@ -430,7 +606,7 @@ BOOL CVideoProcessorApp::InitInstance()
 			throw std::runtime_error("Failed to parse command line");
 
 		std::vector<std::wstring> mergedArguments;
-		mergedArguments.emplace_back(parsedArgumentCount > 0 ? parsedArguments[0] : L"VideoProcessor-GUI.exe");
+		mergedArguments.emplace_back(parsedArgumentCount > 0 ? parsedArguments[0] : L"VideoProcessor.exe");
 
 		mergedArguments.insert(mergedArguments.end(), configuredArguments.begin(), configuredArguments.end());
 		for (int i = 1; i < parsedArgumentCount; ++i)
@@ -438,24 +614,41 @@ BOOL CVideoProcessorApp::InitInstance()
 
 		std::vector<const wchar_t*> pArgs;
 		pArgs.reserve(mergedArguments.size());
+		for (auto& argument : mergedArguments)
+		{
+			if (IsCommandLineSwitch(argument.c_str()))
+			{
+				std::transform(argument.begin(), argument.end(), argument.begin(), towlower);
+			}
+		}
+		for (size_t argumentIndex = 1; argumentIndex < mergedArguments.size(); ++argumentIndex)
+		{
+			if (HasCaseInsensitiveValue(mergedArguments[argumentIndex - 1].c_str()))
+			{
+				std::transform(mergedArguments[argumentIndex].begin(), mergedArguments[argumentIndex].end(),
+					mergedArguments[argumentIndex].begin(), towupper);
+			}
+		}
 		for (const auto& argument : mergedArguments)
 			pArgs.push_back(argument.c_str());
 
 		const int iNumOfArgs = static_cast<int>(pArgs.size());
 		LocalFree(parsedArguments);
+		ValidateCommandLineArguments(pArgs);
 
 		for (int i = 1; i < iNumOfArgs; i++)
 		{
 			// /fullscreen
-			if (wcscmp(pArgs[i], L"/fullscreen") == 0)
+			bool booleanValue = false;
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/fullscreen", booleanValue))
 			{
-				dlg.StartFullScreen();
+				dlg.StartFullScreen(booleanValue);
 			}
 
 			// /windowedfullscreenmode
-			if (wcscmp(pArgs[i], L"/windowedfullscreenmode") == 0)
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/windowedfullscreenmode", booleanValue))
 			{
-				dlg.WindowedFullScreenMode();
+				dlg.WindowedFullScreenMode(booleanValue);
 			}
 
 			// /renderer "name"
@@ -482,7 +675,7 @@ BOOL CVideoProcessorApp::InitInstance()
 			// /frame_offset [value|"auto"]
 			if (wcscmp(pArgs[i], L"/frame_offset") == 0 && (i + 1) < iNumOfArgs)
 			{
-				if (wcscmp(pArgs[i + 1], L"auto") == 0)
+				if (wcscmp(pArgs[i + 1], L"AUTO") == 0)
 				{
 					dlg.StartFrameOffsetAuto();
 				}
@@ -738,7 +931,7 @@ BOOL CVideoProcessorApp::InitInstance()
 					transferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_28;
 				}
 
-				if (wcscmp(pArgs[i + 1], L"LINEAR_RGB") == 0)
+				else if (wcscmp(pArgs[i + 1], L"LINEAR_RGB") == 0)
 				{
 					transferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_10;
 				}
@@ -811,7 +1004,7 @@ BOOL CVideoProcessorApp::InitInstance()
 				{
 					transferMatrix = DIRECTSHOW_VIDEOTRANSFERMATRIX_FCC;
 				}
-				else if (wcscmp(pArgs[i + 1], L"YCgCo") == 0)
+				else if (wcscmp(pArgs[i + 1], L"YCGCO") == 0)
 				{
 					transferMatrix = DIRECTSHOW_VIDEOTRANSFERMATRIX_YCgCo;
 				}
@@ -870,27 +1063,29 @@ BOOL CVideoProcessorApp::InitInstance()
 
 
 			// hide the UI except the video window
-			if (wcscmp(pArgs[i], L"/noui") == 0 || wcscmp(pArgs[i], L"/czeddie") == 0)
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/noui", booleanValue) ||
+				ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/czeddie", booleanValue))
 			{
-				dlg.HideUI();
+				dlg.HideUI(booleanValue);
 			}
 
 			// scene-aware timing correction
-			if (wcscmp(pArgs[i], L"/scene_detect") == 0 || wcscmp(pArgs[i], L"/scene") == 0)
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/scene_detect", booleanValue) ||
+				ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/scene", booleanValue))
 			{
-				dlg.SceneDetect();
+				dlg.SceneDetect(booleanValue);
 			}
 
 			// Opt-in LLDV detection for DeckLink's BT.2020 + SDR reporting.
-			if (wcscmp(pArgs[i], L"/newlldv") == 0)
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/newlldv", booleanValue))
 			{
-				dlg.EnableNewLldvHeuristic();
+				dlg.EnableNewLldvHeuristic(booleanValue);
 			}
 
 			// start minimized
-			if (wcscmp(pArgs[i], L"/startminimized") == 0)
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/startminimized", booleanValue))
 			{
-				dlg.StartMinimized();
+				dlg.StartMinimized(booleanValue);
 			}
 
 		}

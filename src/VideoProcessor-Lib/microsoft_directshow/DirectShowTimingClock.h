@@ -27,7 +27,7 @@
 class DirectShowTimingClock : public CBaseReferenceClock
 {
 public:
-	DirectShowTimingClock(ITimingClock& timingClock);
+	DirectShowTimingClock(ITimingClock& timingClock, HRESULT& result);
 	virtual ~DirectShowTimingClock();
 
 	// CBaseReferenceClock override - HOT PATH
@@ -37,6 +37,7 @@ private:
 	ITimingClock& m_timingClock;
 	const timingclocktime_t m_ticksPerSecond;
 
-	// Lock-free monotonic enforcement
+	// Last successfully sampled hardware time, used only if the hardware clock
+	// reports a transient failure. CBaseReferenceClock enforces monotonicity.
 	std::atomic<REFERENCE_TIME> m_lastReturnedTime;
 };
