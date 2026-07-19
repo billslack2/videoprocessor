@@ -176,11 +176,13 @@ private:
 		for (;;)
 		{
 			HMONITOR monitor = nullptr;
+			HWND window = nullptr;
 			uint64_t targetGeneration = 0;
 			{
 				std::unique_lock<std::mutex> lock(m_mutex);
 				m_wake.wait(lock, [this] { return m_monitor != nullptr; });
 				monitor = m_monitor;
+				window = m_window;
 				targetGeneration = m_targetGeneration;
 			}
 
@@ -194,10 +196,12 @@ private:
 				continue;
 			}
 
-			// Measure a long set of physical vblank intervals.  DWM's
-			// qpcRefreshPeriod is useful as a current phase snapshot, but its
-			// single-period integer value is not accurate enough for the OSD's
-			// "actual display rate" comparison with madVR.
+			// Measure a long set of physical vblank intervals. WaitForVBlank is
+			// tied to the output, but the worker can be descheduled across more
+			// than one vblank at 24 Hz. Compensate for multi-period QPC gaps rather
+			// than assuming every wake-up represents exactly one refresh. DWM's
+			// cRefresh is a compositor wake count and can miss a vblank too, so use
+			// its period only as the initial interval estimate for this sampler.
 			// Publish an early OSD estimate, but do not mark the rate safe for
 			// correction until it has covered a full 100 seconds. Time, rather
 			// than a fixed frame count, gives the same confidence at 24, 60, and
@@ -207,6 +211,9 @@ private:
 			constexpr double kStableMeasurementSeconds = 100.0;
 			LARGE_INTEGER first = {};
 			LARGE_INTEGER last = {};
+			LARGE_INTEGER previous = {};
+			long double estimatedRefreshPeriodQpc = 0.0L;
+			uint64_t intervals = 0;
 			int64_t lastPublishedQpc = 0;
 			unsigned int samples = 0;
 			for (;;)
@@ -216,24 +223,59 @@ private:
 
 				LARGE_INTEGER now = {};
 				QueryPerformanceCounter(&now);
-				m_lastVBlankQpc.store(now.QuadPart, std::memory_order_release);
+
+				DWM_TIMING_INFO timing = {};
+				timing.cbSize = sizeof(timing);
+				const bool hasDwmTiming = window &&
+					SUCCEEDED(DwmGetCompositionTimingInfo(window, &timing)) &&
+					timing.qpcRefreshPeriod > 0 && timing.qpcVBlank > 0;
+				const int64_t observedVBlankQpc = hasDwmTiming ?
+					static_cast<int64_t>(timing.qpcVBlank) : now.QuadPart;
+				m_lastVBlankQpc.store(observedVBlankQpc, std::memory_order_release);
 				if (samples == 0)
 				{
 					first = now;
+					previous = now;
+					if (hasDwmTiming)
+						estimatedRefreshPeriodQpc =
+							static_cast<long double>(timing.qpcRefreshPeriod);
 					std::lock_guard<std::mutex> lock(m_mutex);
 					if (m_targetGeneration == targetGeneration)
 						m_measurementStartedQpc = first.QuadPart;
 				}
+				else
+				{
+					const int64_t elapsedSincePreviousQpc = now.QuadPart - previous.QuadPart;
+					if (estimatedRefreshPeriodQpc <= 0.0L)
+						estimatedRefreshPeriodQpc =
+							static_cast<long double>(elapsedSincePreviousQpc);
+
+					const uint64_t elapsedIntervals = std::max<uint64_t>(1,
+						static_cast<uint64_t>(llround(
+							static_cast<long double>(elapsedSincePreviousQpc) /
+							estimatedRefreshPeriodQpc)));
+					intervals += elapsedIntervals;
+
+					// A single normal interval refines the period. A compensated
+					// multi-interval gap is also useful, but give it less weight so a
+					// long scheduler pause cannot move the rate materially.
+					const long double observedPeriod =
+						static_cast<long double>(elapsedSincePreviousQpc) / elapsedIntervals;
+					if (observedPeriod > estimatedRefreshPeriodQpc * 0.5L &&
+						observedPeriod < estimatedRefreshPeriodQpc * 1.5L)
+					{
+						const long double weight = elapsedIntervals == 1 ? 0.10L : 0.02L;
+						estimatedRefreshPeriodQpc +=
+							(observedPeriod - estimatedRefreshPeriodQpc) * weight;
+					}
+					previous = now;
+				}
 				last = now;
 				++samples;
 
-				// samples includes both endpoints, so 61 vblanks measure 60
-				// intervals. All updates
-				// use the original first endpoint, avoiding a fence-post error and
-				// ensuring that the value becomes steadily less noisy over time.
-				const unsigned int intervals = samples - 1;
-				const double elapsedSeconds = intervals > 0 ?
-					static_cast<double>(last.QuadPart - first.QuadPart) /
+				const int64_t elapsedQpc = last.QuadPart - first.QuadPart;
+				const double elapsedSeconds = intervals > 0 && elapsedQpc > 0 ?
+					static_cast<double>(elapsedQpc) /
 					static_cast<double>(frequency.QuadPart) : 0.0;
 				const bool rateHasBeenPublished = lastPublishedQpc != 0;
 				const bool publishRate = elapsedSeconds >= kInitialMeasurementSeconds &&
@@ -261,7 +303,7 @@ private:
 									m_rateStable = true;
 								m_refreshPeriodQpc.store(
 									static_cast<int64_t>(llround(
-										static_cast<double>(last.QuadPart - first.QuadPart) /
+										static_cast<double>(elapsedQpc) /
 										static_cast<double>(intervals))),
 									std::memory_order_release);
 							}
@@ -3581,8 +3623,8 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			// for the graph to stop, re-create its window, and become stable.
 			m_queueResetIgnoreEventsUntil = GetTickCount64() + 10000;
 			m_pendingQueueReset = false;
-			DEBUGLOG("Queue transition: executing one guarded queue re-prime reset");
-			m_videoRenderer->Reset();
+			DEBUGLOG("Queue transition: executing live-source queue re-prime reset");
+			m_videoRenderer->ResetLiveQueue();
 		}
 		else
 		{
@@ -3783,7 +3825,8 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			m_rendererDroppedFrameCountText.SetWindowText(cstring);
 
 			// INTELLIGENT QUEUE HEALTH MONITORING
-			MonitorQueueHealth(currentQueueSize, droppedFrames);
+			MonitorQueueHealth(rawQueueSize, convertedQueueSize,
+				GetRendererVideoFrameQueueSizeMax(), droppedFrames);
 		}
 		else
 		{
@@ -4058,15 +4101,36 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 }
 
 // Add this new method to the class
-void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t droppedFrames)
+void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
+	size_t convertedQueueSize, size_t queueMaxSize, uint64_t droppedFrames)
 {
-	// Queue depth and drops are diagnostics, not proof that the DirectShow graph
-	// is unhealthy. Restarting the graph here caused a repeating startup cycle
-	// in madVR. Keep the observations for the UI only.
-	m_lastQueueSize = currentQueueSize;
+	m_lastQueueSize = rawQueueSize + convertedQueueSize;
 	m_lastDroppedFrames = droppedFrames;
 	m_consecutiveFullSeconds = 0;
 	m_consecutiveStuckSeconds = 0;
+
+	if (queueMaxSize == 0 || !m_videoRenderer ||
+		m_rendererState != RendererState::RENDERSTATE_RENDERING)
+		return;
+
+	// Raw and converted queues each have their own capacity. Do not use the
+	// combined UI total here: 12 raw + 12 converted is not a 24/32 overflow.
+	const bool highWater = rawQueueSize * 4 >= queueMaxSize * 3 ||
+		convertedQueueSize * 4 >= queueMaxSize * 3;
+	const ULONGLONG now = GetTickCount64();
+	if (!highWater || m_pendingQueueReset ||
+		now < m_queueResetIgnoreEventsUntil)
+		return;
+
+	// If either individual live queue remains above 75%, repeat this queue-only
+	// recovery after the post-reset cooldown. That keeps excessive latency from
+	// persisting, while m_pendingQueueReset and the ten-second suppression avoid
+	// a rapid reset loop.
+	m_pendingQueueReset = true;
+	SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 1000, nullptr);
+	DbgLog((LOG_TRACE, 1,
+		TEXT("Queue high-water (%zu/%zu raw, %zu/%zu converted) - scheduling one live queue re-prime"),
+		rawQueueSize, queueMaxSize, convertedQueueSize, queueMaxSize));
 }
 
 

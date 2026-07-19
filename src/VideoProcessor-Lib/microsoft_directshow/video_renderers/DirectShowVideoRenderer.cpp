@@ -260,6 +260,23 @@ void DirectShowVideoRenderer::Reset()
 }
 
 
+void DirectShowVideoRenderer::ResetLiveQueue()
+{
+	if (!m_liveSource)
+	{
+		DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - m_liveSource is NULL, returning");
+		return;
+	}
+
+	// CLiveSource::Reset performs a serialized BeginFlush/EndFlush/NewSegment
+	// transaction and purges both live queues. Unlike Reset(), it deliberately
+	// leaves madVR and the DirectShow graph running.
+	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - flushing live source queue only");
+	m_liveSource->Reset();
+	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - complete");
+}
+
+
 void DirectShowVideoRenderer::OnSize()
 {
 	if (!m_videoWindow)

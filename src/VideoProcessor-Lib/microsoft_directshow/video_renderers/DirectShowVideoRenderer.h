@@ -52,6 +52,7 @@ public:
 	void Start() override;
 	void Stop() override;
 	void Reset() override;
+	void ResetLiveQueue() override;
 	void OnSize() override;
 	void SetFrameQueueMaxSize(size_t) override;
 	void SetSceneAwareTimingCorrection(bool) override;
