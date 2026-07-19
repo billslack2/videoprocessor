@@ -35,6 +35,8 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 	m_scenePhasePpmUnits.store(0, std::memory_order_relaxed);
 	m_sceneDisplayRefreshRateHz.store(0.0, std::memory_order_relaxed);
 	m_sceneDeliveryRateHz.store(0.0, std::memory_order_relaxed);
+	m_sceneTimingReady.store(false, std::memory_order_relaxed);
+	m_sceneWarmupIntervals.store(0, std::memory_order_relaxed);
 	m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
 	m_lastQueueWarning = 0;
 	m_hConversionThread = nullptr;
@@ -652,10 +654,19 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneTimingRates(
 		deliveryRateHz >= 10.0 && deliveryRateHz <= 240.0;
 	if (!valid)
 	{
-		// Display sampling can be briefly unavailable during fullscreen/DWM
-		// transitions. Keep the last stable lock instead of jumping back to the
-		// unrelated legacy timestamp sequence mid-segment. A subsequent valid,
-		// materially different rate starts a new timing generation below.
+		const double previousDisplay =
+			m_sceneDisplayRefreshRateHz.exchange(0.0, std::memory_order_acq_rel);
+		const double previousDelivery =
+			m_sceneDeliveryRateHz.exchange(0.0, std::memory_order_acq_rel);
+		if (previousDisplay > 0.0 || previousDelivery > 0.0)
+		{
+			m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
+			m_scenePhasePpmUnits.store(0, std::memory_order_release);
+			m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
+			m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
+			DebugLog::Log(
+				"SCENE-AWARE RATES: unavailable; corrections suspended until a fresh display measurement");
+		}
 		return;
 	}
 
@@ -700,6 +711,30 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneTimingRates(
 			"SCENE-AWARE RATE CHANGE: display %.6f->%.6f Hz, delivery %.6f->%.6f Hz; phase reset",
 			previousDisplay, displayRefreshRateHz, previousDelivery, deliveryRateHz);
 	}
+}
+
+void CBufferedLiveSourceVideoOutputPin::SetSceneTimingReadiness(
+	bool ready,
+	uint64_t intervalsObserved)
+{
+	m_sceneWarmupIntervals.store(intervalsObserved, std::memory_order_release);
+	const bool previous =
+		m_sceneTimingReady.exchange(ready, std::memory_order_acq_rel);
+	if (previous == ready)
+		return;
+
+	if (!ready)
+	{
+		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
+		m_scenePhasePpmUnits.store(0, std::memory_order_release);
+		m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
+		m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
+	}
+
+	DebugLog::Log(
+		"SCENE-AWARE TIMING: %s after %llu display intervals",
+		ready ? "stable; corrections enabled" : "warming; corrections suspended",
+		intervalsObserved);
 }
 
 void CBufferedLiveSourceVideoOutputPin::SetSceneTimingPhase(
@@ -755,6 +790,8 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 
 		m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
 		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
+		m_sceneTimingReady.store(false, std::memory_order_release);
+		m_sceneWarmupIntervals.store(0, std::memory_order_release);
 
 		// Purge raw frames and establish the new queue epoch.
 		{
@@ -1392,8 +1429,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				m_queueEpoch.load(std::memory_order_acquire);
 			const uint64_t currentSceneTimingGeneration =
 				m_sceneTimingGeneration.load(std::memory_order_acquire);
+			// Scene Detect samples the converted P010 luma plane.  Keep the user
+			// selection intact for a later P010 graph, but never alter cadence or
+			// timestamps while the active graph delivers another subtype.
 			const bool sceneEnabled =
-				m_sceneAwareTimingCorrection.load(std::memory_order_acquire);
+				m_sceneAwareTimingCorrection.load(std::memory_order_acquire) &&
+				IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010);
+			const bool sceneTimingReady =
+				m_sceneTimingReady.load(std::memory_order_acquire);
 
 			// A reset can purge the queues after this sample was converted but
 			// before delivery popped it. Never send an old-segment sample or reuse
@@ -1406,6 +1449,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 
 			if (!sceneEnabled)
+			{
+				if (sceneCadence.active)
+					resetSceneCadence();
+			}
+			else if (!sceneTimingReady)
 			{
 				if (sceneCadence.active)
 					resetSceneCadence();
@@ -1558,6 +1606,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			sampleTimeHr = pSample->GetTime(&currentStart, &currentStop);
 			const bool validSceneTiming =
 				sceneEnabled &&
+				sceneTimingReady &&
 				convertedSceneTimingGeneration == currentSceneTimingGeneration &&
 				SUCCEEDED(sampleTimeHr) &&
 				currentStop > currentStart &&
@@ -1574,10 +1623,18 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					sceneCadence.displayRateHz = displayRateHz;
 					sceneCadence.anchor = static_cast<long double>(currentStart);
 					sceneCadence.nextOutputIndex = 0;
-					sceneCadence.contentPhaseFrames = 0.0L;
+					const uint64_t warmupIntervals =
+						m_sceneWarmupIntervals.load(std::memory_order_acquire);
+					sceneCadence.contentPhaseFrames =
+						static_cast<long double>(warmupIntervals) *
+						((static_cast<long double>(displayRateHz) /
+							static_cast<long double>(deliveryRateHz)) - 1.0L);
 					DebugLog::Log(
-						"SCENE-AWARE CADENCE: started at %.6f Hz (delivery %.6f Hz, epoch=%llu)",
-						displayRateHz, deliveryRateHz, currentSceneTimingGeneration);
+						"SCENE-AWARE CADENCE: started at %.6f Hz "
+						"(delivery %.6f Hz, warmup=%llu, phase=%+.6Lf, epoch=%llu)",
+						displayRateHz, deliveryRateHz, warmupIntervals,
+						sceneCadence.contentPhaseFrames,
+						currentSceneTimingGeneration);
 				}
 				else
 				{
@@ -2050,7 +2107,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			bool isSafeCorrectionPoint = false;
 			uint64_t sceneEventId = 0;
 			uint8_t sceneEventFramesBack = 0;
-			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire))
+			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire) &&
+				IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010))
 				isSafeCorrectionPoint = IsSafeSceneAwareCorrectionPoint(
 					pSample, sceneDetectorState, sceneEventId, sceneEventFramesBack);
 			const uint64_t sceneTimingGeneration =

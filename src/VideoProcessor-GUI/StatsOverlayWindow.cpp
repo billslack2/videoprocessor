@@ -449,6 +449,21 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
+	line.Format(TEXT("Scene Mode:       %-s"),
+		m_stats.sceneDetectMode.IsEmpty() ? TEXT("Off") :
+		static_cast<LPCTSTR>(m_stats.sceneDetectMode));
+	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
+
+	if (m_stats.sceneTimingReady)
+		line.Format(TEXT("Scene Timing:     Ready (%llu)"),
+			m_stats.sceneTimingIntervals);
+	else
+		line.Format(TEXT("Scene Timing:     %llu/10000"),
+			std::min<uint64_t>(m_stats.sceneTimingIntervals, 10000));
+	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
+
 	// These are source-side actions at detected scene boundaries.
 	line.Format(TEXT("Scene Detect D/R: %llu / %llu"),
 		m_stats.sceneDetectCorrectionDrops,

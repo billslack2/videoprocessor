@@ -92,6 +92,7 @@ public:
 	virtual void SetSceneAwareTimingCorrection(bool) {}
 	virtual void SetSceneCorrectionUpstreamSample(bool) {}
 	virtual void SetSceneTimingRates(double, double) {}
+	virtual void SetSceneTimingReadiness(bool, uint64_t) {}
 	virtual void SetSceneTimingPhase(int64_t, int64_t, int64_t) {}
 
 	// Get the size of the queue.
