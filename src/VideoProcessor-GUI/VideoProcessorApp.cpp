@@ -65,10 +65,10 @@ Options:
       If omitted or disabled, the legacy timestamp/delivery path is unchanged.
 
   /scene_correction_mode <value>
-      RENDERER_GAP | UPSTREAM_SAMPLE
-      RENDERER_GAP is the default and asks madVR to repeat at the selected
-      boundary. UPSTREAM_SAMPLE experimentally supplies a real duplicate sample
-      so madVR may not need to report a repeat. Used only with /scene_detect.
+      BASIC | ADVANCED
+      BASIC asks madVR to repeat at the selected boundary. ADVANCED supplies a
+      real duplicate sample upstream so madVR may not need to report a repeat.
+      Used only with /scene_detect and P010.
 
   /newlldv
       Enable the opt-in BT.2020 + SDR LLDV heuristic (requires both LLDV follow modes).
@@ -506,10 +506,14 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 			throw std::runtime_error("Invalid /frame_offset: expected non-negative milliseconds or auto");
 
 		if (IsCommandLineOption(argument, L"/scene_correction_mode") &&
+			_wcsicmp(arguments[index + 1], L"BASIC") != 0 &&
+			_wcsicmp(arguments[index + 1], L"ADVANCED") != 0 &&
+			_wcsicmp(arguments[index + 1], L"RENDERER_REPEAT") != 0 &&
+			_wcsicmp(arguments[index + 1], L"VP_REPEAT") != 0 &&
 			_wcsicmp(arguments[index + 1], L"RENDERER_GAP") != 0 &&
 			_wcsicmp(arguments[index + 1], L"UPSTREAM_SAMPLE") != 0)
 			throw std::runtime_error(
-				"Invalid /scene_correction_mode: expected RENDERER_GAP or UPSTREAM_SAMPLE");
+				"Invalid /scene_correction_mode: expected BASIC or ADVANCED");
 
 		++index;
 	}
@@ -1098,7 +1102,9 @@ BOOL CVideoProcessorApp::InitInstance()
 				(i + 1) < iNumOfArgs)
 			{
 				dlg.SceneCorrectionUpstreamSample(
-					wcscmp(pArgs[i + 1], L"UPSTREAM_SAMPLE") == 0);
+					_wcsicmp(pArgs[i + 1], L"ADVANCED") == 0 ||
+					_wcsicmp(pArgs[i + 1], L"VP_REPEAT") == 0 ||
+					_wcsicmp(pArgs[i + 1], L"UPSTREAM_SAMPLE") == 0);
 			}
 
 			// Opt-in LLDV detection for DeckLink's BT.2020 + SDR reporting.

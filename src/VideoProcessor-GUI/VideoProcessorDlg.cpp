@@ -49,6 +49,9 @@ struct DisplayTimingSnapshot
 	int64_t lastVBlankQpc = 0;
 	int64_t refreshPeriodQpc = 0;
 	int64_t qpcFrequency = 0;
+	int64_t rateMeasuredQpc = 0;
+	uint64_t intervalsObserved = 0;
+	bool rateStable = false;
 };
 
 class DisplayRefreshRateSampler
@@ -64,10 +67,30 @@ public:
 		const HMONITOR monitor = hwnd ? MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) : nullptr;
 		{
 			std::lock_guard<std::mutex> lock(m_mutex);
-			if (m_monitor == monitor)
+			if (m_window == hwnd && m_monitor == monitor)
 				return;
+			m_window = hwnd;
 			m_monitor = monitor;
+			++m_targetGeneration;
 			m_rate = 0.0;
+			m_rateMeasuredQpc = 0;
+			m_intervalsObserved = 0;
+			m_rateStable = false;
+			m_lastVBlankQpc.store(0, std::memory_order_release);
+			m_refreshPeriodQpc.store(0, std::memory_order_release);
+		}
+		m_wake.notify_one();
+	}
+
+	void ResetMeasurement()
+	{
+		{
+			std::lock_guard<std::mutex> lock(m_mutex);
+			++m_targetGeneration;
+			m_rate = 0.0;
+			m_rateMeasuredQpc = 0;
+			m_intervalsObserved = 0;
+			m_rateStable = false;
 			m_lastVBlankQpc.store(0, std::memory_order_release);
 			m_refreshPeriodQpc.store(0, std::memory_order_release);
 		}
@@ -99,6 +122,9 @@ public:
 		result.lastVBlankQpc = m_lastVBlankQpc.load(std::memory_order_acquire);
 		result.refreshPeriodQpc = m_refreshPeriodQpc.load(std::memory_order_acquire);
 		result.qpcFrequency = m_qpcFrequency;
+		result.rateMeasuredQpc = m_rateMeasuredQpc;
+		result.intervalsObserved = m_intervalsObserved;
+		result.rateStable = m_rateStable;
 		return result;
 	}
 
@@ -146,18 +172,20 @@ private:
 		for (;;)
 		{
 			HMONITOR monitor = nullptr;
+			uint64_t targetGeneration = 0;
 			{
 				std::unique_lock<std::mutex> lock(m_mutex);
 				m_wake.wait(lock, [this] { return m_monitor != nullptr; });
 				monitor = m_monitor;
+				targetGeneration = m_targetGeneration;
 			}
 
 			ComPtr<IDXGIOutput> output;
 			if (!FindOutput(monitor, output))
 			{
 				std::unique_lock<std::mutex> lock(m_mutex);
-				m_wake.wait_for(lock, std::chrono::seconds(1), [this, monitor] {
-					return m_monitor != monitor;
+				m_wake.wait_for(lock, std::chrono::seconds(1), [this, targetGeneration] {
+					return m_targetGeneration != targetGeneration;
 				});
 				continue;
 			}
@@ -166,13 +194,12 @@ private:
 			// qpcRefreshPeriod is useful as a current phase snapshot, but its
 			// single-period integer value is not accurate enough for the OSD's
 			// "actual display rate" comparison with madVR.
-			// Publish a useful initial estimate after one second, then refine the
-			// same measurement cumulatively at 10 and 100 seconds.  The long
-			// window suppresses scheduler wake jitter at the two endpoints and
-			// makes the final OSD value comparable to madVR's display-rate estimate.
+			// Publish a useful initial estimate after one second for the OSD, but
+			// do not mark it safe for correction until 10,000 physical display
+			// intervals have been observed since the last transition/restart.
 			constexpr unsigned int kInitialIntervals = 60;
 			constexpr unsigned int kIntermediateIntervals = 600;
-			constexpr unsigned int kIntervalsPerMeasurement = 6000;
+			constexpr unsigned int kStableIntervals = 10000;
 			LARGE_INTEGER first = {};
 			LARGE_INTEGER last = {};
 			unsigned int samples = 0;
@@ -189,15 +216,21 @@ private:
 				last = now;
 				++samples;
 
-				// samples includes both endpoints, so 61, 601, and 6001 vblanks
-				// respectively measure 60, 600, and 6000 intervals.  All updates
+				// samples includes both endpoints, so 61 vblanks measure 60
+				// intervals. All updates
 				// use the original first endpoint, avoiding a fence-post error and
 				// ensuring that the value becomes steadily less noisy over time.
 				const unsigned int intervals = samples - 1;
 				const bool publishRate =
 					intervals == kInitialIntervals ||
-					intervals == kIntermediateIntervals ||
-					intervals == kIntervalsPerMeasurement;
+					intervals == kStableIntervals ||
+					(intervals >= kIntermediateIntervals &&
+						intervals % kIntermediateIntervals == 0);
+				{
+					std::lock_guard<std::mutex> lock(m_mutex);
+					if (m_targetGeneration == targetGeneration)
+						m_intervalsObserved = intervals;
+				}
 				if (publishRate)
 				{
 					const double elapsed = static_cast<double>(last.QuadPart - first.QuadPart) /
@@ -208,38 +241,27 @@ private:
 						if (rate >= 20.0 && rate <= 120.0)
 						{
 							std::lock_guard<std::mutex> lock(m_mutex);
-							m_rate = rate;
-							m_refreshPeriodQpc.store(
-								static_cast<int64_t>(llround(
-									static_cast<double>(last.QuadPart - first.QuadPart) /
-									static_cast<double>(intervals))),
-								std::memory_order_release);
+							if (m_targetGeneration == targetGeneration)
+							{
+								m_rate = rate;
+								m_rateMeasuredQpc = last.QuadPart;
+								if (intervals >= kStableIntervals)
+									m_rateStable = true;
+								m_refreshPeriodQpc.store(
+									static_cast<int64_t>(llround(
+										static_cast<double>(last.QuadPart - first.QuadPart) /
+										static_cast<double>(intervals))),
+									std::memory_order_release);
+							}
 						}
 					}
-					if (intervals < kIntervalsPerMeasurement)
-						continue;
-
-					samples = 0;
-
-					// Phase tracking is only needed while Scene Detect is enabled. In
-					// that mode retain the most recent physical vblank; otherwise use
-					// a low-overhead ten-second update cadence.
-					bool phaseTracking = false;
-					{
-						std::lock_guard<std::mutex> lock(m_mutex);
-						phaseTracking = m_phaseTracking;
-					}
-					if (!phaseTracking)
-					{
-						std::unique_lock<std::mutex> lock(m_mutex);
-						m_wake.wait_for(lock, std::chrono::seconds(10), [this, monitor] {
-							return m_monitor != monitor || m_phaseTracking;
-						});
-					}
+					// Keep the same endpoints after stabilization. Subsequent
+					// ten-second publications therefore become progressively more
+					// accurate and never regress to a short-window estimate.
 				}
 
 				std::lock_guard<std::mutex> lock(m_mutex);
-				if (m_monitor != monitor)
+				if (m_targetGeneration != targetGeneration)
 					break;
 			}
 		}
@@ -248,8 +270,13 @@ private:
 	mutable std::mutex m_mutex;
 	std::condition_variable m_wake;
 	std::thread m_thread;
+	HWND m_window = nullptr;
 	HMONITOR m_monitor = nullptr;
+	uint64_t m_targetGeneration = 0;
 	double m_rate = 0.0;
+	int64_t m_rateMeasuredQpc = 0;
+	uint64_t m_intervalsObserved = 0;
+	bool m_rateStable = false;
 	bool m_phaseTracking = false;
 	int64_t m_qpcFrequency = 0;
 	std::atomic<int64_t> m_lastVBlankQpc = 0;
@@ -312,7 +339,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_BN_CLICKED(IDC_RENDERER_RESTART_BUTTON, &CVideoProcessorDlg::OnBnClickedRendererRestart)
 	ON_CBN_SELCHANGE(IDC_RENDERER_VIDEO_CONVERSION_COMBO, &CVideoProcessorDlg::OnRendererVideoConversionSelected)
 	ON_BN_CLICKED(IDC_RENDERER_VIDEO_FRAME_USE_QUEUE_CHECK, &CVideoProcessorDlg::OnBnClickedRendererVideoFrameUseQueueCheck)
-	ON_BN_CLICKED(IDC_RENDERER_SCENE_AWARE_TIMING_CHECK, &CVideoProcessorDlg::OnBnClickedRendererSceneAwareTimingCheck)
+	ON_CBN_SELCHANGE(IDC_RENDERER_SCENE_CORRECTION_MODE_COMBO, &CVideoProcessorDlg::OnRendererSceneCorrectionModeSelected)
 	ON_BN_CLICKED(IDC_RENDERER_RESET_BUTTON, &CVideoProcessorDlg::OnBnClickedRendererReset)
 	ON_BN_CLICKED(IDC_RENDERER_RESET_AUTO_CHECK, &CVideoProcessorDlg::OnBnClickedRendererResetAutoCheck)
 	ON_CBN_SELCHANGE(IDC_RENDERER_DIRECTSHOW_START_STOP_TIME_METHOD_COMBO, &CVideoProcessorDlg::OnRendererDirectShowStartStopTimeMethodSelected)
@@ -762,7 +789,38 @@ void CVideoProcessorDlg::OnBnClickedRendererRestart()
 
 void CVideoProcessorDlg::OnRendererVideoConversionSelected()
 {
+	UpdateSceneCorrectionModeUi();
 	OnBnClickedRendererRestart();
+}
+
+
+bool CVideoProcessorDlg::IsP010VideoConversionSelected() const
+{
+	const int selection = m_rendererVideoConversionCombo.GetCurSel();
+	return selection >= 0 &&
+		static_cast<VideoConversionOverride>(m_rendererVideoConversionCombo.GetItemData(selection)) ==
+			VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
+}
+
+
+void CVideoProcessorDlg::UpdateSceneCorrectionModeUi()
+{
+	const bool p010Selected = IsP010VideoConversionSelected();
+	m_rendererSceneCorrectionModeCombo.EnableWindow(p010Selected);
+
+	if (!p010Selected)
+	{
+		// Keep the configured choice visible, but do not allow it to be changed
+		// until the renderer is again producing P010.  The DirectShow path also
+		// independently gates Scene Detect on the actual output subtype.
+		m_rendererSceneCorrectionModeCombo.SetCurSel(
+			m_sceneAwareTimingCorrection ?
+				(m_sceneCorrectionUpstreamSample ? 2 : 1) : 0);
+		return;
+	}
+
+	m_rendererSceneCorrectionModeCombo.SetCurSel(
+		m_sceneAwareTimingCorrection ? (m_sceneCorrectionUpstreamSample ? 2 : 1) : 0);
 }
 
 
@@ -777,9 +835,14 @@ void CVideoProcessorDlg::OnBnClickedRendererVideoFrameUseQueueCheck()
 }
 
 
-void CVideoProcessorDlg::OnBnClickedRendererSceneAwareTimingCheck()
+void CVideoProcessorDlg::OnRendererSceneCorrectionModeSelected()
 {
-	m_sceneAwareTimingCorrection = m_rendererSceneAwareTimingCheck.GetCheck() == BST_CHECKED;
+	if (!IsP010VideoConversionSelected())
+		return;
+
+	const int selection = m_rendererSceneCorrectionModeCombo.GetCurSel();
+	m_sceneAwareTimingCorrection = selection != 0;
+	m_sceneCorrectionUpstreamSample = selection == 2;
 	if (m_videoRenderer)
 	{
 		// Scene Detect changes the presentation timestamp generator. Start it on
@@ -1135,25 +1198,29 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 			switch (eventCode)
 			{
 			case 0x16: // EC_DISPLAY_CHANGED
-				DbgLog((LOG_TRACE, 1, TEXT("EC_DISPLAY_CHANGED detected - scheduling MadVR reset")));
-				if (m_rendererState == RendererState::RENDERSTATE_RENDERING)// && !m_pendingQueueReset)
+			case 0x0E: // EC_VIDEO_SIZE_CHANGED
+			{
+				g_displayRefreshRateSampler->ResetMeasurement();
+				const ULONGLONG now = GetTickCount64();
+				if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+					!m_pendingQueueReset && now >= m_queueResetIgnoreEventsUntil)
 				{
-					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 10000, nullptr);  // 2-second delay for display changes
+					// One reset after a real display/video-mode transition lets the
+					// live queue re-prime for the new sink cadence. The cooldown set
+					// by the timer below prevents that reset from scheduling itself.
+					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);
 					m_pendingQueueReset = true;
+					DbgLog((LOG_TRACE, 1, TEXT("DirectShow display transition - scheduling one queue re-prime")));
+				}
+				else
+				{
+					DbgLog((LOG_TRACE, 1, TEXT("DirectShow display transition - queue re-prime already pending or suppressed")));
 				}
 				break;
+			}
 
 			case 0x11: // EC_WINDOW_DESTROYED  
 				DbgLog((LOG_TRACE, 1, TEXT("EC_WINDOW_DESTROYED detected - MadVR window change")));
-				break;
-
-			case 0x0E: // EC_VIDEO_SIZE_CHANGED
-				DbgLog((LOG_TRACE, 1, TEXT("EC_VIDEO_SIZE_CHANGED detected - scheduling MadVR reset")));
-				if (m_rendererState == RendererState::RENDERSTATE_RENDERING && !m_pendingQueueReset)
-				{
-					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);  // 1.5-second delay for video size changes
-					//m_pendingQueueReset = true;
-				}
 				break;
 
 			case 0x12: // EC_QUALITY_CHANGE
@@ -1246,6 +1313,17 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		m_rendererStateText.SetWindowText(TEXT("Rendering"));
 
 		m_rendererStartTime = GetTickCount();
+		g_displayRefreshRateSampler->ResetMeasurement();
+		if (!m_pendingQueueReset &&
+			GetTickCount64() >= m_queueResetIgnoreEventsUntil)
+		{
+			// A newly running graph needs one re-prime pass to settle its live
+			// queue. The guarded timer prevents its own reset from scheduling a
+			// second pass when rendering resumes.
+			SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);
+			m_pendingQueueReset = true;
+			DbgLog((LOG_TRACE, 1, TEXT("Renderer started - scheduling one queue re-prime")));
+		}
 		// LLDV can be confirmed while the graph is still starting. The
 		// effective PQ state has already been rebuilt, but this graph accepted
 		// the original SDR state, so restart once it is fully running.
@@ -1256,8 +1334,6 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			DbgLog((LOG_TRACE, 1,
 				TEXT("LLDV confirmed during renderer startup - scheduling renderer restart")));
 		}
-		SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);
-
 		break;
 
 	// Stopped rendering, can be cleaned up
@@ -2963,7 +3039,7 @@ void CVideoProcessorDlg::DoDataExchange(CDataExchange* pDX)
 
 	// Renderer Queue group
 	DDX_Control(pDX, IDC_RENDERER_VIDEO_FRAME_USE_QUEUE_CHECK, m_rendererVideoFrameUseQeueueCheck);
-	DDX_Control(pDX, IDC_RENDERER_SCENE_AWARE_TIMING_CHECK, m_rendererSceneAwareTimingCheck);
+	DDX_Control(pDX, IDC_RENDERER_SCENE_CORRECTION_MODE_COMBO, m_rendererSceneCorrectionModeCombo);
 	DDX_Control(pDX, IDC_RENDERER_VIDEO_FRAME_QUEUE_SIZE_STATIC, m_rendererVideoFrameQueueSizeText);
 	DDX_Control(pDX, IDC_RENDERER_VIDEO_FRAME_QUEUE_SIZE_MAX_EDIT, m_rendererVideoFrameQueueSizeMaxEdit);
 	DDX_Control(pDX, IDC_RENDERER_DROPPED_FRAME_COUNT_STATIC, m_rendererDroppedFrameCountText);
@@ -2998,6 +3074,11 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 		if (!CDialog::OnInitDialog())
 		return FALSE;
 
+	// The generated AFX_DIALOG_LAYOUT table moves unrelated labels and controls
+	// when the dialog is resized.  This application has one resizable surface:
+	// the video host.  Keep every other control at its resource position.
+	EnableDynamicLayout(FALSE);
+
 	CString title;
 	title.Format(_T("VideoProcessor (%s)"), VERSION_DESCRIBE);
 	SetWindowText(title.GetBuffer());
@@ -3008,6 +3089,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	CRect rectWindow;
 	GetWindowRect(rectWindow);
 	m_minDialogSize = rectWindow.Size();
+	CaptureFixedDialogLayout();
 
 	// Empty popup menus
 	m_captureDeviceCombo.ResetContent();
@@ -3104,6 +3186,10 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 			m_rendererVideoConversionCombo.SetCurSel(index);
 	}
 
+	m_rendererSceneCorrectionModeCombo.AddString(TEXT("Off"));
+	m_rendererSceneCorrectionModeCombo.AddString(TEXT("Basic"));
+	m_rendererSceneCorrectionModeCombo.AddString(TEXT("Advanced"));
+
 	//for (const auto& p : FULLSCREEN_MODES)
 	//{
 	//	int index = m_fullScreenModeCombo.AddString(p.c_str);
@@ -3134,11 +3220,12 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 
 	CaptureGUIClear();
 	RenderGUIClear();
+	m_rendererDetailStringStatic.ShowWindow(SW_HIDE);
 
 	m_rendererVideoFrameQueueSizeMaxEdit.SetWindowText(m_defaultQueueSize);
 	m_timingClockFrameOffsetEdit.SetWindowText(m_defaultFrameOffset);
 	m_rendererVideoFrameUseQeueueCheck.SetCheck(true);
-	m_rendererSceneAwareTimingCheck.SetCheck(m_sceneAwareTimingCorrection ? BST_CHECKED : BST_UNCHECKED);
+	UpdateSceneCorrectionModeUi();
 	m_rendererResetAutoCheck.SetCheck(true);
 	m_rendererFullscreenCheck.SetCheck(m_hideUI ? BST_UNCHECKED : m_rendererFullScreenStart);
 
@@ -3259,6 +3346,71 @@ void CVideoProcessorDlg::OnPaint()
 	}
 }
 
+
+void CVideoProcessorDlg::CaptureFixedDialogLayout()
+{
+	m_fixedControlLayout.clear();
+	if (!GetSafeHwnd())
+		return;
+
+	const HWND videoWindow = m_windowedVideoWindow.GetSafeHwnd();
+	CRect clientRect;
+	GetClientRect(&clientRect);
+	m_initialClientSize = clientRect.Size();
+	m_windowedVideoWindow.GetWindowRect(&m_initialVideoWindowRect);
+	ScreenToClient(&m_initialVideoWindowRect);
+
+	for (HWND child = ::GetWindow(GetSafeHwnd(), GW_CHILD);
+		child != nullptr;
+		child = ::GetWindow(child, GW_HWNDNEXT))
+	{
+		if (child == videoWindow)
+			continue;
+
+		CRect rect;
+		::GetWindowRect(child, &rect);
+		ScreenToClient(&rect);
+		m_fixedControlLayout.push_back({ child, rect });
+	}
+}
+
+
+void CVideoProcessorDlg::RestoreFixedDialogLayout()
+{
+	if (m_hideUI || !GetSafeHwnd() || m_fixedControlLayout.empty())
+		return;
+
+	HDWP positions = ::BeginDeferWindowPos(
+		static_cast<int>(m_fixedControlLayout.size()));
+	if (!positions)
+		return;
+
+	for (const FixedControlLayout& control : m_fixedControlLayout)
+	{
+		if (!::IsWindow(control.hwnd))
+			continue;
+
+		positions = ::DeferWindowPos(
+			positions,
+			control.hwnd,
+			nullptr,
+			control.rect.left,
+			control.rect.top,
+			control.rect.Width(),
+			control.rect.Height(),
+			SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+		if (!positions)
+			return;
+	}
+
+	::EndDeferWindowPos(positions);
+
+	// A renderer's combo field can otherwise remain visually stale until clicked.
+	m_rendererCombo.RedrawWindow(nullptr, nullptr,
+		RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW);
+}
+
+
 void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 {
 	if (m_hideUI)
@@ -3266,32 +3418,27 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 		if (m_windowedVideoWindow.GetSafeHwnd())
 			m_windowedVideoWindow.MoveWindow(0, 0, cx, cy, TRUE);
 	}
+	else if (m_windowedVideoWindow.GetSafeHwnd() &&
+		m_initialClientSize.cx > 0 && m_initialClientSize.cy > 0)
+	{
+		CRect videoRect = m_initialVideoWindowRect;
+		videoRect.right += std::max<LONG>(
+			0, static_cast<LONG>(cx) - m_initialClientSize.cx);
+		videoRect.bottom += std::max<LONG>(
+			0, static_cast<LONG>(cy) - m_initialClientSize.cy);
+		m_windowedVideoWindow.MoveWindow(&videoRect, TRUE);
+	}
 
 	if (m_videoRenderer)
 		m_videoRenderer->OnSize();
 
-	// Some windowed DirectShow renderers can disturb sibling child-window
-	// positions while handling WM_SIZE.  Keep these two controls anchored to
-	// their dialog-template coordinates so they cannot wander over the video
-	// surface after a resize.
+	// Some windowed DirectShow renderers finish processing WM_SIZE after this
+	// handler returns.  Restore the fixed UI now and once more after that work
+	// completes, without affecting the renderer graph or its media timeline.
 	if (!m_hideUI)
 	{
-		auto moveDialogControl = [this](CWnd& control, int x, int y, int width, int height)
-		{
-			CRect rect(x, y, x + width, y + height);
-			MapDialogRect(&rect);
-			control.MoveWindow(&rect, TRUE);
-		};
-
-		moveDialogControl(m_rendererSceneAwareTimingCheck, 456, 88, 66, 10);
-		moveDialogControl(m_rendererVideoConversionCombo, 372, 115, 132, 50);
-		moveDialogControl(m_rendererCombo, 366, 12, 198, 50);
-
-		// madVR can complete its repaint after the parent WM_SIZE has returned.
-		// Explicitly invalidate the renderer selector so its selection field is
-		// redrawn immediately rather than waiting for a user click.
-		m_rendererCombo.RedrawWindow(nullptr, nullptr,
-			RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW);
+		RestoreFixedDialogLayout();
+		SetTimer(UI_LAYOUT_RESTORE_TIMER_ID, 75, nullptr);
 	}
 
 	// Update stats overlay position
@@ -3378,6 +3525,12 @@ void CVideoProcessorDlg::OnClose()
 
 void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
+	if (nIDEvent == UI_LAYOUT_RESTORE_TIMER_ID)
+	{
+		KillTimer(UI_LAYOUT_RESTORE_TIMER_ID);
+		RestoreFixedDialogLayout();
+		return;
+	}
 	
 	// Handle resize debounce timer
 	if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
@@ -3403,19 +3556,22 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 
-	// Handle delayed queue reset timer
+	// One-shot queue re-prime after a true render/display transition. This is
+	// deliberately not used by queue-depth monitoring.
 	if (nIDEvent == QUEUE_RESET_DELAY_TIMER_ID)
 	{
+		KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
 		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
 		{
-			KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
-			 
-			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): DELAYED QUEUE RESET - MadVR stabilization complete")));
+			// The reset itself emits display/size events. Ignore them long enough
+			// for the graph to stop, re-create its window, and become stable.
+			m_queueResetIgnoreEventsUntil = GetTickCount64() + 10000;
+			m_pendingQueueReset = false;
+			DEBUGLOG("Queue transition: executing one guarded queue re-prime reset");
 			m_videoRenderer->Reset();
-
-			// Reset tracking counters after delayed reset
-			m_consecutiveFullSeconds = 0;
-			m_consecutiveStuckSeconds = 0;
+		}
+		else
+		{
 			m_pendingQueueReset = false;
 		}
 		return;
@@ -3647,25 +3803,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			SetThreadExecutionState(ES_DISPLAY_REQUIRED);
 		}
 
-		// Monitor queue health periodically
-		if (m_timerSeconds % 5 == 0 &&
-			m_rendererState == RendererState::RENDERSTATE_RENDERING &&
-			m_videoRenderer &&
-			m_captureDevice &&
-			m_captureDeviceVideoState)
-		{
-			const size_t currentQueueSize = m_videoRenderer->GetFrameQueueSize();
-			const size_t maxQueueSize = GetRendererVideoFrameQueueSizeMax();
-			
-			// TODO: Adjust threshold and duration based on testing
-			// Simple: reset when queue e.g.,  >= 16 frames
-			if (currentQueueSize >= (maxQueueSize/2))
-			{
-				m_videoRenderer->Reset();
-				DEBUGLOG("Queue 50%% reset: %zu/%zu", currentQueueSize, maxQueueSize);
-			}
-		}
-			
 		UpdateStatsOverlay();
 
 
@@ -3687,22 +3824,32 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	// only while enabled; otherwise it remains on its low-overhead cadence.
 	g_displayRefreshRateSampler->SetWindow(displayWindow);
 	g_displayRefreshRateSampler->SetPhaseTracking(m_sceneAwareTimingCorrection);
-	// Use DWM for the newest vblank phase, but use the long vblank average for
-	// the displayed/diagnostic rate once it is available.  A mode change causes
-	// a large disagreement; keep the DWM fallback until the next long average
-	// has converged on the new mode.
+	// DWM provides a useful current phase, but qpcRefreshPeriod is effectively
+	// the nominal compositor period rather than the measured physical display
+	// rate. Scene correction must only use a recent physical-vblank average.
 	DisplayTimingSnapshot displayTiming = GetDisplayTimingSnapshot(displayWindow);
 	const DisplayTimingSnapshot sampledDisplayTiming =
 		g_displayRefreshRateSampler->GetTimingSnapshot();
-	if (sampledDisplayTiming.refreshRateHz > 0.0 &&
-		(displayTiming.refreshRateHz <= 0.0 ||
-			fabs(sampledDisplayTiming.refreshRateHz - displayTiming.refreshRateHz) < 0.25))
+	LARGE_INTEGER qpcNow = {};
+	QueryPerformanceCounter(&qpcNow);
+	const bool sampledRateIsFresh =
+		sampledDisplayTiming.refreshRateHz > 0.0 &&
+		sampledDisplayTiming.qpcFrequency > 0 &&
+		sampledDisplayTiming.rateMeasuredQpc > 0 &&
+		qpcNow.QuadPart >= sampledDisplayTiming.rateMeasuredQpc &&
+		(qpcNow.QuadPart - sampledDisplayTiming.rateMeasuredQpc) <=
+			sampledDisplayTiming.qpcFrequency * 20;
+	const double displayRefreshRate =
+		sampledRateIsFresh ? sampledDisplayTiming.refreshRateHz : 0.0;
+	const bool sceneTimingReady =
+		sampledRateIsFresh && sampledDisplayTiming.rateStable;
+	if (displayTiming.lastVBlankQpc <= 0 &&
+		sampledDisplayTiming.lastVBlankQpc > 0)
 	{
-		displayTiming.refreshRateHz = sampledDisplayTiming.refreshRateHz;
+		displayTiming.lastVBlankQpc = sampledDisplayTiming.lastVBlankQpc;
+		displayTiming.refreshPeriodQpc = sampledDisplayTiming.refreshPeriodQpc;
+		displayTiming.qpcFrequency = sampledDisplayTiming.qpcFrequency;
 	}
-	if (displayTiming.refreshRateHz <= 0.0)
-		displayTiming = sampledDisplayTiming;
-	const double displayRefreshRate = displayTiming.refreshRateHz;
 
 	double theoreticalCaptureRate = 0.0;
 	double measuredCaptureRate = 0.0;
@@ -3724,10 +3871,15 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		// depend on whether diagnostics are visible.
 		m_videoRenderer->SetSceneTimingRates(
 			displayRefreshRate, measuredCaptureRate);
-		m_videoRenderer->SetSceneTimingPhase(
-			displayTiming.lastVBlankQpc,
-			displayTiming.refreshPeriodQpc,
-			displayTiming.qpcFrequency);
+		m_videoRenderer->SetSceneTimingReadiness(
+			sceneTimingReady, sampledDisplayTiming.intervalsObserved);
+		if (sceneTimingReady)
+			m_videoRenderer->SetSceneTimingPhase(
+				displayTiming.lastVBlankQpc,
+				displayTiming.refreshPeriodQpc,
+				displayTiming.qpcFrequency);
+		else
+			m_videoRenderer->SetSceneTimingPhase(0, 0, 0);
 	}
 
 	if (!m_statsOverlay || !m_statsOverlay->IsVisible() || !m_lastStatsData)
@@ -3752,6 +3904,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		// Refresh rate
 		stats.refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
 		stats.displayRefreshRate = displayRefreshRate;
+		stats.sceneTimingIntervals = sampledDisplayTiming.intervalsObserved;
+		stats.sceneTimingReady = sceneTimingReady;
 
 		// EOTF
 		stats.eotf = ToString(m_captureDeviceVideoState->eotf);
@@ -3781,6 +3935,13 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	{
 		stats.method = TEXT("---");
 	}
+
+	if (m_rendererSceneCorrectionModeCombo.GetCurSel() >= 0)
+		m_rendererSceneCorrectionModeCombo.GetLBText(
+			m_rendererSceneCorrectionModeCombo.GetCurSel(),
+			stats.sceneDetectMode);
+	else
+		stats.sceneDetectMode = TEXT("Off");
 
 	// Queue stats
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
@@ -3878,66 +4039,13 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 // Add this new method to the class
 void CVideoProcessorDlg::MonitorQueueHealth(size_t currentQueueSize, uint64_t droppedFrames)
 {
-	// Enhanced intelligent queue monitoring with multiple detection strategies
-	const size_t maxQueueSize = GetRendererVideoFrameQueueSizeMax();
-	const bool isQueueFull = (currentQueueSize >= maxQueueSize);
-	const bool droppedFramesIncreased = (droppedFrames > m_lastDroppedFrames);
-	const bool queueStuck = (currentQueueSize >= m_lastQueueSize && currentQueueSize > 12);
-
-	// STRATEGY 1: Immediate reset on queue full
-	if (isQueueFull)
-	{
-		DbgLog((LOG_TRACE, 1, TEXT("Queue health: Full queue detected (%zu/%zu) - immediate reset"), currentQueueSize, maxQueueSize));
-
-		if (m_videoRenderer)
-		{
-			m_videoRenderer->Reset();
-			m_consecutiveFullSeconds = 0;
-			m_consecutiveStuckSeconds = 0;
-
-			DEBUGLOG("Queue health: Full queue detected (%zu/%zu) - immediate reset", currentQueueSize, maxQueueSize);
-		}
-	}
-	// STRATEGY 2: Track consecutive full seconds for progressive overload
-	else if (currentQueueSize >= 24)  // 75% threshold
-	{
-		//TODO: Adjust threshold and duration based on testing
-		// Simple: reset when queue e.g.,  >= 16 frames
-		if (currentQueueSize >= 24)
-		{
-			m_videoRenderer->Reset();
-			DEBUGLOG("Queue health > 24 Rest hardcoded and should be changed");
-		}
-	}
-	else
-	{
-		m_consecutiveFullSeconds = 0;  // Reset counter when queue is healthy
-	}
-
-	// STRATEGY 3: Detect stuck queues (same size for multiple seconds)
-	if (queueStuck)
-	{
-		m_consecutiveStuckSeconds++;
-		if (m_consecutiveStuckSeconds >= 5)  // 5 seconds stuck
-		{
-
-			if (m_videoRenderer)
-			{
-				m_videoRenderer->Reset();
-				m_consecutiveStuckSeconds = 0;
-
-				DEBUGLOG("Queue health: Stuck queue detected (%zu for %zu seconds) - reset", currentQueueSize, m_consecutiveStuckSeconds);
-			}
-		}
-	}
-	else
-	{
-		m_consecutiveStuckSeconds = 0;  // Reset stuck counter
-	}
-
-	// Update tracking variables for next cycle
+	// Queue depth and drops are diagnostics, not proof that the DirectShow graph
+	// is unhealthy. Restarting the graph here caused a repeating startup cycle
+	// in madVR. Keep the observations for the UI only.
 	m_lastQueueSize = currentQueueSize;
 	m_lastDroppedFrames = droppedFrames;
+	m_consecutiveFullSeconds = 0;
+	m_consecutiveStuckSeconds = 0;
 }
 
 

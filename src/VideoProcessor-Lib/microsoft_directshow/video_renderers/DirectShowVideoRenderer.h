@@ -57,6 +57,7 @@ public:
 	void SetSceneAwareTimingCorrection(bool) override;
 	void SetSceneCorrectionUpstreamSample(bool) override;
 	void SetSceneTimingRates(double displayRefreshRateHz, double measuredCaptureRateHz) override;
+	void SetSceneTimingReadiness(bool ready, uint64_t intervalsObserved) override;
 	void SetSceneTimingPhase(int64_t vblankQpc, int64_t refreshPeriodQpc, int64_t qpcFrequency) override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;

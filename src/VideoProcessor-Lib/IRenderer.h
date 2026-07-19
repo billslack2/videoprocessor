@@ -118,6 +118,7 @@ public:
 	// scene-aware whole-frame phase predictor. Renderers that do not implement
 	// scene correction may ignore these values.
 	virtual void SetSceneTimingRates(double, double) {}
+	virtual void SetSceneTimingReadiness(bool, uint64_t) {}
 
 	// Supply the physical display vblank phase in QPC ticks.  This is optional
 	// diagnostic/control information for scene-aware timing correction; normal

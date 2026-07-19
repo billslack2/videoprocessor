@@ -333,6 +333,17 @@ void DirectShowVideoRenderer::SetSceneTimingRates(
 		displayRefreshRateHz, deliveryRateHz);
 }
 
+void DirectShowVideoRenderer::SetSceneTimingReadiness(
+	bool ready,
+	uint64_t intervalsObserved)
+{
+	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
+		return;
+
+	m_liveSource->GetVideoOutputPin()->SetSceneTimingReadiness(
+		ready, intervalsObserved);
+}
+
 void DirectShowVideoRenderer::SetSceneTimingPhase(
 	int64_t vblankQpc,
 	int64_t refreshPeriodQpc,

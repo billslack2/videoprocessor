@@ -57,6 +57,7 @@ public:
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	void SetSceneCorrectionUpstreamSample(bool enabled) override;
 	void SetSceneTimingRates(double displayRefreshRateHz, double deliveryRateHz) override;
+	void SetSceneTimingReadiness(bool ready, uint64_t intervalsObserved) override;
 	void SetSceneTimingPhase(int64_t vblankQpc, int64_t refreshPeriodQpc, int64_t qpcFrequency) override;
 	uint64_t SceneAwareCorrectionDropCount() const override { return m_sceneAwareCorrectionDropCount.load(std::memory_order_relaxed); }
 	uint64_t SceneAwareCorrectionRepeatCount() const override { return m_sceneAwareCorrectionRepeatCount.load(std::memory_order_relaxed); }
@@ -129,6 +130,8 @@ private:
 	std::atomic<int64_t> m_scenePhasePpmUnits = 0;
 	std::atomic<double> m_sceneDisplayRefreshRateHz = 0.0;
 	std::atomic<double> m_sceneDeliveryRateHz = 0.0;
+	std::atomic<bool> m_sceneTimingReady = false;
+	std::atomic<uint64_t> m_sceneWarmupIntervals = 0;
 	// Latest physical-vblank snapshot from the UI's display sampler.  It is
 	// deliberately separate from the rate estimate: rate predicts *when* an
 	// event is due, while this phase identifies the exact display interval.

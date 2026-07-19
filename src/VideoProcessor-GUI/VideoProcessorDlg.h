@@ -46,6 +46,7 @@
 #define FULLSCREEN_FOCUS_TIMER_ID 4
 #define EOTF_CHANGE_RESTART_TIMER_ID 5  // Was 4, now unique
 #define LLDV_CHANGE_RESTART_TIMER_ID 6
+#define UI_LAYOUT_RESTORE_TIMER_ID 7
 
 
 
@@ -124,7 +125,7 @@ public:
 	afx_msg void OnBnClickedRendererRestart();
 	afx_msg void OnRendererVideoConversionSelected();
 	afx_msg void OnBnClickedRendererVideoFrameUseQueueCheck();
-	afx_msg void OnBnClickedRendererSceneAwareTimingCheck();
+	afx_msg void OnRendererSceneCorrectionModeSelected();
 	afx_msg void OnBnClickedRendererReset();
 	afx_msg void OnBnClickedRendererResetAutoCheck();
 	afx_msg void OnRendererDirectShowStartStopTimeMethodSelected();
@@ -260,7 +261,7 @@ protected:
 	
 	// Renderer Queue group
 	CButton m_rendererVideoFrameUseQeueueCheck;
-	CButton m_rendererSceneAwareTimingCheck;
+	CComboBox m_rendererSceneCorrectionModeCombo;
 	CStatic m_rendererVideoFrameQueueSizeText;
 	CEdit m_rendererVideoFrameQueueSizeMaxEdit;
 	CStatic m_rendererDroppedFrameCountText;
@@ -286,6 +287,14 @@ protected:
 	CComboBox m_fullScreenModeCombo;
 
 	CSize m_minDialogSize;
+	struct FixedControlLayout
+	{
+		HWND hwnd = nullptr;
+		CRect rect;
+	};
+	std::vector<FixedControlLayout> m_fixedControlLayout;
+	CSize m_initialClientSize;
+	CRect m_initialVideoWindowRect;
 	HICON m_hIcon;
 	HACCEL m_accelerator;
 
@@ -318,6 +327,7 @@ protected:
 	uint64_t m_lastDroppedFrames = 0;
 	size_t m_lastQueueSize = 0;
 	bool m_pendingQueueReset = false;
+	ULONGLONG m_queueResetIgnoreEventsUntil = 0;
 	UINT_PTR m_rendererStartTime = 0;  // Tick count when renderer started rendering
 
 	// Frame offset by refresh data
@@ -373,6 +383,10 @@ protected:
 	void SelectCaptureDevice(CString& captureDeviceName);
 	void SetVideoConversionOff();
 	void SetVideoConversionP010();
+	bool IsP010VideoConversionSelected() const;
+	void UpdateSceneCorrectionModeUi();
+	void CaptureFixedDialogLayout();
+	void RestoreFixedDialogLayout();
 	void RefreshInputConnectionCombo();
 	void CaptureStart();
 	void CaptureStop();
