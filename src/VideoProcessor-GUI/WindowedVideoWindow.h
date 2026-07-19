@@ -34,6 +34,7 @@ protected:
 
 	// Handlers for ON_WM_* messages
 	afx_msg void OnPaint();
+	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg HBRUSH CtlColor(CDC* pDC, UINT nCtlColor);
 
 	DECLARE_MESSAGE_MAP()

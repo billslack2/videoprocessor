@@ -16,6 +16,7 @@
 BEGIN_MESSAGE_MAP(WindowedVideoWindow, CStatic)
 	ON_WM_CTLCOLOR_REFLECT()
 	ON_WM_PAINT()
+	ON_WM_SIZE()
 END_MESSAGE_MAP()
 
 
@@ -93,9 +94,20 @@ void WindowedVideoWindow::OnPaint()
 
 		// Done
 		::EndPaint(GetSafeHwnd(), &ps);
+		return;
 	}
 
 	CStatic::OnPaint();
+}
+
+void WindowedVideoWindow::OnSize(UINT nType, int cx, int cy)
+{
+	CStatic::OnSize(nType, cx, cy);
+
+	// The placeholder bitmap is positioned from the current client rectangle.
+	// Repaint after every host resize so its old paint position is never retained.
+	if (m_showLogo)
+		Invalidate(FALSE);
 }
 
 

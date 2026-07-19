@@ -58,6 +58,7 @@ struct StatsData
 	uint64_t sceneDetectDetected = 0;
 	CString sceneDetectMode;
 	uint64_t sceneTimingIntervals = 0;
+	double sceneTimingElapsedSeconds = 0.0;
 	bool sceneTimingReady = false;
 
 	// Video info
