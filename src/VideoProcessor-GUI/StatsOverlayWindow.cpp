@@ -459,8 +459,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		line.Format(TEXT("Scene Timing:     Ready (%llu)"),
 			m_stats.sceneTimingIntervals);
 	else
-		line.Format(TEXT("Scene Timing:     %llu/10000"),
-			std::min<uint64_t>(m_stats.sceneTimingIntervals, 10000));
+		line.Format(TEXT("Scene Timing:     %.0f/100 s (%llu frames)"),
+			std::min(100.0, m_stats.sceneTimingElapsedSeconds),
+			m_stats.sceneTimingIntervals);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 

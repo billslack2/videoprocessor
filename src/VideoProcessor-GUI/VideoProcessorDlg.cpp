@@ -50,6 +50,7 @@ struct DisplayTimingSnapshot
 	int64_t refreshPeriodQpc = 0;
 	int64_t qpcFrequency = 0;
 	int64_t rateMeasuredQpc = 0;
+	int64_t measurementStartedQpc = 0;
 	uint64_t intervalsObserved = 0;
 	bool rateStable = false;
 };
@@ -74,6 +75,7 @@ public:
 			++m_targetGeneration;
 			m_rate = 0.0;
 			m_rateMeasuredQpc = 0;
+			m_measurementStartedQpc = 0;
 			m_intervalsObserved = 0;
 			m_rateStable = false;
 			m_lastVBlankQpc.store(0, std::memory_order_release);
@@ -89,6 +91,7 @@ public:
 			++m_targetGeneration;
 			m_rate = 0.0;
 			m_rateMeasuredQpc = 0;
+			m_measurementStartedQpc = 0;
 			m_intervalsObserved = 0;
 			m_rateStable = false;
 			m_lastVBlankQpc.store(0, std::memory_order_release);
@@ -123,6 +126,7 @@ public:
 		result.refreshPeriodQpc = m_refreshPeriodQpc.load(std::memory_order_acquire);
 		result.qpcFrequency = m_qpcFrequency;
 		result.rateMeasuredQpc = m_rateMeasuredQpc;
+		result.measurementStartedQpc = m_measurementStartedQpc;
 		result.intervalsObserved = m_intervalsObserved;
 		result.rateStable = m_rateStable;
 		return result;
@@ -194,14 +198,16 @@ private:
 			// qpcRefreshPeriod is useful as a current phase snapshot, but its
 			// single-period integer value is not accurate enough for the OSD's
 			// "actual display rate" comparison with madVR.
-			// Publish a useful initial estimate after one second for the OSD, but
-			// do not mark it safe for correction until 10,000 physical display
-			// intervals have been observed since the last transition/restart.
-			constexpr unsigned int kInitialIntervals = 60;
-			constexpr unsigned int kIntermediateIntervals = 600;
-			constexpr unsigned int kStableIntervals = 10000;
+			// Publish an early OSD estimate, but do not mark the rate safe for
+			// correction until it has covered a full 100 seconds. Time, rather
+			// than a fixed frame count, gives the same confidence at 24, 60, and
+			// 120 Hz.
+			constexpr double kInitialMeasurementSeconds = 1.0;
+			constexpr double kPublishIntervalSeconds = 10.0;
+			constexpr double kStableMeasurementSeconds = 100.0;
 			LARGE_INTEGER first = {};
 			LARGE_INTEGER last = {};
+			int64_t lastPublishedQpc = 0;
 			unsigned int samples = 0;
 			for (;;)
 			{
@@ -212,7 +218,12 @@ private:
 				QueryPerformanceCounter(&now);
 				m_lastVBlankQpc.store(now.QuadPart, std::memory_order_release);
 				if (samples == 0)
+				{
 					first = now;
+					std::lock_guard<std::mutex> lock(m_mutex);
+					if (m_targetGeneration == targetGeneration)
+						m_measurementStartedQpc = first.QuadPart;
+				}
 				last = now;
 				++samples;
 
@@ -221,11 +232,14 @@ private:
 				// use the original first endpoint, avoiding a fence-post error and
 				// ensuring that the value becomes steadily less noisy over time.
 				const unsigned int intervals = samples - 1;
-				const bool publishRate =
-					intervals == kInitialIntervals ||
-					intervals == kStableIntervals ||
-					(intervals >= kIntermediateIntervals &&
-						intervals % kIntermediateIntervals == 0);
+				const double elapsedSeconds = intervals > 0 ?
+					static_cast<double>(last.QuadPart - first.QuadPart) /
+					static_cast<double>(frequency.QuadPart) : 0.0;
+				const bool rateHasBeenPublished = lastPublishedQpc != 0;
+				const bool publishRate = elapsedSeconds >= kInitialMeasurementSeconds &&
+					(!rateHasBeenPublished ||
+						(last.QuadPart - lastPublishedQpc) >=
+							static_cast<int64_t>(kPublishIntervalSeconds * frequency.QuadPart));
 				{
 					std::lock_guard<std::mutex> lock(m_mutex);
 					if (m_targetGeneration == targetGeneration)
@@ -233,11 +247,9 @@ private:
 				}
 				if (publishRate)
 				{
-					const double elapsed = static_cast<double>(last.QuadPart - first.QuadPart) /
-						static_cast<double>(frequency.QuadPart);
-					if (elapsed > 0.0)
+					if (elapsedSeconds > 0.0)
 					{
-						const double rate = static_cast<double>(intervals) / elapsed;
+						const double rate = static_cast<double>(intervals) / elapsedSeconds;
 						if (rate >= 20.0 && rate <= 120.0)
 						{
 							std::lock_guard<std::mutex> lock(m_mutex);
@@ -245,7 +257,7 @@ private:
 							{
 								m_rate = rate;
 								m_rateMeasuredQpc = last.QuadPart;
-								if (intervals >= kStableIntervals)
+								if (elapsedSeconds >= kStableMeasurementSeconds)
 									m_rateStable = true;
 								m_refreshPeriodQpc.store(
 									static_cast<int64_t>(llround(
@@ -255,6 +267,7 @@ private:
 							}
 						}
 					}
+					lastPublishedQpc = last.QuadPart;
 					// Keep the same endpoints after stabilization. Subsequent
 					// ten-second publications therefore become progressively more
 					// accurate and never regress to a short-window estimate.
@@ -275,6 +288,7 @@ private:
 	uint64_t m_targetGeneration = 0;
 	double m_rate = 0.0;
 	int64_t m_rateMeasuredQpc = 0;
+	int64_t m_measurementStartedQpc = 0;
 	uint64_t m_intervalsObserved = 0;
 	bool m_rateStable = false;
 	bool m_phaseTracking = false;
@@ -3843,6 +3857,12 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		sampledRateIsFresh ? sampledDisplayTiming.refreshRateHz : 0.0;
 	const bool sceneTimingReady =
 		sampledRateIsFresh && sampledDisplayTiming.rateStable;
+	const double sceneTimingElapsedSeconds =
+		sampledDisplayTiming.qpcFrequency > 0 &&
+		sampledDisplayTiming.measurementStartedQpc > 0 &&
+		qpcNow.QuadPart >= sampledDisplayTiming.measurementStartedQpc ?
+		static_cast<double>(qpcNow.QuadPart - sampledDisplayTiming.measurementStartedQpc) /
+			static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
 	if (displayTiming.lastVBlankQpc <= 0 &&
 		sampledDisplayTiming.lastVBlankQpc > 0)
 	{
@@ -3905,6 +3925,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
 		stats.displayRefreshRate = displayRefreshRate;
 		stats.sceneTimingIntervals = sampledDisplayTiming.intervalsObserved;
+		stats.sceneTimingElapsedSeconds = sceneTimingElapsedSeconds;
 		stats.sceneTimingReady = sceneTimingReady;
 
 		// EOTF
