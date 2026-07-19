@@ -1319,7 +1319,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		// BUFFERING PHASE: do not deliver until we have enough converted samples
 		if (m_isBuffering.load(std::memory_order_acquire))
 		{
-			bool freedConvertedQueueSpace = false;
 			size_t convertedQueueSize = 0;
 
 			// DYNAMIC BUFFERING: Use GetBufferingTarget() for fps-aware buffering
@@ -1345,32 +1344,35 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					++bufferUnderrunCount; // or better: add a new bufferOverrunDropCount
 					DebugLog::Log("DELIVERY THREAD: MAX BUFFER hit: dropped %zu old frames (q=%zu max=%zu)",
 						toDrop, q, maxFrames);
-					freedConvertedQueueSpace = true;
 				}
 
 				convertedQueueSize = m_convertedSampleQueue.size();
 			}
-
-			if (freedConvertedQueueSpace && m_hFrameAvailableEvent)
-				SetEvent(m_hFrameAvailableEvent);
-
 
 			if (convertedQueueSize < bufferingTarget)
 			{
 				continue; // Keep waiting for more samples
 			}
 
-			// Exit buffering without resetting timing state.  The queued samples
-			// were already timestamped by the conversion worker; resetting the
-			// origin here would make the next converted sample repeat media time 0.
+			// Match the proven legacy live-queue startup behavior: as soon as the
+			// minimal preroll is ready, begin timestamp generation from the next
+			// capture frame.  For live HDMI this deliberately favors the lower
+			// steady-state latency observed in the prior build over preserving the
+			// initial five-frame preroll as permanent renderer lead.
+			//
+			// RestartTimingOriginAfterPreroll is serialized with conversion by the
+			// base timing lock, so this is a one-time, race-free boundary rather
+			// than the old conversion-thread race.
+			RestartTimingOriginAfterPreroll();
 			m_isBuffering.store(false, std::memory_order_release);
 
 			DebugLog::Log("DELIVERY THREAD: BUFFERING COMPLETE (%zu/%zu) - delivery starting",
 				convertedQueueSize, bufferingTarget);
 		}
 
-		// DRAIN LOOP: With auto-reset event, drain queue completely (no need to keep frames)
-		// We use the pending timestamp history for late-binding instead
+		// Keep one converted sample as a stable handoff cushion.  Capture callbacks
+		// drive further conversion; do not make every delivery pop immediately
+		// refill the queue. This is the established origin/main live-fill policy.
 		for (;;)
 		{
 			if (!m_isActive.load(std::memory_order_acquire) ||
@@ -1384,11 +1386,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			uint64_t sceneEventId = 0;
 			uint64_t convertedQueueEpoch = 0;
 			uint64_t convertedSceneTimingGeneration = 0;
-			bool freedConvertedQueueSpace = false;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
 
-				if (m_convertedSampleQueue.empty())
+				if (m_convertedSampleQueue.size() <= 1)
 					break;  // No more samples, wait for more
 
 				const ConvertedSample convertedSample = m_convertedSampleQueue.front();
@@ -1398,11 +1399,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				convertedQueueEpoch = convertedSample.queueEpoch;
 				convertedSceneTimingGeneration = convertedSample.sceneTimingGeneration;
 				m_convertedSampleQueue.pop_front();
-				freedConvertedQueueSpace = true;
 			}
-
-			if (freedConvertedQueueSpace && m_hFrameAvailableEvent)
-				SetEvent(m_hFrameAvailableEvent);
 
 			if (!pSample)
 				break;
@@ -2024,6 +2021,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				++backpressureHits;
 				break;  // Stop conversion until a frame arrives or delivery frees converted space.
 			}
+
+			// Preserve origin/main's gentle back-pressure above half capacity, but
+			// never sleep while holding a queue lock.
+			if (currentConvertedSize >= (queueMaxSize * 3) / 4)
+				Sleep(2);
+			else if (currentConvertedSize >= queueMaxSize / 2)
+				Sleep(1);
 
 			// Pop one raw frame.
 			VideoFrame videoFrame{};

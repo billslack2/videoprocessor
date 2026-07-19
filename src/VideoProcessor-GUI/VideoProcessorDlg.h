@@ -327,6 +327,8 @@ protected:
 	uint64_t m_lastDroppedFrames = 0;
 	size_t m_lastQueueSize = 0;
 	bool m_pendingQueueReset = false;
+	bool m_startupGraphReprimePending = false;
+	bool m_startupGraphReprimeCompleted = false;
 	ULONGLONG m_queueResetIgnoreEventsUntil = 0;
 	UINT_PTR m_rendererStartTime = 0;  // Tick count when renderer started rendering
 

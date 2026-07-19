@@ -539,6 +539,28 @@ void ALiveSourceVideoOutputPin::ResetTimingState()
 }
 
 
+void ALiveSourceVideoOutputPin::RestartTimingOriginAfterPreroll()
+{
+	CAutoLock timingLock(&m_timingStateLock);
+
+	// Preserve the established DirectShow segment, but start timestamp and media
+	// time generation from the first frame produced after preroll.  This is the
+	// operating point used by the prior live queue implementation and prevents
+	// the renderer from treating the whole preroll as permanent live latency.
+	// It is called only once while delivery transitions out of buffering.
+	m_frameCounter = 0;
+	m_previousFrameCounter = 0;
+	m_frameCounterOffset = 0;
+	m_frameCounterOffsetValid = false;
+	m_previousTimeStop = 0;
+	m_startTimeOffset = 0;
+	m_lastHardwareTimestamp = 0;
+	m_previousHardwareTimestamp = 0;
+
+	DebugLog::Log("ALiveSourceVideoOutputPin::RestartTimingOriginAfterPreroll() - legacy live-preroll timestamp origin restored");
+}
+
+
 REFERENCE_TIME ALiveSourceVideoOutputPin::CalculateSmartFrameDuration() const
 {
 	// If we don't have enough history, fall back to rational duration

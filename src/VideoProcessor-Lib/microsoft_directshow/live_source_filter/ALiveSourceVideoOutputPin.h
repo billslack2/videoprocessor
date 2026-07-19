@@ -286,6 +286,12 @@ protected:
 	// Will return S_FRAME_NOT_RENDERED if frame could not be renderered, not an error per-se
 	HRESULT RenderVideoFrameIntoSample(VideoFrame&, IMediaSample* const);
 
+	// Establish the same timestamp origin used by the legacy live queue when
+	// its initial preroll completed.  This is intentionally narrower than
+	// ResetTimingState(): the surrounding buffered pin has already established
+	// the DirectShow segment and owns the one-time startup transition.
+	void RestartTimingOriginAfterPreroll();
+
 	// Get the next frame timestamp. If it doesn't know it's invalid. Overridden by implementations
 	virtual REFERENCE_TIME NextFrameTimestamp() const { return REFERENCE_TIME_INVALID; }
 

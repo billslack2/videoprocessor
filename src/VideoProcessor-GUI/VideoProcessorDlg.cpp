@@ -1370,15 +1370,18 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 
 		m_rendererStartTime = GetTickCount();
 		g_displayRefreshRateSampler->ResetMeasurement();
-		if (!m_pendingQueueReset &&
+		if (!m_startupGraphReprimeCompleted &&
 			GetTickCount64() >= m_queueResetIgnoreEventsUntil)
 		{
-			// A newly running graph needs one re-prime pass to settle its live
-			// queue. The guarded timer prevents its own reset from scheduling a
-			// second pass when rendering resumes.
-			SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);
+			// Let madVR establish its decoder/upload/render queues, then rebuild the
+			// new live graph once. This deliberately replaces any earlier
+			// display-transition queue-only timer: startup needs the same complete
+			// graph reset that origin/main used for its delayed reset.
+			SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 10000, nullptr);
 			m_pendingQueueReset = true;
-			DbgLog((LOG_TRACE, 1, TEXT("Renderer started - scheduling one queue re-prime")));
+			m_startupGraphReprimePending = true;
+			m_startupGraphReprimeCompleted = true;
+			DbgLog((LOG_TRACE, 1, TEXT("Renderer started - scheduling one complete graph re-prime")));
 		}
 		// LLDV can be confirmed while the graph is still starting. The
 		// effective PQ state has already been rebuilt, but this graph accepted
@@ -2247,6 +2250,11 @@ void CVideoProcessorDlg::RenderStart()
 
 	assert(m_captureDevice);
 	assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
+
+	// A new renderer object receives one delayed complete re-prime. An in-place
+	// renderer Reset() does not call RenderStart(), so this cannot create a loop.
+	m_startupGraphReprimePending = false;
+	m_startupGraphReprimeCompleted = false;
 
 	int i;
 
@@ -3619,16 +3627,30 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
 		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
 		{
+			const bool restartGraph = m_startupGraphReprimePending;
+			m_startupGraphReprimePending = false;
+
 			// The reset itself emits display/size events. Ignore them long enough
 			// for the graph to stop, re-create its window, and become stable.
 			m_queueResetIgnoreEventsUntil = GetTickCount64() + 10000;
 			m_pendingQueueReset = false;
-			DEBUGLOG("Queue transition: executing live-source queue re-prime reset");
-			m_videoRenderer->ResetLiveQueue();
+			if (restartGraph)
+			{
+				// A new live graph needs one complete re-prime so madVR rebuilds its
+				// decoder/upload/render queues. Later recoveries stay queue-only.
+				DEBUGLOG("Renderer startup: executing one complete graph re-prime reset");
+				m_videoRenderer->Reset();
+			}
+			else
+			{
+				DEBUGLOG("Queue transition: executing live-source queue re-prime reset");
+				m_videoRenderer->ResetLiveQueue();
+			}
 		}
 		else
 		{
 			m_pendingQueueReset = false;
+			m_startupGraphReprimePending = false;
 		}
 		return;
 	}
@@ -4107,29 +4129,38 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	m_lastQueueSize = rawQueueSize + convertedQueueSize;
 	m_lastDroppedFrames = droppedFrames;
 	m_consecutiveFullSeconds = 0;
-	m_consecutiveStuckSeconds = 0;
 
-	if (queueMaxSize == 0 || !m_videoRenderer ||
+	if (queueMaxSize == 0 || !GetRendererVideoFrameUseQueue() || !m_videoRenderer ||
 		m_rendererState != RendererState::RENDERSTATE_RENDERING)
+	{
 		return;
+	}
 
 	// Raw and converted queues each have their own capacity. Do not use the
 	// combined UI total here: 12 raw + 12 converted is not a 24/32 overflow.
 	const bool highWater = rawQueueSize * 4 >= queueMaxSize * 3 ||
 		convertedQueueSize * 4 >= queueMaxSize * 3;
 	const ULONGLONG now = GetTickCount64();
-	if (!highWater || m_pendingQueueReset ||
-		now < m_queueResetIgnoreEventsUntil)
+	if (m_pendingQueueReset || now < m_queueResetIgnoreEventsUntil)
 		return;
 
-	// If either individual live queue remains above 75%, repeat this queue-only
-	// recovery after the post-reset cooldown. That keeps excessive latency from
-	// persisting, while m_pendingQueueReset and the ten-second suppression avoid
-	// a rapid reset loop.
+	// The renderer-start path schedules one deliberate re-prime after ten
+	// seconds. Do not let the depth monitor interrupt madVR's initial internal
+	// queue fill before that startup window completes.
+	if (m_rendererStartTime != 0 &&
+		GetTickCount() - static_cast<DWORD>(m_rendererStartTime) < 10000)
+		return;
+
+	if (!highWater)
+		return;
+
+	// Repeat this queue-only recovery after the post-reset cooldown while a
+	// queue is still high. m_pendingQueueReset and the ten-second suppression
+	// avoid a rapid reset loop.
 	m_pendingQueueReset = true;
 	SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 1000, nullptr);
 	DbgLog((LOG_TRACE, 1,
-		TEXT("Queue high-water (%zu/%zu raw, %zu/%zu converted) - scheduling one live queue re-prime"),
+		TEXT("Queue high-water (%zu/%zu raw, %zu/%zu converted) - scheduling live queue re-prime"),
 		rawQueueSize, queueMaxSize, convertedQueueSize, queueMaxSize));
 }
 
