@@ -412,7 +412,8 @@ protected:
 	void RebuildRendererCombo();
 	void ClearRendererCombo();
 	void UpdateStatsOverlay();
-	void MonitorQueueHealth(size_t currentQueueSize, uint64_t droppedFrames);
+	void MonitorQueueHealth(size_t rawQueueSize, size_t convertedQueueSize,
+		size_t queueMaxSize, uint64_t droppedFrames);
 	void ApplyNoUiLayout();
 	bool UpdateNewLldvCandidate();
 	bool IsNewLldvModeSelected();

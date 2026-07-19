@@ -19,7 +19,7 @@
   <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override matching settings.</p>
 
   <h2>[command_line]</h2>
-  <p>Keys and option values, including device and renderer names, are case-insensitive. Boolean values accept <code>true</code>/<code>false</code>, <code>yes</code>/<code>no</code>, <code>on</code>/<code>off</code>, or <code>1</code>/<code>0</code>. On the command line, a bare Boolean switch enables it; append a Boolean value to explicitly enable or disable it, for example <code>/scene_detect false</code>.</p>
+  <p>Keys and option values, including device and renderer names, are case-insensitive. Configuration entries must use <code>key=value</code>. Boolean values accept <code>true</code>/<code>false</code>, <code>yes</code>/<code>no</code>, <code>on</code>/<code>off</code>, or <code>1</code>/<code>0</code>. On the command line, a bare Boolean switch enables it; append a Boolean value to explicitly enable or disable it, for example <code>/scene_detect false</code>.</p>
   <table>
     <thead><tr><th>Key</th><th>Type and values</th><th>Effect</th></tr></thead>
     <tbody>
@@ -28,7 +28,7 @@
       <tr><td><code>fullscreen</code></td><td>Boolean</td><td>Start in fullscreen mode.</td></tr>
       <tr><td><code>windowedfullscreenmode</code></td><td>Boolean</td><td>Use windowed rather than exclusive fullscreen.</td></tr>
       <tr><td><code>queue_size</code></td><td>Positive integer</td><td>Maximum renderer frame-queue size.</td></tr>
-      <tr><td><code>scene_detect</code></td><td>Boolean</td><td>Locks output timestamps to the measured display cadence and prefers required whole-frame repeat/drop corrections at detected cuts. If no cut occurs before a full-frame phase error, a hard-limit correction preserves queue depth and alignment with independent audio. When false or absent, the legacy timestamp and delivery path is used.</td></tr>
+      <tr><td><code>scene_detect</code></td><td>Boolean</td><td>For P010 output, locks output timestamps to the measured display cadence and prefers required whole-frame repeat/drop corrections at detected cuts. If no cut occurs before a full-frame phase error, a hard-limit correction preserves queue depth and alignment with independent audio. The setting is retained but inactive for non-P010 output. When false or absent, the legacy timestamp and delivery path is used.</td></tr>
       <tr><td><code>scene_correction_mode</code></td><td><code>BASIC</code> or <code>ADVANCED</code></td><td>Used only when <code>scene_detect=true</code> and P010 conversion is selected. <code>BASIC</code> asks the renderer to hold/repeat at the chosen boundary. <code>ADVANCED</code> supplies a real duplicate sample so the renderer may not report a repeat. The setting is retained but inactive for non-P010 output.</td></tr>
       <tr><td><code>newlldv</code></td><td>Boolean</td><td>Enable the opt-in BT.2020 + SDR LLDV heuristic.</td></tr>
       <tr><td><code>noui</code></td><td>Boolean</td><td>Show only the windowed video panel.</td></tr>

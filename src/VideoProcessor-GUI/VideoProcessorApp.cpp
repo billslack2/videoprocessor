@@ -62,6 +62,7 @@ Options:
       Lock output cadence to the measured display rate and prefer required
       whole-frame repeat/drop corrections at detected scene boundaries.
       A hard one-frame limit preserves queue and A/V alignment if no scene occurs.
+      Used only with P010 output; otherwise the setting is retained but inactive.
       If omitted or disabled, the legacy timestamp/delivery path is unchanged.
 
   /scene_correction_mode <value>
@@ -115,7 +116,8 @@ Options:
 
 Config file:
   VideoProcessor.cfg
-      Optional unified config file in the working directory.
+      Optional unified config file searched beside VideoProcessor.exe, then its
+      two parent directories, with the working directory as a fallback.
       Command-line switches override matching config values.
 )";
 

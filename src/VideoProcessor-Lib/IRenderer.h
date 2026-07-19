@@ -90,6 +90,10 @@ public:
 	// Reset the internal state and the video stream.
 	virtual void Reset() = 0;
 
+	// Flush and re-prime only the live-source queue without rebuilding the
+	// renderer graph. Renderers without a live source may ignore this request.
+	virtual void ResetLiveQueue() {}
+
 	//
 	// GUI
 	//
