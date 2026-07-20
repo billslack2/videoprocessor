@@ -456,12 +456,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += LINE_HEIGHT;
 
 	if (m_stats.sceneTimingReady)
-		line.Format(TEXT("Scene Timing:     Ready (%llu)"),
-			m_stats.sceneTimingIntervals);
+		line.Format(TEXT("Scene Timing:     Active"));
 	else
-		line.Format(TEXT("Scene Timing:     %.0f/100 s (%llu frames)"),
-			std::min(100.0, m_stats.sceneTimingElapsedSeconds),
-			m_stats.sceneTimingIntervals);
+		line.Format(TEXT("Scene Timing:     Warming"));
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 

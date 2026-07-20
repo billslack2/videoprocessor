@@ -11,6 +11,7 @@
 #include <dvdmedia.h>
 #include <guid.h>
 #include <IMediaSideData.h>
+#include <limits>
 
 #include "CBufferedLiveSourceVideoOutputPin.h"
 
@@ -1102,6 +1103,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		bool atSceneBoundary = false;
 	};
 	PendingUpstreamRepeat pendingUpstreamRepeat;
+	// Advanced scene correction can add or remove a presentation sample. Keep
+	// the optional media-time stream continuous with that output cadence. This
+	// is delivery-thread-only and is reset with the scene cadence, so the
+	// ordinary source/media timeline is untouched when Scene Detect is off or
+	// when Basic (renderer-gap) mode is selected.
+	LONGLONG advancedMediaTimeOffset = 0;
 
 	const auto resetSceneCadence = [&]()
 	{
@@ -1109,7 +1116,32 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			pendingUpstreamRepeat.sample->Release();
 		pendingUpstreamRepeat = {};
 		sceneCadence = {};
+		advancedMediaTimeOffset = 0;
 		m_scenePhasePpmUnits.store(0, std::memory_order_release);
+	};
+
+	const auto applyAdvancedMediaTimeOffset =
+		[](IMediaSample* sample, LONGLONG offset) -> bool
+	{
+		if (!sample || offset == 0)
+			return true;
+
+		LONGLONG mediaStart = 0;
+		LONGLONG mediaStop = 0;
+		if (FAILED(sample->GetMediaTime(&mediaStart, &mediaStop)))
+			return true; // Media time is optional on DirectShow samples.
+
+		const LONGLONG maxValue = (std::numeric_limits<LONGLONG>::max)();
+		const LONGLONG minValue = (std::numeric_limits<LONGLONG>::min)();
+		if ((offset > 0 &&
+				(mediaStart > maxValue - offset || mediaStop > maxValue - offset)) ||
+			(offset < 0 &&
+				(mediaStart < minValue - offset || mediaStop < minValue - offset)))
+			return false;
+
+		mediaStart += offset;
+		mediaStop += offset;
+		return SUCCEEDED(sample->SetMediaTime(&mediaStart, &mediaStop));
 	};
 
 	const auto sceneOutputTime = [&sceneCadence](uint64_t outputIndex) -> REFERENCE_TIME
@@ -1262,12 +1294,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					1, std::memory_order_relaxed);
 				DebugLog::Log(
 					"SCENE-AWARE CORRECTION: deferred upstream sample at %s "
-					"(event=%llu, phase=%+.6Lf -> %+.6Lf frames)",
+					"(event=%llu, phase=%+.6Lf -> %+.6Lf frames, media-offset=%+lld)",
 					pendingUpstreamRepeat.atSceneBoundary ?
 						"scene boundary" : "hard phase limit",
 					pendingUpstreamRepeat.sceneEventId,
 					pendingUpstreamRepeat.phaseBefore,
-					sceneCadence.contentPhaseFrames);
+					sceneCadence.contentPhaseFrames,
+					advancedMediaTimeOffset);
 				pendingUpstreamRepeat.sample->Release();
 				pendingUpstreamRepeat = {};
 			}
@@ -1690,6 +1723,36 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					}
 				}
 
+				// Quality notifications are only a confidence signal for a scene
+				// boundary. Require two recent, consistent messages before using
+				// them; with no feedback, preserve the existing phase-only behavior.
+				if (correctionAtSceneBoundary)
+				{
+					const auto quality = GetQualityFeedbackSnapshot();
+					const DWORD qualityAgeMs = quality.lastNotificationTick == 0 ?
+						MAXDWORD : correctionNow - quality.lastNotificationTick;
+					const bool feedbackAvailable =
+						qualityAgeMs <= 5000 && quality.consecutiveCount >= 2;
+					const bool qualityAgrees =
+						(sceneCorrectionAction == SceneCorrectionAction::Repeat &&
+							quality.type == static_cast<int>(Famine)) ||
+						(sceneCorrectionAction == SceneCorrectionAction::Drop &&
+							quality.type == static_cast<int>(Flood));
+
+					if (feedbackAvailable && !qualityAgrees)
+					{
+						DebugLog::Log(
+							"SCENE-AWARE CORRECTION: boundary action vetoed by quality "
+							"feedback (action=%s type=%s count=%llu age=%lums)",
+							sceneCorrectionAction == SceneCorrectionAction::Repeat ? "repeat" : "drop",
+							quality.type == static_cast<int>(Famine) ? "famine" :
+								quality.type == static_cast<int>(Flood) ? "flood" : "unknown",
+							quality.consecutiveCount, qualityAgeMs);
+						sceneCorrectionAction = SceneCorrectionAction::None;
+						correctionAtSceneBoundary = false;
+					}
+				}
+
 				// A scene is preferred, but waiting indefinitely would drain/fill
 				// queues and let capture content drift from the independent audio.
 				// At the hard bound, perform the same one-slot conversion on the
@@ -1708,6 +1771,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				{
 					const long double phaseBefore =
 						pendingContentPhaseFrames;
+					if (m_sceneCorrectionUpstreamSample.load(
+							std::memory_order_acquire))
+					{
+						// The source frame is intentionally omitted while the
+						// presentation cadence remains contiguous. Keep subsequent
+						// Advanced media times aligned with that output sequence.
+						--advancedMediaTimeOffset;
+					}
 					sceneCadence.contentPhaseFrames =
 						pendingContentPhaseFrames + 1.0L;
 					sceneCorrectionCommitted = true;
@@ -1725,10 +1796,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 						1, std::memory_order_relaxed);
 					DebugLog::Log(
 						"SCENE-AWARE CORRECTION: output drop at %s "
-						"(event=%llu, phase=%+.6Lf -> %+.6Lf frames)",
+						"(event=%llu, phase=%+.6Lf -> %+.6Lf frames, media-offset=%+lld)",
 						correctionAtSceneBoundary ? "scene boundary" : "hard phase limit",
 						sceneEventId, phaseBefore,
-						sceneCadence.contentPhaseFrames);
+						sceneCadence.contentPhaseFrames,
+						advancedMediaTimeOffset);
 					pSample->Release();
 					continue;
 				}
@@ -1754,6 +1826,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			HRESULT hr = S_OK;
 			bool cadenceTimestampNeedsReset = false;
 			bool scheduledPresentationGapRepeat = false;
+			bool advancedRepeatCommitted = false;
+			LONGLONG advancedMediaTimeOffsetForCurrent = advancedMediaTimeOffset;
 			IMediaSample* deferredUpstreamRepeat = nullptr;
 			if (sceneCadenceForSample)
 			{
@@ -1782,7 +1856,26 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 						DebugLog::Log(
 							"SCENE-AWARE CORRECTION: upstream clone unavailable "
 							"(hr=0x%08x); falling back to renderer gap",
-							cloneHr);
+								cloneHr);
+					}
+					else
+					{
+						// The duplicate occupies the current media-time slot. The
+						// captured sample that follows it must occupy the next one.
+						// Apply the current Advanced offset to the clone now; the
+						// current sample is shifted after the duplicate is accepted.
+						if (!applyAdvancedMediaTimeOffset(
+								deferredUpstreamRepeat,
+								advancedMediaTimeOffset))
+						{
+							DebugLog::Log(
+								"SCENE-AWARE MEDIA TIME: failed to shift deferred "
+								"upstream repeat by %+lld frame(s)",
+								advancedMediaTimeOffset);
+						}
+						advancedRepeatCommitted = true;
+						advancedMediaTimeOffsetForCurrent =
+							advancedMediaTimeOffset + 1;
 					}
 				}
 				else
@@ -1797,6 +1890,22 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					sceneOutputTime(sceneCadence.nextOutputIndex + slotOffset + 1);
 				if (FAILED(pSample->SetTime(&outputStart, &outputStop)))
 					cadenceTimestampNeedsReset = true;
+
+				const bool advancedMediaTimeMode =
+					m_sceneCorrectionUpstreamSample.load(
+						std::memory_order_acquire);
+				const LONGLONG mediaTimeOffsetForSample =
+					advancedRepeatCommitted ?
+						advancedMediaTimeOffsetForCurrent : advancedMediaTimeOffset;
+				if (advancedMediaTimeMode &&
+					!applyAdvancedMediaTimeOffset(
+						pSample, mediaTimeOffsetForSample))
+				{
+					DebugLog::Log(
+						"SCENE-AWARE MEDIA TIME: failed to shift captured "
+						"sample by %+lld frame(s)",
+						mediaTimeOffsetForSample);
+				}
 			}
 
 			if (cadenceTimestampNeedsReset)
@@ -1839,6 +1948,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				pendingUpstreamRepeat.atSceneBoundary =
 					correctionAtSceneBoundary;
 				deferredUpstreamRepeat = nullptr;
+				advancedMediaTimeOffset = advancedMediaTimeOffsetForCurrent;
 
 				// Do not reset this auto-reset event: doing so can discard the
 				// only readiness notification for an already-populated converted
@@ -2289,9 +2399,10 @@ HRESULT CBufferedLiveSourceVideoOutputPin::CloneSampleForUpstreamRepeat(
 		return hr;
 	}
 
-	// This is a second presentation of the same captured frame. Retaining the
-	// media-time identity makes that explicit while its presentation interval
-	// remains a distinct, contiguous DirectShow output slot.
+	// This is a second presentation of the same captured frame. Start by copying
+	// the source media-time identity; Advanced mode then applies its delivery
+	// thread correction offset so the duplicate and following samples remain
+	// monotonic in the output stream.
 	LONGLONG mediaStart = 0;
 	LONGLONG mediaStop = 0;
 	if (SUCCEEDED(source->GetMediaTime(&mediaStart, &mediaStop)))

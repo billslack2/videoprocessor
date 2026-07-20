@@ -98,6 +98,8 @@ public:
 	void EnableNewLldvHeuristic(bool enabled = true);
 	void DefaultRendererName(const CString&);
 	void SetQueueSize(const CString&);
+	void SetQueueResetDelaySeconds(const CString&);
+	void SetQueueResetHighWaterPercent(const CString&);
 	void SetCaptureDevice(const CString&);
 
 	void StartFrameOffsetAuto();
@@ -118,6 +120,7 @@ public:
 	afx_msg void OnCaptureInputSelected();
 	afx_msg void OnBnClickedCaptureRestart();
 	afx_msg void OnBnClickedTimingClockFrameOffsetAutoCheck();
+	afx_msg void OnEnChangeTimingClockFrameOffset();
 	afx_msg void OnColorSpaceContainerSelected();
 	afx_msg void OnHdrColorSpaceSelected();
 	afx_msg void OnHdrLuminanceSelected();
@@ -195,6 +198,10 @@ protected:
 	DWORD m_newLldvCandidateSince = 0;
 	int m_lldvChangeRestartDelaySeconds = -1;
 	bool m_lldvRestartPending = false;
+	// Do not carry the previous graph's LLDV promotion into a new graph.
+	// Re-arm only after the raw capture state leaves the LLDV candidate state.
+	bool m_lldvForceSuppressedAfterRestart = false;
+	bool m_lldvRestartForPromotion = false;
 
 	//
 	// UI elements
@@ -329,8 +336,14 @@ protected:
 	bool m_pendingQueueReset = false;
 	bool m_startupGraphReprimePending = false;
 	bool m_startupGraphReprimeCompleted = false;
+	// A display/video-mode transition needs a complete graph re-prime so madVR
+	// rebuilds its internal queues. Ordinary queue-health recovery remains
+	// queue-only and does not set this flag.
+	bool m_displayTransitionGraphReprimePending = false;
 	ULONGLONG m_queueResetIgnoreEventsUntil = 0;
 	UINT_PTR m_rendererStartTime = 0;  // Tick count when renderer started rendering
+	int m_queueResetDelaySeconds = 5;
+	int m_queueResetHighWaterPercent = 75;
 
 	// Frame offset by refresh data
 	std::vector<int> m_frameOffsetsByRefresh;
@@ -389,6 +402,7 @@ protected:
 	void UpdateSceneCorrectionModeUi();
 	void CaptureFixedDialogLayout();
 	void RestoreFixedDialogLayout();
+	void RestoreFrameOffsetEditLayout();
 	void RefreshInputConnectionCombo();
 	void CaptureStart();
 	void CaptureStop();

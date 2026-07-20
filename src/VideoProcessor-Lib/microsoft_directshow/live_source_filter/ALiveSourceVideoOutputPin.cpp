@@ -347,6 +347,17 @@ STDMETHODIMP ALiveSourceVideoOutputPin::Notify(IBaseFilter* pSender, Quality q)
 	// renderer's quality-control policy.  Keep the standard DirectShow meaning:
 	// record a bounded diagnostic and let the renderer handle quality itself.
 	UNREFERENCED_PARAMETER(pSender);
+	const int qualityType = static_cast<int>(q.Type);
+	const int previousType = m_qualityType.load(std::memory_order_relaxed);
+	const uint64_t previousCount = m_qualityConsecutiveCount.load(std::memory_order_relaxed);
+	m_qualityType.store(qualityType, std::memory_order_release);
+	m_qualityProportion.store(q.Proportion, std::memory_order_release);
+	m_qualityLate.store(q.Late, std::memory_order_release);
+	m_qualityTimeStamp.store(q.TimeStamp, std::memory_order_release);
+	m_qualityConsecutiveCount.store(
+		previousType == qualityType ? previousCount + 1 : 1,
+		std::memory_order_release);
+	m_qualityLastNotificationTick.store(GetTickCount(), std::memory_order_release);
 	static std::atomic<DWORD> lastLogTime = 0;
 	static std::atomic<uint64_t> notificationCount = 0;
 	const uint64_t count = notificationCount.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -363,6 +374,20 @@ STDMETHODIMP ALiveSourceVideoOutputPin::Notify(IBaseFilter* pSender, Quality q)
 			q.TimeStamp / 10000.0);
 	}
 	return E_NOTIMPL;
+}
+
+
+ALiveSourceVideoOutputPin::QualityFeedbackSnapshot
+ALiveSourceVideoOutputPin::GetQualityFeedbackSnapshot() const
+{
+	QualityFeedbackSnapshot snapshot;
+	snapshot.type = m_qualityType.load(std::memory_order_acquire);
+	snapshot.proportion = m_qualityProportion.load(std::memory_order_acquire);
+	snapshot.late = m_qualityLate.load(std::memory_order_acquire);
+	snapshot.timeStamp = m_qualityTimeStamp.load(std::memory_order_acquire);
+	snapshot.consecutiveCount = m_qualityConsecutiveCount.load(std::memory_order_acquire);
+	snapshot.lastNotificationTick = m_qualityLastNotificationTick.load(std::memory_order_acquire);
+	return snapshot;
 }
 
 
@@ -471,6 +496,14 @@ void ALiveSourceVideoOutputPin::Reset()
 void ALiveSourceVideoOutputPin::ResetTimingState()
 {
 	CAutoLock timingLock(&m_timingStateLock);
+
+	// Quality indications describe the current graph segment only.
+	m_qualityType.store(0, std::memory_order_release);
+	m_qualityProportion.store(1000, std::memory_order_release);
+	m_qualityLate.store(0, std::memory_order_release);
+	m_qualityTimeStamp.store(0, std::memory_order_release);
+	m_qualityConsecutiveCount.store(0, std::memory_order_release);
+	m_qualityLastNotificationTick.store(0, std::memory_order_release);
 
 	if (m_hdrData)
 		m_hdrChanged = true;
