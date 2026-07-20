@@ -15,7 +15,7 @@
 <body>
   <h1>VideoProcessor configuration</h1>
   <p><code>VideoProcessor.cfg</code> is an optional UTF-8 text file searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
-  <p>The shipped file contains common <code>[command_line]</code> settings only. The optional <code>[p010_conversion]</code> and <code>[ppm_correction]</code> sections can be added when needed.</p>
+  <p>The shipped file contains common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[p010_conversion]</code> and <code>[ppm_correction]</code> sections can be added when needed.</p>
   <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override matching settings.</p>
 
   <h2>[command_line]</h2>
@@ -45,6 +45,16 @@
       <tr><td><code>renderer_primaries</code></td><td><code>AUTO</code>, <code>BT2020</code>, <code>DCI-P3</code>, <code>BT709</code>, <code>NTSC_SYSM</code>, <code>NTSC_SYSBG</code>, <code>CIE1931_ZYX</code>, <code>ACES</code></td><td>Override DirectShow video primaries.</td></tr>
     </tbody>
   </table>
+
+  <h2>[queue_recovery]</h2>
+  <p>These settings control the automatic queue-only recovery safeguard. The raw and converted queues are evaluated independently; the percentage is not applied to their combined display total. If either queue reaches the configured high-water mark, VideoProcessor waits the configured delay and then flushes/re-primes the live source queue without rebuilding the renderer graph.</p>
+  <table><thead><tr><th>Key</th><th>Type and default</th><th>Effect</th></tr></thead><tbody>
+    <tr><td><code>reset_after_render_restart_seconds</code></td><td>Positive integer; default <code>5</code></td><td>Delay before the automatic recovery reset after startup/restart or a high-water event.</td></tr>
+    <tr><td><code>reset_queue_too_large_percent</code></td><td>Integer <code>1</code>-<code>100</code>; default <code>75</code></td><td>Per-queue high-water threshold that schedules recovery.</td></tr>
+  </tbody></table>
+  <pre>[queue_recovery]
+reset_after_render_restart_seconds=5
+reset_queue_too_large_percent=75</pre>
 
   <h2>LLDV</h2>
   <div class="note">DeckLink does not expose the HDMI Dolby Vision VSIF. The <code>newlldv</code> option is a heuristic, not definitive detection.</div>

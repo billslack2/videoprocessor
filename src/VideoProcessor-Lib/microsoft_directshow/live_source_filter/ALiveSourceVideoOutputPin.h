@@ -125,6 +125,19 @@ public:
 	virtual uint64_t SceneAwareDetectedCount() const { return 0; }
 	virtual uint64_t SceneAwareLateCandidateCount() const { return 0; }
 
+	// Coarse DirectShow quality feedback from the downstream renderer. This is
+	// advisory only; it is never used as a timestamp or clock source.
+	struct QualityFeedbackSnapshot
+	{
+		int type = 0; // 0 = none, Famine/Flood otherwise
+		long proportion = 1000;
+		REFERENCE_TIME late = 0;
+		REFERENCE_TIME timeStamp = 0;
+		uint64_t consecutiveCount = 0;
+		DWORD lastNotificationTick = 0;
+	};
+	QualityFeedbackSnapshot GetQualityFeedbackSnapshot() const;
+
 	// PPM correction information access
 	// Get the current PPM correction value being applied
 	// Returns the applied PPM value. It is added to the timestamp-trim
@@ -450,6 +463,14 @@ protected:
 	// Serializes timing-state mutation with frame conversion. Reset, HDR updates,
 	// PPM updates, and RenderVideoFrameIntoSample all use this lock.
 	CCritSec m_timingStateLock;
+
+	// IQualityControl::Notify state, cleared at each new DirectShow segment.
+	std::atomic<int> m_qualityType = 0;
+	std::atomic<long> m_qualityProportion = 1000;
+	std::atomic<REFERENCE_TIME> m_qualityLate = 0;
+	std::atomic<REFERENCE_TIME> m_qualityTimeStamp = 0;
+	std::atomic<uint64_t> m_qualityConsecutiveCount = 0;
+	std::atomic<DWORD> m_qualityLastNotificationTick = 0;
 	
 
 };

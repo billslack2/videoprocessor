@@ -388,6 +388,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_CBN_SELCHANGE(IDC_CAPTURE_INPUT_COMBO, &CVideoProcessorDlg::OnCaptureInputSelected)
 	ON_BN_CLICKED(IDC_CAPTURE_RESTART_BUTTON, &CVideoProcessorDlg::OnBnClickedCaptureRestart)
 	ON_BN_CLICKED(IDC_TIMING_CLOCK_FRAME_OFFSET_AUTO_CHECK, &CVideoProcessorDlg::OnBnClickedTimingClockFrameOffsetAutoCheck)
+	ON_EN_CHANGE(IDC_TIMING_CLOCK_FRAME_OFFSET_EDIT, &CVideoProcessorDlg::OnEnChangeTimingClockFrameOffset)
 	ON_CBN_SELCHANGE(IDC_COLORSPACE_CONTAINER_COMBO, &CVideoProcessorDlg::OnColorSpaceContainerSelected)
 	ON_CBN_SELCHANGE(IDC_HDR_COLORSPACE_COMBO, &CVideoProcessorDlg::OnHdrColorSpaceSelected)
 	ON_CBN_SELCHANGE(IDC_HDR_LUMINANCE_COMBO, &CVideoProcessorDlg::OnHdrLuminanceSelected)
@@ -662,6 +663,20 @@ void CVideoProcessorDlg::SetQueueSize(const CString& queueSize)
 	m_defaultQueueSize = queueSize;
 }
 
+void CVideoProcessorDlg::SetQueueResetDelaySeconds(const CString& value)
+{
+	const int seconds = _ttoi(value);
+	if (seconds > 0)
+		m_queueResetDelaySeconds = seconds;
+}
+
+void CVideoProcessorDlg::SetQueueResetHighWaterPercent(const CString& value)
+{
+	const int percent = _ttoi(value);
+	if (percent > 0 && percent <= 100)
+		m_queueResetHighWaterPercent = percent;
+}
+
 
 void CVideoProcessorDlg::DefaultVideoConversionOverride(VideoConversionOverride videoConversionOverride)
 {
@@ -799,6 +814,15 @@ void CVideoProcessorDlg::OnBnClickedTimingClockFrameOffsetAutoCheck()
 }
 
 
+void CVideoProcessorDlg::OnEnChangeTimingClockFrameOffset()
+{
+	// Some renderer/layout notifications can arrive while this edit has focus.
+	// Keep its resource-layout rectangle stable without rewriting its text or
+	// disturbing the user's caret.
+	RestoreFrameOffsetEditLayout();
+}
+
+
 void CVideoProcessorDlg::OnColorSpaceContainerSelected()
 {
 	BuildPushRestartVideoState();
@@ -926,6 +950,7 @@ void CVideoProcessorDlg::OnBnClickedRendererReset()
 	// Disable auto-reset timer while manual reset is in progress
 	KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
 	m_pendingQueueReset = false;
+	m_displayTransitionGraphReprimePending = false;
 
 	m_videoRenderer->Reset();
 	
@@ -1261,12 +1286,15 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 				if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 					!m_pendingQueueReset && now >= m_queueResetIgnoreEventsUntil)
 				{
-					// One reset after a real display/video-mode transition lets the
-					// live queue re-prime for the new sink cadence. The cooldown set
-					// by the timer below prevents that reset from scheduling itself.
-					SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 5000, nullptr);
+					// origin/main used a complete graph reset here. Keep that behavior
+					// for real display/video-mode transitions so madVR rebuilds its
+					// decoder/upload/render queues; queue-health recovery remains
+					// queue-only below.
+					SetTimer(QUEUE_RESET_DELAY_TIMER_ID,
+						static_cast<UINT>(m_queueResetDelaySeconds * 1000), nullptr);
 					m_pendingQueueReset = true;
-					DbgLog((LOG_TRACE, 1, TEXT("DirectShow display transition - scheduling one queue re-prime")));
+					m_displayTransitionGraphReprimePending = true;
+					DbgLog((LOG_TRACE, 1, TEXT("DirectShow display transition - scheduling one graph re-prime")));
 				}
 				else
 				{
@@ -1377,7 +1405,10 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			// new live graph once. This deliberately replaces any earlier
 			// display-transition queue-only timer: startup needs the same complete
 			// graph reset that origin/main used for its delayed reset.
-			SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 10000, nullptr);
+			// Match origin/main: madVR gets five seconds to establish its
+			// downstream queues before the one-time graph re-prime.
+			SetTimer(QUEUE_RESET_DELAY_TIMER_ID,
+				static_cast<UINT>(m_queueResetDelaySeconds * 1000), nullptr);
 			m_pendingQueueReset = true;
 			m_startupGraphReprimePending = true;
 			m_startupGraphReprimeCompleted = true;
@@ -2251,10 +2282,18 @@ void CVideoProcessorDlg::RenderStart()
 	assert(m_captureDevice);
 	assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
 
+	// Rebuild from the current raw capture metadata for every new graph.  A
+	// prior graph may have held synthetic LLDV/PQ metadata after the input has
+	// returned to the menu.  The intentional LLDV promotion restart is the
+	// exception: it keeps the already-confirmed effective PQ state.
+	if (m_captureDeviceVideoState)
+		BuildPushVideoState();
+
 	// A new renderer object receives one delayed complete re-prime. An in-place
 	// renderer Reset() does not call RenderStart(), so this cannot create a loop.
 	m_startupGraphReprimePending = false;
 	m_startupGraphReprimeCompleted = false;
+	m_displayTransitionGraphReprimePending = false;
 
 	int i;
 
@@ -2442,6 +2481,11 @@ void CVideoProcessorDlg::RenderStop()
 	m_eotfChangeRestartCooldownSeconds = -1;
 	m_lldvChangeRestartDelaySeconds = -1;
 	m_lldvRestartPending = false;
+	m_displayTransitionGraphReprimePending = false;
+	// The next graph starts from raw metadata for unrelated restarts.  Keep
+	// confirmed PQ only for the deliberate restart that applies LLDV.
+	m_lldvForceSuppressedAfterRestart = !m_lldvRestartForPromotion;
+	m_lldvRestartForPromotion = false;
 	m_eotfCheckCooldownSeconds = 0;
 
 	assert(m_captureDevice);
@@ -2734,6 +2778,9 @@ bool CVideoProcessorDlg::UpdateNewLldvCandidate()
 		m_newLldvCandidateActive = false;
 		m_newLldvCandidateConfirmed = false;
 		m_newLldvCandidateSince = 0;
+		// A distinct non-LLDV metadata state re-arms LLDV detection for the
+		// next real transition into LLDV.
+		m_lldvForceSuppressedAfterRestart = false;
 		return false;
 	}
 
@@ -2778,7 +2825,9 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	// heuristic when explicitly enabled, the user selected both LLDV follow
 	// modes, and the candidate has remained stable for 1.5 seconds.
 	const bool isHDFuryLLDV = m_useNewLldvHeuristic
-		? (m_newLldvCandidateConfirmed && IsNewLldvModeSelected())
+		? (m_newLldvCandidateConfirmed &&
+			!m_lldvForceSuppressedAfterRestart &&
+			IsNewLldvModeSelected())
 		: isLegacyHDFuryLLDV;
 
 	if (m_useNewLldvHeuristic && isHDFuryLLDV)
@@ -3014,6 +3063,7 @@ void CVideoProcessorDlg::ScheduleNewLldvRendererRestart()
 	if (m_rendererState != RendererState::RENDERSTATE_RENDERING)
 	{
 		m_lldvRestartPending = true;
+		m_lldvRestartForPromotion = true;
 		return;
 	}
 
@@ -3021,6 +3071,7 @@ void CVideoProcessorDlg::ScheduleNewLldvRendererRestart()
 		return;
 
 	m_lldvChangeRestartDelaySeconds = 2;
+	m_lldvRestartForPromotion = true;
 	SetTimer(LLDV_CHANGE_RESTART_TIMER_ID, 1000, nullptr);
 }
 
@@ -3475,6 +3526,34 @@ void CVideoProcessorDlg::RestoreFixedDialogLayout()
 }
 
 
+void CVideoProcessorDlg::RestoreFrameOffsetEditLayout()
+{
+	if (!m_timingClockFrameOffsetEdit.GetSafeHwnd())
+		return;
+
+	for (const FixedControlLayout& control : m_fixedControlLayout)
+	{
+		if (control.hwnd != m_timingClockFrameOffsetEdit.GetSafeHwnd())
+			continue;
+
+		CRect currentRect;
+		m_timingClockFrameOffsetEdit.GetWindowRect(&currentRect);
+		ScreenToClient(&currentRect);
+		if (!currentRect.EqualRect(&control.rect))
+		{
+			m_timingClockFrameOffsetEdit.SetWindowPos(
+				nullptr,
+				control.rect.left,
+				control.rect.top,
+				control.rect.Width(),
+				control.rect.Height(),
+				SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+		}
+		return;
+	}
+}
+
+
 void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 {
 	if (m_hideUI)
@@ -3625,10 +3704,13 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	if (nIDEvent == QUEUE_RESET_DELAY_TIMER_ID)
 	{
 		KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
-		if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
-		{
-			const bool restartGraph = m_startupGraphReprimePending;
-			m_startupGraphReprimePending = false;
+				if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
+				{
+					const bool restartGraph =
+						m_startupGraphReprimePending ||
+						m_displayTransitionGraphReprimePending;
+					m_startupGraphReprimePending = false;
+					m_displayTransitionGraphReprimePending = false;
 
 			// The reset itself emits display/size events. Ignore them long enough
 			// for the graph to stop, re-create its window, and become stable.
@@ -3651,6 +3733,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		{
 			m_pendingQueueReset = false;
 			m_startupGraphReprimePending = false;
+			m_displayTransitionGraphReprimePending = false;
 		}
 		return;
 	}
@@ -4138,8 +4221,10 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 
 	// Raw and converted queues each have their own capacity. Do not use the
 	// combined UI total here: 12 raw + 12 converted is not a 24/32 overflow.
-	const bool highWater = rawQueueSize * 4 >= queueMaxSize * 3 ||
-		convertedQueueSize * 4 >= queueMaxSize * 3;
+	const size_t highWaterPercent =
+		static_cast<size_t>(m_queueResetHighWaterPercent);
+	const bool highWater = rawQueueSize * 100 >= queueMaxSize * highWaterPercent ||
+		convertedQueueSize * 100 >= queueMaxSize * highWaterPercent;
 	const ULONGLONG now = GetTickCount64();
 	if (m_pendingQueueReset || now < m_queueResetIgnoreEventsUntil)
 		return;
@@ -4158,7 +4243,8 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	// queue is still high. m_pendingQueueReset and the ten-second suppression
 	// avoid a rapid reset loop.
 	m_pendingQueueReset = true;
-	SetTimer(QUEUE_RESET_DELAY_TIMER_ID, 1000, nullptr);
+	SetTimer(QUEUE_RESET_DELAY_TIMER_ID,
+		static_cast<UINT>(m_queueResetDelaySeconds * 1000), nullptr);
 	DbgLog((LOG_TRACE, 1,
 		TEXT("Queue high-water (%zu/%zu raw, %zu/%zu converted) - scheduling live queue re-prime"),
 		rawQueueSize, queueMaxSize, convertedQueueSize, queueMaxSize));

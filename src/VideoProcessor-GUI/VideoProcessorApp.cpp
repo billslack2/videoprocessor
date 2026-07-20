@@ -58,6 +58,12 @@ Options:
   /queue_size <positive integer>
       Set the maximum renderer frame queue size.
 
+  /reset_after_render_restart_seconds <positive integer>
+      Delay the post-start/restart queue recovery reset (default: 5 seconds).
+
+  /reset_queue_too_large_percent <1-100>
+      Queue high-water threshold for recovery (default: 75 percent).
+
   /scene_detect
       Lock output cadence to the measured display rate and prefer required
       whole-frame repeat/drop corrections at detected scene boundaries.
@@ -202,6 +208,19 @@ bool TryGetFirstConfigString(const ConfigFile& config, const std::initializer_li
 	return false;
 }
 
+bool TryGetFirstConfigStringInSection(const ConfigFile& config,
+	const char* section, const std::initializer_list<const char*> keys,
+	std::string& value)
+{
+	for (const char* key : keys)
+	{
+		if (config.TryGetString(section, key, value))
+			return true;
+	}
+
+	return false;
+}
+
 std::string ConfigLocation(const ConfigFile& config)
 {
 	return config.GetLoadedPath().empty() ? ConfigFile::DEFAULT_FILENAME : config.GetLoadedPath();
@@ -223,9 +242,8 @@ void ThrowIfConfigHasSyntaxWarnings(const ConfigFile& config)
 void ValidateCommandLineConfigKeys(const ConfigFile& config)
 {
 	const auto* commandLineValues = config.GetSectionValues("command_line");
-	if (!commandLineValues)
-		return;
-
+	if (commandLineValues)
+	{
 	const std::set<std::string> allowedKeys =
 	{
 		"fullscreen",
@@ -259,6 +277,23 @@ void ValidateCommandLineConfigKeys(const ConfigFile& config)
 	{
 		if (allowedKeys.find(setting.first) == allowedKeys.end())
 			throw std::runtime_error("Unknown " + ConfigLocation(config) + " [command_line] key: " + setting.first);
+	}
+	}
+
+	const auto* queueRecoveryValues = config.GetSectionValues("queue_recovery");
+	if (queueRecoveryValues)
+	{
+		const std::set<std::string> allowedKeys =
+		{
+			"reset_after_render_restart_seconds",
+			"reset_queue_too_large_percent"
+		};
+		for (const auto& setting : *queueRecoveryValues)
+		{
+			if (allowedKeys.find(setting.first) == allowedKeys.end())
+				throw std::runtime_error("Unknown " + ConfigLocation(config) +
+					" [queue_recovery] key: " + setting.first);
+		}
 	}
 }
 
@@ -298,6 +333,18 @@ void AppendConfigStringOption(std::vector<std::wstring>& arguments, const Config
 	}
 }
 
+void AppendConfigStringOptionInSection(std::vector<std::wstring>& arguments,
+	const ConfigFile& config, const char* section,
+	const std::initializer_list<const char*> keys, const wchar_t* commandLineSwitch)
+{
+	std::string value;
+	if (TryGetFirstConfigStringInSection(config, section, keys, value) && !value.empty())
+	{
+		arguments.emplace_back(commandLineSwitch);
+		arguments.emplace_back(StringToWideString(value));
+	}
+}
+
 std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 {
 	ConfigFile config;
@@ -309,9 +356,8 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	ThrowIfConfigHasSyntaxWarnings(config);
 	ValidateCommandLineConfigKeys(config);
 
-	if (!config.HasSection("command_line"))
-		return arguments;
-
+	if (config.HasSection("command_line"))
+	{
 	AppendConfigBoolOption(arguments, config, { "fullscreen" }, L"/fullscreen");
 	AppendConfigBoolOption(arguments, config, { "windowedfullscreenmode", "windowed_fullscreen_mode" }, L"/windowedfullscreenmode");
 	AppendConfigStringOption(arguments, config, { "renderer" }, L"/renderer");
@@ -332,6 +378,14 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigBoolOption(arguments, config, { "newlldv", "new_lldv" }, L"/newlldv");
 	AppendConfigBoolOption(arguments, config, { "noui", "no_ui" }, L"/noui");
 	AppendConfigBoolOption(arguments, config, { "startminimized", "start_minimized" }, L"/startminimized");
+	}
+
+	AppendConfigStringOptionInSection(arguments, config, "queue_recovery",
+		{ "reset_after_render_restart_seconds" },
+		L"/reset_after_render_restart_seconds");
+	AppendConfigStringOptionInSection(arguments, config, "queue_recovery",
+		{ "reset_queue_too_large_percent" },
+		L"/reset_queue_too_large_percent");
 
 	return arguments;
 }
@@ -434,6 +488,8 @@ bool RequiresCommandLineValue(const wchar_t* argument)
 {
 	return IsCommandLineOption(argument, L"/renderer") ||
 		IsCommandLineOption(argument, L"/queue_size") ||
+		IsCommandLineOption(argument, L"/reset_after_render_restart_seconds") ||
+		IsCommandLineOption(argument, L"/reset_queue_too_large_percent") ||
 		IsCommandLineOption(argument, L"/capture_device") ||
 		IsCommandLineOption(argument, L"/frame_offset") ||
 		IsCommandLineOption(argument, L"/video_conversion") ||
@@ -502,6 +558,17 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 
 		if (IsCommandLineOption(argument, L"/queue_size") && !IsPositiveInteger(arguments[index + 1]))
 			throw std::runtime_error("Invalid /queue_size: expected a positive integer");
+
+		if (IsCommandLineOption(argument, L"/reset_after_render_restart_seconds") &&
+			!IsPositiveInteger(arguments[index + 1]))
+			throw std::runtime_error(
+				"Invalid /reset_after_render_restart_seconds: expected a positive integer");
+
+		if (IsCommandLineOption(argument, L"/reset_queue_too_large_percent") &&
+			(!IsPositiveInteger(arguments[index + 1]) ||
+			 _wtoi(arguments[index + 1]) > 100))
+			throw std::runtime_error(
+				"Invalid /reset_queue_too_large_percent: expected an integer from 1 to 100");
 
 		if (IsCommandLineOption(argument, L"/frame_offset") &&
 			_wcsicmp(arguments[index + 1], L"auto") != 0 && !IsNonNegativeInteger(arguments[index + 1]))
@@ -685,6 +752,18 @@ BOOL CVideoProcessorApp::InitInstance()
 			if (wcscmp(pArgs[i], L"/queue_size") == 0 && (i + 1) < iNumOfArgs)
 			{
 				dlg.SetQueueSize(pArgs[i + 1]);
+			}
+
+			if (wcscmp(pArgs[i], L"/reset_after_render_restart_seconds") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				dlg.SetQueueResetDelaySeconds(pArgs[i + 1]);
+			}
+
+			if (wcscmp(pArgs[i], L"/reset_queue_too_large_percent") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				dlg.SetQueueResetHighWaterPercent(pArgs[i + 1]);
 			}
 
 
