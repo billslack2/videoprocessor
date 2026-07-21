@@ -15,7 +15,7 @@
 <body>
   <h1>VideoProcessor configuration</h1>
   <p><code>VideoProcessor.cfg</code> is an optional UTF-8 text file searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
-  <p>The shipped file contains common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[p010_conversion]</code> and <code>[ppm_correction]</code> sections can be added when needed.</p>
+  <p>The shipped file is a conservative sample with common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[p010_conversion]</code> and <code>[ppm_correction]</code> sections can be added when needed.</p>
   <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override matching settings.</p>
 
   <h2>[command_line]</h2>
@@ -33,7 +33,7 @@
       <tr><td><code>newlldv</code></td><td>Boolean</td><td>Enable the opt-in BT.2020 + SDR LLDV heuristic.</td></tr>
       <tr><td><code>noui</code></td><td>Boolean</td><td>Show only the windowed video panel.</td></tr>
       <tr><td><code>startminimized</code></td><td>Boolean</td><td>Start minimized.</td></tr>
-      <tr><td><code>frame_offset</code></td><td>Milliseconds or <code>auto</code></td><td>Timing-clock frame offset or automatic offset selection.</td></tr>
+      <tr><td><code>frame_offset</code></td><td>Non-negative milliseconds or <code>auto</code></td><td>Timing-clock frame offset or automatic offset selection.</td></tr>
       <tr><td><code>video_conversion</code></td><td><code>V210_TO_P010</code></td><td>Convert supported YUV/RGB input to P010. <code>UYVY_TO_P010</code> is accepted as an alias.</td></tr>
       <tr><td><code>container_colorspace</code></td><td><code>BT2020</code>, <code>P3_D65</code>, <code>P3_DCI</code>, <code>P3_D60</code>, <code>REC709</code>, <code>REC601_525</code>, <code>REC601_625</code></td><td>Force the output container colorspace.</td></tr>
       <tr><td><code>hdr_colorspace</code></td><td><code>FOLLOW_INPUT</code>, <code>FOLLOW_INPUT_LLDV</code>, <code>FOLLOW_CONTAINER</code>, <code>BT2020</code>, <code>P3</code>, <code>REC709</code></td><td>HDR display-primaries handling.</td></tr>
