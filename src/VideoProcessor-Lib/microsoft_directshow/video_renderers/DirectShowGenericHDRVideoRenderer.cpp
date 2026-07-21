@@ -17,6 +17,7 @@
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CFFMpegDecoderVideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowTranslations.h>
+#include <microsoft_directshow/MadVRShaderLoader.h>
 
 #include "DirectShowGenericHDRVideoRenderer.h"
 
@@ -306,6 +307,24 @@ void DirectShowGenericHDRVideoRenderer::RendererConnect()
 
 	pLiveSourceOutputPin->Release();
 	pRendererInputPin->Release();
+
+	// The renderer owns the GPU surface, so external HLSL must be installed
+	// through its interface after the graph connection exists. A full renderer
+	// rebuild creates a new COM instance and naturally reapplies this chain.
+	m_activeShaders.clear();
+	m_activeShaderRule = TEXT("None");
+	const MadVRShaderSelection shaderSelection =
+		MadVRShaderLoader::ApplyConfiguredShaders(m_pRenderer, *m_videoState);
+	if (!shaderSelection.ruleLabel.empty())
+		m_activeShaderRule.Format(TEXT("%S"), shaderSelection.ruleLabel.c_str());
+	for (const ActiveMadVRShader& shader : shaderSelection.activeShaders)
+	{
+		CString label;
+		label.Format(TEXT("%s: %S"),
+			shader.postResize ? TEXT("Post") : TEXT("Pre"),
+			shader.name.c_str());
+		m_activeShaders.push_back(label);
+	}
 }
 
 

@@ -43,6 +43,8 @@ public:
 	// IVideoRenderer
 	bool OnVideoState(VideoStateComPtr&) override;
 	void OnPaint() override { /* not implemented */ }
+	std::vector<CString> ActiveShaders() const override { return m_activeShaders; }
+	CString ActiveShaderRule() const override { return m_activeShaderRule; }
 
 protected:
 
@@ -59,4 +61,6 @@ private:
 	const DXVA_VideoTransferFunction m_forceVideoTransferFunction;
 	const DXVA_VideoTransferMatrix m_forceVideoTransferMatrix;
 	const DXVA_VideoPrimaries m_forceVideoPrimaries;
+	CString m_activeShaderRule = TEXT("None");
+	std::vector<CString> m_activeShaders;
 };

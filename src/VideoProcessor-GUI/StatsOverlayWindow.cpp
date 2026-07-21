@@ -8,6 +8,7 @@
 
 #include <pch.h>
 #include "StatsOverlayWindow.h"
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <iomanip>
@@ -21,6 +22,7 @@ StatsOverlayWindow::StatsOverlayWindow()
 	, m_parentHwnd(nullptr)
 	, m_isVisible(false)
 	, m_isCreated(false)
+	, m_windowHeight(610)
 	, m_font(nullptr)
 	, m_boldFont(nullptr)
 {
@@ -75,7 +77,7 @@ bool StatsOverlayWindow::Create(HWND parentHwnd)
 
 	// Position relative to the screen (100px from right, 300px from bottom)
 	int x = monitorInfo.rcMonitor.right - MARGIN_RIGHT - WINDOW_WIDTH;
-	int y = monitorInfo.rcMonitor.bottom - MARGIN_BOTTOM - WINDOW_HEIGHT;
+	int y = monitorInfo.rcMonitor.bottom - MARGIN_BOTTOM - m_windowHeight;
 
 	// Create the overlay window with layered window style for transparency
 	m_hwnd = CreateWindowEx(
@@ -83,7 +85,7 @@ bool StatsOverlayWindow::Create(HWND parentHwnd)
 		WINDOW_CLASS_NAME,
 		TEXT("Stats Overlay"),
 		WS_POPUP,
-		x, y, WINDOW_WIDTH, WINDOW_HEIGHT,
+		x, y, WINDOW_WIDTH, m_windowHeight,
 		nullptr,                      // No parent window
 		nullptr,                      // No menu
 		GetModuleHandle(nullptr),     // hInstance
@@ -179,8 +181,18 @@ void StatsOverlayWindow::Toggle()
 
 void StatsOverlayWindow::UpdateStats(const StatsData& stats)
 {
-	std::lock_guard<std::mutex> lock(m_statsMutex);
-	m_stats = stats;
+	int requiredHeight = 0;
+	{
+		std::lock_guard<std::mutex> lock(m_statsMutex);
+		m_stats = stats;
+		requiredHeight = CalculateRequiredHeight(m_stats);
+	}
+
+	if (requiredHeight != m_windowHeight)
+	{
+		m_windowHeight = requiredHeight;
+		UpdatePosition(m_parentHwnd);
+	}
 
 	if (m_isVisible)
 	{
@@ -208,9 +220,11 @@ void StatsOverlayWindow::UpdatePosition(HWND parentHwnd)
 
 	// Position relative to the screen (100px from right, 300px from bottom)
 	int x = monitorInfo.rcMonitor.right - MARGIN_RIGHT - WINDOW_WIDTH;
-	int y = monitorInfo.rcMonitor.bottom - MARGIN_BOTTOM - WINDOW_HEIGHT;
+	int y = monitorInfo.rcMonitor.bottom - MARGIN_BOTTOM - m_windowHeight;
+	y = std::max(y, static_cast<int>(monitorInfo.rcMonitor.top));
 
-	SetWindowPos(m_hwnd, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
+	SetWindowPos(m_hwnd, HWND_TOPMOST, x, y, WINDOW_WIDTH, m_windowHeight,
+		SWP_NOACTIVATE);
 }
 
 LRESULT CALLBACK StatsOverlayWindow::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -379,6 +393,26 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	line.Format(TEXT("Video Conv:       %-s"), m_stats.videoConversion.IsEmpty() ? TEXT("---") : m_stats.videoConversion);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
+
+	line.Format(TEXT("Shader Rule:      %-s"),
+		m_stats.activeShaderRule.IsEmpty() ? TEXT("None") :
+		static_cast<LPCTSTR>(m_stats.activeShaderRule));
+	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
+
+	if (m_stats.activeShaders.empty())
+		line.Format(TEXT("Shaders:          None"));
+	else
+		line.Format(TEXT("Shaders:          %zu Active"), m_stats.activeShaders.size());
+	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
+
+	for (const CString& shader : m_stats.activeShaders)
+	{
+		line.Format(TEXT(" - %-s"), static_cast<LPCTSTR>(shader));
+		DrawText(hdc, line, PADDING, y);
+		y += LINE_HEIGHT;
+	}
 	
 	// Conversion Performance (show if available)
 	if (m_stats.hasConversionData)
@@ -528,6 +562,32 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += LINE_HEIGHT;
 
 	SelectObject(hdc, oldFont);
+}
+
+int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
+{
+	// Nineteen rows are always rendered. The remaining rows mirror the exact
+	// optional conditions in DrawStats so the background follows its content.
+	size_t lineCount = 19;
+	if (stats.measuredRefreshRate > 0.0)
+		lineCount += 2;
+	if (stats.hasPPMCorrection ||
+		(!stats.ppmSource.IsEmpty() && stats.ppmSource != TEXT("N/A")))
+	{
+		++lineCount;
+	}
+	if ((stats.method == TEXT("Rational-Rational") ||
+		stats.method == TEXT("Clock-Rational")) && stats.hasPPMCorrection)
+	{
+		++lineCount;
+	}
+	if (stats.hasConversionData)
+		lineCount += 2;
+
+	// The selected rule and shader summary are always visible, followed by one row per active
+	// shader. DrawStats also contains three four-pixel section separators.
+	lineCount += 2 + stats.activeShaders.size();
+	return PADDING * 2 + static_cast<int>(lineCount) * LINE_HEIGHT + 12;
 }
 
 void StatsOverlayWindow::DrawText(HDC hdc, const CString& text, int x, int y)
