@@ -45,6 +45,124 @@ namespace
 {
 using Microsoft::WRL::ComPtr;
 
+struct ShortcutDefinition
+{
+	const char* configKey;
+	WORD command;
+	WORD defaultKey;
+	BYTE defaultModifiers;
+};
+
+const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
+{
+	{ "auto_set",              ID_COMMAND_AUTO_SET,               'A',       FCONTROL | FSHIFT },
+	{ "fullscreen_exit",       ID_COMMAND_FULLSCREEN_EXIT,        VK_ESCAPE, 0 },
+	{ "fullscreen_toggle",     ID_COMMAND_FULLSCREEN_TOGGLE,      VK_RETURN, FALT },
+	{ "toggle_stats_overlay",  ID_COMMAND_TOGGLE_STATS_OVERLAY,   'I',       FCONTROL },
+	{ "pq_set",                ID_COMMAND_PQ_SET,                 'P',       FCONTROL | FSHIFT },
+	{ "renderer_restart",      ID_COMMAND_RENDERER_RESTART,       'R',       FSHIFT },
+	{ "renderer_reset",        ID_COMMAND_RENDERER_RESET,         'R',       0 },
+	{ "capture_1",             ID_COMMAND_CAPTURE_1,              '1',       FCONTROL },
+	{ "capture_2",             ID_COMMAND_CAPTURE_2,              '2',       FCONTROL },
+	{ "capture_3",             ID_COMMAND_CAPTURE_3,              '3',       FCONTROL },
+	{ "capture_4",             ID_COMMAND_CAPTURE_4,              '4',       FCONTROL },
+	{ "video_conversion_off",  ID_COMMAND_VC_NONE,                'V',       0 },
+	{ "video_conversion_p010", ID_COMMAND_VC_P010,                'V',       FSHIFT },
+};
+
+bool TryParseShortcut(const std::string& value, ACCEL& accelerator)
+{
+	BYTE modifiers = FVIRTKEY;
+	std::string keyToken;
+	size_t start = 0;
+	while (start <= value.size())
+	{
+		const size_t end = value.find('+', start);
+		const std::string token = ConfigFile::Trim(value.substr(start, end - start));
+		if (token.empty())
+			return false;
+
+		const std::string normalizedToken = ConfigFile::NormalizeName(token);
+		if (normalizedToken == "ctrl" || normalizedToken == "control")
+			modifiers |= FCONTROL;
+		else if (normalizedToken == "alt")
+			modifiers |= FALT;
+		else if (normalizedToken == "shift")
+			modifiers |= FSHIFT;
+		else if (keyToken.empty())
+			keyToken = token;
+		else
+			return false;
+
+		if (end == std::string::npos)
+			break;
+		start = end + 1;
+	}
+
+	if (keyToken.empty())
+		return false;
+
+	const std::string normalizedKey = ConfigFile::NormalizeName(keyToken);
+	WORD key = 0;
+	if (normalizedKey == "escape" || normalizedKey == "esc")
+		key = VK_ESCAPE;
+	else if (normalizedKey == "enter" || normalizedKey == "return")
+		key = VK_RETURN;
+	else if (keyToken.size() == 1 && std::isalnum(static_cast<unsigned char>(keyToken[0])))
+	{
+		key = static_cast<WORD>(std::toupper(static_cast<unsigned char>(keyToken[0])));
+		// Letter case is meaningful only for the key itself: V means Shift+V,
+		// while v means V. Modifier names remain case-insensitive.
+		if (std::isupper(static_cast<unsigned char>(keyToken[0])))
+			modifiers |= FSHIFT;
+	}
+	else
+		return false;
+
+	accelerator = { modifiers, key, 0 };
+	return true;
+}
+
+HACCEL CreateConfiguredAccelerators()
+{
+	ConfigFile config;
+	const bool hasConfig = config.Load();
+	std::vector<ACCEL> accelerators;
+	std::set<unsigned int> bindings;
+
+	for (const auto& definition : SHORTCUT_DEFINITIONS)
+	{
+		ACCEL accelerator = { static_cast<BYTE>(FVIRTKEY | definition.defaultModifiers), definition.defaultKey, definition.command };
+		std::string configuredValue;
+		if (hasConfig && config.TryGetString("shortcuts", definition.configKey, configuredValue))
+		{
+			ACCEL configuredAccelerator = {};
+			if (TryParseShortcut(configuredValue, configuredAccelerator))
+			{
+				configuredAccelerator.cmd = definition.command;
+				accelerator = configuredAccelerator;
+			}
+		}
+
+		const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
+		if (bindings.insert(binding).second)
+		{
+			accelerators.push_back(accelerator);
+		}
+		else
+		{
+			// A duplicate user binding is ambiguous, so retain the command's
+			// compiled default when it is still available.
+			accelerator = { static_cast<BYTE>(FVIRTKEY | definition.defaultModifiers), definition.defaultKey, definition.command };
+			const unsigned int defaultBinding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
+			if (bindings.insert(defaultBinding).second)
+				accelerators.push_back(accelerator);
+		}
+	}
+
+	return CreateAcceleratorTable(accelerators.data(), static_cast<int>(accelerators.size()));
+}
+
 struct DisplayTimingSnapshot
 {
 	double refreshRateHz = 0.0;
@@ -791,6 +909,12 @@ bool CVideoProcessorDlg::TryGetDisplayRefreshRateOverride(
 
 CVideoProcessorDlg::~CVideoProcessorDlg()
 {
+	if (m_accelerator)
+	{
+		DestroyAcceleratorTable(m_accelerator);
+		m_accelerator = nullptr;
+	}
+
 	for (auto& captureDevice : m_captureDevices)
 		(*captureDevice).Release();
 
@@ -3721,9 +3845,9 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	// Start discovery services
 	m_blackMagicDeviceDiscoverer->Start();
 
-	m_accelerator = LoadAccelerators(AfxGetResourceHandle(), MAKEINTRESOURCE(IDR_ACCELERATOR1));
+	m_accelerator = CreateConfiguredAccelerators();
 	if (!m_accelerator)
-		FatalError(TEXT("Failed to load accelerator"));
+		FatalError(TEXT("Failed to create accelerator table"));
 
 	CaptureGUIClear();
 	RenderGUIClear();

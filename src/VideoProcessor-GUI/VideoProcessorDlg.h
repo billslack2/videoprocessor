@@ -306,7 +306,7 @@ protected:
 	CSize m_initialClientSize;
 	CRect m_initialVideoWindowRect;
 	HICON m_hIcon;
-	HACCEL m_accelerator;
+	HACCEL m_accelerator = nullptr;
 
 	FullscreenVideoWindow* m_fullScreenVideoWindow = nullptr;
 

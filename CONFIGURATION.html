@@ -56,6 +56,24 @@
 reset_after_render_restart_seconds=5
 reset_queue_too_large_percent=75</pre>
 
+  <h2>[shortcuts]</h2>
+  <p>Keyboard shortcuts are optional. If this section, an individual key, or the entire configuration file is absent, VideoProcessor uses its built-in defaults. Modifier names are case-insensitive. A lowercase letter is unmodified (<code>v</code>); an uppercase letter adds Shift (<code>V</code> means <code>Shift+V</code>).</p>
+  <p>Supported modifiers are <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Keys may be a letter, a number, <code>Escape</code>, or <code>Enter</code>. Invalid or duplicate bindings fall back to the built-in binding for that command.</p>
+  <pre>[shortcuts]
+auto_set=Ctrl+Shift+a
+fullscreen_exit=Escape
+fullscreen_toggle=Alt+Enter
+toggle_stats_overlay=Ctrl+i
+pq_set=Ctrl+Shift+p
+renderer_restart=Shift+r
+renderer_reset=r
+capture_1=Ctrl+1
+capture_2=Ctrl+2
+capture_3=Ctrl+3
+capture_4=Ctrl+4
+video_conversion_off=v
+video_conversion_p010=V</pre>
+
   <h2>LLDV</h2>
   <div class="note">DeckLink does not expose the HDMI Dolby Vision VSIF. The <code>newlldv</code> option is a heuristic, not definitive detection.</div>
   <p>With <code>newlldv=true</code>, VideoProcessor treats stable <code>BT.2020 + SDR + no static HDR metadata</code> as LLDV only when both <code>hdr_colorspace=FOLLOW_INPUT_LLDV</code> and <code>hdr_luminance=FOLLOW_INPUT_LLDV</code> are selected. After a 1.5-second confirmation it switches output to PQ and supplies synthetic metadata: MaxCLL 1000, MaxFALL 401, mastering minimum 0.001, and mastering maximum 4000.</p>
