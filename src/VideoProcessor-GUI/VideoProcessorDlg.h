@@ -373,6 +373,8 @@ protected:
 
 	IVideoRenderer* m_videoRenderer = nullptr;
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
+	uint64_t m_rendererStartCapturedFrameCount = 0;
+	bool m_rendererFrameBaselineValid = false;
 
 	std::atomic_bool m_deliverCaptureDataToRenderer = false;
 
@@ -416,6 +418,7 @@ protected:
 	void RenderStart();
 	void RenderStop();
 	void RenderRemove();
+	void DestroyVideoRenderer();
 	void RenderGUIClear();
 	void FullScreenVideoWindowConstruct();
 	void FullScreenVideoWindowDestroy();

@@ -52,6 +52,7 @@ struct StatsData
 
 	// Frame counts
 	uint64_t capturedFrames = 0;
+	uint64_t rendererCapturedFrames = 0;
 	uint64_t capturedDroppedFrames = 0;
 	uint64_t queueDroppedFrames = 0;
 	uint64_t sceneDetectCorrectionDrops = 0;

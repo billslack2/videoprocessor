@@ -443,7 +443,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += LINE_HEIGHT;
 
 	// Frame stats
-	line.Format(TEXT("VFrames:          %llu"), m_stats.capturedFrames);
+	line.Format(TEXT("VFrames:          %llu"), m_stats.rendererCapturedFrames);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
