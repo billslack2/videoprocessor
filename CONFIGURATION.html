@@ -15,7 +15,7 @@
 <body>
   <h1>VideoProcessor configuration</h1>
   <p><code>VideoProcessor.cfg</code> is an optional UTF-8 text file searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
-  <p>The shipped file is a conservative sample with common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[display_refresh_rate_override]</code>, <code>[shaders]</code>, <code>[p010_conversion]</code>, and <code>[ppm_correction]</code> sections can be added when needed.</p>
+  <p>The shipped file is a conservative sample with common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[display_refresh_rate_override]</code>, <code>[libplacebo]</code>, <code>[shaders]</code>, <code>[p010_conversion]</code>, and <code>[ppm_correction]</code> sections can be added when needed.</p>
   <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override matching settings.</p>
 
   <h2>[command_line]</h2>
@@ -97,6 +97,18 @@ video_conversion_p010=V</pre>
 ConversionMethod=SIMD
 MinCoreCount=1
 MaxCoreCount=2</pre>
+
+  <h2>[libplacebo] (experimental)</h2>
+  <p>Select the built-in renderer in an x64 build with <code>renderer=libplacebo</code>. This renderer uses D3D11 and always produces SDR Rec.709 output. SDR input is color-managed without HDR tone mapping; PQ, HLG, traditional HDR, and detected LLDV input are tone-mapped to SDR using VP's effective input colorspace and mastering metadata. Changes between HDR and SDR are accepted in place.</p>
+  <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
+    <tr><td><code>sdr_target_nits</code></td><td><code>40</code> through <code>500</code>; default <code>100</code></td><td>Brightness of the SDR tone-mapping target. This describes the intended SDR output level, not an HDR output mode.</td></tr>
+  </tbody></table>
+  <pre>[command_line]
+renderer=libplacebo
+
+[libplacebo]
+sdr_target_nits=100</pre>
+  <div class="note">The initial renderer supports V210, UYVY, ARGB, and BGRA capture formats through VP's P010 conversion path. It does not emit HDR or require Windows HDR mode.</div>
 
   <h2>[shaders] (optional)</h2>
   <p>This section installs external Direct3D 9 HLSL directly into the selected renderer's GPU pipeline when that renderer supports external shaders. It does not add a CPU conversion or GPU readback. The named rules in <code>rules</code> are checked from left to right and the first matching rule wins. If nothing matches, <code>default=none</code> leaves shaders off. Rules are reevaluated after every full renderer restart using VP's effective EOTF and input refresh rate. Detected LLDV is treated as HDR because its effective EOTF is PQ.</p>

@@ -15,3 +15,12 @@
 bool RendererId::operator< (const RendererId& other) const {
 	return name < other.name;
 }
+
+
+RendererId RendererId::Libplacebo()
+{
+	RendererId id;
+	id.name = TEXT("libplacebo (Experimental)");
+	id.backend = RendererBackend::LIBPLACEBO;
+	return id;
+}

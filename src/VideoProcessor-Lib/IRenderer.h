@@ -70,6 +70,11 @@ public:
 	// ! Only can be called if Start() exectued correctly and before Stop() is called
 	virtual bool OnVideoState(VideoStateComPtr&) = 0;
 
+	// True when EOTF/colorspace/HDR metadata changes can be applied without a
+	// renderer restart. Display-mode and pixel-format changes may still reject
+	// OnVideoState and request a rebuild.
+	virtual bool SupportsDynamicVideoState() const { return false; }
+
 	// Draw the current buffer as frame
 	// VideoFrames can be buffered and they can be internally refcounted, hence non-constant
 	// ! Only can be called if Start() exectued correctly and before Stop() is called
