@@ -43,8 +43,17 @@
     <Filter Include="Source Files\microsoft_directshow\video_renderers">
       <UniqueIdentifier>{2c2580ce-9308-4ade-a329-212302d77d60}</UniqueIdentifier>
     </Filter>
+	<Filter Include="Header Files\libplacebo">
+	  <UniqueIdentifier>{6b2f5a46-b66f-48cd-b2fd-337f982eb61b}</UniqueIdentifier>
+	</Filter>
+	<Filter Include="Source Files\libplacebo">
+	  <UniqueIdentifier>{16172c8f-08a8-48a8-b202-9549e85b140c}</UniqueIdentifier>
+	</Filter>
   </ItemGroup>
   <ItemGroup>
+	<ClInclude Include="libplacebo\LibplaceboVideoRenderer.h">
+	  <Filter>Header Files\libplacebo</Filter>
+	</ClInclude>
     <ClInclude Include="framework.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -230,6 +239,9 @@
 	</ClInclude>
   </ItemGroup>
   <ItemGroup>
+	<ClCompile Include="libplacebo\LibplaceboVideoRenderer.cpp">
+	  <Filter>Source Files\libplacebo</Filter>
+	</ClCompile>
     <ClCompile Include="pch.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

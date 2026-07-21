@@ -33,6 +33,9 @@
 #include <microsoft_directshow/video_renderers/DirectShowEnhancedVideoRenderer.h>
 #include <microsoft_directshow/video_renderers/DirectShowGenericVideoRenderer.h>
 #include <microsoft_directshow/video_renderers/DirectShowGenericHDRVideoRenderer.h>
+#if defined(_WIN64)
+#include <libplacebo/LibplaceboVideoRenderer.h>
+#endif
 #include <guid.h>
 #include <ConfigFile.h>
 
@@ -1551,6 +1554,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	// Only check if renderer is actively rendering and feature is enabled
 	if (m_enableEotfChangeRestart &&
 		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		(!m_videoRenderer || !m_videoRenderer->SupportsDynamicVideoState()) &&
 		videoState->valid &&
 		m_eotfChangeRestartCooldownSeconds < 0)  // Not in cooldown period
 	{
@@ -2745,7 +2749,10 @@ void CVideoProcessorDlg::RenderStart()
 	if (i < 0)
 		return;
 
-	GUID* rendererClSID = (GUID*)m_rendererCombo.GetItemData(i);
+	RendererId* selectedRenderer =
+		reinterpret_cast<RendererId*>(m_rendererCombo.GetItemData(i));
+	if (!selectedRenderer)
+		return;
 
 	// Get user-selectable options
 	i = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
@@ -2785,6 +2792,51 @@ void CVideoProcessorDlg::RenderStart()
 
 	m_windowedVideoWindow.SetWindowTextW(TEXT("Starting..."));
 	m_rendererState = RendererState::RENDERSTATE_STARTING;
+
+	// Internal renderers are deliberately listed beside registered renderers,
+	// but do not construct or register a DirectShow graph.
+#if defined(_WIN64)
+	if (selectedRenderer->backend == RendererBackend::LIBPLACEBO)
+	{
+		try
+		{
+			m_videoRenderer = new LibplaceboVideoRenderer(
+				*this,
+				GetRenderWindow(),
+				timingClock,
+				GetRendererVideoFrameUseQueue(),
+				GetRendererVideoFrameQueueSizeMax());
+
+			if (m_captureDeviceVideoState)
+				m_videoRenderer->OnVideoState(m_builtVideoState);
+
+			m_videoRenderer->Build();
+			m_videoRenderer->Start();
+			m_rendererStateText.SetWindowText(
+				TEXT("Started libplacebo HDR-to-SDR renderer, waiting for image..."));
+		}
+		catch (const std::exception& e)
+		{
+			DebugLog::Log("libplacebo renderer startup failed: %s", e.what());
+			DestroyVideoRenderer();
+			m_rendererState = RendererState::RENDERSTATE_FAILED;
+			m_rendererStateText.SetWindowText(TEXT("Failed"));
+
+			wchar_t* ew = ToString(e.what());
+			m_windowedVideoWindow.SetWindowText(ew);
+			delete[] ew;
+
+			m_rendererFullscreenCheck.SetCheck(FALSE);
+			UpdateState();
+			m_rendererRestartButton.EnableWindow(true);
+		}
+
+		DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStart(): End internal renderer")));
+		return;
+	}
+#endif
+
+	GUID* rendererClSID = &selectedRenderer->guid;
 
 	//
 	// Construct renderer
@@ -3174,6 +3226,9 @@ void CVideoProcessorDlg::RebuildRendererCombo()
 	//
 
 	DirectShowVideoRendererIds(rendererIds);
+#if defined(_WIN64)
+	rendererIds.push_back(RendererId::Libplacebo());
+#endif
 
 	//
 	// Populate selection box, sorted
@@ -3182,13 +3237,17 @@ void CVideoProcessorDlg::RebuildRendererCombo()
 	std::sort(rendererIds.begin(), rendererIds.end());
 	for (const auto& rendererEntry : rendererIds)
 	{
-		GUID* clsid = new GUID(rendererEntry.guid);
+		RendererId* id = new RendererId(rendererEntry);
 
 		int comboIndex = m_rendererCombo.AddString(rendererEntry.name);
-		m_rendererCombo.SetItemData(comboIndex, (DWORD_PTR)clsid);
+		m_rendererCombo.SetItemData(comboIndex, reinterpret_cast<DWORD_PTR>(id));
 
-		if (rendererEntry.name.CompareNoCase(m_defaultRendererName) == 0)
-		 m_rendererCombo.SetCurSel(comboIndex);
+		const bool isConfiguredRenderer =
+			rendererEntry.name.CompareNoCase(m_defaultRendererName) == 0 ||
+			(rendererEntry.backend == RendererBackend::LIBPLACEBO &&
+			 m_defaultRendererName.CompareNoCase(TEXT("libplacebo")) == 0);
+		if (isConfiguredRenderer)
+			m_rendererCombo.SetCurSel(comboIndex);
 	}
 }
 
@@ -3197,7 +3256,7 @@ void CVideoProcessorDlg::ClearRendererCombo()
 {
 	for (int i = 0; i < m_rendererCombo.GetCount(); i++)
 	{
-		delete (void *)m_rendererCombo.GetItemData(i);
+		delete reinterpret_cast<RendererId*>(m_rendererCombo.GetItemData(i));
 	}
 
 	m_rendererCombo.ResetContent();
@@ -4319,12 +4378,21 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		{
 			DbgLog((LOG_TRACE, 1, TEXT("New LLDV heuristic confirmed; preparing PQ and synthetic HDR metadata")));
 
-			// Build the effective PQ state now so the renderer will use it when
-			// the delayed restart starts a fresh DirectShow graph.  Do not rely on
-			// OnVideoState rejection alone: the existing graph may retain SDR media
-			// type details until an explicit restart, especially in fullscreen.
-			BuildPushVideoState();
-			ScheduleNewLldvRendererRestart();
+			// Build the effective PQ state now. Dynamic renderers apply it in place;
+			// graph-based renderers retain the stabilized delayed-restart behavior
+			// when their SDR media type cannot accept the effective PQ transition.
+			const bool rendererAcceptedState = BuildPushVideoState();
+			if (!m_videoRenderer ||
+				!m_videoRenderer->SupportsDynamicVideoState() ||
+				!rendererAcceptedState)
+			{
+				ScheduleNewLldvRendererRestart();
+			}
+			else
+			{
+				DebugLog::Log(
+					"New LLDV heuristic confirmed: renderer accepted effective PQ transition in place; restart not required");
+			}
 		}
 
 		// EOTF CHANGE CHECK: Decrement cooldown timer if set
@@ -4335,6 +4403,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 		// SIMPLE EOTF CHANGE DETECTION: Every 5 seconds, check if EOTF changed since renderer started
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			(!m_videoRenderer || !m_videoRenderer->SupportsDynamicVideoState()) &&
 			m_timerSeconds % 5 == 0 &&
 			m_eotfCheckCooldownSeconds == 0 &&  // Cooldown expired
 			m_captureDeviceVideoState &&

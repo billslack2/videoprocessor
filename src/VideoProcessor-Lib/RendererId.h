@@ -9,14 +9,24 @@
 #pragma once
 
 
+enum class RendererBackend
+{
+	DIRECTSHOW,
+	LIBPLACEBO
+};
+
+
 /*
- * Identifies a renderer by GUID.
- * Works great for DirectShow, but will need revising once we get away from it.
+ * Identifies either an externally registered DirectShow renderer or an
+ * in-process renderer implemented by VideoProcessor.
  */
 struct RendererId
 {
 	CString name;
-	GUID guid;
+	RendererBackend backend = RendererBackend::DIRECTSHOW;
+	GUID guid = GUID_NULL;
 
 	bool operator< (const RendererId& other) const;
+
+	static RendererId Libplacebo();
 };

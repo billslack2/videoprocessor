@@ -13,6 +13,8 @@ x64/
 x86/
 bld/
 [Bb]in/
+!3rdparty/libplacebo/bin/
+!3rdparty/libplacebo/bin/*.dll
 [Oo]bj/
 [Ll]og/
 
