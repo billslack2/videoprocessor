@@ -11,9 +11,14 @@
 #include <dvdmedia.h>
 #include <guid.h>
 #include <IMediaSideData.h>
+#include <algorithm>
+#include <cmath>
 #include <limits>
+#include <numeric>
 
 #include "CBufferedLiveSourceVideoOutputPin.h"
+#include "WindowsOcrSubtitleDetector.h"
+#include "GpuSubtitleDetector.h"
 
 
 CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
@@ -33,9 +38,15 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 	m_sceneAwareLateCandidateCount.store(0, std::memory_order_relaxed);
 	m_sceneAwareCorrectionDropCount.store(0, std::memory_order_relaxed);
 	m_sceneAwareCorrectionRepeatCount.store(0, std::memory_order_relaxed);
+	m_subtitleRelocationCount.store(0, std::memory_order_relaxed);
 	m_scenePhasePpmUnits.store(0, std::memory_order_relaxed);
+	m_sceneSecondsUntilCorrection.store(0.0, std::memory_order_relaxed);
+	m_sceneSecondsUntilPlan.store(0.0, std::memory_order_relaxed);
+	m_scenePredictedAction.store(0, std::memory_order_relaxed);
+	m_sceneCorrectionPlanned.store(false, std::memory_order_relaxed);
 	m_sceneDisplayRefreshRateHz.store(0.0, std::memory_order_relaxed);
 	m_sceneDeliveryRateHz.store(0.0, std::memory_order_relaxed);
+	m_sceneTimingRatesCompatible.store(false, std::memory_order_relaxed);
 	m_sceneTimingReady.store(false, std::memory_order_relaxed);
 	m_sceneWarmupIntervals.store(0, std::memory_order_relaxed);
 	m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
@@ -130,6 +141,10 @@ CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 		CloseHandle(m_hConversionThread);
 		m_hConversionThread = nullptr;
 	}
+
+	// Conversion owns submission and compositing. Stop its analyzer only after
+	// conversion is guaranteed not to enter the subtitle path again.
+	StopSubtitleAnalysisWorker();
 
 	// CAMThread's base destructor also calls Close(), but queue cleanup below
 	// must not race the delivery thread during this destructor body.
@@ -321,6 +336,19 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 
 		DebugLog::Log("Active(): Both threads created successfully");
 
+		// Inactive() stops the optional analyzer so graph/renderer teardown can
+		// never hang on an in-flight DirectML call. A renderer restart does not
+		// reapply configuration, so explicitly recreate the analyzer for every
+		// new active graph epoch.
+		if (m_subtitleRepositionMode.load(std::memory_order_acquire) !=
+			SubtitleRepositionMode::DISABLED)
+		{
+			ResetSubtitleAnalysis();
+			StartSubtitleAnalysisWorker();
+			DebugLog::Log(
+				"Active(): Subtitle analyzer restarted for the new graph epoch");
+		}
+
 		// MINIMAL STARTUP SYNC: Just ensure threads are created, no artificial delays
 		// Threads will synchronize naturally through events and queues
 
@@ -380,6 +408,11 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 			CloseHandle(m_hConversionThread);
 			m_hConversionThread = nullptr;
 		}
+
+		// Conversion is the only producer of subtitle-analysis jobs. Stop the
+		// optional GPU worker here, before graph/source teardown can block the
+		// UI in an object destructor.
+		StopSubtitleAnalysisWorker();
 
 		// Then wait for delivery thread
 		if (ThreadExists())
@@ -617,8 +650,13 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneAwareTimingCorrection(bool enabl
 	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
 	m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 	m_scenePhasePpmUnits.store(0, std::memory_order_release);
+	m_sceneSecondsUntilCorrection.store(0.0, std::memory_order_release);
+	m_scenePredictedAction.store(0, std::memory_order_release);
+	m_sceneCorrectionPlanned.store(false, std::memory_order_release);
 	m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
 	m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
+	m_subtitlePanelLumaInitialized.store(false, std::memory_order_release);
+	m_subtitleSceneEventId.store(0, std::memory_order_release);
 	DebugLog::Log("SCENE-AWARE CORRECTION: %s", enabled ? "enabled" : "disabled");
 }
 
@@ -646,13 +684,74 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneCorrectionUpstreamSample(bool en
 		enabled ? "UPSTREAM_SAMPLE" : "RENDERER_GAP");
 }
 
+void CBufferedLiveSourceVideoOutputPin::SetSubtitleRepositioning(bool enabled)
+{
+	SetSubtitleRepositioningMode(enabled ?
+		SubtitleRepositionMode::BASIC :
+		SubtitleRepositionMode::DISABLED);
+}
+
+void CBufferedLiveSourceVideoOutputPin::SetSubtitleRepositioningMode(
+	SubtitleRepositionMode mode)
+{
+	const SubtitleRepositionMode previous =
+		m_subtitleRepositionMode.exchange(mode, std::memory_order_acq_rel);
+	if (previous != mode)
+	{
+		ResetSubtitleAnalysis();
+		if (mode != SubtitleRepositionMode::DISABLED)
+			StartSubtitleAnalysisWorker();
+		else
+			StopSubtitleAnalysisWorker();
+		const char* modeName =
+			mode == SubtitleRepositionMode::ADVANCED ? "ADVANCED" :
+			(mode == SubtitleRepositionMode::BASIC ? "BASIC" : "DISABLED");
+		DbgLog((LOG_TRACE, 1, TEXT("Subtitle repositioning mode changed")));
+		DebugLog::Log(
+			"SUBTITLE REPOSITION: %s (asynchronous analysis)",
+			modeName);
+	}
+}
+
+bool CBufferedLiveSourceVideoOutputPin::GetSceneTimingPrediction(
+	double& secondsUntilCorrection, double& secondsUntilPlan,
+	int& action, bool& planned) const
+{
+	action = m_scenePredictedAction.load(std::memory_order_acquire);
+	secondsUntilCorrection =
+		m_sceneSecondsUntilCorrection.load(std::memory_order_acquire);
+	secondsUntilPlan = m_sceneSecondsUntilPlan.load(std::memory_order_acquire);
+	planned = m_sceneCorrectionPlanned.load(std::memory_order_acquire);
+	return action != 0 && std::isfinite(secondsUntilCorrection);
+}
+
+bool CBufferedLiveSourceVideoOutputPin::GetSceneTimingLastCorrection(
+	int& action, double& secondsFromDeadline, uint64_t& correctionTick) const
+{
+	action = m_sceneLastCorrectionAction.load(std::memory_order_acquire);
+	secondsFromDeadline =
+		m_sceneLastCorrectionSecondsFromDeadline.load(std::memory_order_acquire);
+	correctionTick = m_sceneLastCorrectionTick.load(std::memory_order_acquire);
+	return action != 0 && correctionTick != 0;
+}
+
 void CBufferedLiveSourceVideoOutputPin::SetSceneTimingRates(
 	double displayRefreshRateHz,
 	double deliveryRateHz)
 {
-	const bool valid =
+	// Scene Detect hides a small one-frame timing correction at a cut.  It
+	// must never try to act as a frame-rate converter: beyond 50 ppm, a
+	// correction is due within seconds/minutes and is not safely hideable.
+	constexpr double kMaximumSceneTimingMismatchPpm = 200.0;
+	const bool ratesInRange =
 		displayRefreshRateHz >= 10.0 && displayRefreshRateHz <= 240.0 &&
 		deliveryRateHz >= 10.0 && deliveryRateHz <= 240.0;
+	const double mismatchPpm = ratesInRange ?
+		abs((displayRefreshRateHz / deliveryRateHz - 1.0) * 1000000.0) : 0.0;
+	const bool cadenceCompatible =
+		ratesInRange && mismatchPpm <= kMaximumSceneTimingMismatchPpm;
+	m_sceneTimingRatesCompatible.store(cadenceCompatible, std::memory_order_release);
+	const bool valid = cadenceCompatible;
 	if (!valid)
 	{
 		const double previousDisplay =
@@ -663,10 +762,14 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneTimingRates(
 		{
 			m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 			m_scenePhasePpmUnits.store(0, std::memory_order_release);
+			m_sceneSecondsUntilCorrection.store(0.0, std::memory_order_release);
+			m_scenePredictedAction.store(0, std::memory_order_release);
+			m_sceneCorrectionPlanned.store(false, std::memory_order_release);
 			m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
 			m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
 			DebugLog::Log(
-				"SCENE-AWARE RATES: unavailable; corrections suspended until a fresh display measurement");
+				"SCENE-AWARE RATES: unavailable or incompatible (display=%.6f Hz, delivery=%.6f Hz, mismatch=%.1f ppm); corrections suspended",
+				displayRefreshRateHz, deliveryRateHz, mismatchPpm);
 		}
 		return;
 	}
@@ -681,6 +784,9 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneTimingRates(
 	{
 		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 		m_scenePhasePpmUnits.store(0, std::memory_order_release);
+		m_sceneSecondsUntilCorrection.store(0.0, std::memory_order_release);
+		m_scenePredictedAction.store(0, std::memory_order_release);
+		m_sceneCorrectionPlanned.store(false, std::memory_order_release);
 		m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
 		m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
 		const double mismatchPpm =
@@ -706,6 +812,9 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneTimingRates(
 	{
 		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 		m_scenePhasePpmUnits.store(0, std::memory_order_release);
+		m_sceneSecondsUntilCorrection.store(0.0, std::memory_order_release);
+		m_scenePredictedAction.store(0, std::memory_order_release);
+		m_sceneCorrectionPlanned.store(false, std::memory_order_release);
 		m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
 		m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
 		DebugLog::Log(
@@ -728,6 +837,9 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneTimingReadiness(
 	{
 		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 		m_scenePhasePpmUnits.store(0, std::memory_order_release);
+		m_sceneSecondsUntilCorrection.store(0.0, std::memory_order_release);
+		m_scenePredictedAction.store(0, std::memory_order_release);
+		m_sceneCorrectionPlanned.store(false, std::memory_order_release);
 		m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
 		m_lastCorrectedSceneEventId.store(0, std::memory_order_release);
 	}
@@ -836,6 +948,9 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 			m_lastSceneAwareCorrectionTime.store(0, std::memory_order_relaxed);
 			m_lastCorrectedSceneEventId.store(0, std::memory_order_relaxed);
 			m_scenePhasePpmUnits.store(0, std::memory_order_relaxed);
+			m_sceneSecondsUntilCorrection.store(0.0, std::memory_order_relaxed);
+			m_scenePredictedAction.store(0, std::memory_order_relaxed);
+			m_sceneCorrectionPlanned.store(false, std::memory_order_relaxed);
 		}
 
 		m_isBuffering.store(true, std::memory_order_release);
@@ -843,6 +958,8 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		m_conversionFrameCount.store(0, std::memory_order_relaxed);
 		m_sceneAwareCorrectionDropCount.store(0, std::memory_order_relaxed);
 		m_sceneAwareCorrectionRepeatCount.store(0, std::memory_order_relaxed);
+		ResetSubtitleAnalysis();
+		m_subtitlePanelLumaInitialized.store(false, std::memory_order_relaxed);
 		m_sceneAwareDetectedCount.store(0, std::memory_order_relaxed);
 		m_sceneAwareLateCandidateCount.store(0, std::memory_order_relaxed);
 		m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
@@ -1090,6 +1207,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		double displayRateHz = 0.0;
 		long double anchor = 0.0L;
 		uint64_t nextOutputIndex = 0;
+		// Signed outstanding timing debt in frames. A repeat pays one frame of
+		// positive debt; a drop pays one frame of negative debt. If either is
+		// taken early or late at a scene cut, the non-zero remainder is retained
+		// and directly shifts the next correction deadline.
 		long double contentPhaseFrames = 0.0L;
 	};
 	SceneOutputCadence sceneCadence;
@@ -1100,6 +1221,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		uint64_t timingGeneration = 0;
 		uint64_t sceneEventId = 0;
 		long double phaseBefore = 0.0L;
+		double secondsFromDeadline = 0.0;
 		bool atSceneBoundary = false;
 	};
 	PendingUpstreamRepeat pendingUpstreamRepeat;
@@ -1118,6 +1240,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		sceneCadence = {};
 		advancedMediaTimeOffset = 0;
 		m_scenePhasePpmUnits.store(0, std::memory_order_release);
+		m_sceneSecondsUntilCorrection.store(0.0, std::memory_order_release);
+		m_sceneSecondsUntilPlan.store(0.0, std::memory_order_release);
+		m_scenePredictedAction.store(0, std::memory_order_release);
+		m_sceneCorrectionPlanned.store(false, std::memory_order_release);
+		m_sceneLastCorrectionAction.store(0, std::memory_order_release);
+		m_sceneLastCorrectionSecondsFromDeadline.store(0.0, std::memory_order_release);
+		m_sceneLastCorrectionTick.store(0, std::memory_order_release);
 	};
 
 	const auto applyAdvancedMediaTimeOffset =
@@ -1286,6 +1415,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					std::memory_order_release);
 				m_lastSceneAwareCorrectionTime.store(
 					GetTickCount(), std::memory_order_relaxed);
+				m_sceneLastCorrectionAction.store(1, std::memory_order_release);
+				m_sceneLastCorrectionSecondsFromDeadline.store(
+					pendingUpstreamRepeat.secondsFromDeadline,
+					std::memory_order_release);
+				m_sceneLastCorrectionTick.store(
+					GetTickCount64(), std::memory_order_release);
 				if (pendingUpstreamRepeat.atSceneBoundary)
 					m_lastCorrectedSceneEventId.store(
 						pendingUpstreamRepeat.sceneEventId,
@@ -1295,8 +1430,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				DebugLog::Log(
 					"SCENE-AWARE CORRECTION: deferred upstream sample at %s "
 					"(event=%llu, phase=%+.6Lf -> %+.6Lf frames, media-offset=%+lld)",
-					pendingUpstreamRepeat.atSceneBoundary ?
-						"scene boundary" : "hard phase limit",
+					"scene boundary",
 					pendingUpstreamRepeat.sceneEventId,
 					pendingUpstreamRepeat.phaseBefore,
 					sceneCadence.contentPhaseFrames,
@@ -1619,14 +1753,19 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			// Scene Detect owns a separate, coherent output cadence. This makes
 			// each synthetic repeat/drop a real change in the number of samples
 			// madVR receives instead of squeezing two samples into one source
-			// interval. Content remains tied to capture/media time; the bounded
-			// phase is paid back at scene boundaries and cannot accumulate.
+			// interval. Content remains tied to capture/media time; its signed
+			// phase is paid back only at scene boundaries and can remain overdue
+			// until the next eligible boundary.
 			bool sceneCadenceForSample = false;
 			SceneCorrectionAction sceneCorrectionAction = SceneCorrectionAction::None;
 			bool correctionAtSceneBoundary = false;
 			bool sceneCorrectionCommitted = false;
 			bool contentPhasePending = false;
-			constexpr long double kHardCorrectionLimitFrames = 0.98L;
+			double secondsFromCorrectionDeadline = 0.0;
+			// This is the nominal one-frame correction deadline.  It deliberately
+			// does not authorize a correction by itself: Scene Mode may only alter
+			// cadence while processing a detected scene boundary.
+			constexpr long double kCorrectionDeadlineFrames = 0.98L;
 			long double pendingContentPhaseFrames =
 				sceneCadence.contentPhaseFrames;
 			const double displayRateHz =
@@ -1655,15 +1794,21 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					sceneCadence.nextOutputIndex = 0;
 					const uint64_t warmupIntervals =
 						m_sceneWarmupIntervals.load(std::memory_order_acquire);
-					sceneCadence.contentPhaseFrames =
+					const long double warmupPhaseFrames =
 						static_cast<long double>(warmupIntervals) *
 						((static_cast<long double>(displayRateHz) /
 							static_cast<long double>(deliveryRateHz)) - 1.0L);
+					// Only the fractional phase is meaningful when correction starts.
+					// Retaining whole frames accumulated during warm-up creates a
+					// backlog which would require several scene-boundary corrections
+					// to pay back.
+					sceneCadence.contentPhaseFrames =
+						std::fmod(warmupPhaseFrames, 1.0L);
 					DebugLog::Log(
 						"SCENE-AWARE CADENCE: started at %.6f Hz "
-						"(delivery %.6f Hz, warmup=%llu, phase=%+.6Lf, epoch=%llu)",
+						"(delivery %.6f Hz, warmup=%llu, phase=%+.6Lf/%+.6Lf, epoch=%llu)",
 						displayRateHz, deliveryRateHz, warmupIntervals,
-						sceneCadence.contentPhaseFrames,
+						warmupPhaseFrames, sceneCadence.contentPhaseFrames,
 						currentSceneTimingGeneration);
 				}
 				else
@@ -1705,22 +1850,56 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					sceneEventId !=
 						m_lastCorrectedSceneEventId.load(std::memory_order_relaxed);
 
-				// Start looking for a safe boundary before a whole output slot is
-				// due. The resulting capture/audio mapping error remains bounded
-				// below one frame and is repaid by the continuing rate difference.
-				constexpr long double kCorrectionTriggerFrames = 0.75L;
-				if (newSceneEvent && correctionIntervalElapsed)
+				// Seek a scene boundary late in the correction interval.  A fixed
+				// 0.75-frame trigger used to make a 45-minute correction eligible
+				// roughly ten minutes early.  Scene cuts may hide a correction up to
+				// ten seconds early; for short cadences retain a proportional 25%
+				// window so we still respond aggressively.
+				const long double signedPhaseRate =
+					static_cast<long double>(displayRateHz - deliveryRateHz);
+				const long double phaseRateMagnitude = std::fabs(signedPhaseRate);
+				bool correctionWindowOpen = false;
+				if (phaseRateMagnitude > 0.000000001L)
 				{
-					if (pendingContentPhaseFrames >= kCorrectionTriggerFrames)
-					{
-						sceneCorrectionAction = SceneCorrectionAction::Repeat;
-						correctionAtSceneBoundary = true;
-					}
-					else if (pendingContentPhaseFrames <= -kCorrectionTriggerFrames)
-					{
-						sceneCorrectionAction = SceneCorrectionAction::Drop;
-						correctionAtSceneBoundary = true;
-					}
+					const long double targetPhase = signedPhaseRate > 0.0L ?
+						kCorrectionDeadlineFrames : -kCorrectionDeadlineFrames;
+					const long double secondsUntilCorrection =
+						(targetPhase - pendingContentPhaseFrames) / signedPhaseRate;
+					secondsFromCorrectionDeadline =
+						static_cast<double>(secondsUntilCorrection);
+					const long double nominalIntervalSeconds =
+						kCorrectionDeadlineFrames / phaseRateMagnitude;
+					const long double correctionWindowSeconds = std::min(
+						10.0L, nominalIntervalSeconds * 0.25L);
+					correctionWindowOpen =
+						secondsUntilCorrection <= correctionWindowSeconds;
+					m_sceneSecondsUntilCorrection.store(
+						static_cast<double>(secondsUntilCorrection),
+						std::memory_order_release);
+					m_sceneSecondsUntilPlan.store(
+						static_cast<double>(std::max(
+							0.0L,
+							secondsUntilCorrection - correctionWindowSeconds)),
+						std::memory_order_release);
+					m_scenePredictedAction.store(
+						signedPhaseRate > 0.0L ? 1 : -1,
+						std::memory_order_release);
+					m_sceneCorrectionPlanned.store(
+						correctionWindowOpen, std::memory_order_release);
+				}
+				else
+				{
+					m_sceneSecondsUntilCorrection.store(0.0, std::memory_order_release);
+					m_sceneSecondsUntilPlan.store(0.0, std::memory_order_release);
+					m_scenePredictedAction.store(0, std::memory_order_release);
+					m_sceneCorrectionPlanned.store(false, std::memory_order_release);
+				}
+
+				if (newSceneEvent && correctionIntervalElapsed && correctionWindowOpen)
+				{
+					sceneCorrectionAction = signedPhaseRate > 0.0L ?
+						SceneCorrectionAction::Repeat : SceneCorrectionAction::Drop;
+					correctionAtSceneBoundary = true;
 				}
 
 				// Quality notifications are only a confidence signal for a scene
@@ -1753,20 +1932,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					}
 				}
 
-				// A scene is preferred, but waiting indefinitely would drain/fill
-				// queues and let capture content drift from the independent audio.
-				// At the hard bound, perform the same one-slot conversion on the
-				// current frame. This is no worse than madVR's unavoidable natural
-				// correction and keeps the mapping error below one frame.
-				if (sceneCorrectionAction == SceneCorrectionAction::None &&
-					correctionIntervalElapsed)
-				{
-					if (pendingContentPhaseFrames >= kHardCorrectionLimitFrames)
-						sceneCorrectionAction = SceneCorrectionAction::Repeat;
-					else if (pendingContentPhaseFrames <= -kHardCorrectionLimitFrames)
-						sceneCorrectionAction = SceneCorrectionAction::Drop;
-				}
-
 				if (sceneCorrectionAction == SceneCorrectionAction::Drop)
 				{
 					const long double phaseBefore =
@@ -1788,6 +1953,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 						std::memory_order_release);
 					m_lastSceneAwareCorrectionTime.store(
 						correctionNow, std::memory_order_relaxed);
+					m_sceneLastCorrectionAction.store(-1, std::memory_order_release);
+					m_sceneLastCorrectionSecondsFromDeadline.store(
+						secondsFromCorrectionDeadline, std::memory_order_release);
+					m_sceneLastCorrectionTick.store(
+						GetTickCount64(), std::memory_order_release);
 					if (correctionAtSceneBoundary)
 						m_lastCorrectedSceneEventId.store(
 							sceneEventId, std::memory_order_relaxed);
@@ -1797,7 +1967,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					DebugLog::Log(
 						"SCENE-AWARE CORRECTION: output drop at %s "
 						"(event=%llu, phase=%+.6Lf -> %+.6Lf frames, media-offset=%+lld)",
-						correctionAtSceneBoundary ? "scene boundary" : "hard phase limit",
+						"scene boundary",
 						sceneEventId, phaseBefore,
 						sceneCadence.contentPhaseFrames,
 						advancedMediaTimeOffset);
@@ -1945,6 +2115,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				pendingUpstreamRepeat.sceneEventId = sceneEventId;
 				pendingUpstreamRepeat.phaseBefore =
 					pendingContentPhaseFrames;
+				pendingUpstreamRepeat.secondsFromDeadline =
+					secondsFromCorrectionDeadline;
 				pendingUpstreamRepeat.atSceneBoundary =
 					correctionAtSceneBoundary;
 				deferredUpstreamRepeat = nullptr;
@@ -1972,6 +2144,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					std::memory_order_release);
 				m_lastSceneAwareCorrectionTime.store(
 					GetTickCount(), std::memory_order_relaxed);
+				m_sceneLastCorrectionAction.store(1, std::memory_order_release);
+				m_sceneLastCorrectionSecondsFromDeadline.store(
+					secondsFromCorrectionDeadline, std::memory_order_release);
+				m_sceneLastCorrectionTick.store(
+					GetTickCount64(), std::memory_order_release);
 				if (correctionAtSceneBoundary)
 					m_lastCorrectedSceneEventId.store(
 						sceneEventId, std::memory_order_relaxed);
@@ -1980,8 +2157,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				DebugLog::Log(
 					"SCENE-AWARE CORRECTION: presentation-gap repeat at %s "
 					"(phase=%+.6Lf -> %+.6Lf frames)",
-					correctionAtSceneBoundary ?
-						"scene boundary" : "hard phase limit",
+					"scene boundary",
 					pendingContentPhaseFrames,
 					sceneCadence.contentPhaseFrames);
 			}
@@ -2221,10 +2397,65 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			bool isSafeCorrectionPoint = false;
 			uint64_t sceneEventId = 0;
 			uint8_t sceneEventFramesBack = 0;
-			if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire) &&
+			uint16_t sceneAverageLuma = 0;
+			const bool sceneDetectionEnabled =
+				m_sceneAwareTimingCorrection.load(std::memory_order_acquire);
+			const bool subtitleRepositioningEnabled =
+				m_subtitleRepositionMode.load(std::memory_order_acquire) !=
+					SubtitleRepositionMode::DISABLED;
+			if ((sceneDetectionEnabled || subtitleRepositioningEnabled) &&
 				IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010))
 				isSafeCorrectionPoint = IsSafeSceneAwareCorrectionPoint(
-					pSample, sceneDetectorState, sceneEventId, sceneEventFramesBack);
+					pSample, sceneDetectorState, sceneEventId,
+					sceneEventFramesBack, sceneAverageLuma);
+
+			// Analyze the unmodified frame first. Subtitle relocation changes a
+			// small image region and must not become input to the cut detector.
+			// Latch one neutral dark-gray panel level for the initial scene and
+			// each confirmed scene change so the background never pumps.
+			if (sceneDetectionEnabled && sceneAverageLuma > 0 &&
+				(isSafeCorrectionPoint ||
+					!m_subtitlePanelLumaInitialized.load(
+						std::memory_order_acquire)))
+			{
+				m_subtitleSceneAverageLumaCode.store(
+					sceneAverageLuma, std::memory_order_release);
+				m_subtitlePanelLumaInitialized.store(
+					true, std::memory_order_release);
+				DebugLog::Log(
+					"SUBTITLE BACKGROUND: latched scene average=%u event=%llu",
+					sceneAverageLuma, sceneEventId);
+			}
+			if (subtitleRepositioningEnabled && isSafeCorrectionPoint &&
+				sceneEventId != 0)
+			{
+				m_subtitleSceneEventId.store(
+					sceneEventId, std::memory_order_release);
+				// Preserve an active caption's dimensions across a shot cut.
+				// Its burned-in text can legitimately span the transition.
+				if (!m_subtitleTrackActive.load(
+					std::memory_order_acquire))
+				{
+					m_subtitlePanelHalfWidthPixels.store(
+						0, std::memory_order_release);
+					m_subtitlePanelHeightPixels.store(
+						0, std::memory_order_release);
+					m_subtitleFastSignature.store(
+						0, std::memory_order_release);
+				}
+			}
+			// Scene analysis may run solely to size subtitle panels. Do not tag
+			// samples for timing correction when Scene Detect itself is off.
+			if (!sceneDetectionEnabled)
+			{
+				isSafeCorrectionPoint = false;
+				sceneEventId = 0;
+				sceneEventFramesBack = 0;
+			}
+
+			// Relocate only after scene measurement and before queueing.
+			if (subtitleRepositioningEnabled)
+				RelocateSubtitleInP010(pSample, videoFrame.GetCounter());
 			const uint64_t sceneTimingGeneration =
 				m_sceneTimingGeneration.load(std::memory_order_acquire);
 
@@ -2457,10 +2688,12 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 	IMediaSample* sample,
 	SceneDetectorState& state,
 	uint64_t& sceneEventId,
-	uint8_t& eventFramesBack)
+	uint8_t& eventFramesBack,
+	uint16_t& averageLuma)
 {
 	sceneEventId = 0;
 	eventFramesBack = 0;
+	averageLuma = 0;
 	// The HDR and MadVR paths use P010.  Keep scene analysis on the converted
 	// sample so the detector sees exactly the format that is delivered, while
 	// avoiding any work for unsupported render formats.
@@ -2518,6 +2751,8 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 	}
 
 	current.averageLuma = static_cast<uint32_t>(totalLuma / current.luma.size());
+	averageLuma = static_cast<uint16_t>(
+		std::min<uint32_t>(1023, current.averageLuma));
 	current.valid = true;
 
 	const size_t sampleCount = current.luma.size();
@@ -2652,6 +2887,2603 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 	}
 
 	return sceneEvent;
+}
+
+void CBufferedLiveSourceVideoOutputPin::StartSubtitleAnalysisWorker()
+{
+	std::lock_guard<std::mutex> lock(m_subtitleAnalysisMutex);
+	if (m_subtitleAnalysisThread.joinable())
+		return;
+
+	m_subtitleWorkerStop = false;
+	m_subtitleJobPending = false;
+	m_subtitleGpuDetector.reset();
+	m_subtitleAnalysisThread =
+		std::thread(&CBufferedLiveSourceVideoOutputPin::SubtitleAnalysisWorker, this);
+}
+
+
+void CBufferedLiveSourceVideoOutputPin::StopSubtitleAnalysisWorker()
+{
+	std::shared_ptr<GpuSubtitleDetector> gpuDetector;
+	{
+		std::lock_guard<std::mutex> lock(m_subtitleAnalysisMutex);
+		m_subtitleWorkerStop = true;
+		m_subtitleJobPending = false;
+		gpuDetector = m_subtitleGpuDetector;
+	}
+	if (gpuDetector)
+		gpuDetector->Cancel();
+	m_subtitleAnalysisCondition.notify_all();
+
+	if (m_subtitleAnalysisThread.joinable())
+	{
+		DebugLog::Log("SUBTITLE ANALYZER: stopping worker");
+		m_subtitleAnalysisThread.join();
+		DebugLog::Log("SUBTITLE ANALYZER: worker stopped");
+	}
+
+	std::lock_guard<std::mutex> lock(m_subtitleAnalysisMutex);
+	m_subtitleWorkerStop = false;
+	m_subtitlePendingFrame = {};
+	m_subtitleLatestResult = {};
+	m_subtitleRecycledLuma.clear();
+	m_subtitleGpuDetector.reset();
+}
+
+
+void CBufferedLiveSourceVideoOutputPin::ResetSubtitleAnalysis()
+{
+	m_subtitleAnalysisGeneration.fetch_add(1, std::memory_order_acq_rel);
+	m_subtitleLastSubmitTick.store(0, std::memory_order_release);
+	m_subtitleTrackActive.store(false, std::memory_order_release);
+	m_subtitleSceneEventId.store(0, std::memory_order_release);
+	m_subtitlePanelHalfWidthPixels.store(0, std::memory_order_release);
+	m_subtitlePanelHeightPixels.store(0, std::memory_order_release);
+	m_subtitlePictureTopPixels.store(0, std::memory_order_release);
+	m_subtitlePictureBottomPixels.store(0, std::memory_order_release);
+	m_subtitleFastSignature.store(0, std::memory_order_release);
+	m_subtitleSignatureGeneration.fetch_add(1, std::memory_order_acq_rel);
+
+	std::lock_guard<std::mutex> lock(m_subtitleAnalysisMutex);
+	if (!m_subtitlePendingFrame.luma.empty() && m_subtitleRecycledLuma.empty())
+		m_subtitleRecycledLuma.swap(m_subtitlePendingFrame.luma);
+	m_subtitlePendingFrame = {};
+	m_subtitleLatestResult = {};
+	m_subtitleJobPending = false;
+}
+
+
+void CBufferedLiveSourceVideoOutputPin::SubmitSubtitleAnalysis(
+	const uint16_t* yPlane,
+	int width,
+	int height,
+	uint64_t frameNumber,
+	uint16_t blackCode)
+{
+	if (!yPlane || width < 320 || height < 240)
+		return;
+
+	const uint64_t now = GetTickCount64();
+	const uint64_t last = m_subtitleLastSubmitTick.load(std::memory_order_relaxed);
+	// Acquire at roughly one video-frame interval, then reduce the cadence once
+	// a caption is tracked. The latest-frame-only worker queue prevents OCR
+	// latency from accumulating while the faster acquisition cadence removes
+	// the former visible delay at caption onset.
+	const bool advancedMode =
+		m_subtitleRepositionMode.load(std::memory_order_acquire) ==
+			SubtitleRepositionMode::ADVANCED;
+	// Advanced is a geometry-only DirectML pass and is deliberately sampled at
+	// video-frame cadence. BASIC retains its lower cadence because Windows OCR
+	// is a CPU fallback and the latest-frame queue prevents latency buildup.
+	const bool trackActive =
+		m_subtitleTrackActive.load(std::memory_order_acquire);
+	bool subtitleSignatureChanged = false;
+	if (trackActive)
+	{
+		const int pictureBottom =
+			m_subtitlePictureBottomPixels.load(std::memory_order_acquire);
+		const int barDepth = pictureBottom > 0 && pictureBottom < height ?
+			std::min(height - pictureBottom, std::max(8, height / 10)) : 0;
+		if (barDepth >= 8)
+		{
+			uint64_t signature = 0;
+			const int bandLeft = width / 5;
+			const int bandWidth = width * 3 / 5;
+			for (int bin = 0; bin < 32; ++bin)
+			{
+				int bright = 0;
+				const int x0 = bandLeft + bandWidth * bin / 32;
+				const int x1 = bandLeft + bandWidth * (bin + 1) / 32;
+				for (int sy = 0; sy < 6; ++sy)
+				{
+					const int y = std::min(height - 1,
+						pictureBottom + (barDepth - 1) * (sy + 1) / 7);
+					for (int sx = 0; sx < 4; ++sx)
+					{
+						const int x = std::min(width - 1,
+							x0 + std::max(1, x1 - x0 - 1) * (sx + 1) / 5);
+						const uint16_t code = static_cast<uint16_t>(
+							yPlane[static_cast<size_t>(y) * width + x] >> 6);
+						bright += code > blackCode + 32;
+					}
+				}
+				const uint64_t level =
+					bright >= 6 ? 3u : (bright >= 3 ? 2u :
+						(bright >= 1 ? 1u : 0u));
+				signature |= level << (bin * 2);
+			}
+			const uint64_t previous =
+				m_subtitleFastSignature.exchange(
+					signature, std::memory_order_acq_rel);
+			uint64_t changedGroups =
+				(signature ^ previous);
+			changedGroups =
+				(changedGroups | (changedGroups >> 1)) &
+				0x5555555555555555ULL;
+			int changedBins = 0;
+			while (changedGroups)
+			{
+				changedGroups &= changedGroups - 1;
+				++changedBins;
+			}
+			subtitleSignatureChanged = previous == 0 || changedBins >= 2;
+			if (subtitleSignatureChanged && previous != 0)
+				m_subtitleSignatureGeneration.fetch_add(
+					1, std::memory_order_acq_rel);
+		}
+	}
+	const uint64_t minimumInterval = advancedMode ?
+		(trackActive && !subtitleSignatureChanged ? 80 : 16) :
+		// OCR is needed to acquire a caption and immediately after the cheap
+		// subtitle-band signature changes.  Re-running it for every unchanged
+		// frame only adds CPU load; a confirmed track supplies stable geometry
+		// until the next signature change.
+		(trackActive ? (subtitleSignatureChanged ? 16 : 150) : 35);
+	if (last != 0 && now - last < minimumInterval)
+		return;
+	m_subtitleLastSubmitTick.store(now, std::memory_order_relaxed);
+
+	SubtitleAnalysisFrame frame;
+	frame.generation =
+		m_subtitleAnalysisGeneration.load(std::memory_order_acquire);
+	frame.frameNumber = frameNumber;
+	frame.submittedTick = now;
+	frame.sceneEventId =
+		m_subtitleSceneEventId.load(std::memory_order_acquire);
+	frame.subtitleSignatureChanged = subtitleSignatureChanged;
+	frame.fullWidth = width;
+	frame.fullHeight = height;
+	frame.blackCode = blackCode;
+	frame.scale = std::max(1, (width + 959) / 960);
+	frame.width = (width + frame.scale - 1) / frame.scale;
+	frame.height = (height + frame.scale - 1) / frame.scale;
+
+	{
+		std::lock_guard<std::mutex> lock(m_subtitleAnalysisMutex);
+		if (!m_subtitleRecycledLuma.empty())
+			frame.luma.swap(m_subtitleRecycledLuma);
+	}
+	frame.luma.resize(
+		static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height));
+
+	for (int y = 0; y < frame.height; ++y)
+	{
+		const int sourceY = std::min(height - 1, y * frame.scale);
+		uint16_t* destination =
+			frame.luma.data() + static_cast<size_t>(y) * frame.width;
+		const uint16_t* source =
+			yPlane + static_cast<size_t>(sourceY) * width;
+		for (int x = 0; x < frame.width; ++x)
+			destination[x] =
+				static_cast<uint16_t>(source[std::min(width - 1, x * frame.scale)] >> 6);
+	}
+
+	{
+		std::lock_guard<std::mutex> lock(m_subtitleAnalysisMutex);
+		// Latest-frame-only backpressure: an analyzer that falls behind replaces
+		// its pending job instead of building latency.
+		if (m_subtitleJobPending && !m_subtitlePendingFrame.luma.empty() &&
+			m_subtitleRecycledLuma.empty())
+			m_subtitleRecycledLuma.swap(m_subtitlePendingFrame.luma);
+		m_subtitlePendingFrame = std::move(frame);
+		m_subtitleJobPending = true;
+	}
+	m_subtitleAnalysisCondition.notify_one();
+}
+
+
+void CBufferedLiveSourceVideoOutputPin::SubtitleAnalysisWorker()
+{
+	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+	std::shared_ptr<GpuSubtitleDetector> gpuDetector;
+	if (m_subtitleRepositionMode.load(std::memory_order_acquire) ==
+		SubtitleRepositionMode::ADVANCED)
+	{
+		// Session initialization can compile DirectML kernels. Keep it off the
+		// UI and delivery threads, then publish it so shutdown can cancel Run().
+		gpuDetector = std::make_shared<GpuSubtitleDetector>();
+		std::lock_guard<std::mutex> lock(m_subtitleAnalysisMutex);
+		if (m_subtitleWorkerStop)
+			return;
+		m_subtitleGpuDetector = gpuDetector;
+	}
+	SubtitleTrackerState tracker;
+	uint64_t trackerGeneration = std::numeric_limits<uint64_t>::max();
+	uint64_t analysisCount = 0;
+	uint64_t totalAnalysisUs = 0;
+	uint64_t maximumAnalysisUs = 0;
+
+	for (;;)
+	{
+		SubtitleAnalysisFrame frame;
+		{
+			std::unique_lock<std::mutex> lock(m_subtitleAnalysisMutex);
+			m_subtitleAnalysisCondition.wait(lock, [this]() {
+				return m_subtitleWorkerStop || m_subtitleJobPending;
+				});
+			if (m_subtitleWorkerStop)
+				break;
+			frame = std::move(m_subtitlePendingFrame);
+			m_subtitlePendingFrame = {};
+			m_subtitleJobPending = false;
+		}
+
+		if (frame.generation != trackerGeneration)
+		{
+			tracker = {};
+			trackerGeneration = frame.generation;
+		}
+
+		const bool wasBarStable = tracker.barStable;
+		const bool wasTracking = tracker.active;
+		const auto started = GetWallClockTime();
+		SubtitleAnalysisResult result = AnalyzeSubtitleFrame(
+			frame, tracker, gpuDetector.get());
+		const uint64_t analysisUs = (GetWallClockTime() - started) / 10;
+		m_subtitleTrackActive.store(
+			tracker.active, std::memory_order_release);
+		if (result.barStable)
+		{
+			m_subtitlePictureTopPixels.store(
+				result.pictureTop, std::memory_order_release);
+			m_subtitlePictureBottomPixels.store(
+				result.pictureBottom, std::memory_order_release);
+		}
+		++analysisCount;
+		totalAnalysisUs += analysisUs;
+		maximumAnalysisUs = std::max(maximumAnalysisUs, analysisUs);
+
+		{
+			std::lock_guard<std::mutex> lock(m_subtitleAnalysisMutex);
+			if (frame.generation ==
+				m_subtitleAnalysisGeneration.load(std::memory_order_acquire))
+			{
+				if (result.active || !tracker.active)
+					m_subtitleLatestResult = result;
+				else if (m_subtitleLatestResult.active)
+				{
+					// A single model miss must not erase a coherent track.
+					// Preserve its geometry/mask while refreshing only its age;
+					// the live compositor still requires plausible glyph pixels
+					// in the current frame, so vanished captions are not drawn.
+					m_subtitleLatestResult.producedTick =
+						result.producedTick;
+					m_subtitleLatestResult.frameNumber =
+						result.frameNumber;
+				}
+			}
+			if (m_subtitleRecycledLuma.empty())
+				m_subtitleRecycledLuma.swap(frame.luma);
+		}
+
+		if (tracker.barStable != wasBarStable)
+		{
+			DebugLog::Log(
+				"SUBTITLE ANALYZER: bottom black bar %s at row %d/%d",
+				tracker.barStable ? "STABLE" : "LOST",
+				tracker.stablePictureBottom, frame.height);
+		}
+		if (tracker.active != wasTracking)
+		{
+			if (!tracker.active)
+			{
+				// Panel dimensions belong to one coherent caption. Keeping them
+				// after release made a single long/false detection permanently
+				// widen every later subtitle until a graph reset.
+				m_subtitlePanelHalfWidthPixels.store(
+					0, std::memory_order_release);
+				m_subtitlePanelHeightPixels.store(
+					0, std::memory_order_release);
+				m_subtitleFastSignature.store(
+					0, std::memory_order_release);
+				m_subtitleSignatureGeneration.fetch_add(
+					1, std::memory_order_acq_rel);
+			}
+			DebugLog::Log(
+				"SUBTITLE ANALYZER: subtitle track %s at frame %llu",
+				tracker.active ? "ACQUIRED" : "RELEASED",
+				frame.frameNumber);
+		}
+
+		if (analysisCount % 120 == 0)
+		{
+			DebugLog::Log(
+				"SUBTITLE ANALYZER: 120-frame avg=%.3fms max=%.3fms active=%s confidence=%u",
+				static_cast<double>(totalAnalysisUs) / 120000.0,
+				static_cast<double>(maximumAnalysisUs) / 1000.0,
+				result.active ? "YES" : "NO", result.confidence);
+			totalAnalysisUs = 0;
+			maximumAnalysisUs = 0;
+		}
+	}
+	DebugLog::Log("SUBTITLE ANALYZER: worker exited");
+}
+
+
+bool CBufferedLiveSourceVideoOutputPin::DetectSubtitleWithWindowsOcr(
+	const SubtitleAnalysisFrame& frame,
+	int pictureTop,
+	int pictureBottom,
+	SubtitleRect& detected,
+	int& score,
+	bool& atTop,
+	bool& textObserved,
+	uint64_t& contentHash,
+	int& lineCount,
+	int& representativeLineHeight,
+	std::vector<SubtitleRect>& words)
+{
+	contentHash = 0;
+	lineCount = 0;
+	representativeLineHeight = 0;
+	const WindowsOcrSubtitleResult ocr = DetectWindowsOcrSubtitle(
+		frame.luma.data(), frame.width, frame.height,
+		pictureTop, pictureBottom);
+	static std::atomic<bool> availabilityReported{ false };
+	if (!availabilityReported.exchange(true, std::memory_order_relaxed))
+		DebugLog::Log(
+			"SUBTITLE ANALYZER: Windows OCR text-region detection %s",
+			ocr.available ? "enabled" : "unavailable; using classical fallback");
+	textObserved = ocr.textObserved;
+	if (!ocr.detected)
+		return false;
+	detected = { ocr.left, ocr.top, ocr.right, ocr.bottom };
+	score = ocr.score;
+	atTop = ocr.atTop;
+	contentHash = ocr.contentHash;
+	lineCount = ocr.lineCount;
+	representativeLineHeight = ocr.representativeLineHeight;
+	words.clear();
+	words.reserve(ocr.words.size());
+	for (const WindowsOcrWordBox& word : ocr.words)
+		words.push_back({ word.left, word.top, word.right, word.bottom });
+	return true;
+}
+
+
+CBufferedLiveSourceVideoOutputPin::SubtitleAnalysisResult
+CBufferedLiveSourceVideoOutputPin::AnalyzeSubtitleFrame(
+	const SubtitleAnalysisFrame& frame,
+	SubtitleTrackerState& tracker,
+	GpuSubtitleDetector* gpuDetector)
+{
+	SubtitleAnalysisResult result;
+	result.generation = frame.generation;
+	result.frameNumber = frame.frameNumber;
+	result.producedTick = GetTickCount64();
+	result.fullWidth = frame.fullWidth;
+	result.fullHeight = frame.fullHeight;
+	result.blackCode = frame.blackCode;
+
+	const int width = frame.width;
+	const int height = frame.height;
+	if (width < 80 || height < 60 ||
+		frame.luma.size() < static_cast<size_t>(width) * height)
+		return result;
+	if (frame.sceneEventId != 0 &&
+		frame.sceneEventId != tracker.lastSceneEventId)
+	{
+		tracker.lastSceneEventId = frame.sceneEventId;
+		// Panel bounds are grow-only within a scene. A confirmed cut is the
+		// deliberate boundary at which a shorter future caption may establish
+		// a new width without causing frame-to-frame breathing.
+		if (!tracker.active)
+		{
+			tracker.retainedPanel = {};
+			tracker.styleSamples = 0;
+			tracker.typicalLineHeight = 0;
+		}
+	}
+
+	auto rectWidth = [](const SubtitleRect& r) { return std::max(0, r.right - r.left); };
+	auto rectHeight = [](const SubtitleRect& r) { return std::max(0, r.bottom - r.top); };
+	auto rectArea = [&](const SubtitleRect& r) {
+		return static_cast<int64_t>(rectWidth(r)) * rectHeight(r);
+		};
+	auto intersectionOverUnion = [&](const SubtitleRect& a, const SubtitleRect& b) {
+		SubtitleRect intersection{
+			std::max(a.left, b.left), std::max(a.top, b.top),
+			std::min(a.right, b.right), std::min(a.bottom, b.bottom)
+		};
+		const int64_t intersectionArea = rectArea(intersection);
+		const int64_t unionArea = rectArea(a) + rectArea(b) - intersectionArea;
+		return unionArea > 0 ?
+			static_cast<double>(intersectionArea) / static_cast<double>(unionArea) : 0.0;
+		};
+	auto related = [&](const SubtitleRect& a, const SubtitleRect& b) {
+		if (rectArea(a) == 0 || rectArea(b) == 0)
+			return false;
+		if (intersectionOverUnion(a, b) >= 0.12)
+			return true;
+		const int centerAx = a.left + rectWidth(a) / 2;
+		const int centerAy = a.top + rectHeight(a) / 2;
+		const int centerBx = b.left + rectWidth(b) / 2;
+		const int centerBy = b.top + rectHeight(b) / 2;
+		return std::abs(centerAx - centerBx) <=
+			std::max(rectWidth(a), rectWidth(b)) / 4 &&
+			std::abs(centerAy - centerBy) <=
+			std::max(3, std::max(rectHeight(a), rectHeight(b))) &&
+			std::max(rectHeight(a), rectHeight(b)) <=
+			std::max(1, std::min(rectHeight(a), rectHeight(b))) * 3;
+		};
+	auto unionRect = [](const SubtitleRect& oldRect, const SubtitleRect& newRect) {
+		if (oldRect.right <= oldRect.left || oldRect.bottom <= oldRect.top)
+			return newRect;
+		return SubtitleRect{
+			std::min(oldRect.left, newRect.left),
+			std::min(oldRect.top, newRect.top),
+			std::max(oldRect.right, newRect.right),
+			std::max(oldRect.bottom, newRect.bottom)
+		};
+		};
+
+	// Establish the true black level from the bottom edge. This works for both
+	// full and limited range and avoids hard-coding SDR values for HDR samples.
+	std::vector<uint16_t> bottomSamples;
+	const int edgeWidth = std::max(8, width / 5);
+	const int bottomRows = std::max(3, std::min(12, height / 40));
+	bottomSamples.reserve(static_cast<size_t>(edgeWidth) * bottomRows * 2);
+	for (int y = height - bottomRows; y < height; ++y)
+	{
+		const uint16_t* row = frame.luma.data() + static_cast<size_t>(y) * width;
+		for (int x = 0; x < edgeWidth; ++x)
+			bottomSamples.push_back(row[x]);
+		for (int x = width - edgeWidth; x < width; ++x)
+			bottomSamples.push_back(row[x]);
+	}
+	const size_t medianIndex = bottomSamples.size() / 2;
+	std::nth_element(bottomSamples.begin(), bottomSamples.begin() + medianIndex,
+		bottomSamples.end());
+	const uint16_t measuredBlack = bottomSamples[medianIndex];
+	result.blackCode = measuredBlack;
+
+	int candidatePictureTop = 0;
+	int candidatePictureBottom = 0;
+	const int allowedBlackDelta = 36;
+	if (std::abs(static_cast<int>(measuredBlack) -
+		static_cast<int>(frame.blackCode)) <= 96)
+	{
+		const int darkLimit = std::min(1023,
+			static_cast<int>(measuredBlack) + allowedBlackDelta);
+		int barRows = 0;
+		for (int y = height - 1; y >= 0; --y)
+		{
+			const uint16_t* row =
+				frame.luma.data() + static_cast<size_t>(y) * width;
+			int dark = 0;
+			int samples = 0;
+			uint64_t sum = 0;
+			for (int x = 0; x < edgeWidth; ++x)
+			{
+				dark += row[x] <= darkLimit;
+				sum += row[x];
+				++samples;
+			}
+			for (int x = width - edgeWidth; x < width; ++x)
+			{
+				dark += row[x] <= darkLimit;
+				sum += row[x];
+				++samples;
+			}
+			if (dark * 100 < samples * 84 ||
+				sum > static_cast<uint64_t>(samples) *
+				(static_cast<uint64_t>(measuredBlack) + 28))
+				break;
+			++barRows;
+		}
+
+		if (barRows >= std::max(3, height / 35) && barRows <= height / 3)
+			candidatePictureBottom = height - barRows;
+
+		int topBarRows = 0;
+		for (int y = 0; y < height; ++y)
+		{
+			const uint16_t* row =
+				frame.luma.data() + static_cast<size_t>(y) * width;
+			int dark = 0;
+			int samples = 0;
+			uint64_t sum = 0;
+			for (int x = 0; x < edgeWidth; ++x)
+			{
+				dark += row[x] <= darkLimit;
+				sum += row[x];
+				++samples;
+			}
+			for (int x = width - edgeWidth; x < width; ++x)
+			{
+				dark += row[x] <= darkLimit;
+				sum += row[x];
+				++samples;
+			}
+			if (dark * 100 < samples * 84 ||
+				sum > static_cast<uint64_t>(samples) *
+				(static_cast<uint64_t>(measuredBlack) + 28))
+				break;
+			++topBarRows;
+		}
+		if (topBarRows >= std::max(3, height / 35) &&
+			topBarRows <= height / 3)
+			candidatePictureTop = topBarRows;
+	}
+
+	const int barTolerance = std::max(2, height / 240);
+	if (candidatePictureTop > 0)
+	{
+		if (tracker.pendingPictureTop > 0 &&
+			std::abs(candidatePictureTop -
+				tracker.pendingPictureTop) <= barTolerance)
+		{
+			tracker.pendingPictureTop =
+				(tracker.pendingPictureTop * 3 + candidatePictureTop + 2) / 4;
+			tracker.topBarHits =
+				std::min<uint8_t>(8, tracker.topBarHits + 1);
+		}
+		else
+		{
+			tracker.pendingPictureTop = candidatePictureTop;
+			tracker.topBarHits = 1;
+		}
+		tracker.topBarMisses = 0;
+		const uint8_t requiredHits = tracker.topBarStable ? 8 : 2;
+		if (tracker.topBarHits >= requiredHits)
+		{
+			if (!tracker.topBarStable ||
+				std::abs(tracker.pendingPictureTop -
+					tracker.stablePictureTop) > barTolerance)
+			{
+				tracker.stablePictureTop = tracker.pendingPictureTop;
+				tracker.retainedPanel = {};
+			}
+			tracker.topBarStable = true;
+		}
+	}
+	else
+	{
+		tracker.topBarHits = 0;
+		tracker.topBarMisses =
+			std::min<uint8_t>(60, tracker.topBarMisses + 1);
+		// The edge probe can briefly fail while a subtitle, fade, or display
+		// transition touches the letterbox boundary.  Keep the last confirmed
+		// geometry for a bounded interval; dropping it immediately makes the
+		// moved caption flash even though the bar has not actually changed.
+		if (tracker.topBarMisses > 30)
+		{
+			tracker.topBarStable = false;
+		}
+	}
+
+	if (candidatePictureBottom > 0)
+	{
+		if (tracker.pendingPictureBottom > 0 &&
+			std::abs(candidatePictureBottom -
+				tracker.pendingPictureBottom) <= barTolerance)
+		{
+			tracker.pendingPictureBottom =
+				(tracker.pendingPictureBottom * 3 + candidatePictureBottom + 2) / 4;
+			tracker.barHits = std::min<uint8_t>(8, tracker.barHits + 1);
+		}
+		else
+		{
+			tracker.pendingPictureBottom = candidatePictureBottom;
+			tracker.barHits = 1;
+		}
+		tracker.barMisses = 0;
+		const uint8_t requiredHits = tracker.barStable ? 8 : 2;
+		if (tracker.barHits >= requiredHits)
+		{
+			if (!tracker.barStable ||
+				std::abs(tracker.pendingPictureBottom -
+					tracker.stablePictureBottom) > barTolerance)
+			{
+				tracker.stablePictureBottom = tracker.pendingPictureBottom;
+				tracker.retainedPanel = {};
+			}
+			tracker.barStable = true;
+		}
+	}
+	else
+	{
+		tracker.barHits = 0;
+		tracker.barMisses = std::min<uint8_t>(60, tracker.barMisses + 1);
+		// See the matching top-bar hold above.  The active caption has its own
+		// shorter wall-clock expiry below, so retaining the bar state here does
+		// not make a vanished caption persist indefinitely.
+		if (tracker.barMisses > 30)
+		{
+			tracker.barStable = false;
+		}
+	}
+
+	result.barStable = tracker.barStable;
+	if (!tracker.barStable)
+	{
+		tracker.previousLuma = frame.luma;
+		return result;
+	}
+
+	const int pictureBottom = tracker.stablePictureBottom;
+	const int pictureTop = tracker.topBarStable ?
+		tracker.stablePictureTop :
+		std::max(0, height - pictureBottom);
+	result.pictureTop =
+		std::max(0, std::min(frame.fullHeight,
+			pictureTop * frame.scale));
+	result.pictureBottom =
+		std::min(frame.fullHeight, pictureBottom * frame.scale);
+	const int searchTop = std::max(1, pictureBottom - height / 5);
+	const int roiHeight = height - searchTop;
+	const bool advancedMode =
+		m_subtitleRepositionMode.load(std::memory_order_acquire) ==
+			SubtitleRepositionMode::ADVANCED;
+	if (roiHeight < 8)
+	{
+		tracker.previousLuma = frame.luma;
+		return result;
+	}
+	const bool havePreviousFrame =
+		tracker.previousLuma.size() == frame.luma.size();
+	if (!havePreviousFrame)
+	{
+		tracker.previousLuma = frame.luma;
+		return result;
+	}
+	if (!advancedMode && tracker.active &&
+		!frame.subtitleSignatureChanged && tracker.lastDetectionTick != 0)
+	{
+		// BASIC's Windows OCR is a recognition engine, not a real-time image
+		// primitive.  A stable caption does not need recognition again: retain
+		// its confirmed geometry and spend the CPU only when the inexpensive
+		// boundary-band signature reports a likely text change.
+		tracker.previousLuma = frame.luma;
+		tracker.lastDetectionTick = result.producedTick;
+		return result;
+	}
+
+	// Produce a local-contrast mask. Unlike the former global brightness
+	// projection, this finds compact stroke-like regions and then groups them
+	// into aligned text lines.
+	std::vector<uint8_t> mask(
+		static_cast<size_t>(width) * roiHeight, static_cast<uint8_t>(0));
+	const int absoluteFloor = std::min(1023,
+		static_cast<int>(measuredBlack) + 72);
+	for (int localY = 1; localY + 1 < roiHeight; ++localY)
+	{
+		const int y = searchTop + localY;
+		for (int x = 1; x + 1 < width; ++x)
+		{
+			const uint16_t value =
+				frame.luma[static_cast<size_t>(y) * width + x];
+			const uint16_t previousValue =
+				tracker.previousLuma[static_cast<size_t>(y) * width + x];
+			uint16_t localMinimum = 1023;
+			uint16_t localMaximum = 0;
+			for (int yy = y - 1; yy <= y + 1; ++yy)
+				for (int xx = x - 1; xx <= x + 1; ++xx)
+				{
+					const uint16_t neighbor =
+						frame.luma[static_cast<size_t>(yy) * width + xx];
+					localMinimum = std::min(localMinimum, neighbor);
+					localMaximum = std::max(localMaximum, neighbor);
+				}
+			if (value >= absoluteFloor &&
+				std::abs(static_cast<int>(value) -
+					static_cast<int>(previousValue)) <= 36 &&
+				value >= static_cast<uint16_t>(
+					std::min(1023, static_cast<int>(localMinimum) + 44)) &&
+				localMaximum >= static_cast<uint16_t>(
+					std::min(1023, static_cast<int>(localMinimum) + 60)))
+				mask[static_cast<size_t>(localY) * width + x] = 1;
+		}
+	}
+	tracker.previousLuma = frame.luma;
+
+	GpuSubtitleDetectionResult gpuDetection;
+	if (advancedMode && gpuDetector)
+	{
+		static thread_local bool availabilityLogged = false;
+		gpuDetection = gpuDetector->Detect(
+			frame.luma.data(),
+			width,
+			height,
+			pictureTop,
+			pictureBottom);
+		if (!availabilityLogged)
+		{
+			if (gpuDetection.available)
+				DebugLog::Log(
+					"SUBTITLE ADVANCED DETECTOR: DirectML active on adapter %d",
+					gpuDetector->SelectedDeviceId());
+			else
+				DebugLog::Log(
+					"SUBTITLE ADVANCED DETECTOR: unavailable; using BASIC fallback");
+			if (!gpuDetection.available)
+				DebugLog::Log("SUBTITLE ADVANCED DETECTOR ERROR: %s",
+					gpuDetector->LastError().c_str());
+			availabilityLogged = true;
+		}
+
+		// DirectML identifies text regions. Keep actual P010 pixels only when
+		// they also look like locally contrasting foreground, so the model's
+		// filled probability polygons cannot copy video background into the
+		// opaque relocated subtitle panel.
+		if (gpuDetection.detected &&
+			gpuDetection.textMask.size() ==
+				static_cast<size_t>(width) * height &&
+			!gpuDetection.atTop)
+		{
+			for (int y = std::max(searchTop + 1,
+					gpuDetection.top - height / 80);
+				y + 1 < std::min(height,
+					gpuDetection.bottom + height / 80); ++y)
+				for (int x = std::max(1,
+						gpuDetection.left - width / 160);
+					x + 1 < std::min(width,
+						gpuDetection.right + width / 160); ++x)
+				{
+					if (!gpuDetection.textMask[
+						static_cast<size_t>(y) * width + x])
+						continue;
+					const uint16_t value =
+						frame.luma[static_cast<size_t>(y) * width + x];
+					uint16_t localMinimum = value;
+					uint16_t localMaximum = value;
+					for (int yy = y - 1; yy <= y + 1; ++yy)
+						for (int xx = x - 1; xx <= x + 1; ++xx)
+						{
+							const uint16_t neighbor =
+								frame.luma[
+									static_cast<size_t>(yy) * width + xx];
+							localMinimum = std::min(localMinimum, neighbor);
+							localMaximum = std::max(localMaximum, neighbor);
+						}
+					if (value >= std::min<int>(1023, measuredBlack + 24) &&
+						value >= localMinimum + 20 &&
+						localMaximum >= localMinimum + 28)
+						mask[static_cast<size_t>(y - searchTop) *
+							width + x] = 1;
+				}
+		}
+	}
+	const bool gpuFound =
+		advancedMode && gpuDetection.available && gpuDetection.detected;
+
+	SubtitleRect ocrDetected;
+	int ocrScore = 0;
+	bool ocrAtTop = false;
+	bool ocrTextObserved = false;
+	uint64_t ocrContentHash = 0;
+	int ocrLineCount = 0;
+	int ocrLineHeight = 0;
+	std::vector<SubtitleRect> ocrWords;
+	// BASIC is intentionally a CPU image-processing path: it uses the local
+	// contrast, projection, component, and temporal-track logic below, not the
+	// Windows text recognizer.  OCR recognition is far too expensive for a live
+	// 60 fps capture pipeline (the latest run measured 45–75 ms passes).
+	// Retain it only as a compatibility fallback when ADVANCED was requested
+	// but DirectML is unavailable.
+	bool ocrFound = false;
+	if (advancedMode && !gpuDetection.available)
+	{
+		ocrFound = DetectSubtitleWithWindowsOcr(
+			frame, pictureTop, pictureBottom,
+			ocrDetected, ocrScore, ocrAtTop, ocrTextObserved,
+			ocrContentHash, ocrLineCount, ocrLineHeight, ocrWords);
+	}
+	if (ocrFound && gpuFound && ocrAtTop == gpuDetection.atTop)
+	{
+		// OCR provides semantic classification while DirectML provides a more
+		// stable whole-line extent. Union them so a partially recognized upper
+		// line does not disappear from the extraction mask.
+		ocrDetected = unionRect(
+			ocrDetected,
+			{ gpuDetection.left, gpuDetection.top,
+				gpuDetection.right, gpuDetection.bottom });
+		ocrScore += std::min(1000, gpuDetection.score);
+		ocrLineCount = std::max(ocrLineCount, gpuDetection.lineCount);
+		ocrLineHeight = std::max(
+			ocrLineHeight, gpuDetection.representativeLineHeight);
+		for (const GpuSubtitleRegion& region : gpuDetection.regions)
+			ocrWords.push_back(
+				{ region.left, region.top, region.right, region.bottom });
+	}
+
+	// Row projection complements connected components when a subtitle touches
+	// the picture boundary and its strokes become connected to bright scene
+	// detail. The projected rows still originate from local-contrast strokes,
+	// not from an absolute "bright pixel" threshold.
+	SubtitleRect projected = gpuFound ?
+		SubtitleRect{ gpuDetection.left, gpuDetection.top,
+			gpuDetection.right, gpuDetection.bottom } :
+		SubtitleRect{};
+	int projectedScore = gpuFound ? gpuDetection.score : 0;
+	SubtitleRect currentProjection;
+	int currentProjectionScore = 0;
+	int projectionGap = 0;
+	const int maximumProjectionGap = std::max(2, height / 120);
+	auto finishProjection = [&]() {
+		if (currentProjection.right > currentProjection.left &&
+			currentProjection.bottom > pictureBottom &&
+			currentProjection.bottom - currentProjection.top <= height / 6 &&
+			currentProjectionScore > projectedScore)
+		{
+			projected = currentProjection;
+			projectedScore = currentProjectionScore;
+		}
+		currentProjection = {};
+		currentProjectionScore = 0;
+		projectionGap = 0;
+		};
+	// Seed only from rows that are physically in the bar. This prevents a
+	// bright lower-third or scene edge in the active picture from becoming the
+	// starting point for relocation.
+	const int firstBarLocalRow =
+		std::max(0, pictureBottom - searchTop);
+	for (int localY = firstBarLocalRow; localY < roiHeight; ++localY)
+	{
+		int count = 0;
+		int left = width;
+		int right = 0;
+		const uint8_t* row =
+			mask.data() + static_cast<size_t>(localY) * width;
+		for (int x = 0; x < width; ++x)
+			if (row[x])
+			{
+				++count;
+				left = std::min(left, x);
+				right = std::max(right, x + 1);
+			}
+		const bool textRow =
+			count >= std::max(3, width / 400) &&
+			right > left && right - left >= width / 28;
+		if (textRow)
+		{
+			projectionGap = 0;
+			if (currentProjection.right <= currentProjection.left)
+				currentProjection = { left, searchTop + localY,
+					right, searchTop + localY + 1 };
+			else
+			{
+				currentProjection.left =
+					std::min(currentProjection.left, left);
+				currentProjection.right =
+					std::max(currentProjection.right, right);
+				currentProjection.bottom = searchTop + localY + 1;
+			}
+			currentProjectionScore += count;
+		}
+		else if (currentProjection.right > currentProjection.left &&
+			++projectionGap > maximumProjectionGap)
+			finishProjection();
+	}
+	finishProjection();
+
+	// A subtitle can have another line entirely above the bar. Grow the
+	// bar-seeded box upward only inside its horizontal footprint, with a
+	// time-tested subtitle-height cap and enough gap tolerance for two lines.
+	if (projected.right > projected.left)
+	{
+		const int seedWidth = projected.right - projected.left;
+		const int scanLeft = std::max(0, projected.left - seedWidth / 12);
+		const int scanRight = std::min(width, projected.right + seedWidth / 12);
+		const int minimumTop =
+			std::max(searchTop, projected.bottom - std::max(12, height / 7));
+		const int upwardGapLimit = std::max(4, height / 30);
+		int upwardGap = 0;
+		for (int y = projected.top - 1; y >= minimumTop; --y)
+		{
+			int count = 0;
+			int left = scanRight;
+			int right = scanLeft;
+			const uint8_t* row =
+				mask.data() + static_cast<size_t>(y - searchTop) * width;
+			for (int x = scanLeft; x < scanRight; ++x)
+				if (row[x])
+				{
+					++count;
+					left = std::min(left, x);
+					right = std::max(right, x + 1);
+				}
+			const bool relatedTextRow =
+				count >= std::max(3, seedWidth / 32) &&
+				right > left && right - left >= seedWidth * 7 / 20;
+			if (relatedTextRow)
+			{
+				projected.top = y;
+				projectedScore += count;
+				upwardGap = 0;
+			}
+			else if (++upwardGap > upwardGapLimit)
+				break;
+		}
+	}
+
+	// A one-pixel close reconnects antialiased character strokes but is too
+	// small to join ordinary scene objects into subtitle-length regions.
+	std::vector<uint8_t> closed(mask.size(), static_cast<uint8_t>(0));
+	for (int y = 1; y + 1 < roiHeight; ++y)
+		for (int x = 1; x + 1 < width; ++x)
+		{
+			bool set = false;
+			for (int yy = y - 1; yy <= y + 1 && !set; ++yy)
+				for (int xx = x - 1; xx <= x + 1; ++xx)
+					set |= mask[static_cast<size_t>(yy) * width + xx] != 0;
+			closed[static_cast<size_t>(y) * width + x] = set ? 1 : 0;
+		}
+
+	struct Component
+	{
+		SubtitleRect box;
+		int pixels = 0;
+	};
+	std::vector<Component> components;
+	std::vector<int> flood;
+	flood.reserve(512);
+	for (int localY = 1; localY + 1 < roiHeight; ++localY)
+		for (int x = 1; x + 1 < width; ++x)
+		{
+			const int start = localY * width + x;
+			if (!closed[start])
+				continue;
+
+			Component component;
+			component.box = { x, searchTop + localY, x + 1, searchTop + localY + 1 };
+			flood.clear();
+			flood.push_back(start);
+			closed[start] = 0;
+			for (size_t index = 0; index < flood.size(); ++index)
+			{
+				const int position = flood[index];
+				const int cy = position / width;
+				const int cx = position - cy * width;
+				++component.pixels;
+				component.box.left = std::min(component.box.left, cx);
+				component.box.right = std::max(component.box.right, cx + 1);
+				component.box.top = std::min(component.box.top, searchTop + cy);
+				component.box.bottom = std::max(component.box.bottom, searchTop + cy + 1);
+				for (int yy = cy - 1; yy <= cy + 1; ++yy)
+					for (int xx = cx - 1; xx <= cx + 1; ++xx)
+					{
+						if (xx <= 0 || xx + 1 >= width ||
+							yy <= 0 || yy + 1 >= roiHeight)
+							continue;
+						const int neighbor = yy * width + xx;
+						if (closed[neighbor])
+						{
+							closed[neighbor] = 0;
+							flood.push_back(neighbor);
+						}
+					}
+			}
+
+			const int componentWidth = rectWidth(component.box);
+			const int componentHeight = rectHeight(component.box);
+			const int componentArea = componentWidth * componentHeight;
+			if (component.pixels >= 3 && componentWidth >= 1 &&
+				componentHeight >= 2 &&
+				componentHeight <= std::max(8, height / 14) &&
+				componentWidth <= width * 9 / 10 &&
+				componentWidth <= std::max(8, componentHeight * 24) &&
+				component.pixels * 100 >= componentArea * 6)
+				components.push_back(component);
+		}
+
+	struct TextLine
+	{
+		SubtitleRect box;
+		int components = 0;
+		int pixels = 0;
+	};
+	std::sort(components.begin(), components.end(),
+		[](const Component& a, const Component& b) {
+			const int centerA = a.box.top + (a.box.bottom - a.box.top) / 2;
+			const int centerB = b.box.top + (b.box.bottom - b.box.top) / 2;
+			return centerA == centerB ? a.box.left < b.box.left : centerA < centerB;
+		});
+	std::vector<TextLine> lines;
+	for (const Component& component : components)
+	{
+		const int componentCenter =
+			component.box.top + rectHeight(component.box) / 2;
+		TextLine* selected = nullptr;
+		for (TextLine& line : lines)
+		{
+			const int lineCenter = line.box.top + rectHeight(line.box) / 2;
+			const int verticalTolerance =
+				std::max(3, std::max(rectHeight(line.box),
+					rectHeight(component.box)) / 2);
+			if (std::abs(componentCenter - lineCenter) <= verticalTolerance)
+			{
+				selected = &line;
+				break;
+			}
+		}
+		if (!selected)
+		{
+			lines.push_back({ component.box, 1, component.pixels });
+			continue;
+		}
+		selected->box.left = std::min(selected->box.left, component.box.left);
+		selected->box.top = std::min(selected->box.top, component.box.top);
+		selected->box.right = std::max(selected->box.right, component.box.right);
+		selected->box.bottom = std::max(selected->box.bottom, component.box.bottom);
+		++selected->components;
+		selected->pixels += component.pixels;
+	}
+
+	std::vector<TextLine> validLines;
+	for (const TextLine& line : lines)
+	{
+		const int lineWidth = rectWidth(line.box);
+		const int lineHeight = rectHeight(line.box);
+		if (lineHeight >= 3 && lineHeight <= std::max(10, height / 11) &&
+			lineWidth >= width / 28 && lineWidth <= width * 9 / 10 &&
+			(line.components >= 2 || lineWidth >= width / 9))
+			validLines.push_back(line);
+	}
+
+	const bool suppressClassicalFallback =
+		!ocrFound && ocrTextObserved && !gpuFound;
+	SubtitleRect detected = ocrFound ? ocrDetected :
+		(suppressClassicalFallback ? SubtitleRect{} : projected);
+	int detectedScore = ocrFound ? ocrScore :
+		(suppressClassicalFallback ? 0 : projectedScore);
+	for (const TextLine& line : validLines)
+	{
+		if (ocrFound || suppressClassicalFallback ||
+			rectArea(projected) > 0)
+			break;
+		if (line.box.bottom <= pictureBottom)
+			continue;
+		SubtitleRect block = line.box;
+		int score = line.components * 20 + rectWidth(line.box) + line.pixels / 4;
+		for (const TextLine& other : validLines)
+		{
+			if (&other == &line)
+				continue;
+			const int verticalGap =
+				other.box.bottom <= block.top ? block.top - other.box.bottom :
+				(block.bottom <= other.box.top ? other.box.top - block.bottom : 0);
+			const int centerDifference = std::abs(
+				(other.box.left + other.box.right) -
+				(block.left + block.right)) / 2;
+			if (verticalGap <= std::max(5,
+				std::max(rectHeight(other.box), rectHeight(block)) * 2) &&
+				centerDifference <= width / 5)
+			{
+				block.left = std::min(block.left, other.box.left);
+				block.top = std::min(block.top, other.box.top);
+				block.right = std::max(block.right, other.box.right);
+				block.bottom = std::max(block.bottom, other.box.bottom);
+				score += other.components * 20 + rectWidth(other.box) / 2;
+			}
+		}
+		if (rectHeight(block) <= height / 7 && score > detectedScore)
+		{
+			detected = block;
+			detectedScore = score;
+		}
+	}
+
+	// Subtitles are expected to occupy or overlap the central picture region.
+	// Reject isolated side text and menu/navigation labels.
+	const int detectedCenter =
+		detected.left + rectWidth(detected) / 2;
+	const bool centeredDetection =
+		rectArea(detected) > 0 &&
+		detectedCenter >= width * 3 / 10 &&
+		detectedCenter <= width * 7 / 10 &&
+		detected.right >= width * 2 / 5 &&
+		detected.left <= width * 3 / 5;
+	const bool sameTrackedCaption =
+		ocrFound && ocrContentHash != 0 && tracker.active &&
+		tracker.trackedFromOcr &&
+		ocrContentHash == tracker.trackedContentHash;
+	const int detectedLineHeight = ocrFound ? ocrLineHeight :
+		(gpuFound ? gpuDetection.representativeLineHeight : 0);
+	const bool consistentLineHeight =
+		(!ocrFound && !gpuFound) || detectedLineHeight <= 0 ||
+		tracker.styleSamples < 3 ||
+		sameTrackedCaption ||
+		(detectedLineHeight * 2 >= tracker.typicalLineHeight &&
+			detectedLineHeight <= tracker.typicalLineHeight * 2);
+	const bool validOcrMetrics =
+		!ocrFound || (ocrLineCount >= 1 && ocrLineCount <= 3 &&
+			ocrContentHash != 0);
+	const bool validModelMetrics =
+		!gpuFound ||
+		(gpuDetection.score >= 100 &&
+			rectWidth(detected) >= width / 80 &&
+			// Caption blocks can be wide, but a box approaching the whole
+			// picture is a model false-positive or menu, not a subtitle.  The
+			// previous 80% ceiling admitted the oversized panels in the log.
+			rectWidth(detected) <= width * 18 / 25 &&
+			rectHeight(detected) >= std::max(3, height / 180) &&
+			rectHeight(detected) <= height / 7 &&
+			gpuDetection.lineCount >= 1 && gpuDetection.lineCount <= 3);
+	const bool plausibleClassicalDetection =
+		ocrFound || gpuFound ||
+		(detectedScore >= 30 &&
+			rectWidth(detected) >= width / 50 &&
+			rectWidth(detected) <= width * 17 / 20 &&
+			rectHeight(detected) <= height / 7);
+	const bool found =
+		centeredDetection && consistentLineHeight && validOcrMetrics &&
+		validModelMetrics &&
+		plausibleClassicalDetection;
+	const bool detectionAtTop =
+		ocrFound ? ocrAtTop : (gpuFound && gpuDetection.atTop);
+	const bool detectionFromModel = gpuFound;
+	auto mergeWordRects = [&](std::vector<SubtitleRect>& destination,
+		const std::vector<SubtitleRect>& source) {
+		for (const SubtitleRect& word : source)
+		{
+			bool merged = false;
+			for (SubtitleRect& existing : destination)
+				if (intersectionOverUnion(existing, word) >= 0.20)
+				{
+					existing = unionRect(existing, word);
+					merged = true;
+					break;
+				}
+			if (!merged && destination.size() < 64)
+				destination.push_back(word);
+		}
+		};
+	auto updateCaptionStyle = [&]() {
+		if ((!ocrFound && !gpuFound) || detectedLineHeight <= 0)
+			return;
+		if (tracker.styleSamples == 0)
+			tracker.typicalLineHeight = detectedLineHeight;
+		else
+			tracker.typicalLineHeight =
+				(tracker.typicalLineHeight * 7 +
+					detectedLineHeight + 4) / 8;
+		tracker.styleSamples =
+			std::min<uint8_t>(16, tracker.styleSamples + 1);
+		};
+	auto updateRetainedPanel = [&]() {
+		if (rectArea(tracker.retainedPanel) == 0)
+		{
+			tracker.retainedPanel = tracker.tracked;
+			return;
+		}
+
+		const int edgeTolerance = std::max(2, width / 160);
+		const bool growsPanel =
+			tracker.tracked.left <
+				tracker.retainedPanel.left - edgeTolerance ||
+			tracker.tracked.right >
+				tracker.retainedPanel.right + edgeTolerance;
+		if (growsPanel)
+		{
+			// Grow immediately, but never shrink within the current scene. This
+			// keeps the destination panel fixed across short and long captions
+			// and removes visible horizontal breathing. A confirmed scene cut
+			// or queue/aspect reset starts fresh.
+			tracker.retainedPanel =
+				unionRect(tracker.retainedPanel, tracker.tracked);
+		}
+		};
+	bool captionTransitionPending = false;
+	// A live result is published only after the tracker confirms that its
+	// geometry belongs to the current subtitle.  Keeping this separate from
+	// `found` prevents a single weak GPU rectangle from replacing the last
+	// coherent mask/panel while a new caption is being evaluated.
+	bool confirmedTrackedThisPass = false;
+	if (found)
+	{
+		const bool sameCandidateCaption =
+			ocrFound && ocrContentHash != 0 &&
+			ocrContentHash == tracker.candidateContentHash;
+		if (rectArea(tracker.candidate) > 0 &&
+			tracker.candidateAtTop == detectionAtTop &&
+			((ocrFound && sameCandidateCaption) ||
+				(!ocrFound && related(tracker.candidate, detected))))
+		{
+			// Expand immediately so an OCR result that discovers an initial or
+			// final word can never produce the former slowly growing caption.
+			tracker.candidate = unionRect(tracker.candidate, detected);
+			tracker.candidateHits =
+				std::min<uint8_t>(8, tracker.candidateHits + 1);
+			if (ocrFound)
+				mergeWordRects(tracker.candidateWords, ocrWords);
+			tracker.candidateFromModel |= detectionFromModel;
+		}
+		else
+		{
+			tracker.candidate = detected;
+			tracker.candidateWords = ocrFound ?
+				ocrWords : std::vector<SubtitleRect>{};
+			tracker.candidateHits = 1;
+			tracker.candidateAtTop = detectionAtTop;
+			tracker.candidateFromModel = detectionFromModel;
+			tracker.candidateContentHash =
+				ocrFound ? ocrContentHash : 0;
+		}
+
+		if (tracker.active && sameTrackedCaption &&
+			tracker.trackedAtTop == detectionAtTop &&
+			related(tracker.tracked, detected))
+		{
+			// Same caption: grow immediately, never contract from OCR jitter.
+			tracker.tracked = unionRect(tracker.tracked, detected);
+			mergeWordRects(tracker.trackedWords, ocrWords);
+			tracker.trackedFromModel |= detectionFromModel;
+			tracker.trackMisses = 0;
+			tracker.lastDetectionTick = result.producedTick;
+			tracker.confirmedScore = std::max(100, detectedScore);
+			confirmedTrackedThisPass = true;
+			updateCaptionStyle();
+			updateRetainedPanel();
+		}
+		else if (tracker.candidateHits >= 2)
+		{
+			// Geometry alone is not enough to draw a caption. Require two
+			// consistent analyses in both modes so a single GPU false-positive
+			// cannot create a panel or seed an incomplete glyph snapshot.
+			tracker.tracked = tracker.candidate;
+			tracker.trackedAtTop = tracker.candidateAtTop;
+			tracker.trackedFromOcr = ocrFound;
+			tracker.trackedFromModel = tracker.candidateFromModel;
+			tracker.trackedWords = ocrFound ?
+				tracker.candidateWords : std::vector<SubtitleRect>{};
+			tracker.trackedContentHash =
+				ocrFound ? tracker.candidateContentHash : 0;
+			tracker.trackMisses = 0;
+			tracker.lastDetectionTick = result.producedTick;
+			tracker.active = true;
+			tracker.confirmedScore = std::max(100, detectedScore);
+			confirmedTrackedThisPass = true;
+			updateCaptionStyle();
+			updateRetainedPanel();
+		}
+		else if (tracker.active)
+		{
+			captionTransitionPending = ocrFound &&
+				tracker.trackedFromOcr && !sameTrackedCaption;
+			tracker.trackMisses = std::min<uint8_t>(10, tracker.trackMisses + 1);
+		}
+	}
+	else
+	{
+		tracker.candidate = {};
+		tracker.candidateWords.clear();
+		tracker.candidateContentHash = 0;
+		tracker.candidateFromModel = false;
+		tracker.candidateHits = 0;
+		if (tracker.active)
+			tracker.trackMisses = std::min<uint8_t>(10, tracker.trackMisses + 1);
+	}
+
+	// Hold through short fades and detector misses using wall time rather than
+	// a cadence-dependent miss count. Advanced analysis is asynchronous and a
+	// busy renderer can legitimately delay several consecutive passes.
+	if (tracker.active &&
+		(tracker.lastDetectionTick == 0 ||
+			result.producedTick < tracker.lastDetectionTick ||
+			result.producedTick - tracker.lastDetectionTick > 1500))
+	{
+		tracker.active = false;
+		tracker.tracked = {};
+		tracker.trackedWords.clear();
+		tracker.trackedContentHash = 0;
+		tracker.trackedFromModel = false;
+		tracker.confirmedScore = 0;
+	}
+
+	// Let the worker retain the last coherent result during a short detector
+	// gap or while a possible replacement subtitle accumulates confirmation.
+	// This is intentionally before mask construction: rebuilding a mask from
+	// unconfirmed geometry was the source of the confidence=1 and flickering
+	// output observed in the latest run.
+	if (tracker.active && !confirmedTrackedThisPass)
+		return result;
+
+	if (captionTransitionPending || !tracker.active ||
+		(tracker.trackedAtTop ?
+			tracker.tracked.top >= pictureTop :
+			tracker.tracked.bottom <= pictureBottom))
+		return result;
+	// Never regenerate an OCR glyph mask from old word geometry when the
+	// current OCR pass did not confirm text. The worker retains the preceding
+	// coherent result briefly; current-frame validation decides whether it is
+	// still safe to use.
+	if ((tracker.trackedFromOcr || tracker.trackedFromModel) &&
+		!ocrFound && !gpuFound)
+		return result;
+
+	const int paddingX =
+		(tracker.trackedFromOcr || tracker.trackedFromModel) ?
+		std::max(4, width / 120) :
+		std::max(2, width / 320);
+	const int paddingY =
+		(tracker.trackedFromOcr || tracker.trackedFromModel) ?
+		std::max(4, height / 100) :
+		std::max(2, height / 240);
+	result.source.left =
+		std::max(0, (tracker.tracked.left - paddingX) * frame.scale);
+	result.source.top =
+		std::max(0, (tracker.tracked.top - paddingY) * frame.scale);
+	result.source.right =
+		std::min(frame.fullWidth,
+			(tracker.tracked.right + paddingX) * frame.scale);
+	result.source.bottom =
+		std::min(frame.fullHeight,
+			(tracker.tracked.bottom + paddingY) * frame.scale);
+	const SubtitleRect panel = rectArea(tracker.retainedPanel) > 0 ?
+		tracker.retainedPanel : tracker.tracked;
+	result.panelLeft = std::max(0,
+		(panel.left - paddingX) * frame.scale);
+	result.panelRight = std::min(frame.fullWidth,
+		(panel.right + paddingX) * frame.scale);
+	result.analysisScale = frame.scale;
+	result.maskLeft = std::max(0, tracker.tracked.left - paddingX);
+	result.maskTop = std::max(0, tracker.tracked.top - paddingY);
+	const int maskRight =
+		std::min(width, tracker.tracked.right + paddingX);
+	const int maskBottom =
+		std::min(height, tracker.tracked.bottom + paddingY);
+	result.maskWidth = std::max(0, maskRight - result.maskLeft);
+	result.maskHeight = std::max(0, maskBottom - result.maskTop);
+	if (result.maskWidth > 0 && result.maskHeight > 0)
+	{
+		auto textMask = std::make_shared<std::vector<uint8_t>>(
+			static_cast<size_t>(result.maskWidth) * result.maskHeight,
+			static_cast<uint8_t>(0));
+		auto textReferenceLuma = std::make_shared<std::vector<uint16_t>>(
+			static_cast<size_t>(result.maskWidth) * result.maskHeight,
+			static_cast<uint16_t>(0));
+		if (tracker.trackedFromOcr)
+		{
+			// OCR supplies geometry only; it never redraws text. Build a sparse
+			// mask from actual high-contrast pixels in the analyzed P010 frame.
+			// Filling whole OCR word rectangles admitted picture pixels and made
+			// stale geometry look like fragmented, re-rendered captions.
+			const int wordPaddingX = std::max(1, width / 640);
+			const int wordPaddingY = std::max(1, height / 360);
+			for (const SubtitleRect& word : tracker.trackedWords)
+			{
+				const int left = std::max(result.maskLeft,
+					word.left - wordPaddingX);
+				const int top = std::max(result.maskTop,
+					word.top - wordPaddingY);
+				const int right = std::min(maskRight,
+					word.right + wordPaddingX);
+				const int bottom = std::min(maskBottom,
+					word.bottom + wordPaddingY);
+				if (right <= left || bottom <= top)
+					continue;
+				for (int y = top; y < bottom; ++y)
+					for (int x = left; x < right; ++x)
+					{
+						const uint16_t value =
+							frame.luma[static_cast<size_t>(y) * width + x];
+						uint16_t localMinimum = value;
+						uint16_t localMaximum = value;
+						for (int yy = std::max(0, y - 1);
+							yy <= std::min(height - 1, y + 1); ++yy)
+							for (int xx = std::max(0, x - 1);
+								xx <= std::min(width - 1, x + 1); ++xx)
+							{
+								const uint16_t neighbor =
+									frame.luma[static_cast<size_t>(yy) * width + xx];
+								localMinimum = std::min(localMinimum, neighbor);
+								localMaximum = std::max(localMaximum, neighbor);
+							}
+						if (value < std::min<int>(1023, measuredBlack + 24) ||
+							localMaximum - localMinimum < 28 ||
+							value < localMinimum + 20)
+							continue;
+						const size_t index =
+							static_cast<size_t>(y - result.maskTop) *
+								result.maskWidth + (x - result.maskLeft);
+						(*textMask)[index] = 1;
+						(*textReferenceLuma)[index] = value;
+					}
+			}
+		}
+		else
+		{
+			for (int y = 0; y < result.maskHeight; ++y)
+			{
+				const int maskY = result.maskTop + y - searchTop;
+				if (maskY < 0 || maskY >= roiHeight)
+					continue;
+				std::copy_n(
+					mask.data() + static_cast<size_t>(maskY) * width +
+						result.maskLeft,
+					result.maskWidth,
+					textMask->data() + static_cast<size_t>(y) *
+						result.maskWidth);
+				for (int x = 0; x < result.maskWidth; ++x)
+					if ((*textMask)[static_cast<size_t>(y) *
+						result.maskWidth + x])
+						(*textReferenceLuma)[static_cast<size_t>(y) *
+							result.maskWidth + x] =
+							frame.luma[static_cast<size_t>(
+								result.maskTop + y) * width +
+								result.maskLeft + x];
+			}
+		}
+		const size_t maskPixels = static_cast<size_t>(std::count(
+			textMask->begin(), textMask->end(), static_cast<uint8_t>(1)));
+		if (maskPixels < 12)
+			return result;
+		result.textMask = std::move(textMask);
+		result.textReferenceLuma = std::move(textReferenceLuma);
+	}
+	result.confidence = static_cast<uint16_t>(
+		std::max(100, std::min(1000, tracker.confirmedScore)));
+	result.sourceAtTop = tracker.trackedAtTop;
+	result.ocrBased = tracker.trackedFromOcr;
+	result.modelBased = tracker.trackedFromModel;
+	result.active = rectArea(result.source) > 0 &&
+		result.source.right > result.source.left &&
+		result.source.bottom > result.source.top &&
+		result.maskWidth > 0 && result.maskHeight > 0 &&
+		result.textMask && result.textReferenceLuma;
+	return result;
+}
+
+
+bool CBufferedLiveSourceVideoOutputPin::CompositeTrackedSubtitle(
+	uint16_t* yPlane,
+	uint16_t* uvPlane,
+	int width,
+	int height,
+	uint16_t blackCode,
+	const SubtitleAnalysisResult& result)
+{
+	static thread_local uint64_t rejectedFrames = 0;
+	auto clearCachedRectangle = [&](int left, int top, int right, int bottom,
+		uint16_t fillY) {
+		left = std::max(0, std::min(width, left)) & ~1;
+		right = std::max(left, std::min(width, right)) & ~1;
+		top = std::max(0, std::min(height, top)) & ~1;
+		bottom = std::max(top, std::min(height, bottom)) & ~1;
+		const uint16_t neutralUV = static_cast<uint16_t>(512u << 6);
+		for (int y = top; y < bottom; ++y)
+			std::fill_n(yPlane +
+				static_cast<size_t>(y) * width + left,
+				right - left, fillY);
+		for (int y = top / 2; y < bottom / 2; ++y)
+			for (int x = left; x < right; x += 2)
+			{
+				const size_t uv =
+					static_cast<size_t>(y) * width + x;
+				uvPlane[uv] = neutralUV;
+				uvPlane[uv + 1] = neutralUV;
+			}
+		};
+	auto renderCachedSubtitle = [&]() {
+		const uint64_t signatureGeneration =
+			m_subtitleSignatureGeneration.load(std::memory_order_acquire);
+		const size_t cachedWords =
+			static_cast<size_t>(m_subtitleCachedSourceWidth) *
+			m_subtitleCachedSourceHeight;
+		if (!result.active || result.confidence == 0 ||
+			result.source.right <= result.source.left ||
+			result.source.bottom <= result.source.top ||
+			m_subtitleTemporalSampleCount < 2 ||
+			m_subtitleCachedGlyphCount == 0 ||
+			m_subtitleCachedSignatureGeneration != signatureGeneration ||
+			m_subtitleCachedFrameWidth != width ||
+			m_subtitleCachedFrameHeight != height ||
+			m_subtitleCachedSourceWidth <= 0 ||
+			m_subtitleCachedSourceHeight <= 0 ||
+			m_subtitleCachedGlyphMask.size() != cachedWords ||
+			m_subtitleCachedGlyphY.size() != cachedWords)
+			return false;
+
+		const uint16_t blackY = static_cast<uint16_t>(
+			std::min<int>(1023, blackCode) << 6);
+		if (result.sourceAtTop)
+			clearCachedRectangle(0, 0, width,
+				result.pictureTop, blackY);
+		else
+			clearCachedRectangle(0, result.pictureBottom,
+				width, height, blackY);
+		clearCachedRectangle(
+			m_subtitleCachedSourceClearLeft,
+			m_subtitleCachedSourceClearTop,
+			m_subtitleCachedSourceClearRight,
+			m_subtitleCachedSourceClearBottom,
+			blackY);
+		clearCachedRectangle(
+			m_subtitleCachedBackgroundLeft,
+			m_subtitleCachedBackgroundTop,
+			m_subtitleCachedBackgroundRight,
+			m_subtitleCachedBackgroundBottom,
+			m_subtitleCachedPanelY);
+		for (int y = 0; y < m_subtitleCachedSourceHeight; ++y)
+			for (int x = 0; x < m_subtitleCachedSourceWidth; ++x)
+			{
+				const size_t index =
+					static_cast<size_t>(y) *
+						m_subtitleCachedSourceWidth + x;
+				if (!m_subtitleCachedGlyphMask[index])
+					continue;
+				const int destinationX =
+					m_subtitleCachedSourceLeft + x;
+				const int destinationY =
+					m_subtitleCachedTargetTop + y;
+				if (destinationX >= 0 && destinationX < width &&
+					destinationY >= 0 && destinationY < height)
+					yPlane[static_cast<size_t>(destinationY) *
+						width + destinationX] =
+						m_subtitleCachedGlyphY[index];
+			}
+		return true;
+		};
+	auto rejectCurrentFrame = [&](const char* reason) {
+		++rejectedFrames;
+		const bool usedCache = renderCachedSubtitle();
+		if (rejectedFrames <= 5 || rejectedFrames % 120 == 0)
+			DebugLog::Log(
+				"SUBTITLE LIVE DETECTOR: rejected frame (%s%s), count=%llu",
+				reason, usedCache ? "; cached glyphs retained" : "",
+				rejectedFrames);
+		return usedCache;
+		};
+	if (!yPlane || !uvPlane || !result.barStable || !result.active ||
+		result.confidence == 0 ||
+		result.source.right <= result.source.left ||
+		result.source.bottom <= result.source.top ||
+		result.pictureTop < 0 ||
+		result.pictureBottom <= 0 || result.pictureBottom > height)
+		return rejectCurrentFrame("invalid-state");
+
+	// OCR remains useful for classification, but it is deliberately not the
+	// frame-by-frame compositor gate. Search a fixed central band around the
+	// stable picture edge in the current P010 frame so a new caption can move
+	// on its first frame and OCR latency cannot make native/moved text flash.
+	const bool sourceAtTop =
+		result.active && result.sourceAtTop && result.pictureTop > 0;
+	int sourceLeft = (width / 12) & ~1;
+	int sourceRight = (width - width / 12) & ~1;
+	// Keep the temporal crop fixed while a caption is active. The former crop
+	// expanded and contracted with each asynchronous model result, constantly
+	// invalidating the cache and moving copied pixels. One fifth of the frame
+	// covers three subtitle lines while remaining a small processing region.
+	int sourceTop = sourceAtTop ?
+		std::max(0, result.pictureTop - height / 10) :
+		std::max(0, result.pictureBottom - height / 5);
+	int sourceBottom = sourceAtTop ?
+		std::min(height, result.pictureTop + height / 5) :
+		std::min(height, result.pictureBottom + height / 10);
+	sourceLeft &= ~1;
+	sourceRight &= ~1;
+	sourceTop &= ~1;
+	sourceBottom &= ~1;
+	if (sourceRight <= sourceLeft || sourceBottom <= sourceTop)
+		return rejectCurrentFrame("invalid-roi");
+
+	const int sourceWidth = sourceRight - sourceLeft;
+	const int sourceHeight = sourceBottom - sourceTop;
+	const int activePictureHeight =
+		std::max(height / 3, result.pictureBottom - result.pictureTop);
+	const int lift = std::max(4, activePictureHeight / 20) & ~1;
+	const int backgroundPaddingX = std::max(8, width / 160) & ~1;
+	const int backgroundPaddingY = std::max(4, height / 270) & ~1;
+
+	const size_t yWords =
+		static_cast<size_t>(sourceWidth) * sourceHeight;
+	const size_t uvWords =
+		static_cast<size_t>(sourceWidth) * (sourceHeight / 2);
+	m_subtitleScratchY.resize(yWords);
+	m_subtitleScratchUV.resize(uvWords);
+	m_subtitleGlyphMask.resize(yWords);
+	m_subtitleGlyphCandidateMask.resize(yWords);
+	m_subtitleGlyphGrowthMask.resize(yWords);
+
+	const bool hasOcrTextMask =
+		result.active && (result.ocrBased || result.modelBased) &&
+		result.analysisScale > 0 &&
+		result.maskWidth > 0 && result.maskHeight > 0 &&
+		result.textMask &&
+		result.textReferenceLuma &&
+		result.textMask->size() ==
+			static_cast<size_t>(result.maskWidth) * result.maskHeight &&
+		result.textReferenceLuma->size() == result.textMask->size();
+	auto ocrReferenceLumaAt = [&](int frameX, int frameY) {
+		if (!hasOcrTextMask)
+			return static_cast<uint16_t>(0);
+		const int maskX =
+			frameX / result.analysisScale - result.maskLeft;
+		const int maskY =
+			frameY / result.analysisScale - result.maskTop;
+		// The analyzer samples one pixel per scale-sized cell. A one-cell
+		// dilation restores full-resolution stroke edges and antialiasing
+		// without admitting the surrounding picture or translucent box.
+		uint16_t referenceLuma = 0;
+		for (int dy = -1; dy <= 1; ++dy)
+			for (int dx = -1; dx <= 1; ++dx)
+			{
+				const int x = maskX + dx;
+				const int y = maskY + dy;
+				if (x < 0 || x >= result.maskWidth ||
+					y < 0 || y >= result.maskHeight)
+					continue;
+				const size_t index = static_cast<size_t>(y) *
+					result.maskWidth + x;
+				if ((*result.textMask)[index])
+					referenceLuma = std::max(referenceLuma,
+						(*result.textReferenceLuma)[index]);
+			}
+		return referenceLuma;
+		};
+
+	for (int y = 0; y < sourceHeight; ++y)
+		std::copy_n(yPlane +
+			static_cast<size_t>(sourceTop + y) * width + sourceLeft,
+			sourceWidth,
+			m_subtitleScratchY.data() + static_cast<size_t>(y) * sourceWidth);
+	for (int y = 0; y < sourceHeight / 2; ++y)
+		std::copy_n(uvPlane +
+			static_cast<size_t>(sourceTop / 2 + y) * width + sourceLeft,
+			sourceWidth,
+			m_subtitleScratchUV.data() + static_cast<size_t>(y) * sourceWidth);
+
+	// Learn foreground directly from non-black pixels physically inside the
+	// bar. This is alphabet-independent: accents, CJK glyphs, Arabic text,
+	// musical notes, and other caption symbols are treated as image shapes.
+	std::array<uint32_t, 1024> histogram{};
+	size_t histogramWords = 0;
+	for (int y = 0; y < sourceHeight; ++y)
+	{
+		const int frameY = sourceTop + y;
+		const bool inBar = sourceAtTop ?
+			frameY < result.pictureTop :
+			frameY >= result.pictureBottom;
+		if (!inBar)
+			continue;
+		for (int x = 0; x < sourceWidth; ++x)
+		{
+			const size_t chromaIndex =
+				static_cast<size_t>(y / 2) * sourceWidth + (x & ~1);
+			const int chromaU = static_cast<int>(
+				m_subtitleScratchUV[chromaIndex] >> 6);
+			const int chromaV = static_cast<int>(
+				m_subtitleScratchUV[chromaIndex + 1] >> 6);
+			if (std::abs(chromaU - 512) > 112 ||
+				std::abs(chromaV - 512) > 112)
+				continue;
+			const uint16_t value = static_cast<uint16_t>(
+				m_subtitleScratchY[
+					static_cast<size_t>(y) * sourceWidth + x] >> 6);
+			if (value <= blackCode + 12)
+				continue;
+			++histogram[std::min<size_t>(1023, value)];
+			++histogramWords;
+		}
+	}
+	if (histogramWords < 16 && hasOcrTextMask && result.active)
+	{
+		// Netflix-style captions can straddle the picture edge with only a
+		// handful of antialiased pixels physically inside the black bar. Once
+		// the model has established a boundary-crossing subtitle block, learn
+		// its foreground from the confirmed mask across the whole block rather
+		// than requiring an arbitrary number of pixels below the boundary.
+		for (int y = 0; y < sourceHeight; ++y)
+			for (int x = 0; x < sourceWidth; ++x)
+			{
+				const int frameX = sourceLeft + x;
+				const int frameY = sourceTop + y;
+				const uint16_t reference =
+					ocrReferenceLumaAt(frameX, frameY);
+				if (reference <= blackCode + 48)
+					continue;
+				const size_t chromaIndex =
+					static_cast<size_t>(y / 2) * sourceWidth + (x & ~1);
+				const int chromaU = static_cast<int>(
+					m_subtitleScratchUV[chromaIndex] >> 6);
+				const int chromaV = static_cast<int>(
+					m_subtitleScratchUV[chromaIndex + 1] >> 6);
+				if (std::abs(chromaU - 512) > 112 ||
+					std::abs(chromaV - 512) > 112)
+					continue;
+				const uint16_t value = static_cast<uint16_t>(
+					m_subtitleScratchY[
+						static_cast<size_t>(y) * sourceWidth + x] >> 6);
+				if (value <= blackCode + 20)
+					continue;
+				++histogram[std::min<size_t>(1023, value)];
+				++histogramWords;
+			}
+	}
+	if (histogramWords < 8)
+		return rejectCurrentFrame("no-bar-foreground");
+
+	auto percentile = [&](uint32_t numerator, uint32_t denominator) {
+		const uint64_t target =
+			std::max<uint64_t>(1,
+				(static_cast<uint64_t>(histogramWords) * numerator) /
+					denominator);
+		uint64_t accumulated = 0;
+		for (size_t value = 0; value < histogram.size(); ++value)
+		{
+			accumulated += histogram[value];
+			if (accumulated >= target)
+				return static_cast<uint16_t>(value);
+		}
+		return static_cast<uint16_t>(1023);
+		};
+	const uint16_t high = percentile(19, 20);
+	if (high <= blackCode + 28)
+		return rejectCurrentFrame("insufficient-contrast");
+	const uint16_t hardThreshold = static_cast<uint16_t>(
+		std::min<int>(high, std::max<int>(
+			static_cast<int>(blackCode) + 40,
+			static_cast<int>(percentile(3, 4)))));
+	const uint16_t softThreshold = static_cast<uint16_t>(
+		std::min<int>(1023, blackCode + 12));
+
+	size_t hardSeedWords = 0;
+	for (int y = 0; y < sourceHeight; ++y)
+		for (int x = 0; x < sourceWidth; ++x)
+		{
+			const size_t index = static_cast<size_t>(y) * sourceWidth + x;
+			const uint16_t value =
+				static_cast<uint16_t>(m_subtitleScratchY[index] >> 6);
+			const size_t chromaIndex =
+				static_cast<size_t>(y / 2) * sourceWidth + (x & ~1);
+			const int chromaU = static_cast<int>(
+				m_subtitleScratchUV[chromaIndex] >> 6);
+			const int chromaV = static_cast<int>(
+				m_subtitleScratchUV[chromaIndex + 1] >> 6);
+			const int frameX = sourceLeft + x;
+			const int frameY = sourceTop + y;
+			const uint16_t ocrReference = hasOcrTextMask ?
+				ocrReferenceLumaAt(frameX, frameY) : 0;
+			const bool confirmedStrong =
+				hasOcrTextMask &&
+				ocrReference > blackCode + 160 &&
+				std::abs(chromaU - 512) <= 160 &&
+				std::abs(chromaV - 512) <= 160 &&
+				value >= std::max<int>(
+					std::max<int>(
+						static_cast<int>(blackCode) + 96,
+						(static_cast<int>(hardThreshold) * 85 + 99) / 100),
+					(static_cast<int>(ocrReference) * 60 + 99) / 100);
+			const bool confirmedSoft =
+				hasOcrTextMask &&
+				ocrReference > blackCode + 128 &&
+				std::abs(chromaU - 512) <= 192 &&
+				std::abs(chromaV - 512) <= 192 &&
+				value >= std::max<int>(
+					std::max<int>(
+						static_cast<int>(blackCode) + 48,
+						(static_cast<int>(hardThreshold) * 35 + 99) / 100),
+					(static_cast<int>(ocrReference) * 35 + 99) / 100);
+
+			// A confirmed line crossing the lower bar is strong evidence that a
+			// nearby centered line immediately above is part of the same caption.
+			// Detect only bright neutral cores in that narrow companion zone.
+			const int companionDistance = std::max(
+				height / 10,
+				2 * std::max(1,
+					result.source.bottom - result.source.top));
+			const bool inCompanionZone = hasOcrTextMask &&
+				(sourceAtTop ?
+					(frameY >= result.source.bottom &&
+						frameY < result.source.bottom + companionDistance) :
+					(frameY < result.source.top &&
+						frameY >= result.source.top - companionDistance)) &&
+				frameX >= std::max(0, result.source.left - width / 8) &&
+				frameX < std::min(width, result.source.right + width / 8);
+			const int companionStrongThreshold = std::max<int>(
+				static_cast<int>(blackCode) + 160,
+				(static_cast<int>(hardThreshold) * 85 + 99) / 100);
+			const bool companionStrong =
+				inCompanionZone &&
+				std::abs(chromaU - 512) <= 112 &&
+				std::abs(chromaV - 512) <= 112 &&
+				value >= companionStrongThreshold;
+			const bool companionSoft =
+				inCompanionZone &&
+				std::abs(chromaU - 512) <= 144 &&
+				std::abs(chromaV - 512) <= 144 &&
+				value >= std::max<int>(
+					static_cast<int>(blackCode) + 80,
+					companionStrongThreshold * 45 / 100);
+
+			const bool conservativeLiveCandidate =
+				!hasOcrTextMask &&
+				std::abs(chromaU - 512) <= 112 &&
+				std::abs(chromaV - 512) <= 112 &&
+				value >= softThreshold;
+			const bool strongCandidate = hasOcrTextMask ?
+				(confirmedStrong || companionStrong) :
+				conservativeLiveCandidate;
+			const bool softCandidate = hasOcrTextMask ?
+				(confirmedSoft || companionSoft) :
+				conservativeLiveCandidate;
+			m_subtitleGlyphCandidateMask[index] =
+				softCandidate ? 1 : 0;
+			m_subtitleGlyphMask[index] = strongCandidate ? 1 : 0;
+			if (strongCandidate)
+				++hardSeedWords;
+		}
+
+	if (hardSeedWords < 16)
+		return rejectCurrentFrame("no-strong-glyph-seeds");
+
+	// Recover antialiased edges only when connected to a confirmed bright core.
+	// This preserves smooth glyphs without copying isolated source-video pixels
+	// over the already opaque destination panel.
+	if (hasOcrTextMask)
+	{
+		for (int iteration = 0; iteration < 2; ++iteration)
+		{
+			m_subtitleGlyphGrowthMask = m_subtitleGlyphMask;
+			for (int y = 1; y + 1 < sourceHeight; ++y)
+				for (int x = 1; x + 1 < sourceWidth; ++x)
+				{
+					const size_t index =
+						static_cast<size_t>(y) * sourceWidth + x;
+					if (!m_subtitleGlyphCandidateMask[index] ||
+						m_subtitleGlyphMask[index])
+						continue;
+					bool connected = false;
+					for (int dy = -1; dy <= 1 && !connected; ++dy)
+						for (int dx = -1; dx <= 1; ++dx)
+							if ((dx != 0 || dy != 0) &&
+								m_subtitleGlyphMask[
+									static_cast<size_t>(y + dy) *
+										sourceWidth + x + dx])
+							{
+								connected = true;
+								break;
+							}
+					if (connected)
+						m_subtitleGlyphGrowthMask[index] = 1;
+				}
+			m_subtitleGlyphMask.swap(m_subtitleGlyphGrowthMask);
+		}
+	}
+
+	// Remove connected shapes that cannot plausibly be glyphs. Bright roof
+	// lines, UI borders and picture edges can be locally neutral and can fall
+	// inside a text model's coarse region; copying them caused the visible
+	// background bleed. Real caption glyphs remain compact even when italic,
+	// accented, CJK, or musical-note characters are used.
+	std::fill(m_subtitleGlyphGrowthMask.begin(),
+		m_subtitleGlyphGrowthMask.end(), static_cast<uint8_t>(0));
+	m_subtitleGlyphFlood.clear();
+	m_subtitleGlyphFlood.reserve(
+		std::min<size_t>(yWords, static_cast<size_t>(8192)));
+	for (int startY = 0; startY < sourceHeight; ++startY)
+		for (int startX = 0; startX < sourceWidth; ++startX)
+		{
+			const int start = startY * sourceWidth + startX;
+			if (!m_subtitleGlyphMask[start] ||
+				m_subtitleGlyphGrowthMask[start])
+				continue;
+			m_subtitleGlyphFlood.clear();
+			m_subtitleGlyphFlood.push_back(start);
+			m_subtitleGlyphGrowthMask[start] = 1;
+			int left = startX;
+			int right = startX + 1;
+			int top = startY;
+			int bottom = startY + 1;
+			for (size_t index = 0;
+				index < m_subtitleGlyphFlood.size(); ++index)
+			{
+				const int position = m_subtitleGlyphFlood[index];
+				const int y = position / sourceWidth;
+				const int x = position - y * sourceWidth;
+				left = std::min(left, x);
+				right = std::max(right, x + 1);
+				top = std::min(top, y);
+				bottom = std::max(bottom, y + 1);
+				for (int dy = -1; dy <= 1; ++dy)
+					for (int dx = -1; dx <= 1; ++dx)
+					{
+						if (dx == 0 && dy == 0)
+							continue;
+						const int nextX = x + dx;
+						const int nextY = y + dy;
+						if (nextX < 0 || nextX >= sourceWidth ||
+							nextY < 0 || nextY >= sourceHeight)
+							continue;
+						const int next = nextY * sourceWidth + nextX;
+						if (m_subtitleGlyphMask[next] &&
+							!m_subtitleGlyphGrowthMask[next])
+						{
+							m_subtitleGlyphGrowthMask[next] = 1;
+							m_subtitleGlyphFlood.push_back(next);
+						}
+					}
+			}
+			const int componentWidth = right - left;
+			const int componentHeight = bottom - top;
+			const size_t componentPixels = m_subtitleGlyphFlood.size();
+			const bool plausible =
+				componentPixels >= 2 &&
+				componentHeight >= std::max(3, height / 720) &&
+				componentHeight <= std::max(80, height / 18) &&
+				componentWidth <= std::max(40, componentHeight * 12) &&
+				componentPixels <= static_cast<size_t>(
+					std::max(1600, height * width / 300));
+			if (!plausible)
+				for (const int position : m_subtitleGlyphFlood)
+					m_subtitleGlyphMask[position] = 0;
+		}
+
+	// Locate actual text-line bands inside the broader analysis rectangle.
+	// Selecting the lowest two bands rejects neutral, stable picture detail
+	// above a one- or two-line subtitle without attempting to blend it away.
+	struct GlyphBand
+	{
+		int top = 0;
+		int bottom = 0;
+		int left = 0;
+		int right = 0;
+		size_t pixels = 0;
+	};
+	std::vector<GlyphBand> glyphBands;
+	GlyphBand currentBand;
+	bool bandActive = false;
+	int bandGap = 0;
+	auto finishGlyphBand = [&]() {
+		if (bandActive &&
+			currentBand.bottom - currentBand.top >= 3 &&
+			currentBand.bottom - currentBand.top <= std::max(24, height / 18))
+			glyphBands.push_back(currentBand);
+		currentBand = {};
+		bandActive = false;
+		bandGap = 0;
+		};
+	for (int y = 0; y < sourceHeight; ++y)
+	{
+		int count = 0;
+		int left = sourceWidth;
+		int right = 0;
+		for (int x = 0; x < sourceWidth; ++x)
+			if (m_subtitleGlyphMask[
+				static_cast<size_t>(y) * sourceWidth + x])
+			{
+				++count;
+				left = std::min(left, x);
+				right = std::max(right, x + 1);
+			}
+		const int span = std::max(0, right - left);
+		const bool textRow =
+			count >= std::max(4, sourceWidth / 160) &&
+			span >= std::max(12, sourceWidth / 24) &&
+			span <= sourceWidth * 9 / 10 &&
+			count * 24 >= span;
+		if (textRow)
+		{
+			if (!bandActive)
+			{
+				currentBand = { y, y + 1, left, right,
+					static_cast<size_t>(count) };
+				bandActive = true;
+			}
+			else
+			{
+				currentBand.bottom = y + 1;
+				currentBand.left = std::min(currentBand.left, left);
+				currentBand.right = std::max(currentBand.right, right);
+				currentBand.pixels += count;
+			}
+			bandGap = 0;
+		}
+		else if (bandActive && ++bandGap > 2)
+			finishGlyphBand();
+	}
+	finishGlyphBand();
+	if (glyphBands.empty())
+		return rejectCurrentFrame("no-text-line-band");
+
+	int selectedTop = 0;
+	int selectedBottom = 0;
+	int selectedLeft = sourceWidth;
+	int selectedRight = 0;
+	if (sourceAtTop)
+	{
+		const GlyphBand& highestBand = glyphBands.front();
+		selectedTop = highestBand.top;
+		selectedBottom = highestBand.bottom;
+		selectedLeft = highestBand.left;
+		selectedRight = highestBand.right;
+		if (glyphBands.size() >= 2)
+		{
+			const GlyphBand& followingBand = glyphBands[1];
+			const int gap = followingBand.top - highestBand.bottom;
+			const int maximumLineGap =
+				std::max(height / 40,
+					2 * std::max(highestBand.bottom - highestBand.top,
+						followingBand.bottom - followingBand.top));
+			const int centerDifference = std::abs(
+				(followingBand.left + followingBand.right) -
+				(highestBand.left + highestBand.right)) / 2;
+			if (gap >= 0 && gap <= maximumLineGap &&
+				centerDifference <= width / 5)
+			{
+				selectedBottom = followingBand.bottom;
+				selectedLeft = std::min(selectedLeft, followingBand.left);
+				selectedRight = std::max(selectedRight, followingBand.right);
+			}
+		}
+	}
+	else
+	{
+		const GlyphBand& lowestBand = glyphBands.back();
+		selectedTop = lowestBand.top;
+		selectedBottom = lowestBand.bottom;
+		selectedLeft = lowestBand.left;
+		selectedRight = lowestBand.right;
+		if (glyphBands.size() >= 2)
+		{
+			const GlyphBand& precedingBand =
+				glyphBands[glyphBands.size() - 2];
+			const int gap = lowestBand.top - precedingBand.bottom;
+			const int maximumLineGap =
+				std::max(height / 40,
+					2 * std::max(lowestBand.bottom - lowestBand.top,
+						precedingBand.bottom - precedingBand.top));
+			const int centerDifference = std::abs(
+				(precedingBand.left + precedingBand.right) -
+				(lowestBand.left + lowestBand.right)) / 2;
+			if (gap >= 0 && gap <= maximumLineGap &&
+				centerDifference <= width / 5)
+			{
+				selectedTop = precedingBand.top;
+				selectedLeft = std::min(selectedLeft, precedingBand.left);
+				selectedRight = std::max(selectedRight, precedingBand.right);
+			}
+		}
+	}
+
+	// At least one selected text band must physically enter the black bar.
+	// This is the defining condition for repositioning and rejects bright
+	// picture detail, menus, and ordinary on-screen graphics above the edge.
+	const int boundaryInSource = (sourceAtTop ?
+		result.pictureTop : result.pictureBottom) - sourceTop;
+	const bool pixelsCrossBoundary = sourceAtTop ?
+		selectedTop < boundaryInSource :
+		selectedBottom > boundaryInSource;
+	const bool ocrConfirmsBoundary =
+		result.active && (sourceAtTop ?
+			result.source.top < result.pictureTop :
+			result.source.bottom > result.pictureBottom);
+	if (!pixelsCrossBoundary && !ocrConfirmsBoundary)
+		return rejectCurrentFrame("line-does-not-cross-bar");
+
+	// Row-density detection intentionally ignores the faint first/last glyph
+	// rows. Restore a small vertical safety margin before extraction so caps,
+	// accents, descenders, and antialiasing cannot be clipped.
+	const int verticalGlyphPadding = std::max(4, height / 180);
+	selectedTop = std::max(0, selectedTop - verticalGlyphPadding);
+	selectedBottom =
+		std::min(sourceHeight, selectedBottom + verticalGlyphPadding);
+
+	// Find the central horizontal text cluster using a column projection.
+	// This excludes isolated picture pixels that previously inflated the
+	// grow-only panel almost to full width.
+	struct HorizontalTextCluster
+	{
+		int left = 0;
+		int right = 0;
+	};
+	std::vector<HorizontalTextCluster> horizontalClusters;
+	const int selectedHeight = selectedBottom - selectedTop;
+	const int minimumColumnPixels = std::max(2, selectedHeight / 16);
+	const int maximumCharacterGap = std::max(12, selectedHeight);
+	int clusterLeft = -1;
+	int lastActiveColumn = -1;
+	for (int x = 0; x < sourceWidth; ++x)
+	{
+		int pixels = 0;
+		for (int y = selectedTop; y < selectedBottom; ++y)
+			pixels += m_subtitleGlyphMask[
+				static_cast<size_t>(y) * sourceWidth + x] != 0;
+		if (pixels < minimumColumnPixels)
+			continue;
+		if (clusterLeft < 0)
+			clusterLeft = x;
+		else if (lastActiveColumn >= 0 &&
+			x - lastActiveColumn > maximumCharacterGap)
+		{
+			horizontalClusters.push_back(
+				{ clusterLeft, lastActiveColumn + 1 });
+			clusterLeft = x;
+		}
+		lastActiveColumn = x;
+	}
+	if (clusterLeft >= 0)
+		horizontalClusters.push_back(
+			{ clusterLeft, lastActiveColumn + 1 });
+	if (horizontalClusters.empty())
+		return rejectCurrentFrame("no-horizontal-text-cluster");
+
+	const int sourceCenter = sourceWidth / 2;
+	const HorizontalTextCluster* selectedCluster = nullptr;
+	int bestClusterScore = std::numeric_limits<int>::min();
+	for (const HorizontalTextCluster& cluster : horizontalClusters)
+	{
+		const int clusterWidth = cluster.right - cluster.left;
+		if (clusterWidth < std::max(12, sourceWidth / 80))
+			continue;
+		const int clusterCenter =
+			cluster.left + clusterWidth / 2;
+		const int score =
+			clusterWidth - std::abs(clusterCenter - sourceCenter) / 2;
+		if (score > bestClusterScore)
+		{
+			bestClusterScore = score;
+			selectedCluster = &cluster;
+		}
+	}
+	if (!selectedCluster)
+		return rejectCurrentFrame("no-central-text-cluster");
+	selectedLeft = selectedCluster->left;
+	selectedRight = selectedCluster->right;
+
+	// Once OCR has acquired a subtitle track, use its word-union rectangle as
+	// a padded extraction guard. OCR is not used to redraw anything; it only
+	// prevents neutral picture edges at the letterbox boundary from entering
+	// the live pixel mask. Taking the full padded OCR height also restores cap
+	// and accent rows that a row-density band can otherwise trim.
+	const bool hasOcrGuard =
+		result.active &&
+		result.source.right > result.source.left &&
+		result.source.bottom > result.source.top;
+	if (hasOcrGuard)
+	{
+		const int ocrHeight = result.source.bottom - result.source.top;
+		const int ocrPaddingX =
+			std::max(width / 200, ocrHeight / 2);
+		const int ocrPaddingY =
+			std::max(height / 360, ocrHeight / 4);
+		const int ocrLeft = std::max(0,
+			result.source.left - sourceLeft - ocrPaddingX);
+		const int ocrRight = std::min(sourceWidth,
+			result.source.right - sourceLeft + ocrPaddingX);
+		const int ocrTop = std::max(0,
+			result.source.top - sourceTop - ocrPaddingY);
+		const int ocrBottom = std::min(sourceHeight,
+			result.source.bottom - sourceTop + ocrPaddingY);
+		// Preserve a strongly detected companion line outside OCR's current
+		// word union. This is what keeps Netflix's upper line stable when only
+		// the lower boundary-crossing line is recognized on a given pass.
+		selectedLeft = std::min(selectedLeft, ocrLeft);
+		selectedRight = std::max(selectedRight, ocrRight);
+		selectedTop = std::min(selectedTop, ocrTop);
+		selectedBottom = std::max(selectedBottom, ocrBottom);
+		if (selectedRight <= selectedLeft ||
+			selectedBottom <= selectedTop)
+			return rejectCurrentFrame("invalid-ocr-guard");
+	}
+
+	size_t glyphPixels = 0;
+	int glyphLeft = sourceWidth;
+	int glyphTop = sourceHeight;
+	int glyphRight = 0;
+	int glyphBottom = 0;
+	const int selectedHorizontalPadding = std::max(4, width / 200);
+	for (int y = 0; y < sourceHeight; ++y)
+		for (int x = 0; x < sourceWidth; ++x)
+		{
+			const size_t index = static_cast<size_t>(y) * sourceWidth + x;
+			const bool insideSelectedLines =
+				y >= selectedTop && y < selectedBottom &&
+				x >= std::max(0, selectedLeft - selectedHorizontalPadding) &&
+				x < std::min(sourceWidth,
+					selectedRight + selectedHorizontalPadding);
+			// Keep only strong cores plus connected antialiased pixels. Detached
+			// punctuation and music notes have their own bright cores, while
+			// isolated source-video pixels remain excluded.
+			m_subtitleGlyphMask[index] =
+				insideSelectedLines && m_subtitleGlyphMask[index] ? 1 : 0;
+			if (!m_subtitleGlyphMask[index])
+				continue;
+			++glyphPixels;
+			glyphLeft = std::min(glyphLeft, x);
+			glyphTop = std::min(glyphTop, y);
+			glyphRight = std::max(glyphRight, x + 1);
+			glyphBottom = std::max(glyphBottom, y + 1);
+		}
+
+	if (glyphPixels < std::max<size_t>(24, yWords / 2000) ||
+		glyphPixels > yWords * 3 / 5 ||
+		glyphRight <= glyphLeft || glyphBottom <= glyphTop)
+		return rejectCurrentFrame("implausible-glyph-area");
+
+	const int absoluteGlyphLeft = sourceLeft + glyphLeft;
+	const int absoluteGlyphRight = sourceLeft + glyphRight;
+	const int glyphCenter = absoluteGlyphLeft +
+		(absoluteGlyphRight - absoluteGlyphLeft) / 2;
+	if (glyphCenter < width * 3 / 10 || glyphCenter > width * 7 / 10 ||
+		absoluteGlyphRight - absoluteGlyphLeft > width * 9 / 10)
+		return rejectCurrentFrame("off-center-or-too-wide");
+
+	int targetTop = sourceAtTop ?
+		((result.pictureTop + lift - glyphTop) & ~1) :
+		((result.pictureBottom - lift - glyphBottom) & ~1);
+	const uint64_t currentSignatureGeneration =
+		m_subtitleSignatureGeneration.load(std::memory_order_acquire);
+	const bool sameTemporalRegion =
+		m_subtitleCachedSignatureGeneration == currentSignatureGeneration &&
+		m_subtitleCachedFrameWidth == width &&
+		m_subtitleCachedFrameHeight == height &&
+		m_subtitleCachedSourceLeft == sourceLeft &&
+		m_subtitleCachedSourceTop == sourceTop &&
+		m_subtitleCachedSourceWidth == sourceWidth &&
+		m_subtitleCachedSourceHeight == sourceHeight;
+	if (sameTemporalRegion && m_subtitleTemporalSampleCount != 0)
+		targetTop = m_subtitleCachedTargetTop;
+	if (targetTop + glyphTop < result.pictureTop ||
+		targetTop + glyphBottom > result.pictureBottom)
+		return rejectCurrentFrame("invalid-target");
+	// Streaming apps commonly burn a translucent rounded rectangle or shadow
+	// outside OCR's word bounds. Clear a font-height-relative safety margin so
+	// the original overlay cannot remain as a halo after relocation.
+	const int glyphHeight = glyphBottom - glyphTop;
+	const int overlayClearPaddingX =
+		(std::max(backgroundPaddingX, glyphHeight / 2) + 1) & ~1;
+	const int overlayClearPaddingY =
+		(std::max(backgroundPaddingY, glyphHeight / 3) + 1) & ~1;
+	const int sourceClearLeft =
+		(std::max(0, absoluteGlyphLeft - overlayClearPaddingX) & ~1);
+	const int sourceClearRight =
+		(std::min(width,
+			absoluteGlyphRight + overlayClearPaddingX + 1) & ~1);
+	const int sourceClearTop =
+		(std::max(0,
+			sourceTop + glyphTop - overlayClearPaddingY) & ~1);
+	const int sourceClearBottom =
+		(std::min(height,
+			sourceTop + glyphBottom + overlayClearPaddingY + 1) & ~1);
+
+	// The panel is always centered. Retain only its maximum half-width so left
+	// and right padding remain identical and shorter captions cannot make it
+	// breathe. Reset/restart clears the retained width.
+	const int frameCenter = width / 2;
+	const int currentHalfWidth = std::min(width * 9 / 20,
+		std::max(frameCenter - absoluteGlyphLeft,
+			absoluteGlyphRight - frameCenter) + overlayClearPaddingX);
+	int retainedHalfWidth =
+		m_subtitlePanelHalfWidthPixels.load(std::memory_order_acquire);
+	while (result.active && retainedHalfWidth < currentHalfWidth &&
+		!m_subtitlePanelHalfWidthPixels.compare_exchange_weak(
+			retainedHalfWidth, currentHalfWidth,
+			std::memory_order_acq_rel, std::memory_order_acquire))
+	{
+	}
+	const int displayedHalfWidth =
+		std::max(retainedHalfWidth, currentHalfWidth);
+	const int backgroundLeft =
+		(std::max(0, frameCenter - displayedHalfWidth) & ~1);
+	const int backgroundRight =
+		(std::min(width, frameCenter + displayedHalfWidth + 1) & ~1);
+	const int currentPanelHeight = sourceAtTop ? 0 :
+		std::max(0, result.pictureBottom -
+			(targetTop + glyphTop - backgroundPaddingY));
+	int retainedPanelHeight =
+		m_subtitlePanelHeightPixels.load(std::memory_order_acquire);
+	while (!sourceAtTop && result.active &&
+		retainedPanelHeight < currentPanelHeight &&
+		!m_subtitlePanelHeightPixels.compare_exchange_weak(
+			retainedPanelHeight, currentPanelHeight,
+			std::memory_order_acq_rel, std::memory_order_acquire))
+	{
+	}
+	const int displayedPanelHeight =
+		std::max(retainedPanelHeight, currentPanelHeight);
+	const int backgroundTop = sourceAtTop ?
+		(std::max(0, result.pictureTop) & ~1) :
+		(std::max(0,
+			result.pictureBottom - displayedPanelHeight) & ~1);
+	const int backgroundBottom = sourceAtTop ?
+		(std::min(height,
+			targetTop + glyphBottom + backgroundPaddingY + 1) & ~1) :
+		(std::min(height, result.pictureBottom + 1) & ~1);
+
+	const uint16_t blackY = static_cast<uint16_t>(
+		std::min<int>(1023, blackCode) << 6);
+	uint16_t panelCode = std::min<uint16_t>(1023, blackCode);
+	if (m_sceneAwareTimingCorrection.load(std::memory_order_acquire) &&
+		m_subtitlePanelLumaInitialized.load(std::memory_order_acquire))
+	{
+		const uint16_t sceneAverage =
+			m_subtitleSceneAverageLumaCode.load(std::memory_order_acquire);
+		const int aboveBlack = std::max(0,
+			static_cast<int>(sceneAverage) - static_cast<int>(blackCode));
+		// Preserve an opaque black/gray panel rather than matching APL
+		// literally. Twenty percent of the scene-to-black distance gives the
+		// Envy-style adaptation without turning the panel into a bright block.
+		panelCode = static_cast<uint16_t>(std::min<int>(
+			std::min<int>(1023, static_cast<int>(blackCode) + 192),
+			static_cast<int>(blackCode) + aboveBlack / 5));
+	}
+	const uint16_t panelY = static_cast<uint16_t>(panelCode << 6);
+	const uint16_t neutralUV = static_cast<uint16_t>(512u << 6);
+	auto clearRectangle = [&](int left, int top, int right, int bottom,
+		uint16_t fillY) {
+		left = std::max(0, std::min(width, left)) & ~1;
+		right = std::max(left, std::min(width, right)) & ~1;
+		top = std::max(0, std::min(height, top)) & ~1;
+		bottom = std::max(top, std::min(height, bottom)) & ~1;
+		for (int y = top; y < bottom; ++y)
+			std::fill_n(yPlane +
+				static_cast<size_t>(y) * width + left,
+				right - left, fillY);
+		for (int y = top / 2; y < bottom / 2; ++y)
+			for (int x = left; x < right; x += 2)
+			{
+				const size_t uv =
+					static_cast<size_t>(y) * width + x;
+				uvPlane[uv] = neutralUV;
+				uvPlane[uv + 1] = neutralUV;
+			}
+		};
+
+	// Build a coherent glyph snapshot from recurring pixels, not a permanent
+	// union. A subtitle is stationary across adjacent frames while picture
+	// detail moves; accepting a two-of-three temporal vote keeps glyph strokes
+	// and rejects the background fragments visible in the recorded test.
+	const uint64_t signatureGeneration = currentSignatureGeneration;
+	const bool sameCachedGeometry =
+		m_subtitleCachedSignatureGeneration == signatureGeneration &&
+		m_subtitleCachedFrameWidth == width &&
+		m_subtitleCachedFrameHeight == height &&
+		m_subtitleCachedSourceLeft == sourceLeft &&
+		m_subtitleCachedSourceTop == sourceTop &&
+		m_subtitleCachedSourceWidth == sourceWidth &&
+		m_subtitleCachedSourceHeight == sourceHeight &&
+		m_subtitleCachedGlyphMask.size() == yWords &&
+		m_subtitleCachedGlyphY.size() == yWords &&
+		m_subtitlePreviousGlyphMask.size() == yWords &&
+		m_subtitlePrevious2GlyphMask.size() == yWords;
+	if (!sameCachedGeometry)
+	{
+		m_subtitleCachedGlyphMask.assign(yWords, 0);
+		m_subtitleCachedGlyphY.assign(yWords, 0);
+		m_subtitlePreviousGlyphMask.assign(
+			m_subtitleGlyphMask.begin(), m_subtitleGlyphMask.end());
+		m_subtitlePrevious2GlyphMask.assign(yWords, 0);
+		m_subtitleCachedFrameWidth = width;
+		m_subtitleCachedFrameHeight = height;
+		m_subtitleCachedSourceLeft = sourceLeft;
+		m_subtitleCachedSourceTop = sourceTop;
+		m_subtitleCachedSourceWidth = sourceWidth;
+		m_subtitleCachedSourceHeight = sourceHeight;
+		m_subtitleCachedTargetTop = targetTop;
+		m_subtitleCachedSignatureGeneration = signatureGeneration;
+		m_subtitleCachedGlyphCount = 0;
+		m_subtitleTemporalSampleCount = 1;
+		return rejectCurrentFrame("temporal-warmup");
+	}
+
+	const bool hadStableGlyphs = m_subtitleCachedGlyphCount != 0;
+	if (hadStableGlyphs)
+	{
+		size_t overlappingGlyphs = 0;
+		for (size_t index = 0; index < yWords; ++index)
+			overlappingGlyphs += m_subtitleGlyphMask[index] &&
+				m_subtitleCachedGlyphMask[index];
+		const size_t smallerGlyphSet =
+			std::min(glyphPixels, m_subtitleCachedGlyphCount);
+		if (smallerGlyphSet >= 24 &&
+			overlappingGlyphs * 5 < smallerGlyphSet)
+		{
+			// The fast bar signature can miss a changed line that is mostly
+			// inside the picture. Do not blend two captions together: warm a
+			// fresh temporal state and let the native new caption pass for one
+			// frame while it is confirmed.
+			m_subtitleCachedGlyphMask.assign(yWords, 0);
+			m_subtitleCachedGlyphY.assign(yWords, 0);
+			m_subtitlePreviousGlyphMask.assign(
+				m_subtitleGlyphMask.begin(), m_subtitleGlyphMask.end());
+			m_subtitlePrevious2GlyphMask.assign(yWords, 0);
+			m_subtitleCachedGlyphCount = 0;
+			m_subtitleTemporalSampleCount = 1;
+			m_subtitlePanelHalfWidthPixels.store(
+				0, std::memory_order_release);
+			m_subtitlePanelHeightPixels.store(
+				0, std::memory_order_release);
+			return rejectCurrentFrame("temporal-caption-change");
+		}
+	}
+	size_t stableGlyphCount = 0;
+	for (size_t index = 0; index < yWords; ++index)
+	{
+		const int observations =
+			(m_subtitleGlyphMask[index] ? 1 : 0) +
+			(m_subtitlePreviousGlyphMask[index] ? 1 : 0) +
+			(m_subtitleTemporalSampleCount >= 2 &&
+				m_subtitlePrevious2GlyphMask[index] ? 1 : 0);
+		const bool keepStablePixel =
+			observations >= 2 ||
+			(m_subtitleCachedGlyphMask[index] && observations >= 1);
+		m_subtitleCachedGlyphMask[index] =
+			keepStablePixel ? 1 : 0;
+		if (!keepStablePixel)
+			continue;
+		++stableGlyphCount;
+		if (m_subtitleGlyphMask[index])
+			m_subtitleCachedGlyphY[index] = m_subtitleScratchY[index];
+	}
+	m_subtitlePrevious2GlyphMask = m_subtitlePreviousGlyphMask;
+	m_subtitlePreviousGlyphMask.assign(
+		m_subtitleGlyphMask.begin(), m_subtitleGlyphMask.end());
+	m_subtitleTemporalSampleCount = std::min<uint8_t>(
+		3, static_cast<uint8_t>(m_subtitleTemporalSampleCount + 1));
+	m_subtitleCachedGlyphCount = stableGlyphCount;
+	if (stableGlyphCount == 0)
+		return rejectCurrentFrame("temporal-no-consensus");
+
+	m_subtitleCachedSourceClearLeft =
+		!hadStableGlyphs ? sourceClearLeft :
+			std::min(m_subtitleCachedSourceClearLeft, sourceClearLeft);
+	m_subtitleCachedSourceClearTop =
+		!hadStableGlyphs ? sourceClearTop :
+			std::min(m_subtitleCachedSourceClearTop, sourceClearTop);
+	m_subtitleCachedSourceClearRight =
+		!hadStableGlyphs ? sourceClearRight :
+			std::max(m_subtitleCachedSourceClearRight, sourceClearRight);
+	m_subtitleCachedSourceClearBottom =
+		!hadStableGlyphs ? sourceClearBottom :
+			std::max(m_subtitleCachedSourceClearBottom, sourceClearBottom);
+	m_subtitleCachedBackgroundLeft =
+		!hadStableGlyphs ? backgroundLeft :
+			std::min(m_subtitleCachedBackgroundLeft, backgroundLeft);
+	m_subtitleCachedBackgroundTop =
+		!hadStableGlyphs ? backgroundTop :
+			std::min(m_subtitleCachedBackgroundTop, backgroundTop);
+	m_subtitleCachedBackgroundRight =
+		!hadStableGlyphs ? backgroundRight :
+			std::max(m_subtitleCachedBackgroundRight, backgroundRight);
+	m_subtitleCachedBackgroundBottom =
+		!hadStableGlyphs ? backgroundBottom :
+			std::max(m_subtitleCachedBackgroundBottom, backgroundBottom);
+	m_subtitleCachedPanelY = panelY;
+	m_subtitleCachedSceneEventId =
+		m_subtitleSceneEventId.load(std::memory_order_acquire);
+
+	// Keep this deliberately simple and deterministic: both the old subtitle
+	// area and its new location are completely opaque rectangles. The source
+	// is video black; the destination is scene-latched neutral black/gray when
+	// Scene Detect is enabled, and video black otherwise.
+	// The entire black bar is safe to clear and doing so guarantees that words
+	// outside an imperfect OCR box cannot survive underneath the relocated
+	// caption. The destination is drawn afterward and is always the top layer.
+	if (sourceAtTop)
+		clearRectangle(0, 0, width, result.pictureTop, blackY);
+	else
+		clearRectangle(0, result.pictureBottom, width, height, blackY);
+	clearRectangle(sourceClearLeft, sourceClearTop,
+		sourceClearRight, sourceClearBottom, blackY);
+	clearRectangle(backgroundLeft, backgroundTop,
+		backgroundRight, backgroundBottom, panelY);
+
+	for (int y = 0; y < sourceHeight; ++y)
+		for (int x = 0; x < sourceWidth; ++x)
+		{
+			const size_t source =
+				static_cast<size_t>(y) * sourceWidth + x;
+			if (m_subtitleCachedGlyphMask[source])
+				yPlane[static_cast<size_t>(targetTop + y) * width +
+					sourceLeft + x] = m_subtitleCachedGlyphY[source];
+		}
+	// Destination chroma remains neutral from clearRectangle(). Only glyph
+	// luma is copied, preventing colored picture pixels or chroma fringes from
+	// leaking into the relocated subtitle.
+	return true;
+}
+
+
+bool CBufferedLiveSourceVideoOutputPin::RelocateSubtitleInP010(
+	IMediaSample* sample,
+	uint64_t frameNumber)
+{
+	if (m_subtitleRepositionMode.load(std::memory_order_acquire) ==
+			SubtitleRepositionMode::DISABLED ||
+		!sample ||
+		!IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010) || !m_mediaType.pbFormat)
+		return false;
+
+	LONG width = 0;
+	LONG signedHeight = 0;
+	uint16_t nominalBlackCode = 64;
+	if (IsEqualGUID(m_mediaType.formattype, FORMAT_VideoInfo2) &&
+		m_mediaType.cbFormat >= sizeof(VIDEOINFOHEADER2))
+	{
+		const VIDEOINFOHEADER2* info =
+			reinterpret_cast<const VIDEOINFOHEADER2*>(m_mediaType.pbFormat);
+		width = info->bmiHeader.biWidth;
+		signedHeight = info->bmiHeader.biHeight;
+		const DXVA_ExtendedFormat* colorimetry =
+			reinterpret_cast<const DXVA_ExtendedFormat*>(&info->dwControlFlags);
+		if (colorimetry->NominalRange == DXVA_NominalRange_0_255)
+			nominalBlackCode = 0;
+		else if (colorimetry->NominalRange == DXVA_NominalRange_48_208)
+			nominalBlackCode = 192;
+	}
+	else if (IsEqualGUID(m_mediaType.formattype, FORMAT_VideoInfo) &&
+		m_mediaType.cbFormat >= sizeof(VIDEOINFOHEADER))
+	{
+		const VIDEOINFOHEADER* info =
+			reinterpret_cast<const VIDEOINFOHEADER*>(m_mediaType.pbFormat);
+		width = info->bmiHeader.biWidth;
+		signedHeight = info->bmiHeader.biHeight;
+	}
+	if (width <= 0 || signedHeight == 0)
+		return false;
+
+	const int frameWidth = static_cast<int>(width);
+	const int frameHeight =
+		static_cast<int>(signedHeight > 0 ? signedHeight : -signedHeight);
+	const size_t planeBytes =
+		static_cast<size_t>(frameWidth) * frameHeight * sizeof(uint16_t);
+	if (frameWidth < 320 || frameHeight < 240 ||
+		sample->GetActualDataLength() < static_cast<LONG>(planeBytes * 3 / 2))
+		return false;
+
+	BYTE* bytes = nullptr;
+	if (FAILED(sample->GetPointer(&bytes)) || !bytes)
+		return false;
+	uint16_t* yPlane = reinterpret_cast<uint16_t*>(bytes);
+	uint16_t* uvPlane = reinterpret_cast<uint16_t*>(bytes + planeBytes);
+
+	SubmitSubtitleAnalysis(yPlane, frameWidth, frameHeight,
+		frameNumber, nominalBlackCode);
+
+	SubtitleAnalysisResult result;
+	{
+		std::lock_guard<std::mutex> lock(m_subtitleAnalysisMutex);
+		result = m_subtitleLatestResult;
+	}
+	const uint64_t now = GetTickCount64();
+	if (!result.barStable ||
+		result.generation !=
+			m_subtitleAnalysisGeneration.load(std::memory_order_acquire) ||
+		result.fullWidth != frameWidth || result.fullHeight != frameHeight ||
+		now < result.producedTick || now - result.producedTick > 250)
+		return false;
+
+	if (!CompositeTrackedSubtitle(yPlane, uvPlane, frameWidth, frameHeight,
+		result.blackCode, result))
+		return false;
+
+	const uint64_t relocationCount =
+		m_subtitleRelocationCount.fetch_add(1, std::memory_order_relaxed) + 1;
+	if (relocationCount <= 5 || relocationCount % 120 == 0)
+	{
+		DebugLog::Log(
+			"SUBTITLE REPOSITION: frame=%llu relocation=%llu confidence=%u "
+			"source=(%d,%d)-(%d,%d) edge=%s picture=%d-%d",
+			frameNumber, relocationCount, result.confidence,
+			result.source.left, result.source.top,
+			result.source.right, result.source.bottom,
+			result.sourceAtTop ? "TOP" : "BOTTOM",
+			result.pictureTop, result.pictureBottom);
+	}
+	return true;
 }
 
 

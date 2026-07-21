@@ -15,6 +15,7 @@
 #include <PPMCorrectionLoader.h>
 #include <AutoPpmCalibrator.h>
 #include <IntegerMath.h>
+#include <SubtitleRepositionMode.h>
 
 #include "CLiveSource.h"
 
@@ -91,6 +92,11 @@ public:
 	// unbuffered source behaviour and avoids changing the COM interface.
 	virtual void SetSceneAwareTimingCorrection(bool) {}
 	virtual void SetSceneCorrectionUpstreamSample(bool) {}
+	virtual void SetSubtitleRepositioning(bool) {}
+	virtual void SetSubtitleRepositioningMode(SubtitleRepositionMode mode)
+	{
+		SetSubtitleRepositioning(mode != SubtitleRepositionMode::DISABLED);
+	}
 	virtual void SetSceneTimingRates(double, double) {}
 	virtual void SetSceneTimingReadiness(bool, uint64_t) {}
 	virtual void SetSceneTimingPhase(int64_t, int64_t, int64_t) {}
@@ -124,6 +130,24 @@ public:
 	virtual uint64_t SceneAwareCorrectionRepeatCount() const { return 0; }
 	virtual uint64_t SceneAwareDetectedCount() const { return 0; }
 	virtual uint64_t SceneAwareLateCandidateCount() const { return 0; }
+	virtual bool GetSceneTimingPrediction(double& secondsUntilCorrection,
+		double& secondsUntilPlan, int& action, bool& planned) const
+	{
+		secondsUntilCorrection = 0.0;
+		secondsUntilPlan = 0.0;
+		action = 0;
+		planned = false;
+		return false;
+	}
+	virtual bool GetSceneTimingLastCorrection(int& action,
+		double& secondsFromDeadline, uint64_t& correctionTick) const
+	{
+		action = 0;
+		secondsFromDeadline = 0.0;
+		correctionTick = 0;
+		return false;
+	}
+	virtual bool SceneTimingRatesCompatible() const { return false; }
 
 	// Coarse DirectShow quality feedback from the downstream renderer. This is
 	// advisory only; it is never used as a timestamp or clock source.

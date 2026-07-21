@@ -95,6 +95,7 @@ public:
 	void StartMinimized(bool enabled = true);
 	void SceneDetect(bool enabled = true);
 	void SceneCorrectionUpstreamSample(bool enabled);
+	void SubtitleRepositioning(SubtitleRepositionMode mode);
 	void EnableNewLldvHeuristic(bool enabled = true);
 	void DefaultRendererName(const CString&);
 	void SetQueueSize(const CString&);
@@ -355,6 +356,8 @@ protected:
 	CString m_defaultQueueSize = TEXT("32");
 	bool m_sceneAwareTimingCorrection = false;
 	bool m_sceneCorrectionUpstreamSample = false;
+	SubtitleRepositionMode m_subtitleRepositionMode =
+		SubtitleRepositionMode::DISABLED;
 	VideoConversionOverride m_defaultVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;
 	ColorSpace m_defaultContainerColorSpace = ColorSpace::UNKNOWN;
 	HdrColorspaceOptions m_defaultHDRColorSpaceOption = HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT;

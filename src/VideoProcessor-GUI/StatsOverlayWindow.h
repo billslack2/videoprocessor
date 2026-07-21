@@ -57,6 +57,16 @@ struct StatsData
 	uint64_t sceneDetectCorrectionRepeats = 0;
 	uint64_t sceneDetectDetected = 0;
 	CString sceneDetectMode;
+	bool sceneCorrectionPredictionValid = false;
+	bool sceneTimingRatesCompatible = false;
+	int sceneCorrectionAction = 0; // +1 repeat, -1 drop
+	bool sceneCorrectionPlanned = false;
+	double sceneSecondsUntilCorrection = 0.0;
+	double sceneSecondsUntilPlan = 0.0;
+	bool sceneLastCorrectionValid = false;
+	int sceneLastCorrectionAction = 0; // +1 repeat, -1 drop
+	double sceneLastCorrectionSecondsFromDeadline = 0.0;
+	uint64_t sceneLastCorrectionTick = 0;
 	uint64_t sceneTimingIntervals = 0;
 	double sceneTimingElapsedSeconds = 0.0;
 	bool sceneTimingReady = false;
@@ -164,7 +174,7 @@ private:
 	static const int MARGIN_RIGHT = 500;
 	static const int MARGIN_BOTTOM = 320;    // Move up 20 pixels (was 300)
 	static const int WINDOW_WIDTH = 420;     // Keep width the same
-	static const int WINDOW_HEIGHT = 587;    // Display-rate and Scene Detect timing/statistics rows
+	static const int WINDOW_HEIGHT = 610;    // Display-rate and Scene Detect timing/statistics rows
 	static const int PADDING = 10;
 	static const int LINE_HEIGHT = 23;     // Match font size for better spacing
 

@@ -265,6 +265,7 @@ void ValidateCommandLineConfigKeys(const ConfigFile& config)
 		"scene_detect",
 		"scene",
 		"scene_correction_mode",
+		"subtitle_reposition",
 		"newlldv",
 		"new_lldv",
 		"noui",
@@ -375,6 +376,8 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigStringOption(arguments, config, { "renderer_primaries" }, L"/renderer_primaries");
 	AppendConfigBoolOption(arguments, config, { "scene_detect", "scene" }, L"/scene_detect");
 	AppendConfigStringOption(arguments, config, { "scene_correction_mode" }, L"/scene_correction_mode");
+	AppendConfigStringOption(arguments, config,
+		{ "subtitle_reposition" }, L"/subtitle_reposition");
 	AppendConfigBoolOption(arguments, config, { "newlldv", "new_lldv" }, L"/newlldv");
 	AppendConfigBoolOption(arguments, config, { "noui", "no_ui" }, L"/noui");
 	AppendConfigBoolOption(arguments, config, { "startminimized", "start_minimized" }, L"/startminimized");
@@ -430,6 +433,34 @@ bool TryParseBooleanArgument(const wchar_t* argument, bool& value)
 		return true;
 	}
 
+	return false;
+}
+
+bool TryParseSubtitleRepositionMode(
+	const wchar_t* argument,
+	SubtitleRepositionMode& mode)
+{
+	if (argument == nullptr)
+		return false;
+
+	bool booleanValue = false;
+	if (TryParseBooleanArgument(argument, booleanValue))
+	{
+		mode = booleanValue ?
+			SubtitleRepositionMode::BASIC :
+			SubtitleRepositionMode::DISABLED;
+		return true;
+	}
+	if (_wcsicmp(argument, L"basic") == 0)
+	{
+		mode = SubtitleRepositionMode::BASIC;
+		return true;
+	}
+	if (_wcsicmp(argument, L"advanced") == 0)
+	{
+		mode = SubtitleRepositionMode::ADVANCED;
+		return true;
+	}
 	return false;
 }
 
@@ -536,6 +567,22 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 	for (int index = 1; index < static_cast<int>(arguments.size()); ++index)
 	{
 		const wchar_t* argument = arguments[index];
+		if (IsCommandLineOption(argument, L"/subtitle_reposition"))
+		{
+			if (index + 1 < static_cast<int>(arguments.size()) &&
+				!IsCommandLineSwitch(arguments[index + 1]))
+			{
+				SubtitleRepositionMode ignored =
+					SubtitleRepositionMode::DISABLED;
+				if (!TryParseSubtitleRepositionMode(
+					arguments[index + 1], ignored))
+					throw std::runtime_error(
+						"Invalid /subtitle_reposition: expected "
+						"true, false, basic, or advanced");
+				++index;
+			}
+			continue;
+		}
 		if (IsBooleanCommandLineOption(argument))
 		{
 			if (index + 1 < static_cast<int>(arguments.size()) && !IsCommandLineSwitch(arguments[index + 1]))
@@ -1177,6 +1224,24 @@ BOOL CVideoProcessorApp::InitInstance()
 				ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/scene", booleanValue))
 			{
 				dlg.SceneDetect(booleanValue);
+			}
+
+			if (IsCommandLineOption(
+				pArgs[i], L"/subtitle_reposition"))
+			{
+				SubtitleRepositionMode subtitleMode =
+					SubtitleRepositionMode::BASIC;
+				if (i + 1 < iNumOfArgs &&
+					!IsCommandLineSwitch(pArgs[i + 1]))
+				{
+					if (!TryParseSubtitleRepositionMode(
+						pArgs[i + 1], subtitleMode))
+						throw std::runtime_error(
+							"Invalid /subtitle_reposition: expected "
+							"true, false, basic, or advanced");
+					++i;
+				}
+				dlg.SubtitleRepositioning(subtitleMode);
 			}
 
 			if (wcscmp(pArgs[i], L"/scene_correction_mode") == 0 &&

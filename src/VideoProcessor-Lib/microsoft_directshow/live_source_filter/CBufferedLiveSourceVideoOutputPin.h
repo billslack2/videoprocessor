@@ -11,11 +11,18 @@
 
 #include <deque>
 #include <array>
+#include <condition_variable>
+#include <memory>
+#include <mutex>
+#include <thread>
+#include <vector>
 
 #include <microsoft_directshow/DirectShowDefines.h>
 #include "ALiveSourceVideoOutputPin.h"
 
 #include "CLiveSource.h"
+
+class GpuSubtitleDetector;
 
 
 /**
@@ -56,6 +63,8 @@ public:
 	LONG GetAllocatorBufferCount() const override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	void SetSceneCorrectionUpstreamSample(bool enabled) override;
+	void SetSubtitleRepositioning(bool enabled) override;
+	void SetSubtitleRepositioningMode(SubtitleRepositionMode mode) override;
 	void SetSceneTimingRates(double displayRefreshRateHz, double deliveryRateHz) override;
 	void SetSceneTimingReadiness(bool ready, uint64_t intervalsObserved) override;
 	void SetSceneTimingPhase(int64_t vblankQpc, int64_t refreshPeriodQpc, int64_t qpcFrequency) override;
@@ -63,6 +72,14 @@ public:
 	uint64_t SceneAwareCorrectionRepeatCount() const override { return m_sceneAwareCorrectionRepeatCount.load(std::memory_order_relaxed); }
 	uint64_t SceneAwareDetectedCount() const override { return m_sceneAwareDetectedCount.load(std::memory_order_relaxed); }
 	uint64_t SceneAwareLateCandidateCount() const override { return m_sceneAwareLateCandidateCount.load(std::memory_order_relaxed); }
+	bool GetSceneTimingPrediction(double& secondsUntilCorrection,
+		double& secondsUntilPlan, int& action, bool& planned) const override;
+	bool GetSceneTimingLastCorrection(int& action,
+		double& secondsFromDeadline, uint64_t& correctionTick) const override;
+	bool SceneTimingRatesCompatible() const override
+	{
+		return m_sceneTimingRatesCompatible.load(std::memory_order_acquire);
+	}
 	size_t GetFrameQueueSize() override;
 	void Reset() override;
 	REFERENCE_TIME NextFrameTimestamp() const override;
@@ -114,6 +131,166 @@ private:
 	// no scene analysis and delivery follows the pre-existing path exactly.
 	std::atomic_bool m_sceneAwareTimingCorrection = false;
 	std::atomic_bool m_sceneCorrectionUpstreamSample = false;
+	// Disabled by default. When enabled, the conversion worker may relocate
+	// tracked subtitle glyphs crossing a stable bottom black bar in P010 output.
+	std::atomic<SubtitleRepositionMode> m_subtitleRepositionMode =
+		SubtitleRepositionMode::DISABLED;
+	std::atomic<uint64_t> m_subtitleRelocationCount = 0;
+	std::atomic<uint64_t> m_subtitleAnalysisGeneration = 0;
+	std::atomic<uint64_t> m_subtitleLastSubmitTick = 0;
+
+	struct SubtitleRect
+	{
+		int left = 0;
+		int top = 0;
+		int right = 0;
+		int bottom = 0;
+	};
+
+	struct SubtitleAnalysisFrame
+	{
+		uint64_t generation = 0;
+		uint64_t frameNumber = 0;
+		uint64_t submittedTick = 0;
+		uint64_t sceneEventId = 0;
+		// A cheap bar-band signature from the delivery thread.  BASIC uses it
+		// to avoid re-running Windows OCR while a confirmed caption is unchanged.
+		bool subtitleSignatureChanged = false;
+		int fullWidth = 0;
+		int fullHeight = 0;
+		int scale = 1;
+		int width = 0;
+		int height = 0;
+		uint16_t blackCode = 64;
+		std::vector<uint16_t> luma;
+	};
+
+	struct SubtitleAnalysisResult
+	{
+		uint64_t generation = 0;
+		uint64_t frameNumber = 0;
+		uint64_t producedTick = 0;
+		int fullWidth = 0;
+		int fullHeight = 0;
+		int pictureTop = 0;
+		int pictureBottom = 0;
+		int panelLeft = 0;
+		int panelRight = 0;
+		SubtitleRect source;
+		uint16_t blackCode = 64;
+		uint16_t confidence = 0;
+		int analysisScale = 1;
+		int maskLeft = 0;
+		int maskTop = 0;
+		int maskWidth = 0;
+		int maskHeight = 0;
+		std::shared_ptr<const std::vector<uint8_t>> textMask;
+		std::shared_ptr<const std::vector<uint16_t>> textReferenceLuma;
+		bool barStable = false;
+		bool sourceAtTop = false;
+		bool ocrBased = false;
+		bool modelBased = false;
+		bool active = false;
+	};
+
+	struct SubtitleTrackerState
+	{
+		int pendingPictureTop = 0;
+		int stablePictureTop = 0;
+		int pendingPictureBottom = 0;
+		int stablePictureBottom = 0;
+		uint8_t topBarHits = 0;
+		uint8_t topBarMisses = 0;
+		uint8_t barHits = 0;
+		uint8_t barMisses = 0;
+		SubtitleRect candidate;
+		SubtitleRect tracked;
+		SubtitleRect retainedPanel;
+		std::vector<SubtitleRect> candidateWords;
+		std::vector<SubtitleRect> trackedWords;
+		uint64_t candidateContentHash = 0;
+		uint64_t trackedContentHash = 0;
+		uint64_t lastDetectionTick = 0;
+		uint64_t lastSceneEventId = 0;
+		// Score from the last geometry that was confirmed by the tracker.  A
+		// one-frame model observation must never replace a coherent subtitle
+		// with a nominal (or zero) confidence result.
+		int confirmedScore = 0;
+		int typicalLineHeight = 0;
+		uint8_t candidateHits = 0;
+		uint8_t trackMisses = 0;
+		uint8_t styleSamples = 0;
+		std::vector<uint16_t> previousLuma;
+		bool topBarStable = false;
+		bool candidateAtTop = false;
+		bool trackedAtTop = false;
+		bool trackedFromOcr = false;
+		bool candidateFromModel = false;
+		bool trackedFromModel = false;
+		bool barStable = false;
+		bool active = false;
+	};
+
+	std::thread m_subtitleAnalysisThread;
+	std::mutex m_subtitleAnalysisMutex;
+	std::condition_variable m_subtitleAnalysisCondition;
+	bool m_subtitleWorkerStop = false;
+	bool m_subtitleJobPending = false;
+	SubtitleAnalysisFrame m_subtitlePendingFrame;
+	SubtitleAnalysisResult m_subtitleLatestResult;
+	std::vector<uint16_t> m_subtitleRecycledLuma;
+	// Created by the background worker in ADVANCED mode. Shutdown keeps a
+	// shared reference so it can request cancellation before joining the worker.
+	std::shared_ptr<GpuSubtitleDetector> m_subtitleGpuDetector;
+
+	// Conversion-worker-owned scratch storage. Reused so enabled processing
+	// does not allocate on every delivered frame.
+	std::vector<uint16_t> m_subtitleScratchY;
+	std::vector<uint16_t> m_subtitleScratchUV;
+	std::vector<uint8_t> m_subtitleGlyphMask;
+	std::vector<uint8_t> m_subtitleGlyphCandidateMask;
+	std::vector<uint8_t> m_subtitleGlyphGrowthMask;
+	std::vector<int> m_subtitleGlyphFlood;
+	// Conversion-thread-owned temporal glyph state. The detector supplies
+	// caption geometry; actual glyph pixels are accepted only when they recur
+	// across adjacent live frames. This rejects moving picture detail without
+	// OCR-redrawing the subtitle.
+	std::vector<uint16_t> m_subtitleCachedGlyphY;
+	std::vector<uint8_t> m_subtitleCachedGlyphMask;
+	std::vector<uint8_t> m_subtitlePreviousGlyphMask;
+	std::vector<uint8_t> m_subtitlePrevious2GlyphMask;
+	int m_subtitleCachedFrameWidth = 0;
+	int m_subtitleCachedFrameHeight = 0;
+	int m_subtitleCachedSourceLeft = 0;
+	int m_subtitleCachedSourceTop = 0;
+	int m_subtitleCachedSourceWidth = 0;
+	int m_subtitleCachedSourceHeight = 0;
+	int m_subtitleCachedTargetTop = 0;
+	int m_subtitleCachedSourceClearLeft = 0;
+	int m_subtitleCachedSourceClearTop = 0;
+	int m_subtitleCachedSourceClearRight = 0;
+	int m_subtitleCachedSourceClearBottom = 0;
+	int m_subtitleCachedBackgroundLeft = 0;
+	int m_subtitleCachedBackgroundTop = 0;
+	int m_subtitleCachedBackgroundRight = 0;
+	int m_subtitleCachedBackgroundBottom = 0;
+	uint16_t m_subtitleCachedPanelY = 0;
+	uint64_t m_subtitleCachedSceneEventId = 0;
+	uint64_t m_subtitleCachedSignatureGeneration = 0;
+	size_t m_subtitleCachedGlyphCount = 0;
+	uint8_t m_subtitleTemporalSampleCount = 0;
+	// Opaque subtitle-panel luma is latched per scene. It is consulted only
+	// while Scene Detect is enabled; otherwise panels use video black.
+	std::atomic<uint16_t> m_subtitleSceneAverageLumaCode = 64;
+	std::atomic_bool m_subtitlePanelLumaInitialized = false;
+	std::atomic_bool m_subtitleTrackActive = false;
+	std::atomic<uint64_t> m_subtitleSceneEventId = 0;
+	std::atomic<int> m_subtitlePanelHalfWidthPixels = 0;
+	std::atomic<int> m_subtitlePanelHeightPixels = 0;
+	std::atomic<int> m_subtitlePictureTopPixels = 0;
+	std::atomic<int> m_subtitlePictureBottomPixels = 0;
+	std::atomic<uint64_t> m_subtitleFastSignature = 0;
+	std::atomic<uint64_t> m_subtitleSignatureGeneration = 0;
 	std::atomic<uint64_t> m_sceneDetectorGeneration = 0;
 	// Invalidates queued scene decisions and the delivery-owned output cadence
 	// whenever the graph, display timing, or feature state changes.
@@ -128,8 +305,18 @@ private:
 	// output sample (repeat); negative means capture has supplied an extra
 	// content frame (drop).
 	std::atomic<int64_t> m_scenePhasePpmUnits = 0;
+	// Published by the delivery thread for the OSD.  The prediction follows the
+	// signed accumulated phase, not a nominal fixed cadence.
+	std::atomic<double> m_sceneSecondsUntilCorrection = 0.0;
+	std::atomic<double> m_sceneSecondsUntilPlan = 0.0;
+	std::atomic<int> m_scenePredictedAction = 0; // +1 repeat, -1 drop
+	std::atomic_bool m_sceneCorrectionPlanned = false;
+	std::atomic<int> m_sceneLastCorrectionAction = 0; // +1 repeat, -1 drop
+	std::atomic<double> m_sceneLastCorrectionSecondsFromDeadline = 0.0;
+	std::atomic<uint64_t> m_sceneLastCorrectionTick = 0;
 	std::atomic<double> m_sceneDisplayRefreshRateHz = 0.0;
 	std::atomic<double> m_sceneDeliveryRateHz = 0.0;
+	std::atomic_bool m_sceneTimingRatesCompatible = false;
 	std::atomic<bool> m_sceneTimingReady = false;
 	std::atomic<uint64_t> m_sceneWarmupIntervals = 0;
 	// Latest physical-vblank snapshot from the UI's display sampler.  It is
@@ -223,7 +410,25 @@ private:
 	// Reads a sparse luma grid from P010 output.  It is intentionally called
 	// only by the conversion worker and only while the feature is enabled.
 	bool IsSafeSceneAwareCorrectionPoint(IMediaSample* sample, SceneDetectorState& state,
-		uint64_t& sceneEventId, uint8_t& eventFramesBack);
+		uint64_t& sceneEventId, uint8_t& eventFramesBack,
+		uint16_t& averageLuma);
+	bool RelocateSubtitleInP010(IMediaSample* sample, uint64_t frameNumber);
+	void StartSubtitleAnalysisWorker();
+	void StopSubtitleAnalysisWorker();
+	void ResetSubtitleAnalysis();
+	void SubmitSubtitleAnalysis(const uint16_t* yPlane, int width, int height,
+		uint64_t frameNumber, uint16_t blackCode);
+	void SubtitleAnalysisWorker();
+	SubtitleAnalysisResult AnalyzeSubtitleFrame(const SubtitleAnalysisFrame& frame,
+		SubtitleTrackerState& tracker, GpuSubtitleDetector* gpuDetector);
+	bool DetectSubtitleWithWindowsOcr(const SubtitleAnalysisFrame& frame,
+		int pictureTop, int pictureBottom, SubtitleRect& detected,
+		int& score, bool& atTop, bool& textObserved,
+		uint64_t& contentHash, int& lineCount,
+		int& representativeLineHeight, std::vector<SubtitleRect>& words);
+	bool CompositeTrackedSubtitle(uint16_t* yPlane, uint16_t* uvPlane,
+		int width, int height, uint16_t blackCode,
+		const SubtitleAnalysisResult& result);
 	HRESULT CloneSampleForUpstreamRepeat(IMediaSample* source,
 		REFERENCE_TIME start, REFERENCE_TIME stop, IMediaSample** repeatSample);
 

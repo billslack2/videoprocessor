@@ -256,6 +256,7 @@ void DirectShowVideoRenderer::Reset()
 	}
 	
 	m_frameCounter = 0;
+	ResetPPMMeasurement();
 	DebugLog::Log("DirectShowVideoRenderer::Reset() - complete");
 }
 
@@ -316,6 +317,22 @@ void DirectShowVideoRenderer::SetSceneCorrectionUpstreamSample(bool enabled)
 		return;
 
 	m_liveSource->GetVideoOutputPin()->SetSceneCorrectionUpstreamSample(enabled);
+}
+
+void DirectShowVideoRenderer::SetSubtitleRepositioning(bool enabled)
+{
+	SetSubtitleRepositioningMode(enabled ?
+		SubtitleRepositionMode::BASIC :
+		SubtitleRepositionMode::DISABLED);
+}
+
+void DirectShowVideoRenderer::SetSubtitleRepositioningMode(
+	SubtitleRepositionMode mode)
+{
+	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
+		return;
+
+	m_liveSource->GetVideoOutputPin()->SetSubtitleRepositioningMode(mode);
 }
 
 void DirectShowVideoRenderer::SetSceneTimingRates(
@@ -423,6 +440,43 @@ uint64_t DirectShowVideoRenderer::SceneAwareCorrectionRepeatCount() const
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
 	return m_liveSource->GetVideoOutputPin()->SceneAwareCorrectionRepeatCount();
+}
+
+bool DirectShowVideoRenderer::GetSceneTimingPrediction(
+	double& secondsUntilCorrection, double& secondsUntilPlan,
+	int& action, bool& planned) const
+{
+	secondsUntilCorrection = 0.0;
+	secondsUntilPlan = 0.0;
+	action = 0;
+	planned = false;
+	if (m_state != RendererState::RENDERSTATE_RENDERING ||
+		!m_liveSource || !m_liveSource->GetVideoOutputPin())
+		return false;
+
+	return m_liveSource->GetVideoOutputPin()->GetSceneTimingPrediction(
+		secondsUntilCorrection, secondsUntilPlan, action, planned);
+}
+
+bool DirectShowVideoRenderer::GetSceneTimingLastCorrection(
+	int& action, double& secondsFromDeadline, uint64_t& correctionTick) const
+{
+	action = 0;
+	secondsFromDeadline = 0.0;
+	correctionTick = 0;
+	if (m_state != RendererState::RENDERSTATE_RENDERING ||
+		!m_liveSource || !m_liveSource->GetVideoOutputPin())
+		return false;
+
+	return m_liveSource->GetVideoOutputPin()->GetSceneTimingLastCorrection(
+		action, secondsFromDeadline, correctionTick);
+}
+
+bool DirectShowVideoRenderer::SceneTimingRatesCompatible() const
+{
+	return m_state == RendererState::RENDERSTATE_RENDERING &&
+		m_liveSource && m_liveSource->GetVideoOutputPin() &&
+		m_liveSource->GetVideoOutputPin()->SceneTimingRatesCompatible();
 }
 
 
@@ -916,37 +970,37 @@ bool DirectShowVideoRenderer::GetFrameRateAndPPM(double& measuredFps, int& ppmDe
 
 void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) const
 {
-	// Initialize on first frame
+	// Initialize the cumulative measurement on the first frame after a full
+	// renderer restart.
 	if (m_firstFrameTime == 0)
 	{
 		m_firstFrameTime = frameTime;
 		m_lastFrameTime = frameTime;
 		m_frameCountForPPM = 1;
-		
-		// Initialize rolling window
-		m_rollingWindowStartTime = frameTime;
-		m_rollingWindowFrameCount = 1;
+		m_lastPpmMeasurementPublishTime = frameTime;
 		return;
 	}
 
-	// Update last frame time
 	m_lastFrameTime = frameTime;
 	m_frameCountForPPM++;
-	m_rollingWindowFrameCount++;
 
-	// ROLLING WINDOW: Reset measurement window every 5 seconds
+	// Publish the all-time-since-restart estimate every five seconds. The
+	// cadence estimate itself remains cumulative, which prevents short-window
+	// noise from alternately predicting repeat and drop corrections.
 	const timingclocktime_t ticksPerSecond = m_timingClock->TimingClockTicksPerSecond();
 	const timingclocktime_t fiveSecondTicks = ticksPerSecond * 5;  // 5 seconds in ticks
 	
-	if ((frameTime - m_rollingWindowStartTime) >= fiveSecondTicks)
+	if ((frameTime - m_lastPpmMeasurementPublishTime) >= fiveSecondTicks)
 	{
-		// Calculate FPS for this 5-second window
-		const timingclocktime_t windowElapsedTicks = frameTime - m_rollingWindowStartTime;
+		const timingclocktime_t measurementElapsedTicks = frameTime - m_firstFrameTime;
 		
-		if (windowElapsedTicks > 0)
+		if (measurementElapsedTicks > 0 && m_frameCountForPPM > 1)
 		{
-			const double windowElapsedSeconds = (double)windowElapsedTicks / (double)ticksPerSecond;
-			const double measuredFps = (double)(m_rollingWindowFrameCount - 1) / windowElapsedSeconds;
+			const double measurementElapsedSeconds =
+				static_cast<double>(measurementElapsedTicks) /
+				static_cast<double>(ticksPerSecond);
+			const double measuredFps =
+				static_cast<double>(m_frameCountForPPM - 1) / measurementElapsedSeconds;
 			
 			// Get theoretical refresh rate
 			const double theoreticalFps = m_videoState->displayMode->RefreshRateHz();
@@ -965,7 +1019,7 @@ void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) 
 				// Get the output pin to check if auto-calibration is active
 				ALiveSourceVideoOutputPin* outputPin = m_liveSource->GetVideoOutputPin();
 				
-				DebugLog::Log("DirectShow: 5-second PPM window complete - outputPin=%p, deviation=%d PPM",
+				DebugLog::Log("DirectShow: cumulative PPM estimate published - outputPin=%p, deviation=%d PPM",
 					outputPin, measuredPpmDeviation);
 				
 				if (outputPin && outputPin->IsAutoCalibrating())
@@ -989,10 +1043,19 @@ void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) 
 			}
 		}
 		
-		// Reset rolling window for next 5-second period
-		m_rollingWindowStartTime = frameTime;
-		m_rollingWindowFrameCount = 1;
+		m_lastPpmMeasurementPublishTime = frameTime;
 	}
+}
+
+void DirectShowVideoRenderer::ResetPPMMeasurement() const
+{
+	m_firstFrameTime = 0;
+	m_lastFrameTime = 0;
+	m_frameCountForPPM = 0;
+	m_lastPpmMeasurementPublishTime = 0;
+	m_measuredFrameRate.store(0.0, std::memory_order_release);
+	m_ppmDeviation.store(0, std::memory_order_release);
+	m_hasPPMData.store(false, std::memory_order_release);
 }
 
 size_t DirectShowVideoRenderer::GetConvertedQueueSize()
