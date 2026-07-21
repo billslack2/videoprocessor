@@ -203,12 +203,12 @@ private:
 			// cRefresh is a compositor wake count and can miss a vblank too, so use
 			// its period only as the initial interval estimate for this sampler.
 			// Publish an early OSD estimate, but do not mark the rate safe for
-			// correction until it has covered a full 100 seconds. Time, rather
+			// correction until it has covered a full 30 seconds. Time, rather
 			// than a fixed frame count, gives the same confidence at 24, 60, and
 			// 120 Hz.
 			constexpr double kInitialMeasurementSeconds = 1.0;
 			constexpr double kPublishIntervalSeconds = 10.0;
-			constexpr double kStableMeasurementSeconds = 100.0;
+			constexpr double kStableMeasurementSeconds = 30.0;
 			LARGE_INTEGER first = {};
 			LARGE_INTEGER last = {};
 			LARGE_INTEGER previous = {};
@@ -627,6 +627,11 @@ void CVideoProcessorDlg::SceneDetect(bool enabled)
 void CVideoProcessorDlg::SceneCorrectionUpstreamSample(bool enabled)
 {
 	m_sceneCorrectionUpstreamSample = enabled;
+}
+
+void CVideoProcessorDlg::SubtitleRepositioning(SubtitleRepositionMode mode)
+{
+	m_subtitleRepositionMode = mode;
 }
 
 void CVideoProcessorDlg::EnableNewLldvHeuristic(bool enabled)
@@ -2373,6 +2378,8 @@ void CVideoProcessorDlg::RenderStart()
 		m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
 		m_videoRenderer->SetSceneCorrectionUpstreamSample(
 			m_sceneCorrectionUpstreamSample);
+		m_videoRenderer->SetSubtitleRepositioningMode(
+			m_subtitleRepositionMode);
 		m_videoRenderer->Start();
 
 		m_rendererStateText.SetWindowText(TEXT("Started HDR renderer, waiting for image..."));
@@ -2441,6 +2448,8 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
 			m_videoRenderer->SetSceneCorrectionUpstreamSample(
 				m_sceneCorrectionUpstreamSample);
+			m_videoRenderer->SetSubtitleRepositioningMode(
+				m_subtitleRepositionMode);
 			m_videoRenderer->Start();
 
 			m_rendererStateText.SetWindowText(TEXT("Started, waiting for image..."));
@@ -4035,19 +4044,33 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		if (!hasMeasuredCaptureRate)
 			measuredCaptureRate = theoreticalCaptureRate;
 
-		// This remains active when the OSD is hidden. Scene correction must not
-		// depend on whether diagnostics are visible.
-		m_videoRenderer->SetSceneTimingRates(
-			displayRefreshRate, measuredCaptureRate);
-		m_videoRenderer->SetSceneTimingReadiness(
-			sceneTimingReady, sampledDisplayTiming.intervalsObserved);
-		if (sceneTimingReady)
-			m_videoRenderer->SetSceneTimingPhase(
-				displayTiming.lastVBlankQpc,
-				displayTiming.refreshPeriodQpc,
-				displayTiming.qpcFrequency);
+		if (m_sceneAwareTimingCorrection)
+		{
+			// This remains active when the OSD is hidden. Scene correction must not
+			// depend on whether diagnostics are visible.
+			// Scene correction is valid only when display and delivery run at
+			// essentially the same rate. Large differences are frame-rate
+			// conversion, not a one-frame drift that can be hidden at a scene cut.
+			m_videoRenderer->SetSceneTimingRates(
+				displayRefreshRate, measuredCaptureRate);
+			m_videoRenderer->SetSceneTimingReadiness(
+				sceneTimingReady, sampledDisplayTiming.intervalsObserved);
+			if (sceneTimingReady)
+				m_videoRenderer->SetSceneTimingPhase(
+					displayTiming.lastVBlankQpc,
+					displayTiming.refreshPeriodQpc,
+					displayTiming.qpcFrequency);
+			else
+				m_videoRenderer->SetSceneTimingPhase(0, 0, 0);
+		}
 		else
+		{
+			// Clear stale predictions and avoid Scene Detect timing work while the
+			// feature is off. Display-rate diagnostics continue independently.
+			m_videoRenderer->SetSceneTimingRates(0.0, 0.0);
+			m_videoRenderer->SetSceneTimingReadiness(false, 0);
 			m_videoRenderer->SetSceneTimingPhase(0, 0, 0);
+		}
 	}
 
 	if (!m_statsOverlay || !m_statsOverlay->IsVisible() || !m_lastStatsData)
@@ -4127,6 +4150,19 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.sceneDetectCorrectionDrops = m_videoRenderer->SceneAwareCorrectionDropCount();
 		stats.sceneDetectCorrectionRepeats = m_videoRenderer->SceneAwareCorrectionRepeatCount();
 		stats.sceneDetectDetected = m_videoRenderer->SceneAwareDetectedCount();
+		stats.sceneTimingRatesCompatible =
+			m_videoRenderer->SceneTimingRatesCompatible();
+		stats.sceneCorrectionPredictionValid =
+			m_videoRenderer->GetSceneTimingPrediction(
+				stats.sceneSecondsUntilCorrection,
+				stats.sceneSecondsUntilPlan,
+				stats.sceneCorrectionAction,
+				stats.sceneCorrectionPlanned);
+		stats.sceneLastCorrectionValid =
+			m_videoRenderer->GetSceneTimingLastCorrection(
+				stats.sceneLastCorrectionAction,
+				stats.sceneLastCorrectionSecondsFromDeadline,
+				stats.sceneLastCorrectionTick);
 	}
 
 	// Capture device frame counts

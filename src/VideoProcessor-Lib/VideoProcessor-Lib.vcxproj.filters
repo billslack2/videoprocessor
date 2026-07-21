@@ -153,6 +153,15 @@
     <ClInclude Include="microsoft_directshow\live_source_filter\CBufferedLiveSourceVideoOutputPin.h">
       <Filter>Header Files\microsoft_directshow\live_source_filter</Filter>
     </ClInclude>
+    <ClInclude Include="microsoft_directshow\live_source_filter\WindowsOcrSubtitleDetector.h">
+      <Filter>Header Files\microsoft_directshow\live_source_filter</Filter>
+    </ClInclude>
+    <ClInclude Include="microsoft_directshow\live_source_filter\GpuSubtitleDetector.h">
+      <Filter>Header Files\microsoft_directshow\live_source_filter</Filter>
+    </ClInclude>
+    <ClInclude Include="SubtitleRepositionMode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="microsoft_directshow\live_source_filter\CLiveSource.h">
       <Filter>Header Files\microsoft_directshow\live_source_filter</Filter>
     </ClInclude>
@@ -306,6 +315,12 @@
       <Filter>Source Files\microsoft_directshow\live_source_filter</Filter>
     </ClCompile>
     <ClCompile Include="microsoft_directshow\live_source_filter\CBufferedLiveSourceVideoOutputPin.cpp">
+      <Filter>Source Files\microsoft_directshow\live_source_filter</Filter>
+    </ClCompile>
+    <ClCompile Include="microsoft_directshow\live_source_filter\WindowsOcrSubtitleDetector.cpp">
+      <Filter>Source Files\microsoft_directshow\live_source_filter</Filter>
+    </ClCompile>
+    <ClCompile Include="microsoft_directshow\live_source_filter\GpuSubtitleDetector.cpp">
       <Filter>Source Files\microsoft_directshow\live_source_filter</Filter>
     </ClCompile>
     <ClCompile Include="microsoft_directshow\live_source_filter\CLiveSource.cpp">

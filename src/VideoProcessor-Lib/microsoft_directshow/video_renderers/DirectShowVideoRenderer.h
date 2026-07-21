@@ -57,6 +57,8 @@ public:
 	void SetFrameQueueMaxSize(size_t) override;
 	void SetSceneAwareTimingCorrection(bool) override;
 	void SetSceneCorrectionUpstreamSample(bool) override;
+	void SetSubtitleRepositioning(bool) override;
+	void SetSubtitleRepositioningMode(SubtitleRepositionMode mode) override;
 	void SetSceneTimingRates(double displayRefreshRateHz, double measuredCaptureRateHz) override;
 	void SetSceneTimingReadiness(bool ready, uint64_t intervalsObserved) override;
 	void SetSceneTimingPhase(int64_t vblankQpc, int64_t refreshPeriodQpc, int64_t qpcFrequency) override;
@@ -68,6 +70,11 @@ public:
 	uint64_t SceneAwareCorrectionRepeatCount() const override;
 	uint64_t SceneAwareDetectedCount() const override;
 	uint64_t SceneAwareLateCandidateCount() const override;
+	bool GetSceneTimingPrediction(double& secondsUntilCorrection,
+		double& secondsUntilPlan, int& action, bool& planned) const override;
+	bool GetSceneTimingLastCorrection(int& action,
+		double& secondsFromDeadline, uint64_t& correctionTick) const override;
+	bool SceneTimingRatesCompatible() const override;
 	
 	// Get conversion performance from the video frame formatter
 	bool GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override
@@ -135,9 +142,10 @@ protected:
 	mutable std::atomic<int> m_ppmDeviation = 0;
 	mutable std::atomic_bool m_hasPPMData = false;
 	
-	// Rolling 5-second window for accurate recent measurements
-	mutable timingclocktime_t m_rollingWindowStartTime = 0;
-	mutable uint64_t m_rollingWindowFrameCount = 0;
+	// Cumulative cadence is measured from the last full renderer restart. The
+	// estimate is published periodically, but its measurement interval is never
+	// reset between publications.
+	mutable timingclocktime_t m_lastPpmMeasurementPublishTime = 0;
 
 	// Handle Directshow graph events
 	void OnGraphEvent(long evCode, LONG_PTR param1, LONG_PTR param2);
@@ -177,6 +185,7 @@ protected:
 
 	// PPM calculation helper
 	void UpdatePPMMeasurement(timingclocktime_t frameTime) const;
+	void ResetPPMMeasurement() const;
 
 private:
 

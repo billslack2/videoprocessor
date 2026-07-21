@@ -8,6 +8,7 @@
 
 #include <pch.h>
 #include "StatsOverlayWindow.h"
+#include <cmath>
 #include <sstream>
 #include <iomanip>
 
@@ -455,21 +456,73 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	if (m_stats.sceneTimingReady)
-		line.Format(TEXT("Scene Timing:     Active"));
+	const bool sceneModeOff = m_stats.sceneDetectMode.IsEmpty() ||
+		m_stats.sceneDetectMode.CompareNoCase(TEXT("Off")) == 0;
+	if (sceneModeOff)
+		line.Format(TEXT(" - Status:        None"));
+	else if (!m_stats.sceneTimingReady)
+		line.Format(TEXT(" - Status:        Warming"));
+	else if (!m_stats.sceneTimingRatesCompatible)
+		line.Format(TEXT(" - Status:        Pending"));
 	else
-		line.Format(TEXT("Scene Timing:     Warming"));
+		line.Format(TEXT(" - Status:        Ready"));
+	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
+
+	// Only advertise a correction that is concrete and close enough to be
+	// meaningful. A multi-day estimate is effectively no actionable plan.
+	constexpr double kMaximumPlanSeconds = 24.0 * 60.0 * 60.0;
+	const bool hasActionablePlan =
+		!sceneModeOff &&
+		m_stats.sceneTimingReady &&
+		m_stats.sceneTimingRatesCompatible &&
+		m_stats.sceneCorrectionPredictionValid &&
+		std::isfinite(m_stats.sceneSecondsUntilCorrection) &&
+		std::fabs(m_stats.sceneSecondsUntilCorrection) <= kMaximumPlanSeconds;
+	// For five seconds after a correction, use the Plan row to confirm how the
+	// scene boundary lined up with its deadline. It then automatically returns
+	// to the live signed countdown for the next correction.
+	constexpr uint64_t kCorrectionResultVisibilityMs = 5000;
+	constexpr double kOnTimeToleranceSeconds = 1.0;
+	const uint64_t nowTick = GetTickCount64();
+	const bool showLastCorrection =
+		!sceneModeOff &&
+		m_stats.sceneLastCorrectionValid &&
+		nowTick >= m_stats.sceneLastCorrectionTick &&
+		(nowTick - m_stats.sceneLastCorrectionTick) <= kCorrectionResultVisibilityMs;
+	if (showLastCorrection)
+	{
+		const TCHAR* action = m_stats.sceneLastCorrectionAction > 0 ?
+			TEXT("Repeat") : TEXT("Drop");
+		const double timing = m_stats.sceneLastCorrectionSecondsFromDeadline;
+		if (std::fabs(timing) <= kOnTimeToleranceSeconds)
+			line.Format(TEXT(" - Plan:          %s On-Time"), action);
+		else
+			line.Format(TEXT(" - Plan:          %s %s (%s)"), action,
+				timing > 0.0 ? TEXT("Early") : TEXT("Late"),
+				static_cast<LPCTSTR>(FormatTime(std::fabs(timing))));
+	}
+	else if (hasActionablePlan)
+	{
+		line.Format(TEXT(" - Plan:          %s in %s"),
+			m_stats.sceneCorrectionAction > 0 ? TEXT("Repeat") : TEXT("Drop"),
+			static_cast<LPCTSTR>(FormatTime(m_stats.sceneSecondsUntilCorrection)));
+	}
+	else
+	{
+		line.Format(TEXT(" - Plan:          None"));
+	}
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
 	// These are source-side actions at detected scene boundaries.
-	line.Format(TEXT("Scene Detect D/R: %llu / %llu"),
+	line.Format(TEXT(" - Action D/R:    %llu / %llu"),
 		m_stats.sceneDetectCorrectionDrops,
 		m_stats.sceneDetectCorrectionRepeats);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
-	line.Format(TEXT("Scene Detect:     %llu"), m_stats.sceneDetectDetected);
+	line.Format(TEXT(" - Detected:      %llu"), m_stats.sceneDetectDetected);
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
@@ -484,23 +537,18 @@ void StatsOverlayWindow::DrawText(HDC hdc, const CString& text, int x, int y)
 CString StatsOverlayWindow::FormatTime(double seconds)
 {
 	CString result;
-
-	if (seconds < 60.0)
-	{
-		result.Format(TEXT("%.1fs"), seconds);
-	}
-	else if (seconds < 3600.0)
-	{
-		int minutes = (int)(seconds / 60.0);
-		int secs = (int)(seconds - minutes * 60.0);
-		result.Format(TEXT("%dm %ds"), minutes, secs);
-	}
+	const bool negative = seconds < 0.0;
+	const uint64_t totalSeconds = static_cast<uint64_t>(
+		std::ceil(std::fabs(seconds)));
+	const uint64_t hours = totalSeconds / 3600;
+	const uint64_t minutes = (totalSeconds % 3600) / 60;
+	const uint64_t secs = totalSeconds % 60;
+	if (hours > 0)
+		result.Format(negative ? TEXT("-%lluh%llum%llus") : TEXT("%lluh%llum%llus"), hours, minutes, secs);
+	else if (minutes > 0)
+		result.Format(negative ? TEXT("-%llum%llus") : TEXT("%llum%llus"), minutes, secs);
 	else
-	{
-		int hours = (int)(seconds / 3600.0);
-		int minutes = (int)((seconds - hours * 3600.0) / 60.0);
-		result.Format(TEXT("%dh %dm"), hours, minutes);
-	}
+		result.Format(negative ? TEXT("-%llus") : TEXT("%llus"), secs);
 
 	return result;
 }

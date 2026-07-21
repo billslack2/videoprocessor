@@ -11,6 +11,7 @@
 
 #include <VideoFrame.h>
 #include <VideoState.h>
+#include <SubtitleRepositionMode.h>
 
 
 enum RendererState
@@ -117,6 +118,13 @@ public:
 	// Disabled by default; enabled only by the renderer queue UI.
 	virtual void SetSceneAwareTimingCorrection(bool) = 0;
 	virtual void SetSceneCorrectionUpstreamSample(bool) {}
+	// Optional burned-in subtitle relocation. Renderers without a writable live
+	// source may ignore this request.
+	virtual void SetSubtitleRepositioning(bool) {}
+	virtual void SetSubtitleRepositioningMode(SubtitleRepositionMode mode)
+	{
+		SetSubtitleRepositioning(mode != SubtitleRepositionMode::DISABLED);
+	}
 
 	// Supply the measured display refresh and capture rates used by the
 	// scene-aware whole-frame phase predictor. Renderers that do not implement
@@ -158,6 +166,30 @@ public:
 	virtual uint64_t SceneAwareCorrectionRepeatCount() const { return 0; }
 	virtual uint64_t SceneAwareDetectedCount() const { return 0; }
 	virtual uint64_t SceneAwareLateCandidateCount() const { return 0; }
+	// Live prediction of the next scene-aware whole-frame correction.  action is
+	// +1 for a repeat, -1 for a drop, and 0 when no prediction is available.
+	// planned becomes true once the delivery thread is actively seeking a safe
+	// scene boundary within its correction window.
+	virtual bool GetSceneTimingPrediction(double& secondsUntilCorrection,
+		double& secondsUntilPlan, int& action, bool& planned) const
+	{
+		secondsUntilCorrection = 0.0;
+		secondsUntilPlan = 0.0;
+		action = 0;
+		planned = false;
+		return false;
+	}
+	// Most recent scene-boundary correction. secondsFromDeadline is positive
+	// when applied early, negative when it was overdue.
+	virtual bool GetSceneTimingLastCorrection(int& action,
+		double& secondsFromDeadline, uint64_t& correctionTick) const
+	{
+		action = 0;
+		secondsFromDeadline = 0.0;
+		correctionTick = 0;
+		return false;
+	}
+	virtual bool SceneTimingRatesCompatible() const { return false; }
 
 	// Get conversion performance metrics (if available from the video frame formatter)
 	// Returns true if data is available, false if no conversion or no performance tracking
