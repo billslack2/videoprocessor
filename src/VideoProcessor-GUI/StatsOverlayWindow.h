@@ -18,7 +18,8 @@ struct StatsData
 	// Video format info
 	CString resolution;        // e.g., "3840x2160"
 	double refreshRate = 0.0;  // Hz (legacy - still used for display)
-	double displayRefreshRate = 0.0; // Measured desktop/display refresh rate (Hz)
+	double displayRefreshRate = 0.0; // Measured or configured desktop/display refresh rate (Hz)
+	bool displayRefreshRateOverridden = false;
 	CString eotf;              // e.g., "PQ"
 	CString colorspace;        // e.g., "BT.2020"
 	CString pixelFormat;       // e.g., "P010"

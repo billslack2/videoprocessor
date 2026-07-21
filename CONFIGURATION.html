@@ -15,7 +15,7 @@
 <body>
   <h1>VideoProcessor configuration</h1>
   <p><code>VideoProcessor.cfg</code> is an optional UTF-8 text file searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
-  <p>The shipped file is a conservative sample with common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[p010_conversion]</code> and <code>[ppm_correction]</code> sections can be added when needed.</p>
+  <p>The shipped file is a conservative sample with common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[display_refresh_rate_override]</code>, <code>[p010_conversion]</code>, and <code>[ppm_correction]</code> sections can be added when needed.</p>
   <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override matching settings.</p>
 
   <h2>[command_line]</h2>
@@ -60,6 +60,13 @@ reset_queue_too_large_percent=75</pre>
   <div class="note">DeckLink does not expose the HDMI Dolby Vision VSIF. The <code>newlldv</code> option is a heuristic, not definitive detection.</div>
   <p>With <code>newlldv=true</code>, VideoProcessor treats stable <code>BT.2020 + SDR + no static HDR metadata</code> as LLDV only when both <code>hdr_colorspace=FOLLOW_INPUT_LLDV</code> and <code>hdr_luminance=FOLLOW_INPUT_LLDV</code> are selected. After a 1.5-second confirmation it switches output to PQ and supplies synthetic metadata: MaxCLL 1000, MaxFALL 401, mastering minimum 0.001, and mastering maximum 4000.</p>
   <p>Leave <code>newlldv</code> disabled for legacy behavior or whenever genuine BT.2020 SDR could be mistaken for LLDV.</p>
+
+  <h2>[display_refresh_rate_override] (optional)</h2>
+  <p>Use this section when the automatic display-rate measurement is known to be wrong. Keys are nominal input refresh rates, matching the <code>[ppm_correction]</code> format; values are exact display rates or <code>AUTO</code>. A truncated nominal key is preferred (for example, <code>23</code> for 23.976 Hz); otherwise a key within 0.5 Hz is used. An exact rate replaces automatic display timing, is shown with <code>*</code> in the OSD, and is explicitly identified in the log. <code>AUTO</code> explicitly keeps normal automatic measurement for that nominal rate.</p>
+  <pre>[display_refresh_rate_override]
+23=23.976024
+29=29.970030
+59=AUTO</pre>
 
   <h2>[p010_conversion] (optional)</h2>
   <p>This section is used only by the V210-to-P010 formatter. When it is omitted, VideoProcessor uses smart defaults: <code>AUTO</code> conversion, one minimum core, and one or two maximum cores based on physical-core count.</p>
