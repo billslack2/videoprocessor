@@ -15,7 +15,7 @@
 <body>
   <h1>VideoProcessor configuration</h1>
   <p><code>VideoProcessor.cfg</code> is an optional UTF-8 text file searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
-  <p>The shipped file is a conservative sample with common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[display_refresh_rate_override]</code>, <code>[p010_conversion]</code>, and <code>[ppm_correction]</code> sections can be added when needed.</p>
+  <p>The shipped file is a conservative sample with common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[display_refresh_rate_override]</code>, <code>[shaders]</code>, <code>[p010_conversion]</code>, and <code>[ppm_correction]</code> sections can be added when needed.</p>
   <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override matching settings.</p>
 
   <h2>[command_line]</h2>
@@ -24,7 +24,7 @@
     <thead><tr><th>Key</th><th>Type and values</th><th>Effect</th></tr></thead>
     <tbody>
       <tr><td><code>capture_device</code></td><td>Device name</td><td>Capture device to select.</td></tr>
-      <tr><td><code>renderer</code></td><td>Renderer name</td><td>Renderer to select, for example <code>DirectShow - madVR</code>.</td></tr>
+      <tr><td><code>renderer</code></td><td>Renderer name</td><td>Renderer to select. Leave the value empty to use the application's current/default selection.</td></tr>
       <tr><td><code>fullscreen</code></td><td>Boolean</td><td>Start in fullscreen mode.</td></tr>
       <tr><td><code>windowedfullscreenmode</code></td><td>Boolean</td><td>Use windowed rather than exclusive fullscreen.</td></tr>
       <tr><td><code>queue_size</code></td><td>Positive integer</td><td>Maximum renderer frame-queue size.</td></tr>
@@ -98,6 +98,43 @@ ConversionMethod=SIMD
 MinCoreCount=1
 MaxCoreCount=2</pre>
 
+  <h2>[shaders] (optional)</h2>
+  <p>This section installs external Direct3D 9 HLSL directly into the selected renderer's GPU pipeline when that renderer supports external shaders. It does not add a CPU conversion or GPU readback. The named rules in <code>rules</code> are checked from left to right and the first matching rule wins. If nothing matches, <code>default=none</code> leaves shaders off. Rules are reevaluated after every full renderer restart using VP's effective EOTF and input refresh rate. Detected LLDV is treated as HDR because its effective EOTF is PQ.</p>
+  <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
+    <tr><td><code>enabled</code></td><td>Boolean; default <code>false</code></td><td>Enables shader rule evaluation.</td></tr>
+    <tr><td><code>rules</code></td><td>Comma-separated rule names</td><td>Sets rule order. Each name uses a matching <code>[shaders.name]</code> section.</td></tr>
+    <tr><td><code>default</code></td><td><code>none</code></td><td>Safe result when no rule matches. Currently <code>none</code> is the only supported default.</td></tr>
+    <tr><td><code>fallback_shader_model</code></td><td><code>ps_2_0</code>, <code>ps_2_a</code>, <code>ps_2_b</code>, or <code>ps_3_0</code>; default <code>ps_3_0</code></td><td>Used only when a shader does not declare <code>$MinimumShaderProfile:</code>. Most packaged shaders declare it, so this key is normally unnecessary.</td></tr>
+  </tbody></table>
+  <p>Each <code>[shaders.name]</code> rule supports:</p>
+  <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
+    <tr><td><code>label</code></td><td>Display text</td><td>Friendly rule name shown in the OSD and logs. Defaults to the rule name.</td></tr>
+    <tr><td><code>signal</code></td><td><code>ANY</code>, <code>SDR</code>, or <code>HDR</code>; default <code>ANY</code></td><td>Matches the effective video signal. <code>HDR</code> includes HDR gamma, PQ, HLG, and detected LLDV.</td></tr>
+    <tr><td><code>frame_rates</code></td><td>Comma-separated nominal integers or <code>ANY</code>; default <code>ANY</code></td><td>Matches VP's displayed input refresh rate using its truncated nominal key: 23 matches 23.976, 29 matches 29.97, and 59 matches 59.94.</td></tr>
+    <tr><td><code>none</code></td><td>Boolean; default <code>false</code></td><td>Selects the rule but deliberately installs no shaders. Shader entries in that rule are ignored.</td></tr>
+    <tr><td><code>pre_resize_N</code></td><td>Shader filename</td><td>Adds a source-frame shader before renderer image scaling. Numbered entries execute in ascending order.</td></tr>
+    <tr><td><code>post_resize_N</code></td><td>Shader filename</td><td>Adds a screen-space shader after renderer image scaling. Numbered entries execute in ascending order.</td></tr>
+  </tbody></table>
+  <pre>[shaders]
+enabled=true
+rules=broadcast_sdr,movies_24
+default=none
+
+[shaders.broadcast_sdr]
+label=Broadcast SDR 59/60
+signal=SDR
+frame_rates=59,60
+pre_resize_1=Shaders\Denoise.hlsl
+post_resize_1=Shaders\Adaptive sharpen.hlsl
+
+[shaders.movies_24]
+label=Movies at 23/24 fps
+signal=ANY
+frame_rates=23,24
+none=true</pre>
+  <p>Relative shader paths are resolved from the directory containing <code>VideoProcessor.cfg</code>. The OSD displays the selected rule and every successfully installed shader, and automatically resizes to fit the active chain. The original flat <code>profile</code>, <code>pre_resize_N</code>, and <code>post_resize_N</code> format remains accepted when <code>rules</code> is absent.</p>
+  <div class="note">Shaders execute GPU code inside the selected renderer. A compilation failure disables that entire stage and is reported in the log. Expensive or defective shaders can cause dropped frames or a GPU device reset. HDR/color shaders must be written for the color domain presented by the renderer; do not combine an HDR-to-SDR shader with renderer tone mapping unless the chain is intentionally designed that way.</div>
+
   <h2>[ppm_correction] (optional)</h2>
   <p>This section provides per-refresh-rate timing corrections for rational timing modes. Keys are truncated refresh rates; values are PPM corrections or <code>AUTO</code>. If the section is absent or has no valid matching entry, VideoProcessor enables automatic PPM calibration with an initial zero correction.</p>
   <pre>[ppm_correction]
@@ -113,7 +150,7 @@ MaxCoreCount=2</pre>
   <h2>Minimal example</h2>
   <pre>[command_line]
 capture_device=Decklink Quad HDMI Recorder (1)
-renderer=DirectShow - madVR
+renderer=
 queue_size=32
 scene_detect=false</pre>
 </body>

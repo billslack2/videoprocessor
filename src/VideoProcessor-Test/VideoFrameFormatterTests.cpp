@@ -189,17 +189,15 @@ namespace Tests
 			t0 = U64_MulDiv(t0, 1001, 24000);
 			Assert::AreEqual(0ULL, t0);
 
-			// Frame 1: should be ~417083 (exact: 417083.75)
+			// Frame 1: 10,000,000 * 1001 / 24000 = 417083.333...
 			uint64_t t1 = U64_MulDiv(1, ticksPerSec, 1);
 			t1 = U64_MulDiv(t1, 1001, 24000);
-			// With rounding, 417083.75 should round to 417084
-			Assert::AreEqual(417084ULL, t1);
+			Assert::AreEqual(417083ULL, t1);
 
-			// Frame 2: should be ~834167 (exact: 834167.5)
+			// Frame 2: 20,000,000 * 1001 / 24000 = 834166.666...
 			uint64_t t2 = U64_MulDiv(2, ticksPerSec, 1);
 			t2 = U64_MulDiv(t2, 1001, 24000);
-			// With rounding, 834167.5 should round to 834168
-			Assert::AreEqual(834168ULL, t2);
+			Assert::AreEqual(834167ULL, t2);
 		}
 	};
 }

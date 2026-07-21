@@ -11,6 +11,7 @@
 #include <Windows.h>
 #include <atlstr.h>
 #include <mutex>
+#include <vector>
 
 // Simple stats data structure - no complex types that need initialization
 struct StatsData
@@ -75,6 +76,8 @@ struct StatsData
 
 	// Video info
 	CString videoConversion;
+	CString activeShaderRule;
+	std::vector<CString> activeShaders;
 
 	// Conversion performance (NEW - for V210?P010 etc.)
 	double currentConversionTimeUs = 0.0;      // Latest conversion time in microseconds
@@ -145,6 +148,7 @@ private:
 	void DrawBackground(HDC hdc);
 	void DrawStats(HDC hdc);
 	void DrawText(HDC hdc, const CString& text, int x, int y);
+	int CalculateRequiredHeight(const StatsData& stats) const;
 
 	// Formatting helpers
 	CString FormatTime(double seconds);
@@ -163,6 +167,7 @@ private:
 	HWND m_parentHwnd;
 	bool m_isVisible;
 	bool m_isCreated;
+	int m_windowHeight;
 
 	// Fonts
 	HFONT m_font;
@@ -176,7 +181,6 @@ private:
 	static const int MARGIN_RIGHT = 500;
 	static const int MARGIN_BOTTOM = 320;    // Move up 20 pixels (was 300)
 	static const int WINDOW_WIDTH = 420;     // Keep width the same
-	static const int WINDOW_HEIGHT = 610;    // Display-rate and Scene Detect timing/statistics rows
 	static const int PADDING = 10;
 	static const int LINE_HEIGHT = 23;     // Match font size for better spacing
 

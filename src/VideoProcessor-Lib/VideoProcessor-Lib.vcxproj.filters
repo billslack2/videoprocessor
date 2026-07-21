@@ -222,6 +222,12 @@
     <ClInclude Include="ConfigFile.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+	<ClInclude Include="microsoft_directshow\MadVRExternalPixelShaders.h">
+	  <Filter>Header Files\microsoft_directshow</Filter>
+	</ClInclude>
+	<ClInclude Include="microsoft_directshow\MadVRShaderLoader.h">
+	  <Filter>Header Files\microsoft_directshow</Filter>
+	</ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -374,6 +380,9 @@
     <ClCompile Include="ConfigFile.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+	<ClCompile Include="microsoft_directshow\MadVRShaderLoader.cpp">
+	  <Filter>Source Files\microsoft_directshow</Filter>
+	</ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Text Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin_tracking_snippet.txt" />

@@ -12,6 +12,7 @@
 #include <VideoFrame.h>
 #include <VideoState.h>
 #include <SubtitleRepositionMode.h>
+#include <vector>
 
 
 enum RendererState
@@ -166,6 +167,11 @@ public:
 	virtual uint64_t SceneAwareCorrectionRepeatCount() const { return 0; }
 	virtual uint64_t SceneAwareDetectedCount() const { return 0; }
 	virtual uint64_t SceneAwareLateCandidateCount() const { return 0; }
+	// Successfully installed renderer-native shader chain, formatted for display
+	// as entries such as "Pre: Debanding" or "Post: Adaptive sharpen".
+	virtual std::vector<CString> ActiveShaders() const { return {}; }
+	// Human-readable label for the shader rule selected for this renderer run.
+	virtual CString ActiveShaderRule() const { return TEXT("None"); }
 	// Live prediction of the next scene-aware whole-frame correction.  action is
 	// +1 for a repeat, -1 for a drop, and 0 when no prediction is available.
 	// planned becomes true once the delivery thread is actively seeking a safe

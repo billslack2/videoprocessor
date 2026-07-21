@@ -191,6 +191,8 @@
     <ClInclude Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.h" />
     <ClInclude Include="microsoft_directshow\DirectShowTimingClock.h" />
     <ClInclude Include="microsoft_directshow\DirectShowTranslations.h" />
+	<ClInclude Include="microsoft_directshow\MadVRExternalPixelShaders.h" />
+	<ClInclude Include="microsoft_directshow\MadVRShaderLoader.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\CBufferedLiveSourceVideoOutputPin.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\CLiveSource.h" />
@@ -247,6 +249,10 @@
     <ClCompile Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.cpp" />
     <ClCompile Include="microsoft_directshow\DirectShowTimingClock.cpp" />
     <ClCompile Include="microsoft_directshow\DirectShowTranslations.cpp" />
+	<ClCompile Include="microsoft_directshow\MadVRShaderLoader.cpp">
+	  <LanguageStandard>stdcpp17</LanguageStandard>
+	  <PrecompiledHeader>NotUsing</PrecompiledHeader>
+	</ClCompile>
     <ClCompile Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin.cpp" />
     <ClCompile Include="microsoft_directshow\live_source_filter\CBufferedLiveSourceVideoOutputPin.cpp" />
     <ClCompile Include="microsoft_directshow\live_source_filter\GpuSubtitleDetector.cpp">

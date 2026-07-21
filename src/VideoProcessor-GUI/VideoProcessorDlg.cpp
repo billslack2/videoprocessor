@@ -4762,6 +4762,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				stats.sceneLastCorrectionAction,
 				stats.sceneLastCorrectionSecondsFromDeadline,
 				stats.sceneLastCorrectionTick);
+		stats.activeShaderRule = m_videoRenderer->ActiveShaderRule();
+		stats.activeShaders = m_videoRenderer->ActiveShaders();
 	}
 
 	// Capture device frame counts
