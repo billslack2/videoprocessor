@@ -1385,8 +1385,38 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	assert(videoState);
 	assert(m_captureDevice);
 
+	const bool wasNewLldvEffective =
+		m_useNewLldvHeuristic &&
+		m_newLldvCandidateConfirmed &&
+		!m_lldvForceSuppressedAfterRestart &&
+		IsNewLldvModeSelected();
+
 	m_captureDeviceVideoState = videoState;
 	const bool newLldvJustConfirmed = UpdateNewLldvCandidate();
+	const bool newLldvWasCleared =
+		wasNewLldvEffective && !m_newLldvCandidateConfirmed;
+	const bool newLldvJustEndedInSdr =
+		newLldvWasCleared && videoState->valid && videoState->eotf == EOTF::SDR;
+	const bool promotionRestartWasPending =
+		newLldvWasCleared &&
+		(m_lldvRestartPending || m_lldvChangeRestartDelaySeconds >= 0);
+
+	// A source can return to its menu while the delayed promotion restart is
+	// still pending.  Do not let that stale timer rebuild the graph as PQ after
+	// the candidate has already disappeared.
+	if (newLldvWasCleared)
+	{
+		KillTimer(LLDV_CHANGE_RESTART_TIMER_ID);
+		m_lldvChangeRestartDelaySeconds = -1;
+		m_lldvRestartPending = false;
+		m_lldvRestartForPromotion = false;
+
+		if (promotionRestartWasPending)
+		{
+			DebugLog::Log(
+				"New LLDV promotion cancelled: candidate ended before renderer restart");
+		}
+	}
 
 	// Reset refresh rate tracking on video state change to prevent false positive detection
 	m_lastKnownRefreshRate = 0.0;
@@ -1433,17 +1463,68 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	// If the renderer did not accept the new state we need to restart the renderer
 	if (!rendererAcceptedState)
 	{
-		if (newLldvJustConfirmed && IsNewLldvModeSelected())
+		if (!videoState->valid)
+		{
+			// UpdateState() stops the graph for an invalid signal.  Do not leave a
+			// restart request behind for when capture becomes valid again.
+			DbgLog((LOG_TRACE, 1,
+				TEXT("Renderer rejected invalid video state; existing invalid-signal stop path will handle it")));
+			DebugLog::Log(
+				"Renderer video-state update rejected: signal invalid; action=stop renderer");
+		}
+		else if (newLldvJustConfirmed && IsNewLldvModeSelected())
 		{
 			// BT.2020/SDR LLDV changes the effective output to PQ while the raw
 			// DeckLink EOTF remains SDR.  Use the stabilized LLDV restart path.
 			ScheduleNewLldvRendererRestart();
 		}
+		else if (newLldvJustEndedInSdr)
+		{
+			if (promotionRestartWasPending)
+			{
+				DbgLog((LOG_TRACE, 1,
+					TEXT("New LLDV heuristic: promotion cancelled; restarting renderer for rejected menu state")));
+				DebugLog::Log(
+					"New LLDV exit: promotion cancelled before PQ graph restart; raw state %s / %s; restarting renderer for rejected menu state",
+					CStringA(ToString(videoState->eotf)).GetString(),
+					CStringA(ToString(videoState->colorspace)).GetString());
+			}
+			else
+			{
+				DbgLog((LOG_TRACE, 1,
+					TEXT("New LLDV heuristic: effective PQ ended; restarting renderer to clear HDR state")));
+				DebugLog::Log(
+					"New LLDV exit: effective PQ -> SDR, raw state %s / %s; restarting renderer to clear madVR HDR state",
+					CStringA(ToString(videoState->eotf)).GetString(),
+					CStringA(ToString(videoState->colorspace)).GetString());
+			}
+			m_wantToRestartRenderer = true;
+		}
+		else if (m_lldvRestartPending || m_lldvChangeRestartDelaySeconds >= 0)
+		{
+			// Additional state notifications must not bypass the stabilized LLDV
+			// promotion path while its restart is already queued.
+			DbgLog((LOG_TRACE, 1,
+				TEXT("Renderer rejected pending LLDV PQ state; keeping scheduled promotion restart")));
+			DebugLog::Log(
+				"Renderer video-state update rejected during pending LLDV promotion; action=keep scheduled PQ restart");
+		}
+		else if (m_eotfChangeRestartCooldownSeconds >= 0)
+		{
+			// The raw EOTF path has already scheduled its stabilization restart.
+			// Preserve that delay instead of performing a second immediate restart.
+			DbgLog((LOG_TRACE, 1,
+				TEXT("Renderer rejected video state during raw EOTF transition; using pending stabilization restart")));
+			DebugLog::Log(
+				"Renderer video-state update rejected during raw EOTF transition; action=deferred stabilization restart");
+		}
 		else
 		{
-		DbgLog((LOG_TRACE, 1,
-			TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange():  - Renderer did not accept state, m_wantToRestartRenderer=true")));
-		m_wantToRestartRenderer = true;
+			DbgLog((LOG_TRACE, 1,
+				TEXT("Capture video state update was rejected by renderer; restarting renderer")));
+			DebugLog::Log(
+				"Renderer rejected capture video state update; action=restart renderer");
+			m_wantToRestartRenderer = true;
 		}
 	}
 	// Note: Automatic reset for signal changes is now handled at the lower level
@@ -1613,6 +1694,21 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			m_eotfCheckCooldownSeconds = 0;
 		}
 
+		if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING &&
+			m_captureDevice)
+		{
+			m_rendererStartCapturedFrameCount =
+				m_captureDevice->VideoFrameCapturedCount();
+			m_rendererFrameBaselineValid = true;
+			DbgLog((LOG_TRACE, 1,
+				TEXT("OSD VFrames: renderer-start baseline set to %llu captured frames"),
+				m_rendererStartCapturedFrameCount));
+		}
+		else
+		{
+			m_rendererStartCapturedFrameCount = 0;
+			m_rendererFrameBaselineValid = false;
+		}
 		m_deliverCaptureDataToRenderer.store(true, std::memory_order_release);
 		enableButtons = true;
 		m_windowedVideoWindow.ShowLogo(false);
@@ -2604,11 +2700,7 @@ void CVideoProcessorDlg::RenderStart()
 	}
 	catch (std::runtime_error e)
 	{
-		if (m_videoRenderer)
-		{
-			delete m_videoRenderer;
-			m_videoRenderer = nullptr;
-		}
+		DestroyVideoRenderer();
 
 		try
 		{
@@ -2673,8 +2765,7 @@ void CVideoProcessorDlg::RenderStart()
 		}
 		catch (std::runtime_error e)
 		{
-			delete m_videoRenderer;
-			m_videoRenderer = nullptr;
+			DestroyVideoRenderer();
 
 			m_rendererState = RendererState::RENDERSTATE_FAILED;
 			m_rendererStateText.SetWindowText(TEXT("Failed"));
@@ -2749,12 +2840,32 @@ void CVideoProcessorDlg::RenderRemove()
 	assert(m_rendererState == RendererState::RENDERSTATE_STOPPED);
 	assert(!m_deliverCaptureDataToRenderer);
 
-	delete m_videoRenderer;
-	m_videoRenderer = nullptr;
+	DestroyVideoRenderer();
 
 	m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderRemove(): End")));
+}
+
+
+void CVideoProcessorDlg::DestroyVideoRenderer()
+{
+	if (!m_videoRenderer)
+		return;
+
+	// Releasing a windowed renderer can synchronously pump WM_PAINT and other
+	// window messages.  Detach the shared pointer before invoking the destructor
+	// so a reentrant handler cannot call a virtual method on an object whose
+	// derived destructor has already completed.
+	IVideoRenderer* rendererToDestroy = m_videoRenderer;
+	m_videoRenderer = nullptr;
+
+	DbgLog((LOG_TRACE, 1,
+		TEXT("CVideoProcessorDlg::DestroyVideoRenderer(): Renderer detached before destruction")));
+	DebugLog::Log(
+		"Renderer teardown: detached renderer before destruction to block reentrant callbacks");
+
+	delete rendererToDestroy;
 }
 
 
@@ -2999,7 +3110,20 @@ bool CVideoProcessorDlg::UpdateNewLldvCandidate()
 	if (!isCandidate)
 	{
 		if (m_newLldvCandidateActive)
-			DebugLog::Log("New LLDV heuristic: BT.2020/SDR candidate cleared before confirmation");
+		{
+			if (m_newLldvCandidateConfirmed)
+			{
+				DebugLog::Log(
+					"New LLDV heuristic: confirmed LLDV input ended; capture state is now %s / %s",
+					CStringA(ToString(m_captureDeviceVideoState->eotf)).GetString(),
+					CStringA(ToString(m_captureDeviceVideoState->colorspace)).GetString());
+			}
+			else
+			{
+				DebugLog::Log(
+					"New LLDV heuristic: BT.2020/SDR candidate cleared before confirmation");
+			}
+		}
 
 		m_newLldvCandidateActive = false;
 		m_newLldvCandidateConfirmed = false;
@@ -3031,6 +3155,15 @@ bool CVideoProcessorDlg::UpdateNewLldvCandidate()
 
 bool CVideoProcessorDlg::BuildPushVideoState()
 {
+	const bool hadPreviousEffectiveState =
+		m_builtVideoState && m_builtVideoState->valid;
+	const EOTF previousEffectiveEotf = hadPreviousEffectiveState
+		? m_builtVideoState->eotf
+		: EOTF::UNKNOWN;
+	const ColorSpace previousEffectiveColorSpace = hadPreviousEffectiveState
+		? m_builtVideoState->colorspace
+		: ColorSpace::UNKNOWN;
+
 	VideoStateComPtr videoState = new VideoState(*m_captureDeviceVideoState);
 	if (!videoState)
 		throw std::runtime_error("Failed to alloc VideoStateComPtr");
@@ -3251,16 +3384,45 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	// Push
 	//
 
+	// During asynchronous graph teardown the existing renderer can no longer
+	// consume updates.  Retain the newly built state for the replacement graph
+	// without queuing a second restart.
+	if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_STOPPING)
+	{
+		DbgLog((LOG_TRACE, 1,
+			TEXT("CVideoProcessorDlg::BuildPushVideoState(): Renderer stopping; state retained for next graph")));
+		return true;
+	}
+
 	// Push to renderer if available
 	if (m_videoRenderer)
 	{
-		m_videoRenderer->OnVideoState(m_builtVideoState);
-		return true;
+		const bool rendererAcceptedState =
+			m_videoRenderer->OnVideoState(m_builtVideoState);
+
+		if (!rendererAcceptedState)
+		{
+			DbgLog((LOG_TRACE, 1,
+				TEXT("CVideoProcessorDlg::BuildPushVideoState(): Renderer rejected effective state %s/%s -> %s/%s"),
+				ToString(previousEffectiveEotf),
+				ToString(previousEffectiveColorSpace),
+				ToString(m_builtVideoState->eotf),
+				ToString(m_builtVideoState->colorspace)));
+			DebugLog::Log(
+				"Renderer rejected effective video state %s / %s -> %s / %s; renderer update required",
+				CStringA(ToString(previousEffectiveEotf)).GetString(),
+				CStringA(ToString(previousEffectiveColorSpace)).GetString(),
+				CStringA(ToString(m_builtVideoState->eotf)).GetString(),
+				CStringA(ToString(m_builtVideoState->colorspace)).GetString());
+		}
+
+		return rendererAcceptedState;
 	}
 	else
 	{
-		DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::BuildPushVideoState(): Renderer did not accept state")));
-		return false;
+		DbgLog((LOG_TRACE, 1,
+			TEXT("CVideoProcessorDlg::BuildPushVideoState(): Renderer unavailable; state retained for next graph")));
+		return true;
 	}
 }
 
@@ -3290,6 +3452,8 @@ void CVideoProcessorDlg::ScheduleNewLldvRendererRestart()
 	{
 		m_lldvRestartPending = true;
 		m_lldvRestartForPromotion = true;
+		DebugLog::Log(
+			"New LLDV promotion: candidate confirmed during renderer startup; PQ restart queued");
 		return;
 	}
 
@@ -3299,6 +3463,8 @@ void CVideoProcessorDlg::ScheduleNewLldvRendererRestart()
 	m_lldvChangeRestartDelaySeconds = 2;
 	m_lldvRestartForPromotion = true;
 	SetTimer(LLDV_CHANGE_RESTART_TIMER_ID, 1000, nullptr);
+	DebugLog::Log(
+		"New LLDV promotion: candidate confirmed; scheduling PQ renderer restart in 2 seconds");
 }
 
 
@@ -4477,7 +4643,14 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	// Capture device frame counts
 	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING && m_captureDevice)
 	{
-		stats.capturedFrames = m_captureDevice->VideoFrameCapturedCount();
+		const uint64_t totalCapturedFrames =
+			m_captureDevice->VideoFrameCapturedCount();
+		stats.capturedFrames = totalCapturedFrames;
+		stats.rendererCapturedFrames =
+			m_rendererFrameBaselineValid &&
+			totalCapturedFrames >= m_rendererStartCapturedFrameCount
+			? totalCapturedFrames - m_rendererStartCapturedFrameCount
+			: 0;
 		stats.capturedDroppedFrames = m_captureDevice->VideoFrameMissedCount();
 	}
 
