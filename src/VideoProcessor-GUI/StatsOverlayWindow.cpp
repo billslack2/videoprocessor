@@ -321,7 +321,8 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 	// Actual display refresh period as reported by the Desktop Window Manager.
 	if (m_stats.displayRefreshRate > 0.0)
-		line.Format(TEXT("- Display Rate:   %.6f Hz"), m_stats.displayRefreshRate);
+		line.Format(TEXT("- Display Rate:   %.6f Hz%s"), m_stats.displayRefreshRate,
+			m_stats.displayRefreshRateOverridden ? TEXT(" *") : TEXT(""));
 	else
 		line.Format(TEXT("- Display Rate:   ---"));
 	DrawText(hdc, line, PADDING, y);
@@ -463,7 +464,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	else if (!m_stats.sceneTimingReady)
 		line.Format(TEXT(" - Status:        Warming"));
 	else if (!m_stats.sceneTimingRatesCompatible)
-		line.Format(TEXT(" - Status:        Pending"));
+		line.Format(TEXT(" - Status:        Unavailable"));
 	else
 		line.Format(TEXT(" - Status:        Ready"));
 	DrawText(hdc, line, PADDING, y);

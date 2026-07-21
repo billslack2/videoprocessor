@@ -10,6 +10,7 @@
 
 
 #include <set>
+#include <map>
 #include <atomic>
 
 #include <blackmagic_decklink/BlackMagicDeckLinkCaptureDeviceDiscoverer.h>
@@ -180,6 +181,7 @@ protected:
 
 	int m_resyncPendingResetSeconds = -1;  // Countdown timer for scheduled reset after resync/refresh rate change (-1 = no reset pending)
 	double m_lastKnownRefreshRate = 0.0;  // Track last refresh rate for change detection (0 = not initialized)
+	std::map<int, double> m_displayRefreshRateOverridesHz;
 
 	// EOTF change detection for SDR/HDR switching
 	// Feature flag: Set to true to enable automatic renderer restart on EOTF change
@@ -431,6 +433,9 @@ protected:
 	void RebuildRendererCombo();
 	void ClearRendererCombo();
 	void UpdateStatsOverlay();
+	void LoadDisplayRefreshRateOverrides();
+	bool TryGetDisplayRefreshRateOverride(double nominalRateHz,
+		double& overrideRateHz, int& matchedNominalRate) const;
 	void MonitorQueueHealth(size_t rawQueueSize, size_t convertedQueueSize,
 		size_t queueMaxSize, uint64_t droppedFrames);
 	void ApplyNoUiLayout();
