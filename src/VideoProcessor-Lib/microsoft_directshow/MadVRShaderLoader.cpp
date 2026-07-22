@@ -234,6 +234,11 @@ bool IsParameterNameValid(const std::string& name)
 void LoadShaderParameters(const ConfigFile& config, const std::string& section,
 	ShaderRule& rule)
 {
+	// Preserve compatibility with configurations created before the selectable
+	// NLS geometry was introduced. Parameters unused by other shaders are inert.
+	rule.parameters["geometry"] = "0";
+	rule.parameters["center_protection"] = "0.35";
+
 	const auto* settings = config.GetSectionValues(section);
 	if (!settings)
 		return;
@@ -254,8 +259,8 @@ void LoadShaderParameters(const ConfigFile& config, const std::string& section,
 
 		try
 		{
-			// Shader quality is a common user-facing enum but is substituted as a
-			// compile-time scalar so existing numeric-only template safety remains.
+			// Common user-facing shader enums are substituted as compile-time
+			// scalars so shader templates remain numeric-only and safe.
 			if (name == "quality")
 			{
 				const std::string quality = ConfigFile::NormalizeName(setting.second);
@@ -265,6 +270,16 @@ void LoadShaderParameters(const ConfigFile& config, const std::string& section,
 				else if (quality == "very high" || quality == "very_high" || quality == "veryhigh")
 					rule.parameters[name] = "3";
 				else throw std::invalid_argument("unknown quality");
+				continue;
+			}
+			if (name == "geometry")
+			{
+				const std::string geometry = ConfigFile::NormalizeName(setting.second);
+				if (geometry == "classic") rule.parameters[name] = "0";
+				else if (geometry == "protected" || geometry == "center protected" ||
+					geometry == "center_protected" || geometry == "centerprotected")
+					rule.parameters[name] = "1";
+				else throw std::invalid_argument("unknown geometry");
 				continue;
 			}
 			size_t parsedLength = 0;
@@ -278,9 +293,14 @@ void LoadShaderParameters(const ConfigFile& config, const std::string& section,
 		}
 		catch (...)
 		{
+			const char* acceptedValues = "";
+			if (name == "quality")
+				acceptedValues = " or LOW/MEDIUM/HIGH/VERY_HIGH";
+			else if (name == "geometry")
+				acceptedValues = " or CLASSIC/PROTECTED";
 			DebugLog::Log("Shaders: rule \"%s\" parameter \"%s\" must be a finite number%s, got \"%s\"",
 				rule.name.c_str(), name.c_str(),
-				name == "quality" ? " or LOW/MEDIUM/HIGH/VERY_HIGH" : "",
+				acceptedValues,
 				setting.second.c_str());
 			rule.valid = false;
 		}
