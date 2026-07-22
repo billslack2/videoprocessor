@@ -959,6 +959,9 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		m_sceneAwareCorrectionDropCount.store(0, std::memory_order_relaxed);
 		m_sceneAwareCorrectionRepeatCount.store(0, std::memory_order_relaxed);
 		ResetSubtitleAnalysis();
+		m_activePictureAspectRatio.store(0.0, std::memory_order_release);
+		m_activePictureAspectStable.store(false, std::memory_order_release);
+		m_activePictureDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
 		m_subtitlePanelLumaInitialized.store(false, std::memory_order_relaxed);
 		m_sceneAwareDetectedCount.store(0, std::memory_order_relaxed);
 		m_sceneAwareLateCandidateCount.store(0, std::memory_order_relaxed);
@@ -2245,6 +2248,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 	uint64_t maxSlowConversionUs = 0;
 	SceneDetectorState sceneDetectorState;
 	uint64_t sceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
+	ActivePictureDetectorState activePictureDetectorState;
+	uint64_t activePictureDetectorGeneration =
+		m_activePictureDetectorGeneration.load(std::memory_order_acquire);
 
 	for (;;)
 	{
@@ -2299,6 +2305,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
 				currentConvertedSize = m_convertedSampleQueue.size();
+			}
+			const uint64_t currentActivePictureGeneration =
+				m_activePictureDetectorGeneration.load(std::memory_order_acquire);
+			if (currentActivePictureGeneration != activePictureDetectorGeneration)
+			{
+				activePictureDetectorState = {};
+				activePictureDetectorGeneration = currentActivePictureGeneration;
 			}
 
 			const size_t queueMaxSize = m_frameQueueMaxSize.load(std::memory_order_relaxed);
@@ -2408,6 +2421,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				isSafeCorrectionPoint = IsSafeSceneAwareCorrectionPoint(
 					pSample, sceneDetectorState, sceneEventId,
 					sceneEventFramesBack, sceneAverageLuma);
+
+			// NLS/aspect-rule gating uses the same converted P010 image that reaches
+			// madVR. Sparse sampling every few frames is negligible beside conversion.
+			if (IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010))
+				UpdateActivePictureAspectRatio(pSample, videoFrame.GetCounter(),
+					activePictureDetectorState);
 
 			// Analyze the unmodified frame first. Subtitle relocation changes a
 			// small image region and must not become input to the cut detector.
@@ -2681,6 +2700,124 @@ HRESULT CBufferedLiveSourceVideoOutputPin::CloneSampleForUpstreamRepeat(
 
 	*repeatSample = duplicate;
 	return S_OK;
+}
+
+
+bool CBufferedLiveSourceVideoOutputPin::GetActivePictureAspectRatio(
+	double& aspectRatio) const
+{
+	aspectRatio = m_activePictureAspectRatio.load(std::memory_order_acquire);
+	return m_activePictureAspectStable.load(std::memory_order_acquire) &&
+		aspectRatio > 0.0;
+}
+
+
+void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
+	IMediaSample* sample, uint64_t frameNumber, ActivePictureDetectorState& state)
+{
+	constexpr uint64_t ANALYSIS_INTERVAL_FRAMES = 6;
+	constexpr uint8_t REQUIRED_MATCHES = 5;
+	constexpr uint16_t BLACK_LUMA_MAX = 96; // Limited-range P010 black is code 64.
+	if (!sample || (state.lastAnalyzedFrame != 0 &&
+		frameNumber > state.lastAnalyzedFrame &&
+		frameNumber - state.lastAnalyzedFrame < ANALYSIS_INTERVAL_FRAMES))
+		return;
+	state.lastAnalyzedFrame = frameNumber;
+
+	LONG width = 0;
+	LONG signedHeight = 0;
+	if (m_mediaType.pbFormat && IsEqualGUID(m_mediaType.formattype, FORMAT_VideoInfo2) &&
+		m_mediaType.cbFormat >= sizeof(VIDEOINFOHEADER2))
+	{
+		const auto* info = reinterpret_cast<const VIDEOINFOHEADER2*>(m_mediaType.pbFormat);
+		width = info->bmiHeader.biWidth;
+		signedHeight = info->bmiHeader.biHeight;
+	}
+	else if (m_mediaType.pbFormat && IsEqualGUID(m_mediaType.formattype, FORMAT_VideoInfo) &&
+		m_mediaType.cbFormat >= sizeof(VIDEOINFOHEADER))
+	{
+		const auto* info = reinterpret_cast<const VIDEOINFOHEADER*>(m_mediaType.pbFormat);
+		width = info->bmiHeader.biWidth;
+		signedHeight = info->bmiHeader.biHeight;
+	}
+	if (width <= 0 || signedHeight == 0)
+		return;
+
+	const int height = signedHeight > 0 ? signedHeight : -signedHeight;
+	const size_t lumaBytes = static_cast<size_t>(width) * height * sizeof(uint16_t);
+	if (static_cast<size_t>(sample->GetActualDataLength()) < lumaBytes)
+		return;
+	BYTE* bytes = nullptr;
+	if (FAILED(sample->GetPointer(&bytes)) || !bytes)
+		return;
+	const auto* luma = reinterpret_cast<const uint16_t*>(bytes);
+
+	auto rowIsBlack = [&](int y)
+	{
+		constexpr int SAMPLES = 64;
+		int black = 0;
+		const uint16_t* row = luma + static_cast<size_t>(y) * width;
+		for (int i = 0; i < SAMPLES; ++i)
+		{
+			const int x = ((i * 2 + 1) * width) / (SAMPLES * 2);
+			if ((row[x] >> 6) <= BLACK_LUMA_MAX)
+				++black;
+		}
+		return black >= (SAMPLES * 27) / 32;
+	};
+	auto columnIsBlack = [&](int x)
+	{
+		constexpr int SAMPLES = 36;
+		int black = 0;
+		for (int i = 0; i < SAMPLES; ++i)
+		{
+			const int y = ((i * 2 + 1) * height) / (SAMPLES * 2);
+			if ((luma[static_cast<size_t>(y) * width + x] >> 6) <= BLACK_LUMA_MAX)
+				++black;
+		}
+		return black >= (SAMPLES * 27) / 32;
+	};
+
+	const int yStep = std::max(2, height / 540);
+	const int xStep = std::max(2, static_cast<int>(width / 960));
+	int top = 0;
+	while (top + yStep < height / 2 && rowIsBlack(top)) top += yStep;
+	int bottom = height;
+	while (bottom - yStep > height / 2 && rowIsBlack(bottom - 1)) bottom -= yStep;
+	int left = 0;
+	while (left + xStep < width / 2 && columnIsBlack(left)) left += xStep;
+	int right = width;
+	while (right - xStep > width / 2 && columnIsBlack(right - 1)) right -= xStep;
+
+	const int activeWidth = right - left;
+	const int activeHeight = bottom - top;
+	if (activeWidth < width / 3 || activeHeight < height / 3)
+		return;
+	const double aspect = static_cast<double>(activeWidth) / activeHeight;
+	if (aspect < 1.0 || aspect > 4.0)
+		return;
+
+	if (state.candidateAspectRatio > 0.0 &&
+		std::abs(aspect - state.candidateAspectRatio) <= 0.025)
+	{
+		if (state.matchingCandidates < 255) ++state.matchingCandidates;
+		state.candidateAspectRatio = state.candidateAspectRatio * 0.75 + aspect * 0.25;
+	}
+	else
+	{
+		state.candidateAspectRatio = aspect;
+		state.matchingCandidates = 1;
+	}
+
+	if (state.matchingCandidates >= REQUIRED_MATCHES)
+	{
+		const double previous = m_activePictureAspectRatio.exchange(
+			state.candidateAspectRatio, std::memory_order_acq_rel);
+		m_activePictureAspectStable.store(true, std::memory_order_release);
+		if (previous <= 0.0 || std::abs(previous - state.candidateAspectRatio) > 0.01)
+			DebugLog::Log("ACTIVE PICTURE: stable aspect %.4f (bounds %d,%d-%d,%d raster %dx%d)",
+				state.candidateAspectRatio, left, top, right, bottom, width, height);
+	}
 }
 
 

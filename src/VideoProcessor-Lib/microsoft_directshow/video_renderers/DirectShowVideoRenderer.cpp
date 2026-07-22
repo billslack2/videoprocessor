@@ -1065,3 +1065,11 @@ size_t DirectShowVideoRenderer::GetConvertedQueueSize()
 
 	return m_liveSource->GetConvertedQueueSize();
 }
+
+
+bool DirectShowVideoRenderer::GetActivePictureAspectRatio(double& aspectRatio) const
+{
+	aspectRatio = 0.0;
+	return m_liveSource && m_liveSource->GetVideoOutputPin() &&
+		m_liveSource->GetVideoOutputPin()->GetActivePictureAspectRatio(aspectRatio);
+}

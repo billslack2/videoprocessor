@@ -92,6 +92,7 @@ public:
 	
 	// Get frame rate measurement and PPM deviation (for timing diagnostics)
 	bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const override;
+	bool GetActivePictureAspectRatio(double& aspectRatio) const;
 
 protected:
 

@@ -222,6 +222,20 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 
 	pvi2->AvgTimePerFrame = (REFERENCE_TIME)(UNITS / m_videoState->displayMode->RefreshRateHz());
 
+	// NLS still uses madVR for the actual high-quality resize. We only change
+	// the negotiated display aspect ratio so madVR fills the configured scope
+	// viewport before applying the nonlinear pre-resize coordinate mapping.
+	m_outputAspectRatioX = 0;
+	m_outputAspectRatioY = 0;
+	if (MadVRShaderLoader::GetRuntimeOutputAspectRatio(m_outputAspectRatioX,
+		m_outputAspectRatioY))
+	{
+		pvi2->dwPictAspectRatioX = static_cast<DWORD>(m_outputAspectRatioX);
+		pvi2->dwPictAspectRatioY = static_cast<DWORD>(m_outputAspectRatioY);
+		DebugLog::Log("Shaders: negotiated output picture aspect ratio %lu:%lu",
+			m_outputAspectRatioX, m_outputAspectRatioY);
+	}
+
 	DXVA_ExtendedFormat* colorimetry = (DXVA_ExtendedFormat*)&(pvi2->dwControlFlags);
 
 	colorimetry->VideoPrimaries =
@@ -311,10 +325,17 @@ void DirectShowGenericHDRVideoRenderer::RendererConnect()
 	// The renderer owns the GPU surface, so external HLSL must be installed
 	// through its interface after the graph connection exists. A full renderer
 	// rebuild creates a new COM instance and naturally reapplies this chain.
-	m_activeShaders.clear();
-	m_activeShaderRule = TEXT("None");
 	const MadVRShaderSelection shaderSelection =
 		MadVRShaderLoader::ApplyConfiguredShaders(m_pRenderer, *m_videoState);
+	UpdateActiveShaderSelection(shaderSelection);
+}
+
+
+void DirectShowGenericHDRVideoRenderer::UpdateActiveShaderSelection(
+	const MadVRShaderSelection& shaderSelection)
+{
+	m_activeShaders.clear();
+	m_activeShaderRule = TEXT("None");
 	if (!shaderSelection.ruleLabel.empty())
 		m_activeShaderRule.Format(TEXT("%S"), shaderSelection.ruleLabel.c_str());
 	for (const ActiveMadVRShader& shader : shaderSelection.activeShaders)
@@ -325,6 +346,122 @@ void DirectShowGenericHDRVideoRenderer::RendererConnect()
 			shader.name.c_str());
 		m_activeShaders.push_back(label);
 	}
+}
+
+
+bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName,
+	CString& activeRule, bool& rendererRestartRequired)
+{
+	rendererRestartRequired = false;
+	if (!m_pRenderer || !m_videoState)
+		return false;
+
+	CT2A ruleUtf8(ruleName, CP_UTF8);
+	std::string label;
+	std::string inactiveRule;
+	if (!MadVRShaderLoader::GetRuleActivationInfo(std::string(ruleUtf8),
+		label, inactiveRule))
+		return false;
+	m_requestedShaderRule = ruleName;
+	m_requestedShaderLabel.Format(TEXT("%S"), label.c_str());
+	m_inactiveShaderRule.Format(TEXT("%S"), inactiveRule.c_str());
+
+	double activeAspectRatio = 0.0;
+	const bool aspectAvailable =
+		GetActivePictureAspectRatio(activeAspectRatio);
+	std::string reason;
+	if (!MadVRShaderLoader::ValidateActivePictureAspect(std::string(ruleUtf8),
+		aspectAvailable, activeAspectRatio, reason))
+	{
+		if (!inactiveRule.empty())
+		{
+			const MadVRShaderSelection bypassSelection =
+				MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer,
+					*m_videoState, inactiveRule);
+			UpdateActiveShaderSelection(bypassSelection);
+			rendererRestartRequired =
+				bypassSelection.outputAspectRatioX != m_outputAspectRatioX ||
+				bypassSelection.outputAspectRatioY != m_outputAspectRatioY;
+		}
+		m_requestedShaderApplied = false;
+		m_activeShaderRule.Format(TEXT("%s (Waiting)"),
+			static_cast<LPCTSTR>(m_requestedShaderLabel));
+		activeRule = m_activeShaderRule;
+		DebugLog::Log("Shaders: armed rule \"%s\"; waiting because %s",
+			static_cast<const char*>(ruleUtf8), reason.c_str());
+		return true;
+	}
+
+	const MadVRShaderSelection selection =
+		MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer, *m_videoState,
+			std::string(ruleUtf8));
+	UpdateActiveShaderSelection(selection);
+	m_requestedShaderApplied = true;
+	activeRule = m_activeShaderRule;
+	rendererRestartRequired =
+		selection.outputAspectRatioX != m_outputAspectRatioX ||
+		selection.outputAspectRatioY != m_outputAspectRatioY;
+	return !selection.ruleName.empty();
+}
+
+
+bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
+	bool& rendererRestartRequired)
+{
+	activeRule = m_activeShaderRule;
+	rendererRestartRequired = false;
+	if (m_requestedShaderRule.IsEmpty() || !m_pRenderer || !m_videoState)
+		return false;
+
+	CT2A requestedUtf8(m_requestedShaderRule, CP_UTF8);
+	double activeAspectRatio = 0.0;
+	const bool aspectAvailable = GetActivePictureAspectRatio(activeAspectRatio);
+	std::string reason;
+	const bool shouldApply = MadVRShaderLoader::ValidateActivePictureAspect(
+		std::string(requestedUtf8), aspectAvailable, activeAspectRatio, reason);
+
+	// After a graph rebuild the detector deliberately reacquires stability.
+	// Preserve the current applied/bypassed state during that short interval so
+	// the guard cannot create an aspect restart loop.
+	if (!aspectAvailable && !shouldApply)
+		return false;
+	if (shouldApply == m_requestedShaderApplied)
+		return false;
+
+	std::string ruleToApply;
+	if (shouldApply)
+		ruleToApply = std::string(requestedUtf8);
+	else
+	{
+		CT2A inactiveUtf8(m_inactiveShaderRule, CP_UTF8);
+		ruleToApply = std::string(inactiveUtf8);
+		if (ruleToApply.empty())
+		{
+			DebugLog::Log("Shaders: conditional rule \"%s\" cannot bypass because inactive_rule is missing",
+				static_cast<const char*>(requestedUtf8));
+			return false;
+		}
+	}
+
+	const MadVRShaderSelection selection =
+		MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer, *m_videoState,
+			ruleToApply);
+	UpdateActiveShaderSelection(selection);
+	m_requestedShaderApplied = shouldApply;
+	if (!shouldApply)
+		m_activeShaderRule.Format(TEXT("%s (Waiting)"),
+			static_cast<LPCTSTR>(m_requestedShaderLabel));
+	activeRule = m_activeShaderRule;
+	rendererRestartRequired =
+		selection.outputAspectRatioX != m_outputAspectRatioX ||
+		selection.outputAspectRatioY != m_outputAspectRatioY;
+	DebugLog::Log("Shaders: armed rule \"%s\" %s at active aspect %.4f%s%s",
+		static_cast<const char*>(requestedUtf8),
+		shouldApply ? "engaged" : "bypassed",
+		activeAspectRatio,
+		shouldApply ? "" : "; ",
+		shouldApply ? "" : reason.c_str());
+	return true;
 }
 
 

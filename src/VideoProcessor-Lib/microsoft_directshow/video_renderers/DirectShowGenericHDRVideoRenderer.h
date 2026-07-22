@@ -10,6 +10,7 @@
 
 
 #include "DirectShowVideoRenderer.h"
+#include <microsoft_directshow/MadVRShaderLoader.h>
 
 
 /**
@@ -45,6 +46,10 @@ public:
 	void OnPaint() override { /* not implemented */ }
 	std::vector<CString> ActiveShaders() const override { return m_activeShaders; }
 	CString ActiveShaderRule() const override { return m_activeShaderRule; }
+	bool SelectShaderRule(const CString& ruleName, CString& activeRule,
+		bool& rendererRestartRequired) override;
+	bool RefreshShaderRule(CString& activeRule,
+		bool& rendererRestartRequired) override;
 
 protected:
 
@@ -55,6 +60,7 @@ protected:
 	void LiveSourceBuildAndConnect() override;
 
 private:
+	void UpdateActiveShaderSelection(const MadVRShaderSelection& selection);
 
 	const GUID m_rendererCLSID;
 	const DXVA_NominalRange m_forceNominalRange;
@@ -63,4 +69,10 @@ private:
 	const DXVA_VideoPrimaries m_forceVideoPrimaries;
 	CString m_activeShaderRule = TEXT("None");
 	std::vector<CString> m_activeShaders;
+	unsigned long m_outputAspectRatioX = 0;
+	unsigned long m_outputAspectRatioY = 0;
+	CString m_requestedShaderRule;
+	CString m_requestedShaderLabel;
+	CString m_inactiveShaderRule;
+	bool m_requestedShaderApplied = false;
 };

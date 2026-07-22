@@ -115,7 +115,7 @@ MinCoreCount=1
 MaxCoreCount=2</pre>
 
   <h2>[shaders] (optional)</h2>
-  <p>This section installs external Direct3D 9 HLSL directly into the selected renderer's GPU pipeline when that renderer supports external shaders. It does not add a CPU conversion or GPU readback. The named rules in <code>rules</code> are checked from left to right and the first matching rule wins. If nothing matches, <code>default=none</code> leaves shaders off. Rules are reevaluated after every full renderer restart using VP's effective EOTF and input refresh rate. Detected LLDV is treated as HDR because its effective EOTF is PQ.</p>
+  <p>This section installs external Direct3D 9 HLSL directly into the selected renderer's GPU pipeline when that renderer supports external shaders. It does not add a CPU conversion or GPU readback. The named automatic rules in <code>rules</code> are checked from left to right and the first matching rule wins. If nothing matches, <code>default=none</code> leaves shaders off. Rules are reevaluated after every full renderer restart using VP's effective EOTF and input refresh rate. Detected LLDV is treated as HDR because its effective EOTF is PQ. A rule may instead be marked <code>manual=true</code> and assigned its own shortcut.</p>
   <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
     <tr><td><code>enabled</code></td><td>Boolean; default <code>false</code></td><td>Enables shader rule evaluation.</td></tr>
     <tr><td><code>rules</code></td><td>Comma-separated rule names</td><td>Sets rule order. Each name uses a matching <code>[shaders.name]</code> section.</td></tr>
@@ -128,6 +128,14 @@ MaxCoreCount=2</pre>
     <tr><td><code>signal</code></td><td><code>ANY</code>, <code>SDR</code>, or <code>HDR</code>; default <code>ANY</code></td><td>Matches the effective video signal. <code>HDR</code> includes HDR gamma, PQ, HLG, and detected LLDV.</td></tr>
     <tr><td><code>frame_rates</code></td><td>Comma-separated nominal integers or <code>ANY</code>; default <code>ANY</code></td><td>Matches VP's displayed input refresh rate using its truncated nominal key: 23 matches 23.976, 29 matches 29.97, and 59 matches 59.94.</td></tr>
     <tr><td><code>none</code></td><td>Boolean; default <code>false</code></td><td>Selects the rule but deliberately installs no shaders. Shader entries in that rule are ignored.</td></tr>
+    <tr><td><code>manual</code></td><td>Boolean; default <code>false</code></td><td>Excludes the rule from automatic signal/rate matching. It can still be selected by its shortcut.</td></tr>
+    <tr><td><code>shortcut</code></td><td>Key or modifier combination</td><td>Selects this rule immediately while video is running. Letter case is meaningful: <code>n</code> means N without Shift and <code>N</code> means Shift+N. <code>Ctrl+</code>, <code>Alt+</code>, <code>Shift+</code>, function keys, Escape, and Enter use the same syntax as <code>[shortcuts]</code>.</td></tr>
+    <tr><td><code>output_aspect_ratio</code></td><td><code>native</code>, decimal, or <code>X:Y</code></td><td>Overrides the DirectShow picture aspect ratio for this manual rule while leaving scaling to the renderer. A change performs a controlled renderer restart so the media type can be renegotiated. Use <code>native</code> in the corresponding off rule.</td></tr>
+    <tr><td><code>aspect_tolerance_percent</code></td><td>0-50</td><td>Optional active-picture guard for a manual rule. The rule stays armed but is bypassed until the stable P010 active picture differs from <code>output_aspect_ratio</code> by more than this percentage.</td></tr>
+    <tr><td><code>aspect_direction</code></td><td><code>ANY</code> or <code>NARROWER_ONLY</code></td><td>With <code>NARROWER_ONLY</code>, engage only when the content is narrower than the target. This prevents NLS from stretching scope or ultra-wide content in the wrong direction.</td></tr>
+    <tr><td><code>active_aspect_min</code></td><td>1.0-4.0</td><td>Optional lower active-picture limit. Use 1.70 for a scope-screen NLS rule to reject 4:3 content.</td></tr>
+    <tr><td><code>inactive_rule</code></td><td>rule name</td><td>Rule applied while an armed conditional rule is waiting. For NLS this should select the no-shader, native-aspect rule.</td></tr>
+    <tr><td><code>param_name</code></td><td>Finite numeric value; <code>param_quality</code> also accepts <code>LOW</code>, <code>MEDIUM</code>, <code>HIGH</code>, or <code>VERY HIGH</code></td><td>Replaces every <code>{{name}}</code> token in every shader in the rule before compilation. Quality maps to compile-time levels 0 through 3.</td></tr>
     <tr><td><code>pre_resize_N</code></td><td>Shader filename</td><td>Adds a source-frame shader before renderer image scaling. Numbered entries execute in ascending order.</td></tr>
     <tr><td><code>post_resize_N</code></td><td>Shader filename</td><td>Adds a screen-space shader after renderer image scaling. Numbered entries execute in ascending order.</td></tr>
   </tbody></table>
@@ -147,6 +155,34 @@ post_resize_1=Shaders\Adaptive sharpen.hlsl
 label=Movies at 23/24 fps
 signal=ANY
 frame_rates=23,24
+none=true</pre>
+  <h3>Manual nonlinear stretch example</h3>
+  <p>This keeps aspect/zoom control in madVR. Shift+N arms VP's pre-resize nonlinear horizontal mapping and N turns it off. The selected manual rule persists through renderer restarts. <code>strength</code> controls the total correction, <code>curve</code> controls how progressively it changes across the picture, and <code>stretch_ratio</code> describes the target horizontal expansion. <code>quality</code> selects single-sample bilinear Low, four-tap positive-filter Medium, six-tap anti-ringing Lanczos-3 High, or eight-tap anti-ringing Lanczos-4 Very High horizontal reconstruction. High is the recommended sharp setting; Medium is the conservative lower-cost setting.</p>
+  <pre>[shaders]
+enabled=true
+rules=nls,nls_off,broadcast_sdr,movies_24
+default=none
+
+[shaders.nls]
+label=Nonlinear Stretch
+manual=true
+shortcut=N
+output_aspect_ratio=2.35
+aspect_tolerance_percent=5
+aspect_direction=narrower_only
+active_aspect_min=1.70
+inactive_rule=nls_off
+pre_resize_1=Shaders\NLS.hlsl
+param_strength=1.0
+param_curve=2.0
+param_stretch_ratio=1.321875
+param_quality=medium
+
+[shaders.nls_off]
+label=NLS Off
+manual=true
+shortcut=n
+output_aspect_ratio=native
 none=true</pre>
   <p>Relative shader paths are resolved from the directory containing <code>VideoProcessor.cfg</code>. The OSD displays the selected rule and every successfully installed shader, and automatically resizes to fit the active chain. The original flat <code>profile</code>, <code>pre_resize_N</code>, and <code>post_resize_N</code> format remains accepted when <code>rules</code> is absent.</p>
   <div class="note">Shaders execute GPU code inside the selected renderer. A compilation failure disables that entire stage and is reported in the log. Expensive or defective shaders can cause dropped frames or a GPU device reset. HDR/color shaders must be written for the color domain presented by the renderer; do not combine an HDR-to-SDR shader with renderer tone mapping unless the chain is intentionally designed that way.</div>

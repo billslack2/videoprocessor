@@ -80,6 +80,7 @@ public:
 	{
 		return m_sceneTimingRatesCompatible.load(std::memory_order_acquire);
 	}
+	bool GetActivePictureAspectRatio(double& aspectRatio) const override;
 	size_t GetFrameQueueSize() override;
 	void Reset() override;
 	REFERENCE_TIME NextFrameTimestamp() const override;
@@ -407,11 +408,26 @@ private:
 		bool previousNearBlack = false;
 	};
 
+	struct ActivePictureDetectorState
+	{
+		double candidateAspectRatio = 0.0;
+		uint8_t matchingCandidates = 0;
+		uint64_t lastAnalyzedFrame = 0;
+	};
+
+	// Published lock-free for UI/renderer shortcut handling. Detection itself
+	// is conversion-worker-owned and samples only sparse P010 luma positions.
+	std::atomic<double> m_activePictureAspectRatio = 0.0;
+	std::atomic_bool m_activePictureAspectStable = false;
+	std::atomic<uint64_t> m_activePictureDetectorGeneration = 0;
+
 	// Reads a sparse luma grid from P010 output.  It is intentionally called
 	// only by the conversion worker and only while the feature is enabled.
 	bool IsSafeSceneAwareCorrectionPoint(IMediaSample* sample, SceneDetectorState& state,
 		uint64_t& sceneEventId, uint8_t& eventFramesBack,
 		uint16_t& averageLuma);
+	void UpdateActivePictureAspectRatio(IMediaSample* sample, uint64_t frameNumber,
+		ActivePictureDetectorState& state);
 	bool RelocateSubtitleInP010(IMediaSample* sample, uint64_t frameNumber);
 	void StartSubtitleAnalysisWorker();
 	void StopSubtitleAnalysisWorker();

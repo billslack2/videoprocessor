@@ -19,6 +19,8 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <map>
+#include <mutex>
 #include <set>
 #include <sstream>
 
@@ -48,10 +50,41 @@ struct ShaderRule
 	SignalMatch signal = SignalMatch::ANY;
 	std::vector<int> nominalRates;
 	bool none = false;
+	bool manual = false;
 	bool valid = true;
+	std::map<std::string, std::string> parameters;
+	unsigned long outputAspectRatioX = 0;
+	unsigned long outputAspectRatioY = 0;
+	double aspectTolerancePercent = -1.0;
+	double activeAspectMinimum = 0.0;
+	bool narrowerOnly = false;
+	std::string inactiveRule;
 	std::vector<ShaderEntry> preScale;
 	std::vector<ShaderEntry> postScale;
 };
+
+
+bool ParseBoundedDouble(const std::string& raw, double minimum,
+	double maximum, double& value)
+{
+	try
+	{
+		size_t parsed = 0;
+		const double candidate = std::stod(ConfigFile::Trim(raw), &parsed);
+		if (parsed != ConfigFile::Trim(raw).size() || !std::isfinite(candidate) ||
+			candidate < minimum || candidate > maximum)
+			return false;
+		value = candidate;
+		return true;
+	}
+	catch (...)
+	{
+		return false;
+	}
+}
+
+std::mutex g_runtimeRuleMutex;
+std::string g_runtimeRuleOverride;
 
 
 bool IsSupportedProfile(const std::string& profile)
@@ -155,6 +188,8 @@ void LoadShaderEntries(const ConfigFile& config, const std::string& section,
 	{
 		if (nonShaderKeys.find(setting.first) != nonShaderKeys.end())
 			continue;
+		if (setting.first.compare(0, 6, "param_") == 0)
+			continue;
 
 		unsigned int order = 0;
 		std::vector<ShaderEntry>* target = nullptr;
@@ -182,6 +217,74 @@ void LoadShaderEntries(const ConfigFile& config, const std::string& section,
 
 	SortShaderEntries(preScale);
 	SortShaderEntries(postScale);
+}
+
+
+bool IsParameterNameValid(const std::string& name)
+{
+	if (name.empty() || !(std::isalpha(static_cast<unsigned char>(name[0])) || name[0] == '_'))
+		return false;
+	return std::all_of(name.begin() + 1, name.end(), [](unsigned char character)
+		{
+			return std::isalnum(character) != 0 || character == '_';
+		});
+}
+
+
+void LoadShaderParameters(const ConfigFile& config, const std::string& section,
+	ShaderRule& rule)
+{
+	const auto* settings = config.GetSectionValues(section);
+	if (!settings)
+		return;
+
+	for (const auto& setting : *settings)
+	{
+		if (setting.first.compare(0, 6, "param_") != 0)
+			continue;
+
+		const std::string name = setting.first.substr(6);
+		if (!IsParameterNameValid(name))
+		{
+			DebugLog::Log("Shaders: rule \"%s\" has invalid parameter name \"%s\"",
+				rule.name.c_str(), name.c_str());
+			rule.valid = false;
+			continue;
+		}
+
+		try
+		{
+			// Shader quality is a common user-facing enum but is substituted as a
+			// compile-time scalar so existing numeric-only template safety remains.
+			if (name == "quality")
+			{
+				const std::string quality = ConfigFile::NormalizeName(setting.second);
+				if (quality == "low") rule.parameters[name] = "0";
+				else if (quality == "medium") rule.parameters[name] = "1";
+				else if (quality == "high") rule.parameters[name] = "2";
+				else if (quality == "very high" || quality == "very_high" || quality == "veryhigh")
+					rule.parameters[name] = "3";
+				else throw std::invalid_argument("unknown quality");
+				continue;
+			}
+			size_t parsedLength = 0;
+			const double value = std::stod(setting.second, &parsedLength);
+			if (parsedLength != setting.second.size() || !std::isfinite(value))
+				throw std::invalid_argument("not a finite scalar");
+			std::ostringstream normalized;
+			normalized.precision(17);
+			normalized << value;
+			rule.parameters[name] = normalized.str();
+		}
+		catch (...)
+		{
+			DebugLog::Log("Shaders: rule \"%s\" parameter \"%s\" must be a finite number%s, got \"%s\"",
+				rule.name.c_str(), name.c_str(),
+				name == "quality" ? " or LOW/MEDIUM/HIGH/VERY_HIGH" : "",
+				setting.second.c_str());
+			rule.valid = false;
+		}
+	}
 }
 
 
@@ -221,6 +324,69 @@ bool ParseNominalRates(const std::string& rawValue, std::vector<int>& rates)
 		}
 	}
 	return !rates.empty();
+}
+
+
+unsigned long GreatestCommonDivisor(unsigned long left, unsigned long right)
+{
+	while (right != 0)
+	{
+		const unsigned long remainder = left % right;
+		left = right;
+		right = remainder;
+	}
+	return left;
+}
+
+
+bool ParseOutputAspectRatio(const std::string& rawValue, unsigned long& aspectX,
+	unsigned long& aspectY)
+{
+	aspectX = 0;
+	aspectY = 0;
+	const std::string value = ConfigFile::Trim(rawValue);
+	if (ConfigFile::NormalizeName(value) == "native")
+		return true;
+
+	try
+	{
+		const size_t separator = value.find_first_of(":/");
+		double numerator = 0.0;
+		double denominator = 1.0;
+		if (separator == std::string::npos)
+		{
+			size_t parsedLength = 0;
+			numerator = std::stod(value, &parsedLength);
+			if (parsedLength != value.size())
+				return false;
+		}
+		else
+		{
+			const std::string left = ConfigFile::Trim(value.substr(0, separator));
+			const std::string right = ConfigFile::Trim(value.substr(separator + 1));
+			size_t leftLength = 0;
+			size_t rightLength = 0;
+			numerator = std::stod(left, &leftLength);
+			denominator = std::stod(right, &rightLength);
+			if (leftLength != left.size() || rightLength != right.size())
+				return false;
+		}
+
+		const double ratio = numerator / denominator;
+		if (!std::isfinite(ratio) || denominator <= 0.0 || ratio < 1.0 || ratio > 4.0)
+			return false;
+
+		aspectY = 10000;
+		aspectX = static_cast<unsigned long>(std::llround(ratio * aspectY));
+		const unsigned long divisor = GreatestCommonDivisor(aspectX, aspectY);
+		aspectX /= divisor;
+		aspectY /= divisor;
+		return aspectX > 0 && aspectY > 0;
+	}
+	catch (...)
+	{
+		return false;
+	}
 }
 
 
@@ -293,9 +459,85 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 		rule.valid = false;
 	}
 
+	if (config.TryGetString(section, "manual", rawValue) &&
+		!config.TryGetBool(section, "manual", rule.manual))
+	{
+		DebugLog::Log("Shaders: rule \"%s\" has invalid manual value \"%s\"",
+			rule.name.c_str(), rawValue.c_str());
+		rule.valid = false;
+	}
+
+	if (config.TryGetString(section, "output_aspect_ratio", rawValue) &&
+		!ParseOutputAspectRatio(rawValue, rule.outputAspectRatioX,
+			rule.outputAspectRatioY))
+	{
+		DebugLog::Log("Shaders: rule \"%s\" has invalid output_aspect_ratio \"%s\"; use native, a decimal, or X:Y",
+			rule.name.c_str(), rawValue.c_str());
+		rule.valid = false;
+	}
+
+	if (config.TryGetString(section, "aspect_tolerance_percent", rawValue) &&
+		!ParseBoundedDouble(rawValue, 0.0, 50.0, rule.aspectTolerancePercent))
+	{
+		DebugLog::Log("Shaders: rule \"%s\" has invalid aspect_tolerance_percent \"%s\"",
+			rule.name.c_str(), rawValue.c_str());
+		rule.valid = false;
+	}
+	if (config.TryGetString(section, "active_aspect_min", rawValue) &&
+		!ParseBoundedDouble(rawValue, 1.0, 4.0, rule.activeAspectMinimum))
+	{
+		DebugLog::Log("Shaders: rule \"%s\" has invalid active_aspect_min \"%s\"",
+			rule.name.c_str(), rawValue.c_str());
+		rule.valid = false;
+	}
+	if (config.TryGetString(section, "aspect_direction", rawValue))
+	{
+		const std::string direction = ConfigFile::NormalizeName(rawValue);
+		if (direction == "narrower_only")
+			rule.narrowerOnly = true;
+		else if (direction != "any")
+		{
+			DebugLog::Log("Shaders: rule \"%s\" has invalid aspect_direction \"%s\"; use ANY or NARROWER_ONLY",
+				rule.name.c_str(), rawValue.c_str());
+			rule.valid = false;
+		}
+	}
+	if (config.TryGetString(section, "inactive_rule", rawValue))
+		rule.inactiveRule = ConfigFile::NormalizeName(rawValue);
+
+	LoadShaderParameters(config, section, rule);
+
 	LoadShaderEntries(config, section,
-		{ "label", "signal", "frame_rates", "none" }, rule.preScale, rule.postScale);
+		{ "label", "signal", "frame_rates", "none", "manual", "shortcut",
+			"output_aspect_ratio", "aspect_tolerance_percent",
+			"active_aspect_min", "aspect_direction", "inactive_rule" },
+		rule.preScale, rule.postScale);
 	return rule;
+}
+
+
+bool ApplyShaderParameters(std::string& source,
+	const std::map<std::string, std::string>& parameters,
+	const std::filesystem::path& path)
+{
+	for (const auto& parameter : parameters)
+	{
+		const std::string token = "{{" + parameter.first + "}}";
+		size_t position = 0;
+		while ((position = source.find(token, position)) != std::string::npos)
+		{
+			source.replace(position, token.size(), parameter.second);
+			position += parameter.second.size();
+		}
+	}
+
+	if (source.find("{{") != std::string::npos || source.find("}}") != std::string::npos)
+	{
+		DebugLog::Log("Shaders: unresolved {{parameter}} token in \"%s\"",
+			path.u8string().c_str());
+		return false;
+	}
+	return true;
 }
 
 
@@ -361,6 +603,7 @@ std::string ShaderProfile(const std::string& source,
 bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
 	const std::vector<ShaderEntry>& entries, int stage,
 	const char* stageName, const std::string& defaultProfile,
+	const std::map<std::string, std::string>& parameters,
 	std::vector<ActiveMadVRShader>& activeShaders)
 {
 	if (entries.empty())
@@ -383,6 +626,11 @@ bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
 			shaderInterface->ClearPixelShaders(stage);
 			DebugLog::Log("Shaders: %s stage disabled because shader #%u could not be loaded",
 				stageName, entry.order);
+			return false;
+		}
+		if (!ApplyShaderParameters(source, parameters, entry.path))
+		{
+			shaderInterface->ClearPixelShaders(stage);
 			return false;
 		}
 
@@ -420,11 +668,9 @@ bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
 
 void ApplyShaderEntries(IBaseFilter* renderer, const std::vector<ShaderEntry>& preScale,
 	const std::vector<ShaderEntry>& postScale, const std::string& defaultProfile,
+	const std::map<std::string, std::string>& parameters,
 	MadVRShaderSelection& selection)
 {
-	if (preScale.empty() && postScale.empty())
-		return;
-
 	CComQIPtr<IMadVRExternalPixelShaders> shaderInterface(renderer);
 	if (!shaderInterface)
 	{
@@ -432,11 +678,18 @@ void ApplyShaderEntries(IBaseFilter* renderer, const std::vector<ShaderEntry>& p
 		return;
 	}
 
+	// A runtime rule change replaces the complete VP-managed shader chain. This
+	// also makes a none=true rule reliably turn a previously active shader off.
+	shaderInterface->ClearPixelShaders(MADVR_SHADER_STAGE_PRE_SCALE);
+	shaderInterface->ClearPixelShaders(MADVR_SHADER_STAGE_POST_SCALE);
+
 	const bool preActive = ApplyStage(shaderInterface, preScale,
 		MADVR_SHADER_STAGE_PRE_SCALE, "pre-resize", defaultProfile,
+		parameters,
 		selection.activeShaders);
 	const bool postActive = ApplyStage(shaderInterface, postScale,
 		MADVR_SHADER_STAGE_POST_SCALE, "post-resize", defaultProfile,
+		parameters,
 		selection.activeShaders);
 	DebugLog::Log("Shaders: configuration complete (pre-resize=%s, post-resize=%s)",
 		preActive ? "active" : "inactive", postActive ? "active" : "inactive");
@@ -502,6 +755,11 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 		SignalName(videoState.eotf), refreshRate, nominalRate);
 
 	std::string ruleList;
+	std::string runtimeRule;
+	{
+		std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
+		runtimeRule = g_runtimeRuleOverride;
+	}
 	if (!config.TryGetString(CONFIG_SECTION, "rules", ruleList))
 	{
 		// Backward compatibility for the original flat configuration.
@@ -520,7 +778,7 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 			return selection;
 		}
 		DebugLog::Log("Shaders: selected legacy all-video configuration");
-		ApplyShaderEntries(renderer, preScale, postScale, defaultProfile, selection);
+		ApplyShaderEntries(renderer, preScale, postScale, defaultProfile, {}, selection);
 		return selection;
 	}
 
@@ -535,11 +793,15 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 		}
 
 		ShaderRule rule = LoadRule(config, configuredName);
-		if (!rule.valid || !RuleMatches(rule, videoState.eotf, nominalRate))
+		const bool explicitlySelected = !runtimeRule.empty() && rule.name == runtimeRule;
+		if (!rule.valid || (!explicitlySelected &&
+			(!runtimeRule.empty() || rule.manual || !RuleMatches(rule, videoState.eotf, nominalRate))))
 			continue;
 
 		selection.ruleName = rule.name;
 		selection.ruleLabel = rule.label;
+		selection.outputAspectRatioX = rule.outputAspectRatioX;
+		selection.outputAspectRatioY = rule.outputAspectRatioY;
 		DebugLog::Log("Shaders: selected rule \"%s\" (%s) for signal=%s refresh=%.6f Hz nominal=%d",
 			rule.name.c_str(), rule.label.c_str(), SignalName(videoState.eotf),
 			refreshRate, nominalRate);
@@ -550,6 +812,7 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 				DebugLog::Log("Shaders: rule \"%s\" has none=true; shader entries are ignored",
 					rule.name.c_str());
 			DebugLog::Log("Shaders: selected rule explicitly requests no shaders");
+			ApplyShaderEntries(renderer, {}, {}, defaultProfile, rule.parameters, selection);
 			return selection;
 		}
 
@@ -563,11 +826,123 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 		DebugLog::Log("Shaders: loading selected rule from \"%s\" (fallback shader model=%s)",
 			config.GetLoadedPath().c_str(), defaultProfile.c_str());
 		ApplyShaderEntries(renderer, rule.preScale, rule.postScale,
-			defaultProfile, selection);
+			defaultProfile, rule.parameters, selection);
 		return selection;
 	}
 
 	DebugLog::Log("Shaders: no rule matched signal=%s refresh=%.6f Hz nominal=%d; default=none",
 		SignalName(videoState.eotf), refreshRate, nominalRate);
 	return selection;
+}
+
+
+MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaderRule(IBaseFilter* renderer,
+	const VideoState& videoState, const std::string& ruleName)
+{
+	{
+		std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
+		g_runtimeRuleOverride = ConfigFile::NormalizeName(ruleName);
+	}
+	DebugLog::Log("Shaders: runtime selection changed to \"%s\"",
+		ruleName.empty() ? "automatic" : ruleName.c_str());
+	return ApplyConfiguredShaders(renderer, videoState);
+}
+
+
+bool MadVRShaderLoader::GetRuntimeOutputAspectRatio(unsigned long& aspectX,
+	unsigned long& aspectY)
+{
+	aspectX = 0;
+	aspectY = 0;
+	std::string runtimeRule;
+	{
+		std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
+		runtimeRule = g_runtimeRuleOverride;
+	}
+	if (runtimeRule.empty())
+		return false;
+
+	ConfigFile config;
+	if (!config.Load())
+		return false;
+	ShaderRule rule = LoadRule(config, runtimeRule);
+	if (!rule.valid || rule.outputAspectRatioX == 0 || rule.outputAspectRatioY == 0)
+		return false;
+
+	aspectX = rule.outputAspectRatioX;
+	aspectY = rule.outputAspectRatioY;
+	return true;
+}
+
+
+bool MadVRShaderLoader::ValidateActivePictureAspect(const std::string& ruleName,
+	bool aspectAvailable, double activeAspectRatio, std::string& reason)
+{
+	reason.clear();
+	ConfigFile config;
+	if (!config.Load())
+	{
+		reason = "configuration file is unavailable";
+		return false;
+	}
+	const ShaderRule rule = LoadRule(config, ruleName);
+	if (!rule.valid)
+	{
+		reason = "shader rule is invalid";
+		return false;
+	}
+	if (rule.aspectTolerancePercent < 0.0)
+		return true;
+	if (!aspectAvailable || activeAspectRatio <= 0.0)
+	{
+		reason = "active picture aspect is not stable yet";
+		return false;
+	}
+	if (rule.outputAspectRatioX == 0 || rule.outputAspectRatioY == 0)
+	{
+		reason = "aspect guard requires output_aspect_ratio";
+		return false;
+	}
+	if (rule.activeAspectMinimum > 0.0 &&
+		activeAspectRatio < rule.activeAspectMinimum)
+	{
+		std::ostringstream message;
+		message << "active picture " << activeAspectRatio <<
+			" is below minimum " << rule.activeAspectMinimum;
+		reason = message.str();
+		return false;
+	}
+	const double target = static_cast<double>(rule.outputAspectRatioX) /
+		rule.outputAspectRatioY;
+	const double signedDifferencePercent =
+		(target - activeAspectRatio) * 100.0 / target;
+	const bool allowed = rule.narrowerOnly ?
+		signedDifferencePercent > rule.aspectTolerancePercent :
+		std::abs(signedDifferencePercent) > rule.aspectTolerancePercent;
+	if (!allowed)
+	{
+		std::ostringstream message;
+		message << "active picture " << activeAspectRatio
+			<< " is already within " << rule.aspectTolerancePercent
+			<< "% of, or wider than, target " << target;
+		reason = message.str();
+	}
+	return allowed;
+}
+
+
+bool MadVRShaderLoader::GetRuleActivationInfo(const std::string& ruleName,
+	std::string& label, std::string& inactiveRule)
+{
+	label.clear();
+	inactiveRule.clear();
+	ConfigFile config;
+	if (!config.Load())
+		return false;
+	const ShaderRule rule = LoadRule(config, ruleName);
+	if (!rule.valid)
+		return false;
+	label = rule.label;
+	inactiveRule = rule.inactiveRule;
+	return true;
 }
