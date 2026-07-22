@@ -17,6 +17,7 @@ class ConfigFile
 {
 public:
 	static constexpr const char* DEFAULT_FILENAME = "VideoProcessor.cfg";
+	static constexpr const char* RENDERER_FILENAME = "VideoProcessorRenderer.cfg";
 
 	bool Load(const std::string& filename = DEFAULT_FILENAME);
 	bool IsLoaded() const { return m_loaded; }

@@ -29,4 +29,5 @@ struct RendererId
 	bool operator< (const RendererId& other) const;
 
 	static RendererId Libplacebo();
+	static bool IsLibplaceboAvailable();
 };

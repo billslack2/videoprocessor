@@ -31,6 +31,14 @@
 class DebugLog
 {
 public:
+	using ExternalSink = void (__cdecl *)(const char* message);
+
+	// A renderer plugin cannot share this header-only logger's module-local
+	// queue. Let it forward complete messages to the host process instead.
+	static void SetExternalSink(ExternalSink sink)
+	{
+		GetExternalSink().store(sink, std::memory_order_release);
+	}
 
 	/**
 	 * Log a message to debug.log with timestamp (async, non-blocking)
@@ -44,6 +52,12 @@ public:
 			// Format message immediately (fast operation)
 			char buffer[4096];
 			snprintf(buffer, sizeof(buffer), format, args...);
+			ExternalSink sink = GetExternalSink().load(std::memory_order_acquire);
+			if (sink)
+			{
+				sink(buffer);
+				return;
+			}
 
 			// Queue for background writing (non-blocking)
 			QueueMessage(buffer);
@@ -278,6 +292,12 @@ private:
 	{
 		static std::atomic<bool> s_shutdownFlag(false);
 		return s_shutdownFlag;
+	}
+
+	static std::atomic<ExternalSink>& GetExternalSink()
+	{
+		static std::atomic<ExternalSink> s_externalSink(nullptr);
+		return s_externalSink;
 	}
 };
 

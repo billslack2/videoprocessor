@@ -34,7 +34,7 @@
 #include <microsoft_directshow/video_renderers/DirectShowGenericVideoRenderer.h>
 #include <microsoft_directshow/video_renderers/DirectShowGenericHDRVideoRenderer.h>
 #if defined(_WIN64)
-#include <libplacebo/LibplaceboVideoRenderer.h>
+#include <libplacebo/LibplaceboPluginVideoRenderer.h>
 #endif
 #include <guid.h>
 #include <ConfigFile.h>
@@ -54,6 +54,7 @@ struct ShortcutDefinition
 	WORD command;
 	WORD defaultKey;
 	BYTE defaultModifiers;
+	bool rendererSpecific = false;
 };
 
 const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
@@ -71,6 +72,8 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 	{ "capture_4",             ID_COMMAND_CAPTURE_4,              '4',       FCONTROL },
 	{ "video_conversion_off",  ID_COMMAND_VC_NONE,                'V',       0 },
 	{ "video_conversion_p010", ID_COMMAND_VC_P010,                'V',       FSHIFT },
+	{ "screen_profile_normal", ID_COMMAND_SCREEN_PROFILE_NORMAL,  VK_F2,     0, true },
+	{ "screen_profile_scope",  ID_COMMAND_SCREEN_PROFILE_SCOPE,   VK_F3,     0, true },
 };
 
 bool TryParseShortcut(const std::string& value, ACCEL& accelerator)
@@ -111,6 +114,19 @@ bool TryParseShortcut(const std::string& value, ACCEL& accelerator)
 		key = VK_ESCAPE;
 	else if (normalizedKey == "enter" || normalizedKey == "return")
 		key = VK_RETURN;
+	else if (normalizedKey.size() >= 2 && normalizedKey[0] == 'f')
+	{
+		const std::string numberToken = normalizedKey.substr(1);
+		if (numberToken.empty() || numberToken.size() > 2 ||
+			!std::all_of(numberToken.begin(), numberToken.end(),
+				[](unsigned char character) { return std::isdigit(character) != 0; }))
+			return false;
+
+		const int functionNumber = std::stoi(numberToken);
+		if (functionNumber < 1 || functionNumber > 24)
+			return false;
+		key = static_cast<WORD>(VK_F1 + functionNumber - 1);
+	}
 	else if (keyToken.size() == 1 && std::isalnum(static_cast<unsigned char>(keyToken[0])))
 	{
 		key = static_cast<WORD>(std::toupper(static_cast<unsigned char>(keyToken[0])));
@@ -128,8 +144,11 @@ bool TryParseShortcut(const std::string& value, ACCEL& accelerator)
 
 HACCEL CreateConfiguredAccelerators()
 {
-	ConfigFile config;
-	const bool hasConfig = config.Load();
+	ConfigFile mainConfig;
+	const bool hasMainConfig = mainConfig.Load();
+	ConfigFile rendererConfig;
+	const bool hasRendererConfig =
+		rendererConfig.Load(ConfigFile::RENDERER_FILENAME);
 	std::vector<ACCEL> accelerators;
 	std::set<unsigned int> bindings;
 
@@ -137,7 +156,12 @@ HACCEL CreateConfiguredAccelerators()
 	{
 		ACCEL accelerator = { static_cast<BYTE>(FVIRTKEY | definition.defaultModifiers), definition.defaultKey, definition.command };
 		std::string configuredValue;
-		if (hasConfig && config.TryGetString("shortcuts", definition.configKey, configuredValue))
+		const ConfigFile& config =
+			definition.rendererSpecific ? rendererConfig : mainConfig;
+		const bool hasConfig =
+			definition.rendererSpecific ? hasRendererConfig : hasMainConfig;
+		if (hasConfig &&
+			config.TryGetString("shortcuts", definition.configKey, configuredValue))
 		{
 			ACCEL configuredAccelerator = {};
 			if (TryParseShortcut(configuredValue, configuredAccelerator))
@@ -629,6 +653,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_WM_SETFOCUS()
 	ON_WM_CLOSE()
 	ON_WM_TIMER()
+	ON_WM_DISPLAYCHANGE()
 
 	// UI element messages
 	ON_CBN_SELCHANGE(IDC_CAPTURE_DEVICE_COMBO, &CVideoProcessorDlg::OnCaptureDeviceSelected)
@@ -678,6 +703,8 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_VC_NONE, &CVideoProcessorDlg::SetVideoConversionOff)
 	ON_COMMAND(ID_COMMAND_VC_P010, &CVideoProcessorDlg::SetVideoConversionP010)
 	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
+	ON_COMMAND(ID_COMMAND_SCREEN_PROFILE_NORMAL, &CVideoProcessorDlg::OnCommandScreenProfileNormal)
+	ON_COMMAND(ID_COMMAND_SCREEN_PROFILE_SCOPE, &CVideoProcessorDlg::OnCommandScreenProfileScope)
 	ON_COMMAND_RANGE(ID_COMMAND_CAPTURE_1, ID_COMMAND_CAPTURE_4, &CVideoProcessorDlg::OnSelectCaptureDevice)
 
 
@@ -982,6 +1009,26 @@ void CVideoProcessorDlg::SubtitleRepositioning(SubtitleRepositionMode mode)
 void CVideoProcessorDlg::EnableNewLldvHeuristic(bool enabled)
 {
 	m_useNewLldvHeuristic = enabled;
+}
+
+void CVideoProcessorDlg::SetLldvMaxCll(double value)
+{
+	m_lldvMaxCllOverride = value;
+}
+
+void CVideoProcessorDlg::SetLldvMaxFall(double value)
+{
+	m_lldvMaxFallOverride = value;
+}
+
+void CVideoProcessorDlg::SetLldvMasteringMinLuminance(double value)
+{
+	m_lldvMasteringMinLuminanceOverride = value;
+}
+
+void CVideoProcessorDlg::SetLldvMasteringMaxLuminance(double value)
+{
+	m_lldvMasteringMaxLuminanceOverride = value;
 }
 
 
@@ -1950,6 +1997,32 @@ void CVideoProcessorDlg::OnCommandRendererRestart()
 }
 
 
+void CVideoProcessorDlg::OnCommandScreenProfileNormal()
+{
+	if (!m_videoRenderer)
+		return;
+
+	CString activeProfile;
+	if (!m_videoRenderer->SetScreenProfile(false, activeProfile))
+	{
+		DEBUGLOG("Normal screen profile ignored: selected renderer does not support screen profiles");
+	}
+}
+
+
+void CVideoProcessorDlg::OnCommandScreenProfileScope()
+{
+	if (!m_videoRenderer)
+		return;
+
+	CString activeProfile;
+	if (!m_videoRenderer->SetScreenProfile(true, activeProfile))
+	{
+		DEBUGLOG("Scope screen profile ignored: selected renderer does not support screen profiles");
+	}
+}
+
+
 
 void CVideoProcessorDlg::OnCommandPQSet()
 {
@@ -2800,7 +2873,7 @@ void CVideoProcessorDlg::RenderStart()
 	{
 		try
 		{
-			m_videoRenderer = new LibplaceboVideoRenderer(
+			m_videoRenderer = new LibplaceboPluginVideoRenderer(
 				*this,
 				GetRenderWindow(),
 				timingClock,
@@ -3227,7 +3300,8 @@ void CVideoProcessorDlg::RebuildRendererCombo()
 
 	DirectShowVideoRendererIds(rendererIds);
 #if defined(_WIN64)
-	rendererIds.push_back(RendererId::Libplacebo());
+	if (RendererId::IsLibplaceboAvailable())
+		rendererIds.push_back(RendererId::Libplacebo());
 #endif
 
 	//
@@ -3237,6 +3311,11 @@ void CVideoProcessorDlg::RebuildRendererCombo()
 	std::sort(rendererIds.begin(), rendererIds.end());
 	for (const auto& rendererEntry : rendererIds)
 	{
+		CString normalizedRendererName(rendererEntry.name);
+		normalizedRendererName.MakeLower();
+		if (normalizedRendererName.Find(TEXT("decklink")) >= 0)
+			continue;
+
 		RendererId* id = new RendererId(rendererEntry);
 
 		int comboIndex = m_rendererCombo.AddString(rendererEntry.name);
@@ -3451,20 +3530,17 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 				if (!videoState->hdrData)
 					videoState->hdrData = std::make_shared<HDRData>();
 
-				if (m_useNewLldvHeuristic)
-				{
-					videoState->hdrData->maxCll = 1000;
-					videoState->hdrData->maxFall = 401;
-					videoState->hdrData->masteringDisplayMinLuminance = 0.001;
-					videoState->hdrData->masteringDisplayMaxLuminance = 4000;
-				}
-				else
-				{
-					videoState->hdrData->maxCll = 1000;
-					videoState->hdrData->maxFall = 1000;
-					videoState->hdrData->masteringDisplayMinLuminance = 0.0001;
-					videoState->hdrData->masteringDisplayMaxLuminance = 1000;
-				}
+				const bool newLldv = m_useNewLldvHeuristic;
+				videoState->hdrData->maxCll = m_lldvMaxCllOverride >= 0.0
+					? m_lldvMaxCllOverride : 1000.0;
+				videoState->hdrData->maxFall = m_lldvMaxFallOverride >= 0.0
+					? m_lldvMaxFallOverride : (newLldv ? 401.0 : 1000.0);
+				videoState->hdrData->masteringDisplayMinLuminance =
+					m_lldvMasteringMinLuminanceOverride >= 0.0
+					? m_lldvMasteringMinLuminanceOverride : (newLldv ? 0.001 : 0.0001);
+				videoState->hdrData->masteringDisplayMaxLuminance =
+					m_lldvMasteringMaxLuminanceOverride > 0.0
+					? m_lldvMasteringMaxLuminanceOverride : (newLldv ? 4000.0 : 1000.0);
 			}
 			break;
 
@@ -4214,6 +4290,20 @@ void CVideoProcessorDlg::OnGetMinMaxInfo(MINMAXINFO* minMaxInfo)
 void CVideoProcessorDlg::OnSetFocus(CWnd* pOldWnd)
 {
 	CDialog::OnSetFocus(pOldWnd);
+}
+
+
+void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int height)
+{
+	if (g_displayRefreshRateSampler)
+		g_displayRefreshRateSampler->ResetMeasurement();
+
+	DebugLog::Log(
+		"Windows display mode changed: %d x %d, %u bits; display-rate measurement reset",
+		width,
+		height,
+		bitsPerPixel);
+	CDialog::OnDisplayChange(bitsPerPixel, width, height);
 }
 
 
