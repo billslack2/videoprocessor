@@ -98,6 +98,10 @@ public:
 	void SceneCorrectionUpstreamSample(bool enabled);
 	void SubtitleRepositioning(SubtitleRepositionMode mode);
 	void EnableNewLldvHeuristic(bool enabled = true);
+	void SetLldvMaxCll(double value);
+	void SetLldvMaxFall(double value);
+	void SetLldvMasteringMinLuminance(double value);
+	void SetLldvMasteringMaxLuminance(double value);
 	void DefaultRendererName(const CString&);
 	void SetQueueSize(const CString&);
 	void SetQueueResetDelaySeconds(const CString&);
@@ -140,6 +144,7 @@ public:
 	afx_msg void OnRendererDirectShowPrimariesSelected();
 	afx_msg void OnBnClickedRendererFullScreenCheck();
 	afx_msg void OnCbnSelchangeFullscreenmodeCombo();
+	afx_msg void OnDisplayChange(UINT bitsPerPixel, int width, int height);
 
 
 	// Custom message handlers
@@ -158,6 +163,8 @@ public:
 	void OnCommandFullScreenExit();
 	void OnCommandRendererReset();
 	void OnCommandRendererRestart();
+	void OnCommandScreenProfileNormal();
+	void OnCommandScreenProfileScope();
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
 	void OnCommandToggleStatsOverlay();
@@ -196,6 +203,12 @@ protected:
 	// Optional LLDV heuristic.  DeckLink does not expose the HDMI VSIF, so
 	// BT.2020 + SDR + no static HDR metadata is only a best-effort signal.
 	bool m_useNewLldvHeuristic = false;
+	// Negative means "use the mode-specific built-in default".  Overrides
+	// intentionally apply to both the legacy and new LLDV detection paths.
+	double m_lldvMaxCllOverride = -1.0;
+	double m_lldvMaxFallOverride = -1.0;
+	double m_lldvMasteringMinLuminanceOverride = -1.0;
+	double m_lldvMasteringMaxLuminanceOverride = -1.0;
 	bool m_newLldvCandidateActive = false;
 	bool m_newLldvCandidateConfirmed = false;
 	DWORD m_newLldvCandidateSince = 0;

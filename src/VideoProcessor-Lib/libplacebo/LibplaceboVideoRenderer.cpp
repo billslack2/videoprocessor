@@ -16,12 +16,28 @@
 #pragma warning(pop)
 
 #include <algorithm>
+#include <cmath>
+#include <initializer_list>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 
 namespace
 {
+	template<typename T>
+	const T& LibplaceboExportedData(const char* exportName)
+	{
+		HMODULE module = GetModuleHandleW(L"libplacebo-360.dll");
+		if (!module)
+			throw std::runtime_error("libplacebo runtime was not preloaded");
+
+		const T* value = reinterpret_cast<const T*>(GetProcAddress(module, exportName));
+		if (!value)
+			throw std::runtime_error("libplacebo runtime is missing a required data export");
+		return *value;
+	}
+
 	void LibplaceboLog(void*, enum pl_log_level level, const char* message)
 	{
 		if (!message)
@@ -133,35 +149,474 @@ namespace
 		}
 	}
 
-	double LoadSdrTargetNits()
+	enum class AutoToggle
 	{
-		double targetNits = 100.0;
-		ConfigFile config;
-		std::string value;
-		if (config.Load() && config.TryGetString("libplacebo", "sdr_target_nits", value))
+		AUTO,
+		ON,
+		OFF
+	};
+
+	struct RendererSettings
+	{
+		double sdrTargetNits = PL_COLOR_SDR_WHITE;
+		double sdrBlackNits = PL_COLOR_SDR_WHITE / PL_COLOR_SDR_CONTRAST;
+		bool switchRefreshRate = true;
+		std::string quality = "high";
+		std::string toneMapping = "auto";
+		std::string gamutMapping = "auto";
+		AutoToggle peakDetection = AutoToggle::AUTO;
+		bool hasContrastRecovery = false;
+		float contrastRecovery = 0.0f;
+		std::string upscaler = "auto";
+		std::string downscaler = "auto";
+		AutoToggle deband = AutoToggle::AUTO;
+		AutoToggle dithering = AutoToggle::AUTO;
+		double scopeScreenAspect = 2.35;
+		bool defaultScopeScreen = false;
+	};
+
+	bool ParseDouble(const std::string& value, double& parsed)
+	{
+		try
 		{
-			try
+			size_t consumed = 0;
+			parsed = std::stod(ConfigFile::Trim(value), &consumed);
+			return consumed == ConfigFile::Trim(value).size() && std::isfinite(parsed);
+		}
+		catch (const std::exception&)
+		{
+			return false;
+		}
+	}
+
+	bool ParseAspectRatio(const std::string& value, double& parsed)
+	{
+		const std::string trimmed = ConfigFile::Trim(value);
+		const size_t separator = trimmed.find(':');
+		if (separator == std::string::npos)
+			return ParseDouble(trimmed, parsed);
+
+		double width = 0.0;
+		double height = 0.0;
+		if (!ParseDouble(trimmed.substr(0, separator), width) ||
+			!ParseDouble(trimmed.substr(separator + 1), height) ||
+			width <= 0.0 || height <= 0.0)
+		{
+			return false;
+		}
+
+		parsed = width / height;
+		return std::isfinite(parsed);
+	}
+
+	std::string ReadChoice(
+		const ConfigFile& config,
+		const char* key,
+		const char* defaultValue,
+		std::initializer_list<const char*> choices)
+	{
+		std::string rawValue;
+		if (!config.TryGetString("libplacebo", key, rawValue))
+			return defaultValue;
+
+		const std::string value = ConfigFile::NormalizeName(rawValue);
+		for (const char* choice : choices)
+		{
+			if (value == choice)
+				return value;
+		}
+
+		DebugLog::Log(
+			"libplacebo: invalid %s value '%s'; using %s",
+			key,
+			rawValue.c_str(),
+			defaultValue);
+		return defaultValue;
+	}
+
+	AutoToggle ReadAutoToggle(
+		const ConfigFile& config,
+		const char* key,
+		AutoToggle defaultValue = AutoToggle::AUTO)
+	{
+		std::string rawValue;
+		if (!config.TryGetString("libplacebo", key, rawValue))
+			return defaultValue;
+		if (ConfigFile::NormalizeName(rawValue) == "auto")
+			return AutoToggle::AUTO;
+
+		bool enabled = false;
+		if (config.TryGetBool("libplacebo", key, enabled))
+			return enabled ? AutoToggle::ON : AutoToggle::OFF;
+
+		DebugLog::Log(
+			"libplacebo: invalid %s value '%s'; using AUTO",
+			key,
+			rawValue.c_str());
+		return defaultValue;
+	}
+
+	RendererSettings LoadRendererSettings()
+	{
+		RendererSettings settings;
+		ConfigFile config;
+		if (!config.Load(ConfigFile::RENDERER_FILENAME))
+			return settings;
+
+		std::string rawValue;
+		if (config.TryGetString("libplacebo", "sdr_target_nits", rawValue))
+		{
+			double parsed = 0.0;
+			if (ParseDouble(rawValue, parsed) && parsed >= 40.0 && parsed <= 500.0)
+				settings.sdrTargetNits = parsed;
+			else
+				DebugLog::Log(
+					"libplacebo: sdr_target_nits must be between 40 and 500; using %.0f",
+					PL_COLOR_SDR_WHITE);
+		}
+
+		settings.sdrBlackNits = settings.sdrTargetNits / PL_COLOR_SDR_CONTRAST;
+		if (config.TryGetString("libplacebo", "sdr_black_nits", rawValue) &&
+			ConfigFile::NormalizeName(rawValue) != "auto")
+		{
+			double parsed = 0.0;
+			if (ParseDouble(rawValue, parsed) && parsed >= 0.0 &&
+				parsed < settings.sdrTargetNits)
 			{
-				const double parsed = std::stod(ConfigFile::Trim(value));
-				if (parsed >= 40.0 && parsed <= 500.0)
-					targetNits = parsed;
-				else
-					DebugLog::Log(
-						"libplacebo: sdr_target_nits must be between 40 and 500; using 100");
+				settings.sdrBlackNits = parsed;
 			}
-			catch (const std::exception&)
+			else
 			{
-				DebugLog::Log("libplacebo: invalid sdr_target_nits value; using 100");
+				DebugLog::Log(
+					"libplacebo: sdr_black_nits must be non-negative and below sdr_target_nits; using AUTO (%.3f)",
+					settings.sdrBlackNits);
 			}
 		}
 
-		return targetNits;
+		if (config.TryGetString("libplacebo", "switch_refresh_rate", rawValue) &&
+			!config.TryGetBool("libplacebo", "switch_refresh_rate", settings.switchRefreshRate))
+		{
+			DebugLog::Log(
+				"libplacebo: invalid switch_refresh_rate value '%s'; using true",
+				rawValue.c_str());
+			settings.switchRefreshRate = true;
+		}
+
+		settings.quality = ReadChoice(
+			config, "quality", "high", { "fast", "balanced", "high" });
+		settings.toneMapping = ReadChoice(
+			config, "tone_mapping", "auto",
+			{ "auto", "spline", "bt2390", "st2094-40", "reinhard" });
+		settings.gamutMapping = ReadChoice(
+			config, "gamut_mapping", "auto",
+			{ "auto", "perceptual", "softclip", "relative", "desaturate" });
+		settings.peakDetection = ReadAutoToggle(config, "peak_detection");
+		settings.upscaler = ReadChoice(
+			config, "upscaler", "auto",
+			{ "auto", "ewa_lanczossharp", "ewa_lanczos", "bicubic", "bilinear" });
+		settings.downscaler = ReadChoice(
+			config, "downscaler", "auto",
+			{ "auto", "ewa_lanczos", "bicubic", "bilinear" });
+		settings.deband = ReadAutoToggle(config, "deband");
+		settings.dithering = ReadAutoToggle(config, "dithering");
+
+		if (config.TryGetString("libplacebo", "scope_screen_aspect", rawValue))
+		{
+			double parsed = 0.0;
+			if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.5 && parsed <= 4.0)
+				settings.scopeScreenAspect = parsed;
+			else
+				DebugLog::Log(
+					"libplacebo: scope_screen_aspect must be a ratio or decimal between 1.5 and 4.0; using 2.35:1");
+		}
+
+		settings.defaultScopeScreen = ReadChoice(
+			config, "default_screen_profile", "normal", { "normal", "scope" }) == "scope";
+
+		if (config.TryGetString("libplacebo", "contrast_recovery", rawValue) &&
+			ConfigFile::NormalizeName(rawValue) != "auto")
+		{
+			double parsed = 0.0;
+			if (ParseDouble(rawValue, parsed) && parsed >= 0.0 && parsed <= 1.0)
+			{
+				settings.hasContrastRecovery = true;
+				settings.contrastRecovery = static_cast<float>(parsed);
+			}
+			else
+			{
+				DebugLog::Log(
+					"libplacebo: contrast_recovery must be AUTO or between 0.0 and 1.0; using AUTO");
+			}
+		}
+
+		return settings;
 	}
+
+	double RefreshRateHz(const DISPLAYCONFIG_RATIONAL& rate)
+	{
+		return rate.Numerator > 0 && rate.Denominator > 0
+			? static_cast<double>(rate.Numerator) / static_cast<double>(rate.Denominator)
+			: 0.0;
+	}
+
+	bool RefreshRatesEqual(
+		const DISPLAYCONFIG_RATIONAL& first,
+		const DISPLAYCONFIG_RATIONAL& second)
+	{
+		return std::abs(RefreshRateHz(first) - RefreshRateHz(second)) < 0.002;
+	}
+
+	std::wstring DisplayDeviceNameForWindow(HWND hwnd)
+	{
+		const HMONITOR monitor = hwnd
+			? MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)
+			: nullptr;
+		if (!monitor)
+			return std::wstring();
+
+		MONITORINFOEXW monitorInfo{};
+		monitorInfo.cbSize = sizeof(monitorInfo);
+		return GetMonitorInfoW(monitor, &monitorInfo)
+			? std::wstring(monitorInfo.szDevice)
+			: std::wstring();
+	}
+
+	bool QueryDisplayPath(
+		const std::wstring& displayDeviceName,
+		std::vector<DISPLAYCONFIG_PATH_INFO>& paths,
+		std::vector<DISPLAYCONFIG_MODE_INFO>& modes,
+		UINT32& pathCount,
+		UINT32& modeCount,
+		size_t& matchingPath)
+	{
+		for (int attempt = 0; attempt < 3; ++attempt)
+		{
+			pathCount = 0;
+			modeCount = 0;
+			if (GetDisplayConfigBufferSizes(
+				QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS ||
+				pathCount == 0)
+			{
+				return false;
+			}
+
+			paths.resize(pathCount);
+			modes.resize(modeCount);
+			const LONG queryResult = QueryDisplayConfig(
+				QDC_ONLY_ACTIVE_PATHS,
+				&pathCount,
+				paths.data(),
+				&modeCount,
+				modes.data(),
+				nullptr);
+			if (queryResult == ERROR_INSUFFICIENT_BUFFER)
+				continue;
+			if (queryResult != ERROR_SUCCESS)
+				return false;
+
+			for (UINT32 pathIndex = 0; pathIndex < pathCount; ++pathIndex)
+			{
+				DISPLAYCONFIG_SOURCE_DEVICE_NAME sourceName{};
+				sourceName.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+				sourceName.header.size = sizeof(sourceName);
+				sourceName.header.adapterId = paths[pathIndex].sourceInfo.adapterId;
+				sourceName.header.id = paths[pathIndex].sourceInfo.id;
+				if (DisplayConfigGetDeviceInfo(&sourceName.header) == ERROR_SUCCESS &&
+					displayDeviceName == sourceName.viewGdiDeviceName)
+				{
+					matchingPath = pathIndex;
+					return true;
+				}
+			}
+			return false;
+		}
+		return false;
+	}
+
+	LONG ApplyDisplayRefreshRate(
+		std::vector<DISPLAYCONFIG_PATH_INFO>& paths,
+		std::vector<DISPLAYCONFIG_MODE_INFO>& modes,
+		UINT32 pathCount,
+		UINT32 modeCount,
+		size_t pathIndex,
+		const DISPLAYCONFIG_RATIONAL& refreshRate)
+	{
+		DISPLAYCONFIG_PATH_INFO& path = paths[pathIndex];
+		path.targetInfo.refreshRate = refreshRate;
+
+		// QueryDisplayConfig supplies the current target mode. If that mode stays
+		// referenced, SetDisplayConfig ignores targetInfo.refreshRate and uses the
+		// mode's existing vSyncFreq. Keep the source mode (and therefore desktop
+		// resolution) fixed, but ask Windows to select a target timing for the new
+		// rational refresh rate.
+		if ((path.flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0)
+			path.targetInfo.targetModeInfoIdx = DISPLAYCONFIG_PATH_TARGET_MODE_IDX_INVALID;
+		else
+			path.targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+
+		return SetDisplayConfig(
+			pathCount,
+			paths.data(),
+			modeCount,
+			modes.data(),
+			SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES);
+	}
+
+	class ScopedDisplayRefreshRate
+	{
+	public:
+		~ScopedDisplayRefreshRate()
+		{
+			Restore();
+		}
+
+		void Switch(HWND hwnd, const VideoState& state, bool enabled)
+		{
+			if (!enabled || !state.displayMode)
+				return;
+
+			m_displayDeviceName = DisplayDeviceNameForWindow(hwnd);
+			if (m_displayDeviceName.empty())
+				return;
+
+			std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+			std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+			UINT32 pathCount = 0;
+			UINT32 modeCount = 0;
+			size_t pathIndex = 0;
+			if (!QueryDisplayPath(
+				m_displayDeviceName, paths, modes, pathCount, modeCount, pathIndex))
+			{
+				DebugLog::Log("libplacebo refresh-rate switch: active display path not found");
+				return;
+			}
+
+			m_originalRefreshRate = paths[pathIndex].targetInfo.refreshRate;
+			DISPLAYCONFIG_RATIONAL targetRefreshRate{};
+			targetRefreshRate.Numerator = state.displayMode->TimeScale();
+			targetRefreshRate.Denominator = state.displayMode->FrameDuration();
+
+			const double contentRate = state.displayMode->RefreshRateHz();
+			const bool useDoubleRate =
+				state.displayMode->IsInterlaced() ||
+				(contentRate > 24.1 && contentRate < 31.0);
+			if (useDoubleRate)
+				targetRefreshRate.Numerator *= 2;
+
+			if (RefreshRatesEqual(m_originalRefreshRate, targetRefreshRate))
+			{
+				DebugLog::Log(
+					"libplacebo refresh-rate switch: display already %.6f Hz for %.6f Hz input",
+					RefreshRateHz(m_originalRefreshRate),
+					contentRate);
+				return;
+			}
+
+			const LONG switchResult = ApplyDisplayRefreshRate(
+				paths,
+				modes,
+				pathCount,
+				modeCount,
+				pathIndex,
+				targetRefreshRate);
+			if (switchResult != ERROR_SUCCESS)
+			{
+				DebugLog::Log(
+					"libplacebo refresh-rate switch failed: input=%.6f Hz target=%.6f Hz error=%ld; continuing with current display mode",
+					contentRate,
+					RefreshRateHz(targetRefreshRate),
+					switchResult);
+				return;
+			}
+
+			m_changed = true;
+			DISPLAYCONFIG_RATIONAL actualRefreshRate{};
+			if (GetCurrentRefreshRate(actualRefreshRate))
+			{
+				DebugLog::Log(
+					"libplacebo refresh-rate switch applied: input=%.6f Hz target=%.6f Hz previous=%.6f Hz actual=%.6f Hz",
+					contentRate,
+					RefreshRateHz(targetRefreshRate),
+					RefreshRateHz(m_originalRefreshRate),
+					RefreshRateHz(actualRefreshRate));
+			}
+			else
+			{
+				DebugLog::Log(
+					"libplacebo refresh-rate switch applied: input=%.6f Hz target=%.6f Hz previous=%.6f Hz",
+					contentRate,
+					RefreshRateHz(targetRefreshRate),
+					RefreshRateHz(m_originalRefreshRate));
+			}
+		}
+
+	private:
+		bool GetCurrentRefreshRate(DISPLAYCONFIG_RATIONAL& refreshRate) const
+		{
+			std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+			std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+			UINT32 pathCount = 0;
+			UINT32 modeCount = 0;
+			size_t pathIndex = 0;
+			if (!QueryDisplayPath(
+				m_displayDeviceName, paths, modes, pathCount, modeCount, pathIndex))
+			{
+				return false;
+			}
+			refreshRate = paths[pathIndex].targetInfo.refreshRate;
+			return true;
+		}
+
+		void Restore()
+		{
+			if (!m_changed)
+				return;
+
+			std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+			std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+			UINT32 pathCount = 0;
+			UINT32 modeCount = 0;
+			size_t pathIndex = 0;
+			if (!QueryDisplayPath(
+				m_displayDeviceName, paths, modes, pathCount, modeCount, pathIndex))
+			{
+				DebugLog::Log("libplacebo refresh-rate restore failed: active display path not found");
+				return;
+			}
+
+			const LONG restoreResult = ApplyDisplayRefreshRate(
+				paths,
+				modes,
+				pathCount,
+				modeCount,
+				pathIndex,
+				m_originalRefreshRate);
+			if (restoreResult == ERROR_SUCCESS)
+			{
+				DebugLog::Log(
+					"libplacebo refresh-rate restore applied: %.6f Hz",
+					RefreshRateHz(m_originalRefreshRate));
+			}
+			else
+			{
+				DebugLog::Log(
+					"libplacebo refresh-rate restore failed: %.6f Hz error=%ld",
+					RefreshRateHz(m_originalRefreshRate),
+					restoreResult);
+			}
+			m_changed = false;
+		}
+
+		std::wstring m_displayDeviceName;
+		DISPLAYCONFIG_RATIONAL m_originalRefreshRate{};
+		bool m_changed = false;
+	};
 }
 
 
 struct LibplaceboVideoRenderer::Impl
 {
+	ScopedDisplayRefreshRate displayRefreshRate;
 	pl_log log = nullptr;
 	pl_d3d11 d3d11 = nullptr;
 	pl_swapchain swapchain = nullptr;
@@ -171,7 +626,14 @@ struct LibplaceboVideoRenderer::Impl
 	VideoStateComPtr formatterState;
 	std::vector<BYTE> convertedFrame;
 	struct pl_render_params renderParams{};
-	double sdrTargetNits = 100.0;
+	struct pl_color_map_params colorMapParams{};
+	struct pl_peak_detect_params peakDetectParams{};
+	struct pl_deband_params debandParams{};
+	struct pl_dither_params ditherParams{};
+	double sdrTargetNits = PL_COLOR_SDR_WHITE;
+	double sdrBlackNits = PL_COLOR_SDR_WHITE / PL_COLOR_SDR_CONTRAST;
+	double scopeScreenAspect = 2.35;
+	bool defaultScopeScreen = false;
 	std::mutex renderMutex;
 	EOTF lastRenderedEotf = EOTF::UNKNOWN;
 	ColorSpace lastRenderedColorspace = ColorSpace::UNKNOWN;
@@ -189,8 +651,149 @@ struct LibplaceboVideoRenderer::Impl
 		pl_log_destroy(&log);
 	}
 
+	void ConfigureRenderParams(const RendererSettings& settings)
+	{
+		const char* presetExport = "pl_render_high_quality_params";
+		if (settings.quality == "fast")
+			presetExport = "pl_render_fast_params";
+		else if (settings.quality == "balanced")
+			presetExport = "pl_render_default_params";
+		renderParams = LibplaceboExportedData<pl_render_params>(presetExport);
+
+		if (renderParams.color_map_params)
+			colorMapParams = *renderParams.color_map_params;
+		else
+			colorMapParams =
+				LibplaceboExportedData<pl_color_map_params>("pl_color_map_default_params");
+
+		if (settings.toneMapping != "auto")
+		{
+			const char* toneMapExport = "pl_tone_map_spline";
+			if (settings.toneMapping == "bt2390")
+				toneMapExport = "pl_tone_map_bt2390";
+			else if (settings.toneMapping == "st2094-40")
+				toneMapExport = "pl_tone_map_st2094_40";
+			else if (settings.toneMapping == "reinhard")
+				toneMapExport = "pl_tone_map_reinhard";
+			colorMapParams.tone_mapping_function =
+				&LibplaceboExportedData<pl_tone_map_function>(toneMapExport);
+		}
+
+		if (settings.gamutMapping != "auto")
+		{
+			const char* gamutMapExport = "pl_gamut_map_perceptual";
+			if (settings.gamutMapping == "softclip")
+				gamutMapExport = "pl_gamut_map_softclip";
+			else if (settings.gamutMapping == "relative")
+				gamutMapExport = "pl_gamut_map_relative";
+			else if (settings.gamutMapping == "desaturate")
+				gamutMapExport = "pl_gamut_map_desaturate";
+			colorMapParams.gamut_mapping =
+				&LibplaceboExportedData<pl_gamut_map_function>(gamutMapExport);
+		}
+
+		if (settings.hasContrastRecovery)
+			colorMapParams.contrast_recovery = settings.contrastRecovery;
+		renderParams.color_map_params = &colorMapParams;
+
+		if (settings.peakDetection == AutoToggle::OFF)
+		{
+			renderParams.peak_detect_params = nullptr;
+		}
+		else if (settings.peakDetection == AutoToggle::ON)
+		{
+			peakDetectParams = LibplaceboExportedData<pl_peak_detect_params>(
+				"pl_peak_detect_high_quality_params");
+			renderParams.peak_detect_params = &peakDetectParams;
+		}
+		else if (renderParams.peak_detect_params)
+		{
+			peakDetectParams = *renderParams.peak_detect_params;
+			renderParams.peak_detect_params = &peakDetectParams;
+		}
+
+		if (settings.deband == AutoToggle::OFF)
+		{
+			renderParams.deband_params = nullptr;
+		}
+		else if (settings.deband == AutoToggle::ON)
+		{
+			debandParams = LibplaceboExportedData<pl_deband_params>(
+				"pl_deband_default_params");
+			renderParams.deband_params = &debandParams;
+		}
+		else if (renderParams.deband_params)
+		{
+			debandParams = *renderParams.deband_params;
+			renderParams.deband_params = &debandParams;
+		}
+
+		if (settings.dithering == AutoToggle::OFF)
+		{
+			renderParams.dither_params = nullptr;
+		}
+		else if (settings.dithering == AutoToggle::ON)
+		{
+			ditherParams = LibplaceboExportedData<pl_dither_params>(
+				"pl_dither_default_params");
+			renderParams.dither_params = &ditherParams;
+		}
+		else if (renderParams.dither_params)
+		{
+			ditherParams = *renderParams.dither_params;
+			renderParams.dither_params = &ditherParams;
+		}
+
+		if (settings.upscaler != "auto")
+		{
+			const char* filterExport = "pl_filter_ewa_lanczossharp";
+			if (settings.upscaler == "ewa_lanczos")
+				filterExport = "pl_filter_ewa_lanczos";
+			else if (settings.upscaler == "bicubic")
+				filterExport = "pl_filter_bicubic";
+			else if (settings.upscaler == "bilinear")
+				filterExport = "pl_filter_bilinear";
+			renderParams.upscaler =
+				&LibplaceboExportedData<pl_filter_config>(filterExport);
+		}
+
+		if (settings.downscaler != "auto")
+		{
+			const char* filterExport = "pl_filter_ewa_lanczos";
+			if (settings.downscaler == "bicubic")
+				filterExport = "pl_filter_bicubic";
+			else if (settings.downscaler == "bilinear")
+				filterExport = "pl_filter_bilinear";
+			renderParams.downscaler =
+				&LibplaceboExportedData<pl_filter_config>(filterExport);
+		}
+
+		DebugLog::Log(
+			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s target=%.1f nits black=%.3f nits refresh_switch=%d scope_aspect=%.4f default_screen_profile=%s",
+			settings.quality.c_str(),
+			colorMapParams.tone_mapping_function
+				? colorMapParams.tone_mapping_function->name : "none",
+			colorMapParams.gamut_mapping ? colorMapParams.gamut_mapping->name : "none",
+			renderParams.peak_detect_params ? "on" : "off",
+			colorMapParams.contrast_recovery,
+			renderParams.upscaler && renderParams.upscaler->name
+				? renderParams.upscaler->name : "built-in",
+			renderParams.downscaler && renderParams.downscaler->name
+				? renderParams.downscaler->name : "built-in",
+			renderParams.deband_params ? "on" : "off",
+			renderParams.dither_params ? "on" : "off",
+			sdrTargetNits,
+			sdrBlackNits,
+			settings.switchRefreshRate ? 1 : 0,
+			scopeScreenAspect,
+			defaultScopeScreen ? "scope" : "normal");
+	}
+
 	void Initialize(HWND videoHwnd, VideoStateComPtr& state)
 	{
+		const RendererSettings settings = LoadRendererSettings();
+		displayRefreshRate.Switch(videoHwnd, *state, settings.switchRefreshRate);
+
 		struct pl_log_params logParams{};
 		logParams.log_cb = LibplaceboLog;
 		logParams.log_level = PL_LOG_INFO;
@@ -198,7 +801,8 @@ struct LibplaceboVideoRenderer::Impl
 		if (!log)
 			throw std::runtime_error("Failed to create libplacebo log context");
 
-		struct pl_d3d11_params deviceParams = pl_d3d11_default_params;
+		struct pl_d3d11_params deviceParams =
+			LibplaceboExportedData<pl_d3d11_params>("pl_d3d11_default_params");
 		deviceParams.allow_software = false;
 		deviceParams.min_feature_level = D3D_FEATURE_LEVEL_10_0;
 		deviceParams.max_frame_latency = 2;
@@ -213,7 +817,14 @@ struct LibplaceboVideoRenderer::Impl
 		if (!swapchain)
 			throw std::runtime_error("Failed to create libplacebo D3D11 swapchain");
 
-		struct pl_color_space outputColor = pl_color_space_bt709;
+		sdrTargetNits = settings.sdrTargetNits;
+		sdrBlackNits = settings.sdrBlackNits;
+		scopeScreenAspect = settings.scopeScreenAspect;
+		defaultScopeScreen = settings.defaultScopeScreen;
+		struct pl_color_space outputColor =
+			LibplaceboExportedData<pl_color_space>("pl_color_space_bt709");
+		outputColor.hdr.min_luma = static_cast<float>(sdrBlackNits);
+		outputColor.hdr.max_luma = static_cast<float>(sdrTargetNits);
 		pl_swapchain_colorspace_hint(swapchain, &outputColor);
 
 		RECT client{};
@@ -232,15 +843,17 @@ struct LibplaceboVideoRenderer::Impl
 		formatter->OnVideoState(state);
 		formatterState = state;
 		convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
-		renderParams = pl_render_high_quality_params;
-		sdrTargetNits = LoadSdrTargetNits();
+		ConfigureRenderParams(settings);
 
 		DebugLog::Log(
-			"libplacebo initialized: D3D11, P010 upload, SDR Rec.709 output at %.1f nits, peak detection enabled",
+			"libplacebo initialized: D3D11, P010 upload, SDR Rec.709 target %.1f nits",
 			sdrTargetNits);
 	}
 
-	bool Render(const VideoFrame& videoFrame, VideoStateComPtr& statePtr)
+	bool Render(
+		const VideoFrame& videoFrame,
+		VideoStateComPtr& statePtr,
+		bool scopeScreenActive)
 	{
 		std::lock_guard<std::mutex> guard(renderMutex);
 		const VideoState& state = *statePtr;
@@ -325,8 +938,15 @@ struct LibplaceboVideoRenderer::Impl
 		pl_frame_from_swapchain(&target, &swapchainFrame);
 		// The colorspace hint requests SDR Rec.709, while this returned value is
 		// the swapchain's actual negotiated colorspace and must remain authoritative.
-		target.color.hdr.min_luma = 0.1f;
+		target.color.hdr.min_luma = static_cast<float>(sdrBlackNits);
 		target.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
+		if (scopeScreenActive)
+		{
+			pl_rect2df_aspect_set(
+				&target.crop,
+				static_cast<float>(scopeScreenAspect),
+				0.0f);
+		}
 		pl_rect2df_aspect_copy(&target.crop, &image.crop, 0.0f);
 
 		const bool rendered = pl_render_image(renderer, &image, &target, &renderParams);
@@ -335,6 +955,19 @@ struct LibplaceboVideoRenderer::Impl
 			pl_swapchain_swap_buffers(swapchain);
 		if (rendered && submitted)
 		{
+			if (lastRenderedEotf != state.eotf ||
+				lastRenderedColorspace != state.colorspace)
+			{
+				DebugLog::Log(
+					"libplacebo tone mapping: input=%s/%s mastering=%.3f..%.1f nits MaxCLL=%.1f MaxFALL=%.1f -> SDR Rec.709 %.1f nits",
+					CStringA(ToString(state.eotf)).GetString(),
+					CStringA(ToString(state.colorspace)).GetString(),
+					image.color.hdr.min_luma,
+					image.color.hdr.max_luma,
+					image.color.hdr.max_cll,
+					image.color.hdr.max_fall,
+					sdrTargetNits);
+			}
 			lastRenderedEotf = state.eotf;
 			lastRenderedColorspace = state.colorspace;
 		}
@@ -504,6 +1137,7 @@ void LibplaceboVideoRenderer::Build()
 
 	std::unique_ptr<Impl> impl(new Impl());
 	impl->Initialize(m_videoHwnd, state);
+	m_scopeScreenActive.store(impl->defaultScopeScreen, std::memory_order_release);
 	m_impl = std::move(impl);
 	SetState(RendererState::RENDERSTATE_READY);
 }
@@ -582,6 +1216,35 @@ void LibplaceboVideoRenderer::SetFrameQueueMaxSize(size_t size)
 }
 
 
+bool LibplaceboVideoRenderer::SetScreenProfile(
+	bool scopeScreen,
+	CString& activeProfile)
+{
+	if (!m_impl)
+		return false;
+
+	m_scopeScreenActive.store(scopeScreen, std::memory_order_release);
+
+	if (scopeScreen)
+	{
+		activeProfile.Format(TEXT("Scope (%.3f:1)"), m_impl->scopeScreenAspect);
+		DebugLog::Log(
+			"libplacebo screen profile selected: scope (%.4f:1)",
+			m_impl->scopeScreenAspect);
+	}
+	else
+	{
+		activeProfile = TEXT("Normal");
+		DebugLog::Log("libplacebo screen profile selected: normal");
+	}
+
+	CString details;
+	details.Format(TEXT("libplacebo D3D11 - Screen: %s"), activeProfile.GetString());
+	m_callback.OnRendererDetailString(details);
+	return true;
+}
+
+
 size_t LibplaceboVideoRenderer::GetFrameQueueSize()
 {
 	std::lock_guard<std::mutex> guard(m_queueMutex);
@@ -644,7 +1307,10 @@ void LibplaceboVideoRenderer::RenderLoop()
 		bool rendered = false;
 		try
 		{
-			rendered = state && m_impl->Render(frame, state);
+			rendered = state && m_impl->Render(
+				frame,
+				state,
+				m_scopeScreenActive.load(std::memory_order_acquire));
 		}
 		catch (const std::exception& e)
 		{

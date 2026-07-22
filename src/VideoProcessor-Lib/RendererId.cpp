@@ -10,6 +10,9 @@
 #include <pch.h>
 
 #include "RendererId.h"
+#if defined(_WIN64)
+#include <libplacebo/LibplaceboPluginVideoRenderer.h>
+#endif
 
 
 bool RendererId::operator< (const RendererId& other) const {
@@ -23,4 +26,14 @@ RendererId RendererId::Libplacebo()
 	id.name = TEXT("libplacebo (Experimental)");
 	id.backend = RendererBackend::LIBPLACEBO;
 	return id;
+}
+
+
+bool RendererId::IsLibplaceboAvailable()
+{
+#if defined(_WIN64)
+	return LibplaceboPluginVideoRenderer::IsAvailable();
+#else
+	return false;
+#endif
 }

@@ -51,9 +51,12 @@
 	</Filter>
   </ItemGroup>
   <ItemGroup>
-	<ClInclude Include="libplacebo\LibplaceboVideoRenderer.h">
-	  <Filter>Header Files\libplacebo</Filter>
-	</ClInclude>
+    <ClInclude Include="libplacebo\LibplaceboPluginVideoRenderer.h">
+      <Filter>Header Files\libplacebo</Filter>
+    </ClInclude>
+    <ClInclude Include="libplacebo\LibplaceboRendererPluginApi.h">
+      <Filter>Header Files\libplacebo</Filter>
+    </ClInclude>
     <ClInclude Include="framework.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -239,9 +242,9 @@
 	</ClInclude>
   </ItemGroup>
   <ItemGroup>
-	<ClCompile Include="libplacebo\LibplaceboVideoRenderer.cpp">
-	  <Filter>Source Files\libplacebo</Filter>
-	</ClCompile>
+    <ClCompile Include="libplacebo\LibplaceboPluginVideoRenderer.cpp">
+      <Filter>Source Files\libplacebo</Filter>
+    </ClCompile>
     <ClCompile Include="pch.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

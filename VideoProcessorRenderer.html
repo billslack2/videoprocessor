@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VideoProcessor built-in renderer configuration</title>
+  <style>
+    body { font: 16px/1.5 "Segoe UI", Arial, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    h1, h2 { color: #17365d; } code, pre { font-family: Consolas, monospace; }
+    code { background: #f2f2f2; padding: .1rem .25rem; } pre { background: #f2f2f2; padding: 1rem; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; } th, td { border: 1px solid #ccc; padding: .55rem; text-align: left; vertical-align: top; }
+    th { background: #eaf1f8; } .note { background: #fff4ce; border-left: 4px solid #d6a700; padding: .8rem 1rem; }
+  </style>
+</head>
+<body>
+  <h1>VideoProcessor built-in renderer configuration</h1>
+  <p><code>VideoProcessorRenderer.cfg</code> contains settings for the experimental built-in libplacebo renderer. It is searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
+  <p>Renderer selection and application-wide capture, timing, and queue options remain in <code>VideoProcessor.cfg</code>. For example, select the built-in renderer there with:</p>
+  <pre>[command_line]
+renderer=libplacebo</pre>
+  <p>Application-wide settings and shader rules remain in <code>VideoProcessor.cfg</code>. See <a href="CONFIGURATION.html">VideoProcessor configuration</a> for those settings.</p>
+
+  <h2>Optional renderer installation</h2>
+  <p>The normal VideoProcessor executable has no libplacebo dependency and can be distributed by itself. To add the experimental renderer, place the complete optional renderer pack in a <code>libplacebo</code> directory beside the executable:</p>
+  <pre>VideoProcessor.exe
+libplacebo\
+  VideoProcessorLibplacebo.dll
+  libplacebo-360.dll
+  required runtime DLLs...
+  third_party_licenses\</pre>
+  <p>VideoProcessor loads only <code>libplacebo\VideoProcessorLibplacebo.dll</code>. If the plugin, one of its private dependencies, or the expected plugin API is unavailable, the application starts normally and does not list the experimental renderer.</p>
+
+  <h2>[libplacebo] (experimental)</h2>
+  <p>The built-in renderer uses D3D11 and always produces SDR Rec.709 output. SDR input is color-managed without HDR tone mapping; PQ, HLG, traditional HDR, and detected LLDV input are tone-mapped to SDR using VP's effective input colorspace and mastering metadata. Changes between HDR and SDR are accepted in place.</p>
+  <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
+    <tr><td><code>sdr_target_nits</code></td><td><code>40</code> through <code>500</code>; default <code>203</code></td><td>Brightness of the SDR tone-mapping target. The default follows libplacebo's BT.2408 SDR reference-white model. This describes the intended SDR output level, not an HDR output mode.</td></tr>
+    <tr><td><code>sdr_black_nits</code></td><td><code>AUTO</code> or a non-negative number below <code>sdr_target_nits</code></td><td>Black level of the SDR display. <code>AUTO</code> uses libplacebo's nominal 1000:1 SDR contrast assumption. A measured display or projector black level can improve tone-mapping accuracy.</td></tr>
+    <tr><td><code>switch_refresh_rate</code></td><td>Boolean; default <code>true</code></td><td>Switch the active render monitor to the captured cadence while this renderer is active, without changing its resolution or display topology. Progressive 23/24 Hz uses its native rate; progressive 25/29.97/30 Hz and interlaced input use the matching doubled display rate. The previous refresh rate is restored when the renderer closes. A failed or unsupported switch is logged and rendering continues at the current rate.</td></tr>
+    <tr><td><code>quality</code></td><td><code>fast</code>, <code>balanced</code>, or <code>high</code>; default <code>high</code></td><td>Selects libplacebo's rendering preset. <code>high</code> preserves VP's original experimental-renderer behavior. Individual <code>AUTO</code> settings inherit from this preset.</td></tr>
+    <tr><td><code>tone_mapping</code></td><td><code>AUTO</code>, <code>spline</code>, <code>bt2390</code>, <code>st2094-40</code>, or <code>reinhard</code></td><td>Selects the HDR-to-SDR tone-mapping curve. <code>AUTO</code> uses the quality preset; the current presets use <code>spline</code>.</td></tr>
+    <tr><td><code>gamut_mapping</code></td><td><code>AUTO</code>, <code>perceptual</code>, <code>softclip</code>, <code>relative</code>, or <code>desaturate</code></td><td>Selects how wide-gamut input is mapped into SDR Rec.709. <code>AUTO</code> uses the preset's perceptual mapping.</td></tr>
+    <tr><td><code>peak_detection</code></td><td><code>AUTO</code>, <code>ON</code>, or <code>OFF</code></td><td>Controls dynamic HDR peak measurement. <code>AUTO</code> inherits from the quality preset.</td></tr>
+    <tr><td><code>contrast_recovery</code></td><td><code>AUTO</code> or <code>0.0</code> through <code>1.0</code></td><td>Restores high-frequency detail after tone mapping. Higher values can increase apparent detail but may introduce ringing. <code>AUTO</code> inherits the preset; high quality currently uses approximately <code>0.30</code>.</td></tr>
+    <tr><td><code>upscaler</code></td><td><code>AUTO</code>, <code>ewa_lanczossharp</code>, <code>ewa_lanczos</code>, <code>bicubic</code>, or <code>bilinear</code></td><td>Selects image upscaling. <code>AUTO</code> inherits from the quality preset.</td></tr>
+    <tr><td><code>downscaler</code></td><td><code>AUTO</code>, <code>ewa_lanczos</code>, <code>bicubic</code>, or <code>bilinear</code></td><td>Selects image downscaling. <code>AUTO</code> inherits from the quality preset.</td></tr>
+    <tr><td><code>deband</code></td><td><code>AUTO</code>, <code>ON</code>, or <code>OFF</code></td><td>Controls libplacebo debanding. <code>AUTO</code> inherits from the quality preset.</td></tr>
+    <tr><td><code>dithering</code></td><td><code>AUTO</code>, <code>ON</code>, or <code>OFF</code></td><td>Controls output dithering. Explicit <code>ON</code> uses libplacebo's blue-noise default.</td></tr>
+    <tr><td><code>scope_screen_aspect</code></td><td>A decimal or <code>width:height</code> ratio from <code>1.5</code> through <code>4.0</code>; default <code>2.35:1</code></td><td>Defines the physical aspect ratio of a constant-image-height screen. Examples include <code>2.35:1</code>, <code>2.39:1</code>, <code>2.40:1</code>, or <code>1.7778</code>. In the Scope profile the renderer fits the image into a centered viewport with this aspect ratio; narrower content is pillarboxed inside it.</td></tr>
+    <tr><td><code>default_screen_profile</code></td><td><code>normal</code> or <code>scope</code>; default <code>normal</code></td><td>Selects the screen profile whenever the renderer starts. The renderer-specific shortcuts below select either profile immediately during playback.</td></tr>
+  </tbody></table>
+  <pre>[libplacebo]
+sdr_target_nits=203
+sdr_black_nits=AUTO
+switch_refresh_rate=true
+quality=high
+tone_mapping=AUTO
+gamut_mapping=AUTO
+peak_detection=AUTO
+contrast_recovery=AUTO
+upscaler=AUTO
+downscaler=AUTO
+deband=AUTO
+dithering=AUTO
+scope_screen_aspect=2.35:1
+default_screen_profile=normal</pre>
+  <h2>[shortcuts]</h2>
+  <p>These shortcuts apply only to the optional renderer and belong in <code>VideoProcessorRenderer.cfg</code>. <code>screen_profile_normal</code> selects the full 16:9 output raster; <code>screen_profile_scope</code> selects the configured scope viewport. Direct selection keeps VP aligned with projector lens-memory or screen-masking commands. Function keys <code>F1</code> through <code>F24</code>, letters, numbers, <code>Escape</code>, and <code>Enter</code> are supported with optional <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code> modifiers.</p>
+  <pre>[shortcuts]
+screen_profile_normal=F2
+screen_profile_scope=F3</pre>
+  <div class="note">The initial renderer supports V210, UYVY, ARGB, and BGRA capture formats through VP's P010 conversion path. It does not emit HDR or require Windows HDR mode.</div>
+
+</body>
+</html>

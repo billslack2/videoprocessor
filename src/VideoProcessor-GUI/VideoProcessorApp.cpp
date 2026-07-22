@@ -296,6 +296,24 @@ void ValidateCommandLineConfigKeys(const ConfigFile& config)
 					" [queue_recovery] key: " + setting.first);
 		}
 	}
+
+	const auto* lldvValues = config.GetSectionValues("lldv");
+	if (lldvValues)
+	{
+		const std::set<std::string> allowedKeys =
+		{
+			"max_cll",
+			"max_fall",
+			"mastering_min_luminance",
+			"mastering_max_luminance"
+		};
+		for (const auto& setting : *lldvValues)
+		{
+			if (allowedKeys.find(setting.first) == allowedKeys.end())
+				throw std::runtime_error("Unknown " + ConfigLocation(config) +
+					" [lldv] key: " + setting.first);
+		}
+	}
 }
 
 bool TryGetFirstConfigBool(const ConfigFile& config, const std::initializer_list<const char*> keys, bool& value)
@@ -389,6 +407,14 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigStringOptionInSection(arguments, config, "queue_recovery",
 		{ "reset_queue_too_large_percent" },
 		L"/reset_queue_too_large_percent");
+	AppendConfigStringOptionInSection(arguments, config, "lldv",
+		{ "max_cll" }, L"/lldv_max_cll");
+	AppendConfigStringOptionInSection(arguments, config, "lldv",
+		{ "max_fall" }, L"/lldv_max_fall");
+	AppendConfigStringOptionInSection(arguments, config, "lldv",
+		{ "mastering_min_luminance" }, L"/lldv_mastering_min_luminance");
+	AppendConfigStringOptionInSection(arguments, config, "lldv",
+		{ "mastering_max_luminance" }, L"/lldv_mastering_max_luminance");
 
 	return arguments;
 }
@@ -515,12 +541,30 @@ bool IsNonNegativeInteger(const wchar_t* value)
 	return errno == 0 && number <= static_cast<unsigned long long>(INT_MAX);
 }
 
+bool TryParseFiniteNonNegativeDouble(const wchar_t* value, double& parsedValue)
+{
+	if (value == nullptr || value[0] == L'\0')
+		return false;
+
+	wchar_t* end = nullptr;
+	const double parsed = wcstod(value, &end);
+	if (end == value || *end != L'\0' || !std::isfinite(parsed) || parsed < 0.0)
+		return false;
+
+	parsedValue = parsed;
+	return true;
+}
+
 bool RequiresCommandLineValue(const wchar_t* argument)
 {
 	return IsCommandLineOption(argument, L"/renderer") ||
 		IsCommandLineOption(argument, L"/queue_size") ||
 		IsCommandLineOption(argument, L"/reset_after_render_restart_seconds") ||
 		IsCommandLineOption(argument, L"/reset_queue_too_large_percent") ||
+		IsCommandLineOption(argument, L"/lldv_max_cll") ||
+		IsCommandLineOption(argument, L"/lldv_max_fall") ||
+		IsCommandLineOption(argument, L"/lldv_mastering_min_luminance") ||
+		IsCommandLineOption(argument, L"/lldv_mastering_max_luminance") ||
 		IsCommandLineOption(argument, L"/capture_device") ||
 		IsCommandLineOption(argument, L"/frame_offset") ||
 		IsCommandLineOption(argument, L"/video_conversion") ||
@@ -616,6 +660,18 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 			 _wtoi(arguments[index + 1]) > 100))
 			throw std::runtime_error(
 				"Invalid /reset_queue_too_large_percent: expected an integer from 1 to 100");
+
+		if (IsCommandLineOption(argument, L"/lldv_max_cll") ||
+			IsCommandLineOption(argument, L"/lldv_max_fall") ||
+			IsCommandLineOption(argument, L"/lldv_mastering_min_luminance") ||
+			IsCommandLineOption(argument, L"/lldv_mastering_max_luminance"))
+		{
+			double ignored = 0.0;
+			if (!TryParseFiniteNonNegativeDouble(arguments[index + 1], ignored))
+				throw std::runtime_error("Invalid LLDV metadata value: expected a finite non-negative number");
+			if (IsCommandLineOption(argument, L"/lldv_mastering_max_luminance") && ignored <= 0.0)
+				throw std::runtime_error("Invalid /lldv_mastering_max_luminance: expected a value greater than zero");
+		}
 
 		if (IsCommandLineOption(argument, L"/frame_offset") &&
 			_wcsicmp(arguments[index + 1], L"auto") != 0 && !IsNonNegativeInteger(arguments[index + 1]))
@@ -1257,6 +1313,36 @@ BOOL CVideoProcessorApp::InitInstance()
 			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/newlldv", booleanValue))
 			{
 				dlg.EnableNewLldvHeuristic(booleanValue);
+			}
+
+			if (wcscmp(pArgs[i], L"/lldv_max_cll") == 0 && (i + 1) < iNumOfArgs)
+			{
+				double value = 0.0;
+				TryParseFiniteNonNegativeDouble(pArgs[i + 1], value);
+				dlg.SetLldvMaxCll(value);
+			}
+
+			if (wcscmp(pArgs[i], L"/lldv_max_fall") == 0 && (i + 1) < iNumOfArgs)
+			{
+				double value = 0.0;
+				TryParseFiniteNonNegativeDouble(pArgs[i + 1], value);
+				dlg.SetLldvMaxFall(value);
+			}
+
+			if (wcscmp(pArgs[i], L"/lldv_mastering_min_luminance") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				double value = 0.0;
+				TryParseFiniteNonNegativeDouble(pArgs[i + 1], value);
+				dlg.SetLldvMasteringMinLuminance(value);
+			}
+
+			if (wcscmp(pArgs[i], L"/lldv_mastering_max_luminance") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				double value = 0.0;
+				TryParseFiniteNonNegativeDouble(pArgs[i + 1], value);
+				dlg.SetLldvMasteringMaxLuminance(value);
 			}
 
 			// start minimized

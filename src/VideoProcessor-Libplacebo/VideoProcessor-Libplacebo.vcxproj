@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{C72197B6-AFB1-4BF2-ABEA-6B63DE71389E}</ProjectGuid>
+    <RootNamespace>VideoProcessorLibplacebo</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>Dynamic</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>Dynamic</UseOfMfc>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir>$(SolutionDir)x64\$(Configuration)\libplacebo\</OutDir>
+    <IntDir>$(SolutionDir)x64\$(Configuration)\obj\VideoProcessor-Libplacebo\</IntDir>
+    <TargetName>VideoProcessorLibplacebo</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>..\VideoProcessor-Lib;..\..\3rdparty\libplacebo\include;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\ffmpeg\include;..\..\3rdparty\mpc_video_renderer</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>..\..\3rdparty\libplacebo\lib;..\..\3rdparty\ffmpeg\lib\msvc2019_x64_debug\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libplacebo-360.lib;opengl32.lib;strmiids.lib;winmm.lib;libswscale.a;libavutil.a;libavcodec.a;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>if exist "$(SolutionDir)3rdparty\libplacebo\bin\*.dll" copy /Y "$(SolutionDir)3rdparty\libplacebo\bin\*.dll" "$(OutDir)" &amp; if exist "$(SolutionDir)3rdparty\libplacebo\licenses" xcopy /Y /I /E "$(SolutionDir)3rdparty\libplacebo\licenses" "$(OutDir)third_party_licenses" &amp; if exist "$(SolutionDir)3rdparty\libplacebo\LICENSE.txt" copy /Y "$(SolutionDir)3rdparty\libplacebo\LICENSE.txt" "$(OutDir)third_party_licenses\libplacebo-LICENSE.txt" &amp; if exist "$(SolutionDir)3rdparty\libplacebo\README.txt" copy /Y "$(SolutionDir)3rdparty\libplacebo\README.txt" "$(OutDir)README.txt"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>..\VideoProcessor-Lib;..\..\3rdparty\libplacebo\include;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\ffmpeg\include;..\..\3rdparty\mpc_video_renderer</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>..\..\3rdparty\libplacebo\lib;..\..\3rdparty\ffmpeg\lib\msvc2019_x64_release\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libplacebo-360.lib;opengl32.lib;strmiids.lib;winmm.lib;libswscale.a;libavutil.a;libavcodec.a;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>if exist "$(SolutionDir)3rdparty\libplacebo\bin\*.dll" copy /Y "$(SolutionDir)3rdparty\libplacebo\bin\*.dll" "$(OutDir)" &amp; if exist "$(SolutionDir)3rdparty\libplacebo\licenses" xcopy /Y /I /E "$(SolutionDir)3rdparty\libplacebo\licenses" "$(OutDir)third_party_licenses" &amp; if exist "$(SolutionDir)3rdparty\libplacebo\LICENSE.txt" copy /Y "$(SolutionDir)3rdparty\libplacebo\LICENSE.txt" "$(OutDir)third_party_licenses\libplacebo-LICENSE.txt" &amp; if exist "$(SolutionDir)3rdparty\libplacebo\README.txt" copy /Y "$(SolutionDir)3rdparty\libplacebo\README.txt" "$(OutDir)README.txt"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="LibplaceboPluginExports.cpp" />
+    <ClCompile Include="..\VideoProcessor-Lib\libplacebo\LibplaceboVideoRenderer.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj">
+      <Project>{85F8C0F9-AC94-470E-9302-16FC536E506F}</Project>
+      <LinkLibraryDependencies>true</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

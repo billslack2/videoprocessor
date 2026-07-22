@@ -38,6 +38,7 @@ public:
 	void OnPaint() override;
 	void SetFrameQueueMaxSize(size_t size) override;
 	void SetSceneAwareTimingCorrection(bool) override {}
+	bool SetScreenProfile(bool scopeScreen, CString& activeProfile) override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;
@@ -77,4 +78,5 @@ private:
 	std::atomic<double> m_exitLatencyMs{0.0};
 	std::atomic<uint64_t> m_droppedFrames{0};
 	std::atomic<uint64_t> m_frameCounter{0};
+	std::atomic<bool> m_scopeScreenActive{false};
 };

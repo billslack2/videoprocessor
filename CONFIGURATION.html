@@ -15,7 +15,8 @@
 <body>
   <h1>VideoProcessor configuration</h1>
   <p><code>VideoProcessor.cfg</code> is an optional UTF-8 text file searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
-  <p>The shipped file is a conservative sample with common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[display_refresh_rate_override]</code>, <code>[libplacebo]</code>, <code>[shaders]</code>, <code>[p010_conversion]</code>, and <code>[ppm_correction]</code> sections can be added when needed.</p>
+  <p>The shipped file is a conservative sample with common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[display_refresh_rate_override]</code>, <code>[shaders]</code>, <code>[p010_conversion]</code>, and <code>[ppm_correction]</code> sections can be added when needed.</p>
+  <p>The experimental built-in renderer's processing settings belong in <code>VideoProcessorRenderer.cfg</code> and are documented separately in <a href="VideoProcessorRenderer.html">VideoProcessor built-in renderer configuration</a>.</p>
   <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override matching settings.</p>
 
   <h2>[command_line]</h2>
@@ -58,7 +59,7 @@ reset_queue_too_large_percent=75</pre>
 
   <h2>[shortcuts]</h2>
   <p>Keyboard shortcuts are optional. If this section, an individual key, or the entire configuration file is absent, VideoProcessor uses its built-in defaults. Modifier names are case-insensitive. A lowercase letter is unmodified (<code>v</code>); an uppercase letter adds Shift (<code>V</code> means <code>Shift+V</code>).</p>
-  <p>Supported modifiers are <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Keys may be a letter, a number, <code>Escape</code>, or <code>Enter</code>. Invalid or duplicate bindings fall back to the built-in binding for that command.</p>
+  <p>Supported modifiers are <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Keys may be a letter, a number, <code>F1</code> through <code>F24</code>, <code>Escape</code>, or <code>Enter</code>. Invalid or duplicate bindings fall back to the built-in binding for that command.</p>
   <pre>[shortcuts]
 auto_set=Ctrl+Shift+a
 fullscreen_exit=Escape
@@ -76,8 +77,23 @@ video_conversion_p010=V</pre>
 
   <h2>LLDV</h2>
   <div class="note">DeckLink does not expose the HDMI Dolby Vision VSIF. The <code>newlldv</code> option is a heuristic, not definitive detection.</div>
-  <p>With <code>newlldv=true</code>, VideoProcessor treats stable <code>BT.2020 + SDR + no static HDR metadata</code> as LLDV only when both <code>hdr_colorspace=FOLLOW_INPUT_LLDV</code> and <code>hdr_luminance=FOLLOW_INPUT_LLDV</code> are selected. After a 1.5-second confirmation it switches output to PQ and supplies synthetic metadata: MaxCLL 1000, MaxFALL 401, mastering minimum 0.001, and mastering maximum 4000.</p>
+  <p>With <code>newlldv=true</code>, VideoProcessor treats stable <code>BT.2020 + SDR + no static HDR metadata</code> as LLDV only when both <code>hdr_colorspace=FOLLOW_INPUT_LLDV</code> and <code>hdr_luminance=FOLLOW_INPUT_LLDV</code> are selected. After a 1.5-second confirmation it switches output to PQ and supplies synthetic HDR metadata.</p>
   <p>Leave <code>newlldv</code> disabled for legacy behavior or whenever genuine BT.2020 SDR could be mistaken for LLDV.</p>
+
+  <h2>[lldv] (optional)</h2>
+  <p>Overrides the synthetic HDR metadata supplied when either LLDV detection path is active and both LLDV follow modes are selected. The overrides apply equally to classic LLDV detection and <code>newlldv</code>. Omit a key to preserve its existing mode-specific default.</p>
+  <table><thead><tr><th>Key</th><th>Value</th><th>Built-in default when omitted</th></tr></thead><tbody>
+    <tr><td><code>max_cll</code></td><td>Non-negative nits</td><td><code>1000</code> for classic and new LLDV</td></tr>
+    <tr><td><code>max_fall</code></td><td>Non-negative nits</td><td><code>1000</code> for classic LLDV; <code>401</code> for <code>newlldv</code></td></tr>
+    <tr><td><code>mastering_min_luminance</code></td><td>Non-negative nits</td><td><code>0.0001</code> for classic LLDV; <code>0.001</code> for <code>newlldv</code></td></tr>
+    <tr><td><code>mastering_max_luminance</code></td><td>Positive nits</td><td><code>1000</code> for classic LLDV; <code>4000</code> for <code>newlldv</code></td></tr>
+  </tbody></table>
+  <pre>[lldv]
+# These are examples only. Uncomment any value to override it for both modes.
+#max_cll=1000
+#max_fall=401
+#mastering_min_luminance=0.001
+#mastering_max_luminance=4000</pre>
 
   <h2>[display_refresh_rate_override] (optional)</h2>
   <p>Use this section when the automatic display-rate measurement is known to be wrong. Keys are nominal input refresh rates, matching the <code>[ppm_correction]</code> format; values are exact display rates or <code>AUTO</code>. A truncated nominal key is preferred (for example, <code>23</code> for 23.976 Hz); otherwise a key within 0.5 Hz is used. An exact rate replaces automatic display timing, is shown with <code>*</code> in the OSD, and is explicitly identified in the log. <code>AUTO</code> explicitly keeps normal automatic measurement for that nominal rate.</p>
@@ -97,18 +113,6 @@ video_conversion_p010=V</pre>
 ConversionMethod=SIMD
 MinCoreCount=1
 MaxCoreCount=2</pre>
-
-  <h2>[libplacebo] (experimental)</h2>
-  <p>Select the built-in renderer in an x64 build with <code>renderer=libplacebo</code>. This renderer uses D3D11 and always produces SDR Rec.709 output. SDR input is color-managed without HDR tone mapping; PQ, HLG, traditional HDR, and detected LLDV input are tone-mapped to SDR using VP's effective input colorspace and mastering metadata. Changes between HDR and SDR are accepted in place.</p>
-  <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
-    <tr><td><code>sdr_target_nits</code></td><td><code>40</code> through <code>500</code>; default <code>100</code></td><td>Brightness of the SDR tone-mapping target. This describes the intended SDR output level, not an HDR output mode.</td></tr>
-  </tbody></table>
-  <pre>[command_line]
-renderer=libplacebo
-
-[libplacebo]
-sdr_target_nits=100</pre>
-  <div class="note">The initial renderer supports V210, UYVY, ARGB, and BGRA capture formats through VP's P010 conversion path. It does not emit HDR or require Windows HDR mode.</div>
 
   <h2>[shaders] (optional)</h2>
   <p>This section installs external Direct3D 9 HLSL directly into the selected renderer's GPU pipeline when that renderer supports external shaders. It does not add a CPU conversion or GPU readback. The named rules in <code>rules</code> are checked from left to right and the first matching rule wins. If nothing matches, <code>default=none</code> leaves shaders off. Rules are reevaluated after every full renderer restart using VP's effective EOTF and input refresh rate. Detected LLDV is treated as HDR because its effective EOTF is PQ.</p>
