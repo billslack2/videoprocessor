@@ -1,8 +1,11 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
+#include <algorithm>
+
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
 #include <video_frame_formatter/CFFMpegDecoderVideoFrameFormatter.h>
+#include <video_frame_formatter/CR12BtoRGB48VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
 #include <IntegerMath.h>
@@ -65,34 +68,138 @@ namespace Tests
 		{
 			CFFMpegDecoderVideoFrameFormatter vff(
 				AV_CODEC_ID_R210,
-				AV_PIX_FMT_RGB48LE);
+				AV_PIX_FMT_RGB48LE,
+				false /* hardware decoding */);
 
 			VideoStateComPtr vs = new VideoState();
 			vs->valid = true;
-			vs->displayMode = std::make_shared<DisplayMode>(1920, 1080, false /* interlaced */, 24000, 1000);
-			vs->videoFrameEncoding = VideoFrameEncoding::V210;  // Actual type not important
+			vs->displayMode = std::make_shared<DisplayMode>(128, 100, false /* interlaced */, 24000, 1000);
+			vs->videoFrameEncoding = VideoFrameEncoding::R210;
 
 			vff.OnVideoState(vs);
 			vff.OnVideoState(vs);
 
-			Assert::AreEqual(12441600L, vff.GetOutFrameSize());
+			Assert::AreEqual(76800L, vff.GetOutFrameSize());
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+			// R210 is a big-endian 32-bit word: padding:2, R:10, G:10, B:10.
+			// The first pixel below is R=1, G=2, B=3; the remaining padded rows are black.
+			input[0] = 0x00;
+			input[1] = 0x10;
+			input[2] = 0x08;
+			input[3] = 0x03;
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0xFF);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			Assert::AreEqual(static_cast<BYTE>(0x40), output[0]);
+			Assert::AreEqual(static_cast<BYTE>(0x00), output[1]);
+			Assert::AreEqual(static_cast<BYTE>(0x80), output[2]);
+			Assert::AreEqual(static_cast<BYTE>(0x00), output[3]);
+			Assert::AreEqual(static_cast<BYTE>(0xC0), output[4]);
+			Assert::AreEqual(static_cast<BYTE>(0x00), output[5]);
 		}
 
-		TEST_METHOD(CFFMpegDecoderVideoFrameFormatterR12BRGB48LETest)
+		TEST_METHOD(CR12BtoRGB48VideoFrameFormatterGoldenBlockTest)
 		{
-			CFFMpegDecoderVideoFrameFormatter vff(
-				AV_CODEC_ID_R12B,
-				AV_PIX_FMT_RGB48LE);
+			CR12BtoRGB48VideoFrameFormatter vff;
 
 			VideoStateComPtr vs = new VideoState();
 			vs->valid = true;
-			vs->displayMode = std::make_shared<DisplayMode>(1920, 1080, false /* interlaced */, 24000, 1000);
-			vs->videoFrameEncoding = VideoFrameEncoding::V210;  // Actual type not important
+			vs->displayMode = std::make_shared<DisplayMode>(104, 100, false /* interlaced */, 24000, 1000);
+			vs->videoFrameEncoding = VideoFrameEncoding::R12B;
 
 			vff.OnVideoState(vs);
+
+			Assert::AreEqual(62400L, vff.GetOutFrameSize());
+
+			const BYTE input[] = {
+				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+				0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+				0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+				0x20, 0x21, 0x22, 0x23
+			};
+			const BYTE expected[] = {
+				0x32, 0x20, 0x00, 0x01, 0x07, 0x70, 0x00, 0x06,
+				0x54, 0x40, 0x00, 0x0B, 0xA9, 0x90, 0x00, 0x08,
+				0xFE, 0xE0, 0x00, 0x0D, 0xC3, 0x30, 0x11, 0x12,
+				0x10, 0x01, 0x11, 0x17, 0x65, 0x51, 0x11, 0x14,
+				0xBA, 0xA1, 0x11, 0x19, 0x8F, 0xF1, 0x11, 0x1E,
+				0xDC, 0xC1, 0x12, 0x23, 0x21, 0x12, 0x22, 0x20
+			};
+			std::vector<BYTE> inputFrame(104 * 100 * 36 / 8, 0);
+			memcpy(inputFrame.data(), input, sizeof(input));
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0);
+			VideoFrame frame(inputFrame.data(), 1, 0, nullptr);
+
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			for (size_t i = 0; i < sizeof(expected); ++i)
+				Assert::AreEqual(expected[i], output[i]);
+		}
+
+		TEST_METHOD(CR12BtoRGB48VideoFrameFormatterBlackWhiteTest)
+		{
+			CR12BtoRGB48VideoFrameFormatter vff;
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(104, 100, false, 24000, 1000);
+			vs->videoFrameEncoding = VideoFrameEncoding::R12B;
 			vff.OnVideoState(vs);
 
-			Assert::AreEqual(12441600L, vff.GetOutFrameSize());
+			std::vector<BYTE> input(104 * 100 * 36 / 8, 0);
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0);
+			VideoFrame blackFrame(input.data(), 1, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(blackFrame, output.data()));
+			for (BYTE value : output)
+				Assert::AreEqual(static_cast<BYTE>(0), value);
+
+			memset(input.data(), 0xFF, input.size());
+			VideoFrame whiteFrame(input.data(), 2, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(whiteFrame, output.data()));
+			for (BYTE value : output)
+				Assert::AreEqual(static_cast<BYTE>(0xFF), value);
+		}
+
+		TEST_METHOD(CR12BtoRGB48VideoFrameFormatterRejectsInvalidWidth)
+		{
+			CR12BtoRGB48VideoFrameFormatter vff;
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(101, 100, false, 24000, 1000);
+			vs->videoFrameEncoding = VideoFrameEncoding::R12B;
+
+			Assert::ExpectException<std::runtime_error>([&]() { vff.OnVideoState(vs); });
+		}
+
+		TEST_METHOD(CR12BtoRGB48VideoFrameFormatter4KSmokeTest)
+		{
+			CR12BtoRGB48VideoFrameFormatter vff;
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(3840, 2160, false, 60000, 1001);
+			vs->videoFrameEncoding = VideoFrameEncoding::R12B;
+			vff.OnVideoState(vs);
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0xFF);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			// Warm the reusable worker, then sample enough frames to expose scheduling spikes.
+			for (int i = 0; i < 5; ++i)
+				Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			for (int i = 0; i < 30; ++i)
+				Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			// Checking the whole frame also covers the split-row boundary used by the worker.
+			Assert::IsTrue(std::all_of(output.begin(), output.end(),
+				[](BYTE value) { return value == 0; }));
+
+			double currentUs = 0.0;
+			double averageUs = 0.0;
+			double maximumUs = 0.0;
+			vff.GetConversionPerformance(currentUs, averageUs, maximumUs);
+			wchar_t message[128];
+			swprintf_s(message, L"Native R12B 4K conversion current/avg/max: %.0f / %.0f / %.0f us",
+				currentUs, averageUs, maximumUs);
+			Logger::WriteMessage(message);
 		}
 	};
 

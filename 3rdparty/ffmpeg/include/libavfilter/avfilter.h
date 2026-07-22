@@ -286,6 +286,14 @@ typedef struct AVFilter {
 
     int flags_internal; ///< Additional flags for avfilter internal use only.
 
+#if FF_API_NEXT
+    /**
+     * Used by the filter registration system. Must not be touched by any other
+     * code.
+     */
+    struct AVFilter *next;
+#endif
+
     /**
      * Make the filter instance process a command.
      *
@@ -299,6 +307,13 @@ typedef struct AVFilter {
      *          AVERROR(ENOSYS) on unsupported commands
      */
     int (*process_command)(AVFilterContext *, const char *cmd, const char *arg, char *res, int res_len, int flags);
+
+    /**
+     * Filter initialization function, alternative to the init()
+     * callback. Args contains the user-supplied parameters, opaque is
+     * used for providing binary data.
+     */
+    int (*init_opaque)(AVFilterContext *ctx, void *opaque);
 
     /**
      * Filter activation function.
@@ -542,8 +557,19 @@ struct AVFilterLink {
     AVRational frame_rate;
 
     /**
+     * Buffer partially filled with samples to achieve a fixed/minimum size.
+     */
+    AVFrame *partial_buf;
+
+    /**
+     * Size of the partial buffer to allocate.
+     * Must be between min_samples and max_samples.
+     */
+    int partial_buf_size;
+
+    /**
      * Minimum number of samples to filter at once. If filter_frame() is
-     * called with fewer samples, it will accumulate them in fifo.
+     * called with fewer samples, it will accumulate them in partial_buf.
      * This field and the related ones must not be changed after filtering
      * has started.
      * If 0, all related fields are ignored.
@@ -565,11 +591,6 @@ struct AVFilterLink {
      * Number of past frames sent through the link.
      */
     int64_t frame_count_in, frame_count_out;
-
-    /**
-     * Number of past samples sent through the link.
-     */
-    int64_t sample_count_in, sample_count_out;
 
     /**
      * A pointer to a FFFramePool struct.
@@ -652,6 +673,23 @@ int avfilter_link(AVFilterContext *src, unsigned srcpad,
  */
 void avfilter_link_free(AVFilterLink **link);
 
+#if FF_API_FILTER_GET_SET
+/**
+ * Get the number of channels of a link.
+ * @deprecated Use av_buffersink_get_channels()
+ */
+attribute_deprecated
+int avfilter_link_get_channels(AVFilterLink *link);
+#endif
+#if FF_API_FILTER_LINK_SET_CLOSED
+/**
+ * Set the closed field of a link.
+ * @deprecated applications are not supposed to mess with links, they should
+ * close the sinks.
+ */
+attribute_deprecated
+void avfilter_link_set_closed(AVFilterLink *link, int closed);
+#endif
 /**
  * Negotiate the media format, dimensions, etc of all inputs to a filter.
  *
@@ -679,6 +717,33 @@ int avfilter_process_command(AVFilterContext *filter, const char *cmd, const cha
  *         finished
  */
 const AVFilter *av_filter_iterate(void **opaque);
+
+#if FF_API_NEXT
+/** Initialize the filter system. Register all builtin filters. */
+attribute_deprecated
+void avfilter_register_all(void);
+
+/**
+ * Register a filter. This is only needed if you plan to use
+ * avfilter_get_by_name later to lookup the AVFilter structure by name. A
+ * filter can still by instantiated with avfilter_graph_alloc_filter even if it
+ * is not registered.
+ *
+ * @param filter the filter to register
+ * @return 0 if the registration was successful, a negative value
+ * otherwise
+ */
+attribute_deprecated
+int avfilter_register(AVFilter *filter);
+
+/**
+ * Iterate over all registered filters.
+ * @return If prev is non-NULL, next registered filter after prev or NULL if
+ * prev is the last filter. If prev is NULL, return the first registered filter.
+ */
+attribute_deprecated
+const AVFilter *avfilter_next(const AVFilter *prev);
+#endif
 
 /**
  * Get a filter definition matching the given name.
@@ -788,6 +853,9 @@ typedef struct AVFilterGraph {
     unsigned nb_filters;
 
     char *scale_sws_opts; ///< sws options to use for the auto-inserted scale filters
+#if FF_API_LAVR_OPTS
+    attribute_deprecated char *resample_lavr_opts;   ///< libavresample options to use for the auto-inserted resample filters
+#endif
 
     /**
      * Type of multithreading allowed for filters in this graph. A combination

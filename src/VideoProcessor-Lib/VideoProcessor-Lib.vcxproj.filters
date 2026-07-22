@@ -75,6 +75,9 @@
     <ClInclude Include="video_frame_formatter\CFFMpegDecoderVideoFrameFormatter.h">
       <Filter>Header Files\video_frame_formatter</Filter>
     </ClInclude>
+    <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.h">
+      <Filter>Header Files\video_frame_formatter</Filter>
+    </ClInclude>
     <ClInclude Include="video_frame_formatter\CNoopVideoFrameFormatter.h">
       <Filter>Header Files\video_frame_formatter</Filter>
     </ClInclude>
@@ -252,6 +255,9 @@
       <Filter>Source Files\video_frame_formatter</Filter>
     </ClCompile>
     <ClCompile Include="video_frame_formatter\CFFMpegDecoderVideoFrameFormatter.cpp">
+      <Filter>Source Files\video_frame_formatter</Filter>
+    </ClCompile>
+    <ClCompile Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.cpp">
       <Filter>Source Files\video_frame_formatter</Filter>
     </ClCompile>
     <ClCompile Include="video_frame_formatter\CNoopVideoFrameFormatter.cpp">

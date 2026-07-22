@@ -1573,7 +1573,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(WPARAM wParam,
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(): Locked=%s, DisplayMode=%s"),
 		ToString(cardState->inputLocked),
-		cardState->inputDisplayMode ? cardState->inputDisplayMode->ToString() : TEXT(""),
+		cardState->inputDisplayMode ? cardState->inputDisplayMode->ToString() : TEXT("")
 		));
 
 	// Input fields

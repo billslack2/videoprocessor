@@ -234,6 +234,7 @@
     <ClInclude Include="include\libavcodec\mediacodec.h" />
     <ClInclude Include="include\libavcodec\packet.h" />
     <ClInclude Include="include\libavcodec\qsv.h" />
+    <ClInclude Include="include\libavcodec\vaapi.h" />
     <ClInclude Include="include\libavcodec\vdpau.h" />
     <ClInclude Include="include\libavcodec\version.h" />
     <ClInclude Include="include\libavcodec\videotoolbox.h" />
@@ -264,7 +265,6 @@
     <ClInclude Include="include\libavutil\crc.h" />
     <ClInclude Include="include\libavutil\cuda_check.h" />
     <ClInclude Include="include\libavutil\des.h" />
-    <ClInclude Include="include\libavutil\detection_bbox.h" />
     <ClInclude Include="include\libavutil\dict.h" />
     <ClInclude Include="include\libavutil\display.h" />
     <ClInclude Include="include\libavutil\dovi_meta.h" />

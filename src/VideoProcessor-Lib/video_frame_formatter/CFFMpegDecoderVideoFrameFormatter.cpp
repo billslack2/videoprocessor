@@ -46,8 +46,9 @@ CFFMpegDecoderVideoFrameFormatter::CFFMpegDecoderVideoFrameFormatter(
 	if (!mAVCodecContext)
 		throw std::runtime_error("Could not allocate video codec context");
 
-	// This is a non-standard ffmpeg extension signalling no use of other threads
-	mAVCodecContext->thread_count = -1;
+	// These live uncompressed frames must be decoded synchronously.  Use the standard FFmpeg
+	// single-thread setting; the old negative value was specific to the removed project fork.
+	mAVCodecContext->thread_count = 1;
 
 	// Attempt hardware decoding initialization if enabled
 	if (m_enableHardwareDecoding)

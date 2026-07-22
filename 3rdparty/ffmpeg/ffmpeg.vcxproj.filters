@@ -72,9 +72,6 @@
     <ClInclude Include="include\libavutil\des.h">
       <Filter>Header Files\libavutil</Filter>
     </ClInclude>
-    <ClInclude Include="include\libavutil\detection_bbox.h">
-      <Filter>Header Files\libavutil</Filter>
-    </ClInclude>
     <ClInclude Include="include\libavutil\dict.h">
       <Filter>Header Files\libavutil</Filter>
     </ClInclude>
@@ -418,6 +415,9 @@
       <Filter>Header Files\libavcodec</Filter>
     </ClInclude>
     <ClInclude Include="include\libavcodec\vdpau.h">
+      <Filter>Header Files\libavcodec</Filter>
+    </ClInclude>
+    <ClInclude Include="include\libavcodec\vaapi.h">
       <Filter>Header Files\libavcodec</Filter>
     </ClInclude>
     <ClInclude Include="include\libavcodec\version.h">
