@@ -16,6 +16,7 @@
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CFFMpegDecoderVideoFrameFormatter.h>
+#include <video_frame_formatter/CR12BtoRGB48VideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowTranslations.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
 
@@ -172,9 +173,7 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 			bitCount = 48;
 			heightMultiplier = -1;
 
-			m_videoFramFormatter = new CFFMpegDecoderVideoFrameFormatter(
-				AV_CODEC_ID_R12B,
-				AV_PIX_FMT_RGB48LE);
+			m_videoFramFormatter = new CR12BtoRGB48VideoFrameFormatter();
 			break;
 
 			// No conversion needed

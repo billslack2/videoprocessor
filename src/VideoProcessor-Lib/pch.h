@@ -47,6 +47,12 @@
 #include <streams.h>
 #include <DebugLog.h>
 
+// DirectShow base classes do not define a separate warning level.  Keep warning diagnostics
+// available in Debug builds by routing them through the error-level debug channel.
+#ifndef LOG_WARNING
+#define LOG_WARNING LOG_ERROR
+#endif
+
 
 // Helper macros for HRESULT functions
 #define IF_NOT_S_OK(exp) if((exp) != S_OK)

@@ -219,6 +219,7 @@
     <ClInclude Include="VideoState.h" />
     <ClInclude Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CFFMpegDecoderVideoFrameFormatter.h" />
+    <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CNoopVideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CV210toP010VideoFrameFormatter.h" />
@@ -293,6 +294,7 @@
     <ClCompile Include="VideoState.cpp" />
     <ClCompile Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CFFMpegDecoderVideoFrameFormatter.cpp" />
+    <ClCompile Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CNoopVideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CV210toP010VideoFrameFormatter.cpp" />

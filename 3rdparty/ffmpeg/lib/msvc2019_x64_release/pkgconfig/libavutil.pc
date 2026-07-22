@@ -1,11 +1,11 @@
-prefix=../ffmpeg_build_release
+prefix=../ffmpeg_install_release
 exec_prefix=${prefix}
-libdir=../ffmpeg_build_release/lib
-includedir=../ffmpeg_build_release/include
+libdir=${prefix}/lib
+includedir=${prefix}/include
 
 Name: libavutil
 Description: FFmpeg utility library
-Version: 57.4.101
+Version: 56.70.100
 Requires: 
 Requires.private: 
 Conflicts:
