@@ -135,7 +135,7 @@ MaxCoreCount=2</pre>
     <tr><td><code>aspect_direction</code></td><td><code>ANY</code> or <code>NARROWER_ONLY</code></td><td>With <code>NARROWER_ONLY</code>, engage only when the content is narrower than the target. This prevents NLS from stretching scope or ultra-wide content in the wrong direction.</td></tr>
     <tr><td><code>active_aspect_min</code></td><td>1.0-4.0</td><td>Optional lower active-picture limit. Use 1.70 for a scope-screen NLS rule to reject 4:3 content.</td></tr>
     <tr><td><code>inactive_rule</code></td><td>rule name</td><td>Rule applied while an armed conditional rule is waiting. For NLS this should select the no-shader, native-aspect rule.</td></tr>
-    <tr><td><code>param_name</code></td><td>Finite numeric value; <code>param_quality</code> also accepts <code>LOW</code>, <code>MEDIUM</code>, <code>HIGH</code>, or <code>VERY HIGH</code></td><td>Replaces every <code>{{name}}</code> token in every shader in the rule before compilation. Quality maps to compile-time levels 0 through 3.</td></tr>
+    <tr><td><code>param_name</code></td><td>Finite numeric value; <code>param_quality</code> also accepts <code>LOW</code>, <code>MEDIUM</code>, <code>HIGH</code>, or <code>VERY HIGH</code>; <code>param_geometry</code> accepts <code>CLASSIC</code> or <code>PROTECTED</code></td><td>Replaces every <code>{{name}}</code> token in every shader in the rule before compilation. Named values map to compile-time numeric constants.</td></tr>
     <tr><td><code>pre_resize_N</code></td><td>Shader filename</td><td>Adds a source-frame shader before renderer image scaling. Numbered entries execute in ascending order.</td></tr>
     <tr><td><code>post_resize_N</code></td><td>Shader filename</td><td>Adds a screen-space shader after renderer image scaling. Numbered entries execute in ascending order.</td></tr>
   </tbody></table>
@@ -157,7 +157,7 @@ signal=ANY
 frame_rates=23,24
 none=true</pre>
   <h3>Manual nonlinear stretch example</h3>
-  <p>This keeps aspect/zoom control in madVR. Shift+N arms VP's pre-resize nonlinear horizontal mapping and N turns it off. The selected manual rule persists through renderer restarts. <code>strength</code> controls the total correction, <code>curve</code> controls how progressively it changes across the picture, and <code>stretch_ratio</code> describes the target horizontal expansion. <code>quality</code> selects single-sample bilinear Low, four-tap positive-filter Medium, six-tap anti-ringing Lanczos-3 High, or eight-tap anti-ringing Lanczos-4 Very High horizontal reconstruction. High is the recommended sharp setting; Medium is the conservative lower-cost setting.</p>
+  <p>This keeps aspect/zoom control in madVR. Shift+N arms VP's pre-resize nonlinear horizontal mapping and N turns it off. The selected manual rule persists through renderer restarts. <code>strength</code> controls the total correction, <code>curve</code> controls how progressively it changes across the picture, and <code>stretch_ratio</code> describes the target horizontal expansion. <code>geometry=classic</code> uses the established SickGreg/SuperView-style power curve and is the compatibility default when the key is omitted. <code>geometry=protected</code> holds the central <code>center_protection</code> fraction at its original apparent width and uses a smooth monotonic transition to move more distortion toward the sides; accepted values are 0.0-0.45 and <code>0.35</code> protects the central 35% of the picture. <code>quality</code> selects single-sample bilinear Low, four-tap positive-filter Medium, six-tap anti-ringing Lanczos-3 High, or eight-tap anti-ringing Lanczos-4 Very High horizontal reconstruction. High is the recommended sharp setting; Medium is the conservative lower-cost setting.</p>
   <pre>[shaders]
 enabled=true
 rules=nls,nls_off,broadcast_sdr,movies_24
@@ -174,6 +174,8 @@ active_aspect_min=1.70
 inactive_rule=nls_off
 pre_resize_1=Shaders\NLS.hlsl
 param_strength=1.0
+param_geometry=protected
+param_center_protection=0.35
 param_curve=2.0
 param_stretch_ratio=1.321875
 param_quality=medium
