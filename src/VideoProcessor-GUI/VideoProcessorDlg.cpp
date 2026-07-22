@@ -17,6 +17,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <mutex>
+#include <sstream>
 #include <thread>
 #include <vector>
 
@@ -142,8 +143,24 @@ bool TryParseShortcut(const std::string& value, ACCEL& accelerator)
 	return true;
 }
 
-HACCEL CreateConfiguredAccelerators()
+std::vector<std::string> SplitConfiguredList(const std::string& value)
 {
+	std::vector<std::string> items;
+	std::istringstream stream(value);
+	std::string item;
+	while (std::getline(stream, item, ','))
+	{
+		item = ConfigFile::Trim(item);
+		if (!item.empty())
+			items.push_back(item);
+	}
+	return items;
+}
+
+
+HACCEL CreateConfiguredAccelerators(std::map<WORD, CString>& shaderShortcutRules)
+{
+	shaderShortcutRules.clear();
 	ConfigFile mainConfig;
 	const bool hasMainConfig = mainConfig.Load();
 	ConfigFile rendererConfig;
@@ -184,6 +201,51 @@ HACCEL CreateConfiguredAccelerators()
 			const unsigned int defaultBinding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
 			if (bindings.insert(defaultBinding).second)
 				accelerators.push_back(accelerator);
+		}
+	}
+
+	// Shader-rule shortcuts live with their rule rather than in the fixed
+	// shortcut table. This permits any external shader chain to be selected at
+	// runtime without adding a new command or rebuilding the application.
+	std::string ruleList;
+	if (hasMainConfig && mainConfig.TryGetString("shaders", "rules", ruleList))
+	{
+		std::set<std::string> seenRules;
+		WORD nextCommand = ID_COMMAND_SHADER_RULE_FIRST;
+		for (const std::string& configuredRule : SplitConfiguredList(ruleList))
+		{
+			if (nextCommand > ID_COMMAND_SHADER_RULE_LAST)
+				break;
+			const std::string rule = ConfigFile::NormalizeName(configuredRule);
+			if (!seenRules.insert(rule).second)
+				continue;
+
+			const std::string section = "shaders." + rule;
+			std::string shortcut;
+			if (!mainConfig.TryGetString(section, "shortcut", shortcut))
+				continue;
+
+			ACCEL accelerator = {};
+			if (!TryParseShortcut(shortcut, accelerator))
+			{
+				DEBUGLOG("Invalid shortcut '%s' for shader rule '%s'", shortcut.c_str(), rule.c_str());
+				continue;
+			}
+
+			const unsigned int binding =
+				(static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
+			if (!bindings.insert(binding).second)
+			{
+				DEBUGLOG("Duplicate shortcut '%s' ignored for shader rule '%s'", shortcut.c_str(), rule.c_str());
+				continue;
+			}
+
+			accelerator.cmd = nextCommand;
+			accelerators.push_back(accelerator);
+			CString ruleName;
+			ruleName.Format(TEXT("%S"), rule.c_str());
+			shaderShortcutRules[nextCommand] = ruleName;
+			++nextCommand;
 		}
 	}
 
@@ -705,6 +767,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
 	ON_COMMAND(ID_COMMAND_SCREEN_PROFILE_NORMAL, &CVideoProcessorDlg::OnCommandScreenProfileNormal)
 	ON_COMMAND(ID_COMMAND_SCREEN_PROFILE_SCOPE, &CVideoProcessorDlg::OnCommandScreenProfileScope)
+	ON_COMMAND_RANGE(ID_COMMAND_SHADER_RULE_FIRST, ID_COMMAND_SHADER_RULE_LAST, &CVideoProcessorDlg::OnCommandShaderRule)
 	ON_COMMAND_RANGE(ID_COMMAND_CAPTURE_1, ID_COMMAND_CAPTURE_4, &CVideoProcessorDlg::OnSelectCaptureDevice)
 
 
@@ -2019,6 +2082,31 @@ void CVideoProcessorDlg::OnCommandScreenProfileScope()
 	if (!m_videoRenderer->SetScreenProfile(true, activeProfile))
 	{
 		DEBUGLOG("Scope screen profile ignored: selected renderer does not support screen profiles");
+	}
+}
+
+
+void CVideoProcessorDlg::OnCommandShaderRule(UINT commandId)
+{
+	const auto rule = m_shaderShortcutRules.find(static_cast<WORD>(commandId));
+	if (rule == m_shaderShortcutRules.end() || !m_videoRenderer)
+		return;
+
+	CString activeRule;
+	bool rendererRestartRequired = false;
+	if (!m_videoRenderer->SelectShaderRule(rule->second, activeRule,
+		rendererRestartRequired))
+	{
+		DEBUGLOG("Shader rule '%S' ignored: selected renderer does not support it or the rule is invalid",
+			static_cast<LPCTSTR>(rule->second));
+		return;
+	}
+	DEBUGLOG("Shader rule changed to '%S'", static_cast<LPCTSTR>(activeRule));
+	if (rendererRestartRequired)
+	{
+		DEBUGLOG("Shader rule aspect ratio changed; restarting renderer to renegotiate media type");
+		m_wantToRestartRenderer = true;
+		UpdateState();
 	}
 }
 
@@ -3980,7 +4068,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	// Start discovery services
 	m_blackMagicDeviceDiscoverer->Start();
 
-	m_accelerator = CreateConfiguredAccelerators();
+	m_accelerator = CreateConfiguredAccelerators(m_shaderShortcutRules);
 	if (!m_accelerator)
 		FatalError(TEXT("Failed to create accelerator table"));
 
@@ -4529,6 +4617,21 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
 		{
+			// Conditional manual shader rules remain armed. Re-evaluate their
+			// stable active-picture requirement once per second; aspect changes are
+			// rare and use the existing controlled renderer restart path.
+			CString refreshedShaderRule;
+			bool shaderRestartRequired = false;
+			if (!m_wantToRestartRenderer &&
+				m_videoRenderer->RefreshShaderRule(refreshedShaderRule,
+					shaderRestartRequired) && shaderRestartRequired)
+			{
+				DEBUGLOG("Conditional shader state changed to '%S'; restarting renderer for aspect negotiation",
+					static_cast<LPCTSTR>(refreshedShaderRule));
+				m_wantToRestartRenderer = true;
+				UpdateState();
+				return;
+			}
 
 			// Auto-offset recalculation every 5 seconds (if enabled)
 			if (m_timerSeconds % 5 == 0 &&

@@ -131,6 +131,24 @@ public:
 		activeProfile.Empty();
 		return false;
 	}
+	// Select a renderer-managed external shader rule at runtime. Renderers that
+	// do not expose a compatible shader interface return false.
+	virtual bool SelectShaderRule(const CString& ruleName, CString& activeRule,
+		bool& rendererRestartRequired)
+	{
+		activeRule.Empty();
+		rendererRestartRequired = false;
+		return false;
+	}
+	// Re-evaluates an armed conditional shader rule against live content.
+	// Returns true only when its applied/bypassed state changed.
+	virtual bool RefreshShaderRule(CString& activeRule,
+		bool& rendererRestartRequired)
+	{
+		activeRule.Empty();
+		rendererRestartRequired = false;
+		return false;
+	}
 	virtual void SetSceneCorrectionUpstreamSample(bool) {}
 	// Optional burned-in subtitle relocation. Renderers without a writable live
 	// source may ignore this request.

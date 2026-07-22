@@ -165,6 +165,7 @@ public:
 	void OnCommandRendererRestart();
 	void OnCommandScreenProfileNormal();
 	void OnCommandScreenProfileScope();
+	afx_msg void OnCommandShaderRule(UINT commandId);
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
 	void OnCommandToggleStatsOverlay();
@@ -320,6 +321,7 @@ protected:
 	CRect m_initialVideoWindowRect;
 	HICON m_hIcon;
 	HACCEL m_accelerator = nullptr;
+	std::map<WORD, CString> m_shaderShortcutRules;
 
 	FullscreenVideoWindow* m_fullScreenVideoWindow = nullptr;
 

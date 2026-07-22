@@ -26,6 +26,8 @@ struct MadVRShaderSelection
 	std::string ruleName;
 	std::string ruleLabel = "None";
 	std::vector<ActiveMadVRShader> activeShaders;
+	unsigned long outputAspectRatioX = 0;
+	unsigned long outputAspectRatioY = 0;
 };
 
 
@@ -38,4 +40,21 @@ public:
 	// startup. Returns the shaders from stages that were installed completely.
 	static MadVRShaderSelection ApplyConfiguredShaders(IBaseFilter* renderer,
 		const VideoState& videoState);
+
+	// Selects a named rule immediately and remembers it across renderer rebuilds.
+	// An empty name returns rule selection to the automatic configured rules.
+	static MadVRShaderSelection ApplyConfiguredShaderRule(IBaseFilter* renderer,
+		const VideoState& videoState, const std::string& ruleName);
+
+	// Returns the presentation aspect ratio requested by the currently selected
+	// runtime rule. False means retain the source's native aspect ratio.
+	static bool GetRuntimeOutputAspectRatio(unsigned long& aspectX,
+		unsigned long& aspectY);
+
+	// Validates optional active-picture conditions on a manual rule. Rules with
+	// no conditions remain compatible with all formats.
+	static bool ValidateActivePictureAspect(const std::string& ruleName,
+		bool aspectAvailable, double activeAspectRatio, std::string& reason);
+	static bool GetRuleActivationInfo(const std::string& ruleName,
+		std::string& label, std::string& inactiveRule);
 };

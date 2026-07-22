@@ -320,6 +320,10 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin_tracking_snippet.txt" />
+    <None Include="..\..\Shaders\NLS.hlsl">
+      <Link>Shaders\NLS.hlsl</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
