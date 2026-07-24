@@ -22,6 +22,24 @@ Readiness record:
 First progress note: execution begins by tracing the raw and converted queue
 contracts and enumerating every reset, clear, re-prime, and wake-up transition.
 
+Implementation progress:
+
+- `36bb7acd30d3af582dc8689e79fedce4c577ab0c` centralizes GUI lifecycle reset
+  requests with an explicit reason and graph-versus-live-queue scope. It
+  coalesces display/startup/resize/manual/timing-offset/queue-size requests,
+  retains the one-startup-re-prime-per-new-graph guard, and makes queue
+  high-water reporting diagnostic-only.
+- `VideoProcessor-GUI.vcxproj` built successfully as `Debug|x64` and the full
+  solution rebuilt successfully as `Release|x64`.
+- The Release executable was deployed for user validation to
+  `C:\Videoprocessor\vp\VideoProcessor.exe` after creating the recoverable
+  backup `VideoProcessor.exe.20260724-191050.pre-vp0013.bak`. Deployment did
+  not alter live configuration, renderer state, or shaders.
+- Runtime validation remains: exercise startup, display/refresh transition,
+  fullscreen/windowed resize, queue-size change, timing-offset change, and an
+  NLS shader rule requiring media-type renegotiation; confirm one named reset
+  per lifecycle incident and no reset from steady queue depth.
+
 Interim comparison decision (queue/reset paths): do **not** restore
 `origin/main`'s automatic reset behavior.  Main treats the displayed combined
 queue count as one bounded queue, immediately resets at full or hard-coded
