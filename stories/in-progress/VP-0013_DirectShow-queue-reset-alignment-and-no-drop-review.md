@@ -22,6 +22,23 @@ Readiness record:
 First progress note: execution begins by tracing the raw and converted queue
 contracts and enumerating every reset, clear, re-prime, and wake-up transition.
 
+Interim comparison decision (queue/reset paths): do **not** restore
+`origin/main`'s automatic reset behavior.  Main treats the displayed combined
+queue count as one bounded queue, immediately resets at full or hard-coded
+depth thresholds, resets a queue considered stuck, and resets after a resize.
+The review snapshot instead evaluates raw and converted queues independently,
+uses only per-queue high-water detection, defers recovery through a one-shot
+timer, suppresses it during startup/pending/cooldown windows, performs
+queue-only re-prime for ordinary pressure, and reserves graph reset for
+startup or display/video-mode transitions.  That is the correct direction and
+should be retained.
+
+Confirmed review item for a later, evidence-backed follow-up: both main and
+the review snapshot discard old converted samples when the buffering-phase
+ceiling is exceeded, but this path is not included in the exported dropped
+frame count.  It must be instrumented by cause before any policy change; it
+is not a reason to re-adopt main's reset behavior.
+
 ## User story
 
 As a VideoProcessor user, I need the DirectShow capture/conversion/delivery
