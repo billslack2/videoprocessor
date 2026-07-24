@@ -39,6 +39,26 @@ ceiling is exceeded, but this path is not included in the exported dropped
 frame count.  It must be instrumented by cause before any policy change; it
 is not a reason to re-adopt main's reset behavior.
 
+Approved policy and initial implementation direction:
+
+- Known live-HDMI lifecycle changes may deliberately interrupt delivery and
+  restart from current input: manual reset, renderer startup, display or
+  refresh/video-mode transition, fullscreen/windowed resize after debounce,
+  timing-offset change, queue-size change, and renderer/shader changes that
+  require media-type renegotiation.
+- All GUI-originated interruptions are coalesced by one reset coordinator with
+  a named reason and either graph-reset or live-queue-re-prime scope.  A graph
+  reset dominates a pending queue re-prime.  One startup re-prime is allowed
+  per newly created graph, never per reset completion notification.
+- Stable playback must not reset from raw/converted depth, combined depth,
+  stuck-depth samples, or an empty queue. High water is diagnostic only until
+  VP can prove a local capture, conversion, or delivery-progress failure.
+- The existing pin-level reset transaction remains the sole segment boundary:
+  flush downstream, serialize delivery, advance epoch, discard old samples,
+  reset timing, end flush, and issue one new segment.
+- Follow-up observability must add per-stage progress ages, incident IDs, and
+  per-cause discard counters before automatic steady-state recovery is added.
+
 ## User story
 
 As a VideoProcessor user, I need the DirectShow capture/conversion/delivery
