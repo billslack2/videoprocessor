@@ -19,12 +19,13 @@ work branch in `6bce8a1`. Runtime-recording corrections for stale cue
 transitions and unbounded panel growth are in `97a63e0`. Tight single-line
 boundary panels, noise-tolerant per-frame cue-change detection, faster
 pixel-confirmed transitions, and destination revalidation against the current
-picture bounds are in `2066dea`.
+picture bounds are in `2066dea`. Fixed-size replacement text and fingerprint
+isolation from moving picture between independent line panels are in `0b8fc75`.
 
 Validation evidence:
 
 - Release x64 solution build succeeded with Visual Studio 2026/MSBuild 18.7.
-- Seventeen focused BAR_OCR tests passed, covering opaque panels overlapping the
+- Twenty focused BAR_OCR tests passed, covering opaque panels overlapping the
   upper or lower picture edge, panels wholly in an encoded bar, bare-text
   rejection, Unicode/music-cue identity, unclipped and
   size-adaptive multiline DirectWrite rasterization, oversized-layout rejection,
@@ -32,8 +33,10 @@ Validation evidence:
   rims, per-frame panel/glyph-presence validation, cue-text normalization,
   partial multiline readings, different-cue rejection, and selection of the
   most complete multiline OCR observation, complete thin-glyph fingerprinting,
-  cue disappearance, and isolation from pixels outside the confirmed panel.
-- The complete x64 Release suite passes: 29 of 29 tests.
+  cue disappearance, isolation from pixels outside the confirmed panel,
+  fixed-size replacement text, and moving-picture isolation between separate
+  line panels.
+- The complete x64 Release suite passes: 31 of 31 tests.
 - PP-OCRv6 recognition was validated against the supplied playback captures:
   it retained `[♪♪♪]` and correctly read both lines of the supplied upper-edge
   caption.
@@ -55,6 +58,13 @@ Validation evidence:
 - Cached replacement placement is recalculated against the current picture
   bounds on every emitted frame, preventing a replacement panel from becoming
   cropped when detected picture geometry moves.
+- A third July 24 OBS recording showed replacement font sizes varying from 68
+  to 108 pixels and stable two-line cues repeatedly invalidated and reaccepted
+  many times per second. Replacement text is now always rendered at 84 pixels
+  with no automatic per-cue shrink. Fingerprint cells are now eligible only
+  when at least 75% of their samples remain near black, so moving picture in
+  the rectangular gap between independently boxed subtitle lines does not
+  masquerade as changed glyphs.
 - Real Apple TV/source playback validation is still required before completion.
 
 ## User story
