@@ -49,6 +49,20 @@ namespace
 {
 using Microsoft::WRL::ComPtr;
 
+const TCHAR* ToString(RendererResetReason reason)
+{
+	switch (reason)
+	{
+	case RendererResetReason::Manual: return TEXT("manual");
+	case RendererResetReason::Startup: return TEXT("startup");
+	case RendererResetReason::DisplayTransition: return TEXT("display-transition");
+	case RendererResetReason::Resize: return TEXT("resize");
+	case RendererResetReason::QueueSizeChange: return TEXT("queue-size-change");
+	case RendererResetReason::TimingOffsetChange: return TEXT("timing-offset-change");
+	default: return TEXT("none");
+	}
+}
+
 struct ShortcutDefinition
 {
 	const char* configKey;
@@ -1502,12 +1516,7 @@ void CVideoProcessorDlg::OnBnClickedRendererReset()
 	
 	DebugLog::Log("UI: OnBnClickedRendererReset() - calling m_videoRenderer->Reset()");
 
-	// Disable auto-reset timer while manual reset is in progress
-	KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
-	m_pendingQueueReset = false;
-	m_displayTransitionGraphReprimePending = false;
-
-	m_videoRenderer->Reset();
+	RequestRendererReset(RendererResetReason::Manual, true, 0);
 	
 	DebugLog::Log("UI: OnBnClickedRendererReset() - Reset() returned");
 }
@@ -1919,17 +1928,10 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 				g_displayRefreshRateSampler->ResetMeasurement();
 				const ULONGLONG now = GetTickCount64();
 				if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
-					!m_pendingQueueReset && now >= m_queueResetIgnoreEventsUntil)
+					now >= m_queueResetIgnoreEventsUntil)
 				{
-					// origin/main used a complete graph reset here. Keep that behavior
-					// for real display/video-mode transitions so madVR rebuilds its
-					// decoder/upload/render queues; queue-health recovery remains
-					// queue-only below.
-					SetTimer(QUEUE_RESET_DELAY_TIMER_ID,
-						static_cast<UINT>(m_queueResetDelaySeconds * 1000), nullptr);
-					m_pendingQueueReset = true;
-					m_displayTransitionGraphReprimePending = true;
-					DbgLog((LOG_TRACE, 1, TEXT("DirectShow display transition - scheduling one graph re-prime")));
+					RequestRendererReset(RendererResetReason::DisplayTransition, true,
+						static_cast<UINT>(m_queueResetDelaySeconds * 1000));
 				}
 				else
 				{
@@ -2050,18 +2052,9 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		g_displayRefreshRateSampler->ResetMeasurement();
 		if (!m_startupGraphReprimeCompleted)
 		{
-			// Every newly-created graph needs one delayed complete re-prime.  Do not
-			// let the post-reset display-event cooldown suppress this: an intentional
-			// renderer rebuild (for example an NLS output-aspect change) may occur
-			// during that window and still needs its own clean queue establishment.
-			// The cooldown remains in place for unsolicited display events and the
-			// high-water watchdog, where it prevents reset loops.
-			SetTimer(QUEUE_RESET_DELAY_TIMER_ID,
-				static_cast<UINT>(m_queueResetDelaySeconds * 1000), nullptr);
-			m_pendingQueueReset = true;
-			m_startupGraphReprimePending = true;
 			m_startupGraphReprimeCompleted = true;
-			DbgLog((LOG_TRACE, 1, TEXT("Renderer started - scheduling one complete graph re-prime")));
+			RequestRendererReset(RendererResetReason::Startup, true,
+				static_cast<UINT>(m_queueResetDelaySeconds * 1000));
 		}
 		// LLDV can be confirmed while the graph is still starting. The
 		// effective PQ state has already been rebuilt, but this graph accepted
@@ -2139,7 +2132,7 @@ void CVideoProcessorDlg::OnCommandRendererReset()
 {
 	if (m_videoRenderer)
 	{
-		m_videoRenderer->Reset();
+		RequestRendererReset(RendererResetReason::Manual, true, 0);
 		DEBUGLOG("OnCommandRendererReset");
 	}
 }
@@ -3036,11 +3029,10 @@ void CVideoProcessorDlg::RenderStart()
 	if (m_captureDeviceVideoState)
 		BuildPushVideoState();
 
-	// A new renderer object receives one delayed complete re-prime. An in-place
-	// renderer Reset() does not call RenderStart(), so this cannot create a loop.
-	m_startupGraphReprimePending = false;
+	// A newly constructed graph gets one deliberate startup re-prime. An
+	// in-place Reset() does not clear this marker, which prevents a loop when
+	// it reports RENDERSTATE_RENDERING again.
 	m_startupGraphReprimeCompleted = false;
-	m_displayTransitionGraphReprimePending = false;
 
 	int i;
 
@@ -3275,7 +3267,6 @@ void CVideoProcessorDlg::RenderStop()
 	m_eotfChangeRestartCooldownSeconds = -1;
 	m_lldvChangeRestartDelaySeconds = -1;
 	m_lldvRestartPending = false;
-	m_displayTransitionGraphReprimePending = false;
 	// A renderer-only restart must preserve a confirmed LLDV candidate. The
 	// capture-state path clears it when the input genuinely returns to SDR.
 	m_eotfCheckCooldownSeconds = 0;
@@ -3505,11 +3496,10 @@ void CVideoProcessorDlg::UpdateTimingClockFrameOffset()
 	if (m_captureDevice) 
 		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
 
-	//TODO
 	if (m_videoRenderer)
-		m_videoRenderer->Reset();
+		RequestRendererReset(RendererResetReason::TimingOffsetChange, false, 0);
 
-	DEBUGLOG("Tming Clok Frame Reset");
+	DEBUGLOG("Timing clock frame offset changed; requesting live re-prime");
 
 }
 
@@ -4267,6 +4257,7 @@ void CVideoProcessorDlg::OnOK()
 			if (m_videoRenderer)
 			{
 				m_videoRenderer->SetFrameQueueMaxSize(GetRendererVideoFrameQueueSizeMax());
+				RequestRendererReset(RendererResetReason::QueueSizeChange, false, 0);
 			}
 			break;
 
@@ -4473,12 +4464,12 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 
 	// ... existing OnSize code ...
 
-	// Reset madVR after significant scaling changes
+	// A settled fullscreen resize can invalidate the renderer's window/swapchain
+	// assumptions. Coalesce the burst, then rebuild from fresh live HDMI data.
 	if (m_rendererFullscreenCheck.GetCheck() && significantResize && m_videoRenderer &&
 		m_rendererState == RendererState::RENDERSTATE_RENDERING)
 	{
-		// Debounced reset to let scaling operations complete
-		SetTimer(RESIZE_DEBOUNCE_TIMER_ID, 250, nullptr);
+		RequestRendererReset(RendererResetReason::Resize, true, 250);
 	}
 
 	lastSize = currentSize;
@@ -4561,12 +4552,10 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 	
-	// Handle resize debounce timer
+	// The reset coordinator owns resize debouncing. Keep this timer as a
+	// compatibility cleanup path for any stale timer posted before coordination.
 	if (nIDEvent == RESIZE_DEBOUNCE_TIMER_ID)
 	{
-		// Resizing the host window does not change the live media timeline.  Do
-		// not reset the renderer here; that made fullscreen/windowed transitions
-		// unnecessarily rebuild and re-prime the DirectShow graph.
 		KillTimer(RESIZE_DEBOUNCE_TIMER_ID);
 		return;
 	}
@@ -4585,42 +4574,12 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 
-	// One-shot queue re-prime after a true render/display transition. This is
-	// deliberately not used by queue-depth monitoring.
+	// One-shot lifecycle reset coordinator. Queue depth monitoring never uses
+	// this timer because no VP queue depth proves that madVR is unhealthy.
 	if (nIDEvent == QUEUE_RESET_DELAY_TIMER_ID)
 	{
 		KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
-				if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
-				{
-					const bool restartGraph =
-						m_startupGraphReprimePending ||
-						m_displayTransitionGraphReprimePending;
-					m_startupGraphReprimePending = false;
-					m_displayTransitionGraphReprimePending = false;
-
-			// The reset itself emits display/size events. Ignore them long enough
-			// for the graph to stop, re-create its window, and become stable.
-			m_queueResetIgnoreEventsUntil = GetTickCount64() + 10000;
-			m_pendingQueueReset = false;
-			if (restartGraph)
-			{
-				// A new live graph needs one complete re-prime so madVR rebuilds its
-				// decoder/upload/render queues. Later recoveries stay queue-only.
-				DEBUGLOG("Renderer startup: executing one complete graph re-prime reset");
-				m_videoRenderer->Reset();
-			}
-			else
-			{
-				DEBUGLOG("Queue transition: executing live-source queue re-prime reset");
-				m_videoRenderer->ResetLiveQueue();
-			}
-		}
-		else
-		{
-			m_pendingQueueReset = false;
-			m_startupGraphReprimePending = false;
-			m_displayTransitionGraphReprimePending = false;
-		}
+		ExecutePendingRendererReset();
 		return;
 	}
 
@@ -5245,6 +5204,62 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 }
 
 // Add this new method to the class
+void CVideoProcessorDlg::RequestRendererReset(RendererResetReason reason,
+	bool requiresGraph, UINT delayMs)
+{
+	if (!m_videoRenderer ||
+		m_rendererState != RendererState::RENDERSTATE_RENDERING)
+	{
+		DEBUGLOG("Reset request ignored: reason=%s renderer is not rendering",
+			CStringA(ToString(reason)).GetString());
+		return;
+	}
+
+	// Coalesce a burst of lifecycle changes. A graph reset dominates a live
+	// queue re-prime, and the most recent named reason remains in the log.
+	m_pendingQueueReset = true;
+	m_pendingResetRequiresGraph = m_pendingResetRequiresGraph || requiresGraph;
+	m_pendingResetReason = reason;
+	KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
+
+	if (delayMs == 0)
+	{
+		ExecutePendingRendererReset();
+		return;
+	}
+
+	SetTimer(QUEUE_RESET_DELAY_TIMER_ID, delayMs, nullptr);
+	DEBUGLOG("Reset scheduled: reason=%s scope=%s delay=%ums",
+		CStringA(ToString(reason)).GetString(),
+		m_pendingResetRequiresGraph ? "graph" : "live-queue", delayMs);
+}
+
+
+void CVideoProcessorDlg::ExecutePendingRendererReset()
+{
+	const RendererResetReason reason = m_pendingResetReason;
+	const bool requiresGraph = m_pendingResetRequiresGraph;
+	m_pendingQueueReset = false;
+	m_pendingResetRequiresGraph = false;
+	m_pendingResetReason = RendererResetReason::None;
+
+	if (!m_videoRenderer ||
+		m_rendererState != RendererState::RENDERSTATE_RENDERING)
+		return;
+
+	// A reset emits display notifications itself. Suppress only those feedback
+	// events; explicit subsequent lifecycle changes will schedule a new reset.
+	m_queueResetIgnoreEventsUntil = GetTickCount64() + 10000;
+	DEBUGLOG("Reset executing: reason=%s scope=%s",
+		CStringA(ToString(reason)).GetString(),
+		requiresGraph ? "graph" : "live-queue");
+	if (requiresGraph)
+		m_videoRenderer->Reset();
+	else
+		m_videoRenderer->ResetLiveQueue();
+}
+
+
 void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	size_t convertedQueueSize, size_t queueMaxSize, uint64_t droppedFrames)
 {
@@ -5278,15 +5293,18 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	if (!highWater)
 		return;
 
-	// Repeat this queue-only recovery after the post-reset cooldown while a
-	// queue is still high. m_pendingQueueReset and the ten-second suppression
-	// avoid a rapid reset loop.
-	m_pendingQueueReset = true;
-	SetTimer(QUEUE_RESET_DELAY_TIMER_ID,
-		static_cast<UINT>(m_queueResetDelaySeconds * 1000), nullptr);
-	DbgLog((LOG_TRACE, 1,
-		TEXT("Queue high-water (%zu/%zu raw, %zu/%zu converted) - scheduling live queue re-prime"),
-		rawQueueSize, queueMaxSize, convertedQueueSize, queueMaxSize));
+	// No madVR quality API exists, so a high VP queue is evidence of pressure,
+	// not proof that a reset will repair the downstream sink. Record it without
+	// interrupting stable live HDMI playback.
+	const DWORD tick = GetTickCount();
+	if (m_lastQueueHealthDiagnostic == 0 ||
+		tick - m_lastQueueHealthDiagnostic >= 5000)
+	{
+		m_lastQueueHealthDiagnostic = tick;
+		DbgLog((LOG_TRACE, 1,
+			TEXT("Queue high-water diagnostic (%zu/%zu raw, %zu/%zu converted); no automatic reset"),
+			rawQueueSize, queueMaxSize, convertedQueueSize, queueMaxSize));
+	}
 }
 
 
