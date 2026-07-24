@@ -3,7 +3,7 @@
 This folder contains self-contained implementation stories and plans.  Filenames
 are assigned monotonically and are never reused.
 
-## State
+## Registry state
 
 - Last assigned item: `VP-0008`
 - Next story number: `VP-0009`
@@ -22,5 +22,37 @@ are assigned monotonically and are never reused.
 | VP-0007 | Planned | Alpha renderer controlled repeat correction |
 | VP-0008 | Planned | Alpha renderer presentation-pacing assessment and refinement |
 
-When adding an item, allocate the next number, create `VP-NNNN_<short-title>.md`,
-then update the three State values and this table in the same change.
+## Story-state workflow
+
+Every story has one current state. Keep the state in both the story's `## Status`
+section and the table above so the index remains useful without opening every
+file.
+
+Use only these states:
+
+| State | Meaning |
+| --- | --- |
+| Draft | Being written; requirements are not yet ready for implementation. |
+| Planned | Ready to implement, but no implementation work has started. |
+| In progress | Implementation is actively underway on a branch. Include the branch name and a short progress note in the story. |
+| Blocked | Cannot proceed due to a concrete external dependency, decision, or reproducible issue. Record the blocker and next required action. |
+| Validating | Implementation is complete enough for build/test or user validation. Record the commit and validation still required. |
+| Complete | Accepted: implementation, appropriate validation, documentation/configuration updates, and merge or release decision are all complete. Include the final commit/release reference. |
+| Deferred | Intentionally postponed. Record why and the condition that would make it relevant again. |
+| Superseded | Replaced by another story. Link the replacement ID; do not reuse this story's number. |
+
+## Updating the backlog
+
+1. When adding an item, allocate the next number, create
+   `VP-NNNN_<short-title>.md`, then update the Registry state values and table in
+   the same commit.
+2. When implementation starts, change the story and index to `In progress` and
+   record the branch. Do not mark a story Complete merely because code was
+   written.
+3. When testing begins, use `Validating`; record build/test evidence and the
+   specific user validation still needed.
+4. Mark a story `Complete` only after it is accepted and its implementation has
+   been merged or deliberately released. Add the final commit, PR, or release
+   reference to the story's Status section.
+5. Update this index in the same commit whenever a story's state, title, or
+   completion reference changes. Story numbers remain permanent.
