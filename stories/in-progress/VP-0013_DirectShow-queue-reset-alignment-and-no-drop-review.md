@@ -2,9 +2,25 @@
 
 ## Status
 
-Draft. This is a deep review and decision story for the active working branch;
-it must not make queue/reset code changes until it records the current behavior,
-the `origin/main` comparison, and a safe recommendation.
+In Progress. Review execution started July 24, 2026. This is a read-only
+behavioral review of the committed principal working-tree snapshot; it must not
+make queue/reset code changes until it records the current behavior, the
+`origin/main` comparison, and a safe recommendation.
+
+Readiness record:
+
+- review worktree: `C:\Users\bslac\vp\videoprocessor - VS2026`;
+- review branch: `v1.1.012-beta-ffmpeg-4.4.8`;
+- immutable branch snapshot: `33e9686b9e3361296d343eeb2959f39526ea2bdc`;
+- fetched comparison baseline: `origin/main` at
+  `82b96f2127596ce130e80e54aa9219ba8155381e`;
+- the previously messy principal working tree was intentionally committed as
+  the review subject and is clean at review start;
+- review artifacts will be recorded in this story, with separate linked
+  documents only if the behavior matrix becomes impractical to maintain here.
+
+First progress note: execution begins by tracing the raw and converted queue
+contracts and enumerating every reset, clear, re-prime, and wake-up transition.
 
 ## User story
 
