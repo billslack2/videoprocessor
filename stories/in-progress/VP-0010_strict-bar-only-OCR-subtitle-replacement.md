@@ -24,6 +24,16 @@ isolation from moving picture between independent line panels are in `0b8fc75`.
 Detached source-label cleanup and noise-consistent fingerprint confirmation are
 in `b452006`.
 
+The next validation build holds a bounded twelve converted frames while
+`BAR_OCR` is enabled, allowing the asynchronous OCR result to be available
+before the first source-caption frame is released. It also compares the
+DirectML subtitle detector's PP-OCRv6 line geometry with Windows OCR geometry
+on cue acquisition/change, retaining the more complete transcription instead
+of using the DirectML detector only after a total Windows OCR miss. Startup
+window resizing no longer calls the renderer resize interface until the graph
+has reached `RENDERING`, avoiding the previously reproduced startup resize
+race.
+
 Validation evidence:
 
 - Release x64 solution build succeeded with Visual Studio 2026/MSBuild 18.7.
@@ -39,6 +49,11 @@ Validation evidence:
   fixed-size replacement text, moving-picture isolation between separate line
   panels, and detached black-backed speaker-label cleanup.
 - The complete x64 Release suite passes: 32 of 32 tests.
+- The current Release validation build passed all 32 tests after adding the
+  BAR_OCR bounded presentation lead, competing PP-OCRv6 geometry observation,
+  and startup-resize renderer-state guard. Real-source validation is still
+  required for the intentional approximately 200 ms (60 Hz) / 500 ms
+  (23.976 Hz) BAR_OCR presentation delay and OCR coverage.
 - PP-OCRv6 recognition was validated against the supplied playback captures:
   it retained `[♪♪♪]` and correctly read both lines of the supplied upper-edge
   caption.
