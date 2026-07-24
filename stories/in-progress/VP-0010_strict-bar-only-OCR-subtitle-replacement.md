@@ -14,7 +14,8 @@ Panel-signature caching, three-observation cue consensus, stable cached
 rendering, smaller replacement text, and continuous source/destination cleanup
 are in `fb76699`. PP-OCRv6 recognition, upper-edge panels, Unicode cues,
 source-height rendering, and reliable per-cue glyph fingerprinting are in
-`5dec29c`.
+`5dec29c`. The corrected timing-test expectations were ported from the beta
+work branch in `6bce8a1`.
 
 Validation evidence:
 
@@ -27,8 +28,7 @@ Validation evidence:
   rims, per-frame panel/glyph-presence validation, cue-text normalization,
   partial multiline readings, different-cue rejection, and selection of the
   most complete multiline OCR observation.
-- The existing suite reports 25 passed and one unrelated pre-existing
-  `U64MulDivTimingAccuracyTest` rounding failure (`417083` versus `417084`).
+- The complete x64 Release suite passes: 26 of 26 tests.
 - PP-OCRv6 recognition was validated against the supplied playback captures:
   it retained `[♪♪♪]` and correctly read both lines of the supplied upper-edge
   caption.
