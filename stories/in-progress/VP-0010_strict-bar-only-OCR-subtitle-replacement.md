@@ -15,23 +15,31 @@ rendering, smaller replacement text, and continuous source/destination cleanup
 are in `fb76699`. PP-OCRv6 recognition, upper-edge panels, Unicode cues,
 source-height rendering, and reliable per-cue glyph fingerprinting are in
 `5dec29c`. The corrected timing-test expectations were ported from the beta
-work branch in `6bce8a1`.
+work branch in `6bce8a1`. Runtime-recording corrections for stale cue
+transitions and unbounded panel growth are in `97a63e0`.
 
 Validation evidence:
 
 - Release x64 solution build succeeded with Visual Studio 2026/MSBuild 18.7.
-- Fifteen focused BAR_OCR tests passed, covering opaque panels overlapping the
+- Seventeen focused BAR_OCR tests passed, covering opaque panels overlapping the
   upper or lower picture edge, panels wholly in an encoded bar, bare-text
   rejection, Unicode/music-cue identity, unclipped and
   size-adaptive multiline DirectWrite rasterization, oversized-layout rejection,
   independently boxed tight multiline panels, partially exposed tight-panel
   rims, per-frame panel/glyph-presence validation, cue-text normalization,
   partial multiline readings, different-cue rejection, and selection of the
-  most complete multiline OCR observation.
-- The complete x64 Release suite passes: 26 of 26 tests.
+  most complete multiline OCR observation, complete thin-glyph fingerprinting,
+  cue disappearance, and isolation from pixels outside the confirmed panel.
+- The complete x64 Release suite passes: 28 of 28 tests.
 - PP-OCRv6 recognition was validated against the supplied playback captures:
   it retained `[♪♪♪]` and correctly read both lines of the supplied upper-edge
   caption.
+- The July 24 OBS recording and matching analyzer log exposed a cue retained
+  through multiple scene cuts and a source panel that grew from roughly 1,950
+  to 2,556 pixels wide. The sparse signature was replaced with a complete
+  2x2-block glyph-mask fingerprint; unconfirmed cue panels can no longer enlarge
+  the active source panel, and a different OCR observation independently
+  suppresses stale output.
 - Real Apple TV/source playback validation is still required before completion.
 
 ## User story
@@ -169,10 +177,10 @@ over picture is not.
    - write neutral chroma for the generated panel/glyph region.
    Do not run OCR, DirectWrite layout, font rasterization, or full glyph
    extraction for unchanged frames.
-7. Replace the coarse horizontal signature with a 128x16 glyph-density
-   fingerprint over the confirmed source panel. Two consecutive changed
-   fingerprints invalidate the cached cue and start a short OCR burst; unchanged
-   frames reuse the cached text and rasterization.
+7. Replace the coarse horizontal signature with a complete 2x2-block
+   bright-glyph fingerprint over the confirmed source panel. Two consecutive
+   changed fingerprints invalidate the cached cue and start a short OCR burst;
+   unchanged frames reuse the cached text and rasterization.
 8. Maintain latest-frame-only worker behavior. OCR can never queue unbounded
    work or block the DirectShow delivery thread.
 9. Reset the cached cue, signatures, and generated masks on renderer restart,
