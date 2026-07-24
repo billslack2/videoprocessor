@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned. This is diagnostic-only work: it must not change normal alpha-renderer
+Draft. This is diagnostic-only work: it must not change normal alpha-renderer
 frame selection, presentation, refresh switching, or the DirectShow renderer.
 
 ## Context

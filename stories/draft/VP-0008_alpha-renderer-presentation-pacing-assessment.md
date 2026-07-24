@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned investigation. This is deliberately later than VP-0005/0006 because
+Draft investigation. This is deliberately later than VP-0005/0006 because
 libplacebo/DXGI swapchain presentation may already provide correct vblank pacing.
 Do not add a second scheduler unless measurements demonstrate a real defect.
 

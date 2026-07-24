@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned.
+Draft.
 
 ## Context
 
@@ -101,5 +101,5 @@ policy.
   tested and correct.
 - No unrelated capture format, timing, queue, or DirectShow code changes are
   required.
-- The story is not marked Complete until build/test results and a real-source
+- The story is not moved to Done until build/test results and a real-source
   validation result are recorded in this Status section.

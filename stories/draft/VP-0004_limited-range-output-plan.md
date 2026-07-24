@@ -1,4 +1,8 @@
 # VP-0004: Reliable limited-range output in VP
+
+## Status
+
+Draft.
 No code changes yet. The goal is to add proper Limited RGB output without breaking the currently stable Full RGB/DWM path.
 Establish a baselineRecord the current successful configuration: VP full output, Epson Video Range Full, output_gamma=AUTO.
 Add diagnostic-only logging for:swapchain model and flags;

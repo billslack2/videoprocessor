@@ -1,5 +1,9 @@
 # VP-0001: Make manual NLS activation one-shot and queue-safe
 
+## Status
+
+Draft.
+
 ## Scope and repository context
 
 This story applies to the DirectShow external-shader renderer path used with

@@ -1,5 +1,9 @@
 # VP-0002: Preserve armed NLS state through conditional aspect fallback
 
+## Status
+
+Draft.
+
 ## Scope and repository context
 
 This story applies to the DirectShow/madVR NLS conditional-aspect path in:

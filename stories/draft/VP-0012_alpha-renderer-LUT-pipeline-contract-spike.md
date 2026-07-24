@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned.
+Draft.
 
 ## User story
 
@@ -98,12 +98,12 @@ existing no-LUT renderer output.
 - The P3 calibration scenario retains BT.2020 as the HDR source representation
   and uses configurable gamut mapping to reach the P3 reference target.
 - The initial range/presentation support boundary is explicit and tested.
-- VP-0011 has been updated with the decision and can truthfully move to
-  `Planned`, or remains `Blocked` with the next required action.
+- VP-0011 has been updated with the decision and can truthfully move forward
+  from `Draft`, or remains in `Draft` with the next required action.
 
 ## Suggested validation status record
 
 When work starts, replace this section with branch, commit, toolchain, GPU,
 driver, Windows presentation mode, test fixtures, results, and remaining
-real-projector validation. Do not mark this story Complete from source review
+real-projector validation. Do not move this story to Done from source review
 alone.

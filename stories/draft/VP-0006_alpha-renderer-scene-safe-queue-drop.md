@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned. Implement only after VP-0005 provides baseline evidence that ordinary
+Draft. Implement only after VP-0005 provides baseline evidence that ordinary
 queue-pressure drops or accumulated cadence drift occur in realistic playback.
 
 ## Context

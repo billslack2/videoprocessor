@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned.
+Draft.
 
 ## User story
 
@@ -165,5 +165,5 @@ speaker label or Netflix-style caption touching the picture boundary is not.
 - OCR, layout, and glyph rasterization occur only on a new/changed cue, not on
   repeated frames.
 - Existing BASIC and ADVANCED behavior is unchanged.
-- The story is not Complete until build/test evidence and real-source user
+- The story is not Done until build/test evidence and real-source user
   validation are recorded in this Status section.

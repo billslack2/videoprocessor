@@ -2,12 +2,13 @@
 
 ## Status
 
-Blocked — do not begin product implementation until VP-0012 is Complete and
-its recorded pipeline decision satisfies the prerequisites below.
+Draft — do not begin product implementation until VP-0012 is Done and its
+recorded pipeline decision satisfies the prerequisites below.
 
 ## Prerequisites
 
-1. Complete [VP-0012](VP-0012_alpha-renderer-LUT-pipeline-contract-spike.md).
+1. Finish [VP-0012](VP-0012_alpha-renderer-LUT-pipeline-contract-spike.md)
+   and move it to Done.
    It must establish, with test evidence against the bundled libplacebo build,
    the exact stage at which VP can apply a display-calibration LUT.
 2. Record the selected output architecture in this story before changing
@@ -17,7 +18,7 @@ its recorded pipeline decision satisfies the prerequisites below.
 3. Record the complete color contract for at least the initial supported paths:
    source representation, LUT reference primaries/transfer/range/nits, LUT
    stage, swapchain/DXGI signal, and the absence of a post-LUT conversion.
-4. Resolve the limited-range boundary: either VP-0004 is Complete for the
+4. Resolve the limited-range boundary: either VP-0004 is Done for the
    selected presentation path, or initial LUT support explicitly supports and
    tests full-range only. Do not imply calibrated limited-range output works
    without evidence.
@@ -290,5 +291,5 @@ for that addition without exposing it prematurely.
   renderer.
 - Existing alpha output is bit-for-bit/functionally unchanged when no LUT is
   configured.
-- The story is not Complete until build/test evidence and calibrated real-display
+- The story is not Done until build/test evidence and calibrated real-display
   validation are recorded in this Status section.

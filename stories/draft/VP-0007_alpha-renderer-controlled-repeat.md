@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned follow-up to VP-0006. Do not implement until VP-0005 confirms a
+Draft follow-up to VP-0006. Do not implement until VP-0005 confirms a
 capture-slower-than-display case that needs correction and VP-0006 has proven
 safe queue/drop ownership.
 

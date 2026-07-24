@@ -1,5 +1,9 @@
 # VP-0003: Make existing NLS active-rectangle-aware for 4:3 and all content
 
+## Status
+
+Draft.
+
 ## Scope and repository context
 
 This story extends the existing NLS behavior for the DirectShow/madVR renderer.
