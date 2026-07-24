@@ -70,6 +70,20 @@ enum class HdrLuminanceOptions
 	HDR_LUMINANCE_USER,
 };
 
+// Every renderer interruption is classified before it is scheduled.  Queue
+// depth is deliberately not a reset reason: live HDMI is allowed to run with
+// an empty VP queue when conversion and delivery keep pace.
+enum class RendererResetReason
+{
+	None,
+	Manual,
+	Startup,
+	DisplayTransition,
+	Resize,
+	QueueSizeChange,
+	TimingOffsetChange,
+};
+
 
 /**
  * Main UI is a simple dialog defined in VideoProcessor.rc
@@ -350,13 +364,13 @@ protected:
 	size_t m_consecutiveStuckSeconds = 0;
 	uint64_t m_lastDroppedFrames = 0;
 	size_t m_lastQueueSize = 0;
+	DWORD m_lastQueueHealthDiagnostic = 0;
 	bool m_pendingQueueReset = false;
-	bool m_startupGraphReprimePending = false;
+	bool m_pendingResetRequiresGraph = false;
+	RendererResetReason m_pendingResetReason = RendererResetReason::None;
+	// Reset() can emit another RENDERSTATE_RENDERING callback. This marker is
+	// reset only when a new renderer graph is constructed.
 	bool m_startupGraphReprimeCompleted = false;
-	// A display/video-mode transition needs a complete graph re-prime so madVR
-	// rebuilds its internal queues. Ordinary queue-health recovery remains
-	// queue-only and does not set this flag.
-	bool m_displayTransitionGraphReprimePending = false;
 	ULONGLONG m_queueResetIgnoreEventsUntil = 0;
 	UINT_PTR m_rendererStartTime = 0;  // Tick count when renderer started rendering
 	int m_queueResetDelaySeconds = 5;
@@ -456,6 +470,9 @@ protected:
 		double& overrideRateHz, int& matchedNominalRate) const;
 	void MonitorQueueHealth(size_t rawQueueSize, size_t convertedQueueSize,
 		size_t queueMaxSize, uint64_t droppedFrames);
+	void RequestRendererReset(RendererResetReason reason, bool requiresGraph,
+		UINT delayMs);
+	void ExecutePendingRendererReset();
 	void ApplyNoUiLayout();
 	bool UpdateNewLldvCandidate();
 	bool IsNewLldvModeSelected();
