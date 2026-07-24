@@ -2,7 +2,32 @@
 
 ## Status
 
-Planned.
+Blocked — do not begin product implementation until VP-0012 is Complete and
+its recorded pipeline decision satisfies the prerequisites below.
+
+## Prerequisites
+
+1. Complete [VP-0012](VP-0012_alpha-renderer-LUT-pipeline-contract-spike.md).
+   It must establish, with test evidence against the bundled libplacebo build,
+   the exact stage at which VP can apply a display-calibration LUT.
+2. Record the selected output architecture in this story before changing
+   production configuration or renderer code. It must state whether a target
+   frame LUT is demonstrably post-tone-map/post-gamut-map, or whether VP needs
+   an intermediate render target and explicit final pass.
+3. Record the complete color contract for at least the initial supported paths:
+   source representation, LUT reference primaries/transfer/range/nits, LUT
+   stage, swapchain/DXGI signal, and the absence of a post-LUT conversion.
+4. Resolve the limited-range boundary: either VP-0004 is Complete for the
+   selected presentation path, or initial LUT support explicitly supports and
+   tests full-range only. Do not imply calibrated limited-range output works
+   without evidence.
+5. Start implementation from a clean worktree/branch based on the current
+   alpha-renderer code. Do not reuse a checkout with unrelated staged,
+   unstaged, or generated work.
+
+The first implementation task is deliberately a technical spike, not user
+configuration or release code. Its result may narrow the first supported LUT
+profiles or require a small final-pass architecture.
 
 ## User story
 
@@ -103,13 +128,13 @@ select a LUT at renderer initialization and source-state/rule changes.
 1. Add a disabled-by-default base setting, for example:
 
    ```ini
-   [libplacebo]
+   [display]
    output_lut_file=
    lut_reference_primaries=REC_709
    lut_reference_transfer=BT1886
    lut_reference_range=LIMITED
    lut_reference_nits=100
-   lut_gamut_mapping=perceptual
+   gamut_mapping=perceptual
    ```
 
    An empty file value means no LUT. `lut_reference_*` specifies the exact
@@ -137,7 +162,7 @@ select a LUT at renderer initialization and source-state/rule changes.
    lut_reference_transfer=2.2
    lut_reference_range=LIMITED
    lut_reference_nits=100
-   lut_gamut_mapping=softclip
+   gamut_mapping=softclip
    ```
 
 3. Resolve relative paths against the executable/configuration directory, reject
@@ -147,11 +172,12 @@ select a LUT at renderer initialization and source-state/rule changes.
    (`BT1886`, `sRGB`, and supported numeric power values), range, and nits
    values. Reject unknown/contradictory declarations and leave playback in
    no-LUT mode rather than guessing.
-5. `lut_gamut_mapping` controls the BT.2020/PQ-or-HLG-source-to-LUT-reference
-   gamut reduction. Expose supported libplacebo modes with user-facing names;
-   at minimum document perceptual/soft roll-off and relative/colorimetric
-   clipping behavior. The default must preserve the existing no-LUT behavior;
-   do not silently change gamut mapping when no LUT is enabled.
+5. The existing `gamut_mapping` setting controls the
+   BT.2020/PQ-or-HLG-source-to-LUT-reference gamut reduction when a LUT is
+   active. Expose supported libplacebo modes with user-facing names; at minimum
+   document perceptual/soft roll-off and relative/colorimetric clipping
+   behavior. The default must preserve the existing no-LUT behavior; do not
+   silently change gamut mapping when no LUT is enabled.
 6. Optionally record `lut_output_profile` (for example, `Epson native`) and
    `lut_output_transfer` as descriptive calibration/reporting fields only.
    They must not cause a post-LUT color transform. Document that `.cube` files

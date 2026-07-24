@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0011`
-- Next story number: `VP-0012`
-- Total indexed items: 11
+- Last assigned item: `VP-0012`
+- Next story number: `VP-0013`
+- Total indexed items: 12
 
 ## Items
 
@@ -23,7 +23,8 @@ are assigned monotonically and are never reused.
 | VP-0008 | Planned | Alpha renderer presentation-pacing assessment and refinement |
 | VP-0009 | Planned | Alpha renderer DeckLink R210/R12B format parity |
 | VP-0010 | Planned | Strict bar-only OCR subtitle replacement |
-| VP-0011 | Planned | Alpha renderer color-managed 3D LUT support |
+| VP-0011 | Blocked | Alpha renderer color-managed 3D LUT support |
+| VP-0012 | Planned | Alpha renderer LUT pipeline contract spike |
 
 ## Story-state workflow
 
@@ -49,13 +50,31 @@ Use only these states:
 1. When adding an item, allocate the next number, create
    `VP-NNNN_<short-title>.md`, then update the Registry state values and table in
    the same commit.
-2. When implementation starts, change the story and index to `In progress` and
+2. Before changing a story from `Draft` or `Blocked` to `Planned` or `In
+   progress`, perform and record a readiness review. Verify that:
+   - the configuration section/key model matches the current code;
+   - required API behavior, pipeline order, and resource lifetime are known or
+     are covered by a completed technical spike;
+   - upstream/dependent stories and platform constraints have an explicit
+     completion boundary;
+   - the validation method can prove the feature's important correctness
+     claims; and
+   - implementation will start from a clean, correctly based worktree.
+   If an unknown could invalidate the feature design (for example, color
+   pipeline placement, security boundary, concurrency model, or OS/API
+   behavior), create a bounded spike story first rather than beginning product
+   implementation on an assumption.
+3. A spike story must state the unknown, non-production scope, reproducible
+   evidence required, decision it will produce, and the story/stories it
+   unblocks. Mark a dependent story `Blocked` and link the spike until the
+   result is recorded.
+4. When implementation starts, change the story and index to `In progress` and
    record the branch. Do not mark a story Complete merely because code was
    written.
-3. When testing begins, use `Validating`; record build/test evidence and the
+5. When testing begins, use `Validating`; record build/test evidence and the
    specific user validation still needed.
-4. Mark a story `Complete` only after it is accepted and its implementation has
+6. Mark a story `Complete` only after it is accepted and its implementation has
    been merged or deliberately released. Add the final commit, PR, or release
    reference to the story's Status section.
-5. Update this index in the same commit whenever a story's state, title, or
+7. Update this index in the same commit whenever a story's state, title, or
    completion reference changes. Story numbers remain permanent.
