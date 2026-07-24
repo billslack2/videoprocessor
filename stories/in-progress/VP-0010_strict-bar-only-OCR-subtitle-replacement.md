@@ -16,7 +16,10 @@ are in `fb76699`. PP-OCRv6 recognition, upper-edge panels, Unicode cues,
 source-height rendering, and reliable per-cue glyph fingerprinting are in
 `5dec29c`. The corrected timing-test expectations were ported from the beta
 work branch in `6bce8a1`. Runtime-recording corrections for stale cue
-transitions and unbounded panel growth are in `97a63e0`.
+transitions and unbounded panel growth are in `97a63e0`. Tight single-line
+boundary panels, noise-tolerant per-frame cue-change detection, faster
+pixel-confirmed transitions, and destination revalidation against the current
+picture bounds are in `2066dea`.
 
 Validation evidence:
 
@@ -30,7 +33,7 @@ Validation evidence:
   partial multiline readings, different-cue rejection, and selection of the
   most complete multiline OCR observation, complete thin-glyph fingerprinting,
   cue disappearance, and isolation from pixels outside the confirmed panel.
-- The complete x64 Release suite passes: 28 of 28 tests.
+- The complete x64 Release suite passes: 29 of 29 tests.
 - PP-OCRv6 recognition was validated against the supplied playback captures:
   it retained `[♪♪♪]` and correctly read both lines of the supplied upper-edge
   caption.
@@ -40,6 +43,18 @@ Validation evidence:
   2x2-block glyph-mask fingerprint; unconfirmed cue panels can no longer enlarge
   the active source panel, and a different OCR observation independently
   suppresses stale output.
+- A second July 24 OBS recording showed three-to-five-second cue transitions
+  because compressed glyph edges prevented exact fingerprints from repeating,
+  and showed recognized single-line panels rejected near the picture/bar
+  boundary at roughly 45% panel-background evidence. The fingerprint is now a
+  fully sampled 64x16, two-bit occupancy grid with a noise-tolerant distance
+  comparison. Two changed frames trigger OCR immediately and a pixel-confirmed
+  cue needs only one successful OCR observation. Paddle line rectangles are no
+  longer misrepresented as word boxes, so the panel detector can evaluate the
+  complete tight rectangle instead of only its mixed picture/bar rim.
+- Cached replacement placement is recalculated against the current picture
+  bounds on every emitted frame, preventing a replacement panel from becoming
+  cropped when detected picture geometry moves.
 - Real Apple TV/source playback validation is still required before completion.
 
 ## User story
@@ -177,10 +192,12 @@ over picture is not.
    - write neutral chroma for the generated panel/glyph region.
    Do not run OCR, DirectWrite layout, font rasterization, or full glyph
    extraction for unchanged frames.
-7. Replace the coarse horizontal signature with a complete 2x2-block
-   bright-glyph fingerprint over the confirmed source panel. Two consecutive
-   changed fingerprints invalidate the cached cue and start a short OCR burst;
-   unchanged frames reuse the cached text and rasterization.
+7. Replace the coarse horizontal signature with a fully sampled, quantized
+   bright-glyph fingerprint over the confirmed source panel. Use a
+   noise-tolerant cell-distance comparison so compression shimmer does not
+   prevent confirmation. Two consecutive materially changed frames invalidate
+   the cached cue and start OCR immediately; unchanged frames reuse the cached
+   text and rasterization.
 8. Maintain latest-frame-only worker behavior. OCR can never queue unbounded
    work or block the DirectShow delivery thread.
 9. Reset the cached cue, signatures, and generated masks on renderer restart,
