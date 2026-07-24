@@ -21,11 +21,13 @@ boundary panels, noise-tolerant per-frame cue-change detection, faster
 pixel-confirmed transitions, and destination revalidation against the current
 picture bounds are in `2066dea`. Fixed-size replacement text and fingerprint
 isolation from moving picture between independent line panels are in `0b8fc75`.
+Detached source-label cleanup and noise-consistent fingerprint confirmation are
+in `b452006`.
 
 Validation evidence:
 
 - Release x64 solution build succeeded with Visual Studio 2026/MSBuild 18.7.
-- Twenty focused BAR_OCR tests passed, covering opaque panels overlapping the
+- Twenty-one focused BAR_OCR tests passed, covering opaque panels overlapping the
   upper or lower picture edge, panels wholly in an encoded bar, bare-text
   rejection, Unicode/music-cue identity, unclipped and
   size-adaptive multiline DirectWrite rasterization, oversized-layout rejection,
@@ -34,9 +36,9 @@ Validation evidence:
   partial multiline readings, different-cue rejection, and selection of the
   most complete multiline OCR observation, complete thin-glyph fingerprinting,
   cue disappearance, isolation from pixels outside the confirmed panel,
-  fixed-size replacement text, and moving-picture isolation between separate
-  line panels.
-- The complete x64 Release suite passes: 31 of 31 tests.
+  fixed-size replacement text, moving-picture isolation between separate line
+  panels, and detached black-backed speaker-label cleanup.
+- The complete x64 Release suite passes: 32 of 32 tests.
 - PP-OCRv6 recognition was validated against the supplied playback captures:
   it retained `[♪♪♪]` and correctly read both lines of the supplied upper-edge
   caption.
@@ -65,6 +67,14 @@ Validation evidence:
   when at least 75% of their samples remain near black, so moving picture in
   the rectangular gap between independently boxed subtitle lines does not
   masquerade as changed glyphs.
+- A fourth July 24 OBS recording exposed a detached `May` speaker-label box
+  surviving to the left of a replaced two-line cue. After the centered source
+  panel is confirmed, the detector now independently searches the same subtitle
+  row for bright glyph groups whose local neighborhood is at least 68% panel
+  black. Proven detached groups extend the cleanup bounds; a bright picture
+  feature without a black backing does not. Fast change detection now also
+  requires two mutually similar changed fingerprints, preventing arbitrary
+  noisy frames from repeatedly invalidating a stable cue.
 - Real Apple TV/source playback validation is still required before completion.
 
 ## User story
