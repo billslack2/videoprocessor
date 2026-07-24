@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0009`
-- Next story number: `VP-0010`
-- Total indexed items: 9
+- Last assigned item: `VP-0010`
+- Next story number: `VP-0011`
+- Total indexed items: 10
 
 ## Items
 
@@ -22,6 +22,7 @@ are assigned monotonically and are never reused.
 | VP-0007 | Planned | Alpha renderer controlled repeat correction |
 | VP-0008 | Planned | Alpha renderer presentation-pacing assessment and refinement |
 | VP-0009 | Planned | Alpha renderer DeckLink R210/R12B format parity |
+| VP-0010 | Planned | Strict bar-only OCR subtitle replacement |
 
 ## Story-state workflow
 
