@@ -89,7 +89,7 @@ uint32_t VideoFrameEncodingBitsPerPixel(const VideoFrameEncoding videoFrameEncod
 
 uint32_t VideoFrameEncodingFourCC(const VideoFrameEncoding videoFrameEncoding)
 {
-	// ffmpeg riff.c is great for this
+	// Map the FOURCC identifiers exposed by the capture and DirectShow APIs.
 
 	switch (videoFrameEncoding)
 	{

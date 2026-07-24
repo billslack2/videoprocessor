@@ -15,7 +15,8 @@
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
-#include <video_frame_formatter/CFFMpegDecoderVideoFrameFormatter.h>
+#include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CR210toRGB48VideoFrameFormatter.h>
 #include <video_frame_formatter/CR12BtoRGB48VideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowTranslations.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
@@ -119,7 +120,10 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 	const bool needsP010Conversion = 
 		(m_videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010) ||
 		(m_videoState->videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT) ||
-		(m_videoState->videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT);
+		(m_videoState->videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT) ||
+		(m_videoState->videoFrameEncoding == VideoFrameEncoding::R10b) ||
+		(m_videoState->videoFrameEncoding == VideoFrameEncoding::R10l) ||
+		(m_videoState->videoFrameEncoding == VideoFrameEncoding::R12L);
 
 	if (needsP010Conversion)
 	{
@@ -143,9 +147,15 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 			// ARGB/BGRA (8-bit 4:4:4 RGB) ? P010 (10-bit 4:2:0 YUV)
 			m_videoFramFormatter = new CARGBtoP010VideoFrameFormatter();
 		}
+		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::R10b ||
+			m_videoState->videoFrameEncoding == VideoFrameEncoding::R10l ||
+			m_videoState->videoFrameEncoding == VideoFrameEncoding::R12L)
+		{
+			m_videoFramFormatter = new CDeckLinkRGBToP010VideoFrameFormatter();
+		}
 		else
 		{
-			throw std::runtime_error("P010 conversion only supports V210, UYVY, ARGB, or BGRA input");
+			throw std::runtime_error("P010 conversion does not support this input format");
 		}
 	}
 
@@ -161,9 +171,7 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 			bitCount = 48;
 			heightMultiplier = -1;
 
-			m_videoFramFormatter = new CFFMpegDecoderVideoFrameFormatter(
-				AV_CODEC_ID_R210,
-				AV_PIX_FMT_RGB48LE);
+			m_videoFramFormatter = new CR210toRGB48VideoFrameFormatter();
 			break;
 
 			// RGB 12-bit to RGB48
@@ -361,13 +369,21 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 	if (!MadVRShaderLoader::GetRuleActivationInfo(std::string(ruleUtf8),
 		label, inactiveRule))
 		return false;
+	if (m_requestedShaderRule.CompareNoCase(ruleName) == 0)
+	{
+		activeRule = m_activeShaderRule;
+		DebugLog::Log("Shaders: coalesced duplicate manual request for \"%s\"",
+			static_cast<const char*>(ruleUtf8));
+		return true;
+	}
 	m_requestedShaderRule = ruleName;
 	m_requestedShaderLabel.Format(TEXT("%S"), label.c_str());
 	m_inactiveShaderRule.Format(TEXT("%S"), inactiveRule.c_str());
+	MadVRShaderLoader::SetRuntimeShaderRequest(std::string(ruleUtf8));
 
-	double activeAspectRatio = 0.0;
-	const bool aspectAvailable =
-		GetActivePictureAspectRatio(activeAspectRatio);
+	ActivePictureRectangle activeRectangle;
+	const bool aspectAvailable = GetActivePictureRectangle(activeRectangle);
+	const double activeAspectRatio = activeRectangle.aspectRatio;
 	std::string reason;
 	if (!MadVRShaderLoader::ValidateActivePictureAspect(std::string(ruleUtf8),
 		aspectAvailable, activeAspectRatio, reason))
@@ -376,13 +392,14 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		{
 			const MadVRShaderSelection bypassSelection =
 				MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer,
-					*m_videoState, inactiveRule);
+					*m_videoState, inactiveRule, false);
 			UpdateActiveShaderSelection(bypassSelection);
 			rendererRestartRequired =
 				bypassSelection.outputAspectRatioX != m_outputAspectRatioX ||
 				bypassSelection.outputAspectRatioY != m_outputAspectRatioY;
 		}
 		m_requestedShaderApplied = false;
+		m_appliedShaderAspectRatio = 0.0;
 		m_activeShaderRule.Format(TEXT("%s (Waiting)"),
 			static_cast<LPCTSTR>(m_requestedShaderLabel));
 		activeRule = m_activeShaderRule;
@@ -391,11 +408,20 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		return true;
 	}
 
+	MadVRShaderLoader::SetRuntimeActivePictureGeometry({ activeAspectRatio,
+		static_cast<double>(activeRectangle.left) / activeRectangle.rasterWidth,
+		static_cast<double>(activeRectangle.top) / activeRectangle.rasterHeight,
+		static_cast<double>(activeRectangle.right) / activeRectangle.rasterWidth,
+		static_cast<double>(activeRectangle.bottom) / activeRectangle.rasterHeight,
+		activeRectangle.generation, true });
 	const MadVRShaderSelection selection =
 		MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer, *m_videoState,
 			std::string(ruleUtf8));
 	UpdateActiveShaderSelection(selection);
 	m_requestedShaderApplied = true;
+	m_appliedShaderAspectRatio = activeAspectRatio;
+	m_appliedActivePictureGeneration = activeRectangle.generation;
+	m_appliedScreenProfileGeneration = m_screenProfileGeneration;
 	activeRule = m_activeShaderRule;
 	rendererRestartRequired =
 		selection.outputAspectRatioX != m_outputAspectRatioX ||
@@ -413,8 +439,9 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		return false;
 
 	CT2A requestedUtf8(m_requestedShaderRule, CP_UTF8);
-	double activeAspectRatio = 0.0;
-	const bool aspectAvailable = GetActivePictureAspectRatio(activeAspectRatio);
+	ActivePictureRectangle activeRectangle;
+	const bool aspectAvailable = GetActivePictureRectangle(activeRectangle);
+	const double activeAspectRatio = activeRectangle.aspectRatio;
 	std::string reason;
 	const bool shouldApply = MadVRShaderLoader::ValidateActivePictureAspect(
 		std::string(requestedUtf8), aspectAvailable, activeAspectRatio, reason);
@@ -424,12 +451,24 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 	// the guard cannot create an aspect restart loop.
 	if (!aspectAvailable && !shouldApply)
 		return false;
-	if (shouldApply == m_requestedShaderApplied)
+	const bool activeAspectChanged = shouldApply && m_requestedShaderApplied &&
+		(std::abs(activeAspectRatio - m_appliedShaderAspectRatio) > 0.01 ||
+			activeRectangle.generation != m_appliedActivePictureGeneration ||
+			m_screenProfileGeneration != m_appliedScreenProfileGeneration);
+	if (shouldApply == m_requestedShaderApplied && !activeAspectChanged)
 		return false;
 
 	std::string ruleToApply;
 	if (shouldApply)
+	{
 		ruleToApply = std::string(requestedUtf8);
+		MadVRShaderLoader::SetRuntimeActivePictureGeometry({ activeAspectRatio,
+			static_cast<double>(activeRectangle.left) / activeRectangle.rasterWidth,
+			static_cast<double>(activeRectangle.top) / activeRectangle.rasterHeight,
+			static_cast<double>(activeRectangle.right) / activeRectangle.rasterWidth,
+			static_cast<double>(activeRectangle.bottom) / activeRectangle.rasterHeight,
+			activeRectangle.generation, true });
+	}
 	else
 	{
 		CT2A inactiveUtf8(m_inactiveShaderRule, CP_UTF8);
@@ -444,9 +483,12 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 
 	const MadVRShaderSelection selection =
 		MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer, *m_videoState,
-			ruleToApply);
+			ruleToApply, shouldApply);
 	UpdateActiveShaderSelection(selection);
 	m_requestedShaderApplied = shouldApply;
+	m_appliedShaderAspectRatio = shouldApply ? activeAspectRatio : 0.0;
+	m_appliedActivePictureGeneration = shouldApply ? activeRectangle.generation : 0;
+	m_appliedScreenProfileGeneration = m_screenProfileGeneration;
 	if (!shouldApply)
 		m_activeShaderRule.Format(TEXT("%s (Waiting)"),
 			static_cast<LPCTSTR>(m_requestedShaderLabel));
@@ -461,6 +503,19 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		shouldApply ? "" : "; ",
 		shouldApply ? "" : reason.c_str());
 	return true;
+}
+
+bool DirectShowGenericHDRVideoRenderer::SetScreenProfile(bool scopeScreen,
+	CString& activeProfile)
+{
+	MadVRShaderLoader::SetRuntimeNlsTargetAspect(scopeScreen ? 2.35 : 16.0 / 9.0);
+	activeProfile = scopeScreen ? TEXT("Scope (2.35:1)") : TEXT("Normal (16:9)");
+	++m_screenProfileGeneration;
+	if (m_requestedShaderRule.IsEmpty())
+		return true;
+	CString activeRule = m_activeShaderRule;
+	bool rendererRestartRequired = false;
+	return RefreshShaderRule(activeRule, rendererRestartRequired);
 }
 
 

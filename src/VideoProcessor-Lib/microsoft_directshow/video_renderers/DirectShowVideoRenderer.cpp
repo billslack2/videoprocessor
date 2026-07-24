@@ -1073,3 +1073,11 @@ bool DirectShowVideoRenderer::GetActivePictureAspectRatio(double& aspectRatio) c
 	return m_liveSource && m_liveSource->GetVideoOutputPin() &&
 		m_liveSource->GetVideoOutputPin()->GetActivePictureAspectRatio(aspectRatio);
 }
+
+
+bool DirectShowVideoRenderer::GetActivePictureRectangle(ActivePictureRectangle& rectangle) const
+{
+	rectangle = {};
+	return m_liveSource && m_liveSource->GetVideoOutputPin() &&
+		m_liveSource->GetVideoOutputPin()->GetActivePictureRectangle(rectangle);
+}

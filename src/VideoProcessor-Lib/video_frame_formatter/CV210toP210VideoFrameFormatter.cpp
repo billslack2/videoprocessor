@@ -11,7 +11,8 @@
 #include "CV210toP210VideoFrameFormatter.h"
 
 //
-// Parts of this are copied from ffmpeg v210dec.c, see /3rdparty/ffmpeg/README.txt for license and attribution
+// The v210 unpacking follows FFmpeg's GPL-licensed v210dec.c implementation:
+// https://github.com/FFmpeg/FFmpeg/blob/n4.4.8/libavcodec/v210dec.c
 //
 
 

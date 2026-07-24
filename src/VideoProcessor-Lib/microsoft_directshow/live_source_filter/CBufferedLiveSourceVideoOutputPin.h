@@ -81,6 +81,7 @@ public:
 		return m_sceneTimingRatesCompatible.load(std::memory_order_acquire);
 	}
 	bool GetActivePictureAspectRatio(double& aspectRatio) const override;
+	bool GetActivePictureRectangle(ActivePictureRectangle& rectangle) const override;
 	size_t GetFrameQueueSize() override;
 	void Reset() override;
 	REFERENCE_TIME NextFrameTimestamp() const override;
@@ -411,6 +412,12 @@ private:
 	struct ActivePictureDetectorState
 	{
 		double candidateAspectRatio = 0.0;
+		int candidateLeft = 0;
+		int candidateTop = 0;
+		int candidateRight = 0;
+		int candidateBottom = 0;
+		int candidateRasterWidth = 0;
+		int candidateRasterHeight = 0;
 		uint8_t matchingCandidates = 0;
 		uint64_t lastAnalyzedFrame = 0;
 	};
@@ -420,6 +427,9 @@ private:
 	std::atomic<double> m_activePictureAspectRatio = 0.0;
 	std::atomic_bool m_activePictureAspectStable = false;
 	std::atomic<uint64_t> m_activePictureDetectorGeneration = 0;
+	std::atomic<uint64_t> m_activePictureRectangleGeneration = 0;
+	mutable std::mutex m_activePictureRectangleMutex;
+	ActivePictureRectangle m_activePictureRectangle;
 
 	// Reads a sparse luma grid from P010 output.  It is intentionally called
 	// only by the conversion worker and only while the feature is enabled.

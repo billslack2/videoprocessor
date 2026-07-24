@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VideoProcessor Renderer Alpha - Display Rules</title>
+  <style>
+    body { font: 16px/1.5 "Segoe UI", Arial, sans-serif; max-width: 1024px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    h1, h2, h3 { color: #17365d; } code, pre { font-family: Consolas, monospace; }
+    code { background: #f2f2f2; padding: .1rem .25rem; } pre { background: #f2f2f2; padding: 1rem; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; } th, td { border: 1px solid #ccc; padding: .55rem; text-align: left; vertical-align: top; } th { background: #eaf1f8; }
+    .warning { background: #fff4ce; border-left: 4px solid #d6a700; padding: .8rem 1rem; }
+    .note { background: #eef6ff; border-left: 4px solid #3978b7; padding: .8rem 1rem; }
+    nav { background: #f7f9fb; border: 1px solid #d8e0e8; padding: .75rem 1rem; margin: 1rem 0 1.5rem; }
+    nav ul { columns: 2; margin: .35rem 0; }
+    nav a { color: #17365d; }
+  </style>
+</head>
+<body>
+  <h1>VideoProcessor Renderer (Alpha): display rules</h1>
+  <p>The renderer maintains a persistent compiled-shader cache at <code>libplacebo\VideoProcessorShaderCache.bin</code> beside the application. The cache reduces shader compilation pauses on later launches. It is performance-only: missing, stale, or corrupt data is ignored and rebuilt. The file may be deleted while VideoProcessor is closed to force a clean rebuild.</p>
+  <div class="warning"><strong>Internal alpha guide.</strong> This document is intentionally not linked from the normal configuration guide or included in releases. The renderer and these rules remain experimental.</div>
+
+  <nav>
+    <strong>Contents</strong>
+    <ul>
+      <li><a href="#model">Configuration model</a></li>
+      <li><a href="#defaults">SDR and HDR defaults</a></li>
+      <li><a href="#syntax">Rule syntax</a></li>
+      <li><a href="#variables">Available variables</a></li>
+      <li><a href="#selection">Selection and precedence</a></li>
+      <li><a href="#shortcuts">Manual shortcuts</a></li>
+      <li><a href="#examples">Complete examples</a></li>
+      <li><a href="#overrides">Allowed overrides</a></li>
+      <li><a href="#validation">Validation and troubleshooting</a></li>
+      <li><a href="#scope">Scope and subtitle fit</a></li>
+      <li><a href="#commands">Refresh-rate commands</a></li>
+    </ul>
+  </nav>
+
+  <h2 id="model">Configuration model</h2>
+  <p>Display rules live in <code>VideoProcessorRenderer.cfg</code>. The base <code>[display]</code> section contains the normal renderer settings. A matching rule overrides only the settings written in that rule; every omitted setting continues to use the base value.</p>
+  <p>There are three layers, applied in this order:</p>
+  <ol>
+    <li><strong>Built-in defaults</strong> provide a safe value when a key is absent.</li>
+    <li><strong><code>[display]</code></strong> changes the base renderer configuration for every source.</li>
+    <li><strong>One selected <code>[display_rules.name]</code> section</strong> overrides only its explicitly configured renderer keys.</li>
+  </ol>
+  <pre>[display]
+# Base value used by every source unless the selected rule overrides it.
+quality=high
+tone_mapping=AUTO
+
+[display_rules]
+# This list enables rules and defines the tie-breaking order.
+rules=hdr,sdr
+
+[display_rules.hdr]
+rule=$eotf==PQ|HLG|HDR
+priority=100
+# Only this setting changes for the HDR rule; quality remains "high".
+tone_mapping=spline</pre>
+  <div class="note"><strong>One rule at a time.</strong> Matching rules are not merged. VideoProcessor selects one winner, applies that rule over <code>[display]</code>, and ignores the other matching rules.</div>
+  <h3>Rule-section keys</h3>
+  <table><thead><tr><th>Key</th><th>Required?</th><th>Meaning</th></tr></thead><tbody>
+    <tr><td><code>[display_rules] rules=...</code></td><td>Yes, to enable rules</td><td>Comma-separated ordered list of rule names. A section that is not in this list is ignored.</td></tr>
+    <tr><td><code>rule=...</code></td><td>Yes for every listed rule</td><td>Expression deciding whether the rule is eligible for automatic selection.</td></tr>
+    <tr><td><code>priority=...</code></td><td>No</td><td>Signed integer used to choose between matching rules. Defaults to <code>0</code>; larger wins.</td></tr>
+    <tr><td><code>shortcut=...</code></td><td>No</td><td>Keyboard shortcut that manually selects this rule. Modifiers may be combined, for example <code>Ctrl+F7</code>, <code>Alt+F8</code>, or <code>Shift+F9</code>.</td></tr>
+    <tr><td>Renderer setting keys</td><td>No</td><td>The values this rule overrides. See <a href="#overrides">Settings a rule may override</a>.</td></tr>
+  </tbody></table>
+
+  <h2 id="defaults">SDR and HDR defaults</h2>
+  <p>The supplied configuration separates SDR from HDR-family input without changing output range, output gamma, target nits, scaling, or refresh switching. Those remain controlled by <code>[display]</code>.</p>
+  <pre>[display_rules]
+rules=hdr,sdr
+
+[display_rules.hdr]
+rule=$eotf==PQ|HLG|HDR
+priority=100
+tone_mapping=spline
+gamut_mapping=perceptual
+peak_detection=AUTO
+
+[display_rules.sdr]
+rule=$eotf==SDR
+priority=90
+tone_mapping=AUTO
+gamut_mapping=AUTO
+peak_detection=OFF</pre>
+
+  <h2 id="syntax">Rule syntax</h2>
+  <ul>
+    <li><code>&amp;&amp;</code> joins required conditions (AND); <code>||</code> joins alternatives (OR).</li>
+    <li><code>|</code> lists accepted values for one equality condition, such as <code>$eotf==PQ|HLG</code>.</li>
+    <li>Use <code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, or <code>&gt;=</code> for comparisons. Single <code>=</code> remains supported for older configurations.</li>
+    <li>Parentheses group expressions. Evaluation order is <code>!</code>, then comparisons, then <code>&amp;&amp;</code>, then <code>||</code>.</li>
+    <li>Boolean variables may be abbreviated: <code>$hdr_metadata</code> means <code>$hdr_metadata==true</code>, and <code>!$hdr_metadata</code> means false.</li>
+    <li>Names and values are case-insensitive. Quotes are optional around a single value.</li>
+    <li>Numeric equality supports inclusive ranges, such as <code>$source_rate==23-30</code>. Relational operators take one number, such as <code>$width&gt;=3840</code>.</li>
+  </ul>
+  <pre># 23.976/24/25/29.97/30 Hz HDR-family input
+rule=$source_rate==23-30 &amp;&amp; $eotf==PQ|HLG|HDR
+
+# The same idea using relational comparisons and grouping
+rule=($eotf==PQ || $eotf==HLG) &amp;&amp; $source_rate&gt;=23 &amp;&amp; $source_rate&lt;31
+
+# SDR BT.2020 input with valid static HDR metadata is unusual, but expressible
+rule=$eotf==SDR &amp;&amp; $colorspace==BT_2020 &amp;&amp; $hdr_metadata
+
+# Any progressive 4K source except SDR
+rule=$width&gt;=3840 &amp;&amp; $height&gt;=2160 &amp;&amp; !$interlaced &amp;&amp; $eotf!=SDR</pre>
+  <h3><code>|</code> versus <code>||</code></h3>
+  <p>These operators are intentionally different. A single <code>|</code> belongs to one comparison and lists acceptable values. A double <code>||</code> joins complete expressions.</p>
+  <pre># Compact value list:
+$eotf==PQ|HLG|HDR
+
+# Complete alternatives; useful when each branch has different conditions:
+($eotf==PQ &amp;&amp; $source_rate==23-30) || ($eotf==HLG &amp;&amp; $source_rate==50-60)</pre>
+
+  <h2 id="variables">Available input variables</h2>
+  <p>Rules use the capture state known to VideoProcessor—not a filename, media-library tag, or renderer guess. A variable that is unavailable does not match, including a <code>!=</code> comparison.</p>
+  <table><thead><tr><th>Variable</th><th>Type</th><th>Meaning and examples</th></tr></thead><tbody>
+    <tr><td><code>$source_rate</code></td><td>Number</td><td>Truncated input frame rate: 23.976 becomes <code>23</code>, 29.97 becomes <code>29</code>, and 59.94 becomes <code>59</code>. Example: <code>$source_rate==23-24</code>.</td></tr>
+    <tr><td><code>$eotf</code></td><td>Text</td><td>Effective input transfer classification: <code>SDR</code>, <code>HDR</code>, <code>PQ</code>, <code>HLG</code>, or <code>UNKNOWN</code>.</td></tr>
+    <tr><td><code>$colorspace</code></td><td>Text</td><td>Effective capture colorspace, for example <code>REC_709</code>, <code>BT_2020</code>, <code>P3_D65</code>, <code>P3_DCI</code>, or <code>P3_D60</code>.</td></tr>
+    <tr><td><code>$hdr_metadata</code></td><td>Boolean</td><td><code>true</code> only when valid static HDR metadata is present; otherwise <code>false</code>. This is independent of the EOTF classification.</td></tr>
+    <tr><td><code>$width</code></td><td>Number</td><td>Capture raster width, such as <code>1920</code> or <code>3840</code>.</td></tr>
+    <tr><td><code>$height</code></td><td>Number</td><td>Capture raster height, such as <code>1080</code> or <code>2160</code>.</td></tr>
+    <tr><td><code>$resolution</code></td><td>Text</td><td>Exact capture raster written as <code>widthxheight</code>, for example <code>3840x2160</code>.</td></tr>
+    <tr><td><code>$interlaced</code></td><td>Boolean</td><td><code>true</code> or <code>false</code> from the active DeckLink display mode.</td></tr>
+    <tr><td><code>$format</code></td><td>Text</td><td>Capture pixel format, such as <code>V210</code>, <code>UYVY</code>, <code>R10B</code>, <code>R10L</code>, or <code>R12L</code>.</td></tr>
+  </tbody></table>
+  <div class="note"><strong>Source rate is deliberately truncated.</strong> Use <code>23</code> for 23.976, <code>29</code> for 29.97, and <code>59</code> for 59.94. This is the same convention used by <code>[refresh_rate_commands]</code>.</div>
+
+  <h2 id="selection">When a rule takes effect and how the winner is selected</h2>
+  <p>The selected rule is read when the renderer starts. A later input transition that selects a different rule requests a normal renderer rebuild, so renderer-output settings never change underneath queued frames. This is deliberate: rules are not a per-frame processing path.</p>
+  <ol>
+    <li>Only names listed in <code>[display_rules] rules=...</code> participate.</li>
+    <li>Every listed rule expression is evaluated against the current source state.</li>
+    <li>The matching rule with the highest integer <code>priority</code> wins. Priority defaults to <code>0</code>.</li>
+    <li>If priorities tie, the rule with more required comparisons is considered more specific and wins.</li>
+    <li>If both priority and specificity tie, the rule appearing first in <code>rules=...</code> wins.</li>
+  </ol>
+  <pre>[display_rules]
+# "hdr_4k_slow" wins over "hdr" for 4K 23-30 Hz HDR because it has
+# both a higher priority and more conditions.
+rules=hdr_4k_slow,hdr,sdr
+
+[display_rules.hdr_4k_slow]
+rule=$eotf==PQ|HLG|HDR &amp;&amp; $width&gt;=3840 &amp;&amp; $source_rate==23-30
+priority=200
+quality=high
+
+[display_rules.hdr]
+rule=$eotf==PQ|HLG|HDR
+priority=100
+
+[display_rules.sdr]
+rule=$eotf==SDR
+priority=90</pre>
+  <p>If no rule matches, the renderer uses the base <code>[display]</code> settings and reports the active rule as <code>None</code>.</p>
+
+  <h2 id="shortcuts">Manual profile shortcuts</h2>
+  <p>A named display rule may also have a <code>shortcut=</code>. Pressing that shortcut selects the rule as a manual override even when its <code>rule=</code> expression does not currently match, and safely rebuilds the renderer when needed. The selected rule remains active until either the <code>display_rules_auto</code> shortcut is pressed or a material source change occurs: refresh rate, resolution, EOTF, colorspace, or capture format. This prevents automatic rules from immediately undoing a deliberate selection while still returning to an appropriate configuration for different content.</p>
+  <pre>[display_rules]
+rules=hdr,sdr
+
+[display_rules.hdr]
+rule=$eotf==PQ|HLG|HDR
+priority=100
+shortcut=F5
+
+[display_rules.sdr]
+rule=$eotf==SDR
+priority=90
+shortcut=F6
+
+[shortcuts]
+# Return immediately to normal automatic rule selection.
+display_rules_auto=F4</pre>
+  <p>A rule may be both automatic and manually selectable. For a manual-only profile, give it a valid condition that real input cannot satisfy, such as <code>$width==0</code>. Startup validation still checks the expression, but automatic selection will never choose it.</p>
+  <pre>[display_rules]
+rules=hdr,sdr,bright_demo
+
+[display_rules.bright_demo]
+# Manual-only: a real capture width is never zero.
+rule=$width==0
+shortcut=Ctrl+F7
+priority=0
+sdr_target_nits=300
+contrast_recovery=0.25</pre>
+  <div class="note"><strong>Shortcut conflicts:</strong> if two actions use the same shortcut, the later duplicate is ignored and written to the log. Use <code>display_rules_auto</code> to leave manual mode immediately.</div>
+  <p>Screen-profile shortcuts (<code>screen_profile_normal</code> and <code>screen_profile_scope</code>) are independent: they choose the output viewport and do not replace a display rule.</p>
+
+  <h2 id="examples">Complete rule examples</h2>
+  <h3>Separate SDR, ordinary HDR, and heuristic LLDV-style input</h3>
+  <p>This example gives the most specific condition the highest priority. Adapt the EOTF/colorspace condition to the effective state shown in the VideoProcessor OSD; the rules see that same effective state.</p>
+  <pre>[display_rules]
+rules=lldv_style,hdr,sdr
+
+[display_rules.lldv_style]
+rule=$eotf==SDR &amp;&amp; $colorspace==BT_2020 &amp;&amp; !$hdr_metadata
+priority=200
+tone_mapping=spline
+gamut_mapping=perceptual
+peak_detection=AUTO
+
+[display_rules.hdr]
+rule=$eotf==PQ|HLG|HDR
+priority=100
+tone_mapping=spline
+gamut_mapping=perceptual
+peak_detection=AUTO
+
+[display_rules.sdr]
+rule=$eotf==SDR
+priority=90
+tone_mapping=AUTO
+gamut_mapping=AUTO
+peak_detection=OFF</pre>
+
+  <h3>Different quality for high-frame-rate 4K</h3>
+  <pre>[display_rules]
+rules=uhd_hfr,hdr,sdr
+
+[display_rules.uhd_hfr]
+rule=$width&gt;=3840 &amp;&amp; $height&gt;=2160 &amp;&amp; $source_rate&gt;=50
+priority=300
+quality=balanced
+upscaler=AUTO
+downscaler=ewa_lanczos
+
+[display_rules.hdr]
+rule=$eotf==PQ|HLG|HDR
+priority=100
+tone_mapping=spline
+
+[display_rules.sdr]
+rule=$eotf==SDR
+priority=90
+peak_detection=OFF</pre>
+
+  <h3>Interlaced source profile</h3>
+  <pre>[display_rules]
+rules=interlaced,hdr,sdr
+
+[display_rules.interlaced]
+rule=$interlaced
+priority=250
+quality=balanced
+deband=OFF
+
+[display_rules.hdr]
+rule=$eotf==PQ|HLG|HDR
+priority=100
+
+[display_rules.sdr]
+rule=$eotf==SDR
+priority=90</pre>
+
+  <h2 id="overrides">Settings a rule may override</h2>
+  <p>The following keys may appear in <code>[display]</code> and in an individual <code>[display_rules.name]</code> section. A rule inherits the base value for every omitted key.</p>
+  <table><thead><tr><th>Setting</th><th>Accepted values</th><th>Purpose</th></tr></thead><tbody>
+    <tr><td><code>sdr_target_nits</code></td><td><code>40</code>–<code>500</code></td><td>SDR reference white and the SDR output target used by tone mapping.</td></tr>
+    <tr><td><code>sdr_black_nits</code></td><td><code>AUTO</code>, or zero/up to less than target nits</td><td>Display black level used by the rendering model. <code>AUTO</code> derives it from target nits and the renderer's default SDR contrast.</td></tr>
+    <tr><td><code>switch_refresh_rate</code></td><td><code>true</code>/<code>false</code></td><td>Allows this renderer to request an output refresh-rate change for the source rate.</td></tr>
+    <tr><td><code>quality</code></td><td><code>fast</code>, <code>balanced</code>, <code>high</code></td><td>Overall renderer quality/performance preset.</td></tr>
+    <tr><td><code>tone_mapping</code></td><td><code>AUTO</code>, <code>spline</code>, <code>bt2390</code>, <code>st2094-40</code>, <code>reinhard</code></td><td>HDR-to-SDR tone-mapping algorithm.</td></tr>
+    <tr><td><code>gamut_mapping</code></td><td><code>AUTO</code>, <code>perceptual</code>, <code>softclip</code>, <code>relative</code>, <code>desaturate</code></td><td>Maps out-of-gamut source colors into the SDR Rec.709 output gamut.</td></tr>
+    <tr><td><code>peak_detection</code></td><td><code>AUTO</code>, <code>ON</code>, <code>OFF</code></td><td>Controls dynamic peak analysis used by HDR tone mapping.</td></tr>
+    <tr><td><code>contrast_recovery</code></td><td><code>AUTO</code>, or <code>0.0</code>–<code>1.0</code></td><td>Controls local contrast recovery after tone mapping.</td></tr>
+    <tr><td><code>upscaler</code></td><td><code>AUTO</code>, <code>ewa_lanczossharp</code>, <code>ewa_lanczos</code>, <code>bicubic</code>, <code>bilinear</code></td><td>Scaling filter when output is larger than the source image.</td></tr>
+    <tr><td><code>downscaler</code></td><td><code>AUTO</code>, <code>ewa_lanczos</code>, <code>bicubic</code>, <code>bilinear</code></td><td>Scaling filter when output is smaller than the source image.</td></tr>
+    <tr><td><code>deband</code></td><td><code>AUTO</code>, <code>ON</code>, <code>OFF</code></td><td>Controls debanding.</td></tr>
+    <tr><td><code>dithering</code></td><td><code>AUTO</code>, <code>ON</code>, <code>OFF</code></td><td>Controls output dithering.</td></tr>
+    <tr><td><code>output_range</code></td><td><code>AUTO</code>, <code>FULL</code>, <code>LIMITED</code></td><td>Requests the DXGI output encoding. Limited is used only if Windows accepts a compatible swapchain color space.</td></tr>
+    <tr><td><code>output_gamma</code></td><td><code>AUTO</code>, <code>bt1886</code>, <code>srgb</code>, <code>1.8</code>, <code>2.0</code>, <code>2.2</code>, <code>2.4</code>, <code>2.6</code>, <code>2.8</code></td><td>Describes the renderer output transfer. For ordinary DWM-composed SDR output, <code>AUTO</code> is normally correct.</td></tr>
+    <tr><td><code>sdr_input_transfer</code></td><td><code>AUTO</code>, <code>bt1886</code>, <code>srgb</code>, <code>1.8</code>, <code>2.0</code>, <code>2.2</code>, <code>2.4</code>, <code>2.6</code>, <code>2.8</code></td><td>Controls how captured SDR values are interpreted before rendering; it is separate from output gamma.</td></tr>
+  </tbody></table>
+  <p>Boolean settings also accept <code>yes/no</code>, <code>on/off</code>, and <code>1/0</code>. Names and choice values are case-insensitive.</p>
+  <div class="warning"><strong>Not rule overrides:</strong> scope-screen geometry, subtitle-fit settings, screen-profile defaults, shortcuts, and refresh-rate commands are global renderer behavior. Put those in their documented sections rather than inside a display rule.</div>
+
+  <h2 id="validation">Startup validation and troubleshooting</h2>
+  <p>VideoProcessor validates <code>VideoProcessorRenderer.cfg</code> before creating the UI or capture graph—even when a different renderer is selected. A malformed rule stops startup and displays a detailed error instead of silently falling back to the wrong rendering profile.</p>
+  <p>Startup validation catches:</p>
+  <ul>
+    <li>a name listed in <code>rules=</code> without a corresponding section or <code>rule=</code> expression;</li>
+    <li>unknown variables, missing values, unsupported operators, malformed ranges, and unbalanced parentheses;</li>
+    <li>text or Boolean variables used with numeric relational operators;</li>
+    <li>ordinary configuration syntax problems reported by the shared configuration reader.</li>
+  </ul>
+  <p>Renderer-setting values are checked when the renderer loads. An invalid override is logged and the inherited/base value is retained. Invalid or duplicate shortcut bindings are also logged and ignored.</p>
+  <h3>Useful checks</h3>
+  <ol>
+    <li>Confirm the file being edited is beside the running <code>VideoProcessor.exe</code>.</li>
+    <li>Check the OSD <strong>Shader Rule</strong> line. <code>None</code> means no automatic rule matched.</li>
+    <li>Search the current log for <code>display: selected</code>, <code>input state selects rule</code>, or <code>Invalid ... [display_rules]</code>.</li>
+    <li>Remember that 23.976, 29.97, and 59.94 use source-rate keys <code>23</code>, <code>29</code>, and <code>59</code>.</li>
+    <li>After changing the configuration, restart the renderer or VideoProcessor so the selected settings are rebuilt safely.</li>
+  </ol>
+
+  <h2 id="scope">Scope subtitle fit</h2>
+  <p>The Scope profile automatically detects stable encoded letterbox bars and crops them before fitting the active picture to the configured scope screen. Thus scope content fills the scope viewport, while 16:9 content remains correctly pillarboxed. Once established, the picture boundary remains locked through dark frames and temporary overlays when either edge still supports it; a different aspect must remain stable across several analyses before replacing the lock.</p>
+  <p>The optional subtitle fit deliberately uses a simple heuristic rather than OCR or the hidden experimental subtitle processor: meaningful non-black content found inside either confirmed encoded black bar is treated as content that must remain visible. It does not need to recognize words, glyphs, language, alignment, or subtitle style. Lower-bar content snaps the picture upward; upper-bar content snaps it downward. When both bars contain content, the side requiring the larger adjustment wins.</p>
+  <p>Every analysis that still sees bar content restarts the configured hold timer. When that content disappears, the exact picture adjustment remains active for the full configured interval and then snaps back; it does not ease, drift, or release early. A newly detected item at the opposite edge changes direction immediately. Normal screen profile and other renderers do not use this path.</p>
+  <pre>[display]
+scope_screen_aspect=2.35:1
+scope_subtitle_fit=true
+
+# Keep the exact picture adjustment after bar content disappears.
+# Every new detection restarts this timer.
+# Default: 2 seconds. Valid range: 0 to 30 seconds.
+scope_subtitle_hold_seconds=2
+
+# Extra source pixels outside the detected subtitle bounds.
+# Default: 20. Valid range: 0 to 500 pixels.
+scope_subtitle_padding_pixels=20</pre>
+  <p>The hold avoids flicker during brief detection gaps and between adjacent subtitle frames. Padding is added to the existing safety margin, so increase it only when subtitle or overlay edges are being clipped. When bar content needs more room than its letterbox bar provides, subtitle fit shifts the picture farther in the required direction and may crop picture content at the opposite edge; keeping the detected bar content fully visible takes priority.</p>
+
+  <h2 id="commands">Refresh-rate commands</h2>
+  <p>Entries in <code>[refresh_rate_commands]</code> map a truncated display rate to a complete command line. Commands run five seconds after the renderer applies or confirms the refresh rate, allowing the final fullscreen/window state to settle before a script inspects the window or sends shortcuts. Exact entries take precedence over wider ranges.</p>
+  <pre>[refresh_rate_commands]
+23-24=C:\Videoprocessor\audio\audio_delay.bat 315
+59-60=C:\Videoprocessor\audio\audio_delay.bat 285</pre>
+  <p>This section is separate from display-rule selection. It uses the resulting output/display rate and launches the configured command through the Windows command processor; it does not change a renderer profile. The narrower matching range wins when ranges overlap.</p>
+
+  <h2>SDR transfer comparison</h2>
+  <p><code>sdr_input_transfer</code> controls how captured SDR sample values are interpreted before rendering. It is intentionally separate from <code>output_gamma</code>, which describes the render target. The default <code>AUTO</code> uses VideoProcessor's normal SDR mapping (BT.1886). For a controlled A/B comparison, test the same paused SDR frame with <code>AUTO</code>, <code>2.2</code>, and <code>2.4</code>, restarting the renderer after each change. Do not use this setting to compensate for an output-level mismatch.</p>
+  <pre>[display]
+output_gamma=AUTO
+sdr_input_transfer=AUTO</pre>
+  <p>For the normal DWM-composed SDR path, leave <code>output_gamma=AUTO</code>. The swapchain currently negotiates <code>RGB_FULL_G22_NONE_P709</code>; forcing a 2.4 render-target transfer while Windows continues interpreting the surface as G22 produces a visible brightness mismatch. A physical display calibrated to gamma 2.4 does not by itself justify overriding the DWM swapchain transfer.</p>
+  <p><code>output_range=LIMITED</code> requests a genuinely studio-range DXGI swapchain and encodes the render target as limited only when Windows accepts that color-space declaration. If the active driver, monitor, or presentation model rejects it, VideoProcessor logs the failed DXGI probes and safely keeps a full-range swapchain; it never writes limited values into a target that Windows still interprets as full. In that fallback case, the GPU/display output-level setting must perform the final full-to-limited link conversion.</p>
+
+  <p>Do not use output refresh rate as a condition. It is a display result rather than a source property and would create avoidable feedback between rule selection and display switching.</p>
+</body>
+</html>

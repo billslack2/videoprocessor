@@ -50,6 +50,7 @@ public:
 		bool& rendererRestartRequired) override;
 	bool RefreshShaderRule(CString& activeRule,
 		bool& rendererRestartRequired) override;
+	bool SetScreenProfile(bool scopeScreen, CString& activeProfile) override;
 
 protected:
 
@@ -75,4 +76,8 @@ private:
 	CString m_requestedShaderLabel;
 	CString m_inactiveShaderRule;
 	bool m_requestedShaderApplied = false;
+	double m_appliedShaderAspectRatio = 0.0;
+	uint64_t m_appliedActivePictureGeneration = 0;
+	uint64_t m_screenProfileGeneration = 0;
+	uint64_t m_appliedScreenProfileGeneration = 0;
 };

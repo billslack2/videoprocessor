@@ -9,8 +9,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Microsoft Directshow Basecl
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "LAVFilters", "3rdparty\lavfilters\LAVFilters.vcxproj", "{2D4880B2-B4BE-4BB4-A03E-3F4ECBB8BBC8}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ffmpeg", "3rdparty\ffmpeg\ffmpeg.vcxproj", "{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}"
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MPC Video Renderer", "3rdparty\mpc_video_renderer\mpc_video_renderer.vcxproj", "{0B36DE56-2A17-4819-82A9-C21CAA5FDD2B}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VideoProcessor-Lib", "src\VideoProcessor-Lib\VideoProcessor-Lib.vcxproj", "{85F8C0F9-AC94-470E-9302-16FC536E506F}"
@@ -103,24 +101,6 @@ Global
 		{2D4880B2-B4BE-4BB4-A03E-3F4ECBB8BBC8}.Release|x64.Build.0 = Release|x64
 		{2D4880B2-B4BE-4BB4-A03E-3F4ECBB8BBC8}.Release|x86.ActiveCfg = Release|Win32
 		{2D4880B2-B4BE-4BB4-A03E-3F4ECBB8BBC8}.Release|x86.Build.0 = Release|Win32
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Debug|x64.ActiveCfg = Debug|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Debug|x64.Build.0 = Debug|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Debug|x86.ActiveCfg = Debug|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.PGO|x64.ActiveCfg = PGO|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.PGO|x64.Build.0 = PGO|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.PGO|x86.ActiveCfg = PGO|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Release - Generate PGO|x64.ActiveCfg = Release - Generate PGO|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Release - Generate PGO|x64.Build.0 = Release - Generate PGO|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Release - Generate PGO|x86.ActiveCfg = Release - Generate PGO|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Release - PGO Generate|x64.ActiveCfg = Release - PGO Generate|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Release - PGO Generate|x64.Build.0 = Release - PGO Generate|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Release - PGO Generate|x86.ActiveCfg = Release - PGO Generate|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Release - PGO Optimize|x64.ActiveCfg = Release - PGO Optimize|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Release - PGO Optimize|x64.Build.0 = Release - PGO Optimize|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Release - PGO Optimize|x86.ActiveCfg = Release - PGO Optimize|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Release|x64.ActiveCfg = Release|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Release|x64.Build.0 = Release|x64
-		{D17C11DA-6E0A-4299-A9AB-6C55745BAC7C}.Release|x86.ActiveCfg = Release|x64
 		{0B36DE56-2A17-4819-82A9-C21CAA5FDD2B}.Debug|x64.ActiveCfg = Debug|x64
 		{0B36DE56-2A17-4819-82A9-C21CAA5FDD2B}.Debug|x64.Build.0 = Debug|x64
 		{0B36DE56-2A17-4819-82A9-C21CAA5FDD2B}.Debug|x86.ActiveCfg = Debug|x64

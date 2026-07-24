@@ -6,7 +6,6 @@ Get the source from https://github.com/defl/videoprocessor
  * MSVC 2019 community edition
     * Install MFC libraries
     * Debug builds require the [Visual Leak Detector](https://kinddragon.github.io/vld/) Visual C++ plugin
- * You also need to build a special branch of ffmpeg, instructions to do so are in 3rdparty\ffmpeg
 
 **Debugging**
 

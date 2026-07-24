@@ -4,17 +4,59 @@
 #include <algorithm>
 
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
-#include <video_frame_formatter/CFFMpegDecoderVideoFrameFormatter.h>
+#include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CR210toRGB48VideoFrameFormatter.h>
 #include <video_frame_formatter/CR12BtoRGB48VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
 #include <IntegerMath.h>
+#include <DisplayRuleExpression.h>
 
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace Tests
 {
+	namespace
+	{
+		void WriteR10Pixel(BYTE* destination, VideoFrameEncoding encoding,
+			uint16_t red, uint16_t green, uint16_t blue)
+		{
+			const uint32_t word = (static_cast<uint32_t>(red) << 22) |
+				(static_cast<uint32_t>(green) << 12) |
+				(static_cast<uint32_t>(blue) << 2);
+			if (encoding == VideoFrameEncoding::R10l)
+			{
+				destination[0] = static_cast<BYTE>(word);
+				destination[1] = static_cast<BYTE>(word >> 8);
+				destination[2] = static_cast<BYTE>(word >> 16);
+				destination[3] = static_cast<BYTE>(word >> 24);
+			}
+			else
+			{
+				destination[0] = static_cast<BYTE>(word >> 24);
+				destination[1] = static_cast<BYTE>(word >> 16);
+				destination[2] = static_cast<BYTE>(word >> 8);
+				destination[3] = static_cast<BYTE>(word);
+			}
+		}
+
+		void WriteR12LPixelPair(BYTE* destination,
+			uint16_t r0, uint16_t g0, uint16_t b0,
+			uint16_t r1, uint16_t g1, uint16_t b1)
+		{
+			destination[0] = static_cast<BYTE>(r0);
+			destination[1] = static_cast<BYTE>((r0 >> 8) | (g0 << 4));
+			destination[2] = static_cast<BYTE>(g0 >> 4);
+			destination[3] = static_cast<BYTE>(b0);
+			destination[4] = static_cast<BYTE>((b0 >> 8) | (r1 << 4));
+			destination[5] = static_cast<BYTE>(r1 >> 4);
+			destination[6] = static_cast<BYTE>(g1);
+			destination[7] = static_cast<BYTE>((g1 >> 8) | (b1 << 4));
+			destination[8] = static_cast<BYTE>(b1 >> 4);
+		}
+	}
+
 	TEST_CLASS(VideoFrameFormatterTests)
 	{
 	public:
@@ -64,19 +106,15 @@ namespace Tests
 			Assert::AreEqual(8294400L, vff.GetOutFrameSize());
 		}
 
-		TEST_METHOD(CFFMpegDecoderVideoFrameFormatterR210RGB48LETest)
+		TEST_METHOD(CR210toRGB48VideoFrameFormatterGoldenTest)
 		{
-			CFFMpegDecoderVideoFrameFormatter vff(
-				AV_CODEC_ID_R210,
-				AV_PIX_FMT_RGB48LE,
-				false /* hardware decoding */);
+			CR210toRGB48VideoFrameFormatter vff;
 
 			VideoStateComPtr vs = new VideoState();
 			vs->valid = true;
 			vs->displayMode = std::make_shared<DisplayMode>(128, 100, false /* interlaced */, 24000, 1000);
 			vs->videoFrameEncoding = VideoFrameEncoding::R210;
 
-			vff.OnVideoState(vs);
 			vff.OnVideoState(vs);
 
 			Assert::AreEqual(76800L, vff.GetOutFrameSize());
@@ -97,6 +135,161 @@ namespace Tests
 			Assert::AreEqual(static_cast<BYTE>(0x00), output[3]);
 			Assert::AreEqual(static_cast<BYTE>(0xC0), output[4]);
 			Assert::AreEqual(static_cast<BYTE>(0x00), output[5]);
+
+			// Maximum channel values must map to the full 16-bit endpoint, not 0xFFC0.
+			input[0] = 0x3F;
+			input[1] = 0xFF;
+			input[2] = 0xFF;
+			input[3] = 0xFF;
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			for (size_t i = 0; i < 6; ++i)
+				Assert::AreEqual(static_cast<BYTE>(0xFF), output[i]);
+		}
+
+		TEST_METHOD(DisplayRuleExpressionTest)
+		{
+			const DisplayRuleExpression::ValueLookup values =
+				[](const std::string& name, std::string& value)
+				{
+					if (name == "eotf") { value = "PQ"; return true; }
+					if (name == "source_rate") { value = "23"; return true; }
+					if (name == "hdr_metadata") { value = "true"; return true; }
+					return false;
+				};
+
+			std::string error;
+			int specificity = 0;
+			Assert::IsTrue(DisplayRuleExpression::Matches(
+				"($eotf == PQ || $eotf == HLG) && $source_rate >= 23 && $source_rate < 31",
+				values, specificity, error));
+			Assert::AreEqual(3, specificity);
+			Assert::IsTrue(DisplayRuleExpression::Matches(
+				"$source_rate==23-24 && !$hdr_metadata==false", values, specificity, error));
+			Assert::IsFalse(DisplayRuleExpression::Validate("$eotf > PQ", error));
+			Assert::IsTrue(error.find("supports only = and !=") != std::string::npos);
+			Assert::IsFalse(DisplayRuleExpression::Validate("$unknown == value", error));
+			Assert::IsTrue(error.find("unknown variable") != std::string::npos);
+		}
+
+		TEST_METHOD(CR210toRGB48VideoFrameFormatter4KSmokeTest)
+		{
+			CR210toRGB48VideoFrameFormatter vff;
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(3840, 2160, false, 60000, 1001);
+			vs->videoFrameEncoding = VideoFrameEncoding::R210;
+			vff.OnVideoState(vs);
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0xFF);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			for (int i = 0; i < 5; ++i)
+				Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			for (int i = 0; i < 30; ++i)
+				Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+
+			Assert::IsTrue(std::all_of(output.begin(), output.end(),
+				[](BYTE value) { return value == 0; }));
+			double currentUs = 0.0;
+			double averageUs = 0.0;
+			double maximumUs = 0.0;
+			vff.GetConversionPerformance(currentUs, averageUs, maximumUs);
+			wchar_t message[128];
+			swprintf_s(message, L"Native R210 4K conversion current/avg/max: %.0f / %.0f / %.0f us",
+				currentUs, averageUs, maximumUs);
+			Logger::WriteMessage(message);
+		}
+
+		TEST_METHOD(CDeckLinkRGBToP010VideoFrameFormatterGoldenTest)
+		{
+			const VideoFrameEncoding encodings[] = {
+				VideoFrameEncoding::R10b,
+				VideoFrameEncoding::R10l,
+				VideoFrameEncoding::R12L
+			};
+
+			for (const auto encoding : encodings)
+			{
+				CDeckLinkRGBToP010VideoFrameFormatter vff;
+				VideoStateComPtr vs = new VideoState();
+				vs->valid = true;
+				vs->displayMode = std::make_shared<DisplayMode>(104, 100, false, 60000, 1001);
+				vs->videoFrameEncoding = encoding;
+				vs->colorspace = ColorSpace::REC_709;
+				vff.OnVideoState(vs);
+				Assert::AreEqual(31200L, vff.GetOutFrameSize());
+
+				std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+				for (uint32_t line = 0; line < 100; ++line)
+				{
+					BYTE* row = input.data() + static_cast<size_t>(line) * vs->BytesPerRow();
+					for (uint32_t x = 0; x < 104; x += 2)
+					{
+						if (encoding == VideoFrameEncoding::R12L)
+							WriteR12LPixelPair(row, 4095, 0, 0, 4095, 0, 0);
+						else
+						{
+							WriteR10Pixel(row, encoding, 1023, 0, 0);
+							WriteR10Pixel(row + 4, encoding, 1023, 0, 0);
+						}
+						row += encoding == VideoFrameEncoding::R12L ? 9 : 8;
+					}
+				}
+
+				std::vector<BYTE> output(vff.GetOutFrameSize(), 0);
+				VideoFrame frame(input.data(), 1, 0, nullptr);
+				Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+				const uint16_t* words = reinterpret_cast<const uint16_t*>(output.data());
+				for (size_t i = 0; i < 104ULL * 100; ++i)
+					Assert::AreEqual(217U << 6, static_cast<unsigned int>(words[i]));
+				for (size_t i = 104ULL * 100; i < 104ULL * 150; i += 2)
+				{
+					Assert::AreEqual(395U << 6, static_cast<unsigned int>(words[i]));
+					Assert::AreEqual(1023U << 6, static_cast<unsigned int>(words[i + 1]));
+				}
+			}
+		}
+
+		TEST_METHOD(CDeckLinkRGBToP010VideoFrameFormatter4KSmokeTest)
+		{
+			const VideoFrameEncoding encodings[] = {
+				VideoFrameEncoding::R10b,
+				VideoFrameEncoding::R10l,
+				VideoFrameEncoding::R12L
+			};
+			for (const auto encoding : encodings)
+			{
+				CDeckLinkRGBToP010VideoFrameFormatter vff;
+				VideoStateComPtr vs = new VideoState();
+				vs->valid = true;
+				vs->displayMode = std::make_shared<DisplayMode>(3840, 2160, false, 60000, 1001);
+				vs->videoFrameEncoding = encoding;
+				vs->colorspace = ColorSpace::BT_2020;
+				vff.OnVideoState(vs);
+
+				std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+				std::vector<BYTE> output(vff.GetOutFrameSize(), 0xFF);
+				VideoFrame frame(input.data(), 1, 0, nullptr);
+				for (int i = 0; i < 3; ++i)
+					Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+				for (int i = 0; i < 15; ++i)
+					Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+
+				const uint16_t* words = reinterpret_cast<const uint16_t*>(output.data());
+				Assert::AreEqual(0U, static_cast<unsigned int>(words[0]));
+				Assert::AreEqual(0U, static_cast<unsigned int>(words[3840ULL * 2160 - 1]));
+				Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[3840ULL * 2160]));
+				Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[3840ULL * 2160 + 1]));
+
+				double currentUs = 0.0;
+				double averageUs = 0.0;
+				double maximumUs = 0.0;
+				vff.GetConversionPerformance(currentUs, averageUs, maximumUs);
+				wchar_t message[160];
+				swprintf_s(message, L"Packed RGB %s 4K to P010 current/avg/max: %.0f / %.0f / %.0f us",
+					ToString(encoding), currentUs, averageUs, maximumUs);
+				Logger::WriteMessage(message);
+			}
 		}
 
 		TEST_METHOD(CR12BtoRGB48VideoFrameFormatterGoldenBlockTest)

@@ -165,7 +165,9 @@ public:
 	void OnCommandRendererRestart();
 	void OnCommandScreenProfileNormal();
 	void OnCommandScreenProfileScope();
+	void OnCommandDisplayRuleAuto();
 	afx_msg void OnCommandShaderRule(UINT commandId);
+	afx_msg void OnCommandDisplayRule(UINT commandId);
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
 	void OnCommandToggleStatsOverlay();
@@ -215,10 +217,6 @@ protected:
 	DWORD m_newLldvCandidateSince = 0;
 	int m_lldvChangeRestartDelaySeconds = -1;
 	bool m_lldvRestartPending = false;
-	// Do not carry the previous graph's LLDV promotion into a new graph.
-	// Re-arm only after the raw capture state leaves the LLDV candidate state.
-	bool m_lldvForceSuppressedAfterRestart = false;
-	bool m_lldvRestartForPromotion = false;
 
 	//
 	// UI elements
@@ -322,6 +320,7 @@ protected:
 	HICON m_hIcon;
 	HACCEL m_accelerator = nullptr;
 	std::map<WORD, CString> m_shaderShortcutRules;
+	std::map<WORD, CString> m_displayRuleShortcutRules;
 
 	FullscreenVideoWindow* m_fullScreenVideoWindow = nullptr;
 
@@ -422,6 +421,7 @@ protected:
 	void SetVideoConversionP010();
 	bool IsP010VideoConversionSelected() const;
 	void UpdateSceneCorrectionModeUi();
+	void UpdateRendererBackendUi();
 	void CaptureFixedDialogLayout();
 	void RestoreFixedDialogLayout();
 	void RestoreFrameOffsetEditLayout();

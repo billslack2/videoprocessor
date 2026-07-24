@@ -19,6 +19,7 @@
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
 #include <microsoft_directshow/live_source_filter/CLiveSource.h>
+#include <microsoft_directshow/live_source_filter/ALiveSourceVideoOutputPin.h>
 #include <microsoft_directshow/DirectShowTimingClock.h>
 
 
@@ -93,6 +94,7 @@ public:
 	// Get frame rate measurement and PPM deviation (for timing diagnostics)
 	bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const override;
 	bool GetActivePictureAspectRatio(double& aspectRatio) const;
+	bool GetActivePictureRectangle(ActivePictureRectangle& rectangle) const;
 
 protected:
 
