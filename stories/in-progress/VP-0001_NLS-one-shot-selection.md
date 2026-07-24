@@ -2,7 +2,11 @@
 
 ## Status
 
-Draft.
+In Progress — implementation is present in the uncommitted working tree at
+`C:\Users\bslac\vp\videoprocessor - VS2026` on
+`v1.1.012-beta-ffmpeg-4.4.8`. Duplicate manual NLS selections are coalesced.
+Pending: clean build, focused shortcut/restart/queue verification, an
+implementation commit, and movement to Review.
 
 ## Scope and repository context
 

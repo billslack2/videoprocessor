@@ -2,7 +2,12 @@
 
 ## Status
 
-Draft.
+In Progress — implementation is present in the uncommitted working tree at
+`C:\Users\bslac\vp\videoprocessor - VS2026` on
+`v1.1.012-beta-ffmpeg-4.4.8`. Stable active-rectangle geometry is threaded to
+the NLS shader for generic horizontal/vertical nonlinear stretch.
+Pending: clean build, 4:3/16:9 and Scope verification, an implementation
+commit, and movement to Review.
 
 ## Scope and repository context
 

@@ -2,7 +2,12 @@
 
 ## Status
 
-Draft.
+In Progress — implementation is present in the uncommitted working tree at
+`C:\Users\bslac\vp\videoprocessor - VS2026` on
+`v1.1.012-beta-ffmpeg-4.4.8`. Requested and temporary effective shader rules
+are separated so an automatic fallback does not overwrite the manual request.
+Pending: clean build, transition/hysteresis verification, an implementation
+commit, and movement to Review.
 
 ## Scope and repository context
 
