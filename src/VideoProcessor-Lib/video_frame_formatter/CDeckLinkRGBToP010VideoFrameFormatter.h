@@ -12,20 +12,15 @@
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 
 
-/**
- * Converts Blackmagic R12B (SMPTE 268M packed 12-bit RGB) to packed RGB48LE.
- *
- * R12B stores eight pixels in each 36-byte block.  This native formatter replaces the small
- * decoder library, keeping this hot conversion path self-contained.
- */
-class CR12BtoRGB48VideoFrameFormatter : public IVideoFrameFormatter
+/** Converts DeckLink R10b, R10l, or R12L packed RGB to 10-bit P010. */
+class CDeckLinkRGBToP010VideoFrameFormatter : public IVideoFrameFormatter
 {
 public:
-	CR12BtoRGB48VideoFrameFormatter();
-	~CR12BtoRGB48VideoFrameFormatter() override;
+	CDeckLinkRGBToP010VideoFrameFormatter();
+	~CDeckLinkRGBToP010VideoFrameFormatter() override;
 
-	CR12BtoRGB48VideoFrameFormatter(const CR12BtoRGB48VideoFrameFormatter&) = delete;
-	CR12BtoRGB48VideoFrameFormatter& operator=(const CR12BtoRGB48VideoFrameFormatter&) = delete;
+	CDeckLinkRGBToP010VideoFrameFormatter(const CDeckLinkRGBToP010VideoFrameFormatter&) = delete;
+	CDeckLinkRGBToP010VideoFrameFormatter& operator=(const CDeckLinkRGBToP010VideoFrameFormatter&) = delete;
 
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
@@ -33,27 +28,41 @@ public:
 	void GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override;
 
 private:
-	static constexpr size_t PERFORMANCE_WINDOW_SIZE = 600;
+	struct RGB10
+	{
+		uint16_t r;
+		uint16_t g;
+		uint16_t b;
+	};
 
+	static constexpr size_t PERFORMANCE_WINDOW_SIZE = 600;
+	// Five reusable workers plus the delivery thread keep 4K60 conversion below one
+	// frame period without creating or destroying threads in the hot path.
+	static constexpr uint32_t MAX_WORKERS = 5;
+
+	VideoFrameEncoding m_encoding = VideoFrameEncoding::UNKNOWN;
 	uint32_t m_width = 0;
 	uint32_t m_height = 0;
 	uint32_t m_inputStride = 0;
 	LONG m_outFrameSize = 0;
+	bool m_useBT2020 = false;
 	double m_conversionTimes[PERFORMANCE_WINDOW_SIZE] = {};
 	size_t m_conversionTimeIndex = 0;
 	size_t m_conversionTimeCount = 0;
 	double m_lastConversionTimeUs = 0.0;
-	static constexpr uint32_t MAX_WORKERS = 2;
+
 	PTP_WORK m_conversionWork[MAX_WORKERS] = {};
 	uint32_t m_workerCount = 0;
 	const uint8_t* m_workerSourceFrame = nullptr;
-	uint16_t* m_workerDestinationFrame = nullptr;
-	uint32_t m_workerFirstLine[MAX_WORKERS] = {};
-	uint32_t m_workerLineCount[MAX_WORKERS] = {};
+	uint16_t* m_workerDestinationY = nullptr;
+	uint16_t* m_workerDestinationUV = nullptr;
+	uint32_t m_workerFirstPair[MAX_WORKERS] = {};
+	uint32_t m_workerPairCount[MAX_WORKERS] = {};
 
 	void AddPerformanceSample(double timeUs);
-	void ConvertRows(const uint8_t* sourceFrame, uint16_t* destinationFrame,
-		uint32_t firstLine, uint32_t lineCount) const;
+	void ConvertRowPairs(const uint8_t* sourceFrame, uint16_t* destinationY,
+		uint16_t* destinationUV, uint32_t firstPair, uint32_t pairCount) const;
+	void ReadPixelPair(const uint8_t* source, RGB10& first, RGB10& second) const noexcept;
 	static void CALLBACK ConversionWorkCallback(
 		PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_WORK work);
 };

@@ -10,7 +10,7 @@
 
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
-#include <video_frame_formatter/CFFMpegDecoderVideoFrameFormatter.h>
+#include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowTranslations.h>
 
 
@@ -66,14 +66,22 @@ void DirectShowGenericVideoRenderer::MediaTypeGenerate()
 	GUID mediaSubType;
 	int bitCount;
 
-	// v210 (YUV422) to p010 (YUV420)
-	// This is lossy, only use to revert decklink upscaling
-	if (m_videoState->videoFrameEncoding == VideoFrameEncoding::V210 &&
-		m_videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010)
+	const bool packedRgbNeedsP010 =
+		m_videoState->videoFrameEncoding == VideoFrameEncoding::R10b ||
+		m_videoState->videoFrameEncoding == VideoFrameEncoding::R10l ||
+		m_videoState->videoFrameEncoding == VideoFrameEncoding::R12L;
+
+	// These packed DeckLink RGB formats have no broadly supported DirectShow subtype,
+	// so convert them automatically. V210 conversion remains user-selectable.
+	if ((m_videoState->videoFrameEncoding == VideoFrameEncoding::V210 &&
+		m_videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010) ||
+		packedRgbNeedsP010)
 	{
 		mediaSubType = MEDIASUBTYPE_P010;
 		bitCount = 10;
-		m_videoFramFormatter = new CV210toP010VideoFrameFormatter();
+		m_videoFramFormatter = packedRgbNeedsP010 ?
+			static_cast<IVideoFrameFormatter*>(new CDeckLinkRGBToP010VideoFrameFormatter()) :
+			static_cast<IVideoFrameFormatter*>(new CV210toP010VideoFrameFormatter());
 	}
 
 	// Default conversions

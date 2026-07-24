@@ -72,7 +72,10 @@
     <ClInclude Include="video_frame_formatter\IVideoFrameFormatter.h">
       <Filter>Header Files\video_frame_formatter</Filter>
     </ClInclude>
-    <ClInclude Include="video_frame_formatter\CFFMpegDecoderVideoFrameFormatter.h">
+    <ClInclude Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.h">
+	  <Filter>Header Files</Filter>
+	</ClInclude>
+    <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.h">
       <Filter>Header Files\video_frame_formatter</Filter>
     </ClInclude>
     <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.h">
@@ -254,7 +257,10 @@
     <ClCompile Include="video_frame_formatter\CV210toP210VideoFrameFormatter.cpp">
       <Filter>Source Files\video_frame_formatter</Filter>
     </ClCompile>
-    <ClCompile Include="video_frame_formatter\CFFMpegDecoderVideoFrameFormatter.cpp">
+    <ClCompile Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.cpp">
+	  <Filter>Source Files</Filter>
+	</ClCompile>
+    <ClCompile Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.cpp">
       <Filter>Source Files\video_frame_formatter</Filter>
     </ClCompile>
     <ClCompile Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.cpp">

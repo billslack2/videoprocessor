@@ -234,6 +234,16 @@ bool LibplaceboPluginVideoRenderer::SetScreenProfile(
 }
 
 
+bool LibplaceboPluginVideoRenderer::SelectDisplayRule(
+	const CString& ruleName,
+	CString& activeRule,
+	bool& rendererRestartRequired)
+{
+	return m_renderer->SelectDisplayRule(ruleName, activeRule,
+		rendererRestartRequired);
+}
+
+
 size_t LibplaceboPluginVideoRenderer::GetFrameQueueSize()
 {
 	return m_renderer->GetFrameQueueSize();
@@ -262,4 +272,12 @@ bool LibplaceboPluginVideoRenderer::GetConversionPerformance(
 	double& currentUs, double& avg10s, double& max10s) const
 {
 	return m_renderer->GetConversionPerformance(currentUs, avg10s, max10s);
+}
+
+
+bool LibplaceboPluginVideoRenderer::GetFrameRateAndPPM(
+	double& measuredFps,
+	int& ppmDeviation) const
+{
+	return m_renderer->GetFrameRateAndPPM(measuredFps, ppmDeviation);
 }

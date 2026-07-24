@@ -34,12 +34,15 @@ public:
 	void SetFrameQueueMaxSize(size_t size) override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile) override;
+	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
+		bool& rendererRestartRequired) override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;
 	uint64_t DroppedFrameCount() const override;
 	bool GetConversionPerformance(
 		double& currentUs, double& avg10s, double& max10s) const override;
+	bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const override;
 
 private:
 	IVideoRenderer* m_renderer = nullptr;

@@ -13,7 +13,7 @@
 
 /**
  * We define this as how the frame data is encoded.
- * (This is a union between pixelformat and decoder in ffmpeg terms.)
+ * (This covers both raw pixel formats and encoded-frame formats.)
  */
 enum class VideoFrameEncoding
 {

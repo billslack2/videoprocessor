@@ -132,8 +132,8 @@ MaxCoreCount=2</pre>
     <tr><td><code>shortcut</code></td><td>Key or modifier combination</td><td>Selects this rule immediately while video is running. Letter case is meaningful: <code>n</code> means N without Shift and <code>N</code> means Shift+N. <code>Ctrl+</code>, <code>Alt+</code>, <code>Shift+</code>, function keys, Escape, and Enter use the same syntax as <code>[shortcuts]</code>.</td></tr>
     <tr><td><code>output_aspect_ratio</code></td><td><code>native</code>, decimal, or <code>X:Y</code></td><td>Overrides the DirectShow picture aspect ratio for this manual rule while leaving scaling to the renderer. A change performs a controlled renderer restart so the media type can be renegotiated. Use <code>native</code> in the corresponding off rule.</td></tr>
     <tr><td><code>aspect_tolerance_percent</code></td><td>0-50</td><td>Optional active-picture guard for a manual rule. The rule stays armed but is bypassed until the stable P010 active picture differs from <code>output_aspect_ratio</code> by more than this percentage.</td></tr>
-    <tr><td><code>aspect_direction</code></td><td><code>ANY</code> or <code>NARROWER_ONLY</code></td><td>With <code>NARROWER_ONLY</code>, engage only when the content is narrower than the target. This prevents NLS from stretching scope or ultra-wide content in the wrong direction.</td></tr>
-    <tr><td><code>active_aspect_min</code></td><td>1.0-4.0</td><td>Optional lower active-picture limit. Use 1.70 for a scope-screen NLS rule to reject 4:3 content.</td></tr>
+    <tr><td><code>aspect_direction</code></td><td><code>ANY</code> or <code>NARROWER_ONLY</code></td><td>With <code>ANY</code>, NLS stretches narrower content horizontally and wider content vertically while preserving the full active image. <code>NARROWER_ONLY</code> retains the older horizontal-only behavior.</td></tr>
+    <tr><td><code>active_aspect_min</code></td><td>1.0-4.0</td><td>Optional lower active-picture limit. Generic NLS should allow stable 4:3; the active-rectangle path removes encoded bars before sampling and rejects ratios above its 1.5x safety limit.</td></tr>
     <tr><td><code>inactive_rule</code></td><td>rule name</td><td>Rule applied while an armed conditional rule is waiting. For NLS this should select the no-shader, native-aspect rule.</td></tr>
     <tr><td><code>param_name</code></td><td>Finite numeric value; <code>param_quality</code> also accepts <code>LOW</code>, <code>MEDIUM</code>, <code>HIGH</code>, or <code>VERY HIGH</code>; <code>param_geometry</code> accepts <code>CLASSIC</code> or <code>PROTECTED</code></td><td>Replaces every <code>{{name}}</code> token in every shader in the rule before compilation. Named values map to compile-time numeric constants.</td></tr>
     <tr><td><code>pre_resize_N</code></td><td>Shader filename</td><td>Adds a source-frame shader before renderer image scaling. Numbered entries execute in ascending order.</td></tr>
@@ -169,7 +169,7 @@ manual=true
 shortcut=N
 output_aspect_ratio=2.35
 aspect_tolerance_percent=5
-aspect_direction=narrower_only
+aspect_direction=any
 active_aspect_min=1.70
 inactive_rule=nls_off
 pre_resize_1=Shaders\NLS.hlsl

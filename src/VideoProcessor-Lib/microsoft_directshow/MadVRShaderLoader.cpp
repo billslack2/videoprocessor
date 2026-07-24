@@ -18,6 +18,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -55,6 +56,10 @@ struct ShaderRule
 	std::map<std::string, std::string> parameters;
 	unsigned long outputAspectRatioX = 0;
 	unsigned long outputAspectRatioY = 0;
+	// This is deliberately separate from outputAspectRatio.  madVR's screen
+	// profile owns presentation; NLS only needs a geometric target.
+	unsigned long nlsTargetAspectRatioX = 0;
+	unsigned long nlsTargetAspectRatioY = 0;
 	double aspectTolerancePercent = -1.0;
 	double activeAspectMinimum = 0.0;
 	bool narrowerOnly = false;
@@ -84,7 +89,22 @@ bool ParseBoundedDouble(const std::string& raw, double minimum,
 }
 
 std::mutex g_runtimeRuleMutex;
-std::string g_runtimeRuleOverride;
+std::string g_runtimeRequestedRule;
+std::string g_runtimeEffectiveRule;
+double g_runtimeActivePictureAspectRatio = 0.0;
+MadVRActivePictureGeometry g_runtimeActivePictureGeometry;
+double g_runtimeNlsTargetAspect = 0.0;
+
+double GetNlsTargetAspect(const ShaderRule& rule)
+{
+	std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
+	if (g_runtimeNlsTargetAspect > 0.0)
+		return g_runtimeNlsTargetAspect;
+	if (rule.nlsTargetAspectRatioX > 0 && rule.nlsTargetAspectRatioY > 0)
+		return static_cast<double>(rule.nlsTargetAspectRatioX) /
+			rule.nlsTargetAspectRatioY;
+	return 0.0;
+}
 
 
 bool IsSupportedProfile(const std::string& profile)
@@ -238,6 +258,12 @@ void LoadShaderParameters(const ConfigFile& config, const std::string& section,
 	// NLS geometry was introduced. Parameters unused by other shaders are inert.
 	rule.parameters["geometry"] = "0";
 	rule.parameters["center_protection"] = "0.35";
+	rule.parameters["active_height_fraction"] = "1.0";
+	rule.parameters["active_left"] = "0.0";
+	rule.parameters["active_top"] = "0.0";
+	rule.parameters["active_right"] = "1.0";
+	rule.parameters["active_bottom"] = "1.0";
+	rule.parameters["warp_axis"] = "0";
 
 	const auto* settings = config.GetSectionValues(section);
 	if (!settings)
@@ -495,6 +521,15 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 			rule.name.c_str(), rawValue.c_str());
 		rule.valid = false;
 	}
+	if (config.TryGetString(section, "nls_target_aspect_ratio", rawValue) &&
+		(!ParseOutputAspectRatio(rawValue, rule.nlsTargetAspectRatioX,
+			rule.nlsTargetAspectRatioY) || rule.nlsTargetAspectRatioX == 0 ||
+			rule.nlsTargetAspectRatioY == 0))
+	{
+		DebugLog::Log("Shaders: rule \"%s\" has invalid nls_target_aspect_ratio \"%s\"; use a decimal or X:Y",
+			rule.name.c_str(), rawValue.c_str());
+		rule.valid = false;
+	}
 
 	if (config.TryGetString(section, "aspect_tolerance_percent", rawValue) &&
 		!ParseBoundedDouble(rawValue, 0.0, 50.0, rule.aspectTolerancePercent))
@@ -529,7 +564,7 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 
 	LoadShaderEntries(config, section,
 		{ "label", "signal", "frame_rates", "none", "manual", "shortcut",
-			"output_aspect_ratio", "aspect_tolerance_percent",
+			"output_aspect_ratio", "nls_target_aspect_ratio", "aspect_tolerance_percent",
 			"active_aspect_min", "aspect_direction", "inactive_rule" },
 		rule.preScale, rule.postScale);
 	return rule;
@@ -778,7 +813,7 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 	std::string runtimeRule;
 	{
 		std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
-		runtimeRule = g_runtimeRuleOverride;
+		runtimeRule = g_runtimeEffectiveRule;
 	}
 	if (!config.TryGetString(CONFIG_SECTION, "rules", ruleList))
 	{
@@ -822,6 +857,52 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 		selection.ruleLabel = rule.label;
 		selection.outputAspectRatioX = rule.outputAspectRatioX;
 		selection.outputAspectRatioY = rule.outputAspectRatioY;
+		// NLS rules advertise a target output aspect and contain a stretch-ratio
+		// parameter. Derive their active-picture crop, stretch magnitude, and axis
+		// from the stable detector result instead of assuming 16:9 content.
+		// Narrower content stretches horizontally; wider content stretches
+		// vertically. Both paths preserve the complete active image.
+		double activeAspect = 0.0;
+		MadVRActivePictureGeometry activeGeometry;
+		{
+			std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
+			activeAspect = g_runtimeActivePictureAspectRatio;
+			activeGeometry = g_runtimeActivePictureGeometry;
+		}
+		const double targetAspect = GetNlsTargetAspect(rule);
+		if (activeGeometry.stable && activeAspect > 0.0 && videoState.displayMode &&
+			targetAspect > 0.0 &&
+			rule.parameters.find("stretch_ratio") != rule.parameters.end())
+		{
+			const double rasterAspect = static_cast<double>(videoState.displayMode->FrameWidth()) /
+				std::max<long>(1, videoState.displayMode->FrameHeight());
+			const double heightFraction = std::clamp(rasterAspect / activeAspect, 0.25, 1.0);
+			const bool verticalWarp = activeAspect > targetAspect;
+			const double stretchRatio = std::clamp(verticalWarp ?
+				activeAspect / targetAspect : targetAspect / activeAspect, 1.0, 1.5);
+			std::ostringstream heightText;
+			std::ostringstream stretchText;
+			heightText << std::fixed << std::setprecision(8) << heightFraction;
+			stretchText << std::fixed << std::setprecision(8) << stretchRatio;
+			rule.parameters["active_height_fraction"] = heightText.str();
+			auto coordinateText = [](double value)
+			{
+				std::ostringstream text;
+				text << std::fixed << std::setprecision(8) << value;
+				return text.str();
+			};
+			rule.parameters["active_left"] = coordinateText(activeGeometry.left);
+			rule.parameters["active_top"] = coordinateText(activeGeometry.top);
+			rule.parameters["active_right"] = coordinateText(activeGeometry.right);
+			rule.parameters["active_bottom"] = coordinateText(activeGeometry.bottom);
+			rule.parameters["stretch_ratio"] = stretchText.str();
+			rule.parameters["warp_axis"] = verticalWarp ? "1" : "0";
+			DebugLog::Log(
+				"Shaders: NLS active rect %.5f,%.5f-%.5f,%.5f aspect %.4f -> target %.4f (%s stretch %.5f)",
+				activeGeometry.left, activeGeometry.top, activeGeometry.right, activeGeometry.bottom,
+				activeAspect, targetAspect,
+				verticalWarp ? "vertical" : "horizontal", stretchRatio);
+		}
 		DebugLog::Log("Shaders: selected rule \"%s\" (%s) for signal=%s refresh=%.6f Hz nominal=%d",
 			rule.name.c_str(), rule.label.c_str(), SignalName(videoState.eotf),
 			refreshRate, nominalRate);
@@ -857,15 +938,31 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 
 
 MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaderRule(IBaseFilter* renderer,
-	const VideoState& videoState, const std::string& ruleName)
+	const VideoState& videoState, const std::string& ruleName,
+	bool updateRuntimeRequest)
 {
+	if (updateRuntimeRequest)
 	{
 		std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
-		g_runtimeRuleOverride = ConfigFile::NormalizeName(ruleName);
+		g_runtimeRequestedRule = ConfigFile::NormalizeName(ruleName);
+		g_runtimeEffectiveRule = g_runtimeRequestedRule;
+		DebugLog::Log("Shaders: manual runtime request changed to \"%s\"",
+			ruleName.empty() ? "automatic" : ruleName.c_str());
 	}
-	DebugLog::Log("Shaders: runtime selection changed to \"%s\"",
-		ruleName.empty() ? "automatic" : ruleName.c_str());
+	else
+	{
+		std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
+		g_runtimeEffectiveRule = ConfigFile::NormalizeName(ruleName);
+		DebugLog::Log("Shaders: applying temporary effective rule \"%s\" without changing manual request",
+			ruleName.c_str());
+	}
 	return ApplyConfiguredShaders(renderer, videoState);
+}
+
+void MadVRShaderLoader::SetRuntimeShaderRequest(const std::string& ruleName)
+{
+	std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
+	g_runtimeRequestedRule = ConfigFile::NormalizeName(ruleName);
 }
 
 
@@ -877,7 +974,7 @@ bool MadVRShaderLoader::GetRuntimeOutputAspectRatio(unsigned long& aspectX,
 	std::string runtimeRule;
 	{
 		std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
-		runtimeRule = g_runtimeRuleOverride;
+		runtimeRule = g_runtimeEffectiveRule;
 	}
 	if (runtimeRule.empty())
 		return false;
@@ -918,9 +1015,10 @@ bool MadVRShaderLoader::ValidateActivePictureAspect(const std::string& ruleName,
 		reason = "active picture aspect is not stable yet";
 		return false;
 	}
-	if (rule.outputAspectRatioX == 0 || rule.outputAspectRatioY == 0)
+	const double target = GetNlsTargetAspect(rule);
+	if (target <= 0.0)
 	{
-		reason = "aspect guard requires output_aspect_ratio";
+		reason = "aspect guard requires nls_target_aspect_ratio";
 		return false;
 	}
 	if (rule.activeAspectMinimum > 0.0 &&
@@ -932,8 +1030,15 @@ bool MadVRShaderLoader::ValidateActivePictureAspect(const std::string& ruleName,
 		reason = message.str();
 		return false;
 	}
-	const double target = static_cast<double>(rule.outputAspectRatioX) /
-		rule.outputAspectRatioY;
+	if (rule.parameters.find("stretch_ratio") != rule.parameters.end() &&
+		std::max(target / activeAspectRatio, activeAspectRatio / target) > 1.5)
+	{
+		std::ostringstream message;
+		message << "NLS ratio " << std::max(target / activeAspectRatio,
+			activeAspectRatio / target) << " exceeds the safe 1.5 limit";
+		reason = message.str();
+		return false;
+	}
 	const double signedDifferencePercent =
 		(target - activeAspectRatio) * 100.0 / target;
 	const bool allowed = rule.narrowerOnly ?
@@ -944,10 +1049,41 @@ bool MadVRShaderLoader::ValidateActivePictureAspect(const std::string& ruleName,
 		std::ostringstream message;
 		message << "active picture " << activeAspectRatio
 			<< " is already within " << rule.aspectTolerancePercent
-			<< "% of, or wider than, target " << target;
+			<< "% of target " << target;
+		if (rule.narrowerOnly)
+			message << ", or is wider than that target";
 		reason = message.str();
 	}
 	return allowed;
+}
+
+
+void MadVRShaderLoader::SetRuntimeActivePictureAspectRatio(double activeAspectRatio)
+{
+	std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
+	g_runtimeActivePictureAspectRatio =
+		std::isfinite(activeAspectRatio) && activeAspectRatio > 0.0
+		? activeAspectRatio : 0.0;
+}
+
+
+void MadVRShaderLoader::SetRuntimeActivePictureGeometry(
+	const MadVRActivePictureGeometry& geometry)
+{
+	std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
+	const bool valid = geometry.stable && std::isfinite(geometry.aspectRatio) &&
+		geometry.aspectRatio > 0.0 && geometry.left >= 0.0 && geometry.top >= 0.0 &&
+		geometry.right <= 1.0 && geometry.bottom <= 1.0 &&
+		geometry.right > geometry.left && geometry.bottom > geometry.top;
+	g_runtimeActivePictureGeometry = valid ? geometry : MadVRActivePictureGeometry{};
+	g_runtimeActivePictureAspectRatio = valid ? geometry.aspectRatio : 0.0;
+}
+
+void MadVRShaderLoader::SetRuntimeNlsTargetAspect(double targetAspect)
+{
+	std::lock_guard<std::mutex> lock(g_runtimeRuleMutex);
+	g_runtimeNlsTargetAspect = std::isfinite(targetAspect) &&
+		targetAspect >= 1.0 && targetAspect <= 4.0 ? targetAspect : 0.0;
 }
 
 

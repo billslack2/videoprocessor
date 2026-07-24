@@ -23,7 +23,7 @@ bool RendererId::operator< (const RendererId& other) const {
 RendererId RendererId::Libplacebo()
 {
 	RendererId id;
-	id.name = TEXT("libplacebo (Experimental)");
+	id.name = TEXT("VideoProcessor Renderer (Alpha)");
 	id.backend = RendererBackend::LIBPLACEBO;
 	return id;
 }

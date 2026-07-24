@@ -126,7 +126,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>.;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\ffmpeg\include;..\..\3rdparty\mpc_video_renderer;..\..\3rdparty\onnxruntime_directml\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer;..\..\3rdparty\onnxruntime_directml\include</AdditionalIncludeDirectories>
       <LanguageStandard>Default</LanguageStandard>
       <LanguageStandard_C>Default</LanguageStandard_C>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
@@ -147,7 +147,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>.;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\ffmpeg\include;..\..\3rdparty\mpc_video_renderer;..\..\3rdparty\onnxruntime_directml\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer;..\..\3rdparty\onnxruntime_directml\include</AdditionalIncludeDirectories>
       <LanguageStandard>Default</LanguageStandard>
       <LanguageStandard_C>Default</LanguageStandard_C>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
@@ -218,7 +218,8 @@
     <ClInclude Include="VideoFrameEncoding.h" />
     <ClInclude Include="VideoState.h" />
     <ClInclude Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.h" />
-    <ClInclude Include="video_frame_formatter\CFFMpegDecoderVideoFrameFormatter.h" />
+    <ClInclude Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.h" />
+    <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CNoopVideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.h" />
@@ -293,7 +294,8 @@
     <ClCompile Include="VideoFrameEncoding.cpp" />
     <ClCompile Include="VideoState.cpp" />
     <ClCompile Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.cpp" />
-    <ClCompile Include="video_frame_formatter\CFFMpegDecoderVideoFrameFormatter.cpp" />
+    <ClCompile Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.cpp" />
+    <ClCompile Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CNoopVideoFrameFormatter.cpp" />
     <ClCompile Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.cpp" />
@@ -304,10 +306,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\3rdparty\blackmagic_decklink\BlackMagicDeckLink.vcxproj">
       <Project>{50140967-b11e-456f-8569-dab06d2022d7}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\..\3rdparty\ffmpeg\ffmpeg.vcxproj">
-      <Project>{d17c11da-6e0a-4299-a9ab-6c55745bac7c}</Project>
-      <LinkLibraryDependencies>false</LinkLibraryDependencies>
     </ProjectReference>
     <ProjectReference Include="..\..\3rdparty\lavfilters\LAVFilters.vcxproj">
       <Project>{2d4880b2-b4be-4bb4-a03e-3f4ecbb8bbc8}</Project>

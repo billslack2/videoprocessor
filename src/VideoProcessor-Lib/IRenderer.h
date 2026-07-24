@@ -131,6 +131,16 @@ public:
 		activeProfile.Empty();
 		return false;
 	}
+	// Select a named renderer display profile, or "auto" to return to the
+	// configured input-driven display rules.  A selected profile is a manual
+	// override and may require the renderer to rebuild safely.
+	virtual bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
+		bool& rendererRestartRequired)
+	{
+		activeRule.Empty();
+		rendererRestartRequired = false;
+		return false;
+	}
 	// Select a renderer-managed external shader rule at runtime. Renderers that
 	// do not expose a compatible shader interface return false.
 	virtual bool SelectShaderRule(const CString& ruleName, CString& activeRule,

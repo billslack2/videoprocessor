@@ -17,8 +17,9 @@
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
-#include <video_frame_formatter/CFFMpegDecoderVideoFrameFormatter.h>
+#include <video_frame_formatter/CR210toRGB48VideoFrameFormatter.h>
 #include <video_frame_formatter/CR12BtoRGB48VideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowTranslations.h>
 
@@ -160,7 +161,10 @@ void DirectShowMPCVideoRenderer::MediaTypeGenerate()
 	const bool needsP010Conversion = 
 		(m_videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010) ||
 		(m_videoState->videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT) ||
-		(m_videoState->videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT);
+		(m_videoState->videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT) ||
+		(m_videoState->videoFrameEncoding == VideoFrameEncoding::R10b) ||
+		(m_videoState->videoFrameEncoding == VideoFrameEncoding::R10l) ||
+		(m_videoState->videoFrameEncoding == VideoFrameEncoding::R12L);
 
 	if (needsP010Conversion)
 	{
@@ -184,9 +188,15 @@ void DirectShowMPCVideoRenderer::MediaTypeGenerate()
 			// ARGB/BGRA (8-bit 4:4:4 RGB) ? P010 (10-bit 4:2:0 YUV)
 			m_videoFramFormatter = new CARGBtoP010VideoFrameFormatter();
 		}
+		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::R10b ||
+			m_videoState->videoFrameEncoding == VideoFrameEncoding::R10l ||
+			m_videoState->videoFrameEncoding == VideoFrameEncoding::R12L)
+		{
+			m_videoFramFormatter = new CDeckLinkRGBToP010VideoFrameFormatter();
+		}
 		else
 		{
-			throw std::runtime_error("P010 conversion only supports V210, UYVY, ARGB, or BGRA input");
+			throw std::runtime_error("P010 conversion does not support this input format");
 		}
 	}
 
@@ -210,9 +220,7 @@ void DirectShowMPCVideoRenderer::MediaTypeGenerate()
 			bitCount = 48;
 			heightMultiplier = -1;
 
-			m_videoFramFormatter = new CFFMpegDecoderVideoFrameFormatter(
-				AV_CODEC_ID_R210,
-				AV_PIX_FMT_RGB48LE);
+			m_videoFramFormatter = new CR210toRGB48VideoFrameFormatter();
 			break;
 
 			// RGB 12-bit to RGB48

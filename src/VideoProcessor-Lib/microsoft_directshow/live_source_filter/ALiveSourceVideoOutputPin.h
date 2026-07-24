@@ -9,6 +9,7 @@
 #pragma once
 
 
+#include <cstdint>
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowRendererStartStopTimeMethod.h>
 #include <microsoft_directshow/DirectShowDefines.h>
@@ -21,6 +22,21 @@
 
 // This is not an error by itself
 static const HRESULT S_FRAME_NOT_RENDERED = 1;
+
+// A coherent, temporally stable active-image result. Coordinates are expressed
+// in the delivered raster and right/bottom are exclusive.
+struct ActivePictureRectangle
+{
+	int left = 0;
+	int top = 0;
+	int right = 0;
+	int bottom = 0;
+	int rasterWidth = 0;
+	int rasterHeight = 0;
+	double aspectRatio = 0.0;
+	uint64_t generation = 0;
+	bool stable = false;
+};
 
 /**
  * Abstract implementation of the video output pin
@@ -105,6 +121,11 @@ public:
 	virtual bool GetActivePictureAspectRatio(double& aspectRatio) const
 	{
 		aspectRatio = 0.0;
+		return false;
+	}
+	virtual bool GetActivePictureRectangle(ActivePictureRectangle& rectangle) const
+	{
+		rectangle = {};
 		return false;
 	}
 

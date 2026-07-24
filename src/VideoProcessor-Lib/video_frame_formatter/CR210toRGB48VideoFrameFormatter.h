@@ -12,20 +12,15 @@
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 
 
-/**
- * Converts Blackmagic R12B (SMPTE 268M packed 12-bit RGB) to packed RGB48LE.
- *
- * R12B stores eight pixels in each 36-byte block.  This native formatter replaces the small
- * decoder library, keeping this hot conversion path self-contained.
- */
-class CR12BtoRGB48VideoFrameFormatter : public IVideoFrameFormatter
+/** Converts Blackmagic r210 (packed big-endian 10-bit RGB) directly to packed RGB48LE. */
+class CR210toRGB48VideoFrameFormatter : public IVideoFrameFormatter
 {
 public:
-	CR12BtoRGB48VideoFrameFormatter();
-	~CR12BtoRGB48VideoFrameFormatter() override;
+	CR210toRGB48VideoFrameFormatter();
+	~CR210toRGB48VideoFrameFormatter() override;
 
-	CR12BtoRGB48VideoFrameFormatter(const CR12BtoRGB48VideoFrameFormatter&) = delete;
-	CR12BtoRGB48VideoFrameFormatter& operator=(const CR12BtoRGB48VideoFrameFormatter&) = delete;
+	CR210toRGB48VideoFrameFormatter(const CR210toRGB48VideoFrameFormatter&) = delete;
+	CR210toRGB48VideoFrameFormatter& operator=(const CR210toRGB48VideoFrameFormatter&) = delete;
 
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
@@ -34,6 +29,7 @@ public:
 
 private:
 	static constexpr size_t PERFORMANCE_WINDOW_SIZE = 600;
+	static constexpr uint32_t MAX_WORKERS = 2;
 
 	uint32_t m_width = 0;
 	uint32_t m_height = 0;
@@ -43,7 +39,7 @@ private:
 	size_t m_conversionTimeIndex = 0;
 	size_t m_conversionTimeCount = 0;
 	double m_lastConversionTimeUs = 0.0;
-	static constexpr uint32_t MAX_WORKERS = 2;
+
 	PTP_WORK m_conversionWork[MAX_WORKERS] = {};
 	uint32_t m_workerCount = 0;
 	const uint8_t* m_workerSourceFrame = nullptr;

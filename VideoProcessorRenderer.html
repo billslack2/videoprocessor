@@ -45,8 +45,11 @@ libplacebo\
     <tr><td><code>downscaler</code></td><td><code>AUTO</code>, <code>ewa_lanczos</code>, <code>bicubic</code>, or <code>bilinear</code></td><td>Selects image downscaling. <code>AUTO</code> inherits from the quality preset.</td></tr>
     <tr><td><code>deband</code></td><td><code>AUTO</code>, <code>ON</code>, or <code>OFF</code></td><td>Controls libplacebo debanding. <code>AUTO</code> inherits from the quality preset.</td></tr>
     <tr><td><code>dithering</code></td><td><code>AUTO</code>, <code>ON</code>, or <code>OFF</code></td><td>Controls output dithering. Explicit <code>ON</code> uses libplacebo's blue-noise default.</td></tr>
+    <tr><td><code>output_range</code></td><td><code>AUTO</code>, <code>FULL</code>, or <code>LIMITED</code>; default <code>AUTO</code></td><td>Sets the renderer's RGB output encoding independently of captured-frame metadata and DirectShow overrides. <code>FULL</code> uses 0-255 at 8-bit (0-1023 at 10-bit). <code>LIMITED</code> uses 16-235 at 8-bit (64-940 at 10-bit). <code>AUTO</code> preserves the negotiated display/swapchain range.</td></tr>
+    <tr><td><code>output_gamma</code></td><td><code>AUTO</code>, <code>BT1886</code>, <code>SRGB</code>, <code>1.8</code>, <code>2.0</code>, <code>2.2</code>, <code>2.4</code>, <code>2.6</code>, or <code>2.8</code>; default <code>AUTO</code></td><td>Sets the SDR output transfer curve used by libplacebo's color-managed render target. <code>AUTO</code> preserves the negotiated display/swapchain transfer. This does not reinterpret the input EOTF.</td></tr>
     <tr><td><code>scope_screen_aspect</code></td><td>A decimal or <code>width:height</code> ratio from <code>1.5</code> through <code>4.0</code>; default <code>2.35:1</code></td><td>Defines the physical aspect ratio of a constant-image-height screen. Examples include <code>2.35:1</code>, <code>2.39:1</code>, <code>2.40:1</code>, or <code>1.7778</code>. In the Scope profile the renderer fits the image into a centered viewport with this aspect ratio; narrower content is pillarboxed inside it.</td></tr>
-    <tr><td><code>default_screen_profile</code></td><td><code>normal</code> or <code>scope</code>; default <code>normal</code></td><td>Selects the screen profile whenever the renderer starts. The renderer-specific shortcuts below select either profile immediately during playback.</td></tr>
+    <tr><td><code>scope_subtitle_fit</code></td><td><code>true</code> or <code>false</code>; default <code>false</code></td><td>In the Scope profile, detects subtitle-like text extending into the lower encoded black bar and moves the complete rendered picture upward only far enough to keep that text on the visible screen. The position is held briefly between subtitle lines and then returns to center. Detection uses frame geometry and does not require an OCR model.</td></tr>
+    <tr><td><code>default_screen_profile</code></td><td><code>normal</code> or <code>scope</code>; default <code>normal</code></td><td>Selects the startup profile when no saved selection exists. The renderer-specific shortcuts below select either profile immediately and save it in <code>VideoProcessorRenderer.state</code> beside the executable. Delete that automatically managed state file to return to this configured default.</td></tr>
   </tbody></table>
   <pre>[libplacebo]
 sdr_target_nits=203
@@ -61,14 +64,17 @@ upscaler=AUTO
 downscaler=AUTO
 deband=AUTO
 dithering=AUTO
+output_range=AUTO
+output_gamma=AUTO
 scope_screen_aspect=2.35:1
+scope_subtitle_fit=true
 default_screen_profile=normal</pre>
   <h2>[shortcuts]</h2>
   <p>These shortcuts apply only to the optional renderer and belong in <code>VideoProcessorRenderer.cfg</code>. <code>screen_profile_normal</code> selects the full 16:9 output raster; <code>screen_profile_scope</code> selects the configured scope viewport. Direct selection keeps VP aligned with projector lens-memory or screen-masking commands. Function keys <code>F1</code> through <code>F24</code>, letters, numbers, <code>Escape</code>, and <code>Enter</code> are supported with optional <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code> modifiers.</p>
   <pre>[shortcuts]
 screen_profile_normal=F2
 screen_profile_scope=F3</pre>
-  <div class="note">The initial renderer supports V210, UYVY, ARGB, and BGRA capture formats through VP's P010 conversion path. It does not emit HDR or require Windows HDR mode.</div>
+  <div class="note">The renderer supports V210, UYVY, ARGB, BGRA, R10b, R10l, and R12L capture formats through VP's P010 conversion path. It does not emit HDR or require Windows HDR mode.</div>
 
 </body>
 </html>

@@ -1,10 +1,12 @@
 /*
- * VideoProcessor nonlinear horizontal stretch (NLS)
+ * VideoProcessor nonlinear stretch (NLS)
  *
  * A continuous SuperView-inspired mapping intended for use before resize while
  * madVR supplies the final zoom/aspect geometry. Classic mode implements the
  * established quadratic mapping. Protected mode preserves a configurable
- * central band and moves more of the required distortion toward the sides.
+ * central band and moves more of the required distortion toward the edges.
+ * VideoProcessor selects the horizontal axis for content narrower than the
+ * configured screen and the vertical axis for content wider than the screen.
  *
  * $MinimumShaderProfile: ps_3_0
  */
@@ -17,11 +19,21 @@ float4 main(float2 tex : TEXCOORD0) : COLOR
     // Limits keep the coordinate mapping monotonic for all accepted settings.
 	const float curve = clamp({{curve}}, 0.5, 4.0);
 	const float stretchRatio = clamp({{stretch_ratio}}, 1.0, 1.5);
+	const bool verticalWarp = {{warp_axis}} >= 0.5;
+	// VP publishes a temporally stable complete active rectangle. Map every
+	// sample through it so encoded pillarbox and letterbox bars are never read.
+	const float activeLeft = saturate({{active_left}});
+	const float activeTop = saturate({{active_top}});
+	const float activeRight = clamp({{active_right}}, activeLeft + 0.01, 1.0);
+	const float activeBottom = clamp({{active_bottom}}, activeTop + 0.01, 1.0);
+	const float activeWidthFraction = activeRight - activeLeft;
+	const float activeHeightFraction = activeBottom - activeTop;
 	const int geometry = (int)clamp({{geometry}}, 0.0, 1.0);
 	const int quality = (int)clamp({{quality}}, 0.0, 3.0);
 
-    float centeredX = tex.x * 2.0 - 1.0;
-    float radius = abs(centeredX);
+	float centeredCoordinate =
+		(verticalWarp ? tex.y : tex.x) * 2.0 - 1.0;
+	float radius = abs(centeredCoordinate);
 
 	float mappedRadius;
 	const float effectiveRatio = lerp(1.0, stretchRatio, strength);
@@ -70,14 +82,25 @@ float4 main(float2 tex : TEXCOORD0) : COLOR
 			h01 + h11 * span * edgeSlope;
 	}
 
-	centeredX = (centeredX < 0.0 ? -mappedRadius : mappedRadius);
-	float warpedX = centeredX * 0.5 + 0.5;
+	centeredCoordinate =
+		(centeredCoordinate < 0.0 ? -mappedRadius : mappedRadius);
+	float warpedCoordinate = centeredCoordinate * 0.5 + 0.5;
 
 	// The nonlinear map changes its derivative across the image. Use that
 	// derivative as the reconstruction footprint so filtering grows only where
-	// the warp needs it instead of applying a fixed full-frame blur.
-	float footprint = max(abs(ddx(warpedX)), abs(ddx(tex.x)));
-	float2 sampleTex = float2(warpedX, tex.y);
+	// the warp needs it instead of applying a fixed full-frame blur. Vertical
+	// samples are also mapped into the detected active-picture region so encoded
+	// letterbox bars are removed without cropping any of the active image.
+	float footprint = verticalWarp ?
+		max(abs(ddy(warpedCoordinate)), abs(ddy(tex.y))) :
+		max(abs(ddx(warpedCoordinate)), abs(ddx(tex.x)));
+	float warpedX = verticalWarp ? tex.x : warpedCoordinate;
+	float warpedY = verticalWarp ? warpedCoordinate : tex.y;
+	float2 sampleTex = float2(
+		lerp(activeLeft, activeRight, warpedX),
+		lerp(activeTop, activeBottom, warpedY));
+	float2 sampleAxis = verticalWarp ?
+		float2(0.0, activeHeightFraction) : float2(activeWidthFraction, 0.0);
 	if (quality == 0)
 		return tex2D(s0, sampleTex);
 
@@ -86,10 +109,10 @@ float4 main(float2 tex : TEXCOORD0) : COLOR
 		// Four-tap symmetric filter: modest cost and the recommended balance for
 		// real-time 4K madVR use.
 		float4 color = 0.0;
-		color += tex2D(s0, float2(saturate(warpedX - footprint * 1.125), tex.y)) * 0.125;
-		color += tex2D(s0, float2(saturate(warpedX - footprint * 0.375), tex.y)) * 0.375;
-		color += tex2D(s0, float2(saturate(warpedX + footprint * 0.375), tex.y)) * 0.375;
-		color += tex2D(s0, float2(saturate(warpedX + footprint * 1.125), tex.y)) * 0.125;
+		color += tex2D(s0, saturate(sampleTex - sampleAxis * footprint * 1.125)) * 0.125;
+		color += tex2D(s0, saturate(sampleTex - sampleAxis * footprint * 0.375)) * 0.375;
+		color += tex2D(s0, saturate(sampleTex + sampleAxis * footprint * 0.375)) * 0.375;
+		color += tex2D(s0, saturate(sampleTex + sampleAxis * footprint * 1.125)) * 0.125;
 		return color;
 	}
 
@@ -97,12 +120,12 @@ float4 main(float2 tex : TEXCOORD0) : COLOR
 	{
 		// Six-tap Lanczos-3-style reconstruction. This is the recommended sharp
 		// setting: less expensive and less prone to ringing than Lanczos-4.
-		float4 c0 = tex2D(s0, float2(saturate(warpedX - footprint * 2.5), tex.y));
-		float4 c1 = tex2D(s0, float2(saturate(warpedX - footprint * 1.5), tex.y));
-		float4 c2 = tex2D(s0, float2(saturate(warpedX - footprint * 0.5), tex.y));
-		float4 c3 = tex2D(s0, float2(saturate(warpedX + footprint * 0.5), tex.y));
-		float4 c4 = tex2D(s0, float2(saturate(warpedX + footprint * 1.5), tex.y));
-		float4 c5 = tex2D(s0, float2(saturate(warpedX + footprint * 2.5), tex.y));
+		float4 c0 = tex2D(s0, saturate(sampleTex - sampleAxis * footprint * 2.5));
+		float4 c1 = tex2D(s0, saturate(sampleTex - sampleAxis * footprint * 1.5));
+		float4 c2 = tex2D(s0, saturate(sampleTex - sampleAxis * footprint * 0.5));
+		float4 c3 = tex2D(s0, saturate(sampleTex + sampleAxis * footprint * 0.5));
+		float4 c4 = tex2D(s0, saturate(sampleTex + sampleAxis * footprint * 1.5));
+		float4 c5 = tex2D(s0, saturate(sampleTex + sampleAxis * footprint * 2.5));
 		float4 color =
 			(c2 + c3) * 0.6114130435 +
 			(c1 + c4) * -0.1358695652 +
@@ -115,14 +138,14 @@ float4 main(float2 tex : TEXCOORD0) : COLOR
 	// Eight-tap Lanczos-4-style reconstruction. The normalized windowed-sinc
 	// coefficients include negative lobes for sharper detail. Clamp the result
 	// to the sampled neighborhood to prevent visible HDR/text ringing.
-	float4 c0 = tex2D(s0, float2(saturate(warpedX - footprint * 3.5), tex.y));
-	float4 c1 = tex2D(s0, float2(saturate(warpedX - footprint * 2.5), tex.y));
-	float4 c2 = tex2D(s0, float2(saturate(warpedX - footprint * 1.5), tex.y));
-	float4 c3 = tex2D(s0, float2(saturate(warpedX - footprint * 0.5), tex.y));
-	float4 c4 = tex2D(s0, float2(saturate(warpedX + footprint * 0.5), tex.y));
-	float4 c5 = tex2D(s0, float2(saturate(warpedX + footprint * 1.5), tex.y));
-	float4 c6 = tex2D(s0, float2(saturate(warpedX + footprint * 2.5), tex.y));
-	float4 c7 = tex2D(s0, float2(saturate(warpedX + footprint * 3.5), tex.y));
+	float4 c0 = tex2D(s0, saturate(sampleTex - sampleAxis * footprint * 3.5));
+	float4 c1 = tex2D(s0, saturate(sampleTex - sampleAxis * footprint * 2.5));
+	float4 c2 = tex2D(s0, saturate(sampleTex - sampleAxis * footprint * 1.5));
+	float4 c3 = tex2D(s0, saturate(sampleTex - sampleAxis * footprint * 0.5));
+	float4 c4 = tex2D(s0, saturate(sampleTex + sampleAxis * footprint * 0.5));
+	float4 c5 = tex2D(s0, saturate(sampleTex + sampleAxis * footprint * 1.5));
+	float4 c6 = tex2D(s0, saturate(sampleTex + sampleAxis * footprint * 2.5));
+	float4 c7 = tex2D(s0, saturate(sampleTex + sampleAxis * footprint * 3.5));
 	float4 color =
 		(c3 + c4) * 0.6188774241 +
 		(c2 + c5) * -0.1660113634 +

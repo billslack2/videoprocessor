@@ -190,15 +190,14 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>.;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\ffmpeg\include;..\..\3rdparty\mpc_video_renderer;..\VideoProcessor-Lib</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer;..\VideoProcessor-Lib</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>opengl32.lib;strmiids.lib;winmm.lib;libswscale.a;libavutil.a;libavcodec.a;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>..\..\3rdparty\ffmpeg\lib\msvc2019_x64_debug\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;strmiids.lib;winmm.lib;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>powershell.exe -ExecutionPolicy RemoteSigned -File "$(SolutionDir)tools\generate_version.ps1" "$(ProjectDir)\" "$(SolutionDir)\"</Command>
@@ -215,7 +214,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>.;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\ffmpeg\include;..\..\3rdparty\mpc_video_renderer;..\VideoProcessor-Lib</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer;..\VideoProcessor-Lib</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
@@ -224,8 +223,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>..\..\3rdparty\ffmpeg\lib\msvc2019_x64_release\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opengl32.lib;strmiids.lib;winmm.lib;libswscale.a;libavutil.a;libavcodec.a;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opengl32.lib;strmiids.lib;winmm.lib;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
       <Command>powershell.exe -ExecutionPolicy RemoteSigned -File "$(SolutionDir)tools\generate_version.ps1" "$(ProjectDir)\" "$(SolutionDir)\"</Command>

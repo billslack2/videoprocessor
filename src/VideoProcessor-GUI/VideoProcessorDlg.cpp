@@ -73,8 +73,9 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 	{ "capture_4",             ID_COMMAND_CAPTURE_4,              '4',       FCONTROL },
 	{ "video_conversion_off",  ID_COMMAND_VC_NONE,                'V',       0 },
 	{ "video_conversion_p010", ID_COMMAND_VC_P010,                'V',       FSHIFT },
-	{ "screen_profile_normal", ID_COMMAND_SCREEN_PROFILE_NORMAL,  VK_F2,     0, true },
-	{ "screen_profile_scope",  ID_COMMAND_SCREEN_PROFILE_SCOPE,   VK_F3,     0, true },
+	{ "screen_profile_normal", ID_COMMAND_SCREEN_PROFILE_NORMAL,  VK_F3,     0, true },
+	{ "screen_profile_scope",  ID_COMMAND_SCREEN_PROFILE_SCOPE,   VK_F2,     0, true },
+	{ "display_rules_auto",    ID_COMMAND_DISPLAY_RULE_AUTO,      VK_F4,     0, true },
 };
 
 bool TryParseShortcut(const std::string& value, ACCEL& accelerator)
@@ -158,9 +159,12 @@ std::vector<std::string> SplitConfiguredList(const std::string& value)
 }
 
 
-HACCEL CreateConfiguredAccelerators(std::map<WORD, CString>& shaderShortcutRules)
+HACCEL CreateConfiguredAccelerators(
+	std::map<WORD, CString>& shaderShortcutRules,
+	std::map<WORD, CString>& displayRuleShortcutRules)
 {
 	shaderShortcutRules.clear();
+	displayRuleShortcutRules.clear();
 	ConfigFile mainConfig;
 	const bool hasMainConfig = mainConfig.Load();
 	ConfigFile rendererConfig;
@@ -245,6 +249,50 @@ HACCEL CreateConfiguredAccelerators(std::map<WORD, CString>& shaderShortcutRules
 			CString ruleName;
 			ruleName.Format(TEXT("%S"), rule.c_str());
 			shaderShortcutRules[nextCommand] = ruleName;
+			++nextCommand;
+		}
+	}
+
+	// Display-rule shortcuts are renderer-specific profiles.  They select a
+	// manual override; the renderer returns to automatic selection after a
+	// material source transition or when display_rules_auto is pressed.
+	std::string displayRuleList;
+	if (hasRendererConfig && rendererConfig.TryGetString("display_rules", "rules", displayRuleList))
+	{
+		std::set<std::string> seenRules;
+		WORD nextCommand = ID_COMMAND_DISPLAY_RULE_FIRST;
+		for (const std::string& configuredRule : SplitConfiguredList(displayRuleList))
+		{
+			if (nextCommand > ID_COMMAND_DISPLAY_RULE_LAST)
+				break;
+			const std::string rule = ConfigFile::NormalizeName(configuredRule);
+			if (!seenRules.insert(rule).second)
+				continue;
+
+			std::string shortcut;
+			if (!rendererConfig.TryGetString("display_rules." + rule, "shortcut", shortcut))
+				continue;
+
+			ACCEL accelerator = {};
+			if (!TryParseShortcut(shortcut, accelerator))
+			{
+				DEBUGLOG("Invalid shortcut '%s' for display rule '%s'", shortcut.c_str(), rule.c_str());
+				continue;
+			}
+
+			const unsigned int binding =
+				(static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
+			if (!bindings.insert(binding).second)
+			{
+				DEBUGLOG("Duplicate shortcut '%s' ignored for display rule '%s'", shortcut.c_str(), rule.c_str());
+				continue;
+			}
+
+			accelerator.cmd = nextCommand;
+			accelerators.push_back(accelerator);
+			CString ruleName;
+			ruleName.Format(TEXT("%S"), rule.c_str());
+			displayRuleShortcutRules[nextCommand] = ruleName;
 			++nextCommand;
 		}
 	}
@@ -767,7 +815,9 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
 	ON_COMMAND(ID_COMMAND_SCREEN_PROFILE_NORMAL, &CVideoProcessorDlg::OnCommandScreenProfileNormal)
 	ON_COMMAND(ID_COMMAND_SCREEN_PROFILE_SCOPE, &CVideoProcessorDlg::OnCommandScreenProfileScope)
+	ON_COMMAND(ID_COMMAND_DISPLAY_RULE_AUTO, &CVideoProcessorDlg::OnCommandDisplayRuleAuto)
 	ON_COMMAND_RANGE(ID_COMMAND_SHADER_RULE_FIRST, ID_COMMAND_SHADER_RULE_LAST, &CVideoProcessorDlg::OnCommandShaderRule)
+	ON_COMMAND_RANGE(ID_COMMAND_DISPLAY_RULE_FIRST, ID_COMMAND_DISPLAY_RULE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
 	ON_COMMAND_RANGE(ID_COMMAND_CAPTURE_1, ID_COMMAND_CAPTURE_4, &CVideoProcessorDlg::OnSelectCaptureDevice)
 
 
@@ -1310,6 +1360,7 @@ void CVideoProcessorDlg::OnHdrLuminanceSelected()
 
 void CVideoProcessorDlg::OnRendererSelected()
 {
+	UpdateRendererBackendUi();
 	OnBnClickedRendererRestart();
 }
 
@@ -1360,6 +1411,51 @@ void CVideoProcessorDlg::UpdateSceneCorrectionModeUi()
 
 	m_rendererSceneCorrectionModeCombo.SetCurSel(
 		m_sceneAwareTimingCorrection ? (m_sceneCorrectionUpstreamSample ? 2 : 1) : 0);
+}
+
+
+void CVideoProcessorDlg::UpdateRendererBackendUi()
+{
+	bool directShowSelected = true;
+	const int selection = m_rendererCombo.GetCurSel();
+	if (selection >= 0)
+	{
+		const RendererId* renderer = reinterpret_cast<const RendererId*>(
+			m_rendererCombo.GetItemData(selection));
+		directShowSelected =
+			renderer && renderer->backend == RendererBackend::DIRECTSHOW;
+	}
+
+	// Start/Stop describes DirectShow sample timestamps. Those timestamps pace
+	// the downstream DirectShow queue, but do not exist in the in-process
+	// renderer, whose FIFO is paced by its D3D swapchain.
+	m_rendererDirectShowStartStopTimeMethodCombo.EnableWindow(directShowSelected);
+	if (CWnd* label = GetDlgItem(IDC_STATIC_RENDERER_START_STOP_LABEL))
+		label->EnableWindow(directShowSelected);
+	if (CWnd* group = GetDlgItem(IDC_STATIC_RENDERER_TIMING_GROUP))
+		group->EnableWindow(directShowSelected);
+
+	// These controls override metadata attached to DirectShow media samples.
+	// Preserve the configured values while disabling controls which cannot
+	// affect the in-process renderer.
+	m_rendererNominalRangeCombo.EnableWindow(directShowSelected);
+	m_rendererTransferFunctionCombo.EnableWindow(directShowSelected);
+	m_rendererTransferMatrixCombo.EnableWindow(directShowSelected);
+	m_rendererPrimariesCombo.EnableWindow(directShowSelected);
+	if (CWnd* group = GetDlgItem(IDC_STATIC_RENDERER_DIRECTSHOW_GROUP))
+		group->EnableWindow(directShowSelected);
+
+	const UINT directShowLabels[] = {
+		IDC_STATIC_RENDERER_NOMINAL_RANGE_LABEL,
+		IDC_STATIC_RENDERER_TRANSFER_FUNCTION_LABEL,
+		IDC_STATIC_RENDERER_TRANSFER_MATRIX_LABEL,
+		IDC_STATIC_RENDERER_PRIMARIES_LABEL
+	};
+	for (const UINT controlId : directShowLabels)
+	{
+		if (CWnd* label = GetDlgItem(controlId))
+			label->EnableWindow(directShowSelected);
+	}
 }
 
 
@@ -1625,7 +1721,6 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	const bool wasNewLldvEffective =
 		m_useNewLldvHeuristic &&
 		m_newLldvCandidateConfirmed &&
-		!m_lldvForceSuppressedAfterRestart &&
 		IsNewLldvModeSelected();
 
 	m_captureDeviceVideoState = videoState;
@@ -1646,7 +1741,6 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 		KillTimer(LLDV_CHANGE_RESTART_TIMER_ID);
 		m_lldvChangeRestartDelaySeconds = -1;
 		m_lldvRestartPending = false;
-		m_lldvRestartForPromotion = false;
 
 		if (promotionRestartWasPending)
 		{
@@ -1954,15 +2048,14 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 
 		m_rendererStartTime = GetTickCount();
 		g_displayRefreshRateSampler->ResetMeasurement();
-		if (!m_startupGraphReprimeCompleted &&
-			GetTickCount64() >= m_queueResetIgnoreEventsUntil)
+		if (!m_startupGraphReprimeCompleted)
 		{
-			// Let madVR establish its decoder/upload/render queues, then rebuild the
-			// new live graph once. This deliberately replaces any earlier
-			// display-transition queue-only timer: startup needs the same complete
-			// graph reset that origin/main used for its delayed reset.
-			// Match origin/main: madVR gets five seconds to establish its
-			// downstream queues before the one-time graph re-prime.
+			// Every newly-created graph needs one delayed complete re-prime.  Do not
+			// let the post-reset display-event cooldown suppress this: an intentional
+			// renderer rebuild (for example an NLS output-aspect change) may occur
+			// during that window and still needs its own clean queue establishment.
+			// The cooldown remains in place for unsolicited display events and the
+			// high-water watchdog, where it prevents reset loops.
 			SetTimer(QUEUE_RESET_DELAY_TIMER_ID,
 				static_cast<UINT>(m_queueResetDelaySeconds * 1000), nullptr);
 			m_pendingQueueReset = true;
@@ -2086,6 +2179,29 @@ void CVideoProcessorDlg::OnCommandScreenProfileScope()
 }
 
 
+void CVideoProcessorDlg::OnCommandDisplayRuleAuto()
+{
+	if (!m_videoRenderer)
+		return;
+
+	CString activeRule;
+	bool rendererRestartRequired = false;
+	if (!m_videoRenderer->SelectDisplayRule(TEXT("auto"), activeRule,
+		rendererRestartRequired))
+	{
+		DEBUGLOG("Automatic display-rule selection ignored: selected renderer does not support display rules");
+		return;
+	}
+
+	DEBUGLOG("Automatic display-rule selection requested: %s", activeRule.GetString());
+	if (rendererRestartRequired)
+	{
+		m_wantToRestartRenderer = true;
+		UpdateState();
+	}
+}
+
+
 void CVideoProcessorDlg::OnCommandShaderRule(UINT commandId)
 {
 	const auto rule = m_shaderShortcutRules.find(static_cast<WORD>(commandId));
@@ -2105,6 +2221,30 @@ void CVideoProcessorDlg::OnCommandShaderRule(UINT commandId)
 	if (rendererRestartRequired)
 	{
 		DEBUGLOG("Shader rule aspect ratio changed; restarting renderer to renegotiate media type");
+		m_wantToRestartRenderer = true;
+		UpdateState();
+	}
+}
+
+
+void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
+{
+	const auto rule = m_displayRuleShortcutRules.find(static_cast<WORD>(commandId));
+	if (rule == m_displayRuleShortcutRules.end() || !m_videoRenderer)
+		return;
+
+	CString activeRule;
+	bool rendererRestartRequired = false;
+	if (!m_videoRenderer->SelectDisplayRule(rule->second, activeRule,
+		rendererRestartRequired))
+	{
+		DEBUGLOG("Display rule '%s' is unavailable", rule->second.GetString());
+		return;
+	}
+
+	DEBUGLOG("Manual display rule selected: %s", activeRule.GetString());
+	if (rendererRestartRequired)
+	{
 		m_wantToRestartRenderer = true;
 		UpdateState();
 	}
@@ -2889,10 +3029,10 @@ void CVideoProcessorDlg::RenderStart()
 	assert(m_captureDevice);
 	assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
 
-	// Rebuild from the current raw capture metadata for every new graph.  A
-	// prior graph may have held synthetic LLDV/PQ metadata after the input has
-	// returned to the menu.  The intentional LLDV promotion restart is the
-	// exception: it keeps the already-confirmed effective PQ state.
+	// Rebuild from the current raw capture metadata for every new graph. A
+	// confirmed new-LLDV candidate remains effective across renderer-only
+	// rebuilds (such as NLS aspect-ratio renegotiation); it is cleared only by
+	// a subsequent capture-state update that no longer qualifies as LLDV.
 	if (m_captureDeviceVideoState)
 		BuildPushVideoState();
 
@@ -2974,7 +3114,7 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->Build();
 			m_videoRenderer->Start();
 			m_rendererStateText.SetWindowText(
-				TEXT("Started libplacebo HDR-to-SDR renderer, waiting for image..."));
+				TEXT("Started VideoProcessor Renderer (Alpha), waiting for image..."));
 		}
 		catch (const std::exception& e)
 		{
@@ -3136,10 +3276,8 @@ void CVideoProcessorDlg::RenderStop()
 	m_lldvChangeRestartDelaySeconds = -1;
 	m_lldvRestartPending = false;
 	m_displayTransitionGraphReprimePending = false;
-	// The next graph starts from raw metadata for unrelated restarts.  Keep
-	// confirmed PQ only for the deliberate restart that applies LLDV.
-	m_lldvForceSuppressedAfterRestart = !m_lldvRestartForPromotion;
-	m_lldvRestartForPromotion = false;
+	// A renderer-only restart must preserve a confirmed LLDV candidate. The
+	// capture-state path clears it when the input genuinely returns to SDR.
 	m_eotfCheckCooldownSeconds = 0;
 
 	assert(m_captureDevice);
@@ -3478,9 +3616,6 @@ bool CVideoProcessorDlg::UpdateNewLldvCandidate()
 		m_newLldvCandidateActive = false;
 		m_newLldvCandidateConfirmed = false;
 		m_newLldvCandidateSince = 0;
-		// A distinct non-LLDV metadata state re-arms LLDV detection for the
-		// next real transition into LLDV.
-		m_lldvForceSuppressedAfterRestart = false;
 		return false;
 	}
 
@@ -3535,7 +3670,6 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	// modes, and the candidate has remained stable for 1.5 seconds.
 	const bool isHDFuryLLDV = m_useNewLldvHeuristic
 		? (m_newLldvCandidateConfirmed &&
-			!m_lldvForceSuppressedAfterRestart &&
 			IsNewLldvModeSelected())
 		: isLegacyHDFuryLLDV;
 
@@ -3798,7 +3932,6 @@ void CVideoProcessorDlg::ScheduleNewLldvRendererRestart()
 	if (m_rendererState != RendererState::RENDERSTATE_RENDERING)
 	{
 		m_lldvRestartPending = true;
-		m_lldvRestartForPromotion = true;
 		DebugLog::Log(
 			"New LLDV promotion: candidate confirmed during renderer startup; PQ restart queued");
 		return;
@@ -3808,7 +3941,6 @@ void CVideoProcessorDlg::ScheduleNewLldvRendererRestart()
 		return;
 
 	m_lldvChangeRestartDelaySeconds = 2;
-	m_lldvRestartForPromotion = true;
 	SetTimer(LLDV_CHANGE_RESTART_TIMER_ID, 1000, nullptr);
 	DebugLog::Log(
 		"New LLDV promotion: candidate confirmed; scheduling PQ renderer restart in 2 seconds");
@@ -4068,7 +4200,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	// Start discovery services
 	m_blackMagicDeviceDiscoverer->Start();
 
-	m_accelerator = CreateConfiguredAccelerators(m_shaderShortcutRules);
+	m_accelerator = CreateConfiguredAccelerators(m_shaderShortcutRules, m_displayRuleShortcutRules);
 	if (!m_accelerator)
 		FatalError(TEXT("Failed to create accelerator table"));
 
@@ -4080,6 +4212,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	m_timingClockFrameOffsetEdit.SetWindowText(m_defaultFrameOffset);
 	m_rendererVideoFrameUseQeueueCheck.SetCheck(true);
 	UpdateSceneCorrectionModeUi();
+	UpdateRendererBackendUi();
 	m_rendererResetAutoCheck.SetCheck(true);
 	m_rendererFullscreenCheck.SetCheck(m_hideUI ? BST_UNCHECKED : m_rendererFullScreenStart);
 

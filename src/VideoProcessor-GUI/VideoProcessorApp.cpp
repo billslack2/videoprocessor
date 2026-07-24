@@ -9,14 +9,12 @@
 #include <pch.h>
 
 #include <winnt.h>
-extern "C" {
-#include <libavutil/log.h>
-}
 
 #include <VideoProcessorDlg.h>
 #include <VideoConversionOverride.h>
 #include <DebugLog.h>
 #include <ConfigFile.h>
+#include <DisplayRuleExpression.h>
 
 #include "VideoProcessorApp.h"
 using namespace std;
@@ -237,6 +235,21 @@ void ThrowIfConfigHasSyntaxWarnings(const ConfigFile& config)
 		error += "\n" + warning;
 
 	throw std::runtime_error(error);
+}
+
+void ValidateRendererConfigRules()
+{
+	ConfigFile rendererConfig;
+	if (!rendererConfig.Load(ConfigFile::RENDERER_FILENAME))
+		return; // The alpha renderer configuration is optional.
+
+	ThrowIfConfigHasSyntaxWarnings(rendererConfig);
+	std::string error;
+	if (!DisplayRuleExpression::ValidateConfig(rendererConfig, error))
+	{
+		throw std::runtime_error("Invalid " + ConfigLocation(rendererConfig) +
+			" [display_rules] configuration: " + error);
+	}
 }
 
 void ValidateCommandLineConfigKeys(const ConfigFile& config)
@@ -737,12 +750,6 @@ void PrintCommandLineHelp()
 }
 
 
-void av_log_callback(void* ptr, int level, const char* fmt, va_list vargs)
-{
-	vprintf(fmt, vargs);
-}
-
-
 BOOL CVideoProcessorApp::InitInstance()
 {
 	// Handle help before creating any UI, COM objects, or background workers.
@@ -768,12 +775,6 @@ BOOL CVideoProcessorApp::InitInstance()
 		return FALSE;
 	}
 
-	// Setup ffmpeg logging
-	av_log_set_callback(av_log_callback);
-#ifdef _DEBUG
-	av_log_set_level(AV_LOG_TRACE);
-#endif
-
 	// Initialize async debug logger
 	DEBUGLOG_INIT();
 
@@ -784,6 +785,10 @@ BOOL CVideoProcessorApp::InitInstance()
 	{
 		if (!CWinAppEx::InitInstance())
 			throw std::runtime_error("Failed to initialize VideoProcessorApp");
+
+		// Validate alpha display rules before creating the UI or capture graph.
+		// A malformed rule must not silently select a fallback renderer profile.
+		ValidateRendererConfigRules();
 
 		// COINIT_MULTITHREADED was used in the Blackmagic SDK examples,
 		// using that without further investigation

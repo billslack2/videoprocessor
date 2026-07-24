@@ -4,20 +4,28 @@
 
 #include <ConfigFile.h>
 #include <DebugLog.h>
+#include <DisplayRuleExpression.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
 
 #pragma warning(push)
 #pragma warning(disable: 4244) // conversion warning in an upstream inline helper
+#include <libplacebo/cache.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/utils/upload.h>
 #pragma warning(pop)
 
+#include <dxgi1_4.h>
+
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <fstream>
 #include <initializer_list>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -25,6 +33,155 @@
 
 namespace
 {
+	using SteadyClock = std::chrono::steady_clock;
+
+	int64_t SteadyClockNowNs()
+	{
+		return std::chrono::duration_cast<std::chrono::nanoseconds>(
+			SteadyClock::now().time_since_epoch()).count();
+	}
+
+	constexpr const char* RENDERER_STATE_FILENAME =
+		"VideoProcessorRenderer.state";
+	constexpr const char* SHADER_CACHE_RELATIVE_PATH =
+		"libplacebo\\VideoProcessorShaderCache.bin";
+	constexpr size_t MAX_SHADER_CACHE_FILE_SIZE =
+		256u * 1024u * 1024u;
+
+	std::string RendererStatePath()
+	{
+		char modulePath[MAX_PATH] = {};
+		const DWORD length =
+			GetModuleFileNameA(nullptr, modulePath, ARRAYSIZE(modulePath));
+		if (length == 0 || length >= ARRAYSIZE(modulePath))
+			return RENDERER_STATE_FILENAME;
+
+		std::string path(modulePath, length);
+		const size_t separator = path.find_last_of("\\/");
+		if (separator == std::string::npos)
+			return RENDERER_STATE_FILENAME;
+		path.resize(separator + 1);
+		path += RENDERER_STATE_FILENAME;
+		return path;
+	}
+
+	std::string ShaderCachePath()
+	{
+		char modulePath[MAX_PATH] = {};
+		const DWORD length =
+			GetModuleFileNameA(nullptr, modulePath, ARRAYSIZE(modulePath));
+		if (length == 0 || length >= ARRAYSIZE(modulePath))
+			return SHADER_CACHE_RELATIVE_PATH;
+
+		std::string path(modulePath, length);
+		const size_t separator = path.find_last_of("\\/");
+		if (separator == std::string::npos)
+			return SHADER_CACHE_RELATIVE_PATH;
+		path.resize(separator + 1);
+		path += SHADER_CACHE_RELATIVE_PATH;
+		return path;
+	}
+
+	bool TryLoadPersistedScreenProfile(bool& scopeScreen)
+	{
+		const std::string path = RendererStatePath();
+		std::ifstream stateFile(path);
+		if (!stateFile.is_open())
+			return false;
+
+		std::string line;
+		while (std::getline(stateFile, line))
+		{
+			line = ConfigFile::Trim(line);
+			if (line.empty() || line.front() == '#' || line.front() == ';')
+				continue;
+
+			const size_t equals = line.find('=');
+			if (equals == std::string::npos ||
+				ConfigFile::NormalizeName(line.substr(0, equals)) !=
+					"screen_profile")
+			{
+				continue;
+			}
+
+			const std::string value =
+				ConfigFile::NormalizeName(line.substr(equals + 1));
+			if (value == "normal" || value == "scope")
+			{
+				scopeScreen = value == "scope";
+				DebugLog::Log(
+					"libplacebo screen profile restored from %s: %s",
+					path.c_str(),
+					scopeScreen ? "scope" : "normal");
+				return true;
+			}
+
+			DebugLog::Log(
+				"libplacebo: invalid persisted screen profile '%s' in %s; using configured default",
+				value.c_str(),
+				path.c_str());
+			return false;
+		}
+
+		DebugLog::Log(
+			"libplacebo: no screen_profile entry in %s; using configured default",
+			path.c_str());
+		return false;
+	}
+
+	void PersistScreenProfile(bool scopeScreen)
+	{
+		const std::string path = RendererStatePath();
+		const std::string temporaryPath = path + ".tmp";
+		{
+			std::ofstream stateFile(
+				temporaryPath,
+				std::ios::out | std::ios::trunc);
+			if (!stateFile.is_open())
+			{
+				DebugLog::Log(
+					"libplacebo: unable to save screen profile state to %s",
+					temporaryPath.c_str());
+				return;
+			}
+
+			stateFile
+				<< "# Managed by VideoProcessor. Delete this file to use "
+					"default_screen_profile.\n"
+				<< "screen_profile="
+				<< (scopeScreen ? "scope" : "normal")
+				<< "\n";
+			stateFile.close();
+			if (!stateFile)
+			{
+				DeleteFileA(temporaryPath.c_str());
+				DebugLog::Log(
+					"libplacebo: failed while saving screen profile state to %s",
+					temporaryPath.c_str());
+				return;
+			}
+		}
+
+		if (!MoveFileExA(
+			temporaryPath.c_str(),
+			path.c_str(),
+			MOVEFILE_REPLACE_EXISTING))
+		{
+			const DWORD error = GetLastError();
+			DeleteFileA(temporaryPath.c_str());
+			DebugLog::Log(
+				"libplacebo: unable to replace screen profile state %s error=%lu",
+				path.c_str(),
+				error);
+			return;
+		}
+
+		DebugLog::Log(
+			"libplacebo screen profile saved to %s: %s",
+			path.c_str(),
+			scopeScreen ? "scope" : "normal");
+	}
+
 	template<typename T>
 	const T& LibplaceboExportedData(const char* exportName)
 	{
@@ -143,9 +300,13 @@ namespace
 		case VideoFrameEncoding::ARGB_8BIT:
 		case VideoFrameEncoding::BGRA_8BIT:
 			return std::unique_ptr<IVideoFrameFormatter>(new CARGBtoP010VideoFrameFormatter());
+		case VideoFrameEncoding::R10b:
+		case VideoFrameEncoding::R10l:
+		case VideoFrameEncoding::R12L:
+			return std::unique_ptr<IVideoFrameFormatter>(new CDeckLinkRGBToP010VideoFrameFormatter());
 		default:
 			throw std::runtime_error(
-				"libplacebo currently supports V210, UYVY, ARGB, or BGRA capture input");
+				"libplacebo does not support this capture format");
 		}
 	}
 
@@ -154,6 +315,13 @@ namespace
 		AUTO,
 		ON,
 		OFF
+	};
+
+	struct RefreshRateCommandRule
+	{
+		int minimumRate = 0;
+		int maximumRate = 0;
+		std::string commandLine;
 	};
 
 	struct RendererSettings
@@ -171,9 +339,110 @@ namespace
 		std::string downscaler = "auto";
 		AutoToggle deband = AutoToggle::AUTO;
 		AutoToggle dithering = AutoToggle::AUTO;
+		std::string outputRange = "auto";
+		std::string outputGamma = "auto";
+		std::string sdrInputTransfer = "auto";
 		double scopeScreenAspect = 2.35;
 		bool defaultScopeScreen = false;
+		bool scopeSubtitleFit = false;
+		uint64_t scopeSubtitleHoldMs = 2000;
+		int scopeSubtitlePaddingPixels = 20;
+		std::vector<RefreshRateCommandRule> refreshRateCommandRules;
 	};
+
+	struct DisplayRule
+	{
+		std::string name;
+		std::string section;
+		int priority = 0;
+		int specificity = 0;
+	};
+
+	bool ParseRefreshRateRuleKey(const std::string& key, int& minimumRate, int& maximumRate);
+
+	bool MatchesDisplayRule(const std::string& expression, const VideoState& state, int& specificity)
+	{
+		std::string parseError;
+		return DisplayRuleExpression::Matches(expression,
+			[&state](const std::string& variable, std::string& value)
+			{
+				if (variable == "eotf") value = CStringA(ToString(state.eotf)).GetString();
+				else if (variable == "colorspace") value = CStringA(ToString(state.colorspace)).GetString();
+				else if (variable == "format") value = CStringA(ToString(state.videoFrameEncoding)).GetString();
+				else if (variable == "hdr_metadata") value = state.hdrData && state.hdrData->IsValid() ? "true" : "false";
+				else if (variable == "interlaced") value = state.displayMode && state.displayMode->IsInterlaced() ? "true" : "false";
+				else if (!state.displayMode) return false;
+				else if (variable == "source_rate") value = std::to_string(static_cast<int>(std::floor(state.displayMode->RefreshRateHz())));
+				else if (variable == "width") value = std::to_string(state.displayMode->FrameWidth());
+				else if (variable == "height") value = std::to_string(state.displayMode->FrameHeight());
+				else if (variable == "resolution") value = std::to_string(state.displayMode->FrameWidth()) + "x" + std::to_string(state.displayMode->FrameHeight());
+				else return false;
+				return true;
+			}, specificity, parseError);
+	}
+
+	DisplayRule SelectDisplayRule(const ConfigFile& config, const VideoState& state)
+	{
+		DisplayRule selected;
+		std::string ruleNames;
+		if (!config.TryGetString("display_rules", "rules", ruleNames))
+			return selected;
+		std::istringstream names(ruleNames);
+		std::string name;
+		while (std::getline(names, name, ','))
+		{
+			name = ConfigFile::NormalizeName(name);
+			if (name.empty()) continue;
+			const std::string section = "display_rules." + name;
+			std::string expression;
+			if (!config.TryGetString(section, "rule", expression))
+				continue;
+			int specificity = 0;
+			if (!MatchesDisplayRule(expression, state, specificity))
+				continue;
+			int priority = 0;
+			std::string rawPriority;
+			if (config.TryGetString(section, "priority", rawPriority))
+			{
+				try { priority = std::stoi(ConfigFile::Trim(rawPriority)); }
+				catch (const std::exception&) { DebugLog::Log("display: invalid priority '%s' for rule '%s'", rawPriority.c_str(), name.c_str()); }
+			}
+			if (selected.name.empty() || priority > selected.priority ||
+				(priority == selected.priority && specificity > selected.specificity))
+				selected = { name, section, priority, specificity };
+		}
+		return selected;
+	}
+
+	DisplayRule FindDisplayRule(const ConfigFile& config, const std::string& requestedName)
+	{
+		const std::string name = ConfigFile::NormalizeName(requestedName);
+		std::string ruleNames;
+		if (name.empty() || !config.TryGetString("display_rules", "rules", ruleNames))
+			return DisplayRule();
+
+		std::istringstream names(ruleNames);
+		std::string configuredName;
+		while (std::getline(names, configuredName, ','))
+		{
+			if (ConfigFile::NormalizeName(configuredName) != name)
+				continue;
+			const std::string section = "display_rules." + name;
+			std::string expression;
+			if (!config.TryGetString(section, "rule", expression))
+				return DisplayRule();
+			return { name, section, 0, 0 };
+		}
+		return DisplayRule();
+	}
+
+	std::string ResolveDisplayRuleName(const VideoState& state)
+	{
+		ConfigFile config;
+		if (!config.Load(ConfigFile::RENDERER_FILENAME))
+			return "";
+		return SelectDisplayRule(config, state).name;
+	}
 
 	bool ParseDouble(const std::string& value, double& parsed)
 	{
@@ -209,6 +478,66 @@ namespace
 		return std::isfinite(parsed);
 	}
 
+	bool ParseRefreshRateRuleKey(
+		const std::string& key,
+		int& minimumRate,
+		int& maximumRate)
+	{
+		const std::string trimmed = ConfigFile::Trim(key);
+		const size_t separator = trimmed.find('-');
+		try
+		{
+			size_t consumed = 0;
+			minimumRate = std::stoi(trimmed.substr(0, separator), &consumed);
+			if (consumed != (separator == std::string::npos
+				? trimmed.size()
+				: separator))
+			{
+				return false;
+			}
+
+			maximumRate = minimumRate;
+			if (separator != std::string::npos)
+			{
+				const std::string maximumText = trimmed.substr(separator + 1);
+				consumed = 0;
+				maximumRate = std::stoi(maximumText, &consumed);
+				if (consumed != maximumText.size())
+					return false;
+			}
+		}
+		catch (const std::exception&)
+		{
+			return false;
+		}
+
+		return minimumRate >= 1 && maximumRate >= minimumRate && maximumRate <= 1000;
+	}
+
+	constexpr const char* DISPLAY_CONFIG_SECTION = "display";
+	constexpr const char* LEGACY_DISPLAY_CONFIG_SECTION = "libplacebo";
+
+	bool TryGetDisplayString(
+		const ConfigFile& config,
+		const char* key,
+		std::string& value)
+	{
+		if (config.TryGetString(DISPLAY_CONFIG_SECTION, key, value))
+			return true;
+		return config.TryGetString(LEGACY_DISPLAY_CONFIG_SECTION, key, value);
+	}
+
+	bool TryGetDisplayBool(
+		const ConfigFile& config,
+		const char* key,
+		bool& value)
+	{
+		std::string rawValue;
+		if (config.TryGetString(DISPLAY_CONFIG_SECTION, key, rawValue))
+			return config.TryGetBool(DISPLAY_CONFIG_SECTION, key, value);
+		return config.TryGetBool(LEGACY_DISPLAY_CONFIG_SECTION, key, value);
+	}
+
 	std::string ReadChoice(
 		const ConfigFile& config,
 		const char* key,
@@ -216,7 +545,7 @@ namespace
 		std::initializer_list<const char*> choices)
 	{
 		std::string rawValue;
-		if (!config.TryGetString("libplacebo", key, rawValue))
+		if (!TryGetDisplayString(config, key, rawValue))
 			return defaultValue;
 
 		const std::string value = ConfigFile::NormalizeName(rawValue);
@@ -240,13 +569,13 @@ namespace
 		AutoToggle defaultValue = AutoToggle::AUTO)
 	{
 		std::string rawValue;
-		if (!config.TryGetString("libplacebo", key, rawValue))
+		if (!TryGetDisplayString(config, key, rawValue))
 			return defaultValue;
 		if (ConfigFile::NormalizeName(rawValue) == "auto")
 			return AutoToggle::AUTO;
 
 		bool enabled = false;
-		if (config.TryGetBool("libplacebo", key, enabled))
+		if (TryGetDisplayBool(config, key, enabled))
 			return enabled ? AutoToggle::ON : AutoToggle::OFF;
 
 		DebugLog::Log(
@@ -256,15 +585,106 @@ namespace
 		return defaultValue;
 	}
 
-	RendererSettings LoadRendererSettings()
+	void ApplyDisplayRuleOverrides(
+		const ConfigFile& config,
+		const DisplayRule& rule,
+		RendererSettings& settings)
+	{
+		if (rule.name.empty())
+			return;
+
+		auto readChoice = [&config, &rule](const char* key, std::string& target,
+			std::initializer_list<const char*> choices)
+		{
+			std::string raw;
+			if (!config.TryGetString(rule.section, key, raw)) return;
+			const std::string value = ConfigFile::NormalizeName(raw);
+			for (const char* choice : choices)
+				if (value == choice) { target = value; return; }
+			DebugLog::Log("display rule '%s': invalid %s value '%s'; retaining base setting", rule.name.c_str(), key, raw.c_str());
+		};
+		auto readToggle = [&config, &rule](const char* key, AutoToggle& target)
+		{
+			std::string raw;
+			if (!config.TryGetString(rule.section, key, raw)) return;
+			if (ConfigFile::NormalizeName(raw) == "auto") { target = AutoToggle::AUTO; return; }
+			bool enabled = false;
+			if (config.TryGetBool(rule.section, key, enabled)) { target = enabled ? AutoToggle::ON : AutoToggle::OFF; return; }
+			DebugLog::Log("display rule '%s': invalid %s value '%s'; retaining base setting", rule.name.c_str(), key, raw.c_str());
+		};
+		std::string raw;
+		if (config.TryGetString(rule.section, "sdr_target_nits", raw))
+		{
+			double value = 0.0;
+			if (ParseDouble(raw, value) && value >= 40.0 && value <= 500.0) settings.sdrTargetNits = value;
+		}
+		// Rules inherit the base black level unless they explicitly override it.
+		// Resetting this unconditionally turned a base sdr_black_nits=0 back into
+		// AUTO whenever the ordinary SDR rule was selected.
+		if (config.TryGetString(rule.section, "sdr_black_nits", raw))
+		{
+			if (ConfigFile::NormalizeName(raw) == "auto")
+			{
+				settings.sdrBlackNits =
+					settings.sdrTargetNits / PL_COLOR_SDR_CONTRAST;
+			}
+			else
+			{
+				double value = 0.0;
+				if (ParseDouble(raw, value) && value >= 0.0 && value < settings.sdrTargetNits)
+					settings.sdrBlackNits = value;
+			}
+		}
+		if (config.TryGetString(rule.section, "switch_refresh_rate", raw))
+		{
+			bool value = false;
+			if (config.TryGetBool(rule.section, "switch_refresh_rate", value)) settings.switchRefreshRate = value;
+		}
+		readChoice("quality", settings.quality, { "fast", "balanced", "high" });
+		readChoice("tone_mapping", settings.toneMapping, { "auto", "spline", "bt2390", "st2094-40", "reinhard" });
+		readChoice("gamut_mapping", settings.gamutMapping, { "auto", "perceptual", "softclip", "relative", "desaturate" });
+		readToggle("peak_detection", settings.peakDetection);
+		readChoice("upscaler", settings.upscaler, { "auto", "ewa_lanczossharp", "ewa_lanczos", "bicubic", "bilinear" });
+		readChoice("downscaler", settings.downscaler, { "auto", "ewa_lanczos", "bicubic", "bilinear" });
+		readToggle("deband", settings.deband);
+		readToggle("dithering", settings.dithering);
+		readChoice("output_range", settings.outputRange, { "auto", "full", "limited" });
+		readChoice("output_gamma", settings.outputGamma, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+		readChoice("sdr_input_transfer", settings.sdrInputTransfer, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+		if (config.TryGetString(rule.section, "contrast_recovery", raw))
+		{
+			settings.hasContrastRecovery = false;
+			if (ConfigFile::NormalizeName(raw) != "auto")
+			{
+				double value = 0.0;
+				if (ParseDouble(raw, value) && value >= 0.0 && value <= 1.0)
+				{
+					settings.hasContrastRecovery = true;
+					settings.contrastRecovery = static_cast<float>(value);
+				}
+			}
+		}
+	}
+
+	RendererSettings LoadRendererSettings(const VideoState& state, std::string& activeRule,
+		const std::string& manualRule = "")
 	{
 		RendererSettings settings;
+		activeRule.clear();
 		ConfigFile config;
 		if (!config.Load(ConfigFile::RENDERER_FILENAME))
+		{
+			bool persistedScopeScreen = false;
+			if (TryLoadPersistedScreenProfile(persistedScopeScreen))
+				settings.defaultScopeScreen = persistedScopeScreen;
 			return settings;
+		}
+		DebugLog::Log(
+			"libplacebo configuration loaded from %s",
+			config.GetLoadedPath().c_str());
 
 		std::string rawValue;
-		if (config.TryGetString("libplacebo", "sdr_target_nits", rawValue))
+		if (TryGetDisplayString(config, "sdr_target_nits", rawValue))
 		{
 			double parsed = 0.0;
 			if (ParseDouble(rawValue, parsed) && parsed >= 40.0 && parsed <= 500.0)
@@ -276,7 +696,7 @@ namespace
 		}
 
 		settings.sdrBlackNits = settings.sdrTargetNits / PL_COLOR_SDR_CONTRAST;
-		if (config.TryGetString("libplacebo", "sdr_black_nits", rawValue) &&
+		if (TryGetDisplayString(config, "sdr_black_nits", rawValue) &&
 			ConfigFile::NormalizeName(rawValue) != "auto")
 		{
 			double parsed = 0.0;
@@ -293,8 +713,8 @@ namespace
 			}
 		}
 
-		if (config.TryGetString("libplacebo", "switch_refresh_rate", rawValue) &&
-			!config.TryGetBool("libplacebo", "switch_refresh_rate", settings.switchRefreshRate))
+		if (TryGetDisplayString(config, "switch_refresh_rate", rawValue) &&
+			!TryGetDisplayBool(config, "switch_refresh_rate", settings.switchRefreshRate))
 		{
 			DebugLog::Log(
 				"libplacebo: invalid switch_refresh_rate value '%s'; using true",
@@ -319,8 +739,16 @@ namespace
 			{ "auto", "ewa_lanczos", "bicubic", "bilinear" });
 		settings.deband = ReadAutoToggle(config, "deband");
 		settings.dithering = ReadAutoToggle(config, "dithering");
+		settings.outputRange = ReadChoice(
+			config, "output_range", "auto", { "auto", "full", "limited" });
+		settings.outputGamma = ReadChoice(
+			config, "output_gamma", "auto",
+			{ "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+		settings.sdrInputTransfer = ReadChoice(
+			config, "sdr_input_transfer", "auto",
+			{ "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 
-		if (config.TryGetString("libplacebo", "scope_screen_aspect", rawValue))
+		if (TryGetDisplayString(config, "scope_screen_aspect", rawValue))
 		{
 			double parsed = 0.0;
 			if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.5 && parsed <= 4.0)
@@ -332,8 +760,35 @@ namespace
 
 		settings.defaultScopeScreen = ReadChoice(
 			config, "default_screen_profile", "normal", { "normal", "scope" }) == "scope";
+		if (TryGetDisplayString(config, "scope_subtitle_fit", rawValue) &&
+			!TryGetDisplayBool(config, "scope_subtitle_fit", settings.scopeSubtitleFit))
+		{
+			DebugLog::Log(
+				"libplacebo: invalid scope_subtitle_fit value '%s'; using false",
+				rawValue.c_str());
+			settings.scopeSubtitleFit = false;
+		}
+		if (TryGetDisplayString(config, "scope_subtitle_hold_seconds", rawValue))
+		{
+			double seconds = 0.0;
+			if (ParseDouble(rawValue, seconds) && seconds >= 0.0 && seconds <= 30.0)
+				settings.scopeSubtitleHoldMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
+			else
+				DebugLog::Log("libplacebo: scope_subtitle_hold_seconds must be between 0 and 30; using 2.0");
+		}
+		if (TryGetDisplayString(config, "scope_subtitle_padding_pixels", rawValue))
+		{
+			double pixels = 0.0;
+			if (ParseDouble(rawValue, pixels) && pixels >= 0.0 && pixels <= 500.0)
+				settings.scopeSubtitlePaddingPixels = static_cast<int>(std::llround(pixels));
+			else
+				DebugLog::Log("libplacebo: scope_subtitle_padding_pixels must be between 0 and 500; using 20");
+		}
+		bool persistedScopeScreen = false;
+		if (TryLoadPersistedScreenProfile(persistedScopeScreen))
+			settings.defaultScopeScreen = persistedScopeScreen;
 
-		if (config.TryGetString("libplacebo", "contrast_recovery", rawValue) &&
+		if (TryGetDisplayString(config, "contrast_recovery", rawValue) &&
 			ConfigFile::NormalizeName(rawValue) != "auto")
 		{
 			double parsed = 0.0;
@@ -349,7 +804,86 @@ namespace
 			}
 		}
 
+		const DisplayRule selectedRule = manualRule.empty() ?
+			SelectDisplayRule(config, state) : FindDisplayRule(config, manualRule);
+		if (!selectedRule.name.empty())
+		{
+			ApplyDisplayRuleOverrides(config, selectedRule, settings);
+			activeRule = selectedRule.name;
+			DebugLog::Log("display: selected %s rule '%s' (priority %d)",
+				manualRule.empty() ? "automatic" : "manual", activeRule.c_str(), selectedRule.priority);
+		}
+
+		const auto* refreshCommands = config.GetSectionValues("refresh_rate_commands");
+		if (refreshCommands)
+		{
+			// Compatibility with the initial two-part format. New configurations put
+			// the complete command line directly in each rate entry.
+			std::string legacyCommand;
+			auto command = refreshCommands->find("command");
+			if (command != refreshCommands->end())
+				legacyCommand = ConfigFile::Trim(command->second);
+
+			for (const auto& entry : *refreshCommands)
+			{
+				if (entry.first == "command")
+					continue;
+
+				RefreshRateCommandRule rule;
+				if (!ParseRefreshRateRuleKey(
+					entry.first, rule.minimumRate, rule.maximumRate))
+				{
+					DebugLog::Log(
+						"display: invalid refresh-rate command key '%s'; expected RATE or MIN-MAX",
+						entry.first.c_str());
+					continue;
+				}
+				rule.commandLine = ConfigFile::Trim(entry.second);
+				if (!legacyCommand.empty())
+				{
+					std::string executable = legacyCommand;
+					if (executable.find_first_of(" \t") != std::string::npos &&
+						(executable.size() < 2 || executable.front() != '"'))
+					{
+						executable = "\"" + executable + "\"";
+					}
+					rule.commandLine = executable +
+						(rule.commandLine.empty() ? "" : " " + rule.commandLine);
+				}
+				if (rule.commandLine.empty())
+				{
+					DebugLog::Log(
+						"display: empty refresh-rate command for key '%s' ignored",
+						entry.first.c_str());
+					continue;
+				}
+				settings.refreshRateCommandRules.push_back(std::move(rule));
+			}
+		}
+
 		return settings;
+	}
+
+	enum pl_color_levels TranslateOutputRange(const std::string& range)
+	{
+		if (range == "full")
+			return PL_COLOR_LEVELS_FULL;
+		if (range == "limited")
+			return PL_COLOR_LEVELS_LIMITED;
+		return PL_COLOR_LEVELS_UNKNOWN;
+	}
+
+	enum pl_color_transfer TranslateOutputGamma(const std::string& gamma)
+	{
+		if (gamma == "bt1886") return PL_COLOR_TRC_BT_1886;
+		if (gamma == "srgb") return PL_COLOR_TRC_SRGB;
+		if (gamma == "1.8") return PL_COLOR_TRC_GAMMA18;
+		if (gamma == "2.0") return PL_COLOR_TRC_GAMMA20;
+		if (gamma == "2.2") return PL_COLOR_TRC_GAMMA22;
+		if (gamma == "2.4") return PL_COLOR_TRC_GAMMA24;
+		if (gamma == "2.6") return PL_COLOR_TRC_GAMMA26;
+		if (gamma == "2.8") return PL_COLOR_TRC_GAMMA28;
+		return PL_COLOR_TRC_UNKNOWN;
 	}
 
 	double RefreshRateHz(const DISPLAYCONFIG_RATIONAL& rate)
@@ -357,6 +891,126 @@ namespace
 		return rate.Numerator > 0 && rate.Denominator > 0
 			? static_cast<double>(rate.Numerator) / static_cast<double>(rate.Denominator)
 			: 0.0;
+	}
+
+	std::wstring Utf8ToWide(const std::string& value)
+	{
+		if (value.empty())
+			return std::wstring();
+		const int length = MultiByteToWideChar(
+			CP_UTF8, MB_ERR_INVALID_CHARS, value.c_str(), -1, nullptr, 0);
+		if (length <= 0)
+			return std::wstring();
+		std::wstring result(static_cast<size_t>(length), L'\0');
+		if (MultiByteToWideChar(
+			CP_UTF8, MB_ERR_INVALID_CHARS, value.c_str(), -1, &result[0], length) <= 0)
+		{
+			return std::wstring();
+		}
+		result.resize(static_cast<size_t>(length - 1));
+		return result;
+	}
+
+	void RunRefreshRateCommand(
+		const RendererSettings& settings,
+		double refreshRate)
+	{
+		if (settings.refreshRateCommandRules.empty() || refreshRate <= 0.0)
+		{
+			return;
+		}
+
+		// Match the established VP refresh-key convention: 23.976 -> 23 and
+		// 59.94 -> 59. An exact key takes precedence over a wider range.
+		const int refreshKey = static_cast<int>(std::floor(refreshRate + 0.000001));
+		const RefreshRateCommandRule* selected = nullptr;
+		for (const RefreshRateCommandRule& rule : settings.refreshRateCommandRules)
+		{
+			if (refreshKey < rule.minimumRate || refreshKey > rule.maximumRate)
+				continue;
+			if (!selected ||
+				(rule.maximumRate - rule.minimumRate) <
+				(selected->maximumRate - selected->minimumRate))
+			{
+				selected = &rule;
+			}
+		}
+		if (!selected)
+			return;
+
+		const std::wstring configuredCommand = Utf8ToWide(selected->commandLine);
+		if (configuredCommand.empty())
+		{
+			DebugLog::Log("display: refresh-rate command line is not valid UTF-8");
+			return;
+		}
+
+		wchar_t commandProcessor[MAX_PATH]{};
+		DWORD commandProcessorLength = GetEnvironmentVariableW(
+			L"ComSpec", commandProcessor, static_cast<DWORD>(_countof(commandProcessor)));
+		if (commandProcessorLength == 0 ||
+			commandProcessorLength >= static_cast<DWORD>(_countof(commandProcessor)))
+		{
+			const UINT systemLength = GetSystemDirectoryW(
+				commandProcessor, static_cast<UINT>(_countof(commandProcessor)));
+			if (systemLength == 0 ||
+				systemLength + 8 >= static_cast<UINT>(_countof(commandProcessor)))
+			{
+				DebugLog::Log("display: unable to locate the Windows command processor");
+				return;
+			}
+			wcscat_s(commandProcessor, L"\\cmd.exe");
+		}
+
+		// The renderer and its fullscreen/window state are still being established
+		// here. Delay the command so scripts which inspect the VP window or send
+		// shortcuts see the final, active render window. ping.exe provides a quiet,
+		// console-independent delay (timeout.exe fails without an interactive stdin).
+		constexpr int COMMAND_DELAY_SECONDS = 5;
+		std::wstring delayedCommand = L"ping.exe 127.0.0.1 -n ";
+		delayedCommand += std::to_wstring(COMMAND_DELAY_SECONDS + 1);
+		delayedCommand += L" >nul & ";
+		delayedCommand += configuredCommand;
+
+		std::wstring processCommandLine = L"\"";
+		processCommandLine += commandProcessor;
+		processCommandLine += L"\" /d /s /c \"";
+		processCommandLine += delayedCommand;
+		processCommandLine += L"\"";
+
+		STARTUPINFOW startupInfo{};
+		startupInfo.cb = sizeof(startupInfo);
+		startupInfo.dwFlags = STARTF_USESHOWWINDOW;
+		startupInfo.wShowWindow = SW_HIDE;
+		PROCESS_INFORMATION processInfo{};
+		if (!CreateProcessW(
+			commandProcessor,
+			&processCommandLine[0],
+			nullptr,
+			nullptr,
+			FALSE,
+			CREATE_NO_WINDOW,
+			nullptr,
+			nullptr,
+			&startupInfo,
+			&processInfo))
+		{
+			DebugLog::Log(
+				"display: refresh-rate command failed: rate=%.6f key=%d error=%lu",
+				refreshRate,
+				refreshKey,
+				GetLastError());
+			return;
+		}
+		CloseHandle(processInfo.hThread);
+		CloseHandle(processInfo.hProcess);
+
+		DebugLog::Log(
+			"display: refresh-rate command scheduled in %d seconds: rate=%.6f key=%d command='%s'",
+			COMMAND_DELAY_SECONDS,
+			refreshRate,
+			refreshKey,
+			selected->commandLine.c_str());
 	}
 
 	bool RefreshRatesEqual(
@@ -470,10 +1124,11 @@ namespace
 			Restore();
 		}
 
-		void Switch(HWND hwnd, const VideoState& state, bool enabled)
+		void Switch(HWND hwnd, const VideoState& state, const RendererSettings& settings)
 		{
-			if (!enabled || !state.displayMode)
+			if (!settings.switchRefreshRate || !state.displayMode)
 				return;
+			m_refreshCommandSettings = settings;
 
 			m_displayDeviceName = DisplayDeviceNameForWindow(hwnd);
 			if (m_displayDeviceName.empty())
@@ -509,6 +1164,7 @@ namespace
 					"libplacebo refresh-rate switch: display already %.6f Hz for %.6f Hz input",
 					RefreshRateHz(m_originalRefreshRate),
 					contentRate);
+				RunRefreshRateCommand(settings, RefreshRateHz(m_originalRefreshRate));
 				return;
 			}
 
@@ -531,7 +1187,8 @@ namespace
 
 			m_changed = true;
 			DISPLAYCONFIG_RATIONAL actualRefreshRate{};
-			if (GetCurrentRefreshRate(actualRefreshRate))
+			const bool actualRateAvailable = GetCurrentRefreshRate(actualRefreshRate);
+			if (actualRateAvailable)
 			{
 				DebugLog::Log(
 					"libplacebo refresh-rate switch applied: input=%.6f Hz target=%.6f Hz previous=%.6f Hz actual=%.6f Hz",
@@ -548,6 +1205,11 @@ namespace
 					RefreshRateHz(targetRefreshRate),
 					RefreshRateHz(m_originalRefreshRate));
 			}
+			RunRefreshRateCommand(
+				settings,
+				actualRateAvailable
+					? RefreshRateHz(actualRefreshRate)
+					: RefreshRateHz(targetRefreshRate));
 		}
 
 	private:
@@ -596,6 +1258,9 @@ namespace
 				DebugLog::Log(
 					"libplacebo refresh-rate restore applied: %.6f Hz",
 					RefreshRateHz(m_originalRefreshRate));
+				RunRefreshRateCommand(
+					m_refreshCommandSettings,
+					RefreshRateHz(m_originalRefreshRate));
 			}
 			else
 			{
@@ -610,6 +1275,7 @@ namespace
 		std::wstring m_displayDeviceName;
 		DISPLAYCONFIG_RATIONAL m_originalRefreshRate{};
 		bool m_changed = false;
+		RendererSettings m_refreshCommandSettings;
 	};
 }
 
@@ -619,6 +1285,7 @@ struct LibplaceboVideoRenderer::Impl
 	ScopedDisplayRefreshRate displayRefreshRate;
 	pl_log log = nullptr;
 	pl_d3d11 d3d11 = nullptr;
+	pl_cache cache = nullptr;
 	pl_swapchain swapchain = nullptr;
 	pl_renderer renderer = nullptr;
 	pl_tex textures[2] = { nullptr, nullptr };
@@ -632,11 +1299,41 @@ struct LibplaceboVideoRenderer::Impl
 	struct pl_dither_params ditherParams{};
 	double sdrTargetNits = PL_COLOR_SDR_WHITE;
 	double sdrBlackNits = PL_COLOR_SDR_WHITE / PL_COLOR_SDR_CONTRAST;
+	enum pl_color_levels outputLevels = PL_COLOR_LEVELS_UNKNOWN;
+	enum pl_color_transfer outputTransfer = PL_COLOR_TRC_UNKNOWN;
+	enum pl_color_transfer sdrInputTransfer = PL_COLOR_TRC_UNKNOWN;
 	double scopeScreenAspect = 2.35;
 	bool defaultScopeScreen = false;
+	bool scopeSubtitleFit = false;
+	uint64_t scopeSubtitleHoldMs = 2000;
+	int scopeSubtitlePaddingPixels = 20;
+	uint64_t scopeSubtitleAnalysisFrame = 0;
+	int scopeSubtitlePendingPictureTop = 0;
+	int scopeSubtitlePendingPictureBottom = 0;
+	int scopeSubtitlePictureTop = 0;
+	int scopeSubtitlePictureBottom = 0;
+	int scopeSubtitleBarHits = 0;
+	uint64_t scopeActivePictureLastConfirmedTick = 0;
+	int scopeSubtitleDetectedBottom = 0;
+	int scopeSubtitleDetectedTop = 0;
+	uint64_t scopeSubtitleLastDetectionTick = 0;
+	uint64_t scopeSubtitleTopLastDetectionTick = 0;
+	int scopeSubtitleOppositeCandidateSide = 0;
+	int scopeSubtitleOppositeCandidateHits = 0;
+	float scopeSubtitleShiftSourcePixels = 0.0f;
+	bool scopeSubtitleWasActive = false;
+	bool scopeSubtitleWasTopActive = false;
+	std::string activeDisplayRule;
+	HWND videoHwnd = nullptr;
+	bool cursorPositioned = false;
+	bool hasPresentedFrame = false;
+	bool screenProfilesPrewarmed = false;
+	uint64_t lastSubmittedScreenProfileRequest = 0;
 	std::mutex renderMutex;
 	EOTF lastRenderedEotf = EOTF::UNKNOWN;
 	ColorSpace lastRenderedColorspace = ColorSpace::UNKNOWN;
+	std::string shaderCachePath;
+	uint64_t loadedShaderCacheSignature = 0;
 
 	~Impl()
 	{
@@ -647,8 +1344,124 @@ struct LibplaceboVideoRenderer::Impl
 				pl_tex_destroy(d3d11->gpu, &texture);
 		}
 		pl_swapchain_destroy(&swapchain);
+		SaveShaderCache();
 		pl_d3d11_destroy(&d3d11);
+		pl_cache_destroy(&cache);
 		pl_log_destroy(&log);
+	}
+
+	void LoadShaderCache()
+	{
+		shaderCachePath = ShaderCachePath();
+		std::ifstream input(
+			shaderCachePath,
+			std::ios::binary | std::ios::ate);
+		if (!input.is_open())
+		{
+			DebugLog::Log(
+				"libplacebo persistent shader cache: no existing file at %s",
+				shaderCachePath.c_str());
+			return;
+		}
+
+		const std::streamoff length = input.tellg();
+		if (length <= 0 ||
+			static_cast<uint64_t>(length) > MAX_SHADER_CACHE_FILE_SIZE)
+		{
+			DebugLog::Log(
+				"libplacebo persistent shader cache ignored: invalid size %lld bytes",
+				static_cast<long long>(length));
+			return;
+		}
+
+		std::vector<uint8_t> data(static_cast<size_t>(length));
+		input.seekg(0, std::ios::beg);
+		if (!input.read(
+				reinterpret_cast<char*>(data.data()),
+				static_cast<std::streamsize>(data.size())))
+		{
+			DebugLog::Log(
+				"libplacebo persistent shader cache ignored: read failed");
+			return;
+		}
+
+		const int loaded = pl_cache_load(cache, data.data(), data.size());
+		if (loaded < 0)
+		{
+			DebugLog::Log(
+				"libplacebo persistent shader cache ignored: corrupt or incompatible file");
+			pl_cache_reset(cache);
+			return;
+		}
+
+		loadedShaderCacheSignature = pl_cache_signature(cache);
+		DebugLog::Log(
+			"libplacebo persistent shader cache loaded: %d objects, %zu bytes",
+			loaded,
+			data.size());
+	}
+
+	void SaveShaderCache()
+	{
+		if (!cache || shaderCachePath.empty() || pl_cache_objects(cache) <= 0)
+			return;
+
+		const uint64_t signature = pl_cache_signature(cache);
+		if (signature == loadedShaderCacheSignature)
+			return;
+
+		const size_t required = pl_cache_save(cache, nullptr, 0);
+		if (required == 0 || required > MAX_SHADER_CACHE_FILE_SIZE)
+		{
+			DebugLog::Log(
+				"libplacebo persistent shader cache not saved: invalid size %zu bytes",
+				required);
+			return;
+		}
+
+		std::vector<uint8_t> data(required);
+		const size_t written =
+			pl_cache_save(cache, data.data(), data.size());
+		if (written != required)
+		{
+			DebugLog::Log(
+				"libplacebo persistent shader cache not saved: serialization failed");
+			return;
+		}
+
+		const std::string temporaryPath = shaderCachePath + ".tmp";
+		{
+			std::ofstream output(
+				temporaryPath,
+				std::ios::binary | std::ios::trunc);
+			if (!output.is_open() ||
+				!output.write(
+					reinterpret_cast<const char*>(data.data()),
+					static_cast<std::streamsize>(data.size())))
+			{
+				DebugLog::Log(
+					"libplacebo persistent shader cache not saved: write failed");
+				return;
+			}
+		}
+
+		if (!MoveFileExA(
+			temporaryPath.c_str(),
+			shaderCachePath.c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+		{
+			DeleteFileA(temporaryPath.c_str());
+			DebugLog::Log(
+				"libplacebo persistent shader cache not saved: atomic replace failed (%lu)",
+				GetLastError());
+			return;
+		}
+
+		loadedShaderCacheSignature = signature;
+		DebugLog::Log(
+			"libplacebo persistent shader cache saved: %d objects, %zu bytes",
+			pl_cache_objects(cache),
+			data.size());
 	}
 
 	void ConfigureRenderParams(const RendererSettings& settings)
@@ -769,7 +1582,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		DebugLog::Log(
-			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s target=%.1f nits black=%.3f nits refresh_switch=%d scope_aspect=%.4f default_screen_profile=%s",
+			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits refresh_switch=%d scope_aspect=%.4f default_screen_profile=%s scope_subtitle_fit=%d subtitle_hold=%llums subtitle_padding=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -782,17 +1595,611 @@ struct LibplaceboVideoRenderer::Impl
 				? renderParams.downscaler->name : "built-in",
 			renderParams.deband_params ? "on" : "off",
 			renderParams.dither_params ? "on" : "off",
+			settings.outputRange.c_str(),
+			settings.outputGamma.c_str(),
+			settings.sdrInputTransfer.c_str(),
 			sdrTargetNits,
 			sdrBlackNits,
 			settings.switchRefreshRate ? 1 : 0,
 			scopeScreenAspect,
-			defaultScopeScreen ? "scope" : "normal");
+			defaultScopeScreen ? "scope" : "normal",
+			scopeSubtitleFit ? 1 : 0,
+			static_cast<unsigned long long>(scopeSubtitleHoldMs),
+			scopeSubtitlePaddingPixels);
 	}
 
-	void Initialize(HWND videoHwnd, VideoStateComPtr& state)
+	float UpdateScopeSubtitleShift(
+		const uint16_t* luma,
+		int width,
+		int height,
+		bool scopeScreenActive)
 	{
-		const RendererSettings settings = LoadRendererSettings();
-		displayRefreshRate.Switch(videoHwnd, *state, settings.switchRefreshRate);
+		const uint64_t now = GetTickCount64();
+		if (!scopeScreenActive || !luma ||
+			width < 320 || height < 180)
+		{
+			scopeSubtitleShiftSourcePixels = 0.0f;
+			scopeSubtitleWasActive = false;
+			scopeSubtitleWasTopActive = false;
+			scopeSubtitlePendingPictureTop = 0;
+			scopeSubtitlePendingPictureBottom = 0;
+			scopeSubtitlePictureTop = 0;
+			scopeSubtitlePictureBottom = 0;
+			scopeSubtitleBarHits = 0;
+			scopeActivePictureLastConfirmedTick = 0;
+			scopeSubtitleDetectedBottom = 0;
+			scopeSubtitleDetectedTop = 0;
+			scopeSubtitleLastDetectionTick = 0;
+			scopeSubtitleTopLastDetectionTick = 0;
+			scopeSubtitleOppositeCandidateSide = 0;
+			scopeSubtitleOppositeCandidateHits = 0;
+			return 0.0f;
+		}
+
+		// This inexpensive geometry pass deliberately avoids OCR and models. It
+		// finds stable letterbox edges, then treats meaningful non-black content
+		// inside either encoded bar as content which must remain visible.
+		// Sampling every third rendered frame keeps the 4K CPU cost negligible
+		// while still reacting in roughly 50-125 ms.
+		if (++scopeSubtitleAnalysisFrame % 3 == 0)
+		{
+			std::vector<uint16_t> blackSamples;
+			const int sampleStep = std::max(2, width / 256);
+			const int edgeWidth = std::max(16, width / 5);
+			const int edgeRows = std::max(3, std::min(10, height / 60));
+			blackSamples.reserve(static_cast<size_t>(edgeRows) *
+				(edgeWidth / sampleStep + 1) * 2);
+			for (int y = height - edgeRows; y < height; ++y)
+			{
+				const uint16_t* row =
+					luma + static_cast<size_t>(y) * width;
+				for (int x = 0; x < edgeWidth; x += sampleStep)
+					blackSamples.push_back(static_cast<uint16_t>(row[x] >> 6));
+				for (int x = width - edgeWidth; x < width; x += sampleStep)
+					blackSamples.push_back(static_cast<uint16_t>(row[x] >> 6));
+			}
+
+			const size_t median = blackSamples.size() / 2;
+			std::nth_element(
+				blackSamples.begin(),
+				blackSamples.begin() + median,
+				blackSamples.end());
+			const int blackCode = blackSamples[median];
+			const int darkLimit = std::min(1023, blackCode + 36);
+
+			auto edgeRowIsBlack =
+				[=](int y)
+				{
+					const uint16_t* row =
+						luma + static_cast<size_t>(y) * width;
+					int dark = 0;
+					int count = 0;
+					uint64_t sum = 0;
+					for (int x = 0; x < edgeWidth; x += sampleStep)
+					{
+						const int code = row[x] >> 6;
+						dark += code <= darkLimit;
+						sum += code;
+						++count;
+					}
+					for (int x = width - edgeWidth; x < width; x += sampleStep)
+					{
+						const int code = row[x] >> 6;
+						dark += code <= darkLimit;
+						sum += code;
+						++count;
+					}
+					return count > 0 && dark * 100 >= count * 84 &&
+						sum <= static_cast<uint64_t>(count) *
+							static_cast<uint64_t>(blackCode + 28);
+				};
+
+			const int rowStep = std::max(1, height / 1080);
+			int topRows = 0;
+			while (topRows + rowStep < height / 3 &&
+				edgeRowIsBlack(topRows))
+			{
+				topRows += rowStep;
+			}
+			int bottomRows = 0;
+			while (bottomRows + rowStep < height / 3 &&
+				edgeRowIsBlack(height - 1 - bottomRows))
+			{
+				bottomRows += rowStep;
+			}
+
+			const int minimumBar = std::max(8, height / 35);
+			const int candidateTop =
+				topRows >= minimumBar ? topRows : 0;
+			const int candidateBottom =
+				bottomRows >= minimumBar ? height - bottomRows : 0;
+			const int tolerance = std::max(3, height / 240);
+			const int barSymmetryTolerance =
+				std::max(tolerance * 2, height / 60);
+			const int candidateActiveHeight =
+				std::max(1, candidateBottom - candidateTop);
+			const double candidateAspect =
+				static_cast<double>(width) / candidateActiveHeight;
+			const bool plausibleLetterbox =
+				candidateTop > 0 &&
+				candidateBottom > candidateTop &&
+				std::abs(candidateTop - (height - candidateBottom)) <=
+					barSymmetryTolerance &&
+				// Reject implausibly deep crops caused by a uniformly dark scene.
+				// This still covers common scope formats through 2.76:1.
+				candidateAspect >= 1.90 &&
+				candidateAspect <= 3.00;
+			const bool haveStablePicture =
+				scopeSubtitlePictureTop > 0 &&
+				scopeSubtitlePictureBottom > scopeSubtitlePictureTop;
+			const bool topConfirmsStable =
+				haveStablePicture && candidateTop > 0 &&
+				candidateTop >= scopeSubtitlePictureTop - tolerance;
+			const bool bottomConfirmsStable =
+				haveStablePicture && candidateBottom > 0 &&
+				candidateBottom <= scopeSubtitlePictureBottom + tolerance;
+			const bool stablePictureConfirmed =
+				topConfirmsStable || bottomConfirmsStable;
+			const bool candidateMatchesStable =
+				haveStablePicture &&
+				std::abs(candidateTop - scopeSubtitlePictureTop) <= tolerance &&
+				std::abs(candidateBottom -
+					scopeSubtitlePictureBottom) <= tolerance;
+			const bool candidateCanReplaceStable =
+				plausibleLetterbox &&
+				(!haveStablePicture || !candidateMatchesStable);
+
+			// A temporary receiver/streaming OSD may cover one black bar. Keep a
+			// locked aspect when the unobscured opposite edge still confirms it.
+			// A dark picture may also make a detected bar appear deeper; that
+			// supports the existing crop but does not immediately enlarge it.
+			if (stablePictureConfirmed)
+				scopeActivePictureLastConfirmedTick = now;
+
+			if (candidateCanReplaceStable &&
+				scopeSubtitlePendingPictureTop > 0 &&
+				scopeSubtitlePendingPictureBottom > 0 &&
+				std::abs(candidateTop -
+					scopeSubtitlePendingPictureTop) <= tolerance &&
+				std::abs(candidateBottom -
+					scopeSubtitlePendingPictureBottom) <= tolerance)
+			{
+				scopeSubtitleBarHits = std::min(8, scopeSubtitleBarHits + 1);
+			}
+			else if (candidateCanReplaceStable)
+			{
+				scopeSubtitleBarHits = 1;
+				scopeSubtitlePendingPictureTop = candidateTop;
+				scopeSubtitlePendingPictureBottom = candidateBottom;
+			}
+			else
+			{
+				scopeSubtitleBarHits = 0;
+				scopeSubtitlePendingPictureTop = 0;
+				scopeSubtitlePendingPictureBottom = 0;
+			}
+
+			// Require several matching analyses before adopting a new aspect.
+			// This filters short overlays and dark-scene excursions while staying
+			// responsive to a real source aspect change.
+			if (scopeSubtitleBarHits >= 8)
+			{
+				scopeSubtitlePictureTop = scopeSubtitlePendingPictureTop;
+				scopeSubtitlePictureBottom = scopeSubtitlePendingPictureBottom;
+				scopeActivePictureLastConfirmedTick = now;
+				scopeSubtitleBarHits = 0;
+				// A refined letterbox estimate must not cancel an active caption hold.
+				// Captions themselves can obscure a bar edge, and clearing the hold here
+				// made the picture snap back and forth during otherwise stable text.
+				const double activeAspect =
+					static_cast<double>(width) /
+					std::max(1,
+						scopeSubtitlePictureBottom -
+						scopeSubtitlePictureTop);
+				DebugLog::Log(
+					"libplacebo scope active picture: stable aspect %.4f bounds 0,%d-%d,%d raster %dx%d",
+					activeAspect,
+					scopeSubtitlePictureTop,
+					width,
+					scopeSubtitlePictureBottom,
+					width,
+					height);
+			}
+
+			// A genuine switch back to full-raster content removes both bar
+			// confirmations. Hold briefly across fades and overlays, then release
+			// in one step instead of oscillating on dark frames.
+			if (scopeSubtitlePictureTop > 0 &&
+				!stablePictureConfirmed &&
+				scopeActivePictureLastConfirmedTick != 0 &&
+				now - scopeActivePictureLastConfirmedTick >= 1500)
+			{
+				DebugLog::Log(
+					"libplacebo scope active picture: letterbox released; using full raster");
+				scopeSubtitlePictureTop = 0;
+				scopeSubtitlePictureBottom = 0;
+				scopeActivePictureLastConfirmedTick = 0;
+				scopeSubtitleLastDetectionTick = 0;
+				scopeSubtitleTopLastDetectionTick = 0;
+				scopeSubtitleOppositeCandidateSide = 0;
+				scopeSubtitleOppositeCandidateHits = 0;
+				scopeSubtitleShiftSourcePixels = 0.0f;
+			}
+
+			// Subtitle fitting deliberately uses a simple, renderer-local rule:
+			// meaningful non-black content inside a confirmed encoded black bar
+			// must remain visible. It does not try to recognize glyphs, language,
+			// alignment, or subtitle style.
+			if (scopeSubtitleFit &&
+				scopeSubtitlePictureTop > 0 &&
+				scopeSubtitlePictureBottom < height)
+			{
+				const int x0 = width / 32;
+				const int x1 = width - x0;
+				const int xStep = std::max(1, width / 1920);
+				const int contentLimit = std::min(1023, blackCode + 32);
+				const int sampledColumns = std::max(1, (x1 - x0) / xStep);
+				// A few bright pixels are normally edge noise, receiver overlays, or
+				// compression shimmer. Captions occupy a meaningful central horizontal
+				// span even when the text itself is short, so require that before a bar
+				// can move the picture.
+				const int minimumContentSamples =
+					std::max(8, sampledColumns / 192);
+				const int minimumContentSpan = std::max(24, width / 48);
+				const int minimumContentRows = 2;
+				const int barInset = std::max(1, rowStep);
+
+				auto findBarContent =
+					[&](int searchTop, int searchBottom,
+						int& detectedTop, int& detectedBottom)
+					{
+						detectedTop = height;
+						detectedBottom = 0;
+						int contentRows = 0;
+						for (int y = searchTop; y < searchBottom; y += rowStep)
+						{
+							const uint16_t* row =
+								luma + static_cast<size_t>(y) * width;
+							int contentSamples = 0;
+							int left = width;
+							int right = 0;
+							for (int x = x0; x < x1; x += xStep)
+							{
+								if ((row[x] >> 6) <= contentLimit)
+									continue;
+								++contentSamples;
+								left = std::min(left, x);
+								right = std::max(right, x);
+							}
+							if (contentSamples < minimumContentSamples ||
+								right - left < minimumContentSpan)
+							{
+								continue;
+							}
+							++contentRows;
+							detectedTop = std::min(detectedTop, y);
+							detectedBottom =
+								std::max(detectedBottom, y + rowStep);
+						}
+						if (contentRows < minimumContentRows)
+						{
+							detectedTop = 0;
+							detectedBottom = 0;
+							return false;
+						}
+						return true;
+					};
+
+				int upperContentTop = 0;
+				int upperContentBottom = 0;
+				int lowerContentTop = 0;
+				int lowerContentBottom = 0;
+				const bool upperContent =
+					scopeSubtitlePictureTop > barInset * 2 &&
+					findBarContent(
+						barInset,
+						scopeSubtitlePictureTop - barInset,
+						upperContentTop,
+						upperContentBottom);
+				const bool lowerContent =
+					scopeSubtitlePictureBottom + barInset * 2 < height &&
+					findBarContent(
+						scopeSubtitlePictureBottom + barInset,
+						height - barInset,
+						lowerContentTop,
+						lowerContentBottom);
+
+				const float visibleHeight = std::min(
+					static_cast<float>(height),
+					static_cast<float>(width / scopeScreenAspect));
+				const float visibleTop =
+					(static_cast<float>(height) - visibleHeight) * 0.5f;
+				const float visibleBottom =
+					(static_cast<float>(height) + visibleHeight) * 0.5f;
+				const float margin = std::max(8.0f, height / 90.0f) +
+					static_cast<float>(scopeSubtitlePaddingPixels);
+				const float upperRequiredShift = upperContent
+					? std::max(0.0f, visibleTop + margin - upperContentTop)
+					: 0.0f;
+				const float lowerRequiredShift = lowerContent
+					? std::max(0.0f,
+						lowerContentBottom + margin - visibleBottom)
+					: 0.0f;
+
+				// If both bars contain something, prefer the side requiring the larger
+				// displacement. Keep a current placement for its complete hold interval;
+				// an apparent caption on the opposite edge must be confirmed by a second
+				// analysis before it may reverse direction. This rejects transient OSDs
+				// and noisy letterbox-edge measurements without delaying a real subtitle
+				// by more than two analysis intervals.
+				int detectedSide = 0; // -1 top, +1 bottom
+				if (upperRequiredShift > lowerRequiredShift &&
+					upperRequiredShift > 0.5f)
+					detectedSide = -1;
+				else if (lowerRequiredShift > 0.5f)
+					detectedSide = 1;
+
+				const bool lowerHoldActive =
+					scopeSubtitleLastDetectionTick != 0 &&
+					now - scopeSubtitleLastDetectionTick <= scopeSubtitleHoldMs;
+				const bool topHoldActive =
+					scopeSubtitleTopLastDetectionTick != 0 &&
+					now - scopeSubtitleTopLastDetectionTick <= scopeSubtitleHoldMs;
+				const int heldSide = topHoldActive ? -1 :
+					(lowerHoldActive ? 1 : 0);
+
+				if (detectedSide != 0)
+				{
+					const bool oppositeActive = heldSide != 0 &&
+						detectedSide != heldSide;
+					if (oppositeActive)
+					{
+						if (scopeSubtitleOppositeCandidateSide == detectedSide)
+							++scopeSubtitleOppositeCandidateHits;
+						else
+						{
+							scopeSubtitleOppositeCandidateSide = detectedSide;
+							scopeSubtitleOppositeCandidateHits = 1;
+						}
+						if (scopeSubtitleOppositeCandidateHits < 2)
+							detectedSide = 0;
+					}
+					else
+					{
+						scopeSubtitleOppositeCandidateSide = 0;
+						scopeSubtitleOppositeCandidateHits = 0;
+					}
+				}
+				else
+				{
+					scopeSubtitleOppositeCandidateSide = 0;
+					scopeSubtitleOppositeCandidateHits = 0;
+				}
+
+				if (detectedSide == -1)
+				{
+					scopeSubtitleDetectedTop = upperContentTop;
+					scopeSubtitleTopLastDetectionTick = now;
+					scopeSubtitleLastDetectionTick = 0;
+					scopeSubtitleOppositeCandidateSide = 0;
+					scopeSubtitleOppositeCandidateHits = 0;
+				}
+				else if (detectedSide == 1)
+				{
+					scopeSubtitleDetectedBottom = lowerContentBottom;
+					scopeSubtitleLastDetectionTick = now;
+					scopeSubtitleTopLastDetectionTick = 0;
+					scopeSubtitleOppositeCandidateSide = 0;
+					scopeSubtitleOppositeCandidateHits = 0;
+				}
+			}
+		}
+
+		if (!scopeSubtitleFit)
+		{
+			scopeSubtitleShiftSourcePixels = 0.0f;
+			scopeSubtitleWasActive = false;
+			scopeSubtitleWasTopActive = false;
+			return 0.0f;
+		}
+
+		const bool lowerSubtitleActive =
+			scopeSubtitleLastDetectionTick != 0 &&
+			now - scopeSubtitleLastDetectionTick <= scopeSubtitleHoldMs;
+		// Hold either edge for the configured duration. A confirmed detection on
+		// the opposite edge clears the previous timer and changes direction.
+		const bool topSubtitleActive =
+			scopeSubtitleTopLastDetectionTick != 0 &&
+			now - scopeSubtitleTopLastDetectionTick <= scopeSubtitleHoldMs;
+		const bool subtitleActive = topSubtitleActive || lowerSubtitleActive;
+		float requestedShift = 0.0f;
+		if (topSubtitleActive && scopeSubtitlePictureTop > 0)
+		{
+			const float visibleHeight = std::min(
+				static_cast<float>(height),
+				static_cast<float>(width / scopeScreenAspect));
+			const float visibleTop =
+				(static_cast<float>(height) - visibleHeight) * 0.5f;
+			const float margin = std::max(8.0f, height / 90.0f) +
+				static_cast<float>(scopeSubtitlePaddingPixels);
+			// Positive shifts move the picture up. Top-bar content needs the
+			// inverse: shift down until its first detected row is visible.
+			requestedShift = -std::max(
+				0.0f, visibleTop + margin - scopeSubtitleDetectedTop);
+		}
+		else if (lowerSubtitleActive && scopeSubtitlePictureTop > 0)
+		{
+			const float visibleHeight = std::min(
+				static_cast<float>(height),
+				static_cast<float>(width / scopeScreenAspect));
+			const float visibleBottom =
+				(static_cast<float>(height) + visibleHeight) * 0.5f;
+			const float margin = std::max(8.0f, height / 90.0f) +
+				static_cast<float>(scopeSubtitlePaddingPixels);
+			requestedShift = std::max(
+				0.0f,
+				scopeSubtitleDetectedBottom + margin - visibleBottom);
+		}
+
+		// Snap to a new placement and keep it fixed for the hold interval. It may
+		// move farther only when a newly detected extent differs materially;
+		// small detection changes are ignored so the picture does not stutter.
+		// A confirmed caption at the opposite edge changes direction immediately.
+		const float placementSnapThreshold =
+			static_cast<float>(std::max(4, height / 180));
+		if (topSubtitleActive)
+		{
+			if (scopeSubtitleShiftSourcePixels >= 0.0f ||
+				requestedShift <
+					scopeSubtitleShiftSourcePixels - placementSnapThreshold)
+			{
+				scopeSubtitleShiftSourcePixels = requestedShift;
+			}
+		}
+		else if (lowerSubtitleActive)
+		{
+			if (scopeSubtitleShiftSourcePixels <= 0.0f ||
+				requestedShift >
+					scopeSubtitleShiftSourcePixels + placementSnapThreshold)
+			{
+				scopeSubtitleShiftSourcePixels = requestedShift;
+			}
+		}
+		else
+		{
+			// When the configured hold expires, snap back to the normal crop.
+			// Slow easing made fixed subtitles appear to stutter or drift.
+			scopeSubtitleShiftSourcePixels = 0.0f;
+		}
+		// Subtitle placement is signed: positive moves the picture up for a
+		// lower caption, negative moves it down for an upper caption.  Clamp
+		// only the magnitude near zero or valid upper-caption shifts would be
+		// discarded entirely.
+		if (std::abs(scopeSubtitleShiftSourcePixels) < 0.5f)
+			scopeSubtitleShiftSourcePixels = 0.0f;
+
+		if (subtitleActive != scopeSubtitleWasActive)
+		{
+			DebugLog::Log(
+				"libplacebo scope subtitle fit: %s picture=%d..%d subtitle_bottom=%d requested_shift=%.1f px",
+				subtitleActive ? "engaged" : "released",
+				scopeSubtitlePictureTop,
+				scopeSubtitlePictureBottom,
+				scopeSubtitleDetectedBottom,
+				requestedShift);
+			scopeSubtitleWasActive = subtitleActive;
+		}
+		if (topSubtitleActive != scopeSubtitleWasTopActive)
+		{
+			DebugLog::Log("libplacebo scope subtitle fit: upper-edge placement %s; shift=%.1f px",
+				topSubtitleActive ? "active" : "released",
+				scopeSubtitleShiftSourcePixels);
+			scopeSubtitleWasTopActive = topSubtitleActive;
+		}
+		return scopeSubtitleShiftSourcePixels;
+	}
+
+	void ConfigureSwapchainOutput(const RendererSettings& settings)
+	{
+		if (outputLevels == PL_COLOR_LEVELS_UNKNOWN)
+			return;
+
+		DXGI_COLOR_SPACE_TYPE requested = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+		if (outputLevels == PL_COLOR_LEVELS_LIMITED)
+		{
+			requested = settings.outputGamma == "2.4" || settings.outputGamma == "bt1886"
+				? DXGI_COLOR_SPACE_RGB_STUDIO_G24_NONE_P709
+				: DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P709;
+		}
+
+		IDXGISwapChain* nativeSwapchain = pl_d3d11_swapchain_unwrap(swapchain);
+		if (!nativeSwapchain)
+		{
+			DebugLog::Log(
+				"libplacebo: cannot access DXGI swapchain; output_range=%s disabled",
+				settings.outputRange.c_str());
+			outputLevels = PL_COLOR_LEVELS_UNKNOWN;
+			return;
+		}
+
+		CComQIPtr<IDXGISwapChain3> swapchain3(nativeSwapchain);
+		nativeSwapchain->Release();
+		if (!swapchain3)
+		{
+			DebugLog::Log(
+				"libplacebo: IDXGISwapChain3 unavailable; output_range=%s disabled",
+				settings.outputRange.c_str());
+			outputLevels = PL_COLOR_LEVELS_UNKNOWN;
+			return;
+		}
+
+		auto trySetColorSpace = [&swapchain3](
+			DXGI_COLOR_SPACE_TYPE colorSpace,
+			const char* description)
+		{
+			UINT support = 0;
+			const HRESULT checkResult =
+				swapchain3->CheckColorSpaceSupport(colorSpace, &support);
+			const bool advertised =
+				SUCCEEDED(checkResult) &&
+				(support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT) != 0;
+
+			// Microsoft documents that SetColorSpace1 can succeed even when
+			// CheckColorSpaceSupport did not advertise the color space. Trying
+			// the operation is therefore the authoritative test.
+			const HRESULT setResult = swapchain3->SetColorSpace1(colorSpace);
+			DebugLog::Log(
+				"libplacebo: DXGI color-space probe %s advertised=%d check=0x%08lX set=0x%08lX",
+				description,
+				advertised ? 1 : 0,
+				static_cast<unsigned long>(checkResult),
+				static_cast<unsigned long>(setResult));
+			return SUCCEEDED(setResult);
+		};
+
+		bool configured = false;
+		if (requested == DXGI_COLOR_SPACE_RGB_STUDIO_G24_NONE_P709)
+		{
+			configured = trySetColorSpace(requested, "RGB studio gamma 2.4 BT.709");
+			if (!configured)
+			{
+				// Gamma 2.2 is the older studio-range declaration and is more
+				// broadly implemented by Windows display drivers.
+				requested = DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P709;
+				configured = trySetColorSpace(
+					requested,
+					"RGB studio gamma 2.2 BT.709");
+			}
+		}
+		else
+		{
+			configured = trySetColorSpace(
+				requested,
+				outputLevels == PL_COLOR_LEVELS_LIMITED
+					? "RGB studio gamma 2.2 BT.709"
+					: "RGB full gamma 2.2 BT.709");
+		}
+
+		if (!configured)
+		{
+			DebugLog::Log(
+				"libplacebo: DXGI does not support output_range=%s; preserving negotiated full range",
+				settings.outputRange.c_str());
+			outputLevels = PL_COLOR_LEVELS_UNKNOWN;
+			return;
+		}
+
+		DebugLog::Log(
+			"libplacebo: DXGI output configured as %s (%s)",
+			outputLevels == PL_COLOR_LEVELS_LIMITED ? "limited" : "full",
+			requested == DXGI_COLOR_SPACE_RGB_STUDIO_G24_NONE_P709 ? "gamma 2.4" : "gamma 2.2");
+	}
+
+	void Initialize(HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule)
+	{
+		this->videoHwnd = videoHwnd;
+		const RendererSettings settings = LoadRendererSettings(*state, activeDisplayRule, manualRule);
+		displayRefreshRate.Switch(videoHwnd, *state, settings);
 
 		struct pl_log_params logParams{};
 		logParams.log_cb = LibplaceboLog;
@@ -810,22 +2217,50 @@ struct LibplaceboVideoRenderer::Impl
 		if (!d3d11)
 			throw std::runtime_error("Failed to create libplacebo D3D11 device");
 
+		struct pl_cache_params cacheParams =
+			LibplaceboExportedData<pl_cache_params>("pl_cache_default_params");
+		cacheParams.log = log;
+		cacheParams.max_object_size = 64u * 1024u * 1024u;
+		cacheParams.max_total_size = 256u * 1024u * 1024u;
+		cache = pl_cache_create(&cacheParams);
+		LoadShaderCache();
+		pl_gpu_set_cache(d3d11->gpu, cache);
+		DebugLog::Log(
+			"libplacebo GPU shader cache enabled: memory limit=%u MiB object limit=%u MiB path=%s",
+			256u,
+			64u,
+			shaderCachePath.c_str());
+
 		struct pl_d3d11_swapchain_params swapchainParams{};
 		swapchainParams.window = videoHwnd;
 		swapchainParams.color_bits = 10;
+		// Keep libplacebo on the DWM-composed windowed presentation path even
+		// when the borderless render window covers the monitor. Flip-model
+		// independent presentation can bypass the desktop color path; showing an
+		// overlay then forces composition and visibly changes SDR brightness.
+		swapchainParams.blit = true;
 		swapchain = pl_d3d11_create_swapchain(d3d11, &swapchainParams);
 		if (!swapchain)
 			throw std::runtime_error("Failed to create libplacebo D3D11 swapchain");
 
 		sdrTargetNits = settings.sdrTargetNits;
 		sdrBlackNits = settings.sdrBlackNits;
+		outputLevels = TranslateOutputRange(settings.outputRange);
+		outputTransfer = TranslateOutputGamma(settings.outputGamma);
+		sdrInputTransfer = TranslateOutputGamma(settings.sdrInputTransfer);
 		scopeScreenAspect = settings.scopeScreenAspect;
 		defaultScopeScreen = settings.defaultScopeScreen;
+		scopeSubtitleFit = settings.scopeSubtitleFit;
+		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
+		scopeSubtitlePaddingPixels = settings.scopeSubtitlePaddingPixels;
 		struct pl_color_space outputColor =
 			LibplaceboExportedData<pl_color_space>("pl_color_space_bt709");
+		if (outputTransfer != PL_COLOR_TRC_UNKNOWN)
+			outputColor.transfer = outputTransfer;
 		outputColor.hdr.min_luma = static_cast<float>(sdrBlackNits);
 		outputColor.hdr.max_luma = static_cast<float>(sdrTargetNits);
 		pl_swapchain_colorspace_hint(swapchain, &outputColor);
+		ConfigureSwapchainOutput(settings);
 
 		RECT client{};
 		if (!GetClientRect(videoHwnd, &client))
@@ -853,7 +2288,9 @@ struct LibplaceboVideoRenderer::Impl
 	bool Render(
 		const VideoFrame& videoFrame,
 		VideoStateComPtr& statePtr,
-		bool scopeScreenActive)
+		bool scopeScreenActive,
+		uint64_t screenProfileRequestSerial,
+		int64_t screenProfileRequestNs)
 	{
 		std::lock_guard<std::mutex> guard(renderMutex);
 		const VideoState& state = *statePtr;
@@ -880,6 +2317,11 @@ struct LibplaceboVideoRenderer::Impl
 		const size_t rowBytes = static_cast<size_t>(width) * sizeof(uint16_t);
 		const BYTE* yPixels = convertedFrame.data();
 		const BYTE* uvPixels = yPixels + rowBytes * static_cast<size_t>(height);
+		const float subtitleShiftSourcePixels = UpdateScopeSubtitleShift(
+			reinterpret_cast<const uint16_t*>(yPixels),
+			width,
+			height,
+			scopeScreenActive);
 
 		struct pl_plane_data planes[2]{};
 		planes[0].type = PL_FMT_UNORM;
@@ -916,7 +2358,10 @@ struct LibplaceboVideoRenderer::Impl
 		image.repr.sys = TranslateSystem(state.colorspace);
 		image.repr.levels =
 			state.videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT ||
-			state.videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT
+			state.videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT ||
+			state.videoFrameEncoding == VideoFrameEncoding::R10b ||
+			state.videoFrameEncoding == VideoFrameEncoding::R10l ||
+			state.videoFrameEncoding == VideoFrameEncoding::R12L
 			? PL_COLOR_LEVELS_FULL
 			: PL_COLOR_LEVELS_LIMITED;
 		image.repr.alpha = PL_ALPHA_NONE;
@@ -924,6 +2369,26 @@ struct LibplaceboVideoRenderer::Impl
 		image.repr.bits.color_depth = 10;
 		image.repr.bits.bit_shift = 6;
 		image.color = TranslateColorSpace(state);
+		if (state.eotf == EOTF::SDR &&
+			sdrInputTransfer != PL_COLOR_TRC_UNKNOWN)
+		{
+			// This is an explicit interpretation override used for controlled
+			// comparison with other renderers. It changes how captured SDR code
+			// values are decoded, independently of the output transfer curve.
+			image.color.transfer = sdrInputTransfer;
+		}
+		// SDR is already display-referred. Match its nominal luminance to the SDR
+		// render target so libplacebo performs range/matrix/transfer conversion but
+		// does not tone-map an inferred 203-nit SDR source into a different target.
+		// HDR inputs retain their source/mastering luminance and use the configured
+		// tone-mapping path.
+		if (state.eotf == EOTF::SDR)
+		{
+			image.color.hdr.min_luma = static_cast<float>(sdrBlackNits);
+			image.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
+			image.color.hdr.max_cll = 0.0f;
+			image.color.hdr.max_fall = 0.0f;
+		}
 		image.crop.x0 = 0.0f;
 		image.crop.y0 = 0.0f;
 		image.crop.x1 = static_cast<float>(width);
@@ -934,27 +2399,150 @@ struct LibplaceboVideoRenderer::Impl
 		if (!pl_swapchain_start_frame(swapchain, &swapchainFrame))
 			return false;
 
-		struct pl_frame target{};
-		pl_frame_from_swapchain(&target, &swapchainFrame);
-		// The colorspace hint requests SDR Rec.709, while this returned value is
-		// the swapchain's actual negotiated colorspace and must remain authoritative.
-		target.color.hdr.min_luma = static_cast<float>(sdrBlackNits);
-		target.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
-		if (scopeScreenActive)
-		{
-			pl_rect2df_aspect_set(
-				&target.crop,
-				static_cast<float>(scopeScreenAspect),
-				0.0f);
-		}
-		pl_rect2df_aspect_copy(&target.crop, &image.crop, 0.0f);
+		struct pl_frame baseTarget{};
+		pl_frame_from_swapchain(&baseTarget, &swapchainFrame);
+		// These settings describe the renderer's display output. They deliberately
+		// do not alter the captured frame's representation or DirectShow metadata.
+		if (outputLevels != PL_COLOR_LEVELS_UNKNOWN)
+			baseTarget.repr.levels = outputLevels;
+		if (outputTransfer != PL_COLOR_TRC_UNKNOWN)
+			baseTarget.color.transfer = outputTransfer;
+		// AUTO preserves the swapchain's negotiated representation. Explicit output
+		// settings override only the requested range/transfer components above.
+		baseTarget.color.hdr.min_luma = static_cast<float>(sdrBlackNits);
+		baseTarget.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
 
-		const bool rendered = pl_render_image(renderer, &image, &target, &renderParams);
+		auto configureScreenProfile =
+			[this, &image, height](
+				struct pl_frame& source,
+				struct pl_frame& target,
+				bool scopeActive,
+				float subtitleShift)
+		{
+			source = image;
+			bool croppedActivePicture = false;
+			if (scopeActive &&
+				scopeSubtitlePictureTop > 0 &&
+				scopeSubtitlePictureBottom > scopeSubtitlePictureTop)
+			{
+				const float cropHeight = static_cast<float>(
+					scopeSubtitlePictureBottom - scopeSubtitlePictureTop);
+				float cropTop =
+					static_cast<float>(scopeSubtitlePictureTop) + subtitleShift;
+				cropTop = std::max(
+					0.0f,
+					std::min(cropTop, static_cast<float>(height) - cropHeight));
+				source.crop.y0 = cropTop;
+				source.crop.y1 = cropTop + cropHeight;
+				croppedActivePicture = true;
+			}
+
+			if (scopeActive)
+			{
+				pl_rect2df_aspect_set(
+					&target.crop,
+					static_cast<float>(scopeScreenAspect),
+					0.0f);
+			}
+			pl_rect2df_aspect_copy(&target.crop, &source.crop, 0.0f);
+			if (scopeActive && !croppedActivePicture &&
+				subtitleShift != 0.0f)
+			{
+				const float targetHeight =
+					std::abs(target.crop.y1 - target.crop.y0);
+				const float outputShift =
+					subtitleShift * targetHeight / std::max(1, height);
+				target.crop.y0 -= outputShift;
+				target.crop.y1 -= outputShift;
+			}
+		};
+
+		double prewarmMs = 0.0;
+		if (hasPresentedFrame && !screenProfilesPrewarmed)
+		{
+			struct pl_frame warmImage{};
+			struct pl_frame warmTarget = baseTarget;
+			configureScreenProfile(
+				warmImage,
+				warmTarget,
+				!scopeScreenActive,
+				0.0f);
+			const SteadyClock::time_point prewarmStart = SteadyClock::now();
+			const bool warmed =
+				pl_render_image(renderer, &warmImage, &warmTarget, &renderParams);
+			prewarmMs = std::chrono::duration<double, std::milli>(
+				SteadyClock::now() - prewarmStart).count();
+			if (warmed)
+			{
+				screenProfilesPrewarmed = true;
+				DebugLog::Log(
+					"libplacebo screen profiles prewarmed: alternate=%s render=%.2f ms cache=%d objects/%zu bytes",
+					scopeScreenActive ? "normal" : "scope",
+					prewarmMs,
+					cache ? pl_cache_objects(cache) : 0,
+					cache ? pl_cache_size(cache) : 0);
+			}
+			else
+			{
+				DebugLog::Log(
+					"libplacebo screen profile prewarm failed after %.2f ms; normal rendering continues",
+					prewarmMs);
+			}
+		}
+
+		struct pl_frame renderImage{};
+		struct pl_frame target = baseTarget;
+		configureScreenProfile(
+			renderImage,
+			target,
+			scopeScreenActive,
+			subtitleShiftSourcePixels);
+		const SteadyClock::time_point renderStart = SteadyClock::now();
+		const bool rendered = pl_render_image(
+			renderer,
+			&renderImage,
+			&target,
+			&renderParams);
+		const double renderMs = std::chrono::duration<double, std::milli>(
+			SteadyClock::now() - renderStart).count();
 		const bool submitted = pl_swapchain_submit_frame(swapchain);
 		if (submitted)
 			pl_swapchain_swap_buffers(swapchain);
 		if (rendered && submitted)
 		{
+			hasPresentedFrame = true;
+			if (screenProfileRequestSerial != 0 &&
+				screenProfileRequestSerial != lastSubmittedScreenProfileRequest)
+			{
+				const double commandToSubmitMs =
+					screenProfileRequestNs > 0
+					? static_cast<double>(SteadyClockNowNs() - screenProfileRequestNs) /
+						1000000.0
+					: 0.0;
+				DebugLog::Log(
+					"libplacebo screen profile frame submitted: profile=%s request=%llu command_to_submit=%.2f ms render=%.2f ms prewarm=%.2f ms",
+					scopeScreenActive ? "scope" : "normal",
+					static_cast<unsigned long long>(screenProfileRequestSerial),
+					commandToSubmitMs,
+					renderMs,
+					prewarmMs);
+				lastSubmittedScreenProfileRequest = screenProfileRequestSerial;
+			}
+			if (!cursorPositioned)
+			{
+				// Move the pointer out of the picture once, but only if it is currently
+				// over this render window. The user remains free to move and use it.
+				POINT cursor{};
+				RECT window{};
+				if (GetCursorPos(&cursor) && GetWindowRect(videoHwnd, &window) &&
+					PtInRect(&window, cursor))
+				{
+					SetCursorPos(
+						std::max<LONG>(window.left, window.right - 2),
+						std::max<LONG>(window.top, window.bottom - 2));
+				}
+				cursorPositioned = true;
+			}
 			if (lastRenderedEotf != state.eotf ||
 				lastRenderedColorspace != state.colorspace)
 			{
@@ -987,6 +2575,7 @@ struct LibplaceboVideoRenderer::Impl
 		int height = std::max<LONG>(1, client.bottom - client.top);
 		if (!pl_swapchain_resize(swapchain, &width, &height))
 			DebugLog::Log("libplacebo: swapchain resize failed (%d x %d)", width, height);
+		cursorPositioned = false;
 	}
 
 	bool IsGpuFailed()
@@ -1009,7 +2598,7 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 	m_useFrameQueue(useFrameQueue),
 	m_frameQueueMaxSize(std::max<size_t>(1, frameQueueMaxSize))
 {
-	m_callback.OnRendererDetailString(TEXT("libplacebo D3D11 (experimental, HDR to SDR)"));
+	m_callback.OnRendererDetailString(TEXT("VideoProcessor Renderer (Alpha)"));
 }
 
 
@@ -1035,6 +2624,21 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 		throw std::runtime_error("null video state is invalid");
 
 	std::lock_guard<std::mutex> guard(m_stateMutex);
+	const bool materialSourceTransition = m_videoState &&
+		(videoState->valid == false ||
+		 !videoState->displayMode ||
+		 !m_videoState->displayMode ||
+		 *videoState->displayMode != *m_videoState->displayMode ||
+		 videoState->videoFrameEncoding != m_videoState->videoFrameEncoding ||
+		 videoState->eotf != m_videoState->eotf ||
+		 videoState->colorspace != m_videoState->colorspace);
+	if (materialSourceTransition && !m_manualDisplayRule.empty())
+	{
+		DebugLog::Log("display: clearing manual rule '%s' after material source transition",
+			m_manualDisplayRule.c_str());
+		m_manualDisplayRule.clear();
+	}
+
 	if (m_videoState &&
 		(videoState->valid == false ||
 		 !videoState->displayMode ||
@@ -1047,6 +2651,19 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 
 	const EOTF previousEotf = m_videoState ? m_videoState->eotf : EOTF::UNKNOWN;
 	const ColorSpace previousColorspace = m_videoState ? m_videoState->colorspace : ColorSpace::UNKNOWN;
+	if (m_impl)
+	{
+		const std::string nextRule = m_manualDisplayRule.empty() ?
+			ResolveDisplayRuleName(*videoState) : m_manualDisplayRule;
+		if (nextRule != m_impl->activeDisplayRule)
+		{
+			DebugLog::Log(
+				"display: input state selects rule '%s' instead of '%s'; requesting renderer rebuild",
+				nextRule.empty() ? "base" : nextRule.c_str(),
+				m_impl->activeDisplayRule.empty() ? "base" : m_impl->activeDisplayRule.c_str());
+			return false;
+		}
+	}
 	m_videoState = new VideoState(*videoState);
 
 	const bool sourceColorTransition =
@@ -1072,6 +2689,7 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 		return;
 
 	const uint64_t counter = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
+	UpdateFrameRateAndPPM(videoFrame.GetTimingTimestamp());
 	if (m_timingClock && counter % 20 == 0)
 	{
 		m_entryLatencyMs.store(
@@ -1119,6 +2737,117 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 }
 
 
+void LibplaceboVideoRenderer::UpdateFrameRateAndPPM(
+	timingclocktime_t frameTimestamp)
+{
+	if (!m_timingClock || frameTimestamp <= 0)
+		return;
+
+	const timingclocktime_t previousTimestamp =
+		m_lastPpmFrameTimestamp.exchange(frameTimestamp, std::memory_order_acq_rel);
+	const timingclocktime_t expectedFrameTicks =
+		m_expectedPpmFrameTicks.load(std::memory_order_acquire);
+	// A fullscreen/window transition or capture re-prime can leave a real gap
+	// between timestamps while frames are intentionally not delivered.  That is
+	// not oscillator drift.  Restart the diagnostic window instead of folding
+	// the gap into the cumulative cadence estimate.
+	if (previousTimestamp > 0 && expectedFrameTicks > 0)
+	{
+		const timingclocktime_t observedTicks = frameTimestamp - previousTimestamp;
+		if (observedTicks <= 0 || observedTicks > expectedFrameTicks * 3 / 2 ||
+			observedTicks < expectedFrameTicks / 2)
+		{
+			DebugLog::Log(
+				"libplacebo: capture timestamp discontinuity (%lld ticks; expected %lld); resetting cadence estimate",
+				static_cast<long long>(observedTicks),
+				static_cast<long long>(expectedFrameTicks));
+			ResetFrameRateAndPPM();
+			m_firstPpmFrameTimestamp.store(frameTimestamp, std::memory_order_release);
+			m_lastPpmFrameTimestamp.store(frameTimestamp, std::memory_order_release);
+			m_lastPpmPublishTimestamp.store(frameTimestamp, std::memory_order_release);
+			m_ppmFrameCount.store(1, std::memory_order_release);
+			return;
+		}
+	}
+
+	timingclocktime_t firstTimestamp =
+		m_firstPpmFrameTimestamp.load(std::memory_order_acquire);
+	if (firstTimestamp == 0)
+	{
+		if (m_firstPpmFrameTimestamp.compare_exchange_strong(
+			firstTimestamp, frameTimestamp, std::memory_order_acq_rel))
+		{
+			m_lastPpmPublishTimestamp.store(frameTimestamp,
+				std::memory_order_release);
+			m_lastPpmFrameTimestamp.store(frameTimestamp,
+				std::memory_order_release);
+			m_ppmFrameCount.store(1, std::memory_order_release);
+		}
+		return;
+	}
+
+	const uint64_t frameCount =
+		m_ppmFrameCount.fetch_add(1, std::memory_order_relaxed) + 1;
+	const timingclocktime_t ticksPerSecond =
+		m_timingClock->TimingClockTicksPerSecond();
+	if (ticksPerSecond <= 0)
+		return;
+
+	const timingclocktime_t publishTimestamp =
+		m_lastPpmPublishTimestamp.load(std::memory_order_acquire);
+	if (frameTimestamp <= publishTimestamp ||
+		frameTimestamp - publishTimestamp < ticksPerSecond * 5)
+	{
+		return;
+	}
+
+	timingclocktime_t expectedPublishTimestamp = publishTimestamp;
+	if (!m_lastPpmPublishTimestamp.compare_exchange_strong(
+		expectedPublishTimestamp, frameTimestamp, std::memory_order_acq_rel))
+	{
+		return;
+	}
+
+	const timingclocktime_t elapsedTicks = frameTimestamp - firstTimestamp;
+	if (elapsedTicks <= 0 || frameCount <= 1)
+		return;
+
+	double theoreticalRate = 0.0;
+	{
+		std::lock_guard<std::mutex> guard(m_stateMutex);
+		if (m_videoState && m_videoState->displayMode)
+			theoreticalRate = m_videoState->displayMode->RefreshRateHz();
+	}
+	if (theoreticalRate <= 0.0)
+		return;
+
+	const double elapsedSeconds = static_cast<double>(elapsedTicks) /
+		static_cast<double>(ticksPerSecond);
+	const double measuredRate = static_cast<double>(frameCount - 1) /
+		elapsedSeconds;
+	const int deviationPpm = static_cast<int>(std::round(
+		(measuredRate - theoreticalRate) * 1000000.0 / theoreticalRate)) * -1;
+	m_measuredFrameRate.store(measuredRate, std::memory_order_relaxed);
+	m_ppmDeviation.store(deviationPpm, std::memory_order_relaxed);
+	m_hasPpmData.store(true, std::memory_order_release);
+	DebugLog::Log(
+		"libplacebo: cumulative capture cadence %.6f Hz, %+d ppm (nominal %.6f Hz)",
+		measuredRate, deviationPpm, theoreticalRate);
+}
+
+
+void LibplaceboVideoRenderer::ResetFrameRateAndPPM()
+{
+	m_firstPpmFrameTimestamp.store(0, std::memory_order_release);
+	m_lastPpmFrameTimestamp.store(0, std::memory_order_release);
+	m_lastPpmPublishTimestamp.store(0, std::memory_order_release);
+	m_ppmFrameCount.store(0, std::memory_order_release);
+	m_measuredFrameRate.store(0.0, std::memory_order_release);
+	m_ppmDeviation.store(0, std::memory_order_release);
+	m_hasPpmData.store(false, std::memory_order_release);
+}
+
+
 HRESULT LibplaceboVideoRenderer::OnWindowsEvent(LONG_PTR, LONG_PTR)
 {
 	return S_OK;
@@ -1128,18 +2857,74 @@ HRESULT LibplaceboVideoRenderer::OnWindowsEvent(LONG_PTR, LONG_PTR)
 void LibplaceboVideoRenderer::Build()
 {
 	VideoStateComPtr state;
+	std::string manualRule;
 	{
 		std::lock_guard<std::mutex> guard(m_stateMutex);
 		if (!m_videoState || !m_videoState->valid || !m_videoState->displayMode)
 			throw std::runtime_error("libplacebo requires a valid video state before Build");
 		state = m_videoState;
+		manualRule = m_manualDisplayRule;
 	}
 
 	std::unique_ptr<Impl> impl(new Impl());
-	impl->Initialize(m_videoHwnd, state);
+	impl->Initialize(m_videoHwnd, state, manualRule);
+	const double nominalRate = state->displayMode->RefreshRateHz();
+	const timingclocktime_t ticksPerSecond = m_timingClock ?
+		m_timingClock->TimingClockTicksPerSecond() : 0;
+	m_expectedPpmFrameTicks.store(
+		(nominalRate > 0.0 && ticksPerSecond > 0) ?
+		static_cast<timingclocktime_t>(std::llround(
+			static_cast<double>(ticksPerSecond) / nominalRate)) : 0,
+		std::memory_order_release);
+	ResetFrameRateAndPPM();
 	m_scopeScreenActive.store(impl->defaultScopeScreen, std::memory_order_release);
 	m_impl = std::move(impl);
 	SetState(RendererState::RENDERSTATE_READY);
+}
+
+
+bool LibplaceboVideoRenderer::SelectDisplayRule(
+	const CString& ruleName,
+	CString& activeRule,
+	bool& rendererRestartRequired)
+{
+	activeRule.Empty();
+	rendererRestartRequired = false;
+	const std::string requested = ConfigFile::NormalizeName(CStringA(ruleName).GetString());
+	if (requested.empty())
+		return false;
+
+	std::lock_guard<std::mutex> guard(m_stateMutex);
+	if (requested == "auto")
+	{
+		if (m_manualDisplayRule.empty())
+		{
+			activeRule = TEXT("Auto");
+			return true;
+		}
+		m_manualDisplayRule.clear();
+		activeRule = TEXT("Auto");
+		rendererRestartRequired = m_impl != nullptr;
+		return true;
+	}
+
+	ConfigFile config;
+	if (!config.Load(ConfigFile::RENDERER_FILENAME) ||
+		FindDisplayRule(config, requested).name.empty())
+	{
+		return false;
+	}
+
+	if (m_manualDisplayRule == requested)
+	{
+		activeRule.Format(TEXT("Manual: %S"), requested.c_str());
+		return true;
+	}
+
+	m_manualDisplayRule = requested;
+	activeRule.Format(TEXT("Manual: %S"), requested.c_str());
+	rendererRestartRequired = m_impl != nullptr;
+	return true;
 }
 
 
@@ -1180,6 +2965,7 @@ void LibplaceboVideoRenderer::Reset()
 		pl_renderer_flush_cache(m_impl->renderer);
 	}
 	m_frameCounter.store(0, std::memory_order_relaxed);
+	ResetFrameRateAndPPM();
 	DebugLog::Log("libplacebo renderer reset: queue cleared and renderer cache flushed");
 }
 
@@ -1223,24 +3009,32 @@ bool LibplaceboVideoRenderer::SetScreenProfile(
 	if (!m_impl)
 		return false;
 
+	const int64_t requestNs = SteadyClockNowNs();
+	m_screenProfileRequestNs.store(requestNs, std::memory_order_relaxed);
+	const uint64_t requestSerial =
+		m_screenProfileRequestSerial.fetch_add(1, std::memory_order_relaxed) + 1;
 	m_scopeScreenActive.store(scopeScreen, std::memory_order_release);
 
 	if (scopeScreen)
 	{
 		activeProfile.Format(TEXT("Scope (%.3f:1)"), m_impl->scopeScreenAspect);
 		DebugLog::Log(
-			"libplacebo screen profile selected: scope (%.4f:1)",
-			m_impl->scopeScreenAspect);
+			"libplacebo screen profile selected: scope (%.4f:1) request=%llu",
+			m_impl->scopeScreenAspect,
+			static_cast<unsigned long long>(requestSerial));
 	}
 	else
 	{
 		activeProfile = TEXT("Normal");
-		DebugLog::Log("libplacebo screen profile selected: normal");
+		DebugLog::Log(
+			"libplacebo screen profile selected: normal request=%llu",
+			static_cast<unsigned long long>(requestSerial));
 	}
 
 	CString details;
-	details.Format(TEXT("libplacebo D3D11 - Screen: %s"), activeProfile.GetString());
+	details.Format(TEXT("VideoProcessor Renderer (Alpha) - Screen: %s"), activeProfile.GetString());
 	m_callback.OnRendererDetailString(details);
+	PersistScreenProfile(scopeScreen);
 	return true;
 }
 
@@ -1287,6 +3081,23 @@ bool LibplaceboVideoRenderer::GetConversionPerformance(
 }
 
 
+bool LibplaceboVideoRenderer::GetFrameRateAndPPM(
+	double& measuredFps,
+	int& ppmDeviation) const
+{
+	if (!m_hasPpmData.load(std::memory_order_acquire))
+	{
+		measuredFps = 0.0;
+		ppmDeviation = 0;
+		return false;
+	}
+
+	measuredFps = m_measuredFrameRate.load(std::memory_order_relaxed);
+	ppmDeviation = m_ppmDeviation.load(std::memory_order_relaxed);
+	return measuredFps > 0.0;
+}
+
+
 void LibplaceboVideoRenderer::RenderLoop()
 {
 	unsigned int consecutiveFailures = 0;
@@ -1310,7 +3121,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 			rendered = state && m_impl->Render(
 				frame,
 				state,
-				m_scopeScreenActive.load(std::memory_order_acquire));
+				m_scopeScreenActive.load(std::memory_order_acquire),
+				m_screenProfileRequestSerial.load(std::memory_order_acquire),
+				m_screenProfileRequestNs.load(std::memory_order_relaxed));
 		}
 		catch (const std::exception& e)
 		{

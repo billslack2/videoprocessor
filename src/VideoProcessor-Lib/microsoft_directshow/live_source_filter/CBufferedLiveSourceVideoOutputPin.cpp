@@ -961,6 +961,11 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		ResetSubtitleAnalysis();
 		m_activePictureAspectRatio.store(0.0, std::memory_order_release);
 		m_activePictureAspectStable.store(false, std::memory_order_release);
+		{
+			std::lock_guard<std::mutex> lock(m_activePictureRectangleMutex);
+			m_activePictureRectangle = {};
+		}
+		m_activePictureRectangleGeneration.fetch_add(1, std::memory_order_acq_rel);
 		m_activePictureDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
 		m_subtitlePanelLumaInitialized.store(false, std::memory_order_relaxed);
 		m_sceneAwareDetectedCount.store(0, std::memory_order_relaxed);
@@ -2712,6 +2717,15 @@ bool CBufferedLiveSourceVideoOutputPin::GetActivePictureAspectRatio(
 }
 
 
+bool CBufferedLiveSourceVideoOutputPin::GetActivePictureRectangle(
+	ActivePictureRectangle& rectangle) const
+{
+	std::lock_guard<std::mutex> lock(m_activePictureRectangleMutex);
+	rectangle = m_activePictureRectangle;
+	return rectangle.stable;
+}
+
+
 void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 	IMediaSample* sample, uint64_t frameNumber, ActivePictureDetectorState& state)
 {
@@ -2797,8 +2811,15 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 	if (aspect < 1.0 || aspect > 4.0)
 		return;
 
-	if (state.candidateAspectRatio > 0.0 &&
-		std::abs(aspect - state.candidateAspectRatio) <= 0.025)
+	const int positionTolerance = std::max(xStep, yStep) * 2;
+	const bool sameRectangle = state.candidateAspectRatio > 0.0 &&
+		std::abs(aspect - state.candidateAspectRatio) <= 0.025 &&
+		std::abs(left - state.candidateLeft) <= positionTolerance &&
+		std::abs(top - state.candidateTop) <= positionTolerance &&
+		std::abs(right - state.candidateRight) <= positionTolerance &&
+		std::abs(bottom - state.candidateBottom) <= positionTolerance &&
+		width == state.candidateRasterWidth && height == state.candidateRasterHeight;
+	if (sameRectangle)
 	{
 		if (state.matchingCandidates < 255) ++state.matchingCandidates;
 		state.candidateAspectRatio = state.candidateAspectRatio * 0.75 + aspect * 0.25;
@@ -2806,6 +2827,12 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 	else
 	{
 		state.candidateAspectRatio = aspect;
+		state.candidateLeft = left;
+		state.candidateTop = top;
+		state.candidateRight = right;
+		state.candidateBottom = bottom;
+		state.candidateRasterWidth = width;
+		state.candidateRasterHeight = height;
 		state.matchingCandidates = 1;
 	}
 
@@ -2814,6 +2841,20 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 		const double previous = m_activePictureAspectRatio.exchange(
 			state.candidateAspectRatio, std::memory_order_acq_rel);
 		m_activePictureAspectStable.store(true, std::memory_order_release);
+		{
+			std::lock_guard<std::mutex> lock(m_activePictureRectangleMutex);
+			const bool changed = !m_activePictureRectangle.stable ||
+				m_activePictureRectangle.left != left || m_activePictureRectangle.top != top ||
+				m_activePictureRectangle.right != right || m_activePictureRectangle.bottom != bottom ||
+				m_activePictureRectangle.rasterWidth != width ||
+				m_activePictureRectangle.rasterHeight != height;
+			const uint64_t generation = changed ?
+				m_activePictureRectangleGeneration.fetch_add(1, std::memory_order_acq_rel) + 1 :
+				m_activePictureRectangle.generation;
+			m_activePictureRectangle = { left, top, right, bottom, width, height,
+				state.candidateAspectRatio,
+				generation, true };
+		}
 		if (previous <= 0.0 || std::abs(previous - state.candidateAspectRatio) > 0.01)
 			DebugLog::Log("ACTIVE PICTURE: stable aspect %.4f (bounds %d,%d-%d,%d raster %dx%d)",
 				state.candidateAspectRatio, left, top, right, bottom, width, height);
