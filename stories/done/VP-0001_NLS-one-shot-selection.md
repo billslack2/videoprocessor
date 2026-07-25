@@ -2,6 +2,16 @@
 
 ## Status
 
+Done.
+
+The implementation is present on remote branch `v1.1.014-beta`, including
+duplicate manual-request coalescing and controlled shader/restart handling.
+The relevant integrated implementation is in `33e9686`, on top of the NLS
+work from `f506f5d` and conditional shader profiles from `0914673`. This is
+accepted as complete for the current beta scope; further hardening can be
+tracked as a new story.
+
+<!-- Previous status context retained below for historical detail. -->
 In Progress — implementation is present in the uncommitted working tree at
 `C:\Users\bslac\vp\videoprocessor - VS2026` on
 `v1.1.012-beta-ffmpeg-4.4.8`. Duplicate manual NLS selections are coalesced.

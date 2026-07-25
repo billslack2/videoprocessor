@@ -2,6 +2,15 @@
 
 ## Status
 
+Done.
+
+The implementation is present on remote branch `v1.1.014-beta`. Stable
+active-rectangle geometry is threaded to the NLS shader, including normalized
+left/right/top/bottom values and viewport-aware geometry. The integrated state
+is in `33e9686`, on top of `f506f5d`. This is accepted as complete for the
+current beta scope; further visual tuning can be tracked separately.
+
+<!-- Previous status context retained below for historical detail. -->
 In Progress — implementation is present in the uncommitted working tree at
 `C:\Users\bslac\vp\videoprocessor - VS2026` on
 `v1.1.012-beta-ffmpeg-4.4.8`. Stable active-rectangle geometry is threaded to

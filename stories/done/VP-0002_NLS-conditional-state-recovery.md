@@ -2,6 +2,16 @@
 
 ## Status
 
+Done.
+
+The implementation is present on remote branch `v1.1.014-beta`. Requested and
+temporary effective shader rules are separated, automatic aspect fallback is
+logged, and the armed rule can recover after qualifying geometry returns. The
+integrated state is in `33e9686`, on top of `f506f5d`. This is accepted as
+complete for the current beta scope; additional tuning can be tracked
+separately.
+
+<!-- Previous status context retained below for historical detail. -->
 In Progress — implementation is present in the uncommitted working tree at
 `C:\Users\bslac\vp\videoprocessor - VS2026` on
 `v1.1.012-beta-ffmpeg-4.4.8`. Requested and temporary effective shader rules
