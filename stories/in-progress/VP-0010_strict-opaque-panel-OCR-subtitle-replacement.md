@@ -2,7 +2,11 @@
 
 ## Status
 
-Review.
+In Progress — blocked on real-source Apple TV/playback validation. The
+implementation and automated coverage are substantial, but the story is not
+ready for Done until the documented BAR_OCR behavior is exercised against real
+one-line and multiline captions, including the intentional presentation delay,
+source-panel cleanup, cue transitions, and no-drop behavior.
 
 Implementation branch:
 `VP-0010`, rooted at `origin/main` and advanced through the existing subtitle
