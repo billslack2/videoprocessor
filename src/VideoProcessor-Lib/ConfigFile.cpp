@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <shellapi.h>
 #include <vector>
 
 
@@ -73,6 +74,49 @@ std::vector<std::string> BuildConfigPathCandidates(const std::string& filename)
 
 	return candidates;
 }
+
+std::string WideToNarrowPath(const wchar_t* value)
+{
+	if (value == nullptr || value[0] == L'\0')
+		return {};
+
+	const int required = WideCharToMultiByte(
+		CP_ACP, 0, value, -1, nullptr, 0, nullptr, nullptr);
+	if (required <= 1)
+		return {};
+
+	std::string result(static_cast<size_t>(required), '\0');
+	WideCharToMultiByte(
+		CP_ACP, 0, value, -1, &result[0], required, nullptr, nullptr);
+	result.resize(static_cast<size_t>(required - 1));
+	return result;
+}
+
+std::vector<std::string> GetProcessCommandLineArguments()
+{
+	int argumentCount = 0;
+	LPWSTR* wideArguments =
+		CommandLineToArgvW(GetCommandLineW(), &argumentCount);
+	if (wideArguments == nullptr)
+		return {};
+
+	std::vector<std::string> arguments;
+	arguments.reserve(static_cast<size_t>(argumentCount));
+	for (int index = 0; index < argumentCount; ++index)
+		arguments.push_back(WideToNarrowPath(wideArguments[index]));
+
+	LocalFree(wideArguments);
+	return arguments;
+}
+
+const char* ConfigOverrideOption(const std::string& filename)
+{
+	if (_stricmp(filename.c_str(), ConfigFile::DEFAULT_FILENAME) == 0)
+		return "--config";
+	if (_stricmp(filename.c_str(), ConfigFile::RENDERER_FILENAME) == 0)
+		return "--vr_config";
+	return nullptr;
+}
 }
 
 
@@ -84,7 +128,26 @@ bool ConfigFile::Load(const std::string& filename)
 	m_loaded = false;
 
 	std::ifstream configFile;
-	for (const auto& candidate : BuildConfigPathCandidates(filename))
+	const char* overrideOption = ConfigOverrideOption(filename);
+	std::string overridePath;
+	std::string overrideError;
+	const bool hasOverride = overrideOption != nullptr &&
+		TryParseCommandLineOption(
+			GetProcessCommandLineArguments(),
+			overrideOption,
+			overridePath,
+			overrideError);
+
+	if (!overrideError.empty())
+	{
+		m_warnings.push_back(overrideError);
+		return false;
+	}
+
+	const std::vector<std::string> candidates = hasOverride ?
+		std::vector<std::string>{ overridePath } :
+		BuildConfigPathCandidates(filename);
+	for (const auto& candidate : candidates)
 	{
 		configFile.clear();
 		configFile.open(candidate);
@@ -96,11 +159,21 @@ bool ConfigFile::Load(const std::string& filename)
 	}
 
 	if (!configFile.is_open())
+	{
+		if (hasOverride)
+		{
+			m_loadedPath = overridePath;
+			m_warnings.push_back(
+				std::string("Cannot open ") + overrideOption +
+				" file: " + overridePath);
+		}
 		return false;
+	}
 
 	std::string currentSection;
 	std::string line;
 	int lineNumber = 0;
+	std::map<std::string, std::map<std::string, int>> valueLineNumbers;
 
 	while (std::getline(configFile, line))
 	{
@@ -147,7 +220,17 @@ bool ConfigFile::Load(const std::string& filename)
 		}
 		else if (!key.empty())
 		{
+			auto& sectionLineNumbers = valueLineNumbers[currentSection];
+			const auto previous = sectionLineNumbers.find(key);
+			if (previous != sectionLineNumbers.end())
+			{
+				m_warnings.push_back(
+					"Line " + std::to_string(lineNumber) + ": duplicate [" +
+					currentSection + "] key '" + key + "' overrides line " +
+					std::to_string(previous->second));
+			}
 			m_sections[currentSection][key] = value;
+			sectionLineNumbers[key] = lineNumber;
 		}
 		else
 		{
@@ -238,4 +321,99 @@ std::string ConfigFile::Trim(const std::string& value)
 		[](unsigned char c) { return std::isspace(c); }).base();
 
 	return std::string(first, last);
+}
+
+
+bool ConfigFile::TryParseIndexedKey(
+	const std::string& key,
+	const std::string& prefix,
+	unsigned int& oneBasedIndex)
+{
+	const std::string normalizedKey = NormalizeName(key);
+	const std::string normalizedPrefix = NormalizeName(prefix) + ".";
+	if (normalizedKey.compare(0, normalizedPrefix.size(), normalizedPrefix) != 0)
+		return false;
+
+	const std::string indexToken = normalizedKey.substr(normalizedPrefix.size());
+	if (indexToken.empty() ||
+		!std::all_of(indexToken.begin(), indexToken.end(),
+			[](unsigned char character) { return std::isdigit(character) != 0; }))
+		return false;
+
+	try
+	{
+		const unsigned long parsed = std::stoul(indexToken);
+		if (parsed == 0 || parsed > UINT_MAX)
+			return false;
+		oneBasedIndex = static_cast<unsigned int>(parsed);
+		return true;
+	}
+	catch (const std::exception&)
+	{
+		return false;
+	}
+}
+
+
+bool ConfigFile::TryParseCommandLineOption(
+	const std::vector<std::string>& arguments,
+	const std::string& option,
+	std::string& value,
+	std::string& error)
+{
+	value.clear();
+	error.clear();
+
+	const std::string normalizedOption = NormalizeName(option);
+	bool found = false;
+	for (size_t index = 0; index < arguments.size(); ++index)
+	{
+		const std::string& argument = arguments[index];
+		if (argument.empty() ||
+			(argument[0] != '-' && argument[0] != '/'))
+			continue;
+
+		const size_t equalPos = argument.find('=');
+		const std::string argumentName =
+			equalPos == std::string::npos ?
+			argument :
+			argument.substr(0, equalPos);
+		if (NormalizeName(argumentName) != normalizedOption)
+			continue;
+
+		if (found)
+		{
+			error = "Duplicate command-line option: " + option;
+			return false;
+		}
+
+		std::string parsedValue;
+		if (equalPos != std::string::npos)
+		{
+			parsedValue = argument.substr(equalPos + 1);
+		}
+		else
+		{
+			if (index + 1 >= arguments.size() ||
+				(!arguments[index + 1].empty() &&
+				 (arguments[index + 1][0] == '-' ||
+				  arguments[index + 1][0] == '/')))
+			{
+				error = "Missing value for command-line option: " + option;
+				return false;
+			}
+			parsedValue = arguments[++index];
+		}
+
+		if (parsedValue.empty())
+		{
+			error = "Missing value for command-line option: " + option;
+			return false;
+		}
+
+		value = parsedValue;
+		found = true;
+	}
+
+	return found;
 }

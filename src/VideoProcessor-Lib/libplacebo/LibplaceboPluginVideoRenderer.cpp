@@ -214,6 +214,12 @@ void LibplaceboPluginVideoRenderer::OnPaint()
 }
 
 
+void LibplaceboPluginVideoRenderer::OnDisplayChange()
+{
+	m_renderer->OnDisplayChange();
+}
+
+
 void LibplaceboPluginVideoRenderer::SetFrameQueueMaxSize(size_t size)
 {
 	m_renderer->SetFrameQueueMaxSize(size);
@@ -265,6 +271,12 @@ double LibplaceboPluginVideoRenderer::ExitLatencyMs() const
 uint64_t LibplaceboPluginVideoRenderer::DroppedFrameCount() const
 {
 	return m_renderer->DroppedFrameCount();
+}
+
+
+bool LibplaceboPluginVideoRenderer::GetOutputModeInfo(CString& details) const
+{
+	return m_renderer->GetOutputModeInfo(details);
 }
 
 

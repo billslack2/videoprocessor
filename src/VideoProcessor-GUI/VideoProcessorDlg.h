@@ -182,6 +182,7 @@ public:
 	void OnCommandDisplayRuleAuto();
 	afx_msg void OnCommandShaderRule(UINT commandId);
 	afx_msg void OnCommandDisplayRule(UINT commandId);
+	afx_msg void OnCommandRendererSelect(UINT commandId);
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
 	void OnCommandToggleStatsOverlay();
@@ -335,6 +336,7 @@ protected:
 	HACCEL m_accelerator = nullptr;
 	std::map<WORD, CString> m_shaderShortcutRules;
 	std::map<WORD, CString> m_displayRuleShortcutRules;
+	std::map<WORD, unsigned int> m_rendererShortcutIndices;
 
 	FullscreenVideoWindow* m_fullScreenVideoWindow = nullptr;
 

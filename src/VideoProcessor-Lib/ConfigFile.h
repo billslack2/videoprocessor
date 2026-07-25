@@ -30,6 +30,15 @@ public:
 
 	static std::string NormalizeName(const std::string& value);
 	static std::string Trim(const std::string& value);
+	static bool TryParseIndexedKey(
+		const std::string& key,
+		const std::string& prefix,
+		unsigned int& oneBasedIndex);
+	static bool TryParseCommandLineOption(
+		const std::vector<std::string>& arguments,
+		const std::string& option,
+		std::string& value,
+		std::string& error);
 
 private:
 	std::map<std::string, std::map<std::string, std::string>> m_sections;

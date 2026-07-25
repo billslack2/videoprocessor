@@ -389,6 +389,23 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
+	if (!m_stats.outputMode.IsEmpty())
+	{
+		const int separator = m_stats.outputMode.Find(TEXT(" -> "));
+		const CString requested = separator >= 0
+			? m_stats.outputMode.Left(separator) : m_stats.outputMode;
+		const CString actual = separator >= 0
+			? m_stats.outputMode.Mid(separator + 4) : TEXT("---");
+		line.Format(TEXT("Out Req:          %-s"),
+			static_cast<LPCTSTR>(requested));
+		DrawText(hdc, line, PADDING, y);
+		y += LINE_HEIGHT;
+		line.Format(TEXT("Out Actual:       %-s"),
+			static_cast<LPCTSTR>(actual));
+		DrawText(hdc, line, PADDING, y);
+		y += LINE_HEIGHT;
+	}
+
 	// Video Conversion
 	line.Format(TEXT("Video Conv:       %-s"), m_stats.videoConversion.IsEmpty() ? TEXT("---") : m_stats.videoConversion);
 	DrawText(hdc, line, PADDING, y);
@@ -582,6 +599,8 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 		++lineCount;
 	}
 	if (stats.hasConversionData)
+		lineCount += 2;
+	if (!stats.outputMode.IsEmpty())
 		lineCount += 2;
 
 	// The selected rule and shader summary are always visible, followed by one row per active
