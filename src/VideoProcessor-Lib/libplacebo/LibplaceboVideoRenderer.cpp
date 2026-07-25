@@ -792,7 +792,6 @@ struct LibplaceboVideoRenderer::Impl
 	void Initialize(HWND videoHwnd, VideoStateComPtr& state)
 	{
 		const RendererSettings settings = LoadRendererSettings();
-		displayRefreshRate.Switch(videoHwnd, *state, settings.switchRefreshRate);
 
 		struct pl_log_params logParams{};
 		logParams.log_cb = LibplaceboLog;
@@ -834,6 +833,12 @@ struct LibplaceboVideoRenderer::Impl
 		int height = std::max<LONG>(1, client.bottom - client.top);
 		if (!pl_swapchain_resize(swapchain, &width, &height))
 			throw std::runtime_error("Failed to initialize libplacebo swapchain size");
+
+		// Creating the D3D11 device/swapchain can itself cause Windows to restore
+		// the desktop timing. Query and select the content rate only after that
+		// transition has completed; an earlier verified no-op could otherwise
+		// leave this newly initialized renderer running at the restored rate.
+		displayRefreshRate.Switch(videoHwnd, *state, settings.switchRefreshRate);
 
 		renderer = pl_renderer_create(log, d3d11->gpu);
 		if (!renderer)
