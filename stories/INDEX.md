@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0017`
-- Next story number: `VP-0018`
-- Total indexed items: 17
+- Last assigned item: `VP-0018`
+- Next story number: `VP-0019`
+- Total indexed items: 18
 
 ## Story locations
 
@@ -42,6 +42,7 @@ folders, and its `## Status` heading must use the matching state name.
 | VP-0015 | Draft | Alpha renderer shader compatibility with the existing shader catalog |
 | VP-0016 | Draft | Make scene detection available for the alpha renderer |
 | VP-0017 | Draft | Explain variable alpha-renderer queue depth |
+| VP-0018 | Draft | Re-select the content refresh rate when switching to alpha |
 
 ## Codex story workflow
 
