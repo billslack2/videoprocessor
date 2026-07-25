@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0019`
-- Next story number: `VP-0020`
-- Total indexed items: 19
+- Last assigned item: `VP-0023`
+- Next story number: `VP-0024`
+- Total indexed items: 23
 
 ## Story locations
 
@@ -44,6 +44,10 @@ folders, and its `## Status` heading must use the matching state name.
 | VP-0017 | Draft | Explain variable alpha-renderer queue depth |
 | VP-0018 | Done | Re-select the content refresh rate when switching to alpha |
 | VP-0019 | Done | SDR BT.2020 display profiles, F5/F6 hotkeys, and output signaling |
+| VP-0020 | Draft | v210 arbitrary-width and DCI P010/P210 support |
+| VP-0021 | Draft | Renderer format negotiation parity and truthful capability reporting |
+| VP-0022 | Draft | DeckLink encoded-format boundary and diagnostics |
+| VP-0023 | Draft | P010 range metadata contract and conversion regression tests |
 
 ## Codex story workflow
 
