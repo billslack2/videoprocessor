@@ -28,7 +28,7 @@ folders, and its `## Status` heading must use the matching state name.
 | VP-0001 | In Progress | NLS one-shot selection and queue safety |
 | VP-0002 | In Progress | Preserve armed NLS state through conditional aspect fallback |
 | VP-0003 | In Progress | Generic active rectangle support for NLS |
-| VP-0004 | Draft | Reliable limited-range output investigation and implementation plan |
+| VP-0004 | Done | Reliable limited-range output investigation and implementation plan |
 | VP-0005 | Draft | Alpha renderer timing observability and queue health |
 | VP-0006 | Draft | Alpha renderer optional scene-safe queue-drop correction |
 | VP-0007 | Draft | Alpha renderer controlled repeat correction |
