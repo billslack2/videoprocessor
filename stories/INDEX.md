@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0013`
-- Next story number: `VP-0014`
-- Total indexed items: 13
+- Last assigned item: `VP-0014`
+- Next story number: `VP-0015`
+- Total indexed items: 14
 
 ## Story locations
 
@@ -38,6 +38,7 @@ folders, and its `## Status` heading must use the matching state name.
 | VP-0011 | Draft | Alpha renderer color-managed 3D LUT support |
 | VP-0012 | Draft | Alpha renderer LUT pipeline contract spike |
 | VP-0013 | In Progress | DirectShow queue/reset alignment and no-drop review |
+| VP-0014 | Draft | Alpha renderer SDR BT.2020 source and target support |
 
 ## Codex story workflow
 
