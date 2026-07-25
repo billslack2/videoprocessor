@@ -5381,9 +5381,9 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	if (m_pendingQueueReset || now < m_queueResetIgnoreEventsUntil)
 		return;
 
-	// The renderer-start path schedules one deliberate re-prime after ten
-	// seconds. Do not let the depth monitor interrupt madVR's initial internal
-	// queue fill before that startup window completes.
+	// The renderer-start path schedules one deliberate re-prime after the
+	// configured delay. Do not let the depth monitor interrupt madVR's initial
+	// internal queue fill during its stabilization window.
 	if (m_rendererStartTime != 0 &&
 		GetTickCount() - static_cast<DWORD>(m_rendererStartTime) < 10000)
 		return;
