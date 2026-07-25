@@ -20,6 +20,7 @@
 #pragma warning(pop)
 
 #include <dxgi1_4.h>
+#include <nvapi.h>
 
 #include <algorithm>
 #include <chrono>
@@ -48,6 +49,152 @@ namespace
 		"libplacebo\\VideoProcessorShaderCache.bin";
 	constexpr size_t MAX_SHADER_CACHE_FILE_SIZE =
 		256u * 1024u * 1024u;
+	std::mutex g_runtimeDisplayRuleMutex;
+	std::string g_runtimeManualDisplayRule;
+
+	std::string NvApiStatusText(NvAPI_Status status)
+	{
+		NvAPI_ShortString text{};
+		if (NvAPI_GetErrorMessage(status, text) == NVAPI_OK)
+			return text;
+		return std::to_string(static_cast<int>(status));
+	}
+
+	std::string NarrowDisplayName(const wchar_t* value)
+	{
+		if (!value || !*value)
+			return {};
+		const int size = WideCharToMultiByte(CP_ACP, 0, value, -1, nullptr, 0, nullptr, nullptr);
+		if (size <= 1)
+			return {};
+		std::string result(static_cast<size_t>(size), '\0');
+		WideCharToMultiByte(CP_ACP, 0, value, -1, &result[0], size, nullptr, nullptr);
+		result.pop_back();
+		return result;
+	}
+
+	class NvidiaBt2020Reporter
+	{
+	public:
+		~NvidiaBt2020Reporter() { Restore(); }
+
+		bool Enable(const wchar_t* displayName)
+		{
+			const std::string name = NarrowDisplayName(displayName);
+			if (name.empty())
+			{
+				DebugLog::Log("NVIDIA BT.2020 report: display name unavailable; BT.2020 rendering continues without NVIDIA signaling");
+				return false;
+			}
+			if (m_active && name == m_displayName)
+				return true;
+			Restore();
+
+			NvAPI_Status status = NvAPI_Initialize();
+			if (status != NVAPI_OK)
+			{
+				DebugLog::Log("NVIDIA BT.2020 report: NvAPI_Initialize failed: %s; BT.2020 rendering continues", NvApiStatusText(status).c_str());
+				return false;
+			}
+			m_initialized = true;
+			status = NvAPI_DISP_GetDisplayIdByDisplayName(name.c_str(), &m_displayId);
+			if (status != NVAPI_OK)
+			{
+				DebugLog::Log("NVIDIA BT.2020 report: display %s lookup failed: %s; BT.2020 rendering continues", name.c_str(), NvApiStatusText(status).c_str());
+				Shutdown();
+				return false;
+			}
+
+			m_originalInfoFrame = {};
+			m_originalInfoFrame.version = NV_INFOFRAME_DATA_VER;
+			m_originalInfoFrame.size = sizeof(m_originalInfoFrame);
+			m_originalInfoFrame.cmd = NV_INFOFRAME_CMD_GET;
+			m_originalInfoFrame.type = INFOFRAME_TYPE_AVI;
+			status = NvAPI_Disp_InfoFrameControl(m_displayId, &m_originalInfoFrame);
+			if (status != NVAPI_OK)
+			{
+				DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame read failed for %s: %s; BT.2020 rendering continues", name.c_str(), NvApiStatusText(status).c_str());
+				Shutdown();
+				return false;
+			}
+
+			NV_INFOFRAME_DATA requested = m_originalInfoFrame;
+			requested.cmd = NV_INFOFRAME_CMD_SET;
+			requested.type = INFOFRAME_TYPE_AVI;
+			requested.infoframe.video.colorimetry =
+				NV_INFOFRAME_FIELD_VALUE_AVI_COLORIMETRY_USE_EXTENDED_COLORIMETRY;
+			// CTA-861 extended-colorimetry value 6 identifies BT.2020
+			// RGB/Y'C'bC'r. The NVAPI header retains its historical RESERVED06
+			// name even though this is the value used by the NVIDIA InfoFrame
+			// path that madVR relies upon.
+			requested.infoframe.video.extendedColorimetry =
+				NV_INFOFRAME_FIELD_VALUE_AVI_EXTENDEDCOLORIMETRY_RESERVED06;
+			status = NvAPI_Disp_InfoFrameControl(m_displayId, &requested);
+			if (status != NVAPI_OK)
+			{
+				DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame SET failed for %s: %s; BT.2020 rendering continues", name.c_str(), NvApiStatusText(status).c_str());
+				Shutdown();
+				return false;
+			}
+
+			NV_INFOFRAME_DATA verified{};
+			verified.version = NV_INFOFRAME_DATA_VER;
+			verified.size = sizeof(verified);
+			verified.cmd = NV_INFOFRAME_CMD_GET;
+			verified.type = INFOFRAME_TYPE_AVI;
+			status = NvAPI_Disp_InfoFrameControl(m_displayId, &verified);
+			const bool verifiedBt2020 =
+				status == NVAPI_OK &&
+				verified.infoframe.video.colorimetry ==
+					NV_INFOFRAME_FIELD_VALUE_AVI_COLORIMETRY_USE_EXTENDED_COLORIMETRY &&
+				verified.infoframe.video.extendedColorimetry ==
+					NV_INFOFRAME_FIELD_VALUE_AVI_EXTENDEDCOLORIMETRY_RESERVED06;
+			if (!verifiedBt2020)
+			{
+				DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame verification failed for %s status=%s colorimetry=%u extended=%u; restoring prior signal while BT.2020 rendering continues", name.c_str(), NvApiStatusText(status).c_str(), static_cast<unsigned int>(verified.infoframe.video.colorimetry), static_cast<unsigned int>(verified.infoframe.video.extendedColorimetry));
+				m_active = true;
+				m_displayName = name;
+				Restore();
+				return false;
+			}
+
+			m_active = true;
+			m_displayName = name;
+			DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame enabled on %s display_id=0x%08X previous_colorimetry=%u previous_extended=%u verified_colorimetry=%u verified_extended=%u", name.c_str(), m_displayId, static_cast<unsigned int>(m_originalInfoFrame.infoframe.video.colorimetry), static_cast<unsigned int>(m_originalInfoFrame.infoframe.video.extendedColorimetry), static_cast<unsigned int>(verified.infoframe.video.colorimetry), static_cast<unsigned int>(verified.infoframe.video.extendedColorimetry));
+			return true;
+		}
+
+		void Restore()
+		{
+			if (m_active)
+			{
+				NV_INFOFRAME_DATA restore = m_originalInfoFrame;
+				restore.cmd = NV_INFOFRAME_CMD_SET;
+				restore.type = INFOFRAME_TYPE_AVI;
+				const NvAPI_Status status =
+					NvAPI_Disp_InfoFrameControl(m_displayId, &restore);
+				DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame restore on %s display_id=0x%08X colorimetry=%u extended=%u result=%s", m_displayName.c_str(), m_displayId, static_cast<unsigned int>(restore.infoframe.video.colorimetry), static_cast<unsigned int>(restore.infoframe.video.extendedColorimetry), NvApiStatusText(status).c_str());
+			}
+			m_active = false;
+			m_displayName.clear();
+			Shutdown();
+		}
+
+	private:
+		void Shutdown()
+		{
+			if (m_initialized)
+				NvAPI_Unload();
+			m_initialized = false;
+		}
+
+		bool m_initialized = false;
+		bool m_active = false;
+		NvU32 m_displayId = 0;
+		std::string m_displayName;
+		NV_INFOFRAME_DATA m_originalInfoFrame{};
+		static constexpr NvU8 INFOFRAME_TYPE_AVI = 2;
+	};
 
 	std::string RendererStatePath()
 	{
@@ -343,6 +490,8 @@ namespace
 		std::string outputPresentation = "auto";
 		std::string outputRange = "auto";
 		std::string outputGamma = "auto";
+		std::string sdrTargetPrimaries = "rec709";
+		bool reportBt2020ToDisplay = false;
 		std::string sdrInputTransfer = "auto";
 		bool outputDiagnostics = false;
 		bool diagnosticDisableShaderCache = false;
@@ -657,6 +806,13 @@ namespace
 			{ "auto", "composed", "direct" });
 		readChoice("output_range", settings.outputRange, { "auto", "full", "limited" });
 		readChoice("output_gamma", settings.outputGamma, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+		readChoice("sdr_target_primaries", settings.sdrTargetPrimaries, { "rec709", "bt2020" });
+		if (!config.TryGetBool(rule.section, "report_bt2020_to_display",
+			settings.reportBt2020ToDisplay) &&
+			config.TryGetString(rule.section, "report_bt2020_to_display", raw))
+		{
+			DebugLog::Log("display rule '%s': invalid report_bt2020_to_display value '%s'; retaining base setting", rule.name.c_str(), raw.c_str());
+		}
 		readChoice("sdr_input_transfer", settings.sdrInputTransfer, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 		if (config.TryGetString(rule.section, "contrast_recovery", raw))
 		{
@@ -758,6 +914,14 @@ namespace
 		settings.outputGamma = ReadChoice(
 			config, "output_gamma", "auto",
 			{ "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+		settings.sdrTargetPrimaries = ReadChoice(
+			config, "sdr_target_primaries", "rec709", { "rec709", "bt2020" });
+		if (TryGetDisplayString(config, "report_bt2020_to_display", rawValue) &&
+			!TryGetDisplayBool(config, "report_bt2020_to_display", settings.reportBt2020ToDisplay))
+		{
+			DebugLog::Log("libplacebo: invalid report_bt2020_to_display value '%s'; using false", rawValue.c_str());
+			settings.reportBt2020ToDisplay = false;
+		}
 		settings.sdrInputTransfer = ReadChoice(
 			config, "sdr_input_transfer", "auto",
 			{ "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
@@ -1350,6 +1514,10 @@ struct LibplaceboVideoRenderer::Impl
 	struct pl_color_space configuredOutputColor{};
 	LibplaceboOutput::Plan outputPlan;
 	LibplaceboOutput::Actual actualOutput;
+	bool targetBt2020 = false;
+	bool reportBt2020ToDisplay = false;
+	std::wstring negotiatedDisplayDeviceName;
+	NvidiaBt2020Reporter nvidiaBt2020Reporter;
 	bool swapchainBlit = true;
 	bool suppressLimitedNegotiation = false;
 	uint64_t nextOutputRecoveryTick = 0;
@@ -1395,6 +1563,7 @@ struct LibplaceboVideoRenderer::Impl
 
 	~Impl()
 	{
+		nvidiaBt2020Reporter.Restore();
 		pl_renderer_destroy(&renderer);
 		if (d3d11)
 		{
@@ -2354,6 +2523,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (SUCCEEDED(output->GetDesc(&outputDesc)))
 			{
 				negotiatedMonitor = outputDesc.Monitor;
+				negotiatedDisplayDeviceName = outputDesc.DeviceName;
 				DEVMODEW mode{};
 				mode.dmSize = sizeof(mode);
 				const BOOL haveMode = EnumDisplaySettingsW(
@@ -2566,6 +2736,11 @@ struct LibplaceboVideoRenderer::Impl
 			actualOutput.requestedEncodingActive ? 1 : 0,
 			actualOutput.safeToRender ? 1 : 0,
 			actualOutput.reason.c_str());
+
+		if (targetBt2020 && reportBt2020ToDisplay)
+			nvidiaBt2020Reporter.Enable(negotiatedDisplayDeviceName.c_str());
+		else
+			nvidiaBt2020Reporter.Restore();
 	}
 
 	bool RecreateSwapchain(
@@ -2743,6 +2918,14 @@ struct LibplaceboVideoRenderer::Impl
 			settings.outputPresentation);
 		outputRequest.range = LibplaceboOutput::ParseRange(settings.outputRange);
 		outputRequest.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
+		targetBt2020 = settings.sdrTargetPrimaries == "bt2020";
+		reportBt2020ToDisplay = settings.reportBt2020ToDisplay;
+		if (targetBt2020 && reportBt2020ToDisplay)
+			DebugLog::Log("libplacebo: BT.2020 target with NVIDIA output reporting requested; proceed with caution");
+		else if (targetBt2020)
+			DebugLog::Log("libplacebo: BT.2020 target requested without NVIDIA reporting; display must be selected manually");
+		else if (reportBt2020ToDisplay)
+			DebugLog::Log("libplacebo: report_bt2020_to_display ignored because target primaries are Rec.709");
 		outputPlan = LibplaceboOutput::MakePlan(outputRequest);
 		// COMPOSED retains the known-stable bitblt/DWM path. AUTO uses it unless
 		// Limited requests a flip candidate; failed AUTO negotiation recreates
@@ -2791,7 +2974,8 @@ struct LibplaceboVideoRenderer::Impl
 		ConfigureRenderParams(settings);
 
 		DebugLog::Log(
-			"libplacebo initialized: D3D11, P010 upload, SDR Rec.709 target %.1f nits",
+			"libplacebo initialized: D3D11, P010 upload, SDR target request=%s %.1f nits",
+			targetBt2020 ? "BT.2020" : "Rec.709",
 			sdrTargetNits);
 	}
 
@@ -2946,6 +3130,13 @@ struct LibplaceboVideoRenderer::Impl
 			default:
 				break;
 			}
+		}
+		if (targetBt2020)
+		{
+			// Output primaries are independent of optional NVIDIA signaling.
+			// Manual display selection remains valid when reporting is disabled
+			// or unavailable.
+			baseTarget.color.primaries = PL_COLOR_PRIM_BT_2020;
 		}
 		baseTarget.color.hdr.min_luma = static_cast<float>(sdrBlackNits);
 		baseTarget.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
@@ -3176,6 +3367,13 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 	m_useFrameQueue(useFrameQueue),
 	m_frameQueueMaxSize(std::max<size_t>(1, frameQueueMaxSize))
 {
+	{
+		std::lock_guard<std::mutex> guard(g_runtimeDisplayRuleMutex);
+		m_manualDisplayRule = g_runtimeManualDisplayRule;
+	}
+	if (!m_manualDisplayRule.empty())
+		DebugLog::Log("display: restored runtime manual rule '%s' for new renderer",
+			m_manualDisplayRule.c_str());
 	m_callback.OnRendererDetailString(TEXT("VideoProcessor Renderer (Alpha)"));
 }
 
@@ -3212,9 +3410,10 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 		 videoState->colorspace != m_videoState->colorspace);
 	if (materialSourceTransition && !m_manualDisplayRule.empty())
 	{
-		DebugLog::Log("display: clearing manual rule '%s' after material source transition",
+		// F5/F6 select the display calibration intentionally. Keep that manual
+		// selection across input changes until the user selects another profile.
+		DebugLog::Log("display: retaining manual rule '%s' after material source transition",
 			m_manualDisplayRule.c_str());
-		m_manualDisplayRule.clear();
 	}
 
 	if (m_videoState &&
@@ -3477,10 +3676,16 @@ bool LibplaceboVideoRenderer::SelectDisplayRule(
 	{
 		if (m_manualDisplayRule.empty())
 		{
+			std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
+			g_runtimeManualDisplayRule.clear();
 			activeRule = TEXT("Auto");
 			return true;
 		}
 		m_manualDisplayRule.clear();
+		{
+			std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
+			g_runtimeManualDisplayRule.clear();
+		}
 		activeRule = TEXT("Auto");
 		rendererRestartRequired = m_impl != nullptr;
 		return true;
@@ -3500,6 +3705,10 @@ bool LibplaceboVideoRenderer::SelectDisplayRule(
 	}
 
 	m_manualDisplayRule = requested;
+	{
+		std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
+		g_runtimeManualDisplayRule = requested;
+	}
 	activeRule.Format(TEXT("Manual: %S"), requested.c_str());
 	rendererRestartRequired = m_impl != nullptr;
 	return true;
