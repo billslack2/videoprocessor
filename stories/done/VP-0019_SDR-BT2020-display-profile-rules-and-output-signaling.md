@@ -6,7 +6,9 @@ Done — accepted and deliberately released from `v1.1.014-beta` on
 2026-07-25.
 
 The x64 Release solution build succeeded and was deployed to
-`C:\videoprocessor\vp`. Release reference:
+`C:\videoprocessor\vp`. The implementation was committed and published on
+`v1.1.014-beta` as
+`6b89cf6add939567e777331a17d6e13f8f8bafa3`. Release artifact reference:
 `VideoProcessorLibplacebo.dll` SHA-256
 `A9BAA450E4E62624FC54102817F34E664EE69600392D96D807C04CD87C0437DC`.
 
