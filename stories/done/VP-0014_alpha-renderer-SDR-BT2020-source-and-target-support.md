@@ -2,9 +2,13 @@
 
 ## Status
 
-Draft. This is a color-management feature for the experimental alpha renderer.
-Do not begin product implementation until its SDR-BT.2020 classification and
-Windows presentation contract are demonstrated on the bundled libplacebo build.
+Done — duplicate / will not do separately.
+
+This story is fully superseded by VP-0019, which covers the implemented
+alpha-renderer SDR BT.2020 display profiles, F5/F6 selection, target signaling,
+repeated switching, renderer reconstruction, deployment, and hardware
+validation. No separate implementation should be started for VP-0014. Future
+BT.2020 gaps should be added as follow-up stories linked to VP-0019.
 
 ## User story
 

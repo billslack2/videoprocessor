@@ -38,7 +38,7 @@ folders, and its `## Status` heading must use the matching state name.
 | VP-0011 | Draft | Alpha renderer color-managed 3D LUT support |
 | VP-0012 | Draft | Alpha renderer LUT pipeline contract spike |
 | VP-0013 | Done | DirectShow queue/reset alignment and no-drop review |
-| VP-0014 | Draft | Alpha renderer SDR BT.2020 source and target support |
+| VP-0014 | Done | Alpha renderer SDR BT.2020 source and target support (duplicate of VP-0019; will not do separately) |
 | VP-0015 | Draft | Alpha renderer shader compatibility with the existing shader catalog |
 | VP-0016 | Draft | Make scene detection available for the alpha renderer |
 | VP-0017 | Draft | Explain variable alpha-renderer queue depth |
