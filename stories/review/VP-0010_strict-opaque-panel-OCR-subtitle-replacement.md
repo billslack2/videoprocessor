@@ -2,7 +2,7 @@
 
 ## Status
 
-Validating.
+Review.
 
 Implementation branch:
 `VP-0010`, rooted at `origin/main` and advanced through the existing subtitle
