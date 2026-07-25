@@ -2,15 +2,15 @@
 
 ## Status
 
-In Progress. Review execution started July 24, 2026. This is a read-only
-behavioral review of the committed principal working-tree snapshot; it must not
-make queue/reset code changes until it records the current behavior, the
-`origin/main` comparison, and a safe recommendation.
+Done. Accepted July 25, 2026 after successful live-HDMI validation on
+`v1.1.014-beta`. The completed implementation centralizes lifecycle resets,
+retains the full renderer-restart path for shader/media-type renegotiation, and
+does not reset stable playback from queue depth alone.
 
 Readiness record:
 
 - review worktree: `C:\Users\bslac\vp\videoprocessor - VS2026`;
-- review branch: `v1.1.012-beta-ffmpeg-4.4.8`;
+- review branch at start: `v1.1.012-beta-ffmpeg-4.4.8`;
 - immutable branch snapshot: `33e9686b9e3361296d343eeb2959f39526ea2bdc`;
 - fetched comparison baseline: `origin/main` at
   `82b96f2127596ce130e80e54aa9219ba8155381e`;
@@ -35,10 +35,13 @@ Implementation progress:
   `C:\Videoprocessor\vp\VideoProcessor.exe` after creating the recoverable
   backup `VideoProcessor.exe.20260724-191050.pre-vp0013.bak`. Deployment did
   not alter live configuration, renderer state, or shaders.
-- Runtime validation remains: exercise startup, display/refresh transition,
-  fullscreen/windowed resize, queue-size change, timing-offset change, and an
-  NLS shader rule requiring media-type renegotiation; confirm one named reset
-  per lifecycle incident and no reset from steady queue depth.
+- Live-HDMI user validation completed successfully. The user reported the
+  release working correctly; the final static review confirmed the coordinator
+  is the sole lightweight reset path and that NLS/shader changes still request
+  the established full renderer restart when required.
+- Final implementation branch: `v1.1.014-beta`, commit
+  `acf685d14c29925fe87181d25b0654fab417ff82` (prior to the documentation-only
+  comment correction recorded with this completion).
 
 Interim comparison decision (queue/reset paths): do **not** restore
 `origin/main`'s automatic reset behavior.  Main treats the displayed combined
@@ -76,6 +79,16 @@ Approved policy and initial implementation direction:
   reset timing, end flush, and issue one new segment.
 - Follow-up observability must add per-stage progress ages, incident IDs, and
   per-cause discard counters before automatic steady-state recovery is added.
+
+Completion record:
+
+- Lifecycle reset coordinator implementation: `36bb7ac`.
+- Final release branch: `v1.1.014-beta`, pushed to
+  `origin/v1.1.014-beta`.
+- Debug x64 project build and Release x64 solution build succeeded.
+- User live-HDMI validation accepted the behavior.
+- A stale diagnostic comment was corrected in the final branch completion
+  commit; it does not alter runtime behavior.
 
 ## User story
 
