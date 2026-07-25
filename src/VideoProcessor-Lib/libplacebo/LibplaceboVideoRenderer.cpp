@@ -25,9 +25,11 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <initializer_list>
+#include <iterator>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -503,6 +505,7 @@ namespace
 		int scopeSubtitlePaddingPixels = 20;
 		uint64_t refreshRateCommandDelayMs = 5000;
 		std::vector<RefreshRateCommandRule> refreshRateCommandRules;
+		std::string lutPath;
 	};
 
 	struct DisplayRule
@@ -693,6 +696,56 @@ namespace
 		return config.TryGetBool(LEGACY_DISPLAY_CONFIG_SECTION, key, value);
 	}
 
+	bool IsAbsolutePath(const std::string& path)
+	{
+		return (path.size() >= 3 && std::isalpha(static_cast<unsigned char>(path[0])) &&
+			path[1] == ':' && (path[2] == '\\' || path[2] == '/')) ||
+			(path.size() >= 2 && path[0] == '\\' && path[1] == '\\');
+	}
+
+	std::string ResolveConfigRelativePath(const ConfigFile& config, const std::string& path)
+	{
+		const std::string trimmed = ConfigFile::Trim(path);
+		if (trimmed.empty() || IsAbsolutePath(trimmed) || config.GetLoadedPath().empty())
+			return trimmed;
+
+		const size_t separator = config.GetLoadedPath().find_last_of("\\/");
+		return separator == std::string::npos ? trimmed :
+			config.GetLoadedPath().substr(0, separator + 1) + trimmed;
+	}
+
+	pl_custom_lut* LoadCubeLut(pl_log log, const std::string& path)
+	{
+		if (path.empty())
+			return nullptr;
+
+		std::ifstream input(path, std::ios::binary);
+		if (!input)
+		{
+			DebugLog::Log("display: LUT file could not be opened; rendering without a LUT: %s", path.c_str());
+			return nullptr;
+		}
+
+		const std::string contents((std::istreambuf_iterator<char>(input)),
+			std::istreambuf_iterator<char>());
+		if (contents.empty())
+		{
+			DebugLog::Log("display: LUT file is empty; rendering without a LUT: %s", path.c_str());
+			return nullptr;
+		}
+
+		pl_custom_lut* lut = pl_lut_parse_cube(log, contents.data(), contents.size());
+		if (!lut)
+		{
+			DebugLog::Log("display: LUT file is invalid and will be ignored; rendering without a LUT: %s", path.c_str());
+			return nullptr;
+		}
+
+		DebugLog::Log("display: loaded LUT %s (%d x %d x %d)",
+			path.c_str(), lut->size[0], lut->size[1], lut->size[2]);
+		return lut;
+	}
+
 	std::string ReadChoice(
 		const ConfigFile& config,
 		const char* key,
@@ -828,6 +881,8 @@ namespace
 				}
 			}
 		}
+		if (config.TryGetString(rule.section, "lut", raw))
+			settings.lutPath = ResolveConfigRelativePath(config, raw);
 	}
 
 	RendererSettings LoadRendererSettings(const VideoState& state, std::string& activeRule,
@@ -958,6 +1013,8 @@ namespace
 
 		settings.defaultScopeScreen = ReadChoice(
 			config, "default_screen_profile", "normal", { "normal", "scope" }) == "scope";
+		if (TryGetDisplayString(config, "lut", rawValue))
+			settings.lutPath = ResolveConfigRelativePath(config, rawValue);
 		if (TryGetDisplayString(config, "scope_subtitle_fit", rawValue) &&
 			!TryGetDisplayBool(config, "scope_subtitle_fit", settings.scopeSubtitleFit))
 		{
@@ -1502,6 +1559,7 @@ struct LibplaceboVideoRenderer::Impl
 	pl_swapchain swapchain = nullptr;
 	pl_renderer renderer = nullptr;
 	pl_tex textures[2] = { nullptr, nullptr };
+	pl_custom_lut* displayLut = nullptr;
 	std::unique_ptr<IVideoFrameFormatter> formatter;
 	VideoStateComPtr formatterState;
 	std::vector<BYTE> convertedFrame;
@@ -1566,6 +1624,7 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		nvidiaBt2020Reporter.Restore();
 		pl_renderer_destroy(&renderer);
+		pl_lut_free(&displayLut);
 		if (d3d11)
 		{
 			for (pl_tex& texture : textures)
@@ -2977,6 +3036,7 @@ struct LibplaceboVideoRenderer::Impl
 		formatterState = state;
 		convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
 		ConfigureRenderParams(settings);
+		displayLut = LoadCubeLut(log, settings.lutPath);
 
 		DebugLog::Log(
 			"libplacebo initialized: D3D11, P010 upload, SDR target request=%s %.1f nits",
@@ -3217,6 +3277,9 @@ struct LibplaceboVideoRenderer::Impl
 				target.crop.y1 -= outputShift;
 			}
 		};
+
+		renderParams.lut = displayLut;
+		renderParams.lut_type = PL_LUT_NATIVE;
 
 		double prewarmMs = 0.0;
 		if (hasPresentedFrame && !screenProfilesPrewarmed)
