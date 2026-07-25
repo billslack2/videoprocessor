@@ -1,0 +1,12 @@
+TITLE "VideoProcessor Extreme Color Rotation Test"
+# Intentional visual test LUT: red becomes vivid blue, green becomes orange,
+# blue becomes lime, and blacks are warm-tinted. Do not use for calibration.
+LUT_3D_SIZE 2
+0.150000 0.100000 0.050000
+0.150000 0.100000 0.950000
+0.900000 0.100000 0.050000
+0.900000 0.100000 0.950000
+0.150000 0.900000 0.050000
+0.150000 0.900000 0.950000
+0.900000 0.900000 0.050000
+0.900000 0.900000 0.950000

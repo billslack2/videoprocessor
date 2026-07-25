@@ -30,7 +30,7 @@ libplacebo\
   third_party_licenses\</pre>
   <p>VideoProcessor loads only <code>libplacebo\VideoProcessorLibplacebo.dll</code>. If the plugin, one of its private dependencies, or the expected plugin API is unavailable, the application starts normally and does not list the experimental renderer.</p>
 
-  <h2>[libplacebo] (experimental)</h2>
+  <h2>[display] (experimental libplacebo renderer)</h2>
   <p>The built-in renderer uses D3D11 and always produces SDR Rec.709 output. SDR input is color-managed without HDR tone mapping; PQ, HLG, traditional HDR, and detected LLDV input are tone-mapped to SDR using VP's effective input colorspace and mastering metadata. Changes between HDR and SDR are accepted in place.</p>
   <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
     <tr><td><code>sdr_target_nits</code></td><td><code>40</code> through <code>500</code>; default <code>203</code></td><td>Brightness of the SDR tone-mapping target. The default follows libplacebo's BT.2408 SDR reference-white model. This describes the intended SDR output level, not an HDR output mode.</td></tr>
@@ -50,8 +50,9 @@ libplacebo\
     <tr><td><code>scope_screen_aspect</code></td><td>A decimal or <code>width:height</code> ratio from <code>1.5</code> through <code>4.0</code>; default <code>2.35:1</code></td><td>Defines the physical aspect ratio of a constant-image-height screen. Examples include <code>2.35:1</code>, <code>2.39:1</code>, <code>2.40:1</code>, or <code>1.7778</code>. In the Scope profile the renderer fits the image into a centered viewport with this aspect ratio; narrower content is pillarboxed inside it.</td></tr>
     <tr><td><code>scope_subtitle_fit</code></td><td><code>true</code> or <code>false</code>; default <code>false</code></td><td>In the Scope profile, detects subtitle-like text extending into the lower encoded black bar and moves the complete rendered picture upward only far enough to keep that text on the visible screen. The position is held briefly between subtitle lines and then returns to center. Detection uses frame geometry and does not require an OCR model.</td></tr>
     <tr><td><code>default_screen_profile</code></td><td><code>normal</code> or <code>scope</code>; default <code>normal</code></td><td>Selects the startup profile when no saved selection exists. The renderer-specific shortcuts below select either profile immediately and save it in <code>VideoProcessorRenderer.state</code> beside the executable. Delete that automatically managed state file to return to this configured default.</td></tr>
+    <tr><td><code>lut</code></td><td>Optional path to a <code>.cube</code> 3D LUT</td><td>Applies the LUT after VP/libplacebo color management. Relative paths are resolved from <code>VideoProcessorRenderer.cfg</code>. Omit or leave it blank for no LUT. The key may also be set in a <code>[display_rules.name]</code> profile, where it overrides the base value.</td></tr>
   </tbody></table>
-  <pre>[libplacebo]
+  <pre>[display]
 sdr_target_nits=203
 sdr_black_nits=AUTO
 switch_refresh_rate=true
@@ -69,6 +70,9 @@ output_gamma=AUTO
 scope_screen_aspect=2.35:1
 scope_subtitle_fit=true
 default_screen_profile=normal</pre>
+  <p>Set <code>lut</code> in the base display section for every display profile, or set it in a selected <code>[display_rules.name]</code> section for a profile-specific calibration. LUTs are parsed once when that renderer profile starts; unreadable or invalid files are logged and rendering continues without a LUT.</p>
+  <pre>[display_rules.bt2020]
+lut=lut\bt2020-calibration.cube</pre>
   <h2>[shortcuts]</h2>
   <p>These shortcuts apply only to the optional renderer and belong in <code>VideoProcessorRenderer.cfg</code>. <code>screen_profile_normal</code> selects the full 16:9 output raster; <code>screen_profile_scope</code> selects the configured scope viewport. Direct selection keeps VP aligned with projector lens-memory or screen-masking commands. Function keys <code>F1</code> through <code>F24</code>, letters, numbers, <code>Escape</code>, and <code>Enter</code> are supported with optional <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code> modifiers.</p>
   <pre>[shortcuts]
