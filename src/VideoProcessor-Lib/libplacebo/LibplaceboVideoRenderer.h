@@ -105,6 +105,7 @@ private:
 	// underneath queued frames.
 	std::string m_activeDisplayRule;
 	// A shortcut-selected profile.  It takes precedence over [display_rules]
-	// until a material source transition returns selection to automatic mode.
+	// and persists across renderer reconstruction until another profile (or
+	// automatic mode) is selected.
 	std::string m_manualDisplayRule;
 };

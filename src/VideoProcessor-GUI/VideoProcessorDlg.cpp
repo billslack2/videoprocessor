@@ -2283,11 +2283,13 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 	if (!m_videoRenderer->SelectDisplayRule(rule->second, activeRule,
 		rendererRestartRequired))
 	{
-		DEBUGLOG("Display rule '%s' is unavailable", rule->second.GetString());
+		DEBUGLOG("Display rule '%S' is unavailable",
+			static_cast<LPCTSTR>(rule->second));
 		return;
 	}
 
-	DEBUGLOG("Manual display rule selected: %s", activeRule.GetString());
+	DEBUGLOG("Manual display rule selected: %S",
+		static_cast<LPCTSTR>(activeRule));
 	if (rendererRestartRequired)
 	{
 		m_wantToRestartRenderer = true;
