@@ -8,6 +8,18 @@ that rate after another renderer restores the desktop/movie-menu rate. Begin
 implementation only after the refresh-switch ownership and stale-state path
 are confirmed from code and a repeatable trace.
 
+Readiness review completed 2026-07-25. The captured runtime trace confirms the
+symptom and narrows the boundary to the alpha renderer's transition-time
+refresh decision: its 11:09:16 "display already 23.976000 Hz" decision is
+immediately followed by a newly-created alpha DXGI swapchain at 59 Hz and
+timing samples converging on 59.94 Hz. The source for
+`VideoProcessorLibplacebo.dll` is not present in the canonical repository or
+this checkout, so the cached-value path, lifecycle callback order, and safe
+implementation seam cannot yet be verified. Keep this story in Draft until
+the matching alpha-renderer source revision and build instructions are
+available; do not make a binary-only change or promote the story to In
+Progress based on the log alone.
+
 ## User story
 
 As a user of the alpha renderer, I want switching renderers while content is
@@ -120,6 +132,47 @@ The comparison must distinguish “requested/target path says 23.976” from
 “the current display mode is verified as 23.976.” A stale logical value must
 never suppress a necessary switch. The operation must be idempotent and
 bounded so mode-change notifications cannot create a switch loop.
+
+## Implementation plan
+
+Once the matching alpha-renderer source is available, implement and review the
+following in one renderer-transition change set:
+
+1. Map the renderer shortcut path and alpha lifecycle callbacks from outgoing
+   teardown through incoming construction, swapchain creation, and the first
+   display-mode notification. Add a monotonically increasing renderer
+   generation at the transition boundary, and discard a deferred request if
+   its generation is no longer active.
+2. Centralize alpha refresh selection in one idempotent transition owner. The
+   outgoing-alpha restore may request the desktop/menu mode; the incoming
+   alpha instance may request the content mode only after its display path is
+   ready. Neither path may infer actual mode from the other request's cache.
+3. Split refresh state into explicit values: desired content target, last
+   requested target, Windows target-path mode, verified current Windows mode,
+   and measured DXGI rate with its freshness/stability. Restrict the
+   "already correct" outcome to a fresh Windows-mode query within the existing
+   rate tolerance; target-path and prior-request values are diagnostics only.
+4. On alpha initialization, schedule exactly one generation-bound
+   re-evaluation after the swapchain/display path becomes ready. Re-query the
+   Windows mode before deciding. Apply the content rate if it differs; on a
+   verified match, record a no-op. Do not retry from ordinary timing samples.
+5. On the ensuing display notification, invalidate stale measurements,
+   re-query the actual mode, and emit one post-transition result. Permit one
+   bounded retry only when the display path was unavailable or the mode query
+   failed; cancel it on a newer renderer generation or renderer destruction.
+6. Preserve the existing startup and established-renderer paths. Add focused
+   unit seams for rate comparison, generation invalidation, and decision
+   selection where the source architecture permits, then run the manual matrix
+   below against the deployed Windows display.
+
+### Readiness gate and handoff
+
+The implementation owner needs the exact source repository/worktree that
+produces `C:\Videoprocessor\vp\libplacebo\VideoProcessorLibplacebo.dll`, its
+revision/build command, and the configuration/API location that performs
+Windows mode selection. On handoff, capture a fresh ten-toggle trace with the
+new generation/decision fields and attach only the concise excerpts to this
+story; keep the full runtime log at `C:\logs\vp_debug.log`.
 
 ## Diagnostics
 
