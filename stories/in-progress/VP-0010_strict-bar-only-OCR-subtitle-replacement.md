@@ -2,7 +2,11 @@
 
 ## Status
 
-Draft.
+In Progress — currently blocked on the difficult implementation and validation
+work for strict OCR-only bar subtitles. No production implementation is being
+claimed yet. Next action: establish the cue-cache/rasterization design and
+prove the bar-only safety gate with synthetic tests before moving this story to
+Review.
 
 ## User story
 

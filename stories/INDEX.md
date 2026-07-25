@@ -34,7 +34,7 @@ folders, and its `## Status` heading must use the matching state name.
 | VP-0007 | Draft | Alpha renderer controlled repeat correction |
 | VP-0008 | Draft | Alpha renderer presentation-pacing assessment and refinement |
 | VP-0009 | Draft | Alpha renderer DeckLink R210/R12B format parity |
-| VP-0010 | Draft | Strict bar-only OCR subtitle replacement |
+| VP-0010 | In Progress | Strict bar-only OCR subtitle replacement |
 | VP-0011 | Draft | Alpha renderer color-managed 3D LUT support |
 | VP-0012 | Draft | Alpha renderer LUT pipeline contract spike |
 | VP-0013 | Done | DirectShow queue/reset alignment and no-drop review |
