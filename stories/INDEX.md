@@ -45,6 +45,20 @@ folders, and its `## Status` heading must use the matching state name.
 
 ## Codex story workflow
 
+`origin/main` is the canonical source of truth for story state. Story status,
+folder placement, the registry, and workflow instructions must always be
+tracked from the current `main` branch so a later session can discover and
+update them reliably. Secondary story checkouts are disposable working copies,
+not independent authorities.
+
+Before reading, creating, moving, or committing a story, Codex must fetch
+`origin/main` and verify the working copy is based on the current remote main.
+Use a clean main-based checkout for the change. If an existing checkout is
+dirty or based on an older main, do not merge, rebase, reset, or overwrite its
+uncommitted work; create a fresh checkout from `origin/main` instead. A story
+change is not complete until it is committed and pushed to the canonical
+`main` branch, unless the user explicitly requests another review branch.
+
 Codex owns moving stories between folders in this session. Move the file,
 update its `## Status` section, and update the table above in the **same
 commit**. Never copy a story into a second state folder; `git mv` is preferred
