@@ -2,23 +2,19 @@
 
 ## Status
 
-Draft. The current log contains a reproducible-looking renderer-switch
-sequence where alpha starts at the content rate but does not reliably re-apply
-that rate after another renderer restores the desktop/movie-menu rate. Begin
-implementation only after the refresh-switch ownership and stale-state path
-are confirmed from code and a repeatable trace.
+Done. Accepted 2026-07-25 after user validation confirmed the renderer-switch
+fix works. Implementation commit: `fc3cd35` (`codex/vp0018-v1.1.014`, based on
+`v1.1.014-beta`). The fix defers alpha's refresh-rate decision until after its
+D3D11 swapchain initialization, so the decision observes any desktop-rate
+restore caused by swapchain setup.
 
-Readiness review completed 2026-07-25. The captured runtime trace confirms the
-symptom and narrows the boundary to the alpha renderer's transition-time
-refresh decision: its 11:09:16 "display already 23.976000 Hz" decision is
-immediately followed by a newly-created alpha DXGI swapchain at 59 Hz and
-timing samples converging on 59.94 Hz. The source for
-`VideoProcessorLibplacebo.dll` is not present in the canonical repository or
-this checkout, so the cached-value path, lifecycle callback order, and safe
-implementation seam cannot yet be verified. Keep this story in Draft until
-the matching alpha-renderer source revision and build instructions are
-available; do not make a binary-only change or promote the story to In
-Progress based on the log alone.
+Validation: a full `Release|x64` solution rebuild passed for the GUI, tests,
+and libplacebo plugin. The resulting `VideoProcessor-GUI.exe` and
+`VideoProcessorLibplacebo.dll` were deployed as
+`C:\Videoprocessor\vp\VideoProcessor.exe` and
+`C:\Videoprocessor\vp\libplacebo\VideoProcessorLibplacebo.dll`; SHA-256
+checks confirmed both deployed files match the build outputs. The user
+confirmed the change was merged and working.
 
 ## User story
 

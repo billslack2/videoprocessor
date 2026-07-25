@@ -42,7 +42,7 @@ folders, and its `## Status` heading must use the matching state name.
 | VP-0015 | Draft | Alpha renderer shader compatibility with the existing shader catalog |
 | VP-0016 | Draft | Make scene detection available for the alpha renderer |
 | VP-0017 | Draft | Explain variable alpha-renderer queue depth |
-| VP-0018 | Draft | Re-select the content refresh rate when switching to alpha |
+| VP-0018 | Done | Re-select the content refresh rate when switching to alpha |
 | VP-0019 | Done | SDR BT.2020 display profiles, F5/F6 hotkeys, and output signaling |
 
 ## Codex story workflow
