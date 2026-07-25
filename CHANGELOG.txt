@@ -1,3 +1,15 @@
+v1.1.014-beta
+- Added the Alpha/libplacebo renderer with capability-gated output negotiation,
+  persistent shader caching, renderer shortcuts, display rules, and output
+  diagnostics.
+- Default Alpha output is now Direct + Full/sRGB using the locally validated
+  Test 02 visual settings; scope subtitle hold defaults to 2 seconds.
+- Refresh-rate commands now support a configurable
+  [refresh_rate_commands] delay_seconds value.
+- VP-0004 remains subject to broader real-world validation. These defaults are
+  locally validated settings, not a claim of pixel-perfect matching to madVR
+  across every display, GPU driver, capture format, or tone-mapping setup.
+
 1.0.0.14-beta
 - Can now switch between windowed and exclusive fullscreen in the gui
 - Added help dialog at command line (/help)

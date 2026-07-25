@@ -175,10 +175,12 @@ std::vector<std::string> SplitConfiguredList(const std::string& value)
 
 HACCEL CreateConfiguredAccelerators(
 	std::map<WORD, CString>& shaderShortcutRules,
-	std::map<WORD, CString>& displayRuleShortcutRules)
+	std::map<WORD, CString>& displayRuleShortcutRules,
+	std::map<WORD, unsigned int>& rendererShortcutIndices)
 {
 	shaderShortcutRules.clear();
 	displayRuleShortcutRules.clear();
+	rendererShortcutIndices.clear();
 	ConfigFile mainConfig;
 	const bool hasMainConfig = mainConfig.Load();
 	ConfigFile rendererConfig;
@@ -219,6 +221,55 @@ HACCEL CreateConfiguredAccelerators(
 			const unsigned int defaultBinding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
 			if (bindings.insert(defaultBinding).second)
 				accelerators.push_back(accelerator);
+		}
+	}
+
+	// Renderer shortcuts are indexed by the 1-based, sorted renderer-combo
+	// order. This remains unambiguous even when registered renderers have the
+	// same friendly name.
+	const auto* shortcutValues =
+		hasMainConfig ? mainConfig.GetSectionValues("shortcuts") : nullptr;
+	if (shortcutValues)
+	{
+		WORD nextCommand = ID_COMMAND_RENDERER_SELECT_FIRST;
+		for (const auto& entry : *shortcutValues)
+		{
+			unsigned int rendererIndex = 0;
+			if (!ConfigFile::TryParseIndexedKey(
+				entry.first,
+				"render",
+				rendererIndex))
+				continue;
+			if (nextCommand > ID_COMMAND_RENDERER_SELECT_LAST)
+			{
+				DEBUGLOG("Renderer shortcut '%s' ignored: command capacity exceeded",
+					entry.first.c_str());
+				break;
+			}
+
+			ACCEL accelerator = {};
+			if (!TryParseShortcut(entry.second, accelerator))
+			{
+				DEBUGLOG("Invalid shortcut '%s' for renderer index %u",
+					entry.second.c_str(),
+					rendererIndex);
+				continue;
+			}
+			const unsigned int binding =
+				(static_cast<unsigned int>(accelerator.fVirt) << 16) |
+				accelerator.key;
+			if (!bindings.insert(binding).second)
+			{
+				DEBUGLOG("Duplicate shortcut '%s' ignored for renderer index %u",
+					entry.second.c_str(),
+					rendererIndex);
+				continue;
+			}
+
+			accelerator.cmd = nextCommand;
+			accelerators.push_back(accelerator);
+			rendererShortcutIndices[nextCommand] = rendererIndex;
+			++nextCommand;
 		}
 	}
 
@@ -832,6 +883,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_DISPLAY_RULE_AUTO, &CVideoProcessorDlg::OnCommandDisplayRuleAuto)
 	ON_COMMAND_RANGE(ID_COMMAND_SHADER_RULE_FIRST, ID_COMMAND_SHADER_RULE_LAST, &CVideoProcessorDlg::OnCommandShaderRule)
 	ON_COMMAND_RANGE(ID_COMMAND_DISPLAY_RULE_FIRST, ID_COMMAND_DISPLAY_RULE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
+	ON_COMMAND_RANGE(ID_COMMAND_RENDERER_SELECT_FIRST, ID_COMMAND_RENDERER_SELECT_LAST, &CVideoProcessorDlg::OnCommandRendererSelect)
 	ON_COMMAND_RANGE(ID_COMMAND_CAPTURE_1, ID_COMMAND_CAPTURE_4, &CVideoProcessorDlg::OnSelectCaptureDevice)
 
 
@@ -2243,6 +2295,43 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 	}
 }
 
+void CVideoProcessorDlg::OnCommandRendererSelect(UINT commandId)
+{
+	const auto shortcut =
+		m_rendererShortcutIndices.find(static_cast<WORD>(commandId));
+	if (shortcut == m_rendererShortcutIndices.end())
+		return;
+
+	const unsigned int oneBasedIndex = shortcut->second;
+	if (oneBasedIndex == 0 ||
+		oneBasedIndex > static_cast<unsigned int>(m_rendererCombo.GetCount()))
+	{
+		DEBUGLOG(
+			"Renderer shortcut render.%u ignored: only %d renderers are available",
+			oneBasedIndex,
+			m_rendererCombo.GetCount());
+		return;
+	}
+
+	const int comboIndex = static_cast<int>(oneBasedIndex - 1);
+	CString rendererName;
+	m_rendererCombo.GetLBText(comboIndex, rendererName);
+	if (m_rendererCombo.GetCurSel() == comboIndex)
+	{
+		DEBUGLOG("Renderer shortcut render.%u already selected: %s",
+			oneBasedIndex,
+			rendererName.GetString());
+		return;
+	}
+
+	m_rendererCombo.SetCurSel(comboIndex);
+	DEBUGLOG("Renderer shortcut render.%u selected: %s",
+		oneBasedIndex,
+		rendererName.GetString());
+	UpdateRendererBackendUi();
+	OnBnClickedRendererRestart();
+}
+
 
 
 void CVideoProcessorDlg::OnCommandPQSet()
@@ -3536,6 +3625,9 @@ void CVideoProcessorDlg::RebuildRendererCombo()
 
 		int comboIndex = m_rendererCombo.AddString(rendererEntry.name);
 		m_rendererCombo.SetItemData(comboIndex, reinterpret_cast<DWORD_PTR>(id));
+		DEBUGLOG("Renderer order: render.%d = %s",
+			comboIndex + 1,
+			rendererEntry.name.GetString());
 
 		const bool isConfiguredRenderer =
 			rendererEntry.name.CompareNoCase(m_defaultRendererName) == 0 ||
@@ -4190,7 +4282,10 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	// Start discovery services
 	m_blackMagicDeviceDiscoverer->Start();
 
-	m_accelerator = CreateConfiguredAccelerators(m_shaderShortcutRules, m_displayRuleShortcutRules);
+	m_accelerator = CreateConfiguredAccelerators(
+		m_shaderShortcutRules,
+		m_displayRuleShortcutRules,
+		m_rendererShortcutIndices);
 	if (!m_accelerator)
 		FatalError(TEXT("Failed to create accelerator table"));
 
@@ -4515,6 +4610,8 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 		width,
 		height,
 		bitsPerPixel);
+	if (m_videoRenderer)
+		m_videoRenderer->OnDisplayChange();
 	CDialog::OnDisplayChange(bitsPerPixel, width, height);
 }
 
@@ -5100,6 +5197,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.entryLatencyMs = m_videoRenderer->EntryLatencyMs();
 		stats.exitLatencyMs = m_videoRenderer->ExitLatencyMs();
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
+		m_videoRenderer->GetOutputModeInfo(stats.outputMode);
 		stats.sceneDetectCorrectionDrops = m_videoRenderer->SceneAwareCorrectionDropCount();
 		stats.sceneDetectCorrectionRepeats = m_videoRenderer->SceneAwareCorrectionRepeatCount();
 		stats.sceneDetectDetected = m_videoRenderer->SceneAwareDetectedCount();

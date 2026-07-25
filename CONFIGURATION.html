@@ -18,6 +18,7 @@
   <p>The shipped file is a conservative sample with common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[display_refresh_rate_override]</code>, <code>[shaders]</code>, <code>[p010_conversion]</code>, and <code>[ppm_correction]</code> sections can be added when needed.</p>
   <p>The experimental built-in renderer's processing settings belong in <code>VideoProcessorRenderer.cfg</code> and are documented separately in <a href="VideoProcessorRenderer.html">VideoProcessor built-in renderer configuration</a>.</p>
   <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override matching settings.</p>
+  <p>Use <code>/config "path\VideoProcessor.cfg"</code> to select a different general configuration for one process, and <code>/vr_config "path\VideoProcessorRenderer.cfg"</code> to select a different renderer configuration for all renderer components in that process. Relative paths are resolved from the process working directory, and an explicitly selected file must exist. The <code>--config</code>, <code>-config</code>, <code>--vr_config</code>, and <code>-vr_config</code> spellings are equivalent; <code>/config=path</code> and <code>/vr_config=path</code> are also accepted.</p>
 
   <h2>[command_line]</h2>
   <p>Keys and option values, including device and renderer names, are case-insensitive. Configuration entries must use <code>key=value</code>. Boolean values accept <code>true</code>/<code>false</code>, <code>yes</code>/<code>no</code>, <code>on</code>/<code>off</code>, or <code>1</code>/<code>0</code>. On the command line, a bare Boolean switch enables it; append a Boolean value to explicitly enable or disable it, for example <code>/scene_detect false</code>.</p>
@@ -59,7 +60,8 @@ reset_queue_too_large_percent=75</pre>
 
   <h2>[shortcuts]</h2>
   <p>Keyboard shortcuts are optional. If this section, an individual key, or the entire configuration file is absent, VideoProcessor uses its built-in defaults. Modifier names are case-insensitive. A lowercase letter is unmodified (<code>v</code>); an uppercase letter adds Shift (<code>V</code> means <code>Shift+V</code>).</p>
-  <p>Supported modifiers are <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Keys may be a letter, a number, <code>F1</code> through <code>F24</code>, <code>Escape</code>, or <code>Enter</code>. Invalid or duplicate bindings fall back to the built-in binding for that command.</p>
+  <p>Supported modifiers are <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Keys may be a letter, a number, <code>F1</code> through <code>F24</code>, <code>Escape</code>, or <code>Enter</code>. Invalid or duplicate bindings fall back to the built-in binding for fixed commands.</p>
+  <p>Dynamic <code>render.N</code> entries select the 1-based renderer-combo entry and perform the same controlled renderer restart as a UI selection. The sorted, machine-specific order is logged at startup as <code>Renderer order: render.N = &lt;name&gt;</code>. An unavailable index is ignored safely.</p>
   <pre>[shortcuts]
 auto_set=Ctrl+Shift+a
 fullscreen_exit=Escape
@@ -68,6 +70,8 @@ toggle_stats_overlay=Ctrl+i
 pq_set=Ctrl+Shift+p
 renderer_restart=Shift+r
 renderer_reset=r
+render.5=Ctrl+Alt+m
+render.6=Ctrl+Alt+l
 capture_1=Ctrl+1
 capture_2=Ctrl+2
 capture_3=Ctrl+3

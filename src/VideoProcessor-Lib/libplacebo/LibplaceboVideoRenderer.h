@@ -37,6 +37,7 @@ public:
 	void ResetLiveQueue() override;
 	void OnSize() override;
 	void OnPaint() override;
+	void OnDisplayChange() override;
 	void SetFrameQueueMaxSize(size_t size) override;
 	void SetSceneAwareTimingCorrection(bool) override {}
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile) override;
@@ -46,6 +47,7 @@ public:
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;
 	uint64_t DroppedFrameCount() const override;
+	bool GetOutputModeInfo(CString& details) const override;
 	bool GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override;
 	bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const override;
 

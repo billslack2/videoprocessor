@@ -111,6 +111,10 @@ public:
 	// Window needs repainting
 	virtual void OnPaint() = 0;
 
+	// Display mode/output capabilities changed without necessarily resizing the
+	// render window. Renderers that negotiate an output contract may refresh it.
+	virtual void OnDisplayChange() {}
+
 	//
 	// Queues
 	//
@@ -202,6 +206,14 @@ public:
 
 	// Get the amount of dropped frames due to queue actions
 	virtual uint64_t DroppedFrameCount() const = 0;
+
+	// Requested and negotiated renderer output presentation/range/transfer.
+	// Renderers without an explicit output contract return false.
+	virtual bool GetOutputModeInfo(CString& details) const
+	{
+		details.Empty();
+		return false;
+	}
 
 	// Source-side whole-frame actions moved to a detected scene boundary.
 	virtual uint64_t SceneAwareCorrectionDropCount() const { return 0; }

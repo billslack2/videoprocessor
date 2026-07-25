@@ -41,6 +41,16 @@ Boolean switches:
   matching setting in VideoProcessor.cfg.
 
 Options:
+  /config <path>
+      Use this VideoProcessor.cfg file. Relative paths are resolved from the
+      process working directory. The explicit file must exist. --config and
+      -config are also accepted.
+
+  /vr_config <path>
+      Use this VideoProcessorRenderer.cfg file for all renderer components.
+      Relative paths are resolved from the process working directory. The
+      explicit file must exist. --vr_config and -vr_config are also accepted.
+
   /fullscreen
       Start fullscreen.
 
@@ -241,7 +251,11 @@ void ValidateRendererConfigRules()
 {
 	ConfigFile rendererConfig;
 	if (!rendererConfig.Load(ConfigFile::RENDERER_FILENAME))
+	{
+		if (!rendererConfig.GetWarnings().empty())
+			throw std::runtime_error(rendererConfig.GetWarnings().front());
 		return; // The alpha renderer configuration is optional.
+	}
 
 	ThrowIfConfigHasSyntaxWarnings(rendererConfig);
 	std::string error;
@@ -382,7 +396,11 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	ConfigFile config;
 	std::vector<std::wstring> arguments;
 	if (!config.Load())
+	{
+		if (!config.GetWarnings().empty())
+			throw std::runtime_error(config.GetWarnings().front());
 		return arguments;
+	}
 
 	DbgLog((LOG_TRACE, 1, TEXT("VideoProcessor: Loading configuration from %S"), config.GetLoadedPath().c_str()));
 	ThrowIfConfigHasSyntaxWarnings(config);
@@ -451,6 +469,21 @@ bool IsCommandLineSwitch(const wchar_t* argument)
 bool IsCommandLineOption(const wchar_t* argument, const wchar_t* option)
 {
 	return argument != nullptr && _wcsicmp(argument, option) == 0;
+}
+
+bool IsConfigSelectionArgument(const wchar_t* argument)
+{
+	if (argument == nullptr)
+		return false;
+
+	const wchar_t* name = argument;
+	while (*name == L'/' || *name == L'-')
+		++name;
+
+	return _wcsicmp(name, L"config") == 0 ||
+		_wcsicmp(name, L"vr_config") == 0 ||
+		_wcsnicmp(name, L"config=", 7) == 0 ||
+		_wcsnicmp(name, L"vr_config=", 10) == 0;
 }
 
 bool TryParseBooleanArgument(const wchar_t* argument, bool& value)
@@ -624,6 +657,13 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 	for (int index = 1; index < static_cast<int>(arguments.size()); ++index)
 	{
 		const wchar_t* argument = arguments[index];
+		if (IsConfigSelectionArgument(argument))
+		{
+			if (wcschr(argument, L'=') == nullptr)
+				++index; // The shared config loader already validated the value.
+			continue;
+		}
+
 		if (IsCommandLineOption(argument, L"/subtitle_reposition"))
 		{
 			if (index + 1 < static_cast<int>(arguments.size()) &&
@@ -815,7 +855,8 @@ BOOL CVideoProcessorApp::InitInstance()
 		pArgs.reserve(mergedArguments.size());
 		for (auto& argument : mergedArguments)
 		{
-			if (IsCommandLineSwitch(argument.c_str()))
+			if (IsCommandLineSwitch(argument.c_str()) &&
+				!IsConfigSelectionArgument(argument.c_str()))
 			{
 				std::transform(argument.begin(), argument.end(), argument.begin(), towlower);
 			}
@@ -1079,7 +1120,11 @@ BOOL CVideoProcessorApp::InitInstance()
 			{
 				DXVA_NominalRange nominalRange;
 
-				if (wcscmp(pArgs[i + 1], L"FULL") == 0)
+				if (wcscmp(pArgs[i + 1], L"AUTO") == 0)
+				{
+					nominalRange = DXVA_NominalRange::DXVA_NominalRange_Unknown;
+				}
+				else if (wcscmp(pArgs[i + 1], L"FULL") == 0)
 				{
 					nominalRange = DXVA_NominalRange::DXVA_NominalRange_0_255;
 				}
