@@ -2,30 +2,30 @@
 
 ## Status
 
-Review — the VP011 source branch contains the initial optional `.cube` LUT
-implementation in commit `c4795d9` (`Add optional display profile LUTs`). It
-loads a configured LUT once during renderer initialization, attaches it using
-`PL_LUT_NATIVE`, supports display-rule overrides, and documents the new
-configuration key. This is ready for code/design review, but is not accepted:
-VP-0012 remains a required gating spike because the implementation does not yet
-record proof of the required post-tone-map/post-gamut-map stage, range and
-presentation boundary, or the required identity/non-identity and HDR/P3
-validation.
+Review — VP-0011 and VP-0012 are combined on `VP0011+0012` in draft PR
+[billslack2/videoprocessor#6](https://github.com/billslack2/videoprocessor/pull/6),
+targeting the repository default `v1.1.014-beta`. The former VP011-only PR #5
+is closed as superseded.
 
-Review follow-up:
+The implementation now uses the VP-0012 decision: an optional 3D `.cube` is
+parsed once, contract-validated, and attached only to the final target frame
+with `PL_LUT_NATIVE`. Invalid files, 1D cubes, unsafe paths/dimensions, profile
+mismatches, and unverified output signaling are ignored safely while playback
+continues without a LUT. Ctrl-I reports Disabled, Loaded/validating, Active, or
+a concise Rejected reason.
 
-- Complete VP-0012 and add its decision record and reproducible evidence here.
-- Add the parser, fallback, rendering, rule-switch, and resource-lifetime tests
-  required below.
-- Perform the required real-display/projector validation before moving this
-  story to Done.
+`Release|x64` builds with zero warnings/errors and all 68 tests pass, including
+the three supplied 65³ cubes and deterministic identity/extreme WARP GPU
+readback. Automated/source review is complete. Real-projector Rec.709/BT.2020
+validation, display-rule/source switching, and fullscreen/window transitions
+remain before Done. P3-D65 reference profiles remain intentionally rejected
+until VP has a verified P3 Windows presentation contract.
 
 ## Prerequisites
 
-1. Finish [VP-0012](../draft/VP-0012_alpha-renderer-LUT-pipeline-contract-spike.md)
-   and move it to Done before accepting this story.
-   It must establish, with test evidence against the bundled libplacebo build,
-   the exact stage at which VP can apply a display-calibration LUT.
+1. Review [VP-0012](VP-0012_alpha-renderer-LUT-pipeline-contract-spike.md)
+   alongside this story. Its source/API and automated GPU evidence establishes
+   the target-frame stage; real-display evidence remains before acceptance.
 2. Record the selected output architecture in this story before changing
    production configuration or renderer code. It must state whether a target
    frame LUT is demonstrably post-tone-map/post-gamut-map, or whether VP needs

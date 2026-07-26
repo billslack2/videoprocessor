@@ -2,12 +2,35 @@
 
 ## Status
 
-In Progress — investigation started 2026-07-25. Work is being performed from
-`C:\\Users\\bslac\\vp\\videoprocessor - VS2026` on a clean branch based on the
-current `billslack2/videoprocessor` default branch. The first phase is a
-source/API and comparable-renderer review to establish the supported
-libplacebo LUT attachment and color-contract design before production renderer
-or configuration changes are made.
+Review — implementation and automated validation completed 2026-07-25 on
+`VP0011+0012`, based on `origin/v1.1.014-beta`. Draft PR
+[billslack2/videoprocessor#6](https://github.com/billslack2/videoprocessor/pull/6)
+contains the VP-0011 baseline (`bbe75df`) and completed target/output contract
+(`7b4d00c`).
+
+The selected design attaches calibration only to the final target frame as
+`target.lut` / `PL_LUT_NATIVE`; render-parameter and image LUTs remain null.
+Activation requires the target primaries, transfer, range, and nits to match
+the declared profile and the accepted DXGI signal. Rec.709 and BT.2020
+contracts are supported when their exact DXGI color space is accepted.
+P3-D65 profiles are rejected until a verified Windows P3 signal path exists.
+1D, malformed, unreadable, oversized, unsafe-dimension, and path-traversal
+inputs are rejected with no-LUT playback and concise log/OSD diagnostics.
+
+Validation evidence:
+
+- `Release|x64` solution build: zero warnings and zero errors.
+- `VideoProcessor-Test.dll`: 68/68 tests passed.
+- All three supplied 65³ cubes loaded through the production bounded parser.
+- WARP readback proved no-LUT and identity output match, while an extreme
+  target LUT transforms the expected red sample to green.
+- Independent final review confirmed target-stage placement, complete
+  signal-contract checks, rejection fallback, and truthful Ctrl-I states.
+
+Remaining review is real projector/display validation of Rec.709 and BT.2020
+profiles, fullscreen/window transitions, and rule/source switching. Do not
+move this story to Done until that evidence and the merge/release decision are
+recorded.
 
 ### Phase 1 decision record — target-frame calibration LUT
 
