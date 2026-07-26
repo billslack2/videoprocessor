@@ -6,6 +6,7 @@
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
 #include <libplacebo/AlphaQueuePolicy.h>
+#include <libplacebo/LibplaceboDisplayLut.h>
 #include <libplacebo/LibplaceboOutputPolicy.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
@@ -29,7 +30,6 @@
 #include <cmath>
 #include <fstream>
 #include <initializer_list>
-#include <iterator>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -506,6 +506,11 @@ namespace
 		uint64_t refreshRateCommandDelayMs = 5000;
 		std::vector<RefreshRateCommandRule> refreshRateCommandRules;
 		std::string lutPath;
+		bool lutPathRejected = false;
+		std::string lutReferencePrimaries = "auto";
+		std::string lutReferenceTransfer = "auto";
+		std::string lutReferenceRange = "auto";
+		double lutReferenceNits = 0.0;
 	};
 
 	struct DisplayRule
@@ -703,47 +708,66 @@ namespace
 			(path.size() >= 2 && path[0] == '\\' && path[1] == '\\');
 	}
 
-	std::string ResolveConfigRelativePath(const ConfigFile& config, const std::string& path)
+	std::string CanonicalFullPath(const std::string& path)
 	{
+		const DWORD required = GetFullPathNameA(path.c_str(), 0, nullptr, nullptr);
+		if (required == 0)
+			return std::string();
+		std::vector<char> buffer(static_cast<size_t>(required));
+		if (GetFullPathNameA(path.c_str(), required, buffer.data(), nullptr) == 0)
+			return std::string();
+		return std::string(buffer.data());
+	}
+
+	std::string ResolveConfigRelativePath(
+		const ConfigFile& config,
+		const std::string& path,
+		bool* rejected = nullptr)
+	{
+		if (rejected)
+			*rejected = false;
 		const std::string trimmed = ConfigFile::Trim(path);
 		if (trimmed.empty() || IsAbsolutePath(trimmed) || config.GetLoadedPath().empty())
 			return trimmed;
 
 		const size_t separator = config.GetLoadedPath().find_last_of("\\/");
-		return separator == std::string::npos ? trimmed :
-			config.GetLoadedPath().substr(0, separator + 1) + trimmed;
-	}
+		if (separator == std::string::npos)
+			return trimmed;
 
-	pl_custom_lut* LoadCubeLut(pl_log log, const std::string& path)
-	{
-		if (path.empty())
-			return nullptr;
-
-		std::ifstream input(path, std::ios::binary);
-		if (!input)
+		const std::string base =
+			CanonicalFullPath(config.GetLoadedPath().substr(0, separator + 1));
+		const std::string candidate = CanonicalFullPath(
+			config.GetLoadedPath().substr(0, separator + 1) + trimmed);
+		if (base.empty() || candidate.empty())
 		{
-			DebugLog::Log("display: LUT file could not be opened; rendering without a LUT: %s", path.c_str());
-			return nullptr;
+			if (rejected)
+				*rejected = true;
+			return std::string();
 		}
 
-		const std::string contents((std::istreambuf_iterator<char>(input)),
-			std::istreambuf_iterator<char>());
-		if (contents.empty())
+		std::string basePrefix = base;
+		if (basePrefix.back() != '\\' && basePrefix.back() != '/')
+			basePrefix.push_back('\\');
+		auto normalize = [](std::string value)
 		{
-			DebugLog::Log("display: LUT file is empty; rendering without a LUT: %s", path.c_str());
-			return nullptr;
-		}
-
-		pl_custom_lut* lut = pl_lut_parse_cube(log, contents.data(), contents.size());
-		if (!lut)
+			std::replace(value.begin(), value.end(), '/', '\\');
+			std::transform(value.begin(), value.end(), value.begin(),
+				[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			return value;
+		};
+		const std::string normalizedBase = normalize(basePrefix);
+		const std::string normalizedCandidate = normalize(candidate);
+		if (normalizedCandidate.compare(
+			0, normalizedBase.size(), normalizedBase) != 0)
 		{
-			DebugLog::Log("display: LUT file is invalid and will be ignored; rendering without a LUT: %s", path.c_str());
-			return nullptr;
+			DebugLog::Log(
+				"display: relative LUT path escapes the configuration directory and was rejected: %s",
+				trimmed.c_str());
+			if (rejected)
+				*rejected = true;
+			return std::string();
 		}
-
-		DebugLog::Log("display: loaded LUT %s (%d x %d x %d)",
-			path.c_str(), lut->size[0], lut->size[1], lut->size[2]);
-		return lut;
+		return candidate;
 	}
 
 	std::string ReadChoice(
@@ -882,7 +906,32 @@ namespace
 			}
 		}
 		if (config.TryGetString(rule.section, "lut", raw))
-			settings.lutPath = ResolveConfigRelativePath(config, raw);
+			settings.lutPath = ResolveConfigRelativePath(
+				config, raw, &settings.lutPathRejected);
+		readChoice("lut_reference_primaries", settings.lutReferencePrimaries,
+			{ "auto", "rec709", "p3_d65", "bt2020" });
+		readChoice("lut_reference_transfer", settings.lutReferenceTransfer,
+			{ "auto", "srgb", "bt1886", "2.2", "2.4" });
+		readChoice("lut_reference_range", settings.lutReferenceRange,
+			{ "auto", "full", "limited" });
+		if (config.TryGetString(rule.section, "lut_reference_nits", raw))
+		{
+			if (ConfigFile::NormalizeName(raw) == "auto")
+			{
+				settings.lutReferenceNits = 0.0;
+			}
+			else
+			{
+				double value = 0.0;
+				if (ParseDouble(raw, value) && value >= 40.0 && value <= 500.0)
+					settings.lutReferenceNits = value;
+				else
+					DebugLog::Log(
+						"display rule '%s': invalid lut_reference_nits '%s'; retaining base setting",
+						rule.name.c_str(),
+						raw.c_str());
+			}
+		}
 	}
 
 	RendererSettings LoadRendererSettings(const VideoState& state, std::string& activeRule,
@@ -1014,7 +1063,27 @@ namespace
 		settings.defaultScopeScreen = ReadChoice(
 			config, "default_screen_profile", "normal", { "normal", "scope" }) == "scope";
 		if (TryGetDisplayString(config, "lut", rawValue))
-			settings.lutPath = ResolveConfigRelativePath(config, rawValue);
+			settings.lutPath = ResolveConfigRelativePath(
+				config, rawValue, &settings.lutPathRejected);
+		settings.lutReferencePrimaries = ReadChoice(
+			config, "lut_reference_primaries", "auto",
+			{ "auto", "rec709", "p3_d65", "bt2020" });
+		settings.lutReferenceTransfer = ReadChoice(
+			config, "lut_reference_transfer", "auto",
+			{ "auto", "srgb", "bt1886", "2.2", "2.4" });
+		settings.lutReferenceRange = ReadChoice(
+			config, "lut_reference_range", "auto",
+			{ "auto", "full", "limited" });
+		if (TryGetDisplayString(config, "lut_reference_nits", rawValue) &&
+			ConfigFile::NormalizeName(rawValue) != "auto")
+		{
+			double parsed = 0.0;
+			if (ParseDouble(rawValue, parsed) && parsed >= 40.0 && parsed <= 500.0)
+				settings.lutReferenceNits = parsed;
+			else
+				DebugLog::Log(
+					"display: lut_reference_nits must be AUTO or between 40 and 500; using AUTO");
+		}
 		if (TryGetDisplayString(config, "scope_subtitle_fit", rawValue) &&
 			!TryGetDisplayBool(config, "scope_subtitle_fit", settings.scopeSubtitleFit))
 		{
@@ -1560,6 +1629,15 @@ struct LibplaceboVideoRenderer::Impl
 	pl_renderer renderer = nullptr;
 	pl_tex textures[2] = { nullptr, nullptr };
 	pl_custom_lut* displayLut = nullptr;
+	// Kept deliberately short for the Ctrl+I OSD: "Disabled",
+	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
+	std::string displayLutStatus = "Disabled";
+	std::string displayLutPath;
+	std::string lutReferencePrimaries = "auto";
+	std::string lutReferenceTransfer = "auto";
+	std::string lutReferenceRange = "auto";
+	double lutReferenceNits = 0.0;
+	bool displayLutParsed = false;
 	std::unique_ptr<IVideoFrameFormatter> formatter;
 	VideoStateComPtr formatterState;
 	std::vector<BYTE> convertedFrame;
@@ -1858,6 +1936,11 @@ struct LibplaceboVideoRenderer::Impl
 		else if (settings.quality == "balanced")
 			presetExport = "pl_render_default_params";
 		renderParams = LibplaceboExportedData<pl_render_params>(presetExport);
+		// Display calibration is attached only to the final target frame.
+		// Keeping the render-parameter/image LUT empty prevents a second,
+		// pre-target application in a different color domain.
+		renderParams.lut = nullptr;
+		renderParams.lut_type = PL_LUT_UNKNOWN;
 
 		if (renderParams.color_map_params)
 			colorMapParams = *renderParams.color_map_params;
@@ -2517,11 +2600,12 @@ struct LibplaceboVideoRenderer::Impl
 			evidence.fullRestoreRequired = previousStateMayBeStudio;
 			actualOutput = Finalize(outputPlan, evidence);
 			DebugLog::Log(
-				"libplacebo output negotiation (%s): requested=%s/%s/%s actual=UNKNOWN/FULL/sRGB reason=cannot unwrap DXGI swapchain",
+				"libplacebo output negotiation (%s): requested=%s/%s/%s/%s actual=UNKNOWN/FULL/sRGB/Rec.709 reason=cannot unwrap DXGI swapchain",
 				trigger,
 				ToString(outputPlan.request.presentation),
 				ToString(outputPlan.request.range),
-				ToString(outputPlan.request.gamma));
+				ToString(outputPlan.request.gamma),
+				ToString(outputPlan.request.primaries));
 			return;
 		}
 
@@ -2622,6 +2706,9 @@ struct LibplaceboVideoRenderer::Impl
 			{ DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709, "RGB full G22 P709" },
 			{ DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P709, "RGB studio G22 P709" },
 			{ DXGI_COLOR_SPACE_RGB_STUDIO_G24_NONE_P709, "RGB studio G24 P709" },
+			{ DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020, "RGB full G22 P2020" },
+			{ DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P2020, "RGB studio G22 P2020" },
+			{ DXGI_COLOR_SPACE_RGB_STUDIO_G24_NONE_P2020, "RGB studio G24 P2020" },
 			{ DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709, "RGB full linear P709" }
 		};
 
@@ -2710,6 +2797,12 @@ struct LibplaceboVideoRenderer::Impl
 				return DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P709;
 			case DxgiEncoding::STUDIO_G24_P709:
 				return DXGI_COLOR_SPACE_RGB_STUDIO_G24_NONE_P709;
+			case DxgiEncoding::FULL_G22_P2020:
+				return DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P2020;
+			case DxgiEncoding::STUDIO_G22_P2020:
+				return DXGI_COLOR_SPACE_RGB_STUDIO_G22_NONE_P2020;
+			case DxgiEncoding::STUDIO_G24_P2020:
+				return DXGI_COLOR_SPACE_RGB_STUDIO_G24_NONE_P2020;
 			default:
 				return DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
 			}
@@ -2784,20 +2877,23 @@ struct LibplaceboVideoRenderer::Impl
 
 		actualOutput = Finalize(outputPlan, evidence);
 		DebugLog::Log(
-			"libplacebo output negotiation (%s): requested=%s/%s/%s actual_contract=%s/%s/%s dxgi=%s accepted=%d safe=%d wire_state=unverified reason=%s",
+			"libplacebo output negotiation (%s): requested=%s/%s/%s/%s actual_contract=%s/%s/%s/%s dxgi=%s accepted=%d safe=%d wire_state=unverified reason=%s",
 			trigger,
 			ToString(outputPlan.request.presentation),
 			ToString(outputPlan.request.range),
 			ToString(outputPlan.request.gamma),
+			ToString(outputPlan.request.primaries),
 			ToString(actualOutput.presentationModel),
 			ToRangeString(actualOutput.encoding),
 			ToGammaString(actualOutput.encoding),
+			EncodingUsesBt2020(actualOutput.encoding) ? "BT.2020" : "Rec.709",
 			ToString(actualOutput.encoding),
 			actualOutput.requestedEncodingActive ? 1 : 0,
 			actualOutput.safeToRender ? 1 : 0,
 			actualOutput.reason.c_str());
 
-		if (targetBt2020 && reportBt2020ToDisplay)
+		if (EncodingUsesBt2020(actualOutput.encoding) &&
+			reportBt2020ToDisplay)
 			nvidiaBt2020Reporter.Enable(negotiatedDisplayDeviceName.c_str());
 		else
 			nvidiaBt2020Reporter.Restore();
@@ -2922,6 +3018,204 @@ struct LibplaceboVideoRenderer::Impl
 		ConfigureAndFallback(trigger);
 	}
 
+	static bool EncodingUsesBt2020(LibplaceboOutput::DxgiEncoding encoding)
+	{
+		using LibplaceboOutput::DxgiEncoding;
+		return encoding == DxgiEncoding::FULL_G22_P2020 ||
+			encoding == DxgiEncoding::STUDIO_G22_P2020 ||
+			encoding == DxgiEncoding::STUDIO_G24_P2020;
+	}
+
+	static enum pl_color_levels EncodingLevels(
+		LibplaceboOutput::DxgiEncoding encoding)
+	{
+		using LibplaceboOutput::DxgiEncoding;
+		return encoding == DxgiEncoding::FULL_G22_P709 ||
+			encoding == DxgiEncoding::FULL_G22_P2020
+				? PL_COLOR_LEVELS_FULL
+				: PL_COLOR_LEVELS_LIMITED;
+	}
+
+	static enum pl_color_transfer EncodingTransfer(
+		LibplaceboOutput::DxgiEncoding encoding)
+	{
+		using LibplaceboOutput::DxgiEncoding;
+		if (encoding == DxgiEncoding::FULL_G22_P709 ||
+			encoding == DxgiEncoding::FULL_G22_P2020)
+			return PL_COLOR_TRC_SRGB;
+		if (encoding == DxgiEncoding::STUDIO_G24_P709 ||
+			encoding == DxgiEncoding::STUDIO_G24_P2020)
+			return PL_COLOR_TRC_GAMMA24;
+		// Studio G22 is intentionally not selected because libplacebo 7.360.1
+		// has no exact target transfer for that DXGI declaration.
+		return PL_COLOR_TRC_UNKNOWN;
+	}
+
+	static std::string LutFileName(const std::string& path)
+	{
+		const size_t separator = path.find_last_of("\\/");
+		return separator == std::string::npos ? path : path.substr(separator + 1);
+	}
+
+	void LoadDisplayLut(const RendererSettings& settings)
+	{
+		displayLutPath = settings.lutPath;
+		lutReferencePrimaries = settings.lutReferencePrimaries;
+		lutReferenceTransfer = settings.lutReferenceTransfer;
+		lutReferenceRange = settings.lutReferenceRange;
+		lutReferenceNits = settings.lutReferenceNits;
+
+		if (settings.lutPathRejected)
+		{
+			displayLutStatus = "Rejected: bad path";
+			DebugLog::Log(
+				"display: LUT rejected because its relative path escaped the configuration directory; rendering without a LUT");
+			return;
+		}
+
+		const LibplaceboDisplayLut::LoadResult result =
+			LibplaceboDisplayLut::Load(log, displayLutPath);
+		displayLut = result.lut;
+		displayLutParsed =
+			result.status == LibplaceboDisplayLut::Status::ACTIVE;
+		if (result.status == LibplaceboDisplayLut::Status::DISABLED)
+		{
+			displayLutStatus = "Disabled";
+			return;
+		}
+		if (result.status == LibplaceboDisplayLut::Status::REJECTED)
+		{
+			const char* reason =
+				LibplaceboDisplayLut::ShortReason(result.rejection);
+			displayLutStatus = std::string("Rejected: ") + reason;
+			DebugLog::Log(
+				"display: LUT rejected (%s); rendering without a LUT: %s",
+				reason,
+				displayLutPath.c_str());
+			return;
+		}
+
+		DebugLog::Log(
+			"display: parsed 3D LUT %s (%d x %d x %d, %zu bytes, signature=%016llX); target contract validation pending",
+			displayLutPath.c_str(),
+			displayLut->size[0],
+			displayLut->size[1],
+			displayLut->size[2],
+			result.fileBytes,
+			static_cast<unsigned long long>(displayLut->signature));
+		displayLutStatus = "Loaded: validating";
+	}
+
+	const char* DisplayLutContractMismatch(const struct pl_frame& target) const
+	{
+		if (!displayLutParsed || !displayLut)
+			return nullptr;
+
+		const bool signalBt2020 = EncodingUsesBt2020(actualOutput.encoding);
+		const enum pl_color_primaries signaledPrimaries =
+			signalBt2020 ? PL_COLOR_PRIM_BT_2020 : PL_COLOR_PRIM_BT_709;
+		const enum pl_color_transfer signaledTransfer =
+			EncodingTransfer(actualOutput.encoding);
+		const enum pl_color_levels signaledRange =
+			EncodingLevels(actualOutput.encoding);
+		enum pl_color_primaries expectedPrimaries = PL_COLOR_PRIM_UNKNOWN;
+		if (lutReferencePrimaries == "rec709")
+			expectedPrimaries = PL_COLOR_PRIM_BT_709;
+		else if (lutReferencePrimaries == "p3_d65")
+			expectedPrimaries = PL_COLOR_PRIM_DISPLAY_P3;
+		else if (lutReferencePrimaries == "bt2020")
+			expectedPrimaries = PL_COLOR_PRIM_BT_2020;
+
+		const enum pl_color_transfer expectedTransfer =
+			lutReferenceTransfer == "auto"
+				? PL_COLOR_TRC_UNKNOWN
+				: TranslateOutputGamma(lutReferenceTransfer);
+		const enum pl_color_levels expectedRange =
+			lutReferenceRange == "auto"
+				? PL_COLOR_LEVELS_UNKNOWN
+				: lutReferenceRange == "limited"
+					? PL_COLOR_LEVELS_LIMITED
+					: PL_COLOR_LEVELS_FULL;
+
+		const LibplaceboDisplayLut::ContractRejection rejection =
+			LibplaceboDisplayLut::ValidateContract(
+				expectedPrimaries,
+				expectedTransfer,
+				expectedRange,
+				lutReferenceNits,
+				target.color.primaries,
+				target.color.transfer,
+				target.repr.levels,
+				target.color.hdr.max_luma,
+				LibplaceboDisplayLut::TargetMatchesSignal(
+					target.color.primaries,
+					target.color.transfer,
+					target.repr.levels,
+					signaledPrimaries,
+					signaledTransfer,
+					signaledRange));
+		return rejection == LibplaceboDisplayLut::ContractRejection::NONE
+			? nullptr
+			: LibplaceboDisplayLut::ShortReason(rejection);
+	}
+
+	void ConfigureDisplayLutForTarget(struct pl_frame& target)
+	{
+		target.lut = nullptr;
+		target.lut_type = PL_LUT_UNKNOWN;
+		if (!displayLutParsed || !displayLut)
+			return;
+
+		const char* mismatch = DisplayLutContractMismatch(target);
+		if (mismatch)
+		{
+			const std::string status = std::string("Rejected: ") + mismatch;
+			if (displayLutStatus != status)
+			{
+				displayLutStatus = status;
+				DebugLog::Log(
+					"display: LUT target contract rejected (%s): file=%s requested=%s/%s/%s/%.1f actual=%s/%s/%s/%.1f dxgi=%s; rendering without a LUT",
+					mismatch,
+					displayLutPath.c_str(),
+					lutReferencePrimaries.c_str(),
+					lutReferenceTransfer.c_str(),
+					lutReferenceRange.c_str(),
+					lutReferenceNits,
+					pl_color_primaries_name(target.color.primaries),
+					pl_color_transfer_name(target.color.transfer),
+					target.repr.levels == PL_COLOR_LEVELS_LIMITED
+						? "limited" : "full",
+					target.color.hdr.max_luma,
+					LibplaceboOutput::ToString(actualOutput.encoding));
+			}
+			return;
+		}
+
+		target.lut = displayLut;
+		target.lut_type = PL_LUT_NATIVE;
+		std::ostringstream label;
+		label << "Active: " << LutFileName(displayLutPath)
+			<< " (" << displayLut->size[0] << "^3)";
+		if (displayLutStatus != label.str())
+		{
+			displayLutStatus = label.str();
+			DebugLog::Log(
+				"display: LUT active: file=%s dimensions=%d^3 signature=%016llX stage=target/native/post-encode reference=%s/%s/%s/%.1f gamut_mapping=%s dxgi=%s",
+				displayLutPath.c_str(),
+				displayLut->size[0],
+				static_cast<unsigned long long>(displayLut->signature),
+				pl_color_primaries_name(target.color.primaries),
+				pl_color_transfer_name(target.color.transfer),
+				target.repr.levels == PL_COLOR_LEVELS_LIMITED
+					? "limited" : "full",
+				target.color.hdr.max_luma,
+				colorMapParams.gamut_mapping &&
+					colorMapParams.gamut_mapping->name
+					? colorMapParams.gamut_mapping->name : "auto",
+				LibplaceboOutput::ToString(actualOutput.encoding));
+		}
+	}
+
 	void Initialize(HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule)
 	{
 		this->videoHwnd = videoHwnd;
@@ -2978,6 +3272,9 @@ struct LibplaceboVideoRenderer::Impl
 		outputRequest.range = LibplaceboOutput::ParseRange(settings.outputRange);
 		outputRequest.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
 		targetBt2020 = settings.sdrTargetPrimaries == "bt2020";
+		outputRequest.primaries = targetBt2020
+			? LibplaceboOutput::PrimariesRequest::BT2020
+			: LibplaceboOutput::PrimariesRequest::REC709;
 		reportBt2020ToDisplay = settings.reportBt2020ToDisplay;
 		if (targetBt2020 && reportBt2020ToDisplay)
 			DebugLog::Log("libplacebo: BT.2020 target with NVIDIA output reporting requested; proceed with caution");
@@ -3007,6 +3304,8 @@ struct LibplaceboVideoRenderer::Impl
 		scopeSubtitlePaddingPixels = settings.scopeSubtitlePaddingPixels;
 		configuredOutputColor =
 			LibplaceboExportedData<pl_color_space>("pl_color_space_bt709");
+		if (targetBt2020)
+			configuredOutputColor.primaries = PL_COLOR_PRIM_BT_2020;
 		configuredOutputColor.hdr.min_luma = static_cast<float>(sdrBlackNits);
 		configuredOutputColor.hdr.max_luma = static_cast<float>(sdrTargetNits);
 		pl_swapchain_colorspace_hint(swapchain, &configuredOutputColor);
@@ -3036,7 +3335,7 @@ struct LibplaceboVideoRenderer::Impl
 		formatterState = state;
 		convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
 		ConfigureRenderParams(settings);
-		displayLut = LoadCubeLut(log, settings.lutPath);
+		LoadDisplayLut(settings);
 
 		DebugLog::Log(
 			"libplacebo initialized: D3D11, P010 upload, SDR target request=%s %.1f nits",
@@ -3185,28 +3484,22 @@ struct LibplaceboVideoRenderer::Impl
 		// The frame returned by libplacebo is the default host/compositor contract.
 		// Override it only after the matching studio DXGI declaration was advertised
 		// and accepted. Requested settings never flow directly into the target.
-		if (actualOutput.encoding !=
-			LibplaceboOutput::DxgiEncoding::FULL_G22_P709)
+		baseTarget.repr.levels = EncodingLevels(actualOutput.encoding);
+		const enum pl_color_transfer acceptedTransfer =
+			EncodingTransfer(actualOutput.encoding);
+		if (acceptedTransfer != PL_COLOR_TRC_UNKNOWN)
+			baseTarget.color.transfer = acceptedTransfer;
+		if (EncodingUsesBt2020(actualOutput.encoding))
 		{
-			baseTarget.repr.levels = PL_COLOR_LEVELS_LIMITED;
-			switch (actualOutput.targetTransfer)
-			{
-			case LibplaceboOutput::TargetTransfer::GAMMA24:
-				baseTarget.color.transfer = PL_COLOR_TRC_GAMMA24;
-				break;
-			default:
-				break;
-			}
-		}
-		if (targetBt2020)
-		{
-			// Output primaries are independent of optional NVIDIA signaling.
-			// Manual display selection remains valid when reporting is disabled
-			// or unavailable.
 			baseTarget.color.primaries = PL_COLOR_PRIM_BT_2020;
+		}
+		else
+		{
+			baseTarget.color.primaries = PL_COLOR_PRIM_BT_709;
 		}
 		baseTarget.color.hdr.min_luma = static_cast<float>(sdrBlackNits);
 		baseTarget.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
+		ConfigureDisplayLutForTarget(baseTarget);
 		if (outputDiagnostics && !outputContractLogged)
 		{
 			DebugLog::Log(
@@ -3277,9 +3570,6 @@ struct LibplaceboVideoRenderer::Impl
 				target.crop.y1 -= outputShift;
 			}
 		};
-
-		renderParams.lut = displayLut;
-		renderParams.lut_type = PL_LUT_NATIVE;
 
 		double prewarmMs = 0.0;
 		if (hasPresentedFrame && !screenProfilesPrewarmed)
@@ -4019,20 +4309,42 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 	};
 	CStringA value;
 	value.Format(
-		"Req %s/%s/%s -> %s/%s/%s",
+		"Req %s/%s/%s/%s -> %s/%s/%s/%s",
 		requestPresentation(m_impl->outputPlan.request.presentation),
 		requestRange(m_impl->outputPlan.request.range),
 		LibplaceboOutput::ToString(m_impl->outputPlan.request.gamma),
+		LibplaceboOutput::ToString(m_impl->outputPlan.request.primaries),
 		actualPresentation(m_impl->actualOutput.presentationModel),
 		m_impl->actualOutput.safeToRender
-			? (m_impl->actualOutput.encoding ==
-				LibplaceboOutput::DxgiEncoding::FULL_G22_P709 ? "F" : "L")
+			? (std::string(LibplaceboOutput::ToRangeString(
+				m_impl->actualOutput.encoding)) == "FULL" ? "F" : "L")
 			: "?",
 		m_impl->actualOutput.safeToRender
-			? (m_impl->actualOutput.encoding ==
-				LibplaceboOutput::DxgiEncoding::STUDIO_G24_P709 ? "2.4" : "sRGB")
-			: "?");
+			? LibplaceboOutput::ToGammaString(m_impl->actualOutput.encoding)
+			: "?",
+		m_impl->actualOutput.safeToRender &&
+			(m_impl->actualOutput.encoding ==
+				LibplaceboOutput::DxgiEncoding::FULL_G22_P2020 ||
+			 m_impl->actualOutput.encoding ==
+				LibplaceboOutput::DxgiEncoding::STUDIO_G22_P2020 ||
+			 m_impl->actualOutput.encoding ==
+				LibplaceboOutput::DxgiEncoding::STUDIO_G24_P2020)
+				? "2020" : "709");
 	details = CString(value);
+	return true;
+}
+
+
+bool LibplaceboVideoRenderer::GetDisplayLutInfo(CString& details) const
+{
+	if (!m_impl)
+	{
+		details.Empty();
+		return false;
+	}
+
+	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	details = CString(CStringA(m_impl->displayLutStatus.c_str()));
 	return true;
 }
 

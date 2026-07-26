@@ -215,6 +215,14 @@ public:
 		return false;
 	}
 
+	// Concise display-calibration LUT status for the Ctrl+I OSD. Renderers
+	// without this feature return false so the OSD does not imply support.
+	virtual bool GetDisplayLutInfo(CString& details) const
+	{
+		details.Empty();
+		return false;
+	}
+
 	// Source-side whole-frame actions moved to a detected scene boundary.
 	virtual uint64_t SceneAwareCorrectionDropCount() const { return 0; }
 	virtual uint64_t SceneAwareCorrectionRepeatCount() const { return 0; }

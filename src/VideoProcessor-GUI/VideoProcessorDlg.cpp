@@ -5276,6 +5276,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.exitLatencyMs = m_videoRenderer->ExitLatencyMs();
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 		m_videoRenderer->GetOutputModeInfo(stats.outputMode);
+		m_videoRenderer->GetDisplayLutInfo(stats.displayLut);
 		stats.sceneDetectCorrectionDrops = m_videoRenderer->SceneAwareCorrectionDropCount();
 		stats.sceneDetectCorrectionRepeats = m_videoRenderer->SceneAwareCorrectionRepeatCount();
 		stats.sceneDetectDetected = m_videoRenderer->SceneAwareDetectedCount();

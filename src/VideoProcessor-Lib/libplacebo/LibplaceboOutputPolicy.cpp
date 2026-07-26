@@ -55,11 +55,17 @@ namespace LibplaceboOutput
 				// libplacebo 7.360.1 has no exact BT.709 piecewise target
 				// transfer for DXGI Studio G22. G24 has an exact renderer/DXGI
 				// representation and is therefore the safe AUTO choice.
-				result.desiredEncoding = DxgiEncoding::STUDIO_G24_P709;
+				result.desiredEncoding =
+					request.primaries == PrimariesRequest::BT2020
+						? DxgiEncoding::STUDIO_G24_P2020
+						: DxgiEncoding::STUDIO_G24_P709;
 				result.targetTransfer = TargetTransfer::GAMMA24;
 				break;
 			case GammaRequest::GAMMA24:
-				result.desiredEncoding = DxgiEncoding::STUDIO_G24_P709;
+				result.desiredEncoding =
+					request.primaries == PrimariesRequest::BT2020
+						? DxgiEncoding::STUDIO_G24_P2020
+						: DxgiEncoding::STUDIO_G24_P709;
 				result.targetTransfer = TargetTransfer::GAMMA24;
 				break;
 			default:
@@ -79,6 +85,11 @@ namespace LibplaceboOutput
 			result.valid = false;
 			result.reason =
 				"requested output gamma has no matching full-range DXGI declaration";
+		}
+		if (result.valid && request.primaries == PrimariesRequest::BT2020)
+		{
+			result.requiresDxgiOverride = true;
+			result.desiredEncoding = DxgiEncoding::FULL_G22_P2020;
 		}
 		return result;
 	}
@@ -254,6 +265,11 @@ namespace LibplaceboOutput
 		}
 	}
 
+	const char* ToString(PrimariesRequest value)
+	{
+		return value == PrimariesRequest::BT2020 ? "BT.2020" : "Rec.709";
+	}
+
 	const char* ToString(DxgiEncoding value)
 	{
 		switch (value)
@@ -261,18 +277,24 @@ namespace LibplaceboOutput
 		case DxgiEncoding::FULL_G22_P709: return "RGB_FULL_G22_NONE_P709";
 		case DxgiEncoding::STUDIO_G22_P709: return "RGB_STUDIO_G22_NONE_P709";
 		case DxgiEncoding::STUDIO_G24_P709: return "RGB_STUDIO_G24_NONE_P709";
+		case DxgiEncoding::FULL_G22_P2020: return "RGB_FULL_G22_NONE_P2020";
+		case DxgiEncoding::STUDIO_G22_P2020: return "RGB_STUDIO_G22_NONE_P2020";
+		case DxgiEncoding::STUDIO_G24_P2020: return "RGB_STUDIO_G24_NONE_P2020";
 		}
 		return "UNKNOWN";
 	}
 
 	const char* ToRangeString(DxgiEncoding value)
 	{
-		return value == DxgiEncoding::FULL_G22_P709 ? "FULL" : "LIMITED";
+		return value == DxgiEncoding::FULL_G22_P709 ||
+			value == DxgiEncoding::FULL_G22_P2020 ? "FULL" : "LIMITED";
 	}
 
 	const char* ToGammaString(DxgiEncoding value)
 	{
-		return value == DxgiEncoding::STUDIO_G24_P709 ? "2.4" :
-			value == DxgiEncoding::FULL_G22_P709 ? "sRGB/G22" : "BT.709/G22";
+		return value == DxgiEncoding::STUDIO_G24_P709 ||
+			value == DxgiEncoding::STUDIO_G24_P2020 ? "2.4" :
+			value == DxgiEncoding::FULL_G22_P709 ||
+			value == DxgiEncoding::FULL_G22_P2020 ? "sRGB/G22" : "BT.709/G22";
 	}
 }

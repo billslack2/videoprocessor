@@ -406,6 +406,19 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		y += LINE_HEIGHT;
 	}
 
+	if (!m_stats.displayLut.IsEmpty())
+	{
+		// The overlay is intentionally narrow. Keep even a long configured
+		// filename on one line rather than allowing it to run off screen.
+		CString lut = m_stats.displayLut;
+		constexpr int LUT_OSD_MAX_CHARS = 34;
+		if (lut.GetLength() > LUT_OSD_MAX_CHARS)
+			lut = lut.Left(LUT_OSD_MAX_CHARS - 3) + TEXT("...");
+		line.Format(TEXT("LUT: %s"), static_cast<LPCTSTR>(lut));
+		DrawText(hdc, line, PADDING, y);
+		y += LINE_HEIGHT;
+	}
+
 	// Video Conversion
 	line.Format(TEXT("Video Conv:       %-s"), m_stats.videoConversion.IsEmpty() ? TEXT("---") : m_stats.videoConversion);
 	DrawText(hdc, line, PADDING, y);
@@ -608,6 +621,8 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 		lineCount += 2;
 	if (!stats.outputMode.IsEmpty())
 		lineCount += 2;
+	if (!stats.displayLut.IsEmpty())
+		++lineCount;
 
 	// The selected rule and shader summary are always visible, followed by one row per active
 	// shader. DrawStats also contains three four-pixel section separators.
