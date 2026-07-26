@@ -2,9 +2,10 @@
 
 ## Status
 
-Draft investigation. This is deliberately later than VP-0005/0006 because
-libplacebo/DXGI swapchain presentation may already provide correct vblank pacing.
-Do not add a second scheduler unless measurements demonstrate a real defect.
+Will Not Do. Superseded on 2026-07-25 by VP-0024 and VP-0026. VP-0024 measures
+the Alpha-owned DXGI presentation path directly, and VP-0026 defines the
+bounded elastic-buffer policy. The prohibition on speculative sleep pacing
+remains part of both replacements.
 
 ## Context
 

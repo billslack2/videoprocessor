@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0023`
-- Next story number: `VP-0024`
-- Total indexed items: 23
+- Last assigned item: `VP-0027`
+- Next story number: `VP-0028`
+- Total indexed items: 27
 
 ## Story locations
 
@@ -34,10 +34,10 @@ they must not contain requirements that are absent from this file.
 | VP-0002 | Done | Preserve armed NLS state through conditional aspect fallback |
 | VP-0003 | Done | Generic active rectangle support for NLS |
 | VP-0004 | Done | Reliable limited-range output investigation and implementation plan |
-| VP-0005 | Draft | Alpha renderer timing observability and queue health |
-| VP-0006 | Draft | Alpha renderer optional scene-safe queue-drop correction |
-| VP-0007 | Draft | Alpha renderer controlled repeat correction |
-| VP-0008 | Draft | Alpha renderer presentation-pacing assessment and refinement |
+| VP-0005 | Will Not Do | Alpha renderer timing observability and queue health |
+| VP-0006 | Will Not Do | Alpha renderer optional scene-safe queue-drop correction |
+| VP-0007 | Will Not Do | Alpha renderer controlled repeat correction |
+| VP-0008 | Will Not Do | Alpha renderer presentation-pacing assessment and refinement |
 | VP-0009 | Draft | Alpha renderer DeckLink R210/R12B format parity |
 | VP-0010 | In Progress | Strict opaque-panel OCR subtitle replacement |
 | VP-0011 | Review | Alpha renderer color-managed 3D LUT support |
@@ -45,14 +45,18 @@ they must not contain requirements that are absent from this file.
 | VP-0013 | Done | DirectShow queue/reset alignment and no-drop review |
 | VP-0014 | Will Not Do | Alpha renderer SDR BT.2020 source and target support (duplicate of VP-0019; will not do separately) |
 | VP-0015 | Draft | Alpha renderer shader compatibility with the existing shader catalog |
-| VP-0016 | Draft | Make scene detection available for the alpha renderer |
-| VP-0017 | Draft | Explain variable alpha-renderer queue depth |
+| VP-0016 | Will Not Do | Make scene detection available for the alpha renderer |
+| VP-0017 | Will Not Do | Explain variable alpha-renderer queue depth |
 | VP-0018 | Done | Re-select the content refresh rate when switching to alpha |
 | VP-0019 | Done | SDR BT.2020 display profiles, F5/F6 hotkeys, and output signaling |
 | VP-0020 | Draft | v210 arbitrary-width and DCI P010/P210 support |
 | VP-0021 | Draft | Renderer format negotiation parity and truthful capability reporting |
 | VP-0022 | Draft | DeckLink encoded-format boundary and diagnostics |
 | VP-0023 | Draft | P010 range metadata contract and conversion regression tests |
+| VP-0024 | Draft | Alpha source-to-display timing and queue telemetry |
+| VP-0025 | Draft | Renderer-neutral scene detection and Alpha integration |
+| VP-0026 | Draft | Alpha low-latency elastic queue |
+| VP-0027 | Draft | Alpha display-verified scene-safe cadence correction |
 
 ## Codex story workflow
 

@@ -2,8 +2,10 @@
 
 ## Status
 
-Draft. This is diagnostic-only work: it must not change normal alpha-renderer
-frame selection, presentation, refresh switching, or the DirectShow renderer.
+Will Not Do. Superseded on 2026-07-25 by VP-0024, which expands the proposed
+diagnostics into source-to-display correlation using Alpha-owned DXGI present
+statistics. Retain this record for its original observability rationale; do not
+implement it separately.
 
 ## Context
 

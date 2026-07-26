@@ -2,8 +2,10 @@
 
 ## Status
 
-Draft. Implement only after VP-0005 provides baseline evidence that ordinary
-queue-pressure drops or accumulated cadence drift occur in realistic playback.
+Will Not Do. Superseded on 2026-07-25 by VP-0025 and VP-0027. VP-0025 provides
+the renderer-neutral scene signal, while VP-0027 combines Alpha-native drops
+and repeats under one display-verified correction policy. Do not implement
+drop-only behavior separately.
 
 ## Context
 

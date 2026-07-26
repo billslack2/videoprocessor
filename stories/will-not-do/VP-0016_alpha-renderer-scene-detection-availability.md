@@ -2,9 +2,10 @@
 
 ## Status
 
-Draft. The detection signal appears to exist in shared VP logic, but the alpha
-renderer reports it as unavailable. Confirm the ownership and lifecycle of the
-reported result before implementation.
+Will Not Do. Superseded on 2026-07-25 by VP-0025, which establishes a
+renderer-neutral scene detector with explicit frame association and lifecycle,
+then integrates that detector into Alpha without duplicating competing
+detection policy.
 
 ## User story
 

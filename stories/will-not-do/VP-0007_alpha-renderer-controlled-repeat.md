@@ -2,9 +2,10 @@
 
 ## Status
 
-Draft follow-up to VP-0006. Do not implement until VP-0005 confirms a
-capture-slower-than-display case that needs correction and VP-0006 has proven
-safe queue/drop ownership.
+Will Not Do. Superseded on 2026-07-25 by VP-0027, which treats drops and repeats
+as the two directions of one measured Alpha cadence controller and verifies
+each action against DXGI presentation state. Do not implement repeat-only
+behavior separately.
 
 ## Context
 

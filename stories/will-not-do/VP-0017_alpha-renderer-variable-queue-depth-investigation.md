@@ -2,7 +2,13 @@
 
 ## Status
 
-Draft. Investigation only. Users report that, especially at 59.94 Hz, the
+Will Not Do. Superseded on 2026-07-25 by VP-0024 and VP-0026. Investigation
+established that Alpha owns one CPU FIFO, reports no converted queue, and does
+not include its active render or DXGI in-flight work in `R/C/T`; VP-0024 makes
+that pipeline observable and VP-0026 replaces accidental depth with an
+explicit low-latency elastic-buffer contract.
+
+The original report noted that, especially at 59.94 Hz, the
 alpha renderer sometimes shows approximately 20 queued items and sometimes
 0–1, while raw and transformed queue counts remain equal and visible
 performance/latency does not obviously change.
