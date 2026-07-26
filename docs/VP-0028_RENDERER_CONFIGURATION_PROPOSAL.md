@@ -48,14 +48,14 @@ owns that.
 the matching profile with the highest `priority` wins; equal priorities use
 the most comparisons, then declaration order.
 
-**Manual-only profile** has no `when=` expression. It is selected by the
-group's configured default or by its profile shortcut. No impossible condition such as
-`$width==0` is needed.
+**Key-selected profile** has `$key` in its `when=` expression. A key condition
+selects that profile manually; the same expression may also contain source
+conditions joined by `||` or `&&`. No separate shortcut key or impossible
+condition such as `$width==0` is needed.
 
-**Shortcut** is an optional `shortcut=` in either a profile or a group. In a
-profile it selects that profile; in a group it returns that group to automatic
-selection. The section supplies the action target, so no separate binding map
-or special shortcut-key name is needed.
+**Default-only profile** has no `when=` expression. It may be the configured
+startup/default profile for its group but is never selected automatically or by
+a key event.
 
 **Event action** observes a completed renderer/display event. It may run a
 configured command after a bounded delay. It cannot select a profile.
@@ -89,11 +89,12 @@ groups=input,scaling,display,viewport
 
 [profile_groups.input]
 default=auto
-shortcut=Ctrl+F4
+# A group-level key condition returns this group to automatic selection.
+when=$key=="Ctrl+F4"
 
 [profile_groups.scaling]
 default=auto
-shortcut=Ctrl+F5
+when=$key=="Ctrl+F5"
 
 [profile_groups.display]
 default=rec709_projector
@@ -107,7 +108,7 @@ persist_profile_selection=true
 An automatic group with no matching profile contributes no group override;
 `[display]` remains in effect for that group. If persistence is enabled, a
 manual selection persists across source changes and restarts until another
-profile shortcut or that group's `shortcut` is invoked. If persistence is
+key-selected profile or that group's `when=` condition is invoked. If persistence is
 disabled, manual selection lasts only for the current renderer session. Removed
 or invalid persisted profiles fall back to the configured startup selection and
 emit one diagnostic. The global default is `true`; every group may explicitly
@@ -128,8 +129,8 @@ peak_detection=high_quality
 contrast_recovery=0.25
 
 [profiles.display.rec709_projector]
-# Optional shortcut selects this profile only in the display group.
-shortcut=F5
+# This is a manual display selection, not an impossible source condition.
+when=$key=="F5"
 sdr_target_primaries=REC709
 sdr_target_nits=100
 sdr_black_nits=0
@@ -171,6 +172,7 @@ values are case-insensitive. Existing Boolean and comparison operators remain:
 | `$scan` | `PROGRESSIVE` or `INTERLACED` |
 | `$format` | Capture pixel format, such as `V210`, `UYVY`, `R10B`, or `R12L` |
 | `$hdr_metadata` | `true` only for valid static HDR metadata |
+| `$key` | Transient hotkey chord for a key-selection event, for example `"F5"` or `"Ctrl+F4"`; otherwise `NONE` |
 
 `$cadence` is a named exact rate, not a floating-point number and not a
 truncated integer. `23.976` and `24000/1001` may be accepted as equivalent
@@ -185,41 +187,49 @@ the streaming capture path may not have it, and it is not a reliable image
 processing signal. Do not use output refresh in `when=`; it is the result of
 profile selection and display switching.
 
-## Profile shortcuts and persistence
+## Key conditions and persistence
 
-An optional `shortcut=` in a profile section directly selects that profile in
-its group. The same parser accepts `F1` through `F24`, letters, numbers,
+`$key` is a transient rule variable. In ordinary source-state evaluation it is
+`NONE`. When a configured hotkey arrives, VP evaluates the same `when=` grammar
+with `$key` set to its canonical chord. Key chords must be quoted because they
+contain `+`. This lets a profile be automatic, manual, or both without a second
+shortcut syntax. The parser accepts `F1` through `F24`, letters, numbers,
 `Escape`, `Enter`, and optional `Ctrl`, `Alt`, and `Shift` modifiers.
 
 ```ini
 [profiles.display.rec709_projector]
-shortcut=F5
+when=$key=="F5"
 
 [profiles.display.bt2020_projector]
-shortcut=F6
+when=$key=="F6"
 
 [profiles.viewport.normal]
-shortcut=F2
+when=$key=="F2"
 
 [profiles.viewport.scope]
-shortcut=F3
+when=$key=="F3"
+
+# Either a PQ stream automatically selects this input profile, or Ctrl+F7
+# manually selects it and makes it persistent according to group policy.
+[profiles.input.pq_hdr]
+when=$transfer==PQ || $key=="Ctrl+F7"
 ```
 
-`shortcut=` in `[profile_groups.<name>]` returns that one group to automatic
-selection. The same key in a profile selects that profile. A shortcut always
-directly selects its target and never toggles. Duplicate shortcuts, unknown
-profiles, and a group shortcut on a group without automatic profiles are
-startup errors. The OSD/log must report group, profile, and automatic/manual
-state.
+`when=` in `[profile_groups.<name>]` is evaluated for key events only. When it
+matches, it returns that one group to automatic selection before profile rules
+are evaluated. A key selection always directly selects its target and never
+toggles. Duplicate key chords, invalid key syntax, unknown profiles, and a
+group key condition on a group without automatic profiles are startup errors.
+The OSD/log must report group, profile, and automatic/manual state.
 
 This replaces the released special cases without adding a separate binding
 section:
 
 | Released configuration | Proposed equivalent |
 | --- | --- |
-| `shortcut=F5` in `[display_rules.rec709]` | `shortcut=F5` in `[profiles.display.rec709_projector]` |
-| `screen_profile_scope=F3` in `[shortcuts]` | `shortcut=F3` in `[profiles.viewport.scope]` |
-| `display_rules_auto=F4` in `[shortcuts]` | `shortcut=F4` in the appropriate `[profile_groups.<name>]` section |
+| `shortcut=F5` in `[display_rules.rec709]` | `when=$key=="F5"` in `[profiles.display.rec709_projector]` |
+| `screen_profile_scope=F3` in `[shortcuts]` | `when=$key=="F3"` in `[profiles.viewport.scope]` |
+| `display_rules_auto=F4` in `[shortcuts]` | `when=$key=="F4"` in the appropriate `[profile_groups.<name>]` section |
 
 ## Refresh-transition event actions
 
@@ -303,8 +313,9 @@ compatibility period:
 
 - `[display_rules]` and `[display_rules.name]` map to the appropriate proposed
   profile group only when their keys have one clear owner.
-- `shortcut=` remains the shortcut on the migrated profile.
-- `[shortcuts]` maps to a viewport profile shortcut or to a group `shortcut`.
+- `shortcut=` becomes an equivalent `$key` condition on the migrated profile.
+- `[shortcuts]` maps to a viewport-profile `$key` condition or to a group-level
+  `$key` condition.
 - `[refresh_rate_commands]`, including its legacy `command=` form, maps to
   refresh event actions with the documented old truncated-rate behavior.
 
