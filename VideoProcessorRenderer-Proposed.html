@@ -17,7 +17,7 @@
   <h1>Proposed VideoProcessor renderer configuration</h1>
   <div class="warning"><strong>Proposal only — not implemented.</strong> This page describes the VP-0028 design under review. Current VideoProcessor versions do not parse these sections or keys. Continue using <a href="VideoProcessorRenderer.html">the released renderer help</a> and configuration until VP-0028 is accepted and implemented.</div>
 
-  <p>The proposal replaces separate display rules, rule shortcuts, screen-profile shortcuts, and refresh-rate command maps with one configuration vocabulary: named profiles, group-owned shortcuts, and completed-transition event actions. It is designed for streaming sources, where stable capture metadata is available but filenames, codecs, bitrates, and library metadata are not reliable inputs.</p>
+  <p>The proposal replaces separate display rules, rule shortcuts, screen-profile shortcuts, and refresh-rate command maps with one configuration vocabulary: named profiles whose ordinary <code>when=</code> expressions may include a key condition, and completed-transition event actions. It is designed for streaming sources, where stable capture metadata is available but filenames, codecs, bitrates, and library metadata are not reliable inputs.</p>
 
   <h2>Configuration model</h2>
   <p>Every renderer setting starts with the base <code>[display]</code> section. Four independent profile groups then supply their own overrides. Each group has exactly one active profile, and a profile may change only settings owned by that group.</p>
@@ -46,7 +46,8 @@ groups=input,scaling,display,viewport
 
 [profile_groups.input]
 default=auto
-shortcut=Ctrl+F4
+# A group-level key condition returns this group to automatic selection.
+when=$key=="Ctrl+F4"
 
 [profile_groups.display]
 default=rec709_projector
@@ -64,8 +65,8 @@ peak_detection=high_quality
 contrast_recovery=0.25
 
 [profiles.display.rec709_projector]
-# No when= means this is manual-only.
-shortcut=F5
+# This is a manual display selection, not an impossible source condition.
+when=$key=="F5"
 sdr_target_primaries=REC709
 sdr_target_nits=100
 sdr_black_nits=0
@@ -88,24 +89,25 @@ lut_reference_nits=100</pre>
     <tr><td><code>$scan</code></td><td><code>PROGRESSIVE</code> or <code>INTERLACED</code></td></tr>
     <tr><td><code>$format</code></td><td><code>V210</code>, <code>UYVY</code>, <code>R10B</code>, <code>R12L</code></td></tr>
     <tr><td><code>$hdr_metadata</code></td><td><code>true</code> only when valid static HDR metadata is present</td></tr>
+    <tr><td><code>$key</code></td><td>Transient hotkey chord for a key-selection event, for example <code>"F5"</code> or <code>"Ctrl+F4"</code>; otherwise <code>NONE</code></td></tr>
   </tbody></table>
   <div class="note"><strong>Cadence is exact.</strong> It is not a truncated integer and not a floating-point comparison. <code>23.976</code> and <code>24000/1001</code> may be accepted as equivalent spellings, with one canonical value in diagnostics.</div>
   <p>Mastering data, MaxCLL, and MaxFALL remain renderer inputs, rather than ordinary rule variables. Output refresh is deliberately excluded: it is a result of profile selection and display switching, not an input to either.</p>
 
-  <h2>Profile shortcuts and persistence</h2>
-  <p>All direct selection uses <code>shortcut=</code>. In a profile section it selects that profile; in a group section it returns that group to automatic selection. The section supplies the action target, so no special shortcut-key name is needed. Neither action toggles.</p>
+  <h2>Key conditions and persistence</h2>
+  <p>All direct selection uses the normal <code>when=</code> grammar. In normal source-state evaluation <code>$key</code> is <code>NONE</code>. When a hotkey arrives, VP evaluates the same expression with <code>$key</code> set to its canonical chord. Key chords are quoted because they contain <code>+</code>. A key condition can be joined to source conditions with <code>||</code> or <code>&amp;&amp;</code>.</p>
   <pre>[profiles.display.rec709_projector]
-shortcut=F5
+when=$key=="F5"
 
 [profiles.display.bt2020_projector]
-shortcut=F6
+when=$key=="F6"
 
 [profiles.viewport.normal]
-shortcut=F2
+when=$key=="F2"
 
 [profiles.viewport.scope]
-shortcut=F3</pre>
-  <p>The familiar key grammar remains: <code>F1</code> through <code>F24</code>, letters, numbers, <code>Escape</code>, <code>Enter</code>, and optional <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Duplicate shortcuts, unknown profiles, and an automatic shortcut on a non-automatic group are startup errors. The OSD/log reports group, selected profile, and whether its selection is automatic or manual.</p>
+when=$key=="F3"</pre>
+  <p>In a group section, <code>when=$key==...</code> returns that group to automatic selection. The familiar key grammar remains: <code>F1</code> through <code>F24</code>, letters, numbers, <code>Escape</code>, <code>Enter</code>, and optional <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Duplicate key chords, unknown profiles, and a group key condition on a non-automatic group are startup errors. The OSD/log reports group, selected profile, and whether its selection is automatic or manual.</p>
 
   <h2><code>[event_actions]</code> — completed refresh events</h2>
   <p>Actions are not profiles and cannot influence selection. They observe a completed display transition and may schedule one trusted local command after a bounded delay.</p>
