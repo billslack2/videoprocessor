@@ -28,8 +28,36 @@ namespace AlphaQueuePolicy
 	inline size_t HardCapacity(size_t desiredDepth)
 	{
 		const size_t desired = NormalizeDesiredDepth(desiredDepth);
-		return desired +
+		const size_t headroom =
 			std::min(MAX_TRANSIENT_HEADROOM, std::max<size_t>(2, desired));
+		return desired > std::numeric_limits<size_t>::max() - headroom ?
+			std::numeric_limits<size_t>::max() :
+			desired + headroom;
+	}
+
+	inline size_t HealthyLowWater(size_t desiredDepth)
+	{
+		const size_t desired = NormalizeDesiredDepth(desiredDepth);
+		return desired > 1 ? desired - 1 : 0;
+	}
+
+	inline size_t HealthyHighWater(size_t desiredDepth)
+	{
+		const size_t desired = NormalizeDesiredDepth(desiredDepth);
+		const size_t capacity = HardCapacity(desired);
+		return desired < capacity ? desired + 1 : desired;
+	}
+
+	inline bool CanDequeue(size_t queueDepth, size_t desiredDepth,
+		bool startupPrefillPending)
+	{
+		if (queueDepth == 0)
+			return false;
+
+		const size_t desired = NormalizeDesiredDepth(desiredDepth);
+		return startupPrefillPending ?
+			queueDepth >= desired :
+			queueDepth > HealthyLowWater(desired);
 	}
 
 	inline bool TryParsePositiveSize(const std::string& value, size_t& parsedValue)

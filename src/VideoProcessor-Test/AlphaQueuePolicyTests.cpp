@@ -3,6 +3,8 @@
 
 #include <libplacebo/AlphaQueuePolicy.h>
 
+#include <limits>
+
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace Tests
@@ -27,6 +29,32 @@ namespace Tests
 			Assert::AreEqual<size_t>(3, AlphaQueuePolicy::HardCapacity(1));
 			Assert::AreEqual<size_t>(8, AlphaQueuePolicy::HardCapacity(4));
 			Assert::AreEqual<size_t>(38, AlphaQueuePolicy::HardCapacity(32));
+			Assert::AreEqual<size_t>(std::numeric_limits<size_t>::max(),
+				AlphaQueuePolicy::HardCapacity(
+					std::numeric_limits<size_t>::max()));
+		}
+
+		TEST_METHOD(HealthyBandStraddlesDesiredDepth)
+		{
+			Assert::AreEqual<size_t>(0,
+				AlphaQueuePolicy::HealthyLowWater(1));
+			Assert::AreEqual<size_t>(3,
+				AlphaQueuePolicy::HealthyLowWater(4));
+			Assert::AreEqual<size_t>(5,
+				AlphaQueuePolicy::HealthyHighWater(4));
+		}
+
+		TEST_METHOD(StartupPrefillWaitsForDesiredDepth)
+		{
+			Assert::IsFalse(AlphaQueuePolicy::CanDequeue(3, 4, true));
+			Assert::IsTrue(AlphaQueuePolicy::CanDequeue(4, 4, true));
+		}
+
+		TEST_METHOD(SteadyStateRetainsLowWaterReserve)
+		{
+			Assert::IsFalse(AlphaQueuePolicy::CanDequeue(3, 4, false));
+			Assert::IsTrue(AlphaQueuePolicy::CanDequeue(4, 4, false));
+			Assert::IsTrue(AlphaQueuePolicy::CanDequeue(1, 1, false));
 		}
 
 		TEST_METHOD(ConfigValueRequiresPositiveDecimalInteger)
