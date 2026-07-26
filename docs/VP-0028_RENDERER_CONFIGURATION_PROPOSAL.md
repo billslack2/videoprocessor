@@ -620,13 +620,13 @@ validated range/preset, group owner, apply class, diagnostics, and tests.
 
 ## Migration and review boundary
 
-The presence of any unified marker—`[profile_groups.<name>]`, `[profiles.*]`,
-or `[event_actions]`—selects strict unified mode. In that mode an omitted
-`config_version` means the latest schema supported by that VP build (currently
-2); an explicit version must be supported or startup fails with an upgrade
-diagnostic. A file with no unified marker uses the released legacy parser and
-behavior. The two modes have separate typed adapters and do not feed
-half-translated records into one another.
+The presence of any unified marker—an explicit `config_version`,
+`[profile_groups.<name>]`, `[profiles.*]`, or `[event_actions]`—selects strict
+unified mode. In that mode an omitted `config_version` means the latest schema
+supported by that VP build (currently 2); an explicit version must be supported
+or startup fails with an upgrade diagnostic. A file with no unified marker uses
+the released legacy parser and behavior. The two modes have separate typed
+adapters and do not feed half-translated records into one another.
 
 In unified mode, `[display_rules]`, rule `shortcut=`, `[shortcuts]`, and
 `[refresh_rate_commands]` are startup errors with migration guidance. In legacy
