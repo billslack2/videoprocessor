@@ -70,6 +70,31 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(DisplayRuleLutValuesPreserveBasePathAndBlankOverride)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path =
+				std::string(temporaryDirectory) + "VideoProcessor-display-lut-config-test.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[display]\n"
+					"lut=lut\\base-calibration.cube\n"
+					"[display_rules.rec709]\n"
+					"lut=\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string baseLut;
+			std::string ruleLut;
+			Assert::IsTrue(config.TryGetString("display", "lut", baseLut));
+			Assert::IsTrue(config.TryGetString("display_rules.rec709", "lut", ruleLut));
+			Assert::AreEqual("lut\\base-calibration.cube", baseLut.c_str());
+			Assert::IsTrue(ruleLut.empty());
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(CommandLineConfigOptionAcceptsSeparateAndEqualsValues)
 		{
 			std::string value;

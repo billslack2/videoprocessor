@@ -280,6 +280,12 @@ bool LibplaceboPluginVideoRenderer::GetOutputModeInfo(CString& details) const
 }
 
 
+bool LibplaceboPluginVideoRenderer::GetDisplayLutInfo(CString& details) const
+{
+	return m_renderer->GetDisplayLutInfo(details);
+}
+
+
 bool LibplaceboPluginVideoRenderer::GetConversionPerformance(
 	double& currentUs, double& avg10s, double& max10s) const
 {
