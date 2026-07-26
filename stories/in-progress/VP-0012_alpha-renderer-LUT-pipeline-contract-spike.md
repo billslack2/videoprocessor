@@ -9,6 +9,41 @@ source/API and comparable-renderer review to establish the supported
 libplacebo LUT attachment and color-contract design before production renderer
 or configuration changes are made.
 
+### Phase 1 decision record — target-frame calibration LUT
+
+**Evidence reviewed (2026-07-25):** VP bundles libplacebo **7.360.1**
+(`3rdparty\\libplacebo\\README.txt`, API 360). Its exact tagged renderer source
+uses an image-frame `PL_LUT_NATIVE` before image-to-target colour conversion,
+but applies a target-frame `PL_LUT_NATIVE` only after
+`pl_shader_encode_color`. `PL_LUT_NORMALIZED` is a distinct linear/normalized
+path and `PL_LUT_CONVERSION` replaces ordinary conversion, tone mapping, and
+related colour-management behavior; neither is the initial calibration path.
+
+mpv's `vo_gpu_next` independently follows this separation: its normal/image
+LUTs are attached to the image or render parameters, while its display
+`target-lut` is attached to the target frame. mpv documents that target LUTs
+receive normalized RGB after encoding to the selected target colourspace
+(including the target transfer). The bundled MPC Video Renderer compatibility
+library has no `.cube`/3D-LUT implementation to adopt.
+
+**Provisional implementation decision:** VP's display/projector calibration
+LUT will be parsed and cached once, then attached to the per-frame
+`baseTarget`/target copy as `target.lut` with `target.lut_type =
+PL_LUT_NATIVE`. It must *not* be assigned to `pl_render_params.lut` or an
+image frame. This places the LUT after libplacebo has converted, tone mapped,
+gamut mapped, and encoded the source to the explicitly declared LUT reference
+target. The target's declared primaries, transfer, range, and reference nits
+therefore become mandatory configuration and diagnostic data, rather than
+metadata inferred from a `.cube` file.
+
+This is a source/API decision only. It still requires the rendering read-back,
+identity/non-identity, HDR/P3 gamut-stress, DXGI/DWM, and real-display
+validation listed below before it can be treated as production acceptance.
+
+**Baseline:** On source commit `fc3cd35`, full `Release|x64` solution build
+passed with zero warnings/errors and `VideoProcessor-Test.dll` passed 49/49
+tests before VP012 source changes.
+
 ## User story
 
 As the maintainer of the experimental alpha renderer, I need a tested decision
