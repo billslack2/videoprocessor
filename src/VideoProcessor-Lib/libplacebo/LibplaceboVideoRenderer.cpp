@@ -1956,6 +1956,16 @@ struct LibplaceboVideoRenderer::Impl
 		else if (settings.quality == "balanced")
 			presetExport = "pl_render_default_params";
 		renderParams = LibplaceboExportedData<pl_render_params>(presetExport);
+		// libplacebo 7.360's D3D11 compute implementation can generate
+		// colliding texture registers when error diffusion and a target 3D LUT
+		// are combined. Keep normal rendering and the target LUT intact, but
+		// drop this optional high-quality preset feature for a valid display LUT.
+		if (displayLutParsed && displayLut && renderParams.error_diffusion)
+		{
+			renderParams.error_diffusion = nullptr;
+			DebugLog::Log(
+				"display: disabled error-diffusion dithering while a 3D LUT is active; using the compatible target-LUT render path");
+		}
 		// Display calibration is attached only to the final target frame.
 		// Keeping the render-parameter/image LUT empty prevents a second,
 		// pre-target application in a different color domain.
@@ -3163,6 +3173,21 @@ struct LibplaceboVideoRenderer::Impl
 		displayLutStatus = "Loaded: validating";
 	}
 
+	void RejectDisplayLutAfterRenderFailure()
+	{
+		if (!displayLutParsed || !displayLut)
+			return;
+
+		DebugLog::Log(
+			"display: LUT render failed; disabling %s for this renderer instance and continuing without a LUT",
+			displayLutPath.c_str());
+		displayLutStatus = "Rejected: render error";
+		displayLutParsed = false;
+		pl_lut_free(&displayLut);
+		if (renderer)
+			pl_renderer_flush_cache(renderer);
+	}
+
 	const char* DisplayLutContractMismatch(
 		const struct pl_frame& target,
 		bool returnedTargetMatchesActualOutput) const
@@ -3381,8 +3406,8 @@ struct LibplaceboVideoRenderer::Impl
 		formatter->OnVideoState(state);
 		formatterState = state;
 		convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
-		ConfigureRenderParams(settings);
 		LoadDisplayLut(settings);
+		ConfigureRenderParams(settings);
 
 		DebugLog::Log(
 			"libplacebo initialized: D3D11, P010 upload, SDR target request=%s %.1f nits",
@@ -3648,6 +3673,13 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			else
 			{
+				if (warmTarget.lut == displayLut &&
+					warmTarget.lut_type == PL_LUT_NATIVE)
+				{
+					RejectDisplayLutAfterRenderFailure();
+					baseTarget.lut = nullptr;
+					baseTarget.lut_type = PL_LUT_UNKNOWN;
+				}
 				DebugLog::Log(
 					"libplacebo screen profile prewarm failed after %.2f ms; normal rendering continues",
 					prewarmMs);
@@ -3662,6 +3694,8 @@ struct LibplaceboVideoRenderer::Impl
 			scopeScreenActive,
 			subtitleShiftSourcePixels);
 		const SteadyClock::time_point renderStart = SteadyClock::now();
+		const bool targetLutApplied =
+			target.lut == displayLut && target.lut_type == PL_LUT_NATIVE;
 		const bool rendered = pl_render_image(
 			renderer,
 			&renderImage,
@@ -3669,6 +3703,8 @@ struct LibplaceboVideoRenderer::Impl
 			&renderParams);
 		const double renderMs = std::chrono::duration<double, std::milli>(
 			SteadyClock::now() - renderStart).count();
+		if (!rendered && targetLutApplied)
+			RejectDisplayLutAfterRenderFailure();
 		if (outputDiagnostics && rendered && !diagnosticReadbackComplete)
 		{
 			if (diagnosticReadbackFramesRemaining == 0)
