@@ -41,10 +41,14 @@ namespace LibplaceboOutput
 	{
 		Plan result;
 		result.request = request;
-		result.useBlit =
-			request.presentation == PresentationRequest::COMPOSED ||
-			(request.presentation == PresentationRequest::AUTO &&
-				request.range != RangeRequest::LIMITED);
+		// Advanced-color/BT.2020 presentation must use a flip-model swapchain.
+		// Do not let an explicit composed request silently put a calibrated target
+		// on the legacy BitBlt/DWM path.
+		result.useBlit = request.primaries == PrimariesRequest::BT2020
+			? false
+			: request.presentation == PresentationRequest::COMPOSED ||
+				(request.presentation == PresentationRequest::AUTO &&
+					request.range != RangeRequest::LIMITED);
 
 		if (request.range == RangeRequest::LIMITED)
 		{
@@ -121,6 +125,14 @@ namespace LibplaceboOutput
 		if (!plan.valid)
 		{
 			result.reason = plan.reason;
+			return result;
+		}
+		if (plan.request.primaries == PrimariesRequest::BT2020 &&
+			evidence.presentationModel != PresentationModel::FLIP)
+		{
+			result.safeToRender = false;
+			result.reason =
+				"BT.2020 output requires a flip-model DXGI swapchain";
 			return result;
 		}
 

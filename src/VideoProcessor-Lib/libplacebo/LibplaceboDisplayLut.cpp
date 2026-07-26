@@ -1,5 +1,6 @@
 #include "LibplaceboDisplayLut.h"
 
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <iterator>
@@ -8,6 +9,47 @@
 
 namespace LibplaceboDisplayLut
 {
+	bool ContainsOneDimensionalCubeDirective(const std::string& contents)
+	{
+		constexpr char directive[] = "LUT_1D_SIZE";
+		size_t lineStart = 0;
+		while (lineStart < contents.size())
+		{
+			const size_t lineEnd = contents.find_first_of("\r\n", lineStart);
+			size_t cursor = lineStart;
+			while (cursor < contents.size() &&
+				(cursor == lineEnd ||
+				 std::isspace(static_cast<unsigned char>(contents[cursor]))))
+			{
+				++cursor;
+			}
+			if (cursor < contents.size() && contents[cursor] != '#')
+			{
+				size_t index = 0;
+				while (index + 1 < sizeof(directive) &&
+					cursor + index < contents.size() &&
+					cursor + index != lineEnd &&
+					std::toupper(static_cast<unsigned char>(contents[cursor + index])) ==
+					directive[index])
+				{
+					++index;
+				}
+				if (index + 1 == sizeof(directive) &&
+					(cursor + index == lineEnd ||
+					 cursor + index >= contents.size() ||
+					 std::isspace(static_cast<unsigned char>(contents[cursor + index]))))
+				{
+					return true;
+				}
+			}
+
+			if (lineEnd == std::string::npos)
+				break;
+			lineStart = lineEnd + 1;
+		}
+		return false;
+	}
+
 	LoadResult Load(pl_log log, const std::string& path)
 	{
 		LoadResult result;
@@ -49,6 +91,12 @@ namespace LibplaceboDisplayLut
 			{
 				result.status = Status::REJECTED;
 				result.rejection = Rejection::READ_FAILED;
+				return result;
+			}
+			if (ContainsOneDimensionalCubeDirective(contents))
+			{
+				result.status = Status::REJECTED;
+				result.rejection = Rejection::ONE_DIMENSIONAL;
 				return result;
 			}
 
