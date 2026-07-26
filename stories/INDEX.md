@@ -85,10 +85,14 @@ so history follows the file.
    the dependent story in Draft and link the spike.
 4. When implementation begins, move the story to `in-progress/`, set its
    status to `In Progress`, and record the branch/worktree and first progress
-   note. Do not move it merely because investigation or discussion started.
+   note in the same tracker change. Subsequent meaningful progress, blockers,
+   branch changes, and validation results must be recorded in the story while
+   work continues. Do not leave an actively implemented story in `Draft`, and
+   do not move it merely because investigation or discussion started.
 5. When implementation is ready for independent assessment, move it to
    `review/`, set its status to `Review`, and record build/test evidence plus
-   exactly what reviewer or user validation remains.
+   completed work, build/test evidence, and exactly what reviewer or user
+   validation remains.
 6. Move a story to `done/` only after acceptance, appropriate validation, and
    merge or deliberate release. Set its status to `Done` and record the final
    commit/PR/release reference.
