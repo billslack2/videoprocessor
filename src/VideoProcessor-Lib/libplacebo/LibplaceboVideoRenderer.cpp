@@ -530,6 +530,8 @@ namespace
 		int priority = 0;
 		int specificity = 0;
 	};
+	void ApplyDisplayRuleOverrides(const ConfigFile& config, const DisplayRule& rule,
+		RendererSettings& settings);
 
 	bool ParseRefreshRateRuleKey(const std::string& key, int& minimumRate, int& maximumRate);
 
@@ -539,9 +541,12 @@ namespace
 		return DisplayRuleExpression::Matches(expression,
 			[&state](const std::string& variable, std::string& value)
 			{
-				if (variable == "eotf") value = CStringA(ToString(state.eotf)).GetString();
+				if (variable == "eotf" || variable == "transfer") value = CStringA(ToString(state.eotf)).GetString();
 				else if (variable == "colorspace") value = CStringA(ToString(state.colorspace)).GetString();
+				else if (variable == "primaries") value = CStringA(ToString(state.colorspace)).GetString();
 				else if (variable == "format") value = CStringA(ToString(state.videoFrameEncoding)).GetString();
+				else if (variable == "key") value = "NONE";
+				else if (variable == "range" || variable == "scan") return false; // Reserved vocabulary until the capture API exposes it.
 				else if (variable == "hdr_metadata") value = state.hdrData && state.hdrData->IsValid() ? "true" : "false";
 				else if (variable == "interlaced") value = state.displayMode && state.displayMode->IsInterlaced() ? "true" : "false";
 				else if (!state.displayMode) return false;
@@ -607,6 +612,67 @@ namespace
 			return { name, section, 0, 0 };
 		}
 		return DisplayRule();
+	}
+
+	std::vector<std::string> SplitConfiguredList(const std::string& text)
+	{
+		std::vector<std::string> result;
+		std::istringstream stream(text);
+		std::string item;
+		while (std::getline(stream, item, ','))
+		{
+			item = ConfigFile::NormalizeName(item);
+			if (!item.empty()) result.push_back(item);
+		}
+		return result;
+	}
+
+	// Proposed profile groups intentionally use the same expression evaluator and
+	// override machinery as legacy display rules.  A profile selected by a shortcut
+	// is addressed as group/profile, while automatic profiles are independently
+	// selected for every declared group.
+	DisplayRule FindProfile(const ConfigFile& config, const std::string& name)
+	{
+		const size_t slash = name.find('/');
+		if (slash == std::string::npos) return {};
+		const std::string group = ConfigFile::NormalizeName(name.substr(0, slash));
+		const std::string profile = ConfigFile::NormalizeName(name.substr(slash + 1));
+		const std::string section = "profiles." + group + "." + profile;
+		return group.empty() || profile.empty() || !config.HasSection(section) ?
+			DisplayRule() : DisplayRule{ group + "/" + profile, section, 0, 0 };
+	}
+
+	void ApplyAutomaticProfiles(const ConfigFile& config, const VideoState& state,
+		RendererSettings& settings, std::string& activeProfiles)
+	{
+		std::string groups;
+		if (!config.TryGetString("profile_groups", "groups", groups)) return;
+		for (const std::string& group : SplitConfiguredList(groups))
+		{
+			DisplayRule selected;
+			const std::string prefix = "profiles." + group + ".";
+			for (const std::string& section : config.GetSectionNames())
+			{
+				if (section.rfind(prefix, 0) != 0) continue;
+				const DisplayRule candidate = FindProfile(config, group + "/" + section.substr(prefix.size()));
+				std::string when;
+				if (candidate.name.empty() || !config.TryGetString(candidate.section, "when", when)) continue;
+				int specificity = 0;
+				if (!MatchesDisplayRule(when, state, specificity)) continue;
+				int priority = 0; std::string rawPriority;
+				if (config.TryGetString(candidate.section, "priority", rawPriority))
+					try { priority = std::stoi(ConfigFile::Trim(rawPriority)); } catch (...) {}
+				if (selected.name.empty() || priority > selected.priority ||
+					(priority == selected.priority && specificity > selected.specificity))
+					selected = { candidate.name, candidate.section, priority, specificity };
+			}
+			if (!selected.name.empty())
+			{
+				ApplyDisplayRuleOverrides(config, selected, settings);
+				if (!activeProfiles.empty()) activeProfiles += ", ";
+				activeProfiles += selected.name;
+			}
+		}
 	}
 
 	std::string ResolveDisplayRuleName(const VideoState& state)
@@ -1156,14 +1222,42 @@ namespace
 			}
 		}
 
+		std::string activeProfiles;
+		ApplyAutomaticProfiles(config, state, settings, activeProfiles);
 		const DisplayRule selectedRule = manualRule.empty() ?
-			SelectDisplayRule(config, state) : FindDisplayRule(config, manualRule);
+			SelectDisplayRule(config, state) :
+			(FindProfile(config, manualRule).name.empty() ?
+				FindDisplayRule(config, manualRule) : FindProfile(config, manualRule));
 		if (!selectedRule.name.empty())
 		{
 			ApplyDisplayRuleOverrides(config, selectedRule, settings);
 			activeRule = selectedRule.name;
 			DebugLog::Log("display: selected %s rule '%s' (priority %d)",
 				manualRule.empty() ? "automatic" : "manual", activeRule.c_str(), selectedRule.priority);
+		}
+
+		// General owns cross-profile renderer behavior.  The legacy [display]
+		// locations remain valid, while these values become the canonical home for
+		// new profile configurations.
+		if (config.TryGetString("general", "switch_refresh_rate", rawValue) &&
+			!config.TryGetBool("general", "switch_refresh_rate", settings.switchRefreshRate))
+		{
+			DebugLog::Log("libplacebo: invalid [general] switch_refresh_rate '%s'; retaining display setting", rawValue.c_str());
+		}
+		if (config.TryGetString("general", "output_diagnostics", rawValue) &&
+			!config.TryGetBool("general", "output_diagnostics", settings.outputDiagnostics))
+		{
+			DebugLog::Log("libplacebo: invalid [general] output_diagnostics '%s'; retaining display setting", rawValue.c_str());
+		}
+		if (config.TryGetString("general", "diagnostic_disable_shader_cache", rawValue) &&
+			!config.TryGetBool("general", "diagnostic_disable_shader_cache", settings.diagnosticDisableShaderCache))
+		{
+			DebugLog::Log("libplacebo: invalid [general] diagnostic_disable_shader_cache '%s'; retaining display setting", rawValue.c_str());
+		}
+		else if (!activeProfiles.empty())
+		{
+			activeRule = activeProfiles;
+			DebugLog::Log("profiles: automatic selections: %s", activeProfiles.c_str());
 		}
 
 		const auto* refreshCommands = config.GetSectionValues("refresh_rate_commands");
@@ -4356,7 +4450,8 @@ bool LibplaceboVideoRenderer::SelectDisplayRule(
 
 	ConfigFile config;
 	if (!config.Load(ConfigFile::RENDERER_FILENAME) ||
-		FindDisplayRule(config, requested).name.empty())
+		(FindDisplayRule(config, requested).name.empty() &&
+			FindProfile(config, requested).name.empty()))
 	{
 		return false;
 	}

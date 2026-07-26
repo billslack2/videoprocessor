@@ -27,6 +27,7 @@ public:
 	bool TryGetString(const std::string& section, const std::string& key, std::string& value) const;
 	bool TryGetBool(const std::string& section, const std::string& key, bool& value) const;
 	const std::map<std::string, std::string>* GetSectionValues(const std::string& section) const;
+	std::vector<std::string> GetSectionNames() const;
 
 	static std::string NormalizeName(const std::string& value);
 	static std::string Trim(const std::string& value);

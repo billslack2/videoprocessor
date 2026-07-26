@@ -297,6 +297,16 @@ const std::map<std::string, std::string>* ConfigFile::GetSectionValues(const std
 }
 
 
+std::vector<std::string> ConfigFile::GetSectionNames() const
+{
+	std::vector<std::string> names;
+	names.reserve(m_sections.size());
+	for (const auto& section : m_sections)
+		names.push_back(section.first);
+	return names;
+}
+
+
 std::string ConfigFile::NormalizeName(const std::string& value)
 {
 	std::string normalized = Trim(value);
