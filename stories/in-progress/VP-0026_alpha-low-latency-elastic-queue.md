@@ -2,9 +2,18 @@
 
 ## Status
 
-Draft. Implement only after VP-0024 establishes valid Epson source-to-display
-telemetry and quantifies normal render/swap stalls. The configured values must
-be selected from evidence rather than copied from madVR's queue.
+In Progress. Phase 1 implements the display-agnostic Alpha queue configuration,
+desired-depth semantics, internal safety ceiling, and one-queue presentation.
+It must not depend on or hard-code a specific display's refresh behavior.
+
+Implementation branch/worktree: `codex/vp-0026` at
+`C:\\Users\\bslac\\vp\\videoprocessor-vp-0026`, rooted at
+`origin/v1.1.014-beta` (`fc3cd35`).
+
+Progress: readiness review confirmed that this structural work can proceed
+without VP-0024. The telemetry-dependent policy--measured age bands,
+stall/drift classification, correction readiness, and stale-backlog
+recovery--remains gated on VP-0024's valid source-to-display evidence.
 
 Supersedes the queue-policy portion of VP-0008 and the corrective boundary
 implied by VP-0017.
@@ -33,6 +42,10 @@ a real frame correction.
   capacity and a fixed Alpha target without editing configuration mid-run.
 - Prefer a time/latency target so 24p does not acquire the same frame count and
   disproportionate latency as 60p.
+- Keep the policy display-agnostic: derive timing decisions from measured or
+  configured frame period and explicit measurement validity, never from an
+  Epson-only or other single-display constant. Epson testing is a reference
+  validation dataset, not the product target.
 
 ## Required design and implementation
 
@@ -56,7 +69,7 @@ a real frame correction.
    transient headroom. The ceiling is diagnostic/internal, not a second normal
    operating target. Candidate target values such as two frames at 59.94 and
    candidate ceilings such as 4-8 frames are hypotheses only until VP-0024
-   Epson data selects them.
+   supplies valid, display-agnostic timing evidence.
 5. Show Alpha as one queue, for example `Queue: current / desired`, with queue
    age. Do not show `R/C/T`. Expanded diagnostics may include the internal hard
    limit and DXGI in-flight work under their correct labels.
@@ -82,8 +95,9 @@ a real frame correction.
 
 ## Verification
 
-- Compare queue-disabled/current behavior with each candidate target on the
-  Epson at 23.976/24 and 59.94/60.
+- Compare queue-disabled/current behavior with each candidate target at
+  23.976/24 and 59.94/60. Use the Epson as a reference path and exercise
+  additional display paths where available; do not tune solely to one display.
 - Exercise Alpha renderer shortcuts with and without `alpha_queue_size` and
   prove that Alpha uses the override while madVR continues to use `queue_size`.
 - Measure added latency, startup time, normal depth distribution, oldest-frame
@@ -111,5 +125,6 @@ a real frame correction.
 
 ## Dependencies and follow-ups
 
-Depends on VP-0024. Supplies the buffer state and correction requests consumed
-by VP-0027.
+Phase 1 is independent of VP-0024. VP-0024 is required before enabling the
+telemetry-dependent policy and correction/recovery requests described above.
+Supplies the buffer state and correction requests consumed by VP-0027.
