@@ -27,6 +27,10 @@ a real frame correction.
   meaning; Alpha treats the displayed value as desired CPU queue depth.
 - Do not add a second user-facing Alpha queue control. Alpha's hard safety
   ceiling is an internal value derived from the desired depth.
+- Support an undocumented configuration-only `alpha_queue_size` override for
+  controlled Alpha A/B testing. It overrides the shared `queue_size` only when
+  Alpha is selected, so renderer shortcuts can switch between madVR's normal
+  capacity and a fixed Alpha target without editing configuration mid-run.
 - Prefer a time/latency target so 24p does not acquire the same frame count and
   disproportionate latency as 60p.
 
@@ -41,38 +45,47 @@ a real frame correction.
    capacity. Prefer one context-sensitive existing control with remembered
    per-renderer values over two simultaneous controls. Legacy `queue_size`
    configuration must have a documented, non-silent interpretation.
-3. Derive Alpha's hard safety ceiling from the desired depth plus bounded
+3. Add `alpha_queue_size` as an undocumented positive-integer configuration
+   key. When present, it is Alpha's desired queue depth and takes precedence
+   over the existing shared `queue_size`; it has no effect on DirectShow or
+   madVR. Omitted or zero/invalid values fall back to the normal Alpha queue
+   selection path and must be logged. Do not expose it in normal UI, command
+   help, or released configuration documentation while the A/B experiment is
+   in progress.
+4. Derive Alpha's hard safety ceiling from the desired depth plus bounded
    transient headroom. The ceiling is diagnostic/internal, not a second normal
    operating target. Candidate target values such as two frames at 59.94 and
    candidate ceilings such as 4-8 frames are hypotheses only until VP-0024
    Epson data selects them.
-4. Show Alpha as one queue, for example `Queue: current / desired`, with queue
+5. Show Alpha as one queue, for example `Queue: current / desired`, with queue
    age. Do not show `R/C/T`. Expanded diagnostics may include the internal hard
    limit and DXGI in-flight work under their correct labels.
-5. Perform one generation-bound startup prefill to the desired target. Do not
+6. Perform one generation-bound startup prefill to the desired target. Do not
    repeatedly re-enter buffering from ordinary low-depth observations.
-6. Define a floating healthy band, low/high boundaries, maximum frame age, and
+7. Define a floating healthy band, low/high boundaries, maximum frame age, and
    hard capacity. Report excursions without resetting the renderer.
-7. Use VP-0024's queue age, source/present debt, render/swap duration, and
+8. Use VP-0024's queue age, source/present debt, render/swap duration, and
    measurement validity to distinguish:
    - healthy phase variation;
    - temporary render/presentation stall;
    - persistent capture-faster drift;
    - persistent display-faster starvation;
    - invalid/disjoint measurement.
-8. At this stage, emit a generation-safe correction request when a boundary is
+9. At this stage, emit a generation-safe correction request when a boundary is
    approached, but do not add an intentional repeat or scene-aware drop.
    Existing hard overflow remains a separately counted last-resort fallback.
-9. If an exceptional stall leaves a stale backlog, define a bounded recovery
+10. If an exceptional stall leaves a stale backlog, define a bounded recovery
    request toward the low-latency band. Do not silently carry hundreds of
    milliseconds of old video merely because the hard queue is not full.
-10. Never use manual sleep pacing or an automatic renderer reset to control
+11. Never use manual sleep pacing or an automatic renderer reset to control
    depth.
 
 ## Verification
 
 - Compare queue-disabled/current behavior with each candidate target on the
   Epson at 23.976/24 and 59.94/60.
+- Exercise Alpha renderer shortcuts with and without `alpha_queue_size` and
+  prove that Alpha uses the override while madVR continues to use `queue_size`.
 - Measure added latency, startup time, normal depth distribution, oldest-frame
   age, empty waits, high-water excursions, and hard overflow.
 - Induce short GPU/presentation stalls and prove that configured headroom
@@ -86,6 +99,8 @@ a real frame correction.
 - Alpha has an explicit low-latency target and independent hard capacity.
 - The existing queue control displays Alpha's desired depth and remembers a
   safe Alpha value independently of the DirectShow/madVR capacity.
+- `alpha_queue_size` is logged as the effective Alpha source when present and
+  never changes DirectShow/madVR queue behavior.
 - Alpha presents one truthful queue in the UI/OSD rather than `R/C/T`.
 - Normal queue depth remains bounded near the target without continuous
   corrective churn.
