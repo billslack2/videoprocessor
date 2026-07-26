@@ -33,6 +33,16 @@ migration bug: Alpha retained only eight source-backed frames and could never
 satisfy a 32-frame startup prefill. The independent default/override fix is
 built and awaits a confirming runtime log showing `prefill_target=4`.
 
+The next runtime run confirmed `alpha_queue_size=4` and generation prefill at
+exactly four frames, but also proved the startup-only policy drained the CPU
+FIFO toward zero. Commit `2c366e9` adds a steady low-water dequeue gate: desired
+depth 4 retains a three-frame CPU reserve while one frame is active, permits
+short stalls to float through the 3..5 healthy band, and does not reset,
+re-prime, or sleep. Five-second depth summaries now record current, desired,
+healthy/observed ranges, dequeue count, and hard capacity. The full
+`Release|x64` solution builds and all 56 automated tests pass; runtime
+confirmation of the new 3..4 steady distribution remains.
+
 Supersedes the queue-policy portion of VP-0008 and the corrective boundary
 implied by VP-0017.
 
