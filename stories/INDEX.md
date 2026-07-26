@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0028`
-- Next story number: `VP-0029`
-- Total indexed items: 28
+- Last assigned item: `VP-0029`
+- Next story number: `VP-0030`
+- Total indexed items: 29
 
 ## Story locations
 
@@ -58,6 +58,7 @@ they must not contain requirements that are absent from this file.
 | VP-0026 | In Progress | Alpha low-latency elastic queue |
 | VP-0027 | Draft | Alpha display-verified scene-safe cadence correction |
 | VP-0028 | In Progress | Renderer configuration profile, hotkey, and event-action unification |
+| VP-0029 | Draft | Alpha two-pass display LUT and final-dither pipeline spike |
 
 ## Codex story workflow
 
