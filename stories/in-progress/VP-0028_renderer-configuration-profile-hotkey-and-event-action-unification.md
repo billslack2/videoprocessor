@@ -58,9 +58,10 @@ Required next milestone:
 1. A platform-independent `RendererProfileConfig` and reusable expression AST.
 2. An explicit ordered profile list and independent automatic/manual selection
    for every group.
-3. Strict schema/ownership validation. Unified-section presence selects unified
-   mode; an omitted `config_version` means the latest supported unified schema,
-   while an explicit version protects future migrations.
+3. Strict schema/ownership validation. An explicit `config_version` or unified
+   section selects unified mode; an omitted version in that mode means the
+   latest supported unified schema, while an explicit version protects future
+   migrations.
 4. Full source-plus-`$key` evaluation with no GUI regex grammar.
 5. Versioned, atomic, per-group persistence committed only after successful
    application.
