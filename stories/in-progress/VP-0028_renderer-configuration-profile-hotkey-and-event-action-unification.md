@@ -20,7 +20,8 @@ Review deliverables:
 - `VideoProcessorRenderer-Proposed.html` (review-only HTML help, committed as
   `fc303db`, then revised in `036aa10` to place shortcuts and persistence in
   profile/group configuration rather than a separate binding section, and in
-  `2d1ffa6` to use the single `shortcut=` key in both contexts)
+  `2d1ffa6` to use the single `shortcut=` key in both contexts; revised again
+  in `3b86cee` so hotkeys are ordinary `$key` conditions within `when=`)
 
 Code/configuration migration begins only after that documentation is reviewed.
 
