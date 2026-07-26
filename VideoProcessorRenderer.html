@@ -82,10 +82,11 @@ lut_reference_transfer=sRGB
 lut_reference_range=full
 lut_reference_nits=100</pre>
   <h2>[shortcuts]</h2>
-  <p>These shortcuts apply only to the optional renderer and belong in <code>VideoProcessorRenderer.cfg</code>. <code>screen_profile_normal</code> selects the full 16:9 output raster; <code>screen_profile_scope</code> selects the configured scope viewport. Direct selection keeps VP aligned with projector lens-memory or screen-masking commands. Function keys <code>F1</code> through <code>F24</code>, letters, numbers, <code>Escape</code>, and <code>Enter</code> are supported with optional <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code> modifiers.</p>
+  <p>These renderer-profile shortcuts belong in <code>VideoProcessorRenderer.cfg</code>. <code>screen_profile_normal</code> selects the 16:9 target and <code>screen_profile_scope</code> selects the configured scope target. The alpha renderer uses this as its output viewport. The madVR NLS path uses it as the live target for aspect validation and warp direction; it does not select an NLS shader rule by itself. Direct selection keeps VP aligned with projector lens-memory or screen-masking commands. Function keys <code>F1</code> through <code>F24</code>, letters, numbers, <code>Escape</code>, and <code>Enter</code> are supported with optional <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code> modifiers.</p>
   <pre>[shortcuts]
-screen_profile_normal=F2
-screen_profile_scope=F3</pre>
+# F2 chooses Scope (2.35:1); F3 restores Normal (16:9).
+screen_profile_normal=F3
+screen_profile_scope=F2</pre>
   <div class="note">The renderer supports V210, UYVY, ARGB, BGRA, R10b, R10l, and R12L capture formats through VP's P010 conversion path. It does not emit HDR or require Windows HDR mode.</div>
 
 </body>
