@@ -23,7 +23,16 @@ Review deliverables:
   `2d1ffa6` to use the single `shortcut=` key in both contexts; revised again
   in `3b86cee` so hotkeys are ordinary `$key` conditions within `when=`)
 
-Code/configuration migration begins only after that documentation is reviewed.
+Runtime implementation began on 2026-07-26 at the user's direction. The first
+increment adds profile-section discovery, shared `$key` expression vocabulary,
+automatic per-group selection, and accelerator discovery from `$key` clauses
+while retaining the legacy display-rule paths. Focused rule tests and the
+libplacebo project build pass. A GUI Debug build is currently blocked before
+these changes by the worktree's missing generated `version.h`.
+
+For manual testing, a side-by-side configuration was created at
+`C:\Videoprocessor\vp\VideoProcessorRenderer.vp0028-test.cfg`; the active
+`VideoProcessorRenderer.cfg` was not edited. Use `/vr_config` to select it.
 
 ## User story
 
