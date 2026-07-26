@@ -19,7 +19,8 @@ Review deliverables:
 - `docs/examples/VideoProcessorRenderer.unified.proposed.cfg`
 - `VideoProcessorRenderer-Proposed.html` (review-only HTML help, committed as
   `fc303db`, then revised in `036aa10` to place shortcuts and persistence in
-  profile/group configuration rather than a separate binding section)
+  profile/group configuration rather than a separate binding section, and in
+  `2d1ffa6` to use the single `shortcut=` key in both contexts)
 
 Code/configuration migration begins only after that documentation is reviewed.
 
