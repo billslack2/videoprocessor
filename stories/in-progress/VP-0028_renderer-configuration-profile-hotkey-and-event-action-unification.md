@@ -17,6 +17,8 @@ Review deliverables:
 
 - `docs/VP-0028_RENDERER_CONFIGURATION_PROPOSAL.md`
 - `docs/examples/VideoProcessorRenderer.unified.proposed.cfg`
+- `VideoProcessorRenderer-Proposed.html` (review-only HTML help, committed as
+  `fc303db`)
 
 Code/configuration migration begins only after that documentation is reviewed.
 
