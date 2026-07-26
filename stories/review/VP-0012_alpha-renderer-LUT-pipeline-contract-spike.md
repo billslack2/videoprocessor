@@ -5,14 +5,18 @@
 Review — implementation and automated validation completed 2026-07-25 on
 `VP0011+0012`, based on `origin/v1.1.014-beta`. Draft PR
 [billslack2/videoprocessor#6](https://github.com/billslack2/videoprocessor/pull/6)
-contains the VP-0011 baseline (`bbe75df`) and completed target/output contract
-(`7b4d00c`).
+contains the VP-0011 baseline (`bbe75df`), completed target/output contract
+(`7b4d00c`), and the independent-review hardening follow-up (`38f2ee7`).
 
 The selected design attaches calibration only to the final target frame as
 `target.lut` / `PL_LUT_NATIVE`; render-parameter and image LUTs remain null.
 Activation requires the target primaries, transfer, range, and nits to match
 the declared profile and the accepted DXGI signal. Rec.709 and BT.2020
-contracts are supported when their exact DXGI color space is accepted.
+contracts are supported only when their exact DXGI color space is accepted and
+the returned libplacebo swapchain-frame metadata agrees. BT.2020 is flip-model
+only; a BitBlt path blocks rendering rather than claiming an active calibrated
+target. A failed negotiation resets the swapchain hint to the accepted Rec.709
+fallback before a LUT can activate.
 P3-D65 profiles are rejected until a verified Windows P3 signal path exists.
 1D, malformed, unreadable, oversized, unsafe-dimension, and path-traversal
 inputs are rejected with no-LUT playback and concise log/OSD diagnostics.
@@ -20,12 +24,15 @@ inputs are rejected with no-LUT playback and concise log/OSD diagnostics.
 Validation evidence:
 
 - `Release|x64` solution build: zero warnings and zero errors.
-- `VideoProcessor-Test.dll`: 68/68 tests passed.
+- `VideoProcessor-Test.dll`: 70/70 tests passed.
 - All three supplied 65³ cubes loaded through the production bounded parser.
 - WARP readback proved no-LUT and identity output match, while an extreme
   target LUT transforms the expected red sample to green.
 - Independent final review confirmed target-stage placement, complete
   signal-contract checks, rejection fallback, and truthful Ctrl-I states.
+- Follow-up DXGI review confirmed the prior BT.2020/limited P1 blockers are
+  resolved. The parser now rejects mixed 1D/3D declarations and existing
+  junction/symlink escapes are rejected during relative-path resolution.
 
 Remaining review is real projector/display validation of Rec.709 and BT.2020
 profiles, fullscreen/window transitions, and rule/source switching. Do not

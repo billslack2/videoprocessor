@@ -14,12 +14,15 @@ mismatches, and unverified output signaling are ignored safely while playback
 continues without a LUT. Ctrl-I reports Disabled, Loaded/validating, Active, or
 a concise Rejected reason.
 
-`Release|x64` builds with zero warnings/errors and all 68 tests pass, including
+`Release|x64` builds with zero warnings/errors and all 70 tests pass, including
 the three supplied 65³ cubes and deterministic identity/extreme WARP GPU
-readback. Automated/source review is complete. Real-projector Rec.709/BT.2020
-validation, display-rule/source switching, and fullscreen/window transitions
-remain before Done. P3-D65 reference profiles remain intentionally rejected
-until VP has a verified P3 Windows presentation contract.
+readback. Follow-up commit `38f2ee7` made BT.2020 flip-only, resets failed
+negotiation hints to Rec.709, and requires the returned swapchain frame to
+match the accepted output contract before a LUT can activate. Automated/source
+review is complete. Real-projector Rec.709/BT.2020 validation,
+display-rule/source switching, and fullscreen/window transitions remain before
+Done. P3-D65 reference profiles remain intentionally rejected until VP has a
+verified P3 Windows presentation contract.
 
 ## Prerequisites
 
