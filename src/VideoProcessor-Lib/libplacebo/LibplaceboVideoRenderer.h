@@ -65,6 +65,7 @@ private:
 	void BeginQueueGeneration(const char* reason, bool clearStopRequest = false);
 	void ClearQueueLocked();
 	size_t PrefillTargetLocked() const;
+	bool CanDequeueLocked() const;
 	void SetState(RendererState state);
 	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp);
 	void ResetFrameRateAndPPM();
@@ -86,6 +87,11 @@ private:
 	uint64_t m_queueGeneration = 0;
 	uint64_t m_overflowLoggedGeneration = 0;
 	bool m_startupPrefillPending = false;
+	int64_t m_queueDepthWindowStartNs = 0;
+	size_t m_queueDepthWindowMin = 0;
+	size_t m_queueDepthWindowMax = 0;
+	uint64_t m_queueDepthWindowDequeues = 0;
+	bool m_queueDepthWindowHasSamples = false;
 	bool m_stopRequested = false;
 	std::thread m_renderThread;
 

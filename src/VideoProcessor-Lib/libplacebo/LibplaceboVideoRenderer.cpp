@@ -3840,6 +3840,9 @@ void LibplaceboVideoRenderer::SetFrameQueueMaxSize(size_t size)
 			m_frameQueue.pop_front();
 			m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
 		}
+		m_queueDepthWindowStartNs = SteadyClockNowNs();
+		m_queueDepthWindowDequeues = 0;
+		m_queueDepthWindowHasSamples = false;
 	}
 	// A target reduction can satisfy an already pending startup prefill.
 	// A target increase after release deliberately does not re-arm it.
@@ -4010,14 +4013,21 @@ void LibplaceboVideoRenderer::RenderLoop()
 		bool prefillReleased = false;
 		size_t prefillDepth = 0;
 		size_t prefillTarget = 0;
+		bool depthSummaryReady = false;
+		uint64_t depthSummaryGeneration = 0;
+		size_t depthSummaryCurrent = 0;
+		size_t depthSummaryDesired = 0;
+		size_t depthSummaryLow = 0;
+		size_t depthSummaryHigh = 0;
+		size_t depthSummaryMin = 0;
+		size_t depthSummaryMax = 0;
+		size_t depthSummaryCapacity = 0;
+		uint64_t depthSummaryDequeues = 0;
 		{
 			std::unique_lock<std::mutex> lock(m_queueMutex);
 			m_queueChanged.wait(lock, [this]()
 			{
-				return m_stopRequested ||
-					(!m_frameQueue.empty() &&
-					 (!m_startupPrefillPending ||
-					  m_frameQueue.size() >= PrefillTargetLocked()));
+				return m_stopRequested || CanDequeueLocked();
 			});
 			if (m_stopRequested)
 				break;
@@ -4032,6 +4042,44 @@ void LibplaceboVideoRenderer::RenderLoop()
 			state = m_frameQueue.front().state;
 			frameGeneration = m_frameQueue.front().generation;
 			m_frameQueue.pop_front();
+
+			const size_t remainingDepth = m_frameQueue.size();
+			if (!m_queueDepthWindowHasSamples)
+			{
+				m_queueDepthWindowMin = remainingDepth;
+				m_queueDepthWindowMax = remainingDepth;
+				m_queueDepthWindowHasSamples = true;
+			}
+			else
+			{
+				m_queueDepthWindowMin =
+					std::min(m_queueDepthWindowMin, remainingDepth);
+				m_queueDepthWindowMax =
+					std::max(m_queueDepthWindowMax, remainingDepth);
+			}
+			++m_queueDepthWindowDequeues;
+			const int64_t nowNs = SteadyClockNowNs();
+			if (m_queueDepthWindowStartNs == 0)
+				m_queueDepthWindowStartNs = nowNs;
+			if (nowNs - m_queueDepthWindowStartNs >= 5000000000LL)
+			{
+				depthSummaryReady = true;
+				depthSummaryGeneration = m_queueGeneration;
+				depthSummaryCurrent = remainingDepth;
+				depthSummaryDesired = PrefillTargetLocked();
+				depthSummaryLow =
+					AlphaQueuePolicy::HealthyLowWater(depthSummaryDesired);
+				depthSummaryHigh =
+					AlphaQueuePolicy::HealthyHighWater(depthSummaryDesired);
+				depthSummaryMin = m_queueDepthWindowMin;
+				depthSummaryMax = m_queueDepthWindowMax;
+				depthSummaryCapacity =
+					m_useFrameQueue ? m_frameQueueMaxSize : 1;
+				depthSummaryDequeues = m_queueDepthWindowDequeues;
+				m_queueDepthWindowStartNs = nowNs;
+				m_queueDepthWindowDequeues = 0;
+				m_queueDepthWindowHasSamples = false;
+			}
 		}
 
 		if (prefillReleased)
@@ -4041,6 +4089,20 @@ void LibplaceboVideoRenderer::RenderLoop()
 				static_cast<unsigned long long>(frameGeneration),
 				prefillDepth,
 				prefillTarget);
+		}
+		if (depthSummaryReady)
+		{
+			DebugLog::Log(
+				"Alpha queue depth summary: generation=%llu current=%zu desired=%zu healthy=%zu..%zu observed=%zu..%zu dequeues=%llu hard_capacity=%zu",
+				static_cast<unsigned long long>(depthSummaryGeneration),
+				depthSummaryCurrent,
+				depthSummaryDesired,
+				depthSummaryLow,
+				depthSummaryHigh,
+				depthSummaryMin,
+				depthSummaryMax,
+				static_cast<unsigned long long>(depthSummaryDequeues),
+				depthSummaryCapacity);
 		}
 
 		bool rendered = false;
@@ -4148,6 +4210,9 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 			++m_queueGeneration;
 		m_overflowLoggedGeneration = 0;
 		m_startupPrefillPending = true;
+		m_queueDepthWindowStartNs = SteadyClockNowNs();
+		m_queueDepthWindowDequeues = 0;
+		m_queueDepthWindowHasSamples = false;
 		if (clearStopRequest)
 			m_stopRequested = false;
 		generation = m_queueGeneration;
@@ -4175,6 +4240,15 @@ void LibplaceboVideoRenderer::ClearQueueLocked()
 size_t LibplaceboVideoRenderer::PrefillTargetLocked() const
 {
 	return m_useFrameQueue ? m_frameQueueDesiredDepth : 1;
+}
+
+
+bool LibplaceboVideoRenderer::CanDequeueLocked() const
+{
+	return AlphaQueuePolicy::CanDequeue(
+		m_frameQueue.size(),
+		PrefillTargetLocked(),
+		m_startupPrefillPending);
 }
 
 
