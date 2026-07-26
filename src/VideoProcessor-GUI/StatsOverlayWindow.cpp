@@ -485,11 +485,17 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	// Separator
 	y += 4;
 
-	// Queue info
-	line.Format(TEXT("Queue R/C/T:      %zu/%zu/%zu/%zu%s"),
-		m_stats.rawQueueSize, m_stats.convertedQueueSize,
-		m_stats.currentQueueSize, m_stats.maxQueueSize,
-		m_stats.isQueueFull ? TEXT(" [FULL]") : TEXT(""));
+	// Alpha/libplacebo has only one FIFO.  Do not present DirectShow's
+	// raw/converted/total fields (or Alpha's internal safety capacity) as if
+	// they were separate user-visible queues.
+	if (m_stats.isAlphaRenderer)
+		line.Format(TEXT("Queue:            %zu / %zu"),
+			m_stats.rawQueueSize, m_stats.maxQueueSize);
+	else
+		line.Format(TEXT("Queue R/C/T:      %zu/%zu/%zu/%zu%s"),
+			m_stats.rawQueueSize, m_stats.convertedQueueSize,
+			m_stats.currentQueueSize, m_stats.maxQueueSize,
+			m_stats.isQueueFull ? TEXT(" [FULL]") : TEXT(""));
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
@@ -636,8 +642,12 @@ CString StatsOverlayWindow::FormatTime(double seconds)
 CString StatsOverlayWindow::FormatQueueStatus()
 {
 	CString result;
-	result.Format(TEXT("Queue R/C/T: %zu/%zu/%zu/%zu"),
-		m_stats.rawQueueSize, m_stats.convertedQueueSize,
-		m_stats.currentQueueSize, m_stats.maxQueueSize);
+	if (m_stats.isAlphaRenderer)
+		result.Format(TEXT("Queue: %zu / %zu"),
+			m_stats.rawQueueSize, m_stats.maxQueueSize);
+	else
+		result.Format(TEXT("Queue R/C/T: %zu/%zu/%zu/%zu"),
+			m_stats.rawQueueSize, m_stats.convertedQueueSize,
+			m_stats.currentQueueSize, m_stats.maxQueueSize);
 	return result;
 }
