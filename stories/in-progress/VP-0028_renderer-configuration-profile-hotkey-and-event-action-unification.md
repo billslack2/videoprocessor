@@ -18,7 +18,8 @@ Review deliverables:
 - `docs/VP-0028_RENDERER_CONFIGURATION_PROPOSAL.md`
 - `docs/examples/VideoProcessorRenderer.unified.proposed.cfg`
 - `VideoProcessorRenderer-Proposed.html` (review-only HTML help, committed as
-  `fc303db`)
+  `fc303db`, then revised in `036aa10` to place shortcuts and persistence in
+  profile/group configuration rather than a separate binding section)
 
 Code/configuration migration begins only after that documentation is reviewed.
 
