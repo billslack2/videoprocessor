@@ -14,8 +14,8 @@ as `VideoProcessorRenderer-Proposed.html`.
 VideoProcessor uses the built-in libplacebo renderer for live streaming
 sources. The configuration needs to select a small, predictable set of image
 processing and display-calibration settings from trustworthy capture metadata.
-It must also provide direct hotkeys and optional post-refresh actions without
-giving those concepts unrelated special-case syntax.
+It must also provide direct profile shortcuts and optional post-refresh actions
+without giving those concepts unrelated special-case syntax.
 
 The model has four independent profile groups:
 
@@ -49,36 +49,68 @@ the matching profile with the highest `priority` wins; equal priorities use
 the most comparisons, then declaration order.
 
 **Manual-only profile** has no `when=` expression. It is selected by the
-group's configured default or by a binding. No impossible condition such as
+group's configured default or by its profile shortcut. No impossible condition such as
 `$width==0` is needed.
 
-**Binding** maps one hotkey to one named selection action. Profile selection,
-returning a group to automatic mode, and viewport selection all use the same
-syntax and conflict rules.
+**Profile shortcut** is an optional `shortcut=` inside a profile. Pressing it
+selects that profile in its own group. Returning a group to automatic selection
+is configured in that group, not in a separate global binding map.
 
 **Event action** observes a completed renderer/display event. It may run a
 configured command after a bounded delay. It cannot select a profile.
 
-## Group selection
+## General and group selection
 
-`[profile_groups]` declares the known groups and their startup selection. A
-value of `auto` enables automatic selection for that group; a profile name
-selects that profile manually and persists it in `VideoProcessorRenderer.state`.
+`[general]` holds renderer-session policy rather than profile settings. The
+initial proposal puts the persistence default, refresh-switch policy, default
+event delay, and diagnostic-only choices here. It deliberately does not expose
+the state-file path: it remains the fixed `VideoProcessorRenderer.state` beside
+the executable.
+
+```ini
+[general]
+# Default for every profile group; an individual group may override it.
+persist_profile_selection=true
+switch_refresh_rate=true
+event_action_delay_seconds=5
+output_diagnostics=OFF
+diagnostic_disable_shader_cache=OFF
+```
+
+`[profile_groups]` declares group order. Each `[profile_groups.<name>]` section
+declares that group's startup selection and may override persistence. A value
+of `auto` enables automatic selection for that group; a profile name selects
+that profile manually.
 
 ```ini
 [profile_groups]
 groups=input,scaling,display,viewport
-input=auto
-scaling=auto
-display=rec709_projector
-viewport=normal
+
+[profile_groups.input]
+default=auto
+auto_shortcut=Ctrl+F4
+
+[profile_groups.scaling]
+default=auto
+auto_shortcut=Ctrl+F5
+
+[profile_groups.display]
+default=rec709_projector
+persist_profile_selection=true
+
+[profile_groups.viewport]
+default=normal
+persist_profile_selection=true
 ```
 
 An automatic group with no matching profile contributes no group override;
-`[display]` remains in effect for that group. A manual selection persists
-across source changes until a binding chooses another profile or the group's
-`.auto` action is invoked. Removed or invalid persisted profiles fall back to
-the configured startup selection and emit one diagnostic.
+`[display]` remains in effect for that group. If persistence is enabled, a
+manual selection persists across source changes and restarts until another
+profile shortcut or that group's `auto_shortcut` is invoked. If persistence is
+disabled, manual selection lasts only for the current renderer session. Removed
+or invalid persisted profiles fall back to the configured startup selection and
+emit one diagnostic. The global default is `true`; every group may explicitly
+set `persist_profile_selection=false` when it should always start automatic.
 
 ## Profile syntax and ownership
 
@@ -95,6 +127,8 @@ peak_detection=high_quality
 contrast_recovery=0.25
 
 [profiles.display.rec709_projector]
+# Optional shortcut selects this profile only in the display group.
+shortcut=F5
 sdr_target_primaries=REC709
 sdr_target_nits=100
 sdr_black_nits=0
@@ -150,34 +184,40 @@ the streaming capture path may not have it, and it is not a reliable image
 processing signal. Do not use output refresh in `when=`; it is the result of
 profile selection and display switching.
 
-## Bindings and hotkeys
+## Profile shortcuts and persistence
 
-`[bindings]` is the sole hotkey section. Every binding maps a selection target
-to one key. The same parser accepts `F1` through `F24`, letters, numbers,
+An optional `shortcut=` in a profile section directly selects that profile in
+its group. The same parser accepts `F1` through `F24`, letters, numbers,
 `Escape`, `Enter`, and optional `Ctrl`, `Alt`, and `Shift` modifiers.
 
 ```ini
-[bindings]
-display.rec709_projector=F5
-display.bt2020_projector=F6
-display.auto=Ctrl+F4
-viewport.normal=F2
-viewport.scope=F3
+[profiles.display.rec709_projector]
+shortcut=F5
+
+[profiles.display.bt2020_projector]
+shortcut=F6
+
+[profiles.viewport.normal]
+shortcut=F2
+
+[profiles.viewport.scope]
+shortcut=F3
 ```
 
-The target before the final dot is the group; the final token is either a
-declared profile or `auto`. A hotkey always directly selects its target; it
-never toggles. Duplicate bindings, unknown groups, and unknown profiles are
-startup errors. The OSD/log must report the selected group, profile, and
-whether it is automatic or manual.
+`auto_shortcut=` belongs to `[profile_groups.<name>]` because it changes the
+selection mode of that one group. A shortcut always directly selects its target
+and never toggles. Duplicate shortcuts, unknown profiles, and an
+`auto_shortcut` on a group without automatic profiles are startup errors. The
+OSD/log must report group, profile, and automatic/manual state.
 
-This replaces the three released special cases:
+This replaces the released special cases without adding a separate binding
+section:
 
 | Released configuration | Proposed equivalent |
 | --- | --- |
-| `shortcut=F5` in `[display_rules.rec709]` | `display.rec709_projector=F5` |
-| `screen_profile_scope=F3` in `[shortcuts]` | `viewport.scope=F3` |
-| `display_rules_auto=F4` in `[shortcuts]` | `display.auto=F4` or `input.auto=F4` as intended |
+| `shortcut=F5` in `[display_rules.rec709]` | `shortcut=F5` in `[profiles.display.rec709_projector]` |
+| `screen_profile_scope=F3` in `[shortcuts]` | `shortcut=F3` in `[profiles.viewport.scope]` |
+| `display_rules_auto=F4` in `[shortcuts]` | `auto_shortcut=F4` in the appropriate `[profile_groups.<name>]` section |
 
 ## Refresh-transition event actions
 
@@ -192,7 +232,6 @@ actions=audio_delay_24,audio_delay_60,restore_audio
 [event_actions.audio_delay_24]
 on=refresh.applied,refresh.confirmed
 when=$actual_refresh==23.976|24
-delay_seconds=5
 command=C:\Videoprocessor\audio\audio_delay.bat 315
 
 [event_actions.audio_delay_60]
@@ -262,10 +301,14 @@ compatibility period:
 
 - `[display_rules]` and `[display_rules.name]` map to the appropriate proposed
   profile group only when their keys have one clear owner.
-- `shortcut=` maps to an equivalent `[bindings]` entry.
-- `[shortcuts]` maps to viewport or `.auto` bindings.
+- `shortcut=` remains the shortcut on the migrated profile.
+- `[shortcuts]` maps to a viewport profile shortcut or to a group
+  `auto_shortcut`.
 - `[refresh_rate_commands]`, including its legacy `command=` form, maps to
   refresh event actions with the documented old truncated-rate behavior.
+
+An event action without `delay_seconds=` inherits
+`[general] event_action_delay_seconds`; a per-action value overrides it.
 
 Legacy configuration is never rewritten automatically. VP emits one actionable
 deprecation diagnostic per legacy construct, preserves existing behavior during

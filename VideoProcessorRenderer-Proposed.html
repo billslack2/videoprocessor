@@ -17,7 +17,7 @@
   <h1>Proposed VideoProcessor renderer configuration</h1>
   <div class="warning"><strong>Proposal only — not implemented.</strong> This page describes the VP-0028 design under review. Current VideoProcessor versions do not parse these sections or keys. Continue using <a href="VideoProcessorRenderer.html">the released renderer help</a> and configuration until VP-0028 is accepted and implemented.</div>
 
-  <p>The proposal replaces separate display rules, rule shortcuts, screen-profile shortcuts, and refresh-rate command maps with one configuration vocabulary: named profiles, named bindings, and completed-transition event actions. It is designed for streaming sources, where stable capture metadata is available but filenames, codecs, bitrates, and library metadata are not reliable inputs.</p>
+  <p>The proposal replaces separate display rules, rule shortcuts, screen-profile shortcuts, and refresh-rate command maps with one configuration vocabulary: named profiles, group-owned shortcuts, and completed-transition event actions. It is designed for streaming sources, where stable capture metadata is available but filenames, codecs, bitrates, and library metadata are not reliable inputs.</p>
 
   <h2>Configuration model</h2>
   <p>Every renderer setting starts with the base <code>[display]</code> section. Four independent profile groups then supply their own overrides. Each group has exactly one active profile, and a profile may change only settings owned by that group.</p>
@@ -34,15 +34,24 @@
   </tbody></table>
   <p>A group in automatic mode selects the matching profile with the highest <code>priority</code>; equal priorities use the most comparisons, then declaration order. A profile without <code>when=</code> is intentionally manual-only. No fake condition such as <code>$width==0</code> is required.</p>
 
-  <h2><code>[profile_groups]</code></h2>
-  <p>This section establishes the group order and each group’s startup selection. Use <code>auto</code> for source-driven selection or a profile name for a persisted manual selection.</p>
-  <pre>[profile_groups]
+  <h2><code>[general]</code> and <code>[profile_groups]</code></h2>
+  <p><code>[general]</code> owns renderer-session policy rather than profile settings: profile-selection persistence defaults, refresh switching, default event delay, and diagnostic-only controls. The state-file path remains fixed beside the executable. <code>[profile_groups]</code> establishes group order, while each group section chooses its startup selection and may override persistence.</p>
+  <pre>[general]
+persist_profile_selection=true
+switch_refresh_rate=true
+event_action_delay_seconds=5
+
+[profile_groups]
 groups=input,scaling,display,viewport
-input=auto
-scaling=auto
-display=rec709_projector
-viewport=normal</pre>
-  <p>If an automatic group has no match, it adds no override and the base setting remains active. A removed or invalid persisted profile falls back to this configured startup selection and logs one diagnostic.</p>
+
+[profile_groups.input]
+default=auto
+auto_shortcut=Ctrl+F4
+
+[profile_groups.display]
+default=rec709_projector
+persist_profile_selection=true</pre>
+  <p>If an automatic group has no match, it adds no override and the base setting remains active. Persistence is enabled by default in <code>[general]</code>; every group may set <code>persist_profile_selection=false</code> for session-only manual selection. A removed or invalid persisted profile falls back to this configured startup selection and logs one diagnostic.</p>
 
   <h2>Profiles</h2>
   <p>Profiles use the section name <code>[profiles.&lt;group&gt;.&lt;name&gt;]</code>. Only settings owned by the group are accepted; an unknown key or a valid key in the wrong group is a startup validation error.</p>
@@ -56,6 +65,7 @@ contrast_recovery=0.25
 
 [profiles.display.rec709_projector]
 # No when= means this is manual-only.
+shortcut=F5
 sdr_target_primaries=REC709
 sdr_target_nits=100
 sdr_black_nits=0
@@ -82,15 +92,20 @@ lut_reference_nits=100</pre>
   <div class="note"><strong>Cadence is exact.</strong> It is not a truncated integer and not a floating-point comparison. <code>23.976</code> and <code>24000/1001</code> may be accepted as equivalent spellings, with one canonical value in diagnostics.</div>
   <p>Mastering data, MaxCLL, and MaxFALL remain renderer inputs, rather than ordinary rule variables. Output refresh is deliberately excluded: it is a result of profile selection and display switching, not an input to either.</p>
 
-  <h2><code>[bindings]</code> — one hotkey syntax</h2>
-  <p>All direct selection uses one section. The target before the final dot is a group; the final token is either a declared profile or <code>auto</code>. Bindings directly select their target and never toggle.</p>
-  <pre>[bindings]
-display.rec709_projector=F5
-display.bt2020_projector=F6
-display.auto=Ctrl+F4
-viewport.normal=F2
-viewport.scope=F3</pre>
-  <p>The familiar key grammar remains: <code>F1</code> through <code>F24</code>, letters, numbers, <code>Escape</code>, <code>Enter</code>, and optional <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Duplicate bindings and unknown targets are startup errors. The OSD/log reports group, selected profile, and whether its selection is automatic or manual.</p>
+  <h2>Profile shortcuts and persistence</h2>
+  <p>All direct selection uses an optional <code>shortcut=</code> inside the profile it selects. Returning one group to automatic selection uses <code>auto_shortcut=</code> in that group’s configuration. Neither action toggles.</p>
+  <pre>[profiles.display.rec709_projector]
+shortcut=F5
+
+[profiles.display.bt2020_projector]
+shortcut=F6
+
+[profiles.viewport.normal]
+shortcut=F2
+
+[profiles.viewport.scope]
+shortcut=F3</pre>
+  <p>The familiar key grammar remains: <code>F1</code> through <code>F24</code>, letters, numbers, <code>Escape</code>, <code>Enter</code>, and optional <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Duplicate shortcuts, unknown profiles, and an automatic shortcut on a non-automatic group are startup errors. The OSD/log reports group, selected profile, and whether its selection is automatic or manual.</p>
 
   <h2><code>[event_actions]</code> — completed refresh events</h2>
   <p>Actions are not profiles and cannot influence selection. They observe a completed display transition and may schedule one trusted local command after a bounded delay.</p>
@@ -100,7 +115,6 @@ actions=audio_delay_24,audio_delay_60,restore_audio
 [event_actions.audio_delay_24]
 on=refresh.applied,refresh.confirmed
 when=$actual_refresh==23.976|24
-delay_seconds=5
 command=C:\Videoprocessor\audio\audio_delay.bat 315
 
 [event_actions.restore_audio]
@@ -113,7 +127,7 @@ command=C:\Videoprocessor\audio\audio_delay.bat 0</pre>
     <tr><td><code>refresh.confirmed</code></td><td>The requested rate was already active; no mode change was needed.</td></tr>
     <tr><td><code>refresh.restored</code></td><td>Renderer shutdown successfully restored VP’s captured prior rate.</td></tr>
   </tbody></table>
-  <p>Failed or unsupported refresh requests run no action. For each renderer generation and completed event, VP schedules at most one instance of each action; pending actions are cancelled when a newer transition or renderer generation supersedes them.</p>
+  <p>Failed or unsupported refresh requests run no action. An event action without <code>delay_seconds=</code> inherits <code>[general] event_action_delay_seconds</code>; a per-action value overrides it. For each renderer generation and completed event, VP schedules at most one instance of each action; pending actions are cancelled when a newer transition or renderer generation supersedes them.</p>
 
   <h2>Initial streaming profile library</h2>
   <pre>input:   sdr | pq_hdr | hlg_hdr | lldv_like
