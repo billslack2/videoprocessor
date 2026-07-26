@@ -10,6 +10,14 @@ base `origin/v1.1.014-beta` at `fc3cd35`.
 The first deliverable is a reviewable proposed configuration reference and
 sample configuration. It documents the unified profile, binding, and
 post-transition event model without changing runtime parsing or behavior.
+The documentation is committed as `9b5c699` (`docs: propose unified renderer
+configuration model`) on the tracked remote branch.
+
+Review deliverables:
+
+- `docs/VP-0028_RENDERER_CONFIGURATION_PROPOSAL.md`
+- `docs/examples/VideoProcessorRenderer.unified.proposed.cfg`
+
 Code/configuration migration begins only after that documentation is reviewed.
 
 ## User story
