@@ -30,9 +30,61 @@ while retaining the legacy display-rule paths. Focused rule tests and the
 libplacebo project build pass. A GUI Debug build is currently blocked before
 these changes by the worktree's missing generated `version.h`.
 
-For manual testing, a side-by-side configuration was created at
+A subsequent multi-pass design/code review determined that this increment is a
+prototype and must not be treated as the accepted unified implementation. It
+still routes manual selection through one legacy display-rule slot, uses GUI
+regex shortcut discovery instead of full AST evaluation, does not implement
+independent group persistence or strict unified validation, and does not include
+viewport/event-action behavior. The proposal and examples are being refined
+before further runtime integration.
+
+For future manual testing, a side-by-side configuration was created at
 `C:\Videoprocessor\vp\VideoProcessorRenderer.vp0028-test.cfg`; the active
-`VideoProcessorRenderer.cfg` was not edited. Use `/vr_config` to select it.
+`VideoProcessorRenderer.cfg` was not edited. Do not use it to judge the unified
+feature until the resolver, validation, persistence, and rebuild milestones
+below are complete.
+
+## Deep-review implementation boundary
+
+Further implementation follows one testable pipeline:
+
+```text
+parse -> validate -> select independently per group -> resolve typed settings
+      -> compare effective fingerprint -> apply -> persist committed state
+```
+
+Required next milestone:
+
+1. A platform-independent `RendererProfileConfig` and reusable expression AST.
+2. An explicit ordered profile list and independent automatic/manual selection
+   for every group.
+3. Strict schema/ownership validation and explicit `config_version=2` mode.
+4. Full source-plus-`$key` evaluation with no GUI regex grammar.
+5. Versioned, atomic, per-group persistence committed only after successful
+   application.
+6. Effective-settings fingerprints for correct rebuild/no-rebuild decisions.
+7. Table-driven resolver, key, state, rollback, and compatibility tests.
+
+Viewport integration and the generation-scoped refresh event scheduler follow
+that milestone. Legacy syntax remains on a separate unchanged compatibility
+path; mixed legacy/unified configuration is rejected.
+
+Later review passes further require:
+
+- explicit ordered `profiles=` lists and a complete v2 key/type/range/owner/apply
+  schema;
+- application-local accelerator behavior, full AST chord discovery, and
+  one-request-per-physical-press repeat suppression;
+- side-by-side `/vr_config` state isolation while preserving the legacy
+  `screen_profile=` mirror for the default configuration;
+- `program=`, literal `arguments=`, and optional `working_directory=` event
+  actions with documented Unicode and batch-file launch behavior;
+- non-persistent input/scaling diagnostic overrides in the examples;
+- explicit full-comparison `||` event expressions, not legacy `|` shorthand;
+- golden scenarios with exact selection, state, fingerprint, event, and log
+  expectations; and
+- no claim of mechanical migration for legacy rules spanning multiple unified
+  setting owners.
 
 ## User story
 
@@ -99,16 +151,16 @@ selection/switching feedback loop.
 1. Define a single named-profile schema. A profile must be able to have:
    - inherited renderer/output settings;
    - an optional source-state `when` condition for automatic eligibility;
-   - an optional explicit manual-selection hotkey; and
+   - an optional `$key` equality branch in the same parsed expression for
+     manual eligibility; and
    - deterministic priority/specificity semantics when more than one profile
      is automatically eligible.
    A profile without `when` must be manual-only by declaration, not by a fake
    rule expression.
-2. Define named action/binding records for viewport selection, automatic-mode
-   restoration, and profile selection. Use the same hotkey syntax, conflict
-   handling, diagnostics, and help output for all of them. Decide whether the
-   existing `[shortcuts]` keys become compatibility aliases or a thin binding
-   layer over the new records.
+2. Use one parsed expression AST for source selection, key discovery, and key
+   event evaluation. The GUI only delivers canonical key events. A canonical
+   chord targets exactly one profile or group reset; duplicate/unregistrable
+   chords are startup errors. Existing `[shortcuts]` remains legacy-only.
 3. Define a separate event-action schema. It must support a post-refresh event
    matched against the actual accepted/restored display rate, with a bounded
    delay and a command action. Specify whether actions run on initial setup,
