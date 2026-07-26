@@ -20,6 +20,7 @@ folders, and its `## Status` heading must use the matching state name.
 | `in-progress` / In Progress | Codex is actively implementing the story on a recorded branch/worktree. Include current progress, commit(s), and any blocker under `## Status`. |
 | `review` / Review | Implementation is ready for code review, build/test review, or requested user validation. Record evidence, remaining validation, and the proposed merge/release decision. |
 | `done` / Done | Accepted and complete. Record the final commit, merge/release reference, and validation result. |
+| `will-not-do` / Will Not Do | Intentionally retained but not implemented as separate work. Record the decision, reason, date, and any superseding story/commit. Do not delete or reuse its ID. |
 
 ## Items
 
@@ -38,7 +39,7 @@ folders, and its `## Status` heading must use the matching state name.
 | VP-0011 | Review | Alpha renderer color-managed 3D LUT support |
 | VP-0012 | Review | Alpha renderer LUT pipeline contract spike |
 | VP-0013 | Done | DirectShow queue/reset alignment and no-drop review |
-| VP-0014 | Done | Alpha renderer SDR BT.2020 source and target support (duplicate of VP-0019; will not do separately) |
+| VP-0014 | Will Not Do | Alpha renderer SDR BT.2020 source and target support (duplicate of VP-0019; will not do separately) |
 | VP-0015 | Draft | Alpha renderer shader compatibility with the existing shader catalog |
 | VP-0016 | Draft | Make scene detection available for the alpha renderer |
 | VP-0017 | Draft | Explain variable alpha-renderer queue depth |
@@ -53,9 +54,9 @@ folders, and its `## Status` heading must use the matching state name.
 
 `origin/main` is the canonical source of truth for story state. Story status,
 folder placement, the registry, and workflow instructions must always be
-tracked from the current `main` branch so a later session can discover and
-update them reliably. Secondary story checkouts are disposable working copies,
-not independent authorities.
+tracked from the current story-tracker `main` branch so a later session can
+discover and update them reliably. Secondary story checkouts are disposable
+working copies, not independent authorities.
 
 Before reading, creating, moving, or committing a story, Codex must fetch
 `origin/main` and verify the working copy is based on the current remote main.
@@ -69,6 +70,23 @@ Codex owns moving stories between folders in this session. Move the file,
 update its `## Status` section, and update the table above in the **same
 commit**. Never copy a story into a second state folder; `git mv` is preferred
 so history follows the file.
+
+## Implementation branch gate
+
+Story documents and story-state changes always commit directly to the tracker
+`main` branch. Implementation work for a story in the VP source repository
+does **not** assume that `main` is the integration base. Before starting that
+implementation work, Codex must manually query the current default branch of
+`origin` for `billslack2/videoprocessor` (for example with `git remote show
+origin`) and report it to the developer.
+
+Codex must then ask the developer to confirm that discovered default branch as
+the implementation base or to name another branch. Do not create a feature
+branch, worktree, PR, or implementation commit until that confirmation is
+received. Record the confirmed base branch and the implementation branch/worktree
+in the story when it moves to `in-progress`. Re-run this manual discovery and
+confirmation gate whenever a new story implementation starts; the origin
+default branch may change.
 
 1. Create new stories in `stories/draft/` using the next permanent ID, then
    update the Registry state and table in this file.
@@ -99,3 +117,9 @@ so history follows the file.
 7. A story may move backward—for example Review to In Progress after a failed
    test, or In Progress to Draft when a new prerequisite is found. Record why
    in `## Status`; do not invent additional state names.
+
+Terminal disposition: move a story to `will-not-do/` when it is intentionally
+declined, duplicated, superseded, or otherwise determined not to be separate
+work. Set its status to `Will Not Do` and record the decision, reason, date,
+and any replacement story/commit. This is a tracked terminal state, not
+deletion.

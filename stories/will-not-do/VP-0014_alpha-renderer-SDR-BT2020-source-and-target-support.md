@@ -2,7 +2,7 @@
 
 ## Status
 
-Done — duplicate / will not do separately.
+Will Not Do — duplicate / will not do separately.
 
 This story is fully superseded by VP-0019, which covers the implemented
 alpha-renderer SDR BT.2020 display profiles, F5/F6 selection, target signaling,
