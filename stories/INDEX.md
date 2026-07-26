@@ -14,6 +14,10 @@ are assigned monotonically and are never reused.
 The directory is the canonical state. Every story is in exactly one of these
 folders, and its `## Status` heading must use the matching state name.
 
+`INDEX.md` is the sole authoritative workflow instruction for this tracker.
+The state-folder `README.md` files are intentionally brief navigation labels;
+they must not contain requirements that are absent from this file.
+
 | Folder / state | Meaning |
 | --- | --- |
 | `draft` / Draft | Backlog, discovery, or a known dependency remains. Record dependencies, blockers, and next action in the story; do not create additional state names. |
