@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>Proposed VideoProcessor renderer configuration</h1>
-  <div class="warning"><strong>Proposal only — not implemented.</strong> This page describes the VP-0028 design under review. Current VideoProcessor versions do not parse these sections or keys. Continue using <a href="VideoProcessorRenderer.html">the released renderer help</a> and configuration until VP-0028 is accepted and implemented.</div>
+  <div class="warning"><strong>Target design — not yet safe to deploy.</strong> An initial VP-0028 runtime slice exists, but it does not yet implement independent group state, full key-rule evaluation, strict validation, viewport profiles, or event actions. Continue using <a href="VideoProcessorRenderer.html">the released renderer help</a> and configuration until the acceptance matrix is complete.</div>
 
   <p>The proposal replaces separate display rules, rule shortcuts, screen-profile shortcuts, and refresh-rate command maps with one configuration vocabulary: named profiles whose ordinary <code>when=</code> expressions may include a key condition, and completed-transition event actions. It is designed for streaming sources, where stable capture metadata is available but filenames, codecs, bitrates, and library metadata are not reliable inputs.</p>
 
@@ -32,11 +32,24 @@
     <tr><td><code>display</code></td><td>Normally manual</td><td>Calibrated output target, nits/black, DXGI output contract, display signaling, LUT</td></tr>
     <tr><td><code>viewport</code></td><td>Normally manual</td><td>Normal/scope selection and scope geometry</td></tr>
   </tbody></table>
-  <p>A group in automatic mode selects the matching profile with the highest <code>priority</code>; equal priorities use the most comparisons, then declaration order. A profile without <code>when=</code> is intentionally manual-only. No fake condition such as <code>$width==0</code> is required.</p>
+  <p>A group in automatic mode selects the matching profile with the highest <code>priority</code>; equal priorities use the most source comparisons in the matching branch, then the group’s explicit profile-list order. A profile without <code>when=</code> is default-only. No fake condition such as <code>$width==0</code> is required.</p>
+
+  <h2>Required implementation pipeline</h2>
+  <pre>parse once
+  -&gt; validate complete graph
+  -&gt; load one selection mode per group
+  -&gt; evaluate source/key event
+  -&gt; resolve typed settings by ownership
+  -&gt; compare effective-settings fingerprint
+  -&gt; apply successfully
+  -&gt; persist committed manual selections</pre>
+  <p>The parser produces a platform-independent configuration model and one reusable expression AST. The GUI delivers canonical key events but does not interpret expressions or choose profiles. Parsing, selection, persistence, and event scheduling must be unit-testable without a D3D device, capture card, window, or libplacebo runtime.</p>
+  <p>This follows established configuration practices: strict unknown-field validation, an explicit versioned public contract, deterministic ordered declarations, one source of truth for expressions, transactional state commits, and observable transition identities. Useful reference points are <a href="https://json-schema.org/understanding-json-schema/reference/object">JSON Schema object validation</a>, <a href="https://kubernetes.io/docs/reference/using-api/api-concepts/#field-validation">strict API field validation</a>, <a href="https://semver.org/">versioned public APIs</a>, and <a href="https://learn.microsoft.com/windows/win32/menurc/keyboard-accelerators">Windows application accelerators</a>.</p>
 
   <h2><code>[general]</code> and <code>[profile_groups]</code></h2>
   <p><code>[general]</code> owns renderer-session policy rather than profile settings: profile-selection persistence defaults, refresh switching, default event delay, and diagnostic-only controls. The state-file path remains fixed beside the executable. <code>[profile_groups]</code> establishes group order, while each group section chooses its startup selection and may override persistence.</p>
   <pre>[general]
+config_version=2
 persist_profile_selection=true
 switch_refresh_rate=true
 event_action_delay_seconds=5
@@ -45,14 +58,21 @@ event_action_delay_seconds=5
 groups=input,scaling,display,viewport
 
 [profile_groups.input]
+profiles=sdr,pq_hdr,hlg_hdr,lldv_like
 default=auto
 # A group-level key condition returns this group to automatic selection.
 when=$key=="Ctrl+F4"
 
 [profile_groups.display]
+profiles=rec709_projector,bt2020_projector
 default=rec709_projector
 persist_profile_selection=true</pre>
-  <p>If an automatic group has no match, it adds no override and the base setting remains active. Persistence is enabled by default in <code>[general]</code>; every group may set <code>persist_profile_selection=false</code> for session-only manual selection. A removed or invalid persisted profile falls back to this configured startup selection and logs one diagnostic.</p>
+  <p>Each group explicitly lists profiles to preserve deterministic review order and reject orphan sections. Startup precedence is a valid persisted manual profile, then the configured default, then no override when an automatic group has no match. Persistence is enabled by default; a group may disable it.</p>
+  <pre>state_version=2
+screen_profile=scope
+profile.display=rec709_projector
+profile.viewport=scope</pre>
+  <p>The state file stores committed manual choices only and preserves a compatible <code>screen_profile=</code> mirror. The default config retains <code>VideoProcessorRenderer.state</code>; an explicit <code>/vr_config X.cfg</code> uses sibling <code>X.state</code>, isolating manual tests. Writes use temporary-file replacement and occur only after successful application; a failed renderer change leaves previous active and persisted selections intact.</p>
 
   <h2>Profiles</h2>
   <p>Profiles use the section name <code>[profiles.&lt;group&gt;.&lt;name&gt;]</code>. Only settings owned by the group are accepted; an unknown key or a valid key in the wrong group is a startup validation error.</p>
@@ -78,6 +98,10 @@ lut_reference_transfer=BT1886
 lut_reference_range=FULL
 lut_reference_nits=100</pre>
 
+  <h2>Strict validation and application</h2>
+  <p>Unified mode rejects unknown or duplicate groups, profiles, sections, and keys; missing or orphan sections; invalid defaults and priorities; unavailable variables; wrong-group settings; unsupported values; duplicate canonical key chords; and mixed legacy/unified syntax. Names have a bounded identifier grammar, priorities default to zero with a documented range, and every renderer key has a type, allowed values/range, owner, and apply class. Profile strings are converted into typed settings before renderer creation. Rebuild decisions compare effective typed-value fingerprints rather than profile labels.</p>
+  <p>Application is transactional: VP resolves a candidate without mutating active state, builds one replacement renderer for all rebuild-class changes, and commits only after readiness. Viewport updates apply the complete group atomically. Failure retains the previous renderer, viewport, selections, state file, and event identity.</p>
+
   <h2>Automatic source conditions</h2>
   <p>Automatic profile conditions read only stable capture facts. They support <code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code>, <code>&amp;&amp;</code>, <code>||</code>, <code>!</code>, and parentheses. Names and text values are case-insensitive.</p>
   <table><thead><tr><th>Variable</th><th>Example values</th></tr></thead><tbody>
@@ -95,7 +119,7 @@ lut_reference_nits=100</pre>
   <p>Mastering data, MaxCLL, and MaxFALL remain renderer inputs, rather than ordinary rule variables. Output refresh is deliberately excluded: it is a result of profile selection and display switching, not an input to either.</p>
 
   <h2>Key conditions and persistence</h2>
-  <p>All direct selection uses the normal <code>when=</code> grammar. In normal source-state evaluation <code>$key</code> is <code>NONE</code>. When a hotkey arrives, VP evaluates the same expression with <code>$key</code> set to its canonical chord. Key chords are quoted because they contain <code>+</code>. A key condition can be joined to source conditions with <code>||</code> or <code>&amp;&amp;</code>.</p>
+  <p>All direct selection uses the normal <code>when=</code> grammar. In normal source-state evaluation <code>$key</code> is <code>NONE</code>. When a hotkey arrives, VP evaluates the same parsed AST with <code>$key</code> set to its canonical chord and source variables from one immutable snapshot. The AST exposes referenced chords for accelerator registration; the GUI does not use a second regex grammar. <code>$key</code> permits only equality against quoted literal chords.</p>
   <pre>[profiles.display.rec709_projector]
 when=$key=="F5"
 
@@ -107,7 +131,7 @@ when=$key=="F2"
 
 [profiles.viewport.scope]
 when=$key=="F3"</pre>
-  <p>In a group section, <code>when=$key==...</code> returns that group to automatic selection. The familiar key grammar remains: <code>F1</code> through <code>F24</code>, letters, numbers, <code>Escape</code>, <code>Enter</code>, and optional <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Duplicate key chords, unknown profiles, and a group key condition on a non-automatic group are startup errors. The OSD/log reports group, selected profile, and whether its selection is automatic or manual.</p>
+  <p>These are application-local accelerators, not system-wide hotkeys. They fire only while the active VP window’s UI thread processes keyboard messages and preserve existing dialog/control behavior. In a group section, <code>when=$key==...</code> returns that group to automatic selection. One canonical chord targets exactly one profile or one group reset. Duplicate/unregistrable chords and reset conditions for groups that cannot be automatic are startup errors. The complete profile expression is evaluated, and repeat messages are ignored until key-up.</p>
 
   <h2><code>[event_actions]</code> — completed refresh events</h2>
   <p>Actions are not profiles and cannot influence selection. They observe a completed display transition and may schedule one trusted local command after a bounded delay.</p>
@@ -116,30 +140,39 @@ actions=audio_delay_24,audio_delay_60,restore_audio
 
 [event_actions.audio_delay_24]
 on=refresh.applied,refresh.confirmed
-when=$actual_refresh==23.976|24
-command=C:\Videoprocessor\audio\audio_delay.bat 315
+when=$actual_refresh==23.976 || $actual_refresh==24
+program=C:\Videoprocessor\audio\audio_delay.bat
+arguments=315
 
 [event_actions.restore_audio]
 on=refresh.restored
 when=$actual_refresh==60
 delay_seconds=0
-command=C:\Videoprocessor\audio\audio_delay.bat 0</pre>
+program=C:\Videoprocessor\audio\audio_delay.bat
+arguments=0</pre>
   <table><thead><tr><th>Event</th><th>Meaning</th></tr></thead><tbody>
     <tr><td><code>refresh.applied</code></td><td>VP changed the mode and Windows reported the resulting rate.</td></tr>
     <tr><td><code>refresh.confirmed</code></td><td>The requested rate was already active; no mode change was needed.</td></tr>
     <tr><td><code>refresh.restored</code></td><td>Renderer shutdown successfully restored VP’s captured prior rate.</td></tr>
   </tbody></table>
-  <p>Failed or unsupported refresh requests run no action. An event action without <code>delay_seconds=</code> inherits <code>[general] event_action_delay_seconds</code>; a per-action value overrides it. For each renderer generation and completed event, VP schedules at most one instance of each action; pending actions are cancelled when a newer transition or renderer generation supersedes them.</p>
+  <p>Failed or unsupported refresh requests run no action. An event action without <code>delay_seconds=</code> inherits <code>[general] event_action_delay_seconds</code>; a per-action value overrides it. Every completed transition has generation and transition IDs. A session-level scheduler deduplicates each action by those IDs, cancels superseded applied/confirmed work, and remains alive long enough to complete a successful restoration action. Rate matching uses canonical rational families, never truncated integers or direct floating-point equality.</p>
+  <p><code>program=</code>, literal <code>arguments=</code>, and optional <code>working_directory=</code> replace free-form command lines. Executables launch directly with Unicode process creation; batch files use an explicitly quoted <code>%ComSpec% /d /s /c</code> path. No source interpolation occurs. Actions launch asynchronously in declared order outside the render thread. With refresh switching disabled, no refresh event is emitted.</p>
+
+  <h2>Diagnostics and testing</h2>
+  <p>Logs show configuration mode/version, canonical key bindings, persistence policy, the effective profile and origin for every group, changed-setting groups, fingerprints, and event generation/transition IDs. The unified path is not deployable until automated tests cover strict parsing, deterministic resolution, source/key combinations, per-group state, failed-apply rollback, viewport behavior, exact refresh families, event cancellation/deduplication, and unchanged legacy behavior.</p>
 
   <h2>Initial streaming profile library</h2>
   <pre>input:   sdr | pq_hdr | hlg_hdr | lldv_like
-scaling: sd_hd | mid | uhd_native
+scaling: sd_hd | mid | uhd_native | optional manual performance diagnostic
 display: rec709_projector | bt2020_projector
 viewport: normal | scope</pre>
   <p>Use curated renderer controls: existing tone/gamut mapping, quality/scaler selection, peak detection, contrast recovery, and dithering; proposed named deband strengths; and proposed SDR-only sigmoid scaling. The proposal does not add raw tone/gamut constants, custom shader hooks, frame mixing, inverse tone mapping, libplacebo deinterlacing, or subjective brightness/hue controls.</p>
 
+  <h2>madVR and libplacebo comparison</h2>
+  <p>The design keeps madVR’s useful concepts—named profiles, automatic rules, independent areas, manual selection, and persistence—but makes ordering explicit, restricts selectors to stable streaming capture facts, validates group ownership, and logs one reproducible effective selection. It keeps libplacebo behind a curated typed-policy boundary: VP resolves one immutable settings snapshot at a safe transition, rather than exposing raw structures or per-frame tuning as configuration.</p>
+
   <h2>Review sample and migration</h2>
-  <p><a href="docs/examples/VideoProcessorRenderer.unified.proposed.cfg">Open the complete proposed sample configuration</a>. It is explicitly non-deployable until implementation is complete.</p>
-  <p>The eventual migration accepts existing <code>[display_rules]</code>, <code>shortcut=</code>, <code>[shortcuts]</code>, and <code>[refresh_rate_commands]</code> for a defined compatibility period. VP will not rewrite user configuration. Legacy syntax will retain its behavior and receive actionable migration diagnostics.</p>
+  <p><a href="docs/examples/VideoProcessorRenderer.unified.minimal.proposed.cfg">Open the minimal resolver example</a> or <a href="docs/examples/VideoProcessorRenderer.unified.proposed.cfg">the complete target example</a>. Both are explicitly non-deployable until implementation is complete.</p>
+  <p><code>[general] config_version=2</code> selects strict unified mode. Without it, VP uses the unchanged legacy parser. Mixing <code>[display_rules]</code>, <code>[shortcuts]</code>, or <code>[refresh_rate_commands]</code> with unified sections is an error rather than an undocumented precedence rule. Only single-owner legacy records have a mechanical conversion; multi-owner display rules require operator redesign or remain in legacy mode. VP never rewrites the active configuration; any future migration tool writes a side-by-side file.</p>
 </body>
 </html>
