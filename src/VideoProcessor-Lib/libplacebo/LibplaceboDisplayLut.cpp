@@ -1,14 +1,67 @@
 #include "LibplaceboDisplayLut.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <fstream>
-#include <iterator>
 #include <limits>
 #include <new>
+#include <vector>
+#include <windows.h>
 
 namespace LibplaceboDisplayLut
 {
+	class ScopedHandle
+	{
+	public:
+		explicit ScopedHandle(HANDLE handle = INVALID_HANDLE_VALUE) : m_handle(handle) {}
+		~ScopedHandle()
+		{
+			if (m_handle != INVALID_HANDLE_VALUE)
+				CloseHandle(m_handle);
+		}
+
+		HANDLE Get() const { return m_handle; }
+
+	private:
+		HANDLE m_handle;
+	};
+
+	std::string FinalPathForHandle(HANDLE handle)
+	{
+		const DWORD required = GetFinalPathNameByHandleA(
+			handle, nullptr, 0, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+		if (required == 0)
+			return std::string();
+		std::vector<char> result(static_cast<size_t>(required) + 1);
+		const DWORD written = GetFinalPathNameByHandleA(
+			handle, result.data(), static_cast<DWORD>(result.size()),
+			FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+		return written == 0 || written >= result.size()
+			? std::string()
+			: std::string(result.data(), written);
+	}
+
+	std::string NormalizePathForComparison(std::string value)
+	{
+		std::replace(value.begin(), value.end(), '/', '\\');
+		std::transform(value.begin(), value.end(), value.begin(),
+			[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		return value;
+	}
+
+	bool IsPathWithin(const std::string& base, const std::string& candidate)
+	{
+		std::string basePrefix = NormalizePathForComparison(base);
+		if (basePrefix.empty())
+			return false;
+		if (basePrefix.back() != '\\')
+			basePrefix.push_back('\\');
+		const std::string normalizedCandidate =
+			NormalizePathForComparison(candidate);
+		return normalizedCandidate.compare(
+			0, basePrefix.size(), basePrefix) == 0;
+	}
+
 	bool ContainsOneDimensionalCubeDirective(const std::string& contents)
 	{
 		constexpr char directive[] = "LUT_1D_SIZE";
@@ -50,44 +103,75 @@ namespace LibplaceboDisplayLut
 		return false;
 	}
 
-	LoadResult Load(pl_log log, const std::string& path)
+	LoadResult Load(
+		pl_log log,
+		const std::string& path,
+		const std::string& constrainedBaseDirectory)
 	{
 		LoadResult result;
 		if (path.empty())
 			return result;
 
-		std::ifstream input(path, std::ios::binary | std::ios::ate);
-		if (!input)
+		const ScopedHandle input(CreateFileA(
+			path.c_str(), GENERIC_READ,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+		if (input.Get() == INVALID_HANDLE_VALUE)
 		{
 			result.status = Status::REJECTED;
 			result.rejection = Rejection::UNREADABLE;
 			return result;
 		}
 
-		const std::streamoff length = input.tellg();
-		if (length <= 0)
+		if (!constrainedBaseDirectory.empty())
+		{
+			const ScopedHandle base(CreateFileA(
+				constrainedBaseDirectory.c_str(), FILE_READ_ATTRIBUTES,
+				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+				nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+			const std::string finalBase =
+				base.Get() == INVALID_HANDLE_VALUE ? std::string() : FinalPathForHandle(base.Get());
+			const std::string finalPath = FinalPathForHandle(input.Get());
+			if (finalBase.empty() || finalPath.empty() ||
+				!IsPathWithin(finalBase, finalPath))
+			{
+				result.status = Status::REJECTED;
+				result.rejection = Rejection::PATH_OUTSIDE_BASE;
+				return result;
+			}
+		}
+
+		LARGE_INTEGER length{};
+		if (!GetFileSizeEx(input.Get(), &length) || length.QuadPart < 0)
 		{
 			result.status = Status::REJECTED;
-			result.rejection =
-				length == 0 ? Rejection::EMPTY : Rejection::READ_FAILED;
+			result.rejection = Rejection::READ_FAILED;
 			return result;
 		}
-		if (static_cast<unsigned long long>(length) > MAX_FILE_BYTES ||
-			static_cast<unsigned long long>(length) >
+		if (length.QuadPart == 0)
+		{
+			result.status = Status::REJECTED;
+			result.rejection = Rejection::EMPTY;
+			return result;
+		}
+		if (static_cast<unsigned long long>(length.QuadPart) > MAX_FILE_BYTES ||
+			static_cast<unsigned long long>(length.QuadPart) >
 				static_cast<unsigned long long>(
-					std::numeric_limits<size_t>::max()))
+					(std::numeric_limits<size_t>::max)()))
 		{
 			result.status = Status::REJECTED;
 			result.rejection = Rejection::TOO_LARGE;
 			return result;
 		}
 
-		result.fileBytes = static_cast<size_t>(length);
+		result.fileBytes = static_cast<size_t>(length.QuadPart);
 		try
 		{
 			std::string contents(result.fileBytes, '\0');
-			input.seekg(0, std::ios::beg);
-			if (!input.read(&contents[0], static_cast<std::streamsize>(contents.size())))
+			DWORD bytesRead = 0;
+			if (!ReadFile(
+				input.Get(), &contents[0], static_cast<DWORD>(contents.size()),
+				&bytesRead, nullptr) || bytesRead != contents.size())
 			{
 				result.status = Status::REJECTED;
 				result.rejection = Rejection::READ_FAILED;
@@ -159,6 +243,7 @@ namespace LibplaceboDisplayLut
 		case Rejection::EMPTY: return "empty file";
 		case Rejection::TOO_LARGE: return "file too large";
 		case Rejection::READ_FAILED: return "read failed";
+		case Rejection::PATH_OUTSIDE_BASE: return "bad path";
 		case Rejection::INVALID_CUBE: return "invalid cube";
 		case Rejection::ONE_DIMENSIONAL: return "1D not supported";
 		case Rejection::UNSAFE_DIMENSIONS: return "unsupported size";

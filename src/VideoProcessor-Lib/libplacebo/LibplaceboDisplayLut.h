@@ -28,6 +28,7 @@ namespace LibplaceboDisplayLut
 		EMPTY,
 		TOO_LARGE,
 		READ_FAILED,
+		PATH_OUTSIDE_BASE,
 		INVALID_CUBE,
 		ONE_DIMENSIONAL,
 		UNSAFE_DIMENSIONS
@@ -49,7 +50,12 @@ namespace LibplaceboDisplayLut
 		PROFILE_MISMATCH
 	};
 
-	LoadResult Load(pl_log log, const std::string& path);
+	// When constrainedBaseDirectory is supplied, the file opened at path must
+	// resolve below that directory. Validation and reading use the same handle.
+	LoadResult Load(
+		pl_log log,
+		const std::string& path,
+		const std::string& constrainedBaseDirectory = std::string());
 	const char* ShortReason(Rejection rejection);
 	bool TargetMatchesSignal(
 		enum pl_color_primaries targetPrimaries,
