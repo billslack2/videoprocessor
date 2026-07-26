@@ -77,8 +77,9 @@ The design intentionally follows established configuration-system practices:
 - **Strict schemas:** unknown and duplicate fields are rejected in unified
   mode, equivalent to closed-object validation such as JSON Schema
   `additionalProperties=false` and strict API field validation.
-- **One public contract:** `config_version=2` makes compatibility explicit;
-  documented configuration is treated as a versioned public API.
+- **One public contract:** documented configuration is treated as a versioned
+  public API; an omitted `config_version` selects the latest supported unified
+  schema, while an explicit value protects future migrations.
 - **Single source of truth:** one parsed expression AST drives validation,
   shortcut discovery, source evaluation, and key-event evaluation.
 - **Determinism:** ordered group/profile declarations and typed tie-breaking
@@ -127,7 +128,8 @@ the executable.
 
 ```ini
 [general]
-config_version=2
+# Optional. Omitted means the latest supported unified schema (currently 2).
+# config_version=2
 # Default for every profile group; an individual group may override it.
 persist_profile_selection=true
 switch_refresh_rate=true
@@ -136,17 +138,15 @@ output_diagnostics=OFF
 diagnostic_disable_shader_cache=OFF
 ```
 
-`[profile_groups]` declares group order. Each `[profile_groups.<name>]` section
-declares an ordered profile list, that group's startup selection, and an
-optional persistence override. Explicit profile lists preserve reviewable
-declaration order and make orphaned, duplicate, and cross-group profile
-sections validation errors. A `default` of `auto` enables automatic selection;
-a profile name starts that group in manual mode.
+The four built-in groups have a fixed order: `input`, `scaling`, `display`,
+then `viewport`. Each `[profile_groups.<name>]` section declares that group's
+ordered profile list, startup selection, and optional persistence override.
+Explicit profile lists preserve reviewable declaration order and make orphaned,
+duplicate, and cross-group profile sections validation errors. A `default` of
+`auto` enables automatic selection; a profile name starts that group in manual
+mode.
 
 ```ini
-[profile_groups]
-groups=input,scaling,display,viewport
-
 [profile_groups.input]
 profiles=sdr,pq_hdr,hlg_hdr,lldv_like
 default=auto
@@ -209,8 +209,9 @@ a failed rebuild leaves the prior active and persisted selection unchanged.
 
 ## Profile syntax and ownership
 
-Profiles use `[profiles.<group>.<name>]`. `profile_groups.groups` establishes
-group order, so configuration never depends on file-section ordering.
+Profiles use `[profiles.<group>.<name>]`. The built-in group order and each
+group's explicit `profiles=` list make selection independent of file-section
+ordering.
 
 ```ini
 [profiles.input.pq_hdr]
@@ -254,12 +255,11 @@ groups `input,scaling,display,viewport` in that order.
 
 | Section/key | Type and default | Requirement |
 | --- | --- | --- |
-| `[general] config_version` | integer, required | exactly `2` |
+| `[general] config_version` | integer, optional | omitted means latest supported unified schema (currently `2`); explicit value must be supported |
 | `persist_profile_selection` | Boolean, default `true` | global group default |
 | `switch_refresh_rate` | Boolean, default `true` | session policy |
 | `event_action_delay_seconds` | whole seconds `0..30`, default `5` | inherited by actions |
 | diagnostic toggles | Boolean, default `false` | session policy |
-| `[profile_groups] groups` | ordered identifiers, required | exactly the four v2 groups |
 | `[profile_groups.<g>] profiles` | non-empty ordered identifiers, required | no duplicates; every item has one section |
 | `default` | `auto` or listed profile, required | startup selection |
 | `when` | key-only expression, optional | returns this group to automatic |
@@ -620,15 +620,19 @@ validated range/preset, group owner, apply class, diagnostics, and tests.
 
 ## Migration and review boundary
 
-`[general] config_version=2` opts into strict unified mode. Without it, VP uses
-the released legacy parser and behavior. The two modes have separate typed
-adapters and do not feed half-translated records into one another.
+The presence of any unified marker—`[profile_groups.<name>]`, `[profiles.*]`,
+or `[event_actions]`—selects strict unified mode. In that mode an omitted
+`config_version` means the latest schema supported by that VP build (currently
+2); an explicit version must be supported or startup fails with an upgrade
+diagnostic. A file with no unified marker uses the released legacy parser and
+behavior. The two modes have separate typed adapters and do not feed
+half-translated records into one another.
 
 In unified mode, `[display_rules]`, rule `shortcut=`, `[shortcuts]`, and
 `[refresh_rate_commands]` are startup errors with migration guidance. In legacy
-mode, `[profile_groups]`, `[profiles.*]`, and `[event_actions]` are startup
-errors. This avoids ambiguous precedence and makes a configuration reviewable
-without knowing hidden compatibility ordering.
+mode, `[profile_groups.<name>]`, `[profiles.*]`, and `[event_actions]` are
+startup errors. This avoids ambiguous precedence and makes a configuration
+reviewable without knowing hidden compatibility ordering.
 
 Legacy mode remains unchanged for at least one documented compatibility
 release. It retains truncated refresh-command matching and existing F2/F3/F4
