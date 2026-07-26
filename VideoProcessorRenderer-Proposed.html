@@ -46,16 +46,14 @@
   <p>The parser produces a platform-independent configuration model and one reusable expression AST. The GUI delivers canonical key events but does not interpret expressions or choose profiles. Parsing, selection, persistence, and event scheduling must be unit-testable without a D3D device, capture card, window, or libplacebo runtime.</p>
   <p>This follows established configuration practices: strict unknown-field validation, an explicit versioned public contract, deterministic ordered declarations, one source of truth for expressions, transactional state commits, and observable transition identities. Useful reference points are <a href="https://json-schema.org/understanding-json-schema/reference/object">JSON Schema object validation</a>, <a href="https://kubernetes.io/docs/reference/using-api/api-concepts/#field-validation">strict API field validation</a>, <a href="https://semver.org/">versioned public APIs</a>, and <a href="https://learn.microsoft.com/windows/win32/menurc/keyboard-accelerators">Windows application accelerators</a>.</p>
 
-  <h2><code>[general]</code> and <code>[profile_groups]</code></h2>
-  <p><code>[general]</code> owns renderer-session policy rather than profile settings: profile-selection persistence defaults, refresh switching, default event delay, and diagnostic-only controls. The state-file path remains fixed beside the executable. <code>[profile_groups]</code> establishes group order, while each group section chooses its startup selection and may override persistence.</p>
+  <h2><code>[general]</code> and profile groups</h2>
+  <p><code>[general]</code> owns renderer-session policy rather than profile settings: profile-selection persistence defaults, refresh switching, default event delay, and diagnostic-only controls. The four built-in groups have a fixed order: input, scaling, display, viewport. Each group section chooses its startup selection, explicitly lists profiles, and may override persistence.</p>
   <pre>[general]
-config_version=2
+ # Optional; omitted means the latest supported unified schema.
+ # config_version=2
 persist_profile_selection=true
 switch_refresh_rate=true
 event_action_delay_seconds=5
-
-[profile_groups]
-groups=input,scaling,display,viewport
 
 [profile_groups.input]
 profiles=sdr,pq_hdr,hlg_hdr,lldv_like
@@ -173,6 +171,6 @@ viewport: normal | scope</pre>
 
   <h2>Review sample and migration</h2>
   <p><a href="docs/examples/VideoProcessorRenderer.unified.minimal.proposed.cfg">Open the minimal resolver example</a> or <a href="docs/examples/VideoProcessorRenderer.unified.proposed.cfg">the complete target example</a>. Both are explicitly non-deployable until implementation is complete.</p>
-  <p><code>[general] config_version=2</code> selects strict unified mode. Without it, VP uses the unchanged legacy parser. Mixing <code>[display_rules]</code>, <code>[shortcuts]</code>, or <code>[refresh_rate_commands]</code> with unified sections is an error rather than an undocumented precedence rule. Only single-owner legacy records have a mechanical conversion; multi-owner display rules require operator redesign or remain in legacy mode. VP never rewrites the active configuration; any future migration tool writes a side-by-side file.</p>
+  <p>Any unified section selects strict unified mode. In that mode an omitted <code>config_version</code> means the latest schema supported by that VP build (currently 2); an explicit value must be supported. A file with no unified section uses the unchanged legacy parser. Mixing <code>[display_rules]</code>, <code>[shortcuts]</code>, or <code>[refresh_rate_commands]</code> with unified sections is an error rather than an undocumented precedence rule. Only single-owner legacy records have a mechanical conversion; multi-owner display rules require operator redesign or remain in legacy mode. VP never rewrites the active configuration; any future migration tool writes a side-by-side file.</p>
 </body>
 </html>
