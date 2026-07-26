@@ -2,13 +2,28 @@
 
 ## Status
 
-Draft — do not begin product implementation until VP-0012 is Done and its
-recorded pipeline decision satisfies the prerequisites below.
+Review — the VP011 source branch contains the initial optional `.cube` LUT
+implementation in commit `c4795d9` (`Add optional display profile LUTs`). It
+loads a configured LUT once during renderer initialization, attaches it using
+`PL_LUT_NATIVE`, supports display-rule overrides, and documents the new
+configuration key. This is ready for code/design review, but is not accepted:
+VP-0012 remains a required gating spike because the implementation does not yet
+record proof of the required post-tone-map/post-gamut-map stage, range and
+presentation boundary, or the required identity/non-identity and HDR/P3
+validation.
+
+Review follow-up:
+
+- Complete VP-0012 and add its decision record and reproducible evidence here.
+- Add the parser, fallback, rendering, rule-switch, and resource-lifetime tests
+  required below.
+- Perform the required real-display/projector validation before moving this
+  story to Done.
 
 ## Prerequisites
 
-1. Finish [VP-0012](VP-0012_alpha-renderer-LUT-pipeline-contract-spike.md)
-   and move it to Done.
+1. Finish [VP-0012](../draft/VP-0012_alpha-renderer-LUT-pipeline-contract-spike.md)
+   and move it to Done before accepting this story.
    It must establish, with test evidence against the bundled libplacebo build,
    the exact stage at which VP can apply a display-calibration LUT.
 2. Record the selected output architecture in this story before changing
