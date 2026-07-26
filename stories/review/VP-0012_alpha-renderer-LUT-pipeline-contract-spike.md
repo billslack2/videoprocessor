@@ -6,7 +6,8 @@ Review — implementation and automated validation completed 2026-07-25 on
 `VP0011+0012`, based on `origin/v1.1.014-beta`. Draft PR
 [billslack2/videoprocessor#6](https://github.com/billslack2/videoprocessor/pull/6)
 contains the VP-0011 baseline (`bbe75df`), completed target/output contract
-(`7b4d00c`), and the independent-review hardening follow-up (`38f2ee7`).
+(`7b4d00c`), the independent-review hardening follow-up (`38f2ee7`), and the
+handle-bound relative-path containment follow-up (`f725d13`).
 
 The selected design attaches calibration only to the final target frame as
 `target.lut` / `PL_LUT_NATIVE`; render-parameter and image LUTs remain null.
@@ -24,15 +25,17 @@ inputs are rejected with no-LUT playback and concise log/OSD diagnostics.
 Validation evidence:
 
 - `Release|x64` solution build: zero warnings and zero errors.
-- `VideoProcessor-Test.dll`: 70/70 tests passed.
+- `VideoProcessor-Test.dll`: 71/71 tests passed.
 - All three supplied 65³ cubes loaded through the production bounded parser.
 - WARP readback proved no-LUT and identity output match, while an extreme
   target LUT transforms the expected red sample to green.
 - Independent final review confirmed target-stage placement, complete
   signal-contract checks, rejection fallback, and truthful Ctrl-I states.
 - Follow-up DXGI review confirmed the prior BT.2020/limited P1 blockers are
-  resolved. The parser now rejects mixed 1D/3D declarations and existing
-  junction/symlink escapes are rejected during relative-path resolution.
+  resolved. The parser rejects mixed 1D/3D declarations. Relative LUT paths
+  are lexically constrained first, then their final junction/symlink target is
+  checked on the exact handle that is read; a deterministic regression test
+  accepts an in-root file and rejects an out-of-root file as `bad path`.
 
 Remaining review is real projector/display validation of Rec.709 and BT.2020
 profiles, fullscreen/window transitions, and rule/source switching. Do not
