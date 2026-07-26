@@ -247,6 +247,31 @@ namespace VideoProcessorTest
 			Assert::AreEqual("1D not supported", ShortReason(result.rejection));
 		}
 
+		TEST_METHOD(MixedOneAndThreeDimensionalCubeIsExplicitlyRejected)
+		{
+			TemporaryFile file;
+			file.Write(
+				"LUT_1D_SIZE 2\n"
+				"LUT_3D_SIZE 2\n"
+				"0.0 0.0 0.0\n"
+				"1.0 0.0 0.0\n"
+				"0.0 1.0 0.0\n"
+				"1.0 1.0 0.0\n"
+				"0.0 0.0 1.0\n"
+				"1.0 0.0 1.0\n"
+				"0.0 1.0 1.0\n"
+				"1.0 1.0 1.0\n");
+
+			const LoadResult result = Load(nullptr, file.Path());
+			Assert::AreEqual(
+				static_cast<int>(Status::REJECTED),
+				static_cast<int>(result.status));
+			Assert::AreEqual(
+				static_cast<int>(Rejection::ONE_DIMENSIONAL),
+				static_cast<int>(result.rejection));
+			Assert::IsNull(result.lut);
+		}
+
 		TEST_METHOD(MalformedCubeIsRejectedWithoutLut)
 		{
 			TemporaryFile file;

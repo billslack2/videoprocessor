@@ -719,6 +719,60 @@ namespace
 		return std::string(buffer.data());
 	}
 
+	std::string CanonicalExistingPath(
+		const std::string& path,
+		bool directory)
+	{
+		const HANDLE handle = CreateFileA(
+			path.c_str(),
+			FILE_READ_ATTRIBUTES,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			nullptr,
+			OPEN_EXISTING,
+			directory ? FILE_FLAG_BACKUP_SEMANTICS : FILE_ATTRIBUTE_NORMAL,
+			nullptr);
+		if (handle == INVALID_HANDLE_VALUE)
+			return std::string();
+		const DWORD required = GetFinalPathNameByHandleA(
+			handle, nullptr, 0, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+		if (required == 0)
+		{
+			CloseHandle(handle);
+			return std::string();
+		}
+		std::vector<char> buffer(static_cast<size_t>(required) + 1);
+		const DWORD written = GetFinalPathNameByHandleA(
+			handle,
+			buffer.data(),
+			static_cast<DWORD>(buffer.size()),
+			FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+		CloseHandle(handle);
+		return written == 0 || written >= buffer.size()
+			? std::string()
+			: std::string(buffer.data(), written);
+	}
+
+	std::string NormalizePathForComparison(std::string value)
+	{
+		std::replace(value.begin(), value.end(), '/', '\\');
+		std::transform(value.begin(), value.end(), value.begin(),
+			[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		return value;
+	}
+
+	bool IsPathWithin(const std::string& base, const std::string& candidate)
+	{
+		std::string basePrefix = NormalizePathForComparison(base);
+		if (basePrefix.empty())
+			return false;
+		if (basePrefix.back() != '\\')
+			basePrefix.push_back('\\');
+		const std::string normalizedCandidate =
+			NormalizePathForComparison(candidate);
+		return normalizedCandidate.compare(
+			0, basePrefix.size(), basePrefix) == 0;
+	}
+
 	std::string ResolveConfigRelativePath(
 		const ConfigFile& config,
 		const std::string& path,
@@ -745,23 +799,26 @@ namespace
 			return std::string();
 		}
 
-		std::string basePrefix = base;
-		if (basePrefix.back() != '\\' && basePrefix.back() != '/')
-			basePrefix.push_back('\\');
-		auto normalize = [](std::string value)
-		{
-			std::replace(value.begin(), value.end(), '/', '\\');
-			std::transform(value.begin(), value.end(), value.begin(),
-				[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-			return value;
-		};
-		const std::string normalizedBase = normalize(basePrefix);
-		const std::string normalizedCandidate = normalize(candidate);
-		if (normalizedCandidate.compare(
-			0, normalizedBase.size(), normalizedBase) != 0)
+		if (!IsPathWithin(base, candidate))
 		{
 			DebugLog::Log(
 				"display: relative LUT path escapes the configuration directory and was rejected: %s",
+				trimmed.c_str());
+			if (rejected)
+				*rejected = true;
+			return std::string();
+		}
+
+		// GetFullPathName resolves lexical '..' segments but not reparse points.
+		// When the LUT exists, compare the final opened paths as well so a
+		// junction/symlink below the config directory cannot escape it.
+		const std::string finalBase = CanonicalExistingPath(base, true);
+		const std::string finalCandidate = CanonicalExistingPath(candidate, false);
+		if (!finalCandidate.empty() &&
+			(finalBase.empty() || !IsPathWithin(finalBase, finalCandidate)))
+		{
+			DebugLog::Log(
+				"display: relative LUT path resolves outside the configuration directory and was rejected: %s",
 				trimmed.c_str());
 			if (rejected)
 				*rejected = true;
@@ -2573,6 +2630,69 @@ struct LibplaceboVideoRenderer::Impl
 		return scopeSubtitleShiftSourcePixels;
 	}
 
+	static bool EncodingUsesBt2020(LibplaceboOutput::DxgiEncoding encoding)
+	{
+		using LibplaceboOutput::DxgiEncoding;
+		return encoding == DxgiEncoding::FULL_G22_P2020 ||
+			encoding == DxgiEncoding::STUDIO_G22_P2020 ||
+			encoding == DxgiEncoding::STUDIO_G24_P2020;
+	}
+
+	static enum pl_color_levels EncodingLevels(
+		LibplaceboOutput::DxgiEncoding encoding)
+	{
+		using LibplaceboOutput::DxgiEncoding;
+		return encoding == DxgiEncoding::FULL_G22_P709 ||
+			encoding == DxgiEncoding::FULL_G22_P2020
+				? PL_COLOR_LEVELS_FULL
+				: PL_COLOR_LEVELS_LIMITED;
+	}
+
+	static enum pl_color_transfer EncodingTransfer(
+		LibplaceboOutput::DxgiEncoding encoding)
+	{
+		using LibplaceboOutput::DxgiEncoding;
+		if (encoding == DxgiEncoding::FULL_G22_P709 ||
+			encoding == DxgiEncoding::FULL_G22_P2020)
+			return PL_COLOR_TRC_SRGB;
+		if (encoding == DxgiEncoding::STUDIO_G24_P709 ||
+			encoding == DxgiEncoding::STUDIO_G24_P2020)
+			return PL_COLOR_TRC_GAMMA24;
+		// Studio G22 is intentionally not selected because libplacebo 7.360.1
+		// has no exact target transfer for that DXGI declaration.
+		return PL_COLOR_TRC_UNKNOWN;
+	}
+
+	void SetSwapchainColorHint(LibplaceboOutput::DxgiEncoding encoding)
+	{
+		configuredOutputColor =
+			LibplaceboExportedData<pl_color_space>("pl_color_space_bt709");
+		configuredOutputColor.primaries = EncodingUsesBt2020(encoding)
+			? PL_COLOR_PRIM_BT_2020 : PL_COLOR_PRIM_BT_709;
+		const enum pl_color_transfer transfer = EncodingTransfer(encoding);
+		configuredOutputColor.transfer =
+			transfer == PL_COLOR_TRC_UNKNOWN ? PL_COLOR_TRC_SRGB : transfer;
+		configuredOutputColor.hdr.min_luma = static_cast<float>(sdrBlackNits);
+		configuredOutputColor.hdr.max_luma = static_cast<float>(sdrTargetNits);
+		if (swapchain)
+			pl_swapchain_colorspace_hint(swapchain, &configuredOutputColor);
+	}
+
+	bool ReturnedTargetMatchesActualOutput(
+		const struct pl_color_repr& repr,
+		const struct pl_color_space& color) const
+	{
+		return actualOutput.safeToRender &&
+			LibplaceboDisplayLut::TargetMatchesSignal(
+				color.primaries,
+				color.transfer,
+				repr.levels,
+				EncodingUsesBt2020(actualOutput.encoding)
+					? PL_COLOR_PRIM_BT_2020 : PL_COLOR_PRIM_BT_709,
+				EncodingTransfer(actualOutput.encoding),
+				EncodingLevels(actualOutput.encoding));
+	}
+
 	void ConfigureSwapchainOutput(const char* trigger)
 	{
 		using namespace LibplaceboOutput;
@@ -2599,6 +2719,7 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			evidence.fullRestoreRequired = previousStateMayBeStudio;
 			actualOutput = Finalize(outputPlan, evidence);
+			SetSwapchainColorHint(actualOutput.encoding);
 			DebugLog::Log(
 				"libplacebo output negotiation (%s): requested=%s/%s/%s/%s actual=UNKNOWN/FULL/sRGB/Rec.709 reason=cannot unwrap DXGI swapchain",
 				trigger,
@@ -2876,6 +2997,10 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		actualOutput = Finalize(outputPlan, evidence);
+		// A DXGI failure falls back to Full/Rec.709 in policy. Replace the
+		// original requested hint immediately so future frames cannot inherit
+		// an unaccepted BT.2020/limited target contract.
+		SetSwapchainColorHint(actualOutput.encoding);
 		DebugLog::Log(
 			"libplacebo output negotiation (%s): requested=%s/%s/%s/%s actual_contract=%s/%s/%s/%s dxgi=%s accepted=%d safe=%d wire_state=unverified reason=%s",
 			trigger,
@@ -3018,39 +3143,6 @@ struct LibplaceboVideoRenderer::Impl
 		ConfigureAndFallback(trigger);
 	}
 
-	static bool EncodingUsesBt2020(LibplaceboOutput::DxgiEncoding encoding)
-	{
-		using LibplaceboOutput::DxgiEncoding;
-		return encoding == DxgiEncoding::FULL_G22_P2020 ||
-			encoding == DxgiEncoding::STUDIO_G22_P2020 ||
-			encoding == DxgiEncoding::STUDIO_G24_P2020;
-	}
-
-	static enum pl_color_levels EncodingLevels(
-		LibplaceboOutput::DxgiEncoding encoding)
-	{
-		using LibplaceboOutput::DxgiEncoding;
-		return encoding == DxgiEncoding::FULL_G22_P709 ||
-			encoding == DxgiEncoding::FULL_G22_P2020
-				? PL_COLOR_LEVELS_FULL
-				: PL_COLOR_LEVELS_LIMITED;
-	}
-
-	static enum pl_color_transfer EncodingTransfer(
-		LibplaceboOutput::DxgiEncoding encoding)
-	{
-		using LibplaceboOutput::DxgiEncoding;
-		if (encoding == DxgiEncoding::FULL_G22_P709 ||
-			encoding == DxgiEncoding::FULL_G22_P2020)
-			return PL_COLOR_TRC_SRGB;
-		if (encoding == DxgiEncoding::STUDIO_G24_P709 ||
-			encoding == DxgiEncoding::STUDIO_G24_P2020)
-			return PL_COLOR_TRC_GAMMA24;
-		// Studio G22 is intentionally not selected because libplacebo 7.360.1
-		// has no exact target transfer for that DXGI declaration.
-		return PL_COLOR_TRC_UNKNOWN;
-	}
-
 	static std::string LutFileName(const std::string& path)
 	{
 		const size_t separator = path.find_last_of("\\/");
@@ -3106,18 +3198,15 @@ struct LibplaceboVideoRenderer::Impl
 		displayLutStatus = "Loaded: validating";
 	}
 
-	const char* DisplayLutContractMismatch(const struct pl_frame& target) const
+	const char* DisplayLutContractMismatch(
+		const struct pl_frame& target,
+		bool returnedTargetMatchesActualOutput) const
 	{
 		if (!displayLutParsed || !displayLut)
 			return nullptr;
+		if (!actualOutput.safeToRender)
+			return "output not signaled";
 
-		const bool signalBt2020 = EncodingUsesBt2020(actualOutput.encoding);
-		const enum pl_color_primaries signaledPrimaries =
-			signalBt2020 ? PL_COLOR_PRIM_BT_2020 : PL_COLOR_PRIM_BT_709;
-		const enum pl_color_transfer signaledTransfer =
-			EncodingTransfer(actualOutput.encoding);
-		const enum pl_color_levels signaledRange =
-			EncodingLevels(actualOutput.encoding);
 		enum pl_color_primaries expectedPrimaries = PL_COLOR_PRIM_UNKNOWN;
 		if (lutReferencePrimaries == "rec709")
 			expectedPrimaries = PL_COLOR_PRIM_BT_709;
@@ -3147,26 +3236,23 @@ struct LibplaceboVideoRenderer::Impl
 				target.color.transfer,
 				target.repr.levels,
 				target.color.hdr.max_luma,
-				LibplaceboDisplayLut::TargetMatchesSignal(
-					target.color.primaries,
-					target.color.transfer,
-					target.repr.levels,
-					signaledPrimaries,
-					signaledTransfer,
-					signaledRange));
+				returnedTargetMatchesActualOutput);
 		return rejection == LibplaceboDisplayLut::ContractRejection::NONE
 			? nullptr
 			: LibplaceboDisplayLut::ShortReason(rejection);
 	}
 
-	void ConfigureDisplayLutForTarget(struct pl_frame& target)
+	void ConfigureDisplayLutForTarget(
+		struct pl_frame& target,
+		bool returnedTargetMatchesActualOutput)
 	{
 		target.lut = nullptr;
 		target.lut_type = PL_LUT_UNKNOWN;
 		if (!displayLutParsed || !displayLut)
 			return;
 
-		const char* mismatch = DisplayLutContractMismatch(target);
+		const char* mismatch = DisplayLutContractMismatch(
+			target, returnedTargetMatchesActualOutput);
 		if (mismatch)
 		{
 			const std::string status = std::string("Rejected: ") + mismatch;
@@ -3302,13 +3388,9 @@ struct LibplaceboVideoRenderer::Impl
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
 		scopeSubtitlePaddingPixels = settings.scopeSubtitlePaddingPixels;
-		configuredOutputColor =
-			LibplaceboExportedData<pl_color_space>("pl_color_space_bt709");
-		if (targetBt2020)
-			configuredOutputColor.primaries = PL_COLOR_PRIM_BT_2020;
-		configuredOutputColor.hdr.min_luma = static_cast<float>(sdrBlackNits);
-		configuredOutputColor.hdr.max_luma = static_cast<float>(sdrTargetNits);
-		pl_swapchain_colorspace_hint(swapchain, &configuredOutputColor);
+		SetSwapchainColorHint(
+			outputPlan.valid ? outputPlan.desiredEncoding :
+				LibplaceboOutput::DxgiEncoding::FULL_G22_P709);
 
 		RECT client{};
 		if (!GetClientRect(videoHwnd, &client))
@@ -3481,6 +3563,8 @@ struct LibplaceboVideoRenderer::Impl
 		pl_frame_from_swapchain(&baseTarget, &swapchainFrame);
 		const struct pl_color_repr returnedRepr = baseTarget.repr;
 		const struct pl_color_space returnedColor = baseTarget.color;
+		const bool returnedTargetMatchesActualOutput =
+			ReturnedTargetMatchesActualOutput(returnedRepr, returnedColor);
 		// The frame returned by libplacebo is the default host/compositor contract.
 		// Override it only after the matching studio DXGI declaration was advertised
 		// and accepted. Requested settings never flow directly into the target.
@@ -3499,7 +3583,8 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		baseTarget.color.hdr.min_luma = static_cast<float>(sdrBlackNits);
 		baseTarget.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
-		ConfigureDisplayLutForTarget(baseTarget);
+		ConfigureDisplayLutForTarget(
+			baseTarget, returnedTargetMatchesActualOutput);
 		if (outputDiagnostics && !outputContractLogged)
 		{
 			DebugLog::Log(
