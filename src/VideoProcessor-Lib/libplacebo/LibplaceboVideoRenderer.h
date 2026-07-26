@@ -57,10 +57,14 @@ private:
 	{
 		VideoFrame frame;
 		VideoStateComPtr state;
+		uint64_t generation = 0;
 	};
 
 	void RenderLoop();
 	void ClearQueue();
+	void BeginQueueGeneration(const char* reason, bool clearStopRequest = false);
+	void ClearQueueLocked();
+	size_t PrefillTargetLocked() const;
 	void SetState(RendererState state);
 	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp);
 	void ResetFrameRateAndPPM();
@@ -77,7 +81,11 @@ private:
 	mutable std::mutex m_queueMutex;
 	std::condition_variable m_queueChanged;
 	std::deque<QueuedFrame> m_frameQueue;
+	size_t m_frameQueueDesiredDepth = 1;
 	size_t m_frameQueueMaxSize = 1;
+	uint64_t m_queueGeneration = 0;
+	uint64_t m_overflowLoggedGeneration = 0;
+	bool m_startupPrefillPending = false;
 	bool m_stopRequested = false;
 	std::thread m_renderThread;
 
