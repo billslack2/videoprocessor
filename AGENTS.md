@@ -21,6 +21,11 @@
   checkout. Synchronize with `origin/main` before editing and commit/push each
   completed state change so the tracker remains authoritative.
 
+## Testing and diagnostics
+
+- For VideoProcessor testing and troubleshooting, inspect the debug log at
+  `C:\logs\vp_debug.log`.
+
 ## Deployment
 
 - Deploy to `C:\Videoprocessor\vp` only when asked.
