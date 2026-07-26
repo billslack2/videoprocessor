@@ -175,6 +175,13 @@ namespace
 
 		RgbaPixel Render(const pl_custom_lut* lut)
 		{
+			return Render(lut, pl_render_fast_params);
+		}
+
+		RgbaPixel Render(
+			const pl_custom_lut* lut,
+			const struct pl_render_params& params)
+		{
 			pl_gpu gpu = m_d3d11->gpu;
 			const enum pl_fmt_caps requiredCaps = static_cast<enum pl_fmt_caps>(
 				PL_FMT_CAP_SAMPLEABLE | PL_FMT_CAP_RENDERABLE | PL_FMT_CAP_HOST_READABLE);
@@ -207,7 +214,6 @@ namespace
 			pl_frame target = MakeRgbFrame(targetTexture);
 			target.lut = lut;
 			target.lut_type = PL_LUT_NATIVE;
-			pl_render_params params = pl_render_fast_params;
 			Assert::IsTrue(pl_render_image(m_renderer, &image, &target, &params));
 			pl_gpu_finish(gpu);
 
@@ -589,6 +595,26 @@ namespace VideoProcessorTest
 			Assert::AreEqual(baseline.b, identity.b);
 			Assert::IsTrue(calibrated.r < 15 && calibrated.g > 240 && calibrated.b < 15,
 				L"The target LUT did not produce its expected green output");
+		}
+
+		TEST_METHOD(TargetLutGpuReadbackSupportsHighQualityWithoutErrorDiffusion)
+		{
+			TemporaryFile greenFile;
+			greenFile.Write(Green3dCube);
+			LoadResult greenLut = Load(nullptr, greenFile.Path());
+			Assert::AreEqual(
+				static_cast<int>(Status::ACTIVE),
+				static_cast<int>(greenLut.status));
+
+			pl_render_params compatibleParams = pl_render_high_quality_params;
+			compatibleParams.error_diffusion = nullptr;
+			TargetLutGpuFixture fixture;
+			Assert::IsTrue(fixture.Create(), L"Could not create the libplacebo WARP test device");
+			const RgbaPixel calibrated = fixture.Render(greenLut.lut, compatibleParams);
+			Free(greenLut);
+
+			Assert::IsTrue(calibrated.r < 15 && calibrated.g > 240 && calibrated.b < 15,
+				L"The compatible high-quality target LUT path did not produce green output");
 		}
 	};
 }
