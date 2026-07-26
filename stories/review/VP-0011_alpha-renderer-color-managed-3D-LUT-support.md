@@ -14,14 +14,19 @@ mismatches, and unverified output signaling are ignored safely while playback
 continues without a LUT. Ctrl-I reports Disabled, Loaded/validating, Active, or
 a concise Rejected reason.
 
-`Release|x64` builds with zero warnings/errors and all 71 tests pass, including
+`Release|x64` builds with zero warnings/errors and all 72 tests pass, including
 the three supplied 65³ cubes and deterministic identity/extreme WARP GPU
 readback. Follow-up commit `38f2ee7` made BT.2020 flip-only, resets failed
 negotiation hints to Rec.709, and requires the returned swapchain frame to
 match the accepted output contract before a LUT can activate. Follow-up commit
 `f725d13` closes the relative-path reparse-point race: it resolves containment
 and reads the same opened LUT file handle, rejecting a file outside the config
-directory as `Rejected: bad path`. Automated/source review is complete.
+directory as `Rejected: bad path`. Follow-up commit `ccc3c06` disables only
+libplacebo error-diffusion dithering for a valid display LUT, avoiding the
+D3D11 compute shader register collision observed in real testing. If a
+LUT-bearing render still fails, the LUT is rejected as `render error`, renderer
+caches are flushed, and playback continues without it. Automated/source review
+is complete.
 Real-projector Rec.709/BT.2020 validation,
 display-rule/source switching, and fullscreen/window transitions remain before
 Done. P3-D65 reference profiles remain intentionally rejected until VP has a

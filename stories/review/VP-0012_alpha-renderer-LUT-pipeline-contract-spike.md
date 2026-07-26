@@ -8,6 +8,7 @@ Review — implementation and automated validation completed 2026-07-25 on
 contains the VP-0011 baseline (`bbe75df`), completed target/output contract
 (`7b4d00c`), the independent-review hardening follow-up (`38f2ee7`), and the
 handle-bound relative-path containment follow-up (`f725d13`).
+The D3D11 error-diffusion compatibility/fallback follow-up is `ccc3c06`.
 
 The selected design attaches calibration only to the final target frame as
 `target.lut` / `PL_LUT_NATIVE`; render-parameter and image LUTs remain null.
@@ -25,10 +26,12 @@ inputs are rejected with no-LUT playback and concise log/OSD diagnostics.
 Validation evidence:
 
 - `Release|x64` solution build: zero warnings and zero errors.
-- `VideoProcessor-Test.dll`: 71/71 tests passed.
+- `VideoProcessor-Test.dll`: 72/72 tests passed.
 - All three supplied 65³ cubes loaded through the production bounded parser.
 - WARP readback proved no-LUT and identity output match, while an extreme
   target LUT transforms the expected red sample to green.
+- A high-quality WARP target-LUT readback passes with only error diffusion
+  removed, proving the compatible fallback preserves the LUT result.
 - Independent final review confirmed target-stage placement, complete
   signal-contract checks, rejection fallback, and truthful Ctrl-I states.
 - Follow-up DXGI review confirmed the prior BT.2020/limited P1 blockers are
