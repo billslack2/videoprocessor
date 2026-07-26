@@ -46,7 +46,7 @@ groups=input,scaling,display,viewport
 
 [profile_groups.input]
 default=auto
-auto_shortcut=Ctrl+F4
+shortcut=Ctrl+F4
 
 [profile_groups.display]
 default=rec709_projector
@@ -93,7 +93,7 @@ lut_reference_nits=100</pre>
   <p>Mastering data, MaxCLL, and MaxFALL remain renderer inputs, rather than ordinary rule variables. Output refresh is deliberately excluded: it is a result of profile selection and display switching, not an input to either.</p>
 
   <h2>Profile shortcuts and persistence</h2>
-  <p>All direct selection uses an optional <code>shortcut=</code> inside the profile it selects. Returning one group to automatic selection uses <code>auto_shortcut=</code> in that group’s configuration. Neither action toggles.</p>
+  <p>All direct selection uses <code>shortcut=</code>. In a profile section it selects that profile; in a group section it returns that group to automatic selection. The section supplies the action target, so no special shortcut-key name is needed. Neither action toggles.</p>
   <pre>[profiles.display.rec709_projector]
 shortcut=F5
 

@@ -52,9 +52,10 @@ the most comparisons, then declaration order.
 group's configured default or by its profile shortcut. No impossible condition such as
 `$width==0` is needed.
 
-**Profile shortcut** is an optional `shortcut=` inside a profile. Pressing it
-selects that profile in its own group. Returning a group to automatic selection
-is configured in that group, not in a separate global binding map.
+**Shortcut** is an optional `shortcut=` in either a profile or a group. In a
+profile it selects that profile; in a group it returns that group to automatic
+selection. The section supplies the action target, so no separate binding map
+or special shortcut-key name is needed.
 
 **Event action** observes a completed renderer/display event. It may run a
 configured command after a bounded delay. It cannot select a profile.
@@ -88,11 +89,11 @@ groups=input,scaling,display,viewport
 
 [profile_groups.input]
 default=auto
-auto_shortcut=Ctrl+F4
+shortcut=Ctrl+F4
 
 [profile_groups.scaling]
 default=auto
-auto_shortcut=Ctrl+F5
+shortcut=Ctrl+F5
 
 [profile_groups.display]
 default=rec709_projector
@@ -106,7 +107,7 @@ persist_profile_selection=true
 An automatic group with no matching profile contributes no group override;
 `[display]` remains in effect for that group. If persistence is enabled, a
 manual selection persists across source changes and restarts until another
-profile shortcut or that group's `auto_shortcut` is invoked. If persistence is
+profile shortcut or that group's `shortcut` is invoked. If persistence is
 disabled, manual selection lasts only for the current renderer session. Removed
 or invalid persisted profiles fall back to the configured startup selection and
 emit one diagnostic. The global default is `true`; every group may explicitly
@@ -204,11 +205,12 @@ shortcut=F2
 shortcut=F3
 ```
 
-`auto_shortcut=` belongs to `[profile_groups.<name>]` because it changes the
-selection mode of that one group. A shortcut always directly selects its target
-and never toggles. Duplicate shortcuts, unknown profiles, and an
-`auto_shortcut` on a group without automatic profiles are startup errors. The
-OSD/log must report group, profile, and automatic/manual state.
+`shortcut=` in `[profile_groups.<name>]` returns that one group to automatic
+selection. The same key in a profile selects that profile. A shortcut always
+directly selects its target and never toggles. Duplicate shortcuts, unknown
+profiles, and a group shortcut on a group without automatic profiles are
+startup errors. The OSD/log must report group, profile, and automatic/manual
+state.
 
 This replaces the released special cases without adding a separate binding
 section:
@@ -217,7 +219,7 @@ section:
 | --- | --- |
 | `shortcut=F5` in `[display_rules.rec709]` | `shortcut=F5` in `[profiles.display.rec709_projector]` |
 | `screen_profile_scope=F3` in `[shortcuts]` | `shortcut=F3` in `[profiles.viewport.scope]` |
-| `display_rules_auto=F4` in `[shortcuts]` | `auto_shortcut=F4` in the appropriate `[profile_groups.<name>]` section |
+| `display_rules_auto=F4` in `[shortcuts]` | `shortcut=F4` in the appropriate `[profile_groups.<name>]` section |
 
 ## Refresh-transition event actions
 
@@ -302,8 +304,7 @@ compatibility period:
 - `[display_rules]` and `[display_rules.name]` map to the appropriate proposed
   profile group only when their keys have one clear owner.
 - `shortcut=` remains the shortcut on the migrated profile.
-- `[shortcuts]` maps to a viewport profile shortcut or to a group
-  `auto_shortcut`.
+- `[shortcuts]` maps to a viewport profile shortcut or to a group `shortcut`.
 - `[refresh_rate_commands]`, including its legacy `command=` form, maps to
   refresh event actions with the documented old truncated-rate behavior.
 
