@@ -15,6 +15,24 @@ without VP-0024. The telemetry-dependent policy--measured age bands,
 stall/drift classification, correction readiness, and stale-backlog
 recovery--remains gated on VP-0024's valid source-to-display evidence.
 
+Phase 1 source commit `dfaf4aa` implements:
+
+- an independent remembered Alpha desired depth (safe default 4) while
+  DirectShow retains the shared `queue_size` capacity;
+- the configuration-only positive-integer `alpha_queue_size` override;
+- a bounded internal Alpha capacity and one generation-bound startup/reset
+  prefill without sleeps, automatic resets, or low-depth re-arming;
+- truthful Alpha `current / desired` UI and OSD presentation while DirectShow
+  retains `R/C/T`;
+- generation checks around enqueue, dequeue, reset, and render boundaries.
+
+Validation: the full `Release|x64` solution builds, and all 53 automated tests
+pass, including new Alpha policy/default/override/config validation tests.
+The first hardware run exposed and reproduced the legacy `queue_size=32`
+migration bug: Alpha retained only eight source-backed frames and could never
+satisfy a 32-frame startup prefill. The independent default/override fix is
+built and awaits a confirming runtime log showing `prefill_target=4`.
+
 Supersedes the queue-policy portion of VP-0008 and the corrective boundary
 implied by VP-0017.
 
