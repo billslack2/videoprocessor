@@ -26,8 +26,12 @@ namespace DisplayRuleExpression
 
 	inline bool GetVariableType(const std::string& name, ValueType& type)
 	{
-		if (name == "eotf" || name == "colorspace" || name == "format" ||
-			name == "resolution")
+		// Keep rule conditions independent of their source.  `$key` is empty
+		// during ordinary source evaluation and contains the canonical shortcut
+		// chord only while processing a configured shortcut.
+		if (name == "eotf" || name == "transfer" || name == "colorspace" ||
+			name == "primaries" || name == "format" || name == "resolution" ||
+			name == "range" || name == "scan" || name == "key")
 		{
 			type = ValueType::Text;
 			return true;

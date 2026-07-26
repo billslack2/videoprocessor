@@ -362,6 +362,46 @@ HACCEL CreateConfiguredAccelerators(
 		}
 	}
 
+	// Unified renderer profiles express shortcuts as ordinary `$key` rule
+	// conditions.  Register the literal chords here; the renderer still owns
+	// evaluation and applies the selected profile during its safe rebuild.
+	if (hasRendererConfig)
+	{
+		std::string groups;
+		if (rendererConfig.TryGetString("profile_groups", "groups", groups))
+		{
+			std::regex keyCondition(R"(\$key\s*==\s*[\"']([^\"']+)[\"'])",
+				std::regex::icase);
+			WORD nextCommand = ID_COMMAND_DISPLAY_RULE_FIRST;
+			while (displayRuleShortcutRules.find(nextCommand) != displayRuleShortcutRules.end()) ++nextCommand;
+			for (const std::string& group : SplitConfiguredList(groups))
+			{
+				const std::string normalizedGroup = ConfigFile::NormalizeName(group);
+				const std::string prefix = "profiles." + normalizedGroup + ".";
+				for (const std::string& section : rendererConfig.GetSectionNames())
+				{
+					if (section.rfind(prefix, 0) != 0) continue;
+					const std::string profile = section.substr(prefix.size());
+					if (nextCommand > ID_COMMAND_DISPLAY_RULE_LAST) break;
+					const std::string name = normalizedGroup + "/" + profile;
+					std::string when;
+					if (!rendererConfig.TryGetString(section, "when", when)) continue;
+					std::smatch match;
+					if (!std::regex_search(when, match, keyCondition)) continue;
+					ACCEL accelerator = {};
+					if (!TryParseShortcut(match[1].str(), accelerator)) { DEBUGLOG("Invalid profile shortcut '%s'", match[1].str().c_str()); continue; }
+					const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
+					if (!bindings.insert(binding).second) { DEBUGLOG("Duplicate profile shortcut '%s' ignored", match[1].str().c_str()); continue; }
+					accelerator.cmd = nextCommand;
+					accelerators.push_back(accelerator);
+					CString profileName; profileName.Format(TEXT("%S"), name.c_str());
+					displayRuleShortcutRules[nextCommand] = profileName;
+					++nextCommand;
+				}
+			}
+		}
+	}
+
 	return CreateAcceleratorTable(accelerators.data(), static_cast<int>(accelerators.size()));
 }
 
