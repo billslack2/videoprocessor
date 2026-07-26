@@ -57,7 +57,7 @@ they must not contain requirements that are absent from this file.
 | VP-0025 | Draft | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | In Progress | Alpha low-latency elastic queue |
 | VP-0027 | Draft | Alpha display-verified scene-safe cadence correction |
-| VP-0028 | Draft | Renderer configuration profile, hotkey, and event-action unification |
+| VP-0028 | In Progress | Renderer configuration profile, hotkey, and event-action unification |
 
 ## Codex story workflow
 

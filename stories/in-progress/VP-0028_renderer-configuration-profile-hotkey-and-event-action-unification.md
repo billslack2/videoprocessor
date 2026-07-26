@@ -2,11 +2,15 @@
 
 ## Status
 
-Draft. The current renderer configuration has evolved through separate features
-and now uses different mechanisms for automatic display rules, manual display
-selection, screen-profile shortcuts, and refresh-rate commands. Design the
-single configuration model and compatibility boundary before changing released
-configuration or hotkeys.
+In Progress. Documentation-first implementation started on
+`codex/vp-0028-config-docs` in
+`C:\Users\bslac\vp\videoprocessor-vp-0028`, based on confirmed integration
+base `origin/v1.1.014-beta` at `fc3cd35`.
+
+The first deliverable is a reviewable proposed configuration reference and
+sample configuration. It documents the unified profile, binding, and
+post-transition event model without changing runtime parsing or behavior.
+Code/configuration migration begins only after that documentation is reviewed.
 
 ## User story
 
@@ -111,28 +115,32 @@ selection/switching feedback loop.
 
 ## Implementation plan
 
-1. Build a normalized configuration representation for profiles, bindings, and
+1. Write and review the proposed configuration reference and parser-validated
+   sample configuration before runtime implementation. Make the old/new
+   compatibility boundary and the distinction between source selection and
+   completed-transition events unambiguous.
+2. Build a normalized configuration representation for profiles, bindings, and
    event actions before renderer creation. Keep parsing/validation outside the
    render loop and report errors before capture/renderer startup as appropriate.
-2. Replace the separate display-rule, fixed-shortcut, and refresh-command
+3. Replace the separate display-rule, fixed-shortcut, and refresh-command
    selection paths with shared selection and binding services while preserving
    the renderer's existing safe-rebuild boundary.
-3. Assign each source transition and renderer generation a stable identifier so
+4. Assign each source transition and renderer generation a stable identifier so
    a post-refresh action can run once for the intended completed transition and
    cannot outlive a rebuild, renderer shutdown, or profile replacement.
-4. Update state persistence so persisted manual choices have stable named
+5. Update state persistence so persisted manual choices have stable named
    identities and stale/removed names safely fall back to configured automatic
    behavior. Preserve existing `VideoProcessorRenderer.state` semantics during
    migration.
-5. Update the checked-in `VideoProcessorRenderer.cfg` to show one coherent
+6. Update the checked-in `VideoProcessorRenderer.cfg` to show one coherent
    baseline: automatic profiles, declared manual-only profiles, viewport
    bindings, and a post-refresh command action.
-6. Consolidate documentation: make `VideoProcessorRenderer.html` the
+7. Consolidate documentation: make `VideoProcessorRenderer.html` the
    authoritative reference and reduce `VideoProcessorRenderer-Alpha.html` to
    non-duplicated conceptual guidance or a clearly maintained companion.
    Correct stale output-gamut statements and document actual-versus-requested
    display transition behavior.
-7. Add concise OSD/log diagnostics for effective profile source (automatic or
+8. Add concise OSD/log diagnostics for effective profile source (automatic or
    manual), viewport, selected binding, display transition result, action
    eligibility, scheduling, execution result, suppression reason, and legacy
    configuration use.
