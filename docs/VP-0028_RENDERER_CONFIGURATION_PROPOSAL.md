@@ -6,6 +6,9 @@
 > `[display_rules]`, `[shortcuts]`, and `[refresh_rate_commands]` remain the
 > released configuration model until the migration described here is accepted.
 
+A review-oriented HTML version is available beside the existing renderer help
+as `VideoProcessorRenderer-Proposed.html`.
+
 ## Purpose
 
 VideoProcessor uses the built-in libplacebo renderer for live streaming
