@@ -507,6 +507,7 @@ namespace
 		std::vector<RefreshRateCommandRule> refreshRateCommandRules;
 		std::string lutPath;
 		bool lutPathRejected = false;
+		std::string lutConstrainedBaseDirectory;
 		std::string lutReferencePrimaries = "auto";
 		std::string lutReferenceTransfer = "auto";
 		std::string lutReferenceRange = "auto";
@@ -719,39 +720,6 @@ namespace
 		return std::string(buffer.data());
 	}
 
-	std::string CanonicalExistingPath(
-		const std::string& path,
-		bool directory)
-	{
-		const HANDLE handle = CreateFileA(
-			path.c_str(),
-			FILE_READ_ATTRIBUTES,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-			nullptr,
-			OPEN_EXISTING,
-			directory ? FILE_FLAG_BACKUP_SEMANTICS : FILE_ATTRIBUTE_NORMAL,
-			nullptr);
-		if (handle == INVALID_HANDLE_VALUE)
-			return std::string();
-		const DWORD required = GetFinalPathNameByHandleA(
-			handle, nullptr, 0, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
-		if (required == 0)
-		{
-			CloseHandle(handle);
-			return std::string();
-		}
-		std::vector<char> buffer(static_cast<size_t>(required) + 1);
-		const DWORD written = GetFinalPathNameByHandleA(
-			handle,
-			buffer.data(),
-			static_cast<DWORD>(buffer.size()),
-			FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
-		CloseHandle(handle);
-		return written == 0 || written >= buffer.size()
-			? std::string()
-			: std::string(buffer.data(), written);
-	}
-
 	std::string NormalizePathForComparison(std::string value)
 	{
 		std::replace(value.begin(), value.end(), '/', '\\');
@@ -776,10 +744,13 @@ namespace
 	std::string ResolveConfigRelativePath(
 		const ConfigFile& config,
 		const std::string& path,
-		bool* rejected = nullptr)
+		bool* rejected = nullptr,
+		std::string* constrainedBaseDirectory = nullptr)
 	{
 		if (rejected)
 			*rejected = false;
+		if (constrainedBaseDirectory)
+			constrainedBaseDirectory->clear();
 		const std::string trimmed = ConfigFile::Trim(path);
 		if (trimmed.empty() || IsAbsolutePath(trimmed) || config.GetLoadedPath().empty())
 			return trimmed;
@@ -809,21 +780,10 @@ namespace
 			return std::string();
 		}
 
-		// GetFullPathName resolves lexical '..' segments but not reparse points.
-		// When the LUT exists, compare the final opened paths as well so a
-		// junction/symlink below the config directory cannot escape it.
-		const std::string finalBase = CanonicalExistingPath(base, true);
-		const std::string finalCandidate = CanonicalExistingPath(candidate, false);
-		if (!finalCandidate.empty() &&
-			(finalBase.empty() || !IsPathWithin(finalBase, finalCandidate)))
-		{
-			DebugLog::Log(
-				"display: relative LUT path resolves outside the configuration directory and was rejected: %s",
-				trimmed.c_str());
-			if (rejected)
-				*rejected = true;
-			return std::string();
-		}
+		// Reparse-point containment is verified by the loader against the same
+		// handle it reads, which avoids a validate-then-reopen race.
+		if (constrainedBaseDirectory)
+			*constrainedBaseDirectory = base;
 		return candidate;
 	}
 
@@ -964,7 +924,8 @@ namespace
 		}
 		if (config.TryGetString(rule.section, "lut", raw))
 			settings.lutPath = ResolveConfigRelativePath(
-				config, raw, &settings.lutPathRejected);
+				config, raw, &settings.lutPathRejected,
+				&settings.lutConstrainedBaseDirectory);
 		readChoice("lut_reference_primaries", settings.lutReferencePrimaries,
 			{ "auto", "rec709", "p3_d65", "bt2020" });
 		readChoice("lut_reference_transfer", settings.lutReferenceTransfer,
@@ -1121,7 +1082,8 @@ namespace
 			config, "default_screen_profile", "normal", { "normal", "scope" }) == "scope";
 		if (TryGetDisplayString(config, "lut", rawValue))
 			settings.lutPath = ResolveConfigRelativePath(
-				config, rawValue, &settings.lutPathRejected);
+				config, rawValue, &settings.lutPathRejected,
+				&settings.lutConstrainedBaseDirectory);
 		settings.lutReferencePrimaries = ReadChoice(
 			config, "lut_reference_primaries", "auto",
 			{ "auto", "rec709", "p3_d65", "bt2020" });
@@ -1690,6 +1652,7 @@ struct LibplaceboVideoRenderer::Impl
 	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
 	std::string displayLutStatus = "Disabled";
 	std::string displayLutPath;
+	std::string displayLutConstrainedBaseDirectory;
 	std::string lutReferencePrimaries = "auto";
 	std::string lutReferenceTransfer = "auto";
 	std::string lutReferenceRange = "auto";
@@ -3152,6 +3115,7 @@ struct LibplaceboVideoRenderer::Impl
 	void LoadDisplayLut(const RendererSettings& settings)
 	{
 		displayLutPath = settings.lutPath;
+		displayLutConstrainedBaseDirectory = settings.lutConstrainedBaseDirectory;
 		lutReferencePrimaries = settings.lutReferencePrimaries;
 		lutReferenceTransfer = settings.lutReferenceTransfer;
 		lutReferenceRange = settings.lutReferenceRange;
@@ -3166,7 +3130,8 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		const LibplaceboDisplayLut::LoadResult result =
-			LibplaceboDisplayLut::Load(log, displayLutPath);
+			LibplaceboDisplayLut::Load(
+				log, displayLutPath, displayLutConstrainedBaseDirectory);
 		displayLut = result.lut;
 		displayLutParsed =
 			result.status == LibplaceboDisplayLut::Status::ACTIVE;

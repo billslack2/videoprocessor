@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <fstream>
 #include <string>
+#include <vector>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 using namespace LibplaceboDisplayLut;
@@ -55,6 +56,46 @@ namespace
 
 	private:
 		std::string m_path;
+	};
+
+	class TemporaryDirectory
+	{
+	public:
+		TemporaryDirectory()
+		{
+			char tempPath[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(tempPath), tempPath) > 0);
+			char directory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempFileNameA(tempPath, "vpl", 0, directory) != 0);
+			Assert::IsTrue(DeleteFileA(directory));
+			Assert::IsTrue(CreateDirectoryA(directory, nullptr));
+			m_path = directory;
+		}
+
+		~TemporaryDirectory()
+		{
+			for (const std::string& file : m_files)
+				DeleteFileA(file.c_str());
+			if (!m_path.empty())
+				RemoveDirectoryA(m_path.c_str());
+		}
+
+		const std::string& Path() const { return m_path; }
+
+		std::string Write(const char* fileName, const char* contents)
+		{
+			const std::string path = m_path + "\\" + fileName;
+			std::ofstream output(path, std::ios::binary | std::ios::trunc);
+			Assert::IsTrue(static_cast<bool>(output));
+			output << contents;
+			output.close();
+			m_files.push_back(path);
+			return path;
+		}
+
+	private:
+		std::string m_path;
+		std::vector<std::string> m_files;
 	};
 
 	void Free(LoadResult& result)
@@ -313,11 +354,38 @@ namespace VideoProcessorTest
 			Assert::IsNull(result.lut);
 		}
 
+		TEST_METHOD(ConstrainedLutPathUsesTheOpenedFileHandleForContainment)
+		{
+			TemporaryDirectory configurationDirectory;
+			TemporaryDirectory outsideDirectory;
+			const std::string inside =
+				configurationDirectory.Write("inside.cube", Valid3dCube);
+			const std::string outside =
+				outsideDirectory.Write("outside.cube", Valid3dCube);
+
+			LoadResult accepted = Load(
+				nullptr, inside, configurationDirectory.Path());
+			Assert::AreEqual(
+				static_cast<int>(Status::ACTIVE), static_cast<int>(accepted.status));
+			Free(accepted);
+
+			const LoadResult rejected = Load(
+				nullptr, outside, configurationDirectory.Path());
+			Assert::AreEqual(
+				static_cast<int>(Status::REJECTED), static_cast<int>(rejected.status));
+			Assert::AreEqual(
+				static_cast<int>(Rejection::PATH_OUTSIDE_BASE),
+				static_cast<int>(rejected.rejection));
+			Assert::AreEqual("bad path", ShortReason(rejected.rejection));
+			Assert::IsNull(rejected.lut);
+		}
+
 		TEST_METHOD(EveryRejectionHasAShortOsdSafeReason)
 		{
 			for (const Rejection rejection : {
 				Rejection::UNREADABLE, Rejection::EMPTY, Rejection::TOO_LARGE,
-				Rejection::READ_FAILED, Rejection::INVALID_CUBE,
+				Rejection::READ_FAILED, Rejection::PATH_OUTSIDE_BASE,
+				Rejection::INVALID_CUBE,
 				Rejection::ONE_DIMENSIONAL, Rejection::UNSAFE_DIMENSIONS })
 			{
 				const std::string reason = ShortReason(rejection);
