@@ -2,9 +2,11 @@
 
 ## Status
 
-Draft. Final dependent story. Do not implement until VP-0024 telemetry,
-VP-0025 scene association, and VP-0026 elastic-buffer semantics are accepted
-on the Epson path.
+In Progress. The fail-closed Alpha-native correction policy and action plumbing
+are implemented on `codex/vp-0025-scene-detection` at source commit `967df5b`.
+Release x64 builds and all 77 unit tests pass. Live correction behavior,
+independent presentation-trace verification, and Epson visual validation remain
+deferred to the combined VP-0024/25/27 validation run.
 
 Supersedes VP-0006 and VP-0007.
 
@@ -89,3 +91,40 @@ single late frame alone.
 ## Dependencies
 
 Depends on accepted VP-0024, VP-0025, and VP-0026.
+
+## Implementation progress
+
+- A renderer-independent Alpha policy separates stable DXGI evidence,
+  compatible measured rates, accumulated fractional phase, elastic-queue
+  direction, presentation debt, scene selection, action, cooldown, and
+  verification.
+- Corrections fail closed while disabled, warming, unavailable, disjoint,
+  rate-incompatible, generation-stale, cooling down, or awaiting verification.
+- A scene can authorize an action only after phase, queue direction, and
+  measured presentation debt agree. The bounded no-cut fallback uses the
+  maximum queue-age window.
+- A native drop consumes and releases the selected current boundary source
+  frame before upload. It is counted separately from hard overflow and render
+  failure.
+- A native repeat preserves the queue-owned source reference and requeues it at
+  the front for exactly one additional ordinary render. It never assumes a
+  flip-discard backbuffer is reusable and cannot form a repeat loop.
+- Queue and detector/source generations are folded into one policy epoch.
+  Resets, source changes, mode changes, and replacement generations therefore
+  discard phase, pending action, retained ownership, and verification state.
+- The following observed presentation must change debt by exactly one.
+  Unchanged or multi-frame results are ambiguous, logged, and cooled down
+  rather than retried immediately.
+- Alpha detector, correction counters, prediction status, compatibility, and
+  last-action data are now forwarded through the optional-plugin proxy to the
+  existing renderer UI.
+- Seven policy tests cover invalid evidence, incompatible rates, full drop and
+  repeat gating, queue disagreement, generation replacement, and exact
+  one-frame verification. Together with the added telemetry gap test, the
+  complete suite passes 77/77.
+
+Remaining work is live validation with controlled offsets, scene-heavy and
+long-take material, reset/mode/minimize recovery, independent DXGI tracing, and
+Epson 23.976/24 plus 59.94/60 sessions. In particular, confirmed hard cuts are
+reported one frame back by the detector, so the current-frame placement must be
+confirmed visually before acceptance.
