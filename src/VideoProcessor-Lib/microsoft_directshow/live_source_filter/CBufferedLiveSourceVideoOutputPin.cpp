@@ -11,6 +11,7 @@
 #include <dvdmedia.h>
 #include <guid.h>
 #include <IMediaSideData.h>
+#include <SceneDetector.h>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -2251,7 +2252,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 	DWORD lastSlowConversionLogTime = 0;
 	uint64_t slowConversionsSinceLastLog = 0;
 	uint64_t maxSlowConversionUs = 0;
-	SceneDetectorState sceneDetectorState;
+	SceneDetector sceneDetector;
 	uint64_t sceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
 	ActivePictureDetectorState activePictureDetectorState;
 	uint64_t activePictureDetectorGeneration =
@@ -2296,7 +2297,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			const uint64_t currentSceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
 			if (currentSceneDetectorGeneration != sceneDetectorGeneration)
 			{
-				sceneDetectorState = {};
+				sceneDetector.Reset(currentSceneDetectorGeneration);
 				sceneDetectorGeneration = currentSceneDetectorGeneration;
 			}
 			if (!m_isActive.load(std::memory_order_acquire))
@@ -2423,9 +2424,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 					SubtitleRepositionMode::DISABLED;
 			if ((sceneDetectionEnabled || subtitleRepositioningEnabled) &&
 				IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010))
-				isSafeCorrectionPoint = IsSafeSceneAwareCorrectionPoint(
-					pSample, sceneDetectorState, sceneEventId,
-					sceneEventFramesBack, sceneAverageLuma);
+				isSafeCorrectionPoint = AnalyzeSceneDetector(
+					pSample, sceneDetector, videoFrame.GetCounter(),
+					videoFrame.GetTimingTimestamp(), currentSceneDetectorGeneration,
+					sceneEventId, sceneEventFramesBack, sceneAverageLuma);
 
 			// NLS/aspect-rule gating uses the same converted P010 image that reaches
 			// madVR. Sparse sampling every few frames is negligible beside conversion.
@@ -2862,9 +2864,12 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 }
 
 
-bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
+bool CBufferedLiveSourceVideoOutputPin::AnalyzeSceneDetector(
 	IMediaSample* sample,
-	SceneDetectorState& state,
+	SceneDetector& detector,
+	uint64_t sourceSequence,
+	timingclocktime_t timestamp,
+	uint64_t generation,
 	uint64_t& sceneEventId,
 	uint8_t& eventFramesBack,
 	uint16_t& averageLuma)
@@ -2872,9 +2877,6 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 	sceneEventId = 0;
 	eventFramesBack = 0;
 	averageLuma = 0;
-	// The HDR and MadVR paths use P010.  Keep scene analysis on the converted
-	// sample so the detector sees exactly the format that is delivered, while
-	// avoiding any work for unsupported render formats.
 	if (!sample || !IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010) || !m_mediaType.pbFormat)
 		return false;
 
@@ -2883,18 +2885,17 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 	if (IsEqualGUID(m_mediaType.formattype, FORMAT_VideoInfo2) &&
 		m_mediaType.cbFormat >= sizeof(VIDEOINFOHEADER2))
 	{
-		const VIDEOINFOHEADER2* videoInfo = reinterpret_cast<const VIDEOINFOHEADER2*>(m_mediaType.pbFormat);
+		const auto* videoInfo = reinterpret_cast<const VIDEOINFOHEADER2*>(m_mediaType.pbFormat);
 		width = videoInfo->bmiHeader.biWidth;
 		height = videoInfo->bmiHeader.biHeight;
 	}
 	else if (IsEqualGUID(m_mediaType.formattype, FORMAT_VideoInfo) &&
 		m_mediaType.cbFormat >= sizeof(VIDEOINFOHEADER))
 	{
-		const VIDEOINFOHEADER* videoInfo = reinterpret_cast<const VIDEOINFOHEADER*>(m_mediaType.pbFormat);
+		const auto* videoInfo = reinterpret_cast<const VIDEOINFOHEADER*>(m_mediaType.pbFormat);
 		width = videoInfo->bmiHeader.biWidth;
 		height = videoInfo->bmiHeader.biHeight;
 	}
-
 	if (width <= 0 || height == 0)
 		return false;
 
@@ -2903,169 +2904,24 @@ bool CBufferedLiveSourceVideoOutputPin::IsSafeSceneAwareCorrectionPoint(
 	const size_t lumaBytes = lumaWidth * lumaHeight * sizeof(uint16_t);
 	if (sample->GetActualDataLength() < lumaBytes)
 		return false;
-
 	BYTE* data = nullptr;
 	if (FAILED(sample->GetPointer(&data)) || !data)
 		return false;
 
-	SceneSignature current;
-	uint64_t totalLuma = 0;
-	size_t darkSampleCount = 0;
-	for (size_t row = 0; row < SceneSignature::ROWS; ++row)
-	{
-		const size_t y = ((row * 2 + 1) * lumaHeight) / (SceneSignature::ROWS * 2);
-		const uint16_t* line = reinterpret_cast<const uint16_t*>(data + (y * lumaWidth * sizeof(uint16_t)));
-		for (size_t column = 0; column < SceneSignature::COLUMNS; ++column)
-		{
-			const size_t x = ((column * 2 + 1) * lumaWidth) / (SceneSignature::COLUMNS * 2);
-			const uint16_t luma = static_cast<uint16_t>(line[x] >> 6);
-			const size_t index = row * SceneSignature::COLUMNS + column;
-			current.luma[index] = luma;
-			current.histogram[std::min<size_t>(luma / 64, SceneSignature::HISTOGRAM_BINS - 1)]++;
-			totalLuma += luma;
-			if (luma <= 112)
-				++darkSampleCount;
-		}
-	}
-
-	current.averageLuma = static_cast<uint32_t>(totalLuma / current.luma.size());
-	averageLuma = static_cast<uint16_t>(
-		std::min<uint32_t>(1023, current.averageLuma));
-	current.valid = true;
-
-	const size_t sampleCount = current.luma.size();
-	const bool nearBlack = current.averageLuma <= 96 && darkSampleCount >= (sampleCount * 9) / 10;
-
-	struct Difference
-	{
-		uint32_t averageLumaDifference = 0;
-		uint32_t changedSampleCount = 0;
-		uint32_t histogramDistance = 1000; // 0 = identical, 1000 = no overlap
-	};
-
-	const auto compare = [sampleCount](const SceneSignature& a, const SceneSignature& b,
-		uint16_t changeThreshold) -> Difference
-	{
-		Difference result;
-		uint64_t totalDifference = 0;
-		for (size_t i = 0; i < sampleCount; ++i)
-		{
-			const uint16_t difference = static_cast<uint16_t>(abs(
-				static_cast<int>(a.luma[i]) - static_cast<int>(b.luma[i])));
-			totalDifference += difference;
-			if (difference >= changeThreshold)
-				++result.changedSampleCount;
-		}
-		result.averageLumaDifference = static_cast<uint32_t>(totalDifference / sampleCount);
-
-		uint64_t intersection = 0;
-		uint64_t bTotal = 0;
-		for (size_t i = 0; i < SceneSignature::HISTOGRAM_BINS; ++i)
-		{
-			intersection += std::min(a.histogram[i], b.histogram[i]);
-			bTotal += b.histogram[i];
-		}
-		if (bTotal > 0)
-			result.histogramDistance = static_cast<uint32_t>(1000 - ((intersection * 1000) / bTotal));
-		return result;
-	};
-
-	bool sceneEvent = false;
-	if (state.previous.valid)
-	{
-		// Use a slightly lower per-sample threshold.  A soccer cut can keep a
-		// similar green-field histogram even though the spatial content changes
-		// substantially, so histogram distance must support the decision rather
-		// than be a mandatory gate.
-		const Difference immediate = compare(current, state.previous, 32);
-
-		// A hard cut should produce one large change followed by a stable new
-		// image. Keep a settling confirmation so a pan is not treated as a cut,
-		// but allow normal motion in the new scene instead of requiring nearly
-		// identical adjacent frames. The previous limits were too strict for
-		// live sports cuts and caused real transitions to be missed.
-		if (state.pendingHardCutValid)
-		{
-			const Difference settling = compare(current, state.pendingHardCut, 24);
-			const bool settledAfterCandidate =
-				settling.averageLumaDifference <= 64 &&
-				settling.changedSampleCount <= (sampleCount * 50) / 100 &&
-				settling.histogramDistance <= 140 &&
-				(static_cast<uint64_t>(settling.averageLumaDifference) * 100 <=
-					static_cast<uint64_t>(state.pendingInitialAverageLumaDifference) * 80) &&
-				(static_cast<uint64_t>(settling.changedSampleCount) * 100 <=
-					static_cast<uint64_t>(state.pendingInitialChangedSampleCount) * 85);
-
-			if (settledAfterCandidate)
-			{
-				sceneEvent = true;
-				eventFramesBack =
-					static_cast<uint8_t>(state.pendingHardCutFrames + 1);
-				state.pendingHardCutValid = false;
-				state.pendingHardCutFrames = 0;
-			}
-			else if (++state.pendingHardCutFrames >= 4)
-			{
-				// The candidate was part of continuing motion rather than a cut.
-				state.pendingHardCutValid = false;
-				state.pendingHardCutFrames = 0;
-				state.pendingInitialAverageLumaDifference = 0;
-				state.pendingInitialChangedSampleCount = 0;
-			}
-		}
-
-		// Keep the candidate confirmation above: a pan can exceed one of these
-		// metrics, but normally will not produce a large first change followed by
-		// a sufficiently stable new-scene signature.
-		const bool broadSpatialChange =
-			immediate.averageLumaDifference >= 44 &&
-			immediate.changedSampleCount >= (sampleCount * 45) / 100;
-		const bool hardSceneCut = broadSpatialChange &&
-			(immediate.histogramDistance >= 55 || immediate.averageLumaDifference >= 64);
-
-		if (hardSceneCut && !sceneEvent && !state.pendingHardCutValid)
-		{
-			state.pendingHardCut = current;
-			state.pendingHardCutValid = true;
-			state.pendingHardCutFrames = 0;
-			state.pendingInitialAverageLumaDifference = immediate.averageLumaDifference;
-			state.pendingInitialChangedSampleCount = immediate.changedSampleCount;
-		}
-	}
-
-	// Near-black is a safe boundary, but count one event per black interval
-	// rather than marking every black frame as a separate scene.
-	if (nearBlack && !state.previousNearBlack)
-	{
-		sceneEvent = true;
-		state.pendingHardCutValid = false;
-		state.pendingHardCutFrames = 0;
-		state.pendingInitialAverageLumaDifference = 0;
-		state.pendingInitialChangedSampleCount = 0;
-	}
-	state.previousNearBlack = nearBlack;
-
-	// Do not publish repeated corrections during a single transition or a
-	// camera move. The interval is frame-rate aware (two seconds).
-	if (state.framesUntilNextEvent > 0)
-		--state.framesUntilNextEvent;
-	if (sceneEvent && state.framesUntilNextEvent > 0)
-		sceneEvent = false;
-	state.previous = current;
-
-	if (sceneEvent)
-	{
-		const REFERENCE_TIME frameDuration = std::max<REFERENCE_TIME>(1, m_frameDuration);
-		const uint64_t cooldownFrames64 =
-			(2ULL * REFERENCE_TIME_TICKS_PER_SECOND + static_cast<uint64_t>(frameDuration) - 1) /
-			static_cast<uint64_t>(frameDuration);
-		state.framesUntilNextEvent = static_cast<uint32_t>(std::min<uint64_t>(cooldownFrames64, 300));
-		sceneEventId = m_sceneEventSequence.fetch_add(1, std::memory_order_relaxed) + 1;
-		m_sceneAwareDetectedCount.fetch_add(1, std::memory_order_relaxed);
-	}
-
-	return sceneEvent;
+	const SceneDetectorResult result = detector.Analyze({
+		reinterpret_cast<const uint16_t*>(data), lumaWidth, lumaHeight,
+		lumaWidth * sizeof(uint16_t), sourceSequence, timestamp, generation,
+		static_cast<uint64_t>(std::max<REFERENCE_TIME>(1, m_frameDuration)), true });
+	averageLuma = result.averageLuma;
+	eventFramesBack = result.eventFramesBack;
+	if (!result.safeBoundary)
+		return false;
+	// Preserve DirectShow's process-wide event sequencing and published count.
+	sceneEventId = m_sceneEventSequence.fetch_add(1, std::memory_order_relaxed) + 1;
+	m_sceneAwareDetectedCount.fetch_add(1, std::memory_order_relaxed);
+	return true;
 }
+
 
 void CBufferedLiveSourceVideoOutputPin::StartSubtitleAnalysisWorker()
 {

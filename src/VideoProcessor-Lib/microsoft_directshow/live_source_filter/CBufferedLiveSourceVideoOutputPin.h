@@ -386,29 +386,6 @@ private:
 	static DWORD WINAPI ConversionThreadProc(LPVOID lpParameter);
 	DWORD ConversionWorker();
 
-	struct SceneSignature
-	{
-		static constexpr size_t COLUMNS = 32;
-		static constexpr size_t ROWS = 18;
-		static constexpr size_t HISTOGRAM_BINS = 16;
-		std::array<uint16_t, COLUMNS * ROWS> luma{};
-		std::array<uint16_t, HISTOGRAM_BINS> histogram{};
-		uint32_t averageLuma = 0;
-		bool valid = false;
-	};
-
-	struct SceneDetectorState
-	{
-		SceneSignature previous;
-		SceneSignature pendingHardCut;
-		uint8_t pendingHardCutFrames = 0;
-		uint32_t pendingInitialAverageLumaDifference = 0;
-		uint32_t pendingInitialChangedSampleCount = 0;
-		uint32_t framesUntilNextEvent = 0;
-		bool pendingHardCutValid = false;
-		bool previousNearBlack = false;
-	};
-
 	struct ActivePictureDetectorState
 	{
 		double candidateAspectRatio = 0.0;
@@ -431,11 +408,10 @@ private:
 	mutable std::mutex m_activePictureRectangleMutex;
 	ActivePictureRectangle m_activePictureRectangle;
 
-	// Reads a sparse luma grid from P010 output.  It is intentionally called
-	// only by the conversion worker and only while the feature is enabled.
-	bool IsSafeSceneAwareCorrectionPoint(IMediaSample* sample, SceneDetectorState& state,
-		uint64_t& sceneEventId, uint8_t& eventFramesBack,
-		uint16_t& averageLuma);
+	// Adapts the DirectShow P010 sample to the renderer-neutral detector.
+	bool AnalyzeSceneDetector(IMediaSample* sample, class SceneDetector& detector,
+		uint64_t sourceSequence, timingclocktime_t timestamp, uint64_t generation,
+		uint64_t& sceneEventId, uint8_t& eventFramesBack, uint16_t& averageLuma);
 	void UpdateActivePictureAspectRatio(IMediaSample* sample, uint64_t frameNumber,
 		ActivePictureDetectorState& state);
 	bool RelocateSubtitleInP010(IMediaSample* sample, uint64_t frameNumber);

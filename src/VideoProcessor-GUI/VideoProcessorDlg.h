@@ -392,7 +392,10 @@ protected:
 	bool m_queueRendererSelectionInitialized = false;
 	bool m_queueSelectionWasAlpha = false;
 	bool m_sceneAwareTimingCorrection = false;
-	bool m_sceneCorrectionUpstreamSample = false;
+	// DirectShow defaults to the more robust upstream-sample correction.
+	// Basic remains available as a configuration-only compatibility override;
+	// Alpha has a single native correction path and ignores this value.
+	bool m_sceneCorrectionUpstreamSample = true;
 	SubtitleRepositionMode m_subtitleRepositionMode =
 		SubtitleRepositionMode::DISABLED;
 	VideoConversionOverride m_defaultVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;

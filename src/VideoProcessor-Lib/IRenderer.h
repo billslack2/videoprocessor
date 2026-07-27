@@ -227,6 +227,13 @@ public:
 	virtual uint64_t SceneAwareCorrectionDropCount() const { return 0; }
 	virtual uint64_t SceneAwareCorrectionRepeatCount() const { return 0; }
 	virtual uint64_t SceneAwareDetectedCount() const { return 0; }
+	// Optional renderer-native detector lifecycle state. The UI falls back to
+	// its existing configuration label when a renderer does not provide this.
+	virtual bool GetSceneDetectionStatus(CString& status) const
+	{
+		status.Empty();
+		return false;
+	}
 	virtual uint64_t SceneAwareLateCandidateCount() const { return 0; }
 	// Successfully installed renderer-native shader chain, formatted for display
 	// as entries such as "Pre: Debanding" or "Post: Adaptive sharpen".
@@ -257,6 +264,14 @@ public:
 		return false;
 	}
 	virtual bool SceneTimingRatesCompatible() const { return false; }
+	// Optional renderer-native timing lifecycle. This distinguishes a stable
+	// display measurement from a correction forecast that is intentionally
+	// suppressed because the measured mismatch is negligible.
+	virtual bool GetSceneTimingStatus(CString& status) const
+	{
+		status.Empty();
+		return false;
+	}
 
 	// Get conversion performance metrics (if available from the video frame formatter)
 	// Returns true if data is available, false if no conversion or no performance tracking
