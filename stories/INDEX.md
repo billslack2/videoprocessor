@@ -54,7 +54,7 @@ they must not contain requirements that are absent from this file.
 | VP-0022 | Draft | DeckLink encoded-format boundary and diagnostics |
 | VP-0023 | Draft | P010 range metadata contract and conversion regression tests |
 | VP-0024 | Draft | Alpha source-to-display timing and queue telemetry |
-| VP-0025 | Draft | Renderer-neutral scene detection and Alpha integration |
+| VP-0025 | In Progress | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | In Progress | Alpha low-latency elastic queue |
 | VP-0027 | Draft | Alpha display-verified scene-safe cadence correction |
 | VP-0028 | In Progress | Renderer configuration profile, hotkey, and event-action unification |

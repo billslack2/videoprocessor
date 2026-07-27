@@ -2,9 +2,24 @@
 
 ## Status
 
-Draft. Extract and reuse the proven scene-boundary signal before Alpha cadence
-correction is implemented. Preserve DirectShow behavior exactly while
-establishing a renderer-neutral input/result contract.
+In Progress. Source implementation commit `6e15206` on
+`codex/vp-0025-scene-detection` extracts the proven P010 scene detector into
+one renderer-neutral component and feeds both DirectShow and Alpha adapters.
+The branch is based on `origin/v1.1.014-beta` in
+`C:\Users\bslac\vp\videoprocessor-vp-0025`.
+
+Alpha analyzes its converted P010 luma immediately before GPU upload and
+publishes Disabled/Warming/Active/Unavailable lifecycle state without changing
+queueing or presentation. DirectShow retains its existing event sequence and
+counter behavior. Generation changes reset detector history; display-profile
+changes alone do not.
+
+Validation: the full `Release|x64` solution builds with zero warnings and zero
+errors, and all 56 automated tests pass. Seven detector tests cover warm-up,
+hard cuts, one-frame flashes, near-black de-duplication, invalid input,
+generation resets, and identical results for tight and padded P010 adapters.
+Live renderer lifecycle, retained-sequence comparison, and 4K cost validation
+remain before Review.
 
 Supersedes VP-0016 and the detector portion of VP-0006.
 
