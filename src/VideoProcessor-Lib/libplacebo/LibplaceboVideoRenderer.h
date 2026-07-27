@@ -86,6 +86,8 @@ private:
 	void SetState(RendererState state);
 	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp);
 	void ResetFrameRateAndPPM();
+	bool ApplyScreenProfile(bool scopeScreen, CString& activeProfile,
+		bool persistLegacyState);
 
 	IRendererCallback& m_callback;
 	HWND m_videoHwnd = nullptr;

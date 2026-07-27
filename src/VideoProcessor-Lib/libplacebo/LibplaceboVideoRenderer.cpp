@@ -528,7 +528,9 @@ namespace
 		double lutReferenceNits = 0.0;
 	};
 
-	std::string EffectiveSettingsFingerprint(const RendererSettings& settings)
+	std::string EffectiveSettingsFingerprint(
+		const RendererSettings& settings,
+		bool includeViewportSettings = true)
 	{
 		// Stable, locale-independent representation of every renderer-affecting
 		// value. Profile labels deliberately do not participate.
@@ -548,10 +550,19 @@ namespace
 			<< settings.outputPresentation << '|' << settings.outputRange << '|'
 			<< settings.outputGamma << '|' << settings.sdrTargetPrimaries << '|'
 			<< settings.reportBt2020ToDisplay << '|' << settings.sdrInputTransfer << '|'
-			<< settings.outputDiagnostics << '|' << settings.diagnosticDisableShaderCache << '|'
-			<< settings.scopeScreenAspect << '|' << settings.defaultScopeScreen << '|'
-			<< settings.scopeSubtitleFit << '|' << settings.scopeSubtitleHoldMs << '|'
-			<< settings.scopeSubtitlePaddingPixels;
+			<< settings.outputDiagnostics << '|' << settings.diagnosticDisableShaderCache << '|';
+		if (includeViewportSettings)
+		{
+			stream
+				<< settings.scopeScreenAspect << '|' << settings.defaultScopeScreen << '|'
+				<< settings.scopeSubtitleFit << '|' << settings.scopeSubtitleHoldMs << '|'
+				<< settings.scopeSubtitlePaddingPixels << '|';
+		}
+		stream
+			<< settings.lutPath << '|'
+			<< settings.lutPathRejected << '|' << settings.lutReferencePrimaries << '|'
+			<< settings.lutReferenceTransfer << '|' << settings.lutReferenceRange << '|'
+			<< settings.lutReferenceNits;
 		return stream.str();
 	}
 
@@ -2293,6 +2304,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool scopeSubtitleWasTopActive = false;
 	std::string activeDisplayRule;
 	std::string effectiveSettingsFingerprint;
+	std::string restartSettingsFingerprint;
 	HWND videoHwnd = nullptr;
 	HMONITOR negotiatedMonitor = nullptr;
 	bool cursorPositioned = false;
@@ -3908,6 +3920,7 @@ struct LibplaceboVideoRenderer::Impl
 		const RendererSettings settings = LoadRendererSettings(
 			*state, activeDisplayRule, manualRule, manualUnifiedProfiles);
 		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
+		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
 		outputDiagnostics = settings.outputDiagnostics;
 		shaderCacheEnabled = !settings.diagnosticDisableShaderCache;
 
@@ -4025,6 +4038,35 @@ struct LibplaceboVideoRenderer::Impl
 			"libplacebo initialized: D3D11, P010 upload, SDR target request=%s %.1f nits",
 			targetBt2020 ? "BT.2020" : "Rec.709",
 			sdrTargetNits);
+	}
+
+	void ApplyViewportSettings(const RendererSettings& settings)
+	{
+		std::lock_guard<std::mutex> guard(renderMutex);
+		const bool renderingBehaviorChanged =
+			scopeScreenAspect != settings.scopeScreenAspect ||
+			scopeSubtitleFit != settings.scopeSubtitleFit ||
+			scopeSubtitleHoldMs != settings.scopeSubtitleHoldMs ||
+			scopeSubtitlePaddingPixels != settings.scopeSubtitlePaddingPixels;
+		scopeScreenAspect = settings.scopeScreenAspect;
+		defaultScopeScreen = settings.defaultScopeScreen;
+		scopeSubtitleFit = settings.scopeSubtitleFit;
+		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
+		scopeSubtitlePaddingPixels = settings.scopeSubtitlePaddingPixels;
+		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
+		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
+		if (renderingBehaviorChanged)
+		{
+			// The alternate profile was prewarmed with the previous crop/subtitle
+			// parameters. Re-prime it lazily without dropping the live swapchain.
+			screenProfilesPrewarmed = false;
+			scopeSubtitleAnalysisFrame = 0;
+			scopeSubtitlePendingPictureTop = 0;
+			scopeSubtitlePendingPictureBottom = 0;
+			scopeSubtitlePictureTop = 0;
+			scopeSubtitlePictureBottom = 0;
+			scopeSubtitleBarHits = 0;
+		}
 	}
 
 	// The caller holds renderMutex. Queue-generation validation and rendering
@@ -4677,12 +4719,15 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 	{
 		std::string nextRule;
 		std::string nextFingerprint;
+		RendererSettings nextSettings;
+		bool hasUnifiedSettings = false;
 		ConfigFile config;
 		if (config.Load(ConfigFile::RENDERER_FILENAME) && RendererProfileConfig::IsUnified(config))
 		{
-			const RendererSettings nextSettings = LoadRendererSettings(
+			nextSettings = LoadRendererSettings(
 				*videoState, nextRule, "", m_manualUnifiedProfiles);
-			nextFingerprint = EffectiveSettingsFingerprint(nextSettings);
+			nextFingerprint = EffectiveSettingsFingerprint(nextSettings, false);
+			hasUnifiedSettings = true;
 		}
 		else
 		{
@@ -4691,7 +4736,7 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 		}
 		const bool changed = nextFingerprint.empty() ?
 			nextRule != m_impl->activeDisplayRule :
-			nextFingerprint != m_impl->effectiveSettingsFingerprint;
+			nextFingerprint != m_impl->restartSettingsFingerprint;
 		if (changed)
 		{
 			DebugLog::Log(
@@ -4699,6 +4744,16 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 				m_impl->activeDisplayRule.empty() ? "base" : m_impl->activeDisplayRule.c_str(),
 				nextRule.empty() ? "base" : nextRule.c_str());
 			return false;
+		}
+		if (hasUnifiedSettings &&
+			EffectiveSettingsFingerprint(nextSettings) !=
+				m_impl->effectiveSettingsFingerprint)
+		{
+			m_impl->ApplyViewportSettings(nextSettings);
+			CString activeProfile;
+			ApplyScreenProfile(nextSettings.defaultScopeScreen, activeProfile, false);
+			DebugLog::Log(
+				"profiles: applied automatic viewport settings live without renderer rebuild");
 		}
 	}
 	m_videoState = new VideoState(*videoState);
@@ -5071,10 +5126,12 @@ bool LibplaceboVideoRenderer::SelectUnifiedProfileKey(
 	if (selections.empty())
 		return false;
 
-	std::lock_guard<std::mutex> guard(m_stateMutex);
+	std::unique_lock<std::mutex> guard(m_stateMutex);
 	std::map<std::string, std::string> next = m_manualUnifiedProfiles;
+	bool viewportSelected = false;
 	for (const RendererProfileConfig::KeySelection& selection : selections)
 	{
+		viewportSelected = viewportSelected || selection.group == "viewport";
 		if (selection.resetToAutomatic)
 			next.erase(selection.group);
 		else
@@ -5087,8 +5144,8 @@ bool LibplaceboVideoRenderer::SelectUnifiedProfileKey(
 		LoadRendererSettings(*state, candidateProfiles, "", next) :
 		RendererSettings();
 	rendererRestartRequired = m_impl != nullptr &&
-		(!state || EffectiveSettingsFingerprint(candidateSettings) !=
-			m_impl->effectiveSettingsFingerprint);
+		(!state || EffectiveSettingsFingerprint(candidateSettings, false) !=
+			m_impl->restartSettingsFingerprint);
 	m_manualUnifiedProfiles = std::move(next);
 	{
 		std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
@@ -5113,9 +5170,19 @@ bool LibplaceboVideoRenderer::SelectUnifiedProfileKey(
 			(selection.resetToAutomatic ? "auto" : selection.profile);
 	}
 	activeProfiles.Format(TEXT("Unified: %S"), summary.c_str());
+	if (!rendererRestartRequired && viewportSelected && m_impl)
+	{
+		m_impl->ApplyViewportSettings(candidateSettings);
+		CString activeProfile;
+		ApplyScreenProfile(candidateSettings.defaultScopeScreen, activeProfile, false);
+		DebugLog::Log(
+			"unified viewport profile applied live: %s",
+			candidateSettings.defaultScopeScreen ? "scope" : "normal");
+	}
 	DebugLog::Log("unified profile key '%s' selected %s (%s)",
 		canonicalKey.c_str(), summary.c_str(),
-		rendererRestartRequired ? "renderer rebuild required" : "effective settings unchanged");
+		rendererRestartRequired ? "renderer rebuild required" :
+			(viewportSelected ? "viewport applied live" : "effective settings unchanged"));
 	return true;
 }
 
@@ -5355,6 +5422,15 @@ bool LibplaceboVideoRenderer::SetScreenProfile(
 	bool scopeScreen,
 	CString& activeProfile)
 {
+	return ApplyScreenProfile(scopeScreen, activeProfile, true);
+}
+
+
+bool LibplaceboVideoRenderer::ApplyScreenProfile(
+	bool scopeScreen,
+	CString& activeProfile,
+	bool persistLegacyState)
+{
 	if (!m_impl)
 		return false;
 
@@ -5383,7 +5459,8 @@ bool LibplaceboVideoRenderer::SetScreenProfile(
 	CString details;
 	details.Format(TEXT("VideoProcessor Renderer (Alpha) - Screen: %s"), activeProfile.GetString());
 	m_callback.OnRendererDetailString(details);
-	PersistScreenProfile(scopeScreen);
+	if (persistLegacyState)
+		PersistScreenProfile(scopeScreen);
 	return true;
 }
 

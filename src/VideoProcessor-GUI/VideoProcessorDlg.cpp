@@ -3116,6 +3116,11 @@ void CVideoProcessorDlg::CaptureStart()
 	assert(!m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_UNKNOWN);
 
+	// Re-prime once per capture session. Renderer-only profile reconstruction
+	// already starts with empty queues and must not schedule a second delayed
+	// graph reset (which visibly blanks the new renderer again).
+	m_startupGraphReprimeCompleted = false;
+
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_STARTING;
 
@@ -3224,11 +3229,6 @@ void CVideoProcessorDlg::RenderStart()
 	// a subsequent capture-state update that no longer qualifies as LLDV.
 	if (m_captureDeviceVideoState)
 		BuildPushVideoState();
-
-	// A newly constructed graph gets one deliberate startup re-prime. An
-	// in-place Reset() does not clear this marker, which prevents a loop when
-	// it reports RENDERSTATE_RENDERING again.
-	m_startupGraphReprimeCompleted = false;
 
 	int i;
 
