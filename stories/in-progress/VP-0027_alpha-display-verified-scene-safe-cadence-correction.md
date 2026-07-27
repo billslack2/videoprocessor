@@ -118,6 +118,11 @@ Depends on accepted VP-0024, VP-0025, and VP-0026.
 - Alpha detector, correction counters, prediction status, compatibility, and
   last-action data are now forwarded through the optional-plugin proxy to the
   existing renderer UI.
+- Initial local validation found that Alpha startup did not forward the
+  configured scene-correction enable flag and that the OSD replaced the chosen
+  Basic/Advanced label with detector lifecycle text. Source commit `52781ba`
+  fixes both: Alpha receives the setting before `Start()`, and the OSD preserves
+  the configured mode while readiness remains on the Status row.
 - Seven policy tests cover invalid evidence, incompatible rates, full drop and
   repeat gating, queue disagreement, generation replacement, and exact
   one-frame verification. Together with the added telemetry gap test, the
