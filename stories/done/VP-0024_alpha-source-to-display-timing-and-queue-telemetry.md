@@ -2,12 +2,11 @@
 
 ## Status
 
-In Progress. The bounded, generation-safe telemetry foundation is merged into
-`v1.1.014-beta` in pull request #8 at commit `bc7f347`. The final rebased
-Release x64 build and all 103 native tests pass. The exact DXGI
-frame-statistics interpretation still requires runtime
-confirmation against an independent presentation trace; Epson-specific
-validation is intentionally deferred to the combined VP-0024/25/27 run.
+Done. Accepted July 27, 2026. The bounded, generation-safe telemetry
+foundation is merged into `v1.1.014-beta` in pull request #8 at commit
+`bc7f347`; the final rebased Release x64 build and all 103 native tests pass.
+Epson-specific visual validation was explicitly deferred by the user and is
+not required for this acceptance.
 
 Supersedes VP-0005 and VP-0017 and the investigative portion of VP-0008.
 

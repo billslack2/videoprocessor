@@ -55,10 +55,10 @@ they must not contain requirements that are absent from this file.
 | VP-0023 | Draft | P010 range metadata contract and conversion regression tests |
 | VP-0030 | Draft | Rotate debug logs with a fixed default retention of ten files |
 | VP-0031 | Draft | Make debug-log retention configurable |
-| VP-0024 | In Progress | Alpha source-to-display timing and queue telemetry |
-| VP-0025 | In Progress | Renderer-neutral scene detection and Alpha integration |
+| VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
+| VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
-| VP-0027 | In Progress | Alpha display-verified scene-safe cadence correction |
+| VP-0027 | Done | Alpha display-verified scene-safe cadence correction |
 | VP-0028 | In Progress | Renderer configuration profile, hotkey, and event-action unification |
 | VP-0029 | Draft | Alpha two-pass display LUT and final-dither pipeline spike |
 

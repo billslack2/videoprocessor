@@ -2,11 +2,11 @@
 
 ## Status
 
-In Progress. The fail-closed Alpha-native correction policy and action plumbing
-are merged into `v1.1.014-beta` in pull request #8 at commit `bc7f347`. The
-final rebased Release x64 build and all 103 native tests pass. Live correction behavior,
-independent presentation-trace verification, and Epson visual validation remain
-deferred to the combined VP-0024/25/27 validation run.
+Done. Accepted July 27, 2026. The fail-closed Alpha-native correction policy
+and action plumbing are merged into `v1.1.014-beta` in pull request #8 at
+commit `bc7f347`; the final rebased Release x64 build and all 103 native tests
+pass. Epson visual validation was explicitly deferred by the user and is not
+required for this acceptance.
 
 The shared Scene Detect control now exposes only On/Off. It has no misleading
 Basic/Advanced choice for Alpha; DirectShow

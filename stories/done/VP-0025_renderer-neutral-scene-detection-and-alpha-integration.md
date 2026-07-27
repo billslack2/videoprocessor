@@ -2,9 +2,10 @@
 
 ## Status
 
-In Progress. The implementation is merged into `v1.1.014-beta` in pull request
-#8 at commit `bc7f347`. It extracts the proven P010 scene detector into one
-renderer-neutral component and feeds both DirectShow and Alpha adapters.
+Done. Accepted July 27, 2026. The implementation is merged into
+`v1.1.014-beta` in pull request #8 at commit `bc7f347`. It extracts the
+proven P010 scene detector into one renderer-neutral component and feeds both
+DirectShow and Alpha adapters.
 
 The latest integration/UI adjustment makes Scene Detect a single
 renderer-neutral On/Off control. DirectShow defaults internally to the
@@ -23,8 +24,8 @@ Validation: the final rebased `Release|x64` solution builds, and all 103 native
 tests pass. Seven detector tests cover warm-up,
 hard cuts, one-frame flashes, near-black de-duplication, invalid input,
 generation resets, and identical results for tight and padded P010 adapters.
-Live renderer lifecycle, retained-sequence comparison, and 4K cost validation
-remain before Review.
+The final source and automated validation was accepted; no further live
+validation is required for story completion.
 
 Supersedes VP-0016 and the detector portion of VP-0006.
 
