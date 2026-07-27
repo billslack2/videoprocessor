@@ -57,6 +57,13 @@ legacy path. The focused model tests pass (4/4). The GUI project remains
 unbuildable in this worktree before these source changes because its generated
 `version.h` is absent; no generated version files were fabricated.
 
+Commit `fd3e40a` adds deterministic automatic selection for every declared
+unified group (priority, specificity, then list order) and connects it to the
+libplacebo plugin configuration load. The plugin Debug build passes and the
+focused model tests pass (5/5). Manual multi-group key selection, typed setting
+ownership, committed persistence, viewport apply, and event-action scheduling
+remain before a side-by-side deployment test is safe.
+
 A subsequent multi-pass design/code review determined that this increment is a
 prototype and must not be treated as the accepted unified implementation. It
 still routes manual selection through one legacy display-rule slot, uses GUI
