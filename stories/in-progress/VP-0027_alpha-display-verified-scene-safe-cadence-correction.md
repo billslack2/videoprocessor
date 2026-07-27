@@ -3,13 +3,13 @@
 ## Status
 
 In Progress. The fail-closed Alpha-native correction policy and action plumbing
-are implemented on `codex/vp-0025-scene-detection` at source commit `967df5b`.
-Release x64 builds and all 77 unit tests pass. Live correction behavior,
+are merged into `v1.1.014-beta` in pull request #8 at commit `bc7f347`. The
+final rebased Release x64 build and all 103 native tests pass. Live correction behavior,
 independent presentation-trace verification, and Epson visual validation remain
 deferred to the combined VP-0024/25/27 validation run.
 
-The shared Scene Detect control now exposes only On/Off (source commit
-`8403297`). It has no misleading Basic/Advanced choice for Alpha; DirectShow
+The shared Scene Detect control now exposes only On/Off. It has no misleading
+Basic/Advanced choice for Alpha; DirectShow
 uses Advanced by default and retains a configuration-only Basic override.
 
 Supersedes VP-0006 and VP-0007.

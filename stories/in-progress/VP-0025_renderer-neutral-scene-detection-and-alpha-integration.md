@@ -2,15 +2,12 @@
 
 ## Status
 
-In Progress. Source implementation commit `0571316` on
-`codex/vp-0025-scene-detection` extracts the proven P010 scene detector into
-one renderer-neutral component and feeds both DirectShow and Alpha adapters.
-The branch is rebased on `origin/v1.1.014-beta` commit `b79355e`, including
-the accepted VP-0026 queue implementation, in
-`C:\Users\bslac\vp\videoprocessor-vp-0025`.
+In Progress. The implementation is merged into `v1.1.014-beta` in pull request
+#8 at commit `bc7f347`. It extracts the proven P010 scene detector into one
+renderer-neutral component and feeds both DirectShow and Alpha adapters.
 
-Latest integration/UI adjustment: source commit `8403297` makes Scene Detect a
-single renderer-neutral On/Off control. DirectShow defaults internally to the
+The latest integration/UI adjustment makes Scene Detect a single
+renderer-neutral On/Off control. DirectShow defaults internally to the
 Advanced upstream-sample correction; `[command_line]`
 `scene_correction_basic=true` is the explicit config-only opt-in for the
 legacy Basic renderer repeat. Alpha has one native correction path, so the
@@ -22,8 +19,8 @@ queueing or presentation. DirectShow retains its existing event sequence and
 counter behavior. Generation changes reset detector history; display-profile
 changes alone do not.
 
-Validation: the full `Release|x64` solution builds with zero warnings and zero
-errors, and all 63 automated tests pass. Seven detector tests cover warm-up,
+Validation: the final rebased `Release|x64` solution builds, and all 103 native
+tests pass. Seven detector tests cover warm-up,
 hard cuts, one-frame flashes, near-black de-duplication, invalid input,
 generation resets, and identical results for tight and padded P010 adapters.
 Live renderer lifecycle, retained-sequence comparison, and 4K cost validation

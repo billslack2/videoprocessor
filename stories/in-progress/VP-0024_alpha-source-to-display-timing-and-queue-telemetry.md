@@ -2,10 +2,10 @@
 
 ## Status
 
-In Progress. The bounded, generation-safe telemetry foundation is implemented
-on `codex/vp-0025-scene-detection` at source commit `ccc53c7`, based on
-`v1.1.014-beta` commit `b79355e`. Release x64 builds and all 69 unit tests pass.
-The exact DXGI frame-statistics interpretation still requires runtime
+In Progress. The bounded, generation-safe telemetry foundation is merged into
+`v1.1.014-beta` in pull request #8 at commit `bc7f347`. The final rebased
+Release x64 build and all 103 native tests pass. The exact DXGI
+frame-statistics interpretation still requires runtime
 confirmation against an independent presentation trace; Epson-specific
 validation is intentionally deferred to the combined VP-0024/25/27 run.
 
