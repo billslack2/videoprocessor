@@ -19,8 +19,6 @@
 // validation and selection can be tested before a renderer is created.
 namespace RendererProfileConfig
 {
-	constexpr int LatestSchemaVersion = 2;
-
 	struct Profile
 	{
 		std::string group;
@@ -43,7 +41,6 @@ namespace RendererProfileConfig
 
 	struct Model
 	{
-		int schemaVersion = LatestSchemaVersion;
 		bool persistSelection = true;
 		std::vector<Group> groups;
 		std::map<std::string, Profile> profiles;
@@ -116,20 +113,6 @@ namespace RendererProfileConfig
 			if (!name.empty()) names.push_back(name);
 		}
 		return names;
-	}
-
-	inline bool ParseNonNegativeInteger(const std::string& text, int& value)
-	{
-		try
-		{
-			size_t consumed = 0;
-			const long parsed = std::stol(ConfigFile::Trim(text), &consumed);
-			if (consumed != ConfigFile::Trim(text).size() || parsed < 0 || parsed > INT_MAX)
-				return false;
-			value = static_cast<int>(parsed);
-			return true;
-		}
-		catch (const std::exception&) { return false; }
 	}
 
 	inline bool ParseInteger(const std::string& text, int minimum, int maximum, int& value)
@@ -305,16 +288,8 @@ namespace RendererProfileConfig
 				return false;
 			}
 
-		std::string version;
-		if (config.TryGetString("general", "config_version", version) &&
-			(!ParseNonNegativeInteger(version, model.schemaVersion) || model.schemaVersion != LatestSchemaVersion))
-		{
-			error = "unified renderer configuration requires config_version=" +
-				std::to_string(LatestSchemaVersion);
-			return false;
-		}
+		std::string value;
 		const std::vector<ConfigSchema::KeyRule> generalRules = {
-			ConfigSchema::Any("config_version"),
 			ConfigSchema::Boolean("persist_profile_selection"),
 			ConfigSchema::Boolean("switch_refresh_rate"),
 			ConfigSchema::Integer("event_action_delay_seconds", 0, 30),
@@ -326,8 +301,8 @@ namespace RendererProfileConfig
 		bool persist = true;
 		config.TryGetBool("general", "persist_profile_selection", persist);
 		model.persistSelection = persist;
-		if (config.TryGetString("general", "event_action_delay_seconds", version))
-			ParseInteger(version, 0, 30, model.eventActionDelaySeconds);
+		if (config.TryGetString("general", "event_action_delay_seconds", value))
+			ParseInteger(value, 0, 30, model.eventActionDelaySeconds);
 		if (const auto* display = config.GetSectionValues("display"))
 		{
 			const std::set<std::string> baseKeys = {
@@ -410,7 +385,7 @@ namespace RendererProfileConfig
 					return false;
 			}
 			group.persistSelection = model.persistSelection;
-			if (config.TryGetString(section, "persist_profile_selection", version) &&
+			if (config.TryGetString(section, "persist_profile_selection", value) &&
 				!config.TryGetBool(section, "persist_profile_selection", group.persistSelection))
 			{
 				error = section + " persist_profile_selection must be true or false";

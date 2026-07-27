@@ -84,9 +84,8 @@ The design intentionally follows established configuration-system practices:
 - **Strict schemas:** unknown and duplicate fields are rejected in unified
   mode, equivalent to closed-object validation such as JSON Schema
   `additionalProperties=false` and strict API field validation.
-- **One public contract:** documented configuration is treated as a versioned
-  public API; an omitted `config_version` selects the latest supported unified
-  schema, while an explicit value protects future migrations.
+- **One public contract:** one documented, unversioned configuration grammar
+  is validated consistently by the main and renderer schemas.
 - **Single source of truth:** one parsed expression AST drives validation,
   shortcut discovery, source evaluation, and key-event evaluation.
 - **Determinism:** ordered group/profile declarations and typed tie-breaking
@@ -101,25 +100,24 @@ The design intentionally follows established configuration-system practices:
 Reference points include
 [JSON Schema object validation](https://json-schema.org/understanding-json-schema/reference/object),
 [Kubernetes strict field validation](https://kubernetes.io/docs/reference/using-api/api-concepts/#field-validation),
-[Semantic Versioning's public-API principle](https://semver.org/), and
 [Windows application accelerator semantics](https://learn.microsoft.com/windows/win32/menurc/keyboard-accelerators).
 
 ## Terms
 
 **Profile** is a named partial set of settings in one group.
 
-**Automatic profile** has a source-match branch in `when=`. For a group in
+**Automatic profile** has a source-match branch in `when:`. For a group in
 automatic mode, the matching profile with the highest `priority` wins; equal
 priorities use the greatest number of source comparisons in the matching
 branch, then the profile order declared by that group. `$key` comparisons never
 increase automatic specificity.
 
 **Key-selected profile** has an equality comparison against `$key` in its
-`when=` expression. A matching key event selects that profile manually only if
+`when:` expression. A matching key event selects that profile manually only if
 the complete expression is true. No separate shortcut key or impossible
 condition such as `$width==0` is needed.
 
-**Default-only profile** has no `when=` expression. It may be the configured
+**Default-only profile** has no `when:` expression. It may be the configured
 startup profile for its group but is never selected by source or key evaluation.
 
 **Event action** observes a completed renderer/display event. It may run a
@@ -135,14 +133,12 @@ the executable.
 
 ```ini
 [general]
-# Optional. Omitted means the latest supported unified schema (currently 2).
-# config_version=2
 # Default for every profile group; an individual group may override it.
-persist_profile_selection=true
-switch_refresh_rate=true
-event_action_delay_seconds=5
-output_diagnostics=OFF
-diagnostic_disable_shader_cache=OFF
+persist_profile_selection: true
+switch_refresh_rate: true
+event_action_delay_seconds: 5
+output_diagnostics: OFF
+diagnostic_disable_shader_cache: OFF
 ```
 
 The four built-in groups have a fixed order: `input`, `scaling`, `display`,
@@ -155,56 +151,56 @@ mode.
 
 ```ini
 [profile_groups.input]
-profiles=sdr,pq_hdr,hlg_hdr,lldv_like
-default=auto
+profiles: sdr,pq_hdr,hlg_hdr,lldv_like
+default: auto
 # A group-level key condition returns this group to automatic selection.
-when=$key=="Ctrl+F4"
+when: $key=="Ctrl+F4"
 
 [profile_groups.scaling]
-profiles=sd_hd,mid,uhd_native
-default=auto
-when=$key=="Ctrl+F5"
+profiles: sd_hd,mid,uhd_native
+default: auto
+when: $key=="Ctrl+F5"
 
 [profile_groups.display]
-profiles=rec709_projector,bt2020_projector
-default=rec709_projector
-persist_profile_selection=true
+profiles: rec709_projector,bt2020_projector
+default: rec709_projector
+persist_profile_selection: true
 
 [profile_groups.viewport]
-profiles=normal,scope
-default=normal
-persist_profile_selection=true
+profiles: normal,scope
+default: normal
+persist_profile_selection: true
 ```
 
 An automatic group with no matching profile contributes no group override;
 `[display]` remains in effect for that group. If persistence is enabled, a
 manual selection persists across source changes and restarts until another
-key-selected profile or that group's `when=` condition is invoked. If
+key-selected profile or that group's `when:` condition is invoked. If
 persistence is disabled, manual selection lasts only for the current process.
 Removed or invalid persisted profiles fall back to the configured startup
 selection and emit one diagnostic. The global default is `true`; every group
-may explicitly set `persist_profile_selection=false` when it should always
+may explicitly set `persist_profile_selection: false` when it should always
 start from its configured default.
 
 Selection precedence at startup is deterministic:
 
 1. a valid persisted manual profile, when persistence is enabled;
 2. the group's configured `default`;
-3. no override if `default=auto` and no automatic profile matches.
+3. no override if `default: auto` and no automatic profile matches.
 
-The state file is versioned and stores only committed manual group selections:
+The state file is deliberately unversioned and stores only committed manual
+group selections:
 
 ```ini
-state_version=2
-screen_profile=scope
-profile.display=rec709_projector
-profile.viewport=scope
+screen_profile: scope
+profile.display: rec709_projector
+profile.viewport: scope
 ```
 
 Session-only and automatic selections are not stored. For the default
 `VideoProcessorRenderer.cfg`, VP continues using
 `VideoProcessorRenderer.state` and preserves/writes the compatible
-`screen_profile=` mirror so returning to a legacy build does not lose viewport
+`screen_profile:` mirror so returning to a legacy build does not lose viewport
 state. An explicit `/vr_config X.cfg` uses a sibling `X.state`; for example,
 `VideoProcessorRenderer.vp0028-test.cfg` uses
 `VideoProcessorRenderer.vp0028-test.state`. This isolates side-by-side tests
@@ -217,31 +213,31 @@ a failed rebuild leaves the prior active and persisted selection unchanged.
 ## Profile syntax and ownership
 
 Profiles use `[profiles.<group>.<name>]`. The built-in group order and each
-group's explicit `profiles=` list make selection independent of file-section
+group's explicit `profiles:` list make selection independent of file-section
 ordering.
 
 ```ini
 [profiles.input.pq_hdr]
-when=$transfer==PQ
-priority=100
-tone_mapping=spline
-gamut_mapping=perceptual
-peak_detection=high_quality
-contrast_recovery=0.25
+when: $transfer==PQ
+priority: 100
+tone_mapping: spline
+gamut_mapping: perceptual
+peak_detection: high_quality
+contrast_recovery: 0.25
 
 [profiles.display.rec709_projector]
 # This is a manual display selection, not an impossible source condition.
-when=$key=="F5"
-sdr_target_primaries=REC709
-sdr_target_nits=100
-sdr_black_nits=0
-output_range=FULL
-output_gamma=AUTO
-lut=lut\Projector-Rec709.cube
-lut_reference_primaries=REC709
-lut_reference_transfer=BT1886
-lut_reference_range=FULL
-lut_reference_nits=100
+when: $key=="F5"
+sdr_target_primaries: REC709
+sdr_target_nits: 100
+sdr_black_nits: 0
+output_range: FULL
+output_gamma: AUTO
+lut: lut\Projector-Rec709.cube
+lut_reference_primaries: REC709
+lut_reference_transfer: BT1886
+lut_reference_range: FULL
+lut_reference_nits: 100
 ```
 
 Only these settings are valid in each group:
@@ -253,16 +249,15 @@ Only these settings are valid in each group:
 | `display` | target primaries/nits/black, output presentation/range/gamma, display signaling, LUT and LUT reference contract |
 | `viewport` | normal/scope selection, scope aspect, subtitle-fit settings and viewport geometry |
 
-### Version 2 structural schema
+### Structural schema
 
 Names are case-insensitive and canonicalized to lower case. Group/profile/action
 identifiers must match `[A-Za-z][A-Za-z0-9_-]{0,63}`. `auto`, `base`, `none`,
-and `default` are reserved identifiers. Version 2 supports exactly the four
+and `default` are reserved identifiers. The unified model supports exactly the four
 groups `input,scaling,display,viewport` in that order.
 
 | Section/key | Type and default | Requirement |
 | --- | --- | --- |
-| `[general] config_version` | integer, optional | omitted means latest supported unified schema (currently `2`); explicit value must be supported |
 | `persist_profile_selection` | Boolean, default `true` | global group default |
 | `switch_refresh_rate` | Boolean, default `true` | session policy |
 | `event_action_delay_seconds` | whole seconds `0..30`, default `5` | inherited by actions |
@@ -282,11 +277,11 @@ groups `input,scaling,display,viewport` in that order.
 | action `delay_seconds` | whole seconds `0..30`, optional | overrides general delay |
 
 A group is **automatic-capable** when at least one listed profile has a
-key-independent source branch in its AST—an expression that may evaluate true
-with `$key=NONE`. Only automatic-capable groups may use `default=auto` or a
+key-independent source branch in its ASTâ€”an expression that may evaluate true
+with `$key=NONE`. Only automatic-capable groups may use `default: auto` or a
 group reset condition.
 
-### Version 2 renderer-setting schema
+### Renderer-setting schema
 
 `AUTO` means renderer policy selection; `DEFAULT` means VP's named curated
 preset. Text values are case-insensitive. Numeric bounds are inclusive except
@@ -381,7 +376,7 @@ renderer.
 
 ## Source conditions
 
-Automatic `when=` expressions may use only stable source facts. Names and text
+Automatic `when:` expressions may use only stable source facts. Names and text
 values are case-insensitive. Existing Boolean and comparison operators remain:
 `==`, `!=`, `<`, `<=`, `>`, `>=`, `&&`, `||`, `!`, and parentheses. Every
 comparison names its variable explicitly; the legacy single-`|` value shorthand
@@ -412,7 +407,7 @@ bad metadata must not rebuild the renderer repeatedly.
 
 Do not use filename, title, codec, bitrate, container, or media-library data:
 the streaming capture path may not have it, and it is not a reliable image
-processing signal. Do not use output refresh in `when=`; it is the result of
+processing signal. Do not use output refresh in `when:`; it is the result of
 profile selection and display switching.
 
 ## Key conditions and persistence
@@ -437,30 +432,30 @@ These are application-local Windows accelerators, preserving existing VP
 behavior; they are not system-wide `RegisterHotKey` bindings. They are active
 only while VP's main UI thread is processing keyboard messages for the active
 VP window. They do not fire while another application has focus. Dialog/control
-message routing must preserve existing F2–F6 behavior. VP emits at most one
+message routing must preserve existing F2â€“F6 behavior. VP emits at most one
 selection request per physical key press and ignores repeat-generated command
 messages until the matching key-up is observed.
 
 ```ini
 [profiles.display.rec709_projector]
-when=$key=="F5"
+when: $key=="F5"
 
 [profiles.display.bt2020_projector]
-when=$key=="F6"
+when: $key=="F6"
 
 [profiles.viewport.normal]
-when=$key=="F2"
+when: $key=="F2"
 
 [profiles.viewport.scope]
-when=$key=="F3"
+when: $key=="F3"
 
 # Either a PQ stream automatically selects this input profile, or Ctrl+F7
 # manually selects it and makes it persistent according to group policy.
 [profiles.input.pq_hdr]
-when=$transfer==PQ || $key=="Ctrl+F7"
+when: $transfer==PQ || $key=="Ctrl+F7"
 ```
 
-`when=` in `[profile_groups.<name>]` is evaluated for key events only and must
+`when:` in `[profile_groups.<name>]` is evaluated for key events only and must
 contain only `$key` equality joined by `||`. When it matches, it returns that
 one group to automatic selection. A key selection always directly selects its
 target and never toggles. One canonical chord may select one profile in each
@@ -477,9 +472,9 @@ section:
 
 | Released configuration | Proposed equivalent |
 | --- | --- |
-| `shortcut=F5` in `[display_rules.rec709]` | `when=$key=="F5"` in `[profiles.display.rec709_projector]` |
-| `screen_profile_scope=F3` in `[shortcuts]` | `when=$key=="F3"` in `[profiles.viewport.scope]` |
-| `display_rules_auto=F4` in `[shortcuts]` | `when=$key=="F4"` in the appropriate `[profile_groups.<name>]` section |
+| `shortcut=F5` in `[display_rules.rec709]` | `when: $key=="F5"` in `[profiles.display.rec709_projector]` |
+| `screen_profile_scope=F3` in `[shortcuts]` | `when: $key=="F3"` in `[profiles.viewport.scope]` |
+| `display_rules_auto=F4` in `[shortcuts]` | `when: $key=="F4"` in the appropriate `[profile_groups.<name>]` section |
 
 ## Refresh-transition event actions
 
@@ -489,27 +484,27 @@ frame.
 
 ```ini
 [event_actions]
-actions=audio_delay_24,audio_delay_60,restore_audio
+actions: audio_delay_24,audio_delay_60,restore_audio
 
 [event_actions.audio_delay_24]
-on=refresh.applied,refresh.confirmed
-when=$actual_refresh==23.976 || $actual_refresh==24
-program=C:\Videoprocessor\audio\audio_delay.bat
-arguments=315
+on: refresh.applied,refresh.confirmed
+when: $actual_refresh==23.976 || $actual_refresh==24
+program: C:\Videoprocessor\audio\audio_delay.bat
+arguments: 315
 
 [event_actions.audio_delay_60]
-on=refresh.applied,refresh.confirmed
-when=$actual_refresh==50 || $actual_refresh==59.94 || $actual_refresh==60
-delay_seconds=5
-program=C:\Videoprocessor\audio\audio_delay.bat
-arguments=285
+on: refresh.applied,refresh.confirmed
+when: $actual_refresh==50 || $actual_refresh==59.94 || $actual_refresh==60
+delay_seconds: 5
+program: C:\Videoprocessor\audio\audio_delay.bat
+arguments: 285
 
 [event_actions.restore_audio]
-on=refresh.restored
-when=$actual_refresh==60
-delay_seconds=0
-program=C:\Videoprocessor\audio\audio_delay.bat
-arguments=0
+on: refresh.restored
+when: $actual_refresh==60
+delay_seconds: 0
+program: C:\Videoprocessor\audio\audio_delay.bat
+arguments: 0
 ```
 
 Supported events are:
@@ -540,8 +535,8 @@ integers or direct binary floating-point equality. `$requested_refresh` and
 `$previous_refresh` are diagnostic event facts and may be added later; they are
 not required for the initial syntax.
 
-`program=` is a required trusted local path. `arguments=` is an optional literal
-argument string and `working_directory=` optionally selects an existing
+`program:` is a required trusted local path. `arguments:` is an optional literal
+argument string and `working_directory:` optionally selects an existing
 directory; its default is the renderer configuration directory. VP performs no
 source-variable substitution and no environment-variable expansion of its own.
 An `.exe` is launched directly with Windows process creation. A `.bat` or
@@ -556,16 +551,16 @@ legacy-only.
 
 Configuration text is UTF-8 and process paths/arguments are converted to
 Unicode for `CreateProcessW`. Due actions are launched in the order listed by
-`[event_actions] actions=`; the scheduler does not wait for one child before
+`[event_actions] actions:`; the scheduler does not wait for one child before
 starting the next. A background watcher may log exit status, but VP does not
 terminate child processes on timeout and child lifetime is independent after
 launch. With
-`switch_refresh_rate=false`, VP performs no refresh transaction and emits no
+`switch_refresh_rate: false`, VP performs no refresh transaction and emits no
 `refresh.applied`, `refresh.confirmed`, or `refresh.restored` event.
 
 ## Operational diagnostics
 
-At startup VP logs the configuration mode, source file, schema version, groups,
+At startup VP logs the configuration mode, source file, groups,
 profiles, canonical key bindings, persistence policy, and legacy compatibility
 status. On every source or key evaluation it logs one compact effective
 selection:
@@ -629,13 +624,12 @@ validated range/preset, group owner, apply class, diagnostics, and tests.
 
 ## Migration and review boundary
 
-The presence of any unified marker—an explicit `config_version`,
-`[profile_groups.<name>]`, `[profiles.*]`, or `[event_actions]`—selects strict
-unified mode. In that mode an omitted `config_version` means the latest schema
-supported by that VP build (currently 2); an explicit version must be supported
-or startup fails with an upgrade diagnostic. A file with no unified marker uses
-the released legacy parser and behavior. The two modes have separate typed
-adapters and do not feed half-translated records into one another.
+The presence of any unified markerâ€”`[general]`,
+`[profile_groups.<name>]`, `[profiles.*]`, or `[event_actions]`â€”selects strict
+unified mode. A file with no unified marker uses the released legacy parser and
+behavior. The two modes have separate typed adapters and do not feed
+half-translated records into one another. Configuration assignments use
+`key: value`; legacy `key=value` files remain readable.
 
 In unified mode, `[display_rules]`, rule `shortcut=`, `[shortcuts]`, and
 `[refresh_rate_commands]` are startup errors with migration guidance. In legacy
@@ -657,12 +651,12 @@ unified group owner:
 - `[refresh_rate_commands]` becomes explicitly named event actions.
 
 A legacy display rule that changes settings owned by multiple groups cannot be
-mechanically converted without changing its one-key semantics. Version 2 does
-not add a coordinated multi-group preset. Those configurations require
+mechanically converted without changing its one-key semantics. The unified
+model does not add a coordinated multi-group preset. Those configurations require
 operator redesign into independent selections or remain in legacy mode during
 the compatibility period.
 
-An event action without `delay_seconds=` inherits
+An event action without `delay_seconds:` inherits
 `[general] event_action_delay_seconds`; a per-action value overrides it.
 
 Legacy configuration is never rewritten automatically. A migration utility, if
@@ -680,7 +674,7 @@ side-by-side runtime testing:
 | Resolution | no match, priority, specificity, declared-order tie, equivalent-settings fingerprint |
 | Keys | canonicalization, source/key `&&` and `||`, cross-group composite chords, same-group conflicts, group reset, auto-repeat/no-op |
 | State | global/group policy, valid/stale entries, legacy viewport import, atomic write, failed-apply rollback |
-| Transitions | automatic→automatic, automatic→manual, manual→manual, manual→automatic independently per group |
+| Transitions | automaticâ†’automatic, automaticâ†’manual, manualâ†’manual, manualâ†’automatic independently per group |
 | Viewport | dynamic normal/scope application, persistence, coexistence with display/input selections |
 | Events | applied/confirmed/restored, exact rational families, delay inheritance, dedupe, cancellation, teardown |
 | Compatibility | unchanged legacy behavior, strict mixed-mode rejection, side-by-side migration |
