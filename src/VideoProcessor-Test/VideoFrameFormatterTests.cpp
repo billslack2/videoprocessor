@@ -176,6 +176,22 @@ namespace Tests
 			Assert::IsTrue(error.find("supports only = and !=") != std::string::npos);
 			Assert::IsFalse(DisplayRuleExpression::Validate("$unknown == value", error));
 			Assert::IsTrue(error.find("unknown variable") != std::string::npos);
+
+			DisplayRuleExpression::Expression compiled;
+			Assert::IsTrue(compiled.Compile(
+				"$cadence==24000/1001 || $key==\"Ctrl+F5\"", error, true));
+			Assert::AreEqual(static_cast<size_t>(1), compiled.KeyChords().size());
+			Assert::AreEqual("ctrl+f5",
+				ConfigFile::NormalizeName(compiled.KeyChords().front()).c_str());
+			Assert::IsTrue(compiled.Matches(
+				[](const std::string& name, std::string& value)
+				{
+					if (name == "cadence") { value = "23.976"; return true; }
+					if (name == "key") { value = "none"; return true; }
+					return false;
+				}, specificity, error));
+			Assert::IsFalse(compiled.Compile("$key==F5", error, true));
+			Assert::IsFalse(compiled.Compile("$transfer==PQ|HLG", error, true));
 		}
 
 		TEST_METHOD(RendererProfileConfigRejectsIncompleteUnifiedConfiguration)
@@ -209,7 +225,7 @@ namespace Tests
 				for (const char* group : { "input", "scaling", "display", "viewport" })
 				{
 					file << "[profile_groups." << group << "]\nprofiles=base\ndefault=auto\n";
-					file << "[profiles." << group << ".base]\nwhen=$key==F5\npriority=10\n";
+					file << "[profiles." << group << ".base]\nwhen=$key==\"F5\"\npriority=10\n";
 				}
 			}
 
@@ -241,6 +257,8 @@ namespace Tests
 				profile.group = groupName;
 				profile.name = "selected";
 				profile.when = "$key==\"F5\"";
+				std::string compileError;
+				Assert::IsTrue(profile.whenExpression.Compile(profile.when, compileError, true));
 				model.profiles.emplace(std::string(groupName) + ".selected", profile);
 			}
 			std::vector<RendererProfileConfig::KeySelection> selections;
@@ -267,6 +285,8 @@ namespace Tests
 				profile.group = "display";
 				profile.name = definition.first;
 				profile.when = definition.second;
+				std::string compileError;
+				Assert::IsTrue(profile.whenExpression.Compile(profile.when, compileError, true));
 				model.profiles.emplace("display." + profile.name, profile);
 			}
 			std::vector<RendererProfileConfig::KeySelection> selections;
@@ -286,6 +306,8 @@ namespace Tests
 			group.name = "display";
 			group.profiles = { "rec709", "bt2020" };
 			group.resetWhen = "$key==\"F4\"";
+			std::string resetCompileError;
+			Assert::IsTrue(group.resetExpression.Compile(group.resetWhen, resetCompileError, true));
 			model.groups.push_back(group);
 			for (const auto& definition : std::vector<std::pair<std::string, std::string>>
 				{ { "rec709", "$key==\"F5\"" }, { "bt2020", "$key==\"F6\"" } })
@@ -294,6 +316,8 @@ namespace Tests
 				profile.group = group.name;
 				profile.name = definition.first;
 				profile.when = definition.second;
+				std::string compileError;
+				Assert::IsTrue(profile.whenExpression.Compile(profile.when, compileError, true));
 				model.profiles.emplace(group.name + "." + profile.name, profile);
 			}
 
@@ -387,6 +411,8 @@ namespace Tests
 				profile.group = "input";
 				profile.name = definition.first;
 				profile.when = definition.second;
+				std::string compileError;
+				Assert::IsTrue(profile.whenExpression.Compile(profile.when, compileError, true));
 				profile.priority = 100;
 				model.profiles.emplace("input." + profile.name, profile);
 			}
