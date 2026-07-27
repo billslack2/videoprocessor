@@ -14,10 +14,10 @@
 </head>
 <body>
   <h1>VideoProcessor built-in renderer configuration</h1>
-  <p><code>VideoProcessorRenderer.cfg</code> contains settings for the experimental built-in libplacebo renderer. It is searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
+  <p><code>VideoProcessorRenderer.cfg</code> contains settings for the experimental built-in libplacebo renderer. It is searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and canonical <code>key: value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored. Existing <code>key=value</code> files remain readable.</p>
   <p>Renderer selection and application-wide capture, timing, and queue options remain in <code>VideoProcessor.cfg</code>. For example, select the built-in renderer there with:</p>
   <pre>[command_line]
-renderer=libplacebo</pre>
+renderer: libplacebo</pre>
   <p>Application-wide settings and shader rules remain in <code>VideoProcessor.cfg</code>. See <a href="CONFIGURATION.html">VideoProcessor configuration</a> for those settings.</p>
 
   <h2>Optional renderer installation</h2>
@@ -57,36 +57,36 @@ libplacebo\
     <tr><td><code>lut_reference_nits</code></td><td><code>AUTO</code> or <code>40</code> through <code>500</code></td><td>Reference white/peak level used to author the LUT. <code>AUTO</code> resolves to <code>sdr_target_nits</code>.</td></tr>
   </tbody></table>
   <pre>[display]
-sdr_target_nits=203
-sdr_black_nits=AUTO
-switch_refresh_rate=true
-quality=high
-tone_mapping=AUTO
-gamut_mapping=AUTO
-peak_detection=AUTO
-contrast_recovery=AUTO
-upscaler=AUTO
-downscaler=AUTO
-deband=AUTO
-dithering=AUTO
-output_range=AUTO
-output_gamma=AUTO
-scope_screen_aspect=2.35:1
-scope_subtitle_fit=true
-default_screen_profile=normal</pre>
+sdr_target_nits: 203
+sdr_black_nits: AUTO
+switch_refresh_rate: true
+quality: high
+tone_mapping: AUTO
+gamut_mapping: AUTO
+peak_detection: AUTO
+contrast_recovery: AUTO
+upscaler: AUTO
+downscaler: AUTO
+deband: AUTO
+dithering: AUTO
+output_range: AUTO
+output_gamma: AUTO
+scope_screen_aspect: 2.35:1
+scope_subtitle_fit: true
+default_screen_profile: normal</pre>
   <p>Set <code>lut</code> in the base display section for every display profile, or set it in a selected <code>[display_rules.name]</code> section for a profile-specific calibration. LUTs are parsed once when that renderer profile starts. The Ctrl+I display shows <code>LUT: Active</code>, <code>Disabled</code>, or a short <code>Rejected</code> reason. Rejected files and target-contract mismatches retain ordinary no-LUT playback.</p>
   <pre>[display_rules.bt2020]
-lut=lut\bt2020-calibration.cube
-lut_reference_primaries=bt2020
-lut_reference_transfer=sRGB
-lut_reference_range=full
-lut_reference_nits=100</pre>
+lut: lut\bt2020-calibration.cube
+lut_reference_primaries: bt2020
+lut_reference_transfer: sRGB
+lut_reference_range: full
+lut_reference_nits: 100</pre>
   <h2>[shortcuts]</h2>
   <p>These renderer-profile shortcuts belong in <code>VideoProcessorRenderer.cfg</code>. <code>screen_profile_normal</code> selects the 16:9 target and <code>screen_profile_scope</code> selects the configured scope target. The alpha renderer uses this as its output viewport. The madVR NLS path uses it as the live target for aspect validation and warp direction; it does not select an NLS shader rule by itself. Direct selection keeps VP aligned with projector lens-memory or screen-masking commands. Function keys <code>F1</code> through <code>F24</code>, letters, numbers, <code>Escape</code>, and <code>Enter</code> are supported with optional <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code> modifiers.</p>
   <pre>[shortcuts]
 # F2 chooses Scope (2.35:1); F3 restores Normal (16:9).
-screen_profile_normal=F3
-screen_profile_scope=F2</pre>
+screen_profile_normal: F3
+screen_profile_scope: F2</pre>
   <div class="note">The renderer supports V210, UYVY, ARGB, BGRA, R10b, R10l, and R12L capture formats through VP's P010 conversion path. It does not emit HDR or require Windows HDR mode.</div>
 
 </body>

@@ -220,15 +220,21 @@ bool ConfigFile::Load(const std::string& filename)
 			continue;
 		}
 
+		const size_t colonPos = line.find(':');
 		const size_t equalPos = line.find('=');
-		if (equalPos == std::string::npos)
+		const size_t separatorPos =
+			colonPos == std::string::npos ? equalPos :
+			(equalPos == std::string::npos ? colonPos :
+				std::min(colonPos, equalPos));
+		if (separatorPos == std::string::npos)
 		{
-			m_warnings.push_back("Line " + std::to_string(lineNumber) + ": expected key=value");
+			m_warnings.push_back(
+				"Line " + std::to_string(lineNumber) + ": expected key: value");
 			continue;
 		}
 
-		const std::string key = NormalizeName(line.substr(0, equalPos));
-		const std::string value = Trim(line.substr(equalPos + 1));
+		const std::string key = NormalizeName(line.substr(0, separatorPos));
+		const std::string value = Trim(line.substr(separatorPos + 1));
 		if (currentSection.empty())
 		{
 			m_warnings.push_back("Line " + std::to_string(lineNumber) + ": key outside a section");

@@ -578,22 +578,21 @@ namespace
 		const std::string path = UnifiedStatePath(config);
 		std::ifstream input(path);
 		if (!input.is_open()) return result;
-		bool versionValid = false;
 		std::string legacyScreenProfile;
 		std::string line;
 		while (std::getline(input, line))
 		{
 			line = ConfigFile::Trim(line);
 			if (line.empty() || line.front() == '#' || line.front() == ';') continue;
+			const size_t colon = line.find(':');
 			const size_t equals = line.find('=');
-			if (equals == std::string::npos) continue;
-			const std::string key = ConfigFile::NormalizeName(line.substr(0, equals));
-			const std::string value = ConfigFile::NormalizeName(line.substr(equals + 1));
-			if (key == "state_version")
-			{
-				versionValid = value == "2";
-				continue;
-			}
+			const size_t separator = colon == std::string::npos ? equals :
+				(equals == std::string::npos ? colon : std::min(colon, equals));
+			if (separator == std::string::npos) continue;
+			const std::string key =
+				ConfigFile::NormalizeName(line.substr(0, separator));
+			const std::string value =
+				ConfigFile::NormalizeName(line.substr(separator + 1));
 			if (key == "screen_profile" && (value == "normal" || value == "scope"))
 			{
 				legacyScreenProfile = value;
@@ -609,25 +608,21 @@ namespace
 					break;
 				}
 		}
-		if (!versionValid)
+		// Import the legacy viewport key when no named viewport selection is
+		// present. State is intentionally unversioned and uses stable names.
+		if (result.find("viewport") == result.end() &&
+			path == RendererStatePath() && !legacyScreenProfile.empty())
 		{
-			result.clear();
-			// Import the one legacy value for the default state path. The next
-			// successful build upgrades it atomically to state_version=2.
-			if (path == RendererStatePath() && !legacyScreenProfile.empty())
-				for (const RendererProfileConfig::Group& group : model.groups)
-					if (group.name == "viewport" && group.persistSelection &&
-						std::find(group.profiles.begin(), group.profiles.end(),
-							legacyScreenProfile) != group.profiles.end())
-					{
-						result["viewport"] = legacyScreenProfile;
-						break;
-					}
-			if (result.empty())
-				DebugLog::Log("unified profile state %s has no supported state_version=2; ignoring it",
-					path.c_str());
+			for (const RendererProfileConfig::Group& group : model.groups)
+				if (group.name == "viewport" && group.persistSelection &&
+					std::find(group.profiles.begin(), group.profiles.end(),
+						legacyScreenProfile) != group.profiles.end())
+				{
+					result["viewport"] = legacyScreenProfile;
+					break;
+				}
 		}
-		else if (!result.empty())
+		if (!result.empty())
 			DebugLog::Log("restored %u unified manual profile selection(s) from %s",
 				static_cast<unsigned int>(result.size()), path.c_str());
 		return result;
@@ -641,18 +636,18 @@ namespace
 		const std::string temporaryPath = path + ".tmp";
 		std::ofstream output(temporaryPath, std::ios::out | std::ios::trunc);
 		if (!output.is_open()) return false;
-		output << "# Managed by VideoProcessor.\nstate_version=2\n";
+		output << "# Managed by VideoProcessor.\n";
 		const bool defaultStatePath = path == RendererStatePath();
 		const auto viewport = selections.find("viewport");
 		if (defaultStatePath && viewport != selections.end() &&
 			(viewport->second == "normal" || viewport->second == "scope"))
-			output << "screen_profile=" << viewport->second << "\n";
+			output << "screen_profile: " << viewport->second << "\n";
 		for (const RendererProfileConfig::Group& group : model.groups)
 		{
 			if (!group.persistSelection) continue;
 			const auto selected = selections.find(group.name);
 			if (selected != selections.end())
-				output << "profile." << group.name << "=" << selected->second << "\n";
+				output << "profile." << group.name << ": " << selected->second << "\n";
 		}
 		output.close();
 		if (!output)

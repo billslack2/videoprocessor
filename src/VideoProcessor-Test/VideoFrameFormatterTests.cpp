@@ -201,8 +201,8 @@ namespace Tests
 			const std::string path = std::string(temporaryDirectory) + "VideoProcessor-vp0028-incomplete.cfg";
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
-				file << "[general]\nconfig_version=2\n";
-				file << "[profile_groups.input]\nprofiles=sdr\ndefault=auto\n";
+				file << "[general]\n";
+				file << "[profile_groups.input]\nprofiles: sdr\ndefault: auto\n";
 			}
 
 			ConfigFile config;
@@ -214,6 +214,27 @@ namespace Tests
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(RendererProfileConfigRejectsConfigurationVersionKeys)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0028-version.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nconfig_version: 2\n";
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("unknown key 'config_version'") !=
+				std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(RendererProfileConfigReadsOrderedIndependentGroups)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
@@ -221,11 +242,11 @@ namespace Tests
 			const std::string path = std::string(temporaryDirectory) + "VideoProcessor-vp0028-model.cfg";
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
-				file << "[general]\nconfig_version=2\npersist_profile_selection=false\n";
+				file << "[general]\npersist_profile_selection: false\n";
 				for (const char* group : { "input", "scaling", "display", "viewport" })
 				{
-					file << "[profile_groups." << group << "]\nprofiles=base\ndefault=auto\n";
-					file << "[profiles." << group << ".base]\nwhen=$key==\"F5\"\npriority=10\n";
+					file << "[profile_groups." << group << "]\nprofiles: base\ndefault: auto\n";
+					file << "[profiles." << group << ".base]\nwhen: $key==\"F5\"\npriority: 10\n";
 				}
 			}
 
@@ -360,12 +381,12 @@ namespace Tests
 			const std::string path = std::string(temporaryDirectory) + "VideoProcessor-vp0028-owner.cfg";
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
-				file << "[general]\nconfig_version=2\n";
+				file << "[general]\n";
 				for (const char* group : { "input", "scaling", "display", "viewport" })
 				{
-					file << "[profile_groups." << group << "]\nprofiles=base\ndefault=base\n";
+					file << "[profile_groups." << group << "]\nprofiles: base\ndefault: base\n";
 					file << "[profiles." << group << ".base]\n";
-					if (std::string(group) == "input") file << "mode=scope\n";
+					if (std::string(group) == "input") file << "mode: scope\n";
 				}
 			}
 			ConfigFile config;
@@ -384,7 +405,7 @@ namespace Tests
 			const std::string path = std::string(temporaryDirectory) + "VideoProcessor-vp0028-mixed.cfg";
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
-				file << "[general]\nconfig_version=2\n[display_rules]\nrules=old\n";
+				file << "[general]\n[display_rules]\nrules: old\n";
 			}
 			ConfigFile config;
 			Assert::IsTrue(config.Load(path));
