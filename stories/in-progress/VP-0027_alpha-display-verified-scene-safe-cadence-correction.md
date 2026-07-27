@@ -135,6 +135,11 @@ Depends on accepted VP-0024, VP-0025, and VP-0026.
   and 2 ppm direction-reversal hysteresis. A ±20 ppm alternating-noise
   regression test confirms the advertised direction cannot flap; 79/79 tests
   pass.
+- Source commit `c56a81e` separates Alpha's telemetry lifecycle from madVR's
+  display-sampler status in the OSD. It now reports waiting DXGI evidence,
+  measuring the 600-sample DXGI rate, matched rates, forecasting, or verifying,
+  and relabels the advisory row from `Plan` to `Forecast`. The suite passes
+  80/80.
 - Seven policy tests cover invalid evidence, incompatible rates, full drop and
   repeat gating, queue disagreement, generation replacement, and exact
   one-frame verification. Together with the added telemetry gap test, the
