@@ -2,36 +2,29 @@
 
 #include "ConfigFile.h"
 
-#include <cctype>
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <functional>
+#include <memory>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
 
-// Small, deliberately restricted expression language for display rules. It is
-// shared by startup validation and runtime selection so a rule cannot validate
-// successfully and then be interpreted differently by the renderer.
+// A small reusable expression AST shared by startup validation, source
+// selection, key discovery, key evaluation, and completed-event matching.
 namespace DisplayRuleExpression
 {
-	enum class ValueType
-	{
-		Text,
-		Number,
-		Boolean
-	};
-
+	enum class ValueType { Text, Number, Boolean };
 	using ValueLookup = std::function<bool(const std::string& name, std::string& value)>;
 
 	inline bool GetVariableType(const std::string& name, ValueType& type)
 	{
-		// Keep rule conditions independent of their source.  `$key` is empty
-		// during ordinary source evaluation and contains the canonical shortcut
-		// chord only while processing a configured shortcut.
 		if (name == "eotf" || name == "transfer" || name == "colorspace" ||
 			name == "primaries" || name == "format" || name == "resolution" ||
-			name == "range" || name == "scan" || name == "key")
+			name == "range" || name == "scan" || name == "key" ||
+			name == "event")
 		{
 			type = ValueType::Text;
 			return true;
@@ -41,7 +34,8 @@ namespace DisplayRuleExpression
 			type = ValueType::Boolean;
 			return true;
 		}
-		if (name == "source_rate" || name == "width" || name == "height" ||
+		if (name == "source_rate" || name == "cadence" ||
+			name == "width" || name == "height" ||
 			name == "actual_refresh" || name == "requested_refresh" ||
 			name == "previous_refresh")
 		{
@@ -55,14 +49,22 @@ namespace DisplayRuleExpression
 	{
 		try
 		{
+			const size_t slash = text.find('/');
+			if (slash != std::string::npos)
+			{
+				double numerator = 0.0, denominator = 0.0;
+				if (slash == 0 || slash + 1 >= text.size() ||
+					!ParseNumber(text.substr(0, slash), numerator) ||
+					!ParseNumber(text.substr(slash + 1), denominator) ||
+					denominator == 0.0) return false;
+				value = numerator / denominator;
+				return std::isfinite(value);
+			}
 			size_t consumed = 0;
 			value = std::stod(text, &consumed);
 			return consumed == text.size() && std::isfinite(value);
 		}
-		catch (const std::exception&)
-		{
-			return false;
-		}
+		catch (const std::exception&) { return false; }
 	}
 
 	inline bool ParseNumberOrRange(const std::string& text, double& minimum, double& maximum)
@@ -78,255 +80,56 @@ namespace DisplayRuleExpression
 			ParseNumber(text.substr(separator + 1), maximum) && minimum <= maximum;
 	}
 
-	class Parser
+	enum class Operation { Equal, NotEqual, Less, LessEqual, Greater, GreaterEqual };
+
+	struct Node
 	{
-	public:
-		Parser(const std::string& expression, const ValueLookup* lookup)
-			: m_expression(expression), m_lookup(lookup)
-		{
-			Next();
-		}
+		enum class Kind { Comparison, Not, And, Or };
+		Kind kind = Kind::Comparison;
+		std::shared_ptr<const Node> left;
+		std::shared_ptr<const Node> right;
+		std::string variable;
+		ValueType type = ValueType::Text;
+		Operation operation = Operation::Equal;
+		std::vector<std::string> expected;
 
-		bool Parse(bool& value, int& specificity, std::string& error)
+		bool Evaluate(const ValueLookup& lookup, bool& value, int& specificity) const
 		{
-			if (m_current.kind == TokenKind::End)
-				return Fail("expression is empty", error);
-			if (!ParseOr(value, specificity, error))
-				return false;
-			if (m_current.kind != TokenKind::End)
-				return Fail("unexpected token '" + m_current.text + "'", error);
-			return true;
-		}
-
-	private:
-		enum class TokenKind
-		{
-			End, Word, LParen, RParen, And, Or, Not, Equal, NotEqual,
-			Less, LessEqual, Greater, GreaterEqual, Alternative
-		};
-
-		struct Token
-		{
-			TokenKind kind = TokenKind::End;
-			std::string text;
-		};
-
-		const std::string& m_expression;
-		const ValueLookup* m_lookup = nullptr;
-		size_t m_position = 0;
-		Token m_current;
-
-		bool Fail(const std::string& message, std::string& error) const
-		{
-			error = "display rule '" + m_expression + "': " + message;
-			return false;
-		}
-
-		void Next()
-		{
-			while (m_position < m_expression.size() &&
-				std::isspace(static_cast<unsigned char>(m_expression[m_position])))
-				++m_position;
-			if (m_position >= m_expression.size())
+			if (kind == Kind::Not)
 			{
-				m_current = {};
-				return;
-			}
-
-			const char c = m_expression[m_position];
-			auto two = [&](char first, char second, TokenKind kind)
-			{
-				if (c == first && m_position + 1 < m_expression.size() &&
-					m_expression[m_position + 1] == second)
-				{
-					m_current = { kind, std::string() + first + second };
-					m_position += 2;
-					return true;
-				}
-				return false;
-			};
-			if (two('&', '&', TokenKind::And) || two('|', '|', TokenKind::Or) ||
-				two('=', '=', TokenKind::Equal) ||
-				two('!', '=', TokenKind::NotEqual) || two('<', '=', TokenKind::LessEqual) ||
-				two('>', '=', TokenKind::GreaterEqual))
-				return;
-
-			switch (c)
-			{
-			case '(': m_current = { TokenKind::LParen, "(" }; ++m_position; return;
-			case ')': m_current = { TokenKind::RParen, ")" }; ++m_position; return;
-			case '!': m_current = { TokenKind::Not, "!" }; ++m_position; return;
-			case '=': m_current = { TokenKind::Equal, "=" }; ++m_position; return;
-			case '<': m_current = { TokenKind::Less, "<" }; ++m_position; return;
-			case '>': m_current = { TokenKind::Greater, ">" }; ++m_position; return;
-			case '|': m_current = { TokenKind::Alternative, "|" }; ++m_position; return;
-			case '\'':
-			case '"':
-			{
-				const char quote = c;
-				++m_position;
-				const size_t start = m_position;
-				while (m_position < m_expression.size() && m_expression[m_position] != quote)
-					++m_position;
-				m_current = { TokenKind::Word, m_expression.substr(start, m_position - start) };
-				if (m_position < m_expression.size()) ++m_position;
-				return;
-			}
-			default:
-				break;
-			}
-
-			const size_t start = m_position;
-			while (m_position < m_expression.size())
-			{
-				const char next = m_expression[m_position];
-				if (std::isspace(static_cast<unsigned char>(next)) || next == '(' || next == ')' ||
-					next == '!' || next == '=' || next == '<' || next == '>' || next == '&' ||
-					next == '|')
-					break;
-				++m_position;
-			}
-			m_current = { TokenKind::Word, m_expression.substr(start, m_position - start) };
-		}
-
-		bool ParseOr(bool& value, int& specificity, std::string& error)
-		{
-			if (!ParseAnd(value, specificity, error)) return false;
-			while (m_current.kind == TokenKind::Or)
-			{
-				Next();
-				bool right = false;
-				int rightSpecificity = 0;
-				if (!ParseAnd(right, rightSpecificity, error)) return false;
-				value = value || right;
-				specificity = std::max(specificity, rightSpecificity);
-			}
-			return true;
-		}
-
-		bool ParseAnd(bool& value, int& specificity, std::string& error)
-		{
-			if (!ParsePrimary(value, specificity, error)) return false;
-			while (m_current.kind == TokenKind::And)
-			{
-				Next();
-				bool right = false;
-				int rightSpecificity = 0;
-				if (!ParsePrimary(right, rightSpecificity, error)) return false;
-				value = value && right;
-				specificity += rightSpecificity;
-			}
-			return true;
-		}
-
-		bool ParsePrimary(bool& value, int& specificity, std::string& error)
-		{
-			if (m_current.kind == TokenKind::Not)
-			{
-				Next();
-				if (!ParsePrimary(value, specificity, error)) return false;
+				if (!left->Evaluate(lookup, value, specificity)) return false;
 				value = !value;
 				return true;
 			}
-			if (m_current.kind == TokenKind::LParen)
+			if (kind == Kind::And || kind == Kind::Or)
 			{
-				Next();
-				if (!ParseOr(value, specificity, error)) return false;
-				if (m_current.kind != TokenKind::RParen)
-					return Fail("missing closing ')'", error);
-				Next();
-				return true;
-			}
-			return ParseComparison(value, specificity, error);
-		}
-
-		bool ParseComparison(bool& value, int& specificity, std::string& error)
-		{
-			if (m_current.kind != TokenKind::Word)
-				return Fail("expected a variable", error);
-			std::string variable = ConfigFile::NormalizeName(m_current.text);
-			if (!variable.empty() && variable.front() == '$') variable.erase(0, 1);
-			ValueType type = ValueType::Text;
-			if (!GetVariableType(variable, type))
-				return Fail("unknown variable '$" + variable + "'", error);
-			Next();
-
-			TokenKind operation = m_current.kind;
-			if (operation != TokenKind::Equal && operation != TokenKind::NotEqual &&
-				operation != TokenKind::Less && operation != TokenKind::LessEqual &&
-				operation != TokenKind::Greater && operation != TokenKind::GreaterEqual)
-			{
-				if (type != ValueType::Boolean)
-					return Fail("expected comparison operator after '$" + variable + "'", error);
-				operation = TokenKind::Equal;
-			}
-			else
-			{
-				Next();
-			}
-
-			std::vector<std::string> expected;
-			if (m_current.kind == TokenKind::Word)
-			{
-				expected.push_back(ConfigFile::NormalizeName(m_current.text));
-				Next();
-				while (m_current.kind == TokenKind::Alternative)
+				bool leftValue = false, rightValue = false;
+				int leftSpecificity = 0, rightSpecificity = 0;
+				if (!left->Evaluate(lookup, leftValue, leftSpecificity) ||
+					!right->Evaluate(lookup, rightValue, rightSpecificity)) return false;
+				if (kind == Kind::And)
 				{
-					Next();
-					if (m_current.kind != TokenKind::Word)
-						return Fail("expected value after '|'", error);
-					expected.push_back(ConfigFile::NormalizeName(m_current.text));
-					Next();
+					value = leftValue && rightValue;
+					specificity = leftSpecificity + rightSpecificity;
 				}
-			}
-			else if (type == ValueType::Boolean && operation == TokenKind::Equal)
-			{
-				expected.push_back("true");
-			}
-			else
-			{
-				return Fail("expected comparison value for '$" + variable + "'", error);
-			}
-
-			if (type == ValueType::Boolean)
-			{
-				for (const std::string& item : expected)
-					if (item != "true" && item != "false")
-						return Fail("'$" + variable + "' accepts only true or false", error);
-			}
-			if (type == ValueType::Number)
-			{
-				if (operation != TokenKind::Equal && operation != TokenKind::NotEqual && expected.size() != 1)
-					return Fail("numeric comparisons accept exactly one value", error);
-				for (const std::string& item : expected)
+				else
 				{
-					double minimum = 0.0, maximum = 0.0;
-					if (!ParseNumberOrRange(item, minimum, maximum))
-						return Fail("'$" + variable + "' requires a numeric value", error);
-					if (operation != TokenKind::Equal && operation != TokenKind::NotEqual && minimum != maximum)
-						return Fail("'$" + variable + "' ranges are supported only with = or !=", error);
+					value = leftValue || rightValue;
+					specificity = leftValue && rightValue ?
+						std::max(leftSpecificity, rightSpecificity) :
+						(leftValue ? leftSpecificity : rightSpecificity);
 				}
-			}
-			else if (operation != TokenKind::Equal && operation != TokenKind::NotEqual)
-			{
-				return Fail("'$" + variable + "' supports only = and !=", error);
-			}
-
-			specificity = 1;
-			if (!m_lookup)
-			{
-				value = true;
 				return true;
 			}
 
+			specificity = variable == "key" ? 0 : 1;
 			std::string actual;
-			if (!(*m_lookup)(variable, actual) || actual.empty())
+			if (!lookup(variable, actual) || actual.empty())
 			{
-				value = false; // Unavailable is never a match, including !=.
+				value = false;
 				return true;
 			}
 			actual = ConfigFile::NormalizeName(actual);
-			bool equality = false;
 			if (type == ValueType::Number)
 			{
 				double actualNumber = 0.0;
@@ -335,58 +138,384 @@ namespace DisplayRuleExpression
 					value = false;
 					return true;
 				}
-				if (operation == TokenKind::Equal || operation == TokenKind::NotEqual)
+				if (operation == Operation::Equal || operation == Operation::NotEqual)
 				{
+					bool equality = false;
+					const double tolerance =
+						variable == "cadence" ||
+						variable == "actual_refresh" ||
+						variable == "requested_refresh" ||
+						variable == "previous_refresh" ? 0.0005 : 0.0;
 					for (const std::string& item : expected)
 					{
 						double minimum = 0.0, maximum = 0.0;
 						ParseNumberOrRange(item, minimum, maximum);
-						if (actualNumber >= minimum && actualNumber <= maximum) equality = true;
+						if (actualNumber >= minimum - tolerance &&
+							actualNumber <= maximum + tolerance)
+							equality = true;
 					}
-					value = operation == TokenKind::Equal ? equality : !equality;
+					value = operation == Operation::Equal ? equality : !equality;
 					return true;
 				}
 				double expectedNumber = 0.0;
 				ParseNumber(expected.front(), expectedNumber);
 				switch (operation)
 				{
-				case TokenKind::Less: value = actualNumber < expectedNumber; break;
-				case TokenKind::LessEqual: value = actualNumber <= expectedNumber; break;
-				case TokenKind::Greater: value = actualNumber > expectedNumber; break;
-				case TokenKind::GreaterEqual: value = actualNumber >= expectedNumber; break;
+				case Operation::Less: value = actualNumber < expectedNumber; break;
+				case Operation::LessEqual: value = actualNumber <= expectedNumber; break;
+				case Operation::Greater: value = actualNumber > expectedNumber; break;
+				case Operation::GreaterEqual: value = actualNumber >= expectedNumber; break;
 				default: value = false; break;
 				}
 				return true;
 			}
 
-			for (const std::string& item : expected)
-				if (actual == item) equality = true;
-			value = operation == TokenKind::Equal ? equality : !equality;
+			const bool equality = std::find(expected.begin(), expected.end(), actual) != expected.end();
+			value = operation == Operation::Equal ? equality : !equality;
 			return true;
 		}
 	};
 
+	enum class TokenKind
+	{
+		End, Word, LParen, RParen, And, Or, Not, Equal, NotEqual,
+		Less, LessEqual, Greater, GreaterEqual, Alternative, Invalid
+	};
+
+	struct Token
+	{
+		TokenKind kind = TokenKind::End;
+		std::string text;
+		bool quoted = false;
+	};
+
+	class Lexer
+	{
+	public:
+		explicit Lexer(const std::string& expression) : m_expression(expression) {}
+
+		Token Next()
+		{
+			while (m_position < m_expression.size() &&
+				std::isspace(static_cast<unsigned char>(m_expression[m_position]))) ++m_position;
+			if (m_position >= m_expression.size()) return {};
+			const char c = m_expression[m_position];
+			auto two = [&](char first, char second, TokenKind kind, Token& token)
+			{
+				if (c == first && m_position + 1 < m_expression.size() &&
+					m_expression[m_position + 1] == second)
+				{
+					token = { kind, std::string() + first + second, false };
+					m_position += 2;
+					return true;
+				}
+				return false;
+			};
+			Token token;
+			if (two('&', '&', TokenKind::And, token) ||
+				two('|', '|', TokenKind::Or, token) ||
+				two('=', '=', TokenKind::Equal, token) ||
+				two('!', '=', TokenKind::NotEqual, token) ||
+				two('<', '=', TokenKind::LessEqual, token) ||
+				two('>', '=', TokenKind::GreaterEqual, token)) return token;
+			switch (c)
+			{
+			case '(': ++m_position; return { TokenKind::LParen, "(", false };
+			case ')': ++m_position; return { TokenKind::RParen, ")", false };
+			case '!': ++m_position; return { TokenKind::Not, "!", false };
+			case '=': ++m_position; return { TokenKind::Equal, "=", false };
+			case '<': ++m_position; return { TokenKind::Less, "<", false };
+			case '>': ++m_position; return { TokenKind::Greater, ">", false };
+			case '|': ++m_position; return { TokenKind::Alternative, "|", false };
+			case '\'':
+			case '"':
+			{
+				const char quote = c;
+				const size_t start = ++m_position;
+				while (m_position < m_expression.size() && m_expression[m_position] != quote)
+					++m_position;
+				if (m_position >= m_expression.size())
+					return { TokenKind::Invalid, "unterminated quoted value", true };
+				const std::string value = m_expression.substr(start, m_position - start);
+				++m_position;
+				return { TokenKind::Word, value, true };
+			}
+			default: break;
+			}
+			const size_t start = m_position;
+			while (m_position < m_expression.size())
+			{
+				const char next = m_expression[m_position];
+				if (std::isspace(static_cast<unsigned char>(next)) || next == '(' || next == ')' ||
+					next == '!' || next == '=' || next == '<' || next == '>' || next == '&' ||
+					next == '|') break;
+				++m_position;
+			}
+			if (m_position == start)
+			{
+				++m_position;
+				return { TokenKind::Invalid, std::string("invalid character '") + c + "'", false };
+			}
+			return { TokenKind::Word, m_expression.substr(start, m_position - start), false };
+		}
+
+	private:
+		const std::string& m_expression;
+		size_t m_position = 0;
+	};
+
+	class AstParser
+	{
+	public:
+		AstParser(const std::string& expression, bool strict)
+			: m_expression(expression), m_lexer(expression), m_strict(strict), m_current(m_lexer.Next()) {}
+
+		bool Parse(std::shared_ptr<const Node>& root, std::set<std::string>& variables,
+			std::vector<std::string>& keyChords, std::string& error)
+		{
+			m_variables = &variables;
+			m_keyChords = &keyChords;
+			if (m_current.kind == TokenKind::End) return Fail("expression is empty", error);
+			if (!ParseOr(root, error)) return false;
+			if (m_current.kind != TokenKind::End)
+				return Fail("unexpected token '" + m_current.text + "'", error);
+			return true;
+		}
+
+	private:
+		bool Fail(const std::string& message, std::string& error) const
+		{
+			error = "display rule '" + m_expression + "': " + message;
+			return false;
+		}
+		void Next() { m_current = m_lexer.Next(); }
+
+		bool ParseOr(std::shared_ptr<const Node>& node, std::string& error)
+		{
+			if (!ParseAnd(node, error)) return false;
+			while (m_current.kind == TokenKind::Or)
+			{
+				Next();
+				std::shared_ptr<const Node> right;
+				if (!ParseAnd(right, error)) return false;
+				auto parent = std::make_shared<Node>();
+				parent->kind = Node::Kind::Or;
+				parent->left = node;
+				parent->right = right;
+				node = parent;
+			}
+			return true;
+		}
+
+		bool ParseAnd(std::shared_ptr<const Node>& node, std::string& error)
+		{
+			if (!ParsePrimary(node, error)) return false;
+			while (m_current.kind == TokenKind::And)
+			{
+				Next();
+				std::shared_ptr<const Node> right;
+				if (!ParsePrimary(right, error)) return false;
+				auto parent = std::make_shared<Node>();
+				parent->kind = Node::Kind::And;
+				parent->left = node;
+				parent->right = right;
+				node = parent;
+			}
+			return true;
+		}
+
+		bool ParsePrimary(std::shared_ptr<const Node>& node, std::string& error)
+		{
+			if (m_current.kind == TokenKind::Invalid) return Fail(m_current.text, error);
+			if (m_current.kind == TokenKind::Not)
+			{
+				Next();
+				std::shared_ptr<const Node> child;
+				if (!ParsePrimary(child, error)) return false;
+				auto parent = std::make_shared<Node>();
+				parent->kind = Node::Kind::Not;
+				parent->left = child;
+				node = parent;
+				return true;
+			}
+			if (m_current.kind == TokenKind::LParen)
+			{
+				Next();
+				if (!ParseOr(node, error)) return false;
+				if (m_current.kind != TokenKind::RParen)
+					return Fail("missing closing ')'", error);
+				Next();
+				return true;
+			}
+			return ParseComparison(node, error);
+		}
+
+		bool ParseComparison(std::shared_ptr<const Node>& node, std::string& error)
+		{
+			if (m_current.kind != TokenKind::Word) return Fail("expected a variable", error);
+			std::string variable = ConfigFile::NormalizeName(m_current.text);
+			if (!variable.empty() && variable.front() == '$') variable.erase(0, 1);
+			ValueType type = ValueType::Text;
+			if (!GetVariableType(variable, type))
+				return Fail("unknown variable '$" + variable + "'", error);
+			m_variables->insert(variable);
+			Next();
+
+			Operation operation = Operation::Equal;
+			const std::string operatorText = m_current.text;
+			switch (m_current.kind)
+			{
+			case TokenKind::Equal: operation = Operation::Equal; Next(); break;
+			case TokenKind::NotEqual: operation = Operation::NotEqual; Next(); break;
+			case TokenKind::Less: operation = Operation::Less; Next(); break;
+			case TokenKind::LessEqual: operation = Operation::LessEqual; Next(); break;
+			case TokenKind::Greater: operation = Operation::Greater; Next(); break;
+			case TokenKind::GreaterEqual: operation = Operation::GreaterEqual; Next(); break;
+			default:
+				if (type != ValueType::Boolean)
+					return Fail("expected comparison operator after '$" + variable + "'", error);
+				break;
+			}
+			if (m_strict && operatorText == "=")
+				return Fail("unified expressions require '==' rather than '='", error);
+
+			std::vector<std::string> expected;
+			std::vector<bool> quoted;
+			if (m_current.kind == TokenKind::Word)
+			{
+				expected.push_back(ConfigFile::NormalizeName(m_current.text));
+				quoted.push_back(m_current.quoted);
+				Next();
+				while (m_current.kind == TokenKind::Alternative)
+				{
+					if (m_strict)
+						return Fail("unified expressions require full comparisons joined by '||'", error);
+					Next();
+					if (m_current.kind != TokenKind::Word)
+						return Fail("expected value after '|'", error);
+					expected.push_back(ConfigFile::NormalizeName(m_current.text));
+					quoted.push_back(m_current.quoted);
+					Next();
+				}
+			}
+			else if (type == ValueType::Boolean && operation == Operation::Equal)
+			{
+				expected.push_back("true");
+				quoted.push_back(false);
+			}
+			else return Fail("expected comparison value for '$" + variable + "'", error);
+
+			if (variable == "key")
+			{
+				if (operation != Operation::Equal || expected.size() != 1 || !quoted.front() ||
+					expected.front().empty())
+					return Fail("$key must use == with one non-empty quoted chord", error);
+				m_keyChords->push_back(expected.front());
+			}
+			if (type == ValueType::Boolean)
+				for (const std::string& item : expected)
+					if (item != "true" && item != "false")
+						return Fail("'$" + variable + "' accepts only true or false", error);
+			if (type == ValueType::Number)
+			{
+				if (operation != Operation::Equal && operation != Operation::NotEqual &&
+					expected.size() != 1)
+					return Fail("numeric comparisons accept exactly one value", error);
+				for (const std::string& item : expected)
+				{
+					double minimum = 0.0, maximum = 0.0;
+					if (!ParseNumberOrRange(item, minimum, maximum))
+						return Fail("'$" + variable + "' requires a numeric value", error);
+					if (operation != Operation::Equal && operation != Operation::NotEqual &&
+						minimum != maximum)
+						return Fail("'$" + variable + "' ranges are supported only with = or !=", error);
+				}
+			}
+			else if (operation != Operation::Equal && operation != Operation::NotEqual)
+				return Fail("'$" + variable + "' supports only = and !=", error);
+
+			auto comparison = std::make_shared<Node>();
+			comparison->kind = Node::Kind::Comparison;
+			comparison->variable = variable;
+			comparison->type = type;
+			comparison->operation = operation;
+			comparison->expected = std::move(expected);
+			node = comparison;
+			return true;
+		}
+
+		const std::string& m_expression;
+		Lexer m_lexer;
+		bool m_strict = false;
+		Token m_current;
+		std::set<std::string>* m_variables = nullptr;
+		std::vector<std::string>* m_keyChords = nullptr;
+	};
+
+	class Expression
+	{
+	public:
+		bool Compile(const std::string& source, std::string& error, bool strict = false)
+		{
+			m_source = source;
+			m_root.reset();
+			m_variables.clear();
+			m_keyChords.clear();
+			error.clear();
+			AstParser parser(source, strict);
+			return parser.Parse(m_root, m_variables, m_keyChords, error);
+		}
+
+		bool Matches(const ValueLookup& lookup, int& specificity, std::string& error) const
+		{
+			error.clear();
+			specificity = 0;
+			if (!m_root)
+			{
+				error = "expression was not compiled";
+				return false;
+			}
+			bool value = false;
+			return m_root->Evaluate(lookup, value, specificity) && value;
+		}
+
+		const std::set<std::string>& Variables() const { return m_variables; }
+		const std::vector<std::string>& KeyChords() const { return m_keyChords; }
+		const std::string& Source() const { return m_source; }
+
+		bool DeclaresKeyChord(const std::string& chord) const
+		{
+			const std::string canonical = ConfigFile::NormalizeName(chord);
+			return std::any_of(m_keyChords.begin(), m_keyChords.end(),
+				[&canonical](const std::string& item)
+				{ return ConfigFile::NormalizeName(item) == canonical; });
+		}
+
+	private:
+		std::string m_source;
+		std::shared_ptr<const Node> m_root;
+		std::set<std::string> m_variables;
+		std::vector<std::string> m_keyChords;
+	};
+
 	inline bool Validate(const std::string& expression, std::string& error)
 	{
-		bool ignoredValue = false;
-		int ignoredSpecificity = 0;
-		Parser parser(expression, nullptr);
-		return parser.Parse(ignoredValue, ignoredSpecificity, error);
+		Expression compiled;
+		return compiled.Compile(expression, error, false);
 	}
 
 	inline bool Matches(const std::string& expression, const ValueLookup& lookup,
 		int& specificity, std::string& error)
 	{
-		bool matches = false;
-		Parser parser(expression, &lookup);
-		return parser.Parse(matches, specificity, error) && matches;
+		Expression compiled;
+		return compiled.Compile(expression, error, false) &&
+			compiled.Matches(lookup, specificity, error);
 	}
 
 	inline bool ValidateConfig(const ConfigFile& config, std::string& error)
 	{
 		std::string ruleList;
-		if (!config.TryGetString("display_rules", "rules", ruleList))
-			return true;
+		if (!config.TryGetString("display_rules", "rules", ruleList)) return true;
 		std::istringstream rules(ruleList);
 		std::string ruleName;
 		while (std::getline(rules, ruleName, ','))

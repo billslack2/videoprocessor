@@ -25,6 +25,7 @@ namespace RendererProfileConfig
 		std::string group;
 		std::string name;
 		std::string when;
+		DisplayRuleExpression::Expression whenExpression;
 		int priority = 0;
 		std::map<std::string, std::string> settings;
 	};
@@ -35,6 +36,7 @@ namespace RendererProfileConfig
 		std::vector<std::string> profiles;
 		std::string defaultSelection;
 		std::string resetWhen;
+		DisplayRuleExpression::Expression resetExpression;
 		bool persistSelection = true;
 	};
 
@@ -50,6 +52,7 @@ namespace RendererProfileConfig
 			std::string name;
 			std::vector<std::string> events;
 			std::string when;
+			DisplayRuleExpression::Expression whenExpression;
 			std::string program;
 			std::string arguments;
 			std::string workingDirectory;
@@ -72,64 +75,17 @@ namespace RendererProfileConfig
 		bool configuredDefault = false;
 	};
 
-	inline bool ExpressionDeclaresKeyChord(const std::string& expression,
-		const std::string& key, bool& declares, std::string& error)
-	{
-		declares = false;
-		const std::string canonicalKey = ConfigFile::NormalizeName(key);
-		for (size_t position = 0; position < expression.size(); ++position)
-		{
-			if (expression[position] != '$') continue;
-			const size_t nameStart = ++position;
-			while (position < expression.size() &&
-				(std::isalnum(static_cast<unsigned char>(expression[position])) || expression[position] == '_')) ++position;
-			if (ConfigFile::NormalizeName(expression.substr(nameStart, position - nameStart)) != "key") continue;
-			while (position < expression.size() && std::isspace(static_cast<unsigned char>(expression[position]))) ++position;
-			if (position + 1 >= expression.size() || expression[position] != '=' || expression[position + 1] != '=')
-			{
-				error = "$key must use == with a quoted chord";
-				return false;
-			}
-			position += 2;
-			while (position < expression.size() && std::isspace(static_cast<unsigned char>(expression[position]))) ++position;
-			if (position >= expression.size() || (expression[position] != '\'' && expression[position] != '"'))
-			{
-				error = "$key chord must be quoted";
-				return false;
-			}
-			const char quote = expression[position++];
-			const size_t chordStart = position;
-			while (position < expression.size() && expression[position] != quote) ++position;
-			if (position >= expression.size() || position == chordStart)
-			{
-				error = "$key chord is unterminated or empty";
-				return false;
-			}
-			if (ConfigFile::NormalizeName(expression.substr(chordStart, position - chordStart)) == canonicalKey)
-				declares = true;
-		}
-		return true;
-	}
-
-	inline bool ValidateExpressionVariables(const std::string& expression,
+	inline bool ValidateExpressionVariables(
+		const DisplayRuleExpression::Expression& expression,
 		const std::set<std::string>& allowed, const std::string& context,
 		std::string& error)
 	{
-		for (size_t position = 0; position < expression.size(); ++position)
-		{
-			if (expression[position] != '$') continue;
-			const size_t start = ++position;
-			while (position < expression.size() &&
-				(std::isalnum(static_cast<unsigned char>(expression[position])) ||
-				 expression[position] == '_')) ++position;
-			const std::string variable =
-				ConfigFile::NormalizeName(expression.substr(start, position - start));
+		for (const std::string& variable : expression.Variables())
 			if (allowed.find(variable) == allowed.end())
 			{
 				error = context + " cannot use variable '$" + variable + "'";
 				return false;
 			}
-		}
 		return true;
 	}
 
@@ -229,6 +185,38 @@ namespace RendererProfileConfig
 			DisplayRuleExpression::ParseNumber(value.substr(colon + 1), denominator) &&
 			denominator > 0.0 && numerator / denominator >= minimum &&
 			numerator / denominator <= maximum;
+	}
+
+	inline bool IsRegistrableKeyChord(const std::string& chord)
+	{
+		std::string key;
+		size_t start = 0;
+		while (start <= chord.size())
+		{
+			const size_t end = chord.find('+', start);
+			const std::string token = ConfigFile::Trim(chord.substr(start, end - start));
+			if (token.empty()) return false;
+			const std::string normalized = ConfigFile::NormalizeName(token);
+			if (normalized != "ctrl" && normalized != "control" &&
+				normalized != "alt" && normalized != "shift")
+			{
+				if (!key.empty()) return false;
+				key = token;
+			}
+			if (end == std::string::npos) break;
+			start = end + 1;
+		}
+		if (key.empty()) return false;
+		const std::string normalized = ConfigFile::NormalizeName(key);
+		if (normalized == "escape" || normalized == "esc" ||
+			normalized == "enter" || normalized == "return") return true;
+		if (normalized.size() >= 2 && normalized[0] == 'f')
+		{
+			int number = 0;
+			return ParseInteger(normalized.substr(1), 1, 24, number);
+		}
+		return key.size() == 1 &&
+			std::isalnum(static_cast<unsigned char>(key.front())) != 0;
 	}
 
 	inline bool ValidateProfileSetting(const std::string& group, const std::string& key,
@@ -437,8 +425,8 @@ namespace RendererProfileConfig
 			config.TryGetString(section, "when", group.resetWhen);
 			if (!group.resetWhen.empty())
 			{
-				if (!DisplayRuleExpression::Validate(group.resetWhen, error) ||
-					!ValidateExpressionVariables(group.resetWhen, { "key" },
+				if (!group.resetExpression.Compile(group.resetWhen, error, true) ||
+					!ValidateExpressionVariables(group.resetExpression, { "key" },
 						"[" + section + "] when=", error))
 					return false;
 			}
@@ -494,14 +482,49 @@ namespace RendererProfileConfig
 					}
 				}
 				if (!profile.when.empty() &&
-					(!DisplayRuleExpression::Validate(profile.when, error) ||
-					 !ValidateExpressionVariables(profile.when,
+					(!profile.whenExpression.Compile(profile.when, error, true) ||
+					 !ValidateExpressionVariables(profile.whenExpression,
 						{ "eotf", "transfer", "colorspace", "primaries", "format",
-						  "hdr_metadata", "interlaced", "source_rate", "width",
-						  "height", "resolution", "key" },
+						  "hdr_metadata", "interlaced", "scan", "source_rate",
+						  "cadence", "width", "height", "resolution", "key" },
 						"[" + profileSection + "] when=", error)))
 					return false;
 				model.profiles.emplace(groupName + "." + profileName, std::move(profile));
+			}
+			std::map<std::string, std::string> chordOwners;
+			auto registerChords = [&](const DisplayRuleExpression::Expression& expression,
+				const std::string& owner) -> bool
+			{
+				for (const std::string& chord : expression.KeyChords())
+				{
+					if (!IsRegistrableKeyChord(chord))
+					{
+						error = owner + " uses unregistrable key chord '" + chord + "'";
+						return false;
+					}
+					const std::string canonical = ConfigFile::NormalizeName(chord);
+					const auto existing = chordOwners.find(canonical);
+					if (existing != chordOwners.end() && existing->second != owner)
+					{
+						error = "key chord '" + chord + "' selects both " +
+							existing->second + " and " + owner + " in group '" +
+							groupName + "'";
+						return false;
+					}
+					chordOwners[canonical] = owner;
+				}
+				return true;
+			};
+			if (!group.resetWhen.empty() &&
+				!registerChords(group.resetExpression, "[" + section + "] when="))
+				return false;
+			for (const std::string& profileName : group.profiles)
+			{
+				const Profile& profile = model.profiles.at(groupName + "." + profileName);
+				if (!profile.when.empty() &&
+					!registerChords(profile.whenExpression,
+						"[profiles." + groupName + "." + profileName + "]"))
+					return false;
 			}
 			model.groups.push_back(std::move(group));
 		}
@@ -546,8 +569,8 @@ namespace RendererProfileConfig
 						error = "[" + section + "] unsupported event '" + event + "'"; return false;
 					}
 				if (!config.TryGetString(section, "when", action.when) ||
-					!DisplayRuleExpression::Validate(action.when, error) ||
-					!ValidateExpressionVariables(action.when,
+					!action.whenExpression.Compile(action.when, error, true) ||
+					!ValidateExpressionVariables(action.whenExpression,
 						{ "actual_refresh", "requested_refresh", "previous_refresh" },
 						"[" + section + "] when=", error))
 				{
@@ -620,13 +643,11 @@ namespace RendererProfileConfig
 		{
 			if (!group.resetWhen.empty())
 			{
-				bool declaresKey = false;
-				if (!ExpressionDeclaresKeyChord(group.resetWhen, canonicalKey, declaresKey, error)) return false;
-				if (declaresKey)
+				if (group.resetExpression.DeclaresKeyChord(canonicalKey))
 				{
 					int specificity = 0;
-					const bool matchesReset = DisplayRuleExpression::Matches(
-						group.resetWhen, values, specificity, error);
+					const bool matchesReset = group.resetExpression.Matches(
+						values, specificity, error);
 					if (!matchesReset && !error.empty()) return false;
 					if (matchesReset)
 					{
@@ -640,12 +661,10 @@ namespace RendererProfileConfig
 			for (const std::string& profileName : group.profiles)
 			{
 				const Profile& profile = model.profiles.at(group.name + "." + profileName);
-				bool declaresKey = false;
-				if (!ExpressionDeclaresKeyChord(profile.when, canonicalKey, declaresKey, error)) return false;
-				if (!declaresKey) continue;
+				if (!profile.whenExpression.DeclaresKeyChord(canonicalKey)) continue;
 				int specificity = 0;
-				const bool matchesProfile = DisplayRuleExpression::Matches(
-					profile.when, values, specificity, error);
+				const bool matchesProfile = profile.whenExpression.Matches(
+					values, specificity, error);
 				if (!matchesProfile && !error.empty()) return false;
 				if (!matchesProfile)
 					continue;
@@ -689,8 +708,8 @@ namespace RendererProfileConfig
 				const Profile& profile = model.profiles.at(group.name + "." + profileName);
 				if (profile.when.empty()) continue;
 				int specificity = 0;
-				const bool matches = DisplayRuleExpression::Matches(
-					profile.when, values, specificity, error);
+				const bool matches = profile.whenExpression.Matches(
+					values, specificity, error);
 				if (!matches && !error.empty()) return false;
 				if (!matches) continue;
 				if (!selected || profile.priority > selected->priority ||
@@ -720,49 +739,18 @@ namespace RendererProfileConfig
 	{
 		chords.clear();
 		error.clear();
-		auto collect = [&chords, &error](const std::string& expression) -> bool
+		auto collect = [&chords](const DisplayRuleExpression::Expression& expression)
 		{
-			for (size_t position = 0; position < expression.size(); ++position)
-			{
-				if (expression[position] != '$') continue;
-				const size_t nameStart = ++position;
-				while (position < expression.size() &&
-					(std::isalnum(static_cast<unsigned char>(expression[position])) || expression[position] == '_'))
-					++position;
-				if (ConfigFile::NormalizeName(expression.substr(nameStart, position - nameStart)) != "key")
-					continue;
-				while (position < expression.size() && std::isspace(static_cast<unsigned char>(expression[position]))) ++position;
-				if (position + 1 >= expression.size() || expression[position] != '=' || expression[position + 1] != '=')
-				{
-					error = "$key must use == with a quoted chord";
-					return false;
-				}
-				position += 2;
-				while (position < expression.size() && std::isspace(static_cast<unsigned char>(expression[position]))) ++position;
-				if (position >= expression.size() || (expression[position] != '\'' && expression[position] != '"'))
-				{
-					error = "$key chord must be quoted";
-					return false;
-				}
-				const char quote = expression[position++];
-				const size_t chordStart = position;
-				while (position < expression.size() && expression[position] != quote) ++position;
-				if (position >= expression.size() || position == chordStart)
-				{
-					error = "$key chord is unterminated or empty";
-					return false;
-				}
-				chords.push_back(expression.substr(chordStart, position - chordStart));
-			}
-			return true;
+			chords.insert(chords.end(), expression.KeyChords().begin(),
+				expression.KeyChords().end());
 		};
 		for (const Group& group : model.groups)
 		{
-			if (!group.resetWhen.empty() && !collect(group.resetWhen)) return false;
+			if (!group.resetWhen.empty()) collect(group.resetExpression);
 			for (const std::string& name : group.profiles)
 			{
 				const Profile& profile = model.profiles.at(group.name + "." + name);
-				if (!profile.when.empty() && !collect(profile.when)) return false;
+				if (!profile.when.empty()) collect(profile.whenExpression);
 			}
 		}
 		std::sort(chords.begin(), chords.end(), [](const std::string& left, const std::string& right)

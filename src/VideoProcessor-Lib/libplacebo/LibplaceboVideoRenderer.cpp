@@ -682,6 +682,74 @@ namespace
 
 	bool ParseRefreshRateRuleKey(const std::string& key, int& minimumRate, int& maximumRate);
 
+	bool LookupUnifiedSourceValue(const VideoState& state,
+		const std::string& variable, std::string& value)
+	{
+		if (variable == "eotf" || variable == "transfer")
+		{
+			switch (state.eotf)
+			{
+			case EOTF::SDR: value = "sdr"; break;
+			case EOTF::HDR: value = "hdr"; break;
+			case EOTF::PQ: value = "pq"; break;
+			case EOTF::HLG: value = "hlg"; break;
+			default: value = "unknown"; break;
+			}
+			return true;
+		}
+		if (variable == "colorspace" || variable == "primaries")
+		{
+			switch (state.colorspace)
+			{
+			case ColorSpace::REC_601_525: value = "rec601_525"; break;
+			case ColorSpace::REC_601_576:
+			case ColorSpace::REC_601_625: value = "rec601_625"; break;
+			case ColorSpace::REC_709: value = "rec709"; break;
+			case ColorSpace::P3_D65: value = "p3_d65"; break;
+			case ColorSpace::P3_DCI: value = "p3_dci"; break;
+			case ColorSpace::P3_D60: value = "p3_d60"; break;
+			case ColorSpace::BT_2020: value = "bt2020"; break;
+			default: value = "unknown"; break;
+			}
+			return true;
+		}
+		if (variable == "format")
+		{
+			value = CStringA(ToString(state.videoFrameEncoding)).GetString();
+			return true;
+		}
+		if (variable == "hdr_metadata")
+		{
+			value = state.hdrData && state.hdrData->IsValid() ? "true" : "false";
+			return true;
+		}
+		if (!state.displayMode) return false;
+		if (variable == "interlaced")
+			value = state.displayMode->IsInterlaced() ? "true" : "false";
+		else if (variable == "scan")
+			value = state.displayMode->IsInterlaced() ? "interlaced" : "progressive";
+		else if (variable == "source_rate")
+			value = std::to_string(static_cast<int>(
+				std::floor(state.displayMode->RefreshRateHz())));
+		else if (variable == "cadence")
+		{
+			std::ostringstream cadence;
+			cadence.imbue(std::locale::classic());
+			cadence.precision(17);
+			cadence << state.displayMode->RefreshRateHz();
+			value = cadence.str();
+		}
+		else if (variable == "width")
+			value = std::to_string(state.displayMode->FrameWidth());
+		else if (variable == "height")
+			value = std::to_string(state.displayMode->FrameHeight());
+		else if (variable == "resolution")
+			value = std::to_string(state.displayMode->FrameWidth()) + "x" +
+				std::to_string(state.displayMode->FrameHeight());
+		else return false;
+		return true;
+	}
+
 	bool MatchesDisplayRule(const std::string& expression, const VideoState& state, int& specificity)
 	{
 		std::string parseError;
@@ -805,21 +873,8 @@ namespace
 			std::vector<RendererProfileConfig::AutomaticSelection> selections;
 			if (!RendererProfileConfig::SelectAutomatic(model,
 				[&state](const std::string& variable, std::string& value)
-				{
-					if (variable == "eotf" || variable == "transfer") value = CStringA(ToString(state.eotf)).GetString();
-					else if (variable == "colorspace" || variable == "primaries") value = CStringA(ToString(state.colorspace)).GetString();
-					else if (variable == "format") value = CStringA(ToString(state.videoFrameEncoding)).GetString();
-					else if (variable == "range" || variable == "scan") return false;
-					else if (variable == "hdr_metadata") value = state.hdrData && state.hdrData->IsValid() ? "true" : "false";
-					else if (variable == "interlaced") value = state.displayMode && state.displayMode->IsInterlaced() ? "true" : "false";
-					else if (!state.displayMode) return false;
-					else if (variable == "source_rate") value = std::to_string(static_cast<int>(std::floor(state.displayMode->RefreshRateHz())));
-					else if (variable == "width") value = std::to_string(state.displayMode->FrameWidth());
-					else if (variable == "height") value = std::to_string(state.displayMode->FrameHeight());
-					else if (variable == "resolution") value = std::to_string(state.displayMode->FrameWidth()) + "x" + std::to_string(state.displayMode->FrameHeight());
-					else return false;
-					return true;
-				}, selections, modelError))
+					{ return LookupUnifiedSourceValue(state, variable, value); },
+				selections, modelError))
 			{
 				DebugLog::Log("unified renderer profile selection failed: %s", modelError.c_str());
 				return;
@@ -2117,7 +2172,7 @@ namespace
 					action.events.end()) continue;
 				int specificity = 0;
 				std::string matchError;
-				const bool matches = DisplayRuleExpression::Matches(action.when,
+				const bool matches = action.whenExpression.Matches(
 					[actualRefresh, requestedRefresh, previousRefresh](
 						const std::string& variable, std::string& value)
 					{
@@ -5012,19 +5067,7 @@ bool LibplaceboVideoRenderer::SelectUnifiedProfileKey(
 	if (!RendererProfileConfig::SelectForKey(model, canonicalKey,
 		[&state](const std::string& variable, std::string& value)
 		{
-			if (!state) return false;
-			if (variable == "eotf" || variable == "transfer") value = CStringA(ToString(state->eotf)).GetString();
-			else if (variable == "colorspace" || variable == "primaries") value = CStringA(ToString(state->colorspace)).GetString();
-			else if (variable == "format") value = CStringA(ToString(state->videoFrameEncoding)).GetString();
-			else if (variable == "hdr_metadata") value = state->hdrData && state->hdrData->IsValid() ? "true" : "false";
-			else if (variable == "interlaced") value = state->displayMode && state->displayMode->IsInterlaced() ? "true" : "false";
-			else if (!state->displayMode) return false;
-			else if (variable == "source_rate") value = std::to_string(static_cast<int>(std::floor(state->displayMode->RefreshRateHz())));
-			else if (variable == "width") value = std::to_string(state->displayMode->FrameWidth());
-			else if (variable == "height") value = std::to_string(state->displayMode->FrameHeight());
-			else if (variable == "resolution") value = std::to_string(state->displayMode->FrameWidth()) + "x" + std::to_string(state->displayMode->FrameHeight());
-			else return false;
-			return true;
+			return state && LookupUnifiedSourceValue(*state, variable, value);
 		}, selections, error))
 	{
 		DebugLog::Log("unified profile key '%s' rejected: %s", canonicalKey.c_str(), error.c_str());
