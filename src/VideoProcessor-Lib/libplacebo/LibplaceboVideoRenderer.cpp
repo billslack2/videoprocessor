@@ -3623,6 +3623,14 @@ struct LibplaceboVideoRenderer::Impl
 				DebugLog::Log(
 					"libplacebo: NVIDIA BT.2020 reporting unsupported; ignoring report_bt2020_to_display and reapplying BT.2020 output");
 				reportBt2020ToDisplay = false;
+				// ConfigureAndFallback still owns queried interfaces for the old
+				// native swapchain. Release them before destruction; otherwise
+				// DXGI cannot promote the replacement for this HWND to flip model
+				// and libplacebo falls back to an unusable BitBlt swapchain.
+				swapchain3.Release();
+				output.Release();
+				adapter.Release();
+				dxgiDevice.Release();
 				if (!RecreateSwapchain(
 					outputPlan.useBlit,
 					suppressLimitedNegotiation,
