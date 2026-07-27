@@ -50,6 +50,13 @@ does not yet make unified configuration deployable: GUI/renderer lifecycle,
 typed ownership validation, committed per-group persistence, viewport apply,
 and event-action scheduling remain unintegrated.
 
+Commit `1b4a246` wires the normalized unified configuration parser into GUI
+startup validation. Unified configuration now rejects mixed legacy sections
+before capture/renderer startup instead of silently taking a prototype or
+legacy path. The focused model tests pass (4/4). The GUI project remains
+unbuildable in this worktree before these source changes because its generated
+`version.h` is absent; no generated version files were fabricated.
+
 A subsequent multi-pass design/code review determined that this increment is a
 prototype and must not be treated as the accepted unified implementation. It
 still routes manual selection through one legacy display-rule slot, uses GUI
