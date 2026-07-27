@@ -2,46 +2,20 @@
 
 ## Status
 
-In Progress. Phase 1 implements the display-agnostic Alpha queue configuration,
-desired-depth semantics, internal safety ceiling, and one-queue presentation.
-It must not depend on or hard-code a specific display's refresh behavior.
+Done. Merged as [PR #7](https://github.com/billslack2/videoprocessor/pull/7)
+into `v1.1.014-beta` at merge commit `b79355e` on 2026-07-27.
 
-Implementation branch/worktree: `codex/vp-0026` at
-`C:\\Users\\bslac\\vp\\videoprocessor-vp-0026`, rooted at
-`origin/v1.1.014-beta` (`fc3cd35`).
+Completed implementation commits: `dfaf4aa` and `2c366e9`.
 
-Progress: readiness review confirmed that this structural work can proceed
-without VP-0024. The telemetry-dependent policy--measured age bands,
-stall/drift classification, correction readiness, and stale-backlog
-recovery--remains gated on VP-0024's valid source-to-display evidence.
+Alpha now has an independent remembered desired depth (safe default 4), a
+configuration-only positive-integer `alpha_queue_size` override, an internal
+bounded capacity, generation-safe one-time prefill, and a steady low-water
+reserve. The UI and OSD truthfully present Alpha as `current / desired` while
+DirectShow remains `R/C/T`.
 
-Phase 1 source commit `dfaf4aa` implements:
-
-- an independent remembered Alpha desired depth (safe default 4) while
-  DirectShow retains the shared `queue_size` capacity;
-- the configuration-only positive-integer `alpha_queue_size` override;
-- a bounded internal Alpha capacity and one generation-bound startup/reset
-  prefill without sleeps, automatic resets, or low-depth re-arming;
-- truthful Alpha `current / desired` UI and OSD presentation while DirectShow
-  retains `R/C/T`;
-- generation checks around enqueue, dequeue, reset, and render boundaries.
-
-Validation: the full `Release|x64` solution builds, and all 53 automated tests
-pass, including new Alpha policy/default/override/config validation tests.
-The first hardware run exposed and reproduced the legacy `queue_size=32`
-migration bug: Alpha retained only eight source-backed frames and could never
-satisfy a 32-frame startup prefill. The independent default/override fix is
-built and awaits a confirming runtime log showing `prefill_target=4`.
-
-The next runtime run confirmed `alpha_queue_size=4` and generation prefill at
-exactly four frames, but also proved the startup-only policy drained the CPU
-FIFO toward zero. Commit `2c366e9` adds a steady low-water dequeue gate: desired
-depth 4 retains a three-frame CPU reserve while one frame is active, permits
-short stalls to float through the 3..5 healthy band, and does not reset,
-re-prime, or sleep. Five-second depth summaries now record current, desired,
-healthy/observed ranges, dequeue count, and hard capacity. The full
-`Release|x64` solution builds and all 56 automated tests pass; runtime
-confirmation of the new 3..4 steady distribution remains.
+Validation: full `Release|x64` solution build; all 56 automated tests passed;
+user runtime validation confirmed the queue behavior is working well. The
+telemetry-driven drift/correction work remains owned by VP-0024 and VP-0027.
 
 Supersedes the queue-policy portion of VP-0008 and the corrective boundary
 implied by VP-0017.
