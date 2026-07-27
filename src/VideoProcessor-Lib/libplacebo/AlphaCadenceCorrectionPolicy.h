@@ -62,11 +62,16 @@ private:
 	static constexpr double ACTION_PHASE_FRAMES = 1.0;
 	static constexpr double MAXIMUM_QUEUE_AGE_MS = 250.0;
 	static constexpr uint32_t MINIMUM_STABLE_SAMPLES = 120;
+	static constexpr uint32_t MINIMUM_PREDICTION_SAMPLES = 600;
 	static constexpr uint32_t COOLDOWN_FRAMES = 120;
+	static constexpr double RATE_FILTER_ALPHA = 1.0 / 600.0;
+	static constexpr double MINIMUM_PREDICTION_PPM = 1.0;
+	static constexpr double DIRECTION_REVERSAL_PPM = 2.0;
 
 	uint64_t m_generation = 0;
 	double m_phaseFrames = 0.0;
 	uint32_t m_stableSamples = 0;
+	uint32_t m_rateFilterSamples = 0;
 	uint32_t m_plannedFrames = 0;
 	uint32_t m_cooldownFrames = 0;
 	uint64_t m_lastSceneEventId = 0;
@@ -76,4 +81,6 @@ private:
 	uint32_t m_verificationPresentId = 0;
 	bool m_lastVerificationValid = false;
 	bool m_lastVerificationSucceeded = false;
+	double m_filteredPhasePerFrame = 0.0;
+	AlphaCadenceAction m_predictionDirection = AlphaCadenceAction::None;
 };

@@ -65,17 +65,36 @@ namespace Tests
 		TEST_METHOD(PublishesLongRangePredictionBeforePlanningWindow)
 		{
 			AlphaCadenceCorrectionPolicy policy;
-			const auto decision = Advance(policy, Input(60.012), 121);
+			const auto decision = Advance(policy, Input(60.012), 601);
 
 			Assert::IsTrue(decision.predictionValid);
 			Assert::IsFalse(decision.planned);
 			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
 				static_cast<int>(decision.predictedAction));
-			Assert::IsTrue(decision.secondsUntilCorrection > 80.0);
-			Assert::IsTrue(decision.secondsUntilCorrection < 85.0);
-			Assert::IsTrue(decision.secondsUntilPlan > 60.0);
+			Assert::IsTrue(decision.secondsUntilCorrection > 70.0);
+			Assert::IsTrue(decision.secondsUntilCorrection < 80.0);
+			Assert::IsTrue(decision.secondsUntilPlan > 50.0);
+			Assert::IsTrue(decision.secondsUntilPlan < 60.0);
 			Assert::IsTrue(decision.secondsUntilPlan <
 				decision.secondsUntilCorrection);
+		}
+
+		TEST_METHOD(NearZeroNoiseCannotReversePredictionDirection)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input = Input(60.0 * (1.0 + 5e-6));
+			auto decision = Advance(policy, input, 601);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(decision.predictedAction));
+
+			for (uint32_t frame = 0; frame < 1200; ++frame)
+			{
+				const double ppm = frame % 2 == 0 ? -20.0 : 20.0;
+				input.captureRateHz = 60.0 * (1.0 + ppm / 1000000.0);
+				decision = policy.Evaluate(input);
+				Assert::IsFalse(
+					decision.predictedAction == AlphaCadenceAction::Repeat);
+			}
 		}
 
 		TEST_METHOD(DropRequiresPhaseQueueDebtAndSceneAgreement)

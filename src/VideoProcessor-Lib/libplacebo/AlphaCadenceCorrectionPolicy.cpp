@@ -10,6 +10,7 @@ void AlphaCadenceCorrectionPolicy::Reset(uint64_t generation)
 	m_generation = generation;
 	m_phaseFrames = 0.0;
 	m_stableSamples = 0;
+	m_rateFilterSamples = 0;
 	m_plannedFrames = 0;
 	m_cooldownFrames = 0;
 	m_lastSceneEventId = 0;
@@ -19,6 +20,8 @@ void AlphaCadenceCorrectionPolicy::Reset(uint64_t generation)
 	m_verificationPresentId = 0;
 	m_lastVerificationValid = false;
 	m_lastVerificationSucceeded = false;
+	m_filteredPhasePerFrame = 0.0;
+	m_predictionDirection = AlphaCadenceAction::None;
 }
 
 void AlphaCadenceCorrectionPolicy::CancelPendingAction()
@@ -43,15 +46,40 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 	const bool ratesInRange =
 		input.captureRateHz >= 10.0 && input.captureRateHz <= 240.0 &&
 		input.displayRateHz >= 10.0 && input.displayRateHz <= 500.0;
-	const double mismatchPpm = ratesInRange
-		? std::abs(input.captureRateHz / input.displayRateHz - 1.0) * 1000000.0
-		: 0.0;
-	decision.ratesCompatible =
-		ratesInRange && mismatchPpm <= MAXIMUM_RATE_MISMATCH_PPM;
-
 	if (!input.enabled ||
 		input.presentationEvidence != AlphaPresentationEvidence::Stable ||
-		!decision.ratesCompatible)
+		!ratesInRange)
+	{
+		m_stableSamples = 0;
+		m_rateFilterSamples = 0;
+		m_filteredPhasePerFrame = 0.0;
+		m_predictionDirection = AlphaCadenceAction::None;
+		m_plannedFrames = 0;
+		m_verificationPending = false;
+		m_lastVerificationValid = false;
+		decision.phaseFrames = m_phaseFrames;
+		return decision;
+	}
+
+	const double rawPhasePerFrame =
+		input.captureRateHz / input.displayRateHz - 1.0;
+	if (m_rateFilterSamples < MINIMUM_PREDICTION_SAMPLES)
+	{
+		++m_rateFilterSamples;
+		m_filteredPhasePerFrame +=
+			(rawPhasePerFrame - m_filteredPhasePerFrame) /
+			static_cast<double>(m_rateFilterSamples);
+	}
+	else
+	{
+		m_filteredPhasePerFrame +=
+			(rawPhasePerFrame - m_filteredPhasePerFrame) * RATE_FILTER_ALPHA;
+	}
+	const double filteredMismatchPpm =
+		std::abs(m_filteredPhasePerFrame) * 1000000.0;
+	decision.ratesCompatible =
+		filteredMismatchPpm <= MAXIMUM_RATE_MISMATCH_PPM;
+	if (!decision.ratesCompatible)
 	{
 		m_stableSamples = 0;
 		m_plannedFrames = 0;
@@ -86,22 +114,46 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 		return decision;
 	}
 
-	m_phaseFrames += input.captureRateHz / input.displayRateHz - 1.0;
-	const double phasePerFrame =
-		input.captureRateHz / input.displayRateHz - 1.0;
-	if (phasePerFrame != 0.0 && !m_verificationPending)
+	m_phaseFrames += m_filteredPhasePerFrame;
+	const double signedFilteredPpm = m_filteredPhasePerFrame * 1000000.0;
+	if (m_predictionDirection == AlphaCadenceAction::None)
 	{
-		decision.predictedAction = phasePerFrame > 0.0
-			? AlphaCadenceAction::Drop
-			: AlphaCadenceAction::Repeat;
+		if (signedFilteredPpm >= MINIMUM_PREDICTION_PPM)
+			m_predictionDirection = AlphaCadenceAction::Drop;
+		else if (signedFilteredPpm <= -MINIMUM_PREDICTION_PPM)
+			m_predictionDirection = AlphaCadenceAction::Repeat;
+	}
+	else if (m_predictionDirection == AlphaCadenceAction::Drop &&
+		signedFilteredPpm <= -DIRECTION_REVERSAL_PPM)
+	{
+		m_predictionDirection = AlphaCadenceAction::Repeat;
+	}
+	else if (m_predictionDirection == AlphaCadenceAction::Repeat &&
+		signedFilteredPpm >= DIRECTION_REVERSAL_PPM)
+	{
+		m_predictionDirection = AlphaCadenceAction::Drop;
+	}
+
+	const bool predictionDirectionAgrees =
+		(m_predictionDirection == AlphaCadenceAction::Drop &&
+			signedFilteredPpm >= MINIMUM_PREDICTION_PPM) ||
+		(m_predictionDirection == AlphaCadenceAction::Repeat &&
+			signedFilteredPpm <= -MINIMUM_PREDICTION_PPM);
+	if (m_rateFilterSamples >= MINIMUM_PREDICTION_SAMPLES &&
+		predictionDirectionAgrees && !m_verificationPending)
+	{
+		decision.predictedAction = m_predictionDirection;
+		const double phasePerFrame = m_filteredPhasePerFrame;
 		const double correctionPhase =
-			phasePerFrame > 0.0 ? ACTION_PHASE_FRAMES : -ACTION_PHASE_FRAMES;
+			m_predictionDirection == AlphaCadenceAction::Drop
+				? ACTION_PHASE_FRAMES : -ACTION_PHASE_FRAMES;
 		const double correctionFrames =
 			std::max(0.0, (correctionPhase - m_phaseFrames) / phasePerFrame);
 		decision.secondsUntilCorrection =
 			correctionFrames / input.captureRateHz;
 		const double planPhase =
-			phasePerFrame > 0.0 ? PLAN_PHASE_FRAMES : -PLAN_PHASE_FRAMES;
+			m_predictionDirection == AlphaCadenceAction::Drop
+				? PLAN_PHASE_FRAMES : -PLAN_PHASE_FRAMES;
 		const double planFrames =
 			std::max(0.0, (planPhase - m_phaseFrames) / phasePerFrame);
 		decision.secondsUntilPlan = planFrames / input.captureRateHz;
