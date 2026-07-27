@@ -57,6 +57,12 @@
     <ClInclude Include="libplacebo\LibplaceboOutputPolicy.h">
       <Filter>Header Files\libplacebo</Filter>
     </ClInclude>
+    <ClInclude Include="libplacebo\AlphaPresentationTelemetry.h">
+      <Filter>Header Files\libplacebo</Filter>
+    </ClInclude>
+    <ClInclude Include="libplacebo\AlphaCadenceCorrectionPolicy.h">
+      <Filter>Header Files\libplacebo</Filter>
+    </ClInclude>
     <ClInclude Include="libplacebo\LibplaceboRendererPluginApi.h">
       <Filter>Header Files\libplacebo</Filter>
     </ClInclude>
@@ -255,6 +261,12 @@
       <Filter>Source Files\libplacebo</Filter>
     </ClCompile>
     <ClCompile Include="libplacebo\LibplaceboOutputPolicy.cpp">
+      <Filter>Source Files\libplacebo</Filter>
+    </ClCompile>
+    <ClCompile Include="libplacebo\AlphaPresentationTelemetry.cpp">
+      <Filter>Source Files\libplacebo</Filter>
+    </ClCompile>
+    <ClCompile Include="libplacebo\AlphaCadenceCorrectionPolicy.cpp">
       <Filter>Source Files\libplacebo</Filter>
     </ClCompile>
     <ClCompile Include="pch.cpp">

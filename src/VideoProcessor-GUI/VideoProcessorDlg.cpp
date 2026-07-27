@@ -1516,19 +1516,11 @@ void CVideoProcessorDlg::UpdateSceneCorrectionModeUi()
 	const bool p010Selected = IsP010VideoConversionSelected();
 	m_rendererSceneCorrectionModeCombo.EnableWindow(p010Selected);
 
-	if (!p010Selected)
-	{
-		// Keep the configured choice visible, but do not allow it to be changed
-		// until the renderer is again producing P010.  The DirectShow path also
-		// independently gates Scene Detect on the actual output subtype.
-		m_rendererSceneCorrectionModeCombo.SetCurSel(
-			m_sceneAwareTimingCorrection ?
-				(m_sceneCorrectionUpstreamSample ? 2 : 1) : 0);
-		return;
-	}
-
+	// Correction method is deliberately not a UI choice.  Alpha has one native
+	// method; DirectShow normally uses the advanced upstream-sample method and
+	// can opt into Basic only through configuration.
 	m_rendererSceneCorrectionModeCombo.SetCurSel(
-		m_sceneAwareTimingCorrection ? (m_sceneCorrectionUpstreamSample ? 2 : 1) : 0);
+		m_sceneAwareTimingCorrection ? 1 : 0);
 }
 
 
@@ -1596,7 +1588,6 @@ void CVideoProcessorDlg::OnRendererSceneCorrectionModeSelected()
 
 	const int selection = m_rendererSceneCorrectionModeCombo.GetCurSel();
 	m_sceneAwareTimingCorrection = selection != 0;
-	m_sceneCorrectionUpstreamSample = selection == 2;
 	if (m_videoRenderer)
 	{
 		// Scene Detect changes the presentation timestamp generator. Start it on
@@ -3260,6 +3251,11 @@ void CVideoProcessorDlg::RenderStart()
 				m_videoRenderer->OnVideoState(m_builtVideoState);
 
 			m_videoRenderer->Build();
+			// Match the DirectShow startup contract. Alpha owns its detector and
+			// cadence policy inside the optional renderer, so the configured mode
+			// must be forwarded before the first queued frame is accepted.
+			m_videoRenderer->SetSceneAwareTimingCorrection(
+				m_sceneAwareTimingCorrection);
 			m_videoRenderer->Start();
 			m_rendererStateText.SetWindowText(
 				TEXT("Started VideoProcessor Renderer (Alpha), waiting for image..."));
@@ -4322,8 +4318,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	}
 
 	m_rendererSceneCorrectionModeCombo.AddString(TEXT("Off"));
-	m_rendererSceneCorrectionModeCombo.AddString(TEXT("Basic"));
-	m_rendererSceneCorrectionModeCombo.AddString(TEXT("Advanced"));
+	m_rendererSceneCorrectionModeCombo.AddString(TEXT("On"));
 
 	//for (const auto& p : FULLSCREEN_MODES)
 	//{
@@ -5257,6 +5252,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			stats.sceneDetectMode);
 	else
 		stats.sceneDetectMode = TEXT("Off");
+	// Keep the configured user choice (Off/Basic/Advanced) as the mode label.
+	// Renderer-native detector lifecycle is readiness, not a replacement mode.
 
 	// Queue stats
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
@@ -5282,6 +5279,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.sceneDetectDetected = m_videoRenderer->SceneAwareDetectedCount();
 		stats.sceneTimingRatesCompatible =
 			m_videoRenderer->SceneTimingRatesCompatible();
+		m_videoRenderer->GetSceneTimingStatus(stats.sceneTimingStatus);
 		stats.sceneCorrectionPredictionValid =
 			m_videoRenderer->GetSceneTimingPrediction(
 				stats.sceneSecondsUntilCorrection,

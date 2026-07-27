@@ -65,6 +65,7 @@ struct StatsData
 	uint64_t sceneDetectCorrectionRepeats = 0;
 	uint64_t sceneDetectDetected = 0;
 	CString sceneDetectMode;
+	CString sceneTimingStatus;
 	bool sceneCorrectionPredictionValid = false;
 	bool sceneTimingRatesCompatible = false;
 	int sceneCorrectionAction = 0; // +1 repeat, -1 drop

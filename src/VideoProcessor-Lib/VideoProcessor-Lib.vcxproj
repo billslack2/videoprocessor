@@ -186,6 +186,8 @@
     <ClInclude Include="InputLocked.h" />
     <ClInclude Include="IntegerMath.h" />
     <ClInclude Include="IRenderer.h" />
+    <ClInclude Include="libplacebo\AlphaCadenceCorrectionPolicy.h" />
+    <ClInclude Include="libplacebo\AlphaPresentationTelemetry.h" />
     <ClInclude Include="libplacebo\LibplaceboOutputPolicy.h" />
     <ClInclude Include="libplacebo\LibplaceboPluginVideoRenderer.h" />
     <ClInclude Include="libplacebo\LibplaceboRendererPluginApi.h" />
@@ -211,6 +213,7 @@
     <ClInclude Include="PixelValueRange.h" />
     <ClInclude Include="PPMCorrectionLoader.h" />
     <ClInclude Include="RendererId.h" />
+	<ClInclude Include="SceneDetector.h" />
     <ClInclude Include="SubtitleRepositionMode.h" />
     <ClInclude Include="StringUtils.h" />
     <ClInclude Include="TimingClock.h" />
@@ -251,6 +254,12 @@
     <ClCompile Include="HDRData.cpp" />
     <ClCompile Include="InputLocked.cpp" />
     <ClCompile Include="IRenderer.cpp" />
+    <ClCompile Include="libplacebo\AlphaCadenceCorrectionPolicy.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="libplacebo\AlphaPresentationTelemetry.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="libplacebo\LibplaceboOutputPolicy.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
@@ -291,6 +300,7 @@
     <ClCompile Include="PixelValueRange.cpp" />
     <ClCompile Include="PPMCorrectionLoader.cpp" />
     <ClCompile Include="RendererId.cpp" />
+	<ClCompile Include="SceneDetector.cpp" />
     <ClCompile Include="StringUtils.cpp" />
     <ClCompile Include="TimingClock.cpp" />
     <ClCompile Include="VideoConversionOverride.cpp" />

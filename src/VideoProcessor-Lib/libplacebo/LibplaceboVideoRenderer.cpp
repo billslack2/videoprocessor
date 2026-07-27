@@ -5,8 +5,11 @@
 #include <ConfigFile.h>
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
+#include <libplacebo/AlphaCadenceCorrectionPolicy.h>
 #include <libplacebo/AlphaQueuePolicy.h>
 #include <libplacebo/LibplaceboDisplayLut.h>
+#include <libplacebo/AlphaPresentationTelemetry.h>
+#include <SceneDetector.h>
 #include <libplacebo/LibplaceboOutputPolicy.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
@@ -44,6 +47,12 @@ namespace
 	{
 		return std::chrono::duration_cast<std::chrono::nanoseconds>(
 			SteadyClock::now().time_since_epoch()).count();
+	}
+
+	int64_t PerformanceCounterNow()
+	{
+		LARGE_INTEGER value{};
+		return QueryPerformanceCounter(&value) ? value.QuadPart : 0;
 	}
 
 	constexpr const char* RENDERER_STATE_FILENAME =
@@ -1640,6 +1649,9 @@ namespace
 
 struct LibplaceboVideoRenderer::Impl
 {
+	SceneDetector sceneDetector;
+	AlphaCadenceCorrectionPolicy cadenceCorrectionPolicy;
+	AlphaPresentationTelemetry presentationTelemetry;
 	ScopedDisplayRefreshRate displayRefreshRate;
 	pl_log log = nullptr;
 	pl_d3d11 d3d11 = nullptr;
@@ -1705,6 +1717,7 @@ struct LibplaceboVideoRenderer::Impl
 	HMONITOR negotiatedMonitor = nullptr;
 	bool cursorPositioned = false;
 	bool hasPresentedFrame = false;
+	uint64_t nextPresentationTelemetryLogTick = 0;
 	bool screenProfilesPrewarmed = false;
 	uint64_t lastSubmittedScreenProfileRequest = 0;
 	std::mutex renderMutex;
@@ -3421,9 +3434,23 @@ struct LibplaceboVideoRenderer::Impl
 	bool RenderLocked(
 		const VideoFrame& videoFrame,
 		VideoStateComPtr& statePtr,
+		uint64_t frameGeneration,
+		uint64_t sourceSequence,
+		int64_t enqueueQpc,
+		int64_t dequeueQpc,
+		size_t queueDepthAfterDequeue,
+		size_t desiredQueueDepth,
+		double oldestQueuedAgeMs,
+		bool cadenceRepeat,
+		double captureRateHz,
 		bool scopeScreenActive,
 		uint64_t screenProfileRequestSerial,
-		int64_t screenProfileRequestNs)
+		int64_t screenProfileRequestNs,
+		bool sceneDetectionEnabled,
+		uint64_t sceneDetectorGeneration,
+		std::atomic<uint64_t>& sceneDetectedCount,
+		std::atomic<int>& sceneDetectionStatus,
+		AlphaCadenceCorrectionDecision& correctionDecision)
 	{
 		const HMONITOR currentMonitor = MonitorFromWindow(
 			videoHwnd,
@@ -3467,6 +3494,73 @@ struct LibplaceboVideoRenderer::Impl
 		const size_t rowBytes = static_cast<size_t>(width) * sizeof(uint16_t);
 		const BYTE* yPixels = convertedFrame.data();
 		const BYTE* uvPixels = yPixels + rowBytes * static_cast<size_t>(height);
+		SceneDetectorResult sceneResult;
+		if (!cadenceRepeat)
+		{
+			sceneResult = sceneDetector.Analyze({
+				reinterpret_cast<const uint16_t*>(yPixels),
+				static_cast<size_t>(width), static_cast<size_t>(height), rowBytes,
+				sourceSequence, videoFrame.GetTimingTimestamp(),
+				sceneDetectorGeneration, state.displayMode->FrameDuration(),
+				sceneDetectionEnabled });
+		}
+		if (!cadenceRepeat)
+			sceneDetectionStatus.store(
+				static_cast<int>(sceneResult.status), std::memory_order_release);
+		if (!cadenceRepeat && sceneResult.safeBoundary)
+		{
+			sceneDetectedCount.fetch_add(1, std::memory_order_relaxed);
+			DebugLog::Log("libplacebo scene boundary: event=%llu sequence=%llu generation=%llu frames_back=%u luma=%u",
+				static_cast<unsigned long long>(sceneResult.eventId),
+				static_cast<unsigned long long>(sceneResult.sourceSequence),
+				static_cast<unsigned long long>(sceneResult.generation),
+				static_cast<unsigned>(sceneResult.eventFramesBack),
+				static_cast<unsigned>(sceneResult.averageLuma));
+		}
+		if (!cadenceRepeat)
+		{
+			const AlphaPresentationSnapshot presentation =
+				presentationTelemetry.Snapshot();
+			AlphaCadenceCorrectionInput correctionInput;
+			correctionInput.enabled = sceneDetectionEnabled;
+			// Queue replacement and detector/source replacement are independent
+			// reset boundaries. Fold both into the policy epoch so neither can
+			// inherit a pending action or retained phase from the other.
+			correctionInput.generation =
+				frameGeneration ^
+				(sceneDetectorGeneration + 0x9e3779b97f4a7c15ULL +
+					(frameGeneration << 6) + (frameGeneration >> 2));
+			correctionInput.presentationEvidence = presentation.evidence;
+			correctionInput.captureRateHz = captureRateHz;
+			correctionInput.displayRateHz = presentation.measuredDisplayHz;
+			correctionInput.queueDepth = queueDepthAfterDequeue;
+			correctionInput.desiredQueueDepth = desiredQueueDepth;
+			correctionInput.oldestQueuedAgeMs = oldestQueuedAgeMs;
+			correctionInput.presentationDebt =
+				presentation.sourceToPresentDebt;
+			correctionInput.lastPresentId = presentation.lastPresentId;
+			correctionInput.safeSceneBoundary = sceneResult.safeBoundary;
+			correctionInput.sceneEventId = sceneResult.eventId;
+			correctionInput.sourceSequence = sourceSequence;
+			correctionDecision =
+				cadenceCorrectionPolicy.Evaluate(correctionInput);
+			if (correctionDecision.action == AlphaCadenceAction::Drop)
+			{
+				DebugLog::Log(
+					"Alpha cadence correction: action=drop generation=%llu source=%llu scene=%llu fallback=%d debt=%llu queue=%zu/%zu phase=%.6f",
+					static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					static_cast<unsigned long long>(
+						correctionDecision.sceneEventId),
+					correctionDecision.deadlineFallback ? 1 : 0,
+					static_cast<unsigned long long>(
+						presentation.sourceToPresentDebt),
+					queueDepthAfterDequeue,
+					desiredQueueDepth,
+					correctionDecision.phaseFrames);
+				return true;
+			}
+		}
 		const float subtitleShiftSourcePixels = UpdateScopeSubtitleShift(
 			reinterpret_cast<const uint16_t*>(yPixels),
 			width,
@@ -3713,8 +3807,94 @@ struct LibplaceboVideoRenderer::Impl
 				--diagnosticReadbackFramesRemaining;
 		}
 		const bool submitted = pl_swapchain_submit_frame(swapchain);
+		const int64_t swapStartQpc = PerformanceCounterNow();
 		if (submitted)
 			pl_swapchain_swap_buffers(swapchain);
+		const int64_t swapEndQpc = PerformanceCounterNow();
+		LARGE_INTEGER qpcFrequency{};
+		QueryPerformanceFrequency(&qpcFrequency);
+		const double swapBlockMs =
+			qpcFrequency.QuadPart > 0 && swapStartQpc > 0 &&
+			swapEndQpc > swapStartQpc
+				? static_cast<double>(swapEndQpc - swapStartQpc) * 1000.0 /
+					static_cast<double>(qpcFrequency.QuadPart)
+				: 0.0;
+		if (rendered && submitted)
+		{
+			AlphaPresentationRecord record;
+			record.generation = frameGeneration;
+			record.sourceSequence = sourceSequence;
+			record.captureTimestamp = videoFrame.GetTimingTimestamp();
+			record.enqueueQpc = enqueueQpc;
+			record.dequeueQpc = dequeueQpc;
+			record.submitQpc = swapStartQpc;
+			record.queueDepthAfterDequeue = queueDepthAfterDequeue;
+			record.oldestQueuedAgeMs = oldestQueuedAgeMs;
+			record.renderMs = renderMs;
+			record.swapBlockMs = swapBlockMs;
+			record.releaseReason = AlphaSourceReleaseReason::Submitted;
+
+			AlphaDxgiPresentationSample sample;
+			sample.generation = frameGeneration;
+			sample.qpcFrequency = qpcFrequency.QuadPart;
+			CComPtr<IDXGISwapChain> nativeSwapchain;
+			nativeSwapchain.Attach(pl_d3d11_swapchain_unwrap(swapchain));
+			if (nativeSwapchain)
+			{
+				UINT lastPresentCount = 0;
+				if (SUCCEEDED(nativeSwapchain->GetLastPresentCount(
+					&lastPresentCount)))
+				{
+					record.presentId = lastPresentCount;
+				}
+
+				DXGI_FRAME_STATISTICS statistics{};
+				const HRESULT statisticsResult =
+					nativeSwapchain->GetFrameStatistics(&statistics);
+				if (statisticsResult == DXGI_ERROR_FRAME_STATISTICS_DISJOINT)
+				{
+					sample.disjoint = true;
+				}
+				else if (SUCCEEDED(statisticsResult))
+				{
+					sample.available = true;
+					sample.presentCount = statistics.PresentCount;
+					sample.presentRefreshCount =
+						statistics.PresentRefreshCount;
+					sample.syncRefreshCount = statistics.SyncRefreshCount;
+					sample.syncQpc = statistics.SyncQPCTime.QuadPart;
+				}
+			}
+			presentationTelemetry.RecordSubmission(record);
+			presentationTelemetry.Observe(sample);
+
+			const uint64_t nowTick = GetTickCount64();
+			if (nowTick >= nextPresentationTelemetryLogTick)
+			{
+				nextPresentationTelemetryLogTick = nowTick + 5000;
+				const AlphaPresentationSnapshot snapshot =
+					presentationTelemetry.Snapshot();
+				DebugLog::Log(
+					"Alpha presentation telemetry: generation=%llu evidence=%d retained=%zu source=%llu presented=%llu debt=%llu present_id=%u refresh=%u display_hz=%.5f cadence_samples=%u queue_after=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f",
+					static_cast<unsigned long long>(snapshot.generation),
+					static_cast<int>(snapshot.evidence),
+					snapshot.retainedRecords,
+					static_cast<unsigned long long>(
+						snapshot.lastSubmittedSequence),
+					static_cast<unsigned long long>(
+						snapshot.lastPresentedSequence),
+					static_cast<unsigned long long>(
+						snapshot.sourceToPresentDebt),
+					snapshot.lastPresentId,
+					snapshot.lastPresentRefresh,
+					snapshot.measuredDisplayHz,
+					snapshot.cadenceSamples,
+					queueDepthAfterDequeue,
+					oldestQueuedAgeMs,
+					renderMs,
+					swapBlockMs);
+			}
+		}
 		if (rendered && submitted)
 		{
 			hasPresentedFrame = true;
@@ -3890,6 +4070,12 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 		}
 	}
 	m_videoState = new VideoState(*videoState);
+	if (materialSourceTransition)
+	{
+		// Source metadata transitions do not alter the pixels already queued, but
+		// must not let their detector history create a boundary in the new epoch.
+		m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
+	}
 
 	const bool sourceColorTransition =
 		previousEotf != EOTF::UNKNOWN &&
@@ -3970,7 +4156,14 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 		videoFrame.SourceBufferAddRef();
 		try
 		{
-			m_frameQueue.push_back({ videoFrame, frameState, enqueueGeneration });
+			const uint64_t sourceSequence =
+				m_sourceSequence.fetch_add(1, std::memory_order_relaxed) + 1;
+			m_frameQueue.push_back({
+				videoFrame,
+				frameState,
+				enqueueGeneration,
+				sourceSequence,
+				PerformanceCounterNow() });
 		}
 		catch (const std::exception& e)
 		{
@@ -4223,6 +4416,7 @@ void LibplaceboVideoRenderer::Reset()
 		BeginQueueGeneration("renderer reset");
 	}
 	m_frameCounter.store(0, std::memory_order_relaxed);
+	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
 	ResetFrameRateAndPPM();
 	DebugLog::Log("libplacebo renderer reset: new queue generation and renderer cache flushed");
 }
@@ -4239,6 +4433,132 @@ void LibplaceboVideoRenderer::ResetLiveQueue()
 	{
 		BeginQueueGeneration("live queue reset");
 	}
+	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
+}
+
+void LibplaceboVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
+{
+	const bool previous = m_sceneDetectionEnabled.exchange(enabled, std::memory_order_acq_rel);
+	if (previous != enabled)
+	{
+		m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
+		m_sceneDetectionStatus.store(
+			static_cast<int>(enabled ? SceneDetectorStatus::Warming : SceneDetectorStatus::Disabled),
+			std::memory_order_release);
+		m_sceneTimingRatesCompatible.store(false, std::memory_order_release);
+		m_sceneCorrectionPlanned.store(false, std::memory_order_release);
+		m_scenePredictedAction.store(0, std::memory_order_release);
+		m_sceneSecondsUntilCorrection.store(0.0, std::memory_order_release);
+		m_sceneSecondsUntilPlan.store(0.0, std::memory_order_release);
+		m_sceneTimingStatus.store(
+			static_cast<int>(enabled
+				? AlphaCadenceTimingStatus::WaitingForDxgi
+				: AlphaCadenceTimingStatus::Disabled),
+			std::memory_order_release);
+		m_sceneTimingRateSamples.store(0, std::memory_order_release);
+		m_sceneTimingMismatchPpm.store(0.0, std::memory_order_release);
+		DebugLog::Log("libplacebo scene detection %s", enabled ? "enabled" : "disabled");
+	}
+}
+
+uint64_t LibplaceboVideoRenderer::SceneAwareCorrectionDropCount() const
+{
+	return m_sceneCorrectionDropCount.load(std::memory_order_relaxed);
+}
+
+uint64_t LibplaceboVideoRenderer::SceneAwareCorrectionRepeatCount() const
+{
+	return m_sceneCorrectionRepeatCount.load(std::memory_order_relaxed);
+}
+
+uint64_t LibplaceboVideoRenderer::SceneAwareDetectedCount() const
+{
+	return m_sceneDetectedCount.load(std::memory_order_relaxed);
+}
+
+bool LibplaceboVideoRenderer::GetSceneDetectionStatus(CString& status) const
+{
+	switch (static_cast<SceneDetectorStatus>(
+		m_sceneDetectionStatus.load(std::memory_order_acquire)))
+	{
+	case SceneDetectorStatus::Disabled:
+		status = TEXT("Disabled");
+		break;
+	case SceneDetectorStatus::Warming:
+		status = TEXT("Warming");
+		break;
+	case SceneDetectorStatus::Active:
+		status = TEXT("Active");
+		break;
+	default:
+		status = TEXT("Unavailable");
+		break;
+	}
+	return true;
+}
+
+bool LibplaceboVideoRenderer::GetSceneTimingPrediction(
+	double& secondsUntilCorrection, double& secondsUntilPlan,
+	int& action, bool& planned) const
+{
+	action = m_scenePredictedAction.load(std::memory_order_acquire);
+	secondsUntilCorrection =
+		m_sceneSecondsUntilCorrection.load(std::memory_order_acquire);
+	secondsUntilPlan =
+		m_sceneSecondsUntilPlan.load(std::memory_order_acquire);
+	planned = m_sceneCorrectionPlanned.load(std::memory_order_acquire);
+	return action != 0;
+}
+
+bool LibplaceboVideoRenderer::GetSceneTimingLastCorrection(
+	int& action, double& secondsFromDeadline, uint64_t& correctionTick) const
+{
+	action = m_sceneLastCorrectionAction.load(std::memory_order_acquire);
+	secondsFromDeadline =
+		m_sceneLastCorrectionSecondsFromDeadline.load(std::memory_order_acquire);
+	correctionTick =
+		m_sceneLastCorrectionTick.load(std::memory_order_acquire);
+	return action != 0 && correctionTick != 0;
+}
+
+bool LibplaceboVideoRenderer::SceneTimingRatesCompatible() const
+{
+	return m_sceneTimingRatesCompatible.load(std::memory_order_acquire);
+}
+
+bool LibplaceboVideoRenderer::GetSceneTimingStatus(CString& status) const
+{
+	const AlphaCadenceTimingStatus timingStatus =
+		static_cast<AlphaCadenceTimingStatus>(
+			m_sceneTimingStatus.load(std::memory_order_acquire));
+	switch (timingStatus)
+	{
+	case AlphaCadenceTimingStatus::Disabled:
+		status = TEXT("Disabled");
+		break;
+	case AlphaCadenceTimingStatus::WaitingForDxgi:
+		status = TEXT("Waiting for DXGI evidence");
+		break;
+	case AlphaCadenceTimingStatus::Measuring:
+		status.Format(TEXT("Measuring DXGI rate (%u/600)"),
+			m_sceneTimingRateSamples.load(std::memory_order_acquire));
+		break;
+	case AlphaCadenceTimingStatus::Matched:
+		status.Format(TEXT("Rates matched (%.2f ppm)"),
+			m_sceneTimingMismatchPpm.load(std::memory_order_acquire));
+		break;
+	case AlphaCadenceTimingStatus::Forecasting:
+		status.Format(TEXT("Forecasting (%.2f ppm)"),
+			m_sceneTimingMismatchPpm.load(std::memory_order_acquire));
+		break;
+	case AlphaCadenceTimingStatus::Verifying:
+		status = TEXT("Verifying correction");
+		break;
+	default:
+		status = TEXT("Rate mismatch unavailable");
+		break;
+	}
+	return true;
 }
 
 
@@ -4471,6 +4791,13 @@ void LibplaceboVideoRenderer::RenderLoop()
 		VideoFrame frame;
 		VideoStateComPtr state;
 		uint64_t frameGeneration = 0;
+		uint64_t sourceSequence = 0;
+		int64_t enqueueQpc = 0;
+		int64_t dequeueQpc = 0;
+		size_t queueDepthAfterDequeue = 0;
+		size_t desiredQueueDepth = 1;
+		double oldestQueuedAgeMs = 0.0;
+		bool cadenceRepeat = false;
 		bool prefillReleased = false;
 		size_t prefillDepth = 0;
 		size_t prefillTarget = 0;
@@ -4502,9 +4829,26 @@ void LibplaceboVideoRenderer::RenderLoop()
 			frame = m_frameQueue.front().frame;
 			state = m_frameQueue.front().state;
 			frameGeneration = m_frameQueue.front().generation;
+			sourceSequence = m_frameQueue.front().sourceSequence;
+			enqueueQpc = m_frameQueue.front().enqueueQpc;
+			cadenceRepeat = m_frameQueue.front().cadenceRepeat;
 			m_frameQueue.pop_front();
 
 			const size_t remainingDepth = m_frameQueue.size();
+			queueDepthAfterDequeue = remainingDepth;
+			desiredQueueDepth = PrefillTargetLocked();
+			dequeueQpc = PerformanceCounterNow();
+			LARGE_INTEGER qpcFrequency{};
+			if (!m_frameQueue.empty() &&
+				QueryPerformanceFrequency(&qpcFrequency) &&
+				qpcFrequency.QuadPart > 0 &&
+				dequeueQpc > m_frameQueue.front().enqueueQpc)
+			{
+				oldestQueuedAgeMs =
+					static_cast<double>(
+						dequeueQpc - m_frameQueue.front().enqueueQpc) *
+					1000.0 / static_cast<double>(qpcFrequency.QuadPart);
+			}
 			if (!m_queueDepthWindowHasSamples)
 			{
 				m_queueDepthWindowMin = remainingDepth;
@@ -4568,6 +4912,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 
 		bool rendered = false;
 		bool staleGeneration = false;
+		AlphaCadenceCorrectionDecision correctionDecision;
 		try
 		{
 			std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
@@ -4581,9 +4926,23 @@ void LibplaceboVideoRenderer::RenderLoop()
 				rendered = state && m_impl->RenderLocked(
 					frame,
 					state,
+					frameGeneration,
+					sourceSequence,
+					enqueueQpc,
+					dequeueQpc,
+					queueDepthAfterDequeue,
+					desiredQueueDepth,
+					oldestQueuedAgeMs,
+					cadenceRepeat,
+					m_measuredFrameRate.load(std::memory_order_relaxed),
 					m_scopeScreenActive.load(std::memory_order_acquire),
 					m_screenProfileRequestSerial.load(std::memory_order_acquire),
-					m_screenProfileRequestNs.load(std::memory_order_relaxed));
+					m_screenProfileRequestNs.load(std::memory_order_relaxed),
+					m_sceneDetectionEnabled.load(std::memory_order_acquire),
+					m_sceneDetectorGeneration.load(std::memory_order_acquire),
+					m_sceneDetectedCount,
+					m_sceneDetectionStatus,
+					correctionDecision);
 			}
 		}
 		catch (const std::exception& e)
@@ -4593,6 +4952,42 @@ void LibplaceboVideoRenderer::RenderLoop()
 		catch (...)
 		{
 			DebugLog::Log("libplacebo render failure: unknown exception");
+		}
+
+		if (!cadenceRepeat)
+		{
+			m_sceneTimingRatesCompatible.store(
+				correctionDecision.ratesCompatible, std::memory_order_release);
+			m_sceneCorrectionPlanned.store(
+				correctionDecision.planned, std::memory_order_release);
+			const int predictedAction = correctionDecision.predictionValid
+				? static_cast<int>(correctionDecision.predictedAction)
+				: 0;
+			m_scenePredictedAction.store(
+				predictedAction, std::memory_order_release);
+			m_sceneSecondsUntilCorrection.store(
+				correctionDecision.secondsUntilCorrection,
+				std::memory_order_release);
+			m_sceneSecondsUntilPlan.store(
+				correctionDecision.secondsUntilPlan,
+				std::memory_order_release);
+			m_sceneTimingStatus.store(
+				static_cast<int>(correctionDecision.timingStatus),
+				std::memory_order_release);
+			m_sceneTimingRateSamples.store(
+				correctionDecision.rateFilterSamples,
+				std::memory_order_release);
+			m_sceneTimingMismatchPpm.store(
+				correctionDecision.filteredMismatchPpm,
+				std::memory_order_release);
+			if (correctionDecision.verificationCompleted)
+			{
+				DebugLog::Log(
+					"Alpha cadence correction verification: generation=%llu result=%s",
+					static_cast<unsigned long long>(frameGeneration),
+					correctionDecision.lastVerificationSucceeded
+						? "verified" : "ambiguous");
+			}
 		}
 
 		if (!rendered)
@@ -4634,6 +5029,71 @@ void LibplaceboVideoRenderer::RenderLoop()
 			continue;
 		}
 		consecutiveFailures = 0;
+
+		if (correctionDecision.action == AlphaCadenceAction::Drop)
+		{
+			m_sceneCorrectionDropCount.fetch_add(1, std::memory_order_relaxed);
+			m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+			m_sceneLastCorrectionAction.store(-1, std::memory_order_release);
+			m_sceneLastCorrectionSecondsFromDeadline.store(
+				0.0, std::memory_order_release);
+			m_sceneLastCorrectionTick.store(
+				GetTickCount64(), std::memory_order_release);
+			frame.SourceBufferRelease();
+			continue;
+		}
+
+		if (correctionDecision.action == AlphaCadenceAction::Repeat)
+		{
+			bool repeatQueued = false;
+			{
+				std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+				if (!m_stopRequested && frameGeneration == m_queueGeneration)
+				{
+					try
+					{
+						m_frameQueue.push_front({
+							frame,
+							state,
+							frameGeneration,
+							sourceSequence,
+							enqueueQpc,
+							true });
+						repeatQueued = true;
+					}
+					catch (const std::exception& e)
+					{
+						DebugLog::Log(
+							"Alpha cadence repeat enqueue failed: %s", e.what());
+					}
+				}
+			}
+			if (repeatQueued)
+			{
+				m_sceneCorrectionRepeatCount.fetch_add(
+					1, std::memory_order_relaxed);
+				m_sceneLastCorrectionAction.store(
+					1, std::memory_order_release);
+				m_sceneLastCorrectionSecondsFromDeadline.store(
+					0.0, std::memory_order_release);
+				m_sceneLastCorrectionTick.store(
+					GetTickCount64(), std::memory_order_release);
+				DebugLog::Log(
+					"Alpha cadence correction: action=repeat generation=%llu source=%llu scene=%llu fallback=%d phase=%.6f",
+					static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					static_cast<unsigned long long>(
+						correctionDecision.sceneEventId),
+					correctionDecision.deadlineFallback ? 1 : 0,
+					correctionDecision.phaseFrames);
+				m_queueChanged.notify_one();
+				continue;
+			}
+			{
+				std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
+				m_impl->cadenceCorrectionPolicy.CancelPendingAction();
+			}
+		}
 
 		if (m_timingClock)
 		{

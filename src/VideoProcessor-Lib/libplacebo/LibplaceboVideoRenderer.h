@@ -39,7 +39,17 @@ public:
 	void OnPaint() override;
 	void OnDisplayChange() override;
 	void SetFrameQueueMaxSize(size_t size) override;
-	void SetSceneAwareTimingCorrection(bool) override {}
+	void SetSceneAwareTimingCorrection(bool enabled) override;
+	uint64_t SceneAwareCorrectionDropCount() const override;
+	uint64_t SceneAwareCorrectionRepeatCount() const override;
+	uint64_t SceneAwareDetectedCount() const override;
+	bool GetSceneDetectionStatus(CString& status) const override;
+	bool GetSceneTimingPrediction(double& secondsUntilCorrection,
+		double& secondsUntilPlan, int& action, bool& planned) const override;
+	bool GetSceneTimingLastCorrection(int& action,
+		double& secondsFromDeadline, uint64_t& correctionTick) const override;
+	bool SceneTimingRatesCompatible() const override;
+	bool GetSceneTimingStatus(CString& status) const override;
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
@@ -59,6 +69,9 @@ private:
 		VideoFrame frame;
 		VideoStateComPtr state;
 		uint64_t generation = 0;
+		uint64_t sourceSequence = 0;
+		int64_t enqueueQpc = 0;
+		bool cadenceRepeat = false;
 	};
 
 	void RenderLoop();
@@ -100,7 +113,25 @@ private:
 	std::atomic<double> m_entryLatencyMs{0.0};
 	std::atomic<double> m_exitLatencyMs{0.0};
 	std::atomic<uint64_t> m_droppedFrames{0};
+	std::atomic_bool m_sceneDetectionEnabled{false};
+	std::atomic<uint64_t> m_sceneDetectorGeneration{1};
+	std::atomic<uint64_t> m_sceneDetectedCount{0};
+	std::atomic<uint64_t> m_sceneCorrectionDropCount{0};
+	std::atomic<uint64_t> m_sceneCorrectionRepeatCount{0};
+	std::atomic_bool m_sceneTimingRatesCompatible{false};
+	std::atomic<int> m_scenePredictedAction{0};
+	std::atomic_bool m_sceneCorrectionPlanned{false};
+	std::atomic<double> m_sceneSecondsUntilCorrection{0.0};
+	std::atomic<double> m_sceneSecondsUntilPlan{0.0};
+	std::atomic<int> m_sceneLastCorrectionAction{0};
+	std::atomic<double> m_sceneLastCorrectionSecondsFromDeadline{0.0};
+	std::atomic<uint64_t> m_sceneLastCorrectionTick{0};
+	std::atomic<int> m_sceneTimingStatus{0};
+	std::atomic<uint32_t> m_sceneTimingRateSamples{0};
+	std::atomic<double> m_sceneTimingMismatchPpm{0.0};
+	std::atomic<int> m_sceneDetectionStatus{0};
 	std::atomic<uint64_t> m_frameCounter{0};
+	std::atomic<uint64_t> m_sourceSequence{0};
 	// Capture-timestamp cadence diagnostics.  This intentionally mirrors the
 	// DirectShow renderer measurement but is diagnostic-only: the optional
 	// renderer does not feed or alter source PPM correction.
