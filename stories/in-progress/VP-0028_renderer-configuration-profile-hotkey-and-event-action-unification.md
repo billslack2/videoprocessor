@@ -39,6 +39,17 @@ unchanged path. The focused `RendererProfileConfig` unit tests pass (2/2) in
 the VS2019 runner; the VS2026 runner crashes during discovery before executing
 tests.
 
+On 2026-07-26, the user clarified that one canonical key may deliberately
+select profiles in multiple independent groups, matching madVR-style composite
+choices. Commit `c547e0a` implements and tests that rule: ambiguity is rejected
+only when one key selects two profiles in the *same* group. It also adds the
+review-only port of the supplied legacy configuration at
+`docs/examples/VideoProcessorRenderer.from-legacy.proposed.cfg` and links it
+from the proposed HTML reference. The focused model tests pass (3/3). This
+does not yet make unified configuration deployable: GUI/renderer lifecycle,
+typed ownership validation, committed per-group persistence, viewport apply,
+and event-action scheduling remain unintegrated.
+
 A subsequent multi-pass design/code review determined that this increment is a
 prototype and must not be treated as the accepted unified implementation. It
 still routes manual selection through one legacy display-rule slot, uses GUI
