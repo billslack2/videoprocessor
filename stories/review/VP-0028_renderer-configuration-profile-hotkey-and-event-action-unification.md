@@ -102,6 +102,21 @@ Deployment backups:
 and
 `C:\Videoprocessor\vp\backup-before-vp0028-output-log-20260727-175315`.
 
+Windowed testing on a display without NVIDIA AVI InfoFrame support exposed an
+unsafe fallback: DXGI accepted P2020, NVAPI returned `NVAPI_NOT_SUPPORTED`, and
+the renderer continued on the unverified P2020 DirectFlip/MPO contract. The
+video plane could disappear and the separate layered OSD could blend as
+opaque. Commit `ad6ecf9` (`fix: fall back when BT.2020 signaling fails`) now
+fails closed when `report_bt2020_to_display: true`: an unverifiable NVIDIA
+signal atomically restores the complete Rec.709/P709 render and swapchain
+contract. A supported system still retains BT.2020 after successful InfoFrame
+verification. Debug/Release plugin builds and 25 focused config/output tests
+pass. Live unsupported-monitor evidence shows the P2020 request, explicit
+NVAPI failure, `nvidia-report-fallback`, restored
+`RGB_FULL_G22_NONE_P709`, continued Rec.709 rendering, and a responsive GUI.
+Deployment backup:
+`C:\Videoprocessor\vp\backup-before-vp0028-bt2020-failsafe-20260727-175957`.
+
 Review deliverables:
 
 - `docs/VP-0028_RENDERER_CONFIGURATION_PROPOSAL.md`
