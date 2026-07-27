@@ -3260,6 +3260,11 @@ void CVideoProcessorDlg::RenderStart()
 				m_videoRenderer->OnVideoState(m_builtVideoState);
 
 			m_videoRenderer->Build();
+			// Match the DirectShow startup contract. Alpha owns its detector and
+			// cadence policy inside the optional renderer, so the configured mode
+			// must be forwarded before the first queued frame is accepted.
+			m_videoRenderer->SetSceneAwareTimingCorrection(
+				m_sceneAwareTimingCorrection);
 			m_videoRenderer->Start();
 			m_rendererStateText.SetWindowText(
 				TEXT("Started VideoProcessor Renderer (Alpha), waiting for image..."));
@@ -5257,12 +5262,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			stats.sceneDetectMode);
 	else
 		stats.sceneDetectMode = TEXT("Off");
-	if (m_videoRenderer)
-	{
-		CString detectorStatus;
-		if (m_videoRenderer->GetSceneDetectionStatus(detectorStatus))
-			stats.sceneDetectMode = detectorStatus;
-	}
+	// Keep the configured user choice (Off/Basic/Advanced) as the mode label.
+	// Renderer-native detector lifecycle is readiness, not a replacement mode.
 
 	// Queue stats
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
