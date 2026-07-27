@@ -2,10 +2,12 @@
 
 ## Status
 
-Draft. Diagnostic-only foundation for VP-0026 and VP-0027. The design is based
-on source review and retained logs; implementation must first confirm the exact
-DXGI frame-statistics behavior of the bundled libplacebo 7.360.1 D3D11
-swapchain on the target Epson path.
+In Progress. The bounded, generation-safe telemetry foundation is implemented
+on `codex/vp-0025-scene-detection` at source commit `ccc53c7`, based on
+`v1.1.014-beta` commit `b79355e`. Release x64 builds and all 69 unit tests pass.
+The exact DXGI frame-statistics interpretation still requires runtime
+confirmation against an independent presentation trace; Epson-specific
+validation is intentionally deferred to the combined VP-0024/25/27 run.
 
 Supersedes VP-0005 and VP-0017 and the investigative portion of VP-0008.
 
@@ -110,3 +112,29 @@ timestamps do not schedule presentation.
 
 Unblocks VP-0026 and VP-0027. VP-0025 may proceed independently but must use
 the same source sequence and renderer-generation contract.
+
+## Implementation progress
+
+- Each accepted Alpha frame now carries a renderer-lifetime source sequence,
+  VP-0026 queue generation, capture timestamp, and enqueue QPC.
+- Dequeue depth and oldest queued-frame age are sampled under the queue lock.
+- Successful renders retain bounded correlation records containing conversion/
+  render timing, pre-swap submit QPC, swap-block duration, DXGI present ID, and
+  source-buffer release disposition.
+- The native libplacebo D3D11 swapchain is unwrapped only for the duration of
+  each query. `GetLastPresentCount` and `GetFrameStatistics` feed the
+  correlation ring without retaining source buffers.
+- Presentation evidence is explicitly unavailable, warming, stable, or
+  disjoint. Generation changes, unavailable statistics, counter regressions,
+  and disjoint samples clear correction readiness.
+- Display cadence is derived only from the stabilized slope of DXGI refresh
+  count versus QPC. The five-second diagnostic snapshot reports retained
+  records, submitted/presented sequences, debt, present/refresh IDs, measured
+  display rate, queue age/depth, render time, and swap time.
+- Six unit tests cover ring bounds, generation isolation, present correlation,
+  sequence debt, cadence stabilization, disjoint handling, and unavailable
+  evidence. The complete suite passes 69/69.
+
+Remaining work is live DXGI behavior validation, independent trace comparison,
+and confirmation of Epson-specific 23.976/24 and 59.94/60 behavior. No
+presentation correction is enabled by this story.
