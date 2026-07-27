@@ -52,6 +52,13 @@ namespace RendererProfileConfig
 		bool resetToAutomatic = false;
 	};
 
+	struct AutomaticSelection
+	{
+		std::string group;
+		std::string profile;
+		bool configuredDefault = false;
+	};
+
 	inline bool IsUnified(const ConfigFile& config)
 	{
 		return config.HasSection("profile_groups") || config.HasSection("general") ||
@@ -256,6 +263,55 @@ namespace RendererProfileConfig
 			}
 			if (!selected.empty())
 				selections.push_back({ group.name, selected, false });
+		}
+		return true;
+	}
+
+	// Select every group from one immutable source snapshot. A matching profile
+	// wins by priority, then comparison specificity, then its declared list
+	// order. If nothing matches, a named default is selected; default=auto
+	// intentionally leaves that group without an override.
+	inline bool SelectAutomatic(const Model& model,
+		const DisplayRuleExpression::ValueLookup& sourceValues,
+		std::vector<AutomaticSelection>& selections, std::string& error)
+	{
+		selections.clear();
+		error.clear();
+		const DisplayRuleExpression::ValueLookup values =
+			[&](const std::string& name, std::string& value)
+			{
+				if (name == "key") { value = "none"; return true; }
+				return sourceValues(name, value);
+			};
+
+		for (const Group& group : model.groups)
+		{
+			const Profile* selected = nullptr;
+			int selectedSpecificity = 0;
+			for (const std::string& profileName : group.profiles)
+			{
+				const Profile& profile = model.profiles.at(group.name + "." + profileName);
+				if (profile.when.empty()) continue;
+				int specificity = 0;
+				const bool matches = DisplayRuleExpression::Matches(
+					profile.when, values, specificity, error);
+				if (!matches && !error.empty()) return false;
+				if (!matches) continue;
+				if (!selected || profile.priority > selected->priority ||
+					(profile.priority == selected->priority && specificity > selectedSpecificity))
+				{
+					selected = &profile;
+					selectedSpecificity = specificity;
+				}
+			}
+			if (selected)
+			{
+				selections.push_back({ group.name, selected->name, false });
+			}
+			else if (group.defaultSelection != "auto")
+			{
+				selections.push_back({ group.name, group.defaultSelection, true });
+			}
 		}
 		return true;
 	}

@@ -3,6 +3,7 @@
 #include "LibplaceboVideoRenderer.h"
 
 #include <ConfigFile.h>
+#include <RendererProfileConfig.h>
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
 #include <libplacebo/AlphaCadenceCorrectionPolicy.h>
@@ -645,6 +646,50 @@ namespace
 	void ApplyAutomaticProfiles(const ConfigFile& config, const VideoState& state,
 		RendererSettings& settings, std::string& activeProfiles)
 	{
+		RendererProfileConfig::Model model;
+		std::string modelError;
+		if (RendererProfileConfig::IsUnified(config))
+		{
+			if (!RendererProfileConfig::Read(config, model, modelError))
+			{
+				DebugLog::Log("unified renderer configuration ignored: %s", modelError.c_str());
+				return;
+			}
+			std::vector<RendererProfileConfig::AutomaticSelection> selections;
+			if (!RendererProfileConfig::SelectAutomatic(model,
+				[&state](const std::string& variable, std::string& value)
+				{
+					if (variable == "eotf" || variable == "transfer") value = CStringA(ToString(state.eotf)).GetString();
+					else if (variable == "colorspace" || variable == "primaries") value = CStringA(ToString(state.colorspace)).GetString();
+					else if (variable == "format") value = CStringA(ToString(state.videoFrameEncoding)).GetString();
+					else if (variable == "range" || variable == "scan") return false;
+					else if (variable == "hdr_metadata") value = state.hdrData && state.hdrData->IsValid() ? "true" : "false";
+					else if (variable == "interlaced") value = state.displayMode && state.displayMode->IsInterlaced() ? "true" : "false";
+					else if (!state.displayMode) return false;
+					else if (variable == "source_rate") value = std::to_string(static_cast<int>(std::floor(state.displayMode->RefreshRateHz())));
+					else if (variable == "width") value = std::to_string(state.displayMode->FrameWidth());
+					else if (variable == "height") value = std::to_string(state.displayMode->FrameHeight());
+					else if (variable == "resolution") value = std::to_string(state.displayMode->FrameWidth()) + "x" + std::to_string(state.displayMode->FrameHeight());
+					else return false;
+					return true;
+				}, selections, modelError))
+			{
+				DebugLog::Log("unified renderer profile selection failed: %s", modelError.c_str());
+				return;
+			}
+			for (const RendererProfileConfig::AutomaticSelection& selection : selections)
+			{
+				const auto profile = model.profiles.find(selection.group + "." + selection.profile);
+				if (profile == model.profiles.end()) continue;
+				const DisplayRule rule = { selection.group + "/" + selection.profile,
+					"profiles." + selection.group + "." + selection.profile, profile->second.priority, 0 };
+				ApplyDisplayRuleOverrides(config, rule, settings);
+				if (!activeProfiles.empty()) activeProfiles += ", ";
+				activeProfiles += rule.name;
+			}
+			return;
+		}
+
 		std::string groups;
 		if (!config.TryGetString("profile_groups", "groups", groups)) return;
 		for (const std::string& group : SplitConfiguredList(groups))
@@ -1224,10 +1269,11 @@ namespace
 
 		std::string activeProfiles;
 		ApplyAutomaticProfiles(config, state, settings, activeProfiles);
-		const DisplayRule selectedRule = manualRule.empty() ?
-			SelectDisplayRule(config, state) :
-			(FindProfile(config, manualRule).name.empty() ?
-				FindDisplayRule(config, manualRule) : FindProfile(config, manualRule));
+		const bool unifiedConfig = RendererProfileConfig::IsUnified(config);
+		const DisplayRule selectedRule = unifiedConfig ? DisplayRule() :
+			(manualRule.empty() ? SelectDisplayRule(config, state) :
+				(FindProfile(config, manualRule).name.empty() ?
+					FindDisplayRule(config, manualRule) : FindProfile(config, manualRule)));
 		if (!selectedRule.name.empty())
 		{
 			ApplyDisplayRuleOverrides(config, selectedRule, settings);
