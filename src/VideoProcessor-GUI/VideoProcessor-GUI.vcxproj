@@ -200,7 +200,7 @@
       <AdditionalDependencies>opengl32.lib;strmiids.lib;winmm.lib;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
-      <Command>powershell.exe -ExecutionPolicy RemoteSigned -File "$(SolutionDir)tools\generate_version.ps1" "$(ProjectDir)\" "$(SolutionDir)\"</Command>
+      <Command>powershell.exe -ExecutionPolicy RemoteSigned -File "$(ProjectDir)..\..\tools\generate_version.ps1" -Project "$(ProjectDir)." -GitRoot "$(ProjectDir)..\.."</Command>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>if exist "$(SolutionDir)VideoProcessor.cfg" copy /Y "$(SolutionDir)VideoProcessor.cfg" "$(OutDir)VideoProcessor.cfg" &amp; if exist "$(SolutionDir)CONFIGURATION.html" copy /Y "$(SolutionDir)CONFIGURATION.html" "$(OutDir)CONFIGURATION.html" &amp; if exist "$(SolutionDir)VideoProcessorRenderer.cfg" copy /Y "$(SolutionDir)VideoProcessorRenderer.cfg" "$(OutDir)VideoProcessorRenderer.cfg" &amp; if exist "$(SolutionDir)VideoProcessorRenderer.html" copy /Y "$(SolutionDir)VideoProcessorRenderer.html" "$(OutDir)VideoProcessorRenderer.html"</Command>
@@ -226,7 +226,7 @@
       <AdditionalDependencies>opengl32.lib;strmiids.lib;winmm.lib;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PreBuildEvent>
-      <Command>powershell.exe -ExecutionPolicy RemoteSigned -File "$(SolutionDir)tools\generate_version.ps1" "$(ProjectDir)\" "$(SolutionDir)\"</Command>
+      <Command>powershell.exe -ExecutionPolicy RemoteSigned -File "$(ProjectDir)..\..\tools\generate_version.ps1" -Project "$(ProjectDir)." -GitRoot "$(ProjectDir)..\.."</Command>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>if exist "$(SolutionDir)VideoProcessor.cfg" copy /Y "$(SolutionDir)VideoProcessor.cfg" "$(OutDir)VideoProcessor.cfg" &amp; if exist "$(SolutionDir)CONFIGURATION.html" copy /Y "$(SolutionDir)CONFIGURATION.html" "$(OutDir)CONFIGURATION.html" &amp; if exist "$(SolutionDir)VideoProcessorRenderer.cfg" copy /Y "$(SolutionDir)VideoProcessorRenderer.cfg" "$(OutDir)VideoProcessorRenderer.cfg" &amp; if exist "$(SolutionDir)VideoProcessorRenderer.html" copy /Y "$(SolutionDir)VideoProcessorRenderer.html" "$(OutDir)VideoProcessorRenderer.html"</Command>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VideoProcessor proposed renderer configuration</title>
+  <title>VideoProcessor VP-0028 renderer configuration</title>
   <style>
     body { font: 16px/1.5 "Segoe UI", Arial, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #222; }
     h1, h2 { color: #17365d; } code, pre { font-family: Consolas, monospace; }
@@ -14,8 +14,8 @@
   </style>
 </head>
 <body>
-  <h1>Proposed VideoProcessor renderer configuration</h1>
-  <div class="warning"><strong>Target design — not yet safe to deploy.</strong> An initial VP-0028 runtime slice exists, but it does not yet implement independent group state, full key-rule evaluation, strict validation, viewport profiles, or event actions. Continue using <a href="VideoProcessorRenderer.html">the released renderer help</a> and configuration until the acceptance matrix is complete.</div>
+  <h1>VideoProcessor VP-0028 renderer configuration</h1>
+  <div class="note"><strong>VP-0028 side-by-side test build.</strong> The runtime now validates the unified graph before capture, resolves independent profile groups, supports one key selecting profiles in multiple groups, applies viewport profiles, fingerprints effective settings, commits versioned per-config state after a successful build, and schedules generation-scoped refresh actions. Keep the released configuration untouched and launch the test configuration with <code>/vr_config "VideoProcessorRenderer.vp0028-test.cfg"</code>.</div>
 
   <p>The proposal replaces separate display rules, rule shortcuts, screen-profile shortcuts, and refresh-rate command maps with one configuration vocabulary: named profiles whose ordinary <code>when=</code> expressions may include a key condition, and completed-transition event actions. It is designed for streaming sources, where stable capture metadata is available but filenames, codecs, bitrates, and library metadata are not reliable inputs.</p>
 

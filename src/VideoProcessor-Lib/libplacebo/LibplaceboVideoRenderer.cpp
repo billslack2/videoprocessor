@@ -65,6 +65,8 @@ namespace
 	std::mutex g_runtimeDisplayRuleMutex;
 	std::string g_runtimeManualDisplayRule;
 	std::map<std::string, std::string> g_runtimeManualUnifiedProfiles;
+	std::map<std::string, std::string> g_committedManualUnifiedProfiles;
+	std::string g_loadedUnifiedStatePath;
 
 	std::string NvApiStatusText(NvAPI_Status status)
 	{
@@ -500,6 +502,7 @@ namespace
 		std::string upscaler = "auto";
 		std::string downscaler = "auto";
 		AutoToggle deband = AutoToggle::AUTO;
+		AutoToggle sigmoid = AutoToggle::AUTO;
 		AutoToggle dithering = AutoToggle::AUTO;
 		std::string outputPresentation = "auto";
 		std::string outputRange = "auto";
@@ -524,6 +527,148 @@ namespace
 		std::string lutReferenceRange = "auto";
 		double lutReferenceNits = 0.0;
 	};
+
+	std::string EffectiveSettingsFingerprint(const RendererSettings& settings)
+	{
+		// Stable, locale-independent representation of every renderer-affecting
+		// value. Profile labels deliberately do not participate.
+		std::ostringstream stream;
+		stream.imbue(std::locale::classic());
+		stream.precision(17);
+		stream
+			<< settings.sdrTargetNits << '|' << settings.sdrBlackNits << '|'
+			<< settings.switchRefreshRate << '|' << settings.quality << '|'
+			<< settings.toneMapping << '|' << settings.gamutMapping << '|'
+			<< static_cast<int>(settings.peakDetection) << '|'
+			<< settings.hasContrastRecovery << '|' << settings.contrastRecovery << '|'
+			<< settings.upscaler << '|' << settings.downscaler << '|'
+			<< static_cast<int>(settings.deband) << '|'
+			<< static_cast<int>(settings.sigmoid) << '|'
+			<< static_cast<int>(settings.dithering) << '|'
+			<< settings.outputPresentation << '|' << settings.outputRange << '|'
+			<< settings.outputGamma << '|' << settings.sdrTargetPrimaries << '|'
+			<< settings.reportBt2020ToDisplay << '|' << settings.sdrInputTransfer << '|'
+			<< settings.outputDiagnostics << '|' << settings.diagnosticDisableShaderCache << '|'
+			<< settings.scopeScreenAspect << '|' << settings.defaultScopeScreen << '|'
+			<< settings.scopeSubtitleFit << '|' << settings.scopeSubtitleHoldMs << '|'
+			<< settings.scopeSubtitlePaddingPixels;
+		return stream.str();
+	}
+
+	std::string UnifiedStatePath(const ConfigFile& config)
+	{
+		std::string path = config.GetLoadedPath();
+		if (path.empty()) return RendererStatePath();
+		const size_t separator = path.find_last_of("\\/");
+		const std::string filename = separator == std::string::npos ?
+			path : path.substr(separator + 1);
+		if (_stricmp(filename.c_str(), ConfigFile::RENDERER_FILENAME) == 0)
+			return RendererStatePath();
+		const size_t extension = path.find_last_of('.');
+		if (extension != std::string::npos &&
+			(separator == std::string::npos || extension > separator))
+			path.resize(extension);
+		return path + ".state";
+	}
+
+	std::map<std::string, std::string> LoadUnifiedProfileState(
+		const ConfigFile& config, const RendererProfileConfig::Model& model)
+	{
+		std::map<std::string, std::string> result;
+		const std::string path = UnifiedStatePath(config);
+		std::ifstream input(path);
+		if (!input.is_open()) return result;
+		bool versionValid = false;
+		std::string legacyScreenProfile;
+		std::string line;
+		while (std::getline(input, line))
+		{
+			line = ConfigFile::Trim(line);
+			if (line.empty() || line.front() == '#' || line.front() == ';') continue;
+			const size_t equals = line.find('=');
+			if (equals == std::string::npos) continue;
+			const std::string key = ConfigFile::NormalizeName(line.substr(0, equals));
+			const std::string value = ConfigFile::NormalizeName(line.substr(equals + 1));
+			if (key == "state_version")
+			{
+				versionValid = value == "2";
+				continue;
+			}
+			if (key == "screen_profile" && (value == "normal" || value == "scope"))
+			{
+				legacyScreenProfile = value;
+				continue;
+			}
+			if (key.rfind("profile.", 0) != 0) continue;
+			const std::string groupName = key.substr(8);
+			for (const RendererProfileConfig::Group& group : model.groups)
+				if (group.name == groupName && group.persistSelection &&
+					std::find(group.profiles.begin(), group.profiles.end(), value) != group.profiles.end())
+				{
+					result[groupName] = value;
+					break;
+				}
+		}
+		if (!versionValid)
+		{
+			result.clear();
+			// Import the one legacy value for the default state path. The next
+			// successful build upgrades it atomically to state_version=2.
+			if (path == RendererStatePath() && !legacyScreenProfile.empty())
+				for (const RendererProfileConfig::Group& group : model.groups)
+					if (group.name == "viewport" && group.persistSelection &&
+						std::find(group.profiles.begin(), group.profiles.end(),
+							legacyScreenProfile) != group.profiles.end())
+					{
+						result["viewport"] = legacyScreenProfile;
+						break;
+					}
+			if (result.empty())
+				DebugLog::Log("unified profile state %s has no supported state_version=2; ignoring it",
+					path.c_str());
+		}
+		else if (!result.empty())
+			DebugLog::Log("restored %u unified manual profile selection(s) from %s",
+				static_cast<unsigned int>(result.size()), path.c_str());
+		return result;
+	}
+
+	bool PersistUnifiedProfileState(const ConfigFile& config,
+		const RendererProfileConfig::Model& model,
+		const std::map<std::string, std::string>& selections)
+	{
+		const std::string path = UnifiedStatePath(config);
+		const std::string temporaryPath = path + ".tmp";
+		std::ofstream output(temporaryPath, std::ios::out | std::ios::trunc);
+		if (!output.is_open()) return false;
+		output << "# Managed by VideoProcessor.\nstate_version=2\n";
+		const bool defaultStatePath = path == RendererStatePath();
+		const auto viewport = selections.find("viewport");
+		if (defaultStatePath && viewport != selections.end() &&
+			(viewport->second == "normal" || viewport->second == "scope"))
+			output << "screen_profile=" << viewport->second << "\n";
+		for (const RendererProfileConfig::Group& group : model.groups)
+		{
+			if (!group.persistSelection) continue;
+			const auto selected = selections.find(group.name);
+			if (selected != selections.end())
+				output << "profile." << group.name << "=" << selected->second << "\n";
+		}
+		output.close();
+		if (!output)
+		{
+			DeleteFileA(temporaryPath.c_str());
+			return false;
+		}
+		if (!MoveFileExA(temporaryPath.c_str(), path.c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+		{
+			DeleteFileA(temporaryPath.c_str());
+			return false;
+		}
+		DebugLog::Log("committed unified profile state to %s", path.c_str());
+		return true;
+	}
 
 	struct DisplayRule
 	{
@@ -645,6 +790,7 @@ namespace
 	}
 
 	void ApplyAutomaticProfiles(const ConfigFile& config, const VideoState& state,
+		const std::map<std::string, std::string>& manualProfiles,
 		RendererSettings& settings, std::string& activeProfiles)
 	{
 		RendererProfileConfig::Model model;
@@ -678,15 +824,34 @@ namespace
 				DebugLog::Log("unified renderer profile selection failed: %s", modelError.c_str());
 				return;
 			}
+			std::map<std::string, RendererProfileConfig::AutomaticSelection> selectedByGroup;
 			for (const RendererProfileConfig::AutomaticSelection& selection : selections)
+				selectedByGroup[selection.group] = selection;
+			for (const RendererProfileConfig::Group& group : model.groups)
 			{
-				const auto profile = model.profiles.find(selection.group + "." + selection.profile);
+				std::string profileName;
+				bool manual = false;
+				const auto manualSelection = manualProfiles.find(group.name);
+				if (manualSelection != manualProfiles.end())
+				{
+					profileName = manualSelection->second;
+					manual = true;
+				}
+				else
+				{
+					const auto automaticSelection = selectedByGroup.find(group.name);
+					if (automaticSelection == selectedByGroup.end())
+						continue;
+					profileName = automaticSelection->second.profile;
+				}
+				const auto profile = model.profiles.find(group.name + "." + profileName);
 				if (profile == model.profiles.end()) continue;
-				const DisplayRule rule = { selection.group + "/" + selection.profile,
-					"profiles." + selection.group + "." + selection.profile, profile->second.priority, 0 };
+				const DisplayRule rule = { group.name + "/" + profileName,
+					"profiles." + group.name + "." + profileName, profile->second.priority, 0 };
 				ApplyDisplayRuleOverrides(config, rule, settings);
 				if (!activeProfiles.empty()) activeProfiles += ", ";
 				activeProfiles += rule.name;
+				if (manual) activeProfiles += " (manual)";
 			}
 			return;
 		}
@@ -1014,9 +1179,21 @@ namespace
 		readChoice("tone_mapping", settings.toneMapping, { "auto", "spline", "bt2390", "st2094-40", "reinhard" });
 		readChoice("gamut_mapping", settings.gamutMapping, { "auto", "perceptual", "softclip", "relative", "desaturate" });
 		readToggle("peak_detection", settings.peakDetection);
+		if (config.TryGetString(rule.section, "peak_detection", raw))
+		{
+			const std::string named = ConfigFile::NormalizeName(raw);
+			if (named == "default") settings.peakDetection = AutoToggle::AUTO;
+			else if (named == "high_quality") settings.peakDetection = AutoToggle::ON;
+		}
 		readChoice("upscaler", settings.upscaler, { "auto", "ewa_lanczossharp", "ewa_lanczos", "bicubic", "bilinear" });
 		readChoice("downscaler", settings.downscaler, { "auto", "ewa_lanczos", "bicubic", "bilinear" });
 		readToggle("deband", settings.deband);
+		if (config.TryGetString(rule.section, "deband_strength", raw))
+		{
+			const std::string named = ConfigFile::NormalizeName(raw);
+			settings.deband = named == "off" ? AutoToggle::OFF : AutoToggle::ON;
+		}
+		readToggle("sigmoid", settings.sigmoid);
 		readToggle("dithering", settings.dithering);
 		readChoice("output_presentation", settings.outputPresentation,
 			{ "auto", "composed", "direct" });
@@ -1178,6 +1355,10 @@ namespace
 			config, "downscaler", "auto",
 			{ "auto", "ewa_lanczos", "bicubic", "bilinear" });
 		settings.deband = ReadAutoToggle(config, "deband");
+		if (TryGetDisplayString(config, "deband_strength", rawValue))
+			settings.deband = ConfigFile::NormalizeName(rawValue) == "off" ?
+				AutoToggle::OFF : AutoToggle::ON;
+		settings.sigmoid = ReadAutoToggle(config, "sigmoid");
 		settings.dithering = ReadAutoToggle(config, "dithering");
 		settings.outputPresentation = ReadChoice(
 			config, "output_presentation", "auto",
@@ -1298,28 +1479,8 @@ namespace
 		}
 
 		std::string activeProfiles;
-		ApplyAutomaticProfiles(config, state, settings, activeProfiles);
+		ApplyAutomaticProfiles(config, state, manualUnifiedProfiles, settings, activeProfiles);
 		const bool unifiedConfig = RendererProfileConfig::IsUnified(config);
-		if (unifiedConfig)
-		{
-			RendererProfileConfig::Model model;
-			std::string modelError;
-			if (RendererProfileConfig::Read(config, model, modelError))
-			{
-				for (const RendererProfileConfig::Group& group : model.groups)
-				{
-					const auto manual = manualUnifiedProfiles.find(group.name);
-					if (manual == manualUnifiedProfiles.end()) continue;
-					const auto profile = model.profiles.find(group.name + "." + manual->second);
-					if (profile == model.profiles.end()) continue;
-					const DisplayRule rule = { group.name + "/" + manual->second,
-						"profiles." + group.name + "." + manual->second, profile->second.priority, 0 };
-					ApplyDisplayRuleOverrides(config, rule, settings);
-					if (!activeProfiles.empty()) activeProfiles += ", ";
-					activeProfiles += rule.name + " (manual)";
-				}
-			}
-		}
 		const DisplayRule selectedRule = unifiedConfig ? DisplayRule() :
 			(manualRule.empty() ? SelectDisplayRule(config, state) :
 				(FindProfile(config, manualRule).name.empty() ?
@@ -1577,6 +1738,86 @@ namespace
 		return std::abs(RefreshRateHz(first) - RefreshRateHz(second)) < 0.002;
 	}
 
+	std::string ParentPath(const std::string& path)
+	{
+		const size_t separator = path.find_last_of("\\/");
+		return separator == std::string::npos ? std::string() : path.substr(0, separator);
+	}
+
+	bool IsAbsoluteWindowsPath(const std::string& path)
+	{
+		return path.size() >= 3 && std::isalpha(static_cast<unsigned char>(path[0])) &&
+			path[1] == ':' && (path[2] == '\\' || path[2] == '/');
+	}
+
+	void LaunchUnifiedEventAction(const RendererProfileConfig::Model::EventAction& action,
+		const std::string& configPath)
+	{
+		const std::string configDirectory = ParentPath(configPath);
+		std::string program = ConfigFile::Trim(action.program);
+		if (!IsAbsoluteWindowsPath(program) && !configDirectory.empty())
+			program = configDirectory + "\\" + program;
+		std::string workingDirectory = ConfigFile::Trim(action.workingDirectory);
+		if (workingDirectory.empty()) workingDirectory = configDirectory;
+		else if (!IsAbsoluteWindowsPath(workingDirectory) && !configDirectory.empty())
+			workingDirectory = configDirectory + "\\" + workingDirectory;
+
+		const std::wstring wideProgram = Utf8ToWide(program);
+		const std::wstring wideArguments = Utf8ToWide(action.arguments);
+		const std::wstring wideWorkingDirectory = Utf8ToWide(workingDirectory);
+		if (wideProgram.empty())
+		{
+			DebugLog::Log("event action '%s' rejected: program is not valid UTF-8",
+				action.name.c_str());
+			return;
+		}
+
+		const std::string normalizedProgram = ConfigFile::NormalizeName(program);
+		const bool batch = normalizedProgram.size() >= 4 &&
+			(normalizedProgram.substr(normalizedProgram.size() - 4) == ".bat" ||
+			 normalizedProgram.substr(normalizedProgram.size() - 4) == ".cmd");
+		std::wstring application = wideProgram;
+		std::wstring commandLine;
+		if (batch)
+		{
+			wchar_t commandProcessor[MAX_PATH]{};
+			if (GetEnvironmentVariableW(L"ComSpec", commandProcessor,
+				static_cast<DWORD>(_countof(commandProcessor))) == 0)
+			{
+				DebugLog::Log("event action '%s' rejected: ComSpec is unavailable",
+					action.name.c_str());
+				return;
+			}
+			application = commandProcessor;
+			commandLine = L"\"" + application + L"\" /d /s /c \"\"" +
+				wideProgram + L"\"" +
+				(wideArguments.empty() ? L"" : L" " + wideArguments) + L"\"";
+		}
+		else
+		{
+			commandLine = L"\"" + wideProgram + L"\"" +
+				(wideArguments.empty() ? L"" : L" " + wideArguments);
+		}
+
+		STARTUPINFOW startupInfo{};
+		startupInfo.cb = sizeof(startupInfo);
+		startupInfo.dwFlags = STARTF_USESHOWWINDOW;
+		startupInfo.wShowWindow = SW_HIDE;
+		PROCESS_INFORMATION processInfo{};
+		if (!CreateProcessW(application.c_str(), &commandLine[0], nullptr, nullptr,
+			FALSE, CREATE_NO_WINDOW, nullptr,
+			wideWorkingDirectory.empty() ? nullptr : wideWorkingDirectory.c_str(),
+			&startupInfo, &processInfo))
+		{
+			DebugLog::Log("event action '%s' launch failed: error=%lu",
+				action.name.c_str(), GetLastError());
+			return;
+		}
+		CloseHandle(processInfo.hThread);
+		CloseHandle(processInfo.hProcess);
+		DebugLog::Log("event action '%s' launched", action.name.c_str());
+	}
+
 	std::wstring DisplayDeviceNameForWindow(HWND hwnd)
 	{
 		const HMONITOR monitor = hwnd
@@ -1676,9 +1917,21 @@ namespace
 	class ScopedDisplayRefreshRate
 	{
 	public:
+		ScopedDisplayRefreshRate()
+			: m_cancelEvent(CreateEventW(nullptr, TRUE, FALSE, nullptr))
+		{
+		}
+
 		~ScopedDisplayRefreshRate()
 		{
+			if (m_cancelEvent) SetEvent(m_cancelEvent);
+			for (std::thread& worker : m_actionWorkers)
+				if (worker.joinable()) worker.join();
+			m_actionWorkers.clear();
 			Restore();
+			for (std::thread& worker : m_actionWorkers)
+				if (worker.joinable()) worker.join();
+			if (m_cancelEvent) CloseHandle(m_cancelEvent);
 		}
 
 		void Switch(HWND hwnd, const VideoState& state, const RendererSettings& settings)
@@ -1722,6 +1975,10 @@ namespace
 					RefreshRateHz(m_originalRefreshRate),
 					contentRate);
 				RunRefreshRateCommand(settings, RefreshRateHz(m_originalRefreshRate));
+				PublishEvent("refresh.confirmed",
+					RefreshRateHz(m_originalRefreshRate),
+					RefreshRateHz(targetRefreshRate),
+					RefreshRateHz(m_originalRefreshRate));
 				return;
 			}
 
@@ -1767,6 +2024,9 @@ namespace
 				actualRateAvailable
 					? RefreshRateHz(actualRefreshRate)
 					: RefreshRateHz(targetRefreshRate));
+			PublishEvent("refresh.applied",
+				actualRateAvailable ? RefreshRateHz(actualRefreshRate) : RefreshRateHz(targetRefreshRate),
+				RefreshRateHz(targetRefreshRate), RefreshRateHz(m_originalRefreshRate));
 		}
 
 	private:
@@ -1818,6 +2078,8 @@ namespace
 				RunRefreshRateCommand(
 					m_refreshCommandSettings,
 					RefreshRateHz(m_originalRefreshRate));
+				PublishEvent("refresh.restored", RefreshRateHz(m_originalRefreshRate),
+					RefreshRateHz(m_originalRefreshRate), RefreshRateHz(m_originalRefreshRate));
 			}
 			else
 			{
@@ -1829,10 +2091,86 @@ namespace
 			m_changed = false;
 		}
 
+		void PublishEvent(const std::string& event, double actualRefresh,
+			double requestedRefresh, double previousRefresh)
+		{
+			ConfigFile config;
+			RendererProfileConfig::Model model;
+			std::string error;
+			if (!config.Load(ConfigFile::RENDERER_FILENAME) ||
+				!RendererProfileConfig::IsUnified(config) ||
+				!RendererProfileConfig::Read(config, model, error))
+				return;
+			std::ostringstream identity;
+			identity.imbue(std::locale::classic());
+			identity.precision(9);
+			identity << event << '|' << actualRefresh;
+			if (!m_publishedTransitions.insert(identity.str()).second)
+			{
+				DebugLog::Log("event transition '%s' suppressed as duplicate",
+					identity.str().c_str());
+				return;
+			}
+			for (const auto& action : model.actions)
+			{
+				if (std::find(action.events.begin(), action.events.end(), event) ==
+					action.events.end()) continue;
+				int specificity = 0;
+				std::string matchError;
+				const bool matches = DisplayRuleExpression::Matches(action.when,
+					[actualRefresh, requestedRefresh, previousRefresh](
+						const std::string& variable, std::string& value)
+					{
+						double number = 0.0;
+						if (variable == "actual_refresh") number = actualRefresh;
+						else if (variable == "requested_refresh") number = requestedRefresh;
+						else if (variable == "previous_refresh") number = previousRefresh;
+						else return false;
+						for (const double canonical : {
+							24000.0 / 1001.0, 30000.0 / 1001.0, 60000.0 / 1001.0 })
+							if (std::abs(number - canonical) < 0.01)
+							{
+								number = canonical < 24.5 ? 23.976 :
+									(canonical < 40.0 ? 29.97 : 59.94);
+								break;
+							}
+						std::ostringstream text;
+						text.imbue(std::locale::classic());
+						text.precision(9);
+						text << number;
+						value = text.str();
+						return true;
+					}, specificity, matchError);
+				if (!matches)
+				{
+					if (!matchError.empty())
+						DebugLog::Log("event action '%s' evaluation failed: %s",
+							action.name.c_str(), matchError.c_str());
+					continue;
+				}
+				const std::string configPath = config.GetLoadedPath();
+				const DWORD delayMs = static_cast<DWORD>(action.delaySeconds * 1000);
+				DebugLog::Log("event action '%s' scheduled for %s in %d seconds",
+					action.name.c_str(), event.c_str(), action.delaySeconds);
+				m_actionWorkers.emplace_back([this, action, configPath, delayMs]()
+					{
+						if (!m_cancelEvent ||
+							WaitForSingleObject(m_cancelEvent, delayMs) == WAIT_TIMEOUT)
+							LaunchUnifiedEventAction(action, configPath);
+						else
+							DebugLog::Log("event action '%s' cancelled with renderer generation",
+								action.name.c_str());
+					});
+			}
+		}
+
 		std::wstring m_displayDeviceName;
 		DISPLAYCONFIG_RATIONAL m_originalRefreshRate{};
 		bool m_changed = false;
 		RendererSettings m_refreshCommandSettings;
+		HANDLE m_cancelEvent = nullptr;
+		std::vector<std::thread> m_actionWorkers;
+		std::set<std::string> m_publishedTransitions;
 	};
 }
 
@@ -1866,6 +2204,7 @@ struct LibplaceboVideoRenderer::Impl
 	struct pl_render_params renderParams{};
 	struct pl_color_map_params colorMapParams{};
 	struct pl_peak_detect_params peakDetectParams{};
+	struct pl_sigmoid_params sigmoidParams{};
 	struct pl_deband_params debandParams{};
 	struct pl_dither_params ditherParams{};
 	double sdrTargetNits = PL_COLOR_SDR_WHITE;
@@ -1903,6 +2242,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool scopeSubtitleWasActive = false;
 	bool scopeSubtitleWasTopActive = false;
 	std::string activeDisplayRule;
+	std::string effectiveSettingsFingerprint;
 	HWND videoHwnd = nullptr;
 	HMONITOR negotiatedMonitor = nullptr;
 	bool cursorPositioned = false;
@@ -2210,6 +2550,22 @@ struct LibplaceboVideoRenderer::Impl
 		if (settings.hasContrastRecovery)
 			colorMapParams.contrast_recovery = settings.contrastRecovery;
 		renderParams.color_map_params = &colorMapParams;
+
+		if (settings.sigmoid == AutoToggle::OFF)
+		{
+			renderParams.sigmoid_params = nullptr;
+		}
+		else if (settings.sigmoid == AutoToggle::ON)
+		{
+			sigmoidParams = LibplaceboExportedData<pl_sigmoid_params>(
+				"pl_sigmoid_default_params");
+			renderParams.sigmoid_params = &sigmoidParams;
+		}
+		else if (renderParams.sigmoid_params)
+		{
+			sigmoidParams = *renderParams.sigmoid_params;
+			renderParams.sigmoid_params = &sigmoidParams;
+		}
 
 		if (settings.peakDetection == AutoToggle::OFF)
 		{
@@ -3501,6 +3857,7 @@ struct LibplaceboVideoRenderer::Impl
 		this->videoHwnd = videoHwnd;
 		const RendererSettings settings = LoadRendererSettings(
 			*state, activeDisplayRule, manualRule, manualUnifiedProfiles);
+		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
 		outputDiagnostics = settings.outputDiagnostics;
 		shaderCacheEnabled = !settings.diagnosticDisableShaderCache;
 
@@ -4189,6 +4546,23 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 		AlphaQueuePolicy::HardCapacity(m_frameQueueDesiredDepth);
 	{
 		std::lock_guard<std::mutex> guard(g_runtimeDisplayRuleMutex);
+		ConfigFile config;
+		RendererProfileConfig::Model model;
+		std::string error;
+		if (config.Load(ConfigFile::RENDERER_FILENAME) &&
+			RendererProfileConfig::IsUnified(config) &&
+			RendererProfileConfig::Read(config, model, error))
+		{
+			const std::string statePath = UnifiedStatePath(config);
+			if (g_loadedUnifiedStatePath != statePath)
+			{
+				g_committedManualUnifiedProfiles =
+					LoadUnifiedProfileState(config, model);
+				g_runtimeManualUnifiedProfiles =
+					g_committedManualUnifiedProfiles;
+				g_loadedUnifiedStatePath = statePath;
+			}
+		}
 		m_manualDisplayRule = g_runtimeManualDisplayRule;
 		m_manualUnifiedProfiles = g_runtimeManualUnifiedProfiles;
 	}
@@ -4252,23 +4626,28 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 	if (m_impl)
 	{
 		std::string nextRule;
+		std::string nextFingerprint;
 		ConfigFile config;
 		if (config.Load(ConfigFile::RENDERER_FILENAME) && RendererProfileConfig::IsUnified(config))
 		{
-			RendererSettings ignored = LoadRendererSettings(
+			const RendererSettings nextSettings = LoadRendererSettings(
 				*videoState, nextRule, "", m_manualUnifiedProfiles);
+			nextFingerprint = EffectiveSettingsFingerprint(nextSettings);
 		}
 		else
 		{
 			nextRule = m_manualDisplayRule.empty() ?
 				ResolveDisplayRuleName(*videoState) : m_manualDisplayRule;
 		}
-		if (nextRule != m_impl->activeDisplayRule)
+		const bool changed = nextFingerprint.empty() ?
+			nextRule != m_impl->activeDisplayRule :
+			nextFingerprint != m_impl->effectiveSettingsFingerprint;
+		if (changed)
 		{
 			DebugLog::Log(
-				"display: input state selects rule '%s' instead of '%s'; requesting renderer rebuild",
-				nextRule.empty() ? "base" : nextRule.c_str(),
-				m_impl->activeDisplayRule.empty() ? "base" : m_impl->activeDisplayRule.c_str());
+				"display: effective settings changed (%s -> %s); requesting renderer rebuild",
+				m_impl->activeDisplayRule.empty() ? "base" : m_impl->activeDisplayRule.c_str(),
+				nextRule.empty() ? "base" : nextRule.c_str());
 			return false;
 		}
 	}
@@ -4512,7 +4891,16 @@ void LibplaceboVideoRenderer::Build()
 	}
 
 	std::unique_ptr<Impl> impl(new Impl());
-	impl->Initialize(m_videoHwnd, state, manualRule, manualUnifiedProfiles);
+	try
+	{
+		impl->Initialize(m_videoHwnd, state, manualRule, manualUnifiedProfiles);
+	}
+	catch (...)
+	{
+		std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
+		g_runtimeManualUnifiedProfiles = g_committedManualUnifiedProfiles;
+		throw;
+	}
 	const double nominalRate = state->displayMode->RefreshRateHz();
 	const timingclocktime_t ticksPerSecond = m_timingClock ?
 		m_timingClock->TimingClockTicksPerSecond() : 0;
@@ -4525,6 +4913,19 @@ void LibplaceboVideoRenderer::Build()
 	m_scopeScreenActive.store(impl->defaultScopeScreen, std::memory_order_release);
 	m_impl = std::move(impl);
 	SetState(RendererState::RENDERSTATE_READY);
+
+	ConfigFile config;
+	RendererProfileConfig::Model model;
+	std::string error;
+	if (config.Load(ConfigFile::RENDERER_FILENAME) &&
+		RendererProfileConfig::IsUnified(config) &&
+		RendererProfileConfig::Read(config, model, error))
+	{
+		std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
+		g_committedManualUnifiedProfiles = manualUnifiedProfiles;
+		g_runtimeManualUnifiedProfiles = manualUnifiedProfiles;
+		PersistUnifiedProfileState(config, model, manualUnifiedProfiles);
+	}
 }
 
 
@@ -4643,10 +5044,28 @@ bool LibplaceboVideoRenderer::SelectUnifiedProfileKey(
 	}
 	if (next == m_manualUnifiedProfiles)
 		return true;
+	std::string candidateProfiles;
+	const RendererSettings candidateSettings = state ?
+		LoadRendererSettings(*state, candidateProfiles, "", next) :
+		RendererSettings();
+	rendererRestartRequired = m_impl != nullptr &&
+		(!state || EffectiveSettingsFingerprint(candidateSettings) !=
+			m_impl->effectiveSettingsFingerprint);
 	m_manualUnifiedProfiles = std::move(next);
 	{
 		std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
 		g_runtimeManualUnifiedProfiles = m_manualUnifiedProfiles;
+		if (!rendererRestartRequired)
+		{
+			g_committedManualUnifiedProfiles = m_manualUnifiedProfiles;
+			ConfigFile committedConfig;
+			RendererProfileConfig::Model committedModel;
+			std::string committedError;
+			if (committedConfig.Load(ConfigFile::RENDERER_FILENAME) &&
+				RendererProfileConfig::Read(committedConfig, committedModel, committedError))
+				PersistUnifiedProfileState(committedConfig, committedModel,
+					m_manualUnifiedProfiles);
+		}
 	}
 	std::string summary;
 	for (const RendererProfileConfig::KeySelection& selection : selections)
@@ -4656,8 +5075,9 @@ bool LibplaceboVideoRenderer::SelectUnifiedProfileKey(
 			(selection.resetToAutomatic ? "auto" : selection.profile);
 	}
 	activeProfiles.Format(TEXT("Unified: %S"), summary.c_str());
-	rendererRestartRequired = m_impl != nullptr;
-	DebugLog::Log("unified profile key '%s' selected %s", canonicalKey.c_str(), summary.c_str());
+	DebugLog::Log("unified profile key '%s' selected %s (%s)",
+		canonicalKey.c_str(), summary.c_str(),
+		rendererRestartRequired ? "renderer rebuild required" : "effective settings unchanged");
 	return true;
 }
 
