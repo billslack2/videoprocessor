@@ -123,6 +123,11 @@ Depends on accepted VP-0024, VP-0025, and VP-0026.
   Basic/Advanced label with detector lifecycle text. Source commit `52781ba`
   fixes both: Alpha receives the setting before `Start()`, and the OSD preserves
   the configured mode while readiness remains on the Status row.
+- Follow-up validation showed `Plan: None` during a valid but distant
+  correction because Alpha published only its near-action planning window.
+  Source commit `983f130` now publishes the measured long-range Drop/Repeat
+  countdown after warm-up while retaining the separate 0.75-frame planning
+  threshold. The complete suite passes 78/78.
 - Seven policy tests cover invalid evidence, incompatible rates, full drop and
   repeat gating, queue disagreement, generation replacement, and exact
   one-frame verification. Together with the added telemetry gap test, the
