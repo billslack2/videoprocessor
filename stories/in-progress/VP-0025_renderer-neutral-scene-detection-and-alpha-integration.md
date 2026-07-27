@@ -2,10 +2,11 @@
 
 ## Status
 
-In Progress. Source implementation commit `6e15206` on
+In Progress. Source implementation commit `0571316` on
 `codex/vp-0025-scene-detection` extracts the proven P010 scene detector into
 one renderer-neutral component and feeds both DirectShow and Alpha adapters.
-The branch is based on `origin/v1.1.014-beta` in
+The branch is rebased on `origin/v1.1.014-beta` commit `b79355e`, including
+the accepted VP-0026 queue implementation, in
 `C:\Users\bslac\vp\videoprocessor-vp-0025`.
 
 Alpha analyzes its converted P010 luma immediately before GPU upload and
@@ -15,7 +16,7 @@ counter behavior. Generation changes reset detector history; display-profile
 changes alone do not.
 
 Validation: the full `Release|x64` solution builds with zero warnings and zero
-errors, and all 56 automated tests pass. Seven detector tests cover warm-up,
+errors, and all 63 automated tests pass. Seven detector tests cover warm-up,
 hard cuts, one-frame flashes, near-black de-duplication, invalid input,
 generation resets, and identical results for tight and padded P010 adapters.
 Live renderer lifecycle, retained-sequence comparison, and 4K cost validation
