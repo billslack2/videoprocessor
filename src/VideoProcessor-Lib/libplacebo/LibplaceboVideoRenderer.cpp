@@ -3613,7 +3613,27 @@ struct LibplaceboVideoRenderer::Impl
 
 		if (EncodingUsesBt2020(actualOutput.encoding) &&
 			reportBt2020ToDisplay)
-			nvidiaBt2020Reporter.Enable(negotiatedDisplayDeviceName.c_str());
+		{
+			if (!nvidiaBt2020Reporter.Enable(negotiatedDisplayDeviceName.c_str()))
+			{
+				// A P2020 swapchain without a verified physical BT.2020 signal
+				// can disappear in windowed DirectFlip/MPO presentation and can
+				// also break blending of the separate layered OSD. Fail closed:
+				// restore a complete Rec.709 contract instead of rendering with
+				// mismatched wire semantics.
+				DebugLog::Log(
+					"libplacebo: NVIDIA BT.2020 reporting unavailable; falling back to Rec.709 output");
+				LibplaceboOutput::Request fallbackRequest = outputPlan.request;
+				fallbackRequest.primaries =
+					LibplaceboOutput::PrimariesRequest::REC709;
+				outputPlan = LibplaceboOutput::MakePlan(fallbackRequest);
+				targetBt2020 = false;
+				SetSwapchainColorHint(
+					LibplaceboOutput::DxgiEncoding::FULL_G22_P709);
+				ConfigureAndFallback("nvidia-report-fallback");
+				return;
+			}
+		}
 		else
 			nvidiaBt2020Reporter.Restore();
 	}
