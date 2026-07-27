@@ -47,6 +47,19 @@ selections, and observe an actual/confirmed/restored refresh transition in
 `C:\logs\vp_debug.log`. Startup, parsing, builds, unit/GPU readback tests, and
 deployment packaging are complete.
 
+Follow-up commit `c0d24cf` (`refactor: share strict config validation`) makes
+`VideoProcessor.cfg` and `VideoProcessorRenderer.cfg` use one side-effect-free,
+table-driven key/type/range validation engine. Their schemas and lifecycles
+remain separate: main application settings are startup-only and renderer
+profile/event rules cannot mutate capture, queue, conversion, or other main
+state. Regression coverage explicitly rejects the foreign
+`alpha_queue_size` main-config key. The focused final schema/profile suite
+passes 20/20; the complete suite passes 83/83. A clean Release build was
+deployed with backup
+`C:\Videoprocessor\vp\backup-before-vp0028-shared-schema-20260727-153218`.
+An isolated dual-config startup remained responsive, and both active
+configuration files retained their original hashes.
+
 Review deliverables:
 
 - `docs/VP-0028_RENDERER_CONFIGURATION_PROPOSAL.md`
