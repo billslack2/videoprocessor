@@ -33,6 +33,7 @@ struct StatsData
 	// Renderer settings
 	CString method;            // e.g., "Rational-Rational"
 	CString outputMode;        // requested -> negotiated renderer output
+	CString displayLut;        // Disabled, Active: name (N^3), or Rejected: reason
 	int frameOffsetMs = 0;
 	double hwLatencyMs = 0.0;  // Hardware latency
 

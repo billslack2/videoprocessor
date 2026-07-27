@@ -93,6 +93,70 @@ namespace Tests
 				static_cast<int>(actual.targetTransfer));
 		}
 
+		TEST_METHOD(FullBt2020RequiresVerifiedP2020Encoding)
+		{
+			Request request;
+			request.primaries = PrimariesRequest::BT2020;
+			const Plan plan = MakePlan(request);
+			Assert::IsTrue(plan.valid);
+			Assert::IsTrue(plan.requiresDxgiOverride);
+			Assert::AreEqual(
+				static_cast<int>(DxgiEncoding::FULL_G22_P2020),
+				static_cast<int>(plan.desiredEncoding));
+
+			const Actual fallback = Finalize(plan, {});
+			Assert::IsFalse(fallback.requestedEncodingActive);
+			Assert::AreEqual(
+				static_cast<int>(DxgiEncoding::FULL_G22_P709),
+				static_cast<int>(fallback.encoding));
+
+			Evidence evidence;
+			evidence.presentationModel = PresentationModel::FLIP;
+			evidence.hasSwapchain3 = true;
+			evidence.presentSupportedBeforeSet = true;
+			evidence.setSucceeded = true;
+			evidence.presentSupportedAfterSet = true;
+			const Actual accepted = Finalize(plan, evidence);
+			Assert::IsTrue(accepted.requestedEncodingActive);
+			Assert::AreEqual(
+				static_cast<int>(DxgiEncoding::FULL_G22_P2020),
+				static_cast<int>(accepted.encoding));
+		}
+
+		TEST_METHOD(Bt2020ForcesFlipAndRejectsBitBlt)
+		{
+			Request request;
+			request.presentation = PresentationRequest::COMPOSED;
+			request.primaries = PrimariesRequest::BT2020;
+			const Plan plan = MakePlan(request);
+			Assert::IsFalse(plan.useBlit);
+
+			Evidence bitblt;
+			bitblt.presentationModel = PresentationModel::BITBLT;
+			bitblt.hasSwapchain3 = true;
+			bitblt.presentSupportedBeforeSet = true;
+			bitblt.setSucceeded = true;
+			bitblt.presentSupportedAfterSet = true;
+			const Actual actual = Finalize(plan, bitblt);
+			Assert::IsFalse(actual.safeToRender);
+			Assert::IsFalse(actual.requestedEncodingActive);
+		}
+
+		TEST_METHOD(LimitedBt2020UsesVerifiedStudioG24P2020)
+		{
+			Request request;
+			request.range = RangeRequest::LIMITED;
+			request.primaries = PrimariesRequest::BT2020;
+			const Plan plan = MakePlan(request);
+			Assert::IsTrue(plan.requiresDxgiOverride);
+			Assert::AreEqual(
+				static_cast<int>(DxgiEncoding::STUDIO_G24_P2020),
+				static_cast<int>(plan.desiredEncoding));
+			Assert::AreEqual(
+				static_cast<int>(TargetTransfer::GAMMA24),
+				static_cast<int>(plan.targetTransfer));
+		}
+
 		TEST_METHOD(SetSuccessWithoutPreAdvertisedSupportFallsBackFull)
 		{
 			Request request;

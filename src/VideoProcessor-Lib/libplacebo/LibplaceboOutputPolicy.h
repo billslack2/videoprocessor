@@ -37,11 +37,20 @@ namespace LibplaceboOutput
 		UNSUPPORTED
 	};
 
+	enum class PrimariesRequest
+	{
+		REC709,
+		BT2020
+	};
+
 	enum class DxgiEncoding
 	{
 		FULL_G22_P709,
 		STUDIO_G22_P709,
-		STUDIO_G24_P709
+		STUDIO_G24_P709,
+		FULL_G22_P2020,
+		STUDIO_G22_P2020,
+		STUDIO_G24_P2020
 	};
 
 	enum class TargetTransfer
@@ -55,6 +64,7 @@ namespace LibplaceboOutput
 		PresentationRequest presentation = PresentationRequest::AUTO;
 		RangeRequest range = RangeRequest::AUTO;
 		GammaRequest gamma = GammaRequest::AUTO;
+		PrimariesRequest primaries = PrimariesRequest::REC709;
 	};
 
 	struct Plan
@@ -141,6 +151,7 @@ namespace LibplaceboOutput
 	const char* ToString(PresentationModel value);
 	const char* ToString(RangeRequest value);
 	const char* ToString(GammaRequest value);
+	const char* ToString(PrimariesRequest value);
 	const char* ToString(DxgiEncoding value);
 	const char* ToRangeString(DxgiEncoding value);
 	const char* ToGammaString(DxgiEncoding value);
