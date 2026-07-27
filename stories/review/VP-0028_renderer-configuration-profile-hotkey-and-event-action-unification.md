@@ -73,6 +73,19 @@ dual-config deployment remained responsive and left both active configuration
 files unchanged. Deployment backup:
 `C:\Videoprocessor\vp\backup-before-vp0028-colon-20260727-162609`.
 
+Live testing exposed that the optional renderer proxy did not forward
+`SelectUnifiedProfileKey` to the libplacebo plugin, so recognized GUI
+accelerators returned "unavailable." Commit `1f93c4a` (`fix: forward unified
+profile keys to renderer plugin`) adds the missing forwarding call and bumps
+the plugin ABI to 4 so mismatched binaries fail safely. Clean x64 Release GUI,
+plugin, and test builds pass; the focused configuration/profile suite passes
+24/24. The matched pair was deployed with backup
+`C:\Videoprocessor\vp\backup-before-vp0028-keyfix-20260727-173202`. A live
+hardware run loaded plugin API 4, selected `display/rec709` with F5, then
+selected `display/bt2020` with F6 and performed the required renderer rebuild.
+The committed sidecar state contains `profile.display: bt2020`; active
+configuration files were not edited.
+
 Review deliverables:
 
 - `docs/VP-0028_RENDERER_CONFIGURATION_PROPOSAL.md`
