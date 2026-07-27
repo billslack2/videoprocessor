@@ -60,6 +60,19 @@ deployed with backup
 An isolated dual-config startup remained responsive, and both active
 configuration files retained their original hashes.
 
+Follow-up commit `b4c0b69` (`feat: adopt unversioned colon config syntax`)
+makes `key: value` canonical in both configuration files, leaving comparison
+operators visually unambiguous (`when: $key=="F5"`). Legacy equals assignments
+remain readable, but all checked-in samples and documentation use colons.
+Configuration and persisted profile state are deliberately unversioned;
+`config_version` is rejected and state writes contain only stable named
+selections. Parser/profile regressions pass 23/23, including colon-expression,
+equals-compatibility, checked-example, and version-key rejection tests. Debug
+GUI/plugin builds and clean Release builds pass. The colon-form isolated
+dual-config deployment remained responsive and left both active configuration
+files unchanged. Deployment backup:
+`C:\Videoprocessor\vp\backup-before-vp0028-colon-20260727-162609`.
+
 Review deliverables:
 
 - `docs/VP-0028_RENDERER_CONFIGURATION_PROPOSAL.md`
