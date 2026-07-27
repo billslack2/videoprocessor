@@ -22,6 +22,7 @@ they must not contain requirements that are absent from this file.
 | --- | --- |
 | `draft` / Draft | Backlog, discovery, or a known dependency remains. Record dependencies, blockers, and next action in the story; do not create additional state names. |
 | `in-progress` / In Progress | Codex is actively implementing the story on a recorded branch/worktree. Include current progress, commit(s), and any blocker under `## Status`. |
+| `blocked` / Blocked | Work cannot currently make meaningful progress because of an unresolved technical, validation, external, or developer-decision blocker. Record evidence, the exact blocker, and the condition that resumes work. |
 | `review` / Review | Implementation is ready for code review, build/test review, or requested user validation. Record evidence, remaining validation, and the proposed merge/release decision. |
 | `done` / Done | Accepted and complete. Record the final commit, merge/release reference, and validation result. |
 | `will-not-do` / Will Not Do | Intentionally retained but not implemented as separate work. Record the decision, reason, date, and any superseding story/commit. Do not delete or reuse its ID. |
@@ -39,7 +40,7 @@ they must not contain requirements that are absent from this file.
 | VP-0007 | Will Not Do | Alpha renderer controlled repeat correction |
 | VP-0008 | Will Not Do | Alpha renderer presentation-pacing assessment and refinement |
 | VP-0009 | Draft | Alpha renderer DeckLink R210/R12B format parity |
-| VP-0010 | In Progress | Strict opaque-panel OCR subtitle replacement |
+| VP-0010 | Blocked | Strict opaque-panel OCR subtitle replacement |
 | VP-0011 | Done | Alpha renderer color-managed 3D LUT support |
 | VP-0012 | Done | Alpha renderer LUT pipeline contract spike |
 | VP-0013 | Done | DirectShow queue/reset alignment and no-drop review |
@@ -135,3 +136,10 @@ declined, duplicated, superseded, or otherwise determined not to be separate
 work. Set its status to `Will Not Do` and record the decision, reason, date,
 and any replacement story/commit. This is a tracked terminal state, not
 deletion.
+
+Blocked workflow: move a story to `blocked/` when work is genuinely stopped by
+a specific unresolved technical, validation, external, or developer-decision
+blocker. Set its status to `Blocked` and record the evidence, exact blocker,
+safe interim behavior, and objective condition that resumes work. `Blocked` is
+not a parking state: when a concrete next action exists, move the story to the
+appropriate active state and record why.
