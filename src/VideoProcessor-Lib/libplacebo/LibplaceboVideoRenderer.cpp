@@ -4575,13 +4575,14 @@ struct LibplaceboVideoRenderer::Impl
 				lastRenderedColorspace != state.colorspace)
 			{
 				DebugLog::Log(
-					"libplacebo tone mapping: input=%s/%s mastering=%.3f..%.1f nits MaxCLL=%.1f MaxFALL=%.1f -> SDR Rec.709 %.1f nits",
+					"libplacebo tone mapping: input=%s/%s mastering=%.3f..%.1f nits MaxCLL=%.1f MaxFALL=%.1f -> SDR %s %.1f nits",
 					CStringA(ToString(state.eotf)).GetString(),
 					CStringA(ToString(state.colorspace)).GetString(),
 					image.color.hdr.min_luma,
 					image.color.hdr.max_luma,
 					image.color.hdr.max_cll,
 					image.color.hdr.max_fall,
+					targetBt2020 ? "BT.2020" : "Rec.709",
 					sdrTargetNits);
 			}
 			lastRenderedEotf = state.eotf;
