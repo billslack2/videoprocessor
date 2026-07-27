@@ -128,6 +128,13 @@ Depends on accepted VP-0024, VP-0025, and VP-0026.
   Source commit `983f130` now publishes the measured long-range Drop/Repeat
   countdown after warm-up while retaining the separate 0.75-frame planning
   threshold. The complete suite passes 78/78.
+- Live comparison then found that a roughly 5 ppm Alpha estimate let short-term
+  measurement noise reverse the displayed direction and move the countdown,
+  unlike the steadier madVR result. Source commit `e243b6f` adds a 600-sample
+  rate stabilizer, a 10-second smoothing horizon, a 1 ppm publication floor,
+  and 2 ppm direction-reversal hysteresis. A ±20 ppm alternating-noise
+  regression test confirms the advertised direction cannot flap; 79/79 tests
+  pass.
 - Seven policy tests cover invalid evidence, incompatible rates, full drop and
   repeat gating, queue disagreement, generation replacement, and exact
   one-frame verification. Together with the added telemetry gap test, the
