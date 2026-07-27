@@ -1237,6 +1237,9 @@ void CVideoProcessorDlg::StartFrameOffset(const CString& frameOffset)
 void CVideoProcessorDlg::SetQueueSize(const CString& queueSize)
 {
 	m_defaultQueueSize = queueSize;
+	const int capacity = _ttoi(queueSize);
+	if (capacity > 0)
+		m_directShowQueueCapacity = static_cast<size_t>(capacity);
 }
 
 void CVideoProcessorDlg::SetQueueResetDelaySeconds(const CString& value)
@@ -1458,6 +1461,55 @@ bool CVideoProcessorDlg::IsP010VideoConversionSelected() const
 			VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
 }
 
+bool CVideoProcessorDlg::IsAlphaRendererSelected() const
+{
+	const int selection = m_rendererCombo.GetCurSel();
+	if (selection < 0)
+		return false;
+
+	const RendererId* renderer = reinterpret_cast<const RendererId*>(
+		m_rendererCombo.GetItemData(selection));
+	return renderer && renderer->backend == RendererBackend::LIBPLACEBO;
+}
+
+
+void CVideoProcessorDlg::UpdateRendererQueueControl()
+{
+	const bool alphaSelected = IsAlphaRendererSelected();
+	if (m_queueRendererSelectionInitialized)
+	{
+		const size_t displayedValue =
+			std::max<size_t>(1, GetRendererVideoFrameQueueSizeMax());
+		if (m_queueSelectionWasAlpha)
+			m_alphaQueueDesiredDepth = displayedValue;
+		else
+			m_directShowQueueCapacity = displayedValue;
+	}
+
+	if (alphaSelected)
+	{
+		const size_t configuredOverride =
+			videoProcessorApp.GetAlphaQueueSizeOverride();
+		if (configuredOverride > 0)
+			m_alphaQueueDesiredDepth = configuredOverride;
+	}
+
+	const size_t selectedValue = alphaSelected ?
+		m_alphaQueueDesiredDepth : m_directShowQueueCapacity;
+	CString queueText;
+	queueText.Format(TEXT("%zu"), selectedValue);
+	m_rendererVideoFrameQueueSizeMaxEdit.SetWindowText(queueText);
+
+	m_queueSelectionWasAlpha = alphaSelected;
+	m_queueRendererSelectionInitialized = true;
+	DebugLog::Log("%s queue control selected: value=%zu source=%s",
+		alphaSelected ? "Alpha desired depth" : "DirectShow capacity",
+		selectedValue,
+		alphaSelected && videoProcessorApp.GetAlphaQueueSizeOverride() > 0 ?
+			"alpha_queue_size" :
+			(alphaSelected ? "remembered/default Alpha value" : "queue_size"));
+}
+
 
 void CVideoProcessorDlg::UpdateSceneCorrectionModeUi()
 {
@@ -1482,6 +1534,7 @@ void CVideoProcessorDlg::UpdateSceneCorrectionModeUi()
 
 void CVideoProcessorDlg::UpdateRendererBackendUi()
 {
+	UpdateRendererQueueControl();
 	bool directShowSelected = true;
 	const int selection = m_rendererCombo.GetCurSel();
 	if (selection >= 0)
@@ -3184,12 +3237,24 @@ void CVideoProcessorDlg::RenderStart()
 	{
 		try
 		{
+			const size_t alphaQueueOverride =
+				videoProcessorApp.GetAlphaQueueSizeOverride();
+			const size_t alphaDesiredDepth =
+				GetRendererVideoFrameQueueSizeMax();
+			if (alphaQueueOverride > 0)
+			{
+				CString alphaQueueText;
+				alphaQueueText.Format(TEXT("%zu"), alphaDesiredDepth);
+				m_rendererVideoFrameQueueSizeMaxEdit.SetWindowText(alphaQueueText);
+				DebugLog::Log("Alpha queue desired depth uses configuration-only alpha_queue_size=%zu",
+					alphaDesiredDepth);
+			}
 			m_videoRenderer = new LibplaceboPluginVideoRenderer(
 				*this,
 				GetRenderWindow(),
 				timingClock,
 				GetRendererVideoFrameUseQueue(),
-				GetRendererVideoFrameQueueSizeMax());
+				alphaDesiredDepth);
 
 			if (m_captureDeviceVideoState)
 				m_videoRenderer->OnVideoState(m_builtVideoState);
@@ -4886,7 +4951,13 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			
 			const uint64_t droppedFrames = m_videoRenderer->DroppedFrameCount();
 
-			cstring.Format(_T("%zu/%zu/%zu"), rawQueueSize, convertedQueueSize, currentQueueSize);
+			const int selectedRenderer = m_rendererCombo.GetCurSel();
+			const RendererId* renderer = selectedRenderer >= 0 ?
+				reinterpret_cast<const RendererId*>(m_rendererCombo.GetItemData(selectedRenderer)) : nullptr;
+			if (renderer && renderer->backend == RendererBackend::LIBPLACEBO)
+				cstring.Format(_T("%zu / %zu"), rawQueueSize, GetRendererVideoFrameQueueSizeMax());
+			else
+				cstring.Format(_T("%zu/%zu/%zu"), rawQueueSize, convertedQueueSize, currentQueueSize);
 			m_rendererVideoFrameQueueSizeText.SetWindowText(cstring);
 
 			cstring.Format(_T("%.01f"), m_videoRenderer->EntryLatencyMs());
@@ -5190,6 +5261,11 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	// Queue stats
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
 	{
+		const int selectedRenderer = m_rendererCombo.GetCurSel();
+		const RendererId* renderer = selectedRenderer >= 0 ?
+			reinterpret_cast<const RendererId*>(m_rendererCombo.GetItemData(selectedRenderer)) : nullptr;
+		stats.isAlphaRenderer = renderer &&
+			renderer->backend == RendererBackend::LIBPLACEBO;
 		stats.rawQueueSize = m_videoRenderer->GetFrameQueueSize();
 		stats.convertedQueueSize = m_videoRenderer->GetConvertedQueueSize();
 		stats.currentQueueSize = stats.rawQueueSize + stats.convertedQueueSize;

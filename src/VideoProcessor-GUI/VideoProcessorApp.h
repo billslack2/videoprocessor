@@ -8,12 +8,22 @@
 
 #pragma once
 
+#include <cstddef>
+
 
 class CVideoProcessorApp:
 	public CWinAppEx
 {
 public:
 	virtual BOOL InitInstance();
+
+	// This is intentionally configuration-only.  It must not become a public
+	// command-line switch because it only has meaning for the alpha renderer.
+	size_t GetAlphaQueueSizeOverride() const { return m_alphaQueueSizeOverride; }
+	void SetAlphaQueueSizeOverride(size_t value) { m_alphaQueueSizeOverride = value; }
+
+private:
+	size_t m_alphaQueueSizeOverride = 0;
 
 	DECLARE_MESSAGE_MAP()
 };

@@ -47,6 +47,9 @@ struct StatsData
 	size_t currentQueueSize = 0;
 	size_t maxQueueSize = 0;
 	bool isQueueFull = false;
+	// Alpha/libplacebo owns one in-process FIFO.  Its queue target is a desired
+	// depth, not the DirectShow raw/converted/total capacity tuple.
+	bool isAlphaRenderer = false;
 
 	// Latency
 	double entryLatencyMs = 0.0;  // VP Latency

@@ -9,6 +9,7 @@
 #pragma once
 
 
+
 #include <set>
 #include <map>
 #include <atomic>
@@ -386,6 +387,10 @@ protected:
 	bool m_frameOffsetAutoStart = false;
 	CString m_defaultFrameOffset = TEXT("90");
 	CString m_defaultQueueSize = TEXT("32");
+	size_t m_directShowQueueCapacity = 32;
+	size_t m_alphaQueueDesiredDepth = 4;
+	bool m_queueRendererSelectionInitialized = false;
+	bool m_queueSelectionWasAlpha = false;
 	bool m_sceneAwareTimingCorrection = false;
 	bool m_sceneCorrectionUpstreamSample = false;
 	SubtitleRepositionMode m_subtitleRepositionMode =
@@ -436,6 +441,8 @@ protected:
 	void SetVideoConversionOff();
 	void SetVideoConversionP010();
 	bool IsP010VideoConversionSelected() const;
+	bool IsAlphaRendererSelected() const;
+	void UpdateRendererQueueControl();
 	void UpdateSceneCorrectionModeUi();
 	void UpdateRendererBackendUi();
 	void CaptureFixedDialogLayout();

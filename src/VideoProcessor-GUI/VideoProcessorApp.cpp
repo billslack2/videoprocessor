@@ -9,8 +9,8 @@
 #include <pch.h>
 
 #include <winnt.h>
-
 #include <VideoProcessorDlg.h>
+#include <libplacebo/AlphaQueuePolicy.h>
 #include <VideoConversionOverride.h>
 #include <DebugLog.h>
 #include <ConfigFile.h>
@@ -278,6 +278,7 @@ void ValidateCommandLineConfigKeys(const ConfigFile& config)
 		"windowed_fullscreen_mode",
 		"renderer",
 		"queue_size",
+		"alpha_queue_size",
 		"capture_device",
 		"frame_offset",
 		"video_conversion",
@@ -405,6 +406,26 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	DbgLog((LOG_TRACE, 1, TEXT("VideoProcessor: Loading configuration from %S"), config.GetLoadedPath().c_str()));
 	ThrowIfConfigHasSyntaxWarnings(config);
 	ValidateCommandLineConfigKeys(config);
+
+	std::string alphaQueueSize;
+	if (config.TryGetString("command_line", "alpha_queue_size", alphaQueueSize))
+	{
+		size_t parsedAlphaQueueSize = 0;
+		if (AlphaQueuePolicy::TryParsePositiveSize(
+			alphaQueueSize, parsedAlphaQueueSize))
+		{
+			videoProcessorApp.SetAlphaQueueSizeOverride(parsedAlphaQueueSize);
+			DbgLog((LOG_TRACE, 1,
+				TEXT("VideoProcessor: Using configuration-only alpha_queue_size=%zu"),
+				parsedAlphaQueueSize));
+		}
+		else
+		{
+			DbgLog((LOG_TRACE, 1,
+				TEXT("VideoProcessor: Ignoring invalid [command_line] alpha_queue_size=%S; using the normal queue setting"),
+				alphaQueueSize.c_str()));
+		}
+	}
 
 	if (config.HasSection("command_line"))
 	{
@@ -837,6 +858,9 @@ BOOL CVideoProcessorApp::InitInstance()
 
 		// Parse command line
 		// https://docs.microsoft.com/en-us/cpp/c-runtime-library/argc-argv-wargv
+		// Reset the configuration-only alpha override before reading the active
+		// configuration file in case this application object is reused.
+		SetAlphaQueueSizeOverride(0);
 		std::vector<std::wstring> configuredArguments = LoadConfiguredCommandLineArguments();
 
 		int parsedArgumentCount = 0;
