@@ -270,6 +270,40 @@ namespace Tests
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(RendererProfileConfigResolvesAutomaticGroupsDeterministically)
+		{
+			RendererProfileConfig::Model model;
+			RendererProfileConfig::Group input;
+			input.name = "input";
+			input.profiles = { "sdr", "pq", "pq_specific" };
+			input.defaultSelection = "sdr";
+			model.groups.push_back(input);
+			for (const auto& definition : std::vector<std::pair<std::string, std::string>>
+				{ { "sdr", "$transfer==SDR" }, { "pq", "$transfer==PQ" },
+				  { "pq_specific", "$transfer==PQ && $width>=3840" } })
+			{
+				RendererProfileConfig::Profile profile;
+				profile.group = "input";
+				profile.name = definition.first;
+				profile.when = definition.second;
+				profile.priority = 100;
+				model.profiles.emplace("input." + profile.name, profile);
+			}
+
+			std::vector<RendererProfileConfig::AutomaticSelection> selections;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::SelectAutomatic(model,
+				[](const std::string& name, std::string& value)
+				{
+					if (name == "transfer") { value = "PQ"; return true; }
+					if (name == "width") { value = "3840"; return true; }
+					return false;
+				}, selections, error));
+			Assert::AreEqual(static_cast<size_t>(1), selections.size());
+			Assert::AreEqual("pq_specific", selections[0].profile.c_str());
+			Assert::IsFalse(selections[0].configuredDefault);
+		}
+
 		TEST_METHOD(CR210toRGB48VideoFrameFormatter4KSmokeTest)
 		{
 			CR210toRGB48VideoFrameFormatter vff;
