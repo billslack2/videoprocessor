@@ -86,6 +86,22 @@ selected `display/bt2020` with F6 and performed the required renderer rebuild.
 The committed sidecar state contains `profile.display: bt2020`; active
 configuration files were not edited.
 
+User testing then exposed excessive flashing during profile changes. Commit
+`4095b42` (`fix: apply viewport profiles without renderer flashing`) applies
+viewport mode, crop, and subtitle parameters under the renderer's live lock
+instead of reconstructing the renderer, and limits the delayed startup graph
+re-prime to an actual capture start rather than every renderer-only profile
+rebuild. Live verification shows F2/F3 profile submission with no renderer
+teardown, swapchain recreation, or additional startup reset. Display gamut
+changes still perform one required renderer reconstruction. Commit `79487d6`
+corrects the tone-mapping diagnostic to report the actual active target;
+hardware startup now agrees across selection, render target, and DXGI:
+`SDR BT.2020` and `RGB_FULL_G22_NONE_P2020`. Focused tests remain 24/24.
+Deployment backups:
+`C:\Videoprocessor\vp\backup-before-vp0028-live-viewport-20260727-175117`
+and
+`C:\Videoprocessor\vp\backup-before-vp0028-output-log-20260727-175315`.
+
 Review deliverables:
 
 - `docs/VP-0028_RENDERER_CONFIGURATION_PROPOSAL.md`
