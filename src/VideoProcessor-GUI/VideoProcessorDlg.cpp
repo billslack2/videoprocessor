@@ -2358,6 +2358,16 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 	const auto unifiedKey = m_unifiedProfileShortcutKeys.find(static_cast<WORD>(commandId));
 	if (unifiedKey != m_unifiedProfileShortcutKeys.end() && m_videoRenderer)
 	{
+		const DWORD commandTime = static_cast<DWORD>(GetMessageTime());
+		if (m_lastUnifiedProfileCommand == commandId &&
+			commandTime - m_lastUnifiedProfileCommandTime < 100)
+		{
+			DEBUGLOG("Unified profile key repeat suppressed: %S",
+				static_cast<LPCTSTR>(unifiedKey->second));
+			return;
+		}
+		m_lastUnifiedProfileCommand = static_cast<WORD>(commandId);
+		m_lastUnifiedProfileCommandTime = commandTime;
 		CString activeProfiles;
 		bool rendererRestartRequired = false;
 		if (!m_videoRenderer->SelectUnifiedProfileKey(unifiedKey->second, activeProfiles, rendererRestartRequired))

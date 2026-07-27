@@ -174,6 +174,7 @@ bool ConfigFile::Load(const std::string& filename)
 	std::string line;
 	int lineNumber = 0;
 	std::map<std::string, std::map<std::string, int>> valueLineNumbers;
+	std::map<std::string, int> sectionLineNumbers;
 
 	while (std::getline(configFile, line))
 	{
@@ -197,6 +198,20 @@ bool ConfigFile::Load(const std::string& filename)
 				currentSection = NormalizeName(line.substr(1, line.size() - 2));
 				if (currentSection.empty())
 					m_warnings.push_back("Line " + std::to_string(lineNumber) + ": empty section name");
+				else
+				{
+					const auto previous = sectionLineNumbers.find(currentSection);
+					if (previous != sectionLineNumbers.end())
+						m_warnings.push_back(
+							"Line " + std::to_string(lineNumber) + ": duplicate section [" +
+							currentSection + "] continues section from line " +
+							std::to_string(previous->second));
+					else
+						sectionLineNumbers[currentSection] = lineNumber;
+					// Preserve intentionally empty sections. Unified default-only
+					// profiles are valid and must still participate in graph validation.
+					m_sections[currentSection];
+				}
 			}
 			else
 			{

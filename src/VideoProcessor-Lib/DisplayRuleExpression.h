@@ -41,7 +41,9 @@ namespace DisplayRuleExpression
 			type = ValueType::Boolean;
 			return true;
 		}
-		if (name == "source_rate" || name == "width" || name == "height")
+		if (name == "source_rate" || name == "width" || name == "height" ||
+			name == "actual_refresh" || name == "requested_refresh" ||
+			name == "previous_refresh")
 		{
 			type = ValueType::Number;
 			return true;

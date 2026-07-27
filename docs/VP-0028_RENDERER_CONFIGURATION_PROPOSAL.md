@@ -1,12 +1,12 @@
 # VP-0028 proposed renderer configuration model
 
-> **Target design — not yet safe to deploy.** An initial VP-0028 runtime slice
-> exists, but it does not yet implement the complete semantics specified here.
-> In particular, independent group state, full `$key` evaluation, strict
-> validation, viewport profiles, and event actions remain requirements. Existing
-> `[display_rules]`, `[shortcuts]`, and `[refresh_rate_commands]` remain the
-> released configuration model until the unified implementation passes the
-> acceptance matrix in this document.
+> **VP-0028 side-by-side test build.** The unified runtime validates its graph
+> before capture, resolves independent groups and composite keys, applies
+> viewport profiles, compares effective-setting fingerprints, commits atomic
+> per-config state only after a successful renderer build, and schedules
+> generation-scoped refresh actions. Existing legacy syntax remains supported.
+> Test with a separate `/vr_config` file; do not replace the active deployed
+> configuration during acceptance testing.
 
 A review-oriented HTML version is available beside the existing renderer help
 as `VideoProcessorRenderer-Proposed.html`.
@@ -663,7 +663,9 @@ added later, writes a new side-by-side file and never replaces the active file.
 
 ## Required test and acceptance matrix
 
-The implementation is not ready for deployment until automated tests cover:
+Production replacement remains gated on the full acceptance matrix below.
+The supplied legacy port is parser-validated and ready for isolated
+side-by-side runtime testing:
 
 | Area | Required cases |
 | --- | --- |

@@ -7,6 +7,8 @@ Param (
  [String]$VerPrefix="https://github.com/billslack2/videoprocessor/commit/"
 )
 
+$ErrorActionPreference = "Stop"
+
 Push-Location -LiteralPath $GitRoot
 
 $VerFileHead     = "`#pragma once`n`n`#include <atlstr.h>`n`n"

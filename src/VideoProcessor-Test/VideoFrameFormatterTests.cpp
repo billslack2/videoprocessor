@@ -279,6 +279,80 @@ namespace Tests
 			Assert::AreEqual("f5", selections[0].profile.c_str());
 		}
 
+		TEST_METHOD(RendererProfileConfigResetChordDoesNotSuppressOtherProfileKeys)
+		{
+			RendererProfileConfig::Model model;
+			RendererProfileConfig::Group group;
+			group.name = "display";
+			group.profiles = { "rec709", "bt2020" };
+			group.resetWhen = "$key==\"F4\"";
+			model.groups.push_back(group);
+			for (const auto& definition : std::vector<std::pair<std::string, std::string>>
+				{ { "rec709", "$key==\"F5\"" }, { "bt2020", "$key==\"F6\"" } })
+			{
+				RendererProfileConfig::Profile profile;
+				profile.group = group.name;
+				profile.name = definition.first;
+				profile.when = definition.second;
+				model.profiles.emplace(group.name + "." + profile.name, profile);
+			}
+
+			std::vector<RendererProfileConfig::KeySelection> selections;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F5",
+				[](const std::string&, std::string&) { return false; }, selections, error));
+			Assert::AreEqual(static_cast<size_t>(1), selections.size());
+			Assert::AreEqual("rec709", selections[0].profile.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigCheckedInExamplesPassStartupValidation)
+		{
+			for (const char* path : {
+				"docs\\examples\\VideoProcessorRenderer.unified.proposed.cfg",
+				"docs\\examples\\VideoProcessorRenderer.unified.minimal.proposed.cfg",
+				"docs\\examples\\VideoProcessorRenderer.from-legacy.proposed.cfg" })
+			{
+				std::string absolutePath = __FILE__;
+				const size_t sourceDirectory = absolutePath.rfind("\\src\\");
+				Assert::IsTrue(sourceDirectory != std::string::npos);
+				absolutePath.resize(sourceDirectory + 1);
+				absolutePath += path;
+				ConfigFile config;
+				Assert::IsTrue(config.Load(absolutePath));
+				RendererProfileConfig::Model model;
+				std::string error;
+				if (!RendererProfileConfig::Read(config, model, error))
+				{
+					const std::string detail = std::string(path) + ": " + error;
+					Assert::Fail(std::wstring(detail.begin(), detail.end()).c_str());
+				}
+			}
+		}
+
+		TEST_METHOD(RendererProfileConfigRejectsWrongOwnerAndUnknownSetting)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) + "VideoProcessor-vp0028-owner.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nconfig_version=2\n";
+				for (const char* group : { "input", "scaling", "display", "viewport" })
+				{
+					file << "[profile_groups." << group << "]\nprofiles=base\ndefault=base\n";
+					file << "[profiles." << group << ".base]\n";
+					if (std::string(group) == "input") file << "mode=scope\n";
+				}
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("input-owned") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(RendererProfileConfigRejectsMixedLegacyAndUnifiedConfiguration)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
