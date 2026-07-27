@@ -15,6 +15,7 @@
 #include <DebugLog.h>
 #include <ConfigFile.h>
 #include <DisplayRuleExpression.h>
+#include <RendererProfileConfig.h>
 
 #include "VideoProcessorApp.h"
 using namespace std;
@@ -257,6 +258,12 @@ void ValidateRendererConfigRules()
 	{
 		throw std::runtime_error("Invalid " + ConfigLocation(rendererConfig) +
 			" [display_rules] configuration: " + error);
+	}
+	RendererProfileConfig::Model unifiedModel;
+	if (!RendererProfileConfig::Read(rendererConfig, unifiedModel, error))
+	{
+		throw std::runtime_error("Invalid " + ConfigLocation(rendererConfig) +
+			" unified renderer configuration: " + error);
 	}
 }
 
