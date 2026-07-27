@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <algorithm>
+#include <fstream>
 
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
@@ -11,6 +12,7 @@
 #include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
 #include <IntegerMath.h>
 #include <DisplayRuleExpression.h>
+#include <RendererProfileConfig.h>
 
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -174,6 +176,56 @@ namespace Tests
 			Assert::IsTrue(error.find("supports only = and !=") != std::string::npos);
 			Assert::IsFalse(DisplayRuleExpression::Validate("$unknown == value", error));
 			Assert::IsTrue(error.find("unknown variable") != std::string::npos);
+		}
+
+		TEST_METHOD(RendererProfileConfigRejectsIncompleteUnifiedConfiguration)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) + "VideoProcessor-vp0028-incomplete.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nconfig_version=2\n";
+				file << "[profile_groups.input]\nprofiles=sdr\ndefault=auto\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("profiles.input.sdr") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigReadsOrderedIndependentGroups)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) + "VideoProcessor-vp0028-model.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nconfig_version=2\npersist_profile_selection=false\n";
+				for (const char* group : { "input", "scaling", "display", "viewport" })
+				{
+					file << "[profile_groups." << group << "]\nprofiles=base\ndefault=auto\n";
+					file << "[profiles." << group << ".base]\nwhen=$key==F5\npriority=10\n";
+				}
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error));
+			Assert::AreEqual(static_cast<size_t>(4), model.groups.size());
+			Assert::AreEqual("input", model.groups[0].name.c_str());
+			Assert::AreEqual("viewport", model.groups[3].name.c_str());
+			Assert::IsFalse(model.persistSelection);
+			const auto profile = model.profiles.find("display.base");
+			Assert::IsTrue(profile != model.profiles.end());
+			Assert::AreEqual(10, profile->second.priority);
+			DeleteFileA(path.c_str());
 		}
 
 		TEST_METHOD(CR210toRGB48VideoFrameFormatter4KSmokeTest)
