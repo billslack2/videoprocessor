@@ -252,6 +252,24 @@ namespace Tests
 			Assert::AreEqual("display", selections[1].group.c_str());
 		}
 
+		TEST_METHOD(RendererProfileConfigRejectsMixedLegacyAndUnifiedConfiguration)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) + "VideoProcessor-vp0028-mixed.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nconfig_version=2\n[display_rules]\nrules=old\n";
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("legacy [display_rules]") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(CR210toRGB48VideoFrameFormatter4KSmokeTest)
 		{
 			CR210toRGB48VideoFrameFormatter vff;

@@ -94,6 +94,14 @@ namespace RendererProfileConfig
 		if (!IsUnified(config))
 			return true; // Legacy remains a separate, unchanged compatibility path.
 
+		for (const char* legacySection : { "display_rules", "shortcuts", "refresh_rate_commands" })
+			if (config.HasSection(legacySection))
+			{
+				error = "unified renderer configuration cannot include legacy [" +
+					std::string(legacySection) + "]";
+				return false;
+			}
+
 		std::string version;
 		if (config.TryGetString("general", "config_version", version) &&
 			(!ParseNonNegativeInteger(version, model.schemaVersion) || model.schemaVersion != LatestSchemaVersion))
