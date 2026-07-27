@@ -8,6 +8,13 @@
 > Test with a separate `/vr_config` file; do not replace the active deployed
 > configuration during acceptance testing.
 
+`VideoProcessor.cfg` and `VideoProcessorRenderer.cfg` use the same strict,
+table-driven key/type/range validation engine. They retain separate schemas and
+lifecycle boundaries: main application settings are startup-only, while
+profile and event expressions remain renderer-only. Sharing validation does
+not permit renderer rules to mutate capture, queue, conversion, or other main
+application settings.
+
 A review-oriented HTML version is available beside the existing renderer help
 as `VideoProcessorRenderer-Proposed.html`.
 

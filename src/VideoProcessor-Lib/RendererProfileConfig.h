@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ConfigFile.h"
+#include "ConfigSchema.h"
 #include "DisplayRuleExpression.h"
 
 #include <algorithm>
@@ -312,42 +313,21 @@ namespace RendererProfileConfig
 				std::to_string(LatestSchemaVersion);
 			return false;
 		}
+		const std::vector<ConfigSchema::KeyRule> generalRules = {
+			ConfigSchema::Any("config_version"),
+			ConfigSchema::Boolean("persist_profile_selection"),
+			ConfigSchema::Boolean("switch_refresh_rate"),
+			ConfigSchema::Integer("event_action_delay_seconds", 0, 30),
+			ConfigSchema::Boolean("output_diagnostics"),
+			ConfigSchema::Boolean("diagnostic_disable_shader_cache")
+		};
+		if (!ConfigSchema::ValidateSection(config, "general", generalRules, error))
+			return false;
 		bool persist = true;
-		if (config.TryGetString("general", "persist_profile_selection", version) &&
-			!config.TryGetBool("general", "persist_profile_selection", persist))
-		{
-			error = "[general] persist_profile_selection must be true or false";
-			return false;
-		}
+		config.TryGetBool("general", "persist_profile_selection", persist);
 		model.persistSelection = persist;
-		for (const char* booleanKey : {
-			"switch_refresh_rate", "output_diagnostics",
-			"diagnostic_disable_shader_cache" })
-		{
-			bool ignored = false;
-			if (config.TryGetString("general", booleanKey, version) &&
-				!config.TryGetBool("general", booleanKey, ignored))
-			{
-				error = "[general] " + std::string(booleanKey) +
-					" must be true or false";
-				return false;
-			}
-		}
-		if (config.TryGetString("general", "event_action_delay_seconds", version) &&
-			!ParseInteger(version, 0, 30, model.eventActionDelaySeconds))
-		{
-			error = "[general] event_action_delay_seconds must be a whole number from 0 to 30";
-			return false;
-		}
-		if (const auto* general = config.GetSectionValues("general"))
-			for (const auto& value : *general)
-				if (value.first != "config_version" && value.first != "persist_profile_selection" &&
-					value.first != "switch_refresh_rate" && value.first != "event_action_delay_seconds" &&
-					value.first != "output_diagnostics" && value.first != "diagnostic_disable_shader_cache")
-				{
-					error = "[general] unknown key '" + value.first + "'";
-					return false;
-				}
+		if (config.TryGetString("general", "event_action_delay_seconds", version))
+			ParseInteger(version, 0, 30, model.eventActionDelaySeconds);
 		if (const auto* display = config.GetSectionValues("display"))
 		{
 			const std::set<std::string> baseKeys = {
@@ -362,18 +342,17 @@ namespace RendererProfileConfig
 				"default_screen_profile", "scope_subtitle_fit",
 				"scope_subtitle_hold_seconds", "scope_subtitle_padding_pixels"
 			};
-			for (const auto& value : *display)
-				if (baseKeys.find(value.first) == baseKeys.end())
-				{
-					error = "[display] unknown key '" + value.first + "'";
-					return false;
-				}
-				else if (!ValidateBaseSetting(value.first, value.second))
-				{
-					error = "[display] key '" + value.first +
-						"' has invalid value '" + value.second + "'";
-					return false;
-				}
+			std::vector<ConfigSchema::KeyRule> displayRules;
+			for (const std::string& key : baseKeys)
+				displayRules.push_back({
+					key,
+					[key](const std::string& value)
+						{ return ValidateBaseSetting(key, value); },
+					"a valid renderer value"
+				});
+			if (!ConfigSchema::ValidateSection(
+				config, "display", displayRules, error))
+				return false;
 		}
 
 		const std::vector<std::string> expectedGroups = { "input", "scaling", "display", "viewport" };

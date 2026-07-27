@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include <ConfigFile.h>
+#include <MainConfigSchema.h>
 #include "CppUnitTest.h"
 
 #include <fstream>
@@ -155,6 +156,67 @@ namespace VideoProcessorTest
 				value,
 				error));
 			Assert::IsTrue(error.find("Duplicate") != std::string::npos);
+		}
+
+		TEST_METHOD(MainConfigSchemaUsesSharedTypedValidation)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-main-schema-valid.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[command_line]\n"
+					"renderer=VideoProcessor Renderer (Alpha)\n"
+					"queue_size=32\n"
+					"fullscreen=true\n"
+					"frame_offset=AUTO\n"
+					"[queue_recovery]\n"
+					"reset_after_render_restart_seconds=3\n"
+					"reset_queue_too_large_percent=70\n"
+					"[lldv]\n"
+					"max_cll=1000\n"
+					"mastering_min_luminance=0.001\n"
+					"mastering_max_luminance=4000\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.empty());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(MainConfigSchemaRejectsForeignAndIllTypedKeys)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-main-schema-invalid.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[command_line]\nalpha_queue_size=1\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("unknown key 'alpha_queue_size'") !=
+				std::string::npos);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[command_line]\nqueue_size=0\n"
+					"[queue_recovery]\nreset_queue_too_large_percent=101\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("queue_size") != std::string::npos);
+			DeleteFileA(path.c_str());
 		}
 	};
 }
