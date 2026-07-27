@@ -33,7 +33,9 @@ struct AlphaCadenceCorrectionInput
 struct AlphaCadenceCorrectionDecision
 {
 	AlphaCadenceAction action = AlphaCadenceAction::None;
+	AlphaCadenceAction predictedAction = AlphaCadenceAction::None;
 	bool ratesCompatible = false;
+	bool predictionValid = false;
 	bool planned = false;
 	bool deadlineFallback = false;
 	bool verificationPending = false;
@@ -41,6 +43,8 @@ struct AlphaCadenceCorrectionDecision
 	bool lastVerificationValid = false;
 	bool lastVerificationSucceeded = false;
 	double phaseFrames = 0.0;
+	double secondsUntilCorrection = 0.0;
+	double secondsUntilPlan = 0.0;
 	uint64_t sceneEventId = 0;
 };
 

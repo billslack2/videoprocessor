@@ -87,6 +87,28 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 	}
 
 	m_phaseFrames += input.captureRateHz / input.displayRateHz - 1.0;
+	const double phasePerFrame =
+		input.captureRateHz / input.displayRateHz - 1.0;
+	if (phasePerFrame != 0.0 && !m_verificationPending)
+	{
+		decision.predictedAction = phasePerFrame > 0.0
+			? AlphaCadenceAction::Drop
+			: AlphaCadenceAction::Repeat;
+		const double correctionPhase =
+			phasePerFrame > 0.0 ? ACTION_PHASE_FRAMES : -ACTION_PHASE_FRAMES;
+		const double correctionFrames =
+			std::max(0.0, (correctionPhase - m_phaseFrames) / phasePerFrame);
+		decision.secondsUntilCorrection =
+			correctionFrames / input.captureRateHz;
+		const double planPhase =
+			phasePerFrame > 0.0 ? PLAN_PHASE_FRAMES : -PLAN_PHASE_FRAMES;
+		const double planFrames =
+			std::max(0.0, (planPhase - m_phaseFrames) / phasePerFrame);
+		decision.secondsUntilPlan = planFrames / input.captureRateHz;
+		decision.predictionValid =
+			std::isfinite(decision.secondsUntilCorrection) &&
+			std::isfinite(decision.secondsUntilPlan);
+	}
 	if (m_cooldownFrames > 0)
 	{
 		--m_cooldownFrames;

@@ -121,6 +121,7 @@ private:
 	std::atomic<int> m_scenePredictedAction{0};
 	std::atomic_bool m_sceneCorrectionPlanned{false};
 	std::atomic<double> m_sceneSecondsUntilCorrection{0.0};
+	std::atomic<double> m_sceneSecondsUntilPlan{0.0};
 	std::atomic<int> m_sceneLastCorrectionAction{0};
 	std::atomic<double> m_sceneLastCorrectionSecondsFromDeadline{0.0};
 	std::atomic<uint64_t> m_sceneLastCorrectionTick{0};

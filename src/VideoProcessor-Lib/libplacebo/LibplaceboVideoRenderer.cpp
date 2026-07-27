@@ -4449,6 +4449,7 @@ void LibplaceboVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 		m_sceneCorrectionPlanned.store(false, std::memory_order_release);
 		m_scenePredictedAction.store(0, std::memory_order_release);
 		m_sceneSecondsUntilCorrection.store(0.0, std::memory_order_release);
+		m_sceneSecondsUntilPlan.store(0.0, std::memory_order_release);
 		DebugLog::Log("libplacebo scene detection %s", enabled ? "enabled" : "disabled");
 	}
 }
@@ -4496,9 +4497,10 @@ bool LibplaceboVideoRenderer::GetSceneTimingPrediction(
 	action = m_scenePredictedAction.load(std::memory_order_acquire);
 	secondsUntilCorrection =
 		m_sceneSecondsUntilCorrection.load(std::memory_order_acquire);
-	secondsUntilPlan = 0.0;
+	secondsUntilPlan =
+		m_sceneSecondsUntilPlan.load(std::memory_order_acquire);
 	planned = m_sceneCorrectionPlanned.load(std::memory_order_acquire);
-	return action != 0 && planned;
+	return action != 0;
 }
 
 bool LibplaceboVideoRenderer::GetSceneTimingLastCorrection(
@@ -4916,13 +4918,17 @@ void LibplaceboVideoRenderer::RenderLoop()
 				correctionDecision.ratesCompatible, std::memory_order_release);
 			m_sceneCorrectionPlanned.store(
 				correctionDecision.planned, std::memory_order_release);
-			const int predictedAction = correctionDecision.planned
-				? (correctionDecision.phaseFrames > 0.0 ? -1 : 1)
+			const int predictedAction = correctionDecision.predictionValid
+				? static_cast<int>(correctionDecision.predictedAction)
 				: 0;
 			m_scenePredictedAction.store(
 				predictedAction, std::memory_order_release);
 			m_sceneSecondsUntilCorrection.store(
-				0.0, std::memory_order_release);
+				correctionDecision.secondsUntilCorrection,
+				std::memory_order_release);
+			m_sceneSecondsUntilPlan.store(
+				correctionDecision.secondsUntilPlan,
+				std::memory_order_release);
 			if (correctionDecision.verificationCompleted)
 			{
 				DebugLog::Log(

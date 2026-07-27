@@ -62,6 +62,22 @@ namespace Tests
 				static_cast<int>(decision.action));
 		}
 
+		TEST_METHOD(PublishesLongRangePredictionBeforePlanningWindow)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			const auto decision = Advance(policy, Input(60.012), 121);
+
+			Assert::IsTrue(decision.predictionValid);
+			Assert::IsFalse(decision.planned);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(decision.predictedAction));
+			Assert::IsTrue(decision.secondsUntilCorrection > 80.0);
+			Assert::IsTrue(decision.secondsUntilCorrection < 85.0);
+			Assert::IsTrue(decision.secondsUntilPlan > 60.0);
+			Assert::IsTrue(decision.secondsUntilPlan <
+				decision.secondsUntilCorrection);
+		}
+
 		TEST_METHOD(DropRequiresPhaseQueueDebtAndSceneAgreement)
 		{
 			AlphaCadenceCorrectionPolicy policy;
