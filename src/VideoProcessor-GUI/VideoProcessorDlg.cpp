@@ -5289,6 +5289,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.sceneDetectDetected = m_videoRenderer->SceneAwareDetectedCount();
 		stats.sceneTimingRatesCompatible =
 			m_videoRenderer->SceneTimingRatesCompatible();
+		m_videoRenderer->GetSceneTimingStatus(stats.sceneTimingStatus);
 		stats.sceneCorrectionPredictionValid =
 			m_videoRenderer->GetSceneTimingPrediction(
 				stats.sceneSecondsUntilCorrection,

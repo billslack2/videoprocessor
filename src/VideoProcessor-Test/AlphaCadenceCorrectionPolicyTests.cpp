@@ -69,6 +69,9 @@ namespace Tests
 
 			Assert::IsTrue(decision.predictionValid);
 			Assert::IsFalse(decision.planned);
+			Assert::AreEqual(
+				static_cast<int>(AlphaCadenceTimingStatus::Forecasting),
+				static_cast<int>(decision.timingStatus));
 			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Drop),
 				static_cast<int>(decision.predictedAction));
 			Assert::IsTrue(decision.secondsUntilCorrection > 70.0);
@@ -77,6 +80,18 @@ namespace Tests
 			Assert::IsTrue(decision.secondsUntilPlan < 60.0);
 			Assert::IsTrue(decision.secondsUntilPlan <
 				decision.secondsUntilCorrection);
+		}
+
+		TEST_METHOD(ReportsMatchedWhenStableRatesNeedNoCorrection)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			const auto decision = Advance(policy, Input(60.0), 601);
+
+			Assert::IsTrue(decision.ratesCompatible);
+			Assert::IsFalse(decision.predictionValid);
+			Assert::AreEqual(
+				static_cast<int>(AlphaCadenceTimingStatus::Matched),
+				static_cast<int>(decision.timingStatus));
 		}
 
 		TEST_METHOD(NearZeroNoiseCannotReversePredictionDirection)

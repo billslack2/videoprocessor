@@ -264,6 +264,14 @@ public:
 		return false;
 	}
 	virtual bool SceneTimingRatesCompatible() const { return false; }
+	// Optional renderer-native timing lifecycle. This distinguishes a stable
+	// display measurement from a correction forecast that is intentionally
+	// suppressed because the measured mismatch is negligible.
+	virtual bool GetSceneTimingStatus(CString& status) const
+	{
+		status.Empty();
+		return false;
+	}
 
 	// Get conversion performance metrics (if available from the video frame formatter)
 	// Returns true if data is available, false if no conversion or no performance tracking

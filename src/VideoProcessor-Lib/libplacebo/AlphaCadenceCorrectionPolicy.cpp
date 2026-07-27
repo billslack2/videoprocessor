@@ -58,6 +58,11 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 		m_verificationPending = false;
 		m_lastVerificationValid = false;
 		decision.phaseFrames = m_phaseFrames;
+		decision.timingStatus = !input.enabled
+			? AlphaCadenceTimingStatus::Disabled
+			: (input.presentationEvidence != AlphaPresentationEvidence::Stable
+				? AlphaCadenceTimingStatus::WaitingForDxgi
+				: AlphaCadenceTimingStatus::Measuring);
 		return decision;
 	}
 
@@ -77,6 +82,8 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 	}
 	const double filteredMismatchPpm =
 		std::abs(m_filteredPhasePerFrame) * 1000000.0;
+	decision.rateFilterSamples = m_rateFilterSamples;
+	decision.filteredMismatchPpm = filteredMismatchPpm;
 	decision.ratesCompatible =
 		filteredMismatchPpm <= MAXIMUM_RATE_MISMATCH_PPM;
 	if (!decision.ratesCompatible)
@@ -86,6 +93,7 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 		m_verificationPending = false;
 		m_lastVerificationValid = false;
 		decision.phaseFrames = m_phaseFrames;
+		decision.timingStatus = AlphaCadenceTimingStatus::Incompatible;
 		return decision;
 	}
 
@@ -111,6 +119,7 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 	{
 		++m_stableSamples;
 		decision.phaseFrames = m_phaseFrames;
+		decision.timingStatus = AlphaCadenceTimingStatus::Measuring;
 		return decision;
 	}
 
@@ -161,6 +170,13 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 			std::isfinite(decision.secondsUntilCorrection) &&
 			std::isfinite(decision.secondsUntilPlan);
 	}
+	decision.timingStatus = m_verificationPending
+		? AlphaCadenceTimingStatus::Verifying
+		: (m_rateFilterSamples < MINIMUM_PREDICTION_SAMPLES
+			? AlphaCadenceTimingStatus::Measuring
+			: (decision.predictionValid
+				? AlphaCadenceTimingStatus::Forecasting
+				: AlphaCadenceTimingStatus::Matched));
 	if (m_cooldownFrames > 0)
 	{
 		--m_cooldownFrames;

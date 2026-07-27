@@ -12,6 +12,17 @@ enum class AlphaCadenceAction
 	Repeat = 1
 };
 
+enum class AlphaCadenceTimingStatus
+{
+	Disabled,
+	WaitingForDxgi,
+	Measuring,
+	Matched,
+	Forecasting,
+	Verifying,
+	Incompatible
+};
+
 struct AlphaCadenceCorrectionInput
 {
 	bool enabled = false;
@@ -34,6 +45,8 @@ struct AlphaCadenceCorrectionDecision
 {
 	AlphaCadenceAction action = AlphaCadenceAction::None;
 	AlphaCadenceAction predictedAction = AlphaCadenceAction::None;
+	AlphaCadenceTimingStatus timingStatus =
+		AlphaCadenceTimingStatus::WaitingForDxgi;
 	bool ratesCompatible = false;
 	bool predictionValid = false;
 	bool planned = false;
@@ -45,6 +58,8 @@ struct AlphaCadenceCorrectionDecision
 	double phaseFrames = 0.0;
 	double secondsUntilCorrection = 0.0;
 	double secondsUntilPlan = 0.0;
+	uint32_t rateFilterSamples = 0;
+	double filteredMismatchPpm = 0.0;
 	uint64_t sceneEventId = 0;
 };
 

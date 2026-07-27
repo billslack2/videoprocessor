@@ -49,6 +49,7 @@ public:
 	bool GetSceneTimingLastCorrection(int& action,
 		double& secondsFromDeadline, uint64_t& correctionTick) const override;
 	bool SceneTimingRatesCompatible() const override;
+	bool GetSceneTimingStatus(CString& status) const override;
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
@@ -125,6 +126,9 @@ private:
 	std::atomic<int> m_sceneLastCorrectionAction{0};
 	std::atomic<double> m_sceneLastCorrectionSecondsFromDeadline{0.0};
 	std::atomic<uint64_t> m_sceneLastCorrectionTick{0};
+	std::atomic<int> m_sceneTimingStatus{0};
+	std::atomic<uint32_t> m_sceneTimingRateSamples{0};
+	std::atomic<double> m_sceneTimingMismatchPpm{0.0};
 	std::atomic<int> m_sceneDetectionStatus{0};
 	std::atomic<uint64_t> m_frameCounter{0};
 	std::atomic<uint64_t> m_sourceSequence{0};

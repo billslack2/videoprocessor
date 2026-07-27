@@ -4450,6 +4450,13 @@ void LibplaceboVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 		m_scenePredictedAction.store(0, std::memory_order_release);
 		m_sceneSecondsUntilCorrection.store(0.0, std::memory_order_release);
 		m_sceneSecondsUntilPlan.store(0.0, std::memory_order_release);
+		m_sceneTimingStatus.store(
+			static_cast<int>(enabled
+				? AlphaCadenceTimingStatus::WaitingForDxgi
+				: AlphaCadenceTimingStatus::Disabled),
+			std::memory_order_release);
+		m_sceneTimingRateSamples.store(0, std::memory_order_release);
+		m_sceneTimingMismatchPpm.store(0.0, std::memory_order_release);
 		DebugLog::Log("libplacebo scene detection %s", enabled ? "enabled" : "disabled");
 	}
 }
@@ -4517,6 +4524,41 @@ bool LibplaceboVideoRenderer::GetSceneTimingLastCorrection(
 bool LibplaceboVideoRenderer::SceneTimingRatesCompatible() const
 {
 	return m_sceneTimingRatesCompatible.load(std::memory_order_acquire);
+}
+
+bool LibplaceboVideoRenderer::GetSceneTimingStatus(CString& status) const
+{
+	const AlphaCadenceTimingStatus timingStatus =
+		static_cast<AlphaCadenceTimingStatus>(
+			m_sceneTimingStatus.load(std::memory_order_acquire));
+	switch (timingStatus)
+	{
+	case AlphaCadenceTimingStatus::Disabled:
+		status = TEXT("Disabled");
+		break;
+	case AlphaCadenceTimingStatus::WaitingForDxgi:
+		status = TEXT("Waiting for DXGI evidence");
+		break;
+	case AlphaCadenceTimingStatus::Measuring:
+		status.Format(TEXT("Measuring DXGI rate (%u/600)"),
+			m_sceneTimingRateSamples.load(std::memory_order_acquire));
+		break;
+	case AlphaCadenceTimingStatus::Matched:
+		status.Format(TEXT("Rates matched (%.2f ppm)"),
+			m_sceneTimingMismatchPpm.load(std::memory_order_acquire));
+		break;
+	case AlphaCadenceTimingStatus::Forecasting:
+		status.Format(TEXT("Forecasting (%.2f ppm)"),
+			m_sceneTimingMismatchPpm.load(std::memory_order_acquire));
+		break;
+	case AlphaCadenceTimingStatus::Verifying:
+		status = TEXT("Verifying correction");
+		break;
+	default:
+		status = TEXT("Rate mismatch unavailable");
+		break;
+	}
+	return true;
 }
 
 
@@ -4928,6 +4970,15 @@ void LibplaceboVideoRenderer::RenderLoop()
 				std::memory_order_release);
 			m_sceneSecondsUntilPlan.store(
 				correctionDecision.secondsUntilPlan,
+				std::memory_order_release);
+			m_sceneTimingStatus.store(
+				static_cast<int>(correctionDecision.timingStatus),
+				std::memory_order_release);
+			m_sceneTimingRateSamples.store(
+				correctionDecision.rateFilterSamples,
+				std::memory_order_release);
+			m_sceneTimingMismatchPpm.store(
+				correctionDecision.filteredMismatchPpm,
 				std::memory_order_release);
 			if (correctionDecision.verificationCompleted)
 			{

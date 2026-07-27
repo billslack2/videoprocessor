@@ -43,6 +43,7 @@ public:
 	bool GetSceneTimingLastCorrection(int& action,
 		double& secondsFromDeadline, uint64_t& correctionTick) const override;
 	bool SceneTimingRatesCompatible() const override;
+	bool GetSceneTimingStatus(CString& status) const override;
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;

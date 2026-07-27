@@ -531,6 +531,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		m_stats.sceneDetectMode.CompareNoCase(TEXT("Off")) == 0;
 	if (sceneModeOff)
 		line.Format(TEXT(" - Status:        None"));
+	else if (!m_stats.sceneTimingStatus.IsEmpty())
+		line.Format(TEXT(" - Status:        %-s"),
+			static_cast<LPCTSTR>(m_stats.sceneTimingStatus));
 	else if (!m_stats.sceneTimingReady)
 		line.Format(TEXT(" - Status:        Warming"));
 	else if (!m_stats.sceneTimingRatesCompatible)
@@ -550,7 +553,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		m_stats.sceneCorrectionPredictionValid &&
 		std::isfinite(m_stats.sceneSecondsUntilCorrection) &&
 		std::fabs(m_stats.sceneSecondsUntilCorrection) <= kMaximumPlanSeconds;
-	// For five seconds after a correction, use the Plan row to confirm how the
+	// For five seconds after a correction, use the Forecast row to confirm how the
 	// scene boundary lined up with its deadline. It then automatically returns
 	// to the live signed countdown for the next correction.
 	constexpr uint64_t kCorrectionResultVisibilityMs = 5000;
@@ -567,21 +570,21 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 			TEXT("Repeat") : TEXT("Drop");
 		const double timing = m_stats.sceneLastCorrectionSecondsFromDeadline;
 		if (std::fabs(timing) <= kOnTimeToleranceSeconds)
-			line.Format(TEXT(" - Plan:          %s On-Time"), action);
+			line.Format(TEXT(" - Forecast:      %s On-Time"), action);
 		else
-			line.Format(TEXT(" - Plan:          %s %s (%s)"), action,
+			line.Format(TEXT(" - Forecast:      %s %s (%s)"), action,
 				timing > 0.0 ? TEXT("Early") : TEXT("Late"),
 				static_cast<LPCTSTR>(FormatTime(std::fabs(timing))));
 	}
 	else if (hasActionablePlan)
 	{
-		line.Format(TEXT(" - Plan:          %s in %s"),
+		line.Format(TEXT(" - Forecast:      %s in %s"),
 			m_stats.sceneCorrectionAction > 0 ? TEXT("Repeat") : TEXT("Drop"),
 			static_cast<LPCTSTR>(FormatTime(m_stats.sceneSecondsUntilCorrection)));
 	}
 	else
 	{
-		line.Format(TEXT(" - Plan:          None"));
+		line.Format(TEXT(" - Forecast:      None"));
 	}
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;

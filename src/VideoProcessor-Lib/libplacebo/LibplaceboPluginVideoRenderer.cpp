@@ -272,6 +272,11 @@ bool LibplaceboPluginVideoRenderer::SceneTimingRatesCompatible() const
 	return m_renderer->SceneTimingRatesCompatible();
 }
 
+bool LibplaceboPluginVideoRenderer::GetSceneTimingStatus(CString& status) const
+{
+	return m_renderer->GetSceneTimingStatus(status);
+}
+
 
 bool LibplaceboPluginVideoRenderer::SetScreenProfile(
 	bool scopeScreen,
