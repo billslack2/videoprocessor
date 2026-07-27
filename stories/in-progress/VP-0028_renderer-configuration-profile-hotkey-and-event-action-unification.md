@@ -30,6 +30,15 @@ while retaining the legacy display-rule paths. Focused rule tests and the
 libplacebo project build pass. A GUI Debug build is currently blocked before
 these changes by the worktree's missing generated `version.h`.
 
+The restart increment committed as `a4aa01d` (`feat: add unified renderer
+profile config foundation`) adds a platform-independent, strict unified-mode
+model. It requires the four ordered groups (`input`, `scaling`, `display`, and
+`viewport`), validates listed profile sections, defaults, duplicate names,
+priority values, and expressions, and leaves legacy configuration on its
+unchanged path. The focused `RendererProfileConfig` unit tests pass (2/2) in
+the VS2019 runner; the VS2026 runner crashes during discovery before executing
+tests.
+
 A subsequent multi-pass design/code review determined that this increment is a
 prototype and must not be treated as the accepted unified implementation. It
 still routes manual selection through one legacy display-rule slot, uses GUI
