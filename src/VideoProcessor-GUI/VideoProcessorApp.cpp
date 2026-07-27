@@ -79,12 +79,6 @@ Options:
       Used only with P010 output; otherwise the setting is retained but inactive.
       If omitted or disabled, the legacy timestamp/delivery path is unchanged.
 
-  /scene_correction_mode <value>
-      BASIC | ADVANCED
-      BASIC asks madVR to repeat at the selected boundary. ADVANCED supplies a
-      real duplicate sample upstream so madVR may not need to report a repeat.
-      Used only with /scene_detect and P010.
-
   /newlldv
       Enable the opt-in BT.2020 + SDR LLDV heuristic (requires both LLDV follow modes).
 
@@ -292,6 +286,7 @@ void ValidateCommandLineConfigKeys(const ConfigFile& config)
 		"renderer_primaries",
 		"scene_detect",
 		"scene",
+		"scene_correction_basic",
 		"scene_correction_mode",
 		"subtitle_reposition",
 		"newlldv",
@@ -445,7 +440,14 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigStringOption(arguments, config, { "renderer_transfer_matrix" }, L"/renderer_transfer_matrix");
 	AppendConfigStringOption(arguments, config, { "renderer_primaries" }, L"/renderer_primaries");
 	AppendConfigBoolOption(arguments, config, { "scene_detect", "scene" }, L"/scene_detect");
+	// Retain the old spelling as a compatibility alias.  The clearer Boolean
+	// override below is appended last and therefore takes precedence if both
+	// are present in a configuration file.
 	AppendConfigStringOption(arguments, config, { "scene_correction_mode" }, L"/scene_correction_mode");
+	// DirectShow uses the advanced upstream-sample correction by default.  This
+	// config-only switch preserves a deliberate Basic override without exposing
+	// renderer implementation details in the UI.
+	AppendConfigBoolOption(arguments, config, { "scene_correction_basic" }, L"/scene_correction_basic");
 	AppendConfigStringOption(arguments, config,
 		{ "subtitle_reposition" }, L"/subtitle_reposition");
 	AppendConfigBoolOption(arguments, config, { "newlldv", "new_lldv" }, L"/newlldv");
@@ -639,6 +641,7 @@ bool RequiresCommandLineValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/hdr_colorspace") ||
 		IsCommandLineOption(argument, L"/hdr_luminance") ||
 		IsCommandLineOption(argument, L"/renderer_start_stop_time_method") ||
+		IsCommandLineOption(argument, L"/scene_correction_basic") ||
 		IsCommandLineOption(argument, L"/scene_correction_mode") ||
 		IsCommandLineOption(argument, L"/renderer_nominal_range") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_function") ||
@@ -669,6 +672,7 @@ bool IsBooleanCommandLineOption(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/czeddie") ||
 		IsCommandLineOption(argument, L"/scene_detect") ||
 		IsCommandLineOption(argument, L"/scene") ||
+		IsCommandLineOption(argument, L"/scene_correction_basic") ||
 		IsCommandLineOption(argument, L"/newlldv") ||
 		IsCommandLineOption(argument, L"/startminimized");
 }
@@ -1381,6 +1385,12 @@ BOOL CVideoProcessorApp::InitInstance()
 					_wcsicmp(pArgs[i + 1], L"ADVANCED") == 0 ||
 					_wcsicmp(pArgs[i + 1], L"VP_REPEAT") == 0 ||
 					_wcsicmp(pArgs[i + 1], L"UPSTREAM_SAMPLE") == 0);
+			}
+
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs,
+				L"/scene_correction_basic", booleanValue))
+			{
+				dlg.SceneCorrectionUpstreamSample(!booleanValue);
 			}
 
 			// Opt-in LLDV detection for DeckLink's BT.2020 + SDR reporting.
