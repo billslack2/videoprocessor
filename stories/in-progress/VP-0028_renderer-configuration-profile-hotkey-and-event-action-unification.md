@@ -64,6 +64,17 @@ focused model tests pass (5/5). Manual multi-group key selection, typed setting
 ownership, committed persistence, viewport apply, and event-action scheduling
 remain before a side-by-side deployment test is safe.
 
+Commit `6bc0140` wires composite unified `$key` chords through the GUI and
+libplacebo renderer: one accelerator dispatches all matching independent group
+selections, while same-group ambiguity remains rejected. The renderer retains
+manual selections per group across a safe rebuild; viewport profiles now apply
+their mode and scope settings; and source updates compare the unified effective
+profile identity. The GUI and plugin Debug builds pass, and focused resolver
+tests pass (6/6). The checked-in version generator was also corrected to use
+the `billslack2/videoprocessor` repository URL. Per-group disk persistence,
+strict typed ownership/fingerprint validation, and event-action scheduling
+remain before deployment.
+
 A subsequent multi-pass design/code review determined that this increment is a
 prototype and must not be treated as the accepted unified implementation. It
 still routes manual selection through one legacy display-rule slot, uses GUI
