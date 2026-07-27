@@ -36,7 +36,6 @@ void AlphaPresentationTelemetry::RecordSubmission(
 	while (m_records.size() > m_capacity)
 		m_records.pop_front();
 	m_lastSubmittedSequence = record.sourceSequence;
-	m_lastPresentId = record.presentId;
 	if (m_evidence == AlphaPresentationEvidence::Unavailable)
 		m_evidence = AlphaPresentationEvidence::Warming;
 }
@@ -56,6 +55,7 @@ void AlphaPresentationTelemetry::Observe(
 		ResetCadence(AlphaPresentationEvidence::Unavailable);
 		return;
 	}
+	m_lastPresentId = sample.presentCount;
 
 	if (m_cadenceSamples != 0 &&
 		(sample.syncRefreshCount < m_lastSyncRefresh ||
@@ -115,10 +115,12 @@ AlphaPresentationSnapshot AlphaPresentationTelemetry::Snapshot() const
 	snapshot.retainedRecords = m_records.size();
 	snapshot.lastSubmittedSequence = m_lastSubmittedSequence;
 	snapshot.lastPresentedSequence = m_lastPresentedSequence;
-	snapshot.sourceToPresentDebt =
-		m_lastSubmittedSequence >= m_lastPresentedSequence
-			? m_lastSubmittedSequence - m_lastPresentedSequence
-			: 0;
+	snapshot.sourceToPresentDebt = static_cast<uint64_t>(std::count_if(
+		m_records.begin(), m_records.end(),
+		[](const AlphaPresentationRecord& record)
+		{
+			return !record.presented;
+		}));
 	snapshot.lastPresentId = m_lastPresentId;
 	snapshot.lastPresentRefresh = m_lastPresentRefresh;
 	snapshot.measuredDisplayHz = m_measuredDisplayHz;

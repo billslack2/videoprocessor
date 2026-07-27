@@ -231,6 +231,47 @@ void LibplaceboPluginVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 	m_renderer->SetSceneAwareTimingCorrection(enabled);
 }
 
+uint64_t LibplaceboPluginVideoRenderer::SceneAwareCorrectionDropCount() const
+{
+	return m_renderer->SceneAwareCorrectionDropCount();
+}
+
+uint64_t LibplaceboPluginVideoRenderer::SceneAwareCorrectionRepeatCount() const
+{
+	return m_renderer->SceneAwareCorrectionRepeatCount();
+}
+
+uint64_t LibplaceboPluginVideoRenderer::SceneAwareDetectedCount() const
+{
+	return m_renderer->SceneAwareDetectedCount();
+}
+
+bool LibplaceboPluginVideoRenderer::GetSceneDetectionStatus(
+	CString& status) const
+{
+	return m_renderer->GetSceneDetectionStatus(status);
+}
+
+bool LibplaceboPluginVideoRenderer::GetSceneTimingPrediction(
+	double& secondsUntilCorrection, double& secondsUntilPlan,
+	int& action, bool& planned) const
+{
+	return m_renderer->GetSceneTimingPrediction(
+		secondsUntilCorrection, secondsUntilPlan, action, planned);
+}
+
+bool LibplaceboPluginVideoRenderer::GetSceneTimingLastCorrection(
+	int& action, double& secondsFromDeadline, uint64_t& correctionTick) const
+{
+	return m_renderer->GetSceneTimingLastCorrection(
+		action, secondsFromDeadline, correctionTick);
+}
+
+bool LibplaceboPluginVideoRenderer::SceneTimingRatesCompatible() const
+{
+	return m_renderer->SceneTimingRatesCompatible();
+}
+
 
 bool LibplaceboPluginVideoRenderer::SetScreenProfile(
 	bool scopeScreen,

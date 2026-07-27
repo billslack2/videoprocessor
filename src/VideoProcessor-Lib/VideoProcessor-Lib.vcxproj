@@ -186,6 +186,7 @@
     <ClInclude Include="InputLocked.h" />
     <ClInclude Include="IntegerMath.h" />
     <ClInclude Include="IRenderer.h" />
+    <ClInclude Include="libplacebo\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="libplacebo\AlphaPresentationTelemetry.h" />
     <ClInclude Include="libplacebo\LibplaceboOutputPolicy.h" />
     <ClInclude Include="libplacebo\LibplaceboPluginVideoRenderer.h" />
@@ -253,6 +254,9 @@
     <ClCompile Include="HDRData.cpp" />
     <ClCompile Include="InputLocked.cpp" />
     <ClCompile Include="IRenderer.cpp" />
+    <ClCompile Include="libplacebo\AlphaCadenceCorrectionPolicy.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="libplacebo\AlphaPresentationTelemetry.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>

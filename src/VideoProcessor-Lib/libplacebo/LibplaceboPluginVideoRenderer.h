@@ -34,6 +34,15 @@ public:
 	void OnDisplayChange() override;
 	void SetFrameQueueMaxSize(size_t size) override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
+	uint64_t SceneAwareCorrectionDropCount() const override;
+	uint64_t SceneAwareCorrectionRepeatCount() const override;
+	uint64_t SceneAwareDetectedCount() const override;
+	bool GetSceneDetectionStatus(CString& status) const override;
+	bool GetSceneTimingPrediction(double& secondsUntilCorrection,
+		double& secondsUntilPlan, int& action, bool& planned) const override;
+	bool GetSceneTimingLastCorrection(int& action,
+		double& secondsFromDeadline, uint64_t& correctionTick) const override;
+	bool SceneTimingRatesCompatible() const override;
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;

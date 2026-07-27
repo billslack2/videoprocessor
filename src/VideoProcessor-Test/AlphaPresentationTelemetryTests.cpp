@@ -77,6 +77,21 @@ namespace Tests
 			Assert::IsFalse(telemetry.RecordsForTesting()[2].presented);
 		}
 
+		TEST_METHOD(DebtCountsOutstandingPresentsRatherThanSequenceGaps)
+		{
+			AlphaPresentationTelemetry telemetry;
+			AlphaPresentationRecord first = Record(2);
+			first.presentId = 1;
+			AlphaPresentationRecord second = Record(9);
+			second.presentId = 2;
+			telemetry.RecordSubmission(first);
+			telemetry.RecordSubmission(second);
+			telemetry.Observe(Sample(2, 1000));
+
+			Assert::AreEqual(static_cast<uint64_t>(0),
+				telemetry.Snapshot().sourceToPresentDebt);
+		}
+
 		TEST_METHOD(RequiresStabilizedMeasuredCadence)
 		{
 			AlphaPresentationTelemetry telemetry;
