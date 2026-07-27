@@ -45,6 +45,13 @@ namespace RendererProfileConfig
 		std::map<std::string, Profile> profiles;
 	};
 
+	struct KeySelection
+	{
+		std::string group;
+		std::string profile;
+		bool resetToAutomatic = false;
+	};
+
 	inline bool IsUnified(const ConfigFile& config)
 	{
 		return config.HasSection("profile_groups") || config.HasSection("general") ||
@@ -183,6 +190,64 @@ namespace RendererProfileConfig
 				model.profiles.emplace(groupName + "." + profileName, std::move(profile));
 			}
 			model.groups.push_back(std::move(group));
+		}
+		return true;
+	}
+
+	// A physical key event is deliberately resolved across every independent
+	// group.  Thus one chord may select, for example, both a display profile and
+	// a viewport profile.  Ambiguity is only an error within a single group.
+	inline bool SelectForKey(const Model& model, const std::string& key,
+		const DisplayRuleExpression::ValueLookup& sourceValues,
+		std::vector<KeySelection>& selections, std::string& error)
+	{
+		selections.clear();
+		error.clear();
+		const std::string canonicalKey = ConfigFile::NormalizeName(key);
+		const DisplayRuleExpression::ValueLookup values =
+			[&](const std::string& name, std::string& value)
+			{
+				if (name == "key") { value = canonicalKey; return true; }
+				return sourceValues(name, value);
+			};
+
+		for (const Group& group : model.groups)
+		{
+			if (!group.resetWhen.empty())
+			{
+				int specificity = 0;
+				const bool matchesReset = DisplayRuleExpression::Matches(
+					group.resetWhen, values, specificity, error);
+				if (!matchesReset && !error.empty()) return false;
+				if (matchesReset)
+				{
+					selections.push_back({ group.name, {}, true });
+					continue;
+				}
+			}
+
+			std::string selected;
+			for (const std::string& profileName : group.profiles)
+			{
+				const Profile& profile = model.profiles.at(group.name + "." + profileName);
+				if (profile.when.find("$key") == std::string::npos)
+					continue;
+				int specificity = 0;
+				const bool matchesProfile = DisplayRuleExpression::Matches(
+					profile.when, values, specificity, error);
+				if (!matchesProfile && !error.empty()) return false;
+				if (!matchesProfile)
+					continue;
+				if (!selected.empty())
+				{
+					error = "key '" + key + "' selects both '" + selected + "' and '" +
+						profileName + "' in profile group '" + group.name + "'";
+					return false;
+				}
+				selected = profileName;
+			}
+			if (!selected.empty())
+				selections.push_back({ group.name, selected, false });
 		}
 		return true;
 	}

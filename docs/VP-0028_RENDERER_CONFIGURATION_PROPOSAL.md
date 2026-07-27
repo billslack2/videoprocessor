@@ -456,8 +456,10 @@ when=$transfer==PQ || $key=="Ctrl+F7"
 `when=` in `[profile_groups.<name>]` is evaluated for key events only and must
 contain only `$key` equality joined by `||`. When it matches, it returns that
 one group to automatic selection. A key selection always directly selects its
-target and never toggles. One canonical chord may target exactly one profile or
-one group reset; duplicates are startup errors rather than priority contests.
+target and never toggles. One canonical chord may select one profile in each
+independent group and may reset one or more groups, allowing deliberate
+composite input/scaling/display/viewport choices. Two matching profiles in the
+same group remain a startup error rather than a priority contest.
 The complete target profile expression is still evaluated, so
 `$transfer==PQ && $key=="Ctrl+F7"` cannot select the profile for an SDR source.
 The OSD/log reports the chord, group, prior selection, requested selection,
@@ -667,7 +669,7 @@ The implementation is not ready for deployment until automated tests cover:
 | --- | --- |
 | Parsing | ordered lists, duplicates, orphan sections, invalid defaults, unknown/wrong-owner keys, unavailable variables |
 | Resolution | no match, priority, specificity, declared-order tie, equivalent-settings fingerprint |
-| Keys | canonicalization, source/key `&&` and `||`, duplicate chords, group reset, auto-repeat/no-op |
+| Keys | canonicalization, source/key `&&` and `||`, cross-group composite chords, same-group conflicts, group reset, auto-repeat/no-op |
 | State | global/group policy, valid/stale entries, legacy viewport import, atomic write, failed-apply rollback |
 | Transitions | automatic→automatic, automatic→manual, manual→manual, manual→automatic independently per group |
 | Viewport | dynamic normal/scope application, persistence, coexistence with display/input selections |

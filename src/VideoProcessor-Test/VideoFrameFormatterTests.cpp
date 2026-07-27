@@ -228,6 +228,30 @@ namespace Tests
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(RendererProfileConfigOneKeySelectsIndependentGroups)
+		{
+			RendererProfileConfig::Model model;
+			for (const char* groupName : { "input", "display" })
+			{
+				RendererProfileConfig::Group group;
+				group.name = groupName;
+				group.profiles = { "selected" };
+				model.groups.push_back(group);
+				RendererProfileConfig::Profile profile;
+				profile.group = groupName;
+				profile.name = "selected";
+				profile.when = "$key==F5";
+				model.profiles.emplace(std::string(groupName) + ".selected", profile);
+			}
+			std::vector<RendererProfileConfig::KeySelection> selections;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F5",
+				[](const std::string&, std::string&) { return false; }, selections, error));
+			Assert::AreEqual(static_cast<size_t>(2), selections.size());
+			Assert::AreEqual("input", selections[0].group.c_str());
+			Assert::AreEqual("display", selections[1].group.c_str());
+		}
+
 		TEST_METHOD(CR210toRGB48VideoFrameFormatter4KSmokeTest)
 		{
 			CR210toRGB48VideoFrameFormatter vff;
