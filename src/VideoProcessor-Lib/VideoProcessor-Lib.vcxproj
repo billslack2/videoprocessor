@@ -211,6 +211,7 @@
     <ClInclude Include="PixelValueRange.h" />
     <ClInclude Include="PPMCorrectionLoader.h" />
     <ClInclude Include="RendererId.h" />
+	<ClInclude Include="SceneDetector.h" />
     <ClInclude Include="SubtitleRepositionMode.h" />
     <ClInclude Include="StringUtils.h" />
     <ClInclude Include="TimingClock.h" />
@@ -291,6 +292,7 @@
     <ClCompile Include="PixelValueRange.cpp" />
     <ClCompile Include="PPMCorrectionLoader.cpp" />
     <ClCompile Include="RendererId.cpp" />
+	<ClCompile Include="SceneDetector.cpp" />
     <ClCompile Include="StringUtils.cpp" />
     <ClCompile Include="TimingClock.cpp" />
     <ClCompile Include="VideoConversionOverride.cpp" />

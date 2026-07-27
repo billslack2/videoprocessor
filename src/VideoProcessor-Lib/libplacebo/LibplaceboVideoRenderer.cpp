@@ -7,6 +7,7 @@
 #include <DisplayRuleExpression.h>
 #include <libplacebo/AlphaQueuePolicy.h>
 #include <libplacebo/LibplaceboDisplayLut.h>
+#include <SceneDetector.h>
 #include <libplacebo/LibplaceboOutputPolicy.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
@@ -1640,6 +1641,7 @@ namespace
 
 struct LibplaceboVideoRenderer::Impl
 {
+	SceneDetector sceneDetector;
 	ScopedDisplayRefreshRate displayRefreshRate;
 	pl_log log = nullptr;
 	pl_d3d11 d3d11 = nullptr;
@@ -3423,7 +3425,11 @@ struct LibplaceboVideoRenderer::Impl
 		VideoStateComPtr& statePtr,
 		bool scopeScreenActive,
 		uint64_t screenProfileRequestSerial,
-		int64_t screenProfileRequestNs)
+		int64_t screenProfileRequestNs,
+		bool sceneDetectionEnabled,
+		uint64_t sceneDetectorGeneration,
+		std::atomic<uint64_t>& sceneDetectedCount,
+		std::atomic<int>& sceneDetectionStatus)
 	{
 		const HMONITOR currentMonitor = MonitorFromWindow(
 			videoHwnd,
@@ -3467,6 +3473,22 @@ struct LibplaceboVideoRenderer::Impl
 		const size_t rowBytes = static_cast<size_t>(width) * sizeof(uint16_t);
 		const BYTE* yPixels = convertedFrame.data();
 		const BYTE* uvPixels = yPixels + rowBytes * static_cast<size_t>(height);
+		const SceneDetectorResult sceneResult = sceneDetector.Analyze({
+			reinterpret_cast<const uint16_t*>(yPixels),
+			static_cast<size_t>(width), static_cast<size_t>(height), rowBytes,
+			videoFrame.GetCounter(), videoFrame.GetTimingTimestamp(), sceneDetectorGeneration,
+			state.displayMode->FrameDuration(), sceneDetectionEnabled });
+		sceneDetectionStatus.store(static_cast<int>(sceneResult.status), std::memory_order_release);
+		if (sceneResult.safeBoundary)
+		{
+			sceneDetectedCount.fetch_add(1, std::memory_order_relaxed);
+			DebugLog::Log("libplacebo scene boundary: event=%llu sequence=%llu generation=%llu frames_back=%u luma=%u",
+				static_cast<unsigned long long>(sceneResult.eventId),
+				static_cast<unsigned long long>(sceneResult.sourceSequence),
+				static_cast<unsigned long long>(sceneResult.generation),
+				static_cast<unsigned>(sceneResult.eventFramesBack),
+				static_cast<unsigned>(sceneResult.averageLuma));
+		}
 		const float subtitleShiftSourcePixels = UpdateScopeSubtitleShift(
 			reinterpret_cast<const uint16_t*>(yPixels),
 			width,
@@ -3890,6 +3912,12 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 		}
 	}
 	m_videoState = new VideoState(*videoState);
+	if (materialSourceTransition)
+	{
+		// Source metadata transitions do not alter the pixels already queued, but
+		// must not let their detector history create a boundary in the new epoch.
+		m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
+	}
 
 	const bool sourceColorTransition =
 		previousEotf != EOTF::UNKNOWN &&
@@ -4223,6 +4251,7 @@ void LibplaceboVideoRenderer::Reset()
 		BeginQueueGeneration("renderer reset");
 	}
 	m_frameCounter.store(0, std::memory_order_relaxed);
+	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
 	ResetFrameRateAndPPM();
 	DebugLog::Log("libplacebo renderer reset: new queue generation and renderer cache flushed");
 }
@@ -4239,6 +4268,46 @@ void LibplaceboVideoRenderer::ResetLiveQueue()
 	{
 		BeginQueueGeneration("live queue reset");
 	}
+	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
+}
+
+void LibplaceboVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
+{
+	const bool previous = m_sceneDetectionEnabled.exchange(enabled, std::memory_order_acq_rel);
+	if (previous != enabled)
+	{
+		m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
+		m_sceneDetectionStatus.store(
+			static_cast<int>(enabled ? SceneDetectorStatus::Warming : SceneDetectorStatus::Disabled),
+			std::memory_order_release);
+		DebugLog::Log("libplacebo scene detection %s", enabled ? "enabled" : "disabled");
+	}
+}
+
+uint64_t LibplaceboVideoRenderer::SceneAwareDetectedCount() const
+{
+	return m_sceneDetectedCount.load(std::memory_order_relaxed);
+}
+
+bool LibplaceboVideoRenderer::GetSceneDetectionStatus(CString& status) const
+{
+	switch (static_cast<SceneDetectorStatus>(
+		m_sceneDetectionStatus.load(std::memory_order_acquire)))
+	{
+	case SceneDetectorStatus::Disabled:
+		status = TEXT("Disabled");
+		break;
+	case SceneDetectorStatus::Warming:
+		status = TEXT("Warming");
+		break;
+	case SceneDetectorStatus::Active:
+		status = TEXT("Active");
+		break;
+	default:
+		status = TEXT("Unavailable");
+		break;
+	}
+	return true;
 }
 
 
@@ -4583,7 +4652,11 @@ void LibplaceboVideoRenderer::RenderLoop()
 					state,
 					m_scopeScreenActive.load(std::memory_order_acquire),
 					m_screenProfileRequestSerial.load(std::memory_order_acquire),
-					m_screenProfileRequestNs.load(std::memory_order_relaxed));
+					m_screenProfileRequestNs.load(std::memory_order_relaxed),
+					m_sceneDetectionEnabled.load(std::memory_order_acquire),
+					m_sceneDetectorGeneration.load(std::memory_order_acquire),
+					m_sceneDetectedCount,
+					m_sceneDetectionStatus);
 			}
 		}
 		catch (const std::exception& e)

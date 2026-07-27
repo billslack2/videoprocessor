@@ -184,6 +184,7 @@
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="SceneDetectorTests.cpp" />
     <ClCompile Include="ConfigFileTests.cpp" />
     <ClCompile Include="AlphaQueuePolicyTests.cpp" />
   </ItemGroup>

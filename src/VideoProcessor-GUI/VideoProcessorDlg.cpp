@@ -5257,6 +5257,12 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			stats.sceneDetectMode);
 	else
 		stats.sceneDetectMode = TEXT("Off");
+	if (m_videoRenderer)
+	{
+		CString detectorStatus;
+		if (m_videoRenderer->GetSceneDetectionStatus(detectorStatus))
+			stats.sceneDetectMode = detectorStatus;
+	}
 
 	// Queue stats
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)

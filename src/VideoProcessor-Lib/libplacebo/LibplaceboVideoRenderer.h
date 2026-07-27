@@ -39,7 +39,9 @@ public:
 	void OnPaint() override;
 	void OnDisplayChange() override;
 	void SetFrameQueueMaxSize(size_t size) override;
-	void SetSceneAwareTimingCorrection(bool) override {}
+	void SetSceneAwareTimingCorrection(bool enabled) override;
+	uint64_t SceneAwareDetectedCount() const override;
+	bool GetSceneDetectionStatus(CString& status) const override;
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
@@ -100,6 +102,10 @@ private:
 	std::atomic<double> m_entryLatencyMs{0.0};
 	std::atomic<double> m_exitLatencyMs{0.0};
 	std::atomic<uint64_t> m_droppedFrames{0};
+	std::atomic_bool m_sceneDetectionEnabled{false};
+	std::atomic<uint64_t> m_sceneDetectorGeneration{1};
+	std::atomic<uint64_t> m_sceneDetectedCount{0};
+	std::atomic<int> m_sceneDetectionStatus{0};
 	std::atomic<uint64_t> m_frameCounter{0};
 	// Capture-timestamp cadence diagnostics.  This intentionally mirrors the
 	// DirectShow renderer measurement but is diagnostic-only: the optional
