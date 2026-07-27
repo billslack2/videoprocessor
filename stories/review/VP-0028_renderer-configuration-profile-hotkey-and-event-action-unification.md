@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress. Documentation-first implementation started on
+Ready for Review as of 2026-07-26. Documentation-first implementation started on
 `codex/vp-0028-config-docs` in
 `C:\Users\bslac\vp\videoprocessor-vp-0028`, based on confirmed integration
 base `origin/v1.1.014-beta` at `fc3cd35`.
@@ -12,6 +12,40 @@ sample configuration. It documents the unified profile, binding, and
 post-transition event model without changing runtime parsing or behavior.
 The documentation is committed as `9b5c699` (`docs: propose unified renderer
 configuration model`) on the tracked remote branch.
+
+Runtime implementation completed on 2026-07-26 in commit `28ff816`
+(`feat: complete VP-0028 unified renderer runtime`) and is pushed to
+`origin/codex/vp-0028-config-docs`. The implementation now provides the strict
+v2 schema, reusable expression AST, independent ordered group selection,
+multi-group keys with same-group conflict rejection, committed per-config
+state, effective-settings fingerprints, viewport application, completed
+refresh event actions, and the display-LUT path used by unified display
+profiles. Legacy configuration remains on its separate compatibility path.
+
+Final verification evidence:
+
+- Debug test assembly rebuilt and all 81 tests passed; durable result:
+  `TestResults/vp0028-final-debug.trx`.
+- x64 Release GUI and libplacebo plugin built successfully from clean commit
+  `28ff816`.
+- Release artifacts and the parser-validated port of the supplied legacy
+  configuration were deployed side by side to `C:\Videoprocessor\vp`.
+- Deployment backup:
+  `C:\Videoprocessor\vp\backup-vp0028-20260726-2241`.
+- Isolated startup with
+  `/vr_config C:\Videoprocessor\vp\VideoProcessorRenderer.vp0028-test.cfg`
+  remained responsive for more than 30 seconds and was then stopped.
+- The active `VideoProcessorRenderer.cfg` and `VideoProcessorRenderer.state`
+  were not edited; their post-test SHA-256 values are
+  `4B593EF6C60090AFDC5118A4A151854EECFC99D21D41112D44B899DB783890F3`
+  and
+  `E7A61FF8586054CC0BC2752E6246DE5DF824253461CC2A5CDBF42461F331878D`.
+
+Review should include the remaining hardware-in-the-loop exercise: start
+capture with the side configuration, exercise its automatic and composite-key
+selections, and observe an actual/confirmed/restored refresh transition in
+`C:\logs\vp_debug.log`. Startup, parsing, builds, unit/GPU readback tests, and
+deployment packaging are complete.
 
 Review deliverables:
 
