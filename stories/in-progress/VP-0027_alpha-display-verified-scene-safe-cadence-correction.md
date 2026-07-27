@@ -8,6 +8,10 @@ Release x64 builds and all 77 unit tests pass. Live correction behavior,
 independent presentation-trace verification, and Epson visual validation remain
 deferred to the combined VP-0024/25/27 validation run.
 
+The shared Scene Detect control now exposes only On/Off (source commit
+`8403297`). It has no misleading Basic/Advanced choice for Alpha; DirectShow
+uses Advanced by default and retains a configuration-only Basic override.
+
 Supersedes VP-0006 and VP-0007.
 
 ## User story

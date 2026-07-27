@@ -9,6 +9,13 @@ The branch is rebased on `origin/v1.1.014-beta` commit `b79355e`, including
 the accepted VP-0026 queue implementation, in
 `C:\Users\bslac\vp\videoprocessor-vp-0025`.
 
+Latest integration/UI adjustment: source commit `8403297` makes Scene Detect a
+single renderer-neutral On/Off control. DirectShow defaults internally to the
+Advanced upstream-sample correction; `[command_line]`
+`scene_correction_basic=true` is the explicit config-only opt-in for the
+legacy Basic renderer repeat. Alpha has one native correction path, so the
+override is intentionally ignored there.
+
 Alpha analyzes its converted P010 luma immediately before GPU upload and
 publishes Disabled/Warming/Active/Unavailable lifecycle state without changing
 queueing or presentation. DirectShow retains its existing event sequence and
