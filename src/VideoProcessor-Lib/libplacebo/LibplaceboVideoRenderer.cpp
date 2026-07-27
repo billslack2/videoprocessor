@@ -7,6 +7,7 @@
 #include <DisplayRuleExpression.h>
 #include <libplacebo/AlphaQueuePolicy.h>
 #include <libplacebo/LibplaceboDisplayLut.h>
+#include <libplacebo/AlphaPresentationTelemetry.h>
 #include <SceneDetector.h>
 #include <libplacebo/LibplaceboOutputPolicy.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
@@ -45,6 +46,12 @@ namespace
 	{
 		return std::chrono::duration_cast<std::chrono::nanoseconds>(
 			SteadyClock::now().time_since_epoch()).count();
+	}
+
+	int64_t PerformanceCounterNow()
+	{
+		LARGE_INTEGER value{};
+		return QueryPerformanceCounter(&value) ? value.QuadPart : 0;
 	}
 
 	constexpr const char* RENDERER_STATE_FILENAME =
@@ -1642,6 +1649,7 @@ namespace
 struct LibplaceboVideoRenderer::Impl
 {
 	SceneDetector sceneDetector;
+	AlphaPresentationTelemetry presentationTelemetry;
 	ScopedDisplayRefreshRate displayRefreshRate;
 	pl_log log = nullptr;
 	pl_d3d11 d3d11 = nullptr;
@@ -1707,6 +1715,7 @@ struct LibplaceboVideoRenderer::Impl
 	HMONITOR negotiatedMonitor = nullptr;
 	bool cursorPositioned = false;
 	bool hasPresentedFrame = false;
+	uint64_t nextPresentationTelemetryLogTick = 0;
 	bool screenProfilesPrewarmed = false;
 	uint64_t lastSubmittedScreenProfileRequest = 0;
 	std::mutex renderMutex;
@@ -3423,6 +3432,12 @@ struct LibplaceboVideoRenderer::Impl
 	bool RenderLocked(
 		const VideoFrame& videoFrame,
 		VideoStateComPtr& statePtr,
+		uint64_t frameGeneration,
+		uint64_t sourceSequence,
+		int64_t enqueueQpc,
+		int64_t dequeueQpc,
+		size_t queueDepthAfterDequeue,
+		double oldestQueuedAgeMs,
 		bool scopeScreenActive,
 		uint64_t screenProfileRequestSerial,
 		int64_t screenProfileRequestNs,
@@ -3735,8 +3750,94 @@ struct LibplaceboVideoRenderer::Impl
 				--diagnosticReadbackFramesRemaining;
 		}
 		const bool submitted = pl_swapchain_submit_frame(swapchain);
+		const int64_t swapStartQpc = PerformanceCounterNow();
 		if (submitted)
 			pl_swapchain_swap_buffers(swapchain);
+		const int64_t swapEndQpc = PerformanceCounterNow();
+		LARGE_INTEGER qpcFrequency{};
+		QueryPerformanceFrequency(&qpcFrequency);
+		const double swapBlockMs =
+			qpcFrequency.QuadPart > 0 && swapStartQpc > 0 &&
+			swapEndQpc > swapStartQpc
+				? static_cast<double>(swapEndQpc - swapStartQpc) * 1000.0 /
+					static_cast<double>(qpcFrequency.QuadPart)
+				: 0.0;
+		if (rendered && submitted)
+		{
+			AlphaPresentationRecord record;
+			record.generation = frameGeneration;
+			record.sourceSequence = sourceSequence;
+			record.captureTimestamp = videoFrame.GetTimingTimestamp();
+			record.enqueueQpc = enqueueQpc;
+			record.dequeueQpc = dequeueQpc;
+			record.submitQpc = swapStartQpc;
+			record.queueDepthAfterDequeue = queueDepthAfterDequeue;
+			record.oldestQueuedAgeMs = oldestQueuedAgeMs;
+			record.renderMs = renderMs;
+			record.swapBlockMs = swapBlockMs;
+			record.releaseReason = AlphaSourceReleaseReason::Submitted;
+
+			AlphaDxgiPresentationSample sample;
+			sample.generation = frameGeneration;
+			sample.qpcFrequency = qpcFrequency.QuadPart;
+			CComPtr<IDXGISwapChain> nativeSwapchain;
+			nativeSwapchain.Attach(pl_d3d11_swapchain_unwrap(swapchain));
+			if (nativeSwapchain)
+			{
+				UINT lastPresentCount = 0;
+				if (SUCCEEDED(nativeSwapchain->GetLastPresentCount(
+					&lastPresentCount)))
+				{
+					record.presentId = lastPresentCount;
+				}
+
+				DXGI_FRAME_STATISTICS statistics{};
+				const HRESULT statisticsResult =
+					nativeSwapchain->GetFrameStatistics(&statistics);
+				if (statisticsResult == DXGI_ERROR_FRAME_STATISTICS_DISJOINT)
+				{
+					sample.disjoint = true;
+				}
+				else if (SUCCEEDED(statisticsResult))
+				{
+					sample.available = true;
+					sample.presentCount = statistics.PresentCount;
+					sample.presentRefreshCount =
+						statistics.PresentRefreshCount;
+					sample.syncRefreshCount = statistics.SyncRefreshCount;
+					sample.syncQpc = statistics.SyncQPCTime.QuadPart;
+				}
+			}
+			presentationTelemetry.RecordSubmission(record);
+			presentationTelemetry.Observe(sample);
+
+			const uint64_t nowTick = GetTickCount64();
+			if (nowTick >= nextPresentationTelemetryLogTick)
+			{
+				nextPresentationTelemetryLogTick = nowTick + 5000;
+				const AlphaPresentationSnapshot snapshot =
+					presentationTelemetry.Snapshot();
+				DebugLog::Log(
+					"Alpha presentation telemetry: generation=%llu evidence=%d retained=%zu source=%llu presented=%llu debt=%llu present_id=%u refresh=%u display_hz=%.5f cadence_samples=%u queue_after=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f",
+					static_cast<unsigned long long>(snapshot.generation),
+					static_cast<int>(snapshot.evidence),
+					snapshot.retainedRecords,
+					static_cast<unsigned long long>(
+						snapshot.lastSubmittedSequence),
+					static_cast<unsigned long long>(
+						snapshot.lastPresentedSequence),
+					static_cast<unsigned long long>(
+						snapshot.sourceToPresentDebt),
+					snapshot.lastPresentId,
+					snapshot.lastPresentRefresh,
+					snapshot.measuredDisplayHz,
+					snapshot.cadenceSamples,
+					queueDepthAfterDequeue,
+					oldestQueuedAgeMs,
+					renderMs,
+					swapBlockMs);
+			}
+		}
 		if (rendered && submitted)
 		{
 			hasPresentedFrame = true;
@@ -3998,7 +4099,14 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 		videoFrame.SourceBufferAddRef();
 		try
 		{
-			m_frameQueue.push_back({ videoFrame, frameState, enqueueGeneration });
+			const uint64_t sourceSequence =
+				m_sourceSequence.fetch_add(1, std::memory_order_relaxed) + 1;
+			m_frameQueue.push_back({
+				videoFrame,
+				frameState,
+				enqueueGeneration,
+				sourceSequence,
+				PerformanceCounterNow() });
 		}
 		catch (const std::exception& e)
 		{
@@ -4540,6 +4648,11 @@ void LibplaceboVideoRenderer::RenderLoop()
 		VideoFrame frame;
 		VideoStateComPtr state;
 		uint64_t frameGeneration = 0;
+		uint64_t sourceSequence = 0;
+		int64_t enqueueQpc = 0;
+		int64_t dequeueQpc = 0;
+		size_t queueDepthAfterDequeue = 0;
+		double oldestQueuedAgeMs = 0.0;
 		bool prefillReleased = false;
 		size_t prefillDepth = 0;
 		size_t prefillTarget = 0;
@@ -4571,9 +4684,24 @@ void LibplaceboVideoRenderer::RenderLoop()
 			frame = m_frameQueue.front().frame;
 			state = m_frameQueue.front().state;
 			frameGeneration = m_frameQueue.front().generation;
+			sourceSequence = m_frameQueue.front().sourceSequence;
+			enqueueQpc = m_frameQueue.front().enqueueQpc;
 			m_frameQueue.pop_front();
 
 			const size_t remainingDepth = m_frameQueue.size();
+			queueDepthAfterDequeue = remainingDepth;
+			dequeueQpc = PerformanceCounterNow();
+			LARGE_INTEGER qpcFrequency{};
+			if (!m_frameQueue.empty() &&
+				QueryPerformanceFrequency(&qpcFrequency) &&
+				qpcFrequency.QuadPart > 0 &&
+				dequeueQpc > m_frameQueue.front().enqueueQpc)
+			{
+				oldestQueuedAgeMs =
+					static_cast<double>(
+						dequeueQpc - m_frameQueue.front().enqueueQpc) *
+					1000.0 / static_cast<double>(qpcFrequency.QuadPart);
+			}
 			if (!m_queueDepthWindowHasSamples)
 			{
 				m_queueDepthWindowMin = remainingDepth;
@@ -4650,6 +4778,12 @@ void LibplaceboVideoRenderer::RenderLoop()
 				rendered = state && m_impl->RenderLocked(
 					frame,
 					state,
+					frameGeneration,
+					sourceSequence,
+					enqueueQpc,
+					dequeueQpc,
+					queueDepthAfterDequeue,
+					oldestQueuedAgeMs,
 					m_scopeScreenActive.load(std::memory_order_acquire),
 					m_screenProfileRequestSerial.load(std::memory_order_acquire),
 					m_screenProfileRequestNs.load(std::memory_order_relaxed),

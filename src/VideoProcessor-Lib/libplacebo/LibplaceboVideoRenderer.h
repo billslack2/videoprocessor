@@ -61,6 +61,8 @@ private:
 		VideoFrame frame;
 		VideoStateComPtr state;
 		uint64_t generation = 0;
+		uint64_t sourceSequence = 0;
+		int64_t enqueueQpc = 0;
 	};
 
 	void RenderLoop();
@@ -107,6 +109,7 @@ private:
 	std::atomic<uint64_t> m_sceneDetectedCount{0};
 	std::atomic<int> m_sceneDetectionStatus{0};
 	std::atomic<uint64_t> m_frameCounter{0};
+	std::atomic<uint64_t> m_sourceSequence{0};
 	// Capture-timestamp cadence diagnostics.  This intentionally mirrors the
 	// DirectShow renderer measurement but is diagnostic-only: the optional
 	// renderer does not feed or alter source PPM correction.
