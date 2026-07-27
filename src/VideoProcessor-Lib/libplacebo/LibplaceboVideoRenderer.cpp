@@ -3616,21 +3616,21 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			if (!nvidiaBt2020Reporter.Enable(negotiatedDisplayDeviceName.c_str()))
 			{
-				// A P2020 swapchain without a verified physical BT.2020 signal
-				// can disappear in windowed DirectFlip/MPO presentation and can
-				// also break blending of the separate layered OSD. Fail closed:
-				// restore a complete Rec.709 contract instead of rendering with
-				// mismatched wire semantics.
+				// NVIDIA reporting is optional metadata, independent of the
+				// configured BT.2020 render target. Recreate the swapchain once
+				// with reporting disabled so a failed NVAPI attempt cannot leave
+				// windowed DirectFlip/MPO or the layered OSD mid-transition.
 				DebugLog::Log(
-					"libplacebo: NVIDIA BT.2020 reporting unavailable; falling back to Rec.709 output");
-				LibplaceboOutput::Request fallbackRequest = outputPlan.request;
-				fallbackRequest.primaries =
-					LibplaceboOutput::PrimariesRequest::REC709;
-				outputPlan = LibplaceboOutput::MakePlan(fallbackRequest);
-				targetBt2020 = false;
-				SetSwapchainColorHint(
-					LibplaceboOutput::DxgiEncoding::FULL_G22_P709);
-				ConfigureAndFallback("nvidia-report-fallback");
+					"libplacebo: NVIDIA BT.2020 reporting unsupported; ignoring report_bt2020_to_display and reapplying BT.2020 output");
+				reportBt2020ToDisplay = false;
+				if (!RecreateSwapchain(
+					outputPlan.useBlit,
+					suppressLimitedNegotiation,
+					"nvidia-report-unsupported"))
+				{
+					DebugLog::Log(
+						"libplacebo: failed to reapply BT.2020 after disabling NVIDIA reporting");
+				}
 				return;
 			}
 		}
