@@ -47,6 +47,8 @@ public:
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
+	bool SelectUnifiedProfileKey(const CString& key, CString& activeProfiles,
+		bool& rendererRestartRequired) override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;
