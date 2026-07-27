@@ -2,6 +2,27 @@
 
 ## Status
 
+Done 2026-07-27. VP-0011 and VP-0012 merged through
+[billslack2/videoprocessor#6](https://github.com/billslack2/videoprocessor/pull/6)
+into `v1.1.014-beta` at merge commit `fefb9f19b685d589aee8a92d84988d4cac37a7ad`.
+
+The shipped implementation parses an optional 3D `.cube` once, validates its
+target contract, and attaches it only to the final target frame with
+`PL_LUT_NATIVE`. Invalid files, 1D cubes, unsafe paths/dimensions, profile
+mismatches, unverified output signaling, and render failures retain ordinary
+no-LUT playback with a concise Ctrl+I/log reason. The tested D3D11 fallback
+removes only error-diffusion dithering while a valid display LUT is active;
+other high-quality rendering remains enabled.
+
+The rebased merge candidate built `Release|x64` with zero warnings/errors and
+passed 79/79 tests, including supplied-cube parsing and deterministic WARP
+identity/non-identity target-LUT readback. Follow-up calibration work remains
+separately tracked: VP-0029 for a possible two-pass final-dither path, VP-0030
+for verified P3-D65 output targets, and VP-0031 for explicit SDR LUT
+transfer/range contracts.
+
+<!-- Historical review record retained below. -->
+
 Review — VP-0011 and VP-0012 are combined on `VP0011+0012` in draft PR
 [billslack2/videoprocessor#6](https://github.com/billslack2/videoprocessor/pull/6),
 targeting the repository default `v1.1.014-beta`. The former VP011-only PR #5

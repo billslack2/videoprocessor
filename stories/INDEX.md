@@ -40,8 +40,8 @@ they must not contain requirements that are absent from this file.
 | VP-0008 | Will Not Do | Alpha renderer presentation-pacing assessment and refinement |
 | VP-0009 | Draft | Alpha renderer DeckLink R210/R12B format parity |
 | VP-0010 | In Progress | Strict opaque-panel OCR subtitle replacement |
-| VP-0011 | Review | Alpha renderer color-managed 3D LUT support |
-| VP-0012 | Review | Alpha renderer LUT pipeline contract spike |
+| VP-0011 | Done | Alpha renderer color-managed 3D LUT support |
+| VP-0012 | Done | Alpha renderer LUT pipeline contract spike |
 | VP-0013 | Done | DirectShow queue/reset alignment and no-drop review |
 | VP-0014 | Will Not Do | Alpha renderer SDR BT.2020 source and target support (duplicate of VP-0019; will not do separately) |
 | VP-0015 | Draft | Alpha renderer shader compatibility with the existing shader catalog |

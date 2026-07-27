@@ -2,6 +2,27 @@
 
 ## Status
 
+Done 2026-07-27. The spike selected target-frame calibration with
+`target.lut` / `PL_LUT_NATIVE`; image and render-parameter LUTs remain unused.
+VP-0011 implemented that decision and merged with this story through
+[billslack2/videoprocessor#6](https://github.com/billslack2/videoprocessor/pull/6)
+into `v1.1.014-beta` at `fefb9f19b685d589aee8a92d84988d4cac37a7ad`.
+
+The accepted design requires target primaries, transfer, range, reference nits,
+and the verified DXGI/swapchain contract to match before activation. It rejects
+P3-D65 until a verified Windows P3 path exists, rejects 1D/malformed/unsafe
+files, and continues playback without a LUT on rejection or a render error.
+The D3D11 compatibility result is a safe single-pass fallback: disable only
+error-diffusion dithering for a valid target LUT. VP-0029 remains the separate
+spike for determining whether a two-pass final-dither path is worthwhile.
+
+Final merge validation: `Release|x64` built with zero warnings/errors and
+`VideoProcessor-Test.dll` passed 79/79 tests, including all supplied 65^3
+cubes plus WARP identity, non-identity, and high-quality compatible target-LUT
+readback coverage. Real tester validation accepted the feature for merge.
+
+<!-- Historical review record retained below. -->
+
 Review — implementation and automated validation completed 2026-07-25 on
 `VP0011+0012`, based on `origin/v1.1.014-beta`. Draft PR
 [billslack2/videoprocessor#6](https://github.com/billslack2/videoprocessor/pull/6)
