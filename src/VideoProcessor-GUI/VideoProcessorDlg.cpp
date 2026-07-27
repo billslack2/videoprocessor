@@ -20,6 +20,7 @@
 #include <sstream>
 #include <thread>
 #include <vector>
+#include <regex>
 
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -39,8 +40,7 @@
 #endif
 #include <guid.h>
 #include <ConfigFile.h>
-
-#include <regex> // Include for regex
+#include <RendererProfileConfig.h>
 
 
 #include "VideoProcessorDlg.h"
@@ -176,21 +176,30 @@ std::vector<std::string> SplitConfiguredList(const std::string& value)
 HACCEL CreateConfiguredAccelerators(
 	std::map<WORD, CString>& shaderShortcutRules,
 	std::map<WORD, CString>& displayRuleShortcutRules,
-	std::map<WORD, unsigned int>& rendererShortcutIndices)
+	std::map<WORD, unsigned int>& rendererShortcutIndices,
+	std::map<WORD, CString>& unifiedProfileShortcutKeys)
 {
 	shaderShortcutRules.clear();
 	displayRuleShortcutRules.clear();
 	rendererShortcutIndices.clear();
+	unifiedProfileShortcutKeys.clear();
 	ConfigFile mainConfig;
 	const bool hasMainConfig = mainConfig.Load();
 	ConfigFile rendererConfig;
 	const bool hasRendererConfig =
 		rendererConfig.Load(ConfigFile::RENDERER_FILENAME);
+	RendererProfileConfig::Model unifiedProfileModel;
+	std::string unifiedProfileError;
+	const bool hasUnifiedRendererConfig = hasRendererConfig &&
+		RendererProfileConfig::IsUnified(rendererConfig) &&
+		RendererProfileConfig::Read(rendererConfig, unifiedProfileModel, unifiedProfileError);
 	std::vector<ACCEL> accelerators;
 	std::set<unsigned int> bindings;
 
 	for (const auto& definition : SHORTCUT_DEFINITIONS)
 	{
+		if (hasUnifiedRendererConfig && definition.rendererSpecific)
+			continue;
 		ACCEL accelerator = { static_cast<BYTE>(FVIRTKEY | definition.defaultModifiers), definition.defaultKey, definition.command };
 		std::string configuredValue;
 		const ConfigFile& config =
@@ -362,42 +371,30 @@ HACCEL CreateConfiguredAccelerators(
 		}
 	}
 
-	// Unified renderer profiles express shortcuts as ordinary `$key` rule
-	// conditions.  Register the literal chords here; the renderer still owns
-	// evaluation and applies the selected profile during its safe rebuild.
-	if (hasRendererConfig)
+	// Register one command per canonical key, not per profile. The renderer then
+	// resolves all matching groups from that single physical key event.
+	if (hasUnifiedRendererConfig)
 	{
-		std::string groups;
-		if (rendererConfig.TryGetString("profile_groups", "groups", groups))
+		std::vector<std::string> chords;
+		if (!RendererProfileConfig::CollectKeyChords(unifiedProfileModel, chords, unifiedProfileError))
 		{
-			std::regex keyCondition(R"(\$key\s*==\s*[\"']([^\"']+)[\"'])",
-				std::regex::icase);
+			DEBUGLOG("Unified renderer shortcut discovery failed: %s", unifiedProfileError.c_str());
+		}
+		else
+		{
 			WORD nextCommand = ID_COMMAND_DISPLAY_RULE_FIRST;
-			while (displayRuleShortcutRules.find(nextCommand) != displayRuleShortcutRules.end()) ++nextCommand;
-			for (const std::string& group : SplitConfiguredList(groups))
+			for (const std::string& chord : chords)
 			{
-				const std::string normalizedGroup = ConfigFile::NormalizeName(group);
-				const std::string prefix = "profiles." + normalizedGroup + ".";
-				for (const std::string& section : rendererConfig.GetSectionNames())
-				{
-					if (section.rfind(prefix, 0) != 0) continue;
-					const std::string profile = section.substr(prefix.size());
-					if (nextCommand > ID_COMMAND_DISPLAY_RULE_LAST) break;
-					const std::string name = normalizedGroup + "/" + profile;
-					std::string when;
-					if (!rendererConfig.TryGetString(section, "when", when)) continue;
-					std::smatch match;
-					if (!std::regex_search(when, match, keyCondition)) continue;
-					ACCEL accelerator = {};
-					if (!TryParseShortcut(match[1].str(), accelerator)) { DEBUGLOG("Invalid profile shortcut '%s'", match[1].str().c_str()); continue; }
-					const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
-					if (!bindings.insert(binding).second) { DEBUGLOG("Duplicate profile shortcut '%s' ignored", match[1].str().c_str()); continue; }
-					accelerator.cmd = nextCommand;
-					accelerators.push_back(accelerator);
-					CString profileName; profileName.Format(TEXT("%S"), name.c_str());
-					displayRuleShortcutRules[nextCommand] = profileName;
-					++nextCommand;
-				}
+				if (nextCommand > ID_COMMAND_DISPLAY_RULE_LAST) break;
+				ACCEL accelerator = {};
+				if (!TryParseShortcut(chord, accelerator)) { DEBUGLOG("Invalid unified profile shortcut '%s'", chord.c_str()); continue; }
+				const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
+				if (!bindings.insert(binding).second) { DEBUGLOG("Duplicate unified profile shortcut '%s' ignored", chord.c_str()); continue; }
+				accelerator.cmd = nextCommand;
+				accelerators.push_back(accelerator);
+				CString keyName; keyName.Format(TEXT("%S"), chord.c_str());
+				unifiedProfileShortcutKeys[nextCommand] = keyName;
+				++nextCommand;
 			}
 		}
 	}
@@ -2358,6 +2355,20 @@ void CVideoProcessorDlg::OnCommandShaderRule(UINT commandId)
 
 void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 {
+	const auto unifiedKey = m_unifiedProfileShortcutKeys.find(static_cast<WORD>(commandId));
+	if (unifiedKey != m_unifiedProfileShortcutKeys.end() && m_videoRenderer)
+	{
+		CString activeProfiles;
+		bool rendererRestartRequired = false;
+		if (!m_videoRenderer->SelectUnifiedProfileKey(unifiedKey->second, activeProfiles, rendererRestartRequired))
+		{
+			DEBUGLOG("Unified profile key '%S' is unavailable", static_cast<LPCTSTR>(unifiedKey->second));
+			return;
+		}
+		DEBUGLOG("Unified profile key selected: %S", static_cast<LPCTSTR>(activeProfiles));
+		if (rendererRestartRequired) { m_wantToRestartRenderer = true; UpdateState(); }
+		return;
+	}
 	const auto rule = m_displayRuleShortcutRules.find(static_cast<WORD>(commandId));
 	if (rule == m_displayRuleShortcutRules.end() || !m_videoRenderer)
 		return;
@@ -4387,7 +4398,8 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	m_accelerator = CreateConfiguredAccelerators(
 		m_shaderShortcutRules,
 		m_displayRuleShortcutRules,
-		m_rendererShortcutIndices);
+		m_rendererShortcutIndices,
+		m_unifiedProfileShortcutKeys);
 	if (!m_accelerator)
 		FatalError(TEXT("Failed to create accelerator table"));
 

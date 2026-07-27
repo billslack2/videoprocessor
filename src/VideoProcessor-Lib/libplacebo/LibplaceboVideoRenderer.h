@@ -7,6 +7,7 @@
 #include <condition_variable>
 #include <deque>
 #include <memory>
+#include <map>
 #include <mutex>
 #include <thread>
 #include <string>
@@ -52,6 +53,8 @@ public:
 	bool GetSceneTimingStatus(CString& status) const override;
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
+		bool& rendererRestartRequired) override;
+	bool SelectUnifiedProfileKey(const CString& key, CString& activeProfiles,
 		bool& rendererRestartRequired) override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
@@ -154,4 +157,7 @@ private:
 	// and persists across renderer reconstruction until another profile (or
 	// automatic mode) is selected.
 	std::string m_manualDisplayRule;
+	// One manual selection per independent unified profile group. This state is
+	// copied into rebuilt renderer instances only after the selection is accepted.
+	std::map<std::string, std::string> m_manualUnifiedProfiles;
 };

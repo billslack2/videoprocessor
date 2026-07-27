@@ -4,7 +4,7 @@ Param (
  [String]$Project,
  [String]$GitRoot,
  [String]$HeaderFile="version.h",
- [String]$VerPrefix="https://github.com/enchywastaken/videoprocessor/commit/"
+ [String]$VerPrefix="https://github.com/billslack2/videoprocessor/commit/"
 )
 
 Push-Location -LiteralPath $GitRoot

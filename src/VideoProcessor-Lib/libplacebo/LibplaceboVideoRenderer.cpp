@@ -64,6 +64,7 @@ namespace
 		256u * 1024u * 1024u;
 	std::mutex g_runtimeDisplayRuleMutex;
 	std::string g_runtimeManualDisplayRule;
+	std::map<std::string, std::string> g_runtimeManualUnifiedProfiles;
 
 	std::string NvApiStatusText(NvAPI_Status status)
 	{
@@ -1070,10 +1071,39 @@ namespace
 						raw.c_str());
 			}
 		}
+		if (config.TryGetString(rule.section, "mode", raw))
+		{
+			const std::string mode = ConfigFile::NormalizeName(raw);
+			if (mode == "normal") settings.defaultScopeScreen = false;
+			else if (mode == "scope") settings.defaultScopeScreen = true;
+			else DebugLog::Log("profile '%s': invalid viewport mode '%s'", rule.name.c_str(), raw.c_str());
+		}
+		if (config.TryGetString(rule.section, "scope_screen_aspect", raw))
+		{
+			double value = 0.0;
+			if (ParseAspectRatio(raw, value) && value >= 1.5 && value <= 4.0)
+				settings.scopeScreenAspect = value;
+		}
+		if (config.TryGetBool(rule.section, "scope_subtitle_fit", settings.scopeSubtitleFit) == false &&
+			config.TryGetString(rule.section, "scope_subtitle_fit", raw))
+			DebugLog::Log("profile '%s': invalid scope_subtitle_fit '%s'", rule.name.c_str(), raw.c_str());
+		if (config.TryGetString(rule.section, "scope_subtitle_hold_seconds", raw))
+		{
+			double seconds = 0.0;
+			if (ParseDouble(raw, seconds) && seconds >= 0.0 && seconds <= 30.0)
+				settings.scopeSubtitleHoldMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
+		}
+		if (config.TryGetString(rule.section, "scope_subtitle_padding_pixels", raw))
+		{
+			double pixels = 0.0;
+			if (ParseDouble(raw, pixels) && pixels >= 0.0 && pixels <= 500.0)
+				settings.scopeSubtitlePaddingPixels = static_cast<int>(std::llround(pixels));
+		}
 	}
 
 	RendererSettings LoadRendererSettings(const VideoState& state, std::string& activeRule,
-		const std::string& manualRule = "")
+		const std::string& manualRule = "",
+		const std::map<std::string, std::string>& manualUnifiedProfiles = {})
 	{
 		RendererSettings settings;
 		activeRule.clear();
@@ -1270,6 +1300,26 @@ namespace
 		std::string activeProfiles;
 		ApplyAutomaticProfiles(config, state, settings, activeProfiles);
 		const bool unifiedConfig = RendererProfileConfig::IsUnified(config);
+		if (unifiedConfig)
+		{
+			RendererProfileConfig::Model model;
+			std::string modelError;
+			if (RendererProfileConfig::Read(config, model, modelError))
+			{
+				for (const RendererProfileConfig::Group& group : model.groups)
+				{
+					const auto manual = manualUnifiedProfiles.find(group.name);
+					if (manual == manualUnifiedProfiles.end()) continue;
+					const auto profile = model.profiles.find(group.name + "." + manual->second);
+					if (profile == model.profiles.end()) continue;
+					const DisplayRule rule = { group.name + "/" + manual->second,
+						"profiles." + group.name + "." + manual->second, profile->second.priority, 0 };
+					ApplyDisplayRuleOverrides(config, rule, settings);
+					if (!activeProfiles.empty()) activeProfiles += ", ";
+					activeProfiles += rule.name + " (manual)";
+				}
+			}
+		}
 		const DisplayRule selectedRule = unifiedConfig ? DisplayRule() :
 			(manualRule.empty() ? SelectDisplayRule(config, state) :
 				(FindProfile(config, manualRule).name.empty() ?
@@ -3445,10 +3495,12 @@ struct LibplaceboVideoRenderer::Impl
 		}
 	}
 
-	void Initialize(HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule)
+	void Initialize(HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule,
+		const std::map<std::string, std::string>& manualUnifiedProfiles)
 	{
 		this->videoHwnd = videoHwnd;
-		const RendererSettings settings = LoadRendererSettings(*state, activeDisplayRule, manualRule);
+		const RendererSettings settings = LoadRendererSettings(
+			*state, activeDisplayRule, manualRule, manualUnifiedProfiles);
 		outputDiagnostics = settings.outputDiagnostics;
 		shaderCacheEnabled = !settings.diagnosticDisableShaderCache;
 
@@ -4138,6 +4190,7 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 	{
 		std::lock_guard<std::mutex> guard(g_runtimeDisplayRuleMutex);
 		m_manualDisplayRule = g_runtimeManualDisplayRule;
+		m_manualUnifiedProfiles = g_runtimeManualUnifiedProfiles;
 	}
 	if (!m_manualDisplayRule.empty())
 		DebugLog::Log("display: restored runtime manual rule '%s' for new renderer",
@@ -4198,8 +4251,18 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 	const ColorSpace previousColorspace = m_videoState ? m_videoState->colorspace : ColorSpace::UNKNOWN;
 	if (m_impl)
 	{
-		const std::string nextRule = m_manualDisplayRule.empty() ?
-			ResolveDisplayRuleName(*videoState) : m_manualDisplayRule;
+		std::string nextRule;
+		ConfigFile config;
+		if (config.Load(ConfigFile::RENDERER_FILENAME) && RendererProfileConfig::IsUnified(config))
+		{
+			RendererSettings ignored = LoadRendererSettings(
+				*videoState, nextRule, "", m_manualUnifiedProfiles);
+		}
+		else
+		{
+			nextRule = m_manualDisplayRule.empty() ?
+				ResolveDisplayRuleName(*videoState) : m_manualDisplayRule;
+		}
 		if (nextRule != m_impl->activeDisplayRule)
 		{
 			DebugLog::Log(
@@ -4438,16 +4501,18 @@ void LibplaceboVideoRenderer::Build()
 {
 	VideoStateComPtr state;
 	std::string manualRule;
+	std::map<std::string, std::string> manualUnifiedProfiles;
 	{
 		std::lock_guard<std::mutex> guard(m_stateMutex);
 		if (!m_videoState || !m_videoState->valid || !m_videoState->displayMode)
 			throw std::runtime_error("libplacebo requires a valid video state before Build");
 		state = m_videoState;
 		manualRule = m_manualDisplayRule;
+		manualUnifiedProfiles = m_manualUnifiedProfiles;
 	}
 
 	std::unique_ptr<Impl> impl(new Impl());
-	impl->Initialize(m_videoHwnd, state, manualRule);
+	impl->Initialize(m_videoHwnd, state, manualRule, manualUnifiedProfiles);
 	const double nominalRate = state->displayMode->RefreshRateHz();
 	const timingclocktime_t ticksPerSecond = m_timingClock ?
 		m_timingClock->TimingClockTicksPerSecond() : 0;
@@ -4515,6 +4580,84 @@ bool LibplaceboVideoRenderer::SelectDisplayRule(
 	}
 	activeRule.Format(TEXT("Manual: %S"), requested.c_str());
 	rendererRestartRequired = m_impl != nullptr;
+	return true;
+}
+
+
+bool LibplaceboVideoRenderer::SelectUnifiedProfileKey(
+	const CString& key,
+	CString& activeProfiles,
+	bool& rendererRestartRequired)
+{
+	activeProfiles.Empty();
+	rendererRestartRequired = false;
+	ConfigFile config;
+	RendererProfileConfig::Model model;
+	std::string error;
+	if (!config.Load(ConfigFile::RENDERER_FILENAME) ||
+		!RendererProfileConfig::IsUnified(config) ||
+		!RendererProfileConfig::Read(config, model, error))
+	{
+		return false;
+	}
+
+	VideoStateComPtr state;
+	{
+		std::lock_guard<std::mutex> guard(m_stateMutex);
+		state = m_videoState;
+	}
+	std::vector<RendererProfileConfig::KeySelection> selections;
+	const std::string canonicalKey = CStringA(key).GetString();
+	if (!RendererProfileConfig::SelectForKey(model, canonicalKey,
+		[&state](const std::string& variable, std::string& value)
+		{
+			if (!state) return false;
+			if (variable == "eotf" || variable == "transfer") value = CStringA(ToString(state->eotf)).GetString();
+			else if (variable == "colorspace" || variable == "primaries") value = CStringA(ToString(state->colorspace)).GetString();
+			else if (variable == "format") value = CStringA(ToString(state->videoFrameEncoding)).GetString();
+			else if (variable == "hdr_metadata") value = state->hdrData && state->hdrData->IsValid() ? "true" : "false";
+			else if (variable == "interlaced") value = state->displayMode && state->displayMode->IsInterlaced() ? "true" : "false";
+			else if (!state->displayMode) return false;
+			else if (variable == "source_rate") value = std::to_string(static_cast<int>(std::floor(state->displayMode->RefreshRateHz())));
+			else if (variable == "width") value = std::to_string(state->displayMode->FrameWidth());
+			else if (variable == "height") value = std::to_string(state->displayMode->FrameHeight());
+			else if (variable == "resolution") value = std::to_string(state->displayMode->FrameWidth()) + "x" + std::to_string(state->displayMode->FrameHeight());
+			else return false;
+			return true;
+		}, selections, error))
+	{
+		DebugLog::Log("unified profile key '%s' rejected: %s", canonicalKey.c_str(), error.c_str());
+		return false;
+	}
+	if (selections.empty())
+		return false;
+
+	std::lock_guard<std::mutex> guard(m_stateMutex);
+	std::map<std::string, std::string> next = m_manualUnifiedProfiles;
+	for (const RendererProfileConfig::KeySelection& selection : selections)
+	{
+		if (selection.resetToAutomatic)
+			next.erase(selection.group);
+		else
+			next[selection.group] = selection.profile;
+	}
+	if (next == m_manualUnifiedProfiles)
+		return true;
+	m_manualUnifiedProfiles = std::move(next);
+	{
+		std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
+		g_runtimeManualUnifiedProfiles = m_manualUnifiedProfiles;
+	}
+	std::string summary;
+	for (const RendererProfileConfig::KeySelection& selection : selections)
+	{
+		if (!summary.empty()) summary += ", ";
+		summary += selection.group + "/" +
+			(selection.resetToAutomatic ? "auto" : selection.profile);
+	}
+	activeProfiles.Format(TEXT("Unified: %S"), summary.c_str());
+	rendererRestartRequired = m_impl != nullptr;
+	DebugLog::Log("unified profile key '%s' selected %s", canonicalKey.c_str(), summary.c_str());
 	return true;
 }
 

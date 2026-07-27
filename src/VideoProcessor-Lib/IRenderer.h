@@ -145,6 +145,15 @@ public:
 		rendererRestartRequired = false;
 		return false;
 	}
+	// Resolve one canonical unified-profile key event across all independent
+	// renderer groups. Renderers without unified profile support return false.
+	virtual bool SelectUnifiedProfileKey(const CString& key, CString& activeProfiles,
+		bool& rendererRestartRequired)
+	{
+		activeProfiles.Empty();
+		rendererRestartRequired = false;
+		return false;
+	}
 	// Select a renderer-managed external shader rule at runtime. Renderers that
 	// do not expose a compatible shader interface return false.
 	virtual bool SelectShaderRule(const CString& ruleName, CString& activeRule,

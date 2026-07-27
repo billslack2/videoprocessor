@@ -59,6 +59,45 @@ namespace RendererProfileConfig
 		bool configuredDefault = false;
 	};
 
+	inline bool ExpressionDeclaresKeyChord(const std::string& expression,
+		const std::string& key, bool& declares, std::string& error)
+	{
+		declares = false;
+		const std::string canonicalKey = ConfigFile::NormalizeName(key);
+		for (size_t position = 0; position < expression.size(); ++position)
+		{
+			if (expression[position] != '$') continue;
+			const size_t nameStart = ++position;
+			while (position < expression.size() &&
+				(std::isalnum(static_cast<unsigned char>(expression[position])) || expression[position] == '_')) ++position;
+			if (ConfigFile::NormalizeName(expression.substr(nameStart, position - nameStart)) != "key") continue;
+			while (position < expression.size() && std::isspace(static_cast<unsigned char>(expression[position]))) ++position;
+			if (position + 1 >= expression.size() || expression[position] != '=' || expression[position + 1] != '=')
+			{
+				error = "$key must use == with a quoted chord";
+				return false;
+			}
+			position += 2;
+			while (position < expression.size() && std::isspace(static_cast<unsigned char>(expression[position]))) ++position;
+			if (position >= expression.size() || (expression[position] != '\'' && expression[position] != '"'))
+			{
+				error = "$key chord must be quoted";
+				return false;
+			}
+			const char quote = expression[position++];
+			const size_t chordStart = position;
+			while (position < expression.size() && expression[position] != quote) ++position;
+			if (position >= expression.size() || position == chordStart)
+			{
+				error = "$key chord is unterminated or empty";
+				return false;
+			}
+			if (ConfigFile::NormalizeName(expression.substr(chordStart, position - chordStart)) == canonicalKey)
+				declares = true;
+		}
+		return true;
+	}
+
 	inline bool IsUnified(const ConfigFile& config)
 	{
 		return config.HasSection("profile_groups") || config.HasSection("general") ||
@@ -230,6 +269,9 @@ namespace RendererProfileConfig
 		{
 			if (!group.resetWhen.empty())
 			{
+				bool declaresKey = false;
+				if (!ExpressionDeclaresKeyChord(group.resetWhen, canonicalKey, declaresKey, error)) return false;
+				if (!declaresKey) continue;
 				int specificity = 0;
 				const bool matchesReset = DisplayRuleExpression::Matches(
 					group.resetWhen, values, specificity, error);
@@ -245,8 +287,9 @@ namespace RendererProfileConfig
 			for (const std::string& profileName : group.profiles)
 			{
 				const Profile& profile = model.profiles.at(group.name + "." + profileName);
-				if (profile.when.find("$key") == std::string::npos)
-					continue;
+				bool declaresKey = false;
+				if (!ExpressionDeclaresKeyChord(profile.when, canonicalKey, declaresKey, error)) return false;
+				if (!declaresKey) continue;
 				int specificity = 0;
 				const bool matchesProfile = DisplayRuleExpression::Matches(
 					profile.when, values, specificity, error);
@@ -313,6 +356,66 @@ namespace RendererProfileConfig
 				selections.push_back({ group.name, group.defaultSelection, true });
 			}
 		}
+		return true;
+	}
+
+	// Extract application-local accelerators from the same configuration
+	// expressions used for selection. `$key` is deliberately restricted to a
+	// quoted equality literal so registration is finite and deterministic.
+	inline bool CollectKeyChords(const Model& model, std::vector<std::string>& chords,
+		std::string& error)
+	{
+		chords.clear();
+		error.clear();
+		auto collect = [&chords, &error](const std::string& expression) -> bool
+		{
+			for (size_t position = 0; position < expression.size(); ++position)
+			{
+				if (expression[position] != '$') continue;
+				const size_t nameStart = ++position;
+				while (position < expression.size() &&
+					(std::isalnum(static_cast<unsigned char>(expression[position])) || expression[position] == '_'))
+					++position;
+				if (ConfigFile::NormalizeName(expression.substr(nameStart, position - nameStart)) != "key")
+					continue;
+				while (position < expression.size() && std::isspace(static_cast<unsigned char>(expression[position]))) ++position;
+				if (position + 1 >= expression.size() || expression[position] != '=' || expression[position + 1] != '=')
+				{
+					error = "$key must use == with a quoted chord";
+					return false;
+				}
+				position += 2;
+				while (position < expression.size() && std::isspace(static_cast<unsigned char>(expression[position]))) ++position;
+				if (position >= expression.size() || (expression[position] != '\'' && expression[position] != '"'))
+				{
+					error = "$key chord must be quoted";
+					return false;
+				}
+				const char quote = expression[position++];
+				const size_t chordStart = position;
+				while (position < expression.size() && expression[position] != quote) ++position;
+				if (position >= expression.size() || position == chordStart)
+				{
+					error = "$key chord is unterminated or empty";
+					return false;
+				}
+				chords.push_back(expression.substr(chordStart, position - chordStart));
+			}
+			return true;
+		};
+		for (const Group& group : model.groups)
+		{
+			if (!group.resetWhen.empty() && !collect(group.resetWhen)) return false;
+			for (const std::string& name : group.profiles)
+			{
+				const Profile& profile = model.profiles.at(group.name + "." + name);
+				if (!profile.when.empty() && !collect(profile.when)) return false;
+			}
+		}
+		std::sort(chords.begin(), chords.end(), [](const std::string& left, const std::string& right)
+			{ return ConfigFile::NormalizeName(left) < ConfigFile::NormalizeName(right); });
+		chords.erase(std::unique(chords.begin(), chords.end(), [](const std::string& left, const std::string& right)
+			{ return ConfigFile::NormalizeName(left) == ConfigFile::NormalizeName(right); }), chords.end());
 		return true;
 	}
 }
