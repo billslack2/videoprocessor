@@ -249,6 +249,12 @@
     <ClInclude Include="ConfigFile.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ConfigSchema.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MainConfigSchema.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
 	<ClInclude Include="microsoft_directshow\MadVRExternalPixelShaders.h">
 	  <Filter>Header Files\microsoft_directshow</Filter>
 	</ClInclude>

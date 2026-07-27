@@ -15,6 +15,7 @@
 #include <DebugLog.h>
 #include <ConfigFile.h>
 #include <DisplayRuleExpression.h>
+#include <MainConfigSchema.h>
 #include <RendererProfileConfig.h>
 
 #include "VideoProcessorApp.h"
@@ -269,81 +270,10 @@ void ValidateRendererConfigRules()
 
 void ValidateCommandLineConfigKeys(const ConfigFile& config)
 {
-	const auto* commandLineValues = config.GetSectionValues("command_line");
-	if (commandLineValues)
-	{
-	const std::set<std::string> allowedKeys =
-	{
-		"fullscreen",
-		"windowedfullscreenmode",
-		"windowed_fullscreen_mode",
-		"renderer",
-		"queue_size",
-		"alpha_queue_size",
-		"capture_device",
-		"frame_offset",
-		"video_conversion",
-		"container_colorspace",
-		"hdr_colorspace",
-		"hdr_luminance",
-		"renderer_start_stop_time_method",
-		"renderer_nominal_range",
-		"renderer_transfer_function",
-		"renderer_transfer_matrix",
-		"renderer_primaries",
-		"scene_detect",
-		"scene",
-		"scene_correction_basic",
-		"scene_correction_mode",
-		"subtitle_reposition",
-		"newlldv",
-		"new_lldv",
-		"noui",
-		"no_ui",
-		"startminimized",
-		"start_minimized"
-	};
-
-	for (const auto& setting : *commandLineValues)
-	{
-		if (allowedKeys.find(setting.first) == allowedKeys.end())
-			throw std::runtime_error("Unknown " + ConfigLocation(config) + " [command_line] key: " + setting.first);
-	}
-	}
-
-	const auto* queueRecoveryValues = config.GetSectionValues("queue_recovery");
-	if (queueRecoveryValues)
-	{
-		const std::set<std::string> allowedKeys =
-		{
-			"reset_after_render_restart_seconds",
-			"reset_queue_too_large_percent"
-		};
-		for (const auto& setting : *queueRecoveryValues)
-		{
-			if (allowedKeys.find(setting.first) == allowedKeys.end())
-				throw std::runtime_error("Unknown " + ConfigLocation(config) +
-					" [queue_recovery] key: " + setting.first);
-		}
-	}
-
-	const auto* lldvValues = config.GetSectionValues("lldv");
-	if (lldvValues)
-	{
-		const std::set<std::string> allowedKeys =
-		{
-			"max_cll",
-			"max_fall",
-			"mastering_min_luminance",
-			"mastering_max_luminance"
-		};
-		for (const auto& setting : *lldvValues)
-		{
-			if (allowedKeys.find(setting.first) == allowedKeys.end())
-				throw std::runtime_error("Unknown " + ConfigLocation(config) +
-					" [lldv] key: " + setting.first);
-		}
-	}
+	std::string error;
+	if (!MainConfigSchema::Validate(config, error))
+		throw std::runtime_error(
+			"Invalid " + ConfigLocation(config) + " " + error);
 }
 
 bool TryGetFirstConfigBool(const ConfigFile& config, const std::initializer_list<const char*> keys, bool& value)
