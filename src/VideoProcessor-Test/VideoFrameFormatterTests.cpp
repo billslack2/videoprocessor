@@ -240,7 +240,7 @@ namespace Tests
 				RendererProfileConfig::Profile profile;
 				profile.group = groupName;
 				profile.name = "selected";
-				profile.when = "$key==F5";
+				profile.when = "$key==\"F5\"";
 				model.profiles.emplace(std::string(groupName) + ".selected", profile);
 			}
 			std::vector<RendererProfileConfig::KeySelection> selections;
@@ -250,6 +250,33 @@ namespace Tests
 			Assert::AreEqual(static_cast<size_t>(2), selections.size());
 			Assert::AreEqual("input", selections[0].group.c_str());
 			Assert::AreEqual("display", selections[1].group.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigKeySelectionIgnoresOtherAutomaticBranches)
+		{
+			RendererProfileConfig::Model model;
+			RendererProfileConfig::Group group;
+			group.name = "display";
+			group.profiles = { "f5", "f6" };
+			model.groups.push_back(group);
+			for (const auto& definition : std::vector<std::pair<std::string, std::string>>
+				{ { "f5", "$transfer==PQ || $key==\"F5\"" },
+				  { "f6", "$transfer==PQ || $key==\"F6\"" } })
+			{
+				RendererProfileConfig::Profile profile;
+				profile.group = "display";
+				profile.name = definition.first;
+				profile.when = definition.second;
+				model.profiles.emplace("display." + profile.name, profile);
+			}
+			std::vector<RendererProfileConfig::KeySelection> selections;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F5",
+				[](const std::string& name, std::string& value)
+					{ if (name == "transfer") { value = "PQ"; return true; } return false; },
+				selections, error));
+			Assert::AreEqual(static_cast<size_t>(1), selections.size());
+			Assert::AreEqual("f5", selections[0].profile.c_str());
 		}
 
 		TEST_METHOD(RendererProfileConfigRejectsMixedLegacyAndUnifiedConfiguration)

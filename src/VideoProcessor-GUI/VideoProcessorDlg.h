@@ -415,6 +415,7 @@ protected:
 	bool m_rendererFrameBaselineValid = false;
 
 	std::atomic_bool m_deliverCaptureDataToRenderer = false;
+	std::map<WORD, CString> m_unifiedProfileShortcutKeys;
 
 	uint32_t m_timerSeconds = 0;
 
