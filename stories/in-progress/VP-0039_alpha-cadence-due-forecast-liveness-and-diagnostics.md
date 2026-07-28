@@ -265,10 +265,41 @@ Validation on the implementation commit:
 - all 14 `AlphaCadenceCorrectionPolicyTests`: passed;
 - focused four-test due-state filter after final publication changes: passed.
 
-Remaining work is transition/periodic diagnostic logging with full input
-snapshots, explicit renderer-native repeat outcome/cancellation correlation,
-ownership-focused execution tests, and sustained accelerated plus real
-59.94/60 verification. The story remains in progress.
+Commit `22c7157` (`Trace Alpha cadence correction lifecycle`) completes the
+manual-test diagnostic slice:
+
+- logs policy-generation changes, first due transition, block-reason changes,
+  due resolution/authorization, and one prolonged summary every 30 seconds;
+- records policy, detector, presentation, and queue generations; source and
+  present IDs; signed raw/filtered mismatch; rates and evidence samples;
+  phase/deadline; queue depth/age/debt; scene freshness; fallback maturity;
+  cooldown; and pending verification;
+- assigns one `action_id` across authorization, native execution, queue
+  cancellation, and presentation verification;
+- distinguishes repeat enqueue, stop rejection, generation rejection,
+  exception, second-render consumption, second-render failure, and queued
+  repeat cancellation;
+- rolls policy phase back after failed enqueue/render/consume and logs source
+  ownership disposition;
+- preserves an authorized repeat under queue pressure by dropping the incoming
+  frame instead of the retained repeat;
+- increments the repeat counter only after the retained frame's second render
+  succeeds, not merely when it is re-enqueued;
+- stores the real signed seconds from deadline for successful drop/repeat OSD
+  confirmation.
+
+Validation after the logging and native-outcome changes:
+
+- Debug x64 `VideoProcessor-Libplacebo` build: passed;
+- Debug x64 `VideoProcessor-GUI` build: passed;
+- Debug x64 `VideoProcessor-Test` build: passed;
+- all 14 `AlphaCadenceCorrectionPolicyTests`: passed.
+
+The implementation is ready for the sustained accelerated and real 59.94/60
+manual sessions. Remaining work is manual evidence capture, any
+incident-specific correction revealed by that evidence, and dedicated
+fault-injection/ownership tests for renderer-native failure branches. The
+story remains in progress.
 
 ## Verification
 
