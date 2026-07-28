@@ -175,6 +175,16 @@ const char* MadVRNlsMappingModeName(MadVRNlsMappingMode mode)
 	}
 }
 
+bool MadVRNlsOutputContractIsPrepared(
+	const MadVRShaderRuntimeSnapshot& snapshot)
+{
+	return snapshot.nlsMode != MadVRNlsMappingMode::OFF &&
+		snapshot.nlsMode != MadVRNlsMappingMode::WAITING &&
+		snapshot.activeGeometry.stable &&
+		snapshot.activeGeometry.rendererGeneration ==
+			snapshot.rendererGeneration;
+}
+
 
 MadVRShaderRuntimeSnapshot MadVRShaderRuntimeState::GetSnapshot() const
 {
@@ -182,20 +192,39 @@ MadVRShaderRuntimeSnapshot MadVRShaderRuntimeState::GetSnapshot() const
 	return m_state;
 }
 
+bool MadVRShaderRuntimeState::PrepareNlsOutputContractRendererReplacement()
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+	m_preserveGeometryOnNextRenderer =
+		MadVRNlsOutputContractIsPrepared(m_state);
+	return m_preserveGeometryOnNextRenderer;
+}
+
 
 uint64_t MadVRShaderRuntimeState::BeginRendererGeneration()
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 	++m_state.rendererGeneration;
-	m_state.activeGeometry = {};
-	// SAFE_FIT is the one mapping that can be reconstructed without trusting
-	// stale crop coordinates: ResolveNlsRuleForFrame derives a centered active
-	// rectangle from the confirmed source aspect and the new raster. Preserve
-	// that mode across renderer replacement so the new renderer never exposes
-	// the target output aspect without its geometry-preserving fit.
-	if (m_state.nlsMode != MadVRNlsMappingMode::OFF &&
-		m_state.nlsMode != MadVRNlsMappingMode::SAFE_FIT)
-		m_state.nlsMode = MadVRNlsMappingMode::WAITING;
+	// A controlled output-contract replacement does not change the source
+	// epoch. Preserve the exact source-owned rectangle and bind it to the new
+	// renderer generation so output aspect and shader mapping become visible
+	// together. Never reconstruct coordinates from scalar aspect.
+	if (m_preserveGeometryOnNextRenderer &&
+		m_state.activeGeometry.stable &&
+		(m_state.nlsMode == MadVRNlsMappingMode::ACTIVE ||
+			m_state.nlsMode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
+			m_state.nlsMode == MadVRNlsMappingMode::SAFE_FIT))
+	{
+		m_state.activeGeometry.rendererGeneration =
+			m_state.rendererGeneration;
+	}
+	else
+	{
+		m_state.activeGeometry = {};
+		if (m_state.nlsMode != MadVRNlsMappingMode::OFF)
+			m_state.nlsMode = MadVRNlsMappingMode::WAITING;
+	}
+	m_preserveGeometryOnNextRenderer = false;
 	return m_state.rendererGeneration;
 }
 
