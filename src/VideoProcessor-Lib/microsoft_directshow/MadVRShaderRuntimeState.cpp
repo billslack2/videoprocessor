@@ -76,6 +76,49 @@ MadVRNlsMappingDecision EvaluateMadVRNlsMapping(bool aspectAvailable,
 }
 
 
+bool ResolveMadVRNlsOutputAspect(double targetAspect,
+	unsigned long& aspectX, unsigned long& aspectY)
+{
+	aspectX = 0;
+	aspectY = 0;
+	if (!std::isfinite(targetAspect) || targetAspect <= 0.0)
+		return false;
+	if (std::abs(targetAspect - 16.0 / 9.0) < 0.0001)
+	{
+		aspectX = 16;
+		aspectY = 9;
+		return true;
+	}
+	if (std::abs(targetAspect - 2.35) < 0.0001)
+	{
+		aspectX = 235;
+		aspectY = 100;
+		return true;
+	}
+	return false;
+}
+
+
+bool MadVROutputAspectRequiresRestart(unsigned long currentAspectX,
+	unsigned long currentAspectY, unsigned long desiredAspectX,
+	unsigned long desiredAspectY, double nativeAspect)
+{
+	if (!std::isfinite(nativeAspect) || nativeAspect <= 0.0)
+	{
+		return desiredAspectX != currentAspectX ||
+			desiredAspectY != currentAspectY;
+	}
+	const auto effectiveAspect = [nativeAspect](
+		unsigned long aspectX, unsigned long aspectY)
+	{
+		return aspectX > 0 && aspectY > 0 ?
+			static_cast<double>(aspectX) / aspectY : nativeAspect;
+	};
+	return std::abs(effectiveAspect(desiredAspectX, desiredAspectY) -
+		effectiveAspect(currentAspectX, currentAspectY)) > 0.0001;
+}
+
+
 const char* MadVRNlsMappingModeName(MadVRNlsMappingMode mode)
 {
 	switch (mode)

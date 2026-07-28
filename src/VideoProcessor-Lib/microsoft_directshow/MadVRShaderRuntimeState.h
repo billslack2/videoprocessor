@@ -63,6 +63,12 @@ MadVRNlsMappingDecision EvaluateMadVRNlsMapping(bool aspectAvailable,
 	double activeAspectMinimum, bool narrowerOnly,
 	double maximumStretchRatio = 1.5);
 
+bool ResolveMadVRNlsOutputAspect(double targetAspect,
+	unsigned long& aspectX, unsigned long& aspectY);
+bool MadVROutputAspectRequiresRestart(unsigned long currentAspectX,
+	unsigned long currentAspectY, unsigned long desiredAspectX,
+	unsigned long desiredAspectY, double nativeAspect);
+
 const char* MadVRNlsMappingModeName(MadVRNlsMappingMode mode);
 
 

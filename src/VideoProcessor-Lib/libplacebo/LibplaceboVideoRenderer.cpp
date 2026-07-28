@@ -5606,8 +5606,10 @@ void LibplaceboVideoRenderer::SetFrameQueueMaxSize(size_t size)
 
 bool LibplaceboVideoRenderer::SetScreenProfile(
 	bool scopeScreen,
-	CString& activeProfile)
+	CString& activeProfile,
+	bool& rendererRestartRequired)
 {
+	rendererRestartRequired = false;
 	return ApplyScreenProfile(scopeScreen, activeProfile, true);
 }
 

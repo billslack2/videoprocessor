@@ -301,9 +301,11 @@ bool LibplaceboPluginVideoRenderer::GetSceneTimingStatus(CString& status) const
 
 bool LibplaceboPluginVideoRenderer::SetScreenProfile(
 	bool scopeScreen,
-	CString& activeProfile)
+	CString& activeProfile,
+	bool& rendererRestartRequired)
 {
-	return m_renderer->SetScreenProfile(scopeScreen, activeProfile);
+	return m_renderer->SetScreenProfile(scopeScreen, activeProfile,
+		rendererRestartRequired);
 }
 
 
