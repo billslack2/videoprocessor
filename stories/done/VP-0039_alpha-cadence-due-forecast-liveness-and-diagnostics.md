@@ -2,18 +2,21 @@
 
 ## Status
 
-In progress. Reported July 28, 2026 against the Alpha renderer with Scene
-Detect enabled. Design and implementation started July 28, 2026 from the
-current `v1.1.014-beta` integration branch. This is corrective work following
-VP-0027, not a reopening of that completed implementation story.
+Done. Accepted July 28, 2026 against the Alpha renderer. The liveness,
+truthful-OSD, action-lifecycle, and diagnostic implementation merged through
+PR `#17` as `71bfb09`. Final OSD dropped-counter and bounded Alpha drop-reason
+coverage merged through PR `#19` as `547d06e`.
 
-The diagnostic and liveness implementation commits merged with the joined
-viewport/NLS branch through PR `#17` as `71bfb09` on 2026-07-28. The exact
-merge commit passed a clean Release x64 build and all 181 native tests.
-The story remains In Progress because the completed madVR hardware run does
-not satisfy the Alpha-specific due-forecast/action/verification acceptance
-criteria; a retained Alpha reproduction log and hardware run are still
-required before Done.
+Clean x64 Release GUI, Alpha plugin, and native test builds passed during the
+implementation and integration cycles. All 14 focused Alpha cadence policy
+tests passed, and repeated MadVR <-> Alpha switching with the diagnostic build
+did not reproduce the earlier two renderer-side drops.
+
+Acceptance is intentionally pragmatic: long-tail cadence correction behavior
+is difficult to exhaust with one installation. Broader field use may reveal
+additional timing or lifecycle cases; those should be captured as focused
+follow-up stories with the retained diagnostic evidence rather than reopening
+this completed scope.
 
 The incident's matching debug log was no longer retained when this story was
 written. The reproduction evidence is the user-supplied OSD screenshot and
