@@ -188,7 +188,13 @@ uint64_t MadVRShaderRuntimeState::BeginRendererGeneration()
 	std::lock_guard<std::mutex> lock(m_mutex);
 	++m_state.rendererGeneration;
 	m_state.activeGeometry = {};
-	if (m_state.nlsMode != MadVRNlsMappingMode::OFF)
+	// SAFE_FIT is the one mapping that can be reconstructed without trusting
+	// stale crop coordinates: ResolveNlsRuleForFrame derives a centered active
+	// rectangle from the confirmed source aspect and the new raster. Preserve
+	// that mode across renderer replacement so the new renderer never exposes
+	// the target output aspect without its geometry-preserving fit.
+	if (m_state.nlsMode != MadVRNlsMappingMode::OFF &&
+		m_state.nlsMode != MadVRNlsMappingMode::SAFE_FIT)
 		m_state.nlsMode = MadVRNlsMappingMode::WAITING;
 	return m_state.rendererGeneration;
 }
