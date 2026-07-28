@@ -50,7 +50,8 @@ public:
 		bool& rendererRestartRequired) override;
 	bool RefreshShaderRule(CString& activeRule,
 		bool& rendererRestartRequired) override;
-	bool SetScreenProfile(bool scopeScreen, CString& activeProfile) override;
+	bool SetScreenProfile(bool scopeScreen, CString& activeProfile,
+		bool& rendererRestartRequired) override;
 
 protected:
 
@@ -64,6 +65,8 @@ private:
 	void UpdateActiveShaderSelection(const MadVRShaderSelection& selection);
 	void RestoreRuntimeShaderRequest();
 	void UpdateNlsOsdMode(MadVRNlsMappingMode mode);
+	bool DoesOutputAspectRequireRestart(unsigned long desiredAspectX,
+		unsigned long desiredAspectY) const;
 	MadVRActivePictureGeometry MakeRuntimeGeometry(
 		const ActivePictureRectangle& rectangle) const;
 

@@ -2286,9 +2286,18 @@ void CVideoProcessorDlg::OnCommandScreenProfileNormal()
 		return;
 
 	CString activeProfile;
-	if (!m_videoRenderer->SetScreenProfile(false, activeProfile))
+	bool rendererRestartRequired = false;
+	if (!m_videoRenderer->SetScreenProfile(false, activeProfile,
+		rendererRestartRequired))
 	{
 		DEBUGLOG("Normal screen profile ignored: selected renderer does not support screen profiles");
+		return;
+	}
+	if (rendererRestartRequired)
+	{
+		DEBUGLOG("Screen profile output aspect changed; restarting renderer to renegotiate media type");
+		m_wantToRestartRenderer = true;
+		UpdateState();
 	}
 }
 
@@ -2299,9 +2308,18 @@ void CVideoProcessorDlg::OnCommandScreenProfileScope()
 		return;
 
 	CString activeProfile;
-	if (!m_videoRenderer->SetScreenProfile(true, activeProfile))
+	bool rendererRestartRequired = false;
+	if (!m_videoRenderer->SetScreenProfile(true, activeProfile,
+		rendererRestartRequired))
 	{
 		DEBUGLOG("Scope screen profile ignored: selected renderer does not support screen profiles");
+		return;
+	}
+	if (rendererRestartRequired)
+	{
+		DEBUGLOG("Screen profile output aspect changed; restarting renderer to renegotiate media type");
+		m_wantToRestartRenderer = true;
+		UpdateState();
 	}
 }
 

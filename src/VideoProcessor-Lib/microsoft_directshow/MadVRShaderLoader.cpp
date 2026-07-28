@@ -985,6 +985,11 @@ bool MadVRShaderLoader::GetRuntimeOutputAspectRatio(unsigned long& aspectX,
 	ShaderRule rule = LoadRule(config, runtimeRule);
 	if (!rule.valid || rule.outputAspectRatioX == 0 || rule.outputAspectRatioY == 0)
 		return false;
+	if (GetNlsTargetAspect(rule) > 0.0 &&
+		ResolveMadVRNlsOutputAspect(GetNlsTargetAspect(rule), aspectX, aspectY))
+	{
+		return true;
+	}
 
 	aspectX = rule.outputAspectRatioX;
 	aspectY = rule.outputAspectRatioY;
