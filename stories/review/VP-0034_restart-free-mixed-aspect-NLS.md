@@ -2,20 +2,39 @@
 
 ## Status
 
-In Progress as of 2026-07-27. Implementation is starting on
-`codex/vp-0034-restart-free-nls` in
-`C:\Users\bslac\vp\videoprocessor-vp-0034`, based on the developer-confirmed
-GitHub default branch `origin/v1.1.014-beta` at `c5221b0`.
+Review as of 2026-07-27. Implementation commit `4f4cc05` is published on
+`codex/vp-0034-restart-free-nls` with draft PR
+`billslack2/videoprocessor#15`, targeting the developer-confirmed default
+branch `v1.1.014-beta`.
 
-Readiness review: the current configuration still gives `nls` a 2.35 output
-contract and `nls_off` a native contract; the existing shader can perform
-linear active-rectangle mapping with a 1.0 stretch ratio; the madVR shader
-interface already supports runtime replacement without a graph rebuild; and
-renderer lifecycle operations and shader refresh run on the serialized GUI
-control path. No API or pipeline-order spike is required. Automated policy and
-state-restoration tests will cover the renderer-independent decisions, while
-the DirectShow/madVR lifecycle, queue, and visual claims remain explicit
-hardware acceptance work.
+Completed implementation:
+
+- durable renderer-independent requested/effective NLS state and target;
+- a stable output contract with restart-free nonlinear and linear-passthrough
+  runtime mapping;
+- renderer generations that invalidate old geometry while preserving the
+  armed request and last safe mode;
+- automatic request restoration and detector reacquisition after unrelated
+  renderer replacement;
+- distinct Active, Scope/linear passthrough, Waiting, and Off OSD states;
+- mapping diagnostics including requested/effective rule, mapping mode,
+  rectangle and active generation, source/target aspect, renderer generation,
+  reason, and restart decision;
+- focused mapping and state-lifecycle tests plus updated configuration
+  documentation.
+
+Validation completed:
+
+- Debug x64 GUI build passed;
+- Release x64 full solution build passed;
+- full Debug x64 native test suite passed, 127/127;
+- focused Release x64 VP-0034 tests passed, 6/6;
+- `git diff --check` passed.
+
+Remaining review/acceptance: run the documented DirectShow/madVR hardware
+sequence with repeated Scope/IMAX transitions, both initial arming positions,
+one unrelated renderer restart, manual NLS Off, sports, and 4:3 controls.
+Review the recorded lifecycle/queue logs and visual output before merge.
 
 This supersedes the assumption that the fixed-aspect completion of VP-0001
 through VP-0003 is sufficient for variable-aspect movies. It does not reopen
