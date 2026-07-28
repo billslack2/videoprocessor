@@ -566,27 +566,11 @@ namespace
 		return stream.str();
 	}
 
-	std::string UnifiedStatePath(const ConfigFile& config)
-	{
-		std::string path = config.GetLoadedPath();
-		if (path.empty()) return RendererStatePath();
-		const size_t separator = path.find_last_of("\\/");
-		const std::string filename = separator == std::string::npos ?
-			path : path.substr(separator + 1);
-		if (_stricmp(filename.c_str(), ConfigFile::RENDERER_FILENAME) == 0)
-			return RendererStatePath();
-		const size_t extension = path.find_last_of('.');
-		if (extension != std::string::npos &&
-			(separator == std::string::npos || extension > separator))
-			path.resize(extension);
-		return path + ".state";
-	}
-
 	std::map<std::string, std::string> LoadUnifiedProfileState(
 		const ConfigFile& config, const RendererProfileConfig::Model& model)
 	{
 		std::map<std::string, std::string> result;
-		const std::string path = UnifiedStatePath(config);
+		const std::string path = RendererProfileConfig::StatePath(config);
 		std::ifstream input(path);
 		if (!input.is_open()) return result;
 		std::string legacyScreenProfile;
@@ -643,7 +627,7 @@ namespace
 		const RendererProfileConfig::Model& model,
 		const std::map<std::string, std::string>& selections)
 	{
-		const std::string path = UnifiedStatePath(config);
+		const std::string path = RendererProfileConfig::StatePath(config);
 		const std::string temporaryPath = path + ".tmp";
 		std::ofstream output(temporaryPath, std::ios::out | std::ios::trunc);
 		if (!output.is_open()) return false;
@@ -4674,7 +4658,8 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 			RendererProfileConfig::IsUnified(config) &&
 			RendererProfileConfig::Read(config, model, error))
 		{
-			const std::string statePath = UnifiedStatePath(config);
+			const std::string statePath =
+				RendererProfileConfig::StatePath(config);
 			if (g_loadedUnifiedStatePath != statePath)
 			{
 				g_committedManualUnifiedProfiles =

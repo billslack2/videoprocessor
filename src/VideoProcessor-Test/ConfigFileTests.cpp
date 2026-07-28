@@ -2,6 +2,7 @@
 
 #include <ConfigFile.h>
 #include <MainConfigSchema.h>
+#include <RendererProfileConfig.h>
 #include "CppUnitTest.h"
 
 #include <fstream>
@@ -142,6 +143,60 @@ namespace VideoProcessorTest
 			Assert::IsTrue(error.find("Missing value") != std::string::npos);
 		}
 
+		TEST_METHOD(RendererConfigSelectionDefaultsToPrimaryConfig)
+		{
+			std::string filename;
+			std::string error;
+			bool explicitSelection = true;
+			bool compatibilityOverride = true;
+			Assert::IsTrue(ConfigFile::TryResolveRendererConfigSelection(
+				{ "VideoProcessor.exe" },
+				filename,
+				explicitSelection,
+				compatibilityOverride,
+				error));
+			Assert::AreEqual(
+				ConfigFile::DEFAULT_FILENAME, filename.c_str());
+			Assert::IsFalse(explicitSelection);
+			Assert::IsFalse(compatibilityOverride);
+			Assert::IsTrue(error.empty());
+		}
+
+		TEST_METHOD(RendererConfigSelectionFollowsPrimaryConfig)
+		{
+			std::string filename;
+			std::string error;
+			bool explicitSelection = false;
+			bool compatibilityOverride = true;
+			Assert::IsTrue(ConfigFile::TryResolveRendererConfigSelection(
+				{ "VideoProcessor.exe", "--config", "combined.cfg" },
+				filename,
+				explicitSelection,
+				compatibilityOverride,
+				error));
+			Assert::AreEqual("combined.cfg", filename.c_str());
+			Assert::IsTrue(explicitSelection);
+			Assert::IsFalse(compatibilityOverride);
+		}
+
+		TEST_METHOD(RendererConfigSelectionExplicitOverrideWins)
+		{
+			std::string filename;
+			std::string error;
+			bool explicitSelection = false;
+			bool compatibilityOverride = false;
+			Assert::IsTrue(ConfigFile::TryResolveRendererConfigSelection(
+				{ "VideoProcessor.exe", "--config=combined.cfg",
+				  "--vr_config", "renderer.cfg" },
+				filename,
+				explicitSelection,
+				compatibilityOverride,
+				error));
+			Assert::AreEqual("renderer.cfg", filename.c_str());
+			Assert::IsTrue(explicitSelection);
+			Assert::IsTrue(compatibilityOverride);
+		}
+
 		TEST_METHOD(CommandLineConfigOptionRejectsDuplicates)
 		{
 			std::string value;
@@ -231,6 +286,49 @@ namespace VideoProcessorTest
 			std::string error;
 			Assert::IsTrue(MainConfigSchema::Validate(config, error));
 			Assert::IsTrue(error.empty());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(MainAndRendererSchemasAcceptOneCombinedConfig)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-combined-schema.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[command_line]\n"
+					"renderer: VideoProcessor Renderer (Alpha)\n"
+					"alpha_queue_size: 1\n"
+					"[shortcuts]\nrender.6: A\n"
+					"[general]\npersist_profile_selection: true\n";
+				for (const char* group :
+					{ "input", "scaling", "display", "viewport" })
+				{
+					file << "[profile_groups." << group << "]\n"
+						"profiles: base\n"
+						"default: base\n"
+						"[profiles." << group << ".base]\n";
+				}
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error));
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(
+				RendererProfileConfig::Read(config, model, error));
+			Assert::AreEqual(static_cast<size_t>(4), model.groups.size());
+			Assert::IsTrue(MainConfigSchema::OwnsSection("command_line"));
+			Assert::IsTrue(RendererProfileConfig::OwnsSection(
+				"profiles.display.base"));
+			Assert::IsFalse(MainConfigSchema::OwnsSection("unknown"));
+			Assert::IsFalse(RendererProfileConfig::OwnsSection("unknown"));
+			Assert::AreEqual(
+				(path.substr(0, path.size() - 4) + ".state").c_str(),
+				RendererProfileConfig::StatePath(config).c_str());
 			DeleteFileA(path.c_str());
 		}
 

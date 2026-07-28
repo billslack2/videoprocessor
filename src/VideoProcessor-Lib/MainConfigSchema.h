@@ -11,6 +11,19 @@
 // dynamically selectable by renderer profile rules.
 namespace MainConfigSchema
 {
+	inline bool OwnsSection(const std::string& section)
+	{
+		return section == "command_line" ||
+			section == "queue_recovery" ||
+			section == "lldv" ||
+			section == "shortcuts" ||
+			section == "p010_conversion" ||
+			section == "ppm_correction" ||
+			section == "display_refresh_rate_override" ||
+			section == "shaders" ||
+			section.rfind("shaders.", 0) == 0;
+	}
+
 	inline bool Validate(const ConfigFile& config, std::string& error)
 	{
 		error.clear();
