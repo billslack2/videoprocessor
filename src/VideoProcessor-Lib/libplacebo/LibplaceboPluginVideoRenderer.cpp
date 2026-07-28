@@ -175,6 +175,18 @@ void LibplaceboPluginVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 }
 
 
+bool LibplaceboPluginVideoRenderer::HasPresentedLiveFrame() const
+{
+	return m_renderer->HasPresentedLiveFrame();
+}
+
+
+const char* LibplaceboPluginVideoRenderer::PresentedLiveFrameEvidence() const
+{
+	return m_renderer->PresentedLiveFrameEvidence();
+}
+
+
 HRESULT LibplaceboPluginVideoRenderer::OnWindowsEvent(LONG_PTR param1, LONG_PTR param2)
 {
 	return m_renderer->OnWindowsEvent(param1, param2);
