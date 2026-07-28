@@ -2,9 +2,10 @@
 
 ## Status
 
-Backlog. Reported July 28, 2026 against the Alpha renderer with Scene Detect
-enabled. This is future corrective work following VP-0027, not a reopening of
-that completed implementation story.
+In progress. Reported July 28, 2026 against the Alpha renderer with Scene
+Detect enabled. Design and implementation started July 28, 2026 from the
+current `v1.1.014-beta` integration branch. This is corrective work following
+VP-0027, not a reopening of that completed implementation story.
 
 The incident's matching debug log was no longer retained when this story was
 written. The reproduction evidence is the user-supplied OSD screenshot and
@@ -156,4 +157,3 @@ evidence to identify the gate without flooding `vp_debug.log`.
 
 Depends on the accepted Alpha telemetry, detector, queue, and correction work
 in VP-0024 through VP-0027.
-
