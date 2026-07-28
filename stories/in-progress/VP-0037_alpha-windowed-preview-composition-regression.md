@@ -8,6 +8,14 @@ This violates the stable presentation acceptance criteria. The previous
 Release deployment and child-preview contract evidence remain valid, but OSD
 z-order/layering and renderer presentation interactions now require diagnosis
 and a fix before acceptance.
+
+Failed validation (2026-07-28): commit `11549c9` attempted to restart Alpha
+between direct and composed contracts when Ctrl+I toggled the layered OSD.
+Live testing caused severe full-screen flashing and temporarily starved normal
+desktop/UI interaction. The deployed artifacts were immediately rolled back
+to the prior Release build and verified; commit `66352c0` reverts the failed
+source approach. The bad binaries are retained only for diagnosis at
+`C:\Videoprocessor\vp\backup-bad-vp0037-osd-20260727-224150`.
 ## User story
 
 As an Alpha renderer user, I want video to remain visible and stable inside
