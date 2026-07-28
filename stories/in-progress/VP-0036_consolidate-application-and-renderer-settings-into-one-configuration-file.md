@@ -2,9 +2,13 @@
 
 ## Status
 
-Draft — follow-up to VP-0028. The parser, expression engine, and strict
-table-driven schemas already work for both configuration domains, but the GUI
-and built-in renderer still select separate files by default.
+In Progress as of 2026-07-27. Implementation is starting on
+`codex/vp-0036-single-config`, based on the confirmed GitHub default branch
+`origin/v1.1.014-beta` at `f6fc6e6`.
+
+The parser, expression engine, and strict table-driven schemas already work for
+both configuration domains, but the GUI and built-in renderer still select
+separate files by default.
 
 ## User story
 
