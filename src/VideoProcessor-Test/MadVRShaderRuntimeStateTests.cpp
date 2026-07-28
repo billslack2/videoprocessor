@@ -241,20 +241,42 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(SafeFitSurvivesRendererReplacementAsLastSafeMode)
+		TEST_METHOD(SafeFitRemainsEffectiveAcrossRendererReplacement)
 		{
 			MadVRShaderRuntimeState state;
-			state.BeginRendererGeneration();
+			const uint64_t firstRenderer = state.BeginRendererGeneration();
+			MadVRNlsMappingDecision decision;
+			decision.mode = MadVRNlsMappingMode::SAFE_FIT;
+			decision.sourceAspect = 4.0 / 3.0;
+			decision.targetAspect = 2.35;
+			decision.safeFitFraction = decision.sourceAspect /
+				decision.targetAspect;
+			state.SetNlsDecision(decision);
 			state.SetRuleSelection("nls", "nls",
 				MadVRNlsMappingMode::SAFE_FIT);
-			state.BeginRendererGeneration();
+			MadVRActivePictureGeometry geometry;
+			geometry.aspectRatio = decision.sourceAspect;
+			geometry.left = 0.125;
+			geometry.right = 0.875;
+			geometry.bottom = 1.0;
+			geometry.rendererGeneration = firstRenderer;
+			geometry.stable = true;
+			Assert::IsTrue(state.SetActiveGeometry(geometry));
+
+			const uint64_t secondRenderer = state.BeginRendererGeneration();
 			const MadVRShaderRuntimeSnapshot snapshot = state.GetSnapshot();
 			Assert::AreEqual(
-				static_cast<int>(MadVRNlsMappingMode::WAITING),
+				static_cast<int>(MadVRNlsMappingMode::SAFE_FIT),
 				static_cast<int>(snapshot.nlsMode));
 			Assert::AreEqual(
 				static_cast<int>(MadVRNlsMappingMode::SAFE_FIT),
 				static_cast<int>(snapshot.lastSafeNlsMode));
+			Assert::AreEqual(secondRenderer, snapshot.rendererGeneration);
+			Assert::IsFalse(snapshot.activeGeometry.stable);
+			Assert::AreEqual(4.0 / 3.0,
+				snapshot.nlsDecision.sourceAspect, 0.000001);
+			Assert::AreEqual(2.35,
+				snapshot.nlsDecision.targetAspect, 0.000001);
 		}
 	};
 }
