@@ -23,10 +23,33 @@ enum class AlphaCadenceTimingStatus
 	Incompatible
 };
 
+enum class AlphaCadenceBlockReason
+{
+	None,
+	Disabled,
+	PresentationEvidenceUnavailable,
+	InvalidRates,
+	RateMismatchTooLarge,
+	StabilizingRates,
+	NoActionableMismatch,
+	BeforeDeadline,
+	Cooldown,
+	VerificationPending,
+	DropQueueNotAboveDesired,
+	RepeatQueueNotBelowDesired,
+	DropPresentationDebtMissing,
+	RepeatPresentationDebtPresent,
+	WaitingForFreshScene,
+	FallbackNotMature,
+	DropFallbackQueueTooYoung
+};
+
 struct AlphaCadenceCorrectionInput
 {
 	bool enabled = false;
 	uint64_t generation = 0;
+	uint64_t detectorGeneration = 0;
+	uint64_t presentationGeneration = 0;
 	AlphaPresentationEvidence presentationEvidence =
 		AlphaPresentationEvidence::Unavailable;
 	double captureRateHz = 0.0;
@@ -39,6 +62,35 @@ struct AlphaCadenceCorrectionInput
 	bool safeSceneBoundary = false;
 	uint64_t sceneEventId = 0;
 	uint64_t sourceSequence = 0;
+};
+
+struct AlphaCadenceDiagnosticSnapshot
+{
+	uint64_t policyGeneration = 0;
+	uint64_t detectorGeneration = 0;
+	uint64_t presentationGeneration = 0;
+	uint64_t sourceSequence = 0;
+	AlphaPresentationEvidence presentationEvidence =
+		AlphaPresentationEvidence::Unavailable;
+	double captureRateHz = 0.0;
+	double displayRateHz = 0.0;
+	double rawMismatchPpm = 0.0;
+	double filteredMismatchPpm = 0.0;
+	double phaseFrames = 0.0;
+	size_t queueDepth = 0;
+	size_t desiredQueueDepth = 1;
+	double oldestQueuedAgeMs = 0.0;
+	uint64_t presentationDebt = 0;
+	uint32_t lastPresentId = 0;
+	bool safeSceneBoundary = false;
+	uint64_t sceneEventId = 0;
+	bool sceneEventFresh = false;
+	bool sceneAuthorized = false;
+	bool fallbackMature = false;
+	bool fallbackEligible = false;
+	uint32_t plannedFrames = 0;
+	uint32_t fallbackFrames = 0;
+	uint32_t cooldownFrames = 0;
 };
 
 struct AlphaCadenceCorrectionDecision
@@ -55,12 +107,19 @@ struct AlphaCadenceCorrectionDecision
 	bool verificationCompleted = false;
 	bool lastVerificationValid = false;
 	bool lastVerificationSucceeded = false;
+	bool due = false;
 	double phaseFrames = 0.0;
 	double secondsUntilCorrection = 0.0;
 	double secondsUntilPlan = 0.0;
 	uint32_t rateFilterSamples = 0;
 	double filteredMismatchPpm = 0.0;
 	uint64_t sceneEventId = 0;
+	AlphaCadenceBlockReason blockReason =
+		AlphaCadenceBlockReason::None;
+	AlphaCadenceAction verificationAction =
+		AlphaCadenceAction::None;
+	uint64_t actionId = 0;
+	AlphaCadenceDiagnosticSnapshot diagnostic;
 };
 
 class AlphaCadenceCorrectionPolicy

@@ -16,12 +16,22 @@ struct ActivePictureBounds
 	bool symmetricBars = false;
 };
 
+enum class ActivePictureClassification
+{
+	UNAVAILABLE,
+	FULL_RASTER_TRUSTED,
+	BAR_CROP_TRUSTED,
+	PROVISIONAL
+};
+
 
 struct ActivePictureObservation
 {
 	ActivePictureBounds bounds;
 	uint64_t frameNumber = 0;
 	bool available = false;
+	ActivePictureClassification classification =
+		ActivePictureClassification::UNAVAILABLE;
 };
 
 
@@ -61,7 +71,6 @@ class ActivePictureTransitionModel
 public:
 	static constexpr uint8_t INITIAL_CONFIRMATIONS = 4;
 	static constexpr uint8_t CLEAR_TRANSITION_CONFIRMATIONS = 2;
-	static constexpr uint8_t AMBIGUOUS_TRANSITION_CONFIRMATIONS = 5;
 	static constexpr double ANALYSIS_PERIOD_SECONDS = 0.080;
 
 	void Reset();
@@ -78,6 +87,10 @@ private:
 	static bool MateriallyDifferent(
 		const ActivePictureBounds& left,
 		const ActivePictureBounds& right);
+	static bool HasCropAuthority(
+		const ActivePictureObservation& observation);
+	static bool IsFullRaster(
+		const ActivePictureBounds& bounds);
 	ActivePictureTransitionDecision CommitCandidate(
 		const ActivePictureObservation& observation,
 		const char* reason);
@@ -85,9 +98,17 @@ private:
 	void ClearCandidate();
 
 	bool m_hasStable = false;
-	bool m_waitingPublished = false;
 	ActivePictureBounds m_stable;
+	ActivePictureClassification m_stableClassification =
+		ActivePictureClassification::UNAVAILABLE;
+	bool m_hasPreviousTrusted = false;
+	ActivePictureBounds m_previousTrusted;
+	ActivePictureClassification m_previousTrustedClassification =
+		ActivePictureClassification::UNAVAILABLE;
 	ActivePictureBounds m_candidate;
+	ActivePictureClassification m_candidateClassification =
+		ActivePictureClassification::UNAVAILABLE;
+	bool m_candidateUsesKnownTrustedGeometry = false;
 	uint8_t m_matchingCandidates = 0;
 	uint8_t m_contradictoryCandidates = 0;
 	uint8_t m_candidateReversals = 0;

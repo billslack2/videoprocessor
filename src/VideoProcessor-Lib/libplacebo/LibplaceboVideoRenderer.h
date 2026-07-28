@@ -51,11 +51,13 @@ public:
 		double& secondsFromDeadline, uint64_t& correctionTick) const override;
 	bool SceneTimingRatesCompatible() const override;
 	bool GetSceneTimingStatus(CString& status) const override;
+	bool GetSceneTimingDueStatus(int& action, CString& reason) const override;
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile,
 		bool& rendererRestartRequired) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
-	bool SelectUnifiedProfileKey(const CString& key, CString& activeProfiles,
+	bool ApplyApplicationState(const UnifiedProfileRuntime::Snapshot& snapshot,
+		CString& activeState,
 		bool& rendererRestartRequired) override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
@@ -79,12 +81,18 @@ private:
 		uint64_t sourceSequence = 0;
 		int64_t enqueueQpc = 0;
 		bool cadenceRepeat = false;
+		uint64_t cadenceActionId = 0;
+		uint64_t cadencePolicyGeneration = 0;
+		uint64_t cadenceDetectorGeneration = 0;
+		uint64_t cadencePresentationDebt = 0;
+		uint32_t cadencePresentId = 0;
+		double cadenceDeadlineSeconds = 0.0;
 	};
 
 	void RenderLoop();
-	void ClearQueue();
+	void ClearQueue(const char* reason = "queue clear");
 	void BeginQueueGeneration(const char* reason, bool clearStopRequest = false);
-	void ClearQueueLocked();
+	void ClearQueueLocked(const char* reason);
 	size_t PrefillTargetLocked() const;
 	bool CanDequeueLocked() const;
 	void SetState(RendererState state);
@@ -138,6 +146,9 @@ private:
 	std::atomic<int> m_sceneTimingStatus{0};
 	std::atomic<uint32_t> m_sceneTimingRateSamples{0};
 	std::atomic<double> m_sceneTimingMismatchPpm{0.0};
+	// One coherent due/action/reason snapshot: low two bits encode action
+	// (1=drop, 2=repeat), remaining bits encode AlphaCadenceBlockReason.
+	std::atomic<uint32_t> m_sceneCorrectionDueState{0};
 	std::atomic<int> m_sceneDetectionStatus{0};
 	std::atomic<uint64_t> m_frameCounter{0};
 	std::atomic<uint64_t> m_sourceSequence{0};

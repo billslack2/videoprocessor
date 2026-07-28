@@ -298,6 +298,12 @@ bool LibplaceboPluginVideoRenderer::GetSceneTimingStatus(CString& status) const
 	return m_renderer->GetSceneTimingStatus(status);
 }
 
+bool LibplaceboPluginVideoRenderer::GetSceneTimingDueStatus(
+	int& action, CString& reason) const
+{
+	return m_renderer->GetSceneTimingDueStatus(action, reason);
+}
+
 
 bool LibplaceboPluginVideoRenderer::SetScreenProfile(
 	bool scopeScreen,
@@ -319,12 +325,12 @@ bool LibplaceboPluginVideoRenderer::SelectDisplayRule(
 }
 
 
-bool LibplaceboPluginVideoRenderer::SelectUnifiedProfileKey(
-	const CString& key,
-	CString& activeProfiles,
+bool LibplaceboPluginVideoRenderer::ApplyApplicationState(
+	const UnifiedProfileRuntime::Snapshot& snapshot,
+	CString& activeState,
 	bool& rendererRestartRequired)
 {
-	return m_renderer->SelectUnifiedProfileKey(key, activeProfiles,
+	return m_renderer->ApplyApplicationState(snapshot, activeState,
 		rendererRestartRequired);
 }
 

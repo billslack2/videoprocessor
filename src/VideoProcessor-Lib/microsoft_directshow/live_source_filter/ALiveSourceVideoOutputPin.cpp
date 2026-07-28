@@ -8,6 +8,7 @@
 
 #include <pch.h>
 
+#include <dvdmedia.h>
 #include <guid.h>
 #include <IMediaSideData.h>
 #include <DebugLog.h>
@@ -153,9 +154,116 @@ HRESULT ALiveSourceVideoOutputPin::GetMediaType(int iPosition, CMediaType* pmt)
 	if (iPosition > 0)
 		return VFW_S_NO_MORE_ITEMS;
 
+	CAutoLock mediaTypeLock(&m_mediaTypeLock);
 	pmt->Set(m_mediaType);
 
 	return S_OK;
+}
+
+bool ALiveSourceVideoOutputPin::RequestDynamicPictureAspectRatio(
+	unsigned long aspectX, unsigned long aspectY)
+{
+	CMediaType candidate;
+	{
+		CAutoLock mediaTypeLock(&m_mediaTypeLock);
+		candidate.Set(m_mediaType);
+	}
+	if (candidate.formattype != FORMAT_VIDEOINFO2 ||
+		candidate.cbFormat < sizeof(VIDEOINFOHEADER2) ||
+		!candidate.pbFormat || !m_Connected)
+		return false;
+
+	VIDEOINFOHEADER2* videoInfo =
+		reinterpret_cast<VIDEOINFOHEADER2*>(candidate.pbFormat);
+	const unsigned long deliveredAspectX = aspectX > 0 && aspectY > 0 ?
+		aspectX : static_cast<unsigned long>(
+			std::max<LONG>(1, videoInfo->bmiHeader.biWidth));
+	const unsigned long deliveredAspectY = aspectX > 0 && aspectY > 0 ?
+		aspectY : static_cast<unsigned long>(
+			std::max<LONG>(1, std::abs(videoInfo->bmiHeader.biHeight)));
+	videoInfo->dwPictAspectRatioX = deliveredAspectX;
+	videoInfo->dwPictAspectRatioY = deliveredAspectY;
+
+	const HRESULT accepted = m_Connected->QueryAccept(&candidate);
+	if (accepted != S_OK)
+	{
+		DebugLog::Log(
+			"Shaders: downstream rejected dynamic picture aspect %lu:%lu "
+			"(HRESULT=0x%08lx); renderer replacement remains required",
+			deliveredAspectX, deliveredAspectY,
+			static_cast<unsigned long>(accepted));
+		return false;
+	}
+
+	{
+		CAutoLock mediaTypeLock(&m_mediaTypeLock);
+		m_pendingMediaType = candidate;
+		++m_pendingMediaTypeGeneration;
+		if (m_pendingMediaTypeGeneration == 0)
+			++m_pendingMediaTypeGeneration;
+		m_hasPendingMediaType = true;
+		m_pendingAspectX = aspectX;
+		m_pendingAspectY = aspectY;
+	}
+	DebugLog::Log(
+		"Shaders: queued dynamic picture aspect %lu:%lu on next sample",
+		deliveredAspectX, deliveredAspectY);
+	return true;
+}
+
+
+uint64_t ALiveSourceVideoOutputPin::AttachPendingMediaType(
+	IMediaSample* sample)
+{
+	if (!sample)
+		return 0;
+	CMediaType pending;
+	uint64_t generation = 0;
+	{
+		CAutoLock mediaTypeLock(&m_mediaTypeLock);
+		if (!m_hasPendingMediaType)
+			return 0;
+		pending = m_pendingMediaType;
+		generation = m_pendingMediaTypeGeneration;
+	}
+	if (FAILED(sample->SetMediaType(&pending)))
+		return 0;
+	return generation;
+}
+
+
+void ALiveSourceVideoOutputPin::CompletePendingMediaType(
+	uint64_t generation, HRESULT deliveryResult)
+{
+	if (generation == 0)
+		return;
+	CAutoLock mediaTypeLock(&m_mediaTypeLock);
+	if (!m_hasPendingMediaType ||
+		generation != m_pendingMediaTypeGeneration)
+		return;
+	if (FAILED(deliveryResult))
+	{
+		DebugLog::Log(
+			"Shaders: dynamic picture aspect delivery failed "
+			"(HRESULT=0x%08lx); update remains pending",
+			static_cast<unsigned long>(deliveryResult));
+		return;
+	}
+	const VIDEOINFOHEADER2* accepted =
+		reinterpret_cast<const VIDEOINFOHEADER2*>(
+			m_pendingMediaType.pbFormat);
+	VIDEOINFOHEADER2* current =
+		reinterpret_cast<VIDEOINFOHEADER2*>(m_mediaType.pbFormat);
+	if (accepted && current)
+	{
+		current->dwPictAspectRatioX = accepted->dwPictAspectRatioX;
+		current->dwPictAspectRatioY = accepted->dwPictAspectRatioY;
+	}
+	m_hasPendingMediaType = false;
+	DebugLog::Log(
+		"Shaders: dynamic picture aspect accepted on sample (%lu:%lu)",
+		accepted ? accepted->dwPictAspectRatioX : m_pendingAspectX,
+		accepted ? accepted->dwPictAspectRatioY : m_pendingAspectY);
 }
 
 

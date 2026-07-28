@@ -69,6 +69,15 @@
     <ClInclude Include="framework.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="AspectRatio.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="StateVariables.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="UnifiedProfileRuntime.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="pch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -258,6 +267,9 @@
     <ClInclude Include="ActivePictureTransitionModel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="P010ActivePictureEvidence.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="MainConfigSchema.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -308,6 +320,9 @@
     <ClCompile Include="ActivePictureTransitionModel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="P010ActivePictureEvidence.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="ACaptureDeviceDiscoverer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -342,6 +357,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="RendererId.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="StateVariables.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="UnifiedProfileRuntime.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="VideoFrame.cpp">

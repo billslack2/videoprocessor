@@ -43,11 +43,10 @@ MadVRNlsMappingDecision EvaluateMadVRNlsMapping(bool aspectAvailable,
 
 	const double ratio = std::max(targetAspect / activeAspect,
 		activeAspect / targetAspect);
-	if (!std::isfinite(ratio) || ratio > maximumStretchRatio)
+	if (!std::isfinite(ratio))
 	{
 		std::ostringstream message;
-		message << "NLS ratio " << ratio << " exceeds the safe " <<
-			maximumStretchRatio << " limit";
+		message << "NLS ratio " << ratio << " is invalid";
 		decision.reason = message.str();
 		return decision;
 	}
@@ -63,6 +62,25 @@ MadVRNlsMappingDecision EvaluateMadVRNlsMapping(bool aspectAvailable,
 	if (narrowerOnly && signedDifferencePercent <= tolerancePercent)
 	{
 		decision.reason = "active picture is wider than the configured target";
+		return decision;
+	}
+	if (ratio > maximumStretchRatio)
+	{
+		// Excessive nonlinear expansion is visually destructive. Keep the
+		// complete active picture at its original geometry inside the selected
+		// viewport instead. Narrow content receives side pillars; wider content
+		// receives top and bottom bars.
+		decision.mode = MadVRNlsMappingMode::SAFE_FIT;
+		decision.safeFitVertical = activeAspect > targetAspect;
+		decision.safeFitFraction =
+			std::min(activeAspect, targetAspect) /
+			std::max(activeAspect, targetAspect);
+		std::ostringstream message;
+		message << "NLS ratio " << ratio << " exceeds the safe " <<
+			maximumStretchRatio << " limit; preserving source geometry with " <<
+			(decision.safeFitVertical ? "letterbox" : "pillarbox") <<
+			" safe fit";
+		decision.reason = message.str();
 		return decision;
 	}
 
@@ -95,7 +113,26 @@ bool ResolveMadVRNlsOutputAspect(double targetAspect,
 		aspectY = 100;
 		return true;
 	}
-	return false;
+
+	// Preserve arbitrary viewport contracts without teaching the shader layer
+	// about every possible screen shape. Four decimal places is substantially
+	// tighter than madVR's media-type aspect comparison tolerance.
+	unsigned long numerator = static_cast<unsigned long>(
+		std::llround(targetAspect * 10000.0));
+	unsigned long denominator = 10000;
+	if (numerator == 0)
+		return false;
+	unsigned long a = numerator;
+	unsigned long b = denominator;
+	while (b != 0)
+	{
+		const unsigned long remainder = a % b;
+		a = b;
+		b = remainder;
+	}
+	aspectX = numerator / a;
+	aspectY = denominator / a;
+	return true;
 }
 
 
@@ -131,9 +168,21 @@ const char* MadVRNlsMappingModeName(MadVRNlsMappingMode mode)
 		return "scope_passthrough";
 	case MadVRNlsMappingMode::ACTIVE:
 		return "active";
+	case MadVRNlsMappingMode::SAFE_FIT:
+		return "safe_fit";
 	default:
 		return "unknown";
 	}
+}
+
+bool MadVRNlsOutputContractIsPrepared(
+	const MadVRShaderRuntimeSnapshot& snapshot)
+{
+	return snapshot.nlsMode != MadVRNlsMappingMode::OFF &&
+		snapshot.nlsMode != MadVRNlsMappingMode::WAITING &&
+		snapshot.activeGeometry.stable &&
+		snapshot.activeGeometry.rendererGeneration ==
+			snapshot.rendererGeneration;
 }
 
 
@@ -143,14 +192,39 @@ MadVRShaderRuntimeSnapshot MadVRShaderRuntimeState::GetSnapshot() const
 	return m_state;
 }
 
+bool MadVRShaderRuntimeState::PrepareNlsOutputContractRendererReplacement()
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+	m_preserveGeometryOnNextRenderer =
+		MadVRNlsOutputContractIsPrepared(m_state);
+	return m_preserveGeometryOnNextRenderer;
+}
+
 
 uint64_t MadVRShaderRuntimeState::BeginRendererGeneration()
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 	++m_state.rendererGeneration;
-	m_state.activeGeometry = {};
-	if (m_state.nlsMode != MadVRNlsMappingMode::OFF)
-		m_state.nlsMode = MadVRNlsMappingMode::WAITING;
+	// A controlled output-contract replacement does not change the source
+	// epoch. Preserve the exact source-owned rectangle and bind it to the new
+	// renderer generation so output aspect and shader mapping become visible
+	// together. Never reconstruct coordinates from scalar aspect.
+	if (m_preserveGeometryOnNextRenderer &&
+		m_state.activeGeometry.stable &&
+		(m_state.nlsMode == MadVRNlsMappingMode::ACTIVE ||
+			m_state.nlsMode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
+			m_state.nlsMode == MadVRNlsMappingMode::SAFE_FIT))
+	{
+		m_state.activeGeometry.rendererGeneration =
+			m_state.rendererGeneration;
+	}
+	else
+	{
+		m_state.activeGeometry = {};
+		if (m_state.nlsMode != MadVRNlsMappingMode::OFF)
+			m_state.nlsMode = MadVRNlsMappingMode::WAITING;
+	}
+	m_preserveGeometryOnNextRenderer = false;
 	return m_state.rendererGeneration;
 }
 
@@ -164,7 +238,8 @@ void MadVRShaderRuntimeState::SetRuleSelection(
 	m_state.effectiveRule = effectiveRule;
 	m_state.nlsMode = nlsMode;
 	if (nlsMode == MadVRNlsMappingMode::ACTIVE ||
-		nlsMode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH)
+		nlsMode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
+		nlsMode == MadVRNlsMappingMode::SAFE_FIT)
 	{
 		m_state.lastSafeNlsMode = nlsMode;
 	}
@@ -201,6 +276,14 @@ void MadVRShaderRuntimeState::SetNlsTargetAspect(double targetAspect)
 	std::lock_guard<std::mutex> lock(m_mutex);
 	m_state.nlsTargetAspect = std::isfinite(targetAspect) &&
 		targetAspect >= 1.0 && targetAspect <= 4.0 ? targetAspect : 0.0;
+}
+
+
+void MadVRShaderRuntimeState::SetNlsDecision(
+	const MadVRNlsMappingDecision& decision)
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+	m_state.nlsDecision = decision;
 }
 
 

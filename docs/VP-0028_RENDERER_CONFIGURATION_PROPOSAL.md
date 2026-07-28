@@ -4,6 +4,11 @@
 > side-by-side rollout. Production configuration now uses one
 > `VideoProcessor.cfg`.
 
+> **Viewport amendment (VP-0038).** Viewport selection is application-owned
+> runtime state. Generic `screen_aspect` and `subtitle_*` keys replace
+> Scope-prefixed settings, and typed NLS consumes the selected viewport rather
+> than owning a second hard-coded physical-screen aspect.
+
 > **VP-0028 side-by-side test build.** The unified runtime validates its graph
 > before capture, resolves independent groups and composite keys, applies
 > viewport profiles, compares effective-setting fingerprints, commits atomic
@@ -32,7 +37,7 @@ The model has four independent profile groups:
 1. **Input** chooses HDR/SDR processing from source metadata.
 2. **Scaling** chooses scaling/deband policy from source size and cadence.
 3. **Display** chooses the calibrated output contract and optional LUT.
-4. **Viewport** chooses normal or scope geometry.
+4. **Viewport** chooses a named physical-screen aspect and subtitle-fit policy.
 
 Each group has exactly one effective profile and an independent selection mode:
 `automatic` or `manual`. A profile changes only the settings it owns. The
@@ -62,6 +67,7 @@ parse once
   -> load one selection mode per group
   -> evaluate source/key event
   -> resolve typed settings by group ownership
+  -> publish one immutable viewport/runtime-variable snapshot
   -> compare effective-settings fingerprint
   -> apply successfully
   -> persist committed manual selections
@@ -77,6 +83,118 @@ Parsing, validation, selection, persistence decisions, and event scheduling
 must be unit-testable without a D3D device, window, capture card, or libplacebo
 runtime. The GUI may deliver a canonical key event, but it must not interpret
 profile expressions or directly choose a profile.
+
+### VP-0038 viewport and typed-NLS contract
+
+The application, not a renderer backend, owns the selected viewport. One
+resolved snapshot contains the profile identity, exact and numeric screen
+aspect, subtitle-fit settings, and a monotonic generation. VP restores and
+publishes this snapshot before renderer construction and shader selection.
+Renderer replacement consumes the same snapshot without requiring another
+viewport key press.
+
+```ini
+[profile_groups.viewport]
+profiles: normal,scope
+default: normal
+
+[profiles.viewport.normal]
+when: $key=="F3"
+# Omitted screen_aspect resolves to 16:9.
+
+[profiles.viewport.scope]
+when: $key=="F2"
+screen_aspect: 2.35:1
+subtitle_fit: true
+subtitle_hold_seconds: 2
+subtitle_padding_pixels: 30
+```
+
+Profile names are labels only. No backend infers behavior from `normal`,
+`scope`, or any other name. VP does not pass viewport configuration to madVR;
+madVR, lens memory, and curtain automation may independently consume the same
+physical F2/F3 event.
+
+Runtime state is exposed through a typed, read-only variable registry backed by
+one immutable snapshot:
+
+| Variable | Type | Source |
+| --- | --- | --- |
+| `$screen_aspect` | number | Selected viewport, default 16:9 |
+| `$viewport_profile` | text | Selected profile name or `default` |
+| `$subtitle_fit` | Boolean | Selected viewport |
+| `$subtitle_hold_seconds` | number | Selected viewport |
+| `$subtitle_padding_pixels` | number | Selected viewport |
+| `$transfer`, `$primaries`, `$format` | text | Confirmed source metadata |
+| `$width`, `$height`, `$source_rate`, `$cadence` | number | Confirmed source geometry/cadence |
+| `$hdr_metadata`, `$interlaced` | Boolean | Confirmed source flags |
+| `$key` | text | One transient canonical key event |
+
+New state becomes configurable by registering a typed value and explicitly
+allowing it in the relevant schema. The system does not expose arbitrary C++
+members and does not perform unrestricted text substitution in file paths,
+commands, or shader source. Dependency-aware evaluation runs only when a
+variable used by a rule changes.
+
+Typed NLS is declared explicitly and contains effect choices only:
+
+```ini
+[shaders.nls]
+label: Nonlinear Stretch
+shortcut: N
+type: nls
+file: NLS.hlsl
+stage: pre_resize
+geometry: protected
+strength: 1.0
+center_protection: 0.35
+curve: 2.0
+quality: medium
+tolerance_percent: 5
+```
+
+Each shader section owns one effect and one file. A shortcut makes that effect
+manual automatically; `manual` is retained only as a migration alias. Effects
+that use the same shortcut are composed in configured order, while their typed
+settings and `param_` values remain scoped to their own files. `file` accepts a
+filename only and always resolves under `Shaders` beside `VideoProcessor.exe`.
+The old `pre_resize_N`/`post_resize_N` indices represented chain order and are
+rejected; split each file into its own effect instead.
+
+VP derives the physical target, active rectangle, warp axis, stretch ratio,
+linear passthrough, 4:3 safe-fit, and media-aspect contract from the viewport
+snapshot plus detected content geometry. A viewport change may perform one
+controlled restart when the negotiated media-aspect contract changes.
+Content-aspect changes under one selected viewport update the mapping without
+restarting the renderer.
+
+| Active picture | 16:9 viewport | 2.35:1 viewport |
+| --- | --- | --- |
+| 4:3 | Horizontal NLS, about 1.333x | Preserve 4:3 with safe-fit/pillarbox |
+| 16:9 | Linear passthrough | Horizontal NLS, about 1.322x |
+| 1.90:1 | Mapping derived from the selected target | Horizontal NLS, about 1.237x |
+| 2.35:1 | Mapping derived from the selected target | Linear passthrough |
+
+Migration is diagnosable and non-destructive:
+
+| Deprecated | Replacement |
+| --- | --- |
+| `scope_screen_aspect` | `screen_aspect` |
+| `scope_subtitle_fit` | `subtitle_fit` |
+| `scope_subtitle_hold_seconds` | `subtitle_hold_seconds` |
+| `scope_subtitle_padding_pixels` | `subtitle_padding_pixels` |
+| `mode: normal|scope` | Remove; aspect/settings define behavior |
+| `nls_target_aspect_ratio` | Remove in unified mode; viewport is authoritative |
+| hard-coded NLS `output_aspect_ratio` | Remove; VP derives the contract |
+| `param_stretch_ratio` as an NLS marker | `type: nls`; stretch is derived |
+| `param_geometry`, `param_strength`, `param_center_protection`, `param_curve`, `param_quality` | Remove `param_` |
+| `aspect_tolerance_percent` | `tolerance_percent` |
+
+Viewport aliases and old typed-NLS parameter names remain readable for a
+documented migration window and produce section-specific replacement warnings.
+Defining an alias together with its replacement is an error. Legacy
+configuration without unified viewport profiles may retain its fixed NLS
+target until deliberately migrated.
 
 ### Best-practice alignment
 
@@ -245,7 +363,7 @@ Only these settings are valid in each group:
 | `input` | `tone_mapping`, `gamut_mapping`, `peak_detection`, `contrast_recovery`, `sdr_input_transfer` |
 | `scaling` | `quality`, `upscaler`, `downscaler`, proposed `sigmoid`, proposed named `deband_strength`, `dithering` |
 | `display` | target primaries/nits/black, output presentation/range/gamma, display signaling, LUT and LUT reference contract |
-| `viewport` | normal/scope selection, scope aspect, subtitle-fit settings and viewport geometry |
+| `viewport` | named physical-screen aspect, subtitle-fit settings, and viewport geometry |
 
 ### Structural schema
 
@@ -310,11 +428,10 @@ where explicitly stated.
 | display | `lut_reference_transfer` | `BT1886`, `SRGB`, gamma values supported above | rebuild |
 | display | `lut_reference_range` | `FULL`, `LIMITED` | rebuild |
 | display | `lut_reference_nits` | decimal `40..500` | rebuild |
-| viewport | `mode` | `NORMAL`, `SCOPE` | dynamic group transaction |
-| viewport | `scope_screen_aspect` | ratio/decimal `1.5..4.0` | dynamic group transaction |
-| viewport | `scope_subtitle_fit` | Boolean | dynamic group transaction |
-| viewport | `scope_subtitle_hold_seconds` | decimal seconds `0..30` | dynamic group transaction |
-| viewport | `scope_subtitle_padding_pixels` | integer pixels `0..500` | dynamic group transaction |
+| viewport | `screen_aspect` | ratio, `x`, or decimal `1.0..4.0` | dynamic group transaction |
+| viewport | `subtitle_fit` | Boolean | dynamic group transaction |
+| viewport | `subtitle_hold_seconds` | decimal seconds `0..30` | dynamic group transaction |
+| viewport | `subtitle_padding_pixels` | integer pixels `0..500` | dynamic group transaction |
 
 Relative LUT/program/working-directory paths resolve from the loaded renderer
 configuration directory. LUT structure and reference-contract completeness are
@@ -331,7 +448,7 @@ Settings also declare an apply class:
 
 - **rebuild** settings change renderer/output resources and require a safe
   renderer reconstruction;
-- **dynamic** settings, initially viewport mode only, may commit without a
+- **dynamic** viewport settings may commit without a
   renderer rebuild when the renderer confirms success;
 - **event-only** values never enter effective renderer settings.
 
@@ -442,10 +559,11 @@ when: $key=="F5"
 when: $key=="F6"
 
 [profiles.viewport.normal]
-when: $key=="F2"
+when: $key=="F3"
 
 [profiles.viewport.scope]
-when: $key=="F3"
+when: $key=="F2"
+screen_aspect: 2.35:1
 
 # Either a PQ stream automatically selects this input profile, or Ctrl+F7
 # manually selects it and makes it persistent according to group policy.
@@ -471,7 +589,7 @@ section:
 | Released configuration | Proposed equivalent |
 | --- | --- |
 | `shortcut=F5` in `[display_rules.rec709]` | `when: $key=="F5"` in `[profiles.display.rec709_projector]` |
-| `screen_profile_scope=F3` in `[shortcuts]` | `when: $key=="F3"` in `[profiles.viewport.scope]` |
+| `screen_profile_scope=F2` in `[shortcuts]` | `when: $key=="F2"` in `[profiles.viewport.scope]` |
 | `display_rules_auto=F4` in `[shortcuts]` | `when: $key=="F4"` in the appropriate `[profile_groups.<name>]` section |
 
 ## Refresh-transition event actions
@@ -645,6 +763,10 @@ unified group owner:
 - `[display_rules]` entries become profiles in the group that owns their keys;
 - rule `shortcut=` becomes a `$key` equality branch;
 - fixed screen shortcuts become viewport profile key branches;
+- Scope-prefixed viewport keys become generic `screen_aspect` and
+  `subtitle_*` settings;
+- unified typed NLS removes duplicated target/output aspects and reads the
+  application-owned viewport snapshot;
 - `display_rules_auto` becomes the chosen group's reset condition;
 - `[refresh_rate_commands]` becomes explicitly named event actions.
 
@@ -673,7 +795,8 @@ side-by-side runtime testing:
 | Keys | canonicalization, source/key `&&` and `||`, cross-group composite chords, same-group conflicts, group reset, auto-repeat/no-op |
 | State | global/group policy, valid/stale entries, legacy viewport import, atomic write, failed-apply rollback |
 | Transitions | automaticâ†’automatic, automaticâ†’manual, manualâ†’manual, manualâ†’automatic independently per group |
-| Viewport | dynamic normal/scope application, persistence, coexistence with display/input selections |
+| Viewport | exact aspect parsing, generic settings, defaults, persistence, coherent runtime variables, coexistence with display/input selections |
+| NLS | typed schema/alias migration, 4:3/16:9/1.90/2.35 matrix, safe-fit, both viewport-contract transition directions, restart-free content changes |
 | Events | applied/confirmed/restored, exact rational families, delay inheritance, dedupe, cancellation, teardown |
 | Compatibility | unchanged legacy behavior, strict mixed-mode rejection, side-by-side migration |
 

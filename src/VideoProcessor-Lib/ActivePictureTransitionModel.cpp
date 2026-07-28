@@ -9,8 +9,12 @@
 void ActivePictureTransitionModel::Reset()
 {
 	m_hasStable = false;
-	m_waitingPublished = false;
 	m_stable = {};
+	m_stableClassification = ActivePictureClassification::UNAVAILABLE;
+	m_hasPreviousTrusted = false;
+	m_previousTrusted = {};
+	m_previousTrustedClassification =
+		ActivePictureClassification::UNAVAILABLE;
 	ClearCandidate();
 	m_unavailableCandidates = 0;
 	m_lastAnalyzedFrame = 0;
@@ -31,7 +35,8 @@ uint64_t ActivePictureTransitionModel::AnalysisIntervalFrames(
 bool ActivePictureTransitionModel::ShouldAnalyze(
 	uint64_t frameNumber, double framesPerSecond)
 {
-	const uint64_t interval = AnalysisIntervalFrames(framesPerSecond);
+	const uint64_t interval = m_candidateUsesKnownTrustedGeometry ?
+		1 : AnalysisIntervalFrames(framesPerSecond);
 	if (m_lastAnalyzedFrame != 0 &&
 		frameNumber > m_lastAnalyzedFrame &&
 		frameNumber - m_lastAnalyzedFrame < interval)
@@ -75,6 +80,36 @@ bool ActivePictureTransitionModel::MateriallyDifferent(
 		std::abs(left.bottom - right.bottom) > tolerance;
 }
 
+bool ActivePictureTransitionModel::HasCropAuthority(
+	const ActivePictureObservation& observation)
+{
+	if (!observation.available)
+		return false;
+	const ActivePictureBounds& bounds = observation.bounds;
+	if (bounds.rasterWidth <= 0 || bounds.rasterHeight <= 0 ||
+		bounds.left < 0 || bounds.top < 0 ||
+		bounds.right > bounds.rasterWidth ||
+		bounds.bottom > bounds.rasterHeight ||
+		bounds.left >= bounds.right || bounds.top >= bounds.bottom)
+		return false;
+	if (observation.classification ==
+		ActivePictureClassification::FULL_RASTER_TRUSTED)
+		return IsFullRaster(bounds);
+	return observation.classification ==
+		ActivePictureClassification::BAR_CROP_TRUSTED &&
+		bounds.symmetricBars && !IsFullRaster(bounds);
+}
+
+
+bool ActivePictureTransitionModel::IsFullRaster(
+	const ActivePictureBounds& bounds)
+{
+	return bounds.rasterWidth > 0 && bounds.rasterHeight > 0 &&
+		bounds.left == 0 && bounds.top == 0 &&
+		bounds.right == bounds.rasterWidth &&
+		bounds.bottom == bounds.rasterHeight;
+}
+
 
 void ActivePictureTransitionModel::StartCandidate(
 	const ActivePictureObservation& observation)
@@ -84,6 +119,7 @@ void ActivePictureTransitionModel::StartCandidate(
 		m_candidateReversals < 255)
 		++m_candidateReversals;
 	m_candidate = observation.bounds;
+	m_candidateClassification = observation.classification;
 	m_matchingCandidates = 1;
 	m_firstContradictoryFrame = observation.frameNumber;
 }
@@ -92,6 +128,8 @@ void ActivePictureTransitionModel::StartCandidate(
 void ActivePictureTransitionModel::ClearCandidate()
 {
 	m_candidate = {};
+	m_candidateClassification = ActivePictureClassification::UNAVAILABLE;
+	m_candidateUsesKnownTrustedGeometry = false;
 	m_matchingCandidates = 0;
 	m_contradictoryCandidates = 0;
 	m_candidateReversals = 0;
@@ -120,9 +158,15 @@ ActivePictureTransitionModel::CommitCandidate(
 		observation.frameNumber >= m_firstContradictoryFrame ?
 		observation.frameNumber - m_firstContradictoryFrame : 0;
 	decision.reason = reason;
+	if (m_hasStable && !SameBounds(m_stable, m_candidate))
+	{
+		m_previousTrusted = m_stable;
+		m_previousTrustedClassification = m_stableClassification;
+		m_hasPreviousTrusted = true;
+	}
 	m_stable = m_candidate;
+	m_stableClassification = m_candidateClassification;
 	m_hasStable = true;
-	m_waitingPublished = false;
 	m_unavailableCandidates = 0;
 	ClearCandidate();
 	return decision;
@@ -138,7 +182,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		ActivePictureTransitionState::UNAVAILABLE;
 	decision.bounds = m_hasStable ? m_stable : ActivePictureBounds{};
 	decision.stableBounds = m_hasStable ? m_stable : ActivePictureBounds{};
-	decision.stable = m_hasStable && !m_waitingPublished;
+	decision.stable = m_hasStable;
 
 	if (!observation.available)
 	{
@@ -157,15 +201,95 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		// Black/fade frames carry no geometry evidence. Preserve the last stable
 		// mapping so a fade cannot create a false aspect-mode change.
 		decision.state = ActivePictureTransitionState::UNAVAILABLE;
-		decision.stable = m_hasStable && !m_waitingPublished;
+		decision.stable = m_hasStable;
 		decision.confidence = 0.0;
 		return decision;
 	}
 	m_unavailableCandidates = 0;
 
+	const bool matchesPreviousTrusted =
+		m_hasStable && m_hasPreviousTrusted &&
+		MateriallyDifferent(m_stable, observation.bounds) &&
+		SameBounds(m_previousTrusted, observation.bounds);
+	if (matchesPreviousTrusted)
+	{
+		if (!m_candidateUsesKnownTrustedGeometry ||
+			!SameBounds(m_candidate, observation.bounds))
+		{
+			StartCandidate(observation);
+			m_candidateClassification =
+				m_previousTrustedClassification;
+			m_candidateUsesKnownTrustedGeometry = true;
+			decision.diagnostic = true;
+			decision.reason =
+				"previously trusted geometry candidate";
+		}
+		else if (m_matchingCandidates < 255)
+		{
+			++m_matchingCandidates;
+		}
+
+		decision.state =
+			ActivePictureTransitionState::CANDIDATE_TRANSITION;
+		decision.bounds = m_candidate;
+		decision.stableBounds = m_stable;
+		decision.stable = true;
+		decision.clearTransition = true;
+		decision.matchingCandidates = m_matchingCandidates;
+		decision.confidence = std::min(
+			1.0, static_cast<double>(m_matchingCandidates) /
+			CLEAR_TRANSITION_CONFIRMATIONS);
+		decision.firstContradictoryFrame = m_firstContradictoryFrame;
+		decision.decisionLatencyFrames =
+			observation.frameNumber >= m_firstContradictoryFrame ?
+			observation.frameNumber - m_firstContradictoryFrame : 0;
+		if (m_matchingCandidates >= CLEAR_TRANSITION_CONFIRMATIONS)
+			return CommitCandidate(
+				observation, "previously trusted geometry reacquired");
+		return decision;
+	}
+
+	if (!HasCropAuthority(observation))
+	{
+		const bool candidateChanged =
+			m_matchingCandidates == 0 ||
+			m_candidateClassification != observation.classification ||
+			!SameBounds(m_candidate, observation.bounds);
+		if (candidateChanged)
+			StartCandidate(observation);
+		else if (m_matchingCandidates < 255)
+			++m_matchingCandidates;
+		decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
+		decision.bounds = m_candidate;
+		decision.stableBounds =
+			m_hasStable ? m_stable : ActivePictureBounds{};
+		decision.stable = m_hasStable;
+		decision.diagnostic = candidateChanged;
+		decision.matchingCandidates = m_matchingCandidates;
+		decision.contradictoryCandidates = m_contradictoryCandidates;
+		decision.candidateReversals = m_candidateReversals;
+		decision.confidence = 0.0;
+		decision.reason =
+			"provisional geometry lacks affirmative crop authority";
+		return decision;
+	}
+
+	if (observation.classification ==
+		ActivePictureClassification::FULL_RASTER_TRUSTED &&
+		(!m_hasStable || !SameBounds(m_stable, observation.bounds)))
+	{
+		m_candidate = observation.bounds;
+		m_candidateClassification = observation.classification;
+		m_matchingCandidates = 1;
+		m_firstContradictoryFrame = observation.frameNumber;
+		return CommitCandidate(
+			observation, "safe full-raster authority accepted");
+	}
+
 	if (!m_hasStable)
 	{
 		if (m_matchingCandidates == 0 ||
+			m_candidateClassification != observation.classification ||
 			!SameBounds(m_candidate, observation.bounds))
 		{
 			StartCandidate(observation);
@@ -192,25 +316,16 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 
 	if (SameBounds(m_stable, observation.bounds))
 	{
-		const bool recovered = m_waitingPublished;
 		const uint8_t rejectedMatches = m_matchingCandidates;
 		const uint8_t rejectedReversals = m_candidateReversals;
 		ClearCandidate();
-		m_waitingPublished = false;
 		decision.state = ActivePictureTransitionState::STABLE;
 		decision.bounds = m_stable;
 		decision.stable = true;
 		decision.matchingCandidates = rejectedMatches;
 		decision.candidateReversals = rejectedReversals;
 		decision.confidence = 1.0;
-		if (recovered)
-		{
-			decision.publish = true;
-			decision.diagnostic = true;
-			decision.reason =
-				"clear transition candidate reversed; stable geometry restored";
-		}
-		else if (rejectedMatches > 0)
+		if (rejectedMatches > 0)
 		{
 			decision.diagnostic = true;
 			decision.reason =
@@ -222,6 +337,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	if (m_contradictoryCandidates < 255)
 		++m_contradictoryCandidates;
 	if (m_matchingCandidates == 0 ||
+		m_candidateClassification != observation.classification ||
 		!SameBounds(m_candidate, observation.bounds))
 	{
 		StartCandidate(observation);
@@ -240,12 +356,10 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	const bool clearTransition =
 		MateriallyDifferent(m_stable, m_candidate) &&
 		m_stable.symmetricBars && m_candidate.symmetricBars;
-	const uint8_t required = clearTransition ?
-		CLEAR_TRANSITION_CONFIRMATIONS :
-		AMBIGUOUS_TRANSITION_CONFIRMATIONS;
+	const uint8_t required = CLEAR_TRANSITION_CONFIRMATIONS;
 	decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 	decision.bounds = m_candidate;
-	decision.stable = !m_waitingPublished;
+	decision.stable = true;
 	decision.clearTransition = clearTransition;
 	decision.matchingCandidates = m_matchingCandidates;
 	decision.contradictoryCandidates = m_contradictoryCandidates;
@@ -260,20 +374,8 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	if (m_matchingCandidates >= required)
 		return CommitCandidate(observation,
 			clearTransition ?
-			"clear symmetric transition confirmed" :
-			"ambiguous transition reached conservative confidence");
+			"clear trusted transition confirmed" :
+			"trusted transition confirmed");
 
-	if (clearTransition && !m_waitingPublished)
-	{
-		// A strong bar appearance/disappearance invalidates the old crop
-		// immediately. Publish Waiting for safe passthrough until the second
-		// consistent observation confirms the new mapping.
-		m_waitingPublished = true;
-		decision.publish = true;
-		decision.stable = false;
-		decision.diagnostic = true;
-		decision.reason =
-			"clear symmetric transition; stale geometry withdrawn";
-	}
 	return decision;
 }

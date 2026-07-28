@@ -20,6 +20,7 @@
 #include "CBufferedLiveSourceVideoOutputPin.h"
 #include "WindowsOcrSubtitleDetector.h"
 #include "GpuSubtitleDetector.h"
+#include "../../P010ActivePictureEvidence.h"
 
 
 CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
@@ -1298,7 +1299,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			return VFW_E_WRONG_STATE;
 
 		const auto deliveryStartTime = GetWallClockTime();
+		const uint64_t mediaTypeGeneration =
+			AttachPendingMediaType(sample);
 		const HRESULT result = Deliver(sample);
+		CompletePendingMediaType(mediaTypeGeneration, result);
 		const auto deliveryEndTime = GetWallClockTime();
 		const uint64_t deliveryTimeUs = (deliveryEndTime - deliveryStartTime) / 10;
 
@@ -2731,7 +2735,6 @@ bool CBufferedLiveSourceVideoOutputPin::GetActivePictureRectangle(
 void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 	IMediaSample* sample, uint64_t frameNumber, ActivePictureDetectorState& state)
 {
-	constexpr uint16_t BLACK_LUMA_MAX = 96; // Limited-range P010 black is code 64.
 	if (!sample)
 		return;
 
@@ -2781,93 +2784,31 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 		PublishActivePictureTransition(decision);
 	};
 
-	const size_t lumaBytes = static_cast<size_t>(width) * height * sizeof(uint16_t);
-	if (static_cast<size_t>(sample->GetActualDataLength()) < lumaBytes)
-	{
-		publishUnavailable("sample is shorter than the P010 luma plane");
-		return;
-	}
 	BYTE* bytes = nullptr;
 	if (FAILED(sample->GetPointer(&bytes)) || !bytes)
 	{
-		publishUnavailable("P010 luma pointer is unavailable");
+		publishUnavailable("P010 sample pointer is unavailable");
 		return;
 	}
-	const auto* luma = reinterpret_cast<const uint16_t*>(bytes);
-
-	auto rowIsBlack = [&](int y)
+	const size_t pitch = static_cast<size_t>(width) * sizeof(uint16_t);
+	const auto evidence = ExtractP010ActivePictureEvidence({
+		bytes, static_cast<size_t>(std::max<LONG>(
+			0, sample->GetActualDataLength())),
+		static_cast<int>(width), height, pitch, pitch
+	});
+	if (!evidence.available)
 	{
-		constexpr int SAMPLES = 64;
-		int black = 0;
-		const uint16_t* row = luma + static_cast<size_t>(y) * width;
-		for (int i = 0; i < SAMPLES; ++i)
-		{
-			const int x = ((i * 2 + 1) * width) / (SAMPLES * 2);
-			if ((row[x] >> 6) <= BLACK_LUMA_MAX)
-				++black;
-		}
-		return black >= (SAMPLES * 27) / 32;
-	};
-	auto columnIsBlack = [&](int x)
-	{
-		constexpr int SAMPLES = 36;
-		int black = 0;
-		for (int i = 0; i < SAMPLES; ++i)
-		{
-			const int y = ((i * 2 + 1) * height) / (SAMPLES * 2);
-			if ((luma[static_cast<size_t>(y) * width + x] >> 6) <= BLACK_LUMA_MAX)
-				++black;
-		}
-		return black >= (SAMPLES * 27) / 32;
-	};
-
-	const int yStep = std::max(2, height / 540);
-	const int xStep = std::max(2, static_cast<int>(width / 960));
-	int top = 0;
-	while (top + yStep < height / 2 && rowIsBlack(top)) top += yStep;
-	int bottom = height;
-	while (bottom - yStep > height / 2 && rowIsBlack(bottom - 1)) bottom -= yStep;
-	int left = 0;
-	while (left + xStep < width / 2 && columnIsBlack(left)) left += xStep;
-	int right = width;
-	while (right - xStep > width / 2 && columnIsBlack(right - 1)) right -= xStep;
-
-	const int activeWidth = right - left;
-	const int activeHeight = bottom - top;
-	if (activeWidth < width / 3 || activeHeight < height / 3)
-	{
-		publishUnavailable("candidate is too small for a credible active picture");
+		publishUnavailable(evidence.reason.c_str());
 		return;
 	}
-	const double aspect = static_cast<double>(activeWidth) / activeHeight;
-	if (aspect < 1.0 || aspect > 4.0)
-	{
-		publishUnavailable("candidate aspect is outside the supported range");
-		return;
-	}
-
-	const int topBar = top;
-	const int bottomBar = height - bottom;
-	const int leftBar = left;
-	const int rightBar = width - right;
-	const bool verticalBars =
-		topBar > yStep * 2 || bottomBar > yStep * 2;
-	const bool horizontalBars =
-		leftBar > xStep * 2 || rightBar > xStep * 2;
-	const bool symmetricBars =
-		(!verticalBars ||
-			std::abs(topBar - bottomBar) <=
-				std::max(yStep * 3, height / 180)) &&
-		(!horizontalBars ||
-			std::abs(leftBar - rightBar) <=
-				std::max(xStep * 3, static_cast<int>(width / 180)));
 
 	ActivePictureObservation observation;
 	observation.frameNumber = frameNumber;
 	observation.available = true;
-	observation.bounds = {
-		left, top, right, bottom, width, height, aspect, symmetricBars
-	};
+	observation.bounds = evidence.classification ==
+		ActivePictureClassification::BAR_CROP_TRUSTED ?
+		evidence.trustedBounds : evidence.proposedBounds;
+	observation.classification = evidence.classification;
 	const auto decision = state.transition.Observe(observation);
 	if (decision.diagnostic)
 	{
@@ -2876,6 +2817,12 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 			"stable=%d,%d-%d,%d stable_aspect=%.4f "
 			"raster=%dx%d aspect=%.4f symmetric=%d matches=%u "
 			"contradictions=%u reversals=%u confidence=%.2f "
+			"classification=%d samples=%zu/%zu "
+			"edge_trust=%d,%d,%d,%d "
+			"edge_black=%.2f,%.2f,%.2f,%.2f "
+			"edge_chroma=%.2f,%.2f,%.2f,%.2f "
+			"edge_boundary=%.1f,%.1f,%.1f,%.1f "
+			"edge_confidence=%.2f,%.2f,%.2f,%.2f "
 			"first_contradiction=%llu latency_frames=%llu reason=\"%s\"",
 			decision.state == ActivePictureTransitionState::STABLE ?
 				"stable" : "candidate_transition",
@@ -2892,11 +2839,27 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 			decision.contradictoryCandidates,
 			decision.candidateReversals,
 			decision.confidence,
+			static_cast<int>(evidence.classification),
+			evidence.lumaSamples, evidence.chromaSamples,
+			evidence.left.trusted, evidence.top.trusted,
+			evidence.right.trusted, evidence.bottom.trusted,
+			evidence.left.blackFraction, evidence.top.blackFraction,
+			evidence.right.blackFraction, evidence.bottom.blackFraction,
+			evidence.left.neutralChromaFraction,
+			evidence.top.neutralChromaFraction,
+			evidence.right.neutralChromaFraction,
+			evidence.bottom.neutralChromaFraction,
+			evidence.left.innerBoundaryContrast,
+			evidence.top.innerBoundaryContrast,
+			evidence.right.innerBoundaryContrast,
+			evidence.bottom.innerBoundaryContrast,
+			evidence.left.confidence, evidence.top.confidence,
+			evidence.right.confidence, evidence.bottom.confidence,
 			static_cast<unsigned long long>(
 				decision.firstContradictoryFrame),
 			static_cast<unsigned long long>(
 				decision.decisionLatencyFrames),
-			decision.reason.c_str());
+			(decision.reason + "; " + evidence.reason).c_str());
 	}
 	PublishActivePictureTransition(decision);
 }

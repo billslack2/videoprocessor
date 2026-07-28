@@ -168,6 +168,7 @@
     <ClInclude Include="ACaptureDevice.h" />
     <ClInclude Include="ACaptureDeviceDiscoverer.h" />
     <ClInclude Include="AutoPpmCalibrator.h" />
+    <ClInclude Include="AspectRatio.h" />
     <ClInclude Include="BitDepth.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDevice.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDeviceDiscoverer.h" />
@@ -191,6 +192,7 @@
     <ClInclude Include="libplacebo\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="libplacebo\AlphaPresentationTelemetry.h" />
     <ClInclude Include="ActivePictureTransitionModel.h" />
+    <ClInclude Include="P010ActivePictureEvidence.h" />
     <ClInclude Include="MainConfigSchema.h" />
     <ClInclude Include="libplacebo\LibplaceboOutputPolicy.h" />
     <ClInclude Include="libplacebo\LibplaceboPluginVideoRenderer.h" />
@@ -218,6 +220,8 @@
     <ClInclude Include="PixelValueRange.h" />
     <ClInclude Include="PPMCorrectionLoader.h" />
     <ClInclude Include="RendererId.h" />
+    <ClInclude Include="StateVariables.h" />
+    <ClInclude Include="UnifiedProfileRuntime.h" />
 	<ClInclude Include="SceneDetector.h" />
     <ClInclude Include="SubtitleRepositionMode.h" />
     <ClInclude Include="StringUtils.h" />
@@ -243,6 +247,7 @@
   <ItemGroup>
     <ClCompile Include="ACaptureDevice.cpp" />
     <ClCompile Include="ActivePictureTransitionModel.cpp" />
+    <ClCompile Include="P010ActivePictureEvidence.cpp" />
     <ClCompile Include="ACaptureDeviceDiscoverer.cpp" />
     <ClCompile Include="AutoPpmCalibrator.cpp" />
     <ClCompile Include="BitDepth.cpp" />
@@ -307,6 +312,8 @@
     <ClCompile Include="PixelValueRange.cpp" />
     <ClCompile Include="PPMCorrectionLoader.cpp" />
     <ClCompile Include="RendererId.cpp" />
+    <ClCompile Include="StateVariables.cpp" />
+    <ClCompile Include="UnifiedProfileRuntime.cpp" />
 	<ClCompile Include="SceneDetector.cpp" />
     <ClCompile Include="StringUtils.cpp" />
     <ClCompile Include="TimingClock.cpp" />

@@ -11,8 +11,10 @@
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
 #include <IntegerMath.h>
+#include <AspectRatio.h>
 #include <DisplayRuleExpression.h>
 #include <RendererProfileConfig.h>
+#include <UnifiedProfileRuntime.h>
 
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -192,6 +194,289 @@ namespace Tests
 				}, specificity, error));
 			Assert::IsFalse(compiled.Compile("$key==F5", error, true));
 			Assert::IsFalse(compiled.Compile("$transfer==PQ|HLG", error, true));
+		}
+
+		TEST_METHOD(AspectRatioParserAcceptsAndNormalizesDocumentedForms)
+		{
+			struct Case
+			{
+				const char* text;
+				uint64_t numerator;
+				uint64_t denominator;
+			};
+			for (const Case& test : std::vector<Case>{
+				{ "4:3", 4, 3 },
+				{ "16:9", 16, 9 },
+				{ "16x9", 16, 9 },
+				{ "16X9", 16, 9 },
+				{ " 16 : 9 ", 16, 9 },
+				{ "2:1", 2, 1 },
+				{ "2.2:1", 11, 5 },
+				{ "2.35:1", 47, 20 },
+				{ "1.7777778", 8888889, 5000000 },
+				{ "2.35", 47, 20 } })
+			{
+				AspectRatio aspect;
+				std::string error;
+				Assert::IsTrue(AspectRatioParser::Parse(
+					test.text, 1.0, 4.0, aspect, error),
+					std::wstring(error.begin(), error.end()).c_str());
+				Assert::AreEqual<uint64_t>(
+					test.numerator, aspect.numerator);
+				Assert::AreEqual<uint64_t>(
+					test.denominator, aspect.denominator);
+			}
+		}
+
+		TEST_METHOD(AspectRatioParserRejectsMalformedAndOutOfRangeForms)
+		{
+			for (const char* text : {
+				"", "0", "0:1", "1:0", "-16:9", "16:", ":9",
+				"16::9", "16x9:1", "16:9junk", "nan", "inf",
+				"0.99", "4.01" })
+			{
+				AspectRatio aspect;
+				std::string error;
+				Assert::IsFalse(AspectRatioParser::Parse(
+					text, 1.0, 4.0, aspect, error));
+				Assert::IsFalse(error.empty());
+			}
+		}
+
+		TEST_METHOD(RendererProfileConfigNormalizesDeprecatedViewportAliases)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0038-alias.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\npersist_profile_selection: false\n";
+				for (const char* group : {
+					"input", "scaling", "display", "viewport" })
+				{
+					file << "[profile_groups." << group <<
+						"]\nprofiles: base\ndefault: base\n";
+					file << "[profiles." << group << ".base]\n";
+					if (std::string(group) == "viewport")
+						file << "scope_screen_aspect: 2.35:1\n"
+							"scope_subtitle_fit: true\n";
+				}
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::Read(
+				config, model, error));
+			Assert::AreEqual(static_cast<size_t>(2), model.warnings.size());
+			const auto profile = model.profiles.find("viewport.base");
+			Assert::IsTrue(profile != model.profiles.end());
+			Assert::AreEqual("2.35:1",
+				profile->second.settings.at("screen_aspect").c_str());
+			Assert::AreEqual("true",
+				profile->second.settings.at("subtitle_fit").c_str());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigRejectsDuplicateViewportAliases)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0038-duplicate.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n";
+				for (const char* group : {
+					"input", "scaling", "display", "viewport" })
+				{
+					file << "[profile_groups." << group <<
+						"]\nprofiles: base\ndefault: base\n";
+					file << "[profiles." << group << ".base]\n";
+					if (std::string(group) == "viewport")
+						file << "screen_aspect: 16:9\n"
+							"scope_screen_aspect: 2.35:1\n";
+				}
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(
+				config, model, error));
+			Assert::IsTrue(error.find("defines both deprecated") !=
+				std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigResolvesGenericViewportDefaults)
+		{
+			RendererProfileConfig::Model model;
+			RendererProfileConfig::Profile normal;
+			normal.group = "viewport";
+			normal.name = "normal";
+			model.profiles.emplace("viewport.normal", normal);
+			RendererProfileConfig::Profile cinema;
+			cinema.group = "viewport";
+			cinema.name = "cinema";
+			cinema.settings["screen_aspect"] = "2.35:1";
+			cinema.settings["subtitle_fit"] = "true";
+			cinema.settings["subtitle_hold_seconds"] = "2";
+			cinema.settings["subtitle_padding_pixels"] = "30";
+			model.profiles.emplace("viewport.cinema", cinema);
+
+			RendererProfileConfig::ResolvedViewport viewport;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, "normal", 1, viewport, error));
+			Assert::AreEqual<uint64_t>(16, viewport.screenAspect.numerator);
+			Assert::AreEqual<uint64_t>(9, viewport.screenAspect.denominator);
+			Assert::IsFalse(viewport.subtitleFit);
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, "cinema", 2, viewport, error));
+			Assert::AreEqual<uint64_t>(47, viewport.screenAspect.numerator);
+			Assert::AreEqual<uint64_t>(20, viewport.screenAspect.denominator);
+			Assert::IsTrue(viewport.subtitleFit);
+			Assert::AreEqual<uint64_t>(
+				2000, viewport.subtitleHoldMilliseconds);
+			Assert::AreEqual(30, viewport.subtitlePaddingPixels);
+			Assert::AreEqual<uint64_t>(2, viewport.generation);
+		}
+
+		TEST_METHOD(UnifiedProfileRuntimeRestoresPublishesAndPersistsViewport)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string base = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0038-runtime-" +
+				std::to_string(GetCurrentProcessId());
+			const std::string configPath = base + ".cfg";
+			const std::string statePath = base + ".state";
+			{
+				std::ofstream file(configPath,
+					std::ios::out | std::ios::trunc);
+				file << "[general]\npersist_profile_selection: true\n";
+				for (const char* group :
+					{ "input", "scaling", "display" })
+				{
+					file << "[profile_groups." << group <<
+						"]\nprofiles: base\ndefault: base\n";
+					file << "[profiles." << group << ".base]\n";
+				}
+				file << "[profile_groups.viewport]\n"
+					"profiles: normal,scope\n"
+					"default: normal\n"
+					"[profiles.viewport.normal]\n"
+					"when: $key==\"F3\"\n"
+					"[profiles.viewport.scope]\n"
+					"when: $key==\"F2\"\n"
+					"screen_aspect: 2.35:1\n"
+					"subtitle_fit: true\n"
+					"subtitle_hold_seconds: 2\n"
+					"subtitle_padding_pixels: 30\n";
+			}
+			{
+				std::ofstream state(statePath,
+					std::ios::out | std::ios::trunc);
+				state << "profile.viewport: scope\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(configPath));
+			UnifiedProfileRuntime::Runtime runtime;
+			std::string error;
+			const DisplayRuleExpression::ValueLookup source =
+				[](const std::string& name, std::string& value)
+				{
+					if (name == "eotf" || name == "transfer")
+					{
+						value = "pq";
+						return true;
+					}
+					if (name == "width")
+					{
+						value = "3840";
+						return true;
+					}
+					if (name == "hdr_metadata")
+					{
+						value = "true";
+						return true;
+					}
+					return false;
+				};
+			Assert::IsTrue(runtime.Initialize(config, source, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			auto snapshot = runtime.GetSnapshot();
+			Assert::IsNotNull(snapshot.get());
+			Assert::AreEqual("scope",
+				snapshot->viewport.profile.c_str());
+			Assert::AreEqual<uint64_t>(
+				47, snapshot->viewport.screenAspect.numerator);
+			Assert::AreEqual<uint64_t>(
+				20, snapshot->viewport.screenAspect.denominator);
+			Assert::IsTrue(snapshot->viewport.subtitleFit);
+			const StateVariables::Value* screenAspect =
+				snapshot->variables.Find("$screen_aspect");
+			Assert::IsNotNull(screenAspect);
+			Assert::IsTrue(screenAspect->type ==
+				StateVariables::ValueType::Aspect);
+			const StateVariables::Value* viewportProfile =
+				snapshot->variables.Find("viewport_profile");
+			Assert::IsNotNull(viewportProfile);
+			Assert::AreEqual("scope", viewportProfile->text.c_str());
+			const StateVariables::Value* groupProfile =
+				snapshot->variables.Find("profile.viewport");
+			Assert::IsNotNull(groupProfile);
+			Assert::AreEqual("scope", groupProfile->text.c_str());
+			const StateVariables::Value* eotf =
+				snapshot->variables.Find("eotf");
+			Assert::IsNotNull(eotf);
+			Assert::AreEqual("pq", eotf->text.c_str());
+			const StateVariables::Value* width =
+				snapshot->variables.Find("width");
+			Assert::IsNotNull(width);
+			Assert::AreEqual(3840.0, width->number);
+			const StateVariables::Value* hdrMetadata =
+				snapshot->variables.Find("hdr_metadata");
+			Assert::IsNotNull(hdrMetadata);
+			Assert::IsTrue(hdrMetadata->boolean);
+
+			UnifiedProfileRuntime::SelectionResult selection;
+			Assert::IsTrue(runtime.SelectKey(
+				"F3", source, selection, error));
+			Assert::IsTrue(selection.changed);
+			Assert::AreEqual("normal",
+				selection.snapshot->viewport.profile.c_str());
+			Assert::AreEqual<uint64_t>(
+				16, selection.snapshot->viewport.screenAspect.numerator);
+			Assert::AreEqual<uint64_t>(
+				9, selection.snapshot->viewport.screenAspect.denominator);
+			const uint64_t normalGeneration =
+				selection.snapshot->generation;
+
+			Assert::IsTrue(runtime.SelectKey(
+				"F3", source, selection, error));
+			Assert::IsFalse(selection.changed);
+			Assert::AreEqual<uint64_t>(
+				normalGeneration, selection.snapshot->generation);
+
+			std::ifstream persisted(statePath);
+			const std::string contents(
+				(std::istreambuf_iterator<char>(persisted)),
+				std::istreambuf_iterator<char>());
+			Assert::IsTrue(contents.find(
+				"profile.viewport: normal") != std::string::npos);
+
+			DeleteFileA(configPath.c_str());
+			DeleteFileA(statePath.c_str());
+			DeleteFileA((statePath + ".tmp").c_str());
 		}
 
 		TEST_METHOD(RendererProfileConfigRejectsIncompleteUnifiedConfiguration)

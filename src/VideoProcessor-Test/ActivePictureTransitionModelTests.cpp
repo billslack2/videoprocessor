@@ -30,9 +30,12 @@ namespace VideoProcessorTest
 		ActivePictureTransitionDecision Observe(
 			ActivePictureTransitionModel& model,
 			const ActivePictureBounds& bounds,
-			uint64_t frameNumber)
+			uint64_t frameNumber,
+			ActivePictureClassification classification =
+				ActivePictureClassification::BAR_CROP_TRUSTED)
 		{
-			return model.Observe({ bounds, frameNumber, true });
+			return model.Observe({
+				bounds, frameNumber, true, classification });
 		}
 
 		uint64_t Establish(
@@ -87,7 +90,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(decision.stable);
 		}
 
-		TEST_METHOD(ClearScopeImaxCutsWithdrawStaleGeometryImmediately)
+		TEST_METHOD(ClearScopeImaxCutsRequireTwoTrustedObservations)
 		{
 			const double rates[] = {
 				23.976, 24.0, 25.0, 29.97, 30.0, 59.94, 60.0
@@ -109,11 +112,11 @@ namespace VideoProcessorTest
 					const uint64_t firstFrame =
 						Establish(model, before[direction], interval);
 
-					const auto waiting =
+					const auto probing =
 						Observe(model, after[direction], firstFrame);
-					Assert::IsTrue(waiting.publish);
-					Assert::IsFalse(waiting.stable);
-					Assert::IsTrue(waiting.clearTransition);
+					Assert::IsFalse(probing.publish);
+					Assert::IsTrue(probing.stable);
+					Assert::IsTrue(probing.clearTransition);
 
 					const auto stable = Observe(
 						model, after[direction], firstFrame + interval);
@@ -191,7 +194,7 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(AmbiguousSustainedTransitionUsesConservativeConfidence)
+		TEST_METHOD(AmbiguousSustainedTransitionNeverAcquiresCropAuthority)
 		{
 			ActivePictureTransitionModel model;
 			uint64_t frame = Establish(model, ScopeBounds());
@@ -202,21 +205,142 @@ namespace VideoProcessorTest
 				(asymmetric.bottom - asymmetric.top);
 			asymmetric.symmetricBars = false;
 
-			for (uint8_t count = 1;
-				count < ActivePictureTransitionModel::
-					AMBIGUOUS_TRANSITION_CONFIRMATIONS;
-				++count, ++frame)
+			for (uint8_t count = 1; count < 64; ++count, ++frame)
 			{
-				const auto decision = Observe(model, asymmetric, frame);
+				const auto decision = Observe(
+					model, asymmetric, frame,
+					ActivePictureClassification::PROVISIONAL);
 				Assert::IsFalse(decision.publish);
 				Assert::IsTrue(decision.stable);
 			}
-			const auto decision = Observe(model, asymmetric, frame);
-			Assert::IsTrue(decision.publish);
+			const auto decision = Observe(
+				model, asymmetric, frame,
+				ActivePictureClassification::PROVISIONAL);
+			Assert::IsFalse(decision.publish);
 			Assert::IsTrue(decision.stable);
+			Assert::AreEqual(0.0, decision.confidence, 0.000001);
 		}
 
-		TEST_METHOD(OscillatingClearCandidatesPublishWaitingOnlyOnce)
+		TEST_METHOD(PreviouslyTrustedGeometryReacquiresOnAdjacentFrames)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds(), 2);
+			Observe(model, ImaxBounds(), frame);
+			const auto imax = Observe(model, ImaxBounds(), frame + 2);
+			Assert::IsTrue(imax.publish);
+
+			const uint64_t returnFrame = frame + 4;
+			const auto probing = Observe(
+				model, ScopeBounds(), returnFrame,
+				ActivePictureClassification::PROVISIONAL);
+			Assert::IsFalse(probing.publish);
+			Assert::IsTrue(probing.stable);
+			Assert::IsTrue(model.ShouldAnalyze(returnFrame + 1, 23.976));
+
+			const auto reacquired = Observe(
+				model, ScopeBounds(), returnFrame + 1,
+				ActivePictureClassification::PROVISIONAL);
+			Assert::IsTrue(reacquired.publish);
+			Assert::IsTrue(reacquired.stable);
+			Assert::AreEqual(
+				static_cast<unsigned long long>(1),
+				static_cast<unsigned long long>(
+					reacquired.decisionLatencyFrames));
+		}
+
+		TEST_METHOD(ResetDiscardsPreviouslyTrustedGeometry)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+			Observe(model, ImaxBounds(), frame++);
+			Assert::IsTrue(Observe(model, ImaxBounds(), frame++).publish);
+			model.Reset();
+
+			for (int count = 0; count < 8; ++count)
+			{
+				const auto decision = Observe(
+					model, ScopeBounds(), frame++,
+					ActivePictureClassification::PROVISIONAL);
+				Assert::IsFalse(decision.publish);
+				Assert::IsFalse(decision.stable);
+			}
+		}
+
+		TEST_METHOD(FullRasterIsImmediateSafeStartupAuthority)
+		{
+			ActivePictureTransitionModel model;
+			ActivePictureBounds full = {
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false
+			};
+			const auto decision = Observe(
+				model, full, 1,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsTrue(decision.publish);
+			Assert::IsTrue(decision.stable);
+			Assert::AreEqual(0, decision.bounds.left);
+			Assert::AreEqual(3840, decision.bounds.right);
+		}
+
+		TEST_METHOD(AsymmetricCandidateCannotCropEitherSide)
+		{
+			ActivePictureTransitionModel model;
+			ActivePictureBounds full = {
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false
+			};
+			Observe(model, full, 1,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			ActivePictureBounds asymmetric = {
+				132, 0, 3724, 2160, 3840, 2160,
+				3592.0 / 2160.0, false
+			};
+			for (uint64_t frame = 2; frame < 64; ++frame)
+			{
+				const auto decision = Observe(
+					model, asymmetric, frame,
+					ActivePictureClassification::BAR_CROP_TRUSTED);
+				Assert::IsFalse(decision.publish);
+				Assert::IsTrue(decision.stable);
+				Assert::AreEqual(0, decision.stableBounds.left);
+				Assert::AreEqual(3840, decision.stableBounds.right);
+			}
+		}
+
+		TEST_METHOD(RecordedFalseCandidateSequenceCannotContractFullRaster)
+		{
+			ActivePictureTransitionModel model;
+			ActivePictureBounds full = {
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false
+			};
+			Observe(model, full, 1,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			const int candidates[][2] = {
+				{ 0, 3764 }, { 0, 3724 }, { 0, 3740 },
+				{ 0, 3724 }, { 132, 3724 }
+			};
+			uint64_t frame = 2;
+			for (int repeat = 0; repeat < 12; ++repeat)
+			{
+				for (const auto& candidate : candidates)
+				{
+					ActivePictureBounds bounds = {
+						candidate[0], 0, candidate[1], 2160,
+						3840, 2160,
+						static_cast<double>(
+							candidate[1] - candidate[0]) / 2160.0,
+						false
+					};
+					const auto decision = Observe(
+						model, bounds, frame++,
+						ActivePictureClassification::PROVISIONAL);
+					Assert::IsFalse(decision.publish);
+					Assert::IsTrue(decision.stable);
+					Assert::AreEqual(0, decision.stableBounds.left);
+					Assert::AreEqual(3840, decision.stableBounds.right);
+				}
+			}
+		}
+
+		TEST_METHOD(OscillatingClearCandidatesPreserveStableGeometry)
 		{
 			ActivePictureTransitionModel model;
 			uint64_t frame = Establish(model, ScopeBounds());
@@ -227,17 +351,14 @@ namespace VideoProcessorTest
 				static_cast<double>(alternate.right - alternate.left) /
 				(alternate.bottom - alternate.top);
 
-			int publications = 0;
 			for (int count = 0; count < 12; ++count, ++frame)
 			{
 				const ActivePictureBounds bounds =
 					count % 2 == 0 ? ImaxBounds() : alternate;
 				const auto decision = Observe(model, bounds, frame);
-				if (decision.publish)
-					++publications;
-				Assert::IsFalse(decision.stable);
+				Assert::IsFalse(decision.publish);
+				Assert::IsTrue(decision.stable);
 			}
-			Assert::AreEqual(1, publications);
 		}
 
 		TEST_METHOD(FixedImaxAndFourByThreeControlsRemainStableWithNoise)

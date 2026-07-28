@@ -35,6 +35,26 @@ namespace Tests
 			return decision;
 		}
 
+		static AlphaCadenceCorrectionDecision AdvanceUntilDue(
+			AlphaCadenceCorrectionPolicy& policy,
+			AlphaCadenceCorrectionInput input,
+			uint32_t maximumFrames = 20000)
+		{
+			for (uint32_t frame = 0; frame < maximumFrames; ++frame)
+			{
+				const auto decision = policy.Evaluate(input);
+				if (decision.due)
+					return decision;
+			}
+			Assert::Fail(L"Cadence correction did not become due");
+			return {};
+		}
+
+		static int Reason(AlphaCadenceBlockReason reason)
+		{
+			return static_cast<int>(reason);
+		}
+
 		TEST_METHOD(InvalidPresentationEvidenceAlwaysFailsClosed)
 		{
 			AlphaCadenceCorrectionPolicy policy;
@@ -47,6 +67,9 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
 				static_cast<int>(decision.action));
 			Assert::IsFalse(decision.planned);
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::PresentationEvidenceUnavailable),
+				Reason(decision.blockReason));
 		}
 
 		TEST_METHOD(IncompatibleRatesCannotPlanOrAct)
@@ -154,6 +177,108 @@ namespace Tests
 			const auto decision = policy.Evaluate(input);
 			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
 				static_cast<int>(decision.action));
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::DropQueueNotAboveDesired),
+				Reason(decision.blockReason));
+		}
+
+		TEST_METHOD(DueForecastPublishesSignedOverdueTime)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input = Input(59.988);
+			input.queueDepth = input.desiredQueueDepth;
+			input.presentationDebt = 0;
+
+			const auto due = AdvanceUntilDue(policy, input);
+			Assert::IsTrue(due.predictionValid);
+			Assert::IsTrue(due.due);
+			Assert::IsTrue(due.secondsUntilCorrection <= 0.0);
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::RepeatQueueNotBelowDesired),
+				Reason(due.blockReason));
+
+			const auto overdue = Advance(policy, input, 60);
+			Assert::IsTrue(overdue.due);
+			Assert::IsTrue(overdue.secondsUntilCorrection < 0.0);
+		}
+
+		TEST_METHOD(DueRepeatDistinguishesQueueAndDebtBlockers)
+		{
+			AlphaCadenceCorrectionPolicy queuePolicy;
+			AlphaCadenceCorrectionInput queueInput = Input(59.988);
+			queueInput.queueDepth = queueInput.desiredQueueDepth;
+			queueInput.presentationDebt = 0;
+			const auto queueBlocked =
+				AdvanceUntilDue(queuePolicy, queueInput);
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::RepeatQueueNotBelowDesired),
+				Reason(queueBlocked.blockReason));
+
+			AlphaCadenceCorrectionPolicy debtPolicy;
+			AlphaCadenceCorrectionInput debtInput = Input(59.988);
+			debtInput.queueDepth = debtInput.desiredQueueDepth - 1;
+			debtInput.presentationDebt = 1;
+			const auto debtBlocked = AdvanceUntilDue(debtPolicy, debtInput);
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::RepeatPresentationDebtPresent),
+				Reason(debtBlocked.blockReason));
+			Assert::AreEqual(
+				debtInput.queueDepth,
+				debtBlocked.diagnostic.queueDepth);
+			Assert::AreEqual(
+				debtInput.desiredQueueDepth,
+				debtBlocked.diagnostic.desiredQueueDepth);
+			Assert::AreEqual(
+				debtInput.presentationDebt,
+				debtBlocked.diagnostic.presentationDebt);
+			Assert::IsTrue(
+				debtBlocked.diagnostic.fallbackMature);
+			Assert::IsTrue(
+				debtBlocked.diagnostic.fallbackEligible);
+		}
+
+		TEST_METHOD(DueDropDistinguishesQueueDebtAndFallbackAgeBlockers)
+		{
+			AlphaCadenceCorrectionPolicy queuePolicy;
+			AlphaCadenceCorrectionInput queueInput = Input(60.012);
+			queueInput.queueDepth = queueInput.desiredQueueDepth;
+			const auto queueBlocked =
+				AdvanceUntilDue(queuePolicy, queueInput);
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::DropQueueNotAboveDesired),
+				Reason(queueBlocked.blockReason));
+
+			AlphaCadenceCorrectionPolicy debtPolicy;
+			AlphaCadenceCorrectionInput debtInput = Input(60.012);
+			debtInput.presentationDebt = 0;
+			const auto debtBlocked = AdvanceUntilDue(debtPolicy, debtInput);
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::DropPresentationDebtMissing),
+				Reason(debtBlocked.blockReason));
+
+			AlphaCadenceCorrectionPolicy fallbackPolicy;
+			AlphaCadenceCorrectionInput fallbackInput = Input(60.012);
+			fallbackInput.oldestQueuedAgeMs = 0.0;
+			const auto fallbackBlocked =
+				AdvanceUntilDue(fallbackPolicy, fallbackInput);
+			Assert::AreEqual(
+				Reason(AlphaCadenceBlockReason::DropFallbackQueueTooYoung),
+				Reason(fallbackBlocked.blockReason));
+		}
+
+		TEST_METHOD(DueRepeatUsesBoundedNoSceneFallback)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input = Input(59.988);
+			input.queueDepth = input.desiredQueueDepth - 1;
+			input.presentationDebt = 0;
+
+			const auto decision = AdvanceUntilDue(policy, input);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::Repeat),
+				static_cast<int>(decision.action));
+			Assert::IsTrue(decision.deadlineFallback);
+			Assert::AreEqual(Reason(AlphaCadenceBlockReason::None),
+				Reason(decision.blockReason));
 		}
 
 		TEST_METHOD(GenerationReplacementClearsPendingAction)
@@ -188,6 +313,9 @@ namespace Tests
 			input.presentationDebt = 1;
 			const auto ambiguous = policy.Evaluate(input);
 			Assert::IsTrue(ambiguous.verificationCompleted);
+			Assert::AreEqual(
+				static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(ambiguous.verificationAction));
 			Assert::IsFalse(ambiguous.lastVerificationSucceeded);
 			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
 				static_cast<int>(ambiguous.action));

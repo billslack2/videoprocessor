@@ -14,6 +14,11 @@
 #include <SubtitleRepositionMode.h>
 #include <vector>
 
+namespace UnifiedProfileRuntime
+{
+	struct Snapshot;
+}
+
 
 enum RendererState
 {
@@ -137,6 +142,16 @@ public:
 		rendererRestartRequired = false;
 		return false;
 	}
+	// Applies one coherent application-owned profile/runtime snapshot. Renderer
+	// backends consume this state but never resolve keys or persist profiles.
+	virtual bool ApplyApplicationState(
+		const UnifiedProfileRuntime::Snapshot& snapshot,
+		CString& activeState, bool& rendererRestartRequired)
+	{
+		activeState.Empty();
+		rendererRestartRequired = false;
+		return false;
+	}
 	// Select a named renderer display profile, or "auto" to return to the
 	// configured input-driven display rules.  A selected profile is a manual
 	// override and may require the renderer to rebuild safely.
@@ -144,15 +159,6 @@ public:
 		bool& rendererRestartRequired)
 	{
 		activeRule.Empty();
-		rendererRestartRequired = false;
-		return false;
-	}
-	// Resolve one canonical unified-profile key event across all independent
-	// renderer groups. Renderers without unified profile support return false.
-	virtual bool SelectUnifiedProfileKey(const CString& key, CString& activeProfiles,
-		bool& rendererRestartRequired)
-	{
-		activeProfiles.Empty();
 		rendererRestartRequired = false;
 		return false;
 	}
@@ -289,6 +295,15 @@ public:
 	virtual bool GetSceneTimingStatus(CString& status) const
 	{
 		status.Empty();
+		return false;
+	}
+	// Optional due-but-blocked detail. This is separate from the prediction so
+	// a renderer can preserve fail-closed authorization while publishing the
+	// exact gate currently withholding the predicted action.
+	virtual bool GetSceneTimingDueStatus(int& action, CString& reason) const
+	{
+		action = 0;
+		reason.Empty();
 		return false;
 	}
 

@@ -31,7 +31,8 @@ enum class MadVRNlsMappingMode
 	OFF,
 	WAITING,
 	SCOPE_PASSTHROUGH,
-	ACTIVE
+	ACTIVE,
+	SAFE_FIT
 };
 
 
@@ -42,6 +43,8 @@ struct MadVRNlsMappingDecision
 	double targetAspect = 0.0;
 	double stretchRatio = 1.0;
 	bool verticalWarp = false;
+	double safeFitFraction = 1.0;
+	bool safeFitVertical = false;
 	std::string reason;
 };
 
@@ -55,6 +58,7 @@ struct MadVRShaderRuntimeSnapshot
 	double nlsTargetAspect = 0.0;
 	uint64_t rendererGeneration = 0;
 	MadVRActivePictureGeometry activeGeometry;
+	MadVRNlsMappingDecision nlsDecision;
 };
 
 
@@ -68,6 +72,8 @@ bool ResolveMadVRNlsOutputAspect(double targetAspect,
 bool MadVROutputAspectRequiresRestart(unsigned long currentAspectX,
 	unsigned long currentAspectY, unsigned long desiredAspectX,
 	unsigned long desiredAspectY, double nativeAspect);
+bool MadVRNlsOutputContractIsPrepared(
+	const MadVRShaderRuntimeSnapshot& snapshot);
 
 const char* MadVRNlsMappingModeName(MadVRNlsMappingMode mode);
 
@@ -76,15 +82,18 @@ class MadVRShaderRuntimeState
 {
 public:
 	MadVRShaderRuntimeSnapshot GetSnapshot() const;
+	bool PrepareNlsOutputContractRendererReplacement();
 	uint64_t BeginRendererGeneration();
 	void SetRuleSelection(const std::string& requestedRule,
 		const std::string& effectiveRule, MadVRNlsMappingMode nlsMode);
 	void SetRequestedRule(const std::string& requestedRule);
 	void SetEffectiveRule(const std::string& effectiveRule);
 	void SetNlsTargetAspect(double targetAspect);
+	void SetNlsDecision(const MadVRNlsMappingDecision& decision);
 	bool SetActiveGeometry(const MadVRActivePictureGeometry& geometry);
 
 private:
 	mutable std::mutex m_mutex;
 	MadVRShaderRuntimeSnapshot m_state;
+	bool m_preserveGeometryOnNextRenderer = false;
 };

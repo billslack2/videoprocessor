@@ -11,6 +11,10 @@
 #include <dvdmedia.h>
 
 #include <guid.h>
+#include <AspectRatio.h>
+#include <ConfigFile.h>
+#include <RendererProfileConfig.h>
+#include <UnifiedProfileRuntime.h>
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
@@ -354,8 +358,12 @@ void DirectShowGenericHDRVideoRenderer::UpdateActiveShaderSelection(
 {
 	m_activeShaders.clear();
 	m_activeShaderRule = TEXT("None");
+	m_activeShaderCompanionLabel.Empty();
 	if (!shaderSelection.ruleLabel.empty())
 		m_activeShaderRule.Format(TEXT("%S"), shaderSelection.ruleLabel.c_str());
+	if (!shaderSelection.companionRuleLabel.empty())
+		m_activeShaderCompanionLabel.Format(
+			TEXT("%S"), shaderSelection.companionRuleLabel.c_str());
 	for (const ActiveMadVRShader& shader : shaderSelection.activeShaders)
 	{
 		CString label;
@@ -411,6 +419,9 @@ void DirectShowGenericHDRVideoRenderer::UpdateNlsOsdMode(
 			TEXT("NLS: Scope passthrough") :
 			TEXT("NLS: Linear passthrough");
 		break;
+	case MadVRNlsMappingMode::SAFE_FIT:
+		m_activeShaderRule = TEXT("NLS: Safe fit");
+		break;
 	case MadVRNlsMappingMode::WAITING:
 		m_activeShaderRule = TEXT("NLS: Waiting");
 		break;
@@ -418,6 +429,11 @@ void DirectShowGenericHDRVideoRenderer::UpdateNlsOsdMode(
 	default:
 		m_activeShaderRule = TEXT("NLS: Off");
 		break;
+	}
+	if (!m_activeShaderCompanionLabel.IsEmpty())
+	{
+		m_activeShaderRule += TEXT(" + ");
+		m_activeShaderRule += m_activeShaderCompanionLabel;
 	}
 }
 
@@ -437,6 +453,26 @@ bool DirectShowGenericHDRVideoRenderer::DoesOutputAspectRequireRestart(
 	return MadVROutputAspectRequiresRestart(
 		m_outputAspectRatioX, m_outputAspectRatioY,
 		desiredAspectX, desiredAspectY, nativeAspect);
+}
+
+bool DirectShowGenericHDRVideoRenderer::TryDynamicOutputAspect(
+	unsigned long desiredAspectX, unsigned long desiredAspectY)
+{
+	if (!m_liveSource || !m_liveSource->GetVideoOutputPin() ||
+		!m_liveSource->GetVideoOutputPin()->
+			RequestDynamicPictureAspectRatio(
+				desiredAspectX, desiredAspectY))
+		return false;
+	m_outputAspectRatioX = desiredAspectX;
+	m_outputAspectRatioY = desiredAspectY;
+	DebugLog::Log(
+		"Shaders: output picture aspect changing dynamically to %s; "
+		"renderer_restart=0",
+		desiredAspectX > 0 && desiredAspectY > 0 ?
+			(std::to_string(desiredAspectX) + ":" +
+				std::to_string(desiredAspectY)).c_str() :
+			"native");
+	return true;
 }
 
 
@@ -491,7 +527,8 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		MadVRShaderLoader::SetRuntimeShaderSelection(
 			std::string(ruleUtf8), std::string(ruleUtf8), decision.mode);
 		if (decision.mode == MadVRNlsMappingMode::ACTIVE ||
-			decision.mode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH)
+			decision.mode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
+			decision.mode == MadVRNlsMappingMode::SAFE_FIT)
 		{
 			if (!MadVRShaderLoader::SetRuntimeActivePictureGeometry(
 				MakeRuntimeGeometry(activeRectangle)))
@@ -505,7 +542,8 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		UpdateNlsOsdMode(decision.mode);
 		m_requestedShaderApplied =
 			decision.mode == MadVRNlsMappingMode::ACTIVE ||
-			decision.mode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH;
+			decision.mode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
+			decision.mode == MadVRNlsMappingMode::SAFE_FIT;
 		m_appliedShaderAspectRatio =
 			m_requestedShaderApplied ? activeAspectRatio : 0.0;
 		m_appliedActivePictureGeneration =
@@ -514,6 +552,13 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		activeRule = m_activeShaderRule;
 		rendererRestartRequired = DoesOutputAspectRequireRestart(
 			selection.outputAspectRatioX, selection.outputAspectRatioY);
+		if (rendererRestartRequired &&
+			TryDynamicOutputAspect(selection.outputAspectRatioX,
+				selection.outputAspectRatioY))
+			rendererRestartRequired = false;
+		if (rendererRestartRequired)
+			MadVRShaderLoader::
+				PrepareNlsOutputContractRendererReplacement();
 		DebugLog::Log(
 			"Shaders: NLS mapping change requested=%s effective=%s mapping=%s rect=%d,%d-%d,%d active_generation=%llu source=%.4f target=%.4f renderer_generation=%llu reason=\"%s\" renderer_restart=%d",
 			static_cast<const char*>(ruleUtf8),
@@ -577,6 +622,11 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 	}
 	rendererRestartRequired = DoesOutputAspectRequireRestart(
 		selection.outputAspectRatioX, selection.outputAspectRatioY);
+	if (rendererRestartRequired &&
+		m_requestedShaderRule.CompareNoCase(TEXT("nls_off")) == 0 &&
+		TryDynamicOutputAspect(selection.outputAspectRatioX,
+			selection.outputAspectRatioY))
+		rendererRestartRequired = false;
 	return !selection.ruleName.empty();
 }
 
@@ -595,6 +645,22 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 	const double activeAspectRatio = activeRectangle.aspectRatio;
 	if (m_requestedRuleUsesNlsMapping)
 	{
+		// The refresh timer runs quickly while transitions are being acquired.
+		// Avoid reparsing shader configuration when detector state cannot
+		// possibly change the current mapping.
+		if (!aspectAvailable &&
+			m_nlsMappingMode == MadVRNlsMappingMode::WAITING)
+		{
+			UpdateNlsOsdMode(MadVRNlsMappingMode::WAITING);
+			return false;
+		}
+		if (aspectAvailable && m_requestedShaderApplied &&
+			activeRectangle.generation ==
+				m_appliedActivePictureGeneration &&
+			m_screenProfileGeneration ==
+				m_appliedScreenProfileGeneration)
+			return false;
+
 		MadVRNlsMappingDecision decision;
 		if (!MadVRShaderLoader::EvaluateNlsMapping(
 			std::string(requestedUtf8), aspectAvailable,
@@ -673,6 +739,13 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		activeRule = m_activeShaderRule;
 		rendererRestartRequired = DoesOutputAspectRequireRestart(
 			selection.outputAspectRatioX, selection.outputAspectRatioY);
+		if (rendererRestartRequired &&
+			TryDynamicOutputAspect(selection.outputAspectRatioX,
+				selection.outputAspectRatioY))
+			rendererRestartRequired = false;
+		if (rendererRestartRequired)
+			MadVRShaderLoader::
+				PrepareNlsOutputContractRendererReplacement();
 		DebugLog::Log(
 			"Shaders: NLS mapping change requested=%s effective=%s mapping=%s rect=%d,%d-%d,%d active_generation=%llu source=%.4f target=%.4f renderer_generation=%llu reason=\"%s\" renderer_restart=%d",
 			static_cast<const char*>(requestedUtf8),
@@ -766,6 +839,50 @@ bool DirectShowGenericHDRVideoRenderer::SetScreenProfile(bool scopeScreen,
 				desiredAspectX, desiredAspectY) &&
 			DoesOutputAspectRequireRestart(
 				desiredAspectX, desiredAspectY));
+	return true;
+}
+
+
+bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
+	const UnifiedProfileRuntime::Snapshot& snapshot,
+	CString& activeState,
+	bool& rendererRestartRequired)
+{
+	activeState.Empty();
+	rendererRestartRequired = false;
+	const RendererProfileConfig::ResolvedViewport& viewport =
+		snapshot.viewport;
+	m_nlsTargetAspect = viewport.screenAspect.value;
+	MadVRShaderLoader::SetRuntimeNlsTargetAspect(m_nlsTargetAspect);
+	m_screenProfileGeneration = viewport.generation;
+	if (!m_requestedShaderRule.IsEmpty())
+	{
+		CString activeRule = m_activeShaderRule;
+		bool mappingRestartRequired = false;
+		RefreshShaderRule(activeRule, mappingRestartRequired);
+		unsigned long desiredAspectX = 0;
+		unsigned long desiredAspectY = 0;
+		rendererRestartRequired = mappingRestartRequired ||
+			(m_requestedRuleUsesNlsMapping &&
+				MadVRShaderLoader::GetRuntimeOutputAspectRatio(
+					desiredAspectX, desiredAspectY) &&
+				DoesOutputAspectRequireRestart(
+					desiredAspectX, desiredAspectY));
+	}
+	activeState.Format(TEXT("Viewport: %S (%S)"),
+		viewport.profile.c_str(),
+		viewport.screenAspect.Canonical().c_str());
+	DebugLog::Log(
+		"DirectShow application viewport profile=%s aspect=%s numeric=%.7f subtitle_fit=%d subtitle_hold_ms=%llu subtitle_padding=%d generation=%llu renderer_restart=%d",
+		viewport.profile.c_str(),
+		viewport.screenAspect.Canonical().c_str(),
+		viewport.screenAspect.value,
+		viewport.subtitleFit ? 1 : 0,
+		static_cast<unsigned long long>(
+			viewport.subtitleHoldMilliseconds),
+		viewport.subtitlePaddingPixels,
+		static_cast<unsigned long long>(m_screenProfileGeneration),
+		rendererRestartRequired ? 1 : 0);
 	return true;
 }
 

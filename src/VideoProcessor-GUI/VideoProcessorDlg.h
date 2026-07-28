@@ -18,6 +18,7 @@
 #include <PixelValueRange.h>
 #include <CCie1931Control.h>
 #include <IRenderer.h>
+#include <UnifiedProfileRuntime.h>
 #include <VideoFrame.h>
 #include <FullscreenVideoWindow.h>
 #include <VideoConversionOverride.h>
@@ -50,6 +51,7 @@
 #define LLDV_CHANGE_RESTART_TIMER_ID 6
 #define UI_LAYOUT_RESTORE_TIMER_ID 7
 #define SHADER_RULE_REFRESH_TIMER_ID 8
+#define SHADER_RULE_REFRESH_INTERVAL_MS 25
 
 
 
@@ -72,18 +74,17 @@ enum class HdrLuminanceOptions
 	HDR_LUMINANCE_USER,
 };
 
-// Every renderer interruption is classified before it is scheduled.  Queue
-// depth is deliberately not a reset reason: live HDMI is allowed to run with
-// an empty VP queue when conversion and delivery keep pace.
+// Every renderer interruption is classified before it is scheduled.
 enum class RendererResetReason
 {
 	None,
 	Manual,
-	Startup,
+	PostRendererStart,
 	DisplayTransition,
 	Resize,
 	QueueSizeChange,
 	TimingOffsetChange,
+	QueuePressure,
 };
 
 
@@ -374,8 +375,8 @@ protected:
 	RendererResetReason m_pendingResetReason = RendererResetReason::None;
 	// Reset() can emit another RENDERSTATE_RENDERING callback. This marker is
 	// reset only when a new renderer graph is constructed.
-	bool m_startupGraphReprimeCompleted = false;
 	ULONGLONG m_queueResetIgnoreEventsUntil = 0;
+	bool m_displayTransitionAwaitingRenderer = false;
 	UINT_PTR m_rendererStartTime = 0;  // Tick count when renderer started rendering
 	int m_queueResetDelaySeconds = 5;
 	int m_queueResetHighWaterPercent = 75;
@@ -416,6 +417,7 @@ protected:
 	bool m_rendererFrameBaselineValid = false;
 
 	std::atomic_bool m_deliverCaptureDataToRenderer = false;
+	UnifiedProfileRuntime::Runtime m_profileRuntime;
 	std::map<WORD, CString> m_unifiedProfileShortcutKeys;
 	WORD m_lastUnifiedProfileCommand = 0;
 	DWORD m_lastUnifiedProfileCommandTime = 0;
@@ -499,6 +501,10 @@ protected:
 	bool BuildPushVideoState();
 	void BuildPushRestartVideoState();
 	void ScheduleNewLldvRendererRestart();
+	DisplayRuleExpression::ValueLookup GetUnifiedProfileSourceLookup() const;
+	void ApplyUnifiedProfileSnapshot(
+		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
+		bool allowRestart);
 
 	// Track effective EOTF the renderer is currently configured for (post-UI overrides)
 	EOTF m_lastEffectiveEotf = EOTF::UNKNOWN;

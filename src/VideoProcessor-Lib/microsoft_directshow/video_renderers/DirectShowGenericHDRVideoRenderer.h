@@ -52,6 +52,10 @@ public:
 		bool& rendererRestartRequired) override;
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile,
 		bool& rendererRestartRequired) override;
+	bool ApplyApplicationState(
+		const UnifiedProfileRuntime::Snapshot& snapshot,
+		CString& activeState,
+		bool& rendererRestartRequired) override;
 
 protected:
 
@@ -67,6 +71,8 @@ private:
 	void UpdateNlsOsdMode(MadVRNlsMappingMode mode);
 	bool DoesOutputAspectRequireRestart(unsigned long desiredAspectX,
 		unsigned long desiredAspectY) const;
+	bool TryDynamicOutputAspect(
+		unsigned long desiredAspectX, unsigned long desiredAspectY);
 	MadVRActivePictureGeometry MakeRuntimeGeometry(
 		const ActivePictureRectangle& rectangle) const;
 
@@ -76,6 +82,7 @@ private:
 	const DXVA_VideoTransferMatrix m_forceVideoTransferMatrix;
 	const DXVA_VideoPrimaries m_forceVideoPrimaries;
 	CString m_activeShaderRule = TEXT("None");
+	CString m_activeShaderCompanionLabel;
 	std::vector<CString> m_activeShaders;
 	unsigned long m_outputAspectRatioX = 0;
 	unsigned long m_outputAspectRatioY = 0;

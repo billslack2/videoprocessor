@@ -44,11 +44,13 @@ public:
 		double& secondsFromDeadline, uint64_t& correctionTick) const override;
 	bool SceneTimingRatesCompatible() const override;
 	bool GetSceneTimingStatus(CString& status) const override;
+	bool GetSceneTimingDueStatus(int& action, CString& reason) const override;
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile,
 		bool& rendererRestartRequired) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
-	bool SelectUnifiedProfileKey(const CString& key, CString& activeProfiles,
+	bool ApplyApplicationState(const UnifiedProfileRuntime::Snapshot& snapshot,
+		CString& activeState,
 		bool& rendererRestartRequired) override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;

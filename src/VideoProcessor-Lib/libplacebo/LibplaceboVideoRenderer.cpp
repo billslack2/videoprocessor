@@ -3,7 +3,9 @@
 #include "LibplaceboVideoRenderer.h"
 
 #include <ConfigFile.h>
+#include <AspectRatio.h>
 #include <RendererProfileConfig.h>
+#include <UnifiedProfileRuntime.h>
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
 #include <libplacebo/AlphaCadenceCorrectionPolicy.h>
@@ -56,6 +58,79 @@ namespace
 		return QueryPerformanceCounter(&value) ? value.QuadPart : 0;
 	}
 
+	const char* AlphaCadenceActionText(AlphaCadenceAction action)
+	{
+		switch (action)
+		{
+		case AlphaCadenceAction::Drop:
+			return "drop";
+		case AlphaCadenceAction::Repeat:
+			return "repeat";
+		default:
+			return "none";
+		}
+	}
+
+	const char* AlphaCadenceBlockReasonText(
+		AlphaCadenceBlockReason reason)
+	{
+		switch (reason)
+		{
+		case AlphaCadenceBlockReason::None:
+			return "none";
+		case AlphaCadenceBlockReason::Disabled:
+			return "disabled";
+		case AlphaCadenceBlockReason::PresentationEvidenceUnavailable:
+			return "presentation_evidence_unavailable";
+		case AlphaCadenceBlockReason::InvalidRates:
+			return "invalid_rates";
+		case AlphaCadenceBlockReason::RateMismatchTooLarge:
+			return "rate_mismatch_too_large";
+		case AlphaCadenceBlockReason::StabilizingRates:
+			return "stabilizing_rates";
+		case AlphaCadenceBlockReason::NoActionableMismatch:
+			return "no_actionable_mismatch";
+		case AlphaCadenceBlockReason::BeforeDeadline:
+			return "before_deadline";
+		case AlphaCadenceBlockReason::Cooldown:
+			return "cooldown";
+		case AlphaCadenceBlockReason::VerificationPending:
+			return "verification_pending";
+		case AlphaCadenceBlockReason::DropQueueNotAboveDesired:
+			return "drop_queue_not_above_desired";
+		case AlphaCadenceBlockReason::RepeatQueueNotBelowDesired:
+			return "repeat_queue_not_below_desired";
+		case AlphaCadenceBlockReason::DropPresentationDebtMissing:
+			return "drop_presentation_debt_missing";
+		case AlphaCadenceBlockReason::RepeatPresentationDebtPresent:
+			return "repeat_presentation_debt_present";
+		case AlphaCadenceBlockReason::WaitingForFreshScene:
+			return "waiting_for_fresh_scene";
+		case AlphaCadenceBlockReason::FallbackNotMature:
+			return "fallback_not_mature";
+		case AlphaCadenceBlockReason::DropFallbackQueueTooYoung:
+			return "drop_fallback_queue_too_young";
+		default:
+			return "unknown";
+		}
+	}
+
+	const char* AlphaPresentationEvidenceText(
+		AlphaPresentationEvidence evidence)
+	{
+		switch (evidence)
+		{
+		case AlphaPresentationEvidence::Stable:
+			return "stable";
+		case AlphaPresentationEvidence::Warming:
+			return "warming";
+		case AlphaPresentationEvidence::Disjoint:
+			return "disjoint";
+		default:
+			return "unavailable";
+		}
+	}
+
 	constexpr const char* RENDERER_STATE_FILENAME =
 		"VideoProcessorRenderer.state";
 	constexpr const char* SHADER_CACHE_RELATIVE_PATH =
@@ -64,9 +139,6 @@ namespace
 		256u * 1024u * 1024u;
 	std::mutex g_runtimeDisplayRuleMutex;
 	std::string g_runtimeManualDisplayRule;
-	std::map<std::string, std::string> g_runtimeManualUnifiedProfiles;
-	std::map<std::string, std::string> g_committedManualUnifiedProfiles;
-	std::string g_loadedUnifiedStatePath;
 
 	std::string NvApiStatusText(NvAPI_Status status)
 	{
@@ -566,100 +638,6 @@ namespace
 		return stream.str();
 	}
 
-	std::map<std::string, std::string> LoadUnifiedProfileState(
-		const ConfigFile& config, const RendererProfileConfig::Model& model)
-	{
-		std::map<std::string, std::string> result;
-		const std::string path = RendererProfileConfig::StatePath(config);
-		std::ifstream input(path);
-		if (!input.is_open()) return result;
-		std::string legacyScreenProfile;
-		std::string line;
-		while (std::getline(input, line))
-		{
-			line = ConfigFile::Trim(line);
-			if (line.empty() || line.front() == '#' || line.front() == ';') continue;
-			const size_t colon = line.find(':');
-			const size_t equals = line.find('=');
-			const size_t separator = colon == std::string::npos ? equals :
-				(equals == std::string::npos ? colon : std::min(colon, equals));
-			if (separator == std::string::npos) continue;
-			const std::string key =
-				ConfigFile::NormalizeName(line.substr(0, separator));
-			const std::string value =
-				ConfigFile::NormalizeName(line.substr(separator + 1));
-			if (key == "screen_profile" && (value == "normal" || value == "scope"))
-			{
-				legacyScreenProfile = value;
-				continue;
-			}
-			if (key.rfind("profile.", 0) != 0) continue;
-			const std::string groupName = key.substr(8);
-			for (const RendererProfileConfig::Group& group : model.groups)
-				if (group.name == groupName && group.persistSelection &&
-					std::find(group.profiles.begin(), group.profiles.end(), value) != group.profiles.end())
-				{
-					result[groupName] = value;
-					break;
-				}
-		}
-		// Import the legacy viewport key when no named viewport selection is
-		// present. State is intentionally unversioned and uses stable names.
-		if (result.find("viewport") == result.end() &&
-			path == RendererStatePath() && !legacyScreenProfile.empty())
-		{
-			for (const RendererProfileConfig::Group& group : model.groups)
-				if (group.name == "viewport" && group.persistSelection &&
-					std::find(group.profiles.begin(), group.profiles.end(),
-						legacyScreenProfile) != group.profiles.end())
-				{
-					result["viewport"] = legacyScreenProfile;
-					break;
-				}
-		}
-		if (!result.empty())
-			DebugLog::Log("restored %u unified manual profile selection(s) from %s",
-				static_cast<unsigned int>(result.size()), path.c_str());
-		return result;
-	}
-
-	bool PersistUnifiedProfileState(const ConfigFile& config,
-		const RendererProfileConfig::Model& model,
-		const std::map<std::string, std::string>& selections)
-	{
-		const std::string path = RendererProfileConfig::StatePath(config);
-		const std::string temporaryPath = path + ".tmp";
-		std::ofstream output(temporaryPath, std::ios::out | std::ios::trunc);
-		if (!output.is_open()) return false;
-		output << "# Managed by VideoProcessor.\n";
-		const bool defaultStatePath = path == RendererStatePath();
-		const auto viewport = selections.find("viewport");
-		if (defaultStatePath && viewport != selections.end() &&
-			(viewport->second == "normal" || viewport->second == "scope"))
-			output << "screen_profile: " << viewport->second << "\n";
-		for (const RendererProfileConfig::Group& group : model.groups)
-		{
-			if (!group.persistSelection) continue;
-			const auto selected = selections.find(group.name);
-			if (selected != selections.end())
-				output << "profile." << group.name << ": " << selected->second << "\n";
-		}
-		output.close();
-		if (!output)
-		{
-			DeleteFileA(temporaryPath.c_str());
-			return false;
-		}
-		if (!MoveFileExA(temporaryPath.c_str(), path.c_str(),
-			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-		{
-			DeleteFileA(temporaryPath.c_str());
-			return false;
-		}
-		DebugLog::Log("committed unified profile state to %s", path.c_str());
-		return true;
-	}
-
 	struct DisplayRule
 	{
 		std::string name;
@@ -675,69 +653,7 @@ namespace
 	bool LookupUnifiedSourceValue(const VideoState& state,
 		const std::string& variable, std::string& value)
 	{
-		if (variable == "eotf" || variable == "transfer")
-		{
-			switch (state.eotf)
-			{
-			case EOTF::SDR: value = "sdr"; break;
-			case EOTF::HDR: value = "hdr"; break;
-			case EOTF::PQ: value = "pq"; break;
-			case EOTF::HLG: value = "hlg"; break;
-			default: value = "unknown"; break;
-			}
-			return true;
-		}
-		if (variable == "colorspace" || variable == "primaries")
-		{
-			switch (state.colorspace)
-			{
-			case ColorSpace::REC_601_525: value = "rec601_525"; break;
-			case ColorSpace::REC_601_576:
-			case ColorSpace::REC_601_625: value = "rec601_625"; break;
-			case ColorSpace::REC_709: value = "rec709"; break;
-			case ColorSpace::P3_D65: value = "p3_d65"; break;
-			case ColorSpace::P3_DCI: value = "p3_dci"; break;
-			case ColorSpace::P3_D60: value = "p3_d60"; break;
-			case ColorSpace::BT_2020: value = "bt2020"; break;
-			default: value = "unknown"; break;
-			}
-			return true;
-		}
-		if (variable == "format")
-		{
-			value = CStringA(ToString(state.videoFrameEncoding)).GetString();
-			return true;
-		}
-		if (variable == "hdr_metadata")
-		{
-			value = state.hdrData && state.hdrData->IsValid() ? "true" : "false";
-			return true;
-		}
-		if (!state.displayMode) return false;
-		if (variable == "interlaced")
-			value = state.displayMode->IsInterlaced() ? "true" : "false";
-		else if (variable == "scan")
-			value = state.displayMode->IsInterlaced() ? "interlaced" : "progressive";
-		else if (variable == "source_rate")
-			value = std::to_string(static_cast<int>(
-				std::floor(state.displayMode->RefreshRateHz())));
-		else if (variable == "cadence")
-		{
-			std::ostringstream cadence;
-			cadence.imbue(std::locale::classic());
-			cadence.precision(17);
-			cadence << state.displayMode->RefreshRateHz();
-			value = cadence.str();
-		}
-		else if (variable == "width")
-			value = std::to_string(state.displayMode->FrameWidth());
-		else if (variable == "height")
-			value = std::to_string(state.displayMode->FrameHeight());
-		else if (variable == "resolution")
-			value = std::to_string(state.displayMode->FrameWidth()) + "x" +
-				std::to_string(state.displayMode->FrameHeight());
-		else return false;
-		return true;
+		return StateVariables::LookupVideoState(state, variable, value);
 	}
 
 	bool MatchesDisplayRule(const std::string& expression, const VideoState& state, int& specificity)
@@ -955,22 +871,13 @@ namespace
 
 	bool ParseAspectRatio(const std::string& value, double& parsed)
 	{
-		const std::string trimmed = ConfigFile::Trim(value);
-		const size_t separator = trimmed.find(':');
-		if (separator == std::string::npos)
-			return ParseDouble(trimmed, parsed);
-
-		double width = 0.0;
-		double height = 0.0;
-		if (!ParseDouble(trimmed.substr(0, separator), width) ||
-			!ParseDouble(trimmed.substr(separator + 1), height) ||
-			width <= 0.0 || height <= 0.0)
-		{
+		AspectRatio aspect;
+		std::string error;
+		if (!AspectRatioParser::Parse(
+			value, 1.0, 4.0, aspect, error))
 			return false;
-		}
-
-		parsed = width / height;
-		return std::isfinite(parsed);
+		parsed = aspect.value;
+		return true;
 	}
 
 	bool ParseRefreshRateRuleKey(
@@ -1293,29 +1200,44 @@ namespace
 						raw.c_str());
 			}
 		}
-		if (config.TryGetString(rule.section, "mode", raw))
+		const auto readViewportString = [&](const char* genericKey,
+			const char* deprecatedKey, std::string& value)
 		{
-			const std::string mode = ConfigFile::NormalizeName(raw);
-			if (mode == "normal") settings.defaultScopeScreen = false;
-			else if (mode == "scope") settings.defaultScopeScreen = true;
-			else DebugLog::Log("profile '%s': invalid viewport mode '%s'", rule.name.c_str(), raw.c_str());
-		}
-		if (config.TryGetString(rule.section, "scope_screen_aspect", raw))
+			return config.TryGetString(rule.section, genericKey, value) ||
+				config.TryGetString(rule.section, deprecatedKey, value);
+		};
+		if (readViewportString(
+			"screen_aspect", "scope_screen_aspect", raw))
 		{
 			double value = 0.0;
-			if (ParseAspectRatio(raw, value) && value >= 1.5 && value <= 4.0)
+			if (ParseAspectRatio(raw, value) && value >= 1.0 && value <= 4.0)
+			{
 				settings.scopeScreenAspect = value;
+				settings.defaultScopeScreen =
+					std::abs(value - 16.0 / 9.0) > 0.0001;
+			}
 		}
-		if (config.TryGetBool(rule.section, "scope_subtitle_fit", settings.scopeSubtitleFit) == false &&
-			config.TryGetString(rule.section, "scope_subtitle_fit", raw))
-			DebugLog::Log("profile '%s': invalid scope_subtitle_fit '%s'", rule.name.c_str(), raw.c_str());
-		if (config.TryGetString(rule.section, "scope_subtitle_hold_seconds", raw))
+		const auto readViewportBool = [&](const char* genericKey,
+			const char* deprecatedKey, bool& value)
+		{
+			return config.TryGetBool(rule.section, genericKey, value) ||
+				config.TryGetBool(rule.section, deprecatedKey, value);
+		};
+		if (!readViewportBool(
+			"subtitle_fit", "scope_subtitle_fit", settings.scopeSubtitleFit) &&
+			readViewportString(
+				"subtitle_fit", "scope_subtitle_fit", raw))
+			DebugLog::Log("profile '%s': invalid subtitle_fit '%s'",
+				rule.name.c_str(), raw.c_str());
+		if (readViewportString("subtitle_hold_seconds",
+			"scope_subtitle_hold_seconds", raw))
 		{
 			double seconds = 0.0;
 			if (ParseDouble(raw, seconds) && seconds >= 0.0 && seconds <= 30.0)
 				settings.scopeSubtitleHoldMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
 		}
-		if (config.TryGetString(rule.section, "scope_subtitle_padding_pixels", raw))
+		if (readViewportString("subtitle_padding_pixels",
+			"scope_subtitle_padding_pixels", raw))
 		{
 			double pixels = 0.0;
 			if (ParseDouble(raw, pixels) && pixels >= 0.0 && pixels <= 500.0)
@@ -2315,6 +2237,259 @@ struct LibplaceboVideoRenderer::Impl
 	bool outputContractLogged = false;
 	unsigned int diagnosticReadbackFramesRemaining = 30;
 	bool diagnosticReadbackComplete = false;
+	bool cadenceLogInitialized = false;
+	uint64_t cadenceLoggedPolicyGeneration = 0;
+	bool cadenceLoggedDue = false;
+	AlphaCadenceBlockReason cadenceLoggedBlockReason =
+		AlphaCadenceBlockReason::None;
+	uint64_t cadenceNextDueSummaryTick = 0;
+	uint64_t cadenceNextActionId = 0;
+	uint64_t cadencePendingActionId = 0;
+	AlphaCadenceAction cadencePendingAction =
+		AlphaCadenceAction::None;
+
+	void LogCadencePolicyEvent(
+		const char* event,
+		const AlphaCadenceCorrectionDecision& decision,
+		uint64_t queueGeneration,
+		uint64_t actionId = 0) const
+	{
+		const AlphaCadenceDiagnosticSnapshot& snapshot =
+			decision.diagnostic;
+		const AlphaCadenceAction requestedAction =
+			decision.action != AlphaCadenceAction::None
+				? decision.action : decision.predictedAction;
+		DebugLog::Log(
+			"Alpha cadence policy: event=%s action_id=%llu policy_generation=%llu detector_generation=%llu presentation_generation=%llu queue_generation=%llu source=%llu present_id=%u evidence=%s rate_samples=%u action=%s authorized=%d reason=%s phase=%.9f deadline_s=%+.6f raw_ppm=%+.3f filtered_ppm=%.3f capture_hz=%.6f display_hz=%.6f queue=%zu/%zu oldest_ms=%.3f debt=%llu scene_event=%llu scene_safe=%d scene_fresh=%d scene_authorized=%d planned_frames=%u fallback_frames=%u fallback_mature=%d fallback_eligible=%d cooldown_frames=%u verification_pending=%d",
+			event,
+			static_cast<unsigned long long>(actionId),
+			static_cast<unsigned long long>(snapshot.policyGeneration),
+			static_cast<unsigned long long>(snapshot.detectorGeneration),
+			static_cast<unsigned long long>(
+				snapshot.presentationGeneration),
+			static_cast<unsigned long long>(queueGeneration),
+			static_cast<unsigned long long>(snapshot.sourceSequence),
+			snapshot.lastPresentId,
+			AlphaPresentationEvidenceText(snapshot.presentationEvidence),
+			decision.rateFilterSamples,
+			AlphaCadenceActionText(requestedAction),
+			decision.action != AlphaCadenceAction::None ? 1 : 0,
+			AlphaCadenceBlockReasonText(decision.blockReason),
+			snapshot.phaseFrames,
+			decision.secondsUntilCorrection,
+			snapshot.rawMismatchPpm,
+			snapshot.filteredMismatchPpm,
+			snapshot.captureRateHz,
+			snapshot.displayRateHz,
+			snapshot.queueDepth,
+			snapshot.desiredQueueDepth,
+			snapshot.oldestQueuedAgeMs,
+			static_cast<unsigned long long>(snapshot.presentationDebt),
+			static_cast<unsigned long long>(snapshot.sceneEventId),
+			snapshot.safeSceneBoundary ? 1 : 0,
+			snapshot.sceneEventFresh ? 1 : 0,
+			snapshot.sceneAuthorized ? 1 : 0,
+			snapshot.plannedFrames,
+			snapshot.fallbackFrames,
+			snapshot.fallbackMature ? 1 : 0,
+			snapshot.fallbackEligible ? 1 : 0,
+			snapshot.cooldownFrames,
+			decision.verificationPending ? 1 : 0);
+	}
+
+	void UpdateCadenceDiagnostics(
+		AlphaCadenceCorrectionDecision& decision,
+		uint64_t queueGeneration)
+	{
+		const uint64_t nowTick = GetTickCount64();
+		const uint64_t policyGeneration =
+			decision.diagnostic.policyGeneration;
+		if (!cadenceLogInitialized ||
+			policyGeneration != cadenceLoggedPolicyGeneration)
+		{
+			if (cadencePendingActionId != 0)
+			{
+				DebugLog::Log(
+					"Alpha cadence verification: event=generation_replaced action_id=%llu action=%s old_policy_generation=%llu new_policy_generation=%llu source=%llu present_id=%u",
+					static_cast<unsigned long long>(
+						cadencePendingActionId),
+					AlphaCadenceActionText(cadencePendingAction),
+					static_cast<unsigned long long>(
+						cadenceLoggedPolicyGeneration),
+					static_cast<unsigned long long>(policyGeneration),
+					static_cast<unsigned long long>(
+						decision.diagnostic.sourceSequence),
+					decision.diagnostic.lastPresentId);
+				cadencePendingActionId = 0;
+				cadencePendingAction = AlphaCadenceAction::None;
+			}
+			cadenceLoggedPolicyGeneration = policyGeneration;
+			cadenceLogInitialized = true;
+			cadenceLoggedDue = false;
+			cadenceLoggedBlockReason =
+				AlphaCadenceBlockReason::None;
+			cadenceNextDueSummaryTick = 0;
+			LogCadencePolicyEvent(
+				"generation_changed", decision, queueGeneration);
+		}
+
+		if (decision.verificationCompleted)
+		{
+			DebugLog::Log(
+				"Alpha cadence verification: event=completed action_id=%llu action=%s policy_generation=%llu source=%llu present_id=%u debt=%llu result=%s",
+				static_cast<unsigned long long>(
+					cadencePendingActionId),
+				AlphaCadenceActionText(decision.verificationAction),
+				static_cast<unsigned long long>(policyGeneration),
+				static_cast<unsigned long long>(
+					decision.diagnostic.sourceSequence),
+				decision.diagnostic.lastPresentId,
+				static_cast<unsigned long long>(
+					decision.diagnostic.presentationDebt),
+				decision.lastVerificationSucceeded
+					? "verified" : "ambiguous");
+			cadencePendingActionId = 0;
+			cadencePendingAction = AlphaCadenceAction::None;
+		}
+
+		const bool blockedDue =
+			decision.due &&
+			decision.action == AlphaCadenceAction::None;
+		if (blockedDue)
+		{
+			const bool entered = !cadenceLoggedDue;
+			const bool reasonChanged =
+				cadenceLoggedDue &&
+				decision.blockReason != cadenceLoggedBlockReason;
+			const bool prolonged =
+				!entered && !reasonChanged &&
+				nowTick >= cadenceNextDueSummaryTick;
+			if (entered || reasonChanged || prolonged)
+			{
+				LogCadencePolicyEvent(
+					entered ? "due_entered" :
+					(reasonChanged ? "due_reason_changed" :
+						"due_prolonged"),
+					decision, queueGeneration);
+				cadenceNextDueSummaryTick = nowTick + 30000;
+			}
+			cadenceLoggedDue = true;
+			cadenceLoggedBlockReason = decision.blockReason;
+		}
+		else if (cadenceLoggedDue)
+		{
+			LogCadencePolicyEvent(
+				decision.action != AlphaCadenceAction::None
+					? "due_authorized" : "due_cleared",
+				decision, queueGeneration);
+			cadenceLoggedDue = false;
+			cadenceLoggedBlockReason =
+				AlphaCadenceBlockReason::None;
+			cadenceNextDueSummaryTick = 0;
+		}
+
+		if (decision.action != AlphaCadenceAction::None)
+		{
+			if (++cadenceNextActionId == 0)
+				++cadenceNextActionId;
+			decision.actionId = cadenceNextActionId;
+			cadencePendingActionId = decision.actionId;
+			cadencePendingAction = decision.action;
+			LogCadencePolicyEvent(
+				"authorized", decision, queueGeneration,
+				decision.actionId);
+		}
+	}
+
+	// The caller holds renderMutex. A failed native outcome restores the phase
+	// reservation exactly once and clears the diagnostic verification link.
+	void RecordCadenceNativeOutcome(
+		const AlphaCadenceCorrectionDecision& decision,
+		uint64_t queueGeneration,
+		const char* outcome,
+		bool succeeded,
+		const char* ownership,
+		size_t nativeQueueDepth,
+		uint64_t actionCount,
+		const char* detail = "none")
+	{
+		if (!succeeded)
+		{
+			cadenceCorrectionPolicy.CancelPendingAction();
+			if (cadencePendingActionId == decision.actionId)
+			{
+				cadencePendingActionId = 0;
+				cadencePendingAction = AlphaCadenceAction::None;
+			}
+		}
+		DebugLog::Log(
+			"Alpha cadence native: action_id=%llu action=%s outcome=%s success=%d policy_generation=%llu detector_generation=%llu queue_generation=%llu source=%llu present_id=%u queue=%zu/%zu native_queue_depth=%zu debt=%llu counter=%llu rollback=%d ownership=%s detail=%s",
+			static_cast<unsigned long long>(decision.actionId),
+			AlphaCadenceActionText(decision.action),
+			outcome,
+			succeeded ? 1 : 0,
+			static_cast<unsigned long long>(
+				decision.diagnostic.policyGeneration),
+			static_cast<unsigned long long>(
+				decision.diagnostic.detectorGeneration),
+			static_cast<unsigned long long>(queueGeneration),
+			static_cast<unsigned long long>(
+				decision.diagnostic.sourceSequence),
+			decision.diagnostic.lastPresentId,
+			decision.diagnostic.queueDepth,
+			decision.diagnostic.desiredQueueDepth,
+			nativeQueueDepth,
+			static_cast<unsigned long long>(
+				decision.diagnostic.presentationDebt),
+			static_cast<unsigned long long>(actionCount),
+			succeeded ? 0 : 1,
+			ownership,
+			detail && *detail ? detail : "none");
+	}
+
+	// The caller holds renderMutex. A repeat becomes a counted native action
+	// only when the retained frame completes its second render.
+	void RecordCadenceRepeatConsumption(
+		uint64_t actionId,
+		uint64_t policyGeneration,
+		uint64_t detectorGeneration,
+		uint64_t queueGeneration,
+		uint64_t sourceSequence,
+		uint32_t presentId,
+		uint64_t presentationDebt,
+		double deadlineSeconds,
+		bool succeeded,
+		size_t queueDepth,
+		uint64_t actionCount)
+	{
+		if (!succeeded)
+		{
+			cadenceCorrectionPolicy.CancelPendingAction();
+			if (cadencePendingActionId == actionId)
+			{
+				cadencePendingActionId = 0;
+				cadencePendingAction = AlphaCadenceAction::None;
+			}
+		}
+		DebugLog::Log(
+			"Alpha cadence native: action_id=%llu action=repeat outcome=%s success=%d policy_generation=%llu detector_generation=%llu queue_generation=%llu source=%llu present_id=%u deadline_s=%+.6f native_queue_depth=%zu debt=%llu counter=%llu rollback=%d ownership=%s",
+			static_cast<unsigned long long>(actionId),
+			succeeded ? "repeat_consumed" :
+				"repeat_consume_render_failed",
+			succeeded ? 1 : 0,
+			static_cast<unsigned long long>(policyGeneration),
+			static_cast<unsigned long long>(detectorGeneration),
+			static_cast<unsigned long long>(queueGeneration),
+			static_cast<unsigned long long>(sourceSequence),
+			presentId,
+			deadlineSeconds,
+			queueDepth,
+			static_cast<unsigned long long>(presentationDebt),
+			static_cast<unsigned long long>(actionCount),
+			succeeded ? 0 : 1,
+			succeeded ? "released_after_second_present" :
+				"caller_release_pending");
+	}
 
 	~Impl()
 	{
@@ -4279,6 +4454,10 @@ struct LibplaceboVideoRenderer::Impl
 				frameGeneration ^
 				(sceneDetectorGeneration + 0x9e3779b97f4a7c15ULL +
 					(frameGeneration << 6) + (frameGeneration >> 2));
+			correctionInput.detectorGeneration =
+				sceneDetectorGeneration;
+			correctionInput.presentationGeneration =
+				presentation.generation;
 			correctionInput.presentationEvidence = presentation.evidence;
 			correctionInput.captureRateHz = captureRateHz;
 			correctionInput.displayRateHz = presentation.measuredDisplayHz;
@@ -4293,20 +4472,10 @@ struct LibplaceboVideoRenderer::Impl
 			correctionInput.sourceSequence = sourceSequence;
 			correctionDecision =
 				cadenceCorrectionPolicy.Evaluate(correctionInput);
+			UpdateCadenceDiagnostics(
+				correctionDecision, frameGeneration);
 			if (correctionDecision.action == AlphaCadenceAction::Drop)
 			{
-				DebugLog::Log(
-					"Alpha cadence correction: action=drop generation=%llu source=%llu scene=%llu fallback=%d debt=%llu queue=%zu/%zu phase=%.6f",
-					static_cast<unsigned long long>(frameGeneration),
-					static_cast<unsigned long long>(sourceSequence),
-					static_cast<unsigned long long>(
-						correctionDecision.sceneEventId),
-					correctionDecision.deadlineFallback ? 1 : 0,
-					static_cast<unsigned long long>(
-						presentation.sourceToPresentDebt),
-					queueDepthAfterDequeue,
-					desiredQueueDepth,
-					correctionDecision.phaseFrames);
 				return true;
 			}
 		}
@@ -4823,26 +4992,7 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 		AlphaQueuePolicy::HardCapacity(m_frameQueueDesiredDepth);
 	{
 		std::lock_guard<std::mutex> guard(g_runtimeDisplayRuleMutex);
-		ConfigFile config;
-		RendererProfileConfig::Model model;
-		std::string error;
-		if (config.Load(ConfigFile::RENDERER_FILENAME) &&
-			RendererProfileConfig::IsUnified(config) &&
-			RendererProfileConfig::Read(config, model, error))
-		{
-			const std::string statePath =
-				RendererProfileConfig::StatePath(config);
-			if (g_loadedUnifiedStatePath != statePath)
-			{
-				g_committedManualUnifiedProfiles =
-					LoadUnifiedProfileState(config, model);
-				g_runtimeManualUnifiedProfiles =
-					g_committedManualUnifiedProfiles;
-				g_loadedUnifiedStatePath = statePath;
-			}
-		}
 		m_manualDisplayRule = g_runtimeManualDisplayRule;
-		m_manualUnifiedProfiles = g_runtimeManualUnifiedProfiles;
 	}
 	if (!m_manualDisplayRule.empty())
 		DebugLog::Log("display: restored runtime manual rule '%s' for new renderer",
@@ -4862,7 +5012,7 @@ LibplaceboVideoRenderer::~LibplaceboVideoRenderer()
 		m_queueChanged.notify_all();
 		m_renderThread.join();
 	}
-	ClearQueue();
+	ClearQueue("renderer destruction");
 	m_impl.reset();
 }
 
@@ -5013,6 +5163,26 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 		const size_t queueLimit = m_useFrameQueue ? m_frameQueueMaxSize : 1;
 		while (m_frameQueue.size() >= queueLimit)
 		{
+			const auto dropCandidate = std::find_if(
+				m_frameQueue.begin(), m_frameQueue.end(),
+				[](const QueuedFrame& queuedFrame)
+				{
+					return !queuedFrame.cadenceRepeat;
+				});
+			if (dropCandidate == m_frameQueue.end())
+			{
+				DebugLog::Log(
+					"Alpha queue pressure: generation=%llu depth=%zu capacity=%zu pending_repeat_action_id=%llu; dropping incoming frame to preserve authorized repeat",
+					static_cast<unsigned long long>(
+						m_queueGeneration),
+					m_frameQueue.size(),
+					queueLimit,
+					static_cast<unsigned long long>(
+						m_frameQueue.front().cadenceActionId));
+				m_droppedFrames.fetch_add(
+					1, std::memory_order_relaxed);
+				return;
+			}
 			if (m_overflowLoggedGeneration != m_queueGeneration)
 			{
 				DebugLog::Log(
@@ -5022,8 +5192,8 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 					queueLimit);
 				m_overflowLoggedGeneration = m_queueGeneration;
 			}
-			m_frameQueue.front().frame.SourceBufferRelease();
-			m_frameQueue.pop_front();
+			dropCandidate->frame.SourceBufferRelease();
+			m_frameQueue.erase(dropCandidate);
 			m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
 		}
 		videoFrame.SourceBufferAddRef();
@@ -5188,8 +5358,6 @@ void LibplaceboVideoRenderer::Build()
 	}
 	catch (...)
 	{
-		std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
-		g_runtimeManualUnifiedProfiles = g_committedManualUnifiedProfiles;
 		throw;
 	}
 	const double nominalRate = state->displayMode->RefreshRateHz();
@@ -5204,19 +5372,6 @@ void LibplaceboVideoRenderer::Build()
 	m_scopeScreenActive.store(impl->defaultScopeScreen, std::memory_order_release);
 	m_impl = std::move(impl);
 	SetState(RendererState::RENDERSTATE_READY);
-
-	ConfigFile config;
-	RendererProfileConfig::Model model;
-	std::string error;
-	if (config.Load(ConfigFile::RENDERER_FILENAME) &&
-		RendererProfileConfig::IsUnified(config) &&
-		RendererProfileConfig::Read(config, model, error))
-	{
-		std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
-		g_committedManualUnifiedProfiles = manualUnifiedProfiles;
-		g_runtimeManualUnifiedProfiles = manualUnifiedProfiles;
-		PersistUnifiedProfileState(config, model, manualUnifiedProfiles);
-	}
 }
 
 
@@ -5276,55 +5431,18 @@ bool LibplaceboVideoRenderer::SelectDisplayRule(
 }
 
 
-bool LibplaceboVideoRenderer::SelectUnifiedProfileKey(
-	const CString& key,
-	CString& activeProfiles,
+bool LibplaceboVideoRenderer::ApplyApplicationState(
+	const UnifiedProfileRuntime::Snapshot& snapshot,
+	CString& activeState,
 	bool& rendererRestartRequired)
 {
-	activeProfiles.Empty();
+	activeState.Empty();
 	rendererRestartRequired = false;
-	ConfigFile config;
-	RendererProfileConfig::Model model;
-	std::string error;
-	if (!config.Load(ConfigFile::RENDERER_FILENAME) ||
-		!RendererProfileConfig::IsUnified(config) ||
-		!RendererProfileConfig::Read(config, model, error))
-	{
-		return false;
-	}
-
-	VideoStateComPtr state;
-	{
-		std::lock_guard<std::mutex> guard(m_stateMutex);
-		state = m_videoState;
-	}
-	std::vector<RendererProfileConfig::KeySelection> selections;
-	const std::string canonicalKey = CStringA(key).GetString();
-	if (!RendererProfileConfig::SelectForKey(model, canonicalKey,
-		[&state](const std::string& variable, std::string& value)
-		{
-			return state && LookupUnifiedSourceValue(*state, variable, value);
-		}, selections, error))
-	{
-		DebugLog::Log("unified profile key '%s' rejected: %s", canonicalKey.c_str(), error.c_str());
-		return false;
-	}
-	if (selections.empty())
-		return false;
 
 	std::unique_lock<std::mutex> guard(m_stateMutex);
-	std::map<std::string, std::string> next = m_manualUnifiedProfiles;
-	bool viewportSelected = false;
-	for (const RendererProfileConfig::KeySelection& selection : selections)
-	{
-		viewportSelected = viewportSelected || selection.group == "viewport";
-		if (selection.resetToAutomatic)
-			next.erase(selection.group);
-		else
-			next[selection.group] = selection.profile;
-	}
-	if (next == m_manualUnifiedProfiles)
-		return true;
+	const std::map<std::string, std::string>& next =
+		snapshot.effectiveSelections;
+	VideoStateComPtr state = m_videoState;
 	std::string candidateProfiles;
 	const RendererSettings candidateSettings = state ?
 		LoadRendererSettings(*state, candidateProfiles, "", next) :
@@ -5332,43 +5450,25 @@ bool LibplaceboVideoRenderer::SelectUnifiedProfileKey(
 	rendererRestartRequired = m_impl != nullptr &&
 		(!state || EffectiveSettingsFingerprint(candidateSettings, false) !=
 			m_impl->restartSettingsFingerprint);
-	m_manualUnifiedProfiles = std::move(next);
-	{
-		std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
-		g_runtimeManualUnifiedProfiles = m_manualUnifiedProfiles;
-		if (!rendererRestartRequired)
-		{
-			g_committedManualUnifiedProfiles = m_manualUnifiedProfiles;
-			ConfigFile committedConfig;
-			RendererProfileConfig::Model committedModel;
-			std::string committedError;
-			if (committedConfig.Load(ConfigFile::RENDERER_FILENAME) &&
-				RendererProfileConfig::Read(committedConfig, committedModel, committedError))
-				PersistUnifiedProfileState(committedConfig, committedModel,
-					m_manualUnifiedProfiles);
-		}
-	}
-	std::string summary;
-	for (const RendererProfileConfig::KeySelection& selection : selections)
-	{
-		if (!summary.empty()) summary += ", ";
-		summary += selection.group + "/" +
-			(selection.resetToAutomatic ? "auto" : selection.profile);
-	}
-	activeProfiles.Format(TEXT("Unified: %S"), summary.c_str());
-	if (!rendererRestartRequired && viewportSelected && m_impl)
+	m_manualUnifiedProfiles = next;
+
+	activeState.Format(TEXT("Viewport: %S (%S)"),
+		snapshot.viewport.profile.c_str(),
+		snapshot.viewport.screenAspect.Canonical().c_str());
+	if (!rendererRestartRequired && m_impl)
 	{
 		m_impl->ApplyViewportSettings(candidateSettings);
 		CString activeProfile;
 		ApplyScreenProfile(candidateSettings.defaultScopeScreen, activeProfile, false);
 		DebugLog::Log(
-			"unified viewport profile applied live: %s",
-			candidateSettings.defaultScopeScreen ? "scope" : "normal");
+			"application viewport state applied live: %s (%s)",
+			snapshot.viewport.profile.c_str(),
+			snapshot.viewport.screenAspect.Canonical().c_str());
 	}
-	DebugLog::Log("unified profile key '%s' selected %s (%s)",
-		canonicalKey.c_str(), summary.c_str(),
+	DebugLog::Log("application profile generation %llu applied (%s)",
+		static_cast<unsigned long long>(snapshot.generation),
 		rendererRestartRequired ? "renderer rebuild required" :
-			(viewportSelected ? "viewport applied live" : "effective settings unchanged"));
+			"live");
 	return true;
 }
 
@@ -5393,7 +5493,7 @@ void LibplaceboVideoRenderer::Stop()
 	m_queueChanged.notify_all();
 	if (m_renderThread.joinable())
 		m_renderThread.join();
-	ClearQueue();
+	ClearQueue("renderer stop");
 	SetState(RendererState::RENDERSTATE_STOPPED);
 }
 
@@ -5452,6 +5552,7 @@ void LibplaceboVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 			std::memory_order_release);
 		m_sceneTimingRateSamples.store(0, std::memory_order_release);
 		m_sceneTimingMismatchPpm.store(0.0, std::memory_order_release);
+		m_sceneCorrectionDueState.store(0, std::memory_order_release);
 		DebugLog::Log("libplacebo scene detection %s", enabled ? "enabled" : "disabled");
 	}
 }
@@ -5523,6 +5624,14 @@ bool LibplaceboVideoRenderer::SceneTimingRatesCompatible() const
 
 bool LibplaceboVideoRenderer::GetSceneTimingStatus(CString& status) const
 {
+	int dueAction = 0;
+	CString dueReason;
+	if (GetSceneTimingDueStatus(dueAction, dueReason))
+	{
+		status = TEXT("Due");
+		return true;
+	}
+
 	const AlphaCadenceTimingStatus timingStatus =
 		static_cast<AlphaCadenceTimingStatus>(
 			m_sceneTimingStatus.load(std::memory_order_acquire));
@@ -5532,25 +5641,71 @@ bool LibplaceboVideoRenderer::GetSceneTimingStatus(CString& status) const
 		status = TEXT("Disabled");
 		break;
 	case AlphaCadenceTimingStatus::WaitingForDxgi:
-		status = TEXT("Waiting for DXGI evidence");
+		status = TEXT("Waiting");
 		break;
 	case AlphaCadenceTimingStatus::Measuring:
-		status.Format(TEXT("Measuring DXGI rate (%u/600)"),
-			m_sceneTimingRateSamples.load(std::memory_order_acquire));
+		status = TEXT("Measuring");
 		break;
 	case AlphaCadenceTimingStatus::Matched:
-		status.Format(TEXT("Rates matched (%.2f ppm)"),
-			m_sceneTimingMismatchPpm.load(std::memory_order_acquire));
+		status = TEXT("Matched");
 		break;
 	case AlphaCadenceTimingStatus::Forecasting:
-		status.Format(TEXT("Forecasting (%.2f ppm)"),
-			m_sceneTimingMismatchPpm.load(std::memory_order_acquire));
+		status = TEXT("Forecasting");
 		break;
 	case AlphaCadenceTimingStatus::Verifying:
-		status = TEXT("Verifying correction");
+		status = TEXT("Checking");
 		break;
 	default:
-		status = TEXT("Rate mismatch unavailable");
+		status = TEXT("Unavailable");
+		break;
+	}
+	return true;
+}
+
+bool LibplaceboVideoRenderer::GetSceneTimingDueStatus(
+	int& action, CString& reason) const
+{
+	const uint32_t dueState =
+		m_sceneCorrectionDueState.load(std::memory_order_acquire);
+	const uint32_t actionCode = dueState & 0x3U;
+	action = actionCode == 2U ? 1 : (actionCode == 1U ? -1 : 0);
+	const AlphaCadenceBlockReason blockReason =
+		static_cast<AlphaCadenceBlockReason>(
+			dueState >> 2);
+	if (action == 0 || blockReason == AlphaCadenceBlockReason::None)
+	{
+		action = 0;
+		reason.Empty();
+		return false;
+	}
+
+	switch (blockReason)
+	{
+	case AlphaCadenceBlockReason::Cooldown:
+		reason = TEXT("pause");
+		break;
+	case AlphaCadenceBlockReason::VerificationPending:
+		reason = TEXT("checking");
+		break;
+	case AlphaCadenceBlockReason::DropQueueNotAboveDesired:
+	case AlphaCadenceBlockReason::RepeatQueueNotBelowDesired:
+		reason = TEXT("buffer");
+		break;
+	case AlphaCadenceBlockReason::DropPresentationDebtMissing:
+	case AlphaCadenceBlockReason::RepeatPresentationDebtPresent:
+		reason = TEXT("timing");
+		break;
+	case AlphaCadenceBlockReason::WaitingForFreshScene:
+		reason = TEXT("scene");
+		break;
+	case AlphaCadenceBlockReason::FallbackNotMature:
+		reason = TEXT("safe point");
+		break;
+	case AlphaCadenceBlockReason::DropFallbackQueueTooYoung:
+		reason = TEXT("buffer wait");
+		break;
+	default:
+		reason = TEXT("safe point");
 		break;
 	}
 	return true;
@@ -5826,6 +5981,12 @@ void LibplaceboVideoRenderer::RenderLoop()
 		size_t desiredQueueDepth = 1;
 		double oldestQueuedAgeMs = 0.0;
 		bool cadenceRepeat = false;
+		uint64_t cadenceActionId = 0;
+		uint64_t cadencePolicyGeneration = 0;
+		uint64_t cadenceDetectorGeneration = 0;
+		uint64_t cadencePresentationDebt = 0;
+		uint32_t cadencePresentId = 0;
+		double cadenceDeadlineSeconds = 0.0;
 		bool prefillReleased = false;
 		size_t prefillDepth = 0;
 		size_t prefillTarget = 0;
@@ -5860,6 +6021,18 @@ void LibplaceboVideoRenderer::RenderLoop()
 			sourceSequence = m_frameQueue.front().sourceSequence;
 			enqueueQpc = m_frameQueue.front().enqueueQpc;
 			cadenceRepeat = m_frameQueue.front().cadenceRepeat;
+			cadenceActionId =
+				m_frameQueue.front().cadenceActionId;
+			cadencePolicyGeneration =
+				m_frameQueue.front().cadencePolicyGeneration;
+			cadenceDetectorGeneration =
+				m_frameQueue.front().cadenceDetectorGeneration;
+			cadencePresentationDebt =
+				m_frameQueue.front().cadencePresentationDebt;
+			cadencePresentId =
+				m_frameQueue.front().cadencePresentId;
+			cadenceDeadlineSeconds =
+				m_frameQueue.front().cadenceDeadlineSeconds;
 			m_frameQueue.pop_front();
 
 			const size_t remainingDepth = m_frameQueue.size();
@@ -5982,6 +6155,42 @@ void LibplaceboVideoRenderer::RenderLoop()
 			DebugLog::Log("libplacebo render failure: unknown exception");
 		}
 
+		if (cadenceRepeat)
+		{
+			uint64_t repeatCount =
+				m_sceneCorrectionRepeatCount.load(
+					std::memory_order_relaxed);
+			if (rendered)
+			{
+				repeatCount =
+					m_sceneCorrectionRepeatCount.fetch_add(
+						1, std::memory_order_relaxed) + 1;
+				m_sceneLastCorrectionAction.store(
+					1, std::memory_order_release);
+				m_sceneLastCorrectionSecondsFromDeadline.store(
+					cadenceDeadlineSeconds,
+					std::memory_order_release);
+				m_sceneLastCorrectionTick.store(
+					GetTickCount64(), std::memory_order_release);
+			}
+			{
+				std::lock_guard<std::mutex> renderGuard(
+					m_impl->renderMutex);
+				m_impl->RecordCadenceRepeatConsumption(
+					cadenceActionId,
+					cadencePolicyGeneration,
+					cadenceDetectorGeneration,
+					frameGeneration,
+					sourceSequence,
+					cadencePresentId,
+					cadencePresentationDebt,
+					cadenceDeadlineSeconds,
+					rendered,
+					queueDepthAfterDequeue,
+					repeatCount);
+			}
+		}
+
 		if (!cadenceRepeat)
 		{
 			m_sceneTimingRatesCompatible.store(
@@ -6008,18 +6217,37 @@ void LibplaceboVideoRenderer::RenderLoop()
 			m_sceneTimingMismatchPpm.store(
 				correctionDecision.filteredMismatchPpm,
 				std::memory_order_release);
-			if (correctionDecision.verificationCompleted)
-			{
-				DebugLog::Log(
-					"Alpha cadence correction verification: generation=%llu result=%s",
-					static_cast<unsigned long long>(frameGeneration),
-					correctionDecision.lastVerificationSucceeded
-						? "verified" : "ambiguous");
-			}
+			const uint32_t dueAction =
+				correctionDecision.predictedAction ==
+					AlphaCadenceAction::Repeat ? 2U :
+				(correctionDecision.predictedAction ==
+					AlphaCadenceAction::Drop ? 1U : 0U);
+			const uint32_t dueState =
+				correctionDecision.due &&
+				correctionDecision.blockReason !=
+					AlphaCadenceBlockReason::None
+				? (static_cast<uint32_t>(
+					correctionDecision.blockReason) << 2) | dueAction
+				: 0U;
+			m_sceneCorrectionDueState.store(
+				dueState, std::memory_order_release);
 		}
 
 		if (!rendered)
 		{
+			if (correctionDecision.action != AlphaCadenceAction::None)
+			{
+				std::lock_guard<std::mutex> renderGuard(
+					m_impl->renderMutex);
+				m_impl->RecordCadenceNativeOutcome(
+					correctionDecision,
+					frameGeneration,
+					"render_failed",
+					false,
+					"caller_release_pending",
+					queueDepthAfterDequeue,
+					0);
+			}
 			frame.SourceBufferRelease();
 			if (staleGeneration)
 				continue;
@@ -6060,23 +6288,50 @@ void LibplaceboVideoRenderer::RenderLoop()
 
 		if (correctionDecision.action == AlphaCadenceAction::Drop)
 		{
-			m_sceneCorrectionDropCount.fetch_add(1, std::memory_order_relaxed);
-			m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+			frame.SourceBufferRelease();
+			const uint64_t dropCount =
+				m_sceneCorrectionDropCount.fetch_add(
+					1, std::memory_order_relaxed) + 1;
+			m_droppedFrames.fetch_add(
+				1, std::memory_order_relaxed);
 			m_sceneLastCorrectionAction.store(-1, std::memory_order_release);
 			m_sceneLastCorrectionSecondsFromDeadline.store(
-				0.0, std::memory_order_release);
+				correctionDecision.secondsUntilCorrection,
+				std::memory_order_release);
 			m_sceneLastCorrectionTick.store(
 				GetTickCount64(), std::memory_order_release);
-			frame.SourceBufferRelease();
+			{
+				std::lock_guard<std::mutex> renderGuard(
+					m_impl->renderMutex);
+				m_impl->RecordCadenceNativeOutcome(
+					correctionDecision,
+					frameGeneration,
+					"drop_released",
+					true,
+					"released",
+					queueDepthAfterDequeue,
+					dropCount);
+			}
 			continue;
 		}
 
 		if (correctionDecision.action == AlphaCadenceAction::Repeat)
 		{
 			bool repeatQueued = false;
+			size_t repeatQueueDepth = 0;
+			const char* repeatOutcome = "unknown";
+			std::string repeatError;
 			{
 				std::lock_guard<std::mutex> queueGuard(m_queueMutex);
-				if (!m_stopRequested && frameGeneration == m_queueGeneration)
+				if (m_stopRequested)
+				{
+					repeatOutcome = "stop_requested";
+				}
+				else if (frameGeneration != m_queueGeneration)
+				{
+					repeatOutcome = "generation_changed";
+				}
+				else
 				{
 					try
 					{
@@ -6086,40 +6341,62 @@ void LibplaceboVideoRenderer::RenderLoop()
 							frameGeneration,
 							sourceSequence,
 							enqueueQpc,
-							true });
+							true,
+							correctionDecision.actionId,
+							correctionDecision.diagnostic.policyGeneration,
+							correctionDecision.diagnostic.detectorGeneration,
+							correctionDecision.diagnostic.presentationDebt,
+							correctionDecision.diagnostic.lastPresentId,
+							correctionDecision.secondsUntilCorrection });
 						repeatQueued = true;
+						repeatQueueDepth = m_frameQueue.size();
+						repeatOutcome = "queued";
 					}
 					catch (const std::exception& e)
 					{
-						DebugLog::Log(
-							"Alpha cadence repeat enqueue failed: %s", e.what());
+						repeatOutcome = "enqueue_exception";
+						repeatError = e.what();
+					}
+					catch (...)
+					{
+						repeatOutcome =
+							"enqueue_unknown_exception";
 					}
 				}
 			}
 			if (repeatQueued)
 			{
-				m_sceneCorrectionRepeatCount.fetch_add(
-					1, std::memory_order_relaxed);
-				m_sceneLastCorrectionAction.store(
-					1, std::memory_order_release);
-				m_sceneLastCorrectionSecondsFromDeadline.store(
-					0.0, std::memory_order_release);
-				m_sceneLastCorrectionTick.store(
-					GetTickCount64(), std::memory_order_release);
-				DebugLog::Log(
-					"Alpha cadence correction: action=repeat generation=%llu source=%llu scene=%llu fallback=%d phase=%.6f",
-					static_cast<unsigned long long>(frameGeneration),
-					static_cast<unsigned long long>(sourceSequence),
-					static_cast<unsigned long long>(
-						correctionDecision.sceneEventId),
-					correctionDecision.deadlineFallback ? 1 : 0,
-					correctionDecision.phaseFrames);
+				const uint64_t repeatCount =
+					m_sceneCorrectionRepeatCount.load(
+						std::memory_order_relaxed);
+				{
+					std::lock_guard<std::mutex> renderGuard(
+						m_impl->renderMutex);
+					m_impl->RecordCadenceNativeOutcome(
+						correctionDecision,
+						frameGeneration,
+						repeatOutcome,
+						true,
+						"retained_in_queue",
+						repeatQueueDepth,
+						repeatCount);
+				}
 				m_queueChanged.notify_one();
 				continue;
 			}
 			{
 				std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
-				m_impl->cadenceCorrectionPolicy.CancelPendingAction();
+				m_impl->RecordCadenceNativeOutcome(
+					correctionDecision,
+					frameGeneration,
+					repeatOutcome,
+					false,
+					"caller_release_pending",
+					queueDepthAfterDequeue,
+					m_sceneCorrectionRepeatCount.load(
+						std::memory_order_relaxed),
+					repeatError.empty()
+						? "none" : repeatError.c_str());
 			}
 		}
 
@@ -6138,10 +6415,10 @@ void LibplaceboVideoRenderer::RenderLoop()
 }
 
 
-void LibplaceboVideoRenderer::ClearQueue()
+void LibplaceboVideoRenderer::ClearQueue(const char* reason)
 {
 	std::lock_guard<std::mutex> guard(m_queueMutex);
-	ClearQueueLocked();
+	ClearQueueLocked(reason);
 }
 
 
@@ -6154,7 +6431,7 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 	size_t capacity = 0;
 	{
 		std::lock_guard<std::mutex> guard(m_queueMutex);
-		ClearQueueLocked();
+		ClearQueueLocked(reason);
 		if (++m_queueGeneration == 0)
 			++m_queueGeneration;
 		m_overflowLoggedGeneration = 0;
@@ -6178,10 +6455,35 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 }
 
 
-void LibplaceboVideoRenderer::ClearQueueLocked()
+void LibplaceboVideoRenderer::ClearQueueLocked(const char* reason)
 {
 	for (QueuedFrame& queuedFrame : m_frameQueue)
+	{
+		if (queuedFrame.cadenceRepeat)
+		{
+			DebugLog::Log(
+				"Alpha cadence native: action_id=%llu action=repeat outcome=repeat_queue_canceled success=0 policy_generation=%llu detector_generation=%llu queue_generation=%llu source=%llu present_id=%u deadline_s=%+.6f debt=%llu counter=%llu rollback=deferred_to_policy_generation ownership=released cancel_reason=%s",
+				static_cast<unsigned long long>(
+					queuedFrame.cadenceActionId),
+				static_cast<unsigned long long>(
+					queuedFrame.cadencePolicyGeneration),
+				static_cast<unsigned long long>(
+					queuedFrame.cadenceDetectorGeneration),
+				static_cast<unsigned long long>(
+					queuedFrame.generation),
+				static_cast<unsigned long long>(
+					queuedFrame.sourceSequence),
+				queuedFrame.cadencePresentId,
+				queuedFrame.cadenceDeadlineSeconds,
+				static_cast<unsigned long long>(
+					queuedFrame.cadencePresentationDebt),
+				static_cast<unsigned long long>(
+					m_sceneCorrectionRepeatCount.load(
+						std::memory_order_relaxed)),
+				reason ? reason : "unknown");
+		}
 		queuedFrame.frame.SourceBufferRelease();
+	}
 	m_frameQueue.clear();
 }
 

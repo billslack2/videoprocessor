@@ -41,6 +41,7 @@
 #include <guid.h>
 #include <ConfigFile.h>
 #include <RendererProfileConfig.h>
+#include <UnifiedProfileRuntime.h>
 
 
 #include "VideoProcessorDlg.h"
@@ -54,11 +55,13 @@ const TCHAR* ToString(RendererResetReason reason)
 	switch (reason)
 	{
 	case RendererResetReason::Manual: return TEXT("manual");
-	case RendererResetReason::Startup: return TEXT("startup");
+	case RendererResetReason::PostRendererStart:
+		return TEXT("post-renderer-start");
 	case RendererResetReason::DisplayTransition: return TEXT("display-transition");
 	case RendererResetReason::Resize: return TEXT("resize");
 	case RendererResetReason::QueueSizeChange: return TEXT("queue-size-change");
 	case RendererResetReason::TimingOffsetChange: return TEXT("timing-offset-change");
+	case RendererResetReason::QueuePressure: return TEXT("queue-pressure");
 	default: return TEXT("none");
 	}
 }
@@ -289,6 +292,7 @@ HACCEL CreateConfiguredAccelerators(
 	if (hasMainConfig && mainConfig.TryGetString("shaders", "rules", ruleList))
 	{
 		std::set<std::string> seenRules;
+		std::map<unsigned int, WORD> shaderBindingCommands;
 		WORD nextCommand = ID_COMMAND_SHADER_RULE_FIRST;
 		for (const std::string& configuredRule : SplitConfiguredList(ruleList))
 		{
@@ -312,9 +316,23 @@ HACCEL CreateConfiguredAccelerators(
 
 			const unsigned int binding =
 				(static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
+			const auto existingShader =
+				shaderBindingCommands.find(binding);
+			if (existingShader != shaderBindingCommands.end())
+			{
+				CString ruleName;
+				ruleName.Format(TEXT("%S"), rule.c_str());
+				shaderShortcutRules[existingShader->second] += TEXT(",");
+				shaderShortcutRules[existingShader->second] += ruleName;
+				DEBUGLOG(
+					"Shader shortcut '%s' groups effect '%s' with command %u",
+					shortcut.c_str(), rule.c_str(),
+					existingShader->second);
+				continue;
+			}
 			if (!bindings.insert(binding).second)
 			{
-				DEBUGLOG("Duplicate shortcut '%s' ignored for shader rule '%s'", shortcut.c_str(), rule.c_str());
+				DEBUGLOG("Shortcut '%s' for shader effect '%s' conflicts with a non-shader command and was ignored", shortcut.c_str(), rule.c_str());
 				continue;
 			}
 
@@ -323,6 +341,7 @@ HACCEL CreateConfiguredAccelerators(
 			CString ruleName;
 			ruleName.Format(TEXT("%S"), rule.c_str());
 			shaderShortcutRules[nextCommand] = ruleName;
+			shaderBindingCommands[binding] = nextCommand;
 			++nextCommand;
 		}
 	}
@@ -1054,6 +1073,26 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 	LoadDisplayRefreshRateOverrides();
 
+	ConfigFile profileConfig;
+	if (profileConfig.Load(ConfigFile::RENDERER_FILENAME))
+	{
+		std::string profileError;
+		if (!m_profileRuntime.Initialize(profileConfig,
+			GetUnifiedProfileSourceLookup(), profileError))
+		{
+			DebugLog::Log("Unified profile runtime disabled: %s",
+				profileError.c_str());
+		}
+		else if (const auto snapshot = m_profileRuntime.GetSnapshot())
+		{
+			DebugLog::Log(
+				"Unified profile runtime restored generation %llu, viewport %s (%s)",
+				static_cast<unsigned long long>(snapshot->generation),
+				snapshot->viewport.profile.c_str(),
+				snapshot->viewport.screenAspect.Canonical().c_str());
+		}
+	}
+
 	m_blackMagicDeviceDiscoverer = new BlackMagicDeckLinkCaptureDeviceDiscoverer(*this);
 	
 	// Initialize stats overlay
@@ -1658,6 +1697,10 @@ void CVideoProcessorDlg::OnBnClickedRendererReset()
 void CVideoProcessorDlg::OnBnClickedRendererResetAutoCheck()
 {
 	const bool checked = m_rendererResetAutoCheck.GetCheck();
+	DEBUGLOG("Queue pressure auto-reset %s",
+		checked ? "enabled" : "disabled");
+	if (!checked)
+		m_consecutiveFullSeconds = 0;
 }
 
 
@@ -2061,6 +2104,7 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 				g_displayRefreshRateSampler->ResetMeasurement();
 				const ULONGLONG now = GetTickCount64();
 				if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+					!m_pendingQueueReset &&
 					now >= m_queueResetIgnoreEventsUntil)
 				{
 					RequestRendererReset(RendererResetReason::DisplayTransition, true,
@@ -2141,7 +2185,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 
 	// Renderer running, ready for frames
 	case RendererState::RENDERSTATE_RENDERING:
-
+	{
 
 
 		assert(oldRendererState == RendererState::RENDERSTATE_READY);
@@ -2183,12 +2227,32 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		ApplyStatsOverlayForActiveRenderer();
 
 		m_rendererStartTime = GetTickCount();
+		const bool settlingDisplayTransition =
+			m_displayTransitionAwaitingRenderer;
+		m_displayTransitionAwaitingRenderer = false;
+		const UINT windowSettleDelayMs =
+			settlingDisplayTransition ? 2000 : 0;
+		m_queueResetIgnoreEventsUntil =
+			GetTickCount64() + windowSettleDelayMs + 10000;
 		g_displayRefreshRateSampler->ResetMeasurement();
-		if (!m_startupGraphReprimeCompleted)
+		// Every newly created renderer gets one delayed live-queue re-prime.
+		// This is the queue_recovery contract; it must also run after later
+		// source/profile-driven renderer replacement, without rebuilding the
+		// graph or causing another HDMI handshake.
+		RequestRendererReset(RendererResetReason::PostRendererStart, false,
+			windowSettleDelayMs +
+			static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+		if (m_rendererFullscreenCheck.GetCheck())
 		{
-			m_startupGraphReprimeCompleted = true;
-			RequestRendererReset(RendererResetReason::Startup, true,
-				static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+			HWND renderWindow = GetRenderWindow();
+			RECT rect = {};
+			::GetWindowRect(renderWindow, &rect);
+			DEBUGLOG(
+				"Fullscreen host after renderer start hwnd=%p visible=%d "
+				"rect=%ld,%ld-%ld,%ld display_settle_ms=%u",
+				renderWindow, ::IsWindowVisible(renderWindow) ? 1 : 0,
+				rect.left, rect.top, rect.right, rect.bottom,
+				windowSettleDelayMs);
 		}
 		// LLDV can be confirmed while the graph is still starting. The
 		// effective PQ state has already been rebuilt, but this graph accepted
@@ -2201,6 +2265,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 				TEXT("LLDV confirmed during renderer startup - scheduling renderer restart")));
 		}
 		break;
+	}
 
 	// Stopped rendering, can be cleaned up
 	case RendererState::RENDERSTATE_STOPPED:
@@ -2375,7 +2440,7 @@ void CVideoProcessorDlg::OnCommandShaderRule(UINT commandId)
 void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 {
 	const auto unifiedKey = m_unifiedProfileShortcutKeys.find(static_cast<WORD>(commandId));
-	if (unifiedKey != m_unifiedProfileShortcutKeys.end() && m_videoRenderer)
+	if (unifiedKey != m_unifiedProfileShortcutKeys.end())
 	{
 		const DWORD commandTime = static_cast<DWORD>(GetMessageTime());
 		if (m_lastUnifiedProfileCommand == commandId &&
@@ -2387,15 +2452,28 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 		}
 		m_lastUnifiedProfileCommand = static_cast<WORD>(commandId);
 		m_lastUnifiedProfileCommandTime = commandTime;
-		CString activeProfiles;
-		bool rendererRestartRequired = false;
-		if (!m_videoRenderer->SelectUnifiedProfileKey(unifiedKey->second, activeProfiles, rendererRestartRequired))
+		UnifiedProfileRuntime::SelectionResult result;
+		std::string error;
+		if (!m_profileRuntime.SelectKey(
+			CStringA(unifiedKey->second).GetString(),
+			GetUnifiedProfileSourceLookup(), result, error))
 		{
-			DEBUGLOG("Unified profile key '%S' is unavailable", static_cast<LPCTSTR>(unifiedKey->second));
+			DebugLog::Log("Unified profile key '%s' is unavailable: %s",
+				CStringA(unifiedKey->second).GetString(),
+				error.c_str());
 			return;
 		}
-		DEBUGLOG("Unified profile key selected: %S", static_cast<LPCTSTR>(activeProfiles));
-		if (rendererRestartRequired) { m_wantToRestartRenderer = true; UpdateState(); }
+		std::ostringstream activeProfiles;
+		for (size_t index = 0; index < result.selections.size(); ++index)
+		{
+			if (index != 0) activeProfiles << ", ";
+			activeProfiles << result.selections[index].group << "="
+				<< result.selections[index].profile;
+		}
+		DebugLog::Log("Unified profile key selected: %s",
+			activeProfiles.str().c_str());
+		if (result.changed)
+			ApplyUnifiedProfileSnapshot(result.snapshot, true);
 		return;
 	}
 	const auto rule = m_displayRuleShortcutRules.find(static_cast<WORD>(commandId));
@@ -3150,11 +3228,6 @@ void CVideoProcessorDlg::CaptureStart()
 	assert(!m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_UNKNOWN);
 
-	// Re-prime once per capture session. Renderer-only profile reconstruction
-	// already starts with empty queues and must not schedule a second delayed
-	// graph reset (which visibly blanks the new renderer again).
-	m_startupGraphReprimeCompleted = false;
-
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_STARTING;
 
@@ -3342,6 +3415,8 @@ void CVideoProcessorDlg::RenderStart()
 				GetRendererVideoFrameUseQueue(),
 				alphaDesiredDepth);
 
+			ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
+
 			if (m_captureDeviceVideoState)
 				m_videoRenderer->OnVideoState(m_builtVideoState);
 
@@ -3399,6 +3474,8 @@ void CVideoProcessorDlg::RenderStart()
 			forceVideoTransferFunction,
 			forceVideoTransferMatrix,
 			forceVideoPrimaries);
+
+		ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
 
 		if (m_captureDeviceVideoState)
 			m_videoRenderer->OnVideoState(m_builtVideoState);
@@ -4025,6 +4102,21 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 
 	m_builtVideoState = videoState;
 	m_lastEffectiveEotf = m_builtVideoState->eotf;
+
+	bool profilesChanged = false;
+	std::string profileError;
+	if (m_profileRuntime.IsInitialized() &&
+		!m_profileRuntime.Refresh(GetUnifiedProfileSourceLookup(),
+			profilesChanged, profileError))
+	{
+		DebugLog::Log("Unified profile refresh failed: %s",
+			profileError.c_str());
+	}
+	else if (profilesChanged &&
+		m_rendererState != RendererState::RENDERSTATE_STOPPING)
+	{
+		ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), true);
+	}
 	
 
 	//
@@ -4144,6 +4236,36 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 		DbgLog((LOG_TRACE, 1,
 			TEXT("CVideoProcessorDlg::BuildPushVideoState(): Renderer unavailable; state retained for next graph")));
 		return true;
+	}
+}
+
+DisplayRuleExpression::ValueLookup
+CVideoProcessorDlg::GetUnifiedProfileSourceLookup() const
+{
+	return StateVariables::VideoStateLookup(m_builtVideoState);
+}
+
+void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
+	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
+	bool allowRestart)
+{
+	if (!snapshot || !m_videoRenderer)
+		return;
+
+	CString activeState;
+	bool rendererRestartRequired = false;
+	if (!m_videoRenderer->ApplyApplicationState(
+		*snapshot, activeState, rendererRestartRequired))
+		return;
+
+	DebugLog::Log("Applied unified profile state: %s",
+		CStringA(activeState).GetString());
+	if (allowRestart && rendererRestartRequired)
+	{
+		DebugLog::Log(
+			"Unified viewport output aspect changed; restarting renderer");
+		m_wantToRestartRenderer = true;
+		UpdateState();
 	}
 }
 
@@ -4467,7 +4589,8 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	// Active-picture analysis remains sparse on the conversion worker. This
 	// cheap generation poll only consumes a published change, bounding NLS
 	// mapping reaction without putting image analysis on the UI thread.
-	SetTimer(SHADER_RULE_REFRESH_TIMER_ID, 100, nullptr);
+	SetTimer(SHADER_RULE_REFRESH_TIMER_ID,
+		SHADER_RULE_REFRESH_INTERVAL_MS, nullptr);
 	
 	// Stats overlay will be created lazily on first toggle (Ctrl+I)
 	// No initialization needed here
@@ -4767,11 +4890,27 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	if (g_displayRefreshRateSampler)
 		g_displayRefreshRateSampler->ResetMeasurement();
 
+	// Display notifications can precede the capture/renderer replacement by
+	// many seconds. Do not flush the old madVR graph because its queues fill
+	// during that handshake; the replacement renderer owns recovery.
+	m_displayTransitionAwaitingRenderer = true;
+	m_queueResetIgnoreEventsUntil = GetTickCount64() + 30000;
 	DebugLog::Log(
-		"Windows display mode changed: %d x %d, %u bits; display-rate measurement reset",
+		"Windows display mode changed: %d x %d, %u bits; "
+		"display-rate measurement reset; emergency queue recovery "
+		"suppressed pending renderer replacement",
 		width,
 		height,
 		bitsPerPixel);
+	if (m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING)
+	{
+		// Fallback only: a replacement renderer will supersede this request
+		// and start its normal settle-plus-configured-delay recovery.
+		RequestRendererReset(RendererResetReason::DisplayTransition, false,
+			30000 +
+			static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+	}
 	if (m_videoRenderer)
 		m_videoRenderer->OnDisplayChange();
 	CDialog::OnDisplayChange(bitsPerPixel, width, height);
@@ -4855,8 +4994,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 
-	// One-shot lifecycle reset coordinator. Queue depth monitoring never uses
-	// this timer because no VP queue depth proves that madVR is unhealthy.
+	// One-shot lifecycle and emergency queue-reset coordinator.
 	if (nIDEvent == QUEUE_RESET_DELAY_TIMER_ID)
 	{
 		KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
@@ -5355,6 +5493,17 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.method = TEXT("---");
 	}
 
+	if (const auto profileSnapshot = m_profileRuntime.GetSnapshot())
+	{
+		stats.viewport.Format(TEXT("%S (%S)"),
+			profileSnapshot->viewport.profile.c_str(),
+			profileSnapshot->viewport.screenAspect.Canonical().c_str());
+	}
+	else
+	{
+		stats.viewport = TEXT("default (16:9)");
+	}
+
 	if (m_rendererSceneCorrectionModeCombo.GetCurSel() >= 0)
 		m_rendererSceneCorrectionModeCombo.GetLBText(
 			m_rendererSceneCorrectionModeCombo.GetCurSel(),
@@ -5395,6 +5544,12 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				stats.sceneSecondsUntilPlan,
 				stats.sceneCorrectionAction,
 				stats.sceneCorrectionPlanned);
+		int dueAction = 0;
+		stats.sceneCorrectionDue =
+			m_videoRenderer->GetSceneTimingDueStatus(
+				dueAction, stats.sceneCorrectionBlockReason);
+		if (stats.sceneCorrectionDue && dueAction != 0)
+			stats.sceneCorrectionAction = dueAction;
 		stats.sceneLastCorrectionValid =
 			m_videoRenderer->GetSceneTimingLastCorrection(
 				stats.sceneLastCorrectionAction,
@@ -5559,11 +5714,11 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 {
 	m_lastQueueSize = rawQueueSize + convertedQueueSize;
 	m_lastDroppedFrames = droppedFrames;
-	m_consecutiveFullSeconds = 0;
 
 	if (queueMaxSize == 0 || !GetRendererVideoFrameUseQueue() || !m_videoRenderer ||
 		m_rendererState != RendererState::RENDERSTATE_RENDERING)
 	{
+		m_consecutiveFullSeconds = 0;
 		return;
 	}
 
@@ -5582,22 +5737,54 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	// internal queue fill during its stabilization window.
 	if (m_rendererStartTime != 0 &&
 		GetTickCount() - static_cast<DWORD>(m_rendererStartTime) < 10000)
+	{
+		m_consecutiveFullSeconds = 0;
 		return;
+	}
 
 	if (!highWater)
+	{
+		m_consecutiveFullSeconds = 0;
 		return;
+	}
 
-	// No madVR quality API exists, so a high VP queue is evidence of pressure,
-	// not proof that a reset will repair the downstream sink. Record it without
-	// interrupting stable live HDMI playback.
+	if (m_consecutiveFullSeconds <
+		(std::numeric_limits<size_t>::max)())
+		++m_consecutiveFullSeconds;
+	const bool atCapacity =
+		rawQueueSize >= queueMaxSize ||
+		convertedQueueSize >= queueMaxSize;
+	const bool autoReset =
+		m_rendererResetAutoCheck.GetCheck() == BST_CHECKED;
+	const size_t sustainedSeconds =
+		static_cast<size_t>(std::max(1, m_queueResetDelaySeconds));
+	if (autoReset &&
+		(atCapacity || m_consecutiveFullSeconds >= sustainedSeconds))
+	{
+		DEBUGLOG(
+			"Queue pressure threshold reached (%zu/%zu raw, %zu/%zu "
+			"converted, consecutive=%zu, at_capacity=%d); "
+			"requesting live-queue reset",
+			rawQueueSize, queueMaxSize,
+			convertedQueueSize, queueMaxSize,
+			m_consecutiveFullSeconds, atCapacity ? 1 : 0);
+		m_consecutiveFullSeconds = 0;
+		RequestRendererReset(
+			RendererResetReason::QueuePressure, false, 0);
+		return;
+	}
+
 	const DWORD tick = GetTickCount();
 	if (m_lastQueueHealthDiagnostic == 0 ||
 		tick - m_lastQueueHealthDiagnostic >= 5000)
 	{
 		m_lastQueueHealthDiagnostic = tick;
 		DbgLog((LOG_TRACE, 1,
-			TEXT("Queue high-water diagnostic (%zu/%zu raw, %zu/%zu converted); no automatic reset"),
-			rawQueueSize, queueMaxSize, convertedQueueSize, queueMaxSize));
+			TEXT("Queue high-water diagnostic (%zu/%zu raw, %zu/%zu "
+				"converted, consecutive=%zu, auto_reset=%d)"),
+			rawQueueSize, queueMaxSize,
+			convertedQueueSize, queueMaxSize,
+			m_consecutiveFullSeconds, autoReset ? 1 : 0));
 	}
 }
 

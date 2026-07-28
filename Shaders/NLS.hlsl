@@ -30,6 +30,34 @@ float4 main(float2 tex : TEXCOORD0) : COLOR
 	const float activeHeightFraction = activeBottom - activeTop;
 	const int geometry = (int)clamp({{geometry}}, 0.0, 1.0);
 	const int quality = (int)clamp({{quality}}, 0.0, 3.0);
+	const bool safeFit = {{safe_fit}} >= 0.5;
+	const bool safeFitVertical = {{safe_fit_axis}} >= 0.5;
+	const float safeFitFraction =
+		clamp({{safe_fit_fraction}}, 0.01, 1.0);
+
+	if (safeFit)
+	{
+		// Excessive nonlinear expansion is replaced by a centered safe fit.
+		// The declared output remains the selected viewport aspect, while the
+		// active picture retains its geometry inside side or top/bottom bars.
+		float2 fittedTex = tex;
+		float safeFitStart = (1.0 - safeFitFraction) * 0.5;
+		float safeFitEnd = 1.0 - safeFitStart;
+		float fittedCoordinate =
+			safeFitVertical ? tex.y : tex.x;
+		if (fittedCoordinate < safeFitStart ||
+			fittedCoordinate > safeFitEnd)
+			return float4(0.0, 0.0, 0.0, 1.0);
+		fittedCoordinate =
+			(fittedCoordinate - safeFitStart) / safeFitFraction;
+		if (safeFitVertical)
+			fittedTex.y = fittedCoordinate;
+		else
+			fittedTex.x = fittedCoordinate;
+		return tex2D(s0, float2(
+			lerp(activeLeft, activeRight, fittedTex.x),
+			lerp(activeTop, activeBottom, fittedTex.y)));
+	}
 
 	float centeredCoordinate =
 		(verticalWarp ? tex.y : tex.x) * 2.0 - 1.0;

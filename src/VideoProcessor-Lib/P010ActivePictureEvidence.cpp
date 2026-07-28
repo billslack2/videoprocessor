@@ -1,0 +1,447 @@
+#include "pch.h"
+
+#include "P010ActivePictureEvidence.h"
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <numeric>
+#include <vector>
+
+
+namespace
+{
+constexpr int kLineSamples = 48;
+constexpr int kEdgeDepthSamples = 6;
+
+template <typename T>
+T Bounded(T value, T minimum, T maximum)
+{
+	return std::max(minimum, std::min(value, maximum));
+}
+
+bool CheckedMultiply(size_t left, size_t right, size_t& result)
+{
+	if (left != 0 && right > std::numeric_limits<size_t>::max() / left)
+		return false;
+	result = left * right;
+	return true;
+}
+
+uint16_t P010Code(const uint8_t* address)
+{
+	return static_cast<uint16_t>(
+		(static_cast<uint16_t>(address[0]) |
+			(static_cast<uint16_t>(address[1]) << 8)) >> 6);
+}
+
+double Percentile(std::vector<int> values, double fraction)
+{
+	if (values.empty())
+		return 0.0;
+	const size_t index = std::min(values.size() - 1,
+		static_cast<size_t>(fraction * static_cast<double>(values.size() - 1)));
+	std::nth_element(values.begin(), values.begin() + index, values.end());
+	return static_cast<double>(values[index]);
+}
+
+struct SampleContext
+{
+	const P010PlaneView& view;
+	size_t chromaOffset = 0;
+	size_t lumaSamples = 0;
+	size_t chromaSamples = 0;
+
+	int Luma(int x, int y)
+	{
+		++lumaSamples;
+		return P010Code(view.data + static_cast<size_t>(y) *
+			view.lumaPitchBytes + static_cast<size_t>(x) * 2);
+	}
+
+	void Chroma(int x, int y, int& u, int& v)
+	{
+		const int chromaX = (x / 2) * 4;
+		const int chromaY = y / 2;
+		const uint8_t* pixel = view.data + chromaOffset +
+			static_cast<size_t>(chromaY) * view.chromaPitchBytes + chromaX;
+		u = P010Code(pixel);
+		v = P010Code(pixel + 2);
+		++chromaSamples;
+	}
+};
+
+bool IsBlackRow(SampleContext& samples, int y, int threshold)
+{
+	int black = 0;
+	for (int i = 0; i < kLineSamples; ++i)
+	{
+		const int x = ((i * 2 + 1) * samples.view.width) /
+			(kLineSamples * 2);
+		if (samples.Luma(x, y) <= threshold)
+			++black;
+	}
+	return black >= 44;
+}
+
+bool IsBlackColumn(SampleContext& samples, int x, int threshold)
+{
+	int black = 0;
+	for (int i = 0; i < kLineSamples; ++i)
+	{
+		const int y = ((i * 2 + 1) * samples.view.height) /
+			(kLineSamples * 2);
+		if (samples.Luma(x, y) <= threshold)
+			++black;
+	}
+	return black >= 44;
+}
+
+P010EdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top,
+	int barPixels, int boundary, int blackFloor, int blackThreshold)
+{
+	P010EdgeEvidence evidence;
+	evidence.barPixels = barPixels;
+	if (barPixels <= 0)
+		return evidence;
+
+	std::vector<int> luma;
+	luma.reserve(kEdgeDepthSamples * kLineSamples);
+	int black = 0;
+	int neutral = 0;
+	int continuousLines = 0;
+	double texture = 0.0;
+	for (int d = 0; d < kEdgeDepthSamples; ++d)
+	{
+		const int depth = std::min(barPixels - 1,
+			((d * 2 + 1) * barPixels) / (kEdgeDepthSamples * 2));
+		const int y = top ? depth : samples.view.height - 1 - depth;
+		int lineBlack = 0;
+		int previous = -1;
+		for (int i = 0; i < kLineSamples; ++i)
+		{
+			const int x = ((i * 2 + 1) * samples.view.width) /
+				(kLineSamples * 2);
+			const int value = samples.Luma(x, y);
+			luma.push_back(value);
+			black += value <= blackThreshold;
+			lineBlack += value <= blackThreshold;
+			if (previous >= 0)
+				texture += std::abs(value - previous);
+			previous = value;
+			int u = 0, v = 0;
+			samples.Chroma(x, y, u, v);
+			neutral += std::abs(u - 512) <= 32 &&
+				std::abs(v - 512) <= 32;
+		}
+		continuousLines += lineBlack >= 44;
+	}
+	const double outerMean = luma.empty() ? 0.0 :
+		static_cast<double>(std::accumulate(luma.begin(), luma.end(), 0LL)) /
+		luma.size();
+	double innerMean = 0.0;
+	for (int i = 0; i < kLineSamples; ++i)
+	{
+		const int x = ((i * 2 + 1) * samples.view.width) /
+			(kLineSamples * 2);
+		const int y = Bounded(top ? boundary + 2 : boundary - 3,
+			0, samples.view.height - 1);
+		innerMean += samples.Luma(x, y);
+	}
+	innerMean /= kLineSamples;
+	evidence.blackFraction = static_cast<double>(black) / luma.size();
+	evidence.lumaFloor = blackFloor;
+	evidence.lumaP90 = Percentile(luma, 0.90);
+	evidence.lumaDispersion =
+		Percentile(luma, 0.90) - Percentile(luma, 0.10);
+	evidence.texture = texture /
+		std::max<size_t>(1, luma.size() - kEdgeDepthSamples);
+	evidence.neutralChromaFraction =
+		static_cast<double>(neutral) / luma.size();
+	evidence.innerBoundaryContrast = innerMean - outerMean;
+	evidence.continuity =
+		static_cast<double>(continuousLines) / kEdgeDepthSamples;
+	const bool isSmall = barPixels < samples.view.height / 20;
+	const double requiredContrast = isSmall ? 18.0 : 10.0;
+	evidence.trusted = evidence.blackFraction >= 0.95 &&
+		evidence.lumaP90 <= blackThreshold &&
+		evidence.lumaDispersion <= 24.0 &&
+		evidence.texture <= 8.0 &&
+		evidence.neutralChromaFraction >= 0.90 &&
+		evidence.innerBoundaryContrast >= requiredContrast &&
+		evidence.continuity >= 0.99;
+	evidence.confidence = Bounded(
+		0.30 * evidence.blackFraction +
+		0.20 * evidence.neutralChromaFraction +
+		0.20 * evidence.continuity +
+		0.30 * Bounded(evidence.innerBoundaryContrast / 48.0, 0.0, 1.0),
+		0.0, 1.0);
+	return evidence;
+}
+
+P010EdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
+	int barPixels, int boundary, int blackFloor, int blackThreshold)
+{
+	P010EdgeEvidence evidence;
+	evidence.barPixels = barPixels;
+	if (barPixels <= 0)
+		return evidence;
+
+	std::vector<int> luma;
+	luma.reserve(kEdgeDepthSamples * kLineSamples);
+	int black = 0;
+	int neutral = 0;
+	int continuousLines = 0;
+	double texture = 0.0;
+	for (int d = 0; d < kEdgeDepthSamples; ++d)
+	{
+		const int depth = std::min(barPixels - 1,
+			((d * 2 + 1) * barPixels) / (kEdgeDepthSamples * 2));
+		const int x = left ? depth : samples.view.width - 1 - depth;
+		int lineBlack = 0;
+		int previous = -1;
+		for (int i = 0; i < kLineSamples; ++i)
+		{
+			const int y = ((i * 2 + 1) * samples.view.height) /
+				(kLineSamples * 2);
+			const int value = samples.Luma(x, y);
+			luma.push_back(value);
+			black += value <= blackThreshold;
+			lineBlack += value <= blackThreshold;
+			if (previous >= 0)
+				texture += std::abs(value - previous);
+			previous = value;
+			int u = 0, v = 0;
+			samples.Chroma(x, y, u, v);
+			neutral += std::abs(u - 512) <= 32 &&
+				std::abs(v - 512) <= 32;
+		}
+		continuousLines += lineBlack >= 44;
+	}
+	const double outerMean = luma.empty() ? 0.0 :
+		static_cast<double>(std::accumulate(luma.begin(), luma.end(), 0LL)) /
+		luma.size();
+	double innerMean = 0.0;
+	for (int i = 0; i < kLineSamples; ++i)
+	{
+		const int y = ((i * 2 + 1) * samples.view.height) /
+			(kLineSamples * 2);
+		const int x = Bounded(left ? boundary + 2 : boundary - 3,
+			0, samples.view.width - 1);
+		innerMean += samples.Luma(x, y);
+	}
+	innerMean /= kLineSamples;
+	evidence.blackFraction = static_cast<double>(black) / luma.size();
+	evidence.lumaFloor = blackFloor;
+	evidence.lumaP90 = Percentile(luma, 0.90);
+	evidence.lumaDispersion =
+		Percentile(luma, 0.90) - Percentile(luma, 0.10);
+	evidence.texture = texture /
+		std::max<size_t>(1, luma.size() - kEdgeDepthSamples);
+	evidence.neutralChromaFraction =
+		static_cast<double>(neutral) / luma.size();
+	evidence.innerBoundaryContrast = innerMean - outerMean;
+	evidence.continuity =
+		static_cast<double>(continuousLines) / kEdgeDepthSamples;
+	const bool isSmall = barPixels < samples.view.width / 20;
+	const double requiredContrast = isSmall ? 18.0 : 10.0;
+	evidence.trusted = evidence.blackFraction >= 0.95 &&
+		evidence.lumaP90 <= blackThreshold &&
+		evidence.lumaDispersion <= 24.0 &&
+		evidence.texture <= 8.0 &&
+		evidence.neutralChromaFraction >= 0.90 &&
+		evidence.innerBoundaryContrast >= requiredContrast &&
+		evidence.continuity >= 0.99;
+	evidence.confidence = Bounded(
+		0.30 * evidence.blackFraction +
+		0.20 * evidence.neutralChromaFraction +
+		0.20 * evidence.continuity +
+		0.30 * Bounded(evidence.innerBoundaryContrast / 48.0, 0.0, 1.0),
+		0.0, 1.0);
+	return evidence;
+}
+}
+
+
+P010ActivePictureEvidence ExtractP010ActivePictureEvidence(
+	const P010PlaneView& view)
+{
+	P010ActivePictureEvidence result;
+	if (!view.data || view.width < 16 || view.height < 16 ||
+		(view.width & 1) != 0 || (view.height & 1) != 0)
+	{
+		result.reason = "invalid P010 dimensions or data pointer";
+		return result;
+	}
+	size_t minimumLumaPitch = 0;
+	size_t minimumChromaPitch = 0;
+	if (!CheckedMultiply(static_cast<size_t>(view.width), 2,
+			minimumLumaPitch) ||
+		!CheckedMultiply(static_cast<size_t>(view.width), 2,
+			minimumChromaPitch) ||
+		view.lumaPitchBytes < minimumLumaPitch ||
+		view.chromaPitchBytes < minimumChromaPitch ||
+		(view.lumaPitchBytes & 1) != 0 || (view.chromaPitchBytes & 1) != 0)
+	{
+		result.reason = "invalid P010 plane pitch";
+		return result;
+	}
+	size_t lumaBytes = 0;
+	size_t chromaBytes = 0;
+	if (!CheckedMultiply(view.lumaPitchBytes,
+			static_cast<size_t>(view.height), lumaBytes) ||
+		!CheckedMultiply(view.chromaPitchBytes,
+			static_cast<size_t>(view.height / 2), chromaBytes) ||
+		lumaBytes > std::numeric_limits<size_t>::max() - chromaBytes ||
+		view.dataBytes < lumaBytes + chromaBytes)
+	{
+		result.reason = "sample is shorter than the bounded P010 planes";
+		return result;
+	}
+
+	SampleContext samples{ view, lumaBytes };
+	std::vector<int> perimeter;
+	perimeter.reserve(256);
+	for (int i = 0; i < 64; ++i)
+	{
+		const int x = ((i * 2 + 1) * view.width) / 128;
+		const int y = ((i * 2 + 1) * view.height) / 128;
+		perimeter.push_back(samples.Luma(x, 0));
+		perimeter.push_back(samples.Luma(x, view.height - 1));
+		perimeter.push_back(samples.Luma(0, y));
+		perimeter.push_back(samples.Luma(view.width - 1, y));
+	}
+	const int observedLow = static_cast<int>(Percentile(perimeter, 0.10));
+	const int blackFloor = observedLow < 32 ? 0 :
+		Bounded(observedLow, 48, 80);
+	const int blackThreshold = std::min(104, blackFloor + 24);
+
+	const int yStep = std::max(2, view.height / 540);
+	const int xStep = std::max(2, view.width / 960);
+	// All four directional searches share one hard budget. This keeps the
+	// worst-case 4K inspection below 30,000 luma reads even for adversarial
+	// all-black or nested-frame input.
+	int scanLinesRemaining = 480;
+	auto blackRow = [&](int y)
+	{
+		if (scanLinesRemaining <= 0)
+			return false;
+		--scanLinesRemaining;
+		return IsBlackRow(samples, y, blackThreshold);
+	};
+	auto blackColumn = [&](int x)
+	{
+		if (scanLinesRemaining <= 0)
+			return false;
+		--scanLinesRemaining;
+		return IsBlackColumn(samples, x, blackThreshold);
+	};
+	int top = 0;
+	while (top + yStep < view.height / 2 &&
+		blackRow(top))
+		top += yStep;
+	int bottom = view.height;
+	while (bottom - yStep > view.height / 2 &&
+		blackRow(bottom - 1))
+		bottom -= yStep;
+	int left = 0;
+	while (left + xStep < view.width / 2 &&
+		blackColumn(left))
+		left += xStep;
+	int right = view.width;
+	while (right - xStep > view.width / 2 &&
+		blackColumn(right - 1))
+		right -= xStep;
+
+	const int activeWidth = right - left;
+	const int activeHeight = bottom - top;
+	if (activeWidth < view.width / 3 || activeHeight < view.height / 3)
+	{
+		result.reason = "candidate is too small for a credible active picture";
+		result.lumaSamples = samples.lumaSamples;
+		return result;
+	}
+	const double proposedAspect =
+		static_cast<double>(activeWidth) / activeHeight;
+	if (proposedAspect < 1.0 || proposedAspect > 4.0)
+	{
+		result.reason = "candidate aspect is outside the supported range";
+		result.lumaSamples = samples.lumaSamples;
+		return result;
+	}
+
+	result.available = true;
+	result.proposedBounds = { left, top, right, bottom, view.width,
+		view.height, proposedAspect, false };
+	result.trustedBounds = { 0, 0, view.width, view.height, view.width,
+		view.height, static_cast<double>(view.width) / view.height, true };
+	const int topBar = top;
+	const int bottomBar = view.height - bottom;
+	const int leftBar = left;
+	const int rightBar = view.width - right;
+	const bool hasVertical = topBar > yStep * 2 || bottomBar > yStep * 2;
+	const bool hasHorizontal = leftBar > xStep * 2 || rightBar > xStep * 2;
+	if (!hasVertical && !hasHorizontal)
+	{
+		result.classification =
+			ActivePictureClassification::FULL_RASTER_TRUSTED;
+		result.reason = "full raster has immediate crop authority";
+		result.lumaSamples = samples.lumaSamples;
+		result.chromaSamples = samples.chromaSamples;
+		return result;
+	}
+
+	bool verticalTrusted = false;
+	if (hasVertical)
+	{
+		result.top = InspectHorizontalEdge(samples, true, topBar, top,
+			blackFloor, blackThreshold);
+		result.bottom = InspectHorizontalEdge(samples, false, bottomBar, bottom,
+			blackFloor, blackThreshold);
+		const int symmetryTolerance = std::max(yStep * 2, view.height / 360);
+		verticalTrusted = result.top.trusted && result.bottom.trusted &&
+			std::abs(topBar - bottomBar) <= symmetryTolerance;
+		if (verticalTrusted)
+		{
+			result.trustedBounds.top = top;
+			result.trustedBounds.bottom = bottom;
+		}
+	}
+	bool horizontalTrusted = false;
+	if (hasHorizontal)
+	{
+		result.left = InspectVerticalEdge(samples, true, leftBar, left,
+			blackFloor, blackThreshold);
+		result.right = InspectVerticalEdge(samples, false, rightBar, right,
+			blackFloor, blackThreshold);
+		const int symmetryTolerance = std::max(xStep * 2, view.width / 360);
+		horizontalTrusted = result.left.trusted && result.right.trusted &&
+			std::abs(leftBar - rightBar) <= symmetryTolerance;
+		if (horizontalTrusted)
+		{
+			result.trustedBounds.left = left;
+			result.trustedBounds.right = right;
+		}
+	}
+	const int trustedWidth =
+		result.trustedBounds.right - result.trustedBounds.left;
+	const int trustedHeight =
+		result.trustedBounds.bottom - result.trustedBounds.top;
+	result.trustedBounds.aspectRatio =
+		static_cast<double>(trustedWidth) / trustedHeight;
+	// Each axis carries its own crop authority. An untrusted dark feature on
+	// the orthogonal axis must not veto an otherwise trusted opposing pair;
+	// that axis remains at the full-raster bounds assigned above.
+	result.trustedBounds.symmetricBars =
+		verticalTrusted || horizontalTrusted;
+	result.classification = verticalTrusted || horizontalTrusted ?
+		ActivePictureClassification::BAR_CROP_TRUSTED :
+		ActivePictureClassification::PROVISIONAL;
+	result.reason = result.classification ==
+		ActivePictureClassification::BAR_CROP_TRUSTED ?
+		"opposing black-bar evidence has crop authority" :
+		"candidate lacks coherent opposing black-bar evidence";
+	result.lumaSamples = samples.lumaSamples;
+	result.chromaSamples = samples.chromaSamples;
+	return result;
+}
