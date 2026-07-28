@@ -18,6 +18,7 @@
 #include <PixelValueRange.h>
 #include <CCie1931Control.h>
 #include <IRenderer.h>
+#include <UnifiedProfileRuntime.h>
 #include <VideoFrame.h>
 #include <FullscreenVideoWindow.h>
 #include <VideoConversionOverride.h>
@@ -416,6 +417,7 @@ protected:
 	bool m_rendererFrameBaselineValid = false;
 
 	std::atomic_bool m_deliverCaptureDataToRenderer = false;
+	UnifiedProfileRuntime::Runtime m_profileRuntime;
 	std::map<WORD, CString> m_unifiedProfileShortcutKeys;
 	WORD m_lastUnifiedProfileCommand = 0;
 	DWORD m_lastUnifiedProfileCommandTime = 0;
@@ -499,6 +501,10 @@ protected:
 	bool BuildPushVideoState();
 	void BuildPushRestartVideoState();
 	void ScheduleNewLldvRendererRestart();
+	DisplayRuleExpression::ValueLookup GetUnifiedProfileSourceLookup() const;
+	void ApplyUnifiedProfileSnapshot(
+		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
+		bool allowRestart);
 
 	// Track effective EOTF the renderer is currently configured for (post-UI overrides)
 	EOTF m_lastEffectiveEotf = EOTF::UNKNOWN;

@@ -24,7 +24,8 @@ namespace DisplayRuleExpression
 		if (name == "eotf" || name == "transfer" || name == "colorspace" ||
 			name == "primaries" || name == "format" || name == "resolution" ||
 			name == "range" || name == "scan" || name == "key" ||
-			name == "event")
+			name == "event" || name == "viewport_profile" ||
+			(name.size() > 8 && name.compare(0, 8, "profile.") == 0))
 		{
 			type = ValueType::Text;
 			return true;
@@ -37,9 +38,17 @@ namespace DisplayRuleExpression
 		if (name == "source_rate" || name == "cadence" ||
 			name == "width" || name == "height" ||
 			name == "actual_refresh" || name == "requested_refresh" ||
-			name == "previous_refresh")
+			name == "previous_refresh" || name == "screen_aspect" ||
+			name == "subtitle_hold_seconds" ||
+			name == "subtitle_padding_pixels" ||
+			name == "viewport_generation")
 		{
 			type = ValueType::Number;
+			return true;
+		}
+		if (name == "subtitle_fit")
+		{
+			type = ValueType::Boolean;
 			return true;
 		}
 		return false;

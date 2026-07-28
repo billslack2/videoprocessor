@@ -42,7 +42,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(2.55 / 2.35, decision.stretchRatio, 0.000001);
 		}
 
-		TEST_METHOD(UnstableOrUnsafeGeometryWaits)
+		TEST_METHOD(UnstableOrRejectedGeometryWaits)
 		{
 			Assert::AreEqual(
 				static_cast<int>(MadVRNlsMappingMode::WAITING),
@@ -51,7 +51,31 @@ namespace VideoProcessorTest
 			Assert::AreEqual(
 				static_cast<int>(MadVRNlsMappingMode::WAITING),
 				static_cast<int>(EvaluateMadVRNlsMapping(
-					true, 4.0, 2.35, 5.0, 1.0, false).mode));
+					true, 1.2, 2.35, 5.0, 1.3, false).mode));
+		}
+
+		TEST_METHOD(ExcessiveStretchUsesGeometryPreservingSafeFit)
+		{
+			const MadVRNlsMappingDecision pillarbox =
+				EvaluateMadVRNlsMapping(
+					true, 4.0 / 3.0, 2.35, 5.0, 1.0, false);
+			Assert::AreEqual(
+				static_cast<int>(MadVRNlsMappingMode::SAFE_FIT),
+				static_cast<int>(pillarbox.mode));
+			Assert::IsFalse(pillarbox.safeFitVertical);
+			Assert::AreEqual((4.0 / 3.0) / 2.35,
+				pillarbox.safeFitFraction, 0.000001);
+			Assert::AreEqual(1.0, pillarbox.stretchRatio, 0.000001);
+
+			const MadVRNlsMappingDecision letterbox =
+				EvaluateMadVRNlsMapping(
+					true, 4.0, 2.35, 5.0, 1.0, false);
+			Assert::AreEqual(
+				static_cast<int>(MadVRNlsMappingMode::SAFE_FIT),
+				static_cast<int>(letterbox.mode));
+			Assert::IsTrue(letterbox.safeFitVertical);
+			Assert::AreEqual(2.35 / 4.0,
+				letterbox.safeFitFraction, 0.000001);
 		}
 
 		TEST_METHOD(ScreenAndContentMatrixUsesExpectedMappings)
@@ -73,6 +97,8 @@ namespace VideoProcessorTest
 					true, 2.35 / (16.0 / 9.0) },
 				{ 16.0 / 9.0, 2.35, MadVRNlsMappingMode::ACTIVE,
 					false, 2.35 / (16.0 / 9.0) },
+				{ 4.0 / 3.0, 2.35, MadVRNlsMappingMode::SAFE_FIT,
+					false, 1.0 },
 				{ 1.90, 2.35, MadVRNlsMappingMode::ACTIVE,
 					false, 2.35 / 1.90 },
 				{ 2.35, 2.35, MadVRNlsMappingMode::SCOPE_PASSTHROUGH,
@@ -105,6 +131,11 @@ namespace VideoProcessorTest
 				2.35, aspectX, aspectY));
 			Assert::AreEqual(235ul, aspectX);
 			Assert::AreEqual(100ul, aspectY);
+
+			Assert::IsTrue(ResolveMadVRNlsOutputAspect(
+				2.0, aspectX, aspectY));
+			Assert::AreEqual(2ul, aspectX);
+			Assert::AreEqual(1ul, aspectY);
 		}
 
 		TEST_METHOD(RestartOnlyWhenEffectiveScreenContractChanges)
@@ -172,6 +203,22 @@ namespace VideoProcessorTest
 				static_cast<int>(MadVRNlsMappingMode::OFF),
 				static_cast<int>(snapshot.lastSafeNlsMode));
 			Assert::IsFalse(snapshot.activeGeometry.stable);
+		}
+
+		TEST_METHOD(SafeFitSurvivesRendererReplacementAsLastSafeMode)
+		{
+			MadVRShaderRuntimeState state;
+			state.BeginRendererGeneration();
+			state.SetRuleSelection("nls", "nls",
+				MadVRNlsMappingMode::SAFE_FIT);
+			state.BeginRendererGeneration();
+			const MadVRShaderRuntimeSnapshot snapshot = state.GetSnapshot();
+			Assert::AreEqual(
+				static_cast<int>(MadVRNlsMappingMode::WAITING),
+				static_cast<int>(snapshot.nlsMode));
+			Assert::AreEqual(
+				static_cast<int>(MadVRNlsMappingMode::SAFE_FIT),
+				static_cast<int>(snapshot.lastSafeNlsMode));
 		}
 	};
 }

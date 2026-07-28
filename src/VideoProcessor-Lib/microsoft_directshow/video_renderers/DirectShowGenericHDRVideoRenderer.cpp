@@ -14,6 +14,7 @@
 #include <AspectRatio.h>
 #include <ConfigFile.h>
 #include <RendererProfileConfig.h>
+#include <UnifiedProfileRuntime.h>
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
@@ -414,6 +415,9 @@ void DirectShowGenericHDRVideoRenderer::UpdateNlsOsdMode(
 			TEXT("NLS: Scope passthrough") :
 			TEXT("NLS: Linear passthrough");
 		break;
+	case MadVRNlsMappingMode::SAFE_FIT:
+		m_activeShaderRule = TEXT("NLS: Safe fit");
+		break;
 	case MadVRNlsMappingMode::WAITING:
 		m_activeShaderRule = TEXT("NLS: Waiting");
 		break;
@@ -494,7 +498,8 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		MadVRShaderLoader::SetRuntimeShaderSelection(
 			std::string(ruleUtf8), std::string(ruleUtf8), decision.mode);
 		if (decision.mode == MadVRNlsMappingMode::ACTIVE ||
-			decision.mode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH)
+			decision.mode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
+			decision.mode == MadVRNlsMappingMode::SAFE_FIT)
 		{
 			if (!MadVRShaderLoader::SetRuntimeActivePictureGeometry(
 				MakeRuntimeGeometry(activeRectangle)))
@@ -508,7 +513,8 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		UpdateNlsOsdMode(decision.mode);
 		m_requestedShaderApplied =
 			decision.mode == MadVRNlsMappingMode::ACTIVE ||
-			decision.mode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH;
+			decision.mode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
+			decision.mode == MadVRNlsMappingMode::SAFE_FIT;
 		m_appliedShaderAspectRatio =
 			m_requestedShaderApplied ? activeAspectRatio : 0.0;
 		m_appliedActivePictureGeneration =
@@ -773,71 +779,37 @@ bool DirectShowGenericHDRVideoRenderer::SetScreenProfile(bool scopeScreen,
 }
 
 
-bool DirectShowGenericHDRVideoRenderer::SelectUnifiedProfileKey(
-	const CString& key, CString& activeProfiles,
+bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
+	const UnifiedProfileRuntime::Snapshot& snapshot,
+	CString& activeState,
 	bool& rendererRestartRequired)
 {
-	activeProfiles.Empty();
+	activeState.Empty();
 	rendererRestartRequired = false;
-	ConfigFile config;
-	RendererProfileConfig::Model model;
-	std::string error;
-	if (!config.Load(ConfigFile::RENDERER_FILENAME) ||
-		!RendererProfileConfig::IsUnified(config) ||
-		!RendererProfileConfig::Read(config, model, error))
-	{
-		DebugLog::Log(
-			"DirectShow unified viewport configuration unavailable: %s",
-			error.c_str());
-		return false;
-	}
-
-	const std::string canonicalKey = CStringA(key).GetString();
-	std::vector<RendererProfileConfig::KeySelection> selections;
-	if (!RendererProfileConfig::SelectForKey(model, canonicalKey,
-		[](const std::string&, std::string&) { return false; },
-		selections, error))
-	{
-		DebugLog::Log("DirectShow unified key '%s' rejected: %s",
-			canonicalKey.c_str(), error.c_str());
-		return false;
-	}
-
-	const RendererProfileConfig::KeySelection* viewportSelection = nullptr;
-	for (const RendererProfileConfig::KeySelection& selection : selections)
-		if (selection.group == "viewport")
-		{
-			viewportSelection = &selection;
-			break;
-		}
-	if (!viewportSelection || viewportSelection->resetToAutomatic)
-		return false;
-
-	RendererProfileConfig::ResolvedViewport viewport;
-	if (!RendererProfileConfig::ResolveViewport(model,
-		viewportSelection->profile, m_screenProfileGeneration + 1,
-		viewport, error))
-	{
-		DebugLog::Log("DirectShow viewport resolution failed: %s",
-			error.c_str());
-		return false;
-	}
-
+	const RendererProfileConfig::ResolvedViewport& viewport =
+		snapshot.viewport;
 	m_nlsTargetAspect = viewport.screenAspect.value;
 	MadVRShaderLoader::SetRuntimeNlsTargetAspect(m_nlsTargetAspect);
-	++m_screenProfileGeneration;
+	m_screenProfileGeneration = viewport.generation;
 	if (!m_requestedShaderRule.IsEmpty())
 	{
 		CString activeRule = m_activeShaderRule;
 		bool mappingRestartRequired = false;
 		RefreshShaderRule(activeRule, mappingRestartRequired);
-		rendererRestartRequired = mappingRestartRequired;
+		unsigned long desiredAspectX = 0;
+		unsigned long desiredAspectY = 0;
+		rendererRestartRequired = mappingRestartRequired ||
+			(m_requestedRuleUsesNlsMapping &&
+				MadVRShaderLoader::GetRuntimeOutputAspectRatio(
+					desiredAspectX, desiredAspectY) &&
+				DoesOutputAspectRequireRestart(
+					desiredAspectX, desiredAspectY));
 	}
-	activeProfiles.Format(TEXT("Viewport: %S (%S)"),
+	activeState.Format(TEXT("Viewport: %S (%S)"),
 		viewport.profile.c_str(),
 		viewport.screenAspect.Canonical().c_str());
 	DebugLog::Log(
-		"DirectShow viewport selected profile=%s aspect=%s numeric=%.7f subtitle_fit=%d subtitle_hold_ms=%llu subtitle_padding=%d generation=%llu renderer_restart=%d",
+		"DirectShow application viewport profile=%s aspect=%s numeric=%.7f subtitle_fit=%d subtitle_hold_ms=%llu subtitle_padding=%d generation=%llu renderer_restart=%d",
 		viewport.profile.c_str(),
 		viewport.screenAspect.Canonical().c_str(),
 		viewport.screenAspect.value,

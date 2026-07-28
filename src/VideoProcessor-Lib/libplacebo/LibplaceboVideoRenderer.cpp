@@ -5,6 +5,7 @@
 #include <ConfigFile.h>
 #include <AspectRatio.h>
 #include <RendererProfileConfig.h>
+#include <UnifiedProfileRuntime.h>
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
 #include <libplacebo/AlphaCadenceCorrectionPolicy.h>
@@ -65,9 +66,6 @@ namespace
 		256u * 1024u * 1024u;
 	std::mutex g_runtimeDisplayRuleMutex;
 	std::string g_runtimeManualDisplayRule;
-	std::map<std::string, std::string> g_runtimeManualUnifiedProfiles;
-	std::map<std::string, std::string> g_committedManualUnifiedProfiles;
-	std::string g_loadedUnifiedStatePath;
 
 	std::string NvApiStatusText(NvAPI_Status status)
 	{
@@ -567,100 +565,6 @@ namespace
 		return stream.str();
 	}
 
-	std::map<std::string, std::string> LoadUnifiedProfileState(
-		const ConfigFile& config, const RendererProfileConfig::Model& model)
-	{
-		std::map<std::string, std::string> result;
-		const std::string path = RendererProfileConfig::StatePath(config);
-		std::ifstream input(path);
-		if (!input.is_open()) return result;
-		std::string legacyScreenProfile;
-		std::string line;
-		while (std::getline(input, line))
-		{
-			line = ConfigFile::Trim(line);
-			if (line.empty() || line.front() == '#' || line.front() == ';') continue;
-			const size_t colon = line.find(':');
-			const size_t equals = line.find('=');
-			const size_t separator = colon == std::string::npos ? equals :
-				(equals == std::string::npos ? colon : std::min(colon, equals));
-			if (separator == std::string::npos) continue;
-			const std::string key =
-				ConfigFile::NormalizeName(line.substr(0, separator));
-			const std::string value =
-				ConfigFile::NormalizeName(line.substr(separator + 1));
-			if (key == "screen_profile" && (value == "normal" || value == "scope"))
-			{
-				legacyScreenProfile = value;
-				continue;
-			}
-			if (key.rfind("profile.", 0) != 0) continue;
-			const std::string groupName = key.substr(8);
-			for (const RendererProfileConfig::Group& group : model.groups)
-				if (group.name == groupName && group.persistSelection &&
-					std::find(group.profiles.begin(), group.profiles.end(), value) != group.profiles.end())
-				{
-					result[groupName] = value;
-					break;
-				}
-		}
-		// Import the legacy viewport key when no named viewport selection is
-		// present. State is intentionally unversioned and uses stable names.
-		if (result.find("viewport") == result.end() &&
-			path == RendererStatePath() && !legacyScreenProfile.empty())
-		{
-			for (const RendererProfileConfig::Group& group : model.groups)
-				if (group.name == "viewport" && group.persistSelection &&
-					std::find(group.profiles.begin(), group.profiles.end(),
-						legacyScreenProfile) != group.profiles.end())
-				{
-					result["viewport"] = legacyScreenProfile;
-					break;
-				}
-		}
-		if (!result.empty())
-			DebugLog::Log("restored %u unified manual profile selection(s) from %s",
-				static_cast<unsigned int>(result.size()), path.c_str());
-		return result;
-	}
-
-	bool PersistUnifiedProfileState(const ConfigFile& config,
-		const RendererProfileConfig::Model& model,
-		const std::map<std::string, std::string>& selections)
-	{
-		const std::string path = RendererProfileConfig::StatePath(config);
-		const std::string temporaryPath = path + ".tmp";
-		std::ofstream output(temporaryPath, std::ios::out | std::ios::trunc);
-		if (!output.is_open()) return false;
-		output << "# Managed by VideoProcessor.\n";
-		const bool defaultStatePath = path == RendererStatePath();
-		const auto viewport = selections.find("viewport");
-		if (defaultStatePath && viewport != selections.end() &&
-			(viewport->second == "normal" || viewport->second == "scope"))
-			output << "screen_profile: " << viewport->second << "\n";
-		for (const RendererProfileConfig::Group& group : model.groups)
-		{
-			if (!group.persistSelection) continue;
-			const auto selected = selections.find(group.name);
-			if (selected != selections.end())
-				output << "profile." << group.name << ": " << selected->second << "\n";
-		}
-		output.close();
-		if (!output)
-		{
-			DeleteFileA(temporaryPath.c_str());
-			return false;
-		}
-		if (!MoveFileExA(temporaryPath.c_str(), path.c_str(),
-			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-		{
-			DeleteFileA(temporaryPath.c_str());
-			return false;
-		}
-		DebugLog::Log("committed unified profile state to %s", path.c_str());
-		return true;
-	}
-
 	struct DisplayRule
 	{
 		std::string name;
@@ -676,69 +580,7 @@ namespace
 	bool LookupUnifiedSourceValue(const VideoState& state,
 		const std::string& variable, std::string& value)
 	{
-		if (variable == "eotf" || variable == "transfer")
-		{
-			switch (state.eotf)
-			{
-			case EOTF::SDR: value = "sdr"; break;
-			case EOTF::HDR: value = "hdr"; break;
-			case EOTF::PQ: value = "pq"; break;
-			case EOTF::HLG: value = "hlg"; break;
-			default: value = "unknown"; break;
-			}
-			return true;
-		}
-		if (variable == "colorspace" || variable == "primaries")
-		{
-			switch (state.colorspace)
-			{
-			case ColorSpace::REC_601_525: value = "rec601_525"; break;
-			case ColorSpace::REC_601_576:
-			case ColorSpace::REC_601_625: value = "rec601_625"; break;
-			case ColorSpace::REC_709: value = "rec709"; break;
-			case ColorSpace::P3_D65: value = "p3_d65"; break;
-			case ColorSpace::P3_DCI: value = "p3_dci"; break;
-			case ColorSpace::P3_D60: value = "p3_d60"; break;
-			case ColorSpace::BT_2020: value = "bt2020"; break;
-			default: value = "unknown"; break;
-			}
-			return true;
-		}
-		if (variable == "format")
-		{
-			value = CStringA(ToString(state.videoFrameEncoding)).GetString();
-			return true;
-		}
-		if (variable == "hdr_metadata")
-		{
-			value = state.hdrData && state.hdrData->IsValid() ? "true" : "false";
-			return true;
-		}
-		if (!state.displayMode) return false;
-		if (variable == "interlaced")
-			value = state.displayMode->IsInterlaced() ? "true" : "false";
-		else if (variable == "scan")
-			value = state.displayMode->IsInterlaced() ? "interlaced" : "progressive";
-		else if (variable == "source_rate")
-			value = std::to_string(static_cast<int>(
-				std::floor(state.displayMode->RefreshRateHz())));
-		else if (variable == "cadence")
-		{
-			std::ostringstream cadence;
-			cadence.imbue(std::locale::classic());
-			cadence.precision(17);
-			cadence << state.displayMode->RefreshRateHz();
-			value = cadence.str();
-		}
-		else if (variable == "width")
-			value = std::to_string(state.displayMode->FrameWidth());
-		else if (variable == "height")
-			value = std::to_string(state.displayMode->FrameHeight());
-		else if (variable == "resolution")
-			value = std::to_string(state.displayMode->FrameWidth()) + "x" +
-				std::to_string(state.displayMode->FrameHeight());
-		else return false;
-		return true;
+		return StateVariables::LookupVideoState(state, variable, value);
 	}
 
 	bool MatchesDisplayRule(const std::string& expression, const VideoState& state, int& specificity)
@@ -4830,26 +4672,7 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 		AlphaQueuePolicy::HardCapacity(m_frameQueueDesiredDepth);
 	{
 		std::lock_guard<std::mutex> guard(g_runtimeDisplayRuleMutex);
-		ConfigFile config;
-		RendererProfileConfig::Model model;
-		std::string error;
-		if (config.Load(ConfigFile::RENDERER_FILENAME) &&
-			RendererProfileConfig::IsUnified(config) &&
-			RendererProfileConfig::Read(config, model, error))
-		{
-			const std::string statePath =
-				RendererProfileConfig::StatePath(config);
-			if (g_loadedUnifiedStatePath != statePath)
-			{
-				g_committedManualUnifiedProfiles =
-					LoadUnifiedProfileState(config, model);
-				g_runtimeManualUnifiedProfiles =
-					g_committedManualUnifiedProfiles;
-				g_loadedUnifiedStatePath = statePath;
-			}
-		}
 		m_manualDisplayRule = g_runtimeManualDisplayRule;
-		m_manualUnifiedProfiles = g_runtimeManualUnifiedProfiles;
 	}
 	if (!m_manualDisplayRule.empty())
 		DebugLog::Log("display: restored runtime manual rule '%s' for new renderer",
@@ -5195,8 +5018,6 @@ void LibplaceboVideoRenderer::Build()
 	}
 	catch (...)
 	{
-		std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
-		g_runtimeManualUnifiedProfiles = g_committedManualUnifiedProfiles;
 		throw;
 	}
 	const double nominalRate = state->displayMode->RefreshRateHz();
@@ -5211,19 +5032,6 @@ void LibplaceboVideoRenderer::Build()
 	m_scopeScreenActive.store(impl->defaultScopeScreen, std::memory_order_release);
 	m_impl = std::move(impl);
 	SetState(RendererState::RENDERSTATE_READY);
-
-	ConfigFile config;
-	RendererProfileConfig::Model model;
-	std::string error;
-	if (config.Load(ConfigFile::RENDERER_FILENAME) &&
-		RendererProfileConfig::IsUnified(config) &&
-		RendererProfileConfig::Read(config, model, error))
-	{
-		std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
-		g_committedManualUnifiedProfiles = manualUnifiedProfiles;
-		g_runtimeManualUnifiedProfiles = manualUnifiedProfiles;
-		PersistUnifiedProfileState(config, model, manualUnifiedProfiles);
-	}
 }
 
 
@@ -5283,55 +5091,18 @@ bool LibplaceboVideoRenderer::SelectDisplayRule(
 }
 
 
-bool LibplaceboVideoRenderer::SelectUnifiedProfileKey(
-	const CString& key,
-	CString& activeProfiles,
+bool LibplaceboVideoRenderer::ApplyApplicationState(
+	const UnifiedProfileRuntime::Snapshot& snapshot,
+	CString& activeState,
 	bool& rendererRestartRequired)
 {
-	activeProfiles.Empty();
+	activeState.Empty();
 	rendererRestartRequired = false;
-	ConfigFile config;
-	RendererProfileConfig::Model model;
-	std::string error;
-	if (!config.Load(ConfigFile::RENDERER_FILENAME) ||
-		!RendererProfileConfig::IsUnified(config) ||
-		!RendererProfileConfig::Read(config, model, error))
-	{
-		return false;
-	}
-
-	VideoStateComPtr state;
-	{
-		std::lock_guard<std::mutex> guard(m_stateMutex);
-		state = m_videoState;
-	}
-	std::vector<RendererProfileConfig::KeySelection> selections;
-	const std::string canonicalKey = CStringA(key).GetString();
-	if (!RendererProfileConfig::SelectForKey(model, canonicalKey,
-		[&state](const std::string& variable, std::string& value)
-		{
-			return state && LookupUnifiedSourceValue(*state, variable, value);
-		}, selections, error))
-	{
-		DebugLog::Log("unified profile key '%s' rejected: %s", canonicalKey.c_str(), error.c_str());
-		return false;
-	}
-	if (selections.empty())
-		return false;
 
 	std::unique_lock<std::mutex> guard(m_stateMutex);
-	std::map<std::string, std::string> next = m_manualUnifiedProfiles;
-	bool viewportSelected = false;
-	for (const RendererProfileConfig::KeySelection& selection : selections)
-	{
-		viewportSelected = viewportSelected || selection.group == "viewport";
-		if (selection.resetToAutomatic)
-			next.erase(selection.group);
-		else
-			next[selection.group] = selection.profile;
-	}
-	if (next == m_manualUnifiedProfiles)
-		return true;
+	const std::map<std::string, std::string>& next =
+		snapshot.effectiveSelections;
+	VideoStateComPtr state = m_videoState;
 	std::string candidateProfiles;
 	const RendererSettings candidateSettings = state ?
 		LoadRendererSettings(*state, candidateProfiles, "", next) :
@@ -5339,43 +5110,25 @@ bool LibplaceboVideoRenderer::SelectUnifiedProfileKey(
 	rendererRestartRequired = m_impl != nullptr &&
 		(!state || EffectiveSettingsFingerprint(candidateSettings, false) !=
 			m_impl->restartSettingsFingerprint);
-	m_manualUnifiedProfiles = std::move(next);
-	{
-		std::lock_guard<std::mutex> runtimeGuard(g_runtimeDisplayRuleMutex);
-		g_runtimeManualUnifiedProfiles = m_manualUnifiedProfiles;
-		if (!rendererRestartRequired)
-		{
-			g_committedManualUnifiedProfiles = m_manualUnifiedProfiles;
-			ConfigFile committedConfig;
-			RendererProfileConfig::Model committedModel;
-			std::string committedError;
-			if (committedConfig.Load(ConfigFile::RENDERER_FILENAME) &&
-				RendererProfileConfig::Read(committedConfig, committedModel, committedError))
-				PersistUnifiedProfileState(committedConfig, committedModel,
-					m_manualUnifiedProfiles);
-		}
-	}
-	std::string summary;
-	for (const RendererProfileConfig::KeySelection& selection : selections)
-	{
-		if (!summary.empty()) summary += ", ";
-		summary += selection.group + "/" +
-			(selection.resetToAutomatic ? "auto" : selection.profile);
-	}
-	activeProfiles.Format(TEXT("Unified: %S"), summary.c_str());
-	if (!rendererRestartRequired && viewportSelected && m_impl)
+	m_manualUnifiedProfiles = next;
+
+	activeState.Format(TEXT("Viewport: %S (%S)"),
+		snapshot.viewport.profile.c_str(),
+		snapshot.viewport.screenAspect.Canonical().c_str());
+	if (!rendererRestartRequired && m_impl)
 	{
 		m_impl->ApplyViewportSettings(candidateSettings);
 		CString activeProfile;
 		ApplyScreenProfile(candidateSettings.defaultScopeScreen, activeProfile, false);
 		DebugLog::Log(
-			"unified viewport profile applied live: %s",
-			candidateSettings.defaultScopeScreen ? "scope" : "normal");
+			"application viewport state applied live: %s (%s)",
+			snapshot.viewport.profile.c_str(),
+			snapshot.viewport.screenAspect.Canonical().c_str());
 	}
-	DebugLog::Log("unified profile key '%s' selected %s (%s)",
-		canonicalKey.c_str(), summary.c_str(),
+	DebugLog::Log("application profile generation %llu applied (%s)",
+		static_cast<unsigned long long>(snapshot.generation),
 		rendererRestartRequired ? "renderer rebuild required" :
-			(viewportSelected ? "viewport applied live" : "effective settings unchanged"));
+			"live");
 	return true;
 }
 
