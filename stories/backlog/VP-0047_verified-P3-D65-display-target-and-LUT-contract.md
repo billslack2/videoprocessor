@@ -1,4 +1,4 @@
-# VP-0030: Verified P3-D65 display target and LUT contract
+# VP-0047: Verified P3-D65 display target and LUT contract
 
 ## Status
 

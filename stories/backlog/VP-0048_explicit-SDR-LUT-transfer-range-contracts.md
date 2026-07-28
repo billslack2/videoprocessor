@@ -1,4 +1,4 @@
-# VP-0031: Explicit SDR LUT transfer and range contracts
+# VP-0048: Explicit SDR LUT transfer and range contracts
 
 ## Status
 

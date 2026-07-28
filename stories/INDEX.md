@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0046`
-- Next story number: `VP-0047`
-- Total indexed items: 46
+- Last assigned item: `VP-0048`
+- Next story number: `VP-0049`
+- Total indexed items: 48
 
 ## Story locations
 
@@ -71,6 +71,8 @@ they must not contain requirements that are absent from this file.
 | VP-0044 | Backlog | Alpha native OSD visible-picture anchoring and scaling |
 | VP-0045 | Backlog | Namespace built-in renderer configuration as vpvr |
 | VP-0046 | Backlog | DirectShow event plumbing and passive health diagnostics |
+| VP-0047 | Backlog | Verified P3-D65 display target and LUT contract |
+| VP-0048 | Backlog | Explicit SDR LUT transfer and range contracts |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
