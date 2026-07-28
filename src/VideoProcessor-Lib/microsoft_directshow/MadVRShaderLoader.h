@@ -26,6 +26,9 @@ struct MadVRShaderSelection
 {
 	std::string ruleName;
 	std::string ruleLabel = "None";
+	// Non-NLS labels retained when the runtime OSD replaces the NLS portion
+	// with its current mapping mode.
+	std::string companionRuleLabel;
 	std::vector<ActiveMadVRShader> activeShaders;
 	unsigned long outputAspectRatioX = 0;
 	unsigned long outputAspectRatioY = 0;
@@ -71,4 +74,9 @@ public:
 	static uint64_t BeginRendererGeneration();
 	static bool GetRuleActivationInfo(const std::string& ruleName,
 		std::string& label, std::string& inactiveRule, bool& nlsMapping);
+	// Resolves one shader filename under <executable>\Shaders. Directory
+	// components, absolute paths, and traversal are deliberately rejected.
+	static bool ResolveShaderFilename(const std::string& filename,
+		const std::string& executablePath, std::string& resolvedPath,
+		std::string& error);
 };
