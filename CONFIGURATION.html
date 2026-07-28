@@ -6,20 +6,22 @@
   <title>VideoProcessor configuration</title>
   <style>
     body { font: 16px/1.5 "Segoe UI", Arial, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #222; }
-    h1, h2 { color: #17365d; } code, pre { font-family: Consolas, monospace; }
+    h1, h2, h3 { color: #17365d; } code, pre { font-family: Consolas, monospace; }
     code { background: #f2f2f2; padding: .1rem .25rem; } pre { background: #f2f2f2; padding: 1rem; overflow-x: auto; }
     table { border-collapse: collapse; width: 100%; margin: 1rem 0; } th, td { border: 1px solid #ccc; padding: .55rem; text-align: left; vertical-align: top; }
     th { background: #eaf1f8; } .note { background: #fff4ce; border-left: 4px solid #d6a700; padding: .8rem 1rem; }
   </style>
 </head>
 <body>
-  <h1>VideoProcessor configuration</h1>
+  <h1>VideoProcessor configuration reference</h1>
+  <p><a href="#application">Application configuration</a> | <a href="#renderer">Built-in renderer configuration</a></p>
+  <h2 id="application">Application configuration</h2>
   <p><code>VideoProcessor.cfg</code> is an optional UTF-8 text file searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
   <p>The shipped file is a conservative sample with common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[display_refresh_rate_override]</code>, <code>[shaders]</code>, <code>[p010_conversion]</code>, and <code>[ppm_correction]</code> sections can be added when needed.</p>
-  <p>The experimental built-in renderer's processing settings belong in <code>VideoProcessorRenderer.cfg</code> and are documented separately in <a href="VideoProcessorRenderer.html">VideoProcessor built-in renderer configuration</a>.</p>
-  <p>Both files use the same strict parser and table-driven key/type/range validation engine. Their schemas remain separate: <code>VideoProcessor.cfg</code> settings are read at application startup, while renderer profile and event expressions are valid only in <code>VideoProcessorRenderer.cfg</code>. Sharing validation does not make capture, queue, or application settings dynamically mutable.</p>
+  <p><code>VideoProcessor.cfg</code> is the normal single configuration file for application, capture, shader, built-in renderer, profile, hotkey, and completed-event settings.</p>
+  <p>Strict ownership remains enforced inside the combined file: application settings are read at startup, while renderer profile and event expressions may change only renderer-owned settings. Capture, queue, conversion, and other application keys cannot be placed in renderer profiles.</p>
   <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override matching settings.</p>
-  <p>Use <code>/config "path\VideoProcessor.cfg"</code> to select a different general configuration for one process, and <code>/vr_config "path\VideoProcessorRenderer.cfg"</code> to select a different renderer configuration for all renderer components in that process. Relative paths are resolved from the process working directory, and an explicitly selected file must exist. The <code>--config</code>, <code>-config</code>, <code>--vr_config</code>, and <code>-vr_config</code> spellings are equivalent; <code>/config=path</code> and <code>/vr_config=path</code> are also accepted.</p>
+  <p>Use <code>/config "path\VideoProcessor.cfg"</code> to select a different complete configuration for one process. Relative paths are resolved from the process working directory, and an explicitly selected file must exist. The <code>--config</code> and <code>-config</code> spellings are equivalent; <code>/config=path</code> is also accepted.</p>
 
   <h2>[command_line]</h2>
   <p>Keys and option values, including device and renderer names, are case-insensitive. Configuration entries must use <code>key=value</code>. Boolean values accept <code>true</code>/<code>false</code>, <code>yes</code>/<code>no</code>, <code>on</code>/<code>off</code>, or <code>1</code>/<code>0</code>. On the command line, a bare Boolean switch enables it; append a Boolean value to explicitly enable or disable it, for example <code>/scene_detect false</code>.</p>
@@ -214,5 +216,34 @@ capture_device=Decklink Quad HDMI Recorder (1)
 renderer=
 queue_size=32
 scene_detect=false</pre>
+
+  <h2 id="renderer">Built-in renderer configuration</h2>
+  <p>The optional built-in libplacebo renderer is configured in the same <code>VideoProcessor.cfg</code>. Select it with <code>renderer: VideoProcessor Renderer (Alpha)</code> in <code>[command_line]</code>. Its complete optional plugin pack belongs in a <code>libplacebo</code> directory beside <code>VideoProcessor.exe</code>; if it is unavailable, the application starts normally without listing that renderer.</p>
+  <p>Renderer entries use the canonical <code>key: value</code> syntax. Existing <code>key=value</code> entries remain readable. The renderer always produces SDR output; HDR, HLG, and detected LLDV input is tone-mapped using the effective input colorspace and mastering metadata.</p>
+
+  <h3>Base settings</h3>
+  <p><code>[display]</code> holds the base display treatment. Common settings are <code>sdr_target_nits</code>, <code>sdr_black_nits</code>, <code>quality</code>, <code>tone_mapping</code>, <code>gamut_mapping</code>, <code>peak_detection</code>, <code>contrast_recovery</code>, <code>upscaler</code>, <code>downscaler</code>, <code>deband</code>, <code>dithering</code>, <code>output_presentation</code>, <code>output_range</code>, <code>output_gamma</code>, <code>sdr_target_primaries</code>, <code>report_bt2020_to_display</code>, and <code>sdr_input_transfer</code>. Values are validated at startup. The supplied <code>VideoProcessor.cfg</code> is the authoritative example.</p>
+  <p><code>[general]</code> controls renderer-wide behavior such as <code>switch_refresh_rate</code>, <code>persist_profile_selection</code>, and <code>event_action_delay_seconds</code>.</p>
+
+  <h3>Profiles and hotkeys</h3>
+  <p>Profiles are independent groups: <code>input</code>, <code>scaling</code>, <code>display</code>, and <code>viewport</code>. Declare each group in <code>[profile_groups.&lt;group&gt;]</code>, then define settings in <code>[profiles.&lt;group&gt;.&lt;name&gt;]</code>. A profile's <code>when</code> expression can use source metadata or <code>$key</code>. The same key may select profiles in multiple groups; no profile may write a setting owned by a different group or by the application.</p>
+  <pre>[profile_groups.display]
+profiles: rec709,bt2020
+default: auto
+when: $key=="F4"
+
+[profiles.display.rec709]
+when: $key=="F5" || $key=="Ctrl+F10"
+sdr_target_primaries: REC709
+report_bt2020_to_display: false
+
+[profiles.display.bt2020]
+when: $key=="F6" || $key=="Ctrl+F9"
+sdr_target_primaries: BT2020
+report_bt2020_to_display: true</pre>
+  <p>The selected manual profiles are stored alongside the configuration in <code>VideoProcessor.state</code>, and only after a successful renderer application. A failed change leaves both the active renderer and the saved selection intact.</p>
+
+  <h3>Completed-event actions</h3>
+  <p>Optional <code>[event_actions]</code> entries run only after a successful applied, confirmed, or restored renderer transition. Each action has an <code>on</code> list and can constrain execution with <code>when</code>, <code>program</code>, and <code>arguments</code>. See the commented example in the shipped configuration.</p>
 </body>
 </html>

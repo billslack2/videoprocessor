@@ -7,7 +7,7 @@
 #include <cstdint>
 
 
-static constexpr uint32_t VP_LIBPLACEBO_PLUGIN_API_VERSION = 4;
+static constexpr uint32_t VP_LIBPLACEBO_PLUGIN_API_VERSION = 5;
 static constexpr const char* VP_LIBPLACEBO_VERSION_EXPORT =
 	"VideoProcessorLibplaceboGetApiVersion";
 static constexpr const char* VP_LIBPLACEBO_CREATE_EXPORT =
@@ -23,6 +23,7 @@ using VideoProcessorLibplaceboCreateRendererFn = IVideoRenderer* (__cdecl *)(
 	ITimingClock* timingClock,
 	bool useFrameQueue,
 	size_t frameQueueMaxSize,
+	const char* rendererConfigPath,
 	VideoProcessorLibplaceboLogSink logSink);
 using VideoProcessorLibplaceboDestroyRendererFn = void (__cdecl *)(
 	IVideoRenderer* renderer);

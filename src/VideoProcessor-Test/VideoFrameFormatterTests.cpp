@@ -353,6 +353,7 @@ namespace Tests
 		TEST_METHOD(RendererProfileConfigCheckedInExamplesPassStartupValidation)
 		{
 			for (const char* path : {
+				"VideoProcessor.cfg",
 				"docs\\examples\\VideoProcessorRenderer.unified.proposed.cfg",
 				"docs\\examples\\VideoProcessorRenderer.unified.minimal.proposed.cfg",
 				"docs\\examples\\VideoProcessorRenderer.from-legacy.proposed.cfg" })
@@ -367,6 +368,12 @@ namespace Tests
 				RendererProfileConfig::Model model;
 				std::string error;
 				if (!RendererProfileConfig::Read(config, model, error))
+				{
+					const std::string detail = std::string(path) + ": " + error;
+					Assert::Fail(std::wstring(detail.begin(), detail.end()).c_str());
+				}
+				if (std::string(path) == "VideoProcessor.cfg" &&
+					!MainConfigSchema::Validate(config, error))
 				{
 					const std::string detail = std::string(path) + ": " + error;
 					Assert::Fail(std::wstring(detail.begin(), detail.end()).c_str());

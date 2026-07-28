@@ -10,9 +10,10 @@
 #include <string>
 #include <vector>
 
-// Shared, side-effect-free schema validation for both VideoProcessor.cfg and
-// VideoProcessorRenderer.cfg.  This deliberately validates configuration
-// values only; it does not apply settings or permit runtime mutation.
+// Shared, side-effect-free schema validation for the application and renderer
+// sections in VideoProcessor.cfg.
+// This deliberately validates configuration values only; it does not apply
+// settings or permit runtime mutation.
 namespace ConfigSchema
 {
 	using Validator = std::function<bool(const std::string&)>;

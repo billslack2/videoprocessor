@@ -1,22 +1,23 @@
 # VP-0028 proposed renderer configuration model
 
+> **Superseded default (VP-0036).** This proposal documents the VP-0028
+> side-by-side rollout. Production configuration now uses one
+> `VideoProcessor.cfg`.
+
 > **VP-0028 side-by-side test build.** The unified runtime validates its graph
 > before capture, resolves independent groups and composite keys, applies
 > viewport profiles, compares effective-setting fingerprints, commits atomic
 > per-config state only after a successful renderer build, and schedules
 > generation-scoped refresh actions. Existing legacy syntax remains supported.
-> Test with a separate `/vr_config` file; do not replace the active deployed
-> configuration during acceptance testing.
+> Test a copied, complete `VideoProcessor.cfg`; do not replace the active
+> deployed configuration during acceptance testing.
 
-`VideoProcessor.cfg` and `VideoProcessorRenderer.cfg` use the same strict,
-table-driven key/type/range validation engine. They retain separate schemas and
-lifecycle boundaries: main application settings are startup-only, while
+`VideoProcessor.cfg` uses the same strict, table-driven key/type/range
+validation engine for both owners. The schemas retain separate lifecycle
+boundaries: main application settings are startup-only, while
 profile and event expressions remain renderer-only. Sharing validation does
 not permit renderer rules to mutate capture, queue, conversion, or other main
 application settings.
-
-A review-oriented HTML version is available beside the existing renderer help
-as `VideoProcessorRenderer-Proposed.html`.
 
 ## Purpose
 
@@ -197,14 +198,11 @@ profile.display: rec709_projector
 profile.viewport: scope
 ```
 
-Session-only and automatic selections are not stored. For the default
-`VideoProcessorRenderer.cfg`, VP continues using
-`VideoProcessorRenderer.state` and preserves/writes the compatible
-`screen_profile:` mirror so returning to a legacy build does not lose viewport
-state. An explicit `/vr_config X.cfg` uses a sibling `X.state`; for example,
-`VideoProcessorRenderer.vp0028-test.cfg` uses
-`VideoProcessorRenderer.vp0028-test.state`. This isolates side-by-side tests
-without exposing an arbitrary state path in configuration.
+Session-only and automatic selections are not stored. The single
+`VideoProcessor.cfg` configuration uses `VideoProcessor.state` and
+preserves/writes the compatible `screen_profile:` mirror. A copied test
+configuration uses a sibling state file, isolating side-by-side tests without
+exposing an arbitrary state path in configuration.
 
 State writes use a temporary file and atomic replacement. A key request is
 persisted only after the new effective configuration has applied successfully;
@@ -679,9 +677,9 @@ side-by-side runtime testing:
 | Events | applied/confirmed/restored, exact rational families, delay inheritance, dedupe, cancellation, teardown |
 | Compatibility | unchanged legacy behavior, strict mixed-mode rejection, side-by-side migration |
 
-Integration testing must use `/vr_config` with a side-by-side configuration and
-must never overwrite the deployed active configuration. Runtime evidence comes
-from `C:\logs\vp_debug.log`.
+Integration testing must use a copied, complete configuration and must never
+overwrite the deployed active configuration. Runtime evidence comes from
+`C:\logs\vp_debug.log`.
 
 Golden resolver scenarios must assert exact outputs, not only broad coverage:
 

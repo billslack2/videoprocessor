@@ -3,6 +3,7 @@
 #include "LibplaceboPluginVideoRenderer.h"
 #include "LibplaceboRendererPluginApi.h"
 
+#include <ConfigFile.h>
 #include <DebugLog.h>
 
 #include <stdexcept>
@@ -121,12 +122,20 @@ LibplaceboPluginVideoRenderer::LibplaceboPluginVideoRenderer(
 	if (!plugin.module)
 		throw std::runtime_error("optional libplacebo renderer plugin is unavailable");
 
+	ConfigFile rendererConfig;
+	std::string rendererConfigPath;
+	if (rendererConfig.Load(ConfigFile::RENDERER_FILENAME))
+		rendererConfigPath = rendererConfig.GetLoadedPath();
+	else if (!rendererConfig.GetWarnings().empty())
+		throw std::runtime_error(rendererConfig.GetWarnings().front());
+
 	m_renderer = plugin.createRenderer(
 		&callback,
 		videoHwnd,
 		timingClock,
 		useFrameQueue,
 		frameQueueMaxSize,
+		rendererConfigPath.c_str(),
 		ForwardPluginLog);
 	if (!m_renderer)
 		throw std::runtime_error("optional libplacebo renderer plugin failed to create a renderer");

@@ -48,11 +48,6 @@ Options:
       process working directory. The explicit file must exist. --config and
       -config are also accepted.
 
-  /vr_config <path>
-      Use this VideoProcessorRenderer.cfg file for all renderer components.
-      Relative paths are resolved from the process working directory. The
-      explicit file must exist. --vr_config and -vr_config are also accepted.
-
   /fullscreen
       Start fullscreen.
 
@@ -126,9 +121,11 @@ Options:
 
 Config file:
   VideoProcessor.cfg
-      Optional unified config file searched beside VideoProcessor.exe, then its
-      two parent directories, with the working directory as a fallback.
-      Command-line switches override matching config values.
+      Optional single configuration file for application, capture, shaders,
+      renderer profiles, hotkeys, and completed-event actions. It is searched
+      beside VideoProcessor.exe, then its two parent directories, with the
+      working directory as a fallback. Command-line switches override matching
+      config values.
 )";
 
 bool ClearCurrentConsoleLine(HANDLE output)
@@ -245,6 +242,13 @@ void ThrowIfConfigHasSyntaxWarnings(const ConfigFile& config)
 
 void ValidateRendererConfigRules()
 {
+	ConfigFile mainConfig;
+	const bool hasMainConfig = mainConfig.Load();
+	if (!hasMainConfig && !mainConfig.GetWarnings().empty())
+		throw std::runtime_error(mainConfig.GetWarnings().front());
+	if (hasMainConfig)
+		ThrowIfConfigHasSyntaxWarnings(mainConfig);
+
 	ConfigFile rendererConfig;
 	if (!rendererConfig.Load(ConfigFile::RENDERER_FILENAME))
 	{
@@ -266,6 +270,43 @@ void ValidateRendererConfigRules()
 		throw std::runtime_error("Invalid " + ConfigLocation(rendererConfig) +
 			" unified renderer configuration: " + error);
 	}
+
+	auto validateOwnedSections = [](const ConfigFile& config)
+	{
+		for (const std::string& section : config.GetSectionNames())
+			if (!MainConfigSchema::OwnsSection(section) &&
+				!RendererProfileConfig::OwnsSection(section))
+			{
+				throw std::runtime_error(
+					"Invalid " + ConfigLocation(config) +
+					" unknown configuration section [" + section + "]");
+			}
+	};
+	if (hasMainConfig)
+		validateOwnedSections(mainConfig);
+	validateOwnedSections(rendererConfig);
+
+	const bool compatibilityOverride = !hasMainConfig ||
+		_stricmp(mainConfig.GetLoadedPath().c_str(),
+			rendererConfig.GetLoadedPath().c_str()) != 0;
+	if (compatibilityOverride &&
+		RendererProfileConfig::IsUnified(rendererConfig))
+		for (const std::string& section : rendererConfig.GetSectionNames())
+			if (MainConfigSchema::OwnsSection(section))
+			{
+				throw std::runtime_error(
+					"Invalid renderer override " + ConfigLocation(rendererConfig) +
+					" contains application section [" + section + "]");
+			}
+	const std::string statePath =
+		RendererProfileConfig::IsUnified(rendererConfig) ?
+		RendererProfileConfig::StatePath(rendererConfig) : "(legacy)";
+	DebugLog::Log(
+		"configuration paths: primary=%s renderer=%s vr_override=%d state=%s",
+		hasMainConfig ? mainConfig.GetLoadedPath().c_str() : "(none)",
+		rendererConfig.GetLoadedPath().c_str(),
+		compatibilityOverride ? 1 : 0,
+		statePath.c_str());
 }
 
 void ValidateCommandLineConfigKeys(const ConfigFile& config)

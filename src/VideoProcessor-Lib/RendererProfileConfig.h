@@ -2,6 +2,7 @@
 
 #include "ConfigFile.h"
 #include "ConfigSchema.h"
+#include "MainConfigSchema.h"
 #include "DisplayRuleExpression.h"
 
 #include <algorithm>
@@ -19,6 +20,37 @@
 // validation and selection can be tested before a renderer is created.
 namespace RendererProfileConfig
 {
+	inline bool OwnsSection(const std::string& section)
+	{
+		return section == "display" ||
+			section == "general" ||
+			section == "profile_groups" ||
+			section == "profiles.input" ||
+			section == "profiles.scaling" ||
+			section == "profiles.display" ||
+			section == "profiles.viewport" ||
+			section == "event_actions" ||
+			section == "display_rules" ||
+			section == "refresh_rate_commands" ||
+			section.rfind("profile_groups.", 0) == 0 ||
+			section.rfind("profiles.", 0) == 0 ||
+			section.rfind("event_actions.", 0) == 0 ||
+			section.rfind("display_rules.", 0) == 0;
+	}
+
+	inline std::string StatePath(const ConfigFile& config)
+	{
+		std::string path = config.GetLoadedPath();
+		if (path.empty())
+			path = ConfigFile::DEFAULT_FILENAME;
+		const size_t separator = path.find_last_of("\\/");
+		const size_t extension = path.find_last_of('.');
+		if (extension != std::string::npos &&
+			(separator == std::string::npos || extension > separator))
+			path.resize(extension);
+		return path + ".state";
+	}
+
 	struct Profile
 	{
 		std::string group;
@@ -280,13 +312,23 @@ namespace RendererProfileConfig
 			return false;
 		}
 
-		for (const char* legacySection : { "display_rules", "shortcuts", "refresh_rate_commands" })
+		for (const char* legacySection : { "display_rules", "refresh_rate_commands" })
 			if (config.HasSection(legacySection))
 			{
 				error = "unified renderer configuration cannot include legacy [" +
 					std::string(legacySection) + "]";
 				return false;
 			}
+		if (const auto* shortcuts = config.GetSectionValues("shortcuts"))
+			for (const auto& shortcut : *shortcuts)
+				if (shortcut.first == "screen_profile_normal" ||
+					shortcut.first == "screen_profile_scope" ||
+					shortcut.first == "display_rules_auto")
+				{
+					error = "unified renderer configuration cannot include "
+						"legacy [shortcuts] key '" + shortcut.first + "'";
+					return false;
+				}
 
 		std::string value;
 		const std::vector<ConfigSchema::KeyRule> generalRules = {
@@ -568,7 +610,8 @@ namespace RendererProfileConfig
 					error = "[event_actions] unknown key '" + value.first + "'"; return false;
 				}
 		for (const std::string& section : config.GetSectionNames())
-			if (expectedSections.find(section) == expectedSections.end())
+			if (expectedSections.find(section) == expectedSections.end() &&
+				!MainConfigSchema::OwnsSection(section))
 			{
 				error = "unified renderer configuration has unknown or orphan section [" + section + "]";
 				return false;

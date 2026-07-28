@@ -40,6 +40,16 @@ public:
 		const std::string& option,
 		std::string& value,
 		std::string& error);
+	static bool TryResolveRendererConfigSelection(
+		const std::vector<std::string>& arguments,
+		std::string& filename,
+		bool& explicitSelection,
+		bool& compatibilityOverride,
+		std::string& error);
+	// The GUI resolves the renderer path once and passes it across the optional
+	// plugin ABI. Each module has its own statically linked ConfigFile copy, so
+	// this pins every later renderer load to the core-selected file.
+	static void SetRendererConfigurationPath(const std::string& path);
 
 private:
 	std::map<std::string, std::map<std::string, std::string>> m_sections;
