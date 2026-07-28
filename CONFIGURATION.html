@@ -222,11 +222,25 @@ scene_detect=false</pre>
   <p>Renderer entries use the canonical <code>key: value</code> syntax. Existing <code>key=value</code> entries remain readable. The renderer always produces SDR output; HDR, HLG, and detected LLDV input is tone-mapped using the effective input colorspace and mastering metadata.</p>
 
   <h3>Base settings</h3>
-  <p><code>[display]</code> holds the base display treatment. Common settings are <code>sdr_target_nits</code>, <code>sdr_black_nits</code>, <code>quality</code>, <code>tone_mapping</code>, <code>gamut_mapping</code>, <code>peak_detection</code>, <code>contrast_recovery</code>, <code>upscaler</code>, <code>downscaler</code>, <code>deband</code>, <code>dithering</code>, <code>output_presentation</code>, <code>output_range</code>, <code>output_gamma</code>, <code>sdr_target_primaries</code>, <code>report_bt2020_to_display</code>, and <code>sdr_input_transfer</code>. Values are validated at startup. The supplied <code>VideoProcessor.cfg</code> is the authoritative example.</p>
-  <p><code>[general]</code> controls renderer-wide behavior such as <code>switch_refresh_rate</code>, <code>persist_profile_selection</code>, and <code>event_action_delay_seconds</code>.</p>
+  <p><code>[display]</code> holds the base renderer treatment. Every setting has a typed range or value list and is validated before capture begins. Profiles override only their own group’s settings; values omitted by a profile retain this base value.</p>
+  <table><thead><tr><th>Area</th><th>Settings</th><th>Useful values</th></tr></thead><tbody>
+    <tr><td>Input treatment</td><td><code>tone_mapping</code>, <code>gamut_mapping</code>, <code>peak_detection</code>, <code>contrast_recovery</code>, <code>sdr_input_transfer</code></td><td>Tone mapping: <code>AUTO</code>, <code>spline</code>, <code>bt2390</code>, <code>st2094-40</code>, <code>reinhard</code>. Gamut mapping: <code>AUTO</code>, <code>perceptual</code>, <code>softclip</code>, <code>relative</code>, <code>desaturate</code>.</td></tr>
+    <tr><td>Scaling</td><td><code>quality</code>, <code>upscaler</code>, <code>downscaler</code>, <code>deband</code>, <code>dithering</code></td><td>Quality: <code>fast</code>, <code>balanced</code>, <code>high</code>. Scalers include <code>ewa_lanczossharp</code>, <code>ewa_lanczos</code>, <code>bicubic</code>, and <code>bilinear</code>. Most controls accept <code>AUTO</code>.</td></tr>
+    <tr><td>Display target</td><td><code>sdr_target_nits</code>, <code>sdr_black_nits</code>, <code>output_presentation</code>, <code>output_range</code>, <code>output_gamma</code>, <code>sdr_target_primaries</code>, <code>report_bt2020_to_display</code></td><td>Target white is 40–500 nits; black is <code>AUTO</code> or non-negative below target. Presentation is <code>AUTO</code>, <code>DIRECT</code>, or <code>COMPOSED</code>; range is <code>AUTO</code>, <code>FULL</code>, or <code>LIMITED</code>; primaries are <code>REC709</code> or <code>BT2020</code>.</td></tr>
+    <tr><td>Viewport</td><td><code>default_screen_profile</code>, <code>scope_screen_aspect</code>, <code>scope_subtitle_fit</code>, <code>scope_subtitle_hold_seconds</code>, <code>scope_subtitle_padding_pixels</code></td><td>Profile is <code>normal</code> or <code>scope</code>. Aspect accepts a decimal or ratio from 1.5–4.0, such as <code>2.35:1</code>.</td></tr>
+    <tr><td>Diagnostics</td><td><code>switch_refresh_rate</code>, <code>output_diagnostics</code>, <code>diagnostic_disable_shader_cache</code></td><td>Boolean. Diagnostic controls are for troubleshooting rather than normal calibration.</td></tr>
+  </tbody></table>
+  <p><code>[general]</code> controls renderer-session policy: <code>persist_profile_selection</code>, <code>switch_refresh_rate</code>, and <code>event_action_delay_seconds</code> (0–30 seconds). The shipped configuration is the complete conservative starting point.</p>
 
   <h3>Profiles and hotkeys</h3>
   <p>Profiles are independent groups: <code>input</code>, <code>scaling</code>, <code>display</code>, and <code>viewport</code>. Declare each group in <code>[profile_groups.&lt;group&gt;]</code>, then define settings in <code>[profiles.&lt;group&gt;.&lt;name&gt;]</code>. A profile's <code>when</code> expression can use source metadata or <code>$key</code>. The same key may select profiles in multiple groups; no profile may write a setting owned by a different group or by the application.</p>
+  <table><thead><tr><th>Group</th><th>May override</th><th>Typical selector</th></tr></thead><tbody>
+    <tr><td><code>input</code></td><td><code>tone_mapping</code>, <code>gamut_mapping</code>, <code>peak_detection</code>, <code>contrast_recovery</code>, <code>sdr_input_transfer</code></td><td>Source transfer, primaries, HDR metadata</td></tr>
+    <tr><td><code>scaling</code></td><td><code>quality</code>, <code>upscaler</code>, <code>downscaler</code>, <code>sigmoid</code>, <code>deband_strength</code>, <code>dithering</code></td><td>Resolution or frame size</td></tr>
+    <tr><td><code>display</code></td><td>Target nits/black, presentation/range/gamma, target primaries, BT.2020 signalling, and <code>lut</code> plus its reference fields</td><td>Manual display/calibration hotkey</td></tr>
+    <tr><td><code>viewport</code></td><td><code>mode</code>, scope aspect, subtitle-fit, hold, and padding</td><td>Manual Normal/Scope hotkey</td></tr>
+  </tbody></table>
+  <p>Each group requires <code>profiles:</code> and <code>default:</code>. The default is a listed profile or <code>auto</code>. <code>persist_profile_selection:</code> may be set per group. A group-level <code>when:</code> is a reset chord: it returns that group to automatic selection without changing other groups.</p>
   <pre>[profile_groups.display]
 profiles: rec709,bt2020
 default: auto
@@ -243,7 +257,42 @@ sdr_target_primaries: BT2020
 report_bt2020_to_display: true</pre>
   <p>The selected manual profiles are stored alongside the configuration in <code>VideoProcessor.state</code>, and only after a successful renderer application. A failed change leaves both the active renderer and the saved selection intact.</p>
 
+  <h3>Automatic rules and expression language</h3>
+  <p>A profile without <code>when:</code> is selectable as the configured default or persisted manual choice. An automatic profile uses a source condition; the highest matching <code>priority:</code> wins (default 0), with declared profile order making a remaining tie deterministic. Rules support <code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code>, <code>&amp;&amp;</code>, <code>||</code>, <code>!</code>, and parentheses. Text comparison is case-insensitive.</p>
+  <table><thead><tr><th>Rule variable</th><th>Examples</th></tr></thead><tbody>
+    <tr><td><code>$transfer</code> / <code>$eotf</code></td><td><code>SDR</code>, <code>PQ</code>, <code>HLG</code>, <code>HDR</code>, <code>UNKNOWN</code></td></tr>
+    <tr><td><code>$primaries</code> / <code>$colorspace</code></td><td><code>REC709</code>, <code>BT2020</code>, <code>P3_D65</code></td></tr>
+    <tr><td><code>$format</code>, <code>$scan</code>, <code>$interlaced</code></td><td>Capture format and scan mode</td></tr>
+    <tr><td><code>$source_rate</code> / <code>$cadence</code></td><td><code>23.976</code>, <code>24</code>, <code>50</code>, <code>59.94</code>, <code>60</code></td></tr>
+    <tr><td><code>$width</code>, <code>$height</code>, <code>$resolution</code></td><td>For example <code>3840x2160</code></td></tr>
+    <tr><td><code>$hdr_metadata</code></td><td><code>true</code> when valid static HDR metadata is present</td></tr>
+    <tr><td><code>$key</code></td><td>A transient canonical chord, such as <code>F5</code> or <code>Ctrl+F9</code></td></tr>
+  </tbody></table>
+  <pre>[profiles.input.pq]
+when: $transfer=="PQ" &amp;&amp; $primaries=="BT2020"
+priority: 100
+tone_mapping: spline
+gamut_mapping: perceptual
+
+[profiles.scaling.uhd]
+when: $width&gt;=3840 &amp;&amp; $height&gt;=2160
+quality: high</pre>
+  <p>Use quoted key chords: <code>when: $key=="F5"</code>. A chord may select one profile in each independent group, which makes composite actions such as selecting a display calibration and viewport together deliberate and safe. Two profiles in the same group cannot claim the same chord.</p>
+
+  <h3>Strictness and safe changes</h3>
+  <p>Unified configuration rejects duplicate keys, unknown sections, missing listed profiles, orphan profile sections, invalid defaults, unknown variables, malformed expressions, unsupported values, and a setting placed in the wrong profile group. Application settings such as capture, queues, conversion, and shaders remain startup-only and cannot be changed by a renderer profile. Legacy display-rule syntax is not part of the unified model.</p>
+  <p>Changes are transactional. VP first resolves the full effective settings, then applies/rebuilds the renderer as needed. It persists a manual selection and runs completed-event actions only after the change succeeds. If application fails, the prior renderer, state, and selection remain in effect.</p>
+
   <h3>Completed-event actions</h3>
-  <p>Optional <code>[event_actions]</code> entries run only after a successful applied, confirmed, or restored renderer transition. Each action has an <code>on</code> list and can constrain execution with <code>when</code>, <code>program</code>, and <code>arguments</code>. See the commented example in the shipped configuration.</p>
+  <p>Optional <code>[event_actions]</code> entries run only after a successful applied, confirmed, or restored renderer transition. The section lists action names; each action requires <code>on:</code>, <code>when:</code>, and <code>program:</code>. <code>arguments:</code>, <code>working_directory:</code>, and a 0–30 second <code>delay_seconds:</code> are optional. Without a per-action delay, the value from <code>[general]</code> is used.</p>
+  <pre>[event_actions]
+actions: audio_delay_film
+
+[event_actions.audio_delay_film]
+on: refresh.applied,refresh.confirmed
+when: $actual_refresh==23.976 || $actual_refresh==24
+program: C:\Videoprocessor\audio\audio_delay.bat
+arguments: 315</pre>
+  <p>Supported events are <code>refresh.applied</code>, <code>refresh.confirmed</code>, and <code>refresh.restored</code>. Actions are not profile selectors and cannot change renderer settings. Failed or unsupported refresh changes run no action.</p>
 </body>
 </html>
