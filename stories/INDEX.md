@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0035`
-- Next story number: `VP-0036`
-- Total indexed items: 35
+- Last assigned item: `VP-0036`
+- Next story number: `VP-0037`
+- Total indexed items: 36
 
 ## Story locations
 
@@ -60,11 +60,12 @@ they must not contain requirements that are absent from this file.
 | VP-0033 | Draft | Alpha renderer libplacebo frame-mixing smooth motion |
 | VP-0034 | Draft | Restart-free mixed-aspect NLS |
 | VP-0035 | Draft | Robust low-latency active-aspect transitions |
+| VP-0036 | Draft | Consolidate application and renderer settings into one configuration file |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
 | VP-0027 | Done | Alpha display-verified scene-safe cadence correction |
-| VP-0028 | In Progress | Renderer configuration profile, hotkey, and event-action unification |
+| VP-0028 | Done | Renderer configuration profile, hotkey, and event-action unification |
 | VP-0029 | Draft | Alpha two-pass display LUT and final-dither pipeline spike |
 
 ## Codex story workflow

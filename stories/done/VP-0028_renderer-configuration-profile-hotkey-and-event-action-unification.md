@@ -2,6 +2,24 @@
 
 ## Status
 
+Done as of 2026-07-27. PR #9 merged the rebased implementation into
+`v1.1.014-beta` at `63907af`; PR #10 merged the post-rebase strict-schema
+integration fix for `alpha_queue_size` and `scene_correction_basic` at
+`f6fc6e6`.
+
+Final Release validation passed 115/115 non-GPU tests. Hardware validation
+confirmed F2/F3 live viewport changes, F5/F6 Rec.709/BT.2020 selection,
+display-only F4 automatic reset, and Ctrl+F9/F10 multi-group selection. The
+active deployment configurations were backed up and ported to canonical colon
+syntax and unified renderer groups. Obsolete VP-0028 deployment artifacts were
+moved to the Windows Recycle Bin; the retained consolidated recovery point is
+`C:\Videoprocessor\vp\backup-final-vp0028-20260727`.
+
+The following notes are the historical implementation log retained for
+traceability.
+
+### Historical implementation log
+
 Ready for Review as of 2026-07-26. Documentation-first implementation started on
 `codex/vp-0028-config-docs` in
 `C:\Users\bslac\vp\videoprocessor-vp-0028`, based on confirmed integration
