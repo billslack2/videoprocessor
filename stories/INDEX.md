@@ -94,6 +94,31 @@ uncommitted work; create a fresh checkout from `origin/main` instead. A story
 change is not complete until it is committed and pushed to the canonical
 `main` branch, unless the user explicitly requests another review branch.
 
+## Story ID conflict audit
+
+Before creating a story, and after every fetch/retry caused by remote tracker
+changes, Codex must audit all canonical state folders (`backlog`, `in-progress`,
+`blocked`, `review`, `done`, and `will-not-do`). Parse `VP-####` IDs from the
+story filenames, then compare them with the Registry state and every `## Items`
+table row.
+
+The audit must detect and report:
+
+- duplicate IDs in two canonical story files;
+- a canonical story file absent from the table;
+- a table entry without exactly one canonical story file;
+- Registry `Last assigned`, `Next story number`, or total-count values that do
+  not match the discovered state; and
+- any ID in the registry/table greater than the highest canonical filename ID.
+
+Never reuse an ID because the registry is stale. For a new story, assign an ID
+strictly greater than the maximum ID discovered in both the canonical files and
+the index/registry, then update the Registry state and table in the same
+commit. A duplicate or inconsistent historical entry must not be silently
+renumbered, overwritten, deleted, or moved: report it and obtain or record a
+deliberate tracker-repair decision. If new work still needs a story, use the
+next higher unused ID so the conflict cannot spread.
+
 Codex owns moving stories between folders in this session. Move the file,
 update its `## Status` section, and update the table above in the **same
 commit**. Never copy a story into a second state folder; `git mv` is preferred
@@ -116,8 +141,9 @@ in the story when it moves to `in-progress`. Re-run this manual discovery and
 confirmation gate whenever a new story implementation starts; the origin
 default branch may change.
 
-1. Create new stories in `stories/backlog/` using the next permanent ID, then
-   update the Registry state and table in this file.
+1. After completing the Story ID conflict audit above, create new stories in
+   `stories/backlog/` using the next permanent ID greater than every known ID,
+   then update the Registry state and table in this file.
 2. Before moving a Backlog story to `in-progress`, record a readiness review in the
    story. Verify that the configuration model matches current code; required API
    behavior, pipeline order, and resource lifetime are known; dependencies and
