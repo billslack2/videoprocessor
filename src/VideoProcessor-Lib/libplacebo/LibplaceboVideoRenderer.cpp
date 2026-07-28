@@ -5149,7 +5149,20 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	}
 	if (!frameState)
 	{
-		m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+		const uint64_t droppedTotal =
+			m_droppedFrames.fetch_add(1, std::memory_order_relaxed) + 1;
+		const uint64_t reasonTotal =
+			m_missingFrameStateDrops.fetch_add(
+				1, std::memory_order_relaxed) + 1;
+		// Log the first occurrence and powers of two. This remains useful for a
+		// sustained failure without becoming a per-frame log.
+		if ((reasonTotal & (reasonTotal - 1)) == 0)
+		{
+			DebugLog::Log(
+				"Alpha dropped frame: reason=video_state_unavailable reason_total=%llu dropped_total=%llu",
+				static_cast<unsigned long long>(reasonTotal),
+				static_cast<unsigned long long>(droppedTotal));
+		}
 		return;
 	}
 
@@ -5743,11 +5756,27 @@ void LibplaceboVideoRenderer::SetFrameQueueMaxSize(size_t size)
 			AlphaQueuePolicy::HardCapacity(m_frameQueueDesiredDepth);
 		DebugLog::Log("Alpha queue desired depth=%zu, internal hard capacity=%zu",
 			m_frameQueueDesiredDepth, m_frameQueueMaxSize);
+		size_t purgedFrames = 0;
 		while (m_frameQueue.size() > m_frameQueueMaxSize)
 		{
 			m_frameQueue.front().frame.SourceBufferRelease();
 			m_frameQueue.pop_front();
-			m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+			++purgedFrames;
+		}
+		if (purgedFrames > 0)
+		{
+			const uint64_t droppedTotal =
+				m_droppedFrames.fetch_add(
+					purgedFrames, std::memory_order_relaxed) +
+				purgedFrames;
+			DebugLog::Log(
+				"Alpha dropped frames: reason=queue_resize count=%zu dropped_total=%llu generation=%llu depth=%zu desired=%zu hard_capacity=%zu",
+				purgedFrames,
+				static_cast<unsigned long long>(droppedTotal),
+				static_cast<unsigned long long>(m_queueGeneration),
+				m_frameQueue.size(),
+				m_frameQueueDesiredDepth,
+				m_frameQueueMaxSize);
 		}
 		m_queueDepthWindowStartNs = SteadyClockNowNs();
 		m_queueDepthWindowDequeues = 0;
@@ -6252,8 +6281,28 @@ void LibplaceboVideoRenderer::RenderLoop()
 			if (staleGeneration)
 				continue;
 
-			m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+			const uint64_t droppedTotal =
+				m_droppedFrames.fetch_add(
+					1, std::memory_order_relaxed) + 1;
+			const uint64_t reasonTotal =
+				m_renderFailureDrops.fetch_add(
+					1, std::memory_order_relaxed) + 1;
 			const bool gpuFailed = m_impl->IsGpuFailed();
+			const bool windowVisible = IsWindowVisible(m_videoHwnd);
+			const bool windowIconic = IsIconic(m_videoHwnd);
+			// First occurrence and powers of two make a persistent failure
+			// obvious while keeping a per-frame failure from flooding the log.
+			if ((reasonTotal & (reasonTotal - 1)) == 0)
+			{
+				DebugLog::Log(
+					"Alpha dropped frame: reason=render_failed reason_total=%llu dropped_total=%llu generation=%llu visible=%d iconic=%d gpu_failed=%d",
+					static_cast<unsigned long long>(reasonTotal),
+					static_cast<unsigned long long>(droppedTotal),
+					static_cast<unsigned long long>(frameGeneration),
+					windowVisible ? 1 : 0,
+					windowIconic ? 1 : 0,
+					gpuFailed ? 1 : 0);
+			}
 			if (gpuFailed)
 			{
 				DebugLog::Log(
@@ -6267,7 +6316,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 			// Swapchain acquisition may be unavailable by design while the render
 			// window is hidden or minimized. Do not turn that presentation pause
 			// into a device failure or carry it into a later visible failure streak.
-			if (!IsWindowVisible(m_videoHwnd) || IsIconic(m_videoHwnd))
+			if (!windowVisible || windowIconic)
 			{
 				consecutiveFailures = 0;
 				continue;
