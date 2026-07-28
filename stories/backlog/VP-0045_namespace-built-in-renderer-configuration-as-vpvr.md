@@ -4,19 +4,45 @@
 
 Backlog. No implementation has started.
 
+Readiness review on 2026-07-28 found the naming goal sound but rejected the
+original whole-section migration because it conflicted with the unified profile
+model and treated mixed-ownership `[general]` as renderer-only. This revision
+records the corrected design. The current GitHub default integration branch is
+`v1.1.014-beta`; implementation remains gated on developer confirmation of
+that base.
+
 ## User story
 
-As a VP user reading one shared configuration file, I want every setting owned
-by the built-in renderer grouped under a clear `vpvr` namespace, so it is
-obvious which settings do not configure madVR or core capture behavior.
+As a VP user reading one shared configuration file, I want the built-in
+renderer's base treatment and session-policy sections grouped under a clear
+`vpvr` namespace, so those settings are not mistaken for madVR or core capture
+configuration.
 
-## Requested configuration shape
+This is a section-ownership improvement, not a new profile system. Shared
+profile containers remain unprefixed even when a selected profile contributes
+settings consumed by the built-in renderer.
 
-Rename built-in-renderer sections to the `vpvr` namespace. Examples:
+## Canonical configuration model
+
+The canonical schema is:
 
 ```ini
+[general]
+persist_profile_selection: true
+event_action_delay_seconds: 5
+
+[profile_groups.display]
+profiles: rec709,bt2020
+default: rec709
+when: $key=="F4"
+
+[profiles.display.rec709]
+when: $key=="F5"
+sdr_target_primaries: REC709
+
 [profile_groups.viewport]
 profiles: normal,scope
+default: normal
 
 [profiles.viewport.scope]
 when: $key=="F2"
@@ -24,108 +50,206 @@ screen_aspect: 2.35:1
 
 [vpvr.display]
 sdr_target_nits: 100
+quality: high
 
 [vpvr.general]
 switch_refresh_rate: true
+output_diagnostics: false
+diagnostic_disable_shader_cache: false
 ```
 
-Apply the same ownership rule to all built-in renderer display-rule sections:
+`[vpvr.display]` owns unconditional built-in-renderer treatment and output
+defaults. `[vpvr.general]` owns only cross-profile built-in-renderer session
+policy:
 
-```ini
-[vpvr.display_rules]
-[vpvr.display_rules.<rule>]
-```
+- `switch_refresh_rate`
+- `output_diagnostics`
+- `diagnostic_disable_shader_cache`
 
-The unprefixed renderer sections (`[display]`, `[general]`, and
-`[display_rules*]`) must no longer appear in checked-in examples or generated
-HTML documentation. Shared profile sections remain unprefixed.
+The shared `[general]` section remains canonical for:
 
-## Ownership boundary
+- `persist_profile_selection`
+- `event_action_delay_seconds`
 
-Do not namespace shared application settings merely because they are near the
-renderer configuration. These remain outside `vpvr`, including
-`[command_line]`, `[queue_recovery]`, `[shortcuts]`, `[lldv]`,
-`[p010_conversion]`, `[ppm_correction]`, `[shaders*]`, `[event_actions*]`,
-logging settings, `[profile_groups.*]`, and `[profiles.*]`.
+The implementation must maintain an explicit allowlist for each of these
+sections. A key in the wrong ownership domain is a validation error rather than
+being silently accepted in a convenient nearby section.
 
-The profile/viewport parser publishes resolved viewport state to both Alpha and
-DirectShow/NLS. Its raw configuration remains shared and unprefixed so neither
-renderer needs a duplicate viewport/profile section.
+## Shared ownership boundary
 
-Checked-in examples and HTML documentation must list all shared sections before
-the `vpvr` block. Within the `vpvr` block, group renderer-only sections together
-so their ownership is visually obvious.
+The following remain outside `vpvr`:
 
-## Migration and compatibility
+- `[command_line]`, `[queue_recovery]`, `[shortcuts]`, `[lldv]`,
+  `[p010_conversion]`, `[ppm_correction]`, logging, and other core application
+  sections;
+- `[shaders*]`;
+- `[event_actions*]`;
+- `[profile_groups.*]` and `[profiles.*]`; and
+- shared `[general]` keys listed above.
 
-1. `vpvr.display`, `vpvr.general`, and `vpvr.display_rules*` are the canonical
-   documented built-in-renderer schema.
-2. Continue accepting each unprefixed former renderer-only section as a
-   deprecated alias for
-   one documented migration window.
-3. If canonical and legacy versions of the same logical section/key are both
-   present, reject or clearly diagnose the ambiguity; do not silently merge
-   conflicting values.
-4. Log a section-specific migration warning when a legacy section is consumed,
-   naming its `vpvr.*` replacement.
-5. Do not automatically rewrite an active user configuration on startup.
-   Deployment/config migration must back up the file, preserve unrelated
-   comments and values, and make the smallest safe section rename only when
-   explicitly requested.
-6. Keep any already-supported historical `[libplacebo]` fallback behavior
-   compatible during this migration, but do not present it as the preferred
-   user-facing name.
+The profile/viewport runtime publishes resolved state to both Alpha and
+DirectShow/NLS. Its raw configuration and `VideoProcessor.state` format remain
+shared and unprefixed. F2/F3 viewport selection, F4 return-to-automatic display
+selection, and F5/F6 display-profile selection continue through the existing
+unified profile runtime.
 
-## Implementation requirements
+Canonical checked-in examples and HTML documentation must list shared sections
+before the `vpvr` block. Dedicated legacy fixtures or migration examples may
+show deprecated names when clearly labeled as non-canonical.
 
-1. Centralize canonical/legacy section resolution rather than scattering
-   string fallbacks across the built-in renderer, profile runtime, shortcuts,
-   and display-rule loader.
-2. Update all built-in-renderer reads, validation, warning text, display-rule
-   lookup, and renderer-specific shortcut discovery to use the canonical
-   namespace.
-3. Do not change profile persistence or the shared profile parser. Existing
-   `VideoProcessor.state` values and shared profile section names remain valid.
-4. Update sample configuration, HTML help, parser/schema tests, and any
-   configuration diagnostics to use `vpvr` consistently.
-5. Retain current rendering behavior for display profiles, viewport F2/F3
-   selection, screen aspect, subtitle fit, refresh switching, LUTs, output
-   signaling, shader rules, and Alpha/madVR handoff.
+## Display-rule boundary
+
+`[display_rules]` and `[display_rules.<rule>]` are the pre-unified compatibility
+model. Do not create `vpvr.display_rules*`.
+
+Unified configuration continues to use `[profile_groups.display]` and
+`[profiles.display.*]` and continues to reject legacy display-rule sections.
+Legacy-only configurations may continue using unprefixed `[display_rules*]`
+during their existing compatibility path. Migration guidance must direct users
+from display rules to unified profile groups/profiles, not to a newly
+namespaced display-rule subsystem.
+
+The presence of `vpvr.*` alone must not change whether the shared profile
+runtime considers a file unified. Existing profile/event-section detection
+continues to decide unified versus legacy mode.
+
+## Compatibility and conflict contract
+
+### Display settings
+
+1. `[vpvr.display]` is canonical.
+2. `[display]` is its deprecated section alias.
+3. `[libplacebo]` remains the historical fallback and is never documented as
+   canonical.
+4. If `[vpvr.display]` coexists with either `[display]` or `[libplacebo]` in the
+   same resolved configuration, startup validation fails and names both
+   sections. Do not merge them, even when their values are identical.
+5. When `[vpvr.display]` is absent, preserve the current legacy per-key
+   precedence: `[display]` first, then `[libplacebo]`.
+
+### Renderer session-policy settings
+
+1. `[vpvr.general]` is canonical for the three enumerated renderer-policy keys.
+2. `[general]` remains a valid shared section and may coexist with
+   `[vpvr.general]`.
+3. A renderer-policy key in `[general]` is a deprecated alias. If the same key
+   also appears in `[vpvr.general]`, startup validation fails even when the
+   values are identical.
+4. For compatibility when a canonical policy key is absent, preserve the
+   existing legacy precedence for that key: `[general]`, then `[display]`, then
+   `[libplacebo]`.
+5. Shared `[general]` keys are not aliases and must never be read from
+   `[vpvr.general]`.
+
+### Diagnostics and warnings
+
+- Conflict and unknown-section errors are deterministic startup errors before
+  capture begins.
+- Emit at most one migration warning per consumed deprecated logical section
+  per loaded configuration path. Renderer rebuilds, profile changes, and
+  optional-plugin reloads must not repeat the warning.
+- The warning names the canonical replacement. Legacy display-rule warnings
+  name `[profile_groups.display]`/`[profiles.display.*]`, not a nonexistent
+  `vpvr.display_rules`.
+- Do not automatically rewrite an active user configuration.
+- Any requested deployment migration must back up the affected file, preserve
+  unrelated values/comments, and make only the required section/key edits.
+
+## Migration window
+
+Deprecated `[display]` and renderer-policy keys in `[general]` must remain
+accepted in the first published build containing VP-0045 and the immediately
+following published build. Removing an alias after that minimum two-build
+window requires a separate approved story with release notes and migration
+evidence. Existing `[libplacebo]` and legacy display-rule compatibility are not
+removed by this story.
+
+## Implementation architecture
+
+1. Add one renderer-domain, read-only normalized configuration view or section
+   resolver. It owns canonical names, legacy resolution, conflict detection,
+   key ownership, and migration-warning records.
+2. Do not put VP renderer aliases into generic `ConfigFile`.
+3. Use the normalized view consistently for startup/schema validation, built-in
+   renderer settings, profile application, shortcut discovery where applicable,
+   and legacy display-rule compatibility.
+4. Preserve the existing renderer-config path selected by `--vr_config` and
+   pinned across the core/optional-plugin ABI. Both module copies must resolve
+   the same effective values; only startup validation emits migration warnings.
+5. Update strict section ownership and unknown/orphan validation to recognize
+   `vpvr.display` and `vpvr.general` in both combined `VideoProcessor.cfg` and
+   renderer-sidecar configurations.
+6. Preserve settings order: resolved display base, selected profile overrides,
+   then cross-profile renderer session policy. Namespacing must not alter
+   effective rendering values.
+7. Do not change profile persistence, state-file path/content, renderer
+   algorithms, queueing, timestamps, NLS transitions, or madVR behavior.
 
 ## Verification
 
-1. Parse a canonical `vpvr.*` configuration and confirm all built-in renderer
-   settings resolve identically to the current unprefixed schema.
-2. Parse legacy-only configurations and confirm compatibility plus one precise
-   migration warning per consumed logical section.
-3. Test canonical/legacy duplicates and conflicting settings; assert a clear,
-   deterministic failure/diagnostic.
-4. Test unchanged shared profile resolution, state persistence, F2/F3 viewport
-   selection, and DirectShow/Alpha consumption of the shared viewport state.
-5. Test `vpvr.display_rules*` automatic and manual selection, including
-   refresh switching, LUT/output settings, and F4 automatic selection.
-6. Verify unprefixed unrelated application sections and shader rules retain
-   their existing behavior.
-7. Build the x64 Release configuration and validate the sample configuration
-   and HTML help contain no canonical unprefixed built-in-renderer sections.
+### Parser and migration tests
+
+1. Canonical `vpvr.display` and `vpvr.general` resolve to the same effective
+   settings as the current unified sample.
+2. Legacy unified `[display]`/`[general]` settings remain compatible and produce
+   one precise warning per consumed deprecated logical section.
+3. Canonical/legacy display-section coexistence fails, including identical
+   values and empty legacy sections.
+4. Canonical/legacy renderer-policy duplicate keys fail deterministically;
+   coexistence with shared-only `[general]` keys succeeds.
+5. `[display]` plus `[libplacebo]` retains current per-key fallback behavior
+   when `vpvr.display` is absent.
+6. Unknown `vpvr.*` sections, unknown keys, and keys placed in the wrong
+   ownership section fail strict validation.
+7. Warning de-duplication survives renderer rebuilds and optional-plugin
+   configuration reloads.
+
+### Unified and legacy behavior
+
+1. Unified `[profile_groups.*]`/`[profiles.*]` selection and override precedence
+   remain unchanged.
+2. Unified configurations still reject `[display_rules*]`.
+3. A legacy-only display-rule configuration still performs its existing
+   automatic/manual selection without introducing `vpvr.display_rules*`.
+4. F2/F3 viewport, F4 automatic display selection, and F5/F6 display profiles
+   retain their current behavior.
+5. Shared viewport state and `VideoProcessor.state` remain unchanged for Alpha
+   and DirectShow/NLS.
+6. Refresh switching, LUT/output signaling, shader rules, event actions, and
+   Alpha/madVR handoff retain their current behavior.
+
+### Configuration locations and release validation
+
+1. Test combined `VideoProcessor.cfg`, the compatibility renderer sidecar, and
+   an explicit `--vr_config` selection.
+2. Build and run the x64 Release tests.
+3. Validate canonical sample configuration and generated HTML use
+   `vpvr.display`/`vpvr.general` and contain no canonical unprefixed renderer
+   sections.
+4. Allow deprecated names only in clearly labeled migration documentation and
+   legacy regression fixtures.
 
 ## Acceptance criteria
 
-- The checked-in canonical schema uses `vpvr.display`, `vpvr.general`, and
-  `vpvr.display_rules*`, while shared profile sections remain unprefixed above
-  the `vpvr` block.
-- The actual ownership of built-in renderer configuration is obvious from the
-  section name.
-- Existing users receive safe, diagnosable compatibility rather than silent
-  loss of renderer/profile settings.
-- Shared viewport state remains unprefixed and works for both Alpha and
-  DirectShow/NLS without duplicated configuration.
-- No unrelated VP or madVR configuration is renamed or changed.
+- Canonical base and session-policy ownership is visibly expressed by
+  `vpvr.display` and `vpvr.general`.
+- Unified display selection remains `[profile_groups.display]` plus
+  `[profiles.display.*]`; no canonical `vpvr.display_rules*` exists.
+- Shared profile, viewport, persistence, event-action, shader, and core
+  application sections remain unprefixed.
+- Canonical and deprecated names have deterministic, tested coexistence and
+  precedence rules with once-only migration diagnostics.
+- Existing configurations retain a documented compatibility window without
+  silent setting loss or automatic file rewriting.
+- Effective rendering, profile persistence, viewport publication, DirectShow
+  consumption, madVR behavior, and renderer-config path selection do not
+  change.
 
-## Readiness
+## Readiness decision
 
-This is mechanically modest but cross-cutting: configuration parsing,
-profile/runtime resolution, shortcut discovery, display rules, tests, examples,
-and HTML documentation must change together. It should be implemented as a
-single small migration with focused regression tests, not as an unverified
-global text replacement.
+The corrected design is implementation-ready after the developer confirms the
+GitHub default integration branch required by the tracker gate. The work is
+moderate and cross-cutting because validation occurs on startup-fatal paths and
+the core and optional renderer plugin each load configuration. It must be
+implemented as a focused migration with a centralized resolver and regression
+tests, not as a global text replacement.
