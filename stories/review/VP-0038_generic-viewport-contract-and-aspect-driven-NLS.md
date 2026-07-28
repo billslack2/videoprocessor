@@ -2,12 +2,10 @@
 
 ## Status
 
-In progress as of 2026-07-27. Implementation is starting on
-`codex/vp-0038-generic-viewport`, based on the current GitHub default
-integration branch `v1.1.014-beta`. This story defines the configuration and
-runtime contract required to make the selected `[profiles.viewport.*]` profile
-the single source of truth inside VP for physical-screen geometry, subtitle
-fitting, and screen-aware NLS configuration.
+In review as of 2026-07-28. Software implementation, automated verification,
+documentation, live-configuration migration, and deployment are complete.
+Hardware validation remains for the 16:9/2.35 viewport, NLS geometry,
+subtitle placement, external curtain/profile coordination, OSD, and logs.
 
 ## Implementation progress
 
@@ -24,9 +22,26 @@ fitting, and screen-aware NLS configuration.
   testing. Existing `VideoProcessor.cfg` and `VideoProcessor.state` hashes
   were verified unchanged. The replaced binaries are recoverable from
   `C:\Videoprocessor\vp\backup-before-vp0038-20260727-235804`.
-- Next: move unified selection and its resolved viewport snapshot out of the
-  libplacebo backend, publish `$screen_aspect`/`$viewport_profile`, and apply
-  the snapshot to DirectShow NLS without a renderer restart.
+- 2026-07-28: Commit `eb5e209` completed the application-owned immutable
+  profile/runtime snapshot, typed source and viewport variables, application
+  key selection and persistence, apply-only renderer boundary, DirectShow and
+  libplacebo integration, typed NLS configuration, arbitrary viewport output
+  aspects, 4:3-to-2.35 safe fit, migration diagnostics, updated HTML guide,
+  cleaned examples, and runtime tests.
+- 2026-07-28: Commit `cda7f25` added renderer-neutral active viewport status
+  to the runtime OSD.
+- Verification: clean x64 Release solution rebuild succeeded with embedded
+  version `cda7f25`; all 159 native tests passed.
+- Deployment: copied the verified executable, PDB, libplacebo plugin, NLS
+  shader, and HTML guide to `C:\Videoprocessor\vp`. SHA-256 hashes matched the
+  build outputs. The pre-deployment files are recoverable from
+  `C:\Videoprocessor\vp\backup-before-vp0038-final-20260728-015550`.
+- Live configuration: backed up
+  `VideoProcessor.cfg.before-vp0038-final-20260728-015011.bak`, converted the
+  two NLS rules to `type: nls` with typed tuning keys, removed fixed
+  target/output/stretch ownership and the redundant `movies_24` no-op rule,
+  and preserved the installation-specific `broadcast_sdr` rule and existing
+  viewport/profile values.
 
 ## User story
 
