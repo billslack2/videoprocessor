@@ -35,6 +35,12 @@ that repaint and the rebuilt GUI executable/PDB were deployed after backing up
 their prior VP-0037 versions at
 `C:\Videoprocessor\vp\backup-before-vp0037-startup-guard-20260727-222143`.
 
+Release deployment (2026-07-28): replaced the Debug test deployment with the
+Release|x64 `VideoProcessor.exe`, GUI PDB, Alpha DLL, and Alpha PDB from the
+VP-0037 worktree. The Release build completed successfully and copied files
+were SHA-256 verified. No configuration file changed; the Debug deployment is
+backed up at `C:\Videoprocessor\vp\backup-before-vp0037-release-20260727-222402`.
+
 ## User story
 
 As an Alpha renderer user, I want video to remain visible and stable inside
