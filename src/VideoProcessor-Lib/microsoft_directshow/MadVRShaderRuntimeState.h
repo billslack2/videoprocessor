@@ -72,6 +72,8 @@ bool ResolveMadVRNlsOutputAspect(double targetAspect,
 bool MadVROutputAspectRequiresRestart(unsigned long currentAspectX,
 	unsigned long currentAspectY, unsigned long desiredAspectX,
 	unsigned long desiredAspectY, double nativeAspect);
+bool MadVRNlsOutputContractIsPrepared(
+	const MadVRShaderRuntimeSnapshot& snapshot);
 
 const char* MadVRNlsMappingModeName(MadVRNlsMappingMode mode);
 
@@ -80,6 +82,7 @@ class MadVRShaderRuntimeState
 {
 public:
 	MadVRShaderRuntimeSnapshot GetSnapshot() const;
+	bool PrepareNlsOutputContractRendererReplacement();
 	uint64_t BeginRendererGeneration();
 	void SetRuleSelection(const std::string& requestedRule,
 		const std::string& effectiveRule, MadVRNlsMappingMode nlsMode);
@@ -92,4 +95,5 @@ public:
 private:
 	mutable std::mutex m_mutex;
 	MadVRShaderRuntimeSnapshot m_state;
+	bool m_preserveGeometryOnNextRenderer = false;
 };

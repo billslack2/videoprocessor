@@ -11,6 +11,24 @@ namespace VideoProcessorTest
 	TEST_CLASS(MadVRShaderRuntimeStateTests)
 	{
 	public:
+		TEST_METHOD(WaitingCannotExposeNlsOutputContract)
+		{
+			MadVRShaderRuntimeSnapshot snapshot;
+			snapshot.rendererGeneration = 4;
+			snapshot.nlsMode = MadVRNlsMappingMode::WAITING;
+			snapshot.activeGeometry = {
+				1.90, 0.0, 0.05, 1.0, 0.95, 3, 4, true };
+			Assert::IsFalse(
+				MadVRNlsOutputContractIsPrepared(snapshot));
+
+			snapshot.nlsMode = MadVRNlsMappingMode::ACTIVE;
+			Assert::IsTrue(
+				MadVRNlsOutputContractIsPrepared(snapshot));
+			snapshot.activeGeometry.rendererGeneration = 3;
+			Assert::IsFalse(
+				MadVRNlsOutputContractIsPrepared(snapshot));
+		}
+
 		TEST_METHOD(ScopeContentUsesLinearPassthrough)
 		{
 			const MadVRNlsMappingDecision decision =
@@ -154,7 +172,7 @@ namespace VideoProcessorTest
 				235, 100, 235, 100, nativeAspect));
 		}
 
-		TEST_METHOD(RendererReplacementPreservesRequestButRejectsOldGeometry)
+		TEST_METHOD(RendererReplacementRebindsExactTrustedGeometry)
 		{
 			MadVRShaderRuntimeState state;
 			state.SetNlsTargetAspect(2.35);
@@ -165,23 +183,46 @@ namespace VideoProcessorTest
 				1.90, 0.0, 0.08, 1.0, 0.92, 7, firstRenderer, true };
 			Assert::IsTrue(state.SetActiveGeometry(geometry));
 
+			Assert::IsTrue(
+				state.PrepareNlsOutputContractRendererReplacement());
 			const uint64_t secondRenderer = state.BeginRendererGeneration();
 			const MadVRShaderRuntimeSnapshot restored = state.GetSnapshot();
 			Assert::AreEqual("nls", restored.requestedRule.c_str());
 			Assert::AreEqual("nls", restored.effectiveRule.c_str());
 			Assert::AreEqual(
-				static_cast<int>(MadVRNlsMappingMode::WAITING),
+				static_cast<int>(MadVRNlsMappingMode::ACTIVE),
 				static_cast<int>(restored.nlsMode));
 			Assert::AreEqual(
 				static_cast<int>(MadVRNlsMappingMode::ACTIVE),
 				static_cast<int>(restored.lastSafeNlsMode));
 			Assert::AreEqual(2.35, restored.nlsTargetAspect, 0.000001);
-			Assert::IsFalse(restored.activeGeometry.stable);
+			Assert::IsTrue(restored.activeGeometry.stable);
+			Assert::AreEqual(secondRenderer,
+				restored.activeGeometry.rendererGeneration);
+			Assert::AreEqual(geometry.left,
+				restored.activeGeometry.left, 0.000001);
 
 			Assert::IsFalse(state.SetActiveGeometry(geometry));
 			geometry.rendererGeneration = secondRenderer;
 			geometry.generation = 1;
 			Assert::IsTrue(state.SetActiveGeometry(geometry));
+		}
+
+		TEST_METHOD(UnpreparedRendererReplacementRejectsOldGeometry)
+		{
+			MadVRShaderRuntimeState state;
+			const uint64_t firstRenderer = state.BeginRendererGeneration();
+			state.SetRuleSelection("nls", "nls",
+				MadVRNlsMappingMode::ACTIVE);
+			Assert::IsTrue(state.SetActiveGeometry({
+				1.90, 0.0, 0.08, 1.0, 0.92, 7, firstRenderer, true }));
+
+			state.BeginRendererGeneration();
+			const auto snapshot = state.GetSnapshot();
+			Assert::AreEqual(
+				static_cast<int>(MadVRNlsMappingMode::WAITING),
+				static_cast<int>(snapshot.nlsMode));
+			Assert::IsFalse(snapshot.activeGeometry.stable);
 		}
 
 		TEST_METHOD(ManualOffClearsTheArmedNlsState)
@@ -263,6 +304,8 @@ namespace VideoProcessorTest
 			geometry.stable = true;
 			Assert::IsTrue(state.SetActiveGeometry(geometry));
 
+			Assert::IsTrue(
+				state.PrepareNlsOutputContractRendererReplacement());
 			const uint64_t secondRenderer = state.BeginRendererGeneration();
 			const MadVRShaderRuntimeSnapshot snapshot = state.GetSnapshot();
 			Assert::AreEqual(
@@ -272,7 +315,11 @@ namespace VideoProcessorTest
 				static_cast<int>(MadVRNlsMappingMode::SAFE_FIT),
 				static_cast<int>(snapshot.lastSafeNlsMode));
 			Assert::AreEqual(secondRenderer, snapshot.rendererGeneration);
-			Assert::IsFalse(snapshot.activeGeometry.stable);
+			Assert::IsTrue(snapshot.activeGeometry.stable);
+			Assert::AreEqual(secondRenderer,
+				snapshot.activeGeometry.rendererGeneration);
+			Assert::AreEqual(geometry.left,
+				snapshot.activeGeometry.left, 0.000001);
 			Assert::AreEqual(4.0 / 3.0,
 				snapshot.nlsDecision.sourceAspect, 0.000001);
 			Assert::AreEqual(2.35,

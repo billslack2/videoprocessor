@@ -935,44 +935,15 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 	if (!rule.nls || targetAspect <= 0.0)
 		return true;
 
-	ResolveMadVRNlsOutputAspect(targetAspect, outputAspectX, outputAspectY);
 	double activeAspect = runtime.activeGeometry.aspectRatio;
 	MadVRActivePictureGeometry activeGeometry = runtime.activeGeometry;
-	bool currentGeometry = activeGeometry.stable &&
-		activeGeometry.rendererGeneration == runtime.rendererGeneration;
-	if (runtime.nlsMode == MadVRNlsMappingMode::SAFE_FIT &&
-		!currentGeometry && runtime.nlsDecision.sourceAspect > 0.0 &&
-		videoState.displayMode)
-	{
-		const double rasterAspect =
-			static_cast<double>(videoState.displayMode->FrameWidth()) /
-			std::max<long>(1, videoState.displayMode->FrameHeight());
-		activeAspect = runtime.nlsDecision.sourceAspect;
-		activeGeometry = {};
-		activeGeometry.aspectRatio = activeAspect;
-		activeGeometry.rendererGeneration = runtime.rendererGeneration;
-		activeGeometry.stable = true;
-		if (activeAspect < rasterAspect)
-		{
-			const double width = std::clamp(
-				activeAspect / rasterAspect, 0.01, 1.0);
-			activeGeometry.left = (1.0 - width) * 0.5;
-			activeGeometry.right = 1.0 - activeGeometry.left;
-			activeGeometry.bottom = 1.0;
-		}
-		else
-		{
-			const double height = std::clamp(
-				rasterAspect / activeAspect, 0.01, 1.0);
-			activeGeometry.top = (1.0 - height) * 0.5;
-			activeGeometry.bottom = 1.0 - activeGeometry.top;
-			activeGeometry.right = 1.0;
-		}
-		currentGeometry = true;
-	}
+	const bool currentGeometry =
+		MadVRNlsOutputContractIsPrepared(runtime);
 	if (runtime.nlsMode == MadVRNlsMappingMode::WAITING ||
 		!currentGeometry)
 	{
+		outputAspectX = 0;
+		outputAspectY = 0;
 		waiting = true;
 		DebugLog::Log(
 			"Shaders: NLS mapping waiting requested=%s effective=%s renderer_generation=%llu last_safe=%s",
@@ -981,6 +952,10 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 			MadVRNlsMappingModeName(runtime.lastSafeNlsMode));
 		return true;
 	}
+	// The target output contract is exposed only after the exact, source-owned
+	// crop is current for this renderer generation. Merely arming NLS must not
+	// cause madVR to fit the raster as though a mapping already exists.
+	ResolveMadVRNlsOutputAspect(targetAspect, outputAspectX, outputAspectY);
 	if (activeAspect <= 0.0 || !videoState.displayMode)
 		return true;
 
@@ -1300,8 +1275,8 @@ bool MadVRShaderLoader::GetRuntimeOutputAspectRatio(unsigned long& aspectX,
 {
 	aspectX = 0;
 	aspectY = 0;
-	const std::string runtimeRule =
-		g_runtimeState.GetSnapshot().effectiveRule;
+	const auto runtime = g_runtimeState.GetSnapshot();
+	const std::string runtimeRule = runtime.effectiveRule;
 	if (runtimeRule.empty())
 		return false;
 
@@ -1315,9 +1290,19 @@ bool MadVRShaderLoader::GetRuntimeOutputAspectRatio(unsigned long& aspectX,
 	{
 		unsigned long ruleX = rule.outputAspectRatioX;
 		unsigned long ruleY = rule.outputAspectRatioY;
+		const bool currentNlsGeometry =
+			MadVRNlsOutputContractIsPrepared(runtime);
 		if (rule.nls && GetNlsTargetAspect(rule) > 0.0)
-			ResolveMadVRNlsOutputAspect(
-				GetNlsTargetAspect(rule), ruleX, ruleY);
+		{
+			if (currentNlsGeometry)
+				ResolveMadVRNlsOutputAspect(
+					GetNlsTargetAspect(rule), ruleX, ruleY);
+			else
+			{
+				ruleX = 0;
+				ruleY = 0;
+			}
+		}
 		if (ruleX == 0 || ruleY == 0)
 			continue;
 		if (aspectX > 0 && aspectY > 0 &&
@@ -1476,6 +1461,11 @@ MadVRShaderRuntimeSnapshot MadVRShaderLoader::GetRuntimeShaderState()
 uint64_t MadVRShaderLoader::BeginRendererGeneration()
 {
 	return g_runtimeState.BeginRendererGeneration();
+}
+
+bool MadVRShaderLoader::PrepareNlsOutputContractRendererReplacement()
+{
+	return g_runtimeState.PrepareNlsOutputContractRendererReplacement();
 }
 
 

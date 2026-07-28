@@ -72,6 +72,7 @@ public:
 		const std::string& effectiveRule, MadVRNlsMappingMode nlsMode);
 	static MadVRShaderRuntimeSnapshot GetRuntimeShaderState();
 	static uint64_t BeginRendererGeneration();
+	static bool PrepareNlsOutputContractRendererReplacement();
 	static bool GetRuleActivationInfo(const std::string& ruleName,
 		std::string& label, std::string& inactiveRule, bool& nlsMapping);
 	// Resolves one shader filename under <executable>\Shaders. Directory

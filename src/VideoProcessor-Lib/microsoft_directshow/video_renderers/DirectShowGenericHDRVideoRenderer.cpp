@@ -532,6 +532,9 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		activeRule = m_activeShaderRule;
 		rendererRestartRequired = DoesOutputAspectRequireRestart(
 			selection.outputAspectRatioX, selection.outputAspectRatioY);
+		if (rendererRestartRequired)
+			MadVRShaderLoader::
+				PrepareNlsOutputContractRendererReplacement();
 		DebugLog::Log(
 			"Shaders: NLS mapping change requested=%s effective=%s mapping=%s rect=%d,%d-%d,%d active_generation=%llu source=%.4f target=%.4f renderer_generation=%llu reason=\"%s\" renderer_restart=%d",
 			static_cast<const char*>(ruleUtf8),
@@ -691,6 +694,9 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		activeRule = m_activeShaderRule;
 		rendererRestartRequired = DoesOutputAspectRequireRestart(
 			selection.outputAspectRatioX, selection.outputAspectRatioY);
+		if (rendererRestartRequired)
+			MadVRShaderLoader::
+				PrepareNlsOutputContractRendererReplacement();
 		DebugLog::Log(
 			"Shaders: NLS mapping change requested=%s effective=%s mapping=%s rect=%d,%d-%d,%d active_generation=%llu source=%.4f target=%.4f renderer_generation=%llu reason=\"%s\" renderer_restart=%d",
 			static_cast<const char*>(requestedUtf8),
