@@ -5628,8 +5628,7 @@ bool LibplaceboVideoRenderer::GetSceneTimingStatus(CString& status) const
 	CString dueReason;
 	if (GetSceneTimingDueStatus(dueAction, dueReason))
 	{
-		status.Format(TEXT("Due - %s"),
-			static_cast<LPCTSTR>(dueReason));
+		status = TEXT("Waiting to correct");
 		return true;
 	}
 
@@ -5642,25 +5641,22 @@ bool LibplaceboVideoRenderer::GetSceneTimingStatus(CString& status) const
 		status = TEXT("Disabled");
 		break;
 	case AlphaCadenceTimingStatus::WaitingForDxgi:
-		status = TEXT("Waiting for DXGI evidence");
+		status = TEXT("Waiting for timing");
 		break;
 	case AlphaCadenceTimingStatus::Measuring:
-		status.Format(TEXT("Measuring DXGI rate (%u/600)"),
-			m_sceneTimingRateSamples.load(std::memory_order_acquire));
+		status = TEXT("Measuring timing");
 		break;
 	case AlphaCadenceTimingStatus::Matched:
-		status.Format(TEXT("Rates matched (%.2f ppm)"),
-			m_sceneTimingMismatchPpm.load(std::memory_order_acquire));
+		status = TEXT("Timing matched");
 		break;
 	case AlphaCadenceTimingStatus::Forecasting:
-		status.Format(TEXT("Forecasting (%.2f ppm)"),
-			m_sceneTimingMismatchPpm.load(std::memory_order_acquire));
+		status = TEXT("Forecasting");
 		break;
 	case AlphaCadenceTimingStatus::Verifying:
-		status = TEXT("Verifying correction");
+		status = TEXT("Confirming correction");
 		break;
 	default:
-		status = TEXT("Rate mismatch unavailable");
+		status = TEXT("Timing unavailable");
 		break;
 	}
 	return true;
@@ -5686,34 +5682,30 @@ bool LibplaceboVideoRenderer::GetSceneTimingDueStatus(
 	switch (blockReason)
 	{
 	case AlphaCadenceBlockReason::Cooldown:
-		reason = TEXT("cooldown");
+		reason = TEXT("brief pause");
 		break;
 	case AlphaCadenceBlockReason::VerificationPending:
-		reason = TEXT("verification");
+		reason = TEXT("prior correction");
 		break;
 	case AlphaCadenceBlockReason::DropQueueNotAboveDesired:
-		reason = TEXT("queue not above target");
-		break;
 	case AlphaCadenceBlockReason::RepeatQueueNotBelowDesired:
-		reason = TEXT("queue not below target");
+		reason = TEXT("buffer level");
 		break;
 	case AlphaCadenceBlockReason::DropPresentationDebtMissing:
-		reason = TEXT("presentation debt missing");
-		break;
 	case AlphaCadenceBlockReason::RepeatPresentationDebtPresent:
-		reason = TEXT("presentation debt");
+		reason = TEXT("playback timing");
 		break;
 	case AlphaCadenceBlockReason::WaitingForFreshScene:
-		reason = TEXT("fresh scene");
+		reason = TEXT("scene change");
 		break;
 	case AlphaCadenceBlockReason::FallbackNotMature:
-		reason = TEXT("fallback window");
+		reason = TEXT("safe timing");
 		break;
 	case AlphaCadenceBlockReason::DropFallbackQueueTooYoung:
-		reason = TEXT("queued frame age");
+		reason = TEXT("buffer timing");
 		break;
 	default:
-		reason = TEXT("timing gate");
+		reason = TEXT("safe timing");
 		break;
 	}
 	return true;
