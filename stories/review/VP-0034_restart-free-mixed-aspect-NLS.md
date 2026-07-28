@@ -2,7 +2,7 @@
 
 ## Status
 
-Review as of 2026-07-27. Implementation commit `4f4cc05` is published on
+Review as of 2026-07-27. Implementation commits `4f4cc05` and `a5c113d` are published on
 `codex/vp-0034-restart-free-nls` with draft PR
 `billslack2/videoprocessor#15`, targeting the developer-confirmed default
 branch `v1.1.014-beta`.
@@ -20,6 +20,12 @@ Completed implementation:
 - mapping diagnostics including requested/effective rule, mapping mode,
   rectangle and active generation, source/target aspect, renderer generation,
   reason, and restart decision;
+- screen-profile-specific output contracts: native-equivalent 16:9 for the
+  Normal profile with side curtains closed, and 2.35 for the Scope profile;
+- effective-aspect restart decisions, so native 16:9 and explicit 16:9 do not
+  restart while a deliberate Normal/Scope contract change may restart once;
+- matrix coverage confirming restart-free 4:3-to-16:9 NLS, 16:9-to-Scope NLS,
+  1.90-to-Scope NLS, and 2.35 Scope passthrough;
 - focused mapping and state-lifecycle tests plus updated configuration
   documentation.
 
@@ -27,14 +33,17 @@ Validation completed:
 
 - Debug x64 GUI build passed;
 - Release x64 full solution build passed;
-- full Debug x64 native test suite passed, 127/127;
-- focused Release x64 VP-0034 tests passed, 6/6;
+- full Debug x64 native test suite passed, 130/130;
+- focused Debug and Release x64 VP-0034 tests passed, 9/9 in each;
 - `git diff --check` passed.
 
 Remaining review/acceptance: run the documented DirectShow/madVR hardware
 sequence with repeated Scope/IMAX transitions, both initial arming positions,
 one unrelated renderer restart, manual NLS Off, sports, and 4:3 controls.
-Review the recorded lifecycle/queue logs and visual output before merge.
+The 4:3 control uses the Normal 16:9 presentation profile with the CIH side
+curtains closed; changing content within that profile must not restart the
+renderer. Review the recorded lifecycle/queue logs and visual output before
+merge.
 
 This supersedes the assumption that the fixed-aspect completion of VP-0001
 through VP-0003 is sufficient for variable-aspect movies. It does not reopen
