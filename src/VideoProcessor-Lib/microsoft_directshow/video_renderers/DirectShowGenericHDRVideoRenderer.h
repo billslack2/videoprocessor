@@ -62,6 +62,10 @@ protected:
 
 private:
 	void UpdateActiveShaderSelection(const MadVRShaderSelection& selection);
+	void RestoreRuntimeShaderRequest();
+	void UpdateNlsOsdMode(MadVRNlsMappingMode mode);
+	MadVRActivePictureGeometry MakeRuntimeGeometry(
+		const ActivePictureRectangle& rectangle) const;
 
 	const GUID m_rendererCLSID;
 	const DXVA_NominalRange m_forceNominalRange;
@@ -75,9 +79,13 @@ private:
 	CString m_requestedShaderRule;
 	CString m_requestedShaderLabel;
 	CString m_inactiveShaderRule;
+	bool m_requestedRuleUsesNlsMapping = false;
+	MadVRNlsMappingMode m_nlsMappingMode = MadVRNlsMappingMode::OFF;
+	double m_nlsTargetAspect = 0.0;
 	bool m_requestedShaderApplied = false;
 	double m_appliedShaderAspectRatio = 0.0;
 	uint64_t m_appliedActivePictureGeneration = 0;
+	uint64_t m_rendererGeneration = 0;
 	uint64_t m_screenProfileGeneration = 0;
 	uint64_t m_appliedScreenProfileGeneration = 0;
 };

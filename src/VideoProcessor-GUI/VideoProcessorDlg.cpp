@@ -4947,8 +4947,9 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
 		{
 			// Conditional manual shader rules remain armed. Re-evaluate their
-			// stable active-picture requirement once per second; aspect changes are
-			// rare and use the existing controlled renderer restart path.
+			// stable active-picture requirement once per second. NLS changes only
+			// runtime mapping under its stable output contract; generic rules can
+			// still request media-type renegotiation.
 			CString refreshedShaderRule;
 			bool shaderRestartRequired = false;
 			if (!m_wantToRestartRenderer &&
