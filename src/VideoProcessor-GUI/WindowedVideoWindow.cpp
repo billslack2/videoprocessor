@@ -44,7 +44,11 @@ WindowedVideoWindow::~WindowedVideoWindow()
 void WindowedVideoWindow::ShowLogo(bool show)
 {
 	m_showLogo = show;
-	Invalidate();
+	// Render-state changes can arrive while the dialog is being constructed or
+	// torn down. Do not ask MFC to invalidate a control that has not yet been
+	// attached to a live HWND.
+	if (GetSafeHwnd() && ::IsWindow(GetSafeHwnd()))
+		Invalidate(FALSE);
 }
 
 
