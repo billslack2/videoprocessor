@@ -301,6 +301,13 @@ incident-specific correction revealed by that evidence, and dedicated
 fault-injection/ownership tests for renderer-native failure branches. The
 story remains in progress.
 
+Commit `a8c5b90` (`Simplify Alpha timing OSD language`) separates end-user
+wording from technical diagnostics. The OSD now uses short phrases such as
+`Waiting for timing`, `Measuring timing`, `Timing matched`,
+`Confirming correction`, and `Repeat due - playback timing`. Internal reason
+enums and detailed log records remain unchanged. Debug x64 Alpha plugin and
+GUI builds passed after the wording change.
+
 ## Verification
 
 - Unit-test both drop and repeat paths before, exactly at, and beyond the phase
