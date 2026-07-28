@@ -16,6 +16,13 @@ Readiness review and Phase A implementation are underway in the isolated
 - 2026-07-28: Initial inspection verified the documented sparse luma-only
   detector, ambiguous-timeout crop promotion, geometry publication boundary,
   and late NLS output-contract restart decision on the approved base.
+- 2026-07-28: Phase A commit `c2046f8` introduced explicit
+  `FULL_RASTER_TRUSTED`, `BAR_CROP_TRUSTED`, `PROVISIONAL`, and `UNAVAILABLE`
+  classifications at the transition boundary. Full raster is immediately
+  safe; provisional or asymmetric geometry cannot gain crop authority through
+  repetition; and one observation no longer withdraws the installed stable
+  mapping. The x64 Debug build passes, all 154 baseline tests passed, and the
+  final focused transition-model run passed 12/12 tests.
 - Next: establish the pure P010 evidence component and fail-safe crop-authority
   model for Phase A before beginning the separately reviewable Phase B
   transaction changes.
