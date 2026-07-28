@@ -128,6 +128,11 @@ public:
 		rectangle = {};
 		return false;
 	}
+	// Queue an aspect-only VIDEOINFOHEADER2 update on the next delivered
+	// sample. The downstream pin must explicitly accept the dynamic media
+	// type; dimensions, subtype, frame rate, and allocator remain unchanged.
+	bool RequestDynamicPictureAspectRatio(
+		unsigned long aspectX, unsigned long aspectY);
 
 	// Get the size of the queue.
 	// Zero means no queueing going on.
@@ -304,6 +309,10 @@ public:
 		return false;
 	}
 protected:
+	uint64_t AttachPendingMediaType(IMediaSample* sample);
+	void CompletePendingMediaType(
+		uint64_t generation, HRESULT deliveryResult);
+
 	// Reset timestamp/media-time state without sending flush or segment
 	// messages. Buffered pins use this while holding their serialized delivery
 	// gate; the public Reset() wraps it in the normal DirectShow flush sequence.
@@ -408,6 +417,12 @@ protected:
 	ITimingClock* m_timingClock;
 	DirectShowStartStopTimeMethod m_timestamp;
 	AM_MEDIA_TYPE m_mediaType;
+	CCritSec m_mediaTypeLock;
+	CMediaType m_pendingMediaType;
+	uint64_t m_pendingMediaTypeGeneration = 0;
+	bool m_hasPendingMediaType = false;
+	unsigned long m_pendingAspectX = 0;
+	unsigned long m_pendingAspectY = 0;
 	bool m_useHDRData = false;
 
 	// Duration tracking for CLOCK_SMART improvements

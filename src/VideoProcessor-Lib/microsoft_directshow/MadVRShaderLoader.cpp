@@ -16,6 +16,7 @@
 #include "MadVRShaderLoader.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -847,6 +848,7 @@ bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
 	std::vector<ActiveMadVRShader> stageShaders;
 	for (const ShaderEntry& entry : entries)
 	{
+		const auto totalStarted = std::chrono::steady_clock::now();
 		std::string source;
 		if (!ReadShader(entry.path, source))
 		{
@@ -855,6 +857,7 @@ bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
 				stageName, entry.order);
 			return false;
 		}
+		const auto readFinished = std::chrono::steady_clock::now();
 		if (!ApplyShaderParameters(source, entry.parameters, entry.path))
 		{
 			shaderInterface->ClearPixelShaders(stage);
@@ -869,10 +872,12 @@ bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
 				stageName, entry.order, entry.path.u8string().c_str());
 			return false;
 		}
+		const auto prepareFinished = std::chrono::steady_clock::now();
 
 		DebugLog::Log("Shaders: applying %s shader #%u \"%s\" (profile=%s)",
 			stageName, entry.order, entry.path.u8string().c_str(), profile.c_str());
 		hr = shaderInterface->AddPixelShader(source.c_str(), profile.c_str(), stage, nullptr);
+		const auto installFinished = std::chrono::steady_clock::now();
 		if (FAILED(hr))
 		{
 			shaderInterface->ClearPixelShaders(stage);
@@ -881,6 +886,18 @@ bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
 				static_cast<unsigned long>(hr));
 			return false;
 		}
+		const auto milliseconds = [](const auto& start, const auto& finish)
+		{
+			return std::chrono::duration<double, std::milli>(
+				finish - start).count();
+		};
+		DebugLog::Log(
+			"Shaders: %s shader #%u timing read=%.3fms prepare=%.3fms install=%.3fms total=%.3fms",
+			stageName, entry.order,
+			milliseconds(totalStarted, readFinished),
+			milliseconds(readFinished, prepareFinished),
+			milliseconds(prepareFinished, installFinished),
+			milliseconds(totalStarted, installFinished));
 
 		std::string displayName = entry.path.stem().u8string();
 		if (!entry.displayName.empty())

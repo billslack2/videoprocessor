@@ -221,6 +221,51 @@ namespace VideoProcessorTest
 			Assert::AreEqual(0.0, decision.confidence, 0.000001);
 		}
 
+		TEST_METHOD(PreviouslyTrustedGeometryReacquiresOnAdjacentFrames)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds(), 2);
+			Observe(model, ImaxBounds(), frame);
+			const auto imax = Observe(model, ImaxBounds(), frame + 2);
+			Assert::IsTrue(imax.publish);
+
+			const uint64_t returnFrame = frame + 4;
+			const auto probing = Observe(
+				model, ScopeBounds(), returnFrame,
+				ActivePictureClassification::PROVISIONAL);
+			Assert::IsFalse(probing.publish);
+			Assert::IsTrue(probing.stable);
+			Assert::IsTrue(model.ShouldAnalyze(returnFrame + 1, 23.976));
+
+			const auto reacquired = Observe(
+				model, ScopeBounds(), returnFrame + 1,
+				ActivePictureClassification::PROVISIONAL);
+			Assert::IsTrue(reacquired.publish);
+			Assert::IsTrue(reacquired.stable);
+			Assert::AreEqual(
+				static_cast<unsigned long long>(1),
+				static_cast<unsigned long long>(
+					reacquired.decisionLatencyFrames));
+		}
+
+		TEST_METHOD(ResetDiscardsPreviouslyTrustedGeometry)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+			Observe(model, ImaxBounds(), frame++);
+			Assert::IsTrue(Observe(model, ImaxBounds(), frame++).publish);
+			model.Reset();
+
+			for (int count = 0; count < 8; ++count)
+			{
+				const auto decision = Observe(
+					model, ScopeBounds(), frame++,
+					ActivePictureClassification::PROVISIONAL);
+				Assert::IsFalse(decision.publish);
+				Assert::IsFalse(decision.stable);
+			}
+		}
+
 		TEST_METHOD(FullRasterIsImmediateSafeStartupAuthority)
 		{
 			ActivePictureTransitionModel model;

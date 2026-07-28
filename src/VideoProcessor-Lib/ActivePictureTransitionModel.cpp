@@ -10,6 +10,11 @@ void ActivePictureTransitionModel::Reset()
 {
 	m_hasStable = false;
 	m_stable = {};
+	m_stableClassification = ActivePictureClassification::UNAVAILABLE;
+	m_hasPreviousTrusted = false;
+	m_previousTrusted = {};
+	m_previousTrustedClassification =
+		ActivePictureClassification::UNAVAILABLE;
 	ClearCandidate();
 	m_unavailableCandidates = 0;
 	m_lastAnalyzedFrame = 0;
@@ -30,7 +35,8 @@ uint64_t ActivePictureTransitionModel::AnalysisIntervalFrames(
 bool ActivePictureTransitionModel::ShouldAnalyze(
 	uint64_t frameNumber, double framesPerSecond)
 {
-	const uint64_t interval = AnalysisIntervalFrames(framesPerSecond);
+	const uint64_t interval = m_candidateUsesKnownTrustedGeometry ?
+		1 : AnalysisIntervalFrames(framesPerSecond);
 	if (m_lastAnalyzedFrame != 0 &&
 		frameNumber > m_lastAnalyzedFrame &&
 		frameNumber - m_lastAnalyzedFrame < interval)
@@ -123,6 +129,7 @@ void ActivePictureTransitionModel::ClearCandidate()
 {
 	m_candidate = {};
 	m_candidateClassification = ActivePictureClassification::UNAVAILABLE;
+	m_candidateUsesKnownTrustedGeometry = false;
 	m_matchingCandidates = 0;
 	m_contradictoryCandidates = 0;
 	m_candidateReversals = 0;
@@ -151,7 +158,14 @@ ActivePictureTransitionModel::CommitCandidate(
 		observation.frameNumber >= m_firstContradictoryFrame ?
 		observation.frameNumber - m_firstContradictoryFrame : 0;
 	decision.reason = reason;
+	if (m_hasStable && !SameBounds(m_stable, m_candidate))
+	{
+		m_previousTrusted = m_stable;
+		m_previousTrustedClassification = m_stableClassification;
+		m_hasPreviousTrusted = true;
+	}
 	m_stable = m_candidate;
+	m_stableClassification = m_candidateClassification;
 	m_hasStable = true;
 	m_unavailableCandidates = 0;
 	ClearCandidate();
@@ -192,6 +206,48 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		return decision;
 	}
 	m_unavailableCandidates = 0;
+
+	const bool matchesPreviousTrusted =
+		m_hasStable && m_hasPreviousTrusted &&
+		MateriallyDifferent(m_stable, observation.bounds) &&
+		SameBounds(m_previousTrusted, observation.bounds);
+	if (matchesPreviousTrusted)
+	{
+		if (!m_candidateUsesKnownTrustedGeometry ||
+			!SameBounds(m_candidate, observation.bounds))
+		{
+			StartCandidate(observation);
+			m_candidateClassification =
+				m_previousTrustedClassification;
+			m_candidateUsesKnownTrustedGeometry = true;
+			decision.diagnostic = true;
+			decision.reason =
+				"previously trusted geometry candidate";
+		}
+		else if (m_matchingCandidates < 255)
+		{
+			++m_matchingCandidates;
+		}
+
+		decision.state =
+			ActivePictureTransitionState::CANDIDATE_TRANSITION;
+		decision.bounds = m_candidate;
+		decision.stableBounds = m_stable;
+		decision.stable = true;
+		decision.clearTransition = true;
+		decision.matchingCandidates = m_matchingCandidates;
+		decision.confidence = std::min(
+			1.0, static_cast<double>(m_matchingCandidates) /
+			CLEAR_TRANSITION_CONFIRMATIONS);
+		decision.firstContradictoryFrame = m_firstContradictoryFrame;
+		decision.decisionLatencyFrames =
+			observation.frameNumber >= m_firstContradictoryFrame ?
+			observation.frameNumber - m_firstContradictoryFrame : 0;
+		if (m_matchingCandidates >= CLEAR_TRANSITION_CONFIRMATIONS)
+			return CommitCandidate(
+				observation, "previously trusted geometry reacquired");
+		return decision;
+	}
 
 	if (!HasCropAuthority(observation))
 	{

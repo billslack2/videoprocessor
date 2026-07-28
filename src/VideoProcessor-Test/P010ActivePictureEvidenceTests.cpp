@@ -74,6 +74,24 @@ namespace VideoProcessorTest
 						}
 			}
 
+			void FillRectangle(int left, int top, int right, int bottom,
+				int y, int u = 512, int v = 512)
+			{
+				for (int row = top; row < bottom; ++row)
+					for (int x = left; x < right; ++x)
+						WriteCode(bytes.data() +
+							static_cast<size_t>(row) * pitch + x * 2, y);
+				const size_t uvOffset = pitch * height;
+				for (int row = top / 2; row < (bottom + 1) / 2; ++row)
+					for (int x = left & ~1; x < right; x += 2)
+					{
+						uint8_t* pixel = bytes.data() + uvOffset +
+							static_cast<size_t>(row) * pitch + x * 2;
+						WriteCode(pixel, u);
+						WriteCode(pixel + 2, v);
+					}
+			}
+
 			P010PlaneView View(size_t lengthAdjustment = 0) const
 			{
 				return { bytes.data(), bytes.size() - lengthAdjustment,
@@ -131,6 +149,29 @@ namespace VideoProcessorTest
 			Assert::IsTrue(evidence.right.trusted);
 			Assert::IsTrue(evidence.trustedBounds.left >= 38);
 			Assert::IsTrue(evidence.trustedBounds.right <= 282);
+		}
+
+		TEST_METHOD(TrustedVerticalBarsIgnoreUntrustedHorizontalArtwork)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(0, 22, 320, 158);
+			// A dark one-sided feature spans the active picture. It can look
+			// like a left bar, but has no trusted opposing right boundary.
+			frame.FillRectangle(0, 22, 20, 158, 64);
+			const auto evidence =
+				ExtractP010ActivePictureEvidence(frame.View());
+			Assert::AreEqual(
+				static_cast<int>(
+					ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(evidence.classification));
+			Assert::IsTrue(evidence.top.trusted);
+			Assert::IsTrue(evidence.bottom.trusted);
+			Assert::IsFalse(
+				evidence.left.trusted && evidence.right.trusted);
+			Assert::AreNotEqual(0, evidence.proposedBounds.left);
+			Assert::AreEqual(0, evidence.trustedBounds.left);
+			Assert::AreEqual(320, evidence.trustedBounds.right);
+			Assert::IsTrue(evidence.trustedBounds.symmetricBars);
 		}
 
 		TEST_METHOD(SmallImaxStyleBarsRequireAndPassBoundaryEvidence)

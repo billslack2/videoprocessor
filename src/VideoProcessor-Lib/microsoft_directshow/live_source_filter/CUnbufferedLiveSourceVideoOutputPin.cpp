@@ -56,7 +56,10 @@ HRESULT CUnbufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame
 	}
 
 	// Deliver to downstream renderer (this will block)
+	const uint64_t mediaTypeGeneration =
+		AttachPendingMediaType(pSample);
 	hr = this->Deliver(pSample);
+	CompletePendingMediaType(mediaTypeGeneration, hr);
 	pSample->Release();
 
 	return hr;

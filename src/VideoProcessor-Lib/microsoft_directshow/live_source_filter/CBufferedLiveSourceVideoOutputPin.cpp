@@ -1299,7 +1299,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			return VFW_E_WRONG_STATE;
 
 		const auto deliveryStartTime = GetWallClockTime();
+		const uint64_t mediaTypeGeneration =
+			AttachPendingMediaType(sample);
 		const HRESULT result = Deliver(sample);
+		CompletePendingMediaType(mediaTypeGeneration, result);
 		const auto deliveryEndTime = GetWallClockTime();
 		const uint64_t deliveryTimeUs = (deliveryEndTime - deliveryStartTime) / 10;
 

@@ -429,9 +429,11 @@ P010ActivePictureEvidence ExtractP010ActivePictureEvidence(
 		result.trustedBounds.bottom - result.trustedBounds.top;
 	result.trustedBounds.aspectRatio =
 		static_cast<double>(trustedWidth) / trustedHeight;
+	// Each axis carries its own crop authority. An untrusted dark feature on
+	// the orthogonal axis must not veto an otherwise trusted opposing pair;
+	// that axis remains at the full-raster bounds assigned above.
 	result.trustedBounds.symmetricBars =
-		(!hasVertical || verticalTrusted) &&
-		(!hasHorizontal || horizontalTrusted);
+		verticalTrusted || horizontalTrusted;
 	result.classification = verticalTrusted || horizontalTrusted ?
 		ActivePictureClassification::BAR_CROP_TRUSTED :
 		ActivePictureClassification::PROVISIONAL;
