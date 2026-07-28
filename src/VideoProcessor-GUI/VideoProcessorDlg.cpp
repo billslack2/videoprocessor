@@ -5438,6 +5438,17 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.method = TEXT("---");
 	}
 
+	if (const auto profileSnapshot = m_profileRuntime.GetSnapshot())
+	{
+		stats.viewport.Format(TEXT("%S (%S)"),
+			profileSnapshot->viewport.profile.c_str(),
+			profileSnapshot->viewport.screenAspect.Canonical().c_str());
+	}
+	else
+	{
+		stats.viewport = TEXT("default (16:9)");
+	}
+
 	if (m_rendererSceneCorrectionModeCombo.GetCurSel() >= 0)
 		m_rendererSceneCorrectionModeCombo.GetLBText(
 			m_rendererSceneCorrectionModeCombo.GetCurSel(),

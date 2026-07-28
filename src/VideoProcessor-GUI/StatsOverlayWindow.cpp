@@ -431,6 +431,12 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += LINE_HEIGHT;
 
+	line.Format(TEXT("Viewport:         %-s"),
+		m_stats.viewport.IsEmpty() ? TEXT("default (16:9)") :
+		static_cast<LPCTSTR>(m_stats.viewport));
+	DrawText(hdc, line, PADDING, y);
+	y += LINE_HEIGHT;
+
 	if (!m_stats.outputMode.IsEmpty())
 	{
 		const int separator = m_stats.outputMode.Find(TEXT(" -> "));
@@ -647,9 +653,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 {
-	// Nineteen rows are always rendered. The remaining rows mirror the exact
+	// Twenty rows are always rendered. The remaining rows mirror the exact
 	// optional conditions in DrawStats so the background follows its content.
-	size_t lineCount = 19;
+	size_t lineCount = 20;
 	if (stats.measuredRefreshRate > 0.0)
 		lineCount += 2;
 	if (stats.hasPPMCorrection ||
