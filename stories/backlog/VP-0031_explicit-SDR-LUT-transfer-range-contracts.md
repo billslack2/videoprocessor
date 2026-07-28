@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft. This is design and implementation work for correctly delivering the
+Backlog. This is design and implementation work for correctly delivering the
 encoded SDR values a display-calibration LUT was authored to receive. It must
 not begin until the VP default integration branch is discovered and a
 user-approved source branch is created from it.

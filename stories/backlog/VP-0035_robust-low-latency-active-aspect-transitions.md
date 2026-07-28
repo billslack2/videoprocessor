@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft — separate NLS enhancement following VP-0034. The current conservative
+Backlog — separate NLS enhancement following VP-0034. The current conservative
 detector behavior was intentional protection against false positives, so this
 story must improve responsiveness through confidence and transition modeling,
 not by indiscriminately reducing confirmation thresholds.

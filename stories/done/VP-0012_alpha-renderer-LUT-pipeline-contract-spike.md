@@ -196,7 +196,7 @@ existing no-LUT renderer output.
   and uses configurable gamut mapping to reach the P3 reference target.
 - The initial range/presentation support boundary is explicit and tested.
 - VP-0011 has been updated with the decision and can truthfully move forward
-  from `Draft`, or remains in `Draft` with the next required action.
+  from `Backlog`, or remains in `Backlog` with the next required action.
 
 ## Suggested validation status record
 

@@ -6,7 +6,7 @@
 - When a story state, queue position, acceptance result, or completion status
   changes, commit that tracker change and push it to `origin/main` promptly.
 - Story state is part of the work, not a retrospective label: as soon as
-  implementation starts, move the story from `draft/` to `in-progress/` and
+  implementation starts, move the story from `backlog/` to `in-progress/` and
   keep its status and progress evidence current as the work advances.
 - VP source work is performed in
   `C:\Users\bslac\vp\videoprocessor - VS2026`; do not treat the source tree

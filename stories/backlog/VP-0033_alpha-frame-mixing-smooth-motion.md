@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft — low priority. Alpha refresh-rate switching normally removes the need
+Backlog — low priority. Alpha refresh-rate switching normally removes the need
 for this feature. It is a fallback for unavoidable source/display-rate mismatch,
 not a replacement for correct refresh switching.
 

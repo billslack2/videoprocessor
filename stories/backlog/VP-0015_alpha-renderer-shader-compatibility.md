@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft. Feasible as a compatibility feature, but arbitrary existing madVR HLSL
+Backlog. Feasible as a compatibility feature, but arbitrary existing madVR HLSL
 must not be assumed to run unchanged in the alpha renderer. Complete the
 capability inventory and shader-stage spike before moving this story to
 In Progress.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft. This is a bounded design/validation spike, not a commitment to add a
+Backlog. This is a bounded design/validation spike, not a commitment to add a
 second render pass. VP-0011 currently keeps a valid target 3D LUT on the
 single-pass path and disables only error-diffusion dithering on D3D11 because
 libplacebo 7.360.1 generates an invalid compute shader for that combination.

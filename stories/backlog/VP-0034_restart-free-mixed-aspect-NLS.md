@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft — primary NLS correctness story. This supersedes the assumption that the
+Backlog — primary NLS correctness story. This supersedes the assumption that the
 fixed-aspect completion of VP-0001 through VP-0003 is sufficient for
 variable-aspect movies. It does not reopen those accepted stories.
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft. Depends on VP-0030. Do not add configuration until the fixed-ten
+Backlog. Depends on VP-0030. Do not add configuration until the fixed-ten
 rotation behavior is implemented and validated.
 
 ## User story

@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft — low priority. This matters for interlaced broadcast and legacy inputs,
+Backlog — low priority. This matters for interlaced broadcast and legacy inputs,
 but not for the progressive HDMI/movie paths that currently dominate VP use.
 
 ## User story

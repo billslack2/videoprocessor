@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft. This work must not begin until the VP default integration branch is
+Backlog. This work must not begin until the VP default integration branch is
 discovered, the output-contract design is reviewed, and a user-approved source
 branch is created from that default. It is a prerequisite for accepting a
 calibration LUT authored for P3-D65 encoded RGB at the renderer output.
