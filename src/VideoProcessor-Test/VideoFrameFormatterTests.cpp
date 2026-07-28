@@ -313,6 +313,40 @@ namespace Tests
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(RendererProfileConfigResolvesGenericViewportDefaults)
+		{
+			RendererProfileConfig::Model model;
+			RendererProfileConfig::Profile normal;
+			normal.group = "viewport";
+			normal.name = "normal";
+			model.profiles.emplace("viewport.normal", normal);
+			RendererProfileConfig::Profile cinema;
+			cinema.group = "viewport";
+			cinema.name = "cinema";
+			cinema.settings["screen_aspect"] = "2.35:1";
+			cinema.settings["subtitle_fit"] = "true";
+			cinema.settings["subtitle_hold_seconds"] = "2";
+			cinema.settings["subtitle_padding_pixels"] = "30";
+			model.profiles.emplace("viewport.cinema", cinema);
+
+			RendererProfileConfig::ResolvedViewport viewport;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, "normal", 1, viewport, error));
+			Assert::AreEqual<uint64_t>(16, viewport.screenAspect.numerator);
+			Assert::AreEqual<uint64_t>(9, viewport.screenAspect.denominator);
+			Assert::IsFalse(viewport.subtitleFit);
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, "cinema", 2, viewport, error));
+			Assert::AreEqual<uint64_t>(47, viewport.screenAspect.numerator);
+			Assert::AreEqual<uint64_t>(20, viewport.screenAspect.denominator);
+			Assert::IsTrue(viewport.subtitleFit);
+			Assert::AreEqual<uint64_t>(
+				2000, viewport.subtitleHoldMilliseconds);
+			Assert::AreEqual(30, viewport.subtitlePaddingPixels);
+			Assert::AreEqual<uint64_t>(2, viewport.generation);
+		}
+
 		TEST_METHOD(RendererProfileConfigRejectsIncompleteUnifiedConfiguration)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
