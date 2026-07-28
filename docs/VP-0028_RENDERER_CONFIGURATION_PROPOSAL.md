@@ -311,10 +311,10 @@ where explicitly stated.
 | display | `lut_reference_range` | `FULL`, `LIMITED` | rebuild |
 | display | `lut_reference_nits` | decimal `40..500` | rebuild |
 | viewport | `mode` | `NORMAL`, `SCOPE` | dynamic group transaction |
-| viewport | `scope_screen_aspect` | ratio/decimal `1.5..4.0` | dynamic group transaction |
-| viewport | `scope_subtitle_fit` | Boolean | dynamic group transaction |
-| viewport | `scope_subtitle_hold_seconds` | decimal seconds `0..30` | dynamic group transaction |
-| viewport | `scope_subtitle_padding_pixels` | integer pixels `0..500` | dynamic group transaction |
+| viewport | `screen_aspect` | ratio, `x`, or decimal `1.0..4.0` | dynamic group transaction |
+| viewport | `subtitle_fit` | Boolean | dynamic group transaction |
+| viewport | `subtitle_hold_seconds` | decimal seconds `0..30` | dynamic group transaction |
+| viewport | `subtitle_padding_pixels` | integer pixels `0..500` | dynamic group transaction |
 
 Relative LUT/program/working-directory paths resolve from the loaded renderer
 configuration directory. LUT structure and reference-contract completeness are
@@ -471,7 +471,7 @@ section:
 | Released configuration | Proposed equivalent |
 | --- | --- |
 | `shortcut=F5` in `[display_rules.rec709]` | `when: $key=="F5"` in `[profiles.display.rec709_projector]` |
-| `screen_profile_scope=F3` in `[shortcuts]` | `when: $key=="F3"` in `[profiles.viewport.scope]` |
+| `screen_profile_scope=F2` in `[shortcuts]` | `when: $key=="F2"` in `[profiles.viewport.scope]` |
 | `display_rules_auto=F4` in `[shortcuts]` | `when: $key=="F4"` in the appropriate `[profile_groups.<name>]` section |
 
 ## Refresh-transition event actions

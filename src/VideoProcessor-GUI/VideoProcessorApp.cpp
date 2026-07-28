@@ -299,6 +299,8 @@ void ValidateRendererConfigRules()
 		throw std::runtime_error("Invalid " + ConfigLocation(rendererConfig) +
 			" unified renderer configuration: " + error);
 	}
+	for (const std::string& warning : unifiedModel.warnings)
+		DebugLog::Log("configuration migration warning: %s", warning.c_str());
 
 	auto validateOwnedSections = [](const ConfigFile& config)
 	{
