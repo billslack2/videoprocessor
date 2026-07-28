@@ -140,6 +140,8 @@ public:
 
 	// Data update
 	void UpdateStats(const StatsData& stats);
+	bool RenderBgra(std::vector<uint8_t>& pixels, int& width,
+		int& height, int& stride);
 
 	// Position update
 	void UpdatePosition(HWND parentHwnd);

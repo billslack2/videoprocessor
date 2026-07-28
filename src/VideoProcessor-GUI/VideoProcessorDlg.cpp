@@ -2458,6 +2458,21 @@ void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
 {
 	if (m_statsOverlay)
 	{
+		if (m_videoRenderer &&
+			m_videoRenderer->SupportsNativeStatsOverlay())
+		{
+			// Create once for its font resources, but never show its HWND. Alpha
+			// receives a bitmap and blends it into the video frame itself.
+			if (!m_statsOverlay->IsCreated() &&
+				!m_statsOverlay->Create(this->GetSafeHwnd()))
+				return;
+			m_nativeStatsOverlayVisible = !m_nativeStatsOverlayVisible;
+			if (!m_nativeStatsOverlayVisible)
+				m_videoRenderer->SetNativeStatsOverlay(nullptr, 0, 0, 0, 0);
+			else
+				UpdateStatsOverlay();
+			return;
+		}
 		// Lazy creation - only create the window when first toggled
 		if (!m_statsOverlay->IsCreated())
 		{
@@ -5252,13 +5267,16 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		}
 	}
 
-	if (!m_statsOverlay || !m_statsOverlay->IsVisible() || !m_lastStatsData)
+	const bool nativeOverlay = m_nativeStatsOverlayVisible && m_videoRenderer &&
+		m_videoRenderer->SupportsNativeStatsOverlay();
+	if (!m_statsOverlay ||
+		(!m_statsOverlay->IsVisible() && !nativeOverlay) || !m_lastStatsData)
 		return;
 
 	// Fullscreen/windowed changes can put a no-activate layered overlay behind
 	// a renderer window.  Reassert topmost only every five seconds while it is
 	// visible; this is UI-only and does not touch the DirectShow graph.
-	if (m_timerSeconds % 5 == 0)
+	if (!nativeOverlay && m_timerSeconds % 5 == 0)
 		m_statsOverlay->UpdatePosition(displayWindow ? displayWindow : GetSafeHwnd());
 
 	StatsData stats;
@@ -5435,6 +5453,16 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	// Update overlay
 	m_statsOverlay->UpdateStats(stats);
+	if (nativeOverlay)
+	{
+		std::vector<uint8_t> pixels;
+		int width = 0;
+		int height = 0;
+		int stride = 0;
+		if (m_statsOverlay->RenderBgra(pixels, width, height, stride))
+			m_videoRenderer->SetNativeStatsOverlay(
+				pixels.data(), pixels.size(), width, height, stride);
+	}
 
 	// Save current stats for next update
 	*m_lastStatsData = stats;

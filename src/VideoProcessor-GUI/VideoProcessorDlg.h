@@ -434,6 +434,7 @@ protected:
 	// Stats overlay
 	StatsOverlayWindow* m_statsOverlay = nullptr;
 	StatsData* m_lastStatsData = nullptr;
+	bool m_nativeStatsOverlayVisible = false;
 
 	void UpdateState();
 

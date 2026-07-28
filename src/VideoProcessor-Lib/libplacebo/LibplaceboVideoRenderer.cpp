@@ -2232,6 +2232,14 @@ struct LibplaceboVideoRenderer::Impl
 	pl_swapchain swapchain = nullptr;
 	pl_renderer renderer = nullptr;
 	pl_tex textures[2] = { nullptr, nullptr };
+	pl_tex statsOverlayTexture = nullptr;
+	std::mutex statsOverlayMutex;
+	std::vector<uint8_t> statsOverlayPixels;
+	int statsOverlayWidth = 0;
+	int statsOverlayHeight = 0;
+	int statsOverlayStride = 0;
+	uint64_t statsOverlaySerial = 0;
+	uint64_t appliedStatsOverlaySerial = 0;
 	pl_custom_lut* displayLut = nullptr;
 	// Kept deliberately short for the Ctrl+I OSD: "Disabled",
 	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
@@ -2315,6 +2323,7 @@ struct LibplaceboVideoRenderer::Impl
 		pl_lut_free(&displayLut);
 		if (d3d11)
 		{
+			pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
 			for (pl_tex& texture : textures)
 				pl_tex_destroy(d3d11->gpu, &texture);
 		}
@@ -4527,6 +4536,82 @@ struct LibplaceboVideoRenderer::Impl
 			target,
 			scopeScreenActive,
 			subtitleShiftSourcePixels);
+		std::vector<uint8_t> overlayPixels;
+		int overlayWidth = 0;
+		int overlayHeight = 0;
+		int overlayStride = 0;
+		uint64_t overlaySerial = 0;
+		{
+			std::lock_guard<std::mutex> overlayGuard(statsOverlayMutex);
+			overlaySerial = statsOverlaySerial;
+			if (overlaySerial != appliedStatsOverlaySerial)
+			{
+				overlayPixels = statsOverlayPixels;
+				overlayWidth = statsOverlayWidth;
+				overlayHeight = statsOverlayHeight;
+				overlayStride = statsOverlayStride;
+			}
+		}
+		if (overlaySerial != appliedStatsOverlaySerial)
+		{
+			const bool hadOverlay = statsOverlayTexture != nullptr;
+			const bool geometryChanged = statsOverlayTexture &&
+				(statsOverlayTexture->params.w != overlayWidth ||
+				 statsOverlayTexture->params.h != overlayHeight);
+			if (!overlayPixels.empty())
+			{
+				struct pl_plane_data plane{};
+				plane.type = PL_FMT_UNORM;
+				plane.width = overlayWidth;
+				plane.height = overlayHeight;
+				plane.pixel_stride = 4;
+				plane.row_stride = static_cast<size_t>(overlayStride);
+				plane.pixels = overlayPixels.data();
+				uint64_t masks[4] =
+				{
+					0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000
+				};
+				pl_plane_data_from_mask(&plane, masks);
+				if (!pl_upload_plane(
+					d3d11->gpu, nullptr, &statsOverlayTexture, &plane))
+				{
+					DebugLog::Log("Alpha native OSD texture upload failed");
+				}
+			}
+			else
+			{
+				pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
+			}
+			appliedStatsOverlaySerial = overlaySerial;
+			if (hadOverlay != (statsOverlayTexture != nullptr) || geometryChanged)
+				pl_renderer_flush_cache(renderer);
+		}
+		struct pl_overlay overlay{};
+		struct pl_overlay_part overlayPart{};
+		if (statsOverlayTexture)
+		{
+			overlay.tex = statsOverlayTexture;
+			overlay.mode = PL_OVERLAY_NORMAL;
+			overlay.coords = PL_OVERLAY_COORDS_DST_FRAME;
+			overlay.repr = pl_color_repr_rgb;
+			overlay.repr.levels = PL_COLOR_LEVELS_FULL;
+			overlay.repr.alpha = PL_ALPHA_INDEPENDENT;
+			overlay.color = pl_color_space_srgb;
+			overlayPart.src = { 0.0f, 0.0f,
+				static_cast<float>(statsOverlayTexture->params.w),
+				static_cast<float>(statsOverlayTexture->params.h) };
+			const float dstWidth = static_cast<float>(baseTarget.planes[0].texture->params.w);
+			const float dstHeight = static_cast<float>(baseTarget.planes[0].texture->params.h);
+			overlayPart.dst = {
+				std::max(0.0f, dstWidth - statsOverlayTexture->params.w - 100.0f),
+				std::max(0.0f, dstHeight - statsOverlayTexture->params.h - 100.0f),
+				dstWidth - 100.0f,
+				dstHeight - 100.0f };
+			overlay.parts = &overlayPart;
+			overlay.num_parts = 1;
+			target.overlays = &overlay;
+			target.num_overlays = 1;
+		}
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
 			target.lut == displayLut && target.lut_type == PL_LUT_NATIVE;
@@ -5671,6 +5756,27 @@ bool LibplaceboVideoRenderer::GetDisplayLutInfo(CString& details) const
 
 	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
 	details = CString(CStringA(m_impl->displayLutStatus.c_str()));
+	return true;
+}
+
+bool LibplaceboVideoRenderer::SetNativeStatsOverlay(
+	const uint8_t* pixels, size_t byteCount, int width, int height, int stride)
+{
+	if (!m_impl)
+		return false;
+	if (pixels && (width <= 0 || height <= 0 || stride < width * 4 ||
+		byteCount < static_cast<size_t>(stride) * height))
+		return false;
+
+	std::lock_guard<std::mutex> guard(m_impl->statsOverlayMutex);
+	if (pixels)
+		m_impl->statsOverlayPixels.assign(pixels, pixels + byteCount);
+	else
+		m_impl->statsOverlayPixels.clear();
+	m_impl->statsOverlayWidth = pixels ? width : 0;
+	m_impl->statsOverlayHeight = pixels ? height : 0;
+	m_impl->statsOverlayStride = pixels ? stride : 0;
+	++m_impl->statsOverlaySerial;
 	return true;
 }
 
