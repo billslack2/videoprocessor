@@ -2,22 +2,12 @@
 
 ## Status
 
-Done — accepted deliberate Release deployment on 2026-07-28. Source commits
-`1b5ae1b` and `5335146` separate the configured fullscreen request from the
-effective embedded-preview contract, force `WS_CHILD` previews onto the
-composed Full/sRGB/Rec.709 path, add target/swap-chain diagnostics, paint a
-black preview fallback, and guard startup repaint before the control HWND
-exists. Release|x64 `VideoProcessor.exe` and Alpha runtime DLL were deployed
-to `C:\Videoprocessor\vp` and SHA-256 verified; user accepted live testing as
-complete.
-
-Live evidence in `C:\logs\vp_debug.log` confirms the embedded preview target
-was classified as `is_child=1` with configured
-`DIRECT/FULL/AUTO/BT.2020` and effective
-`COMPOSED/FULL/sRGB/Rec.709`, using a BitBlt swap chain. A separate observation
-that the main VP window moved unusually slowly was reported after deployment;
-no VP-0037 main-window move or animation code exists, and the user chose not
-to treat it as a blocker for this story.
+In Progress — reopened on 2026-07-28 after live Release validation found that
+Ctrl+I can leave Alpha video black or flashing while the OSD remains visible.
+This violates the stable presentation acceptance criteria. The previous
+Release deployment and child-preview contract evidence remain valid, but OSD
+z-order/layering and renderer presentation interactions now require diagnosis
+and a fix before acceptance.
 ## User story
 
 As an Alpha renderer user, I want video to remain visible and stable inside
