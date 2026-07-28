@@ -7,9 +7,13 @@ Review / production pilot deployed — medium.
 Started July 28, 2026 from the current default VP integration branch
 `v1.1.014-beta`.
 
-Implemented in `codex/vp-0015-alpha-nls`, merged through PR `#20` as
-`f1ae8a1`, rebuilt from that exact clean merge commit in x64 Release, and
-deployed July 28, 2026. Rollback is
+Implemented in `codex/vp-0015-alpha-nls` and merged through PR `#20` as
+`f1ae8a1`. On July 28, 2026 the pilot was rebased/fast-forwarded to current
+default integration merge `6307696`, rebuilt cleanly in x64 Release, passed
+183/183 tests, and was redeployed with the madVR NLS reconstruction quality
+raised from `medium` to `high`. Current rollback is
+`C:\Videoprocessor\vp\backup-before-vp0015-high-20260728-190516`; the initial
+VP0015 deployment rollback remains
 `C:\Videoprocessor\vp\backup-before-vp0015-20260728-182854`.
 
 The production pilot proves paired selector resolution, live Alpha GLSL NLS,
@@ -36,11 +40,15 @@ mixed-content hardware matrix and repeated-handoff soak below are completed.
 - Source crop and target rectangles implement trusted Scope passthrough,
   nonlinear horizontal/vertical fill, and geometry-preserving safe fit without
   a renderer restart.
-- Exact merge commit `f1ae8a1` passed a clean x64 Release rebuild and 183/183
-  native tests. Release output contained both `NLS.hlsl` and `NLS.glsl`.
+- Exact merge commit `f1ae8a1` and the later default-integration merge
+  `6307696` each passed a clean x64 Release rebuild and 183/183 native tests.
+  Release output contained both `NLS.hlsl` and `NLS.glsl`.
 - Production configuration was backed up and minimally changed: existing
   capture, madVR, broadcast, display, queue, and profile values were preserved;
   only two Alpha rule names and two GLSL rule sections were added.
+- The July 28 high-quality madVR pilot changed only `quality: medium` to
+  `quality: high` in `shaders.nls` and `shaders.nls_protected`, selecting the
+  existing six-tap Lanczos-3-style HLSL reconstruction path.
 - Live production Alpha validation resolved `nls,nls_alpha` to
   `nls_alpha`, loaded only `NLS.glsl`, accepted trusted full-raster
   `3840x2160` geometry, and applied horizontal NLS from `1.7778` to `2.3500`
@@ -107,7 +115,7 @@ stage: pre_resize
 geometry: classic
 strength: 1.0
 curve: 2.0
-quality: medium
+quality: high
 tolerance_percent: 5
 
 [shaders.nls_alpha]
