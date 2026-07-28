@@ -2,12 +2,13 @@
 
 ## Status
 
-In Progress as part of VP-0034 on `codex/vp-0034-restart-free-nls` and draft
-pull request `billslack2/videoprocessor#15`, targeting `v1.1.014-beta`. The
-current conservative detector behavior was intentional protection against
-false positives, so this story must improve responsiveness through confidence
-and transition modeling, not by indiscriminately reducing confirmation
-thresholds.
+Review as part of VP-0034 on `codex/vp-0034-restart-free-nls` at commit
+`a5f906c` and draft pull request `billslack2/videoprocessor#15`, targeting
+`v1.1.014-beta`. The implementation adds a time-normalized confidence model,
+prompt renderer generation polling, safe transient passthrough, independently
+reviewable diagnostics, documented thresholds, and a reproducible synthetic
+transition corpus. Release x64 builds cleanly; the full native test suite
+passes 138/138. Hardware/madVR playback remains required before merge.
 
 ## User story
 
