@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0033`
-- Next story number: `VP-0034`
-- Total indexed items: 33
+- Last assigned item: `VP-0035`
+- Next story number: `VP-0036`
+- Total indexed items: 35
 
 ## Story locations
 
@@ -58,6 +58,8 @@ they must not contain requirements that are absent from this file.
 | VP-0031 | Draft | Make debug-log retention configurable |
 | VP-0032 | Draft | Alpha renderer field-aware GPU deinterlacing |
 | VP-0033 | Draft | Alpha renderer libplacebo frame-mixing smooth motion |
+| VP-0034 | Draft | Restart-free mixed-aspect NLS |
+| VP-0035 | Draft | Robust low-latency active-aspect transitions |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
