@@ -122,6 +122,154 @@ evidence to identify the gate without flooding `vp_debug.log`.
 6. Preserve VP-0027's fail-closed behavior. Do not force a correction merely
    because the displayed countdown reached zero.
 
+## Design
+
+### Reviewed current flow
+
+The Alpha render thread removes one frame from its FIFO and snapshots
+`queueDepthAfterDequeue`, desired depth, oldest queued age, and DXGI
+presentation debt. `AlphaCadenceCorrectionPolicy` then predicts from filtered
+capture/display mismatch, accumulates signed phase, authorizes against
+queue/debt and scene/fallback gates, and reserves the correction by moving
+phase back one frame and entering pending verification.
+
+A drop returns from `RenderLocked` without presenting the selected frame; the
+render loop releases it and updates the drop counters. A repeat first presents
+the selected frame, then pushes that same source-owned frame back onto the
+front of the FIFO with a `cadenceRepeat` marker. Only a successful push updates
+the repeat counter. A failed push calls `CancelPendingAction`, which restores
+the reserved phase.
+
+The current forecast calculation clamps a passed deadline to zero. The policy
+then returns `None` at each rejecting gate without publishing which gate
+rejected it, so the renderer continues to publish `Forecasting` and the OSD
+continues to render `Repeat in 0s` or `Drop in 0s`.
+
+### Reviewed incident boundary
+
+For a repeat, the current queue/debt authorization expression is:
+
+`queueDepthAfterDequeue < desiredQueueDepth && presentationDebt == 0`.
+
+At the reported `0 / 1`, that queue direction is correct. If the policy saw
+that same depth, debt zero, a stable generation, and phase at or beyond one
+frame, its repeat fallback would already be eligible and it should authorize
+the repeat immediately. The screenshot therefore does not prove the policy
+saw a qualifying sample. The first diagnostic implementation must distinguish
+at least presentation debt, the policy's after-dequeue depth, fallback state,
+generation replacement, and renderer re-enqueue cancellation.
+
+### Policy contract
+
+Add a stable `AlphaCadenceBlockReason` enum to every decision. Keep prediction,
+authorization, execution, and verification separate:
+
+1. A signed deadline value remains positive before the deadline and becomes
+   negative after it. `due` is explicit and is not inferred from rounded OSD
+   text.
+2. A due decision publishes exactly one current blocker selected in policy
+   evaluation order: cooldown, pending verification, queue direction,
+   presentation debt, scene opportunity, or fallback queue age.
+3. Precondition failures also have stable reasons for diagnostics, including
+   unavailable/disjoint presentation evidence, invalid rates, incompatible
+   mismatch, rate stabilization, and no actionable mismatch.
+4. Authorization publishes `None`; renderer execution failures publish a
+   separate native outcome and cancel the reserved policy action.
+5. Policy generation replacement is observable as a transition, not confused
+   with a normal forecast restart.
+
+### Publication and logging
+
+Publish `due`, block reason, signed deadline, policy generation, and the input
+snapshot used for the decision beside the existing Alpha timing atomics. The
+OSD will show a positive countdown before due and, once due, replace the zero
+countdown with `Repeat due - <reason>` or `Drop due - <reason>`.
+
+The render thread owns a small diagnostic state machine. It logs on generation
+change, first due transition, block-reason change, authorization, native
+success/failure, and verification completion. While one due reason remains
+unchanged it emits a bounded periodic summary, never a per-frame message. Each
+record includes both generations, source sequence, present ID, phase,
+mismatch/rates, queue/debt, scene/fallback state, and verification state.
+
+### Execution ordering
+
+Keep the current fail-closed reservation model, with these explicit outcomes:
+
+- drop succeeds only when the selected source reference is released as the
+  intentional correction;
+- repeat succeeds only after `push_front` accepts the exact retained frame
+  under the same queue generation;
+- stop or generation rejection is logged distinctly from allocation/queue
+  failure;
+- any failed repeat enqueue restores policy phase exactly once and releases
+  the source reference exactly once;
+- D/R counters change only after those native success points.
+
+### Implementation slices
+
+1. Policy: signed deadline, explicit due state and stable reason enum, with
+   gate-isolation unit tests at/beyond the deadline.
+2. Publication: Alpha OSD due wording and transition-only policy diagnostics.
+3. Native outcomes: repeat enqueue/cancellation result enum, exact ownership
+   tests, and action/verification correlation.
+4. Sustained validation: accelerated mismatch harness followed by a real
+   59.94/60 run across multiple deadlines.
+
+## Design review
+
+Reviewed July 28, 2026 against `v1.1.014-beta`.
+
+- The design preserves VP-0027's separation of prediction and authorization;
+  an OSD deadline never bypasses a safety gate.
+- The stable enum belongs in the policy rather than being reconstructed from
+  renderer symptoms, which keeps unit tests deterministic and log wording
+  forward-compatible.
+- Signed deadline publication fixes both premature/indefinite zero display and
+  supplies the requested before/past-deadline precision.
+- Renderer outcome remains separate because a policy authorization cannot
+  truthfully describe a later queue-generation rejection or enqueue failure.
+- DirectShow interfaces and behavior remain unchanged; new publication is
+  Alpha-specific behind optional renderer diagnostics.
+- The fallback is intentionally bounded by policy frames, not wall-clock OSD
+  rounding. Liveness remains conditional on queue/debt and evidence gates.
+
+Review result: approved for implementation in the four slices above. Slice 1
+is the initial implementation target.
+
+## Implementation progress
+
+Started July 28, 2026 on `codex/vp-0039` from the verified GitHub default
+branch `v1.1.014-beta`.
+
+Commit `6cb7a1a` (`Publish Alpha cadence due blockers`) implements slice 1 and
+the OSD portion of slice 2:
+
+- adds a stable policy block-reason enum and explicit due state;
+- preserves the signed deadline after it passes instead of clamping it to
+  zero;
+- separates queue-direction and presentation-debt blockers for drop and
+  repeat;
+- distinguishes fallback maturity and drop queue-age gating;
+- publishes one coherent Alpha due/action/reason snapshot through the renderer
+  and plugin boundary;
+- changes the OSD from an indefinite zero countdown to
+  `<action> due - <reason>`;
+- adds four due-state tests covering signed overdue time, repeat queue versus
+  debt, drop queue/debt/fallback age, and no-scene repeat fallback.
+
+Validation on the implementation commit:
+
+- Debug x64 `VideoProcessor-GUI` build: passed;
+- Debug x64 `VideoProcessor-Test` build: passed;
+- all 14 `AlphaCadenceCorrectionPolicyTests`: passed;
+- focused four-test due-state filter after final publication changes: passed.
+
+Remaining work is transition/periodic diagnostic logging with full input
+snapshots, explicit renderer-native repeat outcome/cancellation correlation,
+ownership-focused execution tests, and sustained accelerated plus real
+59.94/60 verification. The story remains in progress.
+
 ## Verification
 
 - Unit-test both drop and repeat paths before, exactly at, and beyond the phase
