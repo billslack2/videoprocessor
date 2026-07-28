@@ -2468,6 +2468,12 @@ void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
 			}
 		}
 		m_statsOverlay->Toggle();
+		// A topmost layered OSD cannot share a reliable DirectFlip presentation
+		// path. Rebuild fullscreen Alpha after each visibility change so it can
+		// select composed output while the OSD is visible and restore the user's
+		// direct/BT.2020 contract when it is hidden.
+		if (IsAlphaRendererSelected() && m_rendererFullscreenCheck.GetCheck())
+			OnBnClickedRendererRestart();
 	}
 	
 }
