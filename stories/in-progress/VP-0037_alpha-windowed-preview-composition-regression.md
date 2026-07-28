@@ -11,6 +11,16 @@ acceptance boundaries are defined. Initial work is inspecting the current
 window target lifecycle and libplacebo swap-chain policy before making the
 smallest safe child-preview fallback.
 
+Implementation progress (2026-07-28): source commit `1b5ae1b` classifies and
+logs the render HWND, preserves the configured output request separately from
+the effective contract, and forces embedded `WS_CHILD` previews to the
+composed Full/sRGB/Rec.709 path. The preview control now paints black during
+swap-chain gaps. `VideoProcessor-Libplacebo` Debug|x64 builds successfully.
+The full Debug|x64 solution remains blocked in the clean worktree by the
+pre-existing missing generated `src/VideoProcessor-GUI/version.h`; manual
+hardware playback, fullscreen transitions, and diagnostic-log verification
+remain pending.
+
 ## User story
 
 As an Alpha renderer user, I want video to remain visible and stable inside
@@ -210,4 +220,3 @@ the story workflow and reproduce against that branch. If a composed child
 preview cannot coexist with the current fullscreen target lifecycle, document
 the exact API limitation and create a bounded spike rather than weakening the
 acceptance criteria.
-
