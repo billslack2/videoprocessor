@@ -2,8 +2,15 @@
 
 ## Status
 
-In Progress — reopened on 2026-07-28 after live Release validation found that
-Ctrl+I can leave Alpha video black or flashing while the OSD remains visible.
+Done. The user accepted the deployed Release build on 2026-07-28 after live
+validation of the Alpha child preview, native in-frame OSD, Ctrl+I toggling,
+and Alpha/madVR renderer handoff. Pull request #16 merged the implementation
+into the default integration branch `v1.1.014-beta` as merge commit `982a143`.
+Release x64 built successfully after integration with the latest default
+branch, and all 133 tests passed.
+
+The story had been reopened on 2026-07-28 after live Release validation found
+that Ctrl+I can leave Alpha video black or flashing while the OSD remains visible.
 This violates the stable presentation acceptance criteria. The previous
 Release deployment and child-preview contract evidence remain valid, but OSD
 z-order/layering and renderer presentation interactions now require diagnosis
@@ -33,6 +40,7 @@ state and rebinds it when each renderer reaches Rendering: Alpha hides the
 popup and publishes the native bitmap; non-native renderers clear native state
 and show the popup. Release GUI deployment was hash-verified; backup:
 `C:\Videoprocessor\vp\backup-before-vp0037-osd-handoff-20260727-230224`.
+
 ## User story
 
 As an Alpha renderer user, I want video to remain visible and stable inside
