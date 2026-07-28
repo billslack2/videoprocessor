@@ -97,7 +97,16 @@ void WindowedVideoWindow::OnPaint()
 		return;
 	}
 
-	CStatic::OnPaint();
+	// The Alpha renderer owns this child HWND while it is live. If its
+	// swapchain is being recreated, occluded, or cannot yet provide a frame,
+	// paint an opaque black fallback rather than letting stale desktop pixels
+	// appear through the control.
+	PAINTSTRUCT ps;
+	HDC hdc = ::BeginPaint(GetSafeHwnd(), &ps);
+	CRect rect;
+	GetClientRect(&rect);
+	::FillRect(hdc, &rect, m_brush);
+	::EndPaint(GetSafeHwnd(), &ps);
 }
 
 void WindowedVideoWindow::OnSize(UINT nType, int cx, int cy)
