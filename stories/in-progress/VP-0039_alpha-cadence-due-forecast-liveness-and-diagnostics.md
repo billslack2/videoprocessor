@@ -354,6 +354,16 @@ Post-merge integration verification on July 28, 2026:
   test DLL;
 - no redeployment was performed as part of this integration check.
 
+Merged manual-test deployment on July 28, 2026:
+
+- deployed the clean x64 Release GUI and Alpha plugin from merged default
+  branch commit `71bfb09`;
+- backed up the replaced executable, plugin, and matching symbols under
+  `C:\Videoprocessor\vp\backup-before-vp0039-merged-20260728-154849`;
+- verified all four deployed SHA-256 hashes against their Release artifacts;
+- verified `VideoProcessor.cfg` remained byte-for-byte unchanged and did not
+  modify state, shaders, or runtime dependencies.
+
 ## Verification
 
 - Unit-test both drop and repeat paths before, exactly at, and beyond the phase
