@@ -2,14 +2,16 @@
 
 ## Status
 
-Backlog. No implementation has started.
+In Progress. Implementation started on 2026-07-28 from confirmed integration
+base `origin/v1.1.014-beta` at `15577fc` on branch
+`codex/vp-0045-vpvr-namespace`, using worktree
+`C:\Users\bslac\vp\worktrees\vp-0045-vpvr`.
 
 Readiness review on 2026-07-28 found the naming goal sound but rejected the
 original whole-section migration because it conflicted with the unified profile
 model and treated mixed-ownership `[general]` as renderer-only. This revision
-records the corrected design. The current GitHub default integration branch is
-`v1.1.014-beta`; implementation remains gated on developer confirmation of
-that base.
+records the corrected design. The developer confirmed the current GitHub
+default integration branch, `v1.1.014-beta`, as the implementation base.
 
 ## User story
 
