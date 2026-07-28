@@ -1,4 +1,4 @@
-# VP-0045: DirectShow event plumbing and passive health diagnostics
+# VP-0046: DirectShow event plumbing and passive health diagnostics
 
 ## Status
 
