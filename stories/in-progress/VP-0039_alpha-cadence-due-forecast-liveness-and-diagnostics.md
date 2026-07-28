@@ -342,6 +342,18 @@ Manual-test deployment on July 28, 2026:
 - left `VideoProcessor.cfg`, state, shaders, and runtime dependencies
   unchanged.
 
+Post-merge integration verification on July 28, 2026:
+
+- fast-forward rebased `codex/vp-0039` onto the current GitHub default branch
+  `origin/v1.1.014-beta` at merge commit `71bfb09`;
+- confirmed the VP-0039 commits were already ancestors of the merged default
+  branch, so no duplicate replay or conflict resolution was needed;
+- clean x64 Release rebuilds passed for the GUI, Alpha plugin, and native test
+  project with `VERSION_DIRTY=false`;
+- all 14 focused `AlphaCadenceCorrectionPolicyTests` passed from the Release
+  test DLL;
+- no redeployment was performed as part of this integration check.
+
 ## Verification
 
 - Unit-test both drop and repeat paths before, exactly at, and beyond the phase
