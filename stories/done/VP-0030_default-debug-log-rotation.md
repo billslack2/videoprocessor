@@ -2,10 +2,9 @@
 
 ## Status
 
-Review. Implemented by commit `e016e1f` on
-`codex/vp-0030-0031-debug-log-retention`, based on the current default
-integration branch `v1.1.014-beta`. Pull request:
-https://github.com/billslack2/videoprocessor/pull/14.
+Complete. Implemented by commit `e016e1f` and merged into the default
+integration branch `v1.1.014-beta` by pull request #14 as merge commit
+`48fc10d`. Deployment acceptance was confirmed by the user on 2026-07-27.
 
 ## User story
 
