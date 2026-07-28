@@ -2,7 +2,8 @@
 
 ## Status
 
-Backlog.
+In progress on `codex/vp-0030-0031-debug-log-retention`, based on the current
+default integration branch `v1.1.014-beta`.
 
 ## User story
 

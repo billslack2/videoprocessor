@@ -2,8 +2,9 @@
 
 ## Status
 
-Backlog. Depends on VP-0030. Do not add configuration until the fixed-ten
-rotation behavior is implemented and validated.
+In progress on `codex/vp-0030-0031-debug-log-retention`, based on the current
+default integration branch `v1.1.014-beta`. The branch includes VP-0030 as the
+required fixed-retention engine before adding configuration.
 
 ## User story
 
