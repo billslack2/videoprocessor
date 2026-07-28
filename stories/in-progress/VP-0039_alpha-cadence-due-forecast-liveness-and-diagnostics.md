@@ -386,6 +386,20 @@ Renderer-switch manual evidence and follow-up:
   all deployed hashes matched their Release artifacts and
   `VideoProcessor.cfg` remained byte-for-byte unchanged.
 
+Latest integration rebuild and deployment:
+
+- rebased the drop-diagnostic commit onto current default-branch head
+  `0954731`, including the merged renderer-transition cover and indexed log
+  rotation work; the rebased diagnostic commit is `a19de57`;
+- clean x64 Release GUI and Alpha plugin rebuilds passed with
+  `VERSION_DIRTY=false`;
+- deployed the executable, Alpha plugin, and matching symbols and verified all
+  four SHA-256 hashes;
+- backed up the replaced binaries under
+  `C:\Videoprocessor\vp\backup-before-vp0039-rebased-20260728-161431`;
+- verified both `VideoProcessor.cfg` and `VideoProcessor.state` remained
+  byte-for-byte unchanged.
+
 ## Verification
 
 - Unit-test both drop and repeat paths before, exactly at, and beyond the phase
