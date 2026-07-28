@@ -81,12 +81,18 @@ private:
 		uint64_t sourceSequence = 0;
 		int64_t enqueueQpc = 0;
 		bool cadenceRepeat = false;
+		uint64_t cadenceActionId = 0;
+		uint64_t cadencePolicyGeneration = 0;
+		uint64_t cadenceDetectorGeneration = 0;
+		uint64_t cadencePresentationDebt = 0;
+		uint32_t cadencePresentId = 0;
+		double cadenceDeadlineSeconds = 0.0;
 	};
 
 	void RenderLoop();
-	void ClearQueue();
+	void ClearQueue(const char* reason = "queue clear");
 	void BeginQueueGeneration(const char* reason, bool clearStopRequest = false);
-	void ClearQueueLocked();
+	void ClearQueueLocked(const char* reason);
 	size_t PrefillTargetLocked() const;
 	bool CanDequeueLocked() const;
 	void SetState(RendererState state);

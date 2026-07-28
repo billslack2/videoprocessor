@@ -43,6 +43,22 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 		Reset(input.generation);
 
 	AlphaCadenceCorrectionDecision decision;
+	decision.diagnostic.policyGeneration = input.generation;
+	decision.diagnostic.detectorGeneration = input.detectorGeneration;
+	decision.diagnostic.presentationGeneration =
+		input.presentationGeneration;
+	decision.diagnostic.sourceSequence = input.sourceSequence;
+	decision.diagnostic.presentationEvidence = input.presentationEvidence;
+	decision.diagnostic.captureRateHz = input.captureRateHz;
+	decision.diagnostic.displayRateHz = input.displayRateHz;
+	decision.diagnostic.queueDepth = input.queueDepth;
+	decision.diagnostic.desiredQueueDepth =
+		std::max<size_t>(1, input.desiredQueueDepth);
+	decision.diagnostic.oldestQueuedAgeMs = input.oldestQueuedAgeMs;
+	decision.diagnostic.presentationDebt = input.presentationDebt;
+	decision.diagnostic.lastPresentId = input.lastPresentId;
+	decision.diagnostic.safeSceneBoundary = input.safeSceneBoundary;
+	decision.diagnostic.sceneEventId = input.sceneEventId;
 	const bool ratesInRange =
 		input.captureRateHz >= 10.0 && input.captureRateHz <= 240.0 &&
 		input.displayRateHz >= 10.0 && input.displayRateHz <= 500.0;
@@ -73,6 +89,8 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 
 	const double rawPhasePerFrame =
 		input.captureRateHz / input.displayRateHz - 1.0;
+	decision.diagnostic.rawMismatchPpm =
+		rawPhasePerFrame * 1000000.0;
 	if (m_rateFilterSamples < MINIMUM_PREDICTION_SAMPLES)
 	{
 		++m_rateFilterSamples;
@@ -108,6 +126,7 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 		input.lastPresentId != 0 &&
 		input.lastPresentId != m_verificationPresentId)
 	{
+		decision.verificationAction = m_verificationAction;
 		m_lastVerificationValid = true;
 		m_lastVerificationSucceeded =
 			m_verificationAction == AlphaCadenceAction::Drop
@@ -133,7 +152,10 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 	}
 
 	m_phaseFrames += m_filteredPhasePerFrame;
+	decision.diagnostic.phaseFrames = m_phaseFrames;
 	const double signedFilteredPpm = m_filteredPhasePerFrame * 1000000.0;
+	decision.diagnostic.filteredMismatchPpm =
+		signedFilteredPpm;
 	if (m_predictionDirection == AlphaCadenceAction::None)
 	{
 		if (signedFilteredPpm >= MINIMUM_PREDICTION_PPM)
@@ -195,6 +217,7 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 				: AlphaCadenceAction::None);
 	decision.due = requested != AlphaCadenceAction::None;
 	decision.planned = std::abs(m_phaseFrames) >= PLAN_PHASE_FRAMES;
+	decision.diagnostic.cooldownFrames = m_cooldownFrames;
 
 	if (m_cooldownFrames > 0)
 	{
@@ -226,6 +249,24 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 	}
 
 	const size_t desired = std::max<size_t>(1, input.desiredQueueDepth);
+	const uint32_t fallbackFrames = static_cast<uint32_t>(std::max(
+		1.0, std::ceil(MAXIMUM_QUEUE_AGE_MS * input.displayRateHz / 1000.0)));
+	decision.diagnostic.fallbackFrames = fallbackFrames;
+	decision.diagnostic.plannedFrames = m_plannedFrames;
+	decision.diagnostic.sceneEventFresh =
+		input.sceneEventId != 0 && input.sceneEventId != m_lastSceneEventId;
+	const bool sceneAuthorized =
+		input.safeSceneBoundary && input.sceneEventId != 0 &&
+		input.sceneEventId != m_lastSceneEventId;
+	decision.diagnostic.sceneAuthorized = sceneAuthorized;
+	decision.diagnostic.fallbackMature =
+		m_plannedFrames >= fallbackFrames;
+	const bool deadlineAuthorized =
+		m_plannedFrames >= fallbackFrames &&
+		(requested == AlphaCadenceAction::Repeat ||
+			input.oldestQueuedAgeMs >= MAXIMUM_QUEUE_AGE_MS);
+	decision.diagnostic.fallbackEligible = deadlineAuthorized;
+
 	if (requested == AlphaCadenceAction::Drop &&
 		input.queueDepth <= desired)
 	{
@@ -259,15 +300,6 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 		return decision;
 	}
 
-	const uint32_t fallbackFrames = static_cast<uint32_t>(std::max(
-		1.0, std::ceil(MAXIMUM_QUEUE_AGE_MS * input.displayRateHz / 1000.0)));
-	const bool sceneAuthorized =
-		input.safeSceneBoundary && input.sceneEventId != 0 &&
-		input.sceneEventId != m_lastSceneEventId;
-	const bool deadlineAuthorized =
-		m_plannedFrames >= fallbackFrames &&
-		(requested == AlphaCadenceAction::Repeat ||
-			input.oldestQueuedAgeMs >= MAXIMUM_QUEUE_AGE_MS);
 	if (!sceneAuthorized && !deadlineAuthorized)
 	{
 		decision.phaseFrames = m_phaseFrames;
