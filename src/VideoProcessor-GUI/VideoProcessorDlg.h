@@ -373,6 +373,10 @@ protected:
 	uint64_t m_lastDroppedFrames = 0;
 	size_t m_lastQueueSize = 0;
 	DWORD m_lastQueueHealthDiagnostic = 0;
+	IVideoRenderer* m_dropDiagnosticRenderer = nullptr;
+	bool m_dropDiagnosticInitialized = false;
+	uint64_t m_lastLoggedCaptureMissed = 0;
+	uint64_t m_lastLoggedRendererDropped = 0;
 	bool m_pendingQueueReset = false;
 	bool m_pendingResetRequiresGraph = false;
 	RendererResetReason m_pendingResetReason = RendererResetReason::None;
@@ -496,6 +500,7 @@ protected:
 	void RebuildRendererCombo();
 	void ClearRendererCombo();
 	void UpdateStatsOverlay();
+	void LogDroppedCounterChanges(const StatsData& stats);
 	void ApplyStatsOverlayForActiveRenderer();
 	void LoadDisplayRefreshRateOverrides();
 	bool TryGetDisplayRefreshRateOverride(double nominalRateHz,

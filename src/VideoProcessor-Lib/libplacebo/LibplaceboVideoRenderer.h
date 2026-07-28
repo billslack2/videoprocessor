@@ -138,6 +138,8 @@ private:
 	std::atomic<double> m_entryLatencyMs{0.0};
 	std::atomic<double> m_exitLatencyMs{0.0};
 	std::atomic<uint64_t> m_droppedFrames{0};
+	std::atomic<uint64_t> m_missingFrameStateDrops{0};
+	std::atomic<uint64_t> m_renderFailureDrops{0};
 	std::atomic_bool m_sceneDetectionEnabled{false};
 	std::atomic<uint64_t> m_sceneDetectorGeneration{1};
 	std::atomic<uint64_t> m_sceneDetectedCount{0};
