@@ -9,6 +9,20 @@ runtime contract required to make the selected `[profiles.viewport.*]` profile
 the single source of truth inside VP for physical-screen geometry, subtitle
 fitting, and screen-aware NLS configuration.
 
+## Implementation progress
+
+- 2026-07-27: Created `codex/vp-0038-generic-viewport` from
+  `v1.1.014-beta`.
+- 2026-07-27: Commit `1702ad3` introduced the shared exact aspect parser,
+  generic viewport keys with deprecated-alias validation, corrected F2/F3
+  unified examples, and shared parsing in the libplacebo and DirectShow shader
+  paths.
+- Verification at this checkpoint: x64 Debug solution build succeeded and all
+  155 native unit tests passed.
+- Next: move unified selection and its resolved viewport snapshot out of the
+  libplacebo backend, publish `$screen_aspect`/`$viewport_profile`, and apply
+  the snapshot to DirectShow NLS without a renderer restart.
+
 ## User story
 
 As a viewer who alternates between a physical 16:9 presentation with side
