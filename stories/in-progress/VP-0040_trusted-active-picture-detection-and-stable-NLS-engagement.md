@@ -16,16 +16,33 @@ Readiness review and Phase A implementation are underway in the isolated
 - 2026-07-28: Initial inspection verified the documented sparse luma-only
   detector, ambiguous-timeout crop promotion, geometry publication boundary,
   and late NLS output-contract restart decision on the approved base.
-- 2026-07-28: Phase A commit `c2046f8` introduced explicit
+- 2026-07-28: Phase A foundation commit `622987d` (rebased from `c2046f8`)
+  introduced explicit
   `FULL_RASTER_TRUSTED`, `BAR_CROP_TRUSTED`, `PROVISIONAL`, and `UNAVAILABLE`
   classifications at the transition boundary. Full raster is immediately
   safe; provisional or asymmetric geometry cannot gain crop authority through
   repetition; and one observation no longer withdraws the installed stable
   mapping. The x64 Debug build passes, all 154 baseline tests passed, and the
   final focused transition-model run passed 12/12 tests.
-- Next: establish the pure P010 evidence component and fail-safe crop-authority
-  model for Phase A before beginning the separately reviewable Phase B
-  transaction changes.
+- 2026-07-28: Joined commit `99addeb` completed the bounded pure P010
+  evidence increment. It validates luma/chroma pitch, plane length, and
+  overflow before reading; uses a shared hard sampling budget below 30,000
+  luma reads at 4K; records per-edge black, texture/dispersion, neutral-chroma,
+  continuity, boundary-contrast, and confidence evidence; and grants crop
+  authority only to coherent opposing edges. Synthetic full-raster, Scope,
+  4:3 pillarbox, small IMAX-style, asymmetric/colored-edge, dark-artwork,
+  padded-pitch, short-plane, and adversarial-black tests are included.
+- 2026-07-28: The same joined commit corrected the field-observed NLS
+  half-state: initial `WAITING` now keeps the native output contract even when
+  the configured rule declares `output_aspect_ratio`; aspect-only geometry
+  reconstruction was removed; and a prepared controlled replacement rebinds
+  the exact trusted rectangle to the new renderer generation. An unprepared
+  renderer replacement still rejects old geometry. The clean x64 Release
+  build and all 178 tests pass.
+- Next: run the deployed Apple TV/DeckLink/madVR hardware corpus and capture
+  detector/runtime logs. The remaining separately reviewable Phase B work is
+  to move shader installation wholly after renderer replacement and prove the
+  one-restart/no-old-renderer-install transaction with video-capture tests.
 
 ## Expert review record
 
