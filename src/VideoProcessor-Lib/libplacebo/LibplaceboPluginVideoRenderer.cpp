@@ -337,6 +337,38 @@ bool LibplaceboPluginVideoRenderer::SelectDisplayRule(
 }
 
 
+bool LibplaceboPluginVideoRenderer::SelectShaderRule(
+	const CString& ruleName,
+	CString& activeRule,
+	bool& rendererRestartRequired)
+{
+	return m_renderer->SelectShaderRule(ruleName, activeRule,
+		rendererRestartRequired);
+}
+
+
+bool LibplaceboPluginVideoRenderer::RefreshShaderRule(
+	CString& activeRule,
+	bool& rendererRestartRequired)
+{
+	return m_renderer->RefreshShaderRule(activeRule,
+		rendererRestartRequired);
+}
+
+
+std::vector<CString>
+LibplaceboPluginVideoRenderer::ActiveShaders() const
+{
+	return m_renderer->ActiveShaders();
+}
+
+
+CString LibplaceboPluginVideoRenderer::ActiveShaderRule() const
+{
+	return m_renderer->ActiveShaderRule();
+}
+
+
 bool LibplaceboPluginVideoRenderer::ApplyApplicationState(
 	const UnifiedProfileRuntime::Snapshot& snapshot,
 	CString& activeState,

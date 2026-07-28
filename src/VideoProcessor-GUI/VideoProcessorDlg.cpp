@@ -2437,6 +2437,7 @@ void CVideoProcessorDlg::OnCommandShaderRule(UINT commandId)
 			static_cast<LPCTSTR>(rule->second));
 		return;
 	}
+	m_requestedShaderSelector = rule->second;
 	DEBUGLOG("Shader rule changed to '%S'", static_cast<LPCTSTR>(activeRule));
 	if (rendererRestartRequired)
 	{
@@ -2444,6 +2445,35 @@ void CVideoProcessorDlg::OnCommandShaderRule(UINT commandId)
 		m_wantToRestartRenderer = true;
 		UpdateState();
 	}
+}
+
+
+bool CVideoProcessorDlg::ApplyRequestedShaderSelection()
+{
+	if (!m_videoRenderer || m_requestedShaderSelector.IsEmpty())
+		return true;
+
+	CString activeRule;
+	bool rendererRestartRequired = false;
+	if (!m_videoRenderer->SelectShaderRule(
+		m_requestedShaderSelector, activeRule, rendererRestartRequired))
+	{
+		DEBUGLOG(
+			"Shader selector '%S' is not applicable to the newly built renderer",
+			static_cast<LPCTSTR>(m_requestedShaderSelector));
+		return false;
+	}
+	DEBUGLOG(
+		"Shader selector '%S' restored on the newly built renderer as '%S'",
+		static_cast<LPCTSTR>(m_requestedShaderSelector),
+		static_cast<LPCTSTR>(activeRule));
+	if (rendererRestartRequired)
+	{
+		DEBUGLOG(
+			"Restored shader selector requested an additional renderer negotiation");
+		m_wantToRestartRenderer = true;
+	}
+	return true;
 }
 
 
@@ -3449,6 +3479,7 @@ void CVideoProcessorDlg::RenderStart()
 				m_videoRenderer->OnVideoState(m_builtVideoState);
 
 			m_videoRenderer->Build();
+			ApplyRequestedShaderSelection();
 			m_rendererTransitionWindow.KeepOnTop();
 			// Match the DirectShow startup contract. Alpha owns its detector and
 			// cadence policy inside the optional renderer, so the configured mode
@@ -3512,6 +3543,7 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->OnVideoState(m_builtVideoState);
 
 		m_videoRenderer->Build();
+		ApplyRequestedShaderSelection();
 		m_rendererTransitionWindow.KeepOnTop();
 		m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
 		m_videoRenderer->SetSceneCorrectionUpstreamSample(
