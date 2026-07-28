@@ -16,6 +16,7 @@ namespace MainConfigSchema
 		return section == "command_line" ||
 			section == "queue_recovery" ||
 			section == "lldv" ||
+			section == "logging" ||
 			section == "shortcuts" ||
 			section == "p010_conversion" ||
 			section == "ppm_correction" ||
@@ -84,6 +85,16 @@ namespace MainConfigSchema
 			ConfigSchema::NumberAtLeast("mastering_min_luminance", 0.0),
 			ConfigSchema::NumberAtLeast("mastering_max_luminance", 0.0, false)
 		};
-		return ConfigSchema::ValidateSection(config, "lldv", lldvRules, error);
+		if (!ConfigSchema::ValidateSection(config, "lldv", lldvRules, error))
+			return false;
+
+		// Debug-log retention deliberately defaults safely instead of making an
+		// otherwise usable configuration fatal. Resolution validates 1-100
+		// before logger startup; the schema still rejects unknown logging keys.
+		const std::vector<ConfigSchema::KeyRule> loggingRules = {
+			ConfigSchema::Any("debug_log_retention")
+		};
+		return ConfigSchema::ValidateSection(
+			config, "logging", loggingRules, error);
 	}
 }

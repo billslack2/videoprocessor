@@ -228,6 +228,9 @@
     <ClInclude Include="DebugLog.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="DebugLogRetention.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="video_frame_formatter\CV210toP010VideoFrameFormatterSIMD.h">
       <Filter>Header Files</Filter>
     </ClInclude>

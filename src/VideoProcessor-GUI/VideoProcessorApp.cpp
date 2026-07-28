@@ -227,15 +227,44 @@ std::string ConfigLocation(const ConfigFile& config)
 	return config.GetLoadedPath().empty() ? ConfigFile::DEFAULT_FILENAME : config.GetLoadedPath();
 }
 
+bool IsDebugLogRetentionDuplicateWarning(const std::string& warning)
+{
+	return warning.find("duplicate [logging] key 'debug_log_retention'") !=
+			std::string::npos ||
+		warning.find("duplicate section [logging]") != std::string::npos;
+}
+
+DebugLogRetention::Setting LoadDebugLogRetentionSetting()
+{
+	ConfigFile config;
+	const bool loaded = config.Load();
+	const bool duplicate = std::any_of(
+		config.GetWarnings().begin(), config.GetWarnings().end(),
+		IsDebugLogRetentionDuplicateWarning);
+	std::string rawValue;
+	const std::string* value = loaded &&
+		config.TryGetString("logging", "debug_log_retention", rawValue) ?
+		&rawValue : nullptr;
+	const bool unreadable = !loaded && !config.GetWarnings().empty();
+	return DebugLogRetention::ResolveSetting(value, duplicate, unreadable);
+}
+
 void ThrowIfConfigHasSyntaxWarnings(const ConfigFile& config)
 {
 	const auto& warnings = config.GetWarnings();
-	if (warnings.empty())
+	const bool hasFatalWarning = std::any_of(
+		warnings.begin(), warnings.end(),
+		[](const std::string& warning)
+		{
+			return !IsDebugLogRetentionDuplicateWarning(warning);
+		});
+	if (!hasFatalWarning)
 		return;
 
 	std::string error = "Invalid " + ConfigLocation(config) + " syntax:";
 	for (const auto& warning : warnings)
-		error += "\n" + warning;
+		if (!IsDebugLogRetentionDuplicateWarning(warning))
+			error += "\n" + warning;
 
 	throw std::runtime_error(error);
 }
@@ -818,8 +847,12 @@ BOOL CVideoProcessorApp::InitInstance()
 		return FALSE;
 	}
 
-	// Initialize async debug logger
-	DEBUGLOG_INIT();
+	// Resolve startup-only logging configuration before rotation and before
+	// any producer thread can enqueue a diagnostic.
+	const auto debugLogRetention = LoadDebugLogRetentionSetting();
+	DEBUGLOG_INIT(
+		debugLogRetention.count,
+		debugLogRetention.diagnostic);
 
 	CVideoProcessorDlg dlg;
 	m_pMainWnd = &dlg;
