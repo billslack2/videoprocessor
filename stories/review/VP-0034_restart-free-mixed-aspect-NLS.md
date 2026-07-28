@@ -4,10 +4,11 @@
 
 Review as of 2026-07-27. VP-0035's robust low-latency active-aspect transition
 work was implemented as part of this story
-on `codex/vp-0034-restart-free-nls` and draft PR
-`billslack2/videoprocessor#15`, targeting the developer-confirmed default
-branch `v1.1.014-beta`. After rebasing on current default commit `982a143`,
-the implementation commits are `3421e79`, `6c0d4bd`, and `fa30531`.
+on `codex/vp-0034-restart-free-nls`. PR
+`billslack2/videoprocessor#15` merged into the default branch
+`v1.1.014-beta` as `05d7318`. The rebased implementation commits are
+`3421e79`, `6c0d4bd`, and `fa30531`. Per user direction, the story remains in
+Review because playback testing may identify follow-up tweaks.
 
 Completed implementation:
 
@@ -42,11 +43,11 @@ Validation completed:
 Commit `fa30531` adds VP-0035's confidence-based transition model, bounded
 detection latency, prompt generation consumption, safe transient passthrough,
 diagnostics, documented thresholds, and transition false-positive regression
-corpus. The rebased Release x64 solution rebuilt cleanly and the full native
-test suite passes 151/151. This build was deployed to `C:\Videoprocessor\vp`
-with the active configuration preserved; rollback is
-`backup-before-vp0034-0035-rebased-20260727-232203`. Hardware/madVR playback
-remains required before merge.
+corpus. Merge commit `05d7318` was rebuilt directly and the full native test
+suite passes 151/151. That exact merged build was deployed to
+`C:\Videoprocessor\vp` with the active configuration preserved; rollback is
+`backup-before-vp0034-0035-merged-20260727-233920`. Hardware/madVR playback
+remains the Review acceptance step.
 
 This supersedes the assumption that the fixed-aspect completion of VP-0001
 through VP-0003 is sufficient for variable-aspect movies. It does not reopen

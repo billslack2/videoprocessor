@@ -2,17 +2,18 @@
 
 ## Status
 
-Review as part of VP-0034 on `codex/vp-0034-restart-free-nls` at rebased
-commit `fa30531` and draft pull request `billslack2/videoprocessor#15`,
-targeting `v1.1.014-beta` at `982a143`. The implementation adds a
+Review as part of VP-0034. Pull request `billslack2/videoprocessor#15`
+merged rebased commit `fa30531` into `v1.1.014-beta` as merge commit
+`05d7318`. Per user direction, this story remains in Review because playback
+testing may identify follow-up tweaks. The implementation adds a
 time-normalized confidence model,
 prompt renderer generation polling, safe transient passthrough, independently
 reviewable diagnostics, documented thresholds, and a reproducible synthetic
 transition corpus. Release x64 rebuilds cleanly; the full native test suite
-passes 151/151. The verified build is deployed to `C:\Videoprocessor\vp`
-with `VideoProcessor.cfg` unchanged; rollback is
-`backup-before-vp0034-0035-rebased-20260727-232203`. Hardware/madVR playback
-remains required before merge.
+passes 151/151. The exact merge-commit build is deployed to
+`C:\Videoprocessor\vp` with `VideoProcessor.cfg` unchanged; rollback is
+`backup-before-vp0034-0035-merged-20260727-233920`. Hardware/madVR playback
+remains the Review acceptance step.
 
 ## User story
 
