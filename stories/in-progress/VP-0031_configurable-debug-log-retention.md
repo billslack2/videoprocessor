@@ -17,6 +17,10 @@ Extend the completed fixed log-rotation behavior from VP-0030 with one
 documented configuration value. The no-configuration behavior must remain the
 same fixed default of ten total log files, including the active log.
 
+The log remains at `logs\vp_debug.log` beneath the main executable directory.
+VP does not create the `logs` directory; when it is missing or unwritable,
+logging is disabled for that process without falling back elsewhere.
+
 ## Required design decisions
 
 Before implementation, choose and document:

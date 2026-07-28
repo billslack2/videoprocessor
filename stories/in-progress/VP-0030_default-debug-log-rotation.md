@@ -13,9 +13,11 @@ history is preserved without manual file cleanup.
 
 ## Scope
 
-Implement fixed log rotation for the shared `DebugLog` facility. The normal
-deployment log is currently `C:\logs\vp_debug.log`; the logger also has a
-fallback `debug.log` beside the executable when that path cannot be used.
+Implement fixed log rotation for the shared `DebugLog` facility. The sole log
+location is `logs\vp_debug.log` beneath the directory containing the main
+VideoProcessor executable. VP must not create the `logs` directory. If that
+directory is absent or the file cannot be opened, logging remains disabled for
+that process; there is no alternate fallback file.
 
 The initial retention policy is fixed in code:
 
@@ -38,11 +40,12 @@ separate follow-up for making it configurable.
 - Use a sortable, collision-safe timestamp suffix such as
   `vp_debug.20260727-153045.log`; do not rely solely on filesystem creation
   time for ordering.
-- If archive rename, directory enumeration, pruning, or a fallback path fails,
-  VP must continue logging to the active file and emit the best available
-  diagnostic. Logging failure must never prevent startup.
-- Handle a missing log directory, read-only/archive failure, and simultaneous
-  stale files from a prior interrupted process safely.
+- If archive rename, directory enumeration, or pruning fails, VP must continue
+  logging to the active file and emit the best available diagnostic. Logging
+  failure must never prevent startup.
+- Handle a missing log directory by leaving logging disabled without creating
+  the directory. Handle read-only/archive failure and simultaneous stale files
+  from a prior interrupted process safely.
 - Do not add configuration parsing, GUI settings, or new command-line options
   in this story.
 
@@ -64,8 +67,8 @@ separate follow-up for making it configurable.
 6. Add focused tests using a temporary directory for first run, normal rotation,
    timestamps/collisions, exactly-ten retention, more-than-ten pruning, empty
    active file, unrelated-file preservation, and recoverable filesystem errors.
-7. Update HTML/configuration help only to document the fixed ten-file default;
-   do not expose a setting yet.
+7. Update HTML/configuration help only to document the executable-relative
+   `logs` location and fixed ten-file default; do not expose a setting yet.
 
 ## Verification
 
@@ -75,8 +78,9 @@ separate follow-up for making it configurable.
   and that the newest archives and active file are retained.
 - Confirm unrelated log files, other application files, and filenames that only
   resemble VP logs are never deleted.
-- Test `C:\logs` and the executable-directory fallback path, including failure
-  to archive/prune. VP must still start and log where possible.
+- Test the executable-relative `logs` path, a missing directory, and failure to
+  archive/prune. VP must still start; a missing/unwritable directory disables
+  logging for that process.
 - Confirm no deadlock, startup delay, or lost first diagnostics under the async
   logger.
 
