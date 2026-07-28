@@ -73,6 +73,8 @@ struct StatsData
 	bool sceneCorrectionPlanned = false;
 	double sceneSecondsUntilCorrection = 0.0;
 	double sceneSecondsUntilPlan = 0.0;
+	bool sceneCorrectionDue = false;
+	CString sceneCorrectionBlockReason;
 	bool sceneLastCorrectionValid = false;
 	int sceneLastCorrectionAction = 0; // +1 repeat, -1 drop
 	double sceneLastCorrectionSecondsFromDeadline = 0.0;

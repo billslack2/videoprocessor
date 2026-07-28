@@ -624,6 +624,15 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 				timing > 0.0 ? TEXT("Early") : TEXT("Late"),
 				static_cast<LPCTSTR>(FormatTime(std::fabs(timing))));
 	}
+	else if (m_stats.sceneCorrectionDue &&
+		m_stats.sceneCorrectionAction != 0)
+	{
+		line.Format(TEXT(" - Forecast:      %s due - %s"),
+			m_stats.sceneCorrectionAction > 0 ? TEXT("Repeat") : TEXT("Drop"),
+			m_stats.sceneCorrectionBlockReason.IsEmpty()
+				? TEXT("blocked")
+				: static_cast<LPCTSTR>(m_stats.sceneCorrectionBlockReason));
+	}
 	else if (hasActionablePlan)
 	{
 		line.Format(TEXT(" - Forecast:      %s in %s"),

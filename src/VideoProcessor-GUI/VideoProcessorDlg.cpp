@@ -5505,6 +5505,12 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				stats.sceneSecondsUntilPlan,
 				stats.sceneCorrectionAction,
 				stats.sceneCorrectionPlanned);
+		int dueAction = 0;
+		stats.sceneCorrectionDue =
+			m_videoRenderer->GetSceneTimingDueStatus(
+				dueAction, stats.sceneCorrectionBlockReason);
+		if (stats.sceneCorrectionDue && dueAction != 0)
+			stats.sceneCorrectionAction = dueAction;
 		stats.sceneLastCorrectionValid =
 			m_videoRenderer->GetSceneTimingLastCorrection(
 				stats.sceneLastCorrectionAction,

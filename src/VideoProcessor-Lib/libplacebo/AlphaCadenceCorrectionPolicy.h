@@ -23,6 +23,27 @@ enum class AlphaCadenceTimingStatus
 	Incompatible
 };
 
+enum class AlphaCadenceBlockReason
+{
+	None,
+	Disabled,
+	PresentationEvidenceUnavailable,
+	InvalidRates,
+	RateMismatchTooLarge,
+	StabilizingRates,
+	NoActionableMismatch,
+	BeforeDeadline,
+	Cooldown,
+	VerificationPending,
+	DropQueueNotAboveDesired,
+	RepeatQueueNotBelowDesired,
+	DropPresentationDebtMissing,
+	RepeatPresentationDebtPresent,
+	WaitingForFreshScene,
+	FallbackNotMature,
+	DropFallbackQueueTooYoung
+};
+
 struct AlphaCadenceCorrectionInput
 {
 	bool enabled = false;
@@ -55,12 +76,15 @@ struct AlphaCadenceCorrectionDecision
 	bool verificationCompleted = false;
 	bool lastVerificationValid = false;
 	bool lastVerificationSucceeded = false;
+	bool due = false;
 	double phaseFrames = 0.0;
 	double secondsUntilCorrection = 0.0;
 	double secondsUntilPlan = 0.0;
 	uint32_t rateFilterSamples = 0;
 	double filteredMismatchPpm = 0.0;
 	uint64_t sceneEventId = 0;
+	AlphaCadenceBlockReason blockReason =
+		AlphaCadenceBlockReason::None;
 };
 
 class AlphaCadenceCorrectionPolicy
