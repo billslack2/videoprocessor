@@ -364,6 +364,22 @@ Merged manual-test deployment on July 28, 2026:
 - verified `VideoProcessor.cfg` remained byte-for-byte unchanged and did not
   modify state, shaders, or runtime dependencies.
 
+Renderer-switch manual evidence and follow-up:
+
+- after switching MadVR -> Alpha, the OSD showed `Dropped: 0/2`, proving the
+  two increments were Alpha renderer drops rather than capture misses;
+- the matching log contained no cadence authorization, queue overflow,
+  enqueue exception, or visible render-failure record, exposing silent generic
+  drop paths rather than a cadence-policy correction;
+- commit `e18a2f7` (`Trace OSD dropped frame counters`) now logs a baseline for
+  each renderer instance and names both OSD totals/deltas as
+  `capture_missed` and `renderer_dropped`;
+- previously silent Alpha video-state, queue-resize, and render-failure drop
+  paths now publish bounded reason records at the first and power-of-two
+  occurrences, avoiding per-frame log spam;
+- Debug x64 GUI and Alpha plugin builds passed. This diagnostic commit has not
+  yet been deployed.
+
 ## Verification
 
 - Unit-test both drop and repeat paths before, exactly at, and beyond the phase
