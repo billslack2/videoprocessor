@@ -42,6 +42,8 @@ struct ShaderEntry
 {
 	unsigned int order = 0;
 	std::filesystem::path path;
+	std::string displayName;
+	std::map<std::string, std::string> parameters;
 };
 
 struct ShaderRule
@@ -119,25 +121,30 @@ std::string NormalizeProfile(const std::string& profile)
 }
 
 
-std::string ParentDirectory(const std::string& path)
+std::string CurrentExecutablePath()
 {
-	const size_t slashPos = path.find_last_of("\\/");
-	return slashPos == std::string::npos ? std::string() : path.substr(0, slashPos);
+	std::vector<wchar_t> buffer(32768);
+	const DWORD length = GetModuleFileNameW(
+		nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+	if (length == 0 || length >= buffer.size())
+		return {};
+	return std::filesystem::path(
+		std::wstring(buffer.data(), length)).u8string();
 }
 
 
-std::filesystem::path ResolveShaderPath(const std::string& configuredPath,
-	const std::string& configPath)
+std::filesystem::path ResolveShaderPath(const std::string& filename)
 {
-	std::filesystem::path path = std::filesystem::u8path(configuredPath);
-	if (path.is_absolute())
-		return path.lexically_normal();
-
-	const std::string configDirectory = ParentDirectory(configPath);
-	if (!configDirectory.empty())
-		return (std::filesystem::u8path(configDirectory) / path).lexically_normal();
-
-	return path.lexically_normal();
+	std::string resolved;
+	std::string error;
+	if (!MadVRShaderLoader::ResolveShaderFilename(
+		filename, CurrentExecutablePath(), resolved, error))
+	{
+		DebugLog::Log("Shaders: rejected shader filename \"%s\": %s",
+			filename.c_str(), error.c_str());
+		return {};
+	}
+	return std::filesystem::u8path(resolved);
 }
 
 
@@ -156,86 +163,25 @@ std::vector<std::string> SplitList(const std::string& value)
 }
 
 
-bool ParseOrderedKey(const std::string& key, const char* prefix,
-	unsigned int& order)
-{
-	const std::string prefixString(prefix);
-	if (key.compare(0, prefixString.size(), prefixString) != 0)
-		return false;
-
-	const std::string suffix = key.substr(prefixString.size());
-	if (suffix.empty() || !std::all_of(suffix.begin(), suffix.end(),
-		[](unsigned char c) { return std::isdigit(c) != 0; }))
-	{
-		return false;
-	}
-
-	try
-	{
-		const unsigned long parsed = std::stoul(suffix);
-		if (parsed == 0 || parsed > std::numeric_limits<unsigned int>::max())
-			return false;
-		order = static_cast<unsigned int>(parsed);
-		return true;
-	}
-	catch (...)
-	{
-		return false;
-	}
-}
-
-
-void SortShaderEntries(std::vector<ShaderEntry>& entries)
-{
-	std::sort(entries.begin(), entries.end(),
-		[](const ShaderEntry& left, const ShaderEntry& right)
-		{
-			return left.order < right.order;
-		});
-}
-
-
-void LoadShaderEntries(const ConfigFile& config, const std::string& section,
-	const std::set<std::string>& nonShaderKeys, std::vector<ShaderEntry>& preScale,
-	std::vector<ShaderEntry>& postScale)
+bool RejectIndexedShaderEntries(const ConfigFile& config,
+	const std::string& section)
 {
 	const auto* settings = config.GetSectionValues(section);
 	if (!settings)
-		return;
+		return true;
 
 	for (const auto& setting : *settings)
 	{
-		if (nonShaderKeys.find(setting.first) != nonShaderKeys.end())
-			continue;
-		if (setting.first.compare(0, 6, "param_") == 0)
-			continue;
-
-		unsigned int order = 0;
-		std::vector<ShaderEntry>* target = nullptr;
-		if (ParseOrderedKey(setting.first, "pre_resize_", order))
-			target = &preScale;
-		else if (ParseOrderedKey(setting.first, "post_resize_", order))
-			target = &postScale;
-		else
+		if (setting.first.compare(0, 11, "pre_resize_") == 0 ||
+			setting.first.compare(0, 12, "post_resize_") == 0)
 		{
-			DebugLog::Log("Shaders: ignoring unknown [%s] key \"%s\"",
+			DebugLog::Log(
+				"Shaders: [%s] key \"%s\" is unsupported; each effect must use one file and one stage",
 				section.c_str(), setting.first.c_str());
-			continue;
+			return false;
 		}
-
-		if (setting.second.empty())
-		{
-			DebugLog::Log("Shaders: ignoring empty [%s] key \"%s\"",
-				section.c_str(), setting.first.c_str());
-			continue;
-		}
-
-		target->push_back({ order, ResolveShaderPath(setting.second,
-			config.GetLoadedPath()) });
 	}
-
-	SortShaderEntries(preScale);
-	SortShaderEntries(postScale);
+	return true;
 }
 
 
@@ -602,12 +548,27 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 		rule.valid = false;
 	}
 
-	if (config.TryGetString(section, "manual", rawValue) &&
-		!config.TryGetBool(section, "manual", rule.manual))
+	std::string shortcut;
+	const bool hasShortcut =
+		config.TryGetString(section, "shortcut", shortcut) &&
+		!ConfigFile::Trim(shortcut).empty();
+	rule.manual = hasShortcut;
+	if (config.TryGetString(section, "manual", rawValue))
 	{
-		DebugLog::Log("Shaders: rule \"%s\" has invalid manual value \"%s\"",
-			rule.name.c_str(), rawValue.c_str());
-		rule.valid = false;
+		bool legacyManual = false;
+		if (!config.TryGetBool(section, "manual", legacyManual))
+		{
+			DebugLog::Log("Shaders: rule \"%s\" has invalid manual value \"%s\"",
+				rule.name.c_str(), rawValue.c_str());
+			rule.valid = false;
+		}
+		else
+		{
+			DebugLog::Log(
+				"Shaders: rule \"%s\" key \"manual\" is deprecated; a shortcut makes an effect manual automatically",
+				rule.name.c_str());
+			rule.manual = hasShortcut || legacyManual;
+		}
 	}
 
 	if (config.TryGetString(section, "output_aspect_ratio", rawValue) &&
@@ -713,14 +674,73 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 		}
 	}
 
-	LoadShaderEntries(config, section,
-		{ "label", "type", "signal", "frame_rates", "none", "manual", "shortcut",
-			"output_aspect_ratio", "nls_target_aspect_ratio", "aspect_tolerance_percent",
-			"tolerance_percent", "active_aspect_min", "aspect_direction",
-			"inactive_rule", "strength", "geometry", "center_protection",
-			"curve", "quality" },
-		rule.preScale, rule.postScale);
+	if (!RejectIndexedShaderEntries(config, section))
+		rule.valid = false;
+	std::string filename;
+	if (config.TryGetString(section, "file", filename))
+	{
+		std::string stage = "pre_resize";
+		config.TryGetString(section, "stage", stage);
+		stage = ConfigFile::NormalizeName(stage);
+		const std::filesystem::path path =
+			ResolveShaderPath(filename);
+		if (path.empty())
+			rule.valid = false;
+		else if (stage == "pre_resize" || stage == "pre")
+			rule.preScale.push_back({ 1, path });
+		else if (stage == "post_resize" || stage == "post")
+			rule.postScale.push_back({ 1, path });
+		else
+		{
+			DebugLog::Log(
+				"Shaders: rule \"%s\" has invalid stage \"%s\"; use PRE_RESIZE or POST_RESIZE",
+				rule.name.c_str(), stage.c_str());
+			rule.valid = false;
+		}
+	}
+	else if (config.GetSectionValues(section)->find("stage") !=
+		config.GetSectionValues(section)->end())
+	{
+		DebugLog::Log(
+			"Shaders: rule \"%s\" defines stage without file",
+			rule.name.c_str());
+		rule.valid = false;
+	}
 	return rule;
+}
+
+
+bool LoadRuleSelection(const ConfigFile& config, const std::string& selector,
+	std::vector<ShaderRule>& rules)
+{
+	rules.clear();
+	std::set<std::string> seen;
+	for (const std::string& name : SplitList(selector))
+	{
+		const std::string normalized = ConfigFile::NormalizeName(name);
+		if (!seen.insert(normalized).second)
+			continue;
+		ShaderRule rule = LoadRule(config, normalized);
+		if (!rule.valid)
+			return false;
+		rules.push_back(std::move(rule));
+	}
+	return !rules.empty();
+}
+
+
+ShaderRule* FindNlsRule(std::vector<ShaderRule>& rules)
+{
+	ShaderRule* result = nullptr;
+	for (ShaderRule& rule : rules)
+	{
+		if (!rule.nls)
+			continue;
+		if (result)
+			return nullptr;
+		result = &rule;
+	}
+	return result;
 }
 
 
@@ -811,7 +831,6 @@ std::string ShaderProfile(const std::string& source,
 bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
 	const std::vector<ShaderEntry>& entries, int stage,
 	const char* stageName, const std::string& defaultProfile,
-	const std::map<std::string, std::string>& parameters,
 	std::vector<ActiveMadVRShader>& activeShaders)
 {
 	if (entries.empty())
@@ -836,7 +855,7 @@ bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
 				stageName, entry.order);
 			return false;
 		}
-		if (!ApplyShaderParameters(source, parameters, entry.path))
+		if (!ApplyShaderParameters(source, entry.parameters, entry.path))
 		{
 			shaderInterface->ClearPixelShaders(stage);
 			return false;
@@ -863,7 +882,10 @@ bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
 			return false;
 		}
 
-		stageShaders.push_back({ entry.path.stem().u8string(),
+		std::string displayName = entry.path.stem().u8string();
+		if (!entry.displayName.empty())
+			displayName = entry.displayName + " (" + displayName + ")";
+		stageShaders.push_back({ displayName,
 			stage == MADVR_SHADER_STAGE_POST_SCALE });
 	}
 
@@ -874,9 +896,147 @@ bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
 }
 
 
+void AppendLabel(std::string& combined, const std::string& value)
+{
+	if (value.empty())
+		return;
+	if (!combined.empty())
+		combined += " + ";
+	combined += value;
+}
+
+
+void AppendRuleEntries(const ShaderRule& rule,
+	std::vector<ShaderEntry>& preScale, std::vector<ShaderEntry>& postScale)
+{
+	auto append = [&rule](const std::vector<ShaderEntry>& source,
+		std::vector<ShaderEntry>& target)
+	{
+		for (ShaderEntry entry : source)
+		{
+			entry.order = static_cast<unsigned int>(target.size() + 1);
+			entry.displayName = rule.label;
+			entry.parameters = rule.parameters;
+			target.push_back(std::move(entry));
+		}
+	};
+	append(rule.preScale, preScale);
+	append(rule.postScale, postScale);
+}
+
+
+bool ResolveNlsRuleForFrame(ShaderRule& rule,
+	const MadVRShaderRuntimeSnapshot& runtime, const VideoState& videoState,
+	unsigned long& outputAspectX, unsigned long& outputAspectY,
+	bool& waiting)
+{
+	waiting = false;
+	const double targetAspect = GetNlsTargetAspect(rule);
+	if (!rule.nls || targetAspect <= 0.0)
+		return true;
+
+	ResolveMadVRNlsOutputAspect(targetAspect, outputAspectX, outputAspectY);
+	double activeAspect = runtime.activeGeometry.aspectRatio;
+	MadVRActivePictureGeometry activeGeometry = runtime.activeGeometry;
+	bool currentGeometry = activeGeometry.stable &&
+		activeGeometry.rendererGeneration == runtime.rendererGeneration;
+	if (runtime.nlsMode == MadVRNlsMappingMode::SAFE_FIT &&
+		!currentGeometry && runtime.nlsDecision.sourceAspect > 0.0 &&
+		videoState.displayMode)
+	{
+		const double rasterAspect =
+			static_cast<double>(videoState.displayMode->FrameWidth()) /
+			std::max<long>(1, videoState.displayMode->FrameHeight());
+		activeAspect = runtime.nlsDecision.sourceAspect;
+		activeGeometry = {};
+		activeGeometry.aspectRatio = activeAspect;
+		activeGeometry.rendererGeneration = runtime.rendererGeneration;
+		activeGeometry.stable = true;
+		if (activeAspect < rasterAspect)
+		{
+			const double width = std::clamp(
+				activeAspect / rasterAspect, 0.01, 1.0);
+			activeGeometry.left = (1.0 - width) * 0.5;
+			activeGeometry.right = 1.0 - activeGeometry.left;
+			activeGeometry.bottom = 1.0;
+		}
+		else
+		{
+			const double height = std::clamp(
+				rasterAspect / activeAspect, 0.01, 1.0);
+			activeGeometry.top = (1.0 - height) * 0.5;
+			activeGeometry.bottom = 1.0 - activeGeometry.top;
+			activeGeometry.right = 1.0;
+		}
+		currentGeometry = true;
+	}
+	if (runtime.nlsMode == MadVRNlsMappingMode::WAITING ||
+		!currentGeometry)
+	{
+		waiting = true;
+		DebugLog::Log(
+			"Shaders: NLS mapping waiting requested=%s effective=%s renderer_generation=%llu last_safe=%s",
+			runtime.requestedRule.c_str(), runtime.effectiveRule.c_str(),
+			static_cast<unsigned long long>(runtime.rendererGeneration),
+			MadVRNlsMappingModeName(runtime.lastSafeNlsMode));
+		return true;
+	}
+	if (activeAspect <= 0.0 || !videoState.displayMode)
+		return true;
+
+	const double rasterAspect =
+		static_cast<double>(videoState.displayMode->FrameWidth()) /
+		std::max<long>(1, videoState.displayMode->FrameHeight());
+	const double heightFraction =
+		std::clamp(rasterAspect / activeAspect, 0.25, 1.0);
+	const bool verticalWarp =
+		runtime.nlsMode == MadVRNlsMappingMode::ACTIVE &&
+		activeAspect > targetAspect;
+	const double stretchRatio =
+		runtime.nlsMode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ?
+			1.0 : std::clamp(verticalWarp ?
+				activeAspect / targetAspect : targetAspect / activeAspect,
+				1.0, 1.5);
+	const bool safeFit =
+		runtime.nlsMode == MadVRNlsMappingMode::SAFE_FIT;
+	const bool safeFitVertical = safeFit && activeAspect > targetAspect;
+	const double safeFitFraction = safeFit ?
+		std::clamp(std::min(activeAspect, targetAspect) /
+			std::max(activeAspect, targetAspect), 0.01, 1.0) : 1.0;
+	auto coordinateText = [](double value)
+	{
+		std::ostringstream text;
+		text << std::fixed << std::setprecision(8) << value;
+		return text.str();
+	};
+	rule.parameters["active_height_fraction"] =
+		coordinateText(heightFraction);
+	rule.parameters["active_left"] = coordinateText(activeGeometry.left);
+	rule.parameters["active_top"] = coordinateText(activeGeometry.top);
+	rule.parameters["active_right"] = coordinateText(activeGeometry.right);
+	rule.parameters["active_bottom"] = coordinateText(activeGeometry.bottom);
+	rule.parameters["stretch_ratio"] = coordinateText(stretchRatio);
+	rule.parameters["warp_axis"] = verticalWarp ? "1" : "0";
+	rule.parameters["safe_fit"] = safeFit ? "1" : "0";
+	rule.parameters["safe_fit_axis"] = safeFitVertical ? "1" : "0";
+	rule.parameters["safe_fit_fraction"] =
+		coordinateText(safeFitFraction);
+	DebugLog::Log(
+		"Shaders: NLS mapping=%s rect=%.5f,%.5f-%.5f,%.5f active_generation=%llu source=%.4f target=%.4f axis=%s stretch=%.5f safe_fit_fraction=%.5f renderer_generation=%llu",
+		MadVRNlsMappingModeName(runtime.nlsMode),
+		activeGeometry.left, activeGeometry.top,
+		activeGeometry.right, activeGeometry.bottom,
+		static_cast<unsigned long long>(activeGeometry.generation),
+		activeAspect, targetAspect,
+		verticalWarp ? "vertical" : "horizontal", stretchRatio,
+		safeFitFraction,
+		static_cast<unsigned long long>(runtime.rendererGeneration));
+	return true;
+}
+
+
 void ApplyShaderEntries(IBaseFilter* renderer, const std::vector<ShaderEntry>& preScale,
 	const std::vector<ShaderEntry>& postScale, const std::string& defaultProfile,
-	const std::map<std::string, std::string>& parameters,
 	MadVRShaderSelection& selection)
 {
 	CComQIPtr<IMadVRExternalPixelShaders> shaderInterface(renderer);
@@ -893,11 +1053,9 @@ void ApplyShaderEntries(IBaseFilter* renderer, const std::vector<ShaderEntry>& p
 
 	const bool preActive = ApplyStage(shaderInterface, preScale,
 		MADVR_SHADER_STAGE_PRE_SCALE, "pre-resize", defaultProfile,
-		parameters,
 		selection.activeShaders);
 	const bool postActive = ApplyStage(shaderInterface, postScale,
 		MADVR_SHADER_STAGE_POST_SCALE, "post-resize", defaultProfile,
-		parameters,
 		selection.activeShaders);
 	DebugLog::Log("Shaders: configuration complete (pre-resize=%s, post-resize=%s)",
 		preActive ? "active" : "inactive", postActive ? "active" : "inactive");
@@ -967,26 +1125,12 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 	const std::string runtimeRule = runtime.effectiveRule;
 	if (!config.TryGetString(CONFIG_SECTION, "rules", ruleList))
 	{
-		// Backward compatibility for the original flat configuration.
-		selection.ruleName = "legacy";
-		selection.ruleLabel = "All video";
-		std::vector<ShaderEntry> preScale;
-		std::vector<ShaderEntry> postScale;
-		LoadShaderEntries(config, CONFIG_SECTION,
-			{ "enabled", "profile", "fallback_shader_model", "default" },
-			preScale, postScale);
-		if (preScale.empty() && postScale.empty())
-		{
-			selection.ruleName.clear();
-			selection.ruleLabel = "None";
-			DebugLog::Log("Shaders: enabled, but no rules or legacy shader entries were configured");
-			return selection;
-		}
-		DebugLog::Log("Shaders: selected legacy all-video configuration");
-		ApplyShaderEntries(renderer, preScale, postScale, defaultProfile, {}, selection);
+		DebugLog::Log(
+			"Shaders: enabled, but no effect names were configured in rules");
 		return selection;
 	}
 
+	std::vector<ShaderRule> availableRules;
 	std::set<std::string> seenRules;
 	for (const std::string& configuredName : SplitList(ruleList))
 	{
@@ -998,161 +1142,134 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 		}
 
 		ShaderRule rule = LoadRule(config, configuredName);
-		const bool explicitlySelected = !runtimeRule.empty() && rule.name == runtimeRule;
-		if (!rule.valid || (!explicitlySelected &&
-			(!runtimeRule.empty() || rule.manual || !RuleMatches(rule, videoState.eotf, nominalRate))))
+		if (!rule.valid)
 			continue;
+		availableRules.push_back(std::move(rule));
+	}
 
-		selection.ruleName = rule.name;
-		selection.ruleLabel = rule.label;
-		selection.outputAspectRatioX = rule.outputAspectRatioX;
-		selection.outputAspectRatioY = rule.outputAspectRatioY;
-		// NLS rules advertise a target output aspect and contain a stretch-ratio
-		// parameter. Derive their active-picture crop, stretch magnitude, and axis
-		// from the stable detector result instead of assuming 16:9 content.
-		// Narrower content stretches horizontally; wider content stretches
-		// vertically. Both paths preserve the complete active image.
-		double activeAspect = runtime.activeGeometry.aspectRatio;
-		MadVRActivePictureGeometry activeGeometry = runtime.activeGeometry;
-		const double targetAspect = GetNlsTargetAspect(rule);
-		const bool nlsRule = rule.nls && targetAspect > 0.0;
-		if (nlsRule)
-			ResolveMadVRNlsOutputAspect(targetAspect,
-				selection.outputAspectRatioX,
-				selection.outputAspectRatioY);
-
-		bool currentGeometry = activeGeometry.stable &&
-			activeGeometry.rendererGeneration == runtime.rendererGeneration;
-		if (nlsRule && runtime.nlsMode == MadVRNlsMappingMode::SAFE_FIT &&
-			!currentGeometry && runtime.nlsDecision.sourceAspect > 0.0 &&
-			videoState.displayMode)
+	std::vector<ShaderRule> selectedRules;
+	if (!runtimeRule.empty())
+	{
+		std::set<std::string> selectedNames;
+		for (const std::string& selectedName : SplitList(runtimeRule))
 		{
-			// The initial manual selection path historically publishes only the
-			// detected aspect. Reconstruct its centered active rectangle so the
-			// safe-fit shader can engage immediately; the next detector update
-			// replaces it with the exact measured rectangle.
-			const double rasterAspect =
-				static_cast<double>(videoState.displayMode->FrameWidth()) /
-				std::max<long>(1, videoState.displayMode->FrameHeight());
-			activeAspect = runtime.nlsDecision.sourceAspect;
-			activeGeometry = {};
-			activeGeometry.aspectRatio = activeAspect;
-			activeGeometry.rendererGeneration = runtime.rendererGeneration;
-			activeGeometry.stable = true;
-			if (activeAspect < rasterAspect)
+			const std::string normalized =
+				ConfigFile::NormalizeName(selectedName);
+			if (!selectedNames.insert(normalized).second)
+				continue;
+			const auto found = std::find_if(availableRules.begin(),
+				availableRules.end(), [&normalized](const ShaderRule& rule)
+				{
+					return rule.name == normalized;
+				});
+			if (found == availableRules.end())
 			{
-				const double width = std::clamp(
-					activeAspect / rasterAspect, 0.01, 1.0);
-				activeGeometry.left = (1.0 - width) * 0.5;
-				activeGeometry.right = 1.0 - activeGeometry.left;
-				activeGeometry.bottom = 1.0;
+				DebugLog::Log(
+					"Shaders: selected effect \"%s\" is missing or invalid",
+					selectedName.c_str());
+				return selection;
 			}
-			else
+			selectedRules.push_back(*found);
+		}
+	}
+	else
+	{
+		const auto found = std::find_if(availableRules.begin(),
+			availableRules.end(), [&videoState, nominalRate](
+				const ShaderRule& rule)
 			{
-				const double height = std::clamp(
-					rasterAspect / activeAspect, 0.01, 1.0);
-				activeGeometry.top = (1.0 - height) * 0.5;
-				activeGeometry.bottom = 1.0 - activeGeometry.top;
-				activeGeometry.right = 1.0;
-			}
-			currentGeometry = true;
-		}
-		if (nlsRule && (runtime.nlsMode == MadVRNlsMappingMode::WAITING ||
-			!currentGeometry))
-		{
-			selection.ruleLabel = "NLS: Waiting";
-			DebugLog::Log(
-				"Shaders: NLS mapping waiting requested=%s effective=%s renderer_generation=%llu last_safe=%s",
-				runtime.requestedRule.c_str(), runtime.effectiveRule.c_str(),
-				static_cast<unsigned long long>(runtime.rendererGeneration),
-				MadVRNlsMappingModeName(runtime.lastSafeNlsMode));
-			ApplyShaderEntries(renderer, {}, {}, defaultProfile, {},
-				selection);
-			return selection;
-		}
-		if (nlsRule && currentGeometry && activeAspect > 0.0 &&
-			videoState.displayMode)
-		{
-			const double rasterAspect = static_cast<double>(videoState.displayMode->FrameWidth()) /
-				std::max<long>(1, videoState.displayMode->FrameHeight());
-			const double heightFraction = std::clamp(rasterAspect / activeAspect, 0.25, 1.0);
-			const bool verticalWarp =
-				runtime.nlsMode == MadVRNlsMappingMode::ACTIVE &&
-				activeAspect > targetAspect;
-			const double stretchRatio =
-				runtime.nlsMode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ?
-				1.0 : std::clamp(verticalWarp ?
-					activeAspect / targetAspect : targetAspect / activeAspect,
-					1.0, 1.5);
-			const bool safeFit =
-				runtime.nlsMode == MadVRNlsMappingMode::SAFE_FIT;
-			const bool safeFitVertical = safeFit &&
-				activeAspect > targetAspect;
-			const double safeFitFraction = safeFit ?
-				std::clamp(std::min(activeAspect, targetAspect) /
-					std::max(activeAspect, targetAspect), 0.01, 1.0) : 1.0;
-			std::ostringstream heightText;
-			std::ostringstream stretchText;
-			heightText << std::fixed << std::setprecision(8) << heightFraction;
-			stretchText << std::fixed << std::setprecision(8) << stretchRatio;
-			rule.parameters["active_height_fraction"] = heightText.str();
-			auto coordinateText = [](double value)
-			{
-				std::ostringstream text;
-				text << std::fixed << std::setprecision(8) << value;
-				return text.str();
-			};
-			rule.parameters["active_left"] = coordinateText(activeGeometry.left);
-			rule.parameters["active_top"] = coordinateText(activeGeometry.top);
-			rule.parameters["active_right"] = coordinateText(activeGeometry.right);
-			rule.parameters["active_bottom"] = coordinateText(activeGeometry.bottom);
-			rule.parameters["stretch_ratio"] = stretchText.str();
-			rule.parameters["warp_axis"] = verticalWarp ? "1" : "0";
-			rule.parameters["safe_fit"] = safeFit ? "1" : "0";
-			rule.parameters["safe_fit_axis"] =
-				safeFitVertical ? "1" : "0";
-			rule.parameters["safe_fit_fraction"] =
-				coordinateText(safeFitFraction);
-			DebugLog::Log(
-				"Shaders: NLS mapping=%s rect=%.5f,%.5f-%.5f,%.5f active_generation=%llu source=%.4f target=%.4f axis=%s stretch=%.5f safe_fit_fraction=%.5f renderer_generation=%llu",
-				MadVRNlsMappingModeName(runtime.nlsMode),
-				activeGeometry.left, activeGeometry.top, activeGeometry.right, activeGeometry.bottom,
-				static_cast<unsigned long long>(activeGeometry.generation),
-				activeAspect, targetAspect,
-				verticalWarp ? "vertical" : "horizontal", stretchRatio,
-				safeFitFraction,
-				static_cast<unsigned long long>(runtime.rendererGeneration));
-		}
-		DebugLog::Log("Shaders: selected rule \"%s\" (%s) for signal=%s refresh=%.6f Hz nominal=%d",
-			rule.name.c_str(), rule.label.c_str(), SignalName(videoState.eotf),
-			refreshRate, nominalRate);
+				return !rule.manual &&
+					RuleMatches(rule, videoState.eotf, nominalRate);
+			});
+		if (found != availableRules.end())
+			selectedRules.push_back(*found);
+	}
 
-		if (rule.none)
-		{
-			if (!rule.preScale.empty() || !rule.postScale.empty())
-				DebugLog::Log("Shaders: rule \"%s\" has none=true; shader entries are ignored",
-					rule.name.c_str());
-			DebugLog::Log("Shaders: selected rule explicitly requests no shaders");
-			ApplyShaderEntries(renderer, {}, {}, defaultProfile, rule.parameters, selection);
-			return selection;
-		}
-
-		if (rule.preScale.empty() && rule.postScale.empty())
-		{
-			DebugLog::Log("Shaders: selected rule \"%s\" contains no shader entries",
-				rule.name.c_str());
-			return selection;
-		}
-
-		DebugLog::Log("Shaders: loading selected rule from \"%s\" (fallback shader model=%s)",
-			config.GetLoadedPath().c_str(), defaultProfile.c_str());
-		ApplyShaderEntries(renderer, rule.preScale, rule.postScale,
-			defaultProfile, rule.parameters, selection);
+	if (selectedRules.empty())
+	{
+		DebugLog::Log(
+			"Shaders: no effect matched signal=%s refresh=%.6f Hz nominal=%d; default=none",
+			SignalName(videoState.eotf), refreshRate, nominalRate);
 		return selection;
 	}
 
-	DebugLog::Log("Shaders: no rule matched signal=%s refresh=%.6f Hz nominal=%d; default=none",
-		SignalName(videoState.eotf), refreshRate, nominalRate);
+	const size_t noneCount = static_cast<size_t>(std::count_if(
+		selectedRules.begin(), selectedRules.end(),
+		[](const ShaderRule& rule) { return rule.none; }));
+	const size_t nlsCount = static_cast<size_t>(std::count_if(
+		selectedRules.begin(), selectedRules.end(),
+		[](const ShaderRule& rule) { return rule.nls; }));
+	if ((noneCount > 0 && selectedRules.size() > 1) || nlsCount > 1)
+	{
+		DebugLog::Log(
+			"Shaders: invalid effect group \"%s\"; NONE must be exclusive and only one NLS effect may be active",
+			runtimeRule.c_str());
+		selection.ruleLabel = "Invalid shader group";
+		ApplyShaderEntries(renderer, {}, {}, defaultProfile, selection);
+		return selection;
+	}
+
+	std::vector<ShaderEntry> preScale;
+	std::vector<ShaderEntry> postScale;
+	selection.ruleLabel.clear();
+	for (ShaderRule& rule : selectedRules)
+	{
+		if (!selection.ruleName.empty())
+			selection.ruleName += ",";
+		selection.ruleName += rule.name;
+		AppendLabel(selection.ruleLabel, rule.label);
+		if (!rule.nls && !rule.none)
+			AppendLabel(selection.companionRuleLabel, rule.label);
+
+		unsigned long ruleAspectX = rule.outputAspectRatioX;
+		unsigned long ruleAspectY = rule.outputAspectRatioY;
+		bool waiting = false;
+		ResolveNlsRuleForFrame(rule, runtime, videoState,
+			ruleAspectX, ruleAspectY, waiting);
+		if (ruleAspectX > 0 && ruleAspectY > 0)
+		{
+			if (selection.outputAspectRatioX > 0 &&
+				selection.outputAspectRatioY > 0 &&
+				static_cast<unsigned long long>(
+					selection.outputAspectRatioX) * ruleAspectY !=
+				static_cast<unsigned long long>(ruleAspectX) *
+					selection.outputAspectRatioY)
+			{
+				DebugLog::Log(
+					"Shaders: effect group \"%s\" requests conflicting output aspects",
+					runtimeRule.c_str());
+				selection.ruleLabel = "Invalid shader group";
+				ApplyShaderEntries(renderer, {}, {}, defaultProfile,
+					selection);
+				return selection;
+			}
+			selection.outputAspectRatioX = ruleAspectX;
+			selection.outputAspectRatioY = ruleAspectY;
+		}
+
+		DebugLog::Log(
+			"Shaders: selected effect \"%s\" (%s) for signal=%s refresh=%.6f Hz nominal=%d",
+			rule.name.c_str(), rule.label.c_str(), SignalName(videoState.eotf),
+			refreshRate, nominalRate);
+		if (!rule.none && !waiting)
+			AppendRuleEntries(rule, preScale, postScale);
+		if (waiting)
+		{
+			DebugLog::Log(
+				"Shaders: effect \"%s\" is waiting; other effects in the group remain active",
+				rule.name.c_str());
+		}
+	}
+
+	if (noneCount > 0)
+		DebugLog::Log("Shaders: selected effect explicitly requests no shaders");
+	else if (preScale.empty() && postScale.empty())
+		DebugLog::Log("Shaders: selected effect group contains no active shader files");
+	else
+		DebugLog::Log(
+			"Shaders: loading selected effect group from \"%s\" (fallback shader model=%s)",
+			config.GetLoadedPath().c_str(), defaultProfile.c_str());
+	ApplyShaderEntries(renderer, preScale, postScale, defaultProfile, selection);
 	return selection;
 }
 
@@ -1191,20 +1308,30 @@ bool MadVRShaderLoader::GetRuntimeOutputAspectRatio(unsigned long& aspectX,
 	ConfigFile config;
 	if (!config.Load())
 		return false;
-	ShaderRule rule = LoadRule(config, runtimeRule);
-	if (!rule.valid)
+	std::vector<ShaderRule> rules;
+	if (!LoadRuleSelection(config, runtimeRule, rules))
 		return false;
-	if (rule.nls && GetNlsTargetAspect(rule) > 0.0 &&
-		ResolveMadVRNlsOutputAspect(GetNlsTargetAspect(rule), aspectX, aspectY))
+	for (const ShaderRule& rule : rules)
 	{
-		return true;
+		unsigned long ruleX = rule.outputAspectRatioX;
+		unsigned long ruleY = rule.outputAspectRatioY;
+		if (rule.nls && GetNlsTargetAspect(rule) > 0.0)
+			ResolveMadVRNlsOutputAspect(
+				GetNlsTargetAspect(rule), ruleX, ruleY);
+		if (ruleX == 0 || ruleY == 0)
+			continue;
+		if (aspectX > 0 && aspectY > 0 &&
+			static_cast<unsigned long long>(aspectX) * ruleY !=
+			static_cast<unsigned long long>(ruleX) * aspectY)
+		{
+			aspectX = 0;
+			aspectY = 0;
+			return false;
+		}
+		aspectX = ruleX;
+		aspectY = ruleY;
 	}
-	if (rule.outputAspectRatioX == 0 || rule.outputAspectRatioY == 0)
-		return false;
-
-	aspectX = rule.outputAspectRatioX;
-	aspectY = rule.outputAspectRatioY;
-	return true;
+	return aspectX > 0 && aspectY > 0;
 }
 
 
@@ -1218,12 +1345,22 @@ bool MadVRShaderLoader::ValidateActivePictureAspect(const std::string& ruleName,
 		reason = "configuration file is unavailable";
 		return false;
 	}
-	const ShaderRule rule = LoadRule(config, ruleName);
-	if (!rule.valid)
+	std::vector<ShaderRule> rules;
+	if (!LoadRuleSelection(config, ruleName, rules))
 	{
 		reason = "shader rule is invalid";
 		return false;
 	}
+	const size_t nlsCount = static_cast<size_t>(std::count_if(
+		rules.begin(), rules.end(),
+		[](const ShaderRule& rule) { return rule.nls; }));
+	ShaderRule* selected = FindNlsRule(rules);
+	if (nlsCount > 1)
+	{
+		reason = "an effect group may contain only one NLS effect";
+		return false;
+	}
+	const ShaderRule& rule = selected ? *selected : rules.front();
 	if (rule.aspectTolerancePercent < 0.0)
 		return true;
 	if (!aspectAvailable || activeAspectRatio <= 0.0)
@@ -1276,12 +1413,24 @@ bool MadVRShaderLoader::EvaluateNlsMapping(const std::string& ruleName,
 		decision.reason = "configuration file is unavailable";
 		return false;
 	}
-	const ShaderRule rule = LoadRule(config, ruleName);
-	if (!rule.valid)
+	std::vector<ShaderRule> rules;
+	if (!LoadRuleSelection(config, ruleName, rules))
 	{
 		decision.reason = "shader rule is invalid";
 		return false;
 	}
+	const size_t nlsCount = static_cast<size_t>(std::count_if(
+		rules.begin(), rules.end(),
+		[](const ShaderRule& rule) { return rule.nls; }));
+	ShaderRule* selected = FindNlsRule(rules);
+	if (nlsCount != 1 || !selected)
+	{
+		decision.reason = nlsCount > 1 ?
+			"an effect group may contain only one NLS effect" :
+			"shader rule does not define NLS mapping";
+		return false;
+	}
+	const ShaderRule& rule = *selected;
 	const double target = GetNlsTargetAspect(rule);
 	if (!rule.nls || target <= 0.0)
 	{
@@ -1339,11 +1488,63 @@ bool MadVRShaderLoader::GetRuleActivationInfo(const std::string& ruleName,
 	ConfigFile config;
 	if (!config.Load())
 		return false;
-	const ShaderRule rule = LoadRule(config, ruleName);
-	if (!rule.valid)
+	std::vector<ShaderRule> rules;
+	if (!LoadRuleSelection(config, ruleName, rules))
 		return false;
-	label = rule.label;
-	inactiveRule = rule.inactiveRule;
-	nlsMapping = rule.nls && GetNlsTargetAspect(rule) > 0.0;
+	const size_t noneCount = static_cast<size_t>(std::count_if(
+		rules.begin(), rules.end(),
+		[](const ShaderRule& rule) { return rule.none; }));
+	const size_t nlsCount = static_cast<size_t>(std::count_if(
+		rules.begin(), rules.end(),
+		[](const ShaderRule& rule) { return rule.nls; }));
+	if ((noneCount > 0 && rules.size() > 1) || nlsCount > 1)
+		return false;
+	for (const ShaderRule& rule : rules)
+	{
+		AppendLabel(label, rule.label);
+		if (rule.nls)
+		{
+			inactiveRule = rule.inactiveRule;
+			nlsMapping = GetNlsTargetAspect(rule) > 0.0;
+		}
+	}
+	return true;
+}
+
+
+bool MadVRShaderLoader::ResolveShaderFilename(
+	const std::string& filename, const std::string& executablePath,
+	std::string& resolvedPath, std::string& error)
+{
+	resolvedPath.clear();
+	error.clear();
+	const std::string trimmed = ConfigFile::Trim(filename);
+	if (trimmed.empty())
+	{
+		error = "filename is empty";
+		return false;
+	}
+	const std::filesystem::path configured =
+		std::filesystem::u8path(trimmed);
+	if (configured.is_absolute() || configured.has_root_path() ||
+		configured.has_parent_path() ||
+		configured.filename() != configured ||
+		configured == "." || configured == ".." ||
+		trimmed.find_first_of("<>:\"/\\|?*") != std::string::npos ||
+		std::any_of(trimmed.begin(), trimmed.end(),
+			[](unsigned char value) { return value < 32; }))
+	{
+		error = "use a filename only; VP always loads from the executable's Shaders directory";
+		return false;
+	}
+	const std::filesystem::path executable =
+		std::filesystem::u8path(executablePath);
+	if (executable.empty() || !executable.has_parent_path())
+	{
+		error = "executable directory is unavailable";
+		return false;
+	}
+	resolvedPath = (executable.parent_path() / "Shaders" /
+		configured).lexically_normal().u8string();
 	return true;
 }

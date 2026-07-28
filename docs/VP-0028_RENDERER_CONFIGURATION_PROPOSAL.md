@@ -141,10 +141,10 @@ Typed NLS is declared explicitly and contains effect choices only:
 ```ini
 [shaders.nls]
 label: Nonlinear Stretch
-manual: true
 shortcut: N
 type: nls
-pre_resize_1: Shaders\NLS.hlsl
+file: NLS.hlsl
+stage: pre_resize
 geometry: protected
 strength: 1.0
 center_protection: 0.35
@@ -152,6 +152,14 @@ curve: 2.0
 quality: medium
 tolerance_percent: 5
 ```
+
+Each shader section owns one effect and one file. A shortcut makes that effect
+manual automatically; `manual` is retained only as a migration alias. Effects
+that use the same shortcut are composed in configured order, while their typed
+settings and `param_` values remain scoped to their own files. `file` accepts a
+filename only and always resolves under `Shaders` beside `VideoProcessor.exe`.
+The old `pre_resize_N`/`post_resize_N` indices represented chain order and are
+rejected; split each file into its own effect instead.
 
 VP derives the physical target, active rectangle, warp axis, stretch ratio,
 linear passthrough, 4:3 safe-fit, and media-aspect contract from the viewport

@@ -1,5 +1,6 @@
 #include "pch.h"
 
+#include <microsoft_directshow/MadVRShaderLoader.h>
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
 #include "CppUnitTest.h"
 
@@ -203,6 +204,41 @@ namespace VideoProcessorTest
 				static_cast<int>(MadVRNlsMappingMode::OFF),
 				static_cast<int>(snapshot.lastSafeNlsMode));
 			Assert::IsFalse(snapshot.activeGeometry.stable);
+		}
+
+		TEST_METHOD(ShaderFilesAlwaysResolveBesideExecutable)
+		{
+			std::string resolved;
+			std::string error;
+			Assert::IsTrue(MadVRShaderLoader::ResolveShaderFilename(
+				"NLS.hlsl",
+				"C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+				resolved, error));
+			Assert::AreEqual(
+				"C:\\Videoprocessor\\vp\\Shaders\\NLS.hlsl",
+				resolved.c_str());
+		}
+
+		TEST_METHOD(ShaderFileConfigurationRejectsDirectoriesAndTraversal)
+		{
+			const char* invalid[] = {
+				"",
+				"Shaders\\NLS.hlsl",
+				"subdir/NLS.hlsl",
+				"..\\NLS.hlsl",
+				"C:\\Shaders\\NLS.hlsl",
+				"NLS.hlsl:alternate"
+			};
+			for (const char* filename : invalid)
+			{
+				std::string resolved;
+				std::string error;
+				Assert::IsFalse(MadVRShaderLoader::ResolveShaderFilename(
+					filename,
+					"C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+					resolved, error));
+				Assert::IsFalse(error.empty());
+			}
 		}
 
 		TEST_METHOD(SafeFitSurvivesRendererReplacementAsLastSafeMode)

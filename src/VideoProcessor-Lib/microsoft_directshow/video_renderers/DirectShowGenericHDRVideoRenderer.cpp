@@ -358,8 +358,12 @@ void DirectShowGenericHDRVideoRenderer::UpdateActiveShaderSelection(
 {
 	m_activeShaders.clear();
 	m_activeShaderRule = TEXT("None");
+	m_activeShaderCompanionLabel.Empty();
 	if (!shaderSelection.ruleLabel.empty())
 		m_activeShaderRule.Format(TEXT("%S"), shaderSelection.ruleLabel.c_str());
+	if (!shaderSelection.companionRuleLabel.empty())
+		m_activeShaderCompanionLabel.Format(
+			TEXT("%S"), shaderSelection.companionRuleLabel.c_str());
 	for (const ActiveMadVRShader& shader : shaderSelection.activeShaders)
 	{
 		CString label;
@@ -425,6 +429,11 @@ void DirectShowGenericHDRVideoRenderer::UpdateNlsOsdMode(
 	default:
 		m_activeShaderRule = TEXT("NLS: Off");
 		break;
+	}
+	if (!m_activeShaderCompanionLabel.IsEmpty())
+	{
+		m_activeShaderRule += TEXT(" + ");
+		m_activeShaderRule += m_activeShaderCompanionLabel;
 	}
 }
 

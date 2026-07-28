@@ -80,6 +80,7 @@ private:
 	const DXVA_VideoTransferMatrix m_forceVideoTransferMatrix;
 	const DXVA_VideoPrimaries m_forceVideoPrimaries;
 	CString m_activeShaderRule = TEXT("None");
+	CString m_activeShaderCompanionLabel;
 	std::vector<CString> m_activeShaders;
 	unsigned long m_outputAspectRatioX = 0;
 	unsigned long m_outputAspectRatioY = 0;

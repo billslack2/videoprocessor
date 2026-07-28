@@ -131,26 +131,27 @@ MinCoreCount=1
 MaxCoreCount=2</pre>
 
   <h2 id="shaders">[shaders] (optional)</h2>
-  <p>This section installs external Direct3D 9 HLSL directly into a renderer that supports it. It does not add a CPU conversion or GPU readback. Named automatic rules are checked from left to right and the first match wins; <code>default: none</code> leaves the shader chain empty. A rule may instead be marked <code>manual: true</code> and assigned a shortcut.</p>
+  <p>This section installs external Direct3D 9 HLSL directly into a renderer that supports it. It does not add a CPU conversion or GPU readback. Each <code>[shaders.name]</code> section is one independently configured effect. Named automatic effects are checked from left to right and the first match wins; <code>default: none</code> leaves the shader chain empty. Adding a <code>shortcut</code> makes an effect manual automatically. Effects assigned the same shortcut are composed in <code>rules</code> order and selected as one group.</p>
   <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
     <tr><td><code>enabled</code></td><td>Boolean; default <code>false</code></td><td>Enables shader rule evaluation.</td></tr>
-    <tr><td><code>rules</code></td><td>Comma-separated rule names</td><td>Sets rule order. Each name uses a matching <code>[shaders.name]</code> section.</td></tr>
+    <tr><td><code>rules</code></td><td>Comma-separated effect names</td><td>Sets effect order. Each name uses a matching <code>[shaders.name]</code> section.</td></tr>
     <tr><td><code>default</code></td><td><code>none</code></td><td>Safe result when no rule matches. Currently <code>none</code> is the only supported default.</td></tr>
     <tr><td><code>fallback_shader_model</code></td><td><code>ps_2_0</code>, <code>ps_2_a</code>, <code>ps_2_b</code>, or <code>ps_3_0</code>; default <code>ps_3_0</code></td><td>Used only when a shader does not declare <code>$MinimumShaderProfile:</code>. Most packaged shaders declare it, so this key is normally unnecessary.</td></tr>
   </tbody></table>
-  <p>Every <code>[shaders.name]</code> rule supports the common keys below. A typed <code>type: nls</code> rule additionally supports the NLS settings in the following table.</p>
+  <p>Every <code>[shaders.name]</code> effect supports the common keys below. Its settings and parameters apply only to its own file. A typed <code>type: nls</code> effect additionally supports the NLS settings in the following table.</p>
   <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
     <tr><td><code>label</code></td><td>Display text</td><td>Friendly rule name shown in the OSD and logs. Defaults to the rule name.</td></tr>
     <tr><td><code>type</code></td><td><code>nls</code>, or omitted</td><td>Declares built-in typed behavior. New NLS rules identify it explicitly. Legacy implicit NLS detection remains readable only for migration.</td></tr>
     <tr><td><code>signal</code></td><td><code>ANY</code>, <code>SDR</code>, or <code>HDR</code>; default <code>ANY</code></td><td>Matches the effective video signal. <code>HDR</code> includes HDR gamma, PQ, HLG, and detected LLDV.</td></tr>
     <tr><td><code>frame_rates</code></td><td>Comma-separated nominal integers or <code>ANY</code>; default <code>ANY</code></td><td>Matches VP's displayed input refresh rate using its truncated nominal key: 23 matches 23.976, 29 matches 29.97, and 59 matches 59.94.</td></tr>
-    <tr><td><code>none</code></td><td>Boolean; default <code>false</code></td><td>Selects the rule but deliberately installs no shaders. Shader entries in that rule are ignored.</td></tr>
-    <tr><td><code>manual</code></td><td>Boolean; default <code>false</code></td><td>Excludes the rule from automatic signal/rate matching. It can still be selected by its shortcut.</td></tr>
-    <tr><td><code>shortcut</code></td><td>Key or modifier combination</td><td>Selects this rule immediately while video is running. Letter case is meaningful: <code>n</code> means N without Shift and <code>N</code> means Shift+N. <code>Ctrl+</code>, <code>Alt+</code>, <code>Shift+</code>, function keys, Escape, and Enter use the same syntax as <code>[shortcuts]</code>.</td></tr>
+    <tr><td><code>none</code></td><td>Boolean; default <code>false</code></td><td>Selects the effect but deliberately installs no shaders. An off effect cannot share a shortcut with another effect.</td></tr>
+    <tr><td><code>shortcut</code></td><td>Key or modifier combination</td><td>Makes the effect manual and selects it immediately while video is running. Effects with the same shortcut compose into one chain. Letter case is meaningful: <code>n</code> means N without Shift and <code>N</code> means Shift+N. <code>Ctrl+</code>, <code>Alt+</code>, <code>Shift+</code>, function keys, Escape, and Enter use the same syntax as <code>[shortcuts]</code>.</td></tr>
+    <tr><td><code>file</code></td><td>Filename only</td><td>The effect's HLSL file. VP always resolves it under the <code>Shaders</code> directory beside <code>VideoProcessor.exe</code>; absolute paths, directory components, and traversal are rejected.</td></tr>
+    <tr><td><code>stage</code></td><td><code>pre_resize</code> or <code>post_resize</code>; default <code>pre_resize</code></td><td>Selects whether this effect runs before or after renderer image scaling.</td></tr>
     <tr><td><code>output_aspect_ratio</code></td><td><code>native</code>, decimal, or ratio</td><td>Legacy/manual media-type override for untyped rules. Do not put it in a typed NLS rule; VP derives that contract from the selected viewport.</td></tr>
     <tr><td><code>param_name</code></td><td>Finite compile-time value</td><td>Low-level token replacement for untyped custom shaders. Typed NLS rules use validated names without the <code>param_</code> prefix.</td></tr>
-    <tr><td><code>pre_resize_N</code></td><td>Shader filename</td><td>Adds a source-frame shader before renderer image scaling. Numbered entries execute in ascending order.</td></tr>
-    <tr><td><code>post_resize_N</code></td><td>Shader filename</td><td>Adds a screen-space shader after renderer image scaling. Numbered entries execute in ascending order.</td></tr>
+    <tr><td><code>manual</code></td><td>Deprecated Boolean</td><td>Migration-only. Remove it and use <code>shortcut</code>; shortcut presence already means the effect is manual.</td></tr>
+    <tr><td><code>pre_resize_N</code>, <code>post_resize_N</code></td><td>Unsupported</td><td>Split each old chain entry into its own effect using <code>file</code> and <code>stage</code>.</td></tr>
   </tbody></table>
   <table><thead><tr><th>Typed NLS key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
     <tr><td><code>geometry</code></td><td><code>classic</code> or <code>protected</code></td><td>Selects the established power curve or a steadier protected-centre curve.</td></tr>
@@ -162,15 +163,22 @@ MaxCoreCount=2</pre>
   </tbody></table>
   <pre>[shaders]
 enabled=true
-rules=broadcast_sdr
+rules=broadcast_denoise,broadcast_sharpen
 default=none
 
-[shaders.broadcast_sdr]
-label=Broadcast SDR 59/60
+[shaders.broadcast_denoise]
+label=Broadcast Denoise
+shortcut=Ctrl+B
 signal=SDR
 frame_rates=59,60
-pre_resize_1=Shaders\Denoise.hlsl
-post_resize_1=Shaders\Adaptive sharpen.hlsl</pre>
+file=Denoise.hlsl
+stage=pre_resize
+
+[shaders.broadcast_sharpen]
+label=Broadcast Sharpen
+shortcut=Ctrl+B
+file=Adaptive sharpen.hlsl
+stage=post_resize</pre>
   <h3 id="nls">Viewport-aware nonlinear stretch</h3>
   <p>A typed NLS rule owns only effect choices. The selected <code>[profiles.viewport.*]</code> profile owns the physical screen. VP combines that immutable viewport snapshot with detected active-picture geometry, then derives crop, stretch ratio, axis, passthrough, safe-fit, and the madVR picture-aspect contract. The NLS rule does not repeat <code>2.35</code> and does not configure madVR's screen profile.</p>
   <pre>[shaders]
@@ -180,10 +188,10 @@ default=none
 
 [shaders.nls]
 label=Nonlinear Stretch
-manual=true
 shortcut=N
 type=nls
-pre_resize_1=Shaders\NLS.hlsl
+file=NLS.hlsl
+stage=pre_resize
 geometry=classic
 strength=1.0
 curve=2.0
@@ -192,10 +200,10 @@ tolerance_percent=5
 
 [shaders.nls_protected]
 label=Nonlinear Stretch Protected
-manual=true
 shortcut=P
 type=nls
-pre_resize_1=Shaders\NLS.hlsl
+file=NLS.hlsl
+stage=pre_resize
 geometry=protected
 strength=1.0
 center_protection=0.35
@@ -205,7 +213,6 @@ tolerance_percent=5
 
 [shaders.nls_off]
 label=NLS Off
-manual=true
 shortcut=n
 output_aspect_ratio=native
 none=true</pre>
@@ -227,9 +234,11 @@ none=true</pre>
     <tr><td><code>param_geometry</code>, <code>param_strength</code>, <code>param_center_protection</code>, <code>param_curve</code>, <code>param_quality</code></td><td><code>geometry</code>, <code>strength</code>, <code>center_protection</code>, <code>curve</code>, <code>quality</code></td></tr>
     <tr><td><code>aspect_tolerance_percent</code></td><td><code>tolerance_percent</code></td></tr>
     <tr><td><code>active_aspect_min</code>, <code>aspect_direction</code>, <code>inactive_rule</code></td><td>Remove them from typed NLS; safe-fit, direction, and stable armed behavior are derived.</td></tr>
+    <tr><td><code>manual: true</code> with a shortcut</td><td>Remove <code>manual</code>; the shortcut makes the effect manual.</td></tr>
+    <tr><td><code>pre_resize_1: Shaders\NLS.hlsl</code></td><td><code>file: NLS.hlsl</code> plus <code>stage: pre_resize</code>. The numeric suffix was legacy chain order; one effect now owns one file.</td></tr>
   </tbody></table>
   <p>Deprecated NLS aliases remain readable during migration and produce a replacement warning. Do not define a deprecated key together with its typed replacement. A legacy configuration without unified viewport profiles may continue using its old fixed target until it is deliberately migrated.</p>
-  <p>Relative shader paths are resolved from the directory containing <code>VideoProcessor.cfg</code>. The OSD displays the selected rule and every successfully installed shader, and automatically resizes to fit the active chain. The original flat <code>profile</code>, <code>pre_resize_N</code>, and <code>post_resize_N</code> format remains accepted when <code>rules</code> is absent.</p>
+  <p>Shader files always come from <code>Shaders</code> beside <code>VideoProcessor.exe</code>. Configuration cannot select another directory. The OSD displays the active effect label (joined with <code> + </code> for a shared-shortcut group) and every successfully installed shader, and automatically resizes to fit the active chain. Indexed shader entries and flat legacy chains are rejected.</p>
   <div class="note">Shaders execute GPU code inside the selected renderer. A compilation failure disables that entire stage and is reported in the log. Expensive or defective shaders can cause dropped frames or a GPU device reset. HDR/color shaders must be written for the color domain presented by the renderer; do not combine an HDR-to-SDR shader with renderer tone mapping unless the chain is intentionally designed that way.</div>
 
   <h2>[ppm_correction] (optional)</h2>

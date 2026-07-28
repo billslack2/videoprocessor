@@ -290,6 +290,7 @@ HACCEL CreateConfiguredAccelerators(
 	if (hasMainConfig && mainConfig.TryGetString("shaders", "rules", ruleList))
 	{
 		std::set<std::string> seenRules;
+		std::map<unsigned int, WORD> shaderBindingCommands;
 		WORD nextCommand = ID_COMMAND_SHADER_RULE_FIRST;
 		for (const std::string& configuredRule : SplitConfiguredList(ruleList))
 		{
@@ -313,9 +314,23 @@ HACCEL CreateConfiguredAccelerators(
 
 			const unsigned int binding =
 				(static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
+			const auto existingShader =
+				shaderBindingCommands.find(binding);
+			if (existingShader != shaderBindingCommands.end())
+			{
+				CString ruleName;
+				ruleName.Format(TEXT("%S"), rule.c_str());
+				shaderShortcutRules[existingShader->second] += TEXT(",");
+				shaderShortcutRules[existingShader->second] += ruleName;
+				DEBUGLOG(
+					"Shader shortcut '%s' groups effect '%s' with command %u",
+					shortcut.c_str(), rule.c_str(),
+					existingShader->second);
+				continue;
+			}
 			if (!bindings.insert(binding).second)
 			{
-				DEBUGLOG("Duplicate shortcut '%s' ignored for shader rule '%s'", shortcut.c_str(), rule.c_str());
+				DEBUGLOG("Shortcut '%s' for shader effect '%s' conflicts with a non-shader command and was ignored", shortcut.c_str(), rule.c_str());
 				continue;
 			}
 
@@ -324,6 +339,7 @@ HACCEL CreateConfiguredAccelerators(
 			CString ruleName;
 			ruleName.Format(TEXT("%S"), rule.c_str());
 			shaderShortcutRules[nextCommand] = ruleName;
+			shaderBindingCommands[binding] = nextCommand;
 			++nextCommand;
 		}
 	}
