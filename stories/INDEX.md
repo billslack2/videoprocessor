@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0039`
-- Next story number: `VP-0040`
-- Total indexed items: 39
+- Last assigned item: `VP-0040`
+- Next story number: `VP-0041`
+- Total indexed items: 40
 
 ## Story locations
 
@@ -62,8 +62,9 @@ they must not contain requirements that are absent from this file.
 | VP-0035 | Review | Robust low-latency active-aspect transitions |
 | VP-0036 | Done | Consolidate application and renderer settings into one configuration file |
 | VP-0037 | Done | Fix Alpha windowed-preview composition regression |
-| VP-0038 | Backlog | Generic viewport state and screen-aware NLS configuration |
-| VP-0039 | Backlog | Alpha cadence due-forecast liveness and diagnostics |
+| VP-0038 | Review | Generic viewport state and screen-aware NLS configuration |
+| VP-0039 | In Progress | Alpha cadence due-forecast liveness and diagnostics |
+| VP-0040 | Backlog | Trusted active-picture detection and stable NLS engagement |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
