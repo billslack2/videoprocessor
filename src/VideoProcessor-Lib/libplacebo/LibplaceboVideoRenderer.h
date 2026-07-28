@@ -11,6 +11,7 @@
 #include <mutex>
 #include <thread>
 #include <string>
+#include <vector>
 
 
 // In-process D3D11 renderer. HDR input is color-managed and tone-mapped to
@@ -64,6 +65,12 @@ public:
 		bool& rendererRestartRequired) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
+	bool SelectShaderRule(const CString& ruleName, CString& activeRule,
+		bool& rendererRestartRequired) override;
+	bool RefreshShaderRule(CString& activeRule,
+		bool& rendererRestartRequired) override;
+	std::vector<CString> ActiveShaders() const override;
+	CString ActiveShaderRule() const override;
 	bool ApplyApplicationState(const UnifiedProfileRuntime::Snapshot& snapshot,
 		CString& activeState,
 		bool& rendererRestartRequired) override;
@@ -117,6 +124,9 @@ private:
 	mutable std::mutex m_stateMutex;
 	VideoStateComPtr m_videoState;
 	std::atomic<RendererState> m_state{RendererState::RENDERSTATE_UNKNOWN};
+	std::string m_requestedShaderSelector;
+	uint64_t m_shaderRendererGeneration = 0;
+	mutable uint64_t m_lastReportedShaderStatusSerial = 0;
 
 	mutable std::mutex m_queueMutex;
 	std::condition_variable m_queueChanged;

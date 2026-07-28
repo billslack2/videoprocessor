@@ -51,6 +51,12 @@ public:
 		bool& rendererRestartRequired) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
+	bool SelectShaderRule(const CString& ruleName, CString& activeRule,
+		bool& rendererRestartRequired) override;
+	bool RefreshShaderRule(CString& activeRule,
+		bool& rendererRestartRequired) override;
+	std::vector<CString> ActiveShaders() const override;
+	CString ActiveShaderRule() const override;
 	bool ApplyApplicationState(const UnifiedProfileRuntime::Snapshot& snapshot,
 		CString& activeState,
 		bool& rendererRestartRequired) override;

@@ -3,11 +3,14 @@
 #include "LibplaceboVideoRenderer.h"
 
 #include <ConfigFile.h>
+#include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
+#include <P010ActivePictureEvidence.h>
 #include <RendererProfileConfig.h>
 #include <UnifiedProfileRuntime.h>
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
+#include <microsoft_directshow/MadVRShaderLoader.h>
 #include <libplacebo/AlphaCadenceCorrectionPolicy.h>
 #include <libplacebo/AlphaQueuePolicy.h>
 #include <libplacebo/LibplaceboDisplayLut.h>
@@ -24,6 +27,7 @@
 #include <libplacebo/cache.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/renderer.h>
+#include <libplacebo/shaders/custom.h>
 #include <libplacebo/utils/upload.h>
 #pragma warning(pop)
 
@@ -45,6 +49,7 @@
 namespace
 {
 	using SteadyClock = std::chrono::steady_clock;
+	constexpr size_t MAX_USER_SHADER_BYTES = 4 * 1024 * 1024;
 
 	int64_t SteadyClockNowNs()
 	{
@@ -56,6 +61,85 @@ namespace
 	{
 		LARGE_INTEGER value{};
 		return QueryPerformanceCounter(&value) ? value.QuadPart : 0;
+	}
+
+	std::string CurrentExecutablePath()
+	{
+		std::vector<wchar_t> buffer(32768);
+		const DWORD length = GetModuleFileNameW(
+			nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+		if (length == 0 || length >= buffer.size())
+			return {};
+		CW2A utf8(buffer.data(), CP_UTF8);
+		return std::string(static_cast<const char*>(utf8));
+	}
+
+	bool ReadUserShader(const std::string& filename, std::string& source,
+		std::string& resolvedPath, std::string& reason)
+	{
+		source.clear();
+		resolvedPath.clear();
+		reason.clear();
+		if (!MadVRShaderLoader::ResolveShaderFilename(
+			filename, CurrentExecutablePath(), resolvedPath, reason))
+			return false;
+
+		std::ifstream input(
+			resolvedPath, std::ios::binary | std::ios::ate);
+		if (!input.is_open())
+		{
+			reason = "cannot open shader file";
+			return false;
+		}
+		const std::streamoff length = input.tellg();
+		if (length <= 0 ||
+			static_cast<uint64_t>(length) > MAX_USER_SHADER_BYTES)
+		{
+			reason = "shader file is empty or exceeds 4 MiB";
+			return false;
+		}
+		source.resize(static_cast<size_t>(length));
+		input.seekg(0, std::ios::beg);
+		if (!input.read(&source[0],
+			static_cast<std::streamsize>(source.size())))
+		{
+			reason = "cannot read shader file";
+			source.clear();
+			return false;
+		}
+		return true;
+	}
+
+	std::string FileNameFromPath(const std::string& path)
+	{
+		const size_t separator = path.find_last_of("\\/");
+		return separator == std::string::npos
+			? path
+			: path.substr(separator + 1);
+	}
+
+	bool ApplyUserShaderParameters(std::string& source,
+		const std::map<std::string, std::string>& parameters,
+		std::string& reason)
+	{
+		for (const auto& parameter : parameters)
+		{
+			const std::string token = "{{" + parameter.first + "}}";
+			size_t position = 0;
+			while ((position = source.find(token, position)) !=
+				std::string::npos)
+			{
+				source.replace(position, token.size(), parameter.second);
+				position += parameter.second.size();
+			}
+		}
+		if (source.find("{{") != std::string::npos ||
+			source.find("}}") != std::string::npos)
+		{
+			reason = "shader contains an unresolved {{parameter}} token";
+			return false;
+		}
+		return true;
 	}
 
 	const char* AlphaCadenceActionText(AlphaCadenceAction action)
@@ -2177,6 +2261,22 @@ struct LibplaceboVideoRenderer::Impl
 	VideoStateComPtr formatterState;
 	std::vector<BYTE> convertedFrame;
 	struct pl_render_params renderParams{};
+	ActivePictureTransitionModel nlsTransition;
+	ConfiguredShaderRule nlsRule;
+	std::string requestedShaderSelector;
+	std::string activeShaderStatus = "None";
+	uint64_t activeShaderStatusSerial = 0;
+	uint64_t nlsRendererGeneration = 0;
+	uint64_t nlsGeometryGeneration = 0;
+	bool nlsRequested = false;
+	bool nlsGeometryAvailable = false;
+	bool nlsTransitionWithdrawn = false;
+	ActivePictureBounds nlsGeometry;
+	MadVRNlsMappingDecision nlsDecision;
+	const struct pl_hook* nlsHook = nullptr;
+	std::string nlsHookSignature;
+	std::string rejectedNlsHookSignature;
+	std::string activeNlsShaderPath;
 	struct pl_color_map_params colorMapParams{};
 	struct pl_peak_detect_params peakDetectParams{};
 	struct pl_sigmoid_params sigmoidParams{};
@@ -2494,6 +2594,7 @@ struct LibplaceboVideoRenderer::Impl
 	~Impl()
 	{
 		nvidiaBt2020Reporter.Restore();
+		pl_mpv_user_shader_destroy(&nlsHook);
 		pl_renderer_destroy(&renderer);
 		pl_lut_free(&displayLut);
 		if (d3d11)
@@ -4352,6 +4453,281 @@ struct LibplaceboVideoRenderer::Impl
 		}
 	}
 
+	void SetShaderStatus(const std::string& status)
+	{
+		if (activeShaderStatus == status)
+			return;
+		activeShaderStatus = status;
+		++activeShaderStatusSerial;
+	}
+
+	void SetConfiguredShaderSelection(const std::string& selector,
+		const std::vector<ConfiguredShaderRule>& selection,
+		uint64_t rendererGeneration)
+	{
+		requestedShaderSelector = ConfigFile::NormalizeName(selector);
+		nlsRendererGeneration = rendererGeneration;
+		nlsRequested = false;
+		nlsRule = {};
+		nlsTransition.Reset();
+		nlsGeometryAvailable = false;
+		nlsTransitionWithdrawn = false;
+		nlsGeometry = {};
+		nlsDecision = {};
+		nlsHookSignature.clear();
+		rejectedNlsHookSignature.clear();
+		activeNlsShaderPath.clear();
+		renderParams.hooks = nullptr;
+		renderParams.num_hooks = 0;
+		pl_mpv_user_shader_destroy(&nlsHook);
+
+		const auto none = std::find_if(selection.begin(), selection.end(),
+			[](const ConfiguredShaderRule& rule) { return rule.none; });
+		if (none != selection.end())
+		{
+			SetShaderStatus("NLS: Off");
+			MadVRShaderLoader::SetRuntimeShaderSelection(
+				requestedShaderSelector, requestedShaderSelector,
+				MadVRNlsMappingMode::OFF);
+			DebugLog::Log(
+				"Alpha shaders: selected \"%s\" (off)",
+				requestedShaderSelector.c_str());
+			return;
+		}
+
+		const auto nls = std::find_if(selection.begin(), selection.end(),
+			[](const ConfiguredShaderRule& rule) { return rule.nls; });
+		if (nls == selection.end() || nls->filename.empty())
+		{
+			SetShaderStatus("Rejected: Alpha NLS rule required");
+			DebugLog::Log(
+				"Alpha shaders: selector \"%s\" has no applicable GLSL NLS rule",
+				requestedShaderSelector.c_str());
+			return;
+		}
+
+		nlsRule = *nls;
+		nlsRequested = true;
+		SetShaderStatus("NLS: Waiting");
+		MadVRShaderLoader::SetRuntimeShaderSelection(
+			requestedShaderSelector, requestedShaderSelector,
+			MadVRNlsMappingMode::WAITING);
+		DebugLog::Log(
+			"Alpha shaders: armed \"%s\" with applicable rule \"%s\" file=%s renderer_generation=%llu",
+			requestedShaderSelector.c_str(), nlsRule.name.c_str(),
+			nlsRule.filename.c_str(),
+			static_cast<unsigned long long>(nlsRendererGeneration));
+	}
+
+	bool EnsureNlsHook(const MadVRNlsMappingDecision& decision)
+	{
+		std::map<std::string, std::string> parameters =
+			nlsRule.parameters;
+		auto scalar = [](double value)
+		{
+			std::ostringstream text;
+			text.precision(17);
+			text << value;
+			return text.str();
+		};
+		parameters["stretch_ratio"] = scalar(decision.stretchRatio);
+		parameters["warp_axis"] = decision.verticalWarp ? "1" : "0";
+		parameters["safe_fit"] = "0";
+		parameters["safe_fit_axis"] = "0";
+		parameters["safe_fit_fraction"] = "1";
+		std::ostringstream keyBuilder;
+		keyBuilder << nlsRule.filename;
+		for (const auto& parameter : parameters)
+			keyBuilder << '|' << parameter.first << '=' << parameter.second;
+		const std::string hookKey = keyBuilder.str();
+		if (nlsHook && nlsHookSignature == hookKey)
+			return true;
+		if (rejectedNlsHookSignature == hookKey)
+			return false;
+
+		std::string source;
+		std::string resolvedPath;
+		std::string reason;
+		if (!ReadUserShader(
+			nlsRule.filename, source, resolvedPath, reason))
+		{
+			rejectedNlsHookSignature = hookKey;
+			DebugLog::Log(
+				"Alpha shaders: rejected \"%s\": %s",
+				nlsRule.filename.c_str(), reason.c_str());
+			return false;
+		}
+		if (!ApplyUserShaderParameters(source, parameters, reason))
+		{
+			rejectedNlsHookSignature = hookKey;
+			DebugLog::Log(
+				"Alpha shaders: rejected \"%s\": %s",
+				nlsRule.filename.c_str(), reason.c_str());
+			return false;
+		}
+
+		const struct pl_hook* replacement =
+			pl_mpv_user_shader_parse(
+				d3d11->gpu, source.data(), source.size());
+		if (!replacement)
+		{
+			rejectedNlsHookSignature = hookKey;
+			DebugLog::Log(
+				"Alpha shaders: libplacebo could not parse \"%s\"",
+				resolvedPath.c_str());
+			return false;
+		}
+		pl_mpv_user_shader_destroy(&nlsHook);
+		nlsHook = replacement;
+		nlsHookSignature = hookKey;
+		rejectedNlsHookSignature.clear();
+		activeNlsShaderPath = resolvedPath;
+		DebugLog::Log(
+			"Alpha shaders: loaded mpv GLSL hook \"%s\" stretch=%.5f axis=%s",
+			resolvedPath.c_str(), decision.stretchRatio,
+			decision.verticalWarp ? "vertical" : "horizontal");
+		return true;
+	}
+
+	void UpdateNlsForFrame(const uint16_t* pixels, size_t dataBytes,
+		int width, int height, size_t rowBytes, uint64_t frameNumber,
+		double framesPerSecond, double targetAspect)
+	{
+		renderParams.hooks = nullptr;
+		renderParams.num_hooks = 0;
+		if (!nlsRequested)
+			return;
+
+		if (nlsTransition.ShouldAnalyze(frameNumber, framesPerSecond))
+		{
+			const P010ActivePictureEvidence evidence =
+				ExtractP010ActivePictureEvidence({
+					reinterpret_cast<const uint8_t*>(pixels),
+					dataBytes, width, height, rowBytes, rowBytes
+				});
+			ActivePictureObservation observation;
+			observation.frameNumber = frameNumber;
+			observation.available = evidence.available;
+			if (evidence.available)
+			{
+				observation.bounds = evidence.classification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED
+					? evidence.trustedBounds
+					: evidence.proposedBounds;
+				observation.classification = evidence.classification;
+			}
+			const ActivePictureTransitionDecision transition =
+				nlsTransition.Observe(observation);
+			if (transition.clearTransition)
+			{
+				nlsGeometryAvailable = false;
+				nlsTransitionWithdrawn = true;
+			}
+			else if (transition.publish && transition.stable)
+			{
+				nlsGeometry = transition.bounds;
+				nlsGeometryAvailable = true;
+				nlsTransitionWithdrawn = false;
+				++nlsGeometryGeneration;
+			}
+			else if (transition.stable && !nlsTransitionWithdrawn)
+			{
+				nlsGeometry = transition.bounds;
+				nlsGeometryAvailable = true;
+			}
+			if (transition.diagnostic)
+			{
+				DebugLog::Log(
+					"Alpha NLS active picture: state=%d frame=%llu rect=%d,%d-%d,%d aspect=%.4f stable=%d clear=%d classification=%d reason=\"%s; %s\"",
+					static_cast<int>(transition.state),
+					static_cast<unsigned long long>(frameNumber),
+					transition.bounds.left, transition.bounds.top,
+					transition.bounds.right, transition.bounds.bottom,
+					transition.bounds.aspectRatio,
+					transition.stable ? 1 : 0,
+					transition.clearTransition ? 1 : 0,
+					static_cast<int>(evidence.classification),
+					transition.reason.c_str(), evidence.reason.c_str());
+			}
+		}
+
+		MadVRShaderLoader::SetRuntimeNlsTargetAspect(targetAspect);
+		MadVRNlsMappingDecision decision = EvaluateMadVRNlsMapping(
+			nlsGeometryAvailable, nlsGeometry.aspectRatio,
+			targetAspect, nlsRule.aspectTolerancePercent,
+			nlsRule.activeAspectMinimum, nlsRule.narrowerOnly);
+
+		if (decision.mode == MadVRNlsMappingMode::ACTIVE &&
+			!EnsureNlsHook(decision))
+		{
+			decision = {};
+			decision.targetAspect = targetAspect;
+			decision.reason =
+				"GLSL hook is unavailable; preserving safe passthrough";
+		}
+
+		if (decision.mode == MadVRNlsMappingMode::ACTIVE)
+		{
+			renderParams.hooks = &nlsHook;
+			renderParams.num_hooks = 1;
+		}
+
+		if (nlsGeometryAvailable &&
+			decision.mode != MadVRNlsMappingMode::WAITING)
+		{
+			const MadVRActivePictureGeometry geometry = {
+				nlsGeometry.aspectRatio,
+				static_cast<double>(nlsGeometry.left) / width,
+				static_cast<double>(nlsGeometry.top) / height,
+				static_cast<double>(nlsGeometry.right) / width,
+				static_cast<double>(nlsGeometry.bottom) / height,
+				nlsGeometryGeneration, nlsRendererGeneration, true
+			};
+			MadVRShaderLoader::SetRuntimeActivePictureGeometry(geometry);
+		}
+		MadVRShaderLoader::SetRuntimeShaderSelection(
+			requestedShaderSelector, requestedShaderSelector,
+			decision.mode);
+
+		if (decision.mode != nlsDecision.mode ||
+			std::abs(decision.sourceAspect -
+				nlsDecision.sourceAspect) > 0.01 ||
+			std::abs(decision.targetAspect -
+				nlsDecision.targetAspect) > 0.0001)
+		{
+			DebugLog::Log(
+				"Alpha NLS mapping: requested=%s applicable=%s mapping=%s rect=%d,%d-%d,%d source=%.4f target=%.4f stretch=%.5f renderer_generation=%llu reason=\"%s\"",
+				requestedShaderSelector.c_str(), nlsRule.name.c_str(),
+				MadVRNlsMappingModeName(decision.mode),
+				nlsGeometryAvailable ? nlsGeometry.left : 0,
+				nlsGeometryAvailable ? nlsGeometry.top : 0,
+				nlsGeometryAvailable ? nlsGeometry.right : 0,
+				nlsGeometryAvailable ? nlsGeometry.bottom : 0,
+				decision.sourceAspect, decision.targetAspect,
+				decision.stretchRatio,
+				static_cast<unsigned long long>(nlsRendererGeneration),
+				decision.reason.c_str());
+		}
+		nlsDecision = decision;
+		switch (decision.mode)
+		{
+		case MadVRNlsMappingMode::ACTIVE:
+			SetShaderStatus("NLS: Active");
+			break;
+		case MadVRNlsMappingMode::SCOPE_PASSTHROUGH:
+			SetShaderStatus(targetAspect > 2.2
+				? "NLS: Scope passthrough"
+				: "NLS: Linear passthrough");
+			break;
+		case MadVRNlsMappingMode::SAFE_FIT:
+			SetShaderStatus("NLS: Safe fit");
+			break;
+		default:
+			SetShaderStatus("NLS: Waiting");
+			break;
+		}
+	}
+
 	// The caller holds renderMutex. Queue-generation validation and rendering
 	// share that lock so a frame removed before a reset cannot cross the reset
 	// boundary while waiting to enter libplacebo.
@@ -4418,6 +4794,11 @@ struct LibplaceboVideoRenderer::Impl
 		const size_t rowBytes = static_cast<size_t>(width) * sizeof(uint16_t);
 		const BYTE* yPixels = convertedFrame.data();
 		const BYTE* uvPixels = yPixels + rowBytes * static_cast<size_t>(height);
+		UpdateNlsForFrame(
+			reinterpret_cast<const uint16_t*>(yPixels),
+			convertedFrame.size(), width, height, rowBytes,
+			sourceSequence, state.displayMode->RefreshRateHz(),
+			scopeScreenActive ? scopeScreenAspect : 16.0 / 9.0);
 		SceneDetectorResult sceneResult;
 		if (!cadenceRepeat)
 		{
@@ -4621,6 +5002,58 @@ struct LibplaceboVideoRenderer::Impl
 				float subtitleShift)
 		{
 			source = image;
+			if (nlsRequested &&
+				nlsDecision.mode == MadVRNlsMappingMode::WAITING)
+			{
+				// A clear transition or unavailable hook must never reuse the
+				// subtitle detector's older crop. Preserve the full current
+				// raster inside the viewport until trusted geometry returns.
+				pl_rect2df_aspect_set(
+					&target.crop,
+					static_cast<float>(
+						nlsDecision.targetAspect > 0.0
+							? nlsDecision.targetAspect
+							: (scopeActive
+								? scopeScreenAspect
+								: 16.0 / 9.0)),
+					0.0f);
+				pl_rect2df_aspect_copy(
+					&target.crop, &source.crop, 0.0f);
+				return;
+			}
+			const bool nlsMapped = nlsRequested &&
+				nlsGeometryAvailable &&
+				(nlsDecision.mode == MadVRNlsMappingMode::ACTIVE ||
+				 nlsDecision.mode ==
+					MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
+				 nlsDecision.mode == MadVRNlsMappingMode::SAFE_FIT);
+			if (nlsMapped)
+			{
+				// This rectangle has affirmative crop authority from the shared
+				// P010 detector. Never feed encoded bars into the nonlinear map.
+				source.crop.x0 =
+					static_cast<float>(nlsGeometry.left);
+				source.crop.y0 =
+					static_cast<float>(nlsGeometry.top);
+				source.crop.x1 =
+					static_cast<float>(nlsGeometry.right);
+				source.crop.y1 =
+					static_cast<float>(nlsGeometry.bottom);
+				pl_rect2df_aspect_set(
+					&target.crop,
+					static_cast<float>(nlsDecision.targetAspect),
+					0.0f);
+				if (nlsDecision.mode ==
+					MadVRNlsMappingMode::SAFE_FIT)
+				{
+					// Preserve extreme formats such as 4:3 inside the selected
+					// viewport instead of applying destructive NLS expansion.
+					pl_rect2df_aspect_copy(
+						&target.crop, &source.crop, 0.0f);
+				}
+				return;
+			}
+
 			bool croppedActivePicture = false;
 			if (scopeActive &&
 				scopeSubtitlePictureTop > 0 &&
@@ -4659,7 +5092,8 @@ struct LibplaceboVideoRenderer::Impl
 		};
 
 		double prewarmMs = 0.0;
-		if (hasPresentedFrame && !screenProfilesPrewarmed)
+		if (hasPresentedFrame && !screenProfilesPrewarmed &&
+			!nlsRequested)
 		{
 			struct pl_frame warmImage{};
 			struct pl_frame warmTarget = baseTarget;
@@ -4994,6 +5428,8 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 		std::lock_guard<std::mutex> guard(g_runtimeDisplayRuleMutex);
 		m_manualDisplayRule = g_runtimeManualDisplayRule;
 	}
+	m_shaderRendererGeneration =
+		MadVRShaderLoader::BeginRendererGeneration();
 	if (!m_manualDisplayRule.empty())
 		DebugLog::Log("display: restored runtime manual rule '%s' for new renderer",
 			m_manualDisplayRule.c_str());
@@ -5441,6 +5877,110 @@ bool LibplaceboVideoRenderer::SelectDisplayRule(
 	activeRule.Format(TEXT("Manual: %S"), requested.c_str());
 	rendererRestartRequired = m_impl != nullptr;
 	return true;
+}
+
+
+bool LibplaceboVideoRenderer::SelectShaderRule(
+	const CString& ruleName,
+	CString& activeRule,
+	bool& rendererRestartRequired)
+{
+	activeRule.Empty();
+	rendererRestartRequired = false;
+	if (!m_impl)
+		return false;
+
+	CT2A selectorUtf8(ruleName, CP_UTF8);
+	const std::string selector =
+		static_cast<const char*>(selectorUtf8);
+	if (ConfigFile::NormalizeName(selector).empty())
+		return false;
+	{
+		std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+		if (ConfigFile::NormalizeName(m_requestedShaderSelector) ==
+			ConfigFile::NormalizeName(selector))
+		{
+			activeRule = CString(
+				CStringA(m_impl->activeShaderStatus.c_str()));
+			DebugLog::Log(
+				"Alpha shaders: coalesced duplicate request for \"%s\"",
+				selector.c_str());
+			return true;
+		}
+	}
+
+	std::vector<ConfiguredShaderRule> selection;
+	std::string reason;
+	if (!MadVRShaderLoader::GetConfiguredRuleSelection(
+		selector, ShaderRendererBackend::LIBPLACEBO,
+		selection, reason))
+	{
+		DebugLog::Log(
+			"Alpha shaders: rejected selector \"%s\": %s",
+			selector.c_str(), reason.c_str());
+		return false;
+	}
+
+	m_requestedShaderSelector = selector;
+	{
+		std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+		m_impl->SetConfiguredShaderSelection(
+			selector, selection, m_shaderRendererGeneration);
+		activeRule = CString(
+			CStringA(m_impl->activeShaderStatus.c_str()));
+		m_lastReportedShaderStatusSerial =
+			m_impl->activeShaderStatusSerial;
+	}
+	return true;
+}
+
+
+bool LibplaceboVideoRenderer::RefreshShaderRule(
+	CString& activeRule,
+	bool& rendererRestartRequired)
+{
+	activeRule.Empty();
+	rendererRestartRequired = false;
+	if (!m_impl)
+		return false;
+
+	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	activeRule = CString(
+		CStringA(m_impl->activeShaderStatus.c_str()));
+	const bool changed =
+		m_lastReportedShaderStatusSerial !=
+		m_impl->activeShaderStatusSerial;
+	m_lastReportedShaderStatusSerial =
+		m_impl->activeShaderStatusSerial;
+	return changed;
+}
+
+
+std::vector<CString> LibplaceboVideoRenderer::ActiveShaders() const
+{
+	std::vector<CString> shaders;
+	if (!m_impl)
+		return shaders;
+	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	if (m_impl->renderParams.num_hooks > 0 &&
+		!m_impl->activeNlsShaderPath.empty())
+	{
+		CString label;
+		label.Format(TEXT("GLSL: %S"),
+			FileNameFromPath(
+				m_impl->activeNlsShaderPath).c_str());
+		shaders.push_back(label);
+	}
+	return shaders;
+}
+
+
+CString LibplaceboVideoRenderer::ActiveShaderRule() const
+{
+	if (!m_impl)
+		return TEXT("None");
+	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	return CString(CStringA(m_impl->activeShaderStatus.c_str()));
 }
 
 

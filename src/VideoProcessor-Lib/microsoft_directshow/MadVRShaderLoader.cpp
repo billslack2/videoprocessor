@@ -39,6 +39,13 @@ enum class SignalMatch
 	HDR
 };
 
+enum class ShaderSourceBackend
+{
+	ANY,
+	MADVR,
+	LIBPLACEBO
+};
+
 struct ShaderEntry
 {
 	unsigned int order = 0;
@@ -58,6 +65,8 @@ struct ShaderRule
 	bool none = false;
 	bool manual = false;
 	bool valid = true;
+	ShaderSourceBackend sourceBackend = ShaderSourceBackend::ANY;
+	std::string filename;
 	std::map<std::string, std::string> parameters;
 	unsigned long outputAspectRatioX = 0;
 	unsigned long outputAspectRatioY = 0;
@@ -72,6 +81,30 @@ struct ShaderRule
 	std::vector<ShaderEntry> preScale;
 	std::vector<ShaderEntry> postScale;
 };
+
+
+bool RuleAppliesToBackend(const ShaderRule& rule,
+	ShaderRendererBackend backend)
+{
+	if (rule.sourceBackend == ShaderSourceBackend::ANY)
+		return true;
+	return (backend == ShaderRendererBackend::MADVR &&
+			rule.sourceBackend == ShaderSourceBackend::MADVR) ||
+		(backend == ShaderRendererBackend::LIBPLACEBO &&
+			rule.sourceBackend == ShaderSourceBackend::LIBPLACEBO);
+}
+
+
+ShaderSourceBackend SourceBackendForFilename(const std::string& filename)
+{
+	const std::string extension = ConfigFile::NormalizeName(
+		std::filesystem::u8path(filename).extension().u8string());
+	if (extension == ".glsl" || extension == ".hook")
+		return ShaderSourceBackend::LIBPLACEBO;
+	// Preserve the complete legacy contract: HLSL and unrecognized extensions
+	// continue down the exact madVR validation and compilation path.
+	return ShaderSourceBackend::MADVR;
+}
 
 
 bool ParseBoundedDouble(const std::string& raw, double minimum,
@@ -680,6 +713,8 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 	std::string filename;
 	if (config.TryGetString(section, "file", filename))
 	{
+		rule.filename = ConfigFile::Trim(filename);
+		rule.sourceBackend = SourceBackendForFilename(rule.filename);
 		std::string stage = "pre_resize";
 		config.TryGetString(section, "stage", stage);
 		stage = ConfigFile::NormalizeName(stage);
@@ -711,7 +746,8 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 }
 
 
-bool LoadRuleSelection(const ConfigFile& config, const std::string& selector,
+bool LoadRuleSelectionForBackend(const ConfigFile& config,
+	const std::string& selector, ShaderRendererBackend backend,
 	std::vector<ShaderRule>& rules)
 {
 	rules.clear();
@@ -724,9 +760,19 @@ bool LoadRuleSelection(const ConfigFile& config, const std::string& selector,
 		ShaderRule rule = LoadRule(config, normalized);
 		if (!rule.valid)
 			return false;
+		if (!RuleAppliesToBackend(rule, backend))
+			continue;
 		rules.push_back(std::move(rule));
 	}
 	return !rules.empty();
+}
+
+
+bool LoadRuleSelection(const ConfigFile& config, const std::string& selector,
+	std::vector<ShaderRule>& rules)
+{
+	return LoadRuleSelectionForBackend(config, selector,
+		ShaderRendererBackend::MADVR, rules);
 }
 
 
@@ -1161,7 +1207,11 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 					selectedName.c_str());
 				return selection;
 			}
-			selectedRules.push_back(*found);
+			if (RuleAppliesToBackend(*found,
+				ShaderRendererBackend::MADVR))
+			{
+				selectedRules.push_back(*found);
+			}
 		}
 	}
 	else
@@ -1170,7 +1220,9 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 			availableRules.end(), [&videoState, nominalRate](
 				const ShaderRule& rule)
 			{
-				return !rule.manual &&
+				return RuleAppliesToBackend(rule,
+					ShaderRendererBackend::MADVR) &&
+					!rule.manual &&
 					RuleMatches(rule, videoState.eotf, nominalRate);
 			});
 		if (found != availableRules.end())
@@ -1406,7 +1458,7 @@ bool MadVRShaderLoader::ValidateActivePictureAspect(const std::string& ruleName,
 
 bool MadVRShaderLoader::EvaluateNlsMapping(const std::string& ruleName,
 	bool aspectAvailable, double activeAspectRatio,
-	MadVRNlsMappingDecision& decision)
+	MadVRNlsMappingDecision& decision, ShaderRendererBackend backend)
 {
 	decision = {};
 	ConfigFile config;
@@ -1416,7 +1468,7 @@ bool MadVRShaderLoader::EvaluateNlsMapping(const std::string& ruleName,
 		return false;
 	}
 	std::vector<ShaderRule> rules;
-	if (!LoadRuleSelection(config, ruleName, rules))
+	if (!LoadRuleSelectionForBackend(config, ruleName, backend, rules))
 	{
 		decision.reason = "shader rule is invalid";
 		return false;
@@ -1487,7 +1539,8 @@ bool MadVRShaderLoader::PrepareNlsOutputContractRendererReplacement()
 
 
 bool MadVRShaderLoader::GetRuleActivationInfo(const std::string& ruleName,
-	std::string& label, std::string& inactiveRule, bool& nlsMapping)
+	std::string& label, std::string& inactiveRule, bool& nlsMapping,
+	ShaderRendererBackend backend)
 {
 	label.clear();
 	inactiveRule.clear();
@@ -1496,7 +1549,7 @@ bool MadVRShaderLoader::GetRuleActivationInfo(const std::string& ruleName,
 	if (!config.Load())
 		return false;
 	std::vector<ShaderRule> rules;
-	if (!LoadRuleSelection(config, ruleName, rules))
+	if (!LoadRuleSelectionForBackend(config, ruleName, backend, rules))
 		return false;
 	const size_t noneCount = static_cast<size_t>(std::count_if(
 		rules.begin(), rules.end(),
@@ -1516,6 +1569,68 @@ bool MadVRShaderLoader::GetRuleActivationInfo(const std::string& ruleName,
 		}
 	}
 	return true;
+}
+
+
+bool MadVRShaderLoader::GetConfiguredRuleSelection(
+	const std::string& ruleName, ShaderRendererBackend backend,
+	std::vector<ConfiguredShaderRule>& selection, std::string& reason)
+{
+	selection.clear();
+	reason.clear();
+	ConfigFile config;
+	if (!config.Load())
+	{
+		reason = "configuration file is unavailable";
+		return false;
+	}
+
+	std::vector<ShaderRule> rules;
+	if (!LoadRuleSelectionForBackend(config, ruleName, backend, rules))
+	{
+		reason = "shader rule is invalid or not applicable to this renderer";
+		return false;
+	}
+	const size_t noneCount = static_cast<size_t>(std::count_if(
+		rules.begin(), rules.end(),
+		[](const ShaderRule& rule) { return rule.none; }));
+	const size_t nlsCount = static_cast<size_t>(std::count_if(
+		rules.begin(), rules.end(),
+		[](const ShaderRule& rule) { return rule.nls; }));
+	if ((noneCount > 0 && rules.size() > 1) || nlsCount > 1)
+	{
+		reason =
+			"NONE must be exclusive and only one NLS effect may be active";
+		return false;
+	}
+
+	for (const ShaderRule& rule : rules)
+	{
+		ConfiguredShaderRule configured;
+		configured.name = rule.name;
+		configured.label = rule.label;
+		configured.filename = rule.filename;
+		configured.parameters = rule.parameters;
+		configured.nls = rule.nls;
+		configured.none = rule.none;
+		configured.aspectTolerancePercent =
+			std::max(0.0, rule.aspectTolerancePercent);
+		configured.activeAspectMinimum = rule.activeAspectMinimum;
+		configured.narrowerOnly = rule.narrowerOnly;
+		selection.push_back(std::move(configured));
+	}
+	return true;
+}
+
+
+bool MadVRShaderLoader::IsShaderFilenameCompatible(
+	const std::string& filename, ShaderRendererBackend backend)
+{
+	ShaderRule rule;
+	rule.sourceBackend = filename.empty()
+		? ShaderSourceBackend::ANY
+		: SourceBackendForFilename(filename);
+	return RuleAppliesToBackend(rule, backend);
 }
 
 
