@@ -1518,6 +1518,7 @@ void CVideoProcessorDlg::OnBnClickedRendererRestart()
 	if (m_rendererState == RendererState::RENDERSTATE_FAILED)
 		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 
+	m_postRendererStartRequiresGraph = true;
 	m_wantToRestartRenderer = true;
 	UpdateState();
 }
@@ -2236,11 +2237,15 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		m_queueResetIgnoreEventsUntil =
 			GetTickCount64() + windowSettleDelayMs + 10000;
 		g_displayRefreshRateSampler->ResetMeasurement();
-		// Every newly created renderer gets one delayed live-queue re-prime.
-		// This is the queue_recovery contract; it must also run after later
-		// source/profile-driven renderer replacement, without rebuilding the
-		// graph or causing another HDMI handshake.
-		RequestRendererReset(RendererResetReason::PostRendererStart, false,
+		// Initial DirectShow starts and backend handoffs need the same proven
+		// stop/reset/run re-prime as manual R. Profile-only replacements keep
+		// the live-queue path so NLS/shader changes do not add a second blackout.
+		const bool postStartRequiresGraph =
+			m_activeRendererIsDirectShow &&
+			m_postRendererStartRequiresGraph;
+		m_postRendererStartRequiresGraph = true;
+		RequestRendererReset(RendererResetReason::PostRendererStart,
+			postStartRequiresGraph,
 			windowSettleDelayMs +
 			static_cast<UINT>(m_queueResetDelaySeconds * 1000));
 		if (m_rendererFullscreenCheck.GetCheck())
@@ -2324,6 +2329,7 @@ void CVideoProcessorDlg::OnCommandFullScreenToggle()
 	m_rendererFullscreenCheck.SetCheck(
 		m_rendererFullscreenCheck.GetCheck() ? 0 : 1);
 
+	m_postRendererStartRequiresGraph = true;
 	m_wantToRestartRenderer = true;
 	UpdateState();
 }
@@ -2349,6 +2355,7 @@ void CVideoProcessorDlg::OnCommandRendererReset()
 void CVideoProcessorDlg::OnCommandRendererRestart()
 {
 		
+	m_postRendererStartRequiresGraph = true;
 	m_wantToRestartRenderer = true;
 	UpdateState();
 	
@@ -2371,6 +2378,7 @@ void CVideoProcessorDlg::OnCommandScreenProfileNormal()
 	if (rendererRestartRequired)
 	{
 		DEBUGLOG("Screen profile output aspect changed; restarting renderer to renegotiate media type");
+		m_postRendererStartRequiresGraph = false;
 		m_wantToRestartRenderer = true;
 		UpdateState();
 	}
@@ -2393,6 +2401,7 @@ void CVideoProcessorDlg::OnCommandScreenProfileScope()
 	if (rendererRestartRequired)
 	{
 		DEBUGLOG("Screen profile output aspect changed; restarting renderer to renegotiate media type");
+		m_postRendererStartRequiresGraph = false;
 		m_wantToRestartRenderer = true;
 		UpdateState();
 	}
@@ -2416,6 +2425,7 @@ void CVideoProcessorDlg::OnCommandDisplayRuleAuto()
 	DEBUGLOG("Automatic display-rule selection requested: %s", activeRule.GetString());
 	if (rendererRestartRequired)
 	{
+		m_postRendererStartRequiresGraph = false;
 		m_wantToRestartRenderer = true;
 		UpdateState();
 	}
@@ -2442,6 +2452,7 @@ void CVideoProcessorDlg::OnCommandShaderRule(UINT commandId)
 	if (rendererRestartRequired)
 	{
 		DEBUGLOG("Shader rule aspect ratio changed; restarting renderer to renegotiate media type");
+		m_postRendererStartRequiresGraph = false;
 		m_wantToRestartRenderer = true;
 		UpdateState();
 	}
@@ -2534,6 +2545,7 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 		static_cast<LPCTSTR>(activeRule));
 	if (rendererRestartRequired)
 	{
+		m_postRendererStartRequiresGraph = false;
 		m_wantToRestartRenderer = true;
 		UpdateState();
 	}
@@ -3278,6 +3290,10 @@ void CVideoProcessorDlg::CaptureStart()
 	assert(!m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_UNKNOWN);
 
+	// A new capture session is an initial lifecycle start, never a continuation
+	// of a profile-only replacement from the preceding session.
+	m_postRendererStartRequiresGraph = true;
+
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_STARTING;
 
@@ -3401,6 +3417,8 @@ void CVideoProcessorDlg::RenderStart()
 		return;
 
 	m_activeRendererName = selectedRenderer->name;
+	m_activeRendererIsDirectShow =
+		selectedRenderer->backend == RendererBackend::DIRECTSHOW;
 	const uint32_t rendererGeneration =
 		m_rendererGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
 	m_rendererTargetHwnd = GetRenderWindow();
@@ -4433,6 +4451,7 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	{
 		DebugLog::Log(
 			"Unified viewport output aspect changed; restarting renderer");
+		m_postRendererStartRequiresGraph = false;
 		m_wantToRestartRenderer = true;
 		UpdateState();
 	}
@@ -5141,6 +5160,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					"Conditional shader state changed to '%S'; "
 					"restarting renderer for aspect negotiation",
 					static_cast<LPCTSTR>(refreshedShaderRule));
+				m_postRendererStartRequiresGraph = false;
 				m_wantToRestartRenderer = true;
 				UpdateState();
 			}
@@ -5909,6 +5929,8 @@ void CVideoProcessorDlg::RequestRendererReset(RendererResetReason reason,
 	m_pendingQueueReset = true;
 	m_pendingResetRequiresGraph = m_pendingResetRequiresGraph || requiresGraph;
 	m_pendingResetReason = reason;
+	m_pendingResetRendererGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
 	KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
 
 	if (delayMs == 0)
@@ -5918,7 +5940,12 @@ void CVideoProcessorDlg::RequestRendererReset(RendererResetReason reason,
 	}
 
 	SetTimer(QUEUE_RESET_DELAY_TIMER_ID, delayMs, nullptr);
-	DEBUGLOG("Reset scheduled: reason=%s scope=%s delay=%ums",
+	DEBUGLOG(
+		"Reset scheduled: renderer=%s backend=%s generation=%u reason=%s "
+		"scope=%s delay=%ums",
+		CStringA(m_activeRendererName).GetString(),
+		m_activeRendererIsDirectShow ? "DirectShow" : "Alpha",
+		m_pendingResetRendererGeneration,
 		CStringA(ToString(reason)).GetString(),
 		m_pendingResetRequiresGraph ? "graph" : "live-queue", delayMs);
 }
@@ -5928,18 +5955,38 @@ void CVideoProcessorDlg::ExecutePendingRendererReset()
 {
 	const RendererResetReason reason = m_pendingResetReason;
 	const bool requiresGraph = m_pendingResetRequiresGraph;
+	const uint32_t requestedGeneration =
+		m_pendingResetRendererGeneration;
 	m_pendingQueueReset = false;
 	m_pendingResetRequiresGraph = false;
 	m_pendingResetReason = RendererResetReason::None;
+	m_pendingResetRendererGeneration = 0;
 
 	if (!m_videoRenderer ||
 		m_rendererState != RendererState::RENDERSTATE_RENDERING)
 		return;
 
+	const uint32_t currentGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	if (requestedGeneration != currentGeneration)
+	{
+		DEBUGLOG(
+			"Reset discarded: reason=%s requested_generation=%u "
+			"current_generation=%u",
+			CStringA(ToString(reason)).GetString(),
+			requestedGeneration, currentGeneration);
+		return;
+	}
+
 	// A reset emits display notifications itself. Suppress only those feedback
 	// events; explicit subsequent lifecycle changes will schedule a new reset.
 	m_queueResetIgnoreEventsUntil = GetTickCount64() + 10000;
-	DEBUGLOG("Reset executing: reason=%s scope=%s",
+	DEBUGLOG(
+		"Reset executing: renderer=%s backend=%s generation=%u reason=%s "
+		"scope=%s",
+		CStringA(m_activeRendererName).GetString(),
+		m_activeRendererIsDirectShow ? "DirectShow" : "Alpha",
+		currentGeneration,
 		CStringA(ToString(reason)).GetString(),
 		requiresGraph ? "graph" : "live-queue");
 	if (requiresGraph)

@@ -605,6 +605,7 @@ void DirectShowVideoRenderer::GraphBuild()
 		throw std::runtime_error("Created renderer instance wes nullptr");
 
 	RendererConnect();
+	InstallQualityControlSink();
 
 	//
 	// Window setup
@@ -652,6 +653,7 @@ void DirectShowVideoRenderer::GraphTeardown()
 	// Disonnect
 	//
 
+	RemoveQualityControlSink();
 	LiveSourceDisconnect();
 
 	//
@@ -936,6 +938,76 @@ void DirectShowVideoRenderer::RendererDestroy()
 		m_pRenderer->Release();
 		m_pRenderer = nullptr;
 	}
+}
+
+
+void DirectShowVideoRenderer::InstallQualityControlSink()
+{
+	if (!m_pRenderer || !m_liveSource || !m_liveSource->GetVideoOutputPin())
+	{
+		DebugLog::Log(
+			"DIRECTSHOW QUALITY: explicit sink probe skipped; graph is incomplete");
+		return;
+	}
+
+	IQualityControl* sourceQualityControl = nullptr;
+	HRESULT hr = m_liveSource->GetVideoOutputPin()->QueryInterface(
+		IID_IQualityControl,
+		reinterpret_cast<void**>(&sourceQualityControl));
+	if (FAILED(hr) || !sourceQualityControl)
+	{
+		DebugLog::Log(
+			"DIRECTSHOW QUALITY: live-source output pin does not expose "
+			"IQualityControl, hr=0x%08x",
+			hr);
+		return;
+	}
+
+	IQualityControl* rendererQualityControl = nullptr;
+	hr = m_pRenderer->QueryInterface(
+		IID_IQualityControl,
+		reinterpret_cast<void**>(&rendererQualityControl));
+	if (FAILED(hr) || !rendererQualityControl)
+	{
+		DebugLog::Log(
+			"DIRECTSHOW QUALITY: renderer does not expose IQualityControl; "
+			"default upstream Notify path remains active, hr=0x%08x",
+			hr);
+		sourceQualityControl->Release();
+		return;
+	}
+
+	hr = rendererQualityControl->SetSink(sourceQualityControl);
+	sourceQualityControl->Release();
+	if (FAILED(hr))
+	{
+		DebugLog::Log(
+			"DIRECTSHOW QUALITY: renderer IQualityControl::SetSink failed, "
+			"hr=0x%08x",
+			hr);
+		rendererQualityControl->Release();
+		return;
+	}
+
+	m_rendererQualityControl = rendererQualityControl;
+	DebugLog::Log(
+		"DIRECTSHOW QUALITY: explicit renderer sink installed; notifications "
+		"remain diagnostic-only and return E_NOTIMPL so the renderer retains "
+		"quality policy");
+}
+
+
+void DirectShowVideoRenderer::RemoveQualityControlSink()
+{
+	if (!m_rendererQualityControl)
+		return;
+
+	const HRESULT hr = m_rendererQualityControl->SetSink(nullptr);
+	DebugLog::Log(
+		"DIRECTSHOW QUALITY: explicit renderer sink removed, hr=0x%08x",
+		hr);
+	m_rendererQualityControl->Release();
+	m_rendererQualityControl = nullptr;
 }
 
 // Get current PPM correction information (override for RATIONAL_RATIONAL and CLOCK_RATIONAL support)
