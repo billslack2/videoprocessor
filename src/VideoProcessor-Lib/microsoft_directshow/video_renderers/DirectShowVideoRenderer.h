@@ -137,7 +137,6 @@ protected:
 	CLiveSource* m_liveSource = nullptr;
 	IBaseFilter* m_pLav = nullptr;
 	IBaseFilter* m_pRenderer = nullptr;
-	IQualityControl* m_rendererQualityControl = nullptr;
 
 	uint64_t m_frameCounter = 0;
 	uint64_t m_missingFrameCounter = 0;
@@ -193,8 +192,6 @@ protected:
 	// Add renderer to the graph and connect
 	virtual void RendererConnect() = 0;
 	virtual void RendererDestroy();
-	void InstallQualityControlSink();
-	void RemoveQualityControlSink();
 
 	virtual void MediaTypeGenerate() = 0;
 
