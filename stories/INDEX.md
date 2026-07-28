@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0044`
-- Next story number: `VP-0045`
-- Total indexed items: 44
+- Last assigned item: `VP-0045`
+- Next story number: `VP-0046`
+- Total indexed items: 45
 
 ## Story locations
 
@@ -69,6 +69,7 @@ they must not contain requirements that are absent from this file.
 | VP-0042 | Backlog | Indexed debug-log rotation filenames |
 | VP-0043 | Backlog | madVR graph re-prime after lifecycle and queue pressure |
 | VP-0044 | Backlog | Alpha native OSD visible-picture anchoring and scaling |
+| VP-0045 | Backlog | Namespace built-in renderer configuration as vpvr |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
