@@ -2,7 +2,10 @@
 
 ## Status
 
-Backlog — separate NLS enhancement following VP-0034. The current conservative
+In Progress on `codex/vp-0030-0031-debug-log-retention`, explicitly reusing the
+previous story branch and fast-forwarded to default integration commit
+`48fc10d` on `v1.1.014-beta`. VP-0034 remains the primary correctness
+dependency under review on its separate branch. The current conservative
 detector behavior was intentional protection against false positives, so this
 story must improve responsiveness through confidence and transition modeling,
 not by indiscriminately reducing confirmation thresholds.
