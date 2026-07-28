@@ -3686,6 +3686,8 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 	// derived destructor has already completed.
 	IVideoRenderer* rendererToDestroy = m_videoRenderer;
 	m_videoRenderer = nullptr;
+	m_dropDiagnosticRenderer = nullptr;
+	m_dropDiagnosticInitialized = false;
 
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::DestroyVideoRenderer(): Renderer detached before destruction")));
@@ -5777,6 +5779,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.ppmDeviation = hasMeasuredCaptureRate ? measuredCapturePpm : 0;
 	}
 
+	LogDroppedCounterChanges(stats);
+
 	// Update overlay
 	m_statsOverlay->UpdateStats(stats);
 	if (nativeOverlay)
@@ -5793,6 +5797,68 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	// Save current stats for next update
 	*m_lastStatsData = stats;
 }
+
+
+void CVideoProcessorDlg::LogDroppedCounterChanges(const StatsData& stats)
+{
+	if (m_rendererState != RendererState::RENDERSTATE_RENDERING ||
+		!m_videoRenderer)
+	{
+		m_dropDiagnosticRenderer = nullptr;
+		m_dropDiagnosticInitialized = false;
+		return;
+	}
+
+	const bool rendererChanged =
+		!m_dropDiagnosticInitialized ||
+		m_dropDiagnosticRenderer != m_videoRenderer;
+	if (rendererChanged)
+	{
+		DebugLog::Log(
+			"OSD dropped counters: event=baseline renderer=%s capture_missed=%llu renderer_dropped=%llu queue=%zu/%zu cadence_drops=%llu cadence_repeats=%llu",
+			stats.isAlphaRenderer ? "Alpha" : "DirectShow",
+			static_cast<unsigned long long>(stats.capturedDroppedFrames),
+			static_cast<unsigned long long>(stats.queueDroppedFrames),
+			stats.rawQueueSize + stats.convertedQueueSize,
+			stats.maxQueueSize,
+			static_cast<unsigned long long>(
+				stats.sceneDetectCorrectionDrops),
+			static_cast<unsigned long long>(
+				stats.sceneDetectCorrectionRepeats));
+		m_dropDiagnosticRenderer = m_videoRenderer;
+		m_dropDiagnosticInitialized = true;
+		m_lastLoggedCaptureMissed = stats.capturedDroppedFrames;
+		m_lastLoggedRendererDropped = stats.queueDroppedFrames;
+		return;
+	}
+
+	if (stats.capturedDroppedFrames == m_lastLoggedCaptureMissed &&
+		stats.queueDroppedFrames == m_lastLoggedRendererDropped)
+	{
+		return;
+	}
+
+	const int64_t captureDelta =
+		static_cast<int64_t>(stats.capturedDroppedFrames) -
+		static_cast<int64_t>(m_lastLoggedCaptureMissed);
+	const int64_t rendererDelta =
+		static_cast<int64_t>(stats.queueDroppedFrames) -
+		static_cast<int64_t>(m_lastLoggedRendererDropped);
+	DebugLog::Log(
+		"OSD dropped counters: event=changed renderer=%s capture_missed=%llu capture_delta=%+lld renderer_dropped=%llu renderer_delta=%+lld queue=%zu/%zu cadence_drops=%llu cadence_repeats=%llu",
+		stats.isAlphaRenderer ? "Alpha" : "DirectShow",
+		static_cast<unsigned long long>(stats.capturedDroppedFrames),
+		static_cast<long long>(captureDelta),
+		static_cast<unsigned long long>(stats.queueDroppedFrames),
+		static_cast<long long>(rendererDelta),
+		stats.rawQueueSize + stats.convertedQueueSize,
+		stats.maxQueueSize,
+		static_cast<unsigned long long>(stats.sceneDetectCorrectionDrops),
+		static_cast<unsigned long long>(stats.sceneDetectCorrectionRepeats));
+	m_lastLoggedCaptureMissed = stats.capturedDroppedFrames;
+	m_lastLoggedRendererDropped = stats.queueDroppedFrames;
+}
+
 
 // Add this new method to the class
 void CVideoProcessorDlg::RequestRendererReset(RendererResetReason reason,
