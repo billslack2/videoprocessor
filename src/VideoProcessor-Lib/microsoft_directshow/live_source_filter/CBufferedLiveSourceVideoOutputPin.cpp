@@ -2731,14 +2731,9 @@ bool CBufferedLiveSourceVideoOutputPin::GetActivePictureRectangle(
 void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 	IMediaSample* sample, uint64_t frameNumber, ActivePictureDetectorState& state)
 {
-	constexpr uint64_t ANALYSIS_INTERVAL_FRAMES = 6;
-	constexpr uint8_t REQUIRED_MATCHES = 5;
 	constexpr uint16_t BLACK_LUMA_MAX = 96; // Limited-range P010 black is code 64.
-	if (!sample || (state.lastAnalyzedFrame != 0 &&
-		frameNumber > state.lastAnalyzedFrame &&
-		frameNumber - state.lastAnalyzedFrame < ANALYSIS_INTERVAL_FRAMES))
+	if (!sample)
 		return;
-	state.lastAnalyzedFrame = frameNumber;
 
 	LONG width = 0;
 	LONG signedHeight = 0;
@@ -2760,12 +2755,44 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 		return;
 
 	const int height = signedHeight > 0 ? signedHeight : -signedHeight;
+	double framesPerSecond = 60.0;
+	if (m_timeScale > 0 && m_frameDurationTicks > 0)
+		framesPerSecond =
+			static_cast<double>(m_timeScale) / m_frameDurationTicks;
+	if (!state.transition.ShouldAnalyze(frameNumber, framesPerSecond))
+		return;
+
+	auto publishUnavailable = [&](const char* reason)
+	{
+		ActivePictureObservation observation;
+		observation.frameNumber = frameNumber;
+		const auto decision = state.transition.Observe(observation);
+		if (decision.diagnostic)
+			DebugLog::Log(
+				"ACTIVE PICTURE: state=unavailable frame=%llu "
+				"candidate_matches=%u contradictions=%u reversals=%u "
+				"confidence=%.2f reason=\"%s; %s\"",
+				static_cast<unsigned long long>(frameNumber),
+				decision.matchingCandidates,
+				decision.contradictoryCandidates,
+				decision.candidateReversals,
+				decision.confidence,
+				decision.reason.c_str(), reason);
+		PublishActivePictureTransition(decision);
+	};
+
 	const size_t lumaBytes = static_cast<size_t>(width) * height * sizeof(uint16_t);
 	if (static_cast<size_t>(sample->GetActualDataLength()) < lumaBytes)
+	{
+		publishUnavailable("sample is shorter than the P010 luma plane");
 		return;
+	}
 	BYTE* bytes = nullptr;
 	if (FAILED(sample->GetPointer(&bytes)) || !bytes)
+	{
+		publishUnavailable("P010 luma pointer is unavailable");
 		return;
+	}
 	const auto* luma = reinterpret_cast<const uint16_t*>(bytes);
 
 	auto rowIsBlack = [&](int y)
@@ -2808,59 +2835,126 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 	const int activeWidth = right - left;
 	const int activeHeight = bottom - top;
 	if (activeWidth < width / 3 || activeHeight < height / 3)
+	{
+		publishUnavailable("candidate is too small for a credible active picture");
 		return;
+	}
 	const double aspect = static_cast<double>(activeWidth) / activeHeight;
 	if (aspect < 1.0 || aspect > 4.0)
+	{
+		publishUnavailable("candidate aspect is outside the supported range");
+		return;
+	}
+
+	const int topBar = top;
+	const int bottomBar = height - bottom;
+	const int leftBar = left;
+	const int rightBar = width - right;
+	const bool verticalBars =
+		topBar > yStep * 2 || bottomBar > yStep * 2;
+	const bool horizontalBars =
+		leftBar > xStep * 2 || rightBar > xStep * 2;
+	const bool symmetricBars =
+		(!verticalBars ||
+			std::abs(topBar - bottomBar) <=
+				std::max(yStep * 3, height / 180)) &&
+		(!horizontalBars ||
+			std::abs(leftBar - rightBar) <=
+				std::max(xStep * 3, static_cast<int>(width / 180)));
+
+	ActivePictureObservation observation;
+	observation.frameNumber = frameNumber;
+	observation.available = true;
+	observation.bounds = {
+		left, top, right, bottom, width, height, aspect, symmetricBars
+	};
+	const auto decision = state.transition.Observe(observation);
+	if (decision.diagnostic)
+	{
+		DebugLog::Log(
+			"ACTIVE PICTURE: state=%s frame=%llu candidate=%d,%d-%d,%d "
+			"stable=%d,%d-%d,%d stable_aspect=%.4f "
+			"raster=%dx%d aspect=%.4f symmetric=%d matches=%u "
+			"contradictions=%u reversals=%u confidence=%.2f "
+			"first_contradiction=%llu latency_frames=%llu reason=\"%s\"",
+			decision.state == ActivePictureTransitionState::STABLE ?
+				"stable" : "candidate_transition",
+			static_cast<unsigned long long>(frameNumber),
+			decision.bounds.left, decision.bounds.top,
+			decision.bounds.right, decision.bounds.bottom,
+			decision.stableBounds.left, decision.stableBounds.top,
+			decision.stableBounds.right, decision.stableBounds.bottom,
+			decision.stableBounds.aspectRatio,
+			decision.bounds.rasterWidth, decision.bounds.rasterHeight,
+			decision.bounds.aspectRatio,
+			decision.bounds.symmetricBars ? 1 : 0,
+			decision.matchingCandidates,
+			decision.contradictoryCandidates,
+			decision.candidateReversals,
+			decision.confidence,
+			static_cast<unsigned long long>(
+				decision.firstContradictoryFrame),
+			static_cast<unsigned long long>(
+				decision.decisionLatencyFrames),
+			decision.reason.c_str());
+	}
+	PublishActivePictureTransition(decision);
+}
+
+
+void CBufferedLiveSourceVideoOutputPin::PublishActivePictureTransition(
+	const ActivePictureTransitionDecision& decision)
+{
+	if (!decision.publish)
 		return;
 
-	const int positionTolerance = std::max(xStep, yStep) * 2;
-	const bool sameRectangle = state.candidateAspectRatio > 0.0 &&
-		std::abs(aspect - state.candidateAspectRatio) <= 0.025 &&
-		std::abs(left - state.candidateLeft) <= positionTolerance &&
-		std::abs(top - state.candidateTop) <= positionTolerance &&
-		std::abs(right - state.candidateRight) <= positionTolerance &&
-		std::abs(bottom - state.candidateBottom) <= positionTolerance &&
-		width == state.candidateRasterWidth && height == state.candidateRasterHeight;
-	if (sameRectangle)
+	const uint64_t generation =
+		m_activePictureRectangleGeneration.fetch_add(
+			1, std::memory_order_acq_rel) + 1;
+	if (!decision.stable)
 	{
-		if (state.matchingCandidates < 255) ++state.matchingCandidates;
-		state.candidateAspectRatio = state.candidateAspectRatio * 0.75 + aspect * 0.25;
-	}
-	else
-	{
-		state.candidateAspectRatio = aspect;
-		state.candidateLeft = left;
-		state.candidateTop = top;
-		state.candidateRight = right;
-		state.candidateBottom = bottom;
-		state.candidateRasterWidth = width;
-		state.candidateRasterHeight = height;
-		state.matchingCandidates = 1;
-	}
-
-	if (state.matchingCandidates >= REQUIRED_MATCHES)
-	{
-		const double previous = m_activePictureAspectRatio.exchange(
-			state.candidateAspectRatio, std::memory_order_acq_rel);
-		m_activePictureAspectStable.store(true, std::memory_order_release);
+		m_activePictureAspectStable.store(false, std::memory_order_release);
 		{
 			std::lock_guard<std::mutex> lock(m_activePictureRectangleMutex);
-			const bool changed = !m_activePictureRectangle.stable ||
-				m_activePictureRectangle.left != left || m_activePictureRectangle.top != top ||
-				m_activePictureRectangle.right != right || m_activePictureRectangle.bottom != bottom ||
-				m_activePictureRectangle.rasterWidth != width ||
-				m_activePictureRectangle.rasterHeight != height;
-			const uint64_t generation = changed ?
-				m_activePictureRectangleGeneration.fetch_add(1, std::memory_order_acq_rel) + 1 :
-				m_activePictureRectangle.generation;
-			m_activePictureRectangle = { left, top, right, bottom, width, height,
-				state.candidateAspectRatio,
-				generation, true };
+			m_activePictureRectangle = {
+				decision.bounds.left, decision.bounds.top,
+				decision.bounds.right, decision.bounds.bottom,
+				decision.bounds.rasterWidth, decision.bounds.rasterHeight,
+				decision.bounds.aspectRatio, generation, false
+			};
 		}
-		if (previous <= 0.0 || std::abs(previous - state.candidateAspectRatio) > 0.01)
-			DebugLog::Log("ACTIVE PICTURE: stable aspect %.4f (bounds %d,%d-%d,%d raster %dx%d)",
-				state.candidateAspectRatio, left, top, right, bottom, width, height);
+		DebugLog::Log(
+			"ACTIVE PICTURE: publication generation=%llu state=transitioning "
+			"confidence=%.2f reason=\"%s\"",
+			static_cast<unsigned long long>(generation),
+			decision.confidence, decision.reason.c_str());
+		return;
 	}
+
+	m_activePictureAspectRatio.store(
+		decision.bounds.aspectRatio, std::memory_order_release);
+	m_activePictureAspectStable.store(true, std::memory_order_release);
+	{
+		std::lock_guard<std::mutex> lock(m_activePictureRectangleMutex);
+		m_activePictureRectangle = {
+			decision.bounds.left, decision.bounds.top,
+			decision.bounds.right, decision.bounds.bottom,
+			decision.bounds.rasterWidth, decision.bounds.rasterHeight,
+			decision.bounds.aspectRatio, generation, true
+		};
+	}
+	DebugLog::Log(
+		"ACTIVE PICTURE: publication generation=%llu state=stable "
+		"aspect=%.4f bounds=%d,%d-%d,%d raster=%dx%d "
+		"confidence=%.2f latency_frames=%llu reason=\"%s\"",
+		static_cast<unsigned long long>(generation),
+		decision.bounds.aspectRatio,
+		decision.bounds.left, decision.bounds.top,
+		decision.bounds.right, decision.bounds.bottom,
+		decision.bounds.rasterWidth, decision.bounds.rasterHeight,
+		decision.confidence,
+		static_cast<unsigned long long>(decision.decisionLatencyFrames),
+		decision.reason.c_str());
 }
 
 

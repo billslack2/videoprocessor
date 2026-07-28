@@ -10,7 +10,7 @@
 
 #include <dshow.h>
 #include <VideoState.h>
-#include <cstdint>
+#include <microsoft_directshow/MadVRShaderRuntimeState.h>
 #include <string>
 #include <vector>
 
@@ -30,18 +30,6 @@ struct MadVRShaderSelection
 	unsigned long outputAspectRatioX = 0;
 	unsigned long outputAspectRatioY = 0;
 };
-
-struct MadVRActivePictureGeometry
-{
-	double aspectRatio = 0.0;
-	double left = 0.0;
-	double top = 0.0;
-	double right = 1.0;
-	double bottom = 1.0;
-	uint64_t generation = 0;
-	bool stable = false;
-};
-
 
 class MadVRShaderLoader
 {
@@ -68,13 +56,19 @@ public:
 	// no conditions remain compatible with all formats.
 	static bool ValidateActivePictureAspect(const std::string& ruleName,
 		bool aspectAvailable, double activeAspectRatio, std::string& reason);
-	// Supplies the stable, measured active-picture aspect used to derive NLS
-	// crop/stretch parameters. The value survives the graph rebuild required by
-	// an output-aspect change.
-	static void SetRuntimeActivePictureAspectRatio(double activeAspectRatio);
-	static void SetRuntimeActivePictureGeometry(const MadVRActivePictureGeometry& geometry);
+	static bool EvaluateNlsMapping(const std::string& ruleName,
+		bool aspectAvailable, double activeAspectRatio,
+		MadVRNlsMappingDecision& decision);
+	// Supplies stable measured geometry for the current renderer generation.
+	// Geometry from a replaced renderer is rejected while the armed request and
+	// output contract remain durable.
+	static bool SetRuntimeActivePictureGeometry(
+		const MadVRActivePictureGeometry& geometry);
 	static void SetRuntimeNlsTargetAspect(double targetAspect);
-	static void SetRuntimeShaderRequest(const std::string& ruleName);
+	static void SetRuntimeShaderSelection(const std::string& requestedRule,
+		const std::string& effectiveRule, MadVRNlsMappingMode nlsMode);
+	static MadVRShaderRuntimeSnapshot GetRuntimeShaderState();
+	static uint64_t BeginRendererGeneration();
 	static bool GetRuleActivationInfo(const std::string& ruleName,
-		std::string& label, std::string& inactiveRule);
+		std::string& label, std::string& inactiveRule, bool& nlsMapping);
 };

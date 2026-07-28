@@ -255,6 +255,9 @@
     <ClInclude Include="ConfigSchema.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ActivePictureTransitionModel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="MainConfigSchema.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -262,6 +265,9 @@
 	  <Filter>Header Files\microsoft_directshow</Filter>
 	</ClInclude>
 	<ClInclude Include="microsoft_directshow\MadVRShaderLoader.h">
+	  <Filter>Header Files\microsoft_directshow</Filter>
+	</ClInclude>
+	<ClInclude Include="microsoft_directshow\MadVRShaderRuntimeState.h">
 	  <Filter>Header Files\microsoft_directshow</Filter>
 	</ClInclude>
   </ItemGroup>
@@ -297,6 +303,9 @@
       <Filter>Source Files\video_frame_formatter</Filter>
     </ClCompile>
     <ClCompile Include="ACaptureDevice.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ActivePictureTransitionModel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ACaptureDeviceDiscoverer.cpp">
@@ -435,6 +444,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
 	<ClCompile Include="microsoft_directshow\MadVRShaderLoader.cpp">
+	  <Filter>Source Files\microsoft_directshow</Filter>
+	</ClCompile>
+	<ClCompile Include="microsoft_directshow\MadVRShaderRuntimeState.cpp">
 	  <Filter>Source Files\microsoft_directshow</Filter>
 	</ClCompile>
   </ItemGroup>

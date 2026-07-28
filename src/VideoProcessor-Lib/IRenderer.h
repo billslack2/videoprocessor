@@ -130,9 +130,11 @@ public:
 	// Select the full output raster or an optional configured screen viewport
 	// (for example a constant-image-height scope screen). Renderers without
 	// screen-profile support return false.
-	virtual bool SetScreenProfile(bool scopeScreen, CString& activeProfile)
+	virtual bool SetScreenProfile(bool scopeScreen, CString& activeProfile,
+		bool& rendererRestartRequired)
 	{
 		activeProfile.Empty();
+		rendererRestartRequired = false;
 		return false;
 	}
 	// Select a named renderer display profile, or "auto" to return to the

@@ -17,6 +17,7 @@
 #include <thread>
 #include <vector>
 
+#include <ActivePictureTransitionModel.h>
 #include <microsoft_directshow/DirectShowDefines.h>
 #include "ALiveSourceVideoOutputPin.h"
 
@@ -388,15 +389,7 @@ private:
 
 	struct ActivePictureDetectorState
 	{
-		double candidateAspectRatio = 0.0;
-		int candidateLeft = 0;
-		int candidateTop = 0;
-		int candidateRight = 0;
-		int candidateBottom = 0;
-		int candidateRasterWidth = 0;
-		int candidateRasterHeight = 0;
-		uint8_t matchingCandidates = 0;
-		uint64_t lastAnalyzedFrame = 0;
+		ActivePictureTransitionModel transition;
 	};
 
 	// Published lock-free for UI/renderer shortcut handling. Detection itself
@@ -414,6 +407,8 @@ private:
 		uint64_t& sceneEventId, uint8_t& eventFramesBack, uint16_t& averageLuma);
 	void UpdateActivePictureAspectRatio(IMediaSample* sample, uint64_t frameNumber,
 		ActivePictureDetectorState& state);
+	void PublishActivePictureTransition(
+		const ActivePictureTransitionDecision& decision);
 	bool RelocateSubtitleInP010(IMediaSample* sample, uint64_t frameNumber);
 	void StartSubtitleAnalysisWorker();
 	void StopSubtitleAnalysisWorker();

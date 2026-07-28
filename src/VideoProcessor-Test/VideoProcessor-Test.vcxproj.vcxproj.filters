@@ -10,6 +10,12 @@
     <ClCompile Include="ConfigFileTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
+    <ClCompile Include="MadVRShaderRuntimeStateTests.cpp">
+      <Filter>Resource Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ActivePictureTransitionModelTests.cpp">
+      <Filter>Resource Files</Filter>
+    </ClCompile>
     <ClCompile Include="LibplaceboOutputPolicyTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>

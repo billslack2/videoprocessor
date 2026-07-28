@@ -55,7 +55,14 @@ DirectShowGenericHDRVideoRenderer::DirectShowGenericHDRVideoRenderer(
 	m_forceVideoTransferMatrix(forceVideoTransferMatrix),
 	m_forceVideoPrimaries(forceVideoPrimaries)
 {
+	m_rendererGeneration = MadVRShaderLoader::BeginRendererGeneration();
+	RestoreRuntimeShaderRequest();
 	callback.OnRendererDetailString(TEXT("DirectShow HDR renderer"));
+	DebugLog::Log(
+		"Shaders: renderer generation %llu created requested=%S mapping=%s",
+		static_cast<unsigned long long>(m_rendererGeneration),
+		static_cast<LPCTSTR>(m_requestedShaderRule),
+		MadVRNlsMappingModeName(m_nlsMappingMode));
 }
 
 
@@ -335,6 +342,10 @@ void DirectShowGenericHDRVideoRenderer::RendererConnect()
 	const MadVRShaderSelection shaderSelection =
 		MadVRShaderLoader::ApplyConfiguredShaders(m_pRenderer, *m_videoState);
 	UpdateActiveShaderSelection(shaderSelection);
+	if (m_requestedRuleUsesNlsMapping)
+		UpdateNlsOsdMode(m_nlsMappingMode);
+	else if (m_requestedShaderRule.CompareNoCase(TEXT("nls_off")) == 0)
+		m_activeShaderRule = TEXT("NLS: Off");
 }
 
 
@@ -356,6 +367,92 @@ void DirectShowGenericHDRVideoRenderer::UpdateActiveShaderSelection(
 }
 
 
+void DirectShowGenericHDRVideoRenderer::RestoreRuntimeShaderRequest()
+{
+	const MadVRShaderRuntimeSnapshot runtime =
+		MadVRShaderLoader::GetRuntimeShaderState();
+	m_nlsMappingMode = runtime.nlsMode;
+	m_nlsTargetAspect = runtime.nlsTargetAspect;
+	if (runtime.requestedRule.empty())
+		return;
+
+	m_requestedShaderRule.Format(TEXT("%S"), runtime.requestedRule.c_str());
+	std::string label;
+	std::string inactiveRule;
+	if (!MadVRShaderLoader::GetRuleActivationInfo(runtime.requestedRule,
+		label, inactiveRule, m_requestedRuleUsesNlsMapping))
+	{
+		m_requestedShaderRule.Empty();
+		m_nlsMappingMode = MadVRNlsMappingMode::OFF;
+		return;
+	}
+	m_requestedShaderLabel.Format(TEXT("%S"), label.c_str());
+	m_inactiveShaderRule.Format(TEXT("%S"), inactiveRule.c_str());
+	m_requestedShaderApplied = false;
+	if (m_requestedRuleUsesNlsMapping)
+		UpdateNlsOsdMode(MadVRNlsMappingMode::WAITING);
+	else if (m_requestedShaderRule.CompareNoCase(TEXT("nls_off")) == 0)
+		m_activeShaderRule = TEXT("NLS: Off");
+}
+
+
+void DirectShowGenericHDRVideoRenderer::UpdateNlsOsdMode(
+	MadVRNlsMappingMode mode)
+{
+	m_nlsMappingMode = mode;
+	switch (mode)
+	{
+	case MadVRNlsMappingMode::ACTIVE:
+		m_activeShaderRule = TEXT("NLS: Active");
+		break;
+	case MadVRNlsMappingMode::SCOPE_PASSTHROUGH:
+		m_activeShaderRule =
+			m_nlsTargetAspect > 2.2 ?
+			TEXT("NLS: Scope passthrough") :
+			TEXT("NLS: Linear passthrough");
+		break;
+	case MadVRNlsMappingMode::WAITING:
+		m_activeShaderRule = TEXT("NLS: Waiting");
+		break;
+	case MadVRNlsMappingMode::OFF:
+	default:
+		m_activeShaderRule = TEXT("NLS: Off");
+		break;
+	}
+}
+
+
+bool DirectShowGenericHDRVideoRenderer::DoesOutputAspectRequireRestart(
+	unsigned long desiredAspectX, unsigned long desiredAspectY) const
+{
+	if (!m_videoState || !m_videoState->displayMode)
+	{
+		return MadVROutputAspectRequiresRestart(
+			m_outputAspectRatioX, m_outputAspectRatioY,
+			desiredAspectX, desiredAspectY, 0.0);
+	}
+	const double nativeAspect =
+		static_cast<double>(m_videoState->displayMode->FrameWidth()) /
+		std::max<long>(1, m_videoState->displayMode->FrameHeight());
+	return MadVROutputAspectRequiresRestart(
+		m_outputAspectRatioX, m_outputAspectRatioY,
+		desiredAspectX, desiredAspectY, nativeAspect);
+}
+
+
+MadVRActivePictureGeometry
+DirectShowGenericHDRVideoRenderer::MakeRuntimeGeometry(
+	const ActivePictureRectangle& rectangle) const
+{
+	return { rectangle.aspectRatio,
+		static_cast<double>(rectangle.left) / rectangle.rasterWidth,
+		static_cast<double>(rectangle.top) / rectangle.rasterHeight,
+		static_cast<double>(rectangle.right) / rectangle.rasterWidth,
+		static_cast<double>(rectangle.bottom) / rectangle.rasterHeight,
+		rectangle.generation, m_rendererGeneration, true };
+}
+
+
 bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName,
 	CString& activeRule, bool& rendererRestartRequired)
 {
@@ -366,8 +463,9 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 	CT2A ruleUtf8(ruleName, CP_UTF8);
 	std::string label;
 	std::string inactiveRule;
+	bool nlsMapping = false;
 	if (!MadVRShaderLoader::GetRuleActivationInfo(std::string(ruleUtf8),
-		label, inactiveRule))
+		label, inactiveRule, nlsMapping))
 		return false;
 	if (m_requestedShaderRule.CompareNoCase(ruleName) == 0)
 	{
@@ -379,24 +477,79 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 	m_requestedShaderRule = ruleName;
 	m_requestedShaderLabel.Format(TEXT("%S"), label.c_str());
 	m_inactiveShaderRule.Format(TEXT("%S"), inactiveRule.c_str());
-	MadVRShaderLoader::SetRuntimeShaderRequest(std::string(ruleUtf8));
+	m_requestedRuleUsesNlsMapping = nlsMapping;
 
 	ActivePictureRectangle activeRectangle;
 	const bool aspectAvailable = GetActivePictureRectangle(activeRectangle);
 	const double activeAspectRatio = activeRectangle.aspectRatio;
+	if (nlsMapping)
+	{
+		MadVRNlsMappingDecision decision;
+		if (!MadVRShaderLoader::EvaluateNlsMapping(std::string(ruleUtf8),
+			aspectAvailable, activeAspectRatio, decision))
+			return false;
+		MadVRShaderLoader::SetRuntimeShaderSelection(
+			std::string(ruleUtf8), std::string(ruleUtf8), decision.mode);
+		if (decision.mode == MadVRNlsMappingMode::ACTIVE ||
+			decision.mode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH)
+		{
+			if (!MadVRShaderLoader::SetRuntimeActivePictureGeometry(
+				MakeRuntimeGeometry(activeRectangle)))
+				return false;
+		}
+		const MadVRShaderSelection selection =
+			MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer,
+				*m_videoState, std::string(ruleUtf8));
+		UpdateActiveShaderSelection(selection);
+		m_nlsTargetAspect = decision.targetAspect;
+		UpdateNlsOsdMode(decision.mode);
+		m_requestedShaderApplied =
+			decision.mode == MadVRNlsMappingMode::ACTIVE ||
+			decision.mode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH;
+		m_appliedShaderAspectRatio =
+			m_requestedShaderApplied ? activeAspectRatio : 0.0;
+		m_appliedActivePictureGeneration =
+			m_requestedShaderApplied ? activeRectangle.generation : 0;
+		m_appliedScreenProfileGeneration = m_screenProfileGeneration;
+		activeRule = m_activeShaderRule;
+		rendererRestartRequired = DoesOutputAspectRequireRestart(
+			selection.outputAspectRatioX, selection.outputAspectRatioY);
+		DebugLog::Log(
+			"Shaders: NLS mapping change requested=%s effective=%s mapping=%s rect=%d,%d-%d,%d active_generation=%llu source=%.4f target=%.4f renderer_generation=%llu reason=\"%s\" renderer_restart=%d",
+			static_cast<const char*>(ruleUtf8),
+			selection.ruleName.c_str(),
+			MadVRNlsMappingModeName(decision.mode),
+			aspectAvailable ? activeRectangle.left : 0,
+			aspectAvailable ? activeRectangle.top : 0,
+			aspectAvailable ? activeRectangle.right : 0,
+			aspectAvailable ? activeRectangle.bottom : 0,
+			static_cast<unsigned long long>(
+				aspectAvailable ? activeRectangle.generation : 0),
+			decision.sourceAspect, decision.targetAspect,
+			static_cast<unsigned long long>(m_rendererGeneration),
+			decision.reason.c_str(), rendererRestartRequired ? 1 : 0);
+		return !selection.ruleName.empty();
+	}
+
+	MadVRShaderLoader::SetRuntimeShaderSelection(
+		std::string(ruleUtf8), std::string(ruleUtf8),
+		MadVRNlsMappingMode::OFF);
 	std::string reason;
 	if (!MadVRShaderLoader::ValidateActivePictureAspect(std::string(ruleUtf8),
 		aspectAvailable, activeAspectRatio, reason))
 	{
 		if (!inactiveRule.empty())
 		{
+			MadVRShaderLoader::SetRuntimeShaderSelection(
+				std::string(ruleUtf8), inactiveRule,
+				MadVRNlsMappingMode::OFF);
 			const MadVRShaderSelection bypassSelection =
 				MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer,
 					*m_videoState, inactiveRule, false);
 			UpdateActiveShaderSelection(bypassSelection);
-			rendererRestartRequired =
-				bypassSelection.outputAspectRatioX != m_outputAspectRatioX ||
-				bypassSelection.outputAspectRatioY != m_outputAspectRatioY;
+			rendererRestartRequired = DoesOutputAspectRequireRestart(
+				bypassSelection.outputAspectRatioX,
+				bypassSelection.outputAspectRatioY);
 		}
 		m_requestedShaderApplied = false;
 		m_appliedShaderAspectRatio = 0.0;
@@ -408,12 +561,6 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		return true;
 	}
 
-	MadVRShaderLoader::SetRuntimeActivePictureGeometry({ activeAspectRatio,
-		static_cast<double>(activeRectangle.left) / activeRectangle.rasterWidth,
-		static_cast<double>(activeRectangle.top) / activeRectangle.rasterHeight,
-		static_cast<double>(activeRectangle.right) / activeRectangle.rasterWidth,
-		static_cast<double>(activeRectangle.bottom) / activeRectangle.rasterHeight,
-		activeRectangle.generation, true });
 	const MadVRShaderSelection selection =
 		MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer, *m_videoState,
 			std::string(ruleUtf8));
@@ -423,9 +570,13 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 	m_appliedActivePictureGeneration = activeRectangle.generation;
 	m_appliedScreenProfileGeneration = m_screenProfileGeneration;
 	activeRule = m_activeShaderRule;
-	rendererRestartRequired =
-		selection.outputAspectRatioX != m_outputAspectRatioX ||
-		selection.outputAspectRatioY != m_outputAspectRatioY;
+	if (m_requestedShaderRule.CompareNoCase(TEXT("nls_off")) == 0)
+	{
+		UpdateNlsOsdMode(MadVRNlsMappingMode::OFF);
+		activeRule = m_activeShaderRule;
+	}
+	rendererRestartRequired = DoesOutputAspectRequireRestart(
+		selection.outputAspectRatioX, selection.outputAspectRatioY);
 	return !selection.ruleName.empty();
 }
 
@@ -442,6 +593,100 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 	ActivePictureRectangle activeRectangle;
 	const bool aspectAvailable = GetActivePictureRectangle(activeRectangle);
 	const double activeAspectRatio = activeRectangle.aspectRatio;
+	if (m_requestedRuleUsesNlsMapping)
+	{
+		MadVRNlsMappingDecision decision;
+		if (!MadVRShaderLoader::EvaluateNlsMapping(
+			std::string(requestedUtf8), aspectAvailable,
+			activeAspectRatio, decision))
+			return false;
+		if (decision.mode == MadVRNlsMappingMode::WAITING)
+		{
+			if (m_nlsMappingMode == MadVRNlsMappingMode::WAITING)
+			{
+				UpdateNlsOsdMode(MadVRNlsMappingMode::WAITING);
+				return false;
+			}
+
+			// A clear high-confidence transition withdraws stale geometry before
+			// the replacement rectangle is confirmed. Keep the armed output
+			// contract, but temporarily remove the NLS shader so stale crop/
+			// stretch parameters cannot visibly damage the new scene.
+			MadVRShaderLoader::SetRuntimeShaderSelection(
+				std::string(requestedUtf8), std::string(requestedUtf8),
+				MadVRNlsMappingMode::WAITING);
+			const MadVRShaderSelection waitingSelection =
+				MadVRShaderLoader::ApplyConfiguredShaderRule(
+					m_pRenderer, *m_videoState,
+					std::string(requestedUtf8), false);
+			UpdateActiveShaderSelection(waitingSelection);
+			UpdateNlsOsdMode(MadVRNlsMappingMode::WAITING);
+			m_requestedShaderApplied = false;
+			m_appliedShaderAspectRatio = 0.0;
+			m_appliedActivePictureGeneration = 0;
+			m_appliedScreenProfileGeneration = m_screenProfileGeneration;
+			activeRule = m_activeShaderRule;
+			rendererRestartRequired = false;
+			DebugLog::Log(
+				"Shaders: NLS mapping change requested=%s effective=%s "
+				"mapping=waiting active_generation=%llu "
+				"renderer_generation=%llu reason=\"transition geometry "
+				"is not stable; safe passthrough\" renderer_restart=0",
+				static_cast<const char*>(requestedUtf8),
+				waitingSelection.ruleName.c_str(),
+				static_cast<unsigned long long>(
+					activeRectangle.generation),
+				static_cast<unsigned long long>(m_rendererGeneration));
+			return true;
+		}
+		const bool mappingChanged = decision.mode != m_nlsMappingMode ||
+			!m_requestedShaderApplied ||
+			std::abs(activeAspectRatio - m_appliedShaderAspectRatio) > 0.01 ||
+			activeRectangle.generation != m_appliedActivePictureGeneration ||
+			m_screenProfileGeneration != m_appliedScreenProfileGeneration;
+		if (!mappingChanged)
+			return false;
+
+		const MadVRActivePictureGeometry geometry =
+			MakeRuntimeGeometry(activeRectangle);
+		if (!MadVRShaderLoader::SetRuntimeActivePictureGeometry(geometry))
+		{
+			DebugLog::Log(
+				"Shaders: rejected NLS geometry from stale renderer generation active_generation=%llu renderer_generation=%llu",
+				static_cast<unsigned long long>(activeRectangle.generation),
+				static_cast<unsigned long long>(m_rendererGeneration));
+			return false;
+		}
+		MadVRShaderLoader::SetRuntimeShaderSelection(
+			std::string(requestedUtf8), std::string(requestedUtf8),
+			decision.mode);
+		const MadVRShaderSelection selection =
+			MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer,
+				*m_videoState, std::string(requestedUtf8), false);
+		UpdateActiveShaderSelection(selection);
+		m_nlsTargetAspect = decision.targetAspect;
+		UpdateNlsOsdMode(decision.mode);
+		m_requestedShaderApplied = true;
+		m_appliedShaderAspectRatio = activeAspectRatio;
+		m_appliedActivePictureGeneration = activeRectangle.generation;
+		m_appliedScreenProfileGeneration = m_screenProfileGeneration;
+		activeRule = m_activeShaderRule;
+		rendererRestartRequired = DoesOutputAspectRequireRestart(
+			selection.outputAspectRatioX, selection.outputAspectRatioY);
+		DebugLog::Log(
+			"Shaders: NLS mapping change requested=%s effective=%s mapping=%s rect=%d,%d-%d,%d active_generation=%llu source=%.4f target=%.4f renderer_generation=%llu reason=\"%s\" renderer_restart=%d",
+			static_cast<const char*>(requestedUtf8),
+			selection.ruleName.c_str(),
+			MadVRNlsMappingModeName(decision.mode),
+			activeRectangle.left, activeRectangle.top,
+			activeRectangle.right, activeRectangle.bottom,
+			static_cast<unsigned long long>(activeRectangle.generation),
+			decision.sourceAspect, decision.targetAspect,
+			static_cast<unsigned long long>(m_rendererGeneration),
+			decision.reason.c_str(), rendererRestartRequired ? 1 : 0);
+		return true;
+	}
+
 	std::string reason;
 	const bool shouldApply = MadVRShaderLoader::ValidateActivePictureAspect(
 		std::string(requestedUtf8), aspectAvailable, activeAspectRatio, reason);
@@ -462,12 +707,8 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 	if (shouldApply)
 	{
 		ruleToApply = std::string(requestedUtf8);
-		MadVRShaderLoader::SetRuntimeActivePictureGeometry({ activeAspectRatio,
-			static_cast<double>(activeRectangle.left) / activeRectangle.rasterWidth,
-			static_cast<double>(activeRectangle.top) / activeRectangle.rasterHeight,
-			static_cast<double>(activeRectangle.right) / activeRectangle.rasterWidth,
-			static_cast<double>(activeRectangle.bottom) / activeRectangle.rasterHeight,
-			activeRectangle.generation, true });
+		MadVRShaderLoader::SetRuntimeActivePictureGeometry(
+			MakeRuntimeGeometry(activeRectangle));
 	}
 	else
 	{
@@ -493,9 +734,8 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		m_activeShaderRule.Format(TEXT("%s (Waiting)"),
 			static_cast<LPCTSTR>(m_requestedShaderLabel));
 	activeRule = m_activeShaderRule;
-	rendererRestartRequired =
-		selection.outputAspectRatioX != m_outputAspectRatioX ||
-		selection.outputAspectRatioY != m_outputAspectRatioY;
+	rendererRestartRequired = DoesOutputAspectRequireRestart(
+		selection.outputAspectRatioX, selection.outputAspectRatioY);
 	DebugLog::Log("Shaders: armed rule \"%s\" %s at active aspect %.4f%s%s",
 		static_cast<const char*>(requestedUtf8),
 		shouldApply ? "engaged" : "bypassed",
@@ -506,16 +746,27 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 }
 
 bool DirectShowGenericHDRVideoRenderer::SetScreenProfile(bool scopeScreen,
-	CString& activeProfile)
+	CString& activeProfile, bool& rendererRestartRequired)
 {
-	MadVRShaderLoader::SetRuntimeNlsTargetAspect(scopeScreen ? 2.35 : 16.0 / 9.0);
+	rendererRestartRequired = false;
+	m_nlsTargetAspect = scopeScreen ? 2.35 : 16.0 / 9.0;
+	MadVRShaderLoader::SetRuntimeNlsTargetAspect(m_nlsTargetAspect);
 	activeProfile = scopeScreen ? TEXT("Scope (2.35:1)") : TEXT("Normal (16:9)");
 	++m_screenProfileGeneration;
 	if (m_requestedShaderRule.IsEmpty())
 		return true;
 	CString activeRule = m_activeShaderRule;
-	bool rendererRestartRequired = false;
-	return RefreshShaderRule(activeRule, rendererRestartRequired);
+	bool mappingRestartRequired = false;
+	RefreshShaderRule(activeRule, mappingRestartRequired);
+	unsigned long desiredAspectX = 0;
+	unsigned long desiredAspectY = 0;
+	rendererRestartRequired = mappingRestartRequired ||
+		(m_requestedRuleUsesNlsMapping &&
+			MadVRShaderLoader::GetRuntimeOutputAspectRatio(
+				desiredAspectX, desiredAspectY) &&
+			DoesOutputAspectRequireRestart(
+				desiredAspectX, desiredAspectY));
+	return true;
 }
 
 
