@@ -377,8 +377,14 @@ Renderer-switch manual evidence and follow-up:
 - previously silent Alpha video-state, queue-resize, and render-failure drop
   paths now publish bounded reason records at the first and power-of-two
   occurrences, avoiding per-frame log spam;
-- Debug x64 GUI and Alpha plugin builds passed. This diagnostic commit has not
-  yet been deployed.
+- Debug x64 GUI and Alpha plugin builds passed;
+- clean x64 Release GUI and Alpha plugin rebuilds passed with
+  `VERSION_DIRTY=false`, and diagnostic commit `e18a2f7` was deployed for
+  manual testing;
+- replaced binaries were backed up under
+  `C:\Videoprocessor\vp\backup-before-vp0039-drop-diagnostics-20260728-160421`;
+  all deployed hashes matched their Release artifacts and
+  `VideoProcessor.cfg` remained byte-for-byte unchanged.
 
 ## Verification
 
