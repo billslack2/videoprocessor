@@ -280,4 +280,3 @@ invent behavior to fill a documentation gap.
 
 Blocked on completion of VP-0045 so the canonical public namespace and section
 ordering are stable before the rewrite begins.
-
