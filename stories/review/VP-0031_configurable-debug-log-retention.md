@@ -2,9 +2,11 @@
 
 ## Status
 
-In progress on `codex/vp-0030-0031-debug-log-retention`, based on the current
-default integration branch `v1.1.014-beta`. The branch includes VP-0030 as the
-required fixed-retention engine before adding configuration.
+Review. Implemented by commit `e016e1f` on
+`codex/vp-0030-0031-debug-log-retention`, based on the current default
+integration branch `v1.1.014-beta`. The branch includes VP-0030 as the required
+fixed-retention engine. Pull request:
+https://github.com/billslack2/videoprocessor/pull/14.
 
 ## User story
 
@@ -35,6 +37,22 @@ Before implementation, choose and document:
 The initial expectation is a startup-only setting with a conservative bounded
 range and clear log output showing the resolved retention count.
 
+## Resolved design
+
+- File/section/key: `VideoProcessor.cfg`, `[logging]`,
+  `debug_log_retention`.
+- Semantics: total VP log files including the active log.
+- Allowed range: `1` through `100`; the default is `10`.
+- Zero is invalid. It does not disable rotation. A value of `1` retains only
+  the active log.
+- Omitted, invalid, out-of-range, duplicate, or unreadable values resolve to
+  the default of `10`. Duplicate logging warnings are non-fatal; unrelated
+  configuration syntax warnings retain their existing strict behavior.
+- The setting is read once before logger rotation at process startup and is
+  not dynamically reloaded.
+- The resolved count and its source/default reason are written once in the
+  startup diagnostics when the log destination is writable.
+
 ## Implementation and verification
 
 1. Reuse VP-0030's filename matcher and retention engine. Do not duplicate
@@ -54,3 +72,15 @@ range and clear log output showing the resolved retention count.
 - Omitted configuration preserves the VP-0030 default of ten total files.
 - Invalid values safely resolve to the documented default or rejection behavior.
 - Rotation remains non-fatal and cannot delete unrelated files.
+
+## Implementation evidence
+
+- Configuration resolution passes one validated count into the VP-0030 engine;
+  configuration code contains no delete or pruning logic.
+- The sample configuration and HTML reference document the startup-only
+  setting, full allowed range, default/error behavior, exact log location, and
+  missing-directory behavior.
+- Debug x64 test and GUI projects build with VS 18 MSBuild.
+- Twelve focused VS 2019 C++ unit tests pass, including default/valid/invalid
+  configuration, schema ownership, missing-directory behavior, failure
+  recovery, and every supported retention count from `1` through `100`.

@@ -2,8 +2,10 @@
 
 ## Status
 
-In progress on `codex/vp-0030-0031-debug-log-retention`, based on the current
-default integration branch `v1.1.014-beta`.
+Review. Implemented by commit `e016e1f` on
+`codex/vp-0030-0031-debug-log-retention`, based on the current default
+integration branch `v1.1.014-beta`. Pull request:
+https://github.com/billslack2/videoprocessor/pull/14.
 
 ## User story
 
@@ -92,3 +94,16 @@ separate follow-up for making it configurable.
 - Rotation failures are non-fatal and diagnosable.
 - No unrelated file can be deleted by retention pruning.
 - The count is intentionally fixed; configuration belongs only to VP-0031.
+
+## Implementation evidence
+
+- The shared matcher/rotation engine archives non-empty active logs with
+  sortable timestamps and deterministic numeric collision suffixes.
+- Pruning occurs only after the active file is writable and only for exact
+  matcher results. Archive/prune failures are non-fatal and diagnostic.
+- The path is derived from the main executable as `logs\vp_debug.log`. A
+  missing directory is not created and disables logging without a fallback.
+- Debug x64 test and GUI projects build with VS 18 MSBuild.
+- Focused VS 2019 C++ unit tests cover first run, collision handling, missing
+  directory, archive/prune failures, exact matching, newest-file retention,
+  and protection of unrelated files.

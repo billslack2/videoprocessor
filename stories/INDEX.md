@@ -54,8 +54,8 @@ they must not contain requirements that are absent from this file.
 | VP-0021 | Backlog | Renderer format negotiation parity and truthful capability reporting |
 | VP-0022 | Backlog | DeckLink encoded-format boundary and diagnostics |
 | VP-0023 | Backlog | P010 range metadata contract and conversion regression tests |
-| VP-0030 | Backlog | Rotate debug logs with a fixed default retention of ten files |
-| VP-0031 | Backlog | Make debug-log retention configurable |
+| VP-0030 | Review | Rotate debug logs with a fixed default retention of ten files |
+| VP-0031 | Review | Make debug-log retention configurable |
 | VP-0032 | Backlog | Alpha renderer field-aware GPU deinterlacing |
 | VP-0033 | Backlog | Alpha renderer libplacebo frame-mixing smooth motion |
 | VP-0034 | In Progress | Restart-free mixed-aspect NLS |
