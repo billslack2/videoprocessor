@@ -21,6 +21,13 @@ pre-existing missing generated `src/VideoProcessor-GUI/version.h`; manual
 hardware playback, fullscreen transitions, and diagnostic-log verification
 remain pending.
 
+Deployment (2026-07-28): Debug runtime artifacts from the VP-0037 worktree
+were deployed to `C:\Videoprocessor\vp` for live validation: `VideoProcessor.exe`,
+`VideoProcessor-GUI.pdb`, and the two `libplacebo\VideoProcessorLibplacebo.*`
+files. No configuration file was changed. The replaced artifacts are backed up
+at `C:\Videoprocessor\vp\backup-before-vp0037-20260727-221904`; SHA-256 hashes
+were verified after copy.
+
 ## User story
 
 As an Alpha renderer user, I want video to remain visible and stable inside
