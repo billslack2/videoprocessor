@@ -28,6 +28,13 @@ files. No configuration file was changed. The replaced artifacts are backed up
 at `C:\Videoprocessor\vp\backup-before-vp0037-20260727-221904`; SHA-256 hashes
 were verified after copy.
 
+Startup correction (2026-07-28): the initial deployed Debug build exposed an
+MFC assertion before Alpha initialization because `WindowedVideoWindow::ShowLogo`
+called `Invalidate` before its control HWND existed. Commit `5335146` guards
+that repaint and the rebuilt GUI executable/PDB were deployed after backing up
+their prior VP-0037 versions at
+`C:\Videoprocessor\vp\backup-before-vp0037-startup-guard-20260727-222143`.
+
 ## User story
 
 As an Alpha renderer user, I want video to remain visible and stable inside
