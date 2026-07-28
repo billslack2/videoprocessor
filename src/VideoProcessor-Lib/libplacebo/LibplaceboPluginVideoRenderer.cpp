@@ -298,6 +298,12 @@ bool LibplaceboPluginVideoRenderer::GetSceneTimingStatus(CString& status) const
 	return m_renderer->GetSceneTimingStatus(status);
 }
 
+bool LibplaceboPluginVideoRenderer::GetSceneTimingDueStatus(
+	int& action, CString& reason) const
+{
+	return m_renderer->GetSceneTimingDueStatus(action, reason);
+}
+
 
 bool LibplaceboPluginVideoRenderer::SetScreenProfile(
 	bool scopeScreen,

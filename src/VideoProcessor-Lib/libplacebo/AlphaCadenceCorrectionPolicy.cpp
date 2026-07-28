@@ -63,6 +63,11 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 			: (input.presentationEvidence != AlphaPresentationEvidence::Stable
 				? AlphaCadenceTimingStatus::WaitingForDxgi
 				: AlphaCadenceTimingStatus::Measuring);
+		decision.blockReason = !input.enabled
+			? AlphaCadenceBlockReason::Disabled
+			: (input.presentationEvidence != AlphaPresentationEvidence::Stable
+				? AlphaCadenceBlockReason::PresentationEvidenceUnavailable
+				: AlphaCadenceBlockReason::InvalidRates);
 		return decision;
 	}
 
@@ -94,6 +99,8 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 		m_lastVerificationValid = false;
 		decision.phaseFrames = m_phaseFrames;
 		decision.timingStatus = AlphaCadenceTimingStatus::Incompatible;
+		decision.blockReason =
+			AlphaCadenceBlockReason::RateMismatchTooLarge;
 		return decision;
 	}
 
@@ -120,6 +127,8 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 		++m_stableSamples;
 		decision.phaseFrames = m_phaseFrames;
 		decision.timingStatus = AlphaCadenceTimingStatus::Measuring;
+		decision.blockReason =
+			AlphaCadenceBlockReason::StabilizingRates;
 		return decision;
 	}
 
@@ -157,14 +166,14 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 			m_predictionDirection == AlphaCadenceAction::Drop
 				? ACTION_PHASE_FRAMES : -ACTION_PHASE_FRAMES;
 		const double correctionFrames =
-			std::max(0.0, (correctionPhase - m_phaseFrames) / phasePerFrame);
+			(correctionPhase - m_phaseFrames) / phasePerFrame;
 		decision.secondsUntilCorrection =
 			correctionFrames / input.captureRateHz;
 		const double planPhase =
 			m_predictionDirection == AlphaCadenceAction::Drop
 				? PLAN_PHASE_FRAMES : -PLAN_PHASE_FRAMES;
 		const double planFrames =
-			std::max(0.0, (planPhase - m_phaseFrames) / phasePerFrame);
+			(planPhase - m_phaseFrames) / phasePerFrame;
 		decision.secondsUntilPlan = planFrames / input.captureRateHz;
 		decision.predictionValid =
 			std::isfinite(decision.secondsUntilCorrection) &&
@@ -177,17 +186,6 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 			: (decision.predictionValid
 				? AlphaCadenceTimingStatus::Forecasting
 				: AlphaCadenceTimingStatus::Matched));
-	if (m_cooldownFrames > 0)
-	{
-		--m_cooldownFrames;
-		decision.phaseFrames = m_phaseFrames;
-		return decision;
-	}
-	if (m_verificationPending)
-	{
-		decision.phaseFrames = m_phaseFrames;
-		return decision;
-	}
 
 	const AlphaCadenceAction requested =
 		m_phaseFrames >= ACTION_PHASE_FRAMES
@@ -195,22 +193,69 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 			: (m_phaseFrames <= -ACTION_PHASE_FRAMES
 				? AlphaCadenceAction::Repeat
 				: AlphaCadenceAction::None);
+	decision.due = requested != AlphaCadenceAction::None;
 	decision.planned = std::abs(m_phaseFrames) >= PLAN_PHASE_FRAMES;
+
+	if (m_cooldownFrames > 0)
+	{
+		--m_cooldownFrames;
+		decision.phaseFrames = m_phaseFrames;
+		decision.blockReason = AlphaCadenceBlockReason::Cooldown;
+		return decision;
+	}
+	if (m_verificationPending)
+	{
+		decision.phaseFrames = m_phaseFrames;
+		decision.blockReason =
+			AlphaCadenceBlockReason::VerificationPending;
+		return decision;
+	}
+
 	if (decision.planned)
 		++m_plannedFrames;
 	else
 		m_plannedFrames = 0;
 
-	const size_t desired = std::max<size_t>(1, input.desiredQueueDepth);
-	const bool debtAndQueueAgree =
-		requested == AlphaCadenceAction::Drop
-			? input.queueDepth > desired && input.presentationDebt > 0
-			: (requested == AlphaCadenceAction::Repeat
-				? input.queueDepth < desired && input.presentationDebt == 0
-				: false);
-	if (!debtAndQueueAgree)
+	if (requested == AlphaCadenceAction::None)
 	{
 		decision.phaseFrames = m_phaseFrames;
+		decision.blockReason = decision.predictionValid
+			? AlphaCadenceBlockReason::BeforeDeadline
+			: AlphaCadenceBlockReason::NoActionableMismatch;
+		return decision;
+	}
+
+	const size_t desired = std::max<size_t>(1, input.desiredQueueDepth);
+	if (requested == AlphaCadenceAction::Drop &&
+		input.queueDepth <= desired)
+	{
+		decision.phaseFrames = m_phaseFrames;
+		decision.blockReason =
+			AlphaCadenceBlockReason::DropQueueNotAboveDesired;
+		return decision;
+	}
+	if (requested == AlphaCadenceAction::Repeat &&
+		input.queueDepth >= desired)
+	{
+		decision.phaseFrames = m_phaseFrames;
+		decision.blockReason =
+			AlphaCadenceBlockReason::RepeatQueueNotBelowDesired;
+		return decision;
+	}
+	if (requested == AlphaCadenceAction::Drop &&
+		input.presentationDebt == 0)
+	{
+		decision.phaseFrames = m_phaseFrames;
+		decision.blockReason =
+			AlphaCadenceBlockReason::DropPresentationDebtMissing;
+		return decision;
+	}
+	if (requested == AlphaCadenceAction::Repeat &&
+		input.presentationDebt != 0)
+	{
+		decision.phaseFrames = m_phaseFrames;
+		decision.blockReason =
+			AlphaCadenceBlockReason::RepeatPresentationDebtPresent;
 		return decision;
 	}
 
@@ -223,10 +268,19 @@ AlphaCadenceCorrectionDecision AlphaCadenceCorrectionPolicy::Evaluate(
 		m_plannedFrames >= fallbackFrames &&
 		(requested == AlphaCadenceAction::Repeat ||
 			input.oldestQueuedAgeMs >= MAXIMUM_QUEUE_AGE_MS);
-	if (requested == AlphaCadenceAction::None ||
-		(!sceneAuthorized && !deadlineAuthorized))
+	if (!sceneAuthorized && !deadlineAuthorized)
 	{
 		decision.phaseFrames = m_phaseFrames;
+		if (m_plannedFrames < fallbackFrames)
+			decision.blockReason =
+				AlphaCadenceBlockReason::FallbackNotMature;
+		else if (requested == AlphaCadenceAction::Drop &&
+			input.oldestQueuedAgeMs < MAXIMUM_QUEUE_AGE_MS)
+			decision.blockReason =
+				AlphaCadenceBlockReason::DropFallbackQueueTooYoung;
+		else
+			decision.blockReason =
+				AlphaCadenceBlockReason::WaitingForFreshScene;
 		return decision;
 	}
 

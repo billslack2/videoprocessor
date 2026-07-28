@@ -297,6 +297,15 @@ public:
 		status.Empty();
 		return false;
 	}
+	// Optional due-but-blocked detail. This is separate from the prediction so
+	// a renderer can preserve fail-closed authorization while publishing the
+	// exact gate currently withholding the predicted action.
+	virtual bool GetSceneTimingDueStatus(int& action, CString& reason) const
+	{
+		action = 0;
+		reason.Empty();
+		return false;
+	}
 
 	// Get conversion performance metrics (if available from the video frame formatter)
 	// Returns true if data is available, false if no conversion or no performance tracking

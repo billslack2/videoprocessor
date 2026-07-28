@@ -5212,6 +5212,7 @@ void LibplaceboVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 			std::memory_order_release);
 		m_sceneTimingRateSamples.store(0, std::memory_order_release);
 		m_sceneTimingMismatchPpm.store(0.0, std::memory_order_release);
+		m_sceneCorrectionDueState.store(0, std::memory_order_release);
 		DebugLog::Log("libplacebo scene detection %s", enabled ? "enabled" : "disabled");
 	}
 }
@@ -5283,6 +5284,15 @@ bool LibplaceboVideoRenderer::SceneTimingRatesCompatible() const
 
 bool LibplaceboVideoRenderer::GetSceneTimingStatus(CString& status) const
 {
+	int dueAction = 0;
+	CString dueReason;
+	if (GetSceneTimingDueStatus(dueAction, dueReason))
+	{
+		status.Format(TEXT("Due - %s"),
+			static_cast<LPCTSTR>(dueReason));
+		return true;
+	}
+
 	const AlphaCadenceTimingStatus timingStatus =
 		static_cast<AlphaCadenceTimingStatus>(
 			m_sceneTimingStatus.load(std::memory_order_acquire));
@@ -5311,6 +5321,59 @@ bool LibplaceboVideoRenderer::GetSceneTimingStatus(CString& status) const
 		break;
 	default:
 		status = TEXT("Rate mismatch unavailable");
+		break;
+	}
+	return true;
+}
+
+bool LibplaceboVideoRenderer::GetSceneTimingDueStatus(
+	int& action, CString& reason) const
+{
+	const uint32_t dueState =
+		m_sceneCorrectionDueState.load(std::memory_order_acquire);
+	const uint32_t actionCode = dueState & 0x3U;
+	action = actionCode == 2U ? 1 : (actionCode == 1U ? -1 : 0);
+	const AlphaCadenceBlockReason blockReason =
+		static_cast<AlphaCadenceBlockReason>(
+			dueState >> 2);
+	if (action == 0 || blockReason == AlphaCadenceBlockReason::None)
+	{
+		action = 0;
+		reason.Empty();
+		return false;
+	}
+
+	switch (blockReason)
+	{
+	case AlphaCadenceBlockReason::Cooldown:
+		reason = TEXT("cooldown");
+		break;
+	case AlphaCadenceBlockReason::VerificationPending:
+		reason = TEXT("verification");
+		break;
+	case AlphaCadenceBlockReason::DropQueueNotAboveDesired:
+		reason = TEXT("queue not above target");
+		break;
+	case AlphaCadenceBlockReason::RepeatQueueNotBelowDesired:
+		reason = TEXT("queue not below target");
+		break;
+	case AlphaCadenceBlockReason::DropPresentationDebtMissing:
+		reason = TEXT("presentation debt missing");
+		break;
+	case AlphaCadenceBlockReason::RepeatPresentationDebtPresent:
+		reason = TEXT("presentation debt");
+		break;
+	case AlphaCadenceBlockReason::WaitingForFreshScene:
+		reason = TEXT("fresh scene");
+		break;
+	case AlphaCadenceBlockReason::FallbackNotMature:
+		reason = TEXT("fallback window");
+		break;
+	case AlphaCadenceBlockReason::DropFallbackQueueTooYoung:
+		reason = TEXT("queued frame age");
+		break;
+	default:
+		reason = TEXT("timing gate");
 		break;
 	}
 	return true;
@@ -5768,6 +5831,20 @@ void LibplaceboVideoRenderer::RenderLoop()
 			m_sceneTimingMismatchPpm.store(
 				correctionDecision.filteredMismatchPpm,
 				std::memory_order_release);
+			const uint32_t dueAction =
+				correctionDecision.predictedAction ==
+					AlphaCadenceAction::Repeat ? 2U :
+				(correctionDecision.predictedAction ==
+					AlphaCadenceAction::Drop ? 1U : 0U);
+			const uint32_t dueState =
+				correctionDecision.due &&
+				correctionDecision.blockReason !=
+					AlphaCadenceBlockReason::None
+				? (static_cast<uint32_t>(
+					correctionDecision.blockReason) << 2) | dueAction
+				: 0U;
+			m_sceneCorrectionDueState.store(
+				dueState, std::memory_order_release);
 			if (correctionDecision.verificationCompleted)
 			{
 				DebugLog::Log(

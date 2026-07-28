@@ -51,6 +51,7 @@ public:
 		double& secondsFromDeadline, uint64_t& correctionTick) const override;
 	bool SceneTimingRatesCompatible() const override;
 	bool GetSceneTimingStatus(CString& status) const override;
+	bool GetSceneTimingDueStatus(int& action, CString& reason) const override;
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile,
 		bool& rendererRestartRequired) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
@@ -139,6 +140,9 @@ private:
 	std::atomic<int> m_sceneTimingStatus{0};
 	std::atomic<uint32_t> m_sceneTimingRateSamples{0};
 	std::atomic<double> m_sceneTimingMismatchPpm{0.0};
+	// One coherent due/action/reason snapshot: low two bits encode action
+	// (1=drop, 2=repeat), remaining bits encode AlphaCadenceBlockReason.
+	std::atomic<uint32_t> m_sceneCorrectionDueState{0};
 	std::atomic<int> m_sceneDetectionStatus{0};
 	std::atomic<uint64_t> m_frameCounter{0};
 	std::atomic<uint64_t> m_sourceSequence{0};
