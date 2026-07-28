@@ -2,14 +2,12 @@
 
 ## Status
 
-Backlog as of 2026-07-27. This story defines the configuration and runtime
-contract required to make the selected `[profiles.viewport.*]` profile the
-single source of truth inside VP for physical-screen geometry, subtitle
+In progress as of 2026-07-27. Implementation is starting on
+`codex/vp-0038-generic-viewport`, based on the current GitHub default
+integration branch `v1.1.014-beta`. This story defines the configuration and
+runtime contract required to make the selected `[profiles.viewport.*]` profile
+the single source of truth inside VP for physical-screen geometry, subtitle
 fitting, and screen-aware NLS configuration.
-
-No implementation branch or base has been selected. Before implementation,
-perform the tracker implementation-branch gate and confirm the current VP
-integration base with the developer.
 
 ## User story
 
