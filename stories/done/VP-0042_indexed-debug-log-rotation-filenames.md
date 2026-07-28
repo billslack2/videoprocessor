@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. Implementation is on `codex/vp-0042-indexed-debug-log`.
+Done. Merged to `v1.1.014-beta` as commit `0954731`.
 
 ## User story
 
