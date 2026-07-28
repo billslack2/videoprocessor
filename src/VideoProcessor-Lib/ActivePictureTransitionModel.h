@@ -1,0 +1,97 @@
+#pragma once
+
+#include <cstdint>
+#include <string>
+
+
+struct ActivePictureBounds
+{
+	int left = 0;
+	int top = 0;
+	int right = 0;
+	int bottom = 0;
+	int rasterWidth = 0;
+	int rasterHeight = 0;
+	double aspectRatio = 0.0;
+	bool symmetricBars = false;
+};
+
+
+struct ActivePictureObservation
+{
+	ActivePictureBounds bounds;
+	uint64_t frameNumber = 0;
+	bool available = false;
+};
+
+
+enum class ActivePictureTransitionState
+{
+	UNAVAILABLE,
+	STABLE,
+	CANDIDATE_TRANSITION
+};
+
+
+struct ActivePictureTransitionDecision
+{
+	ActivePictureTransitionState state =
+		ActivePictureTransitionState::UNAVAILABLE;
+	ActivePictureBounds bounds;
+	ActivePictureBounds stableBounds;
+	bool publish = false;
+	bool stable = false;
+	bool diagnostic = false;
+	bool clearTransition = false;
+	uint8_t matchingCandidates = 0;
+	uint8_t contradictoryCandidates = 0;
+	uint8_t candidateReversals = 0;
+	double confidence = 0.0;
+	uint64_t firstContradictoryFrame = 0;
+	uint64_t decisionLatencyFrames = 0;
+	std::string reason;
+};
+
+
+// Worker-owned confidence/hysteresis model. Expensive luma inspection remains
+// outside this class; deterministic observations make the transition policy
+// independently testable across content patterns and frame-rate families.
+class ActivePictureTransitionModel
+{
+public:
+	static constexpr uint8_t INITIAL_CONFIRMATIONS = 4;
+	static constexpr uint8_t CLEAR_TRANSITION_CONFIRMATIONS = 2;
+	static constexpr uint8_t AMBIGUOUS_TRANSITION_CONFIRMATIONS = 5;
+	static constexpr double ANALYSIS_PERIOD_SECONDS = 0.080;
+
+	void Reset();
+	bool ShouldAnalyze(uint64_t frameNumber, double framesPerSecond);
+	ActivePictureTransitionDecision Observe(
+		const ActivePictureObservation& observation);
+
+	static uint64_t AnalysisIntervalFrames(double framesPerSecond);
+
+private:
+	static bool SameBounds(
+		const ActivePictureBounds& left,
+		const ActivePictureBounds& right);
+	static bool MateriallyDifferent(
+		const ActivePictureBounds& left,
+		const ActivePictureBounds& right);
+	ActivePictureTransitionDecision CommitCandidate(
+		const ActivePictureObservation& observation,
+		const char* reason);
+	void StartCandidate(const ActivePictureObservation& observation);
+	void ClearCandidate();
+
+	bool m_hasStable = false;
+	bool m_waitingPublished = false;
+	ActivePictureBounds m_stable;
+	ActivePictureBounds m_candidate;
+	uint8_t m_matchingCandidates = 0;
+	uint8_t m_contradictoryCandidates = 0;
+	uint8_t m_candidateReversals = 0;
+	uint8_t m_unavailableCandidates = 0;
+	uint64_t m_firstContradictoryFrame = 0;
+	uint64_t m_lastAnalyzedFrame = 0;
+};

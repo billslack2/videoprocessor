@@ -4464,6 +4464,10 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 
 	// Start timers
 	SetTimer(TIMER_ID_1SECOND, 1000, nullptr);
+	// Active-picture analysis remains sparse on the conversion worker. This
+	// cheap generation poll only consumes a published change, bounding NLS
+	// mapping reaction without putting image analysis on the UI thread.
+	SetTimer(SHADER_RULE_REFRESH_TIMER_ID, 100, nullptr);
 	
 	// Stats overlay will be created lazily on first toggle (Ctrl+I)
 	// No initialization needed here
@@ -4806,6 +4810,28 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		RestoreFixedDialogLayout();
 		return;
 	}
+
+	if (nIDEvent == SHADER_RULE_REFRESH_TIMER_ID)
+	{
+		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			m_videoRenderer && !m_wantToRestartRenderer)
+		{
+			CString refreshedShaderRule;
+			bool shaderRestartRequired = false;
+			if (m_videoRenderer->RefreshShaderRule(
+					refreshedShaderRule, shaderRestartRequired) &&
+				shaderRestartRequired)
+			{
+				DEBUGLOG(
+					"Conditional shader state changed to '%S'; "
+					"restarting renderer for aspect negotiation",
+					static_cast<LPCTSTR>(refreshedShaderRule));
+				m_wantToRestartRenderer = true;
+				UpdateState();
+			}
+		}
+		return;
+	}
 	
 	// The reset coordinator owns resize debouncing. Keep this timer as a
 	// compatibility cleanup path for any stale timer posted before coordination.
@@ -4964,23 +4990,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
 		{
-			// Conditional manual shader rules remain armed. Re-evaluate their
-			// stable active-picture requirement once per second. NLS changes only
-			// runtime mapping under its stable output contract; generic rules can
-			// still request media-type renegotiation.
-			CString refreshedShaderRule;
-			bool shaderRestartRequired = false;
-			if (!m_wantToRestartRenderer &&
-				m_videoRenderer->RefreshShaderRule(refreshedShaderRule,
-					shaderRestartRequired) && shaderRestartRequired)
-			{
-				DEBUGLOG("Conditional shader state changed to '%S'; restarting renderer for aspect negotiation",
-					static_cast<LPCTSTR>(refreshedShaderRule));
-				m_wantToRestartRenderer = true;
-				UpdateState();
-				return;
-			}
-
 			// Auto-offset recalculation every 5 seconds (if enabled)
 			if (m_timerSeconds % 5 == 0 &&
 				m_timingClockFrameOffsetAutoCheck.GetCheck() &&

@@ -190,6 +190,7 @@
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="libplacebo\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="libplacebo\AlphaPresentationTelemetry.h" />
+    <ClInclude Include="ActivePictureTransitionModel.h" />
     <ClInclude Include="MainConfigSchema.h" />
     <ClInclude Include="libplacebo\LibplaceboOutputPolicy.h" />
     <ClInclude Include="libplacebo\LibplaceboPluginVideoRenderer.h" />
@@ -241,6 +242,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ACaptureDevice.cpp" />
+    <ClCompile Include="ActivePictureTransitionModel.cpp" />
     <ClCompile Include="ACaptureDeviceDiscoverer.cpp" />
     <ClCompile Include="AutoPpmCalibrator.cpp" />
     <ClCompile Include="BitDepth.cpp" />
