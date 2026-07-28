@@ -178,6 +178,7 @@
     <ClInclude Include="ConfigFile.h" />
     <ClInclude Include="ConfigSchema.h" />
     <ClInclude Include="DebugLog.h" />
+    <ClInclude Include="DebugLogRetention.h" />
     <ClInclude Include="DisplayMode.h" />
     <ClInclude Include="ColorFormat.h" />
     <ClInclude Include="EOTF.h" />
