@@ -2,12 +2,23 @@
 
 ## Status
 
-Backlog as of 2026-07-28. Field evidence, current-code diagnosis, proposed
-contracts, safety invariants, implementation boundaries, and a verification
-plan are documented. Implementation has not started. Before moving this story
-to In Progress, follow the tracker implementation-branch gate: discover the
-current `billslack2/videoprocessor` default branch and obtain developer
-confirmation of the base.
+In Progress as of 2026-07-28. The current
+`billslack2/videoprocessor` default branch was discovered as
+`v1.1.014-beta`, and the developer confirmed commit
+`05d7318f87c613dcc54618386076566fa58b6580` as the implementation base.
+Readiness review and Phase A implementation are underway in the isolated
+`codex/vp-0040-trusted-active-picture` worktree.
+
+## Implementation progress
+
+- 2026-07-28: Confirmed the implementation base and began the readiness
+  review.
+- 2026-07-28: Initial inspection verified the documented sparse luma-only
+  detector, ambiguous-timeout crop promotion, geometry publication boundary,
+  and late NLS output-contract restart decision on the approved base.
+- Next: establish the pure P010 evidence component and fail-safe crop-authority
+  model for Phase A before beginning the separately reviewable Phase B
+  transaction changes.
 
 ## Expert review record
 
