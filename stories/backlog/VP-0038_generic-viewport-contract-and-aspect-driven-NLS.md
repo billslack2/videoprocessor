@@ -1,11 +1,11 @@
-# VP-0038: Generic viewport contract and aspect-driven NLS
+# VP-0038: Generic viewport state and screen-aware NLS configuration
 
 ## Status
 
 Backlog as of 2026-07-27. This story defines the configuration and runtime
 contract required to make the selected `[profiles.viewport.*]` profile the
-single source of truth for physical-screen geometry, subtitle fitting, and NLS
-target geometry.
+single source of truth inside VP for physical-screen geometry, subtitle
+fitting, and screen-aware NLS configuration.
 
 No implementation branch or base has been selected. Before implementation,
 perform the tracker implementation-branch gate and confirm the current VP
@@ -15,9 +15,9 @@ integration base with the developer.
 
 As a viewer who alternates between a physical 16:9 presentation with side
 curtains closed and a CIH widescreen presentation with the curtains open, I
-want one viewport profile selection to configure every renderer and NLS
-consistently, so source cropping, scaling, nonlinear stretch, pillarboxing,
-subtitle fitting, and output aspect all use the actual active screen.
+want VP's shader configuration to know which viewport I selected, so source
+cropping, nonlinear stretch, safe-fit/pillarboxing, and subtitle fitting use
+the actual active screen without VP attempting to configure madVR itself.
 
 ## Problem
 
@@ -48,7 +48,13 @@ Unified key selection is presently renderer-owned through
 DirectShow/madVR renderer does not. DirectShow NLS instead receives the older
 boolean Normal/Scope command and otherwise falls back to the NLS rule's static
 `nls_target_aspect_ratio`. Consequently `[profiles.viewport.*]` is not yet a
-renderer-neutral source of screen geometry.
+renderer-neutral source of shader-selection state.
+
+The physical-display action remains external: the same F2/F3 press may switch
+madVR profiles, projector lens memory, or curtain automation through their own
+configuration. VP records its own viewport selection from that key event; it
+does not send the viewport aspect or subtitle settings to madVR and does not
+claim that the external action succeeded.
 
 ## Proposed configuration
 
@@ -106,7 +112,8 @@ Requirements:
    non-finite, and out-of-range values with a section/key-specific error.
 4. Support at least the inclusive resolved range `1.0..4.0`, which includes
    4:3 and the existing widescreen range.
-5. Preserve a useful rational form for media-type negotiation when possible:
+5. Preserve a useful rational form for exact comparison, diagnostics, and
+   downstream geometry calculations when possible:
    `16:9` remains 16:9, `2.2:1` normalizes to 11:5, and `2.35:1` normalizes to
    47:20 or an equivalent exact ratio.
 6. Do not maintain separate, subtly different aspect parsers in the profile,
@@ -114,10 +121,10 @@ Requirements:
 
 ## Required runtime contract
 
-Introduce a renderer-neutral resolved viewport value containing at least:
+Introduce an application-owned resolved viewport value containing at least:
 
 - selected group/profile identity;
-- normalized screen aspect as both a numeric ratio and media-type-safe
+- normalized screen aspect as both a numeric ratio and canonical
   numerator/denominator;
 - subtitle-fit enabled state;
 - subtitle hold duration;
@@ -128,43 +135,74 @@ Required behavior:
 
 1. Resolve `[profiles.viewport.*]` outside an individual renderer backend.
    One physical key event selects the viewport once and publishes one coherent
-   resolved value to the active renderer.
+   value to VP's profile/shader runtime.
 2. Replace the boolean `SetScreenProfile(scopeScreen, ...)` boundary with an
    aspect/settings-driven viewport API, or adapt it behind a new generic API
    until all callers migrate.
-3. Both libplacebo and DirectShow/madVR consume the same resolved viewport.
-   Renderer switches restore the selected viewport without requiring another
-   F2/F3 press.
-4. DirectShow NLS obtains its target aspect from the resolved viewport, not
-   from a separate hard-coded Scope assumption.
-5. NLS derives active-rectangle crop, stretch ratio, warp axis, passthrough
-   mode, and negotiated output aspect from the selected viewport.
-6. A 4:3 active picture targeting the default 16:9 viewport retains the
+3. Publish the viewport to shader configuration through stable read-only
+   variables. At minimum provide numeric `$screen_aspect` and text
+   `$viewport_profile`; expose subtitle values through the same resolved
+   snapshot where shader/renderer configuration needs them.
+4. Shader rules and parameter expressions read those variables from one
+   coherent snapshot. Floating-point equality must not be required to
+   distinguish common screens; ratio-aware comparison or documented tolerance
+   must be used.
+5. Renderer switches restore VP's selected viewport variables without
+   requiring another F2/F3 press.
+6. DirectShow NLS chooses its rule/mapping from detected content geometry plus
+   `$screen_aspect`, not from a separate hard-coded Scope assumption.
+7. NLS derives active-rectangle crop, stretch ratio, warp axis, passthrough,
+   and safe-fit/pillarbox behavior from that content/screen combination.
+8. VP does not pass `screen_aspect`, viewport profile identity, or subtitle
+   profile values to madVR as configuration. madVR remains independently
+   configured and may react to the same physical hotkey.
+9. A 4:3 active picture targeting the default 16:9 viewport retains the
    existing approximately 1.333x NLS behavior. With NLS deliberately off,
    madVR retains normal pillarboxing.
-7. A 16:9 or 1.90 active picture targeting a 2.35 viewport uses horizontal
+10. A 4:3 active picture on a 2.35 viewport must not be nonlinearly stretched
+    to 2.35. Preserve its 4:3 geometry with a restart-free safe-fit/pillarbox
+    mapping while NLS remains armed.
+11. A 16:9 or 1.90 active picture targeting a 2.35 viewport uses horizontal
    NLS; matching 2.35 content uses linear passthrough.
-8. Content-aspect changes under one selected viewport do not restart the
-   renderer. A manual viewport change may request one controlled media-type
-   renegotiation only when the effective output aspect truly changes.
-9. Shader code need not receive a literal `screen_aspect` token if the loader
-   supplies correctly derived geometry parameters, but logs and runtime state
-   must expose the selected viewport and target aspect explicitly.
-10. No backend may infer behavior from profile names such as `normal` or
+12. Content-aspect changes under one selected viewport do not restart the
+    renderer. In particular, entering or leaving 4:3 safe-fit on a 2.35 screen
+    must not switch to a per-scene native-output rule that rebuilds the graph.
+13. The loader may translate `$screen_aspect` into derived HLSL parameters,
+    but the shader configuration must be able to select/parameterize behavior
+    from the variable and logs must expose the selected screen aspect.
+14. No backend may infer behavior from profile names such as `normal` or
     `scope`.
 
 ## NLS configuration ownership
 
 Under unified viewport configuration, `[shaders.nls]` must not own an
-independent screen target that can disagree with the selected viewport.
+independent physical-screen assumption that can disagree with the selected
+viewport variables.
 
-- The resolved viewport aspect owns the runtime NLS target and output contract.
-- `nls_target_aspect_ratio` and a fixed NLS `output_aspect_ratio` may remain
-  only as documented legacy/fallback inputs when no unified viewport model is
-  active.
+- `$screen_aspect` is the authoritative shader-configuration input for the
+  selected physical screen.
+- Shader rules may use it to select a screen-specific mapping or derive
+  parameters; configuration must not require separate F2/F3-specific NLS
+  shortcuts.
+- `nls_target_aspect_ratio` may remain only as a documented legacy/fallback
+  input when no unified viewport state is active.
+- Existing `output_aspect_ratio` behavior remains a shader/media contract, not
+  a mechanism for configuring madVR's physical-screen profile.
 - Startup validation must reject or clearly diagnose contradictory duplicate
   ownership rather than silently choosing one value.
-- Checked-in unified examples must use viewport-owned geometry.
+- Checked-in unified examples must use viewport variables for screen-aware
+  shader behavior.
+
+Illustrative syntax (the implementation may choose equivalent validated
+expression/parameter syntax):
+
+```ini
+[shaders.nls]
+screen_aspect: $screen_aspect
+```
+
+The resolved value is runtime state, not textual substitution performed by the
+user and not a value sent to madVR.
 
 ## Configuration migration
 
@@ -192,12 +230,11 @@ For existing installations:
 
 - Persist the selected viewport profile using the existing unified-profile
   state mechanism.
-- Restore and publish the resolved viewport before renderer/media-type setup
-  so startup cannot momentarily assume 2.35 when the persisted selection is
-  16:9.
+- Restore and publish the resolved viewport before shader-rule selection so
+  startup cannot momentarily use the wrong screen-specific mapping.
 - Log profile identity, parsed aspect text, normalized ratio, numeric aspect,
-  subtitle settings, generation, renderer backend, NLS target, and whether a
-  restart is required.
+  subtitle settings, generation, renderer backend, selected NLS behavior, and
+  whether a restart is required.
 - OSD/status output must identify the active viewport, for example
   `Viewport: normal (16:9)` or `Viewport: scope (2.35:1)`.
 - If configuration is absent, log the explicit default
@@ -215,23 +252,25 @@ For existing installations:
    profile both resolve to 16:9.
 5. Key-selection tests prove F2/Ctrl+F9 resolve the configured 2.35 viewport
    and F3/Ctrl+F10 resolve the default 16:9 viewport.
-6. Renderer-neutral contract tests feed the same resolved viewport to
-   libplacebo and DirectShow/madVR adapters.
+6. Runtime-variable tests prove `$screen_aspect` and `$viewport_profile` update
+   coherently for every viewport selection and survive renderer replacement.
 7. NLS matrix tests cover:
    - 4:3 to default 16:9;
    - 16:9 passthrough on 16:9;
+   - 4:3 preserved with safe-fit/pillarboxing on 2.35;
    - 16:9 to 2.35;
    - 1.90 to 2.35;
    - 2.35 passthrough on 2.35;
    - NLS Off/native output.
 8. Restart-decision tests prove native-equivalent 16:9 does not restart,
-   content changes do not restart, and a real 16:9/2.35 viewport change may
-   request exactly one restart.
-9. Renderer-replacement tests prove the selected viewport and NLS target are
-   restored before media negotiation.
-10. Hardware tests verify madVR and libplacebo geometry, physical curtain
-    profiles, subtitle placement, OSD state, and logs on both 16:9 and 2.35
-    presentations.
+   content changes do not restart, and 4:3 safe-fit does not cause a
+   per-content media-type restart.
+9. Renderer-replacement tests prove viewport variables are restored before
+   shader selection.
+10. Integration tests prove VP never calls a madVR configuration API as a
+    consequence of viewport selection.
+11. Hardware tests verify final geometry, physical curtain profiles, subtitle
+    placement, OSD state, and logs on both 16:9 and 2.35 presentations.
 
 ## Acceptance criteria
 
@@ -241,12 +280,15 @@ For existing installations:
   configuration and documentation.
 - Missing viewport configuration resolves deterministically to 16:9.
 - All documented aspect formats parse consistently through one shared parser.
-- DirectShow/madVR NLS and libplacebo consume the same selected viewport
-  contract and restore it across renderer replacement.
-- NLS mapping and output negotiation follow the selected viewport without
-  duplicate hard-coded screen state.
+- Shader configuration can read the application-owned `$screen_aspect`
+  variable and restores it across renderer replacement.
+- NLS mapping follows detected content aspect plus selected screen aspect
+  without duplicate hard-coded screen state.
+- 4:3 stretches to a selected 16:9 screen but remains geometrically 4:3 on a
+  selected 2.35 screen.
+- VP does not pass viewport configuration to madVR; the shared F2/F3 hotkey is
+  the only coordination assumed by this story.
 - Automatic content-aspect changes remain restart-free.
-- Manual viewport changes restart only when effective output geometry changes.
 - Existing configurations receive a safe, diagnosable migration path.
 
 ## Dependencies and boundaries
@@ -254,8 +296,9 @@ For existing installations:
 - VP-0028 provides unified profile parsing, key selection, and persisted state.
 - VP-0034 provides durable restart-free NLS mapping and output contracts.
 - VP-0035 provides low-latency active-aspect publication.
-- This story does not automate curtains or projector lens memories and does
-  not query madVR to confirm that an independently configured hotkey was
-  received. It makes VP's selected viewport coherent and observable.
-- Hardware validation remains necessary because unit tests cannot prove madVR
-  media negotiation or final projected geometry.
+- This story does not configure or query madVR, automate curtains, or control
+  projector lens memories. It assumes those systems may independently consume
+  the same F2/F3 event and makes only VP's selected viewport coherent and
+  observable.
+- Hardware validation remains necessary because unit tests cannot prove final
+  madVR/projector geometry.

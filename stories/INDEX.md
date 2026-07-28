@@ -62,7 +62,7 @@ they must not contain requirements that are absent from this file.
 | VP-0035 | Review | Robust low-latency active-aspect transitions |
 | VP-0036 | Done | Consolidate application and renderer settings into one configuration file |
 | VP-0037 | Done | Fix Alpha windowed-preview composition regression |
-| VP-0038 | Backlog | Generic viewport contract and aspect-driven NLS |
+| VP-0038 | Backlog | Generic viewport state and screen-aware NLS configuration |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
