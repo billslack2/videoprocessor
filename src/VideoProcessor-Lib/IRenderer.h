@@ -232,6 +232,14 @@ public:
 		return false;
 	}
 
+	// Optional renderer-native OSD. The renderer must deep-copy the BGRA pixels
+	// before returning; callers retain ownership of the supplied buffer.
+	virtual bool SupportsNativeStatsOverlay() const { return false; }
+	virtual bool SetNativeStatsOverlay(const uint8_t*, size_t, int, int, int)
+	{
+		return false;
+	}
+
 	// Source-side whole-frame actions moved to a detected scene boundary.
 	virtual uint64_t SceneAwareCorrectionDropCount() const { return 0; }
 	virtual uint64_t SceneAwareCorrectionRepeatCount() const { return 0; }

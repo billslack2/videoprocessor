@@ -228,6 +228,18 @@ void LibplaceboPluginVideoRenderer::OnDisplayChange()
 	m_renderer->OnDisplayChange();
 }
 
+bool LibplaceboPluginVideoRenderer::SupportsNativeStatsOverlay() const
+{
+	return m_renderer && m_renderer->SupportsNativeStatsOverlay();
+}
+
+bool LibplaceboPluginVideoRenderer::SetNativeStatsOverlay(
+	const uint8_t* pixels, size_t byteCount, int width, int height, int stride)
+{
+	return m_renderer && m_renderer->SetNativeStatsOverlay(
+		pixels, byteCount, width, height, stride);
+}
+
 
 void LibplaceboPluginVideoRenderer::SetFrameQueueMaxSize(size_t size)
 {

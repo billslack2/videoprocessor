@@ -200,6 +200,48 @@ void StatsOverlayWindow::UpdateStats(const StatsData& stats)
 	}
 }
 
+bool StatsOverlayWindow::RenderBgra(
+	std::vector<uint8_t>& pixels, int& width, int& height, int& stride)
+{
+	width = WINDOW_WIDTH;
+	height = m_windowHeight;
+	stride = width * 4;
+	BITMAPINFO info{};
+	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	info.bmiHeader.biWidth = width;
+	info.bmiHeader.biHeight = -height;
+	info.bmiHeader.biPlanes = 1;
+	info.bmiHeader.biBitCount = 32;
+	info.bmiHeader.biCompression = BI_RGB;
+	void* bits = nullptr;
+	HDC screen = GetDC(nullptr);
+	HBITMAP bitmap = CreateDIBSection(
+		screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+	HDC memory = bitmap ? CreateCompatibleDC(screen) : nullptr;
+	ReleaseDC(nullptr, screen);
+	if (!bitmap || !memory || !bits)
+	{
+		if (memory) DeleteDC(memory);
+		if (bitmap) DeleteObject(bitmap);
+		return false;
+	}
+	HGDIOBJ oldBitmap = SelectObject(memory, bitmap);
+	RECT rect{ 0, 0, width, height };
+	HBRUSH brush = CreateSolidBrush(BACKGROUND_COLOR);
+	FillRect(memory, &rect, brush);
+	DeleteObject(brush);
+	DrawStats(memory);
+	SelectObject(memory, oldBitmap);
+	pixels.assign(
+		static_cast<uint8_t*>(bits),
+		static_cast<uint8_t*>(bits) + static_cast<size_t>(stride) * height);
+	for (size_t i = 3; i < pixels.size(); i += 4)
+		pixels[i] = 220;
+	DeleteDC(memory);
+	DeleteObject(bitmap);
+	return true;
+}
+
 void StatsOverlayWindow::ForceRedraw()
 {
 	if (m_hwnd && m_isVisible)
