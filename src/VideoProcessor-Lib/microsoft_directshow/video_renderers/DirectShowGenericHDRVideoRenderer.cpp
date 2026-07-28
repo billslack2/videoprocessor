@@ -11,6 +11,9 @@
 #include <dvdmedia.h>
 
 #include <guid.h>
+#include <AspectRatio.h>
+#include <ConfigFile.h>
+#include <RendererProfileConfig.h>
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
@@ -766,6 +769,84 @@ bool DirectShowGenericHDRVideoRenderer::SetScreenProfile(bool scopeScreen,
 				desiredAspectX, desiredAspectY) &&
 			DoesOutputAspectRequireRestart(
 				desiredAspectX, desiredAspectY));
+	return true;
+}
+
+
+bool DirectShowGenericHDRVideoRenderer::SelectUnifiedProfileKey(
+	const CString& key, CString& activeProfiles,
+	bool& rendererRestartRequired)
+{
+	activeProfiles.Empty();
+	rendererRestartRequired = false;
+	ConfigFile config;
+	RendererProfileConfig::Model model;
+	std::string error;
+	if (!config.Load(ConfigFile::RENDERER_FILENAME) ||
+		!RendererProfileConfig::IsUnified(config) ||
+		!RendererProfileConfig::Read(config, model, error))
+	{
+		DebugLog::Log(
+			"DirectShow unified viewport configuration unavailable: %s",
+			error.c_str());
+		return false;
+	}
+
+	const std::string canonicalKey = CStringA(key).GetString();
+	std::vector<RendererProfileConfig::KeySelection> selections;
+	if (!RendererProfileConfig::SelectForKey(model, canonicalKey,
+		[](const std::string&, std::string&) { return false; },
+		selections, error))
+	{
+		DebugLog::Log("DirectShow unified key '%s' rejected: %s",
+			canonicalKey.c_str(), error.c_str());
+		return false;
+	}
+
+	const RendererProfileConfig::KeySelection* viewportSelection = nullptr;
+	for (const RendererProfileConfig::KeySelection& selection : selections)
+		if (selection.group == "viewport")
+		{
+			viewportSelection = &selection;
+			break;
+		}
+	if (!viewportSelection || viewportSelection->resetToAutomatic)
+		return false;
+
+	RendererProfileConfig::ResolvedViewport viewport;
+	if (!RendererProfileConfig::ResolveViewport(model,
+		viewportSelection->profile, m_screenProfileGeneration + 1,
+		viewport, error))
+	{
+		DebugLog::Log("DirectShow viewport resolution failed: %s",
+			error.c_str());
+		return false;
+	}
+
+	m_nlsTargetAspect = viewport.screenAspect.value;
+	MadVRShaderLoader::SetRuntimeNlsTargetAspect(m_nlsTargetAspect);
+	++m_screenProfileGeneration;
+	if (!m_requestedShaderRule.IsEmpty())
+	{
+		CString activeRule = m_activeShaderRule;
+		bool mappingRestartRequired = false;
+		RefreshShaderRule(activeRule, mappingRestartRequired);
+		rendererRestartRequired = mappingRestartRequired;
+	}
+	activeProfiles.Format(TEXT("Viewport: %S (%S)"),
+		viewport.profile.c_str(),
+		viewport.screenAspect.Canonical().c_str());
+	DebugLog::Log(
+		"DirectShow viewport selected profile=%s aspect=%s numeric=%.7f subtitle_fit=%d subtitle_hold_ms=%llu subtitle_padding=%d generation=%llu renderer_restart=%d",
+		viewport.profile.c_str(),
+		viewport.screenAspect.Canonical().c_str(),
+		viewport.screenAspect.value,
+		viewport.subtitleFit ? 1 : 0,
+		static_cast<unsigned long long>(
+			viewport.subtitleHoldMilliseconds),
+		viewport.subtitlePaddingPixels,
+		static_cast<unsigned long long>(m_screenProfileGeneration),
+		rendererRestartRequired ? 1 : 0);
 	return true;
 }
 

@@ -107,6 +107,17 @@ namespace RendererProfileConfig
 		bool configuredDefault = false;
 	};
 
+	struct ResolvedViewport
+	{
+		std::string group = "viewport";
+		std::string profile = "default";
+		AspectRatio screenAspect{ 16, 9, 16.0 / 9.0 };
+		bool subtitleFit = false;
+		uint64_t subtitleHoldMilliseconds = 2000;
+		int subtitlePaddingPixels = 20;
+		uint64_t generation = 0;
+	};
+
 	inline bool ValidateExpressionVariables(
 		const DisplayRuleExpression::Expression& expression,
 		const std::set<std::string>& allowed, const std::string& context,
@@ -183,6 +194,24 @@ namespace RendererProfileConfig
 	inline bool IsBoolean(const std::string& value)
 	{
 		return IsChoice(value, { "1", "0", "true", "false", "yes", "no", "on", "off" });
+	}
+
+	inline bool ParseBoolean(const std::string& text, bool& value)
+	{
+		const std::string normalized = ConfigFile::NormalizeName(text);
+		if (normalized == "1" || normalized == "true" ||
+			normalized == "yes" || normalized == "on")
+		{
+			value = true;
+			return true;
+		}
+		if (normalized == "0" || normalized == "false" ||
+			normalized == "no" || normalized == "off")
+		{
+			value = false;
+			return true;
+		}
+		return false;
 	}
 
 	inline bool IsNumberInRange(const std::string& text, double minimum,
@@ -721,6 +750,69 @@ namespace RendererProfileConfig
 			}
 			if (!selected.empty())
 				selections.push_back({ group.name, selected, false });
+		}
+		return true;
+	}
+
+	inline bool ResolveViewport(const Model& model,
+		const std::string& profileName, uint64_t generation,
+		ResolvedViewport& viewport, std::string& error)
+	{
+		viewport = {};
+		viewport.generation = generation;
+		error.clear();
+		if (profileName.empty() || profileName == "default")
+			return true;
+
+		const auto profile = model.profiles.find(
+			"viewport." + ConfigFile::NormalizeName(profileName));
+		if (profile == model.profiles.end())
+		{
+			error = "viewport profile '" + profileName + "' does not exist";
+			return false;
+		}
+		viewport.profile = profile->second.name;
+		const auto& settings = profile->second.settings;
+		auto value = settings.find("screen_aspect");
+		if (value != settings.end() &&
+			!AspectRatioParser::Parse(value->second, 1.0, 4.0,
+				viewport.screenAspect, error))
+		{
+			error = "[profiles.viewport." + viewport.profile +
+				"] screen_aspect: " + error;
+			return false;
+		}
+		value = settings.find("subtitle_fit");
+		if (value != settings.end() &&
+			!ParseBoolean(value->second, viewport.subtitleFit))
+		{
+			error = "[profiles.viewport." + viewport.profile +
+				"] subtitle_fit is invalid";
+			return false;
+		}
+		value = settings.find("subtitle_hold_seconds");
+		if (value != settings.end())
+		{
+			double seconds = 0.0;
+			if (!DisplayRuleExpression::ParseNumber(
+				ConfigFile::Trim(value->second), seconds) ||
+				seconds < 0.0 || seconds > 30.0)
+			{
+				error = "[profiles.viewport." + viewport.profile +
+					"] subtitle_hold_seconds is invalid";
+				return false;
+			}
+			viewport.subtitleHoldMilliseconds =
+				static_cast<uint64_t>(std::llround(seconds * 1000.0));
+		}
+		value = settings.find("subtitle_padding_pixels");
+		if (value != settings.end() &&
+			!ParseInteger(value->second, 0, 500,
+				viewport.subtitlePaddingPixels))
+		{
+			error = "[profiles.viewport." + viewport.profile +
+				"] subtitle_padding_pixels is invalid";
+			return false;
 		}
 		return true;
 	}

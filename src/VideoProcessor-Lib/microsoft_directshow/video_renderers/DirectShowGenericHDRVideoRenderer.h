@@ -52,6 +52,8 @@ public:
 		bool& rendererRestartRequired) override;
 	bool SetScreenProfile(bool scopeScreen, CString& activeProfile,
 		bool& rendererRestartRequired) override;
+	bool SelectUnifiedProfileKey(const CString& key, CString& activeProfiles,
+		bool& rendererRestartRequired) override;
 
 protected:
 
