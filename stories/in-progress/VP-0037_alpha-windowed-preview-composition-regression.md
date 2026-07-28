@@ -25,6 +25,14 @@ z-order change, or output-contract transition. DirectShow/madVR retains the
 legacy popup path. Release|x64 GUI and plugin builds passed and were deployed
 with hash verification; the prior stable runtime is backed up at
 `C:\Videoprocessor\vp\backup-before-vp0037-native-osd-20260727-225640`.
+
+Renderer handoff correction (2026-07-28): live testing found the legacy madVR
+popup remained visible when switching to Alpha, allowing both popup and native
+OSDs at once. Commit `246a1a3` introduces one canonical requested-visibility
+state and rebinds it when each renderer reaches Rendering: Alpha hides the
+popup and publishes the native bitmap; non-native renderers clear native state
+and show the popup. Release GUI deployment was hash-verified; backup:
+`C:\Videoprocessor\vp\backup-before-vp0037-osd-handoff-20260727-230224`.
 ## User story
 
 As an Alpha renderer user, I want video to remain visible and stable inside
