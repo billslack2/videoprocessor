@@ -20,6 +20,7 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("windowed_fullscreen_mode"),
 			ConfigSchema::Any("renderer"),
 			ConfigSchema::Integer("queue_size", 1, INT_MAX),
+			ConfigSchema::Integer("alpha_queue_size", 1, INT_MAX),
 			ConfigSchema::Any("capture_device"),
 			{
 				"frame_offset",
@@ -42,6 +43,7 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("scene_detect"),
 			ConfigSchema::Boolean("scene"),
 			ConfigSchema::Any("scene_correction_mode"),
+			ConfigSchema::Boolean("scene_correction_basic"),
 			ConfigSchema::Choice("subtitle_reposition",
 				{ "true", "false", "basic", "advanced", "on", "off", "1", "0" }),
 			ConfigSchema::Boolean("newlldv"),

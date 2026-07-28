@@ -213,7 +213,9 @@ namespace VideoProcessorTest
 				file << "[command_line]\n"
 					"renderer: VideoProcessor Renderer (Alpha)\n"
 					"queue_size: 32\n"
+					"alpha_queue_size: 1\n"
 					"fullscreen: true\n"
+					"scene_correction_basic: false\n"
 					"frame_offset: AUTO\n"
 					"[queue_recovery]\n"
 					"reset_after_render_restart_seconds: 3\n"
@@ -241,15 +243,14 @@ namespace VideoProcessorTest
 				"VideoProcessor-main-schema-invalid.cfg";
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
-				file << "[command_line]\nalpha_queue_size: 1\n";
+				file << "[command_line]\nalpha_queue_size: 0\n";
 			}
 
 			ConfigFile config;
 			Assert::IsTrue(config.Load(path));
 			std::string error;
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));
-			Assert::IsTrue(error.find("unknown key 'alpha_queue_size'") !=
-				std::string::npos);
+			Assert::IsTrue(error.find("alpha_queue_size") != std::string::npos);
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
