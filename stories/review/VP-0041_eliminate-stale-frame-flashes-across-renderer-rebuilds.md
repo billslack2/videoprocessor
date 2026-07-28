@@ -2,8 +2,22 @@
 
 ## Status
 
-Backlog. Reported July 28, 2026 after enabling Alpha's persistent shader cache.
-No implementation has started.
+Review. Pull request #18 merged into the default integration branch
+`v1.1.014-beta` on July 28, 2026 as merge commit `ab81c309`. Release x64 built
+successfully and all 181 tests passed. A basic launch from the feature build
+location also succeeded.
+
+The implementation places a GUI-owned opaque black child window above the
+active render target before renderer stop/rebuild and keeps it visible through
+old-surface retirement. The cover is removed only after the current renderer
+generation reports live-frame evidence: successful swap-chain submission for
+Alpha or successful downstream acceptance for DirectShow/madVR. Fullscreen
+hosts also paint a deterministic black background, and lifecycle logs record
+black-show, old-surface retirement, and first-live-frame reveal.
+
+Keep this story in review during real-world use. Acceptance still requires
+repeated Alpha-only, madVR-only, Alpha/madVR handoff, refresh-rate/mode-change,
+and actual HDMI-resync validation. Persistent shader caching remains enabled.
 
 The report is not preserved in the current `C:\logs\vp_debug.log`, which
 contains only a later short session. Treat the shader-cache timing as a useful
@@ -204,4 +218,3 @@ steady-state frame path; if needed, bound them to lifecycle transitions.
   VP has submitted black and destroyed all old presentation state, document the
   driver/display boundary and create a narrowly scoped follow-up rather than
   adding arbitrary delays.
-
