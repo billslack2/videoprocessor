@@ -1,5 +1,6 @@
 #include <pch.h>
 
+#include <ConfigFile.h>
 #include <DebugLog.h>
 #include <libplacebo/LibplaceboRendererPluginApi.h>
 #include <libplacebo/LibplaceboVideoRenderer.h>
@@ -19,9 +20,12 @@ VideoProcessorLibplaceboCreateRenderer(
 	ITimingClock* timingClock,
 	bool useFrameQueue,
 	size_t frameQueueMaxSize,
+	const char* rendererConfigPath,
 	VideoProcessorLibplaceboLogSink logSink)
 {
 	DebugLog::SetExternalSink(logSink);
+	ConfigFile::SetRendererConfigurationPath(
+		rendererConfigPath ? rendererConfigPath : "");
 	if (!callback)
 	{
 		DebugLog::Log("libplacebo plugin factory rejected a null renderer callback");

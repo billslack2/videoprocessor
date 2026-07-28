@@ -12,12 +12,16 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <mutex>
 #include <shellapi.h>
 #include <vector>
 
 
 namespace
 {
+std::mutex g_rendererConfigurationPathMutex;
+std::string g_rendererConfigurationPath;
+
 std::string StripComment(const std::string& value)
 {
 	for (size_t i = 0; i < value.size(); ++i)
@@ -128,15 +132,57 @@ bool ConfigFile::Load(const std::string& filename)
 	m_loaded = false;
 
 	std::ifstream configFile;
+	const bool rendererRequest =
+		_stricmp(filename.c_str(), ConfigFile::RENDERER_FILENAME) == 0;
 	const char* overrideOption = ConfigOverrideOption(filename);
+	std::string selectedFilename = filename;
 	std::string overridePath;
 	std::string overrideError;
-	const bool hasOverride = overrideOption != nullptr &&
-		TryParseCommandLineOption(
-			GetProcessCommandLineArguments(),
-			overrideOption,
-			overridePath,
-			overrideError);
+	bool hasOverride = false;
+	if (rendererRequest)
+	{
+		{
+			std::lock_guard<std::mutex> guard(
+				g_rendererConfigurationPathMutex);
+			if (!g_rendererConfigurationPath.empty())
+			{
+				overridePath = g_rendererConfigurationPath;
+				hasOverride = true;
+				overrideOption = nullptr;
+			}
+		}
+		if (!hasOverride)
+		{
+			bool explicitSelection = false;
+			bool compatibilityOverride = false;
+			if (!TryResolveRendererConfigSelection(
+				GetProcessCommandLineArguments(),
+				selectedFilename,
+				explicitSelection,
+				compatibilityOverride,
+				overrideError))
+			{
+				m_warnings.push_back(overrideError);
+				return false;
+			}
+			hasOverride = explicitSelection;
+			if (hasOverride)
+			{
+				overridePath = selectedFilename;
+				overrideOption = compatibilityOverride ?
+					"--vr_config" : "--config";
+			}
+		}
+	}
+	else
+	{
+		hasOverride = overrideOption != nullptr &&
+			TryParseCommandLineOption(
+				GetProcessCommandLineArguments(),
+				overrideOption,
+				overridePath,
+				overrideError);
+	}
 
 	if (!overrideError.empty())
 	{
@@ -146,7 +192,7 @@ bool ConfigFile::Load(const std::string& filename)
 
 	const std::vector<std::string> candidates = hasOverride ?
 		std::vector<std::string>{ overridePath } :
-		BuildConfigPathCandidates(filename);
+		BuildConfigPathCandidates(selectedFilename);
 	for (const auto& candidate : candidates)
 	{
 		configFile.clear();
@@ -164,7 +210,9 @@ bool ConfigFile::Load(const std::string& filename)
 		{
 			m_loadedPath = overridePath;
 			m_warnings.push_back(
-				std::string("Cannot open ") + overrideOption +
+				std::string("Cannot open ") +
+				(overrideOption ? overrideOption :
+					"resolved renderer configuration") +
 				" file: " + overridePath);
 		}
 		return false;
@@ -261,6 +309,48 @@ bool ConfigFile::Load(const std::string& filename)
 
 	m_loaded = true;
 	return true;
+}
+
+
+bool ConfigFile::TryResolveRendererConfigSelection(
+	const std::vector<std::string>& arguments,
+	std::string& filename,
+	bool& explicitSelection,
+	bool& compatibilityOverride,
+	std::string& error)
+{
+	filename = DEFAULT_FILENAME;
+	explicitSelection = false;
+	compatibilityOverride = false;
+	error.clear();
+
+	std::string selected;
+	if (TryParseCommandLineOption(
+		arguments, "--vr_config", selected, error))
+	{
+		filename = selected;
+		explicitSelection = true;
+		compatibilityOverride = true;
+		return true;
+	}
+	if (!error.empty())
+		return false;
+
+	if (TryParseCommandLineOption(
+		arguments, "--config", selected, error))
+	{
+		filename = selected;
+		explicitSelection = true;
+		return true;
+	}
+	return error.empty();
+}
+
+
+void ConfigFile::SetRendererConfigurationPath(const std::string& path)
+{
+	std::lock_guard<std::mutex> guard(g_rendererConfigurationPathMutex);
+	g_rendererConfigurationPath = path;
 }
 
 
