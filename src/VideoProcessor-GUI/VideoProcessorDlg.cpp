@@ -2180,6 +2180,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		enableButtons = true;
 		m_windowedVideoWindow.ShowLogo(false);
 		m_rendererStateText.SetWindowText(TEXT("Rendering"));
+		ApplyStatsOverlayForActiveRenderer();
 
 		m_rendererStartTime = GetTickCount();
 		g_displayRefreshRateSampler->ResetMeasurement();
@@ -2456,35 +2457,35 @@ void CVideoProcessorDlg::OnCommandAutoSet()
 
 void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
 {
-	if (m_statsOverlay)
+	if (!m_statsOverlay)
+		return;
+	m_statsOverlayRequestedVisible = !m_statsOverlayRequestedVisible;
+	ApplyStatsOverlayForActiveRenderer();
+}
+
+void CVideoProcessorDlg::ApplyStatsOverlayForActiveRenderer()
+{
+	if (!m_statsOverlay)
+		return;
+	const bool native = m_videoRenderer &&
+		m_videoRenderer->SupportsNativeStatsOverlay();
+	if (native)
 	{
-		if (m_videoRenderer &&
-			m_videoRenderer->SupportsNativeStatsOverlay())
-		{
-			// Create once for its font resources, but never show its HWND. Alpha
-			// receives a bitmap and blends it into the video frame itself.
-			if (!m_statsOverlay->IsCreated() &&
-				!m_statsOverlay->Create(this->GetSafeHwnd()))
-				return;
-			m_nativeStatsOverlayVisible = !m_nativeStatsOverlayVisible;
-			if (!m_nativeStatsOverlayVisible)
-				m_videoRenderer->SetNativeStatsOverlay(nullptr, 0, 0, 0, 0);
-			else
-				UpdateStatsOverlay();
+		if (!m_statsOverlay->IsCreated() &&
+			!m_statsOverlay->Create(this->GetSafeHwnd()))
 			return;
-		}
-		// Lazy creation - only create the window when first toggled
-		if (!m_statsOverlay->IsCreated())
-		{
-			if (!m_statsOverlay->Create(this->GetSafeHwnd()))
-			{
-				// Creation failed, silently ignore
-				return;
-			}
-		}
-		m_statsOverlay->Toggle();
+		if (m_statsOverlay->IsVisible())
+			m_statsOverlay->Show(false);
+		if (m_statsOverlayRequestedVisible)
+			UpdateStatsOverlay();
+		else
+			m_videoRenderer->SetNativeStatsOverlay(nullptr, 0, 0, 0, 0);
+		return;
 	}
-	
+	if (!m_statsOverlay->IsCreated() && m_statsOverlayRequestedVisible &&
+		!m_statsOverlay->Create(this->GetSafeHwnd()))
+		return;
+	m_statsOverlay->Show(m_statsOverlayRequestedVisible);
 }
 
 //
@@ -5267,7 +5268,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		}
 	}
 
-	const bool nativeOverlay = m_nativeStatsOverlayVisible && m_videoRenderer &&
+	const bool nativeOverlay = m_statsOverlayRequestedVisible && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();
 	if (!m_statsOverlay ||
 		(!m_statsOverlay->IsVisible() && !nativeOverlay) || !m_lastStatsData)
