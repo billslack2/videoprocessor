@@ -603,8 +603,41 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		if (decision.mode == MadVRNlsMappingMode::WAITING)
 		{
 			if (m_nlsMappingMode == MadVRNlsMappingMode::WAITING)
+			{
 				UpdateNlsOsdMode(MadVRNlsMappingMode::WAITING);
-			return false;
+				return false;
+			}
+
+			// A clear high-confidence transition withdraws stale geometry before
+			// the replacement rectangle is confirmed. Keep the armed output
+			// contract, but temporarily remove the NLS shader so stale crop/
+			// stretch parameters cannot visibly damage the new scene.
+			MadVRShaderLoader::SetRuntimeShaderSelection(
+				std::string(requestedUtf8), std::string(requestedUtf8),
+				MadVRNlsMappingMode::WAITING);
+			const MadVRShaderSelection waitingSelection =
+				MadVRShaderLoader::ApplyConfiguredShaderRule(
+					m_pRenderer, *m_videoState,
+					std::string(requestedUtf8), false);
+			UpdateActiveShaderSelection(waitingSelection);
+			UpdateNlsOsdMode(MadVRNlsMappingMode::WAITING);
+			m_requestedShaderApplied = false;
+			m_appliedShaderAspectRatio = 0.0;
+			m_appliedActivePictureGeneration = 0;
+			m_appliedScreenProfileGeneration = m_screenProfileGeneration;
+			activeRule = m_activeShaderRule;
+			rendererRestartRequired = false;
+			DebugLog::Log(
+				"Shaders: NLS mapping change requested=%s effective=%s "
+				"mapping=waiting active_generation=%llu "
+				"renderer_generation=%llu reason=\"transition geometry "
+				"is not stable; safe passthrough\" renderer_restart=0",
+				static_cast<const char*>(requestedUtf8),
+				waitingSelection.ruleName.c_str(),
+				static_cast<unsigned long long>(
+					activeRectangle.generation),
+				static_cast<unsigned long long>(m_rendererGeneration));
+			return true;
 		}
 		const bool mappingChanged = decision.mode != m_nlsMappingMode ||
 			!m_requestedShaderApplied ||
