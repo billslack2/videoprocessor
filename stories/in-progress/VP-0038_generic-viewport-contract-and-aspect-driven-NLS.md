@@ -19,6 +19,11 @@ fitting, and screen-aware NLS configuration.
   paths.
 - Verification at this checkpoint: x64 Debug solution build succeeded and all
   155 native unit tests passed.
+- 2026-07-27: Built x64 Release from clean commit `1702ad3` and deployed the
+  executable plus libplacebo runtime to `C:\Videoprocessor\vp` for hardware
+  testing. Existing `VideoProcessor.cfg` and `VideoProcessor.state` hashes
+  were verified unchanged. The replaced binaries are recoverable from
+  `C:\Videoprocessor\vp\backup-before-vp0038-20260727-235804`.
 - Next: move unified selection and its resolved viewport snapshot out of the
   libplacebo backend, publish `$screen_aspect`/`$viewport_profile`, and apply
   the snapshot to DirectShow NLS without a renderer restart.
