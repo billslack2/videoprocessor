@@ -222,6 +222,19 @@ namespace Tests
 			Assert::AreEqual(
 				Reason(AlphaCadenceBlockReason::RepeatPresentationDebtPresent),
 				Reason(debtBlocked.blockReason));
+			Assert::AreEqual(
+				debtInput.queueDepth,
+				debtBlocked.diagnostic.queueDepth);
+			Assert::AreEqual(
+				debtInput.desiredQueueDepth,
+				debtBlocked.diagnostic.desiredQueueDepth);
+			Assert::AreEqual(
+				debtInput.presentationDebt,
+				debtBlocked.diagnostic.presentationDebt);
+			Assert::IsTrue(
+				debtBlocked.diagnostic.fallbackMature);
+			Assert::IsTrue(
+				debtBlocked.diagnostic.fallbackEligible);
 		}
 
 		TEST_METHOD(DueDropDistinguishesQueueDebtAndFallbackAgeBlockers)
@@ -300,6 +313,9 @@ namespace Tests
 			input.presentationDebt = 1;
 			const auto ambiguous = policy.Evaluate(input);
 			Assert::IsTrue(ambiguous.verificationCompleted);
+			Assert::AreEqual(
+				static_cast<int>(AlphaCadenceAction::Drop),
+				static_cast<int>(ambiguous.verificationAction));
 			Assert::IsFalse(ambiguous.lastVerificationSucceeded);
 			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
 				static_cast<int>(ambiguous.action));
