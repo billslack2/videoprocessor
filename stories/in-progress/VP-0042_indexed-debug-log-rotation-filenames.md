@@ -2,7 +2,7 @@
 
 ## Status
 
-Backlog. No implementation has started.
+In progress. Implementation is on `codex/vp-0042-indexed-debug-log`.
 
 ## User story
 
@@ -92,4 +92,3 @@ The current timestamped archive names, such as
 
 Builds on the completed fixed rotation engine in VP-0030 and configurable
 retention behavior in VP-0031.
-
