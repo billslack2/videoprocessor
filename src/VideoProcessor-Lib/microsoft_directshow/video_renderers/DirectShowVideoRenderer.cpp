@@ -938,6 +938,7 @@ void DirectShowVideoRenderer::RendererDestroy()
 	}
 }
 
+
 // Get current PPM correction information (override for RATIONAL_RATIONAL and CLOCK_RATIONAL support)
 bool DirectShowVideoRenderer::GetPPMCorrectionInfo(int& ppmValue, bool& hasCorrection, CString& source) const
 {

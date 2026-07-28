@@ -381,10 +381,15 @@ protected:
 	bool m_pendingQueueReset = false;
 	bool m_pendingResetRequiresGraph = false;
 	RendererResetReason m_pendingResetReason = RendererResetReason::None;
+	uint32_t m_pendingResetRendererGeneration = 0;
 	// Reset() can emit another RENDERSTATE_RENDERING callback. This marker is
 	// reset only when a new renderer graph is constructed.
 	ULONGLONG m_queueResetIgnoreEventsUntil = 0;
 	bool m_displayTransitionAwaitingRenderer = false;
+	// Initial DirectShow starts and backend handoffs need the proven madVR
+	// stop/reset/run re-prime. Profile-only renderer replacements deliberately
+	// consume this as false so NLS/shader changes do not add a second blackout.
+	bool m_postRendererStartRequiresGraph = true;
 	UINT_PTR m_rendererStartTime = 0;  // Tick count when renderer started rendering
 	int m_queueResetDelaySeconds = 5;
 	int m_queueResetHighWaterPercent = 75;
@@ -424,6 +429,7 @@ protected:
 	RendererTransitionWindow m_rendererTransitionWindow;
 	HWND m_rendererTargetHwnd = nullptr;
 	CString m_activeRendererName;
+	bool m_activeRendererIsDirectShow = false;
 	std::atomic<uint32_t> m_rendererGeneration{0};
 	uint32_t m_transitionGeneration = 0;
 	uint64_t m_transitionBlackStartTick = 0;

@@ -1915,36 +1915,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					correctionAtSceneBoundary = true;
 				}
 
-				// Quality notifications are only a confidence signal for a scene
-				// boundary. Require two recent, consistent messages before using
-				// them; with no feedback, preserve the existing phase-only behavior.
-				if (correctionAtSceneBoundary)
-				{
-					const auto quality = GetQualityFeedbackSnapshot();
-					const DWORD qualityAgeMs = quality.lastNotificationTick == 0 ?
-						MAXDWORD : correctionNow - quality.lastNotificationTick;
-					const bool feedbackAvailable =
-						qualityAgeMs <= 5000 && quality.consecutiveCount >= 2;
-					const bool qualityAgrees =
-						(sceneCorrectionAction == SceneCorrectionAction::Repeat &&
-							quality.type == static_cast<int>(Famine)) ||
-						(sceneCorrectionAction == SceneCorrectionAction::Drop &&
-							quality.type == static_cast<int>(Flood));
-
-					if (feedbackAvailable && !qualityAgrees)
-					{
-						DebugLog::Log(
-							"SCENE-AWARE CORRECTION: boundary action vetoed by quality "
-							"feedback (action=%s type=%s count=%llu age=%lums)",
-							sceneCorrectionAction == SceneCorrectionAction::Repeat ? "repeat" : "drop",
-							quality.type == static_cast<int>(Famine) ? "famine" :
-								quality.type == static_cast<int>(Flood) ? "flood" : "unknown",
-							quality.consecutiveCount, qualityAgeMs);
-						sceneCorrectionAction = SceneCorrectionAction::None;
-						correctionAtSceneBoundary = false;
-					}
-				}
-
 				if (sceneCorrectionAction == SceneCorrectionAction::Drop)
 				{
 					const long double phaseBefore =
