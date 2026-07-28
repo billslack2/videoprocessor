@@ -131,7 +131,7 @@ MinCoreCount=1
 MaxCoreCount=2</pre>
 
   <h2 id="shaders">[shaders] (optional)</h2>
-  <p>This section installs external Direct3D 9 HLSL directly into a renderer that supports it. It does not add a CPU conversion or GPU readback. Each <code>[shaders.name]</code> section is one independently configured effect. Named automatic effects are checked from left to right and the first match wins; <code>default: none</code> leaves the shader chain empty. Adding a <code>shortcut</code> makes an effect manual automatically. Effects assigned the same shortcut are composed in <code>rules</code> order and selected as one group.</p>
+  <p>This section installs renderer-native shaders without adding CPU conversion or GPU readback. madVR uses HLSL files and Alpha/libplacebo uses mpv-style GLSL files. Each <code>[shaders.name]</code> section is one independently configured effect. Named automatic effects are checked from left to right and the first compatible match wins; <code>default: none</code> leaves the shader chain empty. Adding a <code>shortcut</code> makes an effect manual automatically. Effects assigned the same shortcut form one durable selector; each renderer applies only the member whose file format it supports.</p>
   <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
     <tr><td><code>enabled</code></td><td>Boolean; default <code>false</code></td><td>Enables shader rule evaluation.</td></tr>
     <tr><td><code>rules</code></td><td>Comma-separated effect names</td><td>Sets effect order. Each name uses a matching <code>[shaders.name]</code> section.</td></tr>
@@ -145,9 +145,9 @@ MaxCoreCount=2</pre>
     <tr><td><code>signal</code></td><td><code>ANY</code>, <code>SDR</code>, or <code>HDR</code>; default <code>ANY</code></td><td>Matches the effective video signal. <code>HDR</code> includes HDR gamma, PQ, HLG, and detected LLDV.</td></tr>
     <tr><td><code>frame_rates</code></td><td>Comma-separated nominal integers or <code>ANY</code>; default <code>ANY</code></td><td>Matches VP's displayed input refresh rate using its truncated nominal key: 23 matches 23.976, 29 matches 29.97, and 59 matches 59.94.</td></tr>
     <tr><td><code>none</code></td><td>Boolean; default <code>false</code></td><td>Selects the effect but deliberately installs no shaders. An off effect cannot share a shortcut with another effect.</td></tr>
-    <tr><td><code>shortcut</code></td><td>Key or modifier combination</td><td>Makes the effect manual and selects it immediately while video is running. Effects with the same shortcut compose into one chain. Letter case is meaningful: <code>n</code> means N without Shift and <code>N</code> means Shift+N. <code>Ctrl+</code>, <code>Alt+</code>, <code>Shift+</code>, function keys, Escape, and Enter use the same syntax as <code>[shortcuts]</code>.</td></tr>
-    <tr><td><code>file</code></td><td>Filename only</td><td>The effect's HLSL file. VP always resolves it under the <code>Shaders</code> directory beside <code>VideoProcessor.exe</code>; absolute paths, directory components, and traversal are rejected.</td></tr>
-    <tr><td><code>stage</code></td><td><code>pre_resize</code> or <code>post_resize</code>; default <code>pre_resize</code></td><td>Selects whether this effect runs before or after renderer image scaling.</td></tr>
+    <tr><td><code>shortcut</code></td><td>Key or modifier combination</td><td>Makes the effect manual and selects it immediately while video is running. Effects with the same shortcut form one selector. A paired HLSL/GLSL selector remembers one state while madVR and Alpha apply their compatible member. Letter case is meaningful: <code>n</code> means N without Shift and <code>N</code> means Shift+N. <code>Ctrl+</code>, <code>Alt+</code>, <code>Shift+</code>, function keys, Escape, and Enter use the same syntax as <code>[shortcuts]</code>.</td></tr>
+    <tr><td><code>file</code></td><td>Filename only</td><td>The effect's <code>.hlsl</code> file for madVR or mpv-style <code>.glsl</code>/<code>.hook</code> file for Alpha. VP always resolves it under the <code>Shaders</code> directory beside <code>VideoProcessor.exe</code>; absolute paths, directory components, and traversal are rejected.</td></tr>
+    <tr><td><code>stage</code></td><td><code>pre_resize</code> or <code>post_resize</code>; default <code>pre_resize</code></td><td>Selects the madVR HLSL stage. Alpha NLS uses libplacebo's resizable mpv <code>MAIN</code> hook.</td></tr>
     <tr><td><code>output_aspect_ratio</code></td><td><code>native</code>, decimal, or ratio</td><td>Legacy/manual media-type override for untyped rules. Do not put it in a typed NLS rule; VP derives that contract from the selected viewport.</td></tr>
     <tr><td><code>param_name</code></td><td>Finite compile-time value</td><td>Low-level token replacement for untyped custom shaders. Typed NLS rules use validated names without the <code>param_</code> prefix.</td></tr>
     <tr><td><code>manual</code></td><td>Deprecated Boolean</td><td>Migration-only. Remove it and use <code>shortcut</code>; shortcut presence already means the effect is manual.</td></tr>
@@ -180,10 +180,10 @@ shortcut=Ctrl+B
 file=Adaptive sharpen.hlsl
 stage=post_resize</pre>
   <h3 id="nls">Viewport-aware nonlinear stretch</h3>
-  <p>A typed NLS rule owns only effect choices. The selected <code>[profiles.viewport.*]</code> profile owns the physical screen. VP combines that immutable viewport snapshot with detected active-picture geometry, then derives crop, stretch ratio, axis, passthrough, safe-fit, and the madVR picture-aspect contract. The NLS rule does not repeat <code>2.35</code> and does not configure madVR's screen profile.</p>
+  <p>A typed NLS rule owns only effect choices. The selected <code>[profiles.viewport.*]</code> profile owns the physical screen. VP combines that immutable viewport snapshot with detected active-picture geometry, then derives crop, stretch ratio, axis, passthrough, and safe-fit. madVR additionally receives its picture-aspect contract. The NLS rule does not repeat <code>2.35</code> and does not configure a renderer's screen profile.</p>
   <pre>[shaders]
 enabled=true
-rules=nls,nls_protected,nls_off
+rules=nls,nls_alpha,nls_protected,nls_protected_alpha,nls_off
 default=none
 
 [shaders.nls]
@@ -196,6 +196,17 @@ geometry=classic
 strength=1.0
 curve=2.0
 quality=medium
+tolerance_percent=5
+
+[shaders.nls_alpha]
+label=Nonlinear Stretch
+shortcut=N
+type=nls
+file=NLS.glsl
+stage=pre_resize
+geometry=classic
+strength=1.0
+curve=2.0
 tolerance_percent=5
 
 [shaders.nls_protected]
@@ -211,12 +222,25 @@ curve=2.0
 quality=medium
 tolerance_percent=5
 
+[shaders.nls_protected_alpha]
+label=Nonlinear Stretch Protected
+shortcut=P
+type=nls
+file=NLS.glsl
+stage=pre_resize
+geometry=protected
+strength=1.0
+center_protection=0.35
+curve=2.0
+tolerance_percent=5
+
 [shaders.nls_off]
 label=NLS Off
 shortcut=n
 output_aspect_ratio=native
 none=true</pre>
-  <p>Shift+N arms classic NLS, Shift+P arms the protected-centre variant, and plain N selects the compatibility off rule. The armed choice survives renderer replacement. A viewport change may require one controlled renderer restart when the negotiated picture-aspect contract changes. A detected content-aspect change under the same viewport only refreshes the mapping and does not restart the renderer.</p>
+  <p>Shift+N arms the paired classic rules, Shift+P arms the paired protected-centre rules, and plain N selects the shared off rule. madVR ignores the GLSL member and Alpha ignores the HLSL member without opening or compiling it. The armed selector survives renderer replacement. A viewport change may require one controlled madVR restart when its negotiated picture-aspect contract changes. Alpha and content-aspect changes refresh in place.</p>
+  <p>The renderer-specific rules may use different settings. The packaged Alpha GLSL consumes <code>geometry</code>, <code>strength</code>, <code>center_protection</code>, and <code>curve</code>; <code>tolerance_percent</code> remains VP policy. Alpha reconstruction quality is owned by the renderer's scaler settings rather than the NLS hook, so the madVR-only <code>quality</code> setting is omitted from the GLSL rules. The two curves are intended to make the same safe decision, not to be pixel-identical.</p>
   <table><thead><tr><th>Active picture</th><th>Selected viewport</th><th>Result while NLS is armed</th></tr></thead><tbody>
     <tr><td>4:3</td><td>16:9</td><td>Horizontal NLS, approximately 1.333×.</td></tr>
     <tr><td>16:9</td><td>16:9</td><td>Linear passthrough.</td></tr>

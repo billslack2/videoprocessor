@@ -260,6 +260,31 @@ namespace VideoProcessorTest
 				resolved.c_str());
 		}
 
+		TEST_METHOD(RenderersAcceptOnlyTheirCompatibleShaderSource)
+		{
+			Assert::IsTrue(
+				MadVRShaderLoader::IsShaderFilenameCompatible(
+					"NLS.hlsl", ShaderRendererBackend::MADVR));
+			Assert::IsFalse(
+				MadVRShaderLoader::IsShaderFilenameCompatible(
+					"NLS.glsl", ShaderRendererBackend::MADVR));
+			Assert::IsTrue(
+				MadVRShaderLoader::IsShaderFilenameCompatible(
+					"NLS.glsl", ShaderRendererBackend::LIBPLACEBO));
+			Assert::IsTrue(
+				MadVRShaderLoader::IsShaderFilenameCompatible(
+					"NLS.hook", ShaderRendererBackend::LIBPLACEBO));
+			Assert::IsFalse(
+				MadVRShaderLoader::IsShaderFilenameCompatible(
+					"NLS.hlsl", ShaderRendererBackend::LIBPLACEBO));
+			Assert::IsTrue(
+				MadVRShaderLoader::IsShaderFilenameCompatible(
+					"", ShaderRendererBackend::MADVR));
+			Assert::IsTrue(
+				MadVRShaderLoader::IsShaderFilenameCompatible(
+					"", ShaderRendererBackend::LIBPLACEBO));
+		}
+
 		TEST_METHOD(ShaderFileConfigurationRejectsDirectoriesAndTraversal)
 		{
 			const char* invalid[] = {

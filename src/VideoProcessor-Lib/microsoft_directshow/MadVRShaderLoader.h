@@ -11,6 +11,7 @@
 #include <dshow.h>
 #include <VideoState.h>
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,27 @@ struct MadVRShaderSelection
 	unsigned long outputAspectRatioX = 0;
 	unsigned long outputAspectRatioY = 0;
 };
+
+enum class ShaderRendererBackend
+{
+	MADVR,
+	LIBPLACEBO
+};
+
+
+struct ConfiguredShaderRule
+{
+	std::string name;
+	std::string label;
+	std::string filename;
+	std::map<std::string, std::string> parameters;
+	bool nls = false;
+	bool none = false;
+	double aspectTolerancePercent = 5.0;
+	double activeAspectMinimum = 0.0;
+	bool narrowerOnly = false;
+};
+
 
 class MadVRShaderLoader
 {
@@ -61,7 +83,8 @@ public:
 		bool aspectAvailable, double activeAspectRatio, std::string& reason);
 	static bool EvaluateNlsMapping(const std::string& ruleName,
 		bool aspectAvailable, double activeAspectRatio,
-		MadVRNlsMappingDecision& decision);
+		MadVRNlsMappingDecision& decision,
+		ShaderRendererBackend backend = ShaderRendererBackend::MADVR);
 	// Supplies stable measured geometry for the current renderer generation.
 	// Geometry from a replaced renderer is rejected while the armed request and
 	// output contract remain durable.
@@ -74,7 +97,16 @@ public:
 	static uint64_t BeginRendererGeneration();
 	static bool PrepareNlsOutputContractRendererReplacement();
 	static bool GetRuleActivationInfo(const std::string& ruleName,
-		std::string& label, std::string& inactiveRule, bool& nlsMapping);
+		std::string& label, std::string& inactiveRule, bool& nlsMapping,
+		ShaderRendererBackend backend = ShaderRendererBackend::MADVR);
+	// Resolves the members of one same-shortcut selector that apply to a
+	// renderer. Known incompatible source formats are not opened or compiled.
+	static bool GetConfiguredRuleSelection(const std::string& ruleName,
+		ShaderRendererBackend backend,
+		std::vector<ConfiguredShaderRule>& selection,
+		std::string& reason);
+	static bool IsShaderFilenameCompatible(const std::string& filename,
+		ShaderRendererBackend backend);
 	// Resolves one shader filename under <executable>\Shaders. Directory
 	// components, absolute paths, and traversal are deliberately rejected.
 	static bool ResolveShaderFilename(const std::string& filename,

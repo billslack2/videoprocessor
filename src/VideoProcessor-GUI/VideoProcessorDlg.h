@@ -341,6 +341,7 @@ protected:
 	HICON m_hIcon;
 	HACCEL m_accelerator = nullptr;
 	std::map<WORD, CString> m_shaderShortcutRules;
+	CString m_requestedShaderSelector;
 	std::map<WORD, CString> m_displayRuleShortcutRules;
 	std::map<WORD, unsigned int> m_rendererShortcutIndices;
 
@@ -482,6 +483,7 @@ protected:
 	void RenderRemove();
 	void DestroyVideoRenderer();
 	void RenderGUIClear();
+	bool ApplyRequestedShaderSelection();
 	void ShowRendererTransitionBlack(const char* reason);
 	void TryRevealRendererTransition(uint32_t generation);
 	void FullScreenVideoWindowConstruct();
