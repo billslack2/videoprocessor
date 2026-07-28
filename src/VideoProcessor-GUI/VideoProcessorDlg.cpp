@@ -2180,6 +2180,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		enableButtons = true;
 		m_windowedVideoWindow.ShowLogo(false);
 		m_rendererStateText.SetWindowText(TEXT("Rendering"));
+		ApplyStatsOverlayForActiveRenderer();
 
 		m_rendererStartTime = GetTickCount();
 		g_displayRefreshRateSampler->ResetMeasurement();
@@ -2456,20 +2457,35 @@ void CVideoProcessorDlg::OnCommandAutoSet()
 
 void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
 {
-	if (m_statsOverlay)
+	if (!m_statsOverlay)
+		return;
+	m_statsOverlayRequestedVisible = !m_statsOverlayRequestedVisible;
+	ApplyStatsOverlayForActiveRenderer();
+}
+
+void CVideoProcessorDlg::ApplyStatsOverlayForActiveRenderer()
+{
+	if (!m_statsOverlay)
+		return;
+	const bool native = m_videoRenderer &&
+		m_videoRenderer->SupportsNativeStatsOverlay();
+	if (native)
 	{
-		// Lazy creation - only create the window when first toggled
-		if (!m_statsOverlay->IsCreated())
-		{
-			if (!m_statsOverlay->Create(this->GetSafeHwnd()))
-			{
-				// Creation failed, silently ignore
-				return;
-			}
-		}
-		m_statsOverlay->Toggle();
+		if (!m_statsOverlay->IsCreated() &&
+			!m_statsOverlay->Create(this->GetSafeHwnd()))
+			return;
+		if (m_statsOverlay->IsVisible())
+			m_statsOverlay->Show(false);
+		if (m_statsOverlayRequestedVisible)
+			UpdateStatsOverlay();
+		else
+			m_videoRenderer->SetNativeStatsOverlay(nullptr, 0, 0, 0, 0);
+		return;
 	}
-	
+	if (!m_statsOverlay->IsCreated() && m_statsOverlayRequestedVisible &&
+		!m_statsOverlay->Create(this->GetSafeHwnd()))
+		return;
+	m_statsOverlay->Show(m_statsOverlayRequestedVisible);
 }
 
 //
@@ -5252,13 +5268,16 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		}
 	}
 
-	if (!m_statsOverlay || !m_statsOverlay->IsVisible() || !m_lastStatsData)
+	const bool nativeOverlay = m_statsOverlayRequestedVisible && m_videoRenderer &&
+		m_videoRenderer->SupportsNativeStatsOverlay();
+	if (!m_statsOverlay ||
+		(!m_statsOverlay->IsVisible() && !nativeOverlay) || !m_lastStatsData)
 		return;
 
 	// Fullscreen/windowed changes can put a no-activate layered overlay behind
 	// a renderer window.  Reassert topmost only every five seconds while it is
 	// visible; this is UI-only and does not touch the DirectShow graph.
-	if (m_timerSeconds % 5 == 0)
+	if (!nativeOverlay && m_timerSeconds % 5 == 0)
 		m_statsOverlay->UpdatePosition(displayWindow ? displayWindow : GetSafeHwnd());
 
 	StatsData stats;
@@ -5435,6 +5454,16 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	// Update overlay
 	m_statsOverlay->UpdateStats(stats);
+	if (nativeOverlay)
+	{
+		std::vector<uint8_t> pixels;
+		int width = 0;
+		int height = 0;
+		int stride = 0;
+		if (m_statsOverlay->RenderBgra(pixels, width, height, stride))
+			m_videoRenderer->SetNativeStatsOverlay(
+				pixels.data(), pixels.size(), width, height, stride);
+	}
 
 	// Save current stats for next update
 	*m_lastStatsData = stats;

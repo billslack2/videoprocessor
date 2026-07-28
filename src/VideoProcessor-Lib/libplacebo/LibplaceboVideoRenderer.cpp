@@ -2232,6 +2232,14 @@ struct LibplaceboVideoRenderer::Impl
 	pl_swapchain swapchain = nullptr;
 	pl_renderer renderer = nullptr;
 	pl_tex textures[2] = { nullptr, nullptr };
+	pl_tex statsOverlayTexture = nullptr;
+	std::mutex statsOverlayMutex;
+	std::vector<uint8_t> statsOverlayPixels;
+	int statsOverlayWidth = 0;
+	int statsOverlayHeight = 0;
+	int statsOverlayStride = 0;
+	uint64_t statsOverlaySerial = 0;
+	uint64_t appliedStatsOverlaySerial = 0;
 	pl_custom_lut* displayLut = nullptr;
 	// Kept deliberately short for the Ctrl+I OSD: "Disabled",
 	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
@@ -2255,6 +2263,7 @@ struct LibplaceboVideoRenderer::Impl
 	double sdrTargetNits = PL_COLOR_SDR_WHITE;
 	double sdrBlackNits = PL_COLOR_SDR_WHITE / PL_COLOR_SDR_CONTRAST;
 	struct pl_color_space configuredOutputColor{};
+	LibplaceboOutput::Plan requestedOutputPlan;
 	LibplaceboOutput::Plan outputPlan;
 	LibplaceboOutput::Actual actualOutput;
 	bool targetBt2020 = false;
@@ -2314,6 +2323,7 @@ struct LibplaceboVideoRenderer::Impl
 		pl_lut_free(&displayLut);
 		if (d3d11)
 		{
+			pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
 			for (pl_tex& texture : textures)
 				pl_tex_destroy(d3d11->gpu, &texture);
 		}
@@ -3241,6 +3251,72 @@ struct LibplaceboVideoRenderer::Impl
 		return PL_COLOR_TRC_UNKNOWN;
 	}
 
+	void LogPresentationTarget(const char* trigger) const
+	{
+		const LONG_PTR style = GetWindowLongPtr(videoHwnd, GWL_STYLE);
+		const LONG_PTR exStyle = GetWindowLongPtr(videoHwnd, GWL_EXSTYLE);
+		const HWND parent = GetParent(videoHwnd);
+		const HWND root = GetAncestor(videoHwnd, GA_ROOT);
+		const HWND owner = GetWindow(videoHwnd, GW_OWNER);
+		const bool isChild = (style & WS_CHILD) != 0;
+		const bool visible = IsWindowVisible(videoHwnd) != FALSE;
+		const bool iconic = IsIconic(videoHwnd) != FALSE;
+		DWORD cloaked = 0;
+		using DwmGetWindowAttributeFn = HRESULT(WINAPI*)(
+			HWND, DWORD, PVOID, DWORD);
+		HMODULE dwmApi = LoadLibraryW(L"dwmapi.dll");
+		const auto getWindowAttribute = dwmApi
+			? reinterpret_cast<DwmGetWindowAttributeFn>(
+				GetProcAddress(dwmApi, "DwmGetWindowAttribute"))
+			: nullptr;
+		const HRESULT cloakedResult = getWindowAttribute
+			? getWindowAttribute(
+				videoHwnd,
+				static_cast<DWORD>(DWMWA_CLOAKED),
+				&cloaked,
+				static_cast<DWORD>(sizeof(cloaked)))
+			: E_NOINTERFACE;
+		if (dwmApi)
+			FreeLibrary(dwmApi);
+		RECT client{};
+		RECT screen{};
+		GetClientRect(videoHwnd, &client);
+		GetWindowRect(videoHwnd, &screen);
+		MONITORINFO monitorInfo{ sizeof(monitorInfo) };
+		const HMONITOR monitor = MonitorFromWindow(
+			videoHwnd, MONITOR_DEFAULTTONEAREST);
+		GetMonitorInfo(monitor, &monitorInfo);
+
+		DebugLog::Log(
+			"Alpha presentation target: trigger=%s hwnd=%p parent=%p root=%p owner=%p style=0x%08lX exstyle=0x%08lX is_child=%d visible=%d iconic=%d cloaked=%d cloak_result=0x%08lX client=%ld,%ld-%ld,%ld screen=%ld,%ld-%ld,%ld monitor=%p monitor_rect=%ld,%ld-%ld,%ld requested=%s/%s/%s/%s effective=%s/%s/%s/%s fallback=%s",
+			trigger,
+			videoHwnd,
+			parent,
+			root,
+			owner,
+			static_cast<unsigned long>(style),
+			static_cast<unsigned long>(exStyle),
+			isChild ? 1 : 0,
+			visible ? 1 : 0,
+			iconic ? 1 : 0,
+			SUCCEEDED(cloakedResult) ? static_cast<int>(cloaked) : -1,
+			static_cast<unsigned long>(cloakedResult),
+			client.left, client.top, client.right, client.bottom,
+			screen.left, screen.top, screen.right, screen.bottom,
+			monitor,
+			monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
+			monitorInfo.rcMonitor.right, monitorInfo.rcMonitor.bottom,
+			LibplaceboOutput::ToString(requestedOutputPlan.request.presentation),
+			LibplaceboOutput::ToString(requestedOutputPlan.request.range),
+			LibplaceboOutput::ToString(requestedOutputPlan.request.gamma),
+			LibplaceboOutput::ToString(requestedOutputPlan.request.primaries),
+			LibplaceboOutput::ToString(outputPlan.request.presentation),
+			LibplaceboOutput::ToString(outputPlan.request.range),
+			LibplaceboOutput::ToString(outputPlan.request.gamma),
+			LibplaceboOutput::ToString(outputPlan.request.primaries),
+			isChild ? "embedded child preview" : "none");
+	}
+
 	void SetSwapchainColorHint(LibplaceboOutput::DxgiEncoding encoding)
 	{
 		configuredOutputColor =
@@ -3274,6 +3350,7 @@ struct LibplaceboVideoRenderer::Impl
 	void ConfigureSwapchainOutput(const char* trigger)
 	{
 		using namespace LibplaceboOutput;
+		LogPresentationTarget(trigger);
 
 		const bool previousStateMayBeStudio =
 			actualOutput.encoding != DxgiEncoding::FULL_G22_P709 ||
@@ -3299,7 +3376,7 @@ struct LibplaceboVideoRenderer::Impl
 			actualOutput = Finalize(outputPlan, evidence);
 			SetSwapchainColorHint(actualOutput.encoding);
 			DebugLog::Log(
-				"libplacebo output negotiation (%s): requested=%s/%s/%s/%s actual=UNKNOWN/FULL/sRGB/Rec.709 reason=cannot unwrap DXGI swapchain",
+				"libplacebo output negotiation (%s): effective_request=%s/%s/%s/%s actual=UNKNOWN/FULL/sRGB/Rec.709 reason=cannot unwrap DXGI swapchain",
 				trigger,
 				ToString(outputPlan.request.presentation),
 				ToString(outputPlan.request.range),
@@ -3580,7 +3657,7 @@ struct LibplaceboVideoRenderer::Impl
 		// an unaccepted BT.2020/limited target contract.
 		SetSwapchainColorHint(actualOutput.encoding);
 		DebugLog::Log(
-			"libplacebo output negotiation (%s): requested=%s/%s/%s/%s actual_contract=%s/%s/%s/%s dxgi=%s accepted=%d safe=%d wire_state=unverified reason=%s",
+			"libplacebo output negotiation (%s): effective_request=%s/%s/%s/%s actual_contract=%s/%s/%s/%s dxgi=%s accepted=%d safe=%d wire_state=unverified reason=%s",
 			trigger,
 			ToString(outputPlan.request.presentation),
 			ToString(outputPlan.request.range),
@@ -3995,7 +4072,26 @@ struct LibplaceboVideoRenderer::Impl
 			DebugLog::Log("libplacebo: BT.2020 target requested without NVIDIA reporting; display must be selected manually");
 		else if (reportBt2020ToDisplay)
 			DebugLog::Log("libplacebo: report_bt2020_to_display ignored because target primaries are Rec.709");
-		outputPlan = LibplaceboOutput::MakePlan(outputRequest);
+		requestedOutputPlan = LibplaceboOutput::MakePlan(outputRequest);
+		LibplaceboOutput::Request effectiveOutputRequest = outputRequest;
+		// The embedded preview is a WS_CHILD control. Its historically stable
+		// presentation path is DWM-composed BitBlt; it cannot safely inherit a
+		// fullscreen direct/BT.2020 request. Keep the configured request intact
+		// for a later top-level fullscreen renderer generation.
+		const LONG_PTR targetStyle = GetWindowLongPtr(videoHwnd, GWL_STYLE);
+		if ((targetStyle & WS_CHILD) != 0)
+		{
+			effectiveOutputRequest.presentation =
+				LibplaceboOutput::PresentationRequest::COMPOSED;
+			effectiveOutputRequest.range =
+				LibplaceboOutput::RangeRequest::FULL;
+			effectiveOutputRequest.gamma =
+				LibplaceboOutput::GammaRequest::SRGB;
+			effectiveOutputRequest.primaries =
+				LibplaceboOutput::PrimariesRequest::REC709;
+		}
+		outputPlan = LibplaceboOutput::MakePlan(effectiveOutputRequest);
+		LogPresentationTarget("initialize");
 		// COMPOSED retains the known-stable bitblt/DWM path. AUTO uses it unless
 		// Limited requests a flip candidate; failed AUTO negotiation recreates
 		// this stable composed path. DIRECT always asks for the flip candidate.
@@ -4440,6 +4536,82 @@ struct LibplaceboVideoRenderer::Impl
 			target,
 			scopeScreenActive,
 			subtitleShiftSourcePixels);
+		std::vector<uint8_t> overlayPixels;
+		int overlayWidth = 0;
+		int overlayHeight = 0;
+		int overlayStride = 0;
+		uint64_t overlaySerial = 0;
+		{
+			std::lock_guard<std::mutex> overlayGuard(statsOverlayMutex);
+			overlaySerial = statsOverlaySerial;
+			if (overlaySerial != appliedStatsOverlaySerial)
+			{
+				overlayPixels = statsOverlayPixels;
+				overlayWidth = statsOverlayWidth;
+				overlayHeight = statsOverlayHeight;
+				overlayStride = statsOverlayStride;
+			}
+		}
+		if (overlaySerial != appliedStatsOverlaySerial)
+		{
+			const bool hadOverlay = statsOverlayTexture != nullptr;
+			const bool geometryChanged = statsOverlayTexture &&
+				(statsOverlayTexture->params.w != overlayWidth ||
+				 statsOverlayTexture->params.h != overlayHeight);
+			if (!overlayPixels.empty())
+			{
+				struct pl_plane_data plane{};
+				plane.type = PL_FMT_UNORM;
+				plane.width = overlayWidth;
+				plane.height = overlayHeight;
+				plane.pixel_stride = 4;
+				plane.row_stride = static_cast<size_t>(overlayStride);
+				plane.pixels = overlayPixels.data();
+				uint64_t masks[4] =
+				{
+					0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000
+				};
+				pl_plane_data_from_mask(&plane, masks);
+				if (!pl_upload_plane(
+					d3d11->gpu, nullptr, &statsOverlayTexture, &plane))
+				{
+					DebugLog::Log("Alpha native OSD texture upload failed");
+				}
+			}
+			else
+			{
+				pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
+			}
+			appliedStatsOverlaySerial = overlaySerial;
+			if (hadOverlay != (statsOverlayTexture != nullptr) || geometryChanged)
+				pl_renderer_flush_cache(renderer);
+		}
+		struct pl_overlay overlay{};
+		struct pl_overlay_part overlayPart{};
+		if (statsOverlayTexture)
+		{
+			overlay.tex = statsOverlayTexture;
+			overlay.mode = PL_OVERLAY_NORMAL;
+			overlay.coords = PL_OVERLAY_COORDS_DST_FRAME;
+			overlay.repr = pl_color_repr_rgb;
+			overlay.repr.levels = PL_COLOR_LEVELS_FULL;
+			overlay.repr.alpha = PL_ALPHA_INDEPENDENT;
+			overlay.color = pl_color_space_srgb;
+			overlayPart.src = { 0.0f, 0.0f,
+				static_cast<float>(statsOverlayTexture->params.w),
+				static_cast<float>(statsOverlayTexture->params.h) };
+			const float dstWidth = static_cast<float>(baseTarget.planes[0].texture->params.w);
+			const float dstHeight = static_cast<float>(baseTarget.planes[0].texture->params.h);
+			overlayPart.dst = {
+				std::max(0.0f, dstWidth - statsOverlayTexture->params.w - 100.0f),
+				std::max(0.0f, dstHeight - statsOverlayTexture->params.h - 100.0f),
+				dstWidth - 100.0f,
+				dstHeight - 100.0f };
+			overlay.parts = &overlayPart;
+			overlay.num_parts = 1;
+			target.overlays = &overlay;
+			target.num_overlays = 1;
+		}
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
 			target.lut == displayLut && target.lut_type == PL_LUT_NATIVE;
@@ -5584,6 +5756,27 @@ bool LibplaceboVideoRenderer::GetDisplayLutInfo(CString& details) const
 
 	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
 	details = CString(CStringA(m_impl->displayLutStatus.c_str()));
+	return true;
+}
+
+bool LibplaceboVideoRenderer::SetNativeStatsOverlay(
+	const uint8_t* pixels, size_t byteCount, int width, int height, int stride)
+{
+	if (!m_impl)
+		return false;
+	if (pixels && (width <= 0 || height <= 0 || stride < width * 4 ||
+		byteCount < static_cast<size_t>(stride) * height))
+		return false;
+
+	std::lock_guard<std::mutex> guard(m_impl->statsOverlayMutex);
+	if (pixels)
+		m_impl->statsOverlayPixels.assign(pixels, pixels + byteCount);
+	else
+		m_impl->statsOverlayPixels.clear();
+	m_impl->statsOverlayWidth = pixels ? width : 0;
+	m_impl->statsOverlayHeight = pixels ? height : 0;
+	m_impl->statsOverlayStride = pixels ? stride : 0;
+	++m_impl->statsOverlaySerial;
 	return true;
 }
 
