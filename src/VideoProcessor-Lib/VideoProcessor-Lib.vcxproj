@@ -168,6 +168,7 @@
     <ClInclude Include="ACaptureDevice.h" />
     <ClInclude Include="ACaptureDeviceDiscoverer.h" />
     <ClInclude Include="AutoPpmCalibrator.h" />
+    <ClInclude Include="AspectRatio.h" />
     <ClInclude Include="BitDepth.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDevice.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDeviceDiscoverer.h" />

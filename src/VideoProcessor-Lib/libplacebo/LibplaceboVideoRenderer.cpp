@@ -3,6 +3,7 @@
 #include "LibplaceboVideoRenderer.h"
 
 #include <ConfigFile.h>
+#include <AspectRatio.h>
 #include <RendererProfileConfig.h>
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
@@ -955,22 +956,13 @@ namespace
 
 	bool ParseAspectRatio(const std::string& value, double& parsed)
 	{
-		const std::string trimmed = ConfigFile::Trim(value);
-		const size_t separator = trimmed.find(':');
-		if (separator == std::string::npos)
-			return ParseDouble(trimmed, parsed);
-
-		double width = 0.0;
-		double height = 0.0;
-		if (!ParseDouble(trimmed.substr(0, separator), width) ||
-			!ParseDouble(trimmed.substr(separator + 1), height) ||
-			width <= 0.0 || height <= 0.0)
-		{
+		AspectRatio aspect;
+		std::string error;
+		if (!AspectRatioParser::Parse(
+			value, 1.0, 4.0, aspect, error))
 			return false;
-		}
-
-		parsed = width / height;
-		return std::isfinite(parsed);
+		parsed = aspect.value;
+		return true;
 	}
 
 	bool ParseRefreshRateRuleKey(
@@ -1293,29 +1285,44 @@ namespace
 						raw.c_str());
 			}
 		}
-		if (config.TryGetString(rule.section, "mode", raw))
+		const auto readViewportString = [&](const char* genericKey,
+			const char* deprecatedKey, std::string& value)
 		{
-			const std::string mode = ConfigFile::NormalizeName(raw);
-			if (mode == "normal") settings.defaultScopeScreen = false;
-			else if (mode == "scope") settings.defaultScopeScreen = true;
-			else DebugLog::Log("profile '%s': invalid viewport mode '%s'", rule.name.c_str(), raw.c_str());
-		}
-		if (config.TryGetString(rule.section, "scope_screen_aspect", raw))
+			return config.TryGetString(rule.section, genericKey, value) ||
+				config.TryGetString(rule.section, deprecatedKey, value);
+		};
+		if (readViewportString(
+			"screen_aspect", "scope_screen_aspect", raw))
 		{
 			double value = 0.0;
-			if (ParseAspectRatio(raw, value) && value >= 1.5 && value <= 4.0)
+			if (ParseAspectRatio(raw, value) && value >= 1.0 && value <= 4.0)
+			{
 				settings.scopeScreenAspect = value;
+				settings.defaultScopeScreen =
+					std::abs(value - 16.0 / 9.0) > 0.0001;
+			}
 		}
-		if (config.TryGetBool(rule.section, "scope_subtitle_fit", settings.scopeSubtitleFit) == false &&
-			config.TryGetString(rule.section, "scope_subtitle_fit", raw))
-			DebugLog::Log("profile '%s': invalid scope_subtitle_fit '%s'", rule.name.c_str(), raw.c_str());
-		if (config.TryGetString(rule.section, "scope_subtitle_hold_seconds", raw))
+		const auto readViewportBool = [&](const char* genericKey,
+			const char* deprecatedKey, bool& value)
+		{
+			return config.TryGetBool(rule.section, genericKey, value) ||
+				config.TryGetBool(rule.section, deprecatedKey, value);
+		};
+		if (!readViewportBool(
+			"subtitle_fit", "scope_subtitle_fit", settings.scopeSubtitleFit) &&
+			readViewportString(
+				"subtitle_fit", "scope_subtitle_fit", raw))
+			DebugLog::Log("profile '%s': invalid subtitle_fit '%s'",
+				rule.name.c_str(), raw.c_str());
+		if (readViewportString("subtitle_hold_seconds",
+			"scope_subtitle_hold_seconds", raw))
 		{
 			double seconds = 0.0;
 			if (ParseDouble(raw, seconds) && seconds >= 0.0 && seconds <= 30.0)
 				settings.scopeSubtitleHoldMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
 		}
-		if (config.TryGetString(rule.section, "scope_subtitle_padding_pixels", raw))
+		if (readViewportString("subtitle_padding_pixels",
+			"scope_subtitle_padding_pixels", raw))
 		{
 			double pixels = 0.0;
 			if (ParseDouble(raw, pixels) && pixels >= 0.0 && pixels <= 500.0)

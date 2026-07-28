@@ -258,7 +258,7 @@ persist_profile_selection: true</pre>
     <tr><td>Input treatment</td><td><code>tone_mapping</code>, <code>gamut_mapping</code>, <code>peak_detection</code>, <code>contrast_recovery</code>, <code>sdr_input_transfer</code></td><td>Tone mapping: <code>AUTO</code>, <code>spline</code>, <code>bt2390</code>, <code>st2094-40</code>, <code>reinhard</code>. Gamut mapping: <code>AUTO</code>, <code>perceptual</code>, <code>softclip</code>, <code>relative</code>, <code>desaturate</code>.</td></tr>
     <tr><td>Scaling</td><td><code>quality</code>, <code>upscaler</code>, <code>downscaler</code>, <code>deband</code>, <code>dithering</code></td><td>Quality: <code>fast</code>, <code>balanced</code>, <code>high</code>. Scalers include <code>ewa_lanczossharp</code>, <code>ewa_lanczos</code>, <code>bicubic</code>, and <code>bilinear</code>. Most controls accept <code>AUTO</code>.</td></tr>
     <tr><td>Display target</td><td><code>sdr_target_nits</code>, <code>sdr_black_nits</code>, <code>output_presentation</code>, <code>output_range</code>, <code>output_gamma</code>, <code>sdr_target_primaries</code>, <code>report_bt2020_to_display</code></td><td>Target white is 40–500 nits; black is <code>AUTO</code> or non-negative below target. Presentation is <code>AUTO</code>, <code>DIRECT</code>, or <code>COMPOSED</code>; range is <code>AUTO</code>, <code>FULL</code>, or <code>LIMITED</code>; primaries are <code>REC709</code> or <code>BT2020</code>.</td></tr>
-    <tr><td>Viewport</td><td><code>default_screen_profile</code>, <code>scope_screen_aspect</code>, <code>scope_subtitle_fit</code>, <code>scope_subtitle_hold_seconds</code>, <code>scope_subtitle_padding_pixels</code></td><td>Profile is <code>normal</code> or <code>scope</code>. Aspect accepts a decimal or ratio from 1.5–4.0, such as <code>2.35:1</code>.</td></tr>
+    <tr><td>Viewport</td><td><code>screen_aspect</code>, <code>subtitle_fit</code>, <code>subtitle_hold_seconds</code>, <code>subtitle_padding_pixels</code></td><td>Profile names are labels only. Aspect accepts ratio, <code>x</code>, or decimal forms from 1.0–4.0, such as <code>16:9</code>, <code>16x9</code>, or <code>2.35</code>. Deprecated <code>scope_*</code> aliases remain readable for migration but cannot be combined with their replacements.</td></tr>
     <tr><td>Diagnostics</td><td><code>switch_refresh_rate</code>, <code>output_diagnostics</code>, <code>diagnostic_disable_shader_cache</code></td><td>Boolean. Diagnostic controls are for troubleshooting rather than normal calibration.</td></tr>
   </tbody></table>
   <p><code>[general]</code> controls renderer-session policy: <code>persist_profile_selection</code>, <code>switch_refresh_rate</code>, and <code>event_action_delay_seconds</code> (0–30 seconds). The shipped configuration is the complete conservative starting point.</p>
@@ -323,7 +323,7 @@ quality: high</pre>
   <table><thead><tr><th>Intent</th><th>Profile rule</th><th>Notes</th></tr></thead><tbody>
     <tr><td>Apply HDR input treatment only to PQ BT.2020</td><td><code>when: $transfer=="PQ" &amp;&amp; $primaries=="BT2020"</code></td><td>Put tone and gamut mapping in an <code>input</code> profile.</td></tr>
     <tr><td>Prefer an UHD scaling profile</td><td><code>when: $width&gt;=3840 &amp;&amp; $height&gt;=2160</code></td><td>Put quality/scaler values in a <code>scaling</code> profile.</td></tr>
-    <tr><td>Choose Scope manually</td><td><code>when: $key=="F3"</code></td><td>Put <code>mode: scope</code> and geometry values in a <code>viewport</code> profile.</td></tr>
+    <tr><td>Choose the 2.35 viewport manually</td><td><code>when: $key=="F2"</code></td><td>Put <code>screen_aspect: 2.35:1</code> and subtitle values in a <code>viewport</code> profile. The profile name itself does not determine geometry.</td></tr>
     <tr><td>Return only display selection to automatic</td><td>Group rule: <code>when: $key=="F4"</code></td><td>Place it in <code>[profile_groups.display]</code>, not a profile.</td></tr>
     <tr><td>One key selects matching display and viewport</td><td>Use <code>$key=="Ctrl+F9"</code> in one profile of each group</td><td>Allowed across groups; never reuse the chord for two profiles in the same group.</td></tr>
   </tbody></table>
@@ -410,16 +410,14 @@ profiles: normal,scope
 default: normal
 
 [profiles.viewport.normal]
-when: $key=="F2" || $key=="Ctrl+F10"
-mode: normal
+when: $key=="F3" || $key=="Ctrl+F10"
 
 [profiles.viewport.scope]
-when: $key=="F3" || $key=="Ctrl+F9"
-mode: scope
-scope_screen_aspect: 2.35:1
-scope_subtitle_fit: true
-scope_subtitle_hold_seconds: 2
-scope_subtitle_padding_pixels: 30</pre>
+when: $key=="F2" || $key=="Ctrl+F9"
+screen_aspect: 2.35:1
+subtitle_fit: true
+subtitle_hold_seconds: 2
+subtitle_padding_pixels: 30</pre>
   <p>In that example, <code>Ctrl+F9</code> selects BT.2020 display reporting and Scope together; <code>Ctrl+F10</code> selects Rec.709 reporting and Normal together. F2 and F3 change only the viewport. F5 and F6 change only the display target. F4 clears only the manual display choice.</p>
 
   <h3 id="renderer-strictness">Strictness and safe changes</h3>

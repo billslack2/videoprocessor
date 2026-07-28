@@ -11,6 +11,7 @@
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
 #include <IntegerMath.h>
+#include <AspectRatio.h>
 #include <DisplayRuleExpression.h>
 #include <RendererProfileConfig.h>
 
@@ -192,6 +193,124 @@ namespace Tests
 				}, specificity, error));
 			Assert::IsFalse(compiled.Compile("$key==F5", error, true));
 			Assert::IsFalse(compiled.Compile("$transfer==PQ|HLG", error, true));
+		}
+
+		TEST_METHOD(AspectRatioParserAcceptsAndNormalizesDocumentedForms)
+		{
+			struct Case
+			{
+				const char* text;
+				uint64_t numerator;
+				uint64_t denominator;
+			};
+			for (const Case& test : std::vector<Case>{
+				{ "4:3", 4, 3 },
+				{ "16:9", 16, 9 },
+				{ "16x9", 16, 9 },
+				{ "16X9", 16, 9 },
+				{ " 16 : 9 ", 16, 9 },
+				{ "2:1", 2, 1 },
+				{ "2.2:1", 11, 5 },
+				{ "2.35:1", 47, 20 },
+				{ "1.7777778", 8888889, 5000000 },
+				{ "2.35", 47, 20 } })
+			{
+				AspectRatio aspect;
+				std::string error;
+				Assert::IsTrue(AspectRatioParser::Parse(
+					test.text, 1.0, 4.0, aspect, error),
+					std::wstring(error.begin(), error.end()).c_str());
+				Assert::AreEqual<uint64_t>(
+					test.numerator, aspect.numerator);
+				Assert::AreEqual<uint64_t>(
+					test.denominator, aspect.denominator);
+			}
+		}
+
+		TEST_METHOD(AspectRatioParserRejectsMalformedAndOutOfRangeForms)
+		{
+			for (const char* text : {
+				"", "0", "0:1", "1:0", "-16:9", "16:", ":9",
+				"16::9", "16x9:1", "16:9junk", "nan", "inf",
+				"0.99", "4.01" })
+			{
+				AspectRatio aspect;
+				std::string error;
+				Assert::IsFalse(AspectRatioParser::Parse(
+					text, 1.0, 4.0, aspect, error));
+				Assert::IsFalse(error.empty());
+			}
+		}
+
+		TEST_METHOD(RendererProfileConfigNormalizesDeprecatedViewportAliases)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0038-alias.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\npersist_profile_selection: false\n";
+				for (const char* group : {
+					"input", "scaling", "display", "viewport" })
+				{
+					file << "[profile_groups." << group <<
+						"]\nprofiles: base\ndefault: base\n";
+					file << "[profiles." << group << ".base]\n";
+					if (std::string(group) == "viewport")
+						file << "scope_screen_aspect: 2.35:1\n"
+							"scope_subtitle_fit: true\n";
+				}
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::Read(
+				config, model, error));
+			Assert::AreEqual(static_cast<size_t>(2), model.warnings.size());
+			const auto profile = model.profiles.find("viewport.base");
+			Assert::IsTrue(profile != model.profiles.end());
+			Assert::AreEqual("2.35:1",
+				profile->second.settings.at("screen_aspect").c_str());
+			Assert::AreEqual("true",
+				profile->second.settings.at("subtitle_fit").c_str());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigRejectsDuplicateViewportAliases)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0038-duplicate.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n";
+				for (const char* group : {
+					"input", "scaling", "display", "viewport" })
+				{
+					file << "[profile_groups." << group <<
+						"]\nprofiles: base\ndefault: base\n";
+					file << "[profiles." << group << ".base]\n";
+					if (std::string(group) == "viewport")
+						file << "screen_aspect: 16:9\n"
+							"scope_screen_aspect: 2.35:1\n";
+				}
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(
+				config, model, error));
+			Assert::IsTrue(error.find("defines both deprecated") !=
+				std::string::npos);
+			DeleteFileA(path.c_str());
 		}
 
 		TEST_METHOD(RendererProfileConfigRejectsIncompleteUnifiedConfiguration)

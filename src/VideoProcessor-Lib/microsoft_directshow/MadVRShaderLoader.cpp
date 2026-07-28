@@ -10,6 +10,7 @@
 
 #include <ConfigFile.h>
 #include <DebugLog.h>
+#include <AspectRatio.h>
 #include <microsoft_directshow/MadVRExternalPixelShaders.h>
 
 #include "MadVRShaderLoader.h"
@@ -367,18 +368,6 @@ bool ParseNominalRates(const std::string& rawValue, std::vector<int>& rates)
 }
 
 
-unsigned long GreatestCommonDivisor(unsigned long left, unsigned long right)
-{
-	while (right != 0)
-	{
-		const unsigned long remainder = left % right;
-		left = right;
-		right = remainder;
-	}
-	return left;
-}
-
-
 bool ParseOutputAspectRatio(const std::string& rawValue, unsigned long& aspectX,
 	unsigned long& aspectY)
 {
@@ -388,45 +377,15 @@ bool ParseOutputAspectRatio(const std::string& rawValue, unsigned long& aspectX,
 	if (ConfigFile::NormalizeName(value) == "native")
 		return true;
 
-	try
-	{
-		const size_t separator = value.find_first_of(":/");
-		double numerator = 0.0;
-		double denominator = 1.0;
-		if (separator == std::string::npos)
-		{
-			size_t parsedLength = 0;
-			numerator = std::stod(value, &parsedLength);
-			if (parsedLength != value.size())
-				return false;
-		}
-		else
-		{
-			const std::string left = ConfigFile::Trim(value.substr(0, separator));
-			const std::string right = ConfigFile::Trim(value.substr(separator + 1));
-			size_t leftLength = 0;
-			size_t rightLength = 0;
-			numerator = std::stod(left, &leftLength);
-			denominator = std::stod(right, &rightLength);
-			if (leftLength != left.size() || rightLength != right.size())
-				return false;
-		}
-
-		const double ratio = numerator / denominator;
-		if (!std::isfinite(ratio) || denominator <= 0.0 || ratio < 1.0 || ratio > 4.0)
-			return false;
-
-		aspectY = 10000;
-		aspectX = static_cast<unsigned long>(std::llround(ratio * aspectY));
-		const unsigned long divisor = GreatestCommonDivisor(aspectX, aspectY);
-		aspectX /= divisor;
-		aspectY /= divisor;
-		return aspectX > 0 && aspectY > 0;
-	}
-	catch (...)
-	{
+	AspectRatio parsed;
+	std::string error;
+	if (!AspectRatioParser::Parse(value, 1.0, 4.0, parsed, error) ||
+		parsed.numerator > (std::numeric_limits<unsigned long>::max)() ||
+		parsed.denominator > (std::numeric_limits<unsigned long>::max)())
 		return false;
-	}
+	aspectX = static_cast<unsigned long>(parsed.numerator);
+	aspectY = static_cast<unsigned long>(parsed.denominator);
+	return true;
 }
 
 
