@@ -2,16 +2,71 @@
 
 ## Status
 
-In Progress — medium.
+Review / production pilot deployed — medium.
 
 Started July 28, 2026 from the current default VP integration branch
 `v1.1.014-beta`.
 
-The implementation is deliberately limited to adding an Alpha/libplacebo NLS
-implementation and the minimum renderer-neutral selection state needed to keep
-one logical shortcut armed across renderer changes. The existing madVR HLSL
-loader, stage ordering, parameter substitution, media/output contract, and
-external-shader installation must remain behaviorally unchanged.
+Implemented in `codex/vp-0015-alpha-nls`, merged through PR `#20` as
+`f1ae8a1`, rebuilt from that exact clean merge commit in x64 Release, and
+deployed July 28, 2026. Rollback is
+`C:\Videoprocessor\vp\backup-before-vp0015-20260728-182854`.
+
+The production pilot proves paired selector resolution, live Alpha GLSL NLS,
+requested-state restoration across Alpha/madVR replacement, and the unchanged
+madVR HLSL path. The story remains in Review rather than Done until the full
+mixed-content hardware matrix and repeated-handoff soak below are completed.
+
+## Implementation and deployment evidence
+
+- Added packaged `Shaders\NLS.glsl` in mpv user-shader format and parsed it
+  successfully with bundled libplacebo's `pl_mpv_user_shader_parse` API.
+- Same-shortcut selectors classify `.hlsl` as madVR, `.glsl`/`.hook` as
+  Alpha, and `none: true` as source-independent before installation.
+- The GUI owns the durable complete selector across the optional DLL boundary;
+  each newly built renderer resolves only its compatible member.
+- Alpha implements `SelectShaderRule`, `RefreshShaderRule`,
+  `ActiveShaderRule`, and `ActiveShaders`, owns hook lifetime under the
+  renderer/GPU mutex, and keeps parse or hook failure nonfatal.
+- Alpha reuses `ExtractP010ActivePictureEvidence`,
+  `ActivePictureTransitionModel`, and `EvaluateMadVRNlsMapping`. It does not
+  replace or modify Alpha's separate subtitle detector.
+- Waiting/transition state ignores any older subtitle-detector crop and
+  safe-fits the complete current raster until trusted NLS geometry returns.
+- Source crop and target rectangles implement trusted Scope passthrough,
+  nonlinear horizontal/vertical fill, and geometry-preserving safe fit without
+  a renderer restart.
+- Exact merge commit `f1ae8a1` passed a clean x64 Release rebuild and 183/183
+  native tests. Release output contained both `NLS.hlsl` and `NLS.glsl`.
+- Production configuration was backed up and minimally changed: existing
+  capture, madVR, broadcast, display, queue, and profile values were preserved;
+  only two Alpha rule names and two GLSL rule sections were added.
+- Live production Alpha validation resolved `nls,nls_alpha` to
+  `nls_alpha`, loaded only `NLS.glsl`, accepted trusted full-raster
+  `3840x2160` geometry, and applied horizontal NLS from `1.7778` to `2.3500`
+  with stretch `1.32188`.
+- Switching back without pressing N again restored the same selector. madVR
+  resolved only `nls`, loaded the byte-identical existing `NLS.hlsl`, changed
+  picture aspect dynamically to `235:100`, and reported
+  `renderer_restart=0`. Production was then left on madVR with `NLS: Off`.
+
+## Known pilot caveat and remaining validation
+
+The first uncached Alpha hook activation spent about 149 ms translating GLSL
+to SPIR-V. With the deployed intentionally small `alpha_queue_size: 1`, that
+one-time compile caused one hard overflow followed by one queue-only recovery.
+Rendering stabilized immediately and the compiled cache was saved. This is
+not a renderer restart, madVR regression, or recurring mapping failure, but it
+does not yet satisfy the ideal no-queue-reset activation criterion.
+
+Before moving to Done, field-check:
+
+- trusted encoded Scope-bar removal;
+- 1.85/1.90 and Disney+ Scope/IMAX transitions;
+- 4:3 to normal 16:9 NLS and 4:3-to-Scope safe fit;
+- Shift+P protected mode and plain-N off in Alpha;
+- warm-cache activation behavior; and
+- the planned repeated Alpha/madVR handoff soak.
 
 ## User story
 
