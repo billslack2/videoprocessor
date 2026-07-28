@@ -8,12 +8,13 @@ Started July 28, 2026 from the current default VP integration branch
 `v1.1.014-beta`.
 
 Implemented in `codex/vp-0015-alpha-nls` and merged through PR `#20` as
-`f1ae8a1`. On July 28, 2026 the pilot was rebased/fast-forwarded to current
-default integration merge `6307696`, rebuilt cleanly in x64 Release, passed
-183/183 tests, and was redeployed with the madVR NLS reconstruction quality
-raised from `medium` to `high`. Current rollback is
-`C:\Videoprocessor\vp\backup-before-vp0015-high-20260728-190516`; the initial
-VP0015 deployment rollback remains
+`f1ae8a1`. After production validation, PR `#22` made the tested madVR
+`quality: high` choice permanent in the checked-in classic and protected
+profiles. Its integration merge `15577fc` was rebuilt cleanly in x64 Release,
+passed 183/183 tests, and was deployed July 28, 2026. Current rollback is
+`C:\Videoprocessor\vp\backup-before-vp0015-merged-high-20260728-193828`; the
+earlier pilot rollbacks remain
+`C:\Videoprocessor\vp\backup-before-vp0015-high-20260728-190516` and
 `C:\Videoprocessor\vp\backup-before-vp0015-20260728-182854`.
 
 The production pilot proves paired selector resolution, live Alpha GLSL NLS,
@@ -40,15 +41,19 @@ mixed-content hardware matrix and repeated-handoff soak below are completed.
 - Source crop and target rectangles implement trusted Scope passthrough,
   nonlinear horizontal/vertical fill, and geometry-preserving safe fit without
   a renderer restart.
-- Exact merge commit `f1ae8a1` and the later default-integration merge
-  `6307696` each passed a clean x64 Release rebuild and 183/183 native tests.
-  Release output contained both `NLS.hlsl` and `NLS.glsl`.
+- Exact merge commits `f1ae8a1`, `6307696`, and final high-quality-default
+  merge `15577fc` each passed a clean x64 Release rebuild and 183/183 native
+  tests. Release output contained both `NLS.hlsl` and `NLS.glsl`.
 - Production configuration was backed up and minimally changed: existing
   capture, madVR, broadcast, display, queue, and profile values were preserved;
   only two Alpha rule names and two GLSL rule sections were added.
 - The July 28 high-quality madVR pilot changed only `quality: medium` to
   `quality: high` in `shaders.nls` and `shaders.nls_protected`, selecting the
   existing six-tap Lanczos-3-style HLSL reconstruction path.
+- PR `#22` synchronized those two tested values into the source configuration
+  and matching HTML examples. Final deployment preserved the active production
+  configuration byte-for-byte, matched all rebuilt artifact hashes, and
+  restarted successfully.
 - Live production Alpha validation resolved `nls,nls_alpha` to
   `nls_alpha`, loaded only `NLS.glsl`, accepted trusted full-raster
   `3840x2160` geometry, and applied horizontal NLS from `1.7778` to `2.3500`
