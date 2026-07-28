@@ -21,6 +21,7 @@
 #include <UnifiedProfileRuntime.h>
 #include <VideoFrame.h>
 #include <FullscreenVideoWindow.h>
+#include <RendererTransitionWindow.h>
 #include <VideoConversionOverride.h>
 #include <WindowedVideoWindow.h>
 #include <microsoft_directshow/DirectShowRendererStartStopTimeMethod.h>
@@ -41,6 +42,7 @@
 #define WM_MESSAGE_DIRECTSHOW_NOTIFICATION              (WM_APP + 7)
 #define WM_MESSAGE_RENDERER_STATE_CHANGE                (WM_APP + 8)
 #define WM_MESSAGE_RENDERER_DETAIL_STRING               (WM_APP + 9)
+#define WM_MESSAGE_RENDERER_LIVE_FRAME                  (WM_APP + 10)
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
@@ -174,6 +176,7 @@ public:
 	afx_msg LRESULT OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererDetailString(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageRendererLiveFrame(WPARAM wParam, LPARAM lParam);
 
 	// Command handlers
 	void OnCommandFullScreenToggle();
@@ -413,6 +416,13 @@ protected:
 
 	IVideoRenderer* m_videoRenderer = nullptr;
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
+	RendererTransitionWindow m_rendererTransitionWindow;
+	HWND m_rendererTargetHwnd = nullptr;
+	CString m_activeRendererName;
+	std::atomic<uint32_t> m_rendererGeneration{0};
+	uint32_t m_transitionGeneration = 0;
+	uint64_t m_transitionBlackStartTick = 0;
+	std::atomic_bool m_transitionRevealPosted{false};
 	uint64_t m_rendererStartCapturedFrameCount = 0;
 	bool m_rendererFrameBaselineValid = false;
 
@@ -468,6 +478,8 @@ protected:
 	void RenderRemove();
 	void DestroyVideoRenderer();
 	void RenderGUIClear();
+	void ShowRendererTransitionBlack(const char* reason);
+	void TryRevealRendererTransition(uint32_t generation);
 	void FullScreenVideoWindowConstruct();
 	void FullScreenVideoWindowDestroy();
 	HWND GetRenderWindow();

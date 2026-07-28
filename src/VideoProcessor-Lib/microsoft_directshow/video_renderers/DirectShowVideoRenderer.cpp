@@ -144,9 +144,14 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 		}
 	}
 
-	if (FAILED(m_liveSource->OnVideoFrame(videoFrame)))
+	const HRESULT deliveryResult = m_liveSource->OnVideoFrame(videoFrame);
+	if (FAILED(deliveryResult))
 	{
 		DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::OnVideoFrame(): Failed to deliver frame #%I64u"), m_frameCounter));
+	}
+	else
+	{
+		m_hasPresentedLiveFrame.store(true, std::memory_order_release);
 	}
 
 	++m_frameCounter;

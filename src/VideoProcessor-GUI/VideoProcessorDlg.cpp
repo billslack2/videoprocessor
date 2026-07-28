@@ -921,6 +921,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_DIRECTSHOW_NOTIFICATION, &CVideoProcessorDlg::OnMessageDirectShowNotification)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_STATE_CHANGE, &CVideoProcessorDlg::OnMessageRendererStateChange)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_DETAIL_STRING, &CVideoProcessorDlg::OnMessageRendererDetailString)
+	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
 
 	// Command handlers (from accelerator)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_TOGGLE, &CVideoProcessorDlg::OnCommandFullScreenToggle)
@@ -2222,7 +2223,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		}
 		m_deliverCaptureDataToRenderer.store(true, std::memory_order_release);
 		enableButtons = true;
-		m_windowedVideoWindow.ShowLogo(false);
+		m_rendererTransitionWindow.KeepOnTop();
 		m_rendererStateText.SetWindowText(TEXT("Rendering"));
 		ApplyStatsOverlayForActiveRenderer();
 
@@ -2290,6 +2291,15 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 	UpdateState();
 
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageRendererStateChange(): Done")));
+	return 0;
+}
+
+
+LRESULT CVideoProcessorDlg::OnMessageRendererLiveFrame(
+	WPARAM wParam,
+	LPARAM)
+{
+	TryRevealRendererTransition(static_cast<uint32_t>(wParam));
 	return 0;
 }
 
@@ -2670,6 +2680,16 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoFrame(VideoFrame& videoFrame)
 		assert(m_rendererState == RendererState::RENDERSTATE_RENDERING);
 
 		m_videoRenderer->OnVideoFrame(videoFrame);
+		if (m_videoRenderer->HasPresentedLiveFrame() &&
+			!m_transitionRevealPosted.exchange(
+				true, std::memory_order_acq_rel))
+		{
+			PostMessage(
+				WM_MESSAGE_RENDERER_LIVE_FRAME,
+				static_cast<WPARAM>(
+					m_rendererGeneration.load(std::memory_order_acquire)),
+				0);
+		}
 	}
 }
 
@@ -3350,6 +3370,14 @@ void CVideoProcessorDlg::RenderStart()
 	if (!selectedRenderer)
 		return;
 
+	m_activeRendererName = selectedRenderer->name;
+	const uint32_t rendererGeneration =
+		m_rendererGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+	m_rendererTargetHwnd = GetRenderWindow();
+	m_transitionGeneration = rendererGeneration;
+	m_transitionRevealPosted.store(false, std::memory_order_release);
+	ShowRendererTransitionBlack("renderer-start");
+
 	// Get user-selectable options
 	i = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
 	assert(i >= 0);
@@ -3410,7 +3438,7 @@ void CVideoProcessorDlg::RenderStart()
 			}
 			m_videoRenderer = new LibplaceboPluginVideoRenderer(
 				*this,
-				GetRenderWindow(),
+				m_rendererTargetHwnd,
 				timingClock,
 				GetRendererVideoFrameUseQueue(),
 				alphaDesiredDepth);
@@ -3421,6 +3449,7 @@ void CVideoProcessorDlg::RenderStart()
 				m_videoRenderer->OnVideoState(m_builtVideoState);
 
 			m_videoRenderer->Build();
+			m_rendererTransitionWindow.KeepOnTop();
 			// Match the DirectShow startup contract. Alpha owns its detector and
 			// cadence policy inside the optional renderer, so the configured mode
 			// must be forwarded before the first queued frame is accepted.
@@ -3434,6 +3463,8 @@ void CVideoProcessorDlg::RenderStart()
 		{
 			DebugLog::Log("libplacebo renderer startup failed: %s", e.what());
 			DestroyVideoRenderer();
+			m_rendererTransitionWindow.Hide();
+			m_windowedVideoWindow.ShowLogo(true);
 			m_rendererState = RendererState::RENDERSTATE_FAILED;
 			m_rendererStateText.SetWindowText(TEXT("Failed"));
 
@@ -3462,7 +3493,7 @@ void CVideoProcessorDlg::RenderStart()
 		m_videoRenderer = new DirectShowGenericHDRVideoRenderer(
 			*rendererClSID,
 			*this,
-			GetRenderWindow(),
+			m_rendererTargetHwnd,
 			this->GetSafeHwnd(),
 			WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
 			timingClock,
@@ -3481,6 +3512,7 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->OnVideoState(m_builtVideoState);
 
 		m_videoRenderer->Build();
+		m_rendererTransitionWindow.KeepOnTop();
 		m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
 		m_videoRenderer->SetSceneCorrectionUpstreamSample(
 			m_sceneCorrectionUpstreamSample);
@@ -3501,7 +3533,7 @@ void CVideoProcessorDlg::RenderStart()
 			{
 				m_videoRenderer = new DirectShowMPCVideoRenderer(
 					*this,
-					GetRenderWindow(),
+					m_rendererTargetHwnd,
 					this->GetSafeHwnd(),
 					WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
 					timingClock,
@@ -3518,7 +3550,7 @@ void CVideoProcessorDlg::RenderStart()
 			{
 				m_videoRenderer = new DirectShowEnhancedVideoRenderer(
 					*this,
-					GetRenderWindow(),
+					m_rendererTargetHwnd,
 					this->GetSafeHwnd(),
 					WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
 					timingClock,
@@ -3531,7 +3563,7 @@ void CVideoProcessorDlg::RenderStart()
 				m_videoRenderer = new DirectShowGenericVideoRenderer(
 					*rendererClSID,
 					*this,
-					GetRenderWindow(),
+					m_rendererTargetHwnd,
 					this->GetSafeHwnd(),
 					WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
 					timingClock,
@@ -3547,6 +3579,7 @@ void CVideoProcessorDlg::RenderStart()
 				m_videoRenderer->OnVideoState(m_builtVideoState);
 
 			m_videoRenderer->Build();
+			m_rendererTransitionWindow.KeepOnTop();
 			m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
 			m_videoRenderer->SetSceneCorrectionUpstreamSample(
 				m_sceneCorrectionUpstreamSample);
@@ -3559,6 +3592,8 @@ void CVideoProcessorDlg::RenderStart()
 		catch (std::runtime_error e)
 		{
 			DestroyVideoRenderer();
+			m_rendererTransitionWindow.Hide();
+			m_windowedVideoWindow.ShowLogo(true);
 
 			m_rendererState = RendererState::RENDERSTATE_FAILED;
 			m_rendererStateText.SetWindowText(TEXT("Failed"));
@@ -3610,6 +3645,8 @@ void CVideoProcessorDlg::RenderStop()
 
 	// After this call no frames will ever go through to the renderer
 	m_deliverCaptureDataToRenderer.store(false, std::memory_order_release);
+	m_transitionRevealPosted.store(true, std::memory_order_release);
+	ShowRendererTransitionBlack("renderer-stop");
 
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_rendererState = RendererState::RENDERSTATE_STOPPING;
@@ -3656,6 +3693,14 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 		"Renderer teardown: detached renderer before destruction to block reentrant callbacks");
 
 	delete rendererToDestroy;
+	DebugLog::Log(
+		"Renderer transition: process=%lu generation=%u event=old-surface-retired "
+		"renderer=%S target=%p cover=%p",
+		GetCurrentProcessId(),
+		m_rendererGeneration.load(std::memory_order_acquire),
+		static_cast<LPCTSTR>(m_activeRendererName),
+		m_rendererTargetHwnd,
+		m_rendererTransitionWindow.GetHWND());
 }
 
 
@@ -3674,6 +3719,94 @@ void CVideoProcessorDlg::RenderGUIClear()
 
 	m_windowedVideoWindow.ShowLogo(true);
 }
+
+
+void CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
+{
+	if (!m_rendererTargetHwnd || !IsWindow(m_rendererTargetHwnd))
+	{
+		DebugLog::Log(
+			"Renderer transition: process=%lu generation=%u event=black-unavailable "
+			"reason=%s target=%p",
+			GetCurrentProcessId(),
+			m_rendererGeneration.load(std::memory_order_acquire),
+			reason ? reason : "unknown",
+			m_rendererTargetHwnd);
+		return;
+	}
+
+	const bool wasVisible = m_rendererTransitionWindow.IsVisible();
+	try
+	{
+		m_rendererTransitionWindow.Show(m_rendererTargetHwnd);
+	}
+	catch (const std::exception& e)
+	{
+		DebugLog::Log(
+			"Renderer transition: process=%lu generation=%u event=black-failed "
+			"reason=%s target=%p error=%s",
+			GetCurrentProcessId(),
+			m_rendererGeneration.load(std::memory_order_acquire),
+			reason ? reason : "unknown",
+			m_rendererTargetHwnd,
+			e.what());
+		m_windowedVideoWindow.ShowLogo(true);
+		return;
+	}
+
+	if (!wasVisible)
+		m_transitionBlackStartTick = GetTickCount64();
+
+	const LONG_PTR style = GetWindowLongPtr(m_rendererTargetHwnd, GWL_STYLE);
+	DebugLog::Log(
+		"Renderer transition: process=%lu generation=%u event=black-shown "
+		"reason=%s renderer=%S target=%p cover=%p parent=%p root=%p owner=%p "
+		"fullscreen=%d windowed_fullscreen=%d style=0x%p",
+		GetCurrentProcessId(),
+		m_rendererGeneration.load(std::memory_order_acquire),
+		reason ? reason : "unknown",
+		static_cast<LPCTSTR>(m_activeRendererName),
+		m_rendererTargetHwnd,
+		m_rendererTransitionWindow.GetHWND(),
+		::GetParent(m_rendererTargetHwnd),
+		::GetAncestor(m_rendererTargetHwnd, GA_ROOT),
+		::GetWindow(m_rendererTargetHwnd, GW_OWNER),
+		m_rendererFullscreenCheck.GetCheck() ? 1 : 0,
+		m_windowedFullScreenMode ? 1 : 0,
+		reinterpret_cast<void*>(style));
+}
+
+
+void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
+{
+	if (generation != m_transitionGeneration ||
+		generation != m_rendererGeneration.load(std::memory_order_acquire) ||
+		!m_videoRenderer ||
+		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
+		!m_videoRenderer->HasPresentedLiveFrame() ||
+		!m_rendererTransitionWindow.IsVisible())
+	{
+		return;
+	}
+
+	const char* evidence = m_videoRenderer->PresentedLiveFrameEvidence();
+	const uint64_t blackDurationMs =
+		m_transitionBlackStartTick > 0
+			? GetTickCount64() - m_transitionBlackStartTick
+			: 0;
+	m_windowedVideoWindow.ShowLogo(false);
+	m_rendererTransitionWindow.Hide();
+	DebugLog::Log(
+		"Renderer transition: process=%lu generation=%u event=first-live-frame-reveal "
+		"renderer=%S target=%p evidence=%s black_ms=%llu",
+		GetCurrentProcessId(),
+		generation,
+		static_cast<LPCTSTR>(m_activeRendererName),
+		m_rendererTargetHwnd,
+		evidence ? evidence : "unknown",
+		static_cast<unsigned long long>(blackDurationMs));
+}
+
 
 void CVideoProcessorDlg::ApplyNoUiLayout()
 {
@@ -3734,6 +3867,8 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 void CVideoProcessorDlg::FullScreenVideoWindowDestroy()
 {
 	assert(m_fullScreenVideoWindow);
+	if (m_rendererTargetHwnd == m_fullScreenVideoWindow->GetHWND())
+		m_rendererTargetHwnd = nullptr;
 	delete m_fullScreenVideoWindow;
 	m_fullScreenVideoWindow = nullptr;
 }
@@ -4817,6 +4952,7 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 
 	if (m_videoRenderer)
 		m_videoRenderer->OnSize();
+	m_rendererTransitionWindow.KeepOnTop();
 
 	// Some windowed DirectShow renderers finish processing WM_SIZE after this
 	// handler returns.  Restore the fixed UI now and once more after that work
@@ -4943,6 +5079,12 @@ void CVideoProcessorDlg::OnClose()
 
 void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
+	if (m_rendererTransitionWindow.IsVisible())
+	{
+		TryRevealRendererTransition(
+			m_rendererGeneration.load(std::memory_order_acquire));
+	}
+
 	if (nIDEvent == UI_LAYOUT_RESTORE_TIMER_ID)
 	{
 		KillTimer(UI_LAYOUT_RESTORE_TIMER_ID);

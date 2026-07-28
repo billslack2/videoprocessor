@@ -30,6 +30,14 @@ public:
 	bool OnVideoState(VideoStateComPtr& videoState) override;
 	bool SupportsDynamicVideoState() const override { return true; }
 	void OnVideoFrame(VideoFrame& videoFrame) override;
+	bool HasPresentedLiveFrame() const override
+	{
+		return m_hasPresentedLiveFrame.load(std::memory_order_acquire);
+	}
+	const char* PresentedLiveFrameEvidence() const override
+	{
+		return "swapchain-submitted";
+	}
 	HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) override;
 	void Build() override;
 	void Start() override;
@@ -152,6 +160,7 @@ private:
 	std::atomic<int> m_sceneDetectionStatus{0};
 	std::atomic<uint64_t> m_frameCounter{0};
 	std::atomic<uint64_t> m_sourceSequence{0};
+	std::atomic_bool m_hasPresentedLiveFrame{false};
 	// Capture-timestamp cadence diagnostics.  This intentionally mirrors the
 	// DirectShow renderer measurement but is diagnostic-only: the optional
 	// renderer does not feed or alter source PPM correction.

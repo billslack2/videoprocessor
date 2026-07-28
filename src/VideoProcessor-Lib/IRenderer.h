@@ -85,6 +85,13 @@ public:
 	// ! Only can be called if Start() exectued correctly and before Stop() is called
 	virtual void OnVideoFrame(VideoFrame&) = 0;
 
+	// True only after this renderer instance has accepted enough current input
+	// to replace a retired presentation surface. DirectShow reports successful
+	// downstream acceptance; renderers with explicit presentation report a
+	// successful submit/present boundary.
+	virtual bool HasPresentedLiveFrame() const { return false; }
+	virtual const char* PresentedLiveFrameEvidence() const { return "unavailable"; }
+
 	// Handler for windows events for the graph's pEvent
 	virtual HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) = 0;
 
