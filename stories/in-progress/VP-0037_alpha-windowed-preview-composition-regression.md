@@ -16,6 +16,15 @@ desktop/UI interaction. The deployed artifacts were immediately rolled back
 to the prior Release build and verified; commit `66352c0` reverts the failed
 source approach. The bad binaries are retained only for diagnosis at
 `C:\Videoprocessor\vp\backup-bad-vp0037-osd-20260727-224150`.
+
+Native OSD candidate (2026-07-28): after Microsoft DXGI guidance and three
+independent code/graphics reviews, commit `f8d6d7d` replaces Alpha's visible
+layered popup with a libplacebo `pl_overlay` blended into the final video
+target. Ctrl+I performs no renderer restart, swap-chain recreation, HWND
+z-order change, or output-contract transition. DirectShow/madVR retains the
+legacy popup path. Release|x64 GUI and plugin builds passed and were deployed
+with hash verification; the prior stable runtime is backed up at
+`C:\Videoprocessor\vp\backup-before-vp0037-native-osd-20260727-225640`.
 ## User story
 
 As an Alpha renderer user, I want video to remain visible and stable inside
