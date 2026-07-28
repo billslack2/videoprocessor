@@ -45,7 +45,7 @@ they must not contain requirements that are absent from this file.
 | VP-0012 | Done | Alpha renderer LUT pipeline contract spike |
 | VP-0013 | Done | DirectShow queue/reset alignment and no-drop review |
 | VP-0014 | Will Not Do | Alpha renderer SDR BT.2020 source and target support (duplicate of VP-0019; will not do separately) |
-| VP-0015 | Backlog | Alpha renderer shader compatibility with the existing shader catalog |
+| VP-0015 | Backlog — large | Alpha renderer compatibility with the existing shader contract |
 | VP-0016 | Will Not Do | Make scene detection available for the alpha renderer |
 | VP-0017 | Will Not Do | Explain variable alpha-renderer queue depth |
 | VP-0018 | Done | Re-select the content refresh rate when switching to alpha |
