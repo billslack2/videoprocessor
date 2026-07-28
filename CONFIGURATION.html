@@ -10,6 +10,7 @@
     code { background: #f2f2f2; padding: .1rem .25rem; } pre { background: #f2f2f2; padding: 1rem; overflow-x: auto; }
     table { border-collapse: collapse; width: 100%; margin: 1rem 0; } th, td { border: 1px solid #ccc; padding: .55rem; text-align: left; vertical-align: top; }
     th { background: #eaf1f8; } .note { background: #fff4ce; border-left: 4px solid #d6a700; padding: .8rem 1rem; }
+    #renderer { margin-top: 4rem; padding-top: 1.5rem; border-top: 4px solid #17365d; } .renderer-nav { background: #eaf1f8; padding: .75rem 1rem; margin: 1rem 0 1.5rem; }
   </style>
 </head>
 <body>
@@ -221,7 +222,30 @@ scene_detect=false</pre>
   <p>The optional built-in libplacebo renderer is configured in the same <code>VideoProcessor.cfg</code>. Select it with <code>renderer: VideoProcessor Renderer (Alpha)</code> in <code>[command_line]</code>. Its complete optional plugin pack belongs in a <code>libplacebo</code> directory beside <code>VideoProcessor.exe</code>; if it is unavailable, the application starts normally without listing that renderer.</p>
   <p>Renderer entries use the canonical <code>key: value</code> syntax. Existing <code>key=value</code> entries remain readable. The renderer always produces SDR output; HDR, HLG, and detected LLDV input is tone-mapped using the effective input colorspace and mastering metadata.</p>
 
-  <h3>Base settings</h3>
+  <div class="renderer-nav"><strong>Renderer reference:</strong> <a href="#renderer-quick-start">Quick start</a> | <a href="#renderer-base">Base settings</a> | <a href="#renderer-profiles">Profiles and hotkeys</a> | <a href="#renderer-rules">Rules</a> | <a href="#renderer-recipes">Complete recipes</a> | <a href="#renderer-events">Event actions</a> | <a href="#renderer-troubleshooting">Troubleshooting</a></div>
+
+  <h3 id="renderer-quick-start">Quick start: how renderer configuration fits together</h3>
+  <p>The renderer is a separate configuration domain inside the same file. Application sections such as <code>[command_line]</code>, capture, queue, shader, and conversion settings start VP. Renderer sections decide how the already-captured frames are processed and displayed. Renderer profiles cannot modify application-owned settings.</p>
+  <ol>
+    <li>Choose the Alpha renderer in <code>[command_line]</code>.</li>
+    <li>Set safe, always-on values in <code>[display]</code> and <code>[general]</code>.</li>
+    <li>Declare all four required profile groups: <code>input</code>, <code>scaling</code>, <code>display</code>, and <code>viewport</code>.</li>
+    <li>Define named profiles in each group. Use source rules for automatic input/scaling behavior and <code>$key</code> for manual display/viewport behavior.</li>
+    <li>VP resolves one profile per group, applies the combined result, then records a successful manual selection in <code>VideoProcessor.state</code>.</li>
+  </ol>
+  <pre>[command_line]
+renderer: VideoProcessor Renderer (Alpha)
+
+[display]
+quality: high
+sdr_target_nits: 100
+sdr_target_primaries: REC709
+
+[general]
+switch_refresh_rate: true
+persist_profile_selection: true</pre>
+
+  <h3 id="renderer-base">Base settings</h3>
   <p><code>[display]</code> holds the base renderer treatment. Every setting has a typed range or value list and is validated before capture begins. Profiles override only their own group’s settings; values omitted by a profile retain this base value.</p>
   <table><thead><tr><th>Area</th><th>Settings</th><th>Useful values</th></tr></thead><tbody>
     <tr><td>Input treatment</td><td><code>tone_mapping</code>, <code>gamut_mapping</code>, <code>peak_detection</code>, <code>contrast_recovery</code>, <code>sdr_input_transfer</code></td><td>Tone mapping: <code>AUTO</code>, <code>spline</code>, <code>bt2390</code>, <code>st2094-40</code>, <code>reinhard</code>. Gamut mapping: <code>AUTO</code>, <code>perceptual</code>, <code>softclip</code>, <code>relative</code>, <code>desaturate</code>.</td></tr>
@@ -232,7 +256,7 @@ scene_detect=false</pre>
   </tbody></table>
   <p><code>[general]</code> controls renderer-session policy: <code>persist_profile_selection</code>, <code>switch_refresh_rate</code>, and <code>event_action_delay_seconds</code> (0–30 seconds). The shipped configuration is the complete conservative starting point.</p>
 
-  <h3>Profiles and hotkeys</h3>
+  <h3 id="renderer-profiles">Profiles and hotkeys</h3>
   <p>Profiles are independent groups: <code>input</code>, <code>scaling</code>, <code>display</code>, and <code>viewport</code>. Declare each group in <code>[profile_groups.&lt;group&gt;]</code>, then define settings in <code>[profiles.&lt;group&gt;.&lt;name&gt;]</code>. A profile's <code>when</code> expression can use source metadata or <code>$key</code>. The same key may select profiles in multiple groups; no profile may write a setting owned by a different group or by the application.</p>
   <table><thead><tr><th>Group</th><th>May override</th><th>Typical selector</th></tr></thead><tbody>
     <tr><td><code>input</code></td><td><code>tone_mapping</code>, <code>gamut_mapping</code>, <code>peak_detection</code>, <code>contrast_recovery</code>, <code>sdr_input_transfer</code></td><td>Source transfer, primaries, HDR metadata</td></tr>
@@ -257,7 +281,16 @@ sdr_target_primaries: BT2020
 report_bt2020_to_display: true</pre>
   <p>The selected manual profiles are stored alongside the configuration in <code>VideoProcessor.state</code>, and only after a successful renderer application. A failed change leaves both the active renderer and the saved selection intact.</p>
 
-  <h3>Automatic rules and expression language</h3>
+  <h4>How selection works</h4>
+  <table><thead><tr><th>Situation</th><th>Result</th></tr></thead><tbody>
+    <tr><td>Startup with a saved manual selection</td><td>The saved profile is used when it still exists in the group and persistence is enabled.</td></tr>
+    <tr><td>Automatic source update</td><td>VP evaluates profiles with source conditions. Highest <code>priority</code> wins; then the condition with more comparisons; then the declared <code>profiles:</code> order.</td></tr>
+    <tr><td>No automatic match</td><td>A named <code>default:</code> is selected. <code>default: auto</code> leaves that group at the base setting.</td></tr>
+    <tr><td>Manual key selection</td><td>Every group evaluates the same key event. One chord may intentionally select one profile in several groups.</td></tr>
+    <tr><td>Group reset key</td><td>The group section's <code>when:</code> returns only that group to automatic selection. Other groups retain their manual selections.</td></tr>
+  </tbody></table>
+
+  <h3 id="renderer-rules">Automatic rules and expression language</h3>
   <p>A profile without <code>when:</code> is selectable as the configured default or persisted manual choice. An automatic profile uses a source condition; the highest matching <code>priority:</code> wins (default 0), with declared profile order making a remaining tie deterministic. Rules support <code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code>, <code>&amp;&amp;</code>, <code>||</code>, <code>!</code>, and parentheses. Text comparison is case-insensitive.</p>
   <table><thead><tr><th>Rule variable</th><th>Examples</th></tr></thead><tbody>
     <tr><td><code>$transfer</code> / <code>$eotf</code></td><td><code>SDR</code>, <code>PQ</code>, <code>HLG</code>, <code>HDR</code>, <code>UNKNOWN</code></td></tr>
@@ -279,11 +312,114 @@ when: $width&gt;=3840 &amp;&amp; $height&gt;=2160
 quality: high</pre>
   <p>Use quoted key chords: <code>when: $key=="F5"</code>. A chord may select one profile in each independent group, which makes composite actions such as selecting a display calibration and viewport together deliberate and safe. Two profiles in the same group cannot claim the same chord.</p>
 
-  <h3>Strictness and safe changes</h3>
+  <h4>Rule cookbook</h4>
+  <table><thead><tr><th>Intent</th><th>Profile rule</th><th>Notes</th></tr></thead><tbody>
+    <tr><td>Apply HDR input treatment only to PQ BT.2020</td><td><code>when: $transfer=="PQ" &amp;&amp; $primaries=="BT2020"</code></td><td>Put tone and gamut mapping in an <code>input</code> profile.</td></tr>
+    <tr><td>Prefer an UHD scaling profile</td><td><code>when: $width&gt;=3840 &amp;&amp; $height&gt;=2160</code></td><td>Put quality/scaler values in a <code>scaling</code> profile.</td></tr>
+    <tr><td>Choose Scope manually</td><td><code>when: $key=="F3"</code></td><td>Put <code>mode: scope</code> and geometry values in a <code>viewport</code> profile.</td></tr>
+    <tr><td>Return only display selection to automatic</td><td>Group rule: <code>when: $key=="F4"</code></td><td>Place it in <code>[profile_groups.display]</code>, not a profile.</td></tr>
+    <tr><td>One key selects matching display and viewport</td><td>Use <code>$key=="Ctrl+F9"</code> in one profile of each group</td><td>Allowed across groups; never reuse the chord for two profiles in the same group.</td></tr>
+  </tbody></table>
+
+  <h3 id="renderer-recipes">Complete profile recipes</h3>
+  <p>The following is a complete, valid renderer profile library. It illustrates automatic HDR/input and UHD/scaling choices, manual display calibration, Normal/Scope viewport selection, a display-only reset, and one composite key. It can be adapted into the renderer portion of <code>VideoProcessor.cfg</code>; keep your existing application sections above it.</p>
+  <pre>[display]
+sdr_target_nits: 100
+sdr_black_nits: 0
+quality: high
+tone_mapping: spline
+gamut_mapping: perceptual
+peak_detection: AUTO
+contrast_recovery: AUTO
+upscaler: AUTO
+downscaler: AUTO
+deband: AUTO
+dithering: AUTO
+output_presentation: DIRECT
+output_range: FULL
+output_gamma: AUTO
+sdr_target_primaries: REC709
+report_bt2020_to_display: false
+sdr_input_transfer: AUTO
+
+[general]
+switch_refresh_rate: true
+persist_profile_selection: true
+event_action_delay_seconds: 5
+
+[profile_groups.input]
+profiles: sdr,pq_hdr,hlg_hdr
+default: auto
+persist_profile_selection: false
+
+[profiles.input.sdr]
+when: $transfer=="SDR"
+
+[profiles.input.pq_hdr]
+when: $transfer=="PQ" &amp;&amp; $primaries=="BT2020"
+priority: 100
+tone_mapping: spline
+gamut_mapping: perceptual
+peak_detection: high_quality
+contrast_recovery: 0.25
+
+[profiles.input.hlg_hdr]
+when: $transfer=="HLG"
+tone_mapping: bt2390
+gamut_mapping: perceptual
+
+[profile_groups.scaling]
+profiles: standard,uhd
+default: standard
+persist_profile_selection: false
+
+[profiles.scaling.standard]
+quality: high
+upscaler: ewa_lanczossharp
+downscaler: ewa_lanczos
+
+[profiles.scaling.uhd]
+when: $width&gt;=3840 &amp;&amp; $height&gt;=2160
+quality: high
+upscaler: ewa_lanczossharp
+
+[profile_groups.display]
+profiles: rec709,bt2020
+default: rec709
+when: $key=="F4"
+
+[profiles.display.rec709]
+when: $key=="F5" || $key=="Ctrl+F10"
+sdr_target_primaries: REC709
+report_bt2020_to_display: false
+
+[profiles.display.bt2020]
+when: $key=="F6" || $key=="Ctrl+F9"
+sdr_target_primaries: BT2020
+report_bt2020_to_display: true
+
+[profile_groups.viewport]
+profiles: normal,scope
+default: normal
+
+[profiles.viewport.normal]
+when: $key=="F2" || $key=="Ctrl+F10"
+mode: normal
+
+[profiles.viewport.scope]
+when: $key=="F3" || $key=="Ctrl+F9"
+mode: scope
+scope_screen_aspect: 2.35:1
+scope_subtitle_fit: true
+scope_subtitle_hold_seconds: 2
+scope_subtitle_padding_pixels: 30</pre>
+  <p>In that example, <code>Ctrl+F9</code> selects BT.2020 display reporting and Scope together; <code>Ctrl+F10</code> selects Rec.709 reporting and Normal together. F2 and F3 change only the viewport. F5 and F6 change only the display target. F4 clears only the manual display choice.</p>
+
+  <h3 id="renderer-strictness">Strictness and safe changes</h3>
   <p>Unified configuration rejects duplicate keys, unknown sections, missing listed profiles, orphan profile sections, invalid defaults, unknown variables, malformed expressions, unsupported values, and a setting placed in the wrong profile group. Application settings such as capture, queues, conversion, and shaders remain startup-only and cannot be changed by a renderer profile. Legacy display-rule syntax is not part of the unified model.</p>
   <p>Changes are transactional. VP first resolves the full effective settings, then applies/rebuilds the renderer as needed. It persists a manual selection and runs completed-event actions only after the change succeeds. If application fails, the prior renderer, state, and selection remain in effect.</p>
 
-  <h3>Completed-event actions</h3>
+  <h3 id="renderer-events">Completed-event actions</h3>
   <p>Optional <code>[event_actions]</code> entries run only after a successful applied, confirmed, or restored renderer transition. The section lists action names; each action requires <code>on:</code>, <code>when:</code>, and <code>program:</code>. <code>arguments:</code>, <code>working_directory:</code>, and a 0–30 second <code>delay_seconds:</code> are optional. Without a per-action delay, the value from <code>[general]</code> is used.</p>
   <pre>[event_actions]
 actions: audio_delay_film
@@ -294,5 +430,14 @@ when: $actual_refresh==23.976 || $actual_refresh==24
 program: C:\Videoprocessor\audio\audio_delay.bat
 arguments: 315</pre>
   <p>Supported events are <code>refresh.applied</code>, <code>refresh.confirmed</code>, and <code>refresh.restored</code>. Actions are not profile selectors and cannot change renderer settings. Failed or unsupported refresh changes run no action.</p>
+
+  <h3 id="renderer-troubleshooting">Troubleshooting renderer profiles</h3>
+  <table><thead><tr><th>Symptom</th><th>Check</th></tr></thead><tbody>
+    <tr><td>VP will not start with the Alpha renderer</td><td>Read the configuration error. Unified configuration fails closed on a misspelled section/key, invalid setting value, missing listed profile, or invalid expression.</td></tr>
+    <tr><td>A hotkey does nothing</td><td>Verify the VP window has focus, the chord is quoted exactly, and it is not assigned to two profiles in the same group. Check <code>C:\logs\vp_debug.log</code> for registered profile bindings.</td></tr>
+    <tr><td>An automatic rule never wins</td><td>Verify the captured metadata in the debug log, then compare its transfer/primaries/raster values with the rule. Raise <code>priority:</code> only when two matching profiles genuinely need ordering.</td></tr>
+    <tr><td>The wrong profile reappears after restart</td><td>Manual selections persist by default. Use the group reset chord, set <code>persist_profile_selection: false</code> for that group, or remove the relevant entry from <code>VideoProcessor.state</code> while VP is stopped.</td></tr>
+    <tr><td>Display or colour changes fail</td><td>VP keeps the last successful renderer state. Inspect the log for the rejected output contract or unsupported display capability; do not assume the profile name alone proves a setting applied.</td></tr>
+  </tbody></table>
 </body>
 </html>
