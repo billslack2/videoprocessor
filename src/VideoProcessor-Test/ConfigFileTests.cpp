@@ -360,5 +360,36 @@ namespace VideoProcessorTest
 			Assert::IsTrue(error.find("queue_size") != std::string::npos);
 			DeleteFileA(path.c_str());
 		}
+
+		TEST_METHOD(MainConfigSchemaOwnsOnlyTheKnownLoggingKey)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-logging-schema.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				// Value validation intentionally belongs to the non-fatal
+				// startup resolver, not the strict main schema.
+				file << "[logging]\ndebug_log_retention: invalid\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::OwnsSection("logging"));
+			Assert::IsTrue(MainConfigSchema::Validate(config, error));
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[logging]\nunknown_logging_key: 10\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(
+				error.find("unknown_logging_key") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
 	};
 }

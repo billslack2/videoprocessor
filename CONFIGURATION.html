@@ -18,7 +18,7 @@
   <p><a href="#application">Application configuration</a> | <a href="#renderer">Built-in renderer configuration</a></p>
   <h2 id="application">Application configuration</h2>
   <p><code>VideoProcessor.cfg</code> is an optional UTF-8 text file searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
-  <p>The shipped file is a conservative sample with common <code>[command_line]</code> and <code>[queue_recovery]</code> settings. The optional <code>[display_refresh_rate_override]</code>, <code>[shaders]</code>, <code>[p010_conversion]</code>, and <code>[ppm_correction]</code> sections can be added when needed.</p>
+  <p>The shipped file is a conservative sample with common <code>[command_line]</code>, <code>[logging]</code>, and <code>[queue_recovery]</code> settings. The optional <code>[display_refresh_rate_override]</code>, <code>[shaders]</code>, <code>[p010_conversion]</code>, and <code>[ppm_correction]</code> sections can be added when needed.</p>
   <p><code>VideoProcessor.cfg</code> is the normal single configuration file for application, capture, shader, built-in renderer, profile, hotkey, and completed-event settings.</p>
   <p>Strict ownership remains enforced inside the combined file: application settings are read at startup, while renderer profile and event expressions may change only renderer-owned settings. Capture, queue, conversion, and other application keys cannot be placed in renderer profiles.</p>
   <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override matching settings.</p>
@@ -51,6 +51,14 @@
       <tr><td><code>renderer_primaries</code></td><td><code>AUTO</code>, <code>BT2020</code>, <code>DCI-P3</code>, <code>BT709</code>, <code>NTSC_SYSM</code>, <code>NTSC_SYSBG</code>, <code>CIE1931_ZYX</code>, <code>ACES</code></td><td>Override DirectShow video primaries.</td></tr>
     </tbody>
   </table>
+
+  <h2>[logging]</h2>
+  <p>VideoProcessor keeps the active debug log at <code>logs\vp_debug.log</code> beneath the directory containing the main executable. VP does not create the <code>logs</code> directory. If the directory is absent or unwritable, logging is disabled for that process and no fallback log is written. At process startup, a non-empty prior active log is archived with a sortable name such as <code>vp_debug.20260727-153045.log</code>, then older matching archives are pruned. Rotation errors are non-fatal and are recorded when the configured destination remains writable.</p>
+  <table><thead><tr><th>Key</th><th>Type and default</th><th>Effect</th></tr></thead><tbody>
+    <tr><td><code>debug_log_retention</code></td><td>Integer <code>1</code>-<code>100</code>; default <code>10</code></td><td>Total VP debug-log files to retain, including the active log. The value is read once at startup. Omitted, invalid, zero, duplicate, or out-of-range values resolve to <code>10</code>. A value of <code>1</code> retains only the active log; zero never disables rotation. Files that do not exactly match VP's archive naming contract are never pruned.</td></tr>
+  </tbody></table>
+  <pre>[logging]
+debug_log_retention=10</pre>
 
   <h2>[queue_recovery]</h2>
   <p>These settings control the automatic queue-only recovery safeguard. The raw and converted queues are evaluated independently; the percentage is not applied to their combined display total. If either queue reaches the configured high-water mark, VideoProcessor waits the configured delay and then flushes/re-primes the live source queue without rebuilding the renderer graph.</p>

@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "DebugLogRetention.h"
+
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -22,11 +24,12 @@
 
 
 /**
- * Async debug logger that writes to debug.log in the executable directory
+ * Async debug logger that writes to logs\vp_debug.log beneath the executable
+ * directory when that user-managed logs directory is available
  * Thread-safe file logging with timestamps - non-blocking for caller
  * 
  * OPTIMIZATION: Keeps file open in writer thread and batches writes to reduce I/O overhead
- * BEHAVIOR: Clears log file on Initialize() call (each restart)
+ * BEHAVIOR: Archives the prior session and prunes only matching VP logs
  */
 class DebugLog
 {
@@ -69,68 +72,80 @@ public:
 	 */
 	static std::string GetLogFilePath()
 	{
+		return GetSelectedLogPath();
+	}
 
-		if (true) {
-			return "c:/logs/vp_debug.log";
-
-		}
-		static std::string cachedPath;
-		if (!cachedPath.empty())
-			return cachedPath;
-
-		// Get the executable path
+	static std::string GetExecutableLogFilePath()
+	{
 		char exePath[MAX_PATH];
 		DWORD result = GetModuleFileNameA(NULL, exePath, MAX_PATH);
 		if (result == 0)
-		{
-			// Fallback to current directory
-			cachedPath = "debug.log";
-			return cachedPath;
-		}
+			return "logs\\vp_debug.log";
 
-		// Get the directory containing the executable
 		std::string exePathStr(exePath);
 		size_t lastSlash = exePathStr.find_last_of("\\/");
 		if (lastSlash != std::string::npos)
-		{
-			cachedPath = exePathStr.substr(0, lastSlash + 1) + "debug.log";
-		}
-		else
-		{
-			cachedPath = "debug.log";
-		}
-
-		return cachedPath;
+			return exePathStr.substr(0, lastSlash + 1) +
+				"logs\\vp_debug.log";
+		return "logs\\vp_debug.log";
 	}
 
 	/**
 	 * Initialize the async logger (call once at startup)
-	 * This also clears the log file from any previous session
+	 * This archives the prior session and applies the startup-only retention
+	 * count before producer threads can enqueue normal diagnostics.
 	 */
-	static void Initialize()
+	static void Initialize(
+		size_t retentionCount = DebugLogRetention::DEFAULT_COUNT,
+		const std::string& retentionDiagnostic =
+			"Debug log retention: using default 10 total files")
 	{
 		std::lock_guard<std::mutex> lock(GetQueueMutex());
 		if (!GetWriterThread().joinable())
 		{
-			// Clear log file (fresh start for this session)
-			std::string logPath = GetLogFilePath();
-			std::ofstream file(logPath, std::ios::trunc);
+			std::vector<std::string> initializationDiagnostics;
+			const std::string logPath = GetExecutableLogFilePath();
+			GetSelectedLogPath() = logPath;
+			auto rotation =
+				DebugLogRetention::Rotate(logPath, retentionCount);
+			initializationDiagnostics.insert(
+				initializationDiagnostics.end(),
+				rotation.diagnostics.begin(), rotation.diagnostics.end());
+			if (!rotation.activeReady)
+			{
+				// The logs directory is user-managed. Do not create it and do
+				// not write an alternate fallback log.
+				GetLoggingEnabled().store(false, std::memory_order_release);
+				return;
+			}
+			GetLoggingEnabled().store(true, std::memory_order_release);
+
+			std::ofstream file(logPath, std::ios::app);
 			if (file.is_open())
 			{
-				// Write session start marker
 				struct tm tm;
 				auto now = std::time(nullptr);
 				localtime_s(&tm, &now);
 				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " | === DEBUG LOG SESSION START ===\n";
+				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
+					" | " << retentionDiagnostic << "\n";
+				for (const std::string& diagnostic : initializationDiagnostics)
+					file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
+						" | " << diagnostic << "\n";
 				file.close();
 			}
+			else
+				GetLoggingEnabled().store(false, std::memory_order_release);
 
 			// Clear any pending messages from previous run
 			std::queue<LogMessage> emptyQueue;
 			std::swap(GetMessageQueue(), emptyQueue);
 
-			GetShutdownFlag() = false;
-			GetWriterThread() = std::thread(WriterThreadProc);
+			if (GetLoggingEnabled().load(std::memory_order_acquire))
+			{
+				GetShutdownFlag() = false;
+				GetWriterThread() = std::thread(WriterThreadProc);
+			}
 		}
 	}
 
@@ -166,6 +181,9 @@ private:
 
 	static void QueueMessage(const std::string& message)
 	{
+		if (!GetLoggingEnabled().load(std::memory_order_acquire))
+			return;
+
 		{
 			std::lock_guard<std::mutex> lock(GetQueueMutex());
 			
@@ -299,6 +317,18 @@ private:
 		static std::atomic<ExternalSink> s_externalSink(nullptr);
 		return s_externalSink;
 	}
+
+	static std::string& GetSelectedLogPath()
+	{
+		static std::string s_selectedLogPath = GetExecutableLogFilePath();
+		return s_selectedLogPath;
+	}
+
+	static std::atomic<bool>& GetLoggingEnabled()
+	{
+		static std::atomic<bool> s_loggingEnabled(false);
+		return s_loggingEnabled;
+	}
 };
 
 
@@ -306,5 +336,5 @@ private:
 #define DEBUGLOG(format, ...) DebugLog::Log(format, __VA_ARGS__)
 #define DEBUGLOG_SIMPLE(msg) DebugLog::Log("%s", msg)
 #define DEBUGLOG_PATH() DebugLog::GetLogFilePath()
-#define DEBUGLOG_INIT() DebugLog::Initialize()
+#define DEBUGLOG_INIT(...) DebugLog::Initialize(__VA_ARGS__)
 #define DEBUGLOG_SHUTDOWN() DebugLog::Shutdown()
