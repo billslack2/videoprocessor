@@ -2,10 +2,17 @@
 
 ## Status
 
-In review as of 2026-07-28. Software implementation, automated verification,
-documentation, live-configuration migration, and deployment are complete.
-Hardware validation remains for the 16:9/2.35 viewport, NLS geometry,
-subtitle placement, external curtain/profile coordination, OSD, and logs.
+Done as of 2026-07-28. Software implementation, automated verification,
+documentation, live-configuration migration, deployment, and hardware
+validation are complete. The joined implementation merged through PR `#17`
+to `v1.1.014-beta` as `71bfb09`.
+
+The user validated the corrected F2/F3 16:9 and 2.35 viewport coordination,
+4:3 preservation on the Scope viewport, eligible 4:3-to-16:9 stretching,
+mixed Scope/IMAX NLS geometry, OSD, and renderer replacement. Runtime logs
+showed `aspect=47:20`, dynamic NLS aspect acceptance, and
+`renderer_restart=0`. The exact merge commit passed a clean Release x64 build
+and all 181 native tests.
 
 ## Implementation progress
 

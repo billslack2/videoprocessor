@@ -7,6 +7,14 @@ Detect enabled. Design and implementation started July 28, 2026 from the
 current `v1.1.014-beta` integration branch. This is corrective work following
 VP-0027, not a reopening of that completed implementation story.
 
+The diagnostic and liveness implementation commits merged with the joined
+viewport/NLS branch through PR `#17` as `71bfb09` on 2026-07-28. The exact
+merge commit passed a clean Release x64 build and all 181 native tests.
+The story remains In Progress because the completed madVR hardware run does
+not satisfy the Alpha-specific due-forecast/action/verification acceptance
+criteria; a retained Alpha reproduction log and hardware run are still
+required before Done.
+
 The incident's matching debug log was no longer retained when this story was
 written. The reproduction evidence is the user-supplied OSD screenshot and
 must not be represented as log-confirmed.

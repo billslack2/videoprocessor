@@ -2,13 +2,13 @@
 
 ## Status
 
-Review as of 2026-07-27. VP-0035's robust low-latency active-aspect transition
-work was implemented as part of this story
-on `codex/vp-0034-restart-free-nls`. PR
+Done as of 2026-07-28. VP-0035's robust low-latency active-aspect transition
+work was implemented as part of this story on
+`codex/vp-0034-restart-free-nls`. PR
 `billslack2/videoprocessor#15` merged into the default branch
 `v1.1.014-beta` as `05d7318`. The rebased implementation commits are
-`3421e79`, `6c0d4bd`, and `fa30531`. Per user direction, the story remains in
-Review because playback testing may identify follow-up tweaks.
+`3421e79`, `6c0d4bd`, and `fa30531`. Follow-up VP-0038/VP-0040 work merged
+through PR `#17` as `71bfb09`.
 
 Completed implementation:
 
@@ -46,8 +46,14 @@ diagnostics, documented thresholds, and transition false-positive regression
 corpus. Merge commit `05d7318` was rebuilt directly and the full native test
 suite passes 151/151. That exact merged build was deployed to
 `C:\Videoprocessor\vp` with the active configuration preserved; rollback is
-`backup-before-vp0034-0035-merged-20260727-233920`. Hardware/madVR playback
-remains the Review acceptance step.
+`backup-before-vp0034-0035-merged-20260727-233920`.
+
+Final hardware/madVR acceptance passed on 2026-07-28 with Disney+ mixed
+Scope/IMAX content and manual NLS On/Off. Logs showed every automatic mapping
+change and both manual output-aspect changes with `renderer_restart=0`, no
+restart/reset loop, and stable delivery queues after renderer replacement.
+The exact final merge commit rebuilt successfully and passed 181/181 native
+tests.
 
 This supersedes the assumption that the fixed-aspect completion of VP-0001
 through VP-0003 is sufficient for variable-aspect movies. It does not reopen

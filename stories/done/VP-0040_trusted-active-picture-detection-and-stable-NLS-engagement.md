@@ -2,12 +2,20 @@
 
 ## Status
 
-In Progress as of 2026-07-28. The current
-`billslack2/videoprocessor` default branch was discovered as
-`v1.1.014-beta`, and the developer confirmed commit
-`05d7318f87c613dcc54618386076566fa58b6580` as the implementation base.
-Readiness review and Phase A implementation are underway in the isolated
-`codex/vp-0040-trusted-active-picture` worktree.
+Done as of 2026-07-28. The implementation was developed in the isolated
+`codex/vp-0040-trusted-active-picture` worktree and merged through PR `#17`
+to the discovered default branch `v1.1.014-beta` as `71bfb09`.
+
+Final hardware validation covered the deployed Apple TV/DeckLink/madVR path,
+Disney+ mixed Scope/IMAX transitions, 4:3 behavior, repeated manual NLS
+On/Off, output refresh changes, renderer replacement, and queue recovery.
+Logs showed dynamic picture-aspect acceptance with `renderer_restart=0`,
+cached shader refresh, display-change recovery suppression on the old graph,
+one delayed queue-only reset five seconds after replacement renderer creation,
+steady raw/converted queues of `0/2`, and no backpressure, delivery failure,
+reset loop, or persistent waiting state. The user confirmed correct visible
+operation. The exact merge commit passed a clean Release x64 build and all
+181 native tests.
 
 ## Implementation progress
 
@@ -39,10 +47,14 @@ Readiness review and Phase A implementation are underway in the isolated
   the exact trusted rectangle to the new renderer generation. An unprepared
   renderer replacement still rejects old geometry. The clean x64 Release
   build and all 178 tests pass.
-- Next: run the deployed Apple TV/DeckLink/madVR hardware corpus and capture
-  detector/runtime logs. The remaining separately reviewable Phase B work is
-  to move shader installation wholly after renderer replacement and prove the
-  one-restart/no-old-renderer-install transaction with video-capture tests.
+- Final increment `a08a4de` added independent-axis P010 crop authority,
+  adjacent-frame trusted-geometry reacquisition, cached prompt shader refresh,
+  restart-free dynamic madVR picture-aspect changes, bounded emergency queue
+  recovery, and display-settled post-renderer-start queue re-prime.
+- PR `#17` merged the joined implementation as `71bfb09`. That exact commit
+  rebuilt cleanly, passed 181/181 tests, and was deployed with configuration
+  and state preserved. Rollback is
+  `C:\Videoprocessor\vp\backup-before-merged-vp0038-0040-20260728-153525`.
 
 ## Expert review record
 
