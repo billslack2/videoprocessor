@@ -77,14 +77,7 @@ size_t CountMatchingLogs(const TemporaryLogDirectory& directory)
 	return count;
 }
 
-std::string ArchiveName(size_t index)
-{
-	std::ostringstream name;
-	name << "vp_debug.20260727-12" <<
-		std::setw(2) << std::setfill('0') << (index / 60) <<
-		std::setw(2) << std::setfill('0') << (index % 60) << ".log";
-	return name.str();
-}
+std::string ArchiveName(size_t index) { return "vp_debug.log." + std::to_string(index); }
 }
 
 namespace VideoProcessorTest
@@ -141,16 +134,20 @@ namespace VideoProcessorTest
 				DebugLogRetention::ResolveSetting(nullptr, false, true).count);
 		}
 
-		TEST_METHOD(ArchiveMatcherRejectsUnrelatedAndResemblingFiles)
+		TEST_METHOD(ArchiveMatcherRecognizesIndexedAndLegacyFilesOnly)
 		{
+			Assert::IsTrue(DebugLogRetention::IsArchiveFileName(
+				"vp_debug.log", "vp_debug.log.0"));
+			Assert::IsTrue(DebugLogRetention::IsArchiveFileName(
+				"vp_debug.log", "vp_debug.log.42"));
 			Assert::IsTrue(DebugLogRetention::IsArchiveFileName(
 				"vp_debug.log", "vp_debug.20260727-153045.log"));
 			Assert::IsTrue(DebugLogRetention::IsArchiveFileName(
 				"vp_debug.log", "vp_debug.20260727-153045.2.log"));
 			Assert::IsFalse(DebugLogRetention::IsArchiveFileName(
-				"vp_debug.log", "other.20260727-153045.log"));
+				"vp_debug.log", "vp_debug.log.-1"));
 			Assert::IsFalse(DebugLogRetention::IsArchiveFileName(
-				"vp_debug.log", "vp_debug-old.log"));
+				"vp_debug.log", "vp_debug.log.tmp"));
 			Assert::IsFalse(DebugLogRetention::IsArchiveFileName(
 				"vp_debug.log", "vp_debug.20260727-153045.txt"));
 			Assert::IsFalse(DebugLogRetention::IsArchiveFileName(
@@ -187,21 +184,23 @@ namespace VideoProcessorTest
 				GetFileAttributesA(missingDirectory.c_str()));
 		}
 
-		TEST_METHOD(NonEmptyActiveLogIsArchivedWithCollisionSafeName)
+		TEST_METHOD(RepeatedRotationCreatesNewestFirstIndexedArchives)
 		{
 			TemporaryLogDirectory directory;
 			const std::string active = directory.Path("vp_debug.log");
-			WriteFile(active, "prior session");
-			const std::time_t timestamp = 1785171045;
-
-			const auto first =
-				DebugLogRetention::Rotate(active, 10, timestamp);
-			Assert::IsTrue(first.activeReady);
-			WriteFile(active, "second session");
-			const auto second =
-				DebugLogRetention::Rotate(active, 10, timestamp);
-			Assert::IsTrue(second.activeReady);
-			Assert::AreEqual(static_cast<size_t>(3), second.retainedCount);
+			WriteFile(active, "oldest");
+			Assert::IsTrue(DebugLogRetention::Rotate(active, 10).activeReady);
+			WriteFile(active, "middle");
+			Assert::IsTrue(DebugLogRetention::Rotate(active, 10).activeReady);
+			WriteFile(active, "newest");
+			const auto result = DebugLogRetention::Rotate(active, 10);
+			Assert::IsTrue(result.activeReady);
+			Assert::AreEqual(static_cast<size_t>(4), result.retainedCount);
+			for (size_t index = 0; index != 3; ++index)
+				Assert::AreNotEqual(INVALID_FILE_ATTRIBUTES,
+					GetFileAttributesA(directory.Path(ArchiveName(index)).c_str()));
+			Assert::AreEqual(INVALID_FILE_ATTRIBUTES,
+				GetFileAttributesA(directory.Path("vp_debug.20260727-153045.log").c_str()));
 		}
 
 		TEST_METHOD(ArchiveRenameFailureContinuesInExistingActiveLog)
@@ -232,35 +231,46 @@ namespace VideoProcessorTest
 				}));
 		}
 
-		TEST_METHOD(PruneFailureIsNonFatalAndDiagnosed)
+		TEST_METHOD(LockedArchiveDoesNotOverwriteActiveLog)
 		{
 			TemporaryLogDirectory directory;
 			const std::string active = directory.Path("vp_debug.log");
 			const std::string archive = directory.Path(ArchiveName(0));
-			WriteFile(active, "");
-			WriteFile(archive);
-			Assert::IsTrue(SetFileAttributesA(
-				archive.c_str(), FILE_ATTRIBUTE_READONLY));
+			WriteFile(active, "live output");
+			WriteFile(archive, "locked archive");
+			HANDLE lock = CreateFileA(archive.c_str(), GENERIC_READ,
+				FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+				FILE_ATTRIBUTE_NORMAL, nullptr);
+			Assert::AreNotEqual(INVALID_HANDLE_VALUE, lock);
 
-			const auto result = DebugLogRetention::Rotate(active, 1);
-			Assert::IsTrue(SetFileAttributesA(
-				archive.c_str(), FILE_ATTRIBUTE_NORMAL));
+			const auto result = DebugLogRetention::Rotate(active, 10);
+			CloseHandle(lock);
 			Assert::IsTrue(result.activeReady);
-			Assert::AreEqual(static_cast<size_t>(2), result.retainedCount);
-			Assert::IsTrue(std::any_of(
-				result.diagnostics.begin(), result.diagnostics.end(),
+			Assert::AreNotEqual(INVALID_FILE_ATTRIBUTES,
+				GetFileAttributesA(archive.c_str()));
+			Assert::IsTrue(std::any_of(result.diagnostics.begin(), result.diagnostics.end(),
 				[](const std::string& diagnostic)
 				{
-					return diagnostic.find("could not prune") !=
-						std::string::npos;
+					return diagnostic.find("could not shift") != std::string::npos;
 				}));
 		}
 
-		TEST_METHOD(EverySupportedCountPrunesOnlyMatchingLogs)
+		TEST_METHOD(RetentionOneKeepsActiveAndPrunesIndexedArchives)
 		{
-			for (size_t retention = DebugLogRetention::MIN_COUNT;
-				retention <= DebugLogRetention::MAX_COUNT;
-				++retention)
+			TemporaryLogDirectory directory;
+			const std::string active = directory.Path("vp_debug.log");
+			WriteFile(active, "live output");
+			WriteFile(directory.Path(ArchiveName(0)));
+			const auto result = DebugLogRetention::Rotate(active, 1);
+			Assert::IsTrue(result.activeReady);
+			Assert::AreEqual(static_cast<size_t>(1), result.retainedCount);
+			Assert::AreEqual(INVALID_FILE_ATTRIBUTES,
+				GetFileAttributesA(directory.Path(ArchiveName(0)).c_str()));
+		}
+
+		TEST_METHOD(ConfiguredCountsKeepExactIndexedBoundariesAndLegacyAgesOut)
+		{
+			for (const size_t retention : { static_cast<size_t>(2), static_cast<size_t>(10), DebugLogRetention::MAX_COUNT })
 			{
 				TemporaryLogDirectory directory;
 				const std::string active = directory.Path("vp_debug.log");
@@ -268,23 +278,19 @@ namespace VideoProcessorTest
 				WriteFile(directory.Path("unrelated.log"), "keep");
 				WriteFile(
 					directory.Path("vp_debug.20260727-120000.txt"), "keep");
-				for (size_t index = 0; index <= retention; ++index)
+				WriteFile(directory.Path("vp_debug.20260727-120000.log"));
+				for (size_t index = 0; index < retention; ++index)
 					WriteFile(directory.Path(ArchiveName(index)));
 
 				const auto result =
 					DebugLogRetention::Rotate(active, retention);
 				Assert::IsTrue(result.activeReady);
 				Assert::AreEqual(retention, CountMatchingLogs(directory));
-				Assert::AreEqual(
-					INVALID_FILE_ATTRIBUTES,
-					GetFileAttributesA(
-						directory.Path(ArchiveName(0)).c_str()));
-				if (retention > 1)
-					Assert::AreNotEqual(
-						INVALID_FILE_ATTRIBUTES,
-						GetFileAttributesA(
-							directory.Path(
-								ArchiveName(retention)).c_str()));
+				for (size_t index = 0; index < retention - 1; ++index)
+					Assert::AreNotEqual(INVALID_FILE_ATTRIBUTES,
+						GetFileAttributesA(directory.Path(ArchiveName(index)).c_str()));
+				Assert::AreEqual(INVALID_FILE_ATTRIBUTES,
+					GetFileAttributesA(directory.Path("vp_debug.20260727-120000.log").c_str()));
 				Assert::AreNotEqual(
 					INVALID_FILE_ATTRIBUTES,
 					GetFileAttributesA(

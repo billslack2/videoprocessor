@@ -129,6 +129,8 @@ public:
 				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " | === DEBUG LOG SESSION START ===\n";
 				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
 					" | " << retentionDiagnostic << "\n";
+				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
+					" | Debug log rotation: indexed archives use vp_debug.log.0 (newest), vp_debug.log.1, and so on\n";
 				for (const std::string& diagnostic : initializationDiagnostics)
 					file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
 						" | " << diagnostic << "\n";
