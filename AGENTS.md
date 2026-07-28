@@ -29,6 +29,8 @@
 ## Deployment
 
 - Deploy to `C:\Videoprocessor\vp` only when asked.
+- Always deploy from a successfully completed x64 Release build. Never deploy
+  Debug binaries.
 - Treat deployed configuration as user data. Before editing any `.cfg`, `.ini`,
   `.json`, or state file, make a timestamped backup in the deployment folder.
 - Preserve existing values, comments, and unknown keys. Add or modify only the
