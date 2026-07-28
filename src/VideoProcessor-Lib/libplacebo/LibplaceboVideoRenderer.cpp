@@ -5628,7 +5628,7 @@ bool LibplaceboVideoRenderer::GetSceneTimingStatus(CString& status) const
 	CString dueReason;
 	if (GetSceneTimingDueStatus(dueAction, dueReason))
 	{
-		status = TEXT("Waiting to correct");
+		status = TEXT("Due");
 		return true;
 	}
 
@@ -5641,22 +5641,22 @@ bool LibplaceboVideoRenderer::GetSceneTimingStatus(CString& status) const
 		status = TEXT("Disabled");
 		break;
 	case AlphaCadenceTimingStatus::WaitingForDxgi:
-		status = TEXT("Waiting for timing");
+		status = TEXT("Waiting");
 		break;
 	case AlphaCadenceTimingStatus::Measuring:
-		status = TEXT("Measuring timing");
+		status = TEXT("Measuring");
 		break;
 	case AlphaCadenceTimingStatus::Matched:
-		status = TEXT("Timing matched");
+		status = TEXT("Matched");
 		break;
 	case AlphaCadenceTimingStatus::Forecasting:
 		status = TEXT("Forecasting");
 		break;
 	case AlphaCadenceTimingStatus::Verifying:
-		status = TEXT("Confirming correction");
+		status = TEXT("Checking");
 		break;
 	default:
-		status = TEXT("Timing unavailable");
+		status = TEXT("Unavailable");
 		break;
 	}
 	return true;
@@ -5682,30 +5682,30 @@ bool LibplaceboVideoRenderer::GetSceneTimingDueStatus(
 	switch (blockReason)
 	{
 	case AlphaCadenceBlockReason::Cooldown:
-		reason = TEXT("brief pause");
+		reason = TEXT("pause");
 		break;
 	case AlphaCadenceBlockReason::VerificationPending:
-		reason = TEXT("prior correction");
+		reason = TEXT("checking");
 		break;
 	case AlphaCadenceBlockReason::DropQueueNotAboveDesired:
 	case AlphaCadenceBlockReason::RepeatQueueNotBelowDesired:
-		reason = TEXT("buffer level");
+		reason = TEXT("buffer");
 		break;
 	case AlphaCadenceBlockReason::DropPresentationDebtMissing:
 	case AlphaCadenceBlockReason::RepeatPresentationDebtPresent:
-		reason = TEXT("playback timing");
+		reason = TEXT("timing");
 		break;
 	case AlphaCadenceBlockReason::WaitingForFreshScene:
-		reason = TEXT("scene change");
+		reason = TEXT("scene");
 		break;
 	case AlphaCadenceBlockReason::FallbackNotMature:
-		reason = TEXT("safe timing");
+		reason = TEXT("safe point");
 		break;
 	case AlphaCadenceBlockReason::DropFallbackQueueTooYoung:
-		reason = TEXT("buffer timing");
+		reason = TEXT("buffer wait");
 		break;
 	default:
-		reason = TEXT("safe timing");
+		reason = TEXT("safe point");
 		break;
 	}
 	return true;

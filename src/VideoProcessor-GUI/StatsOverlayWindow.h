@@ -183,6 +183,7 @@ private:
 	// Fonts
 	HFONT m_font;
 	HFONT m_boldFont;
+	HFONT m_alphaFont;
 
 	// Stats data with mutex protection
 	std::mutex m_statsMutex;
@@ -194,6 +195,7 @@ private:
 	static const int WINDOW_WIDTH = 420;     // Keep width the same
 	static const int PADDING = 10;
 	static const int LINE_HEIGHT = 23;     // Match font size for better spacing
+	static const int ALPHA_LINE_HEIGHT = 20;
 
 	// Colors - MadVR style with 15% darker background and bright white text
 	static const COLORREF BACKGROUND_COLOR = RGB(43, 43, 43);  // 15% darker than RGB(50,50,50)
