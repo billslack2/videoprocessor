@@ -58,7 +58,7 @@ they must not contain requirements that are absent from this file.
 | VP-0031 | Backlog | Make debug-log retention configurable |
 | VP-0032 | Backlog | Alpha renderer field-aware GPU deinterlacing |
 | VP-0033 | Backlog | Alpha renderer libplacebo frame-mixing smooth motion |
-| VP-0034 | Backlog | Restart-free mixed-aspect NLS |
+| VP-0034 | In Progress | Restart-free mixed-aspect NLS |
 | VP-0035 | Backlog | Robust low-latency active-aspect transitions |
 | VP-0036 | Done | Consolidate application and renderer settings into one configuration file |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |

@@ -2,9 +2,24 @@
 
 ## Status
 
-Backlog — primary NLS correctness story. This supersedes the assumption that the
-fixed-aspect completion of VP-0001 through VP-0003 is sufficient for
-variable-aspect movies. It does not reopen those accepted stories.
+In Progress as of 2026-07-27. Implementation is starting on
+`codex/vp-0034-restart-free-nls` in
+`C:\Users\bslac\vp\videoprocessor-vp-0034`, based on the developer-confirmed
+GitHub default branch `origin/v1.1.014-beta` at `c5221b0`.
+
+Readiness review: the current configuration still gives `nls` a 2.35 output
+contract and `nls_off` a native contract; the existing shader can perform
+linear active-rectangle mapping with a 1.0 stretch ratio; the madVR shader
+interface already supports runtime replacement without a graph rebuild; and
+renderer lifecycle operations and shader refresh run on the serialized GUI
+control path. No API or pipeline-order spike is required. Automated policy and
+state-restoration tests will cover the renderer-independent decisions, while
+the DirectShow/madVR lifecycle, queue, and visual claims remain explicit
+hardware acceptance work.
+
+This supersedes the assumption that the fixed-aspect completion of VP-0001
+through VP-0003 is sufficient for variable-aspect movies. It does not reopen
+those accepted stories.
 
 ## User story
 
