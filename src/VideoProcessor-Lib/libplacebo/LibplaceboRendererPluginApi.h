@@ -7,7 +7,7 @@
 #include <cstdint>
 
 
-static constexpr uint32_t VP_LIBPLACEBO_PLUGIN_API_VERSION = 3;
+static constexpr uint32_t VP_LIBPLACEBO_PLUGIN_API_VERSION = 4;
 static constexpr const char* VP_LIBPLACEBO_VERSION_EXPORT =
 	"VideoProcessorLibplaceboGetApiVersion";
 static constexpr const char* VP_LIBPLACEBO_CREATE_EXPORT =

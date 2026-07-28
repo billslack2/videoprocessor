@@ -296,6 +296,16 @@ bool LibplaceboPluginVideoRenderer::SelectDisplayRule(
 }
 
 
+bool LibplaceboPluginVideoRenderer::SelectUnifiedProfileKey(
+	const CString& key,
+	CString& activeProfiles,
+	bool& rendererRestartRequired)
+{
+	return m_renderer->SelectUnifiedProfileKey(key, activeProfiles,
+		rendererRestartRequired);
+}
+
+
 size_t LibplaceboPluginVideoRenderer::GetFrameQueueSize()
 {
 	return m_renderer->GetFrameQueueSize();

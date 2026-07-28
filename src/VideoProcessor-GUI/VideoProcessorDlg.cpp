@@ -20,6 +20,7 @@
 #include <sstream>
 #include <thread>
 #include <vector>
+#include <regex>
 
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -39,8 +40,7 @@
 #endif
 #include <guid.h>
 #include <ConfigFile.h>
-
-#include <regex> // Include for regex
+#include <RendererProfileConfig.h>
 
 
 #include "VideoProcessorDlg.h"
@@ -176,21 +176,30 @@ std::vector<std::string> SplitConfiguredList(const std::string& value)
 HACCEL CreateConfiguredAccelerators(
 	std::map<WORD, CString>& shaderShortcutRules,
 	std::map<WORD, CString>& displayRuleShortcutRules,
-	std::map<WORD, unsigned int>& rendererShortcutIndices)
+	std::map<WORD, unsigned int>& rendererShortcutIndices,
+	std::map<WORD, CString>& unifiedProfileShortcutKeys)
 {
 	shaderShortcutRules.clear();
 	displayRuleShortcutRules.clear();
 	rendererShortcutIndices.clear();
+	unifiedProfileShortcutKeys.clear();
 	ConfigFile mainConfig;
 	const bool hasMainConfig = mainConfig.Load();
 	ConfigFile rendererConfig;
 	const bool hasRendererConfig =
 		rendererConfig.Load(ConfigFile::RENDERER_FILENAME);
+	RendererProfileConfig::Model unifiedProfileModel;
+	std::string unifiedProfileError;
+	const bool hasUnifiedRendererConfig = hasRendererConfig &&
+		RendererProfileConfig::IsUnified(rendererConfig) &&
+		RendererProfileConfig::Read(rendererConfig, unifiedProfileModel, unifiedProfileError);
 	std::vector<ACCEL> accelerators;
 	std::set<unsigned int> bindings;
 
 	for (const auto& definition : SHORTCUT_DEFINITIONS)
 	{
+		if (hasUnifiedRendererConfig && definition.rendererSpecific)
+			continue;
 		ACCEL accelerator = { static_cast<BYTE>(FVIRTKEY | definition.defaultModifiers), definition.defaultKey, definition.command };
 		std::string configuredValue;
 		const ConfigFile& config =
@@ -359,6 +368,34 @@ HACCEL CreateConfiguredAccelerators(
 			ruleName.Format(TEXT("%S"), rule.c_str());
 			displayRuleShortcutRules[nextCommand] = ruleName;
 			++nextCommand;
+		}
+	}
+
+	// Register one command per canonical key, not per profile. The renderer then
+	// resolves all matching groups from that single physical key event.
+	if (hasUnifiedRendererConfig)
+	{
+		std::vector<std::string> chords;
+		if (!RendererProfileConfig::CollectKeyChords(unifiedProfileModel, chords, unifiedProfileError))
+		{
+			DEBUGLOG("Unified renderer shortcut discovery failed: %s", unifiedProfileError.c_str());
+		}
+		else
+		{
+			WORD nextCommand = ID_COMMAND_DISPLAY_RULE_FIRST;
+			for (const std::string& chord : chords)
+			{
+				if (nextCommand > ID_COMMAND_DISPLAY_RULE_LAST) break;
+				ACCEL accelerator = {};
+				if (!TryParseShortcut(chord, accelerator)) { DEBUGLOG("Invalid unified profile shortcut '%s'", chord.c_str()); continue; }
+				const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
+				if (!bindings.insert(binding).second) { DEBUGLOG("Duplicate unified profile shortcut '%s' ignored", chord.c_str()); continue; }
+				accelerator.cmd = nextCommand;
+				accelerators.push_back(accelerator);
+				CString keyName; keyName.Format(TEXT("%S"), chord.c_str());
+				unifiedProfileShortcutKeys[nextCommand] = keyName;
+				++nextCommand;
+			}
 		}
 	}
 
@@ -2318,6 +2355,30 @@ void CVideoProcessorDlg::OnCommandShaderRule(UINT commandId)
 
 void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 {
+	const auto unifiedKey = m_unifiedProfileShortcutKeys.find(static_cast<WORD>(commandId));
+	if (unifiedKey != m_unifiedProfileShortcutKeys.end() && m_videoRenderer)
+	{
+		const DWORD commandTime = static_cast<DWORD>(GetMessageTime());
+		if (m_lastUnifiedProfileCommand == commandId &&
+			commandTime - m_lastUnifiedProfileCommandTime < 100)
+		{
+			DEBUGLOG("Unified profile key repeat suppressed: %S",
+				static_cast<LPCTSTR>(unifiedKey->second));
+			return;
+		}
+		m_lastUnifiedProfileCommand = static_cast<WORD>(commandId);
+		m_lastUnifiedProfileCommandTime = commandTime;
+		CString activeProfiles;
+		bool rendererRestartRequired = false;
+		if (!m_videoRenderer->SelectUnifiedProfileKey(unifiedKey->second, activeProfiles, rendererRestartRequired))
+		{
+			DEBUGLOG("Unified profile key '%S' is unavailable", static_cast<LPCTSTR>(unifiedKey->second));
+			return;
+		}
+		DEBUGLOG("Unified profile key selected: %S", static_cast<LPCTSTR>(activeProfiles));
+		if (rendererRestartRequired) { m_wantToRestartRenderer = true; UpdateState(); }
+		return;
+	}
 	const auto rule = m_displayRuleShortcutRules.find(static_cast<WORD>(commandId));
 	if (rule == m_displayRuleShortcutRules.end() || !m_videoRenderer)
 		return;
@@ -3055,6 +3116,11 @@ void CVideoProcessorDlg::CaptureStart()
 	assert(!m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_UNKNOWN);
 
+	// Re-prime once per capture session. Renderer-only profile reconstruction
+	// already starts with empty queues and must not schedule a second delayed
+	// graph reset (which visibly blanks the new renderer again).
+	m_startupGraphReprimeCompleted = false;
+
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_STARTING;
 
@@ -3163,11 +3229,6 @@ void CVideoProcessorDlg::RenderStart()
 	// a subsequent capture-state update that no longer qualifies as LLDV.
 	if (m_captureDeviceVideoState)
 		BuildPushVideoState();
-
-	// A newly constructed graph gets one deliberate startup re-prime. An
-	// in-place Reset() does not clear this marker, which prevents a loop when
-	// it reports RENDERSTATE_RENDERING again.
-	m_startupGraphReprimeCompleted = false;
 
 	int i;
 
@@ -4347,7 +4408,8 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	m_accelerator = CreateConfiguredAccelerators(
 		m_shaderShortcutRules,
 		m_displayRuleShortcutRules,
-		m_rendererShortcutIndices);
+		m_rendererShortcutIndices,
+		m_unifiedProfileShortcutKeys);
 	if (!m_accelerator)
 		FatalError(TEXT("Failed to create accelerator table"));
 

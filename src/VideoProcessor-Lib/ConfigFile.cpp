@@ -174,6 +174,7 @@ bool ConfigFile::Load(const std::string& filename)
 	std::string line;
 	int lineNumber = 0;
 	std::map<std::string, std::map<std::string, int>> valueLineNumbers;
+	std::map<std::string, int> sectionLineNumbers;
 
 	while (std::getline(configFile, line))
 	{
@@ -197,6 +198,20 @@ bool ConfigFile::Load(const std::string& filename)
 				currentSection = NormalizeName(line.substr(1, line.size() - 2));
 				if (currentSection.empty())
 					m_warnings.push_back("Line " + std::to_string(lineNumber) + ": empty section name");
+				else
+				{
+					const auto previous = sectionLineNumbers.find(currentSection);
+					if (previous != sectionLineNumbers.end())
+						m_warnings.push_back(
+							"Line " + std::to_string(lineNumber) + ": duplicate section [" +
+							currentSection + "] continues section from line " +
+							std::to_string(previous->second));
+					else
+						sectionLineNumbers[currentSection] = lineNumber;
+					// Preserve intentionally empty sections. Unified default-only
+					// profiles are valid and must still participate in graph validation.
+					m_sections[currentSection];
+				}
 			}
 			else
 			{
@@ -205,15 +220,21 @@ bool ConfigFile::Load(const std::string& filename)
 			continue;
 		}
 
+		const size_t colonPos = line.find(':');
 		const size_t equalPos = line.find('=');
-		if (equalPos == std::string::npos)
+		const size_t separatorPos =
+			colonPos == std::string::npos ? equalPos :
+			(equalPos == std::string::npos ? colonPos :
+				std::min(colonPos, equalPos));
+		if (separatorPos == std::string::npos)
 		{
-			m_warnings.push_back("Line " + std::to_string(lineNumber) + ": expected key=value");
+			m_warnings.push_back(
+				"Line " + std::to_string(lineNumber) + ": expected key: value");
 			continue;
 		}
 
-		const std::string key = NormalizeName(line.substr(0, equalPos));
-		const std::string value = Trim(line.substr(equalPos + 1));
+		const std::string key = NormalizeName(line.substr(0, separatorPos));
+		const std::string value = Trim(line.substr(separatorPos + 1));
 		if (currentSection.empty())
 		{
 			m_warnings.push_back("Line " + std::to_string(lineNumber) + ": key outside a section");
@@ -294,6 +315,16 @@ const std::map<std::string, std::string>* ConfigFile::GetSectionValues(const std
 		return nullptr;
 
 	return &sectionIt->second;
+}
+
+
+std::vector<std::string> ConfigFile::GetSectionNames() const
+{
+	std::vector<std::string> names;
+	names.reserve(m_sections.size());
+	for (const auto& section : m_sections)
+		names.push_back(section.first);
+	return names;
 }
 
 

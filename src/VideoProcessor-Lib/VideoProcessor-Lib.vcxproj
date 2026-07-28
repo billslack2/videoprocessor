@@ -176,6 +176,7 @@
     <ClInclude Include="cie.h" />
     <ClInclude Include="ColorSpace.h" />
     <ClInclude Include="ConfigFile.h" />
+    <ClInclude Include="ConfigSchema.h" />
     <ClInclude Include="DebugLog.h" />
     <ClInclude Include="DisplayMode.h" />
     <ClInclude Include="ColorFormat.h" />
@@ -188,6 +189,7 @@
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="libplacebo\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="libplacebo\AlphaPresentationTelemetry.h" />
+    <ClInclude Include="MainConfigSchema.h" />
     <ClInclude Include="libplacebo\LibplaceboOutputPolicy.h" />
     <ClInclude Include="libplacebo\LibplaceboPluginVideoRenderer.h" />
     <ClInclude Include="libplacebo\LibplaceboRendererPluginApi.h" />

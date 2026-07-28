@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <algorithm>
+#include <fstream>
 
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
@@ -11,6 +12,7 @@
 #include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
 #include <IntegerMath.h>
 #include <DisplayRuleExpression.h>
+#include <RendererProfileConfig.h>
 
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -152,6 +154,7 @@ namespace Tests
 				[](const std::string& name, std::string& value)
 				{
 					if (name == "eotf") { value = "PQ"; return true; }
+					if (name == "key") { value = "Ctrl+F4"; return true; }
 					if (name == "source_rate") { value = "23"; return true; }
 					if (name == "hdr_metadata") { value = "true"; return true; }
 					return false;
@@ -165,10 +168,288 @@ namespace Tests
 			Assert::AreEqual(3, specificity);
 			Assert::IsTrue(DisplayRuleExpression::Matches(
 				"$source_rate==23-24 && !$hdr_metadata==false", values, specificity, error));
+			Assert::IsTrue(DisplayRuleExpression::Matches(
+				"$key == \"Ctrl+F4\" || $key == \"Ctrl+F5\"", values, specificity, error));
+			Assert::IsFalse(DisplayRuleExpression::Matches(
+				"$key == \"Ctrl+F6\"", values, specificity, error));
 			Assert::IsFalse(DisplayRuleExpression::Validate("$eotf > PQ", error));
 			Assert::IsTrue(error.find("supports only = and !=") != std::string::npos);
 			Assert::IsFalse(DisplayRuleExpression::Validate("$unknown == value", error));
 			Assert::IsTrue(error.find("unknown variable") != std::string::npos);
+
+			DisplayRuleExpression::Expression compiled;
+			Assert::IsTrue(compiled.Compile(
+				"$cadence==24000/1001 || $key==\"Ctrl+F5\"", error, true));
+			Assert::AreEqual(static_cast<size_t>(1), compiled.KeyChords().size());
+			Assert::AreEqual("ctrl+f5",
+				ConfigFile::NormalizeName(compiled.KeyChords().front()).c_str());
+			Assert::IsTrue(compiled.Matches(
+				[](const std::string& name, std::string& value)
+				{
+					if (name == "cadence") { value = "23.976"; return true; }
+					if (name == "key") { value = "none"; return true; }
+					return false;
+				}, specificity, error));
+			Assert::IsFalse(compiled.Compile("$key==F5", error, true));
+			Assert::IsFalse(compiled.Compile("$transfer==PQ|HLG", error, true));
+		}
+
+		TEST_METHOD(RendererProfileConfigRejectsIncompleteUnifiedConfiguration)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) + "VideoProcessor-vp0028-incomplete.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n";
+				file << "[profile_groups.input]\nprofiles: sdr\ndefault: auto\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("profiles.input.sdr") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigRejectsConfigurationVersionKeys)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0028-version.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nconfig_version: 2\n";
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("unknown key 'config_version'") !=
+				std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigReadsOrderedIndependentGroups)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) + "VideoProcessor-vp0028-model.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\npersist_profile_selection: false\n";
+				for (const char* group : { "input", "scaling", "display", "viewport" })
+				{
+					file << "[profile_groups." << group << "]\nprofiles: base\ndefault: auto\n";
+					file << "[profiles." << group << ".base]\nwhen: $key==\"F5\"\npriority: 10\n";
+				}
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error));
+			Assert::AreEqual(static_cast<size_t>(4), model.groups.size());
+			Assert::AreEqual("input", model.groups[0].name.c_str());
+			Assert::AreEqual("viewport", model.groups[3].name.c_str());
+			Assert::IsFalse(model.persistSelection);
+			const auto profile = model.profiles.find("display.base");
+			Assert::IsTrue(profile != model.profiles.end());
+			Assert::AreEqual(10, profile->second.priority);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigOneKeySelectsIndependentGroups)
+		{
+			RendererProfileConfig::Model model;
+			for (const char* groupName : { "input", "display" })
+			{
+				RendererProfileConfig::Group group;
+				group.name = groupName;
+				group.profiles = { "selected" };
+				model.groups.push_back(group);
+				RendererProfileConfig::Profile profile;
+				profile.group = groupName;
+				profile.name = "selected";
+				profile.when = "$key==\"F5\"";
+				std::string compileError;
+				Assert::IsTrue(profile.whenExpression.Compile(profile.when, compileError, true));
+				model.profiles.emplace(std::string(groupName) + ".selected", profile);
+			}
+			std::vector<RendererProfileConfig::KeySelection> selections;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F5",
+				[](const std::string&, std::string&) { return false; }, selections, error));
+			Assert::AreEqual(static_cast<size_t>(2), selections.size());
+			Assert::AreEqual("input", selections[0].group.c_str());
+			Assert::AreEqual("display", selections[1].group.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigKeySelectionIgnoresOtherAutomaticBranches)
+		{
+			RendererProfileConfig::Model model;
+			RendererProfileConfig::Group group;
+			group.name = "display";
+			group.profiles = { "f5", "f6" };
+			model.groups.push_back(group);
+			for (const auto& definition : std::vector<std::pair<std::string, std::string>>
+				{ { "f5", "$transfer==PQ || $key==\"F5\"" },
+				  { "f6", "$transfer==PQ || $key==\"F6\"" } })
+			{
+				RendererProfileConfig::Profile profile;
+				profile.group = "display";
+				profile.name = definition.first;
+				profile.when = definition.second;
+				std::string compileError;
+				Assert::IsTrue(profile.whenExpression.Compile(profile.when, compileError, true));
+				model.profiles.emplace("display." + profile.name, profile);
+			}
+			std::vector<RendererProfileConfig::KeySelection> selections;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F5",
+				[](const std::string& name, std::string& value)
+					{ if (name == "transfer") { value = "PQ"; return true; } return false; },
+				selections, error));
+			Assert::AreEqual(static_cast<size_t>(1), selections.size());
+			Assert::AreEqual("f5", selections[0].profile.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigResetChordDoesNotSuppressOtherProfileKeys)
+		{
+			RendererProfileConfig::Model model;
+			RendererProfileConfig::Group group;
+			group.name = "display";
+			group.profiles = { "rec709", "bt2020" };
+			group.resetWhen = "$key==\"F4\"";
+			std::string resetCompileError;
+			Assert::IsTrue(group.resetExpression.Compile(group.resetWhen, resetCompileError, true));
+			model.groups.push_back(group);
+			for (const auto& definition : std::vector<std::pair<std::string, std::string>>
+				{ { "rec709", "$key==\"F5\"" }, { "bt2020", "$key==\"F6\"" } })
+			{
+				RendererProfileConfig::Profile profile;
+				profile.group = group.name;
+				profile.name = definition.first;
+				profile.when = definition.second;
+				std::string compileError;
+				Assert::IsTrue(profile.whenExpression.Compile(profile.when, compileError, true));
+				model.profiles.emplace(group.name + "." + profile.name, profile);
+			}
+
+			std::vector<RendererProfileConfig::KeySelection> selections;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F5",
+				[](const std::string&, std::string&) { return false; }, selections, error));
+			Assert::AreEqual(static_cast<size_t>(1), selections.size());
+			Assert::AreEqual("rec709", selections[0].profile.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigCheckedInExamplesPassStartupValidation)
+		{
+			for (const char* path : {
+				"docs\\examples\\VideoProcessorRenderer.unified.proposed.cfg",
+				"docs\\examples\\VideoProcessorRenderer.unified.minimal.proposed.cfg",
+				"docs\\examples\\VideoProcessorRenderer.from-legacy.proposed.cfg" })
+			{
+				std::string absolutePath = __FILE__;
+				const size_t sourceDirectory = absolutePath.rfind("\\src\\");
+				Assert::IsTrue(sourceDirectory != std::string::npos);
+				absolutePath.resize(sourceDirectory + 1);
+				absolutePath += path;
+				ConfigFile config;
+				Assert::IsTrue(config.Load(absolutePath));
+				RendererProfileConfig::Model model;
+				std::string error;
+				if (!RendererProfileConfig::Read(config, model, error))
+				{
+					const std::string detail = std::string(path) + ": " + error;
+					Assert::Fail(std::wstring(detail.begin(), detail.end()).c_str());
+				}
+			}
+		}
+
+		TEST_METHOD(RendererProfileConfigRejectsWrongOwnerAndUnknownSetting)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) + "VideoProcessor-vp0028-owner.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n";
+				for (const char* group : { "input", "scaling", "display", "viewport" })
+				{
+					file << "[profile_groups." << group << "]\nprofiles: base\ndefault: base\n";
+					file << "[profiles." << group << ".base]\n";
+					if (std::string(group) == "input") file << "mode: scope\n";
+				}
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("input-owned") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigRejectsMixedLegacyAndUnifiedConfiguration)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) + "VideoProcessor-vp0028-mixed.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n[display_rules]\nrules: old\n";
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("legacy [display_rules]") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigResolvesAutomaticGroupsDeterministically)
+		{
+			RendererProfileConfig::Model model;
+			RendererProfileConfig::Group input;
+			input.name = "input";
+			input.profiles = { "sdr", "pq", "pq_specific" };
+			input.defaultSelection = "sdr";
+			model.groups.push_back(input);
+			for (const auto& definition : std::vector<std::pair<std::string, std::string>>
+				{ { "sdr", "$transfer==SDR" }, { "pq", "$transfer==PQ" },
+				  { "pq_specific", "$transfer==PQ && $width>=3840" } })
+			{
+				RendererProfileConfig::Profile profile;
+				profile.group = "input";
+				profile.name = definition.first;
+				profile.when = definition.second;
+				std::string compileError;
+				Assert::IsTrue(profile.whenExpression.Compile(profile.when, compileError, true));
+				profile.priority = 100;
+				model.profiles.emplace("input." + profile.name, profile);
+			}
+
+			std::vector<RendererProfileConfig::AutomaticSelection> selections;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::SelectAutomatic(model,
+				[](const std::string& name, std::string& value)
+				{
+					if (name == "transfer") { value = "PQ"; return true; }
+					if (name == "width") { value = "3840"; return true; }
+					return false;
+				}, selections, error));
+			Assert::AreEqual(static_cast<size_t>(1), selections.size());
+			Assert::AreEqual("pq_specific", selections[0].profile.c_str());
+			Assert::IsFalse(selections[0].configuredDefault);
 		}
 
 		TEST_METHOD(CR210toRGB48VideoFrameFormatter4KSmokeTest)
