@@ -322,6 +322,18 @@ Debug x64 Alpha plugin and GUI builds passed. A 20 px Consolas width check put
 the longest new timing example (`Next: R due: buffer wait`) at approximately
 370 px, within the 420 px overlay with padding and margin remaining.
 
+Manual-test deployment on July 28, 2026:
+
+- clean x64 Release GUI and Alpha plugin rebuilds passed from source commit
+  `3f50429` with `VERSION_DIRTY=false`;
+- deployed the executable, Alpha plugin, and matching symbols to
+  `C:\Videoprocessor\vp`;
+- backed up the replaced binaries under
+  `C:\Videoprocessor\vp\backup-before-vp0039-20260728-110511`;
+- verified every deployed SHA-256 hash against its Release artifact;
+- left `VideoProcessor.cfg`, state, shaders, and runtime dependencies
+  unchanged.
+
 ## Verification
 
 - Unit-test both drop and repeat paths before, exactly at, and beyond the phase
