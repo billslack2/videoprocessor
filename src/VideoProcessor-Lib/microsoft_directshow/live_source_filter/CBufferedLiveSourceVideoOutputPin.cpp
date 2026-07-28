@@ -2868,6 +2868,11 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 	observation.bounds = {
 		left, top, right, bottom, width, height, aspect, symmetricBars
 	};
+	const bool fullRaster =
+		left == 0 && top == 0 && right == width && bottom == height;
+	observation.classification = fullRaster ?
+		ActivePictureClassification::FULL_RASTER_TRUSTED :
+		ActivePictureClassification::PROVISIONAL;
 	const auto decision = state.transition.Observe(observation);
 	if (decision.diagnostic)
 	{
