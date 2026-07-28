@@ -55,11 +55,13 @@ const TCHAR* ToString(RendererResetReason reason)
 	switch (reason)
 	{
 	case RendererResetReason::Manual: return TEXT("manual");
-	case RendererResetReason::Startup: return TEXT("startup");
+	case RendererResetReason::PostRendererStart:
+		return TEXT("post-renderer-start");
 	case RendererResetReason::DisplayTransition: return TEXT("display-transition");
 	case RendererResetReason::Resize: return TEXT("resize");
 	case RendererResetReason::QueueSizeChange: return TEXT("queue-size-change");
 	case RendererResetReason::TimingOffsetChange: return TEXT("timing-offset-change");
+	case RendererResetReason::QueuePressure: return TEXT("queue-pressure");
 	default: return TEXT("none");
 	}
 }
@@ -1695,6 +1697,10 @@ void CVideoProcessorDlg::OnBnClickedRendererReset()
 void CVideoProcessorDlg::OnBnClickedRendererResetAutoCheck()
 {
 	const bool checked = m_rendererResetAutoCheck.GetCheck();
+	DEBUGLOG("Queue pressure auto-reset %s",
+		checked ? "enabled" : "disabled");
+	if (!checked)
+		m_consecutiveFullSeconds = 0;
 }
 
 
@@ -2098,6 +2104,7 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 				g_displayRefreshRateSampler->ResetMeasurement();
 				const ULONGLONG now = GetTickCount64();
 				if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+					!m_pendingQueueReset &&
 					now >= m_queueResetIgnoreEventsUntil)
 				{
 					RequestRendererReset(RendererResetReason::DisplayTransition, true,
@@ -2178,7 +2185,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 
 	// Renderer running, ready for frames
 	case RendererState::RENDERSTATE_RENDERING:
-
+	{
 
 
 		assert(oldRendererState == RendererState::RENDERSTATE_READY);
@@ -2220,12 +2227,32 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		ApplyStatsOverlayForActiveRenderer();
 
 		m_rendererStartTime = GetTickCount();
+		const bool settlingDisplayTransition =
+			m_displayTransitionAwaitingRenderer;
+		m_displayTransitionAwaitingRenderer = false;
+		const UINT windowSettleDelayMs =
+			settlingDisplayTransition ? 2000 : 0;
+		m_queueResetIgnoreEventsUntil =
+			GetTickCount64() + windowSettleDelayMs + 10000;
 		g_displayRefreshRateSampler->ResetMeasurement();
-		if (!m_startupGraphReprimeCompleted)
+		// Every newly created renderer gets one delayed live-queue re-prime.
+		// This is the queue_recovery contract; it must also run after later
+		// source/profile-driven renderer replacement, without rebuilding the
+		// graph or causing another HDMI handshake.
+		RequestRendererReset(RendererResetReason::PostRendererStart, false,
+			windowSettleDelayMs +
+			static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+		if (m_rendererFullscreenCheck.GetCheck())
 		{
-			m_startupGraphReprimeCompleted = true;
-			RequestRendererReset(RendererResetReason::Startup, true,
-				static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+			HWND renderWindow = GetRenderWindow();
+			RECT rect = {};
+			::GetWindowRect(renderWindow, &rect);
+			DEBUGLOG(
+				"Fullscreen host after renderer start hwnd=%p visible=%d "
+				"rect=%ld,%ld-%ld,%ld display_settle_ms=%u",
+				renderWindow, ::IsWindowVisible(renderWindow) ? 1 : 0,
+				rect.left, rect.top, rect.right, rect.bottom,
+				windowSettleDelayMs);
 		}
 		// LLDV can be confirmed while the graph is still starting. The
 		// effective PQ state has already been rebuilt, but this graph accepted
@@ -2238,6 +2265,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 				TEXT("LLDV confirmed during renderer startup - scheduling renderer restart")));
 		}
 		break;
+	}
 
 	// Stopped rendering, can be cleaned up
 	case RendererState::RENDERSTATE_STOPPED:
@@ -3199,11 +3227,6 @@ void CVideoProcessorDlg::CaptureStart()
 	assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_READY);
 	assert(!m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_UNKNOWN);
-
-	// Re-prime once per capture session. Renderer-only profile reconstruction
-	// already starts with empty queues and must not schedule a second delayed
-	// graph reset (which visibly blanks the new renderer again).
-	m_startupGraphReprimeCompleted = false;
 
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_STARTING;
@@ -4566,7 +4589,8 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	// Active-picture analysis remains sparse on the conversion worker. This
 	// cheap generation poll only consumes a published change, bounding NLS
 	// mapping reaction without putting image analysis on the UI thread.
-	SetTimer(SHADER_RULE_REFRESH_TIMER_ID, 100, nullptr);
+	SetTimer(SHADER_RULE_REFRESH_TIMER_ID,
+		SHADER_RULE_REFRESH_INTERVAL_MS, nullptr);
 	
 	// Stats overlay will be created lazily on first toggle (Ctrl+I)
 	// No initialization needed here
@@ -4866,11 +4890,27 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	if (g_displayRefreshRateSampler)
 		g_displayRefreshRateSampler->ResetMeasurement();
 
+	// Display notifications can precede the capture/renderer replacement by
+	// many seconds. Do not flush the old madVR graph because its queues fill
+	// during that handshake; the replacement renderer owns recovery.
+	m_displayTransitionAwaitingRenderer = true;
+	m_queueResetIgnoreEventsUntil = GetTickCount64() + 30000;
 	DebugLog::Log(
-		"Windows display mode changed: %d x %d, %u bits; display-rate measurement reset",
+		"Windows display mode changed: %d x %d, %u bits; "
+		"display-rate measurement reset; emergency queue recovery "
+		"suppressed pending renderer replacement",
 		width,
 		height,
 		bitsPerPixel);
+	if (m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING)
+	{
+		// Fallback only: a replacement renderer will supersede this request
+		// and start its normal settle-plus-configured-delay recovery.
+		RequestRendererReset(RendererResetReason::DisplayTransition, false,
+			30000 +
+			static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+	}
 	if (m_videoRenderer)
 		m_videoRenderer->OnDisplayChange();
 	CDialog::OnDisplayChange(bitsPerPixel, width, height);
@@ -4954,8 +4994,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 
-	// One-shot lifecycle reset coordinator. Queue depth monitoring never uses
-	// this timer because no VP queue depth proves that madVR is unhealthy.
+	// One-shot lifecycle and emergency queue-reset coordinator.
 	if (nIDEvent == QUEUE_RESET_DELAY_TIMER_ID)
 	{
 		KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
@@ -5675,11 +5714,11 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 {
 	m_lastQueueSize = rawQueueSize + convertedQueueSize;
 	m_lastDroppedFrames = droppedFrames;
-	m_consecutiveFullSeconds = 0;
 
 	if (queueMaxSize == 0 || !GetRendererVideoFrameUseQueue() || !m_videoRenderer ||
 		m_rendererState != RendererState::RENDERSTATE_RENDERING)
 	{
+		m_consecutiveFullSeconds = 0;
 		return;
 	}
 
@@ -5698,22 +5737,54 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	// internal queue fill during its stabilization window.
 	if (m_rendererStartTime != 0 &&
 		GetTickCount() - static_cast<DWORD>(m_rendererStartTime) < 10000)
+	{
+		m_consecutiveFullSeconds = 0;
 		return;
+	}
 
 	if (!highWater)
+	{
+		m_consecutiveFullSeconds = 0;
 		return;
+	}
 
-	// No madVR quality API exists, so a high VP queue is evidence of pressure,
-	// not proof that a reset will repair the downstream sink. Record it without
-	// interrupting stable live HDMI playback.
+	if (m_consecutiveFullSeconds <
+		(std::numeric_limits<size_t>::max)())
+		++m_consecutiveFullSeconds;
+	const bool atCapacity =
+		rawQueueSize >= queueMaxSize ||
+		convertedQueueSize >= queueMaxSize;
+	const bool autoReset =
+		m_rendererResetAutoCheck.GetCheck() == BST_CHECKED;
+	const size_t sustainedSeconds =
+		static_cast<size_t>(std::max(1, m_queueResetDelaySeconds));
+	if (autoReset &&
+		(atCapacity || m_consecutiveFullSeconds >= sustainedSeconds))
+	{
+		DEBUGLOG(
+			"Queue pressure threshold reached (%zu/%zu raw, %zu/%zu "
+			"converted, consecutive=%zu, at_capacity=%d); "
+			"requesting live-queue reset",
+			rawQueueSize, queueMaxSize,
+			convertedQueueSize, queueMaxSize,
+			m_consecutiveFullSeconds, atCapacity ? 1 : 0);
+		m_consecutiveFullSeconds = 0;
+		RequestRendererReset(
+			RendererResetReason::QueuePressure, false, 0);
+		return;
+	}
+
 	const DWORD tick = GetTickCount();
 	if (m_lastQueueHealthDiagnostic == 0 ||
 		tick - m_lastQueueHealthDiagnostic >= 5000)
 	{
 		m_lastQueueHealthDiagnostic = tick;
 		DbgLog((LOG_TRACE, 1,
-			TEXT("Queue high-water diagnostic (%zu/%zu raw, %zu/%zu converted); no automatic reset"),
-			rawQueueSize, queueMaxSize, convertedQueueSize, queueMaxSize));
+			TEXT("Queue high-water diagnostic (%zu/%zu raw, %zu/%zu "
+				"converted, consecutive=%zu, auto_reset=%d)"),
+			rawQueueSize, queueMaxSize,
+			convertedQueueSize, queueMaxSize,
+			m_consecutiveFullSeconds, autoReset ? 1 : 0));
 	}
 }
 

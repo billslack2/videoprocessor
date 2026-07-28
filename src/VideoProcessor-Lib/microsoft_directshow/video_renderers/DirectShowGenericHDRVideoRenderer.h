@@ -71,6 +71,8 @@ private:
 	void UpdateNlsOsdMode(MadVRNlsMappingMode mode);
 	bool DoesOutputAspectRequireRestart(unsigned long desiredAspectX,
 		unsigned long desiredAspectY) const;
+	bool TryDynamicOutputAspect(
+		unsigned long desiredAspectX, unsigned long desiredAspectY);
 	MadVRActivePictureGeometry MakeRuntimeGeometry(
 		const ActivePictureRectangle& rectangle) const;
 

@@ -99,9 +99,16 @@ private:
 
 	bool m_hasStable = false;
 	ActivePictureBounds m_stable;
+	ActivePictureClassification m_stableClassification =
+		ActivePictureClassification::UNAVAILABLE;
+	bool m_hasPreviousTrusted = false;
+	ActivePictureBounds m_previousTrusted;
+	ActivePictureClassification m_previousTrustedClassification =
+		ActivePictureClassification::UNAVAILABLE;
 	ActivePictureBounds m_candidate;
 	ActivePictureClassification m_candidateClassification =
 		ActivePictureClassification::UNAVAILABLE;
+	bool m_candidateUsesKnownTrustedGeometry = false;
 	uint8_t m_matchingCandidates = 0;
 	uint8_t m_contradictoryCandidates = 0;
 	uint8_t m_candidateReversals = 0;
