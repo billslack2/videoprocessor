@@ -2,45 +2,22 @@
 
 ## Status
 
-In Progress — confirmed implementation base: `origin/v1.1.014-beta`.
-Implementation branch/worktree: `codex/vp-0037-alpha-windowed-preview` at
-`C:\Users\bslac\vp\worktrees\VP-0037`. Readiness review completed:
-the reported regression boundary, target-HWND classification requirement,
-requested-versus-effective output contract, and lifecycle/diagnostic
-acceptance boundaries are defined. Initial work is inspecting the current
-window target lifecycle and libplacebo swap-chain policy before making the
-smallest safe child-preview fallback.
+Done — accepted deliberate Release deployment on 2026-07-28. Source commits
+`1b5ae1b` and `5335146` separate the configured fullscreen request from the
+effective embedded-preview contract, force `WS_CHILD` previews onto the
+composed Full/sRGB/Rec.709 path, add target/swap-chain diagnostics, paint a
+black preview fallback, and guard startup repaint before the control HWND
+exists. Release|x64 `VideoProcessor.exe` and Alpha runtime DLL were deployed
+to `C:\Videoprocessor\vp` and SHA-256 verified; user accepted live testing as
+complete.
 
-Implementation progress (2026-07-28): source commit `1b5ae1b` classifies and
-logs the render HWND, preserves the configured output request separately from
-the effective contract, and forces embedded `WS_CHILD` previews to the
-composed Full/sRGB/Rec.709 path. The preview control now paints black during
-swap-chain gaps. `VideoProcessor-Libplacebo` Debug|x64 builds successfully.
-The full Debug|x64 solution remains blocked in the clean worktree by the
-pre-existing missing generated `src/VideoProcessor-GUI/version.h`; manual
-hardware playback, fullscreen transitions, and diagnostic-log verification
-remain pending.
-
-Deployment (2026-07-28): Debug runtime artifacts from the VP-0037 worktree
-were deployed to `C:\Videoprocessor\vp` for live validation: `VideoProcessor.exe`,
-`VideoProcessor-GUI.pdb`, and the two `libplacebo\VideoProcessorLibplacebo.*`
-files. No configuration file was changed. The replaced artifacts are backed up
-at `C:\Videoprocessor\vp\backup-before-vp0037-20260727-221904`; SHA-256 hashes
-were verified after copy.
-
-Startup correction (2026-07-28): the initial deployed Debug build exposed an
-MFC assertion before Alpha initialization because `WindowedVideoWindow::ShowLogo`
-called `Invalidate` before its control HWND existed. Commit `5335146` guards
-that repaint and the rebuilt GUI executable/PDB were deployed after backing up
-their prior VP-0037 versions at
-`C:\Videoprocessor\vp\backup-before-vp0037-startup-guard-20260727-222143`.
-
-Release deployment (2026-07-28): replaced the Debug test deployment with the
-Release|x64 `VideoProcessor.exe`, GUI PDB, Alpha DLL, and Alpha PDB from the
-VP-0037 worktree. The Release build completed successfully and copied files
-were SHA-256 verified. No configuration file changed; the Debug deployment is
-backed up at `C:\Videoprocessor\vp\backup-before-vp0037-release-20260727-222402`.
-
+Live evidence in `C:\logs\vp_debug.log` confirms the embedded preview target
+was classified as `is_child=1` with configured
+`DIRECT/FULL/AUTO/BT.2020` and effective
+`COMPOSED/FULL/sRGB/Rec.709`, using a BitBlt swap chain. A separate observation
+that the main VP window moved unusually slowly was reported after deployment;
+no VP-0037 main-window move or animation code exists, and the user chose not
+to treat it as a blocker for this story.
 ## User story
 
 As an Alpha renderer user, I want video to remain visible and stable inside
