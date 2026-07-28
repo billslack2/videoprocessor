@@ -130,35 +130,39 @@ ConversionMethod=SIMD
 MinCoreCount=1
 MaxCoreCount=2</pre>
 
-  <h2>[shaders] (optional)</h2>
-  <p>This section installs external Direct3D 9 HLSL directly into the selected renderer's GPU pipeline when that renderer supports external shaders. It does not add a CPU conversion or GPU readback. The named automatic rules in <code>rules</code> are checked from left to right and the first matching rule wins. If nothing matches, <code>default=none</code> leaves shaders off. Rules are reevaluated after every full renderer restart using VP's effective EOTF and input refresh rate. Detected LLDV is treated as HDR because its effective EOTF is PQ. A rule may instead be marked <code>manual=true</code> and assigned its own shortcut.</p>
+  <h2 id="shaders">[shaders] (optional)</h2>
+  <p>This section installs external Direct3D 9 HLSL directly into a renderer that supports it. It does not add a CPU conversion or GPU readback. Named automatic rules are checked from left to right and the first match wins; <code>default: none</code> leaves the shader chain empty. A rule may instead be marked <code>manual: true</code> and assigned a shortcut.</p>
   <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
     <tr><td><code>enabled</code></td><td>Boolean; default <code>false</code></td><td>Enables shader rule evaluation.</td></tr>
     <tr><td><code>rules</code></td><td>Comma-separated rule names</td><td>Sets rule order. Each name uses a matching <code>[shaders.name]</code> section.</td></tr>
     <tr><td><code>default</code></td><td><code>none</code></td><td>Safe result when no rule matches. Currently <code>none</code> is the only supported default.</td></tr>
     <tr><td><code>fallback_shader_model</code></td><td><code>ps_2_0</code>, <code>ps_2_a</code>, <code>ps_2_b</code>, or <code>ps_3_0</code>; default <code>ps_3_0</code></td><td>Used only when a shader does not declare <code>$MinimumShaderProfile:</code>. Most packaged shaders declare it, so this key is normally unnecessary.</td></tr>
   </tbody></table>
-  <p>Each <code>[shaders.name]</code> rule supports:</p>
+  <p>Every <code>[shaders.name]</code> rule supports the common keys below. A typed <code>type: nls</code> rule additionally supports the NLS settings in the following table.</p>
   <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
     <tr><td><code>label</code></td><td>Display text</td><td>Friendly rule name shown in the OSD and logs. Defaults to the rule name.</td></tr>
+    <tr><td><code>type</code></td><td><code>nls</code>, or omitted</td><td>Declares built-in typed behavior. New NLS rules identify it explicitly. Legacy implicit NLS detection remains readable only for migration.</td></tr>
     <tr><td><code>signal</code></td><td><code>ANY</code>, <code>SDR</code>, or <code>HDR</code>; default <code>ANY</code></td><td>Matches the effective video signal. <code>HDR</code> includes HDR gamma, PQ, HLG, and detected LLDV.</td></tr>
     <tr><td><code>frame_rates</code></td><td>Comma-separated nominal integers or <code>ANY</code>; default <code>ANY</code></td><td>Matches VP's displayed input refresh rate using its truncated nominal key: 23 matches 23.976, 29 matches 29.97, and 59 matches 59.94.</td></tr>
     <tr><td><code>none</code></td><td>Boolean; default <code>false</code></td><td>Selects the rule but deliberately installs no shaders. Shader entries in that rule are ignored.</td></tr>
     <tr><td><code>manual</code></td><td>Boolean; default <code>false</code></td><td>Excludes the rule from automatic signal/rate matching. It can still be selected by its shortcut.</td></tr>
     <tr><td><code>shortcut</code></td><td>Key or modifier combination</td><td>Selects this rule immediately while video is running. Letter case is meaningful: <code>n</code> means N without Shift and <code>N</code> means Shift+N. <code>Ctrl+</code>, <code>Alt+</code>, <code>Shift+</code>, function keys, Escape, and Enter use the same syntax as <code>[shortcuts]</code>.</td></tr>
-    <tr><td><code>output_aspect_ratio</code></td><td><code>native</code>, decimal, or <code>X:Y</code></td><td>Overrides the DirectShow picture aspect ratio for this manual rule. madVR uses that declaration in its zoom/fitting pass. Changing it performs one controlled renderer restart so the media type can be renegotiated; use <code>native</code> in the corresponding off rule.</td></tr>
-    <tr><td><code>nls_target_aspect_ratio</code></td><td>decimal or <code>X:Y</code></td><td>NLS-only fallback geometric target. The F2/F3 renderer-profile commands replace it at runtime: F2 selects Scope (2.35:1) and F3 selects Normal (16:9). They update NLS aspect validation and shader warp direction but do not enable or disable NLS; its manual shader shortcut still does that.</td></tr>
-    <tr><td><code>aspect_tolerance_percent</code></td><td>0-50</td><td>Optional active-picture guard for a manual rule. The rule stays armed but is bypassed until the stable P010 active picture differs from the current NLS target by more than this percentage.</td></tr>
-    <tr><td><code>aspect_direction</code></td><td><code>ANY</code> or <code>NARROWER_ONLY</code></td><td>With <code>ANY</code>, NLS stretches narrower content horizontally and wider content vertically while preserving the full active image. <code>NARROWER_ONLY</code> retains the older horizontal-only behavior.</td></tr>
-    <tr><td><code>active_aspect_min</code></td><td>1.0-4.0</td><td>Optional lower active-picture limit. Generic NLS should allow stable 4:3; the active-rectangle path removes encoded bars before sampling and rejects ratios above its 1.5x safety limit.</td></tr>
-    <tr><td><code>inactive_rule</code></td><td>rule name</td><td>Optional fallback for a generic conditional shader rule. NLS keeps one stable output contract while armed and does not use its manual off rule as a scene-dependent fallback.</td></tr>
-    <tr><td><code>param_name</code></td><td>Finite numeric value; <code>param_quality</code> also accepts <code>LOW</code>, <code>MEDIUM</code>, <code>HIGH</code>, or <code>VERY HIGH</code>; <code>param_geometry</code> accepts <code>CLASSIC</code> or <code>PROTECTED</code></td><td>Replaces every <code>{{name}}</code> token in every shader in the rule before compilation. Named values map to compile-time numeric constants.</td></tr>
+    <tr><td><code>output_aspect_ratio</code></td><td><code>native</code>, decimal, or ratio</td><td>Legacy/manual media-type override for untyped rules. Do not put it in a typed NLS rule; VP derives that contract from the selected viewport.</td></tr>
+    <tr><td><code>param_name</code></td><td>Finite compile-time value</td><td>Low-level token replacement for untyped custom shaders. Typed NLS rules use validated names without the <code>param_</code> prefix.</td></tr>
     <tr><td><code>pre_resize_N</code></td><td>Shader filename</td><td>Adds a source-frame shader before renderer image scaling. Numbered entries execute in ascending order.</td></tr>
     <tr><td><code>post_resize_N</code></td><td>Shader filename</td><td>Adds a screen-space shader after renderer image scaling. Numbered entries execute in ascending order.</td></tr>
   </tbody></table>
+  <table><thead><tr><th>Typed NLS key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
+    <tr><td><code>geometry</code></td><td><code>classic</code> or <code>protected</code></td><td>Selects the established power curve or a steadier protected-centre curve.</td></tr>
+    <tr><td><code>strength</code></td><td><code>0.0</code>–<code>1.0</code></td><td>Scales the calculated correction; <code>1.0</code> applies the complete mapping.</td></tr>
+    <tr><td><code>center_protection</code></td><td><code>0.0</code>–<code>0.45</code></td><td>Protected fraction of picture width when <code>geometry: protected</code>.</td></tr>
+    <tr><td><code>curve</code></td><td><code>0.5</code>–<code>4.0</code></td><td>Controls how progressively distortion moves toward the sides.</td></tr>
+    <tr><td><code>quality</code></td><td><code>low</code>, <code>medium</code>, <code>high</code>, or <code>very high</code></td><td>Selects reconstruction quality and GPU cost.</td></tr>
+    <tr><td><code>tolerance_percent</code></td><td><code>0</code>–<code>50</code></td><td>Treats content already this close to the selected viewport as linear passthrough.</td></tr>
+  </tbody></table>
   <pre>[shaders]
 enabled=true
-rules=broadcast_sdr,movies_24
+rules=broadcast_sdr
 default=none
 
 [shaders.broadcast_sdr]
@@ -166,36 +170,38 @@ label=Broadcast SDR 59/60
 signal=SDR
 frame_rates=59,60
 pre_resize_1=Shaders\Denoise.hlsl
-post_resize_1=Shaders\Adaptive sharpen.hlsl
-
-[shaders.movies_24]
-label=Movies at 23/24 fps
-signal=ANY
-frame_rates=23,24
-none=true</pre>
-  <h3>Manual nonlinear stretch example</h3>
-  <p>This keeps final aspect/zoom control in madVR. Shift+N arms VP's pre-resize mapping and N turns it off. NLS declares its target aspect to madVR so madVR's zoom policy can fit the mapped image correctly; entering or leaving that output contract can therefore perform one controlled renderer restart. While NLS remains armed, confirmed content-aspect changes are restart-free: matching Scope content uses linear active-rectangle passthrough and narrower IMAX/16:9 content uses nonlinear mapping against the same output contract. Active-picture geometry is sampled on an approximately 80 ms cadence (normalized for 23.976 through 60 fps). Initial lock requires four matching observations. A clear, symmetric bar transition withdraws stale geometry after its first observation and commits the new geometry after two matches; ambiguous or asymmetric changes require five matches. Black, fade, and otherwise unavailable observations preserve the last stable mapping. The dialog polls geometry generation every 100 ms, so a confirmed transition updates NLS without waiting for the one-second status timer or restarting the renderer. F2 selects the Scope (2.35:1) target and F3 selects the Normal (16:9) target; those screen-profile changes are restart-free and refresh only the NLS target. Therefore use F2 then Shift+N for 16:9-to-scope stretch, and F3 then Shift+N for 4:3-to-16:9 stretch. The armed request persists through renderer restarts and waits for fresh geometry from the new renderer generation before reinstalling the mapping. <code>strength</code> controls the total correction, <code>curve</code> controls how progressively it changes across the picture, and <code>stretch_ratio</code> describes the target expansion. <code>geometry=classic</code> uses the established SickGreg/SuperView-style power curve and is the compatibility default when the key is omitted. <code>geometry=protected</code> holds the central <code>center_protection</code> fraction at its original apparent width and uses a smooth monotonic transition to move more distortion toward the sides; accepted values are 0.0-0.45 and <code>0.35</code> protects the central 35% of the picture. <code>quality</code> selects single-sample bilinear Low, four-tap positive-filter Medium, six-tap anti-ringing Lanczos-3 High, or eight-tap anti-ringing Lanczos-4 Very High reconstruction. High is the recommended sharp setting; Medium is the conservative lower-cost setting.</p>
+post_resize_1=Shaders\Adaptive sharpen.hlsl</pre>
+  <h3 id="nls">Viewport-aware nonlinear stretch</h3>
+  <p>A typed NLS rule owns only effect choices. The selected <code>[profiles.viewport.*]</code> profile owns the physical screen. VP combines that immutable viewport snapshot with detected active-picture geometry, then derives crop, stretch ratio, axis, passthrough, safe-fit, and the madVR picture-aspect contract. The NLS rule does not repeat <code>2.35</code> and does not configure madVR's screen profile.</p>
   <pre>[shaders]
 enabled=true
-rules=nls,nls_off,broadcast_sdr,movies_24
+rules=nls,nls_protected,nls_off
 default=none
 
 [shaders.nls]
 label=Nonlinear Stretch
 manual=true
 shortcut=N
-output_aspect_ratio=2.35
-nls_target_aspect_ratio=2.35
-aspect_tolerance_percent=5
-aspect_direction=any
-active_aspect_min=1.0
+type=nls
 pre_resize_1=Shaders\NLS.hlsl
-param_strength=1.0
-param_geometry=protected
-param_center_protection=0.35
-param_curve=2.0
-param_stretch_ratio=1.321875
-param_quality=medium
+geometry=classic
+strength=1.0
+curve=2.0
+quality=medium
+tolerance_percent=5
+
+[shaders.nls_protected]
+label=Nonlinear Stretch Protected
+manual=true
+shortcut=P
+type=nls
+pre_resize_1=Shaders\NLS.hlsl
+geometry=protected
+strength=1.0
+center_protection=0.35
+curve=2.0
+quality=medium
+tolerance_percent=5
 
 [shaders.nls_off]
 label=NLS Off
@@ -203,6 +209,26 @@ manual=true
 shortcut=n
 output_aspect_ratio=native
 none=true</pre>
+  <p>Shift+N arms classic NLS, Shift+P arms the protected-centre variant, and plain N selects the compatibility off rule. The armed choice survives renderer replacement. A viewport change may require one controlled renderer restart when the negotiated picture-aspect contract changes. A detected content-aspect change under the same viewport only refreshes the mapping and does not restart the renderer.</p>
+  <table><thead><tr><th>Active picture</th><th>Selected viewport</th><th>Result while NLS is armed</th></tr></thead><tbody>
+    <tr><td>4:3</td><td>16:9</td><td>Horizontal NLS, approximately 1.333×.</td></tr>
+    <tr><td>16:9</td><td>16:9</td><td>Linear passthrough.</td></tr>
+    <tr><td>4:3</td><td>2.35:1</td><td>Preserved 4:3 safe-fit/pillarbox; no unsafe stretch to 2.35.</td></tr>
+    <tr><td>16:9</td><td>2.35:1</td><td>Horizontal NLS, approximately 1.322×.</td></tr>
+    <tr><td>1.90:1</td><td>2.35:1</td><td>Horizontal NLS, approximately 1.237×.</td></tr>
+    <tr><td>2.35:1</td><td>2.35:1</td><td>Linear passthrough.</td></tr>
+    <tr><td>Any</td><td>Any</td><td><code>nls_off</code> retains the native picture geometry.</td></tr>
+  </tbody></table>
+  <h3 id="shader-migration">NLS configuration migration</h3>
+  <table><thead><tr><th>Legacy key or pattern</th><th>Typed NLS replacement</th></tr></thead><tbody>
+    <tr><td><code>nls_target_aspect_ratio: 2.35</code></td><td>Remove it. The selected viewport's <code>screen_aspect</code> is authoritative.</td></tr>
+    <tr><td><code>output_aspect_ratio: 2.35</code> in NLS</td><td>Remove it. VP derives the media contract from the viewport. Keep <code>output_aspect_ratio: native</code> only in the compatibility off rule.</td></tr>
+    <tr><td>Presence of <code>param_stretch_ratio</code> identifies NLS</td><td><code>type: nls</code>; remove the configured stretch ratio because VP derives it.</td></tr>
+    <tr><td><code>param_geometry</code>, <code>param_strength</code>, <code>param_center_protection</code>, <code>param_curve</code>, <code>param_quality</code></td><td><code>geometry</code>, <code>strength</code>, <code>center_protection</code>, <code>curve</code>, <code>quality</code></td></tr>
+    <tr><td><code>aspect_tolerance_percent</code></td><td><code>tolerance_percent</code></td></tr>
+    <tr><td><code>active_aspect_min</code>, <code>aspect_direction</code>, <code>inactive_rule</code></td><td>Remove them from typed NLS; safe-fit, direction, and stable armed behavior are derived.</td></tr>
+  </tbody></table>
+  <p>Deprecated NLS aliases remain readable during migration and produce a replacement warning. Do not define a deprecated key together with its typed replacement. A legacy configuration without unified viewport profiles may continue using its old fixed target until it is deliberately migrated.</p>
   <p>Relative shader paths are resolved from the directory containing <code>VideoProcessor.cfg</code>. The OSD displays the selected rule and every successfully installed shader, and automatically resizes to fit the active chain. The original flat <code>profile</code>, <code>pre_resize_N</code>, and <code>post_resize_N</code> format remains accepted when <code>rules</code> is absent.</p>
   <div class="note">Shaders execute GPU code inside the selected renderer. A compilation failure disables that entire stage and is reported in the log. Expensive or defective shaders can cause dropped frames or a GPU device reset. HDR/color shaders must be written for the color domain presented by the renderer; do not combine an HDR-to-SDR shader with renderer tone mapping unless the chain is intentionally designed that way.</div>
 
@@ -229,7 +255,7 @@ scene_detect=false</pre>
   <p>The optional built-in libplacebo renderer is configured in the same <code>VideoProcessor.cfg</code>. Select it with <code>renderer: VideoProcessor Renderer (Alpha)</code> in <code>[command_line]</code>. Its complete optional plugin pack belongs in a <code>libplacebo</code> directory beside <code>VideoProcessor.exe</code>; if it is unavailable, the application starts normally without listing that renderer.</p>
   <p>Renderer entries use the canonical <code>key: value</code> syntax. Existing <code>key=value</code> entries remain readable. The renderer always produces SDR output; HDR, HLG, and detected LLDV input is tone-mapped using the effective input colorspace and mastering metadata.</p>
 
-  <div class="renderer-nav"><strong>Renderer reference:</strong> <a href="#renderer-quick-start">Quick start</a> | <a href="#renderer-base">Base settings</a> | <a href="#renderer-profiles">Profiles and hotkeys</a> | <a href="#renderer-rules">Rules</a> | <a href="#renderer-recipes">Complete recipes</a> | <a href="#renderer-events">Event actions</a> | <a href="#renderer-troubleshooting">Troubleshooting</a></div>
+  <div class="renderer-nav"><strong>Renderer reference:</strong> <a href="#renderer-quick-start">Quick start</a> | <a href="#renderer-base">Base settings</a> | <a href="#viewport-state">Viewport state</a> | <a href="#renderer-profiles">Profiles and hotkeys</a> | <a href="#runtime-variables">Runtime variables</a> | <a href="#renderer-recipes">Complete recipes</a> | <a href="#renderer-events">Event actions</a> | <a href="#renderer-troubleshooting">Troubleshooting</a></div>
 
   <h3 id="renderer-quick-start">Quick start: how renderer configuration fits together</h3>
   <p>The renderer is a separate configuration domain inside the same file. Application sections such as <code>[command_line]</code>, capture, queue, shader, and conversion settings start VP. Renderer sections decide how the already-captured frames are processed and displayed. Renderer profiles cannot modify application-owned settings.</p>
@@ -263,13 +289,39 @@ persist_profile_selection: true</pre>
   </tbody></table>
   <p><code>[general]</code> controls renderer-session policy: <code>persist_profile_selection</code>, <code>switch_refresh_rate</code>, and <code>event_action_delay_seconds</code> (0–30 seconds). The shipped configuration is the complete conservative starting point.</p>
 
+  <h3 id="viewport-state">Viewport state</h3>
+  <p>The viewport is application-owned state shared by every renderer and effect. VP resolves and publishes it before shader selection. One snapshot contains the selected profile, exact and numeric screen aspect, subtitle-fit settings, and a generation number. Pressing one key selects the viewport once; VP does not send these values to madVR and does not assume the external curtain, lens-memory, or madVR-profile action succeeded.</p>
+  <pre>[profile_groups.viewport]
+profiles: normal,scope
+default: normal
+
+[profiles.viewport.normal]
+when: $key=="F3"
+# screen_aspect defaults to 16:9
+
+[profiles.viewport.scope]
+when: $key=="F2"
+screen_aspect: 2.35:1
+subtitle_fit: true
+subtitle_hold_seconds: 2
+subtitle_padding_pixels: 30</pre>
+  <p>Accepted aspect forms include <code>4:3</code>, <code>16:9</code>, <code>16x9</code>, <code>2.2:1</code>, <code>2.35:1</code>, and decimal shorthand such as <code>1.7777778</code>. Whitespace around values and delimiters is allowed. The resolved range is 1.0–4.0. Zero, negative, non-finite, malformed, repeated-delimiter, trailing-junk, and out-of-range values fail startup validation. Missing viewport configuration, and a selected viewport with no <code>screen_aspect</code>, resolve explicitly to 16:9.</p>
+  <table><thead><tr><th>Deprecated viewport key</th><th>Replacement</th></tr></thead><tbody>
+    <tr><td><code>scope_screen_aspect</code></td><td><code>screen_aspect</code></td></tr>
+    <tr><td><code>scope_subtitle_fit</code></td><td><code>subtitle_fit</code></td></tr>
+    <tr><td><code>scope_subtitle_hold_seconds</code></td><td><code>subtitle_hold_seconds</code></td></tr>
+    <tr><td><code>scope_subtitle_padding_pixels</code></td><td><code>subtitle_padding_pixels</code></td></tr>
+    <tr><td><code>mode: normal|scope</code></td><td>Remove it; profile names are labels and <code>screen_aspect</code> defines geometry.</td></tr>
+  </tbody></table>
+  <p>Deprecated aliases are normalized during a migration window and logged with their section and replacement. Defining an alias together with its replacement is an error because precedence would be ambiguous. VP persists only the selected profile name and never writes deprecated keys.</p>
+
   <h3 id="renderer-profiles">Profiles and hotkeys</h3>
   <p>Profiles are independent groups: <code>input</code>, <code>scaling</code>, <code>display</code>, and <code>viewport</code>. Declare each group in <code>[profile_groups.&lt;group&gt;]</code>, then define settings in <code>[profiles.&lt;group&gt;.&lt;name&gt;]</code>. A profile's <code>when</code> expression can use source metadata or <code>$key</code>. The same key may select profiles in multiple groups; no profile may write a setting owned by a different group or by the application.</p>
   <table><thead><tr><th>Group</th><th>May override</th><th>Typical selector</th></tr></thead><tbody>
     <tr><td><code>input</code></td><td><code>tone_mapping</code>, <code>gamut_mapping</code>, <code>peak_detection</code>, <code>contrast_recovery</code>, <code>sdr_input_transfer</code></td><td>Source transfer, primaries, HDR metadata</td></tr>
     <tr><td><code>scaling</code></td><td><code>quality</code>, <code>upscaler</code>, <code>downscaler</code>, <code>sigmoid</code>, <code>deband_strength</code>, <code>dithering</code></td><td>Resolution or frame size</td></tr>
     <tr><td><code>display</code></td><td>Target nits/black, presentation/range/gamma, target primaries, BT.2020 signalling, and <code>lut</code> plus its reference fields</td><td>Manual display/calibration hotkey</td></tr>
-    <tr><td><code>viewport</code></td><td><code>mode</code>, scope aspect, subtitle-fit, hold, and padding</td><td>Manual Normal/Scope hotkey</td></tr>
+    <tr><td><code>viewport</code></td><td><code>screen_aspect</code>, <code>subtitle_fit</code>, <code>subtitle_hold_seconds</code>, <code>subtitle_padding_pixels</code></td><td>Manual physical-viewport hotkey</td></tr>
   </tbody></table>
   <p>Each group requires <code>profiles:</code> and <code>default:</code>. The default is a listed profile or <code>auto</code>. <code>persist_profile_selection:</code> may be set per group. A group-level <code>when:</code> is a reset chord: it returns that group to automatic selection without changing other groups.</p>
   <pre>[profile_groups.display]
@@ -308,6 +360,20 @@ report_bt2020_to_display: true</pre>
     <tr><td><code>$hdr_metadata</code></td><td><code>true</code> when valid static HDR metadata is present</td></tr>
     <tr><td><code>$key</code></td><td>A transient canonical chord, such as <code>F5</code> or <code>Ctrl+F9</code></td></tr>
   </tbody></table>
+  <h4 id="runtime-variables">Typed runtime variables</h4>
+  <p>Variables are read-only typed values taken from one coherent runtime snapshot. A component registers the state it publishes; configuration may use only variables permitted by that setting's schema. This makes new application state reusable without exposing arbitrary C++ members or performing unsafe text substitution in paths, commands, or shader source. Rules are reevaluated when a variable they depend on changes.</p>
+  <table><thead><tr><th>Variable</th><th>Type</th><th>Source and update</th></tr></thead><tbody>
+    <tr><td><code>$screen_aspect</code></td><td>Number</td><td>Numeric aspect from the selected viewport; defaults to 16:9.</td></tr>
+    <tr><td><code>$viewport_profile</code></td><td>Text</td><td>Selected viewport profile name, or <code>default</code> when no named profile is active.</td></tr>
+    <tr><td><code>$subtitle_fit</code></td><td>Boolean</td><td>Subtitle-fit state from the same viewport snapshot.</td></tr>
+    <tr><td><code>$subtitle_hold_seconds</code></td><td>Number</td><td>Viewport subtitle hold duration.</td></tr>
+    <tr><td><code>$subtitle_padding_pixels</code></td><td>Number</td><td>Viewport subtitle padding.</td></tr>
+    <tr><td><code>$transfer</code>, <code>$eotf</code>, <code>$primaries</code>, <code>$colorspace</code>, <code>$format</code></td><td>Text</td><td>Published source metadata; updates on a confirmed input transition.</td></tr>
+    <tr><td><code>$width</code>, <code>$height</code>, <code>$source_rate</code>, <code>$cadence</code></td><td>Number</td><td>Published source raster and cadence.</td></tr>
+    <tr><td><code>$hdr_metadata</code>, <code>$interlaced</code></td><td>Boolean</td><td>Published source flags.</td></tr>
+    <tr><td><code>$key</code></td><td>Text</td><td>Transient canonical chord used only while resolving one physical key event.</td></tr>
+  </tbody></table>
+  <p>Typed NLS consumes <code>$screen_aspect</code> internally, so users do not add a duplicate <code>screen_aspect</code> line to the shader rule. Logs identify the snapshot generation and variable values used for each mapping decision.</p>
   <pre>[profiles.input.pq]
 when: $transfer=="PQ" &amp;&amp; $primaries=="BT2020"
 priority: 100
@@ -329,7 +395,7 @@ quality: high</pre>
   </tbody></table>
 
   <h3 id="renderer-recipes">Complete profile recipes</h3>
-  <p>The following is a complete, valid renderer profile library. It illustrates automatic HDR/input and UHD/scaling choices, manual display calibration, Normal/Scope viewport selection, a display-only reset, and one composite key. It can be adapted into the renderer portion of <code>VideoProcessor.cfg</code>; keep your existing application sections above it.</p>
+  <p>The following is a complete, valid renderer profile library. It illustrates automatic HDR/input and UHD/scaling choices, manual display calibration, named 16:9/2.35 viewport selection, a display-only reset, and one composite key. It can be adapted into the renderer portion of <code>VideoProcessor.cfg</code>; keep your existing application sections above it.</p>
   <pre>[display]
 sdr_target_nits: 100
 sdr_black_nits: 0
@@ -418,7 +484,7 @@ screen_aspect: 2.35:1
 subtitle_fit: true
 subtitle_hold_seconds: 2
 subtitle_padding_pixels: 30</pre>
-  <p>In that example, <code>Ctrl+F9</code> selects BT.2020 display reporting and Scope together; <code>Ctrl+F10</code> selects Rec.709 reporting and Normal together. F2 and F3 change only the viewport. F5 and F6 change only the display target. F4 clears only the manual display choice.</p>
+  <p>In that example, <code>Ctrl+F9</code> selects BT.2020 display reporting and the 2.35 viewport together; <code>Ctrl+F10</code> selects Rec.709 reporting and the 16:9 viewport. F2 and F3 change only the viewport. F5 and F6 change only the display target. F4 clears only the manual display choice.</p>
 
   <h3 id="renderer-strictness">Strictness and safe changes</h3>
   <p>Unified configuration rejects duplicate keys, unknown sections, missing listed profiles, orphan profile sections, invalid defaults, unknown variables, malformed expressions, unsupported values, and a setting placed in the wrong profile group. Application settings such as capture, queues, conversion, and shaders remain startup-only and cannot be changed by a renderer profile. Legacy display-rule syntax is not part of the unified model.</p>
@@ -442,6 +508,9 @@ arguments: 315</pre>
     <tr><td>A hotkey does nothing</td><td>Verify the VP window has focus, the chord is quoted exactly, and it is not assigned to two profiles in the same group. Check <code>C:\logs\vp_debug.log</code> for registered profile bindings.</td></tr>
     <tr><td>An automatic rule never wins</td><td>Verify the captured metadata in the debug log, then compare its transfer/primaries/raster values with the rule. Raise <code>priority:</code> only when two matching profiles genuinely need ordering.</td></tr>
     <tr><td>The wrong profile reappears after restart</td><td>Manual selections persist by default. Use the group reset chord, set <code>persist_profile_selection: false</code> for that group, or remove the relevant entry from <code>VideoProcessor.state</code> while VP is stopped.</td></tr>
+    <tr><td>NLS uses the wrong screen shape</td><td>Confirm the OSD shows <code>Viewport: &lt;profile&gt; (&lt;aspect&gt;)</code>. The log must show the restored/selected viewport before the NLS mapping decision. Remove hard-coded NLS target/output aspect keys from unified configuration.</td></tr>
+    <tr><td>4:3 is stretched on a 2.35 screen</td><td>The expected armed mode is 4:3 safe-fit/pillarbox. Check the logged source aspect, selected screen aspect, snapshot generation, and mapping mode; do not add a second 4:3 shader rule.</td></tr>
+    <tr><td>A viewport key restarts the renderer</td><td>One controlled restart is expected only when the negotiated picture-aspect contract changes. Content-aspect changes under the same selected viewport must report <code>renderer_restart=0</code>.</td></tr>
     <tr><td>Display or colour changes fail</td><td>VP keeps the last successful renderer state. Inspect the log for the rejected output contract or unsupported display capability; do not assume the profile name alone proves a setting applied.</td></tr>
   </tbody></table>
 </body>

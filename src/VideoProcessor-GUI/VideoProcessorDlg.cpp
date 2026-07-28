@@ -41,6 +41,7 @@
 #include <guid.h>
 #include <ConfigFile.h>
 #include <RendererProfileConfig.h>
+#include <UnifiedProfileRuntime.h>
 
 
 #include "VideoProcessorDlg.h"
@@ -1053,6 +1054,26 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 	LoadDisplayRefreshRateOverrides();
+
+	ConfigFile profileConfig;
+	if (profileConfig.Load(ConfigFile::RENDERER_FILENAME))
+	{
+		std::string profileError;
+		if (!m_profileRuntime.Initialize(profileConfig,
+			GetUnifiedProfileSourceLookup(), profileError))
+		{
+			DebugLog::Log("Unified profile runtime disabled: %s",
+				profileError.c_str());
+		}
+		else if (const auto snapshot = m_profileRuntime.GetSnapshot())
+		{
+			DebugLog::Log(
+				"Unified profile runtime restored generation %llu, viewport %s (%s)",
+				static_cast<unsigned long long>(snapshot->generation),
+				snapshot->viewport.profile.c_str(),
+				snapshot->viewport.screenAspect.Canonical().c_str());
+		}
+	}
 
 	m_blackMagicDeviceDiscoverer = new BlackMagicDeckLinkCaptureDeviceDiscoverer(*this);
 	
@@ -2375,7 +2396,7 @@ void CVideoProcessorDlg::OnCommandShaderRule(UINT commandId)
 void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 {
 	const auto unifiedKey = m_unifiedProfileShortcutKeys.find(static_cast<WORD>(commandId));
-	if (unifiedKey != m_unifiedProfileShortcutKeys.end() && m_videoRenderer)
+	if (unifiedKey != m_unifiedProfileShortcutKeys.end())
 	{
 		const DWORD commandTime = static_cast<DWORD>(GetMessageTime());
 		if (m_lastUnifiedProfileCommand == commandId &&
@@ -2387,15 +2408,28 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 		}
 		m_lastUnifiedProfileCommand = static_cast<WORD>(commandId);
 		m_lastUnifiedProfileCommandTime = commandTime;
-		CString activeProfiles;
-		bool rendererRestartRequired = false;
-		if (!m_videoRenderer->SelectUnifiedProfileKey(unifiedKey->second, activeProfiles, rendererRestartRequired))
+		UnifiedProfileRuntime::SelectionResult result;
+		std::string error;
+		if (!m_profileRuntime.SelectKey(
+			CStringA(unifiedKey->second).GetString(),
+			GetUnifiedProfileSourceLookup(), result, error))
 		{
-			DEBUGLOG("Unified profile key '%S' is unavailable", static_cast<LPCTSTR>(unifiedKey->second));
+			DebugLog::Log("Unified profile key '%s' is unavailable: %s",
+				CStringA(unifiedKey->second).GetString(),
+				error.c_str());
 			return;
 		}
-		DEBUGLOG("Unified profile key selected: %S", static_cast<LPCTSTR>(activeProfiles));
-		if (rendererRestartRequired) { m_wantToRestartRenderer = true; UpdateState(); }
+		std::ostringstream activeProfiles;
+		for (size_t index = 0; index < result.selections.size(); ++index)
+		{
+			if (index != 0) activeProfiles << ", ";
+			activeProfiles << result.selections[index].group << "="
+				<< result.selections[index].profile;
+		}
+		DebugLog::Log("Unified profile key selected: %s",
+			activeProfiles.str().c_str());
+		if (result.changed)
+			ApplyUnifiedProfileSnapshot(result.snapshot, true);
 		return;
 	}
 	const auto rule = m_displayRuleShortcutRules.find(static_cast<WORD>(commandId));
@@ -3342,6 +3376,8 @@ void CVideoProcessorDlg::RenderStart()
 				GetRendererVideoFrameUseQueue(),
 				alphaDesiredDepth);
 
+			ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
+
 			if (m_captureDeviceVideoState)
 				m_videoRenderer->OnVideoState(m_builtVideoState);
 
@@ -3399,6 +3435,8 @@ void CVideoProcessorDlg::RenderStart()
 			forceVideoTransferFunction,
 			forceVideoTransferMatrix,
 			forceVideoPrimaries);
+
+		ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
 
 		if (m_captureDeviceVideoState)
 			m_videoRenderer->OnVideoState(m_builtVideoState);
@@ -4025,6 +4063,21 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 
 	m_builtVideoState = videoState;
 	m_lastEffectiveEotf = m_builtVideoState->eotf;
+
+	bool profilesChanged = false;
+	std::string profileError;
+	if (m_profileRuntime.IsInitialized() &&
+		!m_profileRuntime.Refresh(GetUnifiedProfileSourceLookup(),
+			profilesChanged, profileError))
+	{
+		DebugLog::Log("Unified profile refresh failed: %s",
+			profileError.c_str());
+	}
+	else if (profilesChanged &&
+		m_rendererState != RendererState::RENDERSTATE_STOPPING)
+	{
+		ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), true);
+	}
 	
 
 	//
@@ -4144,6 +4197,36 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 		DbgLog((LOG_TRACE, 1,
 			TEXT("CVideoProcessorDlg::BuildPushVideoState(): Renderer unavailable; state retained for next graph")));
 		return true;
+	}
+}
+
+DisplayRuleExpression::ValueLookup
+CVideoProcessorDlg::GetUnifiedProfileSourceLookup() const
+{
+	return StateVariables::VideoStateLookup(m_builtVideoState);
+}
+
+void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
+	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
+	bool allowRestart)
+{
+	if (!snapshot || !m_videoRenderer)
+		return;
+
+	CString activeState;
+	bool rendererRestartRequired = false;
+	if (!m_videoRenderer->ApplyApplicationState(
+		*snapshot, activeState, rendererRestartRequired))
+		return;
+
+	DebugLog::Log("Applied unified profile state: %s",
+		CStringA(activeState).GetString());
+	if (allowRestart && rendererRestartRequired)
+	{
+		DebugLog::Log(
+			"Unified viewport output aspect changed; restarting renderer");
+		m_wantToRestartRenderer = true;
+		UpdateState();
 	}
 }
 

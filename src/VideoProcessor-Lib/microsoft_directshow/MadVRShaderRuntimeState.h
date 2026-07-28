@@ -31,7 +31,8 @@ enum class MadVRNlsMappingMode
 	OFF,
 	WAITING,
 	SCOPE_PASSTHROUGH,
-	ACTIVE
+	ACTIVE,
+	SAFE_FIT
 };
 
 
@@ -42,6 +43,8 @@ struct MadVRNlsMappingDecision
 	double targetAspect = 0.0;
 	double stretchRatio = 1.0;
 	bool verticalWarp = false;
+	double safeFitFraction = 1.0;
+	bool safeFitVertical = false;
 	std::string reason;
 };
 
@@ -55,6 +58,7 @@ struct MadVRShaderRuntimeSnapshot
 	double nlsTargetAspect = 0.0;
 	uint64_t rendererGeneration = 0;
 	MadVRActivePictureGeometry activeGeometry;
+	MadVRNlsMappingDecision nlsDecision;
 };
 
 
@@ -82,6 +86,7 @@ public:
 	void SetRequestedRule(const std::string& requestedRule);
 	void SetEffectiveRule(const std::string& effectiveRule);
 	void SetNlsTargetAspect(double targetAspect);
+	void SetNlsDecision(const MadVRNlsMappingDecision& decision);
 	bool SetActiveGeometry(const MadVRActivePictureGeometry& geometry);
 
 private:

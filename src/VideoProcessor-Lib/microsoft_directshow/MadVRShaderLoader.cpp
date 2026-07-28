@@ -48,6 +48,8 @@ struct ShaderRule
 {
 	std::string name;
 	std::string label;
+	bool nls = false;
+	bool explicitType = false;
 	SignalMatch signal = SignalMatch::ANY;
 	std::vector<int> nominalRates;
 	bool none = false;
@@ -98,6 +100,8 @@ double GetNlsTargetAspect(const ShaderRule& rule)
 	if (rule.nlsTargetAspectRatioX > 0 && rule.nlsTargetAspectRatioY > 0)
 		return static_cast<double>(rule.nlsTargetAspectRatioX) /
 			rule.nlsTargetAspectRatioY;
+	if (rule.nls)
+		return 16.0 / 9.0;
 	return 0.0;
 }
 
@@ -249,17 +253,6 @@ bool IsParameterNameValid(const std::string& name)
 void LoadShaderParameters(const ConfigFile& config, const std::string& section,
 	ShaderRule& rule)
 {
-	// Preserve compatibility with configurations created before the selectable
-	// NLS geometry was introduced. Parameters unused by other shaders are inert.
-	rule.parameters["geometry"] = "0";
-	rule.parameters["center_protection"] = "0.35";
-	rule.parameters["active_height_fraction"] = "1.0";
-	rule.parameters["active_left"] = "0.0";
-	rule.parameters["active_top"] = "0.0";
-	rule.parameters["active_right"] = "1.0";
-	rule.parameters["active_bottom"] = "1.0";
-	rule.parameters["warp_axis"] = "0";
-
 	const auto* settings = config.GetSectionValues(section);
 	if (!settings)
 		return;
@@ -325,6 +318,142 @@ void LoadShaderParameters(const ConfigFile& config, const std::string& section,
 				setting.second.c_str());
 			rule.valid = false;
 		}
+	}
+}
+
+
+bool NormalizeNlsSetting(const std::string& name,
+	const std::string& rawValue, std::string& normalized)
+{
+	const std::string value = ConfigFile::NormalizeName(rawValue);
+	if (name == "geometry")
+	{
+		if (value == "classic") normalized = "0";
+		else if (value == "protected" || value == "center protected" ||
+			value == "center_protected" || value == "centerprotected")
+			normalized = "1";
+		else return false;
+		return true;
+	}
+	if (name == "quality")
+	{
+		if (value == "low") normalized = "0";
+		else if (value == "medium") normalized = "1";
+		else if (value == "high") normalized = "2";
+		else if (value == "very high" || value == "very_high" ||
+			value == "veryhigh") normalized = "3";
+		else return false;
+		return true;
+	}
+
+	double minimum = 0.0;
+	double maximum = 0.0;
+	if (name == "strength")
+	{
+		minimum = 0.0;
+		maximum = 1.0;
+	}
+	else if (name == "center_protection")
+	{
+		minimum = 0.0;
+		maximum = 0.45;
+	}
+	else if (name == "curve")
+	{
+		minimum = 0.5;
+		maximum = 4.0;
+	}
+	else
+	{
+		return false;
+	}
+
+	double parsed = 0.0;
+	if (!ParseBoundedDouble(rawValue, minimum, maximum, parsed))
+		return false;
+	std::ostringstream text;
+	text.precision(17);
+	text << parsed;
+	normalized = text.str();
+	return true;
+}
+
+
+void LoadTypedNlsSettings(const ConfigFile& config,
+	const std::string& section, ShaderRule& rule)
+{
+	const auto* settings = config.GetSectionValues(section);
+	if (!settings)
+		return;
+
+	const std::map<std::string, std::string> defaults = {
+		{ "strength", "1" },
+		{ "geometry", "0" },
+		{ "center_protection", "0.35" },
+		{ "curve", "2" },
+		{ "quality", "1" },
+		{ "stretch_ratio", "1" },
+		{ "active_height_fraction", "1" },
+		{ "active_left", "0" },
+		{ "active_top", "0" },
+		{ "active_right", "1" },
+		{ "active_bottom", "1" },
+		{ "warp_axis", "0" },
+		{ "safe_fit", "0" },
+		{ "safe_fit_axis", "0" },
+		{ "safe_fit_fraction", "1" }
+	};
+	for (const auto& setting : defaults)
+		rule.parameters.emplace(setting.first, setting.second);
+
+	for (const char* rawName :
+		{ "strength", "geometry", "center_protection", "curve", "quality" })
+	{
+		const std::string name(rawName);
+		const std::string alias = "param_" + name;
+		const auto typed = settings->find(name);
+		const auto legacy = settings->find(alias);
+		if (typed != settings->end() && legacy != settings->end())
+		{
+			DebugLog::Log(
+				"Shaders: rule \"%s\" defines both \"%s\" and deprecated alias \"%s\"",
+				rule.name.c_str(), name.c_str(), alias.c_str());
+			rule.valid = false;
+			continue;
+		}
+
+		const auto selected = typed != settings->end() ? typed : legacy;
+		if (selected == settings->end())
+			continue;
+		std::string normalized;
+		if (!NormalizeNlsSetting(name, selected->second, normalized))
+		{
+			DebugLog::Log(
+				"Shaders: rule \"%s\" has invalid NLS %s \"%s\"",
+				rule.name.c_str(), name.c_str(), selected->second.c_str());
+			rule.valid = false;
+			continue;
+		}
+		rule.parameters[name] = normalized;
+		if (legacy != settings->end() && rule.explicitType)
+			DebugLog::Log(
+				"Shaders: rule \"%s\" key \"%s\" is deprecated; use \"%s\"",
+				rule.name.c_str(), alias.c_str(), name.c_str());
+	}
+
+	// These values belong to the active viewport and detected picture, not to
+	// user configuration. Continue reading them for old configurations, but
+	// always overwrite them from the coherent runtime snapshot before compile.
+	for (const char* derived :
+		{ "stretch_ratio", "warp_axis", "active_height_fraction",
+		  "active_left", "active_top", "active_right", "active_bottom",
+		  "safe_fit", "safe_fit_axis", "safe_fit_fraction" })
+	{
+		const std::string alias = "param_" + std::string(derived);
+		if (settings->find(alias) != settings->end() && rule.explicitType)
+			DebugLog::Log(
+				"Shaders: rule \"%s\" key \"%s\" is deprecated and runtime-derived",
+				rule.name.c_str(), alias.c_str());
 	}
 }
 
@@ -435,6 +564,21 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 	if (config.TryGetString(section, "label", rawValue) && !ConfigFile::Trim(rawValue).empty())
 		rule.label = ConfigFile::Trim(rawValue);
 
+	if (config.TryGetString(section, "type", rawValue))
+	{
+		rule.explicitType = true;
+		const std::string type = ConfigFile::NormalizeName(rawValue);
+		if (type == "nls")
+			rule.nls = true;
+		else if (type != "custom" && type != "shader")
+		{
+			DebugLog::Log(
+				"Shaders: rule \"%s\" has invalid type \"%s\"; expected NLS or CUSTOM",
+				rule.name.c_str(), rawValue.c_str());
+			rule.valid = false;
+		}
+	}
+
 	if (config.TryGetString(section, "signal", rawValue) && !ParseSignal(rawValue, rule.signal))
 	{
 		DebugLog::Log("Shaders: rule \"%s\" has invalid signal \"%s\"; expected ANY, SDR, or HDR",
@@ -491,6 +635,26 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 			rule.name.c_str(), rawValue.c_str());
 		rule.valid = false;
 	}
+	if (config.TryGetString(section, "tolerance_percent", rawValue))
+	{
+		if (config.GetSectionValues(section)->find(
+			"aspect_tolerance_percent") !=
+			config.GetSectionValues(section)->end())
+		{
+			DebugLog::Log(
+				"Shaders: rule \"%s\" defines both \"tolerance_percent\" and deprecated alias \"aspect_tolerance_percent\"",
+				rule.name.c_str());
+			rule.valid = false;
+		}
+		else if (!ParseBoundedDouble(rawValue, 0.0, 50.0,
+			rule.aspectTolerancePercent))
+		{
+			DebugLog::Log(
+				"Shaders: rule \"%s\" has invalid tolerance_percent \"%s\"",
+				rule.name.c_str(), rawValue.c_str());
+			rule.valid = false;
+		}
+	}
 	if (config.TryGetString(section, "active_aspect_min", rawValue) &&
 		!ParseBoundedDouble(rawValue, 1.0, 4.0, rule.activeAspectMinimum))
 	{
@@ -514,11 +678,47 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 		rule.inactiveRule = ConfigFile::NormalizeName(rawValue);
 
 	LoadShaderParameters(config, section, rule);
+	if (!rule.explicitType && rule.nlsTargetAspectRatioX > 0 &&
+		rule.nlsTargetAspectRatioY > 0 &&
+		rule.parameters.find("stretch_ratio") != rule.parameters.end())
+	{
+		rule.nls = true;
+	}
+	if (rule.nls)
+	{
+		if (rule.aspectTolerancePercent < 0.0)
+			rule.aspectTolerancePercent = 5.0;
+		LoadTypedNlsSettings(config, section, rule);
+		if (rule.explicitType)
+		{
+			for (const char* derived :
+				{ "output_aspect_ratio", "nls_target_aspect_ratio",
+				  "active_aspect_min", "aspect_direction", "inactive_rule" })
+			{
+				if (config.GetSectionValues(section)->find(derived) !=
+					config.GetSectionValues(section)->end())
+				{
+					DebugLog::Log(
+						"Shaders: typed NLS rule \"%s\" key \"%s\" is deprecated and runtime-derived",
+						rule.name.c_str(), derived);
+				}
+			}
+			rule.outputAspectRatioX = 0;
+			rule.outputAspectRatioY = 0;
+			rule.nlsTargetAspectRatioX = 0;
+			rule.nlsTargetAspectRatioY = 0;
+			rule.activeAspectMinimum = 0.0;
+			rule.narrowerOnly = false;
+			rule.inactiveRule.clear();
+		}
+	}
 
 	LoadShaderEntries(config, section,
-		{ "label", "signal", "frame_rates", "none", "manual", "shortcut",
+		{ "label", "type", "signal", "frame_rates", "none", "manual", "shortcut",
 			"output_aspect_ratio", "nls_target_aspect_ratio", "aspect_tolerance_percent",
-			"active_aspect_min", "aspect_direction", "inactive_rule" },
+			"tolerance_percent", "active_aspect_min", "aspect_direction",
+			"inactive_rule", "strength", "geometry", "center_protection",
+			"curve", "quality" },
 		rule.preScale, rule.postScale);
 	return rule;
 }
@@ -812,13 +1012,51 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 		// from the stable detector result instead of assuming 16:9 content.
 		// Narrower content stretches horizontally; wider content stretches
 		// vertically. Both paths preserve the complete active image.
-		const double activeAspect = runtime.activeGeometry.aspectRatio;
-		const MadVRActivePictureGeometry activeGeometry = runtime.activeGeometry;
+		double activeAspect = runtime.activeGeometry.aspectRatio;
+		MadVRActivePictureGeometry activeGeometry = runtime.activeGeometry;
 		const double targetAspect = GetNlsTargetAspect(rule);
-		const bool nlsRule = targetAspect > 0.0 &&
-			rule.parameters.find("stretch_ratio") != rule.parameters.end();
-		const bool currentGeometry = activeGeometry.stable &&
+		const bool nlsRule = rule.nls && targetAspect > 0.0;
+		if (nlsRule)
+			ResolveMadVRNlsOutputAspect(targetAspect,
+				selection.outputAspectRatioX,
+				selection.outputAspectRatioY);
+
+		bool currentGeometry = activeGeometry.stable &&
 			activeGeometry.rendererGeneration == runtime.rendererGeneration;
+		if (nlsRule && runtime.nlsMode == MadVRNlsMappingMode::SAFE_FIT &&
+			!currentGeometry && runtime.nlsDecision.sourceAspect > 0.0 &&
+			videoState.displayMode)
+		{
+			// The initial manual selection path historically publishes only the
+			// detected aspect. Reconstruct its centered active rectangle so the
+			// safe-fit shader can engage immediately; the next detector update
+			// replaces it with the exact measured rectangle.
+			const double rasterAspect =
+				static_cast<double>(videoState.displayMode->FrameWidth()) /
+				std::max<long>(1, videoState.displayMode->FrameHeight());
+			activeAspect = runtime.nlsDecision.sourceAspect;
+			activeGeometry = {};
+			activeGeometry.aspectRatio = activeAspect;
+			activeGeometry.rendererGeneration = runtime.rendererGeneration;
+			activeGeometry.stable = true;
+			if (activeAspect < rasterAspect)
+			{
+				const double width = std::clamp(
+					activeAspect / rasterAspect, 0.01, 1.0);
+				activeGeometry.left = (1.0 - width) * 0.5;
+				activeGeometry.right = 1.0 - activeGeometry.left;
+				activeGeometry.bottom = 1.0;
+			}
+			else
+			{
+				const double height = std::clamp(
+					rasterAspect / activeAspect, 0.01, 1.0);
+				activeGeometry.top = (1.0 - height) * 0.5;
+				activeGeometry.bottom = 1.0 - activeGeometry.top;
+				activeGeometry.right = 1.0;
+			}
+			currentGeometry = true;
+		}
 		if (nlsRule && (runtime.nlsMode == MadVRNlsMappingMode::WAITING ||
 			!currentGeometry))
 		{
@@ -832,9 +1070,8 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 				selection);
 			return selection;
 		}
-		if (currentGeometry && activeAspect > 0.0 && videoState.displayMode &&
-			targetAspect > 0.0 &&
-			rule.parameters.find("stretch_ratio") != rule.parameters.end())
+		if (nlsRule && currentGeometry && activeAspect > 0.0 &&
+			videoState.displayMode)
 		{
 			const double rasterAspect = static_cast<double>(videoState.displayMode->FrameWidth()) /
 				std::max<long>(1, videoState.displayMode->FrameHeight());
@@ -847,6 +1084,13 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 				1.0 : std::clamp(verticalWarp ?
 					activeAspect / targetAspect : targetAspect / activeAspect,
 					1.0, 1.5);
+			const bool safeFit =
+				runtime.nlsMode == MadVRNlsMappingMode::SAFE_FIT;
+			const bool safeFitVertical = safeFit &&
+				activeAspect > targetAspect;
+			const double safeFitFraction = safeFit ?
+				std::clamp(std::min(activeAspect, targetAspect) /
+					std::max(activeAspect, targetAspect), 0.01, 1.0) : 1.0;
 			std::ostringstream heightText;
 			std::ostringstream stretchText;
 			heightText << std::fixed << std::setprecision(8) << heightFraction;
@@ -864,13 +1108,19 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 			rule.parameters["active_bottom"] = coordinateText(activeGeometry.bottom);
 			rule.parameters["stretch_ratio"] = stretchText.str();
 			rule.parameters["warp_axis"] = verticalWarp ? "1" : "0";
+			rule.parameters["safe_fit"] = safeFit ? "1" : "0";
+			rule.parameters["safe_fit_axis"] =
+				safeFitVertical ? "1" : "0";
+			rule.parameters["safe_fit_fraction"] =
+				coordinateText(safeFitFraction);
 			DebugLog::Log(
-				"Shaders: NLS mapping=%s rect=%.5f,%.5f-%.5f,%.5f active_generation=%llu source=%.4f target=%.4f axis=%s stretch=%.5f renderer_generation=%llu",
+				"Shaders: NLS mapping=%s rect=%.5f,%.5f-%.5f,%.5f active_generation=%llu source=%.4f target=%.4f axis=%s stretch=%.5f safe_fit_fraction=%.5f renderer_generation=%llu",
 				MadVRNlsMappingModeName(runtime.nlsMode),
 				activeGeometry.left, activeGeometry.top, activeGeometry.right, activeGeometry.bottom,
 				static_cast<unsigned long long>(activeGeometry.generation),
 				activeAspect, targetAspect,
 				verticalWarp ? "vertical" : "horizontal", stretchRatio,
+				safeFitFraction,
 				static_cast<unsigned long long>(runtime.rendererGeneration));
 		}
 		DebugLog::Log("Shaders: selected rule \"%s\" (%s) for signal=%s refresh=%.6f Hz nominal=%d",
@@ -942,13 +1192,15 @@ bool MadVRShaderLoader::GetRuntimeOutputAspectRatio(unsigned long& aspectX,
 	if (!config.Load())
 		return false;
 	ShaderRule rule = LoadRule(config, runtimeRule);
-	if (!rule.valid || rule.outputAspectRatioX == 0 || rule.outputAspectRatioY == 0)
+	if (!rule.valid)
 		return false;
-	if (GetNlsTargetAspect(rule) > 0.0 &&
+	if (rule.nls && GetNlsTargetAspect(rule) > 0.0 &&
 		ResolveMadVRNlsOutputAspect(GetNlsTargetAspect(rule), aspectX, aspectY))
 	{
 		return true;
 	}
+	if (rule.outputAspectRatioX == 0 || rule.outputAspectRatioY == 0)
+		return false;
 
 	aspectX = rule.outputAspectRatioX;
 	aspectY = rule.outputAspectRatioY;
@@ -994,15 +1246,6 @@ bool MadVRShaderLoader::ValidateActivePictureAspect(const std::string& ruleName,
 		reason = message.str();
 		return false;
 	}
-	if (rule.parameters.find("stretch_ratio") != rule.parameters.end() &&
-		std::max(target / activeAspectRatio, activeAspectRatio / target) > 1.5)
-	{
-		std::ostringstream message;
-		message << "NLS ratio " << std::max(target / activeAspectRatio,
-			activeAspectRatio / target) << " exceeds the safe 1.5 limit";
-		reason = message.str();
-		return false;
-	}
 	const double signedDifferencePercent =
 		(target - activeAspectRatio) * 100.0 / target;
 	const bool allowed = rule.narrowerOnly ?
@@ -1040,8 +1283,7 @@ bool MadVRShaderLoader::EvaluateNlsMapping(const std::string& ruleName,
 		return false;
 	}
 	const double target = GetNlsTargetAspect(rule);
-	if (target <= 0.0 ||
-		rule.parameters.find("stretch_ratio") == rule.parameters.end())
+	if (!rule.nls || target <= 0.0)
 	{
 		decision.reason = "shader rule does not define NLS mapping";
 		return false;
@@ -1049,6 +1291,7 @@ bool MadVRShaderLoader::EvaluateNlsMapping(const std::string& ruleName,
 	decision = EvaluateMadVRNlsMapping(aspectAvailable, activeAspectRatio,
 		target, std::max(0.0, rule.aspectTolerancePercent),
 		rule.activeAspectMinimum, rule.narrowerOnly);
+	g_runtimeState.SetNlsDecision(decision);
 	return true;
 }
 
@@ -1101,7 +1344,6 @@ bool MadVRShaderLoader::GetRuleActivationInfo(const std::string& ruleName,
 		return false;
 	label = rule.label;
 	inactiveRule = rule.inactiveRule;
-	nlsMapping = GetNlsTargetAspect(rule) > 0.0 &&
-		rule.parameters.find("stretch_ratio") != rule.parameters.end();
+	nlsMapping = rule.nls && GetNlsTargetAspect(rule) > 0.0;
 	return true;
 }
