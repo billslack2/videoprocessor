@@ -2,10 +2,12 @@
 
 ## Status
 
-Review as of 2026-07-27. Implementation commits `4f4cc05` and `a5c113d` are published on
-`codex/vp-0034-restart-free-nls` with draft PR
+In Progress again as of 2026-07-27. The user requested that VP-0035's robust
+low-latency active-aspect transition work be implemented as part of this story
+on `codex/vp-0034-restart-free-nls` and draft PR
 `billslack2/videoprocessor#15`, targeting the developer-confirmed default
-branch `v1.1.014-beta`.
+branch `v1.1.014-beta`. Existing implementation commits are `4f4cc05` and
+`a5c113d`.
 
 Completed implementation:
 
@@ -37,13 +39,9 @@ Validation completed:
 - focused Debug and Release x64 VP-0034 tests passed, 9/9 in each;
 - `git diff --check` passed.
 
-Remaining review/acceptance: run the documented DirectShow/madVR hardware
-sequence with repeated Scope/IMAX transitions, both initial arming positions,
-one unrelated renderer restart, manual NLS Off, sports, and 4:3 controls.
-The 4:3 control uses the Normal 16:9 presentation profile with the CIH side
-curtains closed; changing content within that profile must not restart the
-renderer. Review the recorded lifecycle/queue logs and visual output before
-merge.
+Current work: incorporate VP-0035's confidence-based transition model,
+bounded detection latency, prompt generation consumption, and transition
+diagnostics before returning the combined story to review.
 
 This supersedes the assumption that the fixed-aspect completion of VP-0001
 through VP-0003 is sufficient for variable-aspect movies. It does not reopen
