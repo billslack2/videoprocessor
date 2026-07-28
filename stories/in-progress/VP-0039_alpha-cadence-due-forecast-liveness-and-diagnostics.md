@@ -303,10 +303,24 @@ story remains in progress.
 
 Commit `a8c5b90` (`Simplify Alpha timing OSD language`) separates end-user
 wording from technical diagnostics. The OSD now uses short phrases such as
-`Waiting for timing`, `Measuring timing`, `Timing matched`,
-`Confirming correction`, and `Repeat due - playback timing`. Internal reason
-enums and detailed log records remain unchanged. Debug x64 Alpha plugin and
-GUI builds passed after the wording change.
+`Waiting for timing`, `Measuring timing`, and `Timing matched`. Internal
+reason enums and detailed log records remain unchanged.
+
+Commit `ea4b97c` (`Compact Alpha timing OSD`) applies the final limited-width
+OSD treatment:
+
+- uses a 20 px Alpha-only font and line height while leaving the 23 px legacy
+  overlay unchanged;
+- shortens Alpha state values to `Waiting`, `Measuring`, `Matched`,
+  `Forecasting`, `Checking`, `Unavailable`, or `Due`;
+- changes the long forecast sentence to compact rows such as
+  `Next: R in 12s`, `Next: R due: timing`, and `Last: R on time`;
+- shortens the remaining scene labels and end-user blocker descriptions while
+  retaining exact policy enum names and full snapshots in technical logs.
+
+Debug x64 Alpha plugin and GUI builds passed. A 20 px Consolas width check put
+the longest new timing example (`Next: R due: buffer wait`) at approximately
+370 px, within the 420 px overlay with padding and margin remaining.
 
 ## Verification
 
