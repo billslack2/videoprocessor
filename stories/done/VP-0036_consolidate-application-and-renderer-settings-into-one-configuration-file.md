@@ -2,13 +2,15 @@
 
 ## Status
 
-In Progress as of 2026-07-27. Implementation is starting on
-`codex/vp-0036-single-config`, based on the confirmed GitHub default branch
-`origin/v1.1.014-beta` at `f6fc6e6`.
+Done on 2026-07-27. Merged as VideoProcessor PR #11, commit
+`09102a9`. The active deployment was backed up to
+`C:\Videoprocessor\vp\backup-before-vp0036-20260727-212200` before its
+renderer sections and state were migrated into the primary configuration.
 
-The parser, expression engine, and strict table-driven schemas already work for
-both configuration domains, but the GUI and built-in renderer still select
-separate files by default.
+Release x64 built successfully and the non-GPU suite passed 119/119. An active
+Alpha-renderer smoke test logged one selected configuration path for both the
+primary and renderer domains, `VideoProcessor.state`, plugin API 5, and
+`alpha_queue_size: 1`.
 
 ## User story
 
@@ -34,9 +36,9 @@ No configuration-version key is introduced. Both `key: value` and legacy
 - Pass the selected primary configuration path through the optional-renderer
   plugin boundary instead of having the plugin independently assume
   `VideoProcessorRenderer.cfg`.
-- Keep `/vr_config <path>` as an explicit compatibility/testing override. When
-  present, renderer-owned sections come from that file; otherwise they come
-  from the primary file.
+- Retain parsing of `/vr_config <path>` only as an unadvertised compatibility
+  override. When present, renderer-owned sections come from that file;
+  otherwise they come from the primary file.
 - Make validation ownership-aware:
   - the main schema strictly validates application-owned sections and keys;
   - the renderer schema strictly validates renderer-owned sections and keys;
@@ -96,7 +98,7 @@ its working directory.
 - `alpha_queue_size` and other application-only settings remain inaccessible
   to renderer profile overrides.
 - Strict validation remains intact across both ownership domains.
-- `/vr_config` continues to provide an explicit, documented compatibility and
-  testing escape hatch.
+- Legacy `/vr_config` parsing remains compatible without appearing in user
+  help or current documentation.
 - The active deployment is ported with a recoverable backup and starts without
   configuration warnings or lost settings.
