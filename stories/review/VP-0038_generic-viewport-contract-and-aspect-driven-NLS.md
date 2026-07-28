@@ -42,6 +42,24 @@ subtitle placement, external curtain/profile coordination, OSD, and logs.
   target/output/stretch ownership and the redundant `movies_24` no-op rule,
   and preserved the installation-specific `broadcast_sdr` rule and existing
   viewport/profile values.
+- 2026-07-28: Commit `b3eb2a8` simplified each shader section to one
+  independently parameterized `file` and `stage`. A shortcut now implies
+  manual selection; effects sharing a shortcut compose in configured order
+  while retaining per-effect parameters. Indexed/flat shader chains are
+  rejected rather than retained as migration syntax.
+- Shader filenames are restricted to one filename under `Shaders` beside
+  `VideoProcessor.exe`; absolute paths, directory components, traversal,
+  alternate streams, and configuration-relative shader directories are
+  rejected. The runtime OSD joins grouped effect labels and identifies each
+  installed effect/file.
+- Final verification: clean x64 Release build succeeded with embedded version
+  `b3eb2a8`; all 161 native tests passed.
+- Final deployment: updated the executable, PDB, HTML guide, and minimally
+  migrated live configuration in `C:\Videoprocessor\vp`. Build/deployment
+  SHA-256 hashes match. Replaced deploy files are recoverable from
+  `backup-before-vp0038-shader-schema-20260728-090003`, and the pre-migration
+  live configuration is
+  `VideoProcessor.cfg.before-vp0038-shader-schema-20260728-085613.bak`.
 
 ## User story
 
