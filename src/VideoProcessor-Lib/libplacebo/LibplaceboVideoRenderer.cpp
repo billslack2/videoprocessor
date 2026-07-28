@@ -2259,6 +2259,7 @@ struct LibplaceboVideoRenderer::Impl
 	LibplaceboOutput::Plan outputPlan;
 	LibplaceboOutput::Actual actualOutput;
 	bool targetBt2020 = false;
+	bool statsOverlayVisible = false;
 	bool reportBt2020ToDisplay = false;
 	std::wstring negotiatedDisplayDeviceName;
 	NvidiaBt2020Reporter nvidiaBt2020Reporter;
@@ -3305,7 +3306,8 @@ struct LibplaceboVideoRenderer::Impl
 			LibplaceboOutput::ToString(outputPlan.request.range),
 			LibplaceboOutput::ToString(outputPlan.request.gamma),
 			LibplaceboOutput::ToString(outputPlan.request.primaries),
-			isChild ? "embedded child preview" : "none");
+			isChild ? "embedded child preview" :
+				(statsOverlayVisible ? "visible stats overlay" : "none"));
 	}
 
 	void SetSwapchainColorHint(LibplaceboOutput::DxgiEncoding encoding)
@@ -4070,7 +4072,12 @@ struct LibplaceboVideoRenderer::Impl
 		// fullscreen direct/BT.2020 request. Keep the configured request intact
 		// for a later top-level fullscreen renderer generation.
 		const LONG_PTR targetStyle = GetWindowLongPtr(videoHwnd, GWL_STYLE);
-		if ((targetStyle & WS_CHILD) != 0)
+		statsOverlayVisible = false;
+		const HWND statsOverlay = FindWindowW(
+			L"VideoProcessorStatsOverlay", nullptr);
+		if (statsOverlay && IsWindowVisible(statsOverlay))
+			statsOverlayVisible = true;
+		if ((targetStyle & WS_CHILD) != 0 || statsOverlayVisible)
 		{
 			effectiveOutputRequest.presentation =
 				LibplaceboOutput::PresentationRequest::COMPOSED;
