@@ -2255,6 +2255,7 @@ struct LibplaceboVideoRenderer::Impl
 	double sdrTargetNits = PL_COLOR_SDR_WHITE;
 	double sdrBlackNits = PL_COLOR_SDR_WHITE / PL_COLOR_SDR_CONTRAST;
 	struct pl_color_space configuredOutputColor{};
+	LibplaceboOutput::Plan requestedOutputPlan;
 	LibplaceboOutput::Plan outputPlan;
 	LibplaceboOutput::Actual actualOutput;
 	bool targetBt2020 = false;
@@ -3241,6 +3242,72 @@ struct LibplaceboVideoRenderer::Impl
 		return PL_COLOR_TRC_UNKNOWN;
 	}
 
+	void LogPresentationTarget(const char* trigger) const
+	{
+		const LONG_PTR style = GetWindowLongPtr(videoHwnd, GWL_STYLE);
+		const LONG_PTR exStyle = GetWindowLongPtr(videoHwnd, GWL_EXSTYLE);
+		const HWND parent = GetParent(videoHwnd);
+		const HWND root = GetAncestor(videoHwnd, GA_ROOT);
+		const HWND owner = GetWindow(videoHwnd, GW_OWNER);
+		const bool isChild = (style & WS_CHILD) != 0;
+		const bool visible = IsWindowVisible(videoHwnd) != FALSE;
+		const bool iconic = IsIconic(videoHwnd) != FALSE;
+		DWORD cloaked = 0;
+		using DwmGetWindowAttributeFn = HRESULT(WINAPI*)(
+			HWND, DWORD, PVOID, DWORD);
+		HMODULE dwmApi = LoadLibraryW(L"dwmapi.dll");
+		const auto getWindowAttribute = dwmApi
+			? reinterpret_cast<DwmGetWindowAttributeFn>(
+				GetProcAddress(dwmApi, "DwmGetWindowAttribute"))
+			: nullptr;
+		const HRESULT cloakedResult = getWindowAttribute
+			? getWindowAttribute(
+				videoHwnd,
+				static_cast<DWORD>(DWMWA_CLOAKED),
+				&cloaked,
+				static_cast<DWORD>(sizeof(cloaked)))
+			: E_NOINTERFACE;
+		if (dwmApi)
+			FreeLibrary(dwmApi);
+		RECT client{};
+		RECT screen{};
+		GetClientRect(videoHwnd, &client);
+		GetWindowRect(videoHwnd, &screen);
+		MONITORINFO monitorInfo{ sizeof(monitorInfo) };
+		const HMONITOR monitor = MonitorFromWindow(
+			videoHwnd, MONITOR_DEFAULTTONEAREST);
+		GetMonitorInfo(monitor, &monitorInfo);
+
+		DebugLog::Log(
+			"Alpha presentation target: trigger=%s hwnd=%p parent=%p root=%p owner=%p style=0x%08lX exstyle=0x%08lX is_child=%d visible=%d iconic=%d cloaked=%d cloak_result=0x%08lX client=%ld,%ld-%ld,%ld screen=%ld,%ld-%ld,%ld monitor=%p monitor_rect=%ld,%ld-%ld,%ld requested=%s/%s/%s/%s effective=%s/%s/%s/%s fallback=%s",
+			trigger,
+			videoHwnd,
+			parent,
+			root,
+			owner,
+			static_cast<unsigned long>(style),
+			static_cast<unsigned long>(exStyle),
+			isChild ? 1 : 0,
+			visible ? 1 : 0,
+			iconic ? 1 : 0,
+			SUCCEEDED(cloakedResult) ? static_cast<int>(cloaked) : -1,
+			static_cast<unsigned long>(cloakedResult),
+			client.left, client.top, client.right, client.bottom,
+			screen.left, screen.top, screen.right, screen.bottom,
+			monitor,
+			monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
+			monitorInfo.rcMonitor.right, monitorInfo.rcMonitor.bottom,
+			LibplaceboOutput::ToString(requestedOutputPlan.request.presentation),
+			LibplaceboOutput::ToString(requestedOutputPlan.request.range),
+			LibplaceboOutput::ToString(requestedOutputPlan.request.gamma),
+			LibplaceboOutput::ToString(requestedOutputPlan.request.primaries),
+			LibplaceboOutput::ToString(outputPlan.request.presentation),
+			LibplaceboOutput::ToString(outputPlan.request.range),
+			LibplaceboOutput::ToString(outputPlan.request.gamma),
+			LibplaceboOutput::ToString(outputPlan.request.primaries),
+			isChild ? "embedded child preview" : "none");
+	}
+
 	void SetSwapchainColorHint(LibplaceboOutput::DxgiEncoding encoding)
 	{
 		configuredOutputColor =
@@ -3274,6 +3341,7 @@ struct LibplaceboVideoRenderer::Impl
 	void ConfigureSwapchainOutput(const char* trigger)
 	{
 		using namespace LibplaceboOutput;
+		LogPresentationTarget(trigger);
 
 		const bool previousStateMayBeStudio =
 			actualOutput.encoding != DxgiEncoding::FULL_G22_P709 ||
@@ -3299,7 +3367,7 @@ struct LibplaceboVideoRenderer::Impl
 			actualOutput = Finalize(outputPlan, evidence);
 			SetSwapchainColorHint(actualOutput.encoding);
 			DebugLog::Log(
-				"libplacebo output negotiation (%s): requested=%s/%s/%s/%s actual=UNKNOWN/FULL/sRGB/Rec.709 reason=cannot unwrap DXGI swapchain",
+				"libplacebo output negotiation (%s): effective_request=%s/%s/%s/%s actual=UNKNOWN/FULL/sRGB/Rec.709 reason=cannot unwrap DXGI swapchain",
 				trigger,
 				ToString(outputPlan.request.presentation),
 				ToString(outputPlan.request.range),
@@ -3580,7 +3648,7 @@ struct LibplaceboVideoRenderer::Impl
 		// an unaccepted BT.2020/limited target contract.
 		SetSwapchainColorHint(actualOutput.encoding);
 		DebugLog::Log(
-			"libplacebo output negotiation (%s): requested=%s/%s/%s/%s actual_contract=%s/%s/%s/%s dxgi=%s accepted=%d safe=%d wire_state=unverified reason=%s",
+			"libplacebo output negotiation (%s): effective_request=%s/%s/%s/%s actual_contract=%s/%s/%s/%s dxgi=%s accepted=%d safe=%d wire_state=unverified reason=%s",
 			trigger,
 			ToString(outputPlan.request.presentation),
 			ToString(outputPlan.request.range),
@@ -3995,7 +4063,26 @@ struct LibplaceboVideoRenderer::Impl
 			DebugLog::Log("libplacebo: BT.2020 target requested without NVIDIA reporting; display must be selected manually");
 		else if (reportBt2020ToDisplay)
 			DebugLog::Log("libplacebo: report_bt2020_to_display ignored because target primaries are Rec.709");
-		outputPlan = LibplaceboOutput::MakePlan(outputRequest);
+		requestedOutputPlan = LibplaceboOutput::MakePlan(outputRequest);
+		LibplaceboOutput::Request effectiveOutputRequest = outputRequest;
+		// The embedded preview is a WS_CHILD control. Its historically stable
+		// presentation path is DWM-composed BitBlt; it cannot safely inherit a
+		// fullscreen direct/BT.2020 request. Keep the configured request intact
+		// for a later top-level fullscreen renderer generation.
+		const LONG_PTR targetStyle = GetWindowLongPtr(videoHwnd, GWL_STYLE);
+		if ((targetStyle & WS_CHILD) != 0)
+		{
+			effectiveOutputRequest.presentation =
+				LibplaceboOutput::PresentationRequest::COMPOSED;
+			effectiveOutputRequest.range =
+				LibplaceboOutput::RangeRequest::FULL;
+			effectiveOutputRequest.gamma =
+				LibplaceboOutput::GammaRequest::SRGB;
+			effectiveOutputRequest.primaries =
+				LibplaceboOutput::PrimariesRequest::REC709;
+		}
+		outputPlan = LibplaceboOutput::MakePlan(effectiveOutputRequest);
+		LogPresentationTarget("initialize");
 		// COMPOSED retains the known-stable bitblt/DWM path. AUTO uses it unless
 		// Limited requests a flip candidate; failed AUTO negotiation recreates
 		// this stable composed path. DIRECT always asks for the flip candidate.
