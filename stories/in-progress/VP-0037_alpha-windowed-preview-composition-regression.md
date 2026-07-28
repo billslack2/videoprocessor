@@ -2,9 +2,14 @@
 
 ## Status
 
-Backlog — high-priority Alpha usability regression. Fullscreen presentation
-continues to work, but the embedded windowed preview can show no video and
-flicker content from a lower z-order window.
+In Progress — confirmed implementation base: `origin/v1.1.014-beta`.
+Implementation branch/worktree: `codex/vp-0037-alpha-windowed-preview` at
+`C:\Users\bslac\vp\worktrees\VP-0037`. Readiness review completed:
+the reported regression boundary, target-HWND classification requirement,
+requested-versus-effective output contract, and lifecycle/diagnostic
+acceptance boundaries are defined. Initial work is inspecting the current
+window target lifecycle and libplacebo swap-chain policy before making the
+smallest safe child-preview fallback.
 
 ## User story
 
