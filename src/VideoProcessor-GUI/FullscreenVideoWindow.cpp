@@ -62,6 +62,8 @@ void FullscreenVideoWindow::CreateWindowedFullscreen(HMONITOR hmon, HWND parentW
 
     wc.lpfnWndProc = FullscreenVideoWindow::WindowProc;
     wc.hInstance = GetModuleHandle(nullptr);
+    wc.hbrBackground =
+        reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     wc.lpszClassName = FULLSCREEN_WINDOW_CLASS_NAME;
 
     RegisterClass(&wc);
@@ -110,6 +112,8 @@ void FullscreenVideoWindow::Create(HMONITOR hmon, HWND parentWindow)
 
     wc.lpfnWndProc = FullscreenVideoWindow::WindowProc;
     wc.hInstance = GetModuleHandle(nullptr);
+    wc.hbrBackground =
+        reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     wc.lpszClassName = FULLSCREEN_WINDOW_CLASS_NAME;
 
     RegisterClass(&wc);
@@ -162,6 +166,17 @@ LRESULT __forceinline FullscreenVideoWindow::HandleMessage(UINT uMsg, WPARAM wPa
 {
     switch (uMsg)
     {
+    case WM_ERASEBKGND:
+    {
+        RECT client{};
+        GetClientRect(m_hwnd, &client);
+        FillRect(
+            reinterpret_cast<HDC>(wParam),
+            &client,
+            reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+        return 1;
+    }
+
 	case WM_CLOSE:
 		OnClose();
 		return 0;

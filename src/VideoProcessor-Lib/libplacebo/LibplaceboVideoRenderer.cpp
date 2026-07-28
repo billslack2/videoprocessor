@@ -6285,6 +6285,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 			continue;
 		}
 		consecutiveFailures = 0;
+		m_hasPresentedLiveFrame.store(true, std::memory_order_release);
 
 		if (correctionDecision.action == AlphaCadenceAction::Drop)
 		{
