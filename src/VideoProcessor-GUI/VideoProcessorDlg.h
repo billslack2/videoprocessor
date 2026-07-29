@@ -23,6 +23,7 @@
 #include <PixelValueRange.h>
 #include <CCie1931Control.h>
 #include <IRenderer.h>
+#include <RendererResetCoordinator.h>
 #include <RendererResetPolicy.h>
 #include <UnifiedProfileRuntime.h>
 #include <VideoFrame.h>
@@ -68,6 +69,7 @@ struct RendererIngressState
 #define LLDV_CHANGE_RESTART_TIMER_ID 6
 #define UI_LAYOUT_RESTORE_TIMER_ID 7
 #define SHADER_RULE_REFRESH_TIMER_ID 8
+#define RENDERER_RESET_MAILBOX_TIMER_ID 9
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 
 
@@ -474,6 +476,8 @@ protected:
 	std::atomic_bool m_deliverCaptureDataToRenderer = false;
 	std::shared_ptr<RendererIngressState> m_rendererIngressState =
 		std::make_shared<RendererIngressState>();
+	std::unique_ptr<RendererResetCoordinator> m_rendererResetCoordinator;
+	RendererBindingToken m_rendererResetBindingToken = 0;
 	UnifiedProfileRuntime::Runtime m_profileRuntime;
 	std::map<WORD, CString> m_unifiedProfileShortcutKeys;
 	WORD m_lastUnifiedProfileCommand = 0;
@@ -530,6 +534,9 @@ protected:
 	void PauseRendererIngress();
 	void WaitForRendererIngressDrain();
 	void ResumeRendererIngress();
+	void BindRendererResetSink();
+	void RevokeRendererResetSink();
+	void PumpRendererResetMailbox();
 	bool ApplyRequestedShaderSelection();
 	bool ShowRendererTransitionBlack(const char* reason);
 	void TryRevealRendererTransition(uint32_t generation);

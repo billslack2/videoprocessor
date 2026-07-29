@@ -14,6 +14,7 @@
 #include <VideoState.h>
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowRendererStartStopTimeMethod.h>
+#include <RendererResetRequest.h>
 
 #include "ILiveSource.h"
 
@@ -46,6 +47,8 @@ public:
 	
 	// Access the video output pin for advanced operations
 	ALiveSourceVideoOutputPin* GetVideoOutputPin() { return m_videoOutputPin; }
+	void SetResetRequestSink(
+		std::shared_ptr<IRendererResetRequestSink> sink);
 
 	// IUnknown
 	DECLARE_IUNKNOWN;
@@ -117,6 +120,7 @@ public:
 
 private:
 	ALiveSourceVideoOutputPin* m_videoOutputPin = nullptr;
+	std::shared_ptr<IRendererResetRequestSink> m_resetRequestSink;
 
 	CCritSec m_critSec;
 };

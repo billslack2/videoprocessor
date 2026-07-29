@@ -1225,6 +1225,9 @@ bool CVideoProcessorDlg::TryGetDisplayRefreshRateOverride(
 
 CVideoProcessorDlg::~CVideoProcessorDlg()
 {
+	if (m_rendererResetCoordinator)
+		m_rendererResetCoordinator->Close();
+
 	if (m_livenessWatchdogStopEvent)
 		SetEvent(m_livenessWatchdogStopEvent);
 	if (m_livenessWatchdogThread.joinable())
@@ -2358,28 +2361,10 @@ LRESULT CVideoProcessorDlg::OnMessageRendererLiveFrame(
 
 
 LRESULT CVideoProcessorDlg::OnMessageRendererResetRequest(
-	WPARAM wParam,
+	WPARAM,
 	LPARAM)
 {
-	const uint32_t requestedGeneration = static_cast<uint32_t>(wParam);
-	if (requestedGeneration !=
-			m_rendererGeneration.load(std::memory_order_acquire) ||
-		!m_activeRendererIsDirectShow ||
-		!m_videoRenderer ||
-		m_rendererState != RendererState::RENDERSTATE_RENDERING)
-	{
-		DEBUGLOG(
-			"Coordinated reset request ignored: requested_generation=%u "
-			"current_generation=%u renderer=%S state=%d",
-			requestedGeneration,
-			m_rendererGeneration.load(std::memory_order_acquire),
-			static_cast<LPCTSTR>(m_activeRendererName),
-			static_cast<int>(m_rendererState));
-		return 0;
-	}
-
-	RequestRendererReset(
-		RendererResetReason::LivenessRecovery, true, 0);
+	PumpRendererResetMailbox();
 	return 0;
 }
 
@@ -2814,14 +2799,6 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoFrame(VideoFrame& videoFrame)
 		assert(m_rendererState == RendererState::RENDERSTATE_RENDERING);
 
 		renderer->OnVideoFrame(videoFrame);
-		if (renderer->ConsumeCoordinatedResetRequest())
-		{
-			PostMessage(
-				WM_MESSAGE_RENDERER_RESET_REQUEST,
-				static_cast<WPARAM>(
-					m_rendererGeneration.load(std::memory_order_acquire)),
-				0);
-		}
 		if (renderer->HasPresentedLiveFrame() &&
 			!m_transitionRevealPosted.exchange(
 				true, std::memory_order_acq_rel))
@@ -3603,6 +3580,7 @@ void CVideoProcessorDlg::RenderStart()
 				timingClock,
 				GetRendererVideoFrameUseQueue(),
 				alphaDesiredDepth);
+			BindRendererResetSink();
 
 			ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
 
@@ -3667,6 +3645,7 @@ void CVideoProcessorDlg::RenderStart()
 			forceVideoTransferFunction,
 			forceVideoTransferMatrix,
 			forceVideoPrimaries);
+		BindRendererResetSink();
 
 		ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
 
@@ -3737,6 +3716,7 @@ void CVideoProcessorDlg::RenderStart()
 
 			if (!m_videoRenderer)
 				FatalError(TEXT("Failed to build DirectShow Video Renderer"));
+			BindRendererResetSink();
 
 			if (m_captureDeviceVideoState)
 				m_videoRenderer->OnVideoState(m_builtVideoState);
@@ -3880,6 +3860,8 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 			std::memory_order_acq_rel);
 	m_dropDiagnosticRenderer = nullptr;
 	m_dropDiagnosticInitialized = false;
+	rendererToDestroy->SetResetRequestSink({});
+	RevokeRendererResetSink();
 
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::DestroyVideoRenderer(): Renderer detached before destruction")));
@@ -4044,12 +4026,89 @@ void CVideoProcessorDlg::ResumeRendererIngress()
 }
 
 
+void CVideoProcessorDlg::BindRendererResetSink()
+{
+	if (!m_videoRenderer || !m_rendererResetCoordinator)
+		return;
+
+	RevokeRendererResetSink();
+	const RendererResetCoordinator::Binding binding =
+		m_rendererResetCoordinator->Bind(
+			m_rendererGeneration.load(std::memory_order_acquire));
+	m_rendererResetBindingToken = binding.token;
+	m_videoRenderer->SetResetRequestSink(binding.sink);
+}
+
+
+void CVideoProcessorDlg::RevokeRendererResetSink()
+{
+	if (m_rendererResetCoordinator && m_rendererResetBindingToken != 0)
+	{
+		m_rendererResetCoordinator->Revoke(m_rendererResetBindingToken);
+		m_rendererResetBindingToken = 0;
+	}
+}
+
+
+void CVideoProcessorDlg::PumpRendererResetMailbox()
+{
+	if (!m_rendererResetCoordinator)
+		return;
+
+	const ULONGLONG now = GetTickCount64();
+	RendererResetCoordinator::SelectedReset selected;
+	if (m_rendererResetCoordinator->DrainReady(now, selected))
+	{
+		const uint32_t currentGeneration =
+			m_rendererGeneration.load(std::memory_order_acquire);
+		if (selected.rendererGeneration != currentGeneration ||
+			!m_activeRendererIsDirectShow ||
+			!m_videoRenderer ||
+			m_rendererState != RendererState::RENDERSTATE_RENDERING)
+		{
+			DEBUGLOG(
+				"Backend reset request ignored: requested_generation=%u "
+				"current_generation=%u renderer=%S state=%d token=%llu",
+				selected.rendererGeneration,
+				currentGeneration,
+				static_cast<LPCTSTR>(m_activeRendererName),
+				static_cast<int>(m_rendererState),
+				static_cast<unsigned long long>(
+					selected.request.bindingToken));
+			return;
+		}
+
+		RequestRendererReset(
+			selected.request.reason,
+			selected.request.scope == RendererResetScope::Graph,
+			0);
+		return;
+	}
+
+	const RendererResetCoordinator::Diagnostics diagnostics =
+		m_rendererResetCoordinator->GetDiagnostics();
+	if (diagnostics.hasPending)
+	{
+		const uint64_t delay =
+			diagnostics.pendingDeadlineTick > now ?
+			diagnostics.pendingDeadlineTick - now : 1;
+		SetTimer(
+			RENDERER_RESET_MAILBOX_TIMER_ID,
+			static_cast<UINT>(std::min<uint64_t>(
+				delay, (std::numeric_limits<UINT>::max)())),
+			nullptr);
+	}
+}
+
+
 void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 {
 	const bool resetPending =
 		m_activeRendererIsDirectShow &&
-		m_pendingQueueReset &&
-		m_pendingResetRendererGeneration == generation;
+		((m_pendingQueueReset &&
+			m_pendingResetRendererGeneration == generation) ||
+			(m_rendererResetCoordinator &&
+				m_rendererResetCoordinator->BlocksReveal(generation)));
 	const bool resetOperationActive =
 		m_activeRendererIsDirectShow &&
 		m_activeResetOperation &&
@@ -4835,6 +4894,22 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 		if (!CDialog::OnInitDialog())
 		return FALSE;
 
+	const HWND resetWakeWindow = GetSafeHwnd();
+	m_rendererResetCoordinator =
+		std::make_unique<RendererResetCoordinator>(
+			[resetWakeWindow]()
+			{
+				if (resetWakeWindow)
+				::PostMessage(
+					resetWakeWindow,
+					WM_MESSAGE_RENDERER_RESET_REQUEST,
+					0, 0);
+			},
+			[]()
+			{
+				return static_cast<uint64_t>(GetTickCount64());
+			});
+
 	// The generated AFX_DIALOG_LAYOUT table moves unrelated labels and controls
 	// when the dialog is resized.  This application has one resizable surface:
 	// the video host.  Keep every other control at its resource position.
@@ -5409,6 +5484,13 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					"graph-control-timeout");
 			}
 		}
+	}
+
+	if (nIDEvent == RENDERER_RESET_MAILBOX_TIMER_ID)
+	{
+		KillTimer(RENDERER_RESET_MAILBOX_TIMER_ID);
+		PumpRendererResetMailbox();
+		return;
 	}
 
 	if (m_rendererTransitionWindow.IsVisible())

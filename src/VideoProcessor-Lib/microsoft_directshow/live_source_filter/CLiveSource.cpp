@@ -29,6 +29,15 @@ CLiveSource::~CLiveSource()
 }
 
 
+void CLiveSource::SetResetRequestSink(
+	std::shared_ptr<IRendererResetRequestSink> sink)
+{
+	m_resetRequestSink = std::move(sink);
+	if (m_videoOutputPin)
+		m_videoOutputPin->SetResetRequestSink(m_resetRequestSink);
+}
+
+
 CUnknown* WINAPI CLiveSource::CreateInstance(LPUNKNOWN pUnk, HRESULT* phr)
 {
 	CUnknown* liveSource = new CLiveSource(pUnk, phr);
@@ -94,6 +103,7 @@ STDMETHODIMP CLiveSource::Initialize(
 		timingClock,
 		timestamp,
 		mediaType);
+	m_videoOutputPin->SetResetRequestSink(m_resetRequestSink);
 
 	if (useFrameQueue)
 		m_videoOutputPin->SetFrameQueueMaxSize(frameQueueMaxSize);
@@ -106,10 +116,12 @@ STDMETHODIMP CLiveSource::Destroy()
 {
 	if (m_videoOutputPin)
 	{
+		m_videoOutputPin->SetResetRequestSink({});
 		ULONG refCount = m_videoOutputPin->Release();
 		delete m_videoOutputPin;  // Pin's release() does not delete at last one
 		m_videoOutputPin = nullptr;
 	}
+	m_resetRequestSink.reset();
 
 	return S_OK;
 }

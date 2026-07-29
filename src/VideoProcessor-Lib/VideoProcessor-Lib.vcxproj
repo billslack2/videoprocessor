@@ -191,7 +191,10 @@
     <ClInclude Include="IntegerMath.h" />
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="RendererLiveness.h" />
+    <ClInclude Include="RendererResetCoordinator.h" />
     <ClInclude Include="RendererResetPolicy.h" />
+    <ClInclude Include="RendererResetRequest.h" />
+    <ClInclude Include="RendererResetRequestLatch.h" />
     <ClInclude Include="vprenderer\\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
     <ClInclude Include="ActivePictureTransitionModel.h" />
@@ -269,6 +272,7 @@
     <ClCompile Include="HDRData.cpp" />
     <ClCompile Include="InputLocked.cpp" />
     <ClCompile Include="IRenderer.cpp" />
+    <ClCompile Include="RendererResetCoordinator.cpp" />
     <ClCompile Include="vprenderer\\AlphaCadenceCorrectionPolicy.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
