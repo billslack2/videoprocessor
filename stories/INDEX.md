@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0055`
-- Next story number: `VP-0056`
-- Total indexed items: 55
+- Last assigned item: `VP-0057`
+- Next story number: `VP-0058`
+- Total indexed items: 57
 
 ## Story locations
 
@@ -80,6 +80,7 @@ they must not contain requirements that are absent from this file.
 | VP-0053 | Backlog | Alpha LLDV parity and transition validation |
 | VP-0054 | Done | DirectShow handoff queue saturation and UI-liveness recovery |
 | VP-0055 | Done | Display-rate outlier quarantine and transition warm-up |
+| VP-0057 | Review | Re-prime Alpha when it exceeds the configured queue limit |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
