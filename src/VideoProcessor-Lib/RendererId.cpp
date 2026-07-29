@@ -10,6 +10,7 @@
 #include <pch.h>
 
 #include "RendererId.h"
+#include <algorithm>
 #if defined(_WIN64)
 #include <libplacebo/LibplaceboPluginVideoRenderer.h>
 #endif
@@ -17,6 +18,42 @@
 
 bool RendererId::operator< (const RendererId& other) const {
 	return name < other.name;
+}
+
+
+std::vector<RendererId> RendererId::OrderForDisplay(
+	const std::vector<RendererId>& rendererIds)
+{
+	std::vector<RendererId> externalRendererIds;
+	std::vector<RendererId> alphaRendererIds;
+	for (const auto& rendererId : rendererIds)
+	{
+		CString normalizedRendererName(rendererId.name);
+		normalizedRendererName.MakeLower();
+		if (normalizedRendererName.Find(TEXT("decklink")) >= 0)
+			continue;
+
+		if (rendererId.backend == RendererBackend::LIBPLACEBO)
+			alphaRendererIds.push_back(rendererId);
+		else
+			externalRendererIds.push_back(rendererId);
+	}
+
+	std::sort(externalRendererIds.begin(), externalRendererIds.end());
+	std::reverse(externalRendererIds.begin(), externalRendererIds.end());
+	alphaRendererIds.insert(
+		alphaRendererIds.end(),
+		externalRendererIds.begin(),
+		externalRendererIds.end());
+	return alphaRendererIds;
+}
+
+
+bool RendererId::MatchesConfiguredName(const CString& configuredName) const
+{
+	return name.CompareNoCase(configuredName) == 0 ||
+		(backend == RendererBackend::LIBPLACEBO &&
+		 configuredName.CompareNoCase(TEXT("libplacebo")) == 0);
 }
 
 

@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <vector>
+
 
 enum class RendererBackend
 {
@@ -27,6 +29,9 @@ struct RendererId
 	GUID guid = GUID_NULL;
 
 	bool operator< (const RendererId& other) const;
+	static std::vector<RendererId> OrderForDisplay(
+		const std::vector<RendererId>& rendererIds);
+	bool MatchesConfiguredName(const CString& configuredName) const;
 
 	static RendererId Libplacebo();
 	static bool IsLibplaceboAvailable();
