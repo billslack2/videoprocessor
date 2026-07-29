@@ -1,4 +1,5 @@
 #include <pch.h>
+#include <dwmapi.h>
 
 #include "RendererTransitionWindow.h"
 
@@ -35,43 +36,57 @@ ATOM RendererTransitionWindow::RegisterWindowClass()
 }
 
 
-void RendererTransitionWindow::Show(HWND renderTarget)
+void RendererTransitionWindow::Show(HWND renderTarget, HWND stableOwner)
 {
 	if (!renderTarget || !IsWindow(renderTarget))
 		throw std::runtime_error("Invalid renderer transition target");
+	if (!stableOwner || !IsWindow(stableOwner))
+		throw std::runtime_error("Invalid renderer transition owner");
 
-	if (!IsWindow(m_hwnd) || m_renderTarget != renderTarget)
+	if (!IsWindow(m_hwnd) || m_owner != stableOwner)
 	{
 		Destroy();
 		RegisterWindowClass();
 		m_renderTarget = renderTarget;
+		m_owner = stableOwner;
 		m_hwnd = CreateWindowExW(
-			WS_EX_NOPARENTNOTIFY,
+			WS_EX_NOACTIVATE | WS_EX_NOPARENTNOTIFY | WS_EX_TOOLWINDOW,
 			RENDERER_TRANSITION_WINDOW_CLASS,
 			L"",
-			WS_CHILD | WS_CLIPSIBLINGS,
+			WS_POPUP,
 			0,
 			0,
 			1,
 			1,
-			renderTarget,
+			stableOwner,
 			nullptr,
 			GetModuleHandle(nullptr),
 			nullptr);
 		if (!m_hwnd)
 		{
 			m_renderTarget = nullptr;
+			m_owner = nullptr;
 			throw std::runtime_error(
 				"Failed to create renderer transition window");
 		}
 	}
+	else
+	{
+		m_renderTarget = renderTarget;
+	}
 
-	ResizeAndRaise();
-	RedrawWindow(
-		m_hwnd,
-		nullptr,
-		nullptr,
-		RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+	if (!ResizeAndRaise())
+		throw std::runtime_error(
+			"Failed to position renderer transition window");
+	if (!RedrawWindow(
+			m_hwnd,
+			nullptr,
+			nullptr,
+			RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN))
+	{
+		throw std::runtime_error(
+			"Failed to paint renderer transition window");
+	}
 }
 
 
@@ -95,29 +110,58 @@ bool RendererTransitionWindow::IsVisible() const
 }
 
 
+HRESULT RendererTransitionWindow::SynchronizeComposition() const
+{
+	BOOL compositionEnabled = FALSE;
+	const HRESULT compositionResult =
+		DwmIsCompositionEnabled(&compositionEnabled);
+	if (FAILED(compositionResult))
+		return compositionResult;
+	if (!compositionEnabled)
+		return S_FALSE;
+	return DwmFlush();
+}
+
+
 void RendererTransitionWindow::Destroy()
 {
 	if (IsWindow(m_hwnd))
 		DestroyWindow(m_hwnd);
 	m_hwnd = nullptr;
 	m_renderTarget = nullptr;
+	m_owner = nullptr;
 }
 
 
-void RendererTransitionWindow::ResizeAndRaise()
+bool RendererTransitionWindow::ResizeAndRaise()
 {
 	if (!IsWindow(m_hwnd) || !IsWindow(m_renderTarget))
-		return;
+		return false;
 
 	RECT client{};
 	if (!GetClientRect(m_renderTarget, &client))
-		return;
+		return false;
+	SetLastError(ERROR_SUCCESS);
+	if (!MapWindowPoints(
+			m_renderTarget,
+			nullptr,
+			reinterpret_cast<POINT*>(&client),
+			2))
+	{
+		const DWORD mapError = GetLastError();
+		if (mapError != ERROR_SUCCESS)
+			return false;
+	}
 
-	SetWindowPos(
+	const HWND targetRoot = GetAncestor(m_renderTarget, GA_ROOT);
+	const bool targetIsTopmost =
+		targetRoot &&
+		(GetWindowLongPtr(targetRoot, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+	return SetWindowPos(
 		m_hwnd,
-		HWND_TOP,
-		0,
-		0,
+		targetIsTopmost ? HWND_TOPMOST : HWND_NOTOPMOST,
+		client.left,
+		client.top,
 		std::max<LONG>(1, client.right - client.left),
 		std::max<LONG>(1, client.bottom - client.top),
 		SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -156,6 +200,12 @@ LRESULT CALLBACK RendererTransitionWindow::WindowProc(
 		EndPaint(hwnd, &paint);
 		return 0;
 	}
+
+	case WM_MOUSEACTIVATE:
+		return MA_NOACTIVATE;
+
+	case WM_NCHITTEST:
+		return HTTRANSPARENT;
 
 	default:
 		return DefWindowProc(hwnd, message, wParam, lParam);
