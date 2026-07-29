@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress. Pull request #18 merged into the default integration branch
+Review. Pull request #18 merged into the default integration branch
 `v1.1.014-beta` on July 28, 2026 as merge commit `ab81c309`. Release x64 built
 successfully and all 181 tests passed. A basic launch from the feature build
 location also succeeded.
@@ -39,9 +39,13 @@ transitions, after black is painted and before it is removed, so teardown and
 reveal cannot overtake the compositor. Transition logs include the cover
 owner, synchronization result, and synchronization duration.
 
-The fix completed a clean x64 Release build with the repository's v142/Visual
-Studio 2019 toolchain, and all 196 tests passed. It remains in progress pending
-real-world HDMI-resync and repeated Alpha/madVR transition validation.
+Pull request #26 merged the hardening into `v1.1.015-beta` on July 29, 2026 as
+merge commit `63e959f`. A clean x64 Release build from the merged integration
+worktree completed successfully and all 196 tests passed. The matching
+executable and VP Renderer runtime were deployed to `C:\Videoprocessor\vp`;
+active configuration, state, launcher, shaders, shader cache, and logs were
+preserved. It remains in review pending real-world HDMI-resync and repeated
+Alpha/madVR transition validation.
 
 Acceptance still requires repeated Alpha-only, madVR-only, Alpha/madVR
 handoff, refresh-rate/mode-change, and actual HDMI-resync validation.
