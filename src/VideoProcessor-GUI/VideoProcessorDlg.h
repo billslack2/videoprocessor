@@ -25,6 +25,7 @@
 #include <IRenderer.h>
 #include <RendererResetCoordinator.h>
 #include <RendererResetPolicy.h>
+#include <RendererRetirementService.h>
 #include <RendererTransitionModel.h>
 #include <UnifiedProfileRuntime.h>
 #include <VideoFrame.h>
@@ -52,6 +53,7 @@
 #define WM_MESSAGE_RENDERER_DETAIL_STRING               (WM_APP + 9)
 #define WM_MESSAGE_RENDERER_LIVE_FRAME                  (WM_APP + 10)
 #define WM_MESSAGE_RENDERER_RESET_REQUEST               (WM_APP + 12)
+#define WM_MESSAGE_RENDERER_RETIRED                     (WM_APP + 13)
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
@@ -173,6 +175,8 @@ public:
 	afx_msg LRESULT OnMessageRendererDetailString(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererLiveFrame(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererResetRequest(
+		WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageRendererRetired(
 		WPARAM wParam, LPARAM lParam);
 
 	// Command handlers
@@ -429,6 +433,11 @@ protected:
 
 
 	std::shared_ptr<IVideoRenderer> m_videoRenderer;
+	RendererRetirementService m_rendererRetirementService;
+	bool m_rendererRetirementPending = false;
+	uint64_t m_rendererRetirementToken = 0;
+	CString m_retiringRendererName;
+	uint32_t m_retiringRendererGeneration = 0;
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
 	HWND m_rendererTargetHwnd = nullptr;

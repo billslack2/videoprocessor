@@ -61,18 +61,36 @@ DirectShowVideoRenderer::DirectShowVideoRenderer(
 
 DirectShowVideoRenderer::~DirectShowVideoRenderer()
 {
+	Retire();
+}
+
+
+void DirectShowVideoRenderer::Retire() noexcept
+{
+	if (m_retired.exchange(true, std::memory_order_acq_rel))
+		return;
+	DebugLog::Log(
+		"DirectShow renderer retirement started: worker_thread=%lu graph_complete=%d",
+		GetCurrentThreadId(),
+		m_graphTeardownComplete.load(std::memory_order_acquire) ? 1 : 0);
 	if (m_graphTeardownComplete.load(std::memory_order_acquire))
 	{
 		// STOPPED is terminal, but a final DirectShow notification can enqueue
 		// event-drain work before the UI releases its lifetime pin. Discard
 		// such post-teardown work and only join the already-clean owner.
 		m_graphExecutor.CancelPendingAndShutdown({});
+		DebugLog::Log(
+			"DirectShow renderer retirement completed: worker_thread=%lu mode=join-only",
+			GetCurrentThreadId());
 		return;
 	}
 	m_graphExecutor.CancelPendingAndShutdown([this]()
 		{
 			GraphTeardownNoThrow();
 		});
+	DebugLog::Log(
+		"DirectShow renderer retirement completed: worker_thread=%lu mode=forced-cleanup",
+		GetCurrentThreadId());
 }
 
 

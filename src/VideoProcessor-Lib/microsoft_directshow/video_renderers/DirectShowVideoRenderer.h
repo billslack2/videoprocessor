@@ -85,6 +85,7 @@ public:
 	void ResetLiveQueue() override;
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink) override;
+	void Retire() noexcept override;
 	void OnSize() override;
 	void SetFrameQueueMaxSize(size_t) override;
 	void SetSceneAwareTimingCorrection(bool) override;
@@ -284,5 +285,6 @@ private:
 	std::deque<RendererState> m_pendingStateCompletions;
 	std::atomic_bool m_pendingRendererRestart{false};
 	std::atomic_bool m_graphTeardownComplete{false};
+	std::atomic_bool m_retired{false};
 	DirectShowGraphExecutor m_graphExecutor;
 };

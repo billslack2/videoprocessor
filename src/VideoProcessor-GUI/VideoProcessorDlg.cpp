@@ -949,6 +949,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_DETAIL_STRING, &CVideoProcessorDlg::OnMessageRendererDetailString)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
+	ON_MESSAGE(WM_MESSAGE_RENDERER_RETIRED, &CVideoProcessorDlg::OnMessageRendererRetired)
 
 	// Command handlers (from accelerator)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_TOGGLE, &CVideoProcessorDlg::OnCommandFullScreenToggle)
@@ -1226,6 +1227,26 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 {
 	if (m_rendererResetCoordinator)
 		m_rendererResetCoordinator->Close();
+	m_rendererRetirementService.RequestClose();
+	HANDLE retirementWorker =
+		m_rendererRetirementService.NativeThreadHandle();
+	if (retirementWorker)
+	{
+		for (;;)
+		{
+			const DWORD waitResult = MsgWaitForMultipleObjectsEx(
+				1, &retirementWorker, INFINITE, QS_SENDMESSAGE,
+				MWMO_INPUTAVAILABLE);
+			if (waitResult == WAIT_OBJECT_0)
+				break;
+			if (waitResult != WAIT_OBJECT_0 + 1)
+				break;
+			MSG message;
+			PeekMessage(
+				&message, nullptr, WM_NULL, WM_NULL, PM_NOREMOVE);
+		}
+	}
+	m_rendererRetirementService.Join();
 
 	if (m_livenessWatchdogStopEvent)
 		SetEvent(m_livenessWatchdogStopEvent);
@@ -2383,7 +2404,12 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 	case RendererState::RENDERSTATE_FAILED:
 		PauseRendererIngress();
 		DestroyVideoRenderer();
-		if (m_rendererResetTransitionActive)
+		if (m_rendererRetirementPending)
+		{
+			// Keep the shield and host alive until the retirement worker has
+			// finished the old renderer apartment.
+		}
+		else if (m_rendererResetTransitionActive)
 			m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 		else
 		{
@@ -2425,6 +2451,63 @@ LRESULT CVideoProcessorDlg::OnMessageRendererResetRequest(
 	LPARAM)
 {
 	PumpRendererResetMailbox();
+	return 0;
+}
+
+
+LRESULT CVideoProcessorDlg::OnMessageRendererRetired(
+	WPARAM wParam,
+	LPARAM lParam)
+{
+	const uint64_t token = static_cast<uint64_t>(wParam);
+	if (!m_rendererRetirementPending ||
+		token != m_rendererRetirementToken)
+	{
+		DebugLog::Log(
+			"Renderer retirement completion ignored: token=%llu current=%llu pending=%d",
+			static_cast<unsigned long long>(token),
+			static_cast<unsigned long long>(m_rendererRetirementToken),
+			m_rendererRetirementPending ? 1 : 0);
+		return 0;
+	}
+
+	m_rendererRetirementPending = false;
+	if (lParam != 0)
+	{
+		DebugLog::Log(
+			"Renderer retirement failed: token=%llu renderer=%S; replacement remains blocked",
+			static_cast<unsigned long long>(token),
+			static_cast<LPCTSTR>(m_retiringRendererName));
+		m_rendererState = RendererState::RENDERSTATE_FAILED;
+		m_rendererStateText.SetWindowText(TEXT("Retirement failed"));
+		return 0;
+	}
+	DebugLog::Log(
+		"Renderer transition: process=%lu generation=%u event=old-surface-retired "
+		"renderer=%S target=%p cover=%p token=%llu",
+		GetCurrentProcessId(), m_retiringRendererGeneration,
+		static_cast<LPCTSTR>(m_retiringRendererName),
+		m_rendererTargetHwnd, m_rendererTransitionWindow.GetHWND(),
+		static_cast<unsigned long long>(token));
+	m_retiringRendererName.Empty();
+	m_retiringRendererGeneration = 0;
+	if (m_rendererState == RendererState::RENDERSTATE_STOPPED)
+		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
+	else if (m_rendererState == RendererState::RENDERSTATE_FAILED &&
+		!m_wantToTerminate)
+	{
+		if (m_rendererResetTransitionActive)
+		{
+			m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
+		}
+		else
+		{
+			m_rendererTransitionWindow.Hide();
+			m_windowedVideoWindow.ShowLogo(true);
+			m_rendererFullscreenCheck.SetCheck(FALSE);
+		}
+	}
+	UpdateState();
 	return 0;
 }
 
@@ -2903,6 +2986,12 @@ void CVideoProcessorDlg::OnRendererDetailString(const CString& details)
 void CVideoProcessorDlg::UpdateState()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::UpdateState()")));
+	if (m_rendererRetirementPending)
+	{
+		DbgLog((LOG_TRACE, 1,
+			TEXT("CVideoProcessorDlg::UpdateState(): waiting for renderer retirement")));
+		return;
+	}
 
 	// Want to change cards or want to restart capture
 	if (!m_desiredCaptureDevice.IsEqualObject(m_captureDevice) ||
@@ -3666,8 +3755,11 @@ void CVideoProcessorDlg::RenderStart()
 		{
 			DebugLog::Log("libplacebo renderer startup failed: %s", e.what());
 			DestroyVideoRenderer();
-			m_rendererTransitionWindow.Hide();
-			m_windowedVideoWindow.ShowLogo(true);
+			if (!m_rendererRetirementPending)
+			{
+				m_rendererTransitionWindow.Hide();
+				m_windowedVideoWindow.ShowLogo(true);
+			}
 			m_rendererState = RendererState::RENDERSTATE_FAILED;
 			m_rendererStateText.SetWindowText(TEXT("Failed"));
 
@@ -3756,6 +3848,15 @@ void CVideoProcessorDlg::RenderStart()
 	catch (std::runtime_error e)
 	{
 		DestroyVideoRenderer();
+		if (m_rendererRetirementPending)
+		{
+			DebugLog::Log(
+				"DirectShow startup fallback deferred until failed renderer retirement completes: %s",
+				e.what());
+			m_rendererState = RendererState::RENDERSTATE_FAILED;
+			m_rendererStateText.SetWindowText(TEXT("Failed"));
+			return;
+		}
 
 		try
 		{
@@ -3823,8 +3924,11 @@ void CVideoProcessorDlg::RenderStart()
 		catch (std::runtime_error e)
 		{
 			DestroyVideoRenderer();
-			m_rendererTransitionWindow.Hide();
-			m_windowedVideoWindow.ShowLogo(true);
+			if (!m_rendererRetirementPending)
+			{
+				m_rendererTransitionWindow.Hide();
+				m_windowedVideoWindow.ShowLogo(true);
+			}
 
 			m_rendererState = RendererState::RENDERSTATE_FAILED;
 			m_rendererStateText.SetWindowText(TEXT("Failed"));
@@ -3932,7 +4036,8 @@ void CVideoProcessorDlg::RenderRemove()
 
 	DestroyVideoRenderer();
 
-	m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
+	if (!m_rendererRetirementPending)
+		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderRemove(): End")));
 }
@@ -3962,15 +4067,39 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 	DebugLog::Log(
 		"Renderer teardown: detached renderer before destruction to block reentrant callbacks");
 
-	rendererToDestroy.reset();
+	// Alpha/plugin retirement has not yet been audited as an idempotent
+	// cross-thread contract. Keep its established synchronous release path.
+	if (!m_activeRendererIsDirectShow)
+	{
+		rendererToDestroy.reset();
+		DebugLog::Log(
+			"Renderer transition: process=%lu generation=%u event=old-surface-retired "
+			"renderer=%S target=%p cover=%p mode=synchronous",
+			GetCurrentProcessId(),
+			m_rendererGeneration.load(std::memory_order_acquire),
+			static_cast<LPCTSTR>(m_activeRendererName),
+			m_rendererTargetHwnd,
+			m_rendererTransitionWindow.GetHWND());
+		return;
+	}
+
+	m_rendererRetirementPending = true;
+	m_rendererRetirementToken++;
+	m_retiringRendererName = m_activeRendererName;
+	m_retiringRendererGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
 	DebugLog::Log(
-		"Renderer transition: process=%lu generation=%u event=old-surface-retired "
-		"renderer=%S target=%p cover=%p",
-		GetCurrentProcessId(),
-		m_rendererGeneration.load(std::memory_order_acquire),
-		static_cast<LPCTSTR>(m_activeRendererName),
-		m_rendererTargetHwnd,
-		m_rendererTransitionWindow.GetHWND());
+		"Renderer retirement queued: process=%lu generation=%u renderer=%S "
+		"token=%llu ui_thread=%lu",
+		GetCurrentProcessId(), m_retiringRendererGeneration,
+		static_cast<LPCTSTR>(m_retiringRendererName),
+		static_cast<unsigned long long>(m_rendererRetirementToken),
+		GetCurrentThreadId());
+	const bool queued = m_rendererRetirementService.Retire(
+		std::move(rendererToDestroy), m_rendererRetirementToken,
+		GetSafeHwnd(), WM_MESSAGE_RENDERER_RETIRED);
+	if (!queued)
+		throw std::runtime_error("Renderer retirement service is closed");
 }
 
 
@@ -5029,6 +5158,13 @@ void CVideoProcessorDlg::_FatalError(int line, const std::string& functionName, 
 
 	::MessageBox(nullptr, s, TEXT("Fatal error"), MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
 
+	if (m_videoRenderer || m_rendererRetirementPending)
+	{
+		DebugLog::Log(
+			"Fatal termination deferred through renderer stop/retirement state machine");
+		OnClose();
+		return;
+	}
 	CDialog::EndDialog(S_FALSE);
 }
 
