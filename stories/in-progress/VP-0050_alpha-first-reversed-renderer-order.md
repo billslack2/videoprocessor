@@ -2,9 +2,18 @@
 
 ## Status
 
-In Progress. Implementation started on `codex/vp-0050-renderer-order` from
-`origin/v1.1.014-beta` in a clean worktree. Ordering policy and focused native
-test coverage are in progress.
+In Progress. Implementation is committed as `6be6886` on
+`codex/vp-0050-renderer-order`, based on `origin/v1.1.014-beta`.
+
+Validation complete:
+
+- x64 Release solution rebuild passed with a clean `6be6886` version stamp;
+- native suite passed: 194/194 tests, including 3 focused renderer-order tests;
+- deployed only `VideoProcessor.exe` to `C:\Videoprocessor\vp` for user
+  validation after backing up the prior executable as
+  `VideoProcessor.exe.pre-VP0050-20260728-203714.bak`.
+
+Awaiting user runtime validation and merge decision.
 
 ## User story
 
