@@ -67,6 +67,24 @@ DirectShowMPCVideoRenderer::DirectShowMPCVideoRenderer(
 
 bool DirectShowMPCVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 {
+	if (!IsGraphThread())
+	{
+		if (!DirectShowVideoRenderer::OnVideoState(videoState))
+			return false;
+		const VideoStateComPtr state = videoState;
+		PostCoalescedGraphCommand(GRAPH_COMMAND_HDR_STATE,
+			[this, state]()
+			{
+				if (!m_liveSource || !state->hdrData)
+					return;
+				if (FAILED(m_liveSource->OnHDRData(state->hdrData)))
+					throw std::runtime_error("Failed to set HDR data");
+				m_videoState->hdrData = state->hdrData;
+			});
+		return true;
+	}
+	AssertGraphThread();
+
 	if (!DirectShowVideoRenderer::OnVideoState(videoState))
 		return false;
 
@@ -89,6 +107,16 @@ bool DirectShowMPCVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 
 void DirectShowMPCVideoRenderer::OnSize()
 {
+	if (!IsGraphThread())
+	{
+		PostCoalescedGraphCommand(GRAPH_COMMAND_RESIZE, [this]()
+			{
+				OnSize();
+			});
+		return;
+	}
+	AssertGraphThread();
+
 	DirectShowVideoRenderer::OnSize();
 
 	if (m_pRenderer)
@@ -108,6 +136,16 @@ void DirectShowMPCVideoRenderer::OnSize()
 
 void DirectShowMPCVideoRenderer::OnPaint()
 {
+	if (!IsGraphThread())
+	{
+		PostCoalescedGraphCommand(GRAPH_COMMAND_PAINT, [this]()
+			{
+				OnPaint();
+			});
+		return;
+	}
+	AssertGraphThread();
+
 	if (CComQIPtr<IExFilterConfig> pIExFilterConfig = m_pRenderer) {
 		if (!SUCCEEDED(pIExFilterConfig->SetBool("cmd_redraw", true)))
 			throw std::runtime_error("Failed to redraw MPC");
@@ -122,6 +160,7 @@ void DirectShowMPCVideoRenderer::OnPaint()
 
 void DirectShowMPCVideoRenderer::WindowSetup()
 {
+	AssertGraphThread();
 	if (FAILED(m_videoWindow->put_Owner((OAHWND)m_videoHwnd)))
 		throw std::runtime_error("Failed to set owner of video window");
 
@@ -139,6 +178,7 @@ void DirectShowMPCVideoRenderer::WindowSetup()
 
 void DirectShowMPCVideoRenderer::RendererBuild()
 {
+	AssertGraphThread();
 	if (FAILED(CoCreateInstance(
 		CLSID_MPCVR,
 		nullptr,
@@ -151,6 +191,7 @@ void DirectShowMPCVideoRenderer::RendererBuild()
 
 void DirectShowMPCVideoRenderer::MediaTypeGenerate()
 {
+	AssertGraphThread();
 	GUID mediaSubType;
 	int bitCount;
 	LONG heightMultiplier = 1;
@@ -309,6 +350,7 @@ void DirectShowMPCVideoRenderer::MediaTypeGenerate()
 
 void DirectShowMPCVideoRenderer::RendererConnect()
 {
+	AssertGraphThread();
 	if (FAILED(m_pGraph->AddFilter(m_pRenderer, L"Renderer")))
 		throw std::runtime_error("Failed to add renderer to the graph");
 
@@ -365,6 +407,7 @@ void DirectShowMPCVideoRenderer::RendererConnect()
 
 void DirectShowMPCVideoRenderer::LiveSourceBuildAndConnect()
 {
+	AssertGraphThread();
 	DirectShowVideoRenderer::LiveSourceBuildAndConnect();
 
 	if (m_videoState->hdrData)

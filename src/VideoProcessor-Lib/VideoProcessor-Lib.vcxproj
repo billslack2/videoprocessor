@@ -191,10 +191,12 @@
     <ClInclude Include="IntegerMath.h" />
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="RendererLiveness.h" />
+    <ClInclude Include="RendererIngressState.h" />
     <ClInclude Include="RendererResetCoordinator.h" />
     <ClInclude Include="RendererResetPolicy.h" />
     <ClInclude Include="RendererResetRequest.h" />
     <ClInclude Include="RendererResetRequestLatch.h" />
+    <ClInclude Include="RendererTransitionModel.h" />
     <ClInclude Include="vprenderer\\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
     <ClInclude Include="ActivePictureTransitionModel.h" />
@@ -217,6 +219,7 @@
     <ClInclude Include="microsoft_directshow\live_source_filter\CUnbufferedLiveSourceVideoOutputPin.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\ILiveSource.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowEnhancedVideoRenderer.h" />
+    <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGraphExecutor.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGenericHDRVideoRenderer.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGenericVideoRenderer.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowMPCVideoRenderer.h" />
@@ -273,6 +276,7 @@
     <ClCompile Include="InputLocked.cpp" />
     <ClCompile Include="IRenderer.cpp" />
     <ClCompile Include="RendererResetCoordinator.cpp" />
+    <ClCompile Include="RendererTransitionModel.cpp" />
     <ClCompile Include="vprenderer\\AlphaCadenceCorrectionPolicy.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>

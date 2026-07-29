@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <RendererResetRequestLatch.h>
+#include <microsoft_directshow/video_renderers/DirectShowGraphExecutor.h>
 
 #include <chrono>
 #include <future>
@@ -197,13 +198,207 @@ namespace Tests
 			Assert::IsTrue(latch.Pending());
 		}
 
-		TEST_METHOD(LegacyPollDoesNotClearResetLatch)
+	};
+
+
+	TEST_CLASS(DirectShowGraphExecutorTests)
+	{
+	public:
+		TEST_METHOD(UsesOnePermanentMtaOwner)
 		{
-			RendererResetRequestLatch latch;
-			Assert::IsTrue(latch.Request(GraphRecovery(41)));
-			Assert::IsTrue(latch.ConsumeLegacyNotification());
-			Assert::IsFalse(latch.ConsumeLegacyNotification());
-			Assert::IsTrue(latch.Pending());
+			DirectShowGraphExecutor executor;
+			const DWORD caller = GetCurrentThreadId();
+			const DWORD first = executor.Invoke([]()
+				{
+					APTTYPE apartmentType = APTTYPE_CURRENT;
+					APTTYPEQUALIFIER qualifier =
+						APTTYPEQUALIFIER_NONE;
+					Assert::IsTrue(SUCCEEDED(CoGetApartmentType(
+						&apartmentType, &qualifier)));
+					Assert::IsTrue(apartmentType == APTTYPE_MTA);
+					return GetCurrentThreadId();
+				});
+			const DWORD second = executor.Invoke([]()
+				{
+					return GetCurrentThreadId();
+				});
+
+			Assert::AreNotEqual(caller, first);
+			Assert::AreEqual(first, second);
+			Assert::AreEqual(first, executor.OwnerThreadId());
+		}
+
+		TEST_METHOD(ConcurrentCommandsNeverOverlap)
+		{
+			DirectShowGraphExecutor executor;
+			std::promise<void> firstEntered;
+			std::promise<void> releaseFirst;
+			std::shared_future<void> release =
+				releaseFirst.get_future().share();
+			std::future<void> first = std::async(
+				std::launch::async, [&]()
+				{
+					executor.Invoke([&]()
+						{
+							firstEntered.set_value();
+							release.wait();
+						});
+				});
+			firstEntered.get_future().wait();
+
+			std::atomic_bool secondEntered{false};
+			std::future<void> second = std::async(
+				std::launch::async, [&]()
+				{
+					executor.Invoke([&]()
+						{
+							secondEntered.store(
+								true, std::memory_order_release);
+						});
+				});
+			const bool stayedSerialized =
+				second.wait_for(std::chrono::milliseconds(50)) ==
+				std::future_status::timeout &&
+				!secondEntered.load(std::memory_order_acquire);
+
+			releaseFirst.set_value();
+			first.get();
+			second.get();
+			Assert::IsTrue(stayedSerialized);
+			Assert::IsTrue(
+				secondEntered.load(std::memory_order_acquire));
+		}
+
+		TEST_METHOD(NestedOwnerInvocationRunsInline)
+		{
+			DirectShowGraphExecutor executor;
+			const DWORD nested = executor.Invoke([&executor]()
+				{
+					const DWORD outer = GetCurrentThreadId();
+					const DWORD inner = executor.Invoke([]()
+						{
+							return GetCurrentThreadId();
+						});
+					Assert::AreEqual(outer, inner);
+					return inner;
+				});
+			Assert::AreEqual(executor.OwnerThreadId(), nested);
+		}
+
+		TEST_METHOD(AsyncCommandsPreserveFifoOrder)
+		{
+			DirectShowGraphExecutor executor;
+			std::mutex mutex;
+			std::vector<int> observed;
+			for (int value = 1; value <= 3; ++value)
+			{
+				Assert::IsTrue(executor.Post([&mutex, &observed, value]()
+					{
+						std::lock_guard<std::mutex> lock(mutex);
+						observed.push_back(value);
+					}));
+			}
+			executor.Shutdown();
+
+			Assert::AreEqual<size_t>(3, observed.size());
+			Assert::AreEqual(1, observed[0]);
+			Assert::AreEqual(2, observed[1]);
+			Assert::AreEqual(3, observed[2]);
+		}
+
+		TEST_METHOD(CoalescesOnlyQueuedNotStartedCommand)
+		{
+			DirectShowGraphExecutor executor;
+			std::promise<void> activeEntered;
+			std::promise<void> releaseActive;
+			const std::shared_future<void> release =
+				releaseActive.get_future().share();
+			std::mutex mutex;
+			std::vector<int> observed;
+
+			Assert::IsTrue(executor.Post([&]()
+				{
+					activeEntered.set_value();
+					release.wait();
+				}));
+			activeEntered.get_future().wait();
+			Assert::IsTrue(executor.PostCoalesced(99, [&]()
+				{
+					std::lock_guard<std::mutex> lock(mutex);
+					observed.push_back(1);
+				}));
+			Assert::IsTrue(executor.PostCoalesced(99, [&]()
+				{
+					std::lock_guard<std::mutex> lock(mutex);
+					observed.push_back(2);
+				}));
+			releaseActive.set_value();
+			executor.Shutdown();
+
+			Assert::AreEqual<size_t>(1, observed.size());
+			Assert::AreEqual(2, observed.front());
+		}
+
+		TEST_METHOD(ForcedShutdownCancelsQueuedWorkAndRunsFinalCommand)
+		{
+			DirectShowGraphExecutor executor;
+			std::promise<void> activeEntered;
+			std::promise<void> releaseActive;
+			const std::shared_future<void> release =
+				releaseActive.get_future().share();
+			std::atomic_bool cancelledCommandRan{false};
+			std::atomic_bool finalCommandRan{false};
+
+			Assert::IsTrue(executor.Post([&]()
+				{
+					activeEntered.set_value();
+					release.wait();
+				}));
+			activeEntered.get_future().wait();
+			Assert::IsTrue(executor.Post([&]()
+				{
+					cancelledCommandRan.store(
+						true, std::memory_order_release);
+				}));
+
+			std::future<void> shutdown = std::async(
+				std::launch::async, [&]()
+				{
+					executor.CancelPendingAndShutdown([&]()
+						{
+							finalCommandRan.store(
+								true, std::memory_order_release);
+						});
+				});
+			while (executor.PostCoalesced(777, []() {}))
+				std::this_thread::yield();
+			releaseActive.set_value();
+			shutdown.get();
+
+			Assert::IsFalse(cancelledCommandRan.load(
+				std::memory_order_acquire));
+			Assert::IsTrue(finalCommandRan.load(
+				std::memory_order_acquire));
+		}
+
+		TEST_METHOD(ShutdownRejectsNewCommands)
+		{
+			DirectShowGraphExecutor executor;
+			executor.Invoke([]() {});
+			executor.Shutdown();
+
+			bool rejected = false;
+			try
+			{
+				executor.Invoke([]() {});
+			}
+			catch (const std::runtime_error&)
+			{
+				rejected = true;
+			}
+			Assert::IsTrue(rejected);
+			Assert::IsFalse(executor.Post([]() {}));
+			Assert::IsFalse(executor.PostCoalesced(1, []() {}));
 		}
 	};
 }
