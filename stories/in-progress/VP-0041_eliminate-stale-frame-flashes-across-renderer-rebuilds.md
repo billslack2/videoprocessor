@@ -503,3 +503,40 @@ and plugin hashes match their Release outputs. Rollback backups use timestamp
 `20260729-101624`. VP started successfully as process 33748 with version
 `v1.1.012-beta-ffmpeg-4.4.8-116-gfceec1b`. Live fullscreen madVR-to-Alpha
 validation remains required.
+
+## 2026-07-29 post-start reveal latency follow-up
+
+Live testing of `fceec1b` no longer hung, but madVR startup and fullscreen /
+windowed transitions were noticeably slower. Log timing isolated the dominant
+cost from the asynchronous retirement barrier: every DirectShow retirement
+completed within the same one-second log bucket, while the black shield was
+always held for the configured three-second post-start reset delay. Observed
+black intervals included 4797 ms at initial madVR startup, 4625 ms for an
+Alpha-to-madVR transition, and 6406 ms for one madVR fullscreen-to-windowed
+transition.
+
+Commit `258ed67` replaces that arbitrary hold with current-renderer evidence:
+
+- DirectShow still performs its required stop/reset/run graph re-prime, but a
+  verified first current-generation live frame advances the pending
+  post-start reset deadline to now;
+- the cover remains authoritative through the accelerated reset and is
+  released only after new current-epoch downstream preroll;
+- ordinary fresh Alpha construction skips the redundant live-queue reset and
+  reveals only after a verified swapchain submit;
+- Alpha construction inside an already-covered reset performs an immediate
+  live-queue reset so target rebound and transition state cannot be stranded;
+- actual display-mode changes retain the explicit two-second hardware settle
+  interval; neither DirectShow nor Alpha accelerates through it.
+
+Threading, DirectShow/COM, and player-lifecycle reviewers approved the final
+policy after the covered-Alpha and display-settle edge cases were added. A
+clean x64 Release build passed `259/259` tests.
+
+The exact clean commit build was deployed to `C:\Videoprocessor\vp` with
+matching executable/plugin hashes. Configuration was not changed. Rollback
+backups use timestamp `20260729-104511`. VP started as process 51172 with
+version `v1.1.012-beta-ffmpeg-4.4.8-117-g258ed67`. Its first live madVR startup
+accelerated the three-second reset immediately on current-frame evidence and
+released the shield after 1875 ms, versus 4797 ms in the preceding deployment.
+Live fullscreen/windowed and renderer-switch validation remains required.
