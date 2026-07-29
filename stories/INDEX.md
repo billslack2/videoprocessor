@@ -65,7 +65,7 @@ they must not contain requirements that are absent from this file.
 | VP-0038 | Review | Generic viewport state and screen-aware NLS configuration |
 | VP-0039 | In Progress | Alpha cadence due-forecast liveness and diagnostics |
 | VP-0040 | Backlog | Trusted active-picture detection and stable NLS engagement |
-| VP-0041 | Review | Eliminate stale-frame flashes across renderer rebuilds (reopened: issue remains reproducible) |
+| VP-0041 | In Progress | Eliminate stale-frame flashes across renderer rebuilds (madVR-only repro; graph-reset gap and crash under investigation) |
 | VP-0042 | Backlog | Indexed debug-log rotation filenames |
 | VP-0043 | Backlog | madVR graph re-prime after lifecycle and queue pressure |
 | VP-0044 | Backlog | Alpha native OSD visible-picture anchoring and scaling |

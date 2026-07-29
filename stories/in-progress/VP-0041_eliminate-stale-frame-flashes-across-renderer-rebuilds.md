@@ -2,7 +2,7 @@
 
 ## Status
 
-Review. Pull request #18 merged into the default integration branch
+In Progress. Pull request #18 merged into the default integration branch
 `v1.1.014-beta` on July 28, 2026 as merge commit `ab81c309`. Release x64 built
 successfully and all 181 tests passed. A basic launch from the feature build
 location also succeeded.
@@ -44,8 +44,58 @@ merge commit `63e959f`. A clean x64 Release build from the merged integration
 worktree completed successfully and all 196 tests passed. The matching
 executable and VP Renderer runtime were deployed to `C:\Videoprocessor\vp`;
 active configuration, state, launcher, shaders, shader cache, and logs were
-preserved. It remains in review pending real-world HDMI-resync and repeated
-Alpha/madVR transition validation.
+preserved.
+
+The subsequent deployed integration candidate also contained the merged
+VP-0054 DirectShow liveness work (`1b231356`). It failed real-world validation
+again on July 29, 2026. The user had not used the Alpha renderer in the process
+lifetime: during a madVR-only channel change, VP exposed a baseball frame from
+content watched approximately five minutes earlier. This proves that Alpha
+and its shader cache are not prerequisites for the stale-frame defect.
+
+The deployed log records the relevant madVR lifecycle:
+
+- At `01:09:15`, a channel/signal transition changed the effective video state
+  from `SDR / REC.709` to `UNKNOWN / UNKNOWN`, causing renderer generation 9 to
+  stop under the black transition cover.
+- Generation 10 started under black, but VP removed the cover at `01:09:19`
+  with `evidence=downstream-accepted`. In fact, the log records reveal before
+  `DELIVERY THREAD: BUFFERING COMPLETE`, so delivery to madVR had not started.
+  The scheduled
+  `post-renderer-start` graph reset then stopped and restarted the graph at
+  `01:09:22`, after the cover had already been removed.
+- A second madVR stop/start created generation 11 at `01:09:39-01:09:41`.
+  Again the cover was removed on downstream acceptance, three seconds before
+  its scheduled graph reset ran at `01:09:44`.
+
+Source inspection establishes two remaining correctness gaps. First,
+`DirectShowVideoRenderer::OnVideoFrame` marks
+`m_hasPresentedLiveFrame=true` when `m_liveSource->OnVideoFrame` returns
+success. With the buffered live source, that success means only that the
+capture frame entered VP's raw queue; it is neither downstream acceptance nor
+presentation. The `downstream-accepted` evidence label is therefore
+incorrect, and the observed reveal-before-buffering log ordering confirms the
+cover can be removed before madVR receives a new sample. Second, the
+transition cover does not span the delayed post-start graph reset, so madVR
+can expose retained presentation state during that reset. The replacement
+must keep black visible across every associated graph reset and require
+current-epoch downstream-delivery plus presentation-grade evidence before
+reveal.
+
+The same run ended in a confirmed crash at `01:10:15`. Immediately before the
+crash, VP detected a frame-counter discontinuity (`33944 -> 34021`) while the
+raw queue was backing up, purged 27 raw frames and one converted sample, and
+reset the live queue while madVR remained active. Windows Application Error
+and WER both identify a fatal access violation (`0xc0000005`) in
+`C:\madvr210\madVR64.ax` version `0.92.17.0`, offset `0x1f041d`, report ID
+`b6036bad-5509-4751-bd81-fd066db057b6`. The crash may be a queue-reset /
+delivery race related to the same graph lifecycle, but a shared root cause is
+not yet proven.
+
+Implementation and diagnosis now continue on
+`codex/vp-0041-madvr-reopen`, based on current
+`origin/v1.1.015-beta` commit `1b231356`, in
+`C:\Users\bslac\vp\worktrees\vp-0041-madvr-reopen`.
 
 Acceptance still requires repeated Alpha-only, madVR-only, Alpha/madVR
 handoff, refresh-rate/mode-change, and actual HDMI-resync validation.
@@ -74,6 +124,13 @@ After Alpha's shader cache was enabled:
 - Restarting VP clears the behavior.
 - The old frame is visible for approximately one or two seconds during the
   transition.
+- A madVR-only process can reproduce the issue during a channel change, with
+  a frame from content watched approximately five minutes earlier.
+- The deployed transition cover can be removed before its delayed
+  `post-renderer-start` graph reset, leaving that reset uncovered.
+- DirectShow's `downstream-accepted` reveal evidence is currently asserted
+  when a capture frame is merely enqueued in VP, before buffered delivery to
+  madVR begins.
 
 This is not merely a delayed current frame: the image appears to come from
 older content and survives ordinary renderer replacement.
@@ -136,6 +193,14 @@ fullscreen/mode-transition and cross-renderer ownership.
 8. Establish whether reusing the same HWND allows a retired DXGI/MPO surface to
    return during the next mode transition. If so, test explicit surface
    detachment or HWND recreation rather than relying on repaint alone.
+9. Trace channel/capture epochs through raw enqueue, conversion, delivery, and
+   renderer acceptance so an old capture epoch can never qualify as the first
+   live frame of a new renderer generation.
+10. Make the black transition barrier encompass the delayed
+    `post-renderer-start` graph reset rather than revealing before that reset.
+11. Reproduce the `madVR64.ax` access violation under frame-counter
+    discontinuity recovery and determine whether live-queue reset races an
+    in-flight madVR delivery or segment transition.
 
 ## Required diagnostics
 
@@ -150,6 +215,8 @@ Add concise lifecycle logging at state transitions, not per frame:
   generation;
 - first source sequence accepted and first presentation completed by the new
   generation;
+- capture/channel epoch attached to the first accepted sample and used in the
+  reveal decision;
 - queue size and retained-frame count at stop and after clear;
 - shader-cache enabled/load/save state and object count, without implying that
   cache objects are frames;
@@ -172,6 +239,8 @@ the new renderer. Do not hash full 4K frames on the normal hot path.
    intentional VP placeholder in windowed mode.
 3. The replacement output must remain black/hidden until the renderer has
    accepted and presented a live frame belonging to the current generation.
+   For DirectShow/madVR, downstream acceptance alone is insufficient, and the
+   barrier must remain active across any scheduled post-start graph reset.
 4. Renderer handoff must transfer exclusive ownership of the render target.
    Alpha's retired swap chain or presentation plane must not remain visible
    while madVR owns the target, and vice versa.
@@ -224,6 +293,9 @@ steady-state frame path; if needed, bound them to lifecycle transitions.
    restart loop.
 8. Confirm shader-cache load/save still shortens or stabilizes shader startup
    as intended and cannot retain video-frame resources.
+9. Force frame-counter discontinuity recovery during madVR playback and verify
+   that queue purge/new-segment delivery cannot race an in-flight renderer
+   call or crash `madVR64.ax`.
 
 ## Acceptance criteria
 
@@ -243,6 +315,12 @@ steady-state frame path; if needed, bound them to lifecycle transitions.
 
 - VP-0037 defines the accepted Alpha windowed-preview and renderer-handoff
   composition behavior.
+- VP-0043 intentionally owns the delayed madVR stop/reset/run re-prime.
+  VP-0041 must extend the black transition barrier across that re-prime rather
+  than removing or weakening it.
+- VP-0054 owns generation-aware reset arbitration, background graph control,
+  and liveness recovery. Coordinate current-epoch reveal and queue-reset
+  serialization with that implementation.
 - This story covers shared lifecycle ownership plus Alpha-specific GPU
   teardown. It must not alter madVR internals, but VP may black, hide, detach,
   or recreate the host presentation target around graph replacement.
