@@ -2,7 +2,10 @@
 
 ## Status
 
-Review / production pilot deployed — medium.
+Done. Accepted on 2026-07-29 after the merged and deployed implementation was
+confirmed present in `v1.1.015-beta`. The remaining long-run hardware matrix
+is valuable regression coverage, but is no longer a release gate for this
+accepted story.
 
 Started July 28, 2026 from the current default VP integration branch
 `v1.1.014-beta`.

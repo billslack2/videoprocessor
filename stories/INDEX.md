@@ -45,7 +45,7 @@ they must not contain requirements that are absent from this file.
 | VP-0012 | Done | Alpha renderer LUT pipeline contract spike |
 | VP-0013 | Done | DirectShow queue/reset alignment and no-drop review |
 | VP-0014 | Will Not Do | Alpha renderer SDR BT.2020 source and target support (duplicate of VP-0019; will not do separately) |
-| VP-0015 | Review — production pilot | Alpha renderer support for paired shader rules |
+| VP-0015 | Done | Alpha renderer support for paired shader rules |
 | VP-0016 | Will Not Do | Make scene detection available for the alpha renderer |
 | VP-0017 | Will Not Do | Explain variable alpha-renderer queue depth |
 | VP-0018 | Done | Re-select the content refresh rate when switching to alpha |
@@ -80,7 +80,7 @@ they must not contain requirements that are absent from this file.
 | VP-0053 | Backlog | Alpha LLDV parity and transition validation |
 | VP-0054 | Done | DirectShow handoff queue saturation and UI-liveness recovery |
 | VP-0055 | Done | Display-rate outlier quarantine and transition warm-up |
-| VP-0057 | Review | Re-prime Alpha when it exceeds the configured queue limit |
+| VP-0057 | Done | Re-prime Alpha when it exceeds the configured queue limit |
 | VP-0058 | Backlog | ReShade compatibility prototype with madVR |
 | VP-0059 | Backlog | Stable per-mode frame-offset policy and Alpha semantics |
 | VP-0060 | Done | Reduce madVR fullscreen transition latency with stable target ownership |

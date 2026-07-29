@@ -2,7 +2,9 @@
 
 ## Status
 
-Review — deployed July 29, 2026.
+Done. Accepted on 2026-07-29. The configured Alpha queue limit is enforced in
+`v1.1.015-beta`, the deployed Release build passed its recorded native tests,
+and the user accepted the completed behavior.
 
 The Alpha renderer previously maintained hidden burst headroom: with the
 user-configured queue size set to `3`, it permitted an internal hard capacity
