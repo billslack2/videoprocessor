@@ -27,16 +27,20 @@ successfully as x64 Release. The tested release executable was deployed to
 The prior executable is retained as
 `C:\Videoprocessor\vp\VideoProcessor.exe.pre-VP0061-20260729-115633.bak`.
 
-Live validation on July 29 used the existing user-established asymmetric
-madVR 16/8 setup (not altered by the test) with VP `queue_size: 64`.
-Twenty manual Reset commands completed successfully, all in renderer
-generation 1. For every reset, the log recorded a successful serialized
-`NewSegment`, no renderer-restart/failure route, and a first current-epoch
-live frame after 156--219 ms. Reset transaction work itself was 0--16 ms;
-the post-reset interval was the existing nine-frame VP rebuffer target.
-This validates the original queue-64 asymmetric failure case without adding
-steady-state VP queue depth or latency. Equal-queue and wider-asymmetry
-control scenarios remain to be run before the story can close.
+An initial twenty-reset run on July 29 was performed with VP
+`queue_size: 64`. It completed in renderer generation 1 with a successful
+serialized `NewSegment` on every reset, no renderer-restart/failure route,
+and a first current-epoch live frame after 156--219 ms. Reset transaction
+work itself was 0--16 ms; the post-reset interval was the existing nine-frame
+VP rebuffer target.
+
+That run is retained only as a reset-transaction smoke test. During an
+attempted UI capture, VP was inadvertently toggled into windowed mode; the
+user correctly identified that the resulting run did not reproduce the
+full-screen madVR queue condition. VP was then relaunched normally and the
+renderer log confirmed `fullscreen=1`. Full-screen OSD-verified 16/8 + VP 64,
+equal-queue, and wider-asymmetry validation remains required before this
+story can close.
 
 Tracker audit at creation found 59 canonical story files and 59 index rows,
 with no duplicate or missing IDs. The existing index states for VP-0034,
