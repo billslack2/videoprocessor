@@ -55,7 +55,18 @@ The policy is applied by the selected madVR and Alpha NLS rules without a graph
 or queue reset. Added transition tests for the 2% hold, a change beyond the
 deadband, and the 5% maximum. All 268 unit tests passed; x64 Release solution
 build completed successfully. The linker emitted existing PDB-debug-symbol
-warnings only. No deployment or deployed configuration edit was performed.
+warnings only.
+
+Deployed at 2026-07-29 14:21 EDT from that successful x64 Release build. The
+installed `VideoProcessor.exe` and
+`vprenderer\\VideoProcessorVPRenderer.dll` match their build artifacts by
+SHA-256. Recoverable pre-deployment backups are
+`C:\\Videoprocessor\\vp\\VideoProcessor.exe.pre-VP0062-20260729-142152.bak`
+and
+`C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.pre-VP0062-20260729-142152.bak`.
+`C:\\Videoprocessor\\vp\\VideoProcessor.cfg` was deliberately left unchanged:
+the per-rule default is compiled in as 2%. The application was not started as
+part of deployment.
 
 ## User story
 
