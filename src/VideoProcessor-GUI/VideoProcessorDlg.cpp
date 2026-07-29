@@ -1800,7 +1800,10 @@ void CVideoProcessorDlg::OnBnClickedRendererReset()
 	
 	DebugLog::Log("UI: OnBnClickedRendererReset() - calling m_videoRenderer->Reset()");
 
-	RequestRendererReset(RendererResetReason::Manual, true, 0);
+	// A user Reset is an in-place source re-prime. Graph-scope Stop/Run is
+	// reserved for explicit lifecycle recovery such as post-start, display
+	// transitions, and a proven downstream delivery stall.
+	RequestRendererReset(RendererResetReason::Manual, false, 0);
 	
 	DebugLog::Log("UI: OnBnClickedRendererReset() - Reset() returned");
 }
@@ -2590,7 +2593,9 @@ void CVideoProcessorDlg::OnCommandRendererReset()
 {
 	if (m_videoRenderer)
 	{
-		RequestRendererReset(RendererResetReason::Manual, true, 0);
+		// Keep shortcut Reset semantically identical to the UI button: it must
+		// not rebuild or stop/run the graph in the normal case.
+		RequestRendererReset(RendererResetReason::Manual, false, 0);
 		DEBUGLOG("OnCommandRendererReset");
 	}
 }

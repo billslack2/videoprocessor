@@ -392,15 +392,51 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 		return;
 	}
 
-	// Preserve the graph, madVR instance, allocator, and negotiated media type.
-	// The source sends BeginFlush while the pins are active, then invokes the
-	// ingress barrier before it advances the queue epoch and re-primes the
-	// serialized streaming path. A failed transaction is surfaced to the reset
-	// coordinator, whose existing failure path requests a full Renderer Restart.
-	DebugLog::Log(
-		"DirectShowVideoRenderer::Reset() - starting in-place "
-		"BeginFlush/drain/EndFlush re-prime");
-	m_liveSource->ResetWithIngressDrain(drainAfterResetStarts);
+	// Graph-scope recovery is intentionally distinct from the UI Reset path.
+	// madVR needs a stopped/running graph re-prime after a newly-created graph,
+	// a display transition, or a proven delivery stall. UI Reset uses
+	// ResetLiveQueueWithIngressDrain instead and therefore stays in-place.
+	// Retain the graph, filter, allocator, negotiated media type, and window;
+	// only the DirectShow run state is cycled here. There is deliberately no
+	// arbitrary sleep in this path.
+	if (m_pControl)
+	{
+		DebugLog::Log(
+			"DirectShowVideoRenderer::Reset() - starting graph "
+			"Stop/drain/source-reset/Run re-prime");
+		const HRESULT stopHr = m_pControl->Stop();
+		if (FAILED(stopHr))
+		{
+			DebugLog::Log(
+				"DirectShowVideoRenderer::Reset() - Stop failed, hr=0x%08x",
+				stopHr);
+			throw std::runtime_error("DirectShow graph Stop failed");
+		}
+
+		// Stop releases a synchronous downstream Receive. Drain every ingress
+		// callback admitted before Reset before mutating source-owned queues.
+		if (drainAfterResetStarts)
+			drainAfterResetStarts();
+
+		m_liveSource->Reset();
+		const HRESULT runHr = m_pControl->Run();
+		if (FAILED(runHr))
+		{
+			DebugLog::Log(
+				"DirectShowVideoRenderer::Reset() - Run failed, hr=0x%08x",
+				runHr);
+			throw std::runtime_error("DirectShow graph Run failed");
+		}
+	}
+	else
+	{
+		// A graph-control-less renderer has no stop/run lifecycle to preserve;
+		// use the bounded in-place source transaction as its only safe option.
+		DebugLog::Log(
+			"DirectShowVideoRenderer::Reset() - no graph control; "
+			"using in-place source re-prime");
+		m_liveSource->ResetWithIngressDrain(drainAfterResetStarts);
+	}
 	
 	m_frameCounter = 0;
 	ResetPPMMeasurement();
