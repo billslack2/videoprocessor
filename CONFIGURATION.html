@@ -177,6 +177,10 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
       </ul>
       <p class="meta">Omitted means off. The debug log reports detector state and accepted geometry.</p>
     </article>
+    <article class="field" id="shader-stable-geometry-deadband" data-fields="shaders.*.stable_geometry_deadband_percent">
+      <h4><code>[shaders.*] stable_geometry_deadband_percent</code> <span class="badge">NLS geometry</span></h4>
+      <p>Default <code>2</code>; allowed range <code>0</code>–<code>5</code>. Retains an already trusted active-picture rectangle through a small measured boundary change. The allowance is capped across each full axis, so matching changes at two opposing edges cannot double it. This never promotes an untrusted crop. Keep the default unless measured content transitions make a larger value necessary.</p>
+    </article>
 
     <article class="field" id="command-line-newlldv" data-fields="command_line.newlldv">
       <h4><code>newlldv</code></h4>
