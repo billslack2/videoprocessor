@@ -20,6 +20,26 @@ session. The original reference capture still needs a matched reproduction,
 refresh-family coverage, and madVR/Alpha validation before deciding whether
 any code change is warranted.
 
+### Expert review outcome (2026-07-29)
+
+The supplied Cape Fear screenshot matches the 13:32 deployed log session. NLS
+was armed at 13:32:21 while the artwork generated asymmetric/unpaired dark-edge
+candidates (`classification=3`); it published trusted full raster at 13:32:27
+and madVR applied that same generation immediately, without a restart. The
+issue is therefore visible warm-up latency (about six seconds after arming),
+not a stale consumer or a safe crop being withheld indefinitely.
+
+Any improvement must preserve three separate outcomes: trusted crop, trusted
+full raster, and unavailable. Trusted crop still requires coherent opposing
+bars. A faster full-raster path must instead require positive, spatially
+distributed active-picture contact at the raster edge plus evidence that no
+coherent opposing pair exists; it must never be a fixed-timeout fallback.
+Fades, all-black, credits, overlays, and genuinely ambiguous material remain
+unavailable with a specific OSD reason. Candidate validation must cover
+23.976/24, 50, and 59.94/60 Hz, cold and transition arming, and both madVR and
+Alpha, while logging first eligible evidence, decision latency, publication and
+consumer generations, and renderer/queue/HDR health.
+
 ## User story
 
 As a Scope-screen user with NLS armed, I want a sustained 16:9 full-raster
