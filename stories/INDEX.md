@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0062`
-- Next story number: `VP-0063`
-- Total indexed items: 61
+- Last assigned item: `VP-0063`
+- Next story number: `VP-0064`
+- Total indexed items: 62
 
 ## Story locations
 
@@ -86,6 +86,7 @@ they must not contain requirements that are absent from this file.
 | VP-0060 | Done | Reduce madVR fullscreen transition latency with stable target ownership |
 | VP-0061 | In Progress | DirectShow in-place reset re-prime with asymmetric madVR queues |
 | VP-0062 | Backlog | NLS safe full-raster fallback for high-black UI and artwork |
+| VP-0063 | Backlog | Automatic Alpha-to-madVR handoff re-prime |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
