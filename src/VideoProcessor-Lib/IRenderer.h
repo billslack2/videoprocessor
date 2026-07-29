@@ -12,8 +12,10 @@
 #include <VideoFrame.h>
 #include <VideoState.h>
 #include <RendererLiveness.h>
+#include <RendererResetRequest.h>
 #include <SubtitleRepositionMode.h>
 #include <functional>
+#include <memory>
 #include <vector>
 
 namespace UnifiedProfileRuntime
@@ -125,6 +127,12 @@ public:
 	// Flush and re-prime only the live-source queue without rebuilding the
 	// renderer graph. Renderers without a live source may ignore this request.
 	virtual void ResetLiveQueue() {}
+
+	// Installs the closeable asynchronous reset-request endpoint associated
+	// with this renderer instance. Backends must never call UI or graph control
+	// directly while publishing a request.
+	virtual void SetResetRequestSink(
+		std::shared_ptr<IRendererResetRequestSink>) {}
 
 	//
 	// GUI

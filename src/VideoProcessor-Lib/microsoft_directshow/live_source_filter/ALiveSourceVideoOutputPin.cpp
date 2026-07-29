@@ -539,16 +539,15 @@ void ALiveSourceVideoOutputPin::Reset()
 
 void ALiveSourceVideoOutputPin::RequestCoordinatedReset(const char* reason)
 {
-	const bool firstRequest =
-		!m_coordinatedResetRequested.exchange(
-			true, std::memory_order_acq_rel);
-	m_coordinatedResetNotificationPending.store(
-		true, std::memory_order_release);
+	RendererResetRequest request;
+	request.reason = RendererResetReason::LivenessRecovery;
+	request.scope = RendererResetScope::Graph;
+	const bool firstRequest = m_resetRequestLatch.Request(request);
 	if (firstRequest)
 	{
 		DebugLog::Log(
 			"DirectShow source recovery requested: reason=%s "
-			"action=coordinate-on-ui",
+			"action=publish-to-reset-coordinator",
 			reason ? reason : "unknown");
 	}
 }

@@ -78,6 +78,8 @@ public:
 	void ResetWithIngressDrain(
 		const std::function<void()>& drainAfterGraphStop) override;
 	void ResetLiveQueue() override;
+	void SetResetRequestSink(
+		std::shared_ptr<IRendererResetRequestSink> sink) override;
 	void OnSize() override;
 	void SetFrameQueueMaxSize(size_t) override;
 	void SetSceneAwareTimingCorrection(bool) override;
@@ -151,6 +153,7 @@ protected:
 	IVideoFrameFormatter* m_videoFramFormatter = nullptr;
 	AM_MEDIA_TYPE m_pmt;
 	CLiveSource* m_liveSource = nullptr;
+	std::shared_ptr<IRendererResetRequestSink> m_resetRequestSink;
 	IBaseFilter* m_pLav = nullptr;
 	IBaseFilter* m_pRenderer = nullptr;
 

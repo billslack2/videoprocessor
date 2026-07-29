@@ -144,7 +144,13 @@
     <ClInclude Include="RendererLiveness.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="RendererResetCoordinator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="RendererResetPolicy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RendererResetRequest.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ITimingClock.h">
@@ -369,6 +375,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="RendererId.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RendererResetCoordinator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="StateVariables.cpp">

@@ -17,6 +17,7 @@
 #include <AutoPpmCalibrator.h>
 #include <IntegerMath.h>
 #include <RendererLiveness.h>
+#include <RendererResetRequestLatch.h>
 #include <SubtitleRepositionMode.h>
 
 #include "CLiveSource.h"
@@ -141,8 +142,12 @@ public:
 	}
 	bool ConsumeCoordinatedResetRequest()
 	{
-		return m_coordinatedResetNotificationPending.exchange(
-			false, std::memory_order_acq_rel);
+		return m_resetRequestLatch.ConsumeLegacyNotification();
+	}
+	void SetResetRequestSink(
+		std::shared_ptr<IRendererResetRequestSink> sink)
+	{
+		m_resetRequestLatch.SetSink(std::move(sink));
 	}
 
 	// Reset the internal state and the video stream.
@@ -512,16 +517,13 @@ protected:
 	void RequestCoordinatedReset(const char* reason);
 	bool CoordinatedResetRequested() const
 	{
-		return m_coordinatedResetRequested.load(std::memory_order_acquire);
+		return m_resetRequestLatch.Pending();
 	}
 	void CompleteCoordinatedReset()
 	{
-		m_coordinatedResetRequested.store(false, std::memory_order_release);
-		m_coordinatedResetNotificationPending.store(
-			false, std::memory_order_release);
+		m_resetRequestLatch.Complete();
 	}
-	std::atomic_bool m_coordinatedResetRequested = false;
-	std::atomic_bool m_coordinatedResetNotificationPending = false;
+	RendererResetRequestLatch m_resetRequestLatch;
 
 	// Frame duration statistics tracking
 	// These track the actual tick rate of timeStart/timeStop intervals

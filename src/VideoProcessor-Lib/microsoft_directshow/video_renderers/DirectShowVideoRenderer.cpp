@@ -61,6 +61,7 @@ DirectShowVideoRenderer::DirectShowVideoRenderer(
 
 DirectShowVideoRenderer::~DirectShowVideoRenderer()
 {
+	SetResetRequestSink({});
 	GraphTeardown();
 }
 
@@ -309,6 +310,15 @@ void DirectShowVideoRenderer::ResetLiveQueue()
 	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
 	m_resetReadyForReveal.store(true, std::memory_order_release);
 	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - complete");
+}
+
+
+void DirectShowVideoRenderer::SetResetRequestSink(
+	std::shared_ptr<IRendererResetRequestSink> sink)
+{
+	m_resetRequestSink = std::move(sink);
+	if (m_liveSource)
+		m_liveSource->SetResetRequestSink(m_resetRequestSink);
 }
 
 
@@ -916,6 +926,7 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 		throw std::runtime_error("Failed to build a CLiveSource");
 
 	m_liveSource->AddRef();
+	m_liveSource->SetResetRequestSink(m_resetRequestSink);
 
 	// Get the exact rational timing values from the DisplayMode
 	// These are used for Bresenham-style exact integer math in RATIONAL_RATIONAL mode
