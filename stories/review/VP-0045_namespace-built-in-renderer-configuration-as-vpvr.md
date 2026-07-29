@@ -2,10 +2,11 @@
 
 ## Status
 
-In Progress. Implementation started on 2026-07-28 from confirmed integration
-base `origin/v1.1.014-beta` at `15577fc` on branch
-`codex/vp-0045-vpvr-namespace`, using worktree
-`C:\Users\bslac\vp\worktrees\vp-0045-vpvr`.
+Review. Implemented on 2026-07-28 from confirmed integration base
+`origin/v1.1.014-beta` at `15577fc` on branch
+`codex/vp-0045-vpvr-namespace`, commit `110b37b`, using worktree
+`C:\Users\bslac\vp\worktrees\vp-0045-vpvr`. The branch is pushed to
+`origin/codex/vp-0045-vpvr-namespace`.
 
 Readiness review on 2026-07-28 found the naming goal sound but rejected the
 original whole-section migration because it conflicted with the unified profile
@@ -59,6 +60,11 @@ switch_refresh_rate: true
 output_diagnostics: false
 diagnostic_disable_shader_cache: false
 ```
+
+Profile groups are optional. If a group is omitted, it contributes no
+overrides and inherits `[vpvr.display]`; no empty `base` profile is required.
+A `[profiles.<group>.*]` section without its corresponding
+`[profile_groups.<group>]` declaration remains an orphan validation error.
 
 `[vpvr.display]` owns unconditional built-in-renderer treatment and output
 defaults. `[vpvr.general]` owns only cross-profile built-in-renderer session
@@ -246,6 +252,24 @@ removed by this story.
 - Effective rendering, profile persistence, viewport publication, DirectShow
   consumption, madVR behavior, and renderer-config path selection do not
   change.
+
+## Implementation evidence
+
+- Added a centralized, read-only renderer configuration view for canonical
+  `vpvr` ownership, legacy precedence, deterministic conflicts, and consumed
+  migration warnings.
+- Updated Alpha renderer reads, strict profile/schema validation, checked-in
+  configurations, migration examples, and HTML documentation.
+- Removed artificial empty input/scaling base profiles and added regression
+  coverage for optional groups and orphan-profile rejection.
+- Restored the previously used madVR HLSL assets (`Adaptive sharpen`,
+  `Debanding mild`, `Denoise`, and `Invert`) and added them to the Release
+  output. Generic non-NLS Alpha GLSL chains remain outside VP-0045 because the
+  current Alpha runtime accepts only typed NLS hooks; VP-0051 tracks that
+  runtime expansion.
+- x64 Release build completed successfully on 2026-07-28.
+- VSTest completed successfully: 191 passed, 0 failed.
+- `git diff --check` completed cleanly before the implementation commit.
 
 ## Readiness decision
 
