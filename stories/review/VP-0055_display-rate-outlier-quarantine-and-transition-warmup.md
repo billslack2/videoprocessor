@@ -2,25 +2,37 @@
 
 ## Status
 
-In Progress.
+Review.
 
-- Readiness review completed 2026-07-29. The current implementation centralizes
-  DXGI sampling and publication in `VideoProcessorDlg.cpp`; the existing
-  per-nominal override remains a final selection layer. The measurement
-  snapshot exposes the freshness, stability, raw cadence, compensation count,
-  and interval range needed for a deterministic validation policy.
-- The incident cause is understood: a short first wait can seed the estimated
-  period near half the real period, after which ordinary waits are rounded to
-  two intervals. The compensated rate then converges near 2x while the raw
-  cadence remains close to the Windows target-path nominal.
-- Completion boundary: validate candidates before publication, fail closed
-  during transition warm-up, reset poisoned measurements after material
-  mismatch, preserve configured overrides, make unavailable state explicit to
-  consumers and OSD, and cover the policy with deterministic unit tests.
+- Root cause confirmed: a short first wait could seed the estimator near half
+  the physical period, after which ordinary waits were rounded to two
+  intervals. Numerical stability then reinforced the false 2x result.
+- Implemented a deterministic candidate-validation policy covering freshness,
+  stability, raw cadence, interval range, target-path plausibility, and
+  harmonic compensation. Invalid candidates fail closed before OSD and
+  scene-aware consumers.
+- The Windows target-path family now seeds interval compensation but never
+  replaces measured fractional precision. Per-nominal configured overrides
+  remain authoritative and retain their OSD marker.
+- A material mismatch requests at most two fresh measurement generations per
+  monitor/target contract, allowing a newer credible result to replace a
+  poisoned cumulative estimate without an infinite reset loop.
+- OSD and decision diagnostics explicitly report warming, quarantined, or
+  unavailable state; logs include candidate/raw evidence, generation, age,
+  previous accepted value, reason, recalculation attempt, and blocked
+  consumers.
 - Confirmed implementation base: `v1.1.014-beta`
 - Implementation branch: `codex/vp-0055-display-rate-validation`
-- Clean worktree:
-  `C:\Users\bslac\vp\worktrees\vp-0055-display-rate-validation`
+- Source commit: `f70e868cc9ccf6f18dfcf3fc6e1c2906eb3e335a`
+- Draft PR: `https://github.com/billslack2/videoprocessor/pull/25`
+- Validation: x64 Release solution build passed with Visual Studio 18.7
+  MSBuild; the full native suite passed 205/205. Focused cases cover clean
+  23.976 and 59.94/60, explained scheduler gaps, startup zero, unstable,
+  stale, and non-finite candidates, the recorded 2x incident, and a real
+  refresh change.
+- Review focus: confirm tolerance/retry policy and exercise an Alpha <->
+  DirectShow/display-mode transition on the affected machine. Proposed
+  decision is merge after review and live transition validation.
 
 ## User story
 
