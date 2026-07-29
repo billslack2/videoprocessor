@@ -2,7 +2,25 @@
 
 ## Status
 
-Backlog. No implementation has started.
+In Progress.
+
+- Readiness review completed 2026-07-29. The current implementation centralizes
+  DXGI sampling and publication in `VideoProcessorDlg.cpp`; the existing
+  per-nominal override remains a final selection layer. The measurement
+  snapshot exposes the freshness, stability, raw cadence, compensation count,
+  and interval range needed for a deterministic validation policy.
+- The incident cause is understood: a short first wait can seed the estimated
+  period near half the real period, after which ordinary waits are rounded to
+  two intervals. The compensated rate then converges near 2x while the raw
+  cadence remains close to the Windows target-path nominal.
+- Completion boundary: validate candidates before publication, fail closed
+  during transition warm-up, reset poisoned measurements after material
+  mismatch, preserve configured overrides, make unavailable state explicit to
+  consumers and OSD, and cover the policy with deterministic unit tests.
+- Confirmed implementation base: `v1.1.014-beta`
+- Implementation branch: `codex/vp-0055-display-rate-validation`
+- Clean worktree:
+  `C:\Users\bslac\vp\worktrees\vp-0055-display-rate-validation`
 
 ## User story
 
