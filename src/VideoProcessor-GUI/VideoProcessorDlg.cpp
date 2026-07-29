@@ -3790,7 +3790,9 @@ void CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 	const bool wasVisible = m_rendererTransitionWindow.IsVisible();
 	try
 	{
-		m_rendererTransitionWindow.Show(m_rendererTargetHwnd);
+		m_rendererTransitionWindow.Show(
+			m_rendererTargetHwnd,
+			GetSafeHwnd());
 	}
 	catch (const std::exception& e)
 	{
@@ -3809,23 +3811,37 @@ void CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 	if (!wasVisible)
 		m_transitionBlackStartTick = GetTickCount64();
 
+	// Showing an opaque popup forces a retired DirectFlip/MPO surface back
+	// through desktop composition. Wait for that transition to reach a present
+	// boundary before the renderer is stopped or its target HWND is replaced.
+	// This is deliberately confined to renderer lifecycle transitions.
+	const ULONGLONG compositionSyncStart = GetTickCount64();
+	const HRESULT compositionSyncResult =
+		m_rendererTransitionWindow.SynchronizeComposition();
+	const ULONGLONG compositionSyncMs =
+		GetTickCount64() - compositionSyncStart;
+
 	const LONG_PTR style = GetWindowLongPtr(m_rendererTargetHwnd, GWL_STYLE);
 	DebugLog::Log(
 		"Renderer transition: process=%lu generation=%u event=black-shown "
-		"reason=%s renderer=%S target=%p cover=%p parent=%p root=%p owner=%p "
-		"fullscreen=%d windowed_fullscreen=%d style=0x%p",
+		"reason=%s renderer=%S target=%p cover=%p cover_owner=%p parent=%p "
+		"root=%p owner=%p fullscreen=%d windowed_fullscreen=%d style=0x%p "
+		"composition_sync=0x%08lx composition_sync_ms=%llu",
 		GetCurrentProcessId(),
 		m_rendererGeneration.load(std::memory_order_acquire),
 		reason ? reason : "unknown",
 		static_cast<LPCTSTR>(m_activeRendererName),
 		m_rendererTargetHwnd,
 		m_rendererTransitionWindow.GetHWND(),
+		m_rendererTransitionWindow.GetOwnerHWND(),
 		::GetParent(m_rendererTargetHwnd),
 		::GetAncestor(m_rendererTargetHwnd, GA_ROOT),
 		::GetWindow(m_rendererTargetHwnd, GW_OWNER),
 		m_rendererFullscreenCheck.GetCheck() ? 1 : 0,
 		m_windowedFullScreenMode ? 1 : 0,
-		reinterpret_cast<void*>(style));
+		reinterpret_cast<void*>(style),
+		static_cast<unsigned long>(compositionSyncResult),
+		static_cast<unsigned long long>(compositionSyncMs));
 }
 
 
@@ -3842,6 +3858,15 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 	}
 
 	const char* evidence = m_videoRenderer->PresentedLiveFrameEvidence();
+	// The renderer's successful submission can still be queued behind the
+	// compositor. Keep black above it through one composition boundary so
+	// hiding the cover cannot briefly expose the retired surface.
+	m_rendererTransitionWindow.KeepOnTop();
+	const ULONGLONG compositionSyncStart = GetTickCount64();
+	const HRESULT compositionSyncResult =
+		m_rendererTransitionWindow.SynchronizeComposition();
+	const ULONGLONG compositionSyncMs =
+		GetTickCount64() - compositionSyncStart;
 	const uint64_t blackDurationMs =
 		m_transitionBlackStartTick > 0
 			? GetTickCount64() - m_transitionBlackStartTick
@@ -3850,13 +3875,16 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 	m_rendererTransitionWindow.Hide();
 	DebugLog::Log(
 		"Renderer transition: process=%lu generation=%u event=first-live-frame-reveal "
-		"renderer=%S target=%p evidence=%s black_ms=%llu",
+		"renderer=%S target=%p evidence=%s black_ms=%llu "
+		"composition_sync=0x%08lx composition_sync_ms=%llu",
 		GetCurrentProcessId(),
 		generation,
 		static_cast<LPCTSTR>(m_activeRendererName),
 		m_rendererTargetHwnd,
 		evidence ? evidence : "unknown",
-		static_cast<unsigned long long>(blackDurationMs));
+		static_cast<unsigned long long>(blackDurationMs),
+		static_cast<unsigned long>(compositionSyncResult),
+		static_cast<unsigned long long>(compositionSyncMs));
 }
 
 
