@@ -18,7 +18,7 @@ black-show, old-surface retirement, and first-live-frame reveal.
 Real-world validation found that the stale-frame issue still exists, although
 less frequently, so this story was reopened on July 28, 2026. Implementation
 resumed on branch `codex/vp-0041-reopen` from the current default branch
-`v1.1.014-beta`, using the isolated worktree
+`v1.1.015-beta`, using the isolated worktree
 `C:\Users\bslac\vp\worktrees\vp-0041-reopen`.
 
 The deployed rotated logs establish that the original black cover is a child
