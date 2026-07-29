@@ -2,9 +2,13 @@
 
 ## Status
 
-Backlog. This is an evidence-led investigation and recovery-design story. Do
+In progress. This is an evidence-led investigation and recovery-design story. Do
 not alter normal queue sizing, buffering, or reset timing merely to make the
 symptom disappear.
+
+Implementation began on 2026-07-28 from the current repository default branch
+`v1.1.014-beta`. Investigation is focused first on reset-request arbitration,
+worker/UI liveness evidence, and the manual-reset-equivalent recovery boundary.
 
 ## User story
 
