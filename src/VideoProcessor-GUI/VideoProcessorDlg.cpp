@@ -64,6 +64,7 @@ const TCHAR* ToString(RendererResetReason reason)
 	case RendererResetReason::QueueSizeChange: return TEXT("queue-size-change");
 	case RendererResetReason::TimingOffsetChange: return TEXT("timing-offset-change");
 	case RendererResetReason::QueuePressure: return TEXT("queue-pressure");
+	case RendererResetReason::QueueCapacity: return TEXT("queue-capacity");
 	case RendererResetReason::LivenessRecovery: return TEXT("liveness-recovery");
 	default: return TEXT("none");
 	}
@@ -2354,14 +2355,10 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		g_displayRefreshRateSampler->ResetMeasurement();
 		// A newly constructed Alpha queue/swapchain is already clean and can
 		// reveal on its first verified submit. DirectShow retains the proven
-		// stop/reset/run re-prime, but first-current-frame evidence may bring
-		// its deadline forward instead of holding black for an arbitrary delay.
+		// stop/reset/run re-prime after its full configured settling delay.
 		const bool postStartRequiresGraph =
 			m_postRendererStartRequiresGraph;
 		m_postRendererStartRequiresGraph = true;
-		m_postStartResetCanAccelerate =
-			m_activeRendererIsDirectShow &&
-			windowSettleDelayMs == 0;
 		if (m_activeRendererIsDirectShow)
 		{
 			RequestRendererReset(RendererResetReason::PostRendererStart,
@@ -3642,7 +3639,6 @@ void CVideoProcessorDlg::CaptureGUIClear()
 void CVideoProcessorDlg::RenderStart()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStart(): Begin")));
-	m_postStartResetCanAccelerate = false;
 
 	assert(!m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_UNKNOWN ||
@@ -4482,17 +4478,13 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 
 void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 {
-	const bool resetPending =
+	bool resetBlocksReveal =
 		m_rendererResetCoordinator &&
 		m_rendererResetCoordinator->BlocksReveal(generation);
-	const bool currentFrameReady =
-		generation == m_transitionGeneration &&
-		generation == m_rendererGeneration.load(std::memory_order_acquire) &&
-		m_videoRenderer &&
-		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
-		m_videoRenderer->HasPresentedLiveFrame();
-	if (resetPending && currentFrameReady &&
-		m_postStartResetCanAccelerate)
+	// The post-start re-prime is deliberately delayed.  It must not keep the
+	// newly live renderer black while its deadline is pending; only the reset
+	// transaction itself should cover the output when it begins.
+	if (resetBlocksReveal)
 	{
 		const RendererResetCoordinator::Diagnostics diagnostics =
 			m_rendererResetCoordinator->GetDiagnostics();
@@ -4502,29 +4494,20 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			diagnostics.pendingReason ==
 				RendererResetReason::PostRendererStart)
 		{
-			m_postStartResetCanAccelerate = false;
-			const bool requiresGraph =
-				diagnostics.pendingScope ==
-					RendererResetScope::Graph;
-			DebugLog::Log(
-				"Post-start reset accelerated by first-current-frame evidence: "
-				"renderer=%S generation=%u scope=%s old_deadline=%llu now=%llu",
-				static_cast<LPCTSTR>(m_activeRendererName),
-				generation, requiresGraph ? "graph" : "live-queue",
-				static_cast<unsigned long long>(
-					diagnostics.pendingDeadlineTick),
-				static_cast<unsigned long long>(GetTickCount64()));
-			RequestRendererReset(
-				RendererResetReason::PostRendererStart,
-				requiresGraph, 0);
+			resetBlocksReveal = false;
 		}
-		return;
 	}
+	const bool currentFrameReady =
+		generation == m_transitionGeneration &&
+		generation == m_rendererGeneration.load(std::memory_order_acquire) &&
+		m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_videoRenderer->HasPresentedLiveFrame();
 	if (generation != m_transitionGeneration ||
 		generation != m_rendererGeneration.load(std::memory_order_acquire) ||
 		!m_videoRenderer ||
 		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
-		resetPending ||
+		resetBlocksReveal ||
 		!currentFrameReady ||
 		!m_rendererTransitionWindow.IsVisible())
 	{
@@ -6936,6 +6919,8 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	{
 		m_consecutiveFullSeconds = 0;
 		m_consecutiveStuckSeconds = 0;
+		m_queuePressureRecoveryRequested = false;
+		m_queueCapacityRecoveryRequested = false;
 		return;
 	}
 
@@ -6964,6 +6949,39 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 			convertedQueueSize, queueMaxSize);
 		RequestRendererReset(RendererResetReason::QueuePressure, false, 0);
 		return;
+	}
+
+	// The configured threshold is an active recovery policy, not merely a
+	// diagnostic. Schedule once when either DirectShow queue crosses it. If a
+	// queue reaches its hard capacity before that deadline, escalate the same
+	// serialized graph re-prime immediately.
+	if (autoReset && m_activeRendererIsDirectShow)
+	{
+		if (atCapacity)
+		{
+			if (!m_queueCapacityRecoveryRequested)
+			{
+				DEBUGLOG(
+					"Queue capacity recovery requested: raw=%zu/%zu converted=%zu/%zu",
+					rawQueueSize, queueMaxSize,
+					convertedQueueSize, queueMaxSize);
+				m_queueCapacityRecoveryRequested = true;
+				RequestRendererReset(
+					RendererResetReason::QueueCapacity, true, 0);
+			}
+		}
+		else if (!m_queuePressureRecoveryRequested)
+		{
+			DEBUGLOG(
+				"Queue high-water recovery scheduled: raw=%zu/%zu converted=%zu/%zu delay=%ds",
+				rawQueueSize, queueMaxSize,
+				convertedQueueSize, queueMaxSize,
+				m_queueResetDelaySeconds);
+			m_queuePressureRecoveryRequested = true;
+			RequestRendererReset(
+				RendererResetReason::QueuePressure, true,
+				static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+		}
 	}
 
 	RendererLivenessSnapshot liveness;

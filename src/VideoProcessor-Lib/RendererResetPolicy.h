@@ -12,6 +12,7 @@ enum class RendererResetReason
 	QueueSizeChange,
 	TimingOffsetChange,
 	QueuePressure,
+	QueueCapacity,
 	LivenessRecovery,
 };
 
@@ -21,6 +22,7 @@ constexpr int RendererResetPriority(RendererResetReason reason)
 	{
 	case RendererResetReason::Manual: return 100;
 	case RendererResetReason::LivenessRecovery: return 90;
+	case RendererResetReason::QueueCapacity: return 90;
 	case RendererResetReason::PostRendererStart: return 80;
 	case RendererResetReason::DisplayTransition: return 70;
 	case RendererResetReason::Resize: return 60;
