@@ -2,8 +2,9 @@
 
 ## Status
 
-In progress (2026-07-29). This is a focused NLS detector/usability follow-up
-to VP-0040, not a request to weaken trusted crop authority.
+Done (2026-07-29). This focused NLS detector/usability follow-up to VP-0040
+was implemented, validated, deployed, and merged without weakening trusted
+crop authority.
 
 ## Initial investigation
 
