@@ -11,6 +11,7 @@
 
 #include <VideoFrame.h>
 #include <VideoState.h>
+#include <RendererLiveness.h>
 #include <SubtitleRepositionMode.h>
 #include <vector>
 
@@ -91,6 +92,11 @@ public:
 	// successful submit/present boundary.
 	virtual bool HasPresentedLiveFrame() const { return false; }
 	virtual const char* PresentedLiveFrameEvidence() const { return "unavailable"; }
+	virtual bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const
+	{
+		snapshot = {};
+		return false;
+	}
 
 	// Handler for windows events for the graph's pEvent
 	virtual HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) = 0;
