@@ -16,6 +16,7 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <iomanip>
 #include <mutex>
 #include <sstream>
 #include <thread>
@@ -40,6 +41,7 @@
 #endif
 #include <guid.h>
 #include <ConfigFile.h>
+#include <DisplayRefreshRatePolicy.h>
 #include <RendererProfileConfig.h>
 #include <UnifiedProfileRuntime.h>
 
@@ -435,6 +437,7 @@ struct DisplayTimingSnapshot
 	int64_t maximumWaitIntervalQpc = 0;
 	uint64_t intervalsObserved = 0;
 	uint64_t rawWaitIntervalsObserved = 0;
+	uint64_t generation = 0;
 	bool rateStable = false;
 	bool dwmCompositionEnabled = false;
 	HRESULT dwmTimingResult = E_FAIL;
@@ -526,18 +529,25 @@ public:
 				return;
 			m_window = hwnd;
 			m_monitor = monitor;
+			m_nominalRateHz = 0.0;
 			++m_targetGeneration;
-			m_rate = 0.0;
-			m_rateMeasuredQpc = 0;
-			m_measurementStartedQpc = 0;
-			m_intervalsObserved = 0;
-			m_rawWaitRate = 0.0;
-			m_minimumWaitIntervalQpc = 0;
-			m_maximumWaitIntervalQpc = 0;
-			m_rawWaitIntervalsObserved = 0;
-			m_rateStable = false;
-			m_lastVBlankQpc.store(0, std::memory_order_release);
-			m_refreshPeriodQpc.store(0, std::memory_order_release);
+			ClearMeasurementLocked();
+		}
+		m_wake.notify_one();
+	}
+
+	void SetNominalRate(double nominalRateHz)
+	{
+		const double normalizedRate =
+			std::isfinite(nominalRateHz) && nominalRateHz >= 10.0 &&
+			nominalRateHz <= 240.0 ? nominalRateHz : 0.0;
+		{
+			std::lock_guard<std::mutex> lock(m_mutex);
+			if (std::fabs(m_nominalRateHz - normalizedRate) < 0.01)
+				return;
+			m_nominalRateHz = normalizedRate;
+			++m_targetGeneration;
+			ClearMeasurementLocked();
 		}
 		m_wake.notify_one();
 	}
@@ -547,17 +557,7 @@ public:
 		{
 			std::lock_guard<std::mutex> lock(m_mutex);
 			++m_targetGeneration;
-			m_rate = 0.0;
-			m_rateMeasuredQpc = 0;
-			m_measurementStartedQpc = 0;
-			m_intervalsObserved = 0;
-			m_rawWaitRate = 0.0;
-			m_minimumWaitIntervalQpc = 0;
-			m_maximumWaitIntervalQpc = 0;
-			m_rawWaitIntervalsObserved = 0;
-			m_rateStable = false;
-			m_lastVBlankQpc.store(0, std::memory_order_release);
-			m_refreshPeriodQpc.store(0, std::memory_order_release);
+			ClearMeasurementLocked();
 		}
 		m_wake.notify_one();
 	}
@@ -594,11 +594,27 @@ public:
 		result.minimumWaitIntervalQpc = m_minimumWaitIntervalQpc;
 		result.maximumWaitIntervalQpc = m_maximumWaitIntervalQpc;
 		result.rawWaitIntervalsObserved = m_rawWaitIntervalsObserved;
+		result.generation = m_targetGeneration;
 		result.rateStable = m_rateStable;
 		return result;
 	}
 
 private:
+	void ClearMeasurementLocked()
+	{
+		m_rate = 0.0;
+		m_rateMeasuredQpc = 0;
+		m_measurementStartedQpc = 0;
+		m_intervalsObserved = 0;
+		m_rawWaitRate = 0.0;
+		m_minimumWaitIntervalQpc = 0;
+		m_maximumWaitIntervalQpc = 0;
+		m_rawWaitIntervalsObserved = 0;
+		m_rateStable = false;
+		m_lastVBlankQpc.store(0, std::memory_order_release);
+		m_refreshPeriodQpc.store(0, std::memory_order_release);
+	}
+
 	static bool FindOutput(HMONITOR monitor, ComPtr<IDXGIOutput>& result)
 	{
 		ComPtr<IDXGIFactory1> factory;
@@ -643,12 +659,14 @@ private:
 		{
 			HMONITOR monitor = nullptr;
 			HWND window = nullptr;
+			double nominalRateHz = 0.0;
 			uint64_t targetGeneration = 0;
 			{
 				std::unique_lock<std::mutex> lock(m_mutex);
 				m_wake.wait(lock, [this] { return m_monitor != nullptr; });
 				monitor = m_monitor;
 				window = m_window;
+				nominalRateHz = m_nominalRateHz;
 				targetGeneration = m_targetGeneration;
 			}
 
@@ -679,6 +697,12 @@ private:
 			LARGE_INTEGER last = {};
 			LARGE_INTEGER previous = {};
 			long double estimatedRefreshPeriodQpc = 0.0L;
+			if (nominalRateHz > 0.0)
+			{
+				estimatedRefreshPeriodQpc =
+					static_cast<long double>(frequency.QuadPart) /
+					static_cast<long double>(nominalRateHz);
+			}
 			uint64_t intervals = 0;
 			uint64_t rawWaitIntervals = 0;
 			int64_t minimumWaitIntervalQpc = 0;
@@ -811,6 +835,7 @@ private:
 	std::thread m_thread;
 	HWND m_window = nullptr;
 	HMONITOR m_monitor = nullptr;
+	double m_nominalRateHz = 0.0;
 	uint64_t m_targetGeneration = 0;
 	double m_rate = 0.0;
 	double m_rawWaitRate = 0.0;
@@ -5448,6 +5473,11 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	// even when DWM timing is available. Scene Detect uses the sampler's phase
 	// only while enabled; otherwise it remains on its low-overhead cadence.
 	g_displayRefreshRateSampler->SetWindow(displayWindow);
+	const double activeTargetRefreshRate =
+		GetActiveTargetRefreshRate(displayWindow);
+	// Seed interval compensation from the configured path family. The selected
+	// value still comes only from measured DXGI samples after validation.
+	g_displayRefreshRateSampler->SetNominalRate(activeTargetRefreshRate);
 	g_displayRefreshRateSampler->SetPhaseTracking(m_sceneAwareTimingCorrection);
 	// DWM provides a useful current phase, but qpcRefreshPeriod is effectively
 	// the nominal compositor period rather than the measured physical display
@@ -5464,8 +5494,32 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		qpcNow.QuadPart >= sampledDisplayTiming.rateMeasuredQpc &&
 		(qpcNow.QuadPart - sampledDisplayTiming.rateMeasuredQpc) <=
 			sampledDisplayTiming.qpcFrequency * 20;
+	const double rawWaitMinimumMs =
+		sampledDisplayTiming.qpcFrequency > 0 &&
+		sampledDisplayTiming.minimumWaitIntervalQpc > 0 ?
+		static_cast<double>(sampledDisplayTiming.minimumWaitIntervalQpc) * 1000.0 /
+			static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
+	const double rawWaitMaximumMs =
+		sampledDisplayTiming.qpcFrequency > 0 &&
+		sampledDisplayTiming.maximumWaitIntervalQpc > 0 ?
+		static_cast<double>(sampledDisplayTiming.maximumWaitIntervalQpc) * 1000.0 /
+			static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
+	DisplayRefreshRateInput displayRateInput;
+	displayRateInput.candidateRateHz = sampledDisplayTiming.refreshRateHz;
+	displayRateInput.rawWaitRateHz = sampledDisplayTiming.rawWaitRateHz;
+	displayRateInput.nominalRateHz = activeTargetRefreshRate;
+	displayRateInput.minimumWaitIntervalMs = rawWaitMinimumMs;
+	displayRateInput.maximumWaitIntervalMs = rawWaitMaximumMs;
+	displayRateInput.compensatedIntervals =
+		sampledDisplayTiming.intervalsObserved;
+	displayRateInput.rawWaitIntervals =
+		sampledDisplayTiming.rawWaitIntervalsObserved;
+	displayRateInput.fresh = sampledRateIsFresh;
+	displayRateInput.stable = sampledDisplayTiming.rateStable;
+	const DisplayRefreshRateResult displayRateResult =
+		EvaluateDisplayRefreshRate(displayRateInput);
 	const double measuredDisplayRefreshRate =
-		sampledRateIsFresh ? sampledDisplayTiming.refreshRateHz : 0.0;
+		displayRateResult.selectedRateHz;
 	const double nominalInputRefreshRate =
 		m_captureDeviceVideoState && m_captureDeviceVideoState->valid &&
 		m_captureDeviceVideoState->displayMode ?
@@ -5477,63 +5531,139 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			configuredDisplayRefreshRate, matchedOverrideNominalRate);
 	const double displayRefreshRate = displayRefreshRateOverridden ?
 		configuredDisplayRefreshRate : measuredDisplayRefreshRate;
-	const double activeTargetRefreshRate =
-		GetActiveTargetRefreshRate(displayWindow);
 	const std::wstring monitorDeviceName = GetMonitorDeviceName(displayWindow);
-	const double rawWaitMinimumMs =
-		sampledDisplayTiming.qpcFrequency > 0 &&
-		sampledDisplayTiming.minimumWaitIntervalQpc > 0 ?
-		static_cast<double>(sampledDisplayTiming.minimumWaitIntervalQpc) * 1000.0 /
-			static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
-	const double rawWaitMaximumMs =
-		sampledDisplayTiming.qpcFrequency > 0 &&
-		sampledDisplayTiming.maximumWaitIntervalQpc > 0 ?
-		static_cast<double>(sampledDisplayTiming.maximumWaitIntervalQpc) * 1000.0 /
-			static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
 	const double dxgiTargetMismatchPpm =
-		measuredDisplayRefreshRate > 0.0 && activeTargetRefreshRate > 0.0 ?
-			(measuredDisplayRefreshRate / activeTargetRefreshRate - 1.0) * 1000000.0 : 0.0;
+		sampledDisplayTiming.refreshRateHz > 0.0 &&
+		activeTargetRefreshRate > 0.0 ?
+			(sampledDisplayTiming.refreshRateHz /
+				activeTargetRefreshRate - 1.0) * 1000000.0 : 0.0;
 
-	// Keep a compact record of all available display-timing sources.  This is
-	// diagnostic only: DXGI remains the source used by Scene Detect, while DWM
-	// and the configured desktop mode let us identify driver/compositor cases
-	// where its vblank wakeups are not the panel cadence.
-	static double lastLoggedDxgiRate = 0.0;
+	// A large mismatch can poison the cumulative estimator indefinitely. Start
+	// a bounded number of fresh generations for the same display contract so a
+	// newer credible measurement can replace it without creating a reset loop.
+	static std::wstring recoveryMonitorDeviceName;
+	static double recoveryTargetRate = 0.0;
+	static unsigned int recoveryAttempts = 0;
+	static ULONGLONG lastRecoveryTick = 0;
+	const ULONGLONG displayTimingLogTick = GetTickCount64();
+	const bool recoveryContractChanged =
+		recoveryMonitorDeviceName != monitorDeviceName ||
+		std::fabs(recoveryTargetRate - activeTargetRefreshRate) >= 0.01;
+	if (recoveryContractChanged)
+	{
+		recoveryMonitorDeviceName = monitorDeviceName;
+		recoveryTargetRate = activeTargetRefreshRate;
+		recoveryAttempts = 0;
+		lastRecoveryTick = 0;
+	}
+	if (displayRateResult.decision == DisplayRefreshRateDecision::Accepted)
+		recoveryAttempts = 0;
+	bool recoveryRequested = false;
+	if (displayRateResult.shouldRecalculate && recoveryAttempts < 2 &&
+		(lastRecoveryTick == 0 ||
+			displayTimingLogTick - lastRecoveryTick >= 5000))
+	{
+		g_displayRefreshRateSampler->ResetMeasurement();
+		++recoveryAttempts;
+		lastRecoveryTick = displayTimingLogTick;
+		recoveryRequested = true;
+	}
+
+	// Log material rate decisions and a bounded periodic warm-up record. DXGI
+	// remains the measured source; DWM and the target path are cross-checks.
+	static double lastLoggedCandidateRate = 0.0;
 	static double lastLoggedDwmPeriodRate = 0.0;
 	static double lastLoggedDwmAdvertisedRate = 0.0;
 	static double lastLoggedTargetRate = 0.0;
 	static double lastLoggedSelectedRate = 0.0;
+	static DisplayRefreshRateDecision lastLoggedDecision =
+		DisplayRefreshRateDecision::Unavailable;
+	static DisplayRefreshRateReason lastLoggedReason =
+		DisplayRefreshRateReason::NoSamples;
+	static uint64_t lastLoggedGeneration = 0;
 	static bool lastLoggedOverrideActive = false;
 	static ULONGLONG lastDisplayTimingLogTick = 0;
-	const ULONGLONG displayTimingLogTick = GetTickCount64();
+	static double lastAcceptedMeasuredRate = 0.0;
+	static uint64_t lastAcceptedGeneration = 0;
+	static ULONGLONG lastAcceptedTick = 0;
 	const auto rateChanged = [](double previous, double current) {
 		return (previous <= 0.0) != (current <= 0.0) ||
 			(previous > 0.0 && current > 0.0 &&
 				fabs(previous - current) / previous >= 0.0001);
 	};
-	if (measuredDisplayRefreshRate > 0.0 || displayRefreshRateOverridden ||
+	if (sampledDisplayTiming.refreshRateHz > 0.0 ||
+		displayRefreshRateOverridden ||
 		displayTiming.refreshRateHz > 0.0 ||
 		activeTargetRefreshRate > 0.0)
 	{
+		const ULONGLONG periodicLogInterval =
+			displayRateResult.decision == DisplayRefreshRateDecision::Accepted ?
+			30000 : 5000;
 		const bool shouldLogDisplayTiming = lastDisplayTimingLogTick == 0 ||
-			displayTimingLogTick - lastDisplayTimingLogTick >= 30000 ||
-			rateChanged(lastLoggedDxgiRate, measuredDisplayRefreshRate) ||
+			displayTimingLogTick - lastDisplayTimingLogTick >=
+				periodicLogInterval ||
+			rateChanged(lastLoggedCandidateRate,
+				sampledDisplayTiming.refreshRateHz) ||
 			rateChanged(lastLoggedDwmPeriodRate, displayTiming.refreshRateHz) ||
 			rateChanged(lastLoggedDwmAdvertisedRate,
 				displayTiming.advertisedRefreshRateHz) ||
 			rateChanged(lastLoggedTargetRate, activeTargetRefreshRate) ||
 			rateChanged(lastLoggedSelectedRate, displayRefreshRate) ||
+			lastLoggedDecision != displayRateResult.decision ||
+			lastLoggedReason != displayRateResult.reason ||
+			lastLoggedGeneration != sampledDisplayTiming.generation ||
+			recoveryRequested ||
 			lastLoggedOverrideActive != displayRefreshRateOverridden;
 		if (shouldLogDisplayTiming)
 		{
+			std::ostringstream selectedRateText;
+			const char* selectedSource = "measured unavailable";
+			if (displayRefreshRateOverridden)
+			{
+				selectedRateText << std::fixed << std::setprecision(6)
+					<< configuredDisplayRefreshRate << " Hz";
+				selectedSource = "CONFIG OVERRIDE";
+			}
+			else if (measuredDisplayRefreshRate > 0.0)
+			{
+				selectedRateText << std::fixed << std::setprecision(6)
+					<< measuredDisplayRefreshRate << " Hz";
+				selectedSource = "measured DXGI";
+			}
+			else
+			{
+				selectedRateText << "---";
+			}
+			const double candidateAgeSeconds =
+				sampledDisplayTiming.qpcFrequency > 0 &&
+				sampledDisplayTiming.rateMeasuredQpc > 0 &&
+				qpcNow.QuadPart >= sampledDisplayTiming.rateMeasuredQpc ?
+				static_cast<double>(qpcNow.QuadPart -
+					sampledDisplayTiming.rateMeasuredQpc) /
+					static_cast<double>(sampledDisplayTiming.qpcFrequency) :
+				0.0;
+			const double previousSelectedAgeSeconds =
+				lastAcceptedTick > 0 &&
+				displayTimingLogTick >= lastAcceptedTick ?
+				static_cast<double>(displayTimingLogTick -
+					lastAcceptedTick) / 1000.0 : 0.0;
+			const char* preventedConsumers =
+				displayRefreshRateOverridden ||
+				displayRateResult.decision ==
+					DisplayRefreshRateDecision::Accepted ?
+				"none" : "OSD,scene-aware,PPM/delivery";
 			DebugLog::Log(
 				"Display timing sources: monitor=%ls; DXGI WaitForVBlank=%.6f Hz "
 					"(fresh=%d stable=%d compensated=%llu raw=%.6f Hz rawCount=%llu "
 					"rawGap=%.3f..%.3fms); DWM period=%.6f Hz advertised=%.6f Hz "
 					"composition=%d result=0x%08lX; Windows target path=%.6f Hz; "
-					"DXGI-target=%+.1f ppm; selected=%.6f Hz (%s%s)",
+					"DXGI-target=%+.1f ppm; generation=%llu candidateAge=%.1fs; "
+					"previous=%.6f Hz generation=%llu age=%.1fs; "
+					"decision=%s reason=\"%s\" recalculate=%d attempt=%u/2; "
+					"selected=%s (%s%s); prevented=%s",
 				monitorDeviceName.c_str(),
-				measuredDisplayRefreshRate, sampledRateIsFresh ? 1 : 0,
+				sampledDisplayTiming.refreshRateHz,
+				sampledRateIsFresh ? 1 : 0,
 				sampledDisplayTiming.rateStable ? 1 : 0,
 				static_cast<unsigned long long>(sampledDisplayTiming.intervalsObserved),
 				sampledDisplayTiming.rawWaitRateHz,
@@ -5545,20 +5675,46 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				static_cast<unsigned long>(displayTiming.dwmTimingResult),
 				activeTargetRefreshRate,
 				dxgiTargetMismatchPpm,
-				displayRefreshRate,
-				displayRefreshRateOverridden ? "CONFIG OVERRIDE nominal=" : "measured DXGI",
-				displayRefreshRateOverridden ? std::to_string(matchedOverrideNominalRate).c_str() : "");
-			lastLoggedDxgiRate = measuredDisplayRefreshRate;
+				static_cast<unsigned long long>(
+					sampledDisplayTiming.generation),
+				candidateAgeSeconds,
+				lastAcceptedMeasuredRate,
+				static_cast<unsigned long long>(lastAcceptedGeneration),
+				previousSelectedAgeSeconds,
+				ToString(displayRateResult.decision),
+				ToString(displayRateResult.reason),
+				recoveryRequested ? 1 : 0,
+				recoveryAttempts,
+				selectedRateText.str().c_str(),
+				selectedSource,
+				displayRefreshRateOverridden ?
+					(std::string(" nominal=") +
+						std::to_string(matchedOverrideNominalRate)).c_str() :
+					"",
+				preventedConsumers);
+			lastLoggedCandidateRate =
+				sampledDisplayTiming.refreshRateHz;
 			lastLoggedDwmPeriodRate = displayTiming.refreshRateHz;
 			lastLoggedDwmAdvertisedRate = displayTiming.advertisedRefreshRateHz;
 			lastLoggedTargetRate = activeTargetRefreshRate;
 			lastLoggedSelectedRate = displayRefreshRate;
+			lastLoggedDecision = displayRateResult.decision;
+			lastLoggedReason = displayRateResult.reason;
+			lastLoggedGeneration = sampledDisplayTiming.generation;
 			lastLoggedOverrideActive = displayRefreshRateOverridden;
 			lastDisplayTimingLogTick = displayTimingLogTick;
 		}
 	}
+	if (displayRateResult.decision == DisplayRefreshRateDecision::Accepted &&
+		(lastAcceptedGeneration != sampledDisplayTiming.generation ||
+			rateChanged(lastAcceptedMeasuredRate, measuredDisplayRefreshRate)))
+	{
+		lastAcceptedMeasuredRate = measuredDisplayRefreshRate;
+		lastAcceptedGeneration = sampledDisplayTiming.generation;
+		lastAcceptedTick = displayTimingLogTick;
+	}
 	const bool sceneTimingReady =
-		sampledRateIsFresh && sampledDisplayTiming.rateStable;
+		displayRateResult.decision == DisplayRefreshRateDecision::Accepted;
 	const double sceneTimingElapsedSeconds =
 		sampledDisplayTiming.qpcFrequency > 0 &&
 		sampledDisplayTiming.measurementStartedQpc > 0 &&
@@ -5644,6 +5800,13 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
 		stats.displayRefreshRate = displayRefreshRate;
 		stats.displayRefreshRateOverridden = displayRefreshRateOverridden;
+		if (!displayRefreshRateOverridden &&
+			displayRateResult.decision !=
+				DisplayRefreshRateDecision::Accepted)
+		{
+			stats.displayRefreshRateStatus.Format(TEXT("%S"),
+				ToString(displayRateResult.decision));
+		}
 		stats.sceneTimingIntervals = sampledDisplayTiming.intervalsObserved;
 		stats.sceneTimingElapsedSeconds = sceneTimingElapsedSeconds;
 		stats.sceneTimingReady = sceneTimingReady;
