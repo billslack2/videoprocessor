@@ -4363,18 +4363,25 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 		"Renderer teardown: detached renderer before destruction to block reentrant callbacks");
 
 	// Alpha/plugin retirement has not yet been audited as an idempotent
-	// cross-thread contract. Keep its established synchronous release path.
+	// cross-thread contract. Retire it synchronously, explicitly releasing its
+	// swapchain before a replacement renderer can claim the target HWND.
 	if (!m_activeRendererIsDirectShow)
 	{
+		rendererToDestroy->Retire();
+		m_rendererTransitionWindow.KeepOnTop();
+		const HRESULT compositionResult =
+			m_rendererTransitionWindow.SynchronizeComposition();
 		rendererToDestroy.reset();
 		DebugLog::Log(
 			"Renderer transition: process=%lu generation=%u event=old-surface-retired "
-			"renderer=%S target=%p cover=%p mode=synchronous",
+			"renderer=%S target=%p cover=%p mode=alpha-synchronous "
+			"composition_sync=0x%08lx",
 			GetCurrentProcessId(),
 			m_rendererGeneration.load(std::memory_order_acquire),
 			static_cast<LPCTSTR>(m_activeRendererName),
 			m_rendererTargetHwnd,
-			m_rendererTransitionWindow.GetHWND());
+			m_rendererTransitionWindow.GetHWND(),
+			static_cast<unsigned long>(compositionResult));
 		return;
 	}
 
