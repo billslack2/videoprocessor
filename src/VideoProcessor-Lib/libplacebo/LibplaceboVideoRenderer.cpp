@@ -6,6 +6,7 @@
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
 #include <P010ActivePictureEvidence.h>
+#include <RendererConfigView.h>
 #include <RendererProfileConfig.h>
 #include <UnifiedProfileRuntime.h>
 #include <DebugLog.h>
@@ -1000,17 +1001,12 @@ namespace
 		return minimumRate >= 1 && maximumRate >= minimumRate && maximumRate <= 1000;
 	}
 
-	constexpr const char* DISPLAY_CONFIG_SECTION = "display";
-	constexpr const char* LEGACY_DISPLAY_CONFIG_SECTION = "libplacebo";
-
 	bool TryGetDisplayString(
 		const ConfigFile& config,
 		const char* key,
 		std::string& value)
 	{
-		if (config.TryGetString(DISPLAY_CONFIG_SECTION, key, value))
-			return true;
-		return config.TryGetString(LEGACY_DISPLAY_CONFIG_SECTION, key, value);
+		return RendererConfigView(config).TryGetDisplayString(key, value);
 	}
 
 	bool TryGetDisplayBool(
@@ -1018,10 +1014,7 @@ namespace
 		const char* key,
 		bool& value)
 	{
-		std::string rawValue;
-		if (config.TryGetString(DISPLAY_CONFIG_SECTION, key, rawValue))
-			return config.TryGetBool(DISPLAY_CONFIG_SECTION, key, value);
-		return config.TryGetBool(LEGACY_DISPLAY_CONFIG_SECTION, key, value);
+		return RendererConfigView(config).TryGetDisplayBool(key, value);
 	}
 
 	bool IsAbsolutePath(const std::string& path)
@@ -1544,23 +1537,31 @@ namespace
 				manualRule.empty() ? "automatic" : "manual", activeRule.c_str(), selectedRule.priority);
 		}
 
-		// General owns cross-profile renderer behavior.  The legacy [display]
-		// locations remain valid, while these values become the canonical home for
-		// new profile configurations.
-		if (config.TryGetString("general", "switch_refresh_rate", rawValue) &&
-			!config.TryGetBool("general", "switch_refresh_rate", settings.switchRefreshRate))
+		// [vpvr.general] owns cross-profile renderer behavior. Deprecated
+		// [general], [display], and [libplacebo] locations remain readable
+		// through the centralized compatibility view.
+		const RendererConfigView rendererConfig(config);
+		if (rendererConfig.TryGetPolicyString(
+			"switch_refresh_rate", rawValue) &&
+			!rendererConfig.TryGetPolicyBool(
+				"switch_refresh_rate", settings.switchRefreshRate))
 		{
-			DebugLog::Log("libplacebo: invalid [general] switch_refresh_rate '%s'; retaining display setting", rawValue.c_str());
+			DebugLog::Log("libplacebo: invalid switch_refresh_rate policy '%s'; retaining display setting", rawValue.c_str());
 		}
-		if (config.TryGetString("general", "output_diagnostics", rawValue) &&
-			!config.TryGetBool("general", "output_diagnostics", settings.outputDiagnostics))
+		if (rendererConfig.TryGetPolicyString(
+			"output_diagnostics", rawValue) &&
+			!rendererConfig.TryGetPolicyBool(
+				"output_diagnostics", settings.outputDiagnostics))
 		{
-			DebugLog::Log("libplacebo: invalid [general] output_diagnostics '%s'; retaining display setting", rawValue.c_str());
+			DebugLog::Log("libplacebo: invalid output_diagnostics policy '%s'; retaining display setting", rawValue.c_str());
 		}
-		if (config.TryGetString("general", "diagnostic_disable_shader_cache", rawValue) &&
-			!config.TryGetBool("general", "diagnostic_disable_shader_cache", settings.diagnosticDisableShaderCache))
+		if (rendererConfig.TryGetPolicyString(
+			"diagnostic_disable_shader_cache", rawValue) &&
+			!rendererConfig.TryGetPolicyBool(
+				"diagnostic_disable_shader_cache",
+				settings.diagnosticDisableShaderCache))
 		{
-			DebugLog::Log("libplacebo: invalid [general] diagnostic_disable_shader_cache '%s'; retaining display setting", rawValue.c_str());
+			DebugLog::Log("libplacebo: invalid diagnostic_disable_shader_cache policy '%s'; retaining display setting", rawValue.c_str());
 		}
 		else if (!activeProfiles.empty())
 		{

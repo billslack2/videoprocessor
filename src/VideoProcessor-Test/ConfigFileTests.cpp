@@ -2,6 +2,7 @@
 
 #include <ConfigFile.h>
 #include <MainConfigSchema.h>
+#include <RendererConfigView.h>
 #include <RendererProfileConfig.h>
 #include "CppUnitTest.h"
 
@@ -302,7 +303,9 @@ namespace VideoProcessorTest
 					"renderer: VideoProcessor Renderer (Alpha)\n"
 					"alpha_queue_size: 1\n"
 					"[shortcuts]\nrender.6: A\n"
-					"[general]\npersist_profile_selection: true\n";
+					"[general]\npersist_profile_selection: true\n"
+					"[vpvr.display]\nquality: high\n"
+					"[vpvr.general]\nswitch_refresh_rate: true\n";
 				for (const char* group :
 					{ "input", "scaling", "display", "viewport" })
 				{
@@ -321,6 +324,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(
 				RendererProfileConfig::Read(config, model, error));
 			Assert::AreEqual(static_cast<size_t>(4), model.groups.size());
+			Assert::IsTrue(model.warnings.empty());
 			Assert::IsTrue(MainConfigSchema::OwnsSection("command_line"));
 			Assert::IsTrue(RendererProfileConfig::OwnsSection(
 				"profiles.display.base"));
@@ -389,6 +393,190 @@ namespace VideoProcessorTest
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));
 			Assert::IsTrue(
 				error.find("unknown_logging_key") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererConfigViewReadsCanonicalNamespace)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vpvr-canonical.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n"
+					"persist_profile_selection: true\n"
+					"event_action_delay_seconds: 5\n"
+					"[vpvr.display]\n"
+					"quality: high\n"
+					"sdr_target_nits: 100\n"
+					"[vpvr.general]\n"
+					"switch_refresh_rate: false\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererConfigView view(config);
+			std::string error;
+			std::vector<std::string> warnings;
+			Assert::IsTrue(view.Validate(error, warnings));
+			Assert::IsTrue(error.empty());
+			Assert::IsTrue(warnings.empty());
+			std::string quality;
+			bool switchRefreshRate = true;
+			Assert::IsTrue(view.TryGetDisplayString("quality", quality));
+			Assert::AreEqual("high", quality.c_str());
+			Assert::IsTrue(view.TryGetPolicyBool(
+				"switch_refresh_rate", switchRefreshRate));
+			Assert::IsFalse(switchRefreshRate);
+			Assert::IsTrue(RendererProfileConfig::OwnsSection(
+				"vpvr.display"));
+			Assert::IsTrue(RendererProfileConfig::OwnsSection(
+				"vpvr.general"));
+			Assert::IsFalse(RendererProfileConfig::OwnsSection(
+				"vpvr.unknown"));
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererConfigViewRejectsCanonicalDisplayCoexistence)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vpvr-display-conflict.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[vpvr.display]\nquality: high\n"
+					"[display]\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			std::vector<std::string> warnings;
+			Assert::IsFalse(
+				RendererConfigView(config).Validate(error, warnings));
+			Assert::IsTrue(error.find("vpvr.display") != std::string::npos);
+			Assert::IsTrue(error.find("[display]") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererConfigViewRejectsPolicyKeyDuplicate)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vpvr-policy-conflict.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n"
+					"persist_profile_selection: true\n"
+					"switch_refresh_rate: true\n"
+					"[vpvr.general]\n"
+					"switch_refresh_rate: true\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			std::vector<std::string> warnings;
+			Assert::IsFalse(
+				RendererConfigView(config).Validate(error, warnings));
+			Assert::IsTrue(
+				error.find("switch_refresh_rate") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererConfigViewPreservesLegacyPrecedence)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vpvr-legacy-precedence.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[libplacebo]\n"
+					"quality: fast\n"
+					"sdr_target_nits: 80\n"
+					"switch_refresh_rate: false\n"
+					"[display]\n"
+					"quality: high\n"
+					"[general]\n"
+					"switch_refresh_rate: true\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererConfigView view(config);
+			std::string error;
+			std::vector<std::string> warnings;
+			Assert::IsTrue(view.Validate(error, warnings));
+			Assert::AreEqual(static_cast<size_t>(3), warnings.size());
+			std::string value;
+			bool policy = false;
+			Assert::IsTrue(view.TryGetDisplayString("quality", value));
+			Assert::AreEqual("high", value.c_str());
+			Assert::IsTrue(view.TryGetDisplayString(
+				"sdr_target_nits", value));
+			Assert::AreEqual("80", value.c_str());
+			Assert::IsTrue(view.TryGetPolicyBool(
+				"switch_refresh_rate", policy));
+			Assert::IsTrue(policy);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererConfigViewWarnsOnlyForConsumedLegacySections)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vpvr-unused-legacy.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[display]\n"
+					"quality: high\n"
+					"[libplacebo]\n"
+					"quality: fast\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			std::vector<std::string> warnings;
+			Assert::IsTrue(
+				RendererConfigView(config).Validate(error, warnings));
+			Assert::AreEqual(static_cast<size_t>(1), warnings.size());
+			Assert::IsTrue(
+				warnings.front().find("[display]") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererConfigRejectsWrongCanonicalOwnership)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vpvr-wrong-owner.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[vpvr.display]\n"
+					"switch_refresh_rate: true\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(
+				RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(
+				error.find("switch_refresh_rate") != std::string::npos);
 			DeleteFileA(path.c_str());
 		}
 	};
