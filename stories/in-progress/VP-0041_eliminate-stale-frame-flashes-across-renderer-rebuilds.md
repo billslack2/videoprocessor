@@ -94,8 +94,52 @@ not yet proven.
 
 Implementation and diagnosis now continue on
 `codex/vp-0041-madvr-reopen`, based on current
-`origin/v1.1.015-beta` commit `1b231356`, in
+`origin/v1.1.015-beta` commit `c00b990` (including the merged Alpha configured
+queue-limit work), in
 `C:\Users\bslac\vp\worktrees\vp-0041-madvr-reopen`.
+
+The July 29 combined candidate consists of `6bcf9d8` plus review-hardening
+commit `217e4fc`. DirectShow reveal now requires five successful downstream
+deliveries from the current queue epoch; raw enqueue and `S_FALSE` no longer
+count. The transition cover remains up across pending resets. Internal timing
+and discontinuity resets are routed through the GUI-owned recovery
+coordinator. Capture admission is closed before graph control, DirectShow
+Stop/flush runs before waiting for admitted callbacks, and source reset/run
+occurs only after the ingress drain, preventing both teardown races and the
+unbuffered madVR `Receive` deadlock.
+
+Threading, DirectShow, and MPC/mpv-style lifecycle reviewers completed
+blocker-only reviews. After the Stop-before-drain correction, all three
+approved the lifecycle and concurrency changes. A clean x64 Release rebuild
+from `217e4fc` completed with `VERSION_DIRTY=false`; all 214 tests passed. The
+branch was pushed as `origin/codex/vp-0041-madvr-reopen`.
+
+Real-world testing of the earlier temporary candidate exposed an additional
+fullscreen-only case during YouTube TV channel changes on Apple TV 4K. VP
+logged continuous 59.94 capture/conversion/delivery with a nine-sample
+(approximately 150 ms) queue and no capture-state, frame-counter, epoch,
+renderer-generation, or reset event. A frame watched about five minutes
+earlier therefore cannot have remained in VP's queue. The current evidence
+instead points to madVR/DXGI exclusive/DirectFlip/MPO resurfacing a retained
+presentation plane. The combined deployment uses
+`windowed_fullscreen_mode: true` as a composed-fullscreen mitigation while
+preserving `fullscreen: true`. If it still reproduces, the next diagnostic
+build should add bounded capture/pre-Deliver fingerprints or an opt-in
+per-frame barcode so a physical recording can distinguish source pixels from
+renderer/driver surface reuse.
+
+The combined clean binaries were deployed at `01:51:38` to
+`C:\Videoprocessor\vp` and launched successfully:
+
+- `VideoProcessor.exe` SHA-256
+  `262147366259380DC293D2644354BE8CE016E91DEE327EE4FCEFE14853F5D436`;
+- `vprenderer\VideoProcessorVPRenderer.dll` SHA-256
+  `E69D56745B7547993F57785EDC53AF728C30D13CAF42AE78079CEFCB8F307EDE`.
+
+The previous executable, renderer plug-in, and configuration were backed up
+with suffix `20260729-015138`. Existing configuration values/comments, state,
+logs, shaders, and shader cache were preserved; the only configuration edit
+was enabling composed windowed fullscreen.
 
 Acceptance still requires repeated Alpha-only, madVR-only, Alpha/madVR
 handoff, refresh-rate/mode-change, and actual HDMI-resync validation.
