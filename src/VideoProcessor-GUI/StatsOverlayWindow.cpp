@@ -442,7 +442,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += lineHeight;
 
 	// Colorspace
-	line.Format(TEXT("Colorspace:       %-s"), m_stats.colorspace.IsEmpty() ? TEXT("---") : m_stats.colorspace);
+	line.Format(TEXT("Input Colorspace: %-s"), m_stats.colorspace.IsEmpty() ? TEXT("---") : m_stats.colorspace);
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
@@ -459,16 +459,25 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 	if (!m_stats.outputMode.IsEmpty())
 	{
-		const int separator = m_stats.outputMode.Find(TEXT(" -> "));
+		const int targetSeparator = m_stats.outputMode.Find(TEXT(" | "));
+		const CString target = targetSeparator >= 0
+			? m_stats.outputMode.Left(targetSeparator) : TEXT("Target ---");
+		const CString transport = targetSeparator >= 0
+			? m_stats.outputMode.Mid(targetSeparator + 3) : m_stats.outputMode;
+		const int separator = transport.Find(TEXT(" -> "));
 		const CString requested = separator >= 0
-			? m_stats.outputMode.Left(separator) : m_stats.outputMode;
+			? transport.Left(separator) : transport;
 		const CString actual = separator >= 0
-			? m_stats.outputMode.Mid(separator + 4) : TEXT("---");
-		line.Format(TEXT("Out Req:          %-s"),
+			? transport.Mid(separator + 4) : TEXT("---");
+		line.Format(TEXT("Output:           %-s"),
+			static_cast<LPCTSTR>(target));
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+		line.Format(TEXT("Transport Req:    %-s"),
 			static_cast<LPCTSTR>(requested));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
-		line.Format(TEXT("Out Actual:       %-s"),
+		line.Format(TEXT("Transport Actual: %-s"),
 			static_cast<LPCTSTR>(actual));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
@@ -728,7 +737,7 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 	if (stats.hasConversionData)
 		lineCount += 2;
 	if (!stats.outputMode.IsEmpty())
-		lineCount += 2;
+		lineCount += 3;
 	if (!stats.displayLut.IsEmpty())
 		++lineCount;
 

@@ -3957,7 +3957,7 @@ struct LibplaceboVideoRenderer::Impl
 			actualOutput.safeToRender ? 1 : 0,
 			actualOutput.reason.c_str());
 
-		if (EncodingUsesBt2020(actualOutput.encoding) &&
+		if (targetBt2020 &&
 			reportBt2020ToDisplay)
 		{
 			if (!nvidiaBt2020Reporter.Enable(negotiatedDisplayDeviceName.c_str()))
@@ -4347,9 +4347,11 @@ struct LibplaceboVideoRenderer::Impl
 		outputRequest.range = LibplaceboOutput::ParseRange(settings.outputRange);
 		outputRequest.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
 		targetBt2020 = settings.sdrTargetPrimaries == "bt2020";
-		outputRequest.primaries = targetBt2020
-			? LibplaceboOutput::PrimariesRequest::BT2020
-			: LibplaceboOutput::PrimariesRequest::REC709;
+		// Preserve the proven F6 transport contract: render BT.2020 pixels, but
+		// retain the normal P709 DXGI swapchain and use the NVIDIA AVI InfoFrame
+		// for physical BT.2020 signaling. Requesting P2020 from both paths caused
+		// severe oversaturation on the deployed projector chain.
+		outputRequest.primaries = LibplaceboOutput::PrimariesRequest::REC709;
 		reportBt2020ToDisplay = settings.reportBt2020ToDisplay;
 		if (targetBt2020 && reportBt2020ToDisplay)
 			DebugLog::Log("libplacebo: BT.2020 target with NVIDIA output reporting requested; proceed with caution");
@@ -4972,7 +4974,7 @@ struct LibplaceboVideoRenderer::Impl
 			EncodingTransfer(actualOutput.encoding);
 		if (acceptedTransfer != PL_COLOR_TRC_UNKNOWN)
 			baseTarget.color.transfer = acceptedTransfer;
-		if (EncodingUsesBt2020(actualOutput.encoding))
+		if (targetBt2020)
 		{
 			baseTarget.color.primaries = PL_COLOR_PRIM_BT_2020;
 		}
@@ -6461,8 +6463,14 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 		}
 	};
 	CStringA value;
+	const char* outputTarget = m_impl->targetBt2020
+		? (m_impl->reportBt2020ToDisplay
+			? "SDR BT.2020 / HDMI BT.2020"
+			: "SDR BT.2020")
+		: "SDR Rec.709";
 	value.Format(
-		"Req %s/%s/%s/%s -> %s/%s/%s/%s",
+		"Target %s | Req %s/%s/%s/%s -> %s/%s/%s/%s",
+		outputTarget,
 		requestPresentation(m_impl->outputPlan.request.presentation),
 		requestRange(m_impl->outputPlan.request.range),
 		LibplaceboOutput::ToString(m_impl->outputPlan.request.gamma),

@@ -3394,7 +3394,8 @@ void CVideoProcessorDlg::UpdateState()
 			m_fullscreenModeChangePending = false;
 		}
 		// If we still have a full screen window and don't want to be full screen anymore clean it up
-		if (!m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow)
+		if (!m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
+			!m_preserveFullscreenHostForProfileRestart)
 		{
 			FullScreenVideoWindowDestroy();
 
@@ -3912,7 +3913,20 @@ void CVideoProcessorDlg::RenderStart()
 		selectedRenderer->backend == RendererBackend::DIRECTSHOW;
 	const uint32_t rendererGeneration =
 		m_rendererGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
-	m_rendererTargetHwnd = GetRenderWindow();
+	if (m_preserveFullscreenHostForProfileRestart &&
+		m_fullScreenVideoWindow &&
+		IsWindow(m_fullScreenVideoWindow->GetHWND()))
+	{
+		m_rendererTargetHwnd = m_fullScreenVideoWindow->GetHWND();
+		DebugLog::Log(
+			"Profile renderer rebuild: preserving fullscreen host hwnd=%p generation=%u",
+			m_rendererTargetHwnd, rendererGeneration);
+	}
+	else
+	{
+		m_rendererTargetHwnd = GetRenderWindow();
+	}
+	m_preserveFullscreenHostForProfileRestart = false;
 	++m_rendererTargetRevision;
 	m_transitionGeneration = rendererGeneration;
 	if (m_rendererResetTransitionActive)
@@ -5615,6 +5629,14 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 		CStringA(activeState).GetString());
 	if (allowRestart && rendererRestartRequired)
 	{
+		if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
+			IsWindow(m_fullScreenVideoWindow->GetHWND()))
+		{
+			m_preserveFullscreenHostForProfileRestart = true;
+			DebugLog::Log(
+				"Unified profile restart: preserving fullscreen host hwnd=%p",
+				m_fullScreenVideoWindow->GetHWND());
+		}
 		DebugLog::Log(
 			"Unified viewport output aspect changed; restarting renderer");
 		m_postRendererStartRequiresGraph = false;

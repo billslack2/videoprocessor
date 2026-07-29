@@ -451,6 +451,7 @@ protected:
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
 	HWND m_rendererTargetHwnd = nullptr;
+	bool m_preserveFullscreenHostForProfileRestart = false;
 	bool m_fullscreenRetargetPending = false;
 	HWND m_fullscreenRetargetTargetHwnd = nullptr;
 	HWND m_fullscreenRetargetPreviousTargetHwnd = nullptr;
