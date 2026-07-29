@@ -2,8 +2,8 @@
 
 #include <ConfigFile.h>
 #include <DebugLog.h>
-#include <libplacebo/LibplaceboRendererPluginApi.h>
-#include <libplacebo/LibplaceboVideoRenderer.h>
+#include <vprenderer/LibplaceboRendererPluginApi.h>
+#include <vprenderer/LibplaceboVideoRenderer.h>
 
 
 extern "C" __declspec(dllexport) uint32_t __cdecl

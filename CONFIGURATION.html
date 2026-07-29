@@ -155,11 +155,11 @@ MaxCoreCount=2</pre>
   </tbody></table>
   <table><thead><tr><th>Typed NLS key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
     <tr><td><code>geometry</code></td><td><code>classic</code> or <code>protected</code></td><td>Selects the established power curve or a steadier protected-centre curve.</td></tr>
-    <tr><td><code>strength</code></td><td><code>0.0</code>–<code>1.0</code></td><td>Scales the calculated correction; <code>1.0</code> applies the complete mapping.</td></tr>
-    <tr><td><code>center_protection</code></td><td><code>0.0</code>–<code>0.45</code></td><td>Protected fraction of picture width when <code>geometry: protected</code>.</td></tr>
-    <tr><td><code>curve</code></td><td><code>0.5</code>–<code>4.0</code></td><td>Controls how progressively distortion moves toward the sides.</td></tr>
+    <tr><td><code>strength</code></td><td><code>0.0</code>â€“<code>1.0</code></td><td>Scales the calculated correction; <code>1.0</code> applies the complete mapping.</td></tr>
+    <tr><td><code>center_protection</code></td><td><code>0.0</code>â€“<code>0.45</code></td><td>Protected fraction of picture width when <code>geometry: protected</code>.</td></tr>
+    <tr><td><code>curve</code></td><td><code>0.5</code>â€“<code>4.0</code></td><td>Controls how progressively distortion moves toward the sides.</td></tr>
     <tr><td><code>quality</code></td><td><code>low</code>, <code>medium</code>, <code>high</code>, or <code>very high</code></td><td>Selects reconstruction quality and GPU cost.</td></tr>
-    <tr><td><code>tolerance_percent</code></td><td><code>0</code>–<code>50</code></td><td>Treats content already this close to the selected viewport as linear passthrough.</td></tr>
+    <tr><td><code>tolerance_percent</code></td><td><code>0</code>â€“<code>50</code></td><td>Treats content already this close to the selected viewport as linear passthrough.</td></tr>
   </tbody></table>
   <pre>[shaders]
 enabled=true
@@ -242,11 +242,11 @@ none=true</pre>
   <p>Shift+N arms the paired classic rules, Shift+P arms the paired protected-centre rules, and plain N selects the shared off rule. madVR ignores the GLSL member and Alpha ignores the HLSL member without opening or compiling it. The armed selector survives renderer replacement. A viewport change may require one controlled madVR restart when its negotiated picture-aspect contract changes. Alpha and content-aspect changes refresh in place.</p>
   <p>The renderer-specific rules may use different settings. The packaged Alpha GLSL consumes <code>geometry</code>, <code>strength</code>, <code>center_protection</code>, and <code>curve</code>; <code>tolerance_percent</code> remains VP policy. Alpha reconstruction quality is owned by the renderer's scaler settings rather than the NLS hook, so the madVR-only <code>quality</code> setting is omitted from the GLSL rules. The two curves are intended to make the same safe decision, not to be pixel-identical.</p>
   <table><thead><tr><th>Active picture</th><th>Selected viewport</th><th>Result while NLS is armed</th></tr></thead><tbody>
-    <tr><td>4:3</td><td>16:9</td><td>Horizontal NLS, approximately 1.333×.</td></tr>
+    <tr><td>4:3</td><td>16:9</td><td>Horizontal NLS, approximately 1.333Ã—.</td></tr>
     <tr><td>16:9</td><td>16:9</td><td>Linear passthrough.</td></tr>
     <tr><td>4:3</td><td>2.35:1</td><td>Preserved 4:3 safe-fit/pillarbox; no unsafe stretch to 2.35.</td></tr>
-    <tr><td>16:9</td><td>2.35:1</td><td>Horizontal NLS, approximately 1.322×.</td></tr>
-    <tr><td>1.90:1</td><td>2.35:1</td><td>Horizontal NLS, approximately 1.237×.</td></tr>
+    <tr><td>16:9</td><td>2.35:1</td><td>Horizontal NLS, approximately 1.322Ã—.</td></tr>
+    <tr><td>1.90:1</td><td>2.35:1</td><td>Horizontal NLS, approximately 1.237Ã—.</td></tr>
     <tr><td>2.35:1</td><td>2.35:1</td><td>Linear passthrough.</td></tr>
     <tr><td>Any</td><td>Any</td><td><code>nls_off</code> retains the native picture geometry.</td></tr>
   </tbody></table>
@@ -259,7 +259,7 @@ none=true</pre>
     <tr><td><code>aspect_tolerance_percent</code></td><td><code>tolerance_percent</code></td></tr>
     <tr><td><code>active_aspect_min</code>, <code>aspect_direction</code>, <code>inactive_rule</code></td><td>Remove them from typed NLS; safe-fit, direction, and stable armed behavior are derived.</td></tr>
     <tr><td><code>manual: true</code> with a shortcut</td><td>Remove <code>manual</code>; the shortcut makes the effect manual.</td></tr>
-    <tr><td><code>pre_resize_1: Shaders\NLS.hlsl</code></td><td><code>file: NLS.hlsl</code> plus <code>stage: pre_resize</code>. The numeric suffix was legacy chain order; one effect now owns one file.</td></tr>
+    <tr><td><code>pre_resize_1: shaders\NLS.hlsl</code></td><td><code>file: NLS.hlsl</code> plus <code>stage: pre_resize</code>. The numeric suffix was legacy chain order; one effect now owns one file.</td></tr>
   </tbody></table>
   <p>Deprecated NLS aliases remain readable during migration and produce a replacement warning. Do not define a deprecated key together with its typed replacement. A legacy configuration without unified viewport profiles may continue using its old fixed target until it is deliberately migrated.</p>
   <p>Shader files always come from <code>Shaders</code> beside <code>VideoProcessor.exe</code>. Configuration cannot select another directory. The OSD displays the active effect label (joined with <code> + </code> for a shared-shortcut group) and every successfully installed shader, and automatically resizes to fit the active chain. Indexed shader entries and flat legacy chains are rejected.</p>
@@ -315,14 +315,14 @@ sdr_target_primaries: REC709
 switch_refresh_rate: true</pre>
 
   <h3 id="renderer-base">Base settings</h3>
-  <p><code>[vpvr.display]</code> holds the base built-in-renderer treatment. Every setting has a typed range or value list and is validated before capture begins. Profiles override only their own group’s settings; values omitted by a profile retain this base value.</p>
+  <p><code>[vpvr.display]</code> holds the base built-in-renderer treatment. Every setting has a typed range or value list and is validated before capture begins. Profiles override only their own groupâ€™s settings; values omitted by a profile retain this base value.</p>
   <table><thead><tr><th>Area</th><th>Settings</th><th>Useful values</th></tr></thead><tbody>
     <tr><td>Input treatment</td><td><code>tone_mapping</code>, <code>gamut_mapping</code>, <code>peak_detection</code>, <code>contrast_recovery</code>, <code>sdr_input_transfer</code></td><td>Tone mapping: <code>AUTO</code>, <code>spline</code>, <code>bt2390</code>, <code>st2094-40</code>, <code>reinhard</code>. Gamut mapping: <code>AUTO</code>, <code>perceptual</code>, <code>softclip</code>, <code>relative</code>, <code>desaturate</code>.</td></tr>
     <tr><td>Scaling</td><td><code>quality</code>, <code>upscaler</code>, <code>downscaler</code>, <code>deband</code>, <code>dithering</code></td><td>Quality: <code>fast</code>, <code>balanced</code>, <code>high</code>. Scalers include <code>ewa_lanczossharp</code>, <code>ewa_lanczos</code>, <code>bicubic</code>, and <code>bilinear</code>. Most controls accept <code>AUTO</code>.</td></tr>
-    <tr><td>Display target</td><td><code>sdr_target_nits</code>, <code>sdr_black_nits</code>, <code>output_presentation</code>, <code>output_range</code>, <code>output_gamma</code>, <code>sdr_target_primaries</code>, <code>report_bt2020_to_display</code></td><td>Target white is 40–500 nits; black is <code>AUTO</code> or non-negative below target. Presentation is <code>AUTO</code>, <code>DIRECT</code>, or <code>COMPOSED</code>; range is <code>AUTO</code>, <code>FULL</code>, or <code>LIMITED</code>; primaries are <code>REC709</code> or <code>BT2020</code>.</td></tr>
+    <tr><td>Display target</td><td><code>sdr_target_nits</code>, <code>sdr_black_nits</code>, <code>output_presentation</code>, <code>output_range</code>, <code>output_gamma</code>, <code>sdr_target_primaries</code>, <code>report_bt2020_to_display</code></td><td>Target white is 40â€“500 nits; black is <code>AUTO</code> or non-negative below target. Presentation is <code>AUTO</code>, <code>DIRECT</code>, or <code>COMPOSED</code>; range is <code>AUTO</code>, <code>FULL</code>, or <code>LIMITED</code>; primaries are <code>REC709</code> or <code>BT2020</code>.</td></tr>
     <tr><td>Renderer session policy</td><td><code>switch_refresh_rate</code>, <code>output_diagnostics</code>, <code>diagnostic_disable_shader_cache</code></td><td>Boolean values in <code>[vpvr.general]</code>. Diagnostic controls are for troubleshooting rather than normal calibration.</td></tr>
   </tbody></table>
-  <p>The unprefixed <code>[general]</code> section remains shared and owns <code>persist_profile_selection</code> plus <code>event_action_delay_seconds</code> (0–30 seconds). Deprecated renderer settings in <code>[display]</code> and <code>[general]</code> remain readable during migration, but canonical and legacy definitions of the same setting cannot be mixed.</p>
+  <p>The unprefixed <code>[general]</code> section remains shared and owns <code>persist_profile_selection</code> plus <code>event_action_delay_seconds</code> (0â€“30 seconds). Deprecated renderer settings in <code>[display]</code> and <code>[general]</code> remain readable during migration, but canonical and legacy definitions of the same setting cannot be mixed.</p>
 
   <h3 id="viewport-state">Viewport state</h3>
   <p>The viewport is application-owned state shared by every renderer and effect. VP resolves and publishes it before shader selection. One snapshot contains the selected profile, exact and numeric screen aspect, subtitle-fit settings, and a generation number. Pressing one key selects the viewport once; VP does not send these values to madVR and does not assume the external curtain, lens-memory, or madVR-profile action succeeded.</p>
@@ -340,7 +340,7 @@ screen_aspect: 2.35:1
 subtitle_fit: true
 subtitle_hold_seconds: 2
 subtitle_padding_pixels: 30</pre>
-  <p>Accepted aspect forms include <code>4:3</code>, <code>16:9</code>, <code>16x9</code>, <code>2.2:1</code>, <code>2.35:1</code>, and decimal shorthand such as <code>1.7777778</code>. Whitespace around values and delimiters is allowed. The resolved range is 1.0–4.0. Zero, negative, non-finite, malformed, repeated-delimiter, trailing-junk, and out-of-range values fail startup validation. Missing viewport configuration, and a selected viewport with no <code>screen_aspect</code>, resolve explicitly to 16:9.</p>
+  <p>Accepted aspect forms include <code>4:3</code>, <code>16:9</code>, <code>16x9</code>, <code>2.2:1</code>, <code>2.35:1</code>, and decimal shorthand such as <code>1.7777778</code>. Whitespace around values and delimiters is allowed. The resolved range is 1.0â€“4.0. Zero, negative, non-finite, malformed, repeated-delimiter, trailing-junk, and out-of-range values fail startup validation. Missing viewport configuration, and a selected viewport with no <code>screen_aspect</code>, resolve explicitly to 16:9.</p>
   <table><thead><tr><th>Deprecated viewport key</th><th>Replacement</th></tr></thead><tbody>
     <tr><td><code>scope_screen_aspect</code></td><td><code>screen_aspect</code></td></tr>
     <tr><td><code>scope_subtitle_fit</code></td><td><code>subtitle_fit</code></td></tr>
@@ -531,7 +531,7 @@ diagnostic_disable_shader_cache: false</pre>
   <p>Changes are transactional. VP first resolves the full effective settings, then applies/rebuilds the renderer as needed. It persists a manual selection and runs completed-event actions only after the change succeeds. If application fails, the prior renderer, state, and selection remain in effect.</p>
 
   <h3 id="renderer-events">Completed-event actions</h3>
-  <p>Optional <code>[event_actions]</code> entries run only after a successful applied, confirmed, or restored renderer transition. The section lists action names; each action requires <code>on:</code>, <code>when:</code>, and <code>program:</code>. <code>arguments:</code>, <code>working_directory:</code>, and a 0–30 second <code>delay_seconds:</code> are optional. Without a per-action delay, the value from <code>[general]</code> is used.</p>
+  <p>Optional <code>[event_actions]</code> entries run only after a successful applied, confirmed, or restored renderer transition. The section lists action names; each action requires <code>on:</code>, <code>when:</code>, and <code>program:</code>. <code>arguments:</code>, <code>working_directory:</code>, and a 0â€“30 second <code>delay_seconds:</code> are optional. Without a per-action delay, the value from <code>[general]</code> is used.</p>
   <pre>[event_actions]
 actions: audio_delay_film
 

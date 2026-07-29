@@ -189,14 +189,14 @@
     <ClInclude Include="InputLocked.h" />
     <ClInclude Include="IntegerMath.h" />
     <ClInclude Include="IRenderer.h" />
-    <ClInclude Include="libplacebo\AlphaCadenceCorrectionPolicy.h" />
-    <ClInclude Include="libplacebo\AlphaPresentationTelemetry.h" />
+    <ClInclude Include="vprenderer\\AlphaCadenceCorrectionPolicy.h" />
+    <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
     <ClInclude Include="ActivePictureTransitionModel.h" />
     <ClInclude Include="P010ActivePictureEvidence.h" />
     <ClInclude Include="MainConfigSchema.h" />
-    <ClInclude Include="libplacebo\LibplaceboOutputPolicy.h" />
-    <ClInclude Include="libplacebo\LibplaceboPluginVideoRenderer.h" />
-    <ClInclude Include="libplacebo\LibplaceboRendererPluginApi.h" />
+    <ClInclude Include="vprenderer\\LibplaceboOutputPolicy.h" />
+    <ClInclude Include="vprenderer\\LibplaceboPluginVideoRenderer.h" />
+    <ClInclude Include="vprenderer\\LibplaceboRendererPluginApi.h" />
     <ClInclude Include="ITimingClock.h" />
     <ClInclude Include="microsoft_directshow\DirectShowDefines.h" />
     <ClInclude Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.h" />
@@ -265,16 +265,16 @@
     <ClCompile Include="HDRData.cpp" />
     <ClCompile Include="InputLocked.cpp" />
     <ClCompile Include="IRenderer.cpp" />
-    <ClCompile Include="libplacebo\AlphaCadenceCorrectionPolicy.cpp">
+    <ClCompile Include="vprenderer\\AlphaCadenceCorrectionPolicy.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="libplacebo\AlphaPresentationTelemetry.cpp">
+    <ClCompile Include="vprenderer\\AlphaPresentationTelemetry.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="libplacebo\LibplaceboOutputPolicy.cpp">
+    <ClCompile Include="vprenderer\\LibplaceboOutputPolicy.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="libplacebo\LibplaceboPluginVideoRenderer.cpp">
+    <ClCompile Include="vprenderer\\LibplaceboPluginVideoRenderer.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.cpp" />
@@ -348,28 +348,28 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin_tracking_snippet.txt" />
-    <None Include="..\..\Shaders\Adaptive sharpen.hlsl">
-      <Link>Shaders\Adaptive sharpen.hlsl</Link>
+    <None Include="..\..\shaders\Adaptive sharpen.hlsl">
+      <Link>shaders\Adaptive sharpen.hlsl</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\Shaders\Debanding mild.hlsl">
-      <Link>Shaders\Debanding mild.hlsl</Link>
+    <None Include="..\..\shaders\Debanding mild.hlsl">
+      <Link>shaders\Debanding mild.hlsl</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\Shaders\Denoise.hlsl">
-      <Link>Shaders\Denoise.hlsl</Link>
+    <None Include="..\..\shaders\Denoise.hlsl">
+      <Link>shaders\Denoise.hlsl</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\Shaders\Invert.hlsl">
-      <Link>Shaders\Invert.hlsl</Link>
+    <None Include="..\..\shaders\Invert.hlsl">
+      <Link>shaders\Invert.hlsl</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\Shaders\NLS.hlsl">
-      <Link>Shaders\NLS.hlsl</Link>
+    <None Include="..\..\shaders\NLS.hlsl">
+      <Link>shaders\NLS.hlsl</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\Shaders\NLS.glsl">
-      <Link>Shaders\NLS.glsl</Link>
+    <None Include="..\..\shaders\NLS.glsl">
+      <Link>shaders\NLS.glsl</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

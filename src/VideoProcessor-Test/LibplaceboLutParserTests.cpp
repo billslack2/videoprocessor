@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
-#include <libplacebo/LibplaceboDisplayLut.h>
+#include <vprenderer/LibplaceboDisplayLut.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/renderer.h>
 

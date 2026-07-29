@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
-#include <libplacebo/AlphaPresentationTelemetry.h>
+#include <vprenderer/AlphaPresentationTelemetry.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 

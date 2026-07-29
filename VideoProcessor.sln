@@ -17,7 +17,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VideoProcessor-Test", "src\
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VideoProcessor-GUI", "src\VideoProcessor-GUI\VideoProcessor-GUI.vcxproj", "{A2AF7B35-7B3A-496F-B181-CC5339562F7F}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VideoProcessor-Libplacebo", "src\VideoProcessor-Libplacebo\VideoProcessor-Libplacebo.vcxproj", "{C72197B6-AFB1-4BF2-ABEA-6B63DE71389E}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VideoProcessor-VPRenderer", "src\VideoProcessor-VPRenderer\VideoProcessor-VPRenderer.vcxproj", "{C72197B6-AFB1-4BF2-ABEA-6B63DE71389E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

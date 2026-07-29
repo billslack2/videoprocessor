@@ -256,7 +256,7 @@ namespace VideoProcessorTest
 				"C:\\Videoprocessor\\vp\\VideoProcessor.exe",
 				resolved, error));
 			Assert::AreEqual(
-				"C:\\Videoprocessor\\vp\\Shaders\\NLS.hlsl",
+				"C:\\Videoprocessor\\vp\\shaders\\NLS.hlsl",
 				resolved.c_str());
 		}
 
@@ -289,10 +289,10 @@ namespace VideoProcessorTest
 		{
 			const char* invalid[] = {
 				"",
-				"Shaders\\NLS.hlsl",
+				"shaders\\NLS.hlsl",
 				"subdir/NLS.hlsl",
 				"..\\NLS.hlsl",
-				"C:\\Shaders\\NLS.hlsl",
+				"C:\\shaders\\NLS.hlsl",
 				"NLS.hlsl:alternate"
 			};
 			for (const char* filename : invalid)

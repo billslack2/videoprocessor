@@ -1656,7 +1656,7 @@ bool MadVRShaderLoader::ResolveShaderFilename(
 		std::any_of(trimmed.begin(), trimmed.end(),
 			[](unsigned char value) { return value < 32; }))
 	{
-		error = "use a filename only; VP always loads from the executable's Shaders directory";
+		error = "use a filename only; VP always loads from the executable's shaders directory";
 		return false;
 	}
 	const std::filesystem::path executable =
@@ -1666,7 +1666,7 @@ bool MadVRShaderLoader::ResolveShaderFilename(
 		error = "executable directory is unavailable";
 		return false;
 	}
-	resolvedPath = (executable.parent_path() / "Shaders" /
+	resolvedPath = (executable.parent_path() / "shaders" /
 		configured).lexically_normal().u8string();
 	return true;
 }
