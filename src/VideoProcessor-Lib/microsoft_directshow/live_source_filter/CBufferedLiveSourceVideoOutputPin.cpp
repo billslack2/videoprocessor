@@ -273,6 +273,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		m_dequeueCount.store(0, std::memory_order_release);
 		m_deliveryAttemptCount.store(0, std::memory_order_release);
 		m_deliverySuccessCount.store(0, std::memory_order_release);
+		m_lastDeliverySuccessQueueEpoch.store(0, std::memory_order_release);
 		m_lastInputTick.store(0, std::memory_order_release);
 		m_lastConversionTick.store(0, std::memory_order_release);
 		m_lastDequeueTick.store(0, std::memory_order_release);
@@ -1069,6 +1070,8 @@ bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
 		m_deliveryAttemptCount.load(std::memory_order_relaxed);
 	snapshot.deliverySuccessCount =
 		m_deliverySuccessCount.load(std::memory_order_relaxed);
+	snapshot.lastDeliverySuccessQueueEpoch =
+		m_lastDeliverySuccessQueueEpoch.load(std::memory_order_acquire);
 	snapshot.lastInputTick = m_lastInputTick.load(std::memory_order_acquire);
 	snapshot.lastConversionTick =
 		m_lastConversionTick.load(std::memory_order_acquire);
@@ -1430,6 +1433,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		else
 		{
 			m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
+			m_lastDeliverySuccessQueueEpoch.store(
+				expectedQueueEpoch, std::memory_order_release);
 			m_deliverySuccessCount.fetch_add(1, std::memory_order_relaxed);
 			m_lastDeliverySuccessTick.store(
 				GetTickCount64(), std::memory_order_release);

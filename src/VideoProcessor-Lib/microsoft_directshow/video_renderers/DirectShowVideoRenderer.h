@@ -50,11 +50,13 @@ public:
 	void OnVideoFrame(VideoFrame& videoFrame) override;
 	bool HasPresentedLiveFrame() const override
 	{
-		return m_hasPresentedLiveFrame.load(std::memory_order_acquire);
+		RendererLivenessSnapshot snapshot;
+		return GetLivenessSnapshot(snapshot) &&
+			HasCurrentEpochDownstreamDelivery(snapshot);
 	}
 	const char* PresentedLiveFrameEvidence() const override
 	{
-		return "downstream-accepted";
+		return "current-epoch-downstream-delivered";
 	}
 	bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const override;
 	HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) override;
@@ -142,8 +144,6 @@ protected:
 	uint64_t m_frameCounter = 0;
 	uint64_t m_missingFrameCounter = 0;
 	double m_frameLatencyEntry = 0.0;
-	std::atomic_bool m_hasPresentedLiveFrame{false};
-
 	// PPM measurement variables
 	mutable timingclocktime_t m_firstFrameTime = 0;
 	mutable timingclocktime_t m_lastFrameTime = 0;  

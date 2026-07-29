@@ -3926,10 +3926,21 @@ void CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 
 void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 {
+	const bool postStartResetPending =
+		m_activeRendererIsDirectShow &&
+		m_pendingQueueReset &&
+		m_pendingResetReason == RendererResetReason::PostRendererStart &&
+		m_pendingResetRendererGeneration == generation;
+	const bool resetOperationActive =
+		m_activeRendererIsDirectShow &&
+		m_activeResetOperation &&
+		m_activeResetOperation->rendererGeneration == generation;
 	if (generation != m_transitionGeneration ||
 		generation != m_rendererGeneration.load(std::memory_order_acquire) ||
 		!m_videoRenderer ||
 		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
+		postStartResetPending ||
+		resetOperationActive ||
 		!m_videoRenderer->HasPresentedLiveFrame() ||
 		!m_rendererTransitionWindow.IsVisible())
 	{
@@ -6372,6 +6383,12 @@ void CVideoProcessorDlg::ExecutePendingRendererReset()
 	}
 
 	m_queueResetIgnoreEventsUntil = GetTickCount64() + 10000;
+	if (m_activeRendererIsDirectShow)
+	{
+		m_transitionRevealPosted.store(false, std::memory_order_release);
+		ShowRendererTransitionBlack(
+			requiresGraph ? "graph-reset" : "live-queue-reset");
+	}
 	DEBUGLOG(
 		"Reset started: request=%llu renderer=%s backend=%s generation=%u "
 		"reason=%s priority=%d scope=%s queued_for=%llums thread=%s",
