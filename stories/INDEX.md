@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0052`
-- Next story number: `VP-0053`
-- Total indexed items: 52
+- Last assigned item: `VP-0053`
+- Next story number: `VP-0054`
+- Total indexed items: 53
 
 ## Story locations
 
@@ -77,6 +77,7 @@ they must not contain requirements that are absent from this file.
 | VP-0050 | Done | Put Alpha first and reverse renderer order |
 | VP-0051 | Backlog | Generic Alpha shader-chain support |
 | VP-0052 | Done | Lowercase runtime layout and vprenderer directory |
+| VP-0053 | Backlog | Alpha LLDV parity and transition validation |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
