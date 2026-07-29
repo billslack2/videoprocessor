@@ -36,6 +36,8 @@ The change is in:
 
 - Built successfully from `C:\Users\bslac\vp\videoprocessor-v1.1.015-beta`
   using x64 Release on July 29, 2026; all 209 native tests passed.
+- Source commit `c00b990` (`Enforce Alpha configured queue limit`) is pushed
+  to the deployed integration branch `v1.1.015-beta`.
 - Deployed the rebuilt `VideoProcessor.exe` and
   `vprenderer\VideoProcessorVPRenderer.dll` to `C:\Videoprocessor\vp`.
 - Active configuration and all renderer runtime files were preserved.
