@@ -2,7 +2,9 @@
 
 ## Status
 
-Backlog. No implementation has started.
+In Progress. Implementation started on `codex/vp-0050-renderer-order` from
+`origin/v1.1.014-beta` in a clean worktree. Ordering policy and focused native
+test coverage are in progress.
 
 ## User story
 
