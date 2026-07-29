@@ -84,7 +84,7 @@ they must not contain requirements that are absent from this file.
 | VP-0058 | Backlog | ReShade compatibility prototype with madVR |
 | VP-0059 | Backlog | Stable per-mode frame-offset policy and Alpha semantics |
 | VP-0060 | Done | Reduce madVR fullscreen transition latency with stable target ownership |
-| VP-0061 | In Progress | DirectShow in-place reset re-prime with asymmetric madVR queues |
+| VP-0061 | Blocked | DirectShow in-place reset re-prime with asymmetric madVR queues |
 | VP-0062 | Backlog | NLS safe full-raster fallback for high-black UI and artwork |
 | VP-0063 | Backlog | Automatic Alpha-to-madVR handoff re-prime |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |

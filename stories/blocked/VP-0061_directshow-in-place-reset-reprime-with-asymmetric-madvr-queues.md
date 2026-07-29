@@ -2,7 +2,34 @@
 
 ## Status
 
-In Progress.
+Blocked.
+
+### Blocker
+
+The full-screen log invalidated the earlier windowed smoke-test conclusion.
+After a manual Renderer Restart, its automatic `post-renderer-start` in-place
+reset accepted `NewSegment` but then stalled madVR after 26 successful
+deliveries: VP reached `8/64 + 64/64` while capture and conversion continued.
+That is the original downstream-consumption failure, not a successful reset.
+
+Two follow-up commits are available on
+`codex/vp-0061-directshow-reset-reprime`:
+
+- `67cf8ba` keeps manual Reset in-place and restores Stop/Run only for
+  graph-scope lifecycle recovery.
+- `fec476c` corrects the graph recovery order so the graph is running before
+  the worker-owned `NewSegment` acknowledgement is awaited.
+
+Both revisions built as x64 Release and passed 263/263 native tests. The
+`fec476c` executable is deployed but was not live-validated because Windows
+app control was stopped before launch. The previous non-looping deployment is
+retained as `VideoProcessor.exe.pre-VP0061-graph-order-20260729-121730.bak`.
+
+Resume only with explicit full-screen live validation: start the `fec476c`
+build at madVR 16/8 and VP 64, confirm the OSD queue state before and after a
+manual Reset, then verify a Renderer Restart still fills madVR without a
+delivery stall. Do not treat `NewSegment=S_OK` alone as success; require
+continued delivery beyond the CPU queue boundary and no VP 64/64 backpressure.
 
 Investigation on July 29, 2026 reproduced and isolated the failure.
 Implementation has started from the confirmed integration base
