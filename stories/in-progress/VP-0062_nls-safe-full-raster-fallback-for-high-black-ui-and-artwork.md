@@ -2,8 +2,23 @@
 
 ## Status
 
-Backlog. This is a focused NLS detector/usability follow-up to VP-0040, not a
-request to weaken trusted crop authority.
+In progress (2026-07-29). This is a focused NLS detector/usability follow-up
+to VP-0040, not a request to weaken trusted crop authority.
+
+## Initial investigation
+
+The deployed 59.940 Hz/3840x2160 log was inspected in
+`C:\Videoprocessor\vp\logs\vp_debug.log` (13:32:16--13:32:29) and its
+rotations. The high-black UI initially produced unpaired left/right dark-edge
+candidates, correctly withheld as `classification=3` with the reason
+`candidate lacks coherent opposing black-bar evidence`. At frame 736 the
+detector published trusted full raster (`0,0-3840,2160`, aspect `1.7778`,
+generation `2`) with `safe full-raster authority accepted`; NLS consumed that
+same generation and engaged at 13:32:27 without a renderer restart. This
+rules out a stale publication/consumer-generation failure for that reproduced
+session. The original reference capture still needs a matched reproduction,
+refresh-family coverage, and madVR/Alpha validation before deciding whether
+any code change is warranted.
 
 ## User story
 
