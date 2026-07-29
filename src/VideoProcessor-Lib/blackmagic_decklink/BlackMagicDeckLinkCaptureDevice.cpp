@@ -130,7 +130,7 @@ void BlackMagicDeckLinkCaptureDevice::SetCallbackHandler(ICaptureDeviceCallback*
 	if (m_callback)
 	{
 		m_callback->OnCaptureDeviceState(m_state);
-		SendVideoStateCallback();
+		SendVideoStateCallback(0);
 	}
 
 	DbgLog((LOG_TRACE, 1, TEXT("BlackMagicDeckLinkCaptureDevice::SetCallbackHandler(): updated callback")));
@@ -162,10 +162,14 @@ bool BlackMagicDeckLinkCaptureDevice::CanCapture()
 }
 
 
-void BlackMagicDeckLinkCaptureDevice::StartCapture()
+void BlackMagicDeckLinkCaptureDevice::StartCapture(
+	CaptureRunToken captureRunToken)
 {
 	if (m_outputCaptureData.load(std::memory_order_acquire))
 		throw std::runtime_error("StartCapture() callbed but already started");
+	if (captureRunToken == 0)
+		throw std::runtime_error(
+			"StartCapture() called with invalid capture run token");
 
 	if (!CanCapture())
 		throw std::runtime_error("Card cannot capture");
@@ -242,6 +246,7 @@ void BlackMagicDeckLinkCaptureDevice::StartCapture()
 	//
 
 	// From here on out data can egress
+	m_captureRunToken.store(captureRunToken, std::memory_order_release);
 	m_outputCaptureData.store(true, std::memory_order_release);
 
 	// Log startup information
@@ -251,6 +256,8 @@ void BlackMagicDeckLinkCaptureDevice::StartCapture()
 
 	IF_NOT_S_OK(m_deckLinkInput->StartStreams())
 	{
+		m_outputCaptureData.store(false, std::memory_order_release);
+		m_captureRunToken.store(0, std::memory_order_release);
 		m_deckLinkInput.Release();
 		m_deckLinkInput = nullptr;
 		throw std::runtime_error("Failed to StartStreams");
@@ -267,6 +274,7 @@ void BlackMagicDeckLinkCaptureDevice::StopCapture()
 
 	// Stop egressing data
 	m_outputCaptureData.store(false, std::memory_order_release);
+	m_captureRunToken.store(0, std::memory_order_release);
 
 	assert(m_deckLinkInput);
 
@@ -437,8 +445,11 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFormatChang
 	// WARNING: Called from some internal capture card thread!
 	// TODO: We can be nicer and "return E_INVALIDARG;" for the throws, investigate how that's handled gracefully
 
+	const CaptureRunToken captureRunToken =
+		m_captureRunToken.load(std::memory_order_acquire);
 	// Dot not process if we're not capturing anymore
-	if (!m_outputCaptureData.load(std::memory_order_acquire))
+	if (captureRunToken == 0 ||
+		!m_outputCaptureData.load(std::memory_order_acquire))
 		return S_OK;
 
 #ifdef _DEBUG
@@ -560,7 +571,7 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFormatChang
 		m_ticksPerFrame = (timingclocktime_t)round((1.0 / FPS(m_bmdDisplayMode)) * TimingClockTicksPerSecond());
 
 		// Inform callback handlers that stream will be invalid before re-starting
-		if (!SendVideoStateCallback())
+		if (!SendVideoStateCallback(captureRunToken))
 			return E_FAIL;
 
 		//
@@ -618,8 +629,11 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 {
 	// WARNING: Called from some internal capture card thread!
 
+	const CaptureRunToken captureRunToken =
+		m_captureRunToken.load(std::memory_order_acquire);
 	// Dot not process if we're not capturing anymore
-	if (!m_outputCaptureData.load(std::memory_order_acquire))
+	if (captureRunToken == 0 ||
+		!m_outputCaptureData.load(std::memory_order_acquire))
 		return S_OK;
 
 	// TODO: This smells like a poor state machine, how can we be here if m_outputCaptureData is false?
@@ -861,7 +875,7 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 
 		if (videoStateChanged)
 		{
-			if (!SendVideoStateCallback())
+			if (!SendVideoStateCallback(captureRunToken))
 				return E_FAIL;
 		}
 
@@ -873,7 +887,8 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 			data, m_capturedVideoFrameCount,
 			timingClockFrameTime, videoFrame);
 
-		m_callback->OnCaptureDeviceVideoFrame(vpVideoFrame);
+		m_callback->OnCaptureDeviceVideoFrame(
+			this, captureRunToken, vpVideoFrame);
 	}  // videoFrame
 
 	return S_OK;
@@ -996,7 +1011,8 @@ void BlackMagicDeckLinkCaptureDevice::ResetVideoState()
 }
 
 
-bool BlackMagicDeckLinkCaptureDevice::SendVideoStateCallback()
+bool BlackMagicDeckLinkCaptureDevice::SendVideoStateCallback(
+	CaptureRunToken captureRunToken)
 {
 	// WARNING: Called from some internal capture card thread!
 
@@ -1057,7 +1073,8 @@ bool BlackMagicDeckLinkCaptureDevice::SendVideoStateCallback()
 			}
 		}
 
-		m_callback->OnCaptureDeviceVideoStateChange(videoState);
+		m_callback->OnCaptureDeviceVideoStateChange(
+			this, captureRunToken, videoState);
 	}
 	catch (const std::runtime_error& e)
 	{

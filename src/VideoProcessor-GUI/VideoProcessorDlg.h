@@ -52,6 +52,7 @@
 #define WM_MESSAGE_RENDERER_STATE_CHANGE                (WM_APP + 8)
 #define WM_MESSAGE_RENDERER_DETAIL_STRING               (WM_APP + 9)
 #define WM_MESSAGE_RENDERER_LIVE_FRAME                  (WM_APP + 10)
+#define WM_MESSAGE_EVALUATE_RENDERER_START              (WM_APP + 11)
 #define WM_MESSAGE_RENDERER_RESET_REQUEST               (WM_APP + 12)
 #define WM_MESSAGE_RENDERER_RETIRED                     (WM_APP + 13)
 
@@ -169,6 +170,7 @@ public:
 	afx_msg LRESULT OnMessageCaptureDeviceStateChange(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageCaptureDeviceCardStateChange(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageCaptureDeviceVideoStateChange(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageEvaluateRendererStart(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageCaptureDeviceError(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam);
@@ -201,8 +203,14 @@ public:
 	// ICaptureDeviceCallback
 	void OnCaptureDeviceState(CaptureDeviceState state) override;
 	void OnCaptureDeviceCardStateChange(CaptureDeviceCardStateComPtr cardState) override;
-	void OnCaptureDeviceVideoStateChange(VideoStateComPtr videoState) override;
-	void OnCaptureDeviceVideoFrame(VideoFrame& videoFrame) override;
+	void OnCaptureDeviceVideoStateChange(
+		ACaptureDevice* source,
+		CaptureRunToken captureRunToken,
+		VideoStateComPtr videoState) override;
+	void OnCaptureDeviceVideoFrame(
+		ACaptureDevice* source,
+		CaptureRunToken captureRunToken,
+		VideoFrame& videoFrame) override;
 	void OnCaptureDeviceError(const CString& error) override;
 
 	// IRendererCallback
@@ -464,6 +472,13 @@ protected:
 
 	std::shared_ptr<RendererIngressState> m_rendererIngressState =
 		std::make_shared<RendererIngressState>();
+	std::mutex m_captureVideoStateNotificationMutex;
+	ACaptureDevice* m_captureVideoStateSource = nullptr;
+	uint64_t m_captureVideoStateSourceEpoch = 0;
+	uint64_t m_captureVideoStateNextEpoch = 0;
+	uint64_t m_appliedCaptureVideoStateNotificationSequence = 0;
+	uint64_t m_rendererCaptureVideoStateNotificationSequence = 0;
+	bool m_rendererStartEvaluationPosted = false;
 	std::unique_ptr<RendererResetCoordinator> m_rendererResetCoordinator;
 	RendererBindingToken m_rendererResetBindingToken = 0;
 	UnifiedProfileRuntime::Runtime m_profileRuntime;

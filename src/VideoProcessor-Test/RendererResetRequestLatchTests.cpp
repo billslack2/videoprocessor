@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <RendererResetRequestLatch.h>
+#include <RendererIngressState.h>
 #include <microsoft_directshow/video_renderers/DirectShowGraphExecutor.h>
 
 #include <chrono>
@@ -87,6 +88,36 @@ namespace Tests
 	TEST_CLASS(RendererResetRequestLatchTests)
 	{
 	public:
+		TEST_METHOD(RendererIngressRejectsFramesAfterCaptureStatePublication)
+		{
+			auto ingress = std::make_shared<RendererIngressState>();
+			const uint64_t validState =
+				ingress->PublishCaptureSequence();
+			ingress->SetCaptureSequence(validState);
+			ingress->OpenAdmission();
+			Assert::IsTrue(static_cast<bool>(ingress->TryAcquire()));
+
+			const uint64_t invalidResync =
+				ingress->PublishCaptureSequence();
+			Assert::IsFalse(static_cast<bool>(ingress->TryAcquire()));
+			Assert::AreEqual<uint64_t>(
+				invalidResync, ingress->LatestCaptureSequence());
+		}
+
+		TEST_METHOD(RendererIngressResumesAfterPublishedStateIsBound)
+		{
+			auto ingress = std::make_shared<RendererIngressState>();
+			const uint64_t first = ingress->PublishCaptureSequence();
+			ingress->SetCaptureSequence(first);
+			ingress->OpenAdmission();
+			Assert::IsTrue(static_cast<bool>(ingress->TryAcquire()));
+
+			const uint64_t second = ingress->PublishCaptureSequence();
+			Assert::IsFalse(static_cast<bool>(ingress->TryAcquire()));
+			ingress->SetCaptureSequence(second);
+			Assert::IsTrue(static_cast<bool>(ingress->TryAcquire()));
+		}
+
 		TEST_METHOD(PublishesImmediatelyAndOnlyOnceWhilePending)
 		{
 			RendererResetRequestLatch latch;
