@@ -393,7 +393,7 @@ groups `input,scaling,display,viewport` in that order.
 | action `delay_seconds` | whole seconds `0..30`, optional | overrides general delay |
 
 A group is **automatic-capable** when at least one listed profile has a
-key-independent source branch in its ASTâ€”an expression that may evaluate true
+key-independent source branch in its ASTÃ¢â‚¬â€an expression that may evaluate true
 with `$key=NONE`. Only automatic-capable groups may use `default: auto` or a
 group reset condition.
 
@@ -547,7 +547,7 @@ These are application-local Windows accelerators, preserving existing VP
 behavior; they are not system-wide `RegisterHotKey` bindings. They are active
 only while VP's main UI thread is processing keyboard messages for the active
 VP window. They do not fire while another application has focus. Dialog/control
-message routing must preserve existing F2â€“F6 behavior. VP emits at most one
+message routing must preserve existing F2Ã¢â‚¬â€œF6 behavior. VP emits at most one
 selection request per physical key press and ignores repeat-generated command
 messages until the matching key-up is observed.
 
@@ -740,8 +740,8 @@ validated range/preset, group owner, apply class, diagnostics, and tests.
 
 ## Migration and review boundary
 
-The presence of any unified markerâ€”`[general]`,
-`[profile_groups.<name>]`, `[profiles.*]`, or `[event_actions]`â€”selects strict
+The presence of any unified markerÃ¢â‚¬â€`[general]`,
+`[profile_groups.<name>]`, `[profiles.*]`, or `[event_actions]`Ã¢â‚¬â€selects strict
 unified mode. A file with no unified marker uses the released legacy parser and
 behavior. The two modes have separate typed adapters and do not feed
 half-translated records into one another. Configuration assignments use
@@ -794,7 +794,7 @@ side-by-side runtime testing:
 | Resolution | no match, priority, specificity, declared-order tie, equivalent-settings fingerprint |
 | Keys | canonicalization, source/key `&&` and `||`, cross-group composite chords, same-group conflicts, group reset, auto-repeat/no-op |
 | State | global/group policy, valid/stale entries, legacy viewport import, atomic write, failed-apply rollback |
-| Transitions | automaticâ†’automatic, automaticâ†’manual, manualâ†’manual, manualâ†’automatic independently per group |
+| Transitions | automaticÃ¢â€ â€™automatic, automaticÃ¢â€ â€™manual, manualÃ¢â€ â€™manual, manualÃ¢â€ â€™automatic independently per group |
 | Viewport | exact aspect parsing, generic settings, defaults, persistence, coherent runtime variables, coexistence with display/input selections |
 | NLS | typed schema/alias migration, 4:3/16:9/1.90/2.35 matrix, safe-fit, both viewport-contract transition directions, restart-free content changes |
 | Events | applied/confirmed/restored, exact rational families, delay inheritance, dedupe, cancellation, teardown |

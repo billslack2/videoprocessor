@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
-#include <libplacebo/LibplaceboOutputPolicy.h>
+#include <vprenderer/LibplaceboOutputPolicy.h>
 
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;

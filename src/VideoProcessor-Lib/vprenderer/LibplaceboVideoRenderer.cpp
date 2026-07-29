@@ -12,12 +12,12 @@
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
-#include <libplacebo/AlphaCadenceCorrectionPolicy.h>
-#include <libplacebo/AlphaQueuePolicy.h>
-#include <libplacebo/LibplaceboDisplayLut.h>
-#include <libplacebo/AlphaPresentationTelemetry.h>
+#include <vprenderer/AlphaCadenceCorrectionPolicy.h>
+#include <vprenderer/AlphaQueuePolicy.h>
+#include <vprenderer/LibplaceboDisplayLut.h>
+#include <vprenderer/AlphaPresentationTelemetry.h>
 #include <SceneDetector.h>
-#include <libplacebo/LibplaceboOutputPolicy.h>
+#include <vprenderer/LibplaceboOutputPolicy.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
@@ -219,7 +219,7 @@ namespace
 	constexpr const char* RENDERER_STATE_FILENAME =
 		"VideoProcessorRenderer.state";
 	constexpr const char* SHADER_CACHE_RELATIVE_PATH =
-		"libplacebo\\VideoProcessorShaderCache.bin";
+		"vprenderer\\VideoProcessorShaderCache.bin";
 	constexpr size_t MAX_SHADER_CACHE_FILE_SIZE =
 		256u * 1024u * 1024u;
 	std::mutex g_runtimeDisplayRuleMutex;

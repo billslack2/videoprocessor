@@ -1,6 +1,6 @@
 #pragma once
 
-#include <libplacebo/AlphaPresentationTelemetry.h>
+#include <vprenderer/AlphaPresentationTelemetry.h>
 
 #include <cstddef>
 #include <cstdint>

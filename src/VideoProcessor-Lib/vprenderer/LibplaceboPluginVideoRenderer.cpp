@@ -48,9 +48,15 @@ namespace
 			return result;
 
 		const std::wstring pluginPath = executableDirectory +
-			L"\\libplacebo\\VideoProcessorLibplacebo.dll";
+			L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+		DebugLog::Log(
+			"VP Renderer plugin probe: path=%ls",
+			pluginPath.c_str());
 		if (GetFileAttributesW(pluginPath.c_str()) == INVALID_FILE_ATTRIBUTES)
+		{
+			DebugLog::Log("VP Renderer plugin unavailable at canonical path");
 			return result;
+		}
 
 		result.module = LoadLibraryExW(
 			pluginPath.c_str(),
@@ -59,7 +65,7 @@ namespace
 		if (!result.module)
 		{
 			DebugLog::Log(
-				"Optional libplacebo renderer plugin could not be loaded: error=%lu",
+				"Optional VP Renderer plugin could not be loaded: error=%lu",
 				GetLastError());
 			return PluginExports{};
 		}
@@ -90,8 +96,9 @@ namespace
 		}
 
 		DebugLog::Log(
-			"Optional libplacebo renderer plugin loaded: API=%u",
-			apiVersion);
+			"Optional VP Renderer plugin loaded: API=%u path=%ls",
+			apiVersion,
+			pluginPath.c_str());
 		return result;
 	}
 

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -36,7 +36,7 @@
 #include <microsoft_directshow/video_renderers/DirectShowGenericVideoRenderer.h>
 #include <microsoft_directshow/video_renderers/DirectShowGenericHDRVideoRenderer.h>
 #if defined(_WIN64)
-#include <libplacebo/LibplaceboPluginVideoRenderer.h>
+#include <vprenderer/LibplaceboPluginVideoRenderer.h>
 #endif
 #include <guid.h>
 #include <ConfigFile.h>
@@ -4039,7 +4039,7 @@ void CVideoProcessorDlg::RebuildRendererCombo()
 
 		int comboIndex = m_rendererCombo.AddString(rendererEntry.name);
 		m_rendererCombo.SetItemData(comboIndex, reinterpret_cast<DWORD_PTR>(id));
-		DEBUGLOG("Renderer order: render.%d = %s",
+		DEBUGLOG("Renderer order: render.%d = %S",
 			comboIndex + 1,
 			rendererEntry.name.GetString());
 

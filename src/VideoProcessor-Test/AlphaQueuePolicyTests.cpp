@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
-#include <libplacebo/AlphaQueuePolicy.h>
+#include <vprenderer/AlphaQueuePolicy.h>
 
 #include <limits>
 
