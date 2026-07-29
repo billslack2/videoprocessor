@@ -13,11 +13,16 @@
 #include <set>
 #include <map>
 #include <atomic>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <thread>
 
 #include <blackmagic_decklink/BlackMagicDeckLinkCaptureDeviceDiscoverer.h>
 #include <PixelValueRange.h>
 #include <CCie1931Control.h>
 #include <IRenderer.h>
+#include <RendererResetPolicy.h>
 #include <UnifiedProfileRuntime.h>
 #include <VideoFrame.h>
 #include <FullscreenVideoWindow.h>
@@ -43,6 +48,7 @@
 #define WM_MESSAGE_RENDERER_STATE_CHANGE                (WM_APP + 8)
 #define WM_MESSAGE_RENDERER_DETAIL_STRING               (WM_APP + 9)
 #define WM_MESSAGE_RENDERER_LIVE_FRAME                  (WM_APP + 10)
+#define WM_MESSAGE_RENDERER_RESET_COMPLETE              (WM_APP + 11)
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
@@ -76,17 +82,18 @@ enum class HdrLuminanceOptions
 	HDR_LUMINANCE_USER,
 };
 
-// Every renderer interruption is classified before it is scheduled.
-enum class RendererResetReason
+struct RendererResetOperation
 {
-	None,
-	Manual,
-	PostRendererStart,
-	DisplayTransition,
-	Resize,
-	QueueSizeChange,
-	TimingOffsetChange,
-	QueuePressure,
+	uint64_t requestId = 0;
+	uint32_t rendererGeneration = 0;
+	RendererResetReason reason = RendererResetReason::None;
+	bool requiresGraph = false;
+	ULONGLONG startedTick = 0;
+	std::atomic_bool complete = false;
+	std::atomic_bool succeeded = false;
+	std::atomic_bool timeoutLogged = false;
+	std::mutex failureMutex;
+	std::string failure;
 };
 
 
@@ -382,6 +389,21 @@ protected:
 	bool m_pendingResetRequiresGraph = false;
 	RendererResetReason m_pendingResetReason = RendererResetReason::None;
 	uint32_t m_pendingResetRendererGeneration = 0;
+	uint64_t m_pendingResetRequestId = 0;
+	int m_pendingResetPriority = -1;
+	ULONGLONG m_pendingResetRequestedTick = 0;
+	ULONGLONG m_pendingResetDeadline = 0;
+	uint64_t m_nextResetRequestId = 0;
+	std::shared_ptr<RendererResetOperation> m_activeResetOperation;
+	ULONGLONG m_lastLivenessRecoveryTick = 0;
+	ULONGLONG m_lastResetDeferralLogTick = 0;
+	std::atomic<ULONGLONG> m_lastUiMessageTick = 0;
+	std::atomic<ULONGLONG> m_lastUiPaintTick = 0;
+	std::atomic<uint64_t> m_activeGraphRequestId = 0;
+	std::atomic<uint32_t> m_activeGraphRequestGeneration = 0;
+	std::atomic<ULONGLONG> m_activeGraphRequestStartedTick = 0;
+	HANDLE m_livenessWatchdogStopEvent = nullptr;
+	std::thread m_livenessWatchdogThread;
 	// Reset() can emit another RENDERSTATE_RENDERING callback. This marker is
 	// reset only when a new renderer graph is constructed.
 	ULONGLONG m_queueResetIgnoreEventsUntil = 0;
@@ -424,7 +446,7 @@ protected:
 	DXVA_VideoPrimaries m_defaultPrimaries = DXVA_VideoPrimaries::DXVA_VideoPrimaries_Unknown;  // Auto
 
 
-	IVideoRenderer* m_videoRenderer = nullptr;
+	std::shared_ptr<IVideoRenderer> m_videoRenderer;
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
 	HWND m_rendererTargetHwnd = nullptr;
@@ -518,6 +540,12 @@ protected:
 	void RequestRendererReset(RendererResetReason reason, bool requiresGraph,
 		UINT delayMs);
 	void ExecutePendingRendererReset();
+	void CompleteRendererResetOperation();
+	bool RendererResetOperationInProgress() const;
+	void LogLivenessSnapshot(const RendererLivenessSnapshot& snapshot,
+		size_t rawQueueSize, size_t convertedQueueSize, size_t queueMaxSize,
+		const char* trigger);
+	void LivenessWatchdogWorker();
 	void ApplyNoUiLayout();
 	bool UpdateNewLldvCandidate();
 	bool IsNewLldvModeSelected();
@@ -554,6 +582,7 @@ protected:
 	afx_msg void OnSetFocus(CWnd* pOldWnd);
 	afx_msg void OnClose();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
+	afx_msg LRESULT OnMessageRendererResetComplete(WPARAM wParam, LPARAM lParam);
 	afx_msg HCURSOR	OnQueryDragIcon();
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
 

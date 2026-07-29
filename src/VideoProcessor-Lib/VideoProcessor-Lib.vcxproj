@@ -190,6 +190,8 @@
     <ClInclude Include="InputLocked.h" />
     <ClInclude Include="IntegerMath.h" />
     <ClInclude Include="IRenderer.h" />
+    <ClInclude Include="RendererLiveness.h" />
+    <ClInclude Include="RendererResetPolicy.h" />
     <ClInclude Include="vprenderer\\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
     <ClInclude Include="ActivePictureTransitionModel.h" />
