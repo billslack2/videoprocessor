@@ -22,12 +22,11 @@ Review.
   previous accepted value, reason, recalculation attempt, and blocked
   consumers.
 - Implementation base updated to the current remote default
-  `v1.1.015-beta` (`0cf35f95f3fae2234c7d6fdd6d2e10fd977035ab`).
-- Because the new default has separate ancestry from `v1.1.014-beta`, the
-  completed rebase replayed the 112 implementation-line commits required to
-  preserve the VP source tree on top of the new default.
+  `v1.1.015-beta` (`b7e5645a1e94b59ea3dd66b264dba03209c55dea`).
+- The corrected default now starts from the VP release line; the final branch
+  is one VP-0055 commit ahead of that base with the intended ten-file diff.
 - Implementation branch: `codex/vp-0055-display-rate-validation`
-- Rebased source commit: `28edf2081de19920a1633fe3e46702f268a8369a`
+- Rebased source commit: `b28727076e6a123fcbcec3665bc0ce3164e88597`
 - Draft PR: `https://github.com/billslack2/videoprocessor/pull/25`
 - Validation: x64 Release solution build passed with Visual Studio 18.7
   MSBuild; the full native suite passed 205/205. Focused cases cover clean
