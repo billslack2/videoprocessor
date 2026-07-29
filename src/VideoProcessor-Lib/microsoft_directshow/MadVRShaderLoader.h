@@ -107,7 +107,7 @@ public:
 		std::string& reason);
 	static bool IsShaderFilenameCompatible(const std::string& filename,
 		ShaderRendererBackend backend);
-	// Resolves one shader filename under <executable>\Shaders. Directory
+	// Resolves one shader filename under <executable>\shaders. Directory
 	// components, absolute paths, and traversal are deliberately rejected.
 	static bool ResolveShaderFilename(const std::string& filename,
 		const std::string& executablePath, std::string& resolvedPath,

@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
-#include <libplacebo/AlphaCadenceCorrectionPolicy.h>
+#include <vprenderer/AlphaCadenceCorrectionPolicy.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 

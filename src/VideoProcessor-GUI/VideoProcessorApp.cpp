@@ -10,7 +10,7 @@
 
 #include <winnt.h>
 #include <VideoProcessorDlg.h>
-#include <libplacebo/AlphaQueuePolicy.h>
+#include <vprenderer/AlphaQueuePolicy.h>
 #include <VideoConversionOverride.h>
 #include <DebugLog.h>
 #include <ConfigFile.h>

@@ -12,7 +12,7 @@
 #include "RendererId.h"
 #include <algorithm>
 #if defined(_WIN64)
-#include <libplacebo/LibplaceboPluginVideoRenderer.h>
+#include <vprenderer/LibplaceboPluginVideoRenderer.h>
 #endif
 
 

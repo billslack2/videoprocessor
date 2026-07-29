@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -36,7 +36,7 @@
 #include <microsoft_directshow/video_renderers/DirectShowGenericVideoRenderer.h>
 #include <microsoft_directshow/video_renderers/DirectShowGenericHDRVideoRenderer.h>
 #if defined(_WIN64)
-#include <libplacebo/LibplaceboPluginVideoRenderer.h>
+#include <vprenderer/LibplaceboPluginVideoRenderer.h>
 #endif
 #include <guid.h>
 #include <ConfigFile.h>
@@ -1010,7 +1010,7 @@ static const std::vector<std::pair<LPCTSTR, DXVA_VideoTransferFunction>> DIRECTS
 {
 	std::make_pair(TEXT("Auto"),                      DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown),
 	std::make_pair(TEXT("PQ"),                        DIRECTSHOW_VIDEOTRANSFUNC_2084),
-	std::make_pair(TEXT("Rec 709 (γ=2.2)"),           DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_709),
+	std::make_pair(TEXT("Rec 709 (Î³=2.2)"),           DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_709),
 	std::make_pair(TEXT("Bt.2020 constant"),          DIRECTSHOW_VIDEOTRANSFUNC_2020_const),
 
 	std::make_pair(TEXT("True gamma 1.8"),            DXVA_VideoTransferFunction::DXVA_VideoTransFunc_18),
@@ -1019,12 +1019,12 @@ static const std::vector<std::pair<LPCTSTR, DXVA_VideoTransferFunction>> DIRECTS
 	std::make_pair(TEXT("True gamma 2.6"),            DIRECTSHOW_VIDEOTRANSFUNC_26),
 	std::make_pair(TEXT("True gamma 2.8"),            DXVA_VideoTransferFunction::DXVA_VideoTransFunc_28),
 
-	std::make_pair(TEXT("Linear RGB (γ=1.0)"),        DXVA_VideoTransferFunction::DXVA_VideoTransFunc_10),
-	std::make_pair(TEXT("204M (γ=2.2)"),              DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_240M),
+	std::make_pair(TEXT("Linear RGB (Î³=1.0)"),        DXVA_VideoTransferFunction::DXVA_VideoTransFunc_10),
+	std::make_pair(TEXT("204M (Î³=2.2)"),              DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_240M),
 	std::make_pair(TEXT("8-bit gamma 2.2"),           DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_8bit_sRGB),
 	std::make_pair(TEXT("Log 100:1 H.264"),           DIRECTSHOW_VIDEOTRANSFUNC_Log_100),
 	std::make_pair(TEXT("Log 316:1 H.264"),           DIRECTSHOW_VIDEOTRANSFUNC_Log_316),
-	std::make_pair(TEXT("Rec 709 (γ=2.2) symmetric"), DIRECTSHOW_VIDEOTRANSFUNC_709_sym),
+	std::make_pair(TEXT("Rec 709 (Î³=2.2) symmetric"), DIRECTSHOW_VIDEOTRANSFUNC_709_sym),
 	std::make_pair(TEXT("Bt.2020 non-const"),         DIRECTSHOW_VIDEOTRANSFUNC_2020),
 	std::make_pair(TEXT("Hybrid log"),                DIRECTSHOW_VIDEOTRANSFUNC_HLG)
 };
@@ -1941,7 +1941,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	m_resyncPendingResetSeconds = -1;
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Reset refresh rate tracking")));
 
-	// EOTF CHANGE DETECTION: Check if EOTF changed during active stream (e.g., SDR↔HDR switching)
+	// EOTF CHANGE DETECTION: Check if EOTF changed during active stream (e.g., SDRâ†”HDR switching)
 	// Only check if renderer is actively rendering and feature is enabled
 	if (m_enableEotfChangeRestart &&
 		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
@@ -5763,7 +5763,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_rendererVideoConversionCombo.GetLBText(m_rendererVideoConversionCombo.GetCurSel(), stats.videoConversion);
 	}
 	
-	// Conversion performance (NEW - V210→P010 etc.)
+	// Conversion performance (NEW - V210â†’P010 etc.)
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
 	{
 		double currentUs, avg10s, max10s;
