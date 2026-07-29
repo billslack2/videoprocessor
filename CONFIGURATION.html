@@ -3,308 +3,86 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VideoProcessor configuration</title>
+  <title>VideoProcessor configuration guide and reference</title>
   <style>
-    body { font: 16px/1.5 "Segoe UI", Arial, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #222; }
-    h1, h2, h3 { color: #17365d; } code, pre { font-family: Consolas, monospace; }
-    code { background: #f2f2f2; padding: .1rem .25rem; } pre { background: #f2f2f2; padding: 1rem; overflow-x: auto; }
-    table { border-collapse: collapse; width: 100%; margin: 1rem 0; } th, td { border: 1px solid #ccc; padding: .55rem; text-align: left; vertical-align: top; }
-    th { background: #eaf1f8; } .note { background: #fff4ce; border-left: 4px solid #d6a700; padding: .8rem 1rem; }
-    #renderer { margin-top: 4rem; padding-top: 1.5rem; border-top: 4px solid #17365d; } .renderer-nav { background: #eaf1f8; padding: .75rem 1rem; margin: 1rem 0 1.5rem; }
+    :root { color-scheme: light; --ink:#18202a; --muted:#52606d; --blue:#173f6b; --pale:#eef5fc; --line:#c9d4df; --note:#fff7d6; --danger:#fff0ee; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin:0; color:var(--ink); background:#fff; font:16px/1.58 "Segoe UI",Arial,sans-serif; }
+    a { color:#075ea8; } a:hover { text-decoration-thickness:2px; }
+    a:focus-visible, summary:focus-visible { outline:3px solid #ffbf47; outline-offset:3px; }
+    .skip { position:absolute; left:-9999px; } .skip:focus { left:1rem; top:1rem; z-index:5; background:#fff; padding:.6rem; }
+    .layout { display:grid; grid-template-columns:minmax(14rem,19rem) minmax(0,70rem); gap:2rem; max-width:94rem; margin:auto; padding:1.5rem; }
+    nav { position:sticky; top:1rem; max-height:calc(100vh - 2rem); overflow:auto; align-self:start; border:1px solid var(--line); border-radius:.5rem; padding:1rem; background:#fff; }
+    nav strong { color:var(--blue); } nav ul { margin:.45rem 0 1rem; padding-left:1.25rem; } nav li { margin:.28rem 0; }
+    main { min-width:0; }
+    h1,h2,h3,h4 { color:var(--blue); line-height:1.24; } h1 { font-size:2.25rem; } h2 { margin-top:3.4rem; border-bottom:3px solid var(--blue); padding-bottom:.35rem; }
+    h3 { margin-top:2.3rem; } h4 { margin:.1rem 0 .5rem; font-size:1.2rem; }
+    code,pre { font-family:Consolas,"Cascadia Mono",monospace; } code { background:#f0f3f6; padding:.08rem .24rem; border-radius:.2rem; }
+    pre { background:#111923; color:#f3f6f8; padding:1rem; overflow:auto; border-radius:.4rem; white-space:pre; }
+    table { width:100%; border-collapse:collapse; margin:1rem 0; } th,td { border:1px solid var(--line); padding:.55rem; text-align:left; vertical-align:top; } th { background:var(--pale); }
+    .lead { font-size:1.12rem; color:#283848; }
+    .note,.warning { padding:.8rem 1rem; margin:1rem 0; border-left:5px solid #c69a00; background:var(--note); }
+    .warning { border-color:#b33a2b; background:var(--danger); }
+    .field { border:1px solid var(--line); border-left:5px solid #4779a8; border-radius:.35rem; padding:1rem; margin:1rem 0; scroll-margin-top:1rem; }
+    .field p { margin:.45rem 0; } .field ul { margin:.45rem 0; }
+    .meta { color:var(--muted); } .auto { background:var(--pale); padding:.55rem .7rem; border-radius:.3rem; }
+    .choices li { margin:.32rem 0; }
+    .index { columns:2 22rem; } .index li { break-inside:avoid; }
+    .badge { display:inline-block; font-size:.78rem; font-weight:600; color:#fff; background:#426b92; border-radius:1rem; padding:.1rem .5rem; margin-left:.35rem; }
+    @media (max-width:900px) { .layout { display:block; } nav { position:static; max-height:none; } .index { columns:1; } }
+    @media print { nav,.skip { display:none; } .layout { display:block; max-width:none; } .field { break-inside:avoid; } }
   </style>
 </head>
 <body>
-  <h1>VideoProcessor configuration reference</h1>
-  <p><a href="#application">Application configuration</a> | <a href="#renderer">Built-in renderer configuration</a></p>
-  <h2 id="application">Application configuration</h2>
-  <p><code>VideoProcessor.cfg</code> is an optional UTF-8 text file searched first beside the executable, then up to two parent directories, with the application's working directory as a fallback. It uses INI-style sections and <code>key=value</code> entries. Blank lines and lines beginning with <code>#</code> are ignored.</p>
-  <p>The shipped file is a conservative sample with common <code>[command_line]</code>, <code>[logging]</code>, and <code>[queue_recovery]</code> settings. The optional <code>[display_refresh_rate_override]</code>, <code>[shaders]</code>, <code>[p010_conversion]</code>, and <code>[ppm_correction]</code> sections can be added when needed.</p>
-  <p><code>VideoProcessor.cfg</code> is the normal single configuration file for application, capture, shader, built-in renderer, profile, hotkey, and completed-event settings.</p>
-  <p>Strict ownership remains enforced inside the combined file: application settings are read at startup, while renderer profile and event expressions may change only renderer-owned settings. Capture, queue, conversion, and other application keys cannot be placed in renderer profiles.</p>
-  <p>Command-line arguments are applied after configuration values, allowing a shortcut or script to override matching settings.</p>
-  <p>Use <code>/config "path\VideoProcessor.cfg"</code> to select a different complete configuration for one process. Relative paths are resolved from the process working directory, and an explicitly selected file must exist. The <code>--config</code> and <code>-config</code> spellings are equivalent; <code>/config=path</code> is also accepted.</p>
-
-  <h2>[command_line]</h2>
-  <p>Keys and option values, including device and renderer names, are case-insensitive. Configuration entries must use <code>key=value</code>. Boolean values accept <code>true</code>/<code>false</code>, <code>yes</code>/<code>no</code>, <code>on</code>/<code>off</code>, or <code>1</code>/<code>0</code>. On the command line, a bare Boolean switch enables it; append a Boolean value to explicitly enable or disable it, for example <code>/scene_detect false</code>.</p>
-  <table>
-    <thead><tr><th>Key</th><th>Type and values</th><th>Effect</th></tr></thead>
-    <tbody>
-      <tr><td><code>capture_device</code></td><td>Device name</td><td>Capture device to select.</td></tr>
-      <tr><td><code>renderer</code></td><td>Renderer name</td><td>Renderer to select. Leave the value empty to use the application's current/default selection.</td></tr>
-      <tr><td><code>fullscreen</code></td><td>Boolean</td><td>Start in fullscreen mode.</td></tr>
-      <tr><td><code>windowedfullscreenmode</code></td><td>Boolean</td><td>Use windowed rather than exclusive fullscreen.</td></tr>
-      <tr><td><code>queue_size</code></td><td>Positive integer</td><td>Maximum renderer frame-queue size.</td></tr>
-      <tr><td><code>scene_detect</code></td><td>Boolean</td><td>For P010 output, locks output timestamps to the measured display cadence and prefers required whole-frame repeat/drop corrections at detected cuts. If no cut occurs before a full-frame phase error, a hard-limit correction preserves queue depth and alignment with independent audio. The setting is retained but inactive for non-P010 output. When false or absent, the legacy timestamp and delivery path is used.</td></tr>
-      <tr><td><code>scene_correction_basic</code></td><td>Boolean</td><td>Optional DirectShow-only override when <code>scene_detect=true</code> and P010 conversion is selected. The normal default is the Advanced upstream-sample correction; set this to <code>true</code> only to request the legacy Basic renderer repeat. Alpha has one native correction path, so this setting has no effect there.</td></tr>
-      <tr><td><code>newlldv</code></td><td>Boolean</td><td>Enable the opt-in BT.2020 + SDR LLDV heuristic.</td></tr>
-      <tr><td><code>noui</code></td><td>Boolean</td><td>Show only the windowed video panel.</td></tr>
-      <tr><td><code>startminimized</code></td><td>Boolean</td><td>Start minimized.</td></tr>
-      <tr><td><code>frame_offset</code></td><td>Non-negative milliseconds or <code>auto</code></td><td>Timing-clock frame offset or automatic offset selection.</td></tr>
-      <tr><td><code>video_conversion</code></td><td><code>V210_TO_P010</code></td><td>Convert supported YUV/RGB input to P010. <code>UYVY_TO_P010</code> is accepted as an alias.</td></tr>
-      <tr><td><code>container_colorspace</code></td><td><code>BT2020</code>, <code>P3_D65</code>, <code>P3_DCI</code>, <code>P3_D60</code>, <code>REC709</code>, <code>REC601_525</code>, <code>REC601_625</code></td><td>Force the output container colorspace.</td></tr>
-      <tr><td><code>hdr_colorspace</code></td><td><code>FOLLOW_INPUT</code>, <code>FOLLOW_INPUT_LLDV</code>, <code>FOLLOW_CONTAINER</code>, <code>BT2020</code>, <code>P3</code>, <code>REC709</code></td><td>HDR display-primaries handling.</td></tr>
-      <tr><td><code>hdr_luminance</code></td><td><code>FOLLOW_INPUT</code>, <code>FOLLOW_INPUT_LLDV</code>, <code>HDR_LUMINANCE_USER</code></td><td>HDR luminance handling. User mode uses values entered in the GUI.</td></tr>
-      <tr><td><code>renderer_start_stop_time_method</code></td><td><code>CLOCK_SMART</code>, <code>CLOCK_SMART2</code>, <code>CLOCK_THEO</code>, <code>CLOCK_CLOCK</code>, <code>THEO_THEO</code>, <code>RATIONAL_RATIONAL</code>, <code>CLOCK_RATIONAL</code>, <code>CLOCK_NONE</code>, <code>THEO_NONE</code>, <code>NONE</code></td><td>DirectShow timestamp method.</td></tr>
-      <tr><td><code>renderer_nominal_range</code></td><td><code>FULL</code>, <code>LIMITED</code>, <code>SMALL</code></td><td>Override nominal video range.</td></tr>
-      <tr><td><code>renderer_transfer_function</code></td><td><code>AUTO</code>, <code>PQ</code>, <code>REC709</code>, <code>BT2020_CONST</code>, <code>GAMMA_1.8</code>, <code>GAMMA_2.0</code>, <code>GAMMA_2.2</code>, <code>GAMMA_2.6</code>, <code>GAMMA_2.8</code>, <code>LINEAR_RGB</code>, <code>204M</code>, <code>8BIT_GAMMA_2.2</code>, <code>LOG_100_1</code>, <code>LOG_316_1</code>, <code>BT2020</code>, <code>HYBRID_LOG_GAMMA</code></td><td>Override the DirectShow transfer function.</td></tr>
-      <tr><td><code>renderer_transfer_matrix</code></td><td><code>AUTO</code>, <code>BT2020_10</code>, <code>BT2020_12</code>, <code>BT709</code>, <code>BT601</code>, <code>240M</code>, <code>FCC</code>, <code>YCgCo</code></td><td>Override the DirectShow transfer matrix.</td></tr>
-      <tr><td><code>renderer_primaries</code></td><td><code>AUTO</code>, <code>BT2020</code>, <code>DCI-P3</code>, <code>BT709</code>, <code>NTSC_SYSM</code>, <code>NTSC_SYSBG</code>, <code>CIE1931_ZYX</code>, <code>ACES</code></td><td>Override DirectShow video primaries.</td></tr>
-    </tbody>
-  </table>
-
-  <h2>[logging]</h2>
-  <p>VideoProcessor keeps the active debug log at <code>logs\vp_debug.log</code> beneath the directory containing the main executable. VP does not create the <code>logs</code> directory. If the directory is absent or unwritable, logging is disabled for that process and no fallback log is written. At process startup, a non-empty prior active log is archived as <code>vp_debug.log.0</code> (newest), existing archives shift upward to <code>vp_debug.log.1</code>, <code>vp_debug.log.2</code>, and so on, and the oldest matching archives are pruned. Legacy timestamp archives from earlier releases are recognized as older archives and age out before indexed logs. Rotation errors are non-fatal and are recorded when the configured destination remains writable.</p>
-  <table><thead><tr><th>Key</th><th>Type and default</th><th>Effect</th></tr></thead><tbody>
-    <tr><td><code>debug_log_retention</code></td><td>Integer <code>1</code>-<code>100</code>; default <code>10</code></td><td>Total VP debug-log files to retain, including the active log. The value is read once at startup. Omitted, invalid, zero, duplicate, or out-of-range values resolve to <code>10</code>. A value of <code>1</code> retains only the active log; zero never disables rotation. Archives match only <code>vp_debug.log.&lt;non-negative integer&gt;</code> and recognized legacy VP timestamp names; other files are never pruned.</td></tr>
-  </tbody></table>
-  <pre>[logging]
-debug_log_retention=10</pre>
-
-  <h2>[queue_recovery]</h2>
-  <p>These settings control the automatic queue-only recovery safeguard. The raw and converted queues are evaluated independently; the percentage is not applied to their combined display total. If either queue reaches the configured high-water mark, VideoProcessor waits the configured delay and then flushes/re-primes the live source queue without rebuilding the renderer graph.</p>
-  <table><thead><tr><th>Key</th><th>Type and default</th><th>Effect</th></tr></thead><tbody>
-    <tr><td><code>reset_after_render_restart_seconds</code></td><td>Positive integer; default <code>5</code></td><td>Delay before the automatic recovery reset after startup/restart or a high-water event.</td></tr>
-    <tr><td><code>reset_queue_too_large_percent</code></td><td>Integer <code>1</code>-<code>100</code>; default <code>75</code></td><td>Per-queue high-water threshold that schedules recovery.</td></tr>
-  </tbody></table>
-  <pre>[queue_recovery]
-reset_after_render_restart_seconds=5
-reset_queue_too_large_percent=75</pre>
-
-  <h2>[shortcuts]</h2>
-  <p>Keyboard shortcuts are optional. If this section, an individual key, or the entire configuration file is absent, VideoProcessor uses its built-in defaults. Modifier names are case-insensitive. A lowercase letter is unmodified (<code>v</code>); an uppercase letter adds Shift (<code>V</code> means <code>Shift+V</code>).</p>
-  <p>Supported modifiers are <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Keys may be a letter, a number, <code>F1</code> through <code>F24</code>, <code>Escape</code>, or <code>Enter</code>. Invalid or duplicate bindings fall back to the built-in binding for fixed commands.</p>
-  <p>Dynamic <code>render.N</code> entries select the 1-based renderer-combo entry and perform the same controlled renderer restart as a UI selection. The sorted, machine-specific order is logged at startup as <code>Renderer order: render.N = &lt;name&gt;</code>. An unavailable index is ignored safely.</p>
-  <pre>[shortcuts]
-auto_set=Ctrl+Shift+a
-fullscreen_exit=Escape
-fullscreen_toggle=Alt+Enter
-toggle_stats_overlay=Ctrl+i
-pq_set=Ctrl+Shift+p
-renderer_restart=Shift+r
-renderer_reset=r
-render.5=Ctrl+Alt+m
-render.6=Ctrl+Alt+l
-capture_1=Ctrl+1
-capture_2=Ctrl+2
-capture_3=Ctrl+3
-capture_4=Ctrl+4
-video_conversion_off=v
-video_conversion_p010=V</pre>
-
-  <h2>LLDV</h2>
-  <div class="note">DeckLink does not expose the HDMI Dolby Vision VSIF. The <code>newlldv</code> option is a heuristic, not definitive detection.</div>
-  <p>With <code>newlldv=true</code>, VideoProcessor treats stable <code>BT.2020 + SDR + no static HDR metadata</code> as LLDV only when both <code>hdr_colorspace=FOLLOW_INPUT_LLDV</code> and <code>hdr_luminance=FOLLOW_INPUT_LLDV</code> are selected. After a 1.5-second confirmation it switches output to PQ and supplies synthetic HDR metadata.</p>
-  <p>Leave <code>newlldv</code> disabled for legacy behavior or whenever genuine BT.2020 SDR could be mistaken for LLDV.</p>
-
-  <h2>[lldv] (optional)</h2>
-  <p>Overrides the synthetic HDR metadata supplied when either LLDV detection path is active and both LLDV follow modes are selected. The overrides apply equally to classic LLDV detection and <code>newlldv</code>. Omit a key to preserve its existing mode-specific default.</p>
-  <table><thead><tr><th>Key</th><th>Value</th><th>Built-in default when omitted</th></tr></thead><tbody>
-    <tr><td><code>max_cll</code></td><td>Non-negative nits</td><td><code>1000</code> for classic and new LLDV</td></tr>
-    <tr><td><code>max_fall</code></td><td>Non-negative nits</td><td><code>1000</code> for classic LLDV; <code>401</code> for <code>newlldv</code></td></tr>
-    <tr><td><code>mastering_min_luminance</code></td><td>Non-negative nits</td><td><code>0.0001</code> for classic LLDV; <code>0.001</code> for <code>newlldv</code></td></tr>
-    <tr><td><code>mastering_max_luminance</code></td><td>Positive nits</td><td><code>1000</code> for classic LLDV; <code>4000</code> for <code>newlldv</code></td></tr>
-  </tbody></table>
-  <pre>[lldv]
-# These are examples only. Uncomment any value to override it for both modes.
-#max_cll=1000
-#max_fall=401
-#mastering_min_luminance=0.001
-#mastering_max_luminance=4000</pre>
-
-  <h2>[display_refresh_rate_override] (optional)</h2>
-  <p>Use this section when the automatic display-rate measurement is known to be wrong. Keys are nominal input refresh rates, matching the <code>[ppm_correction]</code> format; values are exact display rates or <code>AUTO</code>. A truncated nominal key is preferred (for example, <code>23</code> for 23.976 Hz); otherwise a key within 0.5 Hz is used. An exact rate replaces automatic display timing, is shown with <code>*</code> in the OSD, and is explicitly identified in the log. <code>AUTO</code> explicitly keeps normal automatic measurement for that nominal rate.</p>
-  <pre>[display_refresh_rate_override]
-23=23.976024
-29=29.970030
-59=AUTO</pre>
-
-  <h2>[p010_conversion] (optional)</h2>
-  <p>This section is used only by the V210-to-P010 formatter. When it is omitted, VideoProcessor uses smart defaults: <code>AUTO</code> conversion, one minimum core, and one or two maximum cores based on physical-core count.</p>
-  <table><thead><tr><th>Key</th><th>Values</th></tr></thead><tbody>
-    <tr><td><code>ConversionMethod</code></td><td><code>AUTO</code>, <code>SIMD</code>, <code>OPTIMIZED</code>, <code>STANDARD</code></td></tr>
-    <tr><td><code>MinCoreCount</code></td><td>Integer, at least <code>1</code></td></tr>
-    <tr><td><code>MaxCoreCount</code></td><td>Integer</td></tr>
-  </tbody></table>
-  <pre>[p010_conversion]
-ConversionMethod=SIMD
-MinCoreCount=1
-MaxCoreCount=2</pre>
-
-  <h2 id="shaders">[shaders] (optional)</h2>
-  <p>This section installs renderer-native shaders without adding CPU conversion or GPU readback. madVR uses HLSL files and Alpha/libplacebo uses mpv-style GLSL files. Each <code>[shaders.name]</code> section is one independently configured effect. Named automatic effects are checked from left to right and the first compatible match wins; <code>default: none</code> leaves the shader chain empty. Adding a <code>shortcut</code> makes an effect manual automatically. Effects assigned the same shortcut form one durable selector; each renderer applies only the member whose file format it supports.</p>
-  <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
-    <tr><td><code>enabled</code></td><td>Boolean; default <code>false</code></td><td>Enables shader rule evaluation.</td></tr>
-    <tr><td><code>rules</code></td><td>Comma-separated effect names</td><td>Sets effect order. Each name uses a matching <code>[shaders.name]</code> section.</td></tr>
-    <tr><td><code>default</code></td><td><code>none</code></td><td>Safe result when no rule matches. Currently <code>none</code> is the only supported default.</td></tr>
-    <tr><td><code>fallback_shader_model</code></td><td><code>ps_2_0</code>, <code>ps_2_a</code>, <code>ps_2_b</code>, or <code>ps_3_0</code>; default <code>ps_3_0</code></td><td>Used only when a shader does not declare <code>$MinimumShaderProfile:</code>. Most packaged shaders declare it, so this key is normally unnecessary.</td></tr>
-  </tbody></table>
-  <p>Every <code>[shaders.name]</code> effect supports the common keys below. Its settings and parameters apply only to its own file. A typed <code>type: nls</code> effect additionally supports the NLS settings in the following table.</p>
-  <table><thead><tr><th>Key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
-    <tr><td><code>label</code></td><td>Display text</td><td>Friendly rule name shown in the OSD and logs. Defaults to the rule name.</td></tr>
-    <tr><td><code>type</code></td><td><code>nls</code>, or omitted</td><td>Declares built-in typed behavior. New NLS rules identify it explicitly. Legacy implicit NLS detection remains readable only for migration.</td></tr>
-    <tr><td><code>signal</code></td><td><code>ANY</code>, <code>SDR</code>, or <code>HDR</code>; default <code>ANY</code></td><td>Matches the effective video signal. <code>HDR</code> includes HDR gamma, PQ, HLG, and detected LLDV.</td></tr>
-    <tr><td><code>frame_rates</code></td><td>Comma-separated nominal integers or <code>ANY</code>; default <code>ANY</code></td><td>Matches VP's displayed input refresh rate using its truncated nominal key: 23 matches 23.976, 29 matches 29.97, and 59 matches 59.94.</td></tr>
-    <tr><td><code>none</code></td><td>Boolean; default <code>false</code></td><td>Selects the effect but deliberately installs no shaders. An off effect cannot share a shortcut with another effect.</td></tr>
-    <tr><td><code>shortcut</code></td><td>Key or modifier combination</td><td>Makes the effect manual and selects it immediately while video is running. Effects with the same shortcut form one selector. A paired HLSL/GLSL selector remembers one state while madVR and Alpha apply their compatible member. Letter case is meaningful: <code>n</code> means N without Shift and <code>N</code> means Shift+N. <code>Ctrl+</code>, <code>Alt+</code>, <code>Shift+</code>, function keys, Escape, and Enter use the same syntax as <code>[shortcuts]</code>.</td></tr>
-    <tr><td><code>file</code></td><td>Filename only</td><td>The effect's <code>.hlsl</code> file for madVR or mpv-style <code>.glsl</code>/<code>.hook</code> file for Alpha. VP always resolves it under the <code>Shaders</code> directory beside <code>VideoProcessor.exe</code>; absolute paths, directory components, and traversal are rejected.</td></tr>
-    <tr><td><code>stage</code></td><td><code>pre_resize</code> or <code>post_resize</code>; default <code>pre_resize</code></td><td>Selects the madVR HLSL stage. Alpha NLS uses libplacebo's resizable mpv <code>MAIN</code> hook.</td></tr>
-    <tr><td><code>output_aspect_ratio</code></td><td><code>native</code>, decimal, or ratio</td><td>Legacy/manual media-type override for untyped rules. Do not put it in a typed NLS rule; VP derives that contract from the selected viewport.</td></tr>
-    <tr><td><code>param_name</code></td><td>Finite compile-time value</td><td>Low-level token replacement for untyped custom shaders. Typed NLS rules use validated names without the <code>param_</code> prefix.</td></tr>
-    <tr><td><code>manual</code></td><td>Deprecated Boolean</td><td>Migration-only. Remove it and use <code>shortcut</code>; shortcut presence already means the effect is manual.</td></tr>
-    <tr><td><code>pre_resize_N</code>, <code>post_resize_N</code></td><td>Unsupported</td><td>Split each old chain entry into its own effect using <code>file</code> and <code>stage</code>.</td></tr>
-  </tbody></table>
-  <table><thead><tr><th>Typed NLS key</th><th>Values</th><th>Effect</th></tr></thead><tbody>
-    <tr><td><code>geometry</code></td><td><code>classic</code> or <code>protected</code></td><td>Selects the established power curve or a steadier protected-centre curve.</td></tr>
-    <tr><td><code>strength</code></td><td><code>0.0</code>â€“<code>1.0</code></td><td>Scales the calculated correction; <code>1.0</code> applies the complete mapping.</td></tr>
-    <tr><td><code>center_protection</code></td><td><code>0.0</code>â€“<code>0.45</code></td><td>Protected fraction of picture width when <code>geometry: protected</code>.</td></tr>
-    <tr><td><code>curve</code></td><td><code>0.5</code>â€“<code>4.0</code></td><td>Controls how progressively distortion moves toward the sides.</td></tr>
-    <tr><td><code>quality</code></td><td><code>low</code>, <code>medium</code>, <code>high</code>, or <code>very high</code></td><td>Selects reconstruction quality and GPU cost.</td></tr>
-    <tr><td><code>tolerance_percent</code></td><td><code>0</code>â€“<code>50</code></td><td>Treats content already this close to the selected viewport as linear passthrough.</td></tr>
-  </tbody></table>
-  <pre>[shaders]
-enabled=true
-rules=broadcast_denoise,broadcast_sharpen
-default=none
-
-[shaders.broadcast_denoise]
-label=Broadcast Denoise
-shortcut=Ctrl+B
-signal=SDR
-frame_rates=59,60
-file=Denoise.hlsl
-stage=pre_resize
-
-[shaders.broadcast_sharpen]
-label=Broadcast Sharpen
-shortcut=Ctrl+B
-file=Adaptive sharpen.hlsl
-stage=post_resize</pre>
-  <h3 id="nls">Viewport-aware nonlinear stretch</h3>
-  <p>A typed NLS rule owns only effect choices. The selected <code>[profiles.viewport.*]</code> profile owns the physical screen. VP combines that immutable viewport snapshot with detected active-picture geometry, then derives crop, stretch ratio, axis, passthrough, and safe-fit. madVR additionally receives its picture-aspect contract. The NLS rule does not repeat <code>2.35</code> and does not configure a renderer's screen profile.</p>
-  <pre>[shaders]
-enabled=true
-rules=nls,nls_alpha,nls_protected,nls_protected_alpha,nls_off
-default=none
-
-[shaders.nls]
-label=Nonlinear Stretch
-shortcut=N
-type=nls
-file=NLS.hlsl
-stage=pre_resize
-geometry=classic
-strength=1.0
-curve=2.0
-quality=high
-tolerance_percent=5
-
-[shaders.nls_alpha]
-label=Nonlinear Stretch
-shortcut=N
-type=nls
-file=NLS.glsl
-stage=pre_resize
-geometry=classic
-strength=1.0
-curve=2.0
-tolerance_percent=5
-
-[shaders.nls_protected]
-label=Nonlinear Stretch Protected
-shortcut=P
-type=nls
-file=NLS.hlsl
-stage=pre_resize
-geometry=protected
-strength=1.0
-center_protection=0.35
-curve=2.0
-quality=high
-tolerance_percent=5
-
-[shaders.nls_protected_alpha]
-label=Nonlinear Stretch Protected
-shortcut=P
-type=nls
-file=NLS.glsl
-stage=pre_resize
-geometry=protected
-strength=1.0
-center_protection=0.35
-curve=2.0
-tolerance_percent=5
-
-[shaders.nls_off]
-label=NLS Off
-shortcut=n
-output_aspect_ratio=native
-none=true</pre>
-  <p>Shift+N arms the paired classic rules, Shift+P arms the paired protected-centre rules, and plain N selects the shared off rule. madVR ignores the GLSL member and Alpha ignores the HLSL member without opening or compiling it. The armed selector survives renderer replacement. A viewport change may require one controlled madVR restart when its negotiated picture-aspect contract changes. Alpha and content-aspect changes refresh in place.</p>
-  <p>The renderer-specific rules may use different settings. The packaged Alpha GLSL consumes <code>geometry</code>, <code>strength</code>, <code>center_protection</code>, and <code>curve</code>; <code>tolerance_percent</code> remains VP policy. Alpha reconstruction quality is owned by the renderer's scaler settings rather than the NLS hook, so the madVR-only <code>quality</code> setting is omitted from the GLSL rules. The two curves are intended to make the same safe decision, not to be pixel-identical.</p>
-  <table><thead><tr><th>Active picture</th><th>Selected viewport</th><th>Result while NLS is armed</th></tr></thead><tbody>
-    <tr><td>4:3</td><td>16:9</td><td>Horizontal NLS, approximately 1.333Ã—.</td></tr>
-    <tr><td>16:9</td><td>16:9</td><td>Linear passthrough.</td></tr>
-    <tr><td>4:3</td><td>2.35:1</td><td>Preserved 4:3 safe-fit/pillarbox; no unsafe stretch to 2.35.</td></tr>
-    <tr><td>16:9</td><td>2.35:1</td><td>Horizontal NLS, approximately 1.322Ã—.</td></tr>
-    <tr><td>1.90:1</td><td>2.35:1</td><td>Horizontal NLS, approximately 1.237Ã—.</td></tr>
-    <tr><td>2.35:1</td><td>2.35:1</td><td>Linear passthrough.</td></tr>
-    <tr><td>Any</td><td>Any</td><td><code>nls_off</code> retains the native picture geometry.</td></tr>
-  </tbody></table>
-  <h3 id="shader-migration">NLS configuration migration</h3>
-  <table><thead><tr><th>Legacy key or pattern</th><th>Typed NLS replacement</th></tr></thead><tbody>
-    <tr><td><code>nls_target_aspect_ratio: 2.35</code></td><td>Remove it. The selected viewport's <code>screen_aspect</code> is authoritative.</td></tr>
-    <tr><td><code>output_aspect_ratio: 2.35</code> in NLS</td><td>Remove it. VP derives the media contract from the viewport. Keep <code>output_aspect_ratio: native</code> only in the compatibility off rule.</td></tr>
-    <tr><td>Presence of <code>param_stretch_ratio</code> identifies NLS</td><td><code>type: nls</code>; remove the configured stretch ratio because VP derives it.</td></tr>
-    <tr><td><code>param_geometry</code>, <code>param_strength</code>, <code>param_center_protection</code>, <code>param_curve</code>, <code>param_quality</code></td><td><code>geometry</code>, <code>strength</code>, <code>center_protection</code>, <code>curve</code>, <code>quality</code></td></tr>
-    <tr><td><code>aspect_tolerance_percent</code></td><td><code>tolerance_percent</code></td></tr>
-    <tr><td><code>active_aspect_min</code>, <code>aspect_direction</code>, <code>inactive_rule</code></td><td>Remove them from typed NLS; safe-fit, direction, and stable armed behavior are derived.</td></tr>
-    <tr><td><code>manual: true</code> with a shortcut</td><td>Remove <code>manual</code>; the shortcut makes the effect manual.</td></tr>
-    <tr><td><code>pre_resize_1: shaders\NLS.hlsl</code></td><td><code>file: NLS.hlsl</code> plus <code>stage: pre_resize</code>. The numeric suffix was legacy chain order; one effect now owns one file.</td></tr>
-  </tbody></table>
-  <p>Deprecated NLS aliases remain readable during migration and produce a replacement warning. Do not define a deprecated key together with its typed replacement. A legacy configuration without unified viewport profiles may continue using its old fixed target until it is deliberately migrated.</p>
-  <p>Shader files always come from <code>Shaders</code> beside <code>VideoProcessor.exe</code>. Configuration cannot select another directory. The OSD displays the active effect label (joined with <code> + </code> for a shared-shortcut group) and every successfully installed shader, and automatically resizes to fit the active chain. Indexed shader entries and flat legacy chains are rejected.</p>
-  <div class="note">Shaders execute GPU code inside the selected renderer. A compilation failure disables that entire stage and is reported in the log. Expensive or defective shaders can cause dropped frames or a GPU device reset. HDR/color shaders must be written for the color domain presented by the renderer; do not combine an HDR-to-SDR shader with renderer tone mapping unless the chain is intentionally designed that way.</div>
-
-  <h2>[ppm_correction] (optional)</h2>
-  <p>This section provides per-refresh-rate timing corrections for rational timing modes. Keys are truncated refresh rates; values are PPM corrections or <code>AUTO</code>. If the section is absent or has no valid matching entry, VideoProcessor enables automatic PPM calibration with an initial zero correction.</p>
-  <pre>[ppm_correction]
-59=5
-29=AUTO
-23=0</pre>
+<a class="skip" href="#content">Skip to configuration content</a>
+<div class="layout">
+<nav aria-label="Configuration contents">
+  <strong>Contents</strong>
   <ul>
-    <li><code>59</code> matches 59.94 Hz, <code>29</code> matches 29.97 Hz, and <code>23</code> matches 23.976 Hz.</li>
-    <li>Positive PPM makes the stream faster; negative PPM makes it slower.</li>
-    <li><code>AUTO</code> enables automatic calibration for that refresh rate.</li>
+    <li><a href="#start">Start here</a></li>
+    <li><a href="#syntax">File syntax and precedence</a></li>
+    <li><a href="#application">Capture and application</a></li>
+    <li><a href="#queue-timing">Queue and timing</a></li>
+    <li><a href="#hdr-conversion">HDR, LLDV, and conversion</a></li>
+    <li><a href="#shaders">Shaders and NLS</a></li>
+    <li><a href="#profiles">Profiles and viewport</a></li>
+    <li><a href="#vpvr">Built-in renderer</a></li>
+    <li><a href="#events">Shortcuts and event actions</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+    <li><a href="#glossary">Glossary</a></li>
+    <li><a href="#field-index">Complete field index</a></li>
   </ul>
+  <strong>Built-in renderer fields</strong>
+  <ul>
+    <li><a href="#vpvr-input">Input treatment</a></li>
+    <li><a href="#vpvr-scaling">Scaling</a></li>
+    <li><a href="#vpvr-display-target">Display target</a></li>
+    <li><a href="#vpvr-lut">Display LUT</a></li>
+    <li><a href="#vpvr-policy">Session policy</a></li>
+  </ul>
+</nav>
 
-  <h2>Minimal example</h2>
-  <pre>[command_line]
-capture_device=Decklink Quad HDMI Recorder (1)
-renderer=
-queue_size=32
-scene_detect=false</pre>
+<main id="content">
+  <h1>VideoProcessor configuration guide and reference</h1>
+  <p class="lead">This page explains what each supported setting changes, when to choose each option, what happens when it is omitted, and where to look when the result is not what you expected. It covers the public configuration surface only.</p>
 
-  <h2 id="renderer">Built-in renderer configuration</h2>
-  <p>The optional built-in libplacebo renderer is configured in the same <code>VideoProcessor.cfg</code>. Select it with <code>renderer: VideoProcessor Renderer (Alpha)</code> in <code>[command_line]</code>. Its complete optional plugin pack belongs in a <code>libplacebo</code> directory beside <code>VideoProcessor.exe</code>; if it is unavailable, the application starts normally without listing that renderer.</p>
-  <p>Renderer entries use the canonical <code>key: value</code> syntax. Existing <code>key=value</code> entries remain readable. The renderer always produces SDR output; HDR, HLG, and detected LLDV input is tone-mapped using the effective input colorspace and mastering metadata.</p>
+  <section id="start">
+    <h2>Start here</h2>
+    <p><code>VideoProcessor.cfg</code> is optional. VP searches beside <code>VideoProcessor.exe</code>, then up to two parent directories, and finally the process working directory. The debug log identifies the file that was loaded. Use <code>/config "C:\path\VideoProcessor.cfg"</code> to select one explicit file for a process; a relative path starts at the working directory.</p>
+    <div class="note"><strong>Renderer ownership matters.</strong> Shared VP sections configure capture, timing, shaders, viewport state, and profile selection. <code>[vpvr.display]</code> and <code>[vpvr.general]</code> configure only <strong>VideoProcessor Renderer (Alpha)</strong>. They do not configure madVR.</div>
 
-  <div class="renderer-nav"><strong>Renderer reference:</strong> <a href="#renderer-quick-start">Quick start</a> | <a href="#renderer-base">Base settings</a> | <a href="#viewport-state">Viewport state</a> | <a href="#renderer-profiles">Profiles and hotkeys</a> | <a href="#runtime-variables">Runtime variables</a> | <a href="#renderer-recipes">Complete recipes</a> | <a href="#renderer-events">Event actions</a> | <a href="#renderer-troubleshooting">Troubleshooting</a></div>
+    <h3>Minimal madVR capture</h3>
+    <pre data-ini-example="madvr-minimal">[command_line]
+capture_device: Decklink Quad HDMI Recorder (1)
+renderer: DirectShow - madVR
+queue_size: 32</pre>
 
-  <h3 id="renderer-quick-start">Quick start: how renderer configuration fits together</h3>
-  <p>The renderer is a separate configuration domain inside the same file. Application sections such as <code>[command_line]</code>, capture, queue, shader, and conversion settings start VP. Renderer sections decide how the already-captured frames are processed and displayed. Renderer profiles cannot modify application-owned settings.</p>
-  <ol>
-    <li>Choose the Alpha renderer in <code>[command_line]</code>.</li>
-    <li>Set shared persistence/event defaults in <code>[general]</code> and built-in-renderer defaults in <code>[vpvr.display]</code> and <code>[vpvr.general]</code>.</li>
-    <li>Declare only the profile groups you need: <code>input</code>, <code>scaling</code>, <code>display</code>, and/or <code>viewport</code>. An omitted group contributes no overrides.</li>
-    <li>Define named profiles in each group. Use source rules for automatic input/scaling behavior and <code>$key</code> for manual display/viewport behavior.</li>
-    <li>VP resolves one profile per group, applies the combined result, then records a successful manual selection in <code>VideoProcessor.state</code>.</li>
-  </ol>
-  <pre>[command_line]
+    <h3>Minimal built-in-renderer capture</h3>
+    <pre data-ini-example="vpvr-minimal">[command_line]
+capture_device: Decklink Quad HDMI Recorder (1)
 renderer: VideoProcessor Renderer (Alpha)
-
-[general]
-persist_profile_selection: true
-event_action_delay_seconds: 5
+queue_size: 32
 
 [vpvr.display]
 quality: high
@@ -313,26 +91,368 @@ sdr_target_primaries: REC709
 
 [vpvr.general]
 switch_refresh_rate: true</pre>
+    <p>Start with the minimal example, verify capture and display, then add one concern at a time. Explicit output range, gamma, BT.2020 signalling, custom shaders, and timing corrections are calibration choices—not generic quality upgrades.</p>
+  </section>
 
-  <h3 id="renderer-base">Base settings</h3>
-  <p><code>[vpvr.display]</code> holds the base built-in-renderer treatment. Every setting has a typed range or value list and is validated before capture begins. Profiles override only their own groupâ€™s settings; values omitted by a profile retain this base value.</p>
-  <table><thead><tr><th>Area</th><th>Settings</th><th>Useful values</th></tr></thead><tbody>
-    <tr><td>Input treatment</td><td><code>tone_mapping</code>, <code>gamut_mapping</code>, <code>peak_detection</code>, <code>contrast_recovery</code>, <code>sdr_input_transfer</code></td><td>Tone mapping: <code>AUTO</code>, <code>spline</code>, <code>bt2390</code>, <code>st2094-40</code>, <code>reinhard</code>. Gamut mapping: <code>AUTO</code>, <code>perceptual</code>, <code>softclip</code>, <code>relative</code>, <code>desaturate</code>.</td></tr>
-    <tr><td>Scaling</td><td><code>quality</code>, <code>upscaler</code>, <code>downscaler</code>, <code>deband</code>, <code>dithering</code></td><td>Quality: <code>fast</code>, <code>balanced</code>, <code>high</code>. Scalers include <code>ewa_lanczossharp</code>, <code>ewa_lanczos</code>, <code>bicubic</code>, and <code>bilinear</code>. Most controls accept <code>AUTO</code>.</td></tr>
-    <tr><td>Display target</td><td><code>sdr_target_nits</code>, <code>sdr_black_nits</code>, <code>output_presentation</code>, <code>output_range</code>, <code>output_gamma</code>, <code>sdr_target_primaries</code>, <code>report_bt2020_to_display</code></td><td>Target white is 40â€“500 nits; black is <code>AUTO</code> or non-negative below target. Presentation is <code>AUTO</code>, <code>DIRECT</code>, or <code>COMPOSED</code>; range is <code>AUTO</code>, <code>FULL</code>, or <code>LIMITED</code>; primaries are <code>REC709</code> or <code>BT2020</code>.</td></tr>
-    <tr><td>Renderer session policy</td><td><code>switch_refresh_rate</code>, <code>output_diagnostics</code>, <code>diagnostic_disable_shader_cache</code></td><td>Boolean values in <code>[vpvr.general]</code>. Diagnostic controls are for troubleshooting rather than normal calibration.</td></tr>
-  </tbody></table>
-  <p>The unprefixed <code>[general]</code> section remains shared and owns <code>persist_profile_selection</code> plus <code>event_action_delay_seconds</code> (0â€“30 seconds). Deprecated renderer settings in <code>[display]</code> and <code>[general]</code> remain readable during migration, but canonical and legacy definitions of the same setting cannot be mixed.</p>
+  <section id="syntax">
+    <h2>File syntax, comments, and precedence</h2>
+    <ul>
+      <li>Use INI sections such as <code>[command_line]</code> and assignments such as <code>queue_size: 32</code>. Names and enum values are case-insensitive.</li>
+      <li>Blank lines and lines beginning with <code>#</code> are ignored. Keep comments on their own line when clarity matters.</li>
+      <li>Booleans accept <code>true/false</code>, <code>yes/no</code>, <code>on/off</code>, and <code>1/0</code>.</li>
+      <li>Paths containing spaces do not need quotes in the configuration file. A relative display-LUT path is resolved from the configuration directory; shader filenames are resolved only under the deployed <code>shaders</code> directory.</li>
+      <li>Duplicate keys are rejected by strict unified configuration. Unknown sections, unknown keys, malformed expressions, and profile settings in the wrong group also stop configuration validation.</li>
+      <li>Command-line arguments are applied after <code>[command_line]</code> and therefore win for the same startup option.</li>
+    </ul>
 
-  <h3 id="viewport-state">Viewport state</h3>
-  <p>The viewport is application-owned state shared by every renderer and effect. VP resolves and publishes it before shader selection. One snapshot contains the selected profile, exact and numeric screen aspect, subtitle-fit settings, and a generation number. Pressing one key selects the viewport once; VP does not send these values to madVR and does not assume the external curtain, lens-memory, or madVR-profile action succeeded.</p>
-  <pre>[profile_groups.viewport]
+    <h3>Precedence model</h3>
+    <ol>
+      <li>VP begins with its runtime or UI default.</li>
+      <li>A base value in <code>[vpvr.display]</code> replaces that renderer default.</li>
+      <li>For each declared profile group, a persisted manual choice is restored when enabled; otherwise automatic rules are evaluated.</li>
+      <li>A manual profile hotkey replaces the automatic selection for that group. A group reset hotkey returns only that group to automatic selection.</li>
+      <li>Fields omitted by the selected profile inherit the base <code>[vpvr.display]</code> value. They do not acquire a second profile-specific default.</li>
+      <li>Source metadata supplies evidence to automatic rules and field-specific <code>AUTO</code> decisions. <code>AUTO</code> is resolved independently for each field.</li>
+    </ol>
+    <p>Application, capture, conversion, queue, and shader configuration is read at startup. Built-in-renderer base settings are read when the renderer is constructed. A non-viewport profile change rebuilds the built-in renderer transactionally; viewport-only changes normally apply live. A failed rebuild leaves the last successful renderer and persisted selection in place.</p>
+  </section>
+
+  <section id="application">
+    <h2>Capture and application settings</h2>
+    <p>All fields in this section are optional keys under <code>[command_line]</code>. Omission keeps the corresponding application or saved UI default. Values are read at startup; changing the file while VP runs has no effect until the next process start.</p>
+
+    <article class="field" id="command-line-capture-device" data-fields="command_line.capture_device">
+      <h4><code>capture_device</code></h4>
+      <p>Selects the capture device by its displayed name. Use this for an unattended or device-specific configuration; omit it to keep VP's normal selection.</p>
+      <p class="meta"><strong>Type:</strong> text. <strong>Failure:</strong> an unavailable name cannot open capture; confirm the enumerated device names in the UI and log.</p>
+      <pre>[command_line]
+capture_device: Decklink Quad HDMI Recorder (1)</pre>
+    </article>
+
+    <article class="field" id="command-line-renderer" data-fields="command_line.renderer">
+      <h4><code>renderer</code></h4>
+      <p>Selects a renderer by its displayed name. Use <code>DirectShow - madVR</code> for madVR or <code>VideoProcessor Renderer (Alpha)</code> for the built-in renderer. An empty or omitted value keeps the current/default selection.</p>
+      <p class="meta"><strong>Type:</strong> text. <strong>Failure:</strong> a renderer whose required runtime is unavailable is not selectable; startup logs the registered renderer order.</p>
+    </article>
+
+    <article class="field" id="command-line-fullscreen" data-fields="command_line.fullscreen">
+      <h4><code>fullscreen</code></h4>
+      <p>Starts video fullscreen when true. Default when omitted is the normal window state. This chooses initial presentation only; it does not select exclusive versus windowed fullscreen.</p>
+    </article>
+
+    <article class="field" id="command-line-windowedfullscreenmode" data-fields="command_line.windowedfullscreenmode">
+      <h4><code>windowedfullscreenmode</code></h4>
+      <p>When true, fullscreen uses a borderless window. When false, VP may use the renderer's exclusive path. Borderless mode usually switches applications more smoothly; exclusive mode may be useful when a renderer or display chain depends on it.</p>
+    </article>
+
+    <article class="field" id="command-line-queue-size" data-fields="command_line.queue_size">
+      <h4><code>queue_size</code></h4>
+      <p>Sets the maximum DirectShow renderer-frame queue. A larger queue gives more protection from short processing stalls but consumes more memory and adds recovery time; it is not a picture-quality control.</p>
+      <p class="meta"><strong>Type:</strong> integer ≥ 1. <strong>Default:</strong> VP's normal queue setting. <strong>Failure:</strong> zero or non-numeric input fails startup validation.</p>
+    </article>
+
+    <article class="field" id="command-line-alpha-queue-size" data-fields="command_line.alpha_queue_size">
+      <h4><code>alpha_queue_size</code> <span class="badge">built-in renderer</span></h4>
+      <p>Overrides queue depth only for the built-in renderer. Omit it to use <code>queue_size</code>. Use it when the two renderers need different latency/stability tradeoffs.</p>
+      <p class="meta"><strong>Type:</strong> integer ≥ 1. Invalid input is logged and the normal queue setting is retained.</p>
+    </article>
+
+    <article class="field" id="command-line-scene-detect" data-fields="command_line.scene_detect">
+      <h4><code>scene_detect</code></h4>
+      <p>For P010 output, locks output timestamps to measured display cadence and prefers a required whole-frame repeat or drop at a detected scene cut. If no cut arrives before a full-frame phase error, VP corrects at the hard limit to protect queue depth and audio/video alignment.</p>
+      <p class="meta"><strong>Type/default:</strong> Boolean, false when omitted. <strong>Scope:</strong> retained but inactive for non-P010 output.</p>
+    </article>
+
+    <article class="field" id="command-line-scene-correction-basic" data-fields="command_line.scene_correction_basic">
+      <h4><code>scene_correction_basic</code> <span class="badge">DirectShow only</span></h4>
+      <p>Chooses the renderer-repeat correction when true. False uses the normal upstream-sample correction. Keep false unless comparison logs show the renderer-specific basic method is required; the built-in renderer has one native correction path and ignores this choice.</p>
+    </article>
+
+    <article class="field" id="command-line-subtitle-reposition" data-fields="command_line.subtitle_reposition">
+      <h4><code>subtitle_reposition</code> <span class="badge">DirectShow P010</span></h4>
+      <ul class="choices">
+        <li><code>false</code>/<code>off</code>: do not reposition detected subtitles.</li>
+        <li><code>true</code>/<code>basic</code>: use lower-cost Windows OCR-assisted placement; suitable when the advanced model is unavailable.</li>
+        <li><code>advanced</code>: use the model-assisted tracker for steadier geometry at greater processing cost.</li>
+      </ul>
+      <p class="meta">Omitted means off. The debug log reports detector state and accepted geometry.</p>
+    </article>
+
+    <article class="field" id="command-line-newlldv" data-fields="command_line.newlldv">
+      <h4><code>newlldv</code></h4>
+      <p>Enables VP's opt-in LLDV heuristic for stable BT.2020 + SDR input without static HDR metadata. Enable only when the source is known to send LLDV; genuine BT.2020 SDR can look identical to the capture device.</p>
+      <p class="meta"><strong>Type/default:</strong> Boolean, false. Requires both <code>hdr_colorspace: FOLLOW_INPUT_LLDV</code> and <code>hdr_luminance: FOLLOW_INPUT_LLDV</code>.</p>
+    </article>
+
+    <article class="field" id="command-line-noui" data-fields="command_line.noui">
+      <h4><code>noui</code></h4>
+      <p>Shows only the windowed video panel when true. Use for appliance-style operation; keep false while diagnosing because the normal controls remain accessible.</p>
+    </article>
+
+    <article class="field" id="command-line-startminimized" data-fields="command_line.startminimized">
+      <h4><code>startminimized</code></h4>
+      <p>Starts the main window minimized when true. This does not delay capture or change rendering behavior.</p>
+    </article>
+
+    <article class="field" id="command-line-frame-offset" data-fields="command_line.frame_offset">
+      <h4><code>frame_offset</code></h4>
+      <p>Sets the timing-clock frame offset in whole milliseconds. Use an explicit non-negative value only after measuring the required offset.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> VP starts its frame-offset tuner, measures live timing evidence, and updates the offset for the active cadence. The result can change as tuning converges and is visible in VP timing status/logging. If automatic evidence is unavailable, the tuner cannot establish a new measured offset.</p>
+      <p class="meta"><strong>Values:</strong> <code>AUTO</code> or integer ≥ 0. Invalid values fail command-line validation.</p>
+    </article>
+
+    <article class="field" id="command-line-video-conversion" data-fields="command_line.video_conversion">
+      <h4><code>video_conversion</code></h4>
+      <p><code>V210_TO_P010</code> enables VP's supported-input-to-P010 conversion path. Choose it when the renderer/timing features require P010; omit it to keep the captured format. Conversion consumes CPU, so verify conversion percentage and dropped-frame statistics.</p>
+    </article>
+
+    <article class="field" id="command-line-container-colorspace" data-fields="command_line.container_colorspace">
+      <h4><code>container_colorspace</code></h4>
+      <p>Overrides the output container primaries tag; it does not by itself transform pixels. Choose the value that describes the pixels being sent:</p>
+      <ul class="choices">
+        <li><code>BT2020</code>: UHD wide-gamut container; <code>REC709</code>: normal HD SDR.</li>
+        <li><code>P3_D65</code>, <code>P3_DCI</code>, <code>P3_D60</code>: P3 variants with their named white point.</li>
+        <li><code>REC601_525</code> and <code>REC601_625</code>: SD standards for 525- and 625-line sources.</li>
+      </ul>
+      <p class="meta">Omit to follow VP's normal container choice. A wrong tag causes downstream colour interpretation errors.</p>
+    </article>
+
+    <article class="field" id="command-line-hdr-colorspace" data-fields="command_line.hdr_colorspace">
+      <h4><code>hdr_colorspace</code></h4>
+      <ul class="choices">
+        <li><code>FOLLOW_INPUT</code>: report captured input primaries; safest general choice.</li>
+        <li><code>FOLLOW_INPUT_LLDV</code>: follow input while allowing the LLDV path when its prerequisites match.</li>
+        <li><code>FOLLOW_CONTAINER</code>: use the <code>container_colorspace</code> choice.</li>
+        <li><code>BT2020</code>, <code>P3</code>, <code>REC709</code>: force that HDR primaries report for a controlled workflow.</li>
+      </ul>
+      <p class="meta">This controls HDR metadata presented downstream, not the built-in renderer's SDR target.</p>
+    </article>
+
+    <article class="field" id="command-line-hdr-luminance" data-fields="command_line.hdr_luminance">
+      <h4><code>hdr_luminance</code></h4>
+      <ul class="choices">
+        <li><code>FOLLOW_INPUT</code>: pass captured mastering/max-light information.</li>
+        <li><code>FOLLOW_INPUT_LLDV</code>: follow input and permit synthetic LLDV luminance metadata.</li>
+        <li><code>HDR_LUMINANCE_USER</code>: use the luminance values entered in the VP UI.</li>
+      </ul>
+    </article>
+
+    <article class="field" id="command-line-renderer-start-stop-time-method" data-fields="command_line.renderer_start_stop_time_method">
+      <h4><code>renderer_start_stop_time_method</code> <span class="badge">DirectShow only</span></h4>
+      <p>Selects which clock supplies sample start and stop timestamps. Keep the UI/default method unless a timing investigation identifies a specific requirement.</p>
+      <ul class="choices">
+        <li><code>CLOCK_SMART</code> and <code>CLOCK_SMART2</code>: adaptive clock-derived methods; normal comparison candidates.</li>
+        <li><code>RATIONAL_RATIONAL</code>: rational cadence for both timestamps; useful for deterministic fractional rates. <code>CLOCK_RATIONAL</code> uses clock start and rational stop.</li>
+        <li><code>CLOCK_THEO</code>, <code>CLOCK_CLOCK</code>, <code>THEO_THEO</code>: diagnostic combinations of measured clock and theoretical cadence.</li>
+        <li><code>CLOCK_NONE</code>, <code>THEO_NONE</code>, <code>NONE</code>: omit stop timing or both timestamps; specialized diagnostics, not quality modes.</li>
+      </ul>
+    </article>
+
+    <article class="field" id="command-line-renderer-nominal-range" data-fields="command_line.renderer_nominal_range">
+      <h4><code>renderer_nominal_range</code> <span class="badge">DirectShow input metadata</span></h4>
+      <p><code>FULL</code> declares 0–255 range, <code>LIMITED</code> declares video 16–235 range, and <code>SMALL</code> declares 48–208. This describes samples handed to DirectShow; it is separate from built-in-renderer <code>output_range</code>.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> sends an unknown nominal-range declaration so the selected renderer infers the source. VP makes no further per-frame choice. Use the renderer's diagnostics to see its effective interpretation.</p>
+    </article>
+
+    <article class="field" id="command-line-renderer-transfer-function" data-fields="command_line.renderer_transfer_function">
+      <h4><code>renderer_transfer_function</code> <span class="badge">DirectShow input metadata</span></h4>
+      <p>Overrides how DirectShow describes the source transfer. Common choices are <code>PQ</code> for HDR10, <code>HYBRID_LOG_GAMMA</code> for HLG, <code>REC709</code> for HD video, and <code>BT2020</code>/<code>BT2020_CONST</code> for BT.2020 transfer declarations. <code>GAMMA_1.8</code>, <code>GAMMA_2.0</code>, <code>GAMMA_2.2</code>, <code>GAMMA_2.6</code>, and <code>GAMMA_2.8</code> are explicit power curves. <code>LINEAR_RGB</code>, <code>204M</code>, <code>8BIT_GAMMA_2.2</code>, <code>LOG_100_1</code>, and <code>LOG_316_1</code> are specialized source declarations.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> sends an unknown transfer declaration and lets the selected DirectShow renderer infer it from the remaining media information. The choice is made when the media type is negotiated, not by a global VP AUTO policy.</p>
+      <p class="warning">Forcing the wrong transfer changes brightness and contrast. It does not convert pixels into the named transfer.</p>
+    </article>
+
+    <article class="field" id="command-line-renderer-transfer-matrix" data-fields="command_line.renderer_transfer_matrix">
+      <h4><code>renderer_transfer_matrix</code> <span class="badge">DirectShow input metadata</span></h4>
+      <p><code>BT709</code> is normal HD YCbCr, <code>BT601</code> is normal SD, and <code>BT2020_10</code>/<code>BT2020_12</code> describe BT.2020 10-/12-bit matrix coefficients. <code>240M</code>, <code>FCC</code>, and <code>YCgCo</code> are specialized source matrices.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> sends an unknown matrix declaration for renderer inference at media-type negotiation. Incorrect forcing produces hue and saturation errors.</p>
+    </article>
+
+    <article class="field" id="command-line-renderer-primaries" data-fields="command_line.renderer_primaries">
+      <h4><code>renderer_primaries</code> <span class="badge">DirectShow input metadata</span></h4>
+      <p><code>BT709</code> is HD/Rec.709, <code>BT2020</code> is UHD wide gamut, and <code>DCI-P3</code> is cinema P3. <code>NTSC_SYSM</code>, <code>NTSC_SYSBG</code>, <code>CIE1931_ZYX</code>, and <code>ACES</code> are specialized mastering/source declarations.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> sends unknown primaries so the DirectShow renderer decides from source/media metadata during negotiation.</p>
+    </article>
+  </section>
+
+  <section id="queue-timing">
+    <h2>Queue, logging, and timing settings</h2>
+
+    <article class="field" id="logging-debug-log-retention" data-fields="logging.debug_log_retention">
+      <h4><code>[logging] debug_log_retention</code></h4>
+      <p>Total VP debug-log files retained, including active <code>logs\vp_debug.log</code>. At startup the prior active log becomes <code>.0</code>, existing numbered archives shift up, and the oldest is pruned.</p>
+      <p class="meta"><strong>Type/default:</strong> integer 1–100; default 10. Invalid, zero, duplicate, or out-of-range input safely resolves to 10. VP does not create the <code>logs</code> directory.</p>
+    </article>
+
+    <article class="field" id="queue-recovery-reset-delay" data-fields="queue_recovery.reset_after_render_restart_seconds">
+      <h4><code>[queue_recovery] reset_after_render_restart_seconds</code></h4>
+      <p>Seconds VP waits after startup/restart or a queue high-water event before flushing and re-priming the live queue. Increase only when the renderer needs longer to settle.</p>
+      <p class="meta"><strong>Type/default:</strong> integer ≥ 1; default 5.</p>
+    </article>
+
+    <article class="field" id="queue-recovery-high-water" data-fields="queue_recovery.reset_queue_too_large_percent">
+      <h4><code>[queue_recovery] reset_queue_too_large_percent</code></h4>
+      <p>Schedules queue recovery when either the raw or converted queue reaches this percentage of its own capacity. It is not a percentage of their combined OSD total.</p>
+      <p class="meta"><strong>Type/default:</strong> integer 1–100; default 75.</p>
+    </article>
+
+    <article class="field" id="display-refresh-rate-override-entry" data-fields="display_refresh_rate_override.&lt;nominal_hz&gt;">
+      <h4><code>[display_refresh_rate_override] &lt;nominal_hz&gt;</code></h4>
+      <p>Maps a nominal input rate to a known exact display rate. A truncated key is preferred—<code>23</code> matches 23.976—then a key within 0.5 Hz is considered. An active exact override appears with <code>*</code> in the OSD and is named in the log.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> explicitly keeps VP's normal display measurement for that nominal rate. VP measures the display, and the result may change after display/refresh transitions. The loader logs <code>measurement enabled</code>.</p>
+      <pre>[display_refresh_rate_override]
+23: 23.976024
+59: AUTO</pre>
+    </article>
+
+    <article class="field" id="ppm-correction-entry" data-fields="ppm_correction.&lt;nominal_hz&gt;">
+      <h4><code>[ppm_correction] &lt;nominal_hz&gt;</code></h4>
+      <p>Applies a parts-per-million timing correction to rational timing modes. Positive values make the video stream slightly faster; negative values make it slower. Keys use truncated cadence, such as <code>59</code> for 59.94.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> VP begins at zero correction and calibrates from live queue/timing evidence for the matching cadence. If the section or a valid match is absent, automatic calibration is also used.</p>
+    </article>
+  </section>
+
+  <section id="hdr-conversion">
+    <h2>HDR, LLDV, and P010 conversion</h2>
+    <p>DeckLink capture does not expose the HDMI Dolby Vision VSIF, so LLDV recognition is evidence-based. With <code>newlldv: true</code> and both LLDV follow modes selected, VP requires stable BT.2020 + SDR without static HDR metadata for 1.5 seconds before changing to PQ and supplying synthetic metadata.</p>
+
+    <article class="field" id="lldv-max-cll" data-fields="lldv.max_cll">
+      <h4><code>[lldv] max_cll</code></h4>
+      <p>Overrides synthetic maximum content light level in nits. Omission uses 1000 nits for either LLDV detection path. Use a measured/source value when known.</p>
+      <p class="meta"><strong>Range:</strong> finite number ≥ 0.</p>
+    </article>
+    <article class="field" id="lldv-max-fall" data-fields="lldv.max_fall">
+      <h4><code>[lldv] max_fall</code></h4>
+      <p>Overrides synthetic maximum frame-average light level in nits. Omission uses 1000 for direct detection and 401 for the BT.2020 + SDR heuristic.</p>
+      <p class="meta"><strong>Range:</strong> finite number ≥ 0.</p>
+    </article>
+    <article class="field" id="lldv-mastering-min-luminance" data-fields="lldv.mastering_min_luminance">
+      <h4><code>[lldv] mastering_min_luminance</code></h4>
+      <p>Overrides synthetic mastering-display black level in nits. Omission uses 0.0001 or 0.001 depending on the active LLDV evidence path.</p>
+      <p class="meta"><strong>Range:</strong> finite number ≥ 0.</p>
+    </article>
+    <article class="field" id="lldv-mastering-max-luminance" data-fields="lldv.mastering_max_luminance">
+      <h4><code>[lldv] mastering_max_luminance</code></h4>
+      <p>Overrides synthetic mastering-display peak in nits. Omission uses 1000 for direct detection and 4000 for the BT.2020 + SDR heuristic.</p>
+      <p class="meta"><strong>Range:</strong> finite number &gt; 0.</p>
+    </article>
+
+    <article class="field" id="p010-conversion-method" data-fields="p010_conversion.conversionmethod">
+      <h4><code>[p010_conversion] ConversionMethod</code></h4>
+      <ul class="choices">
+        <li><code>SIMD</code>: AVX2 path, threaded for sufficiently tall frames; normally fastest on supported CPUs.</li>
+        <li><code>OPTIMIZED</code>: optimized scalar conversion; compatibility/performance fallback without AVX2.</li>
+        <li><code>STANDARD</code>: simplest scalar implementation; best reserved for comparison and troubleshooting.</li>
+      </ul>
+      <p class="auto"><strong>AUTO behavior:</strong> for non-720p conversion, VP checks AVX2 support and frame height. It selects threaded SIMD for frames at least 720 lines high, non-threaded SIMD for smaller frames with AVX2, and optimized scalar otherwise. The formatter is chosen per frame size/CPU evidence; 720p uses its dedicated conversion path.</p>
+    </article>
+    <article class="field" id="p010-min-core-count" data-fields="p010_conversion.mincorecount">
+      <h4><code>[p010_conversion] MinCoreCount</code></h4>
+      <p>Minimum worker count for threaded conversion. More workers do not improve image quality and may compete with capture or rendering. Use a whole number; <code>0</code> is raised to <code>1</code>. The effective count cannot exceed the logical processors available to Windows, and conversion never uses more than eight workers. Values from <code>1</code> through <code>8</code> are the useful range.</p>
+      <p class="meta"><strong>Default:</strong> 1.</p>
+    </article>
+    <article class="field" id="p010-max-core-count" data-fields="p010_conversion.maxcorecount">
+      <h4><code>[p010_conversion] MaxCoreCount</code></h4>
+      <p>Caps conversion workers. Use a non-negative whole number. <code>0</code> selects an automatic limit that normally leaves two logical processors for Windows and the user interface. A positive value is limited to the logical processors available, raised to <a href="#p010-min-core-count"><code>MinCoreCount</code></a> when necessary, and hard-capped at eight workers.</p>
+      <p><strong>Default nuance:</strong> when the entire section is absent, smart defaults choose two workers on systems with at least eight physical cores and one worker on smaller systems. When the section exists but this field is omitted, the section-level fallback is two.</p>
+    </article>
+    <pre data-ini-example="p010-auto">[command_line]
+video_conversion: V210_TO_P010
+
+[p010_conversion]
+ConversionMethod: AUTO
+MinCoreCount: 1
+MaxCoreCount: 2</pre>
+  </section>
+
+  <section id="shaders">
+    <h2>Shader configuration and viewport-aware NLS</h2>
+    <p>VP installs renderer-native shaders without a CPU readback. madVR uses HLSL; the built-in renderer uses mpv-style GLSL hooks. Automatic effects are checked in <code>rules</code> order and the first compatible signal/rate match wins. A rule with <code>shortcut</code> is manual. Rules sharing one shortcut form a renderer-specific pair while keeping one selection state.</p>
+
+    <article class="field" id="shaders-enabled" data-fields="shaders.enabled"><h4><code>[shaders] enabled</code></h4><p>Enables shader rule evaluation. Boolean; default false. When false or omitted, no configured shader is installed.</p></article>
+    <article class="field" id="shaders-rules" data-fields="shaders.rules"><h4><code>[shaders] rules</code></h4><p>Comma-separated effect identifiers, evaluated left to right. Every name must have one matching <code>[shaders.&lt;name&gt;]</code> section. Put the most specific automatic rule first.</p></article>
+    <article class="field" id="shaders-default" data-fields="shaders.default"><h4><code>[shaders] default</code></h4><p>The result when no automatic rule matches. The supported value is <code>none</code>, which leaves the shader chain empty.</p></article>
+    <article class="field" id="shaders-fallback-shader-model" data-fields="shaders.fallback_shader_model"><h4><code>[shaders] fallback_shader_model</code></h4><p>madVR HLSL model used only when the shader file does not declare its minimum profile. <code>ps_3_0</code> (default) is the most capable; <code>ps_2_0</code>, <code>ps_2_a</code>, and <code>ps_2_b</code> exist for older shader compatibility and may reject newer instructions.</p></article>
+
+    <article class="field" id="shader-rule-label" data-fields="shaders.*.label"><h4><code>[shaders.*] label</code></h4><p>Friendly text in the OSD and log. Omission uses the rule identifier.</p></article>
+    <article class="field" id="shader-rule-type" data-fields="shaders.*.type"><h4><code>[shaders.*] type</code></h4><p>Set <code>nls</code> for VP's typed nonlinear-stretch behavior; omit for a general shader. Typed NLS derives geometry from the selected viewport and validates the NLS fields below.</p></article>
+    <article class="field" id="shader-rule-signal" data-fields="shaders.*.signal"><h4><code>[shaders.*] signal</code></h4><p><code>ANY</code> (default) matches every signal, <code>SDR</code> only SDR, and <code>HDR</code> HDR gamma, PQ, HLG, or detected LLDV. Use this to avoid applying a shader in the wrong colour domain.</p></article>
+    <article class="field" id="shader-rule-frame-rates" data-fields="shaders.*.frame_rates"><h4><code>[shaders.*] frame_rates</code></h4><p><code>ANY</code> (default) or comma-separated nominal integers. VP uses its displayed truncated cadence: 23 matches 23.976, 29 matches 29.97, and 59 matches 59.94.</p></article>
+    <article class="field" id="shader-rule-none" data-fields="shaders.*.none"><h4><code>[shaders.*] none</code></h4><p>When true, selecting the effect deliberately installs no shaders. Use for an explicit “off” selection. Default false.</p></article>
+    <article class="field" id="shader-rule-shortcut" data-fields="shaders.*.shortcut"><h4><code>[shaders.*] shortcut</code></h4><p>Makes the effect manual. Uses the shortcut syntax below. Same-chord HLSL and GLSL effects form one selector; each renderer loads only its compatible file.</p></article>
+    <article class="field" id="shader-rule-file" data-fields="shaders.*.file"><h4><code>[shaders.*] file</code></h4><p>Filename only: <code>.hlsl</code> for madVR or <code>.glsl</code>/<code>.hook</code> for the built-in renderer. VP resolves it under <code>shaders</code> beside the executable and rejects directory components. A missing or failed file disables that effect/stage and is logged.</p></article>
+    <article class="field" id="shader-rule-stage" data-fields="shaders.*.stage"><h4><code>[shaders.*] stage</code></h4><p><code>pre_resize</code> (default) runs before madVR scaling and is appropriate for geometry/denoise at source resolution. <code>post_resize</code> runs after scaling and is appropriate for final-size sharpening. Built-in typed NLS uses its resizable MAIN hook.</p></article>
+    <article class="field" id="shader-rule-output-aspect-ratio" data-fields="shaders.*.output_aspect_ratio"><h4><code>[shaders.*] output_aspect_ratio</code></h4><p>For a general DirectShow shader, declares <code>native</code>, a decimal, or a ratio such as <code>2.35:1</code> for the output media contract. Typed NLS derives this from the selected viewport, so omit it there.</p></article>
+    <article class="field" id="shader-rule-param" data-fields="shaders.*.param_&lt;name&gt;"><h4><code>[shaders.*] param_&lt;name&gt;</code></h4><p>Finite compile-time token value for a general custom shader. The suffix identifies the shader token. This is a low-level authoring control: wrong values can fail compilation or produce invalid output.</p></article>
+
+    <h3 id="nls">Typed nonlinear stretch (NLS)</h3>
+    <article class="field" id="shader-nls-geometry" data-fields="shaders.*.geometry"><h4><code>geometry</code></h4><p><code>classic</code> uses the established power curve and allows more centre movement; <code>protected</code> preserves a central fraction more strongly and moves more distortion toward the edges. Choose protected for faces/subtitles near centre, classic for the smoothest full-width redistribution.</p></article>
+    <article class="field" id="shader-nls-strength" data-fields="shaders.*.strength"><h4><code>strength</code></h4><p>0.0–1.0 scale of the derived correction. 0 is effectively linear; 1 applies the complete mapping. Reduce it when the full stretch is visually too strong.</p></article>
+    <article class="field" id="shader-nls-center-protection" data-fields="shaders.*.center_protection"><h4><code>center_protection</code></h4><p>Protected fraction of picture width, 0.0–0.45, used by <code>geometry: protected</code>. Higher values preserve a wider centre but compress more strongly near the sides.</p></article>
+    <article class="field" id="shader-nls-curve" data-fields="shaders.*.curve"><h4><code>curve</code></h4><p>0.5–4.0 distribution curve. Higher values delay distortion toward the sides; lower values spread it more evenly. This changes distortion placement, not the final target aspect.</p></article>
+    <article class="field" id="shader-nls-quality" data-fields="shaders.*.quality"><h4><code>quality</code></h4><p>madVR NLS reconstruction: <code>low</code>, <code>medium</code>, <code>high</code>, or <code>very high</code>. Higher settings spend more GPU work reducing resampling artifacts. Start with high; lower for dropped frames, raise to very high only with measured headroom. Built-in NLS uses the renderer scaler instead.</p></article>
+    <article class="field" id="shader-nls-tolerance" data-fields="shaders.*.tolerance_percent"><h4><code>tolerance_percent</code></h4><p>0–50 percent. If active picture is already this close to the selected viewport, VP uses linear passthrough to avoid a small, distracting stretch. Five percent is a practical starting point.</p></article>
+
+    <pre data-ini-example="nls-pair">[shaders]
+enabled: true
+rules: nls_madvr,nls_vpvr,nls_off
+default: none
+
+[shaders.nls_madvr]
+label: Nonlinear Stretch
+shortcut: N
+type: nls
+file: NLS.hlsl
+stage: pre_resize
+geometry: protected
+strength: 1.0
+center_protection: 0.35
+curve: 2.0
+quality: high
+tolerance_percent: 5
+
+[shaders.nls_vpvr]
+label: Nonlinear Stretch
+shortcut: N
+type: nls
+file: NLS.glsl
+geometry: protected
+strength: 1.0
+center_protection: 0.35
+curve: 2.0
+tolerance_percent: 5
+
+[shaders.nls_off]
+label: NLS Off
+shortcut: n
+none: true</pre>
+  </section>
+
+  <section id="profiles">
+    <h2>Shared profile groups, selection, and viewport</h2>
+    <p>Profiles are independent groups: <code>input</code>, <code>scaling</code>, <code>display</code>, and <code>viewport</code>. Declare a group in <code>[profile_groups.&lt;group&gt;]</code>, then define its members in <code>[profiles.&lt;group&gt;.&lt;name&gt;]</code>. Input/scaling/display settings affect only the built-in renderer; viewport state is shared with DirectShow shaders and the built-in renderer.</p>
+
+    <article class="field" id="general-persist-profile-selection" data-fields="general.persist_profile_selection"><h4><code>[general] persist_profile_selection</code></h4><p>Global Boolean default for saving successful manual profile selections to <code>VideoProcessor.state</code>. Default true. Per-group configuration may override it.</p></article>
+    <article class="field" id="general-event-action-delay" data-fields="general.event_action_delay_seconds"><h4><code>[general] event_action_delay_seconds</code></h4><p>Default delay before completed-event programs run. Whole seconds 0–30; default 0. An action's own delay wins.</p></article>
+    <article class="field" id="profile-group-profiles" data-fields="profile_groups.*.profiles"><h4><code>[profile_groups.*] profiles</code></h4><p>Required comma-separated member identifiers in tie-break order. Each member needs a matching profile section; names <code>auto</code>, <code>none</code>, and <code>default</code> are reserved.</p></article>
+    <article class="field" id="profile-group-default" data-fields="profile_groups.*.default"><h4><code>[profile_groups.*] default</code></h4><p>A listed profile or <code>AUTO</code>. A named default is selected when no source rule matches.</p><p class="auto"><strong>AUTO behavior:</strong> when no profile rule matches, the group contributes no overrides and every field inherits its <code>[vpvr.display]</code> base value. VP re-evaluates on relevant source changes.</p></article>
+    <article class="field" id="profile-group-when" data-fields="profile_groups.*.when"><h4><code>[profile_groups.*] when</code></h4><p>Optional key-only expression that returns this group to automatic selection, for example <code>$key=="F4"</code>. It does not reset other groups.</p></article>
+    <article class="field" id="profile-group-persist-profile-selection" data-fields="profile_groups.*.persist_profile_selection"><h4><code>[profile_groups.*] persist_profile_selection</code></h4><p>Boolean override of the global persistence setting for one group. Set false for source-driven input/scaling groups so a manual test cannot unexpectedly return after restart.</p></article>
+    <article class="field" id="profile-when" data-fields="profiles.*.*.when"><h4><code>[profiles.*.*] when</code></h4><p>Optional expression using <code>== != &lt; &lt;= &gt; &gt;= &amp;&amp; || !</code> and parentheses. Source variables include <code>$transfer</code>/<code>$eotf</code>, <code>$primaries</code>/<code>$colorspace</code>, <code>$format</code>, <code>$hdr_metadata</code>, <code>$interlaced</code>/<code>$scan</code>, <code>$source_rate</code>/<code>$cadence</code>, <code>$width</code>, <code>$height</code>, and <code>$resolution</code>. <code>$key</code> is the current physical shortcut chord.</p></article>
+    <article class="field" id="profile-priority" data-fields="profiles.*.*.priority"><h4><code>[profiles.*.*] priority</code></h4><p>Integer −100000 to 100000, default 0. Highest matching priority wins; then the condition with more comparisons; then declared <code>profiles</code> order. Use priority only where overlapping rules are intentional.</p></article>
+
+    <h3>Viewport profile fields</h3>
+    <article class="field" id="viewport-screen-aspect" data-fields="profiles.viewport.*.screen_aspect"><h4><code>screen_aspect</code></h4><p>Physical viewport aspect, 1.0–4.0, as decimal or ratio (<code>16:9</code>, <code>2.35:1</code>). Omission is 16:9. This drives shared NLS and subtitle placement; the profile name itself has no geometric meaning.</p></article>
+    <article class="field" id="viewport-subtitle-fit" data-fields="profiles.viewport.*.subtitle_fit"><h4><code>subtitle_fit</code></h4><p>Boolean, default false. When true, VP may reposition detected subtitles into the selected viewport. This requires the applicable subtitle processing path.</p></article>
+    <article class="field" id="viewport-subtitle-hold-seconds" data-fields="profiles.viewport.*.subtitle_hold_seconds"><h4><code>subtitle_hold_seconds</code></h4><p>0–30 seconds, default 2. Retains a confirmed subtitle position through short detector gaps; too high can hold stale placement.</p></article>
+    <article class="field" id="viewport-subtitle-padding-pixels" data-fields="profiles.viewport.*.subtitle_padding_pixels"><h4><code>subtitle_padding_pixels</code></h4><p>Whole pixels 0–500, default 20. Adds clearance from the viewport edge after repositioning.</p></article>
+
+    <pre data-ini-example="viewport-profiles">[profile_groups.viewport]
 profiles: normal,scope
 default: normal
 
 [profiles.viewport.normal]
 when: $key=="F3"
-# screen_aspect defaults to 16:9
+screen_aspect: 16:9
 
 [profiles.viewport.scope]
 when: $key=="F2"
@@ -340,218 +460,434 @@ screen_aspect: 2.35:1
 subtitle_fit: true
 subtitle_hold_seconds: 2
 subtitle_padding_pixels: 30</pre>
-  <p>Accepted aspect forms include <code>4:3</code>, <code>16:9</code>, <code>16x9</code>, <code>2.2:1</code>, <code>2.35:1</code>, and decimal shorthand such as <code>1.7777778</code>. Whitespace around values and delimiters is allowed. The resolved range is 1.0â€“4.0. Zero, negative, non-finite, malformed, repeated-delimiter, trailing-junk, and out-of-range values fail startup validation. Missing viewport configuration, and a selected viewport with no <code>screen_aspect</code>, resolve explicitly to 16:9.</p>
-  <table><thead><tr><th>Deprecated viewport key</th><th>Replacement</th></tr></thead><tbody>
-    <tr><td><code>scope_screen_aspect</code></td><td><code>screen_aspect</code></td></tr>
-    <tr><td><code>scope_subtitle_fit</code></td><td><code>subtitle_fit</code></td></tr>
-    <tr><td><code>scope_subtitle_hold_seconds</code></td><td><code>subtitle_hold_seconds</code></td></tr>
-    <tr><td><code>scope_subtitle_padding_pixels</code></td><td><code>subtitle_padding_pixels</code></td></tr>
-    <tr><td><code>mode: normal|scope</code></td><td>Remove it; profile names are labels and <code>screen_aspect</code> defines geometry.</td></tr>
-  </tbody></table>
-  <p>Deprecated aliases are normalized during a migration window and logged with their section and replacement. Defining an alias together with its replacement is an error because precedence would be ambiguous. VP persists only the selected profile name and never writes deprecated keys.</p>
+  </section>
 
-  <h3 id="renderer-profiles">Profiles and hotkeys</h3>
-  <p>Profiles are independent groups: <code>input</code>, <code>scaling</code>, <code>display</code>, and <code>viewport</code>. Declare each group in <code>[profile_groups.&lt;group&gt;]</code>, then define settings in <code>[profiles.&lt;group&gt;.&lt;name&gt;]</code>. A profile's <code>when</code> expression can use source metadata or <code>$key</code>. The same key may select profiles in multiple groups; no profile may write a setting owned by a different group or by the application.</p>
-  <table><thead><tr><th>Group</th><th>May override</th><th>Typical selector</th></tr></thead><tbody>
-    <tr><td><code>input</code></td><td><code>tone_mapping</code>, <code>gamut_mapping</code>, <code>peak_detection</code>, <code>contrast_recovery</code>, <code>sdr_input_transfer</code></td><td>Source transfer, primaries, HDR metadata</td></tr>
-    <tr><td><code>scaling</code></td><td><code>quality</code>, <code>upscaler</code>, <code>downscaler</code>, <code>sigmoid</code>, <code>deband_strength</code>, <code>dithering</code></td><td>Resolution or frame size</td></tr>
-    <tr><td><code>display</code></td><td>Target nits/black, presentation/range/gamma, target primaries, BT.2020 signalling, and <code>lut</code> plus its reference fields</td><td>Manual display/calibration hotkey</td></tr>
-    <tr><td><code>viewport</code></td><td><code>screen_aspect</code>, <code>subtitle_fit</code>, <code>subtitle_hold_seconds</code>, <code>subtitle_padding_pixels</code></td><td>Manual physical-viewport hotkey</td></tr>
-  </tbody></table>
-  <p>Profile groups are optional. An omitted group simply inherits the base renderer settings and needs no empty placeholder profile. Each group that is declared requires <code>profiles:</code> and <code>default:</code>; the default is a listed profile or <code>auto</code>. <code>persist_profile_selection:</code> may be set per group. A group-level <code>when:</code> is a reset chord: it returns that group to automatic selection without changing other groups.</p>
-  <pre>[profile_groups.display]
-profiles: rec709,bt2020
-default: auto
-when: $key=="F4"
+  <section id="vpvr">
+    <h2>Built-in renderer (<code>vpvr</code>)</h2>
+    <p><code>[vpvr.display]</code> supplies base values for VideoProcessor Renderer (Alpha). Input, scaling, and display profiles may override only their matching fields. Omitted fields use the defaults below; omitted profile fields inherit the base value. Invalid canonical values fail strict configuration before capture begins.</p>
 
-[profiles.display.rec709]
-when: $key=="F5" || $key=="Ctrl+F10"
-sdr_target_primaries: REC709
-report_bt2020_to_display: false
+    <h3 id="vpvr-input">Input treatment</h3>
+    <article class="field" id="vpvr-display-tone-mapping" data-fields="vpvr.display.tone_mapping profiles.input.*.tone_mapping">
+      <h4><code>tone_mapping</code></h4>
+      <p>Maps HDR brightness into the configured SDR target. It has no visible effect when tone mapping is unnecessary.</p>
+      <ul class="choices">
+        <li><code>spline</code>: smooth, balanced highlight roll-off; the best general explicit choice.</li>
+        <li><code>bt2390</code>: standards-oriented knee/roll-off; useful for predictable mastering-style behavior.</li>
+        <li><code>st2094-40</code>: scene-aware curve designed around dynamic-metadata-style processing; useful for difficult highlight distributions even when metadata is estimated.</li>
+        <li><code>reinhard</code>: simple global compression; robust and inexpensive, but can look flatter.</li>
+      </ul>
+      <p class="auto"><strong>AUTO behavior:</strong> the built-in renderer keeps the tone-mapping function supplied by the selected libplacebo <code>quality</code> preset. Source mastering/peak evidence then drives that function. The effective settings and colour-map choice are logged; the choice can change after renderer rebuild/profile selection, not frame by frame as a different enum.</p>
+      <p class="meta"><strong>Default:</strong> AUTO. <strong>Lifecycle:</strong> renderer rebuild. <strong>Example:</strong> <code>tone_mapping: spline</code>.</p>
+    </article>
 
-[profiles.display.bt2020]
-when: $key=="F6" || $key=="Ctrl+F9"
-sdr_target_primaries: BT2020
-report_bt2020_to_display: true</pre>
-  <p>The selected manual profiles are stored alongside the configuration in <code>VideoProcessor.state</code>, and only after a successful renderer application. A failed change leaves both the active renderer and the saved selection intact.</p>
+    <article class="field" id="vpvr-display-gamut-mapping" data-fields="vpvr.display.gamut_mapping profiles.input.*.gamut_mapping">
+      <h4><code>gamut_mapping</code></h4>
+      <p>Handles colours outside the target primaries.</p>
+      <ul class="choices">
+        <li><code>perceptual</code>: compresses the gamut while preserving visual relationships; best general choice.</li>
+        <li><code>softclip</code>: gently clips near the boundary; preserves in-gamut colours but may lose extreme saturation.</li>
+        <li><code>relative</code>: colorimetric boundary mapping; useful for measured workflows, but hard clipping may be visible.</li>
+        <li><code>desaturate</code>: reduces saturation to bring colours in range; safe but may look muted.</li>
+      </ul>
+      <p class="auto"><strong>AUTO behavior:</strong> uses the gamut function supplied by the current libplacebo quality preset. The renderer chooses, while target/source primaries provide the evidence. The log reports the active gamut function with display-LUT diagnostics.</p>
+      <p class="meta"><strong>Default:</strong> AUTO. <strong>Lifecycle:</strong> renderer rebuild.</p>
+    </article>
 
-  <h4>How selection works</h4>
-  <table><thead><tr><th>Situation</th><th>Result</th></tr></thead><tbody>
-    <tr><td>Startup with a saved manual selection</td><td>The saved profile is used when it still exists in the group and persistence is enabled.</td></tr>
-    <tr><td>Automatic source update</td><td>VP evaluates profiles with source conditions. Highest <code>priority</code> wins; then the condition with more comparisons; then the declared <code>profiles:</code> order.</td></tr>
-    <tr><td>No automatic match</td><td>A named <code>default:</code> is selected. <code>default: auto</code> leaves that group at the base setting.</td></tr>
-    <tr><td>Manual key selection</td><td>Every group evaluates the same key event. One chord may intentionally select one profile in several groups.</td></tr>
-    <tr><td>Group reset key</td><td>The group section's <code>when:</code> returns only that group to automatic selection. Other groups retain their manual selections.</td></tr>
-  </tbody></table>
+    <article class="field" id="vpvr-display-peak-detection" data-fields="vpvr.display.peak_detection profiles.input.*.peak_detection">
+      <h4><code>peak_detection</code></h4>
+      <p>Controls frame analysis used to estimate HDR peaks for tone mapping.</p>
+      <ul class="choices">
+        <li><code>OFF</code>: use metadata/nominal source information only; lowest GPU cost and most stable, but misses scene changes.</li>
+        <li><code>ON</code> or <code>HIGH_QUALITY</code>: force high-quality peak analysis; best adaptation at greater GPU cost.</li>
+        <li><code>DEFAULT</code>: same resolution as AUTO, retaining the quality preset's normal analysis.</li>
+      </ul>
+      <p class="auto"><strong>AUTO behavior:</strong> keeps the peak-detection parameters in the selected quality preset. The renderer combines those parameters with current HDR frames and metadata. The settings log reports peak detection on/off; a profile/rebuild can change the preset.</p>
+      <p class="meta"><strong>Default:</strong> AUTO. <strong>Lifecycle:</strong> renderer rebuild.</p>
+    </article>
 
-  <h3 id="renderer-rules">Automatic rules and expression language</h3>
-  <p>A profile without <code>when:</code> is selectable as the configured default or persisted manual choice. An automatic profile uses a source condition; the highest matching <code>priority:</code> wins (default 0), with declared profile order making a remaining tie deterministic. Rules support <code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code>, <code>&amp;&amp;</code>, <code>||</code>, <code>!</code>, and parentheses. Text comparison is case-insensitive.</p>
-  <table><thead><tr><th>Rule variable</th><th>Examples</th></tr></thead><tbody>
-    <tr><td><code>$transfer</code> / <code>$eotf</code></td><td><code>SDR</code>, <code>PQ</code>, <code>HLG</code>, <code>HDR</code>, <code>UNKNOWN</code></td></tr>
-    <tr><td><code>$primaries</code> / <code>$colorspace</code></td><td><code>REC709</code>, <code>BT2020</code>, <code>P3_D65</code></td></tr>
-    <tr><td><code>$format</code>, <code>$scan</code>, <code>$interlaced</code></td><td>Capture format and scan mode</td></tr>
-    <tr><td><code>$source_rate</code> / <code>$cadence</code></td><td><code>23.976</code>, <code>24</code>, <code>50</code>, <code>59.94</code>, <code>60</code></td></tr>
-    <tr><td><code>$width</code>, <code>$height</code>, <code>$resolution</code></td><td>For example <code>3840x2160</code></td></tr>
-    <tr><td><code>$hdr_metadata</code></td><td><code>true</code> when valid static HDR metadata is present</td></tr>
-    <tr><td><code>$key</code></td><td>A transient canonical chord, such as <code>F5</code> or <code>Ctrl+F9</code></td></tr>
-  </tbody></table>
-  <h4 id="runtime-variables">Typed runtime variables</h4>
-  <p>Variables are read-only typed values taken from one coherent runtime snapshot. A component registers the state it publishes; configuration may use only variables permitted by that setting's schema. This makes new application state reusable without exposing arbitrary C++ members or performing unsafe text substitution in paths, commands, or shader source. Rules are reevaluated when a variable they depend on changes.</p>
-  <table><thead><tr><th>Variable</th><th>Type</th><th>Source and update</th></tr></thead><tbody>
-    <tr><td><code>$screen_aspect</code></td><td>Number</td><td>Numeric aspect from the selected viewport; defaults to 16:9.</td></tr>
-    <tr><td><code>$viewport_profile</code></td><td>Text</td><td>Selected viewport profile name, or <code>default</code> when no named profile is active.</td></tr>
-    <tr><td><code>$subtitle_fit</code></td><td>Boolean</td><td>Subtitle-fit state from the same viewport snapshot.</td></tr>
-    <tr><td><code>$subtitle_hold_seconds</code></td><td>Number</td><td>Viewport subtitle hold duration.</td></tr>
-    <tr><td><code>$subtitle_padding_pixels</code></td><td>Number</td><td>Viewport subtitle padding.</td></tr>
-    <tr><td><code>$transfer</code>, <code>$eotf</code>, <code>$primaries</code>, <code>$colorspace</code>, <code>$format</code></td><td>Text</td><td>Published source metadata; updates on a confirmed input transition.</td></tr>
-    <tr><td><code>$width</code>, <code>$height</code>, <code>$source_rate</code>, <code>$cadence</code></td><td>Number</td><td>Published source raster and cadence.</td></tr>
-    <tr><td><code>$hdr_metadata</code>, <code>$interlaced</code></td><td>Boolean</td><td>Published source flags.</td></tr>
-    <tr><td><code>$key</code></td><td>Text</td><td>Transient canonical chord used only while resolving one physical key event.</td></tr>
-  </tbody></table>
-  <p>Typed NLS consumes <code>$screen_aspect</code> internally, so users do not add a duplicate <code>screen_aspect</code> line to the shader rule. Logs identify the snapshot generation and variable values used for each mapping decision.</p>
-  <pre>[profiles.input.pq]
-when: $transfer=="PQ" &amp;&amp; $primaries=="BT2020"
-priority: 100
-tone_mapping: spline
-gamut_mapping: perceptual
+    <article class="field" id="vpvr-display-contrast-recovery" data-fields="vpvr.display.contrast_recovery profiles.input.*.contrast_recovery">
+      <h4><code>contrast_recovery</code></h4>
+      <p>Restores local contrast that tone mapping can flatten. Values 0.0–1.0; higher is stronger and can exaggerate halos/noise. Start near 0.2–0.3 only when the mapped image looks flat.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> does not force a numeric override; libplacebo's selected quality preset supplies its normal contrast-recovery behavior. The renderer makes the decision during construction.</p>
+      <p class="meta"><strong>Default:</strong> AUTO. <strong>Lifecycle:</strong> renderer rebuild.</p>
+    </article>
 
-[profiles.scaling.uhd]
-when: $width&gt;=3840 &amp;&amp; $height&gt;=2160
-quality: high</pre>
-  <p>Use quoted key chords: <code>when: $key=="F5"</code>. A chord may select one profile in each independent group, which makes composite actions such as selecting a display calibration and viewport together deliberate and safe. Two profiles in the same group cannot claim the same chord.</p>
+    <article class="field" id="vpvr-display-sdr-input-transfer" data-fields="vpvr.display.sdr_input_transfer profiles.input.*.sdr_input_transfer">
+      <h4><code>sdr_input_transfer</code></h4>
+      <p>Overrides how captured SDR code values are decoded. <code>BT1886</code> is typical reference-video viewing, <code>SRGB</code> typical desktop graphics, and <code>1.8</code>, <code>2.0</code>, <code>2.2</code>, <code>2.4</code>, <code>2.6</code>, <code>2.8</code> are explicit power curves. This is independent of output gamma.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> leaves the captured SDR transfer metadata unchanged. The renderer uses the coherent source snapshot; it does not guess from the output target. The effective input transfer is logged.</p>
+      <p class="warning">Use an override only for a known mis-tagged or comparison source; the wrong value changes midtone brightness.</p>
+    </article>
 
-  <h4>Rule cookbook</h4>
-  <table><thead><tr><th>Intent</th><th>Profile rule</th><th>Notes</th></tr></thead><tbody>
-    <tr><td>Apply HDR input treatment only to PQ BT.2020</td><td><code>when: $transfer=="PQ" &amp;&amp; $primaries=="BT2020"</code></td><td>Put tone and gamut mapping in an <code>input</code> profile.</td></tr>
-    <tr><td>Prefer an UHD scaling profile</td><td><code>when: $width&gt;=3840 &amp;&amp; $height&gt;=2160</code></td><td>Put quality/scaler values in a <code>scaling</code> profile.</td></tr>
-    <tr><td>Choose the 2.35 viewport manually</td><td><code>when: $key=="F2"</code></td><td>Put <code>screen_aspect: 2.35:1</code> and subtitle values in a <code>viewport</code> profile. The profile name itself does not determine geometry.</td></tr>
-    <tr><td>Return only display selection to automatic</td><td>Group rule: <code>when: $key=="F4"</code></td><td>Place it in <code>[profile_groups.display]</code>, not a profile.</td></tr>
-    <tr><td>One key selects matching display and viewport</td><td>Use <code>$key=="Ctrl+F9"</code> in one profile of each group</td><td>Allowed across groups; never reuse the chord for two profiles in the same group.</td></tr>
-  </tbody></table>
+    <h3 id="vpvr-scaling">Scaling and cleanup</h3>
+    <p>There is no universally “best” scaler. Choose by the amount of resizing, visible ringing/softness, and measured GPU headroom. The quality preset also controls other renderer work, so compare with the stats overlay at the hardest cadence you use.</p>
 
-  <h3 id="renderer-recipes">Complete profile recipes</h3>
-  <p>The following is a complete, valid renderer profile library. It illustrates automatic HDR/input and UHD/scaling choices, manual display calibration, named 16:9/2.35 viewport selection, a display-only reset, and one composite key. It can be adapted into the renderer portion of <code>VideoProcessor.cfg</code>; keep your existing application sections above it.</p>
-  <pre>[general]
-persist_profile_selection: true
-event_action_delay_seconds: 5
+    <article class="field" id="vpvr-display-quality" data-fields="vpvr.display.quality profiles.scaling.*.quality">
+      <h4><code>quality</code></h4>
+      <ul class="choices">
+        <li><code>fast</code>: lowest GPU cost; use to recover headroom or diagnose overload, with softer/less refined processing.</li>
+        <li><code>balanced</code>: libplacebo default preset; good for limited GPUs or high-rate UHD.</li>
+        <li><code>high</code>: highest shipped preset and the VP default; best starting point when render time stays comfortably below the frame interval.</li>
+      </ul>
+      <p class="meta"><strong>Default:</strong> high. <strong>Lifecycle:</strong> renderer rebuild. This sets a processing preset, not output bit depth or cadence.</p>
+    </article>
 
-[profile_groups.input]
-profiles: sdr,pq_hdr,hlg_hdr
-default: auto
-persist_profile_selection: false
+    <article class="field" id="vpvr-display-upscaler" data-fields="vpvr.display.upscaler profiles.scaling.*.upscaler">
+      <h4><code>upscaler</code></h4>
+      <ul class="choices">
+        <li><code>EWA_LANCZOSSHARP</code>: sharpest detailed option; best for substantial enlargement with GPU headroom, but can reveal ringing/noise.</li>
+        <li><code>EWA_LANCZOS</code>: high-detail reconstruction with slightly gentler sharpening; strong general-quality choice.</li>
+        <li><code>BICUBIC</code>: smoother and cheaper; good compromise when Lanczos is too slow or too crisp.</li>
+        <li><code>BILINEAR</code>: cheapest and softest; use for troubleshooting or very constrained GPUs.</li>
+      </ul>
+      <p class="auto"><strong>AUTO behavior:</strong> leaves the upscaler selected by the active <code>quality</code> preset. Libplacebo decides at renderer construction; it does not benchmark the GPU. The settings log reports the effective filter name or <code>built-in</code>.</p>
+      <p class="meta"><strong>Default:</strong> AUTO. <strong>Fallback:</strong> an unavailable explicit filter prevents renderer setup rather than silently selecting a different named algorithm.</p>
+    </article>
 
-[profiles.input.sdr]
-when: $transfer=="SDR"
+    <article class="field" id="vpvr-display-downscaler" data-fields="vpvr.display.downscaler profiles.scaling.*.downscaler">
+      <h4><code>downscaler</code></h4>
+      <ul class="choices">
+        <li><code>EWA_LANCZOS</code>: best fine-detail retention for reduction, with the highest cost and possible ringing.</li>
+        <li><code>BICUBIC</code>: smoother, cheaper compromise that often looks calmer on noisy video.</li>
+        <li><code>BILINEAR</code>: fastest but loses the most fine detail; diagnostic/low-headroom choice.</li>
+      </ul>
+      <p class="auto"><strong>AUTO behavior:</strong> retains the downscaler from the selected quality preset. It is resolved during renderer construction and reported in the renderer settings log.</p>
+      <p class="meta"><strong>Default:</strong> AUTO. <strong>Lifecycle:</strong> renderer rebuild.</p>
+    </article>
 
-[profiles.input.pq_hdr]
-when: $transfer=="PQ" &amp;&amp; $primaries=="BT2020"
-priority: 100
-tone_mapping: spline
-gamut_mapping: perceptual
-peak_detection: high_quality
-contrast_recovery: 0.25
+    <article class="field" id="vpvr-display-sigmoid" data-fields="vpvr.display.sigmoid profiles.scaling.*.sigmoid">
+      <h4><code>sigmoid</code></h4>
+      <p>Applies sigmoid-domain scaling to reduce ringing around strong edges. <code>ON</code> can look cleaner with sharp scalers but changes their character; <code>OFF</code> is useful for exact filter comparison.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> keeps the selected quality preset's sigmoid setting. Resolution occurs at renderer construction and is stable until rebuild.</p>
+    </article>
 
-[profiles.input.hlg_hdr]
-when: $transfer=="HLG"
-tone_mapping: bt2390
-gamut_mapping: perceptual
+    <article class="field" id="vpvr-display-deband" data-fields="vpvr.display.deband">
+      <h4><code>deband</code></h4>
+      <p><code>ON</code> smooths false contour bands, useful on compressed gradients but capable of removing subtle texture. <code>OFF</code> preserves the source exactly and costs less.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> uses the quality preset's debanding policy. The settings log reports effective on/off after renderer construction.</p>
+    </article>
 
-[profile_groups.scaling]
-profiles: standard,uhd
-default: standard
-persist_profile_selection: false
+    <article class="field" id="vpvr-display-deband-strength" data-fields="profiles.scaling.*.deband_strength">
+      <h4><code>deband_strength</code> <span class="badge">scaling profiles</span></h4>
+      <p><code>OFF</code> disables debanding. <code>LIGHT</code> and <code>DEFAULT</code> currently both enable libplacebo's default debanding parameters; there is no present image-quality difference between those two tokens. Prefer <code>DEFAULT</code> so intent is clear.</p>
+      <p class="meta">This profile-only selector overrides the inherited <code>deband</code> state and requires a renderer rebuild.</p>
+    </article>
 
-[profiles.scaling.standard]
-quality: high
-upscaler: ewa_lanczossharp
-downscaler: ewa_lanczos
+    <article class="field" id="vpvr-display-dithering" data-fields="vpvr.display.dithering profiles.scaling.*.dithering">
+      <h4><code>dithering</code></h4>
+      <p><code>ON</code> adds controlled noise to hide quantization bands, normally desirable for the final 10-bit output. <code>OFF</code> is useful for measurement or diagnosing noise but may expose gradients.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> retains the active quality preset's dither parameters. When a target 3D LUT is active, VP selects an ordered dither method to avoid a known GPU shader-register conflict; this fallback is logged.</p>
+    </article>
 
-[profiles.scaling.uhd]
-when: $width&gt;=3840 &amp;&amp; $height&gt;=2160
-quality: high
-upscaler: ewa_lanczossharp
+    <h3 id="vpvr-display-target">SDR display target and output contract</h3>
+    <article class="field" id="vpvr-display-sdr-target-nits" data-fields="vpvr.display.sdr_target_nits profiles.display.*.sdr_target_nits">
+      <h4><code>sdr_target_nits</code></h4>
+      <p>SDR reference white/peak used for tone mapping, 40–500 nits. Default when omitted is 203. Use the calibrated peak your display actually produces in the selected mode; 100 is common for a dark reference environment.</p>
+      <p class="meta"><strong>Lifecycle:</strong> renderer rebuild. Invalid values fail strict validation.</p>
+    </article>
 
-[profile_groups.display]
-profiles: rec709,bt2020
-default: rec709
-when: $key=="F4"
+    <article class="field" id="vpvr-display-sdr-black-nits" data-fields="vpvr.display.sdr_black_nits profiles.display.*.sdr_black_nits">
+      <h4><code>sdr_black_nits</code></h4>
+      <p>Measured display black in nits. An explicit value must be ≥ 0 and below target white. Use 0 for an ideal-black target only when appropriate to the display/calibration.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> VP calculates <code>sdr_target_nits / 1000</code> using the renderer's SDR contrast constant. At 100-nit white this is 0.1 nit. The effective value is printed in the renderer settings log.</p>
+    </article>
 
-[profiles.display.rec709]
-when: $key=="F5" || $key=="Ctrl+F10"
-sdr_target_primaries: REC709
-report_bt2020_to_display: false
+    <article class="field" id="vpvr-display-output-presentation" data-fields="vpvr.display.output_presentation profiles.display.*.output_presentation">
+      <h4><code>output_presentation</code></h4>
+      <ul class="choices">
+        <li><code>COMPOSED</code>: stable Windows DWM/BitBlt path; best compatibility and desktop integration.</li>
+        <li><code>DIRECT</code>: requests a flip-model, direct-eligible path; required for BT.2020 signalling and useful for low-latency/fullscreen chains, but Windows still decides actual promotion.</li>
+      </ul>
+      <p class="auto"><strong>AUTO behavior:</strong> uses composed presentation for normal Full/Rec.709 output, but creates a flip candidate for Limited range or BT.2020. If AUTO Limited negotiation fails, VP recreates the stable composed Full/sRGB path and logs the fallback. Embedded preview always uses composed Full/sRGB Rec.709.</p>
+    </article>
 
-[profiles.display.bt2020]
-when: $key=="F6" || $key=="Ctrl+F9"
-sdr_target_primaries: BT2020
-report_bt2020_to_display: true
+    <article class="field" id="vpvr-display-output-range" data-fields="vpvr.display.output_range profiles.display.*.output_range">
+      <h4><code>output_range</code></h4>
+      <p><code>FULL</code> emits full-range RGB and is the normal Windows desktop contract. <code>LIMITED</code> requests studio-range RGB for a display chain calibrated for it; a range mismatch produces raised/crushed blacks and whites.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> requests the normal Full/sRGB swapchain contract. With explicit Limited and AUTO presentation, VP verifies DXGI support before use and falls back safely if unavailable. Requested and actual contracts are logged.</p>
+    </article>
 
-[profile_groups.viewport]
-profiles: normal,scope
-default: normal
+    <article class="field" id="vpvr-display-output-gamma" data-fields="vpvr.display.output_gamma profiles.display.*.output_gamma">
+      <h4><code>output_gamma</code></h4>
+      <p><code>SRGB</code> is the supported full-range desktop transfer. <code>2.4</code> is the supported limited-range reference transfer. <code>BT1886</code>, <code>1.8</code>, <code>2.0</code>, <code>2.2</code>, <code>2.6</code>, and <code>2.8</code> are accepted calibration requests, but VP rejects any range/gamma pair for which Windows has no matching safe DXGI declaration rather than mislabeling output.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> resolves to sRGB/G22 for Full output and gamma 2.4 for Limited output. Resolution uses the requested range/primaries and verified DXGI capabilities during renderer construction. The negotiation log shows requested and actual gamma.</p>
+    </article>
 
-[profiles.viewport.normal]
-when: $key=="F3" || $key=="Ctrl+F10"
+    <article class="field" id="vpvr-display-sdr-target-primaries" data-fields="vpvr.display.sdr_target_primaries profiles.display.*.sdr_target_primaries">
+      <h4><code>sdr_target_primaries</code></h4>
+      <p><code>REC709</code> (default) is the safest SDR target and matches normal desktop/display expectations. <code>BT2020</code> renders into a wide-gamut target and requires a flip-model path plus a display deliberately placed in the matching mode. BT.2020 is not inherently “better” if the display chain is not calibrated for it.</p>
+    </article>
 
-[profiles.viewport.scope]
-when: $key=="F2" || $key=="Ctrl+F9"
-screen_aspect: 2.35:1
-subtitle_fit: true
-subtitle_hold_seconds: 2
-subtitle_padding_pixels: 30
+    <article class="field" id="vpvr-display-report-bt2020-to-display" data-fields="vpvr.display.report_bt2020_to_display profiles.display.*.report_bt2020_to_display">
+      <h4><code>report_bt2020_to_display</code></h4>
+      <p>When true with a BT.2020 target, requests NVIDIA output reporting for BT.2020. Default false: the display must be switched manually. It is ignored for Rec.709. If NVIDIA reporting is unsupported, VP disables the request, rebuilds the BT.2020 output safely, and logs that result.</p>
+    </article>
 
+    <h3 id="vpvr-lut">Display 3D LUT</h3>
+    <article class="field" id="vpvr-display-lut" data-fields="vpvr.display.lut profiles.display.*.lut">
+      <h4><code>lut</code></h4>
+      <p>Optional <code>.cube</code> display-transform filename/path, resolved relative to the configuration directory and constrained to remain under it. Empty disables the LUT. The LUT is applied at the target/native post-encode stage only when its declared reference contract matches actual output.</p>
+      <p class="meta">Missing, malformed, escaped, contract-mismatched, or render-failing LUTs are rejected and VP continues without the LUT. OSD/log status explains the reason.</p>
+    </article>
+    <article class="field" id="vpvr-display-lut-reference-primaries" data-fields="vpvr.display.lut_reference_primaries profiles.display.*.lut_reference_primaries">
+      <h4><code>lut_reference_primaries</code></h4>
+      <p><code>REC709</code>, <code>P3_D65</code>, or <code>BT2020</code> declares the LUT's expected target primaries.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> leaves primaries unspecified for contract validation, so this dimension does not reject the LUT. Use an explicit value for a calibrated LUT.</p>
+    </article>
+    <article class="field" id="vpvr-display-lut-reference-transfer" data-fields="vpvr.display.lut_reference_transfer profiles.display.*.lut_reference_transfer">
+      <h4><code>lut_reference_transfer</code></h4>
+      <p><code>SRGB</code>, <code>BT1886</code>, <code>2.2</code>, or <code>2.4</code> declares the transfer for which the LUT was built.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> leaves transfer unspecified in contract validation. It does not transform or inspect the LUT to discover a curve.</p>
+    </article>
+    <article class="field" id="vpvr-display-lut-reference-range" data-fields="vpvr.display.lut_reference_range profiles.display.*.lut_reference_range">
+      <h4><code>lut_reference_range</code></h4>
+      <p><code>FULL</code> or <code>LIMITED</code> declares the LUT's expected signal range.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> leaves range unspecified for validation. Explicit is safer for a calibrated LUT because a mismatch disables it rather than applying it to the wrong code range.</p>
+    </article>
+    <article class="field" id="vpvr-display-lut-reference-nits" data-fields="vpvr.display.lut_reference_nits profiles.display.*.lut_reference_nits">
+      <h4><code>lut_reference_nits</code></h4>
+      <p>40–500 nit target for which the LUT was built.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> stores zero as “unspecified,” so target luminance does not reject the LUT. It does not measure the LUT or display.</p>
+    </article>
+
+    <h3 id="vpvr-policy">Renderer session policy</h3>
+    <article class="field" id="vpvr-general-switch-refresh-rate" data-fields="vpvr.general.switch_refresh_rate"><h4><code>[vpvr.general] switch_refresh_rate</code></h4><p>Boolean, default true. Lets the built-in renderer run its display refresh transaction for source cadence. False makes no refresh request and therefore no refresh-completed event. Read at renderer construction; changing it requires rebuild.</p></article>
+    <article class="field" id="vpvr-general-output-diagnostics" data-fields="vpvr.general.output_diagnostics"><h4><code>[vpvr.general] output_diagnostics</code></h4><p>Boolean, default false. Enables additional output-contract/pixel diagnostics for troubleshooting. It adds work and log volume; do not treat it as a quality setting.</p></article>
+    <article class="field" id="vpvr-general-disable-shader-cache" data-fields="vpvr.general.diagnostic_disable_shader_cache"><h4><code>[vpvr.general] diagnostic_disable_shader_cache</code></h4><p>Boolean, default false. Disables use of the persistent GPU shader cache for one renderer instance while leaving the file intact. Use only to diagnose stale/corrupt cache behavior; compilation will be slower.</p></article>
+
+    <h3>Common built-in-renderer recipes</h3>
+    <pre data-ini-example="vpvr-rec709"># SDR Rec.709 desktop output
 [vpvr.display]
-sdr_target_nits: 100
-sdr_black_nits: 0
 quality: high
+sdr_target_nits: 100
+sdr_black_nits: AUTO
 tone_mapping: spline
 gamut_mapping: perceptual
-peak_detection: AUTO
-contrast_recovery: AUTO
 upscaler: AUTO
 downscaler: AUTO
-deband: AUTO
 dithering: AUTO
+output_presentation: COMPOSED
+output_range: FULL
+output_gamma: SRGB
+sdr_target_primaries: REC709
+report_bt2020_to_display: false</pre>
+
+    <pre data-ini-example="vpvr-bt2020"># Calibrated SDR BT.2020 output; display must be in its matching mode
+[vpvr.display]
+sdr_target_nits: 100
 output_presentation: DIRECT
 output_range: FULL
-output_gamma: AUTO
-sdr_target_primaries: REC709
-report_bt2020_to_display: false
-sdr_input_transfer: AUTO
+output_gamma: SRGB
+sdr_target_primaries: BT2020
+report_bt2020_to_display: true</pre>
+  </section>
 
-[vpvr.general]
-switch_refresh_rate: true
-output_diagnostics: false
-diagnostic_disable_shader_cache: false</pre>
-  <p>In that example, <code>Ctrl+F9</code> selects BT.2020 display reporting and the 2.35 viewport together; <code>Ctrl+F10</code> selects Rec.709 reporting and the 16:9 viewport. F2 and F3 change only the viewport. F5 and F6 change only the display target. F4 clears only the manual display choice.</p>
+  <section id="events">
+    <h2>Shortcuts and completed-event actions</h2>
+    <p>Shortcut modifiers are <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Keys are one letter/number, F1–F24, Escape, or Enter. A lowercase letter has no Shift; uppercase adds Shift. Invalid or duplicate fixed bindings retain the built-in binding when available.</p>
 
-  <h3 id="renderer-strictness">Strictness and safe changes</h3>
-  <p>Unified configuration rejects duplicate keys, unknown sections, missing listed profiles, orphan profile sections, invalid defaults, unknown variables, malformed expressions, unsupported values, and a setting placed in the wrong profile group. Application settings such as capture, queues, conversion, and shaders remain startup-only and cannot be changed by a renderer profile. Legacy display-rule syntax is not part of the unified model.</p>
-  <p><code>[vpvr.display]</code> and <code>[vpvr.general]</code> are the canonical built-in-renderer sections. A file cannot combine <code>[vpvr.display]</code> with deprecated <code>[display]</code> or historical <code>[libplacebo]</code>. A renderer-policy key cannot appear in both <code>[vpvr.general]</code> and a deprecated location, even with the same value. Legacy-only <code>[display_rules*]</code> configurations remain readable during their compatibility window; migrate them to <code>[profile_groups.display]</code> and <code>[profiles.display.*]</code>, not to a <code>vpvr.display_rules</code> section.</p>
-  <p>Changes are transactional. VP first resolves the full effective settings, then applies/rebuilds the renderer as needed. It persists a manual selection and runs completed-event actions only after the change succeeds. If application fails, the prior renderer, state, and selection remain in effect.</p>
+    <article class="field" id="shortcuts-auto-set" data-fields="shortcuts.auto_set"><h4><code>[shortcuts] auto_set</code></h4><p>Runs VP's automatic setup command. Built-in default <code>Ctrl+Shift+A</code>.</p></article>
+    <article class="field" id="shortcuts-fullscreen-exit" data-fields="shortcuts.fullscreen_exit"><h4><code>fullscreen_exit</code></h4><p>Leaves fullscreen. Default <code>Escape</code>.</p></article>
+    <article class="field" id="shortcuts-fullscreen-toggle" data-fields="shortcuts.fullscreen_toggle"><h4><code>fullscreen_toggle</code></h4><p>Toggles fullscreen. Default <code>Alt+Enter</code>.</p></article>
+    <article class="field" id="shortcuts-toggle-stats-overlay" data-fields="shortcuts.toggle_stats_overlay"><h4><code>toggle_stats_overlay</code></h4><p>Shows/hides VP performance and renderer statistics. Default <code>Ctrl+I</code>; use it to compare scaler/quality GPU headroom.</p></article>
+    <article class="field" id="shortcuts-pq-set" data-fields="shortcuts.pq_set"><h4><code>pq_set</code></h4><p>Runs VP's PQ metadata setup command. Default <code>Ctrl+Shift+P</code>.</p></article>
+    <article class="field" id="shortcuts-renderer-restart" data-fields="shortcuts.renderer_restart"><h4><code>renderer_restart</code></h4><p>Performs a controlled renderer reconstruction. Default <code>Shift+R</code>.</p></article>
+    <article class="field" id="shortcuts-renderer-reset" data-fields="shortcuts.renderer_reset"><h4><code>renderer_reset</code></h4><p>Resets/re-primes renderer delivery without changing the selected renderer. Default lowercase <code>r</code>.</p></article>
+    <article class="field" id="shortcuts-capture" data-fields="shortcuts.capture_1 shortcuts.capture_2 shortcuts.capture_3 shortcuts.capture_4"><h4><code>capture_1</code> … <code>capture_4</code></h4><p>Select capture inputs 1–4. Defaults <code>Ctrl+1</code> through <code>Ctrl+4</code>.</p></article>
+    <article class="field" id="shortcuts-video-conversion" data-fields="shortcuts.video_conversion_off shortcuts.video_conversion_p010"><h4><code>video_conversion_off</code>, <code>video_conversion_p010</code></h4><p>Turns conversion off or selects P010. Defaults lowercase <code>v</code> and uppercase <code>V</code> (Shift+V).</p></article>
+    <article class="field" id="shortcuts-render-index" data-fields="shortcuts.render.&lt;index&gt;"><h4><code>render.&lt;index&gt;</code></h4><p>Selects the 1-based renderer-combo entry and performs the same controlled restart as the UI. The machine-specific mapping is logged as <code>Renderer order: render.N = name</code>. An unavailable index is ignored safely.</p></article>
 
-  <h3 id="renderer-events">Completed-event actions</h3>
-  <p>Optional <code>[event_actions]</code> entries run only after a successful applied, confirmed, or restored renderer transition. The section lists action names; each action requires <code>on:</code>, <code>when:</code>, and <code>program:</code>. <code>arguments:</code>, <code>working_directory:</code>, and a 0â€“30 second <code>delay_seconds:</code> are optional. Without a per-action delay, the value from <code>[general]</code> is used.</p>
-  <pre>[event_actions]
+    <article class="field" id="event-actions-actions" data-fields="event_actions.actions"><h4><code>[event_actions] actions</code></h4><p>Comma-separated action identifiers. Each needs one <code>[event_actions.&lt;name&gt;]</code> section. Actions run only after successful refresh transitions.</p></article>
+    <article class="field" id="event-action-on" data-fields="event_actions.*.on"><h4><code>on</code></h4><p>One or more of <code>refresh.applied</code> (request succeeded), <code>refresh.confirmed</code> (new rate confirmed), and <code>refresh.restored</code> (previous rate restored).</p></article>
+    <article class="field" id="event-action-when" data-fields="event_actions.*.when"><h4><code>when</code></h4><p>Required expression using <code>$actual_refresh</code>, <code>$requested_refresh</code>, and <code>$previous_refresh</code>. It is evaluated from the completed transition snapshot.</p></article>
+    <article class="field" id="event-action-program" data-fields="event_actions.*.program"><h4><code>program</code></h4><p>Required <code>.exe</code>, <code>.bat</code>, or <code>.cmd</code> path. An empty/unsupported extension fails configuration validation.</p></article>
+    <article class="field" id="event-action-arguments" data-fields="event_actions.*.arguments"><h4><code>arguments</code></h4><p>Optional argument string passed to the program. Keep shell quoting appropriate to that program.</p></article>
+    <article class="field" id="event-action-working-directory" data-fields="event_actions.*.working_directory"><h4><code>working_directory</code></h4><p>Optional process working directory. Omit when the program does not rely on relative files.</p></article>
+    <article class="field" id="event-action-delay-seconds" data-fields="event_actions.*.delay_seconds"><h4><code>delay_seconds</code></h4><p>Whole seconds 0–30 before this action runs. Omission inherits <code>[general] event_action_delay_seconds</code>.</p></article>
+
+    <pre data-ini-example="refresh-action">[event_actions]
 actions: audio_delay_film
 
 [event_actions.audio_delay_film]
 on: refresh.applied,refresh.confirmed
 when: $actual_refresh==23.976 || $actual_refresh==24
 program: C:\Videoprocessor\audio\audio_delay.bat
-arguments: 315</pre>
-  <p>Supported events are <code>refresh.applied</code>, <code>refresh.confirmed</code>, and <code>refresh.restored</code>. Actions are not profile selectors and cannot change renderer settings. Failed or unsupported refresh changes run no action.</p>
+arguments: 315
+delay_seconds: 2</pre>
+  </section>
 
-  <h3 id="renderer-troubleshooting">Troubleshooting renderer profiles</h3>
-  <table><thead><tr><th>Symptom</th><th>Check</th></tr></thead><tbody>
-    <tr><td>VP will not start with the Alpha renderer</td><td>Read the configuration error. Unified configuration fails closed on a misspelled section/key, invalid setting value, missing listed profile, or invalid expression.</td></tr>
-    <tr><td>A hotkey does nothing</td><td>Verify the VP window has focus, the chord is quoted exactly, and it is not assigned to two profiles in the same group. Check <code>C:\logs\vp_debug.log</code> for registered profile bindings.</td></tr>
-    <tr><td>An automatic rule never wins</td><td>Verify the captured metadata in the debug log, then compare its transfer/primaries/raster values with the rule. Raise <code>priority:</code> only when two matching profiles genuinely need ordering.</td></tr>
-    <tr><td>The wrong profile reappears after restart</td><td>Manual selections persist by default. Use the group reset chord, set <code>persist_profile_selection: false</code> for that group, or remove the relevant entry from <code>VideoProcessor.state</code> while VP is stopped.</td></tr>
-    <tr><td>NLS uses the wrong screen shape</td><td>Confirm the OSD shows <code>Viewport: &lt;profile&gt; (&lt;aspect&gt;)</code>. The log must show the restored/selected viewport before the NLS mapping decision. Remove hard-coded NLS target/output aspect keys from unified configuration.</td></tr>
-    <tr><td>4:3 is stretched on a 2.35 screen</td><td>The expected armed mode is 4:3 safe-fit/pillarbox. Check the logged source aspect, selected screen aspect, snapshot generation, and mapping mode; do not add a second 4:3 shader rule.</td></tr>
-    <tr><td>A viewport key restarts the renderer</td><td>One controlled restart is expected only when the negotiated picture-aspect contract changes. Content-aspect changes under the same selected viewport must report <code>renderer_restart=0</code>.</td></tr>
-    <tr><td>Display or colour changes fail</td><td>VP keeps the last successful renderer state. Inspect the log for the rejected output contract or unsupported display capability; do not assume the profile name alone proves a setting applied.</td></tr>
-  </tbody></table>
+  <section id="troubleshooting">
+    <h2>Diagnostics and troubleshooting</h2>
+    <table>
+      <thead><tr><th>Symptom</th><th>What to check</th></tr></thead>
+      <tbody>
+        <tr><td>Section or key ignored/rejected</td><td>Use the exact section/key in the field index. Strict configuration reports the offending section and key; duplicate keys are not a supported override mechanism.</td></tr>
+        <tr><td>A <code>vpvr</code> setting has no effect with madVR</td><td>Expected: <code>vpvr.*</code> is owned only by VideoProcessor Renderer (Alpha). Use shared capture/shader/viewport settings for cross-renderer behavior.</td></tr>
+        <tr><td><code>AUTO</code> differs from expectation</td><td>Read the field-specific AUTO paragraph. Then inspect <code>libplacebo settings</code>, output negotiation, source metadata, and OSD values; AUTO is not one global policy.</td></tr>
+        <tr><td>Wrong scaler result or dropped frames</td><td>Toggle the stats overlay, compare render time with the frame interval, and step from high → balanced → fast or Lanczos → bicubic → bilinear. Change one control per comparison.</td></tr>
+        <tr><td>Wrong black/white levels</td><td>Compare configured and actual <code>output_range</code> in output-negotiation logs and verify the display expects the same range.</td></tr>
+        <tr><td>Wrong colour/gamma</td><td>Check source transfer/primaries, SDR input override, target primaries, requested range/gamma, actual DXGI contract, and display mode as separate stages.</td></tr>
+        <tr><td>LUT not active</td><td>OSD/log reports missing path, parse error, target-contract mismatch, or render error. Make reference fields match the actual output contract.</td></tr>
+        <tr><td>Profile rule does not match</td><td>Compare logged source snapshot with expression types/values. Check priority and group order; text comparisons are case-insensitive.</td></tr>
+        <tr><td>Refresh switching does not occur</td><td>Confirm <code>switch_refresh_rate: true</code>, source cadence, requested/actual refresh, and that Windows/display accepted the transition.</td></tr>
+        <tr><td>Changing a profile rebuilds the renderer</td><td>Expected for input, scaling, display, LUT, and renderer-policy changes. Viewport-only changes normally apply live; the log states whether rebuild was required.</td></tr>
+        <tr><td>Shader missing or fails</td><td>Confirm filename and renderer-compatible extension under deployed <code>shaders</code>. Compilation/installation failure is logged and the affected effect is disabled.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="glossary">
+    <h2>Glossary</h2>
+    <dl>
+      <dt><strong>HDR / SDR</strong></dt><dd>High dynamic range / standard dynamic range.</dd>
+      <dt><strong>EOTF / transfer</strong></dt><dd>The relationship between stored signal values and displayed light.</dd>
+      <dt><strong>LLDV</strong></dt><dd>Low-Latency Dolby Vision, captured here without its HDMI vendor information frame.</dd>
+      <dt><strong>LUT</strong></dt><dd>Look-up table; here, a 3D display colour transform in <code>.cube</code> format.</dd>
+      <dt><strong>NLS</strong></dt><dd>Nonlinear stretch: redistributes horizontal geometry toward a wider physical viewport.</dd>
+      <dt><strong>CIH</strong></dt><dd>Constant image height; typically a scope-width screen/viewport such as 2.35:1.</dd>
+      <dt><strong>PPM</strong></dt><dd>Parts per million, a very small cadence/timing correction.</dd>
+      <dt><strong>OSD</strong></dt><dd>On-screen display.</dd>
+    </dl>
+  </section>
+
+  <section id="field-index">
+    <h2>Complete field index</h2>
+    <p>Every public field below is checked against <code>docs/configuration-public-fields.tsv</code>. A field that is added to the supported inventory without a matching reference anchor fails the documentation completeness test.</p>
+    <h3><code>[command_line]</code></h3>
+    <ul class="index">
+      <li><a href="#command-line-capture-device"><code>capture_device</code></a></li>
+      <li><a href="#command-line-renderer"><code>renderer</code></a></li>
+      <li><a href="#command-line-fullscreen"><code>fullscreen</code></a></li>
+      <li><a href="#command-line-windowedfullscreenmode"><code>windowedfullscreenmode</code></a></li>
+      <li><a href="#command-line-queue-size"><code>queue_size</code></a></li>
+      <li><a href="#command-line-alpha-queue-size"><code>alpha_queue_size</code></a></li>
+      <li><a href="#command-line-scene-detect"><code>scene_detect</code></a></li>
+      <li><a href="#command-line-scene-correction-basic"><code>scene_correction_basic</code></a></li>
+      <li><a href="#command-line-subtitle-reposition"><code>subtitle_reposition</code></a></li>
+      <li><a href="#command-line-newlldv"><code>newlldv</code></a></li>
+      <li><a href="#command-line-noui"><code>noui</code></a></li>
+      <li><a href="#command-line-startminimized"><code>startminimized</code></a></li>
+      <li><a href="#command-line-frame-offset"><code>frame_offset</code></a></li>
+      <li><a href="#command-line-video-conversion"><code>video_conversion</code></a></li>
+      <li><a href="#command-line-container-colorspace"><code>container_colorspace</code></a></li>
+      <li><a href="#command-line-hdr-colorspace"><code>hdr_colorspace</code></a></li>
+      <li><a href="#command-line-hdr-luminance"><code>hdr_luminance</code></a></li>
+      <li><a href="#command-line-renderer-start-stop-time-method"><code>renderer_start_stop_time_method</code></a></li>
+      <li><a href="#command-line-renderer-nominal-range"><code>renderer_nominal_range</code></a></li>
+      <li><a href="#command-line-renderer-transfer-function"><code>renderer_transfer_function</code></a></li>
+      <li><a href="#command-line-renderer-transfer-matrix"><code>renderer_transfer_matrix</code></a></li>
+      <li><a href="#command-line-renderer-primaries"><code>renderer_primaries</code></a></li>
+    </ul>
+
+    <h3>Logging, queue, timing, LLDV, and conversion</h3>
+    <ul class="index">
+      <li><a href="#logging-debug-log-retention"><code>[logging] debug_log_retention</code></a></li>
+      <li><a href="#queue-recovery-reset-delay"><code>[queue_recovery] reset_after_render_restart_seconds</code></a></li>
+      <li><a href="#queue-recovery-high-water"><code>[queue_recovery] reset_queue_too_large_percent</code></a></li>
+      <li><a href="#display-refresh-rate-override-entry"><code>[display_refresh_rate_override] &lt;nominal_hz&gt;</code></a></li>
+      <li><a href="#ppm-correction-entry"><code>[ppm_correction] &lt;nominal_hz&gt;</code></a></li>
+      <li><a href="#lldv-max-cll"><code>[lldv] max_cll</code></a></li>
+      <li><a href="#lldv-max-fall"><code>[lldv] max_fall</code></a></li>
+      <li><a href="#lldv-mastering-min-luminance"><code>[lldv] mastering_min_luminance</code></a></li>
+      <li><a href="#lldv-mastering-max-luminance"><code>[lldv] mastering_max_luminance</code></a></li>
+      <li><a href="#p010-conversion-method"><code>[p010_conversion] ConversionMethod</code></a></li>
+      <li><a href="#p010-min-core-count"><code>[p010_conversion] MinCoreCount</code></a></li>
+      <li><a href="#p010-max-core-count"><code>[p010_conversion] MaxCoreCount</code></a></li>
+    </ul>
+
+    <h3>Shaders</h3>
+    <ul class="index">
+      <li><a href="#shaders-enabled"><code>[shaders] enabled</code></a></li>
+      <li><a href="#shaders-rules"><code>[shaders] rules</code></a></li>
+      <li><a href="#shaders-default"><code>[shaders] default</code></a></li>
+      <li><a href="#shaders-fallback-shader-model"><code>[shaders] fallback_shader_model</code></a></li>
+      <li><a href="#shader-rule-label"><code>[shaders.*] label</code></a></li>
+      <li><a href="#shader-rule-type"><code>[shaders.*] type</code></a></li>
+      <li><a href="#shader-rule-signal"><code>[shaders.*] signal</code></a></li>
+      <li><a href="#shader-rule-frame-rates"><code>[shaders.*] frame_rates</code></a></li>
+      <li><a href="#shader-rule-none"><code>[shaders.*] none</code></a></li>
+      <li><a href="#shader-rule-shortcut"><code>[shaders.*] shortcut</code></a></li>
+      <li><a href="#shader-rule-file"><code>[shaders.*] file</code></a></li>
+      <li><a href="#shader-rule-stage"><code>[shaders.*] stage</code></a></li>
+      <li><a href="#shader-rule-output-aspect-ratio"><code>[shaders.*] output_aspect_ratio</code></a></li>
+      <li><a href="#shader-rule-param"><code>[shaders.*] param_&lt;name&gt;</code></a></li>
+      <li><a href="#shader-nls-geometry"><code>geometry</code></a></li>
+      <li><a href="#shader-nls-strength"><code>strength</code></a></li>
+      <li><a href="#shader-nls-center-protection"><code>center_protection</code></a></li>
+      <li><a href="#shader-nls-curve"><code>curve</code></a></li>
+      <li><a href="#shader-nls-quality"><code>quality</code></a></li>
+      <li><a href="#shader-nls-tolerance"><code>tolerance_percent</code></a></li>
+    </ul>
+
+    <h3>Profiles and viewport</h3>
+    <ul class="index">
+      <li><a href="#general-persist-profile-selection"><code>[general] persist_profile_selection</code></a></li>
+      <li><a href="#general-event-action-delay"><code>[general] event_action_delay_seconds</code></a></li>
+      <li><a href="#profile-group-profiles"><code>[profile_groups.*] profiles</code></a></li>
+      <li><a href="#profile-group-default"><code>[profile_groups.*] default</code></a></li>
+      <li><a href="#profile-group-when"><code>[profile_groups.*] when</code></a></li>
+      <li><a href="#profile-group-persist-profile-selection"><code>[profile_groups.*] persist_profile_selection</code></a></li>
+      <li><a href="#profile-when"><code>[profiles.*.*] when</code></a></li>
+      <li><a href="#profile-priority"><code>[profiles.*.*] priority</code></a></li>
+      <li><a href="#viewport-screen-aspect"><code>[profiles.viewport.*] screen_aspect</code></a></li>
+      <li><a href="#viewport-subtitle-fit"><code>[profiles.viewport.*] subtitle_fit</code></a></li>
+      <li><a href="#viewport-subtitle-hold-seconds"><code>[profiles.viewport.*] subtitle_hold_seconds</code></a></li>
+      <li><a href="#viewport-subtitle-padding-pixels"><code>[profiles.viewport.*] subtitle_padding_pixels</code></a></li>
+    </ul>
+
+    <h3><code>[vpvr.display]</code> and matching profile fields</h3>
+    <ul class="index">
+      <li><a href="#vpvr-display-tone-mapping"><code>tone_mapping</code></a></li>
+      <li><a href="#vpvr-display-gamut-mapping"><code>gamut_mapping</code></a></li>
+      <li><a href="#vpvr-display-peak-detection"><code>peak_detection</code></a></li>
+      <li><a href="#vpvr-display-contrast-recovery"><code>contrast_recovery</code></a></li>
+      <li><a href="#vpvr-display-sdr-input-transfer"><code>sdr_input_transfer</code></a></li>
+      <li><a href="#vpvr-display-quality"><code>quality</code></a></li>
+      <li><a href="#vpvr-display-upscaler"><code>upscaler</code></a></li>
+      <li><a href="#vpvr-display-downscaler"><code>downscaler</code></a></li>
+      <li><a href="#vpvr-display-sigmoid"><code>sigmoid</code></a></li>
+      <li><a href="#vpvr-display-deband"><code>deband</code></a></li>
+      <li><a href="#vpvr-display-deband-strength"><code>deband_strength</code></a></li>
+      <li><a href="#vpvr-display-dithering"><code>dithering</code></a></li>
+      <li><a href="#vpvr-display-sdr-target-nits"><code>sdr_target_nits</code></a></li>
+      <li><a href="#vpvr-display-sdr-black-nits"><code>sdr_black_nits</code></a></li>
+      <li><a href="#vpvr-display-output-presentation"><code>output_presentation</code></a></li>
+      <li><a href="#vpvr-display-output-range"><code>output_range</code></a></li>
+      <li><a href="#vpvr-display-output-gamma"><code>output_gamma</code></a></li>
+      <li><a href="#vpvr-display-sdr-target-primaries"><code>sdr_target_primaries</code></a></li>
+      <li><a href="#vpvr-display-report-bt2020-to-display"><code>report_bt2020_to_display</code></a></li>
+      <li><a href="#vpvr-display-lut"><code>lut</code></a></li>
+      <li><a href="#vpvr-display-lut-reference-primaries"><code>lut_reference_primaries</code></a></li>
+      <li><a href="#vpvr-display-lut-reference-transfer"><code>lut_reference_transfer</code></a></li>
+      <li><a href="#vpvr-display-lut-reference-range"><code>lut_reference_range</code></a></li>
+      <li><a href="#vpvr-display-lut-reference-nits"><code>lut_reference_nits</code></a></li>
+    </ul>
+
+    <h3><code>[vpvr.general]</code>, shortcuts, and event actions</h3>
+    <ul class="index">
+      <li><a href="#vpvr-general-switch-refresh-rate"><code>switch_refresh_rate</code></a></li>
+      <li><a href="#vpvr-general-output-diagnostics"><code>output_diagnostics</code></a></li>
+      <li><a href="#vpvr-general-disable-shader-cache"><code>diagnostic_disable_shader_cache</code></a></li>
+      <li><a href="#shortcuts-auto-set"><code>[shortcuts] auto_set</code></a></li>
+      <li><a href="#shortcuts-fullscreen-exit"><code>fullscreen_exit</code></a></li>
+      <li><a href="#shortcuts-fullscreen-toggle"><code>fullscreen_toggle</code></a></li>
+      <li><a href="#shortcuts-toggle-stats-overlay"><code>toggle_stats_overlay</code></a></li>
+      <li><a href="#shortcuts-pq-set"><code>pq_set</code></a></li>
+      <li><a href="#shortcuts-renderer-restart"><code>renderer_restart</code></a></li>
+      <li><a href="#shortcuts-renderer-reset"><code>renderer_reset</code></a></li>
+      <li><a href="#shortcuts-capture"><code>capture_1</code> … <code>capture_4</code></a></li>
+      <li><a href="#shortcuts-video-conversion"><code>video_conversion_off</code>, <code>video_conversion_p010</code></a></li>
+      <li><a href="#shortcuts-render-index"><code>render.&lt;index&gt;</code></a></li>
+      <li><a href="#event-actions-actions"><code>[event_actions] actions</code></a></li>
+      <li><a href="#event-action-on"><code>[event_actions.*] on</code></a></li>
+      <li><a href="#event-action-when"><code>when</code></a></li>
+      <li><a href="#event-action-program"><code>program</code></a></li>
+      <li><a href="#event-action-arguments"><code>arguments</code></a></li>
+      <li><a href="#event-action-working-directory"><code>working_directory</code></a></li>
+      <li><a href="#event-action-delay-seconds"><code>delay_seconds</code></a></li>
+    </ul>
+  </section>
+</main>
+</div>
 </body>
 </html>

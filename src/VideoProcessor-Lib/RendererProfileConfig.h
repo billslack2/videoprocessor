@@ -286,12 +286,15 @@ namespace RendererProfileConfig
 		}
 		if (group == "display")
 		{
-			if (key == "sdr_target_nits" || key == "lut_reference_nits") return IsNumberInRange(value, 40.0, 500.0);
+			if (key == "sdr_target_nits") return IsNumberInRange(value, 40.0, 500.0);
+			if (key == "lut_reference_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 40.0, 500.0);
 			if (key == "sdr_black_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 500.0, false);
 			if (key == "output_presentation") return IsChoice(value, { "auto", "composed", "direct" });
 			if (key == "output_range" || key == "lut_reference_range") return IsChoice(value, { "auto", "full", "limited" });
-			if (key == "output_gamma" || key == "lut_reference_transfer") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
-			if (key == "sdr_target_primaries" || key == "lut_reference_primaries") return IsChoice(value, { "rec709", "bt2020" });
+			if (key == "output_gamma") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+			if (key == "lut_reference_transfer") return IsChoice(value, { "auto", "srgb", "bt1886", "2.2", "2.4" });
+			if (key == "sdr_target_primaries") return IsChoice(value, { "rec709", "bt2020" });
+			if (key == "lut_reference_primaries") return IsChoice(value, { "auto", "rec709", "p3_d65", "bt2020" });
 			if (key == "report_bt2020_to_display") return IsBoolean(value);
 			if (key == "lut")
 			{
