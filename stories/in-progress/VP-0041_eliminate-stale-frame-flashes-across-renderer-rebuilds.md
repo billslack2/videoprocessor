@@ -372,3 +372,54 @@ steady-state frame path; if needed, bound them to lifecycle transitions.
   VP has submitted black and destroyed all old presentation state, document the
   driver/display boundary and create a narrowly scoped follow-up rather than
   adding arbitrary delays.
+
+## 2026-07-29 apartment-safe recovery deployment
+
+The reopened madVR path was refactored and deployed from
+`codex/vp-0041-madvr-reopen` at commit `ec59c0b`:
+
+- backend reset requests now enter a typed, generation-bound coordinator
+  instead of being polled from capture callbacks;
+- one joinable reset worker owns reset arbitration, ingress closure/drain,
+  completion identity, wake retry, and failure coverage;
+- reset completion is validated by binding token, renderer generation,
+  transition token, and target revision before ingress can reopen;
+- a pure transition model makes the black shield authoritative through reset,
+  replacement, first-current-frame evidence, and failure;
+- DirectShow graph/filter COM objects are created, controlled, and released on
+  one permanent MTA owner thread;
+- UI-originated build/start/stop, resize, event, paint, video-state,
+  configuration, shader, and profile operations are asynchronous and
+  serialized on that owner, eliminating backend-to-UI synchronous reset and
+  graph-control calls;
+- DirectShow stop closes admission, stops the graph, drains admitted capture
+  callbacks, tears down on the owner apartment, and only then publishes
+  `STOPPED`;
+- shutdown cancels queued-not-started work and services only synchronous
+  `SendMessage` traffic while joining, preventing both HWND deadlock and
+  unrelated posted-message reentrancy;
+- MPC Video Renderer and EVR are selected by CLSID before asynchronous build,
+  madVR selects the HDR-capable wrapper, and other filters select the generic
+  wrapper;
+- DirectShow terminal graph events publish `FAILED` so the UI closes ingress
+  before teardown, and covered failures retain the physical shield.
+
+Threading, DirectShow, and player-lifecycle reviewers approved the final
+integrated result. A clean x64 Release rebuild completed and the full test
+suite passed `256/256`.
+
+Deployment:
+
+- executable: `C:\Videoprocessor\vp\VideoProcessor.exe`;
+- plugin: `C:\Videoprocessor\vp\vprenderer\VideoProcessorVPRenderer.dll`;
+- configuration was preserved, including `renderer: DirectShow - madVR`,
+  `fullscreen: true`, and `windowed_fullscreen_mode: true`;
+- rollback backups:
+  `VideoProcessor.exe.pre-VP0041-apartment-safe-20260729-095053.bak` and
+  `VideoProcessorVPRenderer.dll.pre-VP0041-apartment-safe-20260729-095053.bak`.
+
+The deployed process started successfully with madVR. Live logging confirmed
+multiple graph-reset cycles completed through black cover, owner-thread
+stop/reset/run, current-epoch downstream preroll, and shielded reveal without
+a crash. The story remains in progress pending the user's YouTube TV
+fullscreen channel-change/exit reproduction matrix.
