@@ -31,6 +31,9 @@
     <ClCompile Include="DisplayRefreshRatePolicyTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
+    <ClCompile Include="RendererResetPolicyTests.cpp">
+      <Filter>Resource Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Header Files">

@@ -141,6 +141,12 @@
     <ClInclude Include="IRenderer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="RendererLiveness.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RendererResetPolicy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="ITimingClock.h">
       <Filter>Header Files</Filter>
     </ClInclude>

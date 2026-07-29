@@ -84,6 +84,7 @@ public:
 	bool GetActivePictureAspectRatio(double& aspectRatio) const override;
 	bool GetActivePictureRectangle(ActivePictureRectangle& rectangle) const override;
 	size_t GetFrameQueueSize() override;
+	bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const override;
 	void Reset() override;
 	REFERENCE_TIME NextFrameTimestamp() const override;
 	void OnBadTimestampDetected() override;
@@ -371,6 +372,24 @@ private:
 	DWORD m_conversionThreadId = 0;                   // Conversion thread ID
 	std::atomic<uint64_t> m_totalConversionTimeUs = 0;  // Total conversion time for metrics
 	std::atomic<uint64_t> m_conversionFrameCount = 0;   // Number of frames converted
+
+	// VP-0054 liveness evidence. These atomics keep diagnostics from taking a
+	// queue or delivery lock while an external renderer is stalled.
+	std::atomic<uint32_t> m_captureThreadId = 0;
+	std::atomic<uint32_t> m_deliveryThreadId = 0;
+	std::atomic<uint64_t> m_inputFrameCount = 0;
+	std::atomic<uint64_t> m_dequeueCount = 0;
+	std::atomic<uint64_t> m_deliveryAttemptCount = 0;
+	std::atomic<uint64_t> m_deliverySuccessCount = 0;
+	std::atomic<uint64_t> m_lastInputTick = 0;
+	std::atomic<uint64_t> m_lastConversionTick = 0;
+	std::atomic<uint64_t> m_lastDequeueTick = 0;
+	std::atomic<uint64_t> m_lastDeliveryStartTick = 0;
+	std::atomic<uint64_t> m_lastDeliverySuccessTick = 0;
+	std::atomic<size_t> m_publishedRawQueueDepth = 0;
+	std::atomic<size_t> m_publishedConvertedQueueDepth = 0;
+	std::atomic_bool m_deliveryInProgress = false;
+	std::atomic_bool m_resetInProgress = false;
 	
 	// Essential metrics for proactive decisions (simplified)
 	std::atomic<uint32_t> m_recentDeliveryFailures = 0;   // Simple failure counter (reset periodically)

@@ -229,6 +229,7 @@ void DirectShowVideoRenderer::Reset()
 		if (FAILED(hr))
 		{
 			DebugLog::Log("DirectShowVideoRenderer::Reset() - Stop failed, hr=0x%x", hr);
+			throw std::runtime_error("DirectShow graph Stop failed");
 		}
 		else
 		{
@@ -246,6 +247,7 @@ void DirectShowVideoRenderer::Reset()
 			if (FAILED(hr))
 			{
 				DebugLog::Log("DirectShowVideoRenderer::Reset() - Run failed, hr=0x%x", hr);
+				throw std::runtime_error("DirectShow graph Run failed");
 			}
 			else
 			{
@@ -280,6 +282,19 @@ void DirectShowVideoRenderer::ResetLiveQueue()
 	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - flushing live source queue only");
 	m_liveSource->Reset();
 	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - complete");
+}
+
+
+bool DirectShowVideoRenderer::GetLivenessSnapshot(
+	RendererLivenessSnapshot& snapshot) const
+{
+	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
+	{
+		snapshot = {};
+		return false;
+	}
+
+	return m_liveSource->GetVideoOutputPin()->GetLivenessSnapshot(snapshot);
 }
 
 

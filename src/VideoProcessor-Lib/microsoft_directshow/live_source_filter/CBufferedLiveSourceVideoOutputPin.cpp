@@ -245,6 +245,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 				m_videoFrameQueue.pop_front();
 				++purgedRaw;
 			}
+			m_publishedRawQueueDepth.store(0, std::memory_order_release);
 			m_rawOverflowLogCount = 0;
 			m_lastRawOverflowLogTime = 0;
 		}
@@ -258,6 +259,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 					pSample->Release();
 				++purgedConverted;
 			}
+			m_publishedConvertedQueueDepth.store(0, std::memory_order_release);
 		}
 		ResetEvent(m_hFrameAvailableEvent);
 		ResetEvent(m_hConvertedAvailableEvent);
@@ -265,6 +267,19 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		// Update state atomics
 		m_isActive.store(true, std::memory_order_release);
 		m_isBuffering.store(true, std::memory_order_release);
+		m_captureThreadId.store(0, std::memory_order_release);
+		m_deliveryThreadId.store(0, std::memory_order_release);
+		m_inputFrameCount.store(0, std::memory_order_release);
+		m_dequeueCount.store(0, std::memory_order_release);
+		m_deliveryAttemptCount.store(0, std::memory_order_release);
+		m_deliverySuccessCount.store(0, std::memory_order_release);
+		m_lastInputTick.store(0, std::memory_order_release);
+		m_lastConversionTick.store(0, std::memory_order_release);
+		m_lastDequeueTick.store(0, std::memory_order_release);
+		m_lastDeliveryStartTick.store(0, std::memory_order_release);
+		m_lastDeliverySuccessTick.store(0, std::memory_order_release);
+		m_deliveryInProgress.store(false, std::memory_order_release);
+		m_resetInProgress.store(false, std::memory_order_release);
 		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 		m_scenePhasePpmUnits.store(0, std::memory_order_release);
 		m_lastSceneAwareCorrectionTime.store(0, std::memory_order_release);
@@ -460,6 +475,10 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		return S_OK;
 	}
 
+	m_captureThreadId.store(GetCurrentThreadId(), std::memory_order_relaxed);
+	m_inputFrameCount.fetch_add(1, std::memory_order_relaxed);
+	m_lastInputTick.store(GetTickCount64(), std::memory_order_release);
+
 	uint64_t callbackEpoch = m_queueEpoch.load(std::memory_order_acquire);
 	const uint64_t newCounter = videoFrame.GetCounter();
 	bool triggerRecovery = false;
@@ -529,6 +548,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 			VideoFrame oldFrame = m_videoFrameQueue.front();
 			oldFrame.SourceBufferRelease();
 			m_videoFrameQueue.pop_front();
+			m_publishedRawQueueDepth.store(
+				m_videoFrameQueue.size(), std::memory_order_release);
 			m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 
 			++m_rawOverflowLogCount;
@@ -547,6 +568,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		// Add new frame
 		videoFrame.SourceBufferAddRef();
 		m_videoFrameQueue.push_back(videoFrame);
+		m_publishedRawQueueDepth.store(
+			m_videoFrameQueue.size(), std::memory_order_release);
 
 		// DIAGNOSTIC: Log when raw queue is backing up
 		if (m_videoFrameQueue.size() >= (queueMaxSize * 3) / 4)  // 75% threshold
@@ -612,6 +635,8 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 				VideoFrame popFrame = m_videoFrameQueue.front();
 				popFrame.SourceBufferRelease();
 				m_videoFrameQueue.pop_front();
+				m_publishedRawQueueDepth.store(
+					m_videoFrameQueue.size(), std::memory_order_release);
 				m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 			}
 
@@ -883,6 +908,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	// discontinuity, and the delivery thread). Keep their complete downstream
 	// flush transactions from overlapping.
 	CAutoLock resetTransactionLock(&m_resetTransactionGate);
+	m_resetInProgress.store(true, std::memory_order_release);
 
 	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Reset() - HDMI resync async queue reset starting");
 	m_deliveryFlushing.store(true, std::memory_order_release);
@@ -892,6 +918,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	if (FAILED(DeliverBeginFlush()))
 	{
 		m_deliveryFlushing.store(false, std::memory_order_release);
+		m_resetInProgress.store(false, std::memory_order_release);
 		throw std::runtime_error("Failed to deliver beginflush");
 	}
 
@@ -921,6 +948,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 				m_videoFrameQueue.pop_front();
 				++purgedFrames;
 			}
+			m_publishedRawQueueDepth.store(0, std::memory_order_release);
 			DebugLog::Log("Reset(): Purged %zu raw frames from HDMI resync", purgedFrames);
 		}
 
@@ -938,6 +966,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 					++purgedSamples;
 				}
 			}
+			m_publishedConvertedQueueDepth.store(0, std::memory_order_release);
 			DebugLog::Log("Reset(): Purged %zu pre-converted samples from HDMI resync", purgedSamples);
 		}
 
@@ -986,10 +1015,12 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	{
 		DeliverEndFlush();
 		m_deliveryFlushing.store(false, std::memory_order_release);
+		m_resetInProgress.store(false, std::memory_order_release);
 		throw;
 	}
 
 	m_deliveryFlushing.store(false, std::memory_order_release);
+	m_resetInProgress.store(false, std::memory_order_release);
 
 	if (FAILED(endFlushHr))
 		throw std::runtime_error("Failed to deliver endflush");
@@ -1014,6 +1045,49 @@ size_t CBufferedLiveSourceVideoOutputPin::GetFrameQueueSize()
 }
 
 
+bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
+	RendererLivenessSnapshot& snapshot) const
+{
+	snapshot.supported = true;
+	snapshot.active = m_isActive.load(std::memory_order_acquire);
+	snapshot.buffering = m_isBuffering.load(std::memory_order_acquire);
+	snapshot.deliveryInProgress =
+		m_deliveryInProgress.load(std::memory_order_acquire);
+	snapshot.resetInProgress =
+		m_resetInProgress.load(std::memory_order_acquire);
+	snapshot.captureThreadId =
+		m_captureThreadId.load(std::memory_order_relaxed);
+	snapshot.conversionThreadId = m_conversionThreadId;
+	snapshot.deliveryThreadId =
+		m_deliveryThreadId.load(std::memory_order_relaxed);
+	snapshot.queueEpoch = m_queueEpoch.load(std::memory_order_acquire);
+	snapshot.inputCount = m_inputFrameCount.load(std::memory_order_relaxed);
+	snapshot.conversionCount =
+		m_conversionFrameCount.load(std::memory_order_relaxed);
+	snapshot.dequeueCount = m_dequeueCount.load(std::memory_order_relaxed);
+	snapshot.deliveryAttemptCount =
+		m_deliveryAttemptCount.load(std::memory_order_relaxed);
+	snapshot.deliverySuccessCount =
+		m_deliverySuccessCount.load(std::memory_order_relaxed);
+	snapshot.lastInputTick = m_lastInputTick.load(std::memory_order_acquire);
+	snapshot.lastConversionTick =
+		m_lastConversionTick.load(std::memory_order_acquire);
+	snapshot.lastDequeueTick =
+		m_lastDequeueTick.load(std::memory_order_acquire);
+	snapshot.lastDeliveryStartTick =
+		m_lastDeliveryStartTick.load(std::memory_order_acquire);
+	snapshot.lastDeliverySuccessTick =
+		m_lastDeliverySuccessTick.load(std::memory_order_acquire);
+	snapshot.rawQueueDepth =
+		m_publishedRawQueueDepth.load(std::memory_order_acquire);
+	snapshot.convertedQueueDepth =
+		m_publishedConvertedQueueDepth.load(std::memory_order_acquire);
+	snapshot.queueCapacity =
+		m_frameQueueMaxSize.load(std::memory_order_acquire);
+	return true;
+}
+
+
 void CBufferedLiveSourceVideoOutputPin::PurgeQueue()
 {
 	// NOTE: Caller MUST hold m_rawQueueLock
@@ -1023,6 +1097,8 @@ void CBufferedLiveSourceVideoOutputPin::PurgeQueue()
 	{
 		VideoFrame popFrame = m_videoFrameQueue.front();
 		m_videoFrameQueue.pop_front();
+		m_publishedRawQueueDepth.store(
+			m_videoFrameQueue.size(), std::memory_order_release);
 
 		try
 		{
@@ -1052,6 +1128,8 @@ void CBufferedLiveSourceVideoOutputPin::PurgeConvertedQueue()
 	{
 		IMediaSample* pSample = m_convertedSampleQueue.front().sample;
 		m_convertedSampleQueue.pop_front();
+		m_publishedConvertedQueueDepth.store(
+			m_convertedSampleQueue.size(), std::memory_order_release);
 
 		if (pSample)
 		{
@@ -1159,6 +1237,7 @@ CBufferedLiveSourceVideoOutputPin::ProactiveQueueMetrics CBufferedLiveSourceVide
 
 DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 {
+	m_deliveryThreadId.store(GetCurrentThreadId(), std::memory_order_release);
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 	DebugLog::Log("DELIVERY THREAD: Started - event-driven with adaptive buffer management");
 
@@ -1299,9 +1378,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			return VFW_E_WRONG_STATE;
 
 		const auto deliveryStartTime = GetWallClockTime();
+		m_deliveryAttemptCount.fetch_add(1, std::memory_order_relaxed);
+		m_lastDeliveryStartTick.store(
+			GetTickCount64(), std::memory_order_release);
+		m_deliveryInProgress.store(true, std::memory_order_release);
 		const uint64_t mediaTypeGeneration =
 			AttachPendingMediaType(sample);
 		const HRESULT result = Deliver(sample);
+		m_deliveryInProgress.store(false, std::memory_order_release);
 		CompletePendingMediaType(mediaTypeGeneration, result);
 		const auto deliveryEndTime = GetWallClockTime();
 		const uint64_t deliveryTimeUs = (deliveryEndTime - deliveryStartTime) / 10;
@@ -1346,6 +1430,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		else
 		{
 			m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
+			m_deliverySuccessCount.fetch_add(1, std::memory_order_relaxed);
+			m_lastDeliverySuccessTick.store(
+				GetTickCount64(), std::memory_order_release);
 			++framesSinceLastLog;
 			++deliverySuccessCount;
 		}
@@ -1519,6 +1606,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					{
 						IMediaSample* s = m_convertedSampleQueue.front().sample;
 						m_convertedSampleQueue.pop_front();
+						m_publishedConvertedQueueDepth.store(
+							m_convertedSampleQueue.size(),
+							std::memory_order_release);
 						if (s) s->Release();
 					}
 					++bufferUnderrunCount; // or better: add a new bufferOverrunDropCount
@@ -1579,10 +1669,17 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				convertedQueueEpoch = convertedSample.queueEpoch;
 				convertedSceneTimingGeneration = convertedSample.sceneTimingGeneration;
 				m_convertedSampleQueue.pop_front();
+				m_publishedConvertedQueueDepth.store(
+					m_convertedSampleQueue.size(),
+					std::memory_order_release);
 			}
 
 			if (!pSample)
 				break;
+
+			m_dequeueCount.fetch_add(1, std::memory_order_relaxed);
+			m_lastDequeueTick.store(
+				GetTickCount64(), std::memory_order_release);
 
 			if (m_deliverNewSegment.exchange(false, std::memory_order_acq_rel))
 			{
@@ -2328,6 +2425,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				{
 					videoFrame = m_videoFrameQueue.front();
 					m_videoFrameQueue.pop_front();
+					m_publishedRawQueueDepth.store(
+						m_videoFrameQueue.size(),
+						std::memory_order_release);
 					frameQueueEpoch = m_queueEpoch.load(std::memory_order_relaxed);
 					hasFrame = true;
 				}
@@ -2357,6 +2457,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 			m_totalConversionTimeUs.fetch_add(convTimeUs, std::memory_order_relaxed);
 			++m_conversionFrameCount;
+			m_lastConversionTick.store(
+				GetTickCount64(), std::memory_order_release);
 			++framesSinceLastLog;
 
 			totalTimeUs += convTimeUs;
@@ -2504,6 +2606,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 						sceneEventId,
 						frameQueueEpoch,
 						sceneTimingGeneration });
+					m_publishedConvertedQueueDepth.store(
+						m_convertedSampleQueue.size(),
+						std::memory_order_release);
 					pSample = nullptr; // Queue owns the sample reference.
 				}
 			}

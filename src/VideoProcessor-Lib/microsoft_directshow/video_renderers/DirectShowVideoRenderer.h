@@ -56,6 +56,7 @@ public:
 	{
 		return "downstream-accepted";
 	}
+	bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const override;
 	HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) override;
 	void Build() override;
 	void Start() override;

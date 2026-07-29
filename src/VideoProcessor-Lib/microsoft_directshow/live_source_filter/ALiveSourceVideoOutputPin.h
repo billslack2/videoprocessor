@@ -16,6 +16,7 @@
 #include <PPMCorrectionLoader.h>
 #include <AutoPpmCalibrator.h>
 #include <IntegerMath.h>
+#include <RendererLiveness.h>
 #include <SubtitleRepositionMode.h>
 
 #include "CLiveSource.h"
@@ -133,6 +134,11 @@ public:
 	// Get the size of the queue.
 	// Zero means no queueing going on.
 	virtual size_t GetFrameQueueSize() = 0;
+	virtual bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const
+	{
+		snapshot = {};
+		return false;
+	}
 
 	// Reset the internal state and the video stream.
 	virtual void Reset();
