@@ -21,6 +21,7 @@ struct RendererLivenessSnapshot
 	uint64_t dequeueCount = 0;
 	uint64_t deliveryAttemptCount = 0;
 	uint64_t deliverySuccessCount = 0;
+	uint64_t lastDeliverySuccessQueueEpoch = 0;
 	uint64_t lastInputTick = 0;
 	uint64_t lastConversionTick = 0;
 	uint64_t lastDequeueTick = 0;
@@ -30,3 +31,15 @@ struct RendererLivenessSnapshot
 	size_t convertedQueueDepth = 0;
 	size_t queueCapacity = 0;
 };
+
+inline bool HasCurrentEpochDownstreamDelivery(
+	const RendererLivenessSnapshot& snapshot)
+{
+	return snapshot.supported &&
+		snapshot.active &&
+		!snapshot.buffering &&
+		!snapshot.resetInProgress &&
+		snapshot.deliverySuccessCount > 0 &&
+		snapshot.lastDeliverySuccessTick > 0 &&
+		snapshot.lastDeliverySuccessQueueEpoch == snapshot.queueEpoch;
+}

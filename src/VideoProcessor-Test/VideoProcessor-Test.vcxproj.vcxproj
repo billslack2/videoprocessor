@@ -196,6 +196,7 @@
     <ClCompile Include="P010ActivePictureEvidenceTests.cpp" />
     <ClCompile Include="RendererIdTests.cpp" />
     <ClCompile Include="RendererResetPolicyTests.cpp" />
+    <ClCompile Include="RendererLivenessTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
