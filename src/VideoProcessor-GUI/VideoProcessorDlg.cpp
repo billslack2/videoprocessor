@@ -949,6 +949,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_DETAIL_STRING, &CVideoProcessorDlg::OnMessageRendererDetailString)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_COMPLETE, &CVideoProcessorDlg::OnMessageRendererResetComplete)
+	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
 
 	// Command handlers (from accelerator)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_TOGGLE, &CVideoProcessorDlg::OnCommandFullScreenToggle)
@@ -2268,7 +2269,8 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			m_rendererStartCapturedFrameCount = 0;
 			m_rendererFrameBaselineValid = false;
 		}
-		m_deliverCaptureDataToRenderer.store(true, std::memory_order_release);
+		ResumeRendererIngress();
+		m_resetPausedCaptureDelivery = false;
 		enableButtons = true;
 		m_rendererTransitionWindow.KeepOnTop();
 		m_rendererStateText.SetWindowText(TEXT("Rendering"));
@@ -2351,6 +2353,33 @@ LRESULT CVideoProcessorDlg::OnMessageRendererLiveFrame(
 	LPARAM)
 {
 	TryRevealRendererTransition(static_cast<uint32_t>(wParam));
+	return 0;
+}
+
+
+LRESULT CVideoProcessorDlg::OnMessageRendererResetRequest(
+	WPARAM wParam,
+	LPARAM)
+{
+	const uint32_t requestedGeneration = static_cast<uint32_t>(wParam);
+	if (requestedGeneration !=
+			m_rendererGeneration.load(std::memory_order_acquire) ||
+		!m_activeRendererIsDirectShow ||
+		!m_videoRenderer ||
+		m_rendererState != RendererState::RENDERSTATE_RENDERING)
+	{
+		DEBUGLOG(
+			"Coordinated reset request ignored: requested_generation=%u "
+			"current_generation=%u renderer=%S state=%d",
+			requestedGeneration,
+			m_rendererGeneration.load(std::memory_order_acquire),
+			static_cast<LPCTSTR>(m_activeRendererName),
+			static_cast<int>(m_rendererState));
+		return 0;
+	}
+
+	RequestRendererReset(
+		RendererResetReason::LivenessRecovery, true, 0);
 	return 0;
 }
 
@@ -2766,21 +2795,33 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoFrame(VideoFrame& videoFrame)
 {
 	// WARNING: Most likely to be called from some internal capture card thread!
 
-	// This is an atomic bool which is set by the main thread and used in context of the
-	// capture thread which will deliver frames.
-	if (m_deliverCaptureDataToRenderer.load(std::memory_order_acquire))
+	if (!TryAcquireRendererIngressLease())
+		return;
+
+	try
 	{
 		const std::shared_ptr<IVideoRenderer> renderer =
 			std::atomic_load_explicit(
 				&m_videoRenderer, std::memory_order_acquire);
 		if (!renderer)
+		{
+			ReleaseRendererIngressLease();
 			return;
+		}
 
 		assert(m_captureDevice);
 		assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
 		assert(m_rendererState == RendererState::RENDERSTATE_RENDERING);
 
 		renderer->OnVideoFrame(videoFrame);
+		if (renderer->ConsumeCoordinatedResetRequest())
+		{
+			PostMessage(
+				WM_MESSAGE_RENDERER_RESET_REQUEST,
+				static_cast<WPARAM>(
+					m_rendererGeneration.load(std::memory_order_acquire)),
+				0);
+		}
 		if (renderer->HasPresentedLiveFrame() &&
 			!m_transitionRevealPosted.exchange(
 				true, std::memory_order_acq_rel))
@@ -2792,6 +2833,12 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoFrame(VideoFrame& videoFrame)
 				0);
 		}
 	}
+	catch (...)
+	{
+		ReleaseRendererIngressLease();
+		throw;
+	}
+	ReleaseRendererIngressLease();
 }
 
 
@@ -3483,7 +3530,14 @@ void CVideoProcessorDlg::RenderStart()
 	m_rendererTargetHwnd = GetRenderWindow();
 	m_transitionGeneration = rendererGeneration;
 	m_transitionRevealPosted.store(false, std::memory_order_release);
-	ShowRendererTransitionBlack("renderer-start");
+	if (!ShowRendererTransitionBlack("renderer-start"))
+	{
+		DEBUGLOG(
+			"Renderer start cancelled: generation=%u "
+			"failure=transition-black-unavailable",
+			rendererGeneration);
+		return;
+	}
 
 	// Get user-selectable options
 	i = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
@@ -3761,23 +3815,32 @@ void CVideoProcessorDlg::RenderStop()
 
 	assert(m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_RENDERING);
-	assert(m_deliverCaptureDataToRenderer.load(std::memory_order_acquire));
 
 	assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
 
 	assert(m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_RENDERING);
-	assert(m_deliverCaptureDataToRenderer.load(std::memory_order_acquire));
 
-	// After this call no frames will ever go through to the renderer
-	m_deliverCaptureDataToRenderer.store(false, std::memory_order_release);
+	if (!ShowRendererTransitionBlack("renderer-stop"))
+	{
+		DEBUGLOG(
+			"Renderer stop cancelled: generation=%u "
+			"failure=transition-black-unavailable",
+			m_rendererGeneration.load(std::memory_order_acquire));
+		return;
+	}
 	m_transitionRevealPosted.store(true, std::memory_order_release);
-	ShowRendererTransitionBlack("renderer-stop");
+
+	// Gate new callbacks first. DirectShow Stop/BeginFlush must run before the
+	// drain wait because an unbuffered callback can be blocked in Receive until
+	// downstream graph control releases it.
+	PauseRendererIngress();
 
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_rendererState = RendererState::RENDERSTATE_STOPPING;
 
 	m_videoRenderer->Stop();
+	WaitForRendererIngressDrain();
 
 	m_rendererStateText.SetWindowText(TEXT("Stopping"));
 
@@ -3852,7 +3915,7 @@ void CVideoProcessorDlg::RenderGUIClear()
 }
 
 
-void CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
+bool CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 {
 	if (!m_rendererTargetHwnd || !IsWindow(m_rendererTargetHwnd))
 	{
@@ -3863,7 +3926,7 @@ void CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 			m_rendererGeneration.load(std::memory_order_acquire),
 			reason ? reason : "unknown",
 			m_rendererTargetHwnd);
-		return;
+		return false;
 	}
 
 	const bool wasVisible = m_rendererTransitionWindow.IsVisible();
@@ -3884,7 +3947,7 @@ void CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 			m_rendererTargetHwnd,
 			e.what());
 		m_windowedVideoWindow.ShowLogo(true);
-		return;
+		return false;
 	}
 
 	if (!wasVisible)
@@ -3921,15 +3984,71 @@ void CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 		reinterpret_cast<void*>(style),
 		static_cast<unsigned long>(compositionSyncResult),
 		static_cast<unsigned long long>(compositionSyncMs));
+	return m_rendererTransitionWindow.IsVisible();
+}
+
+
+bool CVideoProcessorDlg::TryAcquireRendererIngressLease()
+{
+	const std::shared_ptr<RendererIngressState> ingress =
+		m_rendererIngressState;
+	std::lock_guard<std::mutex> lock(ingress->mutex);
+	if (!m_deliverCaptureDataToRenderer.load(std::memory_order_acquire))
+		return false;
+
+	++ingress->activeLeases;
+	return true;
+}
+
+
+void CVideoProcessorDlg::ReleaseRendererIngressLease()
+{
+	const std::shared_ptr<RendererIngressState> ingress =
+		m_rendererIngressState;
+	std::lock_guard<std::mutex> lock(ingress->mutex);
+	assert(ingress->activeLeases > 0);
+	--ingress->activeLeases;
+	if (ingress->activeLeases == 0)
+		ingress->drained.notify_all();
+}
+
+
+void CVideoProcessorDlg::PauseRendererIngress()
+{
+	const std::shared_ptr<RendererIngressState> ingress =
+		m_rendererIngressState;
+	std::lock_guard<std::mutex> lock(ingress->mutex);
+	m_deliverCaptureDataToRenderer.store(false, std::memory_order_release);
+}
+
+
+void CVideoProcessorDlg::WaitForRendererIngressDrain()
+{
+	const std::shared_ptr<RendererIngressState> ingress =
+		m_rendererIngressState;
+	std::unique_lock<std::mutex> lock(ingress->mutex);
+	ingress->drained.wait(lock, [ingress]()
+	{
+		return ingress->activeLeases == 0;
+	});
+}
+
+
+void CVideoProcessorDlg::ResumeRendererIngress()
+{
+	const std::shared_ptr<RendererIngressState> ingress =
+		m_rendererIngressState;
+	std::lock_guard<std::mutex> lock(ingress->mutex);
+	assert(ingress->activeLeases == 0);
+	m_deliverCaptureDataToRenderer.store(true, std::memory_order_release);
 }
 
 
 void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 {
-	const bool postStartResetPending =
+	const bool resetPending =
 		m_activeRendererIsDirectShow &&
 		m_pendingQueueReset &&
-		m_pendingResetReason == RendererResetReason::PostRendererStart &&
 		m_pendingResetRendererGeneration == generation;
 	const bool resetOperationActive =
 		m_activeRendererIsDirectShow &&
@@ -3939,7 +4058,7 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 		generation != m_rendererGeneration.load(std::memory_order_acquire) ||
 		!m_videoRenderer ||
 		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
-		postStartResetPending ||
+		resetPending ||
 		resetOperationActive ||
 		!m_videoRenderer->HasPresentedLiveFrame() ||
 		!m_rendererTransitionWindow.IsVisible())
@@ -6386,8 +6505,22 @@ void CVideoProcessorDlg::ExecutePendingRendererReset()
 	if (m_activeRendererIsDirectShow)
 	{
 		m_transitionRevealPosted.store(false, std::memory_order_release);
-		ShowRendererTransitionBlack(
-			requiresGraph ? "graph-reset" : "live-queue-reset");
+		if (!ShowRendererTransitionBlack(
+				requiresGraph ? "graph-reset" : "live-queue-reset"))
+		{
+			DEBUGLOG(
+				"Reset cancelled: request=%llu generation=%u "
+				"failure=transition-black-unavailable; renderer restart requested",
+				static_cast<unsigned long long>(requestId),
+				currentGeneration);
+			m_wantToRestartRenderer = true;
+			UpdateState();
+			return;
+		}
+		m_resetPausedCaptureDelivery =
+			m_deliverCaptureDataToRenderer.load(std::memory_order_acquire);
+		if (m_resetPausedCaptureDelivery)
+			PauseRendererIngress();
 	}
 	DEBUGLOG(
 		"Reset started: request=%llu renderer=%s backend=%s generation=%u "
@@ -6421,18 +6554,36 @@ void CVideoProcessorDlg::ExecutePendingRendererReset()
 		m_activeGraphRequestStartedTick.store(
 			operation->startedTick, std::memory_order_release);
 		const std::shared_ptr<IVideoRenderer> renderer = m_videoRenderer;
+		const std::shared_ptr<RendererIngressState> ingress =
+			m_rendererIngressState;
 		const HWND notifyWindow = GetSafeHwnd();
 
-		std::thread([operation, renderer, notifyWindow]()
+		std::thread([operation, renderer, ingress, notifyWindow]()
 		{
 			const HRESULT coInitializeResult =
 				CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 			try
 			{
 				if (operation->requiresGraph)
-					renderer->Reset();
+				{
+					renderer->ResetWithIngressDrain([ingress]()
+					{
+						std::unique_lock<std::mutex> lock(ingress->mutex);
+						ingress->drained.wait(lock, [ingress]()
+						{
+							return ingress->activeLeases == 0;
+						});
+					});
+				}
 				else
 					renderer->ResetLiveQueue();
+				{
+					std::unique_lock<std::mutex> lock(ingress->mutex);
+					ingress->drained.wait(lock, [ingress]()
+					{
+						return ingress->activeLeases == 0;
+					});
+				}
 				operation->succeeded.store(true, std::memory_order_release);
 			}
 			catch (const std::exception& ex)
@@ -6531,6 +6682,30 @@ void CVideoProcessorDlg::CompleteRendererResetOperation()
 	m_activeGraphRequestGeneration.store(0, std::memory_order_release);
 	m_activeGraphRequestStartedTick.store(0, std::memory_order_release);
 	m_consecutiveStuckSeconds = 0;
+	if (m_resetPausedCaptureDelivery)
+	{
+		if (succeeded &&
+			operation->rendererGeneration == currentGeneration &&
+			m_videoRenderer &&
+			m_rendererState == RendererState::RENDERSTATE_RENDERING)
+		{
+			// Reset's Stop/BeginFlush has already released any callback that
+			// was blocked in downstream Receive. Complete the lifetime barrier
+			// before admitting a new callback to the restarted graph.
+			WaitForRendererIngressDrain();
+			ResumeRendererIngress();
+		}
+		else
+		{
+			DEBUGLOG(
+				"Reset failure remains covered: request=%llu generation=%u "
+				"action=renderer-restart",
+				static_cast<unsigned long long>(operation->requestId),
+				operation->rendererGeneration);
+			m_wantToRestartRenderer = true;
+		}
+		m_resetPausedCaptureDelivery = false;
+	}
 
 	if (m_pendingQueueReset)
 	{

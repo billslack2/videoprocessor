@@ -21,6 +21,7 @@ struct RendererLivenessSnapshot
 	uint64_t dequeueCount = 0;
 	uint64_t deliveryAttemptCount = 0;
 	uint64_t deliverySuccessCount = 0;
+	uint64_t currentEpochDeliverySuccessCount = 0;
 	uint64_t lastDeliverySuccessQueueEpoch = 0;
 	uint64_t lastInputTick = 0;
 	uint64_t lastConversionTick = 0;
@@ -32,6 +33,13 @@ struct RendererLivenessSnapshot
 	size_t queueCapacity = 0;
 };
 
+constexpr uint64_t MINIMUM_CURRENT_EPOCH_DELIVERIES = 5;
+
+inline bool HasSufficientDownstreamPreroll(uint64_t deliveryCount)
+{
+	return deliveryCount >= MINIMUM_CURRENT_EPOCH_DELIVERIES;
+}
+
 inline bool HasCurrentEpochDownstreamDelivery(
 	const RendererLivenessSnapshot& snapshot)
 {
@@ -39,7 +47,8 @@ inline bool HasCurrentEpochDownstreamDelivery(
 		snapshot.active &&
 		!snapshot.buffering &&
 		!snapshot.resetInProgress &&
-		snapshot.deliverySuccessCount > 0 &&
+		HasSufficientDownstreamPreroll(
+			snapshot.currentEpochDeliverySuccessCount) &&
 		snapshot.lastDeliverySuccessTick > 0 &&
 		snapshot.lastDeliverySuccessQueueEpoch == snapshot.queueEpoch;
 }

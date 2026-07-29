@@ -13,6 +13,7 @@
 #include <VideoState.h>
 #include <RendererLiveness.h>
 #include <SubtitleRepositionMode.h>
+#include <functional>
 #include <vector>
 
 namespace UnifiedProfileRuntime
@@ -114,6 +115,12 @@ public:
 
 	// Reset the internal state and the video stream.
 	virtual void Reset() = 0;
+	virtual void ResetWithIngressDrain(
+		const std::function<void()>& drainAfterGraphStop)
+	{
+		drainAfterGraphStop();
+		Reset();
+	}
 
 	// Flush and re-prime only the live-source queue without rebuilding the
 	// renderer graph. Renderers without a live source may ignore this request.
@@ -356,4 +363,8 @@ public:
 		ppmDeviation = 0;
 		return false;  // No frame rate measurement by default
 	}
+
+	// A source can request that recovery be coordinated by the GUI lifecycle
+	// instead of mutating an external graph from capture or delivery callbacks.
+	virtual bool ConsumeCoordinatedResetRequest() { return false; }
 };

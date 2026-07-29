@@ -149,6 +149,11 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	{
 		DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::OnVideoFrame(): Failed to deliver frame #%I64u"), m_frameCounter));
 	}
+	else if (!m_useFrameQueue && deliveryResult == S_OK)
+	{
+		m_unbufferedDeliverySuccessCount.fetch_add(
+			1, std::memory_order_acq_rel);
+	}
 
 	++m_frameCounter;
 }
@@ -192,7 +197,10 @@ void DirectShowVideoRenderer::Build()
 
 void DirectShowVideoRenderer::Start()
 {
+	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
+	m_resetReadyForReveal.store(false, std::memory_order_release);
 	GraphRun();
+	m_resetReadyForReveal.store(true, std::memory_order_release);
 }
 
 
@@ -204,6 +212,15 @@ void DirectShowVideoRenderer::Stop()
 
 void DirectShowVideoRenderer::Reset()
 {
+	ResetWithIngressDrain({});
+}
+
+
+void DirectShowVideoRenderer::ResetWithIngressDrain(
+	const std::function<void()>& drainAfterGraphStop)
+{
+	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
+	m_resetReadyForReveal.store(false, std::memory_order_release);
 	DebugLog::Log("DirectShowVideoRenderer::Reset() called, m_liveSource=%p", m_liveSource);
 	
 	if (!m_liveSource)
@@ -230,6 +247,12 @@ void DirectShowVideoRenderer::Reset()
 		else
 		{
 			DebugLog::Log("DirectShowVideoRenderer::Reset() - Graph stopped");
+
+			// Capture admission is already closed. Stop/flush releases a
+			// callback blocked in downstream Receive; now prove every admitted
+			// callback has left before resetting source-owned queues.
+			if (drainAfterGraphStop)
+				drainAfterGraphStop();
 			
 			// Brief delay to ensure MadVR fully stops
 			Sleep(100);
@@ -255,17 +278,23 @@ void DirectShowVideoRenderer::Reset()
 	{
 		// Fallback if no graph control
 		DebugLog::Log("DirectShowVideoRenderer::Reset() - No pControl, just resetting source");
+		if (drainAfterGraphStop)
+			drainAfterGraphStop();
 		m_liveSource->Reset();
 	}
 	
 	m_frameCounter = 0;
 	ResetPPMMeasurement();
+	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
+	m_resetReadyForReveal.store(true, std::memory_order_release);
 	DebugLog::Log("DirectShowVideoRenderer::Reset() - complete");
 }
 
 
 void DirectShowVideoRenderer::ResetLiveQueue()
 {
+	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
+	m_resetReadyForReveal.store(false, std::memory_order_release);
 	if (!m_liveSource)
 	{
 		DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - m_liveSource is NULL, returning");
@@ -277,7 +306,18 @@ void DirectShowVideoRenderer::ResetLiveQueue()
 	// leaves madVR and the DirectShow graph running.
 	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - flushing live source queue only");
 	m_liveSource->Reset();
+	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
+	m_resetReadyForReveal.store(true, std::memory_order_release);
 	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - complete");
+}
+
+
+bool DirectShowVideoRenderer::ConsumeCoordinatedResetRequest()
+{
+	return m_liveSource &&
+		m_liveSource->GetVideoOutputPin() &&
+		m_liveSource->GetVideoOutputPin()->
+			ConsumeCoordinatedResetRequest();
 }
 
 

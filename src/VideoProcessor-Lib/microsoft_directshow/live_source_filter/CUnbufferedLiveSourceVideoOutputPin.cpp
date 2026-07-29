@@ -28,6 +28,9 @@ CUnbufferedLiveSourceVideoOutputPin::~CUnbufferedLiveSourceVideoOutputPin()
 
 HRESULT CUnbufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 {
+	if (CoordinatedResetRequested())
+		return S_FALSE;
+
 	BYTE* pData = nullptr;
 	HRESULT hr;
 
@@ -51,8 +54,8 @@ HRESULT CUnbufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame
 	if (m_deliverNewSegment.exchange(false, std::memory_order_acq_rel))
 	{
 		pSample->Release();
-		ALiveSourceVideoOutputPin::Reset();
-		return S_OK;
+		RequestCoordinatedReset("unbuffered-new-segment");
+		return S_FALSE;
 	}
 
 	// Deliver to downstream renderer (this will block)
