@@ -66,7 +66,8 @@ and
 `C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll.pre-VP0062-20260729-142152.bak`.
 `C:\\Videoprocessor\\vp\\VideoProcessor.cfg` was deliberately left unchanged:
 the per-rule default is compiled in as 2%. The application was not started as
-part of deployment.
+part of deployment. The implementation merged to `v1.1.015-beta` through
+PR #29 on 2026-07-29 (`ff253ccf1e2be1427dc106677143918b942fb73a`).
 
 ## User story
 
