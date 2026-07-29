@@ -499,6 +499,64 @@ namespace Tests
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(RendererProfileConfigAllowsOmittedGroupsWithoutPlaceholders)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0045-optional-groups.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n"
+					"persist_profile_selection: true\n"
+					"[profile_groups.viewport]\n"
+					"profiles: normal\n"
+					"default: normal\n"
+					"[profiles.viewport.normal]\n"
+					"[vpvr.display]\n"
+					"quality: high\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsTrue(
+				RendererProfileConfig::Read(config, model, error));
+			Assert::AreEqual(static_cast<size_t>(1), model.groups.size());
+			Assert::AreEqual("viewport", model.groups.front().name.c_str());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(RendererProfileConfigRejectsProfileForOmittedGroup)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0045-orphan-optional-group.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n"
+					"persist_profile_selection: true\n"
+					"[profiles.input.base]\n"
+					"tone_mapping: AUTO\n"
+					"[vpvr.display]\n"
+					"quality: high\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(
+				RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find(
+				"[profiles.input.base] is orphaned") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(RendererProfileConfigRejectsConfigurationVersionKeys)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
