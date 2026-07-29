@@ -2,7 +2,10 @@
 
 ## Status
 
-Backlog. No implementation has started.
+In Progress. Implementation starts from `origin/v1.1.014-beta` after VP-0045.
+The optional plugin project and binary will be renamed to
+`VideoProcessor-VPRenderer` and `VideoProcessorVPRenderer.dll`; its C export
+ABI will remain unchanged while the loader moves atomically to `vprenderer`.
 
 Coordinate this work after VP-0045 is integrated because both stories touch
 the built-in renderer's project, configuration, help, and packaging references.
