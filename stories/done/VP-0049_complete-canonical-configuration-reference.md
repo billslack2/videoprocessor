@@ -2,11 +2,13 @@
 
 ## Status
 
-Implementation complete and ready for review.
+Done. Merged into `v1.1.014-beta` through PR #24 as `b7e5645` on
+2026-07-28.
 
 - Source branch: `codex/vp-0049-configuration-docs`
 - Source commit: `7aaad67` (`Implement VP-0049 configuration reference`)
-- Base: current repository default branch `v1.1.014-beta`
+- Pull request: `https://github.com/billslack2/videoprocessor/pull/24`
+- Merge commit: `b7e5645a1e94b59ea3dd66b264dba03209c55dea`
 
 ## User story
 
