@@ -2,11 +2,13 @@
 #include "CppUnitTest.h"
 
 #include <RendererResetCoordinator.h>
+#include <RendererRetirementService.h>
 #include <IRenderer.h>
 
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <future>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
@@ -34,7 +36,7 @@ namespace Tests
 		std::atomic<uint64_t> tick{100};
 	};
 
-	class FakeResetRenderer final : public IVideoRenderer
+	class FakeResetRenderer : public IVideoRenderer
 	{
 	public:
 		size_t GetConvertedQueueSize() override { return 0; }
@@ -104,6 +106,31 @@ namespace Tests
 		bool fail = false;
 	};
 
+	class BlockingRetirementRenderer final : public FakeResetRenderer
+	{
+	public:
+		void Retire() noexcept override
+		{
+			retireThread.store(
+				GetCurrentThreadId(), std::memory_order_release);
+			retireEntered.set_value();
+			releaseRetire.get_future().wait();
+			retired.store(true, std::memory_order_release);
+		}
+
+		~BlockingRetirementRenderer() override
+		{
+			destructorThread.store(
+				GetCurrentThreadId(), std::memory_order_release);
+		}
+
+		std::promise<void> retireEntered;
+		std::promise<void> releaseRetire;
+		std::atomic<DWORD> retireThread{0};
+		std::atomic<DWORD> destructorThread{0};
+		std::atomic_bool retired{false};
+	};
+
 	bool WaitForCompletion(RendererResetCoordinator& coordinator)
 	{
 		for (int attempt = 0; attempt < 200; ++attempt)
@@ -119,6 +146,44 @@ namespace Tests
 	TEST_CLASS(RendererResetCoordinatorTests)
 	{
 	public:
+		TEST_METHOD(RendererRetirementNeverBlocksUiAndExplicitlyRetiresPinnedObject)
+		{
+			RendererRetirementService service;
+			auto renderer =
+				std::make_shared<BlockingRetirementRenderer>();
+			auto transientUiPin = renderer;
+			std::future<void> entered =
+				renderer->retireEntered.get_future();
+			const DWORD uiThread = GetCurrentThreadId();
+
+			Assert::IsTrue(service.Retire(
+				renderer, 41, nullptr, WM_APP + 90));
+			renderer.reset();
+			Assert::IsTrue(entered.wait_for(
+				std::chrono::seconds(2)) == std::future_status::ready);
+			Assert::IsFalse(service.IsIdle());
+			Assert::AreNotEqual(uiThread,
+				transientUiPin->retireThread.load(
+					std::memory_order_acquire));
+
+			transientUiPin->releaseRetire.set_value();
+			for (int attempt = 0;
+				attempt < 200 && !service.IsIdle(); ++attempt)
+			{
+				std::this_thread::sleep_for(
+					std::chrono::milliseconds(5));
+			}
+			Assert::IsTrue(service.IsIdle());
+			Assert::IsTrue(transientUiPin->retired.load(
+				std::memory_order_acquire));
+
+			// The explicit worker retirement is already terminal. A transient
+			// callback pin can release later on the UI without owning shutdown.
+			transientUiPin.reset();
+			service.RequestClose();
+			service.Join();
+		}
+
 		TEST_METHOD(BackendRequestIsReadyWithoutAnotherFrame)
 		{
 			FakeResetClock clock;

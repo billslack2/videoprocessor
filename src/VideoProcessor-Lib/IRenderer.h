@@ -145,6 +145,11 @@ public:
 	virtual void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink>) {}
 
+	// Completes blocking backend/apartment shutdown on the retirement worker.
+	// Implementations must be idempotent so a later final shared_ptr release is
+	// nonblocking even if a transient callback pin outlives retirement.
+	virtual void Retire() noexcept {}
+
 	//
 	// GUI
 	//
