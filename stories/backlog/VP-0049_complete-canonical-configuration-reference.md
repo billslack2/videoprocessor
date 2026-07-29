@@ -2,12 +2,9 @@
 
 ## Status
 
-Backlog. No implementation has started. This story depends on VP-0045 being
-completed and its canonical `vpvr.*` section names and ownership boundaries
-being final.
-
-Do not begin the field-reference rewrite against the pre-VP-0045 schema. That
-would immediately make the documentation structurally obsolete.
+Backlog and ready for implementation. VP-0045 is complete, so the canonical
+`vpvr.*` section names and ownership boundaries are now final. No
+implementation has started.
 
 ## User story
 
@@ -77,7 +74,7 @@ reference:
 7. Shader configuration and expressions
 8. Shared profile groups and profile selection
 9. Built-in renderer (`vpvr`) settings
-10. Built-in renderer display rules and refresh behavior
+10. Built-in renderer display behavior and refresh policy
 11. Shortcuts and event actions, if public
 12. Diagnostics and troubleshooting
 13. Complete field index
@@ -127,6 +124,42 @@ option, explain:
 For algorithms such as tone mapping, gamut mapping, scalers, debanding,
 dithering, presentation mode, output range/gamma/primaries, and shader stages,
 describe the observable result rather than merely repeating the enum name.
+
+### 3a. `vpvr.display` base-settings field guide
+
+Replace the current three-column summary row for each broad area with a
+dedicated subsection that a user can read independently. This is specifically
+required for every public key in `[vpvr.display]`; the renderer-session policy
+keys in `[vpvr.general]` receive the same treatment in their own subsection.
+
+The guide must include, at minimum:
+
+- **Input treatment:** `tone_mapping`, `gamut_mapping`, `peak_detection`,
+  `contrast_recovery`, and `sdr_input_transfer`.
+- **Scaling:** `quality`, `upscaler`, `downscaler`, `deband`, and `dithering`.
+- **Display target:** `sdr_target_nits`, `sdr_black_nits`,
+  `output_presentation`, `output_range`, `output_gamma`,
+  `sdr_target_primaries`, and `report_bt2020_to_display`.
+
+For example, the Scaling subsection must give each of its five fields a
+separate entry. Its `upscaler` and `downscaler` entries must then explain each
+accepted algorithm token individually, including `AUTO`, rather than listing
+the tokens in a table cell. `quality`, `deband`, and `dithering` require the
+same per-option treatment.
+
+Every `[vpvr.display]` field entry must visibly state:
+
+1. what image-processing stage or output contract it controls;
+2. accepted type, range/units, default, and exact omission behavior;
+3. every accepted option, including its quality/performance/compatibility
+   tradeoff and fallback when unavailable;
+4. field-specific `AUTO` resolution and diagnostics, where supported;
+5. interaction and precedence with the relevant profile group; and
+6. a small canonical configuration example.
+
+Use stable field anchors such as `#vpvr-display-upscaler` so the summary table
+can link to each detailed entry. The summary table may remain as a compact
+index, but it must link to—not replace—the field guide.
 
 ### 4. Define `AUTO` precisely
 
