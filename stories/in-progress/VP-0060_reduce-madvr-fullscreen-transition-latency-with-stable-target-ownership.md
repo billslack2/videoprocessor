@@ -8,10 +8,20 @@ transitions. Implementation is on `codex/vp-0060-fast-fullscreen`, based on
 the merged default branch `v1.1.015-beta`, in worktree
 `C:\Users\bslac\vp\worktrees\vp-0060-fast-fullscreen`.
 
-The first phase will add monotonic phase telemetry, reject obsolete target
-revisions before graph construction, and then implement a fullscreen-only
-fast path that retains black cover, Stop/drain/reset/Run, current-epoch
-preroll, and full-rebuild fallback.
+The reviewed fast path is committed as `7565481` and deployed for hardware
+testing on 2026-07-29. It retains the existing madVR graph and performs a
+covered graph-owner transaction: Stop, close/drain ingress, detach and verify
+the old `IVideoWindow` owner, attach and verify the new HWND, reset the live
+source epoch, Run, wait for five current-epoch downstream deliveries, cross a
+composition boundary, and reveal. Any unsupported or failed operation remains
+covered and falls back to the terminal full-rebuild path.
+
+Threading, DirectShow, and MPC/mpv-style player reviewers approved the final
+lifecycle ordering. Their rapid-reversal, target-lifetime, mode-change, stale
+generation, and rollback-failure blockers were resolved before deployment.
+The clean x64 Release build completed with zero warnings/errors and all
+263 tests passed. The deployed executable and VP Renderer plugin hashes match
+the exact build; `VideoProcessor.cfg` was preserved byte-for-byte.
 
 ## User story
 
@@ -72,6 +82,15 @@ stopped before it could reveal.
 - Preserve explicit two-second display-mode hardware settling.
 
 ## Validation
+
+Automated validation added:
+
+- retarget target transport and Stop-before-ingress-drain barrier;
+- Graph/GraphRetarget coalescing in both arrival orders;
+- latest pre-selection retarget target selection;
+- retarget failure retaining black/restart requirement and closed ingress.
+
+Hardware validation remains:
 
 - Hundreds of rapid fullscreen/windowed reversals.
 - YouTube TV channel changes and exits during every retarget phase.
