@@ -454,6 +454,175 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 }
 
 
+bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
+	uintptr_t targetWindow,
+	const std::function<void()>& drainAfterGraphStop)
+{
+	const HWND targetHwnd = reinterpret_cast<HWND>(targetWindow);
+	if (!targetHwnd || !IsWindow(targetHwnd))
+		return false;
+	if (!IsGraphThread())
+	{
+		return InvokeOnGraphThread(
+			[this, targetWindow, drainAfterGraphStop]()
+			{
+				return RetargetWindowWithIngressDrain(
+					targetWindow, drainAfterGraphStop);
+			});
+	}
+
+	AssertGraphThread();
+	if (!m_pControl || !m_videoWindow || !m_liveSource ||
+		!m_videoHwnd || !IsWindow(m_videoHwnd))
+	{
+		return false;
+	}
+
+	const ULONGLONG operationStart = GetTickCount64();
+	const HWND oldHwnd = m_videoHwnd;
+	ULONGLONG stopMs = 0;
+	ULONGLONG drainMs = 0;
+	ULONGLONG resetMs = 0;
+	ULONGLONG rebindMs = 0;
+	ULONGLONG runMs = 0;
+	try
+	{
+		m_unbufferedDeliverySuccessCount.store(
+			0, std::memory_order_release);
+		m_resetReadyForReveal.store(false, std::memory_order_release);
+
+		ULONGLONG phaseStart = GetTickCount64();
+		HRESULT hr = m_pControl->Stop();
+		stopMs = GetTickCount64() - phaseStart;
+		if (FAILED(hr))
+			throw std::runtime_error(
+				"DirectShow retarget graph Stop failed");
+
+		phaseStart = GetTickCount64();
+		if (drainAfterGraphStop)
+			drainAfterGraphStop();
+		drainMs = GetTickCount64() - phaseStart;
+
+		// Preserve the proven madVR stop-settle boundary used by Reset().
+		Sleep(100);
+
+		phaseStart = GetTickCount64();
+		WindowTeardown();
+		OAHWND detachedOwner = 0;
+		hr = m_videoWindow->get_Owner(&detachedOwner);
+		if (FAILED(hr) || detachedOwner != 0)
+			throw std::runtime_error(
+				"DirectShow retarget failed to detach old window owner");
+		m_videoHwnd = targetHwnd;
+		RECT rectWindow = {};
+		if (!GetWindowRect(m_videoHwnd, &rectWindow))
+			throw std::runtime_error(
+				"DirectShow retarget target rectangle unavailable");
+		m_renderBoxWidth = rectWindow.right - rectWindow.left;
+		m_renderBoxHeight = rectWindow.bottom - rectWindow.top;
+		if (m_renderBoxWidth <= 0 || m_renderBoxHeight <= 0)
+			throw std::runtime_error(
+				"DirectShow retarget target rectangle is empty");
+		WindowSetup();
+		OAHWND attachedOwner = 0;
+		hr = m_videoWindow->get_Owner(&attachedOwner);
+		if (FAILED(hr) || attachedOwner != (OAHWND)targetHwnd)
+			throw std::runtime_error(
+				"DirectShow retarget failed to verify new window owner");
+		rebindMs = GetTickCount64() - phaseStart;
+
+		phaseStart = GetTickCount64();
+		m_liveSource->Reset();
+		resetMs = GetTickCount64() - phaseStart;
+
+		phaseStart = GetTickCount64();
+		hr = m_pControl->Run();
+		if (SUCCEEDED(hr))
+			hr = m_videoWindow->put_Visible(OATRUE);
+		runMs = GetTickCount64() - phaseStart;
+		if (FAILED(hr))
+			throw std::runtime_error(
+				"DirectShow retarget graph Run/visible failed");
+
+		m_frameCounter = 0;
+		ResetPPMMeasurement();
+		m_unbufferedDeliverySuccessCount.store(
+			0, std::memory_order_release);
+		m_resetReadyForReveal.store(true, std::memory_order_release);
+		DebugLog::Log(
+			"DirectShow window retarget completed: old=%p new=%p "
+			"stop_ms=%llu drain_ms=%llu settle_ms=100 rebind_ms=%llu "
+			"reset_ms=%llu run_ms=%llu total_ms=%llu",
+			oldHwnd, targetHwnd,
+			static_cast<unsigned long long>(stopMs),
+			static_cast<unsigned long long>(drainMs),
+			static_cast<unsigned long long>(rebindMs),
+			static_cast<unsigned long long>(resetMs),
+			static_cast<unsigned long long>(runMs),
+			static_cast<unsigned long long>(
+				GetTickCount64() - operationStart));
+		return true;
+	}
+	catch (const std::exception& error)
+	{
+		DebugLog::Log(
+			"DirectShow window retarget failed: old=%p new=%p "
+			"elapsed_ms=%llu error=%s action=rollback",
+			oldHwnd, targetHwnd,
+			static_cast<unsigned long long>(
+				GetTickCount64() - operationStart),
+			error.what());
+		try
+		{
+			m_pControl->Stop();
+			WindowTeardown();
+			OAHWND detachedOwner = 0;
+			if (FAILED(m_videoWindow->get_Owner(&detachedOwner)) ||
+				detachedOwner != 0)
+			{
+				throw std::runtime_error(
+					"rollback failed to detach window owner");
+			}
+			m_videoHwnd = oldHwnd;
+			RECT rectWindow = {};
+			if (!GetWindowRect(m_videoHwnd, &rectWindow))
+				throw std::runtime_error(
+					"rollback target rectangle unavailable");
+			m_renderBoxWidth = rectWindow.right - rectWindow.left;
+			m_renderBoxHeight = rectWindow.bottom - rectWindow.top;
+			WindowSetup();
+			OAHWND attachedOwner = 0;
+			if (FAILED(m_videoWindow->get_Owner(&attachedOwner)) ||
+				attachedOwner != (OAHWND)oldHwnd)
+			{
+				throw std::runtime_error(
+					"rollback failed to verify window owner");
+			}
+			m_liveSource->Reset();
+			if (FAILED(m_pControl->Run()) ||
+				FAILED(m_videoWindow->put_Visible(OATRUE)))
+			{
+				throw std::runtime_error(
+					"rollback graph Run/visible failed");
+			}
+			m_resetReadyForReveal.store(
+				true, std::memory_order_release);
+			DebugLog::Log(
+				"DirectShow window retarget rollback completed: target=%p",
+				oldHwnd);
+		}
+		catch (const std::exception& rollbackError)
+		{
+			DebugLog::Log(
+				"DirectShow window retarget rollback failed: target=%p "
+				"error=%s",
+				oldHwnd, rollbackError.what());
+		}
+		throw;
+	}
+}
+
+
 void DirectShowVideoRenderer::ResetLiveQueue()
 {
 	if (!IsGraphThread())

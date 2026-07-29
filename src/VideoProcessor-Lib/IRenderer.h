@@ -134,6 +134,15 @@ public:
 		drainAfterGraphStop();
 		Reset();
 	}
+	// Stops and re-primes an existing graph while moving its presentation
+	// owner to another host HWND. The operation runs on the renderer owner
+	// thread and returns false when this backend cannot safely retarget.
+	virtual bool RetargetWindowWithIngressDrain(
+		uintptr_t,
+		const std::function<void()>&)
+	{
+		return false;
+	}
 
 	// Flush and re-prime only the live-source queue without rebuilding the
 	// renderer graph. Renderers without a live source may ignore this request.

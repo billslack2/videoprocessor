@@ -83,6 +83,28 @@ namespace Tests
 				throw std::runtime_error("fake live failure");
 		}
 
+		bool RetargetWindowWithIngressDrain(
+			uintptr_t targetWindow,
+			const std::function<void()>& drain) override
+		{
+			{
+				std::lock_guard<std::mutex> lock(mutex);
+				graphStopped = true;
+				enteredDrain = true;
+				retargetWindow = targetWindow;
+			}
+			changed.notify_all();
+			drain();
+			{
+				std::lock_guard<std::mutex> lock(mutex);
+				drainReturned = true;
+			}
+			changed.notify_all();
+			if (fail)
+				throw std::runtime_error("fake retarget failure");
+			return true;
+		}
+
 		bool WaitForDrainEntry()
 		{
 			std::unique_lock<std::mutex> lock(mutex);
@@ -103,6 +125,7 @@ namespace Tests
 		bool enteredDrain = false;
 		bool drainReturned = false;
 		bool liveResetCalled = false;
+		uintptr_t retargetWindow = 0;
 		bool fail = false;
 	};
 
@@ -146,6 +169,154 @@ namespace Tests
 	TEST_CLASS(RendererResetCoordinatorTests)
 	{
 	public:
+		TEST_METHOD(GraphRetargetCarriesTargetAndPreservesIngressBarrier)
+		{
+			FakeResetClock clock;
+			RendererResetCoordinator coordinator(
+				[]() { return true; },
+				[&clock]() { return clock.Now(); });
+			coordinator.Bind(18);
+			coordinator.GetIngressState()->OpenAdmission();
+			auto lease = coordinator.GetIngressState()->TryAcquire();
+			Assert::IsTrue(static_cast<bool>(lease));
+
+			const uintptr_t targetWindow = 0x12345678;
+			Assert::IsTrue(coordinator.RequestUi(
+				RendererResetReason::DisplayTransition,
+				RendererResetScope::GraphRetarget,
+				0, 0, targetWindow));
+			RendererResetCoordinator::SelectedReset selected;
+			Assert::IsTrue(coordinator.DrainReady(
+				clock.Now(), selected));
+			Assert::IsTrue(
+				selected.request.scope ==
+					RendererResetScope::GraphRetarget);
+			Assert::AreEqual<uint64_t>(
+				static_cast<uint64_t>(targetWindow),
+				static_cast<uint64_t>(
+					selected.request.targetWindow));
+
+			auto renderer = std::make_shared<FakeResetRenderer>();
+			Assert::IsTrue(
+				coordinator.AcknowledgeBlackAndStart(
+					selected, renderer) ==
+				RendererResetCoordinator::StartResult::Started);
+			Assert::IsTrue(renderer->WaitForDrainEntry());
+			Assert::AreEqual<uint64_t>(
+				static_cast<uint64_t>(targetWindow),
+				static_cast<uint64_t>(
+					renderer->retargetWindow));
+			lease.Release();
+			Assert::IsTrue(renderer->WaitForDrainReturn());
+			Assert::IsTrue(WaitForCompletion(coordinator));
+			RendererResetCoordinator::OperationResult result;
+			Assert::IsTrue(
+				coordinator.ConsumeCompletion(18, true, result));
+			Assert::IsTrue(result.succeeded);
+			Assert::IsTrue(result.ingressReopened);
+		}
+
+		TEST_METHOD(GraphRetargetSubsumesGraphRequestsInEitherArrivalOrder)
+		{
+			auto verifyOrder = [](bool retargetFirst)
+				{
+					FakeResetClock clock;
+					RendererResetCoordinator coordinator(
+						[]() { return true; },
+						[&clock]() { return clock.Now(); });
+					coordinator.Bind(retargetFirst ? 19 : 20);
+					const uintptr_t targetWindow =
+						retargetFirst ? 0x11112222 : 0x33334444;
+					if (retargetFirst)
+					{
+						Assert::IsTrue(coordinator.RequestUi(
+							RendererResetReason::DisplayTransition,
+							RendererResetScope::GraphRetarget,
+							0, 0, targetWindow));
+						Assert::IsTrue(coordinator.RequestUi(
+							RendererResetReason::LivenessRecovery,
+							RendererResetScope::Graph));
+					}
+					else
+					{
+						Assert::IsTrue(coordinator.RequestUi(
+							RendererResetReason::LivenessRecovery,
+							RendererResetScope::Graph));
+						Assert::IsTrue(coordinator.RequestUi(
+							RendererResetReason::DisplayTransition,
+							RendererResetScope::GraphRetarget,
+							0, 0, targetWindow));
+					}
+					RendererResetCoordinator::SelectedReset selected;
+					Assert::IsTrue(
+						coordinator.DrainReady(clock.Now(), selected));
+					Assert::IsTrue(
+						selected.request.scope ==
+							RendererResetScope::GraphRetarget);
+					Assert::AreEqual<uint64_t>(
+						static_cast<uint64_t>(targetWindow),
+						static_cast<uint64_t>(
+							selected.request.targetWindow));
+				};
+
+			verifyOrder(true);
+			verifyOrder(false);
+		}
+
+		TEST_METHOD(LatestRetargetTargetWinsBeforeSelection)
+		{
+			FakeResetClock clock;
+			RendererResetCoordinator coordinator(
+				[]() { return true; },
+				[&clock]() { return clock.Now(); });
+			coordinator.Bind(21);
+			Assert::IsTrue(coordinator.RequestUi(
+				RendererResetReason::DisplayTransition,
+				RendererResetScope::GraphRetarget,
+				0, 0, 0x1111));
+			Assert::IsTrue(coordinator.RequestUi(
+				RendererResetReason::DisplayTransition,
+				RendererResetScope::GraphRetarget,
+				0, 0, 0x2222));
+			RendererResetCoordinator::SelectedReset selected;
+			Assert::IsTrue(coordinator.DrainReady(clock.Now(), selected));
+			Assert::AreEqual<uint64_t>(
+				0x2222,
+				static_cast<uint64_t>(
+					selected.request.targetWindow));
+		}
+
+		TEST_METHOD(RetargetFailureRequiresCoveredRestartAndKeepsIngressClosed)
+		{
+			FakeResetClock clock;
+			RendererResetCoordinator coordinator(
+				[]() { return true; },
+				[&clock]() { return clock.Now(); });
+			coordinator.Bind(22);
+			coordinator.GetIngressState()->OpenAdmission();
+			Assert::IsTrue(coordinator.RequestUi(
+				RendererResetReason::DisplayTransition,
+				RendererResetScope::GraphRetarget,
+				0, 0, 0x1234));
+			RendererResetCoordinator::SelectedReset selected;
+			Assert::IsTrue(coordinator.DrainReady(clock.Now(), selected));
+			auto renderer = std::make_shared<FakeResetRenderer>();
+			renderer->fail = true;
+			Assert::IsTrue(
+				coordinator.AcknowledgeBlackAndStart(
+					selected, renderer) ==
+				RendererResetCoordinator::StartResult::Started);
+			Assert::IsTrue(WaitForCompletion(coordinator));
+			RendererResetCoordinator::OperationResult result;
+			Assert::IsTrue(
+				coordinator.ConsumeCompletion(22, true, result));
+			Assert::IsFalse(result.succeeded);
+			Assert::IsTrue(result.restartRequired);
+			Assert::IsFalse(result.ingressReopened);
+			Assert::IsFalse(
+				coordinator.GetIngressState()->IsAdmitting());
+		}
+
 		TEST_METHOD(FirstFrameCanAcceleratePendingPostStartReset)
 		{
 			FakeResetClock clock;

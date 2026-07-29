@@ -69,6 +69,16 @@ const TCHAR* ToString(RendererResetReason reason)
 	}
 }
 
+const char* ResetScopeName(RendererResetScope scope)
+{
+	switch (scope)
+	{
+	case RendererResetScope::GraphRetarget: return "graph-retarget";
+	case RendererResetScope::Graph: return "graph";
+	default: return "live-queue";
+	}
+}
+
 struct ShortcutDefinition
 {
 	const char* configKey;
@@ -1850,6 +1860,10 @@ void CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()")));
 
+	if (TryStartFullscreenRetarget())
+		return;
+
+	m_postRendererStartRequiresGraph = true;
 	m_wantToRestartRenderer = true;
 	UpdateState();
 }
@@ -1864,9 +1878,12 @@ void CVideoProcessorDlg::OnCbnSelchangeFullscreenmodeCombo()
 
 	if (m_fullScreenVideoWindow)
 	{
-		FullScreenVideoWindowDestroy();
-		//Sleep(1000);
-		OnBnClickedRendererRestart();
+		// The current or pending DirectShow graph can still own this HWND.
+		// Recreate it only after renderer teardown has reached a terminal point.
+		m_fullscreenModeChangePending = true;
+		m_postRendererStartRequiresGraph = true;
+		m_wantToRestartRenderer = true;
+		UpdateState();
 	}
 
 }
@@ -2405,9 +2422,10 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		}
 		if (m_rendererFullscreenCheck.GetCheck())
 		{
-			HWND renderWindow = GetRenderWindow();
+			HWND renderWindow = m_rendererTargetHwnd;
 			RECT rect = {};
-			::GetWindowRect(renderWindow, &rect);
+			if (renderWindow)
+				::GetWindowRect(renderWindow, &rect);
 			DEBUGLOG(
 				"Fullscreen host after renderer start hwnd=%p visible=%d "
 				"rect=%ld,%ld-%ld,%ld display_settle_ms=%u",
@@ -2571,10 +2589,7 @@ void CVideoProcessorDlg::OnCommandFullScreenToggle()
 {
 	m_rendererFullscreenCheck.SetCheck(
 		m_rendererFullscreenCheck.GetCheck() ? 0 : 1);
-
-	m_postRendererStartRequiresGraph = true;
-	m_wantToRestartRenderer = true;
-	UpdateState();
+	OnBnClickedRendererFullScreenCheck();
 }
 
 
@@ -3191,6 +3206,20 @@ void CVideoProcessorDlg::UpdateState()
 	// No render, start one if the current state is not failed and we have a valid video state
 	if (!m_videoRenderer)
 	{
+		if (m_fullScreenVideoWindow &&
+			!IsWindow(m_fullScreenVideoWindow->GetHWND()))
+		{
+			DebugLog::Log(
+				"Fullscreen host is invalid after renderer teardown; recreating it");
+			FullScreenVideoWindowDestroy();
+		}
+		if (!m_rendererRetirementPending &&
+			m_fullscreenModeChangePending)
+		{
+			if (m_fullScreenVideoWindow)
+				FullScreenVideoWindowDestroy();
+			m_fullscreenModeChangePending = false;
+		}
 		// If we still have a full screen window and don't want to be full screen anymore clean it up
 		if (!m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow)
 		{
@@ -3227,9 +3256,16 @@ void CVideoProcessorDlg::UpdateState()
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 		m_wantToRestartRenderer)
 	{
-		m_wantToRestartRenderer = false;
 		DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::UpdateState(): - Asked to restart renderer")));
 
+		if (RendererResetOperationInProgress())
+		{
+			// Keep the intent latched. Reset completion calls UpdateState again,
+			// at which point teardown can safely begin.
+			RenderStop();
+			return;
+		}
+		m_wantToRestartRenderer = false;
 		RenderStop();
 		return;
 	}
@@ -4088,6 +4124,8 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 {
 	if (!m_videoRenderer)
 		return;
+	if (m_fullscreenRetargetPending)
+		ClearFullscreenRetarget(true);
 
 	// Releasing a windowed renderer can synchronously pump WM_PAINT and other
 	// window messages.  Detach the shared pointer before invoking the destructor
@@ -4337,16 +4375,40 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			completion.rendererGeneration,
 			currentGeneration,
 			CStringA(ToString(completion.request.reason)).GetString(),
-			completion.request.scope == RendererResetScope::Graph ?
-				"graph" : "live-queue",
+			ResetScopeName(completion.request.scope),
 			completion.failure.empty() ? "" : " failure=",
 			completion.failure.empty() ? "" : completion.failure.c_str());
-		if (completion.request.scope == RendererResetScope::Graph)
+		if (completion.request.scope != RendererResetScope::LiveQueue)
 			m_lastLivenessRecoveryTick = now;
 		m_consecutiveStuckSeconds = 0;
 		m_activeGraphRequestId.store(0, std::memory_order_release);
 		m_activeGraphRequestGeneration.store(0, std::memory_order_release);
 		m_activeGraphRequestStartedTick.store(0, std::memory_order_release);
+		if (completion.request.scope ==
+				RendererResetScope::GraphRetarget &&
+			!currentSuccess)
+		{
+			const bool targetInvalid =
+				!m_fullscreenRetargetTargetHwnd ||
+				!IsWindow(m_fullscreenRetargetTargetHwnd);
+			if (targetInvalid)
+			{
+				// The graph-owner operation could not safely target this HWND.
+				// Restore the known-valid previous cover target before teardown.
+				ClearFullscreenRetarget(true);
+			}
+			else
+			{
+				// The graph may still be attached to either leased HWND when
+				// retarget or rollback fails. Keep the existing cover and both
+				// hosts pinned until terminal renderer teardown.
+				DebugLog::Log(
+					"Fullscreen retarget failure remains covered through "
+					"renderer teardown: target=%p previous=%p",
+					m_fullscreenRetargetTargetHwnd,
+					m_fullscreenRetargetPreviousTargetHwnd);
+			}
+		}
 		if (!modelAccepted || !currentSuccess || !actions.empty())
 			m_wantToRestartRenderer = true;
 		UpdateState();
@@ -4400,8 +4462,12 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			const bool blackShown =
 				!transitionActions.empty() &&
 				ShowRendererTransitionBlack(
-					selected.request.scope == RendererResetScope::Graph ?
-						"graph-reset" : "live-queue-reset");
+					selected.request.scope ==
+						RendererResetScope::LiveQueue ?
+						"live-queue-reset" :
+					selected.request.scope ==
+						RendererResetScope::GraphRetarget ?
+						"fullscreen-retarget" : "graph-reset");
 			transitionActions =
 				m_rendererTransitionModel.OnShieldAcquired(
 					key, blackShown);
@@ -4460,8 +4526,7 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			static_cast<LPCTSTR>(m_activeRendererName),
 			currentGeneration,
 			CStringA(ToString(selected.request.reason)).GetString(),
-			selected.request.scope == RendererResetScope::Graph ?
-				"graph" : "live-queue");
+			ResetScopeName(selected.request.scope));
 	}
 
 	const RendererResetCoordinator::Diagnostics diagnostics =
@@ -4532,6 +4597,47 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 	}
 
 	const bool coordinatedReset = m_rendererResetTransitionActive;
+	if (m_fullscreenRetargetPending)
+	{
+		const bool expectedFullscreen = !m_fullscreenRetargetExiting;
+		const bool desiredFullscreen =
+			m_rendererFullscreenCheck.GetCheck() != FALSE;
+		const bool targetValid =
+			m_fullscreenRetargetTargetHwnd &&
+			IsWindow(m_fullscreenRetargetTargetHwnd);
+		const bool generationMatches =
+			m_fullscreenRetargetRendererGeneration == generation;
+		if (!targetValid || !generationMatches)
+		{
+			DebugLog::Log(
+				"Fullscreen retarget reveal rejected before frame acceptance: "
+				"target=%p target_valid=%d operation_generation=%u "
+				"current_generation=%u action=covered-full-rebuild",
+				m_fullscreenRetargetTargetHwnd,
+				targetValid ? 1 : 0,
+				m_fullscreenRetargetRendererGeneration,
+				generation);
+			ClearFullscreenRetarget(true);
+			m_wantToRestartRenderer = true;
+			UpdateState();
+			return;
+		}
+		if (desiredFullscreen != expectedFullscreen)
+		{
+			// The user reversed direction while the graph-owner transaction was
+			// active. Do not expose the superseded target. Keep both HWNDs leased
+			// until covered renderer teardown detaches the graph.
+			DebugLog::Log(
+				"Fullscreen retarget superseded before reveal: "
+				"completed_direction=%s desired_fullscreen=%d "
+				"action=covered-full-rebuild",
+				m_fullscreenRetargetExiting ? "exit" : "enter",
+				desiredFullscreen ? 1 : 0);
+			m_wantToRestartRenderer = true;
+			UpdateState();
+			return;
+		}
+	}
 	if (coordinatedReset)
 	{
 		if (m_rendererTransitionModel.State() !=
@@ -4553,6 +4659,28 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 	}
 
 	const char* evidence = m_videoRenderer->PresentedLiveFrameEvidence();
+	if (m_fullscreenRetargetPending)
+	{
+		const bool exitingFullscreen = m_fullscreenRetargetExiting;
+		const HWND completedTarget = m_fullscreenRetargetTargetHwnd;
+		m_rendererTargetHwnd = completedTarget;
+		if (exitingFullscreen)
+			++m_rendererTargetRevision;
+		DebugLog::Log(
+			"Fullscreen retarget ready to reveal: renderer=%S generation=%u "
+			"direction=%s target=%p total_ms=%llu",
+			static_cast<LPCTSTR>(m_activeRendererName),
+			generation,
+			exitingFullscreen ? "exit" : "enter",
+			completedTarget,
+			static_cast<unsigned long long>(
+				m_fullscreenRetargetStartTick > 0 ?
+					GetTickCount64() -
+						m_fullscreenRetargetStartTick : 0));
+		ClearFullscreenRetarget(false);
+		if (exitingFullscreen && m_fullScreenVideoWindow)
+			FullScreenVideoWindowDestroy();
+	}
 	// The renderer's successful submission can still be queued behind the
 	// compositor. Keep black above it through one composition boundary so
 	// hiding the cover cannot briefly expose the retired surface.
@@ -4659,10 +4787,129 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 void CVideoProcessorDlg::FullScreenVideoWindowDestroy()
 {
 	assert(m_fullScreenVideoWindow);
+	assert(!m_fullscreenRetargetPending);
+	if (m_fullscreenRetargetPending)
+		return;
 	if (m_rendererTargetHwnd == m_fullScreenVideoWindow->GetHWND())
 		m_rendererTargetHwnd = nullptr;
 	delete m_fullScreenVideoWindow;
 	m_fullScreenVideoWindow = nullptr;
+}
+
+
+bool CVideoProcessorDlg::TryStartFullscreenRetarget()
+{
+	if (!m_videoRenderer ||
+		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
+		!m_rendererResetCoordinator ||
+		m_rendererRetirementPending ||
+		m_fullscreenRetargetPending ||
+		m_wantToRestartRenderer ||
+		m_wantToTerminate ||
+		RendererResetOperationInProgress() ||
+		!m_activeRendererIsDirectShow ||
+		m_activeRendererName.CompareNoCase(
+			TEXT("DirectShow - madVR")) != 0)
+	{
+		return false;
+	}
+	const RendererResetCoordinator::Diagnostics diagnostics =
+		m_rendererResetCoordinator->GetDiagnostics();
+	if (diagnostics.hasPending ||
+		diagnostics.selectionPrepared ||
+		diagnostics.operationActive ||
+		diagnostics.completionPending ||
+		diagnostics.restartCoverRequired)
+	{
+		return false;
+	}
+
+	const bool enteringFullscreen =
+		m_rendererFullscreenCheck.GetCheck() != FALSE;
+	HWND targetHwnd = nullptr;
+	const HWND previousTarget = m_rendererTargetHwnd;
+	const uint64_t previousRevision = m_rendererTargetRevision;
+	if (enteringFullscreen)
+	{
+		if (!m_fullScreenVideoWindow)
+			FullScreenVideoWindowConstruct();
+		targetHwnd = m_fullScreenVideoWindow ?
+			m_fullScreenVideoWindow->GetHWND() : nullptr;
+	}
+	else
+	{
+		targetHwnd = m_windowedVideoWindow.GetSafeHwnd();
+	}
+	if (!targetHwnd || !IsWindow(targetHwnd) ||
+		targetHwnd == previousTarget)
+	{
+		return false;
+	}
+
+	// Entering fullscreen must acquire black over the new top-level host before
+	// madVR is retargeted. Exiting keeps the cover over the old fullscreen host
+	// until the windowed target has produced current-epoch preroll.
+	if (enteringFullscreen)
+	{
+		m_rendererTargetHwnd = targetHwnd;
+		++m_rendererTargetRevision;
+	}
+	m_fullscreenRetargetPending = true;
+	m_fullscreenRetargetTargetHwnd = targetHwnd;
+	m_fullscreenRetargetPreviousTargetHwnd = previousTarget;
+	m_fullscreenRetargetPreviousTargetRevision = previousRevision;
+	m_fullscreenRetargetRendererGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	m_fullscreenRetargetExiting = !enteringFullscreen;
+	m_fullscreenRetargetStartTick = GetTickCount64();
+
+	const bool accepted = m_rendererResetCoordinator->RequestUi(
+		RendererResetReason::DisplayTransition,
+		RendererResetScope::GraphRetarget,
+		0, 0, reinterpret_cast<uintptr_t>(targetHwnd));
+	if (!accepted)
+	{
+		m_rendererTargetHwnd = previousTarget;
+		m_rendererTargetRevision = previousRevision;
+		ClearFullscreenRetarget(false);
+		if (enteringFullscreen && m_fullScreenVideoWindow)
+			FullScreenVideoWindowDestroy();
+		return false;
+	}
+
+	DebugLog::Log(
+		"Fullscreen retarget requested: renderer=%S generation=%u "
+		"direction=%s old=%p new=%p target_revision=%llu",
+		static_cast<LPCTSTR>(m_activeRendererName),
+		m_rendererGeneration.load(std::memory_order_acquire),
+		enteringFullscreen ? "enter" : "exit",
+		previousTarget, targetHwnd,
+		static_cast<unsigned long long>(m_rendererTargetRevision));
+	m_rendererFullscreenCheck.EnableWindow(FALSE);
+	m_fullScreenModeCombo.EnableWindow(FALSE);
+	return true;
+}
+
+
+void CVideoProcessorDlg::ClearFullscreenRetarget(bool restorePreviousTarget)
+{
+	if (restorePreviousTarget &&
+		m_fullscreenRetargetPreviousTargetHwnd &&
+		IsWindow(m_fullscreenRetargetPreviousTargetHwnd))
+	{
+		m_rendererTargetHwnd = m_fullscreenRetargetPreviousTargetHwnd;
+		m_rendererTargetRevision =
+			m_fullscreenRetargetPreviousTargetRevision;
+	}
+	m_fullscreenRetargetPending = false;
+	m_fullscreenRetargetTargetHwnd = nullptr;
+	m_fullscreenRetargetPreviousTargetHwnd = nullptr;
+	m_fullscreenRetargetPreviousTargetRevision = 0;
+	m_fullscreenRetargetRendererGeneration = 0;
+	m_fullscreenRetargetExiting = false;
+	m_fullscreenRetargetStartTick = 0;
+	m_rendererFullscreenCheck.EnableWindow(TRUE);
+	m_fullScreenModeCombo.EnableWindow(TRUE);
 }
 
 
@@ -5929,8 +6176,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					diagnostics.activeOperationId),
 				diagnostics.rendererGeneration,
 				ToString(diagnostics.pendingReason),
-				diagnostics.pendingScope == RendererResetScope::Graph ?
-					"graph" : "live-queue",
+				ResetScopeName(diagnostics.pendingScope),
 				static_cast<unsigned long long>(
 					uiNow - startedTick));
 			RendererLivenessSnapshot snapshot;

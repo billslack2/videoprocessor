@@ -98,7 +98,8 @@ public:
 
 	// UI-originated requests use the current binding and the injected clock.
 	bool RequestUi(RendererResetReason reason, RendererResetScope scope,
-		uint64_t delayMs = 0, uint64_t backendEpoch = 0) noexcept;
+		uint64_t delayMs = 0, uint64_t backendEpoch = 0,
+		uintptr_t targetWindow = 0) noexcept;
 
 	// Called on the UI/control thread after a wakeup or deadline timer. Clearing
 	// the outstanding-wakeup flag and selecting work happen under one lock so a
