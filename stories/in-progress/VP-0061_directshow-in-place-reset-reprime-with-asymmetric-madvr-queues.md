@@ -15,6 +15,29 @@ Implementation has started from the confirmed integration base
   path and adding only the synchronization needed to preserve the latency
   contract.
 
+Implementation is complete in commit
+`c944aa5a9f12255e9a798be69899084e352688e9`
+(`VP-0061: reprime DirectShow reset in place`) and is pushed as
+`origin/codex/vp-0061-directshow-reset-reprime`.
+
+The complete native test suite passed 263/263 tests and the solution built
+successfully as x64 Release. The tested release executable was deployed to
+`C:\Videoprocessor\vp\VideoProcessor.exe`; its SHA-256 is
+`358E5FB74877D2297AC6712EBFA7EC203E77E0FDED15DB5883D444A8F7AE3514`.
+The prior executable is retained as
+`C:\Videoprocessor\vp\VideoProcessor.exe.pre-VP0061-20260729-115633.bak`.
+
+Live validation on July 29 used the existing user-established asymmetric
+madVR 16/8 setup (not altered by the test) with VP `queue_size: 64`.
+Twenty manual Reset commands completed successfully, all in renderer
+generation 1. For every reset, the log recorded a successful serialized
+`NewSegment`, no renderer-restart/failure route, and a first current-epoch
+live frame after 156--219 ms. Reset transaction work itself was 0--16 ms;
+the post-reset interval was the existing nine-frame VP rebuffer target.
+This validates the original queue-64 asymmetric failure case without adding
+steady-state VP queue depth or latency. Equal-queue and wider-asymmetry
+control scenarios remain to be run before the story can close.
+
 Tracker audit at creation found 59 canonical story files and 59 index rows,
 with no duplicate or missing IDs. The existing index states for VP-0034,
 VP-0035, VP-0038, VP-0039, VP-0040, VP-0042, and VP-0043 do not match their
