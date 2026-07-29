@@ -2,10 +2,10 @@
 
 ## Status
 
-In Progress. Pull request #18 merged into the default integration branch
-`v1.1.014-beta` on July 28, 2026 as merge commit `ab81c309`. Release x64 built
-successfully and all 181 tests passed. A basic launch from the feature build
-location also succeeded.
+Done. Final recovery hardening merged into the default integration branch
+`v1.1.015-beta` through PR #28 on July 29, 2026 as merge commit `776cbe6`.
+The exact x64 Release feature build passed `259/259` tests and was validated
+in the user's fullscreen madVR/Alpha workflow before merge.
 
 The implementation places a GUI-owned opaque black child window above the
 active render target before renderer stop/rebuild and keeps it visible through
@@ -539,4 +539,33 @@ backups use timestamp `20260729-104511`. VP started as process 51172 with
 version `v1.1.012-beta-ffmpeg-4.4.8-117-g258ed67`. Its first live madVR startup
 accelerated the three-second reset immediately on current-frame evidence and
 released the shield after 1875 ms, versus 4797 ms in the preceding deployment.
-Live fullscreen/windowed and renderer-switch validation remains required.
+The live fullscreen/windowed and renderer-switch validation requested at this
+stage was subsequently completed and is recorded below.
+
+## 2026-07-29 final validation and merge
+
+The final deployed session exercised 22 renderer generations:
+
+- all `22/22` reset operations started and completed;
+- all `18/18` asynchronous DirectShow retirements queued and completed;
+- every replacement reveal used current-generation Alpha swapchain evidence
+  or DirectShow current-epoch downstream preroll;
+- there were no reset, retirement, transition, stale-generation, timeout,
+  hang, crash, or Windows Error Reporting failures.
+
+Alpha transitions took 781-875 ms. Normal madVR transitions took
+1204-2250 ms. One 3984 ms value spanned a rapid fullscreen reversal in which
+one generation was stopped before it could reveal, rather than a stalled
+single startup. Delivery failures logged during renderer stop were the
+expected terminal sample failure while the graph was being dismantled and
+did not persist into the replacement graph.
+
+Threading, DirectShow/COM, and player-lifecycle reviewers independently
+recommended closure. They found that removing the madVR post-start graph
+re-prime would save only about 200-300 ms while discarding the strongest
+stale-state purge. The larger remaining latency is graph/HWND replacement and
+belongs in VP-0060, which covers target-intent coalescing and a persistent-host
+or audited graph-retarget design with fallback and dedicated soak validation.
+
+PR #28 merged commit `258ed67` into `v1.1.015-beta` as merge commit
+`776cbe6`. VP-0041 is accepted and complete.

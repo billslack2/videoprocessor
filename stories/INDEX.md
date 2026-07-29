@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0059`
-- Next story number: `VP-0060`
-- Total indexed items: 58
+- Last assigned item: `VP-0060`
+- Next story number: `VP-0061`
+- Total indexed items: 59
 
 ## Story locations
 
@@ -65,7 +65,7 @@ they must not contain requirements that are absent from this file.
 | VP-0038 | Review | Generic viewport state and screen-aware NLS configuration |
 | VP-0039 | In Progress | Alpha cadence due-forecast liveness and diagnostics |
 | VP-0040 | Backlog | Trusted active-picture detection and stable NLS engagement |
-| VP-0041 | In Progress | Eliminate stale-frame flashes across renderer rebuilds (evidence-driven fast madVR recovery deployed; fullscreen YTTV validation pending) |
+| VP-0041 | Done | Eliminate stale-frame flashes across renderer rebuilds |
 | VP-0042 | Backlog | Indexed debug-log rotation filenames |
 | VP-0043 | Backlog | madVR graph re-prime after lifecycle and queue pressure |
 | VP-0044 | Backlog | Alpha native OSD visible-picture anchoring and scaling |
@@ -83,6 +83,7 @@ they must not contain requirements that are absent from this file.
 | VP-0057 | Review | Re-prime Alpha when it exceeds the configured queue limit |
 | VP-0058 | Backlog | ReShade compatibility prototype with madVR |
 | VP-0059 | Backlog | Stable per-mode frame-offset policy and Alpha semantics |
+| VP-0060 | Backlog | Reduce madVR fullscreen transition latency with stable target ownership |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
