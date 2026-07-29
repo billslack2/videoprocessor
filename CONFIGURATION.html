@@ -295,7 +295,7 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
 
     <article class="field" id="queue-recovery-high-water" data-fields="queue_recovery.reset_queue_too_large_percent">
       <h4><code>[queue_recovery] reset_queue_too_large_percent</code></h4>
-      <p>Schedules queue recovery when either the raw or converted queue reaches this percentage of its own capacity. It is not a percentage of their combined OSD total.</p>
+      <p>Schedules queue recovery when either the raw or converted queue reaches this percentage of its own capacity. It is not a percentage of their combined OSD total. If either queue reaches its hard capacity, VP immediately escalates the same recovery instead of waiting for the configured delay.</p>
       <p class="meta"><strong>Type/default:</strong> integer 1–100; default 75.</p>
     </article>
 
