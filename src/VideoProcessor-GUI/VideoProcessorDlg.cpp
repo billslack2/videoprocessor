@@ -2164,13 +2164,16 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceError(WPARAM wParam, LPARAM lP
 }
 LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam)
 {
-	if (m_videoRenderer)
+	const std::shared_ptr<IVideoRenderer> renderer =
+		std::atomic_load_explicit(
+			&m_videoRenderer, std::memory_order_acquire);
+	if (renderer)
 	{
 		// Enhanced DirectShow event handling for MadVR changes
 		// We'll intercept events before passing them to the renderer to detect important changes
 
 		// First call the renderer to process DirectShow events and get any graph events
-		HRESULT hr = m_videoRenderer->OnWindowsEvent(wParam, lParam);
+		HRESULT hr = renderer->OnWindowsEvent(wParam, lParam);
 
 		// Now check for specific DirectShow graph events that indicate MadVR changes
 		// These events are typically sent via the DirectShow event system

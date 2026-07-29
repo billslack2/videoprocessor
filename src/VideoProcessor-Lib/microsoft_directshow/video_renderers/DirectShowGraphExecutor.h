@@ -101,6 +101,21 @@ public:
 								OutputDebugString(
 									TEXT("DirectShow graph async command failed\r\n"));
 							}
+							// A lifecycle completion must not become visible while
+							// its command (and its captures) are still active.
+							command.function = {};
+							if (command.afterCompletion)
+							{
+								try
+								{
+									command.afterCompletion();
+								}
+								catch (...)
+								{
+									OutputDebugString(
+										TEXT("DirectShow graph completion failed\r\n"));
+								}
+							}
 						}
 						std::lock_guard<std::mutex> lock(m_mutex);
 						if (m_stopping && m_commands.empty())
@@ -121,6 +136,14 @@ public:
 					}
 				}
 
+				// Release helpers owned by renderer filters can post cleanup to
+				// this apartment. Drain that private owner queue before COM is
+				// uninitialized; this does not re-enter the dialog/UI queue.
+				while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE))
+				{
+					TranslateMessage(&message);
+					DispatchMessage(&message);
+				}
 				m_ownerThreadId.store(0, std::memory_order_release);
 				CoUninitialize();
 			});
@@ -173,7 +196,7 @@ public:
 			m_commands.push_back({ 0, [task]()
 				{
 					(*task)();
-				} });
+				}, {} });
 			SetEvent(m_workEvent);
 		}
 
@@ -188,7 +211,22 @@ public:
 		std::lock_guard<std::mutex> lock(m_mutex);
 		if (m_stopping)
 			return false;
-		m_commands.push_back({ 0, std::move(function) });
+		m_commands.push_back({ 0, std::move(function), {} });
+		SetEvent(m_workEvent);
+		return true;
+	}
+
+	// Queue owner work and publish its completion only after the work function
+	// has returned and released its captures.
+	bool PostWithCompletion(
+		std::function<void()> function,
+		std::function<void()> afterCompletion)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (m_stopping)
+			return false;
+		m_commands.push_back(
+			{ 0, std::move(function), std::move(afterCompletion) });
 		SetEvent(m_workEvent);
 		return true;
 	}
@@ -214,7 +252,7 @@ public:
 				return true;
 			}
 		}
-		m_commands.push_back({ key, std::move(function) });
+		m_commands.push_back({ key, std::move(function), {} });
 		SetEvent(m_workEvent);
 		return true;
 	}
@@ -232,9 +270,7 @@ public:
 			m_stopping = true;
 			SetEvent(m_workEvent);
 		}
-		m_thread.join();
-		CloseHandle(m_workEvent);
-		m_workEvent = nullptr;
+		JoinServicingSentMessages();
 	}
 
 	// Forced lifetime boundary: discard work which has not started, execute one
@@ -248,15 +284,23 @@ public:
 		if (IsOwnerThread())
 			std::terminate();
 
-		HANDLE threadHandle = m_thread.native_handle();
 		{
 			std::lock_guard<std::mutex> lock(m_mutex);
 			m_commands.clear();
-			m_commands.push_back({ 0, std::move(finalCommand) });
+			if (finalCommand)
+				m_commands.push_back(
+					{ 0, std::move(finalCommand), {} });
 			m_stopping = true;
 			SetEvent(m_workEvent);
 		}
 
+		JoinServicingSentMessages();
+	}
+
+private:
+	void JoinServicingSentMessages() noexcept
+	{
+		HANDLE threadHandle = m_thread.native_handle();
 		for (;;)
 		{
 			const DWORD waitResult = MsgWaitForMultipleObjectsEx(
@@ -276,11 +320,11 @@ public:
 		m_workEvent = nullptr;
 	}
 
-private:
 	struct Command
 	{
 		CoalescingKey coalescingKey;
 		std::function<void()> function;
+		std::function<void()> afterCompletion;
 	};
 
 	HANDLE m_workEvent = nullptr;

@@ -245,6 +245,7 @@ protected:
 	virtual void GraphBuild();
 	virtual void GraphTeardown();
 	void GraphTeardownNoThrow() noexcept;
+	bool GraphResourcesReleased() const noexcept;
 	virtual void GraphRun();
 	virtual void GraphStop();
 
@@ -282,5 +283,6 @@ private:
 	mutable std::mutex m_completionMutex;
 	std::deque<RendererState> m_pendingStateCompletions;
 	std::atomic_bool m_pendingRendererRestart{false};
+	std::atomic_bool m_graphTeardownComplete{false};
 	DirectShowGraphExecutor m_graphExecutor;
 };
