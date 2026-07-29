@@ -24,8 +24,11 @@
 - VP source work is performed in
   `C:\Users\bslac\vp\videoprocessor - VS2026`; do not treat the source tree
   containing this tracker as the authoritative implementation checkout.
-- For VideoProcessor testing and troubleshooting, inspect the debug log at
-  `C:\logs\vp_debug.log`.
+- For VideoProcessor testing and troubleshooting, inspect the current deployed
+  debug log at `C:\Videoprocessor\vp\logs\vp_debug.log`. For an incident that
+  occurred before a restart or log rotation, inspect the numbered rotated logs
+  in that same directory (`vp_debug.log.0` through the configured retention
+  limit) as well; do not rely only on the newly created current log.
 - The VP GitHub repository of record is `billslack2/videoprocessor`. Discover
   its current default branch before creating source branches or pull requests;
   do not assume the default branch is named `main`.
