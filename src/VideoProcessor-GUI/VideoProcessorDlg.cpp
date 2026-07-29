@@ -6575,6 +6575,22 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 		m_rendererResetAutoCheck.GetCheck() == BST_CHECKED;
 	const size_t sustainedSeconds =
 		static_cast<size_t>(std::max(3, m_queueResetDelaySeconds));
+	// Alpha uses the UI value as its hard queue cap. Treat any reported excess
+	// as a recovery condition in case a future queue-path regression violates
+	// that invariant. DirectShow keeps its liveness-based recovery below because
+	// its downstream queues are not directly observable.
+	const bool alphaQueueExceeded =
+		!m_activeRendererIsDirectShow &&
+		(rawQueueSize > queueMaxSize || convertedQueueSize > queueMaxSize);
+	if (autoReset && alphaQueueExceeded)
+	{
+		DEBUGLOG(
+			"Alpha queue exceeded configured limit: raw=%zu/%zu converted=%zu/%zu; requesting live-queue reset",
+			rawQueueSize, queueMaxSize,
+			convertedQueueSize, queueMaxSize);
+		RequestRendererReset(RendererResetReason::QueuePressure, false, 0);
+		return;
+	}
 
 	RendererLivenessSnapshot liveness;
 	const bool hasLiveness =
