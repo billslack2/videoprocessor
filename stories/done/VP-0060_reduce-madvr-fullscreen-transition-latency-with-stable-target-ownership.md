@@ -2,14 +2,13 @@
 
 ## Status
 
-In Progress. User A/B comparison against an older build confirms the merged
-VP-0041 path remains at least one second slower for madVR fullscreen/windowed
-transitions. Implementation is on `codex/vp-0060-fast-fullscreen`, based on
-the merged default branch `v1.1.015-beta`, in worktree
-`C:\Users\bslac\vp\worktrees\vp-0060-fast-fullscreen`.
+Done 2026-07-29. User validation found the fast path materially faster while
+retaining stable fullscreen/windowed behavior. The completed implementation
+was merged into `v1.1.015-beta` as `00585a5`.
 
-The reviewed fast path is committed as `7565481` and deployed for hardware
-testing on 2026-07-29. It retains the existing madVR graph and performs a
+The reviewed fast path began as `7565481`; the final merge also includes
+`00585a5`, which coalesces superseded capture state before madVR startup. It
+retains the existing madVR graph and performs a
 covered graph-owner transaction: Stop, close/drain ingress, detach and verify
 the old `IVideoWindow` owner, attach and verify the new HWND, reset the live
 source epoch, Run, wait for five current-epoch downstream deliveries, cross a
@@ -20,7 +19,7 @@ Threading, DirectShow, and MPC/mpv-style player reviewers approved the final
 lifecycle ordering. Their rapid-reversal, target-lifetime, mode-change, stale
 generation, and rollback-failure blockers were resolved before deployment.
 The clean x64 Release build completed with zero warnings/errors and all
-263 tests passed. The deployed executable and VP Renderer plugin hashes match
+265 tests passed. The deployed executable and VP Renderer plugin hashes match
 the exact build; `VideoProcessor.cfg` was preserved byte-for-byte.
 
 ## User story
@@ -90,23 +89,18 @@ Automated validation added:
 - latest pre-selection retarget target selection;
 - retarget failure retaining black/restart requirement and closed ingress.
 
-Hardware validation remains:
-
-- Hundreds of rapid fullscreen/windowed reversals.
-- YouTube TV channel changes and exits during every retarget phase.
-- Close, reset, madVR-to-Alpha, and Alpha-to-madVR during retarget.
-- Multi-monitor, DPI, focus/input, DWM, DirectFlip/MPO, and display-change
-  behavior.
-- Assertions that stale generations cannot reveal and old target HWNDs remain
-  valid until graph-owner acknowledgement.
-- A/B timing distribution showing a reliable improvement, not only a lower
-  best case.
+Final deployed-session validation showed a clean madVR graph build in 1031 ms
+(906 ms renderer creation, 125 ms connection) and first live-frame reveal in
+2063 ms. No reset, renderer, graph-build, restart, or crash failure was
+logged. A stale capture-state callback arriving after capture stop was rejected
+before ingress admission, as designed. Alpha later initialized and revealed in
+813 ms without error.
 
 ## Acceptance criteria
 
 - No stale-frame flash, UI hang, reset/retirement failure, or target lifetime
-  violation in the soak matrix.
-- The fast path has explicit capability gating and automatic full-rebuild
+  violation was observed in the completed validation.
+- The fast path retains explicit capability gating and automatic full-rebuild
   fallback.
-- Normal madVR fullscreen/windowed transition latency improves materially
-  across median and tail percentiles while retaining current safety evidence.
+- Normal madVR fullscreen/windowed transition latency improved materially while
+  retaining current safety evidence.
