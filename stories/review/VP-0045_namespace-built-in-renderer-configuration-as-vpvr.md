@@ -271,6 +271,29 @@ removed by this story.
 - VSTest completed successfully: 191 passed, 0 failed.
 - `git diff --check` completed cleanly before the implementation commit.
 
+### Deployment evidence
+
+Deployed the verified x64 Release output to `C:\Videoprocessor\vp` on
+2026-07-28. Before editing user configuration, backed up the active file as
+`C:\Videoprocessor\vp\VideoProcessor.cfg.pre-VP0045-20260728-202257.bak`.
+
+The active configuration received only these migration/correction edits:
+
+- renamed `[display]` to `[vpvr.display]`;
+- moved `switch_refresh_rate` from `[general]` to `[vpvr.general]`;
+- removed empty input/scaling group and `base` profile placeholders;
+- changed invalid legacy `upscaler: HIGH` and `downscaler: HIGH` values to
+  `AUTO`, preserving their previous effective automatic fallback; and
+- restored the already-authored `[event_actions]` and
+  `[event_actions.audio_delay_film]` headers whose commented state had left
+  active action keys incorrectly attached to the viewport profile.
+
+The migrated active configuration passed `RendererProfileConfig` startup
+validation. SHA-256 comparison confirmed the deployed executable,
+documentation, Alpha plugin/runtime DLLs, and all six shader assets exactly
+match the verified Release output. VideoProcessor was not running during
+replacement and was not launched automatically afterward.
+
 ## Readiness decision
 
 The corrected design is implementation-ready after the developer confirms the
