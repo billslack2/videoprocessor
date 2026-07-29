@@ -49,8 +49,14 @@ namespace
 
 		const std::wstring pluginPath = executableDirectory +
 			L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+		DebugLog::Log(
+			"VP Renderer plugin probe: path=%ls",
+			pluginPath.c_str());
 		if (GetFileAttributesW(pluginPath.c_str()) == INVALID_FILE_ATTRIBUTES)
+		{
+			DebugLog::Log("VP Renderer plugin unavailable at canonical path");
 			return result;
+		}
 
 		result.module = LoadLibraryExW(
 			pluginPath.c_str(),
@@ -91,8 +97,8 @@ namespace
 
 		DebugLog::Log(
 			"Optional VP Renderer plugin loaded: API=%u path=%ls",
-			pluginPath.c_str(),
-			apiVersion);
+			apiVersion,
+			pluginPath.c_str());
 		return result;
 	}
 
