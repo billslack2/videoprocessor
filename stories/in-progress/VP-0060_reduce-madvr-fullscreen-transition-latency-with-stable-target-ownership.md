@@ -2,9 +2,16 @@
 
 ## Status
 
-Backlog. VP-0041 established a correctness-first lifecycle boundary. This
-story must preserve that boundary while measuring and reducing the remaining
-madVR fullscreen/windowed transition time.
+In Progress. User A/B comparison against an older build confirms the merged
+VP-0041 path remains at least one second slower for madVR fullscreen/windowed
+transitions. Implementation is on `codex/vp-0060-fast-fullscreen`, based on
+the merged default branch `v1.1.015-beta`, in worktree
+`C:\Users\bslac\vp\worktrees\vp-0060-fast-fullscreen`.
+
+The first phase will add monotonic phase telemetry, reject obsolete target
+revisions before graph construction, and then implement a fullscreen-only
+fast path that retains black cover, Stop/drain/reset/Run, current-epoch
+preroll, and full-rebuild fallback.
 
 ## User story
 

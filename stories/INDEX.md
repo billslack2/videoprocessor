@@ -83,7 +83,7 @@ they must not contain requirements that are absent from this file.
 | VP-0057 | Review | Re-prime Alpha when it exceeds the configured queue limit |
 | VP-0058 | Backlog | ReShade compatibility prototype with madVR |
 | VP-0059 | Backlog | Stable per-mode frame-offset policy and Alpha semantics |
-| VP-0060 | Backlog | Reduce madVR fullscreen transition latency with stable target ownership |
+| VP-0060 | In Progress | Reduce madVR fullscreen transition latency with stable target ownership |
 | VP-0061 | In Progress | DirectShow in-place reset re-prime with asymmetric madVR queues |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
