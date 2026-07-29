@@ -465,3 +465,41 @@ matching executable/plugin hashes. Rollback backups use timestamp
 `v1.1.012-beta-ffmpeg-4.4.8-115-g1ff1bc9`. The story remains in progress
 pending live fullscreen madVR-to-Alpha and YouTube TV channel-change
 validation.
+
+## 2026-07-29 asynchronous DirectShow retirement barrier
+
+Live fullscreen testing showed that `1ff1bc9` still hung on madVR-to-Alpha.
+The same process completed one earlier madVR retirement, then stopped at
+`Renderer teardown: detached renderer before destruction` during the Alpha
+switch. There was no Windows Error Reporting crash record; the UI was again
+blocked in final wrapper/executor/apartment shutdown after graph resources had
+already reached terminal teardown.
+
+Commit `fceec1b` removes that final UI wait:
+
+- only DirectShow renderers opt into a single managed MTA retirement worker;
+- the UI transfers a strong renderer reference and immediately returns to its
+  normal message loop, allowing madVR fullscreen/helper-window traffic to
+  complete;
+- explicit idempotent `Retire()` makes owner-thread join and COM apartment exit
+  happen on the worker even if a transient UI callback still holds a
+  `shared_ptr`;
+- the black shield and fullscreen host remain alive, and `UpdateState` cannot
+  construct Alpha or another DirectShow graph until a keyed
+  `WM_MESSAGE_RENDERER_RETIRED` completion;
+- stale completions, failed retirement, startup fallback, failure presentation,
+  and fatal/normal close paths preserve the same barrier;
+- Alpha retains its existing synchronous destruction path until it has an
+  independently audited idempotent retirement contract.
+
+Threading, DirectShow/COM, and player-lifecycle reviewers approved the revised
+barrier with no deployment blocker. The exact x64 Release commit build passed
+`258/258` tests, including a blocked-retirement test proving the UI-facing
+handoff returns while the worker owns shutdown and a transient UI lifetime pin
+cannot move blocking retirement back to the UI thread.
+
+The clean `fceec1b` build was deployed to `C:\Videoprocessor\vp`; executable
+and plugin hashes match their Release outputs. Rollback backups use timestamp
+`20260729-101624`. VP started successfully as process 33748 with version
+`v1.1.012-beta-ffmpeg-4.4.8-116-gfceec1b`. Live fullscreen madVR-to-Alpha
+validation remains required.
