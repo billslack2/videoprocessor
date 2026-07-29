@@ -146,6 +146,44 @@ namespace Tests
 	TEST_CLASS(RendererResetCoordinatorTests)
 	{
 	public:
+		TEST_METHOD(FirstFrameCanAcceleratePendingPostStartReset)
+		{
+			FakeResetClock clock;
+			RendererResetCoordinator coordinator(
+				[]() { return true; },
+				[&clock]() { return clock.Now(); });
+			coordinator.Bind(17);
+
+			Assert::IsTrue(coordinator.RequestUi(
+				RendererResetReason::PostRendererStart,
+				RendererResetScope::Graph, 3000));
+			RendererResetCoordinator::Diagnostics diagnostics =
+				coordinator.GetDiagnostics();
+			Assert::IsTrue(diagnostics.hasPending);
+			Assert::AreEqual<uint64_t>(
+				3100, diagnostics.pendingDeadlineTick);
+
+			Assert::IsTrue(coordinator.RequestUi(
+				RendererResetReason::PostRendererStart,
+				RendererResetScope::Graph, 0));
+			diagnostics = coordinator.GetDiagnostics();
+			Assert::AreEqual<uint64_t>(
+				100, diagnostics.pendingDeadlineTick);
+			Assert::IsTrue(
+				diagnostics.pendingScope ==
+					RendererResetScope::Graph);
+
+			RendererResetCoordinator::SelectedReset selected;
+			Assert::IsTrue(coordinator.DrainReady(
+				clock.Now(), selected));
+			Assert::IsTrue(
+				selected.request.reason ==
+					RendererResetReason::PostRendererStart);
+			Assert::IsTrue(
+				selected.request.scope ==
+					RendererResetScope::Graph);
+		}
+
 		TEST_METHOD(RendererRetirementNeverBlocksUiAndExplicitlyRetiresPinnedObject)
 		{
 			RendererRetirementService service;

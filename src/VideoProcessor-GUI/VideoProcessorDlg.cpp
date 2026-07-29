@@ -2352,17 +2352,57 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		m_queueResetIgnoreEventsUntil =
 			GetTickCount64() + windowSettleDelayMs + 10000;
 		g_displayRefreshRateSampler->ResetMeasurement();
-		// Initial DirectShow starts and backend handoffs need the same proven
-		// stop/reset/run re-prime as manual R. Profile-only replacements keep
-		// the live-queue path so NLS/shader changes do not add a second blackout.
+		// A newly constructed Alpha queue/swapchain is already clean and can
+		// reveal on its first verified submit. DirectShow retains the proven
+		// stop/reset/run re-prime, but first-current-frame evidence may bring
+		// its deadline forward instead of holding black for an arbitrary delay.
 		const bool postStartRequiresGraph =
-			m_activeRendererIsDirectShow &&
 			m_postRendererStartRequiresGraph;
 		m_postRendererStartRequiresGraph = true;
-		RequestRendererReset(RendererResetReason::PostRendererStart,
-			postStartRequiresGraph,
-			windowSettleDelayMs +
-			static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+		m_postStartResetCanAccelerate =
+			m_activeRendererIsDirectShow &&
+			windowSettleDelayMs == 0;
+		if (m_activeRendererIsDirectShow)
+		{
+			RequestRendererReset(RendererResetReason::PostRendererStart,
+				postStartRequiresGraph,
+				windowSettleDelayMs +
+					static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+		}
+		else if (windowSettleDelayMs != 0)
+		{
+			// A fresh Alpha queue does not need the configured post-start
+			// delay, but a real display-mode transition still needs its
+			// hardware settle interval before the shield can be released.
+			RequestRendererReset(
+				RendererResetReason::PostRendererStart,
+				false, windowSettleDelayMs);
+			DebugLog::Log(
+				"Post-start reset retained: renderer=%S backend=Alpha "
+				"reason=display-settle delay=%u",
+				static_cast<LPCTSTR>(m_activeRendererName),
+				windowSettleDelayMs);
+		}
+		else if (m_rendererResetTransitionActive)
+		{
+			// A replacement created inside an already-covered reset must still
+			// acknowledge the rebound target and advance the transition model.
+			// Its fresh queue needs no settling delay.
+			RequestRendererReset(
+				RendererResetReason::PostRendererStart,
+				false, 0);
+			DebugLog::Log(
+				"Post-start reset retained: renderer=%S backend=Alpha "
+				"reason=covered-transition-rebind delay=0",
+				static_cast<LPCTSTR>(m_activeRendererName));
+		}
+		else
+		{
+			DebugLog::Log(
+				"Post-start reset skipped: renderer=%S backend=Alpha "
+				"reason=fresh-queue-and-swapchain",
+				static_cast<LPCTSTR>(m_activeRendererName));
+		}
 		if (m_rendererFullscreenCheck.GetCheck())
 		{
 			HWND renderWindow = GetRenderWindow();
@@ -3602,6 +3642,7 @@ void CVideoProcessorDlg::CaptureGUIClear()
 void CVideoProcessorDlg::RenderStart()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStart(): Begin")));
+	m_postStartResetCanAccelerate = false;
 
 	assert(!m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_UNKNOWN ||
@@ -4444,12 +4485,47 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 	const bool resetPending =
 		m_rendererResetCoordinator &&
 		m_rendererResetCoordinator->BlocksReveal(generation);
+	const bool currentFrameReady =
+		generation == m_transitionGeneration &&
+		generation == m_rendererGeneration.load(std::memory_order_acquire) &&
+		m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_videoRenderer->HasPresentedLiveFrame();
+	if (resetPending && currentFrameReady &&
+		m_postStartResetCanAccelerate)
+	{
+		const RendererResetCoordinator::Diagnostics diagnostics =
+			m_rendererResetCoordinator->GetDiagnostics();
+		if (diagnostics.hasPending &&
+			!diagnostics.selectionPrepared &&
+			!diagnostics.operationActive &&
+			diagnostics.pendingReason ==
+				RendererResetReason::PostRendererStart)
+		{
+			m_postStartResetCanAccelerate = false;
+			const bool requiresGraph =
+				diagnostics.pendingScope ==
+					RendererResetScope::Graph;
+			DebugLog::Log(
+				"Post-start reset accelerated by first-current-frame evidence: "
+				"renderer=%S generation=%u scope=%s old_deadline=%llu now=%llu",
+				static_cast<LPCTSTR>(m_activeRendererName),
+				generation, requiresGraph ? "graph" : "live-queue",
+				static_cast<unsigned long long>(
+					diagnostics.pendingDeadlineTick),
+				static_cast<unsigned long long>(GetTickCount64()));
+			RequestRendererReset(
+				RendererResetReason::PostRendererStart,
+				requiresGraph, 0);
+		}
+		return;
+	}
 	if (generation != m_transitionGeneration ||
 		generation != m_rendererGeneration.load(std::memory_order_acquire) ||
 		!m_videoRenderer ||
 		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
 		resetPending ||
-		!m_videoRenderer->HasPresentedLiveFrame() ||
+		!currentFrameReady ||
 		!m_rendererTransitionWindow.IsVisible())
 	{
 		return;

@@ -398,6 +398,7 @@ protected:
 	// stop/reset/run re-prime. Profile-only renderer replacements deliberately
 	// consume this as false so NLS/shader changes do not add a second blackout.
 	bool m_postRendererStartRequiresGraph = true;
+	bool m_postStartResetCanAccelerate = false;
 	UINT_PTR m_rendererStartTime = 0;  // Tick count when renderer started rendering
 	int m_queueResetDelaySeconds = 5;
 	int m_queueResetHighWaterPercent = 75;
