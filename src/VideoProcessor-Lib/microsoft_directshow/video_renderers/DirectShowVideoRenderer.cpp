@@ -418,7 +418,6 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 		if (drainAfterResetStarts)
 			drainAfterResetStarts();
 
-		m_liveSource->Reset();
 		const HRESULT runHr = m_pControl->Run();
 		if (FAILED(runHr))
 		{
@@ -427,6 +426,13 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 				runHr);
 			throw std::runtime_error("DirectShow graph Run failed");
 		}
+
+		// The buffered source intentionally sends NewSegment from its delivery
+		// worker. That worker is inactive while the graph is stopped, so bring
+		// the graph back to Running before the source re-prime transaction. The
+		// coordinator still holds ingress admission closed, preventing a new
+		// capture callback from entering between Run and this reset.
+		m_liveSource->Reset();
 	}
 	else
 	{
