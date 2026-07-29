@@ -51,6 +51,7 @@ DirectShowGenericVideoRenderer::DirectShowGenericVideoRenderer(
 
 void DirectShowGenericVideoRenderer::RendererBuild()
 {
+	AssertGraphThread();
 	if (FAILED(CoCreateInstance(
 		m_rendererCLSID,
 		nullptr,
@@ -63,6 +64,7 @@ void DirectShowGenericVideoRenderer::RendererBuild()
 
 void DirectShowGenericVideoRenderer::MediaTypeGenerate()
 {
+	AssertGraphThread();
 	GUID mediaSubType;
 	int bitCount;
 
@@ -133,6 +135,7 @@ void DirectShowGenericVideoRenderer::MediaTypeGenerate()
 
 void DirectShowGenericVideoRenderer::RendererConnect()
 {
+	AssertGraphThread();
 	if (FAILED(m_pGraph->AddFilter(m_pRenderer, L"Renderer")))
 		throw std::runtime_error("Failed to add renderer to the graph");
 

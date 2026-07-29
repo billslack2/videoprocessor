@@ -48,8 +48,6 @@ public:
 
 			m_request = request;
 			m_pending.store(true, std::memory_order_release);
-			m_legacyNotificationPending.store(
-				true, std::memory_order_release);
 			if (m_sink)
 			{
 				m_publishedSink = m_sink.get();
@@ -69,12 +67,6 @@ public:
 		return m_pending.load(std::memory_order_acquire);
 	}
 
-	bool ConsumeLegacyNotification() noexcept
-	{
-		return m_legacyNotificationPending.exchange(
-			false, std::memory_order_acq_rel);
-	}
-
 	void Complete() noexcept
 	{
 		try
@@ -82,8 +74,6 @@ public:
 			std::lock_guard<std::mutex> lock(m_mutex);
 			m_request = {};
 			m_publishedSink = nullptr;
-			m_legacyNotificationPending.store(
-				false, std::memory_order_release);
 			m_pending.store(false, std::memory_order_release);
 		}
 		catch (...)
@@ -96,6 +86,5 @@ private:
 	std::shared_ptr<IRendererResetRequestSink> m_sink;
 	RendererResetRequest m_request;
 	std::atomic_bool m_pending{false};
-	std::atomic_bool m_legacyNotificationPending{false};
 	IRendererResetRequestSink* m_publishedSink = nullptr;
 };

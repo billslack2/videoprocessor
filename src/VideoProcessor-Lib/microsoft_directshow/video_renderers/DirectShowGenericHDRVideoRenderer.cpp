@@ -82,6 +82,24 @@ DirectShowGenericHDRVideoRenderer::~DirectShowGenericHDRVideoRenderer()
 
 bool DirectShowGenericHDRVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 {
+	if (!IsGraphThread())
+	{
+		if (!DirectShowVideoRenderer::OnVideoState(videoState))
+			return false;
+		const VideoStateComPtr state = videoState;
+		PostCoalescedGraphCommand(GRAPH_COMMAND_HDR_STATE,
+			[this, state]()
+			{
+				if (!m_liveSource || !state->hdrData)
+					return;
+				if (FAILED(m_liveSource->OnHDRData(state->hdrData)))
+					throw std::runtime_error("Failed to set HDR data");
+				m_videoState->hdrData = state->hdrData;
+			});
+		return true;
+	}
+	AssertGraphThread();
+
 	if (!DirectShowVideoRenderer::OnVideoState(videoState))
 		return false;
 
@@ -109,6 +127,7 @@ bool DirectShowGenericHDRVideoRenderer::OnVideoState(VideoStateComPtr& videoStat
 
 void DirectShowGenericHDRVideoRenderer::RendererBuild()
 {
+	AssertGraphThread();
 	if (FAILED(CoCreateInstance(
 		m_rendererCLSID,
 		nullptr,
@@ -121,6 +140,7 @@ void DirectShowGenericHDRVideoRenderer::RendererBuild()
 
 void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 {
+	AssertGraphThread();
 	GUID mediaSubType;
 	int bitCount;
 	LONG heightMultiplier = 1;
@@ -288,6 +308,7 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 
 void DirectShowGenericHDRVideoRenderer::RendererConnect()
 {
+	AssertGraphThread();
 	if (FAILED(m_pGraph->AddFilter(m_pRenderer, L"Renderer")))
 		throw std::runtime_error("Failed to add renderer to the graph");
 
@@ -492,6 +513,25 @@ DirectShowGenericHDRVideoRenderer::MakeRuntimeGeometry(
 bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName,
 	CString& activeRule, bool& rendererRestartRequired)
 {
+	if (!IsGraphThread())
+	{
+		const CString requestedRule(ruleName);
+		activeRule = requestedRule;
+		rendererRestartRequired = false;
+		return PostCoalescedGraphCommand(
+			GRAPH_COMMAND_SHADER_SELECT,
+			[this, requestedRule]()
+			{
+				CString appliedRule;
+				bool restartRequired = false;
+				SelectShaderRule(
+					requestedRule, appliedRule, restartRequired);
+				if (restartRequired)
+					QueueRendererRestartCompletion();
+			});
+	}
+	AssertGraphThread();
+
 	rendererRestartRequired = false;
 	if (!m_pRenderer || !m_videoState)
 		return false;
@@ -634,6 +674,23 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 	bool& rendererRestartRequired)
 {
+	if (!IsGraphThread())
+	{
+		activeRule.Empty();
+		rendererRestartRequired = false;
+		return PostCoalescedGraphCommand(
+			GRAPH_COMMAND_SHADER_REFRESH,
+			[this]()
+			{
+				CString refreshedRule;
+				bool restartRequired = false;
+				RefreshShaderRule(refreshedRule, restartRequired);
+				if (restartRequired)
+					QueueRendererRestartCompletion();
+			});
+	}
+	AssertGraphThread();
+
 	activeRule = m_activeShaderRule;
 	rendererRestartRequired = false;
 	if (m_requestedShaderRule.IsEmpty() || !m_pRenderer || !m_videoState)
@@ -821,6 +878,25 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 bool DirectShowGenericHDRVideoRenderer::SetScreenProfile(bool scopeScreen,
 	CString& activeProfile, bool& rendererRestartRequired)
 {
+	if (!IsGraphThread())
+	{
+		activeProfile = scopeScreen ?
+			TEXT("Scope (2.35:1)") : TEXT("Normal (16:9)");
+		rendererRestartRequired = false;
+		return PostCoalescedGraphCommand(
+			GRAPH_COMMAND_SCREEN_PROFILE,
+			[this, scopeScreen]()
+			{
+				CString appliedProfile;
+				bool restartRequired = false;
+				SetScreenProfile(
+					scopeScreen, appliedProfile, restartRequired);
+				if (restartRequired)
+					QueueRendererRestartCompletion();
+			});
+	}
+	AssertGraphThread();
+
 	rendererRestartRequired = false;
 	m_nlsTargetAspect = scopeScreen ? 2.35 : 16.0 / 9.0;
 	MadVRShaderLoader::SetRuntimeNlsTargetAspect(m_nlsTargetAspect);
@@ -848,6 +924,27 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 	CString& activeState,
 	bool& rendererRestartRequired)
 {
+	if (!IsGraphThread())
+	{
+		const UnifiedProfileRuntime::Snapshot state(snapshot);
+		activeState.Format(TEXT("Viewport: %S (%S)"),
+			snapshot.viewport.profile.c_str(),
+			snapshot.viewport.screenAspect.Canonical().c_str());
+		rendererRestartRequired = false;
+		return PostCoalescedGraphCommand(
+			GRAPH_COMMAND_APPLICATION_STATE,
+			[this, state]()
+			{
+				CString appliedState;
+				bool restartRequired = false;
+				ApplyApplicationState(
+					state, appliedState, restartRequired);
+				if (restartRequired)
+					QueueRendererRestartCompletion();
+			});
+	}
+	AssertGraphThread();
+
 	activeState.Empty();
 	rendererRestartRequired = false;
 	const RendererProfileConfig::ResolvedViewport& viewport =
@@ -889,6 +986,7 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 
 void DirectShowGenericHDRVideoRenderer::LiveSourceBuildAndConnect()
 {
+	AssertGraphThread();
 	DirectShowVideoRenderer::LiveSourceBuildAndConnect();
 
 	if (m_videoState->hdrData)

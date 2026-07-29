@@ -140,10 +140,6 @@ public:
 		snapshot = {};
 		return false;
 	}
-	bool ConsumeCoordinatedResetRequest()
-	{
-		return m_resetRequestLatch.ConsumeLegacyNotification();
-	}
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink)
 	{

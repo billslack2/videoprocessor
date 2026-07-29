@@ -54,6 +54,10 @@ struct IRendererCallback
 	// The renderer can report a human-readable string to say what it's doing
 	// No need to do anything but just display.
 	virtual void OnRendererDetailString(const CString& details) = 0;
+
+	// Delivered on the callback/UI thread after an asynchronous renderer-owner
+	// command discovers that the graph must be replaced.
+	virtual void OnRendererRestartRequired() {}
 };
 
 
@@ -114,6 +118,13 @@ public:
 	// Ask the renderer to stop, this can take some time and you'll get notified
 	// through the IRendererCallback
 	virtual void Stop() = 0;
+	virtual void StopWithIngressDrain(
+		const std::function<void()>& drainAfterGraphStop)
+	{
+		Stop();
+		if (drainAfterGraphStop)
+			drainAfterGraphStop();
+	}
 
 	// Reset the internal state and the video stream.
 	virtual void Reset() = 0;
@@ -372,7 +383,4 @@ public:
 		return false;  // No frame rate measurement by default
 	}
 
-	// A source can request that recovery be coordinated by the GUI lifecycle
-	// instead of mutating an external graph from capture or delivery callbacks.
-	virtual bool ConsumeCoordinatedResetRequest() { return false; }
 };
