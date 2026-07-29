@@ -348,6 +348,22 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin_tracking_snippet.txt" />
+    <None Include="..\..\Shaders\Adaptive sharpen.hlsl">
+      <Link>Shaders\Adaptive sharpen.hlsl</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\Shaders\Debanding mild.hlsl">
+      <Link>Shaders\Debanding mild.hlsl</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\Shaders\Denoise.hlsl">
+      <Link>Shaders\Denoise.hlsl</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\Shaders\Invert.hlsl">
+      <Link>Shaders\Invert.hlsl</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\..\Shaders\NLS.hlsl">
       <Link>Shaders\NLS.hlsl</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

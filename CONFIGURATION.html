@@ -294,33 +294,35 @@ scene_detect=false</pre>
   <p>The renderer is a separate configuration domain inside the same file. Application sections such as <code>[command_line]</code>, capture, queue, shader, and conversion settings start VP. Renderer sections decide how the already-captured frames are processed and displayed. Renderer profiles cannot modify application-owned settings.</p>
   <ol>
     <li>Choose the Alpha renderer in <code>[command_line]</code>.</li>
-    <li>Set safe, always-on values in <code>[display]</code> and <code>[general]</code>.</li>
-    <li>Declare all four required profile groups: <code>input</code>, <code>scaling</code>, <code>display</code>, and <code>viewport</code>.</li>
+    <li>Set shared persistence/event defaults in <code>[general]</code> and built-in-renderer defaults in <code>[vpvr.display]</code> and <code>[vpvr.general]</code>.</li>
+    <li>Declare only the profile groups you need: <code>input</code>, <code>scaling</code>, <code>display</code>, and/or <code>viewport</code>. An omitted group contributes no overrides.</li>
     <li>Define named profiles in each group. Use source rules for automatic input/scaling behavior and <code>$key</code> for manual display/viewport behavior.</li>
     <li>VP resolves one profile per group, applies the combined result, then records a successful manual selection in <code>VideoProcessor.state</code>.</li>
   </ol>
   <pre>[command_line]
 renderer: VideoProcessor Renderer (Alpha)
 
-[display]
+[general]
+persist_profile_selection: true
+event_action_delay_seconds: 5
+
+[vpvr.display]
 quality: high
 sdr_target_nits: 100
 sdr_target_primaries: REC709
 
-[general]
-switch_refresh_rate: true
-persist_profile_selection: true</pre>
+[vpvr.general]
+switch_refresh_rate: true</pre>
 
   <h3 id="renderer-base">Base settings</h3>
-  <p><code>[display]</code> holds the base renderer treatment. Every setting has a typed range or value list and is validated before capture begins. Profiles override only their own group’s settings; values omitted by a profile retain this base value.</p>
+  <p><code>[vpvr.display]</code> holds the base built-in-renderer treatment. Every setting has a typed range or value list and is validated before capture begins. Profiles override only their own group’s settings; values omitted by a profile retain this base value.</p>
   <table><thead><tr><th>Area</th><th>Settings</th><th>Useful values</th></tr></thead><tbody>
     <tr><td>Input treatment</td><td><code>tone_mapping</code>, <code>gamut_mapping</code>, <code>peak_detection</code>, <code>contrast_recovery</code>, <code>sdr_input_transfer</code></td><td>Tone mapping: <code>AUTO</code>, <code>spline</code>, <code>bt2390</code>, <code>st2094-40</code>, <code>reinhard</code>. Gamut mapping: <code>AUTO</code>, <code>perceptual</code>, <code>softclip</code>, <code>relative</code>, <code>desaturate</code>.</td></tr>
     <tr><td>Scaling</td><td><code>quality</code>, <code>upscaler</code>, <code>downscaler</code>, <code>deband</code>, <code>dithering</code></td><td>Quality: <code>fast</code>, <code>balanced</code>, <code>high</code>. Scalers include <code>ewa_lanczossharp</code>, <code>ewa_lanczos</code>, <code>bicubic</code>, and <code>bilinear</code>. Most controls accept <code>AUTO</code>.</td></tr>
     <tr><td>Display target</td><td><code>sdr_target_nits</code>, <code>sdr_black_nits</code>, <code>output_presentation</code>, <code>output_range</code>, <code>output_gamma</code>, <code>sdr_target_primaries</code>, <code>report_bt2020_to_display</code></td><td>Target white is 40–500 nits; black is <code>AUTO</code> or non-negative below target. Presentation is <code>AUTO</code>, <code>DIRECT</code>, or <code>COMPOSED</code>; range is <code>AUTO</code>, <code>FULL</code>, or <code>LIMITED</code>; primaries are <code>REC709</code> or <code>BT2020</code>.</td></tr>
-    <tr><td>Viewport</td><td><code>screen_aspect</code>, <code>subtitle_fit</code>, <code>subtitle_hold_seconds</code>, <code>subtitle_padding_pixels</code></td><td>Profile names are labels only. Aspect accepts ratio, <code>x</code>, or decimal forms from 1.0–4.0, such as <code>16:9</code>, <code>16x9</code>, or <code>2.35</code>. Deprecated <code>scope_*</code> aliases remain readable for migration but cannot be combined with their replacements.</td></tr>
-    <tr><td>Diagnostics</td><td><code>switch_refresh_rate</code>, <code>output_diagnostics</code>, <code>diagnostic_disable_shader_cache</code></td><td>Boolean. Diagnostic controls are for troubleshooting rather than normal calibration.</td></tr>
+    <tr><td>Renderer session policy</td><td><code>switch_refresh_rate</code>, <code>output_diagnostics</code>, <code>diagnostic_disable_shader_cache</code></td><td>Boolean values in <code>[vpvr.general]</code>. Diagnostic controls are for troubleshooting rather than normal calibration.</td></tr>
   </tbody></table>
-  <p><code>[general]</code> controls renderer-session policy: <code>persist_profile_selection</code>, <code>switch_refresh_rate</code>, and <code>event_action_delay_seconds</code> (0–30 seconds). The shipped configuration is the complete conservative starting point.</p>
+  <p>The unprefixed <code>[general]</code> section remains shared and owns <code>persist_profile_selection</code> plus <code>event_action_delay_seconds</code> (0–30 seconds). Deprecated renderer settings in <code>[display]</code> and <code>[general]</code> remain readable during migration, but canonical and legacy definitions of the same setting cannot be mixed.</p>
 
   <h3 id="viewport-state">Viewport state</h3>
   <p>The viewport is application-owned state shared by every renderer and effect. VP resolves and publishes it before shader selection. One snapshot contains the selected profile, exact and numeric screen aspect, subtitle-fit settings, and a generation number. Pressing one key selects the viewport once; VP does not send these values to madVR and does not assume the external curtain, lens-memory, or madVR-profile action succeeded.</p>
@@ -356,7 +358,7 @@ subtitle_padding_pixels: 30</pre>
     <tr><td><code>display</code></td><td>Target nits/black, presentation/range/gamma, target primaries, BT.2020 signalling, and <code>lut</code> plus its reference fields</td><td>Manual display/calibration hotkey</td></tr>
     <tr><td><code>viewport</code></td><td><code>screen_aspect</code>, <code>subtitle_fit</code>, <code>subtitle_hold_seconds</code>, <code>subtitle_padding_pixels</code></td><td>Manual physical-viewport hotkey</td></tr>
   </tbody></table>
-  <p>Each group requires <code>profiles:</code> and <code>default:</code>. The default is a listed profile or <code>auto</code>. <code>persist_profile_selection:</code> may be set per group. A group-level <code>when:</code> is a reset chord: it returns that group to automatic selection without changing other groups.</p>
+  <p>Profile groups are optional. An omitted group simply inherits the base renderer settings and needs no empty placeholder profile. Each group that is declared requires <code>profiles:</code> and <code>default:</code>; the default is a listed profile or <code>auto</code>. <code>persist_profile_selection:</code> may be set per group. A group-level <code>when:</code> is a reset chord: it returns that group to automatic selection without changing other groups.</p>
   <pre>[profile_groups.display]
 profiles: rec709,bt2020
 default: auto
@@ -429,27 +431,7 @@ quality: high</pre>
 
   <h3 id="renderer-recipes">Complete profile recipes</h3>
   <p>The following is a complete, valid renderer profile library. It illustrates automatic HDR/input and UHD/scaling choices, manual display calibration, named 16:9/2.35 viewport selection, a display-only reset, and one composite key. It can be adapted into the renderer portion of <code>VideoProcessor.cfg</code>; keep your existing application sections above it.</p>
-  <pre>[display]
-sdr_target_nits: 100
-sdr_black_nits: 0
-quality: high
-tone_mapping: spline
-gamut_mapping: perceptual
-peak_detection: AUTO
-contrast_recovery: AUTO
-upscaler: AUTO
-downscaler: AUTO
-deband: AUTO
-dithering: AUTO
-output_presentation: DIRECT
-output_range: FULL
-output_gamma: AUTO
-sdr_target_primaries: REC709
-report_bt2020_to_display: false
-sdr_input_transfer: AUTO
-
-[general]
-switch_refresh_rate: true
+  <pre>[general]
 persist_profile_selection: true
 event_action_delay_seconds: 5
 
@@ -516,11 +498,36 @@ when: $key=="F2" || $key=="Ctrl+F9"
 screen_aspect: 2.35:1
 subtitle_fit: true
 subtitle_hold_seconds: 2
-subtitle_padding_pixels: 30</pre>
+subtitle_padding_pixels: 30
+
+[vpvr.display]
+sdr_target_nits: 100
+sdr_black_nits: 0
+quality: high
+tone_mapping: spline
+gamut_mapping: perceptual
+peak_detection: AUTO
+contrast_recovery: AUTO
+upscaler: AUTO
+downscaler: AUTO
+deband: AUTO
+dithering: AUTO
+output_presentation: DIRECT
+output_range: FULL
+output_gamma: AUTO
+sdr_target_primaries: REC709
+report_bt2020_to_display: false
+sdr_input_transfer: AUTO
+
+[vpvr.general]
+switch_refresh_rate: true
+output_diagnostics: false
+diagnostic_disable_shader_cache: false</pre>
   <p>In that example, <code>Ctrl+F9</code> selects BT.2020 display reporting and the 2.35 viewport together; <code>Ctrl+F10</code> selects Rec.709 reporting and the 16:9 viewport. F2 and F3 change only the viewport. F5 and F6 change only the display target. F4 clears only the manual display choice.</p>
 
   <h3 id="renderer-strictness">Strictness and safe changes</h3>
   <p>Unified configuration rejects duplicate keys, unknown sections, missing listed profiles, orphan profile sections, invalid defaults, unknown variables, malformed expressions, unsupported values, and a setting placed in the wrong profile group. Application settings such as capture, queues, conversion, and shaders remain startup-only and cannot be changed by a renderer profile. Legacy display-rule syntax is not part of the unified model.</p>
+  <p><code>[vpvr.display]</code> and <code>[vpvr.general]</code> are the canonical built-in-renderer sections. A file cannot combine <code>[vpvr.display]</code> with deprecated <code>[display]</code> or historical <code>[libplacebo]</code>. A renderer-policy key cannot appear in both <code>[vpvr.general]</code> and a deprecated location, even with the same value. Legacy-only <code>[display_rules*]</code> configurations remain readable during their compatibility window; migrate them to <code>[profile_groups.display]</code> and <code>[profiles.display.*]</code>, not to a <code>vpvr.display_rules</code> section.</p>
   <p>Changes are transactional. VP first resolves the full effective settings, then applies/rebuilds the renderer as needed. It persists a manual selection and runs completed-event actions only after the change succeeds. If application fails, the prior renderer, state, and selection remain in effect.</p>
 
   <h3 id="renderer-events">Completed-event actions</h3>

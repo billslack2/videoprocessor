@@ -3,6 +3,7 @@
 #include "ConfigFile.h"
 #include "ConfigSchema.h"
 #include "MainConfigSchema.h"
+#include "RendererConfigView.h"
 #include "DisplayRuleExpression.h"
 #include "AspectRatio.h"
 
@@ -23,7 +24,7 @@ namespace RendererProfileConfig
 {
 	inline bool OwnsSection(const std::string& section)
 	{
-		return section == "display" ||
+		return RendererConfigView::OwnsSection(section) ||
 			section == "general" ||
 			section == "profile_groups" ||
 			section == "profiles.input" ||
@@ -332,12 +333,59 @@ namespace RendererProfileConfig
 		return false;
 	}
 
+	inline bool ValidateCanonicalDisplaySetting(
+		const std::string& key, const std::string& value)
+	{
+		std::string ignored;
+		for (const char* group : { "input", "scaling", "display" })
+			if (ValidateProfileSetting(group, key, value, ignored)) return true;
+		return key == "deband" &&
+			IsChoice(value, { "auto", "on", "off" });
+	}
+
+	inline bool ValidateCanonicalRendererSections(
+		const ConfigFile& config, std::string& error)
+	{
+		const std::vector<ConfigSchema::KeyRule> policyRules = {
+			ConfigSchema::Boolean("switch_refresh_rate"),
+			ConfigSchema::Boolean("output_diagnostics"),
+			ConfigSchema::Boolean("diagnostic_disable_shader_cache")
+		};
+		if (!ConfigSchema::ValidateSection(config,
+			RendererConfigView::GENERAL_SECTION, policyRules, error))
+			return false;
+
+		if (const auto* display = config.GetSectionValues(
+			RendererConfigView::DISPLAY_SECTION))
+			for (const auto& value : *display)
+				if (!ValidateCanonicalDisplaySetting(
+					value.first, value.second))
+				{
+					error = "[" +
+						std::string(RendererConfigView::DISPLAY_SECTION) +
+						"] key '" + value.first +
+						"' is not a valid built-in renderer base setting";
+					return false;
+				}
+		return true;
+	}
+
 	inline bool Read(const ConfigFile& config, Model& model, std::string& error)
 	{
 		model = {};
 		error.clear();
+		RendererConfigView rendererConfig(config);
+		if (!rendererConfig.Validate(error, model.warnings) ||
+			!ValidateCanonicalRendererSections(config, error))
+			return false;
 		if (!IsUnified(config))
+		{
+			if (config.HasSection("display_rules"))
+				model.warnings.push_back(
+					"[display_rules] is legacy-only; migrate to "
+					"[profile_groups.display] and [profiles.display.*]");
 			return true; // Legacy remains a separate, unchanged compatibility path.
+		}
 
 		if (!config.GetWarnings().empty())
 		{
@@ -378,8 +426,13 @@ namespace RendererProfileConfig
 		model.persistSelection = persist;
 		if (config.TryGetString("general", "event_action_delay_seconds", value))
 			ParseInteger(value, 0, 30, model.eventActionDelaySeconds);
-		if (const auto* display = config.GetSectionValues("display"))
+		for (const char* displaySection :
+			{ RendererConfigView::LEGACY_DISPLAY_SECTION,
+			  RendererConfigView::HISTORICAL_DISPLAY_SECTION })
 		{
+			const auto* display = config.GetSectionValues(displaySection);
+			if (!display)
+				continue;
 			const std::set<std::string> baseKeys = {
 				"sdr_target_nits", "sdr_black_nits", "switch_refresh_rate",
 				"quality", "tone_mapping", "gamut_mapping", "peak_detection",
@@ -403,7 +456,7 @@ namespace RendererProfileConfig
 					"a valid renderer value"
 				});
 			if (!ConfigSchema::ValidateSection(
-				config, "display", displayRules, error))
+				config, displaySection, displayRules, error))
 				return false;
 		}
 
@@ -411,6 +464,20 @@ namespace RendererProfileConfig
 		for (const std::string& groupName : expectedGroups)
 		{
 			const std::string section = "profile_groups." + groupName;
+			const std::string profilePrefix = "profiles." + groupName + ".";
+			if (!config.HasSection(section))
+			{
+				for (const std::string& configured :
+					config.GetSectionNames())
+					if (configured.rfind(profilePrefix, 0) == 0)
+					{
+						error = "[" + configured +
+							"] is orphaned because [" + section +
+							"] is not declared";
+						return false;
+					}
+				continue; // An undeclared group contributes no overrides.
+			}
 			std::string profileList;
 			if (!config.TryGetString(section, "profiles", profileList))
 			{
@@ -686,7 +753,8 @@ namespace RendererProfileConfig
 				}
 		for (const std::string& section : config.GetSectionNames())
 			if (expectedSections.find(section) == expectedSections.end() &&
-				!MainConfigSchema::OwnsSection(section))
+				!MainConfigSchema::OwnsSection(section) &&
+				!RendererConfigView::OwnsSection(section))
 			{
 				error = "unified renderer configuration has unknown or orphan section [" + section + "]";
 				return false;
