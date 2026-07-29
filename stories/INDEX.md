@@ -69,7 +69,7 @@ they must not contain requirements that are absent from this file.
 | VP-0042 | Backlog | Indexed debug-log rotation filenames |
 | VP-0043 | Backlog | madVR graph re-prime after lifecycle and queue pressure |
 | VP-0044 | Backlog | Alpha native OSD visible-picture anchoring and scaling |
-| VP-0045 | Review | Namespace built-in renderer configuration as vpvr |
+| VP-0045 | Done | Namespace built-in renderer configuration as vpvr |
 | VP-0046 | Backlog | DirectShow event plumbing and passive health diagnostics |
 | VP-0047 | Backlog | Verified P3-D65 display target and LUT contract |
 | VP-0048 | Backlog | Explicit SDR LUT transfer and range contracts |

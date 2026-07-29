@@ -2,11 +2,11 @@
 
 ## Status
 
-Review. Implemented on 2026-07-28 from confirmed integration base
+Done. Implemented and merged on 2026-07-28 from confirmed integration base
 `origin/v1.1.014-beta` at `15577fc` on branch
 `codex/vp-0045-vpvr-namespace`, commit `110b37b`, using worktree
-`C:\Users\bslac\vp\worktrees\vp-0045-vpvr`. The branch is pushed to
-`origin/codex/vp-0045-vpvr-namespace`.
+`C:\Users\bslac\vp\worktrees\vp-0045-vpvr`. Pull request
+`billslack2/videoprocessor#23` merged to `v1.1.014-beta` as `d78bfae`.
 
 Readiness review on 2026-07-28 found the naming goal sound but rejected the
 original whole-section migration because it conflicted with the unified profile
@@ -293,6 +293,14 @@ validation. SHA-256 comparison confirmed the deployed executable,
 documentation, Alpha plugin/runtime DLLs, and all six shader assets exactly
 match the verified Release output. VideoProcessor was not running during
 replacement and was not launched automatically afterward.
+
+### Merge evidence
+
+- PR: `https://github.com/billslack2/videoprocessor/pull/23`
+- Merge commit: `d78bfae81f2265c54abbf6c9f152e9179ffcc52e`
+- Integration branch: `v1.1.014-beta`
+- Post-merge ancestry verification confirmed implementation commit `110b37b`
+  is contained by `origin/v1.1.014-beta`.
 
 ## Readiness decision
 
