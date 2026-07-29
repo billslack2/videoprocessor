@@ -43,6 +43,7 @@ public:
 	void Build() override;
 	void Start() override;
 	void Stop() override;
+	void Retire() noexcept override;
 	void Reset() override;
 	void ResetLiveQueue() override;
 	void OnSize() override;

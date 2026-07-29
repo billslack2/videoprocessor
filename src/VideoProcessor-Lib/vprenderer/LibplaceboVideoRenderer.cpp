@@ -6069,6 +6069,40 @@ void LibplaceboVideoRenderer::Stop()
 }
 
 
+void LibplaceboVideoRenderer::Retire() noexcept
+{
+	try
+	{
+		// Do not call Stop(): this can run after the GUI has already processed
+		// the stopped-state notification, and a second callback could be applied
+		// to the replacement renderer. Join directly before releasing the
+		// swapchain, so no render or present can still use it.
+		if (m_renderThread.joinable())
+		{
+			{
+				std::lock_guard<std::mutex> guard(m_queueMutex);
+				m_stopRequested = true;
+			}
+			m_queueChanged.notify_all();
+			m_renderThread.join();
+		}
+		ClearQueue("renderer retirement");
+		m_impl.reset();
+		m_hasPresentedLiveFrame.store(false, std::memory_order_release);
+		DebugLog::Log(
+			"Alpha renderer retired: render thread stopped and presentation swapchain released");
+	}
+	catch (const std::exception& error)
+	{
+		DebugLog::Log("Alpha renderer retirement failed: %s", error.what());
+	}
+	catch (...)
+	{
+		DebugLog::Log("Alpha renderer retirement failed with an unknown exception");
+	}
+}
+
+
 void LibplaceboVideoRenderer::Reset()
 {
 	if (m_impl && m_impl->renderer)

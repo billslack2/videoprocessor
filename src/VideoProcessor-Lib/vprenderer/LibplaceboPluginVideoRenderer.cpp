@@ -218,6 +218,13 @@ void LibplaceboPluginVideoRenderer::Stop()
 }
 
 
+void LibplaceboPluginVideoRenderer::Retire() noexcept
+{
+	if (m_renderer)
+		m_renderer->Retire();
+}
+
+
 void LibplaceboPluginVideoRenderer::Reset()
 {
 	m_renderer->Reset();
