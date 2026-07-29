@@ -2,11 +2,18 @@
 
 ## Status
 
-Backlog.
+In Progress.
 
-Investigation on July 29, 2026 reproduced and isolated the failure. The current
-implementation base discovered from GitHub is `v1.1.015-beta`; developer
-confirmation of that base is required before implementation begins.
+Investigation on July 29, 2026 reproduced and isolated the failure.
+Implementation has started from the confirmed integration base
+`v1.1.015-beta` at `776cbe639e08faa2d72d9036e8bf20231d914f1c`.
+
+- Branch: `codex/vp-0061-directshow-reset-reprime`
+- Worktree: `C:\Users\bslac\vp\worktrees\vp-0061-directshow-reset-reprime`
+- First progress: the clean worktree is ready. Implementation begins by
+  comparing the current Stop/Run reset path with the existing in-place flush
+  path and adding only the synchronization needed to preserve the latency
+  contract.
 
 Tracker audit at creation found 59 canonical story files and 59 index rows,
 with no duplicate or missing IDs. The existing index states for VP-0034,
