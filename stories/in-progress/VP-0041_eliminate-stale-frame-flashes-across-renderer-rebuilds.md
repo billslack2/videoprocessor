@@ -423,3 +423,45 @@ multiple graph-reset cycles completed through black cover, owner-thread
 stop/reset/run, current-epoch downstream preroll, and shielded reveal without
 a crash. The story remains in progress pending the user's YouTube TV
 fullscreen channel-change/exit reproduction matrix.
+
+## 2026-07-29 madVR-to-Alpha hang follow-up
+
+Live testing of `ec59c0b` reproduced a total hang when switching from madVR
+to Alpha. Reset and restart operations before that switch completed normally.
+The final log entry was old-renderer detachment, before
+`old-surface-retired`.
+
+Review found that `GraphStop()` made `STOPPED` observable before ingress drain
+and graph teardown were terminal. A pending DirectShow window notification
+could therefore make the UI destroy the renderer while its graph-owner stop
+command was still active. The destructor then joined that active command and
+could deadlock with madVR's window-message teardown.
+
+Commit `1ff1bc9` fixes that lifecycle boundary:
+
+- `STOPPED` is created only after ingress drain and resource-complete graph
+  teardown;
+- its HWND wake is an executor completion hook, issued only after the stop
+  command has returned and released its captures;
+- the DirectShow notification handler pins shared renderer ownership through
+  callback dispatch;
+- normal retirement cancels late event-drain commands and joins without a
+  second graph teardown;
+- both normal and forced joins service synchronous sent messages without
+  dispatching unrelated posted UI work;
+- the graph-owner apartment drains its own helper-window messages before
+  `CoUninitialize`;
+- incomplete resource release reports `FAILED` and retains the forced-cleanup
+  path instead of claiming terminal retirement.
+
+Threading, DirectShow/COM, and player-lifecycle reviewers approved the final
+revision with no deployment blocker. The x64 Release solution build and full
+test suite passed `257/257`, including a deterministic test proving lifecycle
+completion cannot overtake the command or its captured lifetime.
+
+The exact clean commit build was deployed to `C:\Videoprocessor\vp` with
+matching executable/plugin hashes. Rollback backups use timestamp
+`20260729-100130`. VP started successfully as process 19300 with version
+`v1.1.012-beta-ffmpeg-4.4.8-115-g1ff1bc9`. The story remains in progress
+pending live fullscreen madVR-to-Alpha and YouTube TV channel-change
+validation.
