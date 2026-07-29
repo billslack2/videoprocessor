@@ -2,7 +2,7 @@
 
 ## Status
 
-Backlog. Pull request #18 merged into the default integration branch
+In Progress. Pull request #18 merged into the default integration branch
 `v1.1.014-beta` on July 28, 2026 as merge commit `ab81c309`. Release x64 built
 successfully and all 181 tests passed. A basic launch from the feature build
 location also succeeded.
@@ -15,11 +15,33 @@ Alpha or successful downstream acceptance for DirectShow/madVR. Fullscreen
 hosts also paint a deterministic black background, and lifecycle logs record
 black-show, old-surface retirement, and first-live-frame reveal.
 
-Real-world validation found that the stale-frame issue still exists, so this
-story is reopened to Backlog. The black-cover implementation is retained as
-completed work, but it is not sufficient. Reproduce the remaining failure,
-capture the lifecycle evidence requested below, and identify the presentation
-path that can still reveal a retired frame before beginning another fix.
+Real-world validation found that the stale-frame issue still exists, although
+less frequently, so this story was reopened on July 28, 2026. Implementation
+resumed on branch `codex/vp-0041-reopen` from the current default branch
+`v1.1.014-beta`, using the isolated worktree
+`C:\Users\bslac\vp\worktrees\vp-0041-reopen`.
+
+The deployed rotated logs establish that the original black cover is a child
+of the render target: in fullscreen sessions the logged cover HWND has the
+fullscreen target as its parent. DirectShow then creates its own child video
+window during graph construction. That later renderer child can temporarily
+rise above the earlier cover. The original cover is also destroyed when its
+fullscreen target is replaced, and its GDI paint is followed immediately by
+renderer teardown without a compositor-present synchronization boundary.
+The logs do not encode the exact instant at which the visible stale frame was
+observed, but they confirm both remaining lifecycle races.
+
+Commit `4e3af03` changes the cover to a stable dialog-owned, non-activating
+popup positioned over the render target. It survives fullscreen target
+replacement and remains above renderer-owned child windows. The stop and
+first-current-frame reveal boundaries now use `DwmFlush` only at lifecycle
+transitions, after black is painted and before it is removed, so teardown and
+reveal cannot overtake the compositor. Transition logs include the cover
+owner, synchronization result, and synchronization duration.
+
+The fix completed a clean x64 Release build with the repository's v142/Visual
+Studio 2019 toolchain, and all 196 tests passed. It remains in progress pending
+real-world HDMI-resync and repeated Alpha/madVR transition validation.
 
 Acceptance still requires repeated Alpha-only, madVR-only, Alpha/madVR
 handoff, refresh-rate/mode-change, and actual HDMI-resync validation.
