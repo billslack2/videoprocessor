@@ -40,6 +40,23 @@ unavailable with a specific OSD reason. Candidate validation must cover
 Alpha, while logging first eligible evidence, decision latency, publication and
 consumer generations, and renderer/queue/HDR health.
 
+### Implementation progress (2026-07-29)
+
+Implemented presentation hysteresis on branch
+`codex/vp-0062-nls-geometry-deadband` (`ffaba48`), based on the current
+default integration branch. Each typed NLS rule now owns
+`stable_geometry_deadband_percent` (default `2`, accepted range `0`--`5`).
+The transition model retains an already trusted rectangle only when every edge
+and the aggregate active-size change remain within the configured percentage.
+It never promotes provisional evidence, so dark artwork cannot gain crop
+authority. A larger trusted change still takes the normal confirmation path.
+
+The policy is applied by the selected madVR and Alpha NLS rules without a graph
+or queue reset. Added transition tests for the 2% hold, a change beyond the
+deadband, and the 5% maximum. All 268 unit tests passed; x64 Release solution
+build completed successfully. The linker emitted existing PDB-debug-symbol
+warnings only. No deployment or deployed configuration edit was performed.
+
 ## User story
 
 As a Scope-screen user with NLS armed, I want a sustained 16:9 full-raster
