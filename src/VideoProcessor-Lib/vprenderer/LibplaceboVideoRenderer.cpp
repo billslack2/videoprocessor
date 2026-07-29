@@ -2619,6 +2619,26 @@ struct LibplaceboVideoRenderer::Impl
 		pl_log_destroy(&log);
 	}
 
+	bool PresentBlackFrame()
+	{
+		if (!d3d11 || !d3d11->gpu || !swapchain)
+			return false;
+
+		struct pl_swapchain_frame swapchainFrame{};
+		if (!pl_swapchain_start_frame(swapchain, &swapchainFrame))
+			return false;
+
+		struct pl_frame target{};
+		pl_frame_from_swapchain(&target, &swapchainFrame);
+		const float black[] = { 0.0f, 0.0f, 0.0f };
+		pl_frame_clear(d3d11->gpu, &target, black);
+		if (!pl_swapchain_submit_frame(swapchain))
+			return false;
+
+		pl_swapchain_swap_buffers(swapchain);
+		return true;
+	}
+
 	void LoadShaderCache()
 	{
 		shaderCachePath = ShaderCachePath();
@@ -6066,6 +6086,49 @@ void LibplaceboVideoRenderer::Stop()
 		m_renderThread.join();
 	ClearQueue("renderer stop");
 	SetState(RendererState::RENDERSTATE_STOPPED);
+}
+
+
+void LibplaceboVideoRenderer::Retire() noexcept
+{
+	try
+	{
+		// Do not call Stop(): this can run after the GUI has already processed
+		// the stopped-state notification, and a second callback could be applied
+		// to the replacement renderer. Join directly before releasing the
+		// swapchain, so no render or present can still use it.
+		if (m_renderThread.joinable())
+		{
+			{
+				std::lock_guard<std::mutex> guard(m_queueMutex);
+				m_stopRequested = true;
+			}
+			m_queueChanged.notify_all();
+			m_renderThread.join();
+		}
+		ClearQueue("renderer retirement");
+		bool blackPresented = false;
+		if (m_impl)
+		{
+			std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
+			blackPresented = m_impl->PresentBlackFrame();
+		}
+		DebugLog::Log(
+			"Alpha renderer retirement: terminal black present=%d before swapchain release",
+			blackPresented ? 1 : 0);
+		m_impl.reset();
+		m_hasPresentedLiveFrame.store(false, std::memory_order_release);
+		DebugLog::Log(
+			"Alpha renderer retired: render thread stopped and presentation swapchain released");
+	}
+	catch (const std::exception& error)
+	{
+		DebugLog::Log("Alpha renderer retirement failed: %s", error.what());
+	}
+	catch (...)
+	{
+		DebugLog::Log("Alpha renderer retirement failed with an unknown exception");
+	}
 }
 
 
