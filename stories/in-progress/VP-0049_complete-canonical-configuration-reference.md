@@ -2,9 +2,9 @@
 
 ## Status
 
-Backlog and ready for implementation. VP-0045 is complete, so the canonical
-`vpvr.*` section names and ownership boundaries are now final. No
-implementation has started.
+Implementation in progress. VP-0045 is complete, so the canonical `vpvr.*`
+section names and ownership boundaries are final. The canonical public field
+inventory and current help are being audited before the reference rewrite.
 
 ## User story
 
