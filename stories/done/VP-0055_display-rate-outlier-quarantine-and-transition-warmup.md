@@ -2,7 +2,7 @@
 
 ## Status
 
-Review.
+Done.
 
 - Root cause confirmed: a short first wait could seed the estimator near half
   the physical period, after which ordinary waits were rounded to two
@@ -27,15 +27,16 @@ Review.
   is one VP-0055 commit ahead of that base with the intended ten-file diff.
 - Implementation branch: `codex/vp-0055-display-rate-validation`
 - Rebased source commit: `b28727076e6a123fcbcec3665bc0ce3164e88597`
-- Draft PR: `https://github.com/billslack2/videoprocessor/pull/25`
+- Merged PR: `https://github.com/billslack2/videoprocessor/pull/25`
+- Merge commit on `v1.1.015-beta`:
+  `cc6ffd7f635f221de9570db5869f5975ddb4ab0d`
 - Validation: x64 Release solution build passed with Visual Studio 18.7
   MSBuild; the full native suite passed 205/205. Focused cases cover clean
   23.976 and 59.94/60, explained scheduler gaps, startup zero, unstable,
   stale, and non-finite candidates, the recorded 2x incident, and a real
   refresh change.
-- Review focus: confirm tolerance/retry policy and exercise an Alpha <->
-  DirectShow/display-mode transition on the affected machine. Proposed
-  decision is merge after review and live transition validation.
+- Accepted and merged 2026-07-29. Deployment and affected-machine transition
+  exercise remain release validation rather than implementation blockers.
 
 ## User story
 
