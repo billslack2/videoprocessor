@@ -159,6 +159,18 @@ STDMETHODIMP CLiveSource::Reset()
 }
 
 
+void CLiveSource::ResetWithIngressDrain(
+	const std::function<void()>& drainAfterBeginFlush)
+{
+	DebugLog::Log(
+		"CLiveSource::ResetWithIngressDrain() called - "
+		"beginning in-place source reset");
+	m_videoOutputPin->ResetWithIngressDrain(drainAfterBeginFlush);
+	DebugLog::Log(
+		"CLiveSource::ResetWithIngressDrain() - in-place source reset returned");
+}
+
+
 STDMETHODIMP CLiveSource::NonDelegatingQueryInterface(REFIID riid, void** ppv)
 {
 	CheckPointer(ppv, E_POINTER);

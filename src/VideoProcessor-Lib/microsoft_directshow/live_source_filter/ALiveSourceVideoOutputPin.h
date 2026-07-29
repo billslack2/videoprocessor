@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <functional>
+
 
 #include <cstdint>
 #include <video_frame_formatter/IVideoFrameFormatter.h>
@@ -148,6 +150,8 @@ public:
 
 	// Reset the internal state and the video stream.
 	virtual void Reset();
+	virtual void ResetWithIngressDrain(
+		const std::function<void()>& drainAfterBeginFlush);
 
 	// Set fixed pipeline offset for RATIONAL_RATIONAL mode (in 100ns units)
 	// This compensates for processing delays by shifting the timeline forward

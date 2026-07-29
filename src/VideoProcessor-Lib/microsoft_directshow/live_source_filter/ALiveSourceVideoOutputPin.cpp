@@ -518,18 +518,42 @@ void ALiveSourceVideoOutputPin::OnHDRData(HDRDataSharedPtr& hdrData)
 
 void ALiveSourceVideoOutputPin::Reset()
 {
+	ResetWithIngressDrain({});
+}
+
+
+void ALiveSourceVideoOutputPin::ResetWithIngressDrain(
+	const std::function<void()>& drainAfterBeginFlush)
+{
 	DebugLog::Log("ALiveSourceVideoOutputPin::Reset() - HDMI resync timing reset started");
 
-	if (FAILED(DeliverBeginFlush()))
+	if (DeliverBeginFlush() != S_OK)
+	{
+		DeliverEndFlush();
 		throw std::runtime_error("Failed to deliver beginflush");
+	}
 
-	ResetTimingState();
+	bool flushEnded = false;
+	try
+	{
+		if (drainAfterBeginFlush)
+			drainAfterBeginFlush();
 
-	if (FAILED(DeliverEndFlush()))
-		throw std::runtime_error("Failed to deliver endflush");
+		ResetTimingState();
 
-	if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
-		throw std::runtime_error("Failed to deliver new segment");
+		if (DeliverEndFlush() != S_OK)
+			throw std::runtime_error("Failed to deliver endflush");
+		flushEnded = true;
+
+		if (DeliverNewSegment(0, MAXLONGLONG, 1.0) != S_OK)
+			throw std::runtime_error("Failed to deliver new segment");
+	}
+	catch (...)
+	{
+		if (!flushEnded)
+			DeliverEndFlush();
+		throw;
+	}
 	m_deliverNewSegment = false;
 	CompleteCoordinatedReset();
 

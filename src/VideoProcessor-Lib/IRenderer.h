@@ -129,15 +129,21 @@ public:
 	// Reset the internal state and the video stream.
 	virtual void Reset() = 0;
 	virtual void ResetWithIngressDrain(
-		const std::function<void()>& drainAfterGraphStop)
+		const std::function<void()>& drainAfterResetStarts)
 	{
-		drainAfterGraphStop();
+		drainAfterResetStarts();
 		Reset();
 	}
 
 	// Flush and re-prime only the live-source queue without rebuilding the
 	// renderer graph. Renderers without a live source may ignore this request.
 	virtual void ResetLiveQueue() {}
+	virtual void ResetLiveQueueWithIngressDrain(
+		const std::function<void()>& drainAfterResetStarts)
+	{
+		drainAfterResetStarts();
+		ResetLiveQueue();
+	}
 
 	// Installs the closeable asynchronous reset-request endpoint associated
 	// with this renderer instance. Backends must never call UI or graph control

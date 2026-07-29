@@ -232,18 +232,24 @@ RendererResetCoordinator::RendererResetCoordinator(WakeUi wakeUi, Clock clock):
 				std::string failure;
 				try
 				{
+					const auto drainIngress = [state]()
+					{
+						if (!state->ingress->WaitForDrainFor(
+							std::chrono::milliseconds(1000)))
+						{
+							throw std::runtime_error(
+								"renderer ingress drain timed out");
+						}
+					};
 					if (selection.request.scope ==
 						RendererResetScope::Graph)
 					{
-						renderer->ResetWithIngressDrain([state]()
-							{
-								state->ingress->WaitForDrain();
-							});
+						renderer->ResetWithIngressDrain(drainIngress);
 					}
 					else
 					{
-						renderer->ResetLiveQueue();
-						state->ingress->WaitForDrain();
+						renderer->ResetLiveQueueWithIngressDrain(
+							drainIngress);
 					}
 					succeeded = true;
 				}

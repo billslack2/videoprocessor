@@ -9,6 +9,7 @@
 #pragma once
 
 
+#include <functional>
 #include <streams.h>
 
 #include <VideoState.h>
@@ -49,6 +50,8 @@ public:
 	ALiveSourceVideoOutputPin* GetVideoOutputPin() { return m_videoOutputPin; }
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink);
+	void ResetWithIngressDrain(
+		const std::function<void()>& drainAfterBeginFlush);
 
 	// IUnknown
 	DECLARE_IUNKNOWN;

@@ -81,8 +81,10 @@ public:
 		const std::function<void()>& drainAfterGraphStop) override;
 	void Reset() override;
 	void ResetWithIngressDrain(
-		const std::function<void()>& drainAfterGraphStop) override;
+		const std::function<void()>& drainAfterResetStarts) override;
 	void ResetLiveQueue() override;
+	void ResetLiveQueueWithIngressDrain(
+		const std::function<void()>& drainAfterResetStarts) override;
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink) override;
 	void Retire() noexcept override;

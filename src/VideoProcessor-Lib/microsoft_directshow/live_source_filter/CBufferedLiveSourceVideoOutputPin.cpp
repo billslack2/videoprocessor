@@ -59,6 +59,7 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 	m_hShutdownEvent = nullptr;
 	m_hConversionShutdownEvent = nullptr;
 	m_hConvertedAvailableEvent = nullptr;
+	m_hResetSegmentCompleteEvent = nullptr;
 
 	// Initialize auto-purge timing state
 	m_lastAutoPurgeTime = 0;
@@ -102,6 +103,24 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 		CloseHandle(m_hFrameAvailableEvent);
 		m_hFrameAvailableEvent = nullptr;
 		throw std::runtime_error("Failed to create converted available event");
+	}
+
+	// Auto-reset acknowledgement for the reset-time NewSegment control
+	// command executed by the delivery thread.
+	m_hResetSegmentCompleteEvent =
+		CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	if (!m_hResetSegmentCompleteEvent)
+	{
+		CloseHandle(m_hConvertedAvailableEvent);
+		m_hConvertedAvailableEvent = nullptr;
+		CloseHandle(m_hConversionShutdownEvent);
+		m_hConversionShutdownEvent = nullptr;
+		CloseHandle(m_hShutdownEvent);
+		m_hShutdownEvent = nullptr;
+		CloseHandle(m_hFrameAvailableEvent);
+		m_hFrameAvailableEvent = nullptr;
+		throw std::runtime_error(
+			"Failed to create reset segment completion event");
 	}
 
 
@@ -195,6 +214,12 @@ CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 		m_hConvertedAvailableEvent = nullptr;
 	}
 
+	if (m_hResetSegmentCompleteEvent)
+	{
+		CloseHandle(m_hResetSegmentCompleteEvent);
+		m_hResetSegmentCompleteEvent = nullptr;
+	}
+
 
 	DbgLog((LOG_TRACE, 1, TEXT("~CBufferedLiveSourceVideoOutputPin: Async conversion shutdown complete")));
 }
@@ -265,6 +290,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		}
 		ResetEvent(m_hFrameAvailableEvent);
 		ResetEvent(m_hConvertedAvailableEvent);
+		ResetEvent(m_hResetSegmentCompleteEvent);
 
 		// Update state atomics
 		m_isActive.store(true, std::memory_order_release);
@@ -277,6 +303,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		m_deliverySuccessCount.store(0, std::memory_order_release);
 		m_currentEpochDeliverySuccessCount.store(
 			0, std::memory_order_release);
+		m_resetSegmentGate.Clear();
+		m_resetSegmentResult.store(E_PENDING, std::memory_order_release);
 		m_lastDeliverySuccessQueueEpoch.store(0, std::memory_order_release);
 		CompleteCoordinatedReset();
 		m_lastInputTick.store(0, std::memory_order_release);
@@ -310,7 +338,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		DebugLog::Log("Active(): ASYNC architecture - Raw->Convert->Queue->Deliver->MadVR with queue size %zu", m_frameQueueMaxSize.load(std::memory_order_relaxed));
 
 		// SAFETY: Ensure all events are created before starting threads
-		if (!m_hConversionShutdownEvent || !m_hFrameAvailableEvent || !m_hConvertedAvailableEvent)
+		if (!m_hConversionShutdownEvent || !m_hFrameAvailableEvent ||
+			!m_hConvertedAvailableEvent || !m_hResetSegmentCompleteEvent)
 		{
 			DbgLog((LOG_ERROR, 1, TEXT("Active(): Critical events not initialized")));
 			DebugLog::Log("Active(): CRITICAL EVENTS NOT INITIALIZED - ConvShutdown=%p, FrameAvailable=%p, ConvertedAvailable=%p",
@@ -900,31 +929,63 @@ void CBufferedLiveSourceVideoOutputPin::SetSceneTimingPhase(
 
 void CBufferedLiveSourceVideoOutputPin::Reset()
 {
+	ResetWithIngressDrain({});
+}
+
+
+void CBufferedLiveSourceVideoOutputPin::ResetWithIngressDrain(
+	const std::function<void()>& drainAfterBeginFlush)
+{
 	// Multiple reset sources exist (UI, timing recovery, frame-counter
 	// discontinuity, and the delivery thread). Keep their complete downstream
 	// flush transactions from overlapping.
 	CAutoLock resetTransactionLock(&m_resetTransactionGate);
 	m_resetInProgress.store(true, std::memory_order_release);
+	const ULONGLONG resetStartTick = GetTickCount64();
 
 	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Reset() - HDMI resync async queue reset starting");
 	m_deliveryFlushing.store(true, std::memory_order_release);
+	m_conversionFlushing.store(true, std::memory_order_release);
 
 	// BeginFlush must be sent before waiting for an in-flight Receive/Deliver;
 	// this is what unblocks a renderer that is waiting internally.
-	if (FAILED(DeliverBeginFlush()))
+	const HRESULT beginFlushHr = DeliverBeginFlush();
+	if (beginFlushHr != S_OK)
 	{
+		DeliverEndFlush();
 		m_deliveryFlushing.store(false, std::memory_order_release);
+		m_conversionFlushing.store(false, std::memory_order_release);
 		m_resetInProgress.store(false, std::memory_order_release);
+		DebugLog::Log(
+			"RESET TRANSACTION: BeginFlush rejected hr=0x%08x",
+			beginFlushHr);
 		throw std::runtime_error("Failed to deliver beginflush");
 	}
+	const ULONGLONG beginFlushTick = GetTickCount64();
 
 	HRESULT endFlushHr = S_OK;
-	HRESULT newSegmentHr = S_OK;
+	uint64_t resetQueueEpoch = 0;
+	bool flushEnded = false;
 	try
 	{
-		// No Deliver call can start while queues, timestamp state, and the
-		// DirectShow segment are changed below.
+		// Renderer ingress admission is already closed by the coordinator.
+		// BeginFlush comes first so any downstream Receive can return before
+		// we wait for callbacks that were admitted before the reset.
+		if (drainAfterBeginFlush)
+			drainAfterBeginFlush();
+		const ULONGLONG ingressDrainedTick = GetTickCount64();
+
+		// No delivery iteration or Deliver call can retain an old allocator
+		// sample while queues, timestamp state, and the DirectShow segment are
+		// changed below. The conversion gate likewise waits for the current
+		// conversion iteration and prevents another old-epoch one from starting.
+		CAutoLock deliveryWorkLock(&m_deliveryWorkGate);
 		CAutoLock deliveryLock(&m_deliveryGate);
+		CAutoLock conversionLock(&m_conversionGate);
+
+		if (m_pendingUpstreamRepeat.sample)
+			m_pendingUpstreamRepeat.sample->Release();
+		m_pendingUpstreamRepeat = {};
 
 		m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
 		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
@@ -934,7 +995,8 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		// Purge raw frames and establish the new queue epoch.
 		{
 			CAutoLock rawLock(&m_rawQueueLock);
-			m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
+			resetQueueEpoch =
+				m_queueEpoch.fetch_add(1, std::memory_order_acq_rel) + 1;
 			m_currentEpochDeliverySuccessCount.store(
 				0, std::memory_order_release);
 
@@ -1006,34 +1068,79 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		ResetTimingState();
 
 		endFlushHr = DeliverEndFlush();
-		if (SUCCEEDED(endFlushHr))
-			newSegmentHr = DeliverNewSegment(0, MAXLONGLONG, 1.0);
+		if (endFlushHr != S_OK)
+			throw std::runtime_error("Failed to deliver endflush");
+		flushEnded = true;
+
+		// NewSegment must run on the delivery thread, but Reset must not report
+		// success until its HRESULT is known. Arm a control command and prepare
+		// an acknowledgement before either worker is resumed.
+		ResetEvent(m_hResetSegmentCompleteEvent);
+		m_resetSegmentResult.store(E_PENDING, std::memory_order_release);
+		m_resetSegmentGate.Arm(resetQueueEpoch);
+		// Publish the resumed state while both worker gates are still held.
+		// A previously signaled delivery event can then never acknowledge the
+		// command against the transient flushing state.
+		m_deliveryFlushing.store(false, std::memory_order_release);
+		m_conversionFlushing.store(false, std::memory_order_release);
+
+		DebugLog::Log(
+			"RESET TRANSACTION: epoch=%llu begin_flush_ms=%llu "
+			"ingress_drain_ms=%llu quiesce_and_reset_ms=%llu segment=pending",
+			static_cast<unsigned long long>(resetQueueEpoch),
+			static_cast<unsigned long long>(
+				beginFlushTick - resetStartTick),
+			static_cast<unsigned long long>(
+				ingressDrainedTick - beginFlushTick),
+			static_cast<unsigned long long>(
+				GetTickCount64() - ingressDrainedTick));
 	}
 	catch (...)
 	{
-		DeliverEndFlush();
+		if (!flushEnded)
+			DeliverEndFlush();
+		m_resetSegmentGate.Clear();
 		m_deliveryFlushing.store(false, std::memory_order_release);
+		m_conversionFlushing.store(false, std::memory_order_release);
 		m_resetInProgress.store(false, std::memory_order_release);
 		throw;
 	}
 
-	m_deliveryFlushing.store(false, std::memory_order_release);
-	m_resetInProgress.store(false, std::memory_order_release);
-
-	if (FAILED(endFlushHr))
-		throw std::runtime_error("Failed to deliver endflush");
-	if (FAILED(newSegmentHr))
-		throw std::runtime_error("Failed to deliver new segment");
-
-	// Wake both workers after the new segment is fully established.
+	// Resume both workers. The delivery event carries the NewSegment control
+	// command even when no converted sample is queued.
 	if (m_hFrameAvailableEvent)
 		SetEvent(m_hFrameAvailableEvent);
 	if (m_hConvertedAvailableEvent)
 		SetEvent(m_hConvertedAvailableEvent);
 
+	const DWORD segmentWait = WaitForSingleObject(
+		m_hResetSegmentCompleteEvent, 1000);
+	const HRESULT segmentHr =
+		m_resetSegmentResult.load(std::memory_order_acquire);
+	if (segmentWait != WAIT_OBJECT_0 || segmentHr != S_OK)
+	{
+		DebugLog::Log(
+			"RESET TRANSACTION: epoch=%llu NewSegment acknowledgement failed "
+			"wait=%lu hr=0x%08x elapsed_ms=%llu action=renderer-restart",
+			static_cast<unsigned long long>(resetQueueEpoch),
+			segmentWait,
+			segmentHr,
+			static_cast<unsigned long long>(
+				GetTickCount64() - resetStartTick));
+		m_resetSegmentGate.Clear();
+		m_resetInProgress.store(false, std::memory_order_release);
+		throw std::runtime_error(
+			"Delivery thread failed to establish reset segment");
+	}
+
+	m_resetInProgress.store(false, std::memory_order_release);
 	CompleteCoordinatedReset();
 	DebugLog::Log(
-		"CBufferedLiveSourceVideoOutputPin::Reset() - queues/timing reset, buffering enabled, new segment delivered");
+		"CBufferedLiveSourceVideoOutputPin::Reset() - epoch=%llu complete "
+		"elapsed_ms=%llu, buffering enabled, new segment acknowledged",
+		static_cast<unsigned long long>(resetQueueEpoch),
+		static_cast<unsigned long long>(
+			GetTickCount64() - resetStartTick));
 }
 
 
@@ -1306,17 +1413,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		long double contentPhaseFrames = 0.0L;
 	};
 	SceneOutputCadence sceneCadence;
-	struct PendingUpstreamRepeat
-	{
-		IMediaSample* sample = nullptr;
-		uint64_t queueEpoch = 0;
-		uint64_t timingGeneration = 0;
-		uint64_t sceneEventId = 0;
-		long double phaseBefore = 0.0L;
-		double secondsFromDeadline = 0.0;
-		bool atSceneBoundary = false;
-	};
-	PendingUpstreamRepeat pendingUpstreamRepeat;
+	PendingUpstreamRepeat& pendingUpstreamRepeat =
+		m_pendingUpstreamRepeat;
 	// Advanced scene correction can add or remove a presentation sample. Keep
 	// the optional media-time stream continuous with that output cadence. This
 	// is delivery-thread-only and is reset with the scene cadence, so the
@@ -1373,6 +1471,43 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		return static_cast<REFERENCE_TIME>(llround(sceneCadence.anchor + ticks));
 	};
 
+	const auto deliverPendingResetSegment = [&]() -> bool
+	{
+		const uint64_t pendingEpoch = m_resetSegmentGate.PendingEpoch();
+		if (pendingEpoch == 0)
+			return false;
+
+		HRESULT segmentResult = VFW_E_WRONG_STATE;
+		{
+			CAutoLock deliveryLock(&m_deliveryGate);
+			if (!m_deliveryFlushing.load(std::memory_order_acquire) &&
+				pendingEpoch == m_queueEpoch.load(std::memory_order_acquire))
+			{
+				segmentResult =
+					DeliverNewSegment(0, MAXLONGLONG, 1.0);
+				if (segmentResult == S_OK &&
+					!m_resetSegmentGate.Complete(pendingEpoch))
+				{
+					segmentResult = VFW_E_WRONG_STATE;
+				}
+			}
+		}
+
+		m_resetSegmentResult.store(
+			segmentResult, std::memory_order_release);
+		if (m_hResetSegmentCompleteEvent)
+			SetEvent(m_hResetSegmentCompleteEvent);
+
+		DebugLog::Log(
+			"DELIVERY THREAD: reset NewSegment command epoch=%llu hr=0x%08x "
+			"pending_epoch=%llu",
+			static_cast<unsigned long long>(pendingEpoch),
+			segmentResult,
+			static_cast<unsigned long long>(
+				m_resetSegmentGate.PendingEpoch()));
+		return true;
+	};
+
 	auto deliverTracked = [&](IMediaSample* sample, uint64_t expectedQueueEpoch) -> HRESULT
 	{
 		CAutoLock deliveryLock(&m_deliveryGate);
@@ -1415,7 +1550,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			++slowDeliveryCount1Min;
 		}
 
-		if (FAILED(result))
+		if (result != S_OK)
 		{
 			m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 			++m_recentDeliveryFailures;
@@ -1486,6 +1621,22 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			DebugLog::Log("DELIVERY THREAD: Not active, exiting");
 			break;
 		}
+
+		// Reset takes this gate before the Deliver gate. It therefore waits for
+		// every popped/deferred sample reference to be released before EndFlush.
+		CAutoLock deliveryWorkLock(&m_deliveryWorkGate);
+		if (m_deliveryFlushing.load(std::memory_order_acquire))
+		{
+			resetSceneCadence();
+			continue;
+		}
+
+		// Reset control commands are processed before repeat, buffering, or
+		// sample delivery. This makes EndFlush -> NewSegment immediate and lets
+		// the reset coordinator observe the exact HRESULT.
+		if (deliverPendingResetSegment() &&
+			m_resetSegmentResult.load(std::memory_order_acquire) != S_OK)
+			continue;
 
 		if (pendingUpstreamRepeat.sample)
 		{
@@ -1645,6 +1796,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		{
 			if (!m_isActive.load(std::memory_order_acquire) ||
 				m_stopping.load(std::memory_order_acquire) ||
+				m_deliveryFlushing.load(std::memory_order_acquire) ||
 				m_isBuffering.load(std::memory_order_acquire))
 				break;
 
@@ -2151,8 +2303,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 			// 4) DELIVER - Let madVR handle buffering and presentation.
 			hr = deliverTracked(pSample, currentQueueEpoch);
+			const bool downstreamRejected = hr == S_FALSE;
 
-			if (SUCCEEDED(hr) && sceneCadenceForSample &&
+			if (hr == S_OK && sceneCadenceForSample &&
 				deferredUpstreamRepeat)
 			{
 				// The current sample consumed its normal slot. Submit the cloned
@@ -2179,7 +2332,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				if (m_hConvertedAvailableEvent)
 					SetEvent(m_hConvertedAvailableEvent);
 			}
-			else if (SUCCEEDED(hr) && sceneCadenceForSample &&
+			else if (hr == S_OK && sceneCadenceForSample &&
 				scheduledPresentationGapRepeat)
 			{
 				// One sample was delivered, but two presentation slots were
@@ -2212,7 +2365,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					pendingContentPhaseFrames,
 					sceneCadence.contentPhaseFrames);
 			}
-			else if (SUCCEEDED(hr) && sceneCadenceForSample &&
+			else if (hr == S_OK && sceneCadenceForSample &&
 				contentPhasePending && !sceneCorrectionCommitted)
 			{
 				++sceneCadence.nextOutputIndex;
@@ -2222,7 +2375,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 						sceneCadence.contentPhaseFrames * 1000000.0L)),
 					std::memory_order_release);
 			}
-			else if (FAILED(hr) && sceneCadenceForSample &&
+			else if (hr != S_OK && sceneCadenceForSample &&
 				!sceneCorrectionCommitted)
 			{
 				m_scenePhasePpmUnits.store(
@@ -2233,7 +2386,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			if (deferredUpstreamRepeat)
 				deferredUpstreamRepeat->Release();
 
-			if (SUCCEEDED(hr))
+			if (hr == S_OK)
 				lastSuccessfullyDeliveredEpoch = currentQueueEpoch;
 
 			// Log CLOCK_SMART timing stats periodically
@@ -2252,6 +2405,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 
 			pSample->Release();
+			if (downstreamRejected)
+			{
+				DebugLog::Log(
+					"DELIVERY THREAD: downstream rejected sample with S_FALSE; "
+					"stopping epoch and requesting coordinated reset");
+				RequestCoordinatedReset("downstream-sample-rejected");
+				break;
+			}
 			if (pendingUpstreamRepeat.sample)
 				break;
 		}
@@ -2260,6 +2421,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	DebugLog::Log("DELIVERY THREAD: Exiting");
 	if (pendingUpstreamRepeat.sample)
 		pendingUpstreamRepeat.sample->Release();
+	pendingUpstreamRepeat = {};
 	return 0;
 }
 
@@ -2336,6 +2498,16 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 		size_t batchCount = 0;
 		for (;;)
 		{
+			if (m_conversionFlushing.load(std::memory_order_acquire))
+				break;
+
+			// Reset takes this gate after BeginFlush. Holding it for the full
+			// iteration guarantees that an old epoch cannot retain an allocator
+			// sample or mutate timestamp state after the reset barrier.
+			CAutoLock conversionLock(&m_conversionGate);
+			if (m_conversionFlushing.load(std::memory_order_acquire))
+				break;
+
 			const uint64_t currentSceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
 			if (currentSceneDetectorGeneration != sceneDetectorGeneration)
 			{

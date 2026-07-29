@@ -213,6 +213,9 @@
     <ClInclude Include="microsoft_directshow\live_source_filter\CBufferedLiveSourceVideoOutputPin.h">
       <Filter>Header Files\microsoft_directshow\live_source_filter</Filter>
     </ClInclude>
+    <ClInclude Include="microsoft_directshow\live_source_filter\DirectShowResetSegmentGate.h">
+      <Filter>Header Files\microsoft_directshow\live_source_filter</Filter>
+    </ClInclude>
     <ClInclude Include="microsoft_directshow\live_source_filter\WindowsOcrSubtitleDetector.h">
       <Filter>Header Files\microsoft_directshow\live_source_filter</Filter>
     </ClInclude>

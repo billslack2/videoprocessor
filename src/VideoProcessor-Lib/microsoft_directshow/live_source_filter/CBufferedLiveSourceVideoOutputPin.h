@@ -20,6 +20,7 @@
 #include <ActivePictureTransitionModel.h>
 #include <microsoft_directshow/DirectShowDefines.h>
 #include "ALiveSourceVideoOutputPin.h"
+#include "DirectShowResetSegmentGate.h"
 
 #include "CLiveSource.h"
 
@@ -86,6 +87,8 @@ public:
 	size_t GetFrameQueueSize() override;
 	bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const override;
 	void Reset() override;
+	void ResetWithIngressDrain(
+		const std::function<void()>& drainAfterBeginFlush) override;
 	REFERENCE_TIME NextFrameTimestamp() const override;
 	void OnBadTimestampDetected() override;
 
@@ -98,6 +101,7 @@ public:
 private:
 
 	HANDLE m_hConvertedAvailableEvent = nullptr;  // Auto-reset event: signaled when converted samples are available
+	HANDLE m_hResetSegmentCompleteEvent = nullptr; // Auto-reset acknowledgement from delivery thread
 	HANDLE m_hConvertedSemaphore = nullptr;  // Semaphore: count of converted samples available
 
 	std::atomic<size_t> m_frameQueueMaxSize = 8;
@@ -127,6 +131,16 @@ private:
 		uint64_t sceneEventId = 0;
 		uint64_t queueEpoch = 0;
 		uint64_t sceneTimingGeneration = 0;
+	};
+	struct PendingUpstreamRepeat
+	{
+		IMediaSample* sample = nullptr;
+		uint64_t queueEpoch = 0;
+		uint64_t timingGeneration = 0;
+		uint64_t sceneEventId = 0;
+		long double phaseBefore = 0.0L;
+		double secondsFromDeadline = 0.0;
+		bool atSceneBoundary = false;
 	};
 	std::deque<ConvertedSample> m_convertedSampleQueue;
 	CCritSec m_convertedQueueLock;  // Protects m_convertedSampleQueue only
@@ -349,10 +363,26 @@ private:
 	// BeginFlush is sent before Reset takes this gate so a blocked renderer can
 	// return; no old-epoch sample can then cross the segment boundary.
 	CCritSec m_deliveryGate;
+	// Covers a complete delivery iteration, including samples temporarily
+	// removed from the converted queue and the deferred-repeat reference.
+	// Reset takes this before m_deliveryGate so no allocator sample from the
+	// prior epoch remains owned when EndFlush is sent.
+	CCritSec m_deliveryWorkGate;
+	PendingUpstreamRepeat m_pendingUpstreamRepeat;
 	std::atomic_bool m_deliveryFlushing = false;
+	// Serializes a whole conversion iteration (raw dequeue through converted
+	// sample publication) with reset. This prevents timing mutation or an
+	// allocator sample from an old epoch surviving across EndFlush.
+	CCritSec m_conversionGate;
+	std::atomic_bool m_conversionFlushing = false;
 	// Identifies the current queue epoch. A conversion that began before a
 	// reset/recovery must not publish its sample into the new epoch.
 	std::atomic<uint64_t> m_queueEpoch = 0;
+	// EndFlush arms this epoch. The delivery thread immediately sends
+	// NewSegment while holding m_deliveryGate and acknowledges its HRESULT
+	// before Reset can complete or ingress can reopen.
+	DirectShowResetSegmentGate m_resetSegmentGate;
+	std::atomic<long> m_resetSegmentResult = E_PENDING;
 	
 	std::atomic_bool m_isBuffering = false; // gate delivery until converted queue is primed
 	uint64_t m_lastSeenFrameCounter = 0;    // Track frame counter for discontinuity detection

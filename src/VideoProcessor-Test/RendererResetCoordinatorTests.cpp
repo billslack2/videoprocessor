@@ -4,6 +4,7 @@
 #include <RendererResetCoordinator.h>
 #include <RendererRetirementService.h>
 #include <IRenderer.h>
+#include <microsoft_directshow/live_source_filter/DirectShowResetSegmentGate.h>
 
 #include <atomic>
 #include <chrono>
@@ -45,8 +46,8 @@ namespace Tests
 		HRESULT OnWindowsEvent(LONG_PTR, LONG_PTR) override { return S_OK; }
 		void Build() override {}
 		void Start() override {}
-		void Stop() override {}
-		void Reset() override {}
+		void Stop() override { ++stopCalls; }
+		void Reset() override { ++plainResetCalls; }
 		void OnSize() override {}
 		void OnPaint() override {}
 		void SetFrameQueueMaxSize(size_t) override {}
@@ -61,7 +62,8 @@ namespace Tests
 		{
 			{
 				std::lock_guard<std::mutex> lock(mutex);
-				graphStopped = true;
+				resetTransactionStarted = true;
+				++inPlaceResetCalls;
 				enteredDrain = true;
 			}
 			changed.notify_all();
@@ -83,6 +85,26 @@ namespace Tests
 				throw std::runtime_error("fake live failure");
 		}
 
+		void ResetLiveQueueWithIngressDrain(
+			const std::function<void()>& drain) override
+		{
+			{
+				std::lock_guard<std::mutex> lock(mutex);
+				liveResetTransactionStarted = true;
+				enteredDrain = true;
+			}
+			changed.notify_all();
+			drain();
+			{
+				std::lock_guard<std::mutex> lock(mutex);
+				liveResetCalled = true;
+				drainReturned = true;
+			}
+			changed.notify_all();
+			if (fail)
+				throw std::runtime_error("fake live failure");
+		}
+
 		bool WaitForDrainEntry()
 		{
 			std::unique_lock<std::mutex> lock(mutex);
@@ -99,11 +121,15 @@ namespace Tests
 
 		std::mutex mutex;
 		std::condition_variable changed;
-		bool graphStopped = false;
+		bool resetTransactionStarted = false;
+		bool liveResetTransactionStarted = false;
 		bool enteredDrain = false;
 		bool drainReturned = false;
 		bool liveResetCalled = false;
 		bool fail = false;
+		int stopCalls = 0;
+		int plainResetCalls = 0;
+		int inPlaceResetCalls = 0;
 	};
 
 	class BlockingRetirementRenderer final : public FakeResetRenderer
@@ -435,7 +461,7 @@ namespace Tests
 				static_cast<unsigned long long>(wakeCount.load()));
 		}
 
-		TEST_METHOD(GraphResetStopsBeforeWaitingForIngressDrain)
+		TEST_METHOD(GraphResetBeginsTransactionBeforeWaitingForIngressDrain)
 		{
 			FakeResetClock clock;
 			RendererResetCoordinator coordinator(
@@ -459,8 +485,11 @@ namespace Tests
 			Assert::IsTrue(renderer->WaitForDrainEntry());
 			{
 				std::lock_guard<std::mutex> lock(renderer->mutex);
-				Assert::IsTrue(renderer->graphStopped);
+				Assert::IsTrue(renderer->resetTransactionStarted);
 				Assert::IsFalse(renderer->drainReturned);
+				Assert::AreEqual(0, renderer->stopCalls);
+				Assert::AreEqual(0, renderer->plainResetCalls);
+				Assert::AreEqual(1, renderer->inPlaceResetCalls);
 			}
 			lease.Release();
 			Assert::IsTrue(renderer->WaitForDrainReturn());
@@ -469,6 +498,101 @@ namespace Tests
 			Assert::IsTrue(coordinator.ConsumeCompletion(30, true, result));
 			Assert::IsTrue(result.succeeded);
 			Assert::IsTrue(result.ingressReopened);
+		}
+
+		TEST_METHOD(ResetSegmentGateCompletesExactlyOnceForCurrentEpoch)
+		{
+			DirectShowResetSegmentGate gate;
+			Assert::IsFalse(gate.IsArmedFor(7));
+
+			gate.Arm(7);
+			Assert::IsTrue(gate.IsArmedFor(7));
+			Assert::IsFalse(gate.IsArmedFor(6));
+			Assert::IsTrue(gate.Complete(7));
+			Assert::IsFalse(gate.Complete(7));
+			Assert::AreEqual(
+				static_cast<unsigned long long>(0),
+				static_cast<unsigned long long>(gate.PendingEpoch()));
+		}
+
+		TEST_METHOD(ResetSegmentGateRejectsStaleEpochAfterRearm)
+		{
+			DirectShowResetSegmentGate gate;
+			gate.Arm(8);
+			gate.Arm(9);
+
+			Assert::IsFalse(gate.Complete(8));
+			Assert::IsTrue(gate.IsArmedFor(9));
+			Assert::IsTrue(gate.Complete(9));
+		}
+
+		TEST_METHOD(LiveQueueResetBeginsTransactionBeforeIngressDrain)
+		{
+			FakeResetClock clock;
+			RendererResetCoordinator coordinator(
+				[]() { return true; },
+				[&clock]() { return clock.Now(); });
+			const auto binding = coordinator.Bind(44);
+			coordinator.GetIngressState()->OpenAdmission();
+			auto lease = coordinator.GetIngressState()->TryAcquire();
+
+			RendererResetRequest request;
+			request.reason = RendererResetReason::QueuePressure;
+			request.scope = RendererResetScope::LiveQueue;
+			binding.sink->Submit(request);
+			RendererResetCoordinator::SelectedReset selected;
+			Assert::IsTrue(coordinator.DrainReady(clock.Now(), selected));
+			auto renderer = std::make_shared<FakeResetRenderer>();
+			Assert::IsTrue(
+				coordinator.AcknowledgeBlackAndStart(
+					selected, renderer) ==
+				RendererResetCoordinator::StartResult::Started);
+			Assert::IsTrue(renderer->WaitForDrainEntry());
+			{
+				std::lock_guard<std::mutex> lock(renderer->mutex);
+				Assert::IsTrue(renderer->liveResetTransactionStarted);
+				Assert::IsFalse(renderer->liveResetCalled);
+			}
+
+			lease.Release();
+			Assert::IsTrue(renderer->WaitForDrainReturn());
+			Assert::IsTrue(WaitForCompletion(coordinator));
+			RendererResetCoordinator::OperationResult result;
+			Assert::IsTrue(
+				coordinator.ConsumeCompletion(44, true, result));
+			Assert::IsTrue(result.succeeded);
+			Assert::IsTrue(result.ingressReopened);
+		}
+
+		TEST_METHOD(IngressDrainTimeoutFailsClosedAndRequiresRestart)
+		{
+			FakeResetClock clock;
+			RendererResetCoordinator coordinator(
+				[]() { return true; },
+				[&clock]() { return clock.Now(); });
+			const auto binding = coordinator.Bind(45);
+			coordinator.GetIngressState()->OpenAdmission();
+			auto lease = coordinator.GetIngressState()->TryAcquire();
+
+			RendererResetRequest request;
+			request.reason = RendererResetReason::LivenessRecovery;
+			request.scope = RendererResetScope::Graph;
+			binding.sink->Submit(request);
+			RendererResetCoordinator::SelectedReset selected;
+			Assert::IsTrue(coordinator.DrainReady(clock.Now(), selected));
+			Assert::IsTrue(
+				coordinator.AcknowledgeBlackAndStart(
+					selected, std::make_shared<FakeResetRenderer>()) ==
+				RendererResetCoordinator::StartResult::Started);
+			Assert::IsTrue(WaitForCompletion(coordinator));
+
+			RendererResetCoordinator::OperationResult result;
+			Assert::IsTrue(
+				coordinator.ConsumeCompletion(45, true, result));
+			Assert::IsFalse(result.succeeded);
+			Assert::IsTrue(result.restartRequired);
+			Assert::IsFalse(result.ingressReopened);
+			lease.Release();
 		}
 
 		TEST_METHOD(OnlyOneOperationRunsAndRequestsDuringItStayPending)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <memory>
@@ -8,7 +9,8 @@
 
 // Shared admission/lifetime barrier for callbacks entering a renderer. Closing
 // admission prevents new leases; ResetWithIngressDrain invokes WaitForDrain
-// only after the graph has stopped and released a downstream Receive call.
+// only after the renderer has begun an operation that releases downstream
+// Receive calls (BeginFlush for in-place reset, Stop for teardown).
 class RendererIngressState :
 	public std::enable_shared_from_this<RendererIngressState>
 {
@@ -91,6 +93,13 @@ public:
 	{
 		std::unique_lock<std::mutex> lock(m_mutex);
 		m_drained.wait(lock, [this]() { return m_activeLeases == 0; });
+	}
+
+	bool WaitForDrainFor(std::chrono::milliseconds timeout)
+	{
+		std::unique_lock<std::mutex> lock(m_mutex);
+		return m_drained.wait_for(
+			lock, timeout, [this]() { return m_activeLeases == 0; });
 	}
 
 	bool IsAdmitting() const noexcept

@@ -371,13 +371,13 @@ void DirectShowVideoRenderer::Reset()
 
 
 void DirectShowVideoRenderer::ResetWithIngressDrain(
-	const std::function<void()>& drainAfterGraphStop)
+	const std::function<void()>& drainAfterResetStarts)
 {
 	if (!IsGraphThread())
 	{
-		InvokeOnGraphThread([this, drainAfterGraphStop]()
+		InvokeOnGraphThread([this, drainAfterResetStarts]()
 			{
-				ResetWithIngressDrain(drainAfterGraphStop);
+				ResetWithIngressDrain(drainAfterResetStarts);
 			});
 		return;
 	}
@@ -391,60 +391,16 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 		DebugLog::Log("DirectShowVideoRenderer::Reset() - m_liveSource is NULL, returning");
 		return;
 	}
-	
-	// CRITICAL FIX: The only way to properly reset MadVR's internal state is to 
-	// completely stop and restart the graph. MadVR doesn't respond to mid-stream
-	// reset signals - it needs to be re-initialized from scratch.
-	// This mimics what happens during fullscreen toggle which works correctly.
-	
-	DebugLog::Log("DirectShowVideoRenderer::Reset() - Stopping graph for complete restart");
-	
-	if (m_pControl)
-	{
-		HRESULT hr = m_pControl->Stop();
-		if (FAILED(hr))
-		{
-			DebugLog::Log("DirectShowVideoRenderer::Reset() - Stop failed, hr=0x%x", hr);
-			throw std::runtime_error("DirectShow graph Stop failed");
-		}
-		else
-		{
-			DebugLog::Log("DirectShowVideoRenderer::Reset() - Graph stopped");
 
-			// Capture admission is already closed. Stop/flush releases a
-			// callback blocked in downstream Receive; now prove every admitted
-			// callback has left before resetting source-owned queues.
-			if (drainAfterGraphStop)
-				drainAfterGraphStop();
-			
-			// Brief delay to ensure MadVR fully stops
-			Sleep(100);
-			
-			// Reset the source while graph is stopped
-			DebugLog::Log("DirectShowVideoRenderer::Reset() - Resetting source");
-			m_liveSource->Reset();
-			
-			// Restart the graph
-			hr = m_pControl->Run();
-			if (FAILED(hr))
-			{
-				DebugLog::Log("DirectShowVideoRenderer::Reset() - Run failed, hr=0x%x", hr);
-				throw std::runtime_error("DirectShow graph Run failed");
-			}
-			else
-			{
-				DebugLog::Log("DirectShowVideoRenderer::Reset() - Graph restarted");
-			}
-		}
-	}
-	else
-	{
-		// Fallback if no graph control
-		DebugLog::Log("DirectShowVideoRenderer::Reset() - No pControl, just resetting source");
-		if (drainAfterGraphStop)
-			drainAfterGraphStop();
-		m_liveSource->Reset();
-	}
+	// Preserve the graph, madVR instance, allocator, and negotiated media type.
+	// The source sends BeginFlush while the pins are active, then invokes the
+	// ingress barrier before it advances the queue epoch and re-primes the
+	// serialized streaming path. A failed transaction is surfaced to the reset
+	// coordinator, whose existing failure path requests a full Renderer Restart.
+	DebugLog::Log(
+		"DirectShowVideoRenderer::Reset() - starting in-place "
+		"BeginFlush/drain/EndFlush re-prime");
+	m_liveSource->ResetWithIngressDrain(drainAfterResetStarts);
 	
 	m_frameCounter = 0;
 	ResetPPMMeasurement();
@@ -456,11 +412,18 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 
 void DirectShowVideoRenderer::ResetLiveQueue()
 {
+	ResetLiveQueueWithIngressDrain({});
+}
+
+
+void DirectShowVideoRenderer::ResetLiveQueueWithIngressDrain(
+	const std::function<void()>& drainAfterResetStarts)
+{
 	if (!IsGraphThread())
 	{
-		InvokeOnGraphThread([this]()
+		InvokeOnGraphThread([this, drainAfterResetStarts]()
 			{
-				ResetLiveQueue();
+				ResetLiveQueueWithIngressDrain(drainAfterResetStarts);
 			});
 		return;
 	}
@@ -477,7 +440,7 @@ void DirectShowVideoRenderer::ResetLiveQueue()
 	// transaction and purges both live queues. Unlike Reset(), it deliberately
 	// leaves madVR and the DirectShow graph running.
 	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - flushing live source queue only");
-	m_liveSource->Reset();
+	m_liveSource->ResetWithIngressDrain(drainAfterResetStarts);
 	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
 	m_resetReadyForReveal.store(true, std::memory_order_release);
 	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - complete");
