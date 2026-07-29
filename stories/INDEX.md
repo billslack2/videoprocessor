@@ -5,9 +5,9 @@ are assigned monotonically and are never reused.
 
 ## Registry state
 
-- Last assigned item: `VP-0064`
-- Next story number: `VP-0065`
-- Total indexed items: 63
+- Last assigned item: `VP-0065`
+- Next story number: `VP-0066`
+- Total indexed items: 64
 
 ## Story locations
 
@@ -88,6 +88,7 @@ they must not contain requirements that are absent from this file.
 | VP-0062 | Backlog | NLS safe full-raster fallback for high-black UI and artwork |
 | VP-0063 | Backlog | Automatic Alpha-to-madVR handoff re-prime |
 | VP-0064 | Done | Persisted Alpha SDR BT.2020 output and clear OSD reporting |
+| VP-0065 | Backlog | Invalidate stale frames during channel and stream transitions |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
