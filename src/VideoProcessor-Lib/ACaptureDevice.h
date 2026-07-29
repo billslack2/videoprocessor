@@ -27,7 +27,10 @@
 
 
 typedef std::vector<CaptureInput> CaptureInputs;
+typedef uint64_t CaptureRunToken;
 
+
+class ACaptureDevice;
 
 /**
  * State of the capture card.
@@ -112,13 +115,19 @@ public:
 
 	// Capture device is signalling that the available video state changed
 	// WARNING: Most likely to be called from some internal capture card thread!
-	virtual void OnCaptureDeviceVideoStateChange(VideoStateComPtr) = 0;
+	virtual void OnCaptureDeviceVideoStateChange(
+		ACaptureDevice* source,
+		CaptureRunToken captureRunToken,
+		VideoStateComPtr) = 0;
 
 	// Frame has arrived
 	// This is guaranteed to be called after OnCaptureDeviceVideoStateChange() so that the renderer
 	// will know what to do with the data.
 	// WARNING: Most likely to be called from some internal capture card thread!
-	virtual void OnCaptureDeviceVideoFrame(VideoFrame&) = 0;
+	virtual void OnCaptureDeviceVideoFrame(
+		ACaptureDevice* source,
+		CaptureRunToken captureRunToken,
+		VideoFrame&) = 0;
 
 	// Error occurred, the capture will be stopped
 	virtual void OnCaptureDeviceError(const CString&) = 0;
@@ -151,7 +160,7 @@ public:
 
 	// Start capturing
 	// Will throw if CanCapture() is false
-	virtual void StartCapture() = 0;
+	virtual void StartCapture(CaptureRunToken captureRunToken) = 0;
 
 	// Stop capturing
 	// Idempotent

@@ -1056,6 +1056,15 @@ void DirectShowVideoRenderer::WakeForOwnerCompletion() const
 void DirectShowVideoRenderer::GraphBuild()
 {
 	AssertGraphThread();
+	const ULONGLONG buildStart = GetTickCount64();
+	ULONGLONG phaseStart = buildStart;
+	ULONGLONG filterGraphMs = 0;
+	ULONGLONG clockMs = 0;
+	ULONGLONG mediaTypeMs = 0;
+	ULONGLONG liveSourceMs = 0;
+	ULONGLONG rendererCreateMs = 0;
+	ULONGLONG rendererConnectMs = 0;
+	ULONGLONG windowSetupMs = 0;
 	m_graphTeardownComplete.store(false, std::memory_order_release);
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::GraphBuild(): Begin")));
 
@@ -1078,6 +1087,8 @@ void DirectShowVideoRenderer::GraphBuild()
 	//
 
 	FilterGraphBuild();
+	filterGraphMs = GetTickCount64() - phaseStart;
+	phaseStart = GetTickCount64();
 
 	//
 	// Clock
@@ -1103,35 +1114,46 @@ void DirectShowVideoRenderer::GraphBuild()
 		// stream offsets would require IAMPushSource stream-offset mutation and
 		// provides no A/V synchronization benefit here.
 	}
+	clockMs = GetTickCount64() - phaseStart;
 
 	//
 	// Build conversion dependent stuff and media type
 	//
 
+	phaseStart = GetTickCount64();
 	MediaTypeGenerate();
+	mediaTypeMs = GetTickCount64() - phaseStart;
 
 	//
 	// Live source filter
 	//
 
+	phaseStart = GetTickCount64();
 	LiveSourceBuildAndConnect();
+	liveSourceMs = GetTickCount64() - phaseStart;
 
 	//
 	// Renderer
 	//
 
+	phaseStart = GetTickCount64();
 	RendererBuild();
+	rendererCreateMs = GetTickCount64() - phaseStart;
 
 	if (!m_pRenderer)
 		throw std::runtime_error("Created renderer instance wes nullptr");
 
+	phaseStart = GetTickCount64();
 	RendererConnect();
+	rendererConnectMs = GetTickCount64() - phaseStart;
 
 	//
 	// Window setup
 	//
 
+	phaseStart = GetTickCount64();
 	WindowSetup();
+	windowSetupMs = GetTickCount64() - phaseStart;
 
 	//
 	// Set up event notification.
@@ -1142,6 +1164,21 @@ void DirectShowVideoRenderer::GraphBuild()
 
 	SetState(RendererState::RENDERSTATE_READY);
 
+	DebugLog::Log(
+		"DirectShow graph build completed: target=%p "
+		"filter_graph_ms=%llu clock_ms=%llu media_type_ms=%llu "
+		"live_source_ms=%llu "
+		"renderer_create_ms=%llu renderer_connect_ms=%llu "
+		"window_setup_ms=%llu total_ms=%llu",
+		m_videoHwnd,
+		static_cast<unsigned long long>(filterGraphMs),
+		static_cast<unsigned long long>(clockMs),
+		static_cast<unsigned long long>(mediaTypeMs),
+		static_cast<unsigned long long>(liveSourceMs),
+		static_cast<unsigned long long>(rendererCreateMs),
+		static_cast<unsigned long long>(rendererConnectMs),
+		static_cast<unsigned long long>(windowSetupMs),
+		static_cast<unsigned long long>(GetTickCount64() - buildStart));
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::GraphBuild(): End")));
 }
 

@@ -2,6 +2,7 @@
 
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 
@@ -69,7 +70,9 @@ public:
 	Lease TryAcquire()
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
-		if (!m_admitting)
+		if (!m_admitting ||
+			(m_captureSequence != 0 &&
+				m_publishedCaptureSequence != m_captureSequence))
 			return {};
 		++m_activeLeases;
 		return Lease(shared_from_this());
@@ -85,6 +88,24 @@ public:
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		m_admitting = true;
+	}
+
+	void SetCaptureSequence(uint64_t captureSequence) noexcept
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_captureSequence = captureSequence;
+	}
+
+	uint64_t PublishCaptureSequence() noexcept
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		return ++m_publishedCaptureSequence;
+	}
+
+	uint64_t LatestCaptureSequence() const noexcept
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		return m_publishedCaptureSequence;
 	}
 
 	void WaitForDrain()
@@ -109,5 +130,7 @@ private:
 	mutable std::mutex m_mutex;
 	std::condition_variable m_drained;
 	bool m_admitting = false;
+	uint64_t m_captureSequence = 0;
+	uint64_t m_publishedCaptureSequence = 0;
 	size_t m_activeLeases = 0;
 };

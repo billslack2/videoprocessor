@@ -52,6 +52,14 @@ namespace
 {
 using Microsoft::WRL::ComPtr;
 
+struct CaptureVideoStateNotification
+{
+	ACaptureDeviceComPtr source;
+	VideoStateComPtr state;
+	uint64_t captureEpoch = 0;
+	uint64_t sequence = 0;
+};
+
 const TCHAR* ToString(RendererResetReason reason)
 {
 	switch (reason)
@@ -953,6 +961,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_CAPTURE_DEVICE_STATE_CHANGE, &CVideoProcessorDlg::OnMessageCaptureDeviceStateChange)
 	ON_MESSAGE(WM_MESSAGE_CAPTURE_DEVICE_CARD_STATE_CHANGE, &CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange)
 	ON_MESSAGE(WM_MESSAGE_CAPTURE_DEVICE_VIDEO_STATE_CHANGE, &CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange)
+	ON_MESSAGE(WM_MESSAGE_EVALUATE_RENDERER_START, &CVideoProcessorDlg::OnMessageEvaluateRendererStart)
 	ON_MESSAGE(WM_MESSAGE_CAPTURE_DEVICE_ERROR, &CVideoProcessorDlg::OnMessageCaptureDeviceError)
 	ON_MESSAGE(WM_MESSAGE_DIRECTSHOW_NOTIFICATION, &CVideoProcessorDlg::OnMessageDirectShowNotification)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_STATE_CHANGE, &CVideoProcessorDlg::OnMessageRendererStateChange)
@@ -2019,11 +2028,56 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(WPARAM wParam,
 
 LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam, LPARAM lParam)
 {
-
-
-
-	VideoStateComPtr videoState;
-	videoState.Attach((VideoState*)wParam);
+	std::unique_ptr<CaptureVideoStateNotification> notification(
+		reinterpret_cast<CaptureVideoStateNotification*>(wParam));
+	if (!notification || !notification->state)
+		return 0;
+	VideoStateComPtr videoState = notification->state;
+	const uint64_t captureEpoch = notification->captureEpoch;
+	const uint64_t notificationSequence = notification->sequence;
+	{
+		std::lock_guard<std::mutex> sourceLock(
+			m_captureVideoStateNotificationMutex);
+		if (!m_captureDevice ||
+			notification->source.p != m_captureVideoStateSource ||
+			captureEpoch != m_captureVideoStateSourceEpoch)
+		{
+			DebugLog::Log(
+				"Capture video-state notification ignored for stale "
+				"capture run: sequence=%llu epoch=%llu source=%p "
+				"current_epoch=%llu current_source=%p",
+				static_cast<unsigned long long>(notificationSequence),
+				static_cast<unsigned long long>(captureEpoch),
+				notification->source.p,
+				static_cast<unsigned long long>(
+					m_captureVideoStateSourceEpoch),
+				m_captureVideoStateSource);
+			return 0;
+		}
+	}
+	if (!notification->source.IsEqualObject(m_captureDevice))
+	{
+		DebugLog::Log(
+			"Capture video-state notification ignored for stale device: "
+			"sequence=%llu source=%p current=%p",
+			static_cast<unsigned long long>(notificationSequence),
+			notification->source.p, m_captureDevice.p);
+		return 0;
+	}
+	const uint64_t latestNotificationSequence =
+		m_rendererIngressState->LatestCaptureSequence();
+	if (notificationSequence != latestNotificationSequence)
+	{
+		DebugLog::Log(
+			"Capture video-state notification superseded before UI handling: "
+			"sequence=%llu latest=%llu valid=%d action=ignore",
+			static_cast<unsigned long long>(notificationSequence),
+			static_cast<unsigned long long>(latestNotificationSequence),
+			videoState->valid ? 1 : 0);
+		return 0;
+	}
+	m_appliedCaptureVideoStateNotificationSequence =
+		notificationSequence;
 
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Valid=%s"),
@@ -2105,6 +2159,16 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	}
 
 	const bool rendererAcceptedState = BuildPushVideoState();
+	if (rendererAcceptedState &&
+		videoState->valid &&
+		m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING)
+	{
+		m_rendererCaptureVideoStateNotificationSequence =
+			notificationSequence;
+		m_rendererIngressState->SetCaptureSequence(
+			notificationSequence);
+	}
 
 	// If the renderer did not accept the new state we need to restart the renderer
 	if (!rendererAcceptedState)
@@ -2182,9 +2246,53 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	}
 
-	UpdateState();
+	if (!m_videoRenderer && videoState->valid)
+	{
+		if (!m_rendererStartEvaluationPosted)
+		{
+			m_rendererStartEvaluationPosted = true;
+			if (!PostMessage(WM_MESSAGE_EVALUATE_RENDERER_START, 0, 0))
+			{
+				m_rendererStartEvaluationPosted = false;
+				DebugLog::Log(
+					"Capture video-state start evaluation post failed: "
+					"sequence=%llu",
+					static_cast<unsigned long long>(
+						notificationSequence));
+				UpdateState();
+			}
+		}
+	}
+	else
+	{
+		UpdateState();
+	}
 
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Done")));
+	return 0;
+}
+
+
+LRESULT CVideoProcessorDlg::OnMessageEvaluateRendererStart(
+	WPARAM,
+	LPARAM)
+{
+	m_rendererStartEvaluationPosted = false;
+	const uint64_t latestNotificationSequence =
+		m_rendererIngressState->LatestCaptureSequence();
+	if (m_appliedCaptureVideoStateNotificationSequence !=
+		latestNotificationSequence)
+	{
+		DebugLog::Log(
+			"Renderer start evaluation superseded: applied_sequence=%llu "
+			"latest_sequence=%llu action=wait-for-latest-state",
+			static_cast<unsigned long long>(
+				m_appliedCaptureVideoStateNotificationSequence),
+			static_cast<unsigned long long>(
+				latestNotificationSequence));
+		return 0;
+	}
+	UpdateState();
 	return 0;
 }
 
@@ -2325,6 +2433,28 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		assert(oldRendererState == RendererState::RENDERSTATE_READY);
 
 		m_restartQueuedBecauseEotf = false;
+		const uint64_t latestCaptureSequence =
+			m_rendererIngressState->LatestCaptureSequence();
+		if (m_rendererCaptureVideoStateNotificationSequence == 0 ||
+			m_rendererCaptureVideoStateNotificationSequence !=
+				latestCaptureSequence ||
+			m_rendererCaptureVideoStateNotificationSequence !=
+				m_appliedCaptureVideoStateNotificationSequence)
+		{
+			DebugLog::Log(
+				"Renderer reached running with superseded capture state: "
+				"renderer_sequence=%llu applied_sequence=%llu "
+				"latest_sequence=%llu action=covered-retire",
+				static_cast<unsigned long long>(
+					m_rendererCaptureVideoStateNotificationSequence),
+				static_cast<unsigned long long>(
+					m_appliedCaptureVideoStateNotificationSequence),
+				static_cast<unsigned long long>(
+					latestCaptureSequence));
+			m_postRendererStartRequiresGraph = true;
+			m_wantToRestartRenderer = true;
+			break;
+		}
 		// EOTF TRACKING: Store the EOTF the renderer was started with
 		if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
 		{
@@ -2953,25 +3083,71 @@ void CVideoProcessorDlg::OnCaptureDeviceCardStateChange(CaptureDeviceCardStateCo
 }
 
 
-void CVideoProcessorDlg::OnCaptureDeviceVideoStateChange(VideoStateComPtr videoState)
+void CVideoProcessorDlg::OnCaptureDeviceVideoStateChange(
+	ACaptureDevice* source,
+	CaptureRunToken captureRunToken,
+	VideoStateComPtr videoState)
 {
 	// WARNING: Most likely to be called from some internal capture card thread!
 
 	assert(videoState);
+	assert(source);
 
-	PostMessage(
+	std::lock_guard<std::mutex> sourceLock(
+		m_captureVideoStateNotificationMutex);
+	if (source != m_captureVideoStateSource ||
+		captureRunToken != m_captureVideoStateSourceEpoch)
+	{
+		DebugLog::Log(
+			"Capture video-state callback ignored for stale capture run: "
+			"epoch=%llu source=%p current_epoch=%llu current_source=%p",
+			static_cast<unsigned long long>(captureRunToken),
+			source,
+			static_cast<unsigned long long>(
+				m_captureVideoStateSourceEpoch),
+			m_captureVideoStateSource);
+		return;
+	}
+
+	const uint64_t notificationSequence =
+		m_rendererIngressState->PublishCaptureSequence();
+	std::unique_ptr<CaptureVideoStateNotification> notification(
+		new CaptureVideoStateNotification());
+	notification->source = source;
+	notification->state = videoState;
+	notification->captureEpoch = captureRunToken;
+	notification->sequence = notificationSequence;
+	if (!PostMessage(
 		WM_MESSAGE_CAPTURE_DEVICE_VIDEO_STATE_CHANGE,
-		(WPARAM)videoState.Detach(),
-		0);
+		reinterpret_cast<WPARAM>(notification.get()),
+		0))
+	{
+		DebugLog::Log(
+			"Capture video-state notification post failed: sequence=%llu "
+			"action=fail-closed",
+			static_cast<unsigned long long>(notificationSequence));
+		return;
+	}
+	notification.release();
 }
 
 
-void CVideoProcessorDlg::OnCaptureDeviceVideoFrame(VideoFrame& videoFrame)
+void CVideoProcessorDlg::OnCaptureDeviceVideoFrame(
+	ACaptureDevice* source,
+	CaptureRunToken captureRunToken,
+	VideoFrame& videoFrame)
 {
 	// WARNING: Most likely to be called from some internal capture card thread!
 
-	RendererIngressState::Lease ingressLease =
-		m_rendererIngressState->TryAcquire();
+	RendererIngressState::Lease ingressLease;
+	{
+		std::lock_guard<std::mutex> sourceLock(
+			m_captureVideoStateNotificationMutex);
+		if (source != m_captureVideoStateSource ||
+			captureRunToken != m_captureVideoStateSourceEpoch)
+			return;
+		ingressLease = m_rendererIngressState->TryAcquire();
+	}
 	if (!ingressLease)
 		return;
 
@@ -3232,6 +3408,11 @@ void CVideoProcessorDlg::UpdateState()
 		if (m_rendererState == RendererState::RENDERSTATE_FAILED)
 			return;
 
+		if (m_appliedCaptureVideoStateNotificationSequence !=
+			m_rendererIngressState->LatestCaptureSequence())
+		{
+			return;
+		}
 		if (m_captureDeviceVideoState &&
 			m_captureDeviceVideoState->valid)
 			RenderStart();
@@ -3586,8 +3767,17 @@ void CVideoProcessorDlg::CaptureStart()
 
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_STARTING;
+	CaptureRunToken captureRunToken = 0;
+	{
+		std::lock_guard<std::mutex> sourceLock(
+			m_captureVideoStateNotificationMutex);
+		m_captureVideoStateSource = m_captureDevice.p;
+		m_captureVideoStateSourceEpoch =
+			++m_captureVideoStateNextEpoch;
+		captureRunToken = m_captureVideoStateSourceEpoch;
+	}
 
-	m_captureDevice->StartCapture();
+	m_captureDevice->StartCapture(captureRunToken);
 
 	// Update GUI
 	m_captureDeviceStateText.SetWindowText(TEXT("Starting"));
@@ -3606,6 +3796,12 @@ void CVideoProcessorDlg::CaptureStop()
 
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_STOPPING;
+	{
+		std::lock_guard<std::mutex> sourceLock(
+			m_captureVideoStateNotificationMutex);
+		m_captureVideoStateSource = nullptr;
+		m_captureVideoStateSourceEpoch = 0;
+	}
 
 	m_captureDevice->StopCapture();
 
@@ -3630,6 +3826,12 @@ void CVideoProcessorDlg::CaptureRemove()
 		   m_rendererState == RendererState::RENDERSTATE_FAILED);
 
 	m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_UNKNOWN;
+	{
+		std::lock_guard<std::mutex> sourceLock(
+			m_captureVideoStateNotificationMutex);
+		m_captureVideoStateSource = nullptr;
+		m_captureVideoStateSourceEpoch = 0;
+	}
 	m_captureDevice->SetCallbackHandler(nullptr);
 	m_captureDevice.Release();
 	m_captureDevice = nullptr;
@@ -3679,6 +3881,8 @@ void CVideoProcessorDlg::RenderStart()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStart(): Begin")));
 	m_postStartResetCanAccelerate = false;
+	m_rendererCaptureVideoStateNotificationSequence =
+		m_appliedCaptureVideoStateNotificationSequence;
 
 	assert(!m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_UNKNOWN ||
@@ -4126,6 +4330,8 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 		return;
 	if (m_fullscreenRetargetPending)
 		ClearFullscreenRetarget(true);
+	m_rendererCaptureVideoStateNotificationSequence = 0;
+	m_rendererIngressState->SetCaptureSequence(0);
 
 	// Releasing a windowed renderer can synchronously pump WM_PAINT and other
 	// window messages.  Detach the shared pointer before invoking the destructor
@@ -4295,6 +4501,8 @@ void CVideoProcessorDlg::WaitForRendererIngressDrain()
 void CVideoProcessorDlg::ResumeRendererIngress()
 {
 	assert(m_rendererIngressState->ActiveLeases() == 0);
+	m_rendererIngressState->SetCaptureSequence(
+		m_rendererCaptureVideoStateNotificationSequence);
 	m_rendererIngressState->OpenAdmission();
 }
 

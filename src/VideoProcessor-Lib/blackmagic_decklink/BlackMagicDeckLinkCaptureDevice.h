@@ -49,7 +49,7 @@ public:
 	void SetCallbackHandler(ICaptureDeviceCallback*) override;
 	CString GetName() override;
 	bool CanCapture() override;
-	void StartCapture() override;
+	void StartCapture(CaptureRunToken captureRunToken) override;
 	void StopCapture() override;
 	CaptureInputId CurrentCaptureInputId() override;
 	CaptureInputs SupportedCaptureInputs() override;
@@ -98,6 +98,7 @@ private:
 
 	// If false this will not send any more frames out.
 	std::atomic_bool m_outputCaptureData = false;
+	std::atomic<CaptureRunToken> m_captureRunToken{0};
 
 	// This is set if the card is capturing, can have only one input supports in here for now.
 	// (This implies we support only one callback whereas the hardware supports this per input.)
@@ -130,7 +131,7 @@ private:
 	void ResetVideoState();
 
 	// Try to create and send a VideoState callback, upon failure will internally call Error() and return false
-	bool SendVideoStateCallback();
+	bool SendVideoStateCallback(CaptureRunToken captureRunToken);
 	void SendCardStateCallback();
 
 	// Current state, update through UpdateState()
