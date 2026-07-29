@@ -2,9 +2,11 @@
 
 ## Status
 
-Implementation in progress. VP-0045 is complete, so the canonical `vpvr.*`
-section names and ownership boundaries are final. The canonical public field
-inventory and current help are being audited before the reference rewrite.
+Implementation complete and ready for review.
+
+- Source branch: `codex/vp-0049-configuration-docs`
+- Source commit: `7aaad67` (`Implement VP-0049 configuration reference`)
+- Base: current repository default branch `v1.1.014-beta`
 
 ## User story
 
@@ -308,6 +310,66 @@ invent behavior to fill a documentation gap.
   without documentation.
 - The final page is useful as both a beginner guide and a precise field
   reference.
+
+## Implementation evidence
+
+- Replaced the dense reference with a task-oriented guide, responsive
+  navigation, glossary, troubleshooting, stable field anchors, and an
+  individual field card for every supported public setting.
+- Added a machine-readable inventory covering 136 public field/context tokens
+  in `docs/configuration-public-fields.tsv`.
+- Explained renderer choices in user terms, including when sharp EWA Lanczos,
+  regular EWA Lanczos, bicubic, or bilinear scaling is appropriate and the
+  quality, ringing, softness, and performance tradeoffs.
+- Documented field-specific `AUTO` decisions, ownership, defaults, ranges,
+  lifecycle, precedence, validation behavior, diagnostics, and interactions.
+- Added eight small canonical examples and validated all of them through the
+  production configuration parser and schemas.
+- Added a completeness test that compares the inventory with HTML field
+  anchors, requires a substantive `AUTO behavior:` explanation, resolves
+  internal links, rejects excluded public spellings, and production-parses
+  every embedded example.
+- Corrected renderer/schema drift for LUT reference values and
+  `[vpvr.display] peak_detection` values while establishing the authoritative
+  behavior.
+- Built the complete x64 Release solution with zero warnings and zero errors.
+  All 196 tests pass.
+- Confirmed the shipped `x64\Release\CONFIGURATION.html` is byte-identical to
+  the reviewed source; SHA-256:
+  `8C7E8905F5E0D23232A5CBAAED7C3D50BE86719F4FFEEFC49A84CBDE3D8F9198`.
+- Visually verified the page at 1440×900 and 760×900. Navigation reflows,
+  examples remain contained, keyboard focus is visible, and the browser
+  reports no console errors or warnings.
+
+## Adjacent documentation assessment
+
+The public page no longer needs another broad prose pass to satisfy this
+story. The remaining weaknesses are better addressed as focused follow-up
+engineering work:
+
+1. **Unify specialized validation.** P010, shader, shortcut, and dynamic
+   timing settings still rely partly on specialized loaders rather than one
+   typed schema. The new inventory prevents documentation omissions, but a
+   generated schema/default registry would make ranges and defaults impossible
+   to drift between parser, tests, and help.
+2. **Clarify or differentiate debanding presets in the product.**
+   `deband_strength: LIGHT` and `DEFAULT` currently resolve to the same runtime
+   behavior. The reference now says so; more prose cannot create a meaningful
+   choice. Either give `LIGHT` distinct behavior or remove the redundant
+   option.
+3. **Validate output-contract combinations earlier.** Individual
+   `output_range`, `output_gamma`, and primaries values are valid, but some
+   combinations are deliberately rejected by the renderer. The guide explains
+   the supported combinations; configuration validation should eventually
+   report those cross-field errors before renderer construction.
+4. **Publish manifests for custom shader parameters.** Generic
+   `param_<name>` values are defined by each shader, so the core reference
+   cannot truthfully explain arbitrary parameter names. Packaged shaders should
+   carry a small parameter manifest with units, ranges, defaults, and examples.
+5. **Centralize UI-owned defaults.** A few command-line settings inherit saved
+   UI/runtime state instead of a single schema constant. A shared defaults
+   registry would let future help state one exact default without qualifying
+   it by context.
 
 ## Dependencies
 

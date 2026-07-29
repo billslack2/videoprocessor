@@ -73,7 +73,7 @@ they must not contain requirements that are absent from this file.
 | VP-0046 | Backlog | DirectShow event plumbing and passive health diagnostics |
 | VP-0047 | Backlog | Verified P3-D65 display target and LUT contract |
 | VP-0048 | Backlog | Explicit SDR LUT transfer and range contracts |
-| VP-0049 | In progress | Complete canonical CONFIGURATION.html reference |
+| VP-0049 | Review | Complete canonical CONFIGURATION.html reference |
 | VP-0050 | Done | Put Alpha first and reverse renderer order |
 | VP-0051 | Backlog | Generic Alpha shader-chain support |
 | VP-0052 | Done | Lowercase runtime layout and vprenderer directory |
