@@ -2,9 +2,20 @@
 
 ## Status
 
-Backlog. This story captures a recurring user-visible defect that remains
-unresolved and requires instrumentation before implementation can be safely
-chosen.
+Review. Alpha renderer retirement now explicitly joins its render thread,
+clears queued frames, submits a terminal black frame, and releases its DXGI
+swapchain before a replacement renderer can claim the presentation target.
+The transition shield remains visible through the composition boundary.
+
+Implementation: `codex/vp-0065-transition-flush`, commits `ebab216` and
+`a914db4`, based on `v1.1.015-beta`. The x64 Release solution build passed and
+the build was deployed to `C:\Videoprocessor\vp`. User validation observed the
+previous Alpha/madVR overlay artifact and then reported that the terminal-black
+retirement fix appears to resolve it.
+
+Remaining review: repeat live channel and renderer transitions to confirm no
+old Alpha OSD or pixels reappear, then decide whether the story can move to
+Done after the merged build has been exercised.
 
 ## User story
 
