@@ -2,8 +2,16 @@
 
 ## Status
 
-Backlog spike. This is a local compatibility experiment, not a committed
+In progress. This is a local compatibility experiment, not a committed
 renderer feature or a distribution change.
+
+On 2026-07-29, a dedicated test copy was prepared at
+`C:\Videoprocessor\vp\reshade-test-20260729`. Its `VideoProcessor.exe`,
+`VideoProcessor.cfg`, `VideoProcessor.state`, and `shaders` directory are
+byte-for-byte copies of the active deployment inputs at the time of setup.
+No active deployment files, VP source, release contents, or configuration
+values were changed. The tester will install ReShade manually into this copy
+using the official installer.
 
 ## User story
 
