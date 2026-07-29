@@ -78,7 +78,7 @@ they must not contain requirements that are absent from this file.
 | VP-0051 | Backlog | Generic Alpha shader-chain support |
 | VP-0052 | Done | Lowercase runtime layout and vprenderer directory |
 | VP-0053 | Backlog | Alpha LLDV parity and transition validation |
-| VP-0054 | Review | DirectShow handoff queue saturation and UI-liveness recovery |
+| VP-0054 | Done | DirectShow handoff queue saturation and UI-liveness recovery |
 | VP-0055 | Done | Display-rate outlier quarantine and transition warm-up |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |

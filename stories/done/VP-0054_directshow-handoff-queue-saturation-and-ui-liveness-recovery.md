@@ -2,7 +2,7 @@
 
 ## Status
 
-Review.
+Done.
 
 - Root cause confirmed for the missed re-prime: the 33-second
   `display-transition` request replaced the already scheduled five-second
@@ -32,23 +32,22 @@ Review.
   re-prime as manual `R`, is generation checked, serialized, and held to a
   30-second cooldown.
 - Confirmed implementation base: `v1.1.015-beta` (currently rooted at
-  `origin/v1.1.014-beta`, commit `b7e5645`).
+  `origin/v1.1.014-beta`).
 - Implementation branch: `codex/vp-0054-directshow-liveness`.
-- Source commit: `93a77b7` (local; source publishing was not explicitly
-  requested).
+- Source commit: `a96964a`.
+- Merged into `v1.1.015-beta` as `1b23135` through
+  [PR #27](https://github.com/billslack2/videoprocessor/pull/27).
 - Automated validation: x64 Release solution build passed with Visual Studio
-  18.7 MSBuild; native suite passed 200/200. Four focused arbitration tests
-  cover the recorded post-start/display replacement, critical preemption,
-  equal-priority earliest deadline, and manual priority.
+  18.7 MSBuild after the final integration rebase; native suite passed 209/209.
+  Four focused arbitration tests cover the recorded post-start/display
+  replacement, critical preemption, equal-priority earliest deadline, and
+  manual priority.
 - Test deployment: the validated Release executable and matching renderer
   plugin were deployed to `C:\Videoprocessor\vp` on 2026-07-29. The active
   configuration, state, shader cache, and user assets were preserved; both
   replaced binaries have timestamped pre-VP0054 backups.
-- Review/live validation still required on the affected machine: 23.976 and
-  59.94 Alpha -> DirectShow display resync, repeated backend changes,
-  display/profile/NLS changes, simulated or observed blocked downstream
-  delivery, manual `R` during a pending recovery, and extended steady-state
-  DirectShow playback.
+- The deployed candidate was approved for merge. Extended repetition of the
+  scenario matrix below remains useful operational soak coverage.
 
 ## User story
 
