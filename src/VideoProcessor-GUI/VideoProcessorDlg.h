@@ -442,6 +442,14 @@ protected:
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
 	HWND m_rendererTargetHwnd = nullptr;
+	bool m_fullscreenRetargetPending = false;
+	HWND m_fullscreenRetargetTargetHwnd = nullptr;
+	HWND m_fullscreenRetargetPreviousTargetHwnd = nullptr;
+	uint64_t m_fullscreenRetargetPreviousTargetRevision = 0;
+	uint32_t m_fullscreenRetargetRendererGeneration = 0;
+	bool m_fullscreenRetargetExiting = false;
+	ULONGLONG m_fullscreenRetargetStartTick = 0;
+	bool m_fullscreenModeChangePending = false;
 	CString m_activeRendererName;
 	bool m_activeRendererIsDirectShow = false;
 	std::atomic<uint32_t> m_rendererGeneration{0};
@@ -518,6 +526,8 @@ protected:
 	bool ApplyRequestedShaderSelection();
 	bool ShowRendererTransitionBlack(const char* reason);
 	void TryRevealRendererTransition(uint32_t generation);
+	bool TryStartFullscreenRetarget();
+	void ClearFullscreenRetarget(bool restorePreviousTarget);
 	void FullScreenVideoWindowConstruct();
 	void FullScreenVideoWindowDestroy();
 	HWND GetRenderWindow();

@@ -82,6 +82,9 @@ public:
 	void Reset() override;
 	void ResetWithIngressDrain(
 		const std::function<void()>& drainAfterGraphStop) override;
+	bool RetargetWindowWithIngressDrain(
+		uintptr_t targetWindow,
+		const std::function<void()>& drainAfterGraphStop) override;
 	void ResetLiveQueue() override;
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink) override;

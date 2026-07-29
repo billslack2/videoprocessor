@@ -9,6 +9,7 @@ enum class RendererResetScope
 {
 	LiveQueue,
 	Graph,
+	GraphRetarget,
 };
 
 
@@ -22,6 +23,7 @@ struct RendererResetRequest
 	uint64_t backendEpoch = 0;
 	RendererResetReason reason = RendererResetReason::None;
 	RendererResetScope scope = RendererResetScope::Graph;
+	uintptr_t targetWindow = 0;
 	uint64_t requestedTick = 0;
 	uint64_t deadlineTick = 0;
 };

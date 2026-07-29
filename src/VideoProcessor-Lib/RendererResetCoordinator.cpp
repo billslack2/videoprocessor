@@ -48,6 +48,16 @@ struct RendererResetCoordinator::State
 
 namespace
 {
+	int ResetScopeRank(RendererResetScope scope)
+	{
+		switch (scope)
+		{
+		case RendererResetScope::GraphRetarget: return 2;
+		case RendererResetScope::Graph: return 1;
+		default: return 0;
+		}
+	}
+
 	void AttemptWake(
 		const std::shared_ptr<RendererResetCoordinator::State>& state)
 	{
@@ -135,9 +145,17 @@ namespace
 				else
 				{
 					RendererResetRequest& selected = state->pending;
-					const bool graphRequired =
-						selected.scope == RendererResetScope::Graph ||
-						request.scope == RendererResetScope::Graph;
+					const RendererResetScope strongestScope =
+						ResetScopeRank(request.scope) >
+							ResetScopeRank(selected.scope) ?
+							request.scope : selected.scope;
+					const uintptr_t retargetWindow =
+						request.scope ==
+							RendererResetScope::GraphRetarget ?
+							request.targetWindow :
+						selected.scope ==
+							RendererResetScope::GraphRetarget ?
+							selected.targetWindow : 0;
 					const bool replace = RendererResetShouldReplace(
 						RendererResetPriority(request.reason),
 						request.deadlineTick,
@@ -145,8 +163,8 @@ namespace
 						selected.deadlineTick);
 					if (replace)
 						selected = request;
-					if (graphRequired)
-						selected.scope = RendererResetScope::Graph;
+					selected.scope = strongestScope;
+					selected.targetWindow = retargetWindow;
 				}
 
 				++state->acceptedRequestCount;
@@ -175,6 +193,7 @@ namespace
 		const uint64_t maximum = (std::numeric_limits<uint64_t>::max)();
 		return increment > maximum - value ? maximum : value + increment;
 	}
+
 }
 
 
@@ -233,6 +252,21 @@ RendererResetCoordinator::RendererResetCoordinator(WakeUi wakeUi, Clock clock):
 				try
 				{
 					if (selection.request.scope ==
+						RendererResetScope::GraphRetarget)
+					{
+						if (selection.request.targetWindow == 0 ||
+							!renderer->RetargetWindowWithIngressDrain(
+								selection.request.targetWindow,
+								[state]()
+								{
+									state->ingress->WaitForDrain();
+								}))
+						{
+							throw std::runtime_error(
+								"renderer window retarget unsupported or failed");
+						}
+					}
+					else if (selection.request.scope ==
 						RendererResetScope::Graph)
 					{
 						renderer->ResetWithIngressDrain([state]()
@@ -414,7 +448,8 @@ bool RendererResetCoordinator::RequestUi(
 	RendererResetReason reason,
 	RendererResetScope scope,
 	uint64_t delayMs,
-	uint64_t backendEpoch) noexcept
+	uint64_t backendEpoch,
+	uintptr_t targetWindow) noexcept
 {
 	std::shared_ptr<IRendererResetRequestSink> sink;
 	uint64_t now = 0;
@@ -438,6 +473,7 @@ bool RendererResetCoordinator::RequestUi(
 	request.backendEpoch = backendEpoch;
 	request.reason = reason;
 	request.scope = scope;
+	request.targetWindow = targetWindow;
 	request.requestedTick = now;
 	request.deadlineTick = SaturatingAdd(now, delayMs);
 	sink->Submit(request);
