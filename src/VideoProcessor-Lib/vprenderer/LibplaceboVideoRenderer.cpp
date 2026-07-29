@@ -1392,6 +1392,14 @@ namespace
 			config, "gamut_mapping", "auto",
 			{ "auto", "perceptual", "softclip", "relative", "desaturate" });
 		settings.peakDetection = ReadAutoToggle(config, "peak_detection");
+		if (TryGetDisplayString(config, "peak_detection", rawValue))
+		{
+			const std::string named = ConfigFile::NormalizeName(rawValue);
+			if (named == "default")
+				settings.peakDetection = AutoToggle::AUTO;
+			else if (named == "high_quality")
+				settings.peakDetection = AutoToggle::ON;
+		}
 		settings.upscaler = ReadChoice(
 			config, "upscaler", "auto",
 			{ "auto", "ewa_lanczossharp", "ewa_lanczos", "bicubic", "bilinear" });
