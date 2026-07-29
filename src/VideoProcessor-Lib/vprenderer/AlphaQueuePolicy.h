@@ -10,7 +10,6 @@
 namespace AlphaQueuePolicy
 {
 	constexpr size_t DEFAULT_DESIRED_DEPTH = 4;
-	constexpr size_t MAX_TRANSIENT_HEADROOM = 6;
 
 	inline size_t NormalizeDesiredDepth(size_t value)
 	{
@@ -27,12 +26,10 @@ namespace AlphaQueuePolicy
 
 	inline size_t HardCapacity(size_t desiredDepth)
 	{
-		const size_t desired = NormalizeDesiredDepth(desiredDepth);
-		const size_t headroom =
-			std::min(MAX_TRANSIENT_HEADROOM, std::max<size_t>(2, desired));
-		return desired > std::numeric_limits<size_t>::max() - headroom ?
-			std::numeric_limits<size_t>::max() :
-			desired + headroom;
+		// The configured queue size is user-visible and must be a true cap.
+		// Keeping hidden headroom here made states such as 5/3 possible and
+		// turned ordinary burst buffering into unexpected latency.
+		return NormalizeDesiredDepth(desiredDepth);
 	}
 
 	inline size_t HealthyLowWater(size_t desiredDepth)

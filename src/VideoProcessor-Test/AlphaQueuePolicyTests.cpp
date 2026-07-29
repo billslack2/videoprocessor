@@ -24,11 +24,11 @@ namespace Tests
 				AlphaQueuePolicy::ResolveDesiredDepth(6, 12));
 		}
 
-		TEST_METHOD(HardCapacityIsIndependentFromNormalTarget)
+		TEST_METHOD(HardCapacityMatchesConfiguredQueueLimit)
 		{
-			Assert::AreEqual<size_t>(3, AlphaQueuePolicy::HardCapacity(1));
-			Assert::AreEqual<size_t>(8, AlphaQueuePolicy::HardCapacity(4));
-			Assert::AreEqual<size_t>(38, AlphaQueuePolicy::HardCapacity(32));
+			Assert::AreEqual<size_t>(1, AlphaQueuePolicy::HardCapacity(1));
+			Assert::AreEqual<size_t>(4, AlphaQueuePolicy::HardCapacity(4));
+			Assert::AreEqual<size_t>(32, AlphaQueuePolicy::HardCapacity(32));
 			Assert::AreEqual<size_t>(std::numeric_limits<size_t>::max(),
 				AlphaQueuePolicy::HardCapacity(
 					std::numeric_limits<size_t>::max()));
@@ -40,7 +40,7 @@ namespace Tests
 				AlphaQueuePolicy::HealthyLowWater(1));
 			Assert::AreEqual<size_t>(3,
 				AlphaQueuePolicy::HealthyLowWater(4));
-			Assert::AreEqual<size_t>(5,
+			Assert::AreEqual<size_t>(4,
 				AlphaQueuePolicy::HealthyHighWater(4));
 		}
 
