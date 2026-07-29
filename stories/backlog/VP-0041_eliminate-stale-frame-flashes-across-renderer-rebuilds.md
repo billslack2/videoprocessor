@@ -2,7 +2,7 @@
 
 ## Status
 
-Review. Pull request #18 merged into the default integration branch
+Backlog. Pull request #18 merged into the default integration branch
 `v1.1.014-beta` on July 28, 2026 as merge commit `ab81c309`. Release x64 built
 successfully and all 181 tests passed. A basic launch from the feature build
 location also succeeded.
@@ -15,13 +15,19 @@ Alpha or successful downstream acceptance for DirectShow/madVR. Fullscreen
 hosts also paint a deterministic black background, and lifecycle logs record
 black-show, old-surface retirement, and first-live-frame reveal.
 
-Keep this story in review during real-world use. Acceptance still requires
-repeated Alpha-only, madVR-only, Alpha/madVR handoff, refresh-rate/mode-change,
-and actual HDMI-resync validation. Persistent shader caching remains enabled.
+Real-world validation found that the stale-frame issue still exists, so this
+story is reopened to Backlog. The black-cover implementation is retained as
+completed work, but it is not sufficient. Reproduce the remaining failure,
+capture the lifecycle evidence requested below, and identify the presentation
+path that can still reveal a retired frame before beginning another fix.
 
-The report is not preserved in the current `C:\logs\vp_debug.log`, which
-contains only a later short session. Treat the shader-cache timing as a useful
-regression clue, not as proof that cached shader objects contain video pixels.
+Acceptance still requires repeated Alpha-only, madVR-only, Alpha/madVR
+handoff, refresh-rate/mode-change, and actual HDMI-resync validation.
+Persistent shader caching remains enabled.
+
+Inspect `C:\Videoprocessor\vp\logs\vp_debug.log` and its numbered rotated logs
+for reproduction evidence. Treat the shader-cache timing as a useful regression
+clue, not as proof that cached shader objects contain video pixels.
 
 ## User story
 
