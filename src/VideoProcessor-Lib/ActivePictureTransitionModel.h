@@ -72,8 +72,15 @@ public:
 	static constexpr uint8_t INITIAL_CONFIRMATIONS = 4;
 	static constexpr uint8_t CLEAR_TRANSITION_CONFIRMATIONS = 2;
 	static constexpr double ANALYSIS_PERIOD_SECONDS = 0.080;
+	static constexpr double DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT = 2.0;
+	static constexpr double MAX_STABLE_GEOMETRY_DEADBAND_PERCENT = 5.0;
 
 	void Reset();
+	// A bounded presentation hysteresis. This never grants crop authority; it
+	// only retains an already trusted rectangle through a small measured shift.
+	void SetStableGeometryDeadbandPercent(double percent);
+	static void SetRuntimeStableGeometryDeadbandPercent(double percent);
+	static double GetRuntimeStableGeometryDeadbandPercent();
 	bool ShouldAnalyze(uint64_t frameNumber, double framesPerSecond);
 	ActivePictureTransitionDecision Observe(
 		const ActivePictureObservation& observation);
@@ -87,6 +94,9 @@ private:
 	static bool MateriallyDifferent(
 		const ActivePictureBounds& left,
 		const ActivePictureBounds& right);
+	bool WithinStableGeometryDeadband(
+		const ActivePictureBounds& stable,
+		const ActivePictureBounds& observation) const;
 	static bool HasCropAuthority(
 		const ActivePictureObservation& observation);
 	static bool IsFullRaster(
@@ -115,4 +125,6 @@ private:
 	uint8_t m_unavailableCandidates = 0;
 	uint64_t m_firstContradictoryFrame = 0;
 	uint64_t m_lastAnalyzedFrame = 0;
+	double m_stableGeometryDeadbandPercent =
+		DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT;
 };

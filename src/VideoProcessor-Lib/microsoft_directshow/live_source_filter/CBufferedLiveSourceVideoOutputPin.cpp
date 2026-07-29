@@ -2781,6 +2781,8 @@ bool CBufferedLiveSourceVideoOutputPin::GetActivePictureRectangle(
 void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 	IMediaSample* sample, uint64_t frameNumber, ActivePictureDetectorState& state)
 {
+	state.transition.SetStableGeometryDeadbandPercent(
+		ActivePictureTransitionModel::GetRuntimeStableGeometryDeadbandPercent());
 	if (!sample)
 		return;
 

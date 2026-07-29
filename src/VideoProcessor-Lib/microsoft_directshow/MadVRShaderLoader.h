@@ -51,6 +51,7 @@ struct ConfiguredShaderRule
 	bool nls = false;
 	bool none = false;
 	double aspectTolerancePercent = 5.0;
+	double stableGeometryDeadbandPercent = 2.0;
 	double activeAspectMinimum = 0.0;
 	bool narrowerOnly = false;
 };

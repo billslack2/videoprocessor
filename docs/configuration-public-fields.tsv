@@ -68,6 +68,7 @@ shaders.*.center_protection	shader-nls-center-protection	VP NLS	no
 shaders.*.curve	shader-nls-curve	VP NLS	no
 shaders.*.quality	shader-nls-quality	VP madVR NLS	no
 shaders.*.tolerance_percent	shader-nls-tolerance	VP NLS	no
+shaders.*.stable_geometry_deadband_percent	shader-stable-geometry-deadband	VP NLS	no
 general.persist_profile_selection	general-persist-profile-selection	Shared profile state	no
 general.event_action_delay_seconds	general-event-action-delay	Shared event actions	no
 profile_groups.*.profiles	profile-group-profiles	Shared profile state	no

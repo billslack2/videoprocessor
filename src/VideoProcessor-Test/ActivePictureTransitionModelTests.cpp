@@ -382,5 +382,61 @@ namespace VideoProcessorTest
 				}
 			}
 		}
+
+		TEST_METHOD(MinorTrustedGeometryChangeStaysWithinTwoPercentDeadband)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+			ActivePictureBounds minor = ScopeBounds();
+			// 21px per edge is below 2% of 2160 and the combined 42px
+			// height change remains inside the aggregate axis allowance.
+			minor.top += 21;
+			minor.bottom -= 21;
+			minor.aspectRatio = static_cast<double>(minor.right - minor.left) /
+				(minor.bottom - minor.top);
+
+			for (int count = 0; count < 24; ++count, ++frame)
+			{
+				const auto decision = Observe(model, minor, frame);
+				Assert::IsFalse(decision.publish);
+				Assert::IsTrue(decision.stable);
+				Assert::AreEqual(264, decision.bounds.top);
+				Assert::AreEqual(1896, decision.bounds.bottom);
+			}
+		}
+
+		TEST_METHOD(TrustedGeometryBeyondDeadbandStillTransitions)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+			ActivePictureBounds changed = ScopeBounds();
+			// 44px per edge exceeds 2% of 2160 and is therefore allowed
+			// to take the normal two-observation trusted transition path.
+			changed.top += 44;
+			changed.bottom -= 44;
+			changed.aspectRatio =
+				static_cast<double>(changed.right - changed.left) /
+				(changed.bottom - changed.top);
+
+			const auto probing = Observe(model, changed, frame++);
+			Assert::IsFalse(probing.publish);
+			Assert::IsTrue(probing.stable);
+			const auto committed = Observe(model, changed, frame);
+			Assert::IsTrue(committed.publish);
+			Assert::IsTrue(committed.stable);
+			Assert::AreEqual(308, committed.bounds.top);
+			Assert::AreEqual(1852, committed.bounds.bottom);
+		}
+
+		TEST_METHOD(DeadbandCannotBeRaisedBeyondFivePercent)
+		{
+			ActivePictureTransitionModel model;
+			model.SetStableGeometryDeadbandPercent(99.0);
+			uint64_t frame = Establish(model, ScopeBounds());
+			const auto probing = Observe(model, ImaxBounds(), frame++);
+			Assert::IsFalse(probing.publish);
+			const auto committed = Observe(model, ImaxBounds(), frame);
+			Assert::IsTrue(committed.publish);
+		}
 	};
 }

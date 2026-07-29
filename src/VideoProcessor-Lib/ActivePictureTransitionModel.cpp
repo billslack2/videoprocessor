@@ -3,7 +3,14 @@
 #include "ActivePictureTransitionModel.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+
+namespace
+{
+std::atomic<double> g_runtimeStableGeometryDeadbandPercent(
+	ActivePictureTransitionModel::DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT);
+}
 
 
 void ActivePictureTransitionModel::Reset()
@@ -18,6 +25,32 @@ void ActivePictureTransitionModel::Reset()
 	ClearCandidate();
 	m_unavailableCandidates = 0;
 	m_lastAnalyzedFrame = 0;
+}
+
+
+void ActivePictureTransitionModel::SetStableGeometryDeadbandPercent(
+	double percent)
+{
+	if (std::isfinite(percent) && percent >= 0.0 &&
+		percent <= MAX_STABLE_GEOMETRY_DEADBAND_PERCENT)
+		m_stableGeometryDeadbandPercent = percent;
+}
+
+
+void ActivePictureTransitionModel::SetRuntimeStableGeometryDeadbandPercent(
+	double percent)
+{
+	if (std::isfinite(percent) && percent >= 0.0 &&
+		percent <= MAX_STABLE_GEOMETRY_DEADBAND_PERCENT)
+		g_runtimeStableGeometryDeadbandPercent.store(percent,
+			std::memory_order_release);
+}
+
+
+double ActivePictureTransitionModel::GetRuntimeStableGeometryDeadbandPercent()
+{
+	return g_runtimeStableGeometryDeadbandPercent.load(
+		std::memory_order_acquire);
 }
 
 
@@ -78,6 +111,36 @@ bool ActivePictureTransitionModel::MateriallyDifferent(
 		std::abs(left.top - right.top) > tolerance ||
 		std::abs(left.right - right.right) > tolerance ||
 		std::abs(left.bottom - right.bottom) > tolerance;
+}
+
+
+bool ActivePictureTransitionModel::WithinStableGeometryDeadband(
+	const ActivePictureBounds& stable,
+	const ActivePictureBounds& observation) const
+{
+	if (stable.rasterWidth != observation.rasterWidth ||
+		stable.rasterHeight != observation.rasterHeight ||
+		stable.rasterWidth <= 0 || stable.rasterHeight <= 0)
+		return false;
+
+	const double fraction = m_stableGeometryDeadbandPercent / 100.0;
+	const int horizontalLimit = std::max(2, static_cast<int>(std::lround(
+		stable.rasterWidth * fraction)));
+	const int verticalLimit = std::max(2, static_cast<int>(std::lround(
+		stable.rasterHeight * fraction)));
+	const int stableWidth = stable.right - stable.left;
+	const int stableHeight = stable.bottom - stable.top;
+	const int observationWidth = observation.right - observation.left;
+	const int observationHeight = observation.bottom - observation.top;
+
+	// Limit each edge and the total active-size change. The latter prevents a
+	// nominal 2% edge allowance from hiding a 4% contraction on both sides.
+	return std::abs(stable.left - observation.left) <= horizontalLimit &&
+		std::abs(stable.right - observation.right) <= horizontalLimit &&
+		std::abs(stable.top - observation.top) <= verticalLimit &&
+		std::abs(stable.bottom - observation.bottom) <= verticalLimit &&
+		std::abs(stableWidth - observationWidth) <= horizontalLimit &&
+		std::abs(stableHeight - observationHeight) <= verticalLimit;
 }
 
 bool ActivePictureTransitionModel::HasCropAuthority(
@@ -271,6 +334,23 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.confidence = 0.0;
 		decision.reason =
 			"provisional geometry lacks affirmative crop authority";
+		return decision;
+	}
+
+	if (m_hasStable &&
+		WithinStableGeometryDeadband(m_stable, observation.bounds))
+	{
+		const bool geometryMoved = !SameBounds(m_stable, observation.bounds);
+		ClearCandidate();
+		decision.state = ActivePictureTransitionState::STABLE;
+		decision.bounds = m_stable;
+		decision.stableBounds = m_stable;
+		decision.stable = true;
+		decision.confidence = 1.0;
+		decision.diagnostic = geometryMoved;
+		if (geometryMoved)
+			decision.reason =
+				"minor trusted geometry change retained within deadband";
 		return decision;
 	}
 

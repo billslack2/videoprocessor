@@ -4479,6 +4479,9 @@ struct LibplaceboVideoRenderer::Impl
 		nlsRequested = false;
 		nlsRule = {};
 		nlsTransition.Reset();
+		ActivePictureTransitionModel::SetRuntimeStableGeometryDeadbandPercent(
+			ActivePictureTransitionModel::
+				DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT);
 		nlsGeometryAvailable = false;
 		nlsTransitionWithdrawn = false;
 		nlsGeometry = {};
@@ -4516,6 +4519,10 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		nlsRule = *nls;
+		nlsTransition.SetStableGeometryDeadbandPercent(
+			nlsRule.stableGeometryDeadbandPercent);
+		ActivePictureTransitionModel::SetRuntimeStableGeometryDeadbandPercent(
+			nlsRule.stableGeometryDeadbandPercent);
 		nlsRequested = true;
 		SetShaderStatus("NLS: Waiting");
 		MadVRShaderLoader::SetRuntimeShaderSelection(
