@@ -531,8 +531,26 @@ void ALiveSourceVideoOutputPin::Reset()
 	if (FAILED(DeliverNewSegment(0, MAXLONGLONG, 1.0)))
 		throw std::runtime_error("Failed to deliver new segment");
 	m_deliverNewSegment = false;
+	CompleteCoordinatedReset();
 
 	DebugLog::Log("ALiveSourceVideoOutputPin::Reset() - HDMI resync timing reset completed");
+}
+
+
+void ALiveSourceVideoOutputPin::RequestCoordinatedReset(const char* reason)
+{
+	const bool firstRequest =
+		!m_coordinatedResetRequested.exchange(
+			true, std::memory_order_acq_rel);
+	m_coordinatedResetNotificationPending.store(
+		true, std::memory_order_release);
+	if (firstRequest)
+	{
+		DebugLog::Log(
+			"DirectShow source recovery requested: reason=%s "
+			"action=coordinate-on-ui",
+			reason ? reason : "unknown");
+	}
 }
 
 

@@ -28,7 +28,8 @@ namespace Tests
 			snapshot.supported = true;
 			snapshot.active = true;
 			snapshot.queueEpoch = 7;
-			snapshot.deliverySuccessCount = 1;
+			snapshot.deliverySuccessCount = 5;
+			snapshot.currentEpochDeliverySuccessCount = 5;
 			snapshot.lastDeliverySuccessQueueEpoch = 7;
 			snapshot.lastDeliverySuccessTick = 100;
 
@@ -43,6 +44,7 @@ namespace Tests
 			snapshot.active = true;
 			snapshot.queueEpoch = 8;
 			snapshot.deliverySuccessCount = 5;
+			snapshot.currentEpochDeliverySuccessCount = 5;
 			snapshot.lastDeliverySuccessQueueEpoch = 7;
 			snapshot.lastDeliverySuccessTick = 100;
 
@@ -56,7 +58,8 @@ namespace Tests
 			snapshot.supported = true;
 			snapshot.active = true;
 			snapshot.queueEpoch = 8;
-			snapshot.deliverySuccessCount = 1;
+			snapshot.deliverySuccessCount = 5;
+			snapshot.currentEpochDeliverySuccessCount = 5;
 			snapshot.lastDeliverySuccessQueueEpoch = 8;
 			snapshot.lastDeliverySuccessTick = 100;
 
@@ -68,6 +71,13 @@ namespace Tests
 			snapshot.resetInProgress = true;
 			Assert::IsFalse(
 				HasCurrentEpochDownstreamDelivery(snapshot));
+		}
+
+		TEST_METHOD(DownstreamPrerollRequiresFiveAcceptedSamples)
+		{
+			Assert::IsFalse(HasSufficientDownstreamPreroll(0));
+			Assert::IsFalse(HasSufficientDownstreamPreroll(4));
+			Assert::IsTrue(HasSufficientDownstreamPreroll(5));
 		}
 	};
 }

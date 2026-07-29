@@ -50,20 +50,33 @@ public:
 	void OnVideoFrame(VideoFrame& videoFrame) override;
 	bool HasPresentedLiveFrame() const override
 	{
+		if (!m_resetReadyForReveal.load(std::memory_order_acquire))
+			return false;
+		if (!m_useFrameQueue)
+		{
+			return HasSufficientDownstreamPreroll(
+				m_unbufferedDeliverySuccessCount.load(
+					std::memory_order_acquire));
+		}
 		RendererLivenessSnapshot snapshot;
 		return GetLivenessSnapshot(snapshot) &&
 			HasCurrentEpochDownstreamDelivery(snapshot);
 	}
 	const char* PresentedLiveFrameEvidence() const override
 	{
-		return "current-epoch-downstream-delivered";
+		return m_useFrameQueue ?
+			"current-epoch-downstream-prerolled" :
+			"unbuffered-downstream-prerolled";
 	}
+	bool ConsumeCoordinatedResetRequest() override;
 	bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const override;
 	HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) override;
 	void Build() override;
 	void Start() override;
 	void Stop() override;
 	void Reset() override;
+	void ResetWithIngressDrain(
+		const std::function<void()>& drainAfterGraphStop) override;
 	void ResetLiveQueue() override;
 	void OnSize() override;
 	void SetFrameQueueMaxSize(size_t) override;
@@ -144,6 +157,8 @@ protected:
 	uint64_t m_frameCounter = 0;
 	uint64_t m_missingFrameCounter = 0;
 	double m_frameLatencyEntry = 0.0;
+	std::atomic<uint64_t> m_unbufferedDeliverySuccessCount{0};
+	std::atomic_bool m_resetReadyForReveal{false};
 	// PPM measurement variables
 	mutable timingclocktime_t m_firstFrameTime = 0;
 	mutable timingclocktime_t m_lastFrameTime = 0;  

@@ -13,6 +13,7 @@
 #include <set>
 #include <map>
 #include <atomic>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -34,6 +35,13 @@
 #include <microsoft_directshow/video_renderers/DirectShowVideoRenderer.h>
 #include <StatsOverlayWindow.h>
 
+struct RendererIngressState
+{
+	std::mutex mutex;
+	std::condition_variable drained;
+	size_t activeLeases = 0;
+};
+
 #include "resource.h"
 
 
@@ -49,6 +57,7 @@
 #define WM_MESSAGE_RENDERER_DETAIL_STRING               (WM_APP + 9)
 #define WM_MESSAGE_RENDERER_LIVE_FRAME                  (WM_APP + 10)
 #define WM_MESSAGE_RENDERER_RESET_COMPLETE              (WM_APP + 11)
+#define WM_MESSAGE_RENDERER_RESET_REQUEST               (WM_APP + 12)
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
@@ -184,6 +193,8 @@ public:
 	afx_msg LRESULT OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererDetailString(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererLiveFrame(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageRendererResetRequest(
+		WPARAM wParam, LPARAM lParam);
 
 	// Command handlers
 	void OnCommandFullScreenToggle();
@@ -456,10 +467,13 @@ protected:
 	uint32_t m_transitionGeneration = 0;
 	uint64_t m_transitionBlackStartTick = 0;
 	std::atomic_bool m_transitionRevealPosted{false};
+	bool m_resetPausedCaptureDelivery = false;
 	uint64_t m_rendererStartCapturedFrameCount = 0;
 	bool m_rendererFrameBaselineValid = false;
 
 	std::atomic_bool m_deliverCaptureDataToRenderer = false;
+	std::shared_ptr<RendererIngressState> m_rendererIngressState =
+		std::make_shared<RendererIngressState>();
 	UnifiedProfileRuntime::Runtime m_profileRuntime;
 	std::map<WORD, CString> m_unifiedProfileShortcutKeys;
 	WORD m_lastUnifiedProfileCommand = 0;
@@ -511,8 +525,13 @@ protected:
 	void RenderRemove();
 	void DestroyVideoRenderer();
 	void RenderGUIClear();
+	bool TryAcquireRendererIngressLease();
+	void ReleaseRendererIngressLease();
+	void PauseRendererIngress();
+	void WaitForRendererIngressDrain();
+	void ResumeRendererIngress();
 	bool ApplyRequestedShaderSelection();
-	void ShowRendererTransitionBlack(const char* reason);
+	bool ShowRendererTransitionBlack(const char* reason);
 	void TryRevealRendererTransition(uint32_t generation);
 	void FullScreenVideoWindowConstruct();
 	void FullScreenVideoWindowDestroy();
