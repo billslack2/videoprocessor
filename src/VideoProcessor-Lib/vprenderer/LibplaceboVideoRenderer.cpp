@@ -2619,6 +2619,26 @@ struct LibplaceboVideoRenderer::Impl
 		pl_log_destroy(&log);
 	}
 
+	bool PresentBlackFrame()
+	{
+		if (!d3d11 || !d3d11->gpu || !swapchain)
+			return false;
+
+		struct pl_swapchain_frame swapchainFrame{};
+		if (!pl_swapchain_start_frame(swapchain, &swapchainFrame))
+			return false;
+
+		struct pl_frame target{};
+		pl_frame_from_swapchain(&target, &swapchainFrame);
+		const float black[] = { 0.0f, 0.0f, 0.0f };
+		pl_frame_clear(d3d11->gpu, &target, black);
+		if (!pl_swapchain_submit_frame(swapchain))
+			return false;
+
+		pl_swapchain_swap_buffers(swapchain);
+		return true;
+	}
+
 	void LoadShaderCache()
 	{
 		shaderCachePath = ShaderCachePath();
@@ -6087,6 +6107,15 @@ void LibplaceboVideoRenderer::Retire() noexcept
 			m_renderThread.join();
 		}
 		ClearQueue("renderer retirement");
+		bool blackPresented = false;
+		if (m_impl)
+		{
+			std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
+			blackPresented = m_impl->PresentBlackFrame();
+		}
+		DebugLog::Log(
+			"Alpha renderer retirement: terminal black present=%d before swapchain release",
+			blackPresented ? 1 : 0);
 		m_impl.reset();
 		m_hasPresentedLiveFrame.store(false, std::memory_order_release);
 		DebugLog::Log(
