@@ -21,9 +21,13 @@ Review.
   unavailable state; logs include candidate/raw evidence, generation, age,
   previous accepted value, reason, recalculation attempt, and blocked
   consumers.
-- Confirmed implementation base: `v1.1.014-beta`
+- Implementation base updated to the current remote default
+  `v1.1.015-beta` (`0cf35f95f3fae2234c7d6fdd6d2e10fd977035ab`).
+- Because the new default has separate ancestry from `v1.1.014-beta`, the
+  completed rebase replayed the 112 implementation-line commits required to
+  preserve the VP source tree on top of the new default.
 - Implementation branch: `codex/vp-0055-display-rate-validation`
-- Source commit: `f70e868cc9ccf6f18dfcf3fc6e1c2906eb3e335a`
+- Rebased source commit: `28edf2081de19920a1633fe3e46702f268a8369a`
 - Draft PR: `https://github.com/billslack2/videoprocessor/pull/25`
 - Validation: x64 Release solution build passed with Visual Studio 18.7
   MSBuild; the full native suite passed 205/205. Focused cases cover clean
