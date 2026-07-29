@@ -396,6 +396,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	if (m_stats.displayRefreshRate > 0.0)
 		line.Format(TEXT("- Display Rate:   %.6f Hz%s"), m_stats.displayRefreshRate,
 			m_stats.displayRefreshRateOverridden ? TEXT(" *") : TEXT(""));
+	else if (!m_stats.displayRefreshRateStatus.IsEmpty())
+		line.Format(TEXT("- Display Rate:   --- (%s)"),
+			m_stats.displayRefreshRateStatus.GetString());
 	else
 		line.Format(TEXT("- Display Rate:   ---"));
 	DrawText(hdc, line, PADDING, y);

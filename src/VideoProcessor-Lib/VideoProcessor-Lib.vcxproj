@@ -181,6 +181,7 @@
     <ClInclude Include="DebugLog.h" />
     <ClInclude Include="DebugLogRetention.h" />
     <ClInclude Include="DisplayMode.h" />
+    <ClInclude Include="DisplayRefreshRatePolicy.h" />
     <ClInclude Include="ColorFormat.h" />
     <ClInclude Include="EOTF.h" />
     <ClInclude Include="framework.h" />
@@ -258,6 +259,7 @@
     <ClCompile Include="cie.cpp" />
     <ClCompile Include="ColorSpace.cpp" />
     <ClCompile Include="DisplayMode.cpp" />
+    <ClCompile Include="DisplayRefreshRatePolicy.cpp" />
     <ClCompile Include="ColorFormat.cpp" />
     <ClCompile Include="ConfigFile.cpp" />
     <ClCompile Include="EOTF.cpp" />

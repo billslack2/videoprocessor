@@ -21,6 +21,7 @@ struct StatsData
 	double refreshRate = 0.0;  // Hz (legacy - still used for display)
 	double displayRefreshRate = 0.0; // Measured or configured desktop/display refresh rate (Hz)
 	bool displayRefreshRateOverridden = false;
+	CString displayRefreshRateStatus; // warming, quarantined, or unavailable
 	CString eotf;              // e.g., "PQ"
 	CString colorspace;        // e.g., "BT.2020"
 	CString pixelFormat;       // e.g., "P010"
