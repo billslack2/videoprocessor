@@ -2,8 +2,7 @@
 
 ## Status
 
-In Progress. Implementation is committed as `6be6886` on
-`codex/vp-0050-renderer-order`, based on `origin/v1.1.014-beta`.
+Done. Merged into `v1.1.014-beta` as `b2247df` on 2026-07-28.
 
 Validation complete:
 

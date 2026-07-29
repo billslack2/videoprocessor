@@ -74,7 +74,7 @@ they must not contain requirements that are absent from this file.
 | VP-0047 | Backlog | Verified P3-D65 display target and LUT contract |
 | VP-0048 | Backlog | Explicit SDR LUT transfer and range contracts |
 | VP-0049 | Backlog | Complete canonical CONFIGURATION.html reference |
-| VP-0050 | In Progress | Put Alpha first and reverse renderer order |
+| VP-0050 | Done | Put Alpha first and reverse renderer order |
 | VP-0051 | Backlog | Generic Alpha shader-chain support |
 | VP-0052 | In Progress | Lowercase runtime layout and vprenderer directory |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |

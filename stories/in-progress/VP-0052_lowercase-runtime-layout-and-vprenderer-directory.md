@@ -7,6 +7,13 @@ The optional plugin project and binary will be renamed to
 `VideoProcessor-VPRenderer` and `VideoProcessorVPRenderer.dll`; its C export
 ABI will remain unchanged while the loader moves atomically to `vprenderer`.
 
+Implementation is rebased onto the VP-0050 merge (`b2247df`) and pushed as
+`0736243` on `codex/vp-0052-runtime-layout`. x64 Release build and 194/194
+native tests pass. A filtered runtime payload is deployed for user validation:
+`vprenderer` contains only the plugin/runtime DLLs, README, and licenses; the
+previous active renderer directory and executable were retained as dated
+`pre-VP0052` backups. `VideoProcessor.cfg` was not modified.
+
 Coordinate this work after VP-0045 is integrated because both stories touch
 the built-in renderer's project, configuration, help, and packaging references.
 
