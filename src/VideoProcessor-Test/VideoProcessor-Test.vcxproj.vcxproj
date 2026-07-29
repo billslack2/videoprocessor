@@ -193,6 +193,7 @@
     <ClCompile Include="MadVRShaderRuntimeStateTests.cpp" />
     <ClCompile Include="ActivePictureTransitionModelTests.cpp" />
     <ClCompile Include="P010ActivePictureEvidenceTests.cpp" />
+    <ClCompile Include="RendererIdTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />

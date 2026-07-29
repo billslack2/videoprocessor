@@ -4031,18 +4031,10 @@ void CVideoProcessorDlg::RebuildRendererCombo()
 		rendererIds.push_back(RendererId::Libplacebo());
 #endif
 
-	//
-	// Populate selection box, sorted
-	//
-
-	std::sort(rendererIds.begin(), rendererIds.end());
-	for (const auto& rendererEntry : rendererIds)
+	// Alpha is always first; remaining eligible renderers are shown in the
+	// reverse of the previous alphabetical order.
+	for (const auto& rendererEntry : RendererId::OrderForDisplay(rendererIds))
 	{
-		CString normalizedRendererName(rendererEntry.name);
-		normalizedRendererName.MakeLower();
-		if (normalizedRendererName.Find(TEXT("decklink")) >= 0)
-			continue;
-
 		RendererId* id = new RendererId(rendererEntry);
 
 		int comboIndex = m_rendererCombo.AddString(rendererEntry.name);
@@ -4051,11 +4043,7 @@ void CVideoProcessorDlg::RebuildRendererCombo()
 			comboIndex + 1,
 			rendererEntry.name.GetString());
 
-		const bool isConfiguredRenderer =
-			rendererEntry.name.CompareNoCase(m_defaultRendererName) == 0 ||
-			(rendererEntry.backend == RendererBackend::LIBPLACEBO &&
-			 m_defaultRendererName.CompareNoCase(TEXT("libplacebo")) == 0);
-		if (isConfiguredRenderer)
+		if (rendererEntry.MatchesConfiguredName(m_defaultRendererName))
 			m_rendererCombo.SetCurSel(comboIndex);
 	}
 }
