@@ -2,17 +2,22 @@
 
 ## Status
 
-In Progress. Implementation starts from `origin/v1.1.014-beta` after VP-0045.
-The optional plugin project and binary will be renamed to
+Done. Merged into `v1.1.014-beta` as `e5b463f` on 2026-07-28.
+The optional plugin project and binary were renamed to
 `VideoProcessor-VPRenderer` and `VideoProcessorVPRenderer.dll`; its C export
-ABI will remain unchanged while the loader moves atomically to `vprenderer`.
+ABI remains unchanged while the loader moved atomically to `vprenderer`.
 
-Implementation is rebased onto the VP-0050 merge (`b2247df`) and pushed as
-`0736243` on `codex/vp-0052-runtime-layout`. x64 Release build and 194/194
+Implementation was rebased onto the VP-0050 merge (`b2247df`) and completed
+through `91ac214` on `codex/vp-0052-runtime-layout`. x64 Release build and 194/194
 native tests pass. A filtered runtime payload is deployed for user validation:
 `vprenderer` contains only the plugin/runtime DLLs, README, and licenses; the
 previous active renderer directory and executable were retained as dated
 `pre-VP0052` backups. `VideoProcessor.cfg` was not modified.
+
+Runtime acceptance confirmed the application starts, loads
+`vprenderer\VideoProcessorVPRenderer.dll` at plugin API 7, lists Alpha first,
+and starts DeckLink capture. The startup diagnostic format regression was fixed
+before merge.
 
 Coordinate this work after VP-0045 is integrated because both stories touch
 the built-in renderer's project, configuration, help, and packaging references.

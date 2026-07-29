@@ -76,7 +76,7 @@ they must not contain requirements that are absent from this file.
 | VP-0049 | Backlog | Complete canonical CONFIGURATION.html reference |
 | VP-0050 | Done | Put Alpha first and reverse renderer order |
 | VP-0051 | Backlog | Generic Alpha shader-chain support |
-| VP-0052 | In Progress | Lowercase runtime layout and vprenderer directory |
+| VP-0052 | Done | Lowercase runtime layout and vprenderer directory |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
