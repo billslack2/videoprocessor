@@ -2,13 +2,48 @@
 
 ## Status
 
-In progress. This is an evidence-led investigation and recovery-design story. Do
-not alter normal queue sizing, buffering, or reset timing merely to make the
-symptom disappear.
+Review.
 
-Implementation began on 2026-07-28 from the current repository default branch
-`v1.1.014-beta`. Investigation is focused first on reset-request arbitration,
-worker/UI liveness evidence, and the manual-reset-equivalent recovery boundary.
+- Root cause confirmed for the missed re-prime: the 33-second
+  `display-transition` request replaced the already scheduled five-second
+  `post-renderer-start` graph reset for generation 14. The old coordinator
+  unconditionally killed and recreated one timer, so the last request won.
+- A second liveness risk was confirmed in code: manual and automatic
+  DirectShow resets called graph `Stop`, source reset, and graph `Run`
+  synchronously from the UI thread.
+- Reset arbitration is now generation-aware and deterministic. Manual and
+  proven liveness recovery outrank post-start, post-start outranks display
+  settle, equal-priority requests keep the earliest deadline, graph scope
+  dominates live-queue scope, and an obsolete generation cannot suppress the
+  active generation's request. Logs record request IDs, priority, replacement
+  identity, deadline, start, completion, cancellation, timeout, and failure.
+- DirectShow graph-control/reset work now runs on a retained background
+  renderer owner. Overlapping reset and renderer teardown are prevented, UI
+  painting/messages continue, and a ten-second terminal diagnostic identifies
+  an external graph operation that does not return.
+- Lock-free liveness evidence now covers UI message/paint, capture input,
+  conversion, dequeue, downstream `Deliver`, queue depths/capacity, buffering,
+  queue epoch, worker IDs, and observable delivery/reset ownership. A
+  process-local watchdog records a rate-limited alert even when the UI message
+  loop itself stops advancing.
+- Automatic critical recovery requires persistent capacity saturation,
+  continuing capture input, and absent downstream delivery progress. Queue
+  depth alone no longer requests a reset. Recovery uses the same complete graph
+  re-prime as manual `R`, is generation checked, serialized, and held to a
+  30-second cooldown.
+- Confirmed implementation base: `v1.1.014-beta`.
+- Implementation branch: `codex/vp-0054-directshow-liveness`.
+- Source commit: `93a77b7` (local; source publishing was not explicitly
+  requested).
+- Automated validation: x64 Release solution build passed with Visual Studio
+  18.7 MSBuild; native suite passed 200/200. Four focused arbitration tests
+  cover the recorded post-start/display replacement, critical preemption,
+  equal-priority earliest deadline, and manual priority.
+- Review/live validation still required on the affected machine: 23.976 and
+  59.94 Alpha -> DirectShow display resync, repeated backend changes,
+  display/profile/NLS changes, simulated or observed blocked downstream
+  delivery, manual `R` during a pending recovery, and extended steady-state
+  DirectShow playback.
 
 ## User story
 
