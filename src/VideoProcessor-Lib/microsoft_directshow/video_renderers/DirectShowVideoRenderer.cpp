@@ -61,7 +61,36 @@ DirectShowVideoRenderer::DirectShowVideoRenderer(
 
 DirectShowVideoRenderer::~DirectShowVideoRenderer()
 {
-	GraphTeardown();
+	Retire();
+}
+
+
+void DirectShowVideoRenderer::Retire() noexcept
+{
+	if (m_retired.exchange(true, std::memory_order_acq_rel))
+		return;
+	DebugLog::Log(
+		"DirectShow renderer retirement started: worker_thread=%lu graph_complete=%d",
+		GetCurrentThreadId(),
+		m_graphTeardownComplete.load(std::memory_order_acquire) ? 1 : 0);
+	if (m_graphTeardownComplete.load(std::memory_order_acquire))
+	{
+		// STOPPED is terminal, but a final DirectShow notification can enqueue
+		// event-drain work before the UI releases its lifetime pin. Discard
+		// such post-teardown work and only join the already-clean owner.
+		m_graphExecutor.CancelPendingAndShutdown({});
+		DebugLog::Log(
+			"DirectShow renderer retirement completed: worker_thread=%lu mode=join-only",
+			GetCurrentThreadId());
+		return;
+	}
+	m_graphExecutor.CancelPendingAndShutdown([this]()
+		{
+			GraphTeardownNoThrow();
+		});
+	DebugLog::Log(
+		"DirectShow renderer retirement completed: worker_thread=%lu mode=forced-cleanup",
+		GetCurrentThreadId());
 }
 
 
@@ -70,35 +99,46 @@ bool DirectShowVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 	if (!videoState)
 		throw std::runtime_error("null video state is invalid");
 
+	if (!IsGraphThread())
+	{
+		{
+			std::lock_guard<std::mutex> lock(m_videoStateAdmissionMutex);
+			if (m_admissionVideoState &&
+				(videoState->valid == false ||
+					videoState->colorspace !=
+						m_admissionVideoState->colorspace ||
+					videoState->eotf != m_admissionVideoState->eotf ||
+					*(videoState->displayMode) !=
+						*(m_admissionVideoState->displayMode) ||
+					videoState->videoFrameEncoding !=
+						m_admissionVideoState->videoFrameEncoding))
+				return false;
+			m_admissionVideoState = videoState;
+		}
+		const VideoStateComPtr acceptedState = videoState;
+		PostCoalescedGraphCommand(GRAPH_COMMAND_VIDEO_STATE,
+			[this, acceptedState]()
+			{
+				// The graph contract is immutable for this renderer
+				// generation. Compatible runtime HDR changes are applied by
+				// the owner-side HDR command without replacing the shared
+				// pointer read by the capture path.
+				if (!m_videoState)
+					m_videoState = acceptedState;
+			});
+		return true;
+	}
+
 	if (m_videoState)
 	{
-		// Unacceptable changes to this renderer, return false and get cleaned up
 		if (videoState->valid == false ||
 			videoState->colorspace != m_videoState->colorspace ||
 			videoState->eotf != m_videoState->eotf ||
 			*(videoState->displayMode) != *(m_videoState->displayMode) ||
 			videoState->videoFrameEncoding != m_videoState->videoFrameEncoding)
-		{
 			return false;
-		}
 	}
-	else
-	{
-		// No video state yet, initialize
-		m_videoState = videoState;
-		
-		// RATIONAL_RATIONAL mode uses the same hardware timing clock
-		// The rational timestamp calculation happens in ALiveSourceVideoOutputPin
-		// using pure integer math for perfect frame spacing
-		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL)
-		{
-			const uint32_t timeScale = m_videoState->displayMode->TimeScale();
-			const uint32_t frameDurationTicks = m_videoState->displayMode->FrameDuration();
-			const double frameRate = (double)timeScale / (double)frameDurationTicks;
-			
-			DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer: Using RATIONAL_RATIONAL timing for %.6f fps (hardware clock with integer math)"), frameRate));
-		}
-	}
+	m_videoState = videoState;
 
 	// All good, continue
 	return true;
@@ -109,7 +149,8 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 {
 	// Called from some unknown thread, but with promise that Start() has completed
 
-	assert(m_state == RendererState::RENDERSTATE_RENDERING);
+	assert(m_state.load(std::memory_order_acquire) ==
+		RendererState::RENDERSTATE_RENDERING);
 	assert(m_videoState);
 	assert(videoFrame.GetTimingTimestamp() > 0);
 
@@ -149,9 +190,10 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	{
 		DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::OnVideoFrame(): Failed to deliver frame #%I64u"), m_frameCounter));
 	}
-	else
+	else if (!m_useFrameQueue && deliveryResult == S_OK)
 	{
-		m_hasPresentedLiveFrame.store(true, std::memory_order_release);
+		m_unbufferedDeliverySuccessCount.fetch_add(
+			1, std::memory_order_acq_rel);
 	}
 
 	++m_frameCounter;
@@ -159,6 +201,34 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 
 
 HRESULT DirectShowVideoRenderer::OnWindowsEvent(LONG_PTR, LONG_PTR)
+{
+	// A previous owner-side drain can have published a state transition. Only
+	// deliver it here, on the window/UI thread.
+	PublishPendingStateCallback();
+
+	const bool accepted = PostCoalescedGraphCommand(
+		GRAPH_COMMAND_EVENT_DRAIN, [this]()
+		{
+			AssertGraphThread();
+			OnWindowsEventOnGraphThread();
+
+			// SetState deliberately does not call UI code from the graph owner.
+			// Wake the HWND so the next UI-side entry publishes the completion.
+			bool hasCompletion = false;
+			{
+				std::lock_guard<std::mutex> lock(m_completionMutex);
+				hasCompletion = !m_pendingStateCompletions.empty();
+			}
+			if (hasCompletion)
+			{
+				WakeForOwnerCompletion();
+			}
+		});
+	return accepted ? S_OK : VFW_E_WRONG_STATE;
+}
+
+
+HRESULT DirectShowVideoRenderer::OnWindowsEventOnGraphThread()
 {
 	// ! Do not tear down graph here
 
@@ -190,24 +260,130 @@ HRESULT DirectShowVideoRenderer::OnWindowsEvent(LONG_PTR, LONG_PTR)
 
 void DirectShowVideoRenderer::Build()
 {
-	GraphBuild();
+	if (IsGraphThread())
+	{
+		GraphBuild();
+		return;
+	}
+	m_graphExecutor.Post([this]()
+		{
+			try
+			{
+				GraphBuild();
+			}
+			catch (const std::exception& error)
+			{
+				DebugLog::Log(
+					"DirectShow graph build failed asynchronously: %s",
+					error.what());
+				GraphTeardownNoThrow();
+				SetState(RendererState::RENDERSTATE_FAILED);
+			}
+			WakeForOwnerCompletion();
+		});
 }
 
 
 void DirectShowVideoRenderer::Start()
 {
-	GraphRun();
+	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
+	m_resetReadyForReveal.store(false, std::memory_order_release);
+	if (IsGraphThread())
+	{
+		GraphRun();
+		m_resetReadyForReveal.store(true, std::memory_order_release);
+		return;
+	}
+	m_graphExecutor.Post([this]()
+		{
+			if (m_state.load(std::memory_order_acquire) !=
+				RendererState::RENDERSTATE_READY)
+				return;
+			try
+			{
+				GraphRun();
+				m_resetReadyForReveal.store(true, std::memory_order_release);
+			}
+			catch (const std::exception& error)
+			{
+				DebugLog::Log(
+					"DirectShow graph start failed asynchronously: %s",
+					error.what());
+				GraphTeardownNoThrow();
+				SetState(RendererState::RENDERSTATE_FAILED);
+			}
+			WakeForOwnerCompletion();
+		});
 }
 
 
 void DirectShowVideoRenderer::Stop()
 {
-	GraphStop();
+	StopWithIngressDrain({});
+}
+
+
+void DirectShowVideoRenderer::StopWithIngressDrain(
+	const std::function<void()>& drainAfterGraphStop)
+{
+	if (IsGraphThread())
+	{
+		GraphStop();
+		if (drainAfterGraphStop)
+			drainAfterGraphStop();
+		GraphTeardownNoThrow();
+		if (m_graphTeardownComplete.load(std::memory_order_acquire))
+			SetState(RendererState::RENDERSTATE_STOPPED);
+		else
+			SetState(RendererState::RENDERSTATE_FAILED);
+		return;
+	}
+	m_graphExecutor.PostWithCompletion([this, drainAfterGraphStop]()
+		{
+			try
+			{
+				GraphStop();
+			}
+			catch (const std::exception& error)
+			{
+				DebugLog::Log(
+					"DirectShow graph stop failed asynchronously: %s",
+					error.what());
+			}
+			if (drainAfterGraphStop)
+				drainAfterGraphStop();
+			GraphTeardownNoThrow();
+			if (m_graphTeardownComplete.load(std::memory_order_acquire))
+				SetState(RendererState::RENDERSTATE_STOPPED);
+			else
+				SetState(RendererState::RENDERSTATE_FAILED);
+		}, [eventHwnd = m_eventHwnd, eventMsg = m_eventMsg]()
+		{
+			PostMessage(eventHwnd, eventMsg, 0, 0);
+		});
 }
 
 
 void DirectShowVideoRenderer::Reset()
 {
+	ResetWithIngressDrain({});
+}
+
+
+void DirectShowVideoRenderer::ResetWithIngressDrain(
+	const std::function<void()>& drainAfterGraphStop)
+{
+	if (!IsGraphThread())
+	{
+		InvokeOnGraphThread([this, drainAfterGraphStop]()
+			{
+				ResetWithIngressDrain(drainAfterGraphStop);
+			});
+		return;
+	}
+	AssertGraphThread();
+	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
+	m_resetReadyForReveal.store(false, std::memory_order_release);
 	DebugLog::Log("DirectShowVideoRenderer::Reset() called, m_liveSource=%p", m_liveSource);
 	
 	if (!m_liveSource)
@@ -234,6 +410,12 @@ void DirectShowVideoRenderer::Reset()
 		else
 		{
 			DebugLog::Log("DirectShowVideoRenderer::Reset() - Graph stopped");
+
+			// Capture admission is already closed. Stop/flush releases a
+			// callback blocked in downstream Receive; now prove every admitted
+			// callback has left before resetting source-owned queues.
+			if (drainAfterGraphStop)
+				drainAfterGraphStop();
 			
 			// Brief delay to ensure MadVR fully stops
 			Sleep(100);
@@ -259,17 +441,32 @@ void DirectShowVideoRenderer::Reset()
 	{
 		// Fallback if no graph control
 		DebugLog::Log("DirectShowVideoRenderer::Reset() - No pControl, just resetting source");
+		if (drainAfterGraphStop)
+			drainAfterGraphStop();
 		m_liveSource->Reset();
 	}
 	
 	m_frameCounter = 0;
 	ResetPPMMeasurement();
+	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
+	m_resetReadyForReveal.store(true, std::memory_order_release);
 	DebugLog::Log("DirectShowVideoRenderer::Reset() - complete");
 }
 
 
 void DirectShowVideoRenderer::ResetLiveQueue()
 {
+	if (!IsGraphThread())
+	{
+		InvokeOnGraphThread([this]()
+			{
+				ResetLiveQueue();
+			});
+		return;
+	}
+	AssertGraphThread();
+	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
+	m_resetReadyForReveal.store(false, std::memory_order_release);
 	if (!m_liveSource)
 	{
 		DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - m_liveSource is NULL, returning");
@@ -281,13 +478,26 @@ void DirectShowVideoRenderer::ResetLiveQueue()
 	// leaves madVR and the DirectShow graph running.
 	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - flushing live source queue only");
 	m_liveSource->Reset();
+	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
+	m_resetReadyForReveal.store(true, std::memory_order_release);
 	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - complete");
+}
+
+
+void DirectShowVideoRenderer::SetResetRequestSink(
+	std::shared_ptr<IRendererResetRequestSink> sink)
+{
+	m_resetRequestSink = std::move(sink);
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	if (m_liveSource)
+		m_liveSource->SetResetRequestSink(m_resetRequestSink);
 }
 
 
 bool DirectShowVideoRenderer::GetLivenessSnapshot(
 	RendererLivenessSnapshot& snapshot) const
 {
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
 	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
 	{
 		snapshot = {};
@@ -300,6 +510,15 @@ bool DirectShowVideoRenderer::GetLivenessSnapshot(
 
 void DirectShowVideoRenderer::OnSize()
 {
+	if (!IsGraphThread())
+	{
+		PostCoalescedGraphCommand(GRAPH_COMMAND_RESIZE, [this]()
+			{
+				OnSize();
+			});
+		return;
+	}
+	AssertGraphThread();
 	if (!m_videoWindow)
 		return;
 
@@ -319,12 +538,32 @@ void DirectShowVideoRenderer::OnSize()
 
 void DirectShowVideoRenderer::SetFrameQueueMaxSize(size_t frameMaxQueueSize)
 {
+	if (!IsGraphThread())
+	{
+		PostCoalescedGraphCommand(GRAPH_COMMAND_FRAME_QUEUE_SIZE,
+			[this, frameMaxQueueSize]()
+			{
+				SetFrameQueueMaxSize(frameMaxQueueSize);
+			});
+		return;
+	}
+	if (!m_liveSource)
+		return;
 	m_liveSource->SetFrameQueueMaxSize(frameMaxQueueSize);
 }
 
 
 void DirectShowVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 {
+	if (!IsGraphThread())
+	{
+		PostCoalescedGraphCommand(GRAPH_COMMAND_SCENE_CORRECTION,
+			[this, enabled]()
+			{
+				SetSceneAwareTimingCorrection(enabled);
+			});
+		return;
+	}
 	if (!m_liveSource)
 		return;
 
@@ -333,6 +572,15 @@ void DirectShowVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 
 void DirectShowVideoRenderer::SetSceneCorrectionUpstreamSample(bool enabled)
 {
+	if (!IsGraphThread())
+	{
+		PostCoalescedGraphCommand(GRAPH_COMMAND_SCENE_SAMPLE,
+			[this, enabled]()
+			{
+				SetSceneCorrectionUpstreamSample(enabled);
+			});
+		return;
+	}
 	if (!m_liveSource)
 		return;
 
@@ -349,6 +597,15 @@ void DirectShowVideoRenderer::SetSubtitleRepositioning(bool enabled)
 void DirectShowVideoRenderer::SetSubtitleRepositioningMode(
 	SubtitleRepositionMode mode)
 {
+	if (!IsGraphThread())
+	{
+		PostCoalescedGraphCommand(GRAPH_COMMAND_SUBTITLE_MODE,
+			[this, mode]()
+			{
+				SetSubtitleRepositioningMode(mode);
+			});
+		return;
+	}
 	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
 		return;
 
@@ -359,6 +616,16 @@ void DirectShowVideoRenderer::SetSceneTimingRates(
 	double displayRefreshRateHz,
 	double measuredCaptureRateHz)
 {
+	if (!IsGraphThread())
+	{
+		PostCoalescedGraphCommand(GRAPH_COMMAND_SCENE_RATES,
+			[this, displayRefreshRateHz, measuredCaptureRateHz]()
+			{
+				SetSceneTimingRates(
+					displayRefreshRateHz, measuredCaptureRateHz);
+			});
+		return;
+	}
 	if (!m_liveSource || !m_liveSource->GetVideoOutputPin() || !m_videoState ||
 		!m_videoState->displayMode)
 		return;
@@ -391,6 +658,15 @@ void DirectShowVideoRenderer::SetSceneTimingReadiness(
 	bool ready,
 	uint64_t intervalsObserved)
 {
+	if (!IsGraphThread())
+	{
+		PostCoalescedGraphCommand(GRAPH_COMMAND_SCENE_READINESS,
+			[this, ready, intervalsObserved]()
+			{
+				SetSceneTimingReadiness(ready, intervalsObserved);
+			});
+		return;
+	}
 	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
 		return;
 
@@ -403,6 +679,16 @@ void DirectShowVideoRenderer::SetSceneTimingPhase(
 	int64_t refreshPeriodQpc,
 	int64_t qpcFrequency)
 {
+	if (!IsGraphThread())
+	{
+		PostCoalescedGraphCommand(GRAPH_COMMAND_SCENE_PHASE,
+			[this, vblankQpc, refreshPeriodQpc, qpcFrequency]()
+			{
+				SetSceneTimingPhase(
+					vblankQpc, refreshPeriodQpc, qpcFrequency);
+			});
+		return;
+	}
 	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
 		return;
 
@@ -413,16 +699,23 @@ void DirectShowVideoRenderer::SetSceneTimingPhase(
 
 size_t DirectShowVideoRenderer::GetFrameQueueSize()
 {
-	if (m_state != RendererState::RENDERSTATE_RENDERING)
+	if (m_state.load(std::memory_order_acquire) !=
+		RendererState::RENDERSTATE_RENDERING)
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	if (!m_liveSource ||
+		m_state.load(std::memory_order_acquire) !=
+			RendererState::RENDERSTATE_RENDERING)
+		return 0;
 	return m_liveSource->GetFrameQueueSize();
 }
 
 
 double DirectShowVideoRenderer::EntryLatencyMs() const
 {
-	if (m_state != RendererState::RENDERSTATE_RENDERING)
+	if (m_state.load(std::memory_order_acquire) !=
+		RendererState::RENDERSTATE_RENDERING)
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
 	return m_frameLatencyEntry;
@@ -434,7 +727,8 @@ double DirectShowVideoRenderer::ExitLatencyMs() const
 	if (m_state != RendererState::RENDERSTATE_RENDERING)
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
-	return m_liveSource->ExitLatencyMs();
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	return m_liveSource ? m_liveSource->ExitLatencyMs() : 0.0;
 }
 
 
@@ -443,7 +737,8 @@ uint64_t DirectShowVideoRenderer::DroppedFrameCount() const
 	if (m_state != RendererState::RENDERSTATE_RENDERING)
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
-	return m_liveSource->DroppedFrameCount();
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	return m_liveSource ? m_liveSource->DroppedFrameCount() : 0;
 }
 
 uint64_t DirectShowVideoRenderer::SceneAwareCorrectionDropCount() const
@@ -451,7 +746,9 @@ uint64_t DirectShowVideoRenderer::SceneAwareCorrectionDropCount() const
 	if (m_state != RendererState::RENDERSTATE_RENDERING)
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
-	return m_liveSource->GetVideoOutputPin()->SceneAwareCorrectionDropCount();
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	return m_liveSource && m_liveSource->GetVideoOutputPin() ?
+		m_liveSource->GetVideoOutputPin()->SceneAwareCorrectionDropCount() : 0;
 }
 
 uint64_t DirectShowVideoRenderer::SceneAwareCorrectionRepeatCount() const
@@ -459,7 +756,9 @@ uint64_t DirectShowVideoRenderer::SceneAwareCorrectionRepeatCount() const
 	if (m_state != RendererState::RENDERSTATE_RENDERING)
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
-	return m_liveSource->GetVideoOutputPin()->SceneAwareCorrectionRepeatCount();
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	return m_liveSource && m_liveSource->GetVideoOutputPin() ?
+		m_liveSource->GetVideoOutputPin()->SceneAwareCorrectionRepeatCount() : 0;
 }
 
 bool DirectShowVideoRenderer::GetSceneTimingPrediction(
@@ -470,8 +769,11 @@ bool DirectShowVideoRenderer::GetSceneTimingPrediction(
 	secondsUntilPlan = 0.0;
 	action = 0;
 	planned = false;
-	if (m_state != RendererState::RENDERSTATE_RENDERING ||
-		!m_liveSource || !m_liveSource->GetVideoOutputPin())
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		return false;
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	if (!m_liveSource || !m_liveSource->GetVideoOutputPin() ||
+		m_state != RendererState::RENDERSTATE_RENDERING)
 		return false;
 
 	return m_liveSource->GetVideoOutputPin()->GetSceneTimingPrediction(
@@ -484,8 +786,11 @@ bool DirectShowVideoRenderer::GetSceneTimingLastCorrection(
 	action = 0;
 	secondsFromDeadline = 0.0;
 	correctionTick = 0;
-	if (m_state != RendererState::RENDERSTATE_RENDERING ||
-		!m_liveSource || !m_liveSource->GetVideoOutputPin())
+	if (m_state != RendererState::RENDERSTATE_RENDERING)
+		return false;
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	if (!m_liveSource || !m_liveSource->GetVideoOutputPin() ||
+		m_state != RendererState::RENDERSTATE_RENDERING)
 		return false;
 
 	return m_liveSource->GetVideoOutputPin()->GetSceneTimingLastCorrection(
@@ -494,6 +799,7 @@ bool DirectShowVideoRenderer::GetSceneTimingLastCorrection(
 
 bool DirectShowVideoRenderer::SceneTimingRatesCompatible() const
 {
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
 	return m_state == RendererState::RENDERSTATE_RENDERING &&
 		m_liveSource && m_liveSource->GetVideoOutputPin() &&
 		m_liveSource->GetVideoOutputPin()->SceneTimingRatesCompatible();
@@ -505,7 +811,8 @@ uint64_t DirectShowVideoRenderer::SceneAwareDetectedCount() const
 	if (m_state != RendererState::RENDERSTATE_RENDERING)
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
-	return m_liveSource->SceneAwareDetectedCount();
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	return m_liveSource ? m_liveSource->SceneAwareDetectedCount() : 0;
 }
 
 
@@ -514,7 +821,8 @@ uint64_t DirectShowVideoRenderer::SceneAwareLateCandidateCount() const
 	if (m_state != RendererState::RENDERSTATE_RENDERING)
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
-	return m_liveSource->SceneAwareLateCandidateCount();
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	return m_liveSource ? m_liveSource->SceneAwareLateCandidateCount() : 0;
 }
 
 
@@ -528,9 +836,13 @@ void DirectShowVideoRenderer::OnGraphEvent(long evCode, LONG_PTR param1, LONG_PT
 	case EC_USERABORT:
 	case EC_ERRORABORT:
 	case EC_COMPLETE:
-		if (m_state == RendererState::RENDERSTATE_RENDERING)
+	if (m_state.load(std::memory_order_acquire) ==
+		RendererState::RENDERSTATE_RENDERING)
 		{
-			GraphStop();
+			// The UI owns ingress admission. Report a terminal failure so it
+			// closes admission before forced owner teardown instead of
+			// publishing STOPPED into RenderRemove with callbacks still live.
+			SetState(RendererState::RENDERSTATE_FAILED);
 		}
 		break;
 	}
@@ -539,18 +851,43 @@ void DirectShowVideoRenderer::OnGraphEvent(long evCode, LONG_PTR param1, LONG_PT
 
 void DirectShowVideoRenderer::SetState(RendererState state)
 {
+	AssertGraphThread();
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::SetState(): %s"), ToString(state)));
 
 	assert(state != RendererState::RENDERSTATE_UNKNOWN);
-	assert(m_state != state);
+	assert(m_state.load(std::memory_order_acquire) != state);
 
-	m_state = state;
-	m_callback.OnRendererState(state);
+	m_state.store(state, std::memory_order_release);
+	std::lock_guard<std::mutex> lock(m_completionMutex);
+	m_pendingStateCompletions.push_back(state);
+}
+
+
+void DirectShowVideoRenderer::PublishPendingStateCallback()
+{
+	assert(!IsGraphThread());
+	std::deque<RendererState> completions;
+	{
+		std::lock_guard<std::mutex> lock(m_completionMutex);
+		completions.swap(m_pendingStateCompletions);
+	}
+	for (const RendererState state : completions)
+		m_callback.OnRendererState(state);
+	if (m_pendingRendererRestart.exchange(false, std::memory_order_acq_rel))
+		m_callback.OnRendererRestartRequired();
+}
+
+
+void DirectShowVideoRenderer::WakeForOwnerCompletion() const
+{
+	PostMessage(m_eventHwnd, m_eventMsg, 0, 0);
 }
 
 
 void DirectShowVideoRenderer::GraphBuild()
 {
+	AssertGraphThread();
+	m_graphTeardownComplete.store(false, std::memory_order_release);
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::GraphBuild(): Begin")));
 
 	assert(m_videoState);
@@ -642,6 +979,7 @@ void DirectShowVideoRenderer::GraphBuild()
 
 void DirectShowVideoRenderer::GraphTeardown()
 {
+	AssertGraphThread();
 	// Details of how to clean up here https://docs.microsoft.com/en-us/windows/win32/directshow/using-windowed-mode
 
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::GraphTeardown(): Begin")));
@@ -687,6 +1025,8 @@ void DirectShowVideoRenderer::GraphTeardown()
 
 	if (m_videoFramFormatter)
 	{
+		std::unique_lock<std::shared_mutex> lock(
+			m_liveSourceLifetimeMutex);
 		delete m_videoFramFormatter;
 		m_videoFramFormatter = nullptr;
 	}
@@ -698,11 +1038,85 @@ void DirectShowVideoRenderer::GraphTeardown()
 	}
 
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::GraphTeardown(): End")));
+	m_graphTeardownComplete.store(
+		GraphResourcesReleased(), std::memory_order_release);
+}
+
+
+void DirectShowVideoRenderer::GraphTeardownNoThrow() noexcept
+{
+	AssertGraphThread();
+	try
+	{
+		if (m_pEvent)
+			m_pEvent->SetNotifyWindow((OAHWND)nullptr, NULL, NULL);
+	}
+	catch (...)
+	{
+	}
+	try
+	{
+		WindowTeardown();
+	}
+	catch (...)
+	{
+	}
+	try
+	{
+		FilterGraphDestroy();
+	}
+	catch (...)
+	{
+	}
+
+	if (m_referenceClock)
+	{
+		m_referenceClock->Release();
+		m_referenceClock = nullptr;
+	}
+	try
+	{
+		LiveSourceDestroy();
+	}
+	catch (...)
+	{
+	}
+	try
+	{
+		RendererDestroy();
+	}
+	catch (...)
+	{
+	}
+	if (m_videoFramFormatter)
+	{
+		std::unique_lock<std::shared_mutex> lock(
+			m_liveSourceLifetimeMutex);
+		delete m_videoFramFormatter;
+		m_videoFramFormatter = nullptr;
+	}
+	if (m_pmt.pbFormat)
+	{
+		CoTaskMemFree(m_pmt.pbFormat);
+		m_pmt.pbFormat = nullptr;
+	}
+	m_graphTeardownComplete.store(
+		GraphResourcesReleased(), std::memory_order_release);
+}
+
+
+bool DirectShowVideoRenderer::GraphResourcesReleased() const noexcept
+{
+	return !m_pGraph && !m_pControl && !m_pEvent && !m_videoWindow &&
+		!m_pGraph2 && !m_mediaFilter && !m_amGraphStreams &&
+		!m_referenceClock && !m_videoFramFormatter && !m_liveSource &&
+		!m_pRenderer && !m_pmt.pbFormat;
 }
 
 
 void DirectShowVideoRenderer::GraphRun()
 {
+	AssertGraphThread();
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::GraphRun()")));
 
 	assert(m_pGraph);
@@ -723,6 +1137,7 @@ void DirectShowVideoRenderer::GraphRun()
 
 void DirectShowVideoRenderer::FilterGraphBuild()
 {
+	AssertGraphThread();
 	//
 	// Directshow graph, note that we're not using a capture graph but DIY one
 	// - https://docs.microsoft.com/en-us/windows/win32/directshow/about-the-capture-graph-builder
@@ -760,6 +1175,7 @@ void DirectShowVideoRenderer::FilterGraphBuild()
 
 void DirectShowVideoRenderer::FilterGraphDestroy()
 {
+	AssertGraphThread();
 	if (m_pControl)
 	{
 		m_pControl->Release();
@@ -806,6 +1222,7 @@ void DirectShowVideoRenderer::FilterGraphDestroy()
 
 void DirectShowVideoRenderer::GraphStop()
 {
+	AssertGraphThread();
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::GraphStop()")));
 
 	assert(m_pGraph);
@@ -813,7 +1230,8 @@ void DirectShowVideoRenderer::GraphStop()
 
 	// This is not sent to the outside world but it's used internally to guarantee that we're not
 	// mis-handling events coming out of the DirectShow framework
-	m_state = RendererState::RENDERSTATE_STOPPING;
+	m_state.store(
+		RendererState::RENDERSTATE_STOPPING, std::memory_order_release);
 
 	// Stop directshow graph
 	if (FAILED(m_pControl->Stop()))
@@ -833,12 +1251,12 @@ void DirectShowVideoRenderer::GraphStop()
 
 	assert(m_liveSource->GetFrameQueueSize() == 0);
 
-	SetState(RendererState::RENDERSTATE_STOPPED);
 }
 
 
 void DirectShowVideoRenderer::WindowSetup()
 {
+	AssertGraphThread();
 	// https://docs.microsoft.com/en-us/windows/win32/directshow/using-windowed-mode
 
 	assert(m_videoHwnd);
@@ -861,6 +1279,7 @@ void DirectShowVideoRenderer::WindowSetup()
 
 void DirectShowVideoRenderer::WindowTeardown()
 {
+	AssertGraphThread();
 	// These can fail if we are terminating and there is no visible window anymore, no problem
 	if (m_videoWindow)
 	{
@@ -873,6 +1292,7 @@ void DirectShowVideoRenderer::WindowTeardown()
 
 void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 {
+	AssertGraphThread();
 	assert(!m_liveSource);
 
 	m_liveSource = dynamic_cast<CLiveSource*>(CLiveSource::CreateInstance(nullptr, nullptr));
@@ -880,6 +1300,7 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 		throw std::runtime_error("Failed to build a CLiveSource");
 
 	m_liveSource->AddRef();
+	m_liveSource->SetResetRequestSink(m_resetRequestSink);
 
 	// Get the exact rational timing values from the DisplayMode
 	// These are used for Bresenham-style exact integer math in RATIONAL_RATIONAL mode
@@ -911,6 +1332,7 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 
 void DirectShowVideoRenderer::LiveSourceDisconnect()
 {
+	AssertGraphThread();
 	if (m_liveSource)
 	{
 		IEnumPins* pEnum = nullptr;
@@ -935,6 +1357,8 @@ void DirectShowVideoRenderer::LiveSourceDisconnect()
 
 void DirectShowVideoRenderer::LiveSourceDestroy()
 {
+	AssertGraphThread();
+	std::unique_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
 	if (m_liveSource)
 	{
 		m_liveSource->Destroy();
@@ -946,6 +1370,7 @@ void DirectShowVideoRenderer::LiveSourceDestroy()
 
 void DirectShowVideoRenderer::RendererDestroy()
 {
+	AssertGraphThread();
 	if (m_pRenderer)
 	{
 		m_pRenderer->Release();
@@ -957,6 +1382,7 @@ void DirectShowVideoRenderer::RendererDestroy()
 // Get current PPM correction information (override for RATIONAL_RATIONAL and CLOCK_RATIONAL support)
 bool DirectShowVideoRenderer::GetPPMCorrectionInfo(int& ppmValue, bool& hasCorrection, CString& source) const
 {
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
 	// Both RATIONAL_RATIONAL and CLOCK_RATIONAL use PPM corrections
 	if ((m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL || 
 	     m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL) && m_liveSource)
@@ -977,7 +1403,7 @@ bool DirectShowVideoRenderer::GetPPMCorrectionInfo(int& ppmValue, bool& hasCorre
 // Get frame rate measurement and PPM deviation (for timing diagnostics)
 bool DirectShowVideoRenderer::GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const
 {
-	if (!m_hasPPMData.load(std::memory_order_acquire) || !m_videoState)
+	if (!m_hasPPMData.load(std::memory_order_acquire))
 	{
 		measuredFps = 0.0;
 		ppmDeviation = 0;
@@ -1084,13 +1510,15 @@ size_t DirectShowVideoRenderer::GetConvertedQueueSize()
 	if (m_state != RendererState::RENDERSTATE_RENDERING)
 		throw std::runtime_error("Invalid state, can only be called while rendering");
 
-	return m_liveSource->GetConvertedQueueSize();
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	return m_liveSource ? m_liveSource->GetConvertedQueueSize() : 0;
 }
 
 
 bool DirectShowVideoRenderer::GetActivePictureAspectRatio(double& aspectRatio) const
 {
 	aspectRatio = 0.0;
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
 	return m_liveSource && m_liveSource->GetVideoOutputPin() &&
 		m_liveSource->GetVideoOutputPin()->GetActivePictureAspectRatio(aspectRatio);
 }
@@ -1099,6 +1527,7 @@ bool DirectShowVideoRenderer::GetActivePictureAspectRatio(double& aspectRatio) c
 bool DirectShowVideoRenderer::GetActivePictureRectangle(ActivePictureRectangle& rectangle) const
 {
 	rectangle = {};
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
 	return m_liveSource && m_liveSource->GetVideoOutputPin() &&
 		m_liveSource->GetVideoOutputPin()->GetActivePictureRectangle(rectangle);
 }

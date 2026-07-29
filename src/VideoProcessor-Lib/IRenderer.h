@@ -12,7 +12,10 @@
 #include <VideoFrame.h>
 #include <VideoState.h>
 #include <RendererLiveness.h>
+#include <RendererResetRequest.h>
 #include <SubtitleRepositionMode.h>
+#include <functional>
+#include <memory>
 #include <vector>
 
 namespace UnifiedProfileRuntime
@@ -51,6 +54,10 @@ struct IRendererCallback
 	// The renderer can report a human-readable string to say what it's doing
 	// No need to do anything but just display.
 	virtual void OnRendererDetailString(const CString& details) = 0;
+
+	// Delivered on the callback/UI thread after an asynchronous renderer-owner
+	// command discovers that the graph must be replaced.
+	virtual void OnRendererRestartRequired() {}
 };
 
 
@@ -111,13 +118,37 @@ public:
 	// Ask the renderer to stop, this can take some time and you'll get notified
 	// through the IRendererCallback
 	virtual void Stop() = 0;
+	virtual void StopWithIngressDrain(
+		const std::function<void()>& drainAfterGraphStop)
+	{
+		Stop();
+		if (drainAfterGraphStop)
+			drainAfterGraphStop();
+	}
 
 	// Reset the internal state and the video stream.
 	virtual void Reset() = 0;
+	virtual void ResetWithIngressDrain(
+		const std::function<void()>& drainAfterGraphStop)
+	{
+		drainAfterGraphStop();
+		Reset();
+	}
 
 	// Flush and re-prime only the live-source queue without rebuilding the
 	// renderer graph. Renderers without a live source may ignore this request.
 	virtual void ResetLiveQueue() {}
+
+	// Installs the closeable asynchronous reset-request endpoint associated
+	// with this renderer instance. Backends must never call UI or graph control
+	// directly while publishing a request.
+	virtual void SetResetRequestSink(
+		std::shared_ptr<IRendererResetRequestSink>) {}
+
+	// Completes blocking backend/apartment shutdown on the retirement worker.
+	// Implementations must be idempotent so a later final shared_ptr release is
+	// nonblocking even if a transient callback pin outlives retirement.
+	virtual void Retire() noexcept {}
 
 	//
 	// GUI
@@ -356,4 +387,5 @@ public:
 		ppmDeviation = 0;
 		return false;  // No frame rate measurement by default
 	}
+
 };

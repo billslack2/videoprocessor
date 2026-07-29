@@ -17,6 +17,7 @@
 #include <AutoPpmCalibrator.h>
 #include <IntegerMath.h>
 #include <RendererLiveness.h>
+#include <RendererResetRequestLatch.h>
 #include <SubtitleRepositionMode.h>
 
 #include "CLiveSource.h"
@@ -138,6 +139,11 @@ public:
 	{
 		snapshot = {};
 		return false;
+	}
+	void SetResetRequestSink(
+		std::shared_ptr<IRendererResetRequestSink> sink)
+	{
+		m_resetRequestLatch.SetSink(std::move(sink));
 	}
 
 	// Reset the internal state and the video stream.
@@ -504,6 +510,16 @@ protected:
 	
 	// Virtual method for bad timestamp recovery (overridden in buffered implementation)
 	virtual void OnBadTimestampDetected() {}
+	void RequestCoordinatedReset(const char* reason);
+	bool CoordinatedResetRequested() const
+	{
+		return m_resetRequestLatch.Pending();
+	}
+	void CompleteCoordinatedReset()
+	{
+		m_resetRequestLatch.Complete();
+	}
+	RendererResetRequestLatch m_resetRequestLatch;
 
 	// Frame duration statistics tracking
 	// These track the actual tick rate of timeStart/timeStop intervals

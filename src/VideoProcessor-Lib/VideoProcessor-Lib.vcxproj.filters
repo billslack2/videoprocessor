@@ -144,7 +144,19 @@
     <ClInclude Include="RendererLiveness.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="RendererIngressState.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RendererResetCoordinator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="RendererResetPolicy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RendererResetRequest.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RendererTransitionModel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ITimingClock.h">
@@ -223,6 +235,9 @@
       <Filter>Header Files\microsoft_directshow\video_renderers</Filter>
     </ClInclude>
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowEnhancedVideoRenderer.h">
+      <Filter>Header Files\microsoft_directshow\video_renderers</Filter>
+    </ClInclude>
+    <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGraphExecutor.h">
       <Filter>Header Files\microsoft_directshow\video_renderers</Filter>
     </ClInclude>
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGenericHDRVideoRenderer.h">
@@ -369,6 +384,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="RendererId.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RendererResetCoordinator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RendererTransitionModel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="StateVariables.cpp">

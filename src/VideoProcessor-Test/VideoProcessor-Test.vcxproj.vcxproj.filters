@@ -34,6 +34,15 @@
     <ClCompile Include="RendererResetPolicyTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
+    <ClCompile Include="RendererResetCoordinatorTests.cpp">
+      <Filter>Resource Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RendererTransitionModelTests.cpp">
+      <Filter>Resource Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RendererLivenessTests.cpp">
+      <Filter>Resource Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Header Files">

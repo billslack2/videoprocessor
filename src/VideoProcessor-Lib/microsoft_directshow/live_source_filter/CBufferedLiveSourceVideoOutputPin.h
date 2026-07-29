@@ -381,6 +381,8 @@ private:
 	std::atomic<uint64_t> m_dequeueCount = 0;
 	std::atomic<uint64_t> m_deliveryAttemptCount = 0;
 	std::atomic<uint64_t> m_deliverySuccessCount = 0;
+	std::atomic<uint64_t> m_currentEpochDeliverySuccessCount = 0;
+	std::atomic<uint64_t> m_lastDeliverySuccessQueueEpoch = 0;
 	std::atomic<uint64_t> m_lastInputTick = 0;
 	std::atomic<uint64_t> m_lastConversionTick = 0;
 	std::atomic<uint64_t> m_lastDequeueTick = 0;

@@ -21,6 +21,10 @@
 #include <microsoft_directshow/live_source_filter/CLiveSource.h>
 #include <microsoft_directshow/live_source_filter/ALiveSourceVideoOutputPin.h>
 #include <microsoft_directshow/DirectShowTimingClock.h>
+#include <microsoft_directshow/video_renderers/DirectShowGraphExecutor.h>
+#include <deque>
+#include <mutex>
+#include <shared_mutex>
 
 
 /**
@@ -50,19 +54,38 @@ public:
 	void OnVideoFrame(VideoFrame& videoFrame) override;
 	bool HasPresentedLiveFrame() const override
 	{
-		return m_hasPresentedLiveFrame.load(std::memory_order_acquire);
+		if (!m_resetReadyForReveal.load(std::memory_order_acquire))
+			return false;
+		if (!m_useFrameQueue)
+		{
+			return HasSufficientDownstreamPreroll(
+				m_unbufferedDeliverySuccessCount.load(
+					std::memory_order_acquire));
+		}
+		RendererLivenessSnapshot snapshot;
+		return GetLivenessSnapshot(snapshot) &&
+			HasCurrentEpochDownstreamDelivery(snapshot);
 	}
 	const char* PresentedLiveFrameEvidence() const override
 	{
-		return "downstream-accepted";
+		return m_useFrameQueue ?
+			"current-epoch-downstream-prerolled" :
+			"unbuffered-downstream-prerolled";
 	}
 	bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const override;
 	HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) override;
 	void Build() override;
 	void Start() override;
 	void Stop() override;
+	void StopWithIngressDrain(
+		const std::function<void()>& drainAfterGraphStop) override;
 	void Reset() override;
+	void ResetWithIngressDrain(
+		const std::function<void()>& drainAfterGraphStop) override;
 	void ResetLiveQueue() override;
+	void SetResetRequestSink(
+		std::shared_ptr<IRendererResetRequestSink> sink) override;
+	void Retire() noexcept override;
 	void OnSize() override;
 	void SetFrameQueueMaxSize(size_t) override;
 	void SetSceneAwareTimingCorrection(bool) override;
@@ -89,6 +112,8 @@ public:
 	// Get conversion performance from the video frame formatter
 	bool GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override
 	{
+		std::shared_lock<std::shared_mutex> lock(
+			m_liveSourceLifetimeMutex);
 		if (m_videoFramFormatter)
 		{
 			m_videoFramFormatter->GetConversionPerformance(currentUs, avg10s, max10s);
@@ -106,6 +131,45 @@ public:
 	bool GetActivePictureRectangle(ActivePictureRectangle& rectangle) const;
 
 protected:
+	enum GraphCommandKey : DirectShowGraphExecutor::CoalescingKey
+	{
+		GRAPH_COMMAND_EVENT_DRAIN = 1,
+		GRAPH_COMMAND_RESIZE = 2,
+		GRAPH_COMMAND_FRAME_QUEUE_SIZE = 3,
+		GRAPH_COMMAND_SCENE_CORRECTION = 4,
+		GRAPH_COMMAND_SCENE_SAMPLE = 5,
+		GRAPH_COMMAND_SUBTITLE_MODE = 6,
+		GRAPH_COMMAND_SCENE_RATES = 7,
+		GRAPH_COMMAND_SCENE_READINESS = 8,
+		GRAPH_COMMAND_SCENE_PHASE = 9,
+		GRAPH_COMMAND_SHADER_SELECT = 10,
+		GRAPH_COMMAND_SHADER_REFRESH = 11,
+		GRAPH_COMMAND_SCREEN_PROFILE = 12,
+		GRAPH_COMMAND_APPLICATION_STATE = 13,
+		GRAPH_COMMAND_PAINT = 14,
+		GRAPH_COMMAND_VIDEO_STATE = 15,
+		GRAPH_COMMAND_HDR_STATE = 16
+	};
+
+	template<typename Function>
+	auto InvokeOnGraphThread(Function&& function) -> decltype(function())
+	{
+		return m_graphExecutor.Invoke(std::forward<Function>(function));
+	}
+	bool PostCoalescedGraphCommand(
+		DirectShowGraphExecutor::CoalescingKey key,
+		std::function<void()> function)
+	{
+		return m_graphExecutor.PostCoalesced(key, std::move(function));
+	}
+	bool IsGraphThread() const noexcept
+	{
+		return m_graphExecutor.IsOwnerThread();
+	}
+	void AssertGraphThread() const
+	{
+		assert(IsGraphThread());
+	}
 
 	IRendererCallback& m_callback;
 	HWND m_videoHwnd;
@@ -113,6 +177,8 @@ protected:
 	UINT m_eventMsg;
 	ITimingClock* m_timingClock;
 	VideoStateComPtr m_videoState;
+	std::mutex m_videoStateAdmissionMutex;
+	VideoStateComPtr m_admissionVideoState;
 	DirectShowStartStopTimeMethod m_timestamp;
 	bool m_useFrameQueue;
 	size_t m_frameQueueMaxSize;
@@ -136,14 +202,16 @@ protected:
 	IVideoFrameFormatter* m_videoFramFormatter = nullptr;
 	AM_MEDIA_TYPE m_pmt;
 	CLiveSource* m_liveSource = nullptr;
+	mutable std::shared_mutex m_liveSourceLifetimeMutex;
+	std::shared_ptr<IRendererResetRequestSink> m_resetRequestSink;
 	IBaseFilter* m_pLav = nullptr;
 	IBaseFilter* m_pRenderer = nullptr;
 
 	uint64_t m_frameCounter = 0;
 	uint64_t m_missingFrameCounter = 0;
 	double m_frameLatencyEntry = 0.0;
-	std::atomic_bool m_hasPresentedLiveFrame{false};
-
+	std::atomic<uint64_t> m_unbufferedDeliverySuccessCount{0};
+	std::atomic_bool m_resetReadyForReveal{false};
 	// PPM measurement variables
 	mutable timingclocktime_t m_firstFrameTime = 0;
 	mutable timingclocktime_t m_lastFrameTime = 0;  
@@ -162,13 +230,23 @@ protected:
 
 	// Handle Directshow graph events
 	void OnGraphEvent(long evCode, LONG_PTR param1, LONG_PTR param2);
+	HRESULT OnWindowsEventOnGraphThread();
 
 	// Helper for state setting and callbacks
 	void SetState(RendererState state);
+	void PublishPendingStateCallback();
+	void WakeForOwnerCompletion() const;
+	void QueueRendererRestartCompletion()
+	{
+		m_pendingRendererRestart.store(true, std::memory_order_release);
+		WakeForOwnerCompletion();
+	}
 
 	// This is the whole thing, with everything included
 	virtual void GraphBuild();
 	virtual void GraphTeardown();
+	void GraphTeardownNoThrow() noexcept;
+	bool GraphResourcesReleased() const noexcept;
 	virtual void GraphRun();
 	virtual void GraphStop();
 
@@ -201,7 +279,12 @@ protected:
 	void ResetPPMMeasurement() const;
 
 private:
-
 	// Use SetState()
-	RendererState m_state = RendererState::RENDERSTATE_UNKNOWN;
+	std::atomic<RendererState> m_state{RendererState::RENDERSTATE_UNKNOWN};
+	mutable std::mutex m_completionMutex;
+	std::deque<RendererState> m_pendingStateCompletions;
+	std::atomic_bool m_pendingRendererRestart{false};
+	std::atomic_bool m_graphTeardownComplete{false};
+	std::atomic_bool m_retired{false};
+	DirectShowGraphExecutor m_graphExecutor;
 };

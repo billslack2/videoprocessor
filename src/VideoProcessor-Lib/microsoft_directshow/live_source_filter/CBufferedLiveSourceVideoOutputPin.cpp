@@ -236,6 +236,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		{
 			CAutoLock rawLock(&m_rawQueueLock);
 			m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
+			m_currentEpochDeliverySuccessCount.store(
+				0, std::memory_order_release);
 			m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
 			m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 			while (!m_videoFrameQueue.empty())
@@ -273,6 +275,10 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		m_dequeueCount.store(0, std::memory_order_release);
 		m_deliveryAttemptCount.store(0, std::memory_order_release);
 		m_deliverySuccessCount.store(0, std::memory_order_release);
+		m_currentEpochDeliverySuccessCount.store(
+			0, std::memory_order_release);
+		m_lastDeliverySuccessQueueEpoch.store(0, std::memory_order_release);
+		CompleteCoordinatedReset();
 		m_lastInputTick.store(0, std::memory_order_release);
 		m_lastConversionTick.store(0, std::memory_order_release);
 		m_lastDequeueTick.store(0, std::memory_order_release);
@@ -462,6 +468,9 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 
 HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 {
+	if (CoordinatedResetRequested())
+		return S_OK;
+
 	// Check active state (atomic, no lock needed)
 	if (!m_isActive.load(std::memory_order_acquire))
 	{
@@ -509,21 +518,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	// capture callback if madVR is blocked inside Receive.
 	if (triggerRecovery)
 	{
-		try
-		{
-			Reset();
-		}
-		catch (const std::exception& ex)
-		{
-			DebugLog::Log(
-				"OnVideoFrame: serialized discontinuity reset failed: %s",
-				ex.what());
-			return E_FAIL;
-		}
-
-		// This callback caused the recovery and its frame is the first valid
-		// candidate for the new epoch.
-		callbackEpoch = m_queueEpoch.load(std::memory_order_acquire);
+		RequestCoordinatedReset("frame-counter-discontinuity");
+		return S_OK;
 	}
 
 	// Add frame to raw queue
@@ -939,6 +935,8 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		{
 			CAutoLock rawLock(&m_rawQueueLock);
 			m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
+			m_currentEpochDeliverySuccessCount.store(
+				0, std::memory_order_release);
 
 			size_t purgedFrames = 0;
 			while (!m_videoFrameQueue.empty())
@@ -1033,6 +1031,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	if (m_hConvertedAvailableEvent)
 		SetEvent(m_hConvertedAvailableEvent);
 
+	CompleteCoordinatedReset();
 	DebugLog::Log(
 		"CBufferedLiveSourceVideoOutputPin::Reset() - queues/timing reset, buffering enabled, new segment delivered");
 }
@@ -1069,6 +1068,10 @@ bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
 		m_deliveryAttemptCount.load(std::memory_order_relaxed);
 	snapshot.deliverySuccessCount =
 		m_deliverySuccessCount.load(std::memory_order_relaxed);
+	snapshot.currentEpochDeliverySuccessCount =
+		m_currentEpochDeliverySuccessCount.load(std::memory_order_acquire);
+	snapshot.lastDeliverySuccessQueueEpoch =
+		m_lastDeliverySuccessQueueEpoch.load(std::memory_order_acquire);
 	snapshot.lastInputTick = m_lastInputTick.load(std::memory_order_acquire);
 	snapshot.lastConversionTick =
 		m_lastConversionTick.load(std::memory_order_acquire);
@@ -1427,9 +1430,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				lastDeliveryFailureLogTime = failureNow;
 			}
 		}
-		else
+		else if (result == S_OK)
 		{
 			m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
+			m_currentEpochDeliverySuccessCount.fetch_add(
+				1, std::memory_order_acq_rel);
+			m_lastDeliverySuccessQueueEpoch.store(
+				expectedQueueEpoch, std::memory_order_release);
 			m_deliverySuccessCount.fetch_add(1, std::memory_order_relaxed);
 			m_lastDeliverySuccessTick.store(
 				GetTickCount64(), std::memory_order_release);
@@ -1546,16 +1553,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					repeatHr);
 				pendingUpstreamRepeat.sample->Release();
 				pendingUpstreamRepeat = {};
-				try
-				{
-					Reset();
-				}
-				catch (const std::exception& ex)
-				{
-					DebugLog::Log(
-						"SCENE-AWARE CORRECTION: deferred-repeat reset failed: %s",
-						ex.what());
-				}
+				RequestCoordinatedReset("deferred-repeat-delivery-failure");
 			}
 
 			// At most one sample is submitted per wakeup in experimental mode.
@@ -1686,16 +1684,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				DebugLog::Log(
 					"DELIVERY THREAD: timing requested a new segment; performing serialized reset");
 				pSample->Release();
-				try
-				{
-					Reset();
-				}
-				catch (const std::exception& ex)
-				{
-					DebugLog::Log(
-						"DELIVERY THREAD: serialized timing reset failed: %s",
-						ex.what());
-				}
+				RequestCoordinatedReset("buffered-timing-new-segment");
 				break;
 			}
 
@@ -2060,16 +2049,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				DebugLog::Log(
 					"SCENE-AWARE CADENCE: active timestamp became invalid; resetting segment");
 				pSample->Release();
-				try
-				{
-					Reset();
-				}
-				catch (const std::exception& ex)
-				{
-					DebugLog::Log(
-						"SCENE-AWARE CADENCE: invalid-timestamp reset failed: %s",
-						ex.what());
-				}
+				RequestCoordinatedReset("cadence-invalid-timestamp");
 				break;
 			}
 
@@ -2165,16 +2145,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				DebugLog::Log(
 					"SCENE-AWARE CADENCE: SetTime failed; resetting segment");
 				pSample->Release();
-				try
-				{
-					Reset();
-				}
-				catch (const std::exception& ex)
-				{
-					DebugLog::Log(
-						"SCENE-AWARE CORRECTION: partial-repeat reset failed: %s",
-						ex.what());
-				}
+				RequestCoordinatedReset("cadence-set-time-failure");
 				break;
 			}
 
@@ -5703,21 +5674,7 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 	lastRecoveryTime = now;
 
 	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected() - Bad CLOCK_SMART timestamp detected, triggering recovery");
-	try
-	{
-		// Reset begins a downstream flush before it waits for the delivery gate,
-		// so a renderer blocked in Receive can unwind instead of deadlocking this
-		// recovery path.
-		Reset();
-		DebugLog::Log(
-			"OnBadTimestampDetected(): serialized recovery complete");
-	}
-	catch (const std::exception& ex)
-	{
-		DebugLog::Log(
-			"OnBadTimestampDetected(): serialized recovery failed: %s",
-			ex.what());
-	}
+	RequestCoordinatedReset("bad-clock-smart-timestamp");
 }
 
 size_t CBufferedLiveSourceVideoOutputPin::GetConvertedQueueSize()

@@ -13,6 +13,7 @@
 #include <set>
 #include <map>
 #include <atomic>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -22,7 +23,10 @@
 #include <PixelValueRange.h>
 #include <CCie1931Control.h>
 #include <IRenderer.h>
+#include <RendererResetCoordinator.h>
 #include <RendererResetPolicy.h>
+#include <RendererRetirementService.h>
+#include <RendererTransitionModel.h>
 #include <UnifiedProfileRuntime.h>
 #include <VideoFrame.h>
 #include <FullscreenVideoWindow.h>
@@ -48,17 +52,18 @@
 #define WM_MESSAGE_RENDERER_STATE_CHANGE                (WM_APP + 8)
 #define WM_MESSAGE_RENDERER_DETAIL_STRING               (WM_APP + 9)
 #define WM_MESSAGE_RENDERER_LIVE_FRAME                  (WM_APP + 10)
-#define WM_MESSAGE_RENDERER_RESET_COMPLETE              (WM_APP + 11)
+#define WM_MESSAGE_RENDERER_RESET_REQUEST               (WM_APP + 12)
+#define WM_MESSAGE_RENDERER_RETIRED                     (WM_APP + 13)
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
 #define RESIZE_DEBOUNCE_TIMER_ID 2
-#define QUEUE_RESET_DELAY_TIMER_ID 3
 #define FULLSCREEN_FOCUS_TIMER_ID 4
 #define EOTF_CHANGE_RESTART_TIMER_ID 5  // Was 4, now unique
 #define LLDV_CHANGE_RESTART_TIMER_ID 6
 #define UI_LAYOUT_RESTORE_TIMER_ID 7
 #define SHADER_RULE_REFRESH_TIMER_ID 8
+#define RENDERER_RESET_MAILBOX_TIMER_ID 9
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 
 
@@ -81,21 +86,6 @@ enum class HdrLuminanceOptions
 	HDR_LUMINANCE_FOLLOW_INPUT_LLDV,
 	HDR_LUMINANCE_USER,
 };
-
-struct RendererResetOperation
-{
-	uint64_t requestId = 0;
-	uint32_t rendererGeneration = 0;
-	RendererResetReason reason = RendererResetReason::None;
-	bool requiresGraph = false;
-	ULONGLONG startedTick = 0;
-	std::atomic_bool complete = false;
-	std::atomic_bool succeeded = false;
-	std::atomic_bool timeoutLogged = false;
-	std::mutex failureMutex;
-	std::string failure;
-};
-
 
 /**
  * Main UI is a simple dialog defined in VideoProcessor.rc
@@ -184,6 +174,10 @@ public:
 	afx_msg LRESULT OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererDetailString(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererLiveFrame(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageRendererResetRequest(
+		WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageRendererRetired(
+		WPARAM wParam, LPARAM lParam);
 
 	// Command handlers
 	void OnCommandFullScreenToggle();
@@ -214,6 +208,7 @@ public:
 	// IRendererCallback
 	void OnRendererState(RendererState rendererState) override;
 	void OnRendererDetailString(const CString& details) override;
+	void OnRendererRestartRequired() override;
 
 protected:
 
@@ -385,16 +380,6 @@ protected:
 	bool m_dropDiagnosticInitialized = false;
 	uint64_t m_lastLoggedCaptureMissed = 0;
 	uint64_t m_lastLoggedRendererDropped = 0;
-	bool m_pendingQueueReset = false;
-	bool m_pendingResetRequiresGraph = false;
-	RendererResetReason m_pendingResetReason = RendererResetReason::None;
-	uint32_t m_pendingResetRendererGeneration = 0;
-	uint64_t m_pendingResetRequestId = 0;
-	int m_pendingResetPriority = -1;
-	ULONGLONG m_pendingResetRequestedTick = 0;
-	ULONGLONG m_pendingResetDeadline = 0;
-	uint64_t m_nextResetRequestId = 0;
-	std::shared_ptr<RendererResetOperation> m_activeResetOperation;
 	ULONGLONG m_lastLivenessRecoveryTick = 0;
 	ULONGLONG m_lastResetDeferralLogTick = 0;
 	std::atomic<ULONGLONG> m_lastUiMessageTick = 0;
@@ -402,6 +387,7 @@ protected:
 	std::atomic<uint64_t> m_activeGraphRequestId = 0;
 	std::atomic<uint32_t> m_activeGraphRequestGeneration = 0;
 	std::atomic<ULONGLONG> m_activeGraphRequestStartedTick = 0;
+	uint64_t m_lastGraphTimeoutLoggedOperationId = 0;
 	HANDLE m_livenessWatchdogStopEvent = nullptr;
 	std::thread m_livenessWatchdogThread;
 	// Reset() can emit another RENDERSTATE_RENDERING callback. This marker is
@@ -412,6 +398,7 @@ protected:
 	// stop/reset/run re-prime. Profile-only renderer replacements deliberately
 	// consume this as false so NLS/shader changes do not add a second blackout.
 	bool m_postRendererStartRequiresGraph = true;
+	bool m_postStartResetCanAccelerate = false;
 	UINT_PTR m_rendererStartTime = 0;  // Tick count when renderer started rendering
 	int m_queueResetDelaySeconds = 5;
 	int m_queueResetHighWaterPercent = 75;
@@ -447,6 +434,11 @@ protected:
 
 
 	std::shared_ptr<IVideoRenderer> m_videoRenderer;
+	RendererRetirementService m_rendererRetirementService;
+	bool m_rendererRetirementPending = false;
+	uint64_t m_rendererRetirementToken = 0;
+	CString m_retiringRendererName;
+	uint32_t m_retiringRendererGeneration = 0;
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
 	HWND m_rendererTargetHwnd = nullptr;
@@ -454,12 +446,18 @@ protected:
 	bool m_activeRendererIsDirectShow = false;
 	std::atomic<uint32_t> m_rendererGeneration{0};
 	uint32_t m_transitionGeneration = 0;
+	uint64_t m_rendererTargetRevision = 0;
 	uint64_t m_transitionBlackStartTick = 0;
 	std::atomic_bool m_transitionRevealPosted{false};
+	RendererTransitionModel m_rendererTransitionModel;
+	bool m_rendererResetTransitionActive = false;
 	uint64_t m_rendererStartCapturedFrameCount = 0;
 	bool m_rendererFrameBaselineValid = false;
 
-	std::atomic_bool m_deliverCaptureDataToRenderer = false;
+	std::shared_ptr<RendererIngressState> m_rendererIngressState =
+		std::make_shared<RendererIngressState>();
+	std::unique_ptr<RendererResetCoordinator> m_rendererResetCoordinator;
+	RendererBindingToken m_rendererResetBindingToken = 0;
 	UnifiedProfileRuntime::Runtime m_profileRuntime;
 	std::map<WORD, CString> m_unifiedProfileShortcutKeys;
 	WORD m_lastUnifiedProfileCommand = 0;
@@ -511,8 +509,14 @@ protected:
 	void RenderRemove();
 	void DestroyVideoRenderer();
 	void RenderGUIClear();
+	void PauseRendererIngress();
+	void WaitForRendererIngressDrain();
+	void ResumeRendererIngress();
+	void BindRendererResetSink();
+	void RevokeRendererResetSink();
+	void PumpRendererResetMailbox();
 	bool ApplyRequestedShaderSelection();
-	void ShowRendererTransitionBlack(const char* reason);
+	bool ShowRendererTransitionBlack(const char* reason);
 	void TryRevealRendererTransition(uint32_t generation);
 	void FullScreenVideoWindowConstruct();
 	void FullScreenVideoWindowDestroy();
@@ -539,7 +543,6 @@ protected:
 		size_t queueMaxSize, uint64_t droppedFrames);
 	void RequestRendererReset(RendererResetReason reason, bool requiresGraph,
 		UINT delayMs);
-	void ExecutePendingRendererReset();
 	void CompleteRendererResetOperation();
 	bool RendererResetOperationInProgress() const;
 	void LogLivenessSnapshot(const RendererLivenessSnapshot& snapshot,
@@ -582,7 +585,6 @@ protected:
 	afx_msg void OnSetFocus(CWnd* pOldWnd);
 	afx_msg void OnClose();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
-	afx_msg LRESULT OnMessageRendererResetComplete(WPARAM wParam, LPARAM lParam);
 	afx_msg HCURSOR	OnQueryDragIcon();
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
 

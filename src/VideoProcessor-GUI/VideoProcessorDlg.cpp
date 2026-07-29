@@ -948,7 +948,8 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_STATE_CHANGE, &CVideoProcessorDlg::OnMessageRendererStateChange)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_DETAIL_STRING, &CVideoProcessorDlg::OnMessageRendererDetailString)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
-	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_COMPLETE, &CVideoProcessorDlg::OnMessageRendererResetComplete)
+	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
+	ON_MESSAGE(WM_MESSAGE_RENDERER_RETIRED, &CVideoProcessorDlg::OnMessageRendererRetired)
 
 	// Command handlers (from accelerator)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_TOGGLE, &CVideoProcessorDlg::OnCommandFullScreenToggle)
@@ -1224,6 +1225,29 @@ bool CVideoProcessorDlg::TryGetDisplayRefreshRateOverride(
 
 CVideoProcessorDlg::~CVideoProcessorDlg()
 {
+	if (m_rendererResetCoordinator)
+		m_rendererResetCoordinator->Close();
+	m_rendererRetirementService.RequestClose();
+	HANDLE retirementWorker =
+		m_rendererRetirementService.NativeThreadHandle();
+	if (retirementWorker)
+	{
+		for (;;)
+		{
+			const DWORD waitResult = MsgWaitForMultipleObjectsEx(
+				1, &retirementWorker, INFINITE, QS_SENDMESSAGE,
+				MWMO_INPUTAVAILABLE);
+			if (waitResult == WAIT_OBJECT_0)
+				break;
+			if (waitResult != WAIT_OBJECT_0 + 1)
+				break;
+			MSG message;
+			PeekMessage(
+				&message, nullptr, WM_NULL, WM_NULL, PM_NOREMOVE);
+		}
+	}
+	m_rendererRetirementService.Join();
+
 	if (m_livenessWatchdogStopEvent)
 		SetEvent(m_livenessWatchdogStopEvent);
 	if (m_livenessWatchdogThread.joinable())
@@ -1242,6 +1266,53 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 
 	for (auto& captureDevice : m_captureDevices)
 		(*captureDevice).Release();
+
+	// Capture release above prevents new callbacks and lets any final ingress
+	// lease drain. Do not destroy callback/UI state while a reset still retains
+	// the renderer and may be returning from third-party graph code. Service
+	// synchronous renderer window calls while Join waits, but leave posted UI
+	// work queued so teardown cannot re-enter the dialog state machine.
+	if (m_rendererResetCoordinator)
+	{
+		HANDLE joinedEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+		if (!joinedEvent)
+		{
+			m_rendererResetCoordinator->Join();
+		}
+		else
+		{
+			try
+			{
+				std::thread joiner(
+					[this, joinedEvent]()
+					{
+						m_rendererResetCoordinator->Join();
+						SetEvent(joinedEvent);
+					});
+				for (;;)
+				{
+					const DWORD waitResult =
+						MsgWaitForMultipleObjectsEx(
+							1, &joinedEvent, INFINITE,
+							QS_SENDMESSAGE, MWMO_INPUTAVAILABLE);
+					if (waitResult == WAIT_OBJECT_0)
+						break;
+					if (waitResult != WAIT_OBJECT_0 + 1)
+						break;
+					MSG message;
+					PeekMessage(
+						&message, nullptr, WM_NULL, WM_NULL,
+						PM_NOREMOVE);
+				}
+				joiner.join();
+			}
+			catch (...)
+			{
+				m_rendererResetCoordinator->Join();
+			}
+			CloseHandle(joinedEvent);
+		}
+	}
 
 	// Clean up stats overlay
 	if (m_statsOverlay)
@@ -2114,20 +2185,16 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceError(WPARAM wParam, LPARAM lP
 }
 LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam)
 {
-	if (RendererResetOperationInProgress())
-	{
-		DbgLog((LOG_TRACE, 2,
-			TEXT("DirectShow notification deferred while graph-control recovery is active")));
-		return 0;
-	}
-
-	if (m_videoRenderer)
+	const std::shared_ptr<IVideoRenderer> renderer =
+		std::atomic_load_explicit(
+			&m_videoRenderer, std::memory_order_acquire);
+	if (renderer)
 	{
 		// Enhanced DirectShow event handling for MadVR changes
 		// We'll intercept events before passing them to the renderer to detect important changes
 
 		// First call the renderer to process DirectShow events and get any graph events
-		HRESULT hr = m_videoRenderer->OnWindowsEvent(wParam, lParam);
+		HRESULT hr = renderer->OnWindowsEvent(wParam, lParam);
 
 		// Now check for specific DirectShow graph events that indicate MadVR changes
 		// These events are typically sent via the DirectShow event system
@@ -2152,7 +2219,9 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 				g_displayRefreshRateSampler->ResetMeasurement();
 				const ULONGLONG now = GetTickCount64();
 				if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
-					!m_pendingQueueReset &&
+					(!m_rendererResetCoordinator ||
+						!m_rendererResetCoordinator->
+							GetDiagnostics().hasPending) &&
 					now >= m_queueResetIgnoreEventsUntil)
 				{
 					RequestRendererReset(RendererResetReason::DisplayTransition, true,
@@ -2268,7 +2337,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			m_rendererStartCapturedFrameCount = 0;
 			m_rendererFrameBaselineValid = false;
 		}
-		m_deliverCaptureDataToRenderer.store(true, std::memory_order_release);
+		ResumeRendererIngress();
 		enableButtons = true;
 		m_rendererTransitionWindow.KeepOnTop();
 		m_rendererStateText.SetWindowText(TEXT("Rendering"));
@@ -2283,17 +2352,57 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		m_queueResetIgnoreEventsUntil =
 			GetTickCount64() + windowSettleDelayMs + 10000;
 		g_displayRefreshRateSampler->ResetMeasurement();
-		// Initial DirectShow starts and backend handoffs need the same proven
-		// stop/reset/run re-prime as manual R. Profile-only replacements keep
-		// the live-queue path so NLS/shader changes do not add a second blackout.
+		// A newly constructed Alpha queue/swapchain is already clean and can
+		// reveal on its first verified submit. DirectShow retains the proven
+		// stop/reset/run re-prime, but first-current-frame evidence may bring
+		// its deadline forward instead of holding black for an arbitrary delay.
 		const bool postStartRequiresGraph =
-			m_activeRendererIsDirectShow &&
 			m_postRendererStartRequiresGraph;
 		m_postRendererStartRequiresGraph = true;
-		RequestRendererReset(RendererResetReason::PostRendererStart,
-			postStartRequiresGraph,
-			windowSettleDelayMs +
-			static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+		m_postStartResetCanAccelerate =
+			m_activeRendererIsDirectShow &&
+			windowSettleDelayMs == 0;
+		if (m_activeRendererIsDirectShow)
+		{
+			RequestRendererReset(RendererResetReason::PostRendererStart,
+				postStartRequiresGraph,
+				windowSettleDelayMs +
+					static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+		}
+		else if (windowSettleDelayMs != 0)
+		{
+			// A fresh Alpha queue does not need the configured post-start
+			// delay, but a real display-mode transition still needs its
+			// hardware settle interval before the shield can be released.
+			RequestRendererReset(
+				RendererResetReason::PostRendererStart,
+				false, windowSettleDelayMs);
+			DebugLog::Log(
+				"Post-start reset retained: renderer=%S backend=Alpha "
+				"reason=display-settle delay=%u",
+				static_cast<LPCTSTR>(m_activeRendererName),
+				windowSettleDelayMs);
+		}
+		else if (m_rendererResetTransitionActive)
+		{
+			// A replacement created inside an already-covered reset must still
+			// acknowledge the rebound target and advance the transition model.
+			// Its fresh queue needs no settling delay.
+			RequestRendererReset(
+				RendererResetReason::PostRendererStart,
+				false, 0);
+			DebugLog::Log(
+				"Post-start reset retained: renderer=%S backend=Alpha "
+				"reason=covered-transition-rebind delay=0",
+				static_cast<LPCTSTR>(m_activeRendererName));
+		}
+		else
+		{
+			DebugLog::Log(
+				"Post-start reset skipped: renderer=%S backend=Alpha "
+				"reason=fresh-queue-and-swapchain",
+				static_cast<LPCTSTR>(m_activeRendererName));
+		}
 		if (m_rendererFullscreenCheck.GetCheck())
 		{
 			HWND renderWindow = GetRenderWindow();
@@ -2332,6 +2441,28 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		m_rendererStateText.SetWindowText(TEXT(""));
 		break;
 
+	case RendererState::RENDERSTATE_FAILED:
+		PauseRendererIngress();
+		DestroyVideoRenderer();
+		if (m_rendererRetirementPending)
+		{
+			// Keep the shield and host alive until the retirement worker has
+			// finished the old renderer apartment.
+		}
+		else if (m_rendererResetTransitionActive)
+			m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
+		else
+		{
+			m_rendererTransitionWindow.Hide();
+			m_windowedVideoWindow.ShowLogo(true);
+		}
+		m_rendererStateText.SetWindowText(TEXT("Failed"));
+		m_windowedVideoWindow.SetWindowText(
+			TEXT("DirectShow renderer failed to build or start"));
+		m_rendererFullscreenCheck.SetCheck(FALSE);
+		enableButtons = !m_rendererResetTransitionActive;
+		break;
+
 	default:
 		assert(false);
 	}
@@ -2355,10 +2486,68 @@ LRESULT CVideoProcessorDlg::OnMessageRendererLiveFrame(
 }
 
 
-LRESULT CVideoProcessorDlg::OnMessageRendererResetComplete(WPARAM, LPARAM)
+LRESULT CVideoProcessorDlg::OnMessageRendererResetRequest(
+	WPARAM,
+	LPARAM)
 {
-	m_lastUiMessageTick.store(GetTickCount64(), std::memory_order_release);
-	CompleteRendererResetOperation();
+	PumpRendererResetMailbox();
+	return 0;
+}
+
+
+LRESULT CVideoProcessorDlg::OnMessageRendererRetired(
+	WPARAM wParam,
+	LPARAM lParam)
+{
+	const uint64_t token = static_cast<uint64_t>(wParam);
+	if (!m_rendererRetirementPending ||
+		token != m_rendererRetirementToken)
+	{
+		DebugLog::Log(
+			"Renderer retirement completion ignored: token=%llu current=%llu pending=%d",
+			static_cast<unsigned long long>(token),
+			static_cast<unsigned long long>(m_rendererRetirementToken),
+			m_rendererRetirementPending ? 1 : 0);
+		return 0;
+	}
+
+	m_rendererRetirementPending = false;
+	if (lParam != 0)
+	{
+		DebugLog::Log(
+			"Renderer retirement failed: token=%llu renderer=%S; replacement remains blocked",
+			static_cast<unsigned long long>(token),
+			static_cast<LPCTSTR>(m_retiringRendererName));
+		m_rendererState = RendererState::RENDERSTATE_FAILED;
+		m_rendererStateText.SetWindowText(TEXT("Retirement failed"));
+		return 0;
+	}
+	DebugLog::Log(
+		"Renderer transition: process=%lu generation=%u event=old-surface-retired "
+		"renderer=%S target=%p cover=%p token=%llu",
+		GetCurrentProcessId(), m_retiringRendererGeneration,
+		static_cast<LPCTSTR>(m_retiringRendererName),
+		m_rendererTargetHwnd, m_rendererTransitionWindow.GetHWND(),
+		static_cast<unsigned long long>(token));
+	m_retiringRendererName.Empty();
+	m_retiringRendererGeneration = 0;
+	if (m_rendererState == RendererState::RENDERSTATE_STOPPED)
+		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
+	else if (m_rendererState == RendererState::RENDERSTATE_FAILED &&
+		!m_wantToTerminate)
+	{
+		if (m_rendererResetTransitionActive)
+		{
+			m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
+		}
+		else
+		{
+			m_rendererTransitionWindow.Hide();
+			m_windowedVideoWindow.ShowLogo(true);
+			m_rendererFullscreenCheck.SetCheck(FALSE);
+		}
+	}
+	UpdateState();
 	return 0;
 }
 
@@ -2766,31 +2955,31 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoFrame(VideoFrame& videoFrame)
 {
 	// WARNING: Most likely to be called from some internal capture card thread!
 
-	// This is an atomic bool which is set by the main thread and used in context of the
-	// capture thread which will deliver frames.
-	if (m_deliverCaptureDataToRenderer.load(std::memory_order_acquire))
+	RendererIngressState::Lease ingressLease =
+		m_rendererIngressState->TryAcquire();
+	if (!ingressLease)
+		return;
+
+	const std::shared_ptr<IVideoRenderer> renderer =
+		std::atomic_load_explicit(
+			&m_videoRenderer, std::memory_order_acquire);
+	if (!renderer)
+		return;
+
+	assert(m_captureDevice);
+	assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
+	assert(m_rendererState == RendererState::RENDERSTATE_RENDERING);
+
+	renderer->OnVideoFrame(videoFrame);
+	if (renderer->HasPresentedLiveFrame() &&
+		!m_transitionRevealPosted.exchange(
+			true, std::memory_order_acq_rel))
 	{
-		const std::shared_ptr<IVideoRenderer> renderer =
-			std::atomic_load_explicit(
-				&m_videoRenderer, std::memory_order_acquire);
-		if (!renderer)
-			return;
-
-		assert(m_captureDevice);
-		assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
-		assert(m_rendererState == RendererState::RENDERSTATE_RENDERING);
-
-		renderer->OnVideoFrame(videoFrame);
-		if (renderer->HasPresentedLiveFrame() &&
-			!m_transitionRevealPosted.exchange(
-				true, std::memory_order_acq_rel))
-		{
-			PostMessage(
-				WM_MESSAGE_RENDERER_LIVE_FRAME,
-				static_cast<WPARAM>(
-					m_rendererGeneration.load(std::memory_order_acquire)),
-				0);
-		}
+		PostMessage(
+			WM_MESSAGE_RENDERER_LIVE_FRAME,
+			static_cast<WPARAM>(
+				m_rendererGeneration.load(std::memory_order_acquire)),
+			0);
 	}
 }
 
@@ -2837,6 +3026,12 @@ void CVideoProcessorDlg::OnRendererDetailString(const CString& details)
 void CVideoProcessorDlg::UpdateState()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::UpdateState()")));
+	if (m_rendererRetirementPending)
+	{
+		DbgLog((LOG_TRACE, 1,
+			TEXT("CVideoProcessorDlg::UpdateState(): waiting for renderer retirement")));
+		return;
+	}
 
 	// Want to change cards or want to restart capture
 	if (!m_desiredCaptureDevice.IsEqualObject(m_captureDevice) ||
@@ -3447,6 +3642,7 @@ void CVideoProcessorDlg::CaptureGUIClear()
 void CVideoProcessorDlg::RenderStart()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStart(): Begin")));
+	m_postStartResetCanAccelerate = false;
 
 	assert(!m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_UNKNOWN ||
@@ -3481,9 +3677,37 @@ void CVideoProcessorDlg::RenderStart()
 	const uint32_t rendererGeneration =
 		m_rendererGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
 	m_rendererTargetHwnd = GetRenderWindow();
+	++m_rendererTargetRevision;
 	m_transitionGeneration = rendererGeneration;
+	if (m_rendererResetTransitionActive)
+	{
+		const RendererTransitionModel::Actions actions =
+			m_rendererTransitionModel.ReplaceCoveredTarget(
+				rendererGeneration, m_rendererTargetRevision);
+		if (actions.empty() ||
+			actions.front().type !=
+				RendererTransitionActionType::RebindShieldTarget)
+		{
+			DEBUGLOG(
+				"Renderer start cancelled: generation=%u "
+				"failure=covered-target-rebind-rejected",
+				rendererGeneration);
+			return;
+		}
+	}
+	else
+	{
+		m_rendererTransitionModel = RendererTransitionModel();
+	}
 	m_transitionRevealPosted.store(false, std::memory_order_release);
-	ShowRendererTransitionBlack("renderer-start");
+	if (!ShowRendererTransitionBlack("renderer-start"))
+	{
+		DEBUGLOG(
+			"Renderer start cancelled: generation=%u "
+			"failure=transition-black-unavailable",
+			rendererGeneration);
+		return;
+	}
 
 	// Get user-selectable options
 	i = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
@@ -3549,6 +3773,7 @@ void CVideoProcessorDlg::RenderStart()
 				timingClock,
 				GetRendererVideoFrameUseQueue(),
 				alphaDesiredDepth);
+			BindRendererResetSink();
 
 			ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
 
@@ -3571,8 +3796,11 @@ void CVideoProcessorDlg::RenderStart()
 		{
 			DebugLog::Log("libplacebo renderer startup failed: %s", e.what());
 			DestroyVideoRenderer();
-			m_rendererTransitionWindow.Hide();
-			m_windowedVideoWindow.ShowLogo(true);
+			if (!m_rendererRetirementPending)
+			{
+				m_rendererTransitionWindow.Hide();
+				m_windowedVideoWindow.ShowLogo(true);
+			}
 			m_rendererState = RendererState::RENDERSTATE_FAILED;
 			m_rendererStateText.SetWindowText(TEXT("Failed"));
 
@@ -3598,21 +3826,47 @@ void CVideoProcessorDlg::RenderStart()
 
 	try
 	{
-		m_videoRenderer = std::make_shared<DirectShowGenericHDRVideoRenderer>(
-			*rendererClSID,
-			*this,
-			m_rendererTargetHwnd,
-			this->GetSafeHwnd(),
-			WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
-			timingClock,
-			directShowStartStopTimeMethod,
-			GetRendererVideoFrameUseQueue(),
-			GetRendererVideoFrameQueueSizeMax(),
-			videoConversionOverride,
-			forceNominalRange,
-			forceVideoTransferFunction,
-			forceVideoTransferMatrix,
-			forceVideoPrimaries);
+		if (IsEqualCLSID(*rendererClSID, CLSID_MPCVR))
+			m_videoRenderer = std::make_shared<DirectShowMPCVideoRenderer>(
+				*this, m_rendererTargetHwnd, GetSafeHwnd(),
+				WM_MESSAGE_DIRECTSHOW_NOTIFICATION, timingClock,
+				directShowStartStopTimeMethod,
+				GetRendererVideoFrameUseQueue(),
+				GetRendererVideoFrameQueueSizeMax(),
+				videoConversionOverride, forceNominalRange,
+				forceVideoTransferFunction, forceVideoTransferMatrix,
+				forceVideoPrimaries);
+		else if (IsEqualCLSID(
+			*rendererClSID, CLSID_EnhancedVideoRenderer))
+			m_videoRenderer =
+				std::make_shared<DirectShowEnhancedVideoRenderer>(
+					*this, m_rendererTargetHwnd, GetSafeHwnd(),
+					WM_MESSAGE_DIRECTSHOW_NOTIFICATION, timingClock,
+					directShowStartStopTimeMethod,
+					GetRendererVideoFrameUseQueue(),
+					GetRendererVideoFrameQueueSizeMax(),
+					videoConversionOverride);
+		else if (m_activeRendererName.Find(TEXT("madVR")) >= 0)
+			m_videoRenderer =
+				std::make_shared<DirectShowGenericHDRVideoRenderer>(
+					*rendererClSID, *this, m_rendererTargetHwnd,
+					GetSafeHwnd(), WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
+					timingClock, directShowStartStopTimeMethod,
+					GetRendererVideoFrameUseQueue(),
+					GetRendererVideoFrameQueueSizeMax(),
+					videoConversionOverride, forceNominalRange,
+					forceVideoTransferFunction, forceVideoTransferMatrix,
+					forceVideoPrimaries);
+		else
+			m_videoRenderer =
+				std::make_shared<DirectShowGenericVideoRenderer>(
+					*rendererClSID, *this, m_rendererTargetHwnd,
+					GetSafeHwnd(), WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
+					timingClock, directShowStartStopTimeMethod,
+					GetRendererVideoFrameUseQueue(),
+					GetRendererVideoFrameQueueSizeMax(),
+					videoConversionOverride);
+		BindRendererResetSink();
 
 		ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
 
@@ -3635,6 +3889,15 @@ void CVideoProcessorDlg::RenderStart()
 	catch (std::runtime_error e)
 	{
 		DestroyVideoRenderer();
+		if (m_rendererRetirementPending)
+		{
+			DebugLog::Log(
+				"DirectShow startup fallback deferred until failed renderer retirement completes: %s",
+				e.what());
+			m_rendererState = RendererState::RENDERSTATE_FAILED;
+			m_rendererStateText.SetWindowText(TEXT("Failed"));
+			return;
+		}
 
 		try
 		{
@@ -3683,6 +3946,7 @@ void CVideoProcessorDlg::RenderStart()
 
 			if (!m_videoRenderer)
 				FatalError(TEXT("Failed to build DirectShow Video Renderer"));
+			BindRendererResetSink();
 
 			if (m_captureDeviceVideoState)
 				m_videoRenderer->OnVideoState(m_builtVideoState);
@@ -3701,8 +3965,11 @@ void CVideoProcessorDlg::RenderStart()
 		catch (std::runtime_error e)
 		{
 			DestroyVideoRenderer();
-			m_rendererTransitionWindow.Hide();
-			m_windowedVideoWindow.ShowLogo(true);
+			if (!m_rendererRetirementPending)
+			{
+				m_rendererTransitionWindow.Hide();
+				m_windowedVideoWindow.ShowLogo(true);
+			}
 
 			m_rendererState = RendererState::RENDERSTATE_FAILED;
 			m_rendererStateText.SetWindowText(TEXT("Failed"));
@@ -3731,6 +3998,8 @@ void CVideoProcessorDlg::RenderStop()
 
 	if (RendererResetOperationInProgress())
 	{
+		const RendererResetCoordinator::Diagnostics diagnostics =
+			m_rendererResetCoordinator->GetDiagnostics();
 		const ULONGLONG now = GetTickCount64();
 		if (m_lastResetDeferralLogTick == 0 ||
 			now - m_lastResetDeferralLogTick >= 5000)
@@ -3740,8 +4009,8 @@ void CVideoProcessorDlg::RenderStop()
 				"Renderer stop deferred: graph-control request=%llu generation=%u "
 				"is still active; UI remains available",
 				static_cast<unsigned long long>(
-					m_activeResetOperation->requestId),
-				m_activeResetOperation->rendererGeneration);
+					diagnostics.activeOperationId),
+				diagnostics.rendererGeneration);
 		}
 		return;
 	}
@@ -3761,23 +4030,36 @@ void CVideoProcessorDlg::RenderStop()
 
 	assert(m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_RENDERING);
-	assert(m_deliverCaptureDataToRenderer.load(std::memory_order_acquire));
 
 	assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
 
 	assert(m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_RENDERING);
-	assert(m_deliverCaptureDataToRenderer.load(std::memory_order_acquire));
 
-	// After this call no frames will ever go through to the renderer
-	m_deliverCaptureDataToRenderer.store(false, std::memory_order_release);
+	if (!ShowRendererTransitionBlack("renderer-stop"))
+	{
+		DEBUGLOG(
+			"Renderer stop cancelled: generation=%u "
+			"failure=transition-black-unavailable",
+			m_rendererGeneration.load(std::memory_order_acquire));
+		return;
+	}
 	m_transitionRevealPosted.store(true, std::memory_order_release);
-	ShowRendererTransitionBlack("renderer-stop");
+
+	// Gate new callbacks first. DirectShow Stop/BeginFlush must run before the
+	// drain wait because an unbuffered callback can be blocked in Receive until
+	// downstream graph control releases it.
+	PauseRendererIngress();
 
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_rendererState = RendererState::RENDERSTATE_STOPPING;
 
-	m_videoRenderer->Stop();
+	const std::shared_ptr<RendererIngressState> ingress =
+		m_rendererIngressState;
+	m_videoRenderer->StopWithIngressDrain([ingress]()
+		{
+			ingress->WaitForDrain();
+		});
 
 	m_rendererStateText.SetWindowText(TEXT("Stopping"));
 
@@ -3791,11 +4073,12 @@ void CVideoProcessorDlg::RenderRemove()
 
 	assert(m_videoRenderer);
 	assert(m_rendererState == RendererState::RENDERSTATE_STOPPED);
-	assert(!m_deliverCaptureDataToRenderer);
+	assert(!m_rendererIngressState->IsAdmitting());
 
 	DestroyVideoRenderer();
 
-	m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
+	if (!m_rendererRetirementPending)
+		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderRemove(): End")));
 }
@@ -3817,21 +4100,47 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 			std::memory_order_acq_rel);
 	m_dropDiagnosticRenderer = nullptr;
 	m_dropDiagnosticInitialized = false;
+	rendererToDestroy->SetResetRequestSink({});
+	RevokeRendererResetSink();
 
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::DestroyVideoRenderer(): Renderer detached before destruction")));
 	DebugLog::Log(
 		"Renderer teardown: detached renderer before destruction to block reentrant callbacks");
 
-	rendererToDestroy.reset();
+	// Alpha/plugin retirement has not yet been audited as an idempotent
+	// cross-thread contract. Keep its established synchronous release path.
+	if (!m_activeRendererIsDirectShow)
+	{
+		rendererToDestroy.reset();
+		DebugLog::Log(
+			"Renderer transition: process=%lu generation=%u event=old-surface-retired "
+			"renderer=%S target=%p cover=%p mode=synchronous",
+			GetCurrentProcessId(),
+			m_rendererGeneration.load(std::memory_order_acquire),
+			static_cast<LPCTSTR>(m_activeRendererName),
+			m_rendererTargetHwnd,
+			m_rendererTransitionWindow.GetHWND());
+		return;
+	}
+
+	m_rendererRetirementPending = true;
+	m_rendererRetirementToken++;
+	m_retiringRendererName = m_activeRendererName;
+	m_retiringRendererGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
 	DebugLog::Log(
-		"Renderer transition: process=%lu generation=%u event=old-surface-retired "
-		"renderer=%S target=%p cover=%p",
-		GetCurrentProcessId(),
-		m_rendererGeneration.load(std::memory_order_acquire),
-		static_cast<LPCTSTR>(m_activeRendererName),
-		m_rendererTargetHwnd,
-		m_rendererTransitionWindow.GetHWND());
+		"Renderer retirement queued: process=%lu generation=%u renderer=%S "
+		"token=%llu ui_thread=%lu",
+		GetCurrentProcessId(), m_retiringRendererGeneration,
+		static_cast<LPCTSTR>(m_retiringRendererName),
+		static_cast<unsigned long long>(m_rendererRetirementToken),
+		GetCurrentThreadId());
+	const bool queued = m_rendererRetirementService.Retire(
+		std::move(rendererToDestroy), m_rendererRetirementToken,
+		GetSafeHwnd(), WM_MESSAGE_RENDERER_RETIRED);
+	if (!queued)
+		throw std::runtime_error("Renderer retirement service is closed");
 }
 
 
@@ -3852,7 +4161,7 @@ void CVideoProcessorDlg::RenderGUIClear()
 }
 
 
-void CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
+bool CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 {
 	if (!m_rendererTargetHwnd || !IsWindow(m_rendererTargetHwnd))
 	{
@@ -3863,7 +4172,7 @@ void CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 			m_rendererGeneration.load(std::memory_order_acquire),
 			reason ? reason : "unknown",
 			m_rendererTargetHwnd);
-		return;
+		return false;
 	}
 
 	const bool wasVisible = m_rendererTransitionWindow.IsVisible();
@@ -3884,7 +4193,7 @@ void CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 			m_rendererTargetHwnd,
 			e.what());
 		m_windowedVideoWindow.ShowLogo(true);
-		return;
+		return false;
 	}
 
 	if (!wasVisible)
@@ -3921,19 +4230,326 @@ void CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 		reinterpret_cast<void*>(style),
 		static_cast<unsigned long>(compositionSyncResult),
 		static_cast<unsigned long long>(compositionSyncMs));
+	return m_rendererTransitionWindow.IsVisible();
+}
+
+
+void CVideoProcessorDlg::OnRendererRestartRequired()
+{
+	m_postRendererStartRequiresGraph = false;
+	m_wantToRestartRenderer = true;
+	UpdateState();
+}
+
+
+void CVideoProcessorDlg::PauseRendererIngress()
+{
+	m_rendererIngressState->CloseAdmission();
+}
+
+
+void CVideoProcessorDlg::WaitForRendererIngressDrain()
+{
+	m_rendererIngressState->WaitForDrain();
+}
+
+
+void CVideoProcessorDlg::ResumeRendererIngress()
+{
+	assert(m_rendererIngressState->ActiveLeases() == 0);
+	m_rendererIngressState->OpenAdmission();
+}
+
+
+void CVideoProcessorDlg::BindRendererResetSink()
+{
+	if (!m_videoRenderer || !m_rendererResetCoordinator)
+		return;
+
+	RevokeRendererResetSink();
+	const RendererResetCoordinator::Binding binding =
+		m_rendererResetCoordinator->Bind(
+			m_rendererGeneration.load(std::memory_order_acquire));
+	m_rendererResetBindingToken = binding.token;
+	m_videoRenderer->SetResetRequestSink(binding.sink);
+}
+
+
+void CVideoProcessorDlg::RevokeRendererResetSink()
+{
+	if (m_rendererResetCoordinator && m_rendererResetBindingToken != 0)
+	{
+		m_rendererResetCoordinator->Revoke(m_rendererResetBindingToken);
+		m_rendererResetBindingToken = 0;
+	}
+}
+
+
+void CVideoProcessorDlg::PumpRendererResetMailbox()
+{
+	if (!m_rendererResetCoordinator)
+		return;
+
+	const ULONGLONG now = GetTickCount64();
+	const uint32_t currentGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	const RendererTransitionKey expectedTransitionKey =
+		m_rendererTransitionModel.Key();
+	RendererResetCoordinator::OperationResult completion;
+	if (m_rendererResetCoordinator->ConsumeCompletion(
+			currentGeneration,
+			m_videoRenderer &&
+				m_rendererState == RendererState::RENDERSTATE_RENDERING,
+			completion,
+			expectedTransitionKey.transitionToken,
+			expectedTransitionKey.targetRevision,
+			m_rendererResetTransitionActive &&
+				m_rendererTransitionModel.State() ==
+					RendererTransitionState::Resetting))
+	{
+		RendererTransitionKey transitionKey;
+		transitionKey.rendererGeneration =
+			completion.rendererGeneration;
+		transitionKey.transitionToken =
+			completion.transitionToken;
+		transitionKey.targetRevision =
+			completion.targetRevision;
+		const bool currentSuccess =
+			completion.succeeded &&
+			!completion.staleGeneration &&
+			!completion.restartRequired;
+		const RendererTransitionModel::Actions actions =
+			m_rendererTransitionModel.OnResetCompleted(
+				transitionKey, currentSuccess);
+		const bool modelAccepted =
+			m_rendererTransitionModel.Key() == transitionKey &&
+			(currentSuccess ?
+				m_rendererTransitionModel.State() ==
+					RendererTransitionState::AwaitingFrame :
+				m_rendererTransitionModel.State() ==
+					RendererTransitionState::FailedCovered);
+		DEBUGLOG(
+			"Reset %s: operation=%llu request=%llu generation=%u "
+			"current_generation=%u reason=%s scope=%s%s%s",
+			currentSuccess ? "completed" : "failed",
+			static_cast<unsigned long long>(completion.operationId),
+			static_cast<unsigned long long>(completion.request.sequence),
+			completion.rendererGeneration,
+			currentGeneration,
+			CStringA(ToString(completion.request.reason)).GetString(),
+			completion.request.scope == RendererResetScope::Graph ?
+				"graph" : "live-queue",
+			completion.failure.empty() ? "" : " failure=",
+			completion.failure.empty() ? "" : completion.failure.c_str());
+		if (completion.request.scope == RendererResetScope::Graph)
+			m_lastLivenessRecoveryTick = now;
+		m_consecutiveStuckSeconds = 0;
+		m_activeGraphRequestId.store(0, std::memory_order_release);
+		m_activeGraphRequestGeneration.store(0, std::memory_order_release);
+		m_activeGraphRequestStartedTick.store(0, std::memory_order_release);
+		if (!modelAccepted || !currentSuccess || !actions.empty())
+			m_wantToRestartRenderer = true;
+		UpdateState();
+	}
+
+	RendererResetCoordinator::SelectedReset selected;
+	if (m_rendererResetCoordinator->DrainReady(now, selected))
+	{
+		if (selected.rendererGeneration != currentGeneration ||
+			!m_videoRenderer ||
+			m_rendererState != RendererState::RENDERSTATE_RENDERING)
+		{
+			DEBUGLOG(
+				"Backend reset request ignored: requested_generation=%u "
+				"current_generation=%u renderer=%S state=%d token=%llu",
+				selected.rendererGeneration,
+				currentGeneration,
+				static_cast<LPCTSTR>(m_activeRendererName),
+				static_cast<int>(m_rendererState),
+				static_cast<unsigned long long>(
+					selected.request.bindingToken));
+			m_rendererResetCoordinator->RejectBlackAndRequireRestart(
+				selected, "renderer selection is no longer usable");
+			return;
+		}
+
+		RendererTransitionModel::Actions transitionActions;
+		if (m_rendererTransitionModel.State() ==
+			RendererTransitionState::AwaitingFrame)
+		{
+			transitionActions =
+				m_rendererTransitionModel.RequestAnotherReset(
+					m_rendererTransitionModel.Key());
+		}
+		else if (m_rendererTransitionModel.State() ==
+			RendererTransitionState::BlackHeld &&
+			m_rendererResetTransitionActive)
+		{
+			transitionActions =
+				m_rendererTransitionModel.OnShieldTargetRebound(
+					m_rendererTransitionModel.Key(), true);
+		}
+		else
+		{
+			transitionActions = m_rendererTransitionModel.BeginReset(
+				currentGeneration, m_rendererTargetRevision);
+			m_rendererResetTransitionActive =
+				!transitionActions.empty();
+			const RendererTransitionKey key =
+				m_rendererTransitionModel.Key();
+			const bool blackShown =
+				!transitionActions.empty() &&
+				ShowRendererTransitionBlack(
+					selected.request.scope == RendererResetScope::Graph ?
+						"graph-reset" : "live-queue-reset");
+			transitionActions =
+				m_rendererTransitionModel.OnShieldAcquired(
+					key, blackShown);
+			if (!blackShown)
+			{
+				m_rendererResetCoordinator->
+					RejectBlackAndRequireRestart(
+						selected, "transition black unavailable");
+				return;
+			}
+		}
+
+		const bool executeReset =
+			std::any_of(
+				transitionActions.begin(),
+				transitionActions.end(),
+				[](const RendererTransitionAction& action)
+				{
+					return action.type ==
+						RendererTransitionActionType::ExecuteReset;
+				});
+		if (!executeReset)
+		{
+			m_rendererResetCoordinator->RejectBlackAndRequireRestart(
+				selected, "transition model rejected reset");
+			return;
+		}
+
+		m_transitionRevealPosted.store(false, std::memory_order_release);
+		m_queueResetIgnoreEventsUntil = now + 10000;
+		const RendererTransitionKey transitionKey =
+			m_rendererTransitionModel.Key();
+		selected.transitionToken = transitionKey.transitionToken;
+		selected.targetRevision = transitionKey.targetRevision;
+		const RendererResetCoordinator::StartResult start =
+			m_rendererResetCoordinator->AcknowledgeBlackAndStart(
+				selected, m_videoRenderer);
+		if (start != RendererResetCoordinator::StartResult::Started)
+		{
+			m_wantToRestartRenderer = true;
+			UpdateState();
+			return;
+		}
+		m_rendererTransitionModel.OnResetStarted(
+			m_rendererTransitionModel.Key());
+		m_activeGraphRequestId.store(
+			selected.request.sequence, std::memory_order_release);
+		m_activeGraphRequestGeneration.store(
+			currentGeneration, std::memory_order_release);
+		m_activeGraphRequestStartedTick.store(
+			now, std::memory_order_release);
+		DEBUGLOG(
+			"Reset started: request=%llu renderer=%S generation=%u "
+			"reason=%s scope=%s",
+			static_cast<unsigned long long>(selected.request.sequence),
+			static_cast<LPCTSTR>(m_activeRendererName),
+			currentGeneration,
+			CStringA(ToString(selected.request.reason)).GetString(),
+			selected.request.scope == RendererResetScope::Graph ?
+				"graph" : "live-queue");
+	}
+
+	const RendererResetCoordinator::Diagnostics diagnostics =
+		m_rendererResetCoordinator->GetDiagnostics();
+	if (diagnostics.hasPending)
+	{
+		const uint64_t delay =
+			diagnostics.pendingDeadlineTick > now ?
+			diagnostics.pendingDeadlineTick - now : 1;
+		SetTimer(
+			RENDERER_RESET_MAILBOX_TIMER_ID,
+			static_cast<UINT>(std::min<uint64_t>(
+				delay, (std::numeric_limits<UINT>::max)())),
+			nullptr);
+	}
 }
 
 
 void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 {
+	const bool resetPending =
+		m_rendererResetCoordinator &&
+		m_rendererResetCoordinator->BlocksReveal(generation);
+	const bool currentFrameReady =
+		generation == m_transitionGeneration &&
+		generation == m_rendererGeneration.load(std::memory_order_acquire) &&
+		m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_videoRenderer->HasPresentedLiveFrame();
+	if (resetPending && currentFrameReady &&
+		m_postStartResetCanAccelerate)
+	{
+		const RendererResetCoordinator::Diagnostics diagnostics =
+			m_rendererResetCoordinator->GetDiagnostics();
+		if (diagnostics.hasPending &&
+			!diagnostics.selectionPrepared &&
+			!diagnostics.operationActive &&
+			diagnostics.pendingReason ==
+				RendererResetReason::PostRendererStart)
+		{
+			m_postStartResetCanAccelerate = false;
+			const bool requiresGraph =
+				diagnostics.pendingScope ==
+					RendererResetScope::Graph;
+			DebugLog::Log(
+				"Post-start reset accelerated by first-current-frame evidence: "
+				"renderer=%S generation=%u scope=%s old_deadline=%llu now=%llu",
+				static_cast<LPCTSTR>(m_activeRendererName),
+				generation, requiresGraph ? "graph" : "live-queue",
+				static_cast<unsigned long long>(
+					diagnostics.pendingDeadlineTick),
+				static_cast<unsigned long long>(GetTickCount64()));
+			RequestRendererReset(
+				RendererResetReason::PostRendererStart,
+				requiresGraph, 0);
+		}
+		return;
+	}
 	if (generation != m_transitionGeneration ||
 		generation != m_rendererGeneration.load(std::memory_order_acquire) ||
 		!m_videoRenderer ||
 		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
-		!m_videoRenderer->HasPresentedLiveFrame() ||
+		resetPending ||
+		!currentFrameReady ||
 		!m_rendererTransitionWindow.IsVisible())
 	{
 		return;
+	}
+
+	const bool coordinatedReset = m_rendererResetTransitionActive;
+	if (coordinatedReset)
+	{
+		if (m_rendererTransitionModel.State() !=
+				RendererTransitionState::AwaitingFrame ||
+			m_rendererTransitionModel.Key().rendererGeneration !=
+				generation)
+		{
+			return;
+		}
+		const RendererTransitionModel::Actions actions =
+			m_rendererTransitionModel.OnFrameReady(
+				m_rendererTransitionModel.Key());
+		if (actions.empty() ||
+			actions.front().type !=
+				RendererTransitionActionType::ReleaseShield)
+		{
+			return;
+		}
 	}
 
 	const char* evidence = m_videoRenderer->PresentedLiveFrameEvidence();
@@ -3952,6 +4568,23 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			: 0;
 	m_windowedVideoWindow.ShowLogo(false);
 	m_rendererTransitionWindow.Hide();
+	if (coordinatedReset)
+	{
+		const RendererTransitionModel::Actions actions =
+			m_rendererTransitionModel.OnShieldReleased(
+				m_rendererTransitionModel.Key(),
+				!m_rendererTransitionWindow.IsVisible());
+		if (!actions.empty())
+		{
+			m_wantToRestartRenderer = true;
+			UpdateState();
+		}
+		else if (m_rendererTransitionModel.State() ==
+			RendererTransitionState::Visible)
+		{
+			m_rendererResetTransitionActive = false;
+		}
+	}
 	DebugLog::Log(
 		"Renderer transition: process=%lu generation=%u event=first-live-frame-reveal "
 		"renderer=%S target=%p evidence=%s black_ms=%llu "
@@ -4601,6 +5234,13 @@ void CVideoProcessorDlg::_FatalError(int line, const std::string& functionName, 
 
 	::MessageBox(nullptr, s, TEXT("Fatal error"), MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
 
+	if (m_videoRenderer || m_rendererRetirementPending)
+	{
+		DebugLog::Log(
+			"Fatal termination deferred through renderer stop/retirement state machine");
+		OnClose();
+		return;
+	}
 	CDialog::EndDialog(S_FALSE);
 }
 
@@ -4704,6 +5344,24 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 
 		if (!CDialog::OnInitDialog())
 		return FALSE;
+
+	const HWND resetWakeWindow = GetSafeHwnd();
+	m_rendererResetCoordinator =
+		std::make_unique<RendererResetCoordinator>(
+			[resetWakeWindow]()
+			{
+				return resetWakeWindow &&
+					::PostMessage(
+					resetWakeWindow,
+					WM_MESSAGE_RENDERER_RESET_REQUEST,
+					0, 0) != FALSE;
+			},
+			[]()
+			{
+				return static_cast<uint64_t>(GetTickCount64());
+			});
+	m_rendererIngressState =
+		m_rendererResetCoordinator->GetIngressState();
 
 	// The generated AFX_DIALOG_LAYOUT table moves unrelated labels and controls
 	// when the dialog is resized.  This application has one resizable surface:
@@ -5244,29 +5902,37 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	const ULONGLONG uiNow = GetTickCount64();
 	m_lastUiMessageTick.store(uiNow, std::memory_order_release);
-	if (m_activeResetOperation)
+	if (m_rendererResetCoordinator)
 	{
-		if (m_activeResetOperation->complete.load(std::memory_order_acquire))
+		const RendererResetCoordinator::Diagnostics diagnostics =
+			m_rendererResetCoordinator->GetDiagnostics();
+		if (diagnostics.completionPending)
 		{
 			CompleteRendererResetOperation();
 		}
-		else if (uiNow - m_activeResetOperation->startedTick >= 10000 &&
-			!m_activeResetOperation->timeoutLogged.exchange(
-				true, std::memory_order_acq_rel))
+		const ULONGLONG startedTick =
+			m_activeGraphRequestStartedTick.load(std::memory_order_acquire);
+		if (diagnostics.operationActive &&
+			startedTick != 0 &&
+			uiNow - startedTick >= 10000 &&
+			m_lastGraphTimeoutLoggedOperationId !=
+				diagnostics.activeOperationId)
 		{
+			m_lastGraphTimeoutLoggedOperationId =
+				diagnostics.activeOperationId;
 			DebugLog::Log(
 				"Reset terminal diagnostic: request=%llu generation=%u "
 				"reason=%S scope=%s elapsed=%llums "
 				"failure=graph-control-operation-did-not-return; "
 				"UI thread remains responsive and overlapping recovery is disabled",
 				static_cast<unsigned long long>(
-					m_activeResetOperation->requestId),
-				m_activeResetOperation->rendererGeneration,
-				ToString(m_activeResetOperation->reason),
-				m_activeResetOperation->requiresGraph ?
+					diagnostics.activeOperationId),
+				diagnostics.rendererGeneration,
+				ToString(diagnostics.pendingReason),
+				diagnostics.pendingScope == RendererResetScope::Graph ?
 					"graph" : "live-queue",
 				static_cast<unsigned long long>(
-					uiNow - m_activeResetOperation->startedTick));
+					uiNow - startedTick));
 			RendererLivenessSnapshot snapshot;
 			if (m_videoRenderer &&
 				m_videoRenderer->GetLivenessSnapshot(snapshot))
@@ -5279,6 +5945,13 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					"graph-control-timeout");
 			}
 		}
+	}
+
+	if (nIDEvent == RENDERER_RESET_MAILBOX_TIMER_ID)
+	{
+		KillTimer(RENDERER_RESET_MAILBOX_TIMER_ID);
+		PumpRendererResetMailbox();
+		return;
 	}
 
 	if (m_rendererTransitionWindow.IsVisible())
@@ -5336,14 +6009,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			::SetForegroundWindow(m_fullScreenVideoWindow->GetHWND());
 			::SetFocus(m_fullScreenVideoWindow->GetHWND());
 		}
-		return;
-	}
-
-	// One-shot lifecycle and emergency queue-reset coordinator.
-	if (nIDEvent == QUEUE_RESET_DELAY_TIMER_ID)
-	{
-		KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
-		ExecutePendingRendererReset();
 		return;
 	}
 
@@ -6203,336 +6868,45 @@ void CVideoProcessorDlg::RequestRendererReset(RendererResetReason reason,
 	bool requiresGraph, UINT delayMs)
 {
 	if (!m_videoRenderer ||
-		m_rendererState != RendererState::RENDERSTATE_RENDERING)
+		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
+		!m_rendererResetCoordinator)
 	{
 		DEBUGLOG("Reset request ignored: reason=%s renderer is not rendering",
 			CStringA(ToString(reason)).GetString());
 		return;
 	}
 
-	const ULONGLONG now = GetTickCount64();
-	const uint32_t generation =
-		m_rendererGeneration.load(std::memory_order_acquire);
-	const int priority = RendererResetPriority(reason);
-	const uint64_t requestId = ++m_nextResetRequestId;
-	const ULONGLONG deadline = now + delayMs;
-
-	if (RendererResetOperationInProgress() &&
-		m_activeResetOperation->rendererGeneration == generation &&
-		(m_activeResetOperation->requiresGraph || !requiresGraph))
-	{
-		DEBUGLOG(
-			"Reset coalesced: request=%llu reason=%s priority=%d generation=%u "
-			"into_active=%llu active_reason=%s active_scope=%s",
-			static_cast<unsigned long long>(requestId),
-			CStringA(ToString(reason)).GetString(), priority, generation,
-			static_cast<unsigned long long>(
-				m_activeResetOperation->requestId),
-			CStringA(ToString(m_activeResetOperation->reason)).GetString(),
-			m_activeResetOperation->requiresGraph ? "graph" : "live-queue");
-		return;
-	}
-
-	const bool hadPending = m_pendingQueueReset;
-	const uint64_t priorRequestId = m_pendingResetRequestId;
-	const RendererResetReason priorReason = m_pendingResetReason;
-	const int priorPriority = m_pendingResetPriority;
-	const ULONGLONG priorDeadline = m_pendingResetDeadline;
-	const bool priorGraph = m_pendingResetRequiresGraph;
-	const bool priorGenerationObsolete =
-		hadPending &&
-		m_pendingResetRendererGeneration != generation;
-	const bool replaceIdentity =
-		!hadPending ||
-		priorGenerationObsolete ||
-		RendererResetShouldReplace(
-			priority, deadline, priorPriority, priorDeadline);
-
-	m_pendingQueueReset = true;
-	m_pendingResetRequiresGraph =
-		(hadPending && !priorGenerationObsolete ?
-			m_pendingResetRequiresGraph : false) ||
-		requiresGraph;
-	if (replaceIdentity)
-	{
-		m_pendingResetReason = reason;
-		m_pendingResetRendererGeneration = generation;
-		m_pendingResetRequestId = requestId;
-		m_pendingResetPriority = priority;
-		m_pendingResetRequestedTick = now;
-		m_pendingResetDeadline = deadline;
-	}
-
-	KillTimer(QUEUE_RESET_DELAY_TIMER_ID);
-	bool executeNow = false;
-	if (!m_activeResetOperation)
-	{
-		const ULONGLONG selectedDeadline = m_pendingResetDeadline;
-		if (selectedDeadline <= now)
-			executeNow = true;
-		else
-			SetTimer(
-				QUEUE_RESET_DELAY_TIMER_ID,
-				static_cast<UINT>(std::min<ULONGLONG>(
-					selectedDeadline - now,
-					(std::numeric_limits<UINT>::max)())),
-				nullptr);
-	}
-
+	const bool accepted = m_rendererResetCoordinator->RequestUi(
+		reason,
+		requiresGraph ?
+			RendererResetScope::Graph :
+			RendererResetScope::LiveQueue,
+		delayMs);
 	DEBUGLOG(
-		"Reset requested: request=%llu renderer=%s backend=%s generation=%u "
-		"reason=%s priority=%d scope=%s delay=%ums action=%s "
-		"selected_request=%llu selected_reason=%s selected_priority=%d "
-		"selected_deadline_in=%llums prior_request=%llu prior_reason=%s "
-		"prior_priority=%d prior_scope=%s",
-		static_cast<unsigned long long>(requestId),
+		"Reset request %s: renderer=%s backend=%s generation=%u "
+		"reason=%s priority=%d scope=%s delay=%ums",
+		accepted ? "accepted" : "rejected",
 		CStringA(m_activeRendererName).GetString(),
 		m_activeRendererIsDirectShow ? "DirectShow" : "Alpha",
-		generation,
+		m_rendererGeneration.load(std::memory_order_acquire),
 		CStringA(ToString(reason)).GetString(),
-		priority,
-		requiresGraph ? "graph" : "live-queue", delayMs,
-		!hadPending ? "scheduled" :
-			(priorGenerationObsolete ?
-				"replaced-obsolete-generation" :
-				(replaceIdentity ? "replaced" :
-				((!priorGraph && requiresGraph) ?
-					"coalesced-scope-upgrade" : "coalesced-kept"))),
-		static_cast<unsigned long long>(m_pendingResetRequestId),
-		CStringA(ToString(m_pendingResetReason)).GetString(),
-		m_pendingResetPriority,
-		static_cast<unsigned long long>(
-			m_pendingResetDeadline > now ?
-				m_pendingResetDeadline - now : 0),
-		static_cast<unsigned long long>(priorRequestId),
-		CStringA(ToString(priorReason)).GetString(),
-		priorPriority,
-		priorGraph ? "graph" : "live-queue");
-
-	if (executeNow)
-		ExecutePendingRendererReset();
-}
-
-
-void CVideoProcessorDlg::ExecutePendingRendererReset()
-{
-	if (!m_pendingQueueReset)
-		return;
-
-	if (RendererResetOperationInProgress())
-	{
-		DEBUGLOG(
-			"Reset start deferred: selected_request=%llu active_request=%llu",
-			static_cast<unsigned long long>(m_pendingResetRequestId),
-			static_cast<unsigned long long>(
-				m_activeResetOperation->requestId));
-		return;
-	}
-
-	const RendererResetReason reason = m_pendingResetReason;
-	const bool requiresGraph = m_pendingResetRequiresGraph;
-	const uint32_t requestedGeneration =
-		m_pendingResetRendererGeneration;
-	const uint64_t requestId = m_pendingResetRequestId;
-	const int priority = m_pendingResetPriority;
-	const ULONGLONG requestedTick = m_pendingResetRequestedTick;
-	m_pendingQueueReset = false;
-	m_pendingResetRequiresGraph = false;
-	m_pendingResetReason = RendererResetReason::None;
-	m_pendingResetRendererGeneration = 0;
-	m_pendingResetRequestId = 0;
-	m_pendingResetPriority = -1;
-	m_pendingResetRequestedTick = 0;
-	m_pendingResetDeadline = 0;
-
-	if (!m_videoRenderer ||
-		m_rendererState != RendererState::RENDERSTATE_RENDERING)
-	{
-		DEBUGLOG(
-			"Reset cancelled: request=%llu reason=%s generation=%u "
-			"failure=renderer-not-rendering",
-			static_cast<unsigned long long>(requestId),
-			CStringA(ToString(reason)).GetString(),
-			requestedGeneration);
-		return;
-	}
-
-	const uint32_t currentGeneration =
-		m_rendererGeneration.load(std::memory_order_acquire);
-	if (requestedGeneration != currentGeneration)
-	{
-		DEBUGLOG(
-			"Reset cancelled: request=%llu reason=%s priority=%d "
-			"requested_generation=%u current_generation=%u "
-			"failure=obsolete-generation",
-			static_cast<unsigned long long>(requestId),
-			CStringA(ToString(reason)).GetString(),
-			priority, requestedGeneration, currentGeneration);
-		return;
-	}
-
-	m_queueResetIgnoreEventsUntil = GetTickCount64() + 10000;
-	DEBUGLOG(
-		"Reset started: request=%llu renderer=%s backend=%s generation=%u "
-		"reason=%s priority=%d scope=%s queued_for=%llums thread=%s",
-		static_cast<unsigned long long>(requestId),
-		CStringA(m_activeRendererName).GetString(),
-		m_activeRendererIsDirectShow ? "DirectShow" : "Alpha",
-		currentGeneration,
-		CStringA(ToString(reason)).GetString(),
-		priority,
+		RendererResetPriority(reason),
 		requiresGraph ? "graph" : "live-queue",
-		static_cast<unsigned long long>(
-			GetTickCount64() - requestedTick),
-		m_activeRendererIsDirectShow ? "graph-control-worker" : "ui");
-
-	// DirectShow graph control and flush transactions can enter third-party
-	// code. Keep them off the UI thread and retain the renderer until the
-	// operation returns; renderer replacement is deferred meanwhile.
-	if (m_activeRendererIsDirectShow)
-	{
-		auto operation = std::make_shared<RendererResetOperation>();
-		operation->requestId = requestId;
-		operation->rendererGeneration = currentGeneration;
-		operation->reason = reason;
-		operation->requiresGraph = requiresGraph;
-		operation->startedTick = GetTickCount64();
-		m_activeResetOperation = operation;
-		m_activeGraphRequestId.store(requestId, std::memory_order_release);
-		m_activeGraphRequestGeneration.store(
-			currentGeneration, std::memory_order_release);
-		m_activeGraphRequestStartedTick.store(
-			operation->startedTick, std::memory_order_release);
-		const std::shared_ptr<IVideoRenderer> renderer = m_videoRenderer;
-		const HWND notifyWindow = GetSafeHwnd();
-
-		std::thread([operation, renderer, notifyWindow]()
-		{
-			const HRESULT coInitializeResult =
-				CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-			try
-			{
-				if (operation->requiresGraph)
-					renderer->Reset();
-				else
-					renderer->ResetLiveQueue();
-				operation->succeeded.store(true, std::memory_order_release);
-			}
-			catch (const std::exception& ex)
-			{
-				std::lock_guard<std::mutex> lock(operation->failureMutex);
-				operation->failure = ex.what();
-			}
-			catch (...)
-			{
-				std::lock_guard<std::mutex> lock(operation->failureMutex);
-				operation->failure = "unknown exception";
-			}
-			operation->complete.store(true, std::memory_order_release);
-			if (SUCCEEDED(coInitializeResult))
-				CoUninitialize();
-			if (notifyWindow)
-				::PostMessage(
-					notifyWindow,
-					WM_MESSAGE_RENDERER_RESET_COMPLETE,
-					0, 0);
-		}).detach();
-		return;
-	}
-
-	bool succeeded = false;
-	std::string failure;
-	try
-	{
-		if (requiresGraph)
-			m_videoRenderer->Reset();
-		else
-			m_videoRenderer->ResetLiveQueue();
-		succeeded = true;
-	}
-	catch (const std::exception& ex)
-	{
-		failure = ex.what();
-	}
-	DEBUGLOG(
-		"Reset %s: request=%llu generation=%u reason=%s scope=%s "
-		"duration=%llums%s%s",
-		succeeded ? "completed" : "failed",
-		static_cast<unsigned long long>(requestId),
-		currentGeneration,
-		CStringA(ToString(reason)).GetString(),
-		requiresGraph ? "graph" : "live-queue",
-		static_cast<unsigned long long>(
-			GetTickCount64() - requestedTick),
-		failure.empty() ? "" : " failure=",
-		failure.empty() ? "" : failure.c_str());
+		delayMs);
 }
 
 
 bool CVideoProcessorDlg::RendererResetOperationInProgress() const
 {
-	return m_activeResetOperation &&
-		!m_activeResetOperation->complete.load(std::memory_order_acquire);
+	if (!m_rendererResetCoordinator)
+		return false;
+	return m_rendererResetCoordinator->RequiresLifecycleDeferral();
 }
 
 
 void CVideoProcessorDlg::CompleteRendererResetOperation()
 {
-	const std::shared_ptr<RendererResetOperation> operation =
-		m_activeResetOperation;
-	if (!operation ||
-		!operation->complete.load(std::memory_order_acquire))
-		return;
-
-	std::string failure;
-	{
-		std::lock_guard<std::mutex> lock(operation->failureMutex);
-		failure = operation->failure;
-	}
-	const bool succeeded =
-		operation->succeeded.load(std::memory_order_acquire);
-	const uint32_t currentGeneration =
-		m_rendererGeneration.load(std::memory_order_acquire);
-	DEBUGLOG(
-		"Reset %s: request=%llu generation=%u current_generation=%u "
-		"reason=%s scope=%s duration=%llums%s%s",
-		succeeded ? "completed" : "failed",
-		static_cast<unsigned long long>(operation->requestId),
-		operation->rendererGeneration,
-		currentGeneration,
-		CStringA(ToString(operation->reason)).GetString(),
-		operation->requiresGraph ? "graph" : "live-queue",
-		static_cast<unsigned long long>(
-			GetTickCount64() - operation->startedTick),
-		failure.empty() ? "" : " failure=",
-		failure.empty() ? "" : failure.c_str());
-
-	if (operation->requiresGraph)
-		m_lastLivenessRecoveryTick = GetTickCount64();
-	m_activeResetOperation.reset();
-	m_activeGraphRequestId.store(0, std::memory_order_release);
-	m_activeGraphRequestGeneration.store(0, std::memory_order_release);
-	m_activeGraphRequestStartedTick.store(0, std::memory_order_release);
-	m_consecutiveStuckSeconds = 0;
-
-	if (m_pendingQueueReset)
-	{
-		const ULONGLONG now = GetTickCount64();
-		if (m_pendingResetDeadline <= now)
-			ExecutePendingRendererReset();
-		else
-			SetTimer(
-				QUEUE_RESET_DELAY_TIMER_ID,
-				static_cast<UINT>(std::min<ULONGLONG>(
-					m_pendingResetDeadline - now,
-					(std::numeric_limits<UINT>::max)())),
-				nullptr);
-	}
-
-	// A renderer selection/restart/close may have arrived while graph control
-	// was active. Resume that state transition only after the worker releases
-	// the renderer operation.
-	UpdateState();
+	PumpRendererResetMailbox();
 }
 
 
@@ -6695,8 +7069,10 @@ void CVideoProcessorDlg::LogLivenessSnapshot(
 			tick == 0 || tick > now ?
 				(std::numeric_limits<ULONGLONG>::max)() : now - tick);
 	};
-	const std::shared_ptr<RendererResetOperation> graphOperation =
-		m_activeResetOperation;
+	const uint64_t graphRequest =
+		m_activeGraphRequestId.load(std::memory_order_acquire);
+	const ULONGLONG graphStarted =
+		m_activeGraphRequestStartedTick.load(std::memory_order_acquire);
 	DebugLog::Log(
 		"Liveness snapshot: trigger=%s renderer=%S generation=%u "
 		"queue=%zu/%zu+%zu/%zu buffering=%d epoch=%llu "
@@ -6732,9 +7108,8 @@ void CVideoProcessorDlg::LogLivenessSnapshot(
 		ageMs(snapshot.lastDeliverySuccessTick),
 		snapshot.deliveryInProgress ? "delivery-thread" : "none",
 		snapshot.resetInProgress ? "reset-thread" : "none",
-		graphOperation ?
-			static_cast<unsigned long long>(graphOperation->requestId) : 0,
-		graphOperation ? ageMs(graphOperation->startedTick) : 0);
+		static_cast<unsigned long long>(graphRequest),
+		graphStarted ? ageMs(graphStarted) : 0);
 }
 
 
@@ -6757,7 +7132,7 @@ void CVideoProcessorDlg::LivenessWatchdogWorker()
 			continue;
 		}
 
-		if (!m_deliverCaptureDataToRenderer.load(std::memory_order_acquire))
+		if (!m_rendererIngressState->IsAdmitting())
 			continue;
 		const std::shared_ptr<IVideoRenderer> renderer =
 			std::atomic_load_explicit(

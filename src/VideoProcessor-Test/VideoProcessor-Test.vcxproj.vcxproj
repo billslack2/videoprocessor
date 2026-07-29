@@ -196,6 +196,10 @@
     <ClCompile Include="P010ActivePictureEvidenceTests.cpp" />
     <ClCompile Include="RendererIdTests.cpp" />
     <ClCompile Include="RendererResetPolicyTests.cpp" />
+    <ClCompile Include="RendererResetCoordinatorTests.cpp" />
+    <ClCompile Include="RendererResetRequestLatchTests.cpp" />
+    <ClCompile Include="RendererTransitionModelTests.cpp" />
+    <ClCompile Include="RendererLivenessTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
