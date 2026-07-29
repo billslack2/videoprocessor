@@ -11,6 +11,7 @@
 #include <ConfigFile.h>
 #include <DebugLog.h>
 #include <AspectRatio.h>
+#include <ActivePictureTransitionModel.h>
 #include <microsoft_directshow/MadVRExternalPixelShaders.h>
 
 #include "MadVRShaderLoader.h"
@@ -75,6 +76,8 @@ struct ShaderRule
 	unsigned long nlsTargetAspectRatioX = 0;
 	unsigned long nlsTargetAspectRatioY = 0;
 	double aspectTolerancePercent = -1.0;
+	double stableGeometryDeadbandPercent =
+		ActivePictureTransitionModel::DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT;
 	double activeAspectMinimum = 0.0;
 	bool narrowerOnly = false;
 	std::string inactiveRule;
@@ -681,6 +684,19 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 	}
 	if (rule.nls)
 	{
+		if (config.TryGetString(section,
+			"stable_geometry_deadband_percent", rawValue) &&
+			!ParseBoundedDouble(rawValue, 0.0,
+				ActivePictureTransitionModel::
+					MAX_STABLE_GEOMETRY_DEADBAND_PERCENT,
+				rule.stableGeometryDeadbandPercent))
+		{
+			DebugLog::Log("Shaders: NLS rule \"%s\" has invalid stable_geometry_deadband_percent \"%s\"; use 0 through %.0f",
+				rule.name.c_str(), rawValue.c_str(),
+				ActivePictureTransitionModel::
+					MAX_STABLE_GEOMETRY_DEADBAND_PERCENT);
+			rule.valid = false;
+		}
 		if (rule.aspectTolerancePercent < 0.0)
 			rule.aspectTolerancePercent = 5.0;
 		LoadTypedNlsSettings(config, section, rule);
@@ -1107,6 +1123,8 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 	MadVRShaderSelection selection;
 	if (!renderer)
 		return selection;
+	ActivePictureTransitionModel::SetRuntimeStableGeometryDeadbandPercent(
+		ActivePictureTransitionModel::DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT);
 
 	ConfigFile config;
 	if (!config.Load() || !config.HasSection(CONFIG_SECTION))
@@ -1251,6 +1269,15 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 		selection.ruleLabel = "Invalid shader group";
 		ApplyShaderEntries(renderer, {}, {}, defaultProfile, selection);
 		return selection;
+	}
+	for (const ShaderRule& rule : selectedRules)
+	{
+		if (rule.nls)
+		{
+			ActivePictureTransitionModel::SetRuntimeStableGeometryDeadbandPercent(
+				rule.stableGeometryDeadbandPercent);
+			break;
+		}
 	}
 
 	std::vector<ShaderEntry> preScale;
@@ -1615,6 +1642,8 @@ bool MadVRShaderLoader::GetConfiguredRuleSelection(
 		configured.none = rule.none;
 		configured.aspectTolerancePercent =
 			std::max(0.0, rule.aspectTolerancePercent);
+		configured.stableGeometryDeadbandPercent =
+			rule.stableGeometryDeadbandPercent;
 		configured.activeAspectMinimum = rule.activeAspectMinimum;
 		configured.narrowerOnly = rule.narrowerOnly;
 		selection.push_back(std::move(configured));
