@@ -61,7 +61,14 @@ DirectShowVideoRenderer::DirectShowVideoRenderer(
 
 DirectShowVideoRenderer::~DirectShowVideoRenderer()
 {
-	SetResetRequestSink({});
+	if (m_graphTeardownComplete.load(std::memory_order_acquire))
+	{
+		// STOPPED is terminal, but a final DirectShow notification can enqueue
+		// event-drain work before the UI releases its lifetime pin. Discard
+		// such post-teardown work and only join the already-clean owner.
+		m_graphExecutor.CancelPendingAndShutdown({});
+		return;
+	}
 	m_graphExecutor.CancelPendingAndShutdown([this]()
 		{
 			GraphTeardownNoThrow();
@@ -307,9 +314,13 @@ void DirectShowVideoRenderer::StopWithIngressDrain(
 		if (drainAfterGraphStop)
 			drainAfterGraphStop();
 		GraphTeardownNoThrow();
+		if (m_graphTeardownComplete.load(std::memory_order_acquire))
+			SetState(RendererState::RENDERSTATE_STOPPED);
+		else
+			SetState(RendererState::RENDERSTATE_FAILED);
 		return;
 	}
-	m_graphExecutor.Post([this, drainAfterGraphStop]()
+	m_graphExecutor.PostWithCompletion([this, drainAfterGraphStop]()
 		{
 			try
 			{
@@ -320,14 +331,17 @@ void DirectShowVideoRenderer::StopWithIngressDrain(
 				DebugLog::Log(
 					"DirectShow graph stop failed asynchronously: %s",
 					error.what());
-				if (m_state.load(std::memory_order_acquire) !=
-					RendererState::RENDERSTATE_STOPPED)
-					SetState(RendererState::RENDERSTATE_STOPPED);
 			}
 			if (drainAfterGraphStop)
 				drainAfterGraphStop();
 			GraphTeardownNoThrow();
-			WakeForOwnerCompletion();
+			if (m_graphTeardownComplete.load(std::memory_order_acquire))
+				SetState(RendererState::RENDERSTATE_STOPPED);
+			else
+				SetState(RendererState::RENDERSTATE_FAILED);
+		}, [eventHwnd = m_eventHwnd, eventMsg = m_eventMsg]()
+		{
+			PostMessage(eventHwnd, eventMsg, 0, 0);
 		});
 }
 
@@ -855,6 +869,7 @@ void DirectShowVideoRenderer::WakeForOwnerCompletion() const
 void DirectShowVideoRenderer::GraphBuild()
 {
 	AssertGraphThread();
+	m_graphTeardownComplete.store(false, std::memory_order_release);
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::GraphBuild(): Begin")));
 
 	assert(m_videoState);
@@ -1005,6 +1020,8 @@ void DirectShowVideoRenderer::GraphTeardown()
 	}
 
 	DbgLog((LOG_TRACE, 1, TEXT("DirectShowVideoRenderer::GraphTeardown(): End")));
+	m_graphTeardownComplete.store(
+		GraphResourcesReleased(), std::memory_order_release);
 }
 
 
@@ -1065,6 +1082,17 @@ void DirectShowVideoRenderer::GraphTeardownNoThrow() noexcept
 		CoTaskMemFree(m_pmt.pbFormat);
 		m_pmt.pbFormat = nullptr;
 	}
+	m_graphTeardownComplete.store(
+		GraphResourcesReleased(), std::memory_order_release);
+}
+
+
+bool DirectShowVideoRenderer::GraphResourcesReleased() const noexcept
+{
+	return !m_pGraph && !m_pControl && !m_pEvent && !m_videoWindow &&
+		!m_pGraph2 && !m_mediaFilter && !m_amGraphStreams &&
+		!m_referenceClock && !m_videoFramFormatter && !m_liveSource &&
+		!m_pRenderer && !m_pmt.pbFormat;
 }
 
 
@@ -1205,7 +1233,6 @@ void DirectShowVideoRenderer::GraphStop()
 
 	assert(m_liveSource->GetFrameQueueSize() == 0);
 
-	SetState(RendererState::RENDERSTATE_STOPPED);
 }
 
 

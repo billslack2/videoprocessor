@@ -381,6 +381,54 @@ namespace Tests
 				std::memory_order_acquire));
 		}
 
+		TEST_METHOD(CompletionIsPublishedOnlyAfterCommandAndCapturesRetire)
+		{
+			DirectShowGraphExecutor executor;
+			std::promise<void> commandEntered;
+			std::promise<void> releaseCommand;
+			const std::shared_future<void> release =
+				releaseCommand.get_future().share();
+			std::promise<void> completionPublished;
+			std::future<void> completion =
+				completionPublished.get_future();
+			std::atomic_bool commandReturned{false};
+			std::atomic_bool completionSawReturned{false};
+			std::atomic_bool completionSawReleasedCapture{false};
+
+			auto lifetime = std::make_shared<int>(42);
+			const std::weak_ptr<int> weakLifetime = lifetime;
+			Assert::IsTrue(executor.PostWithCompletion(
+				[lifetime, &commandEntered, release, &commandReturned]()
+				{
+					commandEntered.set_value();
+					release.wait();
+					commandReturned.store(true, std::memory_order_release);
+				},
+				[weakLifetime, &commandReturned, &completionPublished,
+					&completionSawReturned,
+					&completionSawReleasedCapture]()
+				{
+					completionSawReturned.store(commandReturned.load(
+						std::memory_order_acquire), std::memory_order_release);
+					completionSawReleasedCapture.store(
+						weakLifetime.expired(), std::memory_order_release);
+					completionPublished.set_value();
+				}));
+			lifetime.reset();
+
+			commandEntered.get_future().wait();
+			Assert::IsTrue(completion.wait_for(
+				std::chrono::milliseconds(20)) ==
+				std::future_status::timeout);
+			releaseCommand.set_value();
+			completion.wait();
+			Assert::IsTrue(completionSawReturned.load(
+				std::memory_order_acquire));
+			Assert::IsTrue(completionSawReleasedCapture.load(
+				std::memory_order_acquire));
+			executor.Shutdown();
+		}
+
 		TEST_METHOD(ShutdownRejectsNewCommands)
 		{
 			DirectShowGraphExecutor executor;
