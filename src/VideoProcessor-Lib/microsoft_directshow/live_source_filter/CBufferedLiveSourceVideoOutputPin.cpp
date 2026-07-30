@@ -1788,6 +1788,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				m_isBuffering.load(std::memory_order_acquire))
 				break;
 
+			// Sustained live delivery remains in this drain loop rather than the
+			// outer event wait. Sample here so the trace tracks the same steady
+			// R/C/T/capacity state the OSD reports once per second.
+			recordQueueSnapshot();
+
 			// Pop one sample under lock
 			IMediaSample* pSample = nullptr;
 			ConvertedSample convertedSample;
