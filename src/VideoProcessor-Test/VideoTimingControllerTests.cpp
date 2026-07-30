@@ -108,6 +108,18 @@ namespace Tests
 			Assert::AreEqual<VideoReferenceTime>(166833, decision.stop);
 		}
 
+		TEST_METHOD(ClockClockUsesAnAlreadyConvertedNextTimestamp)
+		{
+			auto controller = MakeController(
+				VideoTimingMode::ClockClock, 60000, 1001);
+			FrameTimingInput frame = { 1, 1000000, 1000000, true };
+			frame.hasNextReferenceTime = true;
+			frame.nextReferenceTime = 10170000;
+			const TimingDecision decision = controller.Decide(frame);
+
+			Assert::AreEqual<VideoReferenceTime>(170000, decision.stop);
+		}
+
 		TEST_METHOD(ClockSmart2UsesSmoothedMeasuredDuration)
 		{
 			auto controller = MakeController(
@@ -136,6 +148,43 @@ namespace Tests
 			Assert::IsTrue(after.epoch.value > before.epoch.value);
 			Assert::IsTrue(after.discontinuity);
 			Assert::AreEqual<VideoReferenceTime>(0, after.start);
+		}
+
+		TEST_METHOD(ExternalPipelineEpochBecomesTheDecisionEpoch)
+		{
+			auto controller = MakeController(
+				VideoTimingMode::RationalRational, 60000, 1001);
+			controller.ResetToEpoch({ 42 });
+			const TimingDecision decision = controller.Decide({ 1 });
+
+			Assert::AreEqual<uint64_t>(42, decision.epoch.value);
+			Assert::IsTrue(decision.discontinuity);
+		}
+
+		TEST_METHOD(RestartAfterPrerollPreservesTheEstablishedClockRationalDuration)
+		{
+			auto controller = MakeController(
+				VideoTimingMode::ClockRational, 60000, 1001);
+			FrameTimingInput initial = { 1, 1000000, 1000000, true };
+			const TimingDecision before = controller.Decide(initial);
+			controller.RestartAfterPreroll();
+			FrameTimingInput afterRestart = { 2, 2000000, 1000000, true };
+			afterRestart.ppmCorrection = 500;
+			const TimingDecision after = controller.Decide(afterRestart);
+
+			Assert::AreEqual(before.stop - before.start, after.stop - after.start);
+			Assert::IsTrue(after.discontinuity);
+		}
+
+		TEST_METHOD(ClockModesRejectMissingClockInput)
+		{
+			auto clock = MakeController(VideoTimingMode::ClockTheoretical, 60000, 1001);
+			const TimingDecision missing = clock.Decide({ 1 });
+			Assert::IsFalse(missing.valid);
+
+			auto rational = MakeController(VideoTimingMode::RationalRational, 60000, 1001);
+			const TimingDecision rationalDecision = rational.Decide({ 1 });
+			Assert::IsTrue(rationalDecision.valid);
 		}
 
 		TEST_METHOD(OnlyAndNoneModesExposeTheCorrectTimestampShape)
