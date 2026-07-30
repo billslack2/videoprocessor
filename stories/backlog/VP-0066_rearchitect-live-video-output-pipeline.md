@@ -32,6 +32,50 @@ scheduled presentation time, preserve queue policies and ownership, carry a
 common pipeline epoch through all work, and provide diagnostics that compare
 the old and new implementations.
 
+A poorly implemented refactor could add latency if it introduces:
+
+Another queue between components
+Another worker-thread handoff
+Frame copies instead of ownership transfer
+Lock contention
+Polling instead of event signaling
+Batch processing
+Conservative minimum queue depths
+Waiting for both queues to reach a threshold
+Logging or statistics on the critical path
+
+One additional queued frame would add roughly:
+
+16.7 ms at 59.94
+41.7 ms at 23.976
+
+An extra function call, virtual interface, or small value-object construction is effectively irrelevant compared with a frame interval. An extra queue or wait is not.
+
+The refactor must introduce no additional frame queues, frame copies, worker-thread transitions, startup preroll, or minimum buffering requirements. Capture-to-delivery latency must remain within one millisecond of the existing implementation under equivalent queue conditions.
+
+Also measure these before and after:
+
+Capture-to-conversion-start latency
+Conversion duration
+Converted-queue residence time
+Capture-to-Deliver() latency
+Raw and converted queue depths
+End-to-end capture-to-screen latency, where measurable
+Expected result
+Stage	Expected latency effect
+Behavior-preserving refactor	Approximately 0 ms
+Cleaner ownership and less locking	Possibly a very small reduction
+Removing one buffered frame afterward	−16.7 ms or −41.7 ms
+Accidentally adding one buffered frame	+16.7 ms or +41.7 ms
+Better queue-depth control	Potentially meaningful reduction
+New interfaces/classes alone	Negligible
+
+So I would describe it as:
+
+Latency-indifferent initially, but latency-enabling afterward.
+
+The refactor should not itself be sold as a latency improvement. It gives you the structure and instrumentation needed to reduce latency without destabilizing timing.
+
 ## Target architecture
 
 ```text
