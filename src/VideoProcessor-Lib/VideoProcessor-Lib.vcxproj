@@ -189,6 +189,7 @@
     <ClInclude Include="HDRData.h" />
     <ClInclude Include="InputLocked.h" />
     <ClInclude Include="IntegerMath.h" />
+	<ClInclude Include="LiveOutputTrace.h" />
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="RendererLiveness.h" />
     <ClInclude Include="RendererIngressState.h" />

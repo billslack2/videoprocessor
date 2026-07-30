@@ -14,6 +14,7 @@
 #include <SceneDetector.h>
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <limits>
 #include <numeric>
 
@@ -265,6 +266,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		}
 		ResetEvent(m_hFrameAvailableEvent);
 		ResetEvent(m_hConvertedAvailableEvent);
+		m_liveOutputTrace.Clear();
 
 		// Update state atomics
 		m_isActive.store(true, std::memory_order_release);
@@ -444,6 +446,10 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 			Close();  // This waits for thread to exit
 		}
 
+		// The three pipeline workers have stopped, so take and persist the
+		// bounded trace now. This keeps file I/O completely off live paths.
+		WriteLiveOutputTrace();
+
 		// Purge queues AFTER threads have exited
 		{
 			CAutoLock rawLock(&m_rawQueueLock);
@@ -527,6 +533,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	uint64_t overflowFrameCounter = 0;
 	size_t overflowQueueSize = 0;
 	size_t overflowQueueMaxSize = 0;
+	size_t acceptedRawQueueDepth = 0;
 	{
 		CAutoLock rawLock(&m_rawQueueLock);
 		if (!m_isActive.load(std::memory_order_acquire))
@@ -566,6 +573,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		m_videoFrameQueue.push_back(videoFrame);
 		m_publishedRawQueueDepth.store(
 			m_videoFrameQueue.size(), std::memory_order_release);
+		acceptedRawQueueDepth = m_videoFrameQueue.size();
 
 		// DIAGNOSTIC: Log when raw queue is backing up
 		if (m_videoFrameQueue.size() >= (queueMaxSize * 3) / 4)  // 75% threshold
@@ -589,6 +597,18 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 			}
 		}
 	}
+
+	LiveOutputTraceRecord captureTrace;
+	captureTrace.kind = LiveOutputTraceKind::CaptureAccepted;
+	captureTrace.frameNumber = newCounter;
+	captureTrace.pipelineEpoch = callbackEpoch;
+	captureTrace.captureTimestamp =
+		static_cast<uint64_t>(videoFrame.GetTimingTimestamp());
+	captureTrace.eventTick = GetTickCount64();
+	captureTrace.rawQueueDepth = static_cast<uint32_t>(acceptedRawQueueDepth);
+	captureTrace.convertedQueueDepth = static_cast<uint32_t>(
+		m_publishedConvertedQueueDepth.load(std::memory_order_acquire));
+	m_liveOutputTrace.Record(captureTrace);
 
 	if (overflowLogCount > 0)
 	{
@@ -905,6 +925,11 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	// flush transactions from overlapping.
 	CAutoLock resetTransactionLock(&m_resetTransactionGate);
 	m_resetInProgress.store(true, std::memory_order_release);
+	LiveOutputTraceRecord resetStartTrace;
+	resetStartTrace.kind = LiveOutputTraceKind::ResetStarted;
+	resetStartTrace.pipelineEpoch = m_queueEpoch.load(std::memory_order_acquire);
+	resetStartTrace.eventTick = GetTickCount64();
+	m_liveOutputTrace.Record(resetStartTrace);
 
 	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Reset() - HDMI resync async queue reset starting");
 	m_deliveryFlushing.store(true, std::memory_order_release);
@@ -1032,6 +1057,11 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		SetEvent(m_hConvertedAvailableEvent);
 
 	CompleteCoordinatedReset();
+	LiveOutputTraceRecord resetCompleteTrace;
+	resetCompleteTrace.kind = LiveOutputTraceKind::ResetCompleted;
+	resetCompleteTrace.pipelineEpoch = m_queueEpoch.load(std::memory_order_acquire);
+	resetCompleteTrace.eventTick = GetTickCount64();
+	m_liveOutputTrace.Record(resetCompleteTrace);
 	DebugLog::Log(
 		"CBufferedLiveSourceVideoOutputPin::Reset() - queues/timing reset, buffering enabled, new segment delivered");
 }
@@ -1145,6 +1175,37 @@ void CBufferedLiveSourceVideoOutputPin::PurgeConvertedQueue()
 	{
 		DbgLog((LOG_TRACE, 1, TEXT("PurgeConvertedQueue(): Purged %zu pre-converted samples"), purgedSamples));
 	}
+}
+
+
+void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace()
+{
+	const std::vector<LiveOutputTraceRecord> records = m_liveOutputTrace.Snapshot();
+	if (records.empty())
+		return;
+
+	std::string tracePath = DebugLog::GetLogFilePath();
+	const std::string::size_type separator = tracePath.find_last_of("\\\\/");
+	if (separator == std::string::npos)
+		tracePath = "vp_live_output_trace.csv";
+	else
+	{
+		tracePath.resize(separator + 1);
+		tracePath += "vp_live_output_trace.csv";
+	}
+
+	std::ofstream stream(tracePath, std::ios::out | std::ios::trunc);
+	if (!stream.is_open())
+	{
+		DebugLog::Log("LIVE OUTPUT TRACE: unable to write %s", tracePath.c_str());
+		return;
+	}
+
+	stream << "# downstream_renderer_queue_occupancy=unknown\n";
+	stream << "# dropped_trace_records=" << m_liveOutputTrace.DroppedRecordCount() << '\n';
+	LiveOutputTrace::WriteCsv(stream, records);
+	DebugLog::Log("LIVE OUTPUT TRACE: wrote %zu VP-only records to %s",
+		records.size(), tracePath.c_str());
 }
 
 
@@ -1311,6 +1372,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		IMediaSample* sample = nullptr;
 		uint64_t queueEpoch = 0;
 		uint64_t timingGeneration = 0;
+		uint64_t frameNumber = 0;
+		uint64_t captureTimestamp = 0;
+		uint32_t processingDurationUs = 0;
 		uint64_t sceneEventId = 0;
 		long double phaseBefore = 0.0L;
 		double secondsFromDeadline = 0.0;
@@ -1373,7 +1437,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		return static_cast<REFERENCE_TIME>(llround(sceneCadence.anchor + ticks));
 	};
 
-	auto deliverTracked = [&](IMediaSample* sample, uint64_t expectedQueueEpoch) -> HRESULT
+	auto deliverTracked = [&](IMediaSample* sample,
+		uint64_t expectedQueueEpoch,
+		uint64_t frameNumber,
+		uint64_t captureTimestamp,
+		uint32_t processingDurationUs,
+		bool sceneBoundary) -> HRESULT
 	{
 		CAutoLock deliveryLock(&m_deliveryGate);
 		if (m_deliveryFlushing.load(std::memory_order_acquire) ||
@@ -1387,11 +1456,37 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		m_deliveryInProgress.store(true, std::memory_order_release);
 		const uint64_t mediaTypeGeneration =
 			AttachPendingMediaType(sample);
+
+		REFERENCE_TIME presentationStart = 0;
+		REFERENCE_TIME presentationStop = 0;
+		(void)sample->GetTime(&presentationStart, &presentationStop);
+		LiveOutputTraceRecord deliveryAttemptTrace;
+		deliveryAttemptTrace.kind = LiveOutputTraceKind::DeliveryAttempted;
+		deliveryAttemptTrace.frameNumber = frameNumber;
+		deliveryAttemptTrace.pipelineEpoch = expectedQueueEpoch;
+		deliveryAttemptTrace.captureTimestamp = captureTimestamp;
+		deliveryAttemptTrace.eventTick = GetTickCount64();
+		deliveryAttemptTrace.presentationStart = presentationStart;
+		deliveryAttemptTrace.presentationStop = presentationStop;
+		deliveryAttemptTrace.rawQueueDepth = static_cast<uint32_t>(
+			m_publishedRawQueueDepth.load(std::memory_order_acquire));
+		deliveryAttemptTrace.convertedQueueDepth = static_cast<uint32_t>(
+			m_publishedConvertedQueueDepth.load(std::memory_order_acquire));
+		deliveryAttemptTrace.processingDurationUs = processingDurationUs;
+		deliveryAttemptTrace.sceneBoundary = sceneBoundary;
+		m_liveOutputTrace.Record(deliveryAttemptTrace);
 		const HRESULT result = Deliver(sample);
 		m_deliveryInProgress.store(false, std::memory_order_release);
 		CompletePendingMediaType(mediaTypeGeneration, result);
 		const auto deliveryEndTime = GetWallClockTime();
 		const uint64_t deliveryTimeUs = (deliveryEndTime - deliveryStartTime) / 10;
+		LiveOutputTraceRecord deliveryCompleteTrace = deliveryAttemptTrace;
+		deliveryCompleteTrace.kind = LiveOutputTraceKind::DeliveryCompleted;
+		deliveryCompleteTrace.eventTick = GetTickCount64();
+		deliveryCompleteTrace.deliveryDurationUs = static_cast<uint32_t>(
+			std::min<uint64_t>(deliveryTimeUs, std::numeric_limits<uint32_t>::max()));
+		deliveryCompleteTrace.deliveryResult = static_cast<int32_t>(result);
+		m_liveOutputTrace.Record(deliveryCompleteTrace);
 
 		totalDeliveryTimeUs += deliveryTimeUs;
 		maxDeliveryTimeUs = std::max(maxDeliveryTimeUs, deliveryTimeUs);
@@ -1510,7 +1605,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 			const HRESULT repeatHr = deliverTracked(
 				pendingUpstreamRepeat.sample,
-				pendingUpstreamRepeat.queueEpoch);
+				pendingUpstreamRepeat.queueEpoch,
+				pendingUpstreamRepeat.frameNumber,
+				pendingUpstreamRepeat.captureTimestamp,
+				pendingUpstreamRepeat.processingDurationUs,
+				pendingUpstreamRepeat.atSceneBoundary);
 			if (SUCCEEDED(repeatHr))
 			{
 				++sceneCadence.nextOutputIndex;
@@ -1650,27 +1749,25 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 			// Pop one sample under lock
 			IMediaSample* pSample = nullptr;
-			bool isSafeCorrectionPoint = false;
-			uint64_t sceneEventId = 0;
-			uint64_t convertedQueueEpoch = 0;
-			uint64_t convertedSceneTimingGeneration = 0;
+			ConvertedSample convertedSample;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
 
 				if (m_convertedSampleQueue.size() <= 1)
 					break;  // No more samples, wait for more
 
-				const ConvertedSample convertedSample = m_convertedSampleQueue.front();
+				convertedSample = m_convertedSampleQueue.front();
 				pSample = convertedSample.sample;
-				isSafeCorrectionPoint = convertedSample.isSafeCorrectionPoint;
-				sceneEventId = convertedSample.sceneEventId;
-				convertedQueueEpoch = convertedSample.queueEpoch;
-				convertedSceneTimingGeneration = convertedSample.sceneTimingGeneration;
 				m_convertedSampleQueue.pop_front();
 				m_publishedConvertedQueueDepth.store(
 					m_convertedSampleQueue.size(),
 					std::memory_order_release);
 			}
+			bool isSafeCorrectionPoint = convertedSample.isSafeCorrectionPoint;
+			uint64_t sceneEventId = convertedSample.sceneEventId;
+			const uint64_t convertedQueueEpoch = convertedSample.queueEpoch;
+			const uint64_t convertedSceneTimingGeneration =
+				convertedSample.sceneTimingGeneration;
 
 			if (!pSample)
 				break;
@@ -2150,7 +2247,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 
 			// 4) DELIVER - Let madVR handle buffering and presentation.
-			hr = deliverTracked(pSample, currentQueueEpoch);
+			hr = deliverTracked(
+				pSample,
+				currentQueueEpoch,
+				convertedSample.frameNumber,
+				convertedSample.captureTimestamp,
+				convertedSample.processingDurationUs,
+				correctionAtSceneBoundary);
 
 			if (SUCCEEDED(hr) && sceneCadenceForSample &&
 				deferredUpstreamRepeat)
@@ -2163,6 +2266,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				pendingUpstreamRepeat.queueEpoch = currentQueueEpoch;
 				pendingUpstreamRepeat.timingGeneration =
 					currentSceneTimingGeneration;
+				pendingUpstreamRepeat.frameNumber = convertedSample.frameNumber;
+				pendingUpstreamRepeat.captureTimestamp =
+					convertedSample.captureTimestamp;
+				pendingUpstreamRepeat.processingDurationUs =
+					convertedSample.processingDurationUs;
 				pendingUpstreamRepeat.sceneEventId = sceneEventId;
 				pendingUpstreamRepeat.phaseBefore =
 					pendingContentPhaseFrames;
@@ -2534,6 +2642,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 			// Add converted sample to queue only after its timestamp history is
 			// published. The delivery thread is then free to drain immediately.
+			size_t convertedQueueDepth = 0;
+			bool sampleQueued = false;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
 				if (frameQueueEpoch == m_queueEpoch.load(std::memory_order_acquire))
@@ -2573,6 +2683,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 					}
 					m_convertedSampleQueue.push_back({
 						pSample,
+						videoFrame.GetCounter(),
+						static_cast<uint64_t>(videoFrame.GetTimingTimestamp()),
+						static_cast<uint32_t>(std::min<uint64_t>(
+							convTimeUs, std::numeric_limits<uint32_t>::max())),
 						isSafeCorrectionPoint,
 						sceneEventId,
 						frameQueueEpoch,
@@ -2580,6 +2694,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 					m_publishedConvertedQueueDepth.store(
 						m_convertedSampleQueue.size(),
 						std::memory_order_release);
+					convertedQueueDepth = m_convertedSampleQueue.size();
+					sampleQueued = true;
 					pSample = nullptr; // Queue owns the sample reference.
 				}
 			}
@@ -2588,6 +2704,25 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			{
 				pSample->Release();
 				continue;
+			}
+
+			if (sampleQueued)
+			{
+				LiveOutputTraceRecord conversionTrace;
+				conversionTrace.kind = LiveOutputTraceKind::ConversionCompleted;
+				conversionTrace.frameNumber = videoFrame.GetCounter();
+				conversionTrace.pipelineEpoch = frameQueueEpoch;
+				conversionTrace.captureTimestamp =
+					static_cast<uint64_t>(videoFrame.GetTimingTimestamp());
+				conversionTrace.eventTick = GetTickCount64();
+				conversionTrace.rawQueueDepth = static_cast<uint32_t>(
+					m_publishedRawQueueDepth.load(std::memory_order_acquire));
+				conversionTrace.convertedQueueDepth = static_cast<uint32_t>(
+					convertedQueueDepth);
+				conversionTrace.processingDurationUs = static_cast<uint32_t>(
+					std::min<uint64_t>(convTimeUs, std::numeric_limits<uint32_t>::max()));
+				conversionTrace.sceneBoundary = isSafeCorrectionPoint;
+				m_liveOutputTrace.Record(conversionTrace);
 			}
 
 			// Signal delivery thread that a converted sample is available

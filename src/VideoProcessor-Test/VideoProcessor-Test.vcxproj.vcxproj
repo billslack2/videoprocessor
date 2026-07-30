@@ -200,6 +200,7 @@
     <ClCompile Include="RendererResetRequestLatchTests.cpp" />
     <ClCompile Include="RendererTransitionModelTests.cpp" />
     <ClCompile Include="RendererLivenessTests.cpp" />
+    <ClCompile Include="LiveOutputTraceTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
