@@ -10,8 +10,10 @@
 
 
 #include <cstdint>
+#include <memory>
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowRendererStartStopTimeMethod.h>
+#include <microsoft_directshow/DirectShowVideoTimingAdapter.h>
 #include <microsoft_directshow/DirectShowDefines.h>
 #include <PPMCorrectionLoader.h>
 #include <AutoPpmCalibrator.h>
@@ -239,6 +241,17 @@ public:
 	double GetAverageFrameDurationMs() const { return m_avgFrameDurationMs; }
 	double GetMinFrameDurationMs() const { return m_minFrameDurationMs; }
 	double GetMaxFrameDurationMs() const { return m_maxFrameDurationMs; }
+	// VP-0066-2 rational-timing shadow validation. The legacy path remains the
+	// source of all sample timestamps until this counter stays clean in field
+	// evidence; no queue, worker, or DirectShow behavior depends on it.
+	uint64_t RationalTimingShadowComparisonCount() const
+	{
+		return m_rationalTimingShadowComparisons.load(std::memory_order_relaxed);
+	}
+	uint64_t RationalTimingShadowMismatchCount() const
+	{
+		return m_rationalTimingShadowMismatches.load(std::memory_order_relaxed);
+	}
 
 	// Get the converted queue size (buffered mode only)
 	virtual size_t GetConvertedQueueSize() const { return 0; }
@@ -324,6 +337,9 @@ protected:
 	// PPM correction support
 	PPMCorrectionLoader m_ppmCorrectionLoader;
 	uint64_t m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // Default: no correction
+	std::unique_ptr<DirectShowVideoTimingAdapter> m_rationalTimingShadow;
+	std::atomic<uint64_t> m_rationalTimingShadowComparisons = 0;
+	std::atomic<uint64_t> m_rationalTimingShadowMismatches = 0;
 	
 	// Auto-calibration support
 	AutoPpmCalibrator m_autoPpmCalibrator;

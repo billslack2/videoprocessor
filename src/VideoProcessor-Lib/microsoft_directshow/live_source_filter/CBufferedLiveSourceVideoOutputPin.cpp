@@ -1323,6 +1323,10 @@ void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace(const char* boundar
 			m_frameQueueMaxSize.load(std::memory_order_acquire) << ",\n";
 		manifest << "  \"vp_buffering_target\": " << GetBufferingTarget() << ",\n";
 		manifest << "  \"ppm_correction\": " << ppmCorrection << ",\n";
+		manifest << "  \"rational_timing_shadow_comparisons\": " <<
+			RationalTimingShadowComparisonCount() << ",\n";
+		manifest << "  \"rational_timing_shadow_mismatches\": " <<
+			RationalTimingShadowMismatchCount() << ",\n";
 		manifest << "  \"measured_display_refresh_hz\": " <<
 			m_sceneDisplayRefreshRateHz.load(std::memory_order_acquire) << ",\n";
 		manifest << "  \"delivery_rate_hz\": " <<
