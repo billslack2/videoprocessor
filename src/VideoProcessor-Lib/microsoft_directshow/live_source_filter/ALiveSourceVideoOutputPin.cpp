@@ -128,6 +128,10 @@ void ALiveSourceVideoOutputPin::Initialize(
 	m_timingClock = timingClock;
 	m_timestamp = timestamp;
 	m_mediaType = mediaType;
+	m_rationalTimingShadow = std::make_unique<DirectShowVideoTimingAdapter>(
+		timestamp, timeScale, frameDurationTicks, frameDuration);
+	m_rationalTimingShadowComparisons.store(0, std::memory_order_relaxed);
+	m_rationalTimingShadowMismatches.store(0, std::memory_order_relaxed);
 
 	// Load PPM corrections for RATIONAL_RATIONAL mode
 	if (timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL)
@@ -556,6 +560,8 @@ void ALiveSourceVideoOutputPin::RequestCoordinatedReset(const char* reason)
 void ALiveSourceVideoOutputPin::ResetTimingState()
 {
 	CAutoLock timingLock(&m_timingStateLock);
+	if (m_rationalTimingShadow)
+		m_rationalTimingShadow->Reset();
 
 	if (m_hdrData)
 		m_hdrChanged = true;
@@ -627,6 +633,8 @@ void ALiveSourceVideoOutputPin::ResetTimingState()
 void ALiveSourceVideoOutputPin::RestartTimingOriginAfterPreroll()
 {
 	CAutoLock timingLock(&m_timingStateLock);
+	if (m_rationalTimingShadow)
+		m_rationalTimingShadow->RestartAfterPreroll();
 
 	// Preserve the established DirectShow segment, but start timestamp and media
 	// time generation from the first frame produced after preroll.  This is the
@@ -1078,6 +1086,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
+	{
 
 		// FINAL MONOTONIC VALIDATION: Ensure frame interval is always valid
 		// This is the last line of defense against any timing anomalies
@@ -1098,6 +1107,9 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		m_previousTimeStop = timeStop;
 
 		// MODE-SPECIFIC LEAD OFFSET HANDLING
+		const REFERENCE_TIME baseTimeStart = timeStart;
+		const REFERENCE_TIME baseTimeStop = timeStop;
+		REFERENCE_TIME appliedLeadTime = 0;
 		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL ||
 		    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
 		    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2 ||
@@ -1105,9 +1117,35 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK)
 		{
 			// Apply lead offset for renderer buffering (after duration tracking AND storing m_previousTimeStop)
-			REFERENCE_TIME kLeadTime = GetRampedLeadTime();
-			timeStart += kLeadTime;
-			timeStop += kLeadTime;
+			appliedLeadTime = GetRampedLeadTime();
+			timeStart += appliedLeadTime;
+			timeStop += appliedLeadTime;
+		}
+
+		// Shadow only the currently deployed RATIONAL_RATIONAL path.  The legacy
+		// result is still applied to the sample; this records aggregate parity
+		// evidence before any behavior switch.  It deliberately shares the
+		// timing lock and does not touch queues, workers, or DirectShow delivery.
+		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL &&
+			m_rationalTimingShadow)
+		{
+			DirectShowFrameTimingInput shadowInput;
+			shadowInput.timing.sourceFrameNumber = videoFrame.GetCounter();
+			shadowInput.timing.ppmCorrection = GetCurrentPPMCorrection();
+			shadowInput.timing.pipelineOffset = m_rationalPipelineOffset;
+			shadowInput.presentationLead = appliedLeadTime;
+			const DirectShowTimingDecision shadowDecision =
+				m_rationalTimingShadow->Decide(shadowInput);
+			m_rationalTimingShadowComparisons.fetch_add(1, std::memory_order_relaxed);
+			const bool matches = shadowDecision.base.valid &&
+				shadowDecision.base.discontinuity == isDiscontinuity &&
+				shadowDecision.base.mediaStart == mediaTimeStart &&
+				shadowDecision.base.mediaStop == mediaTimeStop &&
+				shadowDecision.base.start == baseTimeStart &&
+				shadowDecision.base.stop == baseTimeStop &&
+				shadowDecision.start == timeStart && shadowDecision.stop == timeStop;
+			if (!matches)
+				m_rationalTimingShadowMismatches.fetch_add(1, std::memory_order_relaxed);
 		}
 		 
 		hr = pSample->SetTime(&timeStart, &timeStop);
@@ -1115,6 +1153,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			return hr;
 
 		break;
+	}
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE:
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_NONE:	
