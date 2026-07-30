@@ -6,6 +6,28 @@ Backlog. This is a large, behavior-preserving architecture story. It must not
 begin until current queue, reset, timestamp, renderer-handoff, and stale-frame
 behavior has been characterized sufficiently to create golden traces.
 
+## Decomposition
+
+This root story is a completion roll-up; implementation proceeds through these
+ordered, independently testable tasks rather than through unverified internal
+class extractions:
+
+1. [VP-0066-1](VP-0066-1_characterize-live-output-golden-traces.md) — capture
+   the current behavior in replayable golden traces and latency measurements.
+2. [VP-0066-2](VP-0066-2_extract-graph-independent-video-timing-controller.md)
+   — extract and unit-test timing as a graph-independent component while
+   comparing decisions with the baseline traces.
+3. [VP-0066-3](VP-0066-3_extract-epoch-aware-frame-transport-and-processing.md)
+   — extract the frame queues and processor with ownership, overflow, epoch,
+   and processing tests.
+4. [VP-0066-4](VP-0066-4_integrate-directshow-delivery-and-lifecycle.md) —
+   integrate DirectShow delivery, workers, reset/shutdown coordination, and
+   whole-pipeline regression validation.
+
+Each task depends on the preceding task's accepted evidence. This root may
+move to `Done` only after all four children are done and its complete
+cross-component acceptance criteria and latency guardrail have passed.
+
 ## User story
 
 As a developer maintaining the live DirectShow video pipeline, I want capture

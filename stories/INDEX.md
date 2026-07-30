@@ -1,13 +1,14 @@
 # VideoProcessor plan index
 
-This folder contains self-contained implementation stories and plans.  Filenames
-are assigned monotonically and are never reused.
+This folder contains self-contained implementation stories and plans. Root
+story IDs are assigned monotonically and are never reused; an approved root
+story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned item: `VP-0066`
-- Next story number: `VP-0067`
-- Total indexed items: 65
+- Last assigned root story: `VP-0066`
+- Next root story number: `VP-0067`
+- Total indexed items: 69
 
 ## Story locations
 
@@ -90,6 +91,10 @@ they must not contain requirements that are absent from this file.
 | VP-0064 | Done | Persisted Alpha SDR BT.2020 output and clear OSD reporting |
 | VP-0065 | Review | Invalidate stale frames during channel and stream transitions |
 | VP-0066 | Backlog | Re-architect the live video output pipeline into testable components |
+| VP-0066-1 | Backlog | Characterize the live output pipeline with replayable golden traces |
+| VP-0066-2 | Backlog | Extract a graph-independent video timing controller |
+| VP-0066-3 | Backlog | Extract epoch-aware frame transport and processing components |
+| VP-0066-4 | Backlog | Integrate DirectShow delivery and lifecycle coordination |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
@@ -115,11 +120,11 @@ change is not complete until it is committed and pushed to the canonical
 
 ## Story ID conflict audit
 
-Before creating a story, and after every fetch/retry caused by remote tracker
-changes, Codex must audit all canonical state folders (`backlog`, `in-progress`,
-`blocked`, `review`, `done`, and `will-not-do`). Parse `VP-####` IDs from the
-story filenames, then compare them with the Registry state and every `## Items`
-table row.
+Before creating a story or child task, and after every fetch/retry caused by
+remote tracker changes, Codex must audit all canonical state folders
+(`backlog`, `in-progress`, `blocked`, `review`, `done`, and `will-not-do`).
+Parse root `VP-####` and child `VP-####-N` IDs from story filenames, then
+compare them with the Registry state and every `## Items` table row.
 
 The audit must detect and report:
 
@@ -128,20 +133,59 @@ The audit must detect and report:
 - a table entry without exactly one canonical story file;
 - Registry `Last assigned`, `Next story number`, or total-count values that do
   not match the discovered state; and
-- any ID in the registry/table greater than the highest canonical filename ID.
+- any root ID in the registry/table greater than the highest canonical root
+  filename ID; and
+- any child ID without its root story or with a non-contiguous child sequence.
 
-Never reuse an ID because the registry is stale. For a new story, assign an ID
-strictly greater than the maximum ID discovered in both the canonical files and
-the index/registry, then update the Registry state and table in the same
-commit. A duplicate or inconsistent historical entry must not be silently
-renumbered, overwritten, deleted, or moved: report it and obtain or record a
-deliberate tracker-repair decision. If new work still needs a story, use the
-next higher unused ID so the conflict cannot spread.
+Never reuse an ID because the registry is stale. For a new root story, assign
+an ID strictly greater than the maximum root ID discovered in both the
+canonical files and the index/registry, then update the Registry state and
+table in the same commit. A duplicate or inconsistent historical entry must
+not be silently renumbered, overwritten, deleted, or moved: report it and
+obtain or record a deliberate tracker-repair decision. If new work still needs
+a root story, use the next higher unused root ID so the conflict cannot
+spread.
 
 Codex owns moving stories between folders in this session. Move the file,
 update its `## Status` section, and update the table above in the **same
 commit**. Never copy a story into a second state folder; `git mv` is preferred
 so history follows the file.
+
+## Story decomposition and child tasks
+
+A broad root story may be decomposed only when the child boundaries are
+meaningful implementation increments with independently runnable acceptance
+tests. Use this to preserve testability and reviewability, not to turn every
+class extraction, file move, or investigation note into a separate task.
+
+- A root story uses the permanent `VP-####` ID. Its ordered child tasks use
+  `VP-####-N`, starting at 1 with no gaps (for example `VP-0066-1` through
+  `VP-0066-4`). Child-task IDs do not consume a root story number or change
+  `Last assigned item` / `Next story number`.
+- Treat `VP-####-N` as a complete story ID in filenames, headings, links, and
+  the `## Items` table. The ID audit must parse both `VP-####` and
+  `VP-####-N`, require exactly one canonical file and one table row for each,
+  detect duplicate child IDs, and verify every child has an existing root.
+  `Total indexed items` counts both roots and child tasks.
+- Keep the root story as the durable objective and completion roll-up. Add a
+  `## Decomposition` section that lists each child in order, its intended
+  testable outcome, dependencies, and the rule for closing the root. The root
+  normally remains `Backlog` while its child tasks progress; it is not
+  implementation work in parallel with an active child unless explicitly
+  stated.
+- Each child is a canonical story in exactly one state folder and must contain
+  its parent, scope boundary, dependencies, independently testable acceptance
+  criteria, and its own `## Status` evidence. Move and update children under
+  the normal state workflow. A later child must not begin until its recorded
+  dependency is accepted, unless the root explicitly documents safe parallel
+  work.
+- Do not create grandchildren (`VP-####-N-M`). If a proposed child cannot be
+  completed and validated as a coherent unit, revise the root decomposition or
+  create a new root story rather than nesting task IDs further.
+- Move a root story to `done` only after all its child tasks are `Done`, its
+  cross-task acceptance criteria have passed, and the root records the final
+  roll-up evidence. If decomposition is abandoned, preserve the existing child
+  records and mark their deliberate disposition; never delete or reuse them.
 
 ## Implementation branch gate
 
@@ -160,9 +204,9 @@ in the story when it moves to `in-progress`. Re-run this manual discovery and
 confirmation gate whenever a new story implementation starts; the origin
 default branch may change.
 
-1. After completing the Story ID conflict audit above, create new stories in
-   `stories/backlog/` using the next permanent ID greater than every known ID,
-   then update the Registry state and table in this file.
+1. After completing the Story ID conflict audit above, create new root stories
+   in `stories/backlog/` using the next permanent root ID greater than every
+   known root ID, then update the Registry state and table in this file.
 2. Before moving a Backlog story to `in-progress`, record a readiness review in the
    story. Verify that the configuration model matches current code; required API
    behavior, pipeline order, and resource lifetime are known; dependencies and

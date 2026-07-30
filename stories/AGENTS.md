@@ -21,6 +21,11 @@
 - Re-run the ID audit after fetching `origin/main` and again if a push is
   rejected because remote story state advanced. This prevents concurrent
   sessions from reusing a newly assigned ID.
+- A root story may be decomposed into a small, ordered set of independently
+  testable child tasks using the `VP-####-N` form (for example, `VP-0066-1`).
+  Child tasks are stable tracker items, not temporary checklist bullets. The
+  detailed decomposition, ID-audit rules, and parent/child completion rules
+  are authoritative in `INDEX.md`.
 - VP source work is performed in
   `C:\Users\bslac\vp\videoprocessor - VS2026`; do not treat the source tree
   containing this tracker as the authoritative implementation checkout.
