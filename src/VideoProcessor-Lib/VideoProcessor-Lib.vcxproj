@@ -251,6 +251,7 @@
     <ClInclude Include="video_frame_formatter\CV210toP210VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\IVideoFrameFormatter.h" />
     <ClInclude Include="WallClock.h" />
+	<ClInclude Include="VideoTimingController.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\WindowsOcrSubtitleDetector.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\GpuSubtitleDetector.h" />
   </ItemGroup>
@@ -330,6 +331,7 @@
 	<ClCompile Include="SceneDetector.cpp" />
     <ClCompile Include="StringUtils.cpp" />
     <ClCompile Include="TimingClock.cpp" />
+	<ClCompile Include="VideoTimingController.cpp" />
     <ClCompile Include="VideoConversionOverride.cpp" />
     <ClCompile Include="VideoFrame.cpp" />
     <ClCompile Include="VideoFrameEncoding.cpp" />
