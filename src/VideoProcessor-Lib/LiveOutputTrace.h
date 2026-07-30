@@ -18,6 +18,7 @@ enum class LiveOutputTraceKind : uint8_t
 	ResetStarted,
 	ResetCompleted,
 	PlannedDrop,
+	QueueSnapshot,
 };
 
 struct LiveOutputTraceRecord
@@ -31,6 +32,8 @@ struct LiveOutputTraceRecord
 	int64_t presentationStop = 0;
 	uint32_t rawQueueDepth = 0;
 	uint32_t convertedQueueDepth = 0;
+	uint32_t totalQueueDepth = 0;
+	uint32_t queueCapacity = 0;
 	uint32_t processingDurationUs = 0;
 	uint32_t deliveryDurationUs = 0;
 	int32_t deliveryResult = 0;
@@ -143,6 +146,8 @@ public:
 				lhs.captureTimestamp != rhs.captureTimestamp ||
 				lhs.rawQueueDepth != rhs.rawQueueDepth ||
 				lhs.convertedQueueDepth != rhs.convertedQueueDepth ||
+				lhs.totalQueueDepth != rhs.totalQueueDepth ||
+				lhs.queueCapacity != rhs.queueCapacity ||
 				lhs.processingDurationUs != rhs.processingDurationUs ||
 				lhs.deliveryDurationUs != rhs.deliveryDurationUs ||
 				lhs.deliveryResult != rhs.deliveryResult ||
@@ -164,7 +169,7 @@ public:
 		const std::vector<LiveOutputTraceRecord>& records)
 	{
 		stream << "sequence,kind,frame,epoch,capture_timestamp,event_tick,"
-			"presentation_start,presentation_stop,raw_queue,converted_queue,"
+			"presentation_start,presentation_stop,raw_queue,converted_queue,total_queue,queue_capacity,"
 			"processing_us,delivery_us,delivery_result,scene_boundary,intentional_drop\n";
 		for (const LiveOutputTraceRecord& record : records)
 		{
@@ -173,6 +178,7 @@ public:
 				<< record.captureTimestamp << ',' << record.eventTick << ','
 				<< record.presentationStart << ',' << record.presentationStop << ','
 				<< record.rawQueueDepth << ',' << record.convertedQueueDepth << ','
+				<< record.totalQueueDepth << ',' << record.queueCapacity << ','
 				<< record.processingDurationUs << ',' << record.deliveryDurationUs << ','
 				<< record.deliveryResult << ',' << (record.sceneBoundary ? 1 : 0) << ','
 				<< (record.intentionalDrop ? 1 : 0) << '\n';

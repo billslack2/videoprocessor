@@ -61,12 +61,14 @@ namespace Tests
 			record.pipelineEpoch = 3;
 			record.rawQueueDepth = 2;
 			record.convertedQueueDepth = 4;
+			record.totalQueueDepth = 6;
+			record.queueCapacity = 32;
 
 			std::ostringstream stream;
 			LiveOutputTrace::WriteCsv(stream, { record });
 			const std::string csv = stream.str();
 
-			Assert::IsTrue(csv.find("raw_queue,converted_queue") != std::string::npos);
+			Assert::IsTrue(csv.find("raw_queue,converted_queue,total_queue,queue_capacity") != std::string::npos);
 			Assert::IsTrue(csv.find("madvr") == std::string::npos);
 			Assert::IsTrue(csv.find("1,3") != std::string::npos);
 		}

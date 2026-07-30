@@ -1564,6 +1564,33 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			SetEvent(m_hConvertedAvailableEvent);
 	};
 
+	uint64_t lastQueueSnapshotTick = 0;
+	const auto recordQueueSnapshot = [&]()
+	{
+		const uint64_t now = GetTickCount64();
+		if (lastQueueSnapshotTick != 0 && now - lastQueueSnapshotTick < 1000)
+			return;
+		lastQueueSnapshotTick = now;
+
+		// This uses the same atomically published raw/converted depths shown by
+		// the DirectShow OSD. It is intentionally a VP-only queue snapshot;
+		// downstream madVR queue occupancy remains unavailable.
+		const uint32_t rawDepth = static_cast<uint32_t>(
+			m_publishedRawQueueDepth.load(std::memory_order_acquire));
+		const uint32_t convertedDepth = static_cast<uint32_t>(
+			m_publishedConvertedQueueDepth.load(std::memory_order_acquire));
+		LiveOutputTraceRecord queueTrace;
+		queueTrace.kind = LiveOutputTraceKind::QueueSnapshot;
+		queueTrace.pipelineEpoch = m_queueEpoch.load(std::memory_order_acquire);
+		queueTrace.eventTick = now;
+		queueTrace.rawQueueDepth = rawDepth;
+		queueTrace.convertedQueueDepth = convertedDepth;
+		queueTrace.totalQueueDepth = rawDepth + convertedDepth;
+		queueTrace.queueCapacity = static_cast<uint32_t>(
+			m_frameQueueMaxSize.load(std::memory_order_acquire));
+		m_liveOutputTrace.Record(queueTrace);
+	};
+
 	while (true)
 	{
 		// SAFETY: Check shutdown before waiting
@@ -1593,6 +1620,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			DebugLog::Log("DELIVERY THREAD: Not active, exiting");
 			break;
 		}
+
+		recordQueueSnapshot();
 
 		if (pendingUpstreamRepeat.sample)
 		{
