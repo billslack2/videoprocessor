@@ -448,7 +448,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 
 		// The three pipeline workers have stopped, so take and persist the
 		// bounded trace now. This keeps file I/O completely off live paths.
-		WriteLiveOutputTrace();
+		WriteLiveOutputTrace("inactive");
 
 		// Purge queues AFTER threads have exited
 		{
@@ -1062,6 +1062,10 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	resetCompleteTrace.pipelineEpoch = m_queueEpoch.load(std::memory_order_acquire);
 	resetCompleteTrace.eventTick = GetTickCount64();
 	m_liveOutputTrace.Record(resetCompleteTrace);
+	// A DirectShow graph rebuild can create a new pin immediately after this
+	// reset. Persist a distinct snapshot before that new graph clears memory.
+	// This is a reset boundary, never a capture, conversion, or delivery path.
+	WriteLiveOutputTrace("reset");
 	DebugLog::Log(
 		"CBufferedLiveSourceVideoOutputPin::Reset() - queues/timing reset, buffering enabled, new segment delivered");
 }
@@ -1178,7 +1182,7 @@ void CBufferedLiveSourceVideoOutputPin::PurgeConvertedQueue()
 }
 
 
-void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace()
+void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace(const char* boundary)
 {
 	const std::vector<LiveOutputTraceRecord> records = m_liveOutputTrace.Snapshot();
 	if (records.empty())
@@ -1186,12 +1190,19 @@ void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace()
 
 	std::string tracePath = DebugLog::GetLogFilePath();
 	const std::string::size_type separator = tracePath.find_last_of("\\\\/");
+	const uint64_t exportOrdinal =
+		m_liveOutputTraceExportOrdinal.fetch_add(1, std::memory_order_relaxed) + 1;
+	const uint64_t epoch = m_queueEpoch.load(std::memory_order_acquire);
+	const std::string traceFileName =
+		"vp_live_output_trace-" + std::string(boundary) + "-" +
+		std::to_string(GetTickCount64()) + "-" + std::to_string(exportOrdinal) +
+		"-epoch-" + std::to_string(epoch) + ".csv";
 	if (separator == std::string::npos)
-		tracePath = "vp_live_output_trace.csv";
+		tracePath = traceFileName;
 	else
 	{
 		tracePath.resize(separator + 1);
-		tracePath += "vp_live_output_trace.csv";
+		tracePath += traceFileName;
 	}
 
 	std::ofstream stream(tracePath, std::ios::out | std::ios::trunc);
@@ -1202,6 +1213,7 @@ void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace()
 	}
 
 	stream << "# downstream_renderer_queue_occupancy=unknown\n";
+	stream << "# export_boundary=" << boundary << '\n';
 	stream << "# dropped_trace_records=" << m_liveOutputTrace.DroppedRecordCount() << '\n';
 	LiveOutputTrace::WriteCsv(stream, records);
 	DebugLog::Log("LIVE OUTPUT TRACE: wrote %zu VP-only records to %s",

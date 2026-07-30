@@ -137,6 +137,7 @@ private:
 	// The trace is a VP-only, bounded diagnostic snapshot. It has no renderer
 	// queue state and never performs file I/O from a worker or callback.
 	LiveOutputTrace m_liveOutputTrace;
+	std::atomic<uint64_t> m_liveOutputTraceExportOrdinal{ 0 };
 
 	// This option is deliberately off by default.  When false, conversion does
 	// no scene analysis and delivery follows the pre-existing path exactly.
@@ -464,7 +465,7 @@ private:
 	// Purge converted sample queue
 	// CALLER MUST HOLD m_convertedQueueLock
 	void PurgeConvertedQueue();
-	void WriteLiveOutputTrace();
+	void WriteLiveOutputTrace(const char* boundary);
 
 	// Calculate next frame timestamp with enhanced logic for CLOCK_SMART
 	REFERENCE_TIME CalculateEnhancedNextTimestamp() const;
