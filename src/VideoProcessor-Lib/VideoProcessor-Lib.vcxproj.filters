@@ -279,6 +279,9 @@
     <ClInclude Include="IntegerMath.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+	<ClInclude Include="LiveOutputTrace.h">
+	  <Filter>Header Files</Filter>
+	</ClInclude>
     <ClInclude Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.h">
       <Filter>Header Files</Filter>
     </ClInclude>

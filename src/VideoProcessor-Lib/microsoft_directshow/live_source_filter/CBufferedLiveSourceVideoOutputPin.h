@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <ActivePictureTransitionModel.h>
+#include <LiveOutputTrace.h>
 #include <microsoft_directshow/DirectShowDefines.h>
 #include "ALiveSourceVideoOutputPin.h"
 
@@ -123,6 +124,9 @@ private:
 	struct ConvertedSample
 	{
 		IMediaSample* sample = nullptr;
+		uint64_t frameNumber = 0;
+		uint64_t captureTimestamp = 0;
+		uint32_t processingDurationUs = 0;
 		bool isSafeCorrectionPoint = false;
 		uint64_t sceneEventId = 0;
 		uint64_t queueEpoch = 0;
@@ -130,6 +134,9 @@ private:
 	};
 	std::deque<ConvertedSample> m_convertedSampleQueue;
 	CCritSec m_convertedQueueLock;  // Protects m_convertedSampleQueue only
+	// The trace is a VP-only, bounded diagnostic snapshot. It has no renderer
+	// queue state and never performs file I/O from a worker or callback.
+	LiveOutputTrace m_liveOutputTrace;
 
 	// This option is deliberately off by default.  When false, conversion does
 	// no scene analysis and delivery follows the pre-existing path exactly.
@@ -457,6 +464,7 @@ private:
 	// Purge converted sample queue
 	// CALLER MUST HOLD m_convertedQueueLock
 	void PurgeConvertedQueue();
+	void WriteLiveOutputTrace();
 
 	// Calculate next frame timestamp with enhanced logic for CLOCK_SMART
 	REFERENCE_TIME CalculateEnhancedNextTimestamp() const;
