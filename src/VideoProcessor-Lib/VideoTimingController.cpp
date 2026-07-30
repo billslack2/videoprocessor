@@ -35,6 +35,19 @@ void VideoTimingController::Reset()
 	++m_epoch.value;
 	if (m_epoch.value == 0)
 		++m_epoch.value;
+	ClearTimingState();
+}
+
+void VideoTimingController::ResetToEpoch(PipelineEpoch epoch)
+{
+	if (epoch.value == 0)
+		throw std::invalid_argument("Pipeline epoch must be non-zero");
+	m_epoch = epoch;
+	ClearTimingState();
+}
+
+void VideoTimingController::ClearTimingState()
+{
 	m_frameOffsetValid = false;
 	m_frameOffset = 0;
 	m_previousSourceFrameNumber = 0;
@@ -65,9 +78,6 @@ void VideoTimingController::RestartAfterPreroll()
 	m_startOffsetValid = false;
 	m_startOffset = 0;
 	m_previousStop = 0;
-	m_rationalFrameDuration = 0;
-	m_minFrameAdvance = 0;
-	m_maxFrameAdvance = 0;
 	m_lastHardwareTimestamp = 0;
 }
 
@@ -132,6 +142,22 @@ bool VideoTimingController::UsesStopTime() const
 	}
 }
 
+bool VideoTimingController::RequiresHardwareTimestamp() const
+{
+	switch (m_config.mode)
+	{
+	case VideoTimingMode::ClockSmart:
+	case VideoTimingMode::ClockTheoretical:
+	case VideoTimingMode::ClockClock:
+	case VideoTimingMode::ClockRational:
+	case VideoTimingMode::ClockSmart2:
+	case VideoTimingMode::ClockOnly:
+		return true;
+	default:
+		return false;
+	}
+}
+
 VideoReferenceTime VideoTimingController::TheoreticalDuration() const
 {
 	return m_config.theoreticalFrameDuration;
@@ -160,6 +186,12 @@ TimingDecision VideoTimingController::Decide(const FrameTimingInput& input)
 {
 	TimingDecision decision;
 	decision.epoch = m_epoch;
+	if (RequiresHardwareTimestamp() &&
+		(!input.hasHardwareTimestamp || input.timingClockTicksPerSecond == 0))
+	{
+		decision.valid = false;
+		return decision;
+	}
 	if (!m_frameOffsetValid)
 	{
 		m_frameOffset = input.sourceFrameNumber;
@@ -261,10 +293,12 @@ TimingDecision VideoTimingController::Decide(const FrameTimingInput& input)
 				stop = m_previousStop + 1;
 		}
 		else if (m_config.mode == VideoTimingMode::ClockClock &&
-			input.hasNextHardwareTimestamp)
+			(input.hasNextHardwareTimestamp || input.hasNextReferenceTime))
 		{
-			stop = ClockToReferenceTime(input.nextHardwareTimestamp,
-				input.timingClockTicksPerSecond) - m_startOffset;
+			const VideoReferenceTime next = input.hasNextReferenceTime ?
+				input.nextReferenceTime : ClockToReferenceTime(
+					input.nextHardwareTimestamp, input.timingClockTicksPerSecond);
+			stop = next - m_startOffset;
 			if (stop <= m_previousStop)
 				stop = m_previousStop + 1;
 		}

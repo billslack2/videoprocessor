@@ -201,7 +201,8 @@
     <ClCompile Include="RendererTransitionModelTests.cpp" />
     <ClCompile Include="RendererLivenessTests.cpp" />
     <ClCompile Include="LiveOutputTraceTests.cpp" />
-	<ClCompile Include="VideoTimingControllerTests.cpp" />
+    <ClCompile Include="VideoTimingControllerTests.cpp" />
+	<ClCompile Include="DirectShowVideoTimingAdapterTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />

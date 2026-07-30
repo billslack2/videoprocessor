@@ -253,6 +253,7 @@
     <ClInclude Include="WallClock.h" />
 	<ClInclude Include="VideoTimingController.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\WindowsOcrSubtitleDetector.h" />
+	<ClInclude Include="microsoft_directshow\DirectShowVideoTimingAdapter.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\GpuSubtitleDetector.h" />
   </ItemGroup>
   <ItemGroup>
@@ -293,6 +294,7 @@
     </ClCompile>
     <ClCompile Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.cpp" />
     <ClCompile Include="microsoft_directshow\DirectShowTimingClock.cpp" />
+	<ClCompile Include="microsoft_directshow\DirectShowVideoTimingAdapter.cpp" />
     <ClCompile Include="microsoft_directshow\DirectShowTranslations.cpp" />
 	<ClCompile Include="microsoft_directshow\MadVRShaderLoader.cpp">
 	  <LanguageStandard>stdcpp17</LanguageStandard>

@@ -46,6 +46,11 @@ struct FrameTimingInput
 	bool hasHardwareTimestamp = false;
 	uint64_t nextHardwareTimestamp = 0;
 	bool hasNextHardwareTimestamp = false;
+	// Some callers already obtain the next timestamp as 100-ns reference time.
+	// Keeping this value-based alternative avoids leaking that caller's clock or
+	// graph dependency into the controller.
+	VideoReferenceTime nextReferenceTime = 0;
+	bool hasNextReferenceTime = false;
 	int ppmCorrection = 0;
 	VideoReferenceTime pipelineOffset = 0;
 };
@@ -53,6 +58,7 @@ struct FrameTimingInput
 struct TimingDecision
 {
 	PipelineEpoch epoch;
+	bool valid = true;
 	uint64_t streamFrameNumber = 0;
 	int64_t mediaStart = 0;
 	int64_t mediaStop = 1;
@@ -75,6 +81,9 @@ public:
 
 	void Configure(const VideoTimingControllerConfig& config);
 	void Reset();
+	// The DirectShow coordinator owns the live queue epoch.  This lets the
+	// value-only controller attach its decisions to that authoritative epoch.
+	void ResetToEpoch(PipelineEpoch epoch);
 	void RestartAfterPreroll();
 	void ReplaceEpoch();
 	PipelineEpoch Epoch() const { return m_epoch; }
@@ -92,9 +101,11 @@ public:
 private:
 	bool UsesStopTime() const;
 	bool UsesStartTime() const;
+	bool RequiresHardwareTimestamp() const;
 	VideoReferenceTime TheoreticalDuration() const;
 	VideoReferenceTime SmartDuration() const;
 	void AddDurationHistory(VideoReferenceTime duration);
+	void ClearTimingState();
 	uint64_t TrimNumerator(int ppmCorrection) const;
 
 	VideoTimingControllerConfig m_config;
