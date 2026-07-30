@@ -15,9 +15,11 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <iomanip>
 #include <limits>
 #include <numeric>
 
+#include <ConfigFile.h>
 #include "CBufferedLiveSourceVideoOutputPin.h"
 #include "WindowsOcrSubtitleDetector.h"
 #include "GpuSubtitleDetector.h"
@@ -267,6 +269,9 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		ResetEvent(m_hFrameAvailableEvent);
 		ResetEvent(m_hConvertedAvailableEvent);
 		m_liveOutputTrace.Clear();
+		m_liveOutputMetricsTrace.Clear();
+		m_liveOutputTraceRunId = GetTickCount64();
+		m_liveOutputTraceExportOrdinal.store(0, std::memory_order_release);
 
 		// Update state atomics
 		m_isActive.store(true, std::memory_order_release);
@@ -1184,40 +1189,179 @@ void CBufferedLiveSourceVideoOutputPin::PurgeConvertedQueue()
 
 void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace(const char* boundary)
 {
-	const std::vector<LiveOutputTraceRecord> records = m_liveOutputTrace.Snapshot();
-	if (records.empty())
+	const std::vector<LiveOutputTraceRecord> eventRecords =
+		m_liveOutputTrace.Snapshot();
+	const std::vector<LiveOutputTraceRecord> metricRecords =
+		m_liveOutputMetricsTrace.Snapshot();
+	if (eventRecords.empty() && metricRecords.empty())
 		return;
 
-	std::string tracePath = DebugLog::GetLogFilePath();
-	const std::string::size_type separator = tracePath.find_last_of("\\\\/");
+	std::string traceDirectory = DebugLog::GetLogFilePath();
+	const std::string::size_type separator =
+		traceDirectory.find_last_of("\\\\/");
+	if (separator == std::string::npos)
+		traceDirectory.clear();
+	else
+		traceDirectory.resize(separator + 1);
+
 	const uint64_t exportOrdinal =
 		m_liveOutputTraceExportOrdinal.fetch_add(1, std::memory_order_relaxed) + 1;
 	const uint64_t epoch = m_queueEpoch.load(std::memory_order_acquire);
-	const std::string traceFileName =
-		"vp_live_output_trace-" + std::string(boundary) + "-" +
-		std::to_string(GetTickCount64()) + "-" + std::to_string(exportOrdinal) +
-		"-epoch-" + std::to_string(epoch) + ".csv";
-	if (separator == std::string::npos)
-		tracePath = traceFileName;
+	const std::string artifactBase =
+		traceDirectory + "vp_live_output_trace-run-" +
+		std::to_string(m_liveOutputTraceRunId) + "-" + boundary + "-" +
+		std::to_string(exportOrdinal) + "-epoch-" + std::to_string(epoch);
+	const std::string eventsPath = artifactBase + "-events.csv";
+	const std::string metricsPath = artifactBase + "-metrics.csv";
+	const std::string manifestPath = artifactBase + "-manifest.json";
+
+	const auto writeCsv = [&](const std::string& path,
+		const std::vector<LiveOutputTraceRecord>& records,
+		uint64_t droppedRecords,
+		const char* artifactKind) -> bool
+	{
+		if (records.empty())
+			return true;
+
+		std::ofstream stream(path, std::ios::out | std::ios::trunc);
+		if (!stream.is_open())
+		{
+			DebugLog::Log("LIVE OUTPUT TRACE: unable to write %s", path.c_str());
+			return false;
+		}
+
+		stream << "# artifact_kind=" << artifactKind << '\n';
+		stream << "# run_id=" << m_liveOutputTraceRunId << '\n';
+		stream << "# downstream_renderer_queue_occupancy=unknown\n";
+		stream << "# export_boundary=" << boundary << '\n';
+		stream << "# dropped_trace_records=" << droppedRecords << '\n';
+		LiveOutputTrace::WriteCsv(stream, records);
+		return true;
+	};
+
+	LONG videoWidth = 0;
+	LONG videoHeight = 0;
+	std::string outputSubtype = "unknown";
+	{
+		CAutoLock mediaTypeLock(&m_mediaTypeLock);
+		if (IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010))
+			outputSubtype = "P010";
+		else if (IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P210))
+			outputSubtype = "P210";
+
+		if (IsEqualGUID(m_mediaType.formattype, FORMAT_VideoInfo2) &&
+			m_mediaType.cbFormat >= sizeof(VIDEOINFOHEADER2))
+		{
+			const VIDEOINFOHEADER2* info =
+				reinterpret_cast<const VIDEOINFOHEADER2*>(m_mediaType.pbFormat);
+			videoWidth = info->bmiHeader.biWidth;
+			videoHeight = info->bmiHeader.biHeight;
+		}
+		else if (IsEqualGUID(m_mediaType.formattype, FORMAT_VideoInfo) &&
+			m_mediaType.cbFormat >= sizeof(VIDEOINFOHEADER))
+		{
+			const VIDEOINFOHEADER* info =
+				reinterpret_cast<const VIDEOINFOHEADER*>(m_mediaType.pbFormat);
+			videoWidth = info->bmiHeader.biWidth;
+			videoHeight = info->bmiHeader.biHeight;
+		}
+	}
+
+	bool hdrMetadataPresent = false;
+	int ppmCorrection = 0;
+	{
+		CAutoLock timingLock(&m_timingStateLock);
+		hdrMetadataPresent = m_hdrData != nullptr;
+		ppmCorrection = static_cast<int>(
+			m_currentRationalTrimNumerator - RATIONAL_TRIM_DENOMINATOR);
+	}
+
+	std::string configuredResetDelay = "unknown";
+	char executablePath[MAX_PATH] = {};
+	if (GetModuleFileNameA(nullptr, executablePath, MAX_PATH) > 0)
+	{
+		std::string configPath(executablePath);
+		const std::string::size_type executableSeparator =
+			configPath.find_last_of("\\\\/");
+		if (executableSeparator != std::string::npos)
+		{
+			configPath.resize(executableSeparator + 1);
+			configPath += ConfigFile::DEFAULT_FILENAME;
+			ConfigFile config;
+			if (config.Load(configPath))
+				(void)config.TryGetString(
+					"queue_recovery",
+					"reset_after_render_restart_seconds",
+					configuredResetDelay);
+		}
+	}
+
+	std::ofstream manifest(manifestPath, std::ios::out | std::ios::trunc);
+	if (manifest.is_open())
+	{
+		manifest << std::fixed << std::setprecision(6);
+		manifest << "{\n";
+		manifest << "  \"schema_version\": 1,\n";
+		manifest << "  \"run_id\": " << m_liveOutputTraceRunId << ",\n";
+		manifest << "  \"export_boundary\": \"" << boundary << "\",\n";
+		manifest << "  \"pipeline_epoch\": " << epoch << ",\n";
+		manifest << "  \"input_rate_numerator\": " << m_timeScale << ",\n";
+		manifest << "  \"input_rate_denominator\": " << m_frameDurationTicks << ",\n";
+		manifest << "  \"input_rate_hz\": " <<
+			(m_frameDurationTicks > 0 ?
+				static_cast<double>(m_timeScale) / m_frameDurationTicks : 0.0) <<
+			",\n";
+		manifest << "  \"input_signal\": \"" <<
+			(hdrMetadataPresent ? "HDR" : "SDR") << "\",\n";
+		manifest << "  \"hdr_metadata_present\": " <<
+			(hdrMetadataPresent ? "true" : "false") << ",\n";
+		manifest << "  \"video_width\": " << videoWidth << ",\n";
+		manifest << "  \"video_height\": " <<
+			(videoHeight < 0 ? -videoHeight : videoHeight) << ",\n";
+		manifest << "  \"output_subtype\": \"" << outputSubtype << "\",\n";
+		manifest << "  \"vp_queue_capacity\": " <<
+			m_frameQueueMaxSize.load(std::memory_order_acquire) << ",\n";
+		manifest << "  \"vp_buffering_target\": " << GetBufferingTarget() << ",\n";
+		manifest << "  \"ppm_correction\": " << ppmCorrection << ",\n";
+		manifest << "  \"measured_display_refresh_hz\": " <<
+			m_sceneDisplayRefreshRateHz.load(std::memory_order_acquire) << ",\n";
+		manifest << "  \"delivery_rate_hz\": " <<
+			m_sceneDeliveryRateHz.load(std::memory_order_acquire) << ",\n";
+		manifest << "  \"configured_post_renderer_start_reset_seconds\": \"" <<
+			configuredResetDelay << "\",\n";
+		manifest << "  \"reset_reason\": \"not_available_in_output_pin\",\n";
+		manifest << "  \"output_sync_class\": \"operator_required_monitor_or_projector\",\n";
+		manifest << "  \"madvr_cpu_queue_setting\": \"operator_required\",\n";
+		manifest << "  \"madvr_gpu_queue_setting\": \"operator_required\",\n";
+		manifest << "  \"madvr_queue_occupancy\": \"unobservable\"\n";
+		manifest << "}\n";
+	}
 	else
 	{
-		tracePath.resize(separator + 1);
-		tracePath += traceFileName;
+		DebugLog::Log(
+			"LIVE OUTPUT TRACE: unable to write %s", manifestPath.c_str());
 	}
 
-	std::ofstream stream(tracePath, std::ios::out | std::ios::trunc);
-	if (!stream.is_open())
+	const bool eventsWritten = writeCsv(
+		eventsPath,
+		eventRecords,
+		m_liveOutputTrace.DroppedRecordCount(),
+		"events");
+	const bool metricsWritten = writeCsv(
+		metricsPath,
+		metricRecords,
+		m_liveOutputMetricsTrace.DroppedRecordCount(),
+		"metrics");
+	if (eventsWritten && metricsWritten && manifest.is_open())
 	{
-		DebugLog::Log("LIVE OUTPUT TRACE: unable to write %s", tracePath.c_str());
-		return;
+		DebugLog::Log(
+			"LIVE OUTPUT TRACE: run=%llu boundary=%s wrote events=%zu metrics=%zu manifest=%s",
+			m_liveOutputTraceRunId,
+			boundary,
+			eventRecords.size(),
+			metricRecords.size(),
+			manifestPath.c_str());
 	}
-
-	stream << "# downstream_renderer_queue_occupancy=unknown\n";
-	stream << "# export_boundary=" << boundary << '\n';
-	stream << "# dropped_trace_records=" << m_liveOutputTrace.DroppedRecordCount() << '\n';
-	LiveOutputTrace::WriteCsv(stream, records);
-	DebugLog::Log("LIVE OUTPUT TRACE: wrote %zu VP-only records to %s",
-		records.size(), tracePath.c_str());
 }
 
 
@@ -1588,7 +1732,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		queueTrace.totalQueueDepth = rawDepth + convertedDepth;
 		queueTrace.queueCapacity = static_cast<uint32_t>(
 			m_frameQueueMaxSize.load(std::memory_order_acquire));
-		m_liveOutputTrace.Record(queueTrace);
+		m_liveOutputMetricsTrace.Record(queueTrace);
 	};
 
 	while (true)
