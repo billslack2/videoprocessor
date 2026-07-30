@@ -137,7 +137,11 @@ private:
 	// The trace is a VP-only, bounded diagnostic snapshot. It has no renderer
 	// queue state and never performs file I/O from a worker or callback.
 	LiveOutputTrace m_liveOutputTrace;
+	// One record per second, kept separately so per-frame events cannot evict
+	// the long-run OSD-equivalent queue history.
+	LiveOutputTrace m_liveOutputMetricsTrace;
 	std::atomic<uint64_t> m_liveOutputTraceExportOrdinal{ 0 };
+	uint64_t m_liveOutputTraceRunId = 0;
 
 	// This option is deliberately off by default.  When false, conversion does
 	// no scene analysis and delivery follows the pre-existing path exactly.
