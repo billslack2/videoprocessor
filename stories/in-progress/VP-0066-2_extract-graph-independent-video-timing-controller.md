@@ -2,7 +2,9 @@
 
 ## Status
 
-Backlog. Depends on accepted VP-0066-1 golden traces and latency baseline.
+In Progress (2026-07-30). VP-0066-1's self-identifying baseline is accepted
+for extraction, including the 24000/1001 capture-to-monitor cadence-mismatch
+fixture. Display-refresh telemetry remains an explicit optional follow-up.
 
 ## Parent and dependency
 

@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress. This task establishes the behavior-preserving baseline required
-by the VP-0066 refactor. It does not change pipeline behavior or start
-component extraction.
+Accepted for extraction (2026-07-30). This task establishes the
+behavior-preserving baseline required by the VP-0066 refactor. It does not
+change pipeline behavior or start component extraction.
 
 Readiness review (2026-07-30): the confirmed implementation base is
 `origin/v1.1.015-beta` at `785e591` (`Merge VP-0065 Alpha retirement
@@ -40,6 +40,17 @@ CSVs with `vp_debug.log`, includes SDR 60000/1001, HDR 24000/1001, and HDR
 HDR 60000/1001 moved from 22 before reset to 9--10 afterward. These observations
 remain exploratory and should be repeated with the self-identifying artifact
 format before acceptance.
+
+Acceptance evidence (2026-07-30): self-identifying runs now cover SDR
+60000/1001 and HDR 24000/1001. The SDR run held `0/8/8/32` for 43 of 44
+one-second snapshots. The HDR 24000/1001 run, after the configured five-second
+reset, held `0/1--2/1--2/32` for nearly a minute. The test monitor cannot
+switch to 24000/1001, so that HDR run is deliberately retained as a
+capture-to-display cadence-mismatch fixture rather than mislabelled as native
+23.976-Hz output. The output-refresh value was unavailable in that manifest;
+the exact input rational and HDR state remain recorded. Strengthening that
+optional display-timing telemetry is follow-up observability work and does not
+block the graph-independent timing extraction.
 
 ## Parent and dependency
 
