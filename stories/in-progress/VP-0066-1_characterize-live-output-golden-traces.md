@@ -15,6 +15,32 @@ is dirty and divergent and will not be modified. madVR remains the required
 DirectShow downstream renderer; its configured internal queues are opaque, and
 no madVR `IQualityControl` or queue-depth feedback may be used.
 
+Implementation checkpoint (2026-07-30): the deployed baseline now writes a
+self-identifying artifact set at each DirectShow reset and inactive boundary:
+a bounded high-rate `events.csv`, a separate one-Hz `metrics.csv` retained for
+more than an hour, and a `manifest.json`. The manifest records the exact input
+rate rational, HDR-metadata state, dimensions/output subtype, VP queue capacity
+and buffering target, PPM, measured display/delivery rates, and the configured
+post-renderer-start reset delay. It explicitly marks the physical output class
+(fast monitor versus slow projector), madVR CPU/GPU queue settings, madVR
+occupancy, and reset reason as operator-required or unavailable where VP cannot
+observe them. Per-frame workers still perform no file I/O.
+
+The physical-output distinction is part of the baseline contract. Computer
+monitor HDMI output synchronization is comparatively fast, while projector
+synchronization can be much slower. The configured delayed reset exists to
+cross that device-settle boundary and must not be interpreted as ordinary
+closed-loop queue control. Golden-run provenance must therefore identify the
+output as monitor or projector and evaluate pre-reset and post-reset phases
+separately.
+
+Initial field evidence, recovered by correlating the earlier non-self-identifying
+CSVs with `vp_debug.log`, includes SDR 60000/1001, HDR 24000/1001, and HDR
+60000/1001. HDR 24000/1001 held a VP queue of 2 after the automatic reset;
+HDR 60000/1001 moved from 22 before reset to 9--10 afterward. These observations
+remain exploratory and should be repeated with the self-identifying artifact
+format before acceptance.
+
 ## Parent and dependency
 
 Parent: [VP-0066](VP-0066_rearchitect-live-video-output-pipeline.md).
