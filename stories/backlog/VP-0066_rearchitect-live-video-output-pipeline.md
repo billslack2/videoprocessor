@@ -115,6 +115,21 @@ for pin lifecycle, worker startup/shutdown, component ownership, coordinated
 resets, high-level data flow, and fatal downstream errors. It should no longer
 contain the detailed implementation of every stage.
 
+## DirectShow and madVR boundary
+
+madVR is a required DirectShow downstream renderer for this path. VP must
+continue to deliver `IMediaSample` instances through the DirectShow output-pin
+contract; this refactor does not replace that boundary with MPV, Media
+Foundation, or a renderer-neutral presentation API.
+
+madVR's configured internal CPU/GPU queues are opaque to VP. VP has no usable
+`IQualityControl` or queue-depth feedback from madVR, and must not estimate
+downstream occupancy from `Deliver()` timing. Record the configured madVR queue
+settings as mode/test metadata, continuously feed it from the VP-owned queues,
+and treat delivery duration, allocator waits/failures, and successful delivery
+only as one-sided diagnostics. Queue-depth control and `queue error` in this
+story always mean VP-owned raw/processed queue state.
+
 ## Required components
 
 ### `CaptureFrameQueue`
@@ -175,9 +190,10 @@ retain the existing DirectShow mode type while equivalence is proven.
 
 Apply a timing decision to a processed sample, set sample times and flags,
 apply required metadata, call downstream delivery, measure delivery duration,
-return structured results, and implement DirectShow flush/new-segment
-operations. It must not calculate timestamps, estimate rates, change PPM,
-inspect queue depth to make cadence decisions, or convert frames.
+and return structured results. It provides the DirectShow flush/new-segment
+operations used by the coordinator, but must not independently initiate a
+reset transaction. It must not calculate timestamps, estimate rates, change
+PPM, inspect queue depth to make cadence decisions, or convert frames.
 
 ## Epoch and reset contract
 
@@ -269,7 +285,9 @@ keep timestamp error bounded for at least four hours at 60000/1001 and
 - Reset clears timing state, rational remainder, stale queues, and pending
   correction plans.
 - Shutdown waits for workers before destroying queues/components.
-- Locks are not held during downstream delivery.
+- No raw-queue, processed-queue, state, or allocator lock is held during
+  downstream delivery. A narrow delivery-serialization guard is permitted;
+  `BeginFlush` must be issued before waiting for it.
 - Capture callbacks remain nonblocking except for the minimum enqueue/reject
   work.
 - No material latency increase, unnecessary frame copies, use-after-free,

@@ -2,9 +2,18 @@
 
 ## Status
 
-Backlog. This task establishes the behavior-preserving baseline required by
-the VP-0066 refactor. It does not change pipeline behavior or start component
-extraction.
+In Progress. This task establishes the behavior-preserving baseline required
+by the VP-0066 refactor. It does not change pipeline behavior or start
+component extraction.
+
+Readiness review (2026-07-30): the confirmed implementation base is
+`origin/v1.1.015-beta` at `785e591` (`Merge VP-0065 Alpha retirement
+transition fix`). Work proceeds in the clean source worktree
+`C:\Users\bslac\vp\videoprocessor-vp0066-1` on
+`codex/vp-0066-1-golden-traces`. The source checkout named in tracker guidance
+is dirty and divergent and will not be modified. madVR remains the required
+DirectShow downstream renderer; its configured internal queues are opaque, and
+no madVR `IQualityControl` or queue-depth feedback may be used.
 
 ## Parent and dependency
 
@@ -22,11 +31,13 @@ preroll, or minimum-buffering requirement.
 
 The traces must record enough input and output to compare timing and lifecycle
 behavior: source frame number, capture time, raw and converted queue depth,
-timestamp start/stop, PPM, phase and queue error, timing/correction choice,
-scene/discontinuity state, reset/renderer-restart epoch, processing and
-delivery result. Record baseline latency for capture-to-conversion start,
-conversion duration, converted-queue residence, capture-to-`Deliver()`, and
-end-to-end capture-to-screen where it is measurable.
+timestamp start/stop, PPM, phase and **VP-owned** queue error,
+timing/correction choice, scene/discontinuity state, reset/renderer-restart
+epoch, processing and delivery result. Record the exact madVR CPU/GPU queue
+configuration as test metadata, not as a measured runtime value. Record
+baseline latency for capture-to-conversion start, conversion duration,
+converted-queue residence, capture-to-`Deliver()`, and end-to-end
+capture-to-screen where externally measurable.
 
 ## Acceptance criteria
 
@@ -37,7 +48,8 @@ end-to-end capture-to-screen where it is measurable.
   decisions and lifecycle events without requiring a capture device or live
   renderer.
 - The baseline documents trace provenance, configuration, known unavoidable
-  nondeterminism, and comparison tolerances.
+  nondeterminism, comparison tolerances, and the configured madVR queue
+  settings. It does not claim to know madVR queue occupancy.
 - Before/after measurements demonstrate that instrumentation adds no queue,
   copy, handoff, or required buffering, and stays within the root story's
   one-millisecond equivalent-condition capture-to-delivery guardrail.
