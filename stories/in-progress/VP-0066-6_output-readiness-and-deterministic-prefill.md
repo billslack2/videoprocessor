@@ -54,6 +54,25 @@ of the R/C/T target, madVR fill, and elimination of the late blank remains
 required. The native test link was blocked in that worktree by a corrupted
 generated `VideoProcessor-Lib.pdb`; this is not recorded as a passing test run.
 
+Latest wiring correction (2026-07-31): live logs proved that the explicit
+`[queue]` policy had never reached a fresh `CLiveSource`: `Build()` posts graph
+creation asynchronously, while the dialog published the policy immediately
+after requesting Build, before the output pin existed. The renderer silently
+dropped that publication, so the observed 8--12 VP R/C/T values were the
+default path and not a failed evaluation of the explicit two-frame target.
+Source commit `4a4096e` now retains the whole-frame policy atomically and
+applies it immediately after each new live-source pin is initialized, before
+the graph can run; an already-live source still receives immediate updates.
+Both retained and fresh-graph application are logged. An x64 Release build
+and an independent Release native test build passed, with 324/324 tests
+passing. Only the Release executable was deployed to
+`C:\Videoprocessor\vp\VideoProcessor.exe`; the active `[queue]` configuration
+remains `startup_preroll_frames: 0` and `steady_reserve_frames: 2`. The next
+live run must first verify the new `DirectShow queue policy applied to fresh
+graph: startup=0 steady-target=2` log line, then assess the resulting VP
+R/C/T and passive madVR OSD evidence. No conclusion about the cap is valid
+without that line.
+
 This is not a first-image or HDMI-lock gate: provisional frames may display
 and may stutter before the reset. The priority is a deterministic VP queue
 after the reset, not pretending that VP can observe madVR's internal queue.
