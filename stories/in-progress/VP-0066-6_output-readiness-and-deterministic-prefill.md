@@ -24,6 +24,18 @@ The x64 Release build and 324/324 native tests passed, and only
 `C:\Videoprocessor\vp\VideoProcessor.exe` was deployed from source commit
 `1208da7`; the user's active configuration was not changed.
 
+Follow-up correction (2026-07-31): live evidence showed that a manual reset,
+or a startup capacity-recovery reset, could already complete the necessary
+DirectShow/madVR graph re-prime before DXGI readiness evidence arrived. The
+previous controller then issued a redundant readiness reset, which added a
+black flash and could race a transient invalid capture-state update into a
+long renderer restart. Source commit `0aa2c78` records such a completed fresh
+graph epoch against the post-reset DXGI measurement generation. When that
+generation validates, it publishes the selected VP reserve into the existing
+fresh graph instead of resetting again. x64 Release and 324/324 tests passed;
+only `VideoProcessor.exe` was deployed, with the active configuration still
+unchanged. Live confirmation remains required.
+
 This is not a first-image or HDMI-lock gate: provisional frames may display
 and may stutter before the reset. The priority is a deterministic VP queue
 after the reset, not pretending that VP can observe madVR's internal queue.
