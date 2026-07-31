@@ -1486,17 +1486,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	DWORD lastFrameIntervalUpdateTime = GetTickCount();
 	uint64_t lastSuccessfullyDeliveredEpoch = UINT64_MAX;
 	DirectShowDeliveryOutcomeClassifier deliveryOutcomeClassifier;
-	// VP-0066-9: this is deliberately shadow-only.  It models the timestamp
-	// sequence at the final delivery boundary, where a future convergence step
-	// may discard stale live pictures without leaving a DirectShow time hole.
-	// Existing sample timestamps still remain authoritative in this build.
-	RationalLiveOutputSequencer deliveryTimestampShadow(
+	// VP-0066-9 owns normal Rational-Rational output time at the final
+	// delivery boundary. Conversion may run ahead or stale live pictures may
+	// later be removed, but only a successfully delivered sample advances this
+	// presentation sequence. Scene cadence remains a separate owner while it is
+	// active and already stamps its samples on this same delivery thread.
+	RationalLiveOutputSequencer deliveryTimestampSequencer(
 		m_timeScale, m_frameDurationTicks, m_frameDuration);
-	bool deliveryTimestampShadowHasOffset = false;
-	REFERENCE_TIME deliveryTimestampShadowOffset = 0;
-	DWORD lastDeliveryTimestampShadowMismatchLogTick = 0;
-	bool deliveryTimestampShadowSuppressedBySceneCadence = false;
-	uint64_t deliveryTimestampShadowEpoch = UINT64_MAX;
+	bool deliveryTimestampSequencerSuppressedBySceneCadence = false;
+	uint64_t deliveryTimestampSequencerEpoch = UINT64_MAX;
 
 	// When Scene Detect is enabled, madVR receives a coherent output cadence at
 	// the measured physical display rate. The content phase tracks the capture
@@ -1608,69 +1606,49 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		m_deliveryInProgress.store(true, std::memory_order_release);
 		// Scene mode is enabled for the user's P010 graph, but it becomes a
 		// different timestamp owner only after its display-cadence state starts.
-		// Observe the normal Rational-Rational portion of the same epoch and
-		// simply suspend (rather than compare false mismatches) while that
-		// distinct cadence owns the samples.
 		const bool sceneCadenceOwnsTimestamps = sceneCadence.active;
 		if (sceneCadenceOwnsTimestamps)
 		{
-			deliveryTimestampShadowSuppressedBySceneCadence = true;
+			deliveryTimestampSequencerSuppressedBySceneCadence = true;
 		}
-		else if (deliveryTimestampShadowSuppressedBySceneCadence)
+		else if (deliveryTimestampSequencerSuppressedBySceneCadence)
 		{
-			deliveryTimestampShadow.ResetToEpoch(expectedQueueEpoch);
-			deliveryTimestampShadowHasOffset = false;
-			deliveryTimestampShadowSuppressedBySceneCadence = false;
+			deliveryTimestampSequencer.ResetToEpoch(expectedQueueEpoch);
+			deliveryTimestampSequencerEpoch = expectedQueueEpoch;
+			deliveryTimestampSequencerSuppressedBySceneCadence = false;
 			DebugLog::Log(
-				"VP-0066-9 DELIVERY TIMESTAMP SHADOW: resumed Rational-Rational "
-				"observation after scene-cadence handoff (epoch=%llu)",
+				"VP-0066-9 DELIVERY TIMESTAMP OWNER: resumed Rational-Rational "
+				"sequence after scene-cadence handoff (epoch=%llu)",
 				expectedQueueEpoch);
 		}
-		const bool timestampShadowEnabled =
+		const bool timestampOwnershipEnabled =
 			m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL &&
 			!sceneCadenceOwnsTimestamps;
-		RationalLiveOutputTimestampDecision timestampShadowDecision;
-		if (timestampShadowEnabled)
+		RationalLiveOutputTimestampDecision timestampDecision;
+		if (timestampOwnershipEnabled)
 		{
-			if (deliveryTimestampShadowEpoch != expectedQueueEpoch)
+			if (deliveryTimestampSequencerEpoch != expectedQueueEpoch)
 			{
-				deliveryTimestampShadowEpoch = expectedQueueEpoch;
-				deliveryTimestampShadowHasOffset = false;
+				deliveryTimestampSequencerEpoch = expectedQueueEpoch;
 			}
-			timestampShadowDecision = deliveryTimestampShadow.Preview(
+			timestampDecision = deliveryTimestampSequencer.Preview(
 				{ expectedQueueEpoch, GetCurrentPPMCorrection(),
-					GetRationalPipelineOffset(), 0 });
-		}
-
-		REFERENCE_TIME presentationStart = 0;
-		REFERENCE_TIME presentationStop = 0;
-		(void)sample->GetTime(&presentationStart, &presentationStop);
-		if (timestampShadowEnabled && timestampShadowDecision.valid)
-		{
-			if (!deliveryTimestampShadowHasOffset)
+					GetRationalPipelineOffset(), GetRampedLeadTime() });
+			if (!timestampDecision.valid ||
+				FAILED(sample->SetTime(
+					&timestampDecision.start, &timestampDecision.stop)) ||
+				FAILED(sample->SetMediaTime(
+					&timestampDecision.mediaStart, &timestampDecision.mediaStop)) ||
+				FAILED(sample->SetDiscontinuity(
+					timestampDecision.discontinuity ? TRUE : FALSE)))
 			{
-				deliveryTimestampShadowOffset =
-					presentationStart - timestampShadowDecision.start;
-				deliveryTimestampShadowHasOffset = true;
-			}
-			else
-			{
-				const REFERENCE_TIME expectedStart =
-					timestampShadowDecision.start + deliveryTimestampShadowOffset;
-				const REFERENCE_TIME drift = presentationStart - expectedStart;
-				if (std::llabs(drift) > 1)
-				{
-					const DWORD now = GetTickCount();
-					if (lastDeliveryTimestampShadowMismatchLogTick == 0 ||
-						now - lastDeliveryTimestampShadowMismatchLogTick >= 5000)
-					{
-						DebugLog::Log(
-							"VP-0066-9 DELIVERY TIMESTAMP SHADOW: current=%lld "
-							"expected=%lld drift=%+lld ticks (shadow only)",
-							presentationStart, expectedStart, drift);
-						lastDeliveryTimestampShadowMismatchLogTick = now;
-					}
-				}
+				DebugLog::Log(
+					"VP-0066-9 DELIVERY TIMESTAMP OWNER: sample stamp failed "
+					"(epoch=%llu); requesting serialized reset",
+					expectedQueueEpoch);
+				m_deliveryInProgress.store(false, std::memory_order_release);
+				RequestCoordinatedReset("delivery-timestamp-stamp-failure");
+				return E_FAIL;
 			}
 		}
 		const DirectShowDeliveryTicket deliveryTicket =
@@ -1685,6 +1663,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					return GetWallClockTime();
 				});
 
+		REFERENCE_TIME presentationStart = 0;
+		REFERENCE_TIME presentationStop = 0;
+		(void)sample->GetTime(&presentationStart, &presentationStop);
 		LiveOutputTraceRecord deliveryAttemptTrace;
 		deliveryAttemptTrace.kind = LiveOutputTraceKind::DeliveryAttempted;
 		deliveryAttemptTrace.frameNumber = frameNumber;
@@ -1770,11 +1751,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		}
 		else if (outcome.deliverySucceeded)
 		{
-			if (timestampShadowEnabled &&
-				!deliveryTimestampShadow.Commit(timestampShadowDecision))
+			if (timestampOwnershipEnabled &&
+				!deliveryTimestampSequencer.Commit(timestampDecision))
 			{
 				DebugLog::Log(
-					"VP-0066-9 DELIVERY TIMESTAMP SHADOW: failed to commit "
+					"VP-0066-9 DELIVERY TIMESTAMP OWNER: failed to commit "
 					"successful delivery sequence (epoch=%llu)",
 					expectedQueueEpoch);
 			}
