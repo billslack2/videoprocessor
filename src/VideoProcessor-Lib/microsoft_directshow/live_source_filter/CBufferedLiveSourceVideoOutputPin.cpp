@@ -3228,10 +3228,12 @@ bool CBufferedLiveSourceVideoOutputPin::AnalyzeSceneDetector(
 	if (FAILED(sample->GetPointer(&data)) || !data)
 		return false;
 
-	const SceneDetectorResult result = detector.Analyze({
+	const SceneAnalysisResult result = m_frameProcessor.AnalyzeScene({
 		reinterpret_cast<const uint16_t*>(data), lumaWidth, lumaHeight,
 		lumaWidth * sizeof(uint16_t), sourceSequence, timestamp, generation,
-		static_cast<uint64_t>(std::max<REFERENCE_TIME>(1, m_frameDuration)), true });
+		static_cast<uint64_t>(std::max<REFERENCE_TIME>(1, m_frameDuration)), &detector });
+	if (!result.validInput)
+		return false;
 	averageLuma = result.averageLuma;
 	eventFramesBack = result.eventFramesBack;
 	if (!result.safeBoundary)

@@ -3,6 +3,8 @@
 
 #include <FrameProcessor.h>
 
+#include <vector>
+
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace Tests
@@ -60,6 +62,28 @@ namespace Tests
 			Assert::IsFalse(result.producedFrame);
 			Assert::AreEqual<HRESULT>(E_FAIL, result.result);
 			Assert::IsNull(result.frame.sample);
+		}
+
+		TEST_METHOD(SceneAnalysisForwardsBoundaryEvidenceWithoutDelivery)
+		{
+			FrameProcessor processor;
+			SceneDetector detector;
+			std::vector<uint16_t> bright(64 * 36, static_cast<uint16_t>(512 << 6));
+			std::vector<uint16_t> black(64 * 36, 0);
+			auto input = [&](const std::vector<uint16_t>& pixels, uint64_t sequence)
+			{
+				return SceneAnalysisInput{ pixels.data(), 64, 36,
+					64 * sizeof(uint16_t), sequence, static_cast<int64_t>(sequence * 417083),
+					1, 417083, &detector };
+			};
+
+			const SceneAnalysisResult warming = processor.AnalyzeScene(input(bright, 1));
+			const SceneAnalysisResult boundary = processor.AnalyzeScene(input(black, 2));
+
+			Assert::IsTrue(warming.validInput);
+			Assert::IsTrue(boundary.validInput);
+			Assert::IsTrue(boundary.safeBoundary);
+			Assert::AreEqual(0u, static_cast<unsigned int>(boundary.averageLuma));
 		}
 	};
 }
