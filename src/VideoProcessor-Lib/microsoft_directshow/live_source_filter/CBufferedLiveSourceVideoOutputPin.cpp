@@ -1496,6 +1496,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	REFERENCE_TIME deliveryTimestampShadowOffset = 0;
 	DWORD lastDeliveryTimestampShadowMismatchLogTick = 0;
 	bool deliveryTimestampShadowSuppressedBySceneCadence = false;
+	uint64_t deliveryTimestampShadowEpoch = UINT64_MAX;
 
 	// When Scene Detect is enabled, madVR receives a coherent output cadence at
 	// the measured physical display rate. The content phase tracks the capture
@@ -1631,6 +1632,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		RationalLiveOutputTimestampDecision timestampShadowDecision;
 		if (timestampShadowEnabled)
 		{
+			if (deliveryTimestampShadowEpoch != expectedQueueEpoch)
+			{
+				deliveryTimestampShadowEpoch = expectedQueueEpoch;
+				deliveryTimestampShadowHasOffset = false;
+			}
 			timestampShadowDecision = deliveryTimestampShadow.Preview(
 				{ expectedQueueEpoch, GetCurrentPPMCorrection(),
 					GetRationalPipelineOffset(), 0 });
