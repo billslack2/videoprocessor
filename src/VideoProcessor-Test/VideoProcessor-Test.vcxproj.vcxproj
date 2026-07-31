@@ -203,6 +203,7 @@
     <ClCompile Include="LiveOutputTraceTests.cpp" />
     <ClCompile Include="VideoTimingControllerTests.cpp" />
 	<ClCompile Include="DirectShowVideoTimingAdapterTests.cpp" />
+	<ClCompile Include="EpochBoundedQueueTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
