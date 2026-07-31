@@ -8,7 +8,7 @@ story may have ordered child-task IDs as defined below.
 
 - Last assigned root story: `VP-0067`
 - Next root story number: `VP-0068`
-- Total indexed items: 70
+- Total indexed items: 73
 
 ## Story locations
 
@@ -92,10 +92,13 @@ they must not contain requirements that are absent from this file.
 | VP-0065 | Review | Invalidate stale frames during channel and stream transitions |
 | VP-0066 | Backlog | Re-architect the live video output pipeline into testable components |
 | VP-0067 | Backlog | Upgrade VideoProcessor to C++17 |
-| VP-0066-1 | In Progress | Characterize the live output pipeline with replayable golden traces |
-| VP-0066-2 | Backlog | Extract a graph-independent video timing controller |
-| VP-0066-3 | Backlog | Extract epoch-aware frame transport and processing components |
-| VP-0066-4 | Backlog | Integrate DirectShow delivery and lifecycle coordination |
+| VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
+| VP-0066-2 | Done | Extract a graph-independent video timing controller |
+| VP-0066-3 | In Progress | Extract epoch-aware frame transport and processing components |
+| VP-0066-4 | In Progress | Integrate DirectShow delivery and lifecycle coordination |
+| VP-0066-5 | Backlog | Extract subtitle analysis and relocation |
+| VP-0066-6 | In Progress | Output readiness and deterministic post-ready prefill |
+| VP-0066-7 | Backlog | Invalidate and reacquire refresh-rate measurements at real transition boundaries |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
