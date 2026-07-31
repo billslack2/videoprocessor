@@ -2,26 +2,27 @@
 
 ## Status
 
-In Progress (2026-07-30). The graph-independent C++14 state-machine model is
-implemented and covered by controlled tests. It is now attached as a
-UI-thread **passive observer** of the existing validated DXGI
-display-refresh decision, with real-display transition logs. It deliberately
-does not yet control capture, reset, or delivery, so this checkpoint does not
-change live behavior. The VP-0066-3 arrival trace provides the initial
-59.94-SDR guardrail: 125 ms median and 141 ms p95 capture-arrival to
-`Deliver()` start, with the VP processed queue at seven frames at p95.
-The observer now distinguishes the existing 30-second phase/scene-correction
-confidence from a fully validated current-rate readiness observation. After a
-renderer/display timing transition it deliberately ignores the first five
-seconds, then requires ten seconds of clean evidence. This is **not** a
-first-image gate: ordinary live delivery remains immediate until a later
-actuator checkpoint deliberately changes that behavior. The estimator keeps
-up to two minutes of evidence, gives it a 20-second recency half-life for
-phase quality, and uses a current 30-second window for readiness; a material
-fast/current-rate mismatch starts a fresh measurement generation. Graph and
-graph-retarget resets invalidate the measurement; a VP-only live-queue flush
-does not, because it leaves the renderer/display path intact. Actuation begins
-only after the observer evidence is accepted.
+In Progress (2026-07-31). The graph-independent C++14 state machine and
+DirectShow reserve gate are implemented, unit-tested, and now actuated. Normal
+live video starts provisionally. Once VP observes two seconds of credible,
+fresh DXGI `WaitForVBlank` evidence that also passes raw-cadence, interval,
+harmonic, and Windows output-family validation, it makes one serialized
+**LiveQueue** reset and starts a fresh epoch. The DirectShow pin then pre-fills
+and retains a VP-owned reserve of eight converted frames (bounded by queue
+capacity) before resuming drain. This deliberately replaces the legacy
+five-second DirectShow post-start reset, whose fixed timing made the resulting
+queue depth depend on display/HDMI handshakes.
+
+This is not a first-image or HDMI-lock gate: provisional frames may display
+and may stutter before the reset. The priority is a deterministic VP queue
+after the reset, not pretending that VP can observe madVR's internal queue.
+The five-second quarantine plus ten-second clean current-rate evidence remains
+for longer readiness diagnostics, while the 30-second recency-weighted phase
+confidence remains solely for phase-sensitive correction. The estimator keeps
+up to two minutes of history with a 20-second recency half-life; material
+current/weighted disagreement starts a fresh measurement generation. Graph and
+graph-retarget resets invalidate measurement; a VP-only live-queue flush does
+not because the renderer/display path stays intact.
 
 ## Parent and dependency
 
@@ -34,8 +35,8 @@ measurement, but is not allowed to infer madVR queue occupancy.
 ## Objective and scope
 
 Give the DirectShow delivery coordinator one graph-independent, unit-tested
-state machine that prevents pre-handshake live frames from becoming a
-variable-age downstream backlog. The states are:
+state machine that replaces a fixed post-start delay with a fresh-epoch,
+fixed-reserve policy. The states are:
 
 ```text
 OutputNotReady -> PostReadyResetPending -> Prefilling -> Steady
@@ -49,14 +50,14 @@ family. The longer weighted phase-stability predicate remains separate. This is 
 deterministic renderer-readiness gate, not proof that a projector, AVR, or
 HDMI sink has physically locked.
 
-While output is not ready, VP discards live capture rather than retaining a
-backlog. On the first accepted readiness observation it requests exactly one
-serialized reset. The new epoch created by that reset is the only epoch that
-may form the post-ready prefill. VP then uses its existing effective reserve
-target to obtain an exact current-epoch VP queue depth before entering steady
-delivery. The policy distinguishes VP reserve from presentation lead
-internally, logs their selected frame/millisecond values, and does not expose
-an arbitrary user-configurable delay.
+Before evidence is available, normal live delivery remains open. On the first
+accepted short readiness observation VP publishes its internal eight-frame
+reserve, requests exactly one serialized LiveQueue reset, and flushes all
+earlier work. The fresh epoch created by that reset is the only epoch allowed
+to form the prefill. The buffered DirectShow pin itself holds delivery until
+the reserve is present, then drains only above that floor so steady state
+retains it. The policy distinguishes VP reserve from presentation lead and
+does not expose an arbitrary user-configurable delay.
 
 ## Acceptance criteria
 
@@ -67,25 +68,25 @@ an arbitrary user-configurable delay.
 - The controller accepts a supplied validated display measurement; it does not
   call madVR, scrape OSD text, use `Deliver()` duration, or claim downstream
   queue occupancy or HDMI-lock proof.
-- The passive integration records only transition/state/reason observations;
-  it requests no reset and does not gate, queue, copy, delay, or deliver any
-  capture frame. Its logs explicitly label a successful refresh observation as
-  renderer readiness rather than physical HDMI-lock proof.
-- Readiness becomes eligible after a five-second post-transition quarantine
-  plus a 10-second current observation, only when freshness, raw cadence,
-  interval range, harmonic protection, and nominal/output-family validation
-  pass. The longer 30-second weighted phase-stability interval remains
-  reserved for phase-sensitive correction, not startup image gating.
+- A validated two-second credible DXGI-vblank observation requests one
+  serialized DirectShow LiveQueue reset. VP may show provisional video before
+  that point; it never waits ten or thirty seconds for a first image.
+- The DirectShow pin retains an internally selected eight-frame converted VP
+  reserve (bounded by capacity) after the fresh-epoch reset. Completion and
+  queue depth come from the epoch-owned VP liveness snapshot, never
+  `Deliver()` timing.
+- The five-second quarantine plus ten-second clean current observation and
+  the 30-second weighted phase-stability interval remain separate validation
+  paths; neither blocks initial display.
 - Integration adds no queue, frame copy, worker thread, polling loop, or
-  capture-callback wait. The delivery coordinator is the sole state owner;
-  capture observes only its published discard/admit gate.
+  capture-callback wait. The delivery coordinator is the sole state owner.
 - A post-ready reset flushes all pre-ready work. Prefill counts only
   current-epoch processed frames and cannot be completed by a stale or
   pre-transition frame.
 - At 60000/1001 and 24000/1001, live validation shows a repeatable VP reserve
   after output readiness. Logs record output-readiness state/reason,
-  transition generation, expected and observed refresh, selected reserve and
-  presentation lead, reset request, and prefill completion.
+  transition generation, expected and observed refresh, selected reserve,
+  reset request/completion, fresh epoch, and prefill completion.
 - madVR OSD/frame-grab captures may be archived as passive test evidence only;
   they are never timing-control input.
 
