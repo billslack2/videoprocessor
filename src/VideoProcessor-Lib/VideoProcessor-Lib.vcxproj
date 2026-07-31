@@ -188,6 +188,7 @@
     <ClInclude Include="ColorFormat.h" />
     <ClInclude Include="EOTF.h" />
 	<ClInclude Include="FrameProcessor.h" />
+	<ClInclude Include="OutputReadinessController.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="guid.h" />
     <ClInclude Include="HDRData.h" />
@@ -282,6 +283,7 @@
 	<ClCompile Include="DirectShowSegmentTransition.cpp" />
     <ClCompile Include="ColorFormat.cpp" />
 	<ClCompile Include="FrameProcessor.cpp" />
+	<ClCompile Include="OutputReadinessController.cpp" />
     <ClCompile Include="ConfigFile.cpp" />
     <ClCompile Include="EOTF.cpp" />
     <ClCompile Include="guid.cpp" />

@@ -209,6 +209,7 @@
 	<ClCompile Include="DirectShowSegmentTransitionTests.cpp" />
 	<ClCompile Include="EpochBoundedQueueTests.cpp" />
 	<ClCompile Include="FrameProcessorTests.cpp" />
+	<ClCompile Include="OutputReadinessControllerTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
