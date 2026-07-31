@@ -2163,6 +2163,50 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	m_appliedCaptureVideoStateNotificationSequence =
 		notificationSequence;
 
+	// A valid notification resolves any previously deferred invalid state before
+	// it can stop the renderer.  DeckLink can transiently publish UNKNOWN video
+	// state while its live samples continue, notably after a profile refresh.
+	if (videoState->valid && m_deferredInvalidCaptureVideoState)
+	{
+		KillTimer(TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID);
+		m_deferredInvalidCaptureVideoState.Release();
+		m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
+		m_deferredInvalidCaptureVideoStateFrameCount = 0;
+		DebugLog::Log(
+			"Transient invalid capture video state cleared by valid notification: "
+			"sequence=%llu",
+			static_cast<unsigned long long>(notificationSequence));
+	}
+
+	// Do not immediately tear down a running renderer on a single invalid state
+	// notification.  A sustained loss still follows the ordinary invalid-signal
+	// stop path after this bounded grace period; a real valid update cancels it.
+	if (!videoState->valid &&
+		m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_captureDeviceVideoState &&
+		m_captureDeviceVideoState->valid)
+	{
+		constexpr UINT transientInvalidGraceMs = 1500;
+		m_deferredInvalidCaptureVideoState = videoState;
+		m_deferredInvalidCaptureVideoStateDeadlineTick =
+			GetTickCount64() + transientInvalidGraceMs;
+		m_deferredInvalidCaptureVideoStateFrameCount = m_captureDevice ?
+			m_captureDevice->VideoFrameCapturedCount() : 0;
+		SetTimer(
+			TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID,
+			transientInvalidGraceMs,
+			nullptr);
+		DebugLog::Log(
+			"Transient invalid capture video state deferred: sequence=%llu "
+			"grace_ms=%u captured_frames=%llu action=retain-last-valid-state",
+			static_cast<unsigned long long>(notificationSequence),
+			transientInvalidGraceMs,
+			static_cast<unsigned long long>(
+				m_deferredInvalidCaptureVideoStateFrameCount));
+		return 0;
+	}
+
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Valid=%s"),
 		videoState->valid ? TEXT("Yes") : TEXT("No")));
@@ -6591,6 +6635,53 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	{
 		KillTimer(RENDERER_RESET_MAILBOX_TIMER_ID);
 		PumpRendererResetMailbox();
+		return;
+	}
+
+	if (nIDEvent == TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID)
+	{
+		KillTimer(TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID);
+		if (!m_deferredInvalidCaptureVideoState)
+			return;
+
+		const ULONGLONG now = GetTickCount64();
+		if (now < m_deferredInvalidCaptureVideoStateDeadlineTick)
+		{
+			SetTimer(
+				TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID,
+				static_cast<UINT>(
+					m_deferredInvalidCaptureVideoStateDeadlineTick - now),
+				nullptr);
+			return;
+		}
+
+		const uint64_t capturedFramesNow = m_captureDevice ?
+			m_captureDevice->VideoFrameCapturedCount() : 0;
+		if (capturedFramesNow > m_deferredInvalidCaptureVideoStateFrameCount)
+		{
+			const uint64_t capturedFramesAtDeferral =
+				m_deferredInvalidCaptureVideoStateFrameCount;
+			m_deferredInvalidCaptureVideoState.Release();
+			m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
+			m_deferredInvalidCaptureVideoStateFrameCount = 0;
+			DebugLog::Log(
+				"Transient invalid capture video state ignored: capture advanced "
+				"from=%llu to=%llu action=retain-live-renderer",
+				static_cast<unsigned long long>(
+					capturedFramesAtDeferral),
+				static_cast<unsigned long long>(capturedFramesNow));
+			return;
+		}
+
+		m_captureDeviceVideoState = m_deferredInvalidCaptureVideoState;
+		m_deferredInvalidCaptureVideoState.Release();
+		m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
+		m_deferredInvalidCaptureVideoStateFrameCount = 0;
+		DebugLog::Log(
+			"Transient invalid capture video state persisted through grace; "
+			"action=apply-invalid-state");
+		BuildPushVideoState();
+		UpdateState();
 		return;
 	}
 

@@ -66,6 +66,7 @@
 #define UI_LAYOUT_RESTORE_TIMER_ID 7
 #define SHADER_RULE_REFRESH_TIMER_ID 8
 #define RENDERER_RESET_MAILBOX_TIMER_ID 9
+#define TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID 10
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 
 
@@ -504,6 +505,12 @@ protected:
 	uint64_t m_captureVideoStateNextEpoch = 0;
 	uint64_t m_appliedCaptureVideoStateNotificationSequence = 0;
 	uint64_t m_rendererCaptureVideoStateNotificationSequence = 0;
+	// Some capture drivers briefly publish UNKNOWN video state while frames are
+	// still flowing.  Hold the last valid state for a short, bounded interval so
+	// that one notification cannot tear down the DirectShow/madVR graph.
+	VideoStateComPtr m_deferredInvalidCaptureVideoState;
+	ULONGLONG m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
+	uint64_t m_deferredInvalidCaptureVideoStateFrameCount = 0;
 	bool m_rendererStartEvaluationPosted = false;
 	std::unique_ptr<RendererResetCoordinator> m_rendererResetCoordinator;
 	RendererBindingToken m_rendererResetBindingToken = 0;

@@ -73,8 +73,9 @@ namespace MainConfigSchema
 			return false;
 
 		// Queue policy is deliberately expressed in whole frames.  Zero means
-		// automatic policy; explicit values are capped so a config typo cannot
-		// create an impractically deep live queue.
+		// automatic policy; an explicit steady value is the VP-owned R/C/T
+		// target and is capped so a config typo cannot create an impractically
+		// deep live queue.
 		const std::vector<ConfigSchema::KeyRule> queueRules = {
 			ConfigSchema::Integer("startup_preroll_frames", 0, 16),
 			ConfigSchema::Integer("steady_reserve_frames", 0, 16)
