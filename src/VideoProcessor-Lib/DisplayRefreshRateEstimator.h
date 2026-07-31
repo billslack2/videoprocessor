@@ -12,6 +12,15 @@
 
 struct DisplayRefreshRateEstimatorSnapshot
 {
+	// Short evidence used to start the deterministic reset/prefill sequence.
+	// It is distinct from post-transition rate confidence and phase history.
+	double startupRateHz = 0.0;
+	double startupEvidenceSeconds = 0.0;
+	uint64_t startupCompensatedIntervals = 0;
+	uint64_t startupRawIntervals = 0;
+	double startupRawWaitRateHz = 0.0;
+	int64_t startupMinimumWaitIntervalQpc = 0;
+	int64_t startupMaximumWaitIntervalQpc = 0;
 	double readinessRateHz = 0.0;
 	double phaseRateHz = 0.0;
 	double fastRateHz = 0.0;
@@ -22,6 +31,7 @@ struct DisplayRefreshRateEstimatorSnapshot
 	int64_t recentMinimumWaitIntervalQpc = 0;
 	int64_t recentMaximumWaitIntervalQpc = 0;
 	bool quarantineComplete = false;
+	bool startupEvidenceReady = false;
 	bool readinessEvidenceReady = false;
 	bool phaseEvidenceReady = false;
 	bool materialRateChangeDetected = false;
@@ -55,11 +65,14 @@ private:
 		int64_t maximumWaitIntervalQpc = 0;
 	};
 
-	WindowRate CalculateWindowRate(int64_t durationQpc) const;
+	WindowRate CalculateWindowRate(const std::deque<Sample>& samples,
+		int64_t durationQpc) const;
 	double CalculateWeightedRate() const;
 	void Trim(int64_t newestEndQpc);
 
 	int64_t m_qpcFrequency = 0;
 	int64_t m_quarantineStartQpc = 0;
+	int64_t m_startupFirstSampleQpc = 0;
+	std::deque<Sample> m_startupSamples;
 	std::deque<Sample> m_samples;
 };

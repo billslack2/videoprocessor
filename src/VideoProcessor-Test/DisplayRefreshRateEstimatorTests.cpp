@@ -20,6 +20,20 @@ namespace Tests
 	TEST_CLASS(DisplayRefreshRateEstimatorTests)
 	{
 	public:
+		TEST_METHOD(StartupEvidenceUsesTheFirstTwoSecondsOfCredibleIntervals)
+		{
+			DisplayRefreshRateEstimator estimator(1000);
+			for (int tick = 100; tick <= 2100; tick += 100)
+				estimator.Observe(tick, 100, 6);
+
+			const DisplayRefreshRateEstimatorSnapshot snapshot =
+				estimator.Snapshot();
+			Assert::IsTrue(snapshot.startupEvidenceReady);
+			Assert::AreEqual(60.0, snapshot.startupRateHz, 0.000001);
+			Assert::IsFalse(snapshot.quarantineComplete);
+			Assert::IsFalse(snapshot.readinessEvidenceReady);
+		}
+
 		TEST_METHOD(QuarantineDiscardsInitialSyncSamplesBeforeReadinessEvidence)
 		{
 			DisplayRefreshRateEstimator estimator(1000);
