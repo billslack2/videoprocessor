@@ -2546,7 +2546,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 	uint64_t maxSlowConversionUs = 0;
 	SceneDetector sceneDetector;
 	uint64_t sceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
-	ActivePictureDetectorState activePictureDetectorState;
+	ActivePictureAnalyzer activePictureAnalyzer;
 	uint64_t activePictureDetectorGeneration =
 		m_activePictureDetectorGeneration.load(std::memory_order_acquire);
 
@@ -2608,7 +2608,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				m_activePictureDetectorGeneration.load(std::memory_order_acquire);
 			if (currentActivePictureGeneration != activePictureDetectorGeneration)
 			{
-				activePictureDetectorState = {};
+				activePictureAnalyzer.Reset();
 				activePictureDetectorGeneration = currentActivePictureGeneration;
 			}
 
@@ -2727,7 +2727,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			// madVR. Sparse sampling every few frames is negligible beside conversion.
 			if (IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010))
 				UpdateActivePictureAspectRatio(pSample, videoFrame.GetCounter(),
-					activePictureDetectorState);
+					activePictureAnalyzer);
 
 			// Analyze the unmodified frame first. Subtitle relocation changes a
 			// small image region and must not become input to the cut detector.
@@ -3057,10 +3057,8 @@ bool CBufferedLiveSourceVideoOutputPin::GetActivePictureRectangle(
 
 
 void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
-	IMediaSample* sample, uint64_t frameNumber, ActivePictureDetectorState& state)
+	IMediaSample* sample, uint64_t frameNumber, ActivePictureAnalyzer& analyzer)
 {
-	state.transition.SetStableGeometryDeadbandPercent(
-		ActivePictureTransitionModel::GetRuntimeStableGeometryDeadbandPercent());
 	if (!sample)
 		return;
 
@@ -3083,109 +3081,43 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 	if (width <= 0 || signedHeight == 0)
 		return;
 
+	BYTE* bytes = nullptr;
+	(void)sample->GetPointer(&bytes);
 	const int height = signedHeight > 0 ? signedHeight : -signedHeight;
+	const size_t pitch = static_cast<size_t>(width) * sizeof(uint16_t);
 	double framesPerSecond = 60.0;
 	if (m_timeScale > 0 && m_frameDurationTicks > 0)
-		framesPerSecond =
-			static_cast<double>(m_timeScale) / m_frameDurationTicks;
-	if (!state.transition.ShouldAnalyze(frameNumber, framesPerSecond))
+		framesPerSecond = static_cast<double>(m_timeScale) / m_frameDurationTicks;
+	const ActivePictureAnalyzerResult analysis = analyzer.Analyze({
+		{ bytes, static_cast<size_t>(std::max<LONG>(0, sample->GetActualDataLength())),
+			static_cast<int>(width), height, pitch, pitch }, frameNumber, framesPerSecond });
+	if (!analysis.analyzed)
 		return;
 
-	auto publishUnavailable = [&](const char* reason)
-	{
-		ActivePictureObservation observation;
-		observation.frameNumber = frameNumber;
-		const auto decision = state.transition.Observe(observation);
-		if (decision.diagnostic)
-			DebugLog::Log(
-				"ACTIVE PICTURE: state=unavailable frame=%llu "
-				"candidate_matches=%u contradictions=%u reversals=%u "
-				"confidence=%.2f reason=\"%s; %s\"",
-				static_cast<unsigned long long>(frameNumber),
-				decision.matchingCandidates,
-				decision.contradictoryCandidates,
-				decision.candidateReversals,
-				decision.confidence,
-				decision.reason.c_str(), reason);
-		PublishActivePictureTransition(decision);
-	};
-
-	BYTE* bytes = nullptr;
-	if (FAILED(sample->GetPointer(&bytes)) || !bytes)
-	{
-		publishUnavailable("P010 sample pointer is unavailable");
-		return;
-	}
-	const size_t pitch = static_cast<size_t>(width) * sizeof(uint16_t);
-	const auto evidence = ExtractP010ActivePictureEvidence({
-		bytes, static_cast<size_t>(std::max<LONG>(
-			0, sample->GetActualDataLength())),
-		static_cast<int>(width), height, pitch, pitch
-	});
-	if (!evidence.available)
-	{
-		publishUnavailable(evidence.reason.c_str());
-		return;
-	}
-
-	ActivePictureObservation observation;
-	observation.frameNumber = frameNumber;
-	observation.available = true;
-	observation.bounds = evidence.classification ==
-		ActivePictureClassification::BAR_CROP_TRUSTED ?
-		evidence.trustedBounds : evidence.proposedBounds;
-	observation.classification = evidence.classification;
-	const auto decision = state.transition.Observe(observation);
+	const ActivePictureTransitionDecision& decision = analysis.decision;
+	const P010ActivePictureEvidence& evidence = analysis.evidence;
 	if (decision.diagnostic)
 	{
-		DebugLog::Log(
-			"ACTIVE PICTURE: state=%s frame=%llu candidate=%d,%d-%d,%d "
-			"stable=%d,%d-%d,%d stable_aspect=%.4f "
-			"raster=%dx%d aspect=%.4f symmetric=%d matches=%u "
-			"contradictions=%u reversals=%u confidence=%.2f "
-			"classification=%d samples=%zu/%zu "
-			"edge_trust=%d,%d,%d,%d "
-			"edge_black=%.2f,%.2f,%.2f,%.2f "
-			"edge_chroma=%.2f,%.2f,%.2f,%.2f "
-			"edge_boundary=%.1f,%.1f,%.1f,%.1f "
-			"edge_confidence=%.2f,%.2f,%.2f,%.2f "
-			"first_contradiction=%llu latency_frames=%llu reason=\"%s\"",
-			decision.state == ActivePictureTransitionState::STABLE ?
-				"stable" : "candidate_transition",
-			static_cast<unsigned long long>(frameNumber),
-			decision.bounds.left, decision.bounds.top,
-			decision.bounds.right, decision.bounds.bottom,
-			decision.stableBounds.left, decision.stableBounds.top,
-			decision.stableBounds.right, decision.stableBounds.bottom,
-			decision.stableBounds.aspectRatio,
-			decision.bounds.rasterWidth, decision.bounds.rasterHeight,
-			decision.bounds.aspectRatio,
-			decision.bounds.symmetricBars ? 1 : 0,
-			decision.matchingCandidates,
-			decision.contradictoryCandidates,
-			decision.candidateReversals,
-			decision.confidence,
-			static_cast<int>(evidence.classification),
-			evidence.lumaSamples, evidence.chromaSamples,
-			evidence.left.trusted, evidence.top.trusted,
-			evidence.right.trusted, evidence.bottom.trusted,
-			evidence.left.blackFraction, evidence.top.blackFraction,
-			evidence.right.blackFraction, evidence.bottom.blackFraction,
-			evidence.left.neutralChromaFraction,
-			evidence.top.neutralChromaFraction,
-			evidence.right.neutralChromaFraction,
-			evidence.bottom.neutralChromaFraction,
-			evidence.left.innerBoundaryContrast,
-			evidence.top.innerBoundaryContrast,
-			evidence.right.innerBoundaryContrast,
-			evidence.bottom.innerBoundaryContrast,
-			evidence.left.confidence, evidence.top.confidence,
-			evidence.right.confidence, evidence.bottom.confidence,
-			static_cast<unsigned long long>(
-				decision.firstContradictoryFrame),
-			static_cast<unsigned long long>(
-				decision.decisionLatencyFrames),
-			(decision.reason + "; " + evidence.reason).c_str());
+		if (!evidence.available)
+			DebugLog::Log("ACTIVE PICTURE: state=unavailable frame=%llu candidate_matches=%u contradictions=%u reversals=%u confidence=%.2f reason=\"%s; %s\"",
+				static_cast<unsigned long long>(frameNumber), decision.matchingCandidates,
+				decision.contradictoryCandidates, decision.candidateReversals,
+				decision.confidence, decision.reason.c_str(), evidence.reason.c_str());
+		else
+			DebugLog::Log("ACTIVE PICTURE: state=%s frame=%llu candidate=%d,%d-%d,%d stable=%d,%d-%d,%d stable_aspect=%.4f raster=%dx%d aspect=%.4f symmetric=%d matches=%u contradictions=%u reversals=%u confidence=%.2f classification=%d samples=%zu/%zu first_contradiction=%llu latency_frames=%llu reason=\"%s\"",
+				decision.state == ActivePictureTransitionState::STABLE ? "stable" : "candidate_transition",
+				static_cast<unsigned long long>(frameNumber), decision.bounds.left, decision.bounds.top,
+				decision.bounds.right, decision.bounds.bottom, decision.stableBounds.left,
+				decision.stableBounds.top, decision.stableBounds.right, decision.stableBounds.bottom,
+				decision.stableBounds.aspectRatio, decision.bounds.rasterWidth,
+				decision.bounds.rasterHeight, decision.bounds.aspectRatio,
+				decision.bounds.symmetricBars ? 1 : 0, decision.matchingCandidates,
+				decision.contradictoryCandidates, decision.candidateReversals,
+				decision.confidence, static_cast<int>(evidence.classification),
+				evidence.lumaSamples, evidence.chromaSamples,
+				static_cast<unsigned long long>(decision.firstContradictoryFrame),
+				static_cast<unsigned long long>(decision.decisionLatencyFrames),
+				(decision.reason + "; " + evidence.reason).c_str());
 	}
 	PublishActivePictureTransition(decision);
 }
