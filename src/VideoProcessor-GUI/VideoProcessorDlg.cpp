@@ -42,6 +42,7 @@
 #include <guid.h>
 #include <ConfigFile.h>
 #include <DisplayRefreshRatePolicy.h>
+#include <DisplayRefreshRateWindow.h>
 #include <RendererProfileConfig.h>
 #include <UnifiedProfileRuntime.h>
 
@@ -709,10 +710,14 @@ private:
 			// Publish an early OSD estimate, but do not mark the rate safe for
 			// correction until it has covered a full 30 seconds. Time, rather
 			// than a fixed frame count, gives the same confidence at 24, 60, and
-			// 120 Hz.
+			// 120 Hz. The published estimate itself uses only a recent bounded
+			// interval window, so an old measurement cannot dilute a new rate for
+			// the lifetime of this display generation.
 			constexpr double kInitialMeasurementSeconds = 1.0;
-			constexpr double kPublishIntervalSeconds = 10.0;
+			constexpr double kPublishIntervalSeconds = 1.0;
 			constexpr double kStableMeasurementSeconds = 30.0;
+			constexpr double kRecentMeasurementSeconds = 5.0;
+			constexpr double kMaterialRateChangeRatio = 0.001;
 			LARGE_INTEGER first = {};
 			LARGE_INTEGER last = {};
 			LARGE_INTEGER previous = {};
@@ -723,11 +728,13 @@ private:
 					static_cast<long double>(frequency.QuadPart) /
 					static_cast<long double>(nominalRateHz);
 			}
-			uint64_t intervals = 0;
-			uint64_t rawWaitIntervals = 0;
-			int64_t minimumWaitIntervalQpc = 0;
-			int64_t maximumWaitIntervalQpc = 0;
+			DisplayRefreshRateWindow recentMeasurement(
+				frequency.QuadPart,
+				static_cast<int64_t>(kRecentMeasurementSeconds *
+					frequency.QuadPart));
 			int64_t lastPublishedQpc = 0;
+			int64_t stableMeasurementStartedQpc = 0;
+			double stabilityReferenceRateHz = 0.0;
 			unsigned int samples = 0;
 			for (;;)
 			{
@@ -759,14 +766,6 @@ private:
 				else
 				{
 					const int64_t elapsedSincePreviousQpc = now.QuadPart - previous.QuadPart;
-					++rawWaitIntervals;
-					if (minimumWaitIntervalQpc == 0 ||
-						elapsedSincePreviousQpc < minimumWaitIntervalQpc)
-					{
-						minimumWaitIntervalQpc = elapsedSincePreviousQpc;
-					}
-					maximumWaitIntervalQpc = std::max(maximumWaitIntervalQpc,
-						elapsedSincePreviousQpc);
 					if (estimatedRefreshPeriodQpc <= 0.0L)
 						estimatedRefreshPeriodQpc =
 							static_cast<long double>(elapsedSincePreviousQpc);
@@ -775,7 +774,8 @@ private:
 						static_cast<uint64_t>(llround(
 							static_cast<long double>(elapsedSincePreviousQpc) /
 							estimatedRefreshPeriodQpc)));
-					intervals += elapsedIntervals;
+					recentMeasurement.Add(now.QuadPart, elapsedSincePreviousQpc,
+						elapsedIntervals);
 
 					// A single normal interval refines the period. A compensated
 					// multi-interval gap is also useful, but give it less weight so a
@@ -795,9 +795,11 @@ private:
 				++samples;
 
 				const int64_t elapsedQpc = last.QuadPart - first.QuadPart;
-				const double elapsedSeconds = intervals > 0 && elapsedQpc > 0 ?
+				const double elapsedSeconds = samples > 1 && elapsedQpc > 0 ?
 					static_cast<double>(elapsedQpc) /
 					static_cast<double>(frequency.QuadPart) : 0.0;
+				const DisplayRefreshRateWindowSnapshot recentSnapshot =
+					recentMeasurement.Snapshot();
 				const bool rateHasBeenPublished = lastPublishedQpc != 0;
 				const bool publishRate = elapsedSeconds >= kInitialMeasurementSeconds &&
 					(!rateHasBeenPublished ||
@@ -807,40 +809,53 @@ private:
 					std::lock_guard<std::mutex> lock(m_mutex);
 					if (m_targetGeneration == targetGeneration)
 					{
-						m_intervalsObserved = intervals;
-						m_rawWaitIntervalsObserved = rawWaitIntervals;
-						m_minimumWaitIntervalQpc = minimumWaitIntervalQpc;
-						m_maximumWaitIntervalQpc = maximumWaitIntervalQpc;
+						m_intervalsObserved = recentSnapshot.compensatedIntervals;
+						m_rawWaitIntervalsObserved = recentSnapshot.rawWaitIntervals;
+						m_minimumWaitIntervalQpc =
+							recentSnapshot.minimumWaitIntervalQpc;
+						m_maximumWaitIntervalQpc =
+							recentSnapshot.maximumWaitIntervalQpc;
 					}
 				}
 				if (publishRate)
 				{
 					if (elapsedSeconds > 0.0)
 					{
-						const double rate = static_cast<double>(intervals) / elapsedSeconds;
+						const double rate = recentSnapshot.refreshRateHz;
 						if (rate >= 20.0 && rate <= 120.0)
 						{
+							const bool materiallyChanged =
+								stabilityReferenceRateHz > 0.0 &&
+								std::fabs(rate - stabilityReferenceRateHz) /
+									stabilityReferenceRateHz >=
+									kMaterialRateChangeRatio;
+							if (stableMeasurementStartedQpc == 0 || materiallyChanged)
+							{
+								stableMeasurementStartedQpc = last.QuadPart;
+								stabilityReferenceRateHz = rate;
+							}
 							std::lock_guard<std::mutex> lock(m_mutex);
 							if (m_targetGeneration == targetGeneration)
 							{
 								m_rate = rate;
-								m_rawWaitRate = rawWaitIntervals > 0 ?
-									static_cast<double>(rawWaitIntervals) / elapsedSeconds : 0.0;
+								m_rawWaitRate = recentSnapshot.rawWaitRateHz;
 								m_rateMeasuredQpc = last.QuadPart;
-								if (elapsedSeconds >= kStableMeasurementSeconds)
-									m_rateStable = true;
+								m_measurementStartedQpc = stableMeasurementStartedQpc;
+								m_rateStable = last.QuadPart -
+									stableMeasurementStartedQpc >=
+									static_cast<int64_t>(kStableMeasurementSeconds *
+										frequency.QuadPart);
 								m_refreshPeriodQpc.store(
 									static_cast<int64_t>(llround(
-										static_cast<double>(elapsedQpc) /
-										static_cast<double>(intervals))),
+										static_cast<double>(frequency.QuadPart) / rate)),
 									std::memory_order_release);
 							}
 						}
 					}
 					lastPublishedQpc = last.QuadPart;
-					// Keep the same endpoints after stabilization. Subsequent
-					// ten-second publications therefore become progressively more
-					// accurate and never regress to a short-window estimate.
+					// Subsequent one-second publications use the same bounded window.
+					// A real current-rate step resets phase confidence instead of being
+					// averaged away by the old generation's history.
 				}
 
 				std::lock_guard<std::mutex> lock(m_mutex);

@@ -190,6 +190,7 @@
     <ClCompile Include="ConfigFileTests.cpp" />
     <ClCompile Include="DebugLogRetentionTests.cpp" />
     <ClCompile Include="DisplayRefreshRatePolicyTests.cpp" />
+	<ClCompile Include="DisplayRefreshRateWindowTests.cpp" />
     <ClCompile Include="AlphaQueuePolicyTests.cpp" />
     <ClCompile Include="MadVRShaderRuntimeStateTests.cpp" />
     <ClCompile Include="ActivePictureTransitionModelTests.cpp" />
