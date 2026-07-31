@@ -23,6 +23,7 @@
 #include <microsoft_directshow/DirectShowTimingClock.h>
 #include <microsoft_directshow/video_renderers/DirectShowGraphExecutor.h>
 #include <deque>
+#include <atomic>
 #include <mutex>
 #include <shared_mutex>
 
@@ -188,6 +189,11 @@ protected:
 	DirectShowStartStopTimeMethod m_timestamp;
 	bool m_useFrameQueue;
 	size_t m_frameQueueMaxSize;
+	// The dialog can publish this policy while Build() is queued on the graph
+	// thread.  Retain it so a newly-created live source receives it instead of
+	// silently falling back to its default queue behaviour.
+	std::atomic<size_t> m_queueStartupPrerollFrames{0};
+	std::atomic<size_t> m_queueSteadyTargetFrames{0};
 	VideoConversionOverride m_videoConversionOverride;
 	DXVA_NominalRange m_forceNominalRange = DXVA_NominalRange::DXVA_NominalRange_Unknown;
 	DXVA_VideoTransferFunction m_forceVideoTransferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown;

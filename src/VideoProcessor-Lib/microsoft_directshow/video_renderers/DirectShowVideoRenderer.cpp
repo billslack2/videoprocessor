@@ -671,14 +671,27 @@ void DirectShowVideoRenderer::SetOutputReadinessDeliveryReserve(
 void DirectShowVideoRenderer::SetQueueFramePolicy(
 	size_t startupPrerollFrames, size_t steadyReserveFrames)
 {
-	// This is an atomic transport policy publication, not a graph operation.
-	// The lifetime lock keeps the live source valid while the pin receives it.
+	// Build() is asynchronous.  Retain the policy first so publishing it before
+	// CLiveSource exists is not silently lost; LiveSourceBuildAndConnect() will
+	// apply the retained values when it creates the output pin.
+	m_queueStartupPrerollFrames.store(
+		startupPrerollFrames, std::memory_order_release);
+	m_queueSteadyTargetFrames.store(
+		steadyReserveFrames, std::memory_order_release);
+
+	// The lifetime lock keeps an already-live source valid while the pin
+	// receives an update.  A fresh graph receives the retained values below.
 	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	const bool sourceReady =
+		m_liveSource && m_liveSource->GetVideoOutputPin();
 	if (m_liveSource && m_liveSource->GetVideoOutputPin())
 	{
 		m_liveSource->GetVideoOutputPin()->SetQueueFramePolicy(
 			startupPrerollFrames, steadyReserveFrames);
 	}
+	DebugLog::Log(
+		"DirectShow queue policy retained: startup=%zu steady-target=%zu source-ready=%d",
+		startupPrerollFrames, steadyReserveFrames, sourceReady ? 1 : 0);
 }
 
 
@@ -1556,6 +1569,23 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 		m_timestamp,
 		m_useFrameQueue,
 		m_frameQueueMaxSize);
+
+	// Build() commonly receives the dialog's queue policy before this live
+	// source exists.  Apply the retained policy immediately after Initialize(),
+	// before the graph can run and accept any frames.
+	const size_t startupPrerollFrames = m_queueStartupPrerollFrames.load(
+		std::memory_order_acquire);
+	const size_t steadyTargetFrames = m_queueSteadyTargetFrames.load(
+		std::memory_order_acquire);
+	if (ALiveSourceVideoOutputPin* outputPin =
+		m_liveSource->GetVideoOutputPin())
+	{
+		outputPin->SetQueueFramePolicy(
+			startupPrerollFrames, steadyTargetFrames);
+		DebugLog::Log(
+			"DirectShow queue policy applied to fresh graph: startup=%zu steady-target=%zu",
+			startupPrerollFrames, steadyTargetFrames);
+	}
 
 	if (m_pGraph->AddFilter(m_liveSource, L"LiveSource") != S_OK)
 	{
