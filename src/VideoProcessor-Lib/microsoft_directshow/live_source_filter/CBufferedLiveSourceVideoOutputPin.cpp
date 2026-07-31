@@ -247,14 +247,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			m_queueEpoch.load(std::memory_order_acquire) });
 		{
 			CAutoLock convertedLock(&m_convertedQueueLock);
-			while (!m_convertedSampleQueue.empty())
-			{
-				IMediaSample* pSample = m_convertedSampleQueue.front().sample;
-				m_convertedSampleQueue.pop_front();
-				if (pSample)
-					pSample->Release();
-				++purgedConverted;
-			}
+			purgedConverted = m_processedFrameQueue.Flush();
 			m_publishedConvertedQueueDepth.store(0, std::memory_order_release);
 		}
 		ResetEvent(m_hFrameAvailableEvent);
@@ -576,7 +569,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 			size_t convertedSize = 0;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
-				convertedSize = m_convertedSampleQueue.size();
+				convertedSize = m_processedFrameQueue.Size();
 			}
 
 			DebugLog::Log("OnVideoFrame: Raw queue BACKING UP (raw=%zu/%zu, converted=%zu, buffering=%d, convFrames=%llu)",
@@ -622,6 +615,13 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 
 	m_frameQueueMaxSize.store(frameQueueMaxSize, std::memory_order_release);
 	const size_t framesToPurge = m_captureFrameQueue.Resize(frameQueueMaxSize);
+	// The historical converted queue is trimmed by the delivery path, not here.
+	// Preserve that behavior while ensuring a later queue-size increase does not
+	// leave the extracted transport at its construction-time capacity.
+	{
+		CAutoLock convLock(&m_convertedQueueLock);
+		m_processedFrameQueue.SetCapacityWithoutDiscard(frameQueueMaxSize);
+	}
 	const EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
 	m_publishedRawQueueDepth.store(rawMetrics.depth, std::memory_order_release);
 	if (framesToPurge > 0)
@@ -941,17 +941,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		// Purge converted samples from the old segment.
 		{
 			CAutoLock convLock(&m_convertedQueueLock);
-			size_t purgedSamples = 0;
-			while (!m_convertedSampleQueue.empty())
-			{
-				IMediaSample* pSample = m_convertedSampleQueue.front().sample;
-				m_convertedSampleQueue.pop_front();
-				if (pSample)
-				{
-					pSample->Release();
-					++purgedSamples;
-				}
-			}
+			const size_t purgedSamples = m_processedFrameQueue.Flush();
 			m_publishedConvertedQueueDepth.store(0, std::memory_order_release);
 			DebugLog::Log("Reset(): Purged %zu pre-converted samples from HDMI resync", purgedSamples);
 		}
@@ -1106,21 +1096,8 @@ size_t CBufferedLiveSourceVideoOutputPin::PurgeQueue()
 void CBufferedLiveSourceVideoOutputPin::PurgeConvertedQueue()
 {
 	// NOTE: Caller MUST hold m_convertedQueueLock
-	size_t purgedSamples = 0;
-
-	while (!m_convertedSampleQueue.empty())
-	{
-		IMediaSample* pSample = m_convertedSampleQueue.front().sample;
-		m_convertedSampleQueue.pop_front();
-		m_publishedConvertedQueueDepth.store(
-			m_convertedSampleQueue.size(), std::memory_order_release);
-
-		if (pSample)
-		{
-			pSample->Release();
-			++purgedSamples;
-		}
-	}
+	const size_t purgedSamples = m_processedFrameQueue.Flush();
+	m_publishedConvertedQueueDepth.store(0, std::memory_order_release);
 
 	if (purgedSamples > 0)
 	{
@@ -1376,7 +1353,7 @@ CBufferedLiveSourceVideoOutputPin::ProactiveQueueMetrics CBufferedLiveSourceVide
 
 	{
 		CAutoLock convLock(const_cast<CCritSec*>(&m_convertedQueueLock));
-		metrics.convertedQueueSize = m_convertedSampleQueue.size();
+		metrics.convertedQueueSize = m_processedFrameQueue.Size();
 	}
 
 	metrics.maxSize = m_frameQueueMaxSize.load(std::memory_order_relaxed);
@@ -1647,7 +1624,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		bool hasQueuedSamples = false;
 		{
 			CAutoLock convertedLock(&m_convertedQueueLock);
-			hasQueuedSamples = !m_convertedSampleQueue.empty();
+			hasQueuedSamples = m_processedFrameQueue.Size() > 0;
 		}
 		if (hasQueuedSamples && m_hConvertedAvailableEvent)
 			SetEvent(m_hConvertedAvailableEvent);
@@ -1824,26 +1801,20 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			size_t q = 0;
 			{
 				CAutoLock lock(&m_convertedQueueLock);
-				q = m_convertedSampleQueue.size();
+				q = m_processedFrameQueue.Size();
 
 				if (q > maxFrames)
 				{
 					const size_t toDrop = q - maxFrames;
-					for (size_t i = 0; i < toDrop; ++i)
-					{
-						IMediaSample* s = m_convertedSampleQueue.front().sample;
-						m_convertedSampleQueue.pop_front();
-						m_publishedConvertedQueueDepth.store(
-							m_convertedSampleQueue.size(),
-							std::memory_order_release);
-						if (s) s->Release();
-					}
+					(void)m_processedFrameQueue.TrimTo(maxFrames);
+					m_publishedConvertedQueueDepth.store(
+						m_processedFrameQueue.Size(), std::memory_order_release);
 					++bufferUnderrunCount; // or better: add a new bufferOverrunDropCount
 					DebugLog::Log("DELIVERY THREAD: MAX BUFFER hit: dropped %zu old frames (q=%zu max=%zu)",
 						toDrop, q, maxFrames);
 				}
 
-				convertedQueueSize = m_convertedSampleQueue.size();
+				convertedQueueSize = m_processedFrameQueue.Size();
 			}
 
 			if (convertedQueueSize < bufferingTarget)
@@ -1884,18 +1855,18 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 			// Pop one sample under lock
 			IMediaSample* pSample = nullptr;
-			ConvertedSample convertedSample;
+			ProcessedFrame convertedSample;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
-
-				if (m_convertedSampleQueue.size() <= 1)
+				const PipelineEpoch currentEpoch{
+					m_queueEpoch.load(std::memory_order_acquire) };
+				if (!m_processedFrameQueue.TryPopCurrentIfDepthAbove(
+					currentEpoch, 1, convertedSample))
 					break;  // No more samples, wait for more
 
-				convertedSample = m_convertedSampleQueue.front();
 				pSample = convertedSample.sample;
-				m_convertedSampleQueue.pop_front();
 				m_publishedConvertedQueueDepth.store(
-					m_convertedSampleQueue.size(),
+					m_processedFrameQueue.Size(),
 					std::memory_order_release);
 			}
 			bool isSafeCorrectionPoint = convertedSample.isSafeCorrectionPoint;
@@ -2595,7 +2566,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			size_t currentConvertedSize = 0;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
-				currentConvertedSize = m_convertedSampleQueue.size();
+				currentConvertedSize = m_processedFrameQueue.Size();
 			}
 			const uint64_t currentActivePictureGeneration =
 				m_activePictureDetectorGeneration.load(std::memory_order_acquire);
@@ -2791,39 +2762,51 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 					// tag back to the actual first post-cut sample while it is still
 					// buffered. If delivery already consumed it, retain the current
 					// confirmation frame as a safe fallback.
-					if (isSafeCorrectionPoint && sceneEventFramesBack > 0 &&
-						m_convertedSampleQueue.size() >= sceneEventFramesBack)
+					bool sceneEventMovedToBufferedFrame = false;
+					if (isSafeCorrectionPoint && sceneEventFramesBack > 0)
 					{
-						ConvertedSample& cutSample =
-							m_convertedSampleQueue[
-								m_convertedSampleQueue.size() -
-								sceneEventFramesBack];
-						if (cutSample.queueEpoch == frameQueueEpoch &&
-							cutSample.sceneTimingGeneration ==
-								sceneTimingGeneration)
+						(void)m_processedFrameQueue.TryMutateCurrentFromBack(
+							{ frameQueueEpoch }, sceneEventFramesBack,
+							[&](ProcessedFrame& cutSample)
+							{
+								if (cutSample.queueEpoch == frameQueueEpoch &&
+									cutSample.sceneTimingGeneration == sceneTimingGeneration)
+								{
+									cutSample.isSafeCorrectionPoint = true;
+									cutSample.sceneEventId = sceneEventId;
+									sceneEventMovedToBufferedFrame = true;
+								}
+							});
+						if (sceneEventMovedToBufferedFrame)
 						{
-							cutSample.isSafeCorrectionPoint = true;
-							cutSample.sceneEventId = sceneEventId;
 							isSafeCorrectionPoint = false;
 							sceneEventId = 0;
 						}
 					}
-					m_convertedSampleQueue.push_back({
-						pSample,
-						videoFrame.GetCounter(),
-						static_cast<uint64_t>(videoFrame.GetTimingTimestamp()),
-						static_cast<uint32_t>(std::min<uint64_t>(
-							convTimeUs, std::numeric_limits<uint32_t>::max())),
-						isSafeCorrectionPoint,
-						sceneEventId,
-						frameQueueEpoch,
-						sceneTimingGeneration });
+
+					const PipelineEpoch currentEpoch{
+						m_queueEpoch.load(std::memory_order_acquire) };
+					const EpochBoundedQueuePushResult pushResult =
+						m_processedFrameQueue.Push({
+							pSample,
+							videoFrame.GetCounter(),
+							static_cast<uint64_t>(videoFrame.GetTimingTimestamp()),
+							static_cast<uint32_t>(std::min<uint64_t>(
+								convTimeUs, std::numeric_limits<uint32_t>::max())),
+							isSafeCorrectionPoint,
+							sceneEventId,
+							frameQueueEpoch,
+							sceneTimingGeneration },
+							{ frameQueueEpoch }, currentEpoch);
+					const EpochBoundedQueueMetrics processedMetrics =
+						m_processedFrameQueue.Metrics();
 					m_publishedConvertedQueueDepth.store(
-						m_convertedSampleQueue.size(),
-						std::memory_order_release);
-					convertedQueueDepth = m_convertedSampleQueue.size();
-					sampleQueued = true;
-					pSample = nullptr; // Queue owns the sample reference.
+						processedMetrics.depth, std::memory_order_release);
+					convertedQueueDepth = processedMetrics.depth;
+					sampleQueued =
+						pushResult == EpochBoundedQueuePushResult::Accepted ||
+						pushResult == EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard;
+					pSample = nullptr; // Queue accepted or released the sample reference.
 				}
 			}
 
@@ -2887,7 +2870,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			rawQueueSize = m_captureFrameQueue.Size();
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
-				convertedQueueSize = m_convertedSampleQueue.size();
+				convertedQueueSize = m_processedFrameQueue.Size();
 			}
 
 			uint64_t avgTimeUs = (framesSinceLastLog > 0) ? (totalTimeUs / framesSinceLastLog) : 0;
@@ -5941,7 +5924,7 @@ void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 size_t CBufferedLiveSourceVideoOutputPin::GetConvertedQueueSize()
 {
 	CAutoLock convLock(&m_convertedQueueLock);
-	return m_convertedSampleQueue.size();
+	return m_processedFrameQueue.Size();
 }
 
 REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::NowStreamTime(CBaseFilter* f)

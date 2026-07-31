@@ -88,14 +88,38 @@ public:
 
 	bool TryPopCurrent(PipelineEpoch currentEpoch, TValue& value)
 	{
+		return TryPopCurrentIfDepthAbove(currentEpoch, 0, value);
+	}
+
+	bool TryPopCurrentIfDepthAbove(
+		PipelineEpoch currentEpoch,
+		size_t minimumRemainingDepth,
+		TValue& value)
+	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		DiscardStaleHeadLocked(currentEpoch);
-		if (m_entries.empty())
+		if (m_entries.size() <= minimumRemainingDepth)
 			return false;
 
 		value = std::move(m_entries.front().value);
 		m_entries.pop_front();
 		m_metrics.depth = m_entries.size();
+		return true;
+	}
+
+	template <typename TMutate>
+	bool TryMutateCurrentFromBack(
+		PipelineEpoch currentEpoch,
+		size_t framesBack,
+		TMutate mutate)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (framesBack == 0 || framesBack > m_entries.size())
+			return false;
+		Entry& entry = m_entries[m_entries.size() - framesBack];
+		if (entry.epoch.value != currentEpoch.value)
+			return false;
+		mutate(entry.value);
 		return true;
 	}
 
@@ -118,6 +142,27 @@ public:
 		m_capacity = capacity;
 		size_t discarded = 0;
 		while (m_entries.size() > m_capacity)
+		{
+			Release(m_entries.front().value);
+			m_entries.pop_front();
+			++discarded;
+			++m_metrics.overflowDiscarded;
+		}
+		m_metrics.depth = m_entries.size();
+		return discarded;
+	}
+
+	void SetCapacityWithoutDiscard(size_t capacity)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_capacity = capacity;
+	}
+
+	size_t TrimTo(size_t maximumDepth)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		size_t discarded = 0;
+		while (m_entries.size() > maximumDepth)
 		{
 			Release(m_entries.front().value);
 			m_entries.pop_front();
