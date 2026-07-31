@@ -10,7 +10,12 @@ does not yet control capture, reset, or delivery, so this checkpoint does not
 change live behavior. The VP-0066-3 arrival trace provides the initial
 59.94-SDR guardrail: 125 ms median and 141 ms p95 capture-arrival to
 `Deliver()` start, with the VP processed queue at seven frames at p95.
-Actuation begins only after the observer evidence is accepted.
+The observer now distinguishes the existing 30-second phase/scene-correction
+confidence from a short, fully validated readiness observation, so it does not
+introduce a 20-30 second image blackout. Its DXGI rate estimator is bounded to
+recent intervals; old rate and raw-gap outliers age out instead of diluting a
+new display rate for the whole renderer generation. Actuation begins only
+after the observer evidence is accepted.
 
 ## Parent and dependency
 
@@ -59,6 +64,10 @@ an arbitrary user-configurable delay.
   it requests no reset and does not gate, queue, copy, delay, or deliver any
   capture frame. Its logs explicitly label a successful refresh observation as
   renderer readiness rather than physical HDMI-lock proof.
+- Readiness becomes eligible after the sampler's short initial observation
+  only when freshness, raw cadence, interval range, harmonic protection, and
+  nominal/output-family validation pass. The longer stability interval remains
+  reserved for phase-sensitive correction, not startup image gating.
 - Integration adds no queue, frame copy, worker thread, polling loop, or
   capture-callback wait. The delivery coordinator is the sole state owner;
   capture observes only its published discard/admit gate.
