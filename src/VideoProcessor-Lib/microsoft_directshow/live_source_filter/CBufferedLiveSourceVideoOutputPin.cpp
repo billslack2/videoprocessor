@@ -1495,6 +1495,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	bool deliveryTimestampShadowHasOffset = false;
 	REFERENCE_TIME deliveryTimestampShadowOffset = 0;
 	DWORD lastDeliveryTimestampShadowMismatchLogTick = 0;
+	bool deliveryTimestampShadowSuppressedBySceneCadence = false;
 
 	// When Scene Detect is enabled, madVR receives a coherent output cadence at
 	// the measured physical display rate. The content phase tracks the capture
@@ -1604,10 +1605,29 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		m_lastDeliveryStartTick.store(
 			GetTickCount64(), std::memory_order_release);
 		m_deliveryInProgress.store(true, std::memory_order_release);
+		// Scene mode is enabled for the user's P010 graph, but it becomes a
+		// different timestamp owner only after its display-cadence state starts.
+		// Observe the normal Rational-Rational portion of the same epoch and
+		// simply suspend (rather than compare false mismatches) while that
+		// distinct cadence owns the samples.
+		const bool sceneCadenceOwnsTimestamps = sceneCadence.active;
+		if (sceneCadenceOwnsTimestamps)
+		{
+			deliveryTimestampShadowSuppressedBySceneCadence = true;
+		}
+		else if (deliveryTimestampShadowSuppressedBySceneCadence)
+		{
+			deliveryTimestampShadow.ResetToEpoch(expectedQueueEpoch);
+			deliveryTimestampShadowHasOffset = false;
+			deliveryTimestampShadowSuppressedBySceneCadence = false;
+			DebugLog::Log(
+				"VP-0066-9 DELIVERY TIMESTAMP SHADOW: resumed Rational-Rational "
+				"observation after scene-cadence handoff (epoch=%llu)",
+				expectedQueueEpoch);
+		}
 		const bool timestampShadowEnabled =
 			m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL &&
-			!(m_sceneAwareTimingCorrection.load(std::memory_order_acquire) &&
-				IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010));
+			!sceneCadenceOwnsTimestamps;
 		RationalLiveOutputTimestampDecision timestampShadowDecision;
 		if (timestampShadowEnabled)
 		{
