@@ -654,6 +654,15 @@ void ALiveSourceVideoOutputPin::RestartTimingOriginAfterPreroll()
 	DebugLog::Log("ALiveSourceVideoOutputPin::RestartTimingOriginAfterPreroll() - legacy live-preroll timestamp origin restored");
 }
 
+void ALiveSourceVideoOutputPin::ResetTimingControllerToPipelineEpoch(
+	uint64_t epoch)
+{
+	if (epoch == 0 || !m_rationalTimingShadow)
+		return;
+	CAutoLock timingLock(&m_timingStateLock);
+	m_rationalTimingShadow->ResetToEpoch({ epoch });
+}
+
 
 REFERENCE_TIME ALiveSourceVideoOutputPin::CalculateSmartFrameDuration() const
 {
