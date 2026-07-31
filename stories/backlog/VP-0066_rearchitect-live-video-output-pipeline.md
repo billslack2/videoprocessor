@@ -2,9 +2,10 @@
 
 ## Status
 
-Backlog. This is a large, behavior-preserving architecture story. It must not
-begin until current queue, reset, timestamp, renderer-handoff, and stale-frame
-behavior has been characterized sufficiently to create golden traces.
+In Progress (2026-07-30). This is a large, behavior-preserving architecture
+story. VP-0066-1 and VP-0066-2 are accepted; VP-0066-3 may now extract the
+queue/processor seam. The root remains incomplete until all four child tasks
+and the cross-component latency guardrail pass.
 
 ## Decomposition
 

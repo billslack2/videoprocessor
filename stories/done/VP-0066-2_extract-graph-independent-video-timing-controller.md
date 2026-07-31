@@ -2,8 +2,8 @@
 
 ## Status
 
-In Progress (2026-07-30). VP-0066-1's self-identifying baseline is accepted
-for extraction, including the 24000/1001 capture-to-monitor cadence-mismatch
+Accepted (2026-07-30). VP-0066-1's self-identifying baseline is accepted for
+extraction, including the 24000/1001 capture-to-monitor cadence-mismatch
 fixture. Display-refresh telemetry remains an explicit optional follow-up.
 
 Implementation checkpoint (2026-07-30): `VideoTimingController` is a
@@ -36,6 +36,14 @@ Cadence safety: 24000/1001 capture on a monitor that cannot switch to that
 rate is an incompatible cadence fixture, not a PPM or queue-control problem.
 This task must not use VP queue depth, madVR occupancy, or scene correction to
 attempt to force 23.976 to 60 Hz.
+
+Final verification (2026-07-30): a fresh x64 Release build completed and the
+native `VideoProcessor-Test.dll` suite passed 289/289 tests. The graph-free
+controller tests replay all legacy timestamp-mode shapes, preserve their names
+through the adapter, cover reset and externally supplied epoch replacement,
+and include four-hour exact-rational simulations for 24000/1001 and
+60000/1001. This task changes neither queues, copies, workers, buffering,
+DirectShow delivery, nor the existing non-Rational/Rational runtime paths.
 
 ## Parent and dependency
 

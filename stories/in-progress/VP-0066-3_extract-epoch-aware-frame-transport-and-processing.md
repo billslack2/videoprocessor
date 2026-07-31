@@ -2,7 +2,11 @@
 
 ## Status
 
-Backlog. Depends on accepted VP-0066-2 timing contracts and replay evidence.
+In Progress (2026-07-30). VP-0066-2 is accepted after a fresh x64 Release
+build and 289/289 native tests. This task begins with behavior-preserving
+extraction only: it must preserve the existing two queues, ownership transfer,
+worker handoffs, event signaling, and overflow behavior before any startup or
+output-readiness policy is considered.
 
 ## Parent and dependency
 
