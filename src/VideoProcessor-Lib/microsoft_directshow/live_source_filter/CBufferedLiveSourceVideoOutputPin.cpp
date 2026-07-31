@@ -1913,19 +1913,20 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				continue; // Keep waiting for more samples
 			}
 
-			// Match the proven legacy live-queue startup behavior: as soon as the
-			// minimal preroll is ready, begin timestamp generation from the next
-			// capture frame.  For live HDMI this deliberately favors the lower
-			// steady-state latency observed in the prior build over preserving the
-			// initial five-frame preroll as permanent renderer lead.
+			// The conversion worker assigns timestamps before placing samples in
+			// m_processedFrameQueue.  The preroll samples above are therefore
+			// already part of this DirectShow segment.  Do not restart the timing
+			// origin here: doing so makes the first sample converted after preroll
+			// reuse the timestamp range of the queued samples (for example,
+			// 180-263 ms followed again by 180 ms at 59.94 Hz).  That overlap is
+			// neither a new DirectShow segment nor a valid live catch-up; madVR is
+			// free to interpret it as late/repeated content.
 			//
-			// RestartTimingOriginAfterPreroll is serialized with conversion by the
-			// base timing lock, so this is a one-time, race-free boundary rather
-			// than the old conversion-thread race.
-			RestartTimingOriginAfterPreroll();
+			// A real timing restart remains owned by Reset(), which purges the
+			// queues and delivers a new segment before any new samples are made.
 			m_isBuffering.store(false, std::memory_order_release);
 
-			DebugLog::Log("DELIVERY THREAD: BUFFERING COMPLETE (%zu/%zu) - delivery starting",
+			DebugLog::Log("DELIVERY THREAD: BUFFERING COMPLETE (%zu/%zu) - delivery starting with continuous pre-stamped timeline",
 				convertedQueueSize, bufferingTarget);
 		}
 
