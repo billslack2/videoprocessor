@@ -6,6 +6,28 @@ In Progress (2026-07-30). VP-0066-1's self-identifying baseline is accepted
 for extraction, including the 24000/1001 capture-to-monitor cadence-mismatch
 fixture. Display-refresh telemetry remains an explicit optional follow-up.
 
+Implementation checkpoint (2026-07-30): `VideoTimingController` is a
+DirectShow-free, value-only component with exact-rational, clock-rational,
+smart-duration, monotonic, PPM, reset/preroll, invalid-clock, and externally
+owned epoch tests. `DirectShowVideoTimingAdapter` retains all existing
+timestamp-mode names and applies the legacy presentation lead only after the
+controller's base decision. The pin remains the sole owner of media samples,
+DirectShow calls, lead-ramp source, queues, workers, and reset/flush ordering.
+
+Real-display shadow evidence (SDR 60000/1001, 2026-07-30): 12,249
+RATIONAL_RATIONAL decisions compared through automatic reset and a 196-second
+steady run with zero mismatches. VP occupancy stayed in the 7--9-frame band
+(mostly 8); shutdown-time `Deliver` failures are excluded from steady-state
+assessment. The deployed follow-up uses the controller result only after that
+same per-frame equality check, with the legacy result as fallback. Other
+timestamp modes and scene-aware presentation correction remain on their
+existing paths pending equivalent mode-specific replay/shadow evidence.
+
+Cadence safety: 24000/1001 capture on a monitor that cannot switch to that
+rate is an incompatible cadence fixture, not a PPM or queue-control problem.
+This task must not use VP queue depth, madVR occupancy, or scene correction to
+attempt to force 23.976 to 60 Hz.
+
 ## Parent and dependency
 
 Parent: [VP-0066](VP-0066_rearchitect-live-video-output-pipeline.md).
