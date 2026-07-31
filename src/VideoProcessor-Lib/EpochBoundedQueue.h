@@ -1,0 +1,189 @@
+/*
+ * Graph-independent bounded transport queue for live video work.
+ *
+ * The owner supplies the value type and release action.  The queue never
+ * knows about DirectShow, samples, conversion, timing, renderer state, or
+ * worker lifecycle.  A PipelineEpoch is only a stale-work boundary: callers
+ * retain ownership of state transitions and wake/sleep policy.
+ */
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <mutex>
+#include <utility>
+
+#include <VideoTimingController.h>
+
+struct EpochBoundedQueueMetrics
+{
+	size_t depth = 0;
+	size_t capacity = 0;
+	uint64_t accepted = 0;
+	uint64_t overflowDiscarded = 0;
+	uint64_t staleDiscarded = 0;
+	uint64_t flushed = 0;
+};
+
+enum class EpochBoundedQueuePushResult : uint8_t
+{
+	Accepted,
+	AcceptedAfterOverflowDiscard,
+	RejectedStale,
+	RejectedNoCapacity
+};
+
+template <typename TValue, typename TRelease>
+class EpochBoundedQueue
+{
+public:
+	explicit EpochBoundedQueue(size_t capacity, TRelease release = TRelease())
+		: m_capacity(capacity), m_release(std::move(release))
+	{
+	}
+
+	EpochBoundedQueue(const EpochBoundedQueue&) = delete;
+	EpochBoundedQueue& operator=(const EpochBoundedQueue&) = delete;
+
+	~EpochBoundedQueue()
+	{
+		Flush();
+	}
+
+	EpochBoundedQueuePushResult Push(
+		TValue value,
+		PipelineEpoch valueEpoch,
+		PipelineEpoch currentEpoch)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (valueEpoch.value != currentEpoch.value)
+		{
+			Release(value);
+			++m_metrics.staleDiscarded;
+			return EpochBoundedQueuePushResult::RejectedStale;
+		}
+		if (m_capacity == 0)
+		{
+			Release(value);
+			return EpochBoundedQueuePushResult::RejectedNoCapacity;
+		}
+
+		bool overflow = false;
+		if (m_entries.size() >= m_capacity)
+		{
+			Release(m_entries.front().value);
+			m_entries.pop_front();
+			++m_metrics.overflowDiscarded;
+			overflow = true;
+		}
+
+		m_entries.push_back({ std::move(value), valueEpoch });
+		++m_metrics.accepted;
+		m_metrics.depth = m_entries.size();
+		return overflow ?
+			EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard :
+			EpochBoundedQueuePushResult::Accepted;
+	}
+
+	bool TryPopCurrent(PipelineEpoch currentEpoch, TValue& value)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		DiscardStaleHeadLocked(currentEpoch);
+		if (m_entries.empty())
+			return false;
+
+		value = std::move(m_entries.front().value);
+		m_entries.pop_front();
+		m_metrics.depth = m_entries.size();
+		return true;
+	}
+
+	bool TryPeekCurrent(PipelineEpoch currentEpoch, TValue& value) const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		// A stale front must be discarded by TryPopCurrent or Flush.  Peek is
+		// intentionally read-only, so it fails closed rather than changing queue
+		// ownership from a timestamp-query call.
+		if (m_entries.empty() ||
+			m_entries.front().epoch.value != currentEpoch.value)
+			return false;
+		value = m_entries.front().value;
+		return true;
+	}
+
+	size_t Resize(size_t capacity)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_capacity = capacity;
+		size_t discarded = 0;
+		while (m_entries.size() > m_capacity)
+		{
+			Release(m_entries.front().value);
+			m_entries.pop_front();
+			++discarded;
+			++m_metrics.overflowDiscarded;
+		}
+		m_metrics.depth = m_entries.size();
+		return discarded;
+	}
+
+	size_t Flush()
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		const size_t discarded = m_entries.size();
+		while (!m_entries.empty())
+		{
+			Release(m_entries.front().value);
+			m_entries.pop_front();
+		}
+		m_metrics.depth = 0;
+		m_metrics.flushed += discarded;
+		return discarded;
+	}
+
+	size_t Size() const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		return m_entries.size();
+	}
+
+	EpochBoundedQueueMetrics Metrics() const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		EpochBoundedQueueMetrics metrics = m_metrics;
+		metrics.depth = m_entries.size();
+		metrics.capacity = m_capacity;
+		return metrics;
+	}
+
+private:
+	struct Entry
+	{
+		TValue value;
+		PipelineEpoch epoch;
+	};
+
+	void DiscardStaleHeadLocked(PipelineEpoch currentEpoch)
+	{
+		while (!m_entries.empty() &&
+			m_entries.front().epoch.value != currentEpoch.value)
+		{
+			Release(m_entries.front().value);
+			m_entries.pop_front();
+			++m_metrics.staleDiscarded;
+		}
+		m_metrics.depth = m_entries.size();
+	}
+
+	void Release(TValue& value)
+	{
+		m_release(value);
+	}
+
+	mutable std::mutex m_mutex;
+	std::deque<Entry> m_entries;
+	size_t m_capacity = 0;
+	TRelease m_release;
+	EpochBoundedQueueMetrics m_metrics;
+};

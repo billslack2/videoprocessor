@@ -9,7 +9,6 @@
 #pragma once
 
 
-#include <deque>
 #include <array>
 #include <condition_variable>
 #include <memory>
@@ -18,6 +17,7 @@
 #include <vector>
 
 #include <ActivePictureTransitionModel.h>
+#include <CaptureFrameQueue.h>
 #include <LiveOutputTrace.h>
 #include <microsoft_directshow/DirectShowDefines.h>
 #include "ALiveSourceVideoOutputPin.h"
@@ -37,7 +37,7 @@ class GpuSubtitleDetector;
  * This removes conversion time from the critical rendering path.
  *
  * THREAD SAFETY:
- * - m_rawQueueLock: Protects m_videoFrameQueue (raw frames from capture device)
+ * - m_captureFrameQueue: Owns raw frames from the capture device
  * - m_convertedQueueLock: Protects m_convertedSampleQueue (converted samples for delivery)
  * - m_stateLock: Protects shared state variables (m_isBuffering, m_lastSeenFrameCounter, etc.)
  * 
@@ -107,10 +107,9 @@ private:
 	// QUEUE INFRASTRUCTURE (with dedicated locks)
 	//
 	
-	// Raw frame queue (input from capture device)
-	// Protected by: m_rawQueueLock
-	std::deque<VideoFrame> m_videoFrameQueue;
-	CCritSec m_rawQueueLock;  // Protects m_videoFrameQueue only
+	// Raw frame queue (input from capture device). The queue owns the captured
+	// source-buffer reference until the conversion worker takes the frame.
+	CaptureFrameQueue m_captureFrameQueue{ 32 };
 	
 	// Pre-converted sample queue (output from conversion worker)
 	// Protected by: m_convertedQueueLock
@@ -370,8 +369,9 @@ private:
 	uint64_t m_lastSeenFrameCounter = 0;    // Track frame counter for discontinuity detection
 	DWORD m_lastAutoPurgeTime = 0;          // Last time we auto-purged the converted queue
 	DWORD m_bufferingExitTime = 0;          // When we last exited buffering mode (for grace period)
-	uint64_t m_rawOverflowLogCount = 0;      // Protected by m_rawQueueLock
-	DWORD m_lastRawOverflowLogTime = 0;      // Protected by m_rawQueueLock
+	CCritSec m_rawDiagnosticsLock;
+	uint64_t m_rawOverflowLogCount = 0;      // Protected by m_rawDiagnosticsLock
+	DWORD m_lastRawOverflowLogTime = 0;      // Protected by m_rawDiagnosticsLock
 
 	// Core proactive frame management
 	HANDLE m_hFrameAvailableEvent = nullptr;  // Event signaled when frames are added to the queue
@@ -462,9 +462,8 @@ private:
 	HRESULT CloneSampleForUpstreamRepeat(IMediaSample* source,
 		REFERENCE_TIME start, REFERENCE_TIME stop, IMediaSample** repeatSample);
 
-	// Remove all items from the videoFrameQueue
-	// CALLER MUST HOLD m_rawQueueLock
-	void PurgeQueue();
+	// Remove all raw frames and return the number released.
+	size_t PurgeQueue();
 	
 	// Purge converted sample queue
 	// CALLER MUST HOLD m_convertedQueueLock

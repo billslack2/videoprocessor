@@ -163,10 +163,7 @@ CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 			CAutoLock lock(&m_convertedQueueLock);
 			PurgeConvertedQueue();
 		}
-		{
-			CAutoLock lock(&m_rawQueueLock);
-			PurgeQueue();
-		}
+		PurgeQueue();
 	}
 	catch (...)
 	{
@@ -236,21 +233,13 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		// worker consumes a frame while Active() is still purging old queues.
 		size_t purgedRaw = 0;
 		size_t purgedConverted = 0;
+		m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
+		m_currentEpochDeliverySuccessCount.store(0, std::memory_order_release);
+		m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
+		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
+		purgedRaw = PurgeQueue();
 		{
-			CAutoLock rawLock(&m_rawQueueLock);
-			m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
-			m_currentEpochDeliverySuccessCount.store(
-				0, std::memory_order_release);
-			m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
-			m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
-			while (!m_videoFrameQueue.empty())
-			{
-				VideoFrame popFrame = m_videoFrameQueue.front();
-				popFrame.SourceBufferRelease();
-				m_videoFrameQueue.pop_front();
-				++purgedRaw;
-			}
-			m_publishedRawQueueDepth.store(0, std::memory_order_release);
+			CAutoLock diagnosticsLock(&m_rawDiagnosticsLock);
 			m_rawOverflowLogCount = 0;
 			m_lastRawOverflowLogTime = 0;
 		}
@@ -458,10 +447,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 		WriteLiveOutputTrace("inactive");
 
 		// Purge queues AFTER threads have exited
-		{
-			CAutoLock rawLock(&m_rawQueueLock);
-			PurgeQueue();
-		}
+		PurgeQueue();
 		{
 			CAutoLock convLock(&m_convertedQueueLock);
 			PurgeConvertedQueue();
@@ -541,67 +527,63 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	size_t overflowQueueSize = 0;
 	size_t overflowQueueMaxSize = 0;
 	size_t acceptedRawQueueDepth = 0;
+	if (!m_isActive.load(std::memory_order_acquire))
+		return S_OK;
+
+	// The queue performs the second epoch check while it owns its transport
+	// state. A callback that raced a reset releases its acquired source-buffer
+	// reference rather than publishing stale work into the next segment.
+	videoFrame.SourceBufferAddRef();
+	const PipelineEpoch currentEpoch{
+		m_queueEpoch.load(std::memory_order_acquire) };
+	const EpochBoundedQueuePushResult pushResult = m_captureFrameQueue.Push(
+		videoFrame, { callbackEpoch }, currentEpoch);
+	const EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
+	m_publishedRawQueueDepth.store(rawMetrics.depth, std::memory_order_release);
+	if (pushResult == EpochBoundedQueuePushResult::RejectedStale ||
+		pushResult == EpochBoundedQueuePushResult::RejectedNoCapacity)
+		return S_OK;
+
+	const size_t queueMaxSize = rawMetrics.capacity;
+	acceptedRawQueueDepth = rawMetrics.depth;
+	if (pushResult == EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard)
 	{
-		CAutoLock rawLock(&m_rawQueueLock);
-		if (!m_isActive.load(std::memory_order_acquire))
-			return S_OK;
-		// A reset or a recovery initiated by another callback may have changed
-		// epochs while this callback was waiting for the raw queue.
-		if (callbackEpoch != m_queueEpoch.load(std::memory_order_acquire))
-			return S_OK;
-
-		const size_t queueMaxSize = m_frameQueueMaxSize.load(std::memory_order_relaxed);
-
-		// Simple overflow protection - drop oldest if queue too full
-		if (m_videoFrameQueue.size() >= queueMaxSize)
+		m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 		{
-			VideoFrame oldFrame = m_videoFrameQueue.front();
-			oldFrame.SourceBufferRelease();
-			m_videoFrameQueue.pop_front();
-			m_publishedRawQueueDepth.store(
-				m_videoFrameQueue.size(), std::memory_order_release);
-			m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
-
+			CAutoLock diagnosticsLock(&m_rawDiagnosticsLock);
 			++m_rawOverflowLogCount;
 			const DWORD now = GetTickCount();
 			if (m_lastRawOverflowLogTime == 0 || now - m_lastRawOverflowLogTime >= 5000)
 			{
 				overflowLogCount = m_rawOverflowLogCount;
-				overflowFrameCounter = oldFrame.GetCounter();
-				overflowQueueSize = m_videoFrameQueue.size();
+				overflowFrameCounter = newCounter;
+				overflowQueueSize = rawMetrics.depth;
 				overflowQueueMaxSize = queueMaxSize;
 				m_rawOverflowLogCount = 0;
 				m_lastRawOverflowLogTime = now;
 			}
 		}
+	}
 
-		// Add new frame
-		videoFrame.SourceBufferAddRef();
-		m_videoFrameQueue.push_back(videoFrame);
-		m_publishedRawQueueDepth.store(
-			m_videoFrameQueue.size(), std::memory_order_release);
-		acceptedRawQueueDepth = m_videoFrameQueue.size();
-
-		// DIAGNOSTIC: Log when raw queue is backing up
-		if (m_videoFrameQueue.size() >= (queueMaxSize * 3) / 4)  // 75% threshold
+	// DIAGNOSTIC: Log when raw queue is backing up.
+	if (queueMaxSize > 0 && acceptedRawQueueDepth >= (queueMaxSize * 3) / 4)
+	{
+		static DWORD lastBackupLog = 0;
+		DWORD now = GetTickCount();
+		if (now - lastBackupLog >= 5000)  // Log at most every 5 seconds
 		{
-			static DWORD lastBackupLog = 0;
-			DWORD now = GetTickCount();
-			if (now - lastBackupLog >= 5000)  // Log at most every 5 seconds
+			uint64_t convFrames = m_conversionFrameCount.load();
+			size_t convertedSize = 0;
 			{
-				uint64_t convFrames = m_conversionFrameCount.load();
-				size_t convertedSize = 0;
-				{
-					CAutoLock convLock(&m_convertedQueueLock);
-					convertedSize = m_convertedSampleQueue.size();
-				}
-
-				DebugLog::Log("OnVideoFrame: Raw queue BACKING UP (raw=%zu/%zu, converted=%zu, buffering=%d, convFrames=%llu)",
-					m_videoFrameQueue.size(), queueMaxSize, convertedSize,
-					m_isBuffering.load(std::memory_order_acquire) ? 1 : 0,
-					convFrames);
-				lastBackupLog = now;
+				CAutoLock convLock(&m_convertedQueueLock);
+				convertedSize = m_convertedSampleQueue.size();
 			}
+
+			DebugLog::Log("OnVideoFrame: Raw queue BACKING UP (raw=%zu/%zu, converted=%zu, buffering=%d, convFrames=%llu)",
+				acceptedRawQueueDepth, queueMaxSize, convertedSize,
+				m_isBuffering.load(std::memory_order_acquire) ? 1 : 0,
+				convFrames);
+			lastBackupLog = now;
 		}
 	}
 
@@ -638,34 +620,19 @@ void CBufferedLiveSourceVideoOutputPin::SetFrameQueueMaxSize(size_t frameQueueMa
 	DebugLog::Log("SetFrameQueueMaxSize: Changing queue size from %zu to %zu",
 		m_frameQueueMaxSize.load(std::memory_order_relaxed), frameQueueMaxSize);
 
+	m_frameQueueMaxSize.store(frameQueueMaxSize, std::memory_order_release);
+	const size_t framesToPurge = m_captureFrameQueue.Resize(frameQueueMaxSize);
+	const EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
+	m_publishedRawQueueDepth.store(rawMetrics.depth, std::memory_order_release);
+	if (framesToPurge > 0)
 	{
-		CAutoLock rawLock(&m_rawQueueLock);
-
-		m_frameQueueMaxSize.store(frameQueueMaxSize, std::memory_order_release);
-
-		// If reducing queue size, intelligently purge excess frames
-		if (m_videoFrameQueue.size() > frameQueueMaxSize)
-		{
-			const size_t framesToPurge = m_videoFrameQueue.size() - frameQueueMaxSize;
-
-			DbgLog((LOG_TRACE, 1, TEXT("SetFrameQueueMaxSize(): Purging %zu excess frames due to size reduction"),
-				framesToPurge));
-			DebugLog::Log("SetFrameQueueMaxSize: Queue size reduction - purging %zu excess frames (current=%zu, new=%zu)",
-				framesToPurge, m_videoFrameQueue.size(), frameQueueMaxSize);
-
-			for (size_t i = 0; i < framesToPurge && !m_videoFrameQueue.empty(); i++)
-			{
-				VideoFrame popFrame = m_videoFrameQueue.front();
-				popFrame.SourceBufferRelease();
-				m_videoFrameQueue.pop_front();
-				m_publishedRawQueueDepth.store(
-					m_videoFrameQueue.size(), std::memory_order_release);
-				m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
-			}
-
-			DebugLog::Log("SetFrameQueueMaxSize: Purged %zu frames, queue now has %zu frames",
-				framesToPurge, m_videoFrameQueue.size());
-		}
+		DbgLog((LOG_TRACE, 1, TEXT("SetFrameQueueMaxSize(): Purging %zu excess frames due to size reduction"),
+			framesToPurge));
+		DebugLog::Log("SetFrameQueueMaxSize: Queue size reduction - purging %zu excess frames (current=%zu, new=%zu)",
+			framesToPurge, rawMetrics.depth, frameQueueMaxSize);
+		m_droppedFrameCount.fetch_add(framesToPurge, std::memory_order_relaxed);
+		DebugLog::Log("SetFrameQueueMaxSize: Purged %zu frames, queue now has %zu frames",
+			framesToPurge, rawMetrics.depth);
 	}
 
 	// Reset simple proactive state only
@@ -963,24 +930,13 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		m_sceneTimingReady.store(false, std::memory_order_release);
 		m_sceneWarmupIntervals.store(0, std::memory_order_release);
 
-		// Purge raw frames and establish the new queue epoch.
-		{
-			CAutoLock rawLock(&m_rawQueueLock);
-			m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
-			m_currentEpochDeliverySuccessCount.store(
-				0, std::memory_order_release);
-
-			size_t purgedFrames = 0;
-			while (!m_videoFrameQueue.empty())
-			{
-				VideoFrame popFrame = m_videoFrameQueue.front();
-				popFrame.SourceBufferRelease();
-				m_videoFrameQueue.pop_front();
-				++purgedFrames;
-			}
-			m_publishedRawQueueDepth.store(0, std::memory_order_release);
-			DebugLog::Log("Reset(): Purged %zu raw frames from HDMI resync", purgedFrames);
-		}
+		// Establish the new epoch before flushing. A callback that races this
+		// boundary is rejected by CaptureFrameQueue instead of becoming an
+		// accidental first sample in the new DirectShow segment.
+		m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
+		m_currentEpochDeliverySuccessCount.store(0, std::memory_order_release);
+		const size_t purgedFrames = PurgeQueue();
+		DebugLog::Log("Reset(): Purged %zu raw frames from HDMI resync", purgedFrames);
 
 		// Purge converted samples from the old segment.
 		{
@@ -1082,8 +1038,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 
 size_t CBufferedLiveSourceVideoOutputPin::GetFrameQueueSize()
 {
-	CAutoLock rawLock(&m_rawQueueLock);
-	return m_videoFrameQueue.size();
+	return m_captureFrameQueue.Size();
 }
 
 
@@ -1134,34 +1089,17 @@ bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
 }
 
 
-void CBufferedLiveSourceVideoOutputPin::PurgeQueue()
+size_t CBufferedLiveSourceVideoOutputPin::PurgeQueue()
 {
-	// NOTE: Caller MUST hold m_rawQueueLock
-	size_t purgedFrames = 0;
-
-	while (!m_videoFrameQueue.empty())
-	{
-		VideoFrame popFrame = m_videoFrameQueue.front();
-		m_videoFrameQueue.pop_front();
-		m_publishedRawQueueDepth.store(
-			m_videoFrameQueue.size(), std::memory_order_release);
-
-		try
-		{
-			popFrame.SourceBufferRelease();
-			++purgedFrames;
-		}
-		catch (...)
-		{
-			DbgLog((LOG_WARNING, 1, TEXT("PurgeQueue(): Exception during frame release %zu"), purgedFrames));
-		}
-	}
+	const size_t purgedFrames = m_captureFrameQueue.Flush();
+	m_publishedRawQueueDepth.store(0, std::memory_order_release);
 	m_droppedFrameCount.fetch_add(purgedFrames, std::memory_order_relaxed);
 
 	if (purgedFrames > 0)
 	{
 		DbgLog((LOG_TRACE, 1, TEXT("PurgeQueue(): Purged %zu raw frames"), purgedFrames));
 	}
+	return purgedFrames;
 }
 
 
@@ -1383,8 +1321,6 @@ REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::NextFrameTimestamp() const
 
 REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::CalculateEnhancedNextTimestamp() const
 {
-	CAutoLock rawLock(const_cast<CCritSec*>(&m_rawQueueLock));
-
 	// SAFETY: Check if timing clock is initialized
 	if (!m_timingClock)
 	{
@@ -1393,10 +1329,10 @@ REFERENCE_TIME CBufferedLiveSourceVideoOutputPin::CalculateEnhancedNextTimestamp
 	}
 
 	// If queue has next frame, use its hardware timestamp
-	if (!m_videoFrameQueue.empty())
+	VideoFrame nextFrame{};
+	if (m_captureFrameQueue.TryPeekCurrent(
+		{ m_queueEpoch.load(std::memory_order_acquire) }, nextFrame))
 	{
-		const VideoFrame& nextFrame = m_videoFrameQueue.front();
-
 		// Convert hardware timestamp to REFERENCE_TIME using integer math utility
 		const REFERENCE_TIME hardwareStopTime = ConvertTimingClockToReferenceTime(
 			nextFrame.GetTimingTimestamp(),
@@ -1435,8 +1371,7 @@ CBufferedLiveSourceVideoOutputPin::ProactiveQueueMetrics CBufferedLiveSourceVide
 	ProactiveQueueMetrics metrics = {};
 
 	{
-		CAutoLock rawLock(const_cast<CCritSec*>(&m_rawQueueLock));
-		metrics.currentSize = m_videoFrameQueue.size();
+		metrics.currentSize = m_captureFrameQueue.Size();
 	}
 
 	{
@@ -2690,27 +2625,19 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			size_t rawQueueSize = 0;
 			uint64_t frameQueueEpoch = 0;
 
+			if (!m_isActive.load(std::memory_order_acquire))
 			{
-				CAutoLock rawLock(&m_rawQueueLock);
-
-				if (!m_isActive.load(std::memory_order_acquire))
-				{
-					DebugLog::Log("CONVERSION WORKER: Not active during raw frame check, returning");
-					return 0;
-				}
-
-				rawQueueSize = m_videoFrameQueue.size();
-				if (!m_videoFrameQueue.empty())
-				{
-					videoFrame = m_videoFrameQueue.front();
-					m_videoFrameQueue.pop_front();
-					m_publishedRawQueueDepth.store(
-						m_videoFrameQueue.size(),
-						std::memory_order_release);
-					frameQueueEpoch = m_queueEpoch.load(std::memory_order_relaxed);
-					hasFrame = true;
-				}
+				DebugLog::Log("CONVERSION WORKER: Not active during raw frame check, returning");
+				return 0;
 			}
+			const PipelineEpoch currentEpoch{
+				m_queueEpoch.load(std::memory_order_acquire) };
+			hasFrame = m_captureFrameQueue.TryPopCurrent(currentEpoch, videoFrame);
+			const EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
+			rawQueueSize = rawMetrics.depth;
+			m_publishedRawQueueDepth.store(rawQueueSize, std::memory_order_release);
+			if (hasFrame)
+				frameQueueEpoch = currentEpoch.value;
 
 			if (!hasFrame)
 			{
@@ -2957,10 +2884,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 		{
 			size_t rawQueueSize = 0;
 			size_t convertedQueueSize = 0;
-			{
-				CAutoLock rawLock(&m_rawQueueLock);
-				rawQueueSize = m_videoFrameQueue.size();
-			}
+			rawQueueSize = m_captureFrameQueue.Size();
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
 				convertedQueueSize = m_convertedSampleQueue.size();
