@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0066`
-- Next root story number: `VP-0067`
-- Total indexed items: 69
+- Last assigned root story: `VP-0067`
+- Next root story number: `VP-0068`
+- Total indexed items: 70
 
 ## Story locations
 
@@ -91,6 +91,7 @@ they must not contain requirements that are absent from this file.
 | VP-0064 | Done | Persisted Alpha SDR BT.2020 output and clear OSD reporting |
 | VP-0065 | Review | Invalidate stale frames during channel and stream transitions |
 | VP-0066 | Backlog | Re-architect the live video output pipeline into testable components |
+| VP-0067 | Backlog | Upgrade VideoProcessor to C++17 |
 | VP-0066-1 | In Progress | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Backlog | Extract a graph-independent video timing controller |
 | VP-0066-3 | Backlog | Extract epoch-aware frame transport and processing components |
