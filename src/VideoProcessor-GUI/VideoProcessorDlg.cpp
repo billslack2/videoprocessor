@@ -716,7 +716,7 @@ private:
 			constexpr double kInitialMeasurementSeconds = 1.0;
 			constexpr double kPublishIntervalSeconds = 1.0;
 			constexpr double kStableMeasurementSeconds = 30.0;
-			constexpr double kRecentMeasurementSeconds = 5.0;
+			constexpr double kRecentMeasurementSeconds = 10.0;
 			constexpr double kMaterialRateChangeRatio = 0.001;
 			LARGE_INTEGER first = {};
 			LARGE_INTEGER last = {};
@@ -4618,6 +4618,19 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			ResetScopeName(completion.request.scope),
 			completion.failure.empty() ? "" : " failure=",
 			completion.failure.empty() ? "" : completion.failure.c_str());
+		if (currentSuccess && m_activeRendererIsDirectShow)
+		{
+			// A completed DirectShow reset may represent a real HDMI re-sync even
+			// when the renderer object itself survived. No readiness conclusion may
+			// use rate evidence gathered before that lifecycle boundary.
+			g_displayRefreshRateSampler->ResetMeasurement();
+			DebugLog::Log(
+				"Display-rate measurement reset after successful DirectShow reset: "
+				"operation=%llu reason=%s scope=%s",
+				static_cast<unsigned long long>(completion.operationId),
+				CStringA(ToString(completion.request.reason)).GetString(),
+				ResetScopeName(completion.request.scope));
+		}
 		if (completion.request.scope != RendererResetScope::LiveQueue)
 			m_lastLivenessRecoveryTick = now;
 		m_consecutiveStuckSeconds = 0;
@@ -6796,6 +6809,13 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		sampledDisplayTiming.intervalsObserved;
 	displayRateInput.rawWaitIntervals =
 		sampledDisplayTiming.rawWaitIntervalsObserved;
+	displayRateInput.readinessObservationSeconds =
+		sampledDisplayTiming.qpcFrequency > 0 &&
+		sampledDisplayTiming.measurementStartedQpc > 0 &&
+		qpcNow.QuadPart >= sampledDisplayTiming.measurementStartedQpc ?
+			static_cast<double>(qpcNow.QuadPart -
+				sampledDisplayTiming.measurementStartedQpc) /
+				static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
 	displayRateInput.fresh = sampledRateIsFresh;
 	displayRateInput.stable = sampledDisplayTiming.rateStable;
 	const DisplayRefreshRateResult displayRateResult =
@@ -7032,7 +7052,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	{
 		DebugLog::Log(
 			"Output readiness observation (passive): generation=%u graph=%d "
-			"expected=%.6fHz observed=%.6fHz display=%s/%s readiness_validated=%d state=%s "
+			"expected=%.6fHz observed=%.6fHz display=%s/%s readiness_evidence=%.1fs readiness_validated=%d state=%s "
 			"reason=%s would_request_reset=%d discard=%d admit=%d deliver=%d",
 			m_transitionGeneration,
 			readinessInput.graphOperational ? 1 : 0,
@@ -7040,6 +7060,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			readinessInput.observedOutputRefreshHz,
 			ToString(displayRateResult.decision),
 			ToString(displayRateResult.reason),
+			displayRateInput.readinessObservationSeconds,
 			displayRateResult.readinessValidated ? 1 : 0,
 			ToString(readinessDecision.state),
 			ToString(readinessDecision.reason),

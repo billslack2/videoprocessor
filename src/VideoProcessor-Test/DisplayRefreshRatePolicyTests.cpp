@@ -24,6 +24,7 @@ namespace Tests
 			input.maximumWaitIntervalMs = 1000.0 / nominalRateHz * 2.05;
 			input.compensatedIntervals = 1800;
 			input.rawWaitIntervals = 1798;
+			input.readinessObservationSeconds = 10.0;
 			input.fresh = true;
 			input.stable = true;
 			return input;
@@ -114,6 +115,20 @@ namespace Tests
 			const auto result = EvaluateDisplayRefreshRate(input);
 
 			Assert::AreEqual(Decision(DisplayRefreshRateDecision::Quarantined),
+				Decision(result.decision));
+			Assert::IsFalse(result.readinessValidated);
+			Assert::AreEqual(0.0, result.readinessRateHz);
+		}
+
+		TEST_METHOD(ShortObservationCannotBecomeAnOutputReadinessSignal)
+		{
+			auto input = StableInput(59.9405, 59.941);
+			input.stable = false;
+			input.readinessObservationSeconds = 9.999;
+
+			const auto result = EvaluateDisplayRefreshRate(input);
+
+			Assert::AreEqual(Decision(DisplayRefreshRateDecision::Warming),
 				Decision(result.decision));
 			Assert::IsFalse(result.readinessValidated);
 			Assert::AreEqual(0.0, result.readinessRateHz);

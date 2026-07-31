@@ -35,6 +35,9 @@ struct DisplayRefreshRateInput
 	double maximumWaitIntervalMs = 0.0;
 	uint64_t compensatedIntervals = 0;
 	uint64_t rawWaitIntervals = 0;
+	// Duration of the current, post-transition observation window. This is
+	// distinct from the longer phase-correction stability requirement.
+	double readinessObservationSeconds = 0.0;
 	bool fresh = false;
 	bool stable = false;
 };
