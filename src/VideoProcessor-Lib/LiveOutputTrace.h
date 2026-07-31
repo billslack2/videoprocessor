@@ -27,6 +27,10 @@ struct LiveOutputTraceRecord
 	uint64_t frameNumber = 0;
 	uint64_t pipelineEpoch = 0;
 	uint64_t captureTimestamp = 0;
+	// Same GetTickCount64 domain as eventTick. This is VP's measurable
+	// capture-accepted-to-delivery interval; captureTimestamp remains the
+	// source timing-clock value used for timing diagnostics.
+	uint64_t captureArrivalTick = 0;
 	uint64_t eventTick = 0;
 	int64_t presentationStart = 0;
 	int64_t presentationStop = 0;
@@ -168,14 +172,15 @@ public:
 		std::ostream& stream,
 		const std::vector<LiveOutputTraceRecord>& records)
 	{
-		stream << "sequence,kind,frame,epoch,capture_timestamp,event_tick,"
+		stream << "sequence,kind,frame,epoch,capture_timestamp,capture_arrival_tick,event_tick,"
 			"presentation_start,presentation_stop,raw_queue,converted_queue,total_queue,queue_capacity,"
 			"processing_us,delivery_us,delivery_result,scene_boundary,intentional_drop\n";
 		for (const LiveOutputTraceRecord& record : records)
 		{
 			stream << record.sequence << ',' << static_cast<unsigned>(record.kind) << ','
 				<< record.frameNumber << ',' << record.pipelineEpoch << ','
-				<< record.captureTimestamp << ',' << record.eventTick << ','
+				<< record.captureTimestamp << ',' << record.captureArrivalTick << ','
+				<< record.eventTick << ','
 				<< record.presentationStart << ',' << record.presentationStop << ','
 				<< record.rawQueueDepth << ',' << record.convertedQueueDepth << ','
 				<< record.totalQueueDepth << ',' << record.queueCapacity << ','

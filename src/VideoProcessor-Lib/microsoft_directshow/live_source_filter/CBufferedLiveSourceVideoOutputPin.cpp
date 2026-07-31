@@ -536,11 +536,14 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	// The queue performs the second epoch check while it owns its transport
 	// state. A callback that raced a reset releases its acquired source-buffer
 	// reference rather than publishing stale work into the next segment.
-	videoFrame.SourceBufferAddRef();
+	const uint64_t captureArrivalTick = GetTickCount64();
+	VideoFrame capturedFrame = videoFrame;
+	capturedFrame.SetCaptureArrivalTick(captureArrivalTick);
+	capturedFrame.SourceBufferAddRef();
 	const PipelineEpoch currentEpoch{
 		m_queueEpoch.load(std::memory_order_acquire) };
 	const EpochBoundedQueuePushResult pushResult = m_captureFrameQueue.Push(
-		videoFrame, { callbackEpoch }, currentEpoch);
+		std::move(capturedFrame), { callbackEpoch }, currentEpoch);
 	const EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
 	m_publishedRawQueueDepth.store(rawMetrics.depth, std::memory_order_release);
 	if (pushResult == EpochBoundedQueuePushResult::RejectedStale ||
@@ -596,7 +599,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	captureTrace.pipelineEpoch = callbackEpoch;
 	captureTrace.captureTimestamp =
 		static_cast<uint64_t>(videoFrame.GetTimingTimestamp());
-	captureTrace.eventTick = GetTickCount64();
+	captureTrace.captureArrivalTick = captureArrivalTick;
+	captureTrace.eventTick = captureArrivalTick;
 	captureTrace.rawQueueDepth = static_cast<uint32_t>(acceptedRawQueueDepth);
 	captureTrace.convertedQueueDepth = static_cast<uint32_t>(
 		m_publishedConvertedQueueDepth.load(std::memory_order_acquire));
@@ -1236,7 +1240,7 @@ void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace(const char* boundar
 	{
 		manifest << std::fixed << std::setprecision(6);
 		manifest << "{\n";
-		manifest << "  \"schema_version\": 1,\n";
+		manifest << "  \"schema_version\": 2,\n";
 		manifest << "  \"run_id\": " << m_liveOutputTraceRunId << ",\n";
 		manifest << "  \"export_boundary\": \"" << boundary << "\",\n";
 		manifest << "  \"pipeline_epoch\": " << epoch << ",\n";
@@ -1469,6 +1473,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		uint64_t timingGeneration = 0;
 		uint64_t frameNumber = 0;
 		uint64_t captureTimestamp = 0;
+		uint64_t captureArrivalTick = 0;
 		uint32_t processingDurationUs = 0;
 		uint64_t sceneEventId = 0;
 		long double phaseBefore = 0.0L;
@@ -1536,6 +1541,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		uint64_t expectedQueueEpoch,
 		uint64_t frameNumber,
 		uint64_t captureTimestamp,
+		uint64_t captureArrivalTick,
 		uint32_t processingDurationUs,
 		bool sceneBoundary) -> HRESULT
 	{
@@ -1568,6 +1574,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		deliveryAttemptTrace.frameNumber = frameNumber;
 		deliveryAttemptTrace.pipelineEpoch = expectedQueueEpoch;
 		deliveryAttemptTrace.captureTimestamp = captureTimestamp;
+		deliveryAttemptTrace.captureArrivalTick = captureArrivalTick;
 		deliveryAttemptTrace.eventTick = GetTickCount64();
 		deliveryAttemptTrace.presentationStart = presentationStart;
 		deliveryAttemptTrace.presentationStop = presentationStop;
@@ -1758,6 +1765,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				pendingUpstreamRepeat.queueEpoch,
 				pendingUpstreamRepeat.frameNumber,
 				pendingUpstreamRepeat.captureTimestamp,
+				pendingUpstreamRepeat.captureArrivalTick,
 				pendingUpstreamRepeat.processingDurationUs,
 				pendingUpstreamRepeat.atSceneBoundary);
 			if (SUCCEEDED(repeatHr))
@@ -2393,6 +2401,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				currentQueueEpoch,
 				convertedSample.frameNumber,
 				convertedSample.captureTimestamp,
+				convertedSample.captureArrivalTick,
 				convertedSample.processingDurationUs,
 				correctionAtSceneBoundary);
 
@@ -2410,6 +2419,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				pendingUpstreamRepeat.frameNumber = convertedSample.frameNumber;
 				pendingUpstreamRepeat.captureTimestamp =
 					convertedSample.captureTimestamp;
+				pendingUpstreamRepeat.captureArrivalTick =
+					convertedSample.captureArrivalTick;
 				pendingUpstreamRepeat.processingDurationUs =
 					convertedSample.processingDurationUs;
 				pendingUpstreamRepeat.sceneEventId = sceneEventId;
@@ -2667,6 +2678,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				{ frameQueueEpoch },
 				videoFrame.GetCounter(),
 				static_cast<uint64_t>(videoFrame.GetTimingTimestamp()),
+				videoFrame.GetCaptureArrivalTick(),
 				0 });
 			hr = processing.result;
 			const uint64_t convTimeUs = processing.processingDurationUs;
@@ -2857,6 +2869,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				conversionTrace.pipelineEpoch = frameQueueEpoch;
 				conversionTrace.captureTimestamp =
 					static_cast<uint64_t>(videoFrame.GetTimingTimestamp());
+				conversionTrace.captureArrivalTick =
+					videoFrame.GetCaptureArrivalTick();
 				conversionTrace.eventTick = GetTickCount64();
 				conversionTrace.rawQueueDepth = static_cast<uint32_t>(
 					m_publishedRawQueueDepth.load(std::memory_order_acquire));

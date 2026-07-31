@@ -16,6 +16,7 @@ struct ProcessedFrame
 	IMediaSample* sample = nullptr;
 	uint64_t frameNumber = 0;
 	uint64_t captureTimestamp = 0;
+	uint64_t captureArrivalTick = 0;
 	uint32_t processingDurationUs = 0;
 	bool isSafeCorrectionPoint = false;
 	uint64_t sceneEventId = 0;

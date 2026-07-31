@@ -47,6 +47,8 @@ namespace Tests
 
 			Assert::IsFalse(LiveOutputTrace::Compare({ expected }, { actual }, 3).equivalent);
 			Assert::IsTrue(LiveOutputTrace::Compare({ expected }, { actual }, 4).equivalent);
+			actual.captureArrivalTick = 123456;
+			Assert::IsTrue(LiveOutputTrace::Compare({ expected }, { actual }, 4).equivalent);
 
 			actual.convertedQueueDepth = 2;
 			Assert::IsFalse(LiveOutputTrace::Compare({ expected }, { actual }, 4).equivalent);
@@ -59,6 +61,7 @@ namespace Tests
 			record.kind = LiveOutputTraceKind::DeliveryCompleted;
 			record.frameNumber = 100;
 			record.pipelineEpoch = 3;
+			record.captureArrivalTick = 456;
 			record.rawQueueDepth = 2;
 			record.convertedQueueDepth = 4;
 			record.totalQueueDepth = 6;
@@ -69,6 +72,7 @@ namespace Tests
 			const std::string csv = stream.str();
 
 			Assert::IsTrue(csv.find("raw_queue,converted_queue,total_queue,queue_capacity") != std::string::npos);
+			Assert::IsTrue(csv.find("capture_arrival_tick") != std::string::npos);
 			Assert::IsTrue(csv.find("madvr") == std::string::npos);
 			Assert::IsTrue(csv.find("1,3") != std::string::npos);
 		}

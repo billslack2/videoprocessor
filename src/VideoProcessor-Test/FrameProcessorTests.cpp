@@ -32,6 +32,7 @@ namespace Tests
 			input.epoch = { 12 };
 			input.sourceFrameNumber = 99;
 			input.captureTimestamp = 123456;
+			input.captureArrivalTick = 654321;
 			input.sceneTimingGeneration = 23;
 
 			const FrameProcessorResult result = processor.Process(input);
@@ -43,6 +44,7 @@ namespace Tests
 			Assert::IsTrue(sample == result.frame.sample);
 			Assert::AreEqual<uint64_t>(99, result.frame.frameNumber);
 			Assert::AreEqual<uint64_t>(123456, result.frame.captureTimestamp);
+			Assert::AreEqual<uint64_t>(654321, result.frame.captureArrivalTick);
 			Assert::AreEqual<uint64_t>(12, result.frame.queueEpoch);
 			Assert::AreEqual<uint64_t>(23, result.frame.sceneTimingGeneration);
 		}
