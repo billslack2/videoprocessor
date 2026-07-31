@@ -4618,14 +4618,16 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			ResetScopeName(completion.request.scope),
 			completion.failure.empty() ? "" : " failure=",
 			completion.failure.empty() ? "" : completion.failure.c_str());
-		if (currentSuccess && m_activeRendererIsDirectShow)
+		if (currentSuccess && m_activeRendererIsDirectShow &&
+			completion.request.scope != RendererResetScope::LiveQueue)
 		{
-			// A completed DirectShow reset may represent a real HDMI re-sync even
-			// when the renderer object itself survived. No readiness conclusion may
-			// use rate evidence gathered before that lifecycle boundary.
+			// A completed stop/run or retarget transaction may represent a real
+			// HDMI re-sync even when the renderer object itself survived. A
+			// LiveQueue reset only flushes VP source queues while madVR and the
+			// graph keep running, so it intentionally preserves measurement history.
 			g_displayRefreshRateSampler->ResetMeasurement();
 			DebugLog::Log(
-				"Display-rate measurement reset after successful DirectShow reset: "
+				"Display-rate measurement reset after successful DirectShow graph reset: "
 				"operation=%llu reason=%s scope=%s",
 				static_cast<unsigned long long>(completion.operationId),
 				CStringA(ToString(completion.request.reason)).GetString(),
