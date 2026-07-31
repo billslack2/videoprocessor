@@ -6,12 +6,13 @@ In Progress (2026-07-31). The graph-independent C++14 state machine and
 DirectShow reserve gate are implemented, unit-tested, and now actuated. Normal
 live video starts provisionally. Once VP observes two seconds of credible,
 fresh DXGI `WaitForVBlank` evidence that also passes raw-cadence, interval,
-harmonic, and Windows output-family validation, it makes one serialized
-**LiveQueue** reset and starts a fresh epoch. The DirectShow pin then pre-fills
-and retains a VP-owned reserve of eight converted frames (bounded by queue
-capacity) before resuming drain. This deliberately replaces the legacy
-five-second DirectShow post-start reset, whose fixed timing made the resulting
-queue depth depend on display/HDMI handshakes.
+harmonic, and Windows output-family validation, it waits for a measured VP
+startup reservoir of `capacity - reserve` frames (24 with the current 32/8
+policy). It then makes one serialized **DirectShow graph re-prime**, preserving
+the selecting DXGI evidence through that intentional reset. The new epoch
+retains a VP-owned reserve of eight converted frames (bounded by capacity).
+This replaces the legacy five-second post-start reset with a repeatable queue
+condition while retaining the empirically proven madVR re-prime lifecycle.
 
 This is not a first-image or HDMI-lock gate: provisional frames may display
 and may stutter before the reset. The priority is a deterministic VP queue
@@ -20,9 +21,10 @@ The five-second quarantine plus ten-second clean current-rate evidence remains
 for longer readiness diagnostics, while the 30-second recency-weighted phase
 confidence remains solely for phase-sensitive correction. The estimator keeps
 up to two minutes of history with a 20-second recency half-life; material
-current/weighted disagreement starts a fresh measurement generation. Graph and
-graph-retarget resets invalidate measurement; a VP-only live-queue flush does
-not because the renderer/display path stays intact.
+current/weighted disagreement starts a fresh measurement generation. External
+graph and graph-retarget resets invalidate measurement. The intentional
+output-readiness graph re-prime preserves its already validated selecting
+measurement so it cannot loop.
 
 ## Parent and dependency
 
@@ -50,14 +52,15 @@ family. The longer weighted phase-stability predicate remains separate. This is 
 deterministic renderer-readiness gate, not proof that a projector, AVR, or
 HDMI sink has physically locked.
 
-Before evidence is available, normal live delivery remains open. On the first
-accepted short readiness observation VP publishes its internal eight-frame
-reserve, requests exactly one serialized LiveQueue reset, and flushes all
-earlier work. The fresh epoch created by that reset is the only epoch allowed
-to form the prefill. The buffered DirectShow pin itself holds delivery until
-the reserve is present, then drains only above that floor so steady state
-retains it. The policy distinguishes VP reserve from presentation lead and
-does not expose an arbitrary user-configurable delay.
+Before evidence is available, normal live delivery remains open. After short
+readiness validation, VP waits for its exact 24-frame startup reservoir, then
+publishes its internal eight-frame reserve and requests exactly one serialized
+DirectShow graph re-prime. This preserves the established madVR lifecycle that
+empirically fills its independently configurable queues without VP attempting
+to size or observe them. The fresh epoch created by that re-prime is the only
+epoch allowed to form the eight-frame VP steady floor. The policy distinguishes
+VP reserve from presentation lead and does not expose an arbitrary
+user-configurable delay.
 
 ## Acceptance criteria
 
@@ -68,9 +71,10 @@ does not expose an arbitrary user-configurable delay.
 - The controller accepts a supplied validated display measurement; it does not
   call madVR, scrape OSD text, use `Deliver()` duration, or claim downstream
   queue occupancy or HDMI-lock proof.
-- A validated two-second credible DXGI-vblank observation requests one
-  serialized DirectShow LiveQueue reset. VP may show provisional video before
-  that point; it never waits ten or thirty seconds for a first image.
+- A validated two-second credible DXGI-vblank observation plus the exact
+  VP `capacity - reserve` startup reservoir requests one serialized DirectShow
+  graph re-prime. VP may show provisional video before that point; it never
+  waits ten or thirty seconds for a first image.
 - The DirectShow pin retains an internally selected eight-frame converted VP
   reserve (bounded by capacity) after the fresh-epoch reset. Completion and
   queue depth come from the epoch-owned VP liveness snapshot, never
