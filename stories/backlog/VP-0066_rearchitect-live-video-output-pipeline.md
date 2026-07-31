@@ -3,9 +3,9 @@
 ## Status
 
 In Progress (2026-07-30). This is a large, behavior-preserving architecture
-story. VP-0066-1 and VP-0066-2 are accepted; VP-0066-3 may now extract the
-queue/processor seam. The root remains incomplete until all four child tasks
-and the cross-component latency guardrail pass.
+story. VP-0066-1 and VP-0066-2 are accepted; VP-0066-3 and VP-0066-4 remain
+in progress. The root remains incomplete until its child tasks and the
+cross-component latency guardrail pass.
 
 ## Decomposition
 
@@ -26,9 +26,12 @@ class extractions:
    whole-pipeline regression validation.
 5. [VP-0066-5](VP-0066-5_extract-subtitle-analysis-and-relocation.md) —
    extract the separately-scoped subtitle analysis and relocation feature.
+6. [VP-0066-6](VP-0066-6_output-readiness-and-deterministic-prefill.md) -
+   introduce the separately approved deterministic output-readiness and
+   post-ready prefill policy after the behavior-preserving seams are proven.
 
 Each task depends on the preceding task's accepted evidence. This root may
-move to `Done` only after all four children are done and its complete
+move to `Done` only after its child tasks are done and its complete
 cross-component acceptance criteria and latency guardrail have passed.
 
 ## User story
@@ -142,7 +145,8 @@ the result is deterministic and consistent across equivalent starts.
 
 The desired post-refactor behavioural improvement is a static, testable
 startup/prefill policy, not a dynamic renderer-feedback controller. Its
-configuration must distinguish:
+internal policy must distinguish (without introducing a user-configurable
+arbitrary delay):
 
 - `vp_reserve_frames`: the minimum current-epoch converted-frame reserve VP
   retains for its own jitter protection;
