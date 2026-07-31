@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 
+#include <ActivePictureAnalyzer.h>
 #include <ProcessedFrameQueue.h>
 #include <SceneDetector.h>
 #include <VideoFrame.h>
@@ -65,9 +66,13 @@ public:
 
 	void Configure(ConvertCallback convert, ClockCallback clock);
 	FrameProcessorResult Process(const FrameProcessorInput& input) const;
+	ActivePictureAnalyzerResult AnalyzeActivePicture(
+		const ActivePictureAnalyzerInput& input);
+	void ResetActivePicture();
 	SceneAnalysisResult AnalyzeScene(const SceneAnalysisInput& input) const;
 
 private:
 	ConvertCallback m_convert;
 	ClockCallback m_clock;
+	ActivePictureAnalyzer m_activePictureAnalyzer;
 };

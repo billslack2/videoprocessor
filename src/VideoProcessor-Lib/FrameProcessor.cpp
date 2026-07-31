@@ -45,6 +45,17 @@ FrameProcessorResult FrameProcessor::Process(const FrameProcessorInput& input) c
 	return result;
 }
 
+ActivePictureAnalyzerResult FrameProcessor::AnalyzeActivePicture(
+	const ActivePictureAnalyzerInput& input)
+{
+	return m_activePictureAnalyzer.Analyze(input);
+}
+
+void FrameProcessor::ResetActivePicture()
+{
+	m_activePictureAnalyzer.Reset();
+}
+
 SceneAnalysisResult FrameProcessor::AnalyzeScene(
 	const SceneAnalysisInput& input) const
 {
