@@ -2,9 +2,11 @@
 
 ## Status
 
-Backlog. This is the first deliberately behavior-changing follow-up after the
-VP-0066 behavior-preserving seams have sufficient trace and live-validation
-evidence.
+In Progress (2026-07-30). The graph-independent C++14 state-machine model is
+implemented and covered by controlled tests. It is intentionally not connected
+to capture, reset, or delivery yet, so this checkpoint does not change live
+behavior. Integration begins only after the VP-0066-3 and VP-0066-4 guardrail
+evidence is accepted.
 
 ## Parent and dependency
 
