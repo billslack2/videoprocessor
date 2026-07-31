@@ -1536,13 +1536,21 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			expectedQueueEpoch != m_queueEpoch.load(std::memory_order_acquire))
 			return VFW_E_WRONG_STATE;
 
-		const auto deliveryStartTime = GetWallClockTime();
 		m_deliveryAttemptCount.fetch_add(1, std::memory_order_relaxed);
 		m_lastDeliveryStartTick.store(
 			GetTickCount64(), std::memory_order_release);
 		m_deliveryInProgress.store(true, std::memory_order_release);
-		const uint64_t mediaTypeGeneration =
-			AttachPendingMediaType(sample);
+		const DirectShowDeliveryTicket deliveryTicket =
+			m_directShowFrameDeliverer.Begin(
+				sample,
+				[this](IMediaSample* deliverySample)
+				{
+					return AttachPendingMediaType(deliverySample);
+				},
+				[]()
+				{
+					return GetWallClockTime();
+				});
 
 		REFERENCE_TIME presentationStart = 0;
 		REFERENCE_TIME presentationStop = 0;
@@ -1562,11 +1570,24 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		deliveryAttemptTrace.processingDurationUs = processingDurationUs;
 		deliveryAttemptTrace.sceneBoundary = sceneBoundary;
 		m_liveOutputTrace.Record(deliveryAttemptTrace);
-		const HRESULT result = Deliver(sample);
+		const DirectShowDeliveryResult deliveryResult =
+			m_directShowFrameDeliverer.Complete(
+				deliveryTicket,
+				[this](IMediaSample* deliverySample)
+				{
+					return Deliver(deliverySample);
+				},
+				[this](uint64_t mediaTypeGeneration, HRESULT result)
+				{
+					CompletePendingMediaType(mediaTypeGeneration, result);
+				},
+				[]()
+				{
+					return GetWallClockTime();
+				});
 		m_deliveryInProgress.store(false, std::memory_order_release);
-		CompletePendingMediaType(mediaTypeGeneration, result);
-		const auto deliveryEndTime = GetWallClockTime();
-		const uint64_t deliveryTimeUs = (deliveryEndTime - deliveryStartTime) / 10;
+		const HRESULT result = deliveryResult.result;
+		const uint64_t deliveryTimeUs = deliveryResult.durationUs;
 		LiveOutputTraceRecord deliveryCompleteTrace = deliveryAttemptTrace;
 		deliveryCompleteTrace.kind = LiveOutputTraceKind::DeliveryCompleted;
 		deliveryCompleteTrace.eventTick = GetTickCount64();
