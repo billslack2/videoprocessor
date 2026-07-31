@@ -21,6 +21,7 @@
 
 #include <ConfigFile.h>
 #include <DirectShowDeliveryOutcome.h>
+#include <RationalLiveOutputSequencer.h>
 #include "CBufferedLiveSourceVideoOutputPin.h"
 #include "WindowsOcrSubtitleDetector.h"
 #include "GpuSubtitleDetector.h"
@@ -1485,6 +1486,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	DWORD lastFrameIntervalUpdateTime = GetTickCount();
 	uint64_t lastSuccessfullyDeliveredEpoch = UINT64_MAX;
 	DirectShowDeliveryOutcomeClassifier deliveryOutcomeClassifier;
+	// VP-0066-9: this is deliberately shadow-only.  It models the timestamp
+	// sequence at the final delivery boundary, where a future convergence step
+	// may discard stale live pictures without leaving a DirectShow time hole.
+	// Existing sample timestamps still remain authoritative in this build.
+	RationalLiveOutputSequencer deliveryTimestampShadow(
+		m_timeScale, m_frameDurationTicks, m_frameDuration);
+	bool deliveryTimestampShadowHasOffset = false;
+	REFERENCE_TIME deliveryTimestampShadowOffset = 0;
+	DWORD lastDeliveryTimestampShadowMismatchLogTick = 0;
 
 	// When Scene Detect is enabled, madVR receives a coherent output cadence at
 	// the measured physical display rate. The content phase tracks the capture
@@ -1594,6 +1604,49 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		m_lastDeliveryStartTick.store(
 			GetTickCount64(), std::memory_order_release);
 		m_deliveryInProgress.store(true, std::memory_order_release);
+		const bool timestampShadowEnabled =
+			m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL &&
+			!(m_sceneAwareTimingCorrection.load(std::memory_order_acquire) &&
+				IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010));
+		RationalLiveOutputTimestampDecision timestampShadowDecision;
+		if (timestampShadowEnabled)
+		{
+			timestampShadowDecision = deliveryTimestampShadow.Preview(
+				{ expectedQueueEpoch, GetCurrentPPMCorrection(),
+					GetRationalPipelineOffset(), 0 });
+		}
+
+		REFERENCE_TIME presentationStart = 0;
+		REFERENCE_TIME presentationStop = 0;
+		(void)sample->GetTime(&presentationStart, &presentationStop);
+		if (timestampShadowEnabled && timestampShadowDecision.valid)
+		{
+			if (!deliveryTimestampShadowHasOffset)
+			{
+				deliveryTimestampShadowOffset =
+					presentationStart - timestampShadowDecision.start;
+				deliveryTimestampShadowHasOffset = true;
+			}
+			else
+			{
+				const REFERENCE_TIME expectedStart =
+					timestampShadowDecision.start + deliveryTimestampShadowOffset;
+				const REFERENCE_TIME drift = presentationStart - expectedStart;
+				if (std::llabs(drift) > 1)
+				{
+					const DWORD now = GetTickCount();
+					if (lastDeliveryTimestampShadowMismatchLogTick == 0 ||
+						now - lastDeliveryTimestampShadowMismatchLogTick >= 5000)
+					{
+						DebugLog::Log(
+							"VP-0066-9 DELIVERY TIMESTAMP SHADOW: current=%lld "
+							"expected=%lld drift=%+lld ticks (shadow only)",
+							presentationStart, expectedStart, drift);
+						lastDeliveryTimestampShadowMismatchLogTick = now;
+					}
+				}
+			}
+		}
 		const DirectShowDeliveryTicket deliveryTicket =
 			m_directShowFrameDeliverer.Begin(
 				sample,
@@ -1606,9 +1659,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					return GetWallClockTime();
 				});
 
-		REFERENCE_TIME presentationStart = 0;
-		REFERENCE_TIME presentationStop = 0;
-		(void)sample->GetTime(&presentationStart, &presentationStop);
 		LiveOutputTraceRecord deliveryAttemptTrace;
 		deliveryAttemptTrace.kind = LiveOutputTraceKind::DeliveryAttempted;
 		deliveryAttemptTrace.frameNumber = frameNumber;
@@ -1694,6 +1744,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		}
 		else if (outcome.deliverySucceeded)
 		{
+			if (timestampShadowEnabled &&
+				!deliveryTimestampShadow.Commit(timestampShadowDecision))
+			{
+				DebugLog::Log(
+					"VP-0066-9 DELIVERY TIMESTAMP SHADOW: failed to commit "
+					"successful delivery sequence (epoch=%llu)",
+					expectedQueueEpoch);
+			}
 			if (outcome.clearRecentFailures)
 				m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
 			m_currentEpochDeliverySuccessCount.fetch_add(

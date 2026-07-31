@@ -192,6 +192,7 @@
 	<ClInclude Include="FrameProcessor.h" />
 	<ClInclude Include="LiveEpochConvergenceController.h" />
 	<ClInclude Include="OutputReadinessController.h" />
+	<ClInclude Include="RationalLiveOutputSequencer.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="guid.h" />
     <ClInclude Include="HDRData.h" />
@@ -290,6 +291,7 @@
 	<ClCompile Include="FrameProcessor.cpp" />
 	<ClCompile Include="LiveEpochConvergenceController.cpp" />
 	<ClCompile Include="OutputReadinessController.cpp" />
+	<ClCompile Include="RationalLiveOutputSequencer.cpp" />
     <ClCompile Include="ConfigFile.cpp" />
     <ClCompile Include="EOTF.cpp" />
     <ClCompile Include="guid.cpp" />
