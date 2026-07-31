@@ -12,6 +12,7 @@
 #include <functional>
 
 #include <ProcessedFrameQueue.h>
+#include <SceneDetector.h>
 #include <VideoFrame.h>
 
 struct FrameProcessorInput
@@ -32,6 +33,27 @@ struct FrameProcessorResult
 	bool producedFrame = false;
 };
 
+struct SceneAnalysisInput
+{
+	const uint16_t* p010Luma = nullptr;
+	size_t width = 0;
+	size_t height = 0;
+	size_t strideBytes = 0;
+	uint64_t sourceSequence = 0;
+	int64_t timestamp = 0;
+	uint64_t generation = 0;
+	uint64_t frameDuration = 0;
+	SceneDetector* detector = nullptr;
+};
+
+struct SceneAnalysisResult
+{
+	bool validInput = false;
+	bool safeBoundary = false;
+	uint8_t eventFramesBack = 0;
+	uint16_t averageLuma = 0;
+};
+
 class FrameProcessor
 {
 public:
@@ -43,6 +65,7 @@ public:
 
 	void Configure(ConvertCallback convert, ClockCallback clock);
 	FrameProcessorResult Process(const FrameProcessorInput& input) const;
+	SceneAnalysisResult AnalyzeScene(const SceneAnalysisInput& input) const;
 
 private:
 	ConvertCallback m_convert;

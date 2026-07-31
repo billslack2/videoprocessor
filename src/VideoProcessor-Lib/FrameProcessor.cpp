@@ -44,3 +44,23 @@ FrameProcessorResult FrameProcessor::Process(const FrameProcessorInput& input) c
 	result.producedFrame = true;
 	return result;
 }
+
+SceneAnalysisResult FrameProcessor::AnalyzeScene(
+	const SceneAnalysisInput& input) const
+{
+	SceneAnalysisResult result;
+	if (!input.detector || !input.p010Luma || input.width == 0 ||
+		input.height == 0 || input.strideBytes < input.width * sizeof(uint16_t) ||
+		input.frameDuration == 0)
+		return result;
+
+	result.validInput = true;
+	const SceneDetectorResult detection = input.detector->Analyze({
+		input.p010Luma, input.width, input.height, input.strideBytes,
+		input.sourceSequence, input.timestamp, input.generation,
+		input.frameDuration, true });
+	result.safeBoundary = detection.safeBoundary;
+	result.eventFramesBack = detection.eventFramesBack;
+	result.averageLuma = detection.averageLuma;
+	return result;
+}
