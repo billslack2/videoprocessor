@@ -132,6 +132,7 @@ void ALiveSourceVideoOutputPin::Initialize(
 		timestamp, timeScale, frameDurationTicks, frameDuration);
 	m_rationalTimingShadowComparisons.store(0, std::memory_order_relaxed);
 	m_rationalTimingShadowMismatches.store(0, std::memory_order_relaxed);
+	m_rationalTimingControllerApplied.store(0, std::memory_order_relaxed);
 
 	// Load PPM corrections for RATIONAL_RATIONAL mode
 	if (timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL)
@@ -1146,6 +1147,16 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 				shadowDecision.start == timeStart && shadowDecision.stop == timeStop;
 			if (!matches)
 				m_rationalTimingShadowMismatches.fetch_add(1, std::memory_order_relaxed);
+			else
+			{
+				// The real-display shadow run established exact parity through reset.
+				// Take the controller's identical value only after comparison; the
+				// legacy calculation remains the immediate fallback on any mismatch.
+				timeStart = shadowDecision.start;
+				timeStop = shadowDecision.stop;
+				m_rationalTimingControllerApplied.fetch_add(
+					1, std::memory_order_relaxed);
+			}
 		}
 		 
 		hr = pSample->SetTime(&timeStart, &timeStop);

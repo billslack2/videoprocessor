@@ -1327,6 +1327,8 @@ void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace(const char* boundar
 			RationalTimingShadowComparisonCount() << ",\n";
 		manifest << "  \"rational_timing_shadow_mismatches\": " <<
 			RationalTimingShadowMismatchCount() << ",\n";
+		manifest << "  \"rational_timing_controller_applied\": " <<
+			RationalTimingControllerAppliedCount() << ",\n";
 		manifest << "  \"measured_display_refresh_hz\": " <<
 			m_sceneDisplayRefreshRateHz.load(std::memory_order_acquire) << ",\n";
 		manifest << "  \"delivery_rate_hz\": " <<
