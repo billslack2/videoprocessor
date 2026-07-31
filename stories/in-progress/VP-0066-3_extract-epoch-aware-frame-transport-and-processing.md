@@ -2,11 +2,12 @@
 
 ## Status
 
-In Progress (2026-07-30). VP-0066-2 is accepted after a fresh x64 Release
-build and 289/289 native tests. This task begins with behavior-preserving
-extraction only: it must preserve the existing two queues, ownership transfer,
-worker handoffs, event signaling, and overflow behavior before any startup or
-output-readiness policy is considered.
+In Progress (2026-07-30). The core transport and processor extraction is
+implemented and live-validated through x64 Release build 307/307. It remains
+open only for the final golden-trace/latency guardrail evidence. Subtitle OCR,
+tracking, and relocation are now tracked separately in [VP-0066-5]
+(VP-0066-5_extract-subtitle-analysis-and-relocation.md): they are substantial
+content processing, not a prerequisite for the live timing/readiness pipeline.
 
 Implementation checkpoint (2026-07-30): `EpochBoundedQueue` is now a
 graph-free C++14-compatible transport primitive. `CaptureFrameQueue` owns the
@@ -76,9 +77,9 @@ duration across the processing boundary. Preserve the existing two queue
 locations, ownership transfer, overflow policies, event signaling, and worker
 handoff count exactly; this task must not add a queue or frame copy.
 
-`FrameProcessor` owns conversion and active-picture/subtitle/scene/HDR-SDR
-analysis, but not final timestamps, correction decisions, or downstream
-delivery. The queues own their frames/samples and support deterministic
+`FrameProcessor` owns conversion, active-picture, and scene analysis, but not
+final timestamps, correction decisions, or downstream delivery. Subtitle
+analysis/relocation is covered by VP-0066-5. The queues own their frames/samples and support deterministic
 flush/stop, current-epoch admission, stale discard, and structured depth/
 overflow/wait metrics.
 

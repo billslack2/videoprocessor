@@ -2,7 +2,13 @@
 
 ## Status
 
-Backlog. Depends on accepted VP-0066-3 transport and processing components.
+In Progress (2026-07-30). `DirectShowFrameDeliverer` now owns the media-type
+attachment/delivery/completion transaction for buffered and unbuffered pins;
+`DirectShowSegmentTransition` owns the renderer-facing
+BeginFlush → state-transition → EndFlush → NewSegment order. Both have
+controlled-callback tests and a live x64 Release reset validation with no
+observed behavior change. Final completion remains dependent on VP-0066-3's
+golden-trace/latency evidence.
 
 ## Parent and dependency
 

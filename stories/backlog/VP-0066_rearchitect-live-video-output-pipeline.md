@@ -24,6 +24,8 @@ class extractions:
 4. [VP-0066-4](VP-0066-4_integrate-directshow-delivery-and-lifecycle.md) —
    integrate DirectShow delivery, workers, reset/shutdown coordination, and
    whole-pipeline regression validation.
+5. [VP-0066-5](VP-0066-5_extract-subtitle-analysis-and-relocation.md) —
+   extract the separately-scoped subtitle analysis and relocation feature.
 
 Each task depends on the preceding task's accepted evidence. This root may
 move to `Done` only after all four children are done and its complete
