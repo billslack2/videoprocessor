@@ -329,6 +329,9 @@ protected:
 	// messages. Buffered pins use this while holding their serialized delivery
 	// gate; the public Reset() wraps it in the normal DirectShow flush sequence.
 	void ResetTimingState();
+	// Bind value-only timing decisions to the buffered pipeline's authoritative
+	// queue epoch. This has no DirectShow side effect.
+	void ResetTimingControllerToPipelineEpoch(uint64_t epoch);
 
 	// Constants for CLOCK_SMART duration tracking
 	static const size_t DURATION_HISTORY_SIZE = 100;  // Track last 100 frame durations

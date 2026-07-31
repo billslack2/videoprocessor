@@ -254,6 +254,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			m_rawOverflowLogCount = 0;
 			m_lastRawOverflowLogTime = 0;
 		}
+		ResetTimingControllerToPipelineEpoch({
+			m_queueEpoch.load(std::memory_order_acquire) });
 		{
 			CAutoLock convertedLock(&m_convertedQueueLock);
 			while (!m_convertedSampleQueue.empty())
@@ -1034,6 +1036,8 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 
 		// Reset base timestamp/media-time state without sending another flush.
 		ResetTimingState();
+		ResetTimingControllerToPipelineEpoch({
+			m_queueEpoch.load(std::memory_order_acquire) });
 
 		endFlushHr = DeliverEndFlush();
 		if (SUCCEEDED(endFlushHr))
