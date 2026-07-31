@@ -8,6 +8,17 @@ extraction only: it must preserve the existing two queues, ownership transfer,
 worker handoffs, event signaling, and overflow behavior before any startup or
 output-readiness policy is considered.
 
+Implementation checkpoint (2026-07-30): `EpochBoundedQueue` is now a
+graph-free C++14-compatible transport primitive, and `CaptureFrameQueue` owns
+the existing raw `VideoFrame` source-buffer reference. The buffered pin uses
+it in place of its inline raw deque/lock: capacity remains the configured VP
+queue size, overflow still drops the oldest raw frame, capture-to-conversion
+remains the same one event-driven worker handoff, and reset/activation flushes
+establish the authoritative `PipelineEpoch` before stale work is admitted.
+Focused ownership/overflow/stale/resize/flush tests pass, as does the x64
+Release native suite (293/293). The converted sample queue and DirectShow
+delivery path are intentionally unchanged at this checkpoint.
+
 ## Parent and dependency
 
 Parent: [VP-0066](VP-0066_rearchitect-live-video-output-pipeline.md).
