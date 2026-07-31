@@ -29,6 +29,9 @@ class extractions:
 6. [VP-0066-6](VP-0066-6_output-readiness-and-deterministic-prefill.md) -
    introduce the separately approved deterministic output-readiness and
    post-ready prefill policy after the behavior-preserving seams are proven.
+7. [VP-0066-9](../in-progress/VP-0066-9_fresh-epoch-vp-queue-convergence.md)
+   - converge VP-owned startup backlog once per fresh graph epoch without
+   treating madVR's opaque queue as feedback.
 
 Each task depends on the preceding task's accepted evidence. This root may
 move to `Done` only after its child tasks are done and its complete
