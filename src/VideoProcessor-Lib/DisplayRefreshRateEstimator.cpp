@@ -2,6 +2,7 @@
 
 #include <DisplayRefreshRateEstimator.h>
 
+#include <algorithm>
 #include <cmath>
 
 namespace
@@ -80,7 +81,13 @@ DisplayRefreshRateEstimatorSnapshot DisplayRefreshRateEstimator::Snapshot() cons
 	result.readinessRateHz = recent.rateHz;
 	result.phaseRateHz = CalculateWeightedRate();
 	result.fastRateHz = fast.rateHz;
+	result.recentCompensatedIntervals = recent.compensatedIntervals;
 	result.recentRawIntervals = recent.rawIntervals;
+	result.recentRawWaitRateHz = recent.rawWaitRateHz;
+	result.recentMinimumWaitIntervalQpc =
+		recent.minimumWaitIntervalQpc;
+	result.recentMaximumWaitIntervalQpc =
+		recent.maximumWaitIntervalQpc;
 	result.materialRateChangeDetected = IsUsableRate(result.fastRateHz) &&
 		IsUsableRate(result.phaseRateHz) &&
 		std::fabs(result.fastRateHz - result.phaseRateHz) /
@@ -113,11 +120,22 @@ DisplayRefreshRateEstimator::CalculateWindowRate(int64_t durationQpc) const
 			continue;
 		elapsedQpc += sample.elapsedQpc;
 		intervals += sample.compensatedIntervals;
+		result.compensatedIntervals += sample.compensatedIntervals;
 		++result.rawIntervals;
+		if (result.minimumWaitIntervalQpc == 0 ||
+			sample.elapsedQpc < result.minimumWaitIntervalQpc)
+		{
+			result.minimumWaitIntervalQpc = sample.elapsedQpc;
+		}
+		result.maximumWaitIntervalQpc = std::max(
+			result.maximumWaitIntervalQpc, sample.elapsedQpc);
 	}
 	if (elapsedQpc > 0.0L)
 	{
 		result.rateHz = static_cast<double>(intervals *
+			static_cast<long double>(m_qpcFrequency) / elapsedQpc);
+		result.rawWaitRateHz = static_cast<double>(
+			static_cast<long double>(result.rawIntervals) *
 			static_cast<long double>(m_qpcFrequency) / elapsedQpc);
 	}
 	return result;

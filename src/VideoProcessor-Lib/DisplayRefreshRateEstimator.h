@@ -16,7 +16,11 @@ struct DisplayRefreshRateEstimatorSnapshot
 	double phaseRateHz = 0.0;
 	double fastRateHz = 0.0;
 	double evidenceSeconds = 0.0;
+	uint64_t recentCompensatedIntervals = 0;
 	uint64_t recentRawIntervals = 0;
+	double recentRawWaitRateHz = 0.0;
+	int64_t recentMinimumWaitIntervalQpc = 0;
+	int64_t recentMaximumWaitIntervalQpc = 0;
 	bool quarantineComplete = false;
 	bool readinessEvidenceReady = false;
 	bool phaseEvidenceReady = false;
@@ -44,7 +48,11 @@ private:
 	struct WindowRate
 	{
 		double rateHz = 0.0;
+		uint64_t compensatedIntervals = 0;
 		uint64_t rawIntervals = 0;
+		double rawWaitRateHz = 0.0;
+		int64_t minimumWaitIntervalQpc = 0;
+		int64_t maximumWaitIntervalQpc = 0;
 	};
 
 	WindowRate CalculateWindowRate(int64_t durationQpc) const;

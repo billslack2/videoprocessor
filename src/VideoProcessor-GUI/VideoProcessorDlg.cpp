@@ -41,8 +41,8 @@
 #endif
 #include <guid.h>
 #include <ConfigFile.h>
+#include <DisplayRefreshRateEstimator.h>
 #include <DisplayRefreshRatePolicy.h>
-#include <DisplayRefreshRateWindow.h>
 #include <RendererProfileConfig.h>
 #include <UnifiedProfileRuntime.h>
 
@@ -446,7 +446,11 @@ HACCEL CreateConfiguredAccelerators(
 
 struct DisplayTimingSnapshot
 {
+	// Long weighted estimate used only by phase-sensitive correction.
 	double refreshRateHz = 0.0;
+	// Current clean-window estimate used by output readiness.
+	double readinessRefreshRateHz = 0.0;
+	double readinessEvidenceSeconds = 0.0;
 	double advertisedRefreshRateHz = 0.0;
 	double rawWaitRateHz = 0.0;
 	int64_t lastVBlankQpc = 0;
@@ -460,6 +464,7 @@ struct DisplayTimingSnapshot
 	uint64_t rawWaitIntervalsObserved = 0;
 	uint64_t generation = 0;
 	bool rateStable = false;
+	bool readinessEvidenceReady = false;
 	bool dwmCompositionEnabled = false;
 	HRESULT dwmTimingResult = E_FAIL;
 };
@@ -605,6 +610,8 @@ public:
 		DisplayTimingSnapshot result;
 		std::lock_guard<std::mutex> lock(m_mutex);
 		result.refreshRateHz = m_rate;
+		result.readinessRefreshRateHz = m_readinessRate;
+		result.readinessEvidenceSeconds = m_readinessEvidenceSeconds;
 		result.lastVBlankQpc = m_lastVBlankQpc.load(std::memory_order_acquire);
 		result.refreshPeriodQpc = m_refreshPeriodQpc.load(std::memory_order_acquire);
 		result.qpcFrequency = m_qpcFrequency;
@@ -617,6 +624,7 @@ public:
 		result.rawWaitIntervalsObserved = m_rawWaitIntervalsObserved;
 		result.generation = m_targetGeneration;
 		result.rateStable = m_rateStable;
+		result.readinessEvidenceReady = m_readinessEvidenceReady;
 		return result;
 	}
 
@@ -624,6 +632,8 @@ private:
 	void ClearMeasurementLocked()
 	{
 		m_rate = 0.0;
+		m_readinessRate = 0.0;
+		m_readinessEvidenceSeconds = 0.0;
 		m_rateMeasuredQpc = 0;
 		m_measurementStartedQpc = 0;
 		m_intervalsObserved = 0;
@@ -632,6 +642,7 @@ private:
 		m_maximumWaitIntervalQpc = 0;
 		m_rawWaitIntervalsObserved = 0;
 		m_rateStable = false;
+		m_readinessEvidenceReady = false;
 		m_lastVBlankQpc.store(0, std::memory_order_release);
 		m_refreshPeriodQpc.store(0, std::memory_order_release);
 	}
@@ -707,17 +718,10 @@ private:
 			// than assuming every wake-up represents exactly one refresh. DWM's
 			// cRefresh is a compositor wake count and can miss a vblank too, so use
 			// its period only as the initial interval estimate for this sampler.
-			// Publish an early OSD estimate, but do not mark the rate safe for
-			// correction until it has covered a full 30 seconds. Time, rather
-			// than a fixed frame count, gives the same confidence at 24, 60, and
-			// 120 Hz. The published estimate itself uses only a recent bounded
-			// interval window, so an old measurement cannot dilute a new rate for
-			// the lifetime of this display generation.
-			constexpr double kInitialMeasurementSeconds = 1.0;
+			// The estimator keeps three deliberately distinct evidence products:
+			// a post-transition quarantine, a clean current rate for readiness,
+			// and a longer recency-weighted rate for phase correction.
 			constexpr double kPublishIntervalSeconds = 1.0;
-			constexpr double kStableMeasurementSeconds = 30.0;
-			constexpr double kRecentMeasurementSeconds = 10.0;
-			constexpr double kMaterialRateChangeRatio = 0.001;
 			LARGE_INTEGER first = {};
 			LARGE_INTEGER last = {};
 			LARGE_INTEGER previous = {};
@@ -728,13 +732,8 @@ private:
 					static_cast<long double>(frequency.QuadPart) /
 					static_cast<long double>(nominalRateHz);
 			}
-			DisplayRefreshRateWindow recentMeasurement(
-				frequency.QuadPart,
-				static_cast<int64_t>(kRecentMeasurementSeconds *
-					frequency.QuadPart));
+			DisplayRefreshRateEstimator rateEstimator(frequency.QuadPart);
 			int64_t lastPublishedQpc = 0;
-			int64_t stableMeasurementStartedQpc = 0;
-			double stabilityReferenceRateHz = 0.0;
 			unsigned int samples = 0;
 			for (;;)
 			{
@@ -774,7 +773,7 @@ private:
 						static_cast<uint64_t>(llround(
 							static_cast<long double>(elapsedSincePreviousQpc) /
 							estimatedRefreshPeriodQpc)));
-					recentMeasurement.Add(now.QuadPart, elapsedSincePreviousQpc,
+					rateEstimator.Observe(now.QuadPart, elapsedSincePreviousQpc,
 						elapsedIntervals);
 
 					// A single normal interval refines the period. A compensated
@@ -794,57 +793,57 @@ private:
 				last = now;
 				++samples;
 
-				const int64_t elapsedQpc = last.QuadPart - first.QuadPart;
-				const double elapsedSeconds = samples > 1 && elapsedQpc > 0 ?
-					static_cast<double>(elapsedQpc) /
-					static_cast<double>(frequency.QuadPart) : 0.0;
-				const DisplayRefreshRateWindowSnapshot recentSnapshot =
-					recentMeasurement.Snapshot();
-				const bool rateHasBeenPublished = lastPublishedQpc != 0;
-				const bool publishRate = elapsedSeconds >= kInitialMeasurementSeconds &&
-					(!rateHasBeenPublished ||
-						(last.QuadPart - lastPublishedQpc) >=
-							static_cast<int64_t>(kPublishIntervalSeconds * frequency.QuadPart));
+				const DisplayRefreshRateEstimatorSnapshot estimate =
+					rateEstimator.Snapshot();
+				if (estimate.materialRateChangeDetected)
 				{
 					std::lock_guard<std::mutex> lock(m_mutex);
 					if (m_targetGeneration == targetGeneration)
 					{
-						m_intervalsObserved = recentSnapshot.compensatedIntervals;
-						m_rawWaitIntervalsObserved = recentSnapshot.rawWaitIntervals;
+						DebugLog::Log(
+							"Display-rate measurement invalidated: fast=%.6f Hz "
+							"weighted=%.6f Hz; collecting a new generation",
+							estimate.fastRateHz, estimate.phaseRateHz);
+						++m_targetGeneration;
+						ClearMeasurementLocked();
+					}
+					break;
+				}
+				const bool rateHasBeenPublished = lastPublishedQpc != 0;
+				const bool publishRate = !rateHasBeenPublished ||
+						(last.QuadPart - lastPublishedQpc) >=
+							static_cast<int64_t>(kPublishIntervalSeconds * frequency.QuadPart);
+				{
+					std::lock_guard<std::mutex> lock(m_mutex);
+					if (m_targetGeneration == targetGeneration)
+					{
+						m_intervalsObserved = estimate.recentCompensatedIntervals;
+						m_rawWaitIntervalsObserved = estimate.recentRawIntervals;
 						m_minimumWaitIntervalQpc =
-							recentSnapshot.minimumWaitIntervalQpc;
+							estimate.recentMinimumWaitIntervalQpc;
 						m_maximumWaitIntervalQpc =
-							recentSnapshot.maximumWaitIntervalQpc;
+							estimate.recentMaximumWaitIntervalQpc;
 					}
 				}
 				if (publishRate)
 				{
-					if (elapsedSeconds > 0.0)
+					if (estimate.phaseRateHz > 0.0)
 					{
-						const double rate = recentSnapshot.refreshRateHz;
+						const double rate = estimate.phaseRateHz;
 						if (rate >= 20.0 && rate <= 120.0)
 						{
-							const bool materiallyChanged =
-								stabilityReferenceRateHz > 0.0 &&
-								std::fabs(rate - stabilityReferenceRateHz) /
-									stabilityReferenceRateHz >=
-									kMaterialRateChangeRatio;
-							if (stableMeasurementStartedQpc == 0 || materiallyChanged)
-							{
-								stableMeasurementStartedQpc = last.QuadPart;
-								stabilityReferenceRateHz = rate;
-							}
 							std::lock_guard<std::mutex> lock(m_mutex);
 							if (m_targetGeneration == targetGeneration)
 							{
 								m_rate = rate;
-								m_rawWaitRate = recentSnapshot.rawWaitRateHz;
+								m_readinessRate = estimate.readinessRateHz;
+								m_readinessEvidenceSeconds =
+									estimate.evidenceSeconds;
+								m_readinessEvidenceReady =
+									estimate.readinessEvidenceReady;
+								m_rawWaitRate = estimate.recentRawWaitRateHz;
 								m_rateMeasuredQpc = last.QuadPart;
-								m_measurementStartedQpc = stableMeasurementStartedQpc;
-								m_rateStable = last.QuadPart -
-									stableMeasurementStartedQpc >=
-									static_cast<int64_t>(kStableMeasurementSeconds *
-										frequency.QuadPart);
+								m_rateStable = estimate.phaseEvidenceReady;
 								m_refreshPeriodQpc.store(
 									static_cast<int64_t>(llround(
 										static_cast<double>(frequency.QuadPart) / rate)),
@@ -853,9 +852,8 @@ private:
 						}
 					}
 					lastPublishedQpc = last.QuadPart;
-					// Subsequent one-second publications use the same bounded window.
-					// A real current-rate step resets phase confidence instead of being
-					// averaged away by the old generation's history.
+					// The model separates current readiness and weighted phase evidence;
+					// neither can borrow validity from a prior display generation.
 				}
 
 				std::lock_guard<std::mutex> lock(m_mutex);
@@ -873,6 +871,8 @@ private:
 	double m_nominalRateHz = 0.0;
 	uint64_t m_targetGeneration = 0;
 	double m_rate = 0.0;
+	double m_readinessRate = 0.0;
+	double m_readinessEvidenceSeconds = 0.0;
 	double m_rawWaitRate = 0.0;
 	int64_t m_rateMeasuredQpc = 0;
 	int64_t m_measurementStartedQpc = 0;
@@ -881,6 +881,7 @@ private:
 	int64_t m_minimumWaitIntervalQpc = 0;
 	int64_t m_maximumWaitIntervalQpc = 0;
 	bool m_rateStable = false;
+	bool m_readinessEvidenceReady = false;
 	bool m_phaseTracking = false;
 	int64_t m_qpcFrequency = 0;
 	std::atomic<int64_t> m_lastVBlankQpc = 0;
@@ -6801,6 +6802,9 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		sampledDisplayTiming.maximumWaitIntervalQpc > 0 ?
 		static_cast<double>(sampledDisplayTiming.maximumWaitIntervalQpc) * 1000.0 /
 			static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
+	// Keep current readiness and phase-sensitive cadence validation separate.
+	// The former needs a clean, recent rate promptly; the latter intentionally
+	// waits for the longer weighted-history predicate.
 	DisplayRefreshRateInput displayRateInput;
 	displayRateInput.candidateRateHz = sampledDisplayTiming.refreshRateHz;
 	displayRateInput.rawWaitRateHz = sampledDisplayTiming.rawWaitRateHz;
@@ -6811,17 +6815,20 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		sampledDisplayTiming.intervalsObserved;
 	displayRateInput.rawWaitIntervals =
 		sampledDisplayTiming.rawWaitIntervalsObserved;
-	displayRateInput.readinessObservationSeconds =
-		sampledDisplayTiming.qpcFrequency > 0 &&
-		sampledDisplayTiming.measurementStartedQpc > 0 &&
-		qpcNow.QuadPart >= sampledDisplayTiming.measurementStartedQpc ?
-			static_cast<double>(qpcNow.QuadPart -
-				sampledDisplayTiming.measurementStartedQpc) /
-				static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
 	displayRateInput.fresh = sampledRateIsFresh;
 	displayRateInput.stable = sampledDisplayTiming.rateStable;
 	const DisplayRefreshRateResult displayRateResult =
 		EvaluateDisplayRefreshRate(displayRateInput);
+	DisplayRefreshRateInput readinessRateInput = displayRateInput;
+	readinessRateInput.candidateRateHz =
+		sampledDisplayTiming.readinessRefreshRateHz;
+	readinessRateInput.readinessObservationSeconds =
+		sampledDisplayTiming.readinessEvidenceSeconds;
+	// Output readiness uses the policy's short evidence rule. It must not
+	// borrow the phase predicate, which deliberately requires a longer run.
+	readinessRateInput.stable = false;
+	const DisplayRefreshRateResult readinessRateResult =
+		EvaluateDisplayRefreshRate(readinessRateInput);
 	const double measuredDisplayRefreshRate =
 		displayRateResult.selectedRateHz;
 	const double nominalInputRefreshRate =
@@ -7025,21 +7032,26 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	// Keep this controller on the UI thread and log only state transitions until
 	// its real-display behaviour has been reviewed.
 	OutputReadinessInput readinessInput;
-	readinessInput.transitionGeneration = m_transitionGeneration;
+	// Renderer lifecycle and sampler generations are both readiness boundaries:
+	// never carry a validated rate across either one.
+	readinessInput.transitionGeneration =
+		(static_cast<uint64_t>(m_transitionGeneration) << 32) ^
+		(sampledDisplayTiming.generation & 0xffffffffULL);
 	readinessInput.graphOperational =
 		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 		m_videoRenderer != nullptr && !m_rendererResetTransitionActive;
 	// Phase correction waits for DisplayRefreshRateDecision::Accepted. Output
 	// readiness instead uses the same validated candidate after the sampler's
 	// short initial window, so it does not add a 30-second startup blackout.
-	readinessInput.displayDecision = displayRateResult.readinessValidated ?
-		DisplayRefreshRateDecision::Accepted : displayRateResult.decision;
-	readinessInput.displayReason = displayRateResult.readinessValidated ?
-		DisplayRefreshRateReason::Accepted : displayRateResult.reason;
+	readinessInput.displayDecision = readinessRateResult.readinessValidated ?
+		DisplayRefreshRateDecision::Accepted : readinessRateResult.decision;
+	readinessInput.displayReason = readinessRateResult.readinessValidated ?
+		DisplayRefreshRateReason::Accepted : readinessRateResult.reason;
 	readinessInput.expectedOutputRefreshHz = activeTargetRefreshRate;
 	readinessInput.observedOutputRefreshHz =
-		displayRateResult.readinessValidated ?
-			displayRateResult.readinessRateHz : measuredDisplayRefreshRate;
+		readinessRateResult.readinessValidated ?
+			readinessRateResult.readinessRateHz :
+			sampledDisplayTiming.readinessRefreshRateHz;
 	// No reset completion or queue depth is supplied while this is passive.  A
 	// future actuator must receive those values from serialized lifecycle and
 	// epoch-owned transport state, never infer them from Deliver() duration.
@@ -7053,17 +7065,20 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	if (readinessChanged)
 	{
 		DebugLog::Log(
-			"Output readiness observation (passive): generation=%u graph=%d "
-			"expected=%.6fHz observed=%.6fHz display=%s/%s readiness_evidence=%.1fs readiness_validated=%d state=%s "
+			"Output readiness observation (passive): generation=%llu graph=%d "
+			"expected=%.6fHz observed=%.6fHz phase=%s/%s readiness=%s/%s evidence=%.1fs validated=%d state=%s "
 			"reason=%s would_request_reset=%d discard=%d admit=%d deliver=%d",
-			m_transitionGeneration,
+			static_cast<unsigned long long>(
+				readinessInput.transitionGeneration),
 			readinessInput.graphOperational ? 1 : 0,
 			readinessInput.expectedOutputRefreshHz,
 			readinessInput.observedOutputRefreshHz,
 			ToString(displayRateResult.decision),
 			ToString(displayRateResult.reason),
-			displayRateInput.readinessObservationSeconds,
-			displayRateResult.readinessValidated ? 1 : 0,
+			ToString(readinessRateResult.decision),
+			ToString(readinessRateResult.reason),
+			readinessRateInput.readinessObservationSeconds,
+			readinessRateResult.readinessValidated ? 1 : 0,
 			ToString(readinessDecision.state),
 			ToString(readinessDecision.reason),
 			readinessDecision.requestSerializedPostReadyReset ? 1 : 0,
