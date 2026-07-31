@@ -72,15 +72,29 @@ the hard raw-plus-converted trim and its timestamp discontinuities. An explicit
 steady value now replaces the automatic eight-frame **readiness prefill** with
 the configured value and retains a one-frame delivery cushion below it. For
 the active `steady_reserve_frames: 2`, a fresh graph pre-fills to two frames,
-then normally cycles near one--two while retaining temporary bounded VP depth
-when a madVR `Deliver()` call takes longer than two frame periods. This is the
-necessary distinction between a desired steady queue and an unsafe hard cap.
-It is not a madVR queue controller. The committed x64 Release build and the
-independent native suite passed 325/325 tests, including the new explicit
-two-frame prefill test; only `C:\Videoprocessor\vp\VideoProcessor.exe` was
-deployed. Live validation must now show no sustained `DirectShow steady queue
-target enforced` messages, no monotonically rising VP dropped count, and a
-near-60 Hz VP delivery trace while retaining passive madVR OSD evidence.
+but it is intentionally elastic when madVR's synchronous `Deliver()` stalls.
+The first live trace proved that the setting was applied (delivery cushion one,
+readiness reserve two), yet two initial `Deliver()` calls blocked for about
+100 ms and 75 ms. With source and delivery subsequently both near 59.94 Hz,
+that created an eight-frame VP lead which cannot decay without either dropping
+media samples or performing a controlled timestamp rebase. This is not an
+automatic eight-frame policy overriding configuration; it is the physical
+result of equal-rate producer and consumer after a startup stall. It is not a
+madVR queue controller. The committed x64 Release build and the independent
+native suite passed 325/325 tests, including the new explicit two-frame prefill
+test; only `C:\Videoprocessor\vp\VideoProcessor.exe` was deployed.
+
+Preroll-timeline correction (2026-07-31): trace from that same run exposed an
+independent startup defect. Five converted preroll samples were timestamped in
+the 180--263 ms range, then `RestartTimingOriginAfterPreroll()` reset the next
+converted sample to 180 ms without a new DirectShow segment. Source commit
+`d9df0e8` removes that invalid post-conversion origin restart: all samples in a
+preroll are now retained in one strictly advancing segment, while real resets
+continue to purge the queues and deliver `NewSegment` before new timing begins.
+The x64 Release build passed with zero warnings and the native suite passed
+325/325. The Release executable alone was deployed. The next display run must
+verify a strictly increasing trace across the preroll handoff before any
+timestamp-rebase/convergence behavior is designed or enabled.
 
 This is not a first-image or HDMI-lock gate: provisional frames may display
 and may stutter before the reset. The priority is a deterministic VP queue
