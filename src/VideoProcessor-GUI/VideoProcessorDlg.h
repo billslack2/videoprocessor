@@ -481,6 +481,13 @@ protected:
 	bool m_outputReadinessGraphReprimeActive = false;
 	uint64_t m_outputReadinessResetCompletedGeneration = 0;
 	uint64_t m_outputReadinessResetCompletedEpoch = 0;
+	// A non-readiness DirectShow graph reset (for example capacity recovery or
+	// a graph retarget) has already performed the madVR re-prime transaction.
+	// It can satisfy readiness once the *new* DXGI measurement generation is
+	// validated, avoiding a redundant second graph reset and black flash.
+	uint64_t m_outputReadinessExistingGraphResetGeneration = 0;
+	uint64_t m_outputReadinessExistingGraphResetEpoch = 0;
+	uint64_t m_outputReadinessExistingGraphReservePublishedEpoch = 0;
 	uint64_t m_rendererTargetRevision = 0;
 	uint64_t m_transitionBlackStartTick = 0;
 	std::atomic_bool m_transitionRevealPosted{false};

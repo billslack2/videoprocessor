@@ -4754,6 +4754,26 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 				static_cast<unsigned long long>(completion.operationId),
 				CStringA(ToString(completion.request.reason)).GetString(),
 				ResetScopeName(completion.request.scope));
+
+			RendererLivenessSnapshot snapshot;
+			if (m_videoRenderer && m_videoRenderer->GetLivenessSnapshot(snapshot) &&
+				snapshot.supported && snapshot.queueEpoch != 0)
+			{
+				const DisplayTimingSnapshot timing =
+					g_displayRefreshRateSampler->GetTimingSnapshot();
+				m_outputReadinessExistingGraphResetGeneration =
+					(static_cast<uint64_t>(m_transitionGeneration) << 32) ^
+					(timing.generation & 0xffffffffULL);
+				m_outputReadinessExistingGraphResetEpoch = snapshot.queueEpoch;
+				m_outputReadinessExistingGraphReservePublishedEpoch = 0;
+				DebugLog::Log(
+					"Output readiness will adopt fresh DirectShow graph reset: "
+					"generation=%llu epoch=%llu reason=%s",
+					static_cast<unsigned long long>(
+						m_outputReadinessExistingGraphResetGeneration),
+					static_cast<unsigned long long>(snapshot.queueEpoch),
+					CStringA(ToString(completion.request.reason)).GetString());
+			}
 		}
 		if (completion.request.reason == RendererResetReason::OutputReadiness)
 			m_outputReadinessGraphReprimeActive = false;
@@ -7208,12 +7228,21 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	const size_t requestedVpReserveFrames = hasReadinessLiveness &&
 		readinessLiveness.queueCapacity > 0 ?
 		std::min<size_t>(8, readinessLiveness.queueCapacity) : 8;
-	readinessInput.postReadyResetCompleted =
+	const bool readinessGraphResetCompleted =
 		m_outputReadinessResetCompletedGeneration ==
 			readinessInput.transitionGeneration &&
 		m_outputReadinessResetCompletedEpoch != 0;
-	readinessInput.postReadyEpoch = readinessInput.postReadyResetCompleted ?
-		m_outputReadinessResetCompletedEpoch : 0;
+	const bool existingGraphResetCanSatisfyReadiness = hasReadinessLiveness &&
+		m_outputReadinessExistingGraphResetGeneration ==
+			readinessInput.transitionGeneration &&
+		m_outputReadinessExistingGraphResetEpoch != 0 &&
+		readinessLiveness.queueEpoch == m_outputReadinessExistingGraphResetEpoch;
+	readinessInput.postReadyResetCompleted = readinessGraphResetCompleted ||
+		existingGraphResetCanSatisfyReadiness;
+	readinessInput.postReadyEpoch = readinessGraphResetCompleted ?
+		m_outputReadinessResetCompletedEpoch :
+		(existingGraphResetCanSatisfyReadiness ?
+			m_outputReadinessExistingGraphResetEpoch : 0);
 	readinessInput.currentEpochProcessedDepth = hasReadinessLiveness &&
 		readinessLiveness.queueEpoch == readinessInput.postReadyEpoch ?
 		readinessLiveness.convertedQueueDepth : 0;
@@ -7234,6 +7263,28 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			sampledDisplayTiming.startupRefreshRateHz;
 	const OutputReadinessDecision readinessDecision =
 		m_outputReadinessObserver.Observe(readinessInput);
+	if (existingGraphResetCanSatisfyReadiness &&
+		(readinessDecision.state == OutputReadinessState::Prefilling ||
+			readinessDecision.state == OutputReadinessState::Steady) &&
+		m_outputReadinessExistingGraphReservePublishedEpoch !=
+			readinessInput.postReadyEpoch)
+	{
+		// The completed graph reset already re-primed madVR. Publish the VP floor
+		// into that fresh epoch rather than adding a second reset/black interval.
+		m_videoRenderer->SetOutputReadinessDeliveryReserve(
+			requestedVpReserveFrames);
+		m_outputReadinessExistingGraphReservePublishedEpoch =
+			readinessInput.postReadyEpoch;
+		DebugLog::Log(
+			"Output readiness adopted existing graph re-prime: generation=%llu "
+			"epoch=%llu reserve=%zu VPdepth=%zu/%zu madvr_queue=unobservable",
+			static_cast<unsigned long long>(
+				readinessInput.transitionGeneration),
+			static_cast<unsigned long long>(readinessInput.postReadyEpoch),
+			requestedVpReserveFrames,
+			readinessLiveness.convertedQueueDepth,
+			readinessLiveness.queueCapacity);
+	}
 	if (readinessDecision.requestSerializedPostReadyReset &&
 		m_activeRendererIsDirectShow && m_videoRenderer &&
 		m_rendererResetCoordinator)
