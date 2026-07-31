@@ -38,6 +38,7 @@ FrameProcessorResult FrameProcessor::Process(const FrameProcessorInput& input) c
 	result.frame.sample = input.sample;
 	result.frame.frameNumber = input.sourceFrameNumber;
 	result.frame.captureTimestamp = input.captureTimestamp;
+	result.frame.captureArrivalTick = input.captureArrivalTick;
 	result.frame.processingDurationUs = result.processingDurationUs;
 	result.frame.queueEpoch = input.epoch.value;
 	result.frame.sceneTimingGeneration = input.sceneTimingGeneration;

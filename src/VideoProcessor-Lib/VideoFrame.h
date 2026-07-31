@@ -44,6 +44,12 @@ public:
 	// Timestamp set by the timing clock.
 	timingclocktime_t GetTimingTimestamp() const { return m_timingTimestamp; }
 
+	// VP monotonic arrival tick, assigned only when a buffered live-output pin
+	// accepts the frame. It is diagnostic metadata and never participates in
+	// source timing or presentation scheduling.
+	uint64_t GetCaptureArrivalTick() const { return m_captureArrivalTick; }
+	void SetCaptureArrivalTick(uint64_t tick) { m_captureArrivalTick = tick; }
+
 	// Memory functions to hold onto the video buffer for longer
 	void SourceBufferAddRef();
 	void SourceBufferRelease();
@@ -54,5 +60,6 @@ private:
 	const void* m_data;
 	uint64_t m_counter;
 	timingclocktime_t m_timingTimestamp;
+	uint64_t m_captureArrivalTick = 0;
 	IUnknown* m_sourceBuffer;
 };

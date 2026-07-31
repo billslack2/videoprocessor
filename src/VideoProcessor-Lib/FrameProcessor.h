@@ -23,6 +23,7 @@ struct FrameProcessorInput
 	PipelineEpoch epoch;
 	uint64_t sourceFrameNumber = 0;
 	uint64_t captureTimestamp = 0;
+	uint64_t captureArrivalTick = 0;
 	uint64_t sceneTimingGeneration = 0;
 };
 

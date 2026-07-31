@@ -26,6 +26,7 @@ VideoFrame::VideoFrame(const VideoFrame& videoFrame) :
 	m_data(videoFrame.m_data),
 	m_counter(videoFrame.m_counter),
 	m_timingTimestamp(videoFrame.m_timingTimestamp),
+	m_captureArrivalTick(videoFrame.m_captureArrivalTick),
 	m_sourceBuffer(videoFrame.m_sourceBuffer)
 {
 }
@@ -56,6 +57,7 @@ VideoFrame& VideoFrame::operator= (const VideoFrame& videoFrame)
 	m_data = videoFrame.m_data;
 	m_counter = videoFrame.m_counter;
 	m_timingTimestamp = videoFrame.m_timingTimestamp;
+	m_captureArrivalTick = videoFrame.m_captureArrivalTick;
 	m_sourceBuffer = videoFrame.m_sourceBuffer;
 
 	return *this;
