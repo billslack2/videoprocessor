@@ -53,6 +53,13 @@ native tests; the user then ran the deployed build and reported normal,
 unchanged behavior. Scene and subtitle analysis remain the next processing
 seams before this task can be accepted.
 
+Scene-analysis checkpoint (2026-07-30): `FrameProcessor` now owns the
+validated P010 scene-detector invocation and returns only boundary/average
+luma metadata. The buffered pin remains the DirectShow sample/media-type
+adapter and preserves its existing process-wide event-ID publication, counters,
+generation reset, and queue tagging. A fresh x64 Release build passed 306/306
+native tests, and the user reported the deployed build looked normal.
+
 ## Parent and dependency
 
 Parent: [VP-0066](VP-0066_rearchitect-live-video-output-pipeline.md).
