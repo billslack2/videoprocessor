@@ -281,6 +281,20 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
   <section id="queue-timing">
     <h2>Queue, logging, and timing settings</h2>
 
+    <article class="field" id="queue-startup-preroll-frames" data-fields="queue.startup_preroll_frames">
+      <h4><code>[queue] startup_preroll_frames</code> <span class="badge">DirectShow</span></h4>
+      <p>Sets the number of converted VP frames required before a newly primed DirectShow source begins delivery. It is a VP startup threshold, not a madVR queue request or observation. If <code>steady_reserve_frames</code> is higher, that higher floor also applies at startup.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> <code>0</code> keeps VP's cadence-aware startup policy. This is the recommended starting point while the output-readiness path is being measured.</p>
+      <p class="meta"><strong>Type/range:</strong> whole frames, <code>0</code>–<code>16</code>. Explicit values are bounded by the active VP queue capacity; values above 16 or non-numeric input fail startup validation.</p>
+    </article>
+
+    <article class="field" id="queue-steady-reserve-frames" data-fields="queue.steady_reserve_frames">
+      <h4><code>[queue] steady_reserve_frames</code> <span class="badge">DirectShow</span></h4>
+      <p>Keeps this many converted VP frames behind the DirectShow delivery worker after priming. It controls only the VP-owned queue; madVR's internal queue remains independently configured and is not queryable by VP.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> <code>0</code> retains VP's automatic handoff reserve, including the output-readiness reserve when that controller publishes one.</p>
+      <p class="meta"><strong>Type/range:</strong> whole frames, <code>0</code>–<code>16</code>. An explicit value takes precedence over the automatic reserve and is bounded by the active VP queue capacity.</p>
+    </article>
+
     <article class="field" id="logging-debug-log-retention" data-fields="logging.debug_log_retention">
       <h4><code>[logging] debug_log_retention</code></h4>
       <p>Total VP debug-log files retained, including active <code>logs\vp_debug.log</code>. At startup the prior active log becomes <code>.0</code>, existing numbered archives shift up, and the oldest is pruned.</p>
