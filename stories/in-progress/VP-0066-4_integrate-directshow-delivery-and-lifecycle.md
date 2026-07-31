@@ -3,7 +3,9 @@
 ## Status
 
 In Progress (2026-07-30). `DirectShowFrameDeliverer` now owns the media-type
-attachment/delivery/completion transaction for buffered and unbuffered pins;
+attachment/delivery/completion transaction for buffered and unbuffered pins,
+plus the existing first-delivered-sample discontinuity and SMART late-bound
+stop preparation;
 `DirectShowSegmentTransition` owns the renderer-facing
 BeginFlush → state-transition → EndFlush → NewSegment order. Both have
 controlled-callback tests and a live x64 Release reset validation with no
