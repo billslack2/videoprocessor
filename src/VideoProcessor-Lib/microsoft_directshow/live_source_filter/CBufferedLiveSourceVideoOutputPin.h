@@ -19,6 +19,7 @@
 #include <ActivePictureTransitionModel.h>
 #include <CaptureFrameQueue.h>
 #include <LiveOutputTrace.h>
+#include <ProcessedFrameQueue.h>
 #include <microsoft_directshow/DirectShowDefines.h>
 #include "ALiveSourceVideoOutputPin.h"
 
@@ -38,7 +39,8 @@ class GpuSubtitleDetector;
  *
  * THREAD SAFETY:
  * - m_captureFrameQueue: Owns raw frames from the capture device
- * - m_convertedQueueLock: Protects m_convertedSampleQueue (converted samples for delivery)
+ * - m_convertedQueueLock: Serializes converted-frame publication, historical
+ *   scene tagging, and flush against the processed-frame transport boundary
  * - m_stateLock: Protects shared state variables (m_isBuffering, m_lastSeenFrameCounter, etc.)
  * 
  * Lock ordering (to prevent deadlock): rawQueueLock ? convertedQueueLock ? stateLock
@@ -120,19 +122,8 @@ private:
 		Repeat
 	};
 
-	struct ConvertedSample
-	{
-		IMediaSample* sample = nullptr;
-		uint64_t frameNumber = 0;
-		uint64_t captureTimestamp = 0;
-		uint32_t processingDurationUs = 0;
-		bool isSafeCorrectionPoint = false;
-		uint64_t sceneEventId = 0;
-		uint64_t queueEpoch = 0;
-		uint64_t sceneTimingGeneration = 0;
-	};
-	std::deque<ConvertedSample> m_convertedSampleQueue;
-	CCritSec m_convertedQueueLock;  // Protects m_convertedSampleQueue only
+	ProcessedFrameQueue m_processedFrameQueue{ 32 };
+	CCritSec m_convertedQueueLock;
 	// The trace is a VP-only, bounded diagnostic snapshot. It has no renderer
 	// queue state and never performs file I/O from a worker or callback.
 	LiveOutputTrace m_liveOutputTrace;

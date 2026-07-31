@@ -99,5 +99,35 @@ namespace Tests
 			Assert::AreEqual(42, released[2]);
 			Assert::AreEqual<uint64_t>(1, queue.Metrics().flushed);
 		}
+
+		TEST_METHOD(MinimumRemainingDepthPreservesTheExistingSteadyHandoffCushion)
+		{
+			std::vector<int> released;
+			EpochBoundedQueue<int, RecordingRelease> queue(4, { &released });
+			const PipelineEpoch epoch{ 9 };
+			(void)queue.Push(50, epoch, epoch);
+			int popped = 0;
+			Assert::IsFalse(queue.TryPopCurrentIfDepthAbove(epoch, 1, popped));
+			(void)queue.Push(51, epoch, epoch);
+			Assert::IsTrue(queue.TryPopCurrentIfDepthAbove(epoch, 1, popped));
+			Assert::AreEqual(50, popped);
+		}
+
+		TEST_METHOD(MutatesOnlyTheRequestedCurrentEpochFrame)
+		{
+			std::vector<int> released;
+			EpochBoundedQueue<int, RecordingRelease> queue(4, { &released });
+			const PipelineEpoch oldEpoch{ 10 };
+			const PipelineEpoch currentEpoch{ 11 };
+			(void)queue.Push(60, oldEpoch, oldEpoch);
+			(void)queue.Push(61, currentEpoch, currentEpoch);
+			Assert::IsTrue(queue.TryMutateCurrentFromBack(
+				currentEpoch, 1, [](int& value) { value = 62; }));
+			Assert::IsFalse(queue.TryMutateCurrentFromBack(
+				currentEpoch, 2, [](int&) {}));
+			int popped = 0;
+			Assert::IsTrue(queue.TryPopCurrent(currentEpoch, popped));
+			Assert::AreEqual(62, popped);
+		}
 	};
 }
