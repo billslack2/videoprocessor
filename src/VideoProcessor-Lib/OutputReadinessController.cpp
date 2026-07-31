@@ -41,6 +41,12 @@ OutputReadinessDecision OutputReadinessController::Observe(
 	OutputReadinessDecision decision;
 	decision.transitionGeneration = m_transitionGeneration;
 	decision.postReadyEpoch = m_postReadyEpoch;
+	// Never make first video wait for display-rate evidence. The existing live
+	// path remains active until a validated observation requests the one
+	// serialized reset that creates a deterministic new epoch.
+	decision.discardLiveCapture = false;
+	decision.admitCurrentEpochCapture = true;
+	decision.allowDownstreamDelivery = true;
 
 	if (!input.graphOperational)
 	{
@@ -97,8 +103,8 @@ OutputReadinessDecision OutputReadinessController::Observe(
 		decision.postReadyEpoch = m_postReadyEpoch;
 	}
 
-	decision.discardLiveCapture = false;
 	decision.admitCurrentEpochCapture = true;
+	decision.allowDownstreamDelivery = false;
 	if (m_state == OutputReadinessState::Prefilling)
 	{
 		decision.prefillSatisfied = input.reserveFrames > 0 &&

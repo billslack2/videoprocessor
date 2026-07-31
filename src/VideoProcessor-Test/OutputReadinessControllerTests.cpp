@@ -26,13 +26,14 @@ namespace Tests
 	TEST_CLASS(OutputReadinessControllerTests)
 	{
 	public:
-		TEST_METHOD(DiscardsUntilGraphAndValidatedOutputRefreshAreReady)
+		TEST_METHOD(PreservesImmediateDeliveryUntilValidatedResetCompletes)
 		{
 			OutputReadinessController controller;
 			OutputReadinessInput input = ReadyInput();
 			input.graphOperational = false;
 			OutputReadinessDecision decision = controller.Observe(input);
-			Assert::IsTrue(decision.discardLiveCapture);
+			Assert::IsFalse(decision.discardLiveCapture);
+			Assert::IsTrue(decision.allowDownstreamDelivery);
 			Assert::AreEqual(
 				static_cast<int>(OutputReadinessReason::AwaitingGraph),
 				static_cast<int>(decision.reason));
@@ -40,7 +41,8 @@ namespace Tests
 			input.graphOperational = true;
 			input.displayDecision = DisplayRefreshRateDecision::Warming;
 			decision = controller.Observe(input);
-			Assert::IsTrue(decision.discardLiveCapture);
+			Assert::IsFalse(decision.discardLiveCapture);
+			Assert::IsTrue(decision.allowDownstreamDelivery);
 			Assert::AreEqual(
 				static_cast<int>(OutputReadinessReason::AwaitingDisplayMeasurement),
 				static_cast<int>(decision.reason));
@@ -58,23 +60,25 @@ namespace Tests
 			OutputReadinessInput input = ReadyInput();
 			input.observedOutputRefreshHz = 23.976;
 			const OutputReadinessDecision decision = controller.Observe(input);
-			Assert::IsTrue(decision.discardLiveCapture);
+			Assert::IsFalse(decision.discardLiveCapture);
 			Assert::AreEqual(
 				static_cast<int>(OutputReadinessReason::OutputRefreshFamilyMismatch),
 				static_cast<int>(decision.reason));
 		}
 
-		TEST_METHOD(RequestsOneResetThenAdmitsOnlyPostResetPrefill)
+		TEST_METHOD(RequestsOneResetThenGatesOnlyThePostResetEpochForPrefill)
 		{
 			OutputReadinessController controller;
 			OutputReadinessInput input = ReadyInput();
 			OutputReadinessDecision decision = controller.Observe(input);
 			Assert::IsTrue(decision.requestSerializedPostReadyReset);
-			Assert::IsTrue(decision.discardLiveCapture);
+			Assert::IsFalse(decision.discardLiveCapture);
+			Assert::IsTrue(decision.allowDownstreamDelivery);
 
 			decision = controller.Observe(input);
 			Assert::IsFalse(decision.requestSerializedPostReadyReset);
-			Assert::IsTrue(decision.discardLiveCapture);
+			Assert::IsFalse(decision.discardLiveCapture);
+			Assert::IsTrue(decision.allowDownstreamDelivery);
 
 			input.postReadyResetCompleted = true;
 			input.postReadyEpoch = 42;
@@ -109,7 +113,8 @@ namespace Tests
 			input.postReadyResetCompleted = false;
 			input.postReadyEpoch = 0;
 			const OutputReadinessDecision decision = controller.Observe(input);
-			Assert::IsTrue(decision.discardLiveCapture);
+			Assert::IsFalse(decision.discardLiveCapture);
+			Assert::IsTrue(decision.allowDownstreamDelivery);
 			Assert::IsTrue(decision.requestSerializedPostReadyReset);
 			Assert::AreEqual<uint64_t>(8, decision.transitionGeneration);
 		}

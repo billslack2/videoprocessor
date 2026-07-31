@@ -4,7 +4,9 @@
  * This component consumes a caller-validated renderer/display refresh
  * observation. It has no DirectShow, madVR, queue, thread, or HDMI API
  * dependency. In particular, acceptance means renderer readiness only; it is
- * not a claim that a physical HDMI sink has completed its handshake.
+ * not a claim that a physical HDMI sink has completed its handshake. Normal
+ * live delivery remains open while evidence is collected; only the new epoch
+ * created by the accepted reset is gated for exact prefill.
  */
 #pragma once
 
