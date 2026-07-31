@@ -32,6 +32,17 @@ tests pass, as does the x64 Release native suite (297/297). The DirectShow
 timestamp, delivery, flush, and lifecycle paths are intentionally unchanged at
 this checkpoint.
 
+Live validation (SDR 60000/1001, 2026-07-30): the deployed transport and
+processor checkpoint reproduced the expected post-reset VP reserve. With
+input 59.940060 Hz, display 59.950499 Hz, delivery 59.941079 Hz, and PPM -17,
+the converted queue held 8 frames initially and then 9--10 frames for roughly
+35 seconds; raw depth remained 1. The retained pre-reset trace showed the
+known 21--22-frame startup accumulation. Seven `E_FAIL` delivery completions
+occurred together at inactive shutdown, not during steady playback. No trace
+records were lost, Rational/Rational remained 2,470/0 applied/mismatched, and
+the user observed no behavioral regression. As designed, the run provides no
+structured madVR occupancy evidence.
+
 ## Parent and dependency
 
 Parent: [VP-0066](VP-0066_rearchitect-live-video-output-pipeline.md).
