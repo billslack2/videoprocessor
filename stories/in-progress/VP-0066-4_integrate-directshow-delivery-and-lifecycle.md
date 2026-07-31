@@ -5,7 +5,8 @@
 In Progress (2026-07-30). `DirectShowFrameDeliverer` now owns the media-type
 attachment/delivery/completion transaction for buffered and unbuffered pins,
 plus the existing first-delivered-sample discontinuity and SMART late-bound
-stop preparation;
+stop preparation. `DirectShowDeliveryOutcomeClassifier` now classifies the
+existing latency bands and success/failure counter effects without a graph;
 `DirectShowSegmentTransition` owns the renderer-facing
 BeginFlush → state-transition → EndFlush → NewSegment order. Both have
 controlled-callback tests and a live x64 Release reset validation with no
