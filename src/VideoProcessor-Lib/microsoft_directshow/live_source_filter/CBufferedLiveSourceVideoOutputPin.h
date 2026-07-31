@@ -366,8 +366,10 @@ private:
 	std::atomic<uint64_t> m_queueEpoch = 0;
 	
 	std::atomic_bool m_isBuffering = false; // gate delivery until converted queue is primed
-	// Explicit [queue] frame policies.  Zero means automatic policy.  The
-	// steady value is an exact VP-owned R/C/T target, not a madVR request.
+	// Explicit [queue] frame policies. Zero means automatic policy. The steady
+	// value selects VP's post-prime delivery cushion, not a hard R/C/T ceiling
+	// and never a madVR request. Temporary VP elasticity preserves continuity
+	// while madVR's synchronous Deliver() call is briefly unavailable.
 	std::atomic<size_t> m_configuredStartupPrerollFrames{ 0 };
 	std::atomic<size_t> m_configuredSteadyReserveFrames{ 0 };
 	// Published by the UI/controller, consumed only by the delivery worker. A
@@ -409,8 +411,6 @@ private:
 	std::atomic<uint64_t> m_lastDeliverySuccessTick = 0;
 	std::atomic<size_t> m_publishedRawQueueDepth = 0;
 	std::atomic<size_t> m_publishedConvertedQueueDepth = 0;
-	std::atomic<uint64_t> m_steadyQueueTargetDiscarded = 0;
-	std::atomic<ULONGLONG> m_lastSteadyQueueTargetLogTick = 0;
 	std::atomic_bool m_deliveryInProgress = false;
 	std::atomic_bool m_resetInProgress = false;
 	
@@ -422,7 +422,6 @@ private:
 	size_t GetBufferingTarget();
 	size_t GetConfiguredSteadyQueueTarget() const;
 	size_t GetDeliveryReserve() const;
-	void EnforceSteadyQueueTarget();
 
 	// Thread function, upon return thread exist.
 	// Return codes > 0 indicate an error occured

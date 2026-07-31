@@ -550,13 +550,6 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		pushResult == EpochBoundedQueuePushResult::RejectedNoCapacity)
 		return S_OK;
 
-	// Once startup has completed, an explicit [queue] steady value owns the
-	// total VP R/C/T depth.  Retain the newest frames and discard stale lead
-	// rather than letting a blocked downstream delivery turn into live latency.
-	EnforceSteadyQueueTarget();
-	rawMetrics = m_captureFrameQueue.Metrics();
-	m_publishedRawQueueDepth.store(rawMetrics.depth, std::memory_order_release);
-
 	const size_t queueMaxSize = rawMetrics.capacity;
 	acceptedRawQueueDepth = rawMetrics.depth;
 	if (pushResult == EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard)
@@ -1091,7 +1084,6 @@ void CBufferedLiveSourceVideoOutputPin::SetQueueFramePolicy(
 	DebugLog::Log(
 		"DirectShow queue policy updated: requested-startup-preroll=%zu requested-steady-target=%zu capacity=%zu",
 		boundedStartup, boundedReserve, capacity);
-	EnforceSteadyQueueTarget();
 	if (m_hConvertedAvailableEvent)
 		SetEvent(m_hConvertedAvailableEvent);
 }
@@ -2674,14 +2666,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			}
 
 			const size_t queueMaxSize = m_frameQueueMaxSize.load(std::memory_order_relaxed);
-			const size_t steadyQueueTarget = GetConfiguredSteadyQueueTarget();
-			if (!m_isBuffering.load(std::memory_order_acquire) &&
-				steadyQueueTarget > 0 &&
-				currentConvertedSize >= steadyQueueTarget)
-			{
-				EnforceSteadyQueueTarget();
-				break;
-			}
 			if (currentConvertedSize >= queueMaxSize)
 			{
 				++backpressureHits;
@@ -2923,9 +2907,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 			if (sampleQueued)
 			{
-				EnforceSteadyQueueTarget();
-				convertedQueueDepth = m_publishedConvertedQueueDepth.load(
-					std::memory_order_acquire);
 				LiveOutputTraceRecord conversionTrace;
 				conversionTrace.kind = LiveOutputTraceKind::ConversionCompleted;
 				conversionTrace.frameNumber = videoFrame.GetCounter();
@@ -5989,54 +5970,6 @@ size_t CBufferedLiveSourceVideoOutputPin::GetConfiguredSteadyQueueTarget() const
 	return capacity > 0 ? std::min(configuredTarget, capacity) : 0;
 }
 
-
-void CBufferedLiveSourceVideoOutputPin::EnforceSteadyQueueTarget()
-{
-	const size_t target = GetConfiguredSteadyQueueTarget();
-	if (target == 0 || m_isBuffering.load(std::memory_order_acquire))
-		return;
-
-	size_t convertedDepth = 0;
-	size_t discardedConverted = 0;
-	{
-		CAutoLock convertedLock(&m_convertedQueueLock);
-		discardedConverted = m_processedFrameQueue.TrimTo(target);
-		convertedDepth = m_processedFrameQueue.Size();
-		m_publishedConvertedQueueDepth.store(
-			convertedDepth, std::memory_order_release);
-	}
-
-	const size_t rawAllowance = target > convertedDepth ?
-		target - convertedDepth : 0;
-	const size_t discardedRaw = m_captureFrameQueue.TrimTo(rawAllowance);
-	const EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
-	m_publishedRawQueueDepth.store(rawMetrics.depth, std::memory_order_release);
-
-	const size_t discarded = discardedRaw + discardedConverted;
-	if (discarded > 0)
-	{
-		m_droppedFrameCount.fetch_add(discarded, std::memory_order_relaxed);
-		m_steadyQueueTargetDiscarded.fetch_add(
-			discarded, std::memory_order_relaxed);
-		const ULONGLONG now = GetTickCount64();
-		ULONGLONG lastLogTick = m_lastSteadyQueueTargetLogTick.load(
-			std::memory_order_acquire);
-		if ((lastLogTick == 0 || now - lastLogTick >= 1000) &&
-			m_lastSteadyQueueTargetLogTick.compare_exchange_strong(
-				lastLogTick, now, std::memory_order_acq_rel,
-				std::memory_order_acquire))
-		{
-			const uint64_t discardedSinceLastLog =
-				m_steadyQueueTargetDiscarded.exchange(
-					0, std::memory_order_acq_rel);
-			DebugLog::Log(
-				"DirectShow steady queue target enforced: target=%zu raw=%zu "
-				"converted=%zu discarded=%llu",
-				target, rawMetrics.depth, convertedDepth,
-				static_cast<unsigned long long>(discardedSinceLastLog));
-		}
-	}
-}
 
 void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()
 {

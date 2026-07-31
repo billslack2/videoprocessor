@@ -7314,11 +7314,17 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	const bool hasReadinessLiveness = m_activeRendererIsDirectShow &&
 		m_videoRenderer && m_videoRenderer->GetLivenessSnapshot(readinessLiveness) &&
 		readinessLiveness.supported;
-	// VP owns a small fixed reserve; this is independent of madVR's separately
-	// configured queue and is deliberately not a user-tunable startup delay.
-	const size_t requestedVpReserveFrames = hasReadinessLiveness &&
+	// An explicit [queue] steady value controls the VP prefill/cushion for this
+	// fresh epoch. It never sizes madVR. Without one, retain the proven automatic
+	// eight-frame readiness reserve.
+	const size_t configuredVpReserveFrames =
+		videoProcessorApp.GetQueueSteadyReserveFrames();
+	const size_t queueCapacity = hasReadinessLiveness &&
 		readinessLiveness.queueCapacity > 0 ?
-		std::min<size_t>(8, readinessLiveness.queueCapacity) : 8;
+		readinessLiveness.queueCapacity : 32;
+	const size_t requestedVpReserveFrames = configuredVpReserveFrames > 0 ?
+		std::min(configuredVpReserveFrames, queueCapacity) :
+		std::min<size_t>(8, queueCapacity);
 	const bool readinessGraphResetCompleted =
 		m_outputReadinessResetCompletedGeneration ==
 			readinessInput.transitionGeneration &&
@@ -7337,9 +7343,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	readinessInput.currentEpochProcessedDepth = hasReadinessLiveness &&
 		readinessLiveness.queueEpoch == readinessInput.postReadyEpoch ?
 		readinessLiveness.convertedQueueDepth : 0;
-	readinessInput.reserveFrames = hasReadinessLiveness &&
-		readinessLiveness.deliveryReserveFrames > 0 ?
-		readinessLiveness.deliveryReserveFrames : requestedVpReserveFrames;
+	// The pin snapshot can still describe the old reserve while a new policy is
+	// being published. Use this generation's selected policy consistently for
+	// both reset prefill and the controller's completion criterion.
+	readinessInput.reserveFrames = requestedVpReserveFrames;
 	// Phase correction waits for DisplayRefreshRateDecision::Accepted. Output
 	// readiness instead uses independently cadence-validated startup evidence,
 	// so it need not impose a multi-second first-image blackout.
