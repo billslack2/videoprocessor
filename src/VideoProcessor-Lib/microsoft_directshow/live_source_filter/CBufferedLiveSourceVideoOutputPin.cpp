@@ -21,6 +21,7 @@
 
 #include <ConfigFile.h>
 #include <DirectShowDeliveryOutcome.h>
+#include <LiveEpochConvergenceController.h>
 #include <RationalLiveOutputSequencer.h>
 #include "CBufferedLiveSourceVideoOutputPin.h"
 #include "WindowsOcrSubtitleDetector.h"
@@ -1486,6 +1487,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	DWORD lastFrameIntervalUpdateTime = GetTickCount();
 	uint64_t lastSuccessfullyDeliveredEpoch = UINT64_MAX;
 	DirectShowDeliveryOutcomeClassifier deliveryOutcomeClassifier;
+	LiveEpochConvergenceController epochConvergenceController;
 	// VP-0066-9 owns normal Rational-Rational output time at the final
 	// delivery boundary. Conversion may run ahead or stale live pictures may
 	// later be removed, but only a successfully delivered sample advances this
@@ -1739,7 +1741,18 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			if (outcome.incrementRecentFailures)
 				m_recentDeliveryFailures.fetch_add(1, std::memory_order_relaxed);
 			++deliveryFailureCount;
-			++deliveryFailuresSinceLastLog;
+				++deliveryFailuresSinceLastLog;
+			(void)epochConvergenceController.Observe({
+				expectedQueueEpoch,
+				!m_isBuffering.load(std::memory_order_acquire) &&
+					expectedQueueEpoch ==
+					m_queueEpoch.load(std::memory_order_acquire),
+				m_processedFrameQueue.Size(),
+				GetConfiguredSteadyQueueTarget(),
+				true,
+				false,
+				deliveryTimeUs,
+				frameIntervalUs });
 			const DWORD failureNow = GetTickCount();
 			if (lastDeliveryFailureLogTime == 0 || failureNow - lastDeliveryFailureLogTime >= 5000)
 			{
@@ -1768,6 +1781,58 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			m_deliverySuccessCount.fetch_add(1, std::memory_order_relaxed);
 			m_lastDeliverySuccessTick.store(
 				GetTickCount64(), std::memory_order_release);
+
+			// After downstream priming and the short startup Deliver() stalls have
+			// ceased, discard only stale VP-owned converted samples once for this
+			// fresh epoch. Delivery-owned timestamps above keep the next live
+			// sample contiguous; this is intentionally not a madVR queue estimate
+			// or a steady-state queue controller.
+			const size_t desiredVpDepth = GetConfiguredSteadyQueueTarget();
+			const size_t convertedDepthBeforeConvergence =
+				m_processedFrameQueue.Size();
+			const LiveEpochConvergenceDecision convergenceDecision =
+				epochConvergenceController.Observe({
+					expectedQueueEpoch,
+					!m_isBuffering.load(std::memory_order_acquire) &&
+						expectedQueueEpoch ==
+							m_queueEpoch.load(std::memory_order_acquire),
+					convertedDepthBeforeConvergence,
+					desiredVpDepth,
+					true,
+					true,
+					deliveryTimeUs,
+					frameIntervalUs });
+			if (convergenceDecision.requestConvergence)
+			{
+				const size_t discardedStaleFrames =
+					m_processedFrameQueue.TrimTo(desiredVpDepth);
+				const size_t convertedDepthAfterConvergence =
+					m_processedFrameQueue.Size();
+				m_publishedConvertedQueueDepth.store(
+					convertedDepthAfterConvergence, std::memory_order_release);
+				LiveOutputTraceRecord convergenceTrace;
+				convergenceTrace.kind = LiveOutputTraceKind::PlannedDrop;
+				convergenceTrace.pipelineEpoch = expectedQueueEpoch;
+				convergenceTrace.eventTick = GetTickCount64();
+				convergenceTrace.rawQueueDepth = static_cast<uint32_t>(
+					m_publishedRawQueueDepth.load(std::memory_order_acquire));
+				convergenceTrace.convertedQueueDepth = static_cast<uint32_t>(
+					convertedDepthAfterConvergence);
+				convergenceTrace.totalQueueDepth =
+					convergenceTrace.rawQueueDepth +
+					convergenceTrace.convertedQueueDepth;
+				convergenceTrace.queueCapacity = static_cast<uint32_t>(
+					m_frameQueueMaxSize.load(std::memory_order_acquire));
+				convergenceTrace.intentionalDrop = discardedStaleFrames > 0;
+				m_liveOutputTrace.Record(convergenceTrace);
+				DebugLog::Log(
+					"VP-0066-9 QUEUE CONVERGENCE: epoch=%llu target=%zu "
+					"pre=%zu post=%zu discarded_stale=%zu "
+					"madvr_queue=unobservable",
+					expectedQueueEpoch, desiredVpDepth,
+					convertedDepthBeforeConvergence,
+					convertedDepthAfterConvergence, discardedStaleFrames);
+			}
 			++framesSinceLastLog;
 			++deliverySuccessCount;
 		}
