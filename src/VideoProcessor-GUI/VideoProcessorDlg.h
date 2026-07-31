@@ -21,6 +21,7 @@
 
 #include <blackmagic_decklink/BlackMagicDeckLinkCaptureDeviceDiscoverer.h>
 #include <PixelValueRange.h>
+#include <OutputReadinessController.h>
 #include <CCie1931Control.h>
 #include <IRenderer.h>
 #include <RendererResetCoordinator.h>
@@ -464,6 +465,16 @@ protected:
 	bool m_activeRendererIsDirectShow = false;
 	std::atomic<uint32_t> m_rendererGeneration{0};
 	uint32_t m_transitionGeneration = 0;
+	// This is observation-only until the readiness policy has been validated on
+	// real displays.  It deliberately does not participate in capture, reset,
+	// DirectShow delivery, or renderer ingress decisions yet.
+	OutputReadinessController m_outputReadinessObserver;
+	bool m_outputReadinessObservationValid = false;
+	OutputReadinessState m_lastObservedOutputReadinessState =
+		OutputReadinessState::OutputNotReady;
+	OutputReadinessReason m_lastObservedOutputReadinessReason =
+		OutputReadinessReason::AwaitingGraph;
+	bool m_lastObservedReadinessResetRequest = false;
 	uint64_t m_rendererTargetRevision = 0;
 	uint64_t m_transitionBlackStartTick = 0;
 	std::atomic_bool m_transitionRevealPosted{false};

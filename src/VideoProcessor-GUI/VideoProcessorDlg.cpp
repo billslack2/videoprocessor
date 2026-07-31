@@ -6980,6 +6980,56 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		lastAcceptedGeneration = sampledDisplayTiming.generation;
 		lastAcceptedTick = displayTimingLogTick;
 	}
+
+	// VP-0066 readiness observation is intentionally passive.  A validated
+	// DXGI measurement is evidence that the renderer/display timing path is
+	// usable, but it is not proof that an HDMI sink has completed its physical
+	// handshake and it says nothing about madVR's unobservable internal queues.
+	// Keep this controller on the UI thread and log only state transitions until
+	// its real-display behaviour has been reviewed.
+	OutputReadinessInput readinessInput;
+	readinessInput.transitionGeneration = m_transitionGeneration;
+	readinessInput.graphOperational =
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_videoRenderer != nullptr && !m_rendererResetTransitionActive;
+	readinessInput.displayDecision = displayRateResult.decision;
+	readinessInput.displayReason = displayRateResult.reason;
+	readinessInput.expectedOutputRefreshHz = activeTargetRefreshRate;
+	readinessInput.observedOutputRefreshHz = measuredDisplayRefreshRate;
+	// No reset completion or queue depth is supplied while this is passive.  A
+	// future actuator must receive those values from serialized lifecycle and
+	// epoch-owned transport state, never infer them from Deliver() duration.
+	const OutputReadinessDecision readinessDecision =
+		m_outputReadinessObserver.Observe(readinessInput);
+	const bool readinessChanged = !m_outputReadinessObservationValid ||
+		m_lastObservedOutputReadinessState != readinessDecision.state ||
+		m_lastObservedOutputReadinessReason != readinessDecision.reason ||
+		m_lastObservedReadinessResetRequest !=
+			readinessDecision.requestSerializedPostReadyReset;
+	if (readinessChanged)
+	{
+		DebugLog::Log(
+			"Output readiness observation (passive): generation=%u graph=%d "
+			"expected=%.6fHz observed=%.6fHz display=%s/%s state=%s "
+			"reason=%s would_request_reset=%d discard=%d admit=%d deliver=%d",
+			m_transitionGeneration,
+			readinessInput.graphOperational ? 1 : 0,
+			readinessInput.expectedOutputRefreshHz,
+			readinessInput.observedOutputRefreshHz,
+			ToString(readinessInput.displayDecision),
+			ToString(readinessInput.displayReason),
+			ToString(readinessDecision.state),
+			ToString(readinessDecision.reason),
+			readinessDecision.requestSerializedPostReadyReset ? 1 : 0,
+			readinessDecision.discardLiveCapture ? 1 : 0,
+			readinessDecision.admitCurrentEpochCapture ? 1 : 0,
+			readinessDecision.allowDownstreamDelivery ? 1 : 0);
+		m_outputReadinessObservationValid = true;
+		m_lastObservedOutputReadinessState = readinessDecision.state;
+		m_lastObservedOutputReadinessReason = readinessDecision.reason;
+		m_lastObservedReadinessResetRequest =
+			readinessDecision.requestSerializedPostReadyReset;
+	}
 	const bool sceneTimingReady =
 		displayRateResult.decision == DisplayRefreshRateDecision::Accepted;
 	const double sceneTimingElapsedSeconds =
