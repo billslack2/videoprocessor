@@ -18,6 +18,7 @@
 
 #include <ActivePictureTransitionModel.h>
 #include <CaptureFrameQueue.h>
+#include <FrameProcessor.h>
 #include <LiveOutputTrace.h>
 #include <ProcessedFrameQueue.h>
 #include <microsoft_directshow/DirectShowDefines.h>
@@ -124,6 +125,7 @@ private:
 
 	ProcessedFrameQueue m_processedFrameQueue{ 32 };
 	CCritSec m_convertedQueueLock;
+	FrameProcessor m_frameProcessor;
 	// The trace is a VP-only, bounded diagnostic snapshot. It has no renderer
 	// queue state and never performs file I/O from a worker or callback.
 	LiveOutputTrace m_liveOutputTrace;

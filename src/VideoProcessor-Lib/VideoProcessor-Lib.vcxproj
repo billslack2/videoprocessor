@@ -184,6 +184,7 @@
     <ClInclude Include="DisplayRefreshRatePolicy.h" />
     <ClInclude Include="ColorFormat.h" />
     <ClInclude Include="EOTF.h" />
+	<ClInclude Include="FrameProcessor.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="guid.h" />
     <ClInclude Include="HDRData.h" />
@@ -272,6 +273,7 @@
     <ClCompile Include="DisplayMode.cpp" />
     <ClCompile Include="DisplayRefreshRatePolicy.cpp" />
     <ClCompile Include="ColorFormat.cpp" />
+	<ClCompile Include="FrameProcessor.cpp" />
     <ClCompile Include="ConfigFile.cpp" />
     <ClCompile Include="EOTF.cpp" />
     <ClCompile Include="guid.cpp" />

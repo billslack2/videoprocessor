@@ -33,6 +33,15 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 	ALiveSourceVideoOutputPin(filter, pLock, phr)
 {
 	// Initialize all member variables BEFORE creating events/threads
+	m_frameProcessor.Configure(
+		[this](VideoFrame& frame, IMediaSample* sample)
+		{
+			return RenderVideoFrameIntoSample(frame, sample);
+		},
+		[]()
+		{
+			return static_cast<uint64_t>(GetWallClockTime());
+		});
 	m_frameQueueMaxSize.store(32, std::memory_order_relaxed);  // Default safe value
 	m_isActive.store(false, std::memory_order_relaxed);
 	m_isBuffering.store(true, std::memory_order_relaxed);  // Start in buffering mode
@@ -2627,10 +2636,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				continue;
 			}
 
-			const auto convStartTime = GetWallClockTime();
-			hr = RenderVideoFrameIntoSample(videoFrame, pSample);
-			const auto convEndTime = GetWallClockTime();
-			const uint64_t convTimeUs = (convEndTime - convStartTime) / 10;
+			FrameProcessorResult processing = m_frameProcessor.Process({
+				&videoFrame,
+				pSample,
+				{ frameQueueEpoch },
+				videoFrame.GetCounter(),
+				static_cast<uint64_t>(videoFrame.GetTimingTimestamp()),
+				0 });
+			hr = processing.result;
+			const uint64_t convTimeUs = processing.processingDurationUs;
 
 			m_totalConversionTimeUs.fetch_add(convTimeUs, std::memory_order_relaxed);
 			++m_conversionFrameCount;
@@ -2786,17 +2800,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 					const PipelineEpoch currentEpoch{
 						m_queueEpoch.load(std::memory_order_acquire) };
+					ProcessedFrame processedFrame = processing.frame;
+					processedFrame.isSafeCorrectionPoint = isSafeCorrectionPoint;
+					processedFrame.sceneEventId = sceneEventId;
+					processedFrame.sceneTimingGeneration = sceneTimingGeneration;
 					const EpochBoundedQueuePushResult pushResult =
-						m_processedFrameQueue.Push({
-							pSample,
-							videoFrame.GetCounter(),
-							static_cast<uint64_t>(videoFrame.GetTimingTimestamp()),
-							static_cast<uint32_t>(std::min<uint64_t>(
-								convTimeUs, std::numeric_limits<uint32_t>::max())),
-							isSafeCorrectionPoint,
-							sceneEventId,
-							frameQueueEpoch,
-							sceneTimingGeneration },
+						m_processedFrameQueue.Push(std::move(processedFrame),
 							{ frameQueueEpoch }, currentEpoch);
 					const EpochBoundedQueueMetrics processedMetrics =
 						m_processedFrameQueue.Metrics();
