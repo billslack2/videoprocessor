@@ -68,17 +68,18 @@ timestamp hole merely to report a lower OSD queue number.
    per epoch and re-arms only for a new epoch. Native tests replay the observed
    109.7/123.5 ms 59.94-Hz stalls and prove the ten-frame request from depth 12
    to target 2, non-request at target, and fresh-epoch rearm.
-2. **Timestamp ownership/rebase (in progress):**
+2. **Timestamp ownership/rebase (implemented; awaiting live validation):**
    `RationalLiveOutputSequencer` now provides a pure, delivery-owned preview /
    commit sequence for the deployed Rational-Rational path. Its native tests
    prove exact 60000/1001 continuity, no output-time gap when stale picture
    content is skipped, retry-after-failed-Deliver, and epoch reset behavior.
-   The live delivery thread has a shadow-only integration: it compares the
-   existing stamped cadence with the final-boundary sequence and commits only
-   after a successful Deliver. It never changes a sample in this step and
-   explicitly stands aside while P010 scene-aware cadence owns timestamps.
-   The next small step is to validate its production trace before making a
-   delivery-boundary stamp authoritative.
+   A 59.94-Hz production trace confirmed 968 successful deliveries with a
+   strictly contiguous Rational timeline (180 ms lead, then exact
+   166,830/166,831-tick cadence). The delivery thread now applies this
+   sequence to normal Rational-Rational samples immediately before `Deliver`
+   and commits it only on success. Active P010 scene cadence remains its own
+   delivery-thread timestamp owner. This increment does not yet discard any
+   queued picture content.
 3. **One-shot integration:** let the DirectShow delivery coordinator execute
    the proven transaction only for the current epoch. Log target, pre/post
    VP-owned depth, skipped stale content count, output sequence, and the
