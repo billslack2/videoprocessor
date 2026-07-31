@@ -39,6 +39,40 @@ namespace Tests
 			Assert::IsTrue(decision.stop > decision.start);
 		}
 
+		TEST_METHOD(FourHourSimulationsKeepBothExactRateFamiliesMonotonic)
+		{
+			struct RateFixture
+			{
+				uint32_t timeScale;
+				uint32_t frameDurationTicks;
+				uint64_t framesInFourHours;
+			};
+			const RateFixture fixtures[] = {
+				{ 24000, 1001, 345255 },
+				{ 60000, 1001, 863137 }
+			};
+
+			for (const auto fixture : fixtures)
+			{
+				auto controller = MakeController(
+					VideoTimingMode::RationalRational,
+					fixture.timeScale, fixture.frameDurationTicks);
+				VideoReferenceTime previousStart = -1;
+				for (uint64_t frame = 0; frame < fixture.framesInFourHours; ++frame)
+				{
+					const TimingDecision decision = controller.Decide({ frame });
+					Assert::IsTrue(decision.start > previousStart);
+					Assert::IsTrue(decision.stop > decision.start);
+					const VideoReferenceTime direct = VideoTimingController::RationalTimestamp(
+						frame, fixture.frameDurationTicks, fixture.timeScale, 0);
+					// Strict source-pin monotonicity can introduce only the documented
+					// one-tick boundary gap when a rounded stop/start would tie.
+					Assert::IsTrue(decision.start >= direct && decision.start <= direct + 1);
+					previousStart = decision.start;
+				}
+			}
+		}
+
 		TEST_METHOD(Rational60000Over1001UsesExactRoundedFrameTimes)
 		{
 			auto controller = MakeController(
