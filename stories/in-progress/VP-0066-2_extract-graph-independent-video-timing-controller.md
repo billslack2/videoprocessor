@@ -23,6 +23,15 @@ same per-frame equality check, with the legacy result as fallback. Other
 timestamp modes and scene-aware presentation correction remain on their
 existing paths pending equivalent mode-specific replay/shadow evidence.
 
+Active Rational/Rational evidence (SDR 60000/1001, 2026-07-30): the
+controller timestamp result was applied 11,110 times, with zero comparison
+mismatches through automatic reset and 177 seconds of steady operation. The
+VP queue again remained in the 7--9-frame band and recorded no delivery
+failure during the retained steady-state event window. The pure unit suite
+also simulates four continuous hours at both 24000/1001 and 60000/1001,
+verifying strictly monotonic timestamps and a bounded one-100-ns-tick
+rounding-boundary difference from direct rational time.
+
 Cadence safety: 24000/1001 capture on a monitor that cannot switch to that
 rate is an incompatible cadence fixture, not a PPM or queue-control problem.
 This task must not use VP queue depth, madVR occupancy, or scene correction to
