@@ -71,5 +71,49 @@ namespace Tests
 			Assert::IsTrue(completed);
 			Assert::AreEqual<HRESULT>(E_FAIL, result.result);
 		}
+
+		TEST_METHOD(PreparesDiscontinuityAndLateBoundStopWithoutDelivery)
+		{
+			DirectShowFrameDeliverer deliverer;
+			IMediaSample* const sample = reinterpret_cast<IMediaSample*>(0x1);
+			int discontinuityCalls = 0;
+			int setTimeCalls = 0;
+			const DirectShowSamplePreparationResult result = deliverer.Prepare({
+				sample, true, true, 1000, 100,
+				[&](IMediaSample* prepared, BOOL discontinuity)
+				{
+					Assert::IsTrue(prepared == sample);
+					Assert::IsTrue(discontinuity == TRUE);
+					++discontinuityCalls;
+					return S_OK;
+				},
+				[&](IMediaSample* prepared, REFERENCE_TIME* start, REFERENCE_TIME* stop)
+				{
+					Assert::IsTrue(prepared == sample);
+					*start = 5000;
+					*stop = 6000;
+					return S_OK;
+				},
+				[&](IMediaSample* prepared, REFERENCE_TIME* start, REFERENCE_TIME* stop)
+				{
+					Assert::IsTrue(prepared == sample);
+					Assert::AreEqual<REFERENCE_TIME>(5000, *start);
+					Assert::AreEqual<REFERENCE_TIME>(6200, *stop);
+					++setTimeCalls;
+					return S_OK;
+				},
+				[](REFERENCE_TIME current, REFERENCE_TIME theoretical, REFERENCE_TIME tolerance)
+				{
+					Assert::AreEqual<REFERENCE_TIME>(5000, current);
+					Assert::AreEqual<REFERENCE_TIME>(6000, theoretical);
+					Assert::AreEqual<REFERENCE_TIME>(100, tolerance);
+					return static_cast<REFERENCE_TIME>(6200);
+				} });
+
+			Assert::AreEqual(1, discontinuityCalls);
+			Assert::AreEqual(1, setTimeCalls);
+			Assert::IsTrue(result.lateBoundStopApplied);
+			Assert::AreEqual<REFERENCE_TIME>(6200, result.matchedNextStart);
+		}
 	};
 }
