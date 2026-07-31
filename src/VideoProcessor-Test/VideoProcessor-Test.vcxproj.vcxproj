@@ -211,6 +211,7 @@
 	<ClCompile Include="DirectShowSegmentTransitionTests.cpp" />
 	<ClCompile Include="EpochBoundedQueueTests.cpp" />
 	<ClCompile Include="FrameProcessorTests.cpp" />
+	<ClCompile Include="LiveEpochConvergenceControllerTests.cpp" />
 	<ClCompile Include="OutputReadinessControllerTests.cpp" />
   </ItemGroup>
   <ItemGroup>
