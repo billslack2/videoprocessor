@@ -15,6 +15,7 @@ DirectShowDeliveryOutcome DirectShowDeliveryOutcomeClassifier::Classify(
 
 	outcome.deliveryFailed = FAILED(input.result);
 	outcome.deliverySucceeded = input.result == S_OK;
+	outcome.deliveryRejected = input.result == S_FALSE;
 	outcome.countDroppedFrame = outcome.deliveryFailed;
 	outcome.incrementRecentFailures = outcome.deliveryFailed;
 	outcome.clearRecentFailures = outcome.deliverySucceeded;

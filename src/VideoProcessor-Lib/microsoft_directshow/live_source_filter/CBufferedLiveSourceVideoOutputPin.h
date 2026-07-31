@@ -136,6 +136,9 @@ private:
 	// The trace is a VP-only, bounded diagnostic snapshot. It has no renderer
 	// queue state and never performs file I/O from a worker or callback.
 	LiveOutputTrace m_liveOutputTrace;
+	// Low-volume convergence evidence is kept separately so a one-minute run
+	// cannot overwrite its startup state transitions with per-frame events.
+	LiveOutputTrace m_liveConvergenceTrace;
 	// One record per second, kept separately so per-frame events cannot evict
 	// the long-run OSD-equivalent queue history.
 	LiveOutputTrace m_liveOutputMetricsTrace;
@@ -367,9 +370,9 @@ private:
 	
 	std::atomic_bool m_isBuffering = false; // gate delivery until converted queue is primed
 	// Explicit [queue] frame policies. Zero means automatic policy. The steady
-	// value selects VP's post-prime delivery cushion, not a hard R/C/T ceiling
-	// and never a madVR request. Temporary VP elasticity preserves continuity
-	// while madVR's synchronous Deliver() call is briefly unavailable.
+	// value selects VP's converted-queue post-prime delivery cushion, not a hard
+	// total R/C/T ceiling and never a madVR request. Temporary VP elasticity
+	// preserves continuity while synchronous Deliver() is briefly unavailable.
 	std::atomic<size_t> m_configuredStartupPrerollFrames{ 0 };
 	std::atomic<size_t> m_configuredSteadyReserveFrames{ 0 };
 	// Published by the UI/controller, consumed only by the delivery worker. A

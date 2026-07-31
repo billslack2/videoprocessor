@@ -7,22 +7,12 @@
 
 namespace
 {
-constexpr uint32_t kMinimumDownstreamPrimeDeliveries = 5;
-constexpr uint32_t kRequiredStableDeliveries = 3;
-constexpr uint64_t kMaximumNormalDeliveryPeriods = 2;
-
-bool IsNormalDelivery(const LiveEpochConvergenceInput& input)
+uint64_t SaturatingMultiply(uint64_t value, uint64_t multiplier)
 {
-	if (!input.deliverySucceeded || input.nominalFrameDurationUs == 0)
-		return false;
-
-	const uint64_t maximumNormalDurationUs =
-		input.nominalFrameDurationUs >
-			std::numeric_limits<uint64_t>::max() /
-				kMaximumNormalDeliveryPeriods ?
-			std::numeric_limits<uint64_t>::max() :
-			input.nominalFrameDurationUs * kMaximumNormalDeliveryPeriods;
-	return input.deliveryDurationUs <= maximumNormalDurationUs;
+	if (value == 0 || multiplier == 0)
+		return 0;
+	return value > (std::numeric_limits<uint64_t>::max)() / multiplier ?
+		(std::numeric_limits<uint64_t>::max)() : value * multiplier;
 }
 }
 
@@ -32,49 +22,162 @@ LiveEpochConvergenceDecision LiveEpochConvergenceController::Observe(
 	if (!input.epochActive || input.epoch == 0 || input.desiredVpDepth == 0)
 	{
 		Reset();
-		return { LiveEpochConvergenceState::Disabled, false, 0, input.epoch };
+		LiveEpochConvergenceDecision decision;
+		decision.reason = LiveEpochConvergenceReason::DisabledByConfiguration;
+		decision.epoch = input.epoch;
+		return decision;
 	}
 
-	if (!m_initialized || input.epoch != m_epoch ||
-		input.desiredVpDepth != m_desiredVpDepth)
-	{
+	if (!m_initialized || input.epoch != m_epoch)
 		BeginEpoch(input.epoch, input.desiredVpDepth);
-	}
 
-	LiveEpochConvergenceDecision decision;
-	decision.state = m_state;
-	decision.epoch = m_epoch;
-	if (!input.deliveryCompleted || m_state == LiveEpochConvergenceState::Converged)
-		return decision;
-
-	if (input.deliverySucceeded)
-		++m_successfulDeliveryCount;
-
-	if (m_successfulDeliveryCount < kMinimumDownstreamPrimeDeliveries)
+	const LiveEpochConvergenceState previousState = m_state;
+	if (input.desiredVpDepth != m_desiredVpDepth)
 	{
-		m_state = LiveEpochConvergenceState::AwaitingDownstreamPrime;
-		decision.state = m_state;
-		return decision;
+		m_state = LiveEpochConvergenceState::UnprovenNoTrim;
+		return MakeDecision(input, previousState,
+			LiveEpochConvergenceReason::TargetChangedWithinEpoch);
 	}
 
-	m_state = LiveEpochConvergenceState::AwaitingStableDelivery;
-	if (IsNormalDelivery(input))
-		++m_consecutiveStableDeliveryCount;
-	else
-		m_consecutiveStableDeliveryCount = 0;
+	if (IsTerminal())
+		return MakeDecision(input, previousState, LiveEpochConvergenceReason::None);
 
-	if (m_consecutiveStableDeliveryCount < kRequiredStableDeliveries)
+	if (input.resetOrFlushInProgress || input.sceneCadenceActive)
 	{
-		decision.state = m_state;
-		return decision;
+		return MakeDecision(input, previousState,
+			LiveEpochConvergenceReason::UnsafeBoundary);
 	}
 
-	m_state = LiveEpochConvergenceState::Converged;
-	decision.state = m_state;
-	decision.requestConvergence = input.vpConvertedDepth > m_desiredVpDepth;
-	decision.staleVpFrames = decision.requestConvergence ?
-		input.vpConvertedDepth - m_desiredVpDepth : 0;
-	return decision;
+	if (m_state == LiveEpochConvergenceState::ObservingIngress &&
+		m_hasFirstSuccessTick &&
+		HasElapsed(input.observationTickMs, m_firstSuccessTickMs,
+			kBlockObservationTimeoutMs))
+	{
+		m_state = LiveEpochConvergenceState::UnprovenNoTrim;
+		return MakeDecision(input, previousState,
+			LiveEpochConvergenceReason::BlockObservationTimedOut);
+	}
+
+	if ((m_state == LiveEpochConvergenceState::Armed ||
+		m_state == LiveEpochConvergenceState::DeferredRawNotEmpty) &&
+		m_hasArmedTick &&
+		HasElapsed(input.observationTickMs, m_armedTickMs,
+			kArmedConvergenceWindowMs))
+	{
+		m_state = input.vpConvertedDepth <= m_desiredVpDepth ?
+			LiveEpochConvergenceState::SettledNoTrim :
+			LiveEpochConvergenceState::UnprovenNoTrim;
+		return MakeDecision(input, previousState,
+			LiveEpochConvergenceReason::ArmedWindowTimedOut);
+	}
+
+	if (!input.deliveryCompleted)
+	{
+		return MakeDecision(input, previousState,
+			LiveEpochConvergenceReason::AwaitingIngressBlock);
+	}
+
+	if (!input.deliverySucceeded)
+	{
+		m_state = LiveEpochConvergenceState::UnprovenNoTrim;
+		m_consecutiveRecoveryDeliveryCount = 0;
+		return MakeDecision(input, previousState,
+			LiveEpochConvergenceReason::DeliveryFailed);
+	}
+
+	++m_successfulDeliveryCount;
+	if (!m_hasFirstSuccessTick && input.observationTickMs != 0)
+	{
+		m_hasFirstSuccessTick = true;
+		m_firstSuccessTickMs = input.observationTickMs;
+	}
+
+	const bool ingressBlocked = IsIngressBlocked(input);
+	const bool normalDelivery = IsNormalDelivery(input);
+	if (m_state == LiveEpochConvergenceState::ObservingIngress)
+	{
+		if (ingressBlocked)
+		{
+			++m_ingressBlockCount;
+			m_consecutiveRecoveryDeliveryCount = 0;
+			m_state = LiveEpochConvergenceState::IngressBlocked;
+			return MakeDecision(input, previousState,
+				LiveEpochConvergenceReason::IngressBlockObserved);
+		}
+		return MakeDecision(input, previousState,
+			LiveEpochConvergenceReason::AwaitingIngressBlock);
+	}
+
+	if (m_state == LiveEpochConvergenceState::IngressBlocked ||
+		m_state == LiveEpochConvergenceState::Recovering ||
+		m_state == LiveEpochConvergenceState::Armed ||
+		m_state == LiveEpochConvergenceState::DeferredRawNotEmpty)
+	{
+		if (ingressBlocked)
+		{
+			++m_ingressBlockCount;
+			m_consecutiveRecoveryDeliveryCount = 0;
+			m_state = LiveEpochConvergenceState::IngressBlocked;
+			return MakeDecision(input, previousState,
+				LiveEpochConvergenceReason::IngressBlockObserved);
+		}
+
+		if (!normalDelivery)
+		{
+			m_consecutiveRecoveryDeliveryCount = 0;
+			m_state = LiveEpochConvergenceState::IngressBlocked;
+			return MakeDecision(input, previousState,
+				LiveEpochConvergenceReason::IngressBlockObserved);
+		}
+
+		if (m_state == LiveEpochConvergenceState::IngressBlocked ||
+			m_state == LiveEpochConvergenceState::Recovering)
+		{
+			++m_consecutiveRecoveryDeliveryCount;
+			if (m_consecutiveRecoveryDeliveryCount < kRequiredRecoveryDeliveries)
+			{
+				m_state = LiveEpochConvergenceState::Recovering;
+				return MakeDecision(input, previousState,
+					LiveEpochConvergenceReason::RecoveryDelivery);
+			}
+
+			m_state = LiveEpochConvergenceState::Armed;
+			if (input.observationTickMs != 0)
+			{
+				m_hasArmedTick = true;
+				m_armedTickMs = input.observationTickMs;
+			}
+		}
+
+		if (CanRequestTrim(input))
+		{
+			m_state = LiveEpochConvergenceState::TrimApplied;
+			LiveEpochConvergenceDecision decision = MakeDecision(input, previousState,
+				LiveEpochConvergenceReason::TrimRequested);
+			decision.requestConvergence = true;
+			decision.staleVpFrames = input.vpConvertedDepth - m_desiredVpDepth;
+			return decision;
+		}
+
+		if (!input.rawDepthKnown)
+		{
+			m_state = LiveEpochConvergenceState::DeferredRawNotEmpty;
+			return MakeDecision(input, previousState,
+				LiveEpochConvergenceReason::RawDepthUnknown);
+		}
+		if (input.vpRawDepth != 0)
+		{
+			m_state = LiveEpochConvergenceState::DeferredRawNotEmpty;
+			return MakeDecision(input, previousState,
+				LiveEpochConvergenceReason::RawDepthNotEmpty);
+		}
+
+		m_state = LiveEpochConvergenceState::Armed;
+		return MakeDecision(input, previousState,
+			LiveEpochConvergenceReason::ArmedNoBacklog);
+	}
+
+	return MakeDecision(input, previousState, LiveEpochConvergenceReason::None);
 }
 
 void LiveEpochConvergenceController::Reset()
@@ -83,7 +186,12 @@ void LiveEpochConvergenceController::Reset()
 	m_epoch = 0;
 	m_desiredVpDepth = 0;
 	m_successfulDeliveryCount = 0;
-	m_consecutiveStableDeliveryCount = 0;
+	m_ingressBlockCount = 0;
+	m_consecutiveRecoveryDeliveryCount = 0;
+	m_hasFirstSuccessTick = false;
+	m_firstSuccessTickMs = 0;
+	m_hasArmedTick = false;
+	m_armedTickMs = 0;
 	m_state = LiveEpochConvergenceState::Disabled;
 }
 
@@ -94,8 +202,88 @@ void LiveEpochConvergenceController::BeginEpoch(
 	m_epoch = epoch;
 	m_desiredVpDepth = desiredVpDepth;
 	m_successfulDeliveryCount = 0;
-	m_consecutiveStableDeliveryCount = 0;
-	m_state = LiveEpochConvergenceState::AwaitingDownstreamPrime;
+	m_ingressBlockCount = 0;
+	m_consecutiveRecoveryDeliveryCount = 0;
+	m_hasFirstSuccessTick = false;
+	m_firstSuccessTickMs = 0;
+	m_hasArmedTick = false;
+	m_armedTickMs = 0;
+	m_state = LiveEpochConvergenceState::ObservingIngress;
+}
+
+LiveEpochConvergenceDecision LiveEpochConvergenceController::MakeDecision(
+	const LiveEpochConvergenceInput& input,
+	LiveEpochConvergenceState previousState,
+	LiveEpochConvergenceReason reason) const
+{
+	LiveEpochConvergenceDecision decision;
+	decision.previousState = previousState;
+	decision.state = m_state;
+	decision.reason = reason;
+	decision.epoch = m_epoch;
+	decision.successfulDeliveryCount = m_successfulDeliveryCount;
+	decision.ingressBlockCount = m_ingressBlockCount;
+	decision.consecutiveRecoveryDeliveryCount = m_consecutiveRecoveryDeliveryCount;
+	decision.ingressBlockThresholdUs =
+		IngressBlockThresholdUs(input.nominalFrameDurationUs);
+	decision.normalDeliveryThresholdUs =
+		NormalDeliveryThresholdUs(input.nominalFrameDurationUs);
+	decision.rawZeroPreconditionMet =
+		input.rawDepthKnown && input.vpRawDepth == 0;
+	if (m_hasFirstSuccessTick && input.observationTickMs >= m_firstSuccessTickMs)
+		decision.elapsedSinceFirstSuccessMs =
+			input.observationTickMs - m_firstSuccessTickMs;
+	return decision;
+}
+
+bool LiveEpochConvergenceController::HasElapsed(
+	uint64_t now, uint64_t since, uint64_t duration) const
+{
+	return now != 0 && now >= since && now - since >= duration;
+}
+
+uint64_t LiveEpochConvergenceController::IngressBlockThresholdUs(
+	uint64_t nominalFrameDurationUs) const
+{
+	return std::max(kMinimumIngressBlockUs,
+		SaturatingMultiply(nominalFrameDurationUs, kIngressBlockPeriods));
+}
+
+uint64_t LiveEpochConvergenceController::NormalDeliveryThresholdUs(
+	uint64_t nominalFrameDurationUs) const
+{
+	return SaturatingMultiply(nominalFrameDurationUs,
+		kMaximumNormalDeliveryPeriods);
+}
+
+bool LiveEpochConvergenceController::IsIngressBlocked(
+	const LiveEpochConvergenceInput& input) const
+{
+	return input.nominalFrameDurationUs != 0 && input.deliverySucceeded &&
+		input.deliveryDurationUs >=
+		IngressBlockThresholdUs(input.nominalFrameDurationUs);
+}
+
+bool LiveEpochConvergenceController::IsNormalDelivery(
+	const LiveEpochConvergenceInput& input) const
+{
+	return input.nominalFrameDurationUs != 0 && input.deliverySucceeded &&
+		input.deliveryDurationUs <=
+		NormalDeliveryThresholdUs(input.nominalFrameDurationUs);
+}
+
+bool LiveEpochConvergenceController::IsTerminal() const
+{
+	return m_state == LiveEpochConvergenceState::TrimApplied ||
+		m_state == LiveEpochConvergenceState::SettledNoTrim ||
+		m_state == LiveEpochConvergenceState::UnprovenNoTrim;
+}
+
+bool LiveEpochConvergenceController::CanRequestTrim(
+	const LiveEpochConvergenceInput& input) const
+{
+	return input.rawDepthKnown && input.vpRawDepth == 0 &&
+		input.vpConvertedDepth > m_desiredVpDepth;
 }
 
 const char* ToString(LiveEpochConvergenceState state)
@@ -103,9 +291,36 @@ const char* ToString(LiveEpochConvergenceState state)
 	switch (state)
 	{
 	case LiveEpochConvergenceState::Disabled: return "disabled";
-	case LiveEpochConvergenceState::AwaitingDownstreamPrime: return "awaiting-downstream-prime";
-	case LiveEpochConvergenceState::AwaitingStableDelivery: return "awaiting-stable-delivery";
-	case LiveEpochConvergenceState::Converged: return "converged";
+	case LiveEpochConvergenceState::ObservingIngress: return "observing-ingress";
+	case LiveEpochConvergenceState::IngressBlocked: return "ingress-blocked";
+	case LiveEpochConvergenceState::Recovering: return "recovering";
+	case LiveEpochConvergenceState::Armed: return "armed";
+	case LiveEpochConvergenceState::DeferredRawNotEmpty: return "deferred-raw-not-empty";
+	case LiveEpochConvergenceState::TrimApplied: return "trim-applied";
+	case LiveEpochConvergenceState::SettledNoTrim: return "settled-no-trim";
+	case LiveEpochConvergenceState::UnprovenNoTrim: return "unproven-no-trim";
 	default: return "disabled";
+	}
+}
+
+const char* ToString(LiveEpochConvergenceReason reason)
+{
+	switch (reason)
+	{
+	case LiveEpochConvergenceReason::None: return "none";
+	case LiveEpochConvergenceReason::DisabledByConfiguration: return "disabled-by-configuration";
+	case LiveEpochConvergenceReason::AwaitingIngressBlock: return "awaiting-ingress-block";
+	case LiveEpochConvergenceReason::IngressBlockObserved: return "ingress-block-observed";
+	case LiveEpochConvergenceReason::RecoveryDelivery: return "recovery-delivery";
+	case LiveEpochConvergenceReason::ArmedNoBacklog: return "armed-no-backlog";
+	case LiveEpochConvergenceReason::RawDepthUnknown: return "raw-depth-unknown";
+	case LiveEpochConvergenceReason::RawDepthNotEmpty: return "raw-depth-not-empty";
+	case LiveEpochConvergenceReason::TrimRequested: return "trim-requested";
+	case LiveEpochConvergenceReason::BlockObservationTimedOut: return "block-observation-timed-out";
+	case LiveEpochConvergenceReason::ArmedWindowTimedOut: return "armed-window-timed-out";
+	case LiveEpochConvergenceReason::DeliveryFailed: return "delivery-failed";
+	case LiveEpochConvergenceReason::UnsafeBoundary: return "unsafe-boundary";
+	case LiveEpochConvergenceReason::TargetChangedWithinEpoch: return "target-changed-within-epoch";
+	default: return "none";
 	}
 }

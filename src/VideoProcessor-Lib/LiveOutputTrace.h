@@ -19,6 +19,7 @@ enum class LiveOutputTraceKind : uint8_t
 	ResetCompleted,
 	PlannedDrop,
 	QueueSnapshot,
+	ConvergenceState,
 };
 
 struct LiveOutputTraceRecord
@@ -34,6 +35,9 @@ struct LiveOutputTraceRecord
 	uint64_t eventTick = 0;
 	int64_t presentationStart = 0;
 	int64_t presentationStop = 0;
+	int64_t mediaStart = 0;
+	int64_t mediaStop = 0;
+	uint64_t outputSequence = 0;
 	uint32_t rawQueueDepth = 0;
 	uint32_t convertedQueueDepth = 0;
 	uint32_t totalQueueDepth = 0;
@@ -41,9 +45,25 @@ struct LiveOutputTraceRecord
 	uint32_t processingDurationUs = 0;
 	uint32_t deliveryDurationUs = 0;
 	int32_t deliveryResult = 0;
+	uint32_t queueTarget = 0;
+	uint32_t queueDepthBefore = 0;
+	uint32_t queueDepthAfter = 0;
+	uint32_t queueDiscarded = 0;
+	uint32_t convergenceSuccessCount = 0;
+	uint32_t convergenceBlockCount = 0;
+	uint32_t convergenceRecoveryStreak = 0;
+	uint32_t convergenceBlockThresholdUs = 0;
+	uint32_t convergenceNormalThresholdUs = 0;
+	uint32_t convergenceElapsedMs = 0;
+	uint8_t convergenceState = 0;
+	uint8_t convergenceReason = 0;
+	uint8_t timestampOwner = 0;
 	LiveOutputTraceKind kind = LiveOutputTraceKind::CaptureAccepted;
 	bool sceneBoundary = false;
 	bool intentionalDrop = false;
+	bool sourceDiscontinuity = false;
+	bool convergenceApplied = false;
+	bool convergenceRawZero = false;
 };
 
 struct LiveOutputTraceComparison
@@ -155,8 +175,27 @@ public:
 				lhs.processingDurationUs != rhs.processingDurationUs ||
 				lhs.deliveryDurationUs != rhs.deliveryDurationUs ||
 				lhs.deliveryResult != rhs.deliveryResult ||
+				lhs.mediaStart != rhs.mediaStart ||
+				lhs.mediaStop != rhs.mediaStop ||
+				lhs.outputSequence != rhs.outputSequence ||
+				lhs.queueTarget != rhs.queueTarget ||
+				lhs.queueDepthBefore != rhs.queueDepthBefore ||
+				lhs.queueDepthAfter != rhs.queueDepthAfter ||
+				lhs.queueDiscarded != rhs.queueDiscarded ||
+				lhs.convergenceSuccessCount != rhs.convergenceSuccessCount ||
+				lhs.convergenceBlockCount != rhs.convergenceBlockCount ||
+				lhs.convergenceRecoveryStreak != rhs.convergenceRecoveryStreak ||
+				lhs.convergenceBlockThresholdUs != rhs.convergenceBlockThresholdUs ||
+				lhs.convergenceNormalThresholdUs != rhs.convergenceNormalThresholdUs ||
+				lhs.convergenceElapsedMs != rhs.convergenceElapsedMs ||
+				lhs.convergenceState != rhs.convergenceState ||
+				lhs.convergenceReason != rhs.convergenceReason ||
+				lhs.timestampOwner != rhs.timestampOwner ||
 				lhs.sceneBoundary != rhs.sceneBoundary ||
 				lhs.intentionalDrop != rhs.intentionalDrop ||
+				lhs.sourceDiscontinuity != rhs.sourceDiscontinuity ||
+				lhs.convergenceApplied != rhs.convergenceApplied ||
+				lhs.convergenceRawZero != rhs.convergenceRawZero ||
 				AbsoluteDifference(lhs.presentationStart, rhs.presentationStart) > presentationTolerance ||
 				AbsoluteDifference(lhs.presentationStop, rhs.presentationStop) > presentationTolerance)
 			{
@@ -173,8 +212,13 @@ public:
 		const std::vector<LiveOutputTraceRecord>& records)
 	{
 		stream << "sequence,kind,frame,epoch,capture_timestamp,capture_arrival_tick,event_tick,"
-			"presentation_start,presentation_stop,raw_queue,converted_queue,total_queue,queue_capacity,"
-			"processing_us,delivery_us,delivery_result,scene_boundary,intentional_drop\n";
+			"presentation_start,presentation_stop,media_start,media_stop,output_sequence,"
+			"raw_queue,converted_queue,total_queue,queue_capacity,processing_us,delivery_us,"
+			"delivery_result,queue_target,queue_depth_before,queue_depth_after,queue_discarded,"
+			"convergence_successes,convergence_blocks,convergence_recovery_streak,"
+			"convergence_block_threshold_us,convergence_normal_threshold_us,convergence_elapsed_ms,"
+			"convergence_state,convergence_reason,timestamp_owner,scene_boundary,intentional_drop,"
+			"source_discontinuity,convergence_applied,convergence_raw_zero\n";
 		for (const LiveOutputTraceRecord& record : records)
 		{
 			stream << record.sequence << ',' << static_cast<unsigned>(record.kind) << ','
@@ -182,11 +226,26 @@ public:
 				<< record.captureTimestamp << ',' << record.captureArrivalTick << ','
 				<< record.eventTick << ','
 				<< record.presentationStart << ',' << record.presentationStop << ','
+				<< record.mediaStart << ',' << record.mediaStop << ','
+				<< record.outputSequence << ','
 				<< record.rawQueueDepth << ',' << record.convertedQueueDepth << ','
 				<< record.totalQueueDepth << ',' << record.queueCapacity << ','
 				<< record.processingDurationUs << ',' << record.deliveryDurationUs << ','
-				<< record.deliveryResult << ',' << (record.sceneBoundary ? 1 : 0) << ','
-				<< (record.intentionalDrop ? 1 : 0) << '\n';
+				<< record.deliveryResult << ',' << record.queueTarget << ','
+				<< record.queueDepthBefore << ',' << record.queueDepthAfter << ','
+				<< record.queueDiscarded << ',' << record.convergenceSuccessCount << ','
+				<< record.convergenceBlockCount << ',' << record.convergenceRecoveryStreak << ','
+				<< record.convergenceBlockThresholdUs << ','
+				<< record.convergenceNormalThresholdUs << ','
+				<< record.convergenceElapsedMs << ','
+				<< static_cast<unsigned>(record.convergenceState) << ','
+				<< static_cast<unsigned>(record.convergenceReason) << ','
+				<< static_cast<unsigned>(record.timestampOwner) << ','
+				<< (record.sceneBoundary ? 1 : 0) << ','
+				<< (record.intentionalDrop ? 1 : 0) << ','
+				<< (record.sourceDiscontinuity ? 1 : 0) << ','
+				<< (record.convergenceApplied ? 1 : 0) << ','
+				<< (record.convergenceRawZero ? 1 : 0) << '\n';
 		}
 	}
 

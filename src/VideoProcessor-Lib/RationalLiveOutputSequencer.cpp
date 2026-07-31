@@ -2,43 +2,88 @@
 
 #include <RationalLiveOutputSequencer.h>
 
-namespace
-{
-VideoTimingControllerConfig MakeConfig(
-	uint32_t timeScale, uint32_t frameDurationTicks,
-	VideoReferenceTime theoreticalFrameDuration)
-{
-	VideoTimingControllerConfig config;
-	config.mode = VideoTimingMode::RationalRational;
-	config.timeScale = timeScale;
-	config.frameDurationTicks = frameDurationTicks;
-	config.theoreticalFrameDuration = theoreticalFrameDuration;
-	return config;
-}
-}
+#include <cmath>
 
 RationalLiveOutputSequencer::RationalLiveOutputSequencer(
 	uint32_t timeScale, uint32_t frameDurationTicks,
 	VideoReferenceTime theoreticalFrameDuration) :
-	m_controller(MakeConfig(
-		timeScale, frameDurationTicks, theoreticalFrameDuration))
+	m_timeScale(timeScale),
+	m_frameDurationTicks(frameDurationTicks),
+	m_theoreticalFrameDuration(theoreticalFrameDuration)
 {
 }
 
 RationalLiveOutputTimestampDecision RationalLiveOutputSequencer::Preview(
 	const RationalLiveOutputTimestampInput& input)
 {
-	if (input.epoch != m_epoch)
+	if (input.epoch == 0 || !IsValidInput(input))
+	{
+		m_hasPendingDecision = false;
+		return {};
+	}
+	if (!m_epochInitialized || input.epoch != m_epoch)
 		ResetToEpoch(input.epoch);
 
 	// Preview must not advance the delivered timeline. A failed DirectShow
 	// Deliver() retries the same output time, not a synthetic missing frame.
-	VideoTimingController previewController = m_controller;
-	const TimingDecision timingDecision = previewController.Decide(
-		MakeTimingInput(m_nextOutputSequence, input));
+	const bool rebase = !m_hasCommittedSample || NeedsRebase(input);
+	const VideoReferenceTime segmentStart = rebase ?
+		(m_hasCommittedSample ? m_nextPresentationStart :
+			input.pipelineOffset + input.presentationLead) :
+		m_segmentStart;
+	const uint64_t segmentSlot = rebase ? 0 : m_segmentSlot;
+	const uint64_t startSlot = segmentSlot + input.presentationGapSlotsBefore;
+
+	RationalLiveOutputTimestampDecision decision;
+	decision.valid = true;
+	decision.outputSequence = m_nextMediaSequence;
+	decision.mediaStart = static_cast<int64_t>(m_nextMediaSequence);
+	decision.mediaStop = decision.mediaStart + 1;
+	decision.discontinuity = m_forceEpochDiscontinuity ||
+		input.sourceDiscontinuity;
+	if (rebase)
+	{
+		if (input.cadence == RationalLiveOutputCadence::Rational)
+		{
+			decision.start = segmentStart + VideoTimingController::RationalTimestamp(
+				startSlot, m_frameDurationTicks, m_timeScale, input.ppmCorrection);
+		}
+		else
+		{
+			decision.start = segmentStart + static_cast<VideoReferenceTime>(
+				llround((static_cast<long double>(startSlot) *
+					VideoTimingController::kReferenceTimeTicksPerSecond) /
+					input.displayRateHz));
+		}
+	}
+	else
+		decision.start = m_segmentStart + OffsetForSlot(startSlot);
+	if (rebase)
+	{
+		if (input.cadence == RationalLiveOutputCadence::Rational)
+		{
+			decision.stop = segmentStart + VideoTimingController::RationalTimestamp(
+				startSlot + 1, m_frameDurationTicks, m_timeScale, input.ppmCorrection);
+		}
+		else
+		{
+			decision.stop = segmentStart + static_cast<VideoReferenceTime>(
+				llround((static_cast<long double>(startSlot + 1) *
+					VideoTimingController::kReferenceTimeTicksPerSecond) /
+					input.displayRateHz));
+		}
+	}
+	else
+	{
+		decision.stop = m_segmentStart + OffsetForSlot(startSlot + 1);
+	}
+	if (decision.stop <= decision.start)
+		decision.stop = decision.start + 1;
+	decision.presentationSlotsConsumed = input.presentationGapSlotsBefore + 1;
+
 	m_pendingInput = input;
-	m_pendingDecision = MakeDecision(
-		m_nextOutputSequence, timingDecision, input);
+	m_pendingSegmentStart = segmentStart;
+	m_pendingDecision = decision;
 	m_hasPendingDecision = true;
 	return m_pendingDecision;
 }
@@ -47,52 +92,94 @@ bool RationalLiveOutputSequencer::Commit(
 	const RationalLiveOutputTimestampDecision& decision)
 {
 	if (!decision.valid || !m_hasPendingDecision ||
-		decision.outputSequence != m_nextOutputSequence ||
+		decision.outputSequence != m_nextMediaSequence ||
 		decision.start != m_pendingDecision.start ||
 		decision.stop != m_pendingDecision.stop ||
 		decision.mediaStart != m_pendingDecision.mediaStart ||
-		decision.mediaStop != m_pendingDecision.mediaStop)
+		decision.mediaStop != m_pendingDecision.mediaStop ||
+		decision.discontinuity != m_pendingDecision.discontinuity ||
+		decision.presentationSlotsConsumed !=
+			m_pendingDecision.presentationSlotsConsumed)
 		return false;
 
-	(void)m_controller.Decide(
-		MakeTimingInput(m_nextOutputSequence, m_pendingInput));
+	if (!m_hasCommittedSample || NeedsRebase(m_pendingInput))
+		BeginSegment(m_pendingInput, m_pendingSegmentStart);
+	m_segmentSlot += m_pendingDecision.presentationSlotsConsumed;
+	m_nextPresentationStart = m_pendingDecision.stop;
+	++m_nextMediaSequence;
+	m_hasCommittedSample = true;
+	m_forceEpochDiscontinuity = false;
 	m_hasPendingDecision = false;
-	++m_nextOutputSequence;
 	return true;
 }
 
 void RationalLiveOutputSequencer::ResetToEpoch(uint64_t epoch)
 {
+	if (epoch == 0)
+		return;
+	// A cadence rebase is deliberately not a reset.  Repeated notifications for
+	// the current pipeline epoch must not restart a DirectShow segment.
+	if (m_epochInitialized && m_epoch == epoch)
+		return;
 	m_epoch = epoch;
-	m_nextOutputSequence = 0;
+	m_epochInitialized = true;
+	m_hasCommittedSample = false;
+	m_nextMediaSequence = 0;
+	m_nextPresentationStart = 0;
+	m_segmentStart = 0;
+	m_segmentSlot = 0;
+	m_cadence = RationalLiveOutputCadence::Rational;
+	m_ppmCorrection = 0;
+	m_displayRateHz = 0.0;
+	m_forceEpochDiscontinuity = true;
 	m_hasPendingDecision = false;
+	m_pendingSegmentStart = 0;
 	m_pendingInput = {};
 	m_pendingDecision = {};
-	m_controller.ResetToEpoch({ epoch });
 }
 
-FrameTimingInput RationalLiveOutputSequencer::MakeTimingInput(
-	uint64_t outputSequence, const RationalLiveOutputTimestampInput& input)
+bool RationalLiveOutputSequencer::NeedsRebase(
+	const RationalLiveOutputTimestampInput& input) const
 {
-	FrameTimingInput timingInput;
-	timingInput.sourceFrameNumber = outputSequence;
-	timingInput.ppmCorrection = input.ppmCorrection;
-	timingInput.pipelineOffset = input.pipelineOffset;
-	return timingInput;
+	if (input.cadence != m_cadence)
+		return true;
+	if (input.cadence == RationalLiveOutputCadence::Rational)
+		return input.ppmCorrection != m_ppmCorrection;
+	// A changed display measurement begins a fresh exact segment at the next
+	// committed stop.  Comparing doubles exactly is intentional: the caller
+	// already rate-limits its display measurement publication.
+	return input.displayRateHz != m_displayRateHz;
 }
 
-RationalLiveOutputTimestampDecision RationalLiveOutputSequencer::MakeDecision(
-	uint64_t outputSequence, const TimingDecision& timingDecision,
-	const RationalLiveOutputTimestampInput& input)
+bool RationalLiveOutputSequencer::IsValidInput(
+	const RationalLiveOutputTimestampInput& input) const
 {
-	RationalLiveOutputTimestampDecision decision;
-	decision.valid = timingDecision.valid && timingDecision.hasStart &&
-		timingDecision.hasStop;
-	decision.outputSequence = outputSequence;
-	decision.mediaStart = timingDecision.mediaStart;
-	decision.mediaStop = timingDecision.mediaStop;
-	decision.discontinuity = timingDecision.discontinuity;
-	decision.start = timingDecision.start + input.presentationLead;
-	decision.stop = timingDecision.stop + input.presentationLead;
-	return decision;
+	if (m_timeScale == 0 || m_frameDurationTicks == 0 ||
+		m_theoreticalFrameDuration <= 0)
+		return false;
+	return input.cadence != RationalLiveOutputCadence::Display ||
+		(input.displayRateHz >= 10.0 && input.displayRateHz <= 240.0);
+}
+
+VideoReferenceTime RationalLiveOutputSequencer::OffsetForSlot(uint64_t slot) const
+{
+	if (m_cadence == RationalLiveOutputCadence::Rational)
+	{
+		return VideoTimingController::RationalTimestamp(
+			slot, m_frameDurationTicks, m_timeScale, m_ppmCorrection);
+	}
+	return static_cast<VideoReferenceTime>(llround(
+		(static_cast<long double>(slot) *
+			VideoTimingController::kReferenceTimeTicksPerSecond) /
+		m_displayRateHz));
+}
+
+void RationalLiveOutputSequencer::BeginSegment(
+	const RationalLiveOutputTimestampInput& input, VideoReferenceTime start)
+{
+	m_segmentStart = start;
+	m_segmentSlot = 0;
+	m_cadence = input.cadence;
+	m_ppmCorrection = input.ppmCorrection;
+	m_displayRateHz = input.displayRateHz;
 }

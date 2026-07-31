@@ -18,6 +18,10 @@ struct ProcessedFrame
 	uint64_t captureTimestamp = 0;
 	uint64_t captureArrivalTick = 0;
 	uint32_t processingDurationUs = 0;
+	// Preserve a capture/segment discontinuity until the final delivery-owned
+	// timestamp stamp. Conversion timestamps are provisional for buffered live
+	// delivery, but this semantic flag must not be lost when they are replaced.
+	bool sourceDiscontinuity = false;
 	bool isSafeCorrectionPoint = false;
 	uint64_t sceneEventId = 0;
 	uint64_t queueEpoch = 0;

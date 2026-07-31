@@ -32,6 +32,9 @@ struct DirectShowDeliveryOutcome
 		DirectShowDeliveryLatencyClass::Instant;
 	bool deliveryFailed = false;
 	bool deliverySucceeded = false;
+	// IMemInputPin::Receive S_FALSE means the downstream pin did not accept the
+	// sample. It is neither a committed delivery nor a content-frame failure.
+	bool deliveryRejected = false;
 	bool countDroppedFrame = false;
 	bool incrementRecentFailures = false;
 	bool clearRecentFailures = false;

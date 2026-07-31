@@ -50,6 +50,7 @@ namespace Tests
 				classifier.Classify({ S_FALSE, 0, 5000 });
 			Assert::IsFalse(nonSuccess.deliveryFailed);
 			Assert::IsFalse(nonSuccess.deliverySucceeded);
+			Assert::IsTrue(nonSuccess.deliveryRejected);
 			Assert::IsFalse(nonSuccess.incrementRecentFailures);
 			Assert::IsFalse(nonSuccess.clearRecentFailures);
 		}
