@@ -8,7 +8,7 @@ story may have ordered child-task IDs as defined below.
 
 - Last assigned root story: `VP-0067`
 - Next root story number: `VP-0068`
-- Total indexed items: 73
+- Total indexed items: 74
 
 ## Story locations
 
@@ -99,6 +99,7 @@ they must not contain requirements that are absent from this file.
 | VP-0066-5 | Backlog | Extract subtitle analysis and relocation |
 | VP-0066-6 | In Progress | Output readiness and deterministic post-ready prefill |
 | VP-0066-7 | Backlog | Invalidate and reacquire refresh-rate measurements at real transition boundaries |
+| VP-0066-8 | Backlog | Extend the DXGI refresh-rate evidence window |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
