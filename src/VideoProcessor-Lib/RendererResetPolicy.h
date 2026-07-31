@@ -14,6 +14,7 @@ enum class RendererResetReason
 	QueuePressure,
 	QueueCapacity,
 	LivenessRecovery,
+	OutputReadiness,
 };
 
 constexpr int RendererResetPriority(RendererResetReason reason)
@@ -24,6 +25,7 @@ constexpr int RendererResetPriority(RendererResetReason reason)
 	case RendererResetReason::LivenessRecovery: return 90;
 	case RendererResetReason::QueueCapacity: return 90;
 	case RendererResetReason::PostRendererStart: return 80;
+	case RendererResetReason::OutputReadiness: return 75;
 	case RendererResetReason::DisplayTransition: return 70;
 	case RendererResetReason::Resize: return 60;
 	case RendererResetReason::QueueSizeChange: return 50;

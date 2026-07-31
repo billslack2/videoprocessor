@@ -45,6 +45,16 @@ namespace Tests
 				priority, 33000, priority, 5000));
 		}
 
+		TEST_METHOD(OutputReadinessPreemptsDisplayTransitionButNotCriticalRecovery)
+		{
+			const int outputReadinessPriority =
+				RendererResetPriority(RendererResetReason::OutputReadiness);
+			Assert::IsTrue(outputReadinessPriority >
+				RendererResetPriority(RendererResetReason::DisplayTransition));
+			Assert::IsTrue(outputReadinessPriority <
+				RendererResetPriority(RendererResetReason::LivenessRecovery));
+		}
+
 		TEST_METHOD(ManualResetHasDeterministicTopPriority)
 		{
 			Assert::IsTrue(

@@ -68,6 +68,8 @@ const TCHAR* ToString(RendererResetReason reason)
 	case RendererResetReason::Manual: return TEXT("manual");
 	case RendererResetReason::PostRendererStart:
 		return TEXT("post-renderer-start");
+	case RendererResetReason::OutputReadiness:
+		return TEXT("output-readiness");
 	case RendererResetReason::DisplayTransition: return TEXT("display-transition");
 	case RendererResetReason::Resize: return TEXT("resize");
 	case RendererResetReason::QueueSizeChange: return TEXT("queue-size-change");
@@ -2589,10 +2591,16 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		m_postRendererStartRequiresGraph = true;
 		if (m_activeRendererIsDirectShow)
 		{
-			RequestRendererReset(RendererResetReason::PostRendererStart,
-				postStartRequiresGraph,
-				windowSettleDelayMs +
-					static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+			// DirectShow now starts provisionally, then uses validated DXGI vblank
+			// evidence to make one serialized LiveQueue reset and exact VP prefill.
+			// Do not stack the legacy configured-delay reset behind it: that was the
+			// source of display-handshake-dependent queue depth.
+			DebugLog::Log(
+				"Post-start reset deferred: renderer=%S backend=DirectShow "
+				"legacy_requires_graph=%d display_settle=%u; "
+				"awaiting output-readiness evidence",
+				static_cast<LPCTSTR>(m_activeRendererName),
+				postStartRequiresGraph ? 1 : 0, windowSettleDelayMs);
 		}
 		else if (windowSettleDelayMs != 0)
 		{
@@ -4684,6 +4692,36 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			ResetScopeName(completion.request.scope),
 			completion.failure.empty() ? "" : " failure=",
 			completion.failure.empty() ? "" : completion.failure.c_str());
+		if (currentSuccess && m_activeRendererIsDirectShow &&
+			completion.request.reason == RendererResetReason::OutputReadiness &&
+			completion.request.scope == RendererResetScope::LiveQueue)
+		{
+			RendererLivenessSnapshot snapshot;
+			if (m_videoRenderer && m_videoRenderer->GetLivenessSnapshot(snapshot) &&
+				snapshot.supported && snapshot.queueEpoch != 0)
+			{
+				const DisplayTimingSnapshot timing =
+					g_displayRefreshRateSampler->GetTimingSnapshot();
+				m_outputReadinessResetCompletedGeneration =
+					(static_cast<uint64_t>(m_transitionGeneration) << 32) ^
+					(timing.generation & 0xffffffffULL);
+				m_outputReadinessResetCompletedEpoch = snapshot.queueEpoch;
+				DebugLog::Log(
+					"Output readiness reset completed: generation=%llu epoch=%llu "
+					"converted=%zu/%zu reserve=%zu",
+					static_cast<unsigned long long>(
+						m_outputReadinessResetCompletedGeneration),
+					static_cast<unsigned long long>(snapshot.queueEpoch),
+					snapshot.convertedQueueDepth, snapshot.queueCapacity,
+					snapshot.deliveryReserveFrames);
+			}
+			else
+			{
+				DebugLog::Log(
+					"Output readiness reset completed without a usable VP queue "
+					"snapshot; deterministic prefill remains pending");
+			}
+		}
 		if (currentSuccess && m_activeRendererIsDirectShow &&
 			completion.request.scope != RendererResetScope::LiveQueue)
 		{
@@ -7143,6 +7181,27 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	readinessInput.graphOperational =
 		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 		m_videoRenderer != nullptr && !m_rendererResetTransitionActive;
+	RendererLivenessSnapshot readinessLiveness;
+	const bool hasReadinessLiveness = m_activeRendererIsDirectShow &&
+		m_videoRenderer && m_videoRenderer->GetLivenessSnapshot(readinessLiveness) &&
+		readinessLiveness.supported;
+	// VP owns a small fixed reserve; this is independent of madVR's separately
+	// configured queue and is deliberately not a user-tunable startup delay.
+	const size_t requestedVpReserveFrames = hasReadinessLiveness &&
+		readinessLiveness.queueCapacity > 0 ?
+		std::min<size_t>(8, readinessLiveness.queueCapacity) : 8;
+	readinessInput.postReadyResetCompleted =
+		m_outputReadinessResetCompletedGeneration ==
+			readinessInput.transitionGeneration &&
+		m_outputReadinessResetCompletedEpoch != 0;
+	readinessInput.postReadyEpoch = readinessInput.postReadyResetCompleted ?
+		m_outputReadinessResetCompletedEpoch : 0;
+	readinessInput.currentEpochProcessedDepth = hasReadinessLiveness &&
+		readinessLiveness.queueEpoch == readinessInput.postReadyEpoch ?
+		readinessLiveness.convertedQueueDepth : 0;
+	readinessInput.reserveFrames = hasReadinessLiveness &&
+		readinessLiveness.deliveryReserveFrames > 0 ?
+		readinessLiveness.deliveryReserveFrames : requestedVpReserveFrames;
 	// Phase correction waits for DisplayRefreshRateDecision::Accepted. Output
 	// readiness instead uses independently cadence-validated startup evidence,
 	// so it need not impose a multi-second first-image blackout.
@@ -7155,11 +7214,29 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		startupRateResult.startupValidated ?
 			startupRateResult.startupRateHz :
 			sampledDisplayTiming.startupRefreshRateHz;
-	// No reset completion or queue depth is supplied while this is passive.  A
-	// future actuator must receive those values from serialized lifecycle and
-	// epoch-owned transport state, never infer them from Deliver() duration.
 	const OutputReadinessDecision readinessDecision =
 		m_outputReadinessObserver.Observe(readinessInput);
+	if (readinessDecision.requestSerializedPostReadyReset &&
+		m_activeRendererIsDirectShow && m_videoRenderer &&
+		m_rendererResetCoordinator)
+	{
+		// Publish before resetting. The DirectShow pin atomically adopts the
+		// reserve, then the serialized queue reset creates the fresh epoch that
+		// must prefill to that exact depth before it drains again.
+		m_videoRenderer->SetOutputReadinessDeliveryReserve(
+			requestedVpReserveFrames);
+		const bool accepted = m_rendererResetCoordinator->RequestUi(
+			RendererResetReason::OutputReadiness,
+			RendererResetScope::LiveQueue);
+		DebugLog::Log(
+			"Output readiness reset request: generation=%llu reserve=%zu "
+			"accepted=%d VPdepth=%zu/%zu madvr_queue=unobservable",
+			static_cast<unsigned long long>(
+				readinessInput.transitionGeneration),
+			requestedVpReserveFrames, accepted ? 1 : 0,
+			hasReadinessLiveness ? readinessLiveness.convertedQueueDepth : 0,
+			hasReadinessLiveness ? readinessLiveness.queueCapacity : 0);
+	}
 	const bool readinessChanged = !m_outputReadinessObservationValid ||
 		m_lastObservedOutputReadinessState != readinessDecision.state ||
 		m_lastObservedOutputReadinessReason != readinessDecision.reason ||
