@@ -3,10 +3,14 @@
 ## Status
 
 In Progress (2026-07-30). The graph-independent C++14 state-machine model is
-implemented and covered by controlled tests. It is intentionally not connected
-to capture, reset, or delivery yet, so this checkpoint does not change live
-behavior. Integration begins only after the VP-0066-3 and VP-0066-4 guardrail
-evidence is accepted.
+implemented and covered by controlled tests. It is now attached as a
+UI-thread **passive observer** of the existing validated DXGI
+display-refresh decision, with real-display transition logs. It deliberately
+does not yet control capture, reset, or delivery, so this checkpoint does not
+change live behavior. The VP-0066-3 arrival trace provides the initial
+59.94-SDR guardrail: 125 ms median and 141 ms p95 capture-arrival to
+`Deliver()` start, with the VP processed queue at seven frames at p95.
+Actuation begins only after the observer evidence is accepted.
 
 ## Parent and dependency
 
@@ -51,6 +55,10 @@ an arbitrary user-configurable delay.
 - The controller accepts a supplied validated display measurement; it does not
   call madVR, scrape OSD text, use `Deliver()` duration, or claim downstream
   queue occupancy or HDMI-lock proof.
+- The passive integration records only transition/state/reason observations;
+  it requests no reset and does not gate, queue, copy, delay, or deliver any
+  capture frame. Its logs explicitly label a successful refresh observation as
+  renderer readiness rather than physical HDMI-lock proof.
 - Integration adds no queue, frame copy, worker thread, polling loop, or
   capture-callback wait. The delivery coordinator is the sole state owner;
   capture observes only its published discard/admit gate.
