@@ -9,6 +9,8 @@
 #pragma once
 
 
+#include <DirectShowFrameDeliverer.h>
+
 #include "ALiveSourceVideoOutputPin.h"
 
 #include "CLiveSource.h"
@@ -34,4 +36,7 @@ public:
 	HRESULT OnVideoFrame(VideoFrame&) override;
 	void SetFrameQueueMaxSize(size_t) override;
 	size_t GetFrameQueueSize() override { return 0; }
+
+private:
+	DirectShowFrameDeliverer m_directShowFrameDeliverer;
 };
