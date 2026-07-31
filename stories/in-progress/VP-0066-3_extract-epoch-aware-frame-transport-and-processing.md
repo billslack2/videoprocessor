@@ -61,6 +61,14 @@ adapter and preserves its existing process-wide event-ID publication, counters,
 generation reset, and queue tagging. A fresh x64 Release build passed 306/306
 native tests, and the user reported the deployed build looked normal.
 
+Latency-trace checkpoint (2026-07-30): the trace now carries a separate
+`capture_arrival_tick` in the same `GetTickCount64()` domain as the conversion
+and delivery event ticks. The existing source timing timestamp remains intact
+for timestamp diagnostics. This is diagnostic metadata only: no queue, copy,
+worker, timestamp policy, reset policy, or delivery behavior changed. Trace
+schema version 2 makes the new column explicit; it enables the outstanding
+capture-to-Deliver guardrail measurement on the next live run.
+
 ## Parent and dependency
 
 Parent: [VP-0066](VP-0066_rearchitect-live-video-output-pipeline.md).
