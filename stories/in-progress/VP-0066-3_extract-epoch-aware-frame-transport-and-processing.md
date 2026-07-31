@@ -43,6 +43,16 @@ records were lost, Rational/Rational remained 2,470/0 applied/mismatched, and
 the user observed no behavioral regression. As designed, the run provides no
 structured madVR occupancy evidence.
 
+Active-picture analyzer checkpoint (2026-07-30): `ActivePictureAnalyzer` now
+owns P010 evidence extraction, sparse analysis scheduling, and the existing
+worker-owned confidence/hysteresis model. The pin remains only the DirectShow
+sample/media-type adapter and the publisher of UI-visible active-picture
+state. The existing conversion worker, queue ownership, frame cadence, and
+delivery path were not changed. A fresh x64 Release build passed 305/305
+native tests; the user then ran the deployed build and reported normal,
+unchanged behavior. Scene and subtitle analysis remain the next processing
+seams before this task can be accepted.
+
 ## Parent and dependency
 
 Parent: [VP-0066](VP-0066_rearchitect-live-video-output-pipeline.md).
