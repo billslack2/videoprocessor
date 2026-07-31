@@ -3,16 +3,26 @@
 ## Status
 
 In Progress (2026-07-31). The graph-independent C++14 state machine and
-DirectShow reserve gate are implemented, unit-tested, and now actuated. Normal
-live video starts provisionally. Once VP observes two seconds of credible,
-fresh DXGI `WaitForVBlank` evidence that also passes raw-cadence, interval,
-harmonic, and Windows output-family validation, it waits for a measured VP
-startup reservoir of `capacity - reserve` frames (24 with the current 32/8
-policy). It then makes one serialized **DirectShow graph re-prime**, preserving
-the selecting DXGI evidence through that intentional reset. The new epoch
-retains a VP-owned reserve of eight converted frames (bounded by capacity).
-This replaces the legacy five-second post-start reset with a repeatable queue
-condition while retaining the empirically proven madVR re-prime lifecycle.
+DirectShow reserve gate are implemented, unit-tested, and deployed for the
+next live check. Normal live video starts provisionally. Once VP observes two
+seconds of credible, fresh DXGI `WaitForVBlank` evidence that also passes
+raw-cadence, interval, harmonic, and Windows output-family validation, it
+makes one serialized **DirectShow graph re-prime**, preserving the selecting
+DXGI evidence through that intentional reset. It does **not** wait for a
+24-frame VP pre-reset reservoir: live evidence showed normal delivery drains
+that threshold and can leave an arbitrary high-latency VP backlog without ever
+requesting the reset.
+
+The new epoch retains a VP-owned automatic reserve (currently eight frames
+when output readiness publishes it, bounded by capacity). The optional
+startup-only `[queue]` policy makes the two VP concepts explicit and
+testable: `startup_preroll_frames` controls the initial converted-frame gate;
+`steady_reserve_frames` controls the retained DirectShow converted-frame
+floor. Both accept only whole frames 0--16, where zero means automatic policy;
+they never configure or observe madVR's independently configured queues.
+The x64 Release build and 324/324 native tests passed, and only
+`C:\Videoprocessor\vp\VideoProcessor.exe` was deployed from source commit
+`1208da7`; the user's active configuration was not changed.
 
 This is not a first-image or HDMI-lock gate: provisional frames may display
 and may stutter before the reset. The priority is a deterministic VP queue
@@ -53,14 +63,14 @@ deterministic renderer-readiness gate, not proof that a projector, AVR, or
 HDMI sink has physically locked.
 
 Before evidence is available, normal live delivery remains open. After short
-readiness validation, VP waits for its exact 24-frame startup reservoir, then
-publishes its internal eight-frame reserve and requests exactly one serialized
-DirectShow graph re-prime. This preserves the established madVR lifecycle that
-empirically fills its independently configurable queues without VP attempting
-to size or observe them. The fresh epoch created by that re-prime is the only
-epoch allowed to form the eight-frame VP steady floor. The policy distinguishes
-VP reserve from presentation lead and does not expose an arbitrary
-user-configurable delay.
+readiness validation, VP publishes its selected internal reserve and requests
+exactly one serialized DirectShow graph re-prime. This preserves the
+established madVR lifecycle that empirically fills its independently
+configurable queues without VP attempting to size or observe them. The fresh
+epoch created by that re-prime is the only epoch allowed to form the VP steady
+floor. The policy distinguishes VP startup pre-roll, VP steady reserve, and
+presentation lead; the two bounded VP frame values are optional startup
+configuration, never an arbitrary delay.
 
 ## Acceptance criteria
 
@@ -71,14 +81,17 @@ user-configurable delay.
 - The controller accepts a supplied validated display measurement; it does not
   call madVR, scrape OSD text, use `Deliver()` duration, or claim downstream
   queue occupancy or HDMI-lock proof.
-- A validated two-second credible DXGI-vblank observation plus the exact
-  VP `capacity - reserve` startup reservoir requests one serialized DirectShow
-  graph re-prime. VP may show provisional video before that point; it never
+- A validated two-second credible DXGI-vblank observation requests one
+  serialized DirectShow graph re-prime without waiting for a speculative VP
+  pre-reset depth. VP may show provisional video before that point; it never
   waits ten or thirty seconds for a first image.
-- The DirectShow pin retains an internally selected eight-frame converted VP
-  reserve (bounded by capacity) after the fresh-epoch reset. Completion and
-  queue depth come from the epoch-owned VP liveness snapshot, never
-  `Deliver()` timing.
+- `[queue] startup_preroll_frames` and `steady_reserve_frames` accept only
+  whole-frame values 0--16. Zero retains automatic policy; explicit values are
+  bounded by actual VP capacity and the steady reserve takes precedence over
+  the automatic readiness reserve.
+- The DirectShow pin retains the selected converted VP reserve after the
+  fresh-epoch reset. Completion and queue depth come from the epoch-owned VP
+  liveness snapshot, never `Deliver()` timing.
 - The five-second quarantine plus ten-second clean current observation and
   the 30-second weighted phase-stability interval remain separate validation
   paths; neither blocks initial display.
@@ -98,4 +111,4 @@ user-configurable delay.
 
 Direct HDMI/projector/AVR lock detection without a validated hardware or
 vendor signal; dynamic madVR queue chasing; a new PLL; additional cadence
-correction; public arbitrary-delay configuration; or replacing DirectShow.
+correction; arbitrary time-based queue delay; or replacing DirectShow.
