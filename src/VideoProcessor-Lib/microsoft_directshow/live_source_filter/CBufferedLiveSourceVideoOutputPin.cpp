@@ -917,22 +917,22 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Reset() - HDMI resync async queue reset starting");
 	m_deliveryFlushing.store(true, std::memory_order_release);
 
-	// BeginFlush must be sent before waiting for an in-flight Receive/Deliver;
-	// this is what unblocks a renderer that is waiting internally.
-	if (FAILED(DeliverBeginFlush()))
-	{
-		m_deliveryFlushing.store(false, std::memory_order_release);
-		m_resetInProgress.store(false, std::memory_order_release);
-		throw std::runtime_error("Failed to deliver beginflush");
-	}
-
-	HRESULT endFlushHr = S_OK;
-	HRESULT newSegmentHr = S_OK;
+	DirectShowSegmentTransitionResult transitionResult;
 	try
 	{
-		// No Deliver call can start while queues, timestamp state, and the
-		// DirectShow segment are changed below.
-		CAutoLock deliveryLock(&m_deliveryGate);
+		transitionResult = m_directShowSegmentTransition.Execute(
+			[this]()
+			{
+				// BeginFlush must be sent before waiting for an in-flight
+				// Receive/Deliver; this is what unblocks a renderer that is
+				// waiting internally.
+				return DeliverBeginFlush();
+			},
+			[this]()
+			{
+				// No Deliver call can start while queues, timestamp state, and the
+				// DirectShow segment are changed below.
+				CAutoLock deliveryLock(&m_deliveryGate);
 
 		m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
 		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
@@ -993,14 +993,18 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		ResetTimingState();
 		ResetTimingControllerToPipelineEpoch({
 			m_queueEpoch.load(std::memory_order_acquire) });
-
-		endFlushHr = DeliverEndFlush();
-		if (SUCCEEDED(endFlushHr))
-			newSegmentHr = DeliverNewSegment(0, MAXLONGLONG, 1.0);
+			},
+			[this]()
+			{
+				return DeliverEndFlush();
+			},
+			[this]()
+			{
+				return DeliverNewSegment(0, MAXLONGLONG, 1.0);
+			});
 	}
 	catch (...)
 	{
-		DeliverEndFlush();
 		m_deliveryFlushing.store(false, std::memory_order_release);
 		m_resetInProgress.store(false, std::memory_order_release);
 		throw;
@@ -1009,9 +1013,11 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	m_deliveryFlushing.store(false, std::memory_order_release);
 	m_resetInProgress.store(false, std::memory_order_release);
 
-	if (FAILED(endFlushHr))
+	if (FAILED(transitionResult.beginFlushResult))
+		throw std::runtime_error("Failed to deliver beginflush");
+	if (FAILED(transitionResult.endFlushResult))
 		throw std::runtime_error("Failed to deliver endflush");
-	if (FAILED(newSegmentHr))
+	if (FAILED(transitionResult.newSegmentResult))
 		throw std::runtime_error("Failed to deliver new segment");
 
 	// Wake both workers after the new segment is fully established.
