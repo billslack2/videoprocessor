@@ -9,15 +9,21 @@ worker handoffs, event signaling, and overflow behavior before any startup or
 output-readiness policy is considered.
 
 Implementation checkpoint (2026-07-30): `EpochBoundedQueue` is now a
-graph-free C++14-compatible transport primitive, and `CaptureFrameQueue` owns
-the existing raw `VideoFrame` source-buffer reference. The buffered pin uses
-it in place of its inline raw deque/lock: capacity remains the configured VP
-queue size, overflow still drops the oldest raw frame, capture-to-conversion
-remains the same one event-driven worker handoff, and reset/activation flushes
-establish the authoritative `PipelineEpoch` before stale work is admitted.
-Focused ownership/overflow/stale/resize/flush tests pass, as does the x64
-Release native suite (293/293). The converted sample queue and DirectShow
-delivery path are intentionally unchanged at this checkpoint.
+graph-free C++14-compatible transport primitive. `CaptureFrameQueue` owns the
+existing raw `VideoFrame` source-buffer reference, and `ProcessedFrameQueue`
+owns the existing converted `IMediaSample` reference plus source/capture/
+processing/scene metadata. The buffered pin uses both in place of its inline
+deques: capacity remains the configured VP queue size, raw overflow still
+drops the oldest frame, converted trimming remains in the delivery path,
+capture-to-conversion and conversion-to-delivery remain the same two
+event-driven worker handoffs, and reset/activation establish the authoritative
+`PipelineEpoch` before stale work is admitted. Historical safe-scene tagging
+still operates only while conversion and delivery publication are serialized.
+
+Focused ownership/overflow/stale/resize/flush/cushion/scene-tag tests pass,
+as does the x64 Release native suite (295/295). Conversion/analysis and the
+DirectShow timestamp, delivery, flush, and lifecycle paths are intentionally
+unchanged at this checkpoint.
 
 ## Parent and dependency
 
