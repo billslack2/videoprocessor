@@ -165,22 +165,32 @@ materially different times. Delivering live frames before that physical
 handshake has settled causes a variable, accidental downstream backlog and
 therefore non-deterministic madVR queue depth.
 
-The intended state sequence is: an output-settling grace period, one
-serialized post-settle flush/reset, static VP preroll, timestamp-lead
-establishment, then steady delivery. The grace period begins after the last
-known renderer/display-mode/output transition (not merely process start) and
-is an explicit per-output/profile setting with its effective value logged.
-During that period VP must not retain an unbounded or variable-age backlog for
-later delivery: it may safely discard live capture because catching up to the
-live edge is not a requirement. The post-settle flush must discard any work
-that arrived during the handshake; only frames accumulated after that boundary
-may form the exact configured preroll. This is what makes the initial queue
-depth independent of handshake duration.
+The intended state sequence is: wait for VP's output-readiness predicate, one
+serialized post-ready flush/reset, static VP preroll, timestamp-lead
+establishment, then steady delivery. It must begin after the last known
+renderer/display-mode/output transition (not merely process start). It is a
+VP-owned policy, not a user-configurable timeout. At minimum, the predicate
+must require an observed madVR/display refresh rate that belongs to the
+requested valid refresh family and remains stable across a bounded observation
+window, with the renderer graph operational. Both the expected family and each
+observed rate/stability transition must be logged.
 
-No Windows/DirectShow signal must be treated as proof that an HDMI sink has
-finished its physical handshake. Display-change notifications may be recorded
-as diagnostic context, but a conservative configured settling bound remains
-the contract unless a validated display-specific readiness signal is available.
+During `OutputNotReady`, VP must not retain an unbounded or variable-age
+backlog for later delivery: it may safely discard live capture because catching
+up to the live edge is not a requirement. The post-ready flush must discard
+any work that arrived before readiness; only frames accumulated after that
+boundary may form the exact configured preroll. This is what makes the initial
+queue depth independent of handshake duration.
+
+No Windows, DirectShow, madVR refresh-rate, frame-grab, or successful
+`Deliver()` signal by itself proves that a physical HDMI sink has completed its
+lock/handshake. They provide a deterministic renderer-readiness gate, not
+proof of projector/AVR lock. If true physical-lock proof is required for a
+specific output chain, VP needs a separately validated hardware/vendor signal
+(for example a projector/AVR or GPU-driver integration); it must not disguise
+an arbitrary delay as proof. Until then, a failed or unstable readiness
+predicate keeps VP in `OutputNotReady` with diagnostic reason/state rather
+than releasing a variable backlog.
 Once steady, the policy must not chase madVR queue depth, infer it from
 `Deliver()` time, add/repeat live frames, or alter cadence correction.
 The existing timestamp/queue path remains unchanged until this policy is
