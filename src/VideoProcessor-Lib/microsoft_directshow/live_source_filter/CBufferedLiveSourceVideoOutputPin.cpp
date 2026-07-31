@@ -2009,63 +2009,57 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 
 			// Conversion can run ahead and its first discontinuous sample can be
-			// purged during buffering. Mark samples until one from this epoch is
-			// actually accepted downstream, so madVR always observes the segment
-			// discontinuity on the first delivered sample.
-			if (lastSuccessfullyDeliveredEpoch != currentQueueEpoch)
-			{
-				const HRESULT discontinuityHr = pSample->SetDiscontinuity(TRUE);
-				if (FAILED(discontinuityHr))
-					DebugLog::Log(
-						"DELIVERY THREAD: failed to mark first sample discontinuous (hr=0x%08x)",
-						discontinuityHr);
-			}
-
-			// Get timestamps for late-binding
-			bool usedLateBoundStop = false;
-			REFERENCE_TIME currentStart = 0, currentStop = 0;
-			HRESULT sampleTimeHr = pSample->GetTime(&currentStart, &currentStop);
-
-			// LATE BIND STOP TIME: Search pending timestamp history for best-fit next frame
-			if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
-				m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2)
-			{
-				// Calculate the theoretical stop time (next frame's start time)
-				REFERENCE_TIME theoreticalStop = currentStart + m_frameDuration;
-
-				// Search tolerance: 10% of frame duration
-				static const double SEARCH_TOLERANCE_PERCENT = 0.10; // 10%
-				const REFERENCE_TIME searchTolerance = (REFERENCE_TIME)(m_frameDuration * SEARCH_TOLERANCE_PERCENT);
-
-				// Search the pending timestamp history
-				REFERENCE_TIME bestStart = FindNextPendingTimestamp(currentStart, theoreticalStop, searchTolerance);
-
-				if (bestStart != REFERENCE_TIME_INVALID)
-				{
-					// Found a good match - use the real next frame's start time as our stop time
-					REFERENCE_TIME newStop = bestStart;
-
-					// Final safety: stop must be after start
-					if (newStop <= currentStart)
+			// purged during buffering. The delivery component applies this flag
+			// and the optional late-bound stop as one sample preparation step.
+			const bool lateBindStop =
+				m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+				m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2;
+			static const double SEARCH_TOLERANCE_PERCENT = 0.10;
+			const REFERENCE_TIME searchTolerance =
+				static_cast<REFERENCE_TIME>(m_frameDuration * SEARCH_TOLERANCE_PERCENT);
+			const DirectShowSamplePreparationResult preparation =
+				m_directShowFrameDeliverer.Prepare({
+					pSample, lastSuccessfullyDeliveredEpoch != currentQueueEpoch,
+					lateBindStop, m_frameDuration, searchTolerance,
+					[](IMediaSample* preparedSample, BOOL discontinuity)
 					{
-						newStop = currentStart + m_frameDuration;
-					}
+						return preparedSample->SetDiscontinuity(discontinuity);
+					},
+					[](IMediaSample* preparedSample, REFERENCE_TIME* start, REFERENCE_TIME* stop)
+					{
+						return preparedSample->GetTime(start, stop);
+					},
+					[](IMediaSample* preparedSample, REFERENCE_TIME* start, REFERENCE_TIME* stop)
+					{
+						return preparedSample->SetTime(start, stop);
+					},
+					[this](REFERENCE_TIME currentStart, REFERENCE_TIME theoreticalStop, REFERENCE_TIME tolerance)
+					{
+						return FindNextPendingTimestamp(currentStart, theoreticalStop, tolerance);
+					} });
+			if (FAILED(preparation.discontinuityResult))
+				DebugLog::Log(
+					"DELIVERY THREAD: failed to mark first sample discontinuous (hr=0x%08x)",
+					preparation.discontinuityResult);
 
-					pSample->SetTime(&currentStart, &newStop);
-					usedLateBoundStop = true;
-
-					// Track success rate for periodic logging
+			const bool usedLateBoundStop = preparation.lateBoundStopApplied;
+			REFERENCE_TIME currentStart = preparation.originalStart;
+			REFERENCE_TIME currentStop = preparation.originalStop;
+			HRESULT sampleTimeHr = preparation.getTimeResult;
+			if (lateBindStop)
+			{
+				if (usedLateBoundStop)
+				{
 					static uint64_t lateBindSuccessCount = 0;
 					static uint64_t lateBindTotalCount = 0;
 					static uint64_t lastLateBindLogCount = 0;
 					++lateBindSuccessCount;
 					++lateBindTotalCount;
-
-					// Log summary every 600 frames (~10 seconds at 60fps, ~25 seconds at 24fps)
 					if (lateBindTotalCount - lastLateBindLogCount >= 600)
 					{
-						double successRate = (lateBindSuccessCount * 100.0) / lateBindTotalCount;
-						REFERENCE_TIME actualDelta = abs(bestStart - theoreticalStop);
+						const double successRate = (lateBindSuccessCount * 100.0) / lateBindTotalCount;
+						const REFERENCE_TIME actualDelta = abs(
+							preparation.matchedNextStart - preparation.theoreticalStop);
 						DebugLog::Log("LATE-BIND STATS: %llu/%llu (%.1f%%) success, last delta=%.3fms",
 							lateBindSuccessCount, lateBindTotalCount, successRate, actualDelta / 10000.0);
 						lastLateBindLogCount = lateBindTotalCount;
@@ -2073,15 +2067,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				}
 				else
 				{
-					// A timestamp miss often occurs in bursts while the graph is
-					// recovering.  Logging every frame can then make the timing issue
-					// worse, so report a bounded summary instead.
 					++lateBindMissesSinceLastLog;
 					const DWORD now = GetTickCount();
 					if (lastLateBindMissLogTime == 0 || now - lastLateBindMissLogTime >= 5000)
 					{
 						DebugLog::Log("LATE-BIND MISS: %llu miss(es) in the last interval; target=%.3fms within ±%.3fms (searching pending history)",
-							lateBindMissesSinceLastLog, theoreticalStop / 10000.0, searchTolerance / 10000.0);
+							lateBindMissesSinceLastLog, preparation.theoreticalStop / 10000.0,
+							searchTolerance / 10000.0);
 						lateBindMissesSinceLastLog = 0;
 						lastLateBindMissLogTime = now;
 					}

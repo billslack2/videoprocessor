@@ -40,3 +40,44 @@ DirectShowDeliveryResult DirectShowFrameDeliverer::Complete(
 		std::min<uint64_t>(durationUs, std::numeric_limits<uint32_t>::max()));
 	return result;
 }
+
+DirectShowSamplePreparationResult DirectShowFrameDeliverer::Prepare(
+	const DirectShowSamplePreparationRequest& request) const
+{
+	DirectShowSamplePreparationResult result;
+	if (!request.sample)
+	{
+		result.discontinuityResult = E_POINTER;
+		result.getTimeResult = E_POINTER;
+		result.setTimeResult = E_POINTER;
+		return result;
+	}
+
+	if (request.markDiscontinuity && request.setDiscontinuity)
+		result.discontinuityResult = request.setDiscontinuity(request.sample, TRUE);
+
+	if (!request.lateBindStop || !request.getTime || !request.setTime ||
+		!request.findNextStart)
+		return result;
+
+	result.getTimeResult = request.getTime(
+		request.sample, &result.originalStart, &result.originalStop);
+	const REFERENCE_TIME theoreticalStop =
+		result.originalStart + request.frameDuration;
+	result.theoreticalStop = theoreticalStop;
+	const REFERENCE_TIME bestStart = request.findNextStart(
+		result.originalStart, theoreticalStop, request.lateBindTolerance);
+	result.matchedNextStart = bestStart;
+	if (bestStart == static_cast<REFERENCE_TIME>(-1))
+		return result;
+
+	REFERENCE_TIME newStop = bestStart;
+	if (newStop <= result.originalStart)
+		newStop = result.originalStart + request.frameDuration;
+	result.setTimeResult = request.setTime(
+		request.sample, &result.originalStart, &newStop);
+	// The legacy path records a matched late-bound stop even if a renderer
+	// rejects SetTime; preserve that reporting shape while exposing the HRESULT.
+	result.lateBoundStopApplied = true;
+	return result;
+}

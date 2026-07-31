@@ -3,9 +3,10 @@
  *
  * The coordinator retains epoch/flush/lifecycle ownership. This component
  * pairs a pending-media-type attachment with the actual downstream delivery
- * and completion callback, and measures only that transaction. It does not
- * inspect queue depth, generate timestamps, alter samples, or make cadence
- * decisions.
+ * and completion callback, and measures only that transaction. It also
+ * applies caller-supplied, non-policy sample preparation (discontinuity and
+ * late-bound stop). It does not inspect queue depth, generate timestamps, or
+ * make cadence decisions.
  */
 #pragma once
 
@@ -28,6 +29,31 @@ struct DirectShowDeliveryResult
 	uint32_t durationUs = 0;
 };
 
+struct DirectShowSamplePreparationRequest
+{
+	IMediaSample* sample = nullptr;
+	bool markDiscontinuity = false;
+	bool lateBindStop = false;
+	REFERENCE_TIME frameDuration = 0;
+	REFERENCE_TIME lateBindTolerance = 0;
+	std::function<HRESULT(IMediaSample*, BOOL)> setDiscontinuity;
+	std::function<HRESULT(IMediaSample*, REFERENCE_TIME*, REFERENCE_TIME*)> getTime;
+	std::function<HRESULT(IMediaSample*, REFERENCE_TIME*, REFERENCE_TIME*)> setTime;
+	std::function<REFERENCE_TIME(REFERENCE_TIME, REFERENCE_TIME, REFERENCE_TIME)> findNextStart;
+};
+
+struct DirectShowSamplePreparationResult
+{
+	HRESULT discontinuityResult = S_OK;
+	HRESULT getTimeResult = S_OK;
+	HRESULT setTimeResult = S_OK;
+	bool lateBoundStopApplied = false;
+	REFERENCE_TIME originalStart = 0;
+	REFERENCE_TIME originalStop = 0;
+	REFERENCE_TIME theoreticalStop = 0;
+	REFERENCE_TIME matchedNextStart = static_cast<REFERENCE_TIME>(-1);
+};
+
 class DirectShowFrameDeliverer
 {
 public:
@@ -45,4 +71,6 @@ public:
 		const DeliverCallback& deliver,
 		const CompleteCallback& complete,
 		const ClockCallback& clock) const;
+	DirectShowSamplePreparationResult Prepare(
+		const DirectShowSamplePreparationRequest& request) const;
 };
