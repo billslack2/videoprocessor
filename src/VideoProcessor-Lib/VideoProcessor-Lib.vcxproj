@@ -183,6 +183,7 @@
     <ClInclude Include="DisplayMode.h" />
     <ClInclude Include="DisplayRefreshRatePolicy.h" />
 	<ClInclude Include="DirectShowFrameDeliverer.h" />
+	<ClInclude Include="DirectShowSegmentTransition.h" />
     <ClInclude Include="ColorFormat.h" />
     <ClInclude Include="EOTF.h" />
 	<ClInclude Include="FrameProcessor.h" />
@@ -274,6 +275,7 @@
     <ClCompile Include="DisplayMode.cpp" />
     <ClCompile Include="DisplayRefreshRatePolicy.cpp" />
 	<ClCompile Include="DirectShowFrameDeliverer.cpp" />
+	<ClCompile Include="DirectShowSegmentTransition.cpp" />
     <ClCompile Include="ColorFormat.cpp" />
 	<ClCompile Include="FrameProcessor.cpp" />
     <ClCompile Include="ConfigFile.cpp" />

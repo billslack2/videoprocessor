@@ -19,6 +19,7 @@
 #include <ActivePictureTransitionModel.h>
 #include <CaptureFrameQueue.h>
 #include <DirectShowFrameDeliverer.h>
+#include <DirectShowSegmentTransition.h>
 #include <FrameProcessor.h>
 #include <LiveOutputTrace.h>
 #include <ProcessedFrameQueue.h>
@@ -128,6 +129,7 @@ private:
 	CCritSec m_convertedQueueLock;
 	FrameProcessor m_frameProcessor;
 	DirectShowFrameDeliverer m_directShowFrameDeliverer;
+	DirectShowSegmentTransition m_directShowSegmentTransition;
 	// The trace is a VP-only, bounded diagnostic snapshot. It has no renderer
 	// queue state and never performs file I/O from a worker or callback.
 	LiveOutputTrace m_liveOutputTrace;
