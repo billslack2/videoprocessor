@@ -36,6 +36,24 @@ fresh graph instead of resetting again. x64 Release and 324/324 tests passed;
 only `VideoProcessor.exe` was deployed, with the active configuration still
 unchanged. Live confirmation remains required.
 
+Latest live correction (2026-07-31): the VP OSD R/C/T queue, rather than
+madVR's internal queues, is now explicitly bounded when
+`[queue] steady_reserve_frames` is nonzero. The configured value is a
+whole-frame **VP total-queue target**: after startup, raw plus converted depth
+is capped at that target, retaining newest frames and discarding stale lead if
+downstream delivery stalls. The normal delivery floor is one frame below that
+target, so a target of two cycles between one and two frames while continuing
+to feed madVR. This replaces the earlier ineffective interpretation as only a
+converted-frame floor. A transient invalid capture-state notification is also
+deferred for 1.5 seconds; if DeckLink's captured-frame count advances during
+that interval, it is treated as stale instead of tearing down the live
+DirectShow/madVR graph. A sustained loss with no advancing capture frames
+retains the normal stop behavior. Source commit `c56ea3f` was built x64 Release
+and deployed to `C:\Videoprocessor\vp\VideoProcessor.exe`; live confirmation
+of the R/C/T target, madVR fill, and elimination of the late blank remains
+required. The native test link was blocked in that worktree by a corrupted
+generated `VideoProcessor-Lib.pdb`; this is not recorded as a passing test run.
+
 This is not a first-image or HDMI-lock gate: provisional frames may display
 and may stutter before the reset. The priority is a deterministic VP queue
 after the reset, not pretending that VP can observe madVR's internal queue.
@@ -99,8 +117,9 @@ configuration, never an arbitrary delay.
   waits ten or thirty seconds for a first image.
 - `[queue] startup_preroll_frames` and `steady_reserve_frames` accept only
   whole-frame values 0--16. Zero retains automatic policy; explicit values are
-  bounded by actual VP capacity and the steady reserve takes precedence over
-  the automatic readiness reserve.
+  bounded by actual VP capacity. An explicit steady value caps VP's OSD
+  `R/C/T` total and takes precedence over the automatic readiness reserve; it
+  never represents or requests a madVR queue depth.
 - The DirectShow pin retains the selected converted VP reserve after the
   fresh-epoch reset. Completion and queue depth come from the epoch-owned VP
   liveness snapshot, never `Deliver()` timing.
