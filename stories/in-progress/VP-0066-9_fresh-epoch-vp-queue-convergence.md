@@ -80,10 +80,14 @@ timestamp hole merely to report a lower OSD queue number.
    and commits it only on success. Active P010 scene cadence remains its own
    delivery-thread timestamp owner. This increment does not yet discard any
    queued picture content.
-3. **One-shot integration:** let the DirectShow delivery coordinator execute
-   the proven transaction only for the current epoch. Log target, pre/post
-   VP-owned depth, skipped stale content count, output sequence, and the
-   explicit fact that madVR occupancy is unobservable.
+3. **One-shot integration (implemented; awaiting live validation):** the
+   DirectShow delivery thread now observes each delivery outcome, resets the
+   stable-delivery streak on failure, and once per fresh epoch trims oldest
+   VP-owned converted work to the explicit `[queue]` target after downstream
+   prime and three normal deliveries. It records an intentional VP planned
+   drop plus target, pre/post depth, stale count, and the explicit fact that
+   madVR occupancy is unobservable. It never runs in an unchanged converged
+   epoch and does not increment renderer-drop counters.
 4. **Display validation:** exercise 59.94 SDR first, then 23.976 and 59.94
    HDR. Retain madVR OSD captures as passive evidence only. Verify a small,
    repeatable VP R/C/T after each relevant reset/restart while madVR remains
