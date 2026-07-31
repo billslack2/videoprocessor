@@ -130,6 +130,49 @@ and treat delivery duration, allocator waits/failures, and successful delivery
 only as one-sided diagnostics. Queue-depth control and `queue error` in this
 story always mean VP-owned raw/processed queue state.
 
+## Live-capture determinism requirement
+
+This is a live-capture pipeline. It does **not** need to converge to the
+incoming live edge after a graph start, reset, or format change. It may instead
+intentionally establish a fixed capture-to-presentation latency, provided that
+the result is deterministic and consistent across equivalent starts.
+
+The desired post-refactor behavioural improvement is a static, testable
+startup/prefill policy, not a dynamic renderer-feedback controller. Its
+configuration must distinguish:
+
+- `vp_reserve_frames`: the minimum current-epoch converted-frame reserve VP
+  retains for its own jitter protection;
+- `presentation_lead_frames` (or an equivalent millisecond latency budget):
+  the future presentation lead VP schedules downstream, which gives madVR a
+  deterministic opportunity to prefill; and
+- an explicit per-rate profile or a canonical latency budget. A shared frame
+  count has materially different latency at 59.94 and 23.976 Hz, so the
+  selected effective frame count and milliseconds must be logged for every
+  run.
+
+The policy must be finite-state and have one owner: the existing
+DirectShow/coordinator delivery path. Processing workers may publish their
+ordinary queue depth and carry an epoch tag, but must not independently advance
+startup state, initiate a reset, or wait for another worker to reach a target.
+`PipelineEpoch` is a stale-work/lifetime boundary, not a new cross-thread
+coordination protocol. This preserves the current worker and flush ownership
+model and avoids reintroducing the prior epoch/thread-lifetime failure mode.
+
+The intended state sequence is: output-settling grace period (which remains
+necessary for real display/projector synchronization), one serialized
+flush/reset, static VP preroll, timestamp-lead establishment, then steady
+delivery. Once steady, the policy must not chase madVR queue depth, infer it
+from `Deliver()` time, add/repeat live frames, or alter cadence correction.
+The existing timestamp/queue path remains unchanged until this policy is
+implemented in a separately approved, testable task after the
+behaviour-preserving refactor.
+
+For validation, use passive madVR OSD evidence only. PC madVR's in-process
+`IMadVRFrameGrabber` can capture a frame including its OSD, but does not expose
+structured queue occupancy; captured/OCR'd values are test evidence only and
+never an input to live timing control.
+
 ## Required components
 
 ### `CaptureFrameQueue`
