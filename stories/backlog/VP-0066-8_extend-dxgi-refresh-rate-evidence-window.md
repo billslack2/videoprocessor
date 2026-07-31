@@ -41,6 +41,15 @@ or treating a missing measurement as a valid zero rate.
   VP-0066-7; old samples must not dilute a real refresh-family change.
 - Preserve high-precision fractional rates such as 23.976 and 59.94 rather
   than snapping to nominal values.
+- Read the Windows configured display-path rate through `QueryDisplayConfig`
+  for the active display path (for example `\\.\\DISPLAY1`) and use it as an
+  expected-family guardrail. It is a reference value, not proof of physical
+  panel timing.
+- Reject or quarantine DXGI candidates that materially diverge from the
+  QueryDisplayConfig target-path rate. The tolerance must be expressed and
+  logged in ppm and selected from evidence; a candidate roughly 10-20 ppm (or
+  a stricter validated threshold) outside the target should not silently be
+  accepted merely because a short DXGI window appears stable.
 - Avoid excessive reacquisition delay once a genuinely stable rate is proven.
 - Ensure the longer window does not create repeated reset/re-prime loops or
   startup image blackout.
@@ -52,8 +61,25 @@ or treating a missing measurement as a valid zero rate.
 - Compare several candidate windows using recorded traces from startup,
   renderer swaps, HDMI resyncs, 23.976, 59.94, 60 Hz, and real refresh-family
   changes.
+- Define the relationship between the Windows target-path rate and DXGI
+  measurement. For example, a run may report:
+
+  ```text
+  Windows target path: 59.951000 Hz
+  DXGI WaitForVBlank:  59.950620 Hz
+  Difference:          -0.000380 Hz (about -6.3 ppm)
+  ```
+
+  The DXGI value remains the physical-timing evidence; the Windows value
+  checks that the candidate belongs to the expected refresh family and helps
+  reject implausible or harmonic results. The implementation must not replace
+  measured fractional precision with the Windows nominal value.
 - Choose the window based on measured evidence quality, not only a fixed timer.
   Record why the selected duration and minimum sample count are sufficient.
+- Evaluate whether the target-path comparison should be a hard acceptance
+  gate, a quarantine threshold, or a two-stage guardrail. Cover fractional
+  measurement noise, mode changes, target-path reporting precision, and cases
+  where QueryDisplayConfig is unavailable or reports no active path.
 - Decide whether the window should be a non-configurable correctness policy or
   a diagnostic-only setting. User configuration must not be required to obtain
   safe timing.
@@ -64,7 +90,10 @@ or treating a missing measurement as a valid zero rate.
 
 Log the evidence generation, window start/end, elapsed duration, sample count,
 accepted/rejected intervals, raw and compensated rates, stability state, and
-the exact reason the candidate is or is not ready.
+the exact reason the candidate is or is not ready. Include the active
+QueryDisplayConfig path, target-path rate, DXGI-to-target difference in Hz and
+ppm, tolerance applied, and whether the target was used as a guardrail or was
+unavailable.
 
 Tests must cover short unstable observations, a stable rate that becomes ready
 after the extended window, stale samples aging out, explained long gaps, the
@@ -83,6 +112,10 @@ latency beyond the approved readiness policy.
 - Final-rate consumers receive only a current, validated, ready measurement or
   an explicit unavailable/warming state.
 - Existing valid fractional refresh measurements remain accurate.
+- A candidate materially outside the active QueryDisplayConfig target-path
+  rate cannot become final solely because it is numerically stable over a short
+  window. A close candidate such as 59.950620 Hz versus 59.951000 Hz remains
+  eligible and retains its measured precision.
 - Logs make it possible to compare the old and extended evidence windows on a
   real affected machine.
 
