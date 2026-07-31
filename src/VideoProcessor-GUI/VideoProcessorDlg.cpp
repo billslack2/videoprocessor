@@ -6992,10 +6992,17 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	readinessInput.graphOperational =
 		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 		m_videoRenderer != nullptr && !m_rendererResetTransitionActive;
-	readinessInput.displayDecision = displayRateResult.decision;
-	readinessInput.displayReason = displayRateResult.reason;
+	// Phase correction waits for DisplayRefreshRateDecision::Accepted. Output
+	// readiness instead uses the same validated candidate after the sampler's
+	// short initial window, so it does not add a 30-second startup blackout.
+	readinessInput.displayDecision = displayRateResult.readinessValidated ?
+		DisplayRefreshRateDecision::Accepted : displayRateResult.decision;
+	readinessInput.displayReason = displayRateResult.readinessValidated ?
+		DisplayRefreshRateReason::Accepted : displayRateResult.reason;
 	readinessInput.expectedOutputRefreshHz = activeTargetRefreshRate;
-	readinessInput.observedOutputRefreshHz = measuredDisplayRefreshRate;
+	readinessInput.observedOutputRefreshHz =
+		displayRateResult.readinessValidated ?
+			displayRateResult.readinessRateHz : measuredDisplayRefreshRate;
 	// No reset completion or queue depth is supplied while this is passive.  A
 	// future actuator must receive those values from serialized lifecycle and
 	// epoch-owned transport state, never infer them from Deliver() duration.
@@ -7010,14 +7017,15 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	{
 		DebugLog::Log(
 			"Output readiness observation (passive): generation=%u graph=%d "
-			"expected=%.6fHz observed=%.6fHz display=%s/%s state=%s "
+			"expected=%.6fHz observed=%.6fHz display=%s/%s readiness_validated=%d state=%s "
 			"reason=%s would_request_reset=%d discard=%d admit=%d deliver=%d",
 			m_transitionGeneration,
 			readinessInput.graphOperational ? 1 : 0,
 			readinessInput.expectedOutputRefreshHz,
 			readinessInput.observedOutputRefreshHz,
-			ToString(readinessInput.displayDecision),
-			ToString(readinessInput.displayReason),
+			ToString(displayRateResult.decision),
+			ToString(displayRateResult.reason),
+			displayRateResult.readinessValidated ? 1 : 0,
 			ToString(readinessDecision.state),
 			ToString(readinessDecision.reason),
 			readinessDecision.requestSerializedPostReadyReset ? 1 : 0,

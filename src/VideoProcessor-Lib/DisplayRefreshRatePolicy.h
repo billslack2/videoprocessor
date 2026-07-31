@@ -46,6 +46,13 @@ struct DisplayRefreshRateResult
 	DisplayRefreshRateReason reason =
 		DisplayRefreshRateReason::NoSamples;
 	double selectedRateHz = 0.0;
+	// The candidate passed all freshness, raw-cadence, interval-range, harmonic,
+	// and nominal-family checks. It may still be in the longer stabilization
+	// period required for phase-sensitive correction. Output readiness can use
+	// this bounded, already-validated observation without treating it as HDMI
+	// lock proof.
+	double readinessRateHz = 0.0;
+	bool readinessValidated = false;
 	bool shouldRecalculate = false;
 };
 

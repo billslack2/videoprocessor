@@ -101,6 +101,22 @@ namespace Tests
 				Decision(result.decision));
 			Assert::AreEqual(Reason(DisplayRefreshRateReason::Stabilizing),
 				Reason(result.reason));
+			Assert::IsTrue(result.readinessValidated);
+			Assert::AreEqual(59.9405, result.readinessRateHz, 0.0000001);
+		}
+
+		TEST_METHOD(RejectedCandidateCannotBecomeAnOutputReadinessSignal)
+		{
+			auto input = StableInput(59.9405, 23.976);
+			input.rawWaitRateHz = 59.9405;
+			input.stable = false;
+
+			const auto result = EvaluateDisplayRefreshRate(input);
+
+			Assert::AreEqual(Decision(DisplayRefreshRateDecision::Quarantined),
+				Decision(result.decision));
+			Assert::IsFalse(result.readinessValidated);
+			Assert::AreEqual(0.0, result.readinessRateHz);
 		}
 
 		TEST_METHOD(IncidentStyleDoubleRateIsQuarantinedAndRecalculated)

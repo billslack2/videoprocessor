@@ -149,16 +149,18 @@ DisplayRefreshRateResult EvaluateDisplayRefreshRate(
 			DisplayRefreshRateReason::UnexplainedCompensation, true);
 	}
 
-	if (!input.stable)
-	{
-		return Result(DisplayRefreshRateDecision::Warming,
-			DisplayRefreshRateReason::Stabilizing);
-	}
-
 	DisplayRefreshRateResult result = Result(
-		DisplayRefreshRateDecision::Accepted,
-		DisplayRefreshRateReason::Accepted);
-	result.selectedRateHz = input.candidateRateHz;
+		input.stable ? DisplayRefreshRateDecision::Accepted :
+			DisplayRefreshRateDecision::Warming,
+		input.stable ? DisplayRefreshRateReason::Accepted :
+			DisplayRefreshRateReason::Stabilizing);
+	// The checks above provide a short, bounded readiness observation once the
+	// sampler has published its initial window. Do not conflate it with the
+	// longer stability period used by phase/scene correction.
+	result.readinessRateHz = input.candidateRateHz;
+	result.readinessValidated = true;
+	if (input.stable)
+		result.selectedRateHz = input.candidateRateHz;
 	return result;
 }
 
