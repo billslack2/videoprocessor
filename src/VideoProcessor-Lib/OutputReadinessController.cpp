@@ -82,6 +82,18 @@ OutputReadinessDecision OutputReadinessController::Observe(
 		return decision;
 	}
 
+	// The established DirectShow/madVR re-prime is reliable only after its
+	// normal live startup has formed a substantial VP reservoir. Express that
+	// requirement as an exact VP depth, not an arbitrary elapsed-time delay.
+	if (m_state == OutputReadinessState::OutputNotReady &&
+		!input.postReadyResetCompleted && input.preResetPrimeFrames > 0 &&
+		input.currentEpochProcessedDepth < input.preResetPrimeFrames)
+	{
+		decision.state = m_state;
+		decision.reason = OutputReadinessReason::AwaitingPreResetPrime;
+		return decision;
+	}
+
 	if (m_state == OutputReadinessState::OutputNotReady)
 	{
 		m_state = OutputReadinessState::PostReadyResetPending;
@@ -154,6 +166,7 @@ const char* ToString(OutputReadinessReason reason)
 	case OutputReadinessReason::AwaitingDisplayMeasurement: return "awaiting-display";
 	case OutputReadinessReason::DisplayMeasurementRejected: return "display-rejected";
 	case OutputReadinessReason::OutputRefreshFamilyMismatch: return "output-rate-mismatch";
+	case OutputReadinessReason::AwaitingPreResetPrime: return "awaiting-pre-reset-prime";
 	case OutputReadinessReason::AwaitingPostReadyReset: return "awaiting-post-ready-reset";
 	case OutputReadinessReason::AwaitingPrefill: return "awaiting-prefill";
 	case OutputReadinessReason::Ready: return "ready";

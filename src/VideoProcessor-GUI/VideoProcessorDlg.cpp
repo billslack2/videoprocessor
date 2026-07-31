@@ -2422,10 +2422,19 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 
 			switch (eventCode)
 			{
-			case 0x16: // EC_DISPLAY_CHANGED
-			case 0x0E: // EC_VIDEO_SIZE_CHANGED
-			{
-				g_displayRefreshRateSampler->ResetMeasurement();
+		case 0x16: // EC_DISPLAY_CHANGED
+		case 0x0E: // EC_VIDEO_SIZE_CHANGED
+		{
+				if (!m_outputReadinessGraphReprimeActive)
+				{
+					g_displayRefreshRateSampler->ResetMeasurement();
+				}
+				else
+				{
+					DebugLog::Log(
+						"DirectShow display event belongs to the output-readiness "
+						"graph re-prime; preserving its selecting DXGI evidence");
+				}
 				const ULONGLONG now = GetTickCount64();
 				if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 					(!m_rendererResetCoordinator ||
@@ -4692,9 +4701,11 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			ResetScopeName(completion.request.scope),
 			completion.failure.empty() ? "" : " failure=",
 			completion.failure.empty() ? "" : completion.failure.c_str());
-		if (currentSuccess && m_activeRendererIsDirectShow &&
+		const bool outputReadinessGraphReprime =
 			completion.request.reason == RendererResetReason::OutputReadiness &&
-			completion.request.scope == RendererResetScope::LiveQueue)
+			completion.request.scope == RendererResetScope::Graph;
+		if (currentSuccess && m_activeRendererIsDirectShow &&
+			outputReadinessGraphReprime)
 		{
 			RendererLivenessSnapshot snapshot;
 			if (m_videoRenderer && m_videoRenderer->GetLivenessSnapshot(snapshot) &&
@@ -4723,7 +4734,8 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			}
 		}
 		if (currentSuccess && m_activeRendererIsDirectShow &&
-			completion.request.scope != RendererResetScope::LiveQueue)
+			completion.request.scope != RendererResetScope::LiveQueue &&
+			!outputReadinessGraphReprime)
 		{
 			// A completed stop/run or retarget transaction may represent a real
 			// HDMI re-sync even when the renderer object itself survived. A
@@ -4737,6 +4749,8 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 				CStringA(ToString(completion.request.reason)).GetString(),
 				ResetScopeName(completion.request.scope));
 		}
+		if (completion.request.reason == RendererResetReason::OutputReadiness)
+			m_outputReadinessGraphReprimeActive = false;
 		if (completion.request.scope != RendererResetScope::LiveQueue)
 			m_lastLivenessRecoveryTick = now;
 		m_consecutiveStuckSeconds = 0;
@@ -7166,12 +7180,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		lastAcceptedTick = displayTimingLogTick;
 	}
 
-	// VP-0066 readiness observation is intentionally passive.  A validated
-	// DXGI measurement is evidence that the renderer/display timing path is
-	// usable, but it is not proof that an HDMI sink has completed its physical
-	// handshake and it says nothing about madVR's unobservable internal queues.
-	// Keep this controller on the UI thread and log only state transitions until
-	// its real-display behaviour has been reviewed.
+	// A validated DXGI measurement is evidence that the renderer/display timing
+	// path is usable, not proof that an HDMI sink has physically locked and not
+	// an observation of madVR's internal queues. It selects the proven
+	// DirectShow/madVR graph re-prime transaction; it does not size madVR.
 	OutputReadinessInput readinessInput;
 	// Renderer lifecycle and sampler generations are both readiness boundaries:
 	// never carry a validated rate across either one.
@@ -7190,6 +7202,13 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	const size_t requestedVpReserveFrames = hasReadinessLiveness &&
 		readinessLiveness.queueCapacity > 0 ?
 		std::min<size_t>(8, readinessLiveness.queueCapacity) : 8;
+	// Empirical DirectShow/madVR behaviour across madVR queue configurations:
+	// the established graph re-prime reaches a stable downstream state after a
+	// substantial VP startup reservoir, then retains the small VP floor. Use
+	// 32 - 8 = 24 frames for the current default, not the madVR queue setting.
+	const size_t preResetPrimeFrames = hasReadinessLiveness &&
+		readinessLiveness.queueCapacity > requestedVpReserveFrames ?
+		readinessLiveness.queueCapacity - requestedVpReserveFrames : 0;
 	readinessInput.postReadyResetCompleted =
 		m_outputReadinessResetCompletedGeneration ==
 			readinessInput.transitionGeneration &&
@@ -7197,8 +7216,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	readinessInput.postReadyEpoch = readinessInput.postReadyResetCompleted ?
 		m_outputReadinessResetCompletedEpoch : 0;
 	readinessInput.currentEpochProcessedDepth = hasReadinessLiveness &&
-		readinessLiveness.queueEpoch == readinessInput.postReadyEpoch ?
+		(!readinessInput.postReadyResetCompleted ||
+			readinessLiveness.queueEpoch == readinessInput.postReadyEpoch) ?
 		readinessLiveness.convertedQueueDepth : 0;
+	readinessInput.preResetPrimeFrames = preResetPrimeFrames;
 	readinessInput.reserveFrames = hasReadinessLiveness &&
 		readinessLiveness.deliveryReserveFrames > 0 ?
 		readinessLiveness.deliveryReserveFrames : requestedVpReserveFrames;
@@ -7221,19 +7242,23 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_rendererResetCoordinator)
 	{
 		// Publish before resetting. The DirectShow pin atomically adopts the
-		// reserve, then the serialized queue reset creates the fresh epoch that
-		// must prefill to that exact depth before it drains again.
+		// reserve, then the proven graph stop/reset/run re-primes madVR while
+		// the fresh VP epoch rebuilds to that exact floor. VP does not attempt to
+		// emulate madVR's independently configurable queues with a guessed burst.
 		m_videoRenderer->SetOutputReadinessDeliveryReserve(
 			requestedVpReserveFrames);
 		const bool accepted = m_rendererResetCoordinator->RequestUi(
 			RendererResetReason::OutputReadiness,
-			RendererResetScope::LiveQueue);
+			RendererResetScope::Graph);
+		if (accepted)
+			m_outputReadinessGraphReprimeActive = true;
 		DebugLog::Log(
-			"Output readiness reset request: generation=%llu reserve=%zu "
-			"accepted=%d VPdepth=%zu/%zu madvr_queue=unobservable",
+			"Output readiness graph re-prime request: generation=%llu "
+			"preResetPrime=%zu reserve=%zu accepted=%d VPdepth=%zu/%zu "
+			"madvr_queue=unobservable",
 			static_cast<unsigned long long>(
 				readinessInput.transitionGeneration),
-			requestedVpReserveFrames, accepted ? 1 : 0,
+			preResetPrimeFrames, requestedVpReserveFrames, accepted ? 1 : 0,
 			hasReadinessLiveness ? readinessLiveness.convertedQueueDepth : 0,
 			hasReadinessLiveness ? readinessLiveness.queueCapacity : 0);
 	}
@@ -7245,7 +7270,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	if (readinessChanged)
 	{
 		DebugLog::Log(
-			"Output readiness observation (passive): generation=%llu graph=%d "
+			"Output readiness state: generation=%llu graph=%d "
 			"expected=%.6fHz observed=%.6fHz phase=%s/%s startup=%s/%s evidence=%.1fs validated=%d readiness=%s/%s evidence=%.1fs validated=%d state=%s "
 			"reason=%s would_request_reset=%d discard=%d admit=%d deliver=%d",
 			static_cast<unsigned long long>(
