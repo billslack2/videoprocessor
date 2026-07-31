@@ -653,6 +653,21 @@ void DirectShowVideoRenderer::ResetLiveQueue()
 }
 
 
+void DirectShowVideoRenderer::SetOutputReadinessDeliveryReserve(
+	size_t reserveFrames)
+{
+	// This is an atomic transport policy publication, not a graph operation.
+	// Do not queue it behind graph work: the UI must publish the reserve before
+	// its serialized post-ready reset begins.
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	if (m_liveSource && m_liveSource->GetVideoOutputPin())
+	{
+		m_liveSource->GetVideoOutputPin()->
+			SetOutputReadinessDeliveryReserve(reserveFrames);
+	}
+}
+
+
 void DirectShowVideoRenderer::SetResetRequestSink(
 	std::shared_ptr<IRendererResetRequestSink> sink)
 {

@@ -1052,6 +1052,22 @@ size_t CBufferedLiveSourceVideoOutputPin::GetFrameQueueSize()
 }
 
 
+void CBufferedLiveSourceVideoOutputPin::SetOutputReadinessDeliveryReserve(
+	size_t reserveFrames)
+{
+	const size_t capacity = m_frameQueueMaxSize.load(std::memory_order_acquire);
+	const size_t boundedReserve = capacity > 0 ?
+		std::min(reserveFrames, capacity) : 0;
+	m_outputReadinessDeliveryReserve.store(
+		boundedReserve, std::memory_order_release);
+	DebugLog::Log(
+		"Output readiness VP reserve updated: frames=%zu capacity=%zu",
+		boundedReserve, capacity);
+	if (m_hConvertedAvailableEvent)
+		SetEvent(m_hConvertedAvailableEvent);
+}
+
+
 bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
 	RendererLivenessSnapshot& snapshot) const
 {
@@ -1095,6 +1111,8 @@ bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
 		m_publishedConvertedQueueDepth.load(std::memory_order_acquire);
 	snapshot.queueCapacity =
 		m_frameQueueMaxSize.load(std::memory_order_acquire);
+	snapshot.deliveryReserveFrames =
+		m_outputReadinessDeliveryReserve.load(std::memory_order_acquire);
 	return true;
 }
 
@@ -1912,7 +1930,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				const PipelineEpoch currentEpoch{
 					m_queueEpoch.load(std::memory_order_acquire) };
 				if (!m_processedFrameQueue.TryPopCurrentIfDepthAbove(
-					currentEpoch, 1, convertedSample))
+					currentEpoch, GetDeliveryReserve(), convertedSample))
 					break;  // No more samples, wait for more
 
 				pSample = convertedSample.sample;
@@ -5887,7 +5905,15 @@ size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget() {
 		lastLoggedFps = fps;
 	}
 
-	return frames;
+	return std::max(frames, GetDeliveryReserve());
+}
+
+
+size_t CBufferedLiveSourceVideoOutputPin::GetDeliveryReserve() const
+{
+	const size_t configuredReserve =
+		m_outputReadinessDeliveryReserve.load(std::memory_order_acquire);
+	return configuredReserve > 0 ? configuredReserve : 1;
 }
 
 void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()

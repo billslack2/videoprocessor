@@ -86,6 +86,7 @@ public:
 		uintptr_t targetWindow,
 		const std::function<void()>& drainAfterGraphStop) override;
 	void ResetLiveQueue() override;
+	void SetOutputReadinessDeliveryReserve(size_t reserveFrames) override;
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink) override;
 	void Retire() noexcept override;

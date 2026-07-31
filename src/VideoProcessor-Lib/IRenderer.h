@@ -147,6 +147,10 @@ public:
 	// Flush and re-prime only the live-source queue without rebuilding the
 	// renderer graph. Renderers without a live source may ignore this request.
 	virtual void ResetLiveQueue() {}
+	// Thread-safe publication of a VP-owned converted-frame reserve. DirectShow
+	// uses it only after a serialized reset to form deterministic prefill; it
+	// must never be interpreted as a madVR queue request or observation.
+	virtual void SetOutputReadinessDeliveryReserve(size_t) {}
 
 	// Installs the closeable asynchronous reset-request endpoint associated
 	// with this renderer instance. Backends must never call UI or graph control

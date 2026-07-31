@@ -31,6 +31,9 @@ struct RendererLivenessSnapshot
 	size_t rawQueueDepth = 0;
 	size_t convertedQueueDepth = 0;
 	size_t queueCapacity = 0;
+	// Zero means normal legacy drain policy. A nonzero value is a VP-owned
+	// converted-frame reserve; it never describes renderer-internal queues.
+	size_t deliveryReserveFrames = 0;
 };
 
 constexpr uint64_t MINIMUM_CURRENT_EPOCH_DELIVERIES = 5;

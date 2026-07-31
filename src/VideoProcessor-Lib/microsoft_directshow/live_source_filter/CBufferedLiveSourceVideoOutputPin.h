@@ -67,6 +67,7 @@ public:
 	// ALiveSourceVideoOutputPin
 	HRESULT OnVideoFrame(VideoFrame&) override;
 	void SetFrameQueueMaxSize(size_t) override;
+	void SetOutputReadinessDeliveryReserve(size_t) override;
 	LONG GetAllocatorBufferCount() const override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	void SetSceneCorrectionUpstreamSample(bool enabled) override;
@@ -363,6 +364,9 @@ private:
 	std::atomic<uint64_t> m_queueEpoch = 0;
 	
 	std::atomic_bool m_isBuffering = false; // gate delivery until converted queue is primed
+	// Published by the UI/controller, consumed only by the delivery worker. A
+	// value of zero preserves the legacy one-sample handoff cushion.
+	std::atomic<size_t> m_outputReadinessDeliveryReserve{ 0 };
 	uint64_t m_lastSeenFrameCounter = 0;    // Track frame counter for discontinuity detection
 	DWORD m_lastAutoPurgeTime = 0;          // Last time we auto-purged the converted queue
 	DWORD m_bufferingExitTime = 0;          // When we last exited buffering mode (for grace period)
@@ -408,6 +412,7 @@ private:
 
 	// Helper to get effective buffering target (half of queue size, at least 3 frames)
 	size_t GetBufferingTarget();
+	size_t GetDeliveryReserve() const;
 
 	// Thread function, upon return thread exist.
 	// Return codes > 0 indicate an error occured
