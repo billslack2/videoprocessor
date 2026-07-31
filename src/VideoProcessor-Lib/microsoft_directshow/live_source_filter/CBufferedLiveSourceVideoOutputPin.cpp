@@ -20,6 +20,7 @@
 #include <numeric>
 
 #include <ConfigFile.h>
+#include <DirectShowDeliveryOutcome.h>
 #include "CBufferedLiveSourceVideoOutputPin.h"
 #include "WindowsOcrSubtitleDetector.h"
 #include "GpuSubtitleDetector.h"
@@ -1439,6 +1440,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	uint64_t slowDeliveryThresholdUs = 25000;  // 150% of 60fps frame = 25ms
 	DWORD lastFrameIntervalUpdateTime = GetTickCount();
 	uint64_t lastSuccessfullyDeliveredEpoch = UINT64_MAX;
+	DirectShowDeliveryOutcomeClassifier deliveryOutcomeClassifier;
 
 	// When Scene Detect is enabled, madVR receives a coherent output cadence at
 	// the measured physical display rate. The content phase tracks the capture
@@ -1608,26 +1610,30 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			minDeliveryTimeUs = std::min(minDeliveryTimeUs, deliveryTimeUs);
 		++totalDeliveryCount;
 		++totalDeliveryCount1Min;
-		if (deliveryTimeUs < 2000)
+		const DirectShowDeliveryOutcome outcome = deliveryOutcomeClassifier.Classify(
+			{ result, deliveryTimeUs, slowDeliveryThresholdUs });
+		switch (outcome.latencyClass)
 		{
+		case DirectShowDeliveryLatencyClass::Instant:
 			++instantDeliveryCount;
 			++instantDeliveryCount1Min;
-		}
-		else if (deliveryTimeUs <= slowDeliveryThresholdUs)
-		{
+			break;
+		case DirectShowDeliveryLatencyClass::Normal:
 			++normalDeliveryCount;
 			++normalDeliveryCount1Min;
-		}
-		else
-		{
+			break;
+		case DirectShowDeliveryLatencyClass::Slow:
 			++slowDeliveryCount;
 			++slowDeliveryCount1Min;
+			break;
 		}
 
-		if (FAILED(result))
+		if (outcome.deliveryFailed)
 		{
-			m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
-			++m_recentDeliveryFailures;
+			if (outcome.countDroppedFrame)
+				m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
+			if (outcome.incrementRecentFailures)
+				m_recentDeliveryFailures.fetch_add(1, std::memory_order_relaxed);
 			++deliveryFailureCount;
 			++deliveryFailuresSinceLastLog;
 			const DWORD failureNow = GetTickCount();
@@ -1639,9 +1645,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				lastDeliveryFailureLogTime = failureNow;
 			}
 		}
-		else if (result == S_OK)
+		else if (outcome.deliverySucceeded)
 		{
-			m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
+			if (outcome.clearRecentFailures)
+				m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
 			m_currentEpochDeliverySuccessCount.fetch_add(
 				1, std::memory_order_acq_rel);
 			m_lastDeliverySuccessQueueEpoch.store(
