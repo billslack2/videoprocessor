@@ -20,10 +20,17 @@ event-driven worker handoffs, and reset/activation establish the authoritative
 `PipelineEpoch` before stale work is admitted. Historical safe-scene tagging
 still operates only while conversion and delivery publication are serialized.
 
-Focused ownership/overflow/stale/resize/flush/cushion/scene-tag tests pass,
-as does the x64 Release native suite (295/295). Conversion/analysis and the
-DirectShow timestamp, delivery, flush, and lifecycle paths are intentionally
-unchanged at this checkpoint.
+`FrameProcessor` now owns the conversion invocation, conversion-duration
+measurement, and neutral processed-frame result. It is graph-free in the
+sense that it has no graph, queue, worker, timestamp, cadence, or delivery
+dependency; a pin-supplied conversion callback retains the current formatter
+and image-analysis implementation until that analysis is separately moved with
+equivalent tests.
+
+Focused ownership/overflow/stale/resize/flush/cushion/scene-tag and processor
+tests pass, as does the x64 Release native suite (297/297). The DirectShow
+timestamp, delivery, flush, and lifecycle paths are intentionally unchanged at
+this checkpoint.
 
 ## Parent and dependency
 
