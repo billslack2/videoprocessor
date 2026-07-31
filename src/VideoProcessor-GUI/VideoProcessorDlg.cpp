@@ -4222,6 +4222,9 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->OnVideoState(m_builtVideoState);
 
 		m_videoRenderer->Build();
+		m_videoRenderer->SetQueueFramePolicy(
+			videoProcessorApp.GetQueueStartupPrerollFrames(),
+			videoProcessorApp.GetQueueSteadyReserveFrames());
 		ApplyRequestedShaderSelection();
 		m_rendererTransitionWindow.KeepOnTop();
 		m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
@@ -4300,6 +4303,9 @@ void CVideoProcessorDlg::RenderStart()
 				m_videoRenderer->OnVideoState(m_builtVideoState);
 
 			m_videoRenderer->Build();
+			m_videoRenderer->SetQueueFramePolicy(
+				videoProcessorApp.GetQueueStartupPrerollFrames(),
+				videoProcessorApp.GetQueueSteadyReserveFrames());
 			m_rendererTransitionWindow.KeepOnTop();
 			m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
 			m_videoRenderer->SetSceneCorrectionUpstreamSample(

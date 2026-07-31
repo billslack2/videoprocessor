@@ -22,8 +22,18 @@ public:
 	size_t GetAlphaQueueSizeOverride() const { return m_alphaQueueSizeOverride; }
 	void SetAlphaQueueSizeOverride(size_t value) { m_alphaQueueSizeOverride = value; }
 
+	// DirectShow's startup threshold and maintained reserve are separate
+	// policies.  Zero means automatic; explicit values were schema-validated
+	// as whole-frame values in the inclusive range [0, 16].
+	size_t GetQueueStartupPrerollFrames() const { return m_queueStartupPrerollFrames; }
+	void SetQueueStartupPrerollFrames(size_t value) { m_queueStartupPrerollFrames = value; }
+	size_t GetQueueSteadyReserveFrames() const { return m_queueSteadyReserveFrames; }
+	void SetQueueSteadyReserveFrames(size_t value) { m_queueSteadyReserveFrames = value; }
+
 private:
 	size_t m_alphaQueueSizeOverride = 0;
+	size_t m_queueStartupPrerollFrames = 0;
+	size_t m_queueSteadyReserveFrames = 0;
 
 	DECLARE_MESSAGE_MAP()
 };

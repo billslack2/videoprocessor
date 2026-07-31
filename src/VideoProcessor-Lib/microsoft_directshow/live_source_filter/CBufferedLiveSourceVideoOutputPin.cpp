@@ -1068,6 +1068,27 @@ void CBufferedLiveSourceVideoOutputPin::SetOutputReadinessDeliveryReserve(
 }
 
 
+void CBufferedLiveSourceVideoOutputPin::SetQueueFramePolicy(
+	size_t startupPrerollFrames, size_t steadyReserveFrames)
+{
+	const size_t capacity = m_frameQueueMaxSize.load(std::memory_order_acquire);
+	// Preserve the requested value so later capacity changes retain the
+	// configuration intent. GetBufferingTarget/GetDeliveryReserve clamp it at
+	// consumption time; 16 is also the schema-enforced public upper bound.
+	const size_t boundedStartup = std::min(startupPrerollFrames, size_t{ 16 });
+	const size_t boundedReserve = std::min(steadyReserveFrames, size_t{ 16 });
+	m_configuredStartupPrerollFrames.store(
+		boundedStartup, std::memory_order_release);
+	m_configuredSteadyReserveFrames.store(
+		boundedReserve, std::memory_order_release);
+	DebugLog::Log(
+		"DirectShow queue policy updated: requested-startup-preroll=%zu requested-steady-reserve=%zu capacity=%zu",
+		boundedStartup, boundedReserve, capacity);
+	if (m_hConvertedAvailableEvent)
+		SetEvent(m_hConvertedAvailableEvent);
+}
+
+
 bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
 	RendererLivenessSnapshot& snapshot) const
 {
@@ -1279,6 +1300,7 @@ void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace(const char* boundar
 		manifest << "  \"vp_queue_capacity\": " <<
 			m_frameQueueMaxSize.load(std::memory_order_acquire) << ",\n";
 		manifest << "  \"vp_buffering_target\": " << GetBufferingTarget() << ",\n";
+		manifest << "  \"vp_delivery_reserve\": " << GetDeliveryReserve() << ",\n";
 		manifest << "  \"ppm_correction\": " << ppmCorrection << ",\n";
 		manifest << "  \"rational_timing_shadow_comparisons\": " <<
 			RationalTimingShadowComparisonCount() << ",\n";
@@ -5897,23 +5919,44 @@ size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget() {
 	// CRITICAL: Ensure minimum of 3 frames for MadVR buffering stability
 	frames = std::max<size_t>(3, frames);
 
+	const size_t configuredStartup =
+		m_configuredStartupPrerollFrames.load(std::memory_order_acquire);
+	if (configuredStartup > 0)
+	{
+		const size_t capacity =
+			m_frameQueueMaxSize.load(std::memory_order_acquire);
+		if (capacity > 0)
+			frames = std::min(configuredStartup, capacity);
+	}
+
+	const size_t deliveryReserve = GetDeliveryReserve();
+	const size_t effectiveTarget = std::max(frames, deliveryReserve);
+
 	// Log the buffering target periodically
 	static double lastLoggedFps = 0.0;
 	if (abs(fps - lastLoggedFps) > 1.0)
 	{
-		DebugLog::Log("GetBufferingTarget(): fps=%.2f, nominalTarget=%zu, finalTarget=%zu", fps, nominalTarget, frames);
+		DebugLog::Log("GetBufferingTarget(): fps=%.2f, nominalTarget=%zu, effectiveTarget=%zu deliveryReserve=%zu configuredStartup=%zu", fps, nominalTarget, effectiveTarget, deliveryReserve, configuredStartup);
 		lastLoggedFps = fps;
 	}
 
-	return std::max(frames, GetDeliveryReserve());
+	return effectiveTarget;
 }
 
 
 size_t CBufferedLiveSourceVideoOutputPin::GetDeliveryReserve() const
 {
 	const size_t configuredReserve =
+		m_configuredSteadyReserveFrames.load(std::memory_order_acquire);
+	if (configuredReserve > 0)
+	{
+		const size_t capacity =
+			m_frameQueueMaxSize.load(std::memory_order_acquire);
+		return capacity > 0 ? std::min(configuredReserve, capacity) : 1;
+	}
+	const size_t readinessReserve =
 		m_outputReadinessDeliveryReserve.load(std::memory_order_acquire);
-	return configuredReserve > 0 ? configuredReserve : 1;
+	return readinessReserve > 0 ? readinessReserve : 1;
 }
 
 void CBufferedLiveSourceVideoOutputPin::OnBadTimestampDetected()

@@ -431,6 +431,25 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 		}
 	}
 
+	auto loadQueueFrameSetting = [&](const char* key,
+		auto setter)
+	{
+		std::string value;
+		if (!config.TryGetString("queue", key, value))
+			return;
+
+		// MainConfigSchema already accepted only the integer range [0, 16].
+		const size_t frames = static_cast<size_t>(std::stoul(value));
+		setter(frames);
+		DbgLog((LOG_TRACE, 1,
+			TEXT("VideoProcessor: Using [queue] %S=%zu frames"),
+			key, frames));
+	};
+	loadQueueFrameSetting("startup_preroll_frames",
+		[](size_t frames) { videoProcessorApp.SetQueueStartupPrerollFrames(frames); });
+	loadQueueFrameSetting("steady_reserve_frames",
+		[](size_t frames) { videoProcessorApp.SetQueueSteadyReserveFrames(frames); });
+
 	if (config.HasSection("command_line"))
 	{
 	AppendConfigBoolOption(arguments, config, { "fullscreen" }, L"/fullscreen");

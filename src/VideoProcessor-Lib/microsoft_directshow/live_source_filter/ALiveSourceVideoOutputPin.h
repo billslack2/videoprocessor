@@ -117,6 +117,7 @@ public:
 	virtual void SetSceneTimingReadiness(bool, uint64_t) {}
 	virtual void SetSceneTimingPhase(int64_t, int64_t, int64_t) {}
 	virtual void SetOutputReadinessDeliveryReserve(size_t) {}
+	virtual void SetQueueFramePolicy(size_t, size_t) {}
 	// Returns a temporally stable estimate of the active picture (excluding
 	// encoded black bars). Buffered P010 sources override this.
 	virtual bool GetActivePictureAspectRatio(double& aspectRatio) const

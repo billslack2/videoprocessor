@@ -14,6 +14,7 @@ namespace MainConfigSchema
 	inline bool OwnsSection(const std::string& section)
 	{
 		return section == "command_line" ||
+			section == "queue" ||
 			section == "queue_recovery" ||
 			section == "lldv" ||
 			section == "logging" ||
@@ -69,6 +70,16 @@ namespace MainConfigSchema
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "command_line", commandLineRules, error))
+			return false;
+
+		// Queue policy is deliberately expressed in whole frames.  Zero means
+		// automatic policy; explicit values are capped so a config typo cannot
+		// create an impractically deep live queue.
+		const std::vector<ConfigSchema::KeyRule> queueRules = {
+			ConfigSchema::Integer("startup_preroll_frames", 0, 16),
+			ConfigSchema::Integer("steady_reserve_frames", 0, 16)
+		};
+		if (!ConfigSchema::ValidateSection(config, "queue", queueRules, error))
 			return false;
 
 		const std::vector<ConfigSchema::KeyRule> recoveryRules = {

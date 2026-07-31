@@ -274,6 +274,9 @@ namespace VideoProcessorTest
 					"fullscreen: true\n"
 					"scene_correction_basic: false\n"
 					"frame_offset: AUTO\n"
+					"[queue]\n"
+					"startup_preroll_frames: 0\n"
+					"steady_reserve_frames: 2\n"
 					"[queue_recovery]\n"
 					"reset_after_render_restart_seconds: 3\n"
 					"reset_queue_too_large_percent: 70\n"
@@ -327,6 +330,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<size_t>(4), model.groups.size());
 			Assert::IsTrue(model.warnings.empty());
 			Assert::IsTrue(MainConfigSchema::OwnsSection("command_line"));
+			Assert::IsTrue(MainConfigSchema::OwnsSection("queue"));
 			Assert::IsTrue(RendererProfileConfig::OwnsSection(
 				"profiles.display.base"));
 			Assert::IsFalse(MainConfigSchema::OwnsSection("unknown"));
@@ -357,12 +361,19 @@ namespace VideoProcessorTest
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
-				file << "[command_line]\nqueue_size: 0\n"
-					"[queue_recovery]\nreset_queue_too_large_percent: 101\n";
+				file << "[command_line]\nqueue_size: 0\n";
 			}
 			Assert::IsTrue(config.Load(path));
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));
 			Assert::IsTrue(error.find("queue_size") != std::string::npos);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue]\nsteady_reserve_frames: 17\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("steady_reserve_frames") != std::string::npos);
 			DeleteFileA(path.c_str());
 		}
 

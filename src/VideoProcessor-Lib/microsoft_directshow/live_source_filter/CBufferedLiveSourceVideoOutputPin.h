@@ -68,6 +68,8 @@ public:
 	HRESULT OnVideoFrame(VideoFrame&) override;
 	void SetFrameQueueMaxSize(size_t) override;
 	void SetOutputReadinessDeliveryReserve(size_t) override;
+	void SetQueueFramePolicy(size_t startupPrerollFrames,
+		size_t steadyReserveFrames) override;
 	LONG GetAllocatorBufferCount() const override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	void SetSceneCorrectionUpstreamSample(bool enabled) override;
@@ -364,6 +366,10 @@ private:
 	std::atomic<uint64_t> m_queueEpoch = 0;
 	
 	std::atomic_bool m_isBuffering = false; // gate delivery until converted queue is primed
+	// Explicit [queue] frame policies.  Zero means automatic policy and must
+	// never be treated as a zero-frame direct handoff.
+	std::atomic<size_t> m_configuredStartupPrerollFrames{ 0 };
+	std::atomic<size_t> m_configuredSteadyReserveFrames{ 0 };
 	// Published by the UI/controller, consumed only by the delivery worker. A
 	// value of zero preserves the legacy one-sample handoff cushion.
 	std::atomic<size_t> m_outputReadinessDeliveryReserve{ 0 };

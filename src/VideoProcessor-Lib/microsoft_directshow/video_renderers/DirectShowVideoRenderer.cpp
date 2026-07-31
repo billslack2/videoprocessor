@@ -668,6 +668,20 @@ void DirectShowVideoRenderer::SetOutputReadinessDeliveryReserve(
 }
 
 
+void DirectShowVideoRenderer::SetQueueFramePolicy(
+	size_t startupPrerollFrames, size_t steadyReserveFrames)
+{
+	// This is an atomic transport policy publication, not a graph operation.
+	// The lifetime lock keeps the live source valid while the pin receives it.
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	if (m_liveSource && m_liveSource->GetVideoOutputPin())
+	{
+		m_liveSource->GetVideoOutputPin()->SetQueueFramePolicy(
+			startupPrerollFrames, steadyReserveFrames);
+	}
+}
+
+
 void DirectShowVideoRenderer::SetResetRequestSink(
 	std::shared_ptr<IRendererResetRequestSink> sink)
 {
