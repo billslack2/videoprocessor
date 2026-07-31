@@ -159,11 +159,30 @@ startup state, initiate a reset, or wait for another worker to reach a target.
 coordination protocol. This preserves the current worker and flush ownership
 model and avoids reintroducing the prior epoch/thread-lifetime failure mode.
 
-The intended state sequence is: output-settling grace period (which remains
-necessary for real display/projector synchronization), one serialized
-flush/reset, static VP preroll, timestamp-lead establishment, then steady
-delivery. Once steady, the policy must not chase madVR queue depth, infer it
-from `Deliver()` time, add/repeat live frames, or alter cadence correction.
+HDMI output readiness is not equivalent to a DirectShow graph having entered
+`Run`. Different displays and projectors can complete their HDMI handshake at
+materially different times. Delivering live frames before that physical
+handshake has settled causes a variable, accidental downstream backlog and
+therefore non-deterministic madVR queue depth.
+
+The intended state sequence is: an output-settling grace period, one
+serialized post-settle flush/reset, static VP preroll, timestamp-lead
+establishment, then steady delivery. The grace period begins after the last
+known renderer/display-mode/output transition (not merely process start) and
+is an explicit per-output/profile setting with its effective value logged.
+During that period VP must not retain an unbounded or variable-age backlog for
+later delivery: it may safely discard live capture because catching up to the
+live edge is not a requirement. The post-settle flush must discard any work
+that arrived during the handshake; only frames accumulated after that boundary
+may form the exact configured preroll. This is what makes the initial queue
+depth independent of handshake duration.
+
+No Windows/DirectShow signal must be treated as proof that an HDMI sink has
+finished its physical handshake. Display-change notifications may be recorded
+as diagnostic context, but a conservative configured settling bound remains
+the contract unless a validated display-specific readiness signal is available.
+Once steady, the policy must not chase madVR queue depth, infer it from
+`Deliver()` time, add/repeat live frames, or alter cadence correction.
 The existing timestamp/queue path remains unchanged until this policy is
 implemented in a separately approved, testable task after the
 behaviour-preserving refactor.
