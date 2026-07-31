@@ -451,20 +451,31 @@ struct DisplayTimingSnapshot
 	// Current clean-window estimate used by output readiness.
 	double readinessRefreshRateHz = 0.0;
 	double readinessEvidenceSeconds = 0.0;
+	// Earliest independently validated DXGI evidence. It may initiate the
+	// reset/prefill transition, but cannot establish long phase confidence.
+	double startupRefreshRateHz = 0.0;
+	double startupEvidenceSeconds = 0.0;
+	double startupRawWaitRateHz = 0.0;
 	double advertisedRefreshRateHz = 0.0;
 	double rawWaitRateHz = 0.0;
 	int64_t lastVBlankQpc = 0;
 	int64_t refreshPeriodQpc = 0;
 	int64_t qpcFrequency = 0;
 	int64_t rateMeasuredQpc = 0;
+	int64_t startupRateMeasuredQpc = 0;
 	int64_t measurementStartedQpc = 0;
 	int64_t minimumWaitIntervalQpc = 0;
 	int64_t maximumWaitIntervalQpc = 0;
+	int64_t startupMinimumWaitIntervalQpc = 0;
+	int64_t startupMaximumWaitIntervalQpc = 0;
 	uint64_t intervalsObserved = 0;
 	uint64_t rawWaitIntervalsObserved = 0;
+	uint64_t startupIntervalsObserved = 0;
+	uint64_t startupRawWaitIntervalsObserved = 0;
 	uint64_t generation = 0;
 	bool rateStable = false;
 	bool readinessEvidenceReady = false;
+	bool startupEvidenceReady = false;
 	bool dwmCompositionEnabled = false;
 	HRESULT dwmTimingResult = E_FAIL;
 };
@@ -612,19 +623,31 @@ public:
 		result.refreshRateHz = m_rate;
 		result.readinessRefreshRateHz = m_readinessRate;
 		result.readinessEvidenceSeconds = m_readinessEvidenceSeconds;
+		result.startupRefreshRateHz = m_startupRate;
+		result.startupEvidenceSeconds = m_startupEvidenceSeconds;
+		result.startupRawWaitRateHz = m_startupRawWaitRate;
 		result.lastVBlankQpc = m_lastVBlankQpc.load(std::memory_order_acquire);
 		result.refreshPeriodQpc = m_refreshPeriodQpc.load(std::memory_order_acquire);
 		result.qpcFrequency = m_qpcFrequency;
 		result.rateMeasuredQpc = m_rateMeasuredQpc;
+		result.startupRateMeasuredQpc = m_startupRateMeasuredQpc;
 		result.measurementStartedQpc = m_measurementStartedQpc;
 		result.intervalsObserved = m_intervalsObserved;
 		result.rawWaitRateHz = m_rawWaitRate;
 		result.minimumWaitIntervalQpc = m_minimumWaitIntervalQpc;
 		result.maximumWaitIntervalQpc = m_maximumWaitIntervalQpc;
 		result.rawWaitIntervalsObserved = m_rawWaitIntervalsObserved;
+		result.startupMinimumWaitIntervalQpc =
+			m_startupMinimumWaitIntervalQpc;
+		result.startupMaximumWaitIntervalQpc =
+			m_startupMaximumWaitIntervalQpc;
+		result.startupIntervalsObserved = m_startupIntervalsObserved;
+		result.startupRawWaitIntervalsObserved =
+			m_startupRawWaitIntervalsObserved;
 		result.generation = m_targetGeneration;
 		result.rateStable = m_rateStable;
 		result.readinessEvidenceReady = m_readinessEvidenceReady;
+		result.startupEvidenceReady = m_startupEvidenceReady;
 		return result;
 	}
 
@@ -634,15 +657,24 @@ private:
 		m_rate = 0.0;
 		m_readinessRate = 0.0;
 		m_readinessEvidenceSeconds = 0.0;
+		m_startupRate = 0.0;
+		m_startupEvidenceSeconds = 0.0;
+		m_startupRawWaitRate = 0.0;
 		m_rateMeasuredQpc = 0;
+		m_startupRateMeasuredQpc = 0;
 		m_measurementStartedQpc = 0;
 		m_intervalsObserved = 0;
 		m_rawWaitRate = 0.0;
 		m_minimumWaitIntervalQpc = 0;
 		m_maximumWaitIntervalQpc = 0;
 		m_rawWaitIntervalsObserved = 0;
+		m_startupMinimumWaitIntervalQpc = 0;
+		m_startupMaximumWaitIntervalQpc = 0;
+		m_startupIntervalsObserved = 0;
+		m_startupRawWaitIntervalsObserved = 0;
 		m_rateStable = false;
 		m_readinessEvidenceReady = false;
+		m_startupEvidenceReady = false;
 		m_lastVBlankQpc.store(0, std::memory_order_release);
 		m_refreshPeriodQpc.store(0, std::memory_order_release);
 	}
@@ -823,10 +855,34 @@ private:
 							estimate.recentMinimumWaitIntervalQpc;
 						m_maximumWaitIntervalQpc =
 							estimate.recentMaximumWaitIntervalQpc;
+						m_startupIntervalsObserved =
+							estimate.startupCompensatedIntervals;
+						m_startupRawWaitIntervalsObserved =
+							estimate.startupRawIntervals;
+						m_startupMinimumWaitIntervalQpc =
+							estimate.startupMinimumWaitIntervalQpc;
+						m_startupMaximumWaitIntervalQpc =
+							estimate.startupMaximumWaitIntervalQpc;
 					}
 				}
 				if (publishRate)
 				{
+					if (estimate.startupRateHz >= 10.0 &&
+						estimate.startupRateHz <= 240.0)
+					{
+						std::lock_guard<std::mutex> lock(m_mutex);
+						if (m_targetGeneration == targetGeneration)
+						{
+							m_startupRate = estimate.startupRateHz;
+							m_startupEvidenceSeconds =
+								estimate.startupEvidenceSeconds;
+							m_startupRawWaitRate =
+								estimate.startupRawWaitRateHz;
+							m_startupEvidenceReady =
+								estimate.startupEvidenceReady;
+							m_startupRateMeasuredQpc = last.QuadPart;
+						}
+					}
 					if (estimate.phaseRateHz > 0.0)
 					{
 						const double rate = estimate.phaseRateHz;
@@ -873,15 +929,24 @@ private:
 	double m_rate = 0.0;
 	double m_readinessRate = 0.0;
 	double m_readinessEvidenceSeconds = 0.0;
+	double m_startupRate = 0.0;
+	double m_startupEvidenceSeconds = 0.0;
+	double m_startupRawWaitRate = 0.0;
 	double m_rawWaitRate = 0.0;
 	int64_t m_rateMeasuredQpc = 0;
+	int64_t m_startupRateMeasuredQpc = 0;
 	int64_t m_measurementStartedQpc = 0;
 	uint64_t m_intervalsObserved = 0;
 	uint64_t m_rawWaitIntervalsObserved = 0;
 	int64_t m_minimumWaitIntervalQpc = 0;
 	int64_t m_maximumWaitIntervalQpc = 0;
+	int64_t m_startupMinimumWaitIntervalQpc = 0;
+	int64_t m_startupMaximumWaitIntervalQpc = 0;
 	bool m_rateStable = false;
 	bool m_readinessEvidenceReady = false;
+	bool m_startupEvidenceReady = false;
+	uint64_t m_startupIntervalsObserved = 0;
+	uint64_t m_startupRawWaitIntervalsObserved = 0;
 	bool m_phaseTracking = false;
 	int64_t m_qpcFrequency = 0;
 	std::atomic<int64_t> m_lastVBlankQpc = 0;
@@ -6792,6 +6857,13 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		qpcNow.QuadPart >= sampledDisplayTiming.rateMeasuredQpc &&
 		(qpcNow.QuadPart - sampledDisplayTiming.rateMeasuredQpc) <=
 			sampledDisplayTiming.qpcFrequency * 20;
+	const bool startupRateIsFresh =
+		sampledDisplayTiming.startupRefreshRateHz > 0.0 &&
+		sampledDisplayTiming.qpcFrequency > 0 &&
+		sampledDisplayTiming.startupRateMeasuredQpc > 0 &&
+		qpcNow.QuadPart >= sampledDisplayTiming.startupRateMeasuredQpc &&
+		(qpcNow.QuadPart - sampledDisplayTiming.startupRateMeasuredQpc) <=
+			sampledDisplayTiming.qpcFrequency * 5;
 	const double rawWaitMinimumMs =
 		sampledDisplayTiming.qpcFrequency > 0 &&
 		sampledDisplayTiming.minimumWaitIntervalQpc > 0 ?
@@ -6802,6 +6874,16 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		sampledDisplayTiming.maximumWaitIntervalQpc > 0 ?
 		static_cast<double>(sampledDisplayTiming.maximumWaitIntervalQpc) * 1000.0 /
 			static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
+	const double startupRawWaitMinimumMs =
+		sampledDisplayTiming.qpcFrequency > 0 &&
+		sampledDisplayTiming.startupMinimumWaitIntervalQpc > 0 ?
+		static_cast<double>(sampledDisplayTiming.startupMinimumWaitIntervalQpc) *
+			1000.0 / static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
+	const double startupRawWaitMaximumMs =
+		sampledDisplayTiming.qpcFrequency > 0 &&
+		sampledDisplayTiming.startupMaximumWaitIntervalQpc > 0 ?
+		static_cast<double>(sampledDisplayTiming.startupMaximumWaitIntervalQpc) *
+			1000.0 / static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
 	// Keep current readiness and phase-sensitive cadence validation separate.
 	// The former needs a clean, recent rate promptly; the latter intentionally
 	// waits for the longer weighted-history predicate.
@@ -6829,6 +6911,27 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	readinessRateInput.stable = false;
 	const DisplayRefreshRateResult readinessRateResult =
 		EvaluateDisplayRefreshRate(readinessRateInput);
+	// Startup evidence uses the first credible two seconds of DXGI vblank
+	// intervals. It is separately cadence- and nominal-validated, rather than
+	// borrowing samples from the post-transition quarantine or phase history.
+	DisplayRefreshRateInput startupRateInput;
+	startupRateInput.candidateRateHz =
+		sampledDisplayTiming.startupRefreshRateHz;
+	startupRateInput.rawWaitRateHz =
+		sampledDisplayTiming.startupRawWaitRateHz;
+	startupRateInput.nominalRateHz = activeTargetRefreshRate;
+	startupRateInput.minimumWaitIntervalMs = startupRawWaitMinimumMs;
+	startupRateInput.maximumWaitIntervalMs = startupRawWaitMaximumMs;
+	startupRateInput.compensatedIntervals =
+		sampledDisplayTiming.startupIntervalsObserved;
+	startupRateInput.rawWaitIntervals =
+		sampledDisplayTiming.startupRawWaitIntervalsObserved;
+	startupRateInput.startupObservationSeconds =
+		sampledDisplayTiming.startupEvidenceSeconds;
+	startupRateInput.fresh = startupRateIsFresh;
+	startupRateInput.stable = false;
+	const DisplayRefreshRateResult startupRateResult =
+		EvaluateDisplayRefreshRate(startupRateInput);
 	const double measuredDisplayRefreshRate =
 		displayRateResult.selectedRateHz;
 	const double nominalInputRefreshRate =
@@ -7041,17 +7144,17 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 		m_videoRenderer != nullptr && !m_rendererResetTransitionActive;
 	// Phase correction waits for DisplayRefreshRateDecision::Accepted. Output
-	// readiness instead uses the same validated candidate after the sampler's
-	// short initial window, so it does not add a 30-second startup blackout.
-	readinessInput.displayDecision = readinessRateResult.readinessValidated ?
-		DisplayRefreshRateDecision::Accepted : readinessRateResult.decision;
-	readinessInput.displayReason = readinessRateResult.readinessValidated ?
-		DisplayRefreshRateReason::Accepted : readinessRateResult.reason;
+	// readiness instead uses independently cadence-validated startup evidence,
+	// so it need not impose a multi-second first-image blackout.
+	readinessInput.displayDecision = startupRateResult.startupValidated ?
+		DisplayRefreshRateDecision::Accepted : startupRateResult.decision;
+	readinessInput.displayReason = startupRateResult.startupValidated ?
+		DisplayRefreshRateReason::Accepted : startupRateResult.reason;
 	readinessInput.expectedOutputRefreshHz = activeTargetRefreshRate;
 	readinessInput.observedOutputRefreshHz =
-		readinessRateResult.readinessValidated ?
-			readinessRateResult.readinessRateHz :
-			sampledDisplayTiming.readinessRefreshRateHz;
+		startupRateResult.startupValidated ?
+			startupRateResult.startupRateHz :
+			sampledDisplayTiming.startupRefreshRateHz;
 	// No reset completion or queue depth is supplied while this is passive.  A
 	// future actuator must receive those values from serialized lifecycle and
 	// epoch-owned transport state, never infer them from Deliver() duration.
@@ -7066,7 +7169,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	{
 		DebugLog::Log(
 			"Output readiness observation (passive): generation=%llu graph=%d "
-			"expected=%.6fHz observed=%.6fHz phase=%s/%s readiness=%s/%s evidence=%.1fs validated=%d state=%s "
+			"expected=%.6fHz observed=%.6fHz phase=%s/%s startup=%s/%s evidence=%.1fs validated=%d readiness=%s/%s evidence=%.1fs validated=%d state=%s "
 			"reason=%s would_request_reset=%d discard=%d admit=%d deliver=%d",
 			static_cast<unsigned long long>(
 				readinessInput.transitionGeneration),
@@ -7075,6 +7178,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			readinessInput.observedOutputRefreshHz,
 			ToString(displayRateResult.decision),
 			ToString(displayRateResult.reason),
+			ToString(startupRateResult.decision),
+			ToString(startupRateResult.reason),
+			startupRateInput.startupObservationSeconds,
+			startupRateResult.startupValidated ? 1 : 0,
 			ToString(readinessRateResult.decision),
 			ToString(readinessRateResult.reason),
 			readinessRateInput.readinessObservationSeconds,
