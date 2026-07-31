@@ -11,10 +11,12 @@ change live behavior. The VP-0066-3 arrival trace provides the initial
 59.94-SDR guardrail: 125 ms median and 141 ms p95 capture-arrival to
 `Deliver()` start, with the VP processed queue at seven frames at p95.
 The observer now distinguishes the existing 30-second phase/scene-correction
-confidence from a short, fully validated readiness observation, so it does not
-introduce a 20-30 second image blackout. Its DXGI rate estimator is bounded to
-recent intervals; old rate and raw-gap outliers age out instead of diluting a
-new display rate for the whole renderer generation. Actuation begins only
+confidence from a fully validated 10-second current-rate readiness observation,
+so it does not introduce a 20-30 second image blackout. Its DXGI rate estimator
+is bounded to recent intervals; old rate and raw-gap outliers age out instead
+of diluting a new display rate for the whole renderer generation. A successful
+DirectShow reset now explicitly invalidates all prior rate evidence, including
+a graph re-prime that retains the same renderer object. Actuation begins only
 after the observer evidence is accepted.
 
 ## Parent and dependency
@@ -64,7 +66,7 @@ an arbitrary user-configurable delay.
   it requests no reset and does not gate, queue, copy, delay, or deliver any
   capture frame. Its logs explicitly label a successful refresh observation as
   renderer readiness rather than physical HDMI-lock proof.
-- Readiness becomes eligible after the sampler's short initial observation
+- Readiness becomes eligible after a 10-second current observation
   only when freshness, raw cadence, interval range, harmonic protection, and
   nominal/output-family validation pass. The longer stability interval remains
   reserved for phase-sensitive correction, not startup image gating.
