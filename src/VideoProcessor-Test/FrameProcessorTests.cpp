@@ -85,5 +85,18 @@ namespace Tests
 			Assert::IsTrue(boundary.safeBoundary);
 			Assert::AreEqual(0u, static_cast<unsigned int>(boundary.averageLuma));
 		}
+
+		TEST_METHOD(ActivePictureAnalysisStateBelongsToTheProcessor)
+		{
+			FrameProcessor processor;
+			P010PlaneView missingFrame;
+			missingFrame.width = 1920;
+			missingFrame.height = 1080;
+
+			Assert::IsTrue(processor.AnalyzeActivePicture({ missingFrame, 1, 60.0 }).analyzed);
+			Assert::IsFalse(processor.AnalyzeActivePicture({ missingFrame, 2, 60.0 }).analyzed);
+			processor.ResetActivePicture();
+			Assert::IsTrue(processor.AnalyzeActivePicture({ missingFrame, 1, 60.0 }).analyzed);
+		}
 	};
 }

@@ -2546,7 +2546,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 	uint64_t maxSlowConversionUs = 0;
 	SceneDetector sceneDetector;
 	uint64_t sceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
-	ActivePictureAnalyzer activePictureAnalyzer;
 	uint64_t activePictureDetectorGeneration =
 		m_activePictureDetectorGeneration.load(std::memory_order_acquire);
 
@@ -2608,7 +2607,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				m_activePictureDetectorGeneration.load(std::memory_order_acquire);
 			if (currentActivePictureGeneration != activePictureDetectorGeneration)
 			{
-				activePictureAnalyzer.Reset();
+				m_frameProcessor.ResetActivePicture();
 				activePictureDetectorGeneration = currentActivePictureGeneration;
 			}
 
@@ -2726,8 +2725,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			// NLS/aspect-rule gating uses the same converted P010 image that reaches
 			// madVR. Sparse sampling every few frames is negligible beside conversion.
 			if (IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010))
-				UpdateActivePictureAspectRatio(pSample, videoFrame.GetCounter(),
-					activePictureAnalyzer);
+				UpdateActivePictureAspectRatio(pSample, videoFrame.GetCounter());
 
 			// Analyze the unmodified frame first. Subtitle relocation changes a
 			// small image region and must not become input to the cut detector.
@@ -3057,7 +3055,7 @@ bool CBufferedLiveSourceVideoOutputPin::GetActivePictureRectangle(
 
 
 void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
-	IMediaSample* sample, uint64_t frameNumber, ActivePictureAnalyzer& analyzer)
+	IMediaSample* sample, uint64_t frameNumber)
 {
 	if (!sample)
 		return;
@@ -3088,7 +3086,7 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 	double framesPerSecond = 60.0;
 	if (m_timeScale > 0 && m_frameDurationTicks > 0)
 		framesPerSecond = static_cast<double>(m_timeScale) / m_frameDurationTicks;
-	const ActivePictureAnalyzerResult analysis = analyzer.Analyze({
+	const ActivePictureAnalyzerResult analysis = m_frameProcessor.AnalyzeActivePicture({
 		{ bytes, static_cast<size_t>(std::max<LONG>(0, sample->GetActualDataLength())),
 			static_cast<int>(width), height, pitch, pitch }, frameNumber, framesPerSecond });
 	if (!analysis.analyzed)

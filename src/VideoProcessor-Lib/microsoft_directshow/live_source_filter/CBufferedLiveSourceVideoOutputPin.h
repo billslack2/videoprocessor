@@ -17,7 +17,6 @@
 #include <vector>
 
 #include <ActivePictureTransitionModel.h>
-#include <ActivePictureAnalyzer.h>
 #include <CaptureFrameQueue.h>
 #include <DirectShowFrameDeliverer.h>
 #include <DirectShowSegmentTransition.h>
@@ -431,8 +430,7 @@ private:
 	bool AnalyzeSceneDetector(IMediaSample* sample, class SceneDetector& detector,
 		uint64_t sourceSequence, timingclocktime_t timestamp, uint64_t generation,
 		uint64_t& sceneEventId, uint8_t& eventFramesBack, uint16_t& averageLuma);
-	void UpdateActivePictureAspectRatio(IMediaSample* sample, uint64_t frameNumber,
-		ActivePictureAnalyzer& analyzer);
+	void UpdateActivePictureAspectRatio(IMediaSample* sample, uint64_t frameNumber);
 	void PublishActivePictureTransition(
 		const ActivePictureTransitionDecision& decision);
 	bool RelocateSubtitleInP010(IMediaSample* sample, uint64_t frameNumber);
