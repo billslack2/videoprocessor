@@ -29,7 +29,6 @@ enum class OutputReadinessReason
 	AwaitingDisplayMeasurement,
 	DisplayMeasurementRejected,
 	OutputRefreshFamilyMismatch,
-	AwaitingPreResetPrime,
 	AwaitingPostReadyReset,
 	AwaitingPrefill,
 	Ready
@@ -48,10 +47,6 @@ struct OutputReadinessInput
 	bool postReadyResetCompleted = false;
 	uint64_t postReadyEpoch = 0;
 	size_t currentEpochProcessedDepth = 0;
-	// A VP-owned converted-frame reservoir that must exist before the single
-	// graph re-prime. Zero preserves immediate reset behaviour for callers that
-	// do not use the deterministic priming policy.
-	size_t preResetPrimeFrames = 0;
 	size_t reserveFrames = 0;
 };
 

@@ -7202,13 +7202,6 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	const size_t requestedVpReserveFrames = hasReadinessLiveness &&
 		readinessLiveness.queueCapacity > 0 ?
 		std::min<size_t>(8, readinessLiveness.queueCapacity) : 8;
-	// Empirical DirectShow/madVR behaviour across madVR queue configurations:
-	// the established graph re-prime reaches a stable downstream state after a
-	// substantial VP startup reservoir, then retains the small VP floor. Use
-	// 32 - 8 = 24 frames for the current default, not the madVR queue setting.
-	const size_t preResetPrimeFrames = hasReadinessLiveness &&
-		readinessLiveness.queueCapacity > requestedVpReserveFrames ?
-		readinessLiveness.queueCapacity - requestedVpReserveFrames : 0;
 	readinessInput.postReadyResetCompleted =
 		m_outputReadinessResetCompletedGeneration ==
 			readinessInput.transitionGeneration &&
@@ -7216,10 +7209,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	readinessInput.postReadyEpoch = readinessInput.postReadyResetCompleted ?
 		m_outputReadinessResetCompletedEpoch : 0;
 	readinessInput.currentEpochProcessedDepth = hasReadinessLiveness &&
-		(!readinessInput.postReadyResetCompleted ||
-			readinessLiveness.queueEpoch == readinessInput.postReadyEpoch) ?
+		readinessLiveness.queueEpoch == readinessInput.postReadyEpoch ?
 		readinessLiveness.convertedQueueDepth : 0;
-	readinessInput.preResetPrimeFrames = preResetPrimeFrames;
 	readinessInput.reserveFrames = hasReadinessLiveness &&
 		readinessLiveness.deliveryReserveFrames > 0 ?
 		readinessLiveness.deliveryReserveFrames : requestedVpReserveFrames;
@@ -7254,11 +7245,11 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			m_outputReadinessGraphReprimeActive = true;
 		DebugLog::Log(
 			"Output readiness graph re-prime request: generation=%llu "
-			"preResetPrime=%zu reserve=%zu accepted=%d VPdepth=%zu/%zu "
+			"reserve=%zu accepted=%d VPdepth=%zu/%zu "
 			"madvr_queue=unobservable",
 			static_cast<unsigned long long>(
 				readinessInput.transitionGeneration),
-			preResetPrimeFrames, requestedVpReserveFrames, accepted ? 1 : 0,
+			requestedVpReserveFrames, accepted ? 1 : 0,
 			hasReadinessLiveness ? readinessLiveness.convertedQueueDepth : 0,
 			hasReadinessLiveness ? readinessLiveness.queueCapacity : 0);
 	}

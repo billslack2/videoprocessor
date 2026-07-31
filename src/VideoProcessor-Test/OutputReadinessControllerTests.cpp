@@ -99,27 +99,6 @@ namespace Tests
 				static_cast<int>(decision.state));
 		}
 
-		TEST_METHOD(RequiresMeasuredVpPrimeBeforeTheReadinessReset)
-		{
-			OutputReadinessController controller;
-			OutputReadinessInput input = ReadyInput();
-			input.preResetPrimeFrames = 24;
-			input.currentEpochProcessedDepth = 23;
-			OutputReadinessDecision decision = controller.Observe(input);
-			Assert::IsFalse(decision.requestSerializedPostReadyReset);
-			Assert::IsTrue(decision.allowDownstreamDelivery);
-			Assert::AreEqual(
-				static_cast<int>(OutputReadinessReason::AwaitingPreResetPrime),
-				static_cast<int>(decision.reason));
-
-			input.currentEpochProcessedDepth = 24;
-			decision = controller.Observe(input);
-			Assert::IsTrue(decision.requestSerializedPostReadyReset);
-			Assert::AreEqual(
-				static_cast<int>(OutputReadinessState::PostReadyResetPending),
-				static_cast<int>(decision.state));
-		}
-
 		TEST_METHOD(NewTransitionInvalidatesSteadyStateAndRequestsOneNewReset)
 		{
 			OutputReadinessController controller;
