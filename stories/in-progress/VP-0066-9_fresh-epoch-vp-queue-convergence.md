@@ -46,10 +46,22 @@ timestamp hole merely to report a lower OSD queue number.
   live content to stutter or be skipped, but VP must not wait an arbitrary
   five or ten seconds before showing a picture.
 - With a nonzero `[queue] steady_reserve_frames`, wait for the initial
-  downstream priming and then for the startup `Deliver()` stalls to cease
-  before requesting one VP-owned convergence to the desired frame depth.
+  downstream priming, observe a genuine synchronous `Deliver()` block, and
+  then observe three recovered deliveries before requesting one VP-owned
+  convergence to the desired converted-queue depth. Fast early `S_OK`
+  deliveries alone are not readiness evidence.
   Delivery duration is only a one-sided local startup-settlement signal; it
   must not be represented as madVR queue occupancy or a feedback API.
+- The synchronous-block threshold is the greater of three nominal frame
+  periods and 30 ms. The nominal frame duration is available immediately at
+  epoch start so ordinary 23.976-Hz delivery is not misclassified as a block.
+- Convergence may remove only stale converted work, and only while the raw
+  queue is known and empty. The configured value is a converted-queue reserve,
+  not a target for total OSD R/C/T depth or madVR's private queues.
+- If no block is observed within three seconds, recovery is not completed
+  within two seconds after the block, the target changes in the same epoch,
+  raw depth is nonzero, or display-cadence scene mode is active, fail closed:
+  do not trim and record the reason.
 - A zero/automatic queue policy remains untouched.
 - Final DirectShow presentation/media timestamps must be owned at the delivery
   boundary, or an equivalent serialized rebase must prove that removing stale
@@ -62,32 +74,34 @@ timestamp hole merely to report a lower OSD queue number.
 ## Testable increments
 
 1. **Policy (implemented):** `LiveEpochConvergenceController` is a pure C++14
-   value state machine. It is disabled for automatic policy, waits for five
-   successful downstream samples, then three deliveries no slower than two
-   nominal frame periods. It requests at most one stale VP-frame convergence
-   per epoch and re-arms only for a new epoch. Native tests replay the observed
-   109.7/123.5 ms 59.94-Hz stalls and prove the ten-frame request from depth 12
-   to target 2, non-request at target, and fresh-epoch rearm.
+   value state machine. It is disabled for automatic policy, requires an
+   observed startup `Deliver()` block followed by three recovered deliveries,
+   and requests at most one stale converted-frame convergence per epoch. It
+   re-arms only for a new epoch. Native tests replay the measured 59.94-Hz
+   startup trace (109.8/124.785-ms stalls followed by
+   17.897/16.518/16.515-ms recovery), prove the 13-to-2 convergence, prove that
+   23.976-Hz startup is classified correctly, and cover timeout, raw-nonzero,
+   scene-mode, target-change, idempotence, and fresh-epoch behavior.
 2. **Timestamp ownership/rebase (implemented; awaiting live validation):**
-   `RationalLiveOutputSequencer` now provides a pure, delivery-owned preview /
-   commit sequence for the deployed Rational-Rational path. Its native tests
-   prove exact 60000/1001 continuity, no output-time gap when stale picture
-   content is skipped, retry-after-failed-Deliver, and epoch reset behavior.
-   A 59.94-Hz production trace confirmed 968 successful deliveries with a
-   strictly contiguous Rational timeline (180 ms lead, then exact
-   166,830/166,831-tick cadence). The delivery thread now applies this
-   sequence to normal Rational-Rational samples immediately before `Deliver`
-   and commits it only on success. Active P010 scene cadence remains its own
-   delivery-thread timestamp owner. This increment does not yet discard any
-   queued picture content.
+   `RationalLiveOutputSequencer` is now the single delivery-thread owner of
+   final presentation and media timestamps for both normal Rational-Rational
+   and display-cadence scene delivery. Cadence/PPM changes rebase at the last
+   committed stop without creating a new epoch. Preview is side-effect free;
+   commit occurs only after `S_OK`. Renderer-gap repeats consume presentation
+   slots without double-advancing media, and source/epoch discontinuities are
+   preserved. Tests cover normal/display/normal transitions, failed delivery,
+   renderer gaps, source discontinuity, exact 60000/1001 cadence, and a
+   four-hour 24000/1001 display-cadence run.
 3. **One-shot integration (implemented; awaiting live validation):** the
-   DirectShow delivery thread now observes each delivery outcome, resets the
-   stable-delivery streak on failure, and once per fresh epoch trims oldest
-   VP-owned converted work to the explicit `[queue]` target after downstream
-   prime and three normal deliveries. It records an intentional VP planned
-   drop plus target, pre/post depth, stale count, and the explicit fact that
-   madVR occupancy is unobservable. It never runs in an unchanged converged
-   epoch and does not increment renderer-drop counters.
+   DirectShow delivery thread observes each delivery outcome and once per
+   fresh epoch may trim oldest converted work to the explicit `[queue]` target
+   after proven block/recovery and raw-zero evidence. `S_FALSE` is treated as
+   downstream rejection: the sequencer does not commit and delivery remains
+   latched until a new epoch/flush. Optional deferred-repeat failure abandons
+   the clone without a renderer reset. A dedicated `*-convergence.csv`
+   preserves startup proof across later periodic exports, and the manifest
+   records the policy, thresholds, pre/post/discard depths, raw-zero evidence,
+   timestamp owner, and the explicit fact that madVR occupancy is unobservable.
 4. **Display validation:** exercise 59.94 SDR first, then 23.976 and 59.94
    HDR. Retain madVR OSD captures as passive evidence only. Verify a small,
    repeatable VP R/C/T after each relevant reset/restart while madVR remains
@@ -96,7 +110,9 @@ timestamp hole merely to report a lower OSD queue number.
 ## Acceptance criteria
 
 - Unit tests cover startup prime, startup stalls, normal delivery, target
-  already met, automatic policy, one-shot behavior, and rearm on a new epoch.
+  already met, automatic policy, one-shot behavior, fail-closed boundaries,
+  timestamp/media ownership, and rearm on a new epoch. The current native
+  suite passes 348/348 tests in x64 Release.
 - A convergence never happens in an unchanged steady epoch.
 - Normal, no-trim delivery preserves monotonic 60000/1001 and 24000/1001
   timestamps exactly within existing documented rounding tolerance.
@@ -106,6 +122,34 @@ timestamp hole merely to report a lower OSD queue number.
   madVR API/OSD control input is introduced.
 - Live validation logs a deterministic VP target and pre/post VP depth for
   each fresh epoch, while explicitly leaving madVR occupancy unknown.
+
+## Controlled validation process (tonight)
+
+1. Begin with the known 59.94-Hz SDR monitor and the existing active
+   `[queue] steady_reserve_frames: 2`. Do not replace the active configuration.
+2. Start VP or rebuild the graph and observe the first 60 seconds. First
+   picture remains prompt; convergence is not allowed to hold video for a
+   fixed five- or ten-second readiness delay.
+3. For each fresh epoch, expect at most one convergence decision:
+   - if a real startup block and recovery are observed with raw depth zero,
+     telemetry records the state transition and one planned trim with exact
+     target, pre-depth, post-depth, and discarded count;
+   - if the evidence is absent or unsafe, a `ConvergenceState` record with a
+     reason such as `block-observation-timed-out`, `raw-depth-not-empty`, or
+     `unsafe-boundary` and no `PlannedDrop` is the correct fail-closed outcome.
+4. Treat the VP OSD R/C/T and madVR OSD as observations, not as control inputs.
+   The configured `2` applies only to VP converted reserve; madVR queue fill
+   remains passive evidence because no supported occupancy API is available.
+5. Exercise initial start, manual reset, and a source switch that rebuilds or
+   resynchronizes the output. Check for no new multi-second black screen, no
+   repeated autonomous reset loop, continuous video after recovery, and no
+   sustained VP or madVR drop/repeat growth.
+6. Stop or rebuild once to flush telemetry. Review the latest
+   `*-convergence.csv` together with its manifest; do not infer startup state
+   solely from a later one-minute rolling delivery CSV.
+7. After SDR 59.94 passes, repeat at HDR 59.94. Validate 23.976 on the real
+   compatible display; a 23.976 source on the current 59.94-only monitor is a
+   cadence-mismatch negative fixture, not a queue-convergence acceptance run.
 
 ## Out of scope
 
