@@ -11,13 +11,17 @@ change live behavior. The VP-0066-3 arrival trace provides the initial
 59.94-SDR guardrail: 125 ms median and 141 ms p95 capture-arrival to
 `Deliver()` start, with the VP processed queue at seven frames at p95.
 The observer now distinguishes the existing 30-second phase/scene-correction
-confidence from a fully validated 10-second current-rate readiness observation,
-so it does not introduce a 20-30 second image blackout. Its DXGI rate estimator
-is bounded to recent intervals; old rate and raw-gap outliers age out instead
-of diluting a new display rate for the whole renderer generation. A successful
-DirectShow reset now explicitly invalidates all prior rate evidence, including
-a graph re-prime that retains the same renderer object. Actuation begins only
-after the observer evidence is accepted.
+confidence from a fully validated current-rate readiness observation. After a
+renderer/display timing transition it deliberately ignores the first five
+seconds, then requires ten seconds of clean evidence. This is **not** a
+first-image gate: ordinary live delivery remains immediate until a later
+actuator checkpoint deliberately changes that behavior. The estimator keeps
+up to two minutes of evidence, gives it a 20-second recency half-life for
+phase quality, and uses a current 30-second window for readiness; a material
+fast/current-rate mismatch starts a fresh measurement generation. Graph and
+graph-retarget resets invalidate the measurement; a VP-only live-queue flush
+does not, because it leaves the renderer/display path intact. Actuation begins
+only after the observer evidence is accepted.
 
 ## Parent and dependency
 
@@ -39,8 +43,9 @@ OutputNotReady -> PostReadyResetPending -> Prefilling -> Steady
 
 The state machine begins a new readiness observation after each renderer,
 display-mode, graph, or output-target transition. It accepts readiness only
-when the graph is operational and the measured renderer/display refresh is
-fresh, stable, and in the requested **output** refresh family. This is a
+when the graph is operational and the measured renderer/display refresh has
+passed fresh current-rate validation in the requested **output** refresh
+family. The longer weighted phase-stability predicate remains separate. This is a
 deterministic renderer-readiness gate, not proof that a projector, AVR, or
 HDMI sink has physically locked.
 
@@ -66,9 +71,10 @@ an arbitrary user-configurable delay.
   it requests no reset and does not gate, queue, copy, delay, or deliver any
   capture frame. Its logs explicitly label a successful refresh observation as
   renderer readiness rather than physical HDMI-lock proof.
-- Readiness becomes eligible after a 10-second current observation
-  only when freshness, raw cadence, interval range, harmonic protection, and
-  nominal/output-family validation pass. The longer stability interval remains
+- Readiness becomes eligible after a five-second post-transition quarantine
+  plus a 10-second current observation, only when freshness, raw cadence,
+  interval range, harmonic protection, and nominal/output-family validation
+  pass. The longer 30-second weighted phase-stability interval remains
   reserved for phase-sensitive correction, not startup image gating.
 - Integration adds no queue, frame copy, worker thread, polling loop, or
   capture-callback wait. The delivery coordinator is the sole state owner;
