@@ -252,6 +252,10 @@ public:
 	{
 		return m_rationalTimingShadowMismatches.load(std::memory_order_relaxed);
 	}
+	uint64_t RationalTimingControllerAppliedCount() const
+	{
+		return m_rationalTimingControllerApplied.load(std::memory_order_relaxed);
+	}
 
 	// Get the converted queue size (buffered mode only)
 	virtual size_t GetConvertedQueueSize() const { return 0; }
@@ -340,6 +344,7 @@ protected:
 	std::unique_ptr<DirectShowVideoTimingAdapter> m_rationalTimingShadow;
 	std::atomic<uint64_t> m_rationalTimingShadowComparisons = 0;
 	std::atomic<uint64_t> m_rationalTimingShadowMismatches = 0;
+	std::atomic<uint64_t> m_rationalTimingControllerApplied = 0;
 	
 	// Auto-calibration support
 	AutoPpmCalibrator m_autoPpmCalibrator;
