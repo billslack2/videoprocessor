@@ -58,11 +58,36 @@ HRESULT CUnbufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame
 		return S_FALSE;
 	}
 
-	// Deliver to downstream renderer (this will block)
-	const uint64_t mediaTypeGeneration =
-		AttachPendingMediaType(pSample);
-	hr = this->Deliver(pSample);
-	CompletePendingMediaType(mediaTypeGeneration, hr);
+	// Deliver to downstream renderer (this will block). The unbuffered mode
+	// has no delivery telemetry consumer, but it shares the exact media-type
+	// attachment/completion contract with the buffered live path.
+	const DirectShowDeliveryTicket deliveryTicket =
+		m_directShowFrameDeliverer.Begin(
+			pSample,
+			[this](IMediaSample* deliverySample)
+			{
+				return AttachPendingMediaType(deliverySample);
+			},
+			[]()
+			{
+				return GetWallClockTime();
+			});
+	const DirectShowDeliveryResult deliveryResult =
+		m_directShowFrameDeliverer.Complete(
+			deliveryTicket,
+			[this](IMediaSample* deliverySample)
+			{
+				return Deliver(deliverySample);
+			},
+			[this](uint64_t mediaTypeGeneration, HRESULT deliveryResult)
+			{
+				CompletePendingMediaType(mediaTypeGeneration, deliveryResult);
+			},
+			[]()
+			{
+				return GetWallClockTime();
+			});
+	hr = deliveryResult.result;
 	pSample->Release();
 
 	return hr;
