@@ -3104,7 +3104,7 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 				decision.contradictoryCandidates, decision.candidateReversals,
 				decision.confidence, decision.reason.c_str(), evidence.reason.c_str());
 		else
-			DebugLog::Log("ACTIVE PICTURE: state=%s frame=%llu candidate=%d,%d-%d,%d stable=%d,%d-%d,%d stable_aspect=%.4f raster=%dx%d aspect=%.4f symmetric=%d matches=%u contradictions=%u reversals=%u confidence=%.2f classification=%d samples=%zu/%zu first_contradiction=%llu latency_frames=%llu reason=\"%s\"",
+			DebugLog::Log("ACTIVE PICTURE: state=%s frame=%llu candidate=%d,%d-%d,%d stable=%d,%d-%d,%d stable_aspect=%.4f raster=%dx%d aspect=%.4f symmetric=%d matches=%u contradictions=%u reversals=%u confidence=%.2f classification=%d samples=%zu/%zu edge_trust=%d,%d,%d,%d edge_black=%.2f,%.2f,%.2f,%.2f edge_chroma=%.2f,%.2f,%.2f,%.2f edge_boundary=%.1f,%.1f,%.1f,%.1f edge_confidence=%.2f,%.2f,%.2f,%.2f first_contradiction=%llu latency_frames=%llu reason=\"%s\"",
 				decision.state == ActivePictureTransitionState::STABLE ? "stable" : "candidate_transition",
 				static_cast<unsigned long long>(frameNumber), decision.bounds.left, decision.bounds.top,
 				decision.bounds.right, decision.bounds.bottom, decision.stableBounds.left,
@@ -3115,6 +3115,11 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 				decision.contradictoryCandidates, decision.candidateReversals,
 				decision.confidence, static_cast<int>(evidence.classification),
 				evidence.lumaSamples, evidence.chromaSamples,
+				evidence.left.trusted, evidence.top.trusted, evidence.right.trusted, evidence.bottom.trusted,
+				evidence.left.blackFraction, evidence.top.blackFraction, evidence.right.blackFraction, evidence.bottom.blackFraction,
+				evidence.left.neutralChromaFraction, evidence.top.neutralChromaFraction, evidence.right.neutralChromaFraction, evidence.bottom.neutralChromaFraction,
+				evidence.left.innerBoundaryContrast, evidence.top.innerBoundaryContrast, evidence.right.innerBoundaryContrast, evidence.bottom.innerBoundaryContrast,
+				evidence.left.confidence, evidence.top.confidence, evidence.right.confidence, evidence.bottom.confidence,
 				static_cast<unsigned long long>(decision.firstContradictoryFrame),
 				static_cast<unsigned long long>(decision.decisionLatencyFrames),
 				(decision.reason + "; " + evidence.reason).c_str());
