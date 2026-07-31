@@ -17,6 +17,7 @@
 #include <vector>
 
 #include <ActivePictureTransitionModel.h>
+#include <ActivePictureAnalyzer.h>
 #include <CaptureFrameQueue.h>
 #include <DirectShowFrameDeliverer.h>
 #include <DirectShowSegmentTransition.h>
@@ -417,11 +418,6 @@ private:
 	static DWORD WINAPI ConversionThreadProc(LPVOID lpParameter);
 	DWORD ConversionWorker();
 
-	struct ActivePictureDetectorState
-	{
-		ActivePictureTransitionModel transition;
-	};
-
 	// Published lock-free for UI/renderer shortcut handling. Detection itself
 	// is conversion-worker-owned and samples only sparse P010 luma positions.
 	std::atomic<double> m_activePictureAspectRatio = 0.0;
@@ -436,7 +432,7 @@ private:
 		uint64_t sourceSequence, timingclocktime_t timestamp, uint64_t generation,
 		uint64_t& sceneEventId, uint8_t& eventFramesBack, uint16_t& averageLuma);
 	void UpdateActivePictureAspectRatio(IMediaSample* sample, uint64_t frameNumber,
-		ActivePictureDetectorState& state);
+		ActivePictureAnalyzer& analyzer);
 	void PublishActivePictureTransition(
 		const ActivePictureTransitionDecision& decision);
 	bool RelocateSubtitleInP010(IMediaSample* sample, uint64_t frameNumber);
