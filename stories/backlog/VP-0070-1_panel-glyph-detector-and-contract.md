@@ -28,6 +28,22 @@ ink must cross a stable top or bottom active-picture boundary into an encoded
 bar. The original full-picture Sintel corpus cannot prove that condition and is
 retained only for cadence and multi-panel regression evidence.
 
+The boundary-specific glyph-first fixture then established a viable starting
+contract without pretending to recover invisible source-panel endpoints:
+
+- 28/28 sampled top/bottom straddle positives accepted;
+- 0/77 picture-only, bar-only, near-boundary menu, and no-caption negatives
+  accepted;
+- deterministic derived capture rectangles had zero coordinate drift across
+  repeated samples; and
+- PP-OCRv3 added no recall or rejection benefit to the glyph-first gate while
+  adding about 13 ms median CPU inference cost.
+
+The high-confidence glyph seed mask covered only 30.3% of the pair-derived
+antialiased glyph truth. Detection/identity is therefore a starting point, not
+yet an inpaint-ready mask. Full soft-mask refinement remains required before
+production implementation.
+
 Experiment and results are under
 `C:\Users\bslac\vp\test-media\vp-0070\experiments`.
 Worktree: `C:\\Users\\bslac\\vp\\worktrees\\vp-0070-1-panel-detection`.
@@ -44,20 +60,23 @@ history; they did not establish correctness on representative video.
 ## Scope
 
 Prove and implement a renderer-neutral bounded `SubtitleCueSet` containing
-separate line members. Each member has immutable panel, glyph, tight mask, and
+separate line members. Each member has immutable backing evidence, glyph, tight mask, and
 capture geometry tied to exact frame/raster/pipeline/picture/viewport
 generations. Classical pixels remain authoritative. The existing Apache-2.0
-PP-OCRv3 detector may be refactored behind an optional asynchronous
-`ITextRegionProposalProvider` and evaluated on candidate crops; no recognition
-model is added in this task.
+PP-OCRv3 remains an optional benchmark provider only; it is off by default and
+is not required by the architecture unless new real-capture evidence proves a
+measurable benefit.
 
 ## Design constraints
 
 - Require stable active-picture geometry and scan only bounded strips centered
   on actual top/bottom encoded-bar boundaries.
-- Apply a pure boundary-eligibility predicate after panel/mask extraction:
-  panel and meaningful glyph-mask pixels must exist beyond an antialiasing
-  margin on both sides of exactly one boundary.
+- Apply a pure boundary-eligibility predicate after local backing/mask
+  extraction: meaningful glyph-mask pixels with dark backing must exist beyond
+  an antialiasing margin on both sides of exactly one boundary.
+- Derive the new capture/destination box from frozen tight glyph geometry plus
+  deterministic padding. Do not report inferred padding as an observed source
+  panel endpoint.
 - Reject picture-only, bar-only, padding-only, one-row antialiasing, whole-frame,
   and ambiguous top-plus-bottom candidates.
 - Represent up to three independently boxed line panels without merging their
@@ -77,6 +96,9 @@ model is added in this task.
 
 - The corpus benchmark reports classical-only, PP-OCR proposal-only, and
   combined precision/recall/false-positive and P50/P95/P99 cost.
+- The deterministic boundary fixture accepts every labelled top/bottom
+  crossing and rejects every labelled picture-only, bar-only, menu, and clean
+  frame before production work begins.
 - Unit tests establish detection on synthetic black, charcoal, and gray panels
   with bright, dim, outlined, and two-line glyph patterns.
 - Tests reject panels outside the bounded top/bottom boundary strips,
@@ -89,6 +111,8 @@ model is added in this task.
   matching frames, and that a changed fingerprint releases/reacquires rather
   than jittering geometry.
 - Tests prove generation/raster mismatch produces no applicable stable result.
+- Soft-mask refinement recovers antialiased glyph support sufficiently for
+  source inpaint; the current 30.3% seed-mask recall is not acceptable.
 - The x64 Release test build passes from the recorded VP-0066 baseline.
 
 ## Out of scope

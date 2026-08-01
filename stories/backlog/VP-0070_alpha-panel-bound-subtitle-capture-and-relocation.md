@@ -27,14 +27,17 @@ This feature is opt-in and applies only while all of these are true:
 - each source caption is on an opaque, low-variance dark panel (black,
   charcoal, or gray are valid);
 - the glyphs have sufficient luma or color contrast with the panel;
-- one qualified line panel physically crosses exactly one active-picture
-  boundary; and
+- locally dark opaque backing supports the line on both sides of exactly one
+  active-picture boundary; and
 - meaningful glyph-mask pixels from that same line exist on both the picture
   and bar sides of the boundary.
 
-Captions and panels entirely inside the picture, entirely inside a bar, merely
-touching an edge, or crossing only through panel padding are out of scope and
-must report `unavailable`.
+Captions entirely inside the picture, entirely inside a bar, merely touching
+an edge, or crossing only through dark backing/padding are out of scope and
+must report `unavailable`. Exact original black-panel endpoints are not claimed
+when they visually merge into the encoded bar or dark picture. VP instead
+derives a new stable capture/destination box from the tight glyph geometry plus
+deterministic padding.
 
 If the contract cannot be established for a frame, VP passes it through
 unchanged and reports `unavailable`. An optional text detector/OCR provider may
@@ -49,10 +52,10 @@ DirectShow/madVR that:
 
 1. searches only bounded strips around stable encoded top/bottom picture
    boundaries;
-2. finds the dark panel before using glyph geometry;
+2. qualifies locally dark opaque backing around a boundary-crossing line;
 3. estimates its stable background color and extracts a tight, soft glyph mask
    from the contrast with that color;
-4. requires panel and meaningful glyph ink to cross the same boundary;
+4. requires meaningful panel-supported glyph ink to cross the same boundary;
 5. freezes the panel, glyph, mask, and destination geometry for a cue;
 6. uses an optional off-the-shelf text detector only to confirm/reject a new
    text-like candidate asynchronously; and
@@ -87,7 +90,7 @@ never controls visual geometry.
 
 1. [VP-0070-1](VP-0070-1_panel-glyph-detector-and-contract.md)
    — replace the failed detector with a renderer-neutral multi-panel CueSet,
-   strict top/bottom boundary-crossing policy, benchmarked classical panel/glyph
+   strict top/bottom boundary-crossing policy, benchmarked backing/glyph
    proposals, and optional PP-OCR text-proposal evidence.
 2. [VP-0070-2](VP-0070-2_always-on-panel-diagnostic-overlay.md) —
    implement temporal cue IDs, tolerant current-frame validation, immutable
@@ -119,7 +122,7 @@ geometry, cue state, active-picture generations, and CPU/GPU/present evidence.
   it never defines visual geometry or blocks presentation.
 - A CueSet preserves each independently boxed subtitle line as a separate
   panel/glyph/capture member; a union envelope is non-actionable metadata.
-- Eligibility requires meaningful panel-supported glyph ink on both sides of
+- Eligibility requires meaningful dark-backing-supported glyph ink on both sides of
   exactly one stable encoded-bar boundary.
 - Stable cues retain identical panel, glyph, and destination geometry for
   their complete lifetime.
