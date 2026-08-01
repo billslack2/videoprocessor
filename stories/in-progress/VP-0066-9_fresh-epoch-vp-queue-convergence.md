@@ -29,6 +29,16 @@ the capture rate, creating a 13-frame VP converted-queue lead. Thereafter
 source and delivery both ran near 59.94 Hz, so an equal-rate pipeline cannot
 drain that lead on its own.
 
+The 2026-07-31 controlled run proved that convergence itself is already fast:
+the initial epoch trimmed 29 to 2 in 656 ms, and subsequent active epochs
+trimmed 13/14 to 2 in 328-360 ms. The apparent roughly 3,000-frame delay was
+the DeckLink global capture counter spanning repeated graph epochs, not time
+spent in the convergence controller. Two avoidable liveness resets occurred
+after transient-invalid capture-state notifications stranded renderer ingress:
+the next accepted counters jumped 1404 to 1794 and 2900 to 3107. Each resumed
+frame was then incorrectly treated as proof that the graph was dead, causing a
+full DirectShow reset and draining madVR's queues.
+
 The rejected hard-cap experiment removed already timestamped samples without
 rebasing their timeline, producing VP drops and madVR repeats. The correct
 solution must either preserve a continuous output timeline while stale live
@@ -70,6 +80,13 @@ timestamp hole merely to report a lower OSD queue number.
   worker is introduced.
 - If continuity cannot be proved, do not trim; log the blocked reason and
   retain the elastic queue rather than causing repeats.
+- A transient invalid capture-state notification that retains the last valid
+  renderer state must retain frame admission atomically. It must not silently
+  turn the 1.5-second grace policy into a multi-second ingress outage.
+- A newly received frame after a source-counter gap proves that capture has
+  resumed. Re-baseline cadence measurement, mark a DirectShow source
+  discontinuity, and preserve the running graph. A counter gap alone is not
+  sufficient evidence for a full madVR-draining liveness reset.
 
 ## Testable increments
 
@@ -106,13 +123,24 @@ timestamp hole merely to report a lower OSD queue number.
    HDR. Retain madVR OSD captures as passive evidence only. Verify a small,
    repeatable VP R/C/T after each relevant reset/restart while madVR remains
    normally primed and no sustained VP/madVR drop or repeat regression occurs.
+5. **Transient-state admission recovery (implemented; awaiting live
+   validation):** invalid capture-state publication now records ordering while
+   atomically retaining the current renderer admission. Valid state changes
+   still close ingress until the renderer explicitly acknowledges them.
+   Resumed forward gaps and counter resets are converted into source
+   discontinuities, reset the PPM measurement window, and continue without a
+   graph reset. Telemetry records publication latency and
+   published/required/acknowledged admission sequences. Native tests reproduce
+   the 1404-to-1794 incident, prove that retained invalid state never strands
+   ingress, and prove that an unapplied valid publication superseded by a
+   retained invalid publication reopens safely.
 
 ## Acceptance criteria
 
 - Unit tests cover startup prime, startup stalls, normal delivery, target
   already met, automatic policy, one-shot behavior, fail-closed boundaries,
   timestamp/media ownership, and rearm on a new epoch. The current native
-  suite passes 348/348 tests in x64 Release.
+  suite passes 354/354 tests in x64 Release.
 - A convergence never happens in an unchanged steady epoch.
 - Normal, no-trim delivery preserves monotonic 60000/1001 and 24000/1001
   timestamps exactly within existing documented rounding tolerance.
@@ -122,12 +150,20 @@ timestamp hole merely to report a lower OSD queue number.
   madVR API/OSD control input is introduced.
 - Live validation logs a deterministic VP target and pre/post VP depth for
   each fresh epoch, while explicitly leaving madVR occupancy unknown.
+- On the known 59.94-Hz monitor, VP reaches the converted target within one
+  second of the first current-epoch downstream delivery and reaches a stable
+  state comfortably inside 15 seconds after valid HDMI format acquisition.
+  HDMI acquisition time itself is reported separately rather than attributed
+  to VP convergence.
+- A retained transient-invalid state produces no `liveness-recovery` graph
+  reset. Any source-counter discontinuity is logged with `graph_reset=0`, PPM
+  rebaseline, and continuous DirectShow presentation/media timestamps.
 
 ## Controlled validation process (tonight)
 
 1. Begin with the known 59.94-Hz SDR monitor and the existing active
    `[queue] steady_reserve_frames: 2`. Do not replace the active configuration.
-2. Start VP or rebuild the graph and observe the first 60 seconds. First
+2. Start VP or rebuild the graph and observe at least 90 seconds. First
    picture remains prompt; convergence is not allowed to hold video for a
    fixed five- or ten-second readiness delay.
 3. For each fresh epoch, expect at most one convergence decision:
@@ -144,6 +180,15 @@ timestamp hole merely to report a lower OSD queue number.
    resynchronizes the output. Check for no new multi-second black screen, no
    repeated autonomous reset loop, continuous video after recovery, and no
    sustained VP or madVR drop/repeat growth.
+   - A transient-invalid notification must show
+     `published == required == acknowledged` with admission open.
+   - A later counter gap, if any, must show `action=continue-local`,
+     `ppm=rebaseline`, and `graph_reset=0`; it must not be followed by a
+     `liveness-recovery` reset.
+   - Record first valid-format time, first picture, first convergence trim, and
+     stable target separately. The target should be reached in under one
+     second after delivery begins and the full known-monitor experience should
+     remain comfortably under 15 seconds after valid format acquisition.
 6. Stop or rebuild once to flush telemetry. Review the latest
    `*-convergence.csv` together with its manifest; do not infer startup state
    solely from a later one-minute rolling delivery CSV.
