@@ -90,6 +90,19 @@ OutputReadinessDecision OutputReadinessController::Observe(
 
 	if (m_state == OutputReadinessState::PostReadyResetPending)
 	{
+		if (CanAdoptCurrentGraph(input))
+		{
+			m_state = OutputReadinessState::Steady;
+			m_postReadyEpoch = input.currentGraphPrimeEpoch;
+			m_resetRequested = false;
+			decision.state = m_state;
+			decision.reason = OutputReadinessReason::CurrentGraphPrimeAdopted;
+			decision.postReadyEpoch = m_postReadyEpoch;
+			decision.prefillSatisfied = true;
+			decision.adoptedCurrentGraph = true;
+			return decision;
+		}
+
 		if (!input.postReadyResetCompleted || input.postReadyEpoch == 0)
 		{
 			decision.state = m_state;
@@ -136,6 +149,29 @@ void OutputReadinessController::Reset()
 	m_resetRequested = false;
 }
 
+void OutputReadinessController::RearmResetRequest()
+{
+	if (m_state == OutputReadinessState::PostReadyResetPending)
+		m_resetRequested = true;
+}
+
+bool OutputReadinessController::CanAdoptCurrentGraph(
+	const OutputReadinessInput& input) const
+{
+	return input.currentGraphPrimeProven &&
+		input.currentGraphPrimeObservedFullConvertedQueue &&
+		input.currentGraphBoundarySafe &&
+		input.currentGraphDeliveryRecent &&
+		input.currentGraphPrimeTransitionGeneration ==
+			input.transitionGeneration &&
+		input.currentGraphPrimeEpoch != 0 &&
+		input.currentGraphPrimeTargetFrames == input.reserveFrames &&
+		input.currentGraphPostProofDeliverySuccesses >=
+			kRequiredPostProofDeliveries &&
+		input.currentGraphRawDepth <= kMaximumAdoptionRawDepth &&
+		input.currentGraphConvertedDepth == input.reserveFrames;
+}
+
 const char* ToString(OutputReadinessState state)
 {
 	switch (state)
@@ -156,6 +192,7 @@ const char* ToString(OutputReadinessReason reason)
 	case OutputReadinessReason::AwaitingDisplayMeasurement: return "awaiting-display";
 	case OutputReadinessReason::DisplayMeasurementRejected: return "display-rejected";
 	case OutputReadinessReason::OutputRefreshFamilyMismatch: return "output-rate-mismatch";
+	case OutputReadinessReason::CurrentGraphPrimeAdopted: return "current-graph-prime-adopted";
 	case OutputReadinessReason::AwaitingPostReadyReset: return "awaiting-post-ready-reset";
 	case OutputReadinessReason::AwaitingPrefill: return "awaiting-prefill";
 	case OutputReadinessReason::Ready: return "ready";

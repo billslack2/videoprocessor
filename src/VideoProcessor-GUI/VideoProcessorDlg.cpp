@@ -17,6 +17,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <iomanip>
+#include <limits>
 #include <mutex>
 #include <sstream>
 #include <thread>
@@ -7543,6 +7544,98 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		videoProcessorApp.HasQueueSteadyReserveFrames() ?
 		std::min(configuredVpReserveFrames, queueCapacity) :
 		std::min<size_t>(8, queueCapacity);
+	const uint64_t readinessObservationTick = GetTickCount64();
+	if (m_currentGraphPrimeObservedTransitionGeneration !=
+		readinessInput.transitionGeneration)
+	{
+		const bool firstObservedGeneration =
+			m_currentGraphPrimeObservedTransitionGeneration == 0;
+		const bool rendererGenerationChanged = !firstObservedGeneration &&
+			(m_currentGraphPrimeObservedTransitionGeneration >> 32) !=
+				(readinessInput.transitionGeneration >> 32);
+		m_currentGraphPrimeObservedTransitionGeneration =
+			readinessInput.transitionGeneration;
+		m_currentGraphPrimeTransitionStartTick = firstObservedGeneration ?
+			0 : readinessObservationTick;
+		m_currentGraphPrimeEvidenceEpoch = 0;
+		m_currentGraphPrimeEvidenceTick = 0;
+		m_currentGraphPrimeEvidenceTransitionGeneration = 0;
+		if (rendererGenerationChanged)
+		{
+			m_currentGraphPrimeObservedQueueEpoch = 0;
+			m_currentGraphPrimeQueueTransitionGeneration = 0;
+		}
+	}
+	if (hasReadinessLiveness && readinessLiveness.queueEpoch != 0 &&
+		m_currentGraphPrimeObservedQueueEpoch != readinessLiveness.queueEpoch)
+	{
+		// Bind the queue epoch before consuming any convergence proof. A later
+		// sampler-generation change cannot relabel an older live epoch as proof
+		// for the new output contract.
+		m_currentGraphPrimeObservedQueueEpoch = readinessLiveness.queueEpoch;
+		m_currentGraphPrimeQueueTransitionGeneration =
+			readinessInput.transitionGeneration;
+	}
+	const bool currentGraphBoundarySafe = hasReadinessLiveness &&
+		readinessLiveness.active && readinessLiveness.queueEpoch != 0 &&
+		!readinessLiveness.resetInProgress &&
+		!m_rendererResetTransitionActive &&
+		!m_outputReadinessGraphReprimeActive &&
+		!m_fullscreenRetargetPending &&
+		!m_rendererRetirementPending &&
+		!m_wantToRestartRenderer &&
+		!m_wantToTerminate &&
+		!m_directShowGraphRecoveryAwaitingHealth &&
+		!m_directShowRecoveryRebuildRequested &&
+		!RendererResetOperationInProgress() &&
+		m_rendererTransitionModel.State() == RendererTransitionState::Visible;
+	if (hasReadinessLiveness &&
+		readinessLiveness.convergenceAppliedEpoch != 0 &&
+		(m_currentGraphPrimeTransitionStartTick == 0 ||
+		 readinessLiveness.convergenceAppliedTick >
+			m_currentGraphPrimeTransitionStartTick) &&
+		(readinessLiveness.convergenceAppliedEpoch !=
+			m_currentGraphPrimeEvidenceEpoch ||
+		 readinessLiveness.convergenceAppliedTick !=
+			m_currentGraphPrimeEvidenceTick))
+	{
+		m_currentGraphPrimeEvidenceEpoch =
+			readinessLiveness.convergenceAppliedEpoch;
+		m_currentGraphPrimeEvidenceTick =
+			readinessLiveness.convergenceAppliedTick;
+		m_currentGraphPrimeEvidenceTransitionGeneration =
+			readinessInput.transitionGeneration;
+	}
+	const bool currentGraphPrimeProven = currentGraphBoundarySafe &&
+		readinessLiveness.convergenceHardBlockRecovered &&
+		readinessLiveness.convergenceConvertedQueueWasFull &&
+		readinessLiveness.convergenceAppliedEpoch != 0 &&
+		readinessLiveness.convergenceAppliedEpoch ==
+			readinessLiveness.queueEpoch &&
+		m_currentGraphPrimeObservedQueueEpoch ==
+			readinessLiveness.queueEpoch &&
+		m_currentGraphPrimeQueueTransitionGeneration ==
+			readinessInput.transitionGeneration &&
+		m_currentGraphPrimeEvidenceEpoch ==
+			readinessLiveness.convergenceAppliedEpoch &&
+		m_currentGraphPrimeEvidenceTransitionGeneration ==
+			readinessInput.transitionGeneration;
+	const bool currentGraphPrimeCandidateSameEpoch = hasReadinessLiveness &&
+		readinessLiveness.convergenceAppliedEpoch != 0 &&
+		readinessLiveness.convergenceAppliedEpoch == readinessLiveness.queueEpoch;
+	const uint64_t postProofDeliverySuccesses =
+		currentGraphPrimeCandidateSameEpoch &&
+		readinessLiveness.currentEpochDeliverySuccessCount >=
+			readinessLiveness.convergenceDeliverySuccessCount ?
+		readinessLiveness.currentEpochDeliverySuccessCount -
+			readinessLiveness.convergenceDeliverySuccessCount : 0;
+	const bool currentGraphDeliveryRecent = currentGraphPrimeProven &&
+		readinessLiveness.lastDeliverySuccessQueueEpoch ==
+			readinessLiveness.queueEpoch &&
+		readinessLiveness.lastDeliverySuccessTick != 0 &&
+		readinessObservationTick >= readinessLiveness.lastDeliverySuccessTick &&
+		readinessObservationTick - readinessLiveness.lastDeliverySuccessTick <= 500 &&
+		!readinessLiveness.deliveryInProgress;
 	const bool readinessGraphResetCompleted =
 		m_outputReadinessResetCompletedGeneration ==
 			readinessInput.transitionGeneration &&
@@ -7571,6 +7664,27 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	// being published. Use this generation's selected policy consistently for
 	// both reset prefill and the controller's completion criterion.
 	readinessInput.reserveFrames = requestedVpReserveFrames;
+	readinessInput.currentGraphPrimeProven = currentGraphPrimeProven;
+	readinessInput.currentGraphPrimeObservedFullConvertedQueue =
+		currentGraphPrimeProven &&
+		readinessLiveness.convergenceConvertedQueueWasFull;
+	readinessInput.currentGraphBoundarySafe = currentGraphBoundarySafe;
+	readinessInput.currentGraphDeliveryRecent = currentGraphDeliveryRecent;
+	readinessInput.currentGraphPrimeTransitionGeneration =
+		currentGraphPrimeCandidateSameEpoch ?
+			m_currentGraphPrimeEvidenceTransitionGeneration : 0;
+	readinessInput.currentGraphPrimeEpoch = currentGraphPrimeCandidateSameEpoch ?
+		readinessLiveness.convergenceAppliedEpoch : 0;
+	readinessInput.currentGraphPrimeTargetFrames = currentGraphPrimeCandidateSameEpoch ?
+		readinessLiveness.convergenceTargetFrames : 0;
+	readinessInput.currentGraphRawDepth = hasReadinessLiveness ?
+		readinessLiveness.rawQueueDepth : 0;
+	readinessInput.currentGraphConvertedDepth = hasReadinessLiveness ?
+		readinessLiveness.convertedQueueDepth : 0;
+	readinessInput.currentGraphPostProofDeliverySuccesses =
+		static_cast<uint32_t>(std::min<uint64_t>(
+			postProofDeliverySuccesses,
+			std::numeric_limits<uint32_t>::max()));
 	// Phase correction waits for DisplayRefreshRateDecision::Accepted. Output
 	// readiness instead uses independently cadence-validated startup evidence,
 	// so it need not impose a multi-second first-image blackout.
@@ -7585,6 +7699,35 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			sampledDisplayTiming.startupRefreshRateHz;
 	const OutputReadinessDecision readinessDecision =
 		m_outputReadinessObserver.Observe(readinessInput);
+	if (readinessDecision.adoptedCurrentGraph &&
+		m_activeRendererIsDirectShow && m_videoRenderer &&
+		hasReadinessLiveness)
+	{
+		m_videoRenderer->SetOutputReadinessDeliveryReserve(
+			requestedVpReserveFrames);
+		m_outputReadinessExistingGraphReservePublishedEpoch =
+			readinessDecision.postReadyEpoch;
+		DebugLog::Log(
+			"Output readiness adopted recovered current graph: "
+			"generation=%llu epoch=%llu target=%zu raw=%zu converted=%zu/%zu "
+			"post_proof_success=%llu retained_source=%zu high_water=%zu "
+			"oldest_source_ms=%llu max_deliver_us=%llu "
+			"madvr_queue=unobservable",
+			static_cast<unsigned long long>(
+				readinessInput.transitionGeneration),
+			static_cast<unsigned long long>(readinessDecision.postReadyEpoch),
+			requestedVpReserveFrames,
+			readinessLiveness.rawQueueDepth,
+			readinessLiveness.convertedQueueDepth,
+			readinessLiveness.queueCapacity,
+			static_cast<unsigned long long>(postProofDeliverySuccesses),
+			readinessLiveness.retainedSourceBufferCount,
+			readinessLiveness.retainedSourceBufferHighWater,
+			static_cast<unsigned long long>(
+				readinessLiveness.oldestRetainedSourceBufferAgeMs),
+			static_cast<unsigned long long>(
+				readinessLiveness.maximumSuccessfulDeliveryDurationUs));
+	}
 	if ((existingGraphResetCanSatisfyReadiness ||
 		recoveryRecreationCanSatisfyReadiness) &&
 		(readinessDecision.state == OutputReadinessState::Prefilling ||
@@ -7625,6 +7768,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			RendererResetScope::Graph);
 		if (accepted)
 			m_outputReadinessGraphReprimeActive = true;
+		else
+			m_outputReadinessObserver.RearmResetRequest();
 		DebugLog::Log(
 			"Output readiness graph re-prime request: generation=%llu "
 			"reserve=%zu accepted=%d VPdepth=%zu/%zu "
@@ -7645,7 +7790,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		DebugLog::Log(
 			"Output readiness state: generation=%llu graph=%d "
 			"expected=%.6fHz observed=%.6fHz phase=%s/%s startup=%s/%s evidence=%.1fs validated=%d readiness=%s/%s evidence=%.1fs validated=%d state=%s "
-			"reason=%s would_request_reset=%d discard=%d admit=%d deliver=%d",
+			"reason=%s would_request_reset=%d adopt_prime=%d "
+			"prime_epoch=%llu post_proof_success=%u raw=%zu converted=%zu/%zu "
+			"retained_source=%zu high_water=%zu oldest_source_ms=%llu "
+			"discard=%d admit=%d deliver=%d",
 			static_cast<unsigned long long>(
 				readinessInput.transitionGeneration),
 			readinessInput.graphOperational ? 1 : 0,
@@ -7664,6 +7812,19 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			ToString(readinessDecision.state),
 			ToString(readinessDecision.reason),
 			readinessDecision.requestSerializedPostReadyReset ? 1 : 0,
+			readinessDecision.adoptedCurrentGraph ? 1 : 0,
+			static_cast<unsigned long long>(
+				readinessInput.currentGraphPrimeEpoch),
+			readinessInput.currentGraphPostProofDeliverySuccesses,
+			readinessInput.currentGraphRawDepth,
+			readinessInput.currentGraphConvertedDepth,
+			queueCapacity,
+			hasReadinessLiveness ?
+				readinessLiveness.retainedSourceBufferCount : 0,
+			hasReadinessLiveness ?
+				readinessLiveness.retainedSourceBufferHighWater : 0,
+			static_cast<unsigned long long>(hasReadinessLiveness ?
+				readinessLiveness.oldestRetainedSourceBufferAgeMs : 0),
 			readinessDecision.discardLiveCapture ? 1 : 0,
 			readinessDecision.admitCurrentEpochCapture ? 1 : 0,
 			readinessDecision.allowDownstreamDelivery ? 1 : 0);

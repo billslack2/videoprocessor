@@ -160,5 +160,213 @@ namespace Tests
 			Assert::IsTrue(decision.requestSerializedPostReadyReset);
 			Assert::AreEqual<uint64_t>(8, decision.transitionGeneration);
 		}
+
+		TEST_METHOD(AdoptsRecoveredSameEpochWithoutReset)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			input.reserveFrames = 2;
+			input.currentGraphBoundarySafe = true;
+			input.currentGraphPrimeProven = true;
+			input.currentGraphPrimeObservedFullConvertedQueue = true;
+			input.currentGraphDeliveryRecent = true;
+			input.currentGraphPrimeTransitionGeneration = 7;
+			input.currentGraphPrimeEpoch = 41;
+			input.currentGraphPrimeTargetFrames = 2;
+			input.currentGraphRawDepth = 1;
+			input.currentGraphConvertedDepth = 2;
+			input.currentGraphPostProofDeliverySuccesses = 3;
+			const OutputReadinessDecision decision = controller.Observe(input);
+
+			Assert::IsTrue(decision.adoptedCurrentGraph);
+			Assert::IsFalse(decision.requestSerializedPostReadyReset);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Steady),
+				static_cast<int>(decision.state));
+			Assert::AreEqual<uint64_t>(41, decision.postReadyEpoch);
+		}
+
+		TEST_METHOD(AdoptsProofCompletedBeforeDisplayEvidenceArrives)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			input.reserveFrames = 2;
+			input.currentGraphBoundarySafe = true;
+			input.currentGraphPrimeProven = true;
+			input.currentGraphPrimeObservedFullConvertedQueue = true;
+			input.currentGraphDeliveryRecent = true;
+			input.currentGraphPrimeTransitionGeneration = 7;
+			input.currentGraphPrimeEpoch = 41;
+			input.currentGraphPrimeTargetFrames = 2;
+			input.currentGraphRawDepth = 0;
+			input.currentGraphConvertedDepth = 2;
+			input.currentGraphPostProofDeliverySuccesses = 3;
+
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::IsTrue(decision.adoptedCurrentGraph);
+			Assert::IsFalse(decision.requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(RecoveryNeedsThreeSuccessfulPostProofDeliveries)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			input.reserveFrames = 2;
+			input.currentGraphBoundarySafe = true;
+			input.currentGraphPrimeProven = true;
+			input.currentGraphPrimeObservedFullConvertedQueue = true;
+			input.currentGraphDeliveryRecent = true;
+			input.currentGraphPrimeTransitionGeneration = 7;
+			input.currentGraphPrimeEpoch = 41;
+			input.currentGraphPrimeTargetFrames = 2;
+			input.currentGraphRawDepth = 0;
+			input.currentGraphConvertedDepth = 2;
+			input.currentGraphPostProofDeliverySuccesses = 2;
+
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::IsFalse(decision.adoptedCurrentGraph);
+			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(IncompleteOrStaleProofCannotSuppressFallbackReset)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			input.reserveFrames = 2;
+			input.currentGraphBoundarySafe = true;
+			input.currentGraphPrimeProven = true;
+			input.currentGraphPrimeObservedFullConvertedQueue = true;
+			input.currentGraphDeliveryRecent = true;
+			input.currentGraphPrimeTransitionGeneration = 7;
+			input.currentGraphPrimeEpoch = 41;
+			input.currentGraphPrimeTargetFrames = 1; // stale policy proof
+			input.currentGraphRawDepth = 0;
+			input.currentGraphConvertedDepth = 1;
+			input.currentGraphPostProofDeliverySuccesses = 3;
+			const OutputReadinessDecision decision = controller.Observe(input);
+
+			Assert::IsFalse(decision.adoptedCurrentGraph);
+			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+			Assert::IsFalse(
+				controller.Observe(input).requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(DeepRawBacklogCannotBeAdopted)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			input.reserveFrames = 2;
+			input.currentGraphBoundarySafe = true;
+			input.currentGraphPrimeProven = true;
+			input.currentGraphPrimeObservedFullConvertedQueue = true;
+			input.currentGraphDeliveryRecent = true;
+			input.currentGraphPrimeTransitionGeneration = 7;
+			input.currentGraphPrimeEpoch = 41;
+			input.currentGraphPrimeTargetFrames = 2;
+			input.currentGraphRawDepth = 30;
+			input.currentGraphConvertedDepth = 2;
+			input.currentGraphPostProofDeliverySuccesses = 3;
+
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::IsFalse(decision.adoptedCurrentGraph);
+			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(ConvertedDepthBelowTargetCannotBeAdopted)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			input.reserveFrames = 2;
+			input.currentGraphBoundarySafe = true;
+			input.currentGraphPrimeProven = true;
+			input.currentGraphPrimeObservedFullConvertedQueue = true;
+			input.currentGraphDeliveryRecent = true;
+			input.currentGraphPrimeTransitionGeneration = 7;
+			input.currentGraphPrimeEpoch = 41;
+			input.currentGraphPrimeTargetFrames = 2;
+			input.currentGraphRawDepth = 0;
+			input.currentGraphConvertedDepth = 1;
+			input.currentGraphPostProofDeliverySuccesses = 3;
+
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::IsFalse(decision.adoptedCurrentGraph);
+			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(HardBlockWithoutFullConvertedPrimeCannotBeAdopted)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			input.reserveFrames = 2;
+			input.currentGraphBoundarySafe = true;
+			input.currentGraphPrimeProven = true;
+			input.currentGraphPrimeObservedFullConvertedQueue = false;
+			input.currentGraphDeliveryRecent = true;
+			input.currentGraphPrimeTransitionGeneration = 7;
+			input.currentGraphPrimeEpoch = 41;
+			input.currentGraphPrimeTargetFrames = 2;
+			input.currentGraphRawDepth = 0;
+			input.currentGraphConvertedDepth = 2;
+			input.currentGraphPostProofDeliverySuccesses = 3;
+
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::IsFalse(decision.adoptedCurrentGraph);
+			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(ExactZeroTargetCanBeAdopted)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			input.reserveFrames = 0;
+			input.currentGraphBoundarySafe = true;
+			input.currentGraphPrimeProven = true;
+			input.currentGraphPrimeObservedFullConvertedQueue = true;
+			input.currentGraphDeliveryRecent = true;
+			input.currentGraphPrimeTransitionGeneration = 7;
+			input.currentGraphPrimeEpoch = 41;
+			input.currentGraphPrimeTargetFrames = 0;
+			input.currentGraphRawDepth = 0;
+			input.currentGraphConvertedDepth = 0;
+			input.currentGraphPostProofDeliverySuccesses = 3;
+
+			Assert::IsTrue(controller.Observe(input).adoptedCurrentGraph);
+		}
+
+		TEST_METHOD(RejectedFallbackRequestCanBeRetried)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			Assert::IsTrue(
+				controller.Observe(input).requestSerializedPostReadyReset);
+			Assert::IsFalse(
+				controller.Observe(input).requestSerializedPostReadyReset);
+
+			controller.RearmResetRequest();
+			Assert::IsTrue(
+				controller.Observe(input).requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(NewTransitionCannotAdoptProofFromPriorGeneration)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			input.transitionGeneration = 8;
+			input.reserveFrames = 2;
+			input.currentGraphBoundarySafe = true;
+			input.currentGraphPrimeProven = true;
+			input.currentGraphPrimeObservedFullConvertedQueue = true;
+			input.currentGraphDeliveryRecent = true;
+			input.currentGraphPrimeTransitionGeneration = 7;
+			input.currentGraphPrimeEpoch = 41;
+			input.currentGraphPrimeTargetFrames = 2;
+			input.currentGraphRawDepth = 0;
+			input.currentGraphConvertedDepth = 2;
+			input.currentGraphPostProofDeliverySuccesses = 3;
+
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::IsFalse(decision.adoptedCurrentGraph);
+			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+		}
 	};
 }

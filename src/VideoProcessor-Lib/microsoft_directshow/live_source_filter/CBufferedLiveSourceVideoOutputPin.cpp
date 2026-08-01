@@ -249,6 +249,12 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
 		m_steadyQueueEpoch.store(0, std::memory_order_release);
 		m_currentEpochDeliverySuccessCount.store(0, std::memory_order_release);
+		m_convergenceAppliedEpoch.store(0, std::memory_order_release);
+		m_convergenceAppliedTick.store(0, std::memory_order_release);
+		m_convergenceDeliverySuccessCount.store(0, std::memory_order_release);
+		m_convergenceTargetFrames.store(0, std::memory_order_release);
+		m_convergenceHardBlockRecovered.store(false, std::memory_order_release);
+		m_convergenceConvertedQueueWasFull.store(false, std::memory_order_release);
 		m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
 		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 		purgedRaw = PurgeQueue();
@@ -291,6 +297,10 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		m_lastDeliveryStartTick.store(0, std::memory_order_release);
 		m_lastDeliverySuccessTick.store(0, std::memory_order_release);
 		m_deliveryInProgress.store(false, std::memory_order_release);
+		m_maximumSuccessfulDeliveryDurationUs.store(0, std::memory_order_release);
+		m_sourceBufferConversionInFlight.store(false, std::memory_order_release);
+		m_sourceBufferConversionCaptureArrivalTick.store(0, std::memory_order_release);
+		m_retainedSourceBufferHighWater.store(0, std::memory_order_release);
 		m_resetInProgress.store(false, std::memory_order_release);
 		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
 		m_scenePhasePpmUnits.store(0, std::memory_order_release);
@@ -518,6 +528,16 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		std::move(capturedFrame), { callbackEpoch }, currentEpoch);
 	EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
 	m_publishedRawQueueDepth.store(rawMetrics.depth, std::memory_order_release);
+	const size_t retainedSourceBuffers = rawMetrics.depth +
+		(m_sourceBufferConversionInFlight.load(std::memory_order_acquire) ? 1 : 0);
+	size_t retainedHighWater =
+		m_retainedSourceBufferHighWater.load(std::memory_order_relaxed);
+	while (retainedSourceBuffers > retainedHighWater &&
+		!m_retainedSourceBufferHighWater.compare_exchange_weak(
+			retainedHighWater, retainedSourceBuffers,
+			std::memory_order_release, std::memory_order_relaxed))
+	{
+	}
 	if (pushResult == EpochBoundedQueuePushResult::RejectedStale ||
 		pushResult == EpochBoundedQueuePushResult::RejectedNoCapacity)
 		return S_OK;
@@ -924,7 +944,17 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
 		m_steadyQueueEpoch.store(0, std::memory_order_release);
 		m_currentEpochDeliverySuccessCount.store(0, std::memory_order_release);
+		m_convergenceAppliedEpoch.store(0, std::memory_order_release);
+		m_convergenceAppliedTick.store(0, std::memory_order_release);
+		m_convergenceDeliverySuccessCount.store(0, std::memory_order_release);
+		m_convergenceTargetFrames.store(0, std::memory_order_release);
+		m_convergenceHardBlockRecovered.store(false, std::memory_order_release);
+		m_convergenceConvertedQueueWasFull.store(false, std::memory_order_release);
+		m_maximumSuccessfulDeliveryDurationUs.store(0, std::memory_order_release);
 		const size_t purgedFrames = PurgeQueue();
+		m_retainedSourceBufferHighWater.store(
+			m_sourceBufferConversionInFlight.load(std::memory_order_acquire) ? 1 : 0,
+			std::memory_order_release);
 		DebugLog::Log("Reset(): Purged %zu raw frames from HDMI resync", purgedFrames);
 
 		// Purge converted samples from the old segment.
@@ -1078,6 +1108,8 @@ void CBufferedLiveSourceVideoOutputPin::SetQueueFramePolicy(
 bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
 	RendererLivenessSnapshot& snapshot) const
 {
+	const uint64_t snapshotEpoch =
+		m_queueEpoch.load(std::memory_order_acquire);
 	snapshot.supported = true;
 	snapshot.active = m_isActive.load(std::memory_order_acquire);
 	snapshot.buffering = m_isBuffering.load(std::memory_order_acquire);
@@ -1090,7 +1122,7 @@ bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
 	snapshot.conversionThreadId = m_conversionThreadId;
 	snapshot.deliveryThreadId =
 		m_deliveryThreadId.load(std::memory_order_relaxed);
-	snapshot.queueEpoch = m_queueEpoch.load(std::memory_order_acquire);
+	snapshot.queueEpoch = snapshotEpoch;
 	snapshot.inputCount = m_inputFrameCount.load(std::memory_order_relaxed);
 	snapshot.conversionCount =
 		m_conversionFrameCount.load(std::memory_order_relaxed);
@@ -1112,14 +1144,55 @@ bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
 		m_lastDeliveryStartTick.load(std::memory_order_acquire);
 	snapshot.lastDeliverySuccessTick =
 		m_lastDeliverySuccessTick.load(std::memory_order_acquire);
+	snapshot.maximumSuccessfulDeliveryDurationUs =
+		m_maximumSuccessfulDeliveryDurationUs.load(std::memory_order_acquire);
 	snapshot.rawQueueDepth =
 		m_publishedRawQueueDepth.load(std::memory_order_acquire);
 	snapshot.convertedQueueDepth =
 		m_publishedConvertedQueueDepth.load(std::memory_order_acquire);
 	snapshot.queueCapacity =
 		m_frameQueueMaxSize.load(std::memory_order_acquire);
+	snapshot.convergenceAppliedEpoch =
+		m_convergenceAppliedEpoch.load(std::memory_order_acquire);
+	snapshot.convergenceAppliedTick =
+		m_convergenceAppliedTick.load(std::memory_order_acquire);
+	snapshot.convergenceDeliverySuccessCount =
+		m_convergenceDeliverySuccessCount.load(std::memory_order_acquire);
+	snapshot.convergenceTargetFrames =
+		m_convergenceTargetFrames.load(std::memory_order_acquire);
+	snapshot.convergenceHardBlockRecovered =
+		m_convergenceHardBlockRecovered.load(std::memory_order_acquire);
+	snapshot.convergenceConvertedQueueWasFull =
+		m_convergenceConvertedQueueWasFull.load(std::memory_order_acquire);
+	const bool conversionOwnsSourceBuffer =
+		m_sourceBufferConversionInFlight.load(std::memory_order_acquire);
+	snapshot.retainedSourceBufferCount = snapshot.rawQueueDepth +
+		(conversionOwnsSourceBuffer ? 1 : 0);
+	snapshot.retainedSourceBufferHighWater =
+		m_retainedSourceBufferHighWater.load(std::memory_order_acquire);
+	VideoFrame oldestRawFrame;
+	uint64_t oldestArrivalTick = 0;
+	if (m_captureFrameQueue.TryPeekCurrent(
+			{ snapshot.queueEpoch }, oldestRawFrame))
+		oldestArrivalTick = oldestRawFrame.GetCaptureArrivalTick();
+	const uint64_t conversionArrivalTick =
+		m_sourceBufferConversionCaptureArrivalTick.load(
+			std::memory_order_acquire);
+	if (conversionOwnsSourceBuffer && conversionArrivalTick != 0 &&
+		(oldestArrivalTick == 0 || conversionArrivalTick < oldestArrivalTick))
+		oldestArrivalTick = conversionArrivalTick;
+	const uint64_t snapshotTick = GetTickCount64();
+	snapshot.oldestRetainedSourceBufferAgeMs = oldestArrivalTick != 0 &&
+		snapshotTick >= oldestArrivalTick ? snapshotTick - oldestArrivalTick : 0;
 	snapshot.deliveryReserveFrames =
 		m_outputReadinessDeliveryReserve.load(std::memory_order_acquire);
+	// A reset can update epoch-owned proof and queue fields concurrently. Fail
+	// closed rather than hand the readiness controller a mixed-epoch snapshot.
+	if (snapshotEpoch != m_queueEpoch.load(std::memory_order_acquire))
+	{
+		snapshot = {};
+		return false;
+	}
 	return true;
 }
 
@@ -2102,6 +2175,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		}
 		else if (outcome.deliverySucceeded)
 		{
+			uint64_t maximumDeliveryDuration =
+				m_maximumSuccessfulDeliveryDurationUs.load(
+					std::memory_order_relaxed);
+			while (deliveryTimeUs > maximumDeliveryDuration &&
+				!m_maximumSuccessfulDeliveryDurationUs.compare_exchange_weak(
+					maximumDeliveryDuration, deliveryTimeUs,
+					std::memory_order_release, std::memory_order_relaxed))
+			{
+			}
 			if (timestampOwnershipEnabled &&
 				!deliveryTimestampSequencer.Commit(timestampDecision))
 			{
@@ -2339,6 +2421,26 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				convergenceTrace.intentionalDrop = discardedStaleFrames > 0;
 				m_liveOutputTrace.Record(convergenceTrace);
 				m_liveConvergenceTrace.Record(convergenceTrace);
+				m_convergenceAppliedTick.store(
+					convergenceTrace.eventTick, std::memory_order_release);
+				m_convergenceDeliverySuccessCount.store(
+					m_currentEpochDeliverySuccessCount.load(
+						std::memory_order_acquire),
+					std::memory_order_release);
+				m_convergenceTargetFrames.store(
+					desiredVpDepth, std::memory_order_release);
+				m_convergenceHardBlockRecovered.store(
+					convergenceDecision.activation ==
+						LiveEpochConvergenceActivation::HardBlockRecovery,
+					std::memory_order_release);
+				m_convergenceConvertedQueueWasFull.store(
+					actualConvertedDepthBefore >=
+						m_frameQueueMaxSize.load(std::memory_order_acquire),
+					std::memory_order_release);
+				// Publish the epoch last so an acquiring observer cannot combine a
+				// current proof epoch with partially published proof details.
+				m_convergenceAppliedEpoch.store(
+					expectedQueueEpoch, std::memory_order_release);
 				DebugLog::Log(
 					"VP-0066-9 QUEUE CONVERGENCE: epoch=%llu target=%zu "
 					"raw=%zu->%zu discarded_raw=%zu "
@@ -3421,11 +3523,20 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			const PipelineEpoch currentEpoch{
 				m_queueEpoch.load(std::memory_order_acquire) };
 			hasFrame = m_captureFrameQueue.TryPopCurrent(currentEpoch, videoFrame);
+			if (hasFrame)
+			{
+				frameQueueEpoch = currentEpoch.value;
+				// Publish the replacement ownership before publishing the smaller
+				// raw depth, so a concurrent snapshot cannot undercount the one
+				// DeckLink-backed frame held by conversion.
+				m_sourceBufferConversionCaptureArrivalTick.store(
+					videoFrame.GetCaptureArrivalTick(), std::memory_order_release);
+				m_sourceBufferConversionInFlight.store(
+					true, std::memory_order_release);
+			}
 			const EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
 			rawQueueSize = rawMetrics.depth;
 			m_publishedRawQueueDepth.store(rawQueueSize, std::memory_order_release);
-			if (hasFrame)
-				frameQueueEpoch = currentEpoch.value;
 
 			if (!hasFrame)
 			{
@@ -3440,6 +3551,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				DebugLog::Log("CONVERSION WORKER: GetDeliveryBuffer FAILED hr=0x%08x, dropping frame counter=%llu",
 					hr, videoFrame.GetCounter());
 				videoFrame.SourceBufferRelease();
+				m_sourceBufferConversionInFlight.store(false, std::memory_order_release);
+				m_sourceBufferConversionCaptureArrivalTick.store(0, std::memory_order_release);
 				m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 				continue;
 			}
@@ -3472,6 +3585,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 					videoFrame.GetCounter(), hr);
 
 				videoFrame.SourceBufferRelease();
+				m_sourceBufferConversionInFlight.store(false, std::memory_order_release);
+				m_sourceBufferConversionCaptureArrivalTick.store(0, std::memory_order_release);
 				pSample->Release();
 				m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 				continue;
@@ -3479,6 +3594,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 			// Release raw frame - we're done with it
 			videoFrame.SourceBufferRelease();
+			m_sourceBufferConversionInFlight.store(false, std::memory_order_release);
+			m_sourceBufferConversionCaptureArrivalTick.store(0, std::memory_order_release);
 
 			// A reset/recovery may have purged the queues while this expensive
 			// conversion was in flight. Never publish that old sample into the

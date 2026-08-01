@@ -29,6 +29,7 @@ enum class OutputReadinessReason
 	AwaitingDisplayMeasurement,
 	DisplayMeasurementRejected,
 	OutputRefreshFamilyMismatch,
+	CurrentGraphPrimeAdopted,
 	AwaitingPostReadyReset,
 	AwaitingPrefill,
 	Ready
@@ -48,6 +49,20 @@ struct OutputReadinessInput
 	uint64_t postReadyEpoch = 0;
 	size_t currentEpochProcessedDepth = 0;
 	size_t reserveFrames = 0;
+	// A current DirectShow epoch may already be completing the same opaque
+	// downstream-prime transaction that the post-ready reset would repeat.
+	// These fields describe only VP-owned recovery/convergence evidence. They
+	// never claim that madVR queue occupancy is observable.
+	bool currentGraphPrimeProven = false;
+	bool currentGraphPrimeObservedFullConvertedQueue = false;
+	bool currentGraphBoundarySafe = false;
+	bool currentGraphDeliveryRecent = false;
+	uint64_t currentGraphPrimeTransitionGeneration = 0;
+	uint64_t currentGraphPrimeEpoch = 0;
+	size_t currentGraphPrimeTargetFrames = 0;
+	size_t currentGraphRawDepth = 0;
+	size_t currentGraphConvertedDepth = 0;
+	uint32_t currentGraphPostProofDeliverySuccesses = 0;
 };
 
 struct OutputReadinessDecision
@@ -57,6 +72,7 @@ struct OutputReadinessDecision
 	bool discardLiveCapture = true;
 	bool admitCurrentEpochCapture = false;
 	bool requestSerializedPostReadyReset = false;
+	bool adoptedCurrentGraph = false;
 	bool allowDownstreamDelivery = false;
 	bool prefillSatisfied = false;
 	uint64_t transitionGeneration = 0;
@@ -66,10 +82,16 @@ struct OutputReadinessDecision
 class OutputReadinessController
 {
 public:
+	static constexpr uint32_t kRequiredPostProofDeliveries = 3;
+	static constexpr size_t kMaximumAdoptionRawDepth = 1;
+
 	OutputReadinessDecision Observe(const OutputReadinessInput& input);
+	void RearmResetRequest();
 	void Reset();
 
 private:
+	bool CanAdoptCurrentGraph(const OutputReadinessInput& input) const;
+
 	bool m_initialized = false;
 	uint64_t m_transitionGeneration = 0;
 	OutputReadinessState m_state = OutputReadinessState::OutputNotReady;

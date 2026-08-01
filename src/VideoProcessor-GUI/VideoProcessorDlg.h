@@ -511,6 +511,13 @@ protected:
 	uint64_t m_outputReadinessExistingGraphResetGeneration = 0;
 	uint64_t m_outputReadinessExistingGraphResetEpoch = 0;
 	uint64_t m_outputReadinessExistingGraphReservePublishedEpoch = 0;
+	uint64_t m_currentGraphPrimeEvidenceEpoch = 0;
+	uint64_t m_currentGraphPrimeEvidenceTick = 0;
+	uint64_t m_currentGraphPrimeEvidenceTransitionGeneration = 0;
+	uint64_t m_currentGraphPrimeObservedTransitionGeneration = 0;
+	uint64_t m_currentGraphPrimeTransitionStartTick = 0;
+	uint64_t m_currentGraphPrimeObservedQueueEpoch = 0;
+	uint64_t m_currentGraphPrimeQueueTransitionGeneration = 0;
 	uint64_t m_rendererTargetRevision = 0;
 	uint64_t m_transitionBlackStartTick = 0;
 	std::atomic_bool m_transitionRevealPosted{false};

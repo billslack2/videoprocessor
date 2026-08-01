@@ -426,9 +426,19 @@ private:
 	std::atomic<uint64_t> m_lastDequeueTick = 0;
 	std::atomic<uint64_t> m_lastDeliveryStartTick = 0;
 	std::atomic<uint64_t> m_lastDeliverySuccessTick = 0;
+	std::atomic<uint64_t> m_maximumSuccessfulDeliveryDurationUs = 0;
 	std::atomic<size_t> m_publishedRawQueueDepth = 0;
 	std::atomic<size_t> m_publishedConvertedQueueDepth = 0;
 	std::atomic_bool m_deliveryInProgress = false;
+	std::atomic<uint64_t> m_convergenceAppliedEpoch = 0;
+	std::atomic<uint64_t> m_convergenceAppliedTick = 0;
+	std::atomic<uint64_t> m_convergenceDeliverySuccessCount = 0;
+	std::atomic<size_t> m_convergenceTargetFrames = 0;
+	std::atomic_bool m_convergenceHardBlockRecovered = false;
+	std::atomic_bool m_convergenceConvertedQueueWasFull = false;
+	std::atomic_bool m_sourceBufferConversionInFlight = false;
+	std::atomic<uint64_t> m_sourceBufferConversionCaptureArrivalTick = 0;
+	std::atomic<size_t> m_retainedSourceBufferHighWater = 0;
 	std::atomic_bool m_resetInProgress = false;
 	
 	// Essential metrics for proactive decisions (simplified)

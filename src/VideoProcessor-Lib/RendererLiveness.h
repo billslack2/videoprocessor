@@ -29,9 +29,24 @@ struct RendererLivenessSnapshot
 	uint64_t lastDequeueTick = 0;
 	uint64_t lastDeliveryStartTick = 0;
 	uint64_t lastDeliverySuccessTick = 0;
+	uint64_t maximumSuccessfulDeliveryDurationUs = 0;
 	size_t rawQueueDepth = 0;
 	size_t convertedQueueDepth = 0;
 	size_t queueCapacity = 0;
+	// VP-owned proof that this exact queue epoch recovered from downstream
+	// backpressure and applied its one-shot convergence. This is not a renderer
+	// queue-occupancy measurement.
+	uint64_t convergenceAppliedEpoch = 0;
+	uint64_t convergenceAppliedTick = 0;
+	uint64_t convergenceDeliverySuccessCount = 0;
+	size_t convergenceTargetFrames = 0;
+	bool convergenceHardBlockRecovered = false;
+	bool convergenceConvertedQueueWasFull = false;
+	// DeckLink-backed ownership retained by VP's raw transport plus the one
+	// possible conversion-in-flight frame.
+	size_t retainedSourceBufferCount = 0;
+	size_t retainedSourceBufferHighWater = 0;
+	uint64_t oldestRetainedSourceBufferAgeMs = 0;
 	// Zero means normal legacy drain policy. A nonzero value is a VP-owned
 	// converted-frame reserve; it never describes renderer-internal queues.
 	size_t deliveryReserveFrames = 0;
