@@ -21,6 +21,7 @@
 
 #include <ConfigFile.h>
 #include <DirectShowDeliveryOutcome.h>
+#include <LiveClockPresentationSequencer.h>
 #include <LiveEpochConvergenceController.h>
 #include <LiveSteadyQueuePolicy.h>
 #include <RationalLiveOutputSequencer.h>
@@ -1564,6 +1565,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	// active and already stamps its samples on this same delivery thread.
 	RationalLiveOutputSequencer deliveryTimestampSequencer(
 		m_timeScale, m_frameDurationTicks, m_frameDuration);
+	LiveClockPresentationSequencer liveClockTimestampSequencer;
+	const bool liveClockTimestampOwnershipEnabled =
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2 ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL;
 	uint64_t latencyClockDiscontinuityLoggedEpoch = 0;
 	bool downstreamRejectedUntilNewEpoch = false;
 	uint64_t downstreamRejectedEpoch = 0;
@@ -1681,7 +1689,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		m_deliveryInProgress.store(true, std::memory_order_release);
 		const bool timestampOwnershipEnabled =
 			m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL;
+		const bool liveClockTimestampOwnerForSample =
+			liveClockTimestampOwnershipEnabled &&
+			outputCadence != RationalLiveOutputCadence::Display;
 		RationalLiveOutputTimestampDecision timestampDecision;
+		LiveClockPresentationDecision liveClockDecision;
+		const REFERENCE_TIME observedClockTime = NowStreamTime(m_pFilter);
 		if (timestampOwnershipEnabled)
 		{
 			RationalLiveOutputTimestampInput timestampInput;
@@ -1712,6 +1725,52 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				return E_FAIL;
 			}
 		}
+		else if (liveClockTimestampOwnerForSample)
+		{
+			REFERENCE_TIME originalStart = 0;
+			REFERENCE_TIME originalStop = 0;
+			const HRESULT originalTimeResult = sample->GetTime(
+				&originalStart, &originalStop);
+			LiveClockPresentationInput clockInput;
+			clockInput.epoch = expectedQueueEpoch;
+			clockInput.streamTime = observedClockTime;
+			clockInput.presentationLead = GetRampedLeadTime();
+			clockInput.nominalFrameDuration = m_frameDuration;
+			clockInput.observedFrameDuration =
+				originalStop - originalStart;
+			clockInput.observedDurationValid =
+				SUCCEEDED(originalTimeResult) && originalStop > originalStart;
+			clockInput.sourceDiscontinuity = sourceDiscontinuity;
+			liveClockDecision = liveClockTimestampSequencer.Preview(clockInput);
+			if (!liveClockDecision.valid ||
+				FAILED(sample->SetTime(
+					&liveClockDecision.start, &liveClockDecision.stop)) ||
+				FAILED(sample->SetMediaTime(
+					&liveClockDecision.mediaStart, &liveClockDecision.mediaStop)) ||
+				FAILED(sample->SetDiscontinuity(
+					liveClockDecision.discontinuity ? TRUE : FALSE)))
+			{
+				DebugLog::Log(
+					"VP-0066 LIVE CLOCK OWNER: sample stamp failed "
+					"(epoch=%llu stream=%lld); requesting serialized reset",
+					expectedQueueEpoch,
+					static_cast<long long>(observedClockTime));
+				m_deliveryInProgress.store(false, std::memory_order_release);
+				RequestCoordinatedReset("live-clock-timestamp-stamp-failure");
+				return E_FAIL;
+			}
+			if (liveClockDecision.reanchored)
+			{
+				DebugLog::Log(
+					"VP-0066 LIVE CLOCK ANCHOR: epoch=%llu sequence=%llu "
+					"stream=%.3fms lead=%.3fms start=%.3fms duration=%.3fms",
+					expectedQueueEpoch, liveClockDecision.outputSequence,
+					observedClockTime / 10000.0,
+					(liveClockDecision.start - observedClockTime) / 10000.0,
+					liveClockDecision.start / 10000.0,
+					liveClockDecision.duration / 10000.0);
+			}
+		}
 		else if (sourceDiscontinuity &&
 			FAILED(sample->SetDiscontinuity(TRUE)))
 		{
@@ -1740,7 +1799,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		const HRESULT presentationTimeResult =
 			sample->GetTime(&presentationStart, &presentationStop);
 		const uint64_t deliveryAttemptTick = GetTickCount64();
-		const REFERENCE_TIME observedClockTime = NowStreamTime(m_pFilter);
 		REFERENCE_TIME streamTime = REFERENCE_TIME_INVALID;
 		if (observedClockTime != REFERENCE_TIME_INVALID)
 		{
@@ -1862,8 +1920,16 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			deliveryAttemptTrace.mediaStop = timestampDecision.mediaStop;
 			deliveryAttemptTrace.outputSequence = timestampDecision.outputSequence;
 		}
+		else if (liveClockDecision.valid)
+		{
+			deliveryAttemptTrace.mediaStart = liveClockDecision.mediaStart;
+			deliveryAttemptTrace.mediaStop = liveClockDecision.mediaStop;
+			deliveryAttemptTrace.outputSequence = liveClockDecision.outputSequence;
+		}
 		deliveryAttemptTrace.timestampOwner = timestampOwnershipEnabled ?
-			(outputCadence == RationalLiveOutputCadence::Display ? 2 : 1) : 0;
+			(outputCadence == RationalLiveOutputCadence::Display ? 2 : 1) :
+			(liveClockTimestampOwnerForSample ? 3 :
+				(outputCadence == RationalLiveOutputCadence::Display ? 2 : 0));
 		deliveryAttemptTrace.sourceDiscontinuity = sourceDiscontinuity;
 		deliveryAttemptTrace.rawQueueDepth = static_cast<uint32_t>(
 			m_publishedRawQueueDepth.load(std::memory_order_acquire));
@@ -2025,6 +2091,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				DebugLog::Log(
 					"VP-0066-9 DELIVERY TIMESTAMP OWNER: failed to commit "
 					"successful delivery sequence (epoch=%llu)",
+					expectedQueueEpoch);
+			}
+			if (liveClockTimestampOwnerForSample &&
+				!liveClockTimestampSequencer.Commit(liveClockDecision))
+			{
+				DebugLog::Log(
+					"VP-0066 LIVE CLOCK OWNER: failed to commit successful "
+					"delivery sequence (epoch=%llu)",
 					expectedQueueEpoch);
 			}
 			if (outcome.clearRecentFailures)
@@ -2672,9 +2746,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			// Conversion can run ahead and its first discontinuous sample can be
 			// purged during buffering. The delivery component applies this flag
 			// and the optional late-bound stop as one sample preparation step.
+			// The delivery-owned live-clock sequence finalizes both start and stop.
+			// It does not require a future converted sample, which is essential when
+			// the configured steady VP queue contains only one retained frame.
 			const bool lateBindStop =
-				m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
-				m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2;
+				!liveClockTimestampOwnershipEnabled &&
+				(m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+				 m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2);
 			static const double SEARCH_TOLERANCE_PERCENT = 0.10;
 			const REFERENCE_TIME searchTolerance =
 				static_cast<REFERENCE_TIME>(m_frameDuration * SEARCH_TOLERANCE_PERCENT);
