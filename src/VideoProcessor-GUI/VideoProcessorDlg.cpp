@@ -59,6 +59,8 @@ struct CaptureVideoStateNotification
 	VideoStateComPtr state;
 	uint64_t captureEpoch = 0;
 	uint64_t sequence = 0;
+	uint64_t ingressPublicationUs = 0;
+	bool retainedRendererIngress = false;
 };
 
 const TCHAR* ToString(RendererResetReason reason)
@@ -2197,13 +2199,25 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 			TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID,
 			transientInvalidGraceMs,
 			nullptr);
+		const RendererIngressState::CaptureSequenceSnapshot ingress =
+			m_rendererIngressState->CaptureSequences();
 		DebugLog::Log(
 			"Transient invalid capture video state deferred: sequence=%llu "
-			"grace_ms=%u captured_frames=%llu action=retain-last-valid-state",
+			"grace_ms=%u captured_frames=%llu action=retain-last-valid-state "
+			"ingress=%s publication_us=%llu "
+			"published=%llu required=%llu acknowledged=%llu admitted=%d",
 			static_cast<unsigned long long>(notificationSequence),
 			transientInvalidGraceMs,
 			static_cast<unsigned long long>(
-				m_deferredInvalidCaptureVideoStateFrameCount));
+				m_deferredInvalidCaptureVideoStateFrameCount),
+			notification->retainedRendererIngress ?
+				"retained-at-source" : "awaiting-renderer-acknowledgement",
+			static_cast<unsigned long long>(
+				notification->ingressPublicationUs),
+			static_cast<unsigned long long>(ingress.published),
+			static_cast<unsigned long long>(ingress.required),
+			static_cast<unsigned long long>(ingress.acknowledged),
+			ingress.admissionOpen ? 1 : 0);
 		return 0;
 	}
 
@@ -2294,7 +2308,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	{
 		m_rendererCaptureVideoStateNotificationSequence =
 			notificationSequence;
-		m_rendererIngressState->SetCaptureSequence(
+		m_rendererIngressState->AcknowledgeCaptureSequence(
 			notificationSequence);
 	}
 
@@ -3248,14 +3262,27 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoStateChange(
 		return;
 	}
 
+	const bool retainRendererIngress = !videoState->valid;
+	const std::chrono::steady_clock::time_point ingressStart =
+		std::chrono::steady_clock::now();
 	const uint64_t notificationSequence =
-		m_rendererIngressState->PublishCaptureSequence();
+		m_rendererIngressState->PublishCaptureSequence(
+			retainRendererIngress ?
+				RendererIngressState::CaptureSequencePublication::
+					RetainCurrentRendererState :
+				RendererIngressState::CaptureSequencePublication::
+					RequiresRendererAcknowledgement);
+	const uint64_t ingressPublicationUs = static_cast<uint64_t>(
+		std::chrono::duration_cast<std::chrono::microseconds>(
+			std::chrono::steady_clock::now() - ingressStart).count());
 	std::unique_ptr<CaptureVideoStateNotification> notification(
 		new CaptureVideoStateNotification());
 	notification->source = source;
 	notification->state = videoState;
 	notification->captureEpoch = captureRunToken;
 	notification->sequence = notificationSequence;
+	notification->ingressPublicationUs = ingressPublicationUs;
+	notification->retainedRendererIngress = retainRendererIngress;
 	if (!PostMessage(
 		WM_MESSAGE_CAPTURE_DEVICE_VIDEO_STATE_CHANGE,
 		reinterpret_cast<WPARAM>(notification.get()),
@@ -4489,7 +4516,7 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 	if (m_fullscreenRetargetPending)
 		ClearFullscreenRetarget(true);
 	m_rendererCaptureVideoStateNotificationSequence = 0;
-	m_rendererIngressState->SetCaptureSequence(0);
+	m_rendererIngressState->AcknowledgeCaptureSequence(0);
 
 	// Releasing a windowed renderer can synchronously pump WM_PAINT and other
 	// window messages.  Detach the shared pointer before invoking the destructor
@@ -4666,8 +4693,17 @@ void CVideoProcessorDlg::WaitForRendererIngressDrain()
 void CVideoProcessorDlg::ResumeRendererIngress()
 {
 	assert(m_rendererIngressState->ActiveLeases() == 0);
-	m_rendererIngressState->SetCaptureSequence(
-		m_rendererCaptureVideoStateNotificationSequence);
+	const RendererIngressState::CaptureSequenceSnapshot ingress =
+		m_rendererIngressState->CaptureSequences();
+	// A retained-invalid publication already acknowledges that the existing
+	// renderer state remains authoritative. Do not replace that admission
+	// acknowledgement with the older renderer-state sequence during a graph
+	// reset; doing so would strand ingress until another state notification.
+	if (ingress.required != ingress.acknowledged)
+	{
+		m_rendererIngressState->AcknowledgeCaptureSequence(
+			m_rendererCaptureVideoStateNotificationSequence);
+	}
 	m_rendererIngressState->OpenAdmission();
 }
 
@@ -6664,12 +6700,19 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			m_deferredInvalidCaptureVideoState.Release();
 			m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
 			m_deferredInvalidCaptureVideoStateFrameCount = 0;
+			const RendererIngressState::CaptureSequenceSnapshot ingress =
+				m_rendererIngressState->CaptureSequences();
 			DebugLog::Log(
 				"Transient invalid capture video state ignored: capture advanced "
-				"from=%llu to=%llu action=retain-live-renderer",
+				"from=%llu to=%llu action=retain-live-renderer "
+				"published=%llu required=%llu acknowledged=%llu admitted=%d",
 				static_cast<unsigned long long>(
 					capturedFramesAtDeferral),
-				static_cast<unsigned long long>(capturedFramesNow));
+				static_cast<unsigned long long>(capturedFramesNow),
+				static_cast<unsigned long long>(ingress.published),
+				static_cast<unsigned long long>(ingress.required),
+				static_cast<unsigned long long>(ingress.acknowledged),
+				ingress.admissionOpen ? 1 : 0);
 			return;
 		}
 

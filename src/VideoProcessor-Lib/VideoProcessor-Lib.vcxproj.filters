@@ -147,6 +147,9 @@
     <ClInclude Include="RendererIngressState.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="LiveFrameCounterTracker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="RendererResetCoordinator.h">
       <Filter>Header Files</Filter>
     </ClInclude>

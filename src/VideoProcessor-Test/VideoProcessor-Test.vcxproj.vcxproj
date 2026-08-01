@@ -212,6 +212,7 @@
 	<ClCompile Include="EpochBoundedQueueTests.cpp" />
 	<ClCompile Include="FrameProcessorTests.cpp" />
 	<ClCompile Include="LiveEpochConvergenceControllerTests.cpp" />
+	<ClCompile Include="LiveFrameCounterTrackerTests.cpp" />
 	<ClCompile Include="OutputReadinessControllerTests.cpp" />
 	<ClCompile Include="RationalLiveOutputSequencerTests.cpp" />
   </ItemGroup>

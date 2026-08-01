@@ -48,7 +48,6 @@ CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
 	m_frameQueueMaxSize.store(32, std::memory_order_relaxed);  // Default safe value
 	m_isActive.store(false, std::memory_order_relaxed);
 	m_isBuffering.store(true, std::memory_order_relaxed);  // Start in buffering mode
-	m_lastSeenFrameCounter = 0;
 	m_totalConversionTimeUs.store(0, std::memory_order_relaxed);
 	m_conversionFrameCount.store(0, std::memory_order_relaxed);
 	m_sceneAwareDetectedCount.store(0, std::memory_order_relaxed);
@@ -300,7 +299,6 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			CAutoLock stateLock(&m_stateLock);
 			m_lastAutoPurgeTime = 0;
 			m_bufferingExitTime = 0;
-			m_lastSeenFrameCounter = 0;
 		}
 
 		DebugLog::Log("Active(): Set m_isActive=true, m_isBuffering=true, reset timing state");
@@ -495,38 +493,6 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 
 	uint64_t callbackEpoch = m_queueEpoch.load(std::memory_order_acquire);
 	const uint64_t newCounter = videoFrame.GetCounter();
-	bool triggerRecovery = false;
-
-	// Check for discontinuity (needs state lock for m_lastSeenFrameCounter)
-	{
-		CAutoLock stateLock(&m_stateLock);
-
-		if (m_lastSeenFrameCounter > 0 && !m_isBuffering.load(std::memory_order_acquire))
-		{
-			const bool largeGap = (newCounter > m_lastSeenFrameCounter) && ((newCounter - m_lastSeenFrameCounter) > 10);
-			const bool counterReset = (newCounter < m_lastSeenFrameCounter);
-
-			if (largeGap || counterReset)
-			{
-				DbgLog((LOG_TRACE, 1, TEXT("OnVideoFrame(): DISCONTINUITY DETECTED - triggering startup-like recovery")));
-				DebugLog::Log("OnVideoFrame: Frame counter discontinuity detected (last=%llu, new=%llu) - triggering recovery", m_lastSeenFrameCounter, newCounter);
-				triggerRecovery = true;
-			}
-		}
-
-		// Update counter for next frame
-		m_lastSeenFrameCounter = newCounter;
-	}
-
-	// Handle recovery through the same flush/delivery serialization as a UI
-	// reset. Waiting on m_deliveryGate directly could stall this real-time
-	// capture callback if madVR is blocked inside Receive.
-	if (triggerRecovery)
-	{
-		RequestCoordinatedReset("frame-counter-discontinuity");
-		return S_OK;
-	}
-
 	// Add frame to raw queue
 	uint64_t overflowLogCount = 0;
 	uint64_t overflowFrameCounter = 0;
@@ -604,6 +570,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		static_cast<uint64_t>(videoFrame.GetTimingTimestamp());
 	captureTrace.captureArrivalTick = captureArrivalTick;
 	captureTrace.eventTick = captureArrivalTick;
+	captureTrace.sourceDiscontinuity = videoFrame.IsSourceDiscontinuity();
 	captureTrace.rawQueueDepth = static_cast<uint32_t>(acceptedRawQueueDepth);
 	captureTrace.convertedQueueDepth = static_cast<uint32_t>(
 		m_publishedConvertedQueueDepth.load(std::memory_order_acquire));
@@ -966,7 +933,6 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		ClearPendingTimestamps();
 		{
 			CAutoLock stateLock(&m_stateLock);
-			m_lastSeenFrameCounter = 0;
 			m_lastAutoPurgeTime = 0;
 			m_bufferingExitTime = 0;
 			m_lastSceneAwareCorrectionTime.store(0, std::memory_order_relaxed);
@@ -1677,6 +1643,17 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				RequestCoordinatedReset("delivery-timestamp-stamp-failure");
 				return E_FAIL;
 			}
+		}
+		else if (sourceDiscontinuity &&
+			FAILED(sample->SetDiscontinuity(TRUE)))
+		{
+			DebugLog::Log(
+				"DELIVERY THREAD: source discontinuity stamp failed "
+				"(epoch=%llu); requesting serialized reset",
+				expectedQueueEpoch);
+			m_deliveryInProgress.store(false, std::memory_order_release);
+			RequestCoordinatedReset("source-discontinuity-stamp-failure");
+			return E_FAIL;
 		}
 		const DirectShowDeliveryTicket deliveryTicket =
 			m_directShowFrameDeliverer.Begin(
@@ -3244,6 +3221,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 						m_queueEpoch.load(std::memory_order_acquire) };
 					ProcessedFrame processedFrame = processing.frame;
 					processedFrame.sourceDiscontinuity =
+						videoFrame.IsSourceDiscontinuity() ||
 						pSample->IsDiscontinuity() != FALSE;
 					processedFrame.isSafeCorrectionPoint = isSafeCorrectionPoint;
 					processedFrame.sceneEventId = sceneEventId;
@@ -3287,6 +3265,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				conversionTrace.processingDurationUs = static_cast<uint32_t>(
 					std::min<uint64_t>(convTimeUs, std::numeric_limits<uint32_t>::max()));
 				conversionTrace.sceneBoundary = isSafeCorrectionPoint;
+				conversionTrace.sourceDiscontinuity =
+					videoFrame.IsSourceDiscontinuity();
 				m_liveOutputTrace.Record(conversionTrace);
 			}
 

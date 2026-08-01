@@ -191,6 +191,7 @@
     <ClInclude Include="EOTF.h" />
 	<ClInclude Include="FrameProcessor.h" />
 	<ClInclude Include="LiveEpochConvergenceController.h" />
+	<ClInclude Include="LiveFrameCounterTracker.h" />
 	<ClInclude Include="OutputReadinessController.h" />
 	<ClInclude Include="RationalLiveOutputSequencer.h" />
     <ClInclude Include="framework.h" />

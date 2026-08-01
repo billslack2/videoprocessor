@@ -18,6 +18,7 @@
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
+#include <LiveFrameCounterTracker.h>
 #include <microsoft_directshow/live_source_filter/CLiveSource.h>
 #include <microsoft_directshow/live_source_filter/ALiveSourceVideoOutputPin.h>
 #include <microsoft_directshow/DirectShowTimingClock.h>
@@ -220,6 +221,7 @@ protected:
 	IBaseFilter* m_pRenderer = nullptr;
 
 	uint64_t m_frameCounter = 0;
+	LiveFrameCounterTracker m_captureFrameCounterTracker;
 	uint64_t m_missingFrameCounter = 0;
 	double m_frameLatencyEntry = 0.0;
 	std::atomic<uint64_t> m_unbufferedDeliverySuccessCount{0};

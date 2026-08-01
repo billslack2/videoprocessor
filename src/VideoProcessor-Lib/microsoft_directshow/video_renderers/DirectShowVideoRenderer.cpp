@@ -155,6 +155,24 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	assert(videoFrame.GetTimingTimestamp() > 0);
 
 	const timingclocktime_t frameTime = videoFrame.GetTimingTimestamp();
+	const LiveFrameCounterDecision counterDecision =
+		m_captureFrameCounterTracker.Observe(videoFrame.GetCounter());
+	if (counterDecision.IsDiscontinuity())
+	{
+		// Receiving a new live frame proves capture resumed. Keep the graph and
+		// madVR queues intact, rebase cadence measurement, and carry an explicit
+		// source discontinuity through the unified delivery sequencer.
+		videoFrame.SetSourceDiscontinuity(true);
+		ResetPPMMeasurement();
+		DebugLog::Log(
+			"DirectShow source counter discontinuity: transition=%s "
+			"previous=%llu current=%llu missing=%llu "
+			"action=continue-local ppm=rebaseline graph_reset=0",
+			ToString(counterDecision.transition),
+			static_cast<unsigned long long>(counterDecision.previous),
+			static_cast<unsigned long long>(counterDecision.current),
+			static_cast<unsigned long long>(counterDecision.missingFrames));
+	}
 
 	// Update PPM measurement with each frame
 	UpdatePPMMeasurement(frameTime);
@@ -447,6 +465,7 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 	}
 	
 	m_frameCounter = 0;
+	m_captureFrameCounterTracker.Reset();
 	ResetPPMMeasurement();
 	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
 	m_resetReadyForReveal.store(true, std::memory_order_release);
@@ -545,6 +564,7 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 				"DirectShow retarget graph Run/visible failed");
 
 		m_frameCounter = 0;
+		m_captureFrameCounterTracker.Reset();
 		ResetPPMMeasurement();
 		m_unbufferedDeliverySuccessCount.store(
 			0, std::memory_order_release);

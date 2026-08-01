@@ -44,7 +44,7 @@ class GpuSubtitleDetector;
  * - m_captureFrameQueue: Owns raw frames from the capture device
  * - m_convertedQueueLock: Serializes converted-frame publication, historical
  *   scene tagging, and flush against the processed-frame transport boundary
- * - m_stateLock: Protects shared state variables (m_isBuffering, m_lastSeenFrameCounter, etc.)
+ * - m_stateLock: Protects shared buffering and purge timing state.
  * 
  * Lock ordering (to prevent deadlock): rawQueueLock ? convertedQueueLock ? stateLock
  */
@@ -378,7 +378,6 @@ private:
 	// Published by the UI/controller, consumed only by the delivery worker. A
 	// value of zero preserves the legacy one-sample handoff cushion.
 	std::atomic<size_t> m_outputReadinessDeliveryReserve{ 0 };
-	uint64_t m_lastSeenFrameCounter = 0;    // Track frame counter for discontinuity detection
 	DWORD m_lastAutoPurgeTime = 0;          // Last time we auto-purged the converted queue
 	DWORD m_bufferingExitTime = 0;          // When we last exited buffering mode (for grace period)
 	CCritSec m_rawDiagnosticsLock;
