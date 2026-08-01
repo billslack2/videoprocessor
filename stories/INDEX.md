@@ -8,7 +8,7 @@ story may have ordered child-task IDs as defined below.
 
 - Last assigned root story: `VP-0070`
 - Next root story number: `VP-0071`
-- Total indexed items: 78
+- Total indexed items: 82
 
 ## Story locations
 
@@ -94,7 +94,11 @@ they must not contain requirements that are absent from this file.
 | VP-0067 | Backlog | Upgrade VideoProcessor to C++17 |
 | VP-0068 | Backlog | Evaluate a native Blackmagic SDK capture path and complete frame metadata contract |
 | VP-0069 | Backlog | Achieve and verify a 50 ms low-latency Alpha renderer path |
-| VP-0070 | Backlog | Detect subtitle glyph regions for Alpha without OCR |
+| VP-0070 | Backlog | Alpha panel-bound subtitle capture and relocation without OCR |
+| VP-0070-1 | In Progress | Panel/glyph detector and immutable cue contract |
+| VP-0070-2 | Backlog | Alpha panel diagnostic overlay |
+| VP-0070-3 | Backlog | Same-frame panel restoration and glyph relocation |
+| VP-0070-4 | Backlog | Panel subtitle live validation and performance |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | In Progress | Extract epoch-aware frame transport and processing components |
@@ -103,6 +107,7 @@ they must not contain requirements that are absent from this file.
 | VP-0066-6 | In Progress | Output readiness and deterministic post-ready prefill |
 | VP-0066-7 | Backlog | Invalidate and reacquire refresh-rate measurements at real transition boundaries |
 | VP-0066-8 | Backlog | Extend the DXGI refresh-rate evidence window |
+| VP-0066-9 | In Progress | Converge the VP-owned queue once per fresh live-output epoch |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |
