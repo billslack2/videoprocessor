@@ -52,10 +52,9 @@ struct RendererLatencySnapshot
 // CBaseFilter::StreamTime can retain the custom reference clock's absolute
 // domain on this live source. DirectShow sample timestamps are epoch-relative,
 // so latency telemetry normalizes the observed clock to the first delivery of
-// each queue epoch before comparing the two. A backward clock step in the same
-// epoch means those domains can no longer be compared: fail closed for the
-// remainder of that epoch instead of manufacturing a new zero point. This is
-// diagnostic only and never changes sample timestamps or delivery.
+// each queue epoch before comparing the two. If DirectShow restarts StreamTime
+// at zero inside the same VP epoch, the diagnostic origin is rebased and its
+// consumer must rewarm before publishing. This never changes delivery timing.
 class RendererStreamTimeNormalizer
 {
 public:
@@ -70,25 +69,31 @@ public:
 			m_epoch = epoch;
 			m_observedBase100ns = observedTime100ns;
 			m_lastObserved100ns = observedTime100ns;
-			m_clockDomainValid = true;
+			m_lastObservationRebased = false;
 			streamTime100ns = 0;
 			return true;
 		}
-		if (!m_clockDomainValid)
-			return false;
+		m_lastObservationRebased = false;
 		if (observedTime100ns < m_lastObserved100ns)
 		{
-			m_clockDomainValid = false;
-			return false;
+			// The graph reference clock can be visible before Run() and then
+			// restart its StreamTime domain at zero without changing VP's queue
+			// epoch. Establish a fresh diagnostic origin and require telemetry to
+			// rewarm; never leave valid Rational-Rational timing blank forever.
+			m_observedBase100ns = observedTime100ns;
+			m_lastObserved100ns = observedTime100ns;
+			m_lastObservationRebased = true;
+			streamTime100ns = 0;
+			return true;
 		}
 		m_lastObserved100ns = observedTime100ns;
 		streamTime100ns = observedTime100ns - m_observedBase100ns;
 		return true;
 	}
 
-	bool HasClockDomainDiscontinuity(uint64_t epoch) const
+	bool LastObservationRebased() const
 	{
-		return m_initialized && epoch == m_epoch && !m_clockDomainValid;
+		return m_lastObservationRebased;
 	}
 
 	int64_t LastValidObservedTime100ns() const
@@ -98,7 +103,7 @@ public:
 
 private:
 	bool m_initialized = false;
-	bool m_clockDomainValid = false;
+	bool m_lastObservationRebased = false;
 	uint64_t m_epoch = 0;
 	int64_t m_observedBase100ns = 0;
 	int64_t m_lastObserved100ns = 0;

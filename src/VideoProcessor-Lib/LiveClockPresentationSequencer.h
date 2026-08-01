@@ -35,6 +35,7 @@ struct LiveClockPresentationDecision
 	VideoReferenceTime start = 0;
 	VideoReferenceTime stop = 0;
 	VideoReferenceTime duration = 0;
+	VideoReferenceTime observedStreamTime = 0;
 };
 
 class LiveClockPresentationSequencer
@@ -54,6 +55,8 @@ private:
 	bool m_hasCommittedSample = false;
 	uint64_t m_nextOutputSequence = 0;
 	VideoReferenceTime m_nextPresentationStart = 0;
+	VideoReferenceTime m_lastCommittedStreamTime = 0;
+	bool m_hasCommittedStreamTime = false;
 	bool m_forceEpochDiscontinuity = true;
 	bool m_hasPendingDecision = false;
 	LiveClockPresentationDecision m_pendingDecision;

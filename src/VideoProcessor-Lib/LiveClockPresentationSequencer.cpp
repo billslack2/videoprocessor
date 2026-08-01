@@ -44,6 +44,7 @@ LiveClockPresentationDecision LiveClockPresentationSequencer::Preview(
 	decision.reanchored = !m_hasCommittedSample;
 	decision.discontinuity = m_forceEpochDiscontinuity ||
 		input.sourceDiscontinuity;
+	decision.observedStreamTime = input.streamTime;
 	decision.start = m_hasCommittedSample ?
 		m_nextPresentationStart : liveAnchor;
 
@@ -52,8 +53,11 @@ LiveClockPresentationDecision LiveClockPresentationSequencer::Preview(
 	// frames behind; ordinary renderer backpressure remains untouched.
 	const VideoReferenceTime catchUpTolerance =
 		input.nominalFrameDuration * 2;
+	const bool graphClockRolledBack = m_hasCommittedStreamTime &&
+		input.streamTime < m_lastCommittedStreamTime;
 	if (m_hasCommittedSample &&
-		decision.start + catchUpTolerance < input.streamTime)
+		(graphClockRolledBack ||
+		 decision.start + catchUpTolerance < input.streamTime))
 	{
 		decision.start = liveAnchor;
 		decision.reanchored = true;
@@ -76,6 +80,7 @@ bool LiveClockPresentationSequencer::Commit(
 		decision.outputSequence != m_nextOutputSequence ||
 		decision.start != m_pendingDecision.start ||
 		decision.stop != m_pendingDecision.stop ||
+		decision.observedStreamTime != m_pendingDecision.observedStreamTime ||
 		decision.mediaStart != m_pendingDecision.mediaStart ||
 		decision.mediaStop != m_pendingDecision.mediaStop ||
 		decision.discontinuity != m_pendingDecision.discontinuity ||
@@ -83,6 +88,8 @@ bool LiveClockPresentationSequencer::Commit(
 		return false;
 
 	m_nextPresentationStart = decision.stop;
+	m_lastCommittedStreamTime = decision.observedStreamTime;
+	m_hasCommittedStreamTime = true;
 	++m_nextOutputSequence;
 	m_hasCommittedSample = true;
 	m_forceEpochDiscontinuity = false;
@@ -101,6 +108,8 @@ void LiveClockPresentationSequencer::ResetToEpoch(uint64_t epoch)
 	m_hasCommittedSample = false;
 	m_nextOutputSequence = 0;
 	m_nextPresentationStart = 0;
+	m_lastCommittedStreamTime = 0;
+	m_hasCommittedStreamTime = false;
 	m_forceEpochDiscontinuity = true;
 	m_hasPendingDecision = false;
 	m_pendingDecision = {};

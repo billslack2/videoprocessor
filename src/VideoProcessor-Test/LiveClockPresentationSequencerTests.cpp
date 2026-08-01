@@ -116,6 +116,18 @@ namespace Tests
 				3000000 + k5994Duration, caughtUp.start);
 		}
 
+		TEST_METHOD(SameEpochGraphClockRollbackReanchorsToTheNewDomain)
+		{
+			LiveClockPresentationSequencer sequencer;
+			const auto first = sequencer.Preview(Input(7, 5000000));
+			Assert::IsTrue(sequencer.Commit(first));
+			const auto rolledBack = sequencer.Preview(Input(7, 100000));
+			Assert::IsTrue(rolledBack.reanchored);
+			Assert::IsTrue(rolledBack.discontinuity);
+			Assert::AreEqual<VideoReferenceTime>(
+				100000 + k5994Duration, rolledBack.start);
+		}
+
 		TEST_METHOD(MissingFrameDurationFallsBackToNominal)
 		{
 			LiveClockPresentationSequencer sequencer;

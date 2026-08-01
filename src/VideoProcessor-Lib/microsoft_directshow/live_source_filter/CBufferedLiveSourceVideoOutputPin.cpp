@@ -1802,23 +1802,40 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		REFERENCE_TIME streamTime = REFERENCE_TIME_INVALID;
 		if (observedClockTime != REFERENCE_TIME_INVALID)
 		{
-			const bool normalized = m_latencyStreamTimeNormalizer.Normalize(
-				expectedQueueEpoch, observedClockTime, streamTime);
-			if (!normalized &&
-				m_latencyStreamTimeNormalizer.HasClockDomainDiscontinuity(
-					expectedQueueEpoch) &&
+			// Delivery-owned CLOCK timestamps are already in the graph's absolute
+			// StreamTime domain. Rational-Rational and the remaining legacy paths
+			// retain epoch-relative timestamps and therefore still require the
+			// diagnostic normalizer before PTS lead can be compared.
+			const bool normalized = liveClockDecision.valid ?
+				(streamTime = observedClockTime, true) :
+				m_latencyStreamTimeNormalizer.Normalize(
+					expectedQueueEpoch, observedClockTime, streamTime);
+			const bool relativeClockRebased =
+				!liveClockDecision.valid &&
+				m_latencyStreamTimeNormalizer.LastObservationRebased();
+			if (relativeClockRebased)
+			{
+				m_latencyStabilizer.Reset();
+				m_latencySnapshotAvailable.store(false, std::memory_order_release);
+			}
+			if (relativeClockRebased &&
 				latencyClockDiscontinuityLoggedEpoch != expectedQueueEpoch)
 			{
 				latencyClockDiscontinuityLoggedEpoch = expectedQueueEpoch;
 				DebugLog::Log(
-					"VP PTS TIMING INVALID: epoch=%llu reason=same-epoch-clock-rollback "
-					"observed_clock_100ns=%lld last_valid_clock_100ns=%lld; "
-					"VP internal timing remains valid",
+					"VP PTS TIMING REBASE: epoch=%llu reason=graph-stream-time-rollback "
+					"observed_clock_100ns=%lld; latency telemetry rewarming",
 					expectedQueueEpoch,
-					static_cast<long long>(observedClockTime),
-					static_cast<long long>(
-						m_latencyStreamTimeNormalizer.LastValidObservedTime100ns()));
+					static_cast<long long>(observedClockTime));
 			}
+			if (!normalized)
+				streamTime = REFERENCE_TIME_INVALID;
+		}
+		if (liveClockDecision.valid && liveClockDecision.reanchored &&
+			liveClockDecision.outputSequence > 0)
+		{
+			m_latencyStabilizer.Reset();
+			m_latencySnapshotAvailable.store(false, std::memory_order_release);
 		}
 		RendererLatencySnapshot latencySnapshot;
 		RendererLatencySnapshot displayedLatencySnapshot;

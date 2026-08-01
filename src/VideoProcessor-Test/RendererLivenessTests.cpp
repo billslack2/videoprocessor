@@ -132,7 +132,7 @@ namespace Tests
 			Assert::AreEqual<int64_t>(0, normalized);
 		}
 
-		TEST_METHOD(StreamTimeNormalizationRejectsSameEpochClockRollback)
+		TEST_METHOD(StreamTimeNormalizationRebasesSameEpochGraphClockRollback)
 		{
 			RendererStreamTimeNormalizer normalizer;
 			int64_t normalized = -1;
@@ -140,18 +140,19 @@ namespace Tests
 			Assert::AreEqual<int64_t>(0, normalized);
 			Assert::IsTrue(normalizer.Normalize(10, 1100000, normalized));
 			Assert::AreEqual<int64_t>(100000, normalized);
-			Assert::IsFalse(normalizer.Normalize(10, 900000, normalized));
-			Assert::IsTrue(normalizer.HasClockDomainDiscontinuity(10));
-			Assert::AreEqual<int64_t>(1100000,
+			Assert::IsTrue(normalizer.Normalize(10, 900000, normalized));
+			Assert::AreEqual<int64_t>(0, normalized);
+			Assert::IsTrue(normalizer.LastObservationRebased());
+			Assert::AreEqual<int64_t>(900000,
 				normalizer.LastValidObservedTime100ns());
-
-			// A later value cannot silently rebase the invalid domain.
-			Assert::IsFalse(normalizer.Normalize(10, 1200000, normalized));
+			Assert::IsTrue(normalizer.Normalize(10, 1200000, normalized));
+			Assert::AreEqual<int64_t>(300000, normalized);
+			Assert::IsFalse(normalizer.LastObservationRebased());
 
 			// The next real queue epoch establishes a fresh comparison.
 			Assert::IsTrue(normalizer.Normalize(11, 500000, normalized));
 			Assert::AreEqual<int64_t>(0, normalized);
-			Assert::IsFalse(normalizer.HasClockDomainDiscontinuity(11));
+			Assert::IsFalse(normalizer.LastObservationRebased());
 		}
 
 		TEST_METHOD(ScheduledLatencyUsesVpResidenceAndRemainingDsLead)
