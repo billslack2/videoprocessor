@@ -1,4 +1,4 @@
-# VP-0070-2: Always-on panel diagnostic overlay
+# VP-0070-2: Stable boundary-crossing diagnostic overlay
 
 ## Status
 
@@ -21,6 +21,8 @@ for this validation build independently of `subtitle_reposition`, but only a
 fresh `stable` CueSet may paint the normal panel/glyph overlay. Candidate,
 stale, unavailable, OCR-only, and rejected results must remain visually
 distinct and must never masquerade as captured geometry.
+No build or deployment is authorized until VP-0070-1 meets its offline
+boundary-crossing gates.
 
 ## Acceptance criteria
 
@@ -29,6 +31,8 @@ distinct and must never masquerade as captured geometry.
 - Each line's stable rectangle does not jitter during a cue of any duration.
 - Multi-line cues render separate panel/glyph regions, never a destructive
   union box.
+- Picture-only, bar-only, padding-only, and boundary-generation-mismatched cues
+  render no normal detection overlay.
 - A stale result is never rendered; generation changes reset the detector.
 - Diagnostics introduce no render-path wait, readback, or queue growth.
 - Live checks still need to cover normal and scope/CIH viewports, renderer

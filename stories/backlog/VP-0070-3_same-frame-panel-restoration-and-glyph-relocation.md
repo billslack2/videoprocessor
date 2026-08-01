@@ -14,6 +14,8 @@ For a valid panel-bound cue, restore the source glyph area to its learned panel
 color and composite the captured visual glyph mask onto a locked destination
 panel in the same Alpha or DirectShow/madVR frame. The feature is opt-in and
 fails safe to unchanged input when panel evidence is not sufficient.
+Only line members with meaningful glyph ink on both sides of a current stable
+top/bottom active-picture boundary are valid.
 
 On a first candidate frame, a synchronous, allocation-free
 `safeToSuppress` prefilter may inpaint only a conservatively expanded glyph

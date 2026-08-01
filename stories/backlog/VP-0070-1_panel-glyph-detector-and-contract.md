@@ -1,4 +1,4 @@
-# VP-0070-1: Multi-panel CueSet architecture and detector benchmark
+# VP-0070-1: Boundary-crossing CueSet architecture and detector benchmark
 
 ## Status
 
@@ -21,6 +21,12 @@ The 2026-08-01 reproducible Sintel spike established:
 - an explicit lower-quarter Apple TV profile: 97.2% recall and zero false
   positives on this synthetic corpus, but it is a style prior, not a general
   solution.
+
+Those results motivated the architecture but no longer define eligibility.
+The product scope is narrower: a qualified line's panel and meaningful glyph
+ink must cross a stable top or bottom active-picture boundary into an encoded
+bar. The original full-picture Sintel corpus cannot prove that condition and is
+retained only for cadence and multi-panel regression evidence.
 
 Experiment and results are under
 `C:\Users\bslac\vp\test-media\vp-0070\experiments`.
@@ -47,9 +53,13 @@ model is added in this task.
 
 ## Design constraints
 
-- Use an explicit Apple TV subtitle-band/profile plus panel uniformity,
-  rectangular boundary evidence where observable, and glyph contrast/stroke
-  topology; no single signal is sufficient.
+- Require stable active-picture geometry and scan only bounded strips centered
+  on actual top/bottom encoded-bar boundaries.
+- Apply a pure boundary-eligibility predicate after panel/mask extraction:
+  panel and meaningful glyph-mask pixels must exist beyond an antialiasing
+  margin on both sides of exactly one boundary.
+- Reject picture-only, bar-only, padding-only, one-row antialiasing, whole-frame,
+  and ambiguous top-plus-bottom candidates.
 - Represent up to three independently boxed line panels without merging their
   actionable capture/inpaint geometry.
 - All returned rectangles are half-open source-raster coordinates.
@@ -69,8 +79,11 @@ model is added in this task.
   combined precision/recall/false-positive and P50/P95/P99 cost.
 - Unit tests establish detection on synthetic black, charcoal, and gray panels
   with bright, dim, outlined, and two-line glyph patterns.
-- Tests reject panels outside the configured band, low-contrast content, and
-  non-uniform dark picture content.
+- Tests reject panels outside the bounded top/bottom boundary strips,
+  low-contrast content, and non-uniform dark picture content.
+- Tests accept meaningful top and bottom glyph crossings and reject the same
+  panels moved wholly into picture or bar.
+- Tests reject a panel crossing whose glyph ink remains on only one side.
 - Tests reject the supplied dark-suit capture and black title/credit interval.
 - Tests prove stable cue geometry is byte-for-byte unchanged across repeated
   matching frames, and that a changed fingerprint releases/reacquires rather
@@ -81,4 +94,4 @@ model is added in this task.
 ## Out of scope
 
 Alpha/DirectShow integration, overlay rendering, source restoration, glyph
-relocation, full recognition, and live deployment.
+relocation, full recognition, and any build or deployment.

@@ -18,6 +18,8 @@ latency evidence against VP-0066.
 
 - Corpus evidence covers the parent validation matrix and retains captures,
   state transitions, geometry, and cost metrics.
+- Report top/bottom crossing recall separately and prove zero treatment for
+  picture-only, bar-only, padding-only, and unstable-boundary cases.
 - Report cue acquisition/release, box stability, false treatments, and any
   safe pass-through decisions.
 - Compare diagnostics off, classical-only, and PP-OCR-assisted acquisition,
