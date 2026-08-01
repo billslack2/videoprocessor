@@ -30,6 +30,7 @@ enum class OutputReadinessReason
 	DisplayMeasurementRejected,
 	OutputRefreshFamilyMismatch,
 	CurrentGraphPrimeAdopted,
+	AwaitingPostReadySettle,
 	AwaitingPostReadyReset,
 	AwaitingPrefill,
 	Ready
@@ -39,6 +40,7 @@ struct OutputReadinessInput
 {
 	uint64_t transitionGeneration = 0;
 	bool graphOperational = false;
+	uint64_t observationTickMs = 0;
 	DisplayRefreshRateDecision displayDecision =
 		DisplayRefreshRateDecision::Unavailable;
 	DisplayRefreshRateReason displayReason =
@@ -63,6 +65,7 @@ struct OutputReadinessInput
 	size_t currentGraphRawDepth = 0;
 	size_t currentGraphConvertedDepth = 0;
 	uint32_t currentGraphPostProofDeliverySuccesses = 0;
+	uint64_t currentGraphMaximumSuccessfulDeliveryDurationUs = 0;
 };
 
 struct OutputReadinessDecision
@@ -77,6 +80,9 @@ struct OutputReadinessDecision
 	bool prefillSatisfied = false;
 	uint64_t transitionGeneration = 0;
 	uint64_t postReadyEpoch = 0;
+	uint64_t readinessValidatedTickMs = 0;
+	uint32_t postReadySettleElapsedMs = 0;
+	uint32_t postReadySettleRequiredMs = 0;
 };
 
 class OutputReadinessController
@@ -84,6 +90,9 @@ class OutputReadinessController
 public:
 	static constexpr uint32_t kRequiredPostProofDeliveries = 3;
 	static constexpr size_t kMaximumAdoptionRawDepth = 1;
+	static constexpr uint32_t kPostReadySettleMs = 2000;
+	static constexpr uint32_t kHandshakeScaleBlockPeriods = 16;
+	static constexpr uint64_t kMaximumAdoptableBlockDurationUs = 500000;
 
 	OutputReadinessDecision Observe(const OutputReadinessInput& input);
 	void RearmResetRequest();
@@ -96,7 +105,13 @@ private:
 	uint64_t m_transitionGeneration = 0;
 	OutputReadinessState m_state = OutputReadinessState::OutputNotReady;
 	uint64_t m_postReadyEpoch = 0;
+	uint64_t m_readinessValidatedTickMs = 0;
 	bool m_resetRequested = false;
+	bool m_resetRequestIssued = false;
+	bool m_entryAdoptionCandidate = false;
+	uint64_t m_entryAdoptionTransitionGeneration = 0;
+	uint64_t m_entryAdoptionEpoch = 0;
+	size_t m_entryAdoptionTargetFrames = 0;
 };
 
 const char* ToString(OutputReadinessState state);

@@ -7545,6 +7545,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		std::min(configuredVpReserveFrames, queueCapacity) :
 		std::min<size_t>(8, queueCapacity);
 	const uint64_t readinessObservationTick = GetTickCount64();
+	readinessInput.observationTickMs = readinessObservationTick;
 	if (m_currentGraphPrimeObservedTransitionGeneration !=
 		readinessInput.transitionGeneration)
 	{
@@ -7685,6 +7686,9 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		static_cast<uint32_t>(std::min<uint64_t>(
 			postProofDeliverySuccesses,
 			std::numeric_limits<uint32_t>::max()));
+	readinessInput.currentGraphMaximumSuccessfulDeliveryDurationUs =
+		hasReadinessLiveness ?
+			readinessLiveness.maximumSuccessfulDeliveryDurationUs : 0;
 	// Phase correction waits for DisplayRefreshRateDecision::Accepted. Output
 	// readiness instead uses independently cadence-validated startup evidence,
 	// so it need not impose a multi-second first-image blackout.
@@ -7790,7 +7794,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		DebugLog::Log(
 			"Output readiness state: generation=%llu graph=%d "
 			"expected=%.6fHz observed=%.6fHz phase=%s/%s startup=%s/%s evidence=%.1fs validated=%d readiness=%s/%s evidence=%.1fs validated=%d state=%s "
-			"reason=%s would_request_reset=%d adopt_prime=%d "
+			"reason=%s settle=%u/%ums validated_tick=%llu "
+			"would_request_reset=%d adopt_prime=%d "
 			"prime_epoch=%llu post_proof_success=%u raw=%zu converted=%zu/%zu "
 			"retained_source=%zu high_water=%zu oldest_source_ms=%llu "
 			"discard=%d admit=%d deliver=%d",
@@ -7811,6 +7816,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			readinessRateResult.readinessValidated ? 1 : 0,
 			ToString(readinessDecision.state),
 			ToString(readinessDecision.reason),
+			readinessDecision.postReadySettleElapsedMs,
+			readinessDecision.postReadySettleRequiredMs,
+			static_cast<unsigned long long>(
+				readinessDecision.readinessValidatedTickMs),
 			readinessDecision.requestSerializedPostReadyReset ? 1 : 0,
 			readinessDecision.adoptedCurrentGraph ? 1 : 0,
 			static_cast<unsigned long long>(
