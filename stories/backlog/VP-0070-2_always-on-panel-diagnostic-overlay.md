@@ -10,6 +10,15 @@ glyphs. It must not be redeployed.
 Build/test success is retained as regression history only; it did not validate
 the detector's semantics.
 
+Build-only checkpoint (2026-08-01): `0a4cefc` connects stable-only diagnostics
+to both Alpha and DirectShow/madVR. The Alpha plugin proxy forwards the mode,
+and the renderer plugin ABI was advanced to version 8 so an incompatible old
+DLL fails closed. `highlight` paints each stable line's capture/glyph geometry
+and mask; candidate, unavailable, stale, and generation-mismatched evidence
+does not mutate the frame. The mode defaults to `off` at every API/state layer
+and must be explicitly selected for testing. Clean x64 Release and 409/409
+tests passed; live validation and deployment remain paused.
+
 ## Parent
 
 [VP-0070](VP-0070_alpha-panel-bound-subtitle-capture-and-relocation.md)

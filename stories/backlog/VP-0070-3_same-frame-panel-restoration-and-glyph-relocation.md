@@ -4,6 +4,16 @@
 
 Backlog. Depends on VP-0070-2.
 
+Build-only checkpoint (2026-08-01): `0a4cefc` implements explicit test mode
+`move` in both Alpha and DirectShow/madVR. On a stable cue it captures current
+P010 glyph luma/chroma, restores only the detected source mask using the
+learned dark backing, creates deterministic destination panels wholly inside
+the active picture, and composites the original visual glyph pixels in the
+same treated frame. Bottom multiline reading order is preserved and
+destination collisions fail closed. Clean x64 Release and 409/409 tests
+passed. The first-candidate suppression policy and representative live-content
+accuracy remain open; no deployment was performed.
+
 ## Parent
 
 [VP-0070](VP-0070_alpha-panel-bound-subtitle-capture-and-relocation.md)

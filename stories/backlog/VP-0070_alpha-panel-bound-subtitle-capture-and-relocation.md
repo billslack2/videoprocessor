@@ -11,6 +11,15 @@ offline.
 The root closes only after the rebuilt path has representative Alpha and
 DirectShow/madVR live-capture evidence.
 
+Build-only checkpoint (2026-08-01): `0a4cefc` on
+`codex/vp-0070-1-panel-detection`, rebased through local VP-0066 tip
+`09d5efa`, completed a clean x64 Release build and passed all 409 tests. The
+new `subtitle_panel_test_mode` is fail-safe `off` by default and requires an
+explicit `highlight` or `move` value; it is independent of the legacy OCR
+`subtitle_reposition` path. No deployment or active-configuration change was
+performed. Scene detection remains owned by VP-0066 and was not changed for
+this story.
+
 ## User story
 
 As an Alpha or DirectShow/madVR user with a CIH screen, I want VP to treat an
