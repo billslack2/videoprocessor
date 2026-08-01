@@ -242,6 +242,26 @@ recreation; it cannot cycle additional in-place or source-gap resets.
    deterministic VP-reserve acceptance boundary without claiming observable
    madVR occupancy.
 
+   Asymmetric-backpressure follow-up commit `b900a22` corrects the remaining
+   reset-loop trigger found with madVR CPU/GPU queues set to 6/12. A full or
+   high-water VP queue is now passive backpressure evidence only; it never
+   requests a reset while current-epoch downstream deliveries continue to
+   succeed. Recovery requires capture input to remain active while delivery
+   makes no progress for the configured sustained-stall interval (minimum
+   three seconds). A failed in-place recovery may recreate the renderer only
+   once for the current capture-state sequence, and that fresh renderer is
+   adopted as the output-readiness prime instead of stacking another graph
+   reset. The transition shield reveal is one-shot, explicit zero-frame
+   readiness is immediately satisfiable, and DirectShow latency telemetry now
+   normalizes the graph clock into each queue epoch while retaining the raw
+   clock value in CSV diagnostics. The clean x64 Release suite passes 374/374
+   tests. Paired deployment hashes are
+   `7CE9954738445A18223BD70F7FE2544BE14ED21CF37BCC5F5F123067C6C342C4`
+   for `VideoProcessor.exe` and
+   `F4DCD39DC4027DB9AD93AD9E6A239553B10CF5CFEB833ECBB9BF65B035FBD8AB`
+   for `VideoProcessorVPRenderer.dll`; active configuration remained unchanged.
+   Live validation with asymmetric queues remains pending.
+
 9. **Literal zero-frame steady target (implemented; awaiting live validation):**
    omission of `[queue] steady_reserve_frames` remains the automatic policy,
    while an explicitly configured `0` now means a literal zero-frame steady
@@ -317,7 +337,7 @@ recreation; it cannot cycle additional in-place or source-gap resets.
   already met, automatic policy, one-shot behavior, fail-closed boundaries,
   timestamp/media ownership, rearm on a new epoch, rate-aware material-gap
   recovery, reset-request latching, transition priority, and healthy re-arm.
-  The current native suite passes 370/370 tests in x64 Release.
+  The current native suite passes 374/374 tests in x64 Release.
 - A convergence never happens in an unchanged steady epoch.
 - Normal, no-trim delivery preserves monotonic 60000/1001 and 24000/1001
   timestamps exactly within existing documented rounding tolerance.
@@ -395,6 +415,13 @@ recreation; it cannot cycle additional in-place or source-gap resets.
    source-gap resets, and VP must return to the configured two-frame converted
    reserve while madVR's passive decoder/upload/render queues continue to
    retire frames.
+10. Repeat with the observed uneven CPU/GPU fixture (CPU 6, GPU 12) and the
+    desired VP reserve. A VP queue at high water or capacity while delivery
+    successes remain recent is healthy backpressure and must not request any
+    autonomous reset. If delivery truly stops while capture continues, wait
+    for the configured sustained-stall evidence, perform at most one in-place
+    recovery and at most one renderer recreation for that capture-state
+    sequence, and never stack an output-readiness reset on the recreation.
 
 ## Out of scope
 
