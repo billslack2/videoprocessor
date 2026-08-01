@@ -1,4 +1,4 @@
-# VP-0070: CIH boundary-crossing subtitle capture and relocation
+# VP-0070: CIH bar/boundary subtitle capture and relocation
 
 ## Status
 
@@ -13,9 +13,9 @@ DirectShow/madVR live-capture evidence.
 
 ## User story
 
-As an Alpha or DirectShow/madVR user with a CIH screen, I want VP to treat only
-an opaque-panel subtitle whose glyphs are split across the visible picture and
-an encoded top or bottom black bar, so the off-screen portion can be recovered
+As an Alpha or DirectShow/madVR user with a CIH screen, I want VP to treat an
+opaque-panel subtitle whose glyphs either cross into or lie wholly inside an
+encoded top or bottom black bar, so off-screen captions can be recovered
 without analyzing or changing ordinary subtitles entirely inside the picture.
 
 ## Input contract
@@ -27,13 +27,13 @@ This feature is opt-in and applies only while all of these are true:
 - each source caption is on an opaque, low-variance dark panel (black,
   charcoal, or gray are valid);
 - the glyphs have sufficient luma or color contrast with the panel;
-- locally dark opaque backing supports the line on both sides of exactly one
-  active-picture boundary; and
-- meaningful glyph-mask pixels from that same line exist on both the picture
-  and bar sides of the boundary.
+- locally dark opaque backing supports the line; and
+- meaningful glyph-mask pixels either exist on both sides of exactly one
+  active-picture boundary or lie wholly inside one encoded bar within the
+  bounded search depth.
 
-Captions entirely inside the picture, entirely inside a bar, merely touching
-an edge, or crossing only through dark backing/padding are out of scope and
+Captions entirely inside the picture, merely touching an edge through dark
+backing/padding, or outside the encoded bar/boundary strips are out of scope and
 must report `unavailable`. Exact original black-panel endpoints are not claimed
 when they visually merge into the encoded bar or dark picture. VP instead
 derives a new stable capture/destination box from the tight glyph geometry plus
@@ -52,10 +52,12 @@ DirectShow/madVR that:
 
 1. searches only bounded strips around stable encoded top/bottom picture
    boundaries;
-2. qualifies locally dark opaque backing around a boundary-crossing line;
+2. qualifies locally dark opaque backing around a boundary-crossing or
+   bar-contained line;
 3. estimates its stable background color and extracts a tight, soft glyph mask
    from the contrast with that color;
-4. requires meaningful panel-supported glyph ink to cross the same boundary;
+4. requires meaningful backing-supported glyph ink to cross the same boundary
+   or remain wholly inside the encoded bar;
 5. freezes the panel, glyph, mask, and destination geometry for a cue;
 6. uses an optional off-the-shelf text detector only to confirm/reject a new
    text-like candidate asynchronously; and
@@ -90,7 +92,7 @@ never controls visual geometry.
 
 1. [VP-0070-1](VP-0070-1_panel-glyph-detector-and-contract.md)
    — replace the failed detector with a renderer-neutral multi-panel CueSet,
-   strict top/bottom boundary-crossing policy, benchmarked backing/glyph
+   strict top/bottom boundary-or-bar policy, benchmarked backing/glyph
    proposals, and optional PP-OCR text-proposal evidence.
 2. [VP-0070-2](VP-0070-2_always-on-panel-diagnostic-overlay.md) —
    implement temporal cue IDs, tolerant current-frame validation, immutable
@@ -110,9 +112,10 @@ representative live captures.
 ## Validation requirements
 
 Use SDR, HDR, and LLDV-derived Apple TV captures at 23.976, 24, 50, 59.94, and
-60 Hz. Include top- and bottom-boundary crossings; black, charcoal, and gray
-panels; bright, dim, outlined, and multi-line glyphs; cue changes; bar-only and
-picture-only captions; panel-padding-only crossings; dark non-caption material;
+60 Hz. Include top- and bottom-boundary crossings and captions wholly inside
+both bars; black, charcoal, and gray panels; bright, dim, outlined, and
+multi-line glyphs; cue changes; picture-only captions; panel-padding-only
+crossings; dark non-caption material;
 and normal plus scope/CIH profiles. Retain captures, panel/glyph/destination
 geometry, cue state, active-picture generations, and CPU/GPU/present evidence.
 
@@ -122,8 +125,9 @@ geometry, cue state, active-picture generations, and CPU/GPU/present evidence.
   it never defines visual geometry or blocks presentation.
 - A CueSet preserves each independently boxed subtitle line as a separate
   panel/glyph/capture member; a union envelope is non-actionable metadata.
-- Eligibility requires meaningful dark-backing-supported glyph ink on both sides of
-  exactly one stable encoded-bar boundary.
+- Eligibility requires meaningful dark-backing-supported glyph ink either on
+  both sides of exactly one stable encoded-bar boundary or wholly inside one
+  confirmed encoded bar.
 - Stable cues retain identical panel, glyph, and destination geometry for
   their complete lifetime.
 - A treated frame contains either the original untouched input or restored

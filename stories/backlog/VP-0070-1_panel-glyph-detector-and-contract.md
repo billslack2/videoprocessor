@@ -1,4 +1,4 @@
-# VP-0070-1: Boundary-crossing CueSet architecture and detector benchmark
+# VP-0070-1: Bar/boundary CueSet architecture and detector benchmark
 
 ## Status
 
@@ -23,26 +23,29 @@ The 2026-08-01 reproducible Sintel spike established:
   solution.
 
 Those results motivated the architecture but no longer define eligibility.
-The product scope is narrower: a qualified line's panel and meaningful glyph
-ink must cross a stable top or bottom active-picture boundary into an encoded
-bar. The original full-picture Sintel corpus cannot prove that condition and is
-retained only for cadence and multi-panel regression evidence.
+The product scope is narrower: a qualified line's meaningful glyph ink must
+cross a stable top/bottom active-picture boundary into an encoded bar or lie
+wholly inside one encoded bar. The original full-picture Sintel corpus cannot
+prove that condition and is retained only for cadence and multi-panel
+regression evidence.
 
-The boundary-specific glyph-first fixture then established a viable starting
+The corrected boundary/bar glyph-first fixture established a viable starting
 contract without pretending to recover invisible source-panel endpoints:
 
-- 28/28 sampled top/bottom straddle positives accepted;
-- 0/77 picture-only, bar-only, near-boundary menu, and no-caption negatives
-  accepted;
+- all 672/672 full-video top/bottom straddle, top-bar-only, and bottom-bar-only
+  eligible frames accepted;
+- 0/581 picture-only, near-boundary menu, and no-caption frames accepted;
+- complete eligible synthetic glyph coverage after full-line grouping;
 - deterministic derived capture rectangles had zero coordinate drift across
-  repeated samples; and
+  stable CueSets; and
 - PP-OCRv3 added no recall or rejection benefit to the glyph-first gate while
   adding about 13 ms median CPU inference cost.
 
-The high-confidence glyph seed mask covered only 30.3% of the pair-derived
-antialiased glyph truth. Detection/identity is therefore a starting point, not
-yet an inpaint-ready mask. Full soft-mask refinement remains required before
-production implementation.
+Review exposed that the original frame-level metric hid an incomplete top
+line: the short `TOP` word was discarded before baseline grouping. The
+corrected detector keeps short word/speaker components, groups words using a
+glyph-height gap bound, and measures complete eligible glyph coverage. Real
+compressed P010 soft-mask quality remains unproven.
 
 Experiment and results are under
 `C:\Users\bslac\vp\test-media\vp-0070\experiments`.
@@ -71,14 +74,14 @@ measurable benefit.
 
 - Require stable active-picture geometry and scan only bounded strips centered
   on actual top/bottom encoded-bar boundaries.
-- Apply a pure boundary-eligibility predicate after local backing/mask
-  extraction: meaningful glyph-mask pixels with dark backing must exist beyond
-  an antialiasing margin on both sides of exactly one boundary.
+- Apply a pure eligibility predicate after local backing/mask extraction:
+  meaningful glyph-mask pixels with dark backing must cross exactly one
+  boundary or lie wholly inside one encoded bar.
 - Derive the new capture/destination box from frozen tight glyph geometry plus
   deterministic padding. Do not report inferred padding as an observed source
   panel endpoint.
-- Reject picture-only, bar-only, padding-only, one-row antialiasing, whole-frame,
-  and ambiguous top-plus-bottom candidates.
+- Accept qualified top- and bottom-bar-only lines. Reject picture-only,
+  padding-only, whole-frame, and ambiguous top-plus-bottom candidates.
 - Represent up to three independently boxed line panels without merging their
   actionable capture/inpaint geometry.
 - All returned rectangles are half-open source-raster coordinates.
@@ -96,15 +99,15 @@ measurable benefit.
 
 - The corpus benchmark reports classical-only, PP-OCR proposal-only, and
   combined precision/recall/false-positive and P50/P95/P99 cost.
-- The deterministic boundary fixture accepts every labelled top/bottom
-  crossing and rejects every labelled picture-only, bar-only, menu, and clean
-  frame before production work begins.
+- The deterministic fixture accepts every labelled top/bottom crossing and
+  bar-only line and rejects every labelled picture-only, menu, and clean frame
+  before production work begins.
 - Unit tests establish detection on synthetic black, charcoal, and gray panels
   with bright, dim, outlined, and two-line glyph patterns.
 - Tests reject panels outside the bounded top/bottom boundary strips,
   low-contrast content, and non-uniform dark picture content.
-- Tests accept meaningful top and bottom glyph crossings and reject the same
-  panels moved wholly into picture or bar.
+- Tests accept meaningful top/bottom glyph crossings and captions wholly inside
+  either bar, and reject the same panels moved wholly into picture.
 - Tests reject a panel crossing whose glyph ink remains on only one side.
 - Tests reject the supplied dark-suit capture and black title/credit interval.
 - Tests prove stable cue geometry is byte-for-byte unchanged across repeated
@@ -112,7 +115,7 @@ measurable benefit.
   than jittering geometry.
 - Tests prove generation/raster mismatch produces no applicable stable result.
 - Soft-mask refinement recovers antialiased glyph support sufficiently for
-  source inpaint; the current 30.3% seed-mask recall is not acceptable.
+  source inpaint on representative compressed P010 captures.
 - The x64 Release test build passes from the recorded VP-0066 baseline.
 
 ## Out of scope

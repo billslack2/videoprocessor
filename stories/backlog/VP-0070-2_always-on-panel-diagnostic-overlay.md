@@ -31,7 +31,7 @@ boundary-crossing gates.
 - Each line's stable rectangle does not jitter during a cue of any duration.
 - Multi-line cues render separate panel/glyph regions, never a destructive
   union box.
-- Picture-only, bar-only, padding-only, and boundary-generation-mismatched cues
+- Picture-only, padding-only, and boundary-generation-mismatched cues
   render no normal detection overlay.
 - A stale result is never rendered; generation changes reset the detector.
 - Diagnostics introduce no render-path wait, readback, or queue growth.
