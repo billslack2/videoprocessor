@@ -52,9 +52,9 @@ run to judge the Epson readiness timing.
 
 The rejected hard-cap experiment removed already timestamped samples without
 rebasing their timeline, producing VP drops and madVR repeats. The correct
-solution must either preserve a continuous output timeline while stale live
-content is skipped, or decline the convergence; it must never create a
-timestamp hole merely to report a lower OSD queue number.
+solution must preserve a continuous output timeline while stale live content
+is skipped; it must never create a timestamp hole merely to report a lower OSD
+queue number.
 
 The 2026-07-31 same-rate Apple TV menu-to-channel run isolated the remaining
 downstream-prime failure. At 59.94 Hz, a retained transient-invalid episode
@@ -108,13 +108,18 @@ recreation; it cannot cycle additional in-place or source-gap resets.
 - The synchronous-block threshold is the greater of three nominal frame
   periods and 30 ms. The nominal frame duration is available immediately at
   epoch start so ordinary 23.976-Hz delivery is not misclassified as a block.
-- Convergence may remove only stale converted work, and only while the raw
-  queue is known and empty. The configured value is a converted-queue reserve,
-  not a target for total OSD R/C/T depth or madVR's private queues.
+- Once a synchronous block and three recovered deliveries prove that queued
+  live pictures are stale, convergence activates a VP-owned steady latest-wins
+  mode for that epoch. Preserve and rapidly process queued raw work, reduce the
+  converted queue to the configured reserve, and retain only the newest
+  converted work at that high-water thereafter. The delivery sequencer remains
+  the sole owner of final timestamps, so skipped pictures do not create a
+  presentation timeline hole. The configured value is a VP converted-queue
+  bound, not a target for madVR's private queues.
 - If no block is observed within three seconds, recovery is not completed
   within two seconds after the block, the target changes in the same epoch,
-  raw depth is nonzero, or display-cadence scene mode is active, fail closed:
-  do not trim and record the reason.
+  raw depth cannot be observed, or display-cadence scene mode is active, fail
+  closed: do not catch up and record the reason.
 - A zero/automatic queue policy remains untouched.
 - Final DirectShow presentation/media timestamps must be owned at the delivery
   boundary, or an equivalent serialized rebase must prove that removing stale
@@ -146,12 +151,13 @@ recreation; it cannot cycle additional in-place or source-gap resets.
 1. **Policy (implemented):** `LiveEpochConvergenceController` is a pure C++14
    value state machine. It is disabled for automatic policy, requires an
    observed startup `Deliver()` block followed by three recovered deliveries,
-   and requests at most one stale converted-frame convergence per epoch. It
+   and requests at most one stale live-backlog convergence per epoch. It
    re-arms only for a new epoch. Native tests replay the measured 59.94-Hz
    startup trace (109.8/124.785-ms stalls followed by
    17.897/16.518/16.515-ms recovery), prove the 13-to-2 convergence, prove that
-   23.976-Hz startup is classified correctly, and cover timeout, raw-nonzero,
-   scene-mode, target-change, idempotence, and fresh-epoch behavior.
+   23.976-Hz startup is classified correctly, and cover timeout, asymmetric
+   raw/converted backlog, scene-mode, target-change, idempotence, and
+   fresh-epoch behavior.
 2. **Timestamp ownership/rebase (implemented; awaiting live validation):**
    `RationalLiveOutputSequencer` is now the single delivery-thread owner of
    final presentation and media timestamps for both normal Rational-Rational
@@ -162,15 +168,16 @@ recreation; it cannot cycle additional in-place or source-gap resets.
    preserved. Tests cover normal/display/normal transitions, failed delivery,
    renderer gaps, source discontinuity, exact 60000/1001 cadence, and a
    four-hour 24000/1001 display-cadence run.
-3. **One-shot integration (implemented; awaiting live validation):** the
+3. **Prime-to-steady integration (implemented; awaiting live validation):** the
    DirectShow delivery thread observes each delivery outcome and once per
-   fresh epoch may trim oldest converted work to the explicit `[queue]` target
-   after proven block/recovery and raw-zero evidence. `S_FALSE` is treated as
+   fresh epoch may activate converted latest-wins mode and trim converted work
+   to the explicit `[queue]` target after proven block/recovery. Raw work is
+   preserved and drains rapidly under that cap. `S_FALSE` is treated as
    downstream rejection: the sequencer does not commit and delivery remains
    latched until a new epoch/flush. Optional deferred-repeat failure abandons
    the clone without a renderer reset. A dedicated `*-convergence.csv`
    preserves startup proof across later periodic exports, and the manifest
-   records the policy, thresholds, pre/post/discard depths, raw-zero evidence,
+   records the policy, thresholds, converted pre/post/discard depths,
    timestamp owner, and the explicit fact that madVR occupancy is unobservable.
 4. **Display validation:** exercise 59.94 SDR first, then 23.976 and 59.94
    HDR. Retain madVR OSD captures as passive evidence only. Verify a small,
@@ -262,6 +269,37 @@ recreation; it cannot cycle additional in-place or source-gap resets.
    for `VideoProcessorVPRenderer.dll`; active configuration remained unchanged.
    Live validation with asymmetric queues remains pending.
 
+   Live follow-up exposed the exact remaining convergence failure with a
+   configured reserve of one: after output readiness created a fresh epoch,
+   the uneven downstream queues left VP at raw 29 plus converted 32. The
+   controller had already observed a 672-ms synchronous ingress block and
+   three recovered deliveries, but its former raw-zero precondition could
+   never become true in an equal-rate live pipeline. The 61 retained VP frames
+   produced the observed 1.2-second VP-internal latency and held DeckLink
+   buffers long enough to create 38 capture misses. Commit `7429b54` removed
+   that impossible precondition, reset latency telemetry to a short non-gating
+   warm-up after the cut, and separated the overlapping main-dialog groups.
+   Live validation then proved its raw-plus-converted trim was still incorrect:
+   it reached `0/1/1` once, but the terminal one-shot controller allowed the
+   fast converter to rebuild and hold converted depth 21--22. The resulting
+   roughly 364-ms VP-internal and 805-ms VP-to-scheduled values were truthful
+   measurements of that regression.
+
+   Follow-up commit `919819a` converts the terminal trim into a per-epoch
+   prime-to-steady transition. Initial VP elasticity and madVR priming are
+   unchanged. After proven block/recovery, a pure `LiveSteadyQueuePolicy`
+   continuously removes the oldest undelivered converted work above the
+   configured high-water, while preserving raw work and final delivery-owned
+   timestamps. A literal zero setting uses a one-sample handoff with no retained
+   reserve. Existing trace fields record each steady pre-depth, post-depth, and
+   discard; the manifest identifies latest-wins mode and its high-water. The
+   exact target-one/depth-22 regression is covered; the clean x64 Release suite
+   passes 376/376 tests. Paired deployment hashes are
+   `9C497FA0487A92FA8E123E5F8D2833CFA80A6C13903BD26D98F13B84D8E34614`
+   for `VideoProcessor.exe` and
+   `B4C44FCEC8C45B2994AF0F5336D04F8C0054D441804DE7CFE07F6AFB6BF86B74`
+   for `VideoProcessorVPRenderer.dll`; active configuration remained unchanged.
+
 9. **Literal zero-frame steady target (implemented; awaiting live validation):**
    omission of `[queue] steady_reserve_frames` remains the automatic policy,
    while an explicitly configured `0` now means a literal zero-frame steady
@@ -337,7 +375,7 @@ recreation; it cannot cycle additional in-place or source-gap resets.
   already met, automatic policy, one-shot behavior, fail-closed boundaries,
   timestamp/media ownership, rearm on a new epoch, rate-aware material-gap
   recovery, reset-request latching, transition priority, and healthy re-arm.
-  The current native suite passes 374/374 tests in x64 Release.
+  The current native suite passes 376/376 tests in x64 Release.
 - A convergence never happens in an unchanged steady epoch.
 - Normal, no-trim delivery preserves monotonic 60000/1001 and 24000/1001
   timestamps exactly within existing documented rounding tolerance.
@@ -370,11 +408,12 @@ recreation; it cannot cycle additional in-place or source-gap resets.
    picture remains prompt; convergence is not allowed to hold video for a
    fixed five- or ten-second readiness delay.
 3. For each fresh epoch, expect at most one convergence decision:
-   - if a real startup block and recovery are observed with raw depth zero,
-     telemetry records the state transition and one planned trim with exact
-     target, pre-depth, post-depth, and discarded count;
+   - if a real startup block and recovery are observed, telemetry records the
+     state transition and one planned catch-up with exact converted pre-depth,
+     post-depth, and discarded counts, followed by steady latest-wins discard
+     records whenever production would exceed the configured high-water;
    - if the evidence is absent or unsafe, a `ConvergenceState` record with a
-     reason such as `block-observation-timed-out`, `raw-depth-not-empty`, or
+     reason such as `block-observation-timed-out`, `raw-depth-unknown`, or
      `unsafe-boundary` and no `PlannedDrop` is the correct fail-closed outcome.
 4. Treat the VP OSD R/C/T and madVR OSD as observations, not as control inputs.
    The configured `2` applies only to VP converted reserve; madVR queue fill
@@ -422,6 +461,16 @@ recreation; it cannot cycle additional in-place or source-gap resets.
     for the configured sustained-stall evidence, perform at most one in-place
     recovery and at most one renderer recreation for that capture-state
     sequence, and never stack an output-readiness reset on the recreation.
+11. Reproduce the exact failed reserve-one epoch. It may transiently fill while
+    downstream ingress is blocked, but after three recovered deliveries expect
+    one `VP-0066-9 QUEUE CONVERGENCE` record reporting the raw backlog preserved
+    and converted depth reduced to one. Raw should drain rapidly through the
+    converter while every later conversion records `queue_depth_after <= 1`.
+    OSD R/C/T should settle near `0/1/1`; it must not return to `0/21/21`.
+    Latency should show unavailable briefly before republishing the caught-up
+    path. Priming may include a bounded transient repeat burst, but neither
+    repeats nor queue depth may grow during steady playback. The telemetry
+    warm-up does not delay video.
 
 ## Out of scope
 
