@@ -376,12 +376,17 @@ private:
 	// Identifies the current queue epoch. A conversion that began before a
 	// reset/recovery must not publish its sample into the new epoch.
 	std::atomic<uint64_t> m_queueEpoch = 0;
+	// Zero while a fresh epoch is still priming. Once downstream ingress has
+	// blocked and recovered, this names the epoch whose converted queue is held
+	// to the configured live high-water. The conversion worker reads it without
+	// taking the delivery gate.
+	std::atomic<uint64_t> m_steadyQueueEpoch = 0;
 	
 	std::atomic_bool m_isBuffering = false; // gate delivery until converted queue is primed
 	// Explicit [queue] frame policies. Zero means automatic policy. The steady
-	// value selects VP's converted-queue post-prime delivery cushion, not a hard
-	// total R/C/T ceiling and never a madVR request. Temporary VP elasticity
-	// preserves continuity while synchronous Deliver() is briefly unavailable.
+	// value selects VP's converted-queue post-prime delivery cushion and steady
+	// high-water; it is never a madVR request. VP remains elastic during initial
+	// downstream prime, then retains newest converted work at this bound.
 	std::atomic<size_t> m_configuredStartupPrerollFrames{ 0 };
 	std::atomic<size_t> m_configuredSteadyReserveFrames{ 0 };
 	std::atomic_bool m_configuredSteadyReserveExplicit{ false };

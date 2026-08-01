@@ -22,6 +22,7 @@
 #include <ConfigFile.h>
 #include <DirectShowDeliveryOutcome.h>
 #include <LiveEpochConvergenceController.h>
+#include <LiveSteadyQueuePolicy.h>
 #include <RationalLiveOutputSequencer.h>
 #include "CBufferedLiveSourceVideoOutputPin.h"
 #include "WindowsOcrSubtitleDetector.h"
@@ -245,6 +246,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		size_t purgedRaw = 0;
 		size_t purgedConverted = 0;
 		m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
+		m_steadyQueueEpoch.store(0, std::memory_order_release);
 		m_currentEpochDeliverySuccessCount.store(0, std::memory_order_release);
 		m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
 		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
@@ -919,6 +921,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		// boundary is rejected by CaptureFrameQueue instead of becoming an
 		// accidental first sample in the new DirectShow segment.
 		m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
+		m_steadyQueueEpoch.store(0, std::memory_order_release);
 		m_currentEpochDeliverySuccessCount.store(0, std::memory_order_release);
 		const size_t purgedFrames = PurgeQueue();
 		DebugLog::Log("Reset(): Purged %zu raw frames from HDMI resync", purgedFrames);
@@ -1337,7 +1340,11 @@ void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace(const char* boundar
 		manifest << "  \"vp_buffering_target\": " << GetBufferingTarget() << ",\n";
 		manifest << "  \"vp_delivery_reserve\": " << GetDeliveryReserve() << ",\n";
 		manifest << "  \"vp_steady_target_scope\": \"converted_queue\",\n";
-		manifest << "  \"vp_convergence_requires_raw_zero\": true,\n";
+		manifest << "  \"vp_convergence_requires_raw_depth_known\": true,\n";
+		manifest << "  \"vp_steady_hold\": \"latest-wins-converted-high-water\",\n";
+		manifest << "  \"vp_steady_high_water\": " <<
+			(IsSteadyQueueTargetConfigured() ?
+				std::max<size_t>(1, GetConfiguredSteadyQueueTarget()) : 0) << ",\n";
 		manifest << "  \"vp_convergence_minimum_block_us\": " <<
 			LiveEpochConvergenceController::kMinimumIngressBlockUs << ",\n";
 		manifest << "  \"vp_convergence_block_periods\": " <<
@@ -2083,9 +2090,17 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				size_t actualConvertedDepthBefore = 0;
 				size_t discardedConvertedFrames = 0;
 				size_t convertedDepthAfterConvergence = 0;
+				// Publish steady mode before trimming so conversion cannot refill the
+				// queue between this one-shot catch-up and persistent enforcement.
+				m_steadyQueueEpoch.store(
+					expectedQueueEpoch, std::memory_order_release);
 				actualRawDepthBefore = m_captureFrameQueue.Size();
-				discardedRawFrames = m_captureFrameQueue.TrimTo(0);
-				rawDepthAfterConvergence = m_captureFrameQueue.Size();
+				// Do not flush the raw queue here. The conversion worker is much
+				// faster than live capture and will release these source buffers while
+				// the steady latest-wins cap prevents converted backlog from regrowing.
+				// Preserving them avoids manufacturing capture-counter gaps.
+				discardedRawFrames = 0;
+				rawDepthAfterConvergence = actualRawDepthBefore;
 				m_publishedRawQueueDepth.store(
 					rawDepthAfterConvergence, std::memory_order_release);
 				{
@@ -2171,13 +2186,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					"VP-0066-9 QUEUE CONVERGENCE: epoch=%llu target=%zu "
 					"raw=%zu->%zu discarded_raw=%zu "
 					"converted=%zu->%zu discarded_converted=%zu "
-					"discarded_stale=%zu latency_rewarm=1 madvr_queue=unobservable",
+					"discarded_stale=%zu steady_high_water=%zu latency_rewarm=1 "
+					"madvr_queue=unobservable",
 					expectedQueueEpoch, desiredVpDepth,
 					actualRawDepthBefore, rawDepthAfterConvergence,
 					discardedRawFrames,
 					actualConvertedDepthBefore,
 					convertedDepthAfterConvergence, discardedConvertedFrames,
-					discardedStaleFrames);
+					discardedStaleFrames,
+					std::max<size_t>(1, desiredVpDepth));
 			}
 			++framesSinceLastLog;
 			++deliverySuccessCount;
@@ -3378,6 +3395,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			// Add converted sample to queue only after its timestamp history is
 			// published. The delivery thread is then free to drain immediately.
 			size_t convertedQueueDepth = 0;
+			size_t steadyQueueDiscarded = 0;
+			size_t steadyQueueDepthBefore = 0;
+			size_t steadyQueueHighWater = 0;
 			bool sampleQueued = false;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
@@ -3434,9 +3454,27 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 					processedFrame.isSafeCorrectionPoint = isSafeCorrectionPoint;
 					processedFrame.sceneEventId = sceneEventId;
 					processedFrame.sceneTimingGeneration = sceneTimingGeneration;
+					steadyQueueDepthBefore = m_processedFrameQueue.Size();
 					const EpochBoundedQueuePushResult pushResult =
 						m_processedFrameQueue.Push(std::move(processedFrame),
 							{ frameQueueEpoch }, currentEpoch);
+					const LiveSteadyQueueDecision steadyQueueDecision =
+						LiveSteadyQueuePolicy::Evaluate({
+							m_steadyQueueEpoch.load(std::memory_order_acquire),
+							frameQueueEpoch,
+							IsSteadyQueueTargetConfigured(),
+							m_sceneAwareTimingCorrection.load(
+								std::memory_order_acquire),
+							GetConfiguredSteadyQueueTarget(),
+							m_processedFrameQueue.Size() });
+					if (steadyQueueDecision.active &&
+						(pushResult == EpochBoundedQueuePushResult::Accepted ||
+						 pushResult == EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard))
+					{
+						steadyQueueHighWater = steadyQueueDecision.highWater;
+						steadyQueueDiscarded =
+							m_processedFrameQueue.TrimTo(steadyQueueHighWater);
+					}
 					const EpochBoundedQueueMetrics processedMetrics =
 						m_processedFrameQueue.Metrics();
 					m_publishedConvertedQueueDepth.store(
@@ -3470,6 +3508,17 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 					m_publishedRawQueueDepth.load(std::memory_order_acquire));
 				conversionTrace.convertedQueueDepth = static_cast<uint32_t>(
 					convertedQueueDepth);
+				conversionTrace.queueTarget = static_cast<uint32_t>(
+					GetConfiguredSteadyQueueTarget());
+				conversionTrace.queueDepthBefore = static_cast<uint32_t>(
+					steadyQueueDepthBefore);
+				conversionTrace.queueDepthAfter = static_cast<uint32_t>(
+					convertedQueueDepth);
+				conversionTrace.queueDiscarded = static_cast<uint32_t>(
+					steadyQueueDiscarded);
+				conversionTrace.convertedQueueDiscarded = static_cast<uint32_t>(
+					steadyQueueDiscarded);
+				conversionTrace.intentionalDrop = steadyQueueDiscarded > 0;
 				conversionTrace.processingDurationUs = static_cast<uint32_t>(
 					std::min<uint64_t>(convTimeUs, std::numeric_limits<uint32_t>::max()));
 				conversionTrace.sceneBoundary = isSafeCorrectionPoint;

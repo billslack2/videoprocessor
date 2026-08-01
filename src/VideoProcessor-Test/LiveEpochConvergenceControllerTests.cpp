@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <LiveEpochConvergenceController.h>
+#include <LiveSteadyQueuePolicy.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -158,7 +159,7 @@ namespace Tests
 				static_cast<int>(decision.state));
 		}
 
-		TEST_METHOD(ObservedAsymmetricBacklogRequestsOneRawAndConvertedCatchUp)
+		TEST_METHOD(ObservedAsymmetricBacklogActivatesConvertedLatestWinsCatchUp)
 		{
 			LiveEpochConvergenceController controller;
 			LiveEpochConvergenceInput input = Input();
@@ -172,14 +173,35 @@ namespace Tests
 			Assert::IsTrue(decision.requestConvergence);
 			Assert::IsTrue(decision.rawDepthKnown);
 			Assert::IsTrue(decision.rawBacklogObserved);
-			Assert::AreEqual<size_t>(29, decision.staleRawFrames);
+			Assert::AreEqual<size_t>(0, decision.staleRawFrames);
 			Assert::AreEqual<size_t>(31, decision.staleConvertedFrames);
-			Assert::AreEqual<size_t>(60, decision.staleVpFrames);
+			Assert::AreEqual<size_t>(31, decision.staleVpFrames);
 			Assert::AreEqual(static_cast<int>(LiveEpochConvergenceState::TrimApplied),
 				static_cast<int>(decision.state));
 
 			decision = Observe(controller, input, 16683, 32);
 			Assert::IsFalse(decision.requestConvergence);
+		}
+
+		TEST_METHOD(SteadyLatestWinsHoldsConfiguredConvertedHighWater)
+		{
+			LiveSteadyQueueDecision decision = LiveSteadyQueuePolicy::Evaluate({
+				5, 5, true, false, 1, 22 });
+			Assert::IsTrue(decision.active);
+			Assert::AreEqual<size_t>(1, decision.highWater);
+			Assert::AreEqual<size_t>(21, decision.discardOldest);
+
+			decision = LiveSteadyQueuePolicy::Evaluate({
+				5, 5, true, false, 0, 22 });
+			Assert::AreEqual<size_t>(1, decision.highWater);
+			Assert::AreEqual<size_t>(21, decision.discardOldest);
+
+			decision = LiveSteadyQueuePolicy::Evaluate({
+				5, 6, true, false, 1, 22 });
+			Assert::IsFalse(decision.active);
+			decision = LiveSteadyQueuePolicy::Evaluate({
+				5, 5, true, true, 1, 22 });
+			Assert::IsFalse(decision.active);
 		}
 
 		TEST_METHOD(Exact23976ThresholdAndRecoveryAreRateIndependent)

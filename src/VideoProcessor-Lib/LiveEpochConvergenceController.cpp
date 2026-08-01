@@ -156,12 +156,11 @@ LiveEpochConvergenceDecision LiveEpochConvergenceController::Observe(
 			LiveEpochConvergenceDecision decision = MakeDecision(input, previousState,
 				LiveEpochConvergenceReason::TrimRequested);
 			decision.requestConvergence = true;
-			decision.staleRawFrames = input.vpRawDepth;
+			decision.staleRawFrames = 0;
 			decision.staleConvertedFrames = input.vpConvertedDepth >
 				m_desiredVpDepth ?
 				input.vpConvertedDepth - m_desiredVpDepth : 0;
-			decision.staleVpFrames = decision.staleRawFrames +
-				decision.staleConvertedFrames;
+			decision.staleVpFrames = decision.staleConvertedFrames;
 			return decision;
 		}
 

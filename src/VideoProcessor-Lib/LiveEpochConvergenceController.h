@@ -4,8 +4,8 @@
  * This controller deliberately owns no DirectShow, madVR, HDMI, or queue
  * object.  In particular, an S_OK from Deliver is evidence only that the
  * DirectShow ingress accepted a sample; it is not evidence of madVR queue
- * occupancy or presentation.  The owner must execute a requested TrimTo and
- * report the actual result separately.
+ * occupancy or presentation. The owner must execute the requested transition
+ * to a persistent local high-water and report the actual result separately.
  */
 #pragma once
 
@@ -49,7 +49,8 @@ struct LiveEpochConvergenceInput
 	bool epochActive = false;
 	// The configured steady reserve is retained in the converted queue. Once a
 	// synchronous downstream block and recovery prove that live work is stale,
-	// raw backlog may be discarded and converted backlog reduced to this floor.
+	// raw backlog is rapidly processed while converted backlog is held at this
+	// floor by a latest-wins policy.
 	size_t vpConvertedDepth = 0;
 	size_t desiredVpDepth = 0;
 	bool targetConfigured = false;
@@ -78,9 +79,10 @@ struct LiveEpochConvergenceDecision
 	LiveEpochConvergenceState state =
 		LiveEpochConvergenceState::Disabled;
 	LiveEpochConvergenceReason reason = LiveEpochConvergenceReason::None;
-	// A request authorizes one live catch-up transaction: discard queued raw
-	// work and reduce converted work to desiredVpDepth. Final timestamps remain
-	// owned by the delivery sequencer, so discarded live pictures create no
+	// A request authorizes one live catch-up transition: activate the steady
+	// latest-wins policy and reduce converted work to desiredVpDepth. Raw work
+	// is preserved and rapidly processed under that cap. Final timestamps remain
+	// owned by the delivery sequencer, so discarded converted pictures create no
 	// presentation-timeline hole. The request is emitted at most once per epoch.
 	bool requestConvergence = false;
 	size_t staleVpFrames = 0;

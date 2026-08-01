@@ -3,6 +3,7 @@
 
 #include <LiveOutputTrace.h>
 
+#include <memory>
 #include <sstream>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -14,15 +15,18 @@ namespace Tests
 	public:
 		TEST_METHOD(RetainsTheNewestBoundedTraceInSequenceOrder)
 		{
-			LiveOutputTrace trace;
+			// Production owns this bounded trace as part of a heap-allocated pin.
+			// Keep the same ownership shape in the test; the 4096-record diagnostic
+			// buffer is intentionally too large for a unit-test stack frame.
+			std::unique_ptr<LiveOutputTrace> trace(new LiveOutputTrace());
 			for (size_t index = 0; index < LiveOutputTrace::CAPACITY + 3; ++index)
 			{
 				LiveOutputTraceRecord record;
 				record.frameNumber = index;
-				trace.Record(record);
+				trace->Record(record);
 			}
 
-			const auto snapshot = trace.Snapshot();
+			const auto snapshot = trace->Snapshot();
 			Assert::AreEqual<size_t>(LiveOutputTrace::CAPACITY, snapshot.size());
 			Assert::AreEqual<uint64_t>(4, snapshot.front().sequence);
 			Assert::AreEqual<uint64_t>(3, snapshot.front().frameNumber);
