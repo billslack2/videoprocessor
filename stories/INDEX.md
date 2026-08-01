@@ -95,7 +95,7 @@ they must not contain requirements that are absent from this file.
 | VP-0068 | Backlog | Evaluate a native Blackmagic SDK capture path and complete frame metadata contract |
 | VP-0069 | Backlog | Achieve and verify a 50 ms low-latency Alpha renderer path |
 | VP-0070 | Backlog | Alpha panel-bound subtitle capture and relocation without OCR |
-| VP-0070-1 | In Progress | Panel/glyph detector and immutable cue contract |
+| VP-0070-1 | Review | Panel/glyph detector and immutable cue contract |
 | VP-0070-2 | Backlog | Alpha panel diagnostic overlay |
 | VP-0070-3 | Backlog | Same-frame panel restoration and glyph relocation |
 | VP-0070-4 | Backlog | Panel subtitle live validation and performance |
