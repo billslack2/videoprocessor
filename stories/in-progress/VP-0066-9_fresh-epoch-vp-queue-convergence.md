@@ -285,13 +285,29 @@ recreation; it cannot cycle additional in-place or source-gap resets.
     `11B753CEE92E88CCD6C63A9341F4FB038A7482D426124AFFC2B77F14415A3487`
     for `VideoProcessorVPRenderer.dll`; active configuration was unchanged.
 
+    Follow-up commit `719aee3` prevents fresh-epoch preroll and graph-clock
+    transients from appearing as stable UI values. It ignores the first one
+    second of metric evidence, averages the following one second, and then
+    publishes a time-based one-second smoothed value. This gate affects only
+    telemetry; it never delays capture, delivery, or first picture. Every raw
+    delivery observation and the displayed stable observation are recorded in
+    the convergence CSV with graph stream time, VP-internal microseconds,
+    DirectShow lead, VP-to-scheduled total, scheduled-known state, and display
+    readiness. The debug log records one `VP LATENCY METRIC READY` marker per
+    fresh epoch. The clean x64 Release suite passes 370/370 tests. Deployment
+    hashes are
+    `A24097490B00479AE40DE3BC03B8E48A7CD8050D0BED73D2DA2F5780BBAFA4A5`
+    for `VideoProcessor.exe` and
+    `B81D06E1658833541AB33180075646FC09CF012020A15326094A8346D5F83D18`
+    for `VideoProcessorVPRenderer.dll`; configuration remained unchanged.
+
 ## Acceptance criteria
 
 - Unit tests cover startup prime, startup stalls, normal delivery, target
   already met, automatic policy, one-shot behavior, fail-closed boundaries,
   timestamp/media ownership, rearm on a new epoch, rate-aware material-gap
   recovery, reset-request latching, transition priority, and healthy re-arm.
-  The current native suite passes 368/368 tests in x64 Release.
+  The current native suite passes 370/370 tests in x64 Release.
 - A convergence never happens in an unchanged steady epoch.
 - Normal, no-trim delivery preserves monotonic 60000/1001 and 24000/1001
   timestamps exactly within existing documented rounding tolerance.
