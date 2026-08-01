@@ -6957,8 +6957,15 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			{
 				cstring.Format(_T("%.01f"), latencySnapshot.vpInternalMs);
 				m_rendererLatencyToVPText.SetWindowText(cstring);
-				cstring.Format(_T("%.01f"), latencySnapshot.scheduledLatencyMs);
-				m_rendererLatencyToDSText.SetWindowText(cstring);
+				if (latencySnapshot.scheduledPresentationKnown)
+				{
+					cstring.Format(_T("%.01f"), latencySnapshot.scheduledLatencyMs);
+					m_rendererLatencyToDSText.SetWindowText(cstring);
+				}
+				else
+				{
+					m_rendererLatencyToDSText.SetWindowText(_T("---"));
+				}
 			}
 			else if (renderer && renderer->backend == RendererBackend::LIBPLACEBO)
 			{
@@ -7642,6 +7649,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		RendererLatencySnapshot latencySnapshot;
 		if (m_videoRenderer->GetLatencySnapshot(latencySnapshot))
 		{
+			stats.vpInternalLatencyKnown = true;
 			stats.scheduledLatencyKnown =
 				latencySnapshot.scheduledPresentationKnown;
 			stats.vpInternalLatencyMs = latencySnapshot.vpInternalMs;
@@ -7650,6 +7658,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		}
 		else if (stats.isAlphaRenderer)
 		{
+			stats.vpInternalLatencyKnown = true;
 			stats.vpInternalLatencyMs = std::max(0.0,
 				m_videoRenderer->ExitLatencyMs() -
 				m_videoRenderer->EntryLatencyMs());

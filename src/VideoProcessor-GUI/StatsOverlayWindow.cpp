@@ -567,7 +567,10 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += 4;
 
 	// Same-frame VP ingress-to-DirectShow-handoff residence.
-	line.Format(TEXT("VP Internal:      %.2f ms"), m_stats.vpInternalLatencyMs);
+	if (m_stats.vpInternalLatencyKnown)
+		line.Format(TEXT("VP Internal:      %.2f ms"), m_stats.vpInternalLatencyMs);
+	else
+		line = TEXT("VP Internal:      ---");
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 

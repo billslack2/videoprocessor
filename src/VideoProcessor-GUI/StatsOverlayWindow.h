@@ -56,6 +56,7 @@ struct StatsData
 
 	// VP-owned latency boundaries. Scheduled presentation is not actual madVR
 	// presentation or physical-display latency.
+	bool vpInternalLatencyKnown = false;
 	bool scheduledLatencyKnown = false;
 	double vpInternalLatencyMs = 0.0;
 	double dsScheduleLeadMs = 0.0;

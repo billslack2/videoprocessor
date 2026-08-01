@@ -1139,7 +1139,8 @@ bool CBufferedLiveSourceVideoOutputPin::GetLatencySnapshot(
 
 		RendererLatencySnapshot candidate;
 		candidate.supported = true;
-		candidate.scheduledPresentationKnown = true;
+		candidate.scheduledPresentationKnown =
+			m_scheduledPresentationKnown.load(std::memory_order_relaxed);
 		candidate.vpInternalMs =
 			m_vpInternalLatencyMs.load(std::memory_order_relaxed);
 		candidate.dsScheduleLeadMs =
@@ -1727,13 +1728,26 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		const uint64_t deliveryAttemptTick = GetTickCount64();
 		const REFERENCE_TIME streamTime = NowStreamTime(m_pFilter);
 		RendererLatencySnapshot latencySnapshot;
-		if (SUCCEEDED(presentationTimeResult) &&
-			streamTime != REFERENCE_TIME_INVALID &&
-			CalculateScheduledLatency(
-				captureArrivalTick, deliveryAttemptTick,
-				presentationStart, streamTime, latencySnapshot))
+		if (CalculateVpInternalLatency(
+			captureArrivalTick, deliveryAttemptTick, latencySnapshot))
 		{
+			// Every timestamp method shares the VP-owned monotonic residence
+			// boundary.  Add the DirectShow scheduling boundary whenever that
+			// method supplied a sample start time and the graph clock is valid.
+			// Start-only samples return a success status from GetTime and are
+			// therefore supported; DS_SSTM_NONE intentionally reports only VP
+			// internal residence rather than retaining a stale scheduled value.
+			if (SUCCEEDED(presentationTimeResult) &&
+				streamTime != REFERENCE_TIME_INVALID)
+			{
+				CalculateScheduledLatency(
+					captureArrivalTick, deliveryAttemptTick,
+					presentationStart, streamTime, latencySnapshot);
+			}
 			m_latencySnapshotSequence.fetch_add(1, std::memory_order_acq_rel);
+			m_scheduledPresentationKnown.store(
+				latencySnapshot.scheduledPresentationKnown,
+				std::memory_order_relaxed);
 			m_vpInternalLatencyMs.store(
 				latencySnapshot.vpInternalMs, std::memory_order_relaxed);
 			m_dsScheduleLeadMs.store(
@@ -1742,6 +1756,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				latencySnapshot.scheduledLatencyMs, std::memory_order_relaxed);
 			m_latencySnapshotSequence.fetch_add(1, std::memory_order_release);
 			m_latencySnapshotAvailable.store(true, std::memory_order_release);
+		}
+		else
+		{
+			m_latencySnapshotAvailable.store(false, std::memory_order_release);
 		}
 		LiveOutputTraceRecord deliveryAttemptTrace;
 		deliveryAttemptTrace.kind = LiveOutputTraceKind::DeliveryAttempted;

@@ -113,6 +113,7 @@ private:
 	std::atomic<size_t> m_frameQueueMaxSize = 8;
 	std::atomic_bool m_latencySnapshotAvailable{ false };
 	std::atomic<uint64_t> m_latencySnapshotSequence{ 0 };
+	std::atomic_bool m_scheduledPresentationKnown{ false };
 	std::atomic<double> m_vpInternalLatencyMs{ 0.0 };
 	std::atomic<double> m_dsScheduleLeadMs{ 0.0 };
 	std::atomic<double> m_scheduledLatencyMs{ 0.0 };

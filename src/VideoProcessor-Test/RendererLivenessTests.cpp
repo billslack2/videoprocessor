@@ -103,5 +103,17 @@ namespace Tests
 				0, 1014, 2000000, 300000, snapshot));
 			Assert::IsFalse(snapshot.supported);
 		}
+
+		TEST_METHOD(VpInternalLatencyDoesNotRequireDirectShowTimestamps)
+		{
+			RendererLatencySnapshot snapshot;
+			const bool calculated = CalculateVpInternalLatency(
+				2000, 2023, snapshot);
+
+			Assert::IsTrue(calculated);
+			Assert::IsTrue(snapshot.supported);
+			Assert::IsFalse(snapshot.scheduledPresentationKnown);
+			Assert::AreEqual(23.0, snapshot.vpInternalMs, 0.001);
+		}
 	};
 }

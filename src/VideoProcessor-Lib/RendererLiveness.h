@@ -48,6 +48,20 @@ struct RendererLatencySnapshot
 	double scheduledLatencyMs = 0.0;
 };
 
+inline bool CalculateVpInternalLatency(
+	uint64_t vpArrivalTickMs,
+	uint64_t observationTickMs,
+	RendererLatencySnapshot& snapshot)
+{
+	if (vpArrivalTickMs == 0 || observationTickMs < vpArrivalTickMs)
+		return false;
+
+	snapshot.supported = true;
+	snapshot.vpInternalMs = static_cast<double>(
+		observationTickMs - vpArrivalTickMs);
+	return true;
+}
+
 inline bool CalculateScheduledLatency(
 	uint64_t vpArrivalTickMs,
 	uint64_t observationTickMs,
@@ -55,13 +69,11 @@ inline bool CalculateScheduledLatency(
 	int64_t streamTime100ns,
 	RendererLatencySnapshot& snapshot)
 {
-	if (vpArrivalTickMs == 0 || observationTickMs < vpArrivalTickMs)
+	if (!CalculateVpInternalLatency(
+		vpArrivalTickMs, observationTickMs, snapshot))
 		return false;
 
-	snapshot.supported = true;
 	snapshot.scheduledPresentationKnown = true;
-	snapshot.vpInternalMs = static_cast<double>(
-		observationTickMs - vpArrivalTickMs);
 	snapshot.dsScheduleLeadMs = static_cast<double>(
 		presentationStart100ns - streamTime100ns) / 10000.0;
 	snapshot.scheduledLatencyMs =
