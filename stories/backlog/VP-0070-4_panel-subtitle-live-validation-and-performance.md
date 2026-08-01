@@ -10,8 +10,9 @@ Backlog. Depends on VP-0070-3.
 
 ## Scope
 
-Validate the completed panel-only treatment path on representative Apple TV
-captures and establish its safety and latency evidence against VP-0066.
+Validate the completed panel-bound treatment path on representative Apple TV
+captures in both Alpha and DirectShow/madVR, and establish its safety and
+latency evidence against VP-0066.
 
 ## Acceptance criteria
 
@@ -19,7 +20,9 @@ captures and establish its safety and latency evidence against VP-0066.
   state transitions, geometry, and cost metrics.
 - Report cue acquisition/release, box stability, false treatments, and any
   safe pass-through decisions.
+- Compare diagnostics off, classical-only, and PP-OCR-assisted acquisition,
+  including cold/P50/P95/P99 inference cost, result age, stale rejection, and
+  mailbox replacement counts.
 - Long 60 Hz A/B runs demonstrate no sustained added drop, queue growth, or
   low-latency regression with the feature enabled.
 - The input contract and unsupported cases are documented for users.
-

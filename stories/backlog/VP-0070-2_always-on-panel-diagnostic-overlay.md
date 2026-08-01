@@ -1,0 +1,40 @@
+# VP-0070-2: Always-on panel diagnostic overlay
+
+## Status
+
+Backlog. Depends on the rebuilt VP-0070-1. The prior implementation in
+`c6e251b`/`ccbc240` failed live validation: it painted unconfirmed candidates,
+missed the real two-panel subtitle, and marked a large dark picture region as
+glyphs. It must not be redeployed.
+
+Build/test success is retained as regression history only; it did not validate
+the detector's semantics.
+
+## Parent
+
+[VP-0070](VP-0070_alpha-panel-bound-subtitle-capture-and-relocation.md)
+
+## Scope
+
+Connect the rebuilt CueSet to both P010 output paths. Diagnostics are always on
+for this validation build independently of `subtitle_reposition`, but only a
+fresh `stable` CueSet may paint the normal panel/glyph overlay. Candidate,
+stale, unavailable, OCR-only, and rejected results must remain visually
+distinct and must never masquerade as captured geometry.
+
+## Acceptance criteria
+
+- It is present on both Alpha and DirectShow/madVR test paths without changing
+  active configuration or enabling legacy subtitle repositioning.
+- Each line's stable rectangle does not jitter during a cue of any duration.
+- Multi-line cues render separate panel/glyph regions, never a destructive
+  union box.
+- A stale result is never rendered; generation changes reset the detector.
+- Diagnostics introduce no render-path wait, readback, or queue growth.
+- Live checks still need to cover normal and scope/CIH viewports, renderer
+  switching, and sustained 60-fps capture performance.
+
+## Out of scope
+
+Source restoration and destination subtitle rendering. Optional detector-only
+inference belongs to VP-0070-1 and is merely consumed here.
