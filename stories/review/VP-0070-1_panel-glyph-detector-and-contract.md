@@ -2,15 +2,14 @@
 
 ## Status
 
-Review. Implemented in `e146a98` (`Add panel-bound subtitle detector
+Review. Implemented in `1c6429d` (`Add panel-bound subtitle detector
 contract`) on `codex/vp-0070-1-panel-detection`.
 Worktree: `C:\\Users\\bslac\\vp\\worktrees\\vp-0070-1-panel-detection`.
 Baseline: latest local VP-0066 commit
-`b900a226c169fd4a9bd5958cfeccacc88fe6d0fb` (`VP-0066 distinguish madVR
-backpressure from stalls`). The branch must be rebased onto the latest local
+`7429b54` (`VP-0066 catch up live queue backlog`). The branch must be rebased onto the latest local
 VP-0066 commit before every implementation iteration.
 
-Verification: x64 Release build succeeded; all 381 `VideoProcessor-Test`
+Verification: x64 Release build succeeded; all 383 `VideoProcessor-Test`
 tests passed. The focused seven detector tests include a 40-second / 2,400
 frame 60-fps cue sample. Production has no cue-duration threshold: a stable
 cue stays frozen until its panel/glyph fingerprint or generation changes.

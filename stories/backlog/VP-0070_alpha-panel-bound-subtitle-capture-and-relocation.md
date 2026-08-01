@@ -2,8 +2,9 @@
 
 ## Status
 
-Backlog. The objective is decomposed into ordered child tasks. The active
-implementation is [VP-0070-1](../in-progress/VP-0070-1_panel-glyph-detector-and-contract.md).
+Backlog. The objective is decomposed into ordered child tasks. The first two
+children are in review: [VP-0070-1](../review/VP-0070-1_panel-glyph-detector-and-contract.md)
+and [VP-0070-2](../review/VP-0070-2_always-on-panel-diagnostic-overlay.md).
 The root closes only after all children are done and the full panel-treatment
 path has representative live-capture evidence.
 
@@ -61,12 +62,12 @@ neural detector belongs in this story.
 
 ## Decomposition
 
-1. [VP-0070-1](../in-progress/VP-0070-1_panel-glyph-detector-and-contract.md)
+1. [VP-0070-1](../review/VP-0070-1_panel-glyph-detector-and-contract.md)
    — create the renderer-neutral dark-panel/glyph detector, immutable cue
    contract, and synthetic unit tests.
-2. [VP-0070-2](VP-0070-2_alpha-panel-diagnostic-overlay.md) — integrate the
-   contract into Alpha and render opt-in stable panel/glyph diagnostics in the
-   current visible coordinate system.
+2. [VP-0070-2](../review/VP-0070-2_always-on-panel-diagnostic-overlay.md) —
+   integrate the contract into Alpha and DirectShow/madVR, and render always-on
+   stable panel/glyph diagnostics for the test build.
 3. [VP-0070-3](VP-0070-3_same-frame-panel-restoration-and-glyph-relocation.md)
    — restore the source panel and composite captured glyphs into a stable
    destination panel without an original-subtitle flash.
@@ -97,4 +98,3 @@ geometry, cue state, source generations, and CPU/GPU/present evidence.
 - Missing or ambiguous panel evidence fails safe to unchanged output.
 - VP-0066 queue, liveness, and latency evidence shows no new unbounded queue,
   blocking readback, sustained frame drop, or presentation regression.
-
