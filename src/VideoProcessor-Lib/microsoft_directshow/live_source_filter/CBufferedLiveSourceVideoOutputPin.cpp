@@ -1726,7 +1726,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		const HRESULT presentationTimeResult =
 			sample->GetTime(&presentationStart, &presentationStop);
 		const uint64_t deliveryAttemptTick = GetTickCount64();
-		const REFERENCE_TIME streamTime = NowStreamTime(m_pFilter);
+		const REFERENCE_TIME observedClockTime = NowStreamTime(m_pFilter);
+		REFERENCE_TIME streamTime = REFERENCE_TIME_INVALID;
+		if (observedClockTime != REFERENCE_TIME_INVALID)
+		{
+			m_latencyStreamTimeNormalizer.Normalize(
+				expectedQueueEpoch, observedClockTime, streamTime);
+		}
 		RendererLatencySnapshot latencySnapshot;
 		RendererLatencySnapshot displayedLatencySnapshot;
 		bool latencyDisplayReady = false;
@@ -1802,6 +1808,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		deliveryAttemptTrace.presentationStart = presentationStart;
 		deliveryAttemptTrace.presentationStop = presentationStop;
 		deliveryAttemptTrace.streamTime = streamTime;
+		deliveryAttemptTrace.observedClockTime = observedClockTime;
 		deliveryAttemptTrace.vpInternalUs = static_cast<int64_t>(
 			llround(latencySnapshot.vpInternalMs * 1000.0));
 		deliveryAttemptTrace.dsScheduleLeadUs = static_cast<int64_t>(

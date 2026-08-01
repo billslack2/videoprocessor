@@ -118,6 +118,7 @@ private:
 	std::atomic<double> m_dsScheduleLeadMs{ 0.0 };
 	std::atomic<double> m_scheduledLatencyMs{ 0.0 };
 	RendererLatencyStabilizer m_latencyStabilizer;
+	RendererStreamTimeNormalizer m_latencyStreamTimeNormalizer;
 
 	//
 	// QUEUE INFRASTRUCTURE (with dedicated locks)

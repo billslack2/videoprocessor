@@ -80,6 +80,58 @@ namespace Tests
 			Assert::IsTrue(HasSufficientDownstreamPreroll(5));
 		}
 
+		TEST_METHOD(RecentDeliveryProvesHealthEvenWhenVpIsBackpressured)
+		{
+			RendererLivenessSnapshot snapshot;
+			snapshot.supported = true;
+			snapshot.active = true;
+			snapshot.queueEpoch = 8;
+			snapshot.currentEpochDeliverySuccessCount = 12;
+			snapshot.lastDeliverySuccessQueueEpoch = 8;
+			snapshot.lastDeliverySuccessTick = 9950;
+
+			Assert::IsTrue(HasRecentCurrentEpochDelivery(
+				snapshot, 10000, 500));
+			Assert::IsFalse(HasRecentCurrentEpochDelivery(
+				snapshot, 11000, 500));
+		}
+
+		TEST_METHOD(DirectShowStallRequiresSustainedBlockedDelivery)
+		{
+			RendererLivenessSnapshot snapshot;
+			snapshot.supported = true;
+			snapshot.active = true;
+			snapshot.queueEpoch = 8;
+			snapshot.lastInputTick = 9900;
+			snapshot.deliveryInProgress = true;
+			snapshot.lastDeliveryStartTick = 6000;
+			snapshot.lastDeliverySuccessTick = 6000;
+
+			Assert::IsFalse(IsSustainedDirectShowDeliveryStall(
+				snapshot, 10000, true, 5000));
+			snapshot.lastDeliveryStartTick = 5000;
+			snapshot.lastDeliverySuccessTick = 5000;
+			Assert::IsTrue(IsSustainedDirectShowDeliveryStall(
+				snapshot, 10000, true, 5000));
+			Assert::IsFalse(IsSustainedDirectShowDeliveryStall(
+				snapshot, 10000, false, 5000));
+		}
+
+		TEST_METHOD(StreamTimeNormalizationIsRelativeToEachQueueEpoch)
+		{
+			RendererStreamTimeNormalizer normalizer;
+			int64_t normalized = -1;
+			Assert::IsTrue(normalizer.Normalize(
+				10, 3923336128300LL, normalized));
+			Assert::AreEqual<int64_t>(0, normalized);
+			Assert::IsTrue(normalizer.Normalize(
+				10, 3923336228300LL, normalized));
+			Assert::AreEqual<int64_t>(100000, normalized);
+			Assert::IsTrue(normalizer.Normalize(
+				11, 3923337000000LL, normalized));
+			Assert::AreEqual<int64_t>(0, normalized);
+		}
+
 		TEST_METHOD(ScheduledLatencyUsesVpResidenceAndRemainingDsLead)
 		{
 			RendererLatencySnapshot snapshot;

@@ -3932,6 +3932,10 @@ void CVideoProcessorDlg::CaptureStart()
 	// A new capture session is an initial lifecycle start, never a continuation
 	// of a profile-only replacement from the preceding session.
 	m_postRendererStartRequiresGraph = true;
+	m_nextRendererIsRecoveryRecreation = false;
+	m_directShowRecoveryRecreatedGeneration = 0;
+	m_directShowRecoveryRecreationAttempted = false;
+	m_directShowRecoveryRecreationCaptureSequence = 0;
 
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_STARTING;
@@ -4083,6 +4087,10 @@ void CVideoProcessorDlg::RenderStart()
 		selectedRenderer->backend == RendererBackend::DIRECTSHOW;
 	const uint32_t rendererGeneration =
 		m_rendererGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+	const bool recoveryRecreation = m_nextRendererIsRecoveryRecreation;
+	m_nextRendererIsRecoveryRecreation = false;
+	m_directShowRecoveryRecreatedGeneration =
+		recoveryRecreation ? rendererGeneration : 0;
 	m_directShowGraphRecoveryAwaitingHealth = false;
 	m_directShowRecoveryRebuildRequested = false;
 	m_directShowGraphRecoveryGeneration = rendererGeneration;
@@ -5039,6 +5047,14 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 	}
 
 	const bool coordinatedReset = m_rendererResetTransitionActive;
+	// The UI timer also probes for a first frame. Once the shield has already
+	// been released there is no transition work left to perform; in particular,
+	// do not synchronize DWM and log another reveal on every timer tick.
+	if (!m_rendererTransitionWindow.IsVisible() &&
+		!m_fullscreenRetargetPending && !coordinatedReset)
+	{
+		return;
+	}
 	if (m_fullscreenRetargetPending)
 	{
 		const bool expectedFullscreen = !m_fullscreenRetargetExiting;
@@ -7381,12 +7397,18 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			readinessInput.transitionGeneration &&
 		m_outputReadinessExistingGraphResetEpoch != 0 &&
 		readinessLiveness.queueEpoch == m_outputReadinessExistingGraphResetEpoch;
+	const bool recoveryRecreationCanSatisfyReadiness = hasReadinessLiveness &&
+		m_directShowRecoveryRecreatedGeneration == m_transitionGeneration &&
+		readinessLiveness.queueEpoch != 0;
 	readinessInput.postReadyResetCompleted = readinessGraphResetCompleted ||
-		existingGraphResetCanSatisfyReadiness;
+		existingGraphResetCanSatisfyReadiness ||
+		recoveryRecreationCanSatisfyReadiness;
 	readinessInput.postReadyEpoch = readinessGraphResetCompleted ?
 		m_outputReadinessResetCompletedEpoch :
 		(existingGraphResetCanSatisfyReadiness ?
-			m_outputReadinessExistingGraphResetEpoch : 0);
+			m_outputReadinessExistingGraphResetEpoch :
+			(recoveryRecreationCanSatisfyReadiness ?
+				readinessLiveness.queueEpoch : 0));
 	readinessInput.currentEpochProcessedDepth = hasReadinessLiveness &&
 		readinessLiveness.queueEpoch == readinessInput.postReadyEpoch ?
 		readinessLiveness.convertedQueueDepth : 0;
@@ -7408,7 +7430,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			sampledDisplayTiming.startupRefreshRateHz;
 	const OutputReadinessDecision readinessDecision =
 		m_outputReadinessObserver.Observe(readinessInput);
-	if (existingGraphResetCanSatisfyReadiness &&
+	if ((existingGraphResetCanSatisfyReadiness ||
+		recoveryRecreationCanSatisfyReadiness) &&
 		(readinessDecision.state == OutputReadinessState::Prefilling ||
 			readinessDecision.state == OutputReadinessState::Steady) &&
 		m_outputReadinessExistingGraphReservePublishedEpoch !=
@@ -7421,8 +7444,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_outputReadinessExistingGraphReservePublishedEpoch =
 			readinessInput.postReadyEpoch;
 		DebugLog::Log(
-			"Output readiness adopted existing graph re-prime: generation=%llu "
+			"Output readiness adopted %s: generation=%llu "
 			"epoch=%llu reserve=%zu VPdepth=%zu/%zu madvr_queue=unobservable",
+			recoveryRecreationCanSatisfyReadiness ?
+				"recovery renderer recreation" : "existing graph re-prime",
 			static_cast<unsigned long long>(
 				readinessInput.transitionGeneration),
 			static_cast<unsigned long long>(readinessInput.postReadyEpoch),
@@ -7936,6 +7961,12 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 		return tick == 0 || tick > now ?
 			(std::numeric_limits<ULONGLONG>::max)() : now - tick;
 	};
+	const bool autoReset =
+		m_rendererResetAutoCheck.GetCheck() == BST_CHECKED;
+	const size_t sustainedSeconds =
+		static_cast<size_t>(std::max(3, m_queueResetDelaySeconds));
+	const ULONGLONG stallThresholdMs =
+		static_cast<ULONGLONG>(sustainedSeconds) * 1000;
 
 	if (m_directShowGraphRecoveryAwaitingHealth &&
 		(m_directShowGraphRecoveryGeneration !=
@@ -7957,11 +7988,10 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	}
 
 	const bool recoveryDeliveryHealthy =
-		hasLiveness && HasCurrentEpochDownstreamDelivery(liveness) &&
-		ageMs(liveness.lastDeliverySuccessTick) <= 500 &&
+		hasLiveness && HasRecentCurrentEpochDelivery(liveness, now, 500) &&
 		(!liveness.deliveryInProgress ||
 		 ageMs(liveness.lastDeliveryStartTick) < 500);
-	if (m_directShowGraphRecoveryAwaitingHealth && !highWater &&
+	if (m_directShowGraphRecoveryAwaitingHealth &&
 		recoveryDeliveryHealthy &&
 		now - m_directShowGraphRecoveryStartedTick >= 2000)
 	{
@@ -7990,10 +8020,6 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	if (m_consecutiveFullSeconds <
 		(std::numeric_limits<size_t>::max)())
 		++m_consecutiveFullSeconds;
-	const bool autoReset =
-		m_rendererResetAutoCheck.GetCheck() == BST_CHECKED;
-	const size_t sustainedSeconds =
-		static_cast<size_t>(std::max(3, m_queueResetDelaySeconds));
 	// Alpha uses the UI value as its hard queue cap. Treat any reported excess
 	// as a recovery condition in case a future queue-path regression violates
 	// that invariant. DirectShow keeps its liveness-based recovery below because
@@ -8011,31 +8037,51 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 		return;
 	}
 
-	// The configured threshold is an active recovery policy, not merely a
-	// diagnostic. Schedule once when either DirectShow queue crosses it. If a
-	// queue reaches its hard capacity before that deadline, escalate the same
-	// serialized graph re-prime immediately.
+	// A full VP queue is normal backpressure when madVR's independently
+	// configurable CPU/GPU queues are full. It is not, by itself, a failure.
+	// Escalate only after input is still arriving and downstream delivery has
+	// made no progress for the configured sustained-stall interval.
 	const bool postResetDeliveryDeadlock =
 		m_directShowGraphRecoveryAwaitingHealth &&
-		hasLiveness && atCapacity &&
-		liveness.deliveryInProgress &&
-		ageMs(liveness.lastDeliveryStartTick) >= 500 &&
-		liveness.lastInputTick != 0 &&
-		ageMs(liveness.lastInputTick) <= 2000;
+		hasLiveness && IsSustainedDirectShowDeliveryStall(
+			liveness, now, atCapacity, stallThresholdMs);
 	if (autoReset && m_activeRendererIsDirectShow &&
 		postResetDeliveryDeadlock)
 	{
 		if (!m_directShowRecoveryRebuildRequested)
 		{
+			uint64_t captureSequence =
+				m_appliedCaptureVideoStateNotificationSequence;
+			if (captureSequence == 0 && m_rendererIngressState)
+				captureSequence = m_rendererIngressState->LatestCaptureSequence();
+			if (m_directShowRecoveryRecreationAttempted &&
+				captureSequence ==
+					m_directShowRecoveryRecreationCaptureSequence)
+			{
+				m_directShowRecoveryRebuildRequested = true;
+				DebugLog::Log(
+					"DirectShow recovery recreation suppressed: generation=%u "
+					"epoch=%llu capture_sequence=%llu "
+					"reason=already-attempted-for-capture-state",
+					m_directShowGraphRecoveryGeneration,
+					static_cast<unsigned long long>(
+						m_directShowGraphRecoveryEpoch),
+					static_cast<unsigned long long>(captureSequence));
+				return;
+			}
 			m_directShowRecoveryRebuildRequested = true;
+			m_directShowRecoveryRecreationAttempted = true;
+			m_directShowRecoveryRecreationCaptureSequence = captureSequence;
+			m_nextRendererIsRecoveryRecreation = true;
 			DebugLog::Log(
 				"DirectShow in-place recovery failed; requesting one full "
 				"renderer recreation: generation=%u epoch=%llu "
-				"raw=%zu/%zu converted=%zu/%zu deliveries=%llu "
+				"capture_sequence=%llu raw=%zu/%zu converted=%zu/%zu deliveries=%llu "
 				"blocked_ms=%llu",
 				m_directShowGraphRecoveryGeneration,
 				static_cast<unsigned long long>(
 					m_directShowGraphRecoveryEpoch),
+				static_cast<unsigned long long>(captureSequence),
 				rawQueueSize, queueMaxSize,
 				convertedQueueSize, queueMaxSize,
 				static_cast<unsigned long long>(
@@ -8048,61 +8094,10 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 		}
 		return;
 	}
-
-	if (autoReset && m_activeRendererIsDirectShow &&
-		!m_directShowGraphRecoveryAwaitingHealth)
-	{
-		if (atCapacity)
-		{
-			if (!m_queueCapacityRecoveryRequested)
-			{
-				DEBUGLOG(
-					"Queue capacity recovery requested: raw=%zu/%zu converted=%zu/%zu",
-					rawQueueSize, queueMaxSize,
-					convertedQueueSize, queueMaxSize);
-				m_queueCapacityRecoveryRequested = true;
-				RequestRendererReset(
-					RendererResetReason::QueueCapacity, true, 0);
-			}
-		}
-		else if (!m_queuePressureRecoveryRequested)
-		{
-			DEBUGLOG(
-				"Queue high-water recovery scheduled: raw=%zu/%zu converted=%zu/%zu delay=%ds",
-				rawQueueSize, queueMaxSize,
-				convertedQueueSize, queueMaxSize,
-				m_queueResetDelaySeconds);
-			m_queuePressureRecoveryRequested = true;
-			RequestRendererReset(
-				RendererResetReason::QueuePressure, true,
-				static_cast<UINT>(m_queueResetDelaySeconds * 1000));
-		}
-	}
-
-	const ULONGLONG stallThresholdMs =
-		static_cast<ULONGLONG>(sustainedSeconds) * 1000;
-	const bool inputStillAdvancing =
-		hasLiveness &&
-		liveness.lastInputTick != 0 &&
-		ageMs(liveness.lastInputTick) <= 2000;
-	const bool blockedDeliver =
-		hasLiveness &&
-		liveness.deliveryInProgress &&
-		liveness.lastDeliveryStartTick != 0 &&
-		ageMs(liveness.lastDeliveryStartTick) >= stallThresholdMs;
-	const bool noDeliveryProgress =
-		hasLiveness &&
-		convertedQueueSize >= queueMaxSize &&
-		((liveness.lastDeliverySuccessTick != 0 &&
-			ageMs(liveness.lastDeliverySuccessTick) >= stallThresholdMs) ||
-			(liveness.lastDeliverySuccessTick == 0 &&
-				liveness.lastDequeueTick != 0 &&
-				ageMs(liveness.lastDequeueTick) >= stallThresholdMs));
 	const bool provenDirectShowStall =
-		m_activeRendererIsDirectShow &&
-		atCapacity &&
-		inputStillAdvancing &&
-		(blockedDeliver || noDeliveryProgress);
+		m_activeRendererIsDirectShow && hasLiveness &&
+		IsSustainedDirectShowDeliveryStall(
+			liveness, now, atCapacity, stallThresholdMs);
 
 	if (provenDirectShowStall)
 	{
@@ -8139,7 +8134,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 		now - m_lastLivenessRecoveryTick >= 30000;
 	if (autoReset &&
 		provenDirectShowStall &&
-		m_consecutiveStuckSeconds >= sustainedSeconds &&
+		m_consecutiveStuckSeconds > 0 &&
 		recoveryCooldownComplete)
 	{
 		DEBUGLOG(

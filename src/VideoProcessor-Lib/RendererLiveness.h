@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 // Lock-free progress evidence published by renderer hot paths. Tick values use
 // GetTickCount64() and are zero until that stage has made progress.
@@ -46,6 +47,35 @@ struct RendererLatencySnapshot
 	double vpInternalMs = 0.0;
 	double dsScheduleLeadMs = 0.0;
 	double scheduledLatencyMs = 0.0;
+};
+
+// CBaseFilter::StreamTime can retain the custom reference clock's absolute
+// domain on this live source. DirectShow sample timestamps are epoch-relative,
+// so latency telemetry normalizes the observed clock to the first delivery of
+// each queue epoch before comparing the two. This is diagnostic only.
+class RendererStreamTimeNormalizer
+{
+public:
+	bool Normalize(uint64_t epoch, int64_t observedTime100ns,
+		int64_t& streamTime100ns)
+	{
+		if (epoch == 0)
+			return false;
+		if (!m_initialized || epoch != m_epoch ||
+			observedTime100ns < m_observedBase100ns)
+		{
+			m_initialized = true;
+			m_epoch = epoch;
+			m_observedBase100ns = observedTime100ns;
+		}
+		streamTime100ns = observedTime100ns - m_observedBase100ns;
+		return true;
+	}
+
+private:
+	bool m_initialized = false;
+	uint64_t m_epoch = 0;
+	int64_t m_observedBase100ns = 0;
 };
 
 // UI telemetry deliberately ignores the first second of a fresh graph epoch,
@@ -214,4 +244,41 @@ inline bool HasCurrentEpochDownstreamDelivery(
 			snapshot.currentEpochDeliverySuccessCount) &&
 		snapshot.lastDeliverySuccessTick > 0 &&
 		snapshot.lastDeliverySuccessQueueEpoch == snapshot.queueEpoch;
+}
+
+inline uint64_t RendererTickAge(uint64_t nowTick, uint64_t eventTick)
+{
+	return eventTick == 0 || eventTick > nowTick ?
+		(std::numeric_limits<uint64_t>::max)() : nowTick - eventTick;
+}
+
+inline bool HasRecentCurrentEpochDelivery(
+	const RendererLivenessSnapshot& snapshot,
+	uint64_t nowTick,
+	uint64_t maximumAgeMs)
+{
+	return HasCurrentEpochDownstreamDelivery(snapshot) &&
+		RendererTickAge(nowTick, snapshot.lastDeliverySuccessTick) <=
+		maximumAgeMs;
+}
+
+inline bool IsSustainedDirectShowDeliveryStall(
+	const RendererLivenessSnapshot& snapshot,
+	uint64_t nowTick,
+	bool atCapacity,
+	uint64_t stallThresholdMs)
+{
+	if (!snapshot.supported || !snapshot.active || snapshot.buffering ||
+		snapshot.resetInProgress || !atCapacity || stallThresholdMs == 0)
+		return false;
+	const bool inputStillAdvancing = snapshot.lastInputTick != 0 &&
+		RendererTickAge(nowTick, snapshot.lastInputTick) <= 2000;
+	const bool blockedDelivery = snapshot.deliveryInProgress &&
+		snapshot.lastDeliveryStartTick != 0 &&
+		RendererTickAge(nowTick, snapshot.lastDeliveryStartTick) >=
+		stallThresholdMs;
+	const bool noDeliveryProgress = snapshot.lastDeliverySuccessTick != 0 &&
+		RendererTickAge(nowTick, snapshot.lastDeliverySuccessTick) >=
+		stallThresholdMs;
+	return inputStillAdvancing && (blockedDelivery || noDeliveryProgress);
 }

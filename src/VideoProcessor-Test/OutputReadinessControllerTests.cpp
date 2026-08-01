@@ -123,6 +123,24 @@ namespace Tests
 			Assert::IsTrue(decision.prefillSatisfied);
 		}
 
+		TEST_METHOD(ExplicitZeroFrameReserveIsImmediatelySteady)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			input.reserveFrames = 0;
+			(void)controller.Observe(input);
+
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 42;
+			input.currentEpochProcessedDepth = 0;
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Steady),
+				static_cast<int>(decision.state));
+			Assert::IsTrue(decision.prefillSatisfied);
+			Assert::IsTrue(decision.allowDownstreamDelivery);
+		}
+
 		TEST_METHOD(NewTransitionInvalidatesSteadyStateAndRequestsOneNewReset)
 		{
 			OutputReadinessController controller;

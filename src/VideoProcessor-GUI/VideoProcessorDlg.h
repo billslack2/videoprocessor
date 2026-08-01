@@ -402,6 +402,13 @@ protected:
 	uint32_t m_directShowGraphRecoveryGeneration = 0;
 	uint64_t m_directShowGraphRecoveryEpoch = 0;
 	ULONGLONG m_directShowGraphRecoveryStartedTick = 0;
+	// A failed in-place recovery may replace madVR once for the current capture
+	// state. The replacement graph itself is already a clean downstream prime,
+	// so output readiness must adopt it instead of stacking another reset.
+	bool m_nextRendererIsRecoveryRecreation = false;
+	uint32_t m_directShowRecoveryRecreatedGeneration = 0;
+	bool m_directShowRecoveryRecreationAttempted = false;
+	uint64_t m_directShowRecoveryRecreationCaptureSequence = 0;
 	ULONGLONG m_lastResetDeferralLogTick = 0;
 	std::atomic<ULONGLONG> m_lastUiMessageTick = 0;
 	std::atomic<ULONGLONG> m_lastUiPaintTick = 0;

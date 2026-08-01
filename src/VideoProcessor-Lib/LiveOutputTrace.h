@@ -36,6 +36,7 @@ struct LiveOutputTraceRecord
 	int64_t presentationStart = 0;
 	int64_t presentationStop = 0;
 	int64_t streamTime = 0;
+	int64_t observedClockTime = 0;
 	int64_t vpInternalUs = 0;
 	int64_t dsScheduleLeadUs = 0;
 	int64_t scheduledLatencyUs = 0;
@@ -178,6 +179,7 @@ public:
 				lhs.pipelineEpoch != rhs.pipelineEpoch ||
 				lhs.captureTimestamp != rhs.captureTimestamp ||
 				lhs.streamTime != rhs.streamTime ||
+				lhs.observedClockTime != rhs.observedClockTime ||
 				lhs.vpInternalUs != rhs.vpInternalUs ||
 				lhs.dsScheduleLeadUs != rhs.dsScheduleLeadUs ||
 				lhs.scheduledLatencyUs != rhs.scheduledLatencyUs ||
@@ -230,7 +232,8 @@ public:
 		const std::vector<LiveOutputTraceRecord>& records)
 	{
 		stream << "sequence,kind,frame,epoch,capture_timestamp,capture_arrival_tick,event_tick,"
-			"presentation_start,presentation_stop,stream_time,vp_internal_us,ds_schedule_lead_us,"
+			"presentation_start,presentation_stop,stream_time,observed_clock_time,"
+			"vp_internal_us,ds_schedule_lead_us,"
 			"vp_to_scheduled_us,displayed_vp_internal_us,displayed_ds_schedule_lead_us,"
 			"displayed_vp_to_scheduled_us,media_start,media_stop,output_sequence,"
 			"raw_queue,converted_queue,total_queue,queue_capacity,processing_us,delivery_us,"
@@ -247,7 +250,8 @@ public:
 				<< record.captureTimestamp << ',' << record.captureArrivalTick << ','
 				<< record.eventTick << ','
 				<< record.presentationStart << ',' << record.presentationStop << ','
-				<< record.streamTime << ',' << record.vpInternalUs << ','
+				<< record.streamTime << ',' << record.observedClockTime << ','
+				<< record.vpInternalUs << ','
 				<< record.dsScheduleLeadUs << ',' << record.scheduledLatencyUs << ','
 				<< record.displayedVpInternalUs << ','
 				<< record.displayedDsScheduleLeadUs << ','

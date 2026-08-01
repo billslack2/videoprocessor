@@ -74,6 +74,7 @@ namespace Tests
 			Assert::IsTrue(csv.find("raw_queue,converted_queue,total_queue,queue_capacity") != std::string::npos);
 			Assert::IsTrue(csv.find("capture_arrival_tick") != std::string::npos);
 			Assert::IsTrue(csv.find("vp_internal_us") != std::string::npos);
+			Assert::IsTrue(csv.find("observed_clock_time") != std::string::npos);
 			Assert::IsTrue(csv.find("latency_display_ready") != std::string::npos);
 			Assert::IsTrue(csv.find("madvr") == std::string::npos);
 			Assert::IsTrue(csv.find("1,3") != std::string::npos);

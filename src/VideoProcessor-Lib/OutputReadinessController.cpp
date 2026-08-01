@@ -107,7 +107,9 @@ OutputReadinessDecision OutputReadinessController::Observe(
 	decision.allowDownstreamDelivery = false;
 	if (m_state == OutputReadinessState::Prefilling)
 	{
-		decision.prefillSatisfied = input.reserveFrames > 0 &&
+		// A literal zero-frame reserve is a valid explicit policy and is
+		// satisfied immediately. It must not strand readiness in Prefilling.
+		decision.prefillSatisfied =
 			input.currentEpochProcessedDepth >= input.reserveFrames;
 		if (!decision.prefillSatisfied)
 		{
