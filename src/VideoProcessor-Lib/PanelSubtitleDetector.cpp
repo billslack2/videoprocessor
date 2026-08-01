@@ -78,14 +78,74 @@ bool PanelSubtitleDetector::HasNeutralChroma(const PanelSubtitleInput& input,
 	return std::abs(cb - 512) <= 208 && std::abs(cr - 512) <= 208;
 }
 
+bool PanelSubtitleDetector::HasLocalDarkSupport(const PanelSubtitleInput& input,
+	int x, int y, uint16_t glyphLuma) const
+{
+	// A low-PQ code is only interesting when it is locally contrasted against
+	// the trusted dark bar. Sample along eight rays so narrow/anti-aliased
+	// strokes remain eligible while broad scene areas never become seeds.
+	constexpr std::array<std::array<int, 2>, 8> Directions = {{
+		{{ -1, 0 }}, {{ 1, 0 }}, {{ 0, -1 }}, {{ 0, 1 }},
+		{{ -1, -1 }}, {{ 1, -1 }}, {{ -1, 1 }}, {{ 1, 1 }},
+	}};
+	const int width = static_cast<int>(input.width);
+	const int height = static_cast<int>(input.height);
+	int darkDirections = 0;
+	for (const auto& direction : Directions)
+	{
+		bool foundDark = false;
+		for (int distance = 1; distance <= 12; ++distance)
+		{
+			const int sampleX = x + direction[0] * distance;
+			const int sampleY = y + direction[1] * distance;
+			if (sampleX < 0 || sampleX >= width || sampleY < 0 || sampleY >= height)
+				break;
+			const auto* row = reinterpret_cast<const uint16_t*>(
+				reinterpret_cast<const uint8_t*>(input.p010Luma) +
+				static_cast<size_t>(sampleY) * input.strideBytes);
+			const uint16_t darkLuma = P010Code(row, sampleX);
+			if (darkLuma <= m_settings.maximumBackingLuma &&
+				glyphLuma >= darkLuma + m_settings.minimumGlyphContrast)
+			{
+				foundDark = true;
+				break;
+			}
+		}
+		if (foundDark && ++darkDirections >= 2)
+			return true;
+	}
+	return false;
+}
+
 bool PanelSubtitleDetector::IsGlyphSeed(const PanelSubtitleInput& input,
 	int x, int y) const
 {
 	const auto* row = reinterpret_cast<const uint16_t*>(
 		reinterpret_cast<const uint8_t*>(input.p010Luma) +
 		static_cast<size_t>(y) * input.strideBytes);
-	return P010Code(row, x) >= m_settings.minimumGlyphLuma &&
-		HasNeutralChroma(input, x, y);
+	// Only trusted letterbox/pillarbox bars get the HDR-safe coarse floor.
+	// Keeping the old bright-only floor in the active picture prevents normal
+	// PQ scene highlights from becoming subtitle proposals.
+	const bool trustedBar = IsTrustedActivePicture(input) &&
+		(y < input.activePictureTop || y >= input.activePictureBottom);
+	const uint16_t code = P010Code(row, x);
+	if (!HasNeutralChroma(input, x, y))
+		return false;
+	if (code >= std::max<uint16_t>(620, m_settings.minimumGlyphLuma))
+		return true;
+	return trustedBar && code >= m_settings.minimumGlyphLuma &&
+		HasLocalDarkSupport(input, x, y, code);
+}
+
+bool PanelSubtitleDetector::IsContrastGlyph(const PanelSubtitleInput& input,
+	int x, int y, uint16_t backingLuma) const
+{
+	const auto* row = reinterpret_cast<const uint16_t*>(
+		reinterpret_cast<const uint8_t*>(input.p010Luma) +
+		static_cast<size_t>(y) * input.strideBytes);
+	const uint16_t threshold = static_cast<uint16_t>(std::min<int>(1023,
+		static_cast<int>(backingLuma) + m_settings.minimumGlyphContrast));
+	return P010Code(row, x) >= threshold && HasNeutralChroma(input, x, y);
 }
 
 void PanelSubtitleDetector::Reset()
@@ -214,7 +274,7 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 			static_cast<size_t>(y) * input.strideBytes);
 		for (int x = glyphBounds.left; x < glyphBounds.right; ++x)
 		{
-			if (!IsGlyphSeed(input, x, y))
+			if (!IsContrastGlyph(input, x, y, backingLuma))
 				continue;
 			++seedPixels;
 			seedLeft = std::min(seedLeft, x);
@@ -239,7 +299,7 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 			reinterpret_cast<const uint8_t*>(input.p010Luma) +
 			static_cast<size_t>(y) * input.strideBytes);
 		for (int x = glyphBounds.left; x < glyphBounds.right; ++x)
-			if (IsGlyphSeed(input, x, y))
+			if (IsContrastGlyph(input, x, y, backingLuma))
 			{
 				// Normalize to the seed origin: a one-pixel source jitter does not
 				// invalidate an otherwise identical long-running cue.
@@ -260,7 +320,7 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 			const auto* row = reinterpret_cast<const uint16_t*>(
 				reinterpret_cast<const uint8_t*>(input.p010Luma) +
 				static_cast<size_t>(y) * input.strideBytes);
-			occupied = IsGlyphSeed(input, x, y);
+			occupied = IsContrastGlyph(input, x, y, backingLuma);
 		}
 		if (occupied)
 		{
@@ -314,9 +374,9 @@ void PanelSubtitleDetector::BuildMask(const PanelSubtitleInput& input,
 			candidates[index].line.glyphBounds.right + 4,
 			candidates[index].line.glyphBounds.bottom + 4 },
 			static_cast<int>(input.width), static_cast<int>(input.height));
-		const uint16_t threshold = static_cast<uint16_t>(std::max<int>(
-			candidates[index].backingLuma + 16,
-			static_cast<int>(m_settings.minimumGlyphLuma) - 96));
+		const uint16_t threshold = static_cast<uint16_t>(std::min<int>(1023,
+			static_cast<int>(candidates[index].backingLuma) +
+			m_settings.minimumGlyphContrast));
 		for (int y = nearby.top; y < nearby.bottom; ++y)
 		{
 			const auto* row = reinterpret_cast<const uint16_t*>(
@@ -545,7 +605,7 @@ bool PanelSubtitleDetector::HasStableSeedOverlap(const PanelSubtitleInput& input
 		for (int x = line.glyphBounds.left; x < line.glyphBounds.right; ++x)
 		{
 			const size_t index = static_cast<size_t>(y) * input.width + x;
-			const bool current = IsGlyphSeed(input, x, y);
+			const bool current = IsContrastGlyph(input, x, y, line.backingLuma);
 			const bool previous = (*m_stable.softGlyphMask)[index] != 0;
 			currentSeeds += current;
 			previousSeeds += previous;

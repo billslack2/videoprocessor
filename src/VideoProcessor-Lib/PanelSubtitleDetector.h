@@ -42,8 +42,13 @@ struct PanelSubtitleGeneration
 
 struct PanelSubtitleDetectorSettings
 {
-	// P010 10-bit luma code threshold for white or near-white glyph seeds.
-	uint16_t minimumGlyphLuma = 620;
+	// Conservative P010 10-bit acquisition floor. This is deliberately below
+	// SDR reference white: PQ subtitles can be visually white after tone
+	// mapping while their source code is only around 500.
+	uint16_t minimumGlyphLuma = 320;
+	// A candidate must still be this much brighter than its learned dark-bar
+	// backing before it is accepted or included in the glyph mask.
+	uint16_t minimumGlyphContrast = 160;
 	int minimumGlyphWidth = 12;
 	int minimumGlyphHeight = 7;
 	int maximumGlyphHeightPercent = 8;
@@ -140,7 +145,11 @@ private:
 		const PanelSubtitleGeneration& right);
 	static uint16_t P010Code(const uint16_t* row, int x);
 	bool HasNeutralChroma(const PanelSubtitleInput& input, int x, int y) const;
+	bool HasLocalDarkSupport(const PanelSubtitleInput& input, int x, int y,
+		uint16_t glyphLuma) const;
 	bool IsGlyphSeed(const PanelSubtitleInput& input, int x, int y) const;
+	bool IsContrastGlyph(const PanelSubtitleInput& input, int x, int y,
+		uint16_t backingLuma) const;
 
 	bool IsTrustedActivePicture(const PanelSubtitleInput& input) const;
 	bool IsInSearchDomain(const PanelSubtitleInput& input, int y) const;

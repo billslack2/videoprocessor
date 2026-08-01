@@ -307,6 +307,7 @@ namespace Tests
 			};
 
 			std::vector<uint16_t> topBoundary = Frame();
+			Fill(topBoundary, 0, 0, Width, 20, 80);
 			Fill(topBoundary, 35, 12, 125, 29, 80);
 			Fill(topBoundary, 50, 16, 110, 24, 820);
 			const PanelSubtitleResult top = detectTwice(topBoundary);
@@ -315,6 +316,7 @@ namespace Tests
 				static_cast<int>(top.lines[0].location));
 
 			std::vector<uint16_t> topBar = Frame();
+			Fill(topBar, 0, 0, Width, 20, 80);
 			Fill(topBar, 35, 1, 125, 17, 80);
 			Fill(topBar, 50, 5, 110, 13, 820);
 			const PanelSubtitleResult bar = detectTwice(topBar);
@@ -345,6 +347,7 @@ namespace Tests
 		TEST_METHOD(AcceptsOneSidedEncodedBars)
 		{
 			std::vector<uint16_t> bottomOnly = Frame();
+			Fill(bottomOnly, 0, 80, Width, Height, 80);
 			Fill(bottomOnly, 35, 82, 125, 99, 80);
 			Fill(bottomOnly, 50, 86, 110, 94, 820);
 			PanelSubtitleDetector bottomDetector;
@@ -357,6 +360,7 @@ namespace Tests
 				static_cast<int>(bottom.lines[0].location));
 
 			std::vector<uint16_t> topOnly = Frame();
+			Fill(topOnly, 0, 0, Width, 20, 80);
 			Fill(topOnly, 35, 1, 125, 18, 80);
 			Fill(topOnly, 50, 5, 110, 13, 820);
 			PanelSubtitleDetector topDetector;
@@ -421,10 +425,67 @@ namespace Tests
 				PanelSubtitleTestMode::Highlight, 276, 1884));
 		}
 
+		TEST_METHOD(DetectsPqDiffuseWhiteSubtitleAgainstBlackBar)
+		{
+			// PQ 100-nit/diffuse-white captions can be visibly white after tone
+			// mapping without ever reaching an SDR-style P010 code of 620.
+			constexpr int UhdWidth = 3840;
+			constexpr int UhdHeight = 2160;
+			std::vector<uint16_t> luma(static_cast<size_t>(UhdWidth) * UhdHeight,
+				static_cast<uint16_t>(600 << 6));
+			std::vector<uint16_t> chroma(static_cast<size_t>(UhdWidth) * UhdHeight / 2,
+				static_cast<uint16_t>(512 << 6));
+			auto fill = [&](int left, int top, int right, int bottom, uint16_t code)
+			{
+				for (int y = top; y < bottom; ++y)
+					for (int x = left; x < right; ++x)
+						luma[static_cast<size_t>(y) * UhdWidth + x] =
+							static_cast<uint16_t>(code << 6);
+			};
+			fill(0, 0, UhdWidth, 276, 64);
+			fill(0, 1884, UhdWidth, UhdHeight, 64);
+			// Simple high-contrast strokes rather than filled slabs: this mirrors
+			// a real anti-aliased glyph and exercises the local dark-support rule.
+			for (int x = 1020; x < 1810; x += 74)
+			{
+				fill(x, 1988, x + 9, 2038, 510);
+				fill(x, 1988, x + 48, 1997, 510);
+				fill(x, 2029, x + 48, 2038, 510);
+			}
+
+			PanelSubtitleInput input;
+			input.p010Luma = luma.data();
+			input.p010Chroma = chroma.data();
+			input.width = UhdWidth;
+			input.height = UhdHeight;
+			input.strideBytes = UhdWidth * sizeof(uint16_t);
+			input.chromaStrideBytes = UhdWidth * sizeof(uint16_t);
+			input.activePictureTop = 276;
+			input.activePictureBottom = 1884;
+			input.generation = { 1, 2, 3 };
+			input.trustedActivePictureGeneration = 2;
+			input.activePictureStable = true;
+			input.enabled = true;
+			input.sourceSequence = 1;
+
+			PanelSubtitleDetector detector;
+			Assert::AreEqual(static_cast<int>(PanelSubtitleState::Candidate),
+				static_cast<int>(detector.Analyze(input).state));
+			input.sourceSequence = 2;
+			const auto stable = detector.Analyze(input);
+			Assert::AreEqual(static_cast<int>(PanelSubtitleState::Stable),
+				static_cast<int>(stable.state));
+			Assert::AreEqual(static_cast<int>(PanelSubtitleLocation::BottomBar),
+				static_cast<int>(stable.lines[0].location));
+			Assert::IsTrue(stable.softGlyphMask &&
+				(*stable.softGlyphMask)[static_cast<size_t>(2000) * UhdWidth + 1024] != 0);
+		}
+
 		TEST_METHOD(RejectsSeparatedMenuHighlightsAndKeepsFrozenCaptureBox)
 		{
 			PanelSubtitleDetector detector;
 			std::vector<uint16_t> menu = Frame();
+			Fill(menu, 0, 0, Width, 20, 80);
 			Fill(menu, 10, 1, 150, 17, 80);
 			Fill(menu, 18, 5, 48, 13, 820);
 			Fill(menu, 108, 5, 138, 13, 820);
@@ -433,12 +494,14 @@ namespace Tests
 			detector.Reset();
 
 			std::vector<uint16_t> first = Frame();
+			Fill(first, 0, 0, Width, 20, 80);
 			Fill(first, 35, 12, 125, 29, 80);
 			Fill(first, 50, 16, 110, 24, 820);
 			detector.Analyze(ActiveInput(first, 2));
 			const PanelSubtitleResult stable = detector.Analyze(ActiveInput(first, 3));
 			const PanelSubtitleRect frozen = stable.lines[0].captureBounds;
 			std::vector<uint16_t> shifted = Frame();
+			Fill(shifted, 0, 0, Width, 20, 80);
 			Fill(shifted, 36, 12, 126, 29, 80);
 			Fill(shifted, 51, 16, 111, 24, 820);
 			const PanelSubtitleResult retained = detector.Analyze(ActiveInput(shifted, 4));
