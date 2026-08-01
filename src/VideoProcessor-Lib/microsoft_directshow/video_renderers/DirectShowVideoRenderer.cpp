@@ -1015,6 +1015,23 @@ void DirectShowVideoRenderer::SetSubtitleRepositioningMode(
 	m_liveSource->GetVideoOutputPin()->SetSubtitleRepositioningMode(mode);
 }
 
+void DirectShowVideoRenderer::SetPanelSubtitleTestMode(
+	PanelSubtitleTestMode mode)
+{
+	if (!IsGraphThread())
+	{
+		PostCoalescedGraphCommand(GRAPH_COMMAND_PANEL_SUBTITLE_MODE,
+			[this, mode]()
+			{
+				SetPanelSubtitleTestMode(mode);
+			});
+		return;
+	}
+	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
+		return;
+	m_liveSource->GetVideoOutputPin()->SetPanelSubtitleTestMode(mode);
+}
+
 void DirectShowVideoRenderer::SetSceneTimingRates(
 	double displayRefreshRateHz,
 	double measuredCaptureRateHz)

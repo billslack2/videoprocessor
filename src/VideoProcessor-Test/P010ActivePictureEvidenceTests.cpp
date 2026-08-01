@@ -135,6 +135,27 @@ namespace VideoProcessorTest
 			Assert::IsTrue(evidence.lumaSamples < 30000);
 		}
 
+		TEST_METHOD(ScopeBarsRemainTrustedWithSubtitleInsideBottomBar)
+		{
+			P010Frame frame(3840, 2160);
+			frame.BlackOutside(0, 276, 3840, 1884);
+			// Cover exactly two of the six distributed bottom-bar depth rows and
+			// interrupt the bottom-up boundary scan. This models a long, bright
+			// subtitle wholly inside the encoded bottom bar.
+			frame.FillRectangle(600, 1988, 3300, 2052, 900);
+			const auto evidence =
+				ExtractP010ActivePictureEvidence(frame.View());
+			Assert::AreEqual(
+				static_cast<int>(
+					ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(evidence.classification));
+			Assert::IsTrue(evidence.top.trusted);
+			Assert::IsTrue(evidence.bottom.trusted);
+			Assert::IsTrue(std::abs(evidence.trustedBounds.top - 276) <= 4);
+			Assert::IsTrue(std::abs(evidence.trustedBounds.bottom - 1884) <= 4);
+			Assert::IsTrue(evidence.lumaSamples < 30000);
+		}
+
 		TEST_METHOD(FourByThreePillarboxIsTrusted)
 		{
 			P010Frame frame(320, 180);

@@ -222,9 +222,12 @@
     <ClInclude Include="microsoft_directshow\live_source_filter\GpuSubtitleDetector.h">
       <Filter>Header Files\microsoft_directshow\live_source_filter</Filter>
     </ClInclude>
-    <ClInclude Include="SubtitleRepositionMode.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
+	<ClInclude Include="SubtitleRepositionMode.h">
+	  <Filter>Header Files</Filter>
+	</ClInclude>
+	<ClInclude Include="PanelSubtitleTestMode.h">
+	  <Filter>Header Files</Filter>
+	</ClInclude>
     <ClInclude Include="microsoft_directshow\live_source_filter\CLiveSource.h">
       <Filter>Header Files\microsoft_directshow\live_source_filter</Filter>
     </ClInclude>

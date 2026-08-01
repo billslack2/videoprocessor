@@ -278,6 +278,12 @@ void LibplaceboPluginVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 	m_renderer->SetSceneAwareTimingCorrection(enabled);
 }
 
+void LibplaceboPluginVideoRenderer::SetPanelSubtitleTestMode(
+	PanelSubtitleTestMode mode)
+{
+	m_renderer->SetPanelSubtitleTestMode(mode);
+}
+
 uint64_t LibplaceboPluginVideoRenderer::SceneAwareCorrectionDropCount() const
 {
 	return m_renderer->SceneAwareCorrectionDropCount();

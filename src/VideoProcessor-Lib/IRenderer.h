@@ -13,6 +13,7 @@
 #include <VideoState.h>
 #include <RendererLiveness.h>
 #include <RendererResetRequest.h>
+#include <PanelSubtitleTestMode.h>
 #include <SubtitleRepositionMode.h>
 #include <functional>
 #include <memory>
@@ -257,6 +258,7 @@ public:
 	{
 		SetSubtitleRepositioning(mode != SubtitleRepositionMode::DISABLED);
 	}
+	virtual void SetPanelSubtitleTestMode(PanelSubtitleTestMode) {}
 
 	// Supply the measured display refresh and capture rates used by the
 	// scene-aware whole-frame phase predictor. Renderers that do not implement

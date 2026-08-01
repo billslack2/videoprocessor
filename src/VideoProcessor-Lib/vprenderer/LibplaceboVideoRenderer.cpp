@@ -3,6 +3,7 @@
 #include "LibplaceboVideoRenderer.h"
 
 #include <ConfigFile.h>
+#include <ActivePictureAnalyzer.h>
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
 #include <P010ActivePictureEvidence.h>
@@ -2243,6 +2244,12 @@ struct LibplaceboVideoRenderer::Impl
 	// Always-on only in this diagnostic test build. This is the same P010
 	// detector used by DirectShow/madVR and has no OCR or neural inference.
 	PanelSubtitleDetector panelSubtitleDetector;
+	PanelSubtitleTestMode panelSubtitleTestMode =
+		PanelSubtitleTestMode::Off;
+	ActivePictureAnalyzer panelSubtitlePictureAnalyzer;
+	ActivePictureBounds panelSubtitlePictureBounds;
+	bool panelSubtitlePictureAvailable = false;
+	uint64_t panelSubtitlePictureGeneration = 1;
 	PanelSubtitleState panelSubtitleLastReportedState =
 		PanelSubtitleState::Unavailable;
 	uint64_t panelSubtitleLastReportedFingerprint = 0;
@@ -4776,15 +4783,64 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ApplyPanelSubtitleDiagnostic(uint16_t* yPixels, uint16_t* uvPixels,
 		int width, int height, size_t rowBytes, uint64_t sourceSequence,
-		uint64_t frameGeneration)
+		uint64_t frameGeneration, double framesPerSecond,
+		PanelSubtitleTestMode testMode)
 	{
-		const PanelSubtitleResult result = panelSubtitleDetector.Analyze({
-			yPixels, static_cast<size_t>(width), static_cast<size_t>(height),
-			rowBytes, height / 3, height, sourceSequence,
-			{ frameGeneration, nlsGeometryGeneration, 0 }, true });
+		if (testMode == PanelSubtitleTestMode::Off)
+		{
+			panelSubtitleDetector.Reset();
+			panelSubtitlePictureAnalyzer.Reset();
+			panelSubtitlePictureAvailable = false;
+			return;
+		}
+		const size_t lumaBytes = rowBytes * static_cast<size_t>(height);
+		const ActivePictureAnalyzerResult picture =
+			panelSubtitlePictureAnalyzer.Analyze({
+				{ reinterpret_cast<const uint8_t*>(yPixels), lumaBytes * 3 / 2,
+					width, height, rowBytes, rowBytes },
+				sourceSequence, std::max(1.0, framesPerSecond) });
+		if (picture.analyzed)
+		{
+			if (picture.decision.clearTransition)
+			{
+				if (panelSubtitlePictureAvailable)
+					++panelSubtitlePictureGeneration;
+				panelSubtitlePictureAvailable = false;
+				panelSubtitleDetector.Reset();
+			}
+			else if (picture.decision.stable)
+			{
+				if (picture.decision.publish ||
+					!panelSubtitlePictureAvailable)
+					++panelSubtitlePictureGeneration;
+				panelSubtitlePictureBounds = picture.decision.bounds;
+				panelSubtitlePictureAvailable =
+					panelSubtitlePictureBounds.top > 0 ||
+					panelSubtitlePictureBounds.bottom < height;
+			}
+		}
+		PanelSubtitleInput input;
+		input.p010Luma = yPixels;
+		input.width = static_cast<size_t>(width);
+		input.height = static_cast<size_t>(height);
+		input.strideBytes = rowBytes;
+		input.sourceSequence = sourceSequence;
+		input.generation = { frameGeneration,
+			panelSubtitlePictureGeneration, 0 };
+		input.enabled = panelSubtitlePictureAvailable;
+		input.activePictureTop = panelSubtitlePictureBounds.top;
+		input.activePictureBottom = panelSubtitlePictureBounds.bottom;
+		input.trustedActivePictureGeneration =
+			panelSubtitlePictureGeneration;
+		input.activePictureStable = panelSubtitlePictureAvailable;
+		input.p010Chroma = uvPixels;
+		input.chromaStrideBytes = rowBytes;
+		const PanelSubtitleResult result = panelSubtitleDetector.Analyze(input);
 		const bool applied = PanelSubtitleDiagnostic::Apply(result, {
 			yPixels, uvPixels, static_cast<size_t>(width),
-			static_cast<size_t>(height), rowBytes, rowBytes });
+			static_cast<size_t>(height), rowBytes, rowBytes }, testMode,
+			panelSubtitlePictureBounds.top,
+			panelSubtitlePictureBounds.bottom);
 		if (result.state != panelSubtitleLastReportedState ||
 			result.fingerprint != panelSubtitleLastReportedFingerprint)
 		{
@@ -4945,7 +5001,8 @@ struct LibplaceboVideoRenderer::Impl
 			reinterpret_cast<uint16_t*>(convertedFrame.data()),
 			reinterpret_cast<uint16_t*>(convertedFrame.data() +
 				rowBytes * static_cast<size_t>(height)),
-			width, height, rowBytes, sourceSequence, frameGeneration);
+			width, height, rowBytes, sourceSequence, frameGeneration,
+			captureRateHz, panelSubtitleTestMode);
 
 		struct pl_plane_data planes[2]{};
 		planes[0].type = PL_FMT_UNORM;
@@ -6232,6 +6289,29 @@ void LibplaceboVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 		m_sceneCorrectionDueState.store(0, std::memory_order_release);
 		DebugLog::Log("libplacebo scene detection %s", enabled ? "enabled" : "disabled");
 	}
+}
+
+void LibplaceboVideoRenderer::SetPanelSubtitleTestMode(
+	PanelSubtitleTestMode mode)
+{
+	const PanelSubtitleTestMode previous =
+		m_panelSubtitleTestMode.exchange(mode, std::memory_order_acq_rel);
+	if (previous == mode)
+		return;
+	if (m_impl)
+	{
+		std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+		m_impl->panelSubtitleTestMode = mode;
+		m_impl->panelSubtitleDetector.Reset();
+		m_impl->panelSubtitlePictureAnalyzer.Reset();
+		m_impl->panelSubtitlePictureAvailable = false;
+		++m_impl->panelSubtitlePictureGeneration;
+		m_impl->panelSubtitleLastReportedState =
+			PanelSubtitleState::Unavailable;
+		m_impl->panelSubtitleLastReportedFingerprint = 0;
+	}
+	DebugLog::Log("VP-0070 test mode: renderer=Alpha mode=%s",
+		PanelSubtitleTestModeName(mode));
 }
 
 uint64_t LibplaceboVideoRenderer::SceneAwareCorrectionDropCount() const

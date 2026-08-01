@@ -186,6 +186,7 @@
     </ClCompile>
     <ClCompile Include="SceneDetectorTests.cpp" />
 	<ClCompile Include="PanelSubtitleDetectorTests.cpp" />
+	<ClCompile Include="PanelSubtitleDiagnosticTests.cpp" />
     <ClCompile Include="AlphaPresentationTelemetryTests.cpp" />
     <ClCompile Include="AlphaCadenceCorrectionPolicyTests.cpp" />
     <ClCompile Include="ConfigFileTests.cpp" />

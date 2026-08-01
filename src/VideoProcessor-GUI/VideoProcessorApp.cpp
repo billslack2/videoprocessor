@@ -496,6 +496,8 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigBoolOption(arguments, config, { "scene_correction_basic" }, L"/scene_correction_basic");
 	AppendConfigStringOption(arguments, config,
 		{ "subtitle_reposition" }, L"/subtitle_reposition");
+	AppendConfigStringOption(arguments, config,
+		{ "subtitle_panel_test_mode" }, L"/subtitle_panel_test_mode");
 	AppendConfigBoolOption(arguments, config, { "newlldv", "new_lldv" }, L"/newlldv");
 	AppendConfigBoolOption(arguments, config, { "noui", "no_ui" }, L"/noui");
 	AppendConfigBoolOption(arguments, config, { "startminimized", "start_minimized" }, L"/startminimized");
@@ -600,6 +602,30 @@ bool TryParseSubtitleRepositionMode(
 	if (_wcsicmp(argument, L"advanced") == 0)
 	{
 		mode = SubtitleRepositionMode::ADVANCED;
+		return true;
+	}
+	return false;
+}
+
+bool TryParsePanelSubtitleTestMode(
+	const wchar_t* argument,
+	PanelSubtitleTestMode& mode)
+{
+	if (argument == nullptr)
+		return false;
+	if (_wcsicmp(argument, L"off") == 0)
+	{
+		mode = PanelSubtitleTestMode::Off;
+		return true;
+	}
+	if (_wcsicmp(argument, L"highlight") == 0)
+	{
+		mode = PanelSubtitleTestMode::Highlight;
+		return true;
+	}
+	if (_wcsicmp(argument, L"move") == 0)
+	{
+		mode = PanelSubtitleTestMode::Move;
 		return true;
 	}
 	return false;
@@ -750,6 +776,18 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 						"true, false, basic, or advanced");
 				++index;
 			}
+			continue;
+		}
+		if (IsCommandLineOption(argument, L"/subtitle_panel_test_mode"))
+		{
+			if (index + 1 >= static_cast<int>(arguments.size()) ||
+				IsCommandLineSwitch(arguments[index + 1]))
+				throw std::runtime_error(
+					"Missing /subtitle_panel_test_mode value");
+			PanelSubtitleTestMode ignored = PanelSubtitleTestMode::Off;
+			if (!TryParsePanelSubtitleTestMode(arguments[++index], ignored))
+				throw std::runtime_error(
+					"Invalid /subtitle_panel_test_mode: expected off, highlight, or move");
 			continue;
 		}
 		if (IsBooleanCommandLineOption(argument))
@@ -1433,6 +1471,20 @@ BOOL CVideoProcessorApp::InitInstance()
 					++i;
 				}
 				dlg.SubtitleRepositioning(subtitleMode);
+			}
+
+			if (IsCommandLineOption(
+				pArgs[i], L"/subtitle_panel_test_mode"))
+			{
+				if (i + 1 >= iNumOfArgs ||
+					IsCommandLineSwitch(pArgs[i + 1]))
+					throw std::runtime_error(
+						"Missing /subtitle_panel_test_mode value");
+				PanelSubtitleTestMode panelMode = PanelSubtitleTestMode::Off;
+				if (!TryParsePanelSubtitleTestMode(pArgs[++i], panelMode))
+					throw std::runtime_error(
+						"Invalid /subtitle_panel_test_mode: expected off, highlight, or move");
+				dlg.PanelSubtitleTesting(panelMode);
 			}
 
 			if (wcscmp(pArgs[i], L"/scene_correction_mode") == 0 &&

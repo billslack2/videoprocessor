@@ -3,7 +3,33 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdlib>
+#include <cmath>
+#include <limits>
+
+namespace
+{
+	constexpr size_t MaximumLines = 3;
+
+	int RectWidth(const PanelSubtitleRect& rectangle)
+	{
+		return std::max(0, rectangle.right - rectangle.left);
+	}
+
+	int RectHeight(const PanelSubtitleRect& rectangle)
+	{
+		return std::max(0, rectangle.bottom - rectangle.top);
+	}
+
+	PanelSubtitleRect ClampRectangle(PanelSubtitleRect rectangle, int width,
+		int height)
+	{
+		rectangle.left = std::max(0, std::min(width, rectangle.left));
+		rectangle.right = std::max(0, std::min(width, rectangle.right));
+		rectangle.top = std::max(0, std::min(height, rectangle.top));
+		rectangle.bottom = std::max(0, std::min(height, rectangle.bottom));
+		return rectangle;
+	}
+}
 
 PanelSubtitleDetector::PanelSubtitleDetector(
 	const PanelSubtitleDetectorSettings& settings) :
@@ -16,11 +42,13 @@ bool PanelSubtitleDetector::IsValid(const PanelSubtitleRect& rectangle)
 	return rectangle.right > rectangle.left && rectangle.bottom > rectangle.top;
 }
 
-bool PanelSubtitleDetector::SameRectangle(const PanelSubtitleRect& left,
-	const PanelSubtitleRect& right)
+bool PanelSubtitleDetector::SameRectangleWithin(const PanelSubtitleRect& left,
+	const PanelSubtitleRect& right, int tolerance)
 {
-	return left.left == right.left && left.top == right.top &&
-		left.right == right.right && left.bottom == right.bottom;
+	return std::abs(left.left - right.left) <= tolerance &&
+		std::abs(left.top - right.top) <= tolerance &&
+		std::abs(left.right - right.right) <= tolerance &&
+		std::abs(left.bottom - right.bottom) <= tolerance;
 }
 
 bool PanelSubtitleDetector::SameGeneration(const PanelSubtitleGeneration& left,
@@ -36,54 +64,279 @@ uint16_t PanelSubtitleDetector::P010Code(const uint16_t* row, int x)
 	return static_cast<uint16_t>(row[x] >> 6);
 }
 
+bool PanelSubtitleDetector::HasNeutralChroma(const PanelSubtitleInput& input,
+	int x, int y) const
+{
+	if (!input.p010Chroma || input.chromaStrideBytes < input.width * sizeof(uint16_t))
+		return true;
+	const auto* row = reinterpret_cast<const uint16_t*>(
+		reinterpret_cast<const uint8_t*>(input.p010Chroma) +
+		static_cast<size_t>(y / 2) * input.chromaStrideBytes);
+	const int chromaX = (x / 2) * 2;
+	const int cb = P010Code(row, chromaX);
+	const int cr = P010Code(row, chromaX + 1);
+	return std::abs(cb - 512) <= 208 && std::abs(cr - 512) <= 208;
+}
+
+bool PanelSubtitleDetector::IsGlyphSeed(const PanelSubtitleInput& input,
+	int x, int y) const
+{
+	const auto* row = reinterpret_cast<const uint16_t*>(
+		reinterpret_cast<const uint8_t*>(input.p010Luma) +
+		static_cast<size_t>(y) * input.strideBytes);
+	return P010Code(row, x) >= m_settings.minimumGlyphLuma &&
+		HasNeutralChroma(input, x, y);
+}
+
 void PanelSubtitleDetector::Reset()
 {
 	m_candidate = {};
 	m_stable = {};
+	m_acquisitionGeneration = {};
+	m_nextAcquisitionSequence = 0;
+	m_hasAcquisitionGeneration = false;
 }
 
-PanelSubtitleDetector::RowRun PanelSubtitleDetector::LongestDarkRun(
-	const PanelSubtitleInput& input, int y) const
+bool PanelSubtitleDetector::IsTrustedActivePicture(
+	const PanelSubtitleInput& input) const
 {
-	const auto* row = reinterpret_cast<const uint16_t*>(
-		reinterpret_cast<const uint8_t*>(input.p010Luma) +
-		static_cast<size_t>(y) * input.strideBytes);
-	RowRun best;
-	int runLeft = 0;
-	bool inRun = false;
-	for (int x = 0; x < static_cast<int>(input.width); ++x)
+	return input.activePictureStable &&
+		input.trustedActivePictureGeneration != 0 &&
+		input.trustedActivePictureGeneration == input.generation.activePicture &&
+		input.activePictureTop >= 0 &&
+		input.activePictureBottom > input.activePictureTop &&
+		input.activePictureBottom <= static_cast<int>(input.height) &&
+		(input.activePictureTop > 0 ||
+			input.activePictureBottom < static_cast<int>(input.height));
+}
+
+bool PanelSubtitleDetector::IsInSearchDomain(const PanelSubtitleInput& input,
+	int y) const
+{
+	if (!IsTrustedActivePicture(input))
+		return y >= std::max(0, input.searchTop) &&
+			y < std::min(static_cast<int>(input.height), input.searchBottom);
+
+	const int boundary = std::max(32,
+		(static_cast<int>(input.height) * m_settings.boundaryBandPercent + 99) / 100);
+	return y < std::min(static_cast<int>(input.height), input.activePictureTop + boundary) ||
+		y >= std::max(0, input.activePictureBottom - boundary);
+}
+
+bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
+	const PanelSubtitleRect& glyphBounds, Candidate& candidate)
+{
+	const int width = static_cast<int>(input.width);
+	const int height = static_cast<int>(input.height);
+	const int glyphHeight = RectHeight(glyphBounds);
+	const int supportX = std::max(8, glyphHeight / 3);
+	const int supportY = std::max(6, glyphHeight / 4);
+	const PanelSubtitleRect support = ClampRectangle({
+		glyphBounds.left - supportX, glyphBounds.top - supportY,
+		glyphBounds.right + supportX, glyphBounds.bottom + supportY }, width, height);
+	if (!IsValid(support))
+		return false;
+
+	std::array<uint32_t, 1024> histogram{};
+	uint32_t nonSeeds = 0;
+	for (int y = support.top; y < support.bottom; ++y)
 	{
-		if (P010Code(row, x) <= m_settings.maximumPanelLuma)
+		const auto* row = reinterpret_cast<const uint16_t*>(
+			reinterpret_cast<const uint8_t*>(input.p010Luma) +
+			static_cast<size_t>(y) * input.strideBytes);
+		for (int x = support.left; x < support.right; ++x)
 		{
-			if (!inRun)
-			{
-				runLeft = x;
-				inRun = true;
-			}
-		}
-		else if (inRun)
-		{
-			if (x - runLeft > best.right - best.left)
-				best = { runLeft, x };
-			inRun = false;
+			const uint16_t code = P010Code(row, x);
+			if (IsGlyphSeed(input, x, y))
+				continue;
+			++histogram[code];
+			++nonSeeds;
 		}
 	}
-	if (inRun && static_cast<int>(input.width) - runLeft > best.right - best.left)
-		best = { runLeft, static_cast<int>(input.width) };
-	return best;
+	if (nonSeeds == 0)
+		return false;
+	const uint32_t rank = (nonSeeds * 72 + 99) / 100;
+	uint32_t cumulative = 0;
+	uint16_t backingLuma = 1023;
+	for (size_t code = 0; code < histogram.size(); ++code)
+	{
+		cumulative += histogram[code];
+		if (cumulative >= rank)
+		{
+			backingLuma = static_cast<uint16_t>(code);
+			break;
+		}
+	}
+	const uint16_t backingLimit = static_cast<uint16_t>(std::min<int>(
+		m_settings.maximumBackingLuma, backingLuma + 48));
+	uint32_t dark = 0;
+	for (int y = support.top; y < support.bottom; ++y)
+	{
+		const auto* row = reinterpret_cast<const uint16_t*>(
+			reinterpret_cast<const uint8_t*>(input.p010Luma) +
+			static_cast<size_t>(y) * input.strideBytes);
+		for (int x = support.left; x < support.right; ++x)
+		{
+			const uint16_t code = P010Code(row, x);
+			if (!IsGlyphSeed(input, x, y) && code <= backingLimit)
+				++dark;
+		}
+	}
+	if (dark * 100 < nonSeeds * m_settings.minimumBackingCoveragePercent)
+		return false;
+
+	PanelSubtitleLocation location = PanelSubtitleLocation::None;
+	uint32_t beforeBoundary = 0;
+	uint32_t afterBoundary = 0;
+	if (IsTrustedActivePicture(input))
+	{
+		const int top = input.activePictureTop;
+		const int bottom = input.activePictureBottom;
+		const bool crossesTop = glyphBounds.top < top && glyphBounds.bottom > top;
+		const bool crossesBottom = glyphBounds.top < bottom && glyphBounds.bottom > bottom;
+		const bool topBar = glyphBounds.bottom <= top;
+		const bool bottomBar = glyphBounds.top >= bottom;
+		if (static_cast<int>(crossesTop) + static_cast<int>(crossesBottom) +
+			static_cast<int>(topBar) + static_cast<int>(bottomBar) != 1)
+			return false;
+		location = crossesTop ? PanelSubtitleLocation::TopBoundary :
+			crossesBottom ? PanelSubtitleLocation::BottomBoundary :
+			topBar ? PanelSubtitleLocation::TopBar : PanelSubtitleLocation::BottomBar;
+	}
+
+	uint32_t seedPixels = 0;
+	int seedLeft = glyphBounds.right;
+	int seedTop = glyphBounds.bottom;
+	for (int y = glyphBounds.top; y < glyphBounds.bottom; ++y)
+	{
+		const auto* row = reinterpret_cast<const uint16_t*>(
+			reinterpret_cast<const uint8_t*>(input.p010Luma) +
+			static_cast<size_t>(y) * input.strideBytes);
+		for (int x = glyphBounds.left; x < glyphBounds.right; ++x)
+		{
+			if (!IsGlyphSeed(input, x, y))
+				continue;
+			++seedPixels;
+			seedLeft = std::min(seedLeft, x);
+			seedTop = std::min(seedTop, y);
+			if (location == PanelSubtitleLocation::TopBoundary && y < input.activePictureTop ||
+				location == PanelSubtitleLocation::BottomBoundary && y < input.activePictureBottom)
+				++beforeBoundary;
+			if (location == PanelSubtitleLocation::TopBoundary && y >= input.activePictureTop ||
+				location == PanelSubtitleLocation::BottomBoundary && y >= input.activePictureBottom)
+				++afterBoundary;
+		}
+	}
+	if (seedPixels < 24 ||
+		((location == PanelSubtitleLocation::TopBoundary ||
+			location == PanelSubtitleLocation::BottomBoundary) &&
+			(beforeBoundary < 12 || afterBoundary < 12)))
+		return false;
+	uint64_t fingerprint = 1469598103934665603ULL;
+	for (int y = glyphBounds.top; y < glyphBounds.bottom; ++y)
+	{
+		const auto* row = reinterpret_cast<const uint16_t*>(
+			reinterpret_cast<const uint8_t*>(input.p010Luma) +
+			static_cast<size_t>(y) * input.strideBytes);
+		for (int x = glyphBounds.left; x < glyphBounds.right; ++x)
+			if (IsGlyphSeed(input, x, y))
+			{
+				// Normalize to the seed origin: a one-pixel source jitter does not
+				// invalidate an otherwise identical long-running cue.
+				fingerprint ^= static_cast<uint64_t>((y - seedTop) * 257 + (x - seedLeft));
+				fingerprint *= 1099511628211ULL;
+			}
+	}
+
+	const int maximumGap = std::max((height * 48 + 1079) / 1080,
+		static_cast<int>(std::ceil(glyphHeight * 2.7)));
+	int currentGap = 0;
+	int longestGap = 0;
+	for (int x = glyphBounds.left; x < glyphBounds.right; ++x)
+	{
+		bool occupied = false;
+		for (int y = glyphBounds.top; y < glyphBounds.bottom && !occupied; ++y)
+		{
+			const auto* row = reinterpret_cast<const uint16_t*>(
+				reinterpret_cast<const uint8_t*>(input.p010Luma) +
+				static_cast<size_t>(y) * input.strideBytes);
+			occupied = IsGlyphSeed(input, x, y);
+		}
+		if (occupied)
+		{
+			longestGap = std::max(longestGap, currentGap);
+			currentGap = 0;
+		}
+		else
+			++currentGap;
+	}
+	if (std::max(longestGap, currentGap) > maximumGap)
+		return false;
+
+	const int captureInset = std::max(22,
+		static_cast<int>(std::ceil(glyphHeight * 1.6)));
+	candidate.line.glyphBounds = glyphBounds;
+	candidate.line.captureBounds = ClampRectangle({
+		glyphBounds.left - std::max(32, captureInset), glyphBounds.top - captureInset,
+		glyphBounds.right + std::max(32, captureInset), glyphBounds.bottom + captureInset },
+		width, height);
+	candidate.line.location = location;
+	candidate.line.seedPixels = seedPixels;
+	candidate.line.fingerprint = fingerprint;
+	candidate.line.backingLuma = backingLuma;
+	candidate.backingLuma = backingLuma;
+	return true;
 }
 
-bool PanelSubtitleDetector::IsDarkEnough(const PanelSubtitleInput& input,
-	int y, int left, int right) const
+void PanelSubtitleDetector::BuildMask(const PanelSubtitleInput& input,
+	const std::array<Candidate, 3>& candidates, size_t candidateCount)
 {
-	const auto* row = reinterpret_cast<const uint16_t*>(
-		reinterpret_cast<const uint8_t*>(input.p010Luma) +
-		static_cast<size_t>(y) * input.strideBytes);
-	int dark = 0;
-	for (int x = left; x < right; ++x)
-		dark += P010Code(row, x) <= m_settings.maximumPanelLuma;
-	return dark * 100 >= (right - left) *
-		m_settings.minimumPanelDarkCoveragePercent;
+	const size_t pixels = input.width * input.height;
+	if (!m_workMask)
+		m_workMask = std::make_shared<std::vector<uint8_t>>();
+	std::vector<uint8_t>& mask = *m_workMask;
+	if (mask.size() != pixels)
+	{
+		mask.assign(pixels, 0);
+		m_workMaskDirty.clear();
+	}
+	else
+	{
+		for (const size_t dirty : m_workMaskDirty)
+			mask[dirty] = 0;
+		m_workMaskDirty.clear();
+	}
+	for (size_t index = 0; index < candidateCount; ++index)
+	{
+		const PanelSubtitleRect nearby = ClampRectangle({
+			candidates[index].line.glyphBounds.left - 4,
+			candidates[index].line.glyphBounds.top - 4,
+			candidates[index].line.glyphBounds.right + 4,
+			candidates[index].line.glyphBounds.bottom + 4 },
+			static_cast<int>(input.width), static_cast<int>(input.height));
+		const uint16_t threshold = static_cast<uint16_t>(std::max<int>(
+			candidates[index].backingLuma + 16,
+			static_cast<int>(m_settings.minimumGlyphLuma) - 96));
+		for (int y = nearby.top; y < nearby.bottom; ++y)
+		{
+			const auto* row = reinterpret_cast<const uint16_t*>(
+				reinterpret_cast<const uint8_t*>(input.p010Luma) +
+				static_cast<size_t>(y) * input.strideBytes);
+			for (int x = nearby.left; x < nearby.right; ++x)
+			{
+				const uint16_t code = P010Code(row, x);
+				if (code >= threshold && HasNeutralChroma(input, x, y))
+				{
+					const size_t maskIndex =
+						static_cast<size_t>(y) * input.width + x;
+					if (mask[maskIndex] == 0)
+						m_workMaskDirty.push_back(maskIndex);
+					mask[maskIndex] = static_cast<uint8_t>(std::min(255,
+						(static_cast<int>(code) - threshold + 1) * 4));
+				}
+			}
+		}
+	}
 }
 
 bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
@@ -91,161 +344,169 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 {
 	const int width = static_cast<int>(input.width);
 	const int height = static_cast<int>(input.height);
-	const int top = std::max(0, input.searchTop);
-	const int bottom = std::min(height, input.searchBottom);
-	if (top >= bottom || width < m_settings.minimumPanelWidth ||
-		bottom - top < m_settings.minimumPanelHeight)
+	if (width <= 0 || height <= 0)
 		return false;
 
-	RowRun bestSeed;
-	int seedY = -1;
-	for (int y = top; y < bottom; ++y)
+	// Seed runs are joined only when they share a baseline and a bounded word
+	// gap. This prevents a bright UI highlight elsewhere in the same row from
+	// being folded into the subtitle proposal (the old widest-row-extrema bug).
+	struct Proposal
 	{
-		const RowRun seed = LongestDarkRun(input, y);
-		if (seed.right - seed.left < m_settings.minimumPanelWidth ||
-			seed.left < m_settings.minimumHorizontalInset ||
-			seed.right > width - m_settings.minimumHorizontalInset)
+		PanelSubtitleRect bounds;
+		int lastY = 0;
+	};
+	std::array<Proposal, 48> proposals{};
+	size_t proposalCount = 0;
+	const int rowGapLimit = std::max(2, height / 360);
+	const int characterGap = std::max(3, height / 180);
+	const int baselineMergeGap = std::max(12, height * 18 / 1080);
+	// Acquisition is the expensive path. At UHD resolutions, sample a maximum
+	// of roughly 1920x1080 seed locations, then qualify and build the glyph mask
+	// at full source resolution after a proposal is found.
+	const int scanStepX = std::max(1, width / 1920);
+	const int scanStepY = std::max(1, height / 1080);
+	auto addRun = [&](int left, int right, int y) {
+		if (right - left < 2)
+			return;
+		size_t match = proposalCount;
+		int bestDistance = std::numeric_limits<int>::max();
+		for (size_t index = 0; index < proposalCount; ++index)
+		{
+			Proposal& proposal = proposals[index];
+			if (y - proposal.lastY > std::max(rowGapLimit, scanStepY))
+				continue;
+			const int horizontalDistance = std::max(0, std::max(
+				proposal.bounds.left - right, left - proposal.bounds.right));
+			if (horizontalDistance <= baselineMergeGap && horizontalDistance < bestDistance)
+			{
+				match = index;
+				bestDistance = horizontalDistance;
+			}
+		}
+		if (match == proposalCount)
+		{
+			if (proposalCount >= proposals.size())
+				return;
+			proposals[proposalCount++] = { { left, y, right,
+				std::min(height, y + scanStepY) }, y };
+			return;
+		}
+		Proposal& proposal = proposals[match];
+		proposal.bounds.left = std::min(proposal.bounds.left, left);
+		proposal.bounds.top = std::min(proposal.bounds.top, y);
+		proposal.bounds.right = std::max(proposal.bounds.right, right);
+		proposal.bounds.bottom = std::max(proposal.bounds.bottom,
+			std::min(height, y + scanStepY));
+		proposal.lastY = y;
+	};
+	for (int y = 0; y < height; y += scanStepY)
+	{
+		if (!IsInSearchDomain(input, y))
 			continue;
-		if (seed.right - seed.left > bestSeed.right - bestSeed.left)
-		{
-			bestSeed = seed;
-			seedY = y;
-		}
-	}
-	if (seedY < 0)
-		return false;
-
-	// Select the strongest horizontal panel evidence first, then grow it only
-	// once. Growing every row candidate made a large dark panel quadratic in
-	// subtitle-band height, which is unacceptable for a 60-fps live path.
-	int panelTop = seedY;
-	while (panelTop > top && IsDarkEnough(input, panelTop - 1,
-		bestSeed.left, bestSeed.right))
-		--panelTop;
-	int panelBottom = seedY + 1;
-	while (panelBottom < bottom && IsDarkEnough(input, panelBottom,
-		bestSeed.left, bestSeed.right))
-		++panelBottom;
-	const PanelSubtitleRect bestPanel = {
-		bestSeed.left, panelTop, bestSeed.right, panelBottom };
-	if (!IsValid(bestPanel))
-		return false;
-	if (panelBottom - panelTop < m_settings.minimumPanelHeight)
-		return false;
-
-	std::array<uint32_t, 1024> histogram{};
-	uint64_t sampleCount = 0;
-	for (int y = bestPanel.top; y < bestPanel.bottom; ++y)
-	{
 		const auto* row = reinterpret_cast<const uint16_t*>(
 			reinterpret_cast<const uint8_t*>(input.p010Luma) +
 			static_cast<size_t>(y) * input.strideBytes);
-		for (int x = bestPanel.left; x < bestPanel.right; ++x)
+		int left = -1;
+		int lastSeed = -1;
+		for (int x = 0; x < width; x += scanStepX)
 		{
-			const uint16_t code = P010Code(row, x);
-			if (code <= m_settings.maximumPanelLuma)
+			if (IsGlyphSeed(input, x, y))
 			{
-				++histogram[code];
-				++sampleCount;
+				if (left < 0)
+					left = x;
+				lastSeed = x;
+			}
+			else if (left >= 0 && x - lastSeed > characterGap)
+			{
+				addRun(left, std::min(width, lastSeed + scanStepX), y);
+				left = -1;
+				lastSeed = -1;
 			}
 		}
+		if (left >= 0)
+			addRun(left, std::min(width, lastSeed + scanStepX), y);
 	}
-	if (sampleCount == 0)
-		return false;
-	uint64_t running = 0;
-	uint16_t panelLuma = 0;
-	for (size_t code = 0; code < histogram.size(); ++code)
+
+	std::sort(proposals.begin(), proposals.begin() + proposalCount,
+		[](const Proposal& left, const Proposal& right) {
+			return left.bounds.top == right.bounds.top ?
+				left.bounds.left < right.bounds.left : left.bounds.top < right.bounds.top;
+		});
+	std::array<PanelSubtitleRect, 48> lines{};
+	size_t lineCount = 0;
+	for (size_t index = 0; index < proposalCount; ++index)
 	{
-		running += histogram[code];
-		if (running * 2 >= sampleCount)
+		const PanelSubtitleRect& proposal = proposals[index].bounds;
+		size_t match = lineCount;
+		for (size_t line = 0; line < lineCount; ++line)
 		{
-			panelLuma = static_cast<uint16_t>(code);
-			break;
+			const PanelSubtitleRect& existing = lines[line];
+			const int overlap = std::min(existing.bottom, proposal.bottom) -
+				std::max(existing.top, proposal.top);
+			const int requiredOverlap = std::min(RectHeight(existing),
+				RectHeight(proposal)) / 2;
+			const int horizontalGap = std::max(0, proposal.left - existing.right);
+			const int mergeGap = std::max(height * 24 / 1080,
+				2 * std::max(RectHeight(existing), RectHeight(proposal)));
+			if (overlap >= requiredOverlap && horizontalGap <= mergeGap)
+			{
+				match = line;
+				break;
+			}
+		}
+		if (match == lineCount)
+		{
+			if (lineCount < lines.size())
+				lines[lineCount++] = proposal;
+		}
+		else
+		{
+			lines[match].left = std::min(lines[match].left, proposal.left);
+			lines[match].top = std::min(lines[match].top, proposal.top);
+			lines[match].right = std::max(lines[match].right, proposal.right);
+			lines[match].bottom = std::max(lines[match].bottom, proposal.bottom);
 		}
 	}
 
-	uint64_t uniformPixels = 0;
-	const size_t maskPixels = input.width * input.height;
-	if (m_workMask.size() != maskPixels)
-		m_workMask.assign(maskPixels, 0);
-	else
-		std::fill(m_workMask.begin(), m_workMask.end(), 0);
-	if (m_rowCounts.size() != input.height)
-		m_rowCounts.assign(input.height, 0);
-	else
-		std::fill(m_rowCounts.begin(), m_rowCounts.end(), 0);
-	if (m_columnCounts.size() != input.width)
-		m_columnCounts.assign(input.width, 0);
-	else
-		std::fill(m_columnCounts.begin(), m_columnCounts.end(), 0);
-
-	uint64_t glyphPixels = 0;
-	uint64_t fingerprint = 1469598103934665603ULL;
-	for (int y = bestPanel.top; y < bestPanel.bottom; ++y)
+	std::array<Candidate, MaximumLines> candidates{};
+	size_t candidateCount = 0;
+	for (size_t index = 0; index < lineCount && candidateCount < candidates.size(); ++index)
 	{
-		const auto* row = reinterpret_cast<const uint16_t*>(
-			reinterpret_cast<const uint8_t*>(input.p010Luma) +
-			static_cast<size_t>(y) * input.strideBytes);
-		for (int x = bestPanel.left; x < bestPanel.right; ++x)
-		{
-			const uint16_t code = P010Code(row, x);
-			const int contrast = std::abs(static_cast<int>(code) -
-				static_cast<int>(panelLuma));
-			if (contrast <= m_settings.maximumPanelVariation)
-				++uniformPixels;
-			uint8_t alpha = 0;
-			if (contrast > m_settings.minimumGlyphContrast)
-			{
-				const int denominator = std::max(1,
-					static_cast<int>(m_settings.glyphSoftness));
-				alpha = static_cast<uint8_t>(std::min(255,
-					(contrast - m_settings.minimumGlyphContrast) * 255 /
-					denominator));
-			}
-			const size_t index = static_cast<size_t>(y) * input.width + x;
-			m_workMask[index] = alpha;
-			if (alpha != 0)
-			{
-				++glyphPixels;
-				++m_rowCounts[y];
-				++m_columnCounts[x];
-				fingerprint ^= static_cast<uint64_t>((y - bestPanel.top) * 257 +
-					(x - bestPanel.left) + alpha);
-				fingerprint *= 1099511628211ULL;
-			}
-		}
+		const PanelSubtitleRect& bounds = lines[index];
+		const int glyphWidth = RectWidth(bounds);
+		const int glyphHeight = RectHeight(bounds);
+		if (glyphWidth < std::max(m_settings.minimumGlyphWidth, width / 100) ||
+			glyphWidth > width * 72 / 100 ||
+			glyphHeight < std::max(m_settings.minimumGlyphHeight, height / 154) ||
+			glyphHeight > height * m_settings.maximumGlyphHeightPercent / 100)
+			continue;
+		Candidate candidate;
+		if (QualifyCandidate(input, bounds, candidate))
+			candidates[candidateCount++] = candidate;
 	}
-	const uint64_t panelPixels = static_cast<uint64_t>(bestPanel.right - bestPanel.left) *
-		(bestPanel.bottom - bestPanel.top);
-	if (uniformPixels * 100 < panelPixels *
-		m_settings.minimumPanelUniformityPercent ||
-		glyphPixels < static_cast<uint64_t>(m_settings.minimumGlyphPixels))
+	if (candidateCount == 0)
 		return false;
-
-	int glyphTop = bestPanel.bottom;
-	int glyphBottom = bestPanel.top;
-	for (int y = bestPanel.top; y < bestPanel.bottom; ++y)
-	{
-		if (m_rowCounts[y] >= static_cast<uint32_t>(m_settings.minimumGlyphRows))
+	// Separate bright menu items along one baseline are not a multiline
+	// subtitle. A real phrase would have merged above under the bounded word
+	// gap, while this guard rejects wide UI spacing.
+	const int menuGap = std::max((height * 48 + 1079) / 1080, 24);
+	for (size_t left = 0; left < candidateCount; ++left)
+		for (size_t right = left + 1; right < candidateCount; ++right)
 		{
-			glyphTop = std::min(glyphTop, y);
-			glyphBottom = std::max(glyphBottom, y + 1);
+			const PanelSubtitleRect& a = candidates[left].line.glyphBounds;
+			const PanelSubtitleRect& b = candidates[right].line.glyphBounds;
+			const int verticalOverlap = std::min(a.bottom, b.bottom) -
+				std::max(a.top, b.top);
+			const int horizontalGap = std::max(0, std::max(a.left - b.right,
+				b.left - a.right));
+			if (verticalOverlap > 0 && horizontalGap > menuGap)
+				return false;
 		}
-	}
-	int glyphLeft = bestPanel.right;
-	int glyphRight = bestPanel.left;
-	for (int x = bestPanel.left; x < bestPanel.right; ++x)
-	{
-		if (m_columnCounts[x] >= static_cast<uint32_t>(m_settings.minimumGlyphColumns))
-		{
-			glyphLeft = std::min(glyphLeft, x);
-			glyphRight = std::max(glyphRight, x + 1);
-		}
-	}
-	const PanelSubtitleRect glyphBounds = {
-		glyphLeft, glyphTop, glyphRight, glyphBottom };
-	if (!IsValid(glyphBounds))
-		return false;
+	std::sort(candidates.begin(), candidates.begin() + candidateCount,
+		[](const Candidate& left, const Candidate& right) {
+			return left.line.glyphBounds.top < right.line.glyphBounds.top;
+		});
+	BuildMask(input, candidates, candidateCount);
 
 	result = {};
 	result.state = PanelSubtitleState::Candidate;
@@ -253,35 +514,103 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 	result.generation = input.generation;
 	result.rasterWidth = input.width;
 	result.rasterHeight = input.height;
-	result.panelBounds = bestPanel;
-	result.glyphBounds = glyphBounds;
-	result.maskBounds = glyphBounds;
-	result.panelLuma = panelLuma;
-	result.fingerprint = fingerprint ^
-		(static_cast<uint64_t>(panelLuma) << 48) ^
-		(static_cast<uint64_t>(bestPanel.left) << 32) ^
-		static_cast<uint64_t>(bestPanel.top);
+	result.lineCount = candidateCount;
+	for (size_t index = 0; index < candidateCount; ++index)
+		result.lines[index] = candidates[index].line;
+	// Compatibility summary for current diagnostic users. This is deliberately
+	// the first line rather than a union of independent line capture boxes.
+	result.panelBounds = candidates[0].line.captureBounds;
+	result.glyphBounds = candidates[0].line.glyphBounds;
+	result.maskBounds = candidates[0].line.glyphBounds;
+	result.panelLuma = candidates[0].backingLuma;
+	result.fingerprint = candidates[0].line.fingerprint;
+	for (size_t index = 1; index < candidateCount; ++index)
+		result.fingerprint ^= candidates[index].line.fingerprint +
+			0x9e3779b97f4a7c15ULL + (result.fingerprint << 6) +
+			(result.fingerprint >> 2);
 	result.stabilityObservations = 1;
+	return true;
+}
+
+bool PanelSubtitleDetector::HasStableSeedOverlap(const PanelSubtitleInput& input,
+	const PanelSubtitleGlyphLine& line) const
+{
+	if (!m_stable.softGlyphMask ||
+		m_stable.softGlyphMask->size() != input.width * input.height)
+		return false;
+	uint32_t currentSeeds = 0;
+	uint32_t previousSeeds = 0;
+	uint32_t overlap = 0;
+	for (int y = line.glyphBounds.top; y < line.glyphBounds.bottom; ++y)
+		for (int x = line.glyphBounds.left; x < line.glyphBounds.right; ++x)
+		{
+			const size_t index = static_cast<size_t>(y) * input.width + x;
+			const bool current = IsGlyphSeed(input, x, y);
+			const bool previous = (*m_stable.softGlyphMask)[index] != 0;
+			currentSeeds += current;
+			previousSeeds += previous;
+			overlap += current && previous;
+		}
+	const uint32_t reference = std::max(currentSeeds, previousSeeds);
+	return reference != 0 && overlap * 100 >= reference * 70;
+}
+
+bool PanelSubtitleDetector::ValidateStable(const PanelSubtitleInput& input,
+	PanelSubtitleResult& result)
+{
+	if (m_stable.state != PanelSubtitleState::Stable ||
+		m_stable.lineCount == 0 ||
+		!SameGeneration(m_stable.generation, input.generation))
+		return false;
+
+	// Long-running subtitle cues are the normal case. Revalidate only each
+	// frozen glyph/capture ROI, rebuild the local mask, and keep the confirmed
+	// capture geometry. A failed validation immediately falls back to full
+	// acquisition below.
+	std::array<Candidate, MaximumLines> candidates{};
+	for (size_t index = 0; index < m_stable.lineCount; ++index)
+	{
+		if (!QualifyCandidate(input, m_stable.lines[index].glyphBounds,
+			candidates[index]) ||
+			!HasStableSeedOverlap(input, m_stable.lines[index]) ||
+			candidates[index].line.location != m_stable.lines[index].location ||
+			std::abs(static_cast<int>(candidates[index].line.seedPixels) -
+				static_cast<int>(m_stable.lines[index].seedPixels)) >
+				std::max(8, static_cast<int>(m_stable.lines[index].seedPixels) / 6) ||
+			std::abs(static_cast<int>(candidates[index].line.backingLuma) -
+				static_cast<int>(m_stable.lines[index].backingLuma)) > 32)
+			return false;
+	}
+	BuildMask(input, candidates, m_stable.lineCount);
+	result = WithCurrentFrame(m_stable, input);
+	++result.stabilityObservations;
 	return true;
 }
 
 bool PanelSubtitleDetector::Matches(const PanelSubtitleResult& left,
 	const PanelSubtitleResult& right) const
 {
-	return left.state != PanelSubtitleState::Unavailable &&
-		right.state != PanelSubtitleState::Unavailable &&
-		left.rasterWidth == right.rasterWidth &&
-		left.rasterHeight == right.rasterHeight &&
-		SameGeneration(left.generation, right.generation) &&
-		SameRectangle(left.panelBounds, right.panelBounds) &&
-		SameRectangle(left.glyphBounds, right.glyphBounds) &&
-		left.panelLuma == right.panelLuma &&
-		left.fingerprint == right.fingerprint;
+	if (left.state == PanelSubtitleState::Unavailable ||
+		right.state == PanelSubtitleState::Unavailable ||
+		left.rasterWidth != right.rasterWidth ||
+		left.rasterHeight != right.rasterHeight ||
+		!SameGeneration(left.generation, right.generation) ||
+		left.lineCount == 0 || left.lineCount != right.lineCount)
+		return false;
+	const int tolerance = std::max(2, static_cast<int>(left.rasterHeight) / 270);
+	for (size_t index = 0; index < left.lineCount; ++index)
+	{
+		if (left.lines[index].location != right.lines[index].location ||
+			!SameRectangleWithin(left.lines[index].glyphBounds,
+				right.lines[index].glyphBounds, tolerance))
+			return false;
+	}
+	return true;
 }
 
 void PanelSubtitleDetector::AttachMask(PanelSubtitleResult& result) const
 {
-	result.softGlyphMask = std::make_shared<const std::vector<uint8_t>>(m_workMask);
+	result.softGlyphMask = m_workMask;
 }
 
 PanelSubtitleResult PanelSubtitleDetector::WithCurrentFrame(
@@ -290,6 +619,7 @@ PanelSubtitleResult PanelSubtitleDetector::WithCurrentFrame(
 	PanelSubtitleResult current = result;
 	current.sourceSequence = input.sourceSequence;
 	current.generation = input.generation;
+	AttachMask(current);
 	return current;
 }
 
@@ -301,25 +631,59 @@ PanelSubtitleResult PanelSubtitleDetector::Analyze(const PanelSubtitleInput& inp
 	unavailable.rasterWidth = input.width;
 	unavailable.rasterHeight = input.height;
 	if (!input.enabled || !input.p010Luma || input.width == 0 ||
-		input.height == 0 || input.strideBytes < input.width * sizeof(uint16_t))
+		input.height == 0 || input.strideBytes < input.width * sizeof(uint16_t) ||
+		(input.activePictureStable && !IsTrustedActivePicture(input)))
 	{
 		Reset();
 		return unavailable;
 	}
+	if (!m_hasAcquisitionGeneration ||
+		!SameGeneration(m_acquisitionGeneration, input.generation))
+	{
+		m_candidate = {};
+		m_stable = {};
+		m_acquisitionGeneration = input.generation;
+		m_nextAcquisitionSequence = input.sourceSequence;
+		m_hasAcquisitionGeneration = true;
+	}
 
+	PanelSubtitleResult validated;
+	if (ValidateStable(input, validated))
+		return validated;
+	const bool stableValidationFailed =
+		m_stable.state == PanelSubtitleState::Stable;
+	if (stableValidationFailed)
+		m_stable = {};
+	const bool candidatePending =
+		m_candidate.state == PanelSubtitleState::Candidate &&
+		SameGeneration(m_candidate.generation, input.generation);
+	if (!stableValidationFailed && !candidatePending &&
+		input.sourceSequence < m_nextAcquisitionSequence)
+		return unavailable;
+
+	++m_acquisitionScanCount;
 	PanelSubtitleResult current;
 	if (!BuildCandidate(input, current))
 	{
-		Reset();
+		m_candidate = {};
+		m_stable = {};
+		m_nextAcquisitionSequence = input.sourceSequence +
+			static_cast<uint64_t>(std::max(1,
+				m_settings.acquisitionIntervalFrames));
 		return unavailable;
 	}
-	if (m_stable.state == PanelSubtitleState::Stable && Matches(m_stable, current))
-		return WithCurrentFrame(m_stable, input);
-	if (m_candidate.state == PanelSubtitleState::Candidate && Matches(m_candidate, current))
+	if (candidatePending && Matches(m_candidate, current))
 	{
-		m_stable = m_candidate;
+		const uint32_t observations = m_candidate.stabilityObservations + 1;
+		if (observations < static_cast<uint32_t>(
+			std::max(2, m_settings.confirmationFrames)))
+		{
+			m_candidate.stabilityObservations = observations;
+			return WithCurrentFrame(m_candidate, input);
+		}
+		m_stable = m_candidate; // Keep first-observation geometry frozen.
 		m_stable.state = PanelSubtitleState::Stable;
-		m_stable.stabilityObservations = 2;
+		m_stable.stabilityObservations = observations;
 		m_candidate = {};
 		return WithCurrentFrame(m_stable, input);
 	}
@@ -327,5 +691,8 @@ PanelSubtitleResult PanelSubtitleDetector::Analyze(const PanelSubtitleInput& inp
 	m_stable = {};
 	AttachMask(current);
 	m_candidate = current;
+	// Always inspect the next frame so a newly seen cue can lock immediately;
+	// the idle cadence applies only while no candidate exists.
+	m_nextAcquisitionSequence = input.sourceSequence + 1;
 	return current;
 }

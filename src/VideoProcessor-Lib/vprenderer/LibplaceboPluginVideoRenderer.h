@@ -37,6 +37,7 @@ public:
 	void OnDisplayChange() override;
 	void SetFrameQueueMaxSize(size_t size) override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
+	void SetPanelSubtitleTestMode(PanelSubtitleTestMode mode) override;
 	uint64_t SceneAwareCorrectionDropCount() const override;
 	uint64_t SceneAwareCorrectionRepeatCount() const override;
 	uint64_t SceneAwareDetectedCount() const override;

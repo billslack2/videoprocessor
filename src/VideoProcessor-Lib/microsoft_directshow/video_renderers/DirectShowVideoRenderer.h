@@ -103,6 +103,7 @@ public:
 	void SetSceneCorrectionUpstreamSample(bool) override;
 	void SetSubtitleRepositioning(bool) override;
 	void SetSubtitleRepositioningMode(SubtitleRepositionMode mode) override;
+	void SetPanelSubtitleTestMode(PanelSubtitleTestMode mode) override;
 	void SetSceneTimingRates(double displayRefreshRateHz, double measuredCaptureRateHz) override;
 	void SetSceneTimingReadiness(bool ready, uint64_t intervalsObserved) override;
 	void SetSceneTimingPhase(int64_t vblankQpc, int64_t refreshPeriodQpc, int64_t qpcFrequency) override;
@@ -159,7 +160,8 @@ protected:
 		GRAPH_COMMAND_APPLICATION_STATE = 13,
 		GRAPH_COMMAND_PAINT = 14,
 		GRAPH_COMMAND_VIDEO_STATE = 15,
-		GRAPH_COMMAND_HDR_STATE = 16
+		GRAPH_COMMAND_HDR_STATE = 16,
+		GRAPH_COMMAND_PANEL_SUBTITLE_MODE = 17
 	};
 
 	template<typename Function>

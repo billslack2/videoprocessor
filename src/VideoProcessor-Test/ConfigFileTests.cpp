@@ -274,6 +274,7 @@ namespace VideoProcessorTest
 					"fullscreen: true\n"
 					"disable_detection_features: true\n"
 					"scene_correction_basic: false\n"
+					"subtitle_panel_test_mode: move\n"
 					"frame_offset: AUTO\n"
 					"[queue]\n"
 					"startup_preroll_frames: 0\n"
@@ -370,6 +371,15 @@ namespace VideoProcessorTest
 			Assert::IsTrue(config.Load(path));
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));
 			Assert::IsTrue(error.find("queue_size") != std::string::npos);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[command_line]\nsubtitle_panel_test_mode: automatic\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(
+				error.find("subtitle_panel_test_mode") != std::string::npos);
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);

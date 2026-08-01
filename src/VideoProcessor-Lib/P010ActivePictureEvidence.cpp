@@ -116,25 +116,38 @@ P010EdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top,
 		const int depth = std::min(barPixels - 1,
 			((d * 2 + 1) * barPixels) / (kEdgeDepthSamples * 2));
 		const int y = top ? depth : samples.view.height - 1 - depth;
+		std::vector<int> lineLuma;
+		lineLuma.reserve(kLineSamples);
 		int lineBlack = 0;
+		int lineNeutral = 0;
+		double lineTexture = 0.0;
 		int previous = -1;
 		for (int i = 0; i < kLineSamples; ++i)
 		{
 			const int x = ((i * 2 + 1) * samples.view.width) /
 				(kLineSamples * 2);
 			const int value = samples.Luma(x, y);
-			luma.push_back(value);
-			black += value <= blackThreshold;
+			lineLuma.push_back(value);
 			lineBlack += value <= blackThreshold;
 			if (previous >= 0)
-				texture += std::abs(value - previous);
+				lineTexture += std::abs(value - previous);
 			previous = value;
 			int u = 0, v = 0;
 			samples.Chroma(x, y, u, v);
-			neutral += std::abs(u - 512) <= 32 &&
+			lineNeutral += std::abs(u - 512) <= 32 &&
 				std::abs(v - 512) <= 32;
 		}
-		continuousLines += lineBlack >= 44;
+		// A subtitle can occupy one or two of the fixed bar-depth slices. Keep
+		// only rows that still have strong black-bar support; the remaining four
+		// rows retain bounded, spatially distributed crop evidence.
+		if (lineBlack >= 44)
+		{
+			++continuousLines;
+			black += lineBlack;
+			neutral += lineNeutral;
+			texture += lineTexture;
+			luma.insert(luma.end(), lineLuma.begin(), lineLuma.end());
+		}
 	}
 	const double outerMean = luma.empty() ? 0.0 :
 		static_cast<double>(std::accumulate(luma.begin(), luma.end(), 0LL)) /
@@ -149,27 +162,28 @@ P010EdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top,
 		innerMean += samples.Luma(x, y);
 	}
 	innerMean /= kLineSamples;
-	evidence.blackFraction = static_cast<double>(black) / luma.size();
+	evidence.blackFraction = luma.empty() ? 0.0 :
+		static_cast<double>(black) / luma.size();
 	evidence.lumaFloor = blackFloor;
 	evidence.lumaP90 = Percentile(luma, 0.90);
 	evidence.lumaDispersion =
 		Percentile(luma, 0.90) - Percentile(luma, 0.10);
 	evidence.texture = texture /
-		std::max<size_t>(1, luma.size() - kEdgeDepthSamples);
-	evidence.neutralChromaFraction =
+		std::max<size_t>(1, luma.size() - continuousLines);
+	evidence.neutralChromaFraction = luma.empty() ? 0.0 :
 		static_cast<double>(neutral) / luma.size();
 	evidence.innerBoundaryContrast = innerMean - outerMean;
 	evidence.continuity =
 		static_cast<double>(continuousLines) / kEdgeDepthSamples;
 	const bool isSmall = barPixels < samples.view.height / 20;
 	const double requiredContrast = isSmall ? 18.0 : 10.0;
-	evidence.trusted = evidence.blackFraction >= 0.95 &&
+	evidence.trusted = continuousLines >= kEdgeDepthSamples - 2 &&
+		evidence.blackFraction >= 0.95 &&
 		evidence.lumaP90 <= blackThreshold &&
 		evidence.lumaDispersion <= 24.0 &&
 		evidence.texture <= 8.0 &&
 		evidence.neutralChromaFraction >= 0.90 &&
-		evidence.innerBoundaryContrast >= requiredContrast &&
-		evidence.continuity >= 0.99;
+		evidence.innerBoundaryContrast >= requiredContrast;
 	evidence.confidence = Bounded(
 		0.30 * evidence.blackFraction +
 		0.20 * evidence.neutralChromaFraction +
@@ -336,14 +350,52 @@ P010ActivePictureEvidence ExtractP010ActivePictureEvidence(
 		--scanLinesRemaining;
 		return IsBlackColumn(samples, x, blackThreshold);
 	};
-	int top = 0;
-	while (top + yStep < view.height / 2 &&
-		blackRow(top))
-		top += yStep;
-	int bottom = view.height;
-	while (bottom - yStep > view.height / 2 &&
-		blackRow(bottom - 1))
-		bottom -= yStep;
+	// A caption in an encoded bar is a bounded bright interruption, not the
+	// picture boundary. Look through at most ~4% of the raster for three
+	// consecutive black rows before accepting the first failed row as the
+	// boundary. The later distributed edge/contrast checks remain authoritative.
+	const int maximumRowInterruptionSteps = std::max(3,
+		std::min(24, (view.height / 24) / yStep));
+	auto scanHorizontalBar = [&](bool fromTop)
+	{
+		int barPixels = 0;
+		while (barPixels + yStep < view.height / 2)
+		{
+			const int y = fromTop ? barPixels : view.height - 1 - barPixels;
+			if (blackRow(y))
+			{
+				barPixels += yStep;
+				continue;
+			}
+
+			bool recovered = false;
+			int consecutiveBlack = 0;
+			for (int look = 1; look <= maximumRowInterruptionSteps; ++look)
+			{
+				const int probePixels = barPixels + look * yStep;
+				if (probePixels + yStep >= view.height / 2)
+					break;
+				const int probeY = fromTop ? probePixels :
+					view.height - 1 - probePixels;
+				if (blackRow(probeY))
+				{
+					if (++consecutiveBlack >= 3)
+					{
+						barPixels = probePixels + yStep;
+						recovered = true;
+						break;
+					}
+				}
+				else
+					consecutiveBlack = 0;
+			}
+			if (!recovered)
+				break;
+		}
+		return barPixels;
+	};
+	const int top = scanHorizontalBar(true);
+	const int bottom = view.height - scanHorizontalBar(false);
 	int left = 0;
 	while (left + xStep < view.width / 2 &&
 		blackColumn(left))

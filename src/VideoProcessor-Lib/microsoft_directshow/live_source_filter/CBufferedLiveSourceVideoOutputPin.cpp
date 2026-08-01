@@ -738,6 +738,20 @@ void CBufferedLiveSourceVideoOutputPin::SetSubtitleRepositioningMode(
 	}
 }
 
+void CBufferedLiveSourceVideoOutputPin::SetPanelSubtitleTestMode(
+	PanelSubtitleTestMode mode)
+{
+	const PanelSubtitleTestMode previous =
+		m_panelSubtitleTestMode.exchange(mode, std::memory_order_acq_rel);
+	if (previous == mode)
+		return;
+	// The graph thread must not mutate detector state owned by the conversion
+	// worker. Bump the token; the next worker observation invalidates the cue.
+	m_panelSubtitleModeGeneration.fetch_add(1, std::memory_order_acq_rel);
+	DebugLog::Log("VP-0070 test mode: renderer=DirectShow mode=%s",
+		PanelSubtitleTestModeName(mode));
+}
+
 bool CBufferedLiveSourceVideoOutputPin::GetSceneTimingPrediction(
 	double& secondsUntilCorrection, double& secondsUntilPlan,
 	int& action, bool& planned) const
@@ -3626,10 +3640,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			// NLS/aspect-rule gating uses the same converted P010 image that reaches
 			// madVR. Sparse sampling every few frames is negligible beside conversion.
 			if (IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010))
-			{
 				UpdateActivePictureAspectRatio(pSample, videoFrame.GetCounter());
-				ApplyPanelSubtitleDiagnostic(pSample, videoFrame.GetCounter());
-			}
 
 			// Analyze the unmodified frame first. Subtitle relocation changes a
 			// small image region and must not become input to the cut detector.
@@ -3678,6 +3689,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			// Relocate only after scene measurement and before queueing.
 			if (subtitleRepositioningEnabled)
 				RelocateSubtitleInP010(pSample, videoFrame.GetCounter());
+			// VP-0070 test rendering is the final P010 mutation. All scene,
+			// active-picture, and legacy subtitle analysis above sees the original
+			// frame, so diagnostic pixels can never feed detector state.
+			if (IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010))
+				ApplyPanelSubtitleDiagnostic(pSample, videoFrame.GetCounter());
 			const uint64_t sceneTimingGeneration =
 				m_sceneTimingGeneration.load(std::memory_order_acquire);
 
@@ -4004,6 +4020,16 @@ bool CBufferedLiveSourceVideoOutputPin::GetActivePictureRectangle(
 void CBufferedLiveSourceVideoOutputPin::ApplyPanelSubtitleDiagnostic(
 	IMediaSample* sample, uint64_t frameNumber)
 {
+	const PanelSubtitleTestMode testMode =
+		m_panelSubtitleTestMode.load(std::memory_order_acquire);
+	if (testMode == PanelSubtitleTestMode::Off)
+	{
+		m_panelSubtitleDetector.Reset();
+		m_panelSubtitleLastReportedState = PanelSubtitleState::Unavailable;
+		m_panelSubtitleLastReportedFingerprint = 0;
+		m_panelSubtitleLastStatusFrame = 0;
+		return;
+	}
 	if (!sample || !m_mediaType.pbFormat)
 		return;
 
@@ -4037,27 +4063,49 @@ void CBufferedLiveSourceVideoOutputPin::ApplyPanelSubtitleDiagnostic(
 	if (FAILED(sample->GetPointer(&bytes)) || !bytes)
 		return;
 
-	// This is intentionally always enabled for VP-0070 live diagnostics. It is
-	// independent from subtitle_reposition, which remains disabled so the old
-	// asynchronous OCR/DirectML path cannot participate in these tests.
-	const PanelSubtitleResult result = m_panelSubtitleDetector.Analyze({
-		reinterpret_cast<const uint16_t*>(bytes),
-		static_cast<size_t>(width), static_cast<size_t>(frameHeight), rowBytes,
-		frameHeight / 3, frameHeight, frameNumber,
-		{ m_queueEpoch.load(std::memory_order_acquire),
-			m_activePictureRectangleGeneration.load(std::memory_order_acquire), 0 },
-		true });
+	ActivePictureRectangle activePicture;
+	const bool haveActivePicture = GetActivePictureRectangle(activePicture) &&
+		activePicture.rasterWidth == width &&
+		activePicture.rasterHeight == frameHeight &&
+		(activePicture.top > 0 || activePicture.bottom < frameHeight);
+	PanelSubtitleInput input;
+	input.p010Luma = reinterpret_cast<const uint16_t*>(bytes);
+	input.width = static_cast<size_t>(width);
+	input.height = static_cast<size_t>(frameHeight);
+	input.strideBytes = rowBytes;
+	input.sourceSequence = frameNumber;
+	input.generation = {
+		m_queueEpoch.load(std::memory_order_acquire),
+		activePicture.generation,
+		m_panelSubtitleModeGeneration.load(std::memory_order_acquire) };
+	input.enabled = haveActivePicture;
+	input.activePictureTop = activePicture.top;
+	input.activePictureBottom = activePicture.bottom;
+	input.trustedActivePictureGeneration = activePicture.generation;
+	input.activePictureStable = haveActivePicture;
+	input.p010Chroma = reinterpret_cast<const uint16_t*>(bytes + lumaBytes);
+	input.chromaStrideBytes = rowBytes;
+	const PanelSubtitleResult result = m_panelSubtitleDetector.Analyze(input);
 	const bool applied = PanelSubtitleDiagnostic::Apply(result, {
 		reinterpret_cast<uint16_t*>(bytes),
 		reinterpret_cast<uint16_t*>(bytes + lumaBytes),
 		static_cast<size_t>(width), static_cast<size_t>(frameHeight), rowBytes,
-		rowBytes });
-	if (result.state != m_panelSubtitleLastReportedState ||
-		result.fingerprint != m_panelSubtitleLastReportedFingerprint)
+		rowBytes }, testMode, activePicture.top, activePicture.bottom);
+	const bool stateChanged =
+		result.state != m_panelSubtitleLastReportedState ||
+		result.fingerprint != m_panelSubtitleLastReportedFingerprint;
+	const bool statusDue = m_panelSubtitleLastStatusFrame == 0 ||
+		frameNumber < m_panelSubtitleLastStatusFrame ||
+		frameNumber - m_panelSubtitleLastStatusFrame >= 300;
+	if (stateChanged)
 	{
 		DebugLog::Log(
-			"VP-0070 PANEL DETECTOR: frame=%llu state=%d applied=%d panel=%d,%d-%d,%d glyph=%d,%d-%d,%d fingerprint=%llx",
-			frameNumber, static_cast<int>(result.state), applied ? 1 : 0,
+			"VP-0070 PANEL DETECTOR: renderer=DirectShow mode=%s frame=%llu state=%d applied=%d active_stable=%d active=%d,%d-%d,%d panel=%d,%d-%d,%d glyph=%d,%d-%d,%d fingerprint=%llx",
+			PanelSubtitleTestModeName(testMode), frameNumber,
+			static_cast<int>(result.state), applied ? 1 : 0,
+			activePicture.stable ? 1 : 0,
+			activePicture.left, activePicture.top,
+			activePicture.right, activePicture.bottom,
 			result.panelBounds.left, result.panelBounds.top,
 			result.panelBounds.right, result.panelBounds.bottom,
 			result.glyphBounds.left, result.glyphBounds.top,
@@ -4065,6 +4113,22 @@ void CBufferedLiveSourceVideoOutputPin::ApplyPanelSubtitleDiagnostic(
 			static_cast<unsigned long long>(result.fingerprint));
 		m_panelSubtitleLastReportedState = result.state;
 		m_panelSubtitleLastReportedFingerprint = result.fingerprint;
+		m_panelSubtitleLastStatusFrame = frameNumber;
+	}
+	else if (statusDue)
+	{
+		DebugLog::Log(
+			"VP-0070 PANEL STATUS: renderer=DirectShow mode=%s frame=%llu active_stable=%d cropped_authority=%d active=%d,%d-%d,%d state=%d acquisition_scans=%llu reason=%s",
+			PanelSubtitleTestModeName(testMode), frameNumber,
+			activePicture.stable ? 1 : 0, haveActivePicture ? 1 : 0,
+			activePicture.left, activePicture.top,
+			activePicture.right, activePicture.bottom,
+			static_cast<int>(result.state),
+			static_cast<unsigned long long>(
+				m_panelSubtitleDetector.AcquisitionScanCount()),
+			haveActivePicture ? "no_stable_proposal" :
+				"no_stable_cropped_active_picture");
+		m_panelSubtitleLastStatusFrame = frameNumber;
 	}
 }
 

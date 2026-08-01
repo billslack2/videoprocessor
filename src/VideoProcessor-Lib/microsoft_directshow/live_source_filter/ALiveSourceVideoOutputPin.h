@@ -20,6 +20,7 @@
 #include <IntegerMath.h>
 #include <RendererLiveness.h>
 #include <RendererResetRequestLatch.h>
+#include <PanelSubtitleTestMode.h>
 #include <SubtitleRepositionMode.h>
 
 #include "CLiveSource.h"
@@ -113,6 +114,7 @@ public:
 	{
 		SetSubtitleRepositioning(mode != SubtitleRepositionMode::DISABLED);
 	}
+	virtual void SetPanelSubtitleTestMode(PanelSubtitleTestMode) {}
 	virtual void SetSceneTimingRates(double, double) {}
 	virtual void SetSceneTimingReadiness(bool, uint64_t) {}
 	virtual void SetSceneTimingPhase(int64_t, int64_t, int64_t) {}

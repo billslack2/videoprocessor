@@ -248,6 +248,7 @@
 	<ClInclude Include="SceneDetector.h" />
 	<ClInclude Include="PanelSubtitleDetector.h" />
 	<ClInclude Include="PanelSubtitleDiagnostic.h" />
+	<ClInclude Include="PanelSubtitleTestMode.h" />
     <ClInclude Include="SubtitleRepositionMode.h" />
     <ClInclude Include="StringUtils.h" />
     <ClInclude Include="TimingClock.h" />

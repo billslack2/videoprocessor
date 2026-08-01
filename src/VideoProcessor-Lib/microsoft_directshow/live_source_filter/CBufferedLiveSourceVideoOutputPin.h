@@ -76,6 +76,7 @@ public:
 	void SetSceneCorrectionUpstreamSample(bool enabled) override;
 	void SetSubtitleRepositioning(bool enabled) override;
 	void SetSubtitleRepositioningMode(SubtitleRepositionMode mode) override;
+	void SetPanelSubtitleTestMode(PanelSubtitleTestMode mode) override;
 	void SetSceneTimingRates(double displayRefreshRateHz, double deliveryRateHz) override;
 	void SetSceneTimingReadiness(bool ready, uint64_t intervalsObserved) override;
 	void SetSceneTimingPhase(int64_t vblankQpc, int64_t refreshPeriodQpc, int64_t qpcFrequency) override;
@@ -141,12 +142,13 @@ private:
 	ProcessedFrameQueue m_processedFrameQueue{ 32 };
 	CCritSec m_convertedQueueLock;
 	FrameProcessor m_frameProcessor;
-	// Always-on only in this diagnostic test build. This does not use or start
-	// the legacy subtitle_reposition OCR/DirectML path.
+	// VP-0070 validation path. This does not use or start the legacy
+	// subtitle_reposition OCR/DirectML path.
 	PanelSubtitleDetector m_panelSubtitleDetector;
 	PanelSubtitleState m_panelSubtitleLastReportedState =
 		PanelSubtitleState::Unavailable;
 	uint64_t m_panelSubtitleLastReportedFingerprint = 0;
+	uint64_t m_panelSubtitleLastStatusFrame = 0;
 	DirectShowFrameDeliverer m_directShowFrameDeliverer;
 	DirectShowSegmentTransition m_directShowSegmentTransition;
 	// The trace is a VP-only, bounded diagnostic snapshot. It has no renderer
@@ -169,6 +171,9 @@ private:
 	// tracked subtitle glyphs crossing a stable bottom black bar in P010 output.
 	std::atomic<SubtitleRepositionMode> m_subtitleRepositionMode =
 		SubtitleRepositionMode::DISABLED;
+	std::atomic<PanelSubtitleTestMode> m_panelSubtitleTestMode =
+		PanelSubtitleTestMode::Off;
+	std::atomic<uint64_t> m_panelSubtitleModeGeneration{ 1 };
 	std::atomic<uint64_t> m_subtitleRelocationCount = 0;
 	std::atomic<uint64_t> m_subtitleAnalysisGeneration = 0;
 	std::atomic<uint64_t> m_subtitleLastSubmitTick = 0;

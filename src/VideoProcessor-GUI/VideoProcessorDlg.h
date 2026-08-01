@@ -117,6 +117,7 @@ public:
 	void SceneDetect(bool enabled = true);
 	void SceneCorrectionUpstreamSample(bool enabled);
 	void SubtitleRepositioning(SubtitleRepositionMode mode);
+	void PanelSubtitleTesting(PanelSubtitleTestMode mode);
 	void EnableNewLldvHeuristic(bool enabled = true);
 	void SetLldvMaxCll(double value);
 	void SetLldvMaxFall(double value);
@@ -455,6 +456,8 @@ protected:
 	bool m_sceneCorrectionUpstreamSample = true;
 	SubtitleRepositionMode m_subtitleRepositionMode =
 		SubtitleRepositionMode::DISABLED;
+	PanelSubtitleTestMode m_panelSubtitleTestMode =
+		PanelSubtitleTestMode::Off;
 	VideoConversionOverride m_defaultVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;
 	ColorSpace m_defaultContainerColorSpace = ColorSpace::UNKNOWN;
 	HdrColorspaceOptions m_defaultHDRColorSpaceOption = HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT;

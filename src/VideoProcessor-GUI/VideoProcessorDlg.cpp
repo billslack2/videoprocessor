@@ -1492,6 +1492,22 @@ void CVideoProcessorDlg::SubtitleRepositioning(SubtitleRepositionMode mode)
 		return;
 	}
 	m_subtitleRepositionMode = mode;
+	if (mode != SubtitleRepositionMode::DISABLED)
+		m_panelSubtitleTestMode = PanelSubtitleTestMode::Off;
+}
+
+void CVideoProcessorDlg::PanelSubtitleTesting(PanelSubtitleTestMode mode)
+{
+	if (m_detectionFeaturesDisabled && mode != PanelSubtitleTestMode::Off)
+	{
+		DebugLog::Log(
+			"DETECTION FEATURES: ignoring VP-0070 test mode while disabled by configuration");
+		m_panelSubtitleTestMode = PanelSubtitleTestMode::Off;
+		return;
+	}
+	m_panelSubtitleTestMode = mode;
+	if (mode != PanelSubtitleTestMode::Off)
+		m_subtitleRepositionMode = SubtitleRepositionMode::DISABLED;
 }
 
 void CVideoProcessorDlg::DisableDetectionFeatures(bool disabled)
@@ -1501,6 +1517,7 @@ void CVideoProcessorDlg::DisableDetectionFeatures(bool disabled)
 	{
 		m_sceneAwareTimingCorrection = false;
 		m_subtitleRepositionMode = SubtitleRepositionMode::DISABLED;
+		m_panelSubtitleTestMode = PanelSubtitleTestMode::Off;
 		DebugLog::Log(
 			"DETECTION FEATURES: scene analysis and subtitle repositioning disabled");
 	}
@@ -4368,6 +4385,7 @@ void CVideoProcessorDlg::RenderStart()
 			m_sceneCorrectionUpstreamSample);
 		m_videoRenderer->SetSubtitleRepositioningMode(
 			m_subtitleRepositionMode);
+		m_videoRenderer->SetPanelSubtitleTestMode(m_panelSubtitleTestMode);
 		m_videoRenderer->Start();
 
 		m_rendererStateText.SetWindowText(TEXT("Started HDR renderer, waiting for image..."));
@@ -4452,6 +4470,7 @@ void CVideoProcessorDlg::RenderStart()
 				m_sceneCorrectionUpstreamSample);
 			m_videoRenderer->SetSubtitleRepositioningMode(
 				m_subtitleRepositionMode);
+			m_videoRenderer->SetPanelSubtitleTestMode(m_panelSubtitleTestMode);
 			m_videoRenderer->Start();
 
 			m_rendererStateText.SetWindowText(TEXT("Started, waiting for image..."));

@@ -63,6 +63,8 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("scene_correction_basic"),
 			ConfigSchema::Choice("subtitle_reposition",
 				{ "true", "false", "basic", "advanced", "on", "off", "1", "0" }),
+			ConfigSchema::Choice("subtitle_panel_test_mode",
+				{ "off", "highlight", "move" }),
 			ConfigSchema::Boolean("newlldv"),
 			ConfigSchema::Boolean("new_lldv"),
 			ConfigSchema::Boolean("noui"),

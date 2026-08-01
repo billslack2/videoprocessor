@@ -51,6 +51,7 @@ public:
 	void OnDisplayChange() override;
 	void SetFrameQueueMaxSize(size_t size) override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
+	void SetPanelSubtitleTestMode(PanelSubtitleTestMode mode) override;
 	uint64_t SceneAwareCorrectionDropCount() const override;
 	uint64_t SceneAwareCorrectionRepeatCount() const override;
 	uint64_t SceneAwareDetectedCount() const override;
@@ -152,6 +153,8 @@ private:
 	std::atomic<uint64_t> m_missingFrameStateDrops{0};
 	std::atomic<uint64_t> m_renderFailureDrops{0};
 	std::atomic_bool m_sceneDetectionEnabled{false};
+	std::atomic<PanelSubtitleTestMode> m_panelSubtitleTestMode{
+		PanelSubtitleTestMode::Off};
 	std::atomic<uint64_t> m_sceneDetectorGeneration{1};
 	std::atomic<uint64_t> m_sceneDetectedCount{0};
 	std::atomic<uint64_t> m_sceneCorrectionDropCount{0};
