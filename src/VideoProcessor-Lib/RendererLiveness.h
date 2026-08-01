@@ -48,6 +48,121 @@ struct RendererLatencySnapshot
 	double scheduledLatencyMs = 0.0;
 };
 
+// UI telemetry deliberately ignores the first second of a fresh graph epoch,
+// then requires one second of clean evidence. This never gates video delivery;
+// it only prevents preroll and graph-clock startup transients from being shown
+// as a stable latency measurement.
+class RendererLatencyStabilizer
+{
+public:
+	static constexpr uint64_t IGNORE_MS = 1000;
+	static constexpr uint64_t EVIDENCE_MS = 1000;
+	static constexpr uint64_t MINIMUM_SAMPLES = 5;
+
+	bool Observe(uint64_t epoch, uint64_t tickMs,
+		const RendererLatencySnapshot& observed,
+		RendererLatencySnapshot& stable)
+	{
+		if (!observed.supported)
+			return false;
+		if (!m_initialized || epoch != m_epoch || tickMs < m_firstTickMs)
+			Reset(epoch, tickMs);
+
+		const uint64_t elapsedMs = tickMs - m_firstTickMs;
+		if (elapsedMs < IGNORE_MS)
+			return false;
+
+		if (!m_ready)
+		{
+			m_internalSum += observed.vpInternalMs;
+			++m_internalSamples;
+			if (observed.scheduledPresentationKnown)
+			{
+				m_leadSum += observed.dsScheduleLeadMs;
+				m_scheduledSum += observed.scheduledLatencyMs;
+				++m_scheduledSamples;
+			}
+			if (elapsedMs < IGNORE_MS + EVIDENCE_MS ||
+				m_internalSamples < MINIMUM_SAMPLES)
+				return false;
+
+			m_stable.supported = true;
+			m_stable.vpInternalMs =
+				m_internalSum / static_cast<double>(m_internalSamples);
+			m_stable.scheduledPresentationKnown =
+				m_scheduledSamples >= MINIMUM_SAMPLES;
+			if (m_stable.scheduledPresentationKnown)
+			{
+				m_stable.dsScheduleLeadMs =
+					m_leadSum / static_cast<double>(m_scheduledSamples);
+				m_stable.scheduledLatencyMs =
+					m_scheduledSum / static_cast<double>(m_scheduledSamples);
+			}
+			m_ready = true;
+			m_lastTickMs = tickMs;
+			stable = m_stable;
+			return true;
+		}
+
+		const uint64_t deltaMs = tickMs - m_lastTickMs;
+		m_lastTickMs = tickMs;
+		const double alpha = deltaMs >= 1000 ? 1.0 :
+			static_cast<double>(deltaMs) / 1000.0;
+		m_stable.vpInternalMs += alpha *
+			(observed.vpInternalMs - m_stable.vpInternalMs);
+		if (observed.scheduledPresentationKnown)
+		{
+			if (!m_stable.scheduledPresentationKnown)
+			{
+				m_stable.dsScheduleLeadMs = observed.dsScheduleLeadMs;
+				m_stable.scheduledLatencyMs = observed.scheduledLatencyMs;
+			}
+			else
+			{
+				m_stable.dsScheduleLeadMs += alpha *
+					(observed.dsScheduleLeadMs - m_stable.dsScheduleLeadMs);
+				m_stable.scheduledLatencyMs += alpha *
+					(observed.scheduledLatencyMs - m_stable.scheduledLatencyMs);
+			}
+			m_stable.scheduledPresentationKnown = true;
+		}
+		else
+		{
+			m_stable.scheduledPresentationKnown = false;
+		}
+		stable = m_stable;
+		return true;
+	}
+
+private:
+	void Reset(uint64_t epoch, uint64_t tickMs)
+	{
+		m_initialized = true;
+		m_ready = false;
+		m_epoch = epoch;
+		m_firstTickMs = tickMs;
+		m_lastTickMs = tickMs;
+		m_internalSamples = 0;
+		m_scheduledSamples = 0;
+		m_internalSum = 0.0;
+		m_leadSum = 0.0;
+		m_scheduledSum = 0.0;
+		m_stable = {};
+	}
+
+	bool m_initialized = false;
+	bool m_ready = false;
+	uint64_t m_epoch = 0;
+	uint64_t m_firstTickMs = 0;
+	uint64_t m_lastTickMs = 0;
+	uint64_t m_internalSamples = 0;
+	uint64_t m_scheduledSamples = 0;
+	double m_internalSum = 0.0;
+	double m_leadSum = 0.0;
+	double m_scheduledSum = 0.0;
+	RendererLatencySnapshot m_stable;
+};
+
 inline bool CalculateVpInternalLatency(
 	uint64_t vpArrivalTickMs,
 	uint64_t observationTickMs,

@@ -117,6 +117,7 @@ private:
 	std::atomic<double> m_vpInternalLatencyMs{ 0.0 };
 	std::atomic<double> m_dsScheduleLeadMs{ 0.0 };
 	std::atomic<double> m_scheduledLatencyMs{ 0.0 };
+	RendererLatencyStabilizer m_latencyStabilizer;
 
 	//
 	// QUEUE INFRASTRUCTURE (with dedicated locks)

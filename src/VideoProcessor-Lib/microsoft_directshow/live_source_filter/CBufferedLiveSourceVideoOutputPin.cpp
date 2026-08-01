@@ -1728,6 +1728,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		const uint64_t deliveryAttemptTick = GetTickCount64();
 		const REFERENCE_TIME streamTime = NowStreamTime(m_pFilter);
 		RendererLatencySnapshot latencySnapshot;
+		RendererLatencySnapshot displayedLatencySnapshot;
+		bool latencyDisplayReady = false;
 		if (CalculateVpInternalLatency(
 			captureArrivalTick, deliveryAttemptTick, latencySnapshot))
 		{
@@ -1744,18 +1746,47 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					captureArrivalTick, deliveryAttemptTick,
 					presentationStart, streamTime, latencySnapshot);
 			}
-			m_latencySnapshotSequence.fetch_add(1, std::memory_order_acq_rel);
-			m_scheduledPresentationKnown.store(
-				latencySnapshot.scheduledPresentationKnown,
-				std::memory_order_relaxed);
-			m_vpInternalLatencyMs.store(
-				latencySnapshot.vpInternalMs, std::memory_order_relaxed);
-			m_dsScheduleLeadMs.store(
-				latencySnapshot.dsScheduleLeadMs, std::memory_order_relaxed);
-			m_scheduledLatencyMs.store(
-				latencySnapshot.scheduledLatencyMs, std::memory_order_relaxed);
-			m_latencySnapshotSequence.fetch_add(1, std::memory_order_release);
-			m_latencySnapshotAvailable.store(true, std::memory_order_release);
+			latencyDisplayReady = m_latencyStabilizer.Observe(
+				expectedQueueEpoch, deliveryAttemptTick,
+				latencySnapshot, displayedLatencySnapshot);
+			if (latencyDisplayReady)
+			{
+				const bool wasAvailable = m_latencySnapshotAvailable.load(
+					std::memory_order_acquire);
+				m_latencySnapshotSequence.fetch_add(1, std::memory_order_acq_rel);
+				m_scheduledPresentationKnown.store(
+					displayedLatencySnapshot.scheduledPresentationKnown,
+					std::memory_order_relaxed);
+				m_vpInternalLatencyMs.store(
+					displayedLatencySnapshot.vpInternalMs,
+					std::memory_order_relaxed);
+				m_dsScheduleLeadMs.store(
+					displayedLatencySnapshot.dsScheduleLeadMs,
+					std::memory_order_relaxed);
+				m_scheduledLatencyMs.store(
+					displayedLatencySnapshot.scheduledLatencyMs,
+					std::memory_order_relaxed);
+				m_latencySnapshotSequence.fetch_add(1, std::memory_order_release);
+				m_latencySnapshotAvailable.store(true, std::memory_order_release);
+				if (!wasAvailable)
+				{
+					DebugLog::Log(
+						"VP LATENCY METRIC READY: epoch=%llu vp_internal=%.2fms "
+						"scheduled_known=%d ds_lead=%.2fms vp_to_scheduled=%.2fms "
+						"startup_ignore_ms=%llu evidence_ms=%llu",
+						expectedQueueEpoch,
+						displayedLatencySnapshot.vpInternalMs,
+						displayedLatencySnapshot.scheduledPresentationKnown ? 1 : 0,
+						displayedLatencySnapshot.dsScheduleLeadMs,
+						displayedLatencySnapshot.scheduledLatencyMs,
+						RendererLatencyStabilizer::IGNORE_MS,
+						RendererLatencyStabilizer::EVIDENCE_MS);
+				}
+			}
+			else
+			{
+				m_latencySnapshotAvailable.store(false, std::memory_order_release);
+			}
 		}
 		else
 		{
@@ -1770,6 +1801,25 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		deliveryAttemptTrace.eventTick = deliveryAttemptTick;
 		deliveryAttemptTrace.presentationStart = presentationStart;
 		deliveryAttemptTrace.presentationStop = presentationStop;
+		deliveryAttemptTrace.streamTime = streamTime;
+		deliveryAttemptTrace.vpInternalUs = static_cast<int64_t>(
+			llround(latencySnapshot.vpInternalMs * 1000.0));
+		deliveryAttemptTrace.dsScheduleLeadUs = static_cast<int64_t>(
+			llround(latencySnapshot.dsScheduleLeadMs * 1000.0));
+		deliveryAttemptTrace.scheduledLatencyUs = static_cast<int64_t>(
+			llround(latencySnapshot.scheduledLatencyMs * 1000.0));
+		deliveryAttemptTrace.scheduledLatencyKnown =
+			latencySnapshot.scheduledPresentationKnown;
+		deliveryAttemptTrace.latencyDisplayReady = latencyDisplayReady;
+		if (latencyDisplayReady)
+		{
+			deliveryAttemptTrace.displayedVpInternalUs = static_cast<int64_t>(
+				llround(displayedLatencySnapshot.vpInternalMs * 1000.0));
+			deliveryAttemptTrace.displayedDsScheduleLeadUs = static_cast<int64_t>(
+				llround(displayedLatencySnapshot.dsScheduleLeadMs * 1000.0));
+			deliveryAttemptTrace.displayedScheduledLatencyUs = static_cast<int64_t>(
+				llround(displayedLatencySnapshot.scheduledLatencyMs * 1000.0));
+		}
 		if (timestampDecision.valid)
 		{
 			deliveryAttemptTrace.mediaStart = timestampDecision.mediaStart;

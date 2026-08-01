@@ -115,5 +115,45 @@ namespace Tests
 			Assert::IsFalse(snapshot.scheduledPresentationKnown);
 			Assert::AreEqual(23.0, snapshot.vpInternalMs, 0.001);
 		}
+
+		TEST_METHOD(LatencyDisplayIgnoresStartupThenAveragesCleanEvidence)
+		{
+			RendererLatencyStabilizer stabilizer;
+			RendererLatencySnapshot observed;
+			observed.supported = true;
+			observed.scheduledPresentationKnown = true;
+			RendererLatencySnapshot stable;
+
+			observed.vpInternalMs = 900.0;
+			observed.dsScheduleLeadMs = 800.0;
+			observed.scheduledLatencyMs = 1700.0;
+			Assert::IsFalse(stabilizer.Observe(4, 100, observed, stable));
+			Assert::IsFalse(stabilizer.Observe(4, 1000, observed, stable));
+
+			for (uint64_t tick = 1100; tick <= 1700; tick += 200)
+			{
+				observed.vpInternalMs = 20.0;
+				observed.dsScheduleLeadMs = 40.0;
+				observed.scheduledLatencyMs = 60.0;
+				Assert::IsFalse(stabilizer.Observe(4, tick, observed, stable));
+			}
+			Assert::IsTrue(stabilizer.Observe(4, 2100, observed, stable));
+			Assert::AreEqual(20.0, stable.vpInternalMs, 0.001);
+			Assert::AreEqual(40.0, stable.dsScheduleLeadMs, 0.001);
+			Assert::AreEqual(60.0, stable.scheduledLatencyMs, 0.001);
+		}
+
+		TEST_METHOD(LatencyDisplayRewarmsForEveryEpoch)
+		{
+			RendererLatencyStabilizer stabilizer;
+			RendererLatencySnapshot observed;
+			observed.supported = true;
+			RendererLatencySnapshot stable;
+
+			Assert::IsFalse(stabilizer.Observe(1, 100, observed, stable));
+			for (uint64_t tick = 1100; tick <= 2100; tick += 200)
+				stabilizer.Observe(1, tick, observed, stable);
+			Assert::IsFalse(stabilizer.Observe(2, 2200, observed, stable));
+		}
 	};
 }

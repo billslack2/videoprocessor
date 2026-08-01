@@ -35,6 +35,13 @@ struct LiveOutputTraceRecord
 	uint64_t eventTick = 0;
 	int64_t presentationStart = 0;
 	int64_t presentationStop = 0;
+	int64_t streamTime = 0;
+	int64_t vpInternalUs = 0;
+	int64_t dsScheduleLeadUs = 0;
+	int64_t scheduledLatencyUs = 0;
+	int64_t displayedVpInternalUs = 0;
+	int64_t displayedDsScheduleLeadUs = 0;
+	int64_t displayedScheduledLatencyUs = 0;
 	int64_t mediaStart = 0;
 	int64_t mediaStop = 0;
 	uint64_t outputSequence = 0;
@@ -64,6 +71,8 @@ struct LiveOutputTraceRecord
 	bool sourceDiscontinuity = false;
 	bool convergenceApplied = false;
 	bool convergenceRawZero = false;
+	bool scheduledLatencyKnown = false;
+	bool latencyDisplayReady = false;
 };
 
 struct LiveOutputTraceComparison
@@ -168,6 +177,13 @@ public:
 				lhs.frameNumber != rhs.frameNumber ||
 				lhs.pipelineEpoch != rhs.pipelineEpoch ||
 				lhs.captureTimestamp != rhs.captureTimestamp ||
+				lhs.streamTime != rhs.streamTime ||
+				lhs.vpInternalUs != rhs.vpInternalUs ||
+				lhs.dsScheduleLeadUs != rhs.dsScheduleLeadUs ||
+				lhs.scheduledLatencyUs != rhs.scheduledLatencyUs ||
+				lhs.displayedVpInternalUs != rhs.displayedVpInternalUs ||
+				lhs.displayedDsScheduleLeadUs != rhs.displayedDsScheduleLeadUs ||
+				lhs.displayedScheduledLatencyUs != rhs.displayedScheduledLatencyUs ||
 				lhs.rawQueueDepth != rhs.rawQueueDepth ||
 				lhs.convertedQueueDepth != rhs.convertedQueueDepth ||
 				lhs.totalQueueDepth != rhs.totalQueueDepth ||
@@ -196,6 +212,8 @@ public:
 				lhs.sourceDiscontinuity != rhs.sourceDiscontinuity ||
 				lhs.convergenceApplied != rhs.convergenceApplied ||
 				lhs.convergenceRawZero != rhs.convergenceRawZero ||
+				lhs.scheduledLatencyKnown != rhs.scheduledLatencyKnown ||
+				lhs.latencyDisplayReady != rhs.latencyDisplayReady ||
 				AbsoluteDifference(lhs.presentationStart, rhs.presentationStart) > presentationTolerance ||
 				AbsoluteDifference(lhs.presentationStop, rhs.presentationStop) > presentationTolerance)
 			{
@@ -212,13 +230,16 @@ public:
 		const std::vector<LiveOutputTraceRecord>& records)
 	{
 		stream << "sequence,kind,frame,epoch,capture_timestamp,capture_arrival_tick,event_tick,"
-			"presentation_start,presentation_stop,media_start,media_stop,output_sequence,"
+			"presentation_start,presentation_stop,stream_time,vp_internal_us,ds_schedule_lead_us,"
+			"vp_to_scheduled_us,displayed_vp_internal_us,displayed_ds_schedule_lead_us,"
+			"displayed_vp_to_scheduled_us,media_start,media_stop,output_sequence,"
 			"raw_queue,converted_queue,total_queue,queue_capacity,processing_us,delivery_us,"
 			"delivery_result,queue_target,queue_depth_before,queue_depth_after,queue_discarded,"
 			"convergence_successes,convergence_blocks,convergence_recovery_streak,"
 			"convergence_block_threshold_us,convergence_normal_threshold_us,convergence_elapsed_ms,"
 			"convergence_state,convergence_reason,timestamp_owner,scene_boundary,intentional_drop,"
-			"source_discontinuity,convergence_applied,convergence_raw_zero\n";
+			"source_discontinuity,convergence_applied,convergence_raw_zero,"
+			"scheduled_latency_known,latency_display_ready\n";
 		for (const LiveOutputTraceRecord& record : records)
 		{
 			stream << record.sequence << ',' << static_cast<unsigned>(record.kind) << ','
@@ -226,6 +247,11 @@ public:
 				<< record.captureTimestamp << ',' << record.captureArrivalTick << ','
 				<< record.eventTick << ','
 				<< record.presentationStart << ',' << record.presentationStop << ','
+				<< record.streamTime << ',' << record.vpInternalUs << ','
+				<< record.dsScheduleLeadUs << ',' << record.scheduledLatencyUs << ','
+				<< record.displayedVpInternalUs << ','
+				<< record.displayedDsScheduleLeadUs << ','
+				<< record.displayedScheduledLatencyUs << ','
 				<< record.mediaStart << ',' << record.mediaStop << ','
 				<< record.outputSequence << ','
 				<< record.rawQueueDepth << ',' << record.convertedQueueDepth << ','
@@ -245,7 +271,9 @@ public:
 				<< (record.intentionalDrop ? 1 : 0) << ','
 				<< (record.sourceDiscontinuity ? 1 : 0) << ','
 				<< (record.convergenceApplied ? 1 : 0) << ','
-				<< (record.convergenceRawZero ? 1 : 0) << '\n';
+				<< (record.convergenceRawZero ? 1 : 0) << ','
+				<< (record.scheduledLatencyKnown ? 1 : 0) << ','
+				<< (record.latencyDisplayReady ? 1 : 0) << '\n';
 		}
 	}
 
