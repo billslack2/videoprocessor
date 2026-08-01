@@ -26,12 +26,20 @@ namespace Tests
 			result.lines[0].captureBounds = { 12, 0, 40, 10 };
 			result.lines[0].location = PanelSubtitleLocation::TopBar;
 			result.lines[0].backingLuma = 64;
+			result.cue.captureBounds = result.lines[0].captureBounds;
+			result.cue.glyphBounds = result.lines[0].glyphBounds;
+			result.cue.maskBounds = result.lines[0].glyphBounds;
+			result.cue.location = result.lines[0].location;
+			result.cue.backingLuma = result.lines[0].backingLuma;
+			result.cue.members[0] = result.lines[0];
+			result.cue.memberCount = 1;
 			auto mask = std::make_shared<std::vector<uint8_t>>(
 				Width * Height, 0);
 			for (int y = 3; y < 7; ++y)
 				for (int x = 18; x < 24; ++x)
 					(*mask)[y * Width + x] = 255;
 			result.softGlyphMask = mask;
+			result.currentMaskVerified = true;
 			return result;
 		}
 
@@ -121,6 +129,14 @@ namespace Tests
 			result.lines[1].captureBounds = { 12, 44, 40, 48 };
 			result.lines[1].location = PanelSubtitleLocation::BottomBar;
 			result.lines[1].backingLuma = 64;
+			result.cue.captureBounds = { 12, 40, 40, 48 };
+			result.cue.glyphBounds = { 18, 41, 24, 47 };
+			result.cue.maskBounds = result.cue.glyphBounds;
+			result.cue.location = PanelSubtitleLocation::BottomBar;
+			result.cue.backingLuma = 64;
+			result.cue.members[0] = result.lines[0];
+			result.cue.members[1] = result.lines[1];
+			result.cue.memberCount = 2;
 			auto mask = std::make_shared<std::vector<uint8_t>>(Width * Height, 0);
 			for (int y = 41; y < 43; ++y)
 				for (int x = 18; x < 24; ++x)
@@ -129,6 +145,7 @@ namespace Tests
 				for (int x = 18; x < 24; ++x)
 					(*mask)[y * Width + x] = 255;
 			result.softGlyphMask = mask;
+			result.currentMaskVerified = true;
 
 			std::vector<uint16_t> luma(Width * Height, 64 << 6);
 			std::vector<uint16_t> chroma(Width * Height / 2, 512 << 6);
@@ -141,10 +158,10 @@ namespace Tests
 
 			Assert::IsTrue(PanelSubtitleDiagnostic::Apply(result,
 				Surface(luma, chroma), PanelSubtitleTestMode::Move, 8, 40));
-			// Upper source line remains above the lower source line after packing
-			// both upward from the bottom active-picture edge.
+			// Both members share one translation, so their original vertical order
+			// is preserved inside a single composite destination panel.
 			Assert::AreEqual(static_cast<unsigned int>(800 << 6),
-				static_cast<unsigned int>(luma[15 * Width + 20]));
+				static_cast<unsigned int>(luma[21 * Width + 20]));
 			Assert::AreEqual(static_cast<unsigned int>(900 << 6),
 				static_cast<unsigned int>(luma[25 * Width + 20]));
 		}

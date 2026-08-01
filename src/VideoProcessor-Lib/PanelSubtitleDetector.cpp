@@ -29,6 +29,49 @@ namespace
 		rectangle.bottom = std::max(0, std::min(height, rectangle.bottom));
 		return rectangle;
 	}
+
+	bool IsTopCue(PanelSubtitleLocation location)
+	{
+		return location == PanelSubtitleLocation::TopBoundary ||
+			location == PanelSubtitleLocation::TopBar;
+	}
+
+	bool IsBottomCue(PanelSubtitleLocation location)
+	{
+		return location == PanelSubtitleLocation::BottomBoundary ||
+			location == PanelSubtitleLocation::BottomBar;
+	}
+
+	bool IsPictureOnly(const PanelSubtitleInput& input,
+		const PanelSubtitleRect& rectangle)
+	{
+		return input.activePictureStable && rectangle.top >= input.activePictureTop &&
+			rectangle.bottom <= input.activePictureBottom;
+	}
+
+	bool RelatedCaptionMember(const PanelSubtitleRect& cue,
+		const PanelSubtitleRect& member, int height)
+	{
+		const int overlap = std::min(cue.right, member.right) -
+			std::max(cue.left, member.left);
+		const int requiredOverlap = std::max(1,
+			std::min(RectWidth(cue), RectWidth(member)) / 4);
+		const int verticalGap = std::max(0, std::max(cue.top - member.bottom,
+			member.top - cue.bottom));
+		const int maximumGap = std::max(height * 4 / 1080,
+			2 * std::max(RectHeight(cue), RectHeight(member)));
+		return overlap >= requiredOverlap && verticalGap <= maximumGap;
+	}
+
+	PanelSubtitleRect UnionRectangle(PanelSubtitleRect left,
+		const PanelSubtitleRect& right)
+	{
+		left.left = std::min(left.left, right.left);
+		left.top = std::min(left.top, right.top);
+		left.right = std::max(left.right, right.right);
+		left.bottom = std::max(left.bottom, right.bottom);
+		return left;
+	}
 }
 
 PanelSubtitleDetector::PanelSubtitleDetector(
@@ -155,6 +198,7 @@ void PanelSubtitleDetector::Reset()
 	m_acquisitionGeneration = {};
 	m_nextAcquisitionSequence = 0;
 	m_hasAcquisitionGeneration = false;
+	m_stableSoftMisses = 0;
 }
 
 bool PanelSubtitleDetector::IsTrustedActivePicture(
@@ -184,7 +228,8 @@ bool PanelSubtitleDetector::IsInSearchDomain(const PanelSubtitleInput& input,
 }
 
 bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
-	const PanelSubtitleRect& glyphBounds, Candidate& candidate)
+	const PanelSubtitleRect& glyphBounds, Candidate& candidate,
+	const Candidate* cueAnchor)
 {
 	const int width = static_cast<int>(input.width);
 	const int height = static_cast<int>(input.height);
@@ -211,62 +256,39 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 			(!useTopBarBacking && !useBottomBarBacking);
 	};
 
-	std::array<uint32_t, 1024> histogram{};
-	uint32_t nonSeeds = 0;
-	for (int y = support.top; y < support.bottom; ++y)
+	uint16_t backingLuma = cueAnchor ? cueAnchor->backingLuma : 1023;
+	if (!cueAnchor)
 	{
-		if (!isBackingSample(y))
-			continue;
-		const auto* row = reinterpret_cast<const uint16_t*>(
-			reinterpret_cast<const uint8_t*>(input.p010Luma) +
-			static_cast<size_t>(y) * input.strideBytes);
-		for (int x = support.left; x < support.right; ++x)
+		std::array<uint32_t, 1024> histogram{};
+		uint32_t nonSeeds = 0;
+		for (int y = support.top; y < support.bottom; ++y)
 		{
-			const uint16_t code = P010Code(row, x);
-			if (IsGlyphSeed(input, x, y))
-				continue;
-			++histogram[code];
-			++nonSeeds;
+			if (!isBackingSample(y)) continue;
+			const auto* row = reinterpret_cast<const uint16_t*>(reinterpret_cast<const uint8_t*>(input.p010Luma) + static_cast<size_t>(y) * input.strideBytes);
+			for (int x = support.left; x < support.right; ++x)
+				if (!IsGlyphSeed(input, x, y)) { ++histogram[P010Code(row, x)]; ++nonSeeds; }
 		}
-	}
-	if (nonSeeds == 0)
-		return false;
-	const uint32_t rank = (nonSeeds * 72 + 99) / 100;
-	uint32_t cumulative = 0;
-	uint16_t backingLuma = 1023;
-	for (size_t code = 0; code < histogram.size(); ++code)
-	{
-		cumulative += histogram[code];
-		if (cumulative >= rank)
+		if (nonSeeds == 0) return false;
+		const uint32_t rank = (nonSeeds * 72 + 99) / 100;
+		uint32_t cumulative = 0;
+		for (size_t code = 0; code < histogram.size(); ++code)
+			if ((cumulative += histogram[code]) >= rank) { backingLuma = static_cast<uint16_t>(code); break; }
+		const uint16_t backingLimit = static_cast<uint16_t>(std::min<int>(m_settings.maximumBackingLuma, backingLuma + 48));
+		uint32_t dark = 0;
+		for (int y = support.top; y < support.bottom; ++y)
 		{
-			backingLuma = static_cast<uint16_t>(code);
-			break;
+			if (!isBackingSample(y)) continue;
+			const auto* row = reinterpret_cast<const uint16_t*>(reinterpret_cast<const uint8_t*>(input.p010Luma) + static_cast<size_t>(y) * input.strideBytes);
+			for (int x = support.left; x < support.right; ++x)
+				if (!IsGlyphSeed(input, x, y) && P010Code(row, x) <= backingLimit) ++dark;
 		}
+		if (dark * 100 < nonSeeds * m_settings.minimumBackingCoveragePercent) return false;
 	}
-	const uint16_t backingLimit = static_cast<uint16_t>(std::min<int>(
-		m_settings.maximumBackingLuma, backingLuma + 48));
-	uint32_t dark = 0;
-	for (int y = support.top; y < support.bottom; ++y)
-	{
-		if (!isBackingSample(y))
-			continue;
-		const auto* row = reinterpret_cast<const uint16_t*>(
-			reinterpret_cast<const uint8_t*>(input.p010Luma) +
-			static_cast<size_t>(y) * input.strideBytes);
-		for (int x = support.left; x < support.right; ++x)
-		{
-			const uint16_t code = P010Code(row, x);
-			if (!IsGlyphSeed(input, x, y) && code <= backingLimit)
-				++dark;
-		}
-	}
-	if (dark * 100 < nonSeeds * m_settings.minimumBackingCoveragePercent)
-		return false;
 
-	PanelSubtitleLocation location = PanelSubtitleLocation::None;
+	PanelSubtitleLocation location = cueAnchor ? cueAnchor->line.location : PanelSubtitleLocation::None;
 	uint32_t beforeBoundary = 0;
 	uint32_t afterBoundary = 0;
-	if (IsTrustedActivePicture(input))
+	if (IsTrustedActivePicture(input) && !cueAnchor)
 	{
 		const int top = input.activePictureTop;
 		const int bottom = input.activePictureBottom;
@@ -307,7 +329,7 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 		}
 	}
 	if (seedPixels < 24 ||
-		((location == PanelSubtitleLocation::TopBoundary ||
+		(!cueAnchor && (location == PanelSubtitleLocation::TopBoundary ||
 			location == PanelSubtitleLocation::BottomBoundary) &&
 			(beforeBoundary < 12 || afterBoundary < 12)))
 		return false;
@@ -584,31 +606,38 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 		if (verticalOverlap > 0 && horizontalGap > menuGap)
 			return false;
 	}
-	std::sort(candidates.begin(), candidates.begin() + candidateCount,
-		[](const Candidate& left, const Candidate& right) {
-			return left.line.glyphBounds.top < right.line.glyphBounds.top;
-		});
-	BuildMask(input, candidates, candidateCount);
-	// A bar hit makes the whole nearby caption actionable.  The bar relation is
-	// the eligibility proof, not a request to crop the capture at the boundary:
-	// fold a close, horizontally aligned picture-side line into the one public
-	// caption rectangle.  It deliberately has no independent panel/mask entry,
-	// so it cannot create a second diagnostic box or relocation operation.
-	PanelSubtitleRect combinedGlyph = candidates[0].line.glyphBounds;
+	// Pick one deterministic bar/boundary anchor, then build one connected cue
+	// from members on the same active-picture side.  Never union every detected
+	// line: independent top/bottom overlays are separate candidates, not one
+	// caption.
+	size_t anchorIndex = 0;
 	for (size_t index = 1; index < candidateCount; ++index)
+		if (candidates[index].line.seedPixels > candidates[anchorIndex].line.seedPixels ||
+			(candidates[index].line.seedPixels == candidates[anchorIndex].line.seedPixels &&
+				candidates[index].line.glyphBounds.top < candidates[anchorIndex].line.glyphBounds.top))
+			anchorIndex = index;
+	std::array<Candidate, MaximumLines> cueMembers{};
+	size_t cueMemberCount = 0;
+	cueMembers[cueMemberCount++] = candidates[anchorIndex];
+	PanelSubtitleRect combinedGlyph = candidates[anchorIndex].line.glyphBounds;
+	for (size_t index = 0; index < candidateCount && cueMemberCount < cueMembers.size(); ++index)
 	{
-		const PanelSubtitleRect& bounds = candidates[index].line.glyphBounds;
-		combinedGlyph.left = std::min(combinedGlyph.left, bounds.left);
-		combinedGlyph.top = std::min(combinedGlyph.top, bounds.top);
-		combinedGlyph.right = std::max(combinedGlyph.right, bounds.right);
-		combinedGlyph.bottom = std::max(combinedGlyph.bottom, bounds.bottom);
+		if (index == anchorIndex ||
+			(IsTopCue(candidates[index].line.location) != IsTopCue(cueMembers[0].line.location)) ||
+			!RelatedCaptionMember(combinedGlyph, candidates[index].line.glyphBounds, height))
+			continue;
+		cueMembers[cueMemberCount++] = candidates[index];
+		combinedGlyph = UnionRectangle(combinedGlyph, candidates[index].line.glyphBounds);
 	}
+	// Picture-side text is admitted only as a contrast-qualified member using
+	// the anchor's known bar backing.  It therefore receives both a mask and a
+	// stable-frame validation anchor; raw proposals never enter public geometry.
 	if (IsTrustedActivePicture(input))
-		for (size_t index = 0; index < lineCount; ++index)
+		for (size_t index = 0; index < lineCount && cueMemberCount < cueMembers.size(); ++index)
 		{
 			const PanelSubtitleRect& bounds = lines[index];
-			if (bounds.top < input.activePictureTop ||
-				bounds.bottom > input.activePictureBottom)
+			if (!IsPictureOnly(input, bounds) ||
+				!RelatedCaptionMember(combinedGlyph, bounds, height))
 				continue;
 			const int glyphWidth = RectWidth(bounds);
 			const int glyphHeight = RectHeight(bounds);
@@ -616,26 +645,49 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 				glyphHeight < std::max(m_settings.minimumGlyphHeight, height / 154) ||
 				glyphHeight > height * m_settings.maximumGlyphHeightPercent / 100)
 				continue;
-			const int overlap = std::min(combinedGlyph.right, bounds.right) -
-				std::max(combinedGlyph.left, bounds.left);
-			const int requiredOverlap = std::min(RectWidth(combinedGlyph), glyphWidth) / 4;
-			const int verticalGap = std::max(0, std::max(
-				combinedGlyph.top - bounds.bottom, bounds.top - combinedGlyph.bottom));
-			const int maximumGap = std::max(height * 4 / 1080,
-				2 * std::max(RectHeight(combinedGlyph), glyphHeight));
-			if (overlap < requiredOverlap || verticalGap > maximumGap)
+			Candidate companion;
+			if (!QualifyCandidate(input, bounds, companion, &cueMembers[0]))
 				continue;
-			combinedGlyph.left = std::min(combinedGlyph.left, bounds.left);
-			combinedGlyph.top = std::min(combinedGlyph.top, bounds.top);
-			combinedGlyph.right = std::max(combinedGlyph.right, bounds.right);
-			combinedGlyph.bottom = std::max(combinedGlyph.bottom, bounds.bottom);
+			cueMembers[cueMemberCount++] = companion;
+			combinedGlyph = UnionRectangle(combinedGlyph, bounds);
 		}
-	const int captureInset = std::max(22,
-		static_cast<int>(std::ceil(RectHeight(combinedGlyph) * 1.6)));
-	const PanelSubtitleRect combinedCapture = ClampRectangle({
+	BuildMask(input, cueMembers, cueMemberCount);
+	int largestMemberHeight = 0;
+	for (size_t index = 0; index < cueMemberCount; ++index)
+		largestMemberHeight = std::max(largestMemberHeight,
+			RectHeight(cueMembers[index].line.glyphBounds));
+	const int captureInset = std::max(22, largestMemberHeight);
+	PanelSubtitleRect combinedCapture = {
 		combinedGlyph.left - std::max(32, captureInset), combinedGlyph.top - captureInset,
-		combinedGlyph.right + std::max(32, captureInset), combinedGlyph.bottom + captureInset },
-		width, height);
+		combinedGlyph.right + std::max(32, captureInset), combinedGlyph.bottom + captureInset };
+	if (IsTrustedActivePicture(input))
+	{
+		// Bar-only cues stay in the bar; boundary cues get at most one member
+		// height of picture context rather than a 1.6x *combined* cue explosion.
+		if (IsBottomCue(cueMembers[0].line.location))
+		{
+			if (combinedGlyph.top >= input.activePictureBottom)
+				combinedCapture.top = std::max(combinedCapture.top, input.activePictureBottom);
+			combinedCapture.bottom = std::min(combinedCapture.bottom, height);
+		}
+		else
+		{
+			if (combinedGlyph.bottom <= input.activePictureTop)
+				combinedCapture.bottom = std::min(combinedCapture.bottom, input.activePictureTop);
+			combinedCapture.top = std::max(combinedCapture.top, 0);
+		}
+	}
+	else
+	{
+		// Keep legacy constrained-domain diagnostics unchanged.
+		const int legacyInset = std::max(22,
+			static_cast<int>(std::ceil(RectHeight(combinedGlyph) * 1.6)));
+		combinedCapture.top = combinedGlyph.top - legacyInset;
+		combinedCapture.bottom = combinedGlyph.bottom + legacyInset;
+		combinedCapture.left = combinedGlyph.left - std::max(32, legacyInset);
+		combinedCapture.right = combinedGlyph.right + std::max(32, legacyInset);
+	}
+	combinedCapture = ClampRectangle(combinedCapture, width, height);
 
 	result = {};
 	result.state = PanelSubtitleState::Candidate;
@@ -643,18 +695,27 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 	result.generation = input.generation;
 	result.rasterWidth = input.width;
 	result.rasterHeight = input.height;
-	result.lineCount = candidateCount;
-	for (size_t index = 0; index < candidateCount; ++index)
-		result.lines[index] = candidates[index].line;
+	result.cue.captureBounds = combinedCapture;
+	result.cue.glyphBounds = combinedGlyph;
+	result.cue.maskBounds = combinedGlyph;
+	result.cue.location = cueMembers[0].line.location;
+	result.cue.backingLuma = cueMembers[0].backingLuma;
+	result.cue.memberCount = cueMemberCount;
+	result.lineCount = cueMemberCount;
+	for (size_t index = 0; index < cueMemberCount; ++index)
+	{
+		result.cue.members[index] = cueMembers[index].line;
+		result.lines[index] = cueMembers[index].line; // legacy/log projection
+	}
 	// Public geometry is one immutable caption capture box. Individual line
 	// records remain private mask/validation anchors, never separate captions.
 	result.panelBounds = combinedCapture;
 	result.glyphBounds = combinedGlyph;
 	result.maskBounds = combinedGlyph;
-	result.panelLuma = candidates[0].backingLuma;
-	result.fingerprint = candidates[0].line.fingerprint;
-	for (size_t index = 1; index < candidateCount; ++index)
-		result.fingerprint ^= candidates[index].line.fingerprint +
+	result.panelLuma = cueMembers[0].backingLuma;
+	result.fingerprint = cueMembers[0].line.fingerprint;
+	for (size_t index = 1; index < cueMemberCount; ++index)
+		result.fingerprint ^= cueMembers[index].line.fingerprint +
 			0x9e3779b97f4a7c15ULL + (result.fingerprint << 6) +
 			(result.fingerprint >> 2);
 	result.stabilityObservations = 1;
@@ -689,7 +750,7 @@ bool PanelSubtitleDetector::ValidateStable(const PanelSubtitleInput& input,
 	PanelSubtitleResult& result)
 {
 	if (m_stable.state != PanelSubtitleState::Stable ||
-		m_stable.lineCount == 0 ||
+		m_stable.cue.memberCount == 0 ||
 		!SameGeneration(m_stable.generation, input.generation))
 		return false;
 
@@ -698,20 +759,22 @@ bool PanelSubtitleDetector::ValidateStable(const PanelSubtitleInput& input,
 	// capture geometry. A failed validation immediately falls back to full
 	// acquisition below.
 	std::array<Candidate, MaximumLines> candidates{};
-	for (size_t index = 0; index < m_stable.lineCount; ++index)
+	for (size_t index = 0; index < m_stable.cue.memberCount; ++index)
 	{
-		if (!QualifyCandidate(input, m_stable.lines[index].glyphBounds,
-			candidates[index]) ||
-			!HasStableSeedOverlap(input, m_stable.lines[index]) ||
-			candidates[index].line.location != m_stable.lines[index].location ||
+		const Candidate* anchor = index != 0 && IsPictureOnly(input,
+			m_stable.cue.members[index].glyphBounds) ? &candidates[0] : nullptr;
+		if (!QualifyCandidate(input, m_stable.cue.members[index].glyphBounds,
+			candidates[index], anchor) ||
+			!HasStableSeedOverlap(input, m_stable.cue.members[index]) ||
+			candidates[index].line.location != m_stable.cue.members[index].location ||
 			std::abs(static_cast<int>(candidates[index].line.seedPixels) -
-				static_cast<int>(m_stable.lines[index].seedPixels)) >
-				std::max(8, static_cast<int>(m_stable.lines[index].seedPixels) / 6) ||
+				static_cast<int>(m_stable.cue.members[index].seedPixels)) >
+				std::max(8, static_cast<int>(m_stable.cue.members[index].seedPixels) / 6) ||
 			std::abs(static_cast<int>(candidates[index].line.backingLuma) -
-				static_cast<int>(m_stable.lines[index].backingLuma)) > 32)
+				static_cast<int>(m_stable.cue.members[index].backingLuma)) > 32)
 			return false;
 	}
-	BuildMask(input, candidates, m_stable.lineCount);
+	BuildMask(input, candidates, m_stable.cue.memberCount);
 	result = WithCurrentFrame(m_stable, input);
 	++result.stabilityObservations;
 	return true;
@@ -725,14 +788,15 @@ bool PanelSubtitleDetector::Matches(const PanelSubtitleResult& left,
 		left.rasterWidth != right.rasterWidth ||
 		left.rasterHeight != right.rasterHeight ||
 		!SameGeneration(left.generation, right.generation) ||
-		left.lineCount == 0 || left.lineCount != right.lineCount)
+		left.cue.memberCount == 0 || left.cue.memberCount != right.cue.memberCount ||
+		left.cue.location != right.cue.location)
 		return false;
 	const int tolerance = std::max(2, static_cast<int>(left.rasterHeight) / 270);
-	for (size_t index = 0; index < left.lineCount; ++index)
+	for (size_t index = 0; index < left.cue.memberCount; ++index)
 	{
-		if (left.lines[index].location != right.lines[index].location ||
-			!SameRectangleWithin(left.lines[index].glyphBounds,
-				right.lines[index].glyphBounds, tolerance))
+		if (left.cue.members[index].location != right.cue.members[index].location ||
+			!SameRectangleWithin(left.cue.members[index].glyphBounds,
+				right.cue.members[index].glyphBounds, tolerance))
 			return false;
 	}
 	return true;
@@ -744,12 +808,15 @@ void PanelSubtitleDetector::AttachMask(PanelSubtitleResult& result) const
 }
 
 PanelSubtitleResult PanelSubtitleDetector::WithCurrentFrame(
-	const PanelSubtitleResult& result, const PanelSubtitleInput& input) const
+	const PanelSubtitleResult& result, const PanelSubtitleInput& input,
+	bool maskVerified) const
 {
 	PanelSubtitleResult current = result;
 	current.sourceSequence = input.sourceSequence;
 	current.generation = input.generation;
-	AttachMask(current);
+	if (maskVerified)
+		AttachMask(current);
+	current.currentMaskVerified = maskVerified;
 	return current;
 }
 
@@ -779,11 +846,14 @@ PanelSubtitleResult PanelSubtitleDetector::Analyze(const PanelSubtitleInput& inp
 
 	PanelSubtitleResult validated;
 	if (ValidateStable(input, validated))
+	{
+		m_stableSoftMisses = 0;
 		return validated;
+	}
 	const bool stableValidationFailed =
 		m_stable.state == PanelSubtitleState::Stable;
 	if (stableValidationFailed)
-		m_stable = {};
+		++m_stableSoftMisses;
 	const bool candidatePending =
 		m_candidate.state == PanelSubtitleState::Candidate &&
 		SameGeneration(m_candidate.generation, input.generation);
@@ -796,7 +866,11 @@ PanelSubtitleResult PanelSubtitleDetector::Analyze(const PanelSubtitleInput& inp
 	if (!BuildCandidate(input, current))
 	{
 		m_candidate = {};
+		if (stableValidationFailed && m_stableSoftMisses <= static_cast<uint32_t>(
+			std::max(0, m_settings.releaseGraceFrames)))
+			return WithCurrentFrame(m_stable, input, false);
 		m_stable = {};
+		m_stableSoftMisses = 0;
 		m_nextAcquisitionSequence = input.sourceSequence +
 			static_cast<uint64_t>(std::max(1,
 				m_settings.acquisitionIntervalFrames));
@@ -815,11 +889,14 @@ PanelSubtitleResult PanelSubtitleDetector::Analyze(const PanelSubtitleInput& inp
 		m_stable.state = PanelSubtitleState::Stable;
 		m_stable.stabilityObservations = observations;
 		m_candidate = {};
+		m_stableSoftMisses = 0;
 		return WithCurrentFrame(m_stable, input);
 	}
 
 	m_stable = {};
+	m_stableSoftMisses = 0;
 	AttachMask(current);
+	current.currentMaskVerified = true;
 	m_candidate = current;
 	// Always inspect the next frame so a newly seen cue can lock immediately;
 	// the idle cadence applies only while no candidate exists.

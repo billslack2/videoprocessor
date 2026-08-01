@@ -60,6 +60,9 @@ struct PanelSubtitleDetectorSettings
 	// candidate and a failed stable-cue validation always bypass the cadence so
 	// cue confirmation and release still happen on adjacent frames.
 	int acquisitionIntervalFrames = 3;
+	// Keep a confirmed cue identity through a very short decoding/dropout miss,
+	// but never reuse its old mask for a rendering mutation.
+	int releaseGraceFrames = 2;
 };
 
 struct PanelSubtitleInput
@@ -98,6 +101,20 @@ struct PanelSubtitleGlyphLine
 	uint16_t backingLuma = 0;
 };
 
+// A single caption operation.  Members are not independent captions: every
+// member is a current, contrast-qualified mask/validation anchor and the
+// capture rectangle is the one geometry consumed by Highlight and Move.
+struct PanelSubtitleCueSet
+{
+	PanelSubtitleRect captureBounds;
+	PanelSubtitleRect glyphBounds;
+	PanelSubtitleRect maskBounds;
+	PanelSubtitleLocation location = PanelSubtitleLocation::None;
+	uint16_t backingLuma = 0;
+	std::array<PanelSubtitleGlyphLine, 3> members{};
+	size_t memberCount = 0;
+};
+
 struct PanelSubtitleResult
 {
 	PanelSubtitleState state = PanelSubtitleState::Unavailable;
@@ -111,6 +128,7 @@ struct PanelSubtitleResult
 	uint16_t panelLuma = 0;
 	uint64_t fingerprint = 0;
 	uint32_t stabilityObservations = 0;
+	PanelSubtitleCueSet cue;
 	// Private validation/mask anchors for a caption. Public panelBounds and
 	// glyphBounds are the single union capture geometry for all its members.
 	std::array<PanelSubtitleGlyphLine, 3> lines{};
@@ -118,6 +136,9 @@ struct PanelSubtitleResult
 	// One byte per source pixel, with zero outside maskBounds. Values are the
 	// contrast-derived foreground opacity against the learned panel color.
 	std::shared_ptr<const std::vector<uint8_t>> softGlyphMask;
+	// True only when softGlyphMask was rebuilt from this source frame. A soft
+	// release-grace result intentionally retains identity but cannot mutate.
+	bool currentMaskVerified = false;
 };
 
 class PanelSubtitleDetector
@@ -153,7 +174,8 @@ private:
 	bool IsTrustedActivePicture(const PanelSubtitleInput& input) const;
 	bool IsInSearchDomain(const PanelSubtitleInput& input, int y) const;
 	bool QualifyCandidate(const PanelSubtitleInput& input,
-		const PanelSubtitleRect& glyphBounds, Candidate& candidate);
+		const PanelSubtitleRect& glyphBounds, Candidate& candidate,
+		const Candidate* cueAnchor = nullptr);
 	void BuildMask(const PanelSubtitleInput& input,
 		const std::array<Candidate, 3>& candidates, size_t candidateCount);
 	bool BuildCandidate(const PanelSubtitleInput& input,
@@ -166,7 +188,7 @@ private:
 		const PanelSubtitleResult& right) const;
 	void AttachMask(PanelSubtitleResult& result) const;
 	PanelSubtitleResult WithCurrentFrame(const PanelSubtitleResult& result,
-		const PanelSubtitleInput& input) const;
+		const PanelSubtitleInput& input, bool maskVerified = true) const;
 
 	PanelSubtitleDetectorSettings m_settings;
 	std::shared_ptr<std::vector<uint8_t>> m_workMask =
@@ -178,4 +200,5 @@ private:
 	uint64_t m_nextAcquisitionSequence = 0;
 	uint64_t m_acquisitionScanCount = 0;
 	bool m_hasAcquisitionGeneration = false;
+	uint32_t m_stableSoftMisses = 0;
 };

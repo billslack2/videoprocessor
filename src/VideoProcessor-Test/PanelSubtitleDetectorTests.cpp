@@ -124,10 +124,9 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(PanelSubtitleState::Stable),
 				static_cast<int>(stable.state));
 			Assert::AreEqual(static_cast<size_t>(2), stable.lineCount);
-			Assert::IsTrue(stable.lines[0].glyphBounds.top <= 68);
-			Assert::IsTrue(stable.lines[0].glyphBounds.bottom >= 75);
-			Assert::IsTrue(stable.lines[1].glyphBounds.top <= 78);
-			Assert::IsTrue(stable.lines[1].glyphBounds.bottom >= 85);
+			Assert::AreEqual(static_cast<size_t>(2), stable.cue.memberCount);
+			Assert::IsTrue(stable.cue.glyphBounds.top <= 68);
+			Assert::IsTrue(stable.cue.glyphBounds.bottom >= 85);
 		}
 
 		TEST_METHOD(RejectsPanelOutsideConfiguredSubtitleBand)
@@ -419,6 +418,10 @@ namespace Tests
 				static_cast<int>(stable.state));
 			Assert::AreEqual(static_cast<int>(PanelSubtitleLocation::BottomBar),
 				static_cast<int>(stable.lines[0].location));
+			// A bar-only subtitle must not grow a combined-height capture into the
+			// active picture or down to the raster edge.
+			Assert::IsTrue(stable.cue.captureBounds.top >= 1884);
+			Assert::IsTrue(stable.cue.captureBounds.bottom < UhdHeight);
 			Assert::IsTrue(PanelSubtitleDiagnostic::Apply(stable, {
 				luma.data(), chroma.data(), UhdWidth, UhdHeight,
 				UhdWidth * sizeof(uint16_t), UhdWidth * sizeof(uint16_t) },
@@ -526,10 +529,38 @@ namespace Tests
 				static_cast<int>(stable.state));
 			Assert::AreEqual(static_cast<int>(PanelSubtitleLocation::BottomBoundary),
 				static_cast<int>(stable.lines[0].location));
+			Assert::AreEqual(static_cast<size_t>(2), stable.cue.memberCount);
+			Assert::IsTrue(stable.currentMaskVerified);
+			// The picture-side member is not merely included in the public box: it
+			// has a current contrast mask and can therefore be highlighted/moved.
+			Assert::IsTrue((*stable.softGlyphMask)[static_cast<size_t>(1780) * UhdWidth + 1300] != 0);
 			Assert::IsTrue(stable.glyphBounds.top <= 1760);
 			Assert::IsTrue(stable.glyphBounds.bottom >= 1910);
 			Assert::IsTrue(stable.panelBounds.top < stable.glyphBounds.top);
 			Assert::IsTrue(stable.panelBounds.bottom > stable.glyphBounds.bottom);
+		}
+
+		TEST_METHOD(SoftReleaseGraceNeverAppliesAStaleMask)
+		{
+			PanelSubtitleDetector detector;
+			std::vector<uint16_t> cue = Frame();
+			DrawPanelWithGlyphs(cue, 160);
+			detector.Analyze(Input(cue, 1));
+			const PanelSubtitleResult stable = detector.Analyze(Input(cue, 2));
+			Assert::IsTrue(stable.currentMaskVerified);
+			const std::vector<uint16_t> empty = Frame();
+			const PanelSubtitleResult softMiss = detector.Analyze(Input(empty, 3));
+			Assert::AreEqual(static_cast<int>(PanelSubtitleState::Stable),
+				static_cast<int>(softMiss.state));
+			Assert::IsFalse(softMiss.currentMaskVerified);
+			std::vector<uint16_t> luma = empty;
+			std::vector<uint16_t> chroma(Width * Height / 2, static_cast<uint16_t>(512 << 6));
+			const std::vector<uint16_t> before = luma;
+			Assert::IsFalse(PanelSubtitleDiagnostic::Apply(softMiss, {
+				luma.data(), chroma.data(), Width, Height,
+				Width * sizeof(uint16_t), Width * sizeof(uint16_t) },
+				PanelSubtitleTestMode::Move, 20, 80));
+			Assert::IsTrue(luma == before);
 		}
 
 		TEST_METHOD(RejectsSeparatedMenuHighlightsAndKeepsFrozenCaptureBox)

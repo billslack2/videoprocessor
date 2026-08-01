@@ -23,7 +23,8 @@ struct PanelSubtitleDiagnosticSurface
 class PanelSubtitleDiagnostic
 {
 public:
-	// Validation-only renderer. Highlight draws all locked line masks/boxes.
+	// Validation-only renderer. Highlight draws one locked cue box plus all of
+	// its current member masks. A stale soft-release result never mutates.
 	// Move captures the current glyph pixels, erases only their source mask,
 	// and composites them into deterministic boxes wholly inside the active
 	// picture. Candidate/unavailable/stale geometry never mutates the surface.
