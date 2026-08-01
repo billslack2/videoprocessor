@@ -196,11 +196,27 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 		glyphBounds.right + supportX, glyphBounds.bottom + supportY }, width, height);
 	if (!IsValid(support))
 		return false;
+	// A straddling line has picture pixels by design. Learn its backing only
+	// from the encoded-bar side, rather than allowing the scene behind the
+	// picture-side glyphs to poison the dark-panel estimate.
+	const bool trustedBounds = IsTrustedActivePicture(input);
+	const bool useTopBarBacking = trustedBounds &&
+		glyphBounds.top < input.activePictureTop;
+	const bool useBottomBarBacking = trustedBounds && !useTopBarBacking &&
+		glyphBounds.bottom > input.activePictureBottom;
+	auto isBackingSample = [&](int y) {
+		return !trustedBounds ||
+			(useTopBarBacking && y < input.activePictureTop) ||
+			(useBottomBarBacking && y >= input.activePictureBottom) ||
+			(!useTopBarBacking && !useBottomBarBacking);
+	};
 
 	std::array<uint32_t, 1024> histogram{};
 	uint32_t nonSeeds = 0;
 	for (int y = support.top; y < support.bottom; ++y)
 	{
+		if (!isBackingSample(y))
+			continue;
 		const auto* row = reinterpret_cast<const uint16_t*>(
 			reinterpret_cast<const uint8_t*>(input.p010Luma) +
 			static_cast<size_t>(y) * input.strideBytes);
@@ -232,6 +248,8 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 	uint32_t dark = 0;
 	for (int y = support.top; y < support.bottom; ++y)
 	{
+		if (!isBackingSample(y))
+			continue;
 		const auto* row = reinterpret_cast<const uint16_t*>(
 			reinterpret_cast<const uint8_t*>(input.p010Luma) +
 			static_cast<size_t>(y) * input.strideBytes);
@@ -274,7 +292,8 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 			static_cast<size_t>(y) * input.strideBytes);
 		for (int x = glyphBounds.left; x < glyphBounds.right; ++x)
 		{
-			if (!IsContrastGlyph(input, x, y, backingLuma))
+			if (!IsGlyphSeed(input, x, y) ||
+				!IsContrastGlyph(input, x, y, backingLuma))
 				continue;
 			++seedPixels;
 			seedLeft = std::min(seedLeft, x);
@@ -299,7 +318,8 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 			reinterpret_cast<const uint8_t*>(input.p010Luma) +
 			static_cast<size_t>(y) * input.strideBytes);
 		for (int x = glyphBounds.left; x < glyphBounds.right; ++x)
-			if (IsContrastGlyph(input, x, y, backingLuma))
+			if (IsGlyphSeed(input, x, y) &&
+				IsContrastGlyph(input, x, y, backingLuma))
 			{
 				// Normalize to the seed origin: a one-pixel source jitter does not
 				// invalidate an otherwise identical long-running cue.
@@ -320,7 +340,8 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 			const auto* row = reinterpret_cast<const uint16_t*>(
 				reinterpret_cast<const uint8_t*>(input.p010Luma) +
 				static_cast<size_t>(y) * input.strideBytes);
-			occupied = IsContrastGlyph(input, x, y, backingLuma);
+			occupied = IsGlyphSeed(input, x, y) &&
+				IsContrastGlyph(input, x, y, backingLuma);
 		}
 		if (occupied)
 		{
@@ -385,7 +406,7 @@ void PanelSubtitleDetector::BuildMask(const PanelSubtitleInput& input,
 			for (int x = nearby.left; x < nearby.right; ++x)
 			{
 				const uint16_t code = P010Code(row, x);
-				if (code >= threshold && HasNeutralChroma(input, x, y))
+				if (code >= threshold && IsGlyphSeed(input, x, y))
 				{
 					const size_t maskIndex =
 						static_cast<size_t>(y) * input.width + x;
@@ -548,25 +569,73 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 		return false;
 	// Separate bright menu items along one baseline are not a multiline
 	// subtitle. A real phrase would have merged above under the bounded word
-	// gap, while this guard rejects wide UI spacing.
+	// gap, while this guard rejects wide UI spacing. Vertically distinct lines
+	// with horizontal overlap do not enter this guard and are unioned below.
 	const int menuGap = std::max((height * 48 + 1079) / 1080, 24);
 	for (size_t left = 0; left < candidateCount; ++left)
 		for (size_t right = left + 1; right < candidateCount; ++right)
-		{
-			const PanelSubtitleRect& a = candidates[left].line.glyphBounds;
-			const PanelSubtitleRect& b = candidates[right].line.glyphBounds;
-			const int verticalOverlap = std::min(a.bottom, b.bottom) -
-				std::max(a.top, b.top);
-			const int horizontalGap = std::max(0, std::max(a.left - b.right,
-				b.left - a.right));
-			if (verticalOverlap > 0 && horizontalGap > menuGap)
-				return false;
-		}
+	{
+		const PanelSubtitleRect& a = candidates[left].line.glyphBounds;
+		const PanelSubtitleRect& b = candidates[right].line.glyphBounds;
+		const int verticalOverlap = std::min(a.bottom, b.bottom) -
+			std::max(a.top, b.top);
+		const int horizontalGap = std::max(0, std::max(a.left - b.right,
+			b.left - a.right));
+		if (verticalOverlap > 0 && horizontalGap > menuGap)
+			return false;
+	}
 	std::sort(candidates.begin(), candidates.begin() + candidateCount,
 		[](const Candidate& left, const Candidate& right) {
 			return left.line.glyphBounds.top < right.line.glyphBounds.top;
 		});
 	BuildMask(input, candidates, candidateCount);
+	// A bar hit makes the whole nearby caption actionable.  The bar relation is
+	// the eligibility proof, not a request to crop the capture at the boundary:
+	// fold a close, horizontally aligned picture-side line into the one public
+	// caption rectangle.  It deliberately has no independent panel/mask entry,
+	// so it cannot create a second diagnostic box or relocation operation.
+	PanelSubtitleRect combinedGlyph = candidates[0].line.glyphBounds;
+	for (size_t index = 1; index < candidateCount; ++index)
+	{
+		const PanelSubtitleRect& bounds = candidates[index].line.glyphBounds;
+		combinedGlyph.left = std::min(combinedGlyph.left, bounds.left);
+		combinedGlyph.top = std::min(combinedGlyph.top, bounds.top);
+		combinedGlyph.right = std::max(combinedGlyph.right, bounds.right);
+		combinedGlyph.bottom = std::max(combinedGlyph.bottom, bounds.bottom);
+	}
+	if (IsTrustedActivePicture(input))
+		for (size_t index = 0; index < lineCount; ++index)
+		{
+			const PanelSubtitleRect& bounds = lines[index];
+			if (bounds.top < input.activePictureTop ||
+				bounds.bottom > input.activePictureBottom)
+				continue;
+			const int glyphWidth = RectWidth(bounds);
+			const int glyphHeight = RectHeight(bounds);
+			if (glyphWidth < std::max(m_settings.minimumGlyphWidth, width / 100) ||
+				glyphHeight < std::max(m_settings.minimumGlyphHeight, height / 154) ||
+				glyphHeight > height * m_settings.maximumGlyphHeightPercent / 100)
+				continue;
+			const int overlap = std::min(combinedGlyph.right, bounds.right) -
+				std::max(combinedGlyph.left, bounds.left);
+			const int requiredOverlap = std::min(RectWidth(combinedGlyph), glyphWidth) / 4;
+			const int verticalGap = std::max(0, std::max(
+				combinedGlyph.top - bounds.bottom, bounds.top - combinedGlyph.bottom));
+			const int maximumGap = std::max(height * 4 / 1080,
+				2 * std::max(RectHeight(combinedGlyph), glyphHeight));
+			if (overlap < requiredOverlap || verticalGap > maximumGap)
+				continue;
+			combinedGlyph.left = std::min(combinedGlyph.left, bounds.left);
+			combinedGlyph.top = std::min(combinedGlyph.top, bounds.top);
+			combinedGlyph.right = std::max(combinedGlyph.right, bounds.right);
+			combinedGlyph.bottom = std::max(combinedGlyph.bottom, bounds.bottom);
+		}
+	const int captureInset = std::max(22,
+		static_cast<int>(std::ceil(RectHeight(combinedGlyph) * 1.6)));
+	const PanelSubtitleRect combinedCapture = ClampRectangle({
+		combinedGlyph.left - std::max(32, captureInset), combinedGlyph.top - captureInset,
+		combinedGlyph.right + std::max(32, captureInset), combinedGlyph.bottom + captureInset },
+		width, height);
 
 	result = {};
 	result.state = PanelSubtitleState::Candidate;
@@ -577,11 +646,11 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 	result.lineCount = candidateCount;
 	for (size_t index = 0; index < candidateCount; ++index)
 		result.lines[index] = candidates[index].line;
-	// Compatibility summary for current diagnostic users. This is deliberately
-	// the first line rather than a union of independent line capture boxes.
-	result.panelBounds = candidates[0].line.captureBounds;
-	result.glyphBounds = candidates[0].line.glyphBounds;
-	result.maskBounds = candidates[0].line.glyphBounds;
+	// Public geometry is one immutable caption capture box. Individual line
+	// records remain private mask/validation anchors, never separate captions.
+	result.panelBounds = combinedCapture;
+	result.glyphBounds = combinedGlyph;
+	result.maskBounds = combinedGlyph;
 	result.panelLuma = candidates[0].backingLuma;
 	result.fingerprint = candidates[0].line.fingerprint;
 	for (size_t index = 1; index < candidateCount; ++index)
@@ -605,7 +674,8 @@ bool PanelSubtitleDetector::HasStableSeedOverlap(const PanelSubtitleInput& input
 		for (int x = line.glyphBounds.left; x < line.glyphBounds.right; ++x)
 		{
 			const size_t index = static_cast<size_t>(y) * input.width + x;
-			const bool current = IsContrastGlyph(input, x, y, line.backingLuma);
+			const bool current = IsGlyphSeed(input, x, y) &&
+				IsContrastGlyph(input, x, y, line.backingLuma);
 			const bool previous = (*m_stable.softGlyphMask)[index] != 0;
 			currentSeeds += current;
 			previousSeeds += previous;

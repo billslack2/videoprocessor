@@ -481,6 +481,57 @@ namespace Tests
 				(*stable.softGlyphMask)[static_cast<size_t>(2000) * UhdWidth + 1024] != 0);
 		}
 
+		TEST_METHOD(BarOverlapAnchorsOneCaptureForPictureAndBarLines)
+		{
+			constexpr int UhdWidth = 3840;
+			constexpr int UhdHeight = 2160;
+			std::vector<uint16_t> luma(static_cast<size_t>(UhdWidth) * UhdHeight,
+				static_cast<uint16_t>(600 << 6));
+			std::vector<uint16_t> chroma(static_cast<size_t>(UhdWidth) * UhdHeight / 2,
+				static_cast<uint16_t>(512 << 6));
+			auto fill = [&](int left, int top, int right, int bottom, uint16_t code)
+			{
+				for (int y = top; y < bottom; ++y)
+					for (int x = left; x < right; ++x)
+						luma[static_cast<size_t>(y) * UhdWidth + x] =
+							static_cast<uint16_t>(code << 6);
+			};
+			fill(0, 0, UhdWidth, 276, 64);
+			fill(0, 1884, UhdWidth, UhdHeight, 64);
+			// The lower line crosses into the black bar and proves eligibility.
+			fill(1120, 1840, 1810, 1910, 900);
+			// The upper line is entirely in picture, but belongs to that caption.
+			fill(1190, 1760, 1740, 1810, 900);
+
+			PanelSubtitleInput input;
+			input.p010Luma = luma.data();
+			input.p010Chroma = chroma.data();
+			input.width = UhdWidth;
+			input.height = UhdHeight;
+			input.strideBytes = UhdWidth * sizeof(uint16_t);
+			input.chromaStrideBytes = UhdWidth * sizeof(uint16_t);
+			input.activePictureTop = 276;
+			input.activePictureBottom = 1884;
+			input.generation = { 1, 2, 3 };
+			input.trustedActivePictureGeneration = 2;
+			input.activePictureStable = true;
+			input.enabled = true;
+			input.sourceSequence = 1;
+
+			PanelSubtitleDetector detector;
+			detector.Analyze(input);
+			input.sourceSequence = 2;
+			const PanelSubtitleResult stable = detector.Analyze(input);
+			Assert::AreEqual(static_cast<int>(PanelSubtitleState::Stable),
+				static_cast<int>(stable.state));
+			Assert::AreEqual(static_cast<int>(PanelSubtitleLocation::BottomBoundary),
+				static_cast<int>(stable.lines[0].location));
+			Assert::IsTrue(stable.glyphBounds.top <= 1760);
+			Assert::IsTrue(stable.glyphBounds.bottom >= 1910);
+			Assert::IsTrue(stable.panelBounds.top < stable.glyphBounds.top);
+			Assert::IsTrue(stable.panelBounds.bottom > stable.glyphBounds.bottom);
+		}
+
 		TEST_METHOD(RejectsSeparatedMenuHighlightsAndKeepsFrozenCaptureBox)
 		{
 			PanelSubtitleDetector detector;

@@ -87,6 +87,8 @@ bool PanelSubtitleDiagnostic::Highlight(const PanelSubtitleResult& result,
 	if (!result.softGlyphMask || result.softGlyphMask->size() <
 		surface.width * surface.height || result.lineCount == 0)
 		return false;
+	PanelSubtitleRect capture = result.panelBounds;
+	PanelSubtitleRect glyph = result.glyphBounds;
 	for (size_t lineIndex = 0; lineIndex < result.lineCount; ++lineIndex)
 	{
 		const PanelSubtitleGlyphLine& line = result.lines[lineIndex];
@@ -98,10 +100,29 @@ bool PanelSubtitleDiagnostic::Highlight(const PanelSubtitleResult& result,
 				if ((*result.softGlyphMask)[static_cast<size_t>(y) *
 					surface.width + x] != 0)
 					PaintPixel(surface, x, y, 900, 896, 128);
-		// Magenta derived capture box; yellow tight glyph bounds.
-		PaintOutline(surface, line.captureBounds, 3, 900, 896, 896);
-		PaintOutline(surface, line.glyphBounds, 2, 900, 128, 896);
+		if (!IsValid(capture, surface))
+			capture = line.captureBounds;
+		else
+		{
+			capture.left = std::min(capture.left, line.captureBounds.left);
+			capture.top = std::min(capture.top, line.captureBounds.top);
+			capture.right = std::max(capture.right, line.captureBounds.right);
+			capture.bottom = std::max(capture.bottom, line.captureBounds.bottom);
+		}
+		if (!IsValid(glyph, surface))
+			glyph = line.glyphBounds;
+		else
+		{
+			glyph.left = std::min(glyph.left, line.glyphBounds.left);
+			glyph.top = std::min(glyph.top, line.glyphBounds.top);
+			glyph.right = std::max(glyph.right, line.glyphBounds.right);
+			glyph.bottom = std::max(glyph.bottom, line.glyphBounds.bottom);
+		}
 	}
+	// One box per subtitle. Individual lines are mask anchors, not independent
+	// detected panels, so exposing them as boxes was misleading and jittery.
+	PaintOutline(surface, capture, 3, 900, 896, 896);
+	PaintOutline(surface, glyph, 2, 900, 128, 896);
 	return true;
 }
 

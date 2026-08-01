@@ -111,9 +111,8 @@ struct PanelSubtitleResult
 	uint16_t panelLuma = 0;
 	uint64_t fingerprint = 0;
 	uint32_t stabilityObservations = 0;
-	// Independent line geometry; retained so a two-line caption does not lose
-	// its individual members to a destructive bounding-box union. The legacy
-	// panelBounds/glyphBounds fields mirror the first line for existing callers.
+	// Private validation/mask anchors for a caption. Public panelBounds and
+	// glyphBounds are the single union capture geometry for all its members.
 	std::array<PanelSubtitleGlyphLine, 3> lines{};
 	size_t lineCount = 0;
 	// One byte per source pixel, with zero outside maskBounds. Values are the
