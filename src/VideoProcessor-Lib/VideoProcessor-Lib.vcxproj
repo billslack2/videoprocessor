@@ -246,6 +246,7 @@
     <ClInclude Include="StateVariables.h" />
     <ClInclude Include="UnifiedProfileRuntime.h" />
 	<ClInclude Include="SceneDetector.h" />
+	<ClInclude Include="PanelSubtitleDetector.h" />
     <ClInclude Include="SubtitleRepositionMode.h" />
     <ClInclude Include="StringUtils.h" />
     <ClInclude Include="TimingClock.h" />
@@ -355,6 +356,7 @@
     <ClCompile Include="StateVariables.cpp" />
     <ClCompile Include="UnifiedProfileRuntime.cpp" />
 	<ClCompile Include="SceneDetector.cpp" />
+	<ClCompile Include="PanelSubtitleDetector.cpp" />
     <ClCompile Include="StringUtils.cpp" />
     <ClCompile Include="TimingClock.cpp" />
 	<ClCompile Include="VideoTimingController.cpp" />
