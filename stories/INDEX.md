@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0069`
-- Next root story number: `VP-0070`
-- Total indexed items: 77
+- Last assigned root story: `VP-0070`
+- Next root story number: `VP-0071`
+- Total indexed items: 78
 
 ## Story locations
 
@@ -94,6 +94,7 @@ they must not contain requirements that are absent from this file.
 | VP-0067 | Backlog | Upgrade VideoProcessor to C++17 |
 | VP-0068 | Backlog | Evaluate a native Blackmagic SDK capture path and complete frame metadata contract |
 | VP-0069 | Backlog | Achieve and verify a 50 ms low-latency Alpha renderer path |
+| VP-0070 | Backlog | Detect subtitle glyph regions for Alpha without OCR |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | In Progress | Extract epoch-aware frame transport and processing components |
