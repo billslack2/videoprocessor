@@ -335,6 +335,7 @@ protected:
 
 	// Renderer latency (ms) group
 	CStatic m_rendererLatencyToVPText;
+	CStatic m_rendererLatencyDsLeadText;
 	CStatic m_rendererLatencyToDSText;
 
 	// Renderer output group

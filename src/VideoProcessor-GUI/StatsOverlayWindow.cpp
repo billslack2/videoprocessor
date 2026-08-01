@@ -568,23 +568,23 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 	// Same-frame VP ingress-to-DirectShow-handoff residence.
 	if (m_stats.vpInternalLatencyKnown)
-		line.Format(TEXT("VP Internal:      %.2f ms"), m_stats.vpInternalLatencyMs);
+		line.Format(TEXT("VP internal: %.2f ms"), m_stats.vpInternalLatencyMs);
 	else
-		line = TEXT("VP Internal:      ---");
+		line = TEXT("VP internal: ---");
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
 	if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("DS Lead:          %.2f ms"), m_stats.dsScheduleLeadMs);
+		line.Format(TEXT("DS lead:     %.2f ms"), m_stats.dsScheduleLeadMs);
 	else
-		line = TEXT("DS Lead:          ---");
+		line = TEXT("DS lead:     ---");
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
 	if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("VP->Scheduled:    %.2f ms"), m_stats.scheduledLatencyMs);
+		line.Format(TEXT("Scheduled:   %.2f ms"), m_stats.scheduledLatencyMs);
 	else
-		line = TEXT("VP->Scheduled:    ---");
+		line = TEXT("Scheduled:   ---");
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
@@ -735,9 +735,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 {
-	// Twenty rows are always rendered. The remaining rows mirror the exact
+	// Twenty-one rows are always rendered. The remaining rows mirror the exact
 	// optional conditions in DrawStats so the background follows its content.
-	size_t lineCount = 20;
+	size_t lineCount = 21;
 	if (stats.measuredRefreshRate > 0.0)
 		lineCount += 2;
 	if (stats.hasPPMCorrection ||

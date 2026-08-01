@@ -4599,6 +4599,7 @@ void CVideoProcessorDlg::RenderGUIClear()
 
 	// Renderer latency (ms) group
 	m_rendererLatencyToVPText.SetWindowText(TEXT("")) ;
+	m_rendererLatencyDsLeadText.SetWindowText(TEXT("")) ;
 	m_rendererLatencyToDSText.SetWindowText(TEXT("")) ;
 
 	m_windowedVideoWindow.ShowLogo(true);
@@ -6022,6 +6023,7 @@ void CVideoProcessorDlg::DoDataExchange(CDataExchange* pDX)
 
 	// Renderer latency (ms) group
 	DDX_Control(pDX, IDC_RENDERER_LATENCY_TO_VP_STATIC, m_rendererLatencyToVPText);
+	DDX_Control(pDX, IDC_RENDERER_LATENCY_DS_LEAD_STATIC, m_rendererLatencyDsLeadText);
 	DDX_Control(pDX, IDC_RENDERER_LATENCY_TO_DS_STATIC, m_rendererLatencyToDSText);
 
 	// Renderer output group
@@ -6959,11 +6961,14 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				m_rendererLatencyToVPText.SetWindowText(cstring);
 				if (latencySnapshot.scheduledPresentationKnown)
 				{
+					cstring.Format(_T("%.01f"), latencySnapshot.dsScheduleLeadMs);
+					m_rendererLatencyDsLeadText.SetWindowText(cstring);
 					cstring.Format(_T("%.01f"), latencySnapshot.scheduledLatencyMs);
 					m_rendererLatencyToDSText.SetWindowText(cstring);
 				}
 				else
 				{
+					m_rendererLatencyDsLeadText.SetWindowText(_T("---"));
 					m_rendererLatencyToDSText.SetWindowText(_T("---"));
 				}
 			}
@@ -6974,11 +6979,13 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					m_videoRenderer->EntryLatencyMs());
 				cstring.Format(_T("%.01f"), alphaInternalMs);
 				m_rendererLatencyToVPText.SetWindowText(cstring);
+				m_rendererLatencyDsLeadText.SetWindowText(_T("---"));
 				m_rendererLatencyToDSText.SetWindowText(_T("---"));
 			}
 			else
 			{
 				m_rendererLatencyToVPText.SetWindowText(_T("---"));
+				m_rendererLatencyDsLeadText.SetWindowText(_T("---"));
 				m_rendererLatencyToDSText.SetWindowText(_T("---"));
 			}
 
@@ -6993,6 +7000,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		{
 			m_rendererVideoFrameQueueSizeText.SetWindowText(_T(""));
 			m_rendererLatencyToVPText.SetWindowText(_T(""));
+			m_rendererLatencyDsLeadText.SetWindowText(_T(""));
 			m_rendererLatencyToDSText.SetWindowText(_T(""));
 			m_rendererDroppedFrameCountText.SetWindowText(TEXT(""));
 		}
