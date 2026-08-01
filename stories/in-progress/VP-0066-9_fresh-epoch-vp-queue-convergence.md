@@ -39,6 +39,17 @@ the next accepted counters jumped 1404 to 1794 and 2900 to 3107. Each resumed
 frame was then incorrectly treated as proof that the graph was dead, causing a
 full DirectShow reset and draining madVR's queues.
 
+The first real-Epson 59.94-Hz run exposed a separate allocator-state defect.
+The initial renderer epoch observed a 432-ms `Deliver()` stall and converged
+26 to 2; the output-readiness re-prime then completed with a 234-ms covered
+interval and converged 14 to 2. After later transient capture gaps, however,
+recycled `IMediaSample` instances retained `SetDiscontinuity(TRUE)`. The
+retained trace contained 4,096/4,096 delivery records marked as source
+discontinuities, with 4,086 at converted depth one, while the passive madVR
+OSD showed only 1--2 of 8 in its decoder/upload/render queues. This is not
+valid one-shot discontinuity behavior and must be corrected before using the
+run to judge the Epson readiness timing.
+
 The rejected hard-cap experiment removed already timestamped samples without
 rebasing their timeline, producing VP drops and madVR repeats. The correct
 solution must either preserve a continuous output timeline while stale live
@@ -134,13 +145,22 @@ timestamp hole merely to report a lower OSD queue number.
    the 1404-to-1794 incident, prove that retained invalid state never strands
    ingress, and prove that an unapplied valid publication superseded by a
    retained invalid publication reopens safely.
+6. **Recycled-sample discontinuity normalization (implemented; awaiting live
+   validation):** source formatting and final DirectShow delivery now set both
+   `TRUE` and `FALSE` explicitly on every allocator-owned sample. The
+   epoch-owned `VideoFrame` flag is the sole source-gap authority; a recycled
+   sample's previous flag is never imported into `ProcessedFrame`. Delivery
+   telemetry identifies `epoch-start`, `source-gap`, or their combination.
+   The regression test marks a sample, reuses the same object for a continuous
+   frame, and proves that the second preparation clears the flag. Source
+   commit `b3ea4d8` passes the clean x64 Release suite 355/355.
 
 ## Acceptance criteria
 
 - Unit tests cover startup prime, startup stalls, normal delivery, target
   already met, automatic policy, one-shot behavior, fail-closed boundaries,
   timestamp/media ownership, and rearm on a new epoch. The current native
-  suite passes 354/354 tests in x64 Release.
+  suite passes 355/355 tests in x64 Release.
 - A convergence never happens in an unchanged steady epoch.
 - Normal, no-trim delivery preserves monotonic 60000/1001 and 24000/1001
   timestamps exactly within existing documented rounding tolerance.
@@ -158,6 +178,10 @@ timestamp hole merely to report a lower OSD queue number.
 - A retained transient-invalid state produces no `liveness-recovery` graph
   reset. Any source-counter discontinuity is logged with `graph_reset=0`, PPM
   rebaseline, and continuous DirectShow presentation/media timestamps.
+- Exactly one delivered sample carries a source-gap discontinuity for each
+  detected gap. A later ordinary sample, including reuse of the same allocator
+  object, is explicitly continuous; the flag cannot become sticky across the
+  remaining epoch.
 
 ## Controlled validation process (tonight)
 
@@ -195,6 +219,11 @@ timestamp hole merely to report a lower OSD queue number.
 7. After SDR 59.94 passes, repeat at HDR 59.94. Validate 23.976 on the real
    compatible display; a 23.976 source on the current 59.94-only monitor is a
    cadence-mismatch negative fixture, not a queue-convergence acceptance run.
+8. On the Epson 59.94 retest, inspect the trace after any source-counter gap.
+   Expect one `origin=source-gap` delivery record followed by ordinary records
+   with `source_discontinuity=0`. Confirm whether madVR's passive queues refill
+   before changing the readiness or convergence policy; the first Epson run
+   was contaminated by the sticky discontinuity defect.
 
 ## Out of scope
 
