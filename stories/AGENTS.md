@@ -34,6 +34,10 @@
   occurred before a restart or log rotation, inspect the numbered rotated logs
   in that same directory (`vp_debug.log.0` through the configured retention
   limit) as well; do not rely only on the newly created current log.
+- Every VP binary deployment must treat `VideoProcessor.exe` and
+  `vprenderer\VideoProcessorVPRenderer.dll` as an inseparable versioned pair.
+  Back up and replace both from the same successfully completed x64 Release
+  build/commit, then verify both deployed hashes against the build artifacts.
 - The VP GitHub repository of record is `billslack2/videoprocessor`. Discover
   its current default branch before creating source branches or pull requests;
   do not assume the default branch is named `main`.
