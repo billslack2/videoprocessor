@@ -79,5 +79,29 @@ namespace Tests
 			Assert::IsFalse(HasSufficientDownstreamPreroll(4));
 			Assert::IsTrue(HasSufficientDownstreamPreroll(5));
 		}
+
+		TEST_METHOD(ScheduledLatencyUsesVpResidenceAndRemainingDsLead)
+		{
+			RendererLatencySnapshot snapshot;
+			const bool calculated = CalculateScheduledLatency(
+				1000, 1014,
+				2000000, 300000,
+				snapshot);
+
+			Assert::IsTrue(calculated);
+			Assert::IsTrue(snapshot.supported);
+			Assert::IsTrue(snapshot.scheduledPresentationKnown);
+			Assert::AreEqual(14.0, snapshot.vpInternalMs, 0.001);
+			Assert::AreEqual(170.0, snapshot.dsScheduleLeadMs, 0.001);
+			Assert::AreEqual(184.0, snapshot.scheduledLatencyMs, 0.001);
+		}
+
+		TEST_METHOD(ScheduledLatencyRejectsMissingVpArrivalBoundary)
+		{
+			RendererLatencySnapshot snapshot;
+			Assert::IsFalse(CalculateScheduledLatency(
+				0, 1014, 2000000, 300000, snapshot));
+			Assert::IsFalse(snapshot.supported);
+		}
 	};
 }

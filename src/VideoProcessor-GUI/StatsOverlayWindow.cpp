@@ -553,8 +553,12 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 
 
-	// Frame Offset
-	line.Format(TEXT("Offset:           %d ms"), m_stats.frameOffsetMs);
+	// Frame Offset. Rational-Rational owns a synthetic sample timeline, so this
+	// capture timestamp calibration is diagnostic only in that mode.
+	if (m_stats.method.CompareNoCase(TEXT("Rational-Rational")) == 0)
+		line.Format(TEXT("Offset:           %d ms (not RR PTS)"), m_stats.frameOffsetMs);
+	else
+		line.Format(TEXT("Offset:           %d ms"), m_stats.frameOffsetMs);
 
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
@@ -562,13 +566,22 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	// Separator
 	y += 4;
 
-	// VP Latency
-	line.Format(TEXT("VP Lat:           %.2f ms"), m_stats.entryLatencyMs);
+	// Same-frame VP ingress-to-DirectShow-handoff residence.
+	line.Format(TEXT("VP Internal:      %.2f ms"), m_stats.vpInternalLatencyMs);
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
-	// DS Latency
-	line.Format(TEXT("DS Lat:           %.2f ms"), m_stats.exitLatencyMs);
+	if (m_stats.scheduledLatencyKnown)
+		line.Format(TEXT("DS Lead:          %.2f ms"), m_stats.dsScheduleLeadMs);
+	else
+		line = TEXT("DS Lead:          ---");
+	DrawText(hdc, line, PADDING, y);
+	y += lineHeight;
+
+	if (m_stats.scheduledLatencyKnown)
+		line.Format(TEXT("VP->Scheduled:    %.2f ms"), m_stats.scheduledLatencyMs);
+	else
+		line = TEXT("VP->Scheduled:    ---");
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 

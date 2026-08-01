@@ -94,6 +94,7 @@ public:
 	bool GetActivePictureRectangle(ActivePictureRectangle& rectangle) const override;
 	size_t GetFrameQueueSize() override;
 	bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const override;
+	bool GetLatencySnapshot(RendererLatencySnapshot& snapshot) const override;
 	void Reset() override;
 	REFERENCE_TIME NextFrameTimestamp() const override;
 	void OnBadTimestampDetected() override;
@@ -110,6 +111,11 @@ private:
 	HANDLE m_hConvertedSemaphore = nullptr;  // Semaphore: count of converted samples available
 
 	std::atomic<size_t> m_frameQueueMaxSize = 8;
+	std::atomic_bool m_latencySnapshotAvailable{ false };
+	std::atomic<uint64_t> m_latencySnapshotSequence{ 0 };
+	std::atomic<double> m_vpInternalLatencyMs{ 0.0 };
+	std::atomic<double> m_dsScheduleLeadMs{ 0.0 };
+	std::atomic<double> m_scheduledLatencyMs{ 0.0 };
 
 	//
 	// QUEUE INFRASTRUCTURE (with dedicated locks)

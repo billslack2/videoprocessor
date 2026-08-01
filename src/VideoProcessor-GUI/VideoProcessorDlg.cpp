@@ -6952,11 +6952,28 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				cstring.Format(_T("%zu/%zu/%zu"), rawQueueSize, convertedQueueSize, currentQueueSize);
 			m_rendererVideoFrameQueueSizeText.SetWindowText(cstring);
 
-			cstring.Format(_T("%.01f"), m_videoRenderer->EntryLatencyMs());
-			m_rendererLatencyToVPText.SetWindowText(cstring);
-
-			cstring.Format(_T("%.01f"), m_videoRenderer->ExitLatencyMs());
-			m_rendererLatencyToDSText.SetWindowText(cstring);
+			RendererLatencySnapshot latencySnapshot;
+			if (m_videoRenderer->GetLatencySnapshot(latencySnapshot))
+			{
+				cstring.Format(_T("%.01f"), latencySnapshot.vpInternalMs);
+				m_rendererLatencyToVPText.SetWindowText(cstring);
+				cstring.Format(_T("%.01f"), latencySnapshot.scheduledLatencyMs);
+				m_rendererLatencyToDSText.SetWindowText(cstring);
+			}
+			else if (renderer && renderer->backend == RendererBackend::LIBPLACEBO)
+			{
+				const double alphaInternalMs = std::max(0.0,
+					m_videoRenderer->ExitLatencyMs() -
+					m_videoRenderer->EntryLatencyMs());
+				cstring.Format(_T("%.01f"), alphaInternalMs);
+				m_rendererLatencyToVPText.SetWindowText(cstring);
+				m_rendererLatencyToDSText.SetWindowText(_T("---"));
+			}
+			else
+			{
+				m_rendererLatencyToVPText.SetWindowText(_T("---"));
+				m_rendererLatencyToDSText.SetWindowText(_T("---"));
+			}
 
 			cstring.Format(_T("%lu"), droppedFrames);
 			m_rendererDroppedFrameCountText.SetWindowText(cstring);
@@ -6981,8 +6998,10 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			cstring.Format(_T("%lu"), m_captureDevice->VideoFrameMissedCount());
 			m_inputVideoFrameMissedText.SetWindowText(cstring);
 
-			cstring.Format(_T("%.01f"), m_captureDevice->HardwareLatencyMs());
-			m_inputLatencyMsText.SetWindowText(cstring);
+			// DeckLink hardware-latency measurement was removed from the capture
+			// callback. Do not display its zero-initialized storage as a measured
+			// end-to-end latency.
+			m_inputLatencyMsText.SetWindowText(_T("---"));
 		}
 		else
 		{
@@ -7620,8 +7639,21 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.maxQueueSize = GetRendererVideoFrameQueueSizeMax();
 		stats.isQueueFull = (stats.currentQueueSize >= stats.maxQueueSize);
 
-		stats.entryLatencyMs = m_videoRenderer->EntryLatencyMs();
-		stats.exitLatencyMs = m_videoRenderer->ExitLatencyMs();
+		RendererLatencySnapshot latencySnapshot;
+		if (m_videoRenderer->GetLatencySnapshot(latencySnapshot))
+		{
+			stats.scheduledLatencyKnown =
+				latencySnapshot.scheduledPresentationKnown;
+			stats.vpInternalLatencyMs = latencySnapshot.vpInternalMs;
+			stats.dsScheduleLeadMs = latencySnapshot.dsScheduleLeadMs;
+			stats.scheduledLatencyMs = latencySnapshot.scheduledLatencyMs;
+		}
+		else if (stats.isAlphaRenderer)
+		{
+			stats.vpInternalLatencyMs = std::max(0.0,
+				m_videoRenderer->ExitLatencyMs() -
+				m_videoRenderer->EntryLatencyMs());
+		}
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 		m_videoRenderer->GetOutputModeInfo(stats.outputMode);
 		m_videoRenderer->GetDisplayLutInfo(stats.displayLut);

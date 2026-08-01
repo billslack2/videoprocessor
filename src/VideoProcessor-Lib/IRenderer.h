@@ -104,6 +104,10 @@ public:
 		snapshot = {};
 		return false;
 	}
+	virtual bool GetLatencySnapshot(RendererLatencySnapshot&) const
+	{
+		return false;
+	}
 
 	// Handler for windows events for the graph's pEvent
 	virtual HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) = 0;

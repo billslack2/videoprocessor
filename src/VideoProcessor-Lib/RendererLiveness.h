@@ -36,6 +36,39 @@ struct RendererLivenessSnapshot
 	size_t deliveryReserveFrames = 0;
 };
 
+// Latency boundaries owned by VP. "Scheduled" ends at the DirectShow sample's
+// requested presentation time; it is not a claim about madVR, scanout, or the
+// physical display.
+struct RendererLatencySnapshot
+{
+	bool supported = false;
+	bool scheduledPresentationKnown = false;
+	double vpInternalMs = 0.0;
+	double dsScheduleLeadMs = 0.0;
+	double scheduledLatencyMs = 0.0;
+};
+
+inline bool CalculateScheduledLatency(
+	uint64_t vpArrivalTickMs,
+	uint64_t observationTickMs,
+	int64_t presentationStart100ns,
+	int64_t streamTime100ns,
+	RendererLatencySnapshot& snapshot)
+{
+	if (vpArrivalTickMs == 0 || observationTickMs < vpArrivalTickMs)
+		return false;
+
+	snapshot.supported = true;
+	snapshot.scheduledPresentationKnown = true;
+	snapshot.vpInternalMs = static_cast<double>(
+		observationTickMs - vpArrivalTickMs);
+	snapshot.dsScheduleLeadMs = static_cast<double>(
+		presentationStart100ns - streamTime100ns) / 10000.0;
+	snapshot.scheduledLatencyMs =
+		snapshot.vpInternalMs + snapshot.dsScheduleLeadMs;
+	return true;
+}
+
 constexpr uint64_t MINIMUM_CURRENT_EPOCH_DELIVERIES = 5;
 
 inline bool HasSufficientDownstreamPreroll(uint64_t deliveryCount)

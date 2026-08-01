@@ -75,6 +75,7 @@ public:
 			"unbuffered-downstream-prerolled";
 	}
 	bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const override;
+	bool GetLatencySnapshot(RendererLatencySnapshot& snapshot) const override;
 	HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) override;
 	void Build() override;
 	void Start() override;

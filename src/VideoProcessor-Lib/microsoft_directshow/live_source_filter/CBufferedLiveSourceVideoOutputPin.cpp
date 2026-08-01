@@ -883,6 +883,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	// flush transactions from overlapping.
 	CAutoLock resetTransactionLock(&m_resetTransactionGate);
 	m_resetInProgress.store(true, std::memory_order_release);
+	m_latencySnapshotAvailable.store(false, std::memory_order_release);
 	LiveOutputTraceRecord resetStartTrace;
 	resetStartTrace.kind = LiveOutputTraceKind::ResetStarted;
 	resetStartTrace.pipelineEpoch = m_queueEpoch.load(std::memory_order_acquire);
@@ -1116,6 +1117,46 @@ bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
 	snapshot.deliveryReserveFrames =
 		m_outputReadinessDeliveryReserve.load(std::memory_order_acquire);
 	return true;
+}
+
+
+bool CBufferedLiveSourceVideoOutputPin::GetLatencySnapshot(
+	RendererLatencySnapshot& snapshot) const
+{
+	if (m_resetInProgress.load(std::memory_order_acquire) ||
+		!m_latencySnapshotAvailable.load(std::memory_order_acquire))
+	{
+		snapshot = {};
+		return false;
+	}
+
+	for (int attempt = 0; attempt < 4; ++attempt)
+	{
+		const uint64_t sequenceBefore =
+			m_latencySnapshotSequence.load(std::memory_order_acquire);
+		if ((sequenceBefore & 1ULL) != 0)
+			continue;
+
+		RendererLatencySnapshot candidate;
+		candidate.supported = true;
+		candidate.scheduledPresentationKnown = true;
+		candidate.vpInternalMs =
+			m_vpInternalLatencyMs.load(std::memory_order_relaxed);
+		candidate.dsScheduleLeadMs =
+			m_dsScheduleLeadMs.load(std::memory_order_relaxed);
+		candidate.scheduledLatencyMs =
+			m_scheduledLatencyMs.load(std::memory_order_relaxed);
+		const uint64_t sequenceAfter =
+			m_latencySnapshotSequence.load(std::memory_order_acquire);
+		if (sequenceBefore == sequenceAfter)
+		{
+			snapshot = candidate;
+			return true;
+		}
+	}
+
+	snapshot = {};
+	return false;
 }
 
 
@@ -1681,14 +1722,34 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 
 		REFERENCE_TIME presentationStart = 0;
 		REFERENCE_TIME presentationStop = 0;
-		(void)sample->GetTime(&presentationStart, &presentationStop);
+		const HRESULT presentationTimeResult =
+			sample->GetTime(&presentationStart, &presentationStop);
+		const uint64_t deliveryAttemptTick = GetTickCount64();
+		const REFERENCE_TIME streamTime = NowStreamTime(m_pFilter);
+		RendererLatencySnapshot latencySnapshot;
+		if (SUCCEEDED(presentationTimeResult) &&
+			streamTime != REFERENCE_TIME_INVALID &&
+			CalculateScheduledLatency(
+				captureArrivalTick, deliveryAttemptTick,
+				presentationStart, streamTime, latencySnapshot))
+		{
+			m_latencySnapshotSequence.fetch_add(1, std::memory_order_acq_rel);
+			m_vpInternalLatencyMs.store(
+				latencySnapshot.vpInternalMs, std::memory_order_relaxed);
+			m_dsScheduleLeadMs.store(
+				latencySnapshot.dsScheduleLeadMs, std::memory_order_relaxed);
+			m_scheduledLatencyMs.store(
+				latencySnapshot.scheduledLatencyMs, std::memory_order_relaxed);
+			m_latencySnapshotSequence.fetch_add(1, std::memory_order_release);
+			m_latencySnapshotAvailable.store(true, std::memory_order_release);
+		}
 		LiveOutputTraceRecord deliveryAttemptTrace;
 		deliveryAttemptTrace.kind = LiveOutputTraceKind::DeliveryAttempted;
 		deliveryAttemptTrace.frameNumber = frameNumber;
 		deliveryAttemptTrace.pipelineEpoch = expectedQueueEpoch;
 		deliveryAttemptTrace.captureTimestamp = captureTimestamp;
 		deliveryAttemptTrace.captureArrivalTick = captureArrivalTick;
-		deliveryAttemptTrace.eventTick = GetTickCount64();
+		deliveryAttemptTrace.eventTick = deliveryAttemptTick;
 		deliveryAttemptTrace.presentationStart = presentationStart;
 		deliveryAttemptTrace.presentationStop = presentationStop;
 		if (timestampDecision.valid)

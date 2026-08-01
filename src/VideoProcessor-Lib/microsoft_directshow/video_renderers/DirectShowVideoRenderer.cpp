@@ -855,6 +855,20 @@ bool DirectShowVideoRenderer::GetLivenessSnapshot(
 }
 
 
+bool DirectShowVideoRenderer::GetLatencySnapshot(
+	RendererLatencySnapshot& snapshot) const
+{
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
+	{
+		snapshot = {};
+		return false;
+	}
+
+	return m_liveSource->GetVideoOutputPin()->GetLatencySnapshot(snapshot);
+}
+
+
 void DirectShowVideoRenderer::OnSize()
 {
 	if (!IsGraphThread())

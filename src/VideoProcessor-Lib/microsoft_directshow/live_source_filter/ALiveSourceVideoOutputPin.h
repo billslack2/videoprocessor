@@ -144,6 +144,10 @@ public:
 		snapshot = {};
 		return false;
 	}
+	virtual bool GetLatencySnapshot(RendererLatencySnapshot&) const
+	{
+		return false;
+	}
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink)
 	{
