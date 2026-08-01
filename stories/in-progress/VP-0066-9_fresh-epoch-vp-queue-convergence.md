@@ -242,13 +242,26 @@ recreation; it cannot cycle additional in-place or source-gap resets.
    deterministic VP-reserve acceptance boundary without claiming observable
    madVR occupancy.
 
+9. **Literal zero-frame steady target (implemented; awaiting live validation):**
+   omission of `[queue] steady_reserve_frames` remains the automatic policy,
+   while an explicitly configured `0` now means a literal zero-frame steady
+   target. The configured/omitted distinction is retained across asynchronous
+   graph construction, fresh renderer creation, output-readiness publication,
+   delivery reserve selection, and one-shot epoch convergence. Startup zero
+   remains automatic. A native regression proves that an explicit zero target
+   remains enabled after observed downstream block/recovery and authorizes a
+   converted-queue trim to zero. The same increment removes the frame-offset
+   edit getter's text rewrite so periodic stats reads no longer reset the
+   user's caret. Source commit `bcd6845` passed a clean x64 Release rebuild and
+   365/365 native tests. Paired deployment and live validation remain pending.
+
 ## Acceptance criteria
 
 - Unit tests cover startup prime, startup stalls, normal delivery, target
   already met, automatic policy, one-shot behavior, fail-closed boundaries,
   timestamp/media ownership, rearm on a new epoch, rate-aware material-gap
   recovery, reset-request latching, transition priority, and healthy re-arm.
-  The current native suite passes 364/364 tests in x64 Release.
+  The current native suite passes 365/365 tests in x64 Release.
 - A convergence never happens in an unchanged steady epoch.
 - Normal, no-trim delivery preserves monotonic 60000/1001 and 24000/1001
   timestamps exactly within existing documented rounding tolerance.
