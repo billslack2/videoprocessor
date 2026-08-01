@@ -53,8 +53,14 @@ DirectShowSamplePreparationResult DirectShowFrameDeliverer::Prepare(
 		return result;
 	}
 
-	if (request.markDiscontinuity && request.setDiscontinuity)
-		result.discontinuityResult = request.setDiscontinuity(request.sample, TRUE);
+	// IMediaSample instances are allocator-owned and recycled. Normalize the
+	// flag on every delivery so a TRUE value from an earlier use cannot leak
+	// into a later continuous sample.
+	if (request.setDiscontinuity)
+	{
+		result.discontinuityResult = request.setDiscontinuity(
+			request.sample, request.markDiscontinuity ? TRUE : FALSE);
+	}
 
 	if (!request.lateBindStop || !request.getTime || !request.setTime ||
 		!request.findNextStart)

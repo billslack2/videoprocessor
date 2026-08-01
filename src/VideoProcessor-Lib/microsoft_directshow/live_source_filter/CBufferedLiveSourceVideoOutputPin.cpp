@@ -2403,9 +2403,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			static const double SEARCH_TOLERANCE_PERCENT = 0.10;
 			const REFERENCE_TIME searchTolerance =
 				static_cast<REFERENCE_TIME>(m_frameDuration * SEARCH_TOLERANCE_PERCENT);
+			const bool epochStartDiscontinuity =
+				lastSuccessfullyDeliveredEpoch != currentQueueEpoch;
+			const bool sourceGapDiscontinuity =
+				convertedSample.sourceDiscontinuity;
+			const bool markDiscontinuity =
+				epochStartDiscontinuity || sourceGapDiscontinuity;
 			const DirectShowSamplePreparationResult preparation =
 				m_directShowFrameDeliverer.Prepare({
-					pSample, lastSuccessfullyDeliveredEpoch != currentQueueEpoch,
+					pSample, markDiscontinuity,
 					lateBindStop, m_frameDuration, searchTolerance,
 					[](IMediaSample* preparedSample, BOOL discontinuity)
 					{
@@ -2423,9 +2429,22 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					{
 						return FindNextPendingTimestamp(currentStart, theoreticalStop, tolerance);
 					} });
+			if (markDiscontinuity)
+			{
+				DebugLog::Log(
+					"DirectShow sample discontinuity: epoch=%llu frame=%llu "
+					"origin=%s epoch_start=%d source_gap=%d",
+					static_cast<unsigned long long>(currentQueueEpoch),
+					static_cast<unsigned long long>(convertedSample.frameNumber),
+					epochStartDiscontinuity && sourceGapDiscontinuity ?
+						"epoch-start+source-gap" :
+						(epochStartDiscontinuity ? "epoch-start" : "source-gap"),
+					epochStartDiscontinuity ? 1 : 0,
+					sourceGapDiscontinuity ? 1 : 0);
+			}
 			if (FAILED(preparation.discontinuityResult))
 				DebugLog::Log(
-					"DELIVERY THREAD: failed to mark first sample discontinuous (hr=0x%08x)",
+					"DELIVERY THREAD: failed to normalize sample discontinuity (hr=0x%08x)",
 					preparation.discontinuityResult);
 
 			const bool usedLateBoundStop = preparation.lateBoundStopApplied;
@@ -3220,9 +3239,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 					const PipelineEpoch currentEpoch{
 						m_queueEpoch.load(std::memory_order_acquire) };
 					ProcessedFrame processedFrame = processing.frame;
+					// VideoFrame is the epoch-owned source-gap authority. Never
+					// infer current-frame semantics from an allocator sample flag:
+					// IMediaSample instances are recycled and may retain flags from
+					// an earlier use. Epoch-start discontinuity is applied by the
+					// final delivery owner.
 					processedFrame.sourceDiscontinuity =
-						videoFrame.IsSourceDiscontinuity() ||
-						pSample->IsDiscontinuity() != FALSE;
+						videoFrame.IsSourceDiscontinuity();
 					processedFrame.isSafeCorrectionPoint = isSafeCorrectionPoint;
 					processedFrame.sceneEventId = sceneEventId;
 					processedFrame.sceneTimingGeneration = sceneTimingGeneration;

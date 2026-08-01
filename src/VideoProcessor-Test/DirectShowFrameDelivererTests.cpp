@@ -115,5 +115,32 @@ namespace Tests
 			Assert::IsTrue(result.lateBoundStopApplied);
 			Assert::AreEqual<REFERENCE_TIME>(6200, result.matchedNextStart);
 		}
+
+		TEST_METHOD(ClearsDiscontinuityWhenAllocatorSampleIsReused)
+		{
+			DirectShowFrameDeliverer deliverer;
+			IMediaSample* const reusedSample =
+				reinterpret_cast<IMediaSample*>(0x1);
+			BOOL allocatorFlag = FALSE;
+			int normalizationCalls = 0;
+			auto normalize = [&](IMediaSample* prepared, BOOL discontinuity)
+				{
+					Assert::IsTrue(prepared == reusedSample);
+					allocatorFlag = discontinuity;
+					++normalizationCalls;
+					return S_OK;
+				};
+
+			const DirectShowSamplePreparationResult marked = deliverer.Prepare({
+				reusedSample, true, false, 0, 0, normalize, {}, {}, {} });
+			Assert::AreEqual<HRESULT>(S_OK, marked.discontinuityResult);
+			Assert::IsTrue(allocatorFlag == TRUE);
+
+			const DirectShowSamplePreparationResult continuous = deliverer.Prepare({
+				reusedSample, false, false, 0, 0, normalize, {}, {}, {} });
+			Assert::AreEqual<HRESULT>(S_OK, continuous.discontinuityResult);
+			Assert::IsTrue(allocatorFlag == FALSE);
+			Assert::AreEqual(2, normalizationCalls);
+		}
 	};
 }

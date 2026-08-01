@@ -790,15 +790,18 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		m_frameCounter == 1 ||
 		m_forceDiscontinuity;  // Force discontinuity after timeline reset
 		
+	// Allocator samples are recycled. Set both TRUE and FALSE explicitly so a
+	// discontinuity carried by an earlier frame cannot leak into a later,
+	// continuous frame when the same IMediaSample is reused.
+	hr = pSample->SetDiscontinuity(isDiscontinuity ? TRUE : FALSE);
+	if (FAILED(hr))
+		return hr;
+
 	if (isDiscontinuity)
 	{
 		DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): Frame counter jumped from %I64u (stream frame %I64u), discontinuity detected%s"),
 			videoFrame.GetCounter(), m_previousFrameCounter, streamFrameCounter,
 			m_forceDiscontinuity ? TEXT(" (FORCED after timeline reset)") : TEXT("")));
-
-		hr = pSample->SetDiscontinuity(TRUE);
-		if (FAILED(hr))
-			return hr;
 			
 		// Clear the force flag after setting discontinuity
 		m_forceDiscontinuity = false;
