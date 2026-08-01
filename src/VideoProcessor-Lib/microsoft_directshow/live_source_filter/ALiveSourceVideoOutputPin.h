@@ -167,6 +167,11 @@ public:
 	// This compensates for processing delays by shifting the timeline forward
 	void SetRationalPipelineOffset(REFERENCE_TIME offset) { m_rationalPipelineOffset = offset; }
 	REFERENCE_TIME GetRationalPipelineOffset() const { return m_rationalPipelineOffset; }
+	void SetPresentationLeadFrames(size_t frames, bool configured)
+	{
+		m_presentationLeadFrames = frames > 16 ? 16 : frames;
+		m_presentationLeadFramesConfigured = configured;
+	}
 
 	//
 	// Metrics
@@ -521,10 +526,11 @@ protected:
 	// This adds a buffer time to prevent late deliveries to MadVR
 	// Can be ramped from 0 to target over a configurable duration for smooth
 	// startup; ramping is disabled by default.
-	static const REFERENCE_TIME LEADTIME = 180LL * 10000LL;  // 180ms in 100ns ticks
+	size_t m_presentationLeadFrames = 0;
+	bool m_presentationLeadFramesConfigured = false;
 	
 	// Lead ramp duration configuration (in milliseconds)
-	// Specifies how long to ramp from 0 to LEADTIME
+	// Specifies how long to ramp from 0 to the resolved target lead
 	// SetLeadRampDurationMs(0) selects the 5000ms (5 second) ramp default.
 	uint64_t m_leadRampDurationMs = 0;  // Configurable lead ramp duration; 0 disables ramping
 	uint64_t m_leadRampStartTimeMs = 0;    // Timestamp when ramp started (for time-based calculation)

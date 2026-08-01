@@ -301,6 +301,13 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
       <p class="meta"><strong>Type/range:</strong> whole frames, <code>0</code>–<code>16</code>. An explicit value takes precedence over the automatic reserve and is bounded by the active VP queue capacity.</p>
     </article>
 
+    <article class="field" id="directshow-presentation-lead-frames" data-fields="directshow.presentation_lead_frames">
+      <h4><code>[directshow] presentation_lead_frames</code> <span class="badge">DirectShow timing</span></h4>
+      <p>Schedules each timestamped DirectShow sample this many source-frame intervals ahead of the graph clock. It is a presentation margin for renderer delivery, not a VP queue target and not a measurement or configuration of madVR's private queues.</p>
+      <p class="auto"><strong>Omitted behavior:</strong> preserves the legacy mode-specific margin: 180 ms for Rational-Rational and the historically buffered clock modes, and zero for Clock-Rational. An explicit <code>0</code> requests no additional scheduling margin.</p>
+      <p class="meta"><strong>Type/range:</strong> whole source frames, <code>0</code>&ndash;<code>16</code>. One frame is approximately 41.7 ms at 23.976 Hz and 16.7 ms at 59.94 Hz. Changes apply when the renderer graph is built or rebuilt.</p>
+    </article>
+
     <article class="field" id="logging-debug-log-retention" data-fields="logging.debug_log_retention">
       <h4><code>[logging] debug_log_retention</code></h4>
       <p>Total VP debug-log files retained, including active <code>logs\vp_debug.log</code>. At startup the prior active log becomes <code>.0</code>, existing numbered archives shift up, and the oldest is pruned.</p>
@@ -807,6 +814,7 @@ delay_seconds: 2</pre>
     <h3>Logging, queue, timing, LLDV, and conversion</h3>
     <ul class="index">
       <li><a href="#logging-debug-log-retention"><code>[logging] debug_log_retention</code></a></li>
+      <li><a href="#directshow-presentation-lead-frames"><code>[directshow] presentation_lead_frames</code></a></li>
       <li><a href="#queue-recovery-reset-delay"><code>[queue_recovery] reset_after_render_restart_seconds</code></a></li>
       <li><a href="#queue-recovery-high-water"><code>[queue_recovery] reset_queue_too_large_percent</code></a></li>
       <li><a href="#display-refresh-rate-override-entry"><code>[display_refresh_rate_override] &lt;nominal_hz&gt;</code></a></li>

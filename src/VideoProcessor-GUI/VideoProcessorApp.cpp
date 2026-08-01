@@ -454,6 +454,18 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	loadQueueFrameSetting("steady_reserve_frames",
 		[](size_t frames) { videoProcessorApp.SetQueueSteadyReserveFrames(frames); });
 
+	std::string presentationLeadFrames;
+	if (config.TryGetString(
+		"directshow", "presentation_lead_frames", presentationLeadFrames))
+	{
+		const size_t frames = static_cast<size_t>(
+			std::stoul(presentationLeadFrames));
+		videoProcessorApp.SetPresentationLeadFrames(frames);
+		DbgLog((LOG_TRACE, 1,
+			TEXT("VideoProcessor: Using [directshow] presentation_lead_frames=%zu"),
+			frames));
+	}
+
 	if (config.HasSection("command_line"))
 	{
 	AppendConfigBoolOption(arguments, config, { "fullscreen" }, L"/fullscreen");

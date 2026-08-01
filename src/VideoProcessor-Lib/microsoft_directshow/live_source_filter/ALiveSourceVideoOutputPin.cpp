@@ -8,6 +8,8 @@
 
 #include <pch.h>
 
+#include <microsoft_directshow/DirectShowPresentationLeadPolicy.h>
+
 #include <dvdmedia.h>
 #include <guid.h>
 #include <IMediaSideData.h>
@@ -1448,7 +1450,13 @@ static constexpr int kLeadRampFrames = 0;
 REFERENCE_TIME ALiveSourceVideoOutputPin::GetRampedLeadTime()
 {
 
-	REFERENCE_TIME targetLeadTicks = LEADTIME;
+	const bool legacyModeUsesLead = m_timestamp !=
+		DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL;
+	REFERENCE_TIME targetLeadTicks =
+		DirectShowPresentationLeadPolicy::Resolve100ns(
+			m_presentationLeadFramesConfigured,
+			m_presentationLeadFrames, m_frameDuration,
+			legacyModeUsesLead);
 
 	// If ramping disabled or target is zero
 	if (m_leadRampDurationMs <= 0 || targetLeadTicks <= 0)

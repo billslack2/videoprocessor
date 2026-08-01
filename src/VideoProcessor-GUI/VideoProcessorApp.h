@@ -34,12 +34,21 @@ public:
 		m_queueSteadyReserveFrames = value;
 		m_hasQueueSteadyReserveFrames = true;
 	}
+	bool HasPresentationLeadFrames() const { return m_hasPresentationLeadFrames; }
+	size_t GetPresentationLeadFrames() const { return m_presentationLeadFrames; }
+	void SetPresentationLeadFrames(size_t value)
+	{
+		m_presentationLeadFrames = value;
+		m_hasPresentationLeadFrames = true;
+	}
 
 private:
 	size_t m_alphaQueueSizeOverride = 0;
 	size_t m_queueStartupPrerollFrames = 0;
 	size_t m_queueSteadyReserveFrames = 0;
 	bool m_hasQueueSteadyReserveFrames = false;
+	size_t m_presentationLeadFrames = 0;
+	bool m_hasPresentationLeadFrames = false;
 
 	DECLARE_MESSAGE_MAP()
 };

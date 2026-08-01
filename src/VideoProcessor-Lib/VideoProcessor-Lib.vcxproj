@@ -222,6 +222,7 @@
     <ClInclude Include="microsoft_directshow\DirectShowDefines.h" />
     <ClInclude Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.h" />
     <ClInclude Include="microsoft_directshow\DirectShowTimingClock.h" />
+	<ClInclude Include="microsoft_directshow\DirectShowPresentationLeadPolicy.h" />
     <ClInclude Include="microsoft_directshow\DirectShowTranslations.h" />
 	<ClInclude Include="microsoft_directshow\MadVRExternalPixelShaders.h" />
 	<ClInclude Include="microsoft_directshow\MadVRShaderLoader.h" />

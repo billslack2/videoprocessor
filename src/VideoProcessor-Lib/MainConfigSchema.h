@@ -15,6 +15,7 @@ namespace MainConfigSchema
 	{
 		return section == "command_line" ||
 			section == "queue" ||
+			section == "directshow" ||
 			section == "queue_recovery" ||
 			section == "lldv" ||
 			section == "logging" ||
@@ -82,6 +83,13 @@ namespace MainConfigSchema
 			ConfigSchema::Integer("steady_reserve_frames", 0, 16)
 		};
 		if (!ConfigSchema::ValidateSection(config, "queue", queueRules, error))
+			return false;
+
+		const std::vector<ConfigSchema::KeyRule> directShowRules = {
+			ConfigSchema::Integer("presentation_lead_frames", 0, 16)
+		};
+		if (!ConfigSchema::ValidateSection(
+			config, "directshow", directShowRules, error))
 			return false;
 
 		const std::vector<ConfigSchema::KeyRule> recoveryRules = {

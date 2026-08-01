@@ -29,11 +29,11 @@ LiveClockPresentationDecision LiveClockPresentationSequencer::Preview(
 		return {};
 	}
 
-	// A timestamp equal to "now" is already vulnerable to becoming late while
-	// Receive() traverses the graph.  One nominal frame is the minimum live
-	// scheduling margin; an explicit larger legacy lead remains honored.
-	const VideoReferenceTime effectiveLead = std::max(
-		input.presentationLead, input.nominalFrameDuration);
+	// The caller owns the scheduling-margin policy. Explicit zero must remain
+	// literal; omitted configuration is resolved to the legacy per-mode value
+	// before it reaches this sequencer.
+	const VideoReferenceTime effectiveLead =
+		(std::max)(input.presentationLead, VideoReferenceTime{ 0 });
 	const VideoReferenceTime liveAnchor = input.streamTime + effectiveLead;
 
 	LiveClockPresentationDecision decision;

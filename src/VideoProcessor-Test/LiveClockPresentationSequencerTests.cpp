@@ -30,17 +30,26 @@ namespace Tests
 	TEST_CLASS(LiveClockPresentationSequencerTests)
 	{
 	public:
-		TEST_METHOD(FirstDeliveryAnchorsOneFrameAheadOfGraphStreamTime)
+		TEST_METHOD(FirstDeliveryHonorsLiteralZeroPresentationLead)
 		{
 			LiveClockPresentationSequencer sequencer;
 			const auto decision = sequencer.Preview(Input());
 			Assert::IsTrue(decision.valid);
 			Assert::IsTrue(decision.reanchored);
 			Assert::IsTrue(decision.discontinuity);
-			Assert::AreEqual<VideoReferenceTime>(
-				1000000 + k5994Duration, decision.start);
+			Assert::AreEqual<VideoReferenceTime>(1000000, decision.start);
 			Assert::AreEqual<VideoReferenceTime>(
 				decision.start + k5994Duration, decision.stop);
+		}
+
+		TEST_METHOD(ExplicitOneFramePresentationLeadIsExact)
+		{
+			LiveClockPresentationSequencer sequencer;
+			auto input = Input();
+			input.presentationLead = k5994Duration;
+			const auto decision = sequencer.Preview(input);
+			Assert::AreEqual<VideoReferenceTime>(
+				1000000 + k5994Duration, decision.start);
 		}
 
 		TEST_METHOD(ExplicitLargerPresentationLeadRemainsHonored)
@@ -101,7 +110,7 @@ namespace Tests
 			Assert::IsTrue(nextEpoch.reanchored);
 			Assert::IsTrue(nextEpoch.discontinuity);
 			Assert::AreEqual<VideoReferenceTime>(
-				250000 + k23976Duration, nextEpoch.start);
+				250000, nextEpoch.start);
 		}
 
 		TEST_METHOD(SameEpochClockLeapCatchesUpWithoutRemainingLate)
@@ -113,7 +122,7 @@ namespace Tests
 			Assert::IsTrue(caughtUp.reanchored);
 			Assert::IsTrue(caughtUp.discontinuity);
 			Assert::AreEqual<VideoReferenceTime>(
-				3000000 + k5994Duration, caughtUp.start);
+				3000000, caughtUp.start);
 		}
 
 		TEST_METHOD(SameEpochGraphClockRollbackReanchorsToTheNewDomain)
@@ -125,7 +134,7 @@ namespace Tests
 			Assert::IsTrue(rolledBack.reanchored);
 			Assert::IsTrue(rolledBack.discontinuity);
 			Assert::AreEqual<VideoReferenceTime>(
-				100000 + k5994Duration, rolledBack.start);
+				100000, rolledBack.start);
 		}
 
 		TEST_METHOD(MissingFrameDurationFallsBackToNominal)

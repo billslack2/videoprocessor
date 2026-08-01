@@ -160,6 +160,9 @@ public:
 	// when the setting was explicitly configured; omission preserves automatic.
 	// Implementations must clamp explicit values to actual queue capacity.
 	virtual void SetQueueFramePolicy(size_t, size_t, bool) {}
+	// DirectShow presentation scheduling margin in whole source frames. Omission
+	// preserves each timestamp mode's legacy behavior; explicit zero is valid.
+	virtual void SetPresentationLeadFrames(size_t, bool) {}
 
 	// Installs the closeable asynchronous reset-request endpoint associated
 	// with this renderer instance. Backends must never call UI or graph control

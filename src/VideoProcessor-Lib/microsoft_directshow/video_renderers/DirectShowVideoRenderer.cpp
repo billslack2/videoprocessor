@@ -855,6 +855,29 @@ bool DirectShowVideoRenderer::GetLivenessSnapshot(
 }
 
 
+void DirectShowVideoRenderer::SetPresentationLeadFrames(
+	size_t frames, bool configured)
+{
+	const size_t boundedFrames = (std::min)(frames, size_t{ 16 });
+	m_presentationLeadFrames.store(
+		boundedFrames, std::memory_order_release);
+	m_presentationLeadFramesConfigured.store(
+		configured, std::memory_order_release);
+
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	const bool sourceReady =
+		m_liveSource && m_liveSource->GetVideoOutputPin();
+	if (sourceReady)
+	{
+		m_liveSource->GetVideoOutputPin()->SetPresentationLeadFrames(
+			boundedFrames, configured);
+	}
+	DebugLog::Log(
+		"DirectShow presentation lead retained: frames=%zu explicit=%d source-ready=%d",
+		boundedFrames, configured ? 1 : 0, sourceReady ? 1 : 0);
+}
+
+
 bool DirectShowVideoRenderer::GetLatencySnapshot(
 	RendererLatencySnapshot& snapshot) const
 {
@@ -1739,6 +1762,16 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 			"DirectShow queue policy applied to fresh graph: startup=%zu steady-target=%zu steady-explicit=%d",
 			startupPrerollFrames, steadyTargetFrames,
 			steadyTargetConfigured ? 1 : 0);
+		const size_t presentationLeadFrames =
+			m_presentationLeadFrames.load(std::memory_order_acquire);
+		const bool presentationLeadConfigured =
+			m_presentationLeadFramesConfigured.load(std::memory_order_acquire);
+		outputPin->SetPresentationLeadFrames(
+			presentationLeadFrames, presentationLeadConfigured);
+		DebugLog::Log(
+			"DirectShow presentation lead applied to fresh graph: frames=%zu explicit=%d",
+			presentationLeadFrames,
+			presentationLeadConfigured ? 1 : 0);
 	}
 
 	if (m_pGraph->AddFilter(m_liveSource, L"LiveSource") != S_OK)
