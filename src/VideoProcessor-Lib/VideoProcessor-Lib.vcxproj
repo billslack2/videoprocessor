@@ -246,6 +246,7 @@
     <ClInclude Include="StateVariables.h" />
     <ClInclude Include="UnifiedProfileRuntime.h" />
 	<ClInclude Include="SceneDetector.h" />
+	<ClInclude Include="GlyphSegmentationProviderContract.h" />
 	<ClInclude Include="PanelSubtitleDetector.h" />
 	<ClInclude Include="PanelSubtitleDiagnostic.h" />
 	<ClInclude Include="PanelSubtitleTestMode.h" />
@@ -358,6 +359,7 @@
     <ClCompile Include="StateVariables.cpp" />
     <ClCompile Include="UnifiedProfileRuntime.cpp" />
 	<ClCompile Include="SceneDetector.cpp" />
+	<ClCompile Include="GlyphSegmentationProviderContract.cpp" />
 	<ClCompile Include="PanelSubtitleDetector.cpp" />
 	<ClCompile Include="PanelSubtitleDiagnostic.cpp" />
     <ClCompile Include="StringUtils.cpp" />

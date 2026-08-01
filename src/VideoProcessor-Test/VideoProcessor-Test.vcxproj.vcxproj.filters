@@ -64,6 +64,9 @@
 	<ClCompile Include="PanelSubtitleDetectorTests.cpp">
 	  <Filter>Resource Files</Filter>
 	</ClCompile>
+	<ClCompile Include="GlyphSegmentationProviderContractTests.cpp">
+	  <Filter>Resource Files</Filter>
+	</ClCompile>
 	<ClCompile Include="PanelSubtitleDiagnosticTests.cpp">
 	  <Filter>Resource Files</Filter>
 	</ClCompile>
