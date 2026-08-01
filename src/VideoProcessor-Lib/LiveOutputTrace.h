@@ -57,6 +57,8 @@ struct LiveOutputTraceRecord
 	uint32_t queueDepthBefore = 0;
 	uint32_t queueDepthAfter = 0;
 	uint32_t queueDiscarded = 0;
+	uint32_t rawQueueDiscarded = 0;
+	uint32_t convertedQueueDiscarded = 0;
 	uint32_t convergenceSuccessCount = 0;
 	uint32_t convergenceBlockCount = 0;
 	uint32_t convergenceRecoveryStreak = 0;
@@ -72,6 +74,7 @@ struct LiveOutputTraceRecord
 	bool sourceDiscontinuity = false;
 	bool convergenceApplied = false;
 	bool convergenceRawZero = false;
+	bool convergenceRawBacklog = false;
 	bool scheduledLatencyKnown = false;
 	bool latencyDisplayReady = false;
 };
@@ -200,6 +203,8 @@ public:
 				lhs.queueDepthBefore != rhs.queueDepthBefore ||
 				lhs.queueDepthAfter != rhs.queueDepthAfter ||
 				lhs.queueDiscarded != rhs.queueDiscarded ||
+				lhs.rawQueueDiscarded != rhs.rawQueueDiscarded ||
+				lhs.convertedQueueDiscarded != rhs.convertedQueueDiscarded ||
 				lhs.convergenceSuccessCount != rhs.convergenceSuccessCount ||
 				lhs.convergenceBlockCount != rhs.convergenceBlockCount ||
 				lhs.convergenceRecoveryStreak != rhs.convergenceRecoveryStreak ||
@@ -214,6 +219,7 @@ public:
 				lhs.sourceDiscontinuity != rhs.sourceDiscontinuity ||
 				lhs.convergenceApplied != rhs.convergenceApplied ||
 				lhs.convergenceRawZero != rhs.convergenceRawZero ||
+				lhs.convergenceRawBacklog != rhs.convergenceRawBacklog ||
 				lhs.scheduledLatencyKnown != rhs.scheduledLatencyKnown ||
 				lhs.latencyDisplayReady != rhs.latencyDisplayReady ||
 				AbsoluteDifference(lhs.presentationStart, rhs.presentationStart) > presentationTolerance ||
@@ -238,10 +244,11 @@ public:
 			"displayed_vp_to_scheduled_us,media_start,media_stop,output_sequence,"
 			"raw_queue,converted_queue,total_queue,queue_capacity,processing_us,delivery_us,"
 			"delivery_result,queue_target,queue_depth_before,queue_depth_after,queue_discarded,"
+			"raw_queue_discarded,converted_queue_discarded,"
 			"convergence_successes,convergence_blocks,convergence_recovery_streak,"
 			"convergence_block_threshold_us,convergence_normal_threshold_us,convergence_elapsed_ms,"
 			"convergence_state,convergence_reason,timestamp_owner,scene_boundary,intentional_drop,"
-			"source_discontinuity,convergence_applied,convergence_raw_zero,"
+			"source_discontinuity,convergence_applied,convergence_raw_zero,convergence_raw_backlog,"
 			"scheduled_latency_known,latency_display_ready\n";
 		for (const LiveOutputTraceRecord& record : records)
 		{
@@ -263,7 +270,9 @@ public:
 				<< record.processingDurationUs << ',' << record.deliveryDurationUs << ','
 				<< record.deliveryResult << ',' << record.queueTarget << ','
 				<< record.queueDepthBefore << ',' << record.queueDepthAfter << ','
-				<< record.queueDiscarded << ',' << record.convergenceSuccessCount << ','
+				<< record.queueDiscarded << ',' << record.rawQueueDiscarded << ','
+				<< record.convertedQueueDiscarded << ','
+				<< record.convergenceSuccessCount << ','
 				<< record.convergenceBlockCount << ',' << record.convergenceRecoveryStreak << ','
 				<< record.convergenceBlockThresholdUs << ','
 				<< record.convergenceNormalThresholdUs << ','
@@ -276,6 +285,7 @@ public:
 				<< (record.sourceDiscontinuity ? 1 : 0) << ','
 				<< (record.convergenceApplied ? 1 : 0) << ','
 				<< (record.convergenceRawZero ? 1 : 0) << ','
+				<< (record.convergenceRawBacklog ? 1 : 0) << ','
 				<< (record.scheduledLatencyKnown ? 1 : 0) << ','
 				<< (record.latencyDisplayReady ? 1 : 0) << '\n';
 		}

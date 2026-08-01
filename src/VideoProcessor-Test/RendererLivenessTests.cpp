@@ -207,5 +207,19 @@ namespace Tests
 				stabilizer.Observe(1, tick, observed, stable);
 			Assert::IsFalse(stabilizer.Observe(2, 2200, observed, stable));
 		}
+
+		TEST_METHOD(LatencyDisplayCanRewarmAfterSameEpochLiveCatchUp)
+		{
+			RendererLatencyStabilizer stabilizer;
+			RendererLatencySnapshot observed;
+			observed.supported = true;
+			RendererLatencySnapshot stable;
+
+			Assert::IsFalse(stabilizer.Observe(3, 100, observed, stable));
+			for (uint64_t tick = 1100; tick <= 2100; tick += 200)
+				stabilizer.Observe(3, tick, observed, stable);
+			stabilizer.Reset();
+			Assert::IsFalse(stabilizer.Observe(3, 2200, observed, stable));
+		}
 	};
 }

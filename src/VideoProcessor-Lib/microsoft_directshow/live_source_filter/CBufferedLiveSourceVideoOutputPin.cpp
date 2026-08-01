@@ -1954,7 +1954,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 						failureConvergenceDecision.elapsedSinceFirstSuccessMs,
 						std::numeric_limits<uint32_t>::max()));
 				convergenceTrace.convergenceRawZero =
-					failureConvergenceDecision.rawZeroPreconditionMet;
+					failureConvergenceDecision.rawDepthKnown &&
+					!failureConvergenceDecision.rawBacklogObserved;
+				convergenceTrace.convergenceRawBacklog =
+					failureConvergenceDecision.rawBacklogObserved;
 				convergenceTrace.convergenceState = static_cast<uint8_t>(
 					failureConvergenceDecision.state);
 				convergenceTrace.convergenceReason = static_cast<uint8_t>(
@@ -1992,8 +1995,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				GetTickCount64(), std::memory_order_release);
 
 			// After a synchronous downstream-ingress block has been observed and
-			// Deliver() has recovered, discard only stale VP-owned converted samples
-			// once for this fresh epoch. This is acceptance/backpressure evidence,
+			// Deliver() has recovered, perform one live catch-up for this epoch:
+			// discard stale raw backlog and retain the configured converted reserve.
+			// The delivery sequencer owns final timestamps, so skipped pictures do
+			// not create a presentation-time hole. This is backpressure evidence,
 			// never a madVR occupancy or presentation-readiness estimate.
 			const bool steadyTargetConfigured =
 				IsSteadyQueueTargetConfigured();
@@ -2059,7 +2064,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 						convergenceDecision.elapsedSinceFirstSuccessMs,
 						std::numeric_limits<uint32_t>::max()));
 				convergenceProbe.convergenceRawZero =
-					convergenceDecision.rawZeroPreconditionMet;
+					convergenceDecision.rawDepthKnown &&
+					!convergenceDecision.rawBacklogObserved;
+				convergenceProbe.convergenceRawBacklog =
+					convergenceDecision.rawBacklogObserved;
 				convergenceProbe.convergenceState = static_cast<uint8_t>(
 					convergenceDecision.state);
 				convergenceProbe.convergenceReason = static_cast<uint8_t>(
@@ -2069,19 +2077,34 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 			if (convergenceDecision.requestConvergence)
 			{
+				size_t actualRawDepthBefore = 0;
+				size_t discardedRawFrames = 0;
+				size_t rawDepthAfterConvergence = 0;
 				size_t actualConvertedDepthBefore = 0;
-				size_t discardedStaleFrames = 0;
+				size_t discardedConvertedFrames = 0;
 				size_t convertedDepthAfterConvergence = 0;
+				actualRawDepthBefore = m_captureFrameQueue.Size();
+				discardedRawFrames = m_captureFrameQueue.TrimTo(0);
+				rawDepthAfterConvergence = m_captureFrameQueue.Size();
+				m_publishedRawQueueDepth.store(
+					rawDepthAfterConvergence, std::memory_order_release);
 				{
 					CAutoLock convertedLock(&m_convertedQueueLock);
 					actualConvertedDepthBefore = m_processedFrameQueue.Size();
-					discardedStaleFrames =
+					discardedConvertedFrames =
 						m_processedFrameQueue.TrimTo(desiredVpDepth);
 					convertedDepthAfterConvergence =
 						m_processedFrameQueue.Size();
 					m_publishedConvertedQueueDepth.store(
 						convertedDepthAfterConvergence, std::memory_order_release);
 				}
+				const size_t discardedStaleFrames =
+					discardedRawFrames + discardedConvertedFrames;
+				// The pre-catch-up samples described the stale live backlog we just
+				// removed. Rewarm presentation telemetry from the caught-up path so
+				// the UI never advertises that transient as steady latency.
+				m_latencyStabilizer.Reset();
+				m_latencySnapshotAvailable.store(false, std::memory_order_release);
 				LiveOutputTraceRecord convergenceTrace;
 				convergenceTrace.kind = LiveOutputTraceKind::PlannedDrop;
 				convergenceTrace.pipelineEpoch = expectedQueueEpoch;
@@ -2095,7 +2118,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					convergenceTrace.outputSequence = timestampDecision.outputSequence;
 				}
 				convergenceTrace.rawQueueDepth = static_cast<uint32_t>(
-					rawDepthBeforeConvergence);
+					rawDepthAfterConvergence);
 				convergenceTrace.convertedQueueDepth = static_cast<uint32_t>(
 					convertedDepthAfterConvergence);
 				convergenceTrace.totalQueueDepth =
@@ -2110,6 +2133,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					convertedDepthAfterConvergence);
 				convergenceTrace.queueDiscarded = static_cast<uint32_t>(
 					discardedStaleFrames);
+				convergenceTrace.rawQueueDiscarded = static_cast<uint32_t>(
+					discardedRawFrames);
+				convergenceTrace.convertedQueueDiscarded = static_cast<uint32_t>(
+					discardedConvertedFrames);
 				convergenceTrace.convergenceSuccessCount =
 					convergenceDecision.successfulDeliveryCount;
 				convergenceTrace.convergenceBlockCount =
@@ -2129,7 +2156,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 						convergenceDecision.elapsedSinceFirstSuccessMs,
 						std::numeric_limits<uint32_t>::max()));
 				convergenceTrace.convergenceRawZero =
-					convergenceDecision.rawZeroPreconditionMet;
+					actualRawDepthBefore == 0;
+				convergenceTrace.convergenceRawBacklog =
+					actualRawDepthBefore > 0;
 				convergenceTrace.convergenceState = static_cast<uint8_t>(
 					convergenceDecision.state);
 				convergenceTrace.convergenceReason = static_cast<uint8_t>(
@@ -2140,11 +2169,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				m_liveConvergenceTrace.Record(convergenceTrace);
 				DebugLog::Log(
 					"VP-0066-9 QUEUE CONVERGENCE: epoch=%llu target=%zu "
-					"pre=%zu post=%zu discarded_stale=%zu "
-					"madvr_queue=unobservable",
+					"raw=%zu->%zu discarded_raw=%zu "
+					"converted=%zu->%zu discarded_converted=%zu "
+					"discarded_stale=%zu latency_rewarm=1 madvr_queue=unobservable",
 					expectedQueueEpoch, desiredVpDepth,
+					actualRawDepthBefore, rawDepthAfterConvergence,
+					discardedRawFrames,
 					actualConvertedDepthBefore,
-					convertedDepthAfterConvergence, discardedStaleFrames);
+					convertedDepthAfterConvergence, discardedConvertedFrames,
+					discardedStaleFrames);
 			}
 			++framesSinceLastLog;
 			++deliverySuccessCount;

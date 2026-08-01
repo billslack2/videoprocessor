@@ -1,5 +1,5 @@
 /*
- * One-shot, fresh-epoch convergence policy for VP's converted live queue.
+ * One-shot, fresh-epoch convergence policy for VP's live transport backlog.
  *
  * This controller deliberately owns no DirectShow, madVR, HDMI, or queue
  * object.  In particular, an S_OK from Deliver is evidence only that the
@@ -19,7 +19,7 @@ enum class LiveEpochConvergenceState
 	IngressBlocked,
 	Recovering,
 	Armed,
-	DeferredRawNotEmpty,
+	DeferredQueueEvidence,
 	TrimApplied,
 	SettledNoTrim,
 	UnprovenNoTrim
@@ -34,7 +34,7 @@ enum class LiveEpochConvergenceReason
 	RecoveryDelivery,
 	ArmedNoBacklog,
 	RawDepthUnknown,
-	RawDepthNotEmpty,
+	RawBacklogObserved,
 	TrimRequested,
 	BlockObservationTimedOut,
 	ArmedWindowTimedOut,
@@ -47,9 +47,9 @@ struct LiveEpochConvergenceInput
 {
 	uint64_t epoch = 0;
 	bool epochActive = false;
-	// This policy's target is converted-queue depth only.  Raw frames are
-	// never discarded by it; rawDepthKnown && vpRawDepth == 0 is a required
-	// precondition for an automatic converted-queue trim.
+	// The configured steady reserve is retained in the converted queue. Once a
+	// synchronous downstream block and recovery prove that live work is stale,
+	// raw backlog may be discarded and converted backlog reduced to this floor.
 	size_t vpConvertedDepth = 0;
 	size_t desiredVpDepth = 0;
 	bool targetConfigured = false;
@@ -78,12 +78,14 @@ struct LiveEpochConvergenceDecision
 	LiveEpochConvergenceState state =
 		LiveEpochConvergenceState::Disabled;
 	LiveEpochConvergenceReason reason = LiveEpochConvergenceReason::None;
-	// A request authorizes only a converted-queue TrimTo(desiredVpDepth).  It
-	// is emitted once per epoch and only with raw depth explicitly observed as
-	// zero.  `staleVpFrames` is the requested converted-frame count, not a
-	// claim about total VP R/C/T depth.
+	// A request authorizes one live catch-up transaction: discard queued raw
+	// work and reduce converted work to desiredVpDepth. Final timestamps remain
+	// owned by the delivery sequencer, so discarded live pictures create no
+	// presentation-timeline hole. The request is emitted at most once per epoch.
 	bool requestConvergence = false;
 	size_t staleVpFrames = 0;
+	size_t staleRawFrames = 0;
+	size_t staleConvertedFrames = 0;
 	uint64_t epoch = 0;
 	uint32_t successfulDeliveryCount = 0;
 	uint32_t ingressBlockCount = 0;
@@ -91,7 +93,8 @@ struct LiveEpochConvergenceDecision
 	uint64_t ingressBlockThresholdUs = 0;
 	uint64_t normalDeliveryThresholdUs = 0;
 	uint64_t elapsedSinceFirstSuccessMs = 0;
-	bool rawZeroPreconditionMet = false;
+	bool rawDepthKnown = false;
+	bool rawBacklogObserved = false;
 	bool targetIsConvertedQueue = true;
 };
 

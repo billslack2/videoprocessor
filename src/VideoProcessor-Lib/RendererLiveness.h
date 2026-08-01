@@ -89,6 +89,21 @@ public:
 	static constexpr uint64_t EVIDENCE_MS = 1000;
 	static constexpr uint64_t MINIMUM_SAMPLES = 5;
 
+	void Reset()
+	{
+		m_initialized = false;
+		m_ready = false;
+		m_epoch = 0;
+		m_firstTickMs = 0;
+		m_lastTickMs = 0;
+		m_internalSamples = 0;
+		m_scheduledSamples = 0;
+		m_internalSum = 0.0;
+		m_leadSum = 0.0;
+		m_scheduledSum = 0.0;
+		m_stable = {};
+	}
+
 	bool Observe(uint64_t epoch, uint64_t tickMs,
 		const RendererLatencySnapshot& observed,
 		RendererLatencySnapshot& stable)

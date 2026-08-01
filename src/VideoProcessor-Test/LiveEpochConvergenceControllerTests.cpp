@@ -158,26 +158,28 @@ namespace Tests
 				static_cast<int>(decision.state));
 		}
 
-		TEST_METHOD(NonZeroRawDepthDefersAndNeverClaimsTotalVpTarget)
+		TEST_METHOD(ObservedAsymmetricBacklogRequestsOneRawAndConvertedCatchUp)
 		{
 			LiveEpochConvergenceController controller;
 			LiveEpochConvergenceInput input = Input();
-			input.vpRawDepth = 1;
-			(void)Observe(controller, input, 60000, 13, 1);
-			(void)Observe(controller, input, 16683, 13);
-			(void)Observe(controller, input, 16683, 13);
-			LiveEpochConvergenceDecision decision = Observe(controller, input, 16683, 13);
-			Assert::IsFalse(decision.requestConvergence);
-			Assert::IsFalse(decision.rawZeroPreconditionMet);
-			Assert::AreEqual(static_cast<int>(LiveEpochConvergenceState::DeferredRawNotEmpty),
+			input.desiredVpDepth = 1;
+			input.vpRawDepth = 29;
+			(void)Observe(controller, input, 109800, 32, 1);
+			(void)Observe(controller, input, 16683, 32);
+			(void)Observe(controller, input, 16683, 32);
+			LiveEpochConvergenceDecision decision = Observe(
+				controller, input, 16683, 32);
+			Assert::IsTrue(decision.requestConvergence);
+			Assert::IsTrue(decision.rawDepthKnown);
+			Assert::IsTrue(decision.rawBacklogObserved);
+			Assert::AreEqual<size_t>(29, decision.staleRawFrames);
+			Assert::AreEqual<size_t>(31, decision.staleConvertedFrames);
+			Assert::AreEqual<size_t>(60, decision.staleVpFrames);
+			Assert::AreEqual(static_cast<int>(LiveEpochConvergenceState::TrimApplied),
 				static_cast<int>(decision.state));
 
-			input.deliveryCompleted = false;
-			input.observationTickMs +=
-				LiveEpochConvergenceController::kArmedConvergenceWindowMs;
-			decision = controller.Observe(input);
-			Assert::AreEqual(static_cast<int>(LiveEpochConvergenceState::UnprovenNoTrim),
-				static_cast<int>(decision.state));
+			decision = Observe(controller, input, 16683, 32);
+			Assert::IsFalse(decision.requestConvergence);
 		}
 
 		TEST_METHOD(Exact23976ThresholdAndRecoveryAreRateIndependent)

@@ -60,7 +60,7 @@ LiveEpochConvergenceDecision LiveEpochConvergenceController::Observe(
 	}
 
 	if ((m_state == LiveEpochConvergenceState::Armed ||
-		m_state == LiveEpochConvergenceState::DeferredRawNotEmpty) &&
+		m_state == LiveEpochConvergenceState::DeferredQueueEvidence) &&
 		m_hasArmedTick &&
 		HasElapsed(input.observationTickMs, m_armedTickMs,
 			kArmedConvergenceWindowMs))
@@ -112,7 +112,7 @@ LiveEpochConvergenceDecision LiveEpochConvergenceController::Observe(
 	if (m_state == LiveEpochConvergenceState::IngressBlocked ||
 		m_state == LiveEpochConvergenceState::Recovering ||
 		m_state == LiveEpochConvergenceState::Armed ||
-		m_state == LiveEpochConvergenceState::DeferredRawNotEmpty)
+		m_state == LiveEpochConvergenceState::DeferredQueueEvidence)
 	{
 		if (ingressBlocked)
 		{
@@ -156,21 +156,20 @@ LiveEpochConvergenceDecision LiveEpochConvergenceController::Observe(
 			LiveEpochConvergenceDecision decision = MakeDecision(input, previousState,
 				LiveEpochConvergenceReason::TrimRequested);
 			decision.requestConvergence = true;
-			decision.staleVpFrames = input.vpConvertedDepth - m_desiredVpDepth;
+			decision.staleRawFrames = input.vpRawDepth;
+			decision.staleConvertedFrames = input.vpConvertedDepth >
+				m_desiredVpDepth ?
+				input.vpConvertedDepth - m_desiredVpDepth : 0;
+			decision.staleVpFrames = decision.staleRawFrames +
+				decision.staleConvertedFrames;
 			return decision;
 		}
 
 		if (!input.rawDepthKnown)
 		{
-			m_state = LiveEpochConvergenceState::DeferredRawNotEmpty;
+			m_state = LiveEpochConvergenceState::DeferredQueueEvidence;
 			return MakeDecision(input, previousState,
 				LiveEpochConvergenceReason::RawDepthUnknown);
-		}
-		if (input.vpRawDepth != 0)
-		{
-			m_state = LiveEpochConvergenceState::DeferredRawNotEmpty;
-			return MakeDecision(input, previousState,
-				LiveEpochConvergenceReason::RawDepthNotEmpty);
 		}
 
 		m_state = LiveEpochConvergenceState::Armed;
@@ -229,8 +228,9 @@ LiveEpochConvergenceDecision LiveEpochConvergenceController::MakeDecision(
 		IngressBlockThresholdUs(input.nominalFrameDurationUs);
 	decision.normalDeliveryThresholdUs =
 		NormalDeliveryThresholdUs(input.nominalFrameDurationUs);
-	decision.rawZeroPreconditionMet =
-		input.rawDepthKnown && input.vpRawDepth == 0;
+	decision.rawDepthKnown = input.rawDepthKnown;
+	decision.rawBacklogObserved =
+		input.rawDepthKnown && input.vpRawDepth > 0;
 	if (m_hasFirstSuccessTick && input.observationTickMs >= m_firstSuccessTickMs)
 		decision.elapsedSinceFirstSuccessMs =
 			input.observationTickMs - m_firstSuccessTickMs;
@@ -283,8 +283,9 @@ bool LiveEpochConvergenceController::IsTerminal() const
 bool LiveEpochConvergenceController::CanRequestTrim(
 	const LiveEpochConvergenceInput& input) const
 {
-	return input.rawDepthKnown && input.vpRawDepth == 0 &&
-		input.vpConvertedDepth > m_desiredVpDepth;
+	return input.rawDepthKnown &&
+		(input.vpRawDepth > 0 ||
+		 input.vpConvertedDepth > m_desiredVpDepth);
 }
 
 const char* ToString(LiveEpochConvergenceState state)
@@ -296,7 +297,7 @@ const char* ToString(LiveEpochConvergenceState state)
 	case LiveEpochConvergenceState::IngressBlocked: return "ingress-blocked";
 	case LiveEpochConvergenceState::Recovering: return "recovering";
 	case LiveEpochConvergenceState::Armed: return "armed";
-	case LiveEpochConvergenceState::DeferredRawNotEmpty: return "deferred-raw-not-empty";
+	case LiveEpochConvergenceState::DeferredQueueEvidence: return "deferred-queue-evidence";
 	case LiveEpochConvergenceState::TrimApplied: return "trim-applied";
 	case LiveEpochConvergenceState::SettledNoTrim: return "settled-no-trim";
 	case LiveEpochConvergenceState::UnprovenNoTrim: return "unproven-no-trim";
@@ -315,7 +316,7 @@ const char* ToString(LiveEpochConvergenceReason reason)
 	case LiveEpochConvergenceReason::RecoveryDelivery: return "recovery-delivery";
 	case LiveEpochConvergenceReason::ArmedNoBacklog: return "armed-no-backlog";
 	case LiveEpochConvergenceReason::RawDepthUnknown: return "raw-depth-unknown";
-	case LiveEpochConvergenceReason::RawDepthNotEmpty: return "raw-depth-not-empty";
+	case LiveEpochConvergenceReason::RawBacklogObserved: return "raw-backlog-observed";
 	case LiveEpochConvergenceReason::TrimRequested: return "trim-requested";
 	case LiveEpochConvergenceReason::BlockObservationTimedOut: return "block-observation-timed-out";
 	case LiveEpochConvergenceReason::ArmedWindowTimedOut: return "armed-window-timed-out";
