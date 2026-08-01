@@ -575,16 +575,16 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += lineHeight;
 
 	if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("DS lead:     %.2f ms"), m_stats.dsScheduleLeadMs);
+		line.Format(TEXT("PTS lead:    %.2f ms"), m_stats.dsScheduleLeadMs);
 	else
-		line = TEXT("DS lead:     ---");
+		line = TEXT("PTS lead:    ---");
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
 	if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("Scheduled:   %.2f ms"), m_stats.scheduledLatencyMs);
+		line.Format(TEXT("To req PTS:  %.2f ms"), m_stats.scheduledLatencyMs);
 	else
-		line = TEXT("Scheduled:   ---");
+		line = TEXT("To req PTS:  ---");
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 

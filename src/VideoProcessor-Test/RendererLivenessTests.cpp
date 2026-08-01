@@ -132,6 +132,28 @@ namespace Tests
 			Assert::AreEqual<int64_t>(0, normalized);
 		}
 
+		TEST_METHOD(StreamTimeNormalizationRejectsSameEpochClockRollback)
+		{
+			RendererStreamTimeNormalizer normalizer;
+			int64_t normalized = -1;
+			Assert::IsTrue(normalizer.Normalize(10, 1000000, normalized));
+			Assert::AreEqual<int64_t>(0, normalized);
+			Assert::IsTrue(normalizer.Normalize(10, 1100000, normalized));
+			Assert::AreEqual<int64_t>(100000, normalized);
+			Assert::IsFalse(normalizer.Normalize(10, 900000, normalized));
+			Assert::IsTrue(normalizer.HasClockDomainDiscontinuity(10));
+			Assert::AreEqual<int64_t>(1100000,
+				normalizer.LastValidObservedTime100ns());
+
+			// A later value cannot silently rebase the invalid domain.
+			Assert::IsFalse(normalizer.Normalize(10, 1200000, normalized));
+
+			// The next real queue epoch establishes a fresh comparison.
+			Assert::IsTrue(normalizer.Normalize(11, 500000, normalized));
+			Assert::AreEqual<int64_t>(0, normalized);
+			Assert::IsFalse(normalizer.HasClockDomainDiscontinuity(11));
+		}
+
 		TEST_METHOD(ScheduledLatencyUsesVpResidenceAndRemainingDsLead)
 		{
 			RendererLatencySnapshot snapshot;
@@ -206,6 +228,30 @@ namespace Tests
 			for (uint64_t tick = 1100; tick <= 2100; tick += 200)
 				stabilizer.Observe(1, tick, observed, stable);
 			Assert::IsFalse(stabilizer.Observe(2, 2200, observed, stable));
+		}
+
+		TEST_METHOD(LatencyDisplayDiscardsPtsEvidenceBeforeClockLoss)
+		{
+			RendererLatencyStabilizer stabilizer;
+			RendererLatencySnapshot observed;
+			observed.supported = true;
+			observed.scheduledPresentationKnown = true;
+			observed.vpInternalMs = 42.0;
+			observed.dsScheduleLeadMs = 180.0;
+			observed.scheduledLatencyMs = 222.0;
+			RendererLatencySnapshot stable;
+
+			Assert::IsFalse(stabilizer.Observe(4, 100, observed, stable));
+			for (uint64_t tick = 1100; tick <= 1500; tick += 100)
+				Assert::IsFalse(stabilizer.Observe(4, tick, observed, stable));
+
+			// A clock-domain loss before publication invalidates every PTS
+			// sample collected earlier in this same evidence window.
+			observed.scheduledPresentationKnown = false;
+			Assert::IsFalse(stabilizer.Observe(4, 1600, observed, stable));
+			Assert::IsTrue(stabilizer.Observe(4, 2100, observed, stable));
+			Assert::AreEqual(42.0, stable.vpInternalMs, 0.001);
+			Assert::IsFalse(stable.scheduledPresentationKnown);
 		}
 
 		TEST_METHOD(LatencyDisplayCanRewarmAfterSameEpochLiveCatchUp)

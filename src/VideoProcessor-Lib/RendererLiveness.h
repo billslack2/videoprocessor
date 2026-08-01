@@ -52,7 +52,10 @@ struct RendererLatencySnapshot
 // CBaseFilter::StreamTime can retain the custom reference clock's absolute
 // domain on this live source. DirectShow sample timestamps are epoch-relative,
 // so latency telemetry normalizes the observed clock to the first delivery of
-// each queue epoch before comparing the two. This is diagnostic only.
+// each queue epoch before comparing the two. A backward clock step in the same
+// epoch means those domains can no longer be compared: fail closed for the
+// remainder of that epoch instead of manufacturing a new zero point. This is
+// diagnostic only and never changes sample timestamps or delivery.
 class RendererStreamTimeNormalizer
 {
 public:
@@ -61,21 +64,44 @@ public:
 	{
 		if (epoch == 0)
 			return false;
-		if (!m_initialized || epoch != m_epoch ||
-			observedTime100ns < m_observedBase100ns)
+		if (!m_initialized || epoch != m_epoch)
 		{
 			m_initialized = true;
 			m_epoch = epoch;
 			m_observedBase100ns = observedTime100ns;
+			m_lastObserved100ns = observedTime100ns;
+			m_clockDomainValid = true;
+			streamTime100ns = 0;
+			return true;
 		}
+		if (!m_clockDomainValid)
+			return false;
+		if (observedTime100ns < m_lastObserved100ns)
+		{
+			m_clockDomainValid = false;
+			return false;
+		}
+		m_lastObserved100ns = observedTime100ns;
 		streamTime100ns = observedTime100ns - m_observedBase100ns;
 		return true;
 	}
 
+	bool HasClockDomainDiscontinuity(uint64_t epoch) const
+	{
+		return m_initialized && epoch == m_epoch && !m_clockDomainValid;
+	}
+
+	int64_t LastValidObservedTime100ns() const
+	{
+		return m_lastObserved100ns;
+	}
+
 private:
 	bool m_initialized = false;
+	bool m_clockDomainValid = false;
 	uint64_t m_epoch = 0;
 	int64_t m_observedBase100ns = 0;
+	int64_t m_lastObserved100ns = 0;
 };
 
 // UI telemetry deliberately ignores the first second of a fresh graph epoch,
@@ -126,6 +152,15 @@ public:
 				m_leadSum += observed.dsScheduleLeadMs;
 				m_scheduledSum += observed.scheduledLatencyMs;
 				++m_scheduledSamples;
+			}
+			else
+			{
+				// Scheduled timing must be supported by one contiguous clean
+				// clock-domain run. Do not publish samples collected before a
+				// clock discontinuity as if they were still current.
+				m_scheduledSamples = 0;
+				m_leadSum = 0.0;
+				m_scheduledSum = 0.0;
 			}
 			if (elapsedMs < IGNORE_MS + EVIDENCE_MS ||
 				m_internalSamples < MINIMUM_SAMPLES)

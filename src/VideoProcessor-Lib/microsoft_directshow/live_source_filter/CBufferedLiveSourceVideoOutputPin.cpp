@@ -1558,6 +1558,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	// active and already stamps its samples on this same delivery thread.
 	RationalLiveOutputSequencer deliveryTimestampSequencer(
 		m_timeScale, m_frameDurationTicks, m_frameDuration);
+	uint64_t latencyClockDiscontinuityLoggedEpoch = 0;
 	bool downstreamRejectedUntilNewEpoch = false;
 	uint64_t downstreamRejectedEpoch = 0;
 
@@ -1737,8 +1738,23 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		REFERENCE_TIME streamTime = REFERENCE_TIME_INVALID;
 		if (observedClockTime != REFERENCE_TIME_INVALID)
 		{
-			m_latencyStreamTimeNormalizer.Normalize(
+			const bool normalized = m_latencyStreamTimeNormalizer.Normalize(
 				expectedQueueEpoch, observedClockTime, streamTime);
+			if (!normalized &&
+				m_latencyStreamTimeNormalizer.HasClockDomainDiscontinuity(
+					expectedQueueEpoch) &&
+				latencyClockDiscontinuityLoggedEpoch != expectedQueueEpoch)
+			{
+				latencyClockDiscontinuityLoggedEpoch = expectedQueueEpoch;
+				DebugLog::Log(
+					"VP PTS TIMING INVALID: epoch=%llu reason=same-epoch-clock-rollback "
+					"observed_clock_100ns=%lld last_valid_clock_100ns=%lld; "
+					"VP internal timing remains valid",
+					expectedQueueEpoch,
+					static_cast<long long>(observedClockTime),
+					static_cast<long long>(
+						m_latencyStreamTimeNormalizer.LastValidObservedTime100ns()));
+			}
 		}
 		RendererLatencySnapshot latencySnapshot;
 		RendererLatencySnapshot displayedLatencySnapshot;
@@ -1785,7 +1801,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				{
 					DebugLog::Log(
 						"VP LATENCY METRIC READY: epoch=%llu vp_internal=%.2fms "
-						"scheduled_known=%d ds_lead=%.2fms vp_to_scheduled=%.2fms "
+						"pts_known=%d pts_lead=%.2fms vp_to_requested_pts=%.2fms "
 						"startup_ignore_ms=%llu evidence_ms=%llu",
 						expectedQueueEpoch,
 						displayedLatencySnapshot.vpInternalMs,
