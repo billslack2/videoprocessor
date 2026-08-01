@@ -157,21 +157,55 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	const timingclocktime_t frameTime = videoFrame.GetTimingTimestamp();
 	const LiveFrameCounterDecision counterDecision =
 		m_captureFrameCounterTracker.Observe(videoFrame.GetCounter());
+	const LiveSourceGapRecoveryDecision gapRecovery =
+		m_sourceGapRecoveryPolicy.Observe(
+			counterDecision,
+			m_videoState->displayMode->TimeScale(),
+			m_videoState->displayMode->FrameDuration());
 	if (counterDecision.IsDiscontinuity())
 	{
-		// Receiving a new live frame proves capture resumed. Keep the graph and
-		// madVR queues intact, rebase cadence measurement, and carry an explicit
-		// source discontinuity through the unified delivery sequencer.
+		// Receiving a new live frame proves capture resumed. Rebase cadence and
+		// carry an explicit source discontinuity through the delivery sequencer.
+		// A material gap additionally asks the serialized owner to re-prime the
+		// opaque madVR queues; never control the graph from this callback.
 		videoFrame.SetSourceDiscontinuity(true);
 		ResetPPMMeasurement();
+		bool resetPublished = false;
+		if (gapRecovery.action ==
+			LiveSourceGapRecoveryAction::RequestGraphReprime)
+		{
+			ALiveSourceVideoOutputPin* outputPin =
+				m_liveSource ? m_liveSource->GetVideoOutputPin() : nullptr;
+			resetPublished = outputPin &&
+				outputPin->RequestSourceGapGraphReprime();
+		}
+		const char* action = "continue-local";
+		if (gapRecovery.action ==
+			LiveSourceGapRecoveryAction::RequestGraphReprime)
+		{
+			action = resetPublished ?
+				"request-graph-reprime" : "coalesce-graph-reprime";
+		}
+		else if (gapRecovery.action ==
+			LiveSourceGapRecoveryAction::SuppressedUntilHealthy)
+		{
+			action = "suppress-until-healthy";
+		}
 		DebugLog::Log(
 			"DirectShow source counter discontinuity: transition=%s "
 			"previous=%llu current=%llu missing=%llu "
-			"action=continue-local ppm=rebaseline graph_reset=0",
+			"material_threshold=%llu action=%s ppm=rebaseline "
+			"graph_reset=%d healthy=%llu/%llu",
 			ToString(counterDecision.transition),
 			static_cast<unsigned long long>(counterDecision.previous),
 			static_cast<unsigned long long>(counterDecision.current),
-			static_cast<unsigned long long>(counterDecision.missingFrames));
+			static_cast<unsigned long long>(counterDecision.missingFrames),
+			static_cast<unsigned long long>(gapRecovery.materialGapFrames),
+			action, resetPublished ? 1 : 0,
+			static_cast<unsigned long long>(
+				gapRecovery.healthyIntervalsObserved),
+			static_cast<unsigned long long>(
+				gapRecovery.healthyIntervalsRequired));
 	}
 
 	// Update PPM measurement with each frame
@@ -466,6 +500,7 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 	
 	m_frameCounter = 0;
 	m_captureFrameCounterTracker.Reset();
+	m_sourceGapRecoveryPolicy.OnGraphReset();
 	ResetPPMMeasurement();
 	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
 	m_resetReadyForReveal.store(true, std::memory_order_release);
@@ -565,6 +600,7 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 
 		m_frameCounter = 0;
 		m_captureFrameCounterTracker.Reset();
+		m_sourceGapRecoveryPolicy.OnGraphReset();
 		ResetPPMMeasurement();
 		m_unbufferedDeliverySuccessCount.store(
 			0, std::memory_order_release);

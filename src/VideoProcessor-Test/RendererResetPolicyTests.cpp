@@ -45,6 +45,15 @@ namespace Tests
 				priority, 33000, priority, 5000));
 		}
 
+		TEST_METHOD(DisplayTransitionOwnsConcurrentSourceGapRecovery)
+		{
+			Assert::IsTrue(
+				RendererResetPriority(
+					RendererResetReason::DisplayTransition) >
+				RendererResetPriority(
+					RendererResetReason::SourceGapRecovery));
+		}
+
 		TEST_METHOD(OutputReadinessPreemptsDisplayTransitionButNotCriticalRecovery)
 		{
 			const int outputReadinessPriority =

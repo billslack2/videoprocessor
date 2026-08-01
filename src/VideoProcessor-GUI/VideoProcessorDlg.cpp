@@ -78,6 +78,7 @@ const TCHAR* ToString(RendererResetReason reason)
 	case RendererResetReason::TimingOffsetChange: return TEXT("timing-offset-change");
 	case RendererResetReason::QueuePressure: return TEXT("queue-pressure");
 	case RendererResetReason::QueueCapacity: return TEXT("queue-capacity");
+	case RendererResetReason::SourceGapRecovery: return TEXT("source-gap-recovery");
 	case RendererResetReason::LivenessRecovery: return TEXT("liveness-recovery");
 	default: return TEXT("none");
 	}

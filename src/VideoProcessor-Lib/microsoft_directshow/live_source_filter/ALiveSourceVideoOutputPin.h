@@ -149,6 +149,12 @@ public:
 	{
 		m_resetRequestLatch.SetSink(std::move(sink));
 	}
+	bool RequestSourceGapGraphReprime()
+	{
+		return RequestCoordinatedReset(
+			"material-source-counter-gap",
+			RendererResetReason::SourceGapRecovery);
+	}
 
 	// Reset the internal state and the video stream.
 	virtual void Reset();
@@ -536,7 +542,10 @@ protected:
 	
 	// Virtual method for bad timestamp recovery (overridden in buffered implementation)
 	virtual void OnBadTimestampDetected() {}
-	void RequestCoordinatedReset(const char* reason);
+	bool RequestCoordinatedReset(
+		const char* reason,
+		RendererResetReason resetReason =
+			RendererResetReason::LivenessRecovery);
 	bool CoordinatedResetRequested() const
 	{
 		return m_resetRequestLatch.Pending();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 
 
 enum class LiveFrameCounterTransition
@@ -69,6 +70,133 @@ public:
 private:
 	bool m_hasLast = false;
 	uint64_t m_last = 0;
+};
+
+
+enum class LiveSourceGapRecoveryAction
+{
+	None,
+	LocalDiscontinuity,
+	RequestGraphReprime,
+	SuppressedUntilHealthy,
+};
+
+struct LiveSourceGapRecoveryDecision
+{
+	LiveSourceGapRecoveryAction action = LiveSourceGapRecoveryAction::None;
+	uint64_t materialGapFrames = 0;
+	uint64_t healthyIntervalsRequired = 0;
+	uint64_t healthyIntervalsObserved = 0;
+};
+
+// A live-source gap can drain opaque downstream buffering even when the
+// delivery timeline remains continuous. Re-prime only after 100ms of missing
+// source time; isolated capture misses remain local discontinuities. After a
+// graph reset, require one second of consecutive input before re-arming so an
+// unstable HDMI handshake cannot create a reset loop.
+class LiveSourceGapRecoveryPolicy
+{
+public:
+	LiveSourceGapRecoveryDecision Observe(
+		const LiveFrameCounterDecision& counter,
+		uint64_t timeScale,
+		uint64_t frameDuration) noexcept
+	{
+		LiveSourceGapRecoveryDecision decision;
+		decision.materialGapFrames = FramesForDuration(
+			timeScale, frameDuration, 100,
+			(std::numeric_limits<uint64_t>::max)());
+		decision.healthyIntervalsRequired = FramesForDuration(
+			timeScale, frameDuration, 1000, 1);
+
+		if (m_waitingForHealthy)
+		{
+			if (counter.transition == LiveFrameCounterTransition::First)
+				m_healthyIntervals = 0;
+			else if (counter.transition ==
+				LiveFrameCounterTransition::Consecutive)
+				++m_healthyIntervals;
+			else
+				m_healthyIntervals = 0;
+
+			if (m_healthyIntervals >=
+				decision.healthyIntervalsRequired)
+			{
+				m_waitingForHealthy = false;
+				m_recoveryRequested = false;
+			}
+
+			decision.healthyIntervalsObserved = m_healthyIntervals;
+			if (counter.IsDiscontinuity())
+			{
+				decision.action =
+					LiveSourceGapRecoveryAction::SuppressedUntilHealthy;
+			}
+			return decision;
+		}
+
+		if (!counter.IsDiscontinuity())
+			return decision;
+
+		// A counter reset can accompany an HDR/rate/format transition whose
+		// owner-side state callback has not yet arrived. Keep it local here;
+		// only a duration-qualified forward gap proves this same-contract graph
+		// has lost enough live input to need a downstream re-prime.
+		const bool materialGap =
+			counter.transition == LiveFrameCounterTransition::ForwardGap &&
+			counter.missingFrames >= decision.materialGapFrames;
+		if (!materialGap)
+		{
+			decision.action =
+				LiveSourceGapRecoveryAction::LocalDiscontinuity;
+			return decision;
+		}
+
+		if (m_recoveryRequested)
+		{
+			decision.action =
+				LiveSourceGapRecoveryAction::SuppressedUntilHealthy;
+			return decision;
+		}
+
+		m_recoveryRequested = true;
+		decision.action =
+			LiveSourceGapRecoveryAction::RequestGraphReprime;
+		return decision;
+	}
+
+	void OnGraphReset() noexcept
+	{
+		m_recoveryRequested = false;
+		m_waitingForHealthy = true;
+		m_healthyIntervals = 0;
+	}
+
+private:
+	static uint64_t FramesForDuration(
+		uint64_t timeScale,
+		uint64_t frameDuration,
+		uint64_t durationMs,
+		uint64_t fallback) noexcept
+	{
+		if (timeScale == 0 || frameDuration == 0 || durationMs == 0)
+			return fallback;
+
+		if (frameDuration >
+			(std::numeric_limits<uint64_t>::max)() / 1000)
+			return fallback;
+		const uint64_t denominator = frameDuration * 1000;
+		if (timeScale >
+			(std::numeric_limits<uint64_t>::max)() / durationMs)
+			return fallback;
+		const uint64_t numerator = timeScale * durationMs;
+		return numerator / denominator +
+			(numerator % denominator == 0 ? 0 : 1);
+	}
+
+	bool m_recoveryRequested = false;
+	bool m_waitingForHealthy = false;
+	uint64_t m_healthyIntervals = 0;
 };
 
 

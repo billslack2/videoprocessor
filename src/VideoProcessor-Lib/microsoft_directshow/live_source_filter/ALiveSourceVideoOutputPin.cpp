@@ -542,10 +542,11 @@ void ALiveSourceVideoOutputPin::Reset()
 }
 
 
-void ALiveSourceVideoOutputPin::RequestCoordinatedReset(const char* reason)
+bool ALiveSourceVideoOutputPin::RequestCoordinatedReset(
+	const char* reason, RendererResetReason resetReason)
 {
 	RendererResetRequest request;
-	request.reason = RendererResetReason::LivenessRecovery;
+	request.reason = resetReason;
 	request.scope = RendererResetScope::Graph;
 	const bool firstRequest = m_resetRequestLatch.Request(request);
 	if (firstRequest)
@@ -555,6 +556,7 @@ void ALiveSourceVideoOutputPin::RequestCoordinatedReset(const char* reason)
 			"action=publish-to-reset-coordinator",
 			reason ? reason : "unknown");
 	}
+	return firstRequest;
 }
 
 

@@ -222,6 +222,7 @@ protected:
 
 	uint64_t m_frameCounter = 0;
 	LiveFrameCounterTracker m_captureFrameCounterTracker;
+	LiveSourceGapRecoveryPolicy m_sourceGapRecoveryPolicy;
 	uint64_t m_missingFrameCounter = 0;
 	double m_frameLatencyEntry = 0.0;
 	std::atomic<uint64_t> m_unbufferedDeliverySuccessCount{0};
