@@ -4605,74 +4605,20 @@ void CVideoProcessorDlg::RenderGUIClear()
 
 bool CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 {
-	if (!m_rendererTargetHwnd || !IsWindow(m_rendererTargetHwnd))
-	{
-		DebugLog::Log(
-			"Renderer transition: process=%lu generation=%u event=black-unavailable "
-			"reason=%s target=%p",
-			GetCurrentProcessId(),
-			m_rendererGeneration.load(std::memory_order_acquire),
-			reason ? reason : "unknown",
-			m_rendererTargetHwnd);
-		return false;
-	}
-
-	const bool wasVisible = m_rendererTransitionWindow.IsVisible();
-	try
-	{
-		m_rendererTransitionWindow.Show(
-			m_rendererTargetHwnd,
-			GetSafeHwnd());
-	}
-	catch (const std::exception& e)
-	{
-		DebugLog::Log(
-			"Renderer transition: process=%lu generation=%u event=black-failed "
-			"reason=%s target=%p error=%s",
-			GetCurrentProcessId(),
-			m_rendererGeneration.load(std::memory_order_acquire),
-			reason ? reason : "unknown",
-			m_rendererTargetHwnd,
-			e.what());
-		m_windowedVideoWindow.ShowLogo(true);
-		return false;
-	}
-
-	if (!wasVisible)
-		m_transitionBlackStartTick = GetTickCount64();
-
-	// Showing an opaque popup forces a retired DirectFlip/MPO surface back
-	// through desktop composition. Wait for that transition to reach a present
-	// boundary before the renderer is stopped or its target HWND is replaced.
-	// This is deliberately confined to renderer lifecycle transitions.
-	const ULONGLONG compositionSyncStart = GetTickCount64();
-	const HRESULT compositionSyncResult =
-		m_rendererTransitionWindow.SynchronizeComposition();
-	const ULONGLONG compositionSyncMs =
-		GetTickCount64() - compositionSyncStart;
-
-	const LONG_PTR style = GetWindowLongPtr(m_rendererTargetHwnd, GWL_STYLE);
+	// The transition popup can retain input focus/z-order during windowed and
+	// fullscreen target changes. Keep the lifecycle state machine intact, but
+	// deliberately run transitions without creating an opaque cover window.
+	m_rendererTransitionWindow.Hide();
+	m_transitionBlackStartTick = GetTickCount64();
 	DebugLog::Log(
-		"Renderer transition: process=%lu generation=%u event=black-shown "
-		"reason=%s renderer=%S target=%p cover=%p cover_owner=%p parent=%p "
-		"root=%p owner=%p fullscreen=%d windowed_fullscreen=%d style=0x%p "
-		"composition_sync=0x%08lx composition_sync_ms=%llu",
+		"Renderer transition: process=%lu generation=%u event=black-suppressed "
+		"reason=%s renderer=%S target=%p",
 		GetCurrentProcessId(),
 		m_rendererGeneration.load(std::memory_order_acquire),
 		reason ? reason : "unknown",
 		static_cast<LPCTSTR>(m_activeRendererName),
-		m_rendererTargetHwnd,
-		m_rendererTransitionWindow.GetHWND(),
-		m_rendererTransitionWindow.GetOwnerHWND(),
-		::GetParent(m_rendererTargetHwnd),
-		::GetAncestor(m_rendererTargetHwnd, GA_ROOT),
-		::GetWindow(m_rendererTargetHwnd, GW_OWNER),
-		m_rendererFullscreenCheck.GetCheck() ? 1 : 0,
-		m_windowedFullScreenMode ? 1 : 0,
-		reinterpret_cast<void*>(style),
-		static_cast<unsigned long>(compositionSyncResult),
-		static_cast<unsigned long long>(compositionSyncMs));
-	return m_rendererTransitionWindow.IsVisible();
+		m_rendererTargetHwnd);
+	return true;
 }
 
 
@@ -5084,8 +5030,7 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 		!m_videoRenderer ||
 		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
 		resetBlocksReveal ||
-		!currentFrameReady ||
-		!m_rendererTransitionWindow.IsVisible())
+		!currentFrameReady)
 	{
 		return;
 	}
@@ -6756,11 +6701,8 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 
-	if (m_rendererTransitionWindow.IsVisible())
-	{
-		TryRevealRendererTransition(
-			m_rendererGeneration.load(std::memory_order_acquire));
-	}
+	TryRevealRendererTransition(
+		m_rendererGeneration.load(std::memory_order_acquire));
 
 	if (nIDEvent == UI_LAYOUT_RESTORE_TIMER_ID)
 	{
