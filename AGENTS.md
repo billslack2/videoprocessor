@@ -31,6 +31,12 @@
 - Deploy to `C:\Videoprocessor\vp` only when asked.
 - Always deploy from a successfully completed x64 Release build. Never deploy
   Debug binaries.
+- Treat `VideoProcessor.exe` and
+  `vprenderer\VideoProcessorVPRenderer.dll` as one versioned runtime pair.
+  Every VP deployment must back up and replace both files from the same x64
+  Release build/commit, even when the implementation change appears confined
+  to the host executable. Verify that both deployed hashes match their build
+  artifacts before declaring the deployment complete.
 - Treat deployed configuration as user data. Before editing any `.cfg`, `.ini`,
   `.json`, or state file, make a timestamped backup in the deployment folder.
 - Preserve existing values, comments, and unknown keys. Add or modify only the
