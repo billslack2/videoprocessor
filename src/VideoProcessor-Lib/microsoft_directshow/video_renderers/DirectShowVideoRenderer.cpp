@@ -613,7 +613,9 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 	ULONGLONG drainMs = 0;
 	ULONGLONG resetMs = 0;
 	ULONGLONG rebindMs = 0;
+	ULONGLONG pauseMs = 0;
 	ULONGLONG runMs = 0;
+	HRESULT pauseHr = E_UNEXPECTED;
 	try
 	{
 		m_unbufferedDeliverySuccessCount.store(
@@ -660,6 +662,16 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 				"DirectShow retarget failed to verify new window owner");
 		rebindMs = GetTickCount64() - phaseStart;
 
+		// Match ResetWithIngressDrain's proven lifecycle. A flush/NewSegment
+		// transaction sent while the graph is stopped can leave madVR cued but
+		// not consuming after Run, eventually blocking Receive.
+		phaseStart = GetTickCount64();
+		pauseHr = m_pControl->Pause();
+		pauseMs = GetTickCount64() - phaseStart;
+		if (FAILED(pauseHr))
+			throw std::runtime_error(
+				"DirectShow retarget graph Pause failed");
+
 		phaseStart = GetTickCount64();
 		m_liveSource->Reset();
 		resetMs = GetTickCount64() - phaseStart;
@@ -683,11 +695,14 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 		DebugLog::Log(
 			"DirectShow window retarget completed: old=%p new=%p "
 			"stop_ms=%llu drain_ms=%llu settle_ms=100 rebind_ms=%llu "
-			"reset_ms=%llu run_ms=%llu total_ms=%llu",
+			"pause_hr=0x%08lx pause_ms=%llu reset_ms=%llu run_ms=%llu "
+			"total_ms=%llu",
 			oldHwnd, targetHwnd,
 			static_cast<unsigned long long>(stopMs),
 			static_cast<unsigned long long>(drainMs),
 			static_cast<unsigned long long>(rebindMs),
+			static_cast<unsigned long>(pauseHr),
+			static_cast<unsigned long long>(pauseMs),
 			static_cast<unsigned long long>(resetMs),
 			static_cast<unsigned long long>(runMs),
 			static_cast<unsigned long long>(
@@ -729,6 +744,10 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 				throw std::runtime_error(
 					"rollback failed to verify window owner");
 			}
+			const HRESULT rollbackPauseHr = m_pControl->Pause();
+			if (FAILED(rollbackPauseHr))
+				throw std::runtime_error(
+					"rollback graph Pause failed");
 			m_liveSource->Reset();
 			if (FAILED(m_pControl->Run()) ||
 				FAILED(m_videoWindow->put_Visible(OATRUE)))

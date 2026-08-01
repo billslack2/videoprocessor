@@ -4137,6 +4137,7 @@ void CVideoProcessorDlg::RenderStart()
 	m_directShowRecoveryRecreatedGeneration =
 		recoveryRecreation ? rendererGeneration : 0;
 	m_directShowGraphRecoveryAwaitingHealth = false;
+	m_directShowGraphRecoveryWasRetarget = false;
 	m_directShowRecoveryRebuildRequested = false;
 	m_directShowGraphRecoveryGeneration = rendererGeneration;
 	m_directShowGraphRecoveryEpoch = 0;
@@ -4872,7 +4873,8 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 		if (completion.request.reason == RendererResetReason::OutputReadiness)
 			m_outputReadinessGraphReprimeActive = false;
 		if (currentSuccess && m_activeRendererIsDirectShow &&
-			completion.request.scope == RendererResetScope::Graph)
+			(completion.request.scope == RendererResetScope::Graph ||
+			 completion.request.scope == RendererResetScope::GraphRetarget))
 		{
 			RendererLivenessSnapshot recoverySnapshot;
 			if (m_videoRenderer &&
@@ -4880,6 +4882,8 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 				recoverySnapshot.supported)
 			{
 				m_directShowGraphRecoveryAwaitingHealth = true;
+				m_directShowGraphRecoveryWasRetarget =
+					completion.request.scope == RendererResetScope::GraphRetarget;
 				m_directShowRecoveryRebuildRequested = false;
 				m_directShowGraphRecoveryGeneration = currentGeneration;
 				m_directShowGraphRecoveryEpoch = recoverySnapshot.queueEpoch;
@@ -5385,15 +5389,51 @@ bool CVideoProcessorDlg::TryStartFullscreenRetarget()
 			FullScreenVideoWindowDestroy();
 		return false;
 	}
+	if (!enteringFullscreen)
+	{
+		// Keep the old HWND leased for rollback, but do not leave its topmost
+		// fullscreen surface occluding the new windowed presentation target.
+		// Otherwise madVR can accept a small preroll and then block Receive while
+		// VP waits for that same Receive to prove the new target ready.
+		m_rendererTargetHwnd = targetHwnd;
+		++m_rendererTargetRevision;
+		if (m_fullScreenVideoWindow &&
+			IsWindow(m_fullScreenVideoWindow->GetHWND()))
+		{
+			::ShowWindow(m_fullScreenVideoWindow->GetHWND(), SW_HIDE);
+		}
+		DebugLog::Log(
+			"Fullscreen retarget target exposed: direction=exit old=%p new=%p "
+			"old_visible=%d new_visible=%d target_revision=%llu",
+			previousTarget, targetHwnd,
+			previousTarget && ::IsWindowVisible(previousTarget) ? 1 : 0,
+			::IsWindowVisible(targetHwnd) ? 1 : 0,
+			static_cast<unsigned long long>(m_rendererTargetRevision));
+	}
 
+	RECT oldClient = {};
+	RECT newClient = {};
+	if (previousTarget && IsWindow(previousTarget))
+		::GetClientRect(previousTarget, &oldClient);
+	::GetClientRect(targetHwnd, &newClient);
 	DebugLog::Log(
 		"Fullscreen retarget requested: renderer=%S generation=%u "
-		"direction=%s old=%p new=%p target_revision=%llu",
+		"direction=%s old=%p new=%p target_revision=%llu "
+		"old_visible=%d old_client=%ldx%ld old_parent=%p "
+		"new_visible=%d new_client=%ldx%ld new_parent=%p",
 		static_cast<LPCTSTR>(m_activeRendererName),
 		m_rendererGeneration.load(std::memory_order_acquire),
 		enteringFullscreen ? "enter" : "exit",
 		previousTarget, targetHwnd,
-		static_cast<unsigned long long>(m_rendererTargetRevision));
+		static_cast<unsigned long long>(m_rendererTargetRevision),
+		previousTarget && ::IsWindowVisible(previousTarget) ? 1 : 0,
+		oldClient.right - oldClient.left,
+		oldClient.bottom - oldClient.top,
+		previousTarget ? ::GetParent(previousTarget) : nullptr,
+		::IsWindowVisible(targetHwnd) ? 1 : 0,
+		newClient.right - newClient.left,
+		newClient.bottom - newClient.top,
+		::GetParent(targetHwnd));
 	m_rendererFullscreenCheck.EnableWindow(FALSE);
 	m_fullScreenModeCombo.EnableWindow(FALSE);
 	return true;
@@ -5409,6 +5449,8 @@ void CVideoProcessorDlg::ClearFullscreenRetarget(bool restorePreviousTarget)
 		m_rendererTargetHwnd = m_fullscreenRetargetPreviousTargetHwnd;
 		m_rendererTargetRevision =
 			m_fullscreenRetargetPreviousTargetRevision;
+		if (m_fullscreenRetargetExiting)
+			::ShowWindow(m_fullscreenRetargetPreviousTargetHwnd, SW_SHOW);
 	}
 	m_fullscreenRetargetPending = false;
 	m_fullscreenRetargetTargetHwnd = nullptr;
@@ -8098,6 +8140,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 			static_cast<unsigned long long>(liveness.queueEpoch),
 			hasLiveness ? 1 : 0);
 		m_directShowGraphRecoveryAwaitingHealth = false;
+		m_directShowGraphRecoveryWasRetarget = false;
 	}
 
 	const bool recoveryDeliveryHealthy =
@@ -8119,6 +8162,52 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 			static_cast<unsigned long long>(
 				liveness.currentEpochDeliverySuccessCount));
 		m_directShowGraphRecoveryAwaitingHealth = false;
+		m_directShowGraphRecoveryWasRetarget = false;
+	}
+
+	// Retarget health cannot depend on fresh capture ingress. Once converted
+	// queues fill behind an opaque madVR Receive call, backpressure correctly
+	// stops capture admission and the generic steady-state predicate no longer
+	// has "input advancing" evidence. A retarget must instead prove current-
+	// epoch delivery within a bounded transition window.
+	const bool retargetReceiveStall =
+		m_directShowGraphRecoveryAwaitingHealth &&
+		m_directShowGraphRecoveryWasRetarget &&
+		hasLiveness && IsPostRetargetReceiveStall(
+			liveness, now, m_directShowGraphRecoveryStartedTick);
+	if (retargetReceiveStall && !m_directShowRecoveryRebuildRequested)
+	{
+		uint64_t captureSequence =
+			m_appliedCaptureVideoStateNotificationSequence;
+		if (captureSequence == 0 && m_rendererIngressState)
+			captureSequence = m_rendererIngressState->LatestCaptureSequence();
+		m_directShowRecoveryRebuildRequested = true;
+		m_directShowGraphRecoveryAwaitingHealth = false;
+		m_directShowGraphRecoveryWasRetarget = false;
+		m_directShowRecoveryRecreationAttempted = true;
+		m_directShowRecoveryRecreationCaptureSequence = captureSequence;
+		m_nextRendererIsRecoveryRecreation = true;
+		DebugLog::Log(
+			"Fullscreen retarget health timeout: generation=%u epoch=%llu "
+			"capture_sequence=%llu blocked_ms=%llu deliveries=%llu "
+			"raw=%zu/%zu converted=%zu/%zu "
+			"old=%p new=%p direction=%s action=full-renderer-recreation",
+			m_rendererGeneration.load(std::memory_order_acquire),
+			static_cast<unsigned long long>(liveness.queueEpoch),
+			static_cast<unsigned long long>(captureSequence),
+			static_cast<unsigned long long>(
+				ageMs(liveness.lastDeliveryStartTick)),
+			static_cast<unsigned long long>(
+				liveness.currentEpochDeliverySuccessCount),
+			rawQueueSize, queueMaxSize,
+			convertedQueueSize, queueMaxSize,
+			m_fullscreenRetargetPreviousTargetHwnd,
+			m_fullscreenRetargetTargetHwnd,
+			m_fullscreenRetargetExiting ? "exit" : "enter");
+		m_postRendererStartRequiresGraph = false;
+		m_wantToRestartRenderer = true;
+		UpdateState();
+		return;
 	}
 
 	if (!highWater)

@@ -338,3 +338,28 @@ inline bool IsSustainedDirectShowDeliveryStall(
 		stallThresholdMs;
 	return inputStillAdvancing && (blockedDelivery || noDeliveryProgress);
 }
+
+// A completed HWND retarget is a bounded transition, not steady-state queue
+// pressure. It must prove that downstream Receive continues to complete even
+// after capture ingress has stopped naturally behind full VP queues.
+inline bool IsPostRetargetReceiveStall(
+	const RendererLivenessSnapshot& snapshot,
+	uint64_t nowTick,
+	uint64_t retargetCompletedTick,
+	uint64_t healthDeadlineMs = 2000,
+	uint64_t blockedDeliveryMs = 1000,
+	uint64_t recentDeliveryMs = 1000)
+{
+	if (!snapshot.supported || !snapshot.active || snapshot.buffering ||
+		snapshot.resetInProgress || !snapshot.deliveryInProgress ||
+		retargetCompletedTick == 0 ||
+		RendererTickAge(nowTick, retargetCompletedTick) < healthDeadlineMs ||
+		snapshot.lastDeliveryStartTick == 0 ||
+		RendererTickAge(nowTick, snapshot.lastDeliveryStartTick) <
+			blockedDeliveryMs)
+	{
+		return false;
+	}
+	return !HasRecentCurrentEpochDelivery(
+		snapshot, nowTick, recentDeliveryMs);
+}

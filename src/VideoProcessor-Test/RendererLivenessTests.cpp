@@ -117,6 +117,42 @@ namespace Tests
 				snapshot, 10000, false, 5000));
 		}
 
+		TEST_METHOD(PostRetargetStallDoesNotRequireFreshCaptureIngress)
+		{
+			RendererLivenessSnapshot snapshot;
+			snapshot.supported = true;
+			snapshot.active = true;
+			snapshot.queueEpoch = 9;
+			snapshot.deliveryInProgress = true;
+			snapshot.lastDeliveryStartTick = 8000;
+
+			// Capture can be fully backpressured; no lastInputTick is required.
+			Assert::IsTrue(IsPostRetargetReceiveStall(
+				snapshot, 10000, 7000));
+			Assert::IsFalse(IsPostRetargetReceiveStall(
+				snapshot, 8500, 7000));
+		}
+
+		TEST_METHOD(PostRetargetRecentDeliveryOrResetCancelsRecovery)
+		{
+			RendererLivenessSnapshot snapshot;
+			snapshot.supported = true;
+			snapshot.active = true;
+			snapshot.queueEpoch = 9;
+			snapshot.deliveryInProgress = true;
+			snapshot.lastDeliveryStartTick = 8000;
+			snapshot.currentEpochDeliverySuccessCount = 5;
+			snapshot.lastDeliverySuccessQueueEpoch = 9;
+			snapshot.lastDeliverySuccessTick = 9500;
+
+			Assert::IsFalse(IsPostRetargetReceiveStall(
+				snapshot, 10000, 7000));
+			snapshot.lastDeliverySuccessTick = 7000;
+			snapshot.resetInProgress = true;
+			Assert::IsFalse(IsPostRetargetReceiveStall(
+				snapshot, 10000, 7000));
+		}
+
 		TEST_METHOD(StreamTimeNormalizationIsRelativeToEachQueueEpoch)
 		{
 			RendererStreamTimeNormalizer normalizer;

@@ -399,6 +399,7 @@ protected:
 	// If the fresh epoch deadlocks before that proof, replace the opaque madVR
 	// filter instance instead of cycling Stop/Run resets.
 	bool m_directShowGraphRecoveryAwaitingHealth = false;
+	bool m_directShowGraphRecoveryWasRetarget = false;
 	bool m_directShowRecoveryRebuildRequested = false;
 	uint32_t m_directShowGraphRecoveryGeneration = 0;
 	uint64_t m_directShowGraphRecoveryEpoch = 0;
