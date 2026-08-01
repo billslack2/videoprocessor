@@ -1706,6 +1706,14 @@ void CVideoProcessorDlg::OnBnClickedCaptureRestart()
 
 void CVideoProcessorDlg::OnBnClickedTimingClockFrameOffsetAutoCheck()
 {
+	if (IsRationalRationalTimingSelected())
+	{
+		m_timingClockFrameOffsetAutoCheck.SetCheck(BST_UNCHECKED);
+		m_timingClockFrameOffsetAutoCheck.EnableWindow(FALSE);
+		m_timingClockFrameOffsetEdit.EnableWindow(FALSE);
+		return;
+	}
+
 	const bool checked = m_timingClockFrameOffsetAutoCheck.GetCheck();
 
 	m_timingClockFrameOffsetEdit.EnableWindow(!checked);
@@ -1889,6 +1897,8 @@ void CVideoProcessorDlg::UpdateRendererBackendUi()
 		if (CWnd* label = GetDlgItem(controlId))
 			label->EnableWindow(directShowSelected);
 	}
+
+	UpdateTimingClockFrameOffsetAvailability();
 }
 
 
@@ -1958,6 +1968,7 @@ void CVideoProcessorDlg::OnBnClickedRendererResetAutoCheck()
 
 void CVideoProcessorDlg::OnRendererDirectShowStartStopTimeMethodSelected()
 {
+	UpdateTimingClockFrameOffsetAvailability();
 	OnBnClickedRendererRestart();
 }
 
@@ -5463,10 +5474,62 @@ void CVideoProcessorDlg::SetFrameOffsetByRefresh(std::vector<int> offsets) {
 }
 
 
+bool CVideoProcessorDlg::IsRationalRationalTimingSelected() const
+{
+	const int methodIndex =
+		m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
+	return methodIndex >= 0 &&
+		static_cast<DirectShowStartStopTimeMethod>(
+			m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(methodIndex)) ==
+			DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL;
+}
+
+
+void CVideoProcessorDlg::UpdateTimingClockFrameOffsetAvailability()
+{
+	const bool rationalRational = IsRationalRationalTimingSelected();
+	if (rationalRational)
+	{
+		if (!m_frameOffsetMaskedForRationalRational)
+		{
+			m_timingClockFrameOffsetEdit.GetWindowText(
+				m_frameOffsetBeforeRationalRational);
+			m_frameOffsetAutoBeforeRationalRational =
+				m_timingClockFrameOffsetAutoCheck.GetCheck() == BST_CHECKED;
+			m_frameOffsetMaskedForRationalRational = true;
+		}
+
+		m_timingClockFrameOffsetEdit.SetWindowText(TEXT("N/A"));
+		m_timingClockFrameOffsetEdit.EnableWindow(FALSE);
+		m_timingClockFrameOffsetAutoCheck.SetCheck(BST_UNCHECKED);
+		m_timingClockFrameOffsetAutoCheck.EnableWindow(FALSE);
+		if (m_captureDevice)
+			m_captureDevice->SetFrameOffsetMs(0);
+		return;
+	}
+
+	if (m_frameOffsetMaskedForRationalRational)
+	{
+		m_timingClockFrameOffsetEdit.SetWindowText(
+			m_frameOffsetBeforeRationalRational);
+		m_timingClockFrameOffsetAutoCheck.SetCheck(
+			m_frameOffsetAutoBeforeRationalRational ? BST_CHECKED : BST_UNCHECKED);
+		m_frameOffsetMaskedForRationalRational = false;
+	}
+
+	m_timingClockFrameOffsetAutoCheck.EnableWindow(TRUE);
+	const bool autoOffset =
+		m_timingClockFrameOffsetAutoCheck.GetCheck() == BST_CHECKED;
+	m_timingClockFrameOffsetEdit.EnableWindow(!autoOffset);
+	if (m_captureDevice)
+		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
+}
+
+
 int CVideoProcessorDlg::GetTimingClockFrameOffsetMs()
 {
-
-
+	if (IsRationalRationalTimingSelected())
+		return 0;
 	CString text;
 	m_timingClockFrameOffsetEdit.GetWindowText(text);
 
@@ -5478,6 +5541,9 @@ int CVideoProcessorDlg::GetTimingClockFrameOffsetMs()
 
 void CVideoProcessorDlg::SetTimingClockFrameOffsetMs(int timingClockFrameOffsetMs)
 {
+	if (IsRationalRationalTimingSelected())
+		return;
+
 	CString cstring;
 	cstring.Format(_T("%i"), timingClockFrameOffsetMs);
 	m_timingClockFrameOffsetEdit.SetWindowText(cstring);
@@ -5486,6 +5552,13 @@ void CVideoProcessorDlg::SetTimingClockFrameOffsetMs(int timingClockFrameOffsetM
 
 void CVideoProcessorDlg::UpdateTimingClockFrameOffset()
 {
+	if (IsRationalRationalTimingSelected())
+	{
+		if (m_captureDevice)
+			m_captureDevice->SetFrameOffsetMs(0);
+		return;
+	}
+
 	if (m_captureDevice) 
 		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
 

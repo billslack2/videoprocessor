@@ -206,8 +206,9 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
 
     <article class="field" id="command-line-frame-offset" data-fields="command_line.frame_offset">
       <h4><code>frame_offset</code></h4>
-	  <p>Sets the capture timing-clock frame offset in whole milliseconds. It calibrates the capture timestamp used by legacy clock modes and diagnostics. Rational-Rational owns a synthetic DirectShow presentation timeline, so this offset does not change its sample presentation timestamps.</p>
-	  <p class="auto"><strong>AUTO behavior:</strong> The current legacy tuner derives an offset from queue capacity and cadence and can update it while running. It is not an end-to-end latency measurement. Rational-Rational users should not treat this value as a latency-control setting.</p>
+	  <p>Sets the capture timing-clock frame offset in whole milliseconds for clock-based timestamp modes. It calibrates the DeckLink capture timestamp used by those legacy modes and diagnostics.</p>
+	  <p class="auto"><strong>Rational-Rational:</strong> unavailable. VP displays <code>N/A</code>, applies an effective zero offset to the capture clock, and excludes this setting from its synthetic DirectShow presentation timeline and latency calculations. The configured value is preserved for a later switch back to a clock-based mode.</p>
+	  <p class="auto"><strong>AUTO behavior:</strong> The current legacy tuner derives an offset from queue capacity and cadence and can update it while running. It is not an end-to-end latency measurement.</p>
       <p class="meta"><strong>Values:</strong> <code>AUTO</code> or integer ≥ 0. Invalid values fail command-line validation.</p>
     </article>
 

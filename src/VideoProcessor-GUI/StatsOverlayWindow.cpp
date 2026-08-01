@@ -553,10 +553,10 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 
 
-	// Frame Offset. Rational-Rational owns a synthetic sample timeline, so this
-	// capture timestamp calibration is diagnostic only in that mode.
+	// Rational-Rational owns a synthetic sample timeline. Capture clock frame
+	// offset is intentionally unavailable and contributes no timing value.
 	if (m_stats.method.CompareNoCase(TEXT("Rational-Rational")) == 0)
-		line.Format(TEXT("Offset:           %d ms (not RR PTS)"), m_stats.frameOffsetMs);
+		line = TEXT("Offset:           N/A (Rational-Rational)");
 	else
 		line.Format(TEXT("Offset:           %d ms"), m_stats.frameOffsetMs);
 
