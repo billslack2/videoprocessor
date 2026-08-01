@@ -90,7 +90,7 @@ public:
 	void ResetLiveQueue() override;
 	void SetOutputReadinessDeliveryReserve(size_t reserveFrames) override;
 	void SetQueueFramePolicy(size_t startupPrerollFrames,
-		size_t steadyReserveFrames) override;
+		size_t steadyReserveFrames, bool steadyReserveConfigured) override;
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink) override;
 	void Retire() noexcept override;
@@ -195,6 +195,7 @@ protected:
 	// silently falling back to its default queue behaviour.
 	std::atomic<size_t> m_queueStartupPrerollFrames{0};
 	std::atomic<size_t> m_queueSteadyTargetFrames{0};
+	std::atomic_bool m_queueSteadyTargetConfigured{false};
 	VideoConversionOverride m_videoConversionOverride;
 	DXVA_NominalRange m_forceNominalRange = DXVA_NominalRange::DXVA_NominalRange_Unknown;
 	DXVA_VideoTransferFunction m_forceVideoTransferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown;

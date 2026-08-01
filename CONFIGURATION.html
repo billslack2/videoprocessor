@@ -291,7 +291,7 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
     <article class="field" id="queue-steady-reserve-frames" data-fields="queue.steady_reserve_frames">
       <h4><code>[queue] steady_reserve_frames</code> <span class="badge">DirectShow</span></h4>
       <p>Keeps this many converted VP frames behind the DirectShow delivery worker after priming. It controls only the VP-owned queue; madVR's internal queue remains independently configured and is not queryable by VP.</p>
-      <p class="auto"><strong>AUTO behavior:</strong> <code>0</code> retains VP's automatic handoff reserve, including the output-readiness reserve when that controller publishes one.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> Omit this setting to retain VP's automatic handoff reserve, including the output-readiness reserve when that controller publishes one. An explicit <code>0</code> requests a literal zero-frame steady target.</p>
       <p class="meta"><strong>Type/range:</strong> whole frames, <code>0</code>–<code>16</code>. An explicit value takes precedence over the automatic reserve and is bounded by the active VP queue capacity.</p>
     </article>
 

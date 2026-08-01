@@ -19,7 +19,8 @@ uint64_t SaturatingMultiply(uint64_t value, uint64_t multiplier)
 LiveEpochConvergenceDecision LiveEpochConvergenceController::Observe(
 	const LiveEpochConvergenceInput& input)
 {
-	if (!input.epochActive || input.epoch == 0 || input.desiredVpDepth == 0)
+	if (!input.epochActive || input.epoch == 0 ||
+		(!input.targetConfigured && input.desiredVpDepth == 0))
 	{
 		Reset();
 		LiveEpochConvergenceDecision decision;

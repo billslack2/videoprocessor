@@ -102,6 +102,26 @@ namespace Tests
 				static_cast<int>(decision.state));
 		}
 
+		TEST_METHOD(ExplicitZeroTargetRemainsEnabledAndTrimsToZero)
+		{
+			LiveEpochConvergenceController controller;
+			LiveEpochConvergenceInput input = Input();
+			input.desiredVpDepth = 0;
+			input.targetConfigured = true;
+
+			(void)Observe(controller, input, 60000, 4, 1);
+			(void)Observe(controller, input, 16683, 4);
+			(void)Observe(controller, input, 16683, 4);
+			const LiveEpochConvergenceDecision decision =
+				Observe(controller, input, 16683, 4);
+
+			Assert::IsTrue(decision.requestConvergence);
+			Assert::AreEqual<size_t>(4, decision.staleVpFrames);
+			Assert::AreEqual(
+				static_cast<int>(LiveEpochConvergenceState::TrimApplied),
+				static_cast<int>(decision.state));
+		}
+
 		TEST_METHOD(NoIngressBlockTimesOutWithoutDiscardingConvertedFrames)
 		{
 			LiveEpochConvergenceController controller;

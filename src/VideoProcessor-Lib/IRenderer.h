@@ -152,9 +152,10 @@ public:
 	// must never be interpreted as a madVR queue request or observation.
 	virtual void SetOutputReadinessDeliveryReserve(size_t) {}
 	// Startup pre-roll and steady reserve are VP-owned whole-frame policy.
-	// Zero preserves the automatic policy; implementations must clamp explicit
-	// values to their actual queue capacity.
-	virtual void SetQueueFramePolicy(size_t, size_t) {}
+	// Startup zero preserves its automatic policy. Steady zero is literal only
+	// when the setting was explicitly configured; omission preserves automatic.
+	// Implementations must clamp explicit values to actual queue capacity.
+	virtual void SetQueueFramePolicy(size_t, size_t, bool) {}
 
 	// Installs the closeable asynchronous reset-request endpoint associated
 	// with this renderer instance. Backends must never call UI or graph control

@@ -1046,7 +1046,8 @@ void CBufferedLiveSourceVideoOutputPin::SetOutputReadinessDeliveryReserve(
 
 
 void CBufferedLiveSourceVideoOutputPin::SetQueueFramePolicy(
-	size_t startupPrerollFrames, size_t steadyReserveFrames)
+	size_t startupPrerollFrames, size_t steadyReserveFrames,
+	bool steadyReserveConfigured)
 {
 	const size_t capacity = m_frameQueueMaxSize.load(std::memory_order_acquire);
 	// Preserve the requested value so later capacity changes retain the
@@ -1058,9 +1059,12 @@ void CBufferedLiveSourceVideoOutputPin::SetQueueFramePolicy(
 		boundedStartup, std::memory_order_release);
 	m_configuredSteadyReserveFrames.store(
 		boundedReserve, std::memory_order_release);
+	m_configuredSteadyReserveExplicit.store(
+		steadyReserveConfigured, std::memory_order_release);
 	DebugLog::Log(
-		"DirectShow queue policy updated: requested-startup-preroll=%zu requested-steady-target=%zu capacity=%zu",
-		boundedStartup, boundedReserve, capacity);
+		"DirectShow queue policy updated: requested-startup-preroll=%zu requested-steady-target=%zu steady-explicit=%d capacity=%zu",
+		boundedStartup, boundedReserve, steadyReserveConfigured ? 1 : 0,
+		capacity);
 	if (m_hConvertedAvailableEvent)
 		SetEvent(m_hConvertedAvailableEvent);
 }
@@ -1773,6 +1777,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				expectedQueueEpoch ==
 					m_queueEpoch.load(std::memory_order_acquire);
 			convergenceInput.vpConvertedDepth = m_processedFrameQueue.Size();
+			convergenceInput.targetConfigured = IsSteadyQueueTargetConfigured();
 			convergenceInput.desiredVpDepth = GetConfiguredSteadyQueueTarget();
 			convergenceInput.deliveryCompleted = true;
 			convergenceInput.deliverySucceeded = false;
@@ -1788,7 +1793,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			convergenceInput.observationTickMs = GetTickCount64();
 			const LiveEpochConvergenceDecision failureConvergenceDecision =
 				epochConvergenceController.Observe(convergenceInput);
-			if (convergenceInput.desiredVpDepth > 0)
+			if (convergenceInput.targetConfigured)
 			{
 				LiveOutputTraceRecord convergenceTrace = deliveryCompleteTrace;
 				convergenceTrace.kind = LiveOutputTraceKind::ConvergenceState;
@@ -1854,6 +1859,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			// Deliver() has recovered, discard only stale VP-owned converted samples
 			// once for this fresh epoch. This is acceptance/backpressure evidence,
 			// never a madVR occupancy or presentation-readiness estimate.
+			const bool steadyTargetConfigured =
+				IsSteadyQueueTargetConfigured();
 			const size_t desiredVpDepth = GetConfiguredSteadyQueueTarget();
 			const size_t rawDepthBeforeConvergence =
 				m_captureFrameQueue.Size();
@@ -1868,6 +1875,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			convergenceInput.vpConvertedDepth =
 				convertedDepthBeforeConvergence;
 			convergenceInput.desiredVpDepth = desiredVpDepth;
+			convergenceInput.targetConfigured = steadyTargetConfigured;
 			convergenceInput.deliveryCompleted = true;
 			convergenceInput.deliverySucceeded = true;
 			convergenceInput.deliveryDurationUs = deliveryTimeUs;
@@ -1882,7 +1890,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			convergenceInput.observationTickMs = GetTickCount64();
 			const LiveEpochConvergenceDecision convergenceDecision =
 				epochConvergenceController.Observe(convergenceInput);
-			if (desiredVpDepth > 0)
+			if (steadyTargetConfigured)
 			{
 				LiveOutputTraceRecord convergenceProbe = deliveryCompleteTrace;
 				convergenceProbe.kind = LiveOutputTraceKind::ConvergenceState;
@@ -6325,12 +6333,19 @@ size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget() {
 
 size_t CBufferedLiveSourceVideoOutputPin::GetDeliveryReserve() const
 {
+	const bool targetConfigured = IsSteadyQueueTargetConfigured();
 	const size_t configuredTarget = GetConfiguredSteadyQueueTarget();
-	if (configuredTarget > 0)
-		return configuredTarget - 1;
+	if (targetConfigured)
+		return configuredTarget > 0 ? configuredTarget - 1 : 0;
 	const size_t readinessReserve =
 		m_outputReadinessDeliveryReserve.load(std::memory_order_acquire);
 	return readinessReserve > 0 ? readinessReserve : 1;
+}
+
+
+bool CBufferedLiveSourceVideoOutputPin::IsSteadyQueueTargetConfigured() const
+{
+	return m_configuredSteadyReserveExplicit.load(std::memory_order_acquire);
 }
 
 

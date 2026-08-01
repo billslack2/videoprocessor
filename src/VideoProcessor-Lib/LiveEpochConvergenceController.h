@@ -52,6 +52,7 @@ struct LiveEpochConvergenceInput
 	// precondition for an automatic converted-queue trim.
 	size_t vpConvertedDepth = 0;
 	size_t desiredVpDepth = 0;
+	bool targetConfigured = false;
 	bool deliveryCompleted = false;
 	bool deliverySucceeded = false;
 	uint64_t deliveryDurationUs = 0;

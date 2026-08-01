@@ -28,12 +28,18 @@ public:
 	size_t GetQueueStartupPrerollFrames() const { return m_queueStartupPrerollFrames; }
 	void SetQueueStartupPrerollFrames(size_t value) { m_queueStartupPrerollFrames = value; }
 	size_t GetQueueSteadyReserveFrames() const { return m_queueSteadyReserveFrames; }
-	void SetQueueSteadyReserveFrames(size_t value) { m_queueSteadyReserveFrames = value; }
+	bool HasQueueSteadyReserveFrames() const { return m_hasQueueSteadyReserveFrames; }
+	void SetQueueSteadyReserveFrames(size_t value)
+	{
+		m_queueSteadyReserveFrames = value;
+		m_hasQueueSteadyReserveFrames = true;
+	}
 
 private:
 	size_t m_alphaQueueSizeOverride = 0;
 	size_t m_queueStartupPrerollFrames = 0;
 	size_t m_queueSteadyReserveFrames = 0;
+	bool m_hasQueueSteadyReserveFrames = false;
 
 	DECLARE_MESSAGE_MAP()
 };

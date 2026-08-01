@@ -4301,7 +4301,8 @@ void CVideoProcessorDlg::RenderStart()
 		m_videoRenderer->Build();
 		m_videoRenderer->SetQueueFramePolicy(
 			videoProcessorApp.GetQueueStartupPrerollFrames(),
-			videoProcessorApp.GetQueueSteadyReserveFrames());
+			videoProcessorApp.GetQueueSteadyReserveFrames(),
+			videoProcessorApp.HasQueueSteadyReserveFrames());
 		ApplyRequestedShaderSelection();
 		m_rendererTransitionWindow.KeepOnTop();
 		m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
@@ -4382,7 +4383,8 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->Build();
 			m_videoRenderer->SetQueueFramePolicy(
 				videoProcessorApp.GetQueueStartupPrerollFrames(),
-				videoProcessorApp.GetQueueSteadyReserveFrames());
+				videoProcessorApp.GetQueueSteadyReserveFrames(),
+				videoProcessorApp.HasQueueSteadyReserveFrames());
 			m_rendererTransitionWindow.KeepOnTop();
 			m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
 			m_videoRenderer->SetSceneCorrectionUpstreamSample(
@@ -5411,12 +5413,9 @@ int CVideoProcessorDlg::GetTimingClockFrameOffsetMs()
 	CString text;
 	m_timingClockFrameOffsetEdit.GetWindowText(text);
 
-	// ttoi throws non-parsed stuff away so in case there is crap set the output to the
-	// used value, this way the user always knows what's going on.
-	const int frameOffsetMs = _ttoi(text);
-	SetTimingClockFrameOffsetMs(frameOffsetMs);
-
-	return frameOffsetMs;
+	// Reading the model must not rewrite the edit control. Periodic stats reads
+	// otherwise reset the caret/selection while the user is typing.
+	return _ttoi(text);
 }
 
 
@@ -7335,7 +7334,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	const size_t queueCapacity = hasReadinessLiveness &&
 		readinessLiveness.queueCapacity > 0 ?
 		readinessLiveness.queueCapacity : 32;
-	const size_t requestedVpReserveFrames = configuredVpReserveFrames > 0 ?
+	const size_t requestedVpReserveFrames =
+		videoProcessorApp.HasQueueSteadyReserveFrames() ?
 		std::min(configuredVpReserveFrames, queueCapacity) :
 		std::min<size_t>(8, queueCapacity);
 	const bool readinessGraphResetCompleted =

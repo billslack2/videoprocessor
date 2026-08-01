@@ -69,7 +69,7 @@ public:
 	void SetFrameQueueMaxSize(size_t) override;
 	void SetOutputReadinessDeliveryReserve(size_t) override;
 	void SetQueueFramePolicy(size_t startupPrerollFrames,
-		size_t steadyReserveFrames) override;
+		size_t steadyReserveFrames, bool steadyReserveConfigured) override;
 	LONG GetAllocatorBufferCount() const override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	void SetSceneCorrectionUpstreamSample(bool enabled) override;
@@ -375,6 +375,7 @@ private:
 	// preserves continuity while synchronous Deliver() is briefly unavailable.
 	std::atomic<size_t> m_configuredStartupPrerollFrames{ 0 };
 	std::atomic<size_t> m_configuredSteadyReserveFrames{ 0 };
+	std::atomic_bool m_configuredSteadyReserveExplicit{ false };
 	// Published by the UI/controller, consumed only by the delivery worker. A
 	// value of zero preserves the legacy one-sample handoff cushion.
 	std::atomic<size_t> m_outputReadinessDeliveryReserve{ 0 };
@@ -423,6 +424,7 @@ private:
 	// Helper to get effective buffering target (half of queue size, at least 3 frames)
 	size_t GetBufferingTarget();
 	size_t GetConfiguredSteadyQueueTarget() const;
+	bool IsSteadyQueueTargetConfigured() const;
 	size_t GetDeliveryReserve() const;
 
 	// Thread function, upon return thread exist.
