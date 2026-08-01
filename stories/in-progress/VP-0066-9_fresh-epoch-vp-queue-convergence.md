@@ -56,6 +56,18 @@ solution must either preserve a continuous output timeline while stale live
 content is skipped, or decline the convergence; it must never create a
 timestamp hole merely to report a lower OSD queue number.
 
+The 2026-07-31 same-rate Apple TV menu-to-channel run isolated the remaining
+downstream-prime failure. At 59.94 Hz, a retained transient-invalid episode
+was followed by a seven-frame source-counter gap and then a one-frame gap.
+VP correctly preserved the graph and normalized each discontinuity, but the
+VP queue fell to one and madVR's passive OSD queues did not refill. Because
+source and delivery then remained equal-rate, no surplus existed to restore
+the opaque downstream reserve. A manual full graph reset restored current-
+epoch preroll in 344 ms and converged VP from 13 to 2. HDR succeeded because
+its EOTF transition already owned a full renderer rebuild. This proves the
+missing recovery is specific to a material same-contract source gap, not the
+normal convergence controller.
+
 ## Required behavior
 
 - Arm exactly once for each fresh DirectShow pipeline epoch: initial graph
@@ -94,10 +106,18 @@ timestamp hole merely to report a lower OSD queue number.
 - A transient invalid capture-state notification that retains the last valid
   renderer state must retain frame admission atomically. It must not silently
   turn the 1.5-second grace policy into a multi-second ingress outage.
-- A newly received frame after a source-counter gap proves that capture has
-  resumed. Re-baseline cadence measurement, mark a DirectShow source
-  discontinuity, and preserve the running graph. A counter gap alone is not
-  sufficient evidence for a full madVR-draining liveness reset.
+- A newly received frame after an isolated source-counter gap proves that
+  capture resumed. Re-baseline cadence measurement, mark one DirectShow source
+  discontinuity, and preserve the running graph. When a same-contract forward
+  gap represents at least 100 ms of missing source time, request exactly one
+  serialized full graph re-prime because equal-rate delivery cannot restore
+  drained opaque downstream buffering. Use the exact source rational: six
+  missing frames at 60000/1001 and three at 24000/1001. Counter resets remain
+  local because they can race an owner-controlled EOTF/rate/format rebuild.
+- After any graph reset, suppress material-gap recovery until a full second of
+  consecutive current-epoch source intervals has been observed. This recovery
+  must use the existing nonblocking reset latch/coordinator and must never
+  control DirectShow from the capture callback.
 
 ## Testable increments
 
@@ -154,13 +174,25 @@ timestamp hole merely to report a lower OSD queue number.
    The regression test marks a sample, reuses the same object for a continuous
    frame, and proves that the second preparation clears the flag. Source
    commit `b3ea4d8` passes the clean x64 Release suite 355/355.
+7. **Material same-rate gap recovery (implemented; awaiting live validation):**
+   `LiveSourceGapRecoveryPolicy` converts 100 ms into a frame threshold using
+   the exact input rational, keeps smaller gaps and counter resets local, and
+   publishes one low-priority `source-gap-recovery` graph request through the
+   existing output-pin latch. Display/HDR transitions supersede it. Every
+   graph reset requires one full second of healthy source intervals before the
+   policy re-arms, preventing handshake-driven reset loops. Source commit
+   `ce53e9e` passed a clean x64 Release rebuild and 362/362 native tests. The
+   deployed executable SHA-256 is
+   `18EF03082BC7865B9E7384F0502089E142FC47157EAF2D31E27BD62FC3396135`;
+   the active configuration was unchanged.
 
 ## Acceptance criteria
 
 - Unit tests cover startup prime, startup stalls, normal delivery, target
   already met, automatic policy, one-shot behavior, fail-closed boundaries,
-  timestamp/media ownership, and rearm on a new epoch. The current native
-  suite passes 355/355 tests in x64 Release.
+  timestamp/media ownership, rearm on a new epoch, rate-aware material-gap
+  recovery, reset-request latching, transition priority, and healthy re-arm.
+  The current native suite passes 362/362 tests in x64 Release.
 - A convergence never happens in an unchanged steady epoch.
 - Normal, no-trim delivery preserves monotonic 60000/1001 and 24000/1001
   timestamps exactly within existing documented rounding tolerance.
@@ -176,8 +208,10 @@ timestamp hole merely to report a lower OSD queue number.
   HDMI acquisition time itself is reported separately rather than attributed
   to VP convergence.
 - A retained transient-invalid state produces no `liveness-recovery` graph
-  reset. Any source-counter discontinuity is logged with `graph_reset=0`, PPM
-  rebaseline, and continuous DirectShow presentation/media timestamps.
+  reset. A forward gap below 100 ms or a counter reset is logged with
+  `graph_reset=0`, PPM rebaseline, and continuous DirectShow presentation/media
+  timestamps. A forward gap at or above 100 ms publishes at most one
+  `source-gap-recovery` graph reset and the fresh epoch converges normally.
 - Exactly one delivered sample carries a source-gap discontinuity for each
   detected gap. A later ordinary sample, including reuse of the same allocator
   object, is explicitly continuous; the flag cannot become sticky across the
@@ -206,9 +240,12 @@ timestamp hole merely to report a lower OSD queue number.
    sustained VP or madVR drop/repeat growth.
    - A transient-invalid notification must show
      `published == required == acknowledged` with admission open.
-   - A later counter gap, if any, must show `action=continue-local`,
-     `ppm=rebaseline`, and `graph_reset=0`; it must not be followed by a
-     `liveness-recovery` reset.
+   - A later sub-100-ms gap or counter reset must show
+     `action=continue-local`, `ppm=rebaseline`, and `graph_reset=0`.
+   - A duration-qualified gap must show `material_threshold`,
+     `action=request-graph-reprime`, and one accepted
+     `reason=source-gap-recovery` graph reset. Further gaps remain suppressed
+     until a full healthy second; no reset loop is acceptable.
    - Record first valid-format time, first picture, first convergence trim, and
      stable target separately. The target should be reached in under one
      second after delivery begins and the full known-monitor experience should
@@ -219,11 +256,12 @@ timestamp hole merely to report a lower OSD queue number.
 7. After SDR 59.94 passes, repeat at HDR 59.94. Validate 23.976 on the real
    compatible display; a 23.976 source on the current 59.94-only monitor is a
    cadence-mismatch negative fixture, not a queue-convergence acceptance run.
-8. On the Epson 59.94 retest, inspect the trace after any source-counter gap.
-   Expect one `origin=source-gap` delivery record followed by ordinary records
-   with `source_discontinuity=0`. Confirm whether madVR's passive queues refill
-   before changing the readiness or convergence policy; the first Epson run
-   was contaminated by the sticky discontinuity defect.
+8. On the Epson 59.94 retest, reproduce the Apple TV menu-to-channel switch.
+   If the source gap is six frames or more, expect one covered
+   `source-gap-recovery` reset, a fresh epoch, VP convergence to two, and
+   passive madVR queues refilled without a manual reset. A one-frame gap must
+   remain local. Confirm no repeated recovery during the one-second re-arm
+   window and no sustained VP/madVR drop or repeat growth.
 
 ## Out of scope
 
