@@ -369,13 +369,40 @@ recreation; it cannot cycle additional in-place or source-gap resets.
     `BCF420C4DC37B39D1DDDCADAF04AC518D39E16E54F7E337D2E046E03701277C2`
     for `VideoProcessorVPRenderer.dll`; configuration remained unchanged.
 
+11. **Adopt an already-proven current-graph prime (implemented; awaiting live
+    validation):** the output-readiness observer no longer unconditionally
+    stacks another graph reset after the current DirectShow epoch has already
+    completed the exact VP-owned prime-to-steady transaction. Adoption is
+    deliberately fail-closed and does not add a wait or grace period. It
+    requires the same queue epoch and renderer/display generation, a recovered
+    hard `Deliver()` block, converted depth at full VP capacity before the
+    convergence trim, the exact configured converted target afterward, raw
+    depth no greater than one, three subsequent successful deliveries, no
+    delivery currently in flight, and no pending reset, retarget, retirement,
+    recreation, or renderer transition. Any missing or stale evidence uses the
+    existing graph re-prime immediately. A reset request rejected by the
+    coordinator is re-armed instead of being lost.
+
+    The liveness snapshot now records the epoch-owned convergence proof,
+    maximum successful delivery time, and VP-retained DeckLink-buffer count,
+    high-water, and oldest age. These are VP ownership diagnostics, not madVR
+    queue measurements. No raw queue cap, new drop policy, worker, or frame
+    copy was introduced. Three independent DirectShow/capture/regression
+    reviews found no remaining release blocker after stale-generation and
+    lifecycle-boundary corrections. Source commit `6971164` passed a clean x64
+    Release rebuild and 405/405 native tests. Paired deployment hashes are
+    `67F92A111B1E490DE6E6F82A8F895C323C1F2E9DB4F10B76290AE440C6F43DD7`
+    for `VideoProcessor.exe` and
+    `FAFCEA446BCECD2B017EB1A54A8BBD00419936A934C1B402D3792AF29D850BBA`
+    for `VideoProcessorVPRenderer.dll`; active configuration was unchanged.
+
 ## Acceptance criteria
 
 - Unit tests cover startup prime, startup stalls, normal delivery, target
   already met, automatic policy, one-shot behavior, fail-closed boundaries,
   timestamp/media ownership, rearm on a new epoch, rate-aware material-gap
   recovery, reset-request latching, transition priority, and healthy re-arm.
-  The current native suite passes 376/376 tests in x64 Release.
+  The current native suite passes 405/405 tests in x64 Release.
 - A convergence never happens in an unchanged steady epoch.
 - Normal, no-trim delivery preserves monotonic 60000/1001 and 24000/1001
   timestamps exactly within existing documented rounding tolerance.
