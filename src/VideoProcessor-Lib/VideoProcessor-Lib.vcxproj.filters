@@ -514,11 +514,17 @@
     <Text Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin_tracking_snippet.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="PanelSubtitleDetector.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClCompile Include="PanelSubtitleDetector.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
+	<ClInclude Include="PanelSubtitleDetector.h">
+	  <Filter>Header Files</Filter>
+	</ClInclude>
+	<ClInclude Include="PanelSubtitleDiagnostic.h">
+	  <Filter>Header Files</Filter>
+	</ClInclude>
+	<ClCompile Include="PanelSubtitleDetector.cpp">
+	  <Filter>Source Files</Filter>
+	</ClCompile>
+	<ClCompile Include="PanelSubtitleDiagnostic.cpp">
+	  <Filter>Source Files</Filter>
+	</ClCompile>
   </ItemGroup>
 </Project>

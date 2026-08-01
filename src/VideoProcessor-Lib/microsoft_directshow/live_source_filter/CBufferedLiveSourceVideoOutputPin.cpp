@@ -29,6 +29,7 @@
 #include "WindowsOcrSubtitleDetector.h"
 #include "GpuSubtitleDetector.h"
 #include "../../P010ActivePictureEvidence.h"
+#include <PanelSubtitleDiagnostic.h>
 
 
 CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
@@ -3625,7 +3626,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			// NLS/aspect-rule gating uses the same converted P010 image that reaches
 			// madVR. Sparse sampling every few frames is negligible beside conversion.
 			if (IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010))
+			{
 				UpdateActivePictureAspectRatio(pSample, videoFrame.GetCounter());
+				ApplyPanelSubtitleDiagnostic(pSample, videoFrame.GetCounter());
+			}
 
 			// Analyze the unmodified frame first. Subtitle relocation changes a
 			// small image region and must not become input to the cut detector.
@@ -3994,6 +3998,74 @@ bool CBufferedLiveSourceVideoOutputPin::GetActivePictureRectangle(
 	std::lock_guard<std::mutex> lock(m_activePictureRectangleMutex);
 	rectangle = m_activePictureRectangle;
 	return rectangle.stable;
+}
+
+
+void CBufferedLiveSourceVideoOutputPin::ApplyPanelSubtitleDiagnostic(
+	IMediaSample* sample, uint64_t frameNumber)
+{
+	if (!sample || !m_mediaType.pbFormat)
+		return;
+
+	LONG width = 0;
+	LONG signedHeight = 0;
+	if (IsEqualGUID(m_mediaType.formattype, FORMAT_VideoInfo2) &&
+		m_mediaType.cbFormat >= sizeof(VIDEOINFOHEADER2))
+	{
+		const auto* info = reinterpret_cast<const VIDEOINFOHEADER2*>(
+			m_mediaType.pbFormat);
+		width = info->bmiHeader.biWidth;
+		signedHeight = info->bmiHeader.biHeight;
+	}
+	else if (IsEqualGUID(m_mediaType.formattype, FORMAT_VideoInfo) &&
+		m_mediaType.cbFormat >= sizeof(VIDEOINFOHEADER))
+	{
+		const auto* info = reinterpret_cast<const VIDEOINFOHEADER*>(
+			m_mediaType.pbFormat);
+		width = info->bmiHeader.biWidth;
+		signedHeight = info->bmiHeader.biHeight;
+	}
+	if (width <= 0 || signedHeight == 0)
+		return;
+
+	const int frameHeight = signedHeight > 0 ? signedHeight : -signedHeight;
+	const size_t rowBytes = static_cast<size_t>(width) * sizeof(uint16_t);
+	const size_t lumaBytes = rowBytes * static_cast<size_t>(frameHeight);
+	if (sample->GetActualDataLength() < static_cast<LONG>(lumaBytes * 3 / 2))
+		return;
+	BYTE* bytes = nullptr;
+	if (FAILED(sample->GetPointer(&bytes)) || !bytes)
+		return;
+
+	// This is intentionally always enabled for VP-0070 live diagnostics. It is
+	// independent from subtitle_reposition, which remains disabled so the old
+	// asynchronous OCR/DirectML path cannot participate in these tests.
+	const PanelSubtitleResult result = m_panelSubtitleDetector.Analyze({
+		reinterpret_cast<const uint16_t*>(bytes),
+		static_cast<size_t>(width), static_cast<size_t>(frameHeight), rowBytes,
+		frameHeight / 3, frameHeight, frameNumber,
+		{ m_queueEpoch.load(std::memory_order_acquire),
+			m_activePictureRectangleGeneration.load(std::memory_order_acquire), 0 },
+		true });
+	const bool applied = PanelSubtitleDiagnostic::Apply(result, {
+		reinterpret_cast<uint16_t*>(bytes),
+		reinterpret_cast<uint16_t*>(bytes + lumaBytes),
+		static_cast<size_t>(width), static_cast<size_t>(frameHeight), rowBytes,
+		rowBytes });
+	if (result.state != m_panelSubtitleLastReportedState ||
+		result.fingerprint != m_panelSubtitleLastReportedFingerprint)
+	{
+		DebugLog::Log(
+			"VP-0070 PANEL DETECTOR: frame=%llu state=%d applied=%d panel=%d,%d-%d,%d glyph=%d,%d-%d,%d fingerprint=%llx",
+			frameNumber, static_cast<int>(result.state), applied ? 1 : 0,
+			result.panelBounds.left, result.panelBounds.top,
+			result.panelBounds.right, result.panelBounds.bottom,
+			result.glyphBounds.left, result.glyphBounds.top,
+			result.glyphBounds.right, result.glyphBounds.bottom,
+			static_cast<unsigned long long>(result.fingerprint));
+		m_panelSubtitleLastReportedState = result.state;
+		m_panelSubtitleLastReportedFingerprint = result.fingerprint;
+	}
 }
 
 

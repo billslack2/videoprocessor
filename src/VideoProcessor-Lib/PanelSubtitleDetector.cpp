@@ -97,8 +97,8 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 		bottom - top < m_settings.minimumPanelHeight)
 		return false;
 
-	PanelSubtitleRect bestPanel;
-	int64_t bestArea = 0;
+	RowRun bestSeed;
+	int seedY = -1;
 	for (int y = top; y < bottom; ++y)
 	{
 		const RowRun seed = LongestDarkRun(input, y);
@@ -106,25 +106,31 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 			seed.left < m_settings.minimumHorizontalInset ||
 			seed.right > width - m_settings.minimumHorizontalInset)
 			continue;
-
-		int panelTop = y;
-		while (panelTop > top && IsDarkEnough(input, panelTop - 1,
-			seed.left, seed.right))
-			--panelTop;
-		int panelBottom = y + 1;
-		while (panelBottom < bottom && IsDarkEnough(input, panelBottom,
-			seed.left, seed.right))
-			++panelBottom;
-		const int64_t area = static_cast<int64_t>(seed.right - seed.left) *
-			(panelBottom - panelTop);
-		if (panelBottom - panelTop >= m_settings.minimumPanelHeight &&
-			area > bestArea)
+		if (seed.right - seed.left > bestSeed.right - bestSeed.left)
 		{
-			bestArea = area;
-			bestPanel = { seed.left, panelTop, seed.right, panelBottom };
+			bestSeed = seed;
+			seedY = y;
 		}
 	}
+	if (seedY < 0)
+		return false;
+
+	// Select the strongest horizontal panel evidence first, then grow it only
+	// once. Growing every row candidate made a large dark panel quadratic in
+	// subtitle-band height, which is unacceptable for a 60-fps live path.
+	int panelTop = seedY;
+	while (panelTop > top && IsDarkEnough(input, panelTop - 1,
+		bestSeed.left, bestSeed.right))
+		--panelTop;
+	int panelBottom = seedY + 1;
+	while (panelBottom < bottom && IsDarkEnough(input, panelBottom,
+		bestSeed.left, bestSeed.right))
+		++panelBottom;
+	const PanelSubtitleRect bestPanel = {
+		bestSeed.left, panelTop, bestSeed.right, panelBottom };
 	if (!IsValid(bestPanel))
+		return false;
+	if (panelBottom - panelTop < m_settings.minimumPanelHeight)
 		return false;
 
 	std::array<uint32_t, 1024> histogram{};

@@ -6,6 +6,8 @@
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
 #include <P010ActivePictureEvidence.h>
+#include <PanelSubtitleDetector.h>
+#include <PanelSubtitleDiagnostic.h>
 #include <RendererConfigView.h>
 #include <RendererProfileConfig.h>
 #include <UnifiedProfileRuntime.h>
@@ -2238,6 +2240,12 @@ namespace
 struct LibplaceboVideoRenderer::Impl
 {
 	SceneDetector sceneDetector;
+	// Always-on only in this diagnostic test build. This is the same P010
+	// detector used by DirectShow/madVR and has no OCR or neural inference.
+	PanelSubtitleDetector panelSubtitleDetector;
+	PanelSubtitleState panelSubtitleLastReportedState =
+		PanelSubtitleState::Unavailable;
+	uint64_t panelSubtitleLastReportedFingerprint = 0;
 	AlphaCadenceCorrectionPolicy cadenceCorrectionPolicy;
 	AlphaPresentationTelemetry presentationTelemetry;
 	ScopedDisplayRefreshRate displayRefreshRate;
@@ -4766,6 +4774,33 @@ struct LibplaceboVideoRenderer::Impl
 		}
 	}
 
+	void ApplyPanelSubtitleDiagnostic(uint16_t* yPixels, uint16_t* uvPixels,
+		int width, int height, size_t rowBytes, uint64_t sourceSequence,
+		uint64_t frameGeneration)
+	{
+		const PanelSubtitleResult result = panelSubtitleDetector.Analyze({
+			yPixels, static_cast<size_t>(width), static_cast<size_t>(height),
+			rowBytes, height / 3, height, sourceSequence,
+			{ frameGeneration, nlsGeometryGeneration, 0 }, true });
+		const bool applied = PanelSubtitleDiagnostic::Apply(result, {
+			yPixels, uvPixels, static_cast<size_t>(width),
+			static_cast<size_t>(height), rowBytes, rowBytes });
+		if (result.state != panelSubtitleLastReportedState ||
+			result.fingerprint != panelSubtitleLastReportedFingerprint)
+		{
+			DebugLog::Log(
+				"VP-0070 PANEL DETECTOR: renderer=Alpha sequence=%llu state=%d applied=%d panel=%d,%d-%d,%d glyph=%d,%d-%d,%d fingerprint=%llx",
+				sourceSequence, static_cast<int>(result.state), applied ? 1 : 0,
+				result.panelBounds.left, result.panelBounds.top,
+				result.panelBounds.right, result.panelBounds.bottom,
+				result.glyphBounds.left, result.glyphBounds.top,
+				result.glyphBounds.right, result.glyphBounds.bottom,
+				static_cast<unsigned long long>(result.fingerprint));
+			panelSubtitleLastReportedState = result.state;
+			panelSubtitleLastReportedFingerprint = result.fingerprint;
+		}
+	}
+
 	// The caller holds renderMutex. Queue-generation validation and rendering
 	// share that lock so a frame removed before a reset cannot cross the reset
 	// boundary while waiting to enter libplacebo.
@@ -4903,6 +4938,14 @@ struct LibplaceboVideoRenderer::Impl
 			width,
 			height,
 			scopeScreenActive);
+		// Run after all pre-existing analysis consumed the unmodified P010 image,
+		// but before upload. The diagnostic is therefore equally visible in the
+		// Alpha output and does not perturb scene/NLS decisions.
+		ApplyPanelSubtitleDiagnostic(
+			reinterpret_cast<uint16_t*>(convertedFrame.data()),
+			reinterpret_cast<uint16_t*>(convertedFrame.data() +
+				rowBytes * static_cast<size_t>(height)),
+			width, height, rowBytes, sourceSequence, frameGeneration);
 
 		struct pl_plane_data planes[2]{};
 		planes[0].type = PL_FMT_UNORM;

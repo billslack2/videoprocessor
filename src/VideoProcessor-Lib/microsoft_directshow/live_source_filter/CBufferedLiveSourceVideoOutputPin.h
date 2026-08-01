@@ -22,6 +22,7 @@
 #include <DirectShowSegmentTransition.h>
 #include <FrameProcessor.h>
 #include <LiveOutputTrace.h>
+#include <PanelSubtitleDetector.h>
 #include <ProcessedFrameQueue.h>
 #include <microsoft_directshow/DirectShowDefines.h>
 #include "ALiveSourceVideoOutputPin.h"
@@ -140,6 +141,12 @@ private:
 	ProcessedFrameQueue m_processedFrameQueue{ 32 };
 	CCritSec m_convertedQueueLock;
 	FrameProcessor m_frameProcessor;
+	// Always-on only in this diagnostic test build. This does not use or start
+	// the legacy subtitle_reposition OCR/DirectML path.
+	PanelSubtitleDetector m_panelSubtitleDetector;
+	PanelSubtitleState m_panelSubtitleLastReportedState =
+		PanelSubtitleState::Unavailable;
+	uint64_t m_panelSubtitleLastReportedFingerprint = 0;
 	DirectShowFrameDeliverer m_directShowFrameDeliverer;
 	DirectShowSegmentTransition m_directShowSegmentTransition;
 	// The trace is a VP-only, bounded diagnostic snapshot. It has no renderer
@@ -471,8 +478,9 @@ private:
 	// Adapts the DirectShow P010 sample to the renderer-neutral detector.
 	bool AnalyzeSceneDetector(IMediaSample* sample, class SceneDetector& detector,
 		uint64_t sourceSequence, timingclocktime_t timestamp, uint64_t generation,
-		uint64_t& sceneEventId, uint8_t& eventFramesBack, uint16_t& averageLuma);
+	uint64_t& sceneEventId, uint8_t& eventFramesBack, uint16_t& averageLuma);
 	void UpdateActivePictureAspectRatio(IMediaSample* sample, uint64_t frameNumber);
+	void ApplyPanelSubtitleDiagnostic(IMediaSample* sample, uint64_t frameNumber);
 	void PublishActivePictureTransition(
 		const ActivePictureTransitionDecision& decision);
 	bool RelocateSubtitleInP010(IMediaSample* sample, uint64_t frameNumber);

@@ -247,6 +247,7 @@
     <ClInclude Include="UnifiedProfileRuntime.h" />
 	<ClInclude Include="SceneDetector.h" />
 	<ClInclude Include="PanelSubtitleDetector.h" />
+	<ClInclude Include="PanelSubtitleDiagnostic.h" />
     <ClInclude Include="SubtitleRepositionMode.h" />
     <ClInclude Include="StringUtils.h" />
     <ClInclude Include="TimingClock.h" />
@@ -357,6 +358,7 @@
     <ClCompile Include="UnifiedProfileRuntime.cpp" />
 	<ClCompile Include="SceneDetector.cpp" />
 	<ClCompile Include="PanelSubtitleDetector.cpp" />
+	<ClCompile Include="PanelSubtitleDiagnostic.cpp" />
     <ClCompile Include="StringUtils.cpp" />
     <ClCompile Include="TimingClock.cpp" />
 	<ClCompile Include="VideoTimingController.cpp" />

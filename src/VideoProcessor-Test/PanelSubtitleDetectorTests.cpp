@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <PanelSubtitleDetector.h>
+#include <PanelSubtitleDiagnostic.h>
 
 #include <vector>
 
@@ -202,6 +203,35 @@ namespace Tests
 				static_cast<int>(afterGenerationChange.state));
 			Assert::AreEqual(static_cast<uint64_t>(2),
 				afterGenerationChange.generation.pipeline);
+		}
+
+		TEST_METHOD(DiagnosticMarksPanelBoundsAndGlyphMask)
+		{
+			PanelSubtitleDetector detector;
+			std::vector<uint16_t> luma = Frame();
+			std::vector<uint16_t> chroma(Width * Height / 2,
+				static_cast<uint16_t>(512 << 6));
+			DrawPanelWithGlyphs(luma, 160);
+			detector.Analyze(Input(luma, 1));
+			const PanelSubtitleResult stable = detector.Analyze(Input(luma, 2));
+
+			Assert::IsTrue(PanelSubtitleDiagnostic::Apply(stable, {
+				luma.data(), chroma.data(), Width, Height,
+				Width * sizeof(uint16_t), Width * sizeof(uint16_t) }));
+			// Magenta panel outline at (32,62).
+			Assert::AreEqual(static_cast<unsigned int>(900 << 6),
+				static_cast<unsigned int>(luma[62 * Width + 32]));
+			Assert::AreEqual(static_cast<unsigned int>(896 << 6),
+				static_cast<unsigned int>(chroma[(62 / 2) * Width + (32 / 2) * 2]));
+			// A glyph pixel receives a non-neutral diagnostic chroma marker,
+			// independent of its original subtitle luma. A glyph-box edge can
+			// deliberately supersede cyan with yellow in its 2x2 chroma cell.
+			Assert::AreEqual(static_cast<unsigned int>(900 << 6),
+				static_cast<unsigned int>(luma[70 * Width + 60]));
+			Assert::AreNotEqual(static_cast<unsigned int>(512 << 6),
+				static_cast<unsigned int>(chroma[(70 / 2) * Width + (60 / 2) * 2]));
+			Assert::AreNotEqual(static_cast<unsigned int>(512 << 6),
+				static_cast<unsigned int>(chroma[(70 / 2) * Width + (60 / 2) * 2 + 1]));
 		}
 	};
 }
