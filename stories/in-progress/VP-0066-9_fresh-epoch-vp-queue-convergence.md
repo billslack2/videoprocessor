@@ -207,8 +207,8 @@ recreation; it cannot cycle additional in-place or source-gap resets.
    deployed executable SHA-256 is
    `18EF03082BC7865B9E7384F0502089E142FC47157EAF2D31E27BD62FC3396135`;
    the active configuration was unchanged.
-8. **Lifecycle-aware asymmetric-queue recovery (implemented; awaiting live
-   validation):** an in-place DirectShow reset now activates the graph into
+8. **Lifecycle-aware asymmetric-queue recovery (implemented; live validated
+   2026-08-01):** an in-place DirectShow reset now activates the graph into
    Pause before publishing the source flush and new segment, then requests Run.
    Source-gap re-arm requires downstream health, so the known capture gaps
    caused by a blocked seventeenth delivery cannot start a reset loop. After
@@ -220,6 +220,27 @@ recreation; it cannot cycle additional in-place or source-gap resets.
    for `VideoProcessor.exe` and
    `F002103F2EA55CD8D1302B75164915BE4D4D8758EDE33FC68E58B378D9143C20`
    for `VideoProcessorVPRenderer.dll`; configuration was unchanged.
+
+   Live acceptance used asymmetric madVR queues (CPU/decoder 16, GPU
+   upload/render 8). Actual content remained at the configured two-frame VP
+   reserve while madVR remained full through app changes, screen changes,
+   refresh changes, madVR recreation, and manual VP reset. The log proves the
+   expected lifecycle order and successful segment HRESULTs. Where the retained
+   madVR instance again stopped after its initial admission, VP requested one
+   renderer recreation; later epochs recorded `graph recovery proved healthy`
+   after roughly 2.0--2.9 seconds instead of alternating capacity/source-gap
+   resets.
+
+   Two retained 23.976-Hz HDR metric runs provide long-run queue evidence. One
+   covered 827.9 seconds with raw depth always zero and converted depth exactly
+   two for 827/828 samples, never above two. The other covered 1,231.3 seconds
+   with raw depth always zero, converted depth two for 1,228/1,231 samples, and
+   a maximum of three. Their manifests report zero dropped trace records,
+   19,948 and 30,513 rational timing comparisons/applies respectively, zero
+   timing mismatches, measured display rates 23.976429/23.976404 Hz, and a
+   23.976432-Hz delivery rate. This passes the asymmetric-queue recovery and
+   deterministic VP-reserve acceptance boundary without claiming observable
+   madVR occupancy.
 
 ## Acceptance criteria
 
