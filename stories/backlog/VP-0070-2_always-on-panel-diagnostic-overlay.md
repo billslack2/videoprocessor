@@ -24,6 +24,11 @@ distinct and must never masquerade as captured geometry.
 No build or deployment is authorized until VP-0070-1 meets its offline
 boundary-crossing gates.
 
+The offline review tool exposes an explicit `highlight` mode. It leaves the
+source image unchanged and draws only the frozen cue geometry and qualified
+glyph mask. This is the diagnostic half of the test-only `highlight`/`move`
+mode toggle; it is not a production configuration switch yet.
+
 ## Acceptance criteria
 
 - It is present on both Alpha and DirectShow/madVR test paths without changing

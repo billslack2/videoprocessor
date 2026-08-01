@@ -24,6 +24,16 @@ mask. Relocation waits for the stable CueSet. If that gate does not pass, VP
 shows the original frame; without buffering, zero original-caption flash and
 zero false suppression cannot both be guaranteed.
 
+The offline review tool now has a test-only `move` mode paired with VP-0070-2's
+`highlight` mode. For each qualified synthetic cue it erases the source glyph
+mask with a locally sampled panel color, locks a destination box wholly inside
+the active picture, and composites the original visual glyph pixels there.
+The source and destination boxes remain frozen for the cue. The August 1, 2026
+review render processed all 1,253 frames: all 672 positive frames were moved
+and no negative frame was treated. This proves the current synthetic geometry
+and temporal behavior only; production integration, performance, collision
+policy, and live-content accuracy remain open.
+
 ## Acceptance criteria
 
 - A treated frame never displays both source and destination glyphs.
