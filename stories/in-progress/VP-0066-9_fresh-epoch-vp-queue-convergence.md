@@ -68,6 +68,26 @@ its EOTF transition already owned a full renderer rebuild. This proves the
 missing recovery is specific to a material same-contract source gap, not the
 normal convergence controller.
 
+The 2026-08-01 asymmetric madVR-queue run isolated the reset-lifecycle defect.
+With madVR configured for a 16-frame CPU/decoder queue and 8-frame GPU upload
+and render queues, a fresh renderer reconstruction filled and played normally.
+An in-place VP graph reset then produced exactly 16 successful synchronous
+`Deliver()` calls; the seventeenth blocked for more than 1.2 seconds while
+capture/conversion continued and both VP queues filled. The passive madVR OSD
+simultaneously showed decoder `16/16`, upload `8/8`, render `8/8`, and present
+only `1/3`. Thus the 16 accepted frames are madVR's configured decoder
+admission capacity, not a VP target. The subsequent 19--28-frame source-counter
+gaps occurred only after downstream backpressure and were consequences of the
+stall. Repeating graph resets therefore amplified the incident.
+
+The lifecycle audit found that VP's in-place reset retained the madVR filter
+instance and executed `Stop -> source flush/NewSegment -> Run`; the segment was
+published while downstream filters were stopped. DirectShow activation is now
+explicitly `Stop -> Pause -> source BeginFlush/EndFlush/NewSegment -> Run`,
+with transition HRESULT, graph state, reference-clock time, and segment results
+logged. A failed fresh epoch may escalate once to a true renderer/filter
+recreation; it cannot cycle additional in-place or source-gap resets.
+
 ## Required behavior
 
 - Arm exactly once for each fresh DirectShow pipeline epoch: initial graph
@@ -115,9 +135,11 @@ normal convergence controller.
   missing frames at 60000/1001 and three at 24000/1001. Counter resets remain
   local because they can race an owner-controlled EOTF/rate/format rebuild.
 - After any graph reset, suppress material-gap recovery until a full second of
-  consecutive current-epoch source intervals has been observed. This recovery
-  must use the existing nonblocking reset latch/coordinator and must never
-  control DirectShow from the capture callback.
+  consecutive current-epoch source intervals with recent downstream delivery
+  and VP queues below capacity has been observed. Capture gaps created by a
+  blocked downstream `Deliver()` are local backpressure evidence, not HDMI
+  evidence. This recovery must use the existing nonblocking reset
+  latch/coordinator and must never control DirectShow from the capture callback.
 
 ## Testable increments
 
@@ -185,6 +207,19 @@ normal convergence controller.
    deployed executable SHA-256 is
    `18EF03082BC7865B9E7384F0502089E142FC47157EAF2D31E27BD62FC3396135`;
    the active configuration was unchanged.
+8. **Lifecycle-aware asymmetric-queue recovery (implemented; awaiting live
+   validation):** an in-place DirectShow reset now activates the graph into
+   Pause before publishing the source flush and new segment, then requests Run.
+   Source-gap re-arm requires downstream health, so the known capture gaps
+   caused by a blocked seventeenth delivery cannot start a reset loop. After
+   one graph recovery, a fresh epoch that again proves a blocked delivery plus
+   advancing input and full VP queues requests one renderer/filter recreation
+   rather than another in-place reset. Source commit `d4dbf94` passed a clean
+   x64 Release rebuild and 364/364 native tests. The paired deployment hashes
+   are `372CDBBDF26F8366C8EA8537967A9627BD7BC5D878E8145350590A7531751AD3`
+   for `VideoProcessor.exe` and
+   `F002103F2EA55CD8D1302B75164915BE4D4D8758EDE33FC68E58B378D9143C20`
+   for `VideoProcessorVPRenderer.dll`; configuration was unchanged.
 
 ## Acceptance criteria
 
@@ -192,7 +227,7 @@ normal convergence controller.
   already met, automatic policy, one-shot behavior, fail-closed boundaries,
   timestamp/media ownership, rearm on a new epoch, rate-aware material-gap
   recovery, reset-request latching, transition priority, and healthy re-arm.
-  The current native suite passes 362/362 tests in x64 Release.
+  The current native suite passes 364/364 tests in x64 Release.
 - A convergence never happens in an unchanged steady epoch.
 - Normal, no-trim delivery preserves monotonic 60000/1001 and 24000/1001
   timestamps exactly within existing documented rounding tolerance.
@@ -262,6 +297,14 @@ normal convergence controller.
    passive madVR queues refilled without a manual reset. A one-frame gap must
    remain local. Confirm no repeated recovery during the one-second re-arm
    window and no sustained VP/madVR drop or repeat growth.
+9. Retain the asymmetric madVR CPU/GPU fixture (CPU 16, GPU 8). After stable
+   startup, invoke one manual VP reset. Expect the lifecycle log order
+   `stopped`, `paused-before-segment`, segment reset, and `run-requested`. The
+   graph must either prove healthy delivery for two seconds or request exactly
+   one full renderer recreation. It must never alternate capacity and
+   source-gap resets, and VP must return to the configured two-frame converted
+   reserve while madVR's passive decoder/upload/render queues continue to
+   retire frames.
 
 ## Out of scope
 
