@@ -43,7 +43,7 @@ LiveEpochConvergenceDecision LiveEpochConvergenceController::Observe(
 	if (IsTerminal())
 		return MakeDecision(input, previousState, LiveEpochConvergenceReason::None);
 
-	if (input.resetOrFlushInProgress || input.sceneCadenceActive)
+	if (input.resetOrFlushInProgress)
 	{
 		return MakeDecision(input, previousState,
 			LiveEpochConvergenceReason::UnsafeBoundary);

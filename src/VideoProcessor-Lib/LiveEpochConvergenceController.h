@@ -64,8 +64,9 @@ struct LiveEpochConvergenceInput
 	size_t vpRawDepth = 0;
 	bool rawDepthKnown = false;
 	bool resetOrFlushInProgress = false;
-	// Scene cadence may depend on buffered scene-boundary candidates. Do not
-	// remove converted work while that planner is active.
+	// Retained for observation/compatibility. An explicit queue target takes
+	// precedence over scene-history depth; the scene detector already falls back
+	// to tagging its current confirmation frame when an older candidate is gone.
 	bool sceneCadenceActive = false;
 	// Monotonic milliseconds (GetTickCount64 domain).  Zero means timing-based
 	// fallbacks are unavailable; the policy then remains conservative.

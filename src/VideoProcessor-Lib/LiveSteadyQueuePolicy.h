@@ -34,7 +34,7 @@ public:
 		LiveSteadyQueueDecision decision;
 		decision.active = input.activeEpoch != 0 &&
 			input.activeEpoch == input.currentEpoch &&
-			input.targetConfigured && !input.sceneCadenceActive;
+			input.targetConfigured;
 		if (!decision.active)
 			return decision;
 

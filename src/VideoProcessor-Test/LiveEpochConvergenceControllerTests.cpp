@@ -201,7 +201,8 @@ namespace Tests
 			Assert::IsFalse(decision.active);
 			decision = LiveSteadyQueuePolicy::Evaluate({
 				5, 5, true, true, 1, 22 });
-			Assert::IsFalse(decision.active);
+			Assert::IsTrue(decision.active);
+			Assert::AreEqual<size_t>(21, decision.discardOldest);
 		}
 
 		TEST_METHOD(Exact23976ThresholdAndRecoveryAreRateIndependent)
@@ -234,21 +235,20 @@ namespace Tests
 			Assert::IsFalse(decision.requestConvergence);
 		}
 
-		TEST_METHOD(SceneCadenceCannotRequestAConvertedQueueTrim)
+		TEST_METHOD(ExplicitTargetConvergesDuringSceneCadence)
 		{
 			LiveEpochConvergenceController controller;
 			LiveEpochConvergenceInput input = Input();
 			input.sceneCadenceActive = true;
-			for (uint32_t index = 0; index < 8; ++index)
-			{
-				const uint64_t duration = index == 0 ? 60000 : 16683;
-				const LiveEpochConvergenceDecision decision =
-					Observe(controller, input, duration, 13);
-				Assert::IsFalse(decision.requestConvergence);
-				Assert::AreEqual(
-					static_cast<int>(LiveEpochConvergenceReason::UnsafeBoundary),
-					static_cast<int>(decision.reason));
-			}
+			(void)Observe(controller, input, 60000, 13, 1);
+			(void)Observe(controller, input, 16683, 13);
+			(void)Observe(controller, input, 16683, 13);
+			const LiveEpochConvergenceDecision decision =
+				Observe(controller, input, 16683, 13);
+			Assert::IsTrue(decision.requestConvergence);
+			Assert::AreEqual(
+				static_cast<int>(LiveEpochConvergenceState::TrimApplied),
+				static_cast<int>(decision.state));
 		}
 
 		TEST_METHOD(NewEpochRearmsButTargetChangeWithinEpochDoesNot)
