@@ -51,12 +51,12 @@ Experiment and results are under
 `C:\Users\bslac\vp\test-media\vp-0070\experiments`.
 Worktree: `C:\\Users\\bslac\\vp\\worktrees\\vp-0070-1-panel-detection`.
 The branch must be rebased onto the latest local VP-0066 commit before every
-implementation iteration; the current observed tip is `09d5efa`.
+implementation iteration; the current observed tip is `f9b3ad1`.
 
 Prior synthetic unit tests and build success are retained only as regression
 history; they did not establish correctness on representative video.
 
-The rebuilt implementation checkpoint is `0a4cefc`. It uses bounded
+The rebuilt implementation checkpoint is `54f0e0f`. It uses bounded
 top/bottom bar and boundary acquisition, separate geometry for up to three
 lines, dark-backing and optional neutral-chroma qualification, soft glyph
 masks, and stable ROI-only validation. Idle no-cue acquisition runs every
@@ -66,7 +66,14 @@ Changed content at the same bounds releases to `candidate` before it may lock
 again, while stable cue geometry stays frozen for cues of arbitrary duration.
 No OCR or neural model is required or invoked by this path.
 
-Build evidence: clean x64 Release succeeded at `0a4cefc`, with 409/409 tests
+It also makes symmetric bar acquisition robust to a bounded subtitle band:
+boundary search can look through the bright interruption, while four of six
+distributed dark/neutral bar-depth slices plus inner-boundary contrast remain
+required for crop authority. One-sided top-only or bottom-only bar rectangles
+are accepted by the subtitle detector when a caller supplies stable authority;
+global active-picture crop policy remains conservative.
+
+Build evidence: clean x64 Release succeeded at `54f0e0f`, with 412/412 tests
 passing. Representative compressed P010 mask quality and live false-treatment
 evidence remain open, so this task stays in backlog and the build is not yet a
 deployment authorization.

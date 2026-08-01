@@ -10,14 +10,18 @@ glyphs. It must not be redeployed.
 Build/test success is retained as regression history only; it did not validate
 the detector's semantics.
 
-Build-only checkpoint (2026-08-01): `0a4cefc` connects stable-only diagnostics
+Build-only checkpoint (2026-08-01): `54f0e0f` connects stable-only diagnostics
 to both Alpha and DirectShow/madVR. The Alpha plugin proxy forwards the mode,
 and the renderer plugin ABI was advanced to version 8 so an incompatible old
 DLL fails closed. `highlight` paints each stable line's capture/glyph geometry
 and mask; candidate, unavailable, stale, and generation-mismatched evidence
 does not mutate the frame. The mode defaults to `off` at every API/state layer
-and must be explicitly selected for testing. Clean x64 Release and 409/409
-tests passed; live validation and deployment remain paused.
+and must be explicitly selected for testing. The checked-in VP-0070 worktree
+configuration explicitly selects `highlight`, so a clean test build remains
+enabled. DirectShow now logs a throttled status with mode, active-picture
+authority, bounds, detector state, and acquisition count when no overlay is
+drawn. Clean x64 Release and 412/412 tests passed; live validation and
+deployment remain paused.
 
 ## Parent
 

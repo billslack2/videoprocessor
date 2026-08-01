@@ -11,14 +11,24 @@ offline.
 The root closes only after the rebuilt path has representative Alpha and
 DirectShow/madVR live-capture evidence.
 
-Build-only checkpoint (2026-08-01): `0a4cefc` on
+Build-only checkpoint (2026-08-01): `54f0e0f` on
 `codex/vp-0070-1-panel-detection`, rebased through local VP-0066 tip
-`09d5efa`, completed a clean x64 Release build and passed all 409 tests. The
+`f9b3ad1`, completed a clean x64 Release build and passed all 412 tests. The
 new `subtitle_panel_test_mode` is fail-safe `off` by default and requires an
 explicit `highlight` or `move` value; it is independent of the legacy OCR
 `subtitle_reposition` path. No deployment or active-configuration change was
 performed. Scene detection remains owned by VP-0066 and was not changed for
 this story.
+
+Live screenshot follow-up: a bottom-bar subtitle exposed that active-picture
+evidence stopped at the first subtitle-contaminated black-bar row, so VP-0070
+was disabled before glyph acquisition. The checkpoint now tolerates a bounded
+caption interruption while retaining distributed black/neutral/contrast and
+opposing-bar authority. A 3840x2160 P010 fixture with 276-pixel scope bars and
+a long subtitle wholly inside the bottom bar now proves bar authority,
+candidate/stable detection, and Highlight mutation. Fresh VP-0070 worktree
+builds also copy an explicit `highlight` test setting; production code still
+defaults to `off` when that setting is absent.
 
 ## User story
 
