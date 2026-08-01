@@ -272,6 +272,7 @@ namespace VideoProcessorTest
 					"queue_size: 32\n"
 					"alpha_queue_size: 1\n"
 					"fullscreen: true\n"
+					"disable_detection_features: true\n"
 					"scene_correction_basic: false\n"
 					"frame_offset: AUTO\n"
 					"[queue]\n"

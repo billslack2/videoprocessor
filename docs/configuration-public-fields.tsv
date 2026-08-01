@@ -9,6 +9,7 @@ command_line.alpha_queue_size	command-line-alpha-queue-size	VP queue	no
 queue.startup_preroll_frames	queue-startup-preroll-frames	VP DirectShow queue	no
 queue.steady_reserve_frames	queue-steady-reserve-frames	VP DirectShow converted-queue reserve	no
 command_line.scene_detect	command-line-scene-detect	VP cadence	no
+command_line.disable_detection_features	command-line-disable-detection-features	VP diagnostics	no
 command_line.scene_correction_basic	command-line-scene-correction-basic	VP DirectShow cadence	no
 command_line.subtitle_reposition	command-line-subtitle-reposition	VP DirectShow subtitle processing	no
 command_line.newlldv	command-line-newlldv	VP HDR metadata	no

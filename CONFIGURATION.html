@@ -163,6 +163,12 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
       <p class="meta"><strong>Type/default:</strong> Boolean, false when omitted. <strong>Scope:</strong> retained but inactive for non-P010 output.</p>
     </article>
 
+    <article class="field" id="command-line-disable-detection-features" data-fields="command_line.disable_detection_features">
+      <h4><code>disable_detection_features</code> <span class="badge">diagnostics</span></h4>
+      <p>Forces scene analysis and subtitle repositioning/OCR off and disables the Scene Detect selector. Use this to isolate renderer and queue timing from optional detection work.</p>
+      <p class="meta"><strong>Type/default:</strong> Boolean, false when omitted.</p>
+    </article>
+
     <article class="field" id="command-line-scene-correction-basic" data-fields="command_line.scene_correction_basic">
       <h4><code>scene_correction_basic</code> <span class="badge">DirectShow only</span></h4>
       <p>Chooses the renderer-repeat correction when true. False uses the normal upstream-sample correction. Keep false unless comparison logs show the renderer-specific basic method is required; the built-in renderer has one native correction path and ignores this choice.</p>
@@ -780,6 +786,7 @@ delay_seconds: 2</pre>
       <li><a href="#command-line-queue-size"><code>queue_size</code></a></li>
       <li><a href="#command-line-alpha-queue-size"><code>alpha_queue_size</code></a></li>
       <li><a href="#command-line-scene-detect"><code>scene_detect</code></a></li>
+      <li><a href="#command-line-disable-detection-features"><code>disable_detection_features</code></a></li>
       <li><a href="#command-line-scene-correction-basic"><code>scene_correction_basic</code></a></li>
       <li><a href="#command-line-subtitle-reposition"><code>subtitle_reposition</code></a></li>
       <li><a href="#command-line-newlldv"><code>newlldv</code></a></li>

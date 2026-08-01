@@ -57,6 +57,7 @@ namespace MainConfigSchema
 			ConfigSchema::Any("renderer_primaries"),
 			ConfigSchema::Boolean("scene_detect"),
 			ConfigSchema::Boolean("scene"),
+			ConfigSchema::Boolean("disable_detection_features"),
 			ConfigSchema::Any("scene_correction_mode"),
 			ConfigSchema::Boolean("scene_correction_basic"),
 			ConfigSchema::Choice("subtitle_reposition",

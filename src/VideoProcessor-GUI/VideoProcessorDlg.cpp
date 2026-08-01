@@ -1465,6 +1465,13 @@ void CVideoProcessorDlg::StartMinimized(bool enabled)
 
 void CVideoProcessorDlg::SceneDetect(bool enabled)
 {
+	if (m_detectionFeaturesDisabled && enabled)
+	{
+		DebugLog::Log(
+			"DETECTION FEATURES: ignoring Scene Detect enable while disabled by configuration");
+		m_sceneAwareTimingCorrection = false;
+		return;
+	}
 	m_sceneAwareTimingCorrection = enabled;
 }
 
@@ -1475,7 +1482,27 @@ void CVideoProcessorDlg::SceneCorrectionUpstreamSample(bool enabled)
 
 void CVideoProcessorDlg::SubtitleRepositioning(SubtitleRepositionMode mode)
 {
+	if (m_detectionFeaturesDisabled &&
+		mode != SubtitleRepositionMode::DISABLED)
+	{
+		DebugLog::Log(
+			"DETECTION FEATURES: ignoring subtitle reposition enable while disabled by configuration");
+		m_subtitleRepositionMode = SubtitleRepositionMode::DISABLED;
+		return;
+	}
 	m_subtitleRepositionMode = mode;
+}
+
+void CVideoProcessorDlg::DisableDetectionFeatures(bool disabled)
+{
+	m_detectionFeaturesDisabled = disabled;
+	if (disabled)
+	{
+		m_sceneAwareTimingCorrection = false;
+		m_subtitleRepositionMode = SubtitleRepositionMode::DISABLED;
+		DebugLog::Log(
+			"DETECTION FEATURES: scene analysis and subtitle repositioning disabled");
+	}
 }
 
 void CVideoProcessorDlg::EnableNewLldvHeuristic(bool enabled)
@@ -1808,7 +1835,8 @@ void CVideoProcessorDlg::UpdateRendererQueueControl()
 void CVideoProcessorDlg::UpdateSceneCorrectionModeUi()
 {
 	const bool p010Selected = IsP010VideoConversionSelected();
-	m_rendererSceneCorrectionModeCombo.EnableWindow(p010Selected);
+	m_rendererSceneCorrectionModeCombo.EnableWindow(
+		p010Selected && !m_detectionFeaturesDisabled);
 
 	// Correction method is deliberately not a UI choice.  Alpha has one native
 	// method; DirectShow normally uses the advanced upstream-sample method and
@@ -1877,6 +1905,12 @@ void CVideoProcessorDlg::OnBnClickedRendererVideoFrameUseQueueCheck()
 
 void CVideoProcessorDlg::OnRendererSceneCorrectionModeSelected()
 {
+	if (m_detectionFeaturesDisabled)
+	{
+		m_sceneAwareTimingCorrection = false;
+		m_rendererSceneCorrectionModeCombo.SetCurSel(0);
+		return;
+	}
 	if (!IsP010VideoConversionSelected())
 		return;
 

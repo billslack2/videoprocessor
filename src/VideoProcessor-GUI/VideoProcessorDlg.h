@@ -113,6 +113,7 @@ public:
 	void WindowedFullScreenMode(bool enabled = true);
 	void HideUI(bool enabled = true);
 	void StartMinimized(bool enabled = true);
+	void DisableDetectionFeatures(bool disabled = true);
 	void SceneDetect(bool enabled = true);
 	void SceneCorrectionUpstreamSample(bool enabled);
 	void SubtitleRepositioning(SubtitleRepositionMode mode);
@@ -443,6 +444,7 @@ protected:
 	bool m_queueRendererSelectionInitialized = false;
 	bool m_queueSelectionWasAlpha = false;
 	bool m_sceneAwareTimingCorrection = false;
+	bool m_detectionFeaturesDisabled = false;
 	// DirectShow defaults to the more robust upstream-sample correction.
 	// Basic remains available as a configuration-only compatibility override;
 	// Alpha has a single native correction path and ignores this value.
