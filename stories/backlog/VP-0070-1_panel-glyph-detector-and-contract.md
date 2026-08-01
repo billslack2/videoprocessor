@@ -56,7 +56,8 @@ implementation iteration; the current observed tip is `f9b3ad1`.
 Prior synthetic unit tests and build success are retained only as regression
 history; they did not establish correctness on representative video.
 
-The rebuilt implementation checkpoint is `87eda50`. Live logging from the
+The rebuilt implementation checkpoint is `9f65379` (rebased on VP-0066
+`9de490a`). `87eda50` live logging from the
 `54f0e0f` worktree build proved that Highlight mode and stable active bounds
 were both correct (`0,276-3840,1884`), but the glyph seed used an SDR-style
 P010 floor of 620 and never formed a proposal for visibly white PQ captions.
@@ -67,6 +68,18 @@ minimum contrast above the learned bar luma. Active-picture pixels retain the
 strict floor. A 3840x2160 PQ diffuse-white (code 510) bar-caption fixture now
 locks and produces a mask; x64 Release passed 413/413 tests. This remains a
 testable correction, not live-validation or deployment authorization.
+
+The latest live recording (`C:\Users\bslac\Videos\2026-08-01 17-18-48.mp4`)
+also showed that treating individual lines as individual panels produced
+misleading double boxes and discarded picture-side subtitle lines. `9f65379`
+uses encoded-bar overlap only as the eligibility proof: a qualifying
+bar/boundary line anchors one immutable public caption rectangle, which unions
+all qualifying lines plus a nearby horizontally aligned picture-side line.
+Highlight paints the glyph masks but one outer capture rectangle and one union
+glyph rectangle. The regression fixture covers one line crossing the bottom
+bar plus a second line wholly in picture. Move-mode composition still consumes
+the individual mask anchors and therefore needs its own single-operation
+conversion before it may be considered production-ready.
 
 The rebuilt implementation otherwise uses bounded
 top/bottom bar and boundary acquisition, separate geometry for up to three
@@ -85,7 +98,7 @@ required for crop authority. One-sided top-only or bottom-only bar rectangles
 are accepted by the subtitle detector when a caller supplies stable authority;
 global active-picture crop policy remains conservative.
 
-Build evidence: clean x64 Release succeeded at `87eda50`, with 413/413 tests
+Build evidence: clean x64 Release succeeded at `9f65379`, with 416/416 tests
 passing. Representative compressed P010 mask quality and live false-treatment
 evidence remain open, so this task stays in backlog and the build is not yet a
 deployment authorization.
