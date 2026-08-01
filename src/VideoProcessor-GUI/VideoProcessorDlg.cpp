@@ -4083,6 +4083,11 @@ void CVideoProcessorDlg::RenderStart()
 		selectedRenderer->backend == RendererBackend::DIRECTSHOW;
 	const uint32_t rendererGeneration =
 		m_rendererGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+	m_directShowGraphRecoveryAwaitingHealth = false;
+	m_directShowRecoveryRebuildRequested = false;
+	m_directShowGraphRecoveryGeneration = rendererGeneration;
+	m_directShowGraphRecoveryEpoch = 0;
+	m_directShowGraphRecoveryStartedTick = 0;
 	if (m_preserveFullscreenHostForProfileRestart &&
 		m_fullScreenVideoWindow &&
 		IsWindow(m_fullScreenVideoWindow->GetHWND()))
@@ -4858,6 +4863,28 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 		}
 		if (completion.request.reason == RendererResetReason::OutputReadiness)
 			m_outputReadinessGraphReprimeActive = false;
+		if (currentSuccess && m_activeRendererIsDirectShow &&
+			completion.request.scope == RendererResetScope::Graph)
+		{
+			RendererLivenessSnapshot recoverySnapshot;
+			if (m_videoRenderer &&
+				m_videoRenderer->GetLivenessSnapshot(recoverySnapshot) &&
+				recoverySnapshot.supported)
+			{
+				m_directShowGraphRecoveryAwaitingHealth = true;
+				m_directShowRecoveryRebuildRequested = false;
+				m_directShowGraphRecoveryGeneration = currentGeneration;
+				m_directShowGraphRecoveryEpoch = recoverySnapshot.queueEpoch;
+				m_directShowGraphRecoveryStartedTick = now;
+				DebugLog::Log(
+					"DirectShow graph recovery awaiting health: generation=%u "
+					"epoch=%llu reason=%s",
+					currentGeneration,
+					static_cast<unsigned long long>(
+						recoverySnapshot.queueEpoch),
+					CStringA(ToString(completion.request.reason)).GetString());
+			}
+		}
 		if (completion.request.scope != RendererResetScope::LiveQueue)
 			m_lastLivenessRecoveryTick = now;
 		m_consecutiveStuckSeconds = 0;
@@ -7907,6 +7934,58 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	const bool highWater = rawQueueSize * 100 >= queueMaxSize * highWaterPercent ||
 		convertedQueueSize * 100 >= queueMaxSize * highWaterPercent;
 	const ULONGLONG now = GetTickCount64();
+	const bool atCapacity =
+		rawQueueSize >= queueMaxSize ||
+		convertedQueueSize >= queueMaxSize;
+	RendererLivenessSnapshot liveness;
+	const bool hasLiveness =
+		m_videoRenderer->GetLivenessSnapshot(liveness);
+	const auto ageMs = [now](uint64_t tick) -> ULONGLONG
+	{
+		return tick == 0 || tick > now ?
+			(std::numeric_limits<ULONGLONG>::max)() : now - tick;
+	};
+
+	if (m_directShowGraphRecoveryAwaitingHealth &&
+		(m_directShowGraphRecoveryGeneration !=
+			m_rendererGeneration.load(std::memory_order_acquire) ||
+		 (hasLiveness &&
+			liveness.queueEpoch != m_directShowGraphRecoveryEpoch)))
+	{
+		DebugLog::Log(
+			"DirectShow graph recovery health proof discarded: "
+			"expected_generation=%u current_generation=%u "
+			"expected_epoch=%llu current_epoch=%llu liveness=%d",
+			m_directShowGraphRecoveryGeneration,
+			m_rendererGeneration.load(std::memory_order_acquire),
+			static_cast<unsigned long long>(
+				m_directShowGraphRecoveryEpoch),
+			static_cast<unsigned long long>(liveness.queueEpoch),
+			hasLiveness ? 1 : 0);
+		m_directShowGraphRecoveryAwaitingHealth = false;
+	}
+
+	const bool recoveryDeliveryHealthy =
+		hasLiveness && HasCurrentEpochDownstreamDelivery(liveness) &&
+		ageMs(liveness.lastDeliverySuccessTick) <= 500 &&
+		(!liveness.deliveryInProgress ||
+		 ageMs(liveness.lastDeliveryStartTick) < 500);
+	if (m_directShowGraphRecoveryAwaitingHealth && !highWater &&
+		recoveryDeliveryHealthy &&
+		now - m_directShowGraphRecoveryStartedTick >= 2000)
+	{
+		DebugLog::Log(
+			"DirectShow graph recovery proved healthy: generation=%u "
+			"epoch=%llu elapsed_ms=%llu deliveries=%llu",
+			m_directShowGraphRecoveryGeneration,
+			static_cast<unsigned long long>(
+				m_directShowGraphRecoveryEpoch),
+			static_cast<unsigned long long>(
+				now - m_directShowGraphRecoveryStartedTick),
+			static_cast<unsigned long long>(
+				liveness.currentEpochDeliverySuccessCount));
+		m_directShowGraphRecoveryAwaitingHealth = false;
+	}
 
 	if (!highWater)
 	{
@@ -7920,9 +7999,6 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	if (m_consecutiveFullSeconds <
 		(std::numeric_limits<size_t>::max)())
 		++m_consecutiveFullSeconds;
-	const bool atCapacity =
-		rawQueueSize >= queueMaxSize ||
-		convertedQueueSize >= queueMaxSize;
 	const bool autoReset =
 		m_rendererResetAutoCheck.GetCheck() == BST_CHECKED;
 	const size_t sustainedSeconds =
@@ -7948,7 +8024,42 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	// diagnostic. Schedule once when either DirectShow queue crosses it. If a
 	// queue reaches its hard capacity before that deadline, escalate the same
 	// serialized graph re-prime immediately.
-	if (autoReset && m_activeRendererIsDirectShow)
+	const bool postResetDeliveryDeadlock =
+		m_directShowGraphRecoveryAwaitingHealth &&
+		hasLiveness && atCapacity &&
+		liveness.deliveryInProgress &&
+		ageMs(liveness.lastDeliveryStartTick) >= 500 &&
+		liveness.lastInputTick != 0 &&
+		ageMs(liveness.lastInputTick) <= 2000;
+	if (autoReset && m_activeRendererIsDirectShow &&
+		postResetDeliveryDeadlock)
+	{
+		if (!m_directShowRecoveryRebuildRequested)
+		{
+			m_directShowRecoveryRebuildRequested = true;
+			DebugLog::Log(
+				"DirectShow in-place recovery failed; requesting one full "
+				"renderer recreation: generation=%u epoch=%llu "
+				"raw=%zu/%zu converted=%zu/%zu deliveries=%llu "
+				"blocked_ms=%llu",
+				m_directShowGraphRecoveryGeneration,
+				static_cast<unsigned long long>(
+					m_directShowGraphRecoveryEpoch),
+				rawQueueSize, queueMaxSize,
+				convertedQueueSize, queueMaxSize,
+				static_cast<unsigned long long>(
+					liveness.currentEpochDeliverySuccessCount),
+				static_cast<unsigned long long>(
+					ageMs(liveness.lastDeliveryStartTick)));
+			m_postRendererStartRequiresGraph = false;
+			m_wantToRestartRenderer = true;
+			UpdateState();
+		}
+		return;
+	}
+
+	if (autoReset && m_activeRendererIsDirectShow &&
+		!m_directShowGraphRecoveryAwaitingHealth)
 	{
 		if (atCapacity)
 		{
@@ -7977,16 +8088,8 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 		}
 	}
 
-	RendererLivenessSnapshot liveness;
-	const bool hasLiveness =
-		m_videoRenderer->GetLivenessSnapshot(liveness);
 	const ULONGLONG stallThresholdMs =
 		static_cast<ULONGLONG>(sustainedSeconds) * 1000;
-	const auto ageMs = [now](uint64_t tick) -> ULONGLONG
-	{
-		return tick == 0 || tick > now ?
-			(std::numeric_limits<ULONGLONG>::max)() : now - tick;
-	};
 	const bool inputStillAdvancing =
 		hasLiveness &&
 		liveness.lastInputTick != 0 &&

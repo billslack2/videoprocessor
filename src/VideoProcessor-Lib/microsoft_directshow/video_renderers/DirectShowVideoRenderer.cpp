@@ -157,11 +157,40 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	const timingclocktime_t frameTime = videoFrame.GetTimingTimestamp();
 	const LiveFrameCounterDecision counterDecision =
 		m_captureFrameCounterTracker.Observe(videoFrame.GetCounter());
+	ALiveSourceVideoOutputPin* outputPin =
+		m_liveSource ? m_liveSource->GetVideoOutputPin() : nullptr;
+	RendererLivenessSnapshot downstreamSnapshot;
+	const bool hasDownstreamSnapshot = outputPin &&
+		outputPin->GetLivenessSnapshot(downstreamSnapshot) &&
+		downstreamSnapshot.supported;
+	const ULONGLONG now = GetTickCount64();
+	const bool hasCurrentEpochDownstreamDelivery =
+		hasDownstreamSnapshot &&
+		HasCurrentEpochDownstreamDelivery(downstreamSnapshot);
+	const bool recentDownstreamDelivery =
+		hasCurrentEpochDownstreamDelivery &&
+		downstreamSnapshot.lastDeliverySuccessTick <= now &&
+		now - downstreamSnapshot.lastDeliverySuccessTick <= 500;
+	const bool downstreamBelowCapacity =
+		!hasDownstreamSnapshot || downstreamSnapshot.queueCapacity == 0 ||
+		(downstreamSnapshot.rawQueueDepth < downstreamSnapshot.queueCapacity &&
+			downstreamSnapshot.convertedQueueDepth <
+				downstreamSnapshot.queueCapacity);
+	const bool downstreamDeliveryBlocked =
+		hasDownstreamSnapshot && downstreamSnapshot.deliveryInProgress &&
+		downstreamSnapshot.lastDeliveryStartTick != 0 &&
+		downstreamSnapshot.lastDeliveryStartTick <= now &&
+		now - downstreamSnapshot.lastDeliveryStartTick > 500;
+	const bool downstreamHealthy = !hasDownstreamSnapshot ||
+		(hasCurrentEpochDownstreamDelivery && downstreamBelowCapacity &&
+			(counterDecision.IsDiscontinuity() || recentDownstreamDelivery) &&
+			!downstreamDeliveryBlocked);
 	const LiveSourceGapRecoveryDecision gapRecovery =
 		m_sourceGapRecoveryPolicy.Observe(
 			counterDecision,
 			m_videoState->displayMode->TimeScale(),
-			m_videoState->displayMode->FrameDuration());
+			m_videoState->displayMode->FrameDuration(),
+			downstreamHealthy);
 	if (counterDecision.IsDiscontinuity())
 	{
 		// Receiving a new live frame proves capture resumed. Rebase cadence and
@@ -174,8 +203,6 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 		if (gapRecovery.action ==
 			LiveSourceGapRecoveryAction::RequestGraphReprime)
 		{
-			ALiveSourceVideoOutputPin* outputPin =
-				m_liveSource ? m_liveSource->GetVideoOutputPin() : nullptr;
 			resetPublished = outputPin &&
 				outputPin->RequestSourceGapGraphReprime();
 		}
@@ -195,7 +222,9 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 			"DirectShow source counter discontinuity: transition=%s "
 			"previous=%llu current=%llu missing=%llu "
 			"material_threshold=%llu action=%s ppm=rebaseline "
-			"graph_reset=%d healthy=%llu/%llu",
+			"graph_reset=%d healthy=%llu/%llu downstream_healthy=%d "
+			"downstream_snapshot=%d downstream_epoch=%llu "
+			"downstream_success=%llu queue=%zu/%zu+%zu/%zu",
 			ToString(counterDecision.transition),
 			static_cast<unsigned long long>(counterDecision.previous),
 			static_cast<unsigned long long>(counterDecision.current),
@@ -205,7 +234,17 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 			static_cast<unsigned long long>(
 				gapRecovery.healthyIntervalsObserved),
 			static_cast<unsigned long long>(
-				gapRecovery.healthyIntervalsRequired));
+				gapRecovery.healthyIntervalsRequired),
+			downstreamHealthy ? 1 : 0,
+			hasDownstreamSnapshot ? 1 : 0,
+			static_cast<unsigned long long>(
+				downstreamSnapshot.queueEpoch),
+			static_cast<unsigned long long>(
+				downstreamSnapshot.currentEpochDeliverySuccessCount),
+			downstreamSnapshot.rawQueueDepth,
+			downstreamSnapshot.queueCapacity,
+			downstreamSnapshot.convertedQueueDepth,
+			downstreamSnapshot.queueCapacity);
 	}
 
 	// Update PPM measurement with each frame
@@ -444,15 +483,36 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 		return;
 	}
 	
-	// CRITICAL FIX: The only way to properly reset MadVR's internal state is to 
-	// completely stop and restart the graph. MadVR doesn't respond to mid-stream
-	// reset signals - it needs to be re-initialized from scratch.
-	// This mimics what happens during fullscreen toggle which works correctly.
+	// This is an in-place graph re-prime. It deliberately retains the madVR
+	// filter instance; a renderer restart is the separate full-recreation tier.
+	// Activate the stopped graph into Pause before sending flush/NewSegment.
+	// Sending that transaction while every downstream filter is stopped leaves
+	// some madVR queue configurations cued but never consuming after Run.
 	
 	DebugLog::Log("DirectShowVideoRenderer::Reset() - Stopping graph for complete restart");
 	
 	if (m_pControl)
 	{
+		const auto logGraphState = [this](
+			const char* phase, HRESULT transitionResult)
+		{
+			OAFilterState state = static_cast<OAFilterState>(-1);
+			const HRESULT stateResult = m_pControl->GetState(0, &state);
+			REFERENCE_TIME referenceTime = 0;
+			const HRESULT clockResult = m_referenceClock ?
+				m_referenceClock->GetTime(&referenceTime) : E_NOINTERFACE;
+			DebugLog::Log(
+				"DirectShow reset lifecycle: phase=%s transition_hr=0x%08lx "
+				"get_state_hr=0x%08lx state=%ld clock_hr=0x%08lx "
+				"reference_time=%lld",
+				phase,
+				static_cast<unsigned long>(transitionResult),
+				static_cast<unsigned long>(stateResult),
+				static_cast<long>(state),
+				static_cast<unsigned long>(clockResult),
+				static_cast<long long>(referenceTime));
+		};
+
 		HRESULT hr = m_pControl->Stop();
 		if (FAILED(hr))
 		{
@@ -461,7 +521,7 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 		}
 		else
 		{
-			DebugLog::Log("DirectShowVideoRenderer::Reset() - Graph stopped");
+			logGraphState("stopped", hr);
 
 			// Capture admission is already closed. Stop/flush releases a
 			// callback blocked in downstream Receive; now prove every admitted
@@ -469,12 +529,27 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 			if (drainAfterGraphStop)
 				drainAfterGraphStop();
 			
-			// Brief delay to ensure MadVR fully stops
+			// Preserve the proven stop-settle boundary before reactivation.
 			Sleep(100);
-			
-			// Reset the source while graph is stopped
-			DebugLog::Log("DirectShowVideoRenderer::Reset() - Resetting source");
+
+			// DirectShow transitions a stopped graph through Pause before Run. Do
+			// that explicitly so the downstream pins are active when the source
+			// publishes its serialized flush and fresh segment. S_FALSE is a valid
+			// asynchronous/intermediate transition for this live graph.
+			hr = m_pControl->Pause();
+			if (FAILED(hr))
+			{
+				DebugLog::Log(
+					"DirectShowVideoRenderer::Reset() - Pause failed, hr=0x%x",
+					hr);
+				throw std::runtime_error("DirectShow graph Pause failed");
+			}
+			logGraphState("paused-before-segment", hr);
+
+			DebugLog::Log(
+				"DirectShowVideoRenderer::Reset() - Resetting source while graph is active/paused");
 			m_liveSource->Reset();
+			logGraphState("segment-reset", S_OK);
 			
 			// Restart the graph
 			hr = m_pControl->Run();
@@ -485,7 +560,7 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 			}
 			else
 			{
-				DebugLog::Log("DirectShowVideoRenderer::Reset() - Graph restarted");
+				logGraphState("run-requested", hr);
 			}
 		}
 	}

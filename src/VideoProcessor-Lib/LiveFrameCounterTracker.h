@@ -92,15 +92,17 @@ struct LiveSourceGapRecoveryDecision
 // A live-source gap can drain opaque downstream buffering even when the
 // delivery timeline remains continuous. Re-prime only after 100ms of missing
 // source time; isolated capture misses remain local discontinuities. After a
-// graph reset, require one second of consecutive input before re-arming so an
-// unstable HDMI handshake cannot create a reset loop.
+// graph reset, require one second of consecutive input with healthy downstream
+// delivery before re-arming so either an unstable HDMI handshake or local
+// backpressure cannot create a reset loop.
 class LiveSourceGapRecoveryPolicy
 {
 public:
 	LiveSourceGapRecoveryDecision Observe(
 		const LiveFrameCounterDecision& counter,
 		uint64_t timeScale,
-		uint64_t frameDuration) noexcept
+		uint64_t frameDuration,
+		bool downstreamHealthy = true) noexcept
 	{
 		LiveSourceGapRecoveryDecision decision;
 		decision.materialGapFrames = FramesForDuration(
@@ -114,7 +116,8 @@ public:
 			if (counter.transition == LiveFrameCounterTransition::First)
 				m_healthyIntervals = 0;
 			else if (counter.transition ==
-				LiveFrameCounterTransition::Consecutive)
+				LiveFrameCounterTransition::Consecutive &&
+				downstreamHealthy)
 				++m_healthyIntervals;
 			else
 				m_healthyIntervals = 0;
@@ -149,6 +152,16 @@ public:
 		{
 			decision.action =
 				LiveSourceGapRecoveryAction::LocalDiscontinuity;
+			return decision;
+		}
+
+		// A blocked downstream Receive can backpressure VP until the capture
+		// callback itself misses frames. That is not evidence of an HDMI/source
+		// outage and must not start a second graph-reset loop.
+		if (!downstreamHealthy)
+		{
+			decision.action =
+				LiveSourceGapRecoveryAction::SuppressedUntilHealthy;
 			return decision;
 		}
 

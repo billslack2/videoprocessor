@@ -393,6 +393,14 @@ protected:
 	ULONGLONG m_lastLivenessRecoveryTick = 0;
 	bool m_queuePressureRecoveryRequested = false;
 	bool m_queueCapacityRecoveryRequested = false;
+	// One in-place DirectShow recovery is allowed to prove healthy delivery.
+	// If the fresh epoch deadlocks before that proof, replace the opaque madVR
+	// filter instance instead of cycling Stop/Run resets.
+	bool m_directShowGraphRecoveryAwaitingHealth = false;
+	bool m_directShowRecoveryRebuildRequested = false;
+	uint32_t m_directShowGraphRecoveryGeneration = 0;
+	uint64_t m_directShowGraphRecoveryEpoch = 0;
+	ULONGLONG m_directShowGraphRecoveryStartedTick = 0;
 	ULONGLONG m_lastResetDeferralLogTick = 0;
 	std::atomic<ULONGLONG> m_lastUiMessageTick = 0;
 	std::atomic<ULONGLONG> m_lastUiPaintTick = 0;

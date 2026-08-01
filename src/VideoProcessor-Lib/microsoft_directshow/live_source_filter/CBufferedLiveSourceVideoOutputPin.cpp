@@ -986,6 +986,14 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 
 	m_deliveryFlushing.store(false, std::memory_order_release);
 	m_resetInProgress.store(false, std::memory_order_release);
+	DebugLog::Log(
+		"DirectShow segment transaction: epoch=%llu begin_flush_hr=0x%08lx "
+		"end_flush_hr=0x%08lx new_segment_hr=0x%08lx",
+		static_cast<unsigned long long>(
+			m_queueEpoch.load(std::memory_order_acquire)),
+		static_cast<unsigned long>(transitionResult.beginFlushResult),
+		static_cast<unsigned long>(transitionResult.endFlushResult),
+		static_cast<unsigned long>(transitionResult.newSegmentResult));
 
 	if (FAILED(transitionResult.beginFlushResult))
 		throw std::runtime_error("Failed to deliver beginflush");

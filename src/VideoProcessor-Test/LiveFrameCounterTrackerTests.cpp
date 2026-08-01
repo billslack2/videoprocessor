@@ -184,6 +184,49 @@ namespace VideoProcessorTest
 				static_cast<int>(repeated.action));
 		}
 
+		TEST_METHOD(DownstreamStallCannotMasqueradeAsSourceGap)
+		{
+			LiveFrameCounterTracker tracker;
+			LiveSourceGapRecoveryPolicy policy;
+			(void)tracker.Observe(100);
+
+			const auto suppressed = policy.Observe(
+				tracker.Observe(107), 60000, 1001, false);
+			Assert::AreEqual(
+				static_cast<int>(
+					LiveSourceGapRecoveryAction::SuppressedUntilHealthy),
+				static_cast<int>(suppressed.action));
+
+			const auto recovered = policy.Observe(
+				tracker.Observe(114), 60000, 1001, true);
+			Assert::AreEqual(
+				static_cast<int>(
+					LiveSourceGapRecoveryAction::RequestGraphReprime),
+				static_cast<int>(recovered.action));
+		}
+
+		TEST_METHOD(GraphResetRearmRequiresDownstreamHealth)
+		{
+			LiveFrameCounterTracker tracker;
+			LiveSourceGapRecoveryPolicy policy;
+			policy.OnGraphReset();
+
+			(void)policy.Observe(
+				tracker.Observe(100), 60000, 1001, false);
+			for (uint64_t frame = 101; frame <= 170; ++frame)
+			{
+				(void)policy.Observe(
+					tracker.Observe(frame), 60000, 1001, false);
+			}
+
+			const auto suppressed = policy.Observe(
+				tracker.Observe(177), 60000, 1001, false);
+			Assert::AreEqual(
+				static_cast<int>(
+					LiveSourceGapRecoveryAction::SuppressedUntilHealthy),
+				static_cast<int>(suppressed.action));
+		}
+
 		TEST_METHOD(CounterResetRemainsLocalForTransitionOwner)
 		{
 			LiveFrameCounterTracker tracker;
