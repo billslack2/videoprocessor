@@ -253,7 +253,12 @@ recreation; it cannot cycle additional in-place or source-gap resets.
    converted-queue trim to zero. The same increment removes the frame-offset
    edit getter's text rewrite so periodic stats reads no longer reset the
    user's caret. Source commit `bcd6845` passed a clean x64 Release rebuild and
-   365/365 native tests. Paired deployment and live validation remain pending.
+   365/365 native tests. The paired deployment hashes are
+   `8C6F672C6AFE334EED0C45ACDAEDE02F0B2F77B37FBFDFC46EC28B73FB83928B`
+   for `VideoProcessor.exe` and
+   `2B7EEC302837418D3B463C619A85B1F8D299263BB8FFF2114390D1EB6A9402F4`
+   for `VideoProcessorVPRenderer.dll`; active configuration was unchanged.
+   Live validation remains pending.
 
 ## Acceptance criteria
 
