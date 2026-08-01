@@ -429,6 +429,34 @@ recreation; it cannot cycle additional in-place or source-gap resets.
 
 ## Controlled validation process (tonight)
 
+### 2026-08-01 Epson slow-handshake correction
+
+The first Epson run on source commit `6971164` proved that validated DXGI
+cadence is not proof that the physical HDMI sink or madVR's opaque stages have
+finished settling. The initial graph reached VP converted capacity (`32/32`),
+retained 6-28 raw frames, and recovered from a 0.64-1.00-second `Deliver()`
+stall, yet madVR remained visibly underfilled. A later manual graph reset
+filled madVR. The automatic reset approximately four seconds after graph start
+could still run too early after renderer restart.
+
+The next test build therefore keeps first video and capture delivery open, but
+waits a deterministic two seconds after the first continuously validated DXGI
+readiness observation before issuing the existing one-shot normalization
+reset. Graph loss, evidence loss/rate mismatch, or a new transition generation
+restarts the settle window. A graph reset completed during the window satisfies
+readiness and cancels the extra request; coordinator rejection retries without
+another delay. Current-graph adoption eligibility is latched only at readiness
+entry and revalidated at the settle deadline; a later proof cannot suppress
+the committed reset, while later negative evidence can veto adoption. A
+successful delivery stall of at least 16 expected frame periods, capped at
+500 ms wall-clock, is classified as handshake-scale and cannot qualify a
+current graph for adoption.
+
+Telemetry must report `reason=awaiting-post-ready-settle`, `settle=<elapsed>/2000ms`,
+and the validation tick before exactly one `output-readiness` reset request.
+This is an event-relative settle with live video visible, not a first-picture
+blackout or a claim that madVR occupancy is observable.
+
 1. Begin with the known 59.94-Hz SDR monitor and the existing active
    `[queue] steady_reserve_frames: 2`. Do not replace the active configuration.
 2. Start VP or rebuild the graph and observe at least 90 seconds. First
