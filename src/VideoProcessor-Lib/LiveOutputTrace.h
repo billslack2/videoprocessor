@@ -62,11 +62,16 @@ struct LiveOutputTraceRecord
 	uint32_t convergenceSuccessCount = 0;
 	uint32_t convergenceBlockCount = 0;
 	uint32_t convergenceRecoveryStreak = 0;
+	uint32_t convergencePacedStreak = 0;
 	uint32_t convergenceBlockThresholdUs = 0;
 	uint32_t convergenceNormalThresholdUs = 0;
+	uint32_t convergencePacedMinimumUs = 0;
+	uint32_t convergencePacedMaximumUs = 0;
+	uint32_t convergencePacedPrimingDepth = 0;
 	uint32_t convergenceElapsedMs = 0;
 	uint8_t convergenceState = 0;
 	uint8_t convergenceReason = 0;
+	uint8_t convergenceActivation = 0;
 	uint8_t timestampOwner = 0;
 	LiveOutputTraceKind kind = LiveOutputTraceKind::CaptureAccepted;
 	bool sceneBoundary = false;
@@ -208,11 +213,16 @@ public:
 				lhs.convergenceSuccessCount != rhs.convergenceSuccessCount ||
 				lhs.convergenceBlockCount != rhs.convergenceBlockCount ||
 				lhs.convergenceRecoveryStreak != rhs.convergenceRecoveryStreak ||
+				lhs.convergencePacedStreak != rhs.convergencePacedStreak ||
 				lhs.convergenceBlockThresholdUs != rhs.convergenceBlockThresholdUs ||
 				lhs.convergenceNormalThresholdUs != rhs.convergenceNormalThresholdUs ||
+				lhs.convergencePacedMinimumUs != rhs.convergencePacedMinimumUs ||
+				lhs.convergencePacedMaximumUs != rhs.convergencePacedMaximumUs ||
+				lhs.convergencePacedPrimingDepth != rhs.convergencePacedPrimingDepth ||
 				lhs.convergenceElapsedMs != rhs.convergenceElapsedMs ||
 				lhs.convergenceState != rhs.convergenceState ||
 				lhs.convergenceReason != rhs.convergenceReason ||
+				lhs.convergenceActivation != rhs.convergenceActivation ||
 				lhs.timestampOwner != rhs.timestampOwner ||
 				lhs.sceneBoundary != rhs.sceneBoundary ||
 				lhs.intentionalDrop != rhs.intentionalDrop ||
@@ -246,8 +256,11 @@ public:
 			"delivery_result,queue_target,queue_depth_before,queue_depth_after,queue_discarded,"
 			"raw_queue_discarded,converted_queue_discarded,"
 			"convergence_successes,convergence_blocks,convergence_recovery_streak,"
-			"convergence_block_threshold_us,convergence_normal_threshold_us,convergence_elapsed_ms,"
-			"convergence_state,convergence_reason,timestamp_owner,scene_boundary,intentional_drop,"
+			"convergence_paced_streak,convergence_block_threshold_us,convergence_normal_threshold_us,"
+			"convergence_paced_minimum_us,convergence_paced_maximum_us,"
+			"convergence_paced_priming_depth,convergence_elapsed_ms,"
+			"convergence_state,convergence_reason,convergence_activation,"
+			"timestamp_owner,scene_boundary,intentional_drop,"
 			"source_discontinuity,convergence_applied,convergence_raw_zero,convergence_raw_backlog,"
 			"scheduled_latency_known,latency_display_ready\n";
 		for (const LiveOutputTraceRecord& record : records)
@@ -274,11 +287,16 @@ public:
 				<< record.convertedQueueDiscarded << ','
 				<< record.convergenceSuccessCount << ','
 				<< record.convergenceBlockCount << ',' << record.convergenceRecoveryStreak << ','
+				<< record.convergencePacedStreak << ','
 				<< record.convergenceBlockThresholdUs << ','
 				<< record.convergenceNormalThresholdUs << ','
+				<< record.convergencePacedMinimumUs << ','
+				<< record.convergencePacedMaximumUs << ','
+				<< record.convergencePacedPrimingDepth << ','
 				<< record.convergenceElapsedMs << ','
 				<< static_cast<unsigned>(record.convergenceState) << ','
 				<< static_cast<unsigned>(record.convergenceReason) << ','
+				<< static_cast<unsigned>(record.convergenceActivation) << ','
 				<< static_cast<unsigned>(record.timestampOwner) << ','
 				<< (record.sceneBoundary ? 1 : 0) << ','
 				<< (record.intentionalDrop ? 1 : 0) << ','

@@ -1351,6 +1351,12 @@ void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace(const char* boundar
 			LiveEpochConvergenceController::kIngressBlockPeriods << ",\n";
 		manifest << "  \"vp_convergence_recovery_deliveries\": " <<
 			LiveEpochConvergenceController::kRequiredRecoveryDeliveries << ",\n";
+		manifest << "  \"vp_convergence_paced_warmup_deliveries\": " <<
+			LiveEpochConvergenceController::kMinimumPacedWarmupDeliveries << ",\n";
+		manifest << "  \"vp_convergence_paced_deliveries\": " <<
+			LiveEpochConvergenceController::kRequiredPacedDeliveries << ",\n";
+		manifest << "  \"vp_convergence_minimum_paced_priming_depth\": " <<
+			LiveEpochConvergenceController::kMinimumPacedPrimingDepth << ",\n";
 		manifest << "  \"vp_convergence_observation_timeout_ms\": " <<
 			LiveEpochConvergenceController::kBlockObservationTimeoutMs << ",\n";
 		manifest << "  \"vp_convergence_armed_window_ms\": " <<
@@ -1964,6 +1970,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					failureConvergenceDecision.ingressBlockCount;
 				convergenceTrace.convergenceRecoveryStreak =
 					failureConvergenceDecision.consecutiveRecoveryDeliveryCount;
+				convergenceTrace.convergencePacedStreak =
+					failureConvergenceDecision.consecutivePacedDeliveryCount;
 				convergenceTrace.convergenceBlockThresholdUs =
 					static_cast<uint32_t>(std::min<uint64_t>(
 						failureConvergenceDecision.ingressBlockThresholdUs,
@@ -1972,6 +1980,16 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					static_cast<uint32_t>(std::min<uint64_t>(
 						failureConvergenceDecision.normalDeliveryThresholdUs,
 						std::numeric_limits<uint32_t>::max()));
+				convergenceTrace.convergencePacedMinimumUs =
+					static_cast<uint32_t>(std::min<uint64_t>(
+						failureConvergenceDecision.pacedDeliveryMinimumUs,
+						std::numeric_limits<uint32_t>::max()));
+				convergenceTrace.convergencePacedMaximumUs =
+					static_cast<uint32_t>(std::min<uint64_t>(
+						failureConvergenceDecision.pacedDeliveryMaximumUs,
+						std::numeric_limits<uint32_t>::max()));
+				convergenceTrace.convergencePacedPrimingDepth =
+					static_cast<uint32_t>(failureConvergenceDecision.pacedPrimingDepth);
 				convergenceTrace.convergenceElapsedMs =
 					static_cast<uint32_t>(std::min<uint64_t>(
 						failureConvergenceDecision.elapsedSinceFirstSuccessMs,
@@ -1985,6 +2003,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					failureConvergenceDecision.state);
 				convergenceTrace.convergenceReason = static_cast<uint8_t>(
 					failureConvergenceDecision.reason);
+				convergenceTrace.convergenceActivation = static_cast<uint8_t>(
+					failureConvergenceDecision.activation);
 				m_liveOutputTrace.Record(convergenceTrace);
 				m_liveConvergenceTrace.Record(convergenceTrace);
 			}
@@ -2017,12 +2037,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			m_lastDeliverySuccessTick.store(
 				GetTickCount64(), std::memory_order_release);
 
-			// After a synchronous downstream-ingress block has been observed and
-			// Deliver() has recovered, perform one live catch-up for this epoch:
+			// After a synchronous downstream hard block has recovered, or sustained
+			// frame-paced ingress plus local backlog proves the initial burst is over,
+			// perform one live catch-up for this epoch:
 			// discard stale raw backlog and retain the configured converted reserve.
 			// The delivery sequencer owns final timestamps, so skipped pictures do
-			// not create a presentation-time hole. This is backpressure evidence,
-			// never a madVR occupancy or presentation-readiness estimate.
+			// not create a presentation-time hole. These are black-box downstream
+			// pacing/backpressure signals, never madVR occupancy measurements or a
+			// claim about physical presentation readiness.
 			const bool steadyTargetConfigured =
 				IsSteadyQueueTargetConfigured();
 			const size_t desiredVpDepth = GetConfiguredSteadyQueueTarget();
@@ -2074,6 +2096,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					convergenceDecision.ingressBlockCount;
 				convergenceProbe.convergenceRecoveryStreak =
 					convergenceDecision.consecutiveRecoveryDeliveryCount;
+				convergenceProbe.convergencePacedStreak =
+					convergenceDecision.consecutivePacedDeliveryCount;
 				convergenceProbe.convergenceBlockThresholdUs =
 					static_cast<uint32_t>(std::min<uint64_t>(
 						convergenceDecision.ingressBlockThresholdUs,
@@ -2082,6 +2106,16 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					static_cast<uint32_t>(std::min<uint64_t>(
 						convergenceDecision.normalDeliveryThresholdUs,
 						std::numeric_limits<uint32_t>::max()));
+				convergenceProbe.convergencePacedMinimumUs =
+					static_cast<uint32_t>(std::min<uint64_t>(
+						convergenceDecision.pacedDeliveryMinimumUs,
+						std::numeric_limits<uint32_t>::max()));
+				convergenceProbe.convergencePacedMaximumUs =
+					static_cast<uint32_t>(std::min<uint64_t>(
+						convergenceDecision.pacedDeliveryMaximumUs,
+						std::numeric_limits<uint32_t>::max()));
+				convergenceProbe.convergencePacedPrimingDepth =
+					static_cast<uint32_t>(convergenceDecision.pacedPrimingDepth);
 				convergenceProbe.convergenceElapsedMs =
 					static_cast<uint32_t>(std::min<uint64_t>(
 						convergenceDecision.elapsedSinceFirstSuccessMs,
@@ -2095,6 +2129,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					convergenceDecision.state);
 				convergenceProbe.convergenceReason = static_cast<uint8_t>(
 					convergenceDecision.reason);
+				convergenceProbe.convergenceActivation = static_cast<uint8_t>(
+					convergenceDecision.activation);
 				m_liveOutputTrace.Record(convergenceProbe);
 				m_liveConvergenceTrace.Record(convergenceProbe);
 			}
@@ -2174,6 +2210,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					convergenceDecision.ingressBlockCount;
 				convergenceTrace.convergenceRecoveryStreak =
 					convergenceDecision.consecutiveRecoveryDeliveryCount;
+				convergenceTrace.convergencePacedStreak =
+					convergenceDecision.consecutivePacedDeliveryCount;
 				convergenceTrace.convergenceBlockThresholdUs =
 					static_cast<uint32_t>(std::min<uint64_t>(
 						convergenceDecision.ingressBlockThresholdUs,
@@ -2182,6 +2220,16 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					static_cast<uint32_t>(std::min<uint64_t>(
 						convergenceDecision.normalDeliveryThresholdUs,
 						std::numeric_limits<uint32_t>::max()));
+				convergenceTrace.convergencePacedMinimumUs =
+					static_cast<uint32_t>(std::min<uint64_t>(
+						convergenceDecision.pacedDeliveryMinimumUs,
+						std::numeric_limits<uint32_t>::max()));
+				convergenceTrace.convergencePacedMaximumUs =
+					static_cast<uint32_t>(std::min<uint64_t>(
+						convergenceDecision.pacedDeliveryMaximumUs,
+						std::numeric_limits<uint32_t>::max()));
+				convergenceTrace.convergencePacedPrimingDepth =
+					static_cast<uint32_t>(convergenceDecision.pacedPrimingDepth);
 				convergenceTrace.convergenceElapsedMs =
 					static_cast<uint32_t>(std::min<uint64_t>(
 						convergenceDecision.elapsedSinceFirstSuccessMs,
@@ -2194,6 +2242,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					convergenceDecision.state);
 				convergenceTrace.convergenceReason = static_cast<uint8_t>(
 					convergenceDecision.reason);
+				convergenceTrace.convergenceActivation = static_cast<uint8_t>(
+					convergenceDecision.activation);
 				convergenceTrace.convergenceApplied = true;
 				convergenceTrace.intentionalDrop = discardedStaleFrames > 0;
 				m_liveOutputTrace.Record(convergenceTrace);
@@ -2202,7 +2252,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					"VP-0066-9 QUEUE CONVERGENCE: epoch=%llu target=%zu "
 					"raw=%zu->%zu discarded_raw=%zu "
 					"converted=%zu->%zu discarded_converted=%zu "
-					"discarded_stale=%zu steady_high_water=%zu latency_rewarm=1 "
+					"discarded_stale=%zu steady_high_water=%zu activation=%s "
+					"paced_streak=%u paced_band=%llu..%lluus priming_depth=%zu "
+					"latency_rewarm=1 "
 					"madvr_queue=unobservable",
 					expectedQueueEpoch, desiredVpDepth,
 					actualRawDepthBefore, rawDepthAfterConvergence,
@@ -2210,7 +2262,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					actualConvertedDepthBefore,
 					convertedDepthAfterConvergence, discardedConvertedFrames,
 					discardedStaleFrames,
-					std::max<size_t>(1, desiredVpDepth));
+					std::max<size_t>(1, desiredVpDepth),
+					ToString(convergenceDecision.activation),
+					convergenceDecision.consecutivePacedDeliveryCount,
+					convergenceDecision.pacedDeliveryMinimumUs,
+					convergenceDecision.pacedDeliveryMaximumUs,
+					convergenceDecision.pacedPrimingDepth);
 			}
 			++framesSinceLastLog;
 			++deliverySuccessCount;

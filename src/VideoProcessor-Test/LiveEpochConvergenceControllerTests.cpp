@@ -123,7 +123,7 @@ namespace Tests
 				static_cast<int>(decision.state));
 		}
 
-		TEST_METHOD(NoIngressBlockTimesOutWithoutDiscardingConvertedFrames)
+		TEST_METHOD(ObservationTimeoutRemainsEligibleForLateHandshakeEvidence)
 		{
 			LiveEpochConvergenceController controller;
 			LiveEpochConvergenceInput input = Input();
@@ -133,10 +133,79 @@ namespace Tests
 				LiveEpochConvergenceController::kBlockObservationTimeoutMs;
 			const LiveEpochConvergenceDecision decision = controller.Observe(input);
 			Assert::IsFalse(decision.requestConvergence);
-			Assert::AreEqual(static_cast<int>(LiveEpochConvergenceState::UnprovenNoTrim),
+			Assert::AreEqual(static_cast<int>(LiveEpochConvergenceState::ObservingIngress),
 				static_cast<int>(decision.state));
 			Assert::AreEqual(static_cast<int>(LiveEpochConvergenceReason::BlockObservationTimedOut),
 				static_cast<int>(decision.reason));
+
+			// A slow HDMI handshake may return its first conclusive blocked
+			// delivery after the diagnostic observation window has elapsed.
+			input.deliveryCompleted = true;
+			LiveEpochConvergenceDecision lateDecision =
+				Observe(controller, input, 60000, 13, 1);
+			Assert::AreEqual(static_cast<int>(LiveEpochConvergenceState::IngressBlocked),
+				static_cast<int>(lateDecision.state));
+			(void)Observe(controller, input, 16683, 13);
+			(void)Observe(controller, input, 16683, 13);
+			lateDecision = Observe(controller, input, 16683, 13);
+			Assert::IsTrue(lateDecision.requestConvergence);
+			Assert::AreEqual(
+				static_cast<int>(LiveEpochConvergenceActivation::HardBlockRecovery),
+				static_cast<int>(lateDecision.activation));
+		}
+
+		TEST_METHOD(Paced23976IngressPrimesWithoutThreeFrameStall)
+		{
+			LiveEpochConvergenceController controller;
+			LiveEpochConvergenceInput input = Input(41, 41708);
+			input.desiredVpDepth = 1;
+			input.targetConfigured = true;
+			input.vpRawDepth = 12;
+
+			// madVR accepts its initial burst immediately.
+			for (int index = 0; index < 6; ++index)
+				Assert::IsFalse(Observe(controller, input, 100, 32, 1).requestConvergence);
+
+			// Once the downstream path is primed, 23.976-to-59.94 delivery is
+			// paced in the observed alternating ~33/~50ms cadence. Its six-call
+			// mean is one input-frame period without any >=3F hard stall.
+			const uint64_t pacedDurations[] =
+				{ 33000, 50000, 33000, 50000, 33000, 50000 };
+			LiveEpochConvergenceDecision decision;
+			for (uint64_t duration : pacedDurations)
+				decision = Observe(controller, input, duration, 32, 42);
+
+			Assert::IsTrue(decision.requestConvergence);
+			Assert::AreEqual<size_t>(31, decision.staleConvertedFrames);
+			Assert::AreEqual<uint32_t>(6,
+				decision.consecutivePacedDeliveryCount);
+			Assert::AreEqual<size_t>(8, decision.pacedPrimingDepth);
+			Assert::AreEqual(
+				static_cast<int>(LiveEpochConvergenceActivation::PacedPrime),
+				static_cast<int>(decision.activation));
+		}
+
+		TEST_METHOD(PacedIngressRequiresLocalPrimingBacklog)
+		{
+			LiveEpochConvergenceController controller;
+			LiveEpochConvergenceInput input = Input(41, 41708);
+			input.desiredVpDepth = 1;
+			input.targetConfigured = true;
+			input.vpRawDepth = 0;
+
+			for (int index = 0; index < 6; ++index)
+				(void)Observe(controller, input, 100, 2, 1);
+			LiveEpochConvergenceDecision decision;
+			for (int index = 0; index < 6; ++index)
+				decision = Observe(controller, input, 41708, 2, 42);
+			Assert::IsFalse(decision.requestConvergence);
+			Assert::AreEqual(static_cast<int>(LiveEpochConvergenceState::ObservingIngress),
+				static_cast<int>(decision.state));
+
+			// The same proven paced path becomes actionable once VP has enough
+			// local stale work to make a latest-wins transition meaningful.
+			decision = Observe(controller, input, 41708, 8, 42);
+			Assert::IsTrue(decision.requestConvergence);
 		}
 
 		TEST_METHOD(ArmedPolicyWaitsForBacklogThenSettlesWithoutTrim)

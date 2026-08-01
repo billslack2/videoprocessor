@@ -4,8 +4,11 @@
  * This controller deliberately owns no DirectShow, madVR, HDMI, or queue
  * object.  In particular, an S_OK from Deliver is evidence only that the
  * DirectShow ingress accepted a sample; it is not evidence of madVR queue
- * occupancy or presentation. The owner must execute the requested transition
- * to a persistent local high-water and report the actual result separately.
+ * occupancy or presentation. A recovered >=3-frame block and a sustained
+ * frame-paced ingress plateau are separate black-box priming signals; both
+ * authorize only VP's local latest-wins transition. The owner must execute the
+ * requested transition to a persistent local high-water and report the actual
+ * result separately.
  */
 #pragma once
 
@@ -40,7 +43,16 @@ enum class LiveEpochConvergenceReason
 	ArmedWindowTimedOut,
 	DeliveryFailed,
 	UnsafeBoundary,
-	TargetChangedWithinEpoch
+	TargetChangedWithinEpoch,
+	PacedIngressObserved,
+	PacedPrimeRequested
+};
+
+enum class LiveEpochConvergenceActivation
+{
+	None,
+	HardBlockRecovery,
+	PacedPrime
 };
 
 struct LiveEpochConvergenceInput
@@ -80,7 +92,9 @@ struct LiveEpochConvergenceDecision
 	LiveEpochConvergenceState state =
 		LiveEpochConvergenceState::Disabled;
 	LiveEpochConvergenceReason reason = LiveEpochConvergenceReason::None;
-	// A request authorizes one live catch-up transition: activate the steady
+	// A request authorizes one live catch-up transition after either recovered
+	// hard-block evidence or a locally backlogged, frame-paced ingress plateau:
+	// activate the steady
 	// latest-wins policy and reduce converted work to desiredVpDepth. Raw work
 	// is preserved and rapidly processed under that cap. Final timestamps remain
 	// owned by the delivery sequencer, so discarded converted pictures create no
@@ -93,12 +107,18 @@ struct LiveEpochConvergenceDecision
 	uint32_t successfulDeliveryCount = 0;
 	uint32_t ingressBlockCount = 0;
 	uint32_t consecutiveRecoveryDeliveryCount = 0;
+	uint32_t consecutivePacedDeliveryCount = 0;
 	uint64_t ingressBlockThresholdUs = 0;
 	uint64_t normalDeliveryThresholdUs = 0;
+	uint64_t pacedDeliveryMinimumUs = 0;
+	uint64_t pacedDeliveryMaximumUs = 0;
+	size_t pacedPrimingDepth = 0;
 	uint64_t elapsedSinceFirstSuccessMs = 0;
 	bool rawDepthKnown = false;
 	bool rawBacklogObserved = false;
 	bool targetIsConvertedQueue = true;
+	LiveEpochConvergenceActivation activation =
+		LiveEpochConvergenceActivation::None;
 };
 
 class LiveEpochConvergenceController
@@ -108,6 +128,9 @@ public:
 	static constexpr uint64_t kIngressBlockPeriods = 3;
 	static constexpr uint64_t kMaximumNormalDeliveryPeriods = 2;
 	static constexpr uint32_t kRequiredRecoveryDeliveries = 3;
+	static constexpr uint32_t kMinimumPacedWarmupDeliveries = 12;
+	static constexpr uint32_t kRequiredPacedDeliveries = 6;
+	static constexpr size_t kMinimumPacedPrimingDepth = 8;
 	static constexpr uint64_t kBlockObservationTimeoutMs = 3000;
 	static constexpr uint64_t kArmedConvergenceWindowMs = 2000;
 
@@ -124,8 +147,14 @@ private:
 	bool HasElapsed(uint64_t now, uint64_t since, uint64_t duration) const;
 	uint64_t IngressBlockThresholdUs(uint64_t nominalFrameDurationUs) const;
 	uint64_t NormalDeliveryThresholdUs(uint64_t nominalFrameDurationUs) const;
+	uint64_t PacedDeliveryMinimumUs(uint64_t nominalFrameDurationUs) const;
+	uint64_t PacedDeliveryMaximumUs(uint64_t nominalFrameDurationUs) const;
+	size_t PacedPrimingDepth() const;
 	bool IsIngressBlocked(const LiveEpochConvergenceInput& input) const;
 	bool IsNormalDelivery(const LiveEpochConvergenceInput& input) const;
+	bool IsPacedDelivery(const LiveEpochConvergenceInput& input) const;
+	bool HasPacedPrimeEvidence(const LiveEpochConvergenceInput& input) const;
+	void ResetPacedEvidence();
 	bool IsTerminal() const;
 	bool CanRequestTrim(const LiveEpochConvergenceInput& input) const;
 
@@ -135,13 +164,17 @@ private:
 	uint32_t m_successfulDeliveryCount = 0;
 	uint32_t m_ingressBlockCount = 0;
 	uint32_t m_consecutiveRecoveryDeliveryCount = 0;
+	uint32_t m_consecutivePacedDeliveryCount = 0;
+	uint64_t m_pacedWindowDurationUs = 0;
 	bool m_hasFirstSuccessTick = false;
 	uint64_t m_firstSuccessTickMs = 0;
 	bool m_hasArmedTick = false;
 	uint64_t m_armedTickMs = 0;
+	bool m_observationTimeoutReported = false;
 	LiveEpochConvergenceState m_state =
 		LiveEpochConvergenceState::Disabled;
 };
 
 const char* ToString(LiveEpochConvergenceState state);
 const char* ToString(LiveEpochConvergenceReason reason);
+const char* ToString(LiveEpochConvergenceActivation activation);
