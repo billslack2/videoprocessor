@@ -1007,6 +1007,8 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		}
 		m_activePictureRectangleGeneration.fetch_add(1, std::memory_order_acq_rel);
 		m_activePictureDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
+		m_panelSubtitleTrustedFullRasterGeneration.store(0,
+			std::memory_order_release);
 		m_subtitlePanelLumaInitialized.store(false, std::memory_order_relaxed);
 		m_sceneAwareDetectedCount.store(0, std::memory_order_relaxed);
 		m_sceneAwareLateCandidateCount.store(0, std::memory_order_relaxed);
@@ -4025,6 +4027,7 @@ void CBufferedLiveSourceVideoOutputPin::ApplyPanelSubtitleDiagnostic(
 	if (testMode == PanelSubtitleTestMode::Off)
 	{
 		m_panelSubtitleDetector.Reset();
+		m_panelSubtitleActivePictureAuthority.Reset();
 		m_panelSubtitleLastReportedState = PanelSubtitleState::Unavailable;
 		m_panelSubtitleLastReportedFingerprint = 0;
 		m_panelSubtitleLastStatusFrame = 0;
@@ -4064,10 +4067,25 @@ void CBufferedLiveSourceVideoOutputPin::ApplyPanelSubtitleDiagnostic(
 		return;
 
 	ActivePictureRectangle activePicture;
-	const bool haveActivePicture = GetActivePictureRectangle(activePicture) &&
-		activePicture.rasterWidth == width &&
-		activePicture.rasterHeight == frameHeight &&
-		(activePicture.top > 0 || activePicture.bottom < frameHeight);
+	const bool activePictureStable = GetActivePictureRectangle(activePicture);
+	const uint64_t pipelineGeneration =
+		m_queueEpoch.load(std::memory_order_acquire);
+	const uint64_t modeGeneration =
+		m_panelSubtitleModeGeneration.load(std::memory_order_acquire);
+	const PanelSubtitleActivePictureAuthorityResult subtitleAuthority =
+		m_panelSubtitleActivePictureAuthority.Observe({
+			activePicture.left, activePicture.top,
+			activePicture.right, activePicture.bottom,
+			// The delivered P010 raster, rather than an unavailable global
+			// rectangle's zero dimensions, defines the hard reset boundary.
+			width, frameHeight,
+			activePictureStable,
+			activePictureStable &&
+			m_panelSubtitleTrustedFullRasterGeneration.load(
+				std::memory_order_acquire) == activePicture.generation,
+			pipelineGeneration,
+			m_activePictureDetectorGeneration.load(std::memory_order_acquire),
+			modeGeneration });
 	PanelSubtitleInput input;
 	input.p010Luma = reinterpret_cast<const uint16_t*>(bytes);
 	input.width = static_cast<size_t>(width);
@@ -4075,14 +4093,15 @@ void CBufferedLiveSourceVideoOutputPin::ApplyPanelSubtitleDiagnostic(
 	input.strideBytes = rowBytes;
 	input.sourceSequence = frameNumber;
 	input.generation = {
-		m_queueEpoch.load(std::memory_order_acquire),
-		activePicture.generation,
-		m_panelSubtitleModeGeneration.load(std::memory_order_acquire) };
-	input.enabled = haveActivePicture;
-	input.activePictureTop = activePicture.top;
-	input.activePictureBottom = activePicture.bottom;
-	input.trustedActivePictureGeneration = activePicture.generation;
-	input.activePictureStable = haveActivePicture;
+		pipelineGeneration, subtitleAuthority.generation, modeGeneration };
+	input.enabled = subtitleAuthority.available;
+	input.activePictureTop = subtitleAuthority.top;
+	input.activePictureBottom = subtitleAuthority.bottom;
+	// The detector requires its authority token to equal the active-picture
+	// generation. The VP-0070-local token is intentionally sticky across an
+	// ambiguous global full-raster publication.
+	input.trustedActivePictureGeneration = subtitleAuthority.generation;
+	input.activePictureStable = subtitleAuthority.available;
 	input.p010Chroma = reinterpret_cast<const uint16_t*>(bytes + lumaBytes);
 	input.chromaStrideBytes = rowBytes;
 	const PanelSubtitleResult result = m_panelSubtitleDetector.Analyze(input);
@@ -4090,7 +4109,7 @@ void CBufferedLiveSourceVideoOutputPin::ApplyPanelSubtitleDiagnostic(
 		reinterpret_cast<uint16_t*>(bytes),
 		reinterpret_cast<uint16_t*>(bytes + lumaBytes),
 		static_cast<size_t>(width), static_cast<size_t>(frameHeight), rowBytes,
-		rowBytes }, testMode, activePicture.top, activePicture.bottom);
+		rowBytes }, testMode, subtitleAuthority.top, subtitleAuthority.bottom);
 	const bool stateChanged =
 		result.state != m_panelSubtitleLastReportedState ||
 		result.fingerprint != m_panelSubtitleLastReportedFingerprint;
@@ -4120,13 +4139,13 @@ void CBufferedLiveSourceVideoOutputPin::ApplyPanelSubtitleDiagnostic(
 		DebugLog::Log(
 			"VP-0070 PANEL STATUS: renderer=DirectShow mode=%s frame=%llu active_stable=%d cropped_authority=%d active=%d,%d-%d,%d state=%d acquisition_scans=%llu reason=%s",
 			PanelSubtitleTestModeName(testMode), frameNumber,
-			activePicture.stable ? 1 : 0, haveActivePicture ? 1 : 0,
+			activePicture.stable ? 1 : 0, subtitleAuthority.available ? 1 : 0,
 			activePicture.left, activePicture.top,
 			activePicture.right, activePicture.bottom,
 			static_cast<int>(result.state),
 			static_cast<unsigned long long>(
 				m_panelSubtitleDetector.AcquisitionScanCount()),
-			haveActivePicture ? "no_stable_proposal" :
+			subtitleAuthority.available ? "no_stable_proposal" :
 				"no_stable_cropped_active_picture");
 		m_panelSubtitleLastStatusFrame = frameNumber;
 	}
@@ -4201,12 +4220,13 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 				static_cast<unsigned long long>(decision.decisionLatencyFrames),
 				(decision.reason + "; " + evidence.reason).c_str());
 	}
-	PublishActivePictureTransition(decision);
+	PublishActivePictureTransition(decision, evidence.classification);
 }
 
 
 void CBufferedLiveSourceVideoOutputPin::PublishActivePictureTransition(
-	const ActivePictureTransitionDecision& decision)
+	const ActivePictureTransitionDecision& decision,
+	ActivePictureClassification classification)
 {
 	if (!decision.publish)
 		return;
@@ -4216,6 +4236,8 @@ void CBufferedLiveSourceVideoOutputPin::PublishActivePictureTransition(
 			1, std::memory_order_acq_rel) + 1;
 	if (!decision.stable)
 	{
+		m_panelSubtitleTrustedFullRasterGeneration.store(0,
+			std::memory_order_release);
 		m_activePictureAspectStable.store(false, std::memory_order_release);
 		{
 			std::lock_guard<std::mutex> lock(m_activePictureRectangleMutex);
@@ -4246,6 +4268,13 @@ void CBufferedLiveSourceVideoOutputPin::PublishActivePictureTransition(
 			decision.bounds.aspectRatio, generation, true
 		};
 	}
+	const bool trustedFullRaster =
+		classification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
+		decision.bounds.left == 0 && decision.bounds.top == 0 &&
+		decision.bounds.right == decision.bounds.rasterWidth &&
+		decision.bounds.bottom == decision.bounds.rasterHeight;
+	m_panelSubtitleTrustedFullRasterGeneration.store(
+		trustedFullRaster ? generation : 0, std::memory_order_release);
 	DebugLog::Log(
 		"ACTIVE PICTURE: publication generation=%llu state=stable "
 		"aspect=%.4f bounds=%d,%d-%d,%d raster=%dx%d "

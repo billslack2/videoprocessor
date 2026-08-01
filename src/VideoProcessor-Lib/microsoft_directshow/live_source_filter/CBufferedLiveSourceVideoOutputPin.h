@@ -22,6 +22,7 @@
 #include <DirectShowSegmentTransition.h>
 #include <FrameProcessor.h>
 #include <LiveOutputTrace.h>
+#include <PanelSubtitleActivePictureAuthority.h>
 #include <PanelSubtitleDetector.h>
 #include <ProcessedFrameQueue.h>
 #include <microsoft_directshow/DirectShowDefines.h>
@@ -145,6 +146,7 @@ private:
 	// VP-0070 validation path. This does not use or start the legacy
 	// subtitle_reposition OCR/DirectML path.
 	PanelSubtitleDetector m_panelSubtitleDetector;
+	PanelSubtitleActivePictureAuthority m_panelSubtitleActivePictureAuthority;
 	PanelSubtitleState m_panelSubtitleLastReportedState =
 		PanelSubtitleState::Unavailable;
 	uint64_t m_panelSubtitleLastReportedFingerprint = 0;
@@ -476,6 +478,10 @@ private:
 	std::atomic<double> m_activePictureAspectRatio = 0.0;
 	std::atomic_bool m_activePictureAspectStable = false;
 	std::atomic<uint64_t> m_activePictureDetectorGeneration = 0;
+	// This is auxiliary VP-0070 input only. VP-0066 remains the authority that
+	// publishes m_activePictureRectangle; this records when that publication was
+	// backed by explicit trusted full-raster evidence.
+	std::atomic<uint64_t> m_panelSubtitleTrustedFullRasterGeneration = 0;
 	std::atomic<uint64_t> m_activePictureRectangleGeneration = 0;
 	mutable std::mutex m_activePictureRectangleMutex;
 	ActivePictureRectangle m_activePictureRectangle;
@@ -487,7 +493,8 @@ private:
 	void UpdateActivePictureAspectRatio(IMediaSample* sample, uint64_t frameNumber);
 	void ApplyPanelSubtitleDiagnostic(IMediaSample* sample, uint64_t frameNumber);
 	void PublishActivePictureTransition(
-		const ActivePictureTransitionDecision& decision);
+		const ActivePictureTransitionDecision& decision,
+		ActivePictureClassification classification);
 	bool RelocateSubtitleInP010(IMediaSample* sample, uint64_t frameNumber);
 	void StartSubtitleAnalysisWorker();
 	void StopSubtitleAnalysisWorker();
