@@ -2,12 +2,12 @@
 
 ## Status
 
-Review. Depends on VP-0070-1. Implemented in `d6054b5` (`Add always-on panel
+Review. Depends on VP-0070-1. Implemented in `c6e251b` (`Add always-on panel
 subtitle diagnostics`) on `codex/vp-0070-1-panel-detection`, rebased onto
-local VP-0066 `7429b54` before this iteration.
+local VP-0066 `919819a` before this iteration.
 
 The x64 Release GUI, DirectShow/madVR output component, and Alpha renderer
-builds succeeded; all 383 `VideoProcessor-Test` tests passed. The Release
+builds succeeded; all 384 `VideoProcessor-Test` tests passed. The Release
 diagnostic build was deployed on 2026-08-01 to `C:\\Videoprocessor\\vp` with
 the previous executable and renderer DLL retained as `.bak` files. Active
 configuration was deliberately untouched: legacy `subtitle_reposition` remains
