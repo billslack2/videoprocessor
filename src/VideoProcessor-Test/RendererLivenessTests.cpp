@@ -141,12 +141,12 @@ namespace Tests
 			Assert::IsTrue(normalizer.Normalize(10, 1100000, normalized));
 			Assert::AreEqual<int64_t>(100000, normalized);
 			Assert::IsTrue(normalizer.Normalize(10, 900000, normalized));
-			Assert::AreEqual<int64_t>(0, normalized);
+			Assert::AreEqual<int64_t>(900000, normalized);
 			Assert::IsTrue(normalizer.LastObservationRebased());
 			Assert::AreEqual<int64_t>(900000,
 				normalizer.LastValidObservedTime100ns());
 			Assert::IsTrue(normalizer.Normalize(10, 1200000, normalized));
-			Assert::AreEqual<int64_t>(300000, normalized);
+			Assert::AreEqual<int64_t>(1200000, normalized);
 			Assert::IsFalse(normalizer.LastObservationRebased());
 
 			// The next real queue epoch establishes a fresh comparison.

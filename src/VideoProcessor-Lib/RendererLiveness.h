@@ -77,13 +77,14 @@ public:
 		if (observedTime100ns < m_lastObserved100ns)
 		{
 			// The graph reference clock can be visible before Run() and then
-			// restart its StreamTime domain at zero without changing VP's queue
-			// epoch. Establish a fresh diagnostic origin and require telemetry to
-			// rewarm; never leave valid Rational-Rational timing blank forever.
-			m_observedBase100ns = observedTime100ns;
+			// restart its StreamTime domain near zero without changing VP's queue
+			// epoch. The returned value is now already graph-relative; subtracting
+			// it as another base would manufacture exactly that much extra PTS
+			// lead. Switch to the direct graph domain and rewarm telemetry.
+			m_observedBase100ns = 0;
 			m_lastObserved100ns = observedTime100ns;
 			m_lastObservationRebased = true;
-			streamTime100ns = 0;
+			streamTime100ns = observedTime100ns;
 			return true;
 		}
 		m_lastObserved100ns = observedTime100ns;
