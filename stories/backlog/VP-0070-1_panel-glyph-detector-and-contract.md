@@ -51,7 +51,7 @@ Experiment and results are under
 `C:\Users\bslac\vp\test-media\vp-0070\experiments`.
 Worktree: `C:\\Users\\bslac\\vp\\worktrees\\vp-0070-1-panel-detection`.
 The branch must be rebased onto the latest local VP-0066 commit before every
-implementation iteration; the current observed tip is `9de490a`.
+implementation iteration; the current observed tip is `6971164`.
 
 Prior synthetic unit tests and build success are retained only as regression
 history; they did not establish correctness on representative video.
@@ -103,8 +103,8 @@ passing. Representative compressed P010 mask quality and live false-treatment
 evidence remain open, so this task stays in backlog and the build is not yet a
 deployment authorization.
 
-The 2026-08-01 expert-integration checkpoint is `ba6a9d7`, still based on the
-latest local VP-0066 tip `9de490a`. It replaces the interim public union with an
+The 2026-08-01 expert-integration checkpoint is `afb9ed3`, rebased on the
+local VP-0066 tip `6971164`. It replaces the interim public union with an
 explicit `PanelSubtitleCueSet`: every member is contrast-qualified, represented
 in the current soft mask, and admitted only when it is a related line on the
 same top/bottom side. A picture-side companion can join only through the
@@ -123,15 +123,44 @@ and releases a crop only after 12 consecutive explicitly trusted full-raster
 observations. Pipeline, mode, raster, and active-picture reset generations
 invalidate it immediately; VP-0066 global publication behavior is unchanged.
 
-`d8a691a` also adds the renderer-neutral asynchronous glyph-segmentation
+`3dced14` also adds the renderer-neutral asynchronous glyph-segmentation
 provider contract needed for the proposed GPU-region/compact-neural-mask path:
 normalized P010 ROI metadata, exact source and generation tokens, per-member
 interior/edge soft masks, telemetry, an unavailable default, and latest-only
 stale-result rejection. This is an interface and safety boundary only—no model,
 weights, inference runtime, training data, OCR, or production neural path is
-present. A clean x64 Release build at `ba6a9d7` passed 424/424 tests. Deployment
+present. The original pre-rebase x64 Release build passed 424/424 tests. Deployment
 remains paused; representative live-video mask/false-treatment validation and
 the actual segmentation provider remain open.
+
+The subsequent recording `C:\Users\bslac\Videos\2026-08-01 18-18-51.mp4`
+exposed a repeatable two-line failure: a lower line in the encoded bottom bar
+was fragmented and partially highlighted while the upper line wholly in active
+picture remained untouched for the full cue. Source logs showed stable
+`0,276-3840,1884` crop authority and accepted geometry confined to roughly
+`y=1938..2042`, ruling out temporal/crop authority. Raw lower-line fragments
+were consuming the three CueSet slots before picture companions were admitted;
+the incomplete first observation then froze for the cue duration. The strict
+picture-white acquisition threshold independently prevented diffuse low-PQ
+upper glyphs from becoming companion proposals.
+
+Checkpoint `4114004` fixes both causes. Raw qualification now has separate
+bounded storage and coalesces same-baseline fragments into one semantic anchor
+line; the three-member limit therefore means three subtitle lines rather than
+three word fragments. Once a bar/boundary anchor proves eligibility, a second
+bounded inward scan may propose neutral, locally dark-supported, bar-contrast
+picture glyphs without relaxing general picture acquisition. Companions are
+ordered inward and compared directly with the immutable anchor, preventing
+transitive UI bridging. Final public geometry is re-derived from all admitted
+members, and low-PQ companions use the same anchored predicate on the stable
+ROI validation path.
+
+Regression coverage includes a four-fragment lower anchor plus a wider,
+offset, low-PQ upper line whose union spans 77.5% of the raster, third-frame
+stable revalidation, a three-line ordered stack, and transitive unrelated-UI
+rejection. After rebasing onto VP-0066 `6971164`, the clean x64 Release build at
+`4114004` passed 437/437 tests. This corrects the observed failure mechanism but
+still requires a new representative live recording before deployment.
 
 ## Parent
 
