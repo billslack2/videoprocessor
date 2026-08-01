@@ -51,7 +51,7 @@ Experiment and results are under
 `C:\Users\bslac\vp\test-media\vp-0070\experiments`.
 Worktree: `C:\\Users\\bslac\\vp\\worktrees\\vp-0070-1-panel-detection`.
 The branch must be rebased onto the latest local VP-0066 commit before every
-implementation iteration; the current observed tip is `f9b3ad1`.
+implementation iteration; the current observed tip is `9de490a`.
 
 Prior synthetic unit tests and build success are retained only as regression
 history; they did not establish correctness on representative video.
@@ -103,6 +103,36 @@ passing. Representative compressed P010 mask quality and live false-treatment
 evidence remain open, so this task stays in backlog and the build is not yet a
 deployment authorization.
 
+The 2026-08-01 expert-integration checkpoint is `ba6a9d7`, still based on the
+latest local VP-0066 tip `9de490a`. It replaces the interim public union with an
+explicit `PanelSubtitleCueSet`: every member is contrast-qualified, represented
+in the current soft mask, and admitted only when it is a related line on the
+same top/bottom side. A picture-side companion can join only through the
+bar/boundary anchor's backing evidence. Highlight exposes one cue capture box;
+diagnostic Move captures all member glyphs first, erases their combined source
+mask, and relocates the preserved multiline layout in one operation. Capture
+padding is based on the largest member height and bar-only captures are clamped
+to the trusted bar, avoiding the prior combined-height expansion.
+
+Stable cue identity now tolerates a two-frame detection dropout, but the held
+result is marked `currentMaskVerified=false`; Highlight and Move fail closed and
+cannot mutate a frame using stale pixels. A VP-0070-local active-picture
+authority retains a proven crop through ambiguous/dark full-raster
+publications, switches to a different crop after three strong confirmations,
+and releases a crop only after 12 consecutive explicitly trusted full-raster
+observations. Pipeline, mode, raster, and active-picture reset generations
+invalidate it immediately; VP-0066 global publication behavior is unchanged.
+
+`d8a691a` also adds the renderer-neutral asynchronous glyph-segmentation
+provider contract needed for the proposed GPU-region/compact-neural-mask path:
+normalized P010 ROI metadata, exact source and generation tokens, per-member
+interior/edge soft masks, telemetry, an unavailable default, and latest-only
+stale-result rejection. This is an interface and safety boundary only—no model,
+weights, inference runtime, training data, OCR, or production neural path is
+present. A clean x64 Release build at `ba6a9d7` passed 424/424 tests. Deployment
+remains paused; representative live-video mask/false-treatment validation and
+the actual segmentation provider remain open.
+
 ## Parent
 
 [VP-0070](VP-0070_alpha-panel-bound-subtitle-capture-and-relocation.md)
@@ -110,12 +140,13 @@ deployment authorization.
 ## Scope
 
 Prove and implement a renderer-neutral bounded `SubtitleCueSet` containing
-separate line members. Each member has immutable backing evidence, glyph, tight mask, and
-capture geometry tied to exact frame/raster/pipeline/picture/viewport
-generations. Classical pixels remain authoritative. The existing Apache-2.0
-PP-OCRv3 remains an optional benchmark provider only; it is off by default and
-is not required by the architecture unless new real-capture evidence proves a
-measurable benefit.
+separate line members but one actionable cue geometry. Each member has
+immutable backing evidence, glyph, tight mask, and capture geometry tied to
+exact frame/raster/pipeline/picture/viewport generations. Classical pixels
+remain authoritative until a generation-safe segmentation provider returns a
+current result. The existing Apache-2.0 PP-OCRv3 remains an optional benchmark
+provider only; it is off by default and is not required by the architecture
+unless new real-capture evidence proves a measurable benefit.
 
 ## Design constraints
 
@@ -129,8 +160,9 @@ measurable benefit.
   panel endpoint.
 - Accept qualified top- and bottom-bar-only lines. Reject picture-only,
   padding-only, whole-frame, and ambiguous top-plus-bottom candidates.
-- Represent up to three independently boxed line panels without merging their
-  actionable capture/inpaint geometry.
+- Represent up to three independently validated line members in one CueSet.
+  Preserve their relative layout, but expose one capture/inpaint/move operation
+  so overlapping lines cannot be erased or relocated independently.
 - All returned rectangles are half-open source-raster coordinates.
 - The contract includes source-frame/raster and all caller-provided generation
   tokens, panel and glyph rectangles, panel color, soft mask bounds,
@@ -167,5 +199,7 @@ measurable benefit.
 
 ## Out of scope
 
-Alpha/DirectShow integration, overlay rendering, source restoration, glyph
-relocation, full recognition, and any build or deployment.
+Production neural inference/model assets, full recognition, production source
+restoration/relocation, and deployment. DirectShow Highlight/Move remain
+diagnostic test modes until representative live-video evidence satisfies the
+mask-quality and false-treatment criteria.
