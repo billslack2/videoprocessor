@@ -9,6 +9,7 @@
 namespace
 {
 	constexpr size_t MaximumLines = 3;
+	constexpr size_t MaximumRawCandidates = 48;
 
 	int RectWidth(const PanelSubtitleRect& rectangle)
 	{
@@ -55,12 +56,20 @@ namespace
 		const int overlap = std::min(cue.right, member.right) -
 			std::max(cue.left, member.left);
 		const int requiredOverlap = std::max(1,
-			std::min(RectWidth(cue), RectWidth(member)) / 4);
+			std::min(RectWidth(cue), RectWidth(member)) / 8);
 		const int verticalGap = std::max(0, std::max(cue.top - member.bottom,
 			member.top - cue.bottom));
+		// A three-line cue has two inter-line gaps.  Compare every candidate with
+		// the anchor (rather than allowing a transitive chain), but give that
+		// anchor enough vertical reach for the whole semantic stack.
 		const int maximumGap = std::max(height * 4 / 1080,
-			2 * std::max(RectHeight(cue), RectHeight(member)));
-		return overlap >= requiredOverlap && verticalGap <= maximumGap;
+			5 * std::max(RectHeight(cue), RectHeight(member)));
+		const int horizontalGap = std::max(0, std::max(cue.left - member.right,
+			member.left - cue.right));
+		const int permittedEdgeGap = std::max(24,
+			(static_cast<int>(std::ceil(std::max(RectHeight(cue), RectHeight(member)) * 1.25))));
+		return (overlap >= requiredOverlap || horizontalGap <= permittedEdgeGap) &&
+			verticalGap <= maximumGap;
 	}
 
 	PanelSubtitleRect UnionRectangle(PanelSubtitleRect left,
@@ -229,7 +238,7 @@ bool PanelSubtitleDetector::IsInSearchDomain(const PanelSubtitleInput& input,
 
 bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 	const PanelSubtitleRect& glyphBounds, Candidate& candidate,
-	const Candidate* cueAnchor)
+	const Candidate* cueAnchor, bool allowExtentGaps)
 {
 	const int width = static_cast<int>(input.width);
 	const int height = static_cast<int>(input.height);
@@ -307,6 +316,19 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 	uint32_t seedPixels = 0;
 	int seedLeft = glyphBounds.right;
 	int seedTop = glyphBounds.bottom;
+	auto isMemberSeed = [&](int x, int y) {
+		if (!cueAnchor)
+			return IsGlyphSeed(input, x, y);
+		const auto* row = reinterpret_cast<const uint16_t*>(
+			reinterpret_cast<const uint8_t*>(input.p010Luma) +
+				static_cast<size_t>(y) * input.strideBytes);
+		// The parent bar anchor has already proved the backing.  Permit the
+		// same low-PQ, neutral, contrast-qualified glyph code on the picture
+		// side without reopening general scene acquisition.
+		return HasNeutralChroma(input, x, y) &&
+			P010Code(row, x) >= m_settings.minimumGlyphLuma &&
+			IsContrastGlyph(input, x, y, backingLuma);
+	};
 	for (int y = glyphBounds.top; y < glyphBounds.bottom; ++y)
 	{
 		const auto* row = reinterpret_cast<const uint16_t*>(
@@ -314,7 +336,7 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 			static_cast<size_t>(y) * input.strideBytes);
 		for (int x = glyphBounds.left; x < glyphBounds.right; ++x)
 		{
-			if (!IsGlyphSeed(input, x, y) ||
+			if (!isMemberSeed(x, y) ||
 				!IsContrastGlyph(input, x, y, backingLuma))
 				continue;
 			++seedPixels;
@@ -340,7 +362,7 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 			reinterpret_cast<const uint8_t*>(input.p010Luma) +
 			static_cast<size_t>(y) * input.strideBytes);
 		for (int x = glyphBounds.left; x < glyphBounds.right; ++x)
-			if (IsGlyphSeed(input, x, y) &&
+			if (isMemberSeed(x, y) &&
 				IsContrastGlyph(input, x, y, backingLuma))
 			{
 				// Normalize to the seed origin: a one-pixel source jitter does not
@@ -362,7 +384,7 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 			const auto* row = reinterpret_cast<const uint16_t*>(
 				reinterpret_cast<const uint8_t*>(input.p010Luma) +
 				static_cast<size_t>(y) * input.strideBytes);
-			occupied = IsGlyphSeed(input, x, y) &&
+			occupied = isMemberSeed(x, y) &&
 				IsContrastGlyph(input, x, y, backingLuma);
 		}
 		if (occupied)
@@ -373,7 +395,7 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 		else
 			++currentGap;
 	}
-	if (std::max(longestGap, currentGap) > maximumGap)
+	if (!allowExtentGaps && std::max(longestGap, currentGap) > maximumGap)
 		return false;
 
 	const int captureInset = std::max(22,
@@ -388,11 +410,12 @@ bool PanelSubtitleDetector::QualifyCandidate(const PanelSubtitleInput& input,
 	candidate.line.fingerprint = fingerprint;
 	candidate.line.backingLuma = backingLuma;
 	candidate.backingLuma = backingLuma;
+	candidate.anchoredPictureCompanion = cueAnchor != nullptr;
 	return true;
 }
 
 void PanelSubtitleDetector::BuildMask(const PanelSubtitleInput& input,
-	const std::array<Candidate, 3>& candidates, size_t candidateCount)
+	const std::array<Candidate, 48>& candidates, size_t candidateCount)
 {
 	const size_t pixels = input.width * input.height;
 	if (!m_workMask)
@@ -428,7 +451,10 @@ void PanelSubtitleDetector::BuildMask(const PanelSubtitleInput& input,
 			for (int x = nearby.left; x < nearby.right; ++x)
 			{
 				const uint16_t code = P010Code(row, x);
-				if (code >= threshold && IsGlyphSeed(input, x, y))
+				const bool memberSeed = candidates[index].anchoredPictureCompanion ?
+					(HasNeutralChroma(input, x, y) &&
+						code >= m_settings.minimumGlyphLuma) : IsGlyphSeed(input, x, y);
+				if (code >= threshold && memberSeed)
 				{
 					const size_t maskIndex =
 						static_cast<size_t>(y) * input.width + x;
@@ -571,7 +597,10 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 		}
 	}
 
-	std::array<Candidate, MaximumLines> candidates{};
+	// Keep raw qualification bounded, but do not let its storage limit decide
+	// how many semantic subtitle lines a cue may contain.  A long rendered line
+	// can legitimately arrive as several raw runs.
+	std::array<Candidate, MaximumRawCandidates> candidates{};
 	size_t candidateCount = 0;
 	for (size_t index = 0; index < lineCount && candidateCount < candidates.size(); ++index)
 	{
@@ -604,7 +633,26 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 		const int horizontalGap = std::max(0, std::max(a.left - b.right,
 			b.left - a.right));
 		if (verticalOverlap > 0 && horizontalGap > menuGap)
-			return false;
+		{
+			// A long subtitle line may be split into several adjacent raw runs.
+			// Reject separated menu items only when there is no same-baseline chain
+			// of bounded word gaps between them.
+			bool bridged = false;
+			for (size_t middle = 0; middle < candidateCount; ++middle)
+			{
+				if (middle == left || middle == right) continue;
+				const PanelSubtitleRect& c = candidates[middle].line.glyphBounds;
+				const int cOverlap = std::min(a.bottom, c.bottom) - std::max(a.top, c.top);
+				const int center = c.left + RectWidth(c) / 2;
+				const int aCenter = a.left + RectWidth(a) / 2;
+				const int bCenter = b.left + RectWidth(b) / 2;
+				if (cOverlap > 0 && center > std::min(aCenter, bCenter) &&
+					center < std::max(aCenter, bCenter))
+				{ bridged = true; break; }
+			}
+			if (!bridged)
+				return false;
+		}
 	}
 	// Pick one deterministic bar/boundary anchor, then build one connected cue
 	// from members on the same active-picture side.  Never union every detected
@@ -616,28 +664,157 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 			(candidates[index].line.seedPixels == candidates[anchorIndex].line.seedPixels &&
 				candidates[index].line.glyphBounds.top < candidates[anchorIndex].line.glyphBounds.top))
 			anchorIndex = index;
-	std::array<Candidate, MaximumLines> cueMembers{};
+	std::array<Candidate, MaximumRawCandidates> cueMembers{};
 	size_t cueMemberCount = 0;
 	cueMembers[cueMemberCount++] = candidates[anchorIndex];
-	PanelSubtitleRect combinedGlyph = candidates[anchorIndex].line.glyphBounds;
-	for (size_t index = 0; index < candidateCount && cueMemberCount < cueMembers.size(); ++index)
+	// Coalesce only raw fragments on the anchor's own baseline into its one
+	// semantic line.  This makes the public three-line limit semantic rather
+	// than an accidental cap on words/fragments.  The fixed root comparison
+	// prevents a chain of unrelated UI fragments from bridging in.
+	std::array<bool, MaximumRawCandidates> mergedFragments{};
+	mergedFragments[anchorIndex] = true;
+	bool mergedAnother = true;
+	while (mergedAnother)
 	{
-		if (index == anchorIndex ||
-			(IsTopCue(candidates[index].line.location) != IsTopCue(cueMembers[0].line.location)) ||
-			!RelatedCaptionMember(combinedGlyph, candidates[index].line.glyphBounds, height))
-			continue;
-		cueMembers[cueMemberCount++] = candidates[index];
-		combinedGlyph = UnionRectangle(combinedGlyph, candidates[index].line.glyphBounds);
+		mergedAnother = false;
+		for (size_t index = 0; index < candidateCount; ++index)
+		{
+			if (mergedFragments[index] ||
+				IsTopCue(candidates[index].line.location) != IsTopCue(cueMembers[0].line.location))
+				continue;
+			const PanelSubtitleRect& rootFragment = cueMembers[0].line.glyphBounds;
+			const PanelSubtitleRect& fragment = candidates[index].line.glyphBounds;
+			const int verticalOverlap = std::min(rootFragment.bottom, fragment.bottom) -
+				std::max(rootFragment.top, fragment.top);
+			const int neededOverlap = std::max(1, std::min(RectHeight(rootFragment),
+				RectHeight(fragment)) / 2);
+			const int horizontalGap = std::max(0, std::max(rootFragment.left - fragment.right,
+				fragment.left - rootFragment.right));
+			const int maximumFragmentGap = std::max(48,
+				3 * std::max(RectHeight(rootFragment), RectHeight(fragment)));
+			const PanelSubtitleRect expanded = UnionRectangle(rootFragment, fragment);
+			if (verticalOverlap < neededOverlap || horizontalGap > maximumFragmentGap ||
+				RectWidth(expanded) > width - std::max(32, width / 100))
+				continue;
+			mergedFragments[index] = true;
+			cueMembers[0].line.glyphBounds = expanded;
+			cueMembers[0].line.seedPixels += candidates[index].line.seedPixels;
+			cueMembers[0].line.fingerprint ^= candidates[index].line.fingerprint +
+				0x9e3779b97f4a7c15ULL + (cueMembers[0].line.fingerprint << 6) +
+				(cueMembers[0].line.fingerprint >> 2);
+			mergedAnother = true;
+		}
 	}
+	{
+		const int glyphHeight = RectHeight(cueMembers[0].line.glyphBounds);
+		const int captureInset = std::max(22,
+			static_cast<int>(std::ceil(glyphHeight * 1.6)));
+		cueMembers[0].line.captureBounds = ClampRectangle({
+			cueMembers[0].line.glyphBounds.left - std::max(32, captureInset),
+			cueMembers[0].line.glyphBounds.top - captureInset,
+			cueMembers[0].line.glyphBounds.right + std::max(32, captureInset),
+			cueMembers[0].line.glyphBounds.bottom + captureInset }, width, height);
+	}
+	PanelSubtitleRect combinedGlyph = candidates[anchorIndex].line.glyphBounds;
+	combinedGlyph = cueMembers[0].line.glyphBounds;
+	// The first qualified bar/boundary line is the sole anchor.  Do not spend
+	// semantic cue slots on additional raw bar fragments before looking inward
+	// for the caption's picture-side lines.
 	// Picture-side text is admitted only as a contrast-qualified member using
 	// the anchor's known bar backing.  It therefore receives both a mask and a
 	// stable-frame validation anchor; raw proposals never enter public geometry.
 	if (IsTrustedActivePicture(input))
-		for (size_t index = 0; index < lineCount && cueMemberCount < cueMembers.size(); ++index)
+	{
+		// The coarse HDR seed is intentionally disabled in the active picture
+		// during free acquisition. Once the bar anchor is known, make one bounded
+		// inward pass using that anchor's contrast threshold so low-PQ companion
+		// glyphs can become proposals without admitting scene highlights globally.
+		std::array<Proposal, 48> pictureProposals{};
+		size_t pictureProposalCount = 0;
+		const bool bottomCue = IsBottomCue(cueMembers[0].line.location);
+		const int pictureBoundary = std::max(32,
+			(height * m_settings.boundaryBandPercent + 99) / 100);
+		const int pictureStart = bottomCue ?
+			std::max(input.activePictureTop, input.activePictureBottom - pictureBoundary) :
+			input.activePictureTop;
+		const int pictureEnd = bottomCue ? input.activePictureBottom :
+			std::min(input.activePictureBottom, input.activePictureTop + pictureBoundary);
+		auto addPictureRun = [&](int left, int right, int y) {
+			if (right - left < 2) return;
+			size_t match = pictureProposalCount;
+			for (size_t proposalIndex = 0; proposalIndex < pictureProposalCount; ++proposalIndex)
+			{
+				Proposal& proposal = pictureProposals[proposalIndex];
+				const int distance = std::max(0, std::max(proposal.bounds.left - right,
+					left - proposal.bounds.right));
+				if (y - proposal.lastY <= std::max(rowGapLimit, scanStepY) &&
+					distance <= baselineMergeGap) { match = proposalIndex; break; }
+			}
+			if (match == pictureProposalCount)
+			{
+				if (pictureProposalCount < pictureProposals.size())
+					pictureProposals[pictureProposalCount++] = { { left, y, right,
+						std::min(height, y + scanStepY) }, y };
+				return;
+			}
+			Proposal& proposal = pictureProposals[match];
+			proposal.bounds = UnionRectangle(proposal.bounds, { left, y, right,
+				std::min(height, y + scanStepY) });
+			proposal.lastY = y;
+		};
+		const uint16_t anchorThreshold = static_cast<uint16_t>(std::min<int>(1023,
+			static_cast<int>(cueMembers[0].backingLuma) + m_settings.minimumGlyphContrast));
+		for (int y = pictureStart; y < pictureEnd; y += scanStepY)
 		{
-			const PanelSubtitleRect& bounds = lines[index];
+			const auto* row = reinterpret_cast<const uint16_t*>(
+				reinterpret_cast<const uint8_t*>(input.p010Luma) + static_cast<size_t>(y) * input.strideBytes);
+			int left = -1;
+			int lastSeed = -1;
+			for (int x = 0; x < width; x += scanStepX)
+			{
+				const uint16_t code = P010Code(row, x);
+				const bool seed = HasNeutralChroma(input, x, y) &&
+					code >= m_settings.minimumGlyphLuma && code >= anchorThreshold &&
+					(code >= std::max<uint16_t>(620, m_settings.minimumGlyphLuma) ||
+						// Keep diffuse strokes below normal picture background; they still
+						// need local dark support rather than becoming a broad scene seed.
+						(code < std::max<uint16_t>(600,
+							static_cast<uint16_t>(m_settings.minimumGlyphLuma + 64)) &&
+							HasLocalDarkSupport(input, x, y, code)));
+				if (seed) { if (left < 0) left = x; lastSeed = x; }
+				else if (left >= 0 && x - lastSeed > characterGap)
+				{ addPictureRun(left, std::min(width, lastSeed + scanStepX), y); left = lastSeed = -1; }
+			}
+			if (left >= 0) addPictureRun(left, std::min(width, lastSeed + scanStepX), y);
+		}
+		std::array<PanelSubtitleRect, 48> companionBounds{};
+		size_t companionBoundCount = 0;
+		for (size_t proposalIndex = 0; proposalIndex < pictureProposalCount; ++proposalIndex)
+		{
+			const PanelSubtitleRect& proposal = pictureProposals[proposalIndex].bounds;
+			size_t match = companionBoundCount;
+			for (size_t boundIndex = 0; boundIndex < companionBoundCount; ++boundIndex)
+			{
+				const PanelSubtitleRect& existing = companionBounds[boundIndex];
+				const int overlap = std::min(existing.bottom, proposal.bottom) - std::max(existing.top, proposal.top);
+				const int gap = std::max(0, proposal.left - existing.right);
+				if (overlap >= std::min(RectHeight(existing), RectHeight(proposal)) / 2 &&
+					gap <= std::max(height * 24 / 1080, 2 * std::max(RectHeight(existing), RectHeight(proposal))))
+				{ match = boundIndex; break; }
+			}
+			if (match == companionBoundCount) { if (companionBoundCount < companionBounds.size()) companionBounds[companionBoundCount++] = proposal; }
+			else companionBounds[match] = UnionRectangle(companionBounds[match], proposal);
+		}
+		std::array<Candidate, MaximumLines - 1> companions{};
+		size_t companionCount = 0;
+		for (size_t index = 0; index < companionBoundCount && companionCount < companions.size(); ++index)
+		{
+			const PanelSubtitleRect& bounds = companionBounds[index];
 			if (!IsPictureOnly(input, bounds) ||
-				!RelatedCaptionMember(combinedGlyph, bounds, height))
+				!RelatedCaptionMember(cueMembers[0].line.glyphBounds, bounds, height))
+				continue;
+			if ((bottomCue && bounds.bottom > cueMembers[0].line.glyphBounds.top) ||
+				(!bottomCue && bounds.top < cueMembers[0].line.glyphBounds.bottom))
 				continue;
 			const int glyphWidth = RectWidth(bounds);
 			const int glyphHeight = RectHeight(bounds);
@@ -648,9 +825,43 @@ bool PanelSubtitleDetector::BuildCandidate(const PanelSubtitleInput& input,
 			Candidate companion;
 			if (!QualifyCandidate(input, bounds, companion, &cueMembers[0]))
 				continue;
-			cueMembers[cueMemberCount++] = companion;
-			combinedGlyph = UnionRectangle(combinedGlyph, bounds);
+			companions[companionCount++] = companion;
 		}
+		// Anchor-rooted inward stack: bottom cues add the nearest lines above;
+		// top cues add the nearest lines below.  Every companion is related to
+		// the immutable anchor, never to a previously admitted companion, so UI
+		// cannot bridge itself into a cue transitively.
+		std::sort(companions.begin(), companions.begin() + companionCount,
+			[&](const Candidate& left, const Candidate& right) {
+				return IsBottomCue(cueMembers[0].line.location) ?
+					left.line.glyphBounds.bottom > right.line.glyphBounds.bottom :
+					left.line.glyphBounds.top < right.line.glyphBounds.top;
+			});
+		for (size_t index = 0; index < companionCount; ++index)
+		{
+			cueMembers[cueMemberCount++] = companions[index];
+			combinedGlyph = UnionRectangle(combinedGlyph,
+				companions[index].line.glyphBounds);
+		}
+	}
+	else
+	{
+		for (size_t index = 0; index < candidateCount && cueMemberCount < MaximumLines; ++index)
+		{
+			if (index == anchorIndex || !RelatedCaptionMember(
+				cueMembers[0].line.glyphBounds, candidates[index].line.glyphBounds, height))
+				continue;
+			cueMembers[cueMemberCount++] = candidates[index];
+			combinedGlyph = UnionRectangle(combinedGlyph, candidates[index].line.glyphBounds);
+		}
+	}
+	// Derive public geometry from the final semantic member list in one pass.
+	// Incremental proposal geometry must never survive companion ordering or
+	// fragment coalescing and leave an admitted member outside the cue box.
+	combinedGlyph = cueMembers[0].line.glyphBounds;
+	for (size_t index = 1; index < cueMemberCount; ++index)
+		combinedGlyph = UnionRectangle(combinedGlyph,
+			cueMembers[index].line.glyphBounds);
 	BuildMask(input, cueMembers, cueMemberCount);
 	int largestMemberHeight = 0;
 	for (size_t index = 0; index < cueMemberCount; ++index)
@@ -731,11 +942,20 @@ bool PanelSubtitleDetector::HasStableSeedOverlap(const PanelSubtitleInput& input
 	uint32_t currentSeeds = 0;
 	uint32_t previousSeeds = 0;
 	uint32_t overlap = 0;
+	const bool anchoredPictureMember = IsPictureOnly(input, line.glyphBounds) &&
+		line.location != PanelSubtitleLocation::None;
 	for (int y = line.glyphBounds.top; y < line.glyphBounds.bottom; ++y)
 		for (int x = line.glyphBounds.left; x < line.glyphBounds.right; ++x)
 		{
 			const size_t index = static_cast<size_t>(y) * input.width + x;
-			const bool current = IsGlyphSeed(input, x, y) &&
+			const auto* row = reinterpret_cast<const uint16_t*>(
+				reinterpret_cast<const uint8_t*>(input.p010Luma) +
+				static_cast<size_t>(y) * input.strideBytes);
+			const bool currentSeed = anchoredPictureMember ?
+				(HasNeutralChroma(input, x, y) &&
+					P010Code(row, x) >= m_settings.minimumGlyphLuma) :
+				IsGlyphSeed(input, x, y);
+			const bool current = currentSeed &&
 				IsContrastGlyph(input, x, y, line.backingLuma);
 			const bool previous = (*m_stable.softGlyphMask)[index] != 0;
 			currentSeeds += current;
@@ -758,13 +978,13 @@ bool PanelSubtitleDetector::ValidateStable(const PanelSubtitleInput& input,
 	// frozen glyph/capture ROI, rebuild the local mask, and keep the confirmed
 	// capture geometry. A failed validation immediately falls back to full
 	// acquisition below.
-	std::array<Candidate, MaximumLines> candidates{};
+	std::array<Candidate, MaximumRawCandidates> candidates{};
 	for (size_t index = 0; index < m_stable.cue.memberCount; ++index)
 	{
 		const Candidate* anchor = index != 0 && IsPictureOnly(input,
 			m_stable.cue.members[index].glyphBounds) ? &candidates[0] : nullptr;
 		if (!QualifyCandidate(input, m_stable.cue.members[index].glyphBounds,
-			candidates[index], anchor) ||
+			candidates[index], anchor, index == 0) ||
 			!HasStableSeedOverlap(input, m_stable.cue.members[index]) ||
 			candidates[index].line.location != m_stable.cue.members[index].location ||
 			std::abs(static_cast<int>(candidates[index].line.seedPixels) -

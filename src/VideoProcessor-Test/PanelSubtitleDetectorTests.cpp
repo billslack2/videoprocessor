@@ -563,6 +563,98 @@ namespace Tests
 			Assert::IsTrue(luma == before);
 		}
 
+		TEST_METHOD(FragmentedBarAnchorKeepsWideLowPqPictureCompanion)
+		{
+			std::vector<uint16_t> frame = Frame();
+			Fill(frame, 0, 80, Width, Height, 80);
+			// Four lower-bar word fragments exceed the former three-candidate cap.
+			// Their 17px gaps deliberately prevent raw-line merging at this raster.
+			for (const int left : { 15, 47, 79, 111 })
+				Fill(frame, left, 86, left + 15, 94, 820);
+			// The upper line is wider, offset, wholly in picture, and diffuse PQ
+			// white. It must be discovered only after the bar anchor is trusted.
+			Fill(frame, 30, 60, 145, 78, 80);
+			for (int left = 35; left < 140; left += 14)
+				Fill(frame, left, 65, left + 6, 73, 510);
+
+			PanelSubtitleDetector detector;
+			detector.Analyze(ActiveInput(frame, 1, 0, 80));
+			const PanelSubtitleResult stable =
+				detector.Analyze(ActiveInput(frame, 2, 0, 80));
+			Assert::AreEqual(static_cast<int>(PanelSubtitleState::Stable),
+				static_cast<int>(stable.state));
+			Assert::AreEqual(static_cast<size_t>(2), stable.cue.memberCount);
+			Assert::AreEqual(65, stable.cue.members[1].glyphBounds.top);
+			Assert::IsTrue(stable.cue.glyphBounds.left <= 15);
+			Assert::IsTrue(stable.cue.glyphBounds.right >= 139);
+			Assert::AreEqual(65, stable.cue.glyphBounds.top);
+			Assert::IsTrue((*stable.softGlyphMask)[68 * Width + 80] != 0);
+			Assert::IsTrue((*stable.softGlyphMask)[90 * Width + 22] != 0);
+			const PanelSubtitleResult verified =
+				detector.Analyze(ActiveInput(frame, 3, 0, 80));
+			Assert::AreEqual(static_cast<int>(PanelSubtitleState::Stable),
+				static_cast<int>(verified.state));
+			Assert::AreEqual(static_cast<size_t>(2), verified.cue.memberCount);
+			Assert::IsTrue(verified.currentMaskVerified);
+
+			std::vector<uint16_t> chroma(Width * Height / 2,
+				static_cast<uint16_t>(512 << 6));
+			Assert::IsTrue(PanelSubtitleDiagnostic::Apply(stable, {
+				frame.data(), chroma.data(), Width, Height,
+				Width * sizeof(uint16_t), Width * sizeof(uint16_t) },
+				PanelSubtitleTestMode::Highlight, 0, 80));
+			Assert::AreEqual(static_cast<unsigned int>(900 << 6),
+				static_cast<unsigned int>(frame[68 * Width + 80]));
+		}
+
+		TEST_METHOD(PictureCompanionsCannotBridgeInwardTransitively)
+		{
+			std::vector<uint16_t> frame = Frame();
+			Fill(frame, 0, 80, Width, Height, 80);
+			Fill(frame, 60, 86, 100, 94, 820);
+			// This is a legitimate offset companion: it barely overlaps the
+			// anchor, as a wider line in picture can legitimately do.
+			Fill(frame, 90, 60, 140, 78, 80);
+			Fill(frame, 95, 65, 135, 73, 620);
+			// This UI item is close to that companion, but its edge is far from the
+			// bar anchor. A transitive implementation would incorrectly admit it.
+			Fill(frame, 140, 45, 160, 63, 80);
+			Fill(frame, 145, 50, 159, 58, 620);
+			PanelSubtitleDetector detector;
+			detector.Analyze(ActiveInput(frame, 1, 0, 80));
+			const PanelSubtitleResult stable =
+				detector.Analyze(ActiveInput(frame, 2, 0, 80));
+			Assert::AreEqual(static_cast<int>(PanelSubtitleState::Stable),
+				static_cast<int>(stable.state));
+			Assert::AreEqual(static_cast<size_t>(2), stable.cue.memberCount);
+			Assert::IsTrue(stable.cue.glyphBounds.top >= 65);
+		}
+
+		TEST_METHOD(AnchorRootedPictureStackKeepsThreeLineReadingOrder)
+		{
+			std::vector<uint16_t> frame = Frame();
+			Fill(frame, 0, 80, Width, Height, 80);
+			Fill(frame, 60, 86, 100, 94, 820);
+			// Two picture-side lines belong to the bottom-bar anchor.  The
+			// detector must retain semantic (not raw-fragment) line ordering.
+			Fill(frame, 55, 60, 105, 78, 80);
+			Fill(frame, 60, 65, 100, 73, 620);
+			Fill(frame, 55, 43, 105, 61, 80);
+			Fill(frame, 60, 48, 100, 56, 620);
+
+			PanelSubtitleDetector detector;
+			detector.Analyze(ActiveInput(frame, 1, 0, 80));
+			const PanelSubtitleResult stable =
+				detector.Analyze(ActiveInput(frame, 2, 0, 80));
+			Assert::AreEqual(static_cast<int>(PanelSubtitleState::Stable),
+				static_cast<int>(stable.state));
+			Assert::AreEqual(static_cast<size_t>(3), stable.cue.memberCount);
+			Assert::IsTrue(stable.cue.members[0].glyphBounds.top >
+				stable.cue.members[1].glyphBounds.top);
+			Assert::IsTrue(stable.cue.members[1].glyphBounds.top >
+				stable.cue.members[2].glyphBounds.top);
+		}
+
 		TEST_METHOD(RejectsSeparatedMenuHighlightsAndKeepsFrozenCaptureBox)
 		{
 			PanelSubtitleDetector detector;

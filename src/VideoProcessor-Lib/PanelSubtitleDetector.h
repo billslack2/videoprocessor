@@ -156,6 +156,10 @@ private:
 	{
 		PanelSubtitleGlyphLine line;
 		uint16_t backingLuma = 0;
+		// A picture-side member is eligible only through an already-qualified
+		// bar/boundary anchor.  It may use the HDR-safe cue threshold, but never
+		// participates in free acquisition.
+		bool anchoredPictureCompanion = false;
 	};
 
 	static bool IsValid(const PanelSubtitleRect& rectangle);
@@ -175,9 +179,9 @@ private:
 	bool IsInSearchDomain(const PanelSubtitleInput& input, int y) const;
 	bool QualifyCandidate(const PanelSubtitleInput& input,
 		const PanelSubtitleRect& glyphBounds, Candidate& candidate,
-		const Candidate* cueAnchor = nullptr);
+		const Candidate* cueAnchor = nullptr, bool allowExtentGaps = false);
 	void BuildMask(const PanelSubtitleInput& input,
-		const std::array<Candidate, 3>& candidates, size_t candidateCount);
+		const std::array<Candidate, 48>& candidates, size_t candidateCount);
 	bool BuildCandidate(const PanelSubtitleInput& input,
 		PanelSubtitleResult& result);
 	bool ValidateStable(const PanelSubtitleInput& input,
