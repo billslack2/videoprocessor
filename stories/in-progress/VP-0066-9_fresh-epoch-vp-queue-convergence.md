@@ -259,6 +259,31 @@ recreation; it cannot cycle additional in-place or source-gap resets.
    `2B7EEC302837418D3B463C619A85B1F8D299263BB8FFF2114390D1EB6A9402F4`
    for `VideoProcessorVPRenderer.dll`; active configuration was unchanged.
    Live validation remains pending.
+10. **Truthful VP-owned latency boundaries (implemented; awaiting live
+    validation):** the old `VP Lat` and `DS Lat` values were both derived from
+    an offset-adjusted capture timestamp and did not describe downstream or
+    display latency. The UI and OSD now report `VP Internal`, the remaining
+    `DS Lead`, and `VP->Scheduled`. `VP Internal` begins when VP accepts the
+    capture frame and ends at its DirectShow delivery attempt. `DS Lead` is
+    that same sample's requested presentation start minus current graph stream
+    time; `VP->Scheduled` is their sum. It ends at the requested DirectShow
+    presentation time and makes no claim about madVR presentation, scanout, or
+    physical-display latency. Capture hardware latency is explicitly shown as
+    unavailable because DeckLink does not expose the HDMI-input-to-arrival
+    interval.
+
+    The monotonic VP boundary is supported for every timestamp method. Full
+    and start-only DirectShow timestamp modes also publish the scheduled
+    boundary; the `None` method publishes only `VP Internal` and displays the
+    other fields as unavailable without retaining a stale value from another
+    mode. For Rational-Rational, the offset line states that the legacy frame
+    offset is not used for RR presentation timestamps. Source commits
+    `35e7301` and `a242426` passed a clean x64 Release rebuild and 368/368
+    native tests. The paired deployment hashes are
+    `C02D5E94024168CBF80D0D3B3ECBEC541AED05C45825EDF01B73A171A2D904F7`
+    for `VideoProcessor.exe` and
+    `11B753CEE92E88CCD6C63A9341F4FB038A7482D426124AFFC2B77F14415A3487`
+    for `VideoProcessorVPRenderer.dll`; active configuration was unchanged.
 
 ## Acceptance criteria
 
@@ -266,7 +291,7 @@ recreation; it cannot cycle additional in-place or source-gap resets.
   already met, automatic policy, one-shot behavior, fail-closed boundaries,
   timestamp/media ownership, rearm on a new epoch, rate-aware material-gap
   recovery, reset-request latching, transition priority, and healthy re-arm.
-  The current native suite passes 365/365 tests in x64 Release.
+  The current native suite passes 368/368 tests in x64 Release.
 - A convergence never happens in an unchanged steady epoch.
 - Normal, no-trim delivery preserves monotonic 60000/1001 and 24000/1001
   timestamps exactly within existing documented rounding tolerance.
