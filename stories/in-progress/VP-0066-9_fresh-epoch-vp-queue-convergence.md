@@ -301,6 +301,16 @@ recreation; it cannot cycle additional in-place or source-gap resets.
     `B81D06E1658833541AB33180075646FC09CF012020A15326094A8346D5F83D18`
     for `VideoProcessorVPRenderer.dll`; configuration remained unchanged.
 
+    Layout follow-up commit `557bf4a` gives the main dialog three aligned
+    latency rows (`VP`, `DS lead`, and `Scheduled`), compacts the OSD labels,
+    and corrects the OSD height calculation from the previous two-row budget
+    to the actual three rows. It passed the clean 370/370 x64 Release suite.
+    Deployment hashes are
+    `D941BA08AD6194C613BAA88DB9C7EE7BA0DD5151395B52CEA3CCA6D64B471B5C`
+    for `VideoProcessor.exe` and
+    `BCF420C4DC37B39D1DDDCADAF04AC518D39E16E54F7E337D2E046E03701277C2`
+    for `VideoProcessorVPRenderer.dll`; configuration remained unchanged.
+
 ## Acceptance criteria
 
 - Unit tests cover startup prime, startup stalls, normal delivery, target
