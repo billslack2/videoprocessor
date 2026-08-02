@@ -2,8 +2,10 @@
 
 ## Status
 
-Backlog. Design, measurement, and validation are required before changing the
-default or removing the manual control.
+Will Not Do (superseded by VP-0069 on 2026-08-02). The frame-offset and
+Alpha-semantic requirements remain required, but are now part of the single
+end-to-end low-latency qualification story rather than a separate policy
+project. No implementation was performed under this story.
 
 ## User story
 

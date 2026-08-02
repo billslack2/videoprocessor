@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0072`
-- Next root story number: `VP-0073`
-- Total indexed items: 85
+- Last assigned root story: `VP-0073`
+- Next root story number: `VP-0074`
+- Total indexed items: 87
 
 ## Story locations
 
@@ -83,7 +83,7 @@ they must not contain requirements that are absent from this file.
 | VP-0055 | Done | Display-rate outlier quarantine and transition warm-up |
 | VP-0057 | Done | Re-prime Alpha when it exceeds the configured queue limit |
 | VP-0058 | Backlog | ReShade compatibility prototype with madVR |
-| VP-0059 | Backlog | Stable per-mode frame-offset policy and Alpha semantics |
+| VP-0059 | Will Not Do | Stable per-mode frame-offset policy and Alpha semantics (superseded by VP-0069) |
 | VP-0060 | Done | Reduce madVR fullscreen transition latency with stable target ownership |
 | VP-0061 | Blocked | DirectShow in-place reset re-prime with asymmetric madVR queues |
 | VP-0062 | Backlog | NLS safe full-raster fallback for high-black UI and artwork |
@@ -94,6 +94,7 @@ they must not contain requirements that are absent from this file.
 | VP-0067 | Backlog | Upgrade VideoProcessor to C++17 |
 | VP-0068 | Backlog | Evaluate a native Blackmagic SDK capture path and complete frame metadata contract |
 | VP-0069 | Backlog | Achieve and verify a 50 ms low-latency Alpha renderer path |
+| VP-0069-1 | Backlog | Native-format Alpha ingress and conditional P010 analysis |
 | VP-0070 | Backlog | CIH bar/boundary subtitle capture and relocation |
 | VP-0070-1 | Backlog | Bar/boundary CueSet architecture and detector benchmark |
 | VP-0070-2 | Backlog | Stable boundary-crossing diagnostic overlay |
@@ -102,6 +103,7 @@ they must not contain requirements that are absent from this file.
 | VP-0070-5 | Backlog | Extract subtitle analysis and relocation pipeline |
 | VP-0071 | Backlog | Compose the VP diagnostics OSD through madVR |
 | VP-0072 | Backlog | Repair or explicitly constrain DirectShow no-stop timestamp modes |
+| VP-0073 | Backlog | Diagnose and minimally repair keyboard-command responsiveness |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Review | Extract epoch-aware frame transport and processing components |

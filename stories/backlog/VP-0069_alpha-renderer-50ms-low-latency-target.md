@@ -148,6 +148,22 @@ hold the target without drops or unstable pacing.
 - If a 50 ms total is not feasible on a given chain, logs and documentation
   identify the limiting external stage and the best verified VP-side result.
 
+## Decomposition
+
+The root remains the end-to-end latency objective and cannot close until its
+required child work and physical qualification are complete.
+
+1. **VP-0069-1 — Native-format Alpha ingress and conditional P010 analysis.**
+   Establish whether the unconditional full-frame CPU P010 conversion can be
+   removed for supported source formats without losing color correctness,
+   active-picture/NLS, subtitle/glyph, scene, or low-latency behavior. This
+   child must finish before VP-0069 chooses a production low-latency format
+   path.
+
+VP-0059 is superseded by this root: its frame-offset requirements are retained
+above under **Frame-offset and timing policy**, and are evaluated as part of
+the end-to-end qualification rather than as a separate policy project.
+
 ## Out of scope
 
 Guaranteeing 50 ms on arbitrary projectors/AVRs/capture cards; DirectShow or
