@@ -2,9 +2,12 @@
 
 ## Status
 
-In Progress (2026-07-31). This child follows the live evidence from
-VP-0066-6. It is not a madVR queue controller and never runs during ordinary
-steady playback.
+Review (2026-08-02). Fresh-epoch VP queue convergence is included in stable
+baseline `f4a443e` / `vp-0066-stable-baseline-20260802`. The clean x64 Release
+suite passes 455/455 tests, and live validation covered graph start/reset,
+renderer retarget, slow HDMI synchronization, and asymmetric madVR queues.
+It is not a madVR queue controller and does not run during ordinary steady
+playback.
 
 ## Parent and dependencies
 

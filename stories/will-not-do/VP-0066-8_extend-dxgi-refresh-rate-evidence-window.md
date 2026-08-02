@@ -2,12 +2,14 @@
 
 ## Status
 
-Backlog. This child follows VP-0066-7 and isolates the measurement-stability
-policy from the transition-invalidation policy.
+Will Not Do (2026-08-02). Extending a DXGI-only evidence window is superseded
+by the implemented madVR detected refresh-rate source and periodic runtime
+sampling in stable baseline `f4a443e`. The retained DXGI estimator is
+supporting telemetry rather than the renderer timing authority.
 
 ## Parent and dependencies
 
-Parent: [VP-0066](VP-0066_rearchitect-live-video-output-pipeline.md).
+Former parent: [VP-0066](../review/VP-0066_rearchitect-live-video-output-pipeline.md).
 
 Related child: [VP-0066-7](VP-0066-7_refresh-rate-invalidation-and-reacquisition.md).
 The implementation must use the shared display-rate estimator and readiness

@@ -2,7 +2,13 @@
 
 ## Status
 
-In Progress (2026-07-31). The graph-independent C++14 state machine and
+Review (2026-08-02). The final output-readiness, renderer-observation, and
+deterministic VP-owned reserve behavior is included in stable baseline
+`f4a443e` / `vp-0066-stable-baseline-20260802`; the clean x64 Release suite
+passes 455/455 tests and the parent records monitor and slow-Epson live
+validation. The implementation history follows.
+
+The graph-independent C++14 state machine and
 DirectShow reserve gate are implemented, unit-tested, and deployed for the
 next live check. Normal live video starts provisionally. Once VP observes two
 seconds of credible, fresh DXGI `WaitForVBlank` evidence that also passes

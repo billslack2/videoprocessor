@@ -2,12 +2,11 @@
 
 ## Status
 
-In Progress (2026-07-30). The core transport and processor extraction is
-implemented and live-validated through x64 Release build 307/307. It remains
-open only for the final golden-trace/latency guardrail evidence. Subtitle OCR,
-tracking, and relocation are now tracked separately in [VP-0066-5]
-(VP-0066-5_extract-subtitle-analysis-and-relocation.md): they are substantial
-content processing, not a prerequisite for the live timing/readiness pipeline.
+Review (2026-08-02). The transport and processor extraction is included in
+stable baseline `f4a443e` / `vp-0066-stable-baseline-20260802`. The final
+cross-component guardrail is covered by the clean 455/455 x64 Release suite
+and the accepted live runs recorded by the parent. Subtitle OCR, tracking,
+and relocation remain separate and are now tracked by VP-0070-5.
 
 Implementation checkpoint (2026-07-30): `EpochBoundedQueue` is now a
 graph-free C++14-compatible transport primitive. `CaptureFrameQueue` owns the
@@ -73,7 +72,7 @@ capture-to-Deliver guardrail measurement on the next live run.
 
 Parent: [VP-0066](VP-0066_rearchitect-live-video-output-pipeline.md).
 
-Dependency: [VP-0066-2](VP-0066-2_extract-graph-independent-video-timing-controller.md).
+Dependency: [VP-0066-2](../done/VP-0066-2_extract-graph-independent-video-timing-controller.md).
 VP-0066-4 may begin only after this task is accepted.
 
 ## Objective and scope

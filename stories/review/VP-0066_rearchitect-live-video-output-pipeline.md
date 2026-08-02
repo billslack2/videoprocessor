@@ -2,10 +2,27 @@
 
 ## Status
 
-In Progress (2026-07-30). This is a large, behavior-preserving architecture
-story. VP-0066-1 and VP-0066-2 are accepted; VP-0066-3 and VP-0066-4 remain
-in progress. The root remains incomplete until its child tasks and the
-cross-component latency guardrail pass.
+Review (2026-08-02). The tested implementation is committed as `f4a443e`
+(`VP-0066 establish stable live delivery baseline`) and annotated with
+`vp-0066-stable-baseline-20260802`. A clean x64 Release rebuild identifies
+that exact commit/tag with `VERSION_DIRTY=false`; the complete native suite
+passes 455/455 tests. Live validation covered Rational-Rational and
+Clock-Smart2 delivery, 23.976 and 59.94 material, asymmetric madVR queue
+settings, monitor and slow-Epson HDMI behavior, renderer resets/restarts,
+source/app changes, and windowed/fullscreen retargets. The configured
+post-retarget LiveQueue normalization reset restores the deterministic
+VP-owned reserve without depending on madVR's opaque live occupancy.
+
+VP-0066-3, VP-0066-4, VP-0066-6, and VP-0066-9 are implemented and enter
+review with this root. VP-0066-5 is deliberately superseded by VP-0070-5;
+VP-0066-7 and VP-0066-8 will not be implemented because madVR's detected
+refresh-rate interface replaced the planned DXGI-only authority/window work.
+No VP-0066 child remains in progress.
+
+Merged to `origin/v1.1.015-beta` as `d6dbd8b` on 2026-08-02. A
+post-commit x64 Release rebuild reports that merge commit with
+`VERSION_DIRTY=false`, and all 455 native tests pass. The story remains in
+Review pending acceptance of the beta merge.
 
 ## Decomposition
 
@@ -13,9 +30,9 @@ This root story is a completion roll-up; implementation proceeds through these
 ordered, independently testable tasks rather than through unverified internal
 class extractions:
 
-1. [VP-0066-1](VP-0066-1_characterize-live-output-golden-traces.md) — capture
+1. [VP-0066-1](../done/VP-0066-1_characterize-live-output-golden-traces.md) — capture
    the current behavior in replayable golden traces and latency measurements.
-2. [VP-0066-2](VP-0066-2_extract-graph-independent-video-timing-controller.md)
+2. [VP-0066-2](../done/VP-0066-2_extract-graph-independent-video-timing-controller.md)
    — extract and unit-test timing as a graph-independent component while
    comparing decisions with the baseline traces.
 3. [VP-0066-3](VP-0066-3_extract-epoch-aware-frame-transport-and-processing.md)
@@ -24,18 +41,21 @@ class extractions:
 4. [VP-0066-4](VP-0066-4_integrate-directshow-delivery-and-lifecycle.md) —
    integrate DirectShow delivery, workers, reset/shutdown coordination, and
    whole-pipeline regression validation.
-5. [VP-0066-5](VP-0066-5_extract-subtitle-analysis-and-relocation.md) —
-   extract the separately-scoped subtitle analysis and relocation feature.
+5. [VP-0066-5](../will-not-do/VP-0066-5_extract-subtitle-analysis-and-relocation.md)
+   — retain the original ID as superseded; the separately-scoped subtitle
+   pipeline continues as [VP-0070-5](../backlog/VP-0070-5_extract-subtitle-analysis-and-relocation.md).
 6. [VP-0066-6](VP-0066-6_output-readiness-and-deterministic-prefill.md) -
    introduce the separately approved deterministic output-readiness and
    post-ready prefill policy after the behavior-preserving seams are proven.
-7. [VP-0066-9](../in-progress/VP-0066-9_fresh-epoch-vp-queue-convergence.md)
+7. [VP-0066-9](VP-0066-9_fresh-epoch-vp-queue-convergence.md)
    - converge VP-owned startup backlog once per fresh graph epoch without
    treating madVR's opaque queue as feedback.
 
-Each task depends on the preceding task's accepted evidence. This root may
-move to `Done` only after its child tasks are done and its complete
-cross-component acceptance criteria and latency guardrail have passed.
+VP-0066-7 and VP-0066-8 are retained in `will-not-do` as superseded DXGI-only
+follow-ups.
+
+This root may move to `Done` after beta-branch merge review and acceptance of
+the recorded build, test, and live-validation evidence.
 
 ## User story
 

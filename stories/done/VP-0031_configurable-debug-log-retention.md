@@ -2,7 +2,7 @@
 
 ## Status
 
-Complete. Implemented by commit `e016e1f` and merged into the default
+Done. Implemented by commit `e016e1f` and merged into the default
 integration branch `v1.1.014-beta` by pull request #14 as merge commit
 `48fc10d`. The implementation includes VP-0030 as the required fixed-retention
 engine. Deployment acceptance was confirmed by the user on 2026-07-27.

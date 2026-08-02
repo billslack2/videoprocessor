@@ -2,15 +2,17 @@
 
 ## Status
 
-Backlog. This is a follow-up child of VP-0066 focused on deciding when a
-measured display rate is no longer trustworthy and when the renderer may use a
-new measurement for deterministic re-prime decisions.
+Will Not Do (2026-08-02). The planned DXGI-centered invalidation authority was
+superseded by the implemented madVR `IMadVRInfo` detected refresh-rate source,
+periodic runtime telemetry, and transition/reset generation handling in
+stable baseline `f4a443e`. VP retains DXGI/Windows observations as supporting
+diagnostics rather than building this second readiness authority.
 
 ## Parent and dependencies
 
-Parent: [VP-0066](VP-0066_rearchitect-live-video-output-pipeline.md).
+Former parent: [VP-0066](../review/VP-0066_rearchitect-live-video-output-pipeline.md).
 
-Related child: [VP-0066-6](VP-0066-6_output-readiness-and-deterministic-prefill.md).
+Related child: [VP-0066-6](../review/VP-0066-6_output-readiness-and-deterministic-prefill.md).
 The implementation must reuse the existing display-rate estimator and output-
 readiness model rather than creating a second refresh-rate authority. The
 validated queue/timing boundaries from VP-0066-3 and VP-0066-4 remain required

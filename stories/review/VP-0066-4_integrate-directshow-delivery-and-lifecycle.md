@@ -2,7 +2,12 @@
 
 ## Status
 
-In Progress (2026-07-30). `DirectShowFrameDeliverer` now owns the media-type
+Review (2026-08-02). The DirectShow delivery and lifecycle integration is
+included in stable baseline `f4a443e` / `vp-0066-stable-baseline-20260802`.
+The clean x64 Release suite passes 455/455 tests and the parent records the
+completed live-transition validation. The implementation history follows.
+
+`DirectShowFrameDeliverer` now owns the media-type
 attachment/delivery/completion transaction for buffered and unbuffered pins,
 plus the existing first-delivered-sample discontinuity and SMART late-bound
 stop preparation. `DirectShowDeliveryOutcomeClassifier` now classifies the
@@ -10,8 +15,7 @@ existing latency bands and success/failure counter effects without a graph;
 `DirectShowSegmentTransition` owns the renderer-facing
 BeginFlush → state-transition → EndFlush → NewSegment order. Both have
 controlled-callback tests and a live x64 Release reset validation with no
-observed behavior change. Final completion remains dependent on VP-0066-3's
-golden-trace/latency evidence.
+observed behavior change.
 
 ## Parent and dependency
 

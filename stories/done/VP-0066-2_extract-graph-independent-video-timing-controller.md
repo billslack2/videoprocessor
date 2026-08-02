@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-07-30). VP-0066-1's self-identifying baseline is accepted for
+Done (2026-07-30). VP-0066-1's self-identifying baseline is accepted for
 extraction, including the 24000/1001 capture-to-monitor cadence-mismatch
 fixture. Display-refresh telemetry remains an explicit optional follow-up.
 
@@ -47,7 +47,7 @@ DirectShow delivery, nor the existing non-Rational/Rational runtime paths.
 
 ## Parent and dependency
 
-Parent: [VP-0066](VP-0066_rearchitect-live-video-output-pipeline.md).
+Parent: [VP-0066](../review/VP-0066_rearchitect-live-video-output-pipeline.md).
 
 Dependency: [VP-0066-1](VP-0066-1_characterize-live-output-golden-traces.md).
 VP-0066-3 may begin only after this task is accepted.

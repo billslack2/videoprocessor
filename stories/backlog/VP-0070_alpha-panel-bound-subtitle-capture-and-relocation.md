@@ -123,9 +123,12 @@ never controls visual geometry.
 4. [VP-0070-4](VP-0070-4_panel-subtitle-live-validation-and-performance.md)
    — validate real Apple TV captures, stability, failure behavior, and the
    VP-0066 low-latency evidence.
+5. [VP-0070-5](VP-0070-5_extract-subtitle-analysis-and-relocation.md) —
+   extract subtitle acquisition, analysis, tracking, restoration, and
+   relocation from the live pin behind the accepted CueSet contract.
 
 Each later child depends on acceptance of the previous one. The root is done
-only when all four are done and the input contract has been demonstrated on
+only when all five are done and the input contract has been demonstrated on
 representative live captures.
 
 ## Validation requirements

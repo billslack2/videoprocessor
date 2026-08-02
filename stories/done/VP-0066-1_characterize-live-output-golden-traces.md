@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for extraction (2026-07-30). This task establishes the
+Done (2026-07-30). Accepted for extraction. This task establishes the
 behavior-preserving baseline required by the VP-0066 refactor. It does not
 change pipeline behavior or start component extraction.
 
@@ -54,7 +54,7 @@ block the graph-independent timing extraction.
 
 ## Parent and dependency
 
-Parent: [VP-0066](VP-0066_rearchitect-live-video-output-pipeline.md).
+Parent: [VP-0066](../review/VP-0066_rearchitect-live-video-output-pipeline.md).
 
 This is the first child task and has no child-task dependency. VP-0066-2 may
 begin only after its evidence is accepted.
