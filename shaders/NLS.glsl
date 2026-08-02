@@ -13,6 +13,20 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+//!PARAM stretch_ratio
+//!DESC Active-picture stretch ratio supplied by VideoProcessor
+//!TYPE DYNAMIC float
+//!MINIMUM 1.0
+//!MAXIMUM 1.5
+1.0
+
+//!PARAM warp_axis
+//!DESC 0 for horizontal mapping, 1 for vertical mapping
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 1.0
+0.0
+
 //!HOOK MAIN
 //!BIND HOOKED
 //!DESC VideoProcessor Nonlinear Stretch
@@ -21,8 +35,8 @@ vec4 hook()
 {
     float strength = clamp(float({{strength}}), 0.0, 1.0);
     float curve = clamp(float({{curve}}), 0.5, 4.0);
-    float stretch_ratio = clamp(float({{stretch_ratio}}), 1.0, 1.5);
-    bool vertical_warp = float({{warp_axis}}) >= 0.5;
+    float active_stretch_ratio = clamp(stretch_ratio, 1.0, 1.5);
+    bool vertical_warp = warp_axis >= 0.5;
     int geometry = int(clamp(float({{geometry}}), 0.0, 1.0));
     float center_protection =
         clamp(float({{center_protection}}), 0.0, 0.45);
@@ -31,13 +45,13 @@ vec4 hook()
     float centered =
         (vertical_warp ? sample_pos.y : sample_pos.x) * 2.0 - 1.0;
     float radius = abs(centered);
-    float effective_ratio = mix(1.0, stretch_ratio, strength);
+    float effective_ratio = mix(1.0, active_stretch_ratio, strength);
     float mapped_radius;
 
     if (geometry == 0 || center_protection <= 0.0) {
         float edge_weight = pow(0.5 + 0.5 * radius, curve);
         float correction = strength * (1.0 - edge_weight);
-        float local_scale = mix(1.0, stretch_ratio, correction);
+        float local_scale = mix(1.0, active_stretch_ratio, correction);
         mapped_radius = radius * local_scale;
     } else if (radius <= center_protection) {
         mapped_radius = radius * effective_ratio;
