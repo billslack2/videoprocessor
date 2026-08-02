@@ -9,8 +9,34 @@
 #pragma once
 
 
+#include <cstdint>
+
 #include <VideoFrame.h>
 #include <VideoState.h>
+
+
+enum class VideoFrameSampleRange
+{
+	UNKNOWN,
+	FULL,
+	LIMITED,
+};
+
+
+// Describes the code values written by a formatter. Consumers must use this
+// instead of inferring range or precision from the captured input format.
+struct VideoFrameFormatterOutputContract
+{
+	VideoFrameSampleRange sampleRange = VideoFrameSampleRange::UNKNOWN;
+	uint8_t colorDepth = 0;
+	uint8_t bitShift = 0;
+
+	bool IsValid() const
+	{
+		return sampleRange != VideoFrameSampleRange::UNKNOWN &&
+			colorDepth != 0;
+	}
+};
 
 
 /**
@@ -34,6 +60,12 @@ public:
 	// Get size of frame that will be put in FormatVideoFrame()'s outBuffer, in bytes
 	// Can only be called after OnVideoState()
 	virtual LONG GetOutFrameSize() const = 0;
+
+	// Get the sample-range and precision contract for FormatVideoFrame output.
+	virtual VideoFrameFormatterOutputContract GetOutputContract() const
+	{
+		return {};
+	}
 	
 	// Get conversion performance metrics (optional, default implementation returns no data)
 	// currentUs: Latest frame conversion time in microseconds

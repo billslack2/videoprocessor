@@ -2793,6 +2793,50 @@ struct LibplaceboVideoRenderer::Impl
 			data.size());
 	}
 
+	void LogFormatterInputDiagnostics(
+		const uint16_t* luma, const uint16_t* chroma, int width, int height,
+		int chromaHeight, const VideoFrameFormatterOutputContract& contract,
+		bool concealedPaddedEdges) const
+	{
+		const int firstSample = concealedPaddedEdges ? 2 : 0;
+		const int lastSample = concealedPaddedEdges ? width - 2 : width;
+		uint16_t minimumLuma = std::numeric_limits<uint16_t>::max();
+		uint16_t maximumLuma = 0;
+		uint16_t minimumChroma = std::numeric_limits<uint16_t>::max();
+		uint16_t maximumChroma = 0;
+		uint64_t lumaSamples = 0;
+		uint64_t chromaSamples = 0;
+		for (int y = 0; y < height; ++y)
+		{
+			const uint16_t* const row = luma + static_cast<size_t>(y) * width;
+			for (int x = firstSample; x < lastSample; ++x)
+			{
+				const uint16_t sample = static_cast<uint16_t>(row[x] >> contract.bitShift);
+				minimumLuma = std::min(minimumLuma, sample);
+				maximumLuma = std::max(maximumLuma, sample);
+				++lumaSamples;
+			}
+		}
+		for (int y = 0; y < chromaHeight; ++y)
+		{
+			const uint16_t* const row = chroma + static_cast<size_t>(y) * width;
+			for (int x = firstSample; x < lastSample; ++x)
+			{
+				const uint16_t sample = static_cast<uint16_t>(row[x] >> contract.bitShift);
+				minimumChroma = std::min(minimumChroma, sample);
+				maximumChroma = std::max(maximumChroma, sample);
+				++chromaSamples;
+			}
+		}
+		DebugLog::Log(
+			"Alpha formatter input diagnostic: luma=%u..%u (%llu samples) chroma=%u..%u (%llu samples) concealed_edge_columns=%d",
+			minimumLuma, maximumLuma,
+			static_cast<unsigned long long>(lumaSamples),
+			minimumChroma, maximumChroma,
+			static_cast<unsigned long long>(chromaSamples),
+			concealedPaddedEdges ? 2 : 0);
+	}
+
 	void LogOutputReadback()
 	{
 		using namespace LibplaceboOutput;
@@ -4881,9 +4925,6 @@ struct LibplaceboVideoRenderer::Impl
 			videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE &&
 			GetAlphaNativeRgbLayout(state.videoFrameEncoding, nativeRgbLayout);
 		const bool nativeRgb8Upload = nativeRgbLayout.bitDepth == 8;
-		const bool yuv8BitSource =
-			state.videoFrameEncoding == VideoFrameEncoding::UYVY ||
-			state.videoFrameEncoding == VideoFrameEncoding::HDYC;
 		const bool lossless422Upload =
 			(state.videoFrameEncoding == VideoFrameEncoding::V210 ||
 				state.videoFrameEncoding == VideoFrameEncoding::UYVY ||
@@ -4958,17 +4999,45 @@ struct LibplaceboVideoRenderer::Impl
 		const int chromaHeight = lossless422Upload ? height : (height + 1) / 2;
 		const BYTE* yPixels = nullptr;
 		const BYTE* uvPixels = nullptr;
+		VideoFrameFormatterOutputContract formattedContract;
+		bool formatterStateChanged = false;
 		if (!nativeRgbUpload)
 		{
 			if (!formatterState || formatterState->colorspace != state.colorspace)
 			{
 				formatter->OnVideoState(statePtr);
 				formatterState = statePtr;
+				formatterStateChanged = true;
 			}
 			if (!formatter->FormatVideoFrame(videoFrame, convertedFrame.data()))
 				return false;
+			formattedContract = formatter->GetOutputContract();
+			if (!formattedContract.IsValid())
+				throw std::runtime_error(
+					"Alpha formatter did not declare its output range contract");
+			if (formatterStateChanged)
+			{
+				const char* const range =
+					formattedContract.sampleRange == VideoFrameSampleRange::FULL ?
+						"full" : "limited";
+				DebugLog::Log(
+					"Alpha formatter output contract: source=%d ingress=%s range=%s libplacebo_levels=%s color_depth=%u bit_shift=%u size=%dx%d",
+					static_cast<int>(state.videoFrameEncoding),
+					lossless422Upload ? "P210" : "P010", range, range,
+					static_cast<unsigned>(formattedContract.colorDepth),
+					static_cast<unsigned>(formattedContract.bitShift), width, height);
+			}
 			yPixels = convertedFrame.data();
 			uvPixels = yPixels + p010RowBytes * static_cast<size_t>(height);
+			if (formatterStateChanged && outputDiagnostics)
+			{
+				LogFormatterInputDiagnostics(
+					reinterpret_cast<const uint16_t*>(yPixels),
+					reinterpret_cast<const uint16_t*>(uvPixels), width, height,
+					chromaHeight, formattedContract,
+					state.videoFrameEncoding == VideoFrameEncoding::V210 &&
+						width == 1280 && height == 720 && !lossless422Upload);
+			}
 			UpdateNlsForFrame(
 				reinterpret_cast<const uint16_t*>(yPixels),
 				convertedFrame.size(), width, height, p010RowBytes,
@@ -5123,18 +5192,14 @@ struct LibplaceboVideoRenderer::Impl
 		image.repr.sys = nativeRgbUpload ? PL_COLOR_SYSTEM_RGB :
 			TranslateSystem(state.colorspace);
 		image.repr.levels = nativeRgbUpload ? PL_COLOR_LEVELS_FULL :
-			(state.videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT ||
-			 state.videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT ||
-			 state.videoFrameEncoding == VideoFrameEncoding::R10b ||
-			 state.videoFrameEncoding == VideoFrameEncoding::R10l ||
-			 state.videoFrameEncoding == VideoFrameEncoding::R12L
-			 ? PL_COLOR_LEVELS_FULL : PL_COLOR_LEVELS_LIMITED);
+			(formattedContract.sampleRange == VideoFrameSampleRange::FULL ?
+				PL_COLOR_LEVELS_FULL : PL_COLOR_LEVELS_LIMITED);
 		image.repr.alpha = PL_ALPHA_NONE;
 		image.repr.bits.sample_depth = nativeRgbUpload ? (nativeRgb8Upload ? 8 : 10) : 16;
 		image.repr.bits.color_depth = nativeRgbUpload ? (nativeRgb8Upload ? 8 : 10) :
-			(yuv8BitSource ? 8 : 10);
+			formattedContract.colorDepth;
 		image.repr.bits.bit_shift = nativeRgbUpload ? 0 :
-			(yuv8BitSource ? 8 : 6);
+			formattedContract.bitShift;
 		image.color = TranslateColorSpace(state);
 		if (state.eotf == EOTF::SDR &&
 			sdrInputTransfer != PL_COLOR_TRC_UNKNOWN)

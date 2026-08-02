@@ -28,6 +28,10 @@ public:
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
 	LONG GetOutFrameSize() const override;
+	VideoFrameFormatterOutputContract GetOutputContract() const override
+	{
+		return { VideoFrameSampleRange::FULL, 10, 6 };
+	}
 	
 	// Performance metrics
 	void GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override

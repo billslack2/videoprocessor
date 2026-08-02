@@ -5,12 +5,14 @@
 #include <fstream>
 
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
+#include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CR210toRGB48VideoFrameFormatter.h>
 #include <video_frame_formatter/CR12BtoRGB48VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP210VideoFrameFormatter.h>
+#include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
 #include <IntegerMath.h>
 #include <AspectRatio.h>
@@ -122,6 +124,140 @@ namespace Tests
 			vff.OnVideoState(vs);
 
 			Assert::AreEqual(8294400L, vff.GetOutFrameSize());
+		}
+
+		TEST_METHOD(AlphaFormatterOutputContractsAreExplicit)
+		{
+			const auto expect = [](const VideoFrameFormatterOutputContract& contract,
+				VideoFrameSampleRange range, uint8_t depth, uint8_t shift)
+			{
+				Assert::IsTrue(contract.IsValid());
+				Assert::AreEqual(static_cast<int>(range),
+					static_cast<int>(contract.sampleRange));
+				Assert::AreEqual(static_cast<int>(depth),
+					static_cast<int>(contract.colorDepth));
+				Assert::AreEqual(static_cast<int>(shift),
+					static_cast<int>(contract.bitShift));
+			};
+
+			CARGBtoP010VideoFrameFormatter argb;
+			CDeckLinkRGBToP010VideoFrameFormatter deckLinkRgb;
+			CUYVYtoP010VideoFrameFormatter uyvyP010;
+			CV210toP010VideoFrameFormatter v210P010;
+			CUYVYtoP210VideoFrameFormatter uyvyP210;
+			CV210toP210VideoFrameFormatter v210P210;
+			expect(argb.GetOutputContract(), VideoFrameSampleRange::FULL, 10, 6);
+			expect(deckLinkRgb.GetOutputContract(), VideoFrameSampleRange::FULL, 10, 6);
+			expect(uyvyP010.GetOutputContract(), VideoFrameSampleRange::LIMITED, 8, 8);
+			expect(v210P010.GetOutputContract(), VideoFrameSampleRange::LIMITED, 10, 6);
+			expect(uyvyP210.GetOutputContract(), VideoFrameSampleRange::LIMITED, 8, 8);
+			expect(v210P210.GetOutputContract(), VideoFrameSampleRange::LIMITED, 10, 6);
+		}
+
+		TEST_METHOD(CARGBtoP010VideoFrameFormatterUsesFullRangeP010Endpoints)
+		{
+			CARGBtoP010VideoFrameFormatter vff;
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(100, 100, false, 24000, 1000);
+			vs->videoFrameEncoding = VideoFrameEncoding::ARGB_8BIT;
+			vs->colorspace = ColorSpace::REC_709;
+			vff.OnVideoState(vs);
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0xFF);
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			const auto* words = reinterpret_cast<const uint16_t*>(output.data());
+			const size_t ySamples = 100 * 100;
+			Assert::AreEqual(1023U << 6, static_cast<unsigned int>(words[0]));
+			Assert::AreEqual(1023U << 6, static_cast<unsigned int>(words[ySamples - 1]));
+			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples]));
+			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1]));
+
+			for (size_t pixel = 0; pixel < input.size(); pixel += 4)
+			{
+				input[pixel] = 0xFF; // alpha
+				input[pixel + 1] = 0xFF; // red
+				input[pixel + 2] = 0;
+				input[pixel + 3] = 0;
+			}
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			Assert::AreEqual(217U << 6, static_cast<unsigned int>(words[0]));
+			Assert::AreEqual(395U << 6, static_cast<unsigned int>(words[ySamples]));
+			Assert::AreEqual(1023U << 6, static_cast<unsigned int>(words[ySamples + 1]));
+		}
+
+		TEST_METHOD(CUYVYtoP010VideoFrameFormatterPreservesLimitedRangeCodes)
+		{
+			CUYVYtoP010VideoFrameFormatter vff;
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(100, 100, false, 24000, 1000);
+			vs->videoFrameEncoding = VideoFrameEncoding::HDYC;
+			vff.OnVideoState(vs);
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+			for (uint32_t line = 0; line < 100; ++line)
+			{
+				BYTE* row = input.data() + static_cast<size_t>(line) * vs->BytesPerRow();
+				row[0] = 128; row[1] = 16; row[2] = 128; row[3] = 235;
+			}
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			const auto* words = reinterpret_cast<const uint16_t*>(output.data());
+			const size_t ySamples = 100 * 100;
+			Assert::AreEqual(64U << 6, static_cast<unsigned int>(words[0]));
+			Assert::AreEqual(940U << 6, static_cast<unsigned int>(words[1]));
+			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples]));
+			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1]));
+		}
+
+		TEST_METHOD(CV210toP010VideoFrameFormatter720pConcealsOnlyPaddedEdges)
+		{
+			CV210toP010VideoFrameFormatter vff;
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(1280, 720, false, 60000, 1001);
+			vs->videoFrameEncoding = VideoFrameEncoding::V210;
+			vff.OnVideoState(vs);
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+			auto writeWord = [](BYTE* destination, uint16_t a, uint16_t b, uint16_t c)
+			{
+				const uint32_t word = static_cast<uint32_t>(a) |
+					(static_cast<uint32_t>(b) << 10) |
+					(static_cast<uint32_t>(c) << 20);
+				std::memcpy(destination, &word, sizeof(word));
+			};
+			for (uint32_t line = 0; line < 720; ++line)
+			{
+				BYTE* row = input.data() + static_cast<size_t>(line) * vs->BytesPerRow();
+				writeWord(row, 128, 64, 128);
+				writeWord(row + 4, 64, 128, 64);
+				writeWord(row + 8, 128, 64, 128);
+			}
+
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			const auto* words = reinterpret_cast<const uint16_t*>(output.data());
+			const size_t ySamples = 1280ULL * 720;
+			// The 720p path intentionally hides two padded edge pixels. They are
+			// excluded from range validation; the neighboring active sample remains
+			// nominal limited-range black.
+			Assert::AreEqual(0U, static_cast<unsigned int>(words[0]));
+			Assert::AreEqual(0U, static_cast<unsigned int>(words[1]));
+			Assert::AreEqual(64U << 6, static_cast<unsigned int>(words[2]));
+			Assert::AreEqual(0U, static_cast<unsigned int>(words[1278]));
+			Assert::AreEqual(0U, static_cast<unsigned int>(words[1279]));
+			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples]));
+			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1]));
+			Assert::AreEqual(128U << 6, static_cast<unsigned int>(words[ySamples + 2]));
+			Assert::AreEqual(128U << 6, static_cast<unsigned int>(words[ySamples + 3]));
+			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1278]));
+			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1279]));
 		}
 
 		TEST_METHOD(CV210toP210VideoFrameFormatterPreservesEvery422Sample)

@@ -30,6 +30,10 @@ public:
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
 	LONG GetOutFrameSize() const override;
+	VideoFrameFormatterOutputContract GetOutputContract() const override
+	{
+		return { VideoFrameSampleRange::LIMITED, 8, 8 };
+	}
 	
 	// Performance metrics (matches V210 interface)
 	void GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override

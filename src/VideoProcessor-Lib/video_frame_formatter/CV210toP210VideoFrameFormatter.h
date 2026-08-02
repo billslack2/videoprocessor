@@ -27,6 +27,10 @@ public:
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
 	LONG GetOutFrameSize() const override;
+	VideoFrameFormatterOutputContract GetOutputContract() const override
+	{
+		return { VideoFrameSampleRange::LIMITED, 10, 6 };
+	}
 
 private:
 	uint32_t m_height = 0;

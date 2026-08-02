@@ -42,6 +42,10 @@ public:
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
 	LONG GetOutFrameSize() const override;
+	VideoFrameFormatterOutputContract GetOutputContract() const override
+	{
+		return { VideoFrameSampleRange::LIMITED, 10, 6 };
+	}
 
 	// Configuration methods for conversion behavior
 	void SetConversionMethod(ConversionMethod method) { m_conversionMethod = method; }

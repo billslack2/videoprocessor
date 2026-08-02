@@ -46,6 +46,19 @@ static const int32_t BT2020_CB_B =  32768;  // 0.5000 * 65536
 static const int32_t BT2020_CR_R =  32768;  // 0.5000 * 65536
 static const int32_t BT2020_CR_G = -30134;  // -0.4598 * 65536
 static const int32_t BT2020_CR_B = -2634;   // -0.0402 * 65536
+namespace
+{
+	constexpr int32_t Expand8To10(uint8_t value)
+	{
+		// Map both endpoints exactly: 0 -> 0 and 255 -> 1023.
+		return (static_cast<int32_t>(value) * 1023 + 127) / 255;
+	}
+
+	constexpr int32_t Clamp10(int32_t value)
+	{
+		return value < 0 ? 0 : (value > 1023 ? 1023 : value);
+	}
+}
 
 void CARGBtoP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& videoState)
 {
@@ -131,44 +144,38 @@ bool CARGBtoP010VideoFrameFormatter::FormatVideoFrame(
 				r11 = srcLine1[5]; g11 = srcLine1[6]; b11 = srcLine1[7];
 			}
 
-			// Convert RGB to Y for all 4 pixels
-			// Y = (Y_R * R + Y_G * G + Y_B * B) >> 16
-			int32_t y00 = (Y_R * r00 + Y_G * g00 + Y_B * b00) >> 16;
-			int32_t y01 = (Y_R * r01 + Y_G * g01 + Y_B * b01) >> 16;
-			int32_t y10 = (Y_R * r10 + Y_G * g10 + Y_B * b10) >> 16;
-			int32_t y11 = (Y_R * r11 + Y_G * g11 + Y_B * b11) >> 16;
+			// Convert in the 10-bit full-range domain. Do not use an 8-bit
+			// intermediate: 255 << 2 is 1020, not the P010 full-range white
+			// endpoint of 1023.
+			auto toLuma = [&](uint8_t r, uint8_t g, uint8_t b)
+			{
+				return Clamp10((Y_R * Expand8To10(r) + Y_G * Expand8To10(g) +
+					Y_B * Expand8To10(b) + 32768) >> 16);
+			};
+			const int32_t y00 = toLuma(r00, g00, b00);
+			const int32_t y01 = toLuma(r01, g01, b01);
+			const int32_t y10 = toLuma(r10, g10, b10);
+			const int32_t y11 = toLuma(r11, g11, b11);
 
-			// Clamp Y to 0-255
-			y00 = (y00 < 0) ? 0 : (y00 > 255) ? 255 : y00;
-			y01 = (y01 < 0) ? 0 : (y01 > 255) ? 255 : y01;
-			y10 = (y10 < 0) ? 0 : (y10 > 255) ? 255 : y10;
-			y11 = (y11 < 0) ? 0 : (y11 > 255) ? 255 : y11;
-
-			// Write Y values (8-bit to P010: shift left 8 bits)
-			*dstY0++ = static_cast<uint16_t>(y00) << 8;
-			*dstY0++ = static_cast<uint16_t>(y01) << 8;
-			*dstY1++ = static_cast<uint16_t>(y10) << 8;
-			*dstY1++ = static_cast<uint16_t>(y11) << 8;
-
+			*dstY0++ = static_cast<uint16_t>(y00 << 6);
+			*dstY0++ = static_cast<uint16_t>(y01 << 6);
+			*dstY1++ = static_cast<uint16_t>(y10 << 6);
+			*dstY1++ = static_cast<uint16_t>(y11 << 6);
 			// Average RGB over 2x2 block for chroma subsampling
 			int32_t r_avg = (r00 + r01 + r10 + r11 + 2) >> 2;
 			int32_t g_avg = (g00 + g01 + g10 + g11 + 2) >> 2;
 			int32_t b_avg = (b00 + b01 + b10 + b11 + 2) >> 2;
 
-			// Convert averaged RGB to Cb/Cr
-			// Cb = (CB_R * R + CB_G * G + CB_B * B) >> 16 + 128
-			// Cr = (CR_R * R + CR_G * G + CR_B * B) >> 16 + 128
-			int32_t cb = ((CB_R * r_avg + CB_G * g_avg + CB_B * b_avg) >> 16) + 128;
-			int32_t cr = ((CR_R * r_avg + CR_G * g_avg + CR_B * b_avg) >> 16) + 128;
+			const int32_t rAvg10 = Expand8To10(static_cast<uint8_t>(r_avg));
+			const int32_t gAvg10 = Expand8To10(static_cast<uint8_t>(g_avg));
+			const int32_t bAvg10 = Expand8To10(static_cast<uint8_t>(b_avg));
+			const int32_t cb = Clamp10(((CB_R * rAvg10 + CB_G * gAvg10 +
+				CB_B * bAvg10 + 32768) >> 16) + 512);
+			const int32_t cr = Clamp10(((CR_R * rAvg10 + CR_G * gAvg10 +
+				CR_B * bAvg10 + 32768) >> 16) + 512);
 
-			// Clamp Cb/Cr to 0-255
-			cb = (cb < 0) ? 0 : (cb > 255) ? 255 : cb;
-			cr = (cr < 0) ? 0 : (cr > 255) ? 255 : cr;
-
-			// Write UV values (8-bit to P010: shift left 8 bits)
-			*dstUVLine++ = static_cast<uint16_t>(cb) << 8;  // U
-			*dstUVLine++ = static_cast<uint16_t>(cr) << 8;  // V
-
+			*dstUVLine++ = static_cast<uint16_t>(cb << 6);
+			*dstUVLine++ = static_cast<uint16_t>(cr << 6);
 			// Advance source pointers (8 bytes per 2 pixels)
 			srcLine0 += 8;
 			srcLine1 += 8;
