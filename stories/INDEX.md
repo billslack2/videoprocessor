@@ -105,7 +105,7 @@ they must not contain requirements that are absent from this file.
 | VP-0071 | Backlog | Compose the VP diagnostics OSD through madVR |
 | VP-0072 | Backlog | Repair or explicitly constrain DirectShow no-stop timestamp modes |
 | VP-0073 | Backlog | Diagnose and minimally repair keyboard-command responsiveness |
-| VP-0074 | Backlog | Alpha latency resilience and NLS shader cold-start recovery |
+| VP-0074 | Review | Alpha latency resilience and NLS shader cold-start recovery |
 | VP-0075 | Backlog | Restore Alpha analysis parity on native RGB ingress |
 | VP-0076 | Backlog | Decompose the DirectShow live-output pin without behavioral change |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
