@@ -9,6 +9,7 @@
 #pragma once
 
 #include <ConsecutiveFrameDurationHistory.h>
+#include <LiveClockGapPreserver.h>
 
 
 #include <atomic>
@@ -471,6 +472,10 @@ protected:
 	// CLOCK_SMART2 duration evidence includes source-counter continuity, so a
 	// multi-frame capture/queue gap cannot become a single-frame duration.
 	ConsecutiveFrameDurationHistory m_smartDurationHistory;
+	// Preserves genuine source-time gaps that DeckLink's clock did not advance
+	// across. Reset with the queue/timestamp epoch; intentional VP queue removal
+	// is excluded by VideoFrame::IsSourceDiscontinuity().
+	LiveClockGapPreserver m_liveClockGapPreserver;
 
 	// Rational timing parameters for RATIONAL_RATIONAL mode (Bresenham-style exact integer math)
 	// These come from DisplayMode and allow drift-free timing for rates like 23.976, 29.97, 59.94

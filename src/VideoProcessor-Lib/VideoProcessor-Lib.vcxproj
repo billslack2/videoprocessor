@@ -192,6 +192,7 @@
 	<ClInclude Include="FrameProcessor.h" />
 	<ClInclude Include="LiveEpochConvergenceController.h" />
 	<ClInclude Include="LiveFrameCounterTracker.h" />
+	<ClInclude Include="LiveClockGapPreserver.h" />
 	<ClInclude Include="ConsecutiveFrameDurationHistory.h" />
 	<ClInclude Include="OutputReadinessController.h" />
 	<ClInclude Include="RationalLiveOutputSequencer.h" />

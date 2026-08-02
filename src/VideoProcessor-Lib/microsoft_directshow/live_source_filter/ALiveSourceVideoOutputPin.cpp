@@ -604,6 +604,7 @@ void ALiveSourceVideoOutputPin::ResetTimingState()
 	m_minFrameAdvance = 0;
 	m_maxFrameAdvance = 0;
 	m_smartDurationHistory.Reset();
+	m_liveClockGapPreserver.Reset();
 	
 	// Reset smart timing statistics
 	m_smartHardwareTimestampCount = 0;
@@ -656,6 +657,7 @@ void ALiveSourceVideoOutputPin::RestartTimingOriginAfterPreroll()
 	m_previousTimeStop = 0;
 	m_startTimeOffset = 0;
 	m_smartDurationHistory.Reset();
+	m_liveClockGapPreserver.Reset();
 	m_previousHardwareTimestamp = 0;
 
 	DebugLog::Log("ALiveSourceVideoOutputPin::RestartTimingOriginAfterPreroll() - legacy live-preroll timestamp origin restored");
@@ -780,6 +782,46 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 	REFERENCE_TIME timeStart = REFERENCE_TIME_INVALID;
 	REFERENCE_TIME timeStop = REFERENCE_TIME_INVALID;
+	REFERENCE_TIME effectiveHardwareTime = REFERENCE_TIME_INVALID;
+	LiveClockGapDecision clockGapDecision;
+	const bool usesHardwareClock =
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2 ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE;
+	if (usesHardwareClock)
+	{
+		const REFERENCE_TIME rawHardwareTime = ConvertTimingClockToReferenceTime(
+			videoFrame.GetTimingTimestamp(),
+			m_timingClock->TimingClockTicksPerSecond());
+		const REFERENCE_TIME theoreticalDuration =
+			m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL &&
+			m_rationalFrameDuration > 0 ? m_rationalFrameDuration :
+			m_timeScale > 0 ? static_cast<REFERENCE_TIME>(
+				(REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) /
+				m_timeScale) : m_frameDuration;
+		clockGapDecision = m_liveClockGapPreserver.Observe(
+				videoFrame.GetCounter(),
+				videoFrame.IsSourceDiscontinuity(),
+				rawHardwareTime, theoreticalDuration);
+		effectiveHardwareTime = clockGapDecision.adjustedHardwareTime;
+		if (clockGapDecision.applied)
+		{
+			DebugLog::Log(
+				"VP-0066 CLOCK SOURCE GAP PRESERVED: method=%d frame=%llu "
+				"missing=%llu hardware_advance=%.3fms expected_advance=%.3fms "
+				"repair=%.3fms cumulative=%.3fms",
+				static_cast<int>(m_timestamp),
+				static_cast<unsigned long long>(videoFrame.GetCounter()),
+				static_cast<unsigned long long>(clockGapDecision.missingFrames),
+				clockGapDecision.hardwareAdvance / 10000.0,
+				clockGapDecision.expectedAdvance / 10000.0,
+				clockGapDecision.repair / 10000.0,
+				clockGapDecision.cumulativeOffset / 10000.0);
+		}
+	}
 
 	// Determine start time
 	switch (m_timestamp)
@@ -824,9 +866,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		// Get raw hardware timestamp using the same integer conversion as the
 		// other clock-based modes.  The previous double conversion lost
 		// precision as the hardware clock value grew.
-		REFERENCE_TIME rawHardwareTime = ConvertTimingClockToReferenceTime(
-			videoFrame.GetTimingTimestamp(),
-			m_timingClock->TimingClockTicksPerSecond());
+		const REFERENCE_TIME rawHardwareTime = effectiveHardwareTime;
 		
 		// Initialize rational frame duration and limits on first frame
 		if (m_rationalFrameDuration == 0)
@@ -880,7 +920,8 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 				DbgLog((LOG_WARNING, 1, TEXT("::HardwareRational(#%I64u): Hardware time too close/backwards (diff=%I64d), enforced to %I64d (anomaly #%u)"),
 					videoFrame.GetCounter(), timeSincePrevious, timeStart, m_hardwareTimingAnomalyCount));
 			}
-			else if (timeSincePrevious > m_maxFrameAdvance)
+			else if (timeSincePrevious >
+				clockGapDecision.MaximumPermittedAdvance(m_maxFrameAdvance))
 			{
 				// Hardware timestamp jumped too far - limit to reasonable advance
 				timeStart = m_previousTimeStop - m_rationalFrameDuration + m_maxFrameAdvance;
@@ -910,9 +951,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
 
 		// Get frame timestamp as reference time using integer math utility
-		timeStart = ConvertTimingClockToReferenceTime(
-			videoFrame.GetTimingTimestamp(), 
-			m_timingClock->TimingClockTicksPerSecond());
+		timeStart = effectiveHardwareTime;
 
 		// Guarantee first frame to start counting at time zero
 		// Note that this is against the recommendations of microsoft for directshow but otherwise
@@ -997,9 +1036,8 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
 	{
 		// Track measured durations for stats
-		REFERENCE_TIME currentFrameTime = ConvertTimingClockToReferenceTime(
-			videoFrame.GetTimingTimestamp(),
-			m_timingClock->TimingClockTicksPerSecond()) - m_startTimeOffset;
+		REFERENCE_TIME currentFrameTime =
+			effectiveHardwareTime - m_startTimeOffset;
 		const REFERENCE_TIME theoreticalDuration =
 			static_cast<REFERENCE_TIME>(
 				(REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) /
@@ -1034,7 +1072,8 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		REFERENCE_TIME nextFrameTime = NextFrameTimestamp();
 		if (nextFrameTime != REFERENCE_TIME_INVALID)
 		{
-			timeStop = nextFrameTime - m_startTimeOffset;
+			timeStop = nextFrameTime +
+				m_liveClockGapPreserver.Offset() - m_startTimeOffset;
 			timeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
 		}
 		else
