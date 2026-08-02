@@ -37,6 +37,10 @@ behavior remains out of scope and is not enabled by this story.
   tests passed, including 4K60 smoke conversion (R12B ~6.9 ms average,
   R12L ~7.6 ms average on the development machine). No deployed binaries
   were changed.
+- 2026-08-02: Made the shared P010/P210 analysis representation explicit so
+  4:2:2 capture formats retain their full-height chroma rows rather than being
+  sampled like 4:2:0. Focused x64 Release active-picture, scene, native-RGB,
+  and P210-plane tests passed (25 total); no deployed binaries were changed.
 
 ## User story
 
