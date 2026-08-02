@@ -31,6 +31,29 @@ This behavior is intended but has not been validated as a full Alpha LLDV
 parity contract. This story validates it and fixes only evidence-backed
 transition gaps. It must not make every SDR BT.2020 source become LLDV.
 
+### Scope boundary: effective HDR treatment, not native Dolby Vision decode
+
+This story is about the captured-signal fallback path. DeckLink exposes the
+relevant LLDV cases to VP as BT.2020 + SDR with no static HDR metadata, and
+does not provide the HDMI VSIF or per-frame Dolby Vision RPU that would prove
+or describe native Dolby Vision. VP therefore cannot reconstruct Dolby Vision
+dynamic metadata. Once the deliberately enabled and stabilized heuristic
+confirms the candidate, VP relabels the captured pixels as PQ and supplies
+synthetic *static* HDR metadata so each renderer treats the input as HDR.
+
+That is the same effective-state contract Alpha must receive as the external
+renderer; it is sufficient for HDR-to-SDR tone mapping parity. It is not a
+claim of Dolby Vision playback, display-led Dolby Vision output, or
+scene-by-scene Dolby Vision reshaping.
+
+The bundled libplacebo supports native Dolby Vision when a host supplies
+`PL_COLOR_SYSTEM_DOLBYVISION` and a `pl_dovi_metadata` object parsed from an
+RPU. Alpha does not receive such data and must continue to submit confirmed
+LLDV through its normal BT.2020/PQ plus static-HDR path. Adding capture,
+ownership, frame synchronization, and libplacebo delivery of real VSIF/RPU
+metadata is explicitly out of scope for VP-0053 and requires a separate
+evidence-backed story.
+
 ## Required behavior
 
 1. With `newlldv` and both LLDV-follow modes enabled, Alpha promotes only a
@@ -99,6 +122,9 @@ display rule, and renderer generation.
   EOTF, primaries, or HDR state.
 - This is input treatment. It does not require HDR output; VP captures and
   tone maps HDR/LLDV input.
+- Do not set `PL_COLOR_SYSTEM_DOLBYVISION`, create `pl_dovi_metadata`, or infer
+  dynamic Dolby Vision metadata from VP's synthetic HDR values. The required
+  Alpha input is ordinary BT.2020/PQ with valid static metadata.
 - Reuse the existing reset/rebuild coordinator and stale-frame protection. Do
   not add independent timers or queue policies.
 - Add focused tests for effective-state construction and Alpha's
@@ -125,6 +151,12 @@ display rule, and renderer generation.
   effective state construction, and transition timers
 - `src\VideoProcessor-Lib\libplacebo\LibplaceboVideoRenderer.cpp`: source
   color translation and `OnVideoState`
+- mpv `vo_gpu_next`: forwards actual Dolby Vision metadata to libplacebo when
+  decoded media supplies it; this is deliberately a different input contract
+  from VP capture ([mpv release notes](https://github.com/mpv-player/mpv/releases)).
+- MPC Video Renderer: applies Dolby Vision extension metadata only when that
+  metadata is available; its local tone mapping is not evidence that static
+  HDR metadata can recreate it ([MPC Video Renderer releases](https://github.com/Aleksoid1978/VideoRenderer/releases)).
 - VP-0018: Alpha renderer refresh-rate reselection on switch
 - VP-0041: Eliminate stale-frame flashes across renderer rebuilds
 - VP-0045: Namespace built-in renderer configuration as `vpvr`
