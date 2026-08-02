@@ -96,6 +96,22 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
   Packed RGB mask tests prove r210/R10b/R10l component placement and endian
   handling. x64 Release build and test suite: **460/460 passed**.
 
+### GPU-v210 decision and latency follow-up (2026-08-02)
+
+- Do **not** move v210 unpacking into a custom GPU shader merely to save the
+  CPU P210 conversion. P210 already preserves the source samples and lets the
+  GPU spend its budget on tone mapping, scaling, and presentation. A raw-v210
+  shader would add color/analysis correctness risk while removing only a small
+  CPU copy; it does not remove a queue or display-sync interval.
+- Reconsider raw GPU v210 only after physical capture-to-target measurement
+  demonstrates a substantial net improvement (roughly 20 ms or more), with
+  no regression in tone-mapping time, presentation stability, or analysis.
+- The plausible whole-frame Alpha investigations are instead: measured
+  `steady_reserve_frames` depth, the D3D11 `max_frame_latency = 2` limit, and
+  the actual DXGI presentation model (composed/BitBlt versus flip/direct).
+  Each must be A/B measured using Alpha's capture-to-target, queue-age,
+  render, and swap-block telemetry before any default is changed.
+
 ## User story
 
 As an Alpha-renderer user, I want VP to retain and upload supported captured
