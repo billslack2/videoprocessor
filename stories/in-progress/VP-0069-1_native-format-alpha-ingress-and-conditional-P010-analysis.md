@@ -44,11 +44,13 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
   the same queue-policy call used by DirectShow; the retired key is rejected
   by configuration validation.
 - Added a reversible ARGB/BGRA native RGB upload path. It is selected only
-  when P010 is not explicitly requested and no P010-only analysis consumer
-  (NLS, scene analysis, or scope subtitle analysis) is active. The OSD shows
-  the resolved ingress path. Selecting P010 forces the established converter;
-  all other formats remain on the tested P010 fallback pending their own
-  native representation and bounded-analysis validation.
+  when P010 is not explicitly requested. P010-only consumers (NLS, scene
+  analysis, and scope subtitle analysis) are explicitly unavailable during
+  native RGB rather than silently forcing a full-frame P010 conversion. The
+  OSD shows the resolved ingress path and that unavailable state. Selecting
+  P010 forces the established converter; all other formats remain on the
+  tested P010 fallback pending their own native representation and
+  bounded-analysis validation.
 - Verified by a successful x64 Release solution build and all 455 existing
   unit tests.
 
