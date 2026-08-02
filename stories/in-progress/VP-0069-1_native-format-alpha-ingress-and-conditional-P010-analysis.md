@@ -26,9 +26,11 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
 
 ### Initial implementation (2026-08-02)
 
-- The Alpha OSD now omits the inactive DirectShow Start/Stop method and always
-  reports the capture frame offset. The offset is applied to the capture
-  timestamp before either renderer consumes a frame.
+- The Alpha OSD omits the inactive DirectShow Start/Stop method. Frame offset
+  is now deliberately disabled for Alpha (the preserved DirectShow value is
+  restored when switching back): Alpha's immediate FIFO does not schedule
+  presentation from capture PTS, so applying an offset only changed a
+  diagnostic timestamp and provided no present benefit.
 - Latency rows are normalized across backends as `Renderer`, `Presentation`,
   and `Total`. DirectShow presentation is the remaining lead to its requested
   sample PTS; Alpha presentation is the predicted lead from its latest submit
@@ -44,9 +46,7 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
   `[queue] steady_reserve_frames` independently selects the lower live/prefill
   target (for example, 2) via the same queue-policy call used by DirectShow.
   The retired key is rejected by configuration validation.
-- Alpha automatic frame offset is zero because Alpha's immediate FIFO does not
-  schedule presentation from the capture timestamp. The separate `Offset` OSD
-  field remains visible. `Total` continues to use raw hardware capture so it
+- `Total` continues to use raw hardware capture so it
   measures the audio-relative capture-to-target delay rather than an arbitrary
   timestamp adjustment. During display-rate validation, the OSD shows the
   provisional DXGI rate together with its `warming` state; it is not used by
@@ -59,8 +59,14 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
   P010 forces the established converter; all other formats remain on the
   tested P010 fallback pending their own native representation and
   bounded-analysis validation.
-- Verified by a successful x64 Release solution build and all 455 existing
-  unit tests.
+- v210 is the common 10-bit 4:2:2 DeckLink source and is the next ingress
+  target. It cannot be passed to `pl_upload_plane` as a normal image plane:
+  four packed 32-bit words encode six pixels with changing Y/Cb/Cr semantics.
+  The current P010 result is therefore accurately labelled `P010 (source
+  fallback)`, not `P010 (analysis)`, when P010 was not explicitly selected.
+  A valid native v210 implementation needs a GPU unpack pass from the original
+  packed bytes; it must not disguise the existing CPU P010 formatter as native.
+- Verified by a successful x64 Release solution build and all 456 unit tests.
 
 ## User story
 
