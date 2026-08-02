@@ -89,7 +89,7 @@ they must not contain requirements that are absent from this file.
 | VP-0062 | Backlog | NLS safe full-raster fallback for high-black UI and artwork |
 | VP-0063 | Backlog | Automatic Alpha-to-madVR handoff re-prime |
 | VP-0064 | Done | Persisted Alpha SDR BT.2020 output and clear OSD reporting |
-| VP-0065 | Review | Invalidate stale frames during channel and stream transitions |
+| VP-0065 | Done | Invalidate stale frames during channel and stream transitions |
 | VP-0066 | Review | Re-architect the live video output pipeline into testable components |
 | VP-0067 | Backlog | Upgrade VideoProcessor to C++17 |
 | VP-0068 | Backlog | Evaluate a native Blackmagic SDK capture path and complete frame metadata contract |
