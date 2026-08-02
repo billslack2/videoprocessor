@@ -222,7 +222,7 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 		DebugLog::Log(
 			"DirectShow source counter discontinuity: transition=%s "
 			"previous=%llu current=%llu missing=%llu "
-			"material_threshold=%llu action=%s ppm=rebaseline "
+			"material_threshold=%llu accumulated=%llu action=%s ppm=rebaseline "
 			"graph_reset=%d healthy=%llu/%llu downstream_healthy=%d "
 			"downstream_snapshot=%d downstream_epoch=%llu "
 			"downstream_success=%llu queue=%zu/%zu+%zu/%zu",
@@ -231,6 +231,7 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 			static_cast<unsigned long long>(counterDecision.current),
 			static_cast<unsigned long long>(counterDecision.missingFrames),
 			static_cast<unsigned long long>(gapRecovery.materialGapFrames),
+			static_cast<unsigned long long>(gapRecovery.accumulatedGapFrames),
 			action, resetPublished ? 1 : 0,
 			static_cast<unsigned long long>(
 				gapRecovery.healthyIntervalsObserved),

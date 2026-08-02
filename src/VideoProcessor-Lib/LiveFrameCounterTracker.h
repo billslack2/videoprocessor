@@ -85,6 +85,7 @@ struct LiveSourceGapRecoveryDecision
 {
 	LiveSourceGapRecoveryAction action = LiveSourceGapRecoveryAction::None;
 	uint64_t materialGapFrames = 0;
+	uint64_t accumulatedGapFrames = 0;
 	uint64_t healthyIntervalsRequired = 0;
 	uint64_t healthyIntervalsObserved = 0;
 };
@@ -130,6 +131,7 @@ public:
 			}
 
 			decision.healthyIntervalsObserved = m_healthyIntervals;
+			decision.accumulatedGapFrames = m_accumulatedGapFrames;
 			if (counter.IsDiscontinuity())
 			{
 				decision.action =
@@ -139,7 +141,37 @@ public:
 		}
 
 		if (!counter.IsDiscontinuity())
+		{
+			if (counter.transition == LiveFrameCounterTransition::Consecutive &&
+				m_accumulatedGapFrames > 0)
+			{
+				++m_healthyIntervalsSinceGap;
+				if (m_healthyIntervalsSinceGap >=
+					decision.healthyIntervalsRequired)
+				{
+					m_accumulatedGapFrames = 0;
+					m_healthyIntervalsSinceGap = 0;
+				}
+			}
+			decision.accumulatedGapFrames = m_accumulatedGapFrames;
 			return decision;
+		}
+
+		if (counter.transition == LiveFrameCounterTransition::CounterReset)
+		{
+			m_accumulatedGapFrames = 0;
+			m_healthyIntervalsSinceGap = 0;
+			decision.action = LiveSourceGapRecoveryAction::LocalDiscontinuity;
+			return decision;
+		}
+
+		m_healthyIntervalsSinceGap = 0;
+		if (counter.missingFrames >
+			(std::numeric_limits<uint64_t>::max)() - m_accumulatedGapFrames)
+			m_accumulatedGapFrames = (std::numeric_limits<uint64_t>::max)();
+		else
+			m_accumulatedGapFrames += counter.missingFrames;
+		decision.accumulatedGapFrames = m_accumulatedGapFrames;
 
 		// A counter reset can accompany an HDR/rate/format transition whose
 		// owner-side state callback has not yet arrived. Keep it local here;
@@ -147,7 +179,7 @@ public:
 		// has lost enough live input to need a downstream re-prime.
 		const bool materialGap =
 			counter.transition == LiveFrameCounterTransition::ForwardGap &&
-			counter.missingFrames >= decision.materialGapFrames;
+			m_accumulatedGapFrames >= decision.materialGapFrames;
 		if (!materialGap)
 		{
 			decision.action =
@@ -183,6 +215,8 @@ public:
 		m_recoveryRequested = false;
 		m_waitingForHealthy = true;
 		m_healthyIntervals = 0;
+		m_accumulatedGapFrames = 0;
+		m_healthyIntervalsSinceGap = 0;
 	}
 
 private:
@@ -210,6 +244,8 @@ private:
 	bool m_recoveryRequested = false;
 	bool m_waitingForHealthy = false;
 	uint64_t m_healthyIntervals = 0;
+	uint64_t m_accumulatedGapFrames = 0;
+	uint64_t m_healthyIntervalsSinceGap = 0;
 };
 
 

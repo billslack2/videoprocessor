@@ -317,7 +317,7 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
 
     <article class="field" id="queue-recovery-reset-delay" data-fields="queue_recovery.reset_after_render_restart_seconds">
       <h4><code>[queue_recovery] reset_after_render_restart_seconds</code></h4>
-      <p>Seconds VP waits after startup/restart or a queue high-water event before flushing and re-priming the live queue. Increase only when the renderer needs longer to settle.</p>
+      <p>Seconds VP waits after startup/restart, a fullscreen/windowed presentation retarget, or a queue high-water event before flushing and re-priming the live queue. A fullscreen/windowed retarget first performs its immediate renderer-window transaction, then uses this delay for one LiveQueue-only normalization reset. Increase only when the renderer or HDMI path needs longer to settle.</p>
       <p class="meta"><strong>Type/default:</strong> integer ≥ 1; default 5.</p>
     </article>
 

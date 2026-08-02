@@ -103,6 +103,52 @@ namespace VideoProcessorTest
 				static_cast<int>(oneMissing.action));
 		}
 
+		TEST_METHOD(SplitFivePlusOneGapRequestsOneReprime)
+		{
+			LiveFrameCounterTracker tracker;
+			LiveSourceGapRecoveryPolicy policy;
+			(void)tracker.Observe(100);
+
+			const auto fiveMissing = policy.Observe(
+				tracker.Observe(106), 60000, 1001);
+			Assert::AreEqual(
+				static_cast<int>(
+					LiveSourceGapRecoveryAction::LocalDiscontinuity),
+				static_cast<int>(fiveMissing.action));
+
+			for (uint64_t frame = 107; frame < 136; ++frame)
+				(void)policy.Observe(tracker.Observe(frame), 60000, 1001);
+
+			const auto oneMoreMissing = policy.Observe(
+				tracker.Observe(137), 60000, 1001);
+			Assert::AreEqual<uint64_t>(6,
+				oneMoreMissing.accumulatedGapFrames);
+			Assert::AreEqual(
+				static_cast<int>(
+					LiveSourceGapRecoveryAction::RequestGraphReprime),
+				static_cast<int>(oneMoreMissing.action));
+		}
+
+		TEST_METHOD(IsolatedGapDebtExpiresAfterAHealthySecond)
+		{
+			LiveFrameCounterTracker tracker;
+			LiveSourceGapRecoveryPolicy policy;
+			(void)tracker.Observe(100);
+			(void)policy.Observe(tracker.Observe(103), 60000, 1001);
+
+			for (uint64_t frame = 104; frame <= 164; ++frame)
+				(void)policy.Observe(tracker.Observe(frame), 60000, 1001);
+
+			const auto fourMissing = policy.Observe(
+				tracker.Observe(169), 60000, 1001);
+			Assert::AreEqual<uint64_t>(4,
+				fourMissing.accumulatedGapFrames);
+			Assert::AreEqual(
+				static_cast<int>(
+					LiveSourceGapRecoveryAction::LocalDiscontinuity),
+				static_cast<int>(fourMissing.action));
+		}
+
 		TEST_METHOD(MaterialGapUsesThreeFramesAt23976)
 		{
 			LiveFrameCounterTracker tracker;

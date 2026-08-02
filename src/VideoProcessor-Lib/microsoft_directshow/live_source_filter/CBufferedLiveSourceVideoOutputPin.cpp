@@ -1902,11 +1902,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		RationalLiveOutputCadence outputCadence,
 		double displayRateHz,
 		uint32_t presentationGapSlotsBefore,
-		bool sourceDiscontinuity,
-		uint32_t* committedSourceGapSlots) -> HRESULT
+		bool sourceDiscontinuity) -> HRESULT
 	{
-		if (committedSourceGapSlots)
-			*committedSourceGapSlots = 0;
 		CAutoLock deliveryLock(&m_deliveryGate);
 		if (m_deliveryFlushing.load(std::memory_order_acquire) ||
 			expectedQueueEpoch != m_queueEpoch.load(std::memory_order_acquire))
@@ -1939,13 +1936,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				presentationGapSlotsBefore;
 			timestampInput.sourceFrameNumber = frameNumber;
 			timestampInput.sourceFrameNumberValid = true;
-			// The steady policy now applies backpressure before conversion instead
-			// of discarding ordinary samples. Any surviving source gap is therefore
-			// actual elapsed capture/transport time and remains represented in the
-			// Rational schedule. In particular, sourceDiscontinuity must not compress
-			// the gap: madVR should hold the prior picture for the absent interval and
-			// retain the next real sample in its queue. Explicit VP-owned catch-up and
-			// cadence omissions are handled by sourceGapSlotsToSuppress below.
+			// Source identity is recovery telemetry, not presentation identity. The
+			// Rational owner advances only on successful delivery; otherwise ordinary
+			// counter gaps become explicit PTS holes and force madVR repeats. Planned
+			// VP catch-up remains recorded through sourceGapSlotsToSuppress.
 			timestampInput.sourceGapSlotsToSuppress =
 				rationalSourceGapSlotsToSuppress;
 			timestampInput.minimumPresentationStartValid =
@@ -2377,18 +2371,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					"successful delivery sequence (epoch=%llu)",
 					expectedQueueEpoch);
 			}
-			else if (committedSourceGapSlots && timestampDecision.valid)
+			else if (timestampDecision.valid &&
+				timestampDecision.observedSourceGapSlotsBefore > 0)
 			{
-				*committedSourceGapSlots =
-					timestampDecision.sourceGapSlotsBefore;
-				if (timestampDecision.sourceGapSlotsBefore > 0)
-				{
-					DebugLog::Log(
-						"VP-0066 RATIONAL SOURCE GAP PRESERVED: epoch=%llu "
-						"frame=%llu missing_slots=%u pts_action=hold-previous",
-						expectedQueueEpoch, frameNumber,
-						timestampDecision.sourceGapSlotsBefore);
-				}
+				DebugLog::Log(
+					"VP-0066 RATIONAL SOURCE GAP OBSERVED: epoch=%llu "
+					"frame=%llu missing_slots=%llu pts_action=contiguous",
+					expectedQueueEpoch, frameNumber,
+					static_cast<unsigned long long>(
+						timestampDecision.observedSourceGapSlotsBefore));
 			}
 			if (timestampCommitSucceeded && timestampDecision.valid)
 			{
@@ -2433,8 +2424,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			// frame-paced ingress plus local backlog proves the initial burst is over,
 			// perform one live catch-up for this epoch:
 			// discard stale raw backlog and retain the configured converted reserve.
-			// The delivery sequencer owns final timestamps and accounts for skipped
-			// capture slots on the next successful delivery. These are black-box downstream
+			// The delivery sequencer owns final timestamps and advances only after a
+			// successful delivery. These are black-box downstream
 			// pacing/backpressure signals, never madVR occupancy measurements or a
 			// claim about physical presentation readiness.
 			const bool steadyTargetConfigured =
@@ -2575,8 +2566,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					discardedRawFrames > 0;
 				if (timestampOwnershipEnabled && discardedStaleFrames > 0)
 				{
-					// The trim deliberately replaces stale live work, so the next
-					// source-counter jump must not also add presentation slots. If
+					// The trim deliberately replaces stale live work. Retain its exact
+					// source-counter span as trace/recovery accounting. If
 					// the graph clock is running, align that one transactional rebase
 					// to current graph time plus configured lead; this catches up a
 					// slow HDMI handshake without treating pre-Run backlog as time.
@@ -2903,8 +2894,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				RationalLiveOutputCadence::Display,
 				sceneCadence.displayRateHz,
 				0,
-				false,
-				nullptr);
+				false);
 			if (repeatHr == S_OK)
 			{
 				++sceneCadence.nextOutputIndex;
@@ -3745,7 +3735,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 
 			// 4) DELIVER - Let madVR handle buffering and presentation.
-			uint32_t committedSourceGapSlots = 0;
 			hr = deliverTracked(
 				pSample,
 				currentQueueEpoch,
@@ -3758,24 +3747,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					RationalLiveOutputCadence::Rational,
 				sceneCadenceForSample ? sceneCadence.displayRateHz : 0.0,
 				scheduledPresentationGapRepeat ? 1U : 0U,
-				convertedSample.sourceDiscontinuity,
-				&committedSourceGapSlots);
-
-			if (hr == S_OK && sceneCadenceForSample &&
-				committedSourceGapSlots > 0)
-			{
-				// The final Rational owner consumed these omitted capture slots.
-				// Keep the scene planner on the same display-slot coordinate and
-				// account for their small source/display phase contribution.
-				sceneCadence.nextOutputIndex += committedSourceGapSlots;
-				if (contentPhasePending)
-				{
-					pendingContentPhaseFrames +=
-						static_cast<long double>(committedSourceGapSlots) *
-						((static_cast<long double>(displayRateHz) /
-							static_cast<long double>(deliveryRateHz)) - 1.0L);
-				}
-			}
+				convertedSample.sourceDiscontinuity);
 
 			if (hr == S_OK && sceneCadenceForSample &&
 				deferredUpstreamRepeat)

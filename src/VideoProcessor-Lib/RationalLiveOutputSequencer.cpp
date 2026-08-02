@@ -58,20 +58,13 @@ RationalLiveOutputTimestampDecision RationalLiveOutputSequencer::Preview(
 		observedSourceGapSlots - intentionalSourceGapSlotsSuppressed;
 	const bool materialSourceGapSuppressed =
 		remainingSourceGapSlots > m_maximumLocalSourceGapSlots;
-	const uint64_t sourceGapSlots = materialSourceGapSuppressed ?
-		0 : remainingSourceGapSlots;
-	const bool sourceGapSuppressed =
-		intentionalSourceGapSlotsSuppressed > 0 ||
-		materialSourceGapSuppressed;
-	if (sourceGapSlots >
-		(static_cast<uint64_t>((std::numeric_limits<uint32_t>::max)()) -
-		 input.presentationGapSlotsBefore - 1))
-	{
-		m_hasPendingDecision = false;
-		return {};
-	}
-	const uint64_t gapSlots = sourceGapSlots +
-		static_cast<uint64_t>(input.presentationGapSlotsBefore);
+	// Capture identity is not presentation identity. Turning a source-counter
+	// jump into empty PTS slots makes madVR repeat the previous picture even when
+	// VP and every renderer queue are full. The owner separately observes these
+	// gaps and requests one serialized re-prime when they are material.
+	const uint64_t sourceGapSlots = 0;
+	const bool sourceGapSuppressed = observedSourceGapSlots > 0;
+	const uint64_t gapSlots = input.presentationGapSlotsBefore;
 
 	VideoReferenceTime segmentStart = rebase ?
 		(m_hasCommittedSample ? m_nextPresentationStart :

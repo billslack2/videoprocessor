@@ -2,9 +2,10 @@
  * Delivery-owned presentation sequence for the live DirectShow path.
  *
  * The sequence commits only after a successful DirectShow delivery. Capture
- * identity is retained so a latest-wins discard consumes presentation time
- * without consuming media time. This keeps a live timeline aligned with
- * capture when routine downstream backpressure causes VP to omit a picture.
+ * identity is retained as recovery telemetry only. Capture-counter gaps never
+ * consume presentation time: only a successfully delivered sample advances
+ * this sequence. Material source interruptions are recovered by the graph
+ * re-prime owner instead of being encoded as holes in madVR's PTS stream.
  * The same sequence owns both ordinary Rational/Rational output and the
  * optional display-rate scene cadence. Changing cadence rebases at the next
  * committed stop; it never creates a second timeline or a same-epoch reset.
@@ -37,19 +38,14 @@ struct RationalLiveOutputTimestampInput
 	// Renderer-gap repeat: consume this many presentation intervals before
 	// stamping this one actual IMediaSample. Media time still advances once.
 	uint32_t presentationGapSlotsBefore = 0;
-	// Final-delivery capture identity. A forward jump represents captured live
-	// time intentionally omitted before delivery. Equal values are permitted for
-	// an explicit upstream repeat and do not advance capture identity.
+	// Final-delivery capture identity is diagnostic/recovery evidence. It never
+	// determines PTS; equal values remain valid for an explicit upstream repeat.
 	uint64_t sourceFrameNumber = 0;
 	bool sourceFrameNumberValid = false;
-	// False only when the caller intentionally removed work and accounts for it
-	// through a separate replacement policy. A capture-classified discontinuity
-	// is real elapsed live time: leave this true so the renderer holds the prior
-	// picture for the missing interval instead of draining one queued sample.
+	// Retained for trace compatibility with VP-owned catch-up accounting.
 	bool accountSourceGap = true;
-	// Exact VP-owned omissions (startup convergence or a planned scene drop)
-	// already accounted by the caller. Any remaining small gap is still live
-	// time and is preserved on the presentation timeline.
+	// Exact VP-owned omissions retained for trace compatibility. Source gaps are
+	// never added to the presentation timeline, regardless of their origin.
 	uint64_t sourceGapSlotsToSuppress = 0;
 	// A one-shot live catch-up may align the next segment with current graph
 	// time. The owner keeps this value stable until Commit succeeds.

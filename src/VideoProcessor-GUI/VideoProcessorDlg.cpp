@@ -4898,6 +4898,24 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 					CStringA(ToString(completion.request.reason)).GetString());
 			}
 		}
+		if (currentSuccess && m_activeRendererIsDirectShow &&
+			completion.request.scope == RendererResetScope::GraphRetarget)
+		{
+			// RetargetWindowWithIngressDrain performs the HWND transaction and an
+			// immediate graph re-prime, but madVR's new windowed/exclusive
+			// presentation path can settle later.  Preserve the long-proven,
+			// configurable delayed queue flush as a second, LiveQueue-only phase.
+			// This is deliberately timing-method agnostic: Rational and Clock
+			// modes exhibit the same downstream transition race.
+			const UINT delayMs = static_cast<UINT>(
+				m_queueResetDelaySeconds * 1000);
+			RequestRendererReset(
+				RendererResetReason::DisplayTransition, false, delayMs);
+			DebugLog::Log(
+				"Post-retarget queue re-prime armed: generation=%u "
+				"delay=%ums source=reset_after_render_restart_seconds",
+				currentGeneration, delayMs);
+		}
 		if (completion.request.scope != RendererResetScope::LiveQueue)
 			m_lastLivenessRecoveryTick = now;
 		m_consecutiveStuckSeconds = 0;
@@ -5070,18 +5088,24 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 	bool resetBlocksReveal =
 		m_rendererResetCoordinator &&
 		m_rendererResetCoordinator->BlocksReveal(generation);
-	// The post-start re-prime is deliberately delayed.  It must not keep the
-	// newly live renderer black while its deadline is pending; only the reset
+	// Delayed post-start and post-retarget re-primes must not keep the newly
+	// live renderer black while their deadlines are pending; only the reset
 	// transaction itself should cover the output when it begins.
 	if (resetBlocksReveal)
 	{
 		const RendererResetCoordinator::Diagnostics diagnostics =
 			m_rendererResetCoordinator->GetDiagnostics();
+		const bool delayedPostStart =
+			diagnostics.pendingReason ==
+				RendererResetReason::PostRendererStart;
+		const bool delayedPostRetarget =
+			diagnostics.pendingReason ==
+				RendererResetReason::DisplayTransition &&
+			diagnostics.pendingScope == RendererResetScope::LiveQueue;
 		if (diagnostics.hasPending &&
 			!diagnostics.selectionPrepared &&
 			!diagnostics.operationActive &&
-			diagnostics.pendingReason ==
-				RendererResetReason::PostRendererStart)
+			(delayedPostStart || delayedPostRetarget))
 		{
 			resetBlocksReveal = false;
 		}
