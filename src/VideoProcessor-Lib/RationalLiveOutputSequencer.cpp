@@ -2,7 +2,9 @@
 
 #include <RationalLiveOutputSequencer.h>
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 
 RationalLiveOutputSequencer::RationalLiveOutputSequencer(
 	uint32_t timeScale, uint32_t frameDurationTicks,
@@ -11,6 +13,19 @@ RationalLiveOutputSequencer::RationalLiveOutputSequencer(
 	m_frameDurationTicks(frameDurationTicks),
 	m_theoreticalFrameDuration(theoreticalFrameDuration)
 {
+	// Match the existing live-source recovery boundary: gaps representing less
+	// than 100 ms may be routine queue/latest-wins omissions. Larger gaps belong
+	// to discontinuity/re-prime handling and must never create far-future PTS.
+	if (m_timeScale > 0 && m_frameDurationTicks > 0 &&
+		m_frameDurationTicks <=
+			(std::numeric_limits<uint64_t>::max)() / 10)
+	{
+		const uint64_t denominator =
+			static_cast<uint64_t>(m_frameDurationTicks) * 10;
+		m_maximumLocalSourceGapSlots = static_cast<uint32_t>(
+			std::min<uint64_t>((m_timeScale - 1) / denominator,
+				(std::numeric_limits<uint32_t>::max)()));
+	}
 }
 
 RationalLiveOutputTimestampDecision RationalLiveOutputSequencer::Preview(
@@ -26,13 +41,47 @@ RationalLiveOutputTimestampDecision RationalLiveOutputSequencer::Preview(
 
 	// Preview must not advance the delivered timeline. A failed DirectShow
 	// Deliver() retries the same output time, not a synthetic missing frame.
-	const bool rebase = !m_hasCommittedSample || NeedsRebase(input);
-	const VideoReferenceTime segmentStart = rebase ?
+	const bool rebase = !m_hasCommittedSample || NeedsRebase(input) ||
+		input.minimumPresentationStartValid;
+	uint64_t observedSourceGapSlots = 0;
+	if (input.sourceFrameNumberValid && m_hasCommittedSourceFrame &&
+		input.sourceFrameNumber > m_lastCommittedSourceFrame)
+	{
+		observedSourceGapSlots = input.sourceFrameNumber -
+			m_lastCommittedSourceFrame - 1;
+	}
+	const uint64_t intentionalSourceGapSlotsSuppressed =
+		input.accountSourceGap ?
+		std::min(observedSourceGapSlots, input.sourceGapSlotsToSuppress) :
+		observedSourceGapSlots;
+	const uint64_t remainingSourceGapSlots =
+		observedSourceGapSlots - intentionalSourceGapSlotsSuppressed;
+	const bool materialSourceGapSuppressed =
+		remainingSourceGapSlots > m_maximumLocalSourceGapSlots;
+	const uint64_t sourceGapSlots = materialSourceGapSuppressed ?
+		0 : remainingSourceGapSlots;
+	const bool sourceGapSuppressed =
+		intentionalSourceGapSlotsSuppressed > 0 ||
+		materialSourceGapSuppressed;
+	if (sourceGapSlots >
+		(static_cast<uint64_t>((std::numeric_limits<uint32_t>::max)()) -
+		 input.presentationGapSlotsBefore - 1))
+	{
+		m_hasPendingDecision = false;
+		return {};
+	}
+	const uint64_t gapSlots = sourceGapSlots +
+		static_cast<uint64_t>(input.presentationGapSlotsBefore);
+
+	VideoReferenceTime segmentStart = rebase ?
 		(m_hasCommittedSample ? m_nextPresentationStart :
 			input.pipelineOffset + input.presentationLead) :
 		m_segmentStart;
+	if (input.minimumPresentationStartValid)
+		segmentStart = std::max(
+			segmentStart, input.minimumPresentationStart);
 	const uint64_t segmentSlot = rebase ? 0 : m_segmentSlot;
-	const uint64_t startSlot = segmentSlot + input.presentationGapSlotsBefore;
+	const uint64_t startSlot = segmentSlot + gapSlots;
 
 	RationalLiveOutputTimestampDecision decision;
 	decision.valid = true;
@@ -79,7 +128,15 @@ RationalLiveOutputTimestampDecision RationalLiveOutputSequencer::Preview(
 	}
 	if (decision.stop <= decision.start)
 		decision.stop = decision.start + 1;
-	decision.presentationSlotsConsumed = input.presentationGapSlotsBefore + 1;
+	decision.presentationSlotsConsumed = static_cast<uint32_t>(gapSlots) + 1;
+	decision.sourceGapSlotsBefore = static_cast<uint32_t>(sourceGapSlots);
+	decision.observedSourceGapSlotsBefore = observedSourceGapSlots;
+	decision.sourceGapSuppressed = sourceGapSuppressed;
+	decision.intentionalSourceGapSlotsSuppressed =
+		intentionalSourceGapSlotsSuppressed;
+	decision.materialSourceGapSuppressed = materialSourceGapSuppressed;
+	decision.observedSourceGapMaterial =
+		observedSourceGapSlots > m_maximumLocalSourceGapSlots;
 
 	m_pendingInput = input;
 	m_pendingSegmentStart = segmentStart;
@@ -99,14 +156,32 @@ bool RationalLiveOutputSequencer::Commit(
 		decision.mediaStop != m_pendingDecision.mediaStop ||
 		decision.discontinuity != m_pendingDecision.discontinuity ||
 		decision.presentationSlotsConsumed !=
-			m_pendingDecision.presentationSlotsConsumed)
+			m_pendingDecision.presentationSlotsConsumed ||
+		decision.sourceGapSlotsBefore !=
+			m_pendingDecision.sourceGapSlotsBefore ||
+		decision.observedSourceGapSlotsBefore !=
+			m_pendingDecision.observedSourceGapSlotsBefore ||
+		decision.sourceGapSuppressed !=
+			m_pendingDecision.sourceGapSuppressed ||
+		decision.intentionalSourceGapSlotsSuppressed !=
+			m_pendingDecision.intentionalSourceGapSlotsSuppressed ||
+		decision.materialSourceGapSuppressed !=
+			m_pendingDecision.materialSourceGapSuppressed ||
+		decision.observedSourceGapMaterial !=
+			m_pendingDecision.observedSourceGapMaterial)
 		return false;
 
-	if (!m_hasCommittedSample || NeedsRebase(m_pendingInput))
+	if (!m_hasCommittedSample || NeedsRebase(m_pendingInput) ||
+		m_pendingInput.minimumPresentationStartValid)
 		BeginSegment(m_pendingInput, m_pendingSegmentStart);
 	m_segmentSlot += m_pendingDecision.presentationSlotsConsumed;
 	m_nextPresentationStart = m_pendingDecision.stop;
 	++m_nextMediaSequence;
+	if (m_pendingInput.sourceFrameNumberValid)
+	{
+		m_hasCommittedSourceFrame = true;
+		m_lastCommittedSourceFrame = m_pendingInput.sourceFrameNumber;
+	}
 	m_hasCommittedSample = true;
 	m_forceEpochDiscontinuity = false;
 	m_hasPendingDecision = false;
@@ -132,6 +207,8 @@ void RationalLiveOutputSequencer::ResetToEpoch(uint64_t epoch)
 	m_ppmCorrection = 0;
 	m_displayRateHz = 0.0;
 	m_forceEpochDiscontinuity = true;
+	m_hasCommittedSourceFrame = false;
+	m_lastCommittedSourceFrame = 0;
 	m_hasPendingDecision = false;
 	m_pendingSegmentStart = 0;
 	m_pendingInput = {};

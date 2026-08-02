@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <ConsecutiveFrameDurationHistory.h>
+
 
 #include <atomic>
 #include <cstdint>
@@ -358,7 +360,6 @@ protected:
 	void ResetTimingControllerToPipelineEpoch(uint64_t epoch);
 
 	// Constants for CLOCK_SMART duration tracking
-	static const size_t DURATION_HISTORY_SIZE = 100;  // Track last 100 frame durations
 	static const int64_t REFERENCE_TIME_TICKS_PER_SECOND = 10000000LL;  // 100ns ticks per second
 
 	// RATIONAL_RATIONAL timing trim constants - dynamically loaded from VideoProcessor.cfg
@@ -414,7 +415,6 @@ protected:
 
 	// Smart duration calculation for CLOCK_SMART mode
 	REFERENCE_TIME CalculateSmartFrameDuration() const;
-	void UpdateFrameDurationHistory(REFERENCE_TIME actualDuration);
 
 	// Integer math utilities for precise timing calculations with overflow protection
 	// HIGH-PRECISION CONVERSION: Eliminates cumulative rounding errors at high refresh rates
@@ -468,13 +468,9 @@ protected:
 	unsigned long m_pendingAspectY = 0;
 	bool m_useHDRData = false;
 
-	// Duration tracking for CLOCK_SMART improvements
-	// Circular buffer of actual frame durations (in 100ns units) for averaging
-	REFERENCE_TIME m_durationHistory[DURATION_HISTORY_SIZE] = {};
-	size_t m_durationHistoryIndex = 0;  // Current write position in circular buffer
-	size_t m_durationHistoryCount = 0;  // Number of valid entries (up to DURATION_HISTORY_SIZE)
-	REFERENCE_TIME m_durationHistorySum = 0; // Running sum for O(1) SMART2 averaging
-	REFERENCE_TIME m_lastHardwareTimestamp = 0;  // Previous hardware timestamp for duration calculation
+	// CLOCK_SMART2 duration evidence includes source-counter continuity, so a
+	// multi-frame capture/queue gap cannot become a single-frame duration.
+	ConsecutiveFrameDurationHistory m_smartDurationHistory;
 
 	// Rational timing parameters for RATIONAL_RATIONAL mode (Bresenham-style exact integer math)
 	// These come from DisplayMode and allow drift-free timing for rates like 23.976, 29.97, 59.94

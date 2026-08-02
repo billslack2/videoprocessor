@@ -22,7 +22,6 @@
 #include <ConfigFile.h>
 #include <DirectShowDeliveryOutcome.h>
 #include <microsoft_directshow/DirectShowEpochPrimePolicy.h>
-#include <LiveClockPresentationSequencer.h>
 #include <LiveEpochConvergenceController.h>
 #include <LiveSteadyQueuePolicy.h>
 #include <RationalLiveOutputSequencer.h>
@@ -30,6 +29,27 @@
 #include "WindowsOcrSubtitleDetector.h"
 #include "GpuSubtitleDetector.h"
 #include "../../P010ActivePictureEvidence.h"
+
+namespace
+{
+const char* TimestampMethodName(DirectShowStartStopTimeMethod method) noexcept
+{
+	switch (method)
+	{
+	case DS_SSTM_CLOCK_SMART: return "Clock-Smart";
+	case DS_SSTM_CLOCK_THEO: return "Clock-Theo";
+	case DS_SSTM_CLOCK_CLOCK: return "Clock-Clock";
+	case DS_SSTM_THEO_THEO: return "Theo-Theo";
+	case DS_SSTM_RATIONAL_RATIONAL: return "Rational-Rational";
+	case DS_SSTM_CLOCK_RATIONAL: return "Clock-Rational";
+	case DS_SSTM_CLOCK_SMART2: return "Clock-Smart2";
+	case DS_SSTM_CLOCK_NONE: return "Clock-None";
+	case DS_SSTM_THEO_NONE: return "Theo-None";
+	case DS_SSTM_NONE: return "None";
+	default: return "Unknown";
+	}
+}
+}
 
 
 CBufferedLiveSourceVideoOutputPin::CBufferedLiveSourceVideoOutputPin(
@@ -1482,11 +1502,19 @@ void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace(const char* boundar
 			exportedUtc.wMilliseconds);
 		manifest << std::fixed << std::setprecision(6);
 		manifest << "{\n";
-		manifest << "  \"schema_version\": 3,\n";
+		manifest << "  \"schema_version\": 4,\n";
 		manifest << "  \"run_id\": " << m_liveOutputTraceRunId << ",\n";
 		manifest << "  \"exported_utc\": \"" << exportedUtcText << "\",\n";
 		manifest << "  \"export_boundary\": \"" << boundary << "\",\n";
 		manifest << "  \"pipeline_epoch\": " << epoch << ",\n";
+		manifest << "  \"timestamp_method\": \"" <<
+			TimestampMethodName(m_timestamp) << "\",\n";
+		manifest << "  \"timestamp_method_id\": " <<
+			static_cast<int>(m_timestamp) << ",\n";
+		manifest << "  \"presentation_lead_frames_configured\": " <<
+			(m_presentationLeadFramesConfigured ? "true" : "false") << ",\n";
+		manifest << "  \"presentation_lead_frames\": " <<
+			m_presentationLeadFrames << ",\n";
 		manifest << "  \"input_rate_numerator\": " << m_timeScale << ",\n";
 		manifest << "  \"input_rate_denominator\": " << m_frameDurationTicks << ",\n";
 		manifest << "  \"input_rate_hz\": " <<
@@ -1730,13 +1758,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	// active and already stamps its samples on this same delivery thread.
 	RationalLiveOutputSequencer deliveryTimestampSequencer(
 		m_timeScale, m_frameDurationTicks, m_frameDuration);
-	LiveClockPresentationSequencer liveClockTimestampSequencer;
-	const bool liveClockTimestampOwnershipEnabled =
-		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
-		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2 ||
-		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO ||
-		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK ||
-		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL;
+	uint64_t rationalSourceGapSlotsToSuppress = 0;
+	bool rationalCatchUpAnchorValid = false;
+	REFERENCE_TIME rationalCatchUpMinimumStart = 0;
+	uint64_t rationalLatchEpoch = 0;
+	LiveOutputTraceRecord latestTimelineSnapshot;
+	bool latestTimelineSnapshotAvailable = false;
 	uint64_t latencyClockDiscontinuityLoggedEpoch = 0;
 	bool downstreamRejectedUntilNewEpoch = false;
 	uint64_t downstreamRejectedEpoch = 0;
@@ -1831,6 +1858,26 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		return static_cast<REFERENCE_TIME>(llround(sceneCadence.anchor + ticks));
 	};
 
+	const auto readConfirmedRunningStreamTime =
+		[this](REFERENCE_TIME& streamTime) -> bool
+	{
+		streamTime = REFERENCE_TIME_INVALID;
+		if (!m_pFilter)
+			return false;
+		FILTER_STATE before = State_Stopped;
+		FILTER_STATE after = State_Stopped;
+		if (m_pFilter->GetState(0, &before) != S_OK ||
+			before != State_Running)
+			return false;
+		const REFERENCE_TIME observed = NowStreamTime(m_pFilter);
+		if (observed == REFERENCE_TIME_INVALID ||
+			m_pFilter->GetState(0, &after) != S_OK ||
+			after != State_Running)
+			return false;
+		streamTime = observed;
+		return true;
+	};
+
 	auto deliverTracked = [&](IMediaSample* sample,
 		uint64_t expectedQueueEpoch,
 		uint64_t frameNumber,
@@ -1841,8 +1888,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		RationalLiveOutputCadence outputCadence,
 		double displayRateHz,
 		uint32_t presentationGapSlotsBefore,
-		bool sourceDiscontinuity) -> HRESULT
+		bool sourceDiscontinuity,
+		uint32_t* committedSourceGapSlots) -> HRESULT
 	{
+		if (committedSourceGapSlots)
+			*committedSourceGapSlots = 0;
 		CAutoLock deliveryLock(&m_deliveryGate);
 		if (m_deliveryFlushing.load(std::memory_order_acquire) ||
 			expectedQueueEpoch != m_queueEpoch.load(std::memory_order_acquire))
@@ -1852,14 +1902,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		m_lastDeliveryStartTick.store(
 			GetTickCount64(), std::memory_order_release);
 		m_deliveryInProgress.store(true, std::memory_order_release);
+		const REFERENCE_TIME observedClockTime = NowStreamTime(m_pFilter);
+		REFERENCE_TIME runningClockBeforeDelivery = REFERENCE_TIME_INVALID;
+		const bool graphRunningBeforeDelivery =
+			readConfirmedRunningStreamTime(runningClockBeforeDelivery);
 		const bool timestampOwnershipEnabled =
 			m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL;
-		const bool liveClockTimestampOwnerForSample =
-			liveClockTimestampOwnershipEnabled &&
-			outputCadence != RationalLiveOutputCadence::Display;
+		const bool catchUpAnchorForAttempt =
+			timestampOwnershipEnabled && rationalCatchUpAnchorValid;
 		RationalLiveOutputTimestampDecision timestampDecision;
-		LiveClockPresentationDecision liveClockDecision;
-		const REFERENCE_TIME observedClockTime = NowStreamTime(m_pFilter);
 		if (timestampOwnershipEnabled)
 		{
 			RationalLiveOutputTimestampInput timestampInput;
@@ -1872,7 +1923,38 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			timestampInput.sourceDiscontinuity = sourceDiscontinuity;
 			timestampInput.presentationGapSlotsBefore =
 				presentationGapSlotsBefore;
+			timestampInput.sourceFrameNumber = frameNumber;
+			timestampInput.sourceFrameNumberValid = true;
+			timestampInput.accountSourceGap = !sourceDiscontinuity;
+			timestampInput.sourceGapSlotsToSuppress =
+				rationalSourceGapSlotsToSuppress;
+			timestampInput.minimumPresentationStartValid =
+				catchUpAnchorForAttempt;
+			timestampInput.minimumPresentationStart =
+				rationalCatchUpMinimumStart;
 			timestampDecision = deliveryTimestampSequencer.Preview(timestampInput);
+			if (timestampDecision.valid &&
+				(timestampDecision.materialSourceGapSuppressed ||
+				 (sourceDiscontinuity &&
+				  timestampDecision.observedSourceGapMaterial)) &&
+				graphRunningBeforeDelivery &&
+				runningClockBeforeDelivery != REFERENCE_TIME_INVALID)
+			{
+				// A material internal latest-wins gap is too large to encode as
+				// N synthetic PTS slots. Rebase this same transactional preview to
+				// the confirmed Running graph clock instead of leaving it late.
+				timestampInput.minimumPresentationStartValid = true;
+				timestampInput.minimumPresentationStart =
+					runningClockBeforeDelivery + timestampInput.presentationLead;
+				timestampDecision =
+					deliveryTimestampSequencer.Preview(timestampInput);
+				DebugLog::Log(
+					"VP-0066 RATIONAL MATERIAL CATCH-UP: epoch=%llu "
+					"observed_gap=%llu minimum_start=%.3fms",
+					expectedQueueEpoch,
+					timestampDecision.observedSourceGapSlotsBefore,
+					timestampInput.minimumPresentationStart / 10000.0);
+			}
 			if (!timestampDecision.valid ||
 				FAILED(sample->SetTime(
 					&timestampDecision.start, &timestampDecision.stop)) ||
@@ -1888,52 +1970,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				m_deliveryInProgress.store(false, std::memory_order_release);
 				RequestCoordinatedReset("delivery-timestamp-stamp-failure");
 				return E_FAIL;
-			}
-		}
-		else if (liveClockTimestampOwnerForSample)
-		{
-			REFERENCE_TIME originalStart = 0;
-			REFERENCE_TIME originalStop = 0;
-			const HRESULT originalTimeResult = sample->GetTime(
-				&originalStart, &originalStop);
-			LiveClockPresentationInput clockInput;
-			clockInput.epoch = expectedQueueEpoch;
-			clockInput.streamTime = observedClockTime;
-			clockInput.presentationLead = GetRampedLeadTime();
-			clockInput.nominalFrameDuration = m_frameDuration;
-			clockInput.observedFrameDuration =
-				originalStop - originalStart;
-			clockInput.observedDurationValid =
-				SUCCEEDED(originalTimeResult) && originalStop > originalStart;
-			clockInput.sourceDiscontinuity = sourceDiscontinuity;
-			liveClockDecision = liveClockTimestampSequencer.Preview(clockInput);
-			if (!liveClockDecision.valid ||
-				FAILED(sample->SetTime(
-					&liveClockDecision.start, &liveClockDecision.stop)) ||
-				FAILED(sample->SetMediaTime(
-					&liveClockDecision.mediaStart, &liveClockDecision.mediaStop)) ||
-				FAILED(sample->SetDiscontinuity(
-					liveClockDecision.discontinuity ? TRUE : FALSE)))
-			{
-				DebugLog::Log(
-					"VP-0066 LIVE CLOCK OWNER: sample stamp failed "
-					"(epoch=%llu stream=%lld); requesting serialized reset",
-					expectedQueueEpoch,
-					static_cast<long long>(observedClockTime));
-				m_deliveryInProgress.store(false, std::memory_order_release);
-				RequestCoordinatedReset("live-clock-timestamp-stamp-failure");
-				return E_FAIL;
-			}
-			if (liveClockDecision.reanchored)
-			{
-				DebugLog::Log(
-					"VP-0066 LIVE CLOCK ANCHOR: epoch=%llu sequence=%llu "
-					"stream=%.3fms lead=%.3fms start=%.3fms duration=%.3fms",
-					expectedQueueEpoch, liveClockDecision.outputSequence,
-					observedClockTime / 10000.0,
-					(liveClockDecision.start - observedClockTime) / 10000.0,
-					liveClockDecision.start / 10000.0,
-					liveClockDecision.duration / 10000.0);
 			}
 		}
 		else if (sourceDiscontinuity &&
@@ -1967,16 +2003,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		REFERENCE_TIME streamTime = REFERENCE_TIME_INVALID;
 		if (observedClockTime != REFERENCE_TIME_INVALID)
 		{
-			// Delivery-owned CLOCK timestamps are already in the graph's absolute
-			// StreamTime domain. Rational-Rational and the remaining legacy paths
-			// retain epoch-relative timestamps and therefore still require the
-			// diagnostic normalizer before PTS lead can be compared.
-			const bool normalized = liveClockDecision.valid ?
-				(streamTime = observedClockTime, true) :
-				m_latencyStreamTimeNormalizer.Normalize(
-					expectedQueueEpoch, observedClockTime, streamTime);
+			// Legacy capture-clock and Rational timestamps are epoch-relative. The
+			// raw graph clock can briefly be absolute before Run, so normalize it
+			// strictly for diagnostics; it never owns sample timestamps here.
+			const bool normalized = m_latencyStreamTimeNormalizer.Normalize(
+				expectedQueueEpoch, observedClockTime, streamTime);
 			const bool relativeClockRebased =
-				!liveClockDecision.valid &&
 				m_latencyStreamTimeNormalizer.LastObservationRebased();
 			if (relativeClockRebased)
 			{
@@ -1995,12 +2027,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 			if (!normalized)
 				streamTime = REFERENCE_TIME_INVALID;
-		}
-		if (liveClockDecision.valid && liveClockDecision.reanchored &&
-			liveClockDecision.outputSequence > 0)
-		{
-			m_latencyStabilizer.Reset();
-			m_latencySnapshotAvailable.store(false, std::memory_order_release);
 		}
 		RendererLatencySnapshot latencySnapshot;
 		RendererLatencySnapshot displayedLatencySnapshot;
@@ -2102,16 +2128,25 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			deliveryAttemptTrace.mediaStop = timestampDecision.mediaStop;
 			deliveryAttemptTrace.outputSequence = timestampDecision.outputSequence;
 		}
-		else if (liveClockDecision.valid)
-		{
-			deliveryAttemptTrace.mediaStart = liveClockDecision.mediaStart;
-			deliveryAttemptTrace.mediaStop = liveClockDecision.mediaStop;
-			deliveryAttemptTrace.outputSequence = liveClockDecision.outputSequence;
-		}
 		deliveryAttemptTrace.timestampOwner = timestampOwnershipEnabled ?
 			(outputCadence == RationalLiveOutputCadence::Display ? 2 : 1) :
-			(liveClockTimestampOwnerForSample ? 3 :
-				(outputCadence == RationalLiveOutputCadence::Display ? 2 : 0));
+			(outputCadence == RationalLiveOutputCadence::Display ? 2 : 0);
+		deliveryAttemptTrace.timestampMethod = static_cast<uint8_t>(m_timestamp);
+		deliveryAttemptTrace.sourceGapSlotsBefore =
+			timestampDecision.valid ? timestampDecision.sourceGapSlotsBefore : 0;
+		deliveryAttemptTrace.observedSourceGapSlotsBefore =
+			timestampDecision.valid ? static_cast<uint32_t>(std::min<uint64_t>(
+				timestampDecision.observedSourceGapSlotsBefore,
+				(std::numeric_limits<uint32_t>::max)())) : 0;
+		deliveryAttemptTrace.sourceGapSuppressed =
+			timestampDecision.valid && timestampDecision.sourceGapSuppressed;
+		deliveryAttemptTrace.intentionalSourceGapSlotsSuppressed =
+			timestampDecision.valid ? static_cast<uint32_t>(std::min<uint64_t>(
+				timestampDecision.intentionalSourceGapSlotsSuppressed,
+				(std::numeric_limits<uint32_t>::max)())) : 0;
+		deliveryAttemptTrace.materialSourceGapSuppressed =
+			timestampDecision.valid &&
+			timestampDecision.materialSourceGapSuppressed;
 		deliveryAttemptTrace.sourceDiscontinuity = sourceDiscontinuity;
 		deliveryAttemptTrace.rawQueueDepth = static_cast<uint32_t>(
 			m_publishedRawQueueDepth.load(std::memory_order_acquire));
@@ -2150,6 +2185,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			std::min<uint64_t>(deliveryTimeUs, std::numeric_limits<uint32_t>::max()));
 		deliveryCompleteTrace.deliveryResult = static_cast<int32_t>(result);
 		m_liveOutputTrace.Record(deliveryCompleteTrace);
+		latestTimelineSnapshot = deliveryCompleteTrace;
+		latestTimelineSnapshotAvailable = true;
 
 		totalDeliveryTimeUs += deliveryTimeUs;
 		maxDeliveryTimeUs = std::max(maxDeliveryTimeUs, deliveryTimeUs);
@@ -2276,21 +2313,42 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					std::memory_order_release, std::memory_order_relaxed))
 			{
 			}
-			if (timestampOwnershipEnabled &&
-				!deliveryTimestampSequencer.Commit(timestampDecision))
+			const bool timestampCommitSucceeded =
+				!timestampOwnershipEnabled ||
+				deliveryTimestampSequencer.Commit(timestampDecision);
+			if (!timestampCommitSucceeded)
 			{
 				DebugLog::Log(
 					"VP-0066-9 DELIVERY TIMESTAMP OWNER: failed to commit "
 					"successful delivery sequence (epoch=%llu)",
 					expectedQueueEpoch);
 			}
-			if (liveClockTimestampOwnerForSample &&
-				!liveClockTimestampSequencer.Commit(liveClockDecision))
+			else if (committedSourceGapSlots && timestampDecision.valid)
 			{
-				DebugLog::Log(
-					"VP-0066 LIVE CLOCK OWNER: failed to commit successful "
-					"delivery sequence (epoch=%llu)",
-					expectedQueueEpoch);
+				*committedSourceGapSlots =
+					timestampDecision.sourceGapSlotsBefore;
+			}
+			if (timestampCommitSucceeded && timestampDecision.valid)
+			{
+				if (timestampDecision.intentionalSourceGapSlotsSuppressed > 0)
+				{
+					rationalSourceGapSlotsToSuppress =
+						timestampDecision.intentionalSourceGapSlotsSuppressed >=
+							rationalSourceGapSlotsToSuppress ? 0 :
+						rationalSourceGapSlotsToSuppress -
+							timestampDecision.intentionalSourceGapSlotsSuppressed;
+				}
+				if (sourceDiscontinuity)
+				{
+					// A source-counter reset establishes a new identity domain. Any
+					// unconsumed queue/scene suppression belonged to the old domain.
+					rationalSourceGapSlotsToSuppress = 0;
+				}
+				if (catchUpAnchorForAttempt)
+				{
+					rationalCatchUpAnchorValid = false;
+					rationalCatchUpMinimumStart = 0;
+				}
 			}
 			if (outcome.clearRecentFailures)
 				m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
@@ -2306,8 +2364,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			// frame-paced ingress plus local backlog proves the initial burst is over,
 			// perform one live catch-up for this epoch:
 			// discard stale raw backlog and retain the configured converted reserve.
-			// The delivery sequencer owns final timestamps, so skipped pictures do
-			// not create a presentation-time hole. These are black-box downstream
+			// The delivery sequencer owns final timestamps and accounts for skipped
+			// capture slots on the next successful delivery. These are black-box downstream
 			// pacing/backpressure signals, never madVR occupancy measurements or a
 			// claim about physical presentation readiness.
 			const bool steadyTargetConfigured =
@@ -2432,6 +2490,37 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				}
 				const size_t discardedStaleFrames =
 					discardedRawFrames + discardedConvertedFrames;
+				if (timestampOwnershipEnabled && discardedStaleFrames > 0)
+				{
+					// The trim deliberately replaces stale live work, so the next
+					// source-counter jump must not also add presentation slots. If
+					// the graph clock is running, align that one transactional rebase
+					// to current graph time plus configured lead; this catches up a
+					// slow HDMI handshake without treating pre-Run backlog as time.
+					rationalSourceGapSlotsToSuppress =
+						discardedStaleFrames >
+							(std::numeric_limits<uint64_t>::max)() -
+							rationalSourceGapSlotsToSuppress ?
+						(std::numeric_limits<uint64_t>::max)() :
+						rationalSourceGapSlotsToSuppress + discardedStaleFrames;
+					REFERENCE_TIME rawCatchUpClock = REFERENCE_TIME_INVALID;
+					const bool graphStayedRunning =
+						graphRunningBeforeDelivery &&
+						readConfirmedRunningStreamTime(rawCatchUpClock);
+					if (rawCatchUpClock != REFERENCE_TIME_INVALID)
+					{
+						rationalCatchUpAnchorValid = true;
+						rationalCatchUpMinimumStart =
+							rawCatchUpClock + GetRampedLeadTime();
+					}
+					DebugLog::Log(
+						"VP-0066 RATIONAL CATCH-UP: epoch=%llu discarded=%zu "
+						"running=%d clock_valid=%d minimum_start=%.3fms",
+						expectedQueueEpoch, discardedStaleFrames,
+						graphStayedRunning ? 1 : 0,
+						rationalCatchUpAnchorValid ? 1 : 0,
+						rationalCatchUpMinimumStart / 10000.0);
+				}
 				// The pre-catch-up samples described the stale live backlog we just
 				// removed. Rewarm presentation telemetry from the caught-up path so
 				// the UI never advertises that transient as steady latency.
@@ -2601,15 +2690,36 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			m_publishedRawQueueDepth.load(std::memory_order_acquire));
 		const uint32_t convertedDepth = static_cast<uint32_t>(
 			m_publishedConvertedQueueDepth.load(std::memory_order_acquire));
-		LiveOutputTraceRecord queueTrace;
+		const uint64_t currentEpoch =
+			m_queueEpoch.load(std::memory_order_acquire);
+		LiveOutputTraceRecord queueTrace =
+			latestTimelineSnapshotAvailable &&
+			latestTimelineSnapshot.pipelineEpoch == currentEpoch ?
+			latestTimelineSnapshot : LiveOutputTraceRecord{};
 		queueTrace.kind = LiveOutputTraceKind::QueueSnapshot;
-		queueTrace.pipelineEpoch = m_queueEpoch.load(std::memory_order_acquire);
+		queueTrace.pipelineEpoch = currentEpoch;
 		queueTrace.eventTick = now;
 		queueTrace.rawQueueDepth = rawDepth;
 		queueTrace.convertedQueueDepth = convertedDepth;
 		queueTrace.totalQueueDepth = rawDepth + convertedDepth;
 		queueTrace.queueCapacity = static_cast<uint32_t>(
 			m_frameQueueMaxSize.load(std::memory_order_acquire));
+		queueTrace.timestampMethod = static_cast<uint8_t>(m_timestamp);
+		const EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
+		const EpochBoundedQueueMetrics convertedMetrics =
+			m_processedFrameQueue.Metrics();
+		const uint64_t rawDiscarded = rawMetrics.overflowDiscarded +
+			rawMetrics.staleDiscarded;
+		const uint64_t convertedDiscarded = convertedMetrics.overflowDiscarded +
+			convertedMetrics.staleDiscarded;
+		queueTrace.rawQueueDiscarded = static_cast<uint32_t>(std::min<uint64_t>(
+			rawDiscarded, (std::numeric_limits<uint32_t>::max)()));
+		queueTrace.convertedQueueDiscarded = static_cast<uint32_t>(
+			std::min<uint64_t>(convertedDiscarded,
+				(std::numeric_limits<uint32_t>::max)()));
+		queueTrace.queueDiscarded = static_cast<uint32_t>(std::min<uint64_t>(
+			rawDiscarded + convertedDiscarded,
+			(std::numeric_limits<uint32_t>::max)()));
 		m_liveOutputMetricsTrace.Record(queueTrace);
 	};
 
@@ -2663,6 +2773,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			DebugLog::Log(
 				"DELIVERY THREAD: downstream rejection pause cleared by new epoch");
 		}
+		const uint64_t observedLatchEpoch =
+			m_queueEpoch.load(std::memory_order_acquire);
+		if (observedLatchEpoch != rationalLatchEpoch)
+		{
+			rationalLatchEpoch = observedLatchEpoch;
+			rationalSourceGapSlotsToSuppress = 0;
+			rationalCatchUpAnchorValid = false;
+			rationalCatchUpMinimumStart = 0;
+		}
 
 		if (pendingUpstreamRepeat.sample)
 		{
@@ -2696,7 +2815,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				RationalLiveOutputCadence::Display,
 				sceneCadence.displayRateHz,
 				0,
-				false);
+				false,
+				nullptr);
 			if (repeatHr == S_OK)
 			{
 				++sceneCadence.nextOutputIndex;
@@ -3049,13 +3169,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			// Conversion can run ahead and its first discontinuous sample can be
 			// purged during buffering. The delivery component applies this flag
 			// and the optional late-bound stop as one sample preparation step.
-			// The delivery-owned live-clock sequence finalizes both start and stop.
-			// It does not require a future converted sample, which is essential when
-			// the configured steady VP queue contains only one retained frame.
 			const bool lateBindStop =
-				!liveClockTimestampOwnershipEnabled &&
-				(m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
-				 m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2);
+				m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+				m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2;
 			static const double SEARCH_TOLERANCE_PERCENT = 0.10;
 			const REFERENCE_TIME searchTolerance =
 				static_cast<REFERENCE_TIME>(m_frameDuration * SEARCH_TOLERANCE_PERCENT);
@@ -3326,6 +3442,32 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
 					m_sceneAwareCorrectionDropCount.fetch_add(
 						1, std::memory_order_relaxed);
+					// This omission is the cadence correction itself. Adopt the next
+					// source identity without turning it into another PTS hole.
+					if (rationalSourceGapSlotsToSuppress !=
+						(std::numeric_limits<uint64_t>::max)())
+						++rationalSourceGapSlotsToSuppress;
+					LiveOutputTraceRecord sceneDropTrace;
+					sceneDropTrace.kind = LiveOutputTraceKind::PlannedDrop;
+					sceneDropTrace.frameNumber = convertedSample.frameNumber;
+					sceneDropTrace.pipelineEpoch = currentQueueEpoch;
+					sceneDropTrace.captureTimestamp =
+						convertedSample.captureTimestamp;
+					sceneDropTrace.captureArrivalTick =
+						convertedSample.captureArrivalTick;
+					sceneDropTrace.eventTick = GetTickCount64();
+					sceneDropTrace.rawQueueDepth = static_cast<uint32_t>(
+						m_publishedRawQueueDepth.load(std::memory_order_acquire));
+					sceneDropTrace.convertedQueueDepth = static_cast<uint32_t>(
+						m_publishedConvertedQueueDepth.load(std::memory_order_acquire));
+					sceneDropTrace.totalQueueDepth =
+						sceneDropTrace.rawQueueDepth +
+						sceneDropTrace.convertedQueueDepth;
+					sceneDropTrace.timestampMethod = static_cast<uint8_t>(m_timestamp);
+					sceneDropTrace.sceneBoundary = correctionAtSceneBoundary;
+					sceneDropTrace.intentionalDrop = true;
+					sceneDropTrace.sourceGapSuppressed = true;
+					m_liveOutputTrace.Record(sceneDropTrace);
 					DebugLog::Log(
 						"SCENE-AWARE CORRECTION: output drop at %s "
 						"(event=%llu, phase=%+.6Lf -> %+.6Lf frames, media-offset=%+lld)",
@@ -3447,6 +3589,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 
 			// 4) DELIVER - Let madVR handle buffering and presentation.
+			uint32_t committedSourceGapSlots = 0;
 			hr = deliverTracked(
 				pSample,
 				currentQueueEpoch,
@@ -3459,7 +3602,24 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					RationalLiveOutputCadence::Rational,
 				sceneCadenceForSample ? sceneCadence.displayRateHz : 0.0,
 				scheduledPresentationGapRepeat ? 1U : 0U,
-				convertedSample.sourceDiscontinuity);
+				convertedSample.sourceDiscontinuity,
+				&committedSourceGapSlots);
+
+			if (hr == S_OK && sceneCadenceForSample &&
+				committedSourceGapSlots > 0)
+			{
+				// The final Rational owner consumed these omitted capture slots.
+				// Keep the scene planner on the same display-slot coordinate and
+				// account for their small source/display phase contribution.
+				sceneCadence.nextOutputIndex += committedSourceGapSlots;
+				if (contentPhasePending)
+				{
+					pendingContentPhaseFrames +=
+						static_cast<long double>(committedSourceGapSlots) *
+						((static_cast<long double>(displayRateHz) /
+							static_cast<long double>(deliveryRateHz)) - 1.0L);
+				}
+			}
 
 			if (hr == S_OK && sceneCadenceForSample &&
 				deferredUpstreamRepeat)

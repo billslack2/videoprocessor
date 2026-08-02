@@ -69,10 +69,14 @@ struct LiveOutputTraceRecord
 	uint32_t convergencePacedMaximumUs = 0;
 	uint32_t convergencePacedPrimingDepth = 0;
 	uint32_t convergenceElapsedMs = 0;
+	uint32_t sourceGapSlotsBefore = 0;
+	uint32_t observedSourceGapSlotsBefore = 0;
+	uint32_t intentionalSourceGapSlotsSuppressed = 0;
 	uint8_t convergenceState = 0;
 	uint8_t convergenceReason = 0;
 	uint8_t convergenceActivation = 0;
 	uint8_t timestampOwner = 0;
+	uint8_t timestampMethod = 0;
 	LiveOutputTraceKind kind = LiveOutputTraceKind::CaptureAccepted;
 	bool sceneBoundary = false;
 	bool intentionalDrop = false;
@@ -82,6 +86,8 @@ struct LiveOutputTraceRecord
 	bool convergenceRawBacklog = false;
 	bool scheduledLatencyKnown = false;
 	bool latencyDisplayReady = false;
+	bool sourceGapSuppressed = false;
+	bool materialSourceGapSuppressed = false;
 };
 
 struct LiveOutputTraceComparison
@@ -220,10 +226,15 @@ public:
 				lhs.convergencePacedMaximumUs != rhs.convergencePacedMaximumUs ||
 				lhs.convergencePacedPrimingDepth != rhs.convergencePacedPrimingDepth ||
 				lhs.convergenceElapsedMs != rhs.convergenceElapsedMs ||
+				lhs.sourceGapSlotsBefore != rhs.sourceGapSlotsBefore ||
+				lhs.observedSourceGapSlotsBefore != rhs.observedSourceGapSlotsBefore ||
+				lhs.intentionalSourceGapSlotsSuppressed !=
+					rhs.intentionalSourceGapSlotsSuppressed ||
 				lhs.convergenceState != rhs.convergenceState ||
 				lhs.convergenceReason != rhs.convergenceReason ||
 				lhs.convergenceActivation != rhs.convergenceActivation ||
 				lhs.timestampOwner != rhs.timestampOwner ||
+				lhs.timestampMethod != rhs.timestampMethod ||
 				lhs.sceneBoundary != rhs.sceneBoundary ||
 				lhs.intentionalDrop != rhs.intentionalDrop ||
 				lhs.sourceDiscontinuity != rhs.sourceDiscontinuity ||
@@ -232,6 +243,8 @@ public:
 				lhs.convergenceRawBacklog != rhs.convergenceRawBacklog ||
 				lhs.scheduledLatencyKnown != rhs.scheduledLatencyKnown ||
 				lhs.latencyDisplayReady != rhs.latencyDisplayReady ||
+				lhs.sourceGapSuppressed != rhs.sourceGapSuppressed ||
+				lhs.materialSourceGapSuppressed != rhs.materialSourceGapSuppressed ||
 				AbsoluteDifference(lhs.presentationStart, rhs.presentationStart) > presentationTolerance ||
 				AbsoluteDifference(lhs.presentationStop, rhs.presentationStop) > presentationTolerance)
 			{
@@ -259,10 +272,13 @@ public:
 			"convergence_paced_streak,convergence_block_threshold_us,convergence_normal_threshold_us,"
 			"convergence_paced_minimum_us,convergence_paced_maximum_us,"
 			"convergence_paced_priming_depth,convergence_elapsed_ms,"
+			"source_gap_slots_before,observed_source_gap_slots_before,"
+			"intentional_source_gap_slots_suppressed,"
 			"convergence_state,convergence_reason,convergence_activation,"
-			"timestamp_owner,scene_boundary,intentional_drop,"
+			"timestamp_owner,timestamp_method,scene_boundary,intentional_drop,"
 			"source_discontinuity,convergence_applied,convergence_raw_zero,convergence_raw_backlog,"
-			"scheduled_latency_known,latency_display_ready\n";
+			"scheduled_latency_known,latency_display_ready,source_gap_suppressed,"
+			"material_source_gap_suppressed\n";
 		for (const LiveOutputTraceRecord& record : records)
 		{
 			stream << record.sequence << ',' << static_cast<unsigned>(record.kind) << ','
@@ -294,10 +310,14 @@ public:
 				<< record.convergencePacedMaximumUs << ','
 				<< record.convergencePacedPrimingDepth << ','
 				<< record.convergenceElapsedMs << ','
+				<< record.sourceGapSlotsBefore << ','
+				<< record.observedSourceGapSlotsBefore << ','
+				<< record.intentionalSourceGapSlotsSuppressed << ','
 				<< static_cast<unsigned>(record.convergenceState) << ','
 				<< static_cast<unsigned>(record.convergenceReason) << ','
 				<< static_cast<unsigned>(record.convergenceActivation) << ','
 				<< static_cast<unsigned>(record.timestampOwner) << ','
+				<< static_cast<unsigned>(record.timestampMethod) << ','
 				<< (record.sceneBoundary ? 1 : 0) << ','
 				<< (record.intentionalDrop ? 1 : 0) << ','
 				<< (record.sourceDiscontinuity ? 1 : 0) << ','
@@ -305,7 +325,9 @@ public:
 				<< (record.convergenceRawZero ? 1 : 0) << ','
 				<< (record.convergenceRawBacklog ? 1 : 0) << ','
 				<< (record.scheduledLatencyKnown ? 1 : 0) << ','
-				<< (record.latencyDisplayReady ? 1 : 0) << '\n';
+				<< (record.latencyDisplayReady ? 1 : 0) << ','
+				<< (record.sourceGapSuppressed ? 1 : 0) << ','
+				<< (record.materialSourceGapSuppressed ? 1 : 0) << '\n';
 		}
 	}
 

@@ -206,7 +206,6 @@
 	<ClCompile Include="DirectShowPresentationLeadPolicyTests.cpp" />
 	<ClCompile Include="DirectShowEpochPrimePolicyTests.cpp" />
     <ClCompile Include="LiveOutputTraceTests.cpp" />
-    <ClCompile Include="LiveClockPresentationSequencerTests.cpp" />
     <ClCompile Include="VideoTimingControllerTests.cpp" />
 	<ClCompile Include="DirectShowVideoTimingAdapterTests.cpp" />
 	<ClCompile Include="DirectShowFrameDelivererTests.cpp" />
@@ -218,6 +217,7 @@
 	<ClCompile Include="LiveFrameCounterTrackerTests.cpp" />
 	<ClCompile Include="OutputReadinessControllerTests.cpp" />
 	<ClCompile Include="RationalLiveOutputSequencerTests.cpp" />
+	<ClCompile Include="ConsecutiveFrameDurationHistoryTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />

@@ -603,13 +603,7 @@ void ALiveSourceVideoOutputPin::ResetTimingState()
 	m_rationalFrameDuration = 0;  // CRITICAL: Forces re-init with lead offset on next frame
 	m_minFrameAdvance = 0;
 	m_maxFrameAdvance = 0;
-	m_lastHardwareTimestamp = 0;
-	
-	// Clear duration history for CLOCK_SMART modes
-	memset(m_durationHistory, 0, sizeof(m_durationHistory));
-	m_durationHistoryIndex = 0;
-	m_durationHistoryCount = 0;
-	m_durationHistorySum = 0;
+	m_smartDurationHistory.Reset();
 	
 	// Reset smart timing statistics
 	m_smartHardwareTimestampCount = 0;
@@ -661,7 +655,7 @@ void ALiveSourceVideoOutputPin::RestartTimingOriginAfterPreroll()
 	m_frameCounterOffsetValid = false;
 	m_previousTimeStop = 0;
 	m_startTimeOffset = 0;
-	m_lastHardwareTimestamp = 0;
+	m_smartDurationHistory.Reset();
 	m_previousHardwareTimestamp = 0;
 
 	DebugLog::Log("ALiveSourceVideoOutputPin::RestartTimingOriginAfterPreroll() - legacy live-preroll timestamp origin restored");
@@ -679,55 +673,9 @@ void ALiveSourceVideoOutputPin::ResetTimingControllerToPipelineEpoch(
 
 REFERENCE_TIME ALiveSourceVideoOutputPin::CalculateSmartFrameDuration() const
 {
-	// If we don't have enough history, fall back to rational duration
-	if (m_durationHistoryCount == 0)
-	{
-		// Use rational math for theoretical duration (integer-only calculation)
-		return (REFERENCE_TIME)((REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) / m_timeScale);
-	}
-
-	// The history maintains a running sum, so CLOCK_SMART2 does not rescan
-	// the entire 100-entry window on every converted frame.
-	const size_t sampleCount = m_durationHistoryCount;
-	const REFERENCE_TIME averageDuration = m_durationHistorySum / sampleCount;
-
-	return averageDuration;
-}
-
-
-void ALiveSourceVideoOutputPin::UpdateFrameDurationHistory(REFERENCE_TIME actualDuration)
-{
-	// Validate duration is reasonable (between 5ms and 1 second)
-	if (actualDuration < 50000LL || actualDuration > 10000000LL)
-	{
-		DbgLog((LOG_WARNING, 1, TEXT("UpdateFrameDurationHistory(): Rejecting invalid duration %I64d (%.3fms) - outside range 5ms-1000ms"), 
-			actualDuration, actualDuration / 10000.0));
-		return;
-	}
-
-	// Store duration in circular buffer and maintain the sum incrementally.
-	if (m_durationHistoryCount == DURATION_HISTORY_SIZE)
-		m_durationHistorySum -= m_durationHistory[m_durationHistoryIndex];
-	else
-		++m_durationHistoryCount;
-
-	m_durationHistory[m_durationHistoryIndex] = actualDuration;
-	m_durationHistorySum += actualDuration;
-	m_durationHistoryIndex = (m_durationHistoryIndex + 1) % DURATION_HISTORY_SIZE;
-
-	// Log periodic statistics (every 50 frames for better visibility during testing)
-	if (m_durationHistoryCount > 0 && (m_durationHistoryCount % 50) == 0)
-	{
-		const REFERENCE_TIME avgDuration = CalculateSmartFrameDuration();
-		const REFERENCE_TIME theoreticalDuration = (REFERENCE_TIME)((REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) / m_timeScale);
-		
-		/*DebugLog::Log(("CLOCK_SMART Duration Stats: %zu samples, average=%.3fms, theoretical=%.3fms, diff=%.3fms"),
-			m_durationHistoryCount, 
-			avgDuration / 10000.0,
-			theoreticalDuration / 10000.0,
-			(avgDuration - theoreticalDuration) / 10000.0);
-		*/
-	}
+	const REFERENCE_TIME theoreticalDuration = static_cast<REFERENCE_TIME>(
+		(REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) / m_timeScale);
+	return m_smartDurationHistory.AverageOr(theoreticalDuration);
 }
 
 
@@ -1052,12 +1000,12 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		REFERENCE_TIME currentFrameTime = ConvertTimingClockToReferenceTime(
 			videoFrame.GetTimingTimestamp(),
 			m_timingClock->TimingClockTicksPerSecond()) - m_startTimeOffset;
-		if (m_lastHardwareTimestamp > 0)
-		{
-			REFERENCE_TIME measuredDuration = currentFrameTime - m_lastHardwareTimestamp;
-			UpdateFrameDurationHistory(measuredDuration);
-		}
-		m_lastHardwareTimestamp = currentFrameTime;
+		const REFERENCE_TIME theoreticalDuration =
+			static_cast<REFERENCE_TIME>(
+				(REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) /
+				m_timeScale);
+		m_smartDurationHistory.Observe(
+			videoFrame.GetCounter(), currentFrameTime, theoreticalDuration);
 
 		// Placeholder stop time using averaged duration
 		const REFERENCE_TIME avgDuration = CalculateSmartFrameDuration();

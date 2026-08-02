@@ -54,28 +54,303 @@ namespace Tests
 			Assert::IsFalse(second.discontinuity);
 		}
 
-		TEST_METHOD(SkippedLivePicturesDoNotSkipPresentationTime)
+		TEST_METHOD(SkippedLivePicturesConsumePresentationButNotMediaTime)
 		{
 			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
-			RationalLiveOutputTimestampDecision previous = sequencer.Preview(Input());
+			auto firstInput = Input();
+			firstInput.sourceFrameNumberValid = true;
+			firstInput.sourceFrameNumber = 100;
+			RationalLiveOutputTimestampDecision previous =
+				sequencer.Preview(firstInput);
 			Assert::IsTrue(sequencer.Commit(previous));
-			for (uint32_t i = 0; i < 4; ++i)
-			{
-				const RationalLiveOutputTimestampDecision next =
-					sequencer.Preview(Input());
-				Assert::IsTrue(next.start >= previous.stop);
-				Assert::IsTrue(sequencer.Commit(next));
-				previous = next;
-			}
-
-			// Ten captured pictures may be discarded before the next delivery. The
-			// delivery-owned sequence has no capture number to turn that into a
-			// timestamp hole.
+			auto afterDiscardInput = Input();
+			afterDiscardInput.sourceFrameNumberValid = true;
+			afterDiscardInput.sourceFrameNumber = 102;
 			const RationalLiveOutputTimestampDecision afterDiscard =
-				sequencer.Preview(Input());
-			Assert::AreEqual<uint64_t>(5, afterDiscard.outputSequence);
-			Assert::AreEqual<VideoReferenceTime>(previous.stop, afterDiscard.start);
+				sequencer.Preview(afterDiscardInput);
+			Assert::AreEqual<uint64_t>(1, afterDiscard.outputSequence);
+			Assert::AreEqual<uint32_t>(1, afterDiscard.sourceGapSlotsBefore);
+			Assert::AreEqual<uint32_t>(2, afterDiscard.presentationSlotsConsumed);
+			Assert::AreEqual<int64_t>(previous.mediaStop, afterDiscard.mediaStart);
+			Assert::AreEqual<VideoReferenceTime>(
+				afterDiscardInput.presentationLead +
+				VideoTimingController::RationalTimestamp(
+					2, 1001, 60000, afterDiscardInput.ppmCorrection),
+				afterDiscard.start);
 			Assert::IsFalse(afterDiscard.discontinuity);
+		}
+
+		TEST_METHOD(FailedDeliveryRetriesTheSameCaptureGap)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto firstInput = Input();
+			firstInput.sourceFrameNumberValid = true;
+			firstInput.sourceFrameNumber = 100;
+			const auto first = sequencer.Preview(firstInput);
+			Assert::IsTrue(sequencer.Commit(first));
+
+			auto gapInput = Input();
+			gapInput.sourceFrameNumberValid = true;
+			gapInput.sourceFrameNumber = 102;
+			const auto attempted = sequencer.Preview(gapInput);
+			const auto retry = sequencer.Preview(gapInput);
+			Assert::AreEqual<VideoReferenceTime>(attempted.start, retry.start);
+			Assert::AreEqual<uint32_t>(1, retry.sourceGapSlotsBefore);
+			Assert::IsTrue(sequencer.Commit(retry));
+		}
+
+		TEST_METHOD(RepeatedSourceFrameDoesNotCreateACaptureGap)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = DisplayInput();
+			input.sourceFrameNumberValid = true;
+			input.sourceFrameNumber = 100;
+			const auto first = sequencer.Preview(input);
+			Assert::IsTrue(sequencer.Commit(first));
+			const auto repeated = sequencer.Preview(input);
+			Assert::AreEqual<uint32_t>(0, repeated.sourceGapSlotsBefore);
+			Assert::AreEqual<VideoReferenceTime>(first.stop, repeated.start);
+			Assert::IsTrue(sequencer.Commit(repeated));
+
+			input.sourceFrameNumber = 101;
+			const auto next = sequencer.Preview(input);
+			Assert::AreEqual<uint32_t>(0, next.sourceGapSlotsBefore);
+			Assert::AreEqual<VideoReferenceTime>(repeated.stop, next.start);
+		}
+
+		TEST_METHOD(CaptureAndRendererGapsComposeExactly)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto firstInput = DisplayInput();
+			firstInput.sourceFrameNumberValid = true;
+			firstInput.sourceFrameNumber = 100;
+			const auto first = sequencer.Preview(firstInput);
+			Assert::IsTrue(sequencer.Commit(first));
+
+			auto combined = DisplayInput();
+			combined.sourceFrameNumberValid = true;
+			combined.sourceFrameNumber = 102;
+			combined.presentationGapSlotsBefore = 1;
+			const auto decision = sequencer.Preview(combined);
+			Assert::AreEqual<uint32_t>(1, decision.sourceGapSlotsBefore);
+			Assert::AreEqual<uint32_t>(3, decision.presentationSlotsConsumed);
+			Assert::AreEqual<int64_t>(first.mediaStop, decision.mediaStart);
+		}
+
+		TEST_METHOD(PeriodicLatestWinsDiscardsRemainOnThe5994LiveTimeline)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			const uint64_t firstFrame = 100;
+			input.sourceFrameNumber = firstFrame;
+			for (uint64_t delivery = 0; delivery < 10000; ++delivery)
+			{
+				if (delivery != 0)
+					input.sourceFrameNumber += (delivery % 600 == 0) ? 2 : 1;
+				const auto decision = sequencer.Preview(input);
+				const uint64_t expectedSlot =
+					input.sourceFrameNumber - firstFrame;
+				Assert::AreEqual<VideoReferenceTime>(
+					input.presentationLead + VideoTimingController::RationalTimestamp(
+						expectedSlot, 1001, 60000, input.ppmCorrection),
+					decision.start);
+				Assert::IsTrue(sequencer.Commit(decision));
+			}
+		}
+
+		TEST_METHOD(LatestWinsDiscardConsumesOne23976PresentationSlot)
+		{
+			RationalLiveOutputSequencer sequencer(24000, 1001, 417083);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			input.sourceFrameNumber = 100;
+			const auto first = sequencer.Preview(input);
+			Assert::IsTrue(sequencer.Commit(first));
+			input.sourceFrameNumber = 102;
+			const auto afterGap = sequencer.Preview(input);
+			Assert::AreEqual<uint32_t>(1, afterGap.sourceGapSlotsBefore);
+			Assert::AreEqual<VideoReferenceTime>(
+				input.presentationLead + VideoTimingController::RationalTimestamp(
+					2, 1001, 24000, input.ppmCorrection),
+				afterGap.start);
+		}
+
+		TEST_METHOD(IntentionalCatchUpRebaselinesWithoutAddingLead)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			input.sourceFrameNumber = 120;
+			const auto first = sequencer.Preview(input);
+			Assert::IsTrue(sequencer.Commit(first));
+
+			input.sourceFrameNumber = 159;
+			input.sourceGapSlotsToSuppress = 38;
+			input.minimumPresentationStartValid = true;
+			input.minimumPresentationStart = first.stop + 5000000;
+			const auto caughtUp = sequencer.Preview(input);
+			Assert::AreEqual<uint64_t>(38, caughtUp.observedSourceGapSlotsBefore);
+			Assert::AreEqual<uint32_t>(0, caughtUp.sourceGapSlotsBefore);
+			Assert::IsTrue(caughtUp.sourceGapSuppressed);
+			Assert::AreEqual<VideoReferenceTime>(
+				input.minimumPresentationStart, caughtUp.start);
+			Assert::IsTrue(sequencer.Commit(caughtUp));
+
+			input.sourceFrameNumber = 161;
+			input.sourceGapSlotsToSuppress = 0;
+			input.minimumPresentationStartValid = false;
+			const auto steadyGap = sequencer.Preview(input);
+			Assert::AreEqual<uint32_t>(1, steadyGap.sourceGapSlotsBefore);
+			Assert::IsFalse(steadyGap.sourceGapSuppressed);
+			Assert::AreEqual<VideoReferenceTime>(
+				input.minimumPresentationStart +
+					VideoTimingController::RationalTimestamp(
+						2, 1001, 60000, input.ppmCorrection),
+				steadyGap.start);
+		}
+
+		TEST_METHOD(FailedCatchUpDeliveryKeepsSuppressionTransactional)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			input.sourceFrameNumber = 100;
+			Assert::IsTrue(sequencer.Commit(sequencer.Preview(input)));
+
+			input.sourceFrameNumber = 140;
+			input.sourceGapSlotsToSuppress = 39;
+			const auto attempted = sequencer.Preview(input);
+			const auto retry = sequencer.Preview(input);
+			Assert::IsTrue(attempted.sourceGapSuppressed);
+			Assert::AreEqual<VideoReferenceTime>(attempted.start, retry.start);
+			Assert::AreEqual<uint64_t>(39, retry.observedSourceGapSlotsBefore);
+			Assert::IsTrue(sequencer.Commit(retry));
+		}
+
+		TEST_METHOD(SameCounterRepeatDoesNotConsumePendingGapSuppression)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			input.sourceFrameNumber = 100;
+			Assert::IsTrue(sequencer.Commit(sequencer.Preview(input)));
+
+			input.sourceGapSlotsToSuppress = 39;
+			const auto sameCounterRepeat = sequencer.Preview(input);
+			Assert::IsFalse(sameCounterRepeat.sourceGapSuppressed);
+			Assert::AreEqual<uint64_t>(0,
+				sameCounterRepeat.observedSourceGapSlotsBefore);
+			Assert::IsTrue(sequencer.Commit(sameCounterRepeat));
+
+			input.sourceFrameNumber = 140;
+			const auto postTrim = sequencer.Preview(input);
+			Assert::IsTrue(postTrim.sourceGapSuppressed);
+			Assert::AreEqual<uint64_t>(39,
+				postTrim.observedSourceGapSlotsBefore);
+			Assert::AreEqual<uint32_t>(0, postTrim.sourceGapSlotsBefore);
+		}
+
+		TEST_METHOD(SceneDropSuppressesOnlyItsOneIntentionalSlot)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			input.sourceFrameNumber = 100;
+			Assert::IsTrue(sequencer.Commit(sequencer.Preview(input)));
+
+			input.sourceFrameNumber = 104;
+			input.sourceGapSlotsToSuppress = 1;
+			const auto decision = sequencer.Preview(input);
+			Assert::AreEqual<uint64_t>(3,
+				decision.observedSourceGapSlotsBefore);
+			Assert::AreEqual<uint64_t>(1,
+				decision.intentionalSourceGapSlotsSuppressed);
+			Assert::AreEqual<uint32_t>(2, decision.sourceGapSlotsBefore);
+			Assert::IsFalse(decision.materialSourceGapSuppressed);
+		}
+
+		TEST_METHOD(MaterialForwardJumpCannotCreateFarFuturePts)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			input.sourceFrameNumber = 100;
+			const auto first = sequencer.Preview(input);
+			Assert::IsTrue(sequencer.Commit(first));
+
+			input.sourceFrameNumber = 400;
+			const auto material = sequencer.Preview(input);
+			Assert::AreEqual<uint64_t>(299, material.observedSourceGapSlotsBefore);
+			Assert::AreEqual<uint32_t>(0, material.sourceGapSlotsBefore);
+			Assert::IsTrue(material.sourceGapSuppressed);
+			Assert::AreEqual<VideoReferenceTime>(first.stop, material.start);
+		}
+
+		TEST_METHOD(MaterialRunningGapReanchorsThenRemainsContiguous)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			input.sourceFrameNumber = 100;
+			Assert::IsTrue(sequencer.Commit(sequencer.Preview(input)));
+
+			input.sourceFrameNumber = 400;
+			input.minimumPresentationStartValid = true;
+			input.minimumPresentationStart = 9000000;
+			const auto caughtUp = sequencer.Preview(input);
+			Assert::IsTrue(caughtUp.sourceGapSuppressed);
+			Assert::AreEqual<VideoReferenceTime>(9000000, caughtUp.start);
+			Assert::IsTrue(sequencer.Commit(caughtUp));
+
+			input.sourceFrameNumber = 401;
+			input.minimumPresentationStartValid = false;
+			const auto next = sequencer.Preview(input);
+			Assert::AreEqual<VideoReferenceTime>(caughtUp.stop, next.start);
+		}
+
+		TEST_METHOD(MaterialSourceDiscontinuityCanReanchorToRunningGraph)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			input.sourceFrameNumber = 100;
+			Assert::IsTrue(sequencer.Commit(sequencer.Preview(input)));
+
+			input.sourceFrameNumber = 400;
+			input.sourceDiscontinuity = true;
+			input.accountSourceGap = false;
+			input.minimumPresentationStartValid = true;
+			input.minimumPresentationStart = 7000000;
+			const auto resumed = sequencer.Preview(input);
+			Assert::IsTrue(resumed.observedSourceGapMaterial);
+			Assert::IsTrue(resumed.sourceGapSuppressed);
+			Assert::AreEqual<uint32_t>(0, resumed.sourceGapSlotsBefore);
+			Assert::AreEqual<VideoReferenceTime>(7000000, resumed.start);
+			Assert::IsTrue(resumed.discontinuity);
+		}
+
+		TEST_METHOD(CounterRollbackRebaselinesSourceIdentity)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			input.sourceFrameNumber = 100;
+			Assert::IsTrue(sequencer.Commit(sequencer.Preview(input)));
+
+			input.sourceFrameNumber = 1;
+			input.sourceDiscontinuity = true;
+			input.accountSourceGap = false;
+			const auto reset = sequencer.Preview(input);
+			Assert::AreEqual<uint64_t>(0, reset.observedSourceGapSlotsBefore);
+			Assert::IsTrue(sequencer.Commit(reset));
+
+			input.sourceFrameNumber = 3;
+			input.sourceDiscontinuity = false;
+			input.accountSourceGap = true;
+			input.sourceGapSlotsToSuppress = 0;
+			const auto nextGap = sequencer.Preview(input);
+			Assert::AreEqual<uint32_t>(1, nextGap.sourceGapSlotsBefore);
 		}
 
 		TEST_METHOD(FailedDeliveryDoesNotAdvanceTheSequence)

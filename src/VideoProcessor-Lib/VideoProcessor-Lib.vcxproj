@@ -192,7 +192,7 @@
 	<ClInclude Include="FrameProcessor.h" />
 	<ClInclude Include="LiveEpochConvergenceController.h" />
 	<ClInclude Include="LiveFrameCounterTracker.h" />
-	<ClInclude Include="LiveClockPresentationSequencer.h" />
+	<ClInclude Include="ConsecutiveFrameDurationHistory.h" />
 	<ClInclude Include="OutputReadinessController.h" />
 	<ClInclude Include="RationalLiveOutputSequencer.h" />
     <ClInclude Include="framework.h" />
@@ -295,7 +295,6 @@
     <ClCompile Include="ColorFormat.cpp" />
 	<ClCompile Include="FrameProcessor.cpp" />
 	<ClCompile Include="LiveEpochConvergenceController.cpp" />
-	<ClCompile Include="LiveClockPresentationSequencer.cpp" />
 	<ClCompile Include="OutputReadinessController.cpp" />
 	<ClCompile Include="RationalLiveOutputSequencer.cpp" />
     <ClCompile Include="ConfigFile.cpp" />
