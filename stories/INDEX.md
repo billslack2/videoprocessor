@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0070`
-- Next root story number: `VP-0071`
-- Total indexed items: 82
+- Last assigned root story: `VP-0071`
+- Next root story number: `VP-0072`
+- Total indexed items: 83
 
 ## Story locations
 
@@ -99,6 +99,7 @@ they must not contain requirements that are absent from this file.
 | VP-0070-2 | Backlog | Stable boundary-crossing diagnostic overlay |
 | VP-0070-3 | Backlog | Same-frame panel restoration and glyph relocation |
 | VP-0070-4 | Backlog | Panel subtitle live validation and performance |
+| VP-0071 | Backlog | Compose the VP diagnostics OSD through madVR |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | In Progress | Extract epoch-aware frame transport and processing components |
