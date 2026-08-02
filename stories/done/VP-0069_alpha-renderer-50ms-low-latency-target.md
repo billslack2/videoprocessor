@@ -175,6 +175,10 @@ because its work is moved unchanged into standalone VP-0074. The original
 50 ms physical target, including NLS shader cold-start recovery, remains open
 only in VP-0074.
 
+The accepted source branch was merged into and pushed to
+`origin/v1.1.015-beta` as `327ca7f` on 2026-08-02. A clean x64 Release build
+and the complete suite (**461/461**) passed from that exact merge commit.
+
 ## Out of scope
 
 Guaranteeing 50 ms on arbitrary projectors/AVRs/capture cards; DirectShow or
