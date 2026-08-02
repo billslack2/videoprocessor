@@ -41,7 +41,13 @@ struct RendererLivenessSnapshot
 	uint64_t convergenceDeliverySuccessCount = 0;
 	size_t convergenceTargetFrames = 0;
 	bool convergenceHardBlockRecovered = false;
+	// True only when this epoch reached its latched fresh-epoch prime target
+	// before convergence. The target is bounded by VP capacity, negotiated
+	// allocator headroom, and (when available) active madVR configuration.
 	bool convergenceConvertedQueueWasFull = false;
+	uint64_t primePrefillReachedEpoch = 0;
+	size_t primeTargetFrames = 0;
+	size_t primeRawTargetFrames = 0;
 	// DeckLink-backed ownership retained by VP's raw transport plus the one
 	// possible conversion-in-flight frame.
 	size_t retainedSourceBufferCount = 0;

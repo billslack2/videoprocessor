@@ -292,6 +292,7 @@ protected:
 	// Add renderer to the graph and connect
 	virtual void RendererConnect() = 0;
 	virtual void RendererDestroy();
+	void RefreshDownstreamPrimeTarget();
 
 	virtual void MediaTypeGenerate() = 0;
 

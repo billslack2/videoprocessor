@@ -15,6 +15,7 @@
 #include <microsoft_directshow/live_source_filter/CLiveSource.h>
 #include <microsoft_directshow/live_source_filter/ALiveSourceVideoOutputPin.h>
 #include <microsoft_directshow/DIrectShowTranslations.h>
+#include <microsoft_directshow/MadVRRuntimeInterfaces.h>
 
 #include "DirectShowVideoRenderer.h"
 
@@ -482,6 +483,7 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 		DebugLog::Log("DirectShowVideoRenderer::Reset() - m_liveSource is NULL, returning");
 		return;
 	}
+	RefreshDownstreamPrimeTarget();
 	
 	// This is an in-place graph re-prime. It deliberately retains the madVR
 	// filter instance; a renderer restart is the separate full-recreation tier.
@@ -673,6 +675,7 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 				"DirectShow retarget graph Pause failed");
 
 		phaseStart = GetTickCount64();
+		RefreshDownstreamPrimeTarget();
 		m_liveSource->Reset();
 		resetMs = GetTickCount64() - phaseStart;
 
@@ -748,6 +751,7 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 			if (FAILED(rollbackPauseHr))
 				throw std::runtime_error(
 					"rollback graph Pause failed");
+			RefreshDownstreamPrimeTarget();
 			m_liveSource->Reset();
 			if (FAILED(m_pControl->Run()) ||
 				FAILED(m_videoWindow->put_Visible(OATRUE)))
@@ -796,6 +800,7 @@ void DirectShowVideoRenderer::ResetLiveQueue()
 	// transaction and purges both live queues. Unlike Reset(), it deliberately
 	// leaves madVR and the DirectShow graph running.
 	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - flushing live source queue only");
+	RefreshDownstreamPrimeTarget();
 	m_liveSource->Reset();
 	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
 	m_resetReadyForReveal.store(true, std::memory_order_release);
@@ -1380,6 +1385,7 @@ void DirectShowVideoRenderer::GraphBuild()
 	phaseStart = GetTickCount64();
 	RendererConnect();
 	rendererConnectMs = GetTickCount64() - phaseStart;
+	RefreshDownstreamPrimeTarget();
 
 	//
 	// Window setup
@@ -1836,6 +1842,155 @@ void DirectShowVideoRenderer::LiveSourceDestroy()
 		m_liveSource->Release();
 		m_liveSource = nullptr;
 	}
+}
+
+
+void DirectShowVideoRenderer::RefreshDownstreamPrimeTarget()
+{
+	AssertGraphThread();
+	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
+		return;
+
+	size_t targetFrames = 0;
+	int cpuQueue = 0;
+	int gpuQueue = 0;
+	int windowedPresent = 0;
+	int exclusivePresent = 0;
+	int windowedBackbuffers = 0;
+	int exclusiveBackbuffers = 0;
+	BOOL delayUntilFull = FALSE;
+	BOOL presentThread = FALSE;
+	LONGLONG settingsRevision = 0;
+	bool complete = false;
+	IMadVRSettings* settings = nullptr;
+	if (m_pRenderer && SUCCEEDED(m_pRenderer->QueryInterface(
+		__uuidof(IMadVRSettings), reinterpret_cast<void**>(&settings))) && settings)
+	{
+		const bool revisionKnown = !!settings->SettingsGetRevision(&settingsRevision);
+		// Unqualified stable IDs intentionally resolve against madVR's currently
+		// active profile, including rule-selected profiles.
+		const bool cpuKnown = !!settings->SettingsGetInteger(
+			L"cpuQueueSize", &cpuQueue);
+		const bool gpuKnown = !!settings->SettingsGetInteger(
+			L"gpuQueueSize", &gpuQueue);
+		const bool windowedKnown = !!settings->SettingsGetInteger(
+			L"preRenderFramesWindowed",
+			&windowedPresent);
+		const bool exclusiveKnown = !!settings->SettingsGetInteger(
+			L"preRenderFrames",
+			&exclusivePresent);
+		const bool windowedBackbuffersKnown = !!settings->SettingsGetInteger(
+			L"backbufferCount", &windowedBackbuffers);
+		const bool exclusiveBackbuffersKnown = !!settings->SettingsGetInteger(
+			L"backbufferCountExcl", &exclusiveBackbuffers);
+		const bool delayKnown = !!settings->SettingsGetBoolean(
+			L"delayPlaybackStart2",
+			&delayUntilFull);
+		const bool presentThreadKnown = !!settings->SettingsGetBoolean(
+			L"presentThread", &presentThread);
+		wchar_t flushWindowed[96] = {};
+		wchar_t flushExclusive[96] = {};
+		int flushWindowedChars = static_cast<int>(_countof(flushWindowed));
+		int flushExclusiveChars = static_cast<int>(_countof(flushExclusive));
+		const bool flushWindowedKnown = !!settings->SettingsGetString(
+			L"flushAfterPresent", flushWindowed, &flushWindowedChars);
+		const bool flushExclusiveKnown = !!settings->SettingsGetString(
+			L"flushAfterPresentExcl", flushExclusive, &flushExclusiveChars);
+		char flushWindowedUtf8[192] = {};
+		char flushExclusiveUtf8[192] = {};
+		if (flushWindowedKnown)
+			WideCharToMultiByte(CP_UTF8, 0, flushWindowed, -1,
+				flushWindowedUtf8, static_cast<int>(_countof(flushWindowedUtf8)),
+				nullptr, nullptr);
+		if (flushExclusiveKnown)
+			WideCharToMultiByte(CP_UTF8, 0, flushExclusive, -1,
+				flushExclusiveUtf8, static_cast<int>(_countof(flushExclusiveUtf8)),
+				nullptr, nullptr);
+		complete = cpuKnown && gpuKnown && windowedKnown && exclusiveKnown &&
+			cpuQueue >= 4 && cpuQueue <= 32 &&
+			gpuQueue >= 4 && gpuQueue <= 24 &&
+			windowedPresent >= 1 && windowedPresent <= 16 &&
+			exclusivePresent >= 1 && exclusivePresent <= 16;
+		if (complete)
+		{
+			// This is a diagnostic demand estimate, never live occupancy and never a
+			// cap on VP's prime. Active-profile selection can change only after a new
+			// media type reaches madVR, so a pre-reset snapshot may lag that change.
+			targetFrames = static_cast<size_t>(cpuQueue) +
+				(2u * static_cast<size_t>(gpuQueue)) +
+				static_cast<size_t>(std::max(
+					windowedPresent, exclusivePresent));
+		}
+		DebugLog::Log(
+			"madVR effective configuration: revision=%lld revision_known=%d cpu=%d cpu_known=%d gpu=%d gpu_known=%d pre_render_windowed=%d windowed_known=%d pre_render_exclusive=%d exclusive_known=%d backbuffers_windowed=%d backbuffers_windowed_known=%d backbuffers_exclusive=%d backbuffers_exclusive_known=%d delay_until_full=%d delay_known=%d present_thread=%d present_thread_known=%d flush_after_present_windowed='%s' flush_windowed_known=%d flush_after_present_exclusive='%s' flush_exclusive_known=%d estimated_pipeline_frames=%zu estimate_valid=%d occupancy=unobservable",
+			static_cast<long long>(settingsRevision), revisionKnown ? 1 : 0,
+			cpuQueue, cpuKnown ? 1 : 0, gpuQueue, gpuKnown ? 1 : 0,
+			windowedPresent, windowedKnown ? 1 : 0,
+			exclusivePresent, exclusiveKnown ? 1 : 0,
+			windowedBackbuffers, windowedBackbuffersKnown ? 1 : 0,
+			exclusiveBackbuffers, exclusiveBackbuffersKnown ? 1 : 0,
+			delayUntilFull ? 1 : 0, delayKnown ? 1 : 0,
+			presentThread ? 1 : 0, presentThreadKnown ? 1 : 0,
+			flushWindowedUtf8, flushWindowedKnown ? 1 : 0,
+			flushExclusiveUtf8, flushExclusiveKnown ? 1 : 0,
+			targetFrames, complete ? 1 : 0);
+		settings->Release();
+	}
+
+	IMadVRInfo* info = nullptr;
+	if (m_pRenderer && SUCCEEDED(m_pRenderer->QueryInterface(
+		__uuidof(IMadVRInfo), reinterpret_cast<void**>(&info))) && info)
+	{
+		double refreshRate = 0.0;
+		ULONGLONG frameDuration = 0;
+		SIZE displayMode = {};
+		bool hdrOutput = false;
+		bool exclusiveMode = false;
+		bool dxvaDecode = false;
+		bool dxvaDeinterlace = false;
+		bool dxvaScaling = false;
+		bool ivtc = false;
+		int osdLatencyMs = 0;
+		const bool refreshKnown = SUCCEEDED(info->GetDouble("refreshRate", &refreshRate)) &&
+			refreshRate > 0.0;
+		const bool frameRateKnown = SUCCEEDED(info->GetUlonglong(
+			"frameRate", &frameDuration)) && frameDuration > 0;
+		const bool displayModeKnown = SUCCEEDED(info->GetSize(
+			"displayModeSize", &displayMode));
+		const bool hdrKnown = SUCCEEDED(info->GetBool("hdrOutput", &hdrOutput));
+		const bool exclusiveKnown = SUCCEEDED(info->GetBool(
+			"exclusiveModeActive", &exclusiveMode));
+		const bool osdLatencyKnown = SUCCEEDED(info->GetInt(
+			"osdLatency", &osdLatencyMs));
+		(void)info->GetBool("dxvaDecodingActive", &dxvaDecode);
+		(void)info->GetBool("dxvaDeinterlacingActive", &dxvaDeinterlace);
+		(void)info->GetBool("dxvaScalingActive", &dxvaScaling);
+		(void)info->GetBool("ivtcActive", &ivtc);
+		const double postDeinterlaceFps = frameRateKnown ?
+			10000000.0 / static_cast<double>(frameDuration) : 0.0;
+		DebugLog::Log(
+			"madVR runtime info: detected_refresh_hz=%.6f refresh_known=%d post_deinterlace_fps=%.6f frame_rate_known=%d display_mode=%ldx%ld display_mode_known=%d hdr_output=%d hdr_known=%d exclusive=%d exclusive_known=%d osd_latency_ms=%d osd_latency_known=%d dxva_decode=%d dxva_deinterlace=%d dxva_scaling=%d ivtc=%d occupancy=unobservable",
+			refreshRate, refreshKnown ? 1 : 0,
+			postDeinterlaceFps, frameRateKnown ? 1 : 0,
+			static_cast<long>(displayMode.cx), static_cast<long>(displayMode.cy),
+			displayModeKnown ? 1 : 0, hdrOutput ? 1 : 0, hdrKnown ? 1 : 0,
+			exclusiveMode ? 1 : 0, exclusiveKnown ? 1 : 0,
+			osdLatencyMs, osdLatencyKnown ? 1 : 0,
+			dxvaDecode ? 1 : 0, dxvaDeinterlace ? 1 : 0,
+			dxvaScaling ? 1 : 0, ivtc ? 1 : 0);
+		info->Release();
+	}
+	else
+	{
+		DebugLog::Log(
+			"Downstream prime settings unavailable: renderer=%p source=capacity-fallback occupancy=unobservable",
+			m_pRenderer);
+	}
+
+	// The aggregate remains diagnostic. Fresh-epoch priming always uses VP's
+	// configurable physical reservoir and allocator headroom; this publication
+	// is retained for per-epoch telemetry and future validated policy work.
+	m_liveSource->GetVideoOutputPin()->SetDownstreamPrimeTarget(targetFrames);
 }
 
 

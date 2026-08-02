@@ -129,5 +129,64 @@ namespace Tests
 			Assert::IsTrue(queue.TryPopCurrent(currentEpoch, popped));
 			Assert::AreEqual(62, popped);
 		}
+
+		TEST_METHOD(TemporaryMaximumKeepsNewestFramesWithoutResizingTheQueue)
+		{
+			std::vector<int> released;
+			EpochBoundedQueue<int, RecordingRelease> queue(8, { &released });
+			const PipelineEpoch epoch{ 12 };
+			(void)queue.PushWithMaximum(70, epoch, epoch, 3);
+			(void)queue.PushWithMaximum(71, epoch, epoch, 3);
+			(void)queue.PushWithMaximum(72, epoch, epoch, 3);
+			Assert::AreEqual(
+				static_cast<int>(EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard),
+				static_cast<int>(queue.PushWithMaximum(73, epoch, epoch, 3)));
+			Assert::AreEqual<size_t>(3, queue.Size());
+			Assert::AreEqual<size_t>(8, queue.Metrics().capacity);
+			Assert::AreEqual<size_t>(1, released.size());
+			Assert::AreEqual(70, released[0]);
+		}
+
+		TEST_METHOD(TemporaryMaximumImmediatelyTrimsPreExistingBacklog)
+		{
+			std::vector<int> released;
+			EpochBoundedQueue<int, RecordingRelease> queue(8, { &released });
+			const PipelineEpoch epoch{ 17 };
+			for (int value = 1; value <= 8; ++value)
+				(void)queue.Push(value, epoch, epoch);
+			Assert::AreEqual(
+				static_cast<int>(EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard),
+				static_cast<int>(queue.PushWithMaximum(9, epoch, epoch, 3)));
+			Assert::AreEqual<size_t>(3, queue.Size());
+			Assert::AreEqual<size_t>(6, released.size());
+			int popped = 0;
+			Assert::IsTrue(queue.TryPopCurrent(epoch, popped));
+			Assert::AreEqual(7, popped);
+			Assert::IsTrue(queue.TryPopCurrent(epoch, popped));
+			Assert::AreEqual(8, popped);
+			Assert::IsTrue(queue.TryPopCurrent(epoch, popped));
+			Assert::AreEqual(9, popped);
+		}
+
+		TEST_METHOD(TemporaryMaximumStillRejectsAnObsoleteEpoch)
+		{
+			std::vector<int> released;
+			EpochBoundedQueue<int, RecordingRelease> queue(8, { &released });
+			Assert::AreEqual(
+				static_cast<int>(EpochBoundedQueuePushResult::RejectedStale),
+				static_cast<int>(queue.PushWithMaximum(
+					80, { 13 }, { 14 }, 3)));
+			Assert::AreEqual<size_t>(0, queue.Size());
+			Assert::AreEqual(80, released[0]);
+		}
+
+		TEST_METHOD(CurrentDepthNeverCountsStaleEpochWork)
+		{
+			std::vector<int> released;
+			EpochBoundedQueue<int, RecordingRelease> queue(8, { &released });
+			(void)queue.Push(90, { 15 }, { 15 });
+			(void)queue.Push(91, { 16 }, { 16 });
+			Assert::AreEqual<size_t>(1, queue.CurrentDepth({ 16 }));
+		}
 	};
 }

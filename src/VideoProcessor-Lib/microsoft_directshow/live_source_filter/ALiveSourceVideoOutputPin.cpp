@@ -383,10 +383,19 @@ HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOC
 	{
 		return E_FAIL;
 	}
+	if (Actual.cBuffers <= 0)
+		return E_FAIL;
+	m_negotiatedAllocatorBufferCount.store(
+		Actual.cBuffers, std::memory_order_release);
 
 	// ✅ Add this logging to verify the fix
 	DbgLog((LOG_TRACE, 1, TEXT("DecideBufferSize: Requested %d buffers, got %d buffers, size %d bytes"), 
 		ppropInputRequest->cBuffers, Actual.cBuffers, Actual.cbBuffer));
+	DebugLog::Log(
+		"DirectShow allocator negotiated: requested_buffers=%ld actual_buffers=%ld buffer_bytes=%ld",
+		static_cast<long>(ppropInputRequest->cBuffers),
+		static_cast<long>(Actual.cBuffers),
+		static_cast<long>(Actual.cbBuffer));
 
 	return S_OK;
 }

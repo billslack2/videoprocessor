@@ -71,6 +71,10 @@ public:
 	void SetQueueFramePolicy(size_t startupPrerollFrames,
 		size_t steadyReserveFrames, bool steadyReserveConfigured) override;
 	LONG GetAllocatorBufferCount() const override;
+	void SetDownstreamPrimeTarget(size_t frames) override
+	{
+		m_downstreamPrimeTargetFrames.store(frames, std::memory_order_release);
+	}
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	void SetSceneCorrectionUpstreamSample(bool enabled) override;
 	void SetSubtitleRepositioning(bool enabled) override;
@@ -376,6 +380,16 @@ private:
 	// Identifies the current queue epoch. A conversion that began before a
 	// reset/recovery must not publish its sample into the new epoch.
 	std::atomic<uint64_t> m_queueEpoch = 0;
+	// Every fresh DirectShow segment is primed to a bounded full VP reservoir.
+	// The epoch tag prevents an old activation/reset from satisfying a newer
+	// transition. This is independent of the configured steady VP queue target.
+	std::atomic<uint64_t> m_primeQueueEpoch = 0;
+	std::atomic<size_t> m_primeTargetFrames = 0;
+	std::atomic<size_t> m_primeRawTargetFrames = 0;
+	std::atomic<uint64_t> m_primePrefillReachedEpoch = 0;
+	std::atomic<uint64_t> m_primeStartedTick = 0;
+	CCritSec m_primeStateLock;
+	std::atomic<size_t> m_downstreamPrimeTargetFrames = 0;
 	// Zero while a fresh epoch is still priming. Once downstream ingress has
 	// blocked and recovered, this names the epoch whose converted queue is held
 	// to the configured live high-water. The conversion worker reads it without

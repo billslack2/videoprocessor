@@ -9,6 +9,7 @@
 #pragma once
 
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <video_frame_formatter/IVideoFrameFormatter.h>
@@ -280,6 +281,11 @@ public:
 	// Bound allocator memory while leaving enough samples for the queue and
 	// downstream renderer. Buffered pins override this from their queue size.
 	virtual LONG GetAllocatorBufferCount() const { return 16; }
+	virtual void SetDownstreamPrimeTarget(size_t) {}
+	LONG GetNegotiatedAllocatorBufferCount() const
+	{
+		return m_negotiatedAllocatorBufferCount.load(std::memory_order_acquire);
+	}
 
 	// Delivered timestamp history for late-binding lookup
 	// CLOCK_SMART/SMART2 need to look up "next frame" timestamps, but that frame
@@ -338,6 +344,7 @@ public:
 		return false;
 	}
 protected:
+	std::atomic<LONG> m_negotiatedAllocatorBufferCount{ 0 };
 	uint64_t AttachPendingMediaType(IMediaSample* sample);
 	void CompletePendingMediaType(
 		uint64_t generation, HRESULT deliveryResult);

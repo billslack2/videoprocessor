@@ -21,6 +21,7 @@
 
 #include <ConfigFile.h>
 #include <DirectShowDeliveryOutcome.h>
+#include <microsoft_directshow/DirectShowEpochPrimePolicy.h>
 #include <LiveClockPresentationSequencer.h>
 #include <LiveEpochConvergenceController.h>
 #include <LiveSteadyQueuePolicy.h>
@@ -246,7 +247,27 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		// worker consumes a frame while Active() is still purging old queues.
 		size_t purgedRaw = 0;
 		size_t purgedConverted = 0;
-		m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
+		const uint64_t activeEpoch =
+			m_queueEpoch.fetch_add(1, std::memory_order_acq_rel) + 1;
+		const size_t activePrimeTarget =
+			DirectShowEpochPrimePolicy::PrimeTarget(
+				m_frameQueueMaxSize.load(std::memory_order_acquire),
+				static_cast<size_t>(std::max<LONG>(
+					0, GetNegotiatedAllocatorBufferCount())));
+		const size_t activePrimeRawTarget =
+			std::min(
+				DirectShowEpochPrimePolicy::RawBridgeTarget(
+					DirectShowEpochPrimePolicy::MaximumRetainedRawQueueFrames),
+				m_frameQueueMaxSize.load(std::memory_order_acquire));
+		{
+			CAutoLock primeLock(&m_primeStateLock);
+			m_primeTargetFrames.store(activePrimeTarget, std::memory_order_release);
+			m_primeRawTargetFrames.store(
+				activePrimeRawTarget, std::memory_order_release);
+			m_primeQueueEpoch.store(activeEpoch, std::memory_order_release);
+			m_primePrefillReachedEpoch.store(0, std::memory_order_release);
+			m_primeStartedTick.store(0, std::memory_order_release);
+		}
 		m_steadyQueueEpoch.store(0, std::memory_order_release);
 		m_currentEpochDeliverySuccessCount.store(0, std::memory_order_release);
 		m_convergenceAppliedEpoch.store(0, std::memory_order_release);
@@ -314,7 +335,15 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 			m_bufferingExitTime = 0;
 		}
 
-		DebugLog::Log("Active(): Set m_isActive=true, m_isBuffering=true, reset timing state");
+		const size_t downstreamEstimate =
+			m_downstreamPrimeTargetFrames.load(std::memory_order_acquire);
+		DebugLog::Log(
+			"Active(): Set m_isActive=true, m_isBuffering=true, reset timing state prime_epoch=%llu converted_prime=%zu raw_bridge=%zu launch_reservoir=%zu madvr_estimated_pipeline=%zu estimate_satisfied=%d",
+			static_cast<unsigned long long>(activeEpoch), activePrimeTarget,
+			activePrimeRawTarget, activePrimeTarget + activePrimeRawTarget,
+			downstreamEstimate,
+			downstreamEstimate > 0 &&
+				activePrimeTarget + activePrimeRawTarget >= downstreamEstimate ? 1 : 0);
 
 		// Log ASYNC conversion approach
 		DbgLog((LOG_TRACE, 1, TEXT("CBufferedLiveSourceVideoOutputPin::Active() - ASYNC conversion architecture:")));
@@ -420,6 +449,14 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Inactive()
 		// CRITICAL: Set inactive FIRST before signaling shutdown
 		// This ensures worker threads stop accessing queues immediately
 		m_isActive.store(false, std::memory_order_release);
+		{
+			CAutoLock primeLock(&m_primeStateLock);
+			m_primeQueueEpoch.store(0, std::memory_order_release);
+			m_primeTargetFrames.store(0, std::memory_order_release);
+			m_primeRawTargetFrames.store(0, std::memory_order_release);
+			m_primePrefillReachedEpoch.store(0, std::memory_order_release);
+			m_primeStartedTick.store(0, std::memory_order_release);
+		}
 
 		// Signal shutdown events AFTER setting inactive
 		if (m_hConversionShutdownEvent)
@@ -524,8 +561,17 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	capturedFrame.SourceBufferAddRef();
 	const PipelineEpoch currentEpoch{
 		m_queueEpoch.load(std::memory_order_acquire) };
-	const EpochBoundedQueuePushResult pushResult = m_captureFrameQueue.Push(
-		std::move(capturedFrame), { callbackEpoch }, currentEpoch);
+	const bool limitPrimeRawRetention = callbackEpoch != 0 &&
+		callbackEpoch == m_primeQueueEpoch.load(std::memory_order_acquire) &&
+		m_steadyQueueEpoch.load(std::memory_order_acquire) != callbackEpoch;
+	size_t discardedByLimitedPush = 0;
+	const EpochBoundedQueuePushResult pushResult = limitPrimeRawRetention ?
+		m_captureFrameQueue.PushWithMaximum(
+			std::move(capturedFrame), { callbackEpoch }, currentEpoch,
+			DirectShowEpochPrimePolicy::MaximumRetainedRawQueueFrames,
+			&discardedByLimitedPush) :
+		m_captureFrameQueue.Push(
+			std::move(capturedFrame), { callbackEpoch }, currentEpoch);
 	EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
 	m_publishedRawQueueDepth.store(rawMetrics.depth, std::memory_order_release);
 	const size_t retainedSourceBuffers = rawMetrics.depth +
@@ -542,14 +588,29 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 		pushResult == EpochBoundedQueuePushResult::RejectedNoCapacity)
 		return S_OK;
 
+	// Measure the fail-open interval from the first fresh sample. A slow HDMI
+	// handshake can leave the graph active without capture frames for seconds.
+	{
+		CAutoLock primeLock(&m_primeStateLock);
+		if (callbackEpoch == m_primeQueueEpoch.load(std::memory_order_acquire) &&
+			m_primeStartedTick.load(std::memory_order_acquire) == 0)
+		{
+			m_primeStartedTick.store(
+				captureArrivalTick, std::memory_order_release);
+		}
+	}
+
 	const size_t queueMaxSize = rawMetrics.capacity;
 	acceptedRawQueueDepth = rawMetrics.depth;
 	if (pushResult == EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard)
 	{
-		m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
+		const size_t discardedByPush = limitPrimeRawRetention ?
+			discardedByLimitedPush : 1;
+		m_droppedFrameCount.fetch_add(
+			discardedByPush, std::memory_order_relaxed);
 		{
 			CAutoLock diagnosticsLock(&m_rawDiagnosticsLock);
-			++m_rawOverflowLogCount;
+			m_rawOverflowLogCount += discardedByPush;
 			const DWORD now = GetTickCount();
 			if (m_lastRawOverflowLogTime == 0 || now - m_lastRawOverflowLogTime >= 5000)
 			{
@@ -941,7 +1002,27 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		// Establish the new epoch before flushing. A callback that races this
 		// boundary is rejected by CaptureFrameQueue instead of becoming an
 		// accidental first sample in the new DirectShow segment.
-		m_queueEpoch.fetch_add(1, std::memory_order_acq_rel);
+		const uint64_t resetEpoch =
+			m_queueEpoch.fetch_add(1, std::memory_order_acq_rel) + 1;
+		const size_t resetPrimeTarget =
+			DirectShowEpochPrimePolicy::PrimeTarget(
+				m_frameQueueMaxSize.load(std::memory_order_acquire),
+				static_cast<size_t>(std::max<LONG>(
+					0, GetNegotiatedAllocatorBufferCount())));
+		const size_t resetPrimeRawTarget =
+			std::min(
+				DirectShowEpochPrimePolicy::RawBridgeTarget(
+					DirectShowEpochPrimePolicy::MaximumRetainedRawQueueFrames),
+				m_frameQueueMaxSize.load(std::memory_order_acquire));
+		{
+			CAutoLock primeLock(&m_primeStateLock);
+			m_primeTargetFrames.store(resetPrimeTarget, std::memory_order_release);
+			m_primeRawTargetFrames.store(
+				resetPrimeRawTarget, std::memory_order_release);
+			m_primeQueueEpoch.store(resetEpoch, std::memory_order_release);
+			m_primePrefillReachedEpoch.store(0, std::memory_order_release);
+			m_primeStartedTick.store(0, std::memory_order_release);
+		}
 		m_steadyQueueEpoch.store(0, std::memory_order_release);
 		m_currentEpochDeliverySuccessCount.store(0, std::memory_order_release);
 		m_convergenceAppliedEpoch.store(0, std::memory_order_release);
@@ -1054,7 +1135,12 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 	// This is a reset boundary, never a capture, conversion, or delivery path.
 	WriteLiveOutputTrace("reset");
 	DebugLog::Log(
-		"CBufferedLiveSourceVideoOutputPin::Reset() - queues/timing reset, buffering enabled, new segment delivered");
+		"CBufferedLiveSourceVideoOutputPin::Reset() - queues/timing reset, buffering enabled, new segment delivered prime_epoch=%llu converted_prime=%zu raw_bridge=%zu madvr_estimated_pipeline=%zu",
+		static_cast<unsigned long long>(
+			m_primeQueueEpoch.load(std::memory_order_acquire)),
+		m_primeTargetFrames.load(std::memory_order_acquire),
+		m_primeRawTargetFrames.load(std::memory_order_acquire),
+		m_downstreamPrimeTargetFrames.load(std::memory_order_acquire));
 }
 
 
@@ -1164,6 +1250,12 @@ bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
 		m_convergenceHardBlockRecovered.load(std::memory_order_acquire);
 	snapshot.convergenceConvertedQueueWasFull =
 		m_convergenceConvertedQueueWasFull.load(std::memory_order_acquire);
+	snapshot.primePrefillReachedEpoch =
+		m_primePrefillReachedEpoch.load(std::memory_order_acquire);
+	snapshot.primeTargetFrames =
+		m_primeTargetFrames.load(std::memory_order_acquire);
+	snapshot.primeRawTargetFrames =
+		m_primeRawTargetFrames.load(std::memory_order_acquire);
 	const bool conversionOwnsSourceBuffer =
 		m_sourceBufferConversionInFlight.load(std::memory_order_acquire);
 	snapshot.retainedSourceBufferCount = snapshot.rawQueueDepth +
@@ -2434,8 +2526,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 						LiveEpochConvergenceActivation::HardBlockRecovery,
 					std::memory_order_release);
 				m_convergenceConvertedQueueWasFull.store(
-					actualConvertedDepthBefore >=
-						m_frameQueueMaxSize.load(std::memory_order_acquire),
+					m_primePrefillReachedEpoch.load(std::memory_order_acquire) ==
+						expectedQueueEpoch,
 					std::memory_order_release);
 				// Publish the epoch last so an acquiring observer cannot combine a
 				// current proof epoch with partially published proof details.
@@ -2531,7 +2623,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		}
 
 		// Wait for converted samples or shutdown
-		DWORD waitResult = WaitForMultipleObjects(2, events, FALSE, INFINITE);
+		const DWORD deliveryWaitMs =
+			m_isBuffering.load(std::memory_order_acquire) ? 100 : INFINITE;
+		DWORD waitResult = WaitForMultipleObjects(
+			2, events, FALSE, deliveryWaitMs);
 
 		if (waitResult == WAIT_OBJECT_0) // shutdown
 		{
@@ -2539,7 +2634,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			break;
 		}
 
-		if (waitResult != WAIT_OBJECT_0 + 1)
+		if (waitResult != WAIT_OBJECT_0 + 1 && waitResult != WAIT_TIMEOUT)
 		{
 			DebugLog::Log("DELIVERY THREAD: WaitForMultipleObjects FAILED result=%lu", waitResult);
 			break;
@@ -2675,10 +2770,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		// BUFFERING PHASE: do not deliver until we have enough converted samples
 		if (m_isBuffering.load(std::memory_order_acquire))
 		{
+			const uint64_t candidateEpoch =
+				m_queueEpoch.load(std::memory_order_acquire);
 			size_t convertedQueueSize = 0;
 
 			// DYNAMIC BUFFERING: Use GetBufferingTarget() for fps-aware buffering
 			const size_t bufferingTarget = GetBufferingTarget();
+			const size_t rawBridgeTarget =
+				m_primeRawTargetFrames.load(std::memory_order_acquire);
 
 			const size_t maxFrames = std::max(bufferingTarget,
 				std::min(m_frameQueueMaxSize.load(std::memory_order_relaxed), bufferingTarget + std::max<size_t>(2, bufferingTarget / 2)));
@@ -2702,7 +2801,25 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				convertedQueueSize = m_processedFrameQueue.Size();
 			}
 
-			if (convertedQueueSize < bufferingTarget)
+			const uint64_t candidatePrimeStartedTick =
+				m_primeStartedTick.load(std::memory_order_acquire);
+			const uint64_t candidateNow = GetTickCount64();
+			const bool candidateTimedOut =
+				candidatePrimeStartedTick != 0 &&
+				candidateNow >= candidatePrimeStartedTick &&
+				candidateNow - candidatePrimeStartedTick >=
+					DirectShowEpochPrimePolicy::PrimeTimeoutMs;
+			if (!DirectShowEpochPrimePolicy::CanReleaseBuffering(
+				candidateEpoch,
+				m_queueEpoch.load(std::memory_order_acquire),
+				m_isActive.load(std::memory_order_acquire),
+				m_stopping.load(std::memory_order_acquire),
+				m_deliveryFlushing.load(std::memory_order_acquire),
+				m_resetInProgress.load(std::memory_order_acquire),
+				convertedQueueSize, bufferingTarget,
+				m_captureFrameQueue.CurrentDepth({ candidateEpoch }),
+				rawBridgeTarget,
+				candidateTimedOut))
 			{
 				continue; // Keep waiting for more samples
 			}
@@ -2718,10 +2835,77 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			//
 			// A real timing restart remains owned by Reset(), which purges the
 			// queues and delivers a new segment before any new samples are made.
-			m_isBuffering.store(false, std::memory_order_release);
+			uint64_t completedEpoch = 0;
+			uint64_t primeEpoch = 0;
+			uint64_t fillMs = 0;
+			size_t committedTarget = bufferingTarget;
+			size_t committedRawTarget = rawBridgeTarget;
+			size_t committedRawDepth = 0;
+			bool primePrefillReached = false;
+			bool primeTimedOut = false;
+			{
+				// Reset uses the same gate before changing epoch, queues, and the
+				// buffering flag. Revalidate every part of the candidate while
+				// holding it so old-epoch depth can never release a new epoch.
+				CAutoLock deliveryLock(&m_deliveryGate);
+				if (!m_isBuffering.load(std::memory_order_acquire))
+				{
+					continue;
+				}
 
-			DebugLog::Log("DELIVERY THREAD: BUFFERING COMPLETE (%zu/%zu) - delivery starting with continuous pre-stamped timeline",
-				convertedQueueSize, bufferingTarget);
+				const size_t confirmedTarget = GetBufferingTarget();
+				committedTarget = confirmedTarget;
+				committedRawTarget =
+					m_primeRawTargetFrames.load(std::memory_order_acquire);
+				{
+					CAutoLock convertedLock(&m_convertedQueueLock);
+					convertedQueueSize = m_processedFrameQueue.Size();
+				}
+				completedEpoch =
+					m_queueEpoch.load(std::memory_order_acquire);
+				committedRawDepth =
+					m_captureFrameQueue.CurrentDepth({ completedEpoch });
+				primeEpoch =
+					m_primeQueueEpoch.load(std::memory_order_acquire);
+				const uint64_t primeStartedTick =
+					m_primeStartedTick.load(std::memory_order_acquire);
+				const uint64_t commitNow = GetTickCount64();
+				primeTimedOut = primeStartedTick != 0 &&
+					commitNow >= primeStartedTick &&
+					commitNow - primeStartedTick >=
+						DirectShowEpochPrimePolicy::PrimeTimeoutMs;
+				if (!DirectShowEpochPrimePolicy::CanReleaseBuffering(
+					candidateEpoch,
+					completedEpoch,
+					m_isActive.load(std::memory_order_acquire),
+					m_stopping.load(std::memory_order_acquire),
+					m_deliveryFlushing.load(std::memory_order_acquire),
+					m_resetInProgress.load(std::memory_order_acquire),
+					convertedQueueSize, confirmedTarget,
+					committedRawDepth, committedRawTarget, primeTimedOut))
+				{
+					continue;
+				}
+
+				primePrefillReached = completedEpoch != 0 &&
+					completedEpoch == primeEpoch &&
+					convertedQueueSize >= confirmedTarget &&
+					committedRawDepth >= committedRawTarget;
+				if (primePrefillReached)
+					m_primePrefillReachedEpoch.store(
+						completedEpoch, std::memory_order_release);
+				fillMs = primeStartedTick != 0 && commitNow >= primeStartedTick ?
+					commitNow - primeStartedTick : 0;
+				m_isBuffering.store(false, std::memory_order_release);
+			}
+
+			DebugLog::Log("DELIVERY THREAD: BUFFERING COMPLETE converted=%zu/%zu raw=%zu/%zu - delivery starting with continuous pre-stamped timeline prime_epoch=%llu prime_prefill=%d prime_timeout=%d fill_ms=%llu",
+				convertedQueueSize, committedTarget,
+				committedRawDepth, committedRawTarget,
+				static_cast<unsigned long long>(primeEpoch),
+				primePrefillReached ? 1 : 0,
+				primeTimedOut ? 1 : 0,
+				static_cast<unsigned long long>(fillMs));
 		}
 
 		// Keep one converted sample as a stable handoff cushion.  Capture callbacks
@@ -3495,7 +3679,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				activePictureDetectorGeneration = currentActivePictureGeneration;
 			}
 
-			const size_t queueMaxSize = m_frameQueueMaxSize.load(std::memory_order_relaxed);
+			const size_t queueMaxSize = DirectShowEpochPrimePolicy::PrimeTarget(
+				m_frameQueueMaxSize.load(std::memory_order_relaxed),
+				static_cast<size_t>(std::max<LONG>(
+					0, GetNegotiatedAllocatorBufferCount())));
 			if (currentConvertedSize >= queueMaxSize)
 			{
 				++backpressureHits;
@@ -6820,13 +7007,27 @@ size_t CBufferedLiveSourceVideoOutputPin::GetBufferingTarget() {
 	}
 
 	const size_t deliveryReserve = GetDeliveryReserve();
-	const size_t effectiveTarget = std::max(frames, deliveryReserve);
+	const size_t normalTarget = std::max(frames, deliveryReserve);
+	const uint64_t currentEpoch = m_queueEpoch.load(std::memory_order_acquire);
+	const uint64_t primeEpoch =
+		m_primeQueueEpoch.load(std::memory_order_acquire);
+	const size_t primeTarget =
+		m_primeTargetFrames.load(std::memory_order_acquire);
+	const size_t queueCapacity =
+		m_frameQueueMaxSize.load(std::memory_order_acquire);
+	const size_t allocatorBuffers = static_cast<size_t>(std::max<LONG>(
+		0, GetNegotiatedAllocatorBufferCount()));
+	const size_t capacity = DirectShowEpochPrimePolicy::PrimeTarget(
+		queueCapacity, allocatorBuffers);
+	const size_t effectiveTarget =
+		DirectShowEpochPrimePolicy::ResolveBufferingTarget(
+			normalTarget, currentEpoch, primeEpoch, primeTarget, capacity);
 
 	// Log the buffering target periodically
 	static double lastLoggedFps = 0.0;
 	if (abs(fps - lastLoggedFps) > 1.0)
 	{
-		DebugLog::Log("GetBufferingTarget(): fps=%.2f, nominalTarget=%zu, effectiveTarget=%zu deliveryReserve=%zu configuredStartup=%zu", fps, nominalTarget, effectiveTarget, deliveryReserve, configuredStartup);
+		DebugLog::Log("GetBufferingTarget(): fps=%.2f, nominalTarget=%zu, effectiveTarget=%zu deliveryReserve=%zu configuredStartup=%zu primeEpoch=%llu currentEpoch=%llu primeTarget=%zu", fps, nominalTarget, effectiveTarget, deliveryReserve, configuredStartup, static_cast<unsigned long long>(primeEpoch), static_cast<unsigned long long>(currentEpoch), primeTarget);
 		lastLoggedFps = fps;
 	}
 

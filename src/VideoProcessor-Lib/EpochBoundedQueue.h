@@ -8,10 +8,12 @@
  */
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <limits>
 #include <utility>
 
 #include <VideoTimingController.h>
@@ -56,6 +58,18 @@ public:
 		PipelineEpoch valueEpoch,
 		PipelineEpoch currentEpoch)
 	{
+		return PushWithMaximum(
+			std::move(value), valueEpoch, currentEpoch,
+			std::numeric_limits<size_t>::max());
+	}
+
+	EpochBoundedQueuePushResult PushWithMaximum(
+		TValue value,
+		PipelineEpoch valueEpoch,
+		PipelineEpoch currentEpoch,
+		size_t temporaryMaximum,
+		size_t* discardedCount = nullptr)
+	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		if (valueEpoch.value != currentEpoch.value)
 		{
@@ -63,22 +77,28 @@ public:
 			++m_metrics.staleDiscarded;
 			return EpochBoundedQueuePushResult::RejectedStale;
 		}
-		if (m_capacity == 0)
+		const size_t effectiveCapacity =
+			std::min(m_capacity, temporaryMaximum);
+		if (effectiveCapacity == 0)
 		{
 			Release(value);
 			return EpochBoundedQueuePushResult::RejectedNoCapacity;
 		}
 
 		bool overflow = false;
-		if (m_entries.size() >= m_capacity)
+		size_t discarded = 0;
+		while (m_entries.size() >= effectiveCapacity)
 		{
 			Release(m_entries.front().value);
 			m_entries.pop_front();
 			++m_metrics.overflowDiscarded;
+			++discarded;
 			overflow = true;
 		}
 
 		m_entries.push_back({ std::move(value), valueEpoch });
+		if (discardedCount)
+			*discardedCount = discarded;
 		++m_metrics.accepted;
 		m_metrics.depth = m_entries.size();
 		return overflow ?
@@ -191,6 +211,18 @@ public:
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		return m_entries.size();
+	}
+
+	size_t CurrentDepth(PipelineEpoch currentEpoch) const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		size_t depth = 0;
+		for (const Entry& entry : m_entries)
+		{
+			if (entry.epoch.value == currentEpoch.value)
+				++depth;
+		}
+		return depth;
 	}
 
 	EpochBoundedQueueMetrics Metrics() const
