@@ -394,8 +394,16 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 	// Actual display refresh period as reported by the Desktop Window Manager.
 	if (m_stats.displayRefreshRate > 0.0)
-		line.Format(TEXT("- Display Rate:   %.6f Hz%s"), m_stats.displayRefreshRate,
-			m_stats.displayRefreshRateOverridden ? TEXT(" *") : TEXT(""));
+	{
+		CString statusSuffix;
+		if (!m_stats.displayRefreshRateStatus.IsEmpty())
+			statusSuffix.Format(TEXT(" (%s)"),
+				m_stats.displayRefreshRateStatus.GetString());
+		line.Format(TEXT("- Display Rate:   %.6f Hz%s%s"),
+			m_stats.displayRefreshRate,
+			m_stats.displayRefreshRateOverridden ? TEXT(" *") : TEXT(""),
+			statusSuffix.GetString());
+	}
 	else if (!m_stats.displayRefreshRateStatus.IsEmpty())
 		line.Format(TEXT("- Display Rate:   --- (%s)"),
 			m_stats.displayRefreshRateStatus.GetString());

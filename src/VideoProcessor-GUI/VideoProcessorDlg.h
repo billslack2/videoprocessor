@@ -441,9 +441,7 @@ protected:
 	CString m_defaultFrameOffset = TEXT("90");
 	CString m_defaultQueueSize = TEXT("32");
 	size_t m_directShowQueueCapacity = 32;
-	size_t m_alphaQueueDesiredDepth = 4;
 	bool m_queueRendererSelectionInitialized = false;
-	bool m_queueSelectionWasAlpha = false;
 	bool m_sceneAwareTimingCorrection = false;
 	bool m_detectionFeaturesDisabled = false;
 	// DirectShow defaults to the more robust upstream-sample correction.

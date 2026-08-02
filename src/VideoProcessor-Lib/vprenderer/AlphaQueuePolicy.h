@@ -24,12 +24,18 @@ namespace AlphaQueuePolicy
 			NormalizeDesiredDepth(rememberedValue);
 	}
 
-	inline size_t HardCapacity(size_t desiredDepth)
+	inline size_t HardCapacity(size_t configuredQueueSize)
 	{
-		// The configured queue size is user-visible and must be a true cap.
-		// Keeping hidden headroom here made states such as 5/3 possible and
-		// turned ordinary burst buffering into unexpected latency.
-		return NormalizeDesiredDepth(desiredDepth);
+		// queue_size is user-visible and is the actual FIFO cap.  A lower
+		// steady reserve controls presentation pacing; it must not shrink this.
+		return NormalizeDesiredDepth(configuredQueueSize);
+	}
+
+	inline size_t ClampDesiredDepthToCapacity(size_t desiredDepth,
+		size_t hardCapacity)
+	{
+		return std::min(NormalizeDesiredDepth(desiredDepth),
+			HardCapacity(hardCapacity));
 	}
 
 	inline size_t HealthyLowWater(size_t desiredDepth)
@@ -41,8 +47,7 @@ namespace AlphaQueuePolicy
 	inline size_t HealthyHighWater(size_t desiredDepth)
 	{
 		const size_t desired = NormalizeDesiredDepth(desiredDepth);
-		const size_t capacity = HardCapacity(desired);
-		return desired < capacity ? desired + 1 : desired;
+		return desired;
 	}
 
 	inline bool CanDequeue(size_t queueDepth, size_t desiredDepth,

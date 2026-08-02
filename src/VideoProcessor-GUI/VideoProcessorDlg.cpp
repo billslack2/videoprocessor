@@ -1797,35 +1797,17 @@ bool CVideoProcessorDlg::IsAlphaRendererSelected() const
 
 void CVideoProcessorDlg::UpdateRendererQueueControl()
 {
-	const bool alphaSelected = IsAlphaRendererSelected();
 	if (m_queueRendererSelectionInitialized)
-	{
-		const size_t displayedValue =
-			std::max<size_t>(1, GetRendererVideoFrameQueueSizeMax());
-		if (m_queueSelectionWasAlpha)
-			m_alphaQueueDesiredDepth = displayedValue;
-		else
-			m_directShowQueueCapacity = displayedValue;
-	}
+		m_directShowQueueCapacity = std::max<size_t>(1,
+			GetRendererVideoFrameQueueSizeMax());
 
-	if (alphaSelected && videoProcessorApp.HasQueueSteadyReserveFrames())
-		m_alphaQueueDesiredDepth =
-			videoProcessorApp.GetQueueSteadyReserveFrames();
-
-	const size_t selectedValue = alphaSelected ?
-		m_alphaQueueDesiredDepth : m_directShowQueueCapacity;
 	CString queueText;
-	queueText.Format(TEXT("%zu"), selectedValue);
+	queueText.Format(TEXT("%zu"), m_directShowQueueCapacity);
 	m_rendererVideoFrameQueueSizeMaxEdit.SetWindowText(queueText);
 
-	m_queueSelectionWasAlpha = alphaSelected;
 	m_queueRendererSelectionInitialized = true;
-	DebugLog::Log("%s queue control selected: value=%zu source=%s",
-		alphaSelected ? "Alpha desired depth" : "DirectShow capacity",
-		selectedValue,
-		alphaSelected && videoProcessorApp.HasQueueSteadyReserveFrames() ?
-			"steady_reserve_frames" :
-			(alphaSelected ? "remembered/default Alpha value" : "queue_size"));
+	DebugLog::Log("Renderer queue control selected: hard capacity=%zu source=queue_size",
+		m_directShowQueueCapacity);
 }
 
 
@@ -3665,6 +3647,11 @@ void CVideoProcessorDlg::UpdateState()
 //
 
 int CVideoProcessorDlg::CalculateAutoFrameOffset() {
+	// Alpha presents from its own FIFO and does not schedule delivery from the
+	// capture timestamp.  A positive capture timestamp offset therefore adds no
+	// presentation benefit there; keep automatic mode neutral.
+	if (IsAlphaRendererSelected())
+		return 0;
 
 	size_t m_frameQueueMaxSize = GetRendererVideoFrameQueueSizeMax();
 
@@ -4223,14 +4210,14 @@ void CVideoProcessorDlg::RenderStart()
 	{
 		try
 		{
-			const size_t alphaDesiredDepth =
+			const size_t alphaQueueCapacity =
 				GetRendererVideoFrameQueueSizeMax();
 			m_videoRenderer = std::make_shared<LibplaceboPluginVideoRenderer>(
 				*this,
 				m_rendererTargetHwnd,
 				timingClock,
 				GetRendererVideoFrameUseQueue(),
-				alphaDesiredDepth,
+				alphaQueueCapacity,
 				videoConversionOverride);
 			BindRendererResetSink();
 
@@ -5530,6 +5517,14 @@ void CVideoProcessorDlg::UpdateTimingClockFrameOffsetAvailability()
 	const bool autoOffset =
 		m_timingClockFrameOffsetAutoCheck.GetCheck() == BST_CHECKED;
 	m_timingClockFrameOffsetEdit.EnableWindow(!autoOffset);
+	if (autoOffset && IsAlphaRendererSelected() &&
+		GetTimingClockFrameOffsetMs() != 0)
+	{
+		// Apply the Alpha automatic policy immediately when the renderer is
+		// selected, rather than waiting for the five-second periodic update.
+		SetTimingClockFrameOffsetMs(0);
+		DebugLog::Log("Alpha automatic frame offset set to 0 ms");
+	}
 	if (m_captureDevice)
 		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
 }
@@ -7898,7 +7893,11 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 		// Refresh rate
 		stats.refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
-		stats.displayRefreshRate = displayRefreshRate;
+		// Keep the accepted/renderer-selected value authoritative for timing.
+		// During DXGI warm-up, the provisional candidate is still useful OSD
+		// telemetry when labelled as such; it is never fed to timing consumers.
+		stats.displayRefreshRate = displayRefreshRate > 0.0 ?
+			displayRefreshRate : sampledDisplayTiming.refreshRateHz;
 		stats.displayRefreshRateOverridden = displayRefreshRateOverridden;
 		if (!displayRefreshRateOverridden &&
 			displayRateResult.decision !=

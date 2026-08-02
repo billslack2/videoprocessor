@@ -34,6 +34,16 @@ namespace Tests
 					std::numeric_limits<size_t>::max()));
 		}
 
+		TEST_METHOD(SteadyTargetDoesNotChangeConfiguredCapacity)
+		{
+			const size_t capacity = AlphaQueuePolicy::HardCapacity(32);
+			Assert::AreEqual<size_t>(32, capacity);
+			Assert::AreEqual<size_t>(2,
+				AlphaQueuePolicy::ClampDesiredDepthToCapacity(2, capacity));
+			Assert::AreEqual<size_t>(32,
+				AlphaQueuePolicy::ClampDesiredDepthToCapacity(64, capacity));
+		}
+
 		TEST_METHOD(HealthyBandStraddlesDesiredDepth)
 		{
 			Assert::AreEqual<size_t>(0,
