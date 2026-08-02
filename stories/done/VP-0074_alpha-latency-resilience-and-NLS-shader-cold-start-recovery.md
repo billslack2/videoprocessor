@@ -2,22 +2,20 @@
 
 ## Status
 
-Review. The implementation is ready for live user validation on branch
-`codex/vp-0074-alpha-latency-recovery`, commits `8867cfb` and `9eb7198`,
-rebased onto the current `v1.1.015-beta` tip `44e3099` (VP-0023 Alpha P010
-formatter contract). The clean worktree is
-`C:\Users\bslac\vp\worktrees\vp-0074`.
+Done. The implementation was live-validated by the user as working perfectly
+and merged through [PR #30](https://github.com/billslack2/videoprocessor/pull/30)
+into `v1.1.015-beta` as merge commit `881f6f9` on 2026-08-02. The feature
+branch contained commits `8867cfb` and `9eb7198`, rebased onto `44e3099`
+(VP-0023 Alpha P010 formatter contract).
 
 The exact `9eb7198` x64 Release build (`VERSION_DIRTY=false`) passed all 471
 native tests and was deployed to `C:\Videoprocessor\vp` on 2026-08-02. The
 executable, Alpha plugin, and `shaders\NLS.glsl` deployment hashes match the
 build outputs. `VideoProcessor.cfg` was not changed.
 
-Remaining review: exercise embedded and fullscreen Alpha at 23.976 and
-59.94/60 Hz, including NLS off/on, normal/scope profile changes, and window
-resize. Confirm the startup-prewarm records are successful or warm, an aspect
-change does not produce a new NLS compiler event, and any genuinely new-size
-compile is followed by one bounded backlog recovery to `[queue] target_frames`.
+Accepted validation: the user exercised the deployed build and reported that
+the behavior works perfectly. This completes the live-validation requirement;
+future regressions should be handled as new stories with fresh evidence.
 
 ## Readiness review
 
