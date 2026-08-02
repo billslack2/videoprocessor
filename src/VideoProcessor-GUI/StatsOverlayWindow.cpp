@@ -565,12 +565,14 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		y += lineHeight;
 	}
 
-	// Frame offset is applied to the capture timestamp before either renderer
-	// consumes the frame. It remains meaningful for every timing policy.
-	line.Format(TEXT("Offset:           %d ms"), m_stats.frameOffsetMs);
-
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
+	// Alpha does not schedule its FIFO from capture timestamps, so the offset
+	// control is deliberately unavailable there.
+	if (!m_stats.isAlphaRenderer)
+	{
+		line.Format(TEXT("Offset:           %d ms"), m_stats.frameOffsetMs);
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+	}
 
 	// Separator
 	y += 4;

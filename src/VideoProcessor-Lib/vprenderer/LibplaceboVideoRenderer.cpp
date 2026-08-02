@@ -5059,7 +5059,7 @@ struct LibplaceboVideoRenderer::Impl
 			ingressStatus = videoConversionOverride ==
 				VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010 ?
 				"P010 (forced)" :
-				(p010AnalysisRequested ? "P010 (analysis)" : "P010 (fallback)");
+				"P010 (source fallback)";
 		}
 
 		image.repr.sys = nativeRgbUpload ? PL_COLOR_SYSTEM_RGB :

@@ -1553,6 +1553,7 @@ void CVideoProcessorDlg::StartFrameOffsetAuto()
 void CVideoProcessorDlg::StartFrameOffset(const CString& frameOffset)
 {
 	m_defaultFrameOffset = frameOffset;
+	m_directShowFrameOffsetMs = _ttoi(frameOffset);
 }
 
 void CVideoProcessorDlg::SetQueueSize(const CString& queueSize)
@@ -5513,20 +5514,39 @@ void CVideoProcessorDlg::SetFrameOffsetByRefresh(std::vector<int> offsets) {
 
 void CVideoProcessorDlg::UpdateTimingClockFrameOffsetAvailability()
 {
-	m_timingClockFrameOffsetAutoCheck.EnableWindow(TRUE);
+	const bool alphaSelected = IsAlphaRendererSelected();
+	if (alphaSelected && !m_alphaFrameOffsetDisabled)
+	{
+		// Alpha's FIFO is not timestamp-scheduled. Preserve the DirectShow value
+		// for a later backend switch, but force the capture clock to its neutral
+		// offset while Alpha owns the renderer.
+		m_directShowFrameOffsetMs = GetTimingClockFrameOffsetMs();
+		SetTimingClockFrameOffsetMs(0);
+		m_alphaFrameOffsetDisabled = true;
+		DebugLog::Log("Alpha frame offset disabled; preserved DirectShow value=%d ms",
+			m_directShowFrameOffsetMs);
+	}
+	else if (!alphaSelected && m_alphaFrameOffsetDisabled)
+	{
+		SetTimingClockFrameOffsetMs(m_directShowFrameOffsetMs);
+		m_alphaFrameOffsetDisabled = false;
+		DebugLog::Log("DirectShow frame offset restored: %d ms",
+			m_directShowFrameOffsetMs);
+	}
+
+	m_timingClockFrameOffsetAutoCheck.EnableWindow(!alphaSelected);
 	const bool autoOffset =
 		m_timingClockFrameOffsetAutoCheck.GetCheck() == BST_CHECKED;
-	m_timingClockFrameOffsetEdit.EnableWindow(!autoOffset);
-	if (autoOffset && IsAlphaRendererSelected() &&
-		GetTimingClockFrameOffsetMs() != 0)
+	m_timingClockFrameOffsetEdit.EnableWindow(!alphaSelected && !autoOffset);
+	for (const UINT controlId : { IDC_STATIC_TIMING_CLOCK_FRAME_OFFSET_LABEL,
+		IDC_STATIC_TIMING_CLOCK_FRAME_OFFSET_MS })
 	{
-		// Apply the Alpha automatic policy immediately when the renderer is
-		// selected, rather than waiting for the five-second periodic update.
-		SetTimingClockFrameOffsetMs(0);
-		DebugLog::Log("Alpha automatic frame offset set to 0 ms");
+		if (CWnd* label = GetDlgItem(controlId))
+			label->EnableWindow(!alphaSelected);
 	}
 	if (m_captureDevice)
-		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
+		m_captureDevice->SetFrameOffsetMs(alphaSelected ? 0 :
+			GetTimingClockFrameOffsetMs());
 }
 
 
@@ -5551,8 +5571,12 @@ void CVideoProcessorDlg::SetTimingClockFrameOffsetMs(int timingClockFrameOffsetM
 
 void CVideoProcessorDlg::UpdateTimingClockFrameOffset()
 {
+	if (!IsAlphaRendererSelected())
+		m_directShowFrameOffsetMs = GetTimingClockFrameOffsetMs();
+
 	if (m_captureDevice) 
-		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
+		m_captureDevice->SetFrameOffsetMs(IsAlphaRendererSelected() ? 0 :
+			GetTimingClockFrameOffsetMs());
 
 	if (m_videoRenderer)
 		RequestRendererReset(RendererResetReason::TimingOffsetChange, false, 0);
