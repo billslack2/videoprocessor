@@ -12,7 +12,7 @@
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 
 
-/** Converts DeckLink R10b, R10l, or R12L packed RGB to 10-bit P010. */
+/** Converts DeckLink r210, R10b, R10l, or R12L packed RGB to 10-bit P010. */
 class CDeckLinkRGBToP010VideoFrameFormatter : public IVideoFrameFormatter
 {
 public:

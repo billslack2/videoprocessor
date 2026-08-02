@@ -16,12 +16,15 @@
 #include <vprenderer/AlphaQueuePolicy.h>
 #include <vprenderer/LibplaceboDisplayLut.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
+#include <vprenderer/AlphaNativeRgbIngress.h>
 #include <SceneDetector.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CUYVYtoP210VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
 
 #pragma warning(push)
 #pragma warning(disable: 4244) // conversion warning in an upstream inline helper
@@ -610,19 +613,50 @@ namespace
 		return result;
 	}
 
-	std::unique_ptr<IVideoFrameFormatter> CreateP010Formatter(VideoFrameEncoding encoding)
+	bool IsNativeRgbUpload(VideoFrameEncoding encoding,
+		VideoConversionOverride videoConversionOverride)
+	{
+		AlphaNativeRgbLayout layout;
+		return videoConversionOverride ==
+			VideoConversionOverride::VIDEOCONVERSION_NONE &&
+			GetAlphaNativeRgbLayout(encoding, layout);
+	}
+
+	std::unique_ptr<IVideoFrameFormatter> CreateAlphaFormatter(
+		VideoFrameEncoding encoding,
+		VideoConversionOverride videoConversionOverride)
 	{
 		switch (encoding)
 		{
 		case VideoFrameEncoding::V210:
+			// v210 is 10-bit 4:2:2. When P010 has not been explicitly
+			// requested, retain its vertical chroma resolution in P210 rather
+			// than silently reducing it to P010's 4:2:0 representation.
+			if (videoConversionOverride ==
+				VideoConversionOverride::VIDEOCONVERSION_NONE)
+			{
+				return std::unique_ptr<IVideoFrameFormatter>(
+					new CV210toP210VideoFrameFormatter());
+			}
 			return std::unique_ptr<IVideoFrameFormatter>(new CV210toP010VideoFrameFormatter());
 		case VideoFrameEncoding::UYVY:
-			return std::unique_ptr<IVideoFrameFormatter>(new CUYVYtoP010VideoFrameFormatter());
+		case VideoFrameEncoding::HDYC:
+			// UYVY/HDYC are 8-bit 4:2:2. Keep every captured chroma row in
+			// P210 unless the user explicitly selects the P010 conversion.
+			if (videoConversionOverride ==
+				VideoConversionOverride::VIDEOCONVERSION_NONE)
+			{
+				return std::unique_ptr<IVideoFrameFormatter>(
+					new CUYVYtoP210VideoFrameFormatter());
+			}
+			return std::unique_ptr<IVideoFrameFormatter>(
+				new CUYVYtoP010VideoFrameFormatter());
 		case VideoFrameEncoding::ARGB_8BIT:
 		case VideoFrameEncoding::BGRA_8BIT:
 			return std::unique_ptr<IVideoFrameFormatter>(new CARGBtoP010VideoFrameFormatter());
 		case VideoFrameEncoding::R10b:
 		case VideoFrameEncoding::R10l:
+		case VideoFrameEncoding::R210:
 		case VideoFrameEncoding::R12L:
 			return std::unique_ptr<IVideoFrameFormatter>(new CDeckLinkRGBToP010VideoFrameFormatter());
 		default:
@@ -4310,7 +4344,8 @@ struct LibplaceboVideoRenderer::Impl
 	}
 
 	void Initialize(HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule,
-		const std::map<std::string, std::string>& manualUnifiedProfiles)
+		const std::map<std::string, std::string>& manualUnifiedProfiles,
+		VideoConversionOverride videoConversionOverride)
 	{
 		this->videoHwnd = videoHwnd;
 		const RendererSettings settings = LoadRendererSettings(
@@ -4444,15 +4479,26 @@ struct LibplaceboVideoRenderer::Impl
 		if (!renderer)
 			throw std::runtime_error("Failed to create libplacebo renderer");
 
-		formatter = CreateP010Formatter(state->videoFrameEncoding);
-		formatter->OnVideoState(state);
-		formatterState = state;
-		convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
+		if (!IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride))
+		{
+			formatter = CreateAlphaFormatter(state->videoFrameEncoding,
+				videoConversionOverride);
+			formatter->OnVideoState(state);
+			formatterState = state;
+			convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
+		}
 		LoadDisplayLut(settings);
 		ConfigureRenderParams(settings);
 
 		DebugLog::Log(
-			"libplacebo initialized: D3D11, P010 upload, SDR target request=%s %.1f nits",
+			"libplacebo initialized: D3D11, %s upload, SDR target request=%s %.1f nits",
+			IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride) ?
+				"native RGB" :
+			((state->videoFrameEncoding == VideoFrameEncoding::V210 ||
+				state->videoFrameEncoding == VideoFrameEncoding::UYVY ||
+				state->videoFrameEncoding == VideoFrameEncoding::HDYC) &&
+				videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE ?
+					"lossless P210" : "P010"),
 			targetBt2020 ? "BT.2020" : "Rec.709",
 			sdrTargetNits);
 	}
@@ -4825,12 +4871,20 @@ struct LibplaceboVideoRenderer::Impl
 
 		const int width = static_cast<int>(state.displayMode->FrameWidth());
 		const int height = static_cast<int>(state.displayMode->FrameHeight());
-		const bool nativeRgbCandidate =
-			state.videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT ||
-			state.videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT;
 		const bool p010AnalysisRequested = nlsRequested ||
 			sceneDetectionEnabled || scopeScreenActive;
-		const bool nativeRgbUpload = nativeRgbCandidate &&
+		AlphaNativeRgbLayout nativeRgbLayout;
+		const bool nativeRgbUpload =
+			videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE &&
+			GetAlphaNativeRgbLayout(state.videoFrameEncoding, nativeRgbLayout);
+		const bool nativeRgb8Upload = nativeRgbLayout.bitDepth == 8;
+		const bool yuv8BitSource =
+			state.videoFrameEncoding == VideoFrameEncoding::UYVY ||
+			state.videoFrameEncoding == VideoFrameEncoding::HDYC;
+		const bool lossless422Upload =
+			(state.videoFrameEncoding == VideoFrameEncoding::V210 ||
+				state.videoFrameEncoding == VideoFrameEncoding::UYVY ||
+				state.videoFrameEncoding == VideoFrameEncoding::HDYC) &&
 			videoConversionOverride ==
 				VideoConversionOverride::VIDEOCONVERSION_NONE;
 		const bool nativeRgbAnalysisUnavailable = nativeRgbUpload &&
@@ -4898,6 +4952,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		const size_t p010RowBytes =
 			static_cast<size_t>(width) * sizeof(uint16_t);
+		const int chromaHeight = lossless422Upload ? height : (height + 1) / 2;
 		const BYTE* yPixels = nullptr;
 		const BYTE* uvPixels = nullptr;
 		if (!nativeRgbUpload)
@@ -4994,22 +5049,8 @@ struct LibplaceboVideoRenderer::Impl
 			plane.pixel_stride = 4;
 			plane.row_stride = state.BytesPerRow();
 			plane.pixels = videoFrame.GetData();
-			uint64_t masks[4]{};
-			if (state.videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT)
-			{
-				masks[0] = 0x00FF0000; // R in [B G R A]
-				masks[1] = 0x0000FF00;
-				masks[2] = 0x000000FF;
-				masks[3] = 0xFF000000;
-			}
-			else
-			{
-				masks[0] = 0x0000FF00; // R in [A R G B]
-				masks[1] = 0x00FF0000;
-				masks[2] = 0xFF000000;
-				masks[3] = 0x000000FF;
-			}
-			pl_plane_data_from_mask(&plane, masks);
+			plane.swapped = nativeRgbLayout.swapped;
+			pl_plane_data_from_mask(&plane, nativeRgbLayout.masks);
 			if (!pl_upload_plane(d3d11->gpu, &image.planes[0],
 				&textures[0], &plane))
 				return false;
@@ -5017,9 +5058,7 @@ struct LibplaceboVideoRenderer::Impl
 			image.planes[0].shift_x = 0.0f;
 			image.planes[0].shift_y = 0.0f;
 			image.planes[0].flipped = state.invertedVertical;
-			ingressStatus = state.videoFrameEncoding ==
-				VideoFrameEncoding::BGRA_8BIT ?
-				"Native BGRA -> RGB" : "Native ARGB -> RGB";
+			ingressStatus = nativeRgbLayout.label;
 			if (nativeRgbAnalysisUnavailable)
 				ingressStatus += " (P010 analysis unavailable)";
 		}
@@ -5037,7 +5076,7 @@ struct LibplaceboVideoRenderer::Impl
 
 			planes[1].type = PL_FMT_UNORM;
 			planes[1].width = (width + 1) / 2;
-			planes[1].height = (height + 1) / 2;
+			planes[1].height = chromaHeight;
 			planes[1].component_size[0] = 16;
 			planes[1].component_size[1] = 16;
 			planes[1].component_map[0] = PL_CHANNEL_CB;
@@ -5056,10 +5095,26 @@ struct LibplaceboVideoRenderer::Impl
 				image.planes[plane].shift_y = 0.0f;
 				image.planes[plane].flipped = state.invertedVertical;
 			}
-			ingressStatus = videoConversionOverride ==
-				VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010 ?
-				"P010 (forced)" :
-				"P010 (source fallback)";
+			if (lossless422Upload)
+			{
+				switch (state.videoFrameEncoding)
+				{
+				case VideoFrameEncoding::V210:
+					ingressStatus = "P210 (lossless v210 4:2:2)";
+					break;
+				case VideoFrameEncoding::HDYC:
+					ingressStatus = "P210 (lossless HDYC 4:2:2)";
+					break;
+				default:
+					ingressStatus = "P210 (lossless UYVY 4:2:2)";
+					break;
+				}
+			}
+			else
+				ingressStatus = videoConversionOverride ==
+					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010 ?
+					"P010 (forced)" :
+					"P010 (source fallback)";
 		}
 
 		image.repr.sys = nativeRgbUpload ? PL_COLOR_SYSTEM_RGB :
@@ -5072,9 +5127,11 @@ struct LibplaceboVideoRenderer::Impl
 			 state.videoFrameEncoding == VideoFrameEncoding::R12L
 			 ? PL_COLOR_LEVELS_FULL : PL_COLOR_LEVELS_LIMITED);
 		image.repr.alpha = PL_ALPHA_NONE;
-		image.repr.bits.sample_depth = nativeRgbUpload ? 8 : 16;
-		image.repr.bits.color_depth = nativeRgbUpload ? 8 : 10;
-		image.repr.bits.bit_shift = nativeRgbUpload ? 0 : 6;
+		image.repr.bits.sample_depth = nativeRgbUpload ? (nativeRgb8Upload ? 8 : 10) : 16;
+		image.repr.bits.color_depth = nativeRgbUpload ? (nativeRgb8Upload ? 8 : 10) :
+			(yuv8BitSource ? 8 : 10);
+		image.repr.bits.bit_shift = nativeRgbUpload ? 0 :
+			(yuv8BitSource ? 8 : 6);
 		image.color = TranslateColorSpace(state);
 		if (state.eotf == EOTF::SDR &&
 			sdrInputTransfer != PL_COLOR_TRC_UNKNOWN)
@@ -5995,7 +6052,8 @@ void LibplaceboVideoRenderer::Build()
 	std::unique_ptr<Impl> impl(new Impl());
 	try
 	{
-		impl->Initialize(m_videoHwnd, state, manualRule, manualUnifiedProfiles);
+		impl->Initialize(m_videoHwnd, state, manualRule, manualUnifiedProfiles,
+			m_videoConversionOverride);
 	}
 	catch (...)
 	{
