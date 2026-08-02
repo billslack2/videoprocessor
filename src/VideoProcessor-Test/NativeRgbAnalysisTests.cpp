@@ -266,5 +266,24 @@ namespace Tests
 			Assert::AreEqual(512, static_cast<int>(sample.chromaU));
 			Assert::AreEqual(512, static_cast<int>(sample.chromaV));
 		}
+
+		TEST_METHOD(P210SamplingPreservesEachChromaRow)
+		{
+			// Two luma rows, followed by two chroma rows. P010 would correctly
+			// read the first chroma row for both lines; P210 must not.
+			const uint16_t plane[] = {
+				0, 0, 0, 0,
+				100 << 6, 200 << 6,
+				300 << 6, 400 << 6
+			};
+			const AnalysisLumaSource source = {
+				reinterpret_cast<const uint8_t*>(plane), sizeof(plane), 2, 2,
+				4, 4, AnalysisLumaFormat::P210, VideoFrameEncoding::V210,
+				ColorSpace::REC_709, 1 };
+			AnalysisLumaSample sample;
+			Assert::IsTrue(source.Sample(1, 1, sample));
+			Assert::AreEqual(300, static_cast<int>(sample.chromaU));
+			Assert::AreEqual(400, static_cast<int>(sample.chromaV));
+		}
 	};
 }

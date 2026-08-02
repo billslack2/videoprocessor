@@ -5177,7 +5177,8 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			analysisSource = {
 				yPixels, convertedFrame.size(), width, height, p010RowBytes,
-				p010RowBytes, AnalysisLumaFormat::P010,
+				p010RowBytes, lossless422Upload ? AnalysisLumaFormat::P210 :
+				AnalysisLumaFormat::P010,
 				state.videoFrameEncoding, state.colorspace, frameGeneration
 			};
 		}

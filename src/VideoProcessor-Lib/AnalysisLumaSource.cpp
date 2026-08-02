@@ -202,12 +202,15 @@ bool AnalysisLumaSource::IsValid() const
 				rowBytes >= static_cast<size_t>(width) * 36 / 8;
 		return rowBytes >= static_cast<size_t>(width) * 4;
 	}
-	if ((width & 1) != 0 || (height & 1) != 0 ||
+	if ((width & 1) != 0 ||
+		(format == AnalysisLumaFormat::P010 && (height & 1) != 0) ||
 		rowBytes < static_cast<size_t>(width) * 2 ||
 		chromaRowBytes < static_cast<size_t>(width) * 2)
 		return false;
 	size_t chromaBytes = 0;
-	return CheckedMultiply(chromaRowBytes, static_cast<size_t>(height / 2), chromaBytes) &&
+	const size_t chromaHeight = format == AnalysisLumaFormat::P210 ?
+		static_cast<size_t>(height) : static_cast<size_t>(height / 2);
+	return CheckedMultiply(chromaRowBytes, chromaHeight, chromaBytes) &&
 		requiredBytes <= std::numeric_limits<size_t>::max() - chromaBytes &&
 		requiredBytes + chromaBytes <= dataBytes;
 }
@@ -216,13 +219,14 @@ bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 {
 	if (!IsValid() || x < 0 || y < 0 || x >= width || y >= height)
 		return false;
-	if (format == AnalysisLumaFormat::P010)
+	if (format != AnalysisLumaFormat::NativeRgb)
 	{
 		const uint8_t* luma = data + static_cast<size_t>(y) * rowBytes +
 			static_cast<size_t>(x) * 2;
 		const size_t lumaBytes = rowBytes * static_cast<size_t>(height);
-		const uint8_t* chroma = data + lumaBytes +
-			static_cast<size_t>(y / 2) * chromaRowBytes +
+		const size_t chromaLine = format == AnalysisLumaFormat::P210 ?
+			static_cast<size_t>(y) : static_cast<size_t>(y / 2);
+		const uint8_t* chroma = data + lumaBytes + chromaLine * chromaRowBytes +
 			static_cast<size_t>(x / 2) * 4;
 		result.luma = P010Code(luma);
 		result.chromaU = P010Code(chroma);
@@ -252,5 +256,7 @@ bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 
 const char* AnalysisLumaFormatName(const AnalysisLumaSource& source)
 {
-	return source.format == AnalysisLumaFormat::NativeRgb ? "native-rgb-sparse" : "p010-plane";
+	if (source.format == AnalysisLumaFormat::NativeRgb)
+		return "native-rgb-sparse";
+	return source.format == AnalysisLumaFormat::P210 ? "p210-plane" : "p010-plane";
 }
