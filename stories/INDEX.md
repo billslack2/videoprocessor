@@ -72,7 +72,7 @@ they must not contain requirements that are absent from this file.
 | VP-0044 | Done | Alpha native OSD visible-picture anchoring and scaling |
 | VP-0045 | Done | Namespace built-in renderer configuration as vpvr |
 | VP-0046 | Backlog | DirectShow event plumbing and passive health diagnostics |
-| VP-0047 | Backlog | P3-D65 output and SDR LUT target-contract support |
+| VP-0047 | Backlog | P3-D65 LUT-input and calibrated SDR output contract |
 | VP-0048 | Will Not Do | Explicit SDR LUT transfer and range contracts (superseded by VP-0047) |
 | VP-0049 | Done | Complete canonical CONFIGURATION.html reference |
 | VP-0050 | Done | Put Alpha first and reverse renderer order |
