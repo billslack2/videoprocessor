@@ -86,11 +86,11 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
   and byte order. They do not create an intermediate conversion buffer when
   P010 is not selected. P010-only analysis remains deliberately unavailable
   on those direct RGB paths, rather than causing a silent conversion.
-- R12B/R12L still use their existing fallback behavior and are not claimed as
-  lossless/native in Alpha: their 36-bit packing needs a separately qualified
-  unpack/upload path. A raw-GPU v210 unpack is also future work; it requires
-  output validation on the actual D3D11/libplacebo devices before replacing
-  the proven P210 route.
+- R12L continues to use its existing P010 fallback and R12B remains unsupported
+  in Alpha; neither is claimed as lossless/native. Their 36-bit packing needs
+  a separately qualified unpack/upload path. A raw-GPU v210 unpack is also
+  future work; it requires output validation on the actual D3D11/libplacebo
+  devices before replacing the proven P210 route.
 - Golden tests prove all captured luma/chroma values for v210 and UYVY P210,
   including v210 padding-edge handling and UYVY vertical-chroma preservation.
   Packed RGB mask tests prove r210/R10b/R10l component placement and endian
