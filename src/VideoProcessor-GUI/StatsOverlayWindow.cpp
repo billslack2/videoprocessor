@@ -570,24 +570,26 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	// VP-owned ingress-to-renderer handoff residence. This boundary is shared
 	// by DirectShow and Alpha, despite their different presentation owners.
 	if (m_stats.vpInternalLatencyKnown)
-		line.Format(TEXT("Renderer:      %.2f ms"), m_stats.vpInternalLatencyMs);
+		line.Format(TEXT("%-15s%.2f ms"), TEXT("Renderer:"),
+			m_stats.vpInternalLatencyMs);
 	else
-		line = TEXT("Renderer:      ---");
+		line.Format(TEXT("%-15s---"), TEXT("Renderer:"));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
 	if (m_stats.isAlphaRenderer)
 	{
 		if (m_stats.presentationTargetTimingKnown)
-			line.Format(TEXT("Presentation: %.2f ms"),
+			line.Format(TEXT("%-15s%.2f ms"), TEXT("Presentation:"),
 				m_stats.presentationTargetLeadMs);
 		else
-			line = TEXT("Presentation: ---");
+			line.Format(TEXT("%-15s---"), TEXT("Presentation:"));
 	}
 	else if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("Presentation: %.2f ms"), m_stats.dsScheduleLeadMs);
+		line.Format(TEXT("%-15s%.2f ms"), TEXT("Presentation:"),
+			m_stats.dsScheduleLeadMs);
 	else
-		line = TEXT("Presentation: ---");
+		line.Format(TEXT("%-15s---"), TEXT("Presentation:"));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
@@ -597,15 +599,16 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		// capture to the forecast display target, so it is comparable with the
 		// audio extraction boundary without changing Alpha's scheduling.
 		if (m_stats.presentationTargetTimingKnown)
-			line.Format(TEXT("Total:         %.2f ms"),
+			line.Format(TEXT("%-15s%.2f ms"), TEXT("Total:"),
 				m_stats.captureToPresentationTargetMs);
 		else
-			line = TEXT("Total:         ---");
+			line.Format(TEXT("%-15s---"), TEXT("Total:"));
 	}
 	else if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("Total:         %.2f ms"), m_stats.scheduledLatencyMs);
+		line.Format(TEXT("%-15s%.2f ms"), TEXT("Total:"),
+			m_stats.scheduledLatencyMs);
 	else
-		line = TEXT("Total:         ---");
+		line.Format(TEXT("%-15s---"), TEXT("Total:"));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
