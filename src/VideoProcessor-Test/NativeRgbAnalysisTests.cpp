@@ -236,5 +236,35 @@ namespace Tests
 				static_cast<int>(littleSample.luma));
 			Assert::IsTrue(bigSample.luma > 200);
 		}
+
+		TEST_METHOD(PackedTwelveBitLayoutsDecodeSmpteComponentPacking)
+		{
+			const uint8_t r12b[] = {
+				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+				0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+				0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+				0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+				0x20, 0x21, 0x22, 0x23
+			};
+			const uint8_t r12l[] = {
+				0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+				0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+				0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+				0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+			};
+			const AnalysisLumaSource big = { r12b, sizeof(r12b), 8, 1, 36, 0,
+				AnalysisLumaFormat::NativeRgb, VideoFrameEncoding::R12B,
+				ColorSpace::REC_709, 1 };
+			const AnalysisLumaSource little = { r12l, sizeof(r12l), 8, 1, 36, 0,
+				AnalysisLumaFormat::NativeRgb, VideoFrameEncoding::R12L,
+				ColorSpace::REC_709, 1 };
+			AnalysisLumaSample sample;
+			Assert::IsTrue(big.Sample(0, 0, sample));
+			Assert::AreEqual(63, static_cast<int>(sample.luma));
+			Assert::IsTrue(little.Sample(7, 0, sample));
+			Assert::AreEqual(1023, static_cast<int>(sample.luma));
+			Assert::AreEqual(512, static_cast<int>(sample.chromaU));
+			Assert::AreEqual(512, static_cast<int>(sample.chromaV));
+		}
 	};
 }

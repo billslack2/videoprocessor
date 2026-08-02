@@ -47,11 +47,81 @@ namespace
 		return static_cast<uint16_t>(std::max(0, std::min(1023, value)));
 	}
 
+	uint16_t Round12To10(uint16_t value)
+	{
+		return static_cast<uint16_t>((value + 2) >> 2);
+	}
+
+	bool ReadR12BPixel(const uint8_t* source, int x,
+		uint16_t& red, uint16_t& green, uint16_t& blue)
+	{
+		const uint8_t* block = source + static_cast<size_t>(x / 8) * 36;
+		auto byte = [block](int word, int index) noexcept
+		{
+			return block[word * 4 + index];
+		};
+		auto low = [&byte](int word, int index) noexcept
+		{
+			return static_cast<uint16_t>(byte(word, index) & 0x0f);
+		};
+		auto high = [&byte](int word, int index) noexcept
+		{
+			return static_cast<uint16_t>(byte(word, index) >> 4);
+		};
+		switch (x % 8)
+		{
+		case 0:
+			red = byte(0, 3) | (low(0, 2) << 8);
+			green = high(0, 2) | (static_cast<uint16_t>(byte(0, 1)) << 4);
+			blue = byte(0, 0) | (low(1, 3) << 8);
+			break;
+		case 1:
+			red = high(1, 3) | (static_cast<uint16_t>(byte(1, 2)) << 4);
+			green = byte(1, 1) | (low(1, 0) << 8);
+			blue = high(1, 0) | (static_cast<uint16_t>(byte(2, 3)) << 4);
+			break;
+		case 2:
+			red = byte(2, 2) | (low(2, 1) << 8);
+			green = high(2, 1) | (static_cast<uint16_t>(byte(2, 0)) << 4);
+			blue = byte(3, 3) | (low(3, 2) << 8);
+			break;
+		case 3:
+			red = high(3, 2) | (static_cast<uint16_t>(byte(3, 1)) << 4);
+			green = byte(3, 0) | (low(4, 3) << 8);
+			blue = high(4, 3) | (static_cast<uint16_t>(byte(4, 2)) << 4);
+			break;
+		case 4:
+			red = byte(4, 1) | (low(4, 0) << 8);
+			green = high(4, 0) | (static_cast<uint16_t>(byte(5, 3)) << 4);
+			blue = byte(5, 2) | (low(5, 1) << 8);
+			break;
+		case 5:
+			red = high(5, 1) | (static_cast<uint16_t>(byte(5, 0)) << 4);
+			green = byte(6, 3) | (low(6, 2) << 8);
+			blue = high(6, 2) | (static_cast<uint16_t>(byte(6, 1)) << 4);
+			break;
+		case 6:
+			red = byte(6, 0) | (low(7, 3) << 8);
+			green = high(7, 3) | (static_cast<uint16_t>(byte(7, 2)) << 4);
+			blue = byte(7, 1) | (low(7, 0) << 8);
+			break;
+		default:
+			red = high(7, 0) | (static_cast<uint16_t>(byte(8, 3)) << 4);
+			green = byte(8, 2) | (low(8, 1) << 8);
+			blue = high(8, 1) | (static_cast<uint16_t>(byte(8, 0)) << 4);
+			break;
+		}
+		red = Round12To10(red);
+		green = Round12To10(green);
+		blue = Round12To10(blue);
+		return true;
+	}
+
 	bool ReadRgb10(const AnalysisLumaSource& source, int x, int y,
 		uint16_t& red, uint16_t& green, uint16_t& blue)
 	{
-		const uint8_t* pixel = source.data + static_cast<size_t>(y) *
-			source.rowBytes + static_cast<size_t>(x) * 4;
+		const uint8_t* row = source.data + static_cast<size_t>(y) * source.rowBytes;
+		const uint8_t* pixel = row + static_cast<size_t>(x) * 4;
 		switch (source.encoding)
 		{
 		case VideoFrameEncoding::BGRA_8BIT:
@@ -88,6 +158,28 @@ namespace
 			blue = static_cast<uint16_t>((word >> 2) & 0x3ff);
 			return true;
 		}
+		case VideoFrameEncoding::R12L:
+		{
+			const uint8_t* pair = row + static_cast<size_t>(x / 2) * 9;
+			if ((x & 1) == 0)
+			{
+				red = static_cast<uint16_t>(pair[0] | ((pair[1] & 0x0f) << 8));
+				green = static_cast<uint16_t>((pair[1] >> 4) | (pair[2] << 4));
+				blue = static_cast<uint16_t>(pair[3] | ((pair[4] & 0x0f) << 8));
+			}
+			else
+			{
+				red = static_cast<uint16_t>((pair[4] >> 4) | (pair[5] << 4));
+				green = static_cast<uint16_t>(pair[6] | ((pair[7] & 0x0f) << 8));
+				blue = static_cast<uint16_t>((pair[7] >> 4) | (pair[8] << 4));
+			}
+			red = Round12To10(red);
+			green = Round12To10(green);
+			blue = Round12To10(blue);
+			return true;
+		}
+		case VideoFrameEncoding::R12B:
+			return ReadR12BPixel(row, x, red, green, blue);
 		default:
 			return false;
 		}
@@ -103,7 +195,13 @@ bool AnalysisLumaSource::IsValid() const
 		requiredBytes > dataBytes)
 		return false;
 	if (format == AnalysisLumaFormat::NativeRgb)
+	{
+		if (encoding == VideoFrameEncoding::R12B ||
+			encoding == VideoFrameEncoding::R12L)
+			return (width % 8) == 0 &&
+				rowBytes >= static_cast<size_t>(width) * 36 / 8;
 		return rowBytes >= static_cast<size_t>(width) * 4;
+	}
 	if ((width & 1) != 0 || (height & 1) != 0 ||
 		rowBytes < static_cast<size_t>(width) * 2 ||
 		chromaRowBytes < static_cast<size_t>(width) * 2)
