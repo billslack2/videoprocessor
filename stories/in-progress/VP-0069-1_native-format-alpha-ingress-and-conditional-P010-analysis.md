@@ -34,10 +34,11 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
   sample PTS; Alpha presentation is the predicted lead from its latest submit
   to the next DXGI display-sync target. DirectShow `Total` is the video delay
   relative to the audio-extraction/shared capture-clock baseline, including
-  the configured video frame offset. Alpha intentionally reports `Total` as
-  unavailable until it schedules presentation against an explicit deadline;
-  its current immediate FIFO cannot truthfully claim audio alignment. Neither
-  renderer reports physical panel processing or scanout latency.
+  the configured video frame offset. Alpha `Total` is a measurement from the
+  raw hardware-capture timestamp (before that offset) to its forecast display
+  target, making it comparable with the audio-extraction boundary without
+  changing Alpha's immediate FIFO scheduling. Neither renderer reports
+  physical panel processing or scanout latency.
 - Removed the Alpha-only `alpha_queue_size` setting. An explicit
   `[queue] steady_reserve_frames` now selects Alpha's desired FIFO depth via
   the same queue-policy call used by DirectShow; the retired key is rejected
