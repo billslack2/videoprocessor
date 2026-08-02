@@ -88,7 +88,7 @@ SDR.
 | Dropout/resync during LLDV | Recovery without reset loop or queue starvation |
 
 Use NVIDIA Shield and Apple TV cases where available. Preserve relevant
-`C:\logs\vp_debug.log` excerpts for each failure, including source, refresh,
+`C:\Videoprocessor\vp\logs\vp_debug.log` excerpts for each failure, including source, refresh,
 display rule, and renderer generation.
 
 ## Implementation guidance
