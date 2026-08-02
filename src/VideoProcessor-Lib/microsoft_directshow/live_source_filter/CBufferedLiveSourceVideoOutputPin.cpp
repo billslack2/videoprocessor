@@ -2101,6 +2101,42 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 						RendererLatencyStabilizer::IGNORE_MS,
 						RendererLatencyStabilizer::EVIDENCE_MS);
 				}
+				// The first stable sample establishes that the measurement is usable,
+				// but a live-capture regression can be a slow PTS-lead drift. Keep a
+				// lightweight, delivery-thread-owned steady-state trace so diagnosis
+				// does not depend on exporting the trace only after a later reset.
+				const DWORD latencyNow = GetTickCount();
+				if (lastLatencyLogTime == 0 ||
+					latencyNow - lastLatencyLogTime >= 10000)
+				{
+					const size_t rawDepth = m_publishedRawQueueDepth.load(
+						std::memory_order_acquire);
+					const size_t convertedDepth =
+						m_publishedConvertedQueueDepth.load(
+							std::memory_order_acquire);
+					DebugLog::Log(
+						"VP LATENCY (10s): epoch=%llu method=%s frame=%llu "
+						"vp_internal=%.2fms pts_lead=%s%.2fms scheduled=%s%.2fms "
+						"pts_start=%lld graph_time=%lld queue=%zu/%zu/%zu target=%zu "
+						"source_gap=%u ppm=%d deliveries=%llu",
+						static_cast<unsigned long long>(expectedQueueEpoch),
+						TimestampMethodName(m_timestamp),
+						static_cast<unsigned long long>(frameNumber),
+						displayedLatencySnapshot.vpInternalMs,
+						displayedLatencySnapshot.scheduledPresentationKnown ? "" : "N/A ",
+						displayedLatencySnapshot.dsScheduleLeadMs,
+						displayedLatencySnapshot.scheduledPresentationKnown ? "" : "N/A ",
+						displayedLatencySnapshot.scheduledLatencyMs,
+						static_cast<long long>(presentationStart),
+						static_cast<long long>(streamTime), rawDepth, convertedDepth,
+						rawDepth + convertedDepth,
+						GetConfiguredSteadyQueueTarget(),
+						timestampDecision.sourceGapSlotsBefore,
+						GetCurrentPPMCorrection(),
+						static_cast<unsigned long long>(framesSinceLastLog));
+					lastLatencyLogTime = latencyNow;
+					framesSinceLastLog = 0;
+				}
 			}
 			else
 			{
