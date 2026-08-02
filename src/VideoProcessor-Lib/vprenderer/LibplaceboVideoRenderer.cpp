@@ -2279,6 +2279,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t nlsRendererGeneration = 0;
 	uint64_t nlsGeometryGeneration = 0;
 	bool nlsRequested = false;
+	bool nativeRgbP010AnalysisUnavailable = false;
 	bool nlsGeometryAvailable = false;
 	bool nlsTransitionWithdrawn = false;
 	ActivePictureBounds nlsGeometry;
@@ -4827,12 +4828,74 @@ struct LibplaceboVideoRenderer::Impl
 		const bool nativeRgbCandidate =
 			state.videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT ||
 			state.videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT;
-		const bool p010AnalysisRequired = nlsRequested ||
+		const bool nativeRgbAnalysisRequested = nlsRequested ||
 			sceneDetectionEnabled || scopeScreenActive;
 		const bool nativeRgbUpload = nativeRgbCandidate &&
 			videoConversionOverride ==
-				VideoConversionOverride::VIDEOCONVERSION_NONE &&
-			!p010AnalysisRequired;
+				VideoConversionOverride::VIDEOCONVERSION_NONE;
+		const bool nativeRgbAnalysisUnavailable = nativeRgbUpload &&
+			nativeRgbAnalysisRequested;
+		if (nativeRgbAnalysisUnavailable != nativeRgbP010AnalysisUnavailable)
+		{
+			nativeRgbP010AnalysisUnavailable = nativeRgbAnalysisUnavailable;
+			nlsTransition.Reset();
+			nlsGeometryAvailable = false;
+			nlsTransitionWithdrawn = false;
+			nlsGeometry = {};
+			nlsDecision = {};
+			renderParams.hooks = nullptr;
+			renderParams.num_hooks = 0;
+			pl_mpv_user_shader_destroy(&nlsHook);
+			nlsHookSignature.clear();
+			sceneDetector.Reset(sceneDetectorGeneration);
+			if (nativeRgbAnalysisUnavailable)
+			{
+				if (nlsRequested)
+				{
+					SetShaderStatus("NLS: unavailable (native RGB)");
+					MadVRShaderLoader::SetRuntimeShaderSelection(
+						requestedShaderSelector, requestedShaderSelector,
+						MadVRNlsMappingMode::OFF);
+				}
+				if (sceneDetectionEnabled)
+					sceneDetectionStatus.store(
+						static_cast<int>(SceneDetectorStatus::Failed),
+						std::memory_order_release);
+				DebugLog::Log(
+					"Alpha native RGB: P010-only analysis disabled (nls=%d scene=%d scope_subtitle=%d)",
+					nlsRequested ? 1 : 0, sceneDetectionEnabled ? 1 : 0,
+					scopeScreenActive ? 1 : 0);
+			}
+			else
+			{
+				if (nlsRequested)
+					SetShaderStatus("NLS: Waiting");
+				if (sceneDetectionEnabled)
+					sceneDetectionStatus.store(
+						static_cast<int>(SceneDetectorStatus::Warming),
+						std::memory_order_release);
+				DebugLog::Log("Alpha P010-only analysis restored");
+			}
+		}
+		if (nativeRgbAnalysisUnavailable)
+		{
+			// A configuration change can arm NLS or scene detection while native
+			// RGB is already active. Keep the unsupported state explicit and make
+			// certain a previously loaded hook cannot survive that change.
+			renderParams.hooks = nullptr;
+			renderParams.num_hooks = 0;
+			if (nlsRequested)
+			{
+				SetShaderStatus("NLS: unavailable (native RGB)");
+				MadVRShaderLoader::SetRuntimeShaderSelection(
+					requestedShaderSelector, requestedShaderSelector,
+					MadVRNlsMappingMode::OFF);
+			}
+			if (sceneDetectionEnabled)
+				sceneDetectionStatus.store(
+					static_cast<int>(SceneDetectorStatus::Failed),
+					std::memory_order_release);
+		}
 		const size_t p010RowBytes =
 			static_cast<size_t>(width) * sizeof(uint16_t);
 		const BYTE* yPixels = nullptr;
@@ -4864,7 +4927,7 @@ struct LibplaceboVideoRenderer::Impl
 				sceneDetectorGeneration, state.displayMode->FrameDuration(),
 				sceneDetectionEnabled });
 		}
-		if (!cadenceRepeat)
+		if (!cadenceRepeat && !nativeRgbUpload)
 			sceneDetectionStatus.store(
 				static_cast<int>(sceneResult.status), std::memory_order_release);
 		if (!cadenceRepeat && sceneResult.safeBoundary)
@@ -4882,7 +4945,7 @@ struct LibplaceboVideoRenderer::Impl
 			const AlphaPresentationSnapshot presentation =
 				presentationTelemetry.Snapshot();
 			AlphaCadenceCorrectionInput correctionInput;
-			correctionInput.enabled = sceneDetectionEnabled;
+			correctionInput.enabled = sceneDetectionEnabled && !nativeRgbUpload;
 			// Queue replacement and detector/source replacement are independent
 			// reset boundaries. Fold both into the policy epoch so neither can
 			// inherit a pending action or retained phase from the other.
@@ -4915,12 +4978,11 @@ struct LibplaceboVideoRenderer::Impl
 				return true;
 			}
 		}
-		const float subtitleShiftSourcePixels = nativeRgbUpload ? 0.0f :
+		const float subtitleShiftSourcePixels = nativeRgbUpload ?
+			UpdateScopeSubtitleShift(nullptr, width, height, scopeScreenActive) :
 			UpdateScopeSubtitleShift(
 				reinterpret_cast<const uint16_t*>(yPixels),
-				width,
-				height,
-				scopeScreenActive);
+				width, height, scopeScreenActive);
 
 		struct pl_frame image{};
 		if (nativeRgbUpload)
@@ -4958,6 +5020,8 @@ struct LibplaceboVideoRenderer::Impl
 			ingressStatus = state.videoFrameEncoding ==
 				VideoFrameEncoding::BGRA_8BIT ?
 				"Native BGRA -> RGB" : "Native ARGB -> RGB";
+			if (nativeRgbAnalysisUnavailable)
+				ingressStatus += " (P010 analysis unavailable)";
 		}
 		else
 		{
