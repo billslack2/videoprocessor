@@ -43,6 +43,8 @@
 #include <chrono>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <initializer_list>
 #include <sstream>
@@ -520,10 +522,82 @@ namespace
 		return *value;
 	}
 
-	void LibplaceboLog(void*, enum pl_log_level level, const char* message)
+	struct LibplaceboCompileSnapshot
+	{
+		double glslMs = 0.0;
+		double spirvCrossMs = 0.0;
+		double hlslMs = 0.0;
+
+		bool Compiled() const
+		{
+			return glslMs > 0.0 || spirvCrossMs > 0.0 || hlslMs > 0.0;
+		}
+	};
+
+	class LibplaceboCompileTelemetry
+	{
+	public:
+		void BeginRender()
+		{
+			std::lock_guard<std::mutex> guard(m_mutex);
+			m_active = true;
+			m_snapshot = {};
+		}
+
+		LibplaceboCompileSnapshot EndRender()
+		{
+			std::lock_guard<std::mutex> guard(m_mutex);
+			m_active = false;
+			return m_snapshot;
+		}
+
+		void Observe(const char* message)
+		{
+			const double glslMs = ParseDuration(
+				message, "translating GLSL to SPIR-V");
+			const double spirvCrossMs = ParseDuration(
+				message, "translating SPIR-V to HLSL");
+			const double hlslMs = ParseDuration(
+				message, "translating HLSL to DXBC");
+			if (glslMs <= 0.0 && spirvCrossMs <= 0.0 && hlslMs <= 0.0)
+				return;
+
+			std::lock_guard<std::mutex> guard(m_mutex);
+			if (!m_active)
+				return;
+			m_snapshot.glslMs += glslMs;
+			m_snapshot.spirvCrossMs += spirvCrossMs;
+			m_snapshot.hlslMs += hlslMs;
+		}
+
+	private:
+		static double ParseDuration(const char* message, const char* operation)
+		{
+			if (!message || !operation || !std::strstr(message, operation))
+				return 0.0;
+			const char* spent = std::strstr(message, "Spent ");
+			if (!spent)
+				return 0.0;
+			char* end = nullptr;
+			const double duration = std::strtod(spent + 6, &end);
+			return end != spent + 6 && duration > 0.0 ? duration : 0.0;
+		}
+
+		std::mutex m_mutex;
+		bool m_active = false;
+		LibplaceboCompileSnapshot m_snapshot;
+	};
+
+	void LibplaceboLog(void* privateContext, enum pl_log_level level,
+		const char* message)
 	{
 		if (!message)
 			return;
+		if (privateContext)
+		{
+			static_cast<LibplaceboCompileTelemetry*>(privateContext)->Observe(
+				message);
+		}
 
 		const char* label = "info";
 		switch (level)
@@ -2281,6 +2355,7 @@ struct LibplaceboVideoRenderer::Impl
 	pl_cache cache = nullptr;
 	pl_swapchain swapchain = nullptr;
 	pl_renderer renderer = nullptr;
+	LibplaceboCompileTelemetry compileTelemetry;
 	pl_tex textures[2] = { nullptr, nullptr };
 	pl_tex statsOverlayTexture = nullptr;
 	std::mutex statsOverlayMutex;
@@ -2326,6 +2401,8 @@ struct LibplaceboVideoRenderer::Impl
 	std::string nlsHookSignature;
 	std::string rejectedNlsHookSignature;
 	std::string activeNlsShaderPath;
+	std::string lastNlsPipelineVariant;
+	bool nlsPipelineWasActive = false;
 	struct pl_color_map_params colorMapParams{};
 	struct pl_peak_detect_params peakDetectParams{};
 	struct pl_sigmoid_params sigmoidParams{};
@@ -2638,6 +2715,18 @@ struct LibplaceboVideoRenderer::Impl
 			succeeded ? 0 : 1,
 			succeeded ? "released_after_second_present" :
 				"caller_release_pending");
+	}
+
+	void ResetTimingAfterBacklogRecovery(uint64_t queueGeneration)
+	{
+		cadenceCorrectionPolicy.Reset(queueGeneration);
+		presentationTelemetry.Reset(queueGeneration);
+		cadencePendingActionId = 0;
+		cadencePendingAction = AlphaCadenceAction::None;
+		cadenceLogInitialized = false;
+		cadenceLoggedDue = false;
+		cadenceLoggedBlockReason = AlphaCadenceBlockReason::None;
+		cadenceNextDueSummaryTick = 0;
 	}
 
 	~Impl()
@@ -4405,6 +4494,7 @@ struct LibplaceboVideoRenderer::Impl
 
 		struct pl_log_params logParams{};
 		logParams.log_cb = LibplaceboLog;
+		logParams.log_priv = &compileTelemetry;
 		logParams.log_level = PL_LOG_INFO;
 		log = pl_log_create(PL_API_VER, &logParams);
 		if (!log)
@@ -4607,6 +4697,8 @@ struct LibplaceboVideoRenderer::Impl
 		nlsHookSignature.clear();
 		rejectedNlsHookSignature.clear();
 		activeNlsShaderPath.clear();
+		lastNlsPipelineVariant.clear();
+		nlsPipelineWasActive = false;
 		renderParams.hooks = nullptr;
 		renderParams.num_hooks = 0;
 		pl_mpv_user_shader_destroy(&nlsHook);
@@ -4766,7 +4858,11 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			else if (transition.stable && !nlsTransitionWithdrawn)
 			{
-				nlsGeometry = transition.bounds;
+				// A candidate can coexist with a previously trusted stable mapping.
+				// Keep rendering that published geometry until the candidate earns
+				// crop authority; compiling provisional stretch ratios creates both
+				// visible geometry churn and avoidable shader cold starts.
+				nlsGeometry = transition.stableBounds;
 				nlsGeometryAvailable = true;
 			}
 			if (transition.diagnostic)
@@ -5566,6 +5662,29 @@ struct LibplaceboVideoRenderer::Impl
 			target.overlays = &overlay;
 			target.num_overlays = 1;
 		}
+		const int outputWidth = baseTarget.planes[0].texture ?
+			baseTarget.planes[0].texture->params.w : 0;
+		const int outputHeight = baseTarget.planes[0].texture ?
+			baseTarget.planes[0].texture->params.h : 0;
+		const bool nlsPipelineActive = renderParams.num_hooks > 0 &&
+			!activeNlsShaderPath.empty();
+		std::string nlsPipelineVariant;
+		bool nlsPipelineVariantChanged = false;
+		if (nlsPipelineActive)
+		{
+			std::ostringstream variant;
+			variant << nlsHookSignature << '|' << width << 'x' << height << "->"
+				<< outputWidth << 'x' << outputHeight << '|'
+				<< std::lround(target.crop.x0 * 10.0f) << ','
+				<< std::lround(target.crop.y0 * 10.0f) << '-'
+				<< std::lround(target.crop.x1 * 10.0f) << ','
+				<< std::lround(target.crop.y1 * 10.0f);
+			nlsPipelineVariant = variant.str();
+			nlsPipelineVariantChanged = !nlsPipelineWasActive ||
+				nlsPipelineVariant != lastNlsPipelineVariant;
+		}
+
+		compileTelemetry.BeginRender();
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
 			target.lut == displayLut && target.lut_type == PL_LUT_NATIVE;
@@ -5576,6 +5695,31 @@ struct LibplaceboVideoRenderer::Impl
 			&renderParams);
 		const double renderMs = std::chrono::duration<double, std::milli>(
 			SteadyClock::now() - renderStart).count();
+		const LibplaceboCompileSnapshot compileSnapshot =
+			compileTelemetry.EndRender();
+		if (nlsPipelineActive &&
+			(nlsPipelineVariantChanged || compileSnapshot.Compiled()))
+		{
+			DebugLog::Log(
+				"Alpha shader compile: shader=%s cache=%s renderer_generation=%llu queue_generation=%llu source=%llu input=%dx%d output=%dx%d glsl_ms=%.3f spirv_cross_ms=%.3f hlsl_ms=%.3f compile_ms=%.3f render_ms=%.3f queue=%zu/%zu oldest_ms=%.3f",
+				activeNlsShaderPath.c_str(),
+				compileSnapshot.Compiled() ? "cold" : "warm",
+				static_cast<unsigned long long>(nlsRendererGeneration),
+				static_cast<unsigned long long>(frameGeneration),
+				static_cast<unsigned long long>(sourceSequence),
+				width, height, outputWidth, outputHeight,
+				compileSnapshot.glslMs,
+				compileSnapshot.spirvCrossMs,
+				compileSnapshot.hlslMs,
+				compileSnapshot.glslMs + compileSnapshot.spirvCrossMs +
+					compileSnapshot.hlslMs,
+				renderMs,
+				queueDepthAfterDequeue,
+				desiredQueueDepth,
+				oldestQueuedAgeMs);
+			lastNlsPipelineVariant = nlsPipelineVariant;
+		}
+		nlsPipelineWasActive = nlsPipelineActive;
 		if (!rendered && targetLutApplied)
 			RejectDisplayLutAfterRenderFailure();
 		if (outputDiagnostics && rendered && !diagnosticReadbackComplete)
@@ -7157,6 +7301,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 		AlphaCadenceCorrectionDecision correctionDecision;
 		bool presentationTargetTimingKnown = false;
 		double presentationTargetLeadMs = 0.0;
+		const double captureRateHz =
+			m_measuredFrameRate.load(std::memory_order_relaxed);
+		const SteadyClock::time_point renderCycleStart = SteadyClock::now();
 		try
 		{
 			std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
@@ -7178,7 +7325,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 					desiredQueueDepth,
 					oldestQueuedAgeMs,
 					cadenceRepeat,
-					m_measuredFrameRate.load(std::memory_order_relaxed),
+					captureRateHz,
 					m_scopeScreenActive.load(std::memory_order_acquire),
 					m_screenProfileRequestSerial.load(std::memory_order_acquire),
 					m_screenProfileRequestNs.load(std::memory_order_relaxed),
@@ -7190,6 +7337,100 @@ void LibplaceboVideoRenderer::RenderLoop()
 					correctionDecision,
 					presentationTargetTimingKnown,
 					presentationTargetLeadMs);
+
+				const double renderCycleMs =
+					std::chrono::duration<double, std::milli>(
+						SteadyClock::now() - renderCycleStart).count();
+				if (rendered &&
+					correctionDecision.action != AlphaCadenceAction::Drop)
+				{
+					size_t queueBefore = 0;
+					size_t queueAfter = 0;
+					size_t recoveryTarget = 0;
+					size_t droppedFrames = 0;
+					size_t canceledRepeats = 0;
+					double oldestBeforeMs = 0.0;
+					double oldestAfterMs = 0.0;
+					bool recoveredBacklog = false;
+					{
+						std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+						queueBefore = m_frameQueue.size();
+						recoveryTarget = PrefillTargetLocked();
+						LARGE_INTEGER qpcFrequency{};
+						const int64_t nowQpc = PerformanceCounterNow();
+						const bool qpcAvailable =
+							nowQpc > 0 && QueryPerformanceFrequency(&qpcFrequency) &&
+							qpcFrequency.QuadPart > 0;
+						auto queuedAgeMs = [&](const QueuedFrame& queuedFrame)
+						{
+							return qpcAvailable && nowQpc > queuedFrame.enqueueQpc ?
+								static_cast<double>(
+									nowQpc - queuedFrame.enqueueQpc) * 1000.0 /
+								static_cast<double>(qpcFrequency.QuadPart) : 0.0;
+						};
+						if (!m_frameQueue.empty())
+							oldestBeforeMs = queuedAgeMs(m_frameQueue.front());
+						recoveredBacklog = AlphaQueuePolicy::ShouldRecoverBacklog(
+							queueBefore,
+							recoveryTarget,
+							oldestBeforeMs,
+							renderCycleMs,
+							captureRateHz);
+						if (recoveredBacklog)
+						{
+							while (m_frameQueue.size() > recoveryTarget)
+							{
+								if (m_frameQueue.front().cadenceRepeat)
+									++canceledRepeats;
+								m_frameQueue.front().frame.SourceBufferRelease();
+								m_frameQueue.pop_front();
+								++droppedFrames;
+							}
+							queueAfter = m_frameQueue.size();
+							if (!m_frameQueue.empty())
+								oldestAfterMs = queuedAgeMs(m_frameQueue.front());
+							m_queueDepthWindowStartNs = SteadyClockNowNs();
+							m_queueDepthWindowDequeues = 0;
+							m_queueDepthWindowHasSamples = false;
+						}
+					}
+
+					if (recoveredBacklog)
+					{
+						const uint64_t droppedTotal =
+							m_droppedFrames.fetch_add(
+								droppedFrames, std::memory_order_relaxed) +
+							droppedFrames;
+						m_impl->ResetTimingAfterBacklogRecovery(frameGeneration);
+						m_presentationTargetTimingKnown.store(
+							false, std::memory_order_release);
+						presentationTargetTimingKnown = false;
+						correctionDecision = {};
+						const bool renderStall = renderCycleMs >=
+							AlphaQueuePolicy::RenderStallThresholdMs(captureRateHz);
+						const std::string shaderName =
+							m_impl->activeNlsShaderPath.empty() ? "none" :
+							FileNameFromPath(m_impl->activeNlsShaderPath);
+						DebugLog::Log(
+							"Alpha backlog recovery: generation=%llu source=%llu trigger=%s render_cycle_ms=%.3f threshold_ms=%.3f queue_before=%zu target=%zu oldest_before_ms=%.3f dropped=%zu dropped_total=%llu canceled_repeats=%zu queue_after=%zu oldest_after_ms=%.3f shader=%s mapping=%s decision=flush_to_target",
+							static_cast<unsigned long long>(frameGeneration),
+							static_cast<unsigned long long>(sourceSequence),
+							renderStall ? "render_stall" : "stale_age",
+							renderCycleMs,
+							AlphaQueuePolicy::RenderStallThresholdMs(captureRateHz),
+							queueBefore,
+							recoveryTarget,
+							oldestBeforeMs,
+							droppedFrames,
+							static_cast<unsigned long long>(droppedTotal),
+							canceledRepeats,
+							queueAfter,
+							oldestAfterMs,
+							shaderName.c_str(),
+							MadVRNlsMappingModeName(m_impl->nlsDecision.mode));
+						m_queueChanged.notify_all();
+					}
+				}
 			}
 		}
 		catch (const std::exception& e)

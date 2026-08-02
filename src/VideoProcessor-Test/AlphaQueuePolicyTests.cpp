@@ -67,6 +67,26 @@ namespace Tests
 			Assert::IsTrue(AlphaQueuePolicy::CanDequeue(1, 1, false));
 		}
 
+		TEST_METHOD(RenderStallThresholdScalesWithFramePeriod)
+		{
+			Assert::AreEqual(50.0,
+				AlphaQueuePolicy::RenderStallThresholdMs(59.94), 0.01);
+			Assert::AreEqual(83.42,
+				AlphaQueuePolicy::RenderStallThresholdMs(23.976), 0.01);
+		}
+
+		TEST_METHOD(BacklogRecoveryRequiresExcessDepthAndBoundedStaleness)
+		{
+			Assert::IsFalse(AlphaQueuePolicy::ShouldRecoverBacklog(
+				2, 2, 500.0, 500.0, 59.94));
+			Assert::IsFalse(AlphaQueuePolicy::ShouldRecoverBacklog(
+				3, 2, 80.0, 40.0, 59.94));
+			Assert::IsTrue(AlphaQueuePolicy::ShouldRecoverBacklog(
+				3, 2, 80.0, 60.0, 59.94));
+			Assert::IsTrue(AlphaQueuePolicy::ShouldRecoverBacklog(
+				8, 2, 140.0, 20.0, 23.976));
+		}
+
 		TEST_METHOD(ConfigValueRequiresPositiveDecimalInteger)
 		{
 			size_t value = 0;
