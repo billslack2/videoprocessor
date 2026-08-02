@@ -2,18 +2,20 @@
 
 ## Status
 
-In Progress — implementation and deterministic verification complete; one
-Alpha hardware/viewing smoke check remains. Began 2026-08-02 on
-`codex/vp-0023-alpha-p010-range` in the
-clean worktree `C:\\Users\\bslac\\vp\\videoprocessor-vp0023-alpha-p010`, based on
-the user-confirmed `origin/v1.1.015-beta` commit
-`0bede6bf052b71c7e29accadc936ed3af74d753b`.
+Done 2026-08-02. Merged and pushed to `v1.1.015-beta` at `44e3099`
+(`VP-0023 log initial Alpha formatter contract`).
 
-Readiness review: Alpha's explicit/fallback P010 path and its current
-encoding-based `pl_frame.repr.levels` selection are known. The intended change
-is a narrow formatter-output contract, Alpha integration coverage, exact
-code-value tests, and bounded diagnostics; DirectShow/madVR format/range
-negotiation remains deferred to VP-0021.
+Verification is complete:
+
+- x64 Release build succeeded and `VideoFrameFormatterTests` passed 38/38.
+- Live Alpha diagnostics for 3840x2160 v210 reported P010 limited-range,
+  10-bit samples with shift 6, matching libplacebo's limited source levels.
+  Active luma was 64..940 and chroma stayed within legal limited-range values.
+- The user completed a visual Alpha smoke check without a visible issue.
+- The temporary `output_diagnostics` setting was removed, restoring the active
+  configuration exactly to its pre-test contents.
+
+DirectShow/madVR format/range negotiation remains deferred to VP-0021.
 
 Implementation 2026-08-02:
 
