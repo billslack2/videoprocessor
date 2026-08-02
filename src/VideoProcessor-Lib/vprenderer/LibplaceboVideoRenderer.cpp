@@ -2386,6 +2386,8 @@ struct LibplaceboVideoRenderer::Impl
 	struct pl_render_params renderParams{};
 	ActivePictureTransitionModel nlsTransition;
 	ConfiguredShaderRule nlsRule;
+	std::vector<ConfiguredShaderRule> startupNlsPrewarmRules;
+	bool startupNlsPrewarmComplete = false;
 	std::string requestedShaderSelector;
 	std::string activeShaderStatus = "None";
 	uint64_t activeShaderStatusSerial = 0;
@@ -4533,6 +4535,29 @@ struct LibplaceboVideoRenderer::Impl
 				shaderCachePath.c_str());
 		}
 
+		std::string nlsPrewarmReason;
+		if (MadVRShaderLoader::GetConfiguredNlsPrewarmRules(
+			startupNlsPrewarmRules, nlsPrewarmReason))
+		{
+			std::ostringstream names;
+			for (size_t index = 0; index < startupNlsPrewarmRules.size(); ++index)
+			{
+				if (index != 0)
+					names << ',';
+				names << startupNlsPrewarmRules[index].name;
+			}
+			DebugLog::Log(
+				"Alpha shader startup prewarm armed: rules=%zu names=%s",
+				startupNlsPrewarmRules.size(), names.str().c_str());
+		}
+		else
+		{
+			startupNlsPrewarmComplete = true;
+			DebugLog::Log(
+				"Alpha shader startup prewarm skipped: %s",
+				nlsPrewarmReason.c_str());
+		}
+
 		struct pl_d3d11_swapchain_params swapchainParams{};
 		swapchainParams.window = videoHwnd;
 		swapchainParams.color_bits = 10;
@@ -4745,37 +4770,98 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<unsigned long long>(nlsRendererGeneration));
 	}
 
-	bool EnsureNlsHook(const MadVRNlsMappingDecision& decision)
+	static std::map<std::string, std::string> FixedNlsParameters(
+		const ConfiguredShaderRule& rule)
 	{
-		std::map<std::string, std::string> parameters =
-			nlsRule.parameters;
-		auto scalar = [](double value)
-		{
-			std::ostringstream text;
-			text.precision(17);
-			text << value;
-			return text.str();
-		};
-		parameters["stretch_ratio"] = scalar(decision.stretchRatio);
-		parameters["warp_axis"] = decision.verticalWarp ? "1" : "0";
-		parameters["safe_fit"] = "0";
-		parameters["safe_fit_axis"] = "0";
-		parameters["safe_fit_fraction"] = "1";
+		std::map<std::string, std::string> parameters = rule.parameters;
+		// These values are runtime inputs (or legacy no-ops), not shader-source
+		// constants. Keeping them out of the source signature prevents active-
+		// picture or aspect changes from manufacturing new compiler variants.
+		parameters.erase("stretch_ratio");
+		parameters.erase("warp_axis");
+		parameters.erase("safe_fit");
+		parameters.erase("safe_fit_axis");
+		parameters.erase("safe_fit_fraction");
+		return parameters;
+	}
+
+	static std::string NlsHookKey(const ConfiguredShaderRule& rule,
+		const std::map<std::string, std::string>& parameters)
+	{
 		std::ostringstream keyBuilder;
-		keyBuilder << nlsRule.filename;
+		keyBuilder << rule.filename;
 		for (const auto& parameter : parameters)
 			keyBuilder << '|' << parameter.first << '=' << parameter.second;
-		const std::string hookKey = keyBuilder.str();
+		return keyBuilder.str();
+	}
+
+	bool CreateNlsHook(const ConfiguredShaderRule& rule,
+		const struct pl_hook*& hook, std::string& hookKey,
+		std::string& resolvedPath, std::string& reason)
+	{
+		const std::map<std::string, std::string> parameters =
+			FixedNlsParameters(rule);
+		hookKey = NlsHookKey(rule, parameters);
+		std::string source;
+		if (!ReadUserShader(rule.filename, source, resolvedPath, reason))
+			return false;
+		if (!ApplyUserShaderParameters(source, parameters, reason))
+			return false;
+		hook = pl_mpv_user_shader_parse(
+			d3d11->gpu, source.data(), source.size());
+		if (!hook)
+		{
+			reason = "libplacebo could not parse shader";
+			return false;
+		}
+		return true;
+	}
+
+	static bool SetNlsHookMapping(const struct pl_hook* hook,
+		const MadVRNlsMappingDecision& decision)
+	{
+		bool stretchUpdated = false;
+		bool axisUpdated = false;
+		if (!hook)
+			return false;
+		for (int index = 0; index < hook->num_parameters; ++index)
+		{
+			const struct pl_hook_par& parameter = hook->parameters[index];
+			if (!parameter.name || !parameter.data ||
+				parameter.type != PL_VAR_FLOAT)
+			{
+				continue;
+			}
+			if (strcmp(parameter.name, "stretch_ratio") == 0)
+			{
+				parameter.data->f = static_cast<float>(decision.stretchRatio);
+				stretchUpdated = true;
+			}
+			else if (strcmp(parameter.name, "warp_axis") == 0)
+			{
+				parameter.data->f = decision.verticalWarp ? 1.0f : 0.0f;
+				axisUpdated = true;
+			}
+		}
+		return stretchUpdated && axisUpdated;
+	}
+
+	bool EnsureNlsHook(const MadVRNlsMappingDecision& decision)
+	{
+		const std::map<std::string, std::string> parameters =
+			FixedNlsParameters(nlsRule);
+		const std::string hookKey = NlsHookKey(nlsRule, parameters);
 		if (nlsHook && nlsHookSignature == hookKey)
-			return true;
+			return SetNlsHookMapping(nlsHook, decision);
 		if (rejectedNlsHookSignature == hookKey)
 			return false;
 
-		std::string source;
 		std::string resolvedPath;
 		std::string reason;
-		if (!ReadUserShader(
-			nlsRule.filename, source, resolvedPath, reason))
+		std::string replacementKey;
+		const struct pl_hook* replacement = nullptr;
+		if (!CreateNlsHook(nlsRule, replacement, replacementKey,
+			resolvedPath, reason))
 		{
 			rejectedNlsHookSignature = hookKey;
 			DebugLog::Log(
@@ -4783,29 +4869,18 @@ struct LibplaceboVideoRenderer::Impl
 				nlsRule.filename.c_str(), reason.c_str());
 			return false;
 		}
-		if (!ApplyUserShaderParameters(source, parameters, reason))
+		if (!SetNlsHookMapping(replacement, decision))
 		{
+			pl_mpv_user_shader_destroy(&replacement);
 			rejectedNlsHookSignature = hookKey;
 			DebugLog::Log(
-				"Alpha shaders: rejected \"%s\": %s",
-				nlsRule.filename.c_str(), reason.c_str());
-			return false;
-		}
-
-		const struct pl_hook* replacement =
-			pl_mpv_user_shader_parse(
-				d3d11->gpu, source.data(), source.size());
-		if (!replacement)
-		{
-			rejectedNlsHookSignature = hookKey;
-			DebugLog::Log(
-				"Alpha shaders: libplacebo could not parse \"%s\"",
-				resolvedPath.c_str());
+				"Alpha shaders: rejected \"%s\": dynamic NLS parameters are unavailable",
+				nlsRule.filename.c_str());
 			return false;
 		}
 		pl_mpv_user_shader_destroy(&nlsHook);
 		nlsHook = replacement;
-		nlsHookSignature = hookKey;
+		nlsHookSignature = replacementKey;
 		rejectedNlsHookSignature.clear();
 		activeNlsShaderPath = resolvedPath;
 		DebugLog::Log(
@@ -5487,6 +5562,94 @@ struct LibplaceboVideoRenderer::Impl
 				target.crop.y1 -= outputShift;
 			}
 		};
+
+		if (!startupNlsPrewarmComplete)
+		{
+			startupNlsPrewarmComplete = true;
+			std::set<std::string> warmedHookKeys;
+			size_t renderAttempts = 0;
+			size_t renderFailures = 0;
+			for (const ConfiguredShaderRule& rule : startupNlsPrewarmRules)
+			{
+				const struct pl_hook* warmHook = nullptr;
+				std::string hookKey;
+				std::string resolvedPath;
+				std::string reason;
+				if (!CreateNlsHook(rule, warmHook, hookKey, resolvedPath, reason))
+				{
+					++renderFailures;
+					DebugLog::Log(
+						"Alpha shader startup prewarm: rule=%s result=rejected reason=\"%s\"",
+						rule.name.c_str(), reason.c_str());
+					continue;
+				}
+				if (!warmedHookKeys.insert(hookKey).second)
+				{
+					pl_mpv_user_shader_destroy(&warmHook);
+					continue;
+				}
+
+				MadVRNlsMappingDecision warmDecision;
+				warmDecision.stretchRatio = 1.2;
+				if (!SetNlsHookMapping(warmHook, warmDecision))
+				{
+					++renderFailures;
+					DebugLog::Log(
+						"Alpha shader startup prewarm: rule=%s result=rejected reason=\"dynamic NLS parameters are unavailable\"",
+						rule.name.c_str());
+					pl_mpv_user_shader_destroy(&warmHook);
+					continue;
+				}
+
+				for (int profile = 0; profile < 2; ++profile)
+				{
+					const bool scopeProfile = profile != 0;
+					struct pl_frame warmImage{};
+					struct pl_frame warmTarget = baseTarget;
+					configureScreenProfile(
+						warmImage, warmTarget, scopeProfile, 0.0f);
+					struct pl_render_params warmParams = renderParams;
+					warmParams.hooks = &warmHook;
+					warmParams.num_hooks = 1;
+					++renderAttempts;
+					compileTelemetry.BeginRender();
+					const SteadyClock::time_point warmStart = SteadyClock::now();
+					const bool warmed = pl_render_image(
+						renderer, &warmImage, &warmTarget, &warmParams);
+					const double warmMs =
+						std::chrono::duration<double, std::milli>(
+							SteadyClock::now() - warmStart).count();
+					const LibplaceboCompileSnapshot compileSnapshot =
+						compileTelemetry.EndRender();
+					if (!warmed)
+						++renderFailures;
+					const int warmOutputWidth = warmTarget.planes[0].texture
+						? warmTarget.planes[0].texture->params.w : 0;
+					const int warmOutputHeight = warmTarget.planes[0].texture
+						? warmTarget.planes[0].texture->params.h : 0;
+					DebugLog::Log(
+						"Alpha shader startup prewarm: shader=%s rule=%s profile=%s cache=%s renderer_generation=%llu input=%dx%d output=%dx%d glsl_ms=%.3f spirv_cross_ms=%.3f hlsl_ms=%.3f compile_ms=%.3f render_ms=%.3f result=%s",
+						resolvedPath.c_str(), rule.name.c_str(),
+						scopeProfile ? "scope" : "normal",
+						compileSnapshot.Compiled() ? "cold" : "warm",
+						static_cast<unsigned long long>(nlsRendererGeneration),
+						width, height, warmOutputWidth, warmOutputHeight,
+						compileSnapshot.glslMs,
+						compileSnapshot.spirvCrossMs,
+						compileSnapshot.hlslMs,
+						compileSnapshot.glslMs + compileSnapshot.spirvCrossMs +
+							compileSnapshot.hlslMs,
+						warmMs, warmed ? "success" : "failed");
+				}
+				pl_mpv_user_shader_destroy(&warmHook);
+			}
+			DebugLog::Log(
+				"Alpha shader startup prewarm complete: rules=%zu unique_hooks=%zu renders=%zu failures=%zu cache=%d objects/%zu bytes",
+				startupNlsPrewarmRules.size(), warmedHookKeys.size(),
+				renderAttempts, renderFailures,
+				cache ? pl_cache_objects(cache) : 0,
+				cache ? pl_cache_size(cache) : 0);
+		}
 
 		double prewarmMs = 0.0;
 		if (hasPresentedFrame && !screenProfilesPrewarmed &&

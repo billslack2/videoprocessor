@@ -807,6 +807,25 @@ ShaderRule* FindNlsRule(std::vector<ShaderRule>& rules)
 }
 
 
+ConfiguredShaderRule ToConfiguredShaderRule(const ShaderRule& rule)
+{
+	ConfiguredShaderRule configured;
+	configured.name = rule.name;
+	configured.label = rule.label;
+	configured.filename = rule.filename;
+	configured.parameters = rule.parameters;
+	configured.nls = rule.nls;
+	configured.none = rule.none;
+	configured.aspectTolerancePercent =
+		std::max(0.0, rule.aspectTolerancePercent);
+	configured.stableGeometryDeadbandPercent =
+		rule.stableGeometryDeadbandPercent;
+	configured.activeAspectMinimum = rule.activeAspectMinimum;
+	configured.narrowerOnly = rule.narrowerOnly;
+	return configured;
+}
+
+
 bool ApplyShaderParameters(std::string& source,
 	const std::map<std::string, std::string>& parameters,
 	const std::filesystem::path& path)
@@ -1632,21 +1651,56 @@ bool MadVRShaderLoader::GetConfiguredRuleSelection(
 	}
 
 	for (const ShaderRule& rule : rules)
+		selection.push_back(ToConfiguredShaderRule(rule));
+	return true;
+}
+
+
+bool MadVRShaderLoader::GetConfiguredNlsPrewarmRules(
+	std::vector<ConfiguredShaderRule>& rules,
+	std::string& reason)
+{
+	rules.clear();
+	reason.clear();
+	ConfigFile config;
+	if (!config.Load() || !config.HasSection(CONFIG_SECTION))
 	{
-		ConfiguredShaderRule configured;
-		configured.name = rule.name;
-		configured.label = rule.label;
-		configured.filename = rule.filename;
-		configured.parameters = rule.parameters;
-		configured.nls = rule.nls;
-		configured.none = rule.none;
-		configured.aspectTolerancePercent =
-			std::max(0.0, rule.aspectTolerancePercent);
-		configured.stableGeometryDeadbandPercent =
-			rule.stableGeometryDeadbandPercent;
-		configured.activeAspectMinimum = rule.activeAspectMinimum;
-		configured.narrowerOnly = rule.narrowerOnly;
-		selection.push_back(std::move(configured));
+		reason = "shader configuration is unavailable";
+		return false;
+	}
+
+	bool enabled = false;
+	if (!config.TryGetBool(CONFIG_SECTION, "enabled", enabled) || !enabled)
+	{
+		reason = "shaders are disabled";
+		return false;
+	}
+
+	std::string ruleList;
+	if (!config.TryGetString(CONFIG_SECTION, "rules", ruleList))
+	{
+		reason = "no shader rules are configured";
+		return false;
+	}
+
+	std::set<std::string> seen;
+	for (const std::string& configuredName : SplitList(ruleList))
+	{
+		const std::string name = ConfigFile::NormalizeName(configuredName);
+		if (!seen.insert(name).second)
+			continue;
+		ShaderRule rule = LoadRule(config, name);
+		if (!rule.valid || !rule.nls ||
+			!RuleAppliesToBackend(rule, ShaderRendererBackend::LIBPLACEBO))
+		{
+			continue;
+		}
+		rules.push_back(ToConfiguredShaderRule(rule));
+	}
+	if (rules.empty())
+	{
+		reason = "no Alpha-compatible NLS rules are configured";
+		return false;
 	}
 	return true;
 }
