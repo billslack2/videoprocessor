@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0077`
-- Next root story number: `VP-0078`
-- Total indexed items: 92
+- Last assigned root story: `VP-0078`
+- Next root story number: `VP-0079`
+- Total indexed items: 93
 
 ## Story locations
 
@@ -109,6 +109,7 @@ they must not contain requirements that are absent from this file.
 | VP-0075 | Backlog | Restore Alpha analysis parity on native RGB ingress |
 | VP-0076 | Backlog | Decompose the DirectShow live-output pin without behavioral change |
 | VP-0077 | Review | VP-0066 merged-beta acceptance validation |
+| VP-0078 | Backlog | Re-prime Alpha after a real output refresh transition |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
