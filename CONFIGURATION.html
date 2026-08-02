@@ -288,25 +288,18 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
   <section id="queue-timing">
     <h2>Queue, logging, and timing settings</h2>
 
-    <article class="field" id="queue-startup-preroll-frames" data-fields="queue.startup_preroll_frames">
-      <h4><code>[queue] startup_preroll_frames</code> <span class="badge">DirectShow</span></h4>
-      <p>Sets the number of converted VP frames required before a newly primed DirectShow source begins delivery. It is a VP startup threshold, not a madVR queue request or observation. If <code>steady_reserve_frames</code> is higher, that higher floor also applies at startup.</p>
-      <p class="auto"><strong>AUTO behavior:</strong> <code>0</code> keeps VP's cadence-aware startup policy. This is the recommended starting point while the output-readiness path is being measured.</p>
-      <p class="meta"><strong>Type/range:</strong> whole frames, <code>0</code>–<code>16</code>. Explicit values are bounded by the active VP queue capacity; values above 16 or non-numeric input fail startup validation.</p>
-    </article>
-
-    <article class="field" id="queue-steady-reserve-frames" data-fields="queue.steady_reserve_frames">
-      <h4><code>[queue] steady_reserve_frames</code> <span class="badge">DirectShow</span></h4>
+    <article class="field" id="queue-target-frames" data-fields="queue.target_frames">
+      <h4><code>[queue] target_frames</code> <span class="badge">DirectShow</span></h4>
       <p>Keeps this many converted VP frames behind the DirectShow delivery worker after priming. It controls only the VP-owned queue; madVR's internal queue remains independently configured and is not queryable by VP.</p>
-      <p class="auto"><strong>AUTO behavior:</strong> Omit this setting to retain VP's automatic handoff reserve, including the output-readiness reserve when that controller publishes one. An explicit <code>0</code> requests a literal zero-frame steady target.</p>
-      <p class="meta"><strong>Type/range:</strong> whole frames, <code>0</code>–<code>16</code>. An explicit value takes precedence over the automatic reserve and is bounded by the active VP queue capacity.</p>
+      <p class="auto"><strong>Omitted behavior:</strong> defaults to <code>4</code> frames. An explicit <code>0</code> requests a literal zero-frame steady target.</p>
+      <p class="meta"><strong>Type/range:</strong> whole frames, <code>0</code>&ndash;<code>16</code>, bounded by the active VP queue capacity. The former <code>steady_reserve_frames</code> name remains readable for compatibility but must not be combined with this key.</p>
     </article>
 
-    <article class="field" id="directshow-presentation-lead-frames" data-fields="directshow.presentation_lead_frames">
-      <h4><code>[directshow] presentation_lead_frames</code> <span class="badge">DirectShow timing</span></h4>
+    <article class="field" id="queue-lead-frames" data-fields="queue.lead_frames">
+      <h4><code>[queue] lead_frames</code> <span class="badge">DirectShow timing</span></h4>
       <p>Schedules each timestamped DirectShow sample this many source-frame intervals ahead of the graph clock. It is a presentation margin for renderer delivery, not a VP queue target and not a measurement or configuration of madVR's private queues.</p>
-      <p class="auto"><strong>Omitted behavior:</strong> preserves the legacy mode-specific margin: 180 ms for Rational-Rational and the historically buffered clock modes, and zero for Clock-Rational. An explicit <code>0</code> requests no additional scheduling margin.</p>
-      <p class="meta"><strong>Type/range:</strong> whole source frames, <code>0</code>&ndash;<code>16</code>. One frame is approximately 41.7 ms at 23.976 Hz and 16.7 ms at 59.94 Hz. Changes apply when the renderer graph is built or rebuilt.</p>
+      <p class="auto"><strong>Omitted behavior:</strong> defaults to <code>1</code> frame. An explicit <code>0</code> requests no additional scheduling margin.</p>
+      <p class="meta"><strong>Type/range:</strong> whole source frames, <code>0</code>&ndash;<code>16</code>. One frame is approximately 41.7 ms at 23.976 Hz and 16.7 ms at 59.94 Hz. Changes apply when the renderer graph is built or rebuilt. The former <code>[directshow] presentation_lead_frames</code> name remains readable for compatibility but must not be combined with this key.</p>
     </article>
 
     <article class="field" id="logging-debug-log-retention" data-fields="logging.debug_log_retention">
@@ -815,7 +808,8 @@ delay_seconds: 2</pre>
     <h3>Logging, queue, timing, LLDV, and conversion</h3>
     <ul class="index">
       <li><a href="#logging-debug-log-retention"><code>[logging] debug_log_retention</code></a></li>
-      <li><a href="#directshow-presentation-lead-frames"><code>[directshow] presentation_lead_frames</code></a></li>
+      <li><a href="#queue-lead-frames"><code>[queue] lead_frames</code></a></li>
+      <li><a href="#queue-target-frames"><code>[queue] target_frames</code></a></li>
       <li><a href="#queue-recovery-reset-delay"><code>[queue_recovery] reset_after_render_restart_seconds</code></a></li>
       <li><a href="#queue-recovery-high-water"><code>[queue_recovery] reset_queue_too_large_percent</code></a></li>
       <li><a href="#display-refresh-rate-override-entry"><code>[display_refresh_rate_override] &lt;nominal_hz&gt;</code></a></li>

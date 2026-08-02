@@ -276,10 +276,8 @@ namespace VideoProcessorTest
 					"scene_correction_basic: false\n"
 					"frame_offset: AUTO\n"
 					"[queue]\n"
-					"startup_preroll_frames: 0\n"
-					"steady_reserve_frames: 2\n"
-					"[directshow]\n"
-					"presentation_lead_frames: 1\n"
+					"lead_frames: 1\n"
+					"target_frames: 2\n"
 					"[queue_recovery]\n"
 					"reset_after_render_restart_seconds: 3\n"
 					"reset_queue_too_large_percent: 70\n"
@@ -345,6 +343,48 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(MainConfigSchemaAcceptsLegacyQueueNamesButRejectsAmbiguousAliases)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-legacy-queue-schema.cfg";
+			ConfigFile config;
+			std::string error;
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue]\n"
+					"startup_preroll_frames: 0\n"
+					"steady_reserve_frames: 2\n"
+					"[directshow]\n"
+					"presentation_lead_frames: 1\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsTrue(MainConfigSchema::Validate(config, error));
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue]\n"
+					"target_frames: 4\n"
+					"steady_reserve_frames: 2\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("both") != std::string::npos);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue]\nlead_frames: 1\n"
+					"[directshow]\npresentation_lead_frames: 1\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("both") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(MainConfigSchemaRejectsForeignAndIllTypedKeys)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
@@ -373,20 +413,20 @@ namespace VideoProcessorTest
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
-				file << "[queue]\nsteady_reserve_frames: 17\n";
+				file << "[queue]\ntarget_frames: 17\n";
 			}
 			Assert::IsTrue(config.Load(path));
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));
-			Assert::IsTrue(error.find("steady_reserve_frames") != std::string::npos);
+			Assert::IsTrue(error.find("target_frames") != std::string::npos);
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
-				file << "[directshow]\npresentation_lead_frames: 17\n";
+				file << "[queue]\nlead_frames: 17\n";
 			}
 			Assert::IsTrue(config.Load(path));
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));
 			Assert::IsTrue(
-				error.find("presentation_lead_frames") != std::string::npos);
+				error.find("lead_frames") != std::string::npos);
 			DeleteFileA(path.c_str());
 		}
 
