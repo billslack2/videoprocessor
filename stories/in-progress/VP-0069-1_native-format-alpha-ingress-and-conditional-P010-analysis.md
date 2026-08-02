@@ -24,6 +24,29 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
   through upload and provide a bounded luma adapter (or an explicit analysis
   fallback) before it can remove this conversion safely.
 
+### Initial implementation (2026-08-02)
+
+- The Alpha OSD now omits the inactive DirectShow Start/Stop method and always
+  reports the capture frame offset. The offset is applied to the capture
+  timestamp before either renderer consumes a frame.
+- Latency rows are normalized across backends as `Renderer`, `Presentation`,
+  and `Total`. DirectShow presentation is the remaining lead to its requested
+  sample PTS; Alpha presentation is the predicted lead from its latest submit
+  to the next DXGI display-sync target. Neither value claims physical panel
+  scanout latency.
+- Removed the Alpha-only `alpha_queue_size` setting. An explicit
+  `[queue] steady_reserve_frames` now selects Alpha's desired FIFO depth via
+  the same queue-policy call used by DirectShow; the retired key is rejected
+  by configuration validation.
+- Added a reversible ARGB/BGRA native RGB upload path. It is selected only
+  when P010 is not explicitly requested and no P010-only analysis consumer
+  (NLS, scene analysis, or scope subtitle analysis) is active. The OSD shows
+  the resolved ingress path. Selecting P010 forces the established converter;
+  all other formats remain on the tested P010 fallback pending their own
+  native representation and bounded-analysis validation.
+- Verified by a successful x64 Release solution build and all 455 existing
+  unit tests.
+
 ## User story
 
 As an Alpha-renderer user, I want VP to retain and upload supported captured
