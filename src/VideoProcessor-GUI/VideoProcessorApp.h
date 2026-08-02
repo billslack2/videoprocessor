@@ -22,9 +22,9 @@ public:
 	size_t GetAlphaQueueSizeOverride() const { return m_alphaQueueSizeOverride; }
 	void SetAlphaQueueSizeOverride(size_t value) { m_alphaQueueSizeOverride = value; }
 
-	// DirectShow's startup threshold and maintained reserve are separate
-	// policies.  Zero means automatic; explicit values were schema-validated
-	// as whole-frame values in the inclusive range [0, 16].
+	// DirectShow startup priming remains automatic. The public queue controls
+	// are the timestamp lead and maintained VP queue target, both expressed as
+	// whole frames in the inclusive range [0, 16].
 	size_t GetQueueStartupPrerollFrames() const { return m_queueStartupPrerollFrames; }
 	void SetQueueStartupPrerollFrames(size_t value) { m_queueStartupPrerollFrames = value; }
 	size_t GetQueueSteadyReserveFrames() const { return m_queueSteadyReserveFrames; }
@@ -45,10 +45,10 @@ public:
 private:
 	size_t m_alphaQueueSizeOverride = 0;
 	size_t m_queueStartupPrerollFrames = 0;
-	size_t m_queueSteadyReserveFrames = 0;
-	bool m_hasQueueSteadyReserveFrames = false;
-	size_t m_presentationLeadFrames = 0;
-	bool m_hasPresentationLeadFrames = false;
+	size_t m_queueSteadyReserveFrames = 4;
+	bool m_hasQueueSteadyReserveFrames = true;
+	size_t m_presentationLeadFrames = 1;
+	bool m_hasPresentationLeadFrames = true;
 
 	DECLARE_MESSAGE_MAP()
 };

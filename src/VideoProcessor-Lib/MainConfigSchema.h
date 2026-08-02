@@ -74,11 +74,12 @@ namespace MainConfigSchema
 			config, "command_line", commandLineRules, error))
 			return false;
 
-		// Queue policy is deliberately expressed in whole frames.  Zero means
-		// automatic policy; an explicit steady value is the VP-owned R/C/T
-		// target and is capped so a config typo cannot create an impractically
-		// deep live queue.
+		// Queue policy is deliberately expressed in whole frames and capped so
+		// a config typo cannot create an impractically deep live queue. The old
+		// names remain accepted for configuration-file compatibility.
 		const std::vector<ConfigSchema::KeyRule> queueRules = {
+			ConfigSchema::Integer("lead_frames", 0, 16),
+			ConfigSchema::Integer("target_frames", 0, 16),
 			ConfigSchema::Integer("startup_preroll_frames", 0, 16),
 			ConfigSchema::Integer("steady_reserve_frames", 0, 16)
 		};
@@ -91,6 +92,24 @@ namespace MainConfigSchema
 		if (!ConfigSchema::ValidateSection(
 			config, "directshow", directShowRules, error))
 			return false;
+
+		std::string value;
+		std::string legacyValue;
+		if (config.TryGetString("queue", "target_frames", value) &&
+			config.TryGetString("queue", "steady_reserve_frames", legacyValue))
+		{
+			error = "cannot specify both [queue] target_frames and legacy "
+				"steady_reserve_frames";
+			return false;
+		}
+		if (config.TryGetString("queue", "lead_frames", value) &&
+			config.TryGetString(
+				"directshow", "presentation_lead_frames", legacyValue))
+		{
+			error = "cannot specify both [queue] lead_frames and legacy "
+				"[directshow] presentation_lead_frames";
+			return false;
+		}
 
 		const std::vector<ConfigSchema::KeyRule> recoveryRules = {
 			ConfigSchema::Integer("reset_after_render_restart_seconds", 1, INT_MAX),

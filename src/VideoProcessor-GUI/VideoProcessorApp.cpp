@@ -435,36 +435,47 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 		}
 	}
 
-	auto loadQueueFrameSetting = [&](const char* key,
-		auto setter)
-	{
-		std::string value;
-		if (!config.TryGetString("queue", key, value))
-			return;
-
-		// MainConfigSchema already accepted only the integer range [0, 16].
-		const size_t frames = static_cast<size_t>(std::stoul(value));
-		setter(frames);
-		DbgLog((LOG_TRACE, 1,
-			TEXT("VideoProcessor: Using [queue] %S=%zu frames"),
-			key, frames));
-	};
-	loadQueueFrameSetting("startup_preroll_frames",
-		[](size_t frames) { videoProcessorApp.SetQueueStartupPrerollFrames(frames); });
-	loadQueueFrameSetting("steady_reserve_frames",
-		[](size_t frames) { videoProcessorApp.SetQueueSteadyReserveFrames(frames); });
-
-	std::string presentationLeadFrames;
-	if (config.TryGetString(
-		"directshow", "presentation_lead_frames", presentationLeadFrames))
+	// Compatibility only: startup priming is now automatic and is no longer a
+	// normal user-facing control. Existing files retain their prior behavior.
+	std::string startupPrerollFrames;
+	const bool legacyStartupConfigured = config.TryGetString(
+		"queue", "startup_preroll_frames", startupPrerollFrames);
+	if (legacyStartupConfigured)
 	{
 		const size_t frames = static_cast<size_t>(
-			std::stoul(presentationLeadFrames));
-		videoProcessorApp.SetPresentationLeadFrames(frames);
+			std::stoul(startupPrerollFrames));
+		videoProcessorApp.SetQueueStartupPrerollFrames(frames);
 		DbgLog((LOG_TRACE, 1,
-			TEXT("VideoProcessor: Using [directshow] presentation_lead_frames=%zu"),
+			TEXT("VideoProcessor: Using legacy [queue] startup_preroll_frames=%zu"),
 			frames));
 	}
+
+	std::string targetFrames;
+	if (config.TryGetString("queue", "target_frames", targetFrames) ||
+		config.TryGetString("queue", "steady_reserve_frames", targetFrames))
+	{
+		const size_t frames = static_cast<size_t>(std::stoul(targetFrames));
+		videoProcessorApp.SetQueueSteadyReserveFrames(frames);
+		DbgLog((LOG_TRACE, 1,
+			TEXT("VideoProcessor: Using [queue] target_frames=%zu"),
+			frames));
+	}
+
+	std::string leadFrames;
+	if (config.TryGetString("queue", "lead_frames", leadFrames) ||
+		config.TryGetString(
+			"directshow", "presentation_lead_frames", leadFrames))
+	{
+		const size_t frames = static_cast<size_t>(std::stoul(leadFrames));
+		videoProcessorApp.SetPresentationLeadFrames(frames);
+		DbgLog((LOG_TRACE, 1,
+			TEXT("VideoProcessor: Using [queue] lead_frames=%zu"), frames));
+	}
+	DbgLog((LOG_TRACE, 1,
+		TEXT("VideoProcessor: Effective queue policy lead_frames=%zu target_frames=%zu startup_preroll=%s"),
+		videoProcessorApp.GetPresentationLeadFrames(),
+		videoProcessorApp.GetQueueSteadyReserveFrames(),
+		legacyStartupConfigured ? TEXT("legacy-configured") : TEXT("automatic")));
 
 	if (config.HasSection("command_line"))
 	{
