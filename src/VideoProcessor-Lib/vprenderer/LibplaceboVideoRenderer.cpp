@@ -17,6 +17,7 @@
 #include <vprenderer/LibplaceboDisplayLut.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
+#include <vprenderer/NativeStatsOverlayPlacement.h>
 #include <SceneDetector.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
@@ -2289,6 +2290,8 @@ struct LibplaceboVideoRenderer::Impl
 	int statsOverlayStride = 0;
 	uint64_t statsOverlaySerial = 0;
 	uint64_t appliedStatsOverlaySerial = 0;
+	NativeStatsOverlayPlacement::Result lastStatsOverlayPlacement;
+	bool hasStatsOverlayPlacement = false;
 	pl_custom_lut* displayLut = nullptr;
 	// Kept deliberately short for the Ctrl+I OSD: "Disabled",
 	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
@@ -5221,9 +5224,12 @@ struct LibplaceboVideoRenderer::Impl
 				struct pl_frame& source,
 				struct pl_frame& target,
 				bool scopeActive,
-				float subtitleShift)
+				float subtitleShift,
+				bool* trustedActivePicture = nullptr)
 		{
 			source = image;
+			if (trustedActivePicture)
+				*trustedActivePicture = false;
 			if (nlsRequested &&
 				nlsDecision.mode == MadVRNlsMappingMode::WAITING)
 			{
@@ -5273,6 +5279,8 @@ struct LibplaceboVideoRenderer::Impl
 					pl_rect2df_aspect_copy(
 						&target.crop, &source.crop, 0.0f);
 				}
+				if (trustedActivePicture)
+					*trustedActivePicture = true;
 				return;
 			}
 
@@ -5291,6 +5299,8 @@ struct LibplaceboVideoRenderer::Impl
 				source.crop.y0 = cropTop;
 				source.crop.y1 = cropTop + cropHeight;
 				croppedActivePicture = true;
+				if (trustedActivePicture)
+					*trustedActivePicture = true;
 			}
 
 			if (scopeActive)
@@ -5356,11 +5366,13 @@ struct LibplaceboVideoRenderer::Impl
 
 		struct pl_frame renderImage{};
 		struct pl_frame target = baseTarget;
+		bool trustedActivePicture = false;
 		configureScreenProfile(
 			renderImage,
 			target,
 			scopeScreenActive,
-			subtitleShiftSourcePixels);
+			subtitleShiftSourcePixels,
+			&trustedActivePicture);
 		std::vector<uint8_t> overlayPixels;
 		int overlayWidth = 0;
 		int overlayHeight = 0;
@@ -5427,11 +5439,59 @@ struct LibplaceboVideoRenderer::Impl
 				static_cast<float>(statsOverlayTexture->params.h) };
 			const float dstWidth = static_cast<float>(baseTarget.planes[0].texture->params.w);
 			const float dstHeight = static_cast<float>(baseTarget.planes[0].texture->params.h);
+			const NativeStatsOverlayPlacement::Rect outputRect{
+				0.0f, 0.0f, dstWidth, dstHeight };
+			const NativeStatsOverlayPlacement::Rect pictureRect{
+				target.crop.x0, target.crop.y0,
+				target.crop.x1, target.crop.y1 };
+			const NativeStatsOverlayPlacement::Result placement =
+				NativeStatsOverlayPlacement::Place(
+					pictureRect, outputRect,
+					static_cast<float>(statsOverlayTexture->params.w),
+					static_cast<float>(statsOverlayTexture->params.h));
 			overlayPart.dst = {
-				std::max(0.0f, dstWidth - statsOverlayTexture->params.w - 100.0f),
-				std::max(0.0f, dstHeight - statsOverlayTexture->params.h - 100.0f),
-				dstWidth - 100.0f,
-				dstHeight - 100.0f };
+				placement.panel.left, placement.panel.top,
+				placement.panel.right, placement.panel.bottom };
+
+			const auto rectChanged = [](const NativeStatsOverlayPlacement::Rect& first,
+				const NativeStatsOverlayPlacement::Rect& second)
+			{
+				constexpr float epsilon = 0.25f;
+				return std::fabs(first.left - second.left) > epsilon ||
+					std::fabs(first.top - second.top) > epsilon ||
+					std::fabs(first.right - second.right) > epsilon ||
+					std::fabs(first.bottom - second.bottom) > epsilon;
+			};
+			const bool placementChanged = !hasStatsOverlayPlacement ||
+				rectChanged(lastStatsOverlayPlacement.visiblePicture,
+					placement.visiblePicture) ||
+				rectChanged(lastStatsOverlayPlacement.panel, placement.panel) ||
+				std::fabs(lastStatsOverlayPlacement.scale - placement.scale) > 0.001f ||
+				lastStatsOverlayPlacement.insetClamped != placement.insetClamped ||
+				lastStatsOverlayPlacement.usedOutputFallback != placement.usedOutputFallback;
+			if (placementChanged)
+			{
+				DebugLog::Log(
+					"Alpha native OSD placement: renderer_gen=%llu source_seq=%llu geometry_gen=%llu output=%.0fx%.0f viewport=%s aspect=%.4f picture=%.1f,%.1f-%.1f,%.1f trusted_active=%d bitmap=%dx%d scale=%.3f panel=%.1f,%.1f-%.1f,%.1f inset=%.0f clamped=%d fallback=%d",
+					static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					static_cast<unsigned long long>(nlsGeometryGeneration),
+					dstWidth, dstHeight,
+					scopeScreenActive ? "scope" : "normal",
+					scopeScreenActive ? scopeScreenAspect : 16.0 / 9.0,
+					placement.visiblePicture.left, placement.visiblePicture.top,
+					placement.visiblePicture.right, placement.visiblePicture.bottom,
+					trustedActivePicture ? 1 : 0,
+					statsOverlayTexture->params.w, statsOverlayTexture->params.h,
+					placement.scale,
+					placement.panel.left, placement.panel.top,
+					placement.panel.right, placement.panel.bottom,
+					NativeStatsOverlayPlacement::kDefaultInsetPixels,
+					placement.insetClamped ? 1 : 0,
+					placement.usedOutputFallback ? 1 : 0);
+				lastStatsOverlayPlacement = placement;
+				hasStatsOverlayPlacement = true;
+			}
 			overlay.parts = &overlayPart;
 			overlay.num_parts = 1;
 			target.overlays = &overlay;
