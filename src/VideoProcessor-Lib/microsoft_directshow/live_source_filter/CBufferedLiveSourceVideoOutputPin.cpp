@@ -1925,7 +1925,19 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				presentationGapSlotsBefore;
 			timestampInput.sourceFrameNumber = frameNumber;
 			timestampInput.sourceFrameNumberValid = true;
-			timestampInput.accountSourceGap = !sourceDiscontinuity;
+			// Once the configured steady latest-wins queue owns this epoch, a
+			// source-counter gap can be the direct result of VP replacing stale
+			// live work. Encoding that replacement as empty presentation slots
+			// slows downstream delivery, causes more replacement, and forms a
+			// self-reinforcing repeat loop. Keep the delivered live cadence
+			// continuous in steady mode. Material capture discontinuities are
+			// still re-anchored below from the raw observed gap; an explicit
+			// discontinuity continues to handle source-counter identity resets.
+			const bool steadyLatestWinsOwnsEpoch =
+				m_steadyQueueEpoch.load(std::memory_order_acquire) ==
+					expectedQueueEpoch;
+			timestampInput.accountSourceGap =
+				!sourceDiscontinuity && !steadyLatestWinsOwnsEpoch;
 			timestampInput.sourceGapSlotsToSuppress =
 				rationalSourceGapSlotsToSuppress;
 			timestampInput.minimumPresentationStartValid =
@@ -1934,9 +1946,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				rationalCatchUpMinimumStart;
 			timestampDecision = deliveryTimestampSequencer.Preview(timestampInput);
 			if (timestampDecision.valid &&
-				(timestampDecision.materialSourceGapSuppressed ||
-				 (sourceDiscontinuity &&
-				  timestampDecision.observedSourceGapMaterial)) &&
+				timestampDecision.observedSourceGapMaterial &&
 				graphRunningBeforeDelivery &&
 				runningClockBeforeDelivery != REFERENCE_TIME_INVALID)
 			{

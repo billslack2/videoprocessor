@@ -176,6 +176,32 @@ namespace Tests
 				afterGap.start);
 		}
 
+		TEST_METHOD(SteadyLatestWinsReplacementKeepsDeliveredCadenceContinuous)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			input.accountSourceGap = false;
+			input.sourceFrameNumber = 100;
+			const auto first = sequencer.Preview(input);
+			Assert::IsTrue(sequencer.Commit(first));
+
+			// VP's steady latest-wins queue deliberately replaced three stale
+			// live pictures. The next delivered picture owns the next display
+			// slot; it must not manufacture three empty renderer slots.
+			input.sourceFrameNumber = 104;
+			const auto replacement = sequencer.Preview(input);
+			Assert::AreEqual<uint64_t>(3,
+				replacement.observedSourceGapSlotsBefore);
+			Assert::AreEqual<uint32_t>(0,
+				replacement.sourceGapSlotsBefore);
+			Assert::AreEqual<uint32_t>(1,
+				replacement.presentationSlotsConsumed);
+			Assert::IsTrue(replacement.sourceGapSuppressed);
+			Assert::AreEqual<VideoReferenceTime>(
+				first.stop, replacement.start);
+		}
+
 		TEST_METHOD(IntentionalCatchUpRebaselinesWithoutAddingLead)
 		{
 			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
@@ -287,11 +313,12 @@ namespace Tests
 			Assert::AreEqual<VideoReferenceTime>(first.stop, material.start);
 		}
 
-		TEST_METHOD(MaterialRunningGapReanchorsThenRemainsContiguous)
+		TEST_METHOD(SteadyMaterialRunningGapReanchorsThenRemainsContiguous)
 		{
 			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
 			auto input = Input();
 			input.sourceFrameNumberValid = true;
+			input.accountSourceGap = false;
 			input.sourceFrameNumber = 100;
 			Assert::IsTrue(sequencer.Commit(sequencer.Preview(input)));
 
@@ -299,6 +326,7 @@ namespace Tests
 			input.minimumPresentationStartValid = true;
 			input.minimumPresentationStart = 9000000;
 			const auto caughtUp = sequencer.Preview(input);
+			Assert::IsTrue(caughtUp.observedSourceGapMaterial);
 			Assert::IsTrue(caughtUp.sourceGapSuppressed);
 			Assert::AreEqual<VideoReferenceTime>(9000000, caughtUp.start);
 			Assert::IsTrue(sequencer.Commit(caughtUp));
