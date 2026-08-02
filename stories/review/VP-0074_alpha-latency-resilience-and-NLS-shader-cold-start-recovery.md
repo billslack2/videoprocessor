@@ -3,11 +3,12 @@
 ## Status
 
 Review. The implementation is ready for live user validation on branch
-`codex/vp-0074-alpha-latency-recovery`, commits `d1c1cae` and `b40b5be`,
-based on the discovered repository default branch `v1.1.015-beta`. The clean
-worktree is `C:\Users\bslac\vp\worktrees\vp-0074`.
+`codex/vp-0074-alpha-latency-recovery`, commits `8867cfb` and `9eb7198`,
+rebased onto the current `v1.1.015-beta` tip `44e3099` (VP-0023 Alpha P010
+formatter contract). The clean worktree is
+`C:\Users\bslac\vp\worktrees\vp-0074`.
 
-The exact `b40b5be` x64 Release build (`VERSION_DIRTY=false`) passed all 467
+The exact `9eb7198` x64 Release build (`VERSION_DIRTY=false`) passed all 471
 native tests and was deployed to `C:\Videoprocessor\vp` on 2026-08-02. The
 executable, Alpha plugin, and `shaders\NLS.glsl` deployment hashes match the
 build outputs. `VideoProcessor.cfg` was not changed.
@@ -76,18 +77,18 @@ after rendering returns to 30-40 ms.
 
 ## Build and deployment evidence
 
-- Clean x64 Release rebuild: passed; embedded commit `b40b5be`,
+- Clean x64 Release rebuild: passed; embedded commit `9eb7198`,
   `VERSION_DIRTY=false`.
-- Native tests: 467 passed, 0 failed, including queue-recovery thresholds at
+- Native tests: 471 passed, 0 failed, including queue-recovery thresholds at
   23.976 and 59.94/60-rate families.
 - Deployed SHA-256: executable
-  `93F9DDC5711A5A3B5E1D44104F79DB34CAFB19434E749DB871BB99AB51AE7D44`;
+  `5C0607965D6CC900277B5766488B13E272C83039E9D4A867BCDFF0EC8837D5B8`;
   Alpha plugin
-  `7FC8105DA5834A809DA9AD2E89DFB227E87084B3DC25F4AFD28D5FD152707C13`;
+  `B6A9378417E802C11A3296CC35D303CDF78E44287D99FAD045F4919D142A44B7`;
   NLS shader
-  `8AEFF6E9F5F7C5BCC7B6E0D9887C9C971EACB5D718F0E409362B98E47FD6E616`.
+  `36D8A96083F2194C5FCB880931A2529B7F962770041CF67A75019F3CDBDD57A2`.
 - Rollback files use suffix
-  `.before-b40b5be-20260802-175815.bak` beside each deployed artifact.
+  `.before-9eb7198-20260802-184300.bak` beside each deployed artifact.
 
 ## Problem
 
