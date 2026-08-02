@@ -1925,19 +1925,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				presentationGapSlotsBefore;
 			timestampInput.sourceFrameNumber = frameNumber;
 			timestampInput.sourceFrameNumberValid = true;
-			// Once the configured steady latest-wins queue owns this epoch, a
-			// source-counter gap can be the direct result of VP replacing stale
-			// live work. Encoding that replacement as empty presentation slots
-			// slows downstream delivery, causes more replacement, and forms a
-			// self-reinforcing repeat loop. Keep the delivered live cadence
-			// continuous in steady mode. Material capture discontinuities are
-			// still re-anchored below from the raw observed gap; an explicit
-			// discontinuity continues to handle source-counter identity resets.
-			const bool steadyLatestWinsOwnsEpoch =
-				m_steadyQueueEpoch.load(std::memory_order_acquire) ==
-					expectedQueueEpoch;
-			timestampInput.accountSourceGap =
-				!sourceDiscontinuity && !steadyLatestWinsOwnsEpoch;
+			// The steady policy now applies backpressure before conversion instead
+			// of discarding ordinary samples.  Any surviving source gap is therefore
+			// an actual capture/transport omission and must remain represented in the
+			// schedule, except for the explicitly counted one-shot catch-up trim.
+			timestampInput.accountSourceGap = !sourceDiscontinuity;
 			timestampInput.sourceGapSlotsToSuppress =
 				rationalSourceGapSlotsToSuppress;
 			timestampInput.minimumPresentationStartValid =
@@ -3853,10 +3845,22 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				m_frameQueueMaxSize.load(std::memory_order_relaxed),
 				static_cast<size_t>(std::max<LONG>(
 					0, GetNegotiatedAllocatorBufferCount())));
-			if (currentConvertedSize >= queueMaxSize)
+			const PipelineEpoch currentEpoch{
+				m_queueEpoch.load(std::memory_order_acquire) };
+			const LiveSteadyQueueDecision steadyQueueDecision =
+				LiveSteadyQueuePolicy::Evaluate({
+					m_steadyQueueEpoch.load(std::memory_order_acquire),
+					currentEpoch.value,
+					IsSteadyQueueTargetConfigured(),
+					m_sceneAwareTimingCorrection.load(std::memory_order_acquire),
+					GetConfiguredSteadyQueueTarget(),
+					currentConvertedSize });
+			const size_t conversionHighWater = steadyQueueDecision.active ?
+				steadyQueueDecision.highWater : queueMaxSize;
+			if (currentConvertedSize >= conversionHighWater)
 			{
 				++backpressureHits;
-				break;  // Stop conversion until a frame arrives or delivery frees converted space.
+				break;  // Preserve cadence: wait for delivery instead of converting then discarding.
 			}
 
 			// Preserve origin/main's gentle back-pressure above half capacity, but
@@ -3877,8 +3881,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				DebugLog::Log("CONVERSION WORKER: Not active during raw frame check, returning");
 				return 0;
 			}
-			const PipelineEpoch currentEpoch{
-				m_queueEpoch.load(std::memory_order_acquire) };
 			hasFrame = m_captureFrameQueue.TryPopCurrent(currentEpoch, videoFrame);
 			if (hasFrame)
 			{
@@ -4037,9 +4039,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			// Add converted sample to queue only after its timestamp history is
 			// published. The delivery thread is then free to drain immediately.
 			size_t convertedQueueDepth = 0;
-			size_t steadyQueueDiscarded = 0;
-			size_t steadyQueueDepthBefore = 0;
-			size_t steadyQueueHighWater = 0;
+				size_t steadyQueueDepthBefore = 0;
 			bool sampleQueued = false;
 			{
 				CAutoLock convLock(&m_convertedQueueLock);
@@ -4100,23 +4100,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 					const EpochBoundedQueuePushResult pushResult =
 						m_processedFrameQueue.Push(std::move(processedFrame),
 							{ frameQueueEpoch }, currentEpoch);
-					const LiveSteadyQueueDecision steadyQueueDecision =
-						LiveSteadyQueuePolicy::Evaluate({
-							m_steadyQueueEpoch.load(std::memory_order_acquire),
-							frameQueueEpoch,
-							IsSteadyQueueTargetConfigured(),
-							m_sceneAwareTimingCorrection.load(
-								std::memory_order_acquire),
-							GetConfiguredSteadyQueueTarget(),
-							m_processedFrameQueue.Size() });
-					if (steadyQueueDecision.active &&
-						(pushResult == EpochBoundedQueuePushResult::Accepted ||
-						 pushResult == EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard))
-					{
-						steadyQueueHighWater = steadyQueueDecision.highWater;
-						steadyQueueDiscarded =
-							m_processedFrameQueue.TrimTo(steadyQueueHighWater);
-					}
 					const EpochBoundedQueueMetrics processedMetrics =
 						m_processedFrameQueue.Metrics();
 					m_publishedConvertedQueueDepth.store(
@@ -4156,11 +4139,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 					steadyQueueDepthBefore);
 				conversionTrace.queueDepthAfter = static_cast<uint32_t>(
 					convertedQueueDepth);
-				conversionTrace.queueDiscarded = static_cast<uint32_t>(
-					steadyQueueDiscarded);
-				conversionTrace.convertedQueueDiscarded = static_cast<uint32_t>(
-					steadyQueueDiscarded);
-				conversionTrace.intentionalDrop = steadyQueueDiscarded > 0;
+				conversionTrace.queueDiscarded = 0;
+				conversionTrace.convertedQueueDiscarded = 0;
+				conversionTrace.intentionalDrop = false;
 				conversionTrace.processingDurationUs = static_cast<uint32_t>(
 					std::min<uint64_t>(convTimeUs, std::numeric_limits<uint32_t>::max()));
 				conversionTrace.sceneBoundary = isSafeCorrectionPoint;

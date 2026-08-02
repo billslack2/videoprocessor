@@ -1846,7 +1846,8 @@ void DirectShowVideoRenderer::LiveSourceDestroy()
 }
 
 
-void DirectShowVideoRenderer::RefreshDownstreamPrimeTarget()
+void DirectShowVideoRenderer::RefreshDownstreamPrimeTarget(
+	const char* telemetrySource)
 {
 	AssertGraphThread();
 	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
@@ -1923,7 +1924,8 @@ void DirectShowVideoRenderer::RefreshDownstreamPrimeTarget()
 					windowedPresent, exclusivePresent));
 		}
 		DebugLog::Log(
-			"madVR effective configuration: revision=%lld revision_known=%d cpu=%d cpu_known=%d gpu=%d gpu_known=%d pre_render_windowed=%d windowed_known=%d pre_render_exclusive=%d exclusive_known=%d backbuffers_windowed=%d backbuffers_windowed_known=%d backbuffers_exclusive=%d backbuffers_exclusive_known=%d delay_until_full=%d delay_known=%d present_thread=%d present_thread_known=%d flush_after_present_windowed='%s' flush_windowed_known=%d flush_after_present_exclusive='%s' flush_exclusive_known=%d estimated_pipeline_frames=%zu estimate_valid=%d occupancy=unobservable",
+			"madVR effective configuration: source=%s revision=%lld revision_known=%d cpu=%d cpu_known=%d gpu=%d gpu_known=%d pre_render_windowed=%d windowed_known=%d pre_render_exclusive=%d exclusive_known=%d backbuffers_windowed=%d backbuffers_windowed_known=%d backbuffers_exclusive=%d backbuffers_exclusive_known=%d delay_until_full=%d delay_known=%d present_thread=%d present_thread_known=%d flush_after_present_windowed='%s' flush_windowed_known=%d flush_after_present_exclusive='%s' flush_exclusive_known=%d estimated_pipeline_frames=%zu estimate_valid=%d occupancy=unobservable",
+			telemetrySource,
 			static_cast<long long>(settingsRevision), revisionKnown ? 1 : 0,
 			cpuQueue, cpuKnown ? 1 : 0, gpuQueue, gpuKnown ? 1 : 0,
 			windowedPresent, windowedKnown ? 1 : 0,
@@ -1938,7 +1940,7 @@ void DirectShowVideoRenderer::RefreshDownstreamPrimeTarget()
 		settings->Release();
 	}
 
-	LogMadVRRuntimeInfo("graph-connect-or-reset", false);
+	LogMadVRRuntimeInfo(telemetrySource, false);
 
 	// The aggregate remains diagnostic. Fresh-epoch priming always uses VP's
 	// configurable physical reservoir and allocator headroom; this publication
@@ -1973,7 +1975,10 @@ void DirectShowVideoRenderer::MaybeScheduleMadVRRuntimeTelemetry()
 		[this]()
 		{
 			AssertGraphThread();
-			LogMadVRRuntimeInfo("periodic-30s", true);
+			// Sample both the active-profile configuration and renderer runtime
+			// state together.  A settings revision/configuration change is
+			// evidence only: polling must never restart a healthy live graph.
+			RefreshDownstreamPrimeTarget("periodic-30s");
 		}))
 	{
 		// Graph retirement can reject a post. Permit a new graph to sample
@@ -2010,6 +2015,15 @@ void DirectShowVideoRenderer::LogMadVRRuntimeInfo(
 	bool dxvaScaling = false;
 	bool ivtc = false;
 	int osdLatencyMs = 0;
+	SIZE originalVideo = {};
+	SIZE arAdjustedVideo = {};
+	RECT videoCrop = {};
+	RECT videoOutput = {};
+	RECT croppedVideoOutput = {};
+	LPWSTR madvrVersion = nullptr;
+	LPWSTR yuvMatrix = nullptr;
+	int madvrVersionChars = 0;
+	int yuvMatrixChars = 0;
 	const bool refreshKnown = SUCCEEDED(info->GetDouble("refreshRate", &refreshRate)) &&
 		refreshRate > 0.0;
 	const bool frameRateKnown = SUCCEEDED(info->GetUlonglong(
@@ -2021,6 +2035,20 @@ void DirectShowVideoRenderer::LogMadVRRuntimeInfo(
 		"exclusiveModeActive", &exclusiveMode));
 	const bool osdLatencyKnown = SUCCEEDED(info->GetInt(
 		"osdLatency", &osdLatencyMs));
+	const bool originalVideoKnown = SUCCEEDED(info->GetSize(
+		"originalVideoSize", &originalVideo));
+	const bool arAdjustedVideoKnown = SUCCEEDED(info->GetSize(
+		"arAdjustedVideoSize", &arAdjustedVideo));
+	const bool videoCropKnown = SUCCEEDED(info->GetRect(
+		"videoCropRect", &videoCrop));
+	const bool videoOutputKnown = SUCCEEDED(info->GetRect(
+		"videoOutputRect", &videoOutput));
+	const bool croppedVideoOutputKnown = SUCCEEDED(info->GetRect(
+		"croppedVideoOutputRect", &croppedVideoOutput));
+	const bool versionKnown = SUCCEEDED(info->GetString(
+		"version", &madvrVersion, &madvrVersionChars)) && madvrVersion;
+	const bool yuvMatrixKnown = SUCCEEDED(info->GetString(
+		"yuvMatrix", &yuvMatrix, &yuvMatrixChars)) && yuvMatrix;
 	(void)info->GetBool("dxvaDecodingActive", &dxvaDecode);
 	(void)info->GetBool("dxvaDeinterlacingActive", &dxvaDeinterlace);
 	(void)info->GetBool("dxvaScalingActive", &dxvaScaling);
@@ -2028,20 +2056,41 @@ void DirectShowVideoRenderer::LogMadVRRuntimeInfo(
 	const double postDeinterlaceFps = frameRateKnown ?
 		10000000.0 / static_cast<double>(frameDuration) : 0.0;
 	const bool anyKnownValue = refreshKnown || frameRateKnown ||
-		displayModeKnown || hdrKnown || exclusiveKnown || osdLatencyKnown;
+		displayModeKnown || hdrKnown || exclusiveKnown || osdLatencyKnown ||
+		originalVideoKnown || arAdjustedVideoKnown || videoCropKnown ||
+		videoOutputKnown || croppedVideoOutputKnown || versionKnown || yuvMatrixKnown;
 	if (!requireAnyKnownValue || anyKnownValue)
 	{
 		DebugLog::Log(
-			"madVR runtime info: source=%s detected_refresh_hz=%.6f refresh_known=%d post_deinterlace_fps=%.6f frame_rate_known=%d display_mode=%ldx%ld display_mode_known=%d hdr_output=%d hdr_known=%d exclusive=%d exclusive_known=%d osd_latency_ms=%d osd_latency_known=%d dxva_decode=%d dxva_deinterlace=%d dxva_scaling=%d ivtc=%d occupancy=unobservable",
-			source, refreshRate, refreshKnown ? 1 : 0,
+			"madVR runtime info: source=%s version='%ls' version_known=%d detected_refresh_hz=%.6f refresh_known=%d post_deinterlace_fps=%.6f frame_rate_known=%d display_mode=%ldx%ld display_mode_known=%d hdr_output=%d hdr_known=%d exclusive=%d exclusive_known=%d yuv_matrix='%ls' yuv_matrix_known=%d original_video=%ldx%ld original_video_known=%d ar_adjusted_video=%ldx%ld ar_adjusted_video_known=%d video_crop=%ld,%ld,%ld,%ld video_crop_known=%d video_output=%ld,%ld,%ld,%ld video_output_known=%d cropped_video_output=%ld,%ld,%ld,%ld cropped_video_output_known=%d osd_latency_ms=%d osd_latency_known=%d dxva_decode=%d dxva_deinterlace=%d dxva_scaling=%d ivtc=%d occupancy=unobservable",
+			source, madvrVersion ? madvrVersion : L"", versionKnown ? 1 : 0,
+			refreshRate, refreshKnown ? 1 : 0,
 			postDeinterlaceFps, frameRateKnown ? 1 : 0,
 			static_cast<long>(displayMode.cx), static_cast<long>(displayMode.cy),
 			displayModeKnown ? 1 : 0, hdrOutput ? 1 : 0, hdrKnown ? 1 : 0,
 			exclusiveMode ? 1 : 0, exclusiveKnown ? 1 : 0,
+			yuvMatrix ? yuvMatrix : L"", yuvMatrixKnown ? 1 : 0,
+			static_cast<long>(originalVideo.cx), static_cast<long>(originalVideo.cy),
+			originalVideoKnown ? 1 : 0,
+			static_cast<long>(arAdjustedVideo.cx), static_cast<long>(arAdjustedVideo.cy),
+			arAdjustedVideoKnown ? 1 : 0,
+			static_cast<long>(videoCrop.left), static_cast<long>(videoCrop.top),
+			static_cast<long>(videoCrop.right), static_cast<long>(videoCrop.bottom),
+			videoCropKnown ? 1 : 0,
+			static_cast<long>(videoOutput.left), static_cast<long>(videoOutput.top),
+			static_cast<long>(videoOutput.right), static_cast<long>(videoOutput.bottom),
+			videoOutputKnown ? 1 : 0,
+			static_cast<long>(croppedVideoOutput.left), static_cast<long>(croppedVideoOutput.top),
+			static_cast<long>(croppedVideoOutput.right), static_cast<long>(croppedVideoOutput.bottom),
+			croppedVideoOutputKnown ? 1 : 0,
 			osdLatencyMs, osdLatencyKnown ? 1 : 0,
 			dxvaDecode ? 1 : 0, dxvaDeinterlace ? 1 : 0,
 			dxvaScaling ? 1 : 0, ivtc ? 1 : 0);
 	}
+	if (madvrVersion)
+		LocalFree(madvrVersion);
+	if (yuvMatrix)
+		LocalFree(yuvMatrix);
 	info->Release();
 }
 

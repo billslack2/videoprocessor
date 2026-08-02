@@ -298,7 +298,8 @@ protected:
 	// Add renderer to the graph and connect
 	virtual void RendererConnect() = 0;
 	virtual void RendererDestroy();
-	void RefreshDownstreamPrimeTarget();
+	void RefreshDownstreamPrimeTarget(
+		const char* telemetrySource = "graph-connect-or-reset");
 	void LogMadVRRuntimeInfo(const char* source, bool requireAnyKnownValue);
 	void MaybeScheduleMadVRRuntimeTelemetry();
 

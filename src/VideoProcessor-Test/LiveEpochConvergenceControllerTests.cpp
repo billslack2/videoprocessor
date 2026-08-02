@@ -252,18 +252,21 @@ namespace Tests
 			Assert::IsFalse(decision.requestConvergence);
 		}
 
-		TEST_METHOD(SteadyLatestWinsHoldsConfiguredConvertedHighWater)
+		TEST_METHOD(SteadyQueueAppliesBackpressureBeforeConverting)
 		{
 			LiveSteadyQueueDecision decision = LiveSteadyQueuePolicy::Evaluate({
 				5, 5, true, false, 1, 22 });
 			Assert::IsTrue(decision.active);
 			Assert::AreEqual<size_t>(1, decision.highWater);
-			Assert::AreEqual<size_t>(21, decision.discardOldest);
+			Assert::IsTrue(decision.holdConversion);
 
 			decision = LiveSteadyQueuePolicy::Evaluate({
-				5, 5, true, false, 0, 22 });
+				5, 5, true, false, 0, 0 });
 			Assert::AreEqual<size_t>(1, decision.highWater);
-			Assert::AreEqual<size_t>(21, decision.discardOldest);
+			Assert::IsFalse(decision.holdConversion);
+			decision = LiveSteadyQueuePolicy::Evaluate({
+				5, 5, true, false, 0, 1 });
+			Assert::IsTrue(decision.holdConversion);
 
 			decision = LiveSteadyQueuePolicy::Evaluate({
 				5, 6, true, false, 1, 22 });
@@ -271,7 +274,7 @@ namespace Tests
 			decision = LiveSteadyQueuePolicy::Evaluate({
 				5, 5, true, true, 1, 22 });
 			Assert::IsTrue(decision.active);
-			Assert::AreEqual<size_t>(21, decision.discardOldest);
+			Assert::IsTrue(decision.holdConversion);
 		}
 
 		TEST_METHOD(Exact23976ThresholdAndRecoveryAreRateIndependent)

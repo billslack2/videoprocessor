@@ -176,20 +176,20 @@ namespace Tests
 				afterGap.start);
 		}
 
-		TEST_METHOD(SteadyLatestWinsReplacementKeepsDeliveredCadenceContinuous)
+		TEST_METHOD(ExplicitCatchUpReplacementKeepsDeliveredCadenceContinuous)
 		{
 			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
 			auto input = Input();
 			input.sourceFrameNumberValid = true;
-			input.accountSourceGap = false;
 			input.sourceFrameNumber = 100;
 			const auto first = sequencer.Preview(input);
 			Assert::IsTrue(sequencer.Commit(first));
 
-			// VP's steady latest-wins queue deliberately replaced three stale
-			// live pictures. The next delivered picture owns the next display
-			// slot; it must not manufacture three empty renderer slots.
+			// The one-shot startup catch-up explicitly records its three local
+			// replacements. Only that ledger may suppress the corresponding source
+			// counter gap; ordinary steady delivery always accounts for a gap.
 			input.sourceFrameNumber = 104;
+			input.sourceGapSlotsToSuppress = 3;
 			const auto replacement = sequencer.Preview(input);
 			Assert::AreEqual<uint64_t>(3,
 				replacement.observedSourceGapSlotsBefore);
@@ -200,6 +200,27 @@ namespace Tests
 			Assert::IsTrue(replacement.sourceGapSuppressed);
 			Assert::AreEqual<VideoReferenceTime>(
 				first.stop, replacement.start);
+		}
+
+		TEST_METHOD(UnaccountedSteadySourceGapAdvancesTheRealTimeSchedule)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			input.sourceFrameNumber = 100;
+			Assert::IsTrue(sequencer.Commit(sequencer.Preview(input)));
+
+			// If a capture/transport sample is genuinely absent, compressing the
+			// source identity into the next output slot would make the scheduled
+			// lead decay by one frame. The slot remains in the timeline.
+			input.sourceFrameNumber = 102;
+			const auto afterGap = sequencer.Preview(input);
+			Assert::AreEqual<uint32_t>(1, afterGap.sourceGapSlotsBefore);
+			Assert::AreEqual<uint32_t>(2, afterGap.presentationSlotsConsumed);
+			Assert::AreEqual<VideoReferenceTime>(
+				input.presentationLead + VideoTimingController::RationalTimestamp(
+					2, 1001, 60000, input.ppmCorrection),
+				afterGap.start);
 		}
 
 		TEST_METHOD(IntentionalCatchUpRebaselinesWithoutAddingLead)
