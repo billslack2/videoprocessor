@@ -6,6 +6,21 @@ In progress (2026-08-02). Initial design/inventory investigation is underway;
 native RGB remains analysis-unavailable until each consumer has validated
 generation-safe evidence.
 
+## Progress evidence
+
+- 2026-08-02: Added the first bounded, non-owning analysis-input contract on
+  source branch `codex/vp-0075-native-rgb-analysis` at `4893e25`. It samples
+  P010 or direct native RGB in source coordinates and does not create a
+  full-frame P010 buffer or GPU readback.
+- Native Alpha NLS active-picture evidence and scene detection now consume
+  the contract. Direct DeckLink R210 is the primary test format; BGRA, R10b,
+  and R10l have layout coverage. Scope subtitle/glyph evidence remains
+  explicitly unavailable pending its denser corpus validation.
+- Focused x64 Release verification passed: 21 P010 active-picture, scene, and
+  native-RGB tests; library, VPRenderer DLL, and GUI builds all succeeded.
+  No deployed binaries were changed. Live DeckLink R210 and reference-corpus
+  playback/latency measurements are still required before parity is claimed.
+
 ## User story
 
 As an Alpha-renderer user with a direct/native RGB input path, I want NLS,
