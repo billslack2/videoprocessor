@@ -53,7 +53,7 @@ they must not contain requirements that are absent from this file.
 | VP-0019 | Done | SDR BT.2020 display profiles, F5/F6 hotkeys, and output signaling |
 | VP-0020 | Backlog | v210 arbitrary-width and DCI P010/P210 support |
 | VP-0021 | Backlog | Renderer format negotiation parity and truthful capability reporting |
-| VP-0022 | Backlog | DeckLink encoded-format boundary and diagnostics |
+| VP-0022 | Will Not Do | DeckLink encoded-format boundary and diagnostics |
 | VP-0023 | Backlog | P010 range metadata contract and conversion regression tests |
 | VP-0030 | Done | Rotate debug logs with a fixed default retention of ten files |
 | VP-0031 | Done | Make debug-log retention configurable |

@@ -2,7 +2,12 @@
 
 ## Status
 
-Backlog.
+Will Not Do (2026-08-02). VP is intentionally a raw-frame live-capture
+pipeline, and no current supported DeckLink workflow or user report reaches
+the encoded H.265/DNxHR packet boundary. The proposed diagnostics-only work is
+therefore not worth prioritizing. Revisit with a concrete reproducible mode,
+user demand, or an approved packet-decode design; do not infer support from
+this retained record.
 
 ## Context
 
