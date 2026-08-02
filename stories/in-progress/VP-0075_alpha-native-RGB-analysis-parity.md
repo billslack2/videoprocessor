@@ -3,9 +3,10 @@
 ## Status
 
 In progress (2026-08-02). A source-only, un-deployed bounded native-RGB
-analysis path now feeds active-picture/NLS and scene analysis; it remains
-validation-gated until reference-corpus and live-playback evidence is complete.
-Scope subtitle/glyph evidence remains unavailable until separately validated.
+analysis path now feeds active-picture/NLS, scene analysis, and the existing
+scope subtitle/bar evidence; it remains validation-gated until reference-corpus
+and live-playback evidence is complete. Broader VP-0070 glyph/relocation
+behavior remains out of scope and is not enabled by this story.
 
 ## Progress evidence
 
@@ -21,6 +22,12 @@ Scope subtitle/glyph evidence remains unavailable until separately validated.
   native-RGB tests; library, VPRenderer DLL, and GUI builds all succeeded.
   No deployed binaries were changed. Live DeckLink R210 and reference-corpus
   playback/latency measurements are still required before parity is claimed.
+- 2026-08-02: Rebased onto the current `v1.1.015-beta` integration branch and
+  added `6bc3ff3`, which feeds the existing scope subtitle/bar evidence from
+  the native source sampler and removes its recurring median-buffer heap
+  allocation. The unit corpus now covers R210 scope bars, pillarbox, dark
+  artwork, chromatic-dark rejection, and generation-safe scene input (23
+  focused tests). This is still validation-gated; no native build is deployed.
 
 ## User story
 
