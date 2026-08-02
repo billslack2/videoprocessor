@@ -2,7 +2,9 @@
 
 ## Status
 
-Backlog. No implementation has started.
+In progress (2026-08-02). Initial design/inventory investigation is underway;
+native RGB remains analysis-unavailable until each consumer has validated
+generation-safe evidence.
 
 ## User story
 
