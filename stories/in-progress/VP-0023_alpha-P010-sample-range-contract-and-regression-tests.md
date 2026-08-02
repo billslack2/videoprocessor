@@ -2,8 +2,16 @@
 
 ## Status
 
-Backlog. Narrowed 2026-08-02 to the Alpha/libplacebo renderer only. DirectShow
-and madVR format/range negotiation are deferred to VP-0021.
+In Progress. Began 2026-08-02 on `codex/vp-0023-alpha-p010-range` in the
+clean worktree `C:\\Users\\bslac\\vp\\videoprocessor-vp0023-alpha-p010`, based on
+the user-confirmed `origin/v1.1.015-beta` commit
+`0bede6bf052b71c7e29accadc936ed3af74d753b`.
+
+Readiness review: Alpha's explicit/fallback P010 path and its current
+encoding-based `pl_frame.repr.levels` selection are known. The intended change
+is a narrow formatter-output contract, Alpha integration coverage, exact
+code-value tests, and bounded diagnostics; DirectShow/madVR format/range
+negotiation remains deferred to VP-0021.
 
 ## Context
 
