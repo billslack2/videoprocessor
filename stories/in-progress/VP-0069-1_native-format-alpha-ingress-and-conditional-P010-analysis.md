@@ -106,6 +106,11 @@ Latest source commit: `20acbdd` (`fix(alpha): remove obsolete queue override`).
   Alpha therefore uses only `queue_size` as its hard capacity and
   `[queue] target_frames` as the maintained live target.
 - Rebuilt x64 Release and verified the complete suite: **461/461 passed**.
+- Deployed the clean x64 Release artifacts from source commit `20acbdd` to
+  `C:\\Videoprocessor\\vp` on 2026-08-02. Only `VideoProcessor.exe` and
+  `vprenderer\\VideoProcessorVPRenderer.dll` were replaced, each after a
+  timestamped backup and SHA-256 match; the active `VideoProcessor.cfg` was
+  not changed.
 
 ## User story
 
