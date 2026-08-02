@@ -7221,10 +7221,18 @@ void LibplaceboVideoRenderer::RenderLoop()
 				std::memory_order_relaxed);
 			if (presentationTargetTimingKnown)
 			{
+				// Use the raw hardware-capture timestamp here, rather than the
+				// offset-adjusted timestamp used for VP's internal timing. This
+				// makes Total comparable with the audio extraction boundary while
+				// leaving Alpha's immediate FIFO presentation unchanged.
+				const double captureToTargetMs = TimingClockDiffMs(
+					frame.GetCaptureTimingTimestamp(),
+					m_timingClock->TimingClockNow(),
+					m_timingClock->TimingClockTicksPerSecond()) + presentationTargetLeadMs;
 				m_presentationTargetLeadMs.store(presentationTargetLeadMs,
 					std::memory_order_relaxed);
 				m_captureToPresentationTargetMs.store(
-					captureToSubmitMs + presentationTargetLeadMs,
+					captureToTargetMs,
 					std::memory_order_relaxed);
 				m_presentationTargetTimingKnown.store(true,
 					std::memory_order_release);

@@ -593,10 +593,14 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 	if (m_stats.isAlphaRenderer)
 	{
-		// Alpha has no presentation-deadline scheduler yet. Its target-sync
-		// forecast is useful as Presentation, but cannot honestly be presented
-		// as the video delay relative to the extracted-audio timeline.
-		line = TEXT("Total:         ---");
+		// Alpha remains direct FIFO. Total is a measurement only: raw hardware
+		// capture to the forecast display target, so it is comparable with the
+		// audio extraction boundary without changing Alpha's scheduling.
+		if (m_stats.presentationTargetTimingKnown)
+			line.Format(TEXT("Total:         %.2f ms"),
+				m_stats.captureToPresentationTargetMs);
+		else
+			line = TEXT("Total:         ---");
 	}
 	else if (m_stats.scheduledLatencyKnown)
 		line.Format(TEXT("Total:         %.2f ms"), m_stats.scheduledLatencyMs);
