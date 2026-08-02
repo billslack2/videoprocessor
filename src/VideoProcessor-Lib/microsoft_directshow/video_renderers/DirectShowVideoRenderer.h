@@ -159,7 +159,10 @@ protected:
 		GRAPH_COMMAND_APPLICATION_STATE = 13,
 		GRAPH_COMMAND_PAINT = 14,
 		GRAPH_COMMAND_VIDEO_STATE = 15,
-		GRAPH_COMMAND_HDR_STATE = 16
+		GRAPH_COMMAND_HDR_STATE = 16,
+		// Low-rate, read-only madVR diagnostics must run in the graph owner's
+		// COM apartment. It is intentionally separate from graph control.
+		GRAPH_COMMAND_MADVR_RUNTIME_TELEMETRY = 17
 	};
 
 	template<typename Function>
@@ -243,6 +246,9 @@ protected:
 	mutable std::atomic<double> m_measuredFrameRate = 0.0;
 	mutable std::atomic<int> m_ppmDeviation = 0;
 	mutable std::atomic_bool m_hasPPMData = false;
+	// Capture callbacks must never query renderer COM interfaces directly.
+	// They coalesce one owner-thread, read-only snapshot at most every 30 s.
+	std::atomic<ULONGLONG> m_lastMadVRRuntimeTelemetryTick{0};
 	
 	// Cumulative cadence is measured from the last full renderer restart. The
 	// estimate is published periodically, but its measurement interval is never
@@ -293,6 +299,8 @@ protected:
 	virtual void RendererConnect() = 0;
 	virtual void RendererDestroy();
 	void RefreshDownstreamPrimeTarget();
+	void LogMadVRRuntimeInfo(const char* source, bool requireAnyKnownValue);
+	void MaybeScheduleMadVRRuntimeTelemetry();
 
 	virtual void MediaTypeGenerate() = 0;
 

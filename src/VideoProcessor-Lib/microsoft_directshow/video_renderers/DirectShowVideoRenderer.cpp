@@ -250,6 +250,7 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 
 	// Update PPM measurement with each frame
 	UpdatePPMMeasurement(frameTime);
+	MaybeScheduleMadVRRuntimeTelemetry();
 
 	// Get delay until now once in a while
 	if (m_frameCounter % 20 == 0)
@@ -1937,40 +1938,102 @@ void DirectShowVideoRenderer::RefreshDownstreamPrimeTarget()
 		settings->Release();
 	}
 
-	IMadVRInfo* info = nullptr;
-	if (m_pRenderer && SUCCEEDED(m_pRenderer->QueryInterface(
-		__uuidof(IMadVRInfo), reinterpret_cast<void**>(&info))) && info)
+	LogMadVRRuntimeInfo("graph-connect-or-reset", false);
+
+	// The aggregate remains diagnostic. Fresh-epoch priming always uses VP's
+	// configurable physical reservoir and allocator headroom; this publication
+	// is retained for per-epoch telemetry and future validated policy work.
+	m_liveSource->GetVideoOutputPin()->SetDownstreamPrimeTarget(targetFrames);
+}
+
+
+void DirectShowVideoRenderer::MaybeScheduleMadVRRuntimeTelemetry()
+{
+	// This runs on the capture callback, where it must stay lock-free and must
+	// never touch the renderer COM object. The actual query is serialized on the
+	// graph owner below. A 30 second period is diagnostic-only; it does not
+	// influence rate selection, queue control, reset policy, or delivery.
+	constexpr ULONGLONG kTelemetryPeriodMs = 30000;
+	const ULONGLONG now = GetTickCount64();
+	ULONGLONG previous = m_lastMadVRRuntimeTelemetryTick.load(
+		std::memory_order_acquire);
+	if (previous != 0 && now >= previous &&
+		now - previous < kTelemetryPeriodMs)
 	{
-		double refreshRate = 0.0;
-		ULONGLONG frameDuration = 0;
-		SIZE displayMode = {};
-		bool hdrOutput = false;
-		bool exclusiveMode = false;
-		bool dxvaDecode = false;
-		bool dxvaDeinterlace = false;
-		bool dxvaScaling = false;
-		bool ivtc = false;
-		int osdLatencyMs = 0;
-		const bool refreshKnown = SUCCEEDED(info->GetDouble("refreshRate", &refreshRate)) &&
-			refreshRate > 0.0;
-		const bool frameRateKnown = SUCCEEDED(info->GetUlonglong(
-			"frameRate", &frameDuration)) && frameDuration > 0;
-		const bool displayModeKnown = SUCCEEDED(info->GetSize(
-			"displayModeSize", &displayMode));
-		const bool hdrKnown = SUCCEEDED(info->GetBool("hdrOutput", &hdrOutput));
-		const bool exclusiveKnown = SUCCEEDED(info->GetBool(
-			"exclusiveModeActive", &exclusiveMode));
-		const bool osdLatencyKnown = SUCCEEDED(info->GetInt(
-			"osdLatency", &osdLatencyMs));
-		(void)info->GetBool("dxvaDecodingActive", &dxvaDecode);
-		(void)info->GetBool("dxvaDeinterlacingActive", &dxvaDeinterlace);
-		(void)info->GetBool("dxvaScalingActive", &dxvaScaling);
-		(void)info->GetBool("ivtcActive", &ivtc);
-		const double postDeinterlaceFps = frameRateKnown ?
-			10000000.0 / static_cast<double>(frameDuration) : 0.0;
+		return;
+	}
+	if (!m_lastMadVRRuntimeTelemetryTick.compare_exchange_strong(
+		previous, now, std::memory_order_acq_rel,
+		std::memory_order_acquire))
+	{
+		return;
+	}
+
+	if (!PostCoalescedGraphCommand(GRAPH_COMMAND_MADVR_RUNTIME_TELEMETRY,
+		[this]()
+		{
+			AssertGraphThread();
+			LogMadVRRuntimeInfo("periodic-30s", true);
+		}))
+	{
+		// Graph retirement can reject a post. Permit a new graph to sample
+		// immediately rather than incorrectly suppressing it for 30 seconds.
+		m_lastMadVRRuntimeTelemetryTick.store(0, std::memory_order_release);
+	}
+}
+
+
+void DirectShowVideoRenderer::LogMadVRRuntimeInfo(
+	const char* source, const bool requireAnyKnownValue)
+{
+	AssertGraphThread();
+	IMadVRInfo* info = nullptr;
+	if (!m_pRenderer || FAILED(m_pRenderer->QueryInterface(
+		__uuidof(IMadVRInfo), reinterpret_cast<void**>(&info))) || !info)
+	{
+		if (!requireAnyKnownValue)
+		{
+			DebugLog::Log(
+				"madVR runtime info: source=%s unavailable renderer=%p occupancy=unobservable",
+				source, m_pRenderer);
+		}
+		return;
+	}
+
+	double refreshRate = 0.0;
+	ULONGLONG frameDuration = 0;
+	SIZE displayMode = {};
+	bool hdrOutput = false;
+	bool exclusiveMode = false;
+	bool dxvaDecode = false;
+	bool dxvaDeinterlace = false;
+	bool dxvaScaling = false;
+	bool ivtc = false;
+	int osdLatencyMs = 0;
+	const bool refreshKnown = SUCCEEDED(info->GetDouble("refreshRate", &refreshRate)) &&
+		refreshRate > 0.0;
+	const bool frameRateKnown = SUCCEEDED(info->GetUlonglong(
+		"frameRate", &frameDuration)) && frameDuration > 0;
+	const bool displayModeKnown = SUCCEEDED(info->GetSize(
+		"displayModeSize", &displayMode));
+	const bool hdrKnown = SUCCEEDED(info->GetBool("hdrOutput", &hdrOutput));
+	const bool exclusiveKnown = SUCCEEDED(info->GetBool(
+		"exclusiveModeActive", &exclusiveMode));
+	const bool osdLatencyKnown = SUCCEEDED(info->GetInt(
+		"osdLatency", &osdLatencyMs));
+	(void)info->GetBool("dxvaDecodingActive", &dxvaDecode);
+	(void)info->GetBool("dxvaDeinterlacingActive", &dxvaDeinterlace);
+	(void)info->GetBool("dxvaScalingActive", &dxvaScaling);
+	(void)info->GetBool("ivtcActive", &ivtc);
+	const double postDeinterlaceFps = frameRateKnown ?
+		10000000.0 / static_cast<double>(frameDuration) : 0.0;
+	const bool anyKnownValue = refreshKnown || frameRateKnown ||
+		displayModeKnown || hdrKnown || exclusiveKnown || osdLatencyKnown;
+	if (!requireAnyKnownValue || anyKnownValue)
+	{
 		DebugLog::Log(
-			"madVR runtime info: detected_refresh_hz=%.6f refresh_known=%d post_deinterlace_fps=%.6f frame_rate_known=%d display_mode=%ldx%ld display_mode_known=%d hdr_output=%d hdr_known=%d exclusive=%d exclusive_known=%d osd_latency_ms=%d osd_latency_known=%d dxva_decode=%d dxva_deinterlace=%d dxva_scaling=%d ivtc=%d occupancy=unobservable",
-			refreshRate, refreshKnown ? 1 : 0,
+			"madVR runtime info: source=%s detected_refresh_hz=%.6f refresh_known=%d post_deinterlace_fps=%.6f frame_rate_known=%d display_mode=%ldx%ld display_mode_known=%d hdr_output=%d hdr_known=%d exclusive=%d exclusive_known=%d osd_latency_ms=%d osd_latency_known=%d dxva_decode=%d dxva_deinterlace=%d dxva_scaling=%d ivtc=%d occupancy=unobservable",
+			source, refreshRate, refreshKnown ? 1 : 0,
 			postDeinterlaceFps, frameRateKnown ? 1 : 0,
 			static_cast<long>(displayMode.cx), static_cast<long>(displayMode.cy),
 			displayModeKnown ? 1 : 0, hdrOutput ? 1 : 0, hdrKnown ? 1 : 0,
@@ -1978,19 +2041,8 @@ void DirectShowVideoRenderer::RefreshDownstreamPrimeTarget()
 			osdLatencyMs, osdLatencyKnown ? 1 : 0,
 			dxvaDecode ? 1 : 0, dxvaDeinterlace ? 1 : 0,
 			dxvaScaling ? 1 : 0, ivtc ? 1 : 0);
-		info->Release();
 	}
-	else
-	{
-		DebugLog::Log(
-			"Downstream prime settings unavailable: renderer=%p source=capacity-fallback occupancy=unobservable",
-			m_pRenderer);
-	}
-
-	// The aggregate remains diagnostic. Fresh-epoch priming always uses VP's
-	// configurable physical reservoir and allocator headroom; this publication
-	// is retained for per-epoch telemetry and future validated policy work.
-	m_liveSource->GetVideoOutputPin()->SetDownstreamPrimeTarget(targetFrames);
+	info->Release();
 }
 
 
