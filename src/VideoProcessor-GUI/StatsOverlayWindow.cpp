@@ -567,48 +567,48 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	// Separator
 	y += 4;
 
-	// VP-owned ingress-to-renderer handoff residence. This boundary is shared
-	// by DirectShow and Alpha, despite their different presentation owners.
-	if (m_stats.vpInternalLatencyKnown)
-		line.Format(TEXT("%-15s%.2f ms"), TEXT("Renderer:"),
-			m_stats.vpInternalLatencyMs);
-	else
-		line.Format(TEXT("%-15s---"), TEXT("Renderer:"));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	if (m_stats.isAlphaRenderer)
-	{
-		if (m_stats.presentationTargetTimingKnown)
-			line.Format(TEXT("%-15s%.2f ms"), TEXT("Presentation:"),
-				m_stats.presentationTargetLeadMs);
-		else
-			line.Format(TEXT("%-15s---"), TEXT("Presentation:"));
-	}
-	else if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("%-15s%.2f ms"), TEXT("Presentation:"),
-			m_stats.dsScheduleLeadMs);
-	else
-		line.Format(TEXT("%-15s---"), TEXT("Presentation:"));
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
 	if (m_stats.isAlphaRenderer)
 	{
 		// Alpha remains direct FIFO. Total is a measurement only: raw hardware
 		// capture to the forecast display target, so it is comparable with the
 		// audio extraction boundary without changing Alpha's scheduling.
 		if (m_stats.presentationTargetTimingKnown)
-			line.Format(TEXT("%-15s%.2f ms"), TEXT("Total:"),
+			line.Format(TEXT("%-15s%.0f ms"), TEXT("Delay:"),
 				m_stats.captureToPresentationTargetMs);
 		else
-			line.Format(TEXT("%-15s---"), TEXT("Total:"));
+			line.Format(TEXT("%-15s---"), TEXT("Delay:"));
 	}
 	else if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("%-15s%.2f ms"), TEXT("Total:"),
+		line.Format(TEXT("%-15s%.0f ms"), TEXT("Delay:"),
 			m_stats.scheduledLatencyMs);
 	else
-		line.Format(TEXT("%-15s---"), TEXT("Total:"));
+		line.Format(TEXT("%-15s---"), TEXT("Delay:"));
+	DrawText(hdc, line, PADDING, y);
+	y += lineHeight;
+
+	// VP-owned ingress-to-renderer handoff residence. This boundary is shared
+	// by DirectShow and Alpha, despite their different presentation owners.
+	if (m_stats.vpInternalLatencyKnown)
+		line.Format(TEXT("%-15s%.0f ms"), TEXT("- Renderer:"),
+			m_stats.vpInternalLatencyMs);
+	else
+		line.Format(TEXT("%-15s---"), TEXT("- Renderer:"));
+	DrawText(hdc, line, PADDING, y);
+	y += lineHeight;
+
+	if (m_stats.isAlphaRenderer)
+	{
+		if (m_stats.presentationTargetTimingKnown)
+			line.Format(TEXT("%-15s%.0f ms"), TEXT("- Present:"),
+				m_stats.presentationTargetLeadMs);
+		else
+			line.Format(TEXT("%-15s---"), TEXT("- Present:"));
+	}
+	else if (m_stats.scheduledLatencyKnown)
+		line.Format(TEXT("%-15s%.0f ms"), TEXT("- Present:"),
+			m_stats.dsScheduleLeadMs);
+	else
+		line.Format(TEXT("%-15s---"), TEXT("- Present:"));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
