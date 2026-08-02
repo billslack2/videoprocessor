@@ -2,10 +2,11 @@
 
 ## Status
 
-Backlog. This is a measured performance and architecture story, not a promise
-that every capture card, AVR, display, or projector can achieve 50 ms. It must
-first establish a reproducible latency baseline and separate VP-controlled
-latency from hardware/display latency.
+Done. Accepted 2026-08-02 as the completed VP-0069 native Alpha ingress and
+conditional-P010 delivery tranche. The remaining end-to-end 50 ms qualification
+and runtime shader-stall work have been deliberately split to VP-0074, a
+separate root story; this record must not be read as physical 50 ms
+capture-to-photon qualification.
 
 ## User story
 
@@ -150,8 +151,9 @@ hold the target without drops or unstable pacing.
 
 ## Decomposition
 
-The root remains the end-to-end latency objective and cannot close until its
-required child work and physical qualification are complete.
+The native-ingress child is complete. The unstarted end-to-end latency child
+was deliberately superseded by independent root VP-0074 so this root can close
+without conflating format delivery with physical latency qualification.
 
 1. **VP-0069-1 — Native-format Alpha ingress and conditional P010 analysis.**
    Establish whether the unconditional full-frame CPU P010 conversion can be
@@ -163,6 +165,15 @@ required child work and physical qualification are complete.
 VP-0059 is superseded by this root: its frame-offset requirements are retained
 above under **Frame-offset and timing policy**, and are evaluated as part of
 the end-to-end qualification rather than as a separate policy project.
+
+## Closing decision
+
+VP-0069-1 is accepted and deployed at source commit `20acbdd`; visual and log
+validation confirmed the lossless P210 ingress, explicit P010 fallback, and
+stable steady-state Alpha queue. VP-0069-2 is retained as a Will Not Do record
+because its work is moved unchanged into standalone VP-0074. The original
+50 ms physical target, including NLS shader cold-start recovery, remains open
+only in VP-0074.
 
 ## Out of scope
 

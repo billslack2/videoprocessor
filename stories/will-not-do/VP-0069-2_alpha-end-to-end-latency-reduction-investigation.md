@@ -2,11 +2,13 @@
 
 ## Status
 
-Backlog. Parent: VP-0069. Created 2026-08-02.
+Will Not Do. Parent: VP-0069. Closed 2026-08-02.
 
 This follows VP-0069-1's lossless native ingress work. It is deliberately
 deferred until physical capture-to-target telemetry identifies a material
 whole-frame opportunity. It does not authorize a raw-GPU v210 conversion.
+Its remaining work is superseded by standalone root VP-0074 so VP-0069 can
+close as the native-ingress delivery tranche.
 
 ## User story
 

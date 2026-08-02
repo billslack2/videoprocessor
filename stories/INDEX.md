@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0073`
-- Next root story number: `VP-0074`
-- Total indexed items: 88
+- Last assigned root story: `VP-0074`
+- Next root story number: `VP-0075`
+- Total indexed items: 89
 
 ## Story locations
 
@@ -93,9 +93,9 @@ they must not contain requirements that are absent from this file.
 | VP-0066 | Review | Re-architect the live video output pipeline into testable components |
 | VP-0067 | Backlog | Upgrade VideoProcessor to C++17 |
 | VP-0068 | Backlog | Evaluate a native Blackmagic SDK capture path and complete frame metadata contract |
-| VP-0069 | Backlog | Achieve and verify a 50 ms low-latency Alpha renderer path |
+| VP-0069 | Done | Achieve and verify a 50 ms low-latency Alpha renderer path |
 | VP-0069-1 | Done | Native-format Alpha ingress and conditional P010 analysis |
-| VP-0069-2 | Backlog | Alpha end-to-end latency reduction investigation |
+| VP-0069-2 | Will Not Do | Alpha end-to-end latency reduction investigation (superseded by VP-0074) |
 | VP-0070 | Backlog | CIH bar/boundary subtitle capture and relocation |
 | VP-0070-1 | Backlog | Bar/boundary CueSet architecture and detector benchmark |
 | VP-0070-2 | Backlog | Stable boundary-crossing diagnostic overlay |
@@ -105,6 +105,7 @@ they must not contain requirements that are absent from this file.
 | VP-0071 | Backlog | Compose the VP diagnostics OSD through madVR |
 | VP-0072 | Backlog | Repair or explicitly constrain DirectShow no-stop timestamp modes |
 | VP-0073 | Backlog | Diagnose and minimally repair keyboard-command responsiveness |
+| VP-0074 | Backlog | Alpha latency resilience and NLS shader cold-start recovery |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Review | Extract epoch-aware frame transport and processing components |
