@@ -2,12 +2,13 @@
 
 ## Status
 
-In progress. Parent: VP-0069.
+In Progress. Parent: VP-0069.
 
-Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
-`d6dbd8bd135e51c36cae5fc9e2013562808fcf13`, on local branch
+Rebased 2026-08-02 onto `origin/v1.1.015-beta` commit
+`7f1ae2f`, on local branch
 `codex/vp0069-1-native-alpha-ingress` in the clean linked worktree
 `C:\\Users\\bslac\\vp\\videoprocessor-vp0069-1`.
+Latest source commit: `20acbdd` (`fix(alpha): remove obsolete queue override`).
 
 ### Initial ingress trace (2026-08-02)
 
@@ -42,10 +43,11 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
   changing Alpha's immediate FIFO scheduling. Neither renderer reports
   physical panel processing or scanout latency.
 - Removed the Alpha-only `alpha_queue_size` setting. `queue_size` remains
-  Alpha's visible hard FIFO capacity (for example, 32); an explicit
-  `[queue] steady_reserve_frames` independently selects the lower live/prefill
-  target (for example, 2) via the same queue-policy call used by DirectShow.
-  The retired key is rejected by configuration validation.
+  Alpha's visible hard FIFO capacity (for example, 32); `[queue] target_frames`
+  independently selects the lower live/prefill target (for example, 2) via the
+  same queue-policy call used by DirectShow. The retired
+  `steady_reserve_frames` spelling is accepted only as compatibility input; the
+  retired Alpha-only key is rejected by configuration validation.
 - `Total` continues to use raw hardware capture so it
   measures the audio-relative capture-to-target delay rather than an arbitrary
   timestamp adjustment. During display-rate validation, the OSD shows the
@@ -96,21 +98,14 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
   Packed RGB mask tests prove r210/R10b/R10l component placement and endian
   handling. x64 Release build and test suite: **460/460 passed**.
 
-### GPU-v210 decision and latency follow-up (2026-08-02)
+### Beta queue configuration reconciliation (2026-08-02)
 
-- Do **not** move v210 unpacking into a custom GPU shader merely to save the
-  CPU P210 conversion. P210 already preserves the source samples and lets the
-  GPU spend its budget on tone mapping, scaling, and presentation. A raw-v210
-  shader would add color/analysis correctness risk while removing only a small
-  CPU copy; it does not remove a queue or display-sync interval.
-- Reconsider raw GPU v210 only after physical capture-to-target measurement
-  demonstrates a substantial net improvement (roughly 20 ms or more), with
-  no regression in tone-mapping time, presentation stability, or analysis.
-- The plausible whole-frame Alpha investigations are instead: measured
-  `steady_reserve_frames` depth, the D3D11 `max_frame_latency = 2` limit, and
-  the actual DXGI presentation model (composed/BitBlt versus flip/direct).
-  Each must be A/B measured using Alpha's capture-to-target, queue-age,
-  render, and swap-block telemetry before any default is changed.
+- After rebasing on beta commit `7f1ae2f`, removed the remaining stale
+  `alpha_queue_size` parsing, state, reference documentation, and public-field
+  inventory entry. The key remains deliberately rejected by schema validation.
+  Alpha therefore uses only `queue_size` as its hard capacity and
+  `[queue] target_frames` as the maintained live target.
+- Rebuilt x64 Release and verified the complete suite: **461/461 passed**.
 
 ## User story
 
