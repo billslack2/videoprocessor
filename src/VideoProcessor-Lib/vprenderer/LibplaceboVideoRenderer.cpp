@@ -2396,6 +2396,12 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t nlsGeometryGeneration = 0;
 	bool nlsRequested = false;
 	bool nativeRgbP010AnalysisUnavailable = false;
+	uint64_t nativeRgbAnalysisLoggedGeneration = 0;
+	VideoFrameEncoding nativeRgbAnalysisLoggedEncoding =
+		VideoFrameEncoding::UNKNOWN;
+	ColorSpace nativeRgbAnalysisLoggedColorspace = ColorSpace::UNKNOWN;
+	int nativeRgbAnalysisLoggedWidth = 0;
+	int nativeRgbAnalysisLoggedHeight = 0;
 	bool nlsGeometryAvailable = false;
 	bool nlsTransitionWithdrawn = false;
 	ActivePictureBounds nlsGeometry;
@@ -4891,8 +4897,8 @@ struct LibplaceboVideoRenderer::Impl
 		return true;
 	}
 
-	void UpdateNlsForFrame(const uint16_t* pixels, size_t dataBytes,
-		int width, int height, size_t rowBytes, uint64_t frameNumber,
+	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
+		uint64_t frameNumber,
 		double framesPerSecond, double targetAspect)
 	{
 		renderParams.hooks = nullptr;
@@ -4903,10 +4909,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (nlsTransition.ShouldAnalyze(frameNumber, framesPerSecond))
 		{
 			const P010ActivePictureEvidence evidence =
-				ExtractP010ActivePictureEvidence({
-					reinterpret_cast<const uint8_t*>(pixels),
-					dataBytes, width, height, rowBytes, rowBytes
-				});
+				ExtractActivePictureEvidence(analysisSource);
 			ActivePictureObservation observation;
 			observation.frameNumber = frameNumber;
 			observation.available = evidence.available;
@@ -4983,10 +4986,10 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			const MadVRActivePictureGeometry geometry = {
 				nlsGeometry.aspectRatio,
-				static_cast<double>(nlsGeometry.left) / width,
-				static_cast<double>(nlsGeometry.top) / height,
-				static_cast<double>(nlsGeometry.right) / width,
-				static_cast<double>(nlsGeometry.bottom) / height,
+				static_cast<double>(nlsGeometry.left) / analysisSource.width,
+				static_cast<double>(nlsGeometry.top) / analysisSource.height,
+				static_cast<double>(nlsGeometry.right) / analysisSource.width,
+				static_cast<double>(nlsGeometry.bottom) / analysisSource.height,
 				nlsGeometryGeneration, nlsRendererGeneration, true
 			};
 			MadVRShaderLoader::SetRuntimeActivePictureGeometry(geometry);
@@ -5091,8 +5094,6 @@ struct LibplaceboVideoRenderer::Impl
 
 		const int width = static_cast<int>(state.displayMode->FrameWidth());
 		const int height = static_cast<int>(state.displayMode->FrameHeight());
-		const bool p010AnalysisRequested = nlsRequested ||
-			sceneDetectionEnabled || scopeScreenActive;
 		AlphaNativeRgbLayout nativeRgbLayout;
 		const bool nativeRgbUpload =
 			videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE &&
@@ -5104,8 +5105,11 @@ struct LibplaceboVideoRenderer::Impl
 				state.videoFrameEncoding == VideoFrameEncoding::HDYC) &&
 			videoConversionOverride ==
 				VideoConversionOverride::VIDEOCONVERSION_NONE;
+		// Native RGB now supplies bounded luma/chroma evidence for NLS and scene
+		// analysis. Scope-subtitle fitting remains deliberately unavailable until
+		// its high-density glyph corpus validates this source-native sampler.
 		const bool nativeRgbAnalysisUnavailable = nativeRgbUpload &&
-			p010AnalysisRequested;
+			scopeScreenActive;
 		if (nativeRgbAnalysisUnavailable != nativeRgbP010AnalysisUnavailable)
 		{
 			nativeRgbP010AnalysisUnavailable = nativeRgbAnalysisUnavailable;
@@ -5121,21 +5125,9 @@ struct LibplaceboVideoRenderer::Impl
 			sceneDetector.Reset(sceneDetectorGeneration);
 			if (nativeRgbAnalysisUnavailable)
 			{
-				if (nlsRequested)
-				{
-					SetShaderStatus("NLS: unavailable (native RGB)");
-					MadVRShaderLoader::SetRuntimeShaderSelection(
-						requestedShaderSelector, requestedShaderSelector,
-						MadVRNlsMappingMode::OFF);
-				}
-				if (sceneDetectionEnabled)
-					sceneDetectionStatus.store(
-						static_cast<int>(SceneDetectorStatus::Failed),
-						std::memory_order_release);
 				DebugLog::Log(
-					"Alpha native RGB: P010-only analysis disabled (nls=%d scene=%d scope_subtitle=%d)",
-					nlsRequested ? 1 : 0, sceneDetectionEnabled ? 1 : 0,
-					scopeScreenActive ? 1 : 0);
+					"Alpha native RGB analysis: native sparse NLS=%d scene=%d; scope subtitle unavailable pending glyph validation",
+					nlsRequested ? 1 : 0, sceneDetectionEnabled ? 1 : 0);
 			}
 			else
 			{
@@ -5145,7 +5137,7 @@ struct LibplaceboVideoRenderer::Impl
 					sceneDetectionStatus.store(
 						static_cast<int>(SceneDetectorStatus::Warming),
 						std::memory_order_release);
-				DebugLog::Log("Alpha P010-only analysis restored");
+				DebugLog::Log("Alpha native RGB analysis availability restored");
 			}
 		}
 		if (nativeRgbAnalysisUnavailable)
@@ -5155,17 +5147,8 @@ struct LibplaceboVideoRenderer::Impl
 			// certain a previously loaded hook cannot survive that change.
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
-			if (nlsRequested)
-			{
-				SetShaderStatus("NLS: unavailable (native RGB)");
-				MadVRShaderLoader::SetRuntimeShaderSelection(
-					requestedShaderSelector, requestedShaderSelector,
-					MadVRNlsMappingMode::OFF);
-			}
-			if (sceneDetectionEnabled)
-				sceneDetectionStatus.store(
-					static_cast<int>(SceneDetectorStatus::Failed),
-					std::memory_order_release);
+			// Do not withdraw NLS or scene capability here: they use the native
+			// sparse source below. Only the scope-subtitle consumer is withheld.
 		}
 		const size_t p010RowBytes =
 			static_cast<size_t>(width) * sizeof(uint16_t);
@@ -5173,6 +5156,7 @@ struct LibplaceboVideoRenderer::Impl
 		const BYTE* yPixels = nullptr;
 		const BYTE* uvPixels = nullptr;
 		VideoFrameFormatterOutputContract formattedContract;
+		AnalysisLumaSource analysisSource;
 		bool formatterStateChanged = false;
 		bool logFormatterContract = false;
 		if (!nativeRgbUpload)
@@ -5214,23 +5198,92 @@ struct LibplaceboVideoRenderer::Impl
 					state.videoFrameEncoding == VideoFrameEncoding::V210 &&
 						width == 1280 && height == 720 && !lossless422Upload);
 			}
-			UpdateNlsForFrame(
-				reinterpret_cast<const uint16_t*>(yPixels),
-				convertedFrame.size(), width, height, p010RowBytes,
-				sourceSequence, state.displayMode->RefreshRateHz(),
+		}
+		if (nativeRgbUpload)
+		{
+			analysisSource = {
+				reinterpret_cast<const uint8_t*>(videoFrame.GetData()),
+				static_cast<size_t>(state.BytesPerFrame()), width, height,
+				static_cast<size_t>(state.BytesPerRow()), 0,
+				AnalysisLumaFormat::NativeRgb, state.videoFrameEncoding,
+				state.colorspace, frameGeneration
+			};
+		}
+		else
+		{
+			analysisSource = {
+				yPixels, convertedFrame.size(), width, height, p010RowBytes,
+				p010RowBytes, AnalysisLumaFormat::P010,
+				state.videoFrameEncoding, state.colorspace, frameGeneration
+			};
+		}
+		if (!analysisSource.IsValid())
+		{
+			renderParams.hooks = nullptr;
+			renderParams.num_hooks = 0;
+			nlsTransition.Reset();
+			nlsGeometryAvailable = false;
+			nlsTransitionWithdrawn = true;
+			nlsGeometry = {};
+			nlsDecision = {};
+			pl_mpv_user_shader_destroy(&nlsHook);
+			nlsHookSignature.clear();
+			if (nlsRequested)
+			{
+				SetShaderStatus("NLS: unavailable (analysis input)");
+				MadVRShaderLoader::SetRuntimeShaderSelection(
+					requestedShaderSelector, requestedShaderSelector,
+					MadVRNlsMappingMode::OFF);
+			}
+			if (sceneDetectionEnabled)
+				sceneDetectionStatus.store(
+					static_cast<int>(SceneDetectorStatus::Failed),
+					std::memory_order_release);
+			DebugLog::Log("Alpha analysis unavailable: format=%d path=%s dimensions=%dx%d generation=%llu",
+				static_cast<int>(state.videoFrameEncoding),
+				AnalysisLumaFormatName(analysisSource), width, height,
+				static_cast<unsigned long long>(frameGeneration));
+		}
+		else
+		{
+			if (nativeRgbUpload &&
+				(nativeRgbAnalysisLoggedGeneration != frameGeneration ||
+					nativeRgbAnalysisLoggedEncoding != state.videoFrameEncoding ||
+					nativeRgbAnalysisLoggedColorspace != state.colorspace ||
+					nativeRgbAnalysisLoggedWidth != width ||
+					nativeRgbAnalysisLoggedHeight != height))
+			{
+				nativeRgbAnalysisLoggedGeneration = frameGeneration;
+				nativeRgbAnalysisLoggedEncoding = state.videoFrameEncoding;
+				nativeRgbAnalysisLoggedColorspace = state.colorspace;
+				nativeRgbAnalysisLoggedWidth = width;
+				nativeRgbAnalysisLoggedHeight = height;
+				DebugLog::Log(
+					"Alpha native RGB analysis: ingress=%s color_space=%d eotf=%d range=full representation=%s %dx%d source_transform=identity encoded_luma=BT.%s bounded_active_samples=<30000 scene_samples=576 generation=%llu consumers[nls=%s scene=%s scope_subtitle=%s]",
+					nativeRgbLayout.label,
+					static_cast<int>(state.colorspace), static_cast<int>(state.eotf),
+					AnalysisLumaFormatName(analysisSource), width, height,
+					state.colorspace == ColorSpace::BT_2020 ? "2020" : "709",
+					static_cast<unsigned long long>(frameGeneration),
+					nlsRequested ? "available" : "disabled",
+					sceneDetectionEnabled ? "available" : "disabled",
+					scopeScreenActive ? "unavailable:glyph validation pending" : "disabled");
+			}
+			UpdateNlsForFrame(analysisSource, sourceSequence,
+				state.displayMode->RefreshRateHz(),
 				scopeScreenActive ? scopeScreenAspect : 16.0 / 9.0);
 		}
 		SceneDetectorResult sceneResult;
-		if (!cadenceRepeat && !nativeRgbUpload)
+		if (!cadenceRepeat && analysisSource.IsValid())
 		{
 			sceneResult = sceneDetector.Analyze({
 				reinterpret_cast<const uint16_t*>(yPixels),
 				static_cast<size_t>(width), static_cast<size_t>(height), p010RowBytes,
 				sourceSequence, videoFrame.GetTimingTimestamp(),
 				sceneDetectorGeneration, state.displayMode->FrameDuration(),
-				sceneDetectionEnabled });
+				sceneDetectionEnabled, &analysisSource });
 		}
-		if (!cadenceRepeat && !nativeRgbUpload)
+		if (!cadenceRepeat && analysisSource.IsValid())
 			sceneDetectionStatus.store(
 				static_cast<int>(sceneResult.status), std::memory_order_release);
 		if (!cadenceRepeat && sceneResult.safeBoundary)
@@ -5248,7 +5301,7 @@ struct LibplaceboVideoRenderer::Impl
 			const AlphaPresentationSnapshot presentation =
 				presentationTelemetry.Snapshot();
 			AlphaCadenceCorrectionInput correctionInput;
-			correctionInput.enabled = sceneDetectionEnabled && !nativeRgbUpload;
+			correctionInput.enabled = sceneDetectionEnabled && analysisSource.IsValid();
 			// Queue replacement and detector/source replacement are independent
 			// reset boundaries. Fold both into the policy epoch so neither can
 			// inherit a pending action or retained phase from the other.
@@ -5307,8 +5360,10 @@ struct LibplaceboVideoRenderer::Impl
 			image.planes[0].shift_y = 0.0f;
 			image.planes[0].flipped = state.invertedVertical;
 			ingressStatus = nativeRgbLayout.label;
-			if (nativeRgbAnalysisUnavailable)
-				ingressStatus += " (P010 analysis unavailable)";
+			if (!analysisSource.IsValid())
+				ingressStatus += " (analysis unavailable)";
+			else if (nativeRgbAnalysisUnavailable)
+				ingressStatus += " (scope subtitle analysis unavailable)";
 		}
 		else
 		{

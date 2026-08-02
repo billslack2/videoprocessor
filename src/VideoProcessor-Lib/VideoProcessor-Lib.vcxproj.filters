@@ -309,6 +309,9 @@
     <ClInclude Include="P010ActivePictureEvidence.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+	<ClInclude Include="AnalysisLumaSource.h">
+	  <Filter>Header Files</Filter>
+	</ClInclude>
     <ClInclude Include="MainConfigSchema.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -365,6 +368,9 @@
     <ClCompile Include="P010ActivePictureEvidence.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+	<ClCompile Include="AnalysisLumaSource.cpp">
+	  <Filter>Source Files</Filter>
+	</ClCompile>
     <ClCompile Include="ACaptureDeviceDiscoverer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
