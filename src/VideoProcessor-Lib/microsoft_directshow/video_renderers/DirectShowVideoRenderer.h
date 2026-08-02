@@ -138,6 +138,7 @@ public:
 	
 	// Get frame rate measurement and PPM deviation (for timing diagnostics)
 	bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const override;
+	bool GetDetectedDisplayRefreshRate(double& refreshRateHz) const override;
 	bool GetActivePictureAspectRatio(double& aspectRatio) const;
 	bool GetActivePictureRectangle(ActivePictureRectangle& rectangle) const;
 
@@ -246,6 +247,10 @@ protected:
 	mutable std::atomic<double> m_measuredFrameRate = 0.0;
 	mutable std::atomic<int> m_ppmDeviation = 0;
 	mutable std::atomic_bool m_hasPPMData = false;
+	// Published by the graph-owner's IMadVRInfo query and read by the UI. It is
+	// cleared for every graph lifetime boundary, so a prior HDMI mode can never
+	// become the selected timing source for the next renderer instance.
+	std::atomic<double> m_madVRDetectedRefreshRateHz{0.0};
 	// Capture callbacks must never query renderer COM interfaces directly.
 	// They coalesce one owner-thread, read-only snapshot at most every 30 s.
 	std::atomic<ULONGLONG> m_lastMadVRRuntimeTelemetryTick{0};

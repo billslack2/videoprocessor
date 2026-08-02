@@ -7330,8 +7330,18 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	const bool displayRefreshRateOverridden = nominalInputRefreshRate > 0.0 &&
 		TryGetDisplayRefreshRateOverride(nominalInputRefreshRate,
 			configuredDisplayRefreshRate, matchedOverrideNominalRate);
+	double madVRDetectedRefreshRate = 0.0;
+	const bool madVRDetectedRefreshRateKnown =
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_videoRenderer && m_videoRenderer->GetDetectedDisplayRefreshRate(
+			madVRDetectedRefreshRate);
+	// An explicit configuration remains authoritative. Otherwise, madVR's own
+	// settled display measurement is preferred for its graph. DXGI remains the
+	// immediate source during HDMI/renderer warm-up and the fallback for Alpha.
 	const double displayRefreshRate = displayRefreshRateOverridden ?
-		configuredDisplayRefreshRate : measuredDisplayRefreshRate;
+		configuredDisplayRefreshRate :
+		(madVRDetectedRefreshRateKnown ? madVRDetectedRefreshRate :
+			measuredDisplayRefreshRate);
 	const std::wstring monitorDeviceName = GetMonitorDeviceName(displayWindow);
 	const double dxgiTargetMismatchPpm =
 		sampledDisplayTiming.refreshRateHz > 0.0 &&
@@ -7425,6 +7435,12 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 					<< configuredDisplayRefreshRate << " Hz";
 				selectedSource = "CONFIG OVERRIDE";
 			}
+			else if (madVRDetectedRefreshRateKnown)
+			{
+				selectedRateText << std::fixed << std::setprecision(6)
+					<< madVRDetectedRefreshRate << " Hz";
+				selectedSource = "madVR detected refresh";
+			}
 			else if (measuredDisplayRefreshRate > 0.0)
 			{
 				selectedRateText << std::fixed << std::setprecision(6)
@@ -7449,7 +7465,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				static_cast<double>(displayTimingLogTick -
 					lastAcceptedTick) / 1000.0 : 0.0;
 			const char* preventedConsumers =
-				displayRefreshRateOverridden ||
+				displayRefreshRateOverridden || madVRDetectedRefreshRateKnown ||
 				displayRateResult.decision ==
 					DisplayRefreshRateDecision::Accepted ?
 				"none" : "OSD,scene-aware,PPM/delivery";

@@ -413,4 +413,13 @@ public:
 		return false;  // No frame rate measurement by default
 	}
 
+	// Returns the renderer's own detected display refresh rate when available.
+	// This is distinct from the capture/source frame rate. Renderers that do not
+	// expose a presentation-timing query retain the DXGI/Windows fallback.
+	virtual bool GetDetectedDisplayRefreshRate(double& refreshRateHz) const
+	{
+		refreshRateHz = 0.0;
+		return false;
+	}
+
 };

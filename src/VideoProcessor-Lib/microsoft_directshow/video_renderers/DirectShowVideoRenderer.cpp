@@ -1296,6 +1296,7 @@ void DirectShowVideoRenderer::WakeForOwnerCompletion() const
 void DirectShowVideoRenderer::GraphBuild()
 {
 	AssertGraphThread();
+	m_madVRDetectedRefreshRateHz.store(0.0, std::memory_order_release);
 	const ULONGLONG buildStart = GetTickCount64();
 	ULONGLONG phaseStart = buildStart;
 	ULONGLONG filterGraphMs = 0;
@@ -1996,6 +1997,7 @@ void DirectShowVideoRenderer::LogMadVRRuntimeInfo(
 	if (!m_pRenderer || FAILED(m_pRenderer->QueryInterface(
 		__uuidof(IMadVRInfo), reinterpret_cast<void**>(&info))) || !info)
 	{
+		m_madVRDetectedRefreshRateHz.store(0.0, std::memory_order_release);
 		if (!requireAnyKnownValue)
 		{
 			DebugLog::Log(
@@ -2026,6 +2028,8 @@ void DirectShowVideoRenderer::LogMadVRRuntimeInfo(
 	int yuvMatrixChars = 0;
 	const bool refreshKnown = SUCCEEDED(info->GetDouble("refreshRate", &refreshRate)) &&
 		refreshRate > 0.0;
+	m_madVRDetectedRefreshRateHz.store(
+		refreshKnown ? refreshRate : 0.0, std::memory_order_release);
 	const bool frameRateKnown = SUCCEEDED(info->GetUlonglong(
 		"frameRate", &frameDuration)) && frameDuration > 0;
 	const bool displayModeKnown = SUCCEEDED(info->GetSize(
@@ -2098,6 +2102,7 @@ void DirectShowVideoRenderer::LogMadVRRuntimeInfo(
 void DirectShowVideoRenderer::RendererDestroy()
 {
 	AssertGraphThread();
+	m_madVRDetectedRefreshRateHz.store(0.0, std::memory_order_release);
 	if (m_pRenderer)
 	{
 		m_pRenderer->Release();
@@ -2140,6 +2145,14 @@ bool DirectShowVideoRenderer::GetFrameRateAndPPM(double& measuredFps, int& ppmDe
 	measuredFps = m_measuredFrameRate.load(std::memory_order_relaxed);
 	ppmDeviation = m_ppmDeviation.load(std::memory_order_relaxed);
 	return true;
+}
+
+
+bool DirectShowVideoRenderer::GetDetectedDisplayRefreshRate(
+	double& refreshRateHz) const
+{
+	refreshRateHz = m_madVRDetectedRefreshRateHz.load(std::memory_order_acquire);
+	return refreshRateHz >= 10.0 && refreshRateHz <= 240.0;
 }
 
 void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) const
