@@ -13,6 +13,11 @@ Release build and live viewport validation.
 - 2026-08-02: `VideoProcessor-Test` x64 Release built successfully; the four
   `NativeStatsOverlayPlacementTests` cases passed (full frame, scope,
   letterbox/pillarbox, and constrained small picture).
+- 2026-08-02: Deployed the matching x64 Release pair from `0bede6b` to
+  `C:\Videoprocessor\vp` after backing up the previous executable and Alpha
+  plugin pair. SHA-256 verification matched both artifacts; startup logging
+  confirms the Alpha plugin loaded (API 8) and the persisted scope viewport
+  was restored. Live visual placement validation remains pending.
 - Live Alpha validation on 16:9 and scope/CIH content remains pending before
   this story can move to review.
 
