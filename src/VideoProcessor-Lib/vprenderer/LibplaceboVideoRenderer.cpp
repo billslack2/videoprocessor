@@ -16,12 +16,15 @@
 #include <vprenderer/AlphaQueuePolicy.h>
 #include <vprenderer/LibplaceboDisplayLut.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
+#include <vprenderer/AlphaNativeRgbIngress.h>
 #include <SceneDetector.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CUYVYtoP210VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
 
 #pragma warning(push)
 #pragma warning(disable: 4244) // conversion warning in an upstream inline helper
@@ -610,19 +613,50 @@ namespace
 		return result;
 	}
 
-	std::unique_ptr<IVideoFrameFormatter> CreateP010Formatter(VideoFrameEncoding encoding)
+	bool IsNativeRgbUpload(VideoFrameEncoding encoding,
+		VideoConversionOverride videoConversionOverride)
+	{
+		AlphaNativeRgbLayout layout;
+		return videoConversionOverride ==
+			VideoConversionOverride::VIDEOCONVERSION_NONE &&
+			GetAlphaNativeRgbLayout(encoding, layout);
+	}
+
+	std::unique_ptr<IVideoFrameFormatter> CreateAlphaFormatter(
+		VideoFrameEncoding encoding,
+		VideoConversionOverride videoConversionOverride)
 	{
 		switch (encoding)
 		{
 		case VideoFrameEncoding::V210:
+			// v210 is 10-bit 4:2:2. When P010 has not been explicitly
+			// requested, retain its vertical chroma resolution in P210 rather
+			// than silently reducing it to P010's 4:2:0 representation.
+			if (videoConversionOverride ==
+				VideoConversionOverride::VIDEOCONVERSION_NONE)
+			{
+				return std::unique_ptr<IVideoFrameFormatter>(
+					new CV210toP210VideoFrameFormatter());
+			}
 			return std::unique_ptr<IVideoFrameFormatter>(new CV210toP010VideoFrameFormatter());
 		case VideoFrameEncoding::UYVY:
-			return std::unique_ptr<IVideoFrameFormatter>(new CUYVYtoP010VideoFrameFormatter());
+		case VideoFrameEncoding::HDYC:
+			// UYVY/HDYC are 8-bit 4:2:2. Keep every captured chroma row in
+			// P210 unless the user explicitly selects the P010 conversion.
+			if (videoConversionOverride ==
+				VideoConversionOverride::VIDEOCONVERSION_NONE)
+			{
+				return std::unique_ptr<IVideoFrameFormatter>(
+					new CUYVYtoP210VideoFrameFormatter());
+			}
+			return std::unique_ptr<IVideoFrameFormatter>(
+				new CUYVYtoP010VideoFrameFormatter());
 		case VideoFrameEncoding::ARGB_8BIT:
 		case VideoFrameEncoding::BGRA_8BIT:
 			return std::unique_ptr<IVideoFrameFormatter>(new CARGBtoP010VideoFrameFormatter());
 		case VideoFrameEncoding::R10b:
 		case VideoFrameEncoding::R10l:
+		case VideoFrameEncoding::R210:
 		case VideoFrameEncoding::R12L:
 			return std::unique_ptr<IVideoFrameFormatter>(new CDeckLinkRGBToP010VideoFrameFormatter());
 		default:
@@ -2269,6 +2303,7 @@ struct LibplaceboVideoRenderer::Impl
 	std::unique_ptr<IVideoFrameFormatter> formatter;
 	VideoStateComPtr formatterState;
 	std::vector<BYTE> convertedFrame;
+	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
 	ActivePictureTransitionModel nlsTransition;
 	ConfiguredShaderRule nlsRule;
@@ -2278,6 +2313,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t nlsRendererGeneration = 0;
 	uint64_t nlsGeometryGeneration = 0;
 	bool nlsRequested = false;
+	bool nativeRgbP010AnalysisUnavailable = false;
 	bool nlsGeometryAvailable = false;
 	bool nlsTransitionWithdrawn = false;
 	ActivePictureBounds nlsGeometry;
@@ -4308,7 +4344,8 @@ struct LibplaceboVideoRenderer::Impl
 	}
 
 	void Initialize(HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule,
-		const std::map<std::string, std::string>& manualUnifiedProfiles)
+		const std::map<std::string, std::string>& manualUnifiedProfiles,
+		VideoConversionOverride videoConversionOverride)
 	{
 		this->videoHwnd = videoHwnd;
 		const RendererSettings settings = LoadRendererSettings(
@@ -4442,15 +4479,26 @@ struct LibplaceboVideoRenderer::Impl
 		if (!renderer)
 			throw std::runtime_error("Failed to create libplacebo renderer");
 
-		formatter = CreateP010Formatter(state->videoFrameEncoding);
-		formatter->OnVideoState(state);
-		formatterState = state;
-		convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
+		if (!IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride))
+		{
+			formatter = CreateAlphaFormatter(state->videoFrameEncoding,
+				videoConversionOverride);
+			formatter->OnVideoState(state);
+			formatterState = state;
+			convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
+		}
 		LoadDisplayLut(settings);
 		ConfigureRenderParams(settings);
 
 		DebugLog::Log(
-			"libplacebo initialized: D3D11, P010 upload, SDR target request=%s %.1f nits",
+			"libplacebo initialized: D3D11, %s upload, SDR target request=%s %.1f nits",
+			IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride) ?
+				"native RGB" :
+			((state->videoFrameEncoding == VideoFrameEncoding::V210 ||
+				state->videoFrameEncoding == VideoFrameEncoding::UYVY ||
+				state->videoFrameEncoding == VideoFrameEncoding::HDYC) &&
+				videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE ?
+					"lossless P210" : "P010"),
 			targetBt2020 ? "BT.2020" : "Rec.709",
 			sdrTargetNits);
 	}
@@ -4785,10 +4833,13 @@ struct LibplaceboVideoRenderer::Impl
 		uint64_t screenProfileRequestSerial,
 		int64_t screenProfileRequestNs,
 		bool sceneDetectionEnabled,
+		VideoConversionOverride videoConversionOverride,
 		uint64_t sceneDetectorGeneration,
 		std::atomic<uint64_t>& sceneDetectedCount,
 		std::atomic<int>& sceneDetectionStatus,
-		AlphaCadenceCorrectionDecision& correctionDecision)
+		AlphaCadenceCorrectionDecision& correctionDecision,
+		bool& presentationTargetTimingKnown,
+		double& presentationTargetLeadMs)
 	{
 		const HMONITOR currentMonitor = MonitorFromWindow(
 			videoHwnd,
@@ -4810,12 +4861,6 @@ struct LibplaceboVideoRenderer::Impl
 			return false;
 		const VideoState& state = *statePtr;
 
-		if (!formatterState || formatterState->colorspace != state.colorspace)
-		{
-			formatter->OnVideoState(statePtr);
-			formatterState = statePtr;
-		}
-
 		if (lastRenderedEotf != EOTF::UNKNOWN &&
 			(lastRenderedEotf != state.eotf || lastRenderedColorspace != state.colorspace))
 		{
@@ -4824,30 +4869,120 @@ struct LibplaceboVideoRenderer::Impl
 			pl_renderer_flush_cache(renderer);
 		}
 
-		if (!formatter->FormatVideoFrame(videoFrame, convertedFrame.data()))
-			return false;
-
 		const int width = static_cast<int>(state.displayMode->FrameWidth());
 		const int height = static_cast<int>(state.displayMode->FrameHeight());
-		const size_t rowBytes = static_cast<size_t>(width) * sizeof(uint16_t);
-		const BYTE* yPixels = convertedFrame.data();
-		const BYTE* uvPixels = yPixels + rowBytes * static_cast<size_t>(height);
-		UpdateNlsForFrame(
-			reinterpret_cast<const uint16_t*>(yPixels),
-			convertedFrame.size(), width, height, rowBytes,
-			sourceSequence, state.displayMode->RefreshRateHz(),
-			scopeScreenActive ? scopeScreenAspect : 16.0 / 9.0);
+		const bool p010AnalysisRequested = nlsRequested ||
+			sceneDetectionEnabled || scopeScreenActive;
+		AlphaNativeRgbLayout nativeRgbLayout;
+		const bool nativeRgbUpload =
+			videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE &&
+			GetAlphaNativeRgbLayout(state.videoFrameEncoding, nativeRgbLayout);
+		const bool nativeRgb8Upload = nativeRgbLayout.bitDepth == 8;
+		const bool yuv8BitSource =
+			state.videoFrameEncoding == VideoFrameEncoding::UYVY ||
+			state.videoFrameEncoding == VideoFrameEncoding::HDYC;
+		const bool lossless422Upload =
+			(state.videoFrameEncoding == VideoFrameEncoding::V210 ||
+				state.videoFrameEncoding == VideoFrameEncoding::UYVY ||
+				state.videoFrameEncoding == VideoFrameEncoding::HDYC) &&
+			videoConversionOverride ==
+				VideoConversionOverride::VIDEOCONVERSION_NONE;
+		const bool nativeRgbAnalysisUnavailable = nativeRgbUpload &&
+			p010AnalysisRequested;
+		if (nativeRgbAnalysisUnavailable != nativeRgbP010AnalysisUnavailable)
+		{
+			nativeRgbP010AnalysisUnavailable = nativeRgbAnalysisUnavailable;
+			nlsTransition.Reset();
+			nlsGeometryAvailable = false;
+			nlsTransitionWithdrawn = false;
+			nlsGeometry = {};
+			nlsDecision = {};
+			renderParams.hooks = nullptr;
+			renderParams.num_hooks = 0;
+			pl_mpv_user_shader_destroy(&nlsHook);
+			nlsHookSignature.clear();
+			sceneDetector.Reset(sceneDetectorGeneration);
+			if (nativeRgbAnalysisUnavailable)
+			{
+				if (nlsRequested)
+				{
+					SetShaderStatus("NLS: unavailable (native RGB)");
+					MadVRShaderLoader::SetRuntimeShaderSelection(
+						requestedShaderSelector, requestedShaderSelector,
+						MadVRNlsMappingMode::OFF);
+				}
+				if (sceneDetectionEnabled)
+					sceneDetectionStatus.store(
+						static_cast<int>(SceneDetectorStatus::Failed),
+						std::memory_order_release);
+				DebugLog::Log(
+					"Alpha native RGB: P010-only analysis disabled (nls=%d scene=%d scope_subtitle=%d)",
+					nlsRequested ? 1 : 0, sceneDetectionEnabled ? 1 : 0,
+					scopeScreenActive ? 1 : 0);
+			}
+			else
+			{
+				if (nlsRequested)
+					SetShaderStatus("NLS: Waiting");
+				if (sceneDetectionEnabled)
+					sceneDetectionStatus.store(
+						static_cast<int>(SceneDetectorStatus::Warming),
+						std::memory_order_release);
+				DebugLog::Log("Alpha P010-only analysis restored");
+			}
+		}
+		if (nativeRgbAnalysisUnavailable)
+		{
+			// A configuration change can arm NLS or scene detection while native
+			// RGB is already active. Keep the unsupported state explicit and make
+			// certain a previously loaded hook cannot survive that change.
+			renderParams.hooks = nullptr;
+			renderParams.num_hooks = 0;
+			if (nlsRequested)
+			{
+				SetShaderStatus("NLS: unavailable (native RGB)");
+				MadVRShaderLoader::SetRuntimeShaderSelection(
+					requestedShaderSelector, requestedShaderSelector,
+					MadVRNlsMappingMode::OFF);
+			}
+			if (sceneDetectionEnabled)
+				sceneDetectionStatus.store(
+					static_cast<int>(SceneDetectorStatus::Failed),
+					std::memory_order_release);
+		}
+		const size_t p010RowBytes =
+			static_cast<size_t>(width) * sizeof(uint16_t);
+		const int chromaHeight = lossless422Upload ? height : (height + 1) / 2;
+		const BYTE* yPixels = nullptr;
+		const BYTE* uvPixels = nullptr;
+		if (!nativeRgbUpload)
+		{
+			if (!formatterState || formatterState->colorspace != state.colorspace)
+			{
+				formatter->OnVideoState(statePtr);
+				formatterState = statePtr;
+			}
+			if (!formatter->FormatVideoFrame(videoFrame, convertedFrame.data()))
+				return false;
+			yPixels = convertedFrame.data();
+			uvPixels = yPixels + p010RowBytes * static_cast<size_t>(height);
+			UpdateNlsForFrame(
+				reinterpret_cast<const uint16_t*>(yPixels),
+				convertedFrame.size(), width, height, p010RowBytes,
+				sourceSequence, state.displayMode->RefreshRateHz(),
+				scopeScreenActive ? scopeScreenAspect : 16.0 / 9.0);
+		}
 		SceneDetectorResult sceneResult;
-		if (!cadenceRepeat)
+		if (!cadenceRepeat && !nativeRgbUpload)
 		{
 			sceneResult = sceneDetector.Analyze({
 				reinterpret_cast<const uint16_t*>(yPixels),
-				static_cast<size_t>(width), static_cast<size_t>(height), rowBytes,
+				static_cast<size_t>(width), static_cast<size_t>(height), p010RowBytes,
 				sourceSequence, videoFrame.GetTimingTimestamp(),
 				sceneDetectorGeneration, state.displayMode->FrameDuration(),
 				sceneDetectionEnabled });
 		}
-		if (!cadenceRepeat)
+		if (!cadenceRepeat && !nativeRgbUpload)
 			sceneDetectionStatus.store(
 				static_cast<int>(sceneResult.status), std::memory_order_release);
 		if (!cadenceRepeat && sceneResult.safeBoundary)
@@ -4865,7 +5000,7 @@ struct LibplaceboVideoRenderer::Impl
 			const AlphaPresentationSnapshot presentation =
 				presentationTelemetry.Snapshot();
 			AlphaCadenceCorrectionInput correctionInput;
-			correctionInput.enabled = sceneDetectionEnabled;
+			correctionInput.enabled = sceneDetectionEnabled && !nativeRgbUpload;
 			// Queue replacement and detector/source replacement are independent
 			// reset boundaries. Fold both into the policy epoch so neither can
 			// inherit a pending action or retained phase from the other.
@@ -4898,57 +5033,105 @@ struct LibplaceboVideoRenderer::Impl
 				return true;
 			}
 		}
-		const float subtitleShiftSourcePixels = UpdateScopeSubtitleShift(
-			reinterpret_cast<const uint16_t*>(yPixels),
-			width,
-			height,
-			scopeScreenActive);
-
-		struct pl_plane_data planes[2]{};
-		planes[0].type = PL_FMT_UNORM;
-		planes[0].width = width;
-		planes[0].height = height;
-		planes[0].component_size[0] = 16;
-		planes[0].component_map[0] = PL_CHANNEL_Y;
-		planes[0].pixel_stride = sizeof(uint16_t);
-		planes[0].row_stride = rowBytes;
-		planes[0].pixels = yPixels;
-
-		planes[1].type = PL_FMT_UNORM;
-		planes[1].width = (width + 1) / 2;
-		planes[1].height = (height + 1) / 2;
-		planes[1].component_size[0] = 16;
-		planes[1].component_size[1] = 16;
-		planes[1].component_map[0] = PL_CHANNEL_CB;
-		planes[1].component_map[1] = PL_CHANNEL_CR;
-		planes[1].pixel_stride = sizeof(uint16_t) * 2;
-		planes[1].row_stride = rowBytes;
-		planes[1].pixels = uvPixels;
+		const float subtitleShiftSourcePixels = nativeRgbUpload ?
+			UpdateScopeSubtitleShift(nullptr, width, height, scopeScreenActive) :
+			UpdateScopeSubtitleShift(
+				reinterpret_cast<const uint16_t*>(yPixels),
+				width, height, scopeScreenActive);
 
 		struct pl_frame image{};
-		image.num_planes = 2;
-		for (int plane = 0; plane < 2; ++plane)
+		if (nativeRgbUpload)
 		{
-			if (!pl_upload_plane(d3d11->gpu, &image.planes[plane], &textures[plane], &planes[plane]))
+			struct pl_plane_data plane{};
+			plane.type = PL_FMT_UNORM;
+			plane.width = width;
+			plane.height = height;
+			plane.pixel_stride = 4;
+			plane.row_stride = state.BytesPerRow();
+			plane.pixels = videoFrame.GetData();
+			plane.swapped = nativeRgbLayout.swapped;
+			pl_plane_data_from_mask(&plane, nativeRgbLayout.masks);
+			if (!pl_upload_plane(d3d11->gpu, &image.planes[0],
+				&textures[0], &plane))
 				return false;
-			image.planes[plane].shift_x = 0.0f;
-			image.planes[plane].shift_y = 0.0f;
-			image.planes[plane].flipped = state.invertedVertical;
+			image.num_planes = 1;
+			image.planes[0].shift_x = 0.0f;
+			image.planes[0].shift_y = 0.0f;
+			image.planes[0].flipped = state.invertedVertical;
+			ingressStatus = nativeRgbLayout.label;
+			if (nativeRgbAnalysisUnavailable)
+				ingressStatus += " (P010 analysis unavailable)";
+		}
+		else
+		{
+			struct pl_plane_data planes[2]{};
+			planes[0].type = PL_FMT_UNORM;
+			planes[0].width = width;
+			planes[0].height = height;
+			planes[0].component_size[0] = 16;
+			planes[0].component_map[0] = PL_CHANNEL_Y;
+			planes[0].pixel_stride = sizeof(uint16_t);
+			planes[0].row_stride = p010RowBytes;
+			planes[0].pixels = yPixels;
+
+			planes[1].type = PL_FMT_UNORM;
+			planes[1].width = (width + 1) / 2;
+			planes[1].height = chromaHeight;
+			planes[1].component_size[0] = 16;
+			planes[1].component_size[1] = 16;
+			planes[1].component_map[0] = PL_CHANNEL_CB;
+			planes[1].component_map[1] = PL_CHANNEL_CR;
+			planes[1].pixel_stride = sizeof(uint16_t) * 2;
+			planes[1].row_stride = p010RowBytes;
+			planes[1].pixels = uvPixels;
+
+			image.num_planes = 2;
+			for (int plane = 0; plane < 2; ++plane)
+			{
+				if (!pl_upload_plane(d3d11->gpu, &image.planes[plane],
+					&textures[plane], &planes[plane]))
+					return false;
+				image.planes[plane].shift_x = 0.0f;
+				image.planes[plane].shift_y = 0.0f;
+				image.planes[plane].flipped = state.invertedVertical;
+			}
+			if (lossless422Upload)
+			{
+				switch (state.videoFrameEncoding)
+				{
+				case VideoFrameEncoding::V210:
+					ingressStatus = "P210 (lossless v210 4:2:2)";
+					break;
+				case VideoFrameEncoding::HDYC:
+					ingressStatus = "P210 (lossless HDYC 4:2:2)";
+					break;
+				default:
+					ingressStatus = "P210 (lossless UYVY 4:2:2)";
+					break;
+				}
+			}
+			else
+				ingressStatus = videoConversionOverride ==
+					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010 ?
+					"P010 (forced)" :
+					"P010 (source fallback)";
 		}
 
-		image.repr.sys = TranslateSystem(state.colorspace);
-		image.repr.levels =
-			state.videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT ||
-			state.videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT ||
-			state.videoFrameEncoding == VideoFrameEncoding::R10b ||
-			state.videoFrameEncoding == VideoFrameEncoding::R10l ||
-			state.videoFrameEncoding == VideoFrameEncoding::R12L
-			? PL_COLOR_LEVELS_FULL
-			: PL_COLOR_LEVELS_LIMITED;
+		image.repr.sys = nativeRgbUpload ? PL_COLOR_SYSTEM_RGB :
+			TranslateSystem(state.colorspace);
+		image.repr.levels = nativeRgbUpload ? PL_COLOR_LEVELS_FULL :
+			(state.videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT ||
+			 state.videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT ||
+			 state.videoFrameEncoding == VideoFrameEncoding::R10b ||
+			 state.videoFrameEncoding == VideoFrameEncoding::R10l ||
+			 state.videoFrameEncoding == VideoFrameEncoding::R12L
+			 ? PL_COLOR_LEVELS_FULL : PL_COLOR_LEVELS_LIMITED);
 		image.repr.alpha = PL_ALPHA_NONE;
-		image.repr.bits.sample_depth = 16;
-		image.repr.bits.color_depth = 10;
-		image.repr.bits.bit_shift = 6;
+		image.repr.bits.sample_depth = nativeRgbUpload ? (nativeRgb8Upload ? 8 : 10) : 16;
+		image.repr.bits.color_depth = nativeRgbUpload ? (nativeRgb8Upload ? 8 : 10) :
+			(yuv8BitSource ? 8 : 10);
+		image.repr.bits.bit_shift = nativeRgbUpload ? 0 :
+			(yuv8BitSource ? 8 : 6);
 		image.color = TranslateColorSpace(state);
 		if (state.eotf == EOTF::SDR &&
 			sdrInputTransfer != PL_COLOR_TRC_UNKNOWN)
@@ -4974,7 +5157,8 @@ struct LibplaceboVideoRenderer::Impl
 		image.crop.y0 = 0.0f;
 		image.crop.x1 = static_cast<float>(width);
 		image.crop.y1 = static_cast<float>(height);
-		pl_frame_set_chroma_location(&image, PL_CHROMA_LEFT);
+		if (!nativeRgbUpload)
+			pl_frame_set_chroma_location(&image, PL_CHROMA_LEFT);
 
 		struct pl_swapchain_frame swapchainFrame{};
 		if (!pl_swapchain_start_frame(swapchain, &swapchainFrame))
@@ -5333,6 +5517,32 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			presentationTelemetry.RecordSubmission(record);
 			presentationTelemetry.Observe(sample);
+			const AlphaPresentationSnapshot presentationSnapshot =
+				presentationTelemetry.Snapshot();
+			if (sample.available &&
+				presentationSnapshot.evidence == AlphaPresentationEvidence::Stable &&
+				presentationSnapshot.measuredDisplayHz >= 10.0 &&
+				sample.qpcFrequency > 0 && sample.syncQpc > 0 &&
+				swapEndQpc > 0)
+			{
+				const int64_t periodQpc = static_cast<int64_t>(std::llround(
+					static_cast<double>(sample.qpcFrequency) /
+					presentationSnapshot.measuredDisplayHz));
+				if (periodQpc > 0)
+				{
+					int64_t targetQpc = sample.syncQpc + periodQpc;
+					if (targetQpc < swapEndQpc)
+					{
+						const int64_t missedPeriods =
+							(swapEndQpc - targetQpc + periodQpc - 1) / periodQpc;
+						targetQpc += missedPeriods * periodQpc;
+					}
+					presentationTargetLeadMs = static_cast<double>(
+						targetQpc - swapEndQpc) * 1000.0 /
+						static_cast<double>(sample.qpcFrequency);
+					presentationTargetTimingKnown = true;
+				}
+			}
 
 			const uint64_t nowTick = GetTickCount64();
 			if (nowTick >= nextPresentationTelemetryLogTick)
@@ -5453,15 +5663,16 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 	HWND videoHwnd,
 	ITimingClock* timingClock,
 	bool useFrameQueue,
-	size_t frameQueueMaxSize) :
+	size_t frameQueueMaxSize,
+	VideoConversionOverride videoConversionOverride) :
 	m_callback(callback),
 	m_videoHwnd(videoHwnd),
 	m_timingClock(timingClock),
 	m_useFrameQueue(useFrameQueue),
-	m_frameQueueDesiredDepth(AlphaQueuePolicy::NormalizeDesiredDepth(frameQueueMaxSize))
+	m_videoConversionOverride(videoConversionOverride),
+	m_frameQueueDesiredDepth(AlphaQueuePolicy::NormalizeDesiredDepth(frameQueueMaxSize)),
+	m_frameQueueMaxSize(AlphaQueuePolicy::HardCapacity(frameQueueMaxSize))
 {
-	m_frameQueueMaxSize =
-		AlphaQueuePolicy::HardCapacity(m_frameQueueDesiredDepth);
 	{
 		std::lock_guard<std::mutex> guard(g_runtimeDisplayRuleMutex);
 		m_manualDisplayRule = g_runtimeManualDisplayRule;
@@ -5841,7 +6052,8 @@ void LibplaceboVideoRenderer::Build()
 	std::unique_ptr<Impl> impl(new Impl());
 	try
 	{
-		impl->Initialize(m_videoHwnd, state, manualRule, manualUnifiedProfiles);
+		impl->Initialize(m_videoHwnd, state, manualRule, manualUnifiedProfiles,
+			m_videoConversionOverride);
 	}
 	catch (...)
 	{
@@ -5856,6 +6068,9 @@ void LibplaceboVideoRenderer::Build()
 			static_cast<double>(ticksPerSecond) / nominalRate)) : 0,
 		std::memory_order_release);
 	ResetFrameRateAndPPM();
+	m_presentationTargetTimingKnown.store(false, std::memory_order_release);
+	m_presentationTargetLeadMs.store(0.0, std::memory_order_relaxed);
+	m_captureToPresentationTargetMs.store(0.0, std::memory_order_relaxed);
 	m_scopeScreenActive.store(impl->defaultScopeScreen, std::memory_order_release);
 	m_impl = std::move(impl);
 	SetState(RendererState::RENDERSTATE_READY);
@@ -6371,12 +6586,11 @@ void LibplaceboVideoRenderer::SetFrameQueueMaxSize(size_t size)
 {
 	{
 		std::lock_guard<std::mutex> guard(m_queueMutex);
-		m_frameQueueDesiredDepth =
-			AlphaQueuePolicy::NormalizeDesiredDepth(size);
-		m_frameQueueMaxSize =
-			AlphaQueuePolicy::HardCapacity(m_frameQueueDesiredDepth);
-		DebugLog::Log("Alpha queue desired depth=%zu, internal hard capacity=%zu",
+		m_frameQueueMaxSize = AlphaQueuePolicy::HardCapacity(size);
+		m_frameQueueDesiredDepth = AlphaQueuePolicy::ClampDesiredDepthToCapacity(
 			m_frameQueueDesiredDepth, m_frameQueueMaxSize);
+		DebugLog::Log("Alpha queue hard capacity=%zu, steady target=%zu",
+			m_frameQueueMaxSize, m_frameQueueDesiredDepth);
 		size_t purgedFrames = 0;
 		while (m_frameQueue.size() > m_frameQueueMaxSize)
 		{
@@ -6405,6 +6619,26 @@ void LibplaceboVideoRenderer::SetFrameQueueMaxSize(size_t size)
 	}
 	// A target reduction can satisfy an already pending startup prefill.
 	// A target increase after release deliberately does not re-arm it.
+	m_queueChanged.notify_all();
+}
+
+void LibplaceboVideoRenderer::SetQueueFramePolicy(
+	size_t, size_t steadyReserveFrames, bool hasSteadyReserveFrames)
+{
+	if (!hasSteadyReserveFrames)
+		return;
+
+	{
+		std::lock_guard<std::mutex> guard(m_queueMutex);
+		// Alpha has one VP-owned FIFO.  target_frames selects the
+		// live/prefill target; queue_size remains the independently configured
+		// hard capacity used for bursts and overflow protection.
+		m_frameQueueDesiredDepth = AlphaQueuePolicy::ClampDesiredDepthToCapacity(
+			steadyReserveFrames, m_frameQueueMaxSize);
+		DebugLog::Log(
+			"Alpha queue policy: target_frames=%zu target=%zu hard_capacity=%zu",
+			steadyReserveFrames, m_frameQueueDesiredDepth, m_frameQueueMaxSize);
+	}
 	m_queueChanged.notify_all();
 }
 
@@ -6570,6 +6804,28 @@ bool LibplaceboVideoRenderer::GetDisplayLutInfo(CString& details) const
 	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
 	details = CString(CStringA(m_impl->displayLutStatus.c_str()));
 	return true;
+}
+
+bool LibplaceboVideoRenderer::GetVideoIngressInfo(CString& details) const
+{
+	if (!m_impl)
+	{
+		details.Empty();
+		return false;
+	}
+
+	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	details = CString(CStringA(m_impl->ingressStatus.c_str()));
+	return !details.IsEmpty();
+}
+
+bool LibplaceboVideoRenderer::GetPresentationTargetTiming(
+	double& leadMs, double& captureToTargetMs) const
+{
+	leadMs = m_presentationTargetLeadMs.load(std::memory_order_relaxed);
+	captureToTargetMs = m_captureToPresentationTargetMs.load(
+		std::memory_order_relaxed);
+	return m_presentationTargetTimingKnown.load(std::memory_order_acquire);
 }
 
 bool LibplaceboVideoRenderer::SetNativeStatsOverlay(
@@ -6770,6 +7026,8 @@ void LibplaceboVideoRenderer::RenderLoop()
 		bool rendered = false;
 		bool staleGeneration = false;
 		AlphaCadenceCorrectionDecision correctionDecision;
+		bool presentationTargetTimingKnown = false;
+		double presentationTargetLeadMs = 0.0;
 		try
 		{
 			std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
@@ -6796,10 +7054,13 @@ void LibplaceboVideoRenderer::RenderLoop()
 					m_screenProfileRequestSerial.load(std::memory_order_acquire),
 					m_screenProfileRequestNs.load(std::memory_order_relaxed),
 					m_sceneDetectionEnabled.load(std::memory_order_acquire),
+					m_videoConversionOverride,
 					m_sceneDetectorGeneration.load(std::memory_order_acquire),
 					m_sceneDetectedCount,
 					m_sceneDetectionStatus,
-					correctionDecision);
+					correctionDecision,
+					presentationTargetTimingKnown,
+					presentationTargetLeadMs);
 			}
 		}
 		catch (const std::exception& e)
@@ -7079,12 +7340,30 @@ void LibplaceboVideoRenderer::RenderLoop()
 
 		if (m_timingClock)
 		{
-			m_exitLatencyMs.store(
-				TimingClockDiffMs(
-					frame.GetTimingTimestamp(),
-					m_timingClock->TimingClockNow(),
-					m_timingClock->TimingClockTicksPerSecond()),
+			const double captureToSubmitMs = TimingClockDiffMs(
+				frame.GetTimingTimestamp(),
+				m_timingClock->TimingClockNow(),
+				m_timingClock->TimingClockTicksPerSecond());
+			m_exitLatencyMs.store(captureToSubmitMs,
 				std::memory_order_relaxed);
+			if (presentationTargetTimingKnown)
+			{
+				// Use the raw hardware-capture timestamp here, rather than the
+				// offset-adjusted timestamp used for VP's internal timing. This
+				// makes Total comparable with the audio extraction boundary while
+				// leaving Alpha's immediate FIFO presentation unchanged.
+				const double captureToTargetMs = TimingClockDiffMs(
+					frame.GetCaptureTimingTimestamp(),
+					m_timingClock->TimingClockNow(),
+					m_timingClock->TimingClockTicksPerSecond()) + presentationTargetLeadMs;
+				m_presentationTargetLeadMs.store(presentationTargetLeadMs,
+					std::memory_order_relaxed);
+				m_captureToPresentationTargetMs.store(
+					captureToTargetMs,
+					std::memory_order_relaxed);
+				m_presentationTargetTimingKnown.store(true,
+					std::memory_order_release);
+			}
 		}
 
 		frame.SourceBufferRelease();
@@ -7103,6 +7382,7 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 	const char* reason,
 	bool clearStopRequest)
 {
+	m_presentationTargetTimingKnown.store(false, std::memory_order_release);
 	uint64_t generation = 0;
 	size_t target = 0;
 	size_t capacity = 0;
@@ -7167,7 +7447,9 @@ void LibplaceboVideoRenderer::ClearQueueLocked(const char* reason)
 
 size_t LibplaceboVideoRenderer::PrefillTargetLocked() const
 {
-	return m_useFrameQueue ? m_frameQueueDesiredDepth : 1;
+	return m_useFrameQueue ?
+		AlphaQueuePolicy::ClampDesiredDepthToCapacity(
+			m_frameQueueDesiredDepth, m_frameQueueMaxSize) : 1;
 }
 
 

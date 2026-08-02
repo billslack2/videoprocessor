@@ -16,16 +16,7 @@
 //
 
 
-#define V210_READ_PACK_BLOCK(a, b, c) \
-    do {                              \
-        val  = *src++;                \
-        a = val & 0x3FF;              \
-        b = (val >> 10) & 0x3FF;      \
-        c = (val >> 20) & 0x3FF;      \
-    } while (0)
-
-
-#define P010_WRITE_VALUE(d, v) (*d++ = (v << 6))
+#define P210_WRITE_VALUE(d, v) (*d++ = (v << 6))
 
 
 #define PIXELS_PER_PACK 6
@@ -41,20 +32,18 @@ void CV210toP210VideoFrameFormatter::OnVideoState(VideoStateComPtr& videoState)
         throw std::runtime_error("Can only handle V210 input");
 
     m_height = videoState->displayMode->FrameHeight();
-    if (m_height % 2 != 0)
-        throw std::runtime_error("P010 output needs an even amount of input lines");
-
     m_width = videoState->displayMode->FrameWidth();
-	if (m_width % 6 != 0)
-		throw std::runtime_error("Can only handle conversions which align with V210 boundry (6 pixels)");
+	if (m_width == 0 || m_height == 0 || (m_width & 1) != 0)
+		throw std::runtime_error("P210 output requires a positive, even width");
 
-    const uint32_t bytes = videoState->BytesPerFrame();
-    const uint32_t expectedBytes =
-        videoState->displayMode->FrameHeight() *
-        (videoState->displayMode->FrameWidth() / PIXELS_PER_PACK * BYTES_PER_PACK);
-
-    if(bytes != expectedBytes)
-        throw std::runtime_error("Unexpected amount of bytes for frame");
+	// DeckLink's v210 rows are 128-byte aligned. Do not assume the active
+	// width is a multiple of a six-pixel v210 pack: the final pack can contain
+	// unused padding components.
+	m_sourceStride = videoState->BytesPerRow();
+	const uint32_t packedBytes =
+		((m_width + PIXELS_PER_PACK - 1) / PIXELS_PER_PACK) * BYTES_PER_PACK;
+	if (m_sourceStride < packedBytes)
+		throw std::runtime_error("v210 input row is smaller than the frame width");
 }
 
 
@@ -70,42 +59,51 @@ bool CV210toP210VideoFrameFormatter::FormatVideoFrame(
 	// https://docs.microsoft.com/en-us/windows/win32/medfound/10-bit-and-16-bit-yuv-video-formats
 
     const uint32_t pixels = m_height * m_width;
-    const uint32_t aligned_width = ((m_width + 47) / 48) * 48;
-    const uint32_t stride = aligned_width * 8 / 3;
-
     uint16_t* dstY = (uint16_t *)outBuffer;
     uint16_t* dstUV = (uint16_t*)(outBuffer + ((ptrdiff_t)pixels * sizeof(uint16_t)));
 
-    const uint32_t packsPerLine = m_width / PIXELS_PER_PACK;
+    const uint32_t packsPerLine =
+		(m_width + PIXELS_PER_PACK - 1) / PIXELS_PER_PACK;
 
     for (uint32_t line = 0; line < m_height; line++)
     {
-        const uint32_t* src = (const uint32_t*)((const BYTE *)inFrame.GetData() + (ptrdiff_t)(line * stride));  // Lines start at 128 byte alignment
+        const uint32_t* src = reinterpret_cast<const uint32_t*>(
+			static_cast<const BYTE*>(inFrame.GetData()) +
+			static_cast<size_t>(line) * m_sourceStride);
+		uint16_t* y = dstY + static_cast<size_t>(line) * m_width;
+		uint16_t* uv = dstUV + static_cast<size_t>(line) * m_width;
 
-        for (uint32_t pack = 0; pack < packsPerLine; pack++)
+        for (uint32_t pack = 0; pack < packsPerLine; ++pack)
         {
-            uint32_t val;
-            uint16_t u, y1, y2, v;
-
-            V210_READ_PACK_BLOCK(u, y1, v);
-            P010_WRITE_VALUE(dstUV, u);
-            P010_WRITE_VALUE(dstY, y1);
-            P010_WRITE_VALUE(dstUV, v);
-
-            V210_READ_PACK_BLOCK(y1, u, y2);
-            P010_WRITE_VALUE(dstY, y1);
-            P010_WRITE_VALUE(dstUV, u);
-            P010_WRITE_VALUE(dstY, y2);
-
-            V210_READ_PACK_BLOCK(v, y1, u);
-            P010_WRITE_VALUE(dstUV, v);
-            P010_WRITE_VALUE(dstY, y1);
-            P010_WRITE_VALUE(dstUV, u);
-
-            V210_READ_PACK_BLOCK(y1, v, y2);
-            P010_WRITE_VALUE(dstY, y1);
-            P010_WRITE_VALUE(dstUV, v);
-            P010_WRITE_VALUE(dstY, y2);
+			const uint32_t word0 = *src++;
+			const uint32_t word1 = *src++;
+			const uint32_t word2 = *src++;
+			const uint32_t word3 = *src++;
+			const uint16_t luma[PIXELS_PER_PACK] = {
+				static_cast<uint16_t>((word0 >> 10) & 0x3FF),
+				static_cast<uint16_t>(word1 & 0x3FF),
+				static_cast<uint16_t>((word1 >> 20) & 0x3FF),
+				static_cast<uint16_t>((word2 >> 10) & 0x3FF),
+				static_cast<uint16_t>(word3 & 0x3FF),
+				static_cast<uint16_t>((word3 >> 20) & 0x3FF) };
+			const uint16_t chromaU[3] = {
+				static_cast<uint16_t>(word0 & 0x3FF),
+				static_cast<uint16_t>((word1 >> 10) & 0x3FF),
+				static_cast<uint16_t>((word2 >> 20) & 0x3FF) };
+			const uint16_t chromaV[3] = {
+				static_cast<uint16_t>((word0 >> 20) & 0x3FF),
+				static_cast<uint16_t>(word2 & 0x3FF),
+				static_cast<uint16_t>((word3 >> 10) & 0x3FF) };
+			const uint32_t remaining = m_width - pack * PIXELS_PER_PACK;
+			const uint32_t pixelCount = std::min<uint32_t>(
+				static_cast<uint32_t>(PIXELS_PER_PACK), remaining);
+			for (uint32_t pixel = 0; pixel < pixelCount; ++pixel)
+				P210_WRITE_VALUE(y, luma[pixel]);
+			for (uint32_t pair = 0; pair < pixelCount / 2; ++pair)
+			{
+				P210_WRITE_VALUE(uv, chromaU[pair]);
+				P210_WRITE_VALUE(uv, chromaV[pair]);
+			}
         }
     }
 

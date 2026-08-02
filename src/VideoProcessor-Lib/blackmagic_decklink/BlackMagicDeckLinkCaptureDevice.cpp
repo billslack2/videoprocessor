@@ -654,6 +654,7 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 			Error(TEXT("Failed to get video frame hardware timestamp"));
 			return E_FAIL;
 		}
+		const timingclocktime_t captureTimingClockFrameTime = timingClockFrameTime;
 
 		// Figure out how many frames fit in the interval
 		if (m_previousTimingClockFrameTime != TIMING_CLOCK_TIME_INVALID)
@@ -885,7 +886,7 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 
 		VideoFrame vpVideoFrame(
 			data, m_capturedVideoFrameCount,
-			timingClockFrameTime, videoFrame);
+			timingClockFrameTime, videoFrame, captureTimingClockFrameTime);
 
 		m_callback->OnCaptureDeviceVideoFrame(
 			this, captureRunToken, vpVideoFrame);

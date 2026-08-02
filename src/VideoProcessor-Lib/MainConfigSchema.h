@@ -36,7 +36,6 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("windowed_fullscreen_mode"),
 			ConfigSchema::Any("renderer"),
 			ConfigSchema::Integer("queue_size", 1, INT_MAX),
-			ConfigSchema::Integer("alpha_queue_size", 1, INT_MAX),
 			ConfigSchema::Any("capture_device"),
 			{
 				"frame_offset",

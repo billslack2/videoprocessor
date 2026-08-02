@@ -54,13 +54,17 @@ struct StatsData
 	// depth, not the DirectShow raw/converted/total capacity tuple.
 	bool isAlphaRenderer = false;
 
-	// VP-owned latency boundaries. Scheduled presentation is not actual madVR
-	// presentation or physical-display latency.
+	// DirectShow's scheduled latency is VP's video delay relative to the shared
+	// capture/audio clock baseline. Alpha's target value is diagnostic only
+	// until it has a presentation-deadline scheduler.
 	bool vpInternalLatencyKnown = false;
 	bool scheduledLatencyKnown = false;
 	double vpInternalLatencyMs = 0.0;
 	double dsScheduleLeadMs = 0.0;
 	double scheduledLatencyMs = 0.0;
+	bool presentationTargetTimingKnown = false;
+	double presentationTargetLeadMs = 0.0;
+	double captureToPresentationTargetMs = 0.0;
 
 	// Frame counts
 	uint64_t capturedFrames = 0;

@@ -10,6 +10,8 @@
 #include <video_frame_formatter/CR12BtoRGB48VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
+#include <video_frame_formatter/CUYVYtoP210VideoFrameFormatter.h>
+#include <vprenderer/AlphaNativeRgbIngress.h>
 #include <IntegerMath.h>
 #include <AspectRatio.h>
 #include <DisplayRuleExpression.h>
@@ -43,6 +45,18 @@ namespace Tests
 				destination[2] = static_cast<BYTE>(word >> 8);
 				destination[3] = static_cast<BYTE>(word);
 			}
+		}
+
+		void WriteR210Pixel(BYTE* destination,
+			uint16_t red, uint16_t green, uint16_t blue)
+		{
+			const uint32_t word = (static_cast<uint32_t>(red) << 20) |
+				(static_cast<uint32_t>(green) << 10) |
+				static_cast<uint32_t>(blue);
+			destination[0] = static_cast<BYTE>(word >> 24);
+			destination[1] = static_cast<BYTE>(word >> 16);
+			destination[2] = static_cast<BYTE>(word >> 8);
+			destination[3] = static_cast<BYTE>(word);
 		}
 
 		void WriteR12LPixelPair(BYTE* destination,
@@ -108,6 +122,180 @@ namespace Tests
 			vff.OnVideoState(vs);
 
 			Assert::AreEqual(8294400L, vff.GetOutFrameSize());
+		}
+
+		TEST_METHOD(CV210toP210VideoFrameFormatterPreservesEvery422Sample)
+		{
+			CV210toP210VideoFrameFormatter vff;
+
+			// v210 rows are 128-byte aligned. A 144-pixel line is three alignment
+			// units and satisfies DisplayMode's supported minimum dimensions.
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(144, 100, false, 24000, 1000);
+			vs->videoFrameEncoding = VideoFrameEncoding::V210;
+			vff.OnVideoState(vs);
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+			auto writeWord = [](BYTE* destination, uint16_t a, uint16_t b, uint16_t c)
+			{
+				const uint32_t word = static_cast<uint32_t>(a) |
+					(static_cast<uint32_t>(b) << 10) |
+					(static_cast<uint32_t>(c) << 20);
+				std::memcpy(destination, &word, sizeof(word));
+			};
+			auto writePack = [&writeWord](BYTE* row, uint16_t u0, uint16_t y0,
+				uint16_t v0, uint16_t y1, uint16_t u2, uint16_t y2,
+				uint16_t v2, uint16_t y3, uint16_t u4, uint16_t y4,
+				uint16_t v4, uint16_t y5)
+			{
+				writeWord(row + 0, u0, y0, v0);
+				writeWord(row + 4, y1, u2, y2);
+				writeWord(row + 8, v2, y3, u4);
+				writeWord(row + 12, y4, v4, y5);
+			};
+			writePack(input.data(), 101, 201, 301, 202, 102, 203,
+				302, 204, 103, 205, 303, 206);
+			writePack(input.data() + vs->BytesPerRow(), 401, 501, 601, 502,
+				402, 503, 602, 504, 403, 505, 603, 506);
+
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+
+			const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
+			const size_t ySamples = 144 * 100;
+			auto expect = [&samples](size_t offset, uint16_t value)
+			{
+				Assert::AreEqual(static_cast<int>(value << 6),
+					static_cast<int>(samples[offset]));
+			};
+			// All six luma samples and three 4:2:2 chroma pairs on the first row.
+			for (size_t x = 0; x < 6; ++x)
+				expect(x, static_cast<uint16_t>(201 + x));
+			expect(ySamples + 0, 101);
+			expect(ySamples + 1, 301);
+			expect(ySamples + 2, 102);
+			expect(ySamples + 3, 302);
+			expect(ySamples + 4, 103);
+			expect(ySamples + 5, 303);
+			// The second row is independently preserved; there is no vertical
+			// chroma average, which is the loss in the old P010 path.
+			expect(144, 501);
+			expect(ySamples + 144, 401);
+			expect(ySamples + 145, 601);
+		}
+
+		TEST_METHOD(CV210toP210VideoFrameFormatterPreservesPaddedEdgeSamples)
+		{
+			CV210toP210VideoFrameFormatter vff;
+
+			// 100 pixels is not a multiple of v210's six-pixel pack. The input
+			// stride nevertheless has DeckLink's 128-byte alignment.
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(100, 100, false, 24000, 1000);
+			vs->videoFrameEncoding = VideoFrameEncoding::V210;
+			vff.OnVideoState(vs);
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+			auto writeWord = [](BYTE* destination, uint16_t a, uint16_t b, uint16_t c)
+			{
+				const uint32_t word = static_cast<uint32_t>(a) |
+					(static_cast<uint32_t>(b) << 10) |
+					(static_cast<uint32_t>(c) << 20);
+				std::memcpy(destination, &word, sizeof(word));
+			};
+			// The active final pack contains only two U/V pairs and four luma
+			// samples; its remaining components are alignment padding.
+			BYTE* finalPack = input.data() + 16 * 16;
+			writeWord(finalPack + 0, 101, 201, 301);
+			writeWord(finalPack + 4, 202, 102, 203);
+
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+
+			const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
+			const size_t ySamples = 100 * 100;
+			auto expect = [&samples](size_t offset, uint16_t value)
+			{
+				Assert::AreEqual(static_cast<int>(value << 6),
+					static_cast<int>(samples[offset]));
+			};
+			expect(96, 201);
+			expect(97, 202);
+			expect(98, 203);
+			expect(99, 0);
+			expect(ySamples + 96, 101);
+			expect(ySamples + 97, 301);
+			expect(ySamples + 98, 102);
+			expect(ySamples + 99, 0);
+		}
+
+		TEST_METHOD(CUYVYtoP210VideoFrameFormatterPreservesEvery422Sample)
+		{
+			CUYVYtoP210VideoFrameFormatter vff;
+
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(100, 100, false, 24000, 1000);
+			vs->videoFrameEncoding = VideoFrameEncoding::UYVY;
+			vff.OnVideoState(vs);
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+			// UYVY: U0, Y0, V0, Y1. The two rows deliberately have distinct
+			// chroma, proving P210 does not apply P010's vertical average.
+			input[0] = 11; input[1] = 21; input[2] = 31; input[3] = 22;
+			const size_t secondRow = vs->BytesPerRow();
+			input[secondRow + 0] = 41;
+			input[secondRow + 1] = 51;
+			input[secondRow + 2] = 61;
+			input[secondRow + 3] = 52;
+
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+
+			const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
+			const size_t ySamples = 100 * 100;
+			auto expect = [&samples](size_t offset, uint8_t value)
+			{
+				Assert::AreEqual(static_cast<int>(value << 8),
+					static_cast<int>(samples[offset]));
+			};
+			expect(0, 21);
+			expect(1, 22);
+			expect(ySamples + 0, 11);
+			expect(ySamples + 1, 31);
+			expect(100, 51);
+			expect(101, 52);
+			expect(ySamples + 100, 41);
+			expect(ySamples + 101, 61);
+		}
+
+		TEST_METHOD(AlphaNativeRgbLayoutPreservesComponentBitfields)
+		{
+			AlphaNativeRgbLayout layout;
+			Assert::IsTrue(GetAlphaNativeRgbLayout(VideoFrameEncoding::R210, layout));
+			Assert::IsTrue(layout.swapped);
+			Assert::AreEqual(10, layout.bitDepth);
+			const uint32_t r210 = (1U << 20) | (2U << 10) | 3U;
+			Assert::AreEqual(1U, static_cast<uint32_t>((r210 & layout.masks[0]) >> 20));
+			Assert::AreEqual(2U, static_cast<uint32_t>((r210 & layout.masks[1]) >> 10));
+			Assert::AreEqual(3U, static_cast<uint32_t>(r210 & layout.masks[2]));
+
+			Assert::IsTrue(GetAlphaNativeRgbLayout(VideoFrameEncoding::R10l, layout));
+			Assert::IsFalse(layout.swapped);
+			const uint32_t r10 = (1U << 22) | (2U << 12) | (3U << 2);
+			Assert::AreEqual(1U, static_cast<uint32_t>((r10 & layout.masks[0]) >> 22));
+			Assert::AreEqual(2U, static_cast<uint32_t>((r10 & layout.masks[1]) >> 12));
+			Assert::AreEqual(3U, static_cast<uint32_t>((r10 & layout.masks[2]) >> 2));
+
+			Assert::IsTrue(GetAlphaNativeRgbLayout(VideoFrameEncoding::R10b, layout));
+			Assert::IsTrue(layout.swapped);
+			Assert::AreEqual(10, layout.bitDepth);
+			Assert::IsFalse(GetAlphaNativeRgbLayout(VideoFrameEncoding::R12L, layout));
 		}
 
 		TEST_METHOD(CR210toRGB48VideoFrameFormatterGoldenTest)
@@ -834,6 +1022,7 @@ namespace Tests
 		TEST_METHOD(CDeckLinkRGBToP010VideoFrameFormatterGoldenTest)
 		{
 			const VideoFrameEncoding encodings[] = {
+				VideoFrameEncoding::R210,
 				VideoFrameEncoding::R10b,
 				VideoFrameEncoding::R10l,
 				VideoFrameEncoding::R12L
@@ -858,6 +1047,11 @@ namespace Tests
 					{
 						if (encoding == VideoFrameEncoding::R12L)
 							WriteR12LPixelPair(row, 4095, 0, 0, 4095, 0, 0);
+						else if (encoding == VideoFrameEncoding::R210)
+						{
+							WriteR210Pixel(row, 1023, 0, 0);
+							WriteR210Pixel(row + 4, 1023, 0, 0);
+						}
 						else
 						{
 							WriteR10Pixel(row, encoding, 1023, 0, 0);
@@ -884,6 +1078,7 @@ namespace Tests
 		TEST_METHOD(CDeckLinkRGBToP010VideoFrameFormatter4KSmokeTest)
 		{
 			const VideoFrameEncoding encodings[] = {
+				VideoFrameEncoding::R210,
 				VideoFrameEncoding::R10b,
 				VideoFrameEncoding::R10l,
 				VideoFrameEncoding::R12L

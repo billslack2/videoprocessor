@@ -394,8 +394,16 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 	// Actual display refresh period as reported by the Desktop Window Manager.
 	if (m_stats.displayRefreshRate > 0.0)
-		line.Format(TEXT("- Display Rate:   %.6f Hz%s"), m_stats.displayRefreshRate,
-			m_stats.displayRefreshRateOverridden ? TEXT(" *") : TEXT(""));
+	{
+		CString statusSuffix;
+		if (!m_stats.displayRefreshRateStatus.IsEmpty())
+			statusSuffix.Format(TEXT(" (%s)"),
+				m_stats.displayRefreshRateStatus.GetString());
+		line.Format(TEXT("- Display Rate:   %.6f Hz%s%s"),
+			m_stats.displayRefreshRate,
+			m_stats.displayRefreshRateOverridden ? TEXT(" *") : TEXT(""),
+			statusSuffix.GetString());
+	}
 	else if (!m_stats.displayRefreshRateStatus.IsEmpty())
 		line.Format(TEXT("- Display Rate:   --- (%s)"),
 			m_stats.displayRefreshRateStatus.GetString());
@@ -546,45 +554,71 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	// Separator
 	y += 4;
 
-	// Method
-	line.Format(TEXT("Method:           %-s"), m_stats.method.IsEmpty() ? TEXT("---") : m_stats.method);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
+	// Start/Stop is a DirectShow-only sample-timestamp policy. Alpha submits
+	// directly to its swapchain, so showing the dormant DirectShow selection
+	// here would imply it affects Alpha playback.
+	if (!m_stats.isAlphaRenderer)
+	{
+		line.Format(TEXT("Method:           %-s"),
+			m_stats.method.IsEmpty() ? TEXT("---") : m_stats.method);
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+	}
 
-
-
-	// Rational-Rational owns a synthetic sample timeline. Capture clock frame
-	// offset is intentionally unavailable and contributes no timing value.
-	if (m_stats.method.CompareNoCase(TEXT("Rational-Rational")) == 0)
-		line = TEXT("Offset:           N/A (Rational-Rational)");
-	else
+	// Alpha does not schedule its FIFO from capture timestamps, so the offset
+	// control is deliberately unavailable there.
+	if (!m_stats.isAlphaRenderer)
+	{
 		line.Format(TEXT("Offset:           %d ms"), m_stats.frameOffsetMs);
-
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+	}
 
 	// Separator
 	y += 4;
 
-	// Same-frame VP ingress-to-DirectShow-handoff residence.
+	if (m_stats.isAlphaRenderer)
+	{
+		// Alpha remains direct FIFO. Total is a measurement only: raw hardware
+		// capture to the forecast display target, so it is comparable with the
+		// audio extraction boundary without changing Alpha's scheduling.
+		if (m_stats.presentationTargetTimingKnown)
+			line.Format(TEXT("%-15s%.0f ms"), TEXT("Delay:"),
+				m_stats.captureToPresentationTargetMs);
+		else
+			line.Format(TEXT("%-15s---"), TEXT("Delay:"));
+	}
+	else if (m_stats.scheduledLatencyKnown)
+		line.Format(TEXT("%-15s%.0f ms"), TEXT("Delay:"),
+			m_stats.scheduledLatencyMs);
+	else
+		line.Format(TEXT("%-15s---"), TEXT("Delay:"));
+	DrawText(hdc, line, PADDING, y);
+	y += lineHeight;
+
+	// VP-owned ingress-to-renderer handoff residence. This boundary is shared
+	// by DirectShow and Alpha, despite their different presentation owners.
 	if (m_stats.vpInternalLatencyKnown)
-		line.Format(TEXT("VP internal: %.2f ms"), m_stats.vpInternalLatencyMs);
+		line.Format(TEXT("%-15s%.0f ms"), TEXT("- Renderer:"),
+			m_stats.vpInternalLatencyMs);
 	else
-		line = TEXT("VP internal: ---");
+		line.Format(TEXT("%-15s---"), TEXT("- Renderer:"));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
-	if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("PTS lead:    %.2f ms"), m_stats.dsScheduleLeadMs);
+	if (m_stats.isAlphaRenderer)
+	{
+		if (m_stats.presentationTargetTimingKnown)
+			line.Format(TEXT("%-15s%.0f ms"), TEXT("- Present:"),
+				m_stats.presentationTargetLeadMs);
+		else
+			line.Format(TEXT("%-15s---"), TEXT("- Present:"));
+	}
+	else if (m_stats.scheduledLatencyKnown)
+		line.Format(TEXT("%-15s%.0f ms"), TEXT("- Present:"),
+			m_stats.dsScheduleLeadMs);
 	else
-		line = TEXT("PTS lead:    ---");
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
-
-	if (m_stats.scheduledLatencyKnown)
-		line.Format(TEXT("To req PTS:  %.2f ms"), m_stats.scheduledLatencyMs);
-	else
-		line = TEXT("To req PTS:  ---");
+		line.Format(TEXT("%-15s---"), TEXT("- Present:"));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
@@ -735,9 +769,10 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 {
-	// Twenty-one rows are always rendered. The remaining rows mirror the exact
+	// Twenty-one rows are always rendered by DirectShow. Alpha omits the
+	// DirectShow-only Start/Stop method row. The remaining rows mirror the exact
 	// optional conditions in DrawStats so the background follows its content.
-	size_t lineCount = 21;
+	size_t lineCount = stats.isAlphaRenderer ? 20 : 21;
 	if (stats.measuredRefreshRate > 0.0)
 		lineCount += 2;
 	if (stats.hasPPMCorrection ||

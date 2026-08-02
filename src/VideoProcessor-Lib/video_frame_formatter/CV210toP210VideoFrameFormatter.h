@@ -31,4 +31,5 @@ public:
 private:
 	uint32_t m_height = 0;
 	uint32_t m_width = 0;
+	uint32_t m_sourceStride = 0;
 };

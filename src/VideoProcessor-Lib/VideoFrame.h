@@ -28,7 +28,8 @@ public:
 	VideoFrame() {}
 	VideoFrame(
 		const void* const data, uint64_t counter,
-		timingclocktime_t timingTimestamp, IUnknown* sourceBuffer);
+		timingclocktime_t timingTimestamp, IUnknown* sourceBuffer,
+		timingclocktime_t captureTimingTimestamp = TIMING_CLOCK_TIME_INVALID);
 	VideoFrame(const VideoFrame&);
 
 	~VideoFrame();
@@ -43,6 +44,15 @@ public:
 
 	// Timestamp set by the timing clock.
 	timingclocktime_t GetTimingTimestamp() const { return m_timingTimestamp; }
+
+	// Hardware-capture timestamp before VP's configured frame offset is applied.
+	// This is diagnostic metadata for comparing video delay with the audio
+	// extraction boundary; it never participates in presentation scheduling.
+	timingclocktime_t GetCaptureTimingTimestamp() const
+	{
+		return m_captureTimingTimestamp == TIMING_CLOCK_TIME_INVALID
+			? m_timingTimestamp : m_captureTimingTimestamp;
+	}
 
 	// VP monotonic arrival tick, assigned only when a buffered live-output pin
 	// accepts the frame. It is diagnostic metadata and never participates in
@@ -69,6 +79,7 @@ private:
 	const void* m_data;
 	uint64_t m_counter;
 	timingclocktime_t m_timingTimestamp;
+	timingclocktime_t m_captureTimingTimestamp = TIMING_CLOCK_TIME_INVALID;
 	uint64_t m_captureArrivalTick = 0;
 	bool m_sourceDiscontinuity = false;
 	IUnknown* m_sourceBuffer;

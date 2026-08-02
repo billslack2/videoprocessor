@@ -2,12 +2,13 @@
 
 #include <IRenderer.h>
 #include <ITimingClock.h>
+#include <VideoConversionOverride.h>
 
 #include <cstddef>
 #include <cstdint>
 
 
-static constexpr uint32_t VP_LIBPLACEBO_PLUGIN_API_VERSION = 7;
+static constexpr uint32_t VP_LIBPLACEBO_PLUGIN_API_VERSION = 8;
 static constexpr const char* VP_LIBPLACEBO_VERSION_EXPORT =
 	"VideoProcessorLibplaceboGetApiVersion";
 static constexpr const char* VP_LIBPLACEBO_CREATE_EXPORT =
@@ -23,6 +24,7 @@ using VideoProcessorLibplaceboCreateRendererFn = IVideoRenderer* (__cdecl *)(
 	ITimingClock* timingClock,
 	bool useFrameQueue,
 	size_t frameQueueMaxSize,
+	VideoConversionOverride videoConversionOverride,
 	const char* rendererConfigPath,
 	VideoProcessorLibplaceboLogSink logSink);
 using VideoProcessorLibplaceboDestroyRendererFn = void (__cdecl *)(

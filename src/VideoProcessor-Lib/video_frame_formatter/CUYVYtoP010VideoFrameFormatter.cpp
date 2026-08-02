@@ -53,8 +53,9 @@ void CUYVYtoP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& videoState)
 	if (!videoState)
 		throw std::runtime_error("Null video state is not allowed");
 
-	if (videoState->videoFrameEncoding != VideoFrameEncoding::UYVY)
-		throw std::runtime_error("Can only handle UYVY input");
+	if (videoState->videoFrameEncoding != VideoFrameEncoding::UYVY &&
+		videoState->videoFrameEncoding != VideoFrameEncoding::HDYC)
+		throw std::runtime_error("Can only handle UYVY or HDYC input");
 
 	m_height = videoState->displayMode->FrameHeight();
 	if (m_height % 2 != 0)

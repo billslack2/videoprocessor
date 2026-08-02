@@ -87,10 +87,11 @@ void CDeckLinkRGBToP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& video
 {
 	if (!videoState || !videoState->displayMode)
 		throw std::runtime_error("Packed RGB conversion requires a valid video state and display mode");
-	if (videoState->videoFrameEncoding != VideoFrameEncoding::R10b &&
+	if (videoState->videoFrameEncoding != VideoFrameEncoding::R210 &&
+		videoState->videoFrameEncoding != VideoFrameEncoding::R10b &&
 		videoState->videoFrameEncoding != VideoFrameEncoding::R10l &&
 		videoState->videoFrameEncoding != VideoFrameEncoding::R12L)
-		throw std::runtime_error("Packed RGB to P010 conversion only supports R10b, R10l, or R12L");
+		throw std::runtime_error("Packed RGB to P010 conversion only supports r210, R10b, R10l, or R12L");
 
 	const auto width = videoState->displayMode->FrameWidth();
 	const auto height = videoState->displayMode->FrameHeight();
@@ -185,6 +186,18 @@ void CDeckLinkRGBToP010VideoFrameFormatter::ReadPixelPair(
 		ReadLittleEndian32(source) : ReadBigEndian32(source);
 	const uint32_t secondWord = m_encoding == VideoFrameEncoding::R10l ?
 		ReadLittleEndian32(source + 4) : ReadBigEndian32(source + 4);
+	if (m_encoding == VideoFrameEncoding::R210)
+	{
+		// r210 is [00 R10 G10 B10] in a big-endian 32-bit word.
+		first.r = static_cast<uint16_t>((firstWord >> 20) & 0x3FF);
+		first.g = static_cast<uint16_t>((firstWord >> 10) & 0x3FF);
+		first.b = static_cast<uint16_t>(firstWord & 0x3FF);
+		second.r = static_cast<uint16_t>((secondWord >> 20) & 0x3FF);
+		second.g = static_cast<uint16_t>((secondWord >> 10) & 0x3FF);
+		second.b = static_cast<uint16_t>(secondWord & 0x3FF);
+		return;
+	}
+
 	first.r = static_cast<uint16_t>((firstWord >> 22) & 0x3FF);
 	first.g = static_cast<uint16_t>((firstWord >> 12) & 0x3FF);
 	first.b = static_cast<uint16_t>((firstWord >> 2) & 0x3FF);

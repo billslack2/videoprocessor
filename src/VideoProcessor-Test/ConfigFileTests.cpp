@@ -270,7 +270,6 @@ namespace VideoProcessorTest
 				file << "[command_line]\n"
 					"renderer: VideoProcessor Renderer (Alpha)\n"
 					"queue_size: 32\n"
-					"alpha_queue_size: 1\n"
 					"fullscreen: true\n"
 					"disable_detection_features: true\n"
 					"scene_correction_basic: false\n"
@@ -306,7 +305,6 @@ namespace VideoProcessorTest
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[command_line]\n"
 					"renderer: VideoProcessor Renderer (Alpha)\n"
-					"alpha_queue_size: 1\n"
 					"[shortcuts]\nrender.6: A\n"
 					"[general]\npersist_profile_selection: true\n"
 					"[vpvr.display]\nquality: high\n"
@@ -394,7 +392,7 @@ namespace VideoProcessorTest
 				"VideoProcessor-main-schema-invalid.cfg";
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
-				file << "[command_line]\nalpha_queue_size: 0\n";
+				file << "[command_line]\nalpha_queue_size: 1\n";
 			}
 
 			ConfigFile config;

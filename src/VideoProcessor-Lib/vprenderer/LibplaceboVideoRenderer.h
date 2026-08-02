@@ -2,6 +2,7 @@
 
 #include <IRenderer.h>
 #include <ITimingClock.h>
+#include <VideoConversionOverride.h>
 
 #include <atomic>
 #include <condition_variable>
@@ -24,7 +25,8 @@ public:
 		HWND videoHwnd,
 		ITimingClock* timingClock,
 		bool useFrameQueue,
-		size_t frameQueueMaxSize);
+		size_t frameQueueMaxSize,
+		VideoConversionOverride videoConversionOverride);
 	~LibplaceboVideoRenderer() override;
 
 	size_t GetConvertedQueueSize() override;
@@ -50,6 +52,8 @@ public:
 	void OnPaint() override;
 	void OnDisplayChange() override;
 	void SetFrameQueueMaxSize(size_t size) override;
+	void SetQueueFramePolicy(size_t startupPrerollFrames,
+		size_t steadyReserveFrames, bool hasSteadyReserveFrames) override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	uint64_t SceneAwareCorrectionDropCount() const override;
 	uint64_t SceneAwareCorrectionRepeatCount() const override;
@@ -81,6 +85,9 @@ public:
 	uint64_t DroppedFrameCount() const override;
 	bool GetOutputModeInfo(CString& details) const override;
 	bool GetDisplayLutInfo(CString& details) const override;
+	bool GetVideoIngressInfo(CString& details) const override;
+	bool GetPresentationTargetTiming(double& leadMs,
+		double& captureToTargetMs) const override;
 	bool SupportsNativeStatsOverlay() const override { return true; }
 	bool SetNativeStatsOverlay(const uint8_t* pixels, size_t byteCount,
 		int width, int height, int stride) override;
@@ -121,6 +128,8 @@ private:
 	HWND m_videoHwnd = nullptr;
 	ITimingClock* m_timingClock = nullptr;
 	bool m_useFrameQueue = true;
+	VideoConversionOverride m_videoConversionOverride =
+		VideoConversionOverride::VIDEOCONVERSION_NONE;
 
 	mutable std::mutex m_stateMutex;
 	VideoStateComPtr m_videoState;
@@ -148,6 +157,9 @@ private:
 	std::unique_ptr<Impl> m_impl;
 	std::atomic<double> m_entryLatencyMs{0.0};
 	std::atomic<double> m_exitLatencyMs{0.0};
+	std::atomic_bool m_presentationTargetTimingKnown{false};
+	std::atomic<double> m_presentationTargetLeadMs{0.0};
+	std::atomic<double> m_captureToPresentationTargetMs{0.0};
 	std::atomic<uint64_t> m_droppedFrames{0};
 	std::atomic<uint64_t> m_missingFrameStateDrops{0};
 	std::atomic<uint64_t> m_renderFailureDrops{0};

@@ -1553,6 +1553,7 @@ void CVideoProcessorDlg::StartFrameOffsetAuto()
 void CVideoProcessorDlg::StartFrameOffset(const CString& frameOffset)
 {
 	m_defaultFrameOffset = frameOffset;
+	m_directShowFrameOffsetMs = _ttoi(frameOffset);
 }
 
 void CVideoProcessorDlg::SetQueueSize(const CString& queueSize)
@@ -1707,14 +1708,6 @@ void CVideoProcessorDlg::OnBnClickedCaptureRestart()
 
 void CVideoProcessorDlg::OnBnClickedTimingClockFrameOffsetAutoCheck()
 {
-	if (IsRationalRationalTimingSelected())
-	{
-		m_timingClockFrameOffsetAutoCheck.SetCheck(BST_UNCHECKED);
-		m_timingClockFrameOffsetAutoCheck.EnableWindow(FALSE);
-		m_timingClockFrameOffsetEdit.EnableWindow(FALSE);
-		return;
-	}
-
 	const bool checked = m_timingClockFrameOffsetAutoCheck.GetCheck();
 
 	m_timingClockFrameOffsetEdit.EnableWindow(!checked);
@@ -1805,39 +1798,17 @@ bool CVideoProcessorDlg::IsAlphaRendererSelected() const
 
 void CVideoProcessorDlg::UpdateRendererQueueControl()
 {
-	const bool alphaSelected = IsAlphaRendererSelected();
 	if (m_queueRendererSelectionInitialized)
-	{
-		const size_t displayedValue =
-			std::max<size_t>(1, GetRendererVideoFrameQueueSizeMax());
-		if (m_queueSelectionWasAlpha)
-			m_alphaQueueDesiredDepth = displayedValue;
-		else
-			m_directShowQueueCapacity = displayedValue;
-	}
+		m_directShowQueueCapacity = std::max<size_t>(1,
+			GetRendererVideoFrameQueueSizeMax());
 
-	if (alphaSelected)
-	{
-		const size_t configuredOverride =
-			videoProcessorApp.GetAlphaQueueSizeOverride();
-		if (configuredOverride > 0)
-			m_alphaQueueDesiredDepth = configuredOverride;
-	}
-
-	const size_t selectedValue = alphaSelected ?
-		m_alphaQueueDesiredDepth : m_directShowQueueCapacity;
 	CString queueText;
-	queueText.Format(TEXT("%zu"), selectedValue);
+	queueText.Format(TEXT("%zu"), m_directShowQueueCapacity);
 	m_rendererVideoFrameQueueSizeMaxEdit.SetWindowText(queueText);
 
-	m_queueSelectionWasAlpha = alphaSelected;
 	m_queueRendererSelectionInitialized = true;
-	DebugLog::Log("%s queue control selected: value=%zu source=%s",
-		alphaSelected ? "Alpha desired depth" : "DirectShow capacity",
-		selectedValue,
-		alphaSelected && videoProcessorApp.GetAlphaQueueSizeOverride() > 0 ?
-			"alpha_queue_size" :
-			(alphaSelected ? "remembered/default Alpha value" : "queue_size"));
+	DebugLog::Log("Renderer queue control selected: hard capacity=%zu source=queue_size",
+		m_directShowQueueCapacity);
 }
 
 
@@ -3677,6 +3648,11 @@ void CVideoProcessorDlg::UpdateState()
 //
 
 int CVideoProcessorDlg::CalculateAutoFrameOffset() {
+	// Alpha presents from its own FIFO and does not schedule delivery from the
+	// capture timestamp.  A positive capture timestamp offset therefore adds no
+	// presentation benefit there; keep automatic mode neutral.
+	if (IsAlphaRendererSelected())
+		return 0;
 
 	size_t m_frameQueueMaxSize = GetRendererVideoFrameQueueSizeMax();
 
@@ -4235,24 +4211,15 @@ void CVideoProcessorDlg::RenderStart()
 	{
 		try
 		{
-			const size_t alphaQueueOverride =
-				videoProcessorApp.GetAlphaQueueSizeOverride();
-			const size_t alphaDesiredDepth =
+			const size_t alphaQueueCapacity =
 				GetRendererVideoFrameQueueSizeMax();
-			if (alphaQueueOverride > 0)
-			{
-				CString alphaQueueText;
-				alphaQueueText.Format(TEXT("%zu"), alphaDesiredDepth);
-				m_rendererVideoFrameQueueSizeMaxEdit.SetWindowText(alphaQueueText);
-				DebugLog::Log("Alpha queue desired depth uses configuration-only alpha_queue_size=%zu",
-					alphaDesiredDepth);
-			}
 			m_videoRenderer = std::make_shared<LibplaceboPluginVideoRenderer>(
 				*this,
 				m_rendererTargetHwnd,
 				timingClock,
 				GetRendererVideoFrameUseQueue(),
-				alphaDesiredDepth);
+				alphaQueueCapacity,
+				videoConversionOverride);
 			BindRendererResetSink();
 
 			ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
@@ -4261,6 +4228,10 @@ void CVideoProcessorDlg::RenderStart()
 				m_videoRenderer->OnVideoState(m_builtVideoState);
 
 			m_videoRenderer->Build();
+			m_videoRenderer->SetQueueFramePolicy(
+				videoProcessorApp.GetQueueStartupPrerollFrames(),
+				videoProcessorApp.GetQueueSteadyReserveFrames(),
+				videoProcessorApp.HasQueueSteadyReserveFrames());
 			ApplyRequestedShaderSelection();
 			m_rendererTransitionWindow.KeepOnTop();
 			// Match the DirectShow startup contract. Alpha owns its detector and
@@ -5541,62 +5512,46 @@ void CVideoProcessorDlg::SetFrameOffsetByRefresh(std::vector<int> offsets) {
 }
 
 
-bool CVideoProcessorDlg::IsRationalRationalTimingSelected() const
-{
-	const int methodIndex =
-		m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
-	return methodIndex >= 0 &&
-		static_cast<DirectShowStartStopTimeMethod>(
-			m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(methodIndex)) ==
-			DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL;
-}
-
-
 void CVideoProcessorDlg::UpdateTimingClockFrameOffsetAvailability()
 {
-	const bool rationalRational = IsRationalRationalTimingSelected();
-	if (rationalRational)
+	const bool alphaSelected = IsAlphaRendererSelected();
+	if (alphaSelected && !m_alphaFrameOffsetDisabled)
 	{
-		if (!m_frameOffsetMaskedForRationalRational)
-		{
-			m_timingClockFrameOffsetEdit.GetWindowText(
-				m_frameOffsetBeforeRationalRational);
-			m_frameOffsetAutoBeforeRationalRational =
-				m_timingClockFrameOffsetAutoCheck.GetCheck() == BST_CHECKED;
-			m_frameOffsetMaskedForRationalRational = true;
-		}
-
-		m_timingClockFrameOffsetEdit.SetWindowText(TEXT("N/A"));
-		m_timingClockFrameOffsetEdit.EnableWindow(FALSE);
-		m_timingClockFrameOffsetAutoCheck.SetCheck(BST_UNCHECKED);
-		m_timingClockFrameOffsetAutoCheck.EnableWindow(FALSE);
-		if (m_captureDevice)
-			m_captureDevice->SetFrameOffsetMs(0);
-		return;
+		// Alpha's FIFO is not timestamp-scheduled. Preserve the DirectShow value
+		// for a later backend switch, but force the capture clock to its neutral
+		// offset while Alpha owns the renderer.
+		m_directShowFrameOffsetMs = GetTimingClockFrameOffsetMs();
+		SetTimingClockFrameOffsetMs(0);
+		m_alphaFrameOffsetDisabled = true;
+		DebugLog::Log("Alpha frame offset disabled; preserved DirectShow value=%d ms",
+			m_directShowFrameOffsetMs);
+	}
+	else if (!alphaSelected && m_alphaFrameOffsetDisabled)
+	{
+		SetTimingClockFrameOffsetMs(m_directShowFrameOffsetMs);
+		m_alphaFrameOffsetDisabled = false;
+		DebugLog::Log("DirectShow frame offset restored: %d ms",
+			m_directShowFrameOffsetMs);
 	}
 
-	if (m_frameOffsetMaskedForRationalRational)
-	{
-		m_timingClockFrameOffsetEdit.SetWindowText(
-			m_frameOffsetBeforeRationalRational);
-		m_timingClockFrameOffsetAutoCheck.SetCheck(
-			m_frameOffsetAutoBeforeRationalRational ? BST_CHECKED : BST_UNCHECKED);
-		m_frameOffsetMaskedForRationalRational = false;
-	}
-
-	m_timingClockFrameOffsetAutoCheck.EnableWindow(TRUE);
+	m_timingClockFrameOffsetAutoCheck.EnableWindow(!alphaSelected);
 	const bool autoOffset =
 		m_timingClockFrameOffsetAutoCheck.GetCheck() == BST_CHECKED;
-	m_timingClockFrameOffsetEdit.EnableWindow(!autoOffset);
+	m_timingClockFrameOffsetEdit.EnableWindow(!alphaSelected && !autoOffset);
+	for (const UINT controlId : { IDC_STATIC_TIMING_CLOCK_FRAME_OFFSET_LABEL,
+		IDC_STATIC_TIMING_CLOCK_FRAME_OFFSET_MS })
+	{
+		if (CWnd* label = GetDlgItem(controlId))
+			label->EnableWindow(!alphaSelected);
+	}
 	if (m_captureDevice)
-		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
+		m_captureDevice->SetFrameOffsetMs(alphaSelected ? 0 :
+			GetTimingClockFrameOffsetMs());
 }
 
 
 int CVideoProcessorDlg::GetTimingClockFrameOffsetMs()
 {
-	if (IsRationalRationalTimingSelected())
-		return 0;
 	CString text;
 	m_timingClockFrameOffsetEdit.GetWindowText(text);
 
@@ -5608,9 +5563,6 @@ int CVideoProcessorDlg::GetTimingClockFrameOffsetMs()
 
 void CVideoProcessorDlg::SetTimingClockFrameOffsetMs(int timingClockFrameOffsetMs)
 {
-	if (IsRationalRationalTimingSelected())
-		return;
-
 	CString cstring;
 	cstring.Format(_T("%i"), timingClockFrameOffsetMs);
 	m_timingClockFrameOffsetEdit.SetWindowText(cstring);
@@ -5619,15 +5571,12 @@ void CVideoProcessorDlg::SetTimingClockFrameOffsetMs(int timingClockFrameOffsetM
 
 void CVideoProcessorDlg::UpdateTimingClockFrameOffset()
 {
-	if (IsRationalRationalTimingSelected())
-	{
-		if (m_captureDevice)
-			m_captureDevice->SetFrameOffsetMs(0);
-		return;
-	}
+	if (!IsAlphaRendererSelected())
+		m_directShowFrameOffsetMs = GetTimingClockFrameOffsetMs();
 
 	if (m_captureDevice) 
-		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
+		m_captureDevice->SetFrameOffsetMs(IsAlphaRendererSelected() ? 0 :
+			GetTimingClockFrameOffsetMs());
 
 	if (m_videoRenderer)
 		RequestRendererReset(RendererResetReason::TimingOffsetChange, false, 0);
@@ -7968,7 +7917,11 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 		// Refresh rate
 		stats.refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
-		stats.displayRefreshRate = displayRefreshRate;
+		// Keep the accepted/renderer-selected value authoritative for timing.
+		// During DXGI warm-up, the provisional candidate is still useful OSD
+		// telemetry when labelled as such; it is never fed to timing consumers.
+		stats.displayRefreshRate = displayRefreshRate > 0.0 ?
+			displayRefreshRate : sampledDisplayTiming.refreshRateHz;
 		stats.displayRefreshRateOverridden = displayRefreshRateOverridden;
 		if (!displayRefreshRateOverridden &&
 			displayRateResult.decision !=
@@ -8061,6 +8014,13 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				m_videoRenderer->ExitLatencyMs() -
 				m_videoRenderer->EntryLatencyMs());
 		}
+		if (stats.isAlphaRenderer)
+		{
+			stats.presentationTargetTimingKnown =
+				m_videoRenderer->GetPresentationTargetTiming(
+					stats.presentationTargetLeadMs,
+					stats.captureToPresentationTargetMs);
+		}
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 		m_videoRenderer->GetOutputModeInfo(stats.outputMode);
 		m_videoRenderer->GetDisplayLutInfo(stats.displayLut);
@@ -8109,6 +8069,14 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	if (m_rendererVideoConversionCombo.GetCurSel() >= 0)
 	{
 		m_rendererVideoConversionCombo.GetLBText(m_rendererVideoConversionCombo.GetCurSel(), stats.videoConversion);
+	}
+	// Alpha can choose an actual native or P010 ingress path per frame. Show
+	// that resolved path rather than the generic DirectShow override label.
+	if (stats.isAlphaRenderer && m_videoRenderer)
+	{
+		CString ingress;
+		if (m_videoRenderer->GetVideoIngressInfo(ingress))
+			stats.videoConversion = ingress;
 	}
 	
 	// Conversion performance (NEW - V210→P010 etc.)
