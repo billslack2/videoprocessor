@@ -69,7 +69,7 @@ they must not contain requirements that are absent from this file.
 | VP-0041 | Done | Eliminate stale-frame flashes across renderer rebuilds |
 | VP-0042 | Backlog | Indexed debug-log rotation filenames |
 | VP-0043 | Backlog | madVR graph re-prime after lifecycle and queue pressure |
-| VP-0044 | Backlog | Alpha native OSD visible-picture anchoring and scaling |
+| VP-0044 | In progress | Alpha native OSD visible-picture anchoring and scaling |
 | VP-0045 | Done | Namespace built-in renderer configuration as vpvr |
 | VP-0046 | Backlog | DirectShow event plumbing and passive health diagnostics |
 | VP-0047 | Backlog | P3-D65 output and SDR LUT target-contract support |

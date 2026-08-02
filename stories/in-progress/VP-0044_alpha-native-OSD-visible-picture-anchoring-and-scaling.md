@@ -2,7 +2,19 @@
 
 ## Status
 
-Backlog. No implementation has started.
+In progress. Implementation is on `codex/vp-0044-visible-osd`, based on the
+current `v1.1.015-beta` integration branch. The Alpha native overlay now has a
+single, unit-tested final-picture placement calculation; remaining work is
+Release build and live viewport validation.
+
+## Implementation evidence
+
+- 2026-08-02: `VideoProcessor-VPRenderer` x64 Release built successfully.
+- 2026-08-02: `VideoProcessor-Test` x64 Release built successfully; the four
+  `NativeStatsOverlayPlacementTests` cases passed (full frame, scope,
+  letterbox/pillarbox, and constrained small picture).
+- Live Alpha validation on 16:9 and scope/CIH content remains pending before
+  this story can move to review.
 
 ## User story
 
@@ -136,4 +148,3 @@ per-frame logging.
 Builds on VP-0037's native Alpha OSD ownership and VP-0038's generic viewport
 state. It should reuse trusted active-picture/geometry work where available;
 it must not introduce a separate unsafe black-bar detector.
-
