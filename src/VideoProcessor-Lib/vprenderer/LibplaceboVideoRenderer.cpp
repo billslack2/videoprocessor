@@ -2306,6 +2306,7 @@ struct LibplaceboVideoRenderer::Impl
 	std::unique_ptr<IVideoFrameFormatter> formatter;
 	VideoStateComPtr formatterState;
 	std::vector<BYTE> convertedFrame;
+	bool formatterContractLogged = false;
 	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
 	ActivePictureTransitionModel nlsTransition;
@@ -5001,6 +5002,7 @@ struct LibplaceboVideoRenderer::Impl
 		const BYTE* uvPixels = nullptr;
 		VideoFrameFormatterOutputContract formattedContract;
 		bool formatterStateChanged = false;
+		bool logFormatterContract = false;
 		if (!nativeRgbUpload)
 		{
 			if (!formatterState || formatterState->colorspace != state.colorspace)
@@ -5015,7 +5017,8 @@ struct LibplaceboVideoRenderer::Impl
 			if (!formattedContract.IsValid())
 				throw std::runtime_error(
 					"Alpha formatter did not declare its output range contract");
-			if (formatterStateChanged)
+			logFormatterContract = !formatterContractLogged || formatterStateChanged;
+			if (logFormatterContract)
 			{
 				const char* const range =
 					formattedContract.sampleRange == VideoFrameSampleRange::FULL ?
@@ -5026,10 +5029,11 @@ struct LibplaceboVideoRenderer::Impl
 					lossless422Upload ? "P210" : "P010", range, range,
 					static_cast<unsigned>(formattedContract.colorDepth),
 					static_cast<unsigned>(formattedContract.bitShift), width, height);
+				formatterContractLogged = true;
 			}
 			yPixels = convertedFrame.data();
 			uvPixels = yPixels + p010RowBytes * static_cast<size_t>(height);
-			if (formatterStateChanged && outputDiagnostics)
+			if (logFormatterContract && outputDiagnostics)
 			{
 				LogFormatterInputDiagnostics(
 					reinterpret_cast<const uint16_t*>(yPixels),
