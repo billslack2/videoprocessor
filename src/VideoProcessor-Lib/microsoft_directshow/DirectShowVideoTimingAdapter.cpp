@@ -84,3 +84,70 @@ bool DirectShowVideoTimingAdapter::UsesPresentationLead(
 		return false;
 	}
 }
+
+bool DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(
+	DirectShowStartStopTimeMethod mode)
+{
+	switch (mode)
+	{
+	case DS_SSTM_CLOCK_SMART:
+	case DS_SSTM_CLOCK_THEO:
+	case DS_SSTM_CLOCK_CLOCK:
+	case DS_SSTM_THEO_THEO:
+	case DS_SSTM_CLOCK_RATIONAL:
+	case DS_SSTM_CLOCK_SMART2:
+		return true;
+	default:
+		return false;
+	}
+}
+
+void DirectShowLiveTimestampCatchUp::ResetToEpoch(uint64_t epoch) noexcept
+{
+	m_epoch = epoch;
+	m_pending = false;
+	m_lastStopValid = false;
+	m_lastStop = 0;
+	m_offset = 0;
+}
+
+void DirectShowLiveTimestampCatchUp::Arm(uint64_t epoch) noexcept
+{
+	if (m_epoch != epoch)
+		ResetToEpoch(epoch);
+	m_pending = true;
+}
+
+DirectShowLiveCatchUpDecision DirectShowLiveTimestampCatchUp::Adjust(
+	uint64_t epoch,
+	VideoReferenceTime start,
+	VideoReferenceTime stop) noexcept
+{
+	if (m_epoch != epoch)
+		ResetToEpoch(epoch);
+
+	DirectShowLiveCatchUpDecision decision;
+	decision.start = start + m_offset;
+	decision.stop = stop + m_offset;
+	if (m_pending && m_lastStopValid)
+	{
+		m_offset += m_lastStop - decision.start;
+		decision.start = start + m_offset;
+		decision.stop = stop + m_offset;
+		decision.rebased = true;
+		m_pending = false;
+	}
+	decision.offset = m_offset;
+	decision.adjusted = m_offset != 0;
+	return decision;
+}
+
+void DirectShowLiveTimestampCatchUp::CommitSuccessfulStop(
+	uint64_t epoch,
+	VideoReferenceTime stop) noexcept
+{
+	if (m_epoch != epoch)
+		ResetToEpoch(epoch);
+	m_lastStop = stop;
+	m_lastStopValid = true;
+}

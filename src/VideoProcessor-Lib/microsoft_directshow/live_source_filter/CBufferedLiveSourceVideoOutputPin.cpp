@@ -22,6 +22,7 @@
 #include <ConfigFile.h>
 #include <DirectShowDeliveryOutcome.h>
 #include <microsoft_directshow/DirectShowEpochPrimePolicy.h>
+#include <microsoft_directshow/DirectShowVideoTimingAdapter.h>
 #include <LiveEpochConvergenceController.h>
 #include <LiveSteadyQueuePolicy.h>
 #include <RationalLiveOutputSequencer.h>
@@ -239,7 +240,11 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 	if (m_frameQueueMaxSize.load(std::memory_order_relaxed) == 0)
 		throw std::runtime_error("Call SetFrameQueueMaxSize() before activating the graph");
 
-	DebugLog::Log("CBufferedLiveSourceVideoOutputPin::Active() - Starting activation with queue size %zu", m_frameQueueMaxSize.load(std::memory_order_relaxed));
+	DebugLog::Log(
+		"CBufferedLiveSourceVideoOutputPin::Active() - Starting activation "
+		"timestamp_method=%s timestamp_method_id=%d queue_size=%zu",
+		TimestampMethodName(m_timestamp), static_cast<int>(m_timestamp),
+		m_frameQueueMaxSize.load(std::memory_order_relaxed));
 
 	{
 		CAutoLock lock(m_pLock);
@@ -1535,7 +1540,10 @@ void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace(const char* boundar
 		manifest << "  \"vp_delivery_reserve\": " << GetDeliveryReserve() << ",\n";
 		manifest << "  \"vp_steady_target_scope\": \"converted_queue\",\n";
 		manifest << "  \"vp_convergence_requires_raw_depth_known\": true,\n";
-		manifest << "  \"vp_steady_hold\": \"latest-wins-converted-high-water\",\n";
+		manifest << "  \"vp_steady_hold\": \"pre-conversion-backpressure\",\n";
+		manifest << "  \"vp_convergence_timestamp_catch_up\": "
+			"\"final-delivery-boundary\",\n";
+		manifest << "  \"vp_convergence_raw_target\": 0,\n";
 		manifest << "  \"vp_steady_high_water\": " <<
 			(IsSteadyQueueTargetConfigured() ?
 				std::max<size_t>(1, GetConfiguredSteadyQueueTarget()) : 0) << ",\n";
@@ -1749,6 +1757,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	uint64_t slowDeliveryThresholdUs = (frameIntervalUs * 150) / 100;
 	DWORD lastFrameIntervalUpdateTime = GetTickCount();
 	uint64_t lastSuccessfullyDeliveredEpoch = UINT64_MAX;
+	uint64_t lastSuccessfullyDeliveredFrameNumber = 0;
 	DirectShowDeliveryOutcomeClassifier deliveryOutcomeClassifier;
 	LiveEpochConvergenceController epochConvergenceController;
 	// VP-0066-9 owns normal Rational-Rational output time at the final
@@ -1762,6 +1771,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	bool rationalCatchUpAnchorValid = false;
 	REFERENCE_TIME rationalCatchUpMinimumStart = 0;
 	uint64_t rationalLatchEpoch = 0;
+	DirectShowLiveTimestampCatchUp legacyTimestampCatchUp;
+	uint64_t legacyConvertedCatchUpEpoch = 0;
+	bool legacyConvertedCatchUpPending = false;
+	uint64_t legacyIntentionalRawGapEpoch = 0;
+	bool legacyIntentionalRawGapPending = false;
 	LiveOutputTraceRecord latestTimelineSnapshot;
 	bool latestTimelineSnapshotAvailable = false;
 	uint64_t latencyClockDiscontinuityLoggedEpoch = 0;
@@ -2354,6 +2368,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			}
 			if (outcome.clearRecentFailures)
 				m_recentDeliveryFailures.store(0, std::memory_order_relaxed);
+			if (DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp) &&
+				SUCCEEDED(presentationTimeResult) &&
+				presentationStop > presentationStart)
+			{
+				legacyTimestampCatchUp.CommitSuccessfulStop(
+					expectedQueueEpoch, presentationStop);
+			}
 			m_currentEpochDeliverySuccessCount.fetch_add(
 				1, std::memory_order_acq_rel);
 			m_lastDeliverySuccessQueueEpoch.store(
@@ -2472,12 +2493,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				m_steadyQueueEpoch.store(
 					expectedQueueEpoch, std::memory_order_release);
 				actualRawDepthBefore = m_captureFrameQueue.Size();
-				// Do not flush the raw queue here. The conversion worker is much
-				// faster than live capture and will release these source buffers while
-				// the steady latest-wins cap prevents converted backlog from regrowing.
-				// Preserving them avoids manufacturing capture-counter gaps.
-				discardedRawFrames = 0;
-				rawDepthAfterConvergence = actualRawDepthBefore;
+				// The initial raw bridge helped the converted prime reach downstream,
+				// but at live cadence it can never drain by itself. Once downstream
+				// pacing proves the prime was accepted, remove that stale bridge as
+				// part of the same timestamp-aware convergence transaction.
+				discardedRawFrames = m_captureFrameQueue.TrimTo(0);
+				rawDepthAfterConvergence = m_captureFrameQueue.Size();
 				m_publishedRawQueueDepth.store(
 					rawDepthAfterConvergence, std::memory_order_release);
 				{
@@ -2492,6 +2513,20 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				}
 				const size_t discardedStaleFrames =
 					discardedRawFrames + discardedConvertedFrames;
+				if (DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp) &&
+					discardedConvertedFrames > 0)
+				{
+					// Legacy modes stamp samples during conversion. Arm a one-shot
+					// delivery-boundary splice so removing old converted samples does
+					// not leave their timestamp span scheduled in DirectShow.
+					legacyTimestampCatchUp.Arm(expectedQueueEpoch);
+					legacyConvertedCatchUpEpoch = expectedQueueEpoch;
+					legacyConvertedCatchUpPending = true;
+				}
+				legacyIntentionalRawGapEpoch = expectedQueueEpoch;
+				legacyIntentionalRawGapPending =
+					DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp) &&
+					discardedRawFrames > 0;
 				if (timestampOwnershipEnabled && discardedStaleFrames > 0)
 				{
 					// The trim deliberately replaces stale live work, so the next
@@ -2602,6 +2637,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					convergenceDecision.activation);
 				convergenceTrace.convergenceApplied = true;
 				convergenceTrace.intentionalDrop = discardedStaleFrames > 0;
+				convergenceTrace.timestampOwner = timestampOwnershipEnabled ? 1 : 0;
+				convergenceTrace.timestampMethod = static_cast<uint8_t>(m_timestamp);
 				m_liveOutputTrace.Record(convergenceTrace);
 				m_liveConvergenceTrace.Record(convergenceTrace);
 				m_convergenceAppliedTick.store(
@@ -2630,7 +2667,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					"converted=%zu->%zu discarded_converted=%zu "
 					"discarded_stale=%zu steady_high_water=%zu activation=%s "
 					"paced_streak=%u paced_band=%llu..%lluus priming_depth=%zu "
-					"latency_rewarm=1 "
+					"timestamp_method=%s legacy_timestamp_catch_up=%d latency_rewarm=1 "
 					"madvr_queue=unobservable",
 					expectedQueueEpoch, desiredVpDepth,
 					actualRawDepthBefore, rawDepthAfterConvergence,
@@ -2643,7 +2680,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					convergenceDecision.consecutivePacedDeliveryCount,
 					convergenceDecision.pacedDeliveryMinimumUs,
 					convergenceDecision.pacedDeliveryMaximumUs,
-					convergenceDecision.pacedPrimingDepth);
+					convergenceDecision.pacedPrimingDepth,
+					TimestampMethodName(m_timestamp),
+					DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp) &&
+						discardedConvertedFrames > 0 ? 1 : 0);
 			}
 			++framesSinceLastLog;
 			++deliverySuccessCount;
@@ -3181,6 +3221,38 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				lastSuccessfullyDeliveredEpoch != currentQueueEpoch;
 			const bool sourceGapDiscontinuity =
 				convertedSample.sourceDiscontinuity;
+			if (legacyConvertedCatchUpPending &&
+				legacyConvertedCatchUpEpoch != currentQueueEpoch)
+			{
+				legacyConvertedCatchUpPending = false;
+				legacyConvertedCatchUpEpoch = 0;
+			}
+			if (legacyIntentionalRawGapPending &&
+				legacyIntentionalRawGapEpoch != currentQueueEpoch)
+			{
+				legacyIntentionalRawGapPending = false;
+				legacyIntentionalRawGapEpoch = 0;
+			}
+			const bool deliveredSourceFrameGap =
+				lastSuccessfullyDeliveredEpoch == currentQueueEpoch &&
+				convertedSample.frameNumber > lastSuccessfullyDeliveredFrameNumber &&
+				convertedSample.frameNumber - lastSuccessfullyDeliveredFrameNumber > 1;
+			if (legacyIntentionalRawGapPending &&
+				!legacyConvertedCatchUpPending && deliveredSourceFrameGap &&
+				legacyIntentionalRawGapEpoch == currentQueueEpoch)
+			{
+				// The retained converted reserve is delivered before the source
+				// counter reaches the raw frames removed by convergence. Re-arm at
+				// that exact intentional boundary so the hardware-clock timeline
+				// remains continuous without hiding unrelated capture loss.
+				legacyTimestampCatchUp.Arm(currentQueueEpoch);
+				legacyIntentionalRawGapPending = false;
+				legacyIntentionalRawGapEpoch = 0;
+				DebugLog::Log(
+					"VP-0066 LEGACY RAW CATCH-UP: method=%s epoch=%llu frame=%llu",
+					TimestampMethodName(m_timestamp), currentQueueEpoch,
+					convertedSample.frameNumber);
+			}
 			const bool markDiscontinuity =
 				epochStartDiscontinuity || sourceGapDiscontinuity;
 			const DirectShowSamplePreparationResult preparation =
@@ -3222,9 +3294,45 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					preparation.discontinuityResult);
 
 			const bool usedLateBoundStop = preparation.lateBoundStopApplied;
-			REFERENCE_TIME currentStart = preparation.originalStart;
-			REFERENCE_TIME currentStop = preparation.originalStop;
-			HRESULT sampleTimeHr = preparation.getTimeResult;
+			REFERENCE_TIME currentStart = 0;
+			REFERENCE_TIME currentStop = 0;
+			// Read back the prepared value: Clock-Smart late binding may have
+			// replaced the original stop before the catch-up splice is applied.
+			HRESULT sampleTimeHr = pSample->GetTime(&currentStart, &currentStop);
+			if (DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp) &&
+				SUCCEEDED(sampleTimeHr) && currentStop > currentStart)
+			{
+				const DirectShowLiveCatchUpDecision catchUp =
+					legacyTimestampCatchUp.Adjust(
+						currentQueueEpoch, currentStart, currentStop);
+				REFERENCE_TIME adjustedStart = catchUp.start;
+				REFERENCE_TIME adjustedStop = catchUp.stop;
+				if (catchUp.adjusted &&
+					FAILED(pSample->SetTime(&adjustedStart, &adjustedStop)))
+				{
+					DebugLog::Log(
+						"VP-0066 LEGACY TIMESTAMP CATCH-UP: failed to stamp "
+						"method=%s epoch=%llu; requesting reset",
+						TimestampMethodName(m_timestamp), currentQueueEpoch);
+					pSample->Release();
+					RequestCoordinatedReset("legacy-catch-up-stamp-failure");
+					break;
+				}
+				currentStart = catchUp.start;
+				currentStop = catchUp.stop;
+				if (catchUp.rebased)
+				{
+					legacyConvertedCatchUpPending = false;
+					legacyConvertedCatchUpEpoch = 0;
+					DebugLog::Log(
+						"VP-0066 LEGACY TIMESTAMP CATCH-UP: method=%s epoch=%llu "
+						"frame=%llu offset=%.3fms next_start=%.3fms",
+						TimestampMethodName(m_timestamp), currentQueueEpoch,
+						convertedSample.frameNumber,
+						catchUp.offset / 10000.0,
+						catchUp.start / 10000.0);
+				}
+			}
 			if (lateBindStop)
 			{
 				if (usedLateBoundStop)
@@ -3712,7 +3820,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				deferredUpstreamRepeat->Release();
 
 			if (hr == S_OK)
+			{
 				lastSuccessfullyDeliveredEpoch = currentQueueEpoch;
+				lastSuccessfullyDeliveredFrameNumber =
+					convertedSample.frameNumber;
+			}
 
 			// Log CLOCK_SMART timing stats periodically
 			static uint64_t smartLogCounter = 0;

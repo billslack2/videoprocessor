@@ -28,8 +28,8 @@ struct LiveSteadyQueueDecision
 
 // Pure policy for VP's post-prime converted queue. A literal zero setting has
 // no retained reserve, but one sample must exist long enough for the delivery
-// worker to consume it. The queue implementation removes oldest entries, so
-// enforcing this decision is a latest-wins live policy.
+// worker to consume it. Once the one-shot startup catch-up has completed,
+// enforcing this decision blocks conversion before another sample is stamped.
 class LiveSteadyQueuePolicy
 {
 public:

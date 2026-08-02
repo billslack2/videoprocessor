@@ -99,5 +99,82 @@ namespace Tests
 					decision.hasStop);
 			}
 		}
+
+		TEST_METHOD(LiveCatchUpClassificationExcludesFinalDeliveryOwnedRationalMode)
+		{
+			Assert::IsTrue(DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(
+				DS_SSTM_CLOCK_SMART));
+			Assert::IsTrue(DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(
+				DS_SSTM_CLOCK_SMART2));
+			Assert::IsTrue(DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(
+				DS_SSTM_CLOCK_THEO));
+			Assert::IsFalse(DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(
+				DS_SSTM_RATIONAL_RATIONAL));
+			Assert::IsFalse(DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(
+				DS_SSTM_NONE));
+		}
+
+		TEST_METHOD(LiveCatchUpRemovesOnlyTheDiscardedStartupTimestampSpan)
+		{
+			DirectShowLiveTimestampCatchUp catchUp;
+			const uint64_t epoch = 7;
+			catchUp.ResetToEpoch(epoch);
+			catchUp.CommitSuccessfulStop(epoch, 2166833);
+			catchUp.Arm(epoch);
+
+			// Thirty discarded 59.94-Hz samples left the next pre-stamped sample
+			// approximately 500 ms in the future. It must immediately follow the
+			// last successful delivery, with the correction persisting thereafter.
+			DirectShowLiveCatchUpDecision decision = catchUp.Adjust(
+				epoch, 7171833, 7338666);
+			Assert::IsTrue(decision.rebased);
+			Assert::AreEqual<VideoReferenceTime>(2166833, decision.start);
+			Assert::AreEqual<VideoReferenceTime>(2333666, decision.stop);
+			Assert::AreEqual<VideoReferenceTime>(-5005000, decision.offset);
+			catchUp.CommitSuccessfulStop(epoch, decision.stop);
+
+			decision = catchUp.Adjust(epoch, 7338666, 7505499);
+			Assert::IsFalse(decision.rebased);
+			Assert::AreEqual<VideoReferenceTime>(2333666, decision.start);
+			Assert::AreEqual<VideoReferenceTime>(2500499, decision.stop);
+		}
+
+		TEST_METHOD(LiveCatchUpNeverCarriesAcrossGraphEpochs)
+		{
+			DirectShowLiveTimestampCatchUp catchUp;
+			catchUp.CommitSuccessfulStop(3, 2000000);
+			catchUp.Arm(3);
+			(void)catchUp.Adjust(3, 7000000, 7166833);
+
+			const DirectShowLiveCatchUpDecision nextEpoch =
+				catchUp.Adjust(4, 100000, 266833);
+			Assert::IsFalse(nextEpoch.adjusted);
+			Assert::IsFalse(nextEpoch.rebased);
+			Assert::AreEqual<VideoReferenceTime>(100000, nextEpoch.start);
+		}
+
+		TEST_METHOD(LiveCatchUpCanSpliceConvertedTrimThenLaterRawTrim)
+		{
+			DirectShowLiveTimestampCatchUp catchUp;
+			const uint64_t epoch = 11;
+			catchUp.CommitSuccessfulStop(epoch, 2000000);
+			catchUp.Arm(epoch);
+			DirectShowLiveCatchUpDecision decision =
+				catchUp.Adjust(epoch, 7000000, 7166833);
+			Assert::AreEqual<VideoReferenceTime>(2000000, decision.start);
+			catchUp.CommitSuccessfulStop(epoch, decision.stop);
+
+			decision = catchUp.Adjust(epoch, 7166833, 7333666);
+			Assert::AreEqual<VideoReferenceTime>(2166833, decision.start);
+			catchUp.CommitSuccessfulStop(epoch, decision.stop);
+
+			// A later hardware-clock jump represents raw source frames removed by
+			// the same convergence transaction. Re-arming joins that boundary too.
+			catchUp.Arm(epoch);
+			decision = catchUp.Adjust(epoch, 7667332, 7834165);
+			Assert::IsTrue(decision.rebased);
+			Assert::AreEqual<VideoReferenceTime>(2333666, decision.start);
+			Assert::AreEqual<VideoReferenceTime>(2500499, decision.stop);
+		}
 	};
 }
