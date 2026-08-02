@@ -2,7 +2,12 @@
 
 ## Status
 
-Backlog. Parent: VP-0069. No implementation has started.
+In progress. Parent: VP-0069.
+
+Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
+`d6dbd8bd135e51c36cae5fc9e2013562808fcf13`, on local branch
+`codex/vp0069-1-native-alpha-ingress` in the clean linked worktree
+`C:\\Users\\bslac\\vp\\videoprocessor-vp0069-1`.
 
 ## User story
 
