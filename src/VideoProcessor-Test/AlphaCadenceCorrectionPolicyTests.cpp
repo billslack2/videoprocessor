@@ -85,6 +85,25 @@ namespace Tests
 				static_cast<int>(decision.action));
 		}
 
+		TEST_METHOD(Capture23976To60HzMonitorNeverBecomesPpmOrQueueCorrection)
+		{
+			AlphaCadenceCorrectionPolicy policy;
+			AlphaCadenceCorrectionInput input = Input(24000.0 / 1001.0);
+			input.safeSceneBoundary = true;
+			input.sceneEventId = 1;
+			input.queueDepth = 8;
+			input.desiredQueueDepth = 8;
+
+			const auto decision = Advance(policy, input, 10000);
+			Assert::IsFalse(decision.ratesCompatible);
+			Assert::IsFalse(decision.predictionValid);
+			Assert::IsFalse(decision.planned);
+			Assert::AreEqual(static_cast<int>(AlphaCadenceAction::None),
+				static_cast<int>(decision.action));
+			Assert::AreEqual(Reason(AlphaCadenceBlockReason::RateMismatchTooLarge),
+				Reason(decision.blockReason));
+		}
+
 		TEST_METHOD(PublishesLongRangePredictionBeforePlanningWindow)
 		{
 			AlphaCadenceCorrectionPolicy policy;

@@ -553,8 +553,12 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 
 
-	// Frame Offset
-	line.Format(TEXT("Offset:           %d ms"), m_stats.frameOffsetMs);
+	// Rational-Rational owns a synthetic sample timeline. Capture clock frame
+	// offset is intentionally unavailable and contributes no timing value.
+	if (m_stats.method.CompareNoCase(TEXT("Rational-Rational")) == 0)
+		line = TEXT("Offset:           N/A (Rational-Rational)");
+	else
+		line.Format(TEXT("Offset:           %d ms"), m_stats.frameOffsetMs);
 
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
@@ -562,13 +566,25 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	// Separator
 	y += 4;
 
-	// VP Latency
-	line.Format(TEXT("VP Lat:           %.2f ms"), m_stats.entryLatencyMs);
+	// Same-frame VP ingress-to-DirectShow-handoff residence.
+	if (m_stats.vpInternalLatencyKnown)
+		line.Format(TEXT("VP internal: %.2f ms"), m_stats.vpInternalLatencyMs);
+	else
+		line = TEXT("VP internal: ---");
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
-	// DS Latency
-	line.Format(TEXT("DS Lat:           %.2f ms"), m_stats.exitLatencyMs);
+	if (m_stats.scheduledLatencyKnown)
+		line.Format(TEXT("PTS lead:    %.2f ms"), m_stats.dsScheduleLeadMs);
+	else
+		line = TEXT("PTS lead:    ---");
+	DrawText(hdc, line, PADDING, y);
+	y += lineHeight;
+
+	if (m_stats.scheduledLatencyKnown)
+		line.Format(TEXT("To req PTS:  %.2f ms"), m_stats.scheduledLatencyMs);
+	else
+		line = TEXT("To req PTS:  ---");
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
@@ -719,9 +735,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 {
-	// Twenty rows are always rendered. The remaining rows mirror the exact
+	// Twenty-one rows are always rendered. The remaining rows mirror the exact
 	// optional conditions in DrawStats so the background follows its content.
-	size_t lineCount = 20;
+	size_t lineCount = 21;
 	if (stats.measuredRefreshRate > 0.0)
 		lineCount += 2;
 	if (stats.hasPPMCorrection ||

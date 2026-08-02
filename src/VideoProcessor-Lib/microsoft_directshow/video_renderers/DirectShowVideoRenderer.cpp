@@ -15,6 +15,7 @@
 #include <microsoft_directshow/live_source_filter/CLiveSource.h>
 #include <microsoft_directshow/live_source_filter/ALiveSourceVideoOutputPin.h>
 #include <microsoft_directshow/DIrectShowTranslations.h>
+#include <microsoft_directshow/MadVRRuntimeInterfaces.h>
 
 #include "DirectShowVideoRenderer.h"
 
@@ -155,9 +156,102 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 	assert(videoFrame.GetTimingTimestamp() > 0);
 
 	const timingclocktime_t frameTime = videoFrame.GetTimingTimestamp();
+	const LiveFrameCounterDecision counterDecision =
+		m_captureFrameCounterTracker.Observe(videoFrame.GetCounter());
+	ALiveSourceVideoOutputPin* outputPin =
+		m_liveSource ? m_liveSource->GetVideoOutputPin() : nullptr;
+	RendererLivenessSnapshot downstreamSnapshot;
+	const bool hasDownstreamSnapshot = outputPin &&
+		outputPin->GetLivenessSnapshot(downstreamSnapshot) &&
+		downstreamSnapshot.supported;
+	const ULONGLONG now = GetTickCount64();
+	const bool hasCurrentEpochDownstreamDelivery =
+		hasDownstreamSnapshot &&
+		HasCurrentEpochDownstreamDelivery(downstreamSnapshot);
+	const bool recentDownstreamDelivery =
+		hasCurrentEpochDownstreamDelivery &&
+		downstreamSnapshot.lastDeliverySuccessTick <= now &&
+		now - downstreamSnapshot.lastDeliverySuccessTick <= 500;
+	const bool downstreamBelowCapacity =
+		!hasDownstreamSnapshot || downstreamSnapshot.queueCapacity == 0 ||
+		(downstreamSnapshot.rawQueueDepth < downstreamSnapshot.queueCapacity &&
+			downstreamSnapshot.convertedQueueDepth <
+				downstreamSnapshot.queueCapacity);
+	const bool downstreamDeliveryBlocked =
+		hasDownstreamSnapshot && downstreamSnapshot.deliveryInProgress &&
+		downstreamSnapshot.lastDeliveryStartTick != 0 &&
+		downstreamSnapshot.lastDeliveryStartTick <= now &&
+		now - downstreamSnapshot.lastDeliveryStartTick > 500;
+	const bool downstreamHealthy = !hasDownstreamSnapshot ||
+		(hasCurrentEpochDownstreamDelivery && downstreamBelowCapacity &&
+			(counterDecision.IsDiscontinuity() || recentDownstreamDelivery) &&
+			!downstreamDeliveryBlocked);
+	const LiveSourceGapRecoveryDecision gapRecovery =
+		m_sourceGapRecoveryPolicy.Observe(
+			counterDecision,
+			m_videoState->displayMode->TimeScale(),
+			m_videoState->displayMode->FrameDuration(),
+			downstreamHealthy);
+	if (counterDecision.IsDiscontinuity())
+	{
+		// Receiving a new live frame proves capture resumed. Rebase cadence and
+		// carry an explicit source discontinuity through the delivery sequencer.
+		// A material gap additionally asks the serialized owner to re-prime the
+		// opaque madVR queues; never control the graph from this callback.
+		videoFrame.SetSourceDiscontinuity(true);
+		ResetPPMMeasurement();
+		bool resetPublished = false;
+		if (gapRecovery.action ==
+			LiveSourceGapRecoveryAction::RequestGraphReprime)
+		{
+			resetPublished = outputPin &&
+				outputPin->RequestSourceGapGraphReprime();
+		}
+		const char* action = "continue-local";
+		if (gapRecovery.action ==
+			LiveSourceGapRecoveryAction::RequestGraphReprime)
+		{
+			action = resetPublished ?
+				"request-graph-reprime" : "coalesce-graph-reprime";
+		}
+		else if (gapRecovery.action ==
+			LiveSourceGapRecoveryAction::SuppressedUntilHealthy)
+		{
+			action = "suppress-until-healthy";
+		}
+		DebugLog::Log(
+			"DirectShow source counter discontinuity: transition=%s "
+			"previous=%llu current=%llu missing=%llu "
+			"material_threshold=%llu accumulated=%llu action=%s ppm=rebaseline "
+			"graph_reset=%d healthy=%llu/%llu downstream_healthy=%d "
+			"downstream_snapshot=%d downstream_epoch=%llu "
+			"downstream_success=%llu queue=%zu/%zu+%zu/%zu",
+			ToString(counterDecision.transition),
+			static_cast<unsigned long long>(counterDecision.previous),
+			static_cast<unsigned long long>(counterDecision.current),
+			static_cast<unsigned long long>(counterDecision.missingFrames),
+			static_cast<unsigned long long>(gapRecovery.materialGapFrames),
+			static_cast<unsigned long long>(gapRecovery.accumulatedGapFrames),
+			action, resetPublished ? 1 : 0,
+			static_cast<unsigned long long>(
+				gapRecovery.healthyIntervalsObserved),
+			static_cast<unsigned long long>(
+				gapRecovery.healthyIntervalsRequired),
+			downstreamHealthy ? 1 : 0,
+			hasDownstreamSnapshot ? 1 : 0,
+			static_cast<unsigned long long>(
+				downstreamSnapshot.queueEpoch),
+			static_cast<unsigned long long>(
+				downstreamSnapshot.currentEpochDeliverySuccessCount),
+			downstreamSnapshot.rawQueueDepth,
+			downstreamSnapshot.queueCapacity,
+			downstreamSnapshot.convertedQueueDepth,
+			downstreamSnapshot.queueCapacity);
+	}
 
 	// Update PPM measurement with each frame
 	UpdatePPMMeasurement(frameTime);
+	MaybeScheduleMadVRRuntimeTelemetry();
 
 	// Get delay until now once in a while
 	if (m_frameCounter % 20 == 0)
@@ -391,16 +485,38 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 		DebugLog::Log("DirectShowVideoRenderer::Reset() - m_liveSource is NULL, returning");
 		return;
 	}
+	RefreshDownstreamPrimeTarget();
 	
-	// CRITICAL FIX: The only way to properly reset MadVR's internal state is to 
-	// completely stop and restart the graph. MadVR doesn't respond to mid-stream
-	// reset signals - it needs to be re-initialized from scratch.
-	// This mimics what happens during fullscreen toggle which works correctly.
+	// This is an in-place graph re-prime. It deliberately retains the madVR
+	// filter instance; a renderer restart is the separate full-recreation tier.
+	// Activate the stopped graph into Pause before sending flush/NewSegment.
+	// Sending that transaction while every downstream filter is stopped leaves
+	// some madVR queue configurations cued but never consuming after Run.
 	
 	DebugLog::Log("DirectShowVideoRenderer::Reset() - Stopping graph for complete restart");
 	
 	if (m_pControl)
 	{
+		const auto logGraphState = [this](
+			const char* phase, HRESULT transitionResult)
+		{
+			OAFilterState state = static_cast<OAFilterState>(-1);
+			const HRESULT stateResult = m_pControl->GetState(0, &state);
+			REFERENCE_TIME referenceTime = 0;
+			const HRESULT clockResult = m_referenceClock ?
+				m_referenceClock->GetTime(&referenceTime) : E_NOINTERFACE;
+			DebugLog::Log(
+				"DirectShow reset lifecycle: phase=%s transition_hr=0x%08lx "
+				"get_state_hr=0x%08lx state=%ld clock_hr=0x%08lx "
+				"reference_time=%lld",
+				phase,
+				static_cast<unsigned long>(transitionResult),
+				static_cast<unsigned long>(stateResult),
+				static_cast<long>(state),
+				static_cast<unsigned long>(clockResult),
+				static_cast<long long>(referenceTime));
+		};
+
 		HRESULT hr = m_pControl->Stop();
 		if (FAILED(hr))
 		{
@@ -409,7 +525,7 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 		}
 		else
 		{
-			DebugLog::Log("DirectShowVideoRenderer::Reset() - Graph stopped");
+			logGraphState("stopped", hr);
 
 			// Capture admission is already closed. Stop/flush releases a
 			// callback blocked in downstream Receive; now prove every admitted
@@ -417,12 +533,27 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 			if (drainAfterGraphStop)
 				drainAfterGraphStop();
 			
-			// Brief delay to ensure MadVR fully stops
+			// Preserve the proven stop-settle boundary before reactivation.
 			Sleep(100);
-			
-			// Reset the source while graph is stopped
-			DebugLog::Log("DirectShowVideoRenderer::Reset() - Resetting source");
+
+			// DirectShow transitions a stopped graph through Pause before Run. Do
+			// that explicitly so the downstream pins are active when the source
+			// publishes its serialized flush and fresh segment. S_FALSE is a valid
+			// asynchronous/intermediate transition for this live graph.
+			hr = m_pControl->Pause();
+			if (FAILED(hr))
+			{
+				DebugLog::Log(
+					"DirectShowVideoRenderer::Reset() - Pause failed, hr=0x%x",
+					hr);
+				throw std::runtime_error("DirectShow graph Pause failed");
+			}
+			logGraphState("paused-before-segment", hr);
+
+			DebugLog::Log(
+				"DirectShowVideoRenderer::Reset() - Resetting source while graph is active/paused");
 			m_liveSource->Reset();
+			logGraphState("segment-reset", S_OK);
 			
 			// Restart the graph
 			hr = m_pControl->Run();
@@ -433,7 +564,7 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 			}
 			else
 			{
-				DebugLog::Log("DirectShowVideoRenderer::Reset() - Graph restarted");
+				logGraphState("run-requested", hr);
 			}
 		}
 	}
@@ -447,6 +578,8 @@ void DirectShowVideoRenderer::ResetWithIngressDrain(
 	}
 	
 	m_frameCounter = 0;
+	m_captureFrameCounterTracker.Reset();
+	m_sourceGapRecoveryPolicy.OnGraphReset();
 	ResetPPMMeasurement();
 	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
 	m_resetReadyForReveal.store(true, std::memory_order_release);
@@ -484,7 +617,9 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 	ULONGLONG drainMs = 0;
 	ULONGLONG resetMs = 0;
 	ULONGLONG rebindMs = 0;
+	ULONGLONG pauseMs = 0;
 	ULONGLONG runMs = 0;
+	HRESULT pauseHr = E_UNEXPECTED;
 	try
 	{
 		m_unbufferedDeliverySuccessCount.store(
@@ -531,7 +666,18 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 				"DirectShow retarget failed to verify new window owner");
 		rebindMs = GetTickCount64() - phaseStart;
 
+		// Match ResetWithIngressDrain's proven lifecycle. A flush/NewSegment
+		// transaction sent while the graph is stopped can leave madVR cued but
+		// not consuming after Run, eventually blocking Receive.
 		phaseStart = GetTickCount64();
+		pauseHr = m_pControl->Pause();
+		pauseMs = GetTickCount64() - phaseStart;
+		if (FAILED(pauseHr))
+			throw std::runtime_error(
+				"DirectShow retarget graph Pause failed");
+
+		phaseStart = GetTickCount64();
+		RefreshDownstreamPrimeTarget();
 		m_liveSource->Reset();
 		resetMs = GetTickCount64() - phaseStart;
 
@@ -545,6 +691,8 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 				"DirectShow retarget graph Run/visible failed");
 
 		m_frameCounter = 0;
+		m_captureFrameCounterTracker.Reset();
+		m_sourceGapRecoveryPolicy.OnGraphReset();
 		ResetPPMMeasurement();
 		m_unbufferedDeliverySuccessCount.store(
 			0, std::memory_order_release);
@@ -552,11 +700,14 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 		DebugLog::Log(
 			"DirectShow window retarget completed: old=%p new=%p "
 			"stop_ms=%llu drain_ms=%llu settle_ms=100 rebind_ms=%llu "
-			"reset_ms=%llu run_ms=%llu total_ms=%llu",
+			"pause_hr=0x%08lx pause_ms=%llu reset_ms=%llu run_ms=%llu "
+			"total_ms=%llu",
 			oldHwnd, targetHwnd,
 			static_cast<unsigned long long>(stopMs),
 			static_cast<unsigned long long>(drainMs),
 			static_cast<unsigned long long>(rebindMs),
+			static_cast<unsigned long>(pauseHr),
+			static_cast<unsigned long long>(pauseMs),
 			static_cast<unsigned long long>(resetMs),
 			static_cast<unsigned long long>(runMs),
 			static_cast<unsigned long long>(
@@ -598,6 +749,11 @@ bool DirectShowVideoRenderer::RetargetWindowWithIngressDrain(
 				throw std::runtime_error(
 					"rollback failed to verify window owner");
 			}
+			const HRESULT rollbackPauseHr = m_pControl->Pause();
+			if (FAILED(rollbackPauseHr))
+				throw std::runtime_error(
+					"rollback graph Pause failed");
+			RefreshDownstreamPrimeTarget();
 			m_liveSource->Reset();
 			if (FAILED(m_pControl->Run()) ||
 				FAILED(m_videoWindow->put_Visible(OATRUE)))
@@ -646,10 +802,58 @@ void DirectShowVideoRenderer::ResetLiveQueue()
 	// transaction and purges both live queues. Unlike Reset(), it deliberately
 	// leaves madVR and the DirectShow graph running.
 	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - flushing live source queue only");
+	RefreshDownstreamPrimeTarget();
 	m_liveSource->Reset();
 	m_unbufferedDeliverySuccessCount.store(0, std::memory_order_release);
 	m_resetReadyForReveal.store(true, std::memory_order_release);
 	DebugLog::Log("DirectShowVideoRenderer::ResetLiveQueue() - complete");
+}
+
+
+void DirectShowVideoRenderer::SetOutputReadinessDeliveryReserve(
+	size_t reserveFrames)
+{
+	// This is an atomic transport policy publication, not a graph operation.
+	// Do not queue it behind graph work: the UI must publish the reserve before
+	// its serialized post-ready reset begins.
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	if (m_liveSource && m_liveSource->GetVideoOutputPin())
+	{
+		m_liveSource->GetVideoOutputPin()->
+			SetOutputReadinessDeliveryReserve(reserveFrames);
+	}
+}
+
+
+void DirectShowVideoRenderer::SetQueueFramePolicy(
+	size_t startupPrerollFrames, size_t steadyReserveFrames,
+	bool steadyReserveConfigured)
+{
+	// Build() is asynchronous.  Retain the policy first so publishing it before
+	// CLiveSource exists is not silently lost; LiveSourceBuildAndConnect() will
+	// apply the retained values when it creates the output pin.
+	m_queueStartupPrerollFrames.store(
+		startupPrerollFrames, std::memory_order_release);
+	m_queueSteadyTargetFrames.store(
+		steadyReserveFrames, std::memory_order_release);
+	m_queueSteadyTargetConfigured.store(
+		steadyReserveConfigured, std::memory_order_release);
+
+	// The lifetime lock keeps an already-live source valid while the pin
+	// receives an update.  A fresh graph receives the retained values below.
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	const bool sourceReady =
+		m_liveSource && m_liveSource->GetVideoOutputPin();
+	if (m_liveSource && m_liveSource->GetVideoOutputPin())
+	{
+		m_liveSource->GetVideoOutputPin()->SetQueueFramePolicy(
+			startupPrerollFrames, steadyReserveFrames,
+			steadyReserveConfigured);
+	}
+	DebugLog::Log(
+		"DirectShow queue policy retained: startup=%zu steady-target=%zu steady-explicit=%d source-ready=%d",
+		startupPrerollFrames, steadyReserveFrames,
+		steadyReserveConfigured ? 1 : 0, sourceReady ? 1 : 0);
 }
 
 
@@ -674,6 +878,43 @@ bool DirectShowVideoRenderer::GetLivenessSnapshot(
 	}
 
 	return m_liveSource->GetVideoOutputPin()->GetLivenessSnapshot(snapshot);
+}
+
+
+void DirectShowVideoRenderer::SetPresentationLeadFrames(
+	size_t frames, bool configured)
+{
+	const size_t boundedFrames = (std::min)(frames, size_t{ 16 });
+	m_presentationLeadFrames.store(
+		boundedFrames, std::memory_order_release);
+	m_presentationLeadFramesConfigured.store(
+		configured, std::memory_order_release);
+
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	const bool sourceReady =
+		m_liveSource && m_liveSource->GetVideoOutputPin();
+	if (sourceReady)
+	{
+		m_liveSource->GetVideoOutputPin()->SetPresentationLeadFrames(
+			boundedFrames, configured);
+	}
+	DebugLog::Log(
+		"DirectShow presentation lead retained: frames=%zu explicit=%d source-ready=%d",
+		boundedFrames, configured ? 1 : 0, sourceReady ? 1 : 0);
+}
+
+
+bool DirectShowVideoRenderer::GetLatencySnapshot(
+	RendererLatencySnapshot& snapshot) const
+{
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
+	{
+		snapshot = {};
+		return false;
+	}
+
+	return m_liveSource->GetVideoOutputPin()->GetLatencySnapshot(snapshot);
 }
 
 
@@ -1056,6 +1297,7 @@ void DirectShowVideoRenderer::WakeForOwnerCompletion() const
 void DirectShowVideoRenderer::GraphBuild()
 {
 	AssertGraphThread();
+	m_madVRDetectedRefreshRateHz.store(0.0, std::memory_order_release);
 	const ULONGLONG buildStart = GetTickCount64();
 	ULONGLONG phaseStart = buildStart;
 	ULONGLONG filterGraphMs = 0;
@@ -1146,6 +1388,7 @@ void DirectShowVideoRenderer::GraphBuild()
 	phaseStart = GetTickCount64();
 	RendererConnect();
 	rendererConnectMs = GetTickCount64() - phaseStart;
+	RefreshDownstreamPrimeTarget();
 
 	//
 	// Window setup
@@ -1528,6 +1771,37 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 		m_useFrameQueue,
 		m_frameQueueMaxSize);
 
+	// Build() commonly receives the dialog's queue policy before this live
+	// source exists.  Apply the retained policy immediately after Initialize(),
+	// before the graph can run and accept any frames.
+	const size_t startupPrerollFrames = m_queueStartupPrerollFrames.load(
+		std::memory_order_acquire);
+	const size_t steadyTargetFrames = m_queueSteadyTargetFrames.load(
+		std::memory_order_acquire);
+	const bool steadyTargetConfigured = m_queueSteadyTargetConfigured.load(
+		std::memory_order_acquire);
+	if (ALiveSourceVideoOutputPin* outputPin =
+		m_liveSource->GetVideoOutputPin())
+	{
+		outputPin->SetQueueFramePolicy(
+			startupPrerollFrames, steadyTargetFrames,
+			steadyTargetConfigured);
+		DebugLog::Log(
+			"DirectShow queue policy applied to fresh graph: startup=%zu steady-target=%zu steady-explicit=%d",
+			startupPrerollFrames, steadyTargetFrames,
+			steadyTargetConfigured ? 1 : 0);
+		const size_t presentationLeadFrames =
+			m_presentationLeadFrames.load(std::memory_order_acquire);
+		const bool presentationLeadConfigured =
+			m_presentationLeadFramesConfigured.load(std::memory_order_acquire);
+		outputPin->SetPresentationLeadFrames(
+			presentationLeadFrames, presentationLeadConfigured);
+		DebugLog::Log(
+			"DirectShow presentation lead applied to fresh graph: frames=%zu explicit=%d",
+			presentationLeadFrames,
+			presentationLeadConfigured ? 1 : 0);
+	}
+
 	if (m_pGraph->AddFilter(m_liveSource, L"LiveSource") != S_OK)
 	{
 		m_liveSource->Release();
@@ -1574,9 +1848,262 @@ void DirectShowVideoRenderer::LiveSourceDestroy()
 }
 
 
+void DirectShowVideoRenderer::RefreshDownstreamPrimeTarget(
+	const char* telemetrySource)
+{
+	AssertGraphThread();
+	if (!m_liveSource || !m_liveSource->GetVideoOutputPin())
+		return;
+
+	size_t targetFrames = 0;
+	int cpuQueue = 0;
+	int gpuQueue = 0;
+	int windowedPresent = 0;
+	int exclusivePresent = 0;
+	int windowedBackbuffers = 0;
+	int exclusiveBackbuffers = 0;
+	BOOL delayUntilFull = FALSE;
+	BOOL presentThread = FALSE;
+	LONGLONG settingsRevision = 0;
+	bool complete = false;
+	IMadVRSettings* settings = nullptr;
+	if (m_pRenderer && SUCCEEDED(m_pRenderer->QueryInterface(
+		__uuidof(IMadVRSettings), reinterpret_cast<void**>(&settings))) && settings)
+	{
+		const bool revisionKnown = !!settings->SettingsGetRevision(&settingsRevision);
+		// Unqualified stable IDs intentionally resolve against madVR's currently
+		// active profile, including rule-selected profiles.
+		const bool cpuKnown = !!settings->SettingsGetInteger(
+			L"cpuQueueSize", &cpuQueue);
+		const bool gpuKnown = !!settings->SettingsGetInteger(
+			L"gpuQueueSize", &gpuQueue);
+		const bool windowedKnown = !!settings->SettingsGetInteger(
+			L"preRenderFramesWindowed",
+			&windowedPresent);
+		const bool exclusiveKnown = !!settings->SettingsGetInteger(
+			L"preRenderFrames",
+			&exclusivePresent);
+		const bool windowedBackbuffersKnown = !!settings->SettingsGetInteger(
+			L"backbufferCount", &windowedBackbuffers);
+		const bool exclusiveBackbuffersKnown = !!settings->SettingsGetInteger(
+			L"backbufferCountExcl", &exclusiveBackbuffers);
+		const bool delayKnown = !!settings->SettingsGetBoolean(
+			L"delayPlaybackStart2",
+			&delayUntilFull);
+		const bool presentThreadKnown = !!settings->SettingsGetBoolean(
+			L"presentThread", &presentThread);
+		wchar_t flushWindowed[96] = {};
+		wchar_t flushExclusive[96] = {};
+		int flushWindowedChars = static_cast<int>(_countof(flushWindowed));
+		int flushExclusiveChars = static_cast<int>(_countof(flushExclusive));
+		const bool flushWindowedKnown = !!settings->SettingsGetString(
+			L"flushAfterPresent", flushWindowed, &flushWindowedChars);
+		const bool flushExclusiveKnown = !!settings->SettingsGetString(
+			L"flushAfterPresentExcl", flushExclusive, &flushExclusiveChars);
+		char flushWindowedUtf8[192] = {};
+		char flushExclusiveUtf8[192] = {};
+		if (flushWindowedKnown)
+			WideCharToMultiByte(CP_UTF8, 0, flushWindowed, -1,
+				flushWindowedUtf8, static_cast<int>(_countof(flushWindowedUtf8)),
+				nullptr, nullptr);
+		if (flushExclusiveKnown)
+			WideCharToMultiByte(CP_UTF8, 0, flushExclusive, -1,
+				flushExclusiveUtf8, static_cast<int>(_countof(flushExclusiveUtf8)),
+				nullptr, nullptr);
+		complete = cpuKnown && gpuKnown && windowedKnown && exclusiveKnown &&
+			cpuQueue >= 4 && cpuQueue <= 32 &&
+			gpuQueue >= 4 && gpuQueue <= 24 &&
+			windowedPresent >= 1 && windowedPresent <= 16 &&
+			exclusivePresent >= 1 && exclusivePresent <= 16;
+		if (complete)
+		{
+			// This is a diagnostic demand estimate, never live occupancy and never a
+			// cap on VP's prime. Active-profile selection can change only after a new
+			// media type reaches madVR, so a pre-reset snapshot may lag that change.
+			targetFrames = static_cast<size_t>(cpuQueue) +
+				(2u * static_cast<size_t>(gpuQueue)) +
+				static_cast<size_t>(std::max(
+					windowedPresent, exclusivePresent));
+		}
+		DebugLog::Log(
+			"madVR effective configuration: source=%s revision=%lld revision_known=%d cpu=%d cpu_known=%d gpu=%d gpu_known=%d pre_render_windowed=%d windowed_known=%d pre_render_exclusive=%d exclusive_known=%d backbuffers_windowed=%d backbuffers_windowed_known=%d backbuffers_exclusive=%d backbuffers_exclusive_known=%d delay_until_full=%d delay_known=%d present_thread=%d present_thread_known=%d flush_after_present_windowed='%s' flush_windowed_known=%d flush_after_present_exclusive='%s' flush_exclusive_known=%d estimated_pipeline_frames=%zu estimate_valid=%d occupancy=unobservable",
+			telemetrySource,
+			static_cast<long long>(settingsRevision), revisionKnown ? 1 : 0,
+			cpuQueue, cpuKnown ? 1 : 0, gpuQueue, gpuKnown ? 1 : 0,
+			windowedPresent, windowedKnown ? 1 : 0,
+			exclusivePresent, exclusiveKnown ? 1 : 0,
+			windowedBackbuffers, windowedBackbuffersKnown ? 1 : 0,
+			exclusiveBackbuffers, exclusiveBackbuffersKnown ? 1 : 0,
+			delayUntilFull ? 1 : 0, delayKnown ? 1 : 0,
+			presentThread ? 1 : 0, presentThreadKnown ? 1 : 0,
+			flushWindowedUtf8, flushWindowedKnown ? 1 : 0,
+			flushExclusiveUtf8, flushExclusiveKnown ? 1 : 0,
+			targetFrames, complete ? 1 : 0);
+		settings->Release();
+	}
+
+	LogMadVRRuntimeInfo(telemetrySource, false);
+
+	// The aggregate remains diagnostic. Fresh-epoch priming always uses VP's
+	// configurable physical reservoir and allocator headroom; this publication
+	// is retained for per-epoch telemetry and future validated policy work.
+	m_liveSource->GetVideoOutputPin()->SetDownstreamPrimeTarget(targetFrames);
+}
+
+
+void DirectShowVideoRenderer::MaybeScheduleMadVRRuntimeTelemetry()
+{
+	// This runs on the capture callback, where it must stay lock-free and must
+	// never touch the renderer COM object. The actual query is serialized on the
+	// graph owner below. A 30 second period is diagnostic-only; it does not
+	// influence rate selection, queue control, reset policy, or delivery.
+	constexpr ULONGLONG kTelemetryPeriodMs = 30000;
+	const ULONGLONG now = GetTickCount64();
+	ULONGLONG previous = m_lastMadVRRuntimeTelemetryTick.load(
+		std::memory_order_acquire);
+	if (previous != 0 && now >= previous &&
+		now - previous < kTelemetryPeriodMs)
+	{
+		return;
+	}
+	if (!m_lastMadVRRuntimeTelemetryTick.compare_exchange_strong(
+		previous, now, std::memory_order_acq_rel,
+		std::memory_order_acquire))
+	{
+		return;
+	}
+
+	if (!PostCoalescedGraphCommand(GRAPH_COMMAND_MADVR_RUNTIME_TELEMETRY,
+		[this]()
+		{
+			AssertGraphThread();
+			// Sample both the active-profile configuration and renderer runtime
+			// state together.  A settings revision/configuration change is
+			// evidence only: polling must never restart a healthy live graph.
+			RefreshDownstreamPrimeTarget("periodic-30s");
+		}))
+	{
+		// Graph retirement can reject a post. Permit a new graph to sample
+		// immediately rather than incorrectly suppressing it for 30 seconds.
+		m_lastMadVRRuntimeTelemetryTick.store(0, std::memory_order_release);
+	}
+}
+
+
+void DirectShowVideoRenderer::LogMadVRRuntimeInfo(
+	const char* source, const bool requireAnyKnownValue)
+{
+	AssertGraphThread();
+	IMadVRInfo* info = nullptr;
+	if (!m_pRenderer || FAILED(m_pRenderer->QueryInterface(
+		__uuidof(IMadVRInfo), reinterpret_cast<void**>(&info))) || !info)
+	{
+		m_madVRDetectedRefreshRateHz.store(0.0, std::memory_order_release);
+		if (!requireAnyKnownValue)
+		{
+			DebugLog::Log(
+				"madVR runtime info: source=%s unavailable renderer=%p occupancy=unobservable",
+				source, m_pRenderer);
+		}
+		return;
+	}
+
+	double refreshRate = 0.0;
+	ULONGLONG frameDuration = 0;
+	SIZE displayMode = {};
+	bool hdrOutput = false;
+	bool exclusiveMode = false;
+	bool dxvaDecode = false;
+	bool dxvaDeinterlace = false;
+	bool dxvaScaling = false;
+	bool ivtc = false;
+	int osdLatencyMs = 0;
+	SIZE originalVideo = {};
+	SIZE arAdjustedVideo = {};
+	RECT videoCrop = {};
+	RECT videoOutput = {};
+	RECT croppedVideoOutput = {};
+	LPWSTR madvrVersion = nullptr;
+	LPWSTR yuvMatrix = nullptr;
+	int madvrVersionChars = 0;
+	int yuvMatrixChars = 0;
+	const bool refreshKnown = SUCCEEDED(info->GetDouble("refreshRate", &refreshRate)) &&
+		refreshRate > 0.0;
+	m_madVRDetectedRefreshRateHz.store(
+		refreshKnown ? refreshRate : 0.0, std::memory_order_release);
+	const bool frameRateKnown = SUCCEEDED(info->GetUlonglong(
+		"frameRate", &frameDuration)) && frameDuration > 0;
+	const bool displayModeKnown = SUCCEEDED(info->GetSize(
+		"displayModeSize", &displayMode));
+	const bool hdrKnown = SUCCEEDED(info->GetBool("hdrOutput", &hdrOutput));
+	const bool exclusiveKnown = SUCCEEDED(info->GetBool(
+		"exclusiveModeActive", &exclusiveMode));
+	const bool osdLatencyKnown = SUCCEEDED(info->GetInt(
+		"osdLatency", &osdLatencyMs));
+	const bool originalVideoKnown = SUCCEEDED(info->GetSize(
+		"originalVideoSize", &originalVideo));
+	const bool arAdjustedVideoKnown = SUCCEEDED(info->GetSize(
+		"arAdjustedVideoSize", &arAdjustedVideo));
+	const bool videoCropKnown = SUCCEEDED(info->GetRect(
+		"videoCropRect", &videoCrop));
+	const bool videoOutputKnown = SUCCEEDED(info->GetRect(
+		"videoOutputRect", &videoOutput));
+	const bool croppedVideoOutputKnown = SUCCEEDED(info->GetRect(
+		"croppedVideoOutputRect", &croppedVideoOutput));
+	const bool versionKnown = SUCCEEDED(info->GetString(
+		"version", &madvrVersion, &madvrVersionChars)) && madvrVersion;
+	const bool yuvMatrixKnown = SUCCEEDED(info->GetString(
+		"yuvMatrix", &yuvMatrix, &yuvMatrixChars)) && yuvMatrix;
+	(void)info->GetBool("dxvaDecodingActive", &dxvaDecode);
+	(void)info->GetBool("dxvaDeinterlacingActive", &dxvaDeinterlace);
+	(void)info->GetBool("dxvaScalingActive", &dxvaScaling);
+	(void)info->GetBool("ivtcActive", &ivtc);
+	const double postDeinterlaceFps = frameRateKnown ?
+		10000000.0 / static_cast<double>(frameDuration) : 0.0;
+	const bool anyKnownValue = refreshKnown || frameRateKnown ||
+		displayModeKnown || hdrKnown || exclusiveKnown || osdLatencyKnown ||
+		originalVideoKnown || arAdjustedVideoKnown || videoCropKnown ||
+		videoOutputKnown || croppedVideoOutputKnown || versionKnown || yuvMatrixKnown;
+	if (!requireAnyKnownValue || anyKnownValue)
+	{
+		DebugLog::Log(
+			"madVR runtime info: source=%s version='%ls' version_known=%d detected_refresh_hz=%.6f refresh_known=%d post_deinterlace_fps=%.6f frame_rate_known=%d display_mode=%ldx%ld display_mode_known=%d hdr_output=%d hdr_known=%d exclusive=%d exclusive_known=%d yuv_matrix='%ls' yuv_matrix_known=%d original_video=%ldx%ld original_video_known=%d ar_adjusted_video=%ldx%ld ar_adjusted_video_known=%d video_crop=%ld,%ld,%ld,%ld video_crop_known=%d video_output=%ld,%ld,%ld,%ld video_output_known=%d cropped_video_output=%ld,%ld,%ld,%ld cropped_video_output_known=%d osd_latency_ms=%d osd_latency_known=%d dxva_decode=%d dxva_deinterlace=%d dxva_scaling=%d ivtc=%d occupancy=unobservable",
+			source, madvrVersion ? madvrVersion : L"", versionKnown ? 1 : 0,
+			refreshRate, refreshKnown ? 1 : 0,
+			postDeinterlaceFps, frameRateKnown ? 1 : 0,
+			static_cast<long>(displayMode.cx), static_cast<long>(displayMode.cy),
+			displayModeKnown ? 1 : 0, hdrOutput ? 1 : 0, hdrKnown ? 1 : 0,
+			exclusiveMode ? 1 : 0, exclusiveKnown ? 1 : 0,
+			yuvMatrix ? yuvMatrix : L"", yuvMatrixKnown ? 1 : 0,
+			static_cast<long>(originalVideo.cx), static_cast<long>(originalVideo.cy),
+			originalVideoKnown ? 1 : 0,
+			static_cast<long>(arAdjustedVideo.cx), static_cast<long>(arAdjustedVideo.cy),
+			arAdjustedVideoKnown ? 1 : 0,
+			static_cast<long>(videoCrop.left), static_cast<long>(videoCrop.top),
+			static_cast<long>(videoCrop.right), static_cast<long>(videoCrop.bottom),
+			videoCropKnown ? 1 : 0,
+			static_cast<long>(videoOutput.left), static_cast<long>(videoOutput.top),
+			static_cast<long>(videoOutput.right), static_cast<long>(videoOutput.bottom),
+			videoOutputKnown ? 1 : 0,
+			static_cast<long>(croppedVideoOutput.left), static_cast<long>(croppedVideoOutput.top),
+			static_cast<long>(croppedVideoOutput.right), static_cast<long>(croppedVideoOutput.bottom),
+			croppedVideoOutputKnown ? 1 : 0,
+			osdLatencyMs, osdLatencyKnown ? 1 : 0,
+			dxvaDecode ? 1 : 0, dxvaDeinterlace ? 1 : 0,
+			dxvaScaling ? 1 : 0, ivtc ? 1 : 0);
+	}
+	if (madvrVersion)
+		LocalFree(madvrVersion);
+	if (yuvMatrix)
+		LocalFree(yuvMatrix);
+	info->Release();
+}
+
+
 void DirectShowVideoRenderer::RendererDestroy()
 {
 	AssertGraphThread();
+	m_madVRDetectedRefreshRateHz.store(0.0, std::memory_order_release);
 	if (m_pRenderer)
 	{
 		m_pRenderer->Release();
@@ -1619,6 +2146,14 @@ bool DirectShowVideoRenderer::GetFrameRateAndPPM(double& measuredFps, int& ppmDe
 	measuredFps = m_measuredFrameRate.load(std::memory_order_relaxed);
 	ppmDeviation = m_ppmDeviation.load(std::memory_order_relaxed);
 	return true;
+}
+
+
+bool DirectShowVideoRenderer::GetDetectedDisplayRefreshRate(
+	double& refreshRateHz) const
+{
+	refreshRateHz = m_madVRDetectedRefreshRateHz.load(std::memory_order_acquire);
+	return refreshRateHz >= 10.0 && refreshRateHz <= 240.0;
 }
 
 void DirectShowVideoRenderer::UpdatePPMMeasurement(timingclocktime_t frameTime) const

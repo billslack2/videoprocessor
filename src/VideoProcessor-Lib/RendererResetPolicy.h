@@ -13,7 +13,9 @@ enum class RendererResetReason
 	TimingOffsetChange,
 	QueuePressure,
 	QueueCapacity,
+	SourceGapRecovery,
 	LivenessRecovery,
+	OutputReadiness,
 };
 
 constexpr int RendererResetPriority(RendererResetReason reason)
@@ -23,7 +25,11 @@ constexpr int RendererResetPriority(RendererResetReason reason)
 	case RendererResetReason::Manual: return 100;
 	case RendererResetReason::LivenessRecovery: return 90;
 	case RendererResetReason::QueueCapacity: return 90;
+	// A concurrent display/HDR transition owns its rebuild and replaces this
+	// lower-priority same-contract recovery request.
+	case RendererResetReason::SourceGapRecovery: return 65;
 	case RendererResetReason::PostRendererStart: return 80;
+	case RendererResetReason::OutputReadiness: return 75;
 	case RendererResetReason::DisplayTransition: return 70;
 	case RendererResetReason::Resize: return 60;
 	case RendererResetReason::QueueSizeChange: return 50;

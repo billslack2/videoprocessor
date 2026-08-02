@@ -8,6 +8,8 @@
 
 #include <pch.h>
 
+#include <microsoft_directshow/DirectShowPresentationLeadPolicy.h>
+
 #include <dvdmedia.h>
 #include <guid.h>
 #include <IMediaSideData.h>
@@ -128,6 +130,11 @@ void ALiveSourceVideoOutputPin::Initialize(
 	m_timingClock = timingClock;
 	m_timestamp = timestamp;
 	m_mediaType = mediaType;
+	m_rationalTimingShadow = std::make_unique<DirectShowVideoTimingAdapter>(
+		timestamp, timeScale, frameDurationTicks, frameDuration);
+	m_rationalTimingShadowComparisons.store(0, std::memory_order_relaxed);
+	m_rationalTimingShadowMismatches.store(0, std::memory_order_relaxed);
+	m_rationalTimingControllerApplied.store(0, std::memory_order_relaxed);
 
 	// Load PPM corrections for RATIONAL_RATIONAL mode
 	if (timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL)
@@ -376,10 +383,19 @@ HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOC
 	{
 		return E_FAIL;
 	}
+	if (Actual.cBuffers <= 0)
+		return E_FAIL;
+	m_negotiatedAllocatorBufferCount.store(
+		Actual.cBuffers, std::memory_order_release);
 
 	// ✅ Add this logging to verify the fix
 	DbgLog((LOG_TRACE, 1, TEXT("DecideBufferSize: Requested %d buffers, got %d buffers, size %d bytes"), 
 		ppropInputRequest->cBuffers, Actual.cBuffers, Actual.cbBuffer));
+	DebugLog::Log(
+		"DirectShow allocator negotiated: requested_buffers=%ld actual_buffers=%ld buffer_bytes=%ld",
+		static_cast<long>(ppropInputRequest->cBuffers),
+		static_cast<long>(Actual.cBuffers),
+		static_cast<long>(Actual.cbBuffer));
 
 	return S_OK;
 }
@@ -537,10 +553,11 @@ void ALiveSourceVideoOutputPin::Reset()
 }
 
 
-void ALiveSourceVideoOutputPin::RequestCoordinatedReset(const char* reason)
+bool ALiveSourceVideoOutputPin::RequestCoordinatedReset(
+	const char* reason, RendererResetReason resetReason)
 {
 	RendererResetRequest request;
-	request.reason = RendererResetReason::LivenessRecovery;
+	request.reason = resetReason;
 	request.scope = RendererResetScope::Graph;
 	const bool firstRequest = m_resetRequestLatch.Request(request);
 	if (firstRequest)
@@ -550,12 +567,15 @@ void ALiveSourceVideoOutputPin::RequestCoordinatedReset(const char* reason)
 			"action=publish-to-reset-coordinator",
 			reason ? reason : "unknown");
 	}
+	return firstRequest;
 }
 
 
 void ALiveSourceVideoOutputPin::ResetTimingState()
 {
 	CAutoLock timingLock(&m_timingStateLock);
+	if (m_rationalTimingShadow)
+		m_rationalTimingShadow->Reset();
 
 	if (m_hdrData)
 		m_hdrChanged = true;
@@ -583,13 +603,8 @@ void ALiveSourceVideoOutputPin::ResetTimingState()
 	m_rationalFrameDuration = 0;  // CRITICAL: Forces re-init with lead offset on next frame
 	m_minFrameAdvance = 0;
 	m_maxFrameAdvance = 0;
-	m_lastHardwareTimestamp = 0;
-	
-	// Clear duration history for CLOCK_SMART modes
-	memset(m_durationHistory, 0, sizeof(m_durationHistory));
-	m_durationHistoryIndex = 0;
-	m_durationHistoryCount = 0;
-	m_durationHistorySum = 0;
+	m_smartDurationHistory.Reset();
+	m_liveClockGapPreserver.Reset();
 	
 	// Reset smart timing statistics
 	m_smartHardwareTimestampCount = 0;
@@ -627,6 +642,8 @@ void ALiveSourceVideoOutputPin::ResetTimingState()
 void ALiveSourceVideoOutputPin::RestartTimingOriginAfterPreroll()
 {
 	CAutoLock timingLock(&m_timingStateLock);
+	if (m_rationalTimingShadow)
+		m_rationalTimingShadow->RestartAfterPreroll();
 
 	// Preserve the established DirectShow segment, but start timestamp and media
 	// time generation from the first frame produced after preroll.  This is the
@@ -639,64 +656,28 @@ void ALiveSourceVideoOutputPin::RestartTimingOriginAfterPreroll()
 	m_frameCounterOffsetValid = false;
 	m_previousTimeStop = 0;
 	m_startTimeOffset = 0;
-	m_lastHardwareTimestamp = 0;
+	m_smartDurationHistory.Reset();
+	m_liveClockGapPreserver.Reset();
 	m_previousHardwareTimestamp = 0;
 
 	DebugLog::Log("ALiveSourceVideoOutputPin::RestartTimingOriginAfterPreroll() - legacy live-preroll timestamp origin restored");
 }
 
-
-REFERENCE_TIME ALiveSourceVideoOutputPin::CalculateSmartFrameDuration() const
+void ALiveSourceVideoOutputPin::ResetTimingControllerToPipelineEpoch(
+	uint64_t epoch)
 {
-	// If we don't have enough history, fall back to rational duration
-	if (m_durationHistoryCount == 0)
-	{
-		// Use rational math for theoretical duration (integer-only calculation)
-		return (REFERENCE_TIME)((REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) / m_timeScale);
-	}
-
-	// The history maintains a running sum, so CLOCK_SMART2 does not rescan
-	// the entire 100-entry window on every converted frame.
-	const size_t sampleCount = m_durationHistoryCount;
-	const REFERENCE_TIME averageDuration = m_durationHistorySum / sampleCount;
-
-	return averageDuration;
+	if (epoch == 0 || !m_rationalTimingShadow)
+		return;
+	CAutoLock timingLock(&m_timingStateLock);
+	m_rationalTimingShadow->ResetToEpoch({ epoch });
 }
 
 
-void ALiveSourceVideoOutputPin::UpdateFrameDurationHistory(REFERENCE_TIME actualDuration)
+REFERENCE_TIME ALiveSourceVideoOutputPin::CalculateSmartFrameDuration() const
 {
-	// Validate duration is reasonable (between 5ms and 1 second)
-	if (actualDuration < 50000LL || actualDuration > 10000000LL)
-	{
-		DbgLog((LOG_WARNING, 1, TEXT("UpdateFrameDurationHistory(): Rejecting invalid duration %I64d (%.3fms) - outside range 5ms-1000ms"), 
-			actualDuration, actualDuration / 10000.0));
-		return;
-	}
-
-	// Store duration in circular buffer and maintain the sum incrementally.
-	if (m_durationHistoryCount == DURATION_HISTORY_SIZE)
-		m_durationHistorySum -= m_durationHistory[m_durationHistoryIndex];
-	else
-		++m_durationHistoryCount;
-
-	m_durationHistory[m_durationHistoryIndex] = actualDuration;
-	m_durationHistorySum += actualDuration;
-	m_durationHistoryIndex = (m_durationHistoryIndex + 1) % DURATION_HISTORY_SIZE;
-
-	// Log periodic statistics (every 50 frames for better visibility during testing)
-	if (m_durationHistoryCount > 0 && (m_durationHistoryCount % 50) == 0)
-	{
-		const REFERENCE_TIME avgDuration = CalculateSmartFrameDuration();
-		const REFERENCE_TIME theoreticalDuration = (REFERENCE_TIME)((REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) / m_timeScale);
-		
-		/*DebugLog::Log(("CLOCK_SMART Duration Stats: %zu samples, average=%.3fms, theoretical=%.3fms, diff=%.3fms"),
-			m_durationHistoryCount, 
-			avgDuration / 10000.0,
-			theoreticalDuration / 10000.0,
-			(avgDuration - theoreticalDuration) / 10000.0);
-		*/
-	}
+	const REFERENCE_TIME theoreticalDuration = static_cast<REFERENCE_TIME>(
+		(REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) / m_timeScale);
+	return m_smartDurationHistory.AverageOr(theoreticalDuration);
 }
 
 
@@ -772,15 +753,18 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		m_frameCounter == 1 ||
 		m_forceDiscontinuity;  // Force discontinuity after timeline reset
 		
+	// Allocator samples are recycled. Set both TRUE and FALSE explicitly so a
+	// discontinuity carried by an earlier frame cannot leak into a later,
+	// continuous frame when the same IMediaSample is reused.
+	hr = pSample->SetDiscontinuity(isDiscontinuity ? TRUE : FALSE);
+	if (FAILED(hr))
+		return hr;
+
 	if (isDiscontinuity)
 	{
 		DbgLog((LOG_TRACE, 1, TEXT("::FillBuffer(#%I64u): Frame counter jumped from %I64u (stream frame %I64u), discontinuity detected%s"),
 			videoFrame.GetCounter(), m_previousFrameCounter, streamFrameCounter,
 			m_forceDiscontinuity ? TEXT(" (FORCED after timeline reset)") : TEXT("")));
-
-		hr = pSample->SetDiscontinuity(TRUE);
-		if (FAILED(hr))
-			return hr;
 			
 		// Clear the force flag after setting discontinuity
 		m_forceDiscontinuity = false;
@@ -798,6 +782,46 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 
 	REFERENCE_TIME timeStart = REFERENCE_TIME_INVALID;
 	REFERENCE_TIME timeStop = REFERENCE_TIME_INVALID;
+	REFERENCE_TIME effectiveHardwareTime = REFERENCE_TIME_INVALID;
+	LiveClockGapDecision clockGapDecision;
+	const bool usesHardwareClock =
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2 ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK ||
+		m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE;
+	if (usesHardwareClock)
+	{
+		const REFERENCE_TIME rawHardwareTime = ConvertTimingClockToReferenceTime(
+			videoFrame.GetTimingTimestamp(),
+			m_timingClock->TimingClockTicksPerSecond());
+		const REFERENCE_TIME theoreticalDuration =
+			m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL &&
+			m_rationalFrameDuration > 0 ? m_rationalFrameDuration :
+			m_timeScale > 0 ? static_cast<REFERENCE_TIME>(
+				(REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) /
+				m_timeScale) : m_frameDuration;
+		clockGapDecision = m_liveClockGapPreserver.Observe(
+				videoFrame.GetCounter(),
+				videoFrame.IsSourceDiscontinuity(),
+				rawHardwareTime, theoreticalDuration);
+		effectiveHardwareTime = clockGapDecision.adjustedHardwareTime;
+		if (clockGapDecision.applied)
+		{
+			DebugLog::Log(
+				"VP-0066 CLOCK SOURCE GAP PRESERVED: method=%d frame=%llu "
+				"missing=%llu hardware_advance=%.3fms expected_advance=%.3fms "
+				"repair=%.3fms cumulative=%.3fms",
+				static_cast<int>(m_timestamp),
+				static_cast<unsigned long long>(videoFrame.GetCounter()),
+				static_cast<unsigned long long>(clockGapDecision.missingFrames),
+				clockGapDecision.hardwareAdvance / 10000.0,
+				clockGapDecision.expectedAdvance / 10000.0,
+				clockGapDecision.repair / 10000.0,
+				clockGapDecision.cumulativeOffset / 10000.0);
+		}
+	}
 
 	// Determine start time
 	switch (m_timestamp)
@@ -842,9 +866,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		// Get raw hardware timestamp using the same integer conversion as the
 		// other clock-based modes.  The previous double conversion lost
 		// precision as the hardware clock value grew.
-		REFERENCE_TIME rawHardwareTime = ConvertTimingClockToReferenceTime(
-			videoFrame.GetTimingTimestamp(),
-			m_timingClock->TimingClockTicksPerSecond());
+		const REFERENCE_TIME rawHardwareTime = effectiveHardwareTime;
 		
 		// Initialize rational frame duration and limits on first frame
 		if (m_rationalFrameDuration == 0)
@@ -898,7 +920,8 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 				DbgLog((LOG_WARNING, 1, TEXT("::HardwareRational(#%I64u): Hardware time too close/backwards (diff=%I64d), enforced to %I64d (anomaly #%u)"),
 					videoFrame.GetCounter(), timeSincePrevious, timeStart, m_hardwareTimingAnomalyCount));
 			}
-			else if (timeSincePrevious > m_maxFrameAdvance)
+			else if (timeSincePrevious >
+				clockGapDecision.MaximumPermittedAdvance(m_maxFrameAdvance))
 			{
 				// Hardware timestamp jumped too far - limit to reasonable advance
 				timeStart = m_previousTimeStop - m_rationalFrameDuration + m_maxFrameAdvance;
@@ -928,9 +951,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
 
 		// Get frame timestamp as reference time using integer math utility
-		timeStart = ConvertTimingClockToReferenceTime(
-			videoFrame.GetTimingTimestamp(), 
-			m_timingClock->TimingClockTicksPerSecond());
+		timeStart = effectiveHardwareTime;
 
 		// Guarantee first frame to start counting at time zero
 		// Note that this is against the recommendations of microsoft for directshow but otherwise
@@ -1015,15 +1036,14 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
 	{
 		// Track measured durations for stats
-		REFERENCE_TIME currentFrameTime = ConvertTimingClockToReferenceTime(
-			videoFrame.GetTimingTimestamp(),
-			m_timingClock->TimingClockTicksPerSecond()) - m_startTimeOffset;
-		if (m_lastHardwareTimestamp > 0)
-		{
-			REFERENCE_TIME measuredDuration = currentFrameTime - m_lastHardwareTimestamp;
-			UpdateFrameDurationHistory(measuredDuration);
-		}
-		m_lastHardwareTimestamp = currentFrameTime;
+		REFERENCE_TIME currentFrameTime =
+			effectiveHardwareTime - m_startTimeOffset;
+		const REFERENCE_TIME theoreticalDuration =
+			static_cast<REFERENCE_TIME>(
+				(REFERENCE_TIME_TICKS_PER_SECOND * m_frameDurationTicks) /
+				m_timeScale);
+		m_smartDurationHistory.Observe(
+			videoFrame.GetCounter(), currentFrameTime, theoreticalDuration);
 
 		// Placeholder stop time using averaged duration
 		const REFERENCE_TIME avgDuration = CalculateSmartFrameDuration();
@@ -1052,7 +1072,8 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		REFERENCE_TIME nextFrameTime = NextFrameTimestamp();
 		if (nextFrameTime != REFERENCE_TIME_INVALID)
 		{
-			timeStop = nextFrameTime - m_startTimeOffset;
+			timeStop = nextFrameTime +
+				m_liveClockGapPreserver.Offset() - m_startTimeOffset;
 			timeStop = EnforceMonotonicProgression(timeStop, m_previousTimeStop);
 		}
 		else
@@ -1078,6 +1099,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
+	{
 
 		// FINAL MONOTONIC VALIDATION: Ensure frame interval is always valid
 		// This is the last line of defense against any timing anomalies
@@ -1098,6 +1120,9 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		m_previousTimeStop = timeStop;
 
 		// MODE-SPECIFIC LEAD OFFSET HANDLING
+		const REFERENCE_TIME baseTimeStart = timeStart;
+		const REFERENCE_TIME baseTimeStop = timeStop;
+		REFERENCE_TIME appliedLeadTime = 0;
 		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL ||
 		    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART ||
 		    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2 ||
@@ -1105,9 +1130,45 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 		    m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK)
 		{
 			// Apply lead offset for renderer buffering (after duration tracking AND storing m_previousTimeStop)
-			REFERENCE_TIME kLeadTime = GetRampedLeadTime();
-			timeStart += kLeadTime;
-			timeStop += kLeadTime;
+			appliedLeadTime = GetRampedLeadTime();
+			timeStart += appliedLeadTime;
+			timeStop += appliedLeadTime;
+		}
+
+		// Shadow only the currently deployed RATIONAL_RATIONAL path.  The legacy
+		// result is still applied to the sample; this records aggregate parity
+		// evidence before any behavior switch.  It deliberately shares the
+		// timing lock and does not touch queues, workers, or DirectShow delivery.
+		if (m_timestamp == DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL &&
+			m_rationalTimingShadow)
+		{
+			DirectShowFrameTimingInput shadowInput;
+			shadowInput.timing.sourceFrameNumber = videoFrame.GetCounter();
+			shadowInput.timing.ppmCorrection = GetCurrentPPMCorrection();
+			shadowInput.timing.pipelineOffset = m_rationalPipelineOffset;
+			shadowInput.presentationLead = appliedLeadTime;
+			const DirectShowTimingDecision shadowDecision =
+				m_rationalTimingShadow->Decide(shadowInput);
+			m_rationalTimingShadowComparisons.fetch_add(1, std::memory_order_relaxed);
+			const bool matches = shadowDecision.base.valid &&
+				shadowDecision.base.discontinuity == isDiscontinuity &&
+				shadowDecision.base.mediaStart == mediaTimeStart &&
+				shadowDecision.base.mediaStop == mediaTimeStop &&
+				shadowDecision.base.start == baseTimeStart &&
+				shadowDecision.base.stop == baseTimeStop &&
+				shadowDecision.start == timeStart && shadowDecision.stop == timeStop;
+			if (!matches)
+				m_rationalTimingShadowMismatches.fetch_add(1, std::memory_order_relaxed);
+			else
+			{
+				// The real-display shadow run established exact parity through reset.
+				// Take the controller's identical value only after comparison; the
+				// legacy calculation remains the immediate fallback on any mismatch.
+				timeStart = shadowDecision.start;
+				timeStop = shadowDecision.stop;
+				m_rationalTimingControllerApplied.fetch_add(
+					1, std::memory_order_relaxed);
+			}
 		}
 		 
 		hr = pSample->SetTime(&timeStart, &timeStop);
@@ -1115,6 +1176,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 			return hr;
 
 		break;
+	}
 
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE:
 	case DirectShowStartStopTimeMethod::DS_SSTM_THEO_NONE:	
@@ -1384,7 +1446,13 @@ static constexpr int kLeadRampFrames = 0;
 REFERENCE_TIME ALiveSourceVideoOutputPin::GetRampedLeadTime()
 {
 
-	REFERENCE_TIME targetLeadTicks = LEADTIME;
+	const bool legacyModeUsesLead = m_timestamp !=
+		DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL;
+	REFERENCE_TIME targetLeadTicks =
+		DirectShowPresentationLeadPolicy::Resolve100ns(
+			m_presentationLeadFramesConfigured,
+			m_presentationLeadFrames, m_frameDuration,
+			legacyModeUsesLead);
 
 	// If ramping disabled or target is zero
 	if (m_leadRampDurationMs <= 0 || targetLeadTicks <= 0)

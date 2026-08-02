@@ -214,6 +214,25 @@ namespace Tests
 				coordinator.ConsumeCompletion(18, true, result));
 			Assert::IsTrue(result.succeeded);
 			Assert::IsTrue(result.ingressReopened);
+
+			// A fullscreen retarget is followed by a separately delayed,
+			// LiveQueue-only re-prime.  Prove that the coordinator accepts the
+			// second phase after the retarget completes and honors its deadline.
+			Assert::IsTrue(coordinator.RequestUi(
+				RendererResetReason::DisplayTransition,
+				RendererResetScope::LiveQueue, 5000));
+			Assert::IsFalse(coordinator.DrainReady(5099, selected));
+			Assert::IsTrue(coordinator.DrainReady(5100, selected));
+			Assert::IsTrue(
+				selected.request.scope == RendererResetScope::LiveQueue);
+			Assert::IsTrue(
+				coordinator.AcknowledgeBlackAndStart(selected, renderer) ==
+				RendererResetCoordinator::StartResult::Started);
+			Assert::IsTrue(WaitForCompletion(coordinator));
+			Assert::IsTrue(
+				coordinator.ConsumeCompletion(18, true, result));
+			Assert::IsTrue(result.succeeded);
+			Assert::IsTrue(renderer->liveResetCalled);
 		}
 
 		TEST_METHOD(GraphRetargetSubsumesGraphRequestsInEitherArrivalOrder)

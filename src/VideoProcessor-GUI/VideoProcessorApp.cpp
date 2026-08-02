@@ -76,6 +76,10 @@ Options:
       Used only with P010 output; otherwise the setting is retained but inactive.
       If omitted or disabled, the legacy timestamp/delivery path is unchanged.
 
+  /disable_detection_features
+      Force scene analysis and subtitle repositioning/OCR off and disable the
+      Scene Detect selector. Intended for performance and timing isolation.
+
   /newlldv
       Enable the opt-in BT.2020 + SDR LLDV heuristic (requires both LLDV follow modes).
 
@@ -431,6 +435,37 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 		}
 	}
 
+	auto loadQueueFrameSetting = [&](const char* key,
+		auto setter)
+	{
+		std::string value;
+		if (!config.TryGetString("queue", key, value))
+			return;
+
+		// MainConfigSchema already accepted only the integer range [0, 16].
+		const size_t frames = static_cast<size_t>(std::stoul(value));
+		setter(frames);
+		DbgLog((LOG_TRACE, 1,
+			TEXT("VideoProcessor: Using [queue] %S=%zu frames"),
+			key, frames));
+	};
+	loadQueueFrameSetting("startup_preroll_frames",
+		[](size_t frames) { videoProcessorApp.SetQueueStartupPrerollFrames(frames); });
+	loadQueueFrameSetting("steady_reserve_frames",
+		[](size_t frames) { videoProcessorApp.SetQueueSteadyReserveFrames(frames); });
+
+	std::string presentationLeadFrames;
+	if (config.TryGetString(
+		"directshow", "presentation_lead_frames", presentationLeadFrames))
+	{
+		const size_t frames = static_cast<size_t>(
+			std::stoul(presentationLeadFrames));
+		videoProcessorApp.SetPresentationLeadFrames(frames);
+		DbgLog((LOG_TRACE, 1,
+			TEXT("VideoProcessor: Using [directshow] presentation_lead_frames=%zu"),
+			frames));
+	}
+
 	if (config.HasSection("command_line"))
 	{
 	AppendConfigBoolOption(arguments, config, { "fullscreen" }, L"/fullscreen");
@@ -449,6 +484,8 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigStringOption(arguments, config, { "renderer_transfer_matrix" }, L"/renderer_transfer_matrix");
 	AppendConfigStringOption(arguments, config, { "renderer_primaries" }, L"/renderer_primaries");
 	AppendConfigBoolOption(arguments, config, { "scene_detect", "scene" }, L"/scene_detect");
+	AppendConfigBoolOption(arguments, config,
+		{ "disable_detection_features" }, L"/disable_detection_features");
 	// Retain the old spelling as a compatibility alias.  The clearer Boolean
 	// override below is appended last and therefore takes precedence if both
 	// are present in a configuration file.
@@ -681,6 +718,7 @@ bool IsBooleanCommandLineOption(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/czeddie") ||
 		IsCommandLineOption(argument, L"/scene_detect") ||
 		IsCommandLineOption(argument, L"/scene") ||
+		IsCommandLineOption(argument, L"/disable_detection_features") ||
 		IsCommandLineOption(argument, L"/scene_correction_basic") ||
 		IsCommandLineOption(argument, L"/newlldv") ||
 		IsCommandLineOption(argument, L"/startminimized");
@@ -1367,6 +1405,12 @@ BOOL CVideoProcessorApp::InitInstance()
 			}
 
 			// scene-aware timing correction
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs,
+				L"/disable_detection_features", booleanValue))
+			{
+				dlg.DisableDetectionFeatures(booleanValue);
+			}
+
 			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/scene_detect", booleanValue) ||
 				ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/scene", booleanValue))
 			{

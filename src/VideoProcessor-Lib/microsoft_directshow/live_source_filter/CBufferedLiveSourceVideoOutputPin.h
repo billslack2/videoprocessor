@@ -9,7 +9,6 @@
 #pragma once
 
 
-#include <deque>
 #include <array>
 #include <condition_variable>
 #include <memory>
@@ -18,6 +17,12 @@
 #include <vector>
 
 #include <ActivePictureTransitionModel.h>
+#include <CaptureFrameQueue.h>
+#include <DirectShowFrameDeliverer.h>
+#include <DirectShowSegmentTransition.h>
+#include <FrameProcessor.h>
+#include <LiveOutputTrace.h>
+#include <ProcessedFrameQueue.h>
 #include <microsoft_directshow/DirectShowDefines.h>
 #include "ALiveSourceVideoOutputPin.h"
 
@@ -36,9 +41,10 @@ class GpuSubtitleDetector;
  * This removes conversion time from the critical rendering path.
  *
  * THREAD SAFETY:
- * - m_rawQueueLock: Protects m_videoFrameQueue (raw frames from capture device)
- * - m_convertedQueueLock: Protects m_convertedSampleQueue (converted samples for delivery)
- * - m_stateLock: Protects shared state variables (m_isBuffering, m_lastSeenFrameCounter, etc.)
+ * - m_captureFrameQueue: Owns raw frames from the capture device
+ * - m_convertedQueueLock: Serializes converted-frame publication, historical
+ *   scene tagging, and flush against the processed-frame transport boundary
+ * - m_stateLock: Protects shared buffering and purge timing state.
  * 
  * Lock ordering (to prevent deadlock): rawQueueLock ? convertedQueueLock ? stateLock
  */
@@ -61,7 +67,14 @@ public:
 	// ALiveSourceVideoOutputPin
 	HRESULT OnVideoFrame(VideoFrame&) override;
 	void SetFrameQueueMaxSize(size_t) override;
+	void SetOutputReadinessDeliveryReserve(size_t) override;
+	void SetQueueFramePolicy(size_t startupPrerollFrames,
+		size_t steadyReserveFrames, bool steadyReserveConfigured) override;
 	LONG GetAllocatorBufferCount() const override;
+	void SetDownstreamPrimeTarget(size_t frames) override
+	{
+		m_downstreamPrimeTargetFrames.store(frames, std::memory_order_release);
+	}
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	void SetSceneCorrectionUpstreamSample(bool enabled) override;
 	void SetSubtitleRepositioning(bool enabled) override;
@@ -85,6 +98,7 @@ public:
 	bool GetActivePictureRectangle(ActivePictureRectangle& rectangle) const override;
 	size_t GetFrameQueueSize() override;
 	bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const override;
+	bool GetLatencySnapshot(RendererLatencySnapshot& snapshot) const override;
 	void Reset() override;
 	REFERENCE_TIME NextFrameTimestamp() const override;
 	void OnBadTimestampDetected() override;
@@ -101,15 +115,22 @@ private:
 	HANDLE m_hConvertedSemaphore = nullptr;  // Semaphore: count of converted samples available
 
 	std::atomic<size_t> m_frameQueueMaxSize = 8;
+	std::atomic_bool m_latencySnapshotAvailable{ false };
+	std::atomic<uint64_t> m_latencySnapshotSequence{ 0 };
+	std::atomic_bool m_scheduledPresentationKnown{ false };
+	std::atomic<double> m_vpInternalLatencyMs{ 0.0 };
+	std::atomic<double> m_dsScheduleLeadMs{ 0.0 };
+	std::atomic<double> m_scheduledLatencyMs{ 0.0 };
+	RendererLatencyStabilizer m_latencyStabilizer;
+	RendererStreamTimeNormalizer m_latencyStreamTimeNormalizer;
 
 	//
 	// QUEUE INFRASTRUCTURE (with dedicated locks)
 	//
 	
-	// Raw frame queue (input from capture device)
-	// Protected by: m_rawQueueLock
-	std::deque<VideoFrame> m_videoFrameQueue;
-	CCritSec m_rawQueueLock;  // Protects m_videoFrameQueue only
+	// Raw frame queue (input from capture device). The queue owns the captured
+	// source-buffer reference until the conversion worker takes the frame.
+	CaptureFrameQueue m_captureFrameQueue{ 32 };
 	
 	// Pre-converted sample queue (output from conversion worker)
 	// Protected by: m_convertedQueueLock
@@ -120,16 +141,22 @@ private:
 		Repeat
 	};
 
-	struct ConvertedSample
-	{
-		IMediaSample* sample = nullptr;
-		bool isSafeCorrectionPoint = false;
-		uint64_t sceneEventId = 0;
-		uint64_t queueEpoch = 0;
-		uint64_t sceneTimingGeneration = 0;
-	};
-	std::deque<ConvertedSample> m_convertedSampleQueue;
-	CCritSec m_convertedQueueLock;  // Protects m_convertedSampleQueue only
+	ProcessedFrameQueue m_processedFrameQueue{ 32 };
+	CCritSec m_convertedQueueLock;
+	FrameProcessor m_frameProcessor;
+	DirectShowFrameDeliverer m_directShowFrameDeliverer;
+	DirectShowSegmentTransition m_directShowSegmentTransition;
+	// The trace is a VP-only, bounded diagnostic snapshot. It has no renderer
+	// queue state and never performs file I/O from a worker or callback.
+	LiveOutputTrace m_liveOutputTrace;
+	// Low-volume convergence evidence is kept separately so a one-minute run
+	// cannot overwrite its startup state transitions with per-frame events.
+	LiveOutputTrace m_liveConvergenceTrace;
+	// One record per second, kept separately so per-frame events cannot evict
+	// the long-run OSD-equivalent queue history.
+	LiveOutputTrace m_liveOutputMetricsTrace;
+	std::atomic<uint64_t> m_liveOutputTraceExportOrdinal{ 0 };
+	uint64_t m_liveOutputTraceRunId = 0;
 
 	// This option is deliberately off by default.  When false, conversion does
 	// no scene analysis and delivery follows the pre-existing path exactly.
@@ -353,13 +380,38 @@ private:
 	// Identifies the current queue epoch. A conversion that began before a
 	// reset/recovery must not publish its sample into the new epoch.
 	std::atomic<uint64_t> m_queueEpoch = 0;
+	// Every fresh DirectShow segment is primed to a bounded full VP reservoir.
+	// The epoch tag prevents an old activation/reset from satisfying a newer
+	// transition. This is independent of the configured steady VP queue target.
+	std::atomic<uint64_t> m_primeQueueEpoch = 0;
+	std::atomic<size_t> m_primeTargetFrames = 0;
+	std::atomic<size_t> m_primeRawTargetFrames = 0;
+	std::atomic<uint64_t> m_primePrefillReachedEpoch = 0;
+	std::atomic<uint64_t> m_primeStartedTick = 0;
+	CCritSec m_primeStateLock;
+	std::atomic<size_t> m_downstreamPrimeTargetFrames = 0;
+	// Zero while a fresh epoch is still priming. Once downstream ingress has
+	// blocked and recovered, this names the epoch whose converted queue is held
+	// to the configured live high-water. The conversion worker reads it without
+	// taking the delivery gate.
+	std::atomic<uint64_t> m_steadyQueueEpoch = 0;
 	
 	std::atomic_bool m_isBuffering = false; // gate delivery until converted queue is primed
-	uint64_t m_lastSeenFrameCounter = 0;    // Track frame counter for discontinuity detection
+	// Explicit [queue] frame policies. Zero means automatic policy. The steady
+	// value selects VP's converted-queue post-prime delivery cushion and steady
+	// high-water; it is never a madVR request. VP remains elastic during initial
+	// downstream prime, then retains newest converted work at this bound.
+	std::atomic<size_t> m_configuredStartupPrerollFrames{ 0 };
+	std::atomic<size_t> m_configuredSteadyReserveFrames{ 0 };
+	std::atomic_bool m_configuredSteadyReserveExplicit{ false };
+	// Published by the UI/controller, consumed only by the delivery worker. A
+	// value of zero preserves the legacy one-sample handoff cushion.
+	std::atomic<size_t> m_outputReadinessDeliveryReserve{ 0 };
 	DWORD m_lastAutoPurgeTime = 0;          // Last time we auto-purged the converted queue
 	DWORD m_bufferingExitTime = 0;          // When we last exited buffering mode (for grace period)
-	uint64_t m_rawOverflowLogCount = 0;      // Protected by m_rawQueueLock
-	DWORD m_lastRawOverflowLogTime = 0;      // Protected by m_rawQueueLock
+	CCritSec m_rawDiagnosticsLock;
+	uint64_t m_rawOverflowLogCount = 0;      // Protected by m_rawDiagnosticsLock
+	DWORD m_lastRawOverflowLogTime = 0;      // Protected by m_rawDiagnosticsLock
 
 	// Core proactive frame management
 	HANDLE m_hFrameAvailableEvent = nullptr;  // Event signaled when frames are added to the queue
@@ -388,9 +440,19 @@ private:
 	std::atomic<uint64_t> m_lastDequeueTick = 0;
 	std::atomic<uint64_t> m_lastDeliveryStartTick = 0;
 	std::atomic<uint64_t> m_lastDeliverySuccessTick = 0;
+	std::atomic<uint64_t> m_maximumSuccessfulDeliveryDurationUs = 0;
 	std::atomic<size_t> m_publishedRawQueueDepth = 0;
 	std::atomic<size_t> m_publishedConvertedQueueDepth = 0;
 	std::atomic_bool m_deliveryInProgress = false;
+	std::atomic<uint64_t> m_convergenceAppliedEpoch = 0;
+	std::atomic<uint64_t> m_convergenceAppliedTick = 0;
+	std::atomic<uint64_t> m_convergenceDeliverySuccessCount = 0;
+	std::atomic<size_t> m_convergenceTargetFrames = 0;
+	std::atomic_bool m_convergenceHardBlockRecovered = false;
+	std::atomic_bool m_convergenceConvertedQueueWasFull = false;
+	std::atomic_bool m_sourceBufferConversionInFlight = false;
+	std::atomic<uint64_t> m_sourceBufferConversionCaptureArrivalTick = 0;
+	std::atomic<size_t> m_retainedSourceBufferHighWater = 0;
 	std::atomic_bool m_resetInProgress = false;
 	
 	// Essential metrics for proactive decisions (simplified)
@@ -399,6 +461,9 @@ private:
 
 	// Helper to get effective buffering target (half of queue size, at least 3 frames)
 	size_t GetBufferingTarget();
+	size_t GetConfiguredSteadyQueueTarget() const;
+	bool IsSteadyQueueTargetConfigured() const;
+	size_t GetDeliveryReserve() const;
 
 	// Thread function, upon return thread exist.
 	// Return codes > 0 indicate an error occured
@@ -407,11 +472,6 @@ private:
 	// Conversion worker thread function
 	static DWORD WINAPI ConversionThreadProc(LPVOID lpParameter);
 	DWORD ConversionWorker();
-
-	struct ActivePictureDetectorState
-	{
-		ActivePictureTransitionModel transition;
-	};
 
 	// Published lock-free for UI/renderer shortcut handling. Detection itself
 	// is conversion-worker-owned and samples only sparse P010 luma positions.
@@ -426,8 +486,7 @@ private:
 	bool AnalyzeSceneDetector(IMediaSample* sample, class SceneDetector& detector,
 		uint64_t sourceSequence, timingclocktime_t timestamp, uint64_t generation,
 		uint64_t& sceneEventId, uint8_t& eventFramesBack, uint16_t& averageLuma);
-	void UpdateActivePictureAspectRatio(IMediaSample* sample, uint64_t frameNumber,
-		ActivePictureDetectorState& state);
+	void UpdateActivePictureAspectRatio(IMediaSample* sample, uint64_t frameNumber);
 	void PublishActivePictureTransition(
 		const ActivePictureTransitionDecision& decision);
 	bool RelocateSubtitleInP010(IMediaSample* sample, uint64_t frameNumber);
@@ -450,13 +509,13 @@ private:
 	HRESULT CloneSampleForUpstreamRepeat(IMediaSample* source,
 		REFERENCE_TIME start, REFERENCE_TIME stop, IMediaSample** repeatSample);
 
-	// Remove all items from the videoFrameQueue
-	// CALLER MUST HOLD m_rawQueueLock
-	void PurgeQueue();
+	// Remove all raw frames and return the number released.
+	size_t PurgeQueue();
 	
 	// Purge converted sample queue
 	// CALLER MUST HOLD m_convertedQueueLock
 	void PurgeConvertedQueue();
+	void WriteLiveOutputTrace(const char* boundary);
 
 	// Calculate next frame timestamp with enhanced logic for CLOCK_SMART
 	REFERENCE_TIME CalculateEnhancedNextTimestamp() const;

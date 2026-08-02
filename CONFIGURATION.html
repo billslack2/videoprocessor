@@ -163,6 +163,12 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
       <p class="meta"><strong>Type/default:</strong> Boolean, false when omitted. <strong>Scope:</strong> retained but inactive for non-P010 output.</p>
     </article>
 
+    <article class="field" id="command-line-disable-detection-features" data-fields="command_line.disable_detection_features">
+      <h4><code>disable_detection_features</code> <span class="badge">diagnostics</span></h4>
+      <p>Forces scene analysis and subtitle repositioning/OCR off and disables the Scene Detect selector. Use this to isolate renderer and queue timing from optional detection work.</p>
+      <p class="meta"><strong>Type/default:</strong> Boolean, false when omitted.</p>
+    </article>
+
     <article class="field" id="command-line-scene-correction-basic" data-fields="command_line.scene_correction_basic">
       <h4><code>scene_correction_basic</code> <span class="badge">DirectShow only</span></h4>
       <p>Chooses the renderer-repeat correction when true. False uses the normal upstream-sample correction. Keep false unless comparison logs show the renderer-specific basic method is required; the built-in renderer has one native correction path and ignores this choice.</p>
@@ -200,8 +206,9 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
 
     <article class="field" id="command-line-frame-offset" data-fields="command_line.frame_offset">
       <h4><code>frame_offset</code></h4>
-      <p>Sets the timing-clock frame offset in whole milliseconds. Use an explicit non-negative value only after measuring the required offset.</p>
-      <p class="auto"><strong>AUTO behavior:</strong> VP starts its frame-offset tuner, measures live timing evidence, and updates the offset for the active cadence. The result can change as tuning converges and is visible in VP timing status/logging. If automatic evidence is unavailable, the tuner cannot establish a new measured offset.</p>
+	  <p>Sets the capture timing-clock frame offset in whole milliseconds for clock-based timestamp modes. It calibrates the DeckLink capture timestamp used by those legacy modes and diagnostics.</p>
+	  <p class="auto"><strong>Rational-Rational:</strong> unavailable. VP displays <code>N/A</code>, applies an effective zero offset to the capture clock, and excludes this setting from its synthetic DirectShow presentation timeline and latency calculations. The configured value is preserved for a later switch back to a clock-based mode.</p>
+	  <p class="auto"><strong>AUTO behavior:</strong> The current legacy tuner derives an offset from queue capacity and cadence and can update it while running. It is not an end-to-end latency measurement.</p>
       <p class="meta"><strong>Values:</strong> <code>AUTO</code> or integer ≥ 0. Invalid values fail command-line validation.</p>
     </article>
 
@@ -281,6 +288,27 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
   <section id="queue-timing">
     <h2>Queue, logging, and timing settings</h2>
 
+    <article class="field" id="queue-startup-preroll-frames" data-fields="queue.startup_preroll_frames">
+      <h4><code>[queue] startup_preroll_frames</code> <span class="badge">DirectShow</span></h4>
+      <p>Sets the number of converted VP frames required before a newly primed DirectShow source begins delivery. It is a VP startup threshold, not a madVR queue request or observation. If <code>steady_reserve_frames</code> is higher, that higher floor also applies at startup.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> <code>0</code> keeps VP's cadence-aware startup policy. This is the recommended starting point while the output-readiness path is being measured.</p>
+      <p class="meta"><strong>Type/range:</strong> whole frames, <code>0</code>–<code>16</code>. Explicit values are bounded by the active VP queue capacity; values above 16 or non-numeric input fail startup validation.</p>
+    </article>
+
+    <article class="field" id="queue-steady-reserve-frames" data-fields="queue.steady_reserve_frames">
+      <h4><code>[queue] steady_reserve_frames</code> <span class="badge">DirectShow</span></h4>
+      <p>Keeps this many converted VP frames behind the DirectShow delivery worker after priming. It controls only the VP-owned queue; madVR's internal queue remains independently configured and is not queryable by VP.</p>
+      <p class="auto"><strong>AUTO behavior:</strong> Omit this setting to retain VP's automatic handoff reserve, including the output-readiness reserve when that controller publishes one. An explicit <code>0</code> requests a literal zero-frame steady target.</p>
+      <p class="meta"><strong>Type/range:</strong> whole frames, <code>0</code>–<code>16</code>. An explicit value takes precedence over the automatic reserve and is bounded by the active VP queue capacity.</p>
+    </article>
+
+    <article class="field" id="directshow-presentation-lead-frames" data-fields="directshow.presentation_lead_frames">
+      <h4><code>[directshow] presentation_lead_frames</code> <span class="badge">DirectShow timing</span></h4>
+      <p>Schedules each timestamped DirectShow sample this many source-frame intervals ahead of the graph clock. It is a presentation margin for renderer delivery, not a VP queue target and not a measurement or configuration of madVR's private queues.</p>
+      <p class="auto"><strong>Omitted behavior:</strong> preserves the legacy mode-specific margin: 180 ms for Rational-Rational and the historically buffered clock modes, and zero for Clock-Rational. An explicit <code>0</code> requests no additional scheduling margin.</p>
+      <p class="meta"><strong>Type/range:</strong> whole source frames, <code>0</code>&ndash;<code>16</code>. One frame is approximately 41.7 ms at 23.976 Hz and 16.7 ms at 59.94 Hz. Changes apply when the renderer graph is built or rebuilt.</p>
+    </article>
+
     <article class="field" id="logging-debug-log-retention" data-fields="logging.debug_log_retention">
       <h4><code>[logging] debug_log_retention</code></h4>
       <p>Total VP debug-log files retained, including active <code>logs\vp_debug.log</code>. At startup the prior active log becomes <code>.0</code>, existing numbered archives shift up, and the oldest is pruned.</p>
@@ -289,7 +317,7 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
 
     <article class="field" id="queue-recovery-reset-delay" data-fields="queue_recovery.reset_after_render_restart_seconds">
       <h4><code>[queue_recovery] reset_after_render_restart_seconds</code></h4>
-      <p>Seconds VP waits after startup/restart or a queue high-water event before flushing and re-priming the live queue. Increase only when the renderer needs longer to settle.</p>
+      <p>Seconds VP waits after startup/restart, a fullscreen/windowed presentation retarget, or a queue high-water event before flushing and re-priming the live queue. A fullscreen/windowed retarget first performs its immediate renderer-window transaction, then uses this delay for one LiveQueue-only normalization reset. Increase only when the renderer or HDMI path needs longer to settle.</p>
       <p class="meta"><strong>Type/default:</strong> integer ≥ 1; default 5.</p>
     </article>
 
@@ -766,6 +794,7 @@ delay_seconds: 2</pre>
       <li><a href="#command-line-queue-size"><code>queue_size</code></a></li>
       <li><a href="#command-line-alpha-queue-size"><code>alpha_queue_size</code></a></li>
       <li><a href="#command-line-scene-detect"><code>scene_detect</code></a></li>
+      <li><a href="#command-line-disable-detection-features"><code>disable_detection_features</code></a></li>
       <li><a href="#command-line-scene-correction-basic"><code>scene_correction_basic</code></a></li>
       <li><a href="#command-line-subtitle-reposition"><code>subtitle_reposition</code></a></li>
       <li><a href="#command-line-newlldv"><code>newlldv</code></a></li>
@@ -786,6 +815,7 @@ delay_seconds: 2</pre>
     <h3>Logging, queue, timing, LLDV, and conversion</h3>
     <ul class="index">
       <li><a href="#logging-debug-log-retention"><code>[logging] debug_log_retention</code></a></li>
+      <li><a href="#directshow-presentation-lead-frames"><code>[directshow] presentation_lead_frames</code></a></li>
       <li><a href="#queue-recovery-reset-delay"><code>[queue_recovery] reset_after_render_restart_seconds</code></a></li>
       <li><a href="#queue-recovery-high-water"><code>[queue_recovery] reset_queue_too_large_percent</code></a></li>
       <li><a href="#display-refresh-rate-override-entry"><code>[display_refresh_rate_override] &lt;nominal_hz&gt;</code></a></li>

@@ -17,6 +17,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <iomanip>
+#include <limits>
 #include <mutex>
 #include <sstream>
 #include <thread>
@@ -41,6 +42,7 @@
 #endif
 #include <guid.h>
 #include <ConfigFile.h>
+#include <DisplayRefreshRateEstimator.h>
 #include <DisplayRefreshRatePolicy.h>
 #include <RendererProfileConfig.h>
 #include <UnifiedProfileRuntime.h>
@@ -58,6 +60,8 @@ struct CaptureVideoStateNotification
 	VideoStateComPtr state;
 	uint64_t captureEpoch = 0;
 	uint64_t sequence = 0;
+	uint64_t ingressPublicationUs = 0;
+	bool retainedRendererIngress = false;
 };
 
 const TCHAR* ToString(RendererResetReason reason)
@@ -67,12 +71,15 @@ const TCHAR* ToString(RendererResetReason reason)
 	case RendererResetReason::Manual: return TEXT("manual");
 	case RendererResetReason::PostRendererStart:
 		return TEXT("post-renderer-start");
+	case RendererResetReason::OutputReadiness:
+		return TEXT("output-readiness");
 	case RendererResetReason::DisplayTransition: return TEXT("display-transition");
 	case RendererResetReason::Resize: return TEXT("resize");
 	case RendererResetReason::QueueSizeChange: return TEXT("queue-size-change");
 	case RendererResetReason::TimingOffsetChange: return TEXT("timing-offset-change");
 	case RendererResetReason::QueuePressure: return TEXT("queue-pressure");
 	case RendererResetReason::QueueCapacity: return TEXT("queue-capacity");
+	case RendererResetReason::SourceGapRecovery: return TEXT("source-gap-recovery");
 	case RendererResetReason::LivenessRecovery: return TEXT("liveness-recovery");
 	default: return TEXT("none");
 	}
@@ -445,20 +452,36 @@ HACCEL CreateConfiguredAccelerators(
 
 struct DisplayTimingSnapshot
 {
+	// Long weighted estimate used only by phase-sensitive correction.
 	double refreshRateHz = 0.0;
+	// Current clean-window estimate used by output readiness.
+	double readinessRefreshRateHz = 0.0;
+	double readinessEvidenceSeconds = 0.0;
+	// Earliest independently validated DXGI evidence. It may initiate the
+	// reset/prefill transition, but cannot establish long phase confidence.
+	double startupRefreshRateHz = 0.0;
+	double startupEvidenceSeconds = 0.0;
+	double startupRawWaitRateHz = 0.0;
 	double advertisedRefreshRateHz = 0.0;
 	double rawWaitRateHz = 0.0;
 	int64_t lastVBlankQpc = 0;
 	int64_t refreshPeriodQpc = 0;
 	int64_t qpcFrequency = 0;
 	int64_t rateMeasuredQpc = 0;
+	int64_t startupRateMeasuredQpc = 0;
 	int64_t measurementStartedQpc = 0;
 	int64_t minimumWaitIntervalQpc = 0;
 	int64_t maximumWaitIntervalQpc = 0;
+	int64_t startupMinimumWaitIntervalQpc = 0;
+	int64_t startupMaximumWaitIntervalQpc = 0;
 	uint64_t intervalsObserved = 0;
 	uint64_t rawWaitIntervalsObserved = 0;
+	uint64_t startupIntervalsObserved = 0;
+	uint64_t startupRawWaitIntervalsObserved = 0;
 	uint64_t generation = 0;
 	bool rateStable = false;
+	bool readinessEvidenceReady = false;
+	bool startupEvidenceReady = false;
 	bool dwmCompositionEnabled = false;
 	HRESULT dwmTimingResult = E_FAIL;
 };
@@ -604,18 +627,33 @@ public:
 		DisplayTimingSnapshot result;
 		std::lock_guard<std::mutex> lock(m_mutex);
 		result.refreshRateHz = m_rate;
+		result.readinessRefreshRateHz = m_readinessRate;
+		result.readinessEvidenceSeconds = m_readinessEvidenceSeconds;
+		result.startupRefreshRateHz = m_startupRate;
+		result.startupEvidenceSeconds = m_startupEvidenceSeconds;
+		result.startupRawWaitRateHz = m_startupRawWaitRate;
 		result.lastVBlankQpc = m_lastVBlankQpc.load(std::memory_order_acquire);
 		result.refreshPeriodQpc = m_refreshPeriodQpc.load(std::memory_order_acquire);
 		result.qpcFrequency = m_qpcFrequency;
 		result.rateMeasuredQpc = m_rateMeasuredQpc;
+		result.startupRateMeasuredQpc = m_startupRateMeasuredQpc;
 		result.measurementStartedQpc = m_measurementStartedQpc;
 		result.intervalsObserved = m_intervalsObserved;
 		result.rawWaitRateHz = m_rawWaitRate;
 		result.minimumWaitIntervalQpc = m_minimumWaitIntervalQpc;
 		result.maximumWaitIntervalQpc = m_maximumWaitIntervalQpc;
 		result.rawWaitIntervalsObserved = m_rawWaitIntervalsObserved;
+		result.startupMinimumWaitIntervalQpc =
+			m_startupMinimumWaitIntervalQpc;
+		result.startupMaximumWaitIntervalQpc =
+			m_startupMaximumWaitIntervalQpc;
+		result.startupIntervalsObserved = m_startupIntervalsObserved;
+		result.startupRawWaitIntervalsObserved =
+			m_startupRawWaitIntervalsObserved;
 		result.generation = m_targetGeneration;
 		result.rateStable = m_rateStable;
+		result.readinessEvidenceReady = m_readinessEvidenceReady;
+		result.startupEvidenceReady = m_startupEvidenceReady;
 		return result;
 	}
 
@@ -623,14 +661,26 @@ private:
 	void ClearMeasurementLocked()
 	{
 		m_rate = 0.0;
+		m_readinessRate = 0.0;
+		m_readinessEvidenceSeconds = 0.0;
+		m_startupRate = 0.0;
+		m_startupEvidenceSeconds = 0.0;
+		m_startupRawWaitRate = 0.0;
 		m_rateMeasuredQpc = 0;
+		m_startupRateMeasuredQpc = 0;
 		m_measurementStartedQpc = 0;
 		m_intervalsObserved = 0;
 		m_rawWaitRate = 0.0;
 		m_minimumWaitIntervalQpc = 0;
 		m_maximumWaitIntervalQpc = 0;
 		m_rawWaitIntervalsObserved = 0;
+		m_startupMinimumWaitIntervalQpc = 0;
+		m_startupMaximumWaitIntervalQpc = 0;
+		m_startupIntervalsObserved = 0;
+		m_startupRawWaitIntervalsObserved = 0;
 		m_rateStable = false;
+		m_readinessEvidenceReady = false;
+		m_startupEvidenceReady = false;
 		m_lastVBlankQpc.store(0, std::memory_order_release);
 		m_refreshPeriodQpc.store(0, std::memory_order_release);
 	}
@@ -706,13 +756,10 @@ private:
 			// than assuming every wake-up represents exactly one refresh. DWM's
 			// cRefresh is a compositor wake count and can miss a vblank too, so use
 			// its period only as the initial interval estimate for this sampler.
-			// Publish an early OSD estimate, but do not mark the rate safe for
-			// correction until it has covered a full 30 seconds. Time, rather
-			// than a fixed frame count, gives the same confidence at 24, 60, and
-			// 120 Hz.
-			constexpr double kInitialMeasurementSeconds = 1.0;
-			constexpr double kPublishIntervalSeconds = 10.0;
-			constexpr double kStableMeasurementSeconds = 30.0;
+			// The estimator keeps three deliberately distinct evidence products:
+			// a post-transition quarantine, a clean current rate for readiness,
+			// and a longer recency-weighted rate for phase correction.
+			constexpr double kPublishIntervalSeconds = 1.0;
 			LARGE_INTEGER first = {};
 			LARGE_INTEGER last = {};
 			LARGE_INTEGER previous = {};
@@ -723,10 +770,7 @@ private:
 					static_cast<long double>(frequency.QuadPart) /
 					static_cast<long double>(nominalRateHz);
 			}
-			uint64_t intervals = 0;
-			uint64_t rawWaitIntervals = 0;
-			int64_t minimumWaitIntervalQpc = 0;
-			int64_t maximumWaitIntervalQpc = 0;
+			DisplayRefreshRateEstimator rateEstimator(frequency.QuadPart);
 			int64_t lastPublishedQpc = 0;
 			unsigned int samples = 0;
 			for (;;)
@@ -759,14 +803,6 @@ private:
 				else
 				{
 					const int64_t elapsedSincePreviousQpc = now.QuadPart - previous.QuadPart;
-					++rawWaitIntervals;
-					if (minimumWaitIntervalQpc == 0 ||
-						elapsedSincePreviousQpc < minimumWaitIntervalQpc)
-					{
-						minimumWaitIntervalQpc = elapsedSincePreviousQpc;
-					}
-					maximumWaitIntervalQpc = std::max(maximumWaitIntervalQpc,
-						elapsedSincePreviousQpc);
 					if (estimatedRefreshPeriodQpc <= 0.0L)
 						estimatedRefreshPeriodQpc =
 							static_cast<long double>(elapsedSincePreviousQpc);
@@ -775,7 +811,8 @@ private:
 						static_cast<uint64_t>(llround(
 							static_cast<long double>(elapsedSincePreviousQpc) /
 							estimatedRefreshPeriodQpc)));
-					intervals += elapsedIntervals;
+					rateEstimator.Observe(now.QuadPart, elapsedSincePreviousQpc,
+						elapsedIntervals);
 
 					// A single normal interval refines the period. A compensated
 					// multi-interval gap is also useful, but give it less weight so a
@@ -794,53 +831,91 @@ private:
 				last = now;
 				++samples;
 
-				const int64_t elapsedQpc = last.QuadPart - first.QuadPart;
-				const double elapsedSeconds = intervals > 0 && elapsedQpc > 0 ?
-					static_cast<double>(elapsedQpc) /
-					static_cast<double>(frequency.QuadPart) : 0.0;
-				const bool rateHasBeenPublished = lastPublishedQpc != 0;
-				const bool publishRate = elapsedSeconds >= kInitialMeasurementSeconds &&
-					(!rateHasBeenPublished ||
-						(last.QuadPart - lastPublishedQpc) >=
-							static_cast<int64_t>(kPublishIntervalSeconds * frequency.QuadPart));
+				const DisplayRefreshRateEstimatorSnapshot estimate =
+					rateEstimator.Snapshot();
+				if (estimate.materialRateChangeDetected)
 				{
 					std::lock_guard<std::mutex> lock(m_mutex);
 					if (m_targetGeneration == targetGeneration)
 					{
-						m_intervalsObserved = intervals;
-						m_rawWaitIntervalsObserved = rawWaitIntervals;
-						m_minimumWaitIntervalQpc = minimumWaitIntervalQpc;
-						m_maximumWaitIntervalQpc = maximumWaitIntervalQpc;
+						DebugLog::Log(
+							"Display-rate measurement invalidated: fast=%.6f Hz "
+							"weighted=%.6f Hz; collecting a new generation",
+							estimate.fastRateHz, estimate.phaseRateHz);
+						++m_targetGeneration;
+						ClearMeasurementLocked();
+					}
+					break;
+				}
+				const bool rateHasBeenPublished = lastPublishedQpc != 0;
+				const bool publishRate = !rateHasBeenPublished ||
+						(last.QuadPart - lastPublishedQpc) >=
+							static_cast<int64_t>(kPublishIntervalSeconds * frequency.QuadPart);
+				{
+					std::lock_guard<std::mutex> lock(m_mutex);
+					if (m_targetGeneration == targetGeneration)
+					{
+						m_intervalsObserved = estimate.recentCompensatedIntervals;
+						m_rawWaitIntervalsObserved = estimate.recentRawIntervals;
+						m_minimumWaitIntervalQpc =
+							estimate.recentMinimumWaitIntervalQpc;
+						m_maximumWaitIntervalQpc =
+							estimate.recentMaximumWaitIntervalQpc;
+						m_startupIntervalsObserved =
+							estimate.startupCompensatedIntervals;
+						m_startupRawWaitIntervalsObserved =
+							estimate.startupRawIntervals;
+						m_startupMinimumWaitIntervalQpc =
+							estimate.startupMinimumWaitIntervalQpc;
+						m_startupMaximumWaitIntervalQpc =
+							estimate.startupMaximumWaitIntervalQpc;
 					}
 				}
 				if (publishRate)
 				{
-					if (elapsedSeconds > 0.0)
+					if (estimate.startupRateHz >= 10.0 &&
+						estimate.startupRateHz <= 240.0)
 					{
-						const double rate = static_cast<double>(intervals) / elapsedSeconds;
+						std::lock_guard<std::mutex> lock(m_mutex);
+						if (m_targetGeneration == targetGeneration)
+						{
+							m_startupRate = estimate.startupRateHz;
+							m_startupEvidenceSeconds =
+								estimate.startupEvidenceSeconds;
+							m_startupRawWaitRate =
+								estimate.startupRawWaitRateHz;
+							m_startupEvidenceReady =
+								estimate.startupEvidenceReady;
+							m_startupRateMeasuredQpc = last.QuadPart;
+						}
+					}
+					if (estimate.phaseRateHz > 0.0)
+					{
+						const double rate = estimate.phaseRateHz;
 						if (rate >= 20.0 && rate <= 120.0)
 						{
 							std::lock_guard<std::mutex> lock(m_mutex);
 							if (m_targetGeneration == targetGeneration)
 							{
 								m_rate = rate;
-								m_rawWaitRate = rawWaitIntervals > 0 ?
-									static_cast<double>(rawWaitIntervals) / elapsedSeconds : 0.0;
+								m_readinessRate = estimate.readinessRateHz;
+								m_readinessEvidenceSeconds =
+									estimate.evidenceSeconds;
+								m_readinessEvidenceReady =
+									estimate.readinessEvidenceReady;
+								m_rawWaitRate = estimate.recentRawWaitRateHz;
 								m_rateMeasuredQpc = last.QuadPart;
-								if (elapsedSeconds >= kStableMeasurementSeconds)
-									m_rateStable = true;
+								m_rateStable = estimate.phaseEvidenceReady;
 								m_refreshPeriodQpc.store(
 									static_cast<int64_t>(llround(
-										static_cast<double>(elapsedQpc) /
-										static_cast<double>(intervals))),
+										static_cast<double>(frequency.QuadPart) / rate)),
 									std::memory_order_release);
 							}
 						}
 					}
 					lastPublishedQpc = last.QuadPart;
-					// Keep the same endpoints after stabilization. Subsequent
-					// ten-second publications therefore become progressively more
-					// accurate and never regress to a short-window estimate.
+					// The model separates current readiness and weighted phase evidence;
+					// neither can borrow validity from a prior display generation.
 				}
 
 				std::lock_guard<std::mutex> lock(m_mutex);
@@ -858,14 +933,26 @@ private:
 	double m_nominalRateHz = 0.0;
 	uint64_t m_targetGeneration = 0;
 	double m_rate = 0.0;
+	double m_readinessRate = 0.0;
+	double m_readinessEvidenceSeconds = 0.0;
+	double m_startupRate = 0.0;
+	double m_startupEvidenceSeconds = 0.0;
+	double m_startupRawWaitRate = 0.0;
 	double m_rawWaitRate = 0.0;
 	int64_t m_rateMeasuredQpc = 0;
+	int64_t m_startupRateMeasuredQpc = 0;
 	int64_t m_measurementStartedQpc = 0;
 	uint64_t m_intervalsObserved = 0;
 	uint64_t m_rawWaitIntervalsObserved = 0;
 	int64_t m_minimumWaitIntervalQpc = 0;
 	int64_t m_maximumWaitIntervalQpc = 0;
+	int64_t m_startupMinimumWaitIntervalQpc = 0;
+	int64_t m_startupMaximumWaitIntervalQpc = 0;
 	bool m_rateStable = false;
+	bool m_readinessEvidenceReady = false;
+	bool m_startupEvidenceReady = false;
+	uint64_t m_startupIntervalsObserved = 0;
+	uint64_t m_startupRawWaitIntervalsObserved = 0;
 	bool m_phaseTracking = false;
 	int64_t m_qpcFrequency = 0;
 	std::atomic<int64_t> m_lastVBlankQpc = 0;
@@ -1379,6 +1466,13 @@ void CVideoProcessorDlg::StartMinimized(bool enabled)
 
 void CVideoProcessorDlg::SceneDetect(bool enabled)
 {
+	if (m_detectionFeaturesDisabled && enabled)
+	{
+		DebugLog::Log(
+			"DETECTION FEATURES: ignoring Scene Detect enable while disabled by configuration");
+		m_sceneAwareTimingCorrection = false;
+		return;
+	}
 	m_sceneAwareTimingCorrection = enabled;
 }
 
@@ -1389,7 +1483,27 @@ void CVideoProcessorDlg::SceneCorrectionUpstreamSample(bool enabled)
 
 void CVideoProcessorDlg::SubtitleRepositioning(SubtitleRepositionMode mode)
 {
+	if (m_detectionFeaturesDisabled &&
+		mode != SubtitleRepositionMode::DISABLED)
+	{
+		DebugLog::Log(
+			"DETECTION FEATURES: ignoring subtitle reposition enable while disabled by configuration");
+		m_subtitleRepositionMode = SubtitleRepositionMode::DISABLED;
+		return;
+	}
 	m_subtitleRepositionMode = mode;
+}
+
+void CVideoProcessorDlg::DisableDetectionFeatures(bool disabled)
+{
+	m_detectionFeaturesDisabled = disabled;
+	if (disabled)
+	{
+		m_sceneAwareTimingCorrection = false;
+		m_subtitleRepositionMode = SubtitleRepositionMode::DISABLED;
+		DebugLog::Log(
+			"DETECTION FEATURES: scene analysis and subtitle repositioning disabled");
+	}
 }
 
 void CVideoProcessorDlg::EnableNewLldvHeuristic(bool enabled)
@@ -1593,6 +1707,14 @@ void CVideoProcessorDlg::OnBnClickedCaptureRestart()
 
 void CVideoProcessorDlg::OnBnClickedTimingClockFrameOffsetAutoCheck()
 {
+	if (IsRationalRationalTimingSelected())
+	{
+		m_timingClockFrameOffsetAutoCheck.SetCheck(BST_UNCHECKED);
+		m_timingClockFrameOffsetAutoCheck.EnableWindow(FALSE);
+		m_timingClockFrameOffsetEdit.EnableWindow(FALSE);
+		return;
+	}
+
 	const bool checked = m_timingClockFrameOffsetAutoCheck.GetCheck();
 
 	m_timingClockFrameOffsetEdit.EnableWindow(!checked);
@@ -1722,7 +1844,8 @@ void CVideoProcessorDlg::UpdateRendererQueueControl()
 void CVideoProcessorDlg::UpdateSceneCorrectionModeUi()
 {
 	const bool p010Selected = IsP010VideoConversionSelected();
-	m_rendererSceneCorrectionModeCombo.EnableWindow(p010Selected);
+	m_rendererSceneCorrectionModeCombo.EnableWindow(
+		p010Selected && !m_detectionFeaturesDisabled);
 
 	// Correction method is deliberately not a UI choice.  Alpha has one native
 	// method; DirectShow normally uses the advanced upstream-sample method and
@@ -1775,6 +1898,8 @@ void CVideoProcessorDlg::UpdateRendererBackendUi()
 		if (CWnd* label = GetDlgItem(controlId))
 			label->EnableWindow(directShowSelected);
 	}
+
+	UpdateTimingClockFrameOffsetAvailability();
 }
 
 
@@ -1791,6 +1916,12 @@ void CVideoProcessorDlg::OnBnClickedRendererVideoFrameUseQueueCheck()
 
 void CVideoProcessorDlg::OnRendererSceneCorrectionModeSelected()
 {
+	if (m_detectionFeaturesDisabled)
+	{
+		m_sceneAwareTimingCorrection = false;
+		m_rendererSceneCorrectionModeCombo.SetCurSel(0);
+		return;
+	}
 	if (!IsP010VideoConversionSelected())
 		return;
 
@@ -1838,6 +1969,7 @@ void CVideoProcessorDlg::OnBnClickedRendererResetAutoCheck()
 
 void CVideoProcessorDlg::OnRendererDirectShowStartStopTimeMethodSelected()
 {
+	UpdateTimingClockFrameOffsetAvailability();
 	OnBnClickedRendererRestart();
 }
 
@@ -2080,6 +2212,62 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	m_appliedCaptureVideoStateNotificationSequence =
 		notificationSequence;
 
+	// A valid notification resolves any previously deferred invalid state before
+	// it can stop the renderer.  DeckLink can transiently publish UNKNOWN video
+	// state while its live samples continue, notably after a profile refresh.
+	if (videoState->valid && m_deferredInvalidCaptureVideoState)
+	{
+		KillTimer(TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID);
+		m_deferredInvalidCaptureVideoState.Release();
+		m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
+		m_deferredInvalidCaptureVideoStateFrameCount = 0;
+		DebugLog::Log(
+			"Transient invalid capture video state cleared by valid notification: "
+			"sequence=%llu",
+			static_cast<unsigned long long>(notificationSequence));
+	}
+
+	// Do not immediately tear down a running renderer on a single invalid state
+	// notification.  A sustained loss still follows the ordinary invalid-signal
+	// stop path after this bounded grace period; a real valid update cancels it.
+	if (!videoState->valid &&
+		m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_captureDeviceVideoState &&
+		m_captureDeviceVideoState->valid)
+	{
+		constexpr UINT transientInvalidGraceMs = 1500;
+		m_deferredInvalidCaptureVideoState = videoState;
+		m_deferredInvalidCaptureVideoStateDeadlineTick =
+			GetTickCount64() + transientInvalidGraceMs;
+		m_deferredInvalidCaptureVideoStateFrameCount = m_captureDevice ?
+			m_captureDevice->VideoFrameCapturedCount() : 0;
+		SetTimer(
+			TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID,
+			transientInvalidGraceMs,
+			nullptr);
+		const RendererIngressState::CaptureSequenceSnapshot ingress =
+			m_rendererIngressState->CaptureSequences();
+		DebugLog::Log(
+			"Transient invalid capture video state deferred: sequence=%llu "
+			"grace_ms=%u captured_frames=%llu action=retain-last-valid-state "
+			"ingress=%s publication_us=%llu "
+			"published=%llu required=%llu acknowledged=%llu admitted=%d",
+			static_cast<unsigned long long>(notificationSequence),
+			transientInvalidGraceMs,
+			static_cast<unsigned long long>(
+				m_deferredInvalidCaptureVideoStateFrameCount),
+			notification->retainedRendererIngress ?
+				"retained-at-source" : "awaiting-renderer-acknowledgement",
+			static_cast<unsigned long long>(
+				notification->ingressPublicationUs),
+			static_cast<unsigned long long>(ingress.published),
+			static_cast<unsigned long long>(ingress.required),
+			static_cast<unsigned long long>(ingress.acknowledged),
+			ingress.admissionOpen ? 1 : 0);
+		return 0;
+	}
+
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Valid=%s"),
 		videoState->valid ? TEXT("Yes") : TEXT("No")));
@@ -2167,7 +2355,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	{
 		m_rendererCaptureVideoStateNotificationSequence =
 			notificationSequence;
-		m_rendererIngressState->SetCaptureSequence(
+		m_rendererIngressState->AcknowledgeCaptureSequence(
 			notificationSequence);
 	}
 
@@ -2339,10 +2527,19 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 
 			switch (eventCode)
 			{
-			case 0x16: // EC_DISPLAY_CHANGED
-			case 0x0E: // EC_VIDEO_SIZE_CHANGED
-			{
-				g_displayRefreshRateSampler->ResetMeasurement();
+		case 0x16: // EC_DISPLAY_CHANGED
+		case 0x0E: // EC_VIDEO_SIZE_CHANGED
+		{
+				if (!m_outputReadinessGraphReprimeActive)
+				{
+					g_displayRefreshRateSampler->ResetMeasurement();
+				}
+				else
+				{
+					DebugLog::Log(
+						"DirectShow display event belongs to the output-readiness "
+						"graph re-prime; preserving its selecting DXGI evidence");
+				}
 				const ULONGLONG now = GetTickCount64();
 				if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 					(!m_rendererResetCoordinator ||
@@ -2508,10 +2705,16 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		m_postRendererStartRequiresGraph = true;
 		if (m_activeRendererIsDirectShow)
 		{
-			RequestRendererReset(RendererResetReason::PostRendererStart,
-				postStartRequiresGraph,
-				windowSettleDelayMs +
-					static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+			// DirectShow now starts provisionally, then uses validated DXGI vblank
+			// evidence to make one serialized LiveQueue reset and exact VP prefill.
+			// Do not stack the legacy configured-delay reset behind it: that was the
+			// source of display-handshake-dependent queue depth.
+			DebugLog::Log(
+				"Post-start reset deferred: renderer=%S backend=DirectShow "
+				"legacy_requires_graph=%d display_settle=%u; "
+				"awaiting output-readiness evidence",
+				static_cast<LPCTSTR>(m_activeRendererName),
+				postStartRequiresGraph ? 1 : 0, windowSettleDelayMs);
 		}
 		else if (windowSettleDelayMs != 0)
 		{
@@ -3106,14 +3309,27 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoStateChange(
 		return;
 	}
 
+	const bool retainRendererIngress = !videoState->valid;
+	const std::chrono::steady_clock::time_point ingressStart =
+		std::chrono::steady_clock::now();
 	const uint64_t notificationSequence =
-		m_rendererIngressState->PublishCaptureSequence();
+		m_rendererIngressState->PublishCaptureSequence(
+			retainRendererIngress ?
+				RendererIngressState::CaptureSequencePublication::
+					RetainCurrentRendererState :
+				RendererIngressState::CaptureSequencePublication::
+					RequiresRendererAcknowledgement);
+	const uint64_t ingressPublicationUs = static_cast<uint64_t>(
+		std::chrono::duration_cast<std::chrono::microseconds>(
+			std::chrono::steady_clock::now() - ingressStart).count());
 	std::unique_ptr<CaptureVideoStateNotification> notification(
 		new CaptureVideoStateNotification());
 	notification->source = source;
 	notification->state = videoState;
 	notification->captureEpoch = captureRunToken;
 	notification->sequence = notificationSequence;
+	notification->ingressPublicationUs = ingressPublicationUs;
+	notification->retainedRendererIngress = retainRendererIngress;
 	if (!PostMessage(
 		WM_MESSAGE_CAPTURE_DEVICE_VIDEO_STATE_CHANGE,
 		reinterpret_cast<WPARAM>(notification.get()),
@@ -3762,6 +3978,10 @@ void CVideoProcessorDlg::CaptureStart()
 	// A new capture session is an initial lifecycle start, never a continuation
 	// of a profile-only replacement from the preceding session.
 	m_postRendererStartRequiresGraph = true;
+	m_nextRendererIsRecoveryRecreation = false;
+	m_directShowRecoveryRecreatedGeneration = 0;
+	m_directShowRecoveryRecreationAttempted = false;
+	m_directShowRecoveryRecreationCaptureSequence = 0;
 
 	// Update internal state before call to StartCapture as that might be synchronous
 	m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_STARTING;
@@ -3913,6 +4133,16 @@ void CVideoProcessorDlg::RenderStart()
 		selectedRenderer->backend == RendererBackend::DIRECTSHOW;
 	const uint32_t rendererGeneration =
 		m_rendererGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+	const bool recoveryRecreation = m_nextRendererIsRecoveryRecreation;
+	m_nextRendererIsRecoveryRecreation = false;
+	m_directShowRecoveryRecreatedGeneration =
+		recoveryRecreation ? rendererGeneration : 0;
+	m_directShowGraphRecoveryAwaitingHealth = false;
+	m_directShowGraphRecoveryWasRetarget = false;
+	m_directShowRecoveryRebuildRequested = false;
+	m_directShowGraphRecoveryGeneration = rendererGeneration;
+	m_directShowGraphRecoveryEpoch = 0;
+	m_directShowGraphRecoveryStartedTick = 0;
 	if (m_preserveFullscreenHostForProfileRestart &&
 		m_fullScreenVideoWindow &&
 		IsWindow(m_fullScreenVideoWindow->GetHWND()))
@@ -4124,6 +4354,13 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->OnVideoState(m_builtVideoState);
 
 		m_videoRenderer->Build();
+		m_videoRenderer->SetQueueFramePolicy(
+			videoProcessorApp.GetQueueStartupPrerollFrames(),
+			videoProcessorApp.GetQueueSteadyReserveFrames(),
+			videoProcessorApp.HasQueueSteadyReserveFrames());
+		m_videoRenderer->SetPresentationLeadFrames(
+			videoProcessorApp.GetPresentationLeadFrames(),
+			videoProcessorApp.HasPresentationLeadFrames());
 		ApplyRequestedShaderSelection();
 		m_rendererTransitionWindow.KeepOnTop();
 		m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
@@ -4202,6 +4439,13 @@ void CVideoProcessorDlg::RenderStart()
 				m_videoRenderer->OnVideoState(m_builtVideoState);
 
 			m_videoRenderer->Build();
+			m_videoRenderer->SetQueueFramePolicy(
+				videoProcessorApp.GetQueueStartupPrerollFrames(),
+				videoProcessorApp.GetQueueSteadyReserveFrames(),
+				videoProcessorApp.HasQueueSteadyReserveFrames());
+			m_videoRenderer->SetPresentationLeadFrames(
+				videoProcessorApp.GetPresentationLeadFrames(),
+				videoProcessorApp.HasPresentationLeadFrames());
 			m_rendererTransitionWindow.KeepOnTop();
 			m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
 			m_videoRenderer->SetSceneCorrectionUpstreamSample(
@@ -4341,7 +4585,7 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 	if (m_fullscreenRetargetPending)
 		ClearFullscreenRetarget(true);
 	m_rendererCaptureVideoStateNotificationSequence = 0;
-	m_rendererIngressState->SetCaptureSequence(0);
+	m_rendererIngressState->AcknowledgeCaptureSequence(0);
 
 	// Releasing a windowed renderer can synchronously pump WM_PAINT and other
 	// window messages.  Detach the shared pointer before invoking the destructor
@@ -4416,6 +4660,7 @@ void CVideoProcessorDlg::RenderGUIClear()
 
 	// Renderer latency (ms) group
 	m_rendererLatencyToVPText.SetWindowText(TEXT("")) ;
+	m_rendererLatencyDsLeadText.SetWindowText(TEXT("")) ;
 	m_rendererLatencyToDSText.SetWindowText(TEXT("")) ;
 
 	m_windowedVideoWindow.ShowLogo(true);
@@ -4424,74 +4669,20 @@ void CVideoProcessorDlg::RenderGUIClear()
 
 bool CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 {
-	if (!m_rendererTargetHwnd || !IsWindow(m_rendererTargetHwnd))
-	{
-		DebugLog::Log(
-			"Renderer transition: process=%lu generation=%u event=black-unavailable "
-			"reason=%s target=%p",
-			GetCurrentProcessId(),
-			m_rendererGeneration.load(std::memory_order_acquire),
-			reason ? reason : "unknown",
-			m_rendererTargetHwnd);
-		return false;
-	}
-
-	const bool wasVisible = m_rendererTransitionWindow.IsVisible();
-	try
-	{
-		m_rendererTransitionWindow.Show(
-			m_rendererTargetHwnd,
-			GetSafeHwnd());
-	}
-	catch (const std::exception& e)
-	{
-		DebugLog::Log(
-			"Renderer transition: process=%lu generation=%u event=black-failed "
-			"reason=%s target=%p error=%s",
-			GetCurrentProcessId(),
-			m_rendererGeneration.load(std::memory_order_acquire),
-			reason ? reason : "unknown",
-			m_rendererTargetHwnd,
-			e.what());
-		m_windowedVideoWindow.ShowLogo(true);
-		return false;
-	}
-
-	if (!wasVisible)
-		m_transitionBlackStartTick = GetTickCount64();
-
-	// Showing an opaque popup forces a retired DirectFlip/MPO surface back
-	// through desktop composition. Wait for that transition to reach a present
-	// boundary before the renderer is stopped or its target HWND is replaced.
-	// This is deliberately confined to renderer lifecycle transitions.
-	const ULONGLONG compositionSyncStart = GetTickCount64();
-	const HRESULT compositionSyncResult =
-		m_rendererTransitionWindow.SynchronizeComposition();
-	const ULONGLONG compositionSyncMs =
-		GetTickCount64() - compositionSyncStart;
-
-	const LONG_PTR style = GetWindowLongPtr(m_rendererTargetHwnd, GWL_STYLE);
+	// The transition popup can retain input focus/z-order during windowed and
+	// fullscreen target changes. Keep the lifecycle state machine intact, but
+	// deliberately run transitions without creating an opaque cover window.
+	m_rendererTransitionWindow.Hide();
+	m_transitionBlackStartTick = GetTickCount64();
 	DebugLog::Log(
-		"Renderer transition: process=%lu generation=%u event=black-shown "
-		"reason=%s renderer=%S target=%p cover=%p cover_owner=%p parent=%p "
-		"root=%p owner=%p fullscreen=%d windowed_fullscreen=%d style=0x%p "
-		"composition_sync=0x%08lx composition_sync_ms=%llu",
+		"Renderer transition: process=%lu generation=%u event=black-suppressed "
+		"reason=%s renderer=%S target=%p",
 		GetCurrentProcessId(),
 		m_rendererGeneration.load(std::memory_order_acquire),
 		reason ? reason : "unknown",
 		static_cast<LPCTSTR>(m_activeRendererName),
-		m_rendererTargetHwnd,
-		m_rendererTransitionWindow.GetHWND(),
-		m_rendererTransitionWindow.GetOwnerHWND(),
-		::GetParent(m_rendererTargetHwnd),
-		::GetAncestor(m_rendererTargetHwnd, GA_ROOT),
-		::GetWindow(m_rendererTargetHwnd, GW_OWNER),
-		m_rendererFullscreenCheck.GetCheck() ? 1 : 0,
-		m_windowedFullScreenMode ? 1 : 0,
-		reinterpret_cast<void*>(style),
-		static_cast<unsigned long>(compositionSyncResult),
-		static_cast<unsigned long long>(compositionSyncMs));
-	return m_rendererTransitionWindow.IsVisible();
+		m_rendererTargetHwnd);
+	return true;
 }
 
 
@@ -4518,8 +4709,17 @@ void CVideoProcessorDlg::WaitForRendererIngressDrain()
 void CVideoProcessorDlg::ResumeRendererIngress()
 {
 	assert(m_rendererIngressState->ActiveLeases() == 0);
-	m_rendererIngressState->SetCaptureSequence(
-		m_rendererCaptureVideoStateNotificationSequence);
+	const RendererIngressState::CaptureSequenceSnapshot ingress =
+		m_rendererIngressState->CaptureSequences();
+	// A retained-invalid publication already acknowledges that the existing
+	// renderer state remains authoritative. Do not replace that admission
+	// acknowledgement with the older renderer-state sequence during a graph
+	// reset; doing so would strand ingress until another state notification.
+	if (ingress.required != ingress.acknowledged)
+	{
+		m_rendererIngressState->AcknowledgeCaptureSequence(
+			m_rendererCaptureVideoStateNotificationSequence);
+	}
 	m_rendererIngressState->OpenAdmission();
 }
 
@@ -4603,6 +4803,119 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			ResetScopeName(completion.request.scope),
 			completion.failure.empty() ? "" : " failure=",
 			completion.failure.empty() ? "" : completion.failure.c_str());
+		const bool outputReadinessGraphReprime =
+			completion.request.reason == RendererResetReason::OutputReadiness &&
+			completion.request.scope == RendererResetScope::Graph;
+		if (currentSuccess && m_activeRendererIsDirectShow &&
+			outputReadinessGraphReprime)
+		{
+			RendererLivenessSnapshot snapshot;
+			if (m_videoRenderer && m_videoRenderer->GetLivenessSnapshot(snapshot) &&
+				snapshot.supported && snapshot.queueEpoch != 0)
+			{
+				const DisplayTimingSnapshot timing =
+					g_displayRefreshRateSampler->GetTimingSnapshot();
+				m_outputReadinessResetCompletedGeneration =
+					(static_cast<uint64_t>(m_transitionGeneration) << 32) ^
+					(timing.generation & 0xffffffffULL);
+				m_outputReadinessResetCompletedEpoch = snapshot.queueEpoch;
+				DebugLog::Log(
+					"Output readiness reset completed: generation=%llu epoch=%llu "
+					"converted=%zu/%zu reserve=%zu",
+					static_cast<unsigned long long>(
+						m_outputReadinessResetCompletedGeneration),
+					static_cast<unsigned long long>(snapshot.queueEpoch),
+					snapshot.convertedQueueDepth, snapshot.queueCapacity,
+					snapshot.deliveryReserveFrames);
+			}
+			else
+			{
+				DebugLog::Log(
+					"Output readiness reset completed without a usable VP queue "
+					"snapshot; deterministic prefill remains pending");
+			}
+		}
+		if (currentSuccess && m_activeRendererIsDirectShow &&
+			completion.request.scope != RendererResetScope::LiveQueue &&
+			!outputReadinessGraphReprime)
+		{
+			// A completed stop/run or retarget transaction may represent a real
+			// HDMI re-sync even when the renderer object itself survived. A
+			// LiveQueue reset only flushes VP source queues while madVR and the
+			// graph keep running, so it intentionally preserves measurement history.
+			g_displayRefreshRateSampler->ResetMeasurement();
+			DebugLog::Log(
+				"Display-rate measurement reset after successful DirectShow graph reset: "
+				"operation=%llu reason=%s scope=%s",
+				static_cast<unsigned long long>(completion.operationId),
+				CStringA(ToString(completion.request.reason)).GetString(),
+				ResetScopeName(completion.request.scope));
+
+			RendererLivenessSnapshot snapshot;
+			if (m_videoRenderer && m_videoRenderer->GetLivenessSnapshot(snapshot) &&
+				snapshot.supported && snapshot.queueEpoch != 0)
+			{
+				const DisplayTimingSnapshot timing =
+					g_displayRefreshRateSampler->GetTimingSnapshot();
+				m_outputReadinessExistingGraphResetGeneration =
+					(static_cast<uint64_t>(m_transitionGeneration) << 32) ^
+					(timing.generation & 0xffffffffULL);
+				m_outputReadinessExistingGraphResetEpoch = snapshot.queueEpoch;
+				m_outputReadinessExistingGraphReservePublishedEpoch = 0;
+				DebugLog::Log(
+					"Output readiness will adopt fresh DirectShow graph reset: "
+					"generation=%llu epoch=%llu reason=%s",
+					static_cast<unsigned long long>(
+						m_outputReadinessExistingGraphResetGeneration),
+					static_cast<unsigned long long>(snapshot.queueEpoch),
+					CStringA(ToString(completion.request.reason)).GetString());
+			}
+		}
+		if (completion.request.reason == RendererResetReason::OutputReadiness)
+			m_outputReadinessGraphReprimeActive = false;
+		if (currentSuccess && m_activeRendererIsDirectShow &&
+			(completion.request.scope == RendererResetScope::Graph ||
+			 completion.request.scope == RendererResetScope::GraphRetarget))
+		{
+			RendererLivenessSnapshot recoverySnapshot;
+			if (m_videoRenderer &&
+				m_videoRenderer->GetLivenessSnapshot(recoverySnapshot) &&
+				recoverySnapshot.supported)
+			{
+				m_directShowGraphRecoveryAwaitingHealth = true;
+				m_directShowGraphRecoveryWasRetarget =
+					completion.request.scope == RendererResetScope::GraphRetarget;
+				m_directShowRecoveryRebuildRequested = false;
+				m_directShowGraphRecoveryGeneration = currentGeneration;
+				m_directShowGraphRecoveryEpoch = recoverySnapshot.queueEpoch;
+				m_directShowGraphRecoveryStartedTick = now;
+				DebugLog::Log(
+					"DirectShow graph recovery awaiting health: generation=%u "
+					"epoch=%llu reason=%s",
+					currentGeneration,
+					static_cast<unsigned long long>(
+						recoverySnapshot.queueEpoch),
+					CStringA(ToString(completion.request.reason)).GetString());
+			}
+		}
+		if (currentSuccess && m_activeRendererIsDirectShow &&
+			completion.request.scope == RendererResetScope::GraphRetarget)
+		{
+			// RetargetWindowWithIngressDrain performs the HWND transaction and an
+			// immediate graph re-prime, but madVR's new windowed/exclusive
+			// presentation path can settle later.  Preserve the long-proven,
+			// configurable delayed queue flush as a second, LiveQueue-only phase.
+			// This is deliberately timing-method agnostic: Rational and Clock
+			// modes exhibit the same downstream transition race.
+			const UINT delayMs = static_cast<UINT>(
+				m_queueResetDelaySeconds * 1000);
+			RequestRendererReset(
+				RendererResetReason::DisplayTransition, false, delayMs);
+			DebugLog::Log(
+				"Post-retarget queue re-prime armed: generation=%u "
+				"delay=%ums source=reset_after_render_restart_seconds",
+				currentGeneration, delayMs);
+		}
 		if (completion.request.scope != RendererResetScope::LiveQueue)
 			m_lastLivenessRecoveryTick = now;
 		m_consecutiveStuckSeconds = 0;
@@ -4775,18 +5088,24 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 	bool resetBlocksReveal =
 		m_rendererResetCoordinator &&
 		m_rendererResetCoordinator->BlocksReveal(generation);
-	// The post-start re-prime is deliberately delayed.  It must not keep the
-	// newly live renderer black while its deadline is pending; only the reset
+	// Delayed post-start and post-retarget re-primes must not keep the newly
+	// live renderer black while their deadlines are pending; only the reset
 	// transaction itself should cover the output when it begins.
 	if (resetBlocksReveal)
 	{
 		const RendererResetCoordinator::Diagnostics diagnostics =
 			m_rendererResetCoordinator->GetDiagnostics();
+		const bool delayedPostStart =
+			diagnostics.pendingReason ==
+				RendererResetReason::PostRendererStart;
+		const bool delayedPostRetarget =
+			diagnostics.pendingReason ==
+				RendererResetReason::DisplayTransition &&
+			diagnostics.pendingScope == RendererResetScope::LiveQueue;
 		if (diagnostics.hasPending &&
 			!diagnostics.selectionPrepared &&
 			!diagnostics.operationActive &&
-			diagnostics.pendingReason ==
-				RendererResetReason::PostRendererStart)
+			(delayedPostStart || delayedPostRetarget))
 		{
 			resetBlocksReveal = false;
 		}
@@ -4802,13 +5121,20 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 		!m_videoRenderer ||
 		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
 		resetBlocksReveal ||
-		!currentFrameReady ||
-		!m_rendererTransitionWindow.IsVisible())
+		!currentFrameReady)
 	{
 		return;
 	}
 
 	const bool coordinatedReset = m_rendererResetTransitionActive;
+	// The UI timer also probes for a first frame. Once the shield has already
+	// been released there is no transition work left to perform; in particular,
+	// do not synchronize DWM and log another reveal on every timer tick.
+	if (!m_rendererTransitionWindow.IsVisible() &&
+		!m_fullscreenRetargetPending && !coordinatedReset)
+	{
+		return;
+	}
 	if (m_fullscreenRetargetPending)
 	{
 		const bool expectedFullscreen = !m_fullscreenRetargetExiting;
@@ -5088,15 +5414,51 @@ bool CVideoProcessorDlg::TryStartFullscreenRetarget()
 			FullScreenVideoWindowDestroy();
 		return false;
 	}
+	if (!enteringFullscreen)
+	{
+		// Keep the old HWND leased for rollback, but do not leave its topmost
+		// fullscreen surface occluding the new windowed presentation target.
+		// Otherwise madVR can accept a small preroll and then block Receive while
+		// VP waits for that same Receive to prove the new target ready.
+		m_rendererTargetHwnd = targetHwnd;
+		++m_rendererTargetRevision;
+		if (m_fullScreenVideoWindow &&
+			IsWindow(m_fullScreenVideoWindow->GetHWND()))
+		{
+			::ShowWindow(m_fullScreenVideoWindow->GetHWND(), SW_HIDE);
+		}
+		DebugLog::Log(
+			"Fullscreen retarget target exposed: direction=exit old=%p new=%p "
+			"old_visible=%d new_visible=%d target_revision=%llu",
+			previousTarget, targetHwnd,
+			previousTarget && ::IsWindowVisible(previousTarget) ? 1 : 0,
+			::IsWindowVisible(targetHwnd) ? 1 : 0,
+			static_cast<unsigned long long>(m_rendererTargetRevision));
+	}
 
+	RECT oldClient = {};
+	RECT newClient = {};
+	if (previousTarget && IsWindow(previousTarget))
+		::GetClientRect(previousTarget, &oldClient);
+	::GetClientRect(targetHwnd, &newClient);
 	DebugLog::Log(
 		"Fullscreen retarget requested: renderer=%S generation=%u "
-		"direction=%s old=%p new=%p target_revision=%llu",
+		"direction=%s old=%p new=%p target_revision=%llu "
+		"old_visible=%d old_client=%ldx%ld old_parent=%p "
+		"new_visible=%d new_client=%ldx%ld new_parent=%p",
 		static_cast<LPCTSTR>(m_activeRendererName),
 		m_rendererGeneration.load(std::memory_order_acquire),
 		enteringFullscreen ? "enter" : "exit",
 		previousTarget, targetHwnd,
-		static_cast<unsigned long long>(m_rendererTargetRevision));
+		static_cast<unsigned long long>(m_rendererTargetRevision),
+		previousTarget && ::IsWindowVisible(previousTarget) ? 1 : 0,
+		oldClient.right - oldClient.left,
+		oldClient.bottom - oldClient.top,
+		previousTarget ? ::GetParent(previousTarget) : nullptr,
+		::IsWindowVisible(targetHwnd) ? 1 : 0,
+		newClient.right - newClient.left,
+		newClient.bottom - newClient.top,
+		::GetParent(targetHwnd));
 	m_rendererFullscreenCheck.EnableWindow(FALSE);
 	m_fullScreenModeCombo.EnableWindow(FALSE);
 	return true;
@@ -5112,6 +5474,8 @@ void CVideoProcessorDlg::ClearFullscreenRetarget(bool restorePreviousTarget)
 		m_rendererTargetHwnd = m_fullscreenRetargetPreviousTargetHwnd;
 		m_rendererTargetRevision =
 			m_fullscreenRetargetPreviousTargetRevision;
+		if (m_fullscreenRetargetExiting)
+			::ShowWindow(m_fullscreenRetargetPreviousTargetHwnd, SW_SHOW);
 	}
 	m_fullscreenRetargetPending = false;
 	m_fullscreenRetargetTargetHwnd = nullptr;
@@ -5177,24 +5541,76 @@ void CVideoProcessorDlg::SetFrameOffsetByRefresh(std::vector<int> offsets) {
 }
 
 
+bool CVideoProcessorDlg::IsRationalRationalTimingSelected() const
+{
+	const int methodIndex =
+		m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
+	return methodIndex >= 0 &&
+		static_cast<DirectShowStartStopTimeMethod>(
+			m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(methodIndex)) ==
+			DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL;
+}
+
+
+void CVideoProcessorDlg::UpdateTimingClockFrameOffsetAvailability()
+{
+	const bool rationalRational = IsRationalRationalTimingSelected();
+	if (rationalRational)
+	{
+		if (!m_frameOffsetMaskedForRationalRational)
+		{
+			m_timingClockFrameOffsetEdit.GetWindowText(
+				m_frameOffsetBeforeRationalRational);
+			m_frameOffsetAutoBeforeRationalRational =
+				m_timingClockFrameOffsetAutoCheck.GetCheck() == BST_CHECKED;
+			m_frameOffsetMaskedForRationalRational = true;
+		}
+
+		m_timingClockFrameOffsetEdit.SetWindowText(TEXT("N/A"));
+		m_timingClockFrameOffsetEdit.EnableWindow(FALSE);
+		m_timingClockFrameOffsetAutoCheck.SetCheck(BST_UNCHECKED);
+		m_timingClockFrameOffsetAutoCheck.EnableWindow(FALSE);
+		if (m_captureDevice)
+			m_captureDevice->SetFrameOffsetMs(0);
+		return;
+	}
+
+	if (m_frameOffsetMaskedForRationalRational)
+	{
+		m_timingClockFrameOffsetEdit.SetWindowText(
+			m_frameOffsetBeforeRationalRational);
+		m_timingClockFrameOffsetAutoCheck.SetCheck(
+			m_frameOffsetAutoBeforeRationalRational ? BST_CHECKED : BST_UNCHECKED);
+		m_frameOffsetMaskedForRationalRational = false;
+	}
+
+	m_timingClockFrameOffsetAutoCheck.EnableWindow(TRUE);
+	const bool autoOffset =
+		m_timingClockFrameOffsetAutoCheck.GetCheck() == BST_CHECKED;
+	m_timingClockFrameOffsetEdit.EnableWindow(!autoOffset);
+	if (m_captureDevice)
+		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
+}
+
+
 int CVideoProcessorDlg::GetTimingClockFrameOffsetMs()
 {
-
-
+	if (IsRationalRationalTimingSelected())
+		return 0;
 	CString text;
 	m_timingClockFrameOffsetEdit.GetWindowText(text);
 
-	// ttoi throws non-parsed stuff away so in case there is crap set the output to the
-	// used value, this way the user always knows what's going on.
-	const int frameOffsetMs = _ttoi(text);
-	SetTimingClockFrameOffsetMs(frameOffsetMs);
-
-	return frameOffsetMs;
+	// Reading the model must not rewrite the edit control. Periodic stats reads
+	// otherwise reset the caret/selection while the user is typing.
+	return _ttoi(text);
 }
 
 
 void CVideoProcessorDlg::SetTimingClockFrameOffsetMs(int timingClockFrameOffsetMs)
 {
+	if (IsRationalRationalTimingSelected())
+		return;
+
 	CString cstring;
 	cstring.Format(_T("%i"), timingClockFrameOffsetMs);
 	m_timingClockFrameOffsetEdit.SetWindowText(cstring);
@@ -5203,6 +5619,13 @@ void CVideoProcessorDlg::SetTimingClockFrameOffsetMs(int timingClockFrameOffsetM
 
 void CVideoProcessorDlg::UpdateTimingClockFrameOffset()
 {
+	if (IsRationalRationalTimingSelected())
+	{
+		if (m_captureDevice)
+			m_captureDevice->SetFrameOffsetMs(0);
+		return;
+	}
+
 	if (m_captureDevice) 
 		m_captureDevice->SetFrameOffsetMs(GetTimingClockFrameOffsetMs());
 
@@ -5796,6 +6219,7 @@ void CVideoProcessorDlg::DoDataExchange(CDataExchange* pDX)
 
 	// Renderer latency (ms) group
 	DDX_Control(pDX, IDC_RENDERER_LATENCY_TO_VP_STATIC, m_rendererLatencyToVPText);
+	DDX_Control(pDX, IDC_RENDERER_LATENCY_DS_LEAD_STATIC, m_rendererLatencyDsLeadText);
 	DDX_Control(pDX, IDC_RENDERER_LATENCY_TO_DS_STATIC, m_rendererLatencyToDSText);
 
 	// Renderer output group
@@ -6420,11 +6844,62 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 
-	if (m_rendererTransitionWindow.IsVisible())
+	if (nIDEvent == TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID)
 	{
-		TryRevealRendererTransition(
-			m_rendererGeneration.load(std::memory_order_acquire));
+		KillTimer(TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID);
+		if (!m_deferredInvalidCaptureVideoState)
+			return;
+
+		const ULONGLONG now = GetTickCount64();
+		if (now < m_deferredInvalidCaptureVideoStateDeadlineTick)
+		{
+			SetTimer(
+				TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID,
+				static_cast<UINT>(
+					m_deferredInvalidCaptureVideoStateDeadlineTick - now),
+				nullptr);
+			return;
+		}
+
+		const uint64_t capturedFramesNow = m_captureDevice ?
+			m_captureDevice->VideoFrameCapturedCount() : 0;
+		if (capturedFramesNow > m_deferredInvalidCaptureVideoStateFrameCount)
+		{
+			const uint64_t capturedFramesAtDeferral =
+				m_deferredInvalidCaptureVideoStateFrameCount;
+			m_deferredInvalidCaptureVideoState.Release();
+			m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
+			m_deferredInvalidCaptureVideoStateFrameCount = 0;
+			const RendererIngressState::CaptureSequenceSnapshot ingress =
+				m_rendererIngressState->CaptureSequences();
+			DebugLog::Log(
+				"Transient invalid capture video state ignored: capture advanced "
+				"from=%llu to=%llu action=retain-live-renderer "
+				"published=%llu required=%llu acknowledged=%llu admitted=%d",
+				static_cast<unsigned long long>(
+					capturedFramesAtDeferral),
+				static_cast<unsigned long long>(capturedFramesNow),
+				static_cast<unsigned long long>(ingress.published),
+				static_cast<unsigned long long>(ingress.required),
+				static_cast<unsigned long long>(ingress.acknowledged),
+				ingress.admissionOpen ? 1 : 0);
+			return;
+		}
+
+		m_captureDeviceVideoState = m_deferredInvalidCaptureVideoState;
+		m_deferredInvalidCaptureVideoState.Release();
+		m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
+		m_deferredInvalidCaptureVideoStateFrameCount = 0;
+		DebugLog::Log(
+			"Transient invalid capture video state persisted through grace; "
+			"action=apply-invalid-state");
+		BuildPushVideoState();
+		UpdateState();
+		return;
 	}
+
+	TryRevealRendererTransition(
+		m_rendererGeneration.load(std::memory_order_acquire));
 
 	if (nIDEvent == UI_LAYOUT_RESTORE_TIMER_ID)
 	{
@@ -6675,11 +7150,40 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				cstring.Format(_T("%zu/%zu/%zu"), rawQueueSize, convertedQueueSize, currentQueueSize);
 			m_rendererVideoFrameQueueSizeText.SetWindowText(cstring);
 
-			cstring.Format(_T("%.01f"), m_videoRenderer->EntryLatencyMs());
-			m_rendererLatencyToVPText.SetWindowText(cstring);
-
-			cstring.Format(_T("%.01f"), m_videoRenderer->ExitLatencyMs());
-			m_rendererLatencyToDSText.SetWindowText(cstring);
+			RendererLatencySnapshot latencySnapshot;
+			if (m_videoRenderer->GetLatencySnapshot(latencySnapshot))
+			{
+				cstring.Format(_T("%.01f"), latencySnapshot.vpInternalMs);
+				m_rendererLatencyToVPText.SetWindowText(cstring);
+				if (latencySnapshot.scheduledPresentationKnown)
+				{
+					cstring.Format(_T("%.01f"), latencySnapshot.dsScheduleLeadMs);
+					m_rendererLatencyDsLeadText.SetWindowText(cstring);
+					cstring.Format(_T("%.01f"), latencySnapshot.scheduledLatencyMs);
+					m_rendererLatencyToDSText.SetWindowText(cstring);
+				}
+				else
+				{
+					m_rendererLatencyDsLeadText.SetWindowText(_T("---"));
+					m_rendererLatencyToDSText.SetWindowText(_T("---"));
+				}
+			}
+			else if (renderer && renderer->backend == RendererBackend::LIBPLACEBO)
+			{
+				const double alphaInternalMs = std::max(0.0,
+					m_videoRenderer->ExitLatencyMs() -
+					m_videoRenderer->EntryLatencyMs());
+				cstring.Format(_T("%.01f"), alphaInternalMs);
+				m_rendererLatencyToVPText.SetWindowText(cstring);
+				m_rendererLatencyDsLeadText.SetWindowText(_T("---"));
+				m_rendererLatencyToDSText.SetWindowText(_T("---"));
+			}
+			else
+			{
+				m_rendererLatencyToVPText.SetWindowText(_T("---"));
+				m_rendererLatencyDsLeadText.SetWindowText(_T("---"));
+				m_rendererLatencyToDSText.SetWindowText(_T("---"));
+			}
 
 			cstring.Format(_T("%lu"), droppedFrames);
 			m_rendererDroppedFrameCountText.SetWindowText(cstring);
@@ -6692,6 +7196,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		{
 			m_rendererVideoFrameQueueSizeText.SetWindowText(_T(""));
 			m_rendererLatencyToVPText.SetWindowText(_T(""));
+			m_rendererLatencyDsLeadText.SetWindowText(_T(""));
 			m_rendererLatencyToDSText.SetWindowText(_T(""));
 			m_rendererDroppedFrameCountText.SetWindowText(TEXT(""));
 		}
@@ -6704,8 +7209,10 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			cstring.Format(_T("%lu"), m_captureDevice->VideoFrameMissedCount());
 			m_inputVideoFrameMissedText.SetWindowText(cstring);
 
-			cstring.Format(_T("%.01f"), m_captureDevice->HardwareLatencyMs());
-			m_inputLatencyMsText.SetWindowText(cstring);
+			// DeckLink hardware-latency measurement was removed from the capture
+			// callback. Do not display its zero-initialized storage as a measured
+			// end-to-end latency.
+			m_inputLatencyMsText.SetWindowText(_T("---"));
 		}
 		else
 		{
@@ -6761,6 +7268,13 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		qpcNow.QuadPart >= sampledDisplayTiming.rateMeasuredQpc &&
 		(qpcNow.QuadPart - sampledDisplayTiming.rateMeasuredQpc) <=
 			sampledDisplayTiming.qpcFrequency * 20;
+	const bool startupRateIsFresh =
+		sampledDisplayTiming.startupRefreshRateHz > 0.0 &&
+		sampledDisplayTiming.qpcFrequency > 0 &&
+		sampledDisplayTiming.startupRateMeasuredQpc > 0 &&
+		qpcNow.QuadPart >= sampledDisplayTiming.startupRateMeasuredQpc &&
+		(qpcNow.QuadPart - sampledDisplayTiming.startupRateMeasuredQpc) <=
+			sampledDisplayTiming.qpcFrequency * 5;
 	const double rawWaitMinimumMs =
 		sampledDisplayTiming.qpcFrequency > 0 &&
 		sampledDisplayTiming.minimumWaitIntervalQpc > 0 ?
@@ -6771,6 +7285,19 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		sampledDisplayTiming.maximumWaitIntervalQpc > 0 ?
 		static_cast<double>(sampledDisplayTiming.maximumWaitIntervalQpc) * 1000.0 /
 			static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
+	const double startupRawWaitMinimumMs =
+		sampledDisplayTiming.qpcFrequency > 0 &&
+		sampledDisplayTiming.startupMinimumWaitIntervalQpc > 0 ?
+		static_cast<double>(sampledDisplayTiming.startupMinimumWaitIntervalQpc) *
+			1000.0 / static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
+	const double startupRawWaitMaximumMs =
+		sampledDisplayTiming.qpcFrequency > 0 &&
+		sampledDisplayTiming.startupMaximumWaitIntervalQpc > 0 ?
+		static_cast<double>(sampledDisplayTiming.startupMaximumWaitIntervalQpc) *
+			1000.0 / static_cast<double>(sampledDisplayTiming.qpcFrequency) : 0.0;
+	// Keep current readiness and phase-sensitive cadence validation separate.
+	// The former needs a clean, recent rate promptly; the latter intentionally
+	// waits for the longer weighted-history predicate.
 	DisplayRefreshRateInput displayRateInput;
 	displayRateInput.candidateRateHz = sampledDisplayTiming.refreshRateHz;
 	displayRateInput.rawWaitRateHz = sampledDisplayTiming.rawWaitRateHz;
@@ -6785,6 +7312,37 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	displayRateInput.stable = sampledDisplayTiming.rateStable;
 	const DisplayRefreshRateResult displayRateResult =
 		EvaluateDisplayRefreshRate(displayRateInput);
+	DisplayRefreshRateInput readinessRateInput = displayRateInput;
+	readinessRateInput.candidateRateHz =
+		sampledDisplayTiming.readinessRefreshRateHz;
+	readinessRateInput.readinessObservationSeconds =
+		sampledDisplayTiming.readinessEvidenceSeconds;
+	// Output readiness uses the policy's short evidence rule. It must not
+	// borrow the phase predicate, which deliberately requires a longer run.
+	readinessRateInput.stable = false;
+	const DisplayRefreshRateResult readinessRateResult =
+		EvaluateDisplayRefreshRate(readinessRateInput);
+	// Startup evidence uses the first credible two seconds of DXGI vblank
+	// intervals. It is separately cadence- and nominal-validated, rather than
+	// borrowing samples from the post-transition quarantine or phase history.
+	DisplayRefreshRateInput startupRateInput;
+	startupRateInput.candidateRateHz =
+		sampledDisplayTiming.startupRefreshRateHz;
+	startupRateInput.rawWaitRateHz =
+		sampledDisplayTiming.startupRawWaitRateHz;
+	startupRateInput.nominalRateHz = activeTargetRefreshRate;
+	startupRateInput.minimumWaitIntervalMs = startupRawWaitMinimumMs;
+	startupRateInput.maximumWaitIntervalMs = startupRawWaitMaximumMs;
+	startupRateInput.compensatedIntervals =
+		sampledDisplayTiming.startupIntervalsObserved;
+	startupRateInput.rawWaitIntervals =
+		sampledDisplayTiming.startupRawWaitIntervalsObserved;
+	startupRateInput.startupObservationSeconds =
+		sampledDisplayTiming.startupEvidenceSeconds;
+	startupRateInput.fresh = startupRateIsFresh;
+	startupRateInput.stable = false;
+	const DisplayRefreshRateResult startupRateResult =
+		EvaluateDisplayRefreshRate(startupRateInput);
 	const double measuredDisplayRefreshRate =
 		displayRateResult.selectedRateHz;
 	const double nominalInputRefreshRate =
@@ -6796,8 +7354,18 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	const bool displayRefreshRateOverridden = nominalInputRefreshRate > 0.0 &&
 		TryGetDisplayRefreshRateOverride(nominalInputRefreshRate,
 			configuredDisplayRefreshRate, matchedOverrideNominalRate);
+	double madVRDetectedRefreshRate = 0.0;
+	const bool madVRDetectedRefreshRateKnown =
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_videoRenderer && m_videoRenderer->GetDetectedDisplayRefreshRate(
+			madVRDetectedRefreshRate);
+	// An explicit configuration remains authoritative. Otherwise, madVR's own
+	// settled display measurement is preferred for its graph. DXGI remains the
+	// immediate source during HDMI/renderer warm-up and the fallback for Alpha.
 	const double displayRefreshRate = displayRefreshRateOverridden ?
-		configuredDisplayRefreshRate : measuredDisplayRefreshRate;
+		configuredDisplayRefreshRate :
+		(madVRDetectedRefreshRateKnown ? madVRDetectedRefreshRate :
+			measuredDisplayRefreshRate);
 	const std::wstring monitorDeviceName = GetMonitorDeviceName(displayWindow);
 	const double dxgiTargetMismatchPpm =
 		sampledDisplayTiming.refreshRateHz > 0.0 &&
@@ -6891,6 +7459,12 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 					<< configuredDisplayRefreshRate << " Hz";
 				selectedSource = "CONFIG OVERRIDE";
 			}
+			else if (madVRDetectedRefreshRateKnown)
+			{
+				selectedRateText << std::fixed << std::setprecision(6)
+					<< madVRDetectedRefreshRate << " Hz";
+				selectedSource = "madVR detected refresh";
+			}
 			else if (measuredDisplayRefreshRate > 0.0)
 			{
 				selectedRateText << std::fixed << std::setprecision(6)
@@ -6915,7 +7489,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				static_cast<double>(displayTimingLogTick -
 					lastAcceptedTick) / 1000.0 : 0.0;
 			const char* preventedConsumers =
-				displayRefreshRateOverridden ||
+				displayRefreshRateOverridden || madVRDetectedRefreshRateKnown ||
 				displayRateResult.decision ==
 					DisplayRefreshRateDecision::Accepted ?
 				"none" : "OSD,scene-aware,PPM/delivery";
@@ -6979,6 +7553,335 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		lastAcceptedMeasuredRate = measuredDisplayRefreshRate;
 		lastAcceptedGeneration = sampledDisplayTiming.generation;
 		lastAcceptedTick = displayTimingLogTick;
+	}
+
+	// A validated DXGI measurement is evidence that the renderer/display timing
+	// path is usable, not proof that an HDMI sink has physically locked and not
+	// an observation of madVR's internal queues. It selects the proven
+	// DirectShow/madVR graph re-prime transaction; it does not size madVR.
+	OutputReadinessInput readinessInput;
+	// Renderer lifecycle and sampler generations are both readiness boundaries:
+	// never carry a validated rate across either one.
+	readinessInput.transitionGeneration =
+		(static_cast<uint64_t>(m_transitionGeneration) << 32) ^
+		(sampledDisplayTiming.generation & 0xffffffffULL);
+	readinessInput.graphOperational =
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_videoRenderer != nullptr && !m_rendererResetTransitionActive;
+	RendererLivenessSnapshot readinessLiveness;
+	const bool hasReadinessLiveness = m_activeRendererIsDirectShow &&
+		m_videoRenderer && m_videoRenderer->GetLivenessSnapshot(readinessLiveness) &&
+		readinessLiveness.supported;
+	// An explicit [queue] steady value controls the VP prefill/cushion for this
+	// fresh epoch. It never sizes madVR. Without one, retain the proven automatic
+	// eight-frame readiness reserve.
+	const size_t configuredVpReserveFrames =
+		videoProcessorApp.GetQueueSteadyReserveFrames();
+	const size_t queueCapacity = hasReadinessLiveness &&
+		readinessLiveness.queueCapacity > 0 ?
+		readinessLiveness.queueCapacity : 32;
+	const size_t requestedVpReserveFrames =
+		videoProcessorApp.HasQueueSteadyReserveFrames() ?
+		std::min(configuredVpReserveFrames, queueCapacity) :
+		std::min<size_t>(8, queueCapacity);
+	const uint64_t readinessObservationTick = GetTickCount64();
+	readinessInput.observationTickMs = readinessObservationTick;
+	if (m_currentGraphPrimeObservedTransitionGeneration !=
+		readinessInput.transitionGeneration)
+	{
+		const bool firstObservedGeneration =
+			m_currentGraphPrimeObservedTransitionGeneration == 0;
+		const bool rendererGenerationChanged = !firstObservedGeneration &&
+			(m_currentGraphPrimeObservedTransitionGeneration >> 32) !=
+				(readinessInput.transitionGeneration >> 32);
+		m_currentGraphPrimeObservedTransitionGeneration =
+			readinessInput.transitionGeneration;
+		m_currentGraphPrimeTransitionStartTick = firstObservedGeneration ?
+			0 : readinessObservationTick;
+		m_currentGraphPrimeEvidenceEpoch = 0;
+		m_currentGraphPrimeEvidenceTick = 0;
+		m_currentGraphPrimeEvidenceTransitionGeneration = 0;
+		if (rendererGenerationChanged)
+		{
+			m_currentGraphPrimeObservedQueueEpoch = 0;
+			m_currentGraphPrimeQueueTransitionGeneration = 0;
+		}
+	}
+	if (hasReadinessLiveness && readinessLiveness.queueEpoch != 0 &&
+		m_currentGraphPrimeObservedQueueEpoch != readinessLiveness.queueEpoch)
+	{
+		// Bind the queue epoch before consuming any convergence proof. A later
+		// sampler-generation change cannot relabel an older live epoch as proof
+		// for the new output contract.
+		m_currentGraphPrimeObservedQueueEpoch = readinessLiveness.queueEpoch;
+		m_currentGraphPrimeQueueTransitionGeneration =
+			readinessInput.transitionGeneration;
+	}
+	const bool currentGraphBoundarySafe = hasReadinessLiveness &&
+		readinessLiveness.active && readinessLiveness.queueEpoch != 0 &&
+		!readinessLiveness.resetInProgress &&
+		!m_rendererResetTransitionActive &&
+		!m_outputReadinessGraphReprimeActive &&
+		!m_fullscreenRetargetPending &&
+		!m_rendererRetirementPending &&
+		!m_wantToRestartRenderer &&
+		!m_wantToTerminate &&
+		!m_directShowGraphRecoveryAwaitingHealth &&
+		!m_directShowRecoveryRebuildRequested &&
+		!RendererResetOperationInProgress() &&
+		m_rendererTransitionModel.State() == RendererTransitionState::Visible;
+	if (hasReadinessLiveness &&
+		readinessLiveness.convergenceAppliedEpoch != 0 &&
+		(m_currentGraphPrimeTransitionStartTick == 0 ||
+		 readinessLiveness.convergenceAppliedTick >
+			m_currentGraphPrimeTransitionStartTick) &&
+		(readinessLiveness.convergenceAppliedEpoch !=
+			m_currentGraphPrimeEvidenceEpoch ||
+		 readinessLiveness.convergenceAppliedTick !=
+			m_currentGraphPrimeEvidenceTick))
+	{
+		m_currentGraphPrimeEvidenceEpoch =
+			readinessLiveness.convergenceAppliedEpoch;
+		m_currentGraphPrimeEvidenceTick =
+			readinessLiveness.convergenceAppliedTick;
+		m_currentGraphPrimeEvidenceTransitionGeneration =
+			readinessInput.transitionGeneration;
+	}
+	const bool currentGraphPrimeProven = currentGraphBoundarySafe &&
+		readinessLiveness.convergenceHardBlockRecovered &&
+		readinessLiveness.convergenceConvertedQueueWasFull &&
+		readinessLiveness.convergenceAppliedEpoch != 0 &&
+		readinessLiveness.convergenceAppliedEpoch ==
+			readinessLiveness.queueEpoch &&
+		m_currentGraphPrimeObservedQueueEpoch ==
+			readinessLiveness.queueEpoch &&
+		m_currentGraphPrimeQueueTransitionGeneration ==
+			readinessInput.transitionGeneration &&
+		m_currentGraphPrimeEvidenceEpoch ==
+			readinessLiveness.convergenceAppliedEpoch &&
+		m_currentGraphPrimeEvidenceTransitionGeneration ==
+			readinessInput.transitionGeneration;
+	const bool currentGraphPrimeCandidateSameEpoch = hasReadinessLiveness &&
+		readinessLiveness.convergenceAppliedEpoch != 0 &&
+		readinessLiveness.convergenceAppliedEpoch == readinessLiveness.queueEpoch;
+	const uint64_t postProofDeliverySuccesses =
+		currentGraphPrimeCandidateSameEpoch &&
+		readinessLiveness.currentEpochDeliverySuccessCount >=
+			readinessLiveness.convergenceDeliverySuccessCount ?
+		readinessLiveness.currentEpochDeliverySuccessCount -
+			readinessLiveness.convergenceDeliverySuccessCount : 0;
+	const bool currentGraphDeliveryRecent = currentGraphPrimeProven &&
+		readinessLiveness.lastDeliverySuccessQueueEpoch ==
+			readinessLiveness.queueEpoch &&
+		readinessLiveness.lastDeliverySuccessTick != 0 &&
+		readinessObservationTick >= readinessLiveness.lastDeliverySuccessTick &&
+		readinessObservationTick - readinessLiveness.lastDeliverySuccessTick <= 500 &&
+		!readinessLiveness.deliveryInProgress;
+	const bool readinessGraphResetCompleted =
+		m_outputReadinessResetCompletedGeneration ==
+			readinessInput.transitionGeneration &&
+		m_outputReadinessResetCompletedEpoch != 0;
+	const bool existingGraphResetCanSatisfyReadiness = hasReadinessLiveness &&
+		m_outputReadinessExistingGraphResetGeneration ==
+			readinessInput.transitionGeneration &&
+		m_outputReadinessExistingGraphResetEpoch != 0 &&
+		readinessLiveness.queueEpoch == m_outputReadinessExistingGraphResetEpoch;
+	const bool recoveryRecreationCanSatisfyReadiness = hasReadinessLiveness &&
+		m_directShowRecoveryRecreatedGeneration == m_transitionGeneration &&
+		readinessLiveness.queueEpoch != 0;
+	readinessInput.postReadyResetCompleted = readinessGraphResetCompleted ||
+		existingGraphResetCanSatisfyReadiness ||
+		recoveryRecreationCanSatisfyReadiness;
+	readinessInput.postReadyEpoch = readinessGraphResetCompleted ?
+		m_outputReadinessResetCompletedEpoch :
+		(existingGraphResetCanSatisfyReadiness ?
+			m_outputReadinessExistingGraphResetEpoch :
+			(recoveryRecreationCanSatisfyReadiness ?
+				readinessLiveness.queueEpoch : 0));
+	readinessInput.currentEpochProcessedDepth = hasReadinessLiveness &&
+		readinessLiveness.queueEpoch == readinessInput.postReadyEpoch ?
+		readinessLiveness.convertedQueueDepth : 0;
+	// The pin snapshot can still describe the old reserve while a new policy is
+	// being published. Use this generation's selected policy consistently for
+	// both reset prefill and the controller's completion criterion.
+	readinessInput.reserveFrames = requestedVpReserveFrames;
+	readinessInput.currentGraphPrimeProven = currentGraphPrimeProven;
+	readinessInput.currentGraphPrimeObservedFullConvertedQueue =
+		currentGraphPrimeProven &&
+		readinessLiveness.convergenceConvertedQueueWasFull;
+	readinessInput.currentGraphBoundarySafe = currentGraphBoundarySafe;
+	readinessInput.currentGraphDeliveryRecent = currentGraphDeliveryRecent;
+	readinessInput.currentGraphPrimeTransitionGeneration =
+		currentGraphPrimeCandidateSameEpoch ?
+			m_currentGraphPrimeEvidenceTransitionGeneration : 0;
+	readinessInput.currentGraphPrimeEpoch = currentGraphPrimeCandidateSameEpoch ?
+		readinessLiveness.convergenceAppliedEpoch : 0;
+	readinessInput.currentGraphPrimeTargetFrames = currentGraphPrimeCandidateSameEpoch ?
+		readinessLiveness.convergenceTargetFrames : 0;
+	readinessInput.currentGraphRawDepth = hasReadinessLiveness ?
+		readinessLiveness.rawQueueDepth : 0;
+	readinessInput.currentGraphConvertedDepth = hasReadinessLiveness ?
+		readinessLiveness.convertedQueueDepth : 0;
+	readinessInput.currentGraphPostProofDeliverySuccesses =
+		static_cast<uint32_t>(std::min<uint64_t>(
+			postProofDeliverySuccesses,
+			std::numeric_limits<uint32_t>::max()));
+	readinessInput.currentGraphMaximumSuccessfulDeliveryDurationUs =
+		hasReadinessLiveness ?
+			readinessLiveness.maximumSuccessfulDeliveryDurationUs : 0;
+	// Phase correction waits for DisplayRefreshRateDecision::Accepted. Output
+	// readiness instead uses independently cadence-validated startup evidence,
+	// so it need not impose a multi-second first-image blackout.
+	readinessInput.displayDecision = startupRateResult.startupValidated ?
+		DisplayRefreshRateDecision::Accepted : startupRateResult.decision;
+	readinessInput.displayReason = startupRateResult.startupValidated ?
+		DisplayRefreshRateReason::Accepted : startupRateResult.reason;
+	readinessInput.expectedOutputRefreshHz = activeTargetRefreshRate;
+	readinessInput.observedOutputRefreshHz =
+		startupRateResult.startupValidated ?
+			startupRateResult.startupRateHz :
+			sampledDisplayTiming.startupRefreshRateHz;
+	const OutputReadinessDecision readinessDecision =
+		m_outputReadinessObserver.Observe(readinessInput);
+	if (readinessDecision.adoptedCurrentGraph &&
+		m_activeRendererIsDirectShow && m_videoRenderer &&
+		hasReadinessLiveness)
+	{
+		m_videoRenderer->SetOutputReadinessDeliveryReserve(
+			requestedVpReserveFrames);
+		m_outputReadinessExistingGraphReservePublishedEpoch =
+			readinessDecision.postReadyEpoch;
+		DebugLog::Log(
+			"Output readiness adopted recovered current graph: "
+			"generation=%llu epoch=%llu target=%zu raw=%zu converted=%zu/%zu "
+			"post_proof_success=%llu retained_source=%zu high_water=%zu "
+			"oldest_source_ms=%llu max_deliver_us=%llu "
+			"madvr_queue=unobservable",
+			static_cast<unsigned long long>(
+				readinessInput.transitionGeneration),
+			static_cast<unsigned long long>(readinessDecision.postReadyEpoch),
+			requestedVpReserveFrames,
+			readinessLiveness.rawQueueDepth,
+			readinessLiveness.convertedQueueDepth,
+			readinessLiveness.queueCapacity,
+			static_cast<unsigned long long>(postProofDeliverySuccesses),
+			readinessLiveness.retainedSourceBufferCount,
+			readinessLiveness.retainedSourceBufferHighWater,
+			static_cast<unsigned long long>(
+				readinessLiveness.oldestRetainedSourceBufferAgeMs),
+			static_cast<unsigned long long>(
+				readinessLiveness.maximumSuccessfulDeliveryDurationUs));
+	}
+	if ((existingGraphResetCanSatisfyReadiness ||
+		recoveryRecreationCanSatisfyReadiness) &&
+		(readinessDecision.state == OutputReadinessState::Prefilling ||
+			readinessDecision.state == OutputReadinessState::Steady) &&
+		m_outputReadinessExistingGraphReservePublishedEpoch !=
+			readinessInput.postReadyEpoch)
+	{
+		// The completed graph reset already re-primed madVR. Publish the VP floor
+		// into that fresh epoch rather than adding a second reset/black interval.
+		m_videoRenderer->SetOutputReadinessDeliveryReserve(
+			requestedVpReserveFrames);
+		m_outputReadinessExistingGraphReservePublishedEpoch =
+			readinessInput.postReadyEpoch;
+		DebugLog::Log(
+			"Output readiness adopted %s: generation=%llu "
+			"epoch=%llu reserve=%zu VPdepth=%zu/%zu madvr_queue=unobservable",
+			recoveryRecreationCanSatisfyReadiness ?
+				"recovery renderer recreation" : "existing graph re-prime",
+			static_cast<unsigned long long>(
+				readinessInput.transitionGeneration),
+			static_cast<unsigned long long>(readinessInput.postReadyEpoch),
+			requestedVpReserveFrames,
+			readinessLiveness.convertedQueueDepth,
+			readinessLiveness.queueCapacity);
+	}
+	if (readinessDecision.requestSerializedPostReadyReset &&
+		m_activeRendererIsDirectShow && m_videoRenderer &&
+		m_rendererResetCoordinator)
+	{
+		// Publish before resetting. The DirectShow pin atomically adopts the
+		// reserve, then the proven graph stop/reset/run re-primes madVR while
+		// the fresh VP epoch rebuilds to that exact floor. VP does not attempt to
+		// emulate madVR's independently configurable queues with a guessed burst.
+		m_videoRenderer->SetOutputReadinessDeliveryReserve(
+			requestedVpReserveFrames);
+		const bool accepted = m_rendererResetCoordinator->RequestUi(
+			RendererResetReason::OutputReadiness,
+			RendererResetScope::Graph);
+		if (accepted)
+			m_outputReadinessGraphReprimeActive = true;
+		else
+			m_outputReadinessObserver.RearmResetRequest();
+		DebugLog::Log(
+			"Output readiness graph re-prime request: generation=%llu "
+			"reserve=%zu accepted=%d VPdepth=%zu/%zu "
+			"madvr_queue=unobservable",
+			static_cast<unsigned long long>(
+				readinessInput.transitionGeneration),
+			requestedVpReserveFrames, accepted ? 1 : 0,
+			hasReadinessLiveness ? readinessLiveness.convertedQueueDepth : 0,
+			hasReadinessLiveness ? readinessLiveness.queueCapacity : 0);
+	}
+	const bool readinessChanged = !m_outputReadinessObservationValid ||
+		m_lastObservedOutputReadinessState != readinessDecision.state ||
+		m_lastObservedOutputReadinessReason != readinessDecision.reason ||
+		m_lastObservedReadinessResetRequest !=
+			readinessDecision.requestSerializedPostReadyReset;
+	if (readinessChanged)
+	{
+		DebugLog::Log(
+			"Output readiness state: generation=%llu graph=%d "
+			"expected=%.6fHz observed=%.6fHz phase=%s/%s startup=%s/%s evidence=%.1fs validated=%d readiness=%s/%s evidence=%.1fs validated=%d state=%s "
+			"reason=%s settle=%u/%ums validated_tick=%llu "
+			"would_request_reset=%d adopt_prime=%d "
+			"prime_epoch=%llu post_proof_success=%u raw=%zu converted=%zu/%zu "
+			"retained_source=%zu high_water=%zu oldest_source_ms=%llu "
+			"discard=%d admit=%d deliver=%d",
+			static_cast<unsigned long long>(
+				readinessInput.transitionGeneration),
+			readinessInput.graphOperational ? 1 : 0,
+			readinessInput.expectedOutputRefreshHz,
+			readinessInput.observedOutputRefreshHz,
+			ToString(displayRateResult.decision),
+			ToString(displayRateResult.reason),
+			ToString(startupRateResult.decision),
+			ToString(startupRateResult.reason),
+			startupRateInput.startupObservationSeconds,
+			startupRateResult.startupValidated ? 1 : 0,
+			ToString(readinessRateResult.decision),
+			ToString(readinessRateResult.reason),
+			readinessRateInput.readinessObservationSeconds,
+			readinessRateResult.readinessValidated ? 1 : 0,
+			ToString(readinessDecision.state),
+			ToString(readinessDecision.reason),
+			readinessDecision.postReadySettleElapsedMs,
+			readinessDecision.postReadySettleRequiredMs,
+			static_cast<unsigned long long>(
+				readinessDecision.readinessValidatedTickMs),
+			readinessDecision.requestSerializedPostReadyReset ? 1 : 0,
+			readinessDecision.adoptedCurrentGraph ? 1 : 0,
+			static_cast<unsigned long long>(
+				readinessInput.currentGraphPrimeEpoch),
+			readinessInput.currentGraphPostProofDeliverySuccesses,
+			readinessInput.currentGraphRawDepth,
+			readinessInput.currentGraphConvertedDepth,
+			queueCapacity,
+			hasReadinessLiveness ?
+				readinessLiveness.retainedSourceBufferCount : 0,
+			hasReadinessLiveness ?
+				readinessLiveness.retainedSourceBufferHighWater : 0,
+			static_cast<unsigned long long>(hasReadinessLiveness ?
+				readinessLiveness.oldestRetainedSourceBufferAgeMs : 0),
+			readinessDecision.discardLiveCapture ? 1 : 0,
+			readinessDecision.admitCurrentEpochCapture ? 1 : 0,
+			readinessDecision.allowDownstreamDelivery ? 1 : 0);
+		m_outputReadinessObservationValid = true;
+		m_lastObservedOutputReadinessState = readinessDecision.state;
+		m_lastObservedOutputReadinessReason = readinessDecision.reason;
+		m_lastObservedReadinessResetRequest =
+			readinessDecision.requestSerializedPostReadyReset;
 	}
 	const bool sceneTimingReady =
 		displayRateResult.decision == DisplayRefreshRateDecision::Accepted;
@@ -7141,8 +8044,23 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.maxQueueSize = GetRendererVideoFrameQueueSizeMax();
 		stats.isQueueFull = (stats.currentQueueSize >= stats.maxQueueSize);
 
-		stats.entryLatencyMs = m_videoRenderer->EntryLatencyMs();
-		stats.exitLatencyMs = m_videoRenderer->ExitLatencyMs();
+		RendererLatencySnapshot latencySnapshot;
+		if (m_videoRenderer->GetLatencySnapshot(latencySnapshot))
+		{
+			stats.vpInternalLatencyKnown = true;
+			stats.scheduledLatencyKnown =
+				latencySnapshot.scheduledPresentationKnown;
+			stats.vpInternalLatencyMs = latencySnapshot.vpInternalMs;
+			stats.dsScheduleLeadMs = latencySnapshot.dsScheduleLeadMs;
+			stats.scheduledLatencyMs = latencySnapshot.scheduledLatencyMs;
+		}
+		else if (stats.isAlphaRenderer)
+		{
+			stats.vpInternalLatencyKnown = true;
+			stats.vpInternalLatencyMs = std::max(0.0,
+				m_videoRenderer->ExitLatencyMs() -
+				m_videoRenderer->EntryLatencyMs());
+		}
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 		m_videoRenderer->GetOutputModeInfo(stats.outputMode);
 		m_videoRenderer->GetDisplayLutInfo(stats.displayLut);
@@ -7397,6 +8315,110 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	const bool highWater = rawQueueSize * 100 >= queueMaxSize * highWaterPercent ||
 		convertedQueueSize * 100 >= queueMaxSize * highWaterPercent;
 	const ULONGLONG now = GetTickCount64();
+	const bool atCapacity =
+		rawQueueSize >= queueMaxSize ||
+		convertedQueueSize >= queueMaxSize;
+	RendererLivenessSnapshot liveness;
+	const bool hasLiveness =
+		m_videoRenderer->GetLivenessSnapshot(liveness);
+	const auto ageMs = [now](uint64_t tick) -> ULONGLONG
+	{
+		return tick == 0 || tick > now ?
+			(std::numeric_limits<ULONGLONG>::max)() : now - tick;
+	};
+	const bool autoReset =
+		m_rendererResetAutoCheck.GetCheck() == BST_CHECKED;
+	const size_t sustainedSeconds =
+		static_cast<size_t>(std::max(3, m_queueResetDelaySeconds));
+	const ULONGLONG stallThresholdMs =
+		static_cast<ULONGLONG>(sustainedSeconds) * 1000;
+
+	if (m_directShowGraphRecoveryAwaitingHealth &&
+		(m_directShowGraphRecoveryGeneration !=
+			m_rendererGeneration.load(std::memory_order_acquire) ||
+		 (hasLiveness &&
+			liveness.queueEpoch != m_directShowGraphRecoveryEpoch)))
+	{
+		DebugLog::Log(
+			"DirectShow graph recovery health proof discarded: "
+			"expected_generation=%u current_generation=%u "
+			"expected_epoch=%llu current_epoch=%llu liveness=%d",
+			m_directShowGraphRecoveryGeneration,
+			m_rendererGeneration.load(std::memory_order_acquire),
+			static_cast<unsigned long long>(
+				m_directShowGraphRecoveryEpoch),
+			static_cast<unsigned long long>(liveness.queueEpoch),
+			hasLiveness ? 1 : 0);
+		m_directShowGraphRecoveryAwaitingHealth = false;
+		m_directShowGraphRecoveryWasRetarget = false;
+	}
+
+	const bool recoveryDeliveryHealthy =
+		hasLiveness && HasRecentCurrentEpochDelivery(liveness, now, 500) &&
+		(!liveness.deliveryInProgress ||
+		 ageMs(liveness.lastDeliveryStartTick) < 500);
+	if (m_directShowGraphRecoveryAwaitingHealth &&
+		recoveryDeliveryHealthy &&
+		now - m_directShowGraphRecoveryStartedTick >= 2000)
+	{
+		DebugLog::Log(
+			"DirectShow graph recovery proved healthy: generation=%u "
+			"epoch=%llu elapsed_ms=%llu deliveries=%llu",
+			m_directShowGraphRecoveryGeneration,
+			static_cast<unsigned long long>(
+				m_directShowGraphRecoveryEpoch),
+			static_cast<unsigned long long>(
+				now - m_directShowGraphRecoveryStartedTick),
+			static_cast<unsigned long long>(
+				liveness.currentEpochDeliverySuccessCount));
+		m_directShowGraphRecoveryAwaitingHealth = false;
+		m_directShowGraphRecoveryWasRetarget = false;
+	}
+
+	// Retarget health cannot depend on fresh capture ingress. Once converted
+	// queues fill behind an opaque madVR Receive call, backpressure correctly
+	// stops capture admission and the generic steady-state predicate no longer
+	// has "input advancing" evidence. A retarget must instead prove current-
+	// epoch delivery within a bounded transition window.
+	const bool retargetReceiveStall =
+		m_directShowGraphRecoveryAwaitingHealth &&
+		m_directShowGraphRecoveryWasRetarget &&
+		hasLiveness && IsPostRetargetReceiveStall(
+			liveness, now, m_directShowGraphRecoveryStartedTick);
+	if (retargetReceiveStall && !m_directShowRecoveryRebuildRequested)
+	{
+		uint64_t captureSequence =
+			m_appliedCaptureVideoStateNotificationSequence;
+		if (captureSequence == 0 && m_rendererIngressState)
+			captureSequence = m_rendererIngressState->LatestCaptureSequence();
+		m_directShowRecoveryRebuildRequested = true;
+		m_directShowGraphRecoveryAwaitingHealth = false;
+		m_directShowGraphRecoveryWasRetarget = false;
+		m_directShowRecoveryRecreationAttempted = true;
+		m_directShowRecoveryRecreationCaptureSequence = captureSequence;
+		m_nextRendererIsRecoveryRecreation = true;
+		DebugLog::Log(
+			"Fullscreen retarget health timeout: generation=%u epoch=%llu "
+			"capture_sequence=%llu blocked_ms=%llu deliveries=%llu "
+			"raw=%zu/%zu converted=%zu/%zu "
+			"old=%p new=%p direction=%s action=full-renderer-recreation",
+			m_rendererGeneration.load(std::memory_order_acquire),
+			static_cast<unsigned long long>(liveness.queueEpoch),
+			static_cast<unsigned long long>(captureSequence),
+			static_cast<unsigned long long>(
+				ageMs(liveness.lastDeliveryStartTick)),
+			static_cast<unsigned long long>(
+				liveness.currentEpochDeliverySuccessCount),
+			rawQueueSize, queueMaxSize,
+			convertedQueueSize, queueMaxSize,
+			m_fullscreenRetargetPreviousTargetHwnd,
+			m_fullscreenRetargetTargetHwnd,
+			m_fullscreenRetargetExiting ? "exit" : "enter");
+		m_postRendererStartRequiresGraph = false;
+		m_wantToRestartRenderer = true;
+		UpdateState();
+		return;
+	}
 
 	if (!highWater)
 	{
@@ -7410,13 +8432,6 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	if (m_consecutiveFullSeconds <
 		(std::numeric_limits<size_t>::max)())
 		++m_consecutiveFullSeconds;
-	const bool atCapacity =
-		rawQueueSize >= queueMaxSize ||
-		convertedQueueSize >= queueMaxSize;
-	const bool autoReset =
-		m_rendererResetAutoCheck.GetCheck() == BST_CHECKED;
-	const size_t sustainedSeconds =
-		static_cast<size_t>(std::max(3, m_queueResetDelaySeconds));
 	// Alpha uses the UI value as its hard queue cap. Treat any reported excess
 	// as a recovery condition in case a future queue-path regression violates
 	// that invariant. DirectShow keeps its liveness-based recovery below because
@@ -7434,71 +8449,67 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 		return;
 	}
 
-	// The configured threshold is an active recovery policy, not merely a
-	// diagnostic. Schedule once when either DirectShow queue crosses it. If a
-	// queue reaches its hard capacity before that deadline, escalate the same
-	// serialized graph re-prime immediately.
-	if (autoReset && m_activeRendererIsDirectShow)
+	// A full VP queue is normal backpressure when madVR's independently
+	// configurable CPU/GPU queues are full. It is not, by itself, a failure.
+	// Escalate only after input is still arriving and downstream delivery has
+	// made no progress for the configured sustained-stall interval.
+	const bool postResetDeliveryDeadlock =
+		m_directShowGraphRecoveryAwaitingHealth &&
+		hasLiveness && IsSustainedDirectShowDeliveryStall(
+			liveness, now, atCapacity, stallThresholdMs);
+	if (autoReset && m_activeRendererIsDirectShow &&
+		postResetDeliveryDeadlock)
 	{
-		if (atCapacity)
+		if (!m_directShowRecoveryRebuildRequested)
 		{
-			if (!m_queueCapacityRecoveryRequested)
+			uint64_t captureSequence =
+				m_appliedCaptureVideoStateNotificationSequence;
+			if (captureSequence == 0 && m_rendererIngressState)
+				captureSequence = m_rendererIngressState->LatestCaptureSequence();
+			if (m_directShowRecoveryRecreationAttempted &&
+				captureSequence ==
+					m_directShowRecoveryRecreationCaptureSequence)
 			{
-				DEBUGLOG(
-					"Queue capacity recovery requested: raw=%zu/%zu converted=%zu/%zu",
-					rawQueueSize, queueMaxSize,
-					convertedQueueSize, queueMaxSize);
-				m_queueCapacityRecoveryRequested = true;
-				RequestRendererReset(
-					RendererResetReason::QueueCapacity, true, 0);
+				m_directShowRecoveryRebuildRequested = true;
+				DebugLog::Log(
+					"DirectShow recovery recreation suppressed: generation=%u "
+					"epoch=%llu capture_sequence=%llu "
+					"reason=already-attempted-for-capture-state",
+					m_directShowGraphRecoveryGeneration,
+					static_cast<unsigned long long>(
+						m_directShowGraphRecoveryEpoch),
+					static_cast<unsigned long long>(captureSequence));
+				return;
 			}
-		}
-		else if (!m_queuePressureRecoveryRequested)
-		{
-			DEBUGLOG(
-				"Queue high-water recovery scheduled: raw=%zu/%zu converted=%zu/%zu delay=%ds",
+			m_directShowRecoveryRebuildRequested = true;
+			m_directShowRecoveryRecreationAttempted = true;
+			m_directShowRecoveryRecreationCaptureSequence = captureSequence;
+			m_nextRendererIsRecoveryRecreation = true;
+			DebugLog::Log(
+				"DirectShow in-place recovery failed; requesting one full "
+				"renderer recreation: generation=%u epoch=%llu "
+				"capture_sequence=%llu raw=%zu/%zu converted=%zu/%zu deliveries=%llu "
+				"blocked_ms=%llu",
+				m_directShowGraphRecoveryGeneration,
+				static_cast<unsigned long long>(
+					m_directShowGraphRecoveryEpoch),
+				static_cast<unsigned long long>(captureSequence),
 				rawQueueSize, queueMaxSize,
 				convertedQueueSize, queueMaxSize,
-				m_queueResetDelaySeconds);
-			m_queuePressureRecoveryRequested = true;
-			RequestRendererReset(
-				RendererResetReason::QueuePressure, true,
-				static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+				static_cast<unsigned long long>(
+					liveness.currentEpochDeliverySuccessCount),
+				static_cast<unsigned long long>(
+					ageMs(liveness.lastDeliveryStartTick)));
+			m_postRendererStartRequiresGraph = false;
+			m_wantToRestartRenderer = true;
+			UpdateState();
 		}
+		return;
 	}
-
-	RendererLivenessSnapshot liveness;
-	const bool hasLiveness =
-		m_videoRenderer->GetLivenessSnapshot(liveness);
-	const ULONGLONG stallThresholdMs =
-		static_cast<ULONGLONG>(sustainedSeconds) * 1000;
-	const auto ageMs = [now](uint64_t tick) -> ULONGLONG
-	{
-		return tick == 0 || tick > now ?
-			(std::numeric_limits<ULONGLONG>::max)() : now - tick;
-	};
-	const bool inputStillAdvancing =
-		hasLiveness &&
-		liveness.lastInputTick != 0 &&
-		ageMs(liveness.lastInputTick) <= 2000;
-	const bool blockedDeliver =
-		hasLiveness &&
-		liveness.deliveryInProgress &&
-		liveness.lastDeliveryStartTick != 0 &&
-		ageMs(liveness.lastDeliveryStartTick) >= stallThresholdMs;
-	const bool noDeliveryProgress =
-		hasLiveness &&
-		convertedQueueSize >= queueMaxSize &&
-		((liveness.lastDeliverySuccessTick != 0 &&
-			ageMs(liveness.lastDeliverySuccessTick) >= stallThresholdMs) ||
-			(liveness.lastDeliverySuccessTick == 0 &&
-				liveness.lastDequeueTick != 0 &&
-				ageMs(liveness.lastDequeueTick) >= stallThresholdMs));
 	const bool provenDirectShowStall =
-		m_activeRendererIsDirectShow &&
-		atCapacity &&
-		inputStillAdvancing &&
-		(blockedDeliver || noDeliveryProgress);
+		m_activeRendererIsDirectShow && hasLiveness &&
+		IsSustainedDirectShowDeliveryStall(
+			liveness, now, atCapacity, stallThresholdMs);
 
 	if (provenDirectShowStall)
 	{
@@ -7535,7 +8546,7 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 		now - m_lastLivenessRecoveryTick >= 30000;
 	if (autoReset &&
 		provenDirectShowStall &&
-		m_consecutiveStuckSeconds >= sustainedSeconds &&
+		m_consecutiveStuckSeconds > 0 &&
 		recoveryCooldownComplete)
 	{
 		DEBUGLOG(

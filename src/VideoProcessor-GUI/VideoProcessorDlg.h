@@ -21,6 +21,7 @@
 
 #include <blackmagic_decklink/BlackMagicDeckLinkCaptureDeviceDiscoverer.h>
 #include <PixelValueRange.h>
+#include <OutputReadinessController.h>
 #include <CCie1931Control.h>
 #include <IRenderer.h>
 #include <RendererResetCoordinator.h>
@@ -65,6 +66,7 @@
 #define UI_LAYOUT_RESTORE_TIMER_ID 7
 #define SHADER_RULE_REFRESH_TIMER_ID 8
 #define RENDERER_RESET_MAILBOX_TIMER_ID 9
+#define TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID 10
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 
 
@@ -111,6 +113,7 @@ public:
 	void WindowedFullScreenMode(bool enabled = true);
 	void HideUI(bool enabled = true);
 	void StartMinimized(bool enabled = true);
+	void DisableDetectionFeatures(bool disabled = true);
 	void SceneDetect(bool enabled = true);
 	void SceneCorrectionUpstreamSample(bool enabled);
 	void SubtitleRepositioning(SubtitleRepositionMode mode);
@@ -333,6 +336,7 @@ protected:
 
 	// Renderer latency (ms) group
 	CStatic m_rendererLatencyToVPText;
+	CStatic m_rendererLatencyDsLeadText;
 	CStatic m_rendererLatencyToDSText;
 
 	// Renderer output group
@@ -391,6 +395,22 @@ protected:
 	ULONGLONG m_lastLivenessRecoveryTick = 0;
 	bool m_queuePressureRecoveryRequested = false;
 	bool m_queueCapacityRecoveryRequested = false;
+	// One in-place DirectShow recovery is allowed to prove healthy delivery.
+	// If the fresh epoch deadlocks before that proof, replace the opaque madVR
+	// filter instance instead of cycling Stop/Run resets.
+	bool m_directShowGraphRecoveryAwaitingHealth = false;
+	bool m_directShowGraphRecoveryWasRetarget = false;
+	bool m_directShowRecoveryRebuildRequested = false;
+	uint32_t m_directShowGraphRecoveryGeneration = 0;
+	uint64_t m_directShowGraphRecoveryEpoch = 0;
+	ULONGLONG m_directShowGraphRecoveryStartedTick = 0;
+	// A failed in-place recovery may replace madVR once for the current capture
+	// state. The replacement graph itself is already a clean downstream prime,
+	// so output readiness must adopt it instead of stacking another reset.
+	bool m_nextRendererIsRecoveryRecreation = false;
+	uint32_t m_directShowRecoveryRecreatedGeneration = 0;
+	bool m_directShowRecoveryRecreationAttempted = false;
+	uint64_t m_directShowRecoveryRecreationCaptureSequence = 0;
 	ULONGLONG m_lastResetDeferralLogTick = 0;
 	std::atomic<ULONGLONG> m_lastUiMessageTick = 0;
 	std::atomic<ULONGLONG> m_lastUiPaintTick = 0;
@@ -419,12 +439,16 @@ protected:
 	CString m_defaultRendererName;
 	bool m_frameOffsetAutoStart = false;
 	CString m_defaultFrameOffset = TEXT("90");
+	CString m_frameOffsetBeforeRationalRational;
+	bool m_frameOffsetAutoBeforeRationalRational = false;
+	bool m_frameOffsetMaskedForRationalRational = false;
 	CString m_defaultQueueSize = TEXT("32");
 	size_t m_directShowQueueCapacity = 32;
 	size_t m_alphaQueueDesiredDepth = 4;
 	bool m_queueRendererSelectionInitialized = false;
 	bool m_queueSelectionWasAlpha = false;
 	bool m_sceneAwareTimingCorrection = false;
+	bool m_detectionFeaturesDisabled = false;
 	// DirectShow defaults to the more robust upstream-sample correction.
 	// Basic remains available as a configuration-only compatibility override;
 	// Alpha has a single native correction path and ignores this value.
@@ -464,6 +488,36 @@ protected:
 	bool m_activeRendererIsDirectShow = false;
 	std::atomic<uint32_t> m_rendererGeneration{0};
 	uint32_t m_transitionGeneration = 0;
+	// Owns the readiness-driven DirectShow LiveQueue reset/prefill state. It
+	// never infers madVR queue state; completion and depth come from the
+	// epoch-owned VP transport snapshot.
+	OutputReadinessController m_outputReadinessObserver;
+	bool m_outputReadinessObservationValid = false;
+	OutputReadinessState m_lastObservedOutputReadinessState =
+		OutputReadinessState::OutputNotReady;
+	OutputReadinessReason m_lastObservedOutputReadinessReason =
+		OutputReadinessReason::AwaitingGraph;
+	bool m_lastObservedReadinessResetRequest = false;
+	// True only while the intentional DirectShow/madVR graph re-prime selected
+	// from validated readiness evidence is in flight. Its own renderer events
+	// must not discard the evidence that selected it.
+	bool m_outputReadinessGraphReprimeActive = false;
+	uint64_t m_outputReadinessResetCompletedGeneration = 0;
+	uint64_t m_outputReadinessResetCompletedEpoch = 0;
+	// A non-readiness DirectShow graph reset (for example capacity recovery or
+	// a graph retarget) has already performed the madVR re-prime transaction.
+	// It can satisfy readiness once the *new* DXGI measurement generation is
+	// validated, avoiding a redundant second graph reset and black flash.
+	uint64_t m_outputReadinessExistingGraphResetGeneration = 0;
+	uint64_t m_outputReadinessExistingGraphResetEpoch = 0;
+	uint64_t m_outputReadinessExistingGraphReservePublishedEpoch = 0;
+	uint64_t m_currentGraphPrimeEvidenceEpoch = 0;
+	uint64_t m_currentGraphPrimeEvidenceTick = 0;
+	uint64_t m_currentGraphPrimeEvidenceTransitionGeneration = 0;
+	uint64_t m_currentGraphPrimeObservedTransitionGeneration = 0;
+	uint64_t m_currentGraphPrimeTransitionStartTick = 0;
+	uint64_t m_currentGraphPrimeObservedQueueEpoch = 0;
+	uint64_t m_currentGraphPrimeQueueTransitionGeneration = 0;
 	uint64_t m_rendererTargetRevision = 0;
 	uint64_t m_transitionBlackStartTick = 0;
 	std::atomic_bool m_transitionRevealPosted{false};
@@ -480,6 +534,12 @@ protected:
 	uint64_t m_captureVideoStateNextEpoch = 0;
 	uint64_t m_appliedCaptureVideoStateNotificationSequence = 0;
 	uint64_t m_rendererCaptureVideoStateNotificationSequence = 0;
+	// Some capture drivers briefly publish UNKNOWN video state while frames are
+	// still flowing.  Hold the last valid state for a short, bounded interval so
+	// that one notification cannot tear down the DirectShow/madVR graph.
+	VideoStateComPtr m_deferredInvalidCaptureVideoState;
+	ULONGLONG m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
+	uint64_t m_deferredInvalidCaptureVideoStateFrameCount = 0;
 	bool m_rendererStartEvaluationPosted = false;
 	std::unique_ptr<RendererResetCoordinator> m_rendererResetCoordinator;
 	RendererBindingToken m_rendererResetBindingToken = 0;
@@ -551,6 +611,8 @@ protected:
 	size_t GetRendererVideoFrameQueueSizeMax();
 	bool GetRendererVideoFrameUseQueue();
 	double GetWindowTextAsDouble(CEdit&);
+	bool IsRationalRationalTimingSelected() const;
+	void UpdateTimingClockFrameOffsetAvailability();
 	int GetTimingClockFrameOffsetMs();
 	void SetTimingClockFrameOffsetMs(int timingClockFrameOffsetMs);
 	std::vector<int> GetFrameOffsetByRefresh();

@@ -93,7 +93,7 @@ namespace Tests
 			auto ingress = std::make_shared<RendererIngressState>();
 			const uint64_t validState =
 				ingress->PublishCaptureSequence();
-			ingress->SetCaptureSequence(validState);
+			ingress->AcknowledgeCaptureSequence(validState);
 			ingress->OpenAdmission();
 			Assert::IsTrue(static_cast<bool>(ingress->TryAcquire()));
 
@@ -108,13 +108,48 @@ namespace Tests
 		{
 			auto ingress = std::make_shared<RendererIngressState>();
 			const uint64_t first = ingress->PublishCaptureSequence();
-			ingress->SetCaptureSequence(first);
+			ingress->AcknowledgeCaptureSequence(first);
 			ingress->OpenAdmission();
 			Assert::IsTrue(static_cast<bool>(ingress->TryAcquire()));
 
 			const uint64_t second = ingress->PublishCaptureSequence();
 			Assert::IsFalse(static_cast<bool>(ingress->TryAcquire()));
-			ingress->SetCaptureSequence(second);
+			ingress->AcknowledgeCaptureSequence(second);
+			Assert::IsTrue(static_cast<bool>(ingress->TryAcquire()));
+		}
+
+		TEST_METHOD(RetainedInvalidCaptureStateNeverClosesLiveIngress)
+		{
+			auto ingress = std::make_shared<RendererIngressState>();
+			const uint64_t valid = ingress->PublishCaptureSequence();
+			Assert::IsTrue(ingress->AcknowledgeCaptureSequence(valid));
+			ingress->OpenAdmission();
+
+			const uint64_t transientInvalid = ingress->PublishCaptureSequence(
+				RendererIngressState::CaptureSequencePublication::
+					RetainCurrentRendererState);
+
+			Assert::IsTrue(static_cast<bool>(ingress->TryAcquire()));
+			const RendererIngressState::CaptureSequenceSnapshot snapshot =
+				ingress->CaptureSequences();
+			Assert::AreEqual(transientInvalid, snapshot.published);
+			Assert::AreEqual(transientInvalid, snapshot.required);
+			Assert::AreEqual(transientInvalid, snapshot.acknowledged);
+		}
+
+		TEST_METHOD(RetainedInvalidSupersedesUnappliedValidWithoutStrandingIngress)
+		{
+			auto ingress = std::make_shared<RendererIngressState>();
+			const uint64_t initial = ingress->PublishCaptureSequence();
+			Assert::IsTrue(ingress->AcknowledgeCaptureSequence(initial));
+			ingress->OpenAdmission();
+
+			(void)ingress->PublishCaptureSequence();
+			Assert::IsFalse(static_cast<bool>(ingress->TryAcquire()));
+			(void)ingress->PublishCaptureSequence(
+				RendererIngressState::CaptureSequencePublication::
+					RetainCurrentRendererState);
+
 			Assert::IsTrue(static_cast<bool>(ingress->TryAcquire()));
 		}
 

@@ -24,6 +24,8 @@ namespace Tests
 			input.maximumWaitIntervalMs = 1000.0 / nominalRateHz * 2.05;
 			input.compensatedIntervals = 1800;
 			input.rawWaitIntervals = 1798;
+			input.startupObservationSeconds = 2.0;
+			input.readinessObservationSeconds = 10.0;
 			input.fresh = true;
 			input.stable = true;
 			return input;
@@ -101,6 +103,38 @@ namespace Tests
 				Decision(result.decision));
 			Assert::AreEqual(Reason(DisplayRefreshRateReason::Stabilizing),
 				Reason(result.reason));
+			Assert::IsTrue(result.readinessValidated);
+			Assert::IsTrue(result.startupValidated);
+			Assert::AreEqual(59.9405, result.startupRateHz, 0.0000001);
+			Assert::AreEqual(59.9405, result.readinessRateHz, 0.0000001);
+		}
+
+		TEST_METHOD(RejectedCandidateCannotBecomeAnOutputReadinessSignal)
+		{
+			auto input = StableInput(59.9405, 23.976);
+			input.rawWaitRateHz = 59.9405;
+			input.stable = false;
+
+			const auto result = EvaluateDisplayRefreshRate(input);
+
+			Assert::AreEqual(Decision(DisplayRefreshRateDecision::Quarantined),
+				Decision(result.decision));
+			Assert::IsFalse(result.readinessValidated);
+			Assert::AreEqual(0.0, result.readinessRateHz);
+		}
+
+		TEST_METHOD(ShortObservationCannotBecomeAnOutputReadinessSignal)
+		{
+			auto input = StableInput(59.9405, 59.941);
+			input.stable = false;
+			input.readinessObservationSeconds = 9.999;
+
+			const auto result = EvaluateDisplayRefreshRate(input);
+
+			Assert::AreEqual(Decision(DisplayRefreshRateDecision::Warming),
+				Decision(result.decision));
+			Assert::IsFalse(result.readinessValidated);
+			Assert::AreEqual(0.0, result.readinessRateHz);
 		}
 
 		TEST_METHOD(IncidentStyleDoubleRateIsQuarantinedAndRecalculated)

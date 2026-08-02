@@ -17,6 +17,8 @@ constexpr double RAW_NOMINAL_TOLERANCE_HZ = 0.75;
 constexpr double RAW_EXCESS_TOLERANCE_RATIO = 0.02;
 constexpr double HARMONIC_TOLERANCE_RATIO = 0.03;
 constexpr double MAXIMUM_UNEXPLAINED_COMPENSATION = 1.5;
+constexpr double MINIMUM_STARTUP_OBSERVATION_SECONDS = 2.0;
+constexpr double MINIMUM_READINESS_OBSERVATION_SECONDS = 10.0;
 
 double AllowedDifference(double rateHz, double ratio, double minimumHz)
 {
@@ -149,16 +151,32 @@ DisplayRefreshRateResult EvaluateDisplayRefreshRate(
 			DisplayRefreshRateReason::UnexplainedCompensation, true);
 	}
 
-	if (!input.stable)
-	{
-		return Result(DisplayRefreshRateDecision::Warming,
-			DisplayRefreshRateReason::Stabilizing);
-	}
-
 	DisplayRefreshRateResult result = Result(
-		DisplayRefreshRateDecision::Accepted,
-		DisplayRefreshRateReason::Accepted);
-	result.selectedRateHz = input.candidateRateHz;
+		input.stable ? DisplayRefreshRateDecision::Accepted :
+			DisplayRefreshRateDecision::Warming,
+		input.stable ? DisplayRefreshRateReason::Accepted :
+			DisplayRefreshRateReason::Stabilizing);
+	// The checks above validate all cadence and nominal-family constraints.
+	// A short two-second observation may start the one reset/prefill sequence;
+	// it is not phase confidence and must not be reused as such.
+	if (std::isfinite(input.startupObservationSeconds) &&
+		input.startupObservationSeconds >=
+			MINIMUM_STARTUP_OBSERVATION_SECONDS)
+	{
+		result.startupRateHz = input.candidateRateHz;
+		result.startupValidated = true;
+	}
+	// Ten seconds gives stronger current-rate evidence while keeping the
+	// 30-second phase/scene confidence separate from image startup.
+	if (std::isfinite(input.readinessObservationSeconds) &&
+		input.readinessObservationSeconds >=
+			MINIMUM_READINESS_OBSERVATION_SECONDS)
+	{
+		result.readinessRateHz = input.candidateRateHz;
+		result.readinessValidated = true;
+	}
+	if (input.stable)
+		result.selectedRateHz = input.candidateRateHz;
 	return result;
 }
 

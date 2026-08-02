@@ -44,6 +44,21 @@ public:
 	// Timestamp set by the timing clock.
 	timingclocktime_t GetTimingTimestamp() const { return m_timingTimestamp; }
 
+	// VP monotonic arrival tick, assigned only when a buffered live-output pin
+	// accepts the frame. It is diagnostic metadata and never participates in
+	// source timing or presentation scheduling.
+	uint64_t GetCaptureArrivalTick() const { return m_captureArrivalTick; }
+	void SetCaptureArrivalTick(uint64_t tick) { m_captureArrivalTick = tick; }
+
+	// A source counter gap means live content was skipped before VP accepted
+	// this frame. It does not require a graph reset; the final delivery owner
+	// carries this marker into the DirectShow sample discontinuity flag.
+	bool IsSourceDiscontinuity() const { return m_sourceDiscontinuity; }
+	void SetSourceDiscontinuity(bool discontinuity)
+	{
+		m_sourceDiscontinuity = discontinuity;
+	}
+
 	// Memory functions to hold onto the video buffer for longer
 	void SourceBufferAddRef();
 	void SourceBufferRelease();
@@ -54,5 +69,7 @@ private:
 	const void* m_data;
 	uint64_t m_counter;
 	timingclocktime_t m_timingTimestamp;
+	uint64_t m_captureArrivalTick = 0;
+	bool m_sourceDiscontinuity = false;
 	IUnknown* m_sourceBuffer;
 };

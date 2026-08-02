@@ -190,9 +190,12 @@
     <ClCompile Include="ConfigFileTests.cpp" />
     <ClCompile Include="DebugLogRetentionTests.cpp" />
     <ClCompile Include="DisplayRefreshRatePolicyTests.cpp" />
+	<ClCompile Include="DisplayRefreshRateEstimatorTests.cpp" />
+	<ClCompile Include="DisplayRefreshRateWindowTests.cpp" />
     <ClCompile Include="AlphaQueuePolicyTests.cpp" />
     <ClCompile Include="MadVRShaderRuntimeStateTests.cpp" />
     <ClCompile Include="ActivePictureTransitionModelTests.cpp" />
+	<ClCompile Include="ActivePictureAnalyzerTests.cpp" />
     <ClCompile Include="P010ActivePictureEvidenceTests.cpp" />
     <ClCompile Include="RendererIdTests.cpp" />
     <ClCompile Include="RendererResetPolicyTests.cpp" />
@@ -200,6 +203,22 @@
     <ClCompile Include="RendererResetRequestLatchTests.cpp" />
     <ClCompile Include="RendererTransitionModelTests.cpp" />
     <ClCompile Include="RendererLivenessTests.cpp" />
+	<ClCompile Include="DirectShowPresentationLeadPolicyTests.cpp" />
+	<ClCompile Include="DirectShowEpochPrimePolicyTests.cpp" />
+    <ClCompile Include="LiveOutputTraceTests.cpp" />
+    <ClCompile Include="VideoTimingControllerTests.cpp" />
+	<ClCompile Include="DirectShowVideoTimingAdapterTests.cpp" />
+	<ClCompile Include="DirectShowFrameDelivererTests.cpp" />
+	<ClCompile Include="DirectShowDeliveryOutcomeTests.cpp" />
+	<ClCompile Include="DirectShowSegmentTransitionTests.cpp" />
+	<ClCompile Include="EpochBoundedQueueTests.cpp" />
+	<ClCompile Include="FrameProcessorTests.cpp" />
+	<ClCompile Include="LiveEpochConvergenceControllerTests.cpp" />
+	<ClCompile Include="LiveFrameCounterTrackerTests.cpp" />
+	<ClCompile Include="LiveClockGapPreserverTests.cpp" />
+	<ClCompile Include="OutputReadinessControllerTests.cpp" />
+	<ClCompile Include="RationalLiveOutputSequencerTests.cpp" />
+	<ClCompile Include="ConsecutiveFrameDurationHistoryTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />

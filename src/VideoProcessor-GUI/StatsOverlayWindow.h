@@ -54,9 +54,13 @@ struct StatsData
 	// depth, not the DirectShow raw/converted/total capacity tuple.
 	bool isAlphaRenderer = false;
 
-	// Latency
-	double entryLatencyMs = 0.0;  // VP Latency
-	double exitLatencyMs = 0.0;   // DS Latency
+	// VP-owned latency boundaries. Scheduled presentation is not actual madVR
+	// presentation or physical-display latency.
+	bool vpInternalLatencyKnown = false;
+	bool scheduledLatencyKnown = false;
+	double vpInternalLatencyMs = 0.0;
+	double dsScheduleLeadMs = 0.0;
+	double scheduledLatencyMs = 0.0;
 
 	// Frame counts
 	uint64_t capturedFrames = 0;

@@ -35,6 +35,12 @@ struct DisplayRefreshRateInput
 	double maximumWaitIntervalMs = 0.0;
 	uint64_t compensatedIntervals = 0;
 	uint64_t rawWaitIntervals = 0;
+	// Short current-rate evidence used to begin the one deterministic
+	// reset/prefill sequence. It deliberately precedes long phase confidence.
+	double startupObservationSeconds = 0.0;
+	// Duration of the current, post-transition observation window. This is
+	// distinct from the longer phase-correction stability requirement.
+	double readinessObservationSeconds = 0.0;
 	bool fresh = false;
 	bool stable = false;
 };
@@ -46,6 +52,15 @@ struct DisplayRefreshRateResult
 	DisplayRefreshRateReason reason =
 		DisplayRefreshRateReason::NoSamples;
 	double selectedRateHz = 0.0;
+	double startupRateHz = 0.0;
+	bool startupValidated = false;
+	// The candidate passed all freshness, raw-cadence, interval-range, harmonic,
+	// and nominal-family checks. It may still be in the longer stabilization
+	// period required for phase-sensitive correction. Output readiness can use
+	// this bounded, already-validated observation without treating it as HDMI
+	// lock proof.
+	double readinessRateHz = 0.0;
+	bool readinessValidated = false;
 	bool shouldRecalculate = false;
 };
 

@@ -104,6 +104,10 @@ public:
 		snapshot = {};
 		return false;
 	}
+	virtual bool GetLatencySnapshot(RendererLatencySnapshot&) const
+	{
+		return false;
+	}
 
 	// Handler for windows events for the graph's pEvent
 	virtual HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) = 0;
@@ -147,6 +151,18 @@ public:
 	// Flush and re-prime only the live-source queue without rebuilding the
 	// renderer graph. Renderers without a live source may ignore this request.
 	virtual void ResetLiveQueue() {}
+	// Thread-safe publication of a VP-owned converted-frame reserve. DirectShow
+	// uses it only after a serialized reset to form deterministic prefill; it
+	// must never be interpreted as a madVR queue request or observation.
+	virtual void SetOutputReadinessDeliveryReserve(size_t) {}
+	// Startup pre-roll and steady reserve are VP-owned whole-frame policy.
+	// Startup zero preserves its automatic policy. Steady zero is literal only
+	// when the setting was explicitly configured; omission preserves automatic.
+	// Implementations must clamp explicit values to actual queue capacity.
+	virtual void SetQueueFramePolicy(size_t, size_t, bool) {}
+	// DirectShow presentation scheduling margin in whole source frames. Omission
+	// preserves each timestamp mode's legacy behavior; explicit zero is valid.
+	virtual void SetPresentationLeadFrames(size_t, bool) {}
 
 	// Installs the closeable asynchronous reset-request endpoint associated
 	// with this renderer instance. Backends must never call UI or graph control
@@ -395,6 +411,15 @@ public:
 		measuredFps = 0.0;
 		ppmDeviation = 0;
 		return false;  // No frame rate measurement by default
+	}
+
+	// Returns the renderer's own detected display refresh rate when available.
+	// This is distinct from the capture/source frame rate. Renderers that do not
+	// expose a presentation-timing query retain the DXGI/Windows fallback.
+	virtual bool GetDetectedDisplayRefreshRate(double& refreshRateHz) const
+	{
+		refreshRateHz = 0.0;
+		return false;
 	}
 
 };

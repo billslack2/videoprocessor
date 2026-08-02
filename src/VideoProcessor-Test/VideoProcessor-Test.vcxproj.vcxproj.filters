@@ -43,6 +43,9 @@
     <ClCompile Include="RendererLivenessTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
+    <ClCompile Include="LiveFrameCounterTrackerTests.cpp">
+      <Filter>Resource Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Header Files">

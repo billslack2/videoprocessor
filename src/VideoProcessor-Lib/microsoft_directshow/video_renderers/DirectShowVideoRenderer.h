@@ -18,11 +18,13 @@
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
+#include <LiveFrameCounterTracker.h>
 #include <microsoft_directshow/live_source_filter/CLiveSource.h>
 #include <microsoft_directshow/live_source_filter/ALiveSourceVideoOutputPin.h>
 #include <microsoft_directshow/DirectShowTimingClock.h>
 #include <microsoft_directshow/video_renderers/DirectShowGraphExecutor.h>
 #include <deque>
+#include <atomic>
 #include <mutex>
 #include <shared_mutex>
 
@@ -73,6 +75,7 @@ public:
 			"unbuffered-downstream-prerolled";
 	}
 	bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const override;
+	bool GetLatencySnapshot(RendererLatencySnapshot& snapshot) const override;
 	HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) override;
 	void Build() override;
 	void Start() override;
@@ -86,6 +89,11 @@ public:
 		uintptr_t targetWindow,
 		const std::function<void()>& drainAfterGraphStop) override;
 	void ResetLiveQueue() override;
+	void SetOutputReadinessDeliveryReserve(size_t reserveFrames) override;
+	void SetQueueFramePolicy(size_t startupPrerollFrames,
+		size_t steadyReserveFrames, bool steadyReserveConfigured) override;
+	void SetPresentationLeadFrames(
+		size_t frames, bool configured) override;
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink) override;
 	void Retire() noexcept override;
@@ -130,6 +138,7 @@ public:
 	
 	// Get frame rate measurement and PPM deviation (for timing diagnostics)
 	bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const override;
+	bool GetDetectedDisplayRefreshRate(double& refreshRateHz) const override;
 	bool GetActivePictureAspectRatio(double& aspectRatio) const;
 	bool GetActivePictureRectangle(ActivePictureRectangle& rectangle) const;
 
@@ -151,7 +160,10 @@ protected:
 		GRAPH_COMMAND_APPLICATION_STATE = 13,
 		GRAPH_COMMAND_PAINT = 14,
 		GRAPH_COMMAND_VIDEO_STATE = 15,
-		GRAPH_COMMAND_HDR_STATE = 16
+		GRAPH_COMMAND_HDR_STATE = 16,
+		// Low-rate, read-only madVR diagnostics must run in the graph owner's
+		// COM apartment. It is intentionally separate from graph control.
+		GRAPH_COMMAND_MADVR_RUNTIME_TELEMETRY = 17
 	};
 
 	template<typename Function>
@@ -185,6 +197,14 @@ protected:
 	DirectShowStartStopTimeMethod m_timestamp;
 	bool m_useFrameQueue;
 	size_t m_frameQueueMaxSize;
+	// The dialog can publish this policy while Build() is queued on the graph
+	// thread.  Retain it so a newly-created live source receives it instead of
+	// silently falling back to its default queue behaviour.
+	std::atomic<size_t> m_queueStartupPrerollFrames{0};
+	std::atomic<size_t> m_queueSteadyTargetFrames{0};
+	std::atomic_bool m_queueSteadyTargetConfigured{false};
+	std::atomic<size_t> m_presentationLeadFrames{0};
+	std::atomic_bool m_presentationLeadFramesConfigured{false};
 	VideoConversionOverride m_videoConversionOverride;
 	DXVA_NominalRange m_forceNominalRange = DXVA_NominalRange::DXVA_NominalRange_Unknown;
 	DXVA_VideoTransferFunction m_forceVideoTransferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown;
@@ -211,6 +231,8 @@ protected:
 	IBaseFilter* m_pRenderer = nullptr;
 
 	uint64_t m_frameCounter = 0;
+	LiveFrameCounterTracker m_captureFrameCounterTracker;
+	LiveSourceGapRecoveryPolicy m_sourceGapRecoveryPolicy;
 	uint64_t m_missingFrameCounter = 0;
 	double m_frameLatencyEntry = 0.0;
 	std::atomic<uint64_t> m_unbufferedDeliverySuccessCount{0};
@@ -225,6 +247,13 @@ protected:
 	mutable std::atomic<double> m_measuredFrameRate = 0.0;
 	mutable std::atomic<int> m_ppmDeviation = 0;
 	mutable std::atomic_bool m_hasPPMData = false;
+	// Published by the graph-owner's IMadVRInfo query and read by the UI. It is
+	// cleared for every graph lifetime boundary, so a prior HDMI mode can never
+	// become the selected timing source for the next renderer instance.
+	std::atomic<double> m_madVRDetectedRefreshRateHz{0.0};
+	// Capture callbacks must never query renderer COM interfaces directly.
+	// They coalesce one owner-thread, read-only snapshot at most every 30 s.
+	std::atomic<ULONGLONG> m_lastMadVRRuntimeTelemetryTick{0};
 	
 	// Cumulative cadence is measured from the last full renderer restart. The
 	// estimate is published periodically, but its measurement interval is never
@@ -274,6 +303,10 @@ protected:
 	// Add renderer to the graph and connect
 	virtual void RendererConnect() = 0;
 	virtual void RendererDestroy();
+	void RefreshDownstreamPrimeTarget(
+		const char* telemetrySource = "graph-connect-or-reset");
+	void LogMadVRRuntimeInfo(const char* source, bool requireAnyKnownValue);
+	void MaybeScheduleMadVRRuntimeTelemetry();
 
 	virtual void MediaTypeGenerate() = 0;
 

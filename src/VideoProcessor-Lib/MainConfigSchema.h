@@ -14,6 +14,8 @@ namespace MainConfigSchema
 	inline bool OwnsSection(const std::string& section)
 	{
 		return section == "command_line" ||
+			section == "queue" ||
+			section == "directshow" ||
 			section == "queue_recovery" ||
 			section == "lldv" ||
 			section == "logging" ||
@@ -56,6 +58,7 @@ namespace MainConfigSchema
 			ConfigSchema::Any("renderer_primaries"),
 			ConfigSchema::Boolean("scene_detect"),
 			ConfigSchema::Boolean("scene"),
+			ConfigSchema::Boolean("disable_detection_features"),
 			ConfigSchema::Any("scene_correction_mode"),
 			ConfigSchema::Boolean("scene_correction_basic"),
 			ConfigSchema::Choice("subtitle_reposition",
@@ -69,6 +72,24 @@ namespace MainConfigSchema
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "command_line", commandLineRules, error))
+			return false;
+
+		// Queue policy is deliberately expressed in whole frames.  Zero means
+		// automatic policy; an explicit steady value is the VP-owned R/C/T
+		// target and is capped so a config typo cannot create an impractically
+		// deep live queue.
+		const std::vector<ConfigSchema::KeyRule> queueRules = {
+			ConfigSchema::Integer("startup_preroll_frames", 0, 16),
+			ConfigSchema::Integer("steady_reserve_frames", 0, 16)
+		};
+		if (!ConfigSchema::ValidateSection(config, "queue", queueRules, error))
+			return false;
+
+		const std::vector<ConfigSchema::KeyRule> directShowRules = {
+			ConfigSchema::Integer("presentation_lead_frames", 0, 16)
+		};
+		if (!ConfigSchema::ValidateSection(
+			config, "directshow", directShowRules, error))
 			return false;
 
 		const std::vector<ConfigSchema::KeyRule> recoveryRules = {

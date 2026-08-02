@@ -14,6 +14,20 @@ class RendererIngressState :
 	public std::enable_shared_from_this<RendererIngressState>
 {
 public:
+	enum class CaptureSequencePublication
+	{
+		RequiresRendererAcknowledgement,
+		RetainCurrentRendererState
+	};
+
+	struct CaptureSequenceSnapshot
+	{
+		uint64_t published = 0;
+		uint64_t required = 0;
+		uint64_t acknowledged = 0;
+		bool admissionOpen = false;
+	};
+
 	class Lease
 	{
 	public:
@@ -71,8 +85,9 @@ public:
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		if (!m_admitting ||
-			(m_captureSequence != 0 &&
-				m_publishedCaptureSequence != m_captureSequence))
+			(m_requiredCaptureSequence != 0 &&
+				m_acknowledgedCaptureSequence !=
+					m_requiredCaptureSequence))
 			return {};
 		++m_activeLeases;
 		return Lease(shared_from_this());
@@ -90,22 +105,43 @@ public:
 		m_admitting = true;
 	}
 
-	void SetCaptureSequence(uint64_t captureSequence) noexcept
+	bool AcknowledgeCaptureSequence(uint64_t captureSequence) noexcept
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
-		m_captureSequence = captureSequence;
+		m_acknowledgedCaptureSequence = captureSequence;
+		return m_acknowledgedCaptureSequence == m_requiredCaptureSequence;
 	}
 
-	uint64_t PublishCaptureSequence() noexcept
+	uint64_t PublishCaptureSequence(
+		CaptureSequencePublication publication =
+			CaptureSequencePublication::RequiresRendererAcknowledgement) noexcept
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
-		return ++m_publishedCaptureSequence;
+		const uint64_t sequence = ++m_publishedCaptureSequence;
+		m_requiredCaptureSequence = sequence;
+		// An invalid capture-state notification is advisory during the bounded
+		// retain-last-valid grace period.  Publish it for ordering/staleness,
+		// but atomically retain the renderer's current state and frame admission.
+		if (publication == CaptureSequencePublication::RetainCurrentRendererState)
+			m_acknowledgedCaptureSequence = sequence;
+		return sequence;
 	}
 
 	uint64_t LatestCaptureSequence() const noexcept
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		return m_publishedCaptureSequence;
+	}
+
+	CaptureSequenceSnapshot CaptureSequences() const noexcept
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		CaptureSequenceSnapshot snapshot;
+		snapshot.published = m_publishedCaptureSequence;
+		snapshot.required = m_requiredCaptureSequence;
+		snapshot.acknowledged = m_acknowledgedCaptureSequence;
+		snapshot.admissionOpen = m_admitting;
+		return snapshot;
 	}
 
 	void WaitForDrain()
@@ -130,7 +166,8 @@ private:
 	mutable std::mutex m_mutex;
 	std::condition_variable m_drained;
 	bool m_admitting = false;
-	uint64_t m_captureSequence = 0;
+	uint64_t m_acknowledgedCaptureSequence = 0;
+	uint64_t m_requiredCaptureSequence = 0;
 	uint64_t m_publishedCaptureSequence = 0;
 	size_t m_activeLeases = 0;
 };

@@ -8,10 +8,16 @@
 
 #pragma once
 
+#include <ConsecutiveFrameDurationHistory.h>
+#include <LiveClockGapPreserver.h>
 
+
+#include <atomic>
 #include <cstdint>
+#include <memory>
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowRendererStartStopTimeMethod.h>
+#include <microsoft_directshow/DirectShowVideoTimingAdapter.h>
 #include <microsoft_directshow/DirectShowDefines.h>
 #include <PPMCorrectionLoader.h>
 #include <AutoPpmCalibrator.h>
@@ -114,6 +120,8 @@ public:
 	virtual void SetSceneTimingRates(double, double) {}
 	virtual void SetSceneTimingReadiness(bool, uint64_t) {}
 	virtual void SetSceneTimingPhase(int64_t, int64_t, int64_t) {}
+	virtual void SetOutputReadinessDeliveryReserve(size_t) {}
+	virtual void SetQueueFramePolicy(size_t, size_t, bool) {}
 	// Returns a temporally stable estimate of the active picture (excluding
 	// encoded black bars). Buffered P010 sources override this.
 	virtual bool GetActivePictureAspectRatio(double& aspectRatio) const
@@ -140,10 +148,20 @@ public:
 		snapshot = {};
 		return false;
 	}
+	virtual bool GetLatencySnapshot(RendererLatencySnapshot&) const
+	{
+		return false;
+	}
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink)
 	{
 		m_resetRequestLatch.SetSink(std::move(sink));
+	}
+	bool RequestSourceGapGraphReprime()
+	{
+		return RequestCoordinatedReset(
+			"material-source-counter-gap",
+			RendererResetReason::SourceGapRecovery);
 	}
 
 	// Reset the internal state and the video stream.
@@ -153,6 +171,11 @@ public:
 	// This compensates for processing delays by shifting the timeline forward
 	void SetRationalPipelineOffset(REFERENCE_TIME offset) { m_rationalPipelineOffset = offset; }
 	REFERENCE_TIME GetRationalPipelineOffset() const { return m_rationalPipelineOffset; }
+	void SetPresentationLeadFrames(size_t frames, bool configured)
+	{
+		m_presentationLeadFrames = frames > 16 ? 16 : frames;
+		m_presentationLeadFramesConfigured = configured;
+	}
 
 	//
 	// Metrics
@@ -239,6 +262,21 @@ public:
 	double GetAverageFrameDurationMs() const { return m_avgFrameDurationMs; }
 	double GetMinFrameDurationMs() const { return m_minFrameDurationMs; }
 	double GetMaxFrameDurationMs() const { return m_maxFrameDurationMs; }
+	// VP-0066-2 rational-timing shadow validation. The legacy path remains the
+	// source of all sample timestamps until this counter stays clean in field
+	// evidence; no queue, worker, or DirectShow behavior depends on it.
+	uint64_t RationalTimingShadowComparisonCount() const
+	{
+		return m_rationalTimingShadowComparisons.load(std::memory_order_relaxed);
+	}
+	uint64_t RationalTimingShadowMismatchCount() const
+	{
+		return m_rationalTimingShadowMismatches.load(std::memory_order_relaxed);
+	}
+	uint64_t RationalTimingControllerAppliedCount() const
+	{
+		return m_rationalTimingControllerApplied.load(std::memory_order_relaxed);
+	}
 
 	// Get the converted queue size (buffered mode only)
 	virtual size_t GetConvertedQueueSize() const { return 0; }
@@ -246,6 +284,11 @@ public:
 	// Bound allocator memory while leaving enough samples for the queue and
 	// downstream renderer. Buffered pins override this from their queue size.
 	virtual LONG GetAllocatorBufferCount() const { return 16; }
+	virtual void SetDownstreamPrimeTarget(size_t) {}
+	LONG GetNegotiatedAllocatorBufferCount() const
+	{
+		return m_negotiatedAllocatorBufferCount.load(std::memory_order_acquire);
+	}
 
 	// Delivered timestamp history for late-binding lookup
 	// CLOCK_SMART/SMART2 need to look up "next frame" timestamps, but that frame
@@ -304,6 +347,7 @@ public:
 		return false;
 	}
 protected:
+	std::atomic<LONG> m_negotiatedAllocatorBufferCount{ 0 };
 	uint64_t AttachPendingMediaType(IMediaSample* sample);
 	void CompletePendingMediaType(
 		uint64_t generation, HRESULT deliveryResult);
@@ -312,9 +356,11 @@ protected:
 	// messages. Buffered pins use this while holding their serialized delivery
 	// gate; the public Reset() wraps it in the normal DirectShow flush sequence.
 	void ResetTimingState();
+	// Bind value-only timing decisions to the buffered pipeline's authoritative
+	// queue epoch. This has no DirectShow side effect.
+	void ResetTimingControllerToPipelineEpoch(uint64_t epoch);
 
 	// Constants for CLOCK_SMART duration tracking
-	static const size_t DURATION_HISTORY_SIZE = 100;  // Track last 100 frame durations
 	static const int64_t REFERENCE_TIME_TICKS_PER_SECOND = 10000000LL;  // 100ns ticks per second
 
 	// RATIONAL_RATIONAL timing trim constants - dynamically loaded from VideoProcessor.cfg
@@ -324,6 +370,10 @@ protected:
 	// PPM correction support
 	PPMCorrectionLoader m_ppmCorrectionLoader;
 	uint64_t m_currentRationalTrimNumerator = RATIONAL_TRIM_DENOMINATOR;  // Default: no correction
+	std::unique_ptr<DirectShowVideoTimingAdapter> m_rationalTimingShadow;
+	std::atomic<uint64_t> m_rationalTimingShadowComparisons = 0;
+	std::atomic<uint64_t> m_rationalTimingShadowMismatches = 0;
+	std::atomic<uint64_t> m_rationalTimingControllerApplied = 0;
 	
 	// Auto-calibration support
 	AutoPpmCalibrator m_autoPpmCalibrator;
@@ -366,7 +416,6 @@ protected:
 
 	// Smart duration calculation for CLOCK_SMART mode
 	REFERENCE_TIME CalculateSmartFrameDuration() const;
-	void UpdateFrameDurationHistory(REFERENCE_TIME actualDuration);
 
 	// Integer math utilities for precise timing calculations with overflow protection
 	// HIGH-PRECISION CONVERSION: Eliminates cumulative rounding errors at high refresh rates
@@ -420,13 +469,13 @@ protected:
 	unsigned long m_pendingAspectY = 0;
 	bool m_useHDRData = false;
 
-	// Duration tracking for CLOCK_SMART improvements
-	// Circular buffer of actual frame durations (in 100ns units) for averaging
-	REFERENCE_TIME m_durationHistory[DURATION_HISTORY_SIZE] = {};
-	size_t m_durationHistoryIndex = 0;  // Current write position in circular buffer
-	size_t m_durationHistoryCount = 0;  // Number of valid entries (up to DURATION_HISTORY_SIZE)
-	REFERENCE_TIME m_durationHistorySum = 0; // Running sum for O(1) SMART2 averaging
-	REFERENCE_TIME m_lastHardwareTimestamp = 0;  // Previous hardware timestamp for duration calculation
+	// CLOCK_SMART2 duration evidence includes source-counter continuity, so a
+	// multi-frame capture/queue gap cannot become a single-frame duration.
+	ConsecutiveFrameDurationHistory m_smartDurationHistory;
+	// Preserves genuine source-time gaps that DeckLink's clock did not advance
+	// across. Reset with the queue/timestamp epoch; intentional VP queue removal
+	// is excluded by VideoFrame::IsSourceDiscontinuity().
+	LiveClockGapPreserver m_liveClockGapPreserver;
 
 	// Rational timing parameters for RATIONAL_RATIONAL mode (Bresenham-style exact integer math)
 	// These come from DisplayMode and allow drift-free timing for rates like 23.976, 29.97, 59.94
@@ -485,10 +534,11 @@ protected:
 	// This adds a buffer time to prevent late deliveries to MadVR
 	// Can be ramped from 0 to target over a configurable duration for smooth
 	// startup; ramping is disabled by default.
-	static const REFERENCE_TIME LEADTIME = 180LL * 10000LL;  // 180ms in 100ns ticks
+	size_t m_presentationLeadFrames = 0;
+	bool m_presentationLeadFramesConfigured = false;
 	
 	// Lead ramp duration configuration (in milliseconds)
-	// Specifies how long to ramp from 0 to LEADTIME
+	// Specifies how long to ramp from 0 to the resolved target lead
 	// SetLeadRampDurationMs(0) selects the 5000ms (5 second) ramp default.
 	uint64_t m_leadRampDurationMs = 0;  // Configurable lead ramp duration; 0 disables ramping
 	uint64_t m_leadRampStartTimeMs = 0;    // Timestamp when ramp started (for time-based calculation)
@@ -510,7 +560,10 @@ protected:
 	
 	// Virtual method for bad timestamp recovery (overridden in buffered implementation)
 	virtual void OnBadTimestampDetected() {}
-	void RequestCoordinatedReset(const char* reason);
+	bool RequestCoordinatedReset(
+		const char* reason,
+		RendererResetReason resetReason =
+			RendererResetReason::LivenessRecovery);
 	bool CoordinatedResetRequested() const
 	{
 		return m_resetRequestLatch.Pending();

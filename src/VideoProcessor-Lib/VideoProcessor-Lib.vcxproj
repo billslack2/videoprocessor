@@ -182,13 +182,26 @@
     <ClInclude Include="DebugLogRetention.h" />
     <ClInclude Include="DisplayMode.h" />
     <ClInclude Include="DisplayRefreshRatePolicy.h" />
+	<ClInclude Include="DisplayRefreshRateEstimator.h" />
+	<ClInclude Include="DisplayRefreshRateWindow.h" />
+	<ClInclude Include="DirectShowFrameDeliverer.h" />
+	<ClInclude Include="DirectShowDeliveryOutcome.h" />
+	<ClInclude Include="DirectShowSegmentTransition.h" />
     <ClInclude Include="ColorFormat.h" />
     <ClInclude Include="EOTF.h" />
+	<ClInclude Include="FrameProcessor.h" />
+	<ClInclude Include="LiveEpochConvergenceController.h" />
+	<ClInclude Include="LiveFrameCounterTracker.h" />
+	<ClInclude Include="LiveClockGapPreserver.h" />
+	<ClInclude Include="ConsecutiveFrameDurationHistory.h" />
+	<ClInclude Include="OutputReadinessController.h" />
+	<ClInclude Include="RationalLiveOutputSequencer.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="guid.h" />
     <ClInclude Include="HDRData.h" />
     <ClInclude Include="InputLocked.h" />
     <ClInclude Include="IntegerMath.h" />
+	<ClInclude Include="LiveOutputTrace.h" />
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="RendererLiveness.h" />
     <ClInclude Include="RendererIngressState.h" />
@@ -200,6 +213,7 @@
     <ClInclude Include="vprenderer\\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
     <ClInclude Include="ActivePictureTransitionModel.h" />
+	<ClInclude Include="ActivePictureAnalyzer.h" />
     <ClInclude Include="P010ActivePictureEvidence.h" />
     <ClInclude Include="MainConfigSchema.h" />
     <ClInclude Include="vprenderer\\LibplaceboOutputPolicy.h" />
@@ -209,8 +223,11 @@
     <ClInclude Include="microsoft_directshow\DirectShowDefines.h" />
     <ClInclude Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.h" />
     <ClInclude Include="microsoft_directshow\DirectShowTimingClock.h" />
+	<ClInclude Include="microsoft_directshow\DirectShowPresentationLeadPolicy.h" />
+	<ClInclude Include="microsoft_directshow\DirectShowEpochPrimePolicy.h" />
     <ClInclude Include="microsoft_directshow\DirectShowTranslations.h" />
 	<ClInclude Include="microsoft_directshow\MadVRExternalPixelShaders.h" />
+	<ClInclude Include="microsoft_directshow\MadVRRuntimeInterfaces.h" />
 	<ClInclude Include="microsoft_directshow\MadVRShaderLoader.h" />
 	<ClInclude Include="microsoft_directshow\MadVRShaderRuntimeState.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin.h" />
@@ -250,12 +267,15 @@
     <ClInclude Include="video_frame_formatter\CV210toP210VideoFrameFormatter.h" />
     <ClInclude Include="video_frame_formatter\IVideoFrameFormatter.h" />
     <ClInclude Include="WallClock.h" />
+	<ClInclude Include="VideoTimingController.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\WindowsOcrSubtitleDetector.h" />
+	<ClInclude Include="microsoft_directshow\DirectShowVideoTimingAdapter.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\GpuSubtitleDetector.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ACaptureDevice.cpp" />
     <ClCompile Include="ActivePictureTransitionModel.cpp" />
+	<ClCompile Include="ActivePictureAnalyzer.cpp" />
     <ClCompile Include="P010ActivePictureEvidence.cpp" />
     <ClCompile Include="ACaptureDeviceDiscoverer.cpp" />
     <ClCompile Include="AutoPpmCalibrator.cpp" />
@@ -268,7 +288,16 @@
     <ClCompile Include="ColorSpace.cpp" />
     <ClCompile Include="DisplayMode.cpp" />
     <ClCompile Include="DisplayRefreshRatePolicy.cpp" />
+	<ClCompile Include="DisplayRefreshRateEstimator.cpp" />
+	<ClCompile Include="DisplayRefreshRateWindow.cpp" />
+	<ClCompile Include="DirectShowFrameDeliverer.cpp" />
+	<ClCompile Include="DirectShowDeliveryOutcome.cpp" />
+	<ClCompile Include="DirectShowSegmentTransition.cpp" />
     <ClCompile Include="ColorFormat.cpp" />
+	<ClCompile Include="FrameProcessor.cpp" />
+	<ClCompile Include="LiveEpochConvergenceController.cpp" />
+	<ClCompile Include="OutputReadinessController.cpp" />
+	<ClCompile Include="RationalLiveOutputSequencer.cpp" />
     <ClCompile Include="ConfigFile.cpp" />
     <ClCompile Include="EOTF.cpp" />
     <ClCompile Include="guid.cpp" />
@@ -291,6 +320,7 @@
     </ClCompile>
     <ClCompile Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.cpp" />
     <ClCompile Include="microsoft_directshow\DirectShowTimingClock.cpp" />
+	<ClCompile Include="microsoft_directshow\DirectShowVideoTimingAdapter.cpp" />
     <ClCompile Include="microsoft_directshow\DirectShowTranslations.cpp" />
 	<ClCompile Include="microsoft_directshow\MadVRShaderLoader.cpp">
 	  <LanguageStandard>stdcpp17</LanguageStandard>
@@ -329,6 +359,7 @@
 	<ClCompile Include="SceneDetector.cpp" />
     <ClCompile Include="StringUtils.cpp" />
     <ClCompile Include="TimingClock.cpp" />
+	<ClCompile Include="VideoTimingController.cpp" />
     <ClCompile Include="VideoConversionOverride.cpp" />
     <ClCompile Include="VideoFrame.cpp" />
     <ClCompile Include="VideoFrameEncoding.cpp" />
