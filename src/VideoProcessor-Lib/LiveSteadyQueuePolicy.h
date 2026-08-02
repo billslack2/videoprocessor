@@ -33,6 +33,15 @@ struct LiveSteadyQueueDecision
 class LiveSteadyQueuePolicy
 {
 public:
+	// Converted frames are the user-configured reserve. Raw DeckLink-backed
+	// frames are only a handoff between capture and conversion once steady mode
+	// is active; retaining more of them increases live latency without adding a
+	// useful downstream cushion.
+	static constexpr size_t SteadyRawHandoffCapacity() noexcept
+	{
+		return 1;
+	}
+
 	static LiveSteadyQueueDecision Evaluate(
 		const LiveSteadyQueueInput& input) noexcept
 	{

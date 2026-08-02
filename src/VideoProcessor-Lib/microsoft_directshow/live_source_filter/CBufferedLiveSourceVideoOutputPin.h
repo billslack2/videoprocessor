@@ -412,6 +412,8 @@ private:
 	CCritSec m_rawDiagnosticsLock;
 	uint64_t m_rawOverflowLogCount = 0;      // Protected by m_rawDiagnosticsLock
 	DWORD m_lastRawOverflowLogTime = 0;      // Protected by m_rawDiagnosticsLock
+	uint64_t m_steadyRawReplacementLogCount = 0; // Protected by m_rawDiagnosticsLock
+	DWORD m_lastSteadyRawReplacementLogTime = 0; // Protected by m_rawDiagnosticsLock
 
 	// Core proactive frame management
 	HANDLE m_hFrameAvailableEvent = nullptr;  // Event signaled when frames are added to the queue

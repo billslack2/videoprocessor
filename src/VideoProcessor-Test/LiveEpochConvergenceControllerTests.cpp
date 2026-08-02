@@ -277,6 +277,15 @@ namespace Tests
 			Assert::IsTrue(decision.holdConversion);
 		}
 
+		TEST_METHOD(SteadyQueueUsesOneFrameRawHandoff)
+		{
+			// Raw capture buffers do not form part of the configured converted
+			// reserve. After priming, retaining more than one only adds live
+			// latency while delivery is backpressuring conversion.
+			Assert::AreEqual<size_t>(
+				1, LiveSteadyQueuePolicy::SteadyRawHandoffCapacity());
+		}
+
 		TEST_METHOD(Exact23976ThresholdAndRecoveryAreRateIndependent)
 		{
 			LiveEpochConvergenceController controller;
