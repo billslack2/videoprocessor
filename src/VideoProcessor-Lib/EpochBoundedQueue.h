@@ -70,26 +70,6 @@ public:
 		size_t temporaryMaximum,
 		size_t* discardedCount = nullptr)
 	{
-		return PushWithMaximumAndMutateNewest(
-			std::move(value), valueEpoch, currentEpoch, temporaryMaximum,
-			discardedCount,
-			[](TValue&, size_t) {});
-	}
-
-	// Atomically annotate the retained newest value with the exact number of
-	// entries replaced to admit it.  Live-video callers use this to preserve
-	// timestamp ownership: an intentional latest-wins replacement is distinct
-	// from an upstream capture gap and must not be rediscovered heuristically
-	// on another thread.
-	template <typename TMutateNewest>
-	EpochBoundedQueuePushResult PushWithMaximumAndMutateNewest(
-		TValue value,
-		PipelineEpoch valueEpoch,
-		PipelineEpoch currentEpoch,
-		size_t temporaryMaximum,
-		size_t* discardedCount,
-		TMutateNewest mutateNewest)
-	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		if (valueEpoch.value != currentEpoch.value)
 		{
@@ -117,7 +97,6 @@ public:
 		}
 
 		m_entries.push_back({ std::move(value), valueEpoch });
-		mutateNewest(m_entries.back().value, discarded);
 		if (discardedCount)
 			*discardedCount = discarded;
 		++m_metrics.accepted;

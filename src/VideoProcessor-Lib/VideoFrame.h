@@ -59,19 +59,6 @@ public:
 		m_sourceDiscontinuity = discontinuity;
 	}
 
-	// Number of oldest raw frames VP deliberately replaced immediately before
-	// this retained frame.  This is VP-owned live-latency policy, not capture
-	// loss.  It follows the frame to delivery so each timestamp mode can splice
-	// only this known gap without masking real source discontinuities.
-	uint32_t GetIntentionalRawReplacementSlotsBefore() const
-	{
-		return m_intentionalRawReplacementSlotsBefore;
-	}
-	void SetIntentionalRawReplacementSlotsBefore(uint32_t slots)
-	{
-		m_intentionalRawReplacementSlotsBefore = slots;
-	}
-
 	// Memory functions to hold onto the video buffer for longer
 	void SourceBufferAddRef();
 	void SourceBufferRelease();
@@ -84,6 +71,5 @@ private:
 	timingclocktime_t m_timingTimestamp;
 	uint64_t m_captureArrivalTick = 0;
 	bool m_sourceDiscontinuity = false;
-	uint32_t m_intentionalRawReplacementSlotsBefore = 0;
 	IUnknown* m_sourceBuffer;
 };

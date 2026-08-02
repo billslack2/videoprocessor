@@ -22,10 +22,6 @@ struct ProcessedFrame
 	// timestamp stamp. Conversion timestamps are provisional for buffered live
 	// delivery, but this semantic flag must not be lost when they are replaced.
 	bool sourceDiscontinuity = false;
-	// Exact VP-owned raw replacements immediately before this source frame.
-	// Retained through conversion because final presentation timestamps are
-	// owned by the delivery thread.
-	uint32_t intentionalRawReplacementSlotsBefore = 0;
 	bool isSafeCorrectionPoint = false;
 	uint64_t sceneEventId = 0;
 	uint64_t queueEpoch = 0;

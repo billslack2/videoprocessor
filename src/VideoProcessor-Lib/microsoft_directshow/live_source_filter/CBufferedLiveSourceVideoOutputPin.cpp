@@ -573,8 +573,6 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	uint64_t overflowFrameCounter = 0;
 	size_t overflowQueueSize = 0;
 	size_t overflowQueueMaxSize = 0;
-	uint64_t steadyReplacementLogCount = 0;
-	uint64_t steadyReplacementFrameCounter = 0;
 	size_t acceptedRawQueueDepth = 0;
 	if (!m_isActive.load(std::memory_order_acquire))
 		return S_OK;
@@ -591,29 +589,12 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	const bool limitPrimeRawRetention = callbackEpoch != 0 &&
 		callbackEpoch == m_primeQueueEpoch.load(std::memory_order_acquire) &&
 		m_steadyQueueEpoch.load(std::memory_order_acquire) != callbackEpoch;
-	const bool limitSteadyRawRetention = callbackEpoch != 0 &&
-		callbackEpoch == m_steadyQueueEpoch.load(std::memory_order_acquire) &&
-		IsSteadyQueueTargetConfigured();
-	const bool limitRawRetention =
-		limitPrimeRawRetention || limitSteadyRawRetention;
 	size_t discardedByLimitedPush = 0;
-	const EpochBoundedQueuePushResult pushResult = limitRawRetention ?
-		m_captureFrameQueue.PushWithMaximumAndMutateNewest(
+	const EpochBoundedQueuePushResult pushResult = limitPrimeRawRetention ?
+		m_captureFrameQueue.PushWithMaximum(
 			std::move(capturedFrame), { callbackEpoch }, currentEpoch,
-			limitPrimeRawRetention ?
-				DirectShowEpochPrimePolicy::MaximumRetainedRawQueueFrames :
-				LiveSteadyQueuePolicy::SteadyRawHandoffCapacity(),
-			&discardedByLimitedPush,
-			[limitSteadyRawRetention](VideoFrame& retainedFrame,
-				size_t discarded)
-			{
-				if (limitSteadyRawRetention && discarded > 0)
-				{
-					retainedFrame.SetIntentionalRawReplacementSlotsBefore(
-						static_cast<uint32_t>(std::min<size_t>(discarded,
-							(std::numeric_limits<uint32_t>::max)())));
-				}
-			}) :
+			DirectShowEpochPrimePolicy::MaximumRetainedRawQueueFrames,
+			&discardedByLimitedPush) :
 		m_captureFrameQueue.Push(
 			std::move(capturedFrame), { callbackEpoch }, currentEpoch);
 	EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
@@ -648,7 +629,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	acceptedRawQueueDepth = rawMetrics.depth;
 	if (pushResult == EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard)
 	{
-		const size_t discardedByPush = limitRawRetention ?
+		const size_t discardedByPush = limitPrimeRawRetention ?
 			discardedByLimitedPush : 1;
 		m_droppedFrameCount.fetch_add(
 			discardedByPush, std::memory_order_relaxed);
@@ -665,20 +646,6 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 				m_rawOverflowLogCount = 0;
 				m_lastRawOverflowLogTime = now;
 			}
-		}
-	}
-	if (limitSteadyRawRetention && discardedByLimitedPush > 0)
-	{
-		CAutoLock diagnosticsLock(&m_rawDiagnosticsLock);
-		m_steadyRawReplacementLogCount += discardedByLimitedPush;
-		const DWORD now = GetTickCount();
-		if (m_lastSteadyRawReplacementLogTime == 0 ||
-			now - m_lastSteadyRawReplacementLogTime >= 5000)
-		{
-			steadyReplacementLogCount = m_steadyRawReplacementLogCount;
-			steadyReplacementFrameCounter = newCounter;
-			m_steadyRawReplacementLogCount = 0;
-			m_lastSteadyRawReplacementLogTime = now;
 		}
 	}
 
@@ -722,15 +689,6 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	{
 		DebugLog::Log("OnVideoFrame: Raw queue OVERFLOW - %llu frame(s) dropped in interval; last=#%llu, size=%zu/%zu",
 			overflowLogCount, overflowFrameCounter, overflowQueueSize, overflowQueueMaxSize);
-	}
-	if (steadyReplacementLogCount > 0)
-	{
-		DebugLog::Log(
-			"VP-0066 STEADY RAW REPLACEMENT: epoch=%llu replaced=%llu "
-			"in 5s; last_incoming=%llu handoff=%zu",
-			callbackEpoch, steadyReplacementLogCount,
-			steadyReplacementFrameCounter,
-			LiveSteadyQueuePolicy::SteadyRawHandoffCapacity());
 	}
 
 	SetEvent(m_hFrameAvailableEvent);
@@ -1818,8 +1776,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	bool legacyConvertedCatchUpPending = false;
 	uint64_t legacyIntentionalRawGapEpoch = 0;
 	bool legacyIntentionalRawGapPending = false;
-	DWORD lastSteadyRawTimestampSpliceLogTime = 0;
-	uint64_t steadyRawTimestampSpliceSlotsSinceLastLog = 0;
 	LiveOutputTraceRecord latestTimelineSnapshot;
 	bool latestTimelineSnapshotAvailable = false;
 	uint64_t latencyClockDiscontinuityLoggedEpoch = 0;
@@ -3327,65 +3283,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				lastSuccessfullyDeliveredEpoch == currentQueueEpoch &&
 				convertedSample.frameNumber > lastSuccessfullyDeliveredFrameNumber &&
 				convertedSample.frameNumber - lastSuccessfullyDeliveredFrameNumber > 1;
-			const uint32_t intentionalRawReplacementSlots =
-				convertedSample.intentionalRawReplacementSlotsBefore;
-			if (intentionalRawReplacementSlots > 0)
-			{
-				steadyRawTimestampSpliceSlotsSinceLastLog +=
-					intentionalRawReplacementSlots;
-				const DWORD steadyRawTimestampSpliceNow = GetTickCount();
-				const bool logSteadyRawTimestampSplice =
-					lastSteadyRawTimestampSpliceLogTime == 0 ||
-					steadyRawTimestampSpliceNow -
-						lastSteadyRawTimestampSpliceLogTime >= 5000;
-				if (m_timestamp ==
-					DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL)
-				{
-					// This exact counter comes from the capture queue transaction that
-					// retained this frame. Do not infer it from arbitrary later source
-					// gaps: only VP-owned latest-wins replacement is eligible to be
-					// removed from Rational-Rational presentation time.
-					rationalSourceGapSlotsToSuppress =
-						intentionalRawReplacementSlots >
-							(std::numeric_limits<uint64_t>::max)() -
-							rationalSourceGapSlotsToSuppress ?
-						(std::numeric_limits<uint64_t>::max)() :
-						rationalSourceGapSlotsToSuppress +
-							intentionalRawReplacementSlots;
-					if (logSteadyRawTimestampSplice)
-					{
-						DebugLog::Log(
-							"VP-0066 RATIONAL STEADY RAW SPLICE: epoch=%llu frame=%llu "
-							"slots=%llu",
-							currentQueueEpoch, convertedSample.frameNumber,
-							steadyRawTimestampSpliceSlotsSinceLastLog);
-					}
-				}
-				else if (DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(
-						m_timestamp) && deliveredSourceFrameGap)
-				{
-					// Clock-Rational and the other legacy live-clock methods have
-					// already stamped conversion samples. Rejoin this explicitly
-					// marked latest-wins boundary to the last delivered stop rather
-					// than leaving its discarded raw span scheduled downstream.
-					legacyTimestampCatchUp.Arm(currentQueueEpoch);
-					if (logSteadyRawTimestampSplice)
-					{
-						DebugLog::Log(
-							"VP-0066 LEGACY STEADY RAW CATCH-UP: method=%s epoch=%llu "
-							"frame=%llu slots=%llu",
-							TimestampMethodName(m_timestamp), currentQueueEpoch,
-							convertedSample.frameNumber,
-							steadyRawTimestampSpliceSlotsSinceLastLog);
-					}
-				}
-				if (logSteadyRawTimestampSplice)
-				{
-					steadyRawTimestampSpliceSlotsSinceLastLog = 0;
-					lastSteadyRawTimestampSpliceLogTime =
-						steadyRawTimestampSpliceNow;
-				}
-			}
 			if (legacyIntentionalRawGapPending &&
 				!legacyConvertedCatchUpPending && deliveredSourceFrameGap &&
 				legacyIntentionalRawGapEpoch == currentQueueEpoch)
@@ -4354,8 +4251,6 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 					// final delivery owner.
 					processedFrame.sourceDiscontinuity =
 						videoFrame.IsSourceDiscontinuity();
-					processedFrame.intentionalRawReplacementSlotsBefore =
-						videoFrame.GetIntentionalRawReplacementSlotsBefore();
 					processedFrame.isSafeCorrectionPoint = isSafeCorrectionPoint;
 					processedFrame.sceneEventId = sceneEventId;
 					processedFrame.sceneTimingGeneration = sceneTimingGeneration;

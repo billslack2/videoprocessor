@@ -147,29 +147,6 @@ namespace Tests
 			Assert::AreEqual(70, released[0]);
 		}
 
-		TEST_METHOD(TemporaryMaximumAnnotatesTheRetainedNewestFrameAtomically)
-		{
-			std::vector<int> released;
-			EpochBoundedQueue<int, RecordingRelease> queue(8, { &released });
-			const PipelineEpoch epoch{ 18 };
-			(void)queue.PushWithMaximum(1, epoch, epoch, 1);
-			size_t discarded = 0;
-			Assert::AreEqual(
-				static_cast<int>(EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard),
-				static_cast<int>(queue.PushWithMaximumAndMutateNewest(
-					2, epoch, epoch, 1, &discarded,
-					[](int& retained, size_t replaced)
-					{
-						retained += static_cast<int>(replaced * 100);
-					})));
-			Assert::AreEqual<size_t>(1, discarded);
-			int popped = 0;
-			Assert::IsTrue(queue.TryPopCurrent(epoch, popped));
-			Assert::AreEqual(102, popped);
-			Assert::AreEqual<size_t>(1, released.size());
-			Assert::AreEqual(1, released[0]);
-		}
-
 		TEST_METHOD(TemporaryMaximumImmediatelyTrimsPreExistingBacklog)
 		{
 			std::vector<int> released;
