@@ -28,6 +28,15 @@ behavior remains out of scope and is not enabled by this story.
   allocation. The unit corpus now covers R210 scope bars, pillarbox, dark
   artwork, chromatic-dark rejection, and generation-safe scene input (23
   focused tests). This is still validation-gated; no native build is deployed.
+- 2026-08-02: Expanded capture-format coverage to DeckLink R12B and R12L.
+  R12L was already converted to P010; R12B now uses the same proven P010
+  fallback, including exact SMPTE 268M packed-12-bit decoding. The regular
+  32-bit RGB layouts (ARGB/BGRA/R210/R10b/R10l) remain direct-upload plus
+  sparse native analysis. R12B/R12L cannot safely use that generic uploader
+  because eight pixels occupy a 36-byte packed block. Focused x64 Release
+  tests passed, including 4K60 smoke conversion (R12B ~6.9 ms average,
+  R12L ~7.6 ms average on the development machine). No deployed binaries
+  were changed.
 
 ## User story
 
@@ -39,7 +48,9 @@ not trade away the picture-aware behavior available on P010/P210 paths.
 ## Current behavior
 
 VP-0069-1 intentionally introduced direct libplacebo RGB upload for supported
-ARGB/BGRA/R210/R10b/R10l input. To avoid silently rebuilding a full-frame P010
+regular ARGB/BGRA/R210/R10b/R10l input. R12B/R12L use a reliable P010 fallback
+because their SMPTE-packed 12-bit layout cannot be represented by the generic
+four-byte RGB uploader. To avoid silently rebuilding a full-frame P010
 buffer, it currently marks P010-oriented NLS, scene, and scope-subtitle
 analysis unavailable on these paths. That preserves correctness and avoids a
 hidden latency/copy regression, but leaves native RGB functionally behind
