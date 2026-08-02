@@ -54,7 +54,7 @@ they must not contain requirements that are absent from this file.
 | VP-0020 | Backlog | v210 arbitrary-width and DCI P010/P210 support |
 | VP-0021 | Backlog | Renderer format negotiation parity and truthful capability reporting |
 | VP-0022 | Will Not Do | DeckLink encoded-format boundary and diagnostics |
-| VP-0023 | Backlog | P010 range metadata contract and conversion regression tests |
+| VP-0023 | Backlog | Alpha P010 sample-range contract and conversion regression tests |
 | VP-0030 | Done | Rotate debug logs with a fixed default retention of ten files |
 | VP-0031 | Done | Make debug-log retention configurable |
 | VP-0032 | Backlog | Alpha renderer field-aware GPU deinterlacing |
