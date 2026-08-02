@@ -39,10 +39,18 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
   target, making it comparable with the audio-extraction boundary without
   changing Alpha's immediate FIFO scheduling. Neither renderer reports
   physical panel processing or scanout latency.
-- Removed the Alpha-only `alpha_queue_size` setting. An explicit
-  `[queue] steady_reserve_frames` now selects Alpha's desired FIFO depth via
-  the same queue-policy call used by DirectShow; the retired key is rejected
-  by configuration validation.
+- Removed the Alpha-only `alpha_queue_size` setting. `queue_size` remains
+  Alpha's visible hard FIFO capacity (for example, 32); an explicit
+  `[queue] steady_reserve_frames` independently selects the lower live/prefill
+  target (for example, 2) via the same queue-policy call used by DirectShow.
+  The retired key is rejected by configuration validation.
+- Alpha automatic frame offset is zero because Alpha's immediate FIFO does not
+  schedule presentation from the capture timestamp. The separate `Offset` OSD
+  field remains visible. `Total` continues to use raw hardware capture so it
+  measures the audio-relative capture-to-target delay rather than an arbitrary
+  timestamp adjustment. During display-rate validation, the OSD shows the
+  provisional DXGI rate together with its `warming` state; it is not used by
+  timing policy until accepted.
 - Added a reversible ARGB/BGRA native RGB upload path. It is selected only
   when P010 is not explicitly requested. P010-only consumers (NLS, scene
   analysis, and scope subtitle analysis) are explicitly unavailable during
