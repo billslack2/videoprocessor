@@ -2,10 +2,11 @@
 
 ## Status
 
-Review (2026-08-02). The transport and processor extraction is included in
+Done (2026-08-02). The transport and processor extraction is included in
 stable baseline `f4a443e` / `vp-0066-stable-baseline-20260802`. The final
 cross-component guardrail is covered by the clean 455/455 x64 Release suite
-and the accepted live runs recorded by the parent. Subtitle OCR, tracking,
+and the accepted live runs recorded by the parent. Final merged-beta acceptance
+is consolidated in VP-0077. Subtitle OCR, tracking,
 and relocation remain separate and are now tracked by VP-0070-5.
 
 Implementation checkpoint (2026-07-30): `EpochBoundedQueue` is now a

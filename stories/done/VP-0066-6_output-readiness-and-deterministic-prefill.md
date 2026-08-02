@@ -2,11 +2,12 @@
 
 ## Status
 
-Review (2026-08-02). The final output-readiness, renderer-observation, and
+Done (2026-08-02). The final output-readiness, renderer-observation, and
 deterministic VP-owned reserve behavior is included in stable baseline
 `f4a443e` / `vp-0066-stable-baseline-20260802`; the clean x64 Release suite
 passes 455/455 tests and the parent records monitor and slow-Epson live
-validation. The implementation history follows.
+validation. Final merged-beta acceptance is consolidated in VP-0077. The
+implementation history follows.
 
 The graph-independent C++14 state machine and
 DirectShow reserve gate are implemented, unit-tested, and deployed for the

@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0076`
-- Next root story number: `VP-0077`
-- Total indexed items: 91
+- Last assigned root story: `VP-0077`
+- Next root story number: `VP-0078`
+- Total indexed items: 92
 
 ## Story locations
 
@@ -90,7 +90,7 @@ they must not contain requirements that are absent from this file.
 | VP-0063 | Backlog | Automatic Alpha-to-madVR handoff re-prime |
 | VP-0064 | Done | Persisted Alpha SDR BT.2020 output and clear OSD reporting |
 | VP-0065 | Done | Invalidate stale frames during channel and stream transitions |
-| VP-0066 | Review | Re-architect the live video output pipeline into testable components |
+| VP-0066 | Done | Re-architect the live video output pipeline into testable components |
 | VP-0067 | Backlog | Upgrade VideoProcessor to C++17 |
 | VP-0068 | Backlog | Evaluate a native Blackmagic SDK capture path and complete frame metadata contract |
 | VP-0069 | Done | Achieve and verify a 50 ms low-latency Alpha renderer path |
@@ -108,15 +108,16 @@ they must not contain requirements that are absent from this file.
 | VP-0074 | Review | Alpha latency resilience and NLS shader cold-start recovery |
 | VP-0075 | Backlog | Restore Alpha analysis parity on native RGB ingress |
 | VP-0076 | Backlog | Decompose the DirectShow live-output pin without behavioral change |
+| VP-0077 | Review | VP-0066 merged-beta acceptance validation |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
-| VP-0066-3 | Review | Extract epoch-aware frame transport and processing components |
-| VP-0066-4 | Review | Integrate DirectShow delivery and lifecycle coordination |
+| VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
+| VP-0066-4 | Done | Integrate DirectShow delivery and lifecycle coordination |
 | VP-0066-5 | Will Not Do | Extract subtitle analysis and relocation (superseded by VP-0070-5) |
-| VP-0066-6 | Review | Output readiness and deterministic post-ready prefill |
+| VP-0066-6 | Done | Output readiness and deterministic post-ready prefill |
 | VP-0066-7 | Will Not Do | Invalidate and reacquire refresh-rate measurements at real transition boundaries |
 | VP-0066-8 | Will Not Do | Extend the DXGI refresh-rate evidence window |
-| VP-0066-9 | Review | Converge the VP-owned queue once per fresh live-output epoch |
+| VP-0066-9 | Done | Converge the VP-owned queue once per fresh live-output epoch |
 | VP-0024 | Done | Alpha source-to-display timing and queue telemetry |
 | VP-0025 | Done | Renderer-neutral scene detection and Alpha integration |
 | VP-0026 | Done | Alpha low-latency elastic queue |

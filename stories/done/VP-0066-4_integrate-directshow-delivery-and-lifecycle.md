@@ -2,10 +2,11 @@
 
 ## Status
 
-Review (2026-08-02). The DirectShow delivery and lifecycle integration is
+Done (2026-08-02). The DirectShow delivery and lifecycle integration is
 included in stable baseline `f4a443e` / `vp-0066-stable-baseline-20260802`.
 The clean x64 Release suite passes 455/455 tests and the parent records the
-completed live-transition validation. The implementation history follows.
+completed live-transition validation. Final merged-beta acceptance is
+consolidated in VP-0077. The implementation history follows.
 
 `DirectShowFrameDeliverer` now owns the media-type
 attachment/delivery/completion transaction for buffered and unbuffered pins,

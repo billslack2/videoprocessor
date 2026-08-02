@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-08-02). The tested implementation is committed as `f4a443e`
+Done (2026-08-02). The tested implementation is committed as `f4a443e`
 (`VP-0066 establish stable live delivery baseline`) and annotated with
 `vp-0066-stable-baseline-20260802`. A clean x64 Release rebuild identifies
 that exact commit/tag with `VERSION_DIRTY=false`; the complete native suite
@@ -21,8 +21,8 @@ No VP-0066 child remains in progress.
 
 Merged to `origin/v1.1.015-beta` as `d6dbd8b` on 2026-08-02. A
 post-commit x64 Release rebuild reports that merge commit with
-`VERSION_DIRTY=false`, and all 455 native tests pass. The story remains in
-Review pending acceptance of the beta merge.
+`VERSION_DIRTY=false`, and all 455 native tests pass. Final merged-beta user
+acceptance is consolidated in VP-0077.
 
 ## Decomposition
 
