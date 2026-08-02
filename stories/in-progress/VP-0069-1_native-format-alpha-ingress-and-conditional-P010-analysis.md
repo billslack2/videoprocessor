@@ -9,6 +9,21 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
 `codex/vp0069-1-native-alpha-ingress` in the clean linked worktree
 `C:\\Users\\bslac\\vp\\videoprocessor-vp0069-1`.
 
+### Initial ingress trace (2026-08-02)
+
+- The capture callback retains and queues the original `VideoFrame` buffer and
+  its `VideoState`; no conversion occurs at queue admission.
+- On the render thread, `RenderLocked` unconditionally creates/reuses a P010
+  formatter result before NLS, scene detection, subtitle placement, and the
+  two-plane libplacebo upload.
+- This beta has no `VideoFrameEncoding::P010` source value. The supported
+  Alpha inputs currently accepted by the formatter are v210, UYVY, ARGB/BGRA,
+  R10b/R10l, and R12L. `P010` is the renderer's intermediate format, not a
+  declared capture encoding.
+- The first native candidate must therefore preserve the native source buffer
+  through upload and provide a bounded luma adapter (or an explicit analysis
+  fallback) before it can remove this conversion safely.
+
 ## User story
 
 As an Alpha-renderer user, I want VP to retain and upload supported captured
