@@ -54,8 +54,9 @@ struct StatsData
 	// depth, not the DirectShow raw/converted/total capacity tuple.
 	bool isAlphaRenderer = false;
 
-	// VP-owned video delay relative to the shared capture/audio clock baseline.
-	// Requested/predicted presentation is not physical-display latency.
+	// DirectShow's scheduled latency is VP's video delay relative to the shared
+	// capture/audio clock baseline. Alpha's target value is diagnostic only
+	// until it has a presentation-deadline scheduler.
 	bool vpInternalLatencyKnown = false;
 	bool scheduledLatencyKnown = false;
 	double vpInternalLatencyMs = 0.0;

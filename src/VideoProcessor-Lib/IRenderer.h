@@ -319,9 +319,9 @@ public:
 
 	// Direct-present renderers use a display-sync target rather than a
 	// DirectShow sample PTS. The two returned values are milliseconds from the
-	// latest submit to the predicted target and the video delay relative to the
-	// shared capture/audio clock baseline. They do not include panel processing
-	// or scanout latency, which VP cannot observe.
+	// latest submit to the predicted target and capture to that target. They are
+	// diagnostic only until the renderer schedules against that deadline, and
+	// never include panel processing or scanout latency.
 	virtual bool GetPresentationTargetTiming(double& leadMs,
 		double& captureToTargetMs) const
 	{
