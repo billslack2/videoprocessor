@@ -32,10 +32,12 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
 - Latency rows are normalized across backends as `Renderer`, `Presentation`,
   and `Total`. DirectShow presentation is the remaining lead to its requested
   sample PTS; Alpha presentation is the predicted lead from its latest submit
-  to the next DXGI display-sync target. `Total` is the video delay relative to
-  the audio-extraction/shared capture-clock baseline, including the configured
-  video frame offset. It does not claim physical panel processing or scanout
-  latency, which VP cannot observe.
+  to the next DXGI display-sync target. DirectShow `Total` is the video delay
+  relative to the audio-extraction/shared capture-clock baseline, including
+  the configured video frame offset. Alpha intentionally reports `Total` as
+  unavailable until it schedules presentation against an explicit deadline;
+  its current immediate FIFO cannot truthfully claim audio alignment. Neither
+  renderer reports physical panel processing or scanout latency.
 - Removed the Alpha-only `alpha_queue_size` setting. An explicit
   `[queue] steady_reserve_frames` now selects Alpha's desired FIFO depth via
   the same queue-policy call used by DirectShow; the retired key is rejected
