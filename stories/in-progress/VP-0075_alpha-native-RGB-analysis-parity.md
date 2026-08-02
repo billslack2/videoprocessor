@@ -2,9 +2,10 @@
 
 ## Status
 
-In progress (2026-08-02). Initial design/inventory investigation is underway;
-native RGB remains analysis-unavailable until each consumer has validated
-generation-safe evidence.
+In progress (2026-08-02). A source-only, un-deployed bounded native-RGB
+analysis path now feeds active-picture/NLS and scene analysis; it remains
+validation-gated until reference-corpus and live-playback evidence is complete.
+Scope subtitle/glyph evidence remains unavailable until separately validated.
 
 ## Progress evidence
 
