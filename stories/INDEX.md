@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0075`
-- Next root story number: `VP-0076`
-- Total indexed items: 90
+- Last assigned root story: `VP-0076`
+- Next root story number: `VP-0077`
+- Total indexed items: 91
 
 ## Story locations
 
@@ -69,7 +69,7 @@ they must not contain requirements that are absent from this file.
 | VP-0041 | Done | Eliminate stale-frame flashes across renderer rebuilds |
 | VP-0042 | Backlog | Indexed debug-log rotation filenames |
 | VP-0043 | Backlog | madVR graph re-prime after lifecycle and queue pressure |
-| VP-0044 | In progress | Alpha native OSD visible-picture anchoring and scaling |
+| VP-0044 | Done | Alpha native OSD visible-picture anchoring and scaling |
 | VP-0045 | Done | Namespace built-in renderer configuration as vpvr |
 | VP-0046 | Backlog | DirectShow event plumbing and passive health diagnostics |
 | VP-0047 | Backlog | P3-D65 output and SDR LUT target-contract support |
@@ -107,6 +107,7 @@ they must not contain requirements that are absent from this file.
 | VP-0073 | Backlog | Diagnose and minimally repair keyboard-command responsiveness |
 | VP-0074 | Backlog | Alpha latency resilience and NLS shader cold-start recovery |
 | VP-0075 | Backlog | Restore Alpha analysis parity on native RGB ingress |
+| VP-0076 | Backlog | Decompose the DirectShow live-output pin without behavioral change |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Review | Extract epoch-aware frame transport and processing components |

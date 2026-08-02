@@ -2,10 +2,10 @@
 
 ## Status
 
-In progress. Implementation is on `codex/vp-0044-visible-osd`, based on the
-current `v1.1.015-beta` integration branch. The Alpha native overlay now has a
-single, unit-tested final-picture placement calculation; remaining work is
-Release build and live viewport validation.
+Done. The tested implementation was fast-forwarded into
+`v1.1.015-beta` at `0bede6b` and pushed to
+`origin/v1.1.015-beta`. The deployed Alpha scope/CIH run visibly confirmed the
+bottom-right native OSD placement.
 
 ## Implementation evidence
 
@@ -17,9 +17,11 @@ Release build and live viewport validation.
   `C:\Videoprocessor\vp` after backing up the previous executable and Alpha
   plugin pair. SHA-256 verification matched both artifacts; startup logging
   confirms the Alpha plugin loaded (API 8) and the persisted scope viewport
-  was restored. Live visual placement validation remains pending.
-- Live Alpha validation on 16:9 and scope/CIH content remains pending before
-  this story can move to review.
+  was restored. The live log reports the final scope picture rectangle and a
+  panel exactly 25 pixels inside its right and bottom edges; visual validation
+  was accepted.
+- 2026-08-02: Fast-forwarded and pushed `0bede6b` to the current integration
+  branch, `v1.1.015-beta`.
 
 ## User story
 
