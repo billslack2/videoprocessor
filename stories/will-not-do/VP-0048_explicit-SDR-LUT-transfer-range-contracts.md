@@ -2,10 +2,11 @@
 
 ## Status
 
-Backlog. This is design and implementation work for correctly delivering the
-encoded SDR values a display-calibration LUT was authored to receive. It must
-not begin until the VP default integration branch is discovered and a
-user-approved source branch is created from it.
+Will Not Do. Superseded by VP-0047 on 2026-08-02. Its transfer/range
+requirements were consolidated into the P3-D65 output and LUT-contract story,
+because implementing them separately could accept a P3 calibration LUT with an
+unproven input domain. Retain this record for its discovery evidence; do not
+implement it as an independent story.
 
 ## User story
 
@@ -75,7 +76,7 @@ wire declaration cannot express that calibration domain directly.
    in Ctrl+I and in a single clear log line.
 6. Add named sample profile documentation for the supported cases, including
    authoring guidance for 709 BT.1886/2.4, 709 sRGB/G22, BT.2020, and any P3
-   contract added by VP-0030. Do not ship or enable a user's calibration LUT.
+   contract added by VP-0047. Do not ship or enable a user's calibration LUT.
    Include gamma 2.2, gamma 2.3, gamma 2.4, and a bounded custom power-gamma
    workflow only where VP can prove the requested LUT-input domain. Document
    BT.1886's authoring black and white values explicitly.
@@ -133,15 +134,16 @@ wire declaration cannot express that calibration domain directly.
 
 ## Dependencies and coordination
 
-VP-0030 consumes this model for P3-D65 gamma-2.2 calibration. Implement the
-shared contract representation once; do not create separate primaries and
-transfer validation paths that can drift apart.
+Superseded by VP-0047. Its primary record now owns the shared contract
+representation for P3-D65 primaries, transfer, and range. The former
+reference to VP-0030 was stale: VP-0030 is a debug-log rotation story and is
+not a colour-contract dependency.
 
 ## References
 
 - Current output policy:
-  `src\\VideoProcessor-Lib\\libplacebo\\LibplaceboOutputPolicy.cpp`.
+  `src\\VideoProcessor-Lib\\vprenderer\\LibplaceboOutputPolicy.cpp`.
 - Current display LUT validation:
-  `src\\VideoProcessor-Lib\\libplacebo\\LibplaceboDisplayLut.cpp`.
-- Current renderer documentation: `VideoProcessorRenderer.html`.
+  `src\\VideoProcessor-Lib\\vprenderer\\LibplaceboDisplayLut.cpp`.
+- Current renderer documentation: `CONFIGURATION.html`.
 - Current safety baseline: `ccc3c06` on `VP0011+0012`.

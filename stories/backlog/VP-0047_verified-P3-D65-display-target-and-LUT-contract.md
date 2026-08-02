@@ -1,4 +1,4 @@
-# VP-0047: Verified P3-D65 display target and LUT contract
+# VP-0047: P3-D65 output and SDR LUT target-contract support
 
 ## Status
 
@@ -7,12 +7,18 @@ discovered, the output-contract design is reviewed, and a user-approved source
 branch is created from that default. It is a prerequisite for accepting a
 calibration LUT authored for P3-D65 encoded RGB at the renderer output.
 
+On 2026-08-02 this story absorbed VP-0048. Primaries, transfer, range, and
+the distinction between the LUT-input and presentation/wire contracts are one
+implementation boundary. VP-0048 is retained as a superseded record and must
+not be implemented separately.
+
 ## User story
 
 As a projector owner whose native gamut is calibrated with a P3-D65 LUT, I
-want VP to convert content into verified P3-D65 target RGB before applying my
-3D LUT, so that a P3 gamma-2.2-to-native-gamut calibration is fed the colour
-coordinates it was authored to receive.
+want VP to convert content into a verified P3-D65 target contract before
+applying my 3D LUT, so that a P3 gamma-2.2-to-native-gamut calibration is fed
+the primaries, transfer, range, and reference levels it was authored to
+receive.
 
 ## Current boundary and problem
 
@@ -27,30 +33,43 @@ coordinates, not P3 RGB coordinates.
 implemented or proved a Windows/DXGI presentation contract that both renders
 P3-D65 target values and accurately describes what the display receives.
 
+The existing output policy also correctly rejects an explicit gamma-2.2
+request: Full RGB G22 is the sRGB piecewise transfer, not a pure gamma 2.2
+declaration, and the verified limited RGB path is gamma 2.4. Therefore
+primaries cannot be added independently of transfer/range validation.
+
 ## Scope
 
-1. Add a first-class P3-D65 output-target request to the VP output policy,
-   renderer settings, display rules, diagnostics, and Ctrl+I OSD.
-2. Identify the exact D3D11/DXGI colour-space declaration(s) available for the
+1. Define one explicit target-contract model with separate but linked
+   presentation/wire and LUT-input portions. Each names primaries, transfer,
+   range, reference-white nits, black level, DXGI declaration, presentation
+   mode, and evidence required for acceptance.
+2. Add a first-class P3-D65 output-target request and only those SDR
+   transfer/range combinations that the combined contract can prove. Surface
+   them through the VP output policy, renderer settings, display rules,
+   diagnostics, and Ctrl+I OSD.
+3. Identify the exact D3D11/DXGI colour-space declaration(s) available for the
    relevant display connection modes, and verify Check/Set/Check, present
    support, and restore behaviour as VP does for current Rec.709/BT.2020
    contracts.
-3. Establish whether the Windows compositor, GPU driver, and tested display
+4. Establish whether the Windows compositor, GPU driver, and tested display
    path preserve that declaration. The implementation must distinguish a
    verified P3 signal from an application-local P3 render target that cannot
    be relied upon at the wire/display boundary.
-4. When the P3 target is verified, render P3-D65 target RGB before the
+5. When the combined P3 and LUT-input target is verified, render P3-D65 target RGB before the
    target-frame `PL_LUT_NATIVE` 3D LUT. Only then allow
    `lut_reference_primaries=p3_d65` to activate.
-5. When P3 cannot be verified, reject the P3-target profile and retain
+6. When P3 cannot be verified, reject the P3-target profile and retain
    ordinary no-LUT playback; never reinterpret BT.2020 coordinates as P3.
-6. Provide target-contract diagnostics that state requested versus accepted
+7. Provide target-contract diagnostics that state requested versus accepted
    primaries, transfer, range, DXGI declaration, output mode, and concise LUT
    activation/rejection reason.
-7. Add deterministic tests for output-policy selection, fallback/rejection,
+8. Add deterministic tests for output-policy selection, fallback/rejection,
    target-frame metadata, LUT-contract validation, profile switching, and
-   restoration on teardown/device recreation.
-8. Validate on at least one real projector/display path with a known P3-D65
+   restoration on teardown/device recreation. Add GPU/readback coverage for
+   transfer/range endpoints and near-black behaviour where it can prove the
+   LUT-input contract.
+9. Validate on at least one real projector/display path with a known P3-D65
    test LUT and an independent test pattern measurement/reference.
 
 ## Non-goals
@@ -59,6 +78,8 @@ P3-D65 target values and accurately describes what the display receives.
   a display's advertised gamut.
 - Do not use the LUT to silently perform the BT.2020-to-P3 conversion while
   declaring a P3 LUT contract.
+- Do not relabel sRGB/G22 as a pure gamma 2.2 curve, or accept a calibration
+  LUT for an unsupported transfer/range combination.
 - Do not patch, replace, or upgrade bundled libplacebo as part of this story.
 - Do not claim HDMI/DisplayPort signalling has changed unless it is verified
   on the selected driver/display path.
@@ -74,6 +95,10 @@ P3-D65 target values and accurately describes what the display receives.
 - Relationship between P3 output metadata and optional GPU/display signalling.
 - Whether VP treats the projector's selected native-gamut mode as an external
   installation prerequisite rather than attempting to signal that mode.
+- Exact semantics and compatibility rules for sRGB, BT.709/G22, gamma 2.4,
+  BT.1886, gamma 2.2, and any bounded custom power-gamma LUT-input profile.
+- Whether the public configuration uses named target-contract presets or
+  validated expert fields, and migration behaviour for existing profiles.
 - Required readback, metadata, and real-display evidence before the contract
   is marked verified.
 
@@ -85,22 +110,25 @@ P3-D65 target values and accurately describes what the display receives.
   happens to be mostly P3.
 - `lut_reference_primaries=p3_d65` activates only when the accepted target
   contract is P3-D65; it reports a short, clear rejection otherwise.
+- Every active LUT has one logged and OSD-visible resolved input contract:
+  primaries, transfer, range, reference white nits, black level, and the
+  accepted presentation/wire contract where it differs.
 - Existing Rec.709 and BT.2020 profiles retain their current behaviour,
   including safe no-LUT fallback and colour-space restoration.
 - Automated policy/contract tests and documented real-display validation pass.
 
 ## Dependencies and follow-up
 
-VP-0031 defines explicit SDR transfer/range profiles needed by common P3
-gamma-2.2 calibration LUTs. The two stories should share one contract model,
-but VP-0030 may land verified P3 primaries independently if a supported output
-transfer is already available.
+VP-0048 has been consolidated into this story because explicit SDR
+transfer/range handling and verified P3-D65 primaries are inseparable for a
+calibration LUT. The prior references here to VP-0030 and VP-0031 were
+incorrect: those IDs are debug-log stories, not colour-contract work.
 
 ## References
 
 - Current target-LUT path:
-  `src\\VideoProcessor-Lib\\libplacebo\\LibplaceboVideoRenderer.cpp`.
+  `src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp`.
 - Current output policy:
-  `src\\VideoProcessor-Lib\\libplacebo\\LibplaceboOutputPolicy.cpp`.
-- Current user-facing renderer documentation: `VideoProcessorRenderer.html`.
+  `src\\VideoProcessor-Lib\\vprenderer\\LibplaceboOutputPolicy.cpp`.
+- Current user-facing renderer documentation: `CONFIGURATION.html`.
 - Current safety baseline: `ccc3c06` on `VP0011+0012`.
