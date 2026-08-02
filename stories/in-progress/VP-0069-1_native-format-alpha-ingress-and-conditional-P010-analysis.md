@@ -68,6 +68,34 @@ Implementation started 2026-08-02 from `origin/v1.1.015-beta` commit
   packed bytes; it must not disguise the existing CPU P010 formatter as native.
 - Verified by a successful x64 Release solution build and all 456 unit tests.
 
+### Lossless ingress tranche (2026-08-02)
+
+- Automatic v210 ingress now unpacks to P210 instead of P010. It preserves
+  every original 10-bit luma and 4:2:2 chroma sample, including independent
+  chroma rows, and supports valid even widths that end in a partially used
+  six-pixel v210 pack. This is lossless with respect to source samples, but is
+  accurately **not** labelled raw-native: it remains a CPU packed-to-planar
+  unpack plus upload. Selecting the P010 override retains the established
+  P010 conversion.
+- Automatic UYVY and HDYC ingress follows the same P210 route, preserving all
+  8-bit 4:2:2 chroma rows. The image representation declares the source as
+  8-bit with an eight-bit packing shift, rather than incorrectly presenting it
+  as newly created 10-bit content. P010 remains the explicit override.
+- ARGB/BGRA and regular 32-bit packed RGB (`r210`, `R10b`, `R10l`) now upload
+  straight to libplacebo with independently tested masks, source precision,
+  and byte order. They do not create an intermediate conversion buffer when
+  P010 is not selected. P010-only analysis remains deliberately unavailable
+  on those direct RGB paths, rather than causing a silent conversion.
+- R12B/R12L still use their existing fallback behavior and are not claimed as
+  lossless/native in Alpha: their 36-bit packing needs a separately qualified
+  unpack/upload path. A raw-GPU v210 unpack is also future work; it requires
+  output validation on the actual D3D11/libplacebo devices before replacing
+  the proven P210 route.
+- Golden tests prove all captured luma/chroma values for v210 and UYVY P210,
+  including v210 padding-edge handling and UYVY vertical-chroma preservation.
+  Packed RGB mask tests prove r210/R10b/R10l component placement and endian
+  handling. x64 Release build and test suite: **460/460 passed**.
+
 ## User story
 
 As an Alpha-renderer user, I want VP to retain and upload supported captured
