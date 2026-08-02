@@ -2,7 +2,9 @@
 
 ## Status
 
-In Progress. Began 2026-08-02 on `codex/vp-0023-alpha-p010-range` in the
+In Progress — implementation and deterministic verification complete; one
+Alpha hardware/viewing smoke check remains. Began 2026-08-02 on
+`codex/vp-0023-alpha-p010-range` in the
 clean worktree `C:\\Users\\bslac\\vp\\videoprocessor-vp0023-alpha-p010`, based on
 the user-confirmed `origin/v1.1.015-beta` commit
 `0bede6bf052b71c7e29accadc936ed3af74d753b`.
@@ -12,6 +14,22 @@ encoding-based `pl_frame.repr.levels` selection are known. The intended change
 is a narrow formatter-output contract, Alpha integration coverage, exact
 code-value tests, and bounded diagnostics; DirectShow/madVR format/range
 negotiation remains deferred to VP-0021.
+
+Implementation 2026-08-02:
+
+- Added an explicit formatter output contract: sample range, source colour
+  depth, and P010/P210 storage shift. Alpha uses it for libplacebo levels and
+  bit metadata, removing its duplicate encoding-based range switch (including
+  the prior R210 omission).
+- Corrected 8-bit ARGB/BGRA-to-P010 conversion to map full-range endpoints
+  exactly to 0/1023 rather than truncating white at 1020.
+- Added exact code-value tests for contracts, RGB endpoints/Rec.709 red,
+  limited HDYC reference black/white/neutral, and the 720p v210 edge mask.
+  `VideoFrameFormatterTests` passes 38/38; x64 Release Alpha renderer builds.
+- Added once-per-contract Alpha logging. With `output_diagnostics=true`, it
+  also logs one pre-upload luma/chroma min/max scan and excludes the two
+  deliberately concealed 720p edge columns. Existing output readback remains
+  the downstream corroborating telemetry.
 
 ## Context
 
