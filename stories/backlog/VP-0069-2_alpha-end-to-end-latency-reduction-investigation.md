@@ -27,6 +27,12 @@ or presentation stability.
 - Investigate only plausible whole-frame sources: `[queue] target_frames`,
   D3D11 `max_frame_latency`, and the DXGI presentation model
   (composed/BitBlt versus flip/direct). Change one factor at a time.
+- Include disruptive runtime shader work. On 2026-08-02, the first NLS GLSL
+  hook compile spent about 798 ms translating GLSL to SPIR-V and 176 ms
+  translating HLSL to DXBC on the live render thread. The Alpha queue then
+  rose from its target of 2 to 28 frames (about 459 ms oldest-frame age).
+  Evaluate prewarming the qualified NLS variant, or a safe flush/re-prime after
+  a known compile stall, before considering any new rendering design.
 
 ## Required evidence
 
@@ -37,9 +43,11 @@ or presentation stability.
    hard queue capacity from the maintained live target.
 3. A/B each presentation and D3D frame-latency candidate independently across
    fullscreen and windowed presentation where both are applicable.
-4. Validate SDR and HDR/tonemapped output, refresh changes, rebuilds, queue
+4. Measure the cold and warm NLS enable path. A candidate must avoid retained
+   backlog after compilation and preserve the accepted steady-state image.
+5. Validate SDR and HDR/tonemapped output, refresh changes, rebuilds, queue
    recovery, drops, and visible stability for any candidate that reduces delay.
-5. Retain only changes that improve physical capture-to-target delay by about
+6. Retain only changes that improve physical capture-to-target delay by about
    20 ms or more, or provide a separately documented reliability benefit with
    no latency regression.
 

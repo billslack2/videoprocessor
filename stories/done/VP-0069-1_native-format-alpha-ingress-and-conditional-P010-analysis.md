@@ -2,13 +2,24 @@
 
 ## Status
 
-In Progress. Parent: VP-0069.
+Done. Parent: VP-0069. Accepted 2026-08-02 after visual Alpha validation.
 
 Rebased 2026-08-02 onto `origin/v1.1.015-beta` commit
 `7f1ae2f`, on local branch
 `codex/vp0069-1-native-alpha-ingress` in the clean linked worktree
 `C:\\Users\\bslac\\vp\\videoprocessor-vp0069-1`.
 Latest source commit: `20acbdd` (`fix(alpha): remove obsolete queue override`).
+
+Final runtime evidence from `C:\\Videoprocessor\\vp\\logs\\vp_debug.log`:
+
+- Alpha selected `lossless P210 upload` for DeckLink v210 with P010 disabled,
+  and selected `P010 upload` when the explicit override was enabled.
+- `target_frames=2` and hard `queue_size=32` were applied; after warm-up the
+  live queue remained at 1--2 frames, with roughly 17--33 ms oldest-frame age,
+  0.2--0.5 ms render time, and 5--6 ms swap time at 59.94 Hz.
+- NLS image behavior was visually accepted. Its first cold shader compile did
+  create a one-time queue backlog; the performance follow-up is tracked by
+  VP-0069-2 and does not change this story's accepted native-ingress result.
 
 ### Initial ingress trace (2026-08-02)
 

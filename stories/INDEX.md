@@ -94,7 +94,7 @@ they must not contain requirements that are absent from this file.
 | VP-0067 | Backlog | Upgrade VideoProcessor to C++17 |
 | VP-0068 | Backlog | Evaluate a native Blackmagic SDK capture path and complete frame metadata contract |
 | VP-0069 | Backlog | Achieve and verify a 50 ms low-latency Alpha renderer path |
-| VP-0069-1 | In Progress | Native-format Alpha ingress and conditional P010 analysis |
+| VP-0069-1 | Done | Native-format Alpha ingress and conditional P010 analysis |
 | VP-0069-2 | Backlog | Alpha end-to-end latency reduction investigation |
 | VP-0070 | Backlog | CIH bar/boundary subtitle capture and relocation |
 | VP-0070-1 | Backlog | Bar/boundary CueSet architecture and detector benchmark |
