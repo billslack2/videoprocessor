@@ -42,9 +42,10 @@ struct RationalLiveOutputTimestampInput
 	// an explicit upstream repeat and do not advance capture identity.
 	uint64_t sourceFrameNumber = 0;
 	bool sourceFrameNumberValid = false;
-	// False when the caller intentionally removed stale/cadence work or when
-	// capture already classified this frame as a source discontinuity. Commit
-	// still adopts the new source identity, but no presentation hole is added.
+	// False only when the caller intentionally removed work and accounts for it
+	// through a separate replacement policy. A capture-classified discontinuity
+	// is real elapsed live time: leave this true so the renderer holds the prior
+	// picture for the missing interval instead of draining one queued sample.
 	bool accountSourceGap = true;
 	// Exact VP-owned omissions (startup convergence or a planned scene drop)
 	// already accounted by the caller. Any remaining small gap is still live

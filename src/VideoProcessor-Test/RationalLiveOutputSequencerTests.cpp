@@ -223,6 +223,33 @@ namespace Tests
 				afterGap.start);
 		}
 
+		TEST_METHOD(CaptureDiscontinuityPreservesTheMissingPresentationInterval)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			input.sourceFrameNumber = 100;
+			const auto first = sequencer.Preview(input);
+			Assert::IsTrue(sequencer.Commit(first));
+
+			// Capture marks the resumed sample as discontinuous, but that flag must
+			// not compress real elapsed live time. The missing interval becomes one
+			// presentation hold, while this real sample remains queued for its slot.
+			input.sourceFrameNumber = 102;
+			input.sourceDiscontinuity = true;
+			const auto resumed = sequencer.Preview(input);
+			Assert::AreEqual<uint64_t>(1,
+				resumed.observedSourceGapSlotsBefore);
+			Assert::AreEqual<uint32_t>(1, resumed.sourceGapSlotsBefore);
+			Assert::AreEqual<uint32_t>(2, resumed.presentationSlotsConsumed);
+			Assert::IsTrue(resumed.discontinuity);
+			Assert::AreEqual<VideoReferenceTime>(
+				input.presentationLead +
+				VideoTimingController::RationalTimestamp(
+					2, 1001, 60000, input.ppmCorrection),
+				resumed.start);
+		}
+
 		TEST_METHOD(IntentionalCatchUpRebaselinesWithoutAddingLead)
 		{
 			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
@@ -453,6 +480,38 @@ namespace Tests
 				input.presentationLead + VideoTimingController::RationalTimestamp(
 					frames, 1001, 24000, input.ppmCorrection),
 				next.start);
+		}
+
+		TEST_METHOD(Rational5994MatchesTheProvenSourceIndexFormulaAcrossFourHours)
+		{
+			RationalLiveOutputSequencer sequencer(60000, 1001, 166833);
+			auto input = Input();
+			input.sourceFrameNumberValid = true;
+			const uint64_t firstSourceFrame = 1000;
+			input.sourceFrameNumber = firstSourceFrame;
+			const uint64_t capturedIntervals = 863136; // Four hours at 59.94.
+
+			for (uint64_t sourceInterval = 0;
+				sourceInterval < capturedIntervals; ++sourceInterval)
+			{
+				// Exercise the production capture-gap path without inventing a
+				// replacement picture. The next real sample retains its original
+				// source-index timestamp, exactly as the pre-VP-0066 implementation.
+				if (sourceInterval != 0 && sourceInterval % 18000 == 0)
+					++input.sourceFrameNumber;
+				const auto decision = sequencer.Preview(input);
+				const uint64_t sourceIndex =
+					input.sourceFrameNumber - firstSourceFrame;
+				Assert::AreEqual<VideoReferenceTime>(
+					input.presentationLead +
+						VideoTimingController::RationalTimestamp(
+							sourceIndex, 1001, 60000,
+							input.ppmCorrection),
+					decision.start);
+				Assert::IsTrue(decision.stop > decision.start);
+				Assert::IsTrue(sequencer.Commit(decision));
+				++input.sourceFrameNumber;
+			}
 		}
 
 		TEST_METHOD(Display23976RemainsExactAcrossFourHours)

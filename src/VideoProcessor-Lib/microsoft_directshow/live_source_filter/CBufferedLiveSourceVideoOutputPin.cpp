@@ -1940,10 +1940,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			timestampInput.sourceFrameNumber = frameNumber;
 			timestampInput.sourceFrameNumberValid = true;
 			// The steady policy now applies backpressure before conversion instead
-			// of discarding ordinary samples.  Any surviving source gap is therefore
-			// an actual capture/transport omission and must remain represented in the
-			// schedule, except for the explicitly counted one-shot catch-up trim.
-			timestampInput.accountSourceGap = !sourceDiscontinuity;
+			// of discarding ordinary samples. Any surviving source gap is therefore
+			// actual elapsed capture/transport time and remains represented in the
+			// Rational schedule. In particular, sourceDiscontinuity must not compress
+			// the gap: madVR should hold the prior picture for the absent interval and
+			// retain the next real sample in its queue. Explicit VP-owned catch-up and
+			// cadence omissions are handled by sourceGapSlotsToSuppress below.
 			timestampInput.sourceGapSlotsToSuppress =
 				rationalSourceGapSlotsToSuppress;
 			timestampInput.minimumPresentationStartValid =
@@ -2343,6 +2345,14 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			{
 				*committedSourceGapSlots =
 					timestampDecision.sourceGapSlotsBefore;
+				if (timestampDecision.sourceGapSlotsBefore > 0)
+				{
+					DebugLog::Log(
+						"VP-0066 RATIONAL SOURCE GAP PRESERVED: epoch=%llu "
+						"frame=%llu missing_slots=%u pts_action=hold-previous",
+						expectedQueueEpoch, frameNumber,
+						timestampDecision.sourceGapSlotsBefore);
+				}
 			}
 			if (timestampCommitSucceeded && timestampDecision.valid)
 			{
