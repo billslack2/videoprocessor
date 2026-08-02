@@ -2,6 +2,7 @@
 
 #include <IRenderer.h>
 #include <ITimingClock.h>
+#include <VideoConversionOverride.h>
 
 
 // Core-side proxy for the optional VideoProcessorLibplacebo.dll plugin. The
@@ -16,7 +17,8 @@ public:
 		HWND videoHwnd,
 		ITimingClock* timingClock,
 		bool useFrameQueue,
-		size_t frameQueueMaxSize);
+		size_t frameQueueMaxSize,
+		VideoConversionOverride videoConversionOverride);
 	~LibplaceboPluginVideoRenderer() override;
 
 	size_t GetConvertedQueueSize() override;
@@ -36,6 +38,8 @@ public:
 	void OnPaint() override;
 	void OnDisplayChange() override;
 	void SetFrameQueueMaxSize(size_t size) override;
+	void SetQueueFramePolicy(size_t startupPrerollFrames,
+		size_t steadyReserveFrames, bool hasSteadyReserveFrames) override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	uint64_t SceneAwareCorrectionDropCount() const override;
 	uint64_t SceneAwareCorrectionRepeatCount() const override;
@@ -67,6 +71,9 @@ public:
 	uint64_t DroppedFrameCount() const override;
 	bool GetOutputModeInfo(CString& details) const override;
 	bool GetDisplayLutInfo(CString& details) const override;
+	bool GetVideoIngressInfo(CString& details) const override;
+	bool GetPresentationTargetTiming(double& leadMs,
+		double& captureToTargetMs) const override;
 	bool SupportsNativeStatsOverlay() const override;
 	bool SetNativeStatsOverlay(const uint8_t* pixels, size_t byteCount,
 		int width, int height, int stride) override;

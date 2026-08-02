@@ -439,9 +439,6 @@ protected:
 	CString m_defaultRendererName;
 	bool m_frameOffsetAutoStart = false;
 	CString m_defaultFrameOffset = TEXT("90");
-	CString m_frameOffsetBeforeRationalRational;
-	bool m_frameOffsetAutoBeforeRationalRational = false;
-	bool m_frameOffsetMaskedForRationalRational = false;
 	CString m_defaultQueueSize = TEXT("32");
 	size_t m_directShowQueueCapacity = 32;
 	size_t m_alphaQueueDesiredDepth = 4;
@@ -611,7 +608,6 @@ protected:
 	size_t GetRendererVideoFrameQueueSizeMax();
 	bool GetRendererVideoFrameUseQueue();
 	double GetWindowTextAsDouble(CEdit&);
-	bool IsRationalRationalTimingSelected() const;
 	void UpdateTimingClockFrameOffsetAvailability();
 	int GetTimingClockFrameOffsetMs();
 	void SetTimingClockFrameOffsetMs(int timingClockFrameOffsetMs);

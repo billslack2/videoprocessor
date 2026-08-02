@@ -309,6 +309,25 @@ public:
 		return false;
 	}
 
+	// Actual renderer ingress selection, rather than the UI's requested
+	// conversion override. Renderers without native ingress leave this empty.
+	virtual bool GetVideoIngressInfo(CString& details) const
+	{
+		details.Empty();
+		return false;
+	}
+
+	// Direct-present renderers use a display-sync target rather than a
+	// DirectShow sample PTS. The two returned values are milliseconds from the
+	// latest submit to the predicted target and from capture to that target.
+	virtual bool GetPresentationTargetTiming(double& leadMs,
+		double& captureToTargetMs) const
+	{
+		leadMs = 0.0;
+		captureToTargetMs = 0.0;
+		return false;
+	}
+
 	// Optional renderer-native OSD. The renderer must deep-copy the BGRA pixels
 	// before returning; callers retain ownership of the supplied buffer.
 	virtual bool SupportsNativeStatsOverlay() const { return false; }

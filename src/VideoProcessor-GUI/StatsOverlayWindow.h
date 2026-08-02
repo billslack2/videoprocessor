@@ -61,6 +61,9 @@ struct StatsData
 	double vpInternalLatencyMs = 0.0;
 	double dsScheduleLeadMs = 0.0;
 	double scheduledLatencyMs = 0.0;
+	bool presentationTargetTimingKnown = false;
+	double presentationTargetLeadMs = 0.0;
+	double captureToPresentationTargetMs = 0.0;
 
 	// Frame counts
 	uint64_t capturedFrames = 0;

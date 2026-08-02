@@ -20,6 +20,7 @@ VideoProcessorLibplaceboCreateRenderer(
 	ITimingClock* timingClock,
 	bool useFrameQueue,
 	size_t frameQueueMaxSize,
+	VideoConversionOverride videoConversionOverride,
 	const char* rendererConfigPath,
 	VideoProcessorLibplaceboLogSink logSink)
 {
@@ -39,7 +40,8 @@ VideoProcessorLibplaceboCreateRenderer(
 			videoHwnd,
 			timingClock,
 			useFrameQueue,
-			frameQueueMaxSize);
+			frameQueueMaxSize,
+			videoConversionOverride);
 	}
 	catch (const std::exception& e)
 	{

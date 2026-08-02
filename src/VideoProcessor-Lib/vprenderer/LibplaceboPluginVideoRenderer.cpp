@@ -123,7 +123,8 @@ LibplaceboPluginVideoRenderer::LibplaceboPluginVideoRenderer(
 	HWND videoHwnd,
 	ITimingClock* timingClock,
 	bool useFrameQueue,
-	size_t frameQueueMaxSize)
+	size_t frameQueueMaxSize,
+	VideoConversionOverride videoConversionOverride)
 {
 	const PluginExports& plugin = GetPlugin();
 	if (!plugin.module)
@@ -142,6 +143,7 @@ LibplaceboPluginVideoRenderer::LibplaceboPluginVideoRenderer(
 		timingClock,
 		useFrameQueue,
 		frameQueueMaxSize,
+		videoConversionOverride,
 		rendererConfigPath.c_str(),
 		ForwardPluginLog);
 	if (!m_renderer)
@@ -270,6 +272,14 @@ bool LibplaceboPluginVideoRenderer::SetNativeStatsOverlay(
 void LibplaceboPluginVideoRenderer::SetFrameQueueMaxSize(size_t size)
 {
 	m_renderer->SetFrameQueueMaxSize(size);
+}
+
+void LibplaceboPluginVideoRenderer::SetQueueFramePolicy(
+	size_t startupPrerollFrames, size_t steadyReserveFrames,
+	bool hasSteadyReserveFrames)
+{
+	m_renderer->SetQueueFramePolicy(startupPrerollFrames,
+		steadyReserveFrames, hasSteadyReserveFrames);
 }
 
 
@@ -426,6 +436,18 @@ bool LibplaceboPluginVideoRenderer::GetOutputModeInfo(CString& details) const
 bool LibplaceboPluginVideoRenderer::GetDisplayLutInfo(CString& details) const
 {
 	return m_renderer->GetDisplayLutInfo(details);
+}
+
+bool LibplaceboPluginVideoRenderer::GetVideoIngressInfo(CString& details) const
+{
+	return m_renderer->GetVideoIngressInfo(details);
+}
+
+bool LibplaceboPluginVideoRenderer::GetPresentationTargetTiming(
+	double& leadMs, double& captureToTargetMs) const
+{
+	return m_renderer->GetPresentationTargetTiming(leadMs,
+		captureToTargetMs);
 }
 
 
