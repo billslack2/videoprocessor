@@ -151,12 +151,6 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
       <p class="meta"><strong>Type:</strong> integer ≥ 1. <strong>Default:</strong> VP's normal queue setting. <strong>Failure:</strong> zero or non-numeric input fails startup validation.</p>
     </article>
 
-    <article class="field" id="command-line-alpha-queue-size" data-fields="command_line.alpha_queue_size">
-      <h4><code>alpha_queue_size</code> <span class="badge">built-in renderer</span></h4>
-      <p>Overrides queue depth only for the built-in renderer. Omit it to use <code>queue_size</code>. Use it when the two renderers need different latency/stability tradeoffs.</p>
-      <p class="meta"><strong>Type:</strong> integer ≥ 1. Invalid input is logged and the normal queue setting is retained.</p>
-    </article>
-
     <article class="field" id="command-line-scene-detect" data-fields="command_line.scene_detect">
       <h4><code>scene_detect</code></h4>
       <p>For P010 output, locks output timestamps to measured display cadence and prefers a required whole-frame repeat or drop at a detected scene cut. If no cut arrives before a full-frame phase error, VP corrects at the hard limit to protect queue depth and audio/video alignment.</p>
@@ -785,7 +779,6 @@ delay_seconds: 2</pre>
       <li><a href="#command-line-fullscreen"><code>fullscreen</code></a></li>
       <li><a href="#command-line-windowedfullscreenmode"><code>windowedfullscreenmode</code></a></li>
       <li><a href="#command-line-queue-size"><code>queue_size</code></a></li>
-      <li><a href="#command-line-alpha-queue-size"><code>alpha_queue_size</code></a></li>
       <li><a href="#command-line-scene-detect"><code>scene_detect</code></a></li>
       <li><a href="#command-line-disable-detection-features"><code>disable_detection_features</code></a></li>
       <li><a href="#command-line-scene-correction-basic"><code>scene_correction_basic</code></a></li>

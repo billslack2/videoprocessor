@@ -5,7 +5,6 @@ command_line.renderer	command-line-renderer	VP startup	no
 command_line.fullscreen	command-line-fullscreen	VP startup	no
 command_line.windowedfullscreenmode	command-line-windowedfullscreenmode	VP startup	no
 command_line.queue_size	command-line-queue-size	VP queue	no
-command_line.alpha_queue_size	command-line-alpha-queue-size	VP queue	no
 queue.lead_frames	queue-lead-frames	VP DirectShow timing	no
 queue.target_frames	queue-target-frames	VP DirectShow converted-queue reserve	no
 command_line.scene_detect	command-line-scene-detect	VP cadence	no

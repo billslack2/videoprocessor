@@ -17,11 +17,6 @@ class CVideoProcessorApp:
 public:
 	virtual BOOL InitInstance();
 
-	// This is intentionally configuration-only.  It must not become a public
-	// command-line switch because it only has meaning for the alpha renderer.
-	size_t GetAlphaQueueSizeOverride() const { return m_alphaQueueSizeOverride; }
-	void SetAlphaQueueSizeOverride(size_t value) { m_alphaQueueSizeOverride = value; }
-
 	// DirectShow startup priming remains automatic. The public queue controls
 	// are the timestamp lead and maintained VP queue target, both expressed as
 	// whole frames in the inclusive range [0, 16].
@@ -43,7 +38,6 @@ public:
 	}
 
 private:
-	size_t m_alphaQueueSizeOverride = 0;
 	size_t m_queueStartupPrerollFrames = 0;
 	size_t m_queueSteadyReserveFrames = 4;
 	bool m_hasQueueSteadyReserveFrames = true;

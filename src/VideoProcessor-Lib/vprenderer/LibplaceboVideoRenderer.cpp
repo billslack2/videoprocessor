@@ -6630,13 +6630,13 @@ void LibplaceboVideoRenderer::SetQueueFramePolicy(
 
 	{
 		std::lock_guard<std::mutex> guard(m_queueMutex);
-		// Alpha has one VP-owned FIFO.  steady_reserve_frames selects the
+		// Alpha has one VP-owned FIFO.  target_frames selects the
 		// live/prefill target; queue_size remains the independently configured
 		// hard capacity used for bursts and overflow protection.
 		m_frameQueueDesiredDepth = AlphaQueuePolicy::ClampDesiredDepthToCapacity(
 			steadyReserveFrames, m_frameQueueMaxSize);
 		DebugLog::Log(
-			"Alpha queue policy: steady_reserve_frames=%zu target=%zu hard_capacity=%zu",
+			"Alpha queue policy: target_frames=%zu target=%zu hard_capacity=%zu",
 			steadyReserveFrames, m_frameQueueDesiredDepth, m_frameQueueMaxSize);
 	}
 	m_queueChanged.notify_all();
