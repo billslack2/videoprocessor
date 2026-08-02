@@ -527,8 +527,43 @@ blackout or a claim that madVR occupancy is observable.
     repeats nor queue depth may grow during steady playback. The telemetry
     warm-up does not delay video.
 
+### 2026-08-01 configurable fresh-epoch launch reservoir
+
+FS/window retarget and source-gap traces proved that the automatic reset was
+already occurring, but the historical five-frame release could not refill an
+opaque downstream pipeline once capture and presentation returned to the same
+rate. The next testable increment therefore changes only fresh epochs:
+
+- latch a converted prime at the configured VP queue capacity, bounded by the
+  allocator count negotiated by DirectShow with one sample of headroom;
+- retain a three-frame, latest-wins raw bridge (clamped for smaller VP queues)
+  so delivery can continue refilling the converted burst until downstream
+  `Receive()` backpressure is observed;
+- start the 2.5-second fail-open timeout at the first accepted fresh frame, not
+  graph activation, so a slow Epson HDMI handshake cannot consume it;
+- serialize prime completion against Reset and require current-epoch converted
+  and raw depths, preventing stale work from satisfying a replacement epoch;
+- keep at most three raw DeckLink-backed frames during the prime epoch and use
+  the existing convergence controller to trim converted depth to the configured
+  one- or two-frame steady reserve.
+
+The published madVR `IMadVRSettings` and `IMadVRInfo` interfaces are now sampled
+once per graph connection/reset. Telemetry records effective active-profile CPU,
+GPU, pre-render/backbuffer, presentation-thread and flush settings plus madVR's
+detected refresh, post-deinterlace rate, display mode, HDR/exclusive state, and
+OSD latency. These are diagnostic configuration/timing observations only. The
+published interface exposes no decoder/upload/render/present occupancy values,
+so synchronous `Receive()` backpressure remains the only downstream fill
+evidence used by VP.
+
+The x64 Release solution builds and the complete unit suite passes 430/430,
+including physical allocator bounds, old-epoch release rejection, small queue
+clamping, bounded raw latest-wins behavior with a pre-existing backlog, and
+current-epoch raw-depth proof.
+
 ## Out of scope
 
 Continuous madVR queue chasing, IQualityControl emulation, scraping the madVR
-OSD, reading madVR settings/rules as a control input, a global PLL, arbitrary
-user-configurable delays, and changing normal steady-state delivery cadence.
+OSD, using madVR settings/rules as live occupancy or a hard control cap, a
+global PLL, arbitrary user-configurable delays, and changing normal
+steady-state delivery cadence.
