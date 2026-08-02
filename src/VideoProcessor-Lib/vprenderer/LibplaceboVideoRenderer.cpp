@@ -4828,13 +4828,13 @@ struct LibplaceboVideoRenderer::Impl
 		const bool nativeRgbCandidate =
 			state.videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT ||
 			state.videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT;
-		const bool nativeRgbAnalysisRequested = nlsRequested ||
+		const bool p010AnalysisRequested = nlsRequested ||
 			sceneDetectionEnabled || scopeScreenActive;
 		const bool nativeRgbUpload = nativeRgbCandidate &&
 			videoConversionOverride ==
 				VideoConversionOverride::VIDEOCONVERSION_NONE;
 		const bool nativeRgbAnalysisUnavailable = nativeRgbUpload &&
-			nativeRgbAnalysisRequested;
+			p010AnalysisRequested;
 		if (nativeRgbAnalysisUnavailable != nativeRgbP010AnalysisUnavailable)
 		{
 			nativeRgbP010AnalysisUnavailable = nativeRgbAnalysisUnavailable;
@@ -5059,7 +5059,7 @@ struct LibplaceboVideoRenderer::Impl
 			ingressStatus = videoConversionOverride ==
 				VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010 ?
 				"P010 (forced)" :
-				(p010AnalysisRequired ? "P010 (analysis)" : "P010 (fallback)");
+				(p010AnalysisRequested ? "P010 (analysis)" : "P010 (fallback)");
 		}
 
 		image.repr.sys = nativeRgbUpload ? PL_COLOR_SYSTEM_RGB :
