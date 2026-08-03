@@ -20,8 +20,8 @@ float4 main(float2 tex : TEXCOORD0) : COLOR
 	const float curve = clamp({{curve}}, 0.5, 4.0);
 	const float stretchRatio = clamp({{stretch_ratio}}, 1.0, 1.5);
 	const bool verticalWarp = {{warp_axis}} >= 0.5;
-	// VP publishes a temporally stable complete active rectangle. Map every
-	// sample through it so encoded pillarbox and letterbox bars are never read.
+	// VP publishes the sampling rectangle selected by the presentation plan.
+	// For madVR hybrid NLS this is full raster so madVR alone removes bars.
 	const float activeLeft = saturate({{active_left}});
 	const float activeTop = saturate({{active_top}});
 	const float activeRight = clamp({{active_right}}, activeLeft + 0.01, 1.0);

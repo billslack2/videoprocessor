@@ -483,6 +483,29 @@ bool DirectShowGenericHDRVideoRenderer::TryDynamicOutputAspect(
 }
 
 
+bool DirectShowGenericHDRVideoRenderer::PrepareOutputAspectForShaderInstall(
+	unsigned long desiredAspectX, unsigned long desiredAspectY,
+	bool& rendererRestartRequired)
+{
+	if (!DoesOutputAspectRequireRestart(desiredAspectX, desiredAspectY))
+		return true;
+	if (TryDynamicOutputAspect(desiredAspectX, desiredAspectY))
+		return true;
+
+	// Never install a shader under a media DAR from a different presentation
+	// plan. Keep the currently coherent presentation until the covered renderer
+	// replacement negotiates the prepared geometry and DAR together.
+	rendererRestartRequired = true;
+	const bool prepared =
+		MadVRShaderLoader::PrepareNlsOutputContractRendererReplacement();
+	DebugLog::Log(
+		"Shaders: deferred shader installation because dynamic picture aspect "
+		"was rejected; output_contract_prepared=%d renderer_restart=1",
+		prepared ? 1 : 0);
+	return false;
+}
+
+
 MadVRActivePictureGeometry
 DirectShowGenericHDRVideoRenderer::MakeRuntimeGeometry(
 	const ActivePictureRectangle& rectangle) const
@@ -554,6 +577,7 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		if (aspectAvailable)
 			geometry = MakeRuntimeGeometry(activeRectangle);
 		decision = ConstrainMadVRNlsMappingToGeometry(decision, geometry);
+		MadVRShaderLoader::SetRuntimeNlsDecision(decision);
 		MadVRShaderLoader::SetRuntimeShaderSelection(
 			std::string(ruleUtf8), std::string(ruleUtf8), decision.mode);
 		if (decision.mode == MadVRNlsMappingMode::ACTIVE ||
@@ -562,6 +586,16 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		{
 			if (!MadVRShaderLoader::SetRuntimeActivePictureGeometry(geometry))
 				return false;
+		}
+		unsigned long desiredAspectX = 0;
+		unsigned long desiredAspectY = 0;
+		MadVRShaderLoader::GetRuntimeOutputAspectRatio(
+			desiredAspectX, desiredAspectY);
+		if (!PrepareOutputAspectForShaderInstall(
+			desiredAspectX, desiredAspectY, rendererRestartRequired))
+		{
+			activeRule = m_activeShaderRule;
+			return true;
 		}
 		const MadVRShaderSelection selection =
 			MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer,
@@ -716,6 +750,7 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		if (aspectAvailable)
 			geometry = MakeRuntimeGeometry(activeRectangle);
 		decision = ConstrainMadVRNlsMappingToGeometry(decision, geometry);
+		MadVRShaderLoader::SetRuntimeNlsDecision(decision);
 		if (decision.mode == MadVRNlsMappingMode::WAITING)
 		{
 			if (m_nlsMappingMode == MadVRNlsMappingMode::WAITING)
@@ -774,6 +809,16 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		MadVRShaderLoader::SetRuntimeShaderSelection(
 			std::string(requestedUtf8), std::string(requestedUtf8),
 			decision.mode);
+		unsigned long desiredAspectX = 0;
+		unsigned long desiredAspectY = 0;
+		MadVRShaderLoader::GetRuntimeOutputAspectRatio(
+			desiredAspectX, desiredAspectY);
+		if (!PrepareOutputAspectForShaderInstall(
+			desiredAspectX, desiredAspectY, rendererRestartRequired))
+		{
+			activeRule = m_activeShaderRule;
+			return true;
+		}
 		const MadVRShaderSelection selection =
 			MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer,
 				*m_videoState, std::string(requestedUtf8), false);

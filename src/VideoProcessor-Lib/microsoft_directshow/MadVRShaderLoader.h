@@ -92,6 +92,8 @@ public:
 	static bool SetRuntimeActivePictureGeometry(
 		const MadVRActivePictureGeometry& geometry);
 	static void SetRuntimeNlsTargetAspect(double targetAspect);
+	static void SetRuntimeNlsDecision(
+		const MadVRNlsMappingDecision& decision);
 	static void SetRuntimeShaderSelection(const std::string& requestedRule,
 		const std::string& effectiveRule, MadVRNlsMappingMode nlsMode);
 	static MadVRShaderRuntimeSnapshot GetRuntimeShaderState();

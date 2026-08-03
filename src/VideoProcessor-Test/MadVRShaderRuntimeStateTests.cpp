@@ -158,59 +158,122 @@ namespace VideoProcessorTest
 			Assert::AreEqual(1ul, aspectY);
 		}
 
-		TEST_METHOD(NativeGeometryModesDoNotDoubleApplyMadVRCrop)
+		TEST_METHOD(EternalsLetterboxUsesCompensatedMadVRPresentation)
 		{
-			const MadVRActivePictureGeometry fullRaster{
-				16.0 / 9.0, 0.0, 0.0, 1.0, 1.0, 1, 1, true };
-			const MadVRActivePictureGeometry barred{
-				1.90, 0.0, 0.03, 1.0, 0.97, 2, 1, true };
-			unsigned long aspectX = 0;
-			unsigned long aspectY = 0;
-			Assert::IsFalse(ResolveMadVRNlsPresentationAspect(
-				MadVRNlsMappingMode::SCOPE_PASSTHROUGH,
-				2.3851, 2.35, aspectX, aspectY));
-			Assert::AreEqual(0ul, aspectX);
-			Assert::AreEqual(0ul, aspectY);
-			Assert::IsFalse(MadVRNlsMappingUsesCustomShader(
-				MadVRNlsMappingMode::SCOPE_PASSTHROUGH, barred));
+			MadVRNlsMappingDecision decision;
+			decision.mode = MadVRNlsMappingMode::ACTIVE;
+			decision.sourceAspect = 3840.0 / 2024.0;
+			decision.targetAspect = 2.35;
+			decision.stretchRatio =
+				decision.targetAspect / decision.sourceAspect;
+			decision.verticalWarp = false;
+			decision.reason = "active picture is narrower than the target";
+			const MadVRActivePictureGeometry geometry{
+				decision.sourceAspect, 0.0, 68.0 / 2160.0,
+				1.0, 2092.0 / 2160.0, 7, 3, true };
 
-			Assert::IsTrue(ResolveMadVRNlsPresentationAspect(
-				MadVRNlsMappingMode::ACTIVE,
-				2.3851, 2.35, aspectX, aspectY));
-			Assert::AreEqual(235ul, aspectX);
-			Assert::AreEqual(100ul, aspectY);
-			Assert::IsTrue(MadVRNlsMappingUsesCustomShader(
-				MadVRNlsMappingMode::ACTIVE, fullRaster));
-			Assert::IsFalse(MadVRNlsMappingUsesCustomShader(
-				MadVRNlsMappingMode::ACTIVE, barred));
-			MadVRNlsMappingDecision activeDecision;
-			activeDecision.mode = MadVRNlsMappingMode::ACTIVE;
-			activeDecision.sourceAspect = 1.90;
-			activeDecision.targetAspect = 2.35;
-			activeDecision.reason = "active picture is narrower than the target";
+			const MadVRNlsPresentationPlan plan =
+				ResolveMadVRNlsPresentationPlan(decision, geometry);
+			Assert::IsTrue(plan.customShader);
+			Assert::AreEqual(2.35 * 2024.0 / 2160.0,
+				plan.rasterAspect, 0.000001);
+			Assert::AreEqual(1101ul, plan.aspectX);
+			Assert::AreEqual(500ul, plan.aspectY);
+			Assert::AreEqual(0.0, plan.shaderGeometry.left, 0.000001);
+			Assert::AreEqual(0.0, plan.shaderGeometry.top, 0.000001);
+			Assert::AreEqual(1.0, plan.shaderGeometry.right, 0.000001);
+			Assert::AreEqual(1.0, plan.shaderGeometry.bottom, 0.000001);
+			Assert::AreEqual(2.35,
+				plan.rasterAspect *
+				(geometry.right - geometry.left) /
+				(geometry.bottom - geometry.top),
+				0.000001);
 			Assert::AreEqual(static_cast<int>(MadVRNlsMappingMode::ACTIVE),
 				static_cast<int>(ConstrainMadVRNlsMappingToGeometry(
-					activeDecision, fullRaster).mode));
-			const MadVRNlsMappingDecision barredDecision =
-				ConstrainMadVRNlsMappingToGeometry(activeDecision, barred);
+					decision, geometry).mode));
+		}
+
+		TEST_METHOD(MadVRHybridNlsAllowsOnlyOrthogonalBars)
+		{
+			MadVRNlsMappingDecision horizontal;
+			horizontal.mode = MadVRNlsMappingMode::ACTIVE;
+			horizontal.sourceAspect = 1.90;
+			horizontal.targetAspect = 2.35;
+			horizontal.verticalWarp = false;
+			horizontal.reason = "active picture is narrower than the target";
+
+			const MadVRActivePictureGeometry fullRaster{
+				1.90, 0.0, 0.0, 1.0, 1.0, 1, 1, true };
+			Assert::IsTrue(ResolveMadVRNlsPresentationPlan(
+				horizontal, fullRaster).customShader);
+			Assert::AreEqual(235ul, ResolveMadVRNlsPresentationPlan(
+				horizontal, fullRaster).aspectX);
+
+			const MadVRActivePictureGeometry onePixelSideCrop{
+				1.90, 1.0 / 3840.0, 0.03, 1.0, 0.97, 2, 1, true };
+			Assert::IsFalse(ResolveMadVRNlsPresentationPlan(
+				horizontal, onePixelSideCrop).customShader);
+
+			MadVRNlsMappingDecision vertical = horizontal;
+			vertical.sourceAspect = 2.60;
+			vertical.targetAspect = 2.35;
+			vertical.verticalWarp = true;
+			const MadVRActivePictureGeometry pillarbox{
+				2.60, 0.05, 0.0, 0.95, 1.0, 3, 1, true };
+			Assert::IsTrue(ResolveMadVRNlsPresentationPlan(
+				vertical, pillarbox).customShader);
+			const MadVRActivePictureGeometry letterbox{
+				2.60, 0.0, 0.03, 1.0, 0.97, 4, 1, true };
+			Assert::IsFalse(ResolveMadVRNlsPresentationPlan(
+				vertical, letterbox).customShader);
+
+			const MadVRActivePictureGeometry windowbox{
+				1.90, 0.05, 0.03, 0.95, 0.97, 5, 1, true };
+			Assert::IsFalse(ResolveMadVRNlsPresentationPlan(
+				horizontal, windowbox).customShader);
+			const MadVRNlsMappingDecision constrained =
+				ConstrainMadVRNlsMappingToGeometry(horizontal, windowbox);
 			Assert::AreEqual(static_cast<int>(MadVRNlsMappingMode::SAFE_FIT),
-				static_cast<int>(barredDecision.mode));
-			Assert::IsTrue(barredDecision.reason.find(
-				"delegated to madVR native fit") != std::string::npos);
+				static_cast<int>(constrained.mode));
+			Assert::IsTrue(constrained.reason.find(
+				"using native safe fit") != std::string::npos);
+		}
 
-			Assert::IsFalse(ResolveMadVRNlsPresentationAspect(
-				MadVRNlsMappingMode::SAFE_FIT,
-				4.0 / 3.0, 2.35, aspectX, aspectY));
-			Assert::AreEqual(0ul, aspectX);
-			Assert::AreEqual(0ul, aspectY);
-			Assert::IsFalse(MadVRNlsMappingUsesCustomShader(
-				MadVRNlsMappingMode::SAFE_FIT, barred));
+		TEST_METHOD(MadVRHybridNlsRejectsInvalidOrInactiveGeometry)
+		{
+			MadVRNlsMappingDecision decision;
+			decision.mode = MadVRNlsMappingMode::ACTIVE;
+			decision.sourceAspect = 1.90;
+			decision.targetAspect = 2.35;
+			MadVRActivePictureGeometry geometry{
+				1.90, 0.0, 0.03, 1.0, 0.97, 1, 1, false };
+			Assert::IsFalse(ResolveMadVRNlsPresentationPlan(
+				decision, geometry).customShader);
 
-			Assert::IsFalse(ResolveMadVRNlsPresentationAspect(
-				MadVRNlsMappingMode::WAITING,
-				2.3851, 2.35, aspectX, aspectY));
-			Assert::AreEqual(0ul, aspectX);
-			Assert::AreEqual(0ul, aspectY);
+			geometry.stable = true;
+			geometry.right = 1.01;
+			Assert::IsFalse(ResolveMadVRNlsPresentationPlan(
+				decision, geometry).customShader);
+			geometry.right = 1.0;
+			geometry.bottom = geometry.top;
+			Assert::IsFalse(ResolveMadVRNlsPresentationPlan(
+				decision, geometry).customShader);
+			geometry.bottom = 0.97;
+			geometry.aspectRatio = 0.0;
+			Assert::IsFalse(ResolveMadVRNlsPresentationPlan(
+				decision, geometry).customShader);
+
+			geometry = {
+				1.90, 0.0, 0.03, 1.0, 0.97, 1, 1, true };
+			decision.mode = MadVRNlsMappingMode::SAFE_FIT;
+			const MadVRNlsPresentationPlan safeFit =
+				ResolveMadVRNlsPresentationPlan(decision, geometry);
+			Assert::IsFalse(safeFit.customShader);
+			Assert::AreEqual(0ul, safeFit.aspectX);
+			Assert::AreEqual(0ul, safeFit.aspectY);
+			decision.mode = MadVRNlsMappingMode::WAITING;
+			Assert::IsFalse(ResolveMadVRNlsPresentationPlan(
+				decision, geometry).customShader);
 		}
 
 		TEST_METHOD(RestartOnlyWhenEffectiveScreenContractChanges)
