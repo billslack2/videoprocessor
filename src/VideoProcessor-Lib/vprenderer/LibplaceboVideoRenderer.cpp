@@ -2488,8 +2488,12 @@ struct LibplaceboVideoRenderer::Impl
 	ActivePictureBounds scopePresentationEvidenceBounds;
 	uint64_t scopePresentationEvidenceLastTick = 0;
 	uint64_t scopePresentationEvidenceSourceGeneration = 0;
-	static constexpr uint64_t ACTIVE_PICTURE_SCENE_VERIFICATION_MS = 500;
 	static constexpr uint64_t ACTIVE_PICTURE_AMBIGUITY_HOLD_MS = 2000;
+	// A recognized cut and an ordinary ambiguous fade are the same presentation
+	// problem once a last-known-good crop exists. Use one bounded interval so
+	// scene detection cannot shorten crop/NLS retention back to 500 ms.
+	static constexpr uint64_t ACTIVE_PICTURE_SCENE_VERIFICATION_MS =
+		ACTIVE_PICTURE_AMBIGUITY_HOLD_MS;
 	uint64_t activePictureSceneVerificationDeadlineTick = 0;
 	AlphaSourceCrop::AmbiguityHold activePictureAmbiguityHold;
 	bool sceneVerificationGeometryAvailable = false;
