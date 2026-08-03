@@ -93,5 +93,25 @@ namespace Tests
 				RendererResetPriority(
 					RendererResetReason::LivenessRecovery));
 		}
+
+		TEST_METHOD(FullscreenRetargetConsumesTheFinalMatchingIntent)
+		{
+			// An entering retarget remains valid if repeated keyboard/API toggles
+			// ultimately return to fullscreen before the first new frame arrives.
+			Assert::IsFalse(FullscreenRetargetRequiresCoveredRebuild(
+				false, true));
+			Assert::IsTrue(FullscreenRetargetRequiresCoveredRebuild(
+				false, false));
+		}
+
+		TEST_METHOD(FullscreenRetargetDefersOnlyAnOppositeFinalIntent)
+		{
+			// The symmetric exit case must keep its active target unless the final
+			// requested state is fullscreen again.
+			Assert::IsFalse(FullscreenRetargetRequiresCoveredRebuild(
+				true, false));
+			Assert::IsTrue(FullscreenRetargetRequiresCoveredRebuild(
+				true, true));
+		}
 	};
 }

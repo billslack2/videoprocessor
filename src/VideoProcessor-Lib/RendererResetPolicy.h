@@ -53,3 +53,15 @@ constexpr bool RendererResetShouldReplace(
 		(incomingPriority == selectedPriority &&
 			incomingDeadline < selectedDeadline);
 }
+
+// A graph retarget cannot be safely interrupted once madVR owns it. The
+// fullscreen control is still allowed to express the final intent while that
+// transaction is in flight; a covered rebuild is required only when that
+// final intent differs from the target of the active retarget.
+constexpr bool FullscreenRetargetRequiresCoveredRebuild(
+	bool retargetExitingFullscreen,
+	bool desiredFullscreen)
+{
+	const bool retargetTargetsFullscreen = !retargetExitingFullscreen;
+	return desiredFullscreen != retargetTargetsFullscreen;
+}

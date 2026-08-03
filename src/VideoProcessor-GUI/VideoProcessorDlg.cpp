@@ -1977,6 +1977,26 @@ void CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()")));
 
+	if (m_fullscreenRetargetPending)
+	{
+		// Keyboard/API commands can still change the checkbox while the UI
+		// control is disabled. Do not interrupt madVR's active graph retarget;
+		// the frame-ready boundary consumes this final intent below.
+		const bool desiredFullscreen =
+			m_rendererFullscreenCheck.GetCheck() != FALSE;
+		const bool requiresCoveredRebuild =
+			FullscreenRetargetRequiresCoveredRebuild(
+				m_fullscreenRetargetExiting, desiredFullscreen);
+		DebugLog::Log(
+			"Fullscreen retarget intent coalesced: active_direction=%s "
+			"desired_fullscreen=%d action=%s",
+			m_fullscreenRetargetExiting ? "exit" : "enter",
+			desiredFullscreen ? 1 : 0,
+			requiresCoveredRebuild ?
+				"defer-covered-rebuild" : "continue-active-retarget");
+		return;
+	}
+
 	if (TryStartFullscreenRetarget())
 		return;
 	if (m_videoRenderer && !m_activeRendererIsDirectShow)
@@ -5164,7 +5184,6 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 	}
 	if (m_fullscreenRetargetPending)
 	{
-		const bool expectedFullscreen = !m_fullscreenRetargetExiting;
 		const bool desiredFullscreen =
 			m_rendererFullscreenCheck.GetCheck() != FALSE;
 		const bool targetValid =
@@ -5187,15 +5206,18 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			UpdateState();
 			return;
 		}
-		if (desiredFullscreen != expectedFullscreen)
+		if (FullscreenRetargetRequiresCoveredRebuild(
+			m_fullscreenRetargetExiting, desiredFullscreen))
 		{
 			// The user reversed direction while the graph-owner transaction was
 			// active. Do not expose the superseded target. Keep both HWNDs leased
-			// until covered renderer teardown detaches the graph.
+			// until covered renderer teardown detaches the graph. Commands received
+			// during the retarget were coalesced, so this is one rebuild toward the
+			// final requested state rather than an interrupting retry.
 			DebugLog::Log(
 				"Fullscreen retarget superseded before reveal: "
 				"completed_direction=%s desired_fullscreen=%d "
-				"action=covered-full-rebuild",
+				"action=coalesced-covered-full-rebuild",
 				m_fullscreenRetargetExiting ? "exit" : "enter",
 				desiredFullscreen ? 1 : 0);
 			m_wantToRestartRenderer = true;
