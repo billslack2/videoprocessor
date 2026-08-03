@@ -41,7 +41,9 @@ validated.
 ## Scope
 
 Use the available DeckLink Quad HDMI Recorder and the existing VP/HDFury LLDV
-workflow. Compare Alpha with the current VP + madVR result and state contract.
+workflow for required validation. Compare Alpha with the current VP + madVR
+result and state contract. The implementation must remain capture-card agnostic
+and continue to use VP's shared input/effective-state contract.
 
 This story includes only:
 
@@ -55,7 +57,9 @@ This story includes only:
 
 ## Explicitly out of scope
 
-- DeckLink Mini or any other capture-card validation;
+- validation on DeckLink Mini or other capture cards as a requirement for this
+  story to move to Done; later results from those cards may be added without
+  reopening the Quad acceptance work;
 - DeckLink SDK or Desktop Video upgrades;
 - a current-SDK Dolby metadata probe;
 - HDMI analyzer, AVI/DRM InfoFrame, or VSIF capture work;
@@ -116,7 +120,7 @@ No new DeckLink capability-discovery subsystem is required.
 
 | Condition | Required result |
 | --- | --- |
-| Capture hardware | DeckLink Quad HDMI Recorder only |
+| Required acceptance hardware | DeckLink Quad HDMI Recorder; other-card validation is not a Done gate |
 | madVR baseline on LLDV | Record effective state and expected visible treatment |
 | Alpha starts on the same LLDV input | Same effective state; correct tone mapping without manual restart |
 | SDR menu -> LLDV | One stable promotion; no stale SDR frame after convergence |
@@ -135,6 +139,8 @@ refresh, and generations.
 ## Implementation guidance
 
 - Keep classification and effective-state ownership in shared VP logic.
+- Do not add Quad-specific classification or renderer behavior. The Quad is
+  the acceptance-test hardware, not an implementation restriction.
 - Do not create an Alpha-only LLDV heuristic or metadata policy.
 - Compare complete `VideoState` values at the renderer boundary, not only the
   visual result.
@@ -160,8 +166,11 @@ refresh, and generations.
   otherwise it updates in place.
 - Logs prove raw state, shared effective state, Alpha decision, and final state.
 - Existing Quad + madVR LLDV behavior and values do not change.
-- No Mini-card, SDK-upgrade, HDMI-metadata, native-Dolby, calibration, or
-  metadata-policy work is introduced by VP-0053.
+- Quad validation is sufficient to move VP-0053 to Done. Mini and other
+  DeckLink validation is welcome follow-up evidence but is not a completion
+  gate and does not change the card-agnostic implementation contract.
+- No SDK-upgrade, HDMI-metadata, native-Dolby, calibration, or metadata-policy
+  work is introduced by VP-0053.
 
 ## References
 
