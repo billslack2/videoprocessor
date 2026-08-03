@@ -1,7 +1,54 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <string>
+
+
+// Serializes reset invalidation with publication of a decision produced from
+// an earlier detector generation. Analysis remains worker-owned and lock-free;
+// only the short authority mutation is guarded. The callbacks keep the
+// generation check inseparable from the corresponding clear/publish write.
+class ActivePicturePublicationGate
+{
+public:
+	uint64_t Generation() const
+	{
+		return m_generation.load(std::memory_order_acquire);
+	}
+
+	template <typename ResetCallback>
+	uint64_t Reset(ResetCallback callback)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		const uint64_t generation =
+			m_generation.fetch_add(1, std::memory_order_acq_rel) + 1;
+		callback();
+		return generation;
+	}
+
+	template <typename PublishCallback>
+	bool TryPublish(uint64_t expectedGeneration, PublishCallback callback)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (m_generation.load(std::memory_order_acquire) != expectedGeneration)
+			return false;
+		callback();
+		return true;
+	}
+
+	template <typename ReadCallback>
+	void Read(ReadCallback callback) const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		callback();
+	}
+
+private:
+	std::atomic<uint64_t> m_generation = 0;
+	mutable std::mutex m_mutex;
+};
 
 
 struct ActivePictureBounds

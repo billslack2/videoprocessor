@@ -40,6 +40,39 @@ namespace VideoProcessorTest
 			Assert::IsFalse(decision.verticalWarp);
 		}
 
+		TEST_METHOD(SharedRuntimeSnapshotContainsTheFinalAlphaNlsDecision)
+		{
+			const uint64_t rendererGeneration =
+				MadVRShaderLoader::BeginRendererGeneration();
+			const MadVRNlsMappingDecision decision =
+				EvaluateMadVRNlsMapping(
+					true, 1.90, 2.35, 5.0, 1.0, false);
+			MadVRShaderLoader::SetRuntimeNlsTargetAspect(2.35);
+			MadVRShaderLoader::SetRuntimeNlsDecision(decision);
+			Assert::IsTrue(MadVRShaderLoader::SetRuntimeActivePictureGeometry({
+				1.90, 0.0, 0.03, 1.0, 0.97,
+				7, rendererGeneration, true }));
+			MadVRShaderLoader::SetRuntimeShaderSelection(
+				"nls_alpha", "nls_alpha", decision.mode);
+
+			const MadVRShaderRuntimeSnapshot snapshot =
+				MadVRShaderLoader::GetRuntimeShaderState();
+			Assert::AreEqual(static_cast<int>(decision.mode),
+				static_cast<int>(snapshot.nlsMode));
+			Assert::AreEqual(static_cast<int>(decision.mode),
+				static_cast<int>(snapshot.nlsDecision.mode));
+			Assert::AreEqual(decision.sourceAspect,
+				snapshot.nlsDecision.sourceAspect, 0.000001);
+			Assert::AreEqual(decision.targetAspect,
+				snapshot.nlsDecision.targetAspect, 0.000001);
+			Assert::AreEqual(decision.stretchRatio,
+				snapshot.nlsDecision.stretchRatio, 0.000001);
+			Assert::AreEqual(decision.verticalWarp,
+				snapshot.nlsDecision.verticalWarp);
+			Assert::AreEqual(decision.reason.c_str(),
+				snapshot.nlsDecision.reason.c_str());
+		}
+
 		TEST_METHOD(ImaxContentUsesNonlinearHorizontalMapping)
 		{
 			const MadVRNlsMappingDecision decision =

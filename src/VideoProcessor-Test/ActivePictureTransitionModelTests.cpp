@@ -292,6 +292,45 @@ namespace VideoProcessorTest
 			Assert::AreEqual(ScopeBounds().bottom, republished.bounds.bottom);
 		}
 
+		TEST_METHOD(ResetBetweenAnalysisAndPublicationRejectsOldGeneration)
+		{
+			ActivePicturePublicationGate gate;
+			const uint64_t analyzedGeneration = gate.Generation();
+			int visibleAuthority = 7;
+
+			gate.Reset([&visibleAuthority]()
+			{
+				visibleAuthority = 0;
+			});
+			const bool published = gate.TryPublish(
+				analyzedGeneration, [&visibleAuthority]()
+				{
+					visibleAuthority = 9;
+				});
+
+			Assert::IsFalse(published);
+			Assert::AreEqual(0, visibleAuthority);
+			Assert::AreEqual<uint64_t>(1, gate.Generation());
+		}
+
+		TEST_METHOD(ResetClearsAnAtomicCurrentGenerationPublication)
+		{
+			ActivePicturePublicationGate gate;
+			int visibleAuthority = 0;
+			Assert::IsTrue(gate.TryPublish(gate.Generation(),
+				[&visibleAuthority]()
+				{
+					visibleAuthority = 9;
+				}));
+			gate.Reset([&visibleAuthority]()
+			{
+				visibleAuthority = 0;
+			});
+
+			Assert::AreEqual(0, visibleAuthority);
+			Assert::AreEqual<uint64_t>(1, gate.Generation());
+		}
+
 		TEST_METHOD(FullRasterIsImmediateSafeStartupAuthority)
 		{
 			ActivePictureTransitionModel model;

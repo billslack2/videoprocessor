@@ -6151,6 +6151,7 @@ struct LibplaceboVideoRenderer::Impl
 					finalNlsDecision.reason =
 						"GLSL hook is unavailable; preserving safe passthrough";
 				}
+				MadVRShaderLoader::SetRuntimeNlsDecision(finalNlsDecision);
 				if (finalNlsDecision.mode == MadVRNlsMappingMode::ACTIVE)
 				{
 					renderParams.hooks = &nlsHook;
