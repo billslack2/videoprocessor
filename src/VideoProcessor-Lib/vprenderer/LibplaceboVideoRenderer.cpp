@@ -2462,28 +2462,32 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t scopeSubtitleHoldMs = 2000;
 	int scopeSubtitlePaddingPixels = 20;
 	uint64_t scopeSubtitleAnalysisFrame = 0;
+	int scopeSubtitlePictureLeft = 0;
 	int scopeSubtitlePictureTop = 0;
+	int scopeSubtitlePictureRight = 0;
 	int scopeSubtitlePictureBottom = 0;
+	int scopeSubtitleDetectedLeft = 0;
 	int scopeSubtitleDetectedBottom = 0;
 	int scopeSubtitleDetectedTop = 0;
+	int scopeSubtitleDetectedRight = 0;
+	uint64_t scopeSubtitleLeftLastDetectionTick = 0;
 	uint64_t scopeSubtitleLastDetectionTick = 0;
 	uint64_t scopeSubtitleTopLastDetectionTick = 0;
+	uint64_t scopeSubtitleRightLastDetectionTick = 0;
 	uint64_t scopeSubtitleEvidenceSourceGeneration = 0;
 	int scopeSubtitleOppositeCandidateSide = 0;
 	int scopeSubtitleOppositeCandidateHits = 0;
 	float scopeSubtitleShiftSourcePixels = 0.0f;
 	bool scopeSubtitleWasActive = false;
 	bool scopeSubtitleWasTopActive = false;
-	// Source-baked controls and menus may briefly light one or both already-
-	// proven letterbox bars. Keep the previously trusted movie bounds long
-	// enough for the bar-content pass to fit their measured extents rather than
-	// adopting a control panel's outer rectangle as movie geometry.
-	uint64_t scopeOverlayCandidateDeadlineTick = 0;
-	ActivePictureBounds scopeOverlayCandidateBase;
-	ActivePictureBounds scopeOverlayCandidateBounds;
-	uint64_t scopeOverlayCandidateSourceGeneration = 0;
-	static constexpr uint64_t ACTIVE_PICTURE_OVERLAY_CANDIDATE_HOLD_MS =
-		8000;
+	// The detector supplies a coarse four-edge envelope while the denser bar
+	// pass below catches smaller source-baked UI. Outward evidence is renewable
+	// for as long as it remains visible; the configured hold is used only as a
+	// slow-in release delay, never as a maximum lifetime.
+	ActivePictureBounds scopePresentationEvidenceBase;
+	ActivePictureBounds scopePresentationEvidenceBounds;
+	uint64_t scopePresentationEvidenceLastTick = 0;
+	uint64_t scopePresentationEvidenceSourceGeneration = 0;
 	static constexpr uint64_t ACTIVE_PICTURE_SCENE_VERIFICATION_MS = 500;
 	uint64_t activePictureSceneVerificationDeadlineTick = 0;
 	bool sceneVerificationGeometryAvailable = false;
@@ -3260,12 +3264,12 @@ struct LibplaceboVideoRenderer::Impl
 			scopeSubtitlePaddingPixels);
 	}
 
-	void ClearScopeOverlayCandidate()
+	void ClearScopePresentationEvidence()
 	{
-		scopeOverlayCandidateDeadlineTick = 0;
-		scopeOverlayCandidateBase = {};
-		scopeOverlayCandidateBounds = {};
-		scopeOverlayCandidateSourceGeneration = 0;
+		scopePresentationEvidenceBase = {};
+		scopePresentationEvidenceBounds = {};
+		scopePresentationEvidenceLastTick = 0;
+		scopePresentationEvidenceSourceGeneration = 0;
 	}
 
 	void ClearScopeSubtitleEvidence()
@@ -3274,16 +3278,22 @@ struct LibplaceboVideoRenderer::Impl
 		scopeSubtitleShiftSourcePixels = 0.0f;
 		scopeSubtitleWasActive = false;
 		scopeSubtitleWasTopActive = false;
+		scopeSubtitlePictureLeft = 0;
 		scopeSubtitlePictureTop = 0;
+		scopeSubtitlePictureRight = 0;
 		scopeSubtitlePictureBottom = 0;
+		scopeSubtitleDetectedLeft = 0;
 		scopeSubtitleDetectedBottom = 0;
 		scopeSubtitleDetectedTop = 0;
+		scopeSubtitleDetectedRight = 0;
+		scopeSubtitleLeftLastDetectionTick = 0;
 		scopeSubtitleLastDetectionTick = 0;
 		scopeSubtitleTopLastDetectionTick = 0;
+		scopeSubtitleRightLastDetectionTick = 0;
 		scopeSubtitleOppositeCandidateSide = 0;
 		scopeSubtitleOppositeCandidateHits = 0;
 		scopeSubtitleEvidenceSourceGeneration = 0;
-		ClearScopeOverlayCandidate();
+		ClearScopePresentationEvidence();
 	}
 
 	float UpdateScopeSubtitleShift(
@@ -3291,7 +3301,7 @@ struct LibplaceboVideoRenderer::Impl
 		int width,
 		int height,
 		bool scopeScreenActive,
-		const ActivePictureBounds* verticalBarAuthority,
+		const ActivePictureBounds* barAuthority,
 		bool forceAnalysis = false,
 		int* detectedBarSides = nullptr)
 	{
@@ -3301,35 +3311,38 @@ struct LibplaceboVideoRenderer::Impl
 		const bool sourceIsCurrent = source && source->IsValid() &&
 			source->width == width && source->height == height &&
 			width >= 320 && height >= 180;
-		const bool authorityIsCurrentVerticalBars =
-			verticalBarAuthority &&
-			verticalBarAuthority->rasterWidth == width &&
-			verticalBarAuthority->rasterHeight == height &&
-			verticalBarAuthority->left >= 0 &&
-			verticalBarAuthority->right <= width &&
-			verticalBarAuthority->top > 0 &&
-			verticalBarAuthority->bottom < height &&
-			verticalBarAuthority->left < verticalBarAuthority->right &&
-			verticalBarAuthority->top < verticalBarAuthority->bottom;
+		const bool authorityIsCurrentBars =
+			barAuthority &&
+			barAuthority->rasterWidth == width &&
+			barAuthority->rasterHeight == height &&
+			barAuthority->left >= 0 && barAuthority->right <= width &&
+			barAuthority->top >= 0 && barAuthority->bottom <= height &&
+			barAuthority->left < barAuthority->right &&
+			barAuthority->top < barAuthority->bottom &&
+			(barAuthority->left > 0 || barAuthority->top > 0 ||
+			 barAuthority->right < width || barAuthority->bottom < height);
 		if (!scopeScreenActive || !sourceIsCurrent ||
-			!authorityIsCurrentVerticalBars)
+			!authorityIsCurrentBars)
 		{
-			// Receiver controls and ordinary picture detail are in-picture UI
-			// unless shared authority proves the rows are encoded letterbox bars.
-			// They may never pan a full-raster or pillarbox-only presentation.
+			// Receiver controls and ordinary picture detail are in-picture UI unless
+			// shared authority proves one or more encoded bars around the picture.
 			ClearScopeSubtitleEvidence();
 			return 0.0f;
 		}
 		if (sourceIsCurrent &&
 			(scopeSubtitleEvidenceSourceGeneration != source->generation ||
-			 scopeSubtitlePictureTop != verticalBarAuthority->top ||
-			 scopeSubtitlePictureBottom != verticalBarAuthority->bottom))
+			 scopeSubtitlePictureLeft != barAuthority->left ||
+			 scopeSubtitlePictureTop != barAuthority->top ||
+			 scopeSubtitlePictureRight != barAuthority->right ||
+			 scopeSubtitlePictureBottom != barAuthority->bottom))
 		{
 			// Held bar content belongs to one exact authority rectangle and source.
 			ClearScopeSubtitleEvidence();
 			scopeSubtitleEvidenceSourceGeneration = source->generation;
-			scopeSubtitlePictureTop = verticalBarAuthority->top;
-			scopeSubtitlePictureBottom = verticalBarAuthority->bottom;
+			scopeSubtitlePictureLeft = barAuthority->left;
+			scopeSubtitlePictureTop = barAuthority->top;
+			scopeSubtitlePictureRight = barAuthority->right;
+			scopeSubtitlePictureBottom = barAuthority->bottom;
 		}
 
 		// This inexpensive pass deliberately avoids OCR and models. Shared crop
@@ -3379,7 +3392,7 @@ struct LibplaceboVideoRenderer::Impl
 			// meaningful non-black content inside a confirmed encoded black bar
 			// must remain visible. It does not try to recognize glyphs, language,
 			// alignment, or subtitle style.
-			if (scopeSubtitleFit &&
+			if ((scopeSubtitleFit || automaticSourceCrop) &&
 				scopeSubtitlePictureTop > 0 &&
 				scopeSubtitlePictureBottom < height)
 			{
@@ -3557,6 +3570,90 @@ struct LibplaceboVideoRenderer::Impl
 					scopeSubtitleLastDetectionTick = now;
 					scopeSubtitleOppositeCandidateSide = 0;
 					scopeSubtitleOppositeCandidateHits = 0;
+				}
+			}
+
+			if (automaticSourceCrop &&
+				(scopeSubtitlePictureLeft > 0 ||
+				 scopeSubtitlePictureRight < width))
+			{
+				const int y0 = height / 32;
+				const int y1 = height - y0;
+				const int yStep = std::max(1, height / 1080);
+				const int columnStep = std::max(1, width / 1920);
+				const int contentLimit = std::min(1023, blackCode + 32);
+				const int sampledRows = std::max(1, (y1 - y0) / yStep);
+				const int minimumContentSamples =
+					std::max(8, sampledRows / 192);
+				const int minimumContentSpan = std::max(16, height / 48);
+				const int minimumContentColumns = 2;
+				const int barInset = std::max(1, columnStep);
+
+				auto findSideContent =
+					[&](int searchLeft, int searchRight,
+						int& detectedLeft, int& detectedRight)
+					{
+						detectedLeft = width;
+						detectedRight = 0;
+						int contentColumns = 0;
+						for (int x = searchLeft; x < searchRight;
+							x += columnStep)
+						{
+							int contentSamples = 0;
+							int top = height;
+							int bottom = 0;
+							for (int y = y0; y < y1; y += yStep)
+							{
+								if (lumaCode(x, y) <= contentLimit)
+									continue;
+								++contentSamples;
+								top = std::min(top, y);
+								bottom = std::max(bottom, y);
+							}
+							if (contentSamples < minimumContentSamples ||
+								bottom - top < minimumContentSpan)
+								continue;
+							++contentColumns;
+							detectedLeft = std::min(detectedLeft, x);
+							detectedRight =
+								std::max(detectedRight, x + columnStep);
+						}
+						if (contentColumns < minimumContentColumns)
+						{
+							detectedLeft = 0;
+							detectedRight = 0;
+							return false;
+						}
+						return true;
+					};
+
+				int leftContentLeft = 0;
+				int leftContentRight = 0;
+				int rightContentLeft = 0;
+				int rightContentRight = 0;
+				const bool leftContent =
+					scopeSubtitlePictureLeft > barInset * 2 &&
+					findSideContent(barInset,
+						scopeSubtitlePictureLeft - barInset,
+						leftContentLeft, leftContentRight);
+				const bool rightContent =
+					scopeSubtitlePictureRight + barInset * 2 < width &&
+					findSideContent(scopeSubtitlePictureRight + barInset,
+						width - barInset,
+						rightContentLeft, rightContentRight);
+				if (leftContent)
+				{
+					scopeSubtitleDetectedLeft = leftContentLeft;
+					scopeSubtitleLeftLastDetectionTick = now;
+					if (detectedBarSides)
+						*detectedBarSides |= 4;
+				}
+				if (rightContent)
+				{
+					scopeSubtitleDetectedRight = rightContentRight;
+					scopeSubtitleRightLastDetectionTick = now;
+					if (detectedBarSides)
+						*detectedBarSides |= 8;
 				}
 			}
 		}
@@ -4980,7 +5077,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (scheduledAnalysis || forceAnalysis)
 		{
 			const ActivePictureBounds geometryBeforeObservation = nlsGeometry;
-			const bool hadCurrentTrustedScopeGeometry =
+			const bool hadCurrentTrustedCropGeometry =
 				nlsGeometryAvailable &&
 				nlsGeometryClassification ==
 					ActivePictureClassification::BAR_CROP_TRUSTED &&
@@ -4999,29 +5096,6 @@ struct LibplaceboVideoRenderer::Impl
 				: ActivePictureBounds{};
 			latestActivePictureEvidenceFrame = frameNumber;
 			const uint64_t now = GetTickCount64();
-			const bool outwardTrustedGeometryCandidate =
-				automaticSourceCrop && scopeSubtitleFit && scopeScreenActive &&
-				hadCurrentTrustedScopeGeometry && evidence.available &&
-				evidence.classification ==
-					ActivePictureClassification::BAR_CROP_TRUSTED &&
-				AlphaSourceCrop::IsSameWidthVerticalOutwardCandidate(
-					geometryBeforeObservation, evidence.trustedBounds,
-					analysisSource.width, analysisSource.height);
-			bool outwardTrustedBarContentCandidate = false;
-			if (outwardTrustedGeometryCandidate)
-			{
-				// This is deliberately synchronous. The proven old bars are the
-				// authority; any measured source-baked content in them is fitted to
-				// its actual edge(s), not to a control-specific shape or label.
-				int candidateBarSides = 0;
-				UpdateScopeSubtitleShift(
-					&analysisSource, analysisSource.width, analysisSource.height,
-					scopeScreenActive, &geometryBeforeObservation, true,
-					&candidateBarSides);
-				outwardTrustedBarContentCandidate =
-					AlphaSourceCrop::ShouldRetainBarContentFit(
-						outwardTrustedGeometryCandidate, candidateBarSides);
-			}
 			auto sameBounds = [](const ActivePictureBounds& left,
 				const ActivePictureBounds& right)
 			{
@@ -5030,70 +5104,67 @@ struct LibplaceboVideoRenderer::Impl
 					left.rasterWidth == right.rasterWidth &&
 					left.rasterHeight == right.rasterHeight;
 			};
-			const bool candidateStatePresent =
-				scopeOverlayCandidateDeadlineTick != 0 &&
-				scopeOverlayCandidateSourceGeneration == analysisSource.generation &&
-				scopeOverlayCandidateBase.rasterWidth == analysisSource.width &&
-				scopeOverlayCandidateBase.rasterHeight == analysisSource.height;
-			const bool candidateBaseIsCurrent = candidateStatePresent &&
-				sameBounds(geometryBeforeObservation, scopeOverlayCandidateBase);
-			const bool evidenceReaffirmsCandidateBase =
-				evidence.available && evidence.classification ==
-					ActivePictureClassification::BAR_CROP_TRUSTED &&
-				candidateBaseIsCurrent &&
-				sameBounds(evidence.trustedBounds, scopeOverlayCandidateBase);
-			const bool evidenceMatchesOverlayCandidate =
-				outwardTrustedBarContentCandidate && candidateBaseIsCurrent &&
-				sameBounds(evidence.trustedBounds, scopeOverlayCandidateBounds);
-			if (evidenceReaffirmsCandidateBase &&
-				!outwardTrustedGeometryCandidate)
+			if (automaticSourceCrop && scopeScreenActive &&
+				hadCurrentTrustedCropGeometry && evidence.available)
 			{
-				// The source-baked bar content has gone. Reset only candidate proof and retain the exact
-				// returning movie rectangle without carrying its old deadline into a
-				// later, unrelated presentation.
-				nlsTransition.Reset();
-				ClearScopeOverlayCandidate();
-			}
-			else if (candidateStatePresent && !evidenceMatchesOverlayCandidate)
-			{
-				// Any base/candidate identity change, or loss of current bar-content
-				// proof, starts a normal geometry transition. Do not revive this
-				// snapshot if an earlier rectangle later reappears.
-				ClearScopeOverlayCandidate();
-			}
-			bool overlayCandidateArmedThisFrame = false;
-			if (outwardTrustedBarContentCandidate && !candidateStatePresent)
-			{
-				// Do not let source-baked bar content redefine the movie rectangle.
-				// The content pass below decides the exact edge(s) needed to fit it.
-				scopeOverlayCandidateBase = geometryBeforeObservation;
-				scopeOverlayCandidateBounds = evidence.trustedBounds;
-				scopeOverlayCandidateSourceGeneration = analysisSource.generation;
-				scopeOverlayCandidateDeadlineTick = now +
-					ACTIVE_PICTURE_OVERLAY_CANDIDATE_HOLD_MS;
-				overlayCandidateArmedThisFrame = true;
-				DebugLog::Log(
-					"Alpha scope overlay fit: holding trusted rect=%d,%d-%d,%d against outward candidate=%d,%d-%d,%d for %llums",
-					geometryBeforeObservation.left, geometryBeforeObservation.top,
-					geometryBeforeObservation.right, geometryBeforeObservation.bottom,
-					evidence.trustedBounds.left, evidence.trustedBounds.top,
-					evidence.trustedBounds.right, evidence.trustedBounds.bottom,
-					static_cast<unsigned long long>(
-						ACTIVE_PICTURE_OVERLAY_CANDIDATE_HOLD_MS));
-			}
-			const bool scopeOverlayCandidateHoldActive =
-				AlphaSourceCrop::IsBarContentFitHoldActive(
-					overlayCandidateArmedThisFrame ||
-						AlphaSourceCrop::ShouldContinueBarContentFitSnapshot(
-							candidateBaseIsCurrent,
-							evidenceMatchesOverlayCandidate),
-					now, scopeOverlayCandidateDeadlineTick);
-			if (scopeOverlayCandidateDeadlineTick != 0 &&
-				now >= scopeOverlayCandidateDeadlineTick)
-			{
-				DebugLog::Log(
-					"Alpha scope overlay fit: bounded hold expired; accepting fresh active-picture authority");
-				ClearScopeOverlayCandidate();
+				const ActivePictureBounds& observed =
+					evidence.classification ==
+						ActivePictureClassification::BAR_CROP_TRUSTED
+					? evidence.trustedBounds : evidence.proposedBounds;
+				ActivePictureBounds outward = geometryBeforeObservation;
+				outward.left = std::min(outward.left, observed.left) & ~1;
+				outward.top = std::min(outward.top, observed.top) & ~1;
+				outward.right = std::min(analysisSource.width,
+					(std::max(outward.right, observed.right) + 1) & ~1);
+				outward.bottom = std::min(analysisSource.height,
+					(std::max(outward.bottom, observed.bottom) + 1) & ~1);
+				outward.rasterWidth = analysisSource.width;
+				outward.rasterHeight = analysisSource.height;
+				outward.aspectRatio = static_cast<double>(
+					outward.right - outward.left) /
+					std::max(1, outward.bottom - outward.top);
+				outward.symmetricBars = false;
+				const bool expands =
+					outward.left < geometryBeforeObservation.left ||
+					outward.top < geometryBeforeObservation.top ||
+					outward.right > geometryBeforeObservation.right ||
+					outward.bottom > geometryBeforeObservation.bottom;
+				if (expands)
+				{
+					const bool sameBase =
+						scopePresentationEvidenceSourceGeneration ==
+							analysisSource.generation &&
+						sameBounds(scopePresentationEvidenceBase,
+							geometryBeforeObservation);
+					if (!sameBase)
+					{
+						scopePresentationEvidenceBase = geometryBeforeObservation;
+						scopePresentationEvidenceBounds = outward;
+					}
+					else
+					{
+						// Match mpv cropdetect's reset=0 behavior: while outward
+						// content is present, retain the widest measured envelope.
+						scopePresentationEvidenceBounds.left = std::min(
+							scopePresentationEvidenceBounds.left, outward.left);
+						scopePresentationEvidenceBounds.top = std::min(
+							scopePresentationEvidenceBounds.top, outward.top);
+						scopePresentationEvidenceBounds.right = std::max(
+							scopePresentationEvidenceBounds.right, outward.right);
+						scopePresentationEvidenceBounds.bottom = std::max(
+							scopePresentationEvidenceBounds.bottom, outward.bottom);
+						scopePresentationEvidenceBounds.aspectRatio =
+							static_cast<double>(
+								scopePresentationEvidenceBounds.right -
+								scopePresentationEvidenceBounds.left) /
+							std::max(1,
+								scopePresentationEvidenceBounds.bottom -
+								scopePresentationEvidenceBounds.top);
+					}
+					scopePresentationEvidenceSourceGeneration =
+						analysisSource.generation;
+					scopePresentationEvidenceLastTick = now;
+				}
 			}
 			sceneVerificationLatestSupportsCrop =
 				sceneVerificationGeometryAvailable && evidence.available &&
@@ -5140,20 +5211,6 @@ struct LibplaceboVideoRenderer::Impl
 				// to reaffirm authority, so ambiguity expands to full raster.
 				nlsGeometry = transition.stableBounds;
 				nlsGeometryAvailable = true;
-			}
-			if (scopeOverlayCandidateHoldActive)
-			{
-				// Keep one previously published scope authority while an outward-only
-				// candidate is checked for source-baked bar content. This guarantees
-				// that source-baked content expands only its measured edge(s) instead
-				// of causing a transient full-raster fit or invented opposite edge.
-				nlsGeometry = scopeOverlayCandidateBase;
-				nlsGeometryAvailable = true;
-				nlsTransitionWithdrawn = false;
-				nlsGeometryClassification =
-					ActivePictureClassification::BAR_CROP_TRUSTED;
-				nlsGeometrySourceGeneration = analysisSource.generation;
-				latestActivePictureObservationSupportsCrop = true;
 			}
 			if (nlsGeometryAvailable && evidence.available &&
 				evidence.classification ==
@@ -5979,6 +6036,10 @@ struct LibplaceboVideoRenderer::Impl
 					? sceneVerificationGeometrySourceGeneration
 					: nlsGeometrySourceGeneration;
 			const uint64_t overlayNow = GetTickCount64();
+			const bool leftBarContentActive =
+				scopeSubtitleLeftLastDetectionTick != 0 &&
+				overlayNow - scopeSubtitleLeftLastDetectionTick <=
+					scopeSubtitleHoldMs;
 			const bool topBarContentActive =
 				scopeSubtitleTopLastDetectionTick != 0 &&
 				overlayNow - scopeSubtitleTopLastDetectionTick <=
@@ -5987,19 +6048,60 @@ struct LibplaceboVideoRenderer::Impl
 				scopeSubtitleLastDetectionTick != 0 &&
 				overlayNow - scopeSubtitleLastDetectionTick <=
 					scopeSubtitleHoldMs;
-			const bool barContentFitActive =
-				topBarContentActive || bottomBarContentActive;
+			const bool rightBarContentActive =
+				scopeSubtitleRightLastDetectionTick != 0 &&
+				overlayNow - scopeSubtitleRightLastDetectionTick <=
+					scopeSubtitleHoldMs;
+			auto sameBounds = [](const ActivePictureBounds& left,
+				const ActivePictureBounds& right)
+			{
+				return left.left == right.left && left.top == right.top &&
+					left.right == right.right && left.bottom == right.bottom &&
+					left.rasterWidth == right.rasterWidth &&
+					left.rasterHeight == right.rasterHeight;
+			};
+			const bool detectorEnvelopeActive =
+				scopePresentationEvidenceLastTick != 0 &&
+				overlayNow - scopePresentationEvidenceLastTick <=
+					scopeSubtitleHoldMs &&
+				scopePresentationEvidenceSourceGeneration == frameGeneration &&
+				effectiveGeometryAvailable &&
+				sameBounds(scopePresentationEvidenceBase, effectiveGeometry);
+			const bool barContentFitActive = detectorEnvelopeActive ||
+				leftBarContentActive || topBarContentActive ||
+				rightBarContentActive || bottomBarContentActive;
 			ActivePictureBounds outwardExpansion = effectiveGeometry;
 			bool outwardExpansionAvailable = false;
 			if (barContentFitActive && effectiveGeometryAvailable &&
-				scopeSubtitleEvidenceSourceGeneration == frameGeneration)
+				((scopeSubtitleEvidenceSourceGeneration == frameGeneration) ||
+				 detectorEnvelopeActive))
 			{
-				const int margin = std::max(8, height / 90) +
+				if (detectorEnvelopeActive)
+				{
+					outwardExpansion.left = std::min(outwardExpansion.left,
+						scopePresentationEvidenceBounds.left);
+					outwardExpansion.top = std::min(outwardExpansion.top,
+						scopePresentationEvidenceBounds.top);
+					outwardExpansion.right = std::max(outwardExpansion.right,
+						scopePresentationEvidenceBounds.right);
+					outwardExpansion.bottom = std::max(outwardExpansion.bottom,
+						scopePresentationEvidenceBounds.bottom);
+				}
+				const int verticalMargin = std::max(8, height / 90) +
 					scopeSubtitlePaddingPixels;
+				const int horizontalMargin = std::max(8, width / 160) +
+					scopeSubtitlePaddingPixels;
+				if (leftBarContentActive && scopeSubtitleDetectedLeft > 0)
+				{
+					const int expandedLeft = std::max(
+						0, scopeSubtitleDetectedLeft - horizontalMargin) & ~1;
+					outwardExpansion.left = std::min(
+						outwardExpansion.left, expandedLeft);
+				}
 				if (topBarContentActive && scopeSubtitleDetectedTop > 0)
 				{
 					const int expandedTop = std::max(
-						0, scopeSubtitleDetectedTop - margin) & ~1;
+						0, scopeSubtitleDetectedTop - verticalMargin) & ~1;
 					outwardExpansion.top = std::min(
 						outwardExpansion.top, expandedTop);
 				}
@@ -6007,9 +6109,16 @@ struct LibplaceboVideoRenderer::Impl
 					scopeSubtitleDetectedBottom > 0)
 				{
 					const int expandedBottom = std::min(height,
-						(scopeSubtitleDetectedBottom + margin + 1) & ~1);
+						(scopeSubtitleDetectedBottom + verticalMargin + 1) & ~1);
 					outwardExpansion.bottom = std::max(
 						outwardExpansion.bottom, expandedBottom);
+				}
+				if (rightBarContentActive && scopeSubtitleDetectedRight > 0)
+				{
+					const int expandedRight = std::min(width,
+						(scopeSubtitleDetectedRight + horizontalMargin + 1) & ~1);
+					outwardExpansion.right = std::max(
+						outwardExpansion.right, expandedRight);
 				}
 				outwardExpansion.rasterWidth = width;
 				outwardExpansion.rasterHeight = height;
@@ -6036,7 +6145,7 @@ struct LibplaceboVideoRenderer::Impl
 				latestObservationIsProvisional;
 			cropInput.latestObservationIsUnavailable =
 				latestObservationIsUnavailable;
-			cropInput.subtitleDisplacementActive = barContentFitActive;
+			cropInput.outwardPresentationActive = barContentFitActive;
 			cropInput.outwardExpansionAvailable = outwardExpansionAvailable;
 			cropInput.classification = effectiveClassification;
 			cropInput.geometry = effectiveGeometry;

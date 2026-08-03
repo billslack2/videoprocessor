@@ -178,6 +178,38 @@ namespace VideoProcessorTest
 			Assert::IsTrue(evidence.trustedBounds.right <= 282);
 		}
 
+		TEST_METHOD(SourceBakedTopControlExpandsTheMeasuredScopeEnvelope)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(0, 22, 320, 158);
+			frame.FillRectangle(0, 8, 320, 18, 600);
+			const auto evidence =
+				ExtractP010ActivePictureEvidence(frame.View());
+			Assert::IsTrue(evidence.available);
+			Assert::IsTrue(evidence.proposedBounds.top <= 10);
+			Assert::IsTrue(evidence.proposedBounds.top < 22);
+			Assert::AreNotEqual(
+				static_cast<int>(
+					ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(evidence.classification));
+		}
+
+		TEST_METHOD(SourceBakedSideControlExpandsTheMeasuredPillarEnvelope)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(40, 0, 280, 180);
+			frame.FillRectangle(10, 0, 30, 180, 600);
+			const auto evidence =
+				ExtractP010ActivePictureEvidence(frame.View());
+			Assert::IsTrue(evidence.available);
+			Assert::IsTrue(evidence.proposedBounds.left <= 12);
+			Assert::IsTrue(evidence.proposedBounds.left < 40);
+			Assert::AreNotEqual(
+				static_cast<int>(
+					ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(evidence.classification));
+		}
+
 		TEST_METHOD(TrustedVerticalBarsIgnoreUntrustedHorizontalArtwork)
 		{
 			P010Frame frame(320, 180);

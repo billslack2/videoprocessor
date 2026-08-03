@@ -138,7 +138,7 @@ namespace Tests
 		TEST_METHOD(SubtitleOverlayExpandsOnlyTheRequiredOuterEdge)
 		{
 			Input input = TrustedScopeCrop();
-			input.subtitleDisplacementActive = true;
+			input.outwardPresentationActive = true;
 			input.outwardExpansionAvailable = true;
 			input.outwardExpansion = input.geometry;
 			input.outwardExpansion.bottom = 2100;
@@ -155,7 +155,7 @@ namespace Tests
 		TEST_METHOD(BarContentFitExpandsOnlyTheDetectedEdges)
 		{
 			Input input = TrustedScopeCrop();
-			input.subtitleDisplacementActive = true;
+			input.outwardPresentationActive = true;
 			input.outwardExpansionAvailable = true;
 			input.outwardExpansion = input.geometry;
 			// A top-bar intrusion must not manufacture a matching bottom expansion
@@ -177,54 +177,32 @@ namespace Tests
 			Assert::AreEqual(2064, decision.sourceBounds.bottom);
 		}
 
-		TEST_METHOD(SameWidthOutwardCandidateRequiresVerticalContainment)
+		TEST_METHOD(OutwardPresentationSupportsAllFourEdgesAndFullRaster)
 		{
-			const ActivePictureBounds base = {
-				0, 276, 3840, 1884, 3840, 2160,
-				3840.0 / (1884 - 276), true };
-			ActivePictureBounds candidate = base;
-			candidate.top = 72;
-			candidate.bottom = 2092;
-			candidate.aspectRatio = 3840.0 / (2092 - 72);
-			Assert::IsTrue(IsSameWidthVerticalOutwardCandidate(
-				base, candidate, 3840, 2160));
+			Input full = TrustedScopeCrop();
+			full.outwardPresentationActive = true;
+			full.outwardExpansionAvailable = true;
+			full.outwardExpansion = {
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false };
+			full.outwardExpansionSourceGeneration = 7;
+			const Decision fullDecision = Evaluate(full);
+			Assert::IsTrue(fullDecision.outwardExpanded);
+			Assert::AreEqual(0, fullDecision.sourceBounds.top);
+			Assert::AreEqual(2160, fullDecision.sourceBounds.bottom);
 
-			ActivePictureBounds changedHorizontal = candidate;
-			changedHorizontal.left = 2;
-			Assert::IsFalse(IsSameWidthVerticalOutwardCandidate(
-				base, changedHorizontal, 3840, 2160));
-
-			ActivePictureBounds inward = base;
-			inward.top = 300;
-			inward.aspectRatio = 3840.0 / (1884 - 300);
-			Assert::IsFalse(IsSameWidthVerticalOutwardCandidate(
-				base, inward, 3840, 2160));
-
-			ActivePictureBounds fullRaster = base;
-			fullRaster.top = 0;
-			fullRaster.bottom = 2160;
-			fullRaster.aspectRatio = 3840.0 / 2160.0;
-			Assert::IsFalse(IsSameWidthVerticalOutwardCandidate(
-				base, fullRaster, 3840, 2160));
-
-			Assert::IsTrue(ShouldRetainBarContentFit(true, 1));
-			Assert::IsTrue(ShouldRetainBarContentFit(true, 2));
-			Assert::IsTrue(ShouldRetainBarContentFit(true, 3));
-			Assert::IsFalse(ShouldRetainBarContentFit(true, 0));
-			Assert::IsFalse(ShouldRetainBarContentFit(false, 1));
-
-			// A captured source-baked control persisted for 154 frames at 23.976Hz
-			// (about 6423ms), so the hard 8s ceiling must still hold it.
-			Assert::IsTrue(IsBarContentFitHoldActive(
-				true, 1000 + 6423, 1000 + 8000));
-			Assert::IsFalse(IsBarContentFitHoldActive(
-				true, 9000, 9000));
-			Assert::IsFalse(IsBarContentFitHoldActive(
-				false, 7423, 9000));
-			Assert::IsTrue(ShouldContinueBarContentFitSnapshot(true, true));
-			// S/A -> B clears identity; a later A cannot revive stale S.
-			Assert::IsFalse(ShouldContinueBarContentFitSnapshot(true, false));
-			Assert::IsFalse(ShouldContinueBarContentFitSnapshot(false, true));
+			Input pillar = TrustedScopeCrop();
+			pillar.geometry = {
+				480, 0, 3360, 2160, 3840, 2160, 4.0 / 3.0, true };
+			pillar.outwardPresentationActive = true;
+			pillar.outwardExpansionAvailable = true;
+			pillar.outwardExpansion = {
+				120, 0, 3700, 2160, 3840, 2160,
+				3580.0 / 2160.0, false };
+			pillar.outwardExpansionSourceGeneration = 7;
+			const Decision pillarDecision = Evaluate(pillar);
+			Assert::IsTrue(pillarDecision.outwardExpanded);
+			Assert::AreEqual(120, pillarDecision.sourceBounds.left);
+			Assert::AreEqual(3700, pillarDecision.sourceBounds.right);
 		}
 
 		TEST_METHOD(ProvisionalOverlayWithinSceneHoldMayExpandExistingAuthority)
@@ -233,7 +211,7 @@ namespace Tests
 			input.latestObservationSupportsCrop = false;
 			input.latestObservationIsProvisional = true;
 			input.sceneVerificationHoldActive = true;
-			input.subtitleDisplacementActive = true;
+			input.outwardPresentationActive = true;
 			input.outwardExpansionAvailable = true;
 			input.outwardExpansion = input.geometry;
 			input.outwardExpansion.top = 100;
@@ -249,11 +227,11 @@ namespace Tests
 		TEST_METHOD(OverlayExpansionFailsSafeWhenMissingStaleOrInward)
 		{
 			Input missing = TrustedScopeCrop();
-			missing.subtitleDisplacementActive = true;
+			missing.outwardPresentationActive = true;
 			AssertFullRaster(Evaluate(missing));
 
 			Input stale = TrustedScopeCrop();
-			stale.subtitleDisplacementActive = true;
+			stale.outwardPresentationActive = true;
 			stale.outwardExpansionAvailable = true;
 			stale.outwardExpansion = stale.geometry;
 			stale.outwardExpansion.bottom = 2100;
@@ -261,7 +239,7 @@ namespace Tests
 			AssertFullRaster(Evaluate(stale));
 
 			Input inward = TrustedScopeCrop();
-			inward.subtitleDisplacementActive = true;
+			inward.outwardPresentationActive = true;
 			inward.outwardExpansionAvailable = true;
 			inward.outwardExpansion = inward.geometry;
 			inward.outwardExpansion.top = 300;
@@ -269,40 +247,40 @@ namespace Tests
 			AssertFullRaster(Evaluate(inward));
 		}
 
-		TEST_METHOD(OverlayExpansionRequiresCurrentTrustedOrProvisionalEvidence)
+		TEST_METHOD(CurrentOutwardEnvelopeIsSafeWithoutNewCropAuthority)
 		{
 			Input input = TrustedScopeCrop();
 			input.latestObservationSupportsCrop = false;
-			input.subtitleDisplacementActive = true;
+			input.outwardPresentationActive = true;
 			input.outwardExpansionAvailable = true;
 			input.outwardExpansion = input.geometry;
 			input.outwardExpansion.bottom = 2100;
 			input.outwardExpansionSourceGeneration = 7;
-			AssertFullRaster(Evaluate(input));
+			Assert::IsTrue(Evaluate(input).outwardExpanded);
 
 			input.latestObservationIsProvisional = true;
-			AssertFullRaster(Evaluate(input));
-			input.sceneVerificationHoldActive = true;
 			Assert::IsTrue(Evaluate(input).outwardExpanded);
 		}
 
-		TEST_METHOD(PillarboxOnlyAuthorityCannotDriveVerticalOverlayGeometry)
+		TEST_METHOD(PillarboxAuthorityCanDriveHorizontalPresentationFit)
 		{
 			Input input = TrustedScopeCrop();
 			input.geometry = {
 				480, 0, 3360, 2160, 3840, 2160, 4.0 / 3.0, true };
-			input.subtitleDisplacementActive = true;
+			input.outwardPresentationActive = true;
 			input.outwardExpansionAvailable = true;
 			input.outwardExpansion = input.geometry;
 			input.outwardExpansion.left = 400;
 			input.outwardExpansionSourceGeneration = 7;
-			AssertFullRaster(Evaluate(input));
+			const Decision decision = Evaluate(input);
+			Assert::IsTrue(decision.outwardExpanded);
+			Assert::AreEqual(400, decision.sourceBounds.left);
 		}
 
 		TEST_METHOD(ProfileEpochRequiresFreshOverlayEvidence)
 		{
 			Input overlaid = TrustedScopeCrop();
-			overlaid.subtitleDisplacementActive = true;
+			overlaid.outwardPresentationActive = true;
 			overlaid.outwardExpansionAvailable = true;
 			overlaid.outwardExpansion = overlaid.geometry;
 			overlaid.outwardExpansion.bottom = 2100;

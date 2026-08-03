@@ -75,14 +75,11 @@ namespace AlphaSourceCrop
 			(input.latestObservationIsProvisional ||
 			 input.latestObservationIsUnavailable);
 		const bool boundedOutwardExpansion =
-			input.subtitleDisplacementActive &&
+			input.outwardPresentationActive &&
 			input.outwardExpansionAvailable &&
 			input.outwardExpansionSourceGeneration != 0 &&
 			input.outwardExpansionSourceGeneration ==
-				input.frameSourceGeneration &&
-			(input.latestObservationSupportsCrop ||
-				(input.sceneVerificationHoldActive &&
-				 input.latestObservationIsProvisional));
+				input.frameSourceGeneration;
 		if (!input.latestObservationSupportsCrop &&
 			!boundedProvisionalHold && !boundedOutwardExpansion)
 		{
@@ -107,12 +104,12 @@ namespace AlphaSourceCrop
 			decision.reason = "shared crop bounds are not chroma aligned";
 			return decision;
 		}
-		if (input.subtitleDisplacementActive)
+		if (input.outwardPresentationActive)
 		{
 			if (!boundedOutwardExpansion)
 			{
 				decision.reason =
-					"subtitle displacement lacks current bounded outward evidence";
+					"outward presentation lacks current bounded evidence";
 				return decision;
 			}
 			if (!ValidBounds(input.outwardExpansion,
@@ -121,21 +118,7 @@ namespace AlphaSourceCrop
 					input.rasterWidth, input.rasterHeight))
 			{
 				decision.reason =
-					"subtitle outward expansion is invalid or not chroma aligned";
-				return decision;
-			}
-			const bool authorityHasVerticalBars =
-				input.geometry.top > 0 &&
-				input.geometry.bottom < input.rasterHeight;
-			const bool verticalOnlyExpansion =
-				input.outwardExpansion.left == input.geometry.left &&
-				input.outwardExpansion.right == input.geometry.right &&
-				(input.outwardExpansion.top < input.geometry.top ||
-				 input.outwardExpansion.bottom > input.geometry.bottom);
-			if (!authorityHasVerticalBars || !verticalOnlyExpansion)
-			{
-				decision.reason =
-					"overlay expansion requires trusted vertical letterbox bars";
+					"outward presentation bounds are invalid or not chroma aligned";
 				return decision;
 			}
 			const bool containsAuthority =
@@ -151,7 +134,7 @@ namespace AlphaSourceCrop
 			if (!containsAuthority || !actuallyExpands)
 			{
 				decision.reason =
-					"subtitle bounds do not expand outward from crop authority";
+					"presentation bounds do not expand outward from crop authority";
 				return decision;
 			}
 
@@ -170,47 +153,6 @@ namespace AlphaSourceCrop
 			? "generation-current shared crop authority accepted"
 			: "bounded scene verification retained current trusted crop";
 		return decision;
-	}
-
-	bool IsSameWidthVerticalOutwardCandidate(
-		const ActivePictureBounds& base,
-		const ActivePictureBounds& candidate,
-		int rasterWidth,
-		int rasterHeight)
-	{
-		return ValidBounds(base, rasterWidth, rasterHeight) &&
-			ValidBounds(candidate, rasterWidth, rasterHeight) &&
-			CropEdgesAreChromaAligned(base, rasterWidth, rasterHeight) &&
-			CropEdgesAreChromaAligned(candidate, rasterWidth, rasterHeight) &&
-			base.left == candidate.left && base.right == candidate.right &&
-			base.top > 0 && base.bottom < rasterHeight &&
-			candidate.top > 0 && candidate.bottom < rasterHeight &&
-			candidate.top <= base.top && candidate.bottom >= base.bottom &&
-			(candidate.top < base.top || candidate.bottom > base.bottom);
-	}
-
-	bool ShouldRetainBarContentFit(
-		bool sameWidthVerticalOutwardCandidate,
-		int barContentSides)
-	{
-		return sameWidthVerticalOutwardCandidate &&
-			(barContentSides & 3) != 0;
-	}
-
-	bool IsBarContentFitHoldActive(
-		bool barContentProofCurrent,
-		uint64_t currentTick,
-		uint64_t deadlineTick)
-	{
-		return barContentProofCurrent && deadlineTick != 0 &&
-			currentTick < deadlineTick;
-	}
-
-	bool ShouldContinueBarContentFitSnapshot(
-		bool baseIdentityCurrent,
-		bool candidateIdentityAndBarContentCurrent)
-	{
-		return baseIdentityCurrent && candidateIdentityAndBarContentCurrent;
 	}
 
 	SceneDecision EvaluateSceneBoundary(const SceneInput& input)

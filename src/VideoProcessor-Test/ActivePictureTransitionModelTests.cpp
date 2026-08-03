@@ -116,7 +116,7 @@ namespace VideoProcessorTest
 						Observe(model, after[direction], firstFrame);
 					Assert::IsFalse(probing.publish);
 					Assert::IsTrue(probing.stable);
-					Assert::IsTrue(probing.clearTransition);
+					Assert::IsFalse(probing.clearTransition);
 
 					const auto stable = Observe(
 						model, after[direction], firstFrame + interval);
@@ -279,6 +279,26 @@ namespace VideoProcessorTest
 			Assert::IsTrue(decision.stable);
 			Assert::AreEqual(0, decision.bounds.left);
 			Assert::AreEqual(3840, decision.bounds.right);
+		}
+
+		TEST_METHOD(FullRasterTransitionRetainsStableCropUntilConfirmed)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+			const ActivePictureBounds full = {
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false };
+			const auto probing = Observe(model, full, frame,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsFalse(probing.publish);
+			Assert::IsTrue(probing.stable);
+			Assert::IsFalse(probing.clearTransition);
+			Assert::AreEqual(ScopeBounds().top, probing.stableBounds.top);
+
+			const auto confirmed = Observe(model, full, frame + 1,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsTrue(confirmed.publish);
+			Assert::AreEqual(0, confirmed.bounds.top);
+			Assert::AreEqual(2160, confirmed.bounds.bottom);
 		}
 
 		TEST_METHOD(AsymmetricCandidateCannotCropEitherSide)
