@@ -245,4 +245,3 @@ permit; otherwise capture a reproducible representative sports corpus.
   was observed on P210, but the repaired authority contract must cover both.
 - VP-0070: later subtitle/glyph relocation; subtitle evidence must remain
   non-authoritative for source cropping.
-
