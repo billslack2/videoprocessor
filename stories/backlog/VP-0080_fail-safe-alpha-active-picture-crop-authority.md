@@ -10,6 +10,130 @@ the participation gates below. Alpha scope playback should be treated as unsafe
 for important live viewing until a fail-safe increment is validated and
 deployed.
 
+## Pre-development readiness record (2026-08-02)
+
+### Gate state
+
+Implementation is not yet authorized. The required named video-renderer and
+image/signal-analysis participants, their demonstrated experience, and their
+pre-coding review are still pending. No source code has been changed. A clean
+worktree and local branch, `codex/vp-0080-alpha-crop-failsafe`, were prepared
+solely to isolate later work after this gate is satisfied.
+
+The operating context was re-established before that preparation:
+
+- `billslack2/videoprocessor` is the repository of record;
+- GitHub reported `v1.1.015-beta` as the current default integration branch;
+- the isolated branch starts at integration commit `8b8d900`; and
+- the authoritative source checkout and deployed checkout both contain
+  unrelated work, so neither was modified.
+
+### Confirmed failure model
+
+The incident transitions in `C:\Videoprocessor\vp\logs\vp_debug.log` were
+re-read and match the rectangles and release times recorded above. Inspection
+of the current integration source confirms one bypass around the VP-0040
+authority model:
+
+1. `vprenderer/LibplaceboVideoRenderer.cpp::UpdateScopeSubtitleShift` derives
+   its black floor from bottom-edge samples in only the outer fifths of the
+   frame. Its proposed bar rows are also evaluated only in those outer fifths.
+2. Approximate top/bottom symmetry, an active aspect in `1.90..3.00`, and eight
+   repeated candidates promote `scopeSubtitlePictureTop/Bottom`. There is no
+   affirmative whole-edge boundary/interior proof and no scene/epoch-owned
+   authority snapshot in this path.
+3. `configureScreenProfile` then writes those renderer-local values directly
+   to `source.crop` and marks them trusted. This path is separate from the
+   shared `P010ActivePictureEvidence` plus `ActivePictureTransitionModel`
+   contract already used by Alpha NLS.
+4. `subtitle_fit: false` is not an automatic-crop off switch. The local
+   geometry is still analyzed and promoted before the function checks the
+   subtitle-fit setting, and the promoted rectangle can still change
+   `source.crop`.
+5. With NLS waiting, Alpha explicitly preserves full raster. With NLS mapped,
+   it consumes the stronger shared evidence. The unsafe bypass is reached for
+   ordinary Scope profile rendering when NLS is not providing mapped trusted
+   geometry.
+
+This explains the World Cup failure without threshold speculation: repeated
+dark scene structure was allowed to become destructive authority in a consumer
+that should never have owned that authority.
+
+### Proposed first fail-safe increment for expert review
+
+The recommended first increment is deliberately smaller than a detector
+rewrite:
+
+1. Make Alpha automatic source cropping explicitly configurable and default it
+   to **Off**. Off must keep `source.crop` at the complete generation-current
+   input raster for every analyzer result. Scope viewport fit/pillarbox may
+   remain active, but analyzer-driven zoom, NLS crop, and subtitle-derived
+   source cropping must not.
+2. Remove crop authority from the renderer-local scope/subtitle detector. It
+   may remain temporarily as non-authoritative diagnostic or displacement
+   evidence, but it cannot set a trusted flag, populate `source.crop`, or
+   preserve/deepen a crop.
+3. When automatic crop is later enabled, permit only a current-epoch snapshot
+   from the shared crop-authority state machine to change `source.crop`.
+   Subtitle fit, viewport selection, NLS state, target aspect, and temporal
+   repetition remain consumers or supporting observations, never authorities.
+4. Keep raw candidate, temporal state, trusted authority, subtitle request,
+   source crop, and final output rectangle as separately logged facts. The
+   first increment must at minimum log the off/default decision and any
+   rejected crop request with consumer and reason.
+5. Document the switch in `CONFIGURATION.html` and the generated/public field
+   inventory. The OSD/log must make `Automatic crop: Off (full raster)`
+   distinguishable from unavailable analysis and from an explicit manual
+   geometry command.
+
+This phase intentionally accepts visible encoded bars. Its safety claim is
+limited and measurable: while automatic crop is Off, no observation sequence,
+format path, viewport change, subtitle state, NLS state, or renderer epoch may
+contract the source rectangle. It does not claim that the eventual automatic
+detector is ready.
+
+### Proposed proof package for the pre-coding review
+
+Before any threshold work, the experts should accept or amend the following:
+
+- **False-positive release bound:** zero automatic source-crop transitions and
+  zero source-pixel loss over the full-raster corpus. Phase A enforces this by
+  policy with automatic cropping Off by default.
+- **Acquisition bound:** not applicable to Phase A because encoded bars remain
+  visible. A numeric acquisition bound for a later enabled detector must be
+  approved against the genuine letterbox corpus before tuning.
+- **Withdrawal bound:** disabling automatic crop, changing renderer/source
+  epoch, or losing generation validity restores full raster before the next
+  presented frame. A later enabled detector needs a separately approved bound
+  from first strong contradiction to full-raster presentation.
+- **Incident control:** add deterministic 3840x2160 full-raster sequences for
+  the six observed false candidates (`258/264`, `274/276`, `116/106`,
+  `272/274`, `272/274`, and `230/236` top/bottom bar depths), including stable
+  repetition, scene cuts, score graphics, captions, crowd/grass bands, and
+  camera motion. No raw World Cup frame is currently tracked, so a
+  rights-safe representative sports capture is still required.
+- **Genuine-bar controls:** encoded 1.85, 2.00, 2.20, 2.35, 2.39, and 2.40
+  material, with noise, raised blacks, logos, and subtitles in bars. Phase A
+  expects full raster; Phase B expected rectangles and acquisition/withdrawal
+  bounds require expert approval.
+- **Deterministic policy/property tests:** automatic-crop Off is invariant;
+  provisional or subtitle-only geometry cannot contract; stale generations
+  cannot contract; only every-edge trusted authority may contract when the
+  future On path is exercised; contradiction and reset can only expand toward
+  full raster.
+- **Format and runtime matrix:** P010, P210, and native RGB; SDR/HDR and valid
+  full/limited ranges; raster, viewport, renderer, channel, format, scene, and
+  epoch transitions; focused tests, the full native suite, and a clean x64
+  Release build before any live validation.
+
+The mature-implementation comparison supports this split: MPC Video Renderer
+keeps original size, crop rectangle, final video rectangle, and cropped-output
+rectangle distinct; MPC-HC exposes zoom/pan as an explicit user action; and
+FFmpeg separates black from motion/edge modes, supports outliers, and can
+retain the largest observed area. These are design constraints and diagnostic
+comparators, not license to copy third-party code or treat another detector as
+the crop oracle.
+
 ## Incident evidence
 
 The current deployed log at
