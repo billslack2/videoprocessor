@@ -88,6 +88,36 @@ namespace AlphaSourceCrop
 	// rectangle. The user-visible Off state always returns the complete raster.
 	Decision Evaluate(const Input& input);
 
+	// A candidate can be treated as source-baked bar UI only when it preserves
+	// horizontal picture bounds and expands an existing vertical-bar authority
+	// outward. It deliberately says nothing about image content; callers must
+	// still prove content in one or both proven bars before retaining the prior crop.
+	bool IsSameWidthVerticalOutwardCandidate(
+		const ActivePictureBounds& base,
+		const ActivePictureBounds& candidate,
+		int rasterWidth,
+		int rasterHeight);
+
+	// `barContentSides` is a synchronous sample of the prior top/bottom bars:
+	// bit 0 is top and bit 1 is bottom. Any meaningful content in the proven
+	// bars can request a bounded fit; consumers expand only to its measured edge.
+	bool ShouldRetainBarContentFit(
+		bool sameWidthVerticalOutwardCandidate,
+		int barContentSides);
+
+	// The bar-content fit hold is a hard maximum. Its caller must pass false as
+	// soon as current bar-content proof disappears or the base source changes.
+	bool IsBarContentFitHoldActive(
+		bool barContentProofCurrent,
+		uint64_t currentTick,
+		uint64_t deadlineTick);
+
+	// A retained fit snapshot cannot resume after either its prior movie bounds
+	// or its outward candidate rectangle changes.
+	bool ShouldContinueBarContentFitSnapshot(
+		bool baseIdentityCurrent,
+		bool candidateIdentityAndBarContentCurrent);
+
 	// A scene boundary resets candidate proof, but presentation is atomic:
 	// matching trusted geometry keeps crop and NLS together; ambiguous or
 	// near-black unavailable cut evidence may retain their existing snapshot

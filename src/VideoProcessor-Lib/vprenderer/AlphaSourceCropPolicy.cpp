@@ -172,6 +172,47 @@ namespace AlphaSourceCrop
 		return decision;
 	}
 
+	bool IsSameWidthVerticalOutwardCandidate(
+		const ActivePictureBounds& base,
+		const ActivePictureBounds& candidate,
+		int rasterWidth,
+		int rasterHeight)
+	{
+		return ValidBounds(base, rasterWidth, rasterHeight) &&
+			ValidBounds(candidate, rasterWidth, rasterHeight) &&
+			CropEdgesAreChromaAligned(base, rasterWidth, rasterHeight) &&
+			CropEdgesAreChromaAligned(candidate, rasterWidth, rasterHeight) &&
+			base.left == candidate.left && base.right == candidate.right &&
+			base.top > 0 && base.bottom < rasterHeight &&
+			candidate.top > 0 && candidate.bottom < rasterHeight &&
+			candidate.top <= base.top && candidate.bottom >= base.bottom &&
+			(candidate.top < base.top || candidate.bottom > base.bottom);
+	}
+
+	bool ShouldRetainBarContentFit(
+		bool sameWidthVerticalOutwardCandidate,
+		int barContentSides)
+	{
+		return sameWidthVerticalOutwardCandidate &&
+			(barContentSides & 3) != 0;
+	}
+
+	bool IsBarContentFitHoldActive(
+		bool barContentProofCurrent,
+		uint64_t currentTick,
+		uint64_t deadlineTick)
+	{
+		return barContentProofCurrent && deadlineTick != 0 &&
+			currentTick < deadlineTick;
+	}
+
+	bool ShouldContinueBarContentFitSnapshot(
+		bool baseIdentityCurrent,
+		bool candidateIdentityAndBarContentCurrent)
+	{
+		return baseIdentityCurrent && candidateIdentityAndBarContentCurrent;
+	}
+
 	SceneDecision EvaluateSceneBoundary(const SceneInput& input)
 	{
 		SceneDecision decision;
