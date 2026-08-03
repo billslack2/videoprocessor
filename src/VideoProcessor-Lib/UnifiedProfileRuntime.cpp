@@ -50,6 +50,12 @@ namespace
 			left.viewport.subtitlePaddingPixels ==
 				right.viewport.subtitlePaddingPixels))
 			return false;
+		if (left.queue.profile != right.queue.profile ||
+			left.queue.hasQueueSize != right.queue.hasQueueSize ||
+			left.queue.queueSize != right.queue.queueSize ||
+			left.queue.hasTargetFrames != right.queue.hasTargetFrames ||
+			left.queue.targetFrames != right.queue.targetFrames)
+			return false;
 
 		const auto& leftValues = left.variables.Values();
 		const auto& rightValues = right.variables.Values();
@@ -396,6 +402,12 @@ namespace UnifiedProfileRuntime
 		if (!RendererProfileConfig::ResolveViewport(
 			m_model, viewportProfile, generation, viewport, error))
 			return false;
+		RendererProfileConfig::ResolvedQueue queue;
+		const auto selectedQueue = effective.find("queue");
+		if (selectedQueue != effective.end() &&
+			!RendererProfileConfig::ResolveQueue(
+				m_model, selectedQueue->second, queue, error))
+			return false;
 
 		std::map<std::string, StateVariables::Value> variables;
 		PublishSourceVariables(values, variables);
@@ -423,6 +435,7 @@ namespace UnifiedProfileRuntime
 		next->manualSelections = manualSelections;
 		next->effectiveSelections = effective;
 		next->viewport = viewport;
+		next->queue = queue;
 		next->variables = StateVariables::Snapshot(
 			generation, variables);
 		snapshot = next;
