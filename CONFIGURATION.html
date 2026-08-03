@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VideoProcessor configuration guide and reference</title>
+  <title>VideoProcessor configuration: current reference and VP-0079 design</title>
   <style>
     :root { color-scheme: light; --ink:#18202a; --muted:#52606d; --blue:#173f6b; --pale:#eef5fc; --line:#c9d4df; --note:#fff7d6; --danger:#fff0ee; }
     * { box-sizing: border-box; }
@@ -30,6 +30,11 @@
     .choices li { margin:.32rem 0; }
     .index { columns:2 22rem; } .index li { break-inside:avoid; }
     .badge { display:inline-block; font-size:.78rem; font-weight:600; color:#fff; background:#426b92; border-radius:1rem; padding:.1rem .5rem; margin-left:.35rem; }
+    .proposal { border:1px solid var(--line); border-radius:.55rem; padding:0 1.25rem 1.2rem; margin:1.5rem 0 3.5rem; background:#fbfdff; }
+    .proposal h2 { margin-top:2rem; }
+    .proposal h3 { margin-top:1.8rem; }
+    .status { display:inline-block; font-size:.78rem; font-weight:700; letter-spacing:.02em; color:#572600; background:#ffe4a3; border-radius:1rem; padding:.12rem .55rem; }
+    .current-label { color:var(--muted); font-size:.95rem; margin-top:-.4rem; }
     @media (max-width:900px) { .layout { display:block; } nav { position:static; max-height:none; } .index { columns:1; } }
     @media print { nav,.skip { display:none; } .layout { display:block; max-width:none; } .field { break-inside:avoid; } }
   </style>
@@ -40,6 +45,8 @@
 <nav aria-label="Configuration contents">
   <strong>Contents</strong>
   <ul>
+    <li><a href="#vp0079">VP-0079 proposal</a></li>
+    <li><a href="#current-runtime">Current runtime reference</a></li>
     <li><a href="#start">Start here</a></li>
     <li><a href="#syntax">File syntax and precedence</a></li>
     <li><a href="#application">Capture and application</a></li>
@@ -64,8 +71,99 @@
 </nav>
 
 <main id="content">
-  <h1>VideoProcessor configuration guide and reference</h1>
-  <p class="lead">This page explains what each supported setting changes, when to choose each option, what happens when it is omitted, and where to look when the result is not what you expected. It covers the public configuration surface only.</p>
+  <h1>VideoProcessor configuration</h1>
+  <p class="lead">One page for two deliberately separate things: the <strong>VP-0079 configuration model proposed for review</strong>, followed by the <strong>current production grammar</strong> that the binary accepts today. This separation keeps the design readable without making an unimplemented example look deployable.</p>
+
+  <section class="proposal" id="vp0079">
+    <h2>VP-0079 configuration model <span class="status">design for review — not runtime syntax</span></h2>
+    <p>The target is one <code>VideoProcessor.cfg</code>, organised by the component that owns a setting. It removes profile-group registries, disk-persisted profile selections, the shader-only selection grammar, and the refresh-only action registry. The current binary still expects <code>[profile_groups.*]</code>, <code>[profiles.*]</code>, <code>[shaders]</code>, and <code>[event_actions]</code>; do not deploy the target grammar until its implementation lands.</p>
+
+    <h3>Ownership and namespaces</h3>
+    <table>
+      <thead><tr><th>Namespace</th><th>Owner and purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>[general]</code></td><td>Application startup and capture choices. It has no selectable profile values.</td></tr>
+        <tr><td><code>[queue]</code></td><td>VP queue policy, independent of the selected renderer.</td></tr>
+        <tr><td><code>[directshow]</code></td><td>DirectShow pipeline, timestamp, and input-conversion settings.</td></tr>
+        <tr><td><code>[directshow.ppm]</code></td><td>DirectShow source-timing PPM policy.</td></tr>
+        <tr><td><code>[vprenderer]</code></td><td>Alpha / VideoProcessor Renderer output, tone mapping, scaling, and presentation.</td></tr>
+        <tr><td><code>[vprenderer.viewport]</code></td><td>Alpha viewport and subtitle-fit configuration. Viewport is not shared.</td></tr>
+        <tr><td><code>[shader]</code></td><td>Common external-shader selector; one logical selection can provide HLSL and/or GLSL files.</td></tr>
+        <tr><td><code>[actions.&lt;name&gt;]</code></td><td>An external command started after a committed VP event.</td></tr>
+        <tr><td><code>[shortcuts]</code></td><td>Fixed VP commands such as reset, fullscreen, and renderer selection. Profile keys are declared by <code>when:</code>.</td></tr>
+        <tr><td><code>[renderer_alias]</code></td><td>A friendly name for a UI renderer index; not an ownership namespace.</td></tr>
+      </tbody>
+    </table>
+    <p><code>[renderer_alias]</code> mappings such as <code>vp: 1</code> and <code>madvr: 2</code> must be validated against the resolved renderer order at startup. A stale alias is an error, never a silent change in behavior or action scope.</p>
+
+    <h3>One root, named overlays</h3>
+    <p>An exact registered root is the baseline; a named child overlays values in the same domain. There is no <code>profiles:</code> list, <code>default:</code> key, declaration-order behavior, profile state file, or disk restore. Registered roots can contain dots: <code>[directshow.ppm.film]</code> is a <code>directshow.ppm</code> variant and <code>[vprenderer.viewport.scope]</code> is a <code>vprenderer.viewport</code> variant. This is a bounded domain model, not arbitrary INI inheritance.</p>
+    <pre>[queue]
+when: $key=="l"
+queue_size: 32
+target_frames: 2
+
+[queue.low_latency]
+when: $key=="L"
+queue_size: 1
+target_frames: 1</pre>
+
+    <h3>Rules, manual selection, and rebuilds</h3>
+    <p><code>when:</code> is the single expression language. It may use source state, <code>$key</code>, or both. Source-only rules are automatic. A matching key-qualified child becomes that domain's manual <em>in-memory</em> selection; source clauses in the expression are eligibility checks when the key is pressed. That choice survives refresh-rate transitions and renderer rebuilds, but disappears when VP exits. A matching root key clears the manual child selection and returns the domain to its baseline plus applicable automatic choice.</p>
+    <pre>[shader.nls_hdr]
+when: $key=="N" &amp;&amp; ($transfer=="PQ" || $transfer=="HLG")
+type: nls
+hlsl_file: NLS.hlsl
+glsl_file: NLS.glsl</pre>
+    <p>Evaluation is event-driven: a relevant source-state change, component start/rebuild, or registered key event produces an immutable state snapshot; VP resolves the effective values, compares them with the active snapshot, then applies a live change or requests a rebuild only when that setting requires one. Nothing runs once per frame, and a state change is not automatically a rebuild. If multiple automatic candidates are possible, <code>priority:</code> must make the winner explicit; a tied highest priority is a validation error.</p>
+
+    <h3>Shaders and DirectShow PPM</h3>
+    <p><code>[shader]</code> may be intentionally empty. It means no forced manual shader, while automatic variants remain eligible. <code>selection: none</code> is the manual, process-local “off” selection; it is not a global <code>enabled: false</code> switch. A missing backend file is valid and means that logical shader has no implementation for that backend.</p>
+    <pre>[shader]
+
+[shader.off]
+when: $key=="n"
+selection: none
+
+[shader.nls]
+when: $key=="N"
+type: nls
+stage: pre_resize
+hlsl_file: NLS.hlsl
+glsl_file: NLS.glsl
+hlsl_quality: high</pre>
+    <p>PPM is driven by DirectShow <strong>source</strong> timing, not output refresh, so rules use <code>$source_rate</code> rather than <code>$actual_refresh</code>. A resolved PPM change starts a new timing epoch; timestamp trim must never be altered mid-epoch.</p>
+    <pre>[directshow.ppm]
+ppm: AUTO
+
+[directshow.ppm.film]
+when: $source_rate&lt;=30
+ppm: -17
+
+[directshow.ppm.video]
+when: $source_rate&gt;30
+ppm: -14</pre>
+
+    <h3>Actions</h3>
+    <p>Actions are external side effects, not profiles. Every <code>[actions.&lt;name&gt;]</code> is discovered directly. <code>run:</code> is one Windows command line, including its arguments; relative paths resolve beside the configuration file. The documented default <code>scope:</code> is <code>vprenderer</code>; <code>directshow</code> selects DirectShow events and <code>*</code> runs once for each matching event emission from any scope.</p>
+    <pre>[actions.audio_delay_film]
+on: refresh.applied,refresh.confirmed
+when: $actual_refresh&lt;=30
+run: C:\Videoprocessor\audio\audio_delay.bat 100
+
+[actions.signal_lost]
+scope: *
+on: signal.lost
+run: C:\Videoprocessor\automation\signal-lost.cmd</pre>
+    <p>Initial event families are <code>refresh.*</code>, <code>source.changed</code>, <code>picture.changed</code>, <code>profile.changed</code>, <code>renderer.*</code>, and <code>signal.*</code>. Events publish only after committed transitions and have one documented immutable variable context.</p>
+
+    <h3>Complete review example and required implementation</h3>
+    <p>The complete proposed configuration, including the present queue, Alpha, viewport, shader, and audio-delay policies, is maintained in the companion <a href="docs/VP-0079_CONFIGURATION_MODEL_PROPOSAL.html">HTML review guide</a> and its <a href="docs/VP-0079_CONFIGURATION_MODEL_PROPOSAL.md#complete-review-example">editable Markdown source</a>. It intentionally omits the unsupported <code>automatic_crop</code> field.</p>
+    <p class="auto"><strong>Implementation boundary:</strong> this needs a registered-domain resolver with dotted roots, process-local manual selections, resolved configuration snapshots shared by DirectShow and Alpha, common shader and PPM resolution, and a scoped committed-event dispatcher. Until then, the current runtime reference below is authoritative for deployment.</p>
+  </section>
+
+  <h2 id="current-runtime">Current runtime reference</h2>
+  <p class="current-label">The remainder documents the grammar accepted by the current production binary. It is intentionally retained while VP-0079 is under design review.</p>
 
   <section id="start">
     <h2>Start here</h2>
@@ -384,7 +482,7 @@ MaxCoreCount: 2</pre>
   </section>
 
   <section id="shaders">
-    <h2>Shader configuration and viewport-aware NLS</h2>
+    <h2>Current runtime: shader configuration and viewport-aware NLS</h2>
     <p>VP installs renderer-native shaders without a CPU readback. madVR uses HLSL; the built-in renderer uses mpv-style GLSL hooks. Automatic effects are checked in <code>rules</code> order and the first compatible signal/rate match wins. A rule with <code>shortcut</code> is manual. Rules sharing one shortcut form a renderer-specific pair while keeping one selection state.</p>
 
     <article class="field" id="shaders-enabled" data-fields="shaders.enabled"><h4><code>[shaders] enabled</code></h4><p>Enables shader rule evaluation. Boolean; default false. When false or omitted, no configured shader is installed.</p></article>
@@ -447,7 +545,7 @@ none: true</pre>
   </section>
 
   <section id="profiles">
-    <h2>Shared profile groups, selection, and viewport</h2>
+    <h2>Current runtime: shared profile groups, selection, and viewport</h2>
     <p>Profiles are independent groups: <code>input</code>, <code>scaling</code>, <code>display</code>, and <code>viewport</code>. Declare a group in <code>[profile_groups.&lt;group&gt;]</code>, then define its members in <code>[profiles.&lt;group&gt;.&lt;name&gt;]</code>. Input/scaling/display settings affect only the built-in renderer; viewport state is shared with DirectShow shaders and the built-in renderer.</p>
 
     <article class="field" id="general-persist-profile-selection" data-fields="general.persist_profile_selection"><h4><code>[general] persist_profile_selection</code></h4><p>Global Boolean default for saving successful manual profile selections to <code>VideoProcessor.state</code>. Default true. Per-group configuration may override it.</p></article>
@@ -704,7 +802,7 @@ report_bt2020_to_display: true</pre>
   </section>
 
   <section id="events">
-    <h2>Shortcuts and completed-event actions</h2>
+    <h2>Current runtime: shortcuts and completed-event actions</h2>
     <p>Shortcut modifiers are <code>Ctrl</code>, <code>Alt</code>, and <code>Shift</code>. Keys are one letter/number, F1–F24, Escape, or Enter. A lowercase letter has no Shift; uppercase adds Shift. Invalid or duplicate fixed bindings retain the built-in binding when available.</p>
 
     <article class="field" id="shortcuts-auto-set" data-fields="shortcuts.auto_set"><h4><code>[shortcuts] auto_set</code></h4><p>Runs VP's automatic setup command. Built-in default <code>Ctrl+Shift+A</code>.</p></article>
@@ -772,7 +870,7 @@ delay_seconds: 2</pre>
   </section>
 
   <section id="field-index">
-    <h2>Complete field index</h2>
+    <h2>Current runtime field index</h2>
     <p>Every public field below is checked against <code>docs/configuration-public-fields.tsv</code>. A field that is added to the supported inventory without a matching reference anchor fails the documentation completeness test.</p>
     <h3><code>[command_line]</code></h3>
     <ul class="index">
