@@ -2,7 +2,28 @@
 
 ## Status
 
-Backlog.
+Review (2026-08-02).
+
+The remaining Alpha/P010 parity work is implemented on
+`codex/vp-0020-v210-p010-tail` at `f64a6b6`
+(`feat(alpha): support padded v210 P010 widths`).  The established
+DirectShow/madVR P210 path already accepted these padded widths; this change
+brings Alpha's P010 converter to the same valid even-width contract.
+
+The implementation retains the existing fast paths for complete v210 packs,
+uses the negotiated DeckLink row stride, and clips at most two padded terminal
+packs to active pixels.
+
+Validation completed before review:
+
+- x64 Release solution build succeeded.
+- Full `VideoProcessor-Test` suite passed: 476/476 tests.
+- New deterministic tests cover a four-pixel padded tail with sentinel packing,
+  equivalent Standard/Optimized/SIMD results, and 2048x1080 plus 4096x2160
+  P010 smoke conversions.
+
+No deployment or live DCI source validation was performed.  The implementation
+is ready to merge into `v1.1.015-beta`.
 
 ## Context
 

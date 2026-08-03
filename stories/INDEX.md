@@ -51,7 +51,7 @@ they must not contain requirements that are absent from this file.
 | VP-0017 | Will Not Do | Explain variable alpha-renderer queue depth |
 | VP-0018 | Done | Re-select the content refresh rate when switching to alpha |
 | VP-0019 | Done | SDR BT.2020 display profiles, F5/F6 hotkeys, and output signaling |
-| VP-0020 | Backlog | v210 arbitrary-width and DCI P010/P210 support |
+| VP-0020 | Review | v210 arbitrary-width and DCI P010/P210 support |
 | VP-0021 | Backlog | Renderer format negotiation parity and truthful capability reporting |
 | VP-0022 | Will Not Do | DeckLink encoded-format boundary and diagnostics |
 | VP-0023 | Done | Alpha P010 sample-range contract and conversion regression tests |
