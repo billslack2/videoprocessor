@@ -2,14 +2,23 @@
 
 ## Status
 
-In Progress (Phase A deployed for local live validation, 2026-08-02). Bill provided direct
-pre-coding geometry guidance: repair the existing implementation on the current
-`v1.1.015-beta` default branch, begin at the renderer-local Alpha crop path, and
-prefer the smallest practical, efficient fail-safe. Urvish must still
-participate in the image-analysis and unit-test work, and both experts must
-approve the result. Alpha scope playback should be treated as unsafe for
-important live viewing until the increment is independently reviewed,
-validated, and deployed.
+Review. PR [#34](https://github.com/billslack2/videoprocessor/pull/34)
+merged source head `22b5293` into the `v1.1.015-beta` integration branch as
+merge commit `4fa0b6a` on 2026-08-03. The final clean x64 Release build
+completed with `VERSION_DIRTY=false`, and all 532 native tests passed.
+
+Bill's final geometry review, Urvish's final image-analysis review, and the
+renderer/concurrency review all approved the merge. Review found and corrected
+one old-epoch active-picture publication race and one missing Alpha final-NLS
+runtime snapshot write before merge. The added tests cover both reset ordering
+directions, unchanged-frame reacquisition, and final snapshot consistency.
+
+Local live Alpha and madVR validation used real Apple TV movie/series content,
+dark scenes, UI overlays, renderer switches, and paused-frame NLS toggles. The
+deployed `5facc44` build proved unchanged geometry reacquisition after an
+output-readiness worker restart. The final `22b5293` concurrency/snapshot
+review correction is merged but has not yet replaced that local deployment;
+an optional merged-build live smoke remains the only follow-up validation.
 
 ## Pre-development readiness record (2026-08-02)
 
