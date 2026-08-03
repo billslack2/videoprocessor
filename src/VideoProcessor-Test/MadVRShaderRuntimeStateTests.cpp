@@ -160,6 +160,10 @@ namespace VideoProcessorTest
 
 		TEST_METHOD(NativeGeometryModesDoNotDoubleApplyMadVRCrop)
 		{
+			const MadVRActivePictureGeometry fullRaster{
+				16.0 / 9.0, 0.0, 0.0, 1.0, 1.0, 1, 1, true };
+			const MadVRActivePictureGeometry barred{
+				1.90, 0.0, 0.03, 1.0, 0.97, 2, 1, true };
 			unsigned long aspectX = 0;
 			unsigned long aspectY = 0;
 			Assert::IsFalse(ResolveMadVRNlsPresentationAspect(
@@ -168,7 +172,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(0ul, aspectX);
 			Assert::AreEqual(0ul, aspectY);
 			Assert::IsFalse(MadVRNlsMappingUsesCustomShader(
-				MadVRNlsMappingMode::SCOPE_PASSTHROUGH));
+				MadVRNlsMappingMode::SCOPE_PASSTHROUGH, barred));
 
 			Assert::IsTrue(ResolveMadVRNlsPresentationAspect(
 				MadVRNlsMappingMode::ACTIVE,
@@ -176,7 +180,23 @@ namespace VideoProcessorTest
 			Assert::AreEqual(235ul, aspectX);
 			Assert::AreEqual(100ul, aspectY);
 			Assert::IsTrue(MadVRNlsMappingUsesCustomShader(
-				MadVRNlsMappingMode::ACTIVE));
+				MadVRNlsMappingMode::ACTIVE, fullRaster));
+			Assert::IsFalse(MadVRNlsMappingUsesCustomShader(
+				MadVRNlsMappingMode::ACTIVE, barred));
+			MadVRNlsMappingDecision activeDecision;
+			activeDecision.mode = MadVRNlsMappingMode::ACTIVE;
+			activeDecision.sourceAspect = 1.90;
+			activeDecision.targetAspect = 2.35;
+			activeDecision.reason = "active picture is narrower than the target";
+			Assert::AreEqual(static_cast<int>(MadVRNlsMappingMode::ACTIVE),
+				static_cast<int>(ConstrainMadVRNlsMappingToGeometry(
+					activeDecision, fullRaster).mode));
+			const MadVRNlsMappingDecision barredDecision =
+				ConstrainMadVRNlsMappingToGeometry(activeDecision, barred);
+			Assert::AreEqual(static_cast<int>(MadVRNlsMappingMode::SAFE_FIT),
+				static_cast<int>(barredDecision.mode));
+			Assert::IsTrue(barredDecision.reason.find(
+				"delegated to madVR native fit") != std::string::npos);
 
 			Assert::IsFalse(ResolveMadVRNlsPresentationAspect(
 				MadVRNlsMappingMode::SAFE_FIT,
@@ -184,7 +204,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(0ul, aspectX);
 			Assert::AreEqual(0ul, aspectY);
 			Assert::IsFalse(MadVRNlsMappingUsesCustomShader(
-				MadVRNlsMappingMode::SAFE_FIT));
+				MadVRNlsMappingMode::SAFE_FIT, barred));
 
 			Assert::IsFalse(ResolveMadVRNlsPresentationAspect(
 				MadVRNlsMappingMode::WAITING,

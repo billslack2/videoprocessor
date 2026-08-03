@@ -1053,9 +1053,10 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 	// The target output contract is exposed only after the exact, source-owned
 	// crop is current for this renderer generation. Merely arming NLS must not
 	// cause madVR to fit the raster as though a mapping already exists.
-	ResolveMadVRNlsPresentationAspect(runtime.nlsMode,
-		activeAspect, targetAspect, outputAspectX, outputAspectY);
-	if (!MadVRNlsMappingUsesCustomShader(runtime.nlsMode))
+	outputAspectX = 0;
+	outputAspectY = 0;
+	if (!MadVRNlsMappingUsesCustomShader(
+		runtime.nlsMode, runtime.activeGeometry))
 	{
 		// madVR already detects hard-coded bars and owns the final native
 		// crop/fit. Installing VP's active-rectangle shader in passthrough or
@@ -1071,6 +1072,8 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 			static_cast<unsigned long long>(runtime.rendererGeneration));
 		return true;
 	}
+	ResolveMadVRNlsPresentationAspect(runtime.nlsMode,
+		activeAspect, targetAspect, outputAspectX, outputAspectY);
 	if (activeAspect <= 0.0 || !videoState.displayMode)
 		return true;
 
@@ -1426,7 +1429,9 @@ bool MadVRShaderLoader::GetRuntimeOutputAspectRatio(unsigned long& aspectX,
 			MadVRNlsOutputContractIsPrepared(runtime);
 		if (rule.nls && GetNlsTargetAspect(rule) > 0.0)
 		{
-			if (currentNlsGeometry)
+			if (currentNlsGeometry &&
+				MadVRNlsMappingUsesCustomShader(
+					runtime.nlsMode, runtime.activeGeometry))
 				ResolveMadVRNlsPresentationAspect(runtime.nlsMode,
 					runtime.activeGeometry.aspectRatio,
 					GetNlsTargetAspect(rule), ruleX, ruleY);

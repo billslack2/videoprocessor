@@ -72,7 +72,11 @@ bool ResolveMadVRNlsOutputAspect(double targetAspect,
 bool ResolveMadVRNlsPresentationAspect(MadVRNlsMappingMode mode,
 	double activeAspect, double targetAspect,
 	unsigned long& aspectX, unsigned long& aspectY);
-bool MadVRNlsMappingUsesCustomShader(MadVRNlsMappingMode mode);
+bool MadVRNlsMappingUsesCustomShader(MadVRNlsMappingMode mode,
+	const MadVRActivePictureGeometry& geometry);
+MadVRNlsMappingDecision ConstrainMadVRNlsMappingToGeometry(
+	const MadVRNlsMappingDecision& decision,
+	const MadVRActivePictureGeometry& geometry);
 bool MadVROutputAspectRequiresRestart(unsigned long currentAspectX,
 	unsigned long currentAspectY, unsigned long desiredAspectX,
 	unsigned long desiredAspectY, double nativeAspect);

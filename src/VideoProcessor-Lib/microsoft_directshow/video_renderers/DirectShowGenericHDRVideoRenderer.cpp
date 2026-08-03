@@ -550,14 +550,17 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		if (!MadVRShaderLoader::EvaluateNlsMapping(std::string(ruleUtf8),
 			aspectAvailable, activeAspectRatio, decision))
 			return false;
+		MadVRActivePictureGeometry geometry;
+		if (aspectAvailable)
+			geometry = MakeRuntimeGeometry(activeRectangle);
+		decision = ConstrainMadVRNlsMappingToGeometry(decision, geometry);
 		MadVRShaderLoader::SetRuntimeShaderSelection(
 			std::string(ruleUtf8), std::string(ruleUtf8), decision.mode);
 		if (decision.mode == MadVRNlsMappingMode::ACTIVE ||
 			decision.mode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
 			decision.mode == MadVRNlsMappingMode::SAFE_FIT)
 		{
-			if (!MadVRShaderLoader::SetRuntimeActivePictureGeometry(
-				MakeRuntimeGeometry(activeRectangle)))
+			if (!MadVRShaderLoader::SetRuntimeActivePictureGeometry(geometry))
 				return false;
 		}
 		const MadVRShaderSelection selection =
@@ -709,6 +712,10 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 			std::string(requestedUtf8), aspectAvailable,
 			activeAspectRatio, decision))
 			return false;
+		MadVRActivePictureGeometry geometry;
+		if (aspectAvailable)
+			geometry = MakeRuntimeGeometry(activeRectangle);
+		decision = ConstrainMadVRNlsMappingToGeometry(decision, geometry);
 		if (decision.mode == MadVRNlsMappingMode::WAITING)
 		{
 			if (m_nlsMappingMode == MadVRNlsMappingMode::WAITING)
@@ -756,8 +763,6 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		if (!mappingChanged)
 			return false;
 
-		const MadVRActivePictureGeometry geometry =
-			MakeRuntimeGeometry(activeRectangle);
 		if (!MadVRShaderLoader::SetRuntimeActivePictureGeometry(geometry))
 		{
 			DebugLog::Log(

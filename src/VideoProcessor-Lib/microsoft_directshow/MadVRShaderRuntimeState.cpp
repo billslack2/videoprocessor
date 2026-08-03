@@ -162,9 +162,45 @@ bool ResolveMadVRNlsPresentationAspect(MadVRNlsMappingMode mode,
 }
 
 
-bool MadVRNlsMappingUsesCustomShader(MadVRNlsMappingMode mode)
+bool MadVRNlsMappingUsesCustomShader(MadVRNlsMappingMode mode,
+	const MadVRActivePictureGeometry& geometry)
 {
-	return mode == MadVRNlsMappingMode::ACTIVE;
+	if (mode != MadVRNlsMappingMode::ACTIVE || !geometry.stable)
+		return false;
+
+	// madVR owns its independently detected videoCropRect. VP may safely add a
+	// nonlinear mapping only when there are no encoded bars for madVR to crop a
+	// second time. Normalized full-raster bounds are exact; the epsilon permits
+	// only floating-point representation noise, not even a one-pixel crop.
+	constexpr double epsilon = 0.000001;
+	return geometry.left <= epsilon && geometry.top <= epsilon &&
+		geometry.right >= 1.0 - epsilon &&
+		geometry.bottom >= 1.0 - epsilon;
+}
+
+
+MadVRNlsMappingDecision ConstrainMadVRNlsMappingToGeometry(
+	const MadVRNlsMappingDecision& decision,
+	const MadVRActivePictureGeometry& geometry)
+{
+	MadVRNlsMappingDecision constrained = decision;
+	if (decision.mode != MadVRNlsMappingMode::ACTIVE ||
+		MadVRNlsMappingUsesCustomShader(decision.mode, geometry))
+	{
+		return constrained;
+	}
+
+	// madVR independently applies videoCropRect. A VP nonlinear shader can own
+	// full-raster geometry, but a barred source must remain a native safe fit so
+	// the same edges are never cropped twice.
+	constrained.mode = MadVRNlsMappingMode::SAFE_FIT;
+	constrained.safeFitVertical =
+		decision.sourceAspect > decision.targetAspect;
+	constrained.safeFitFraction = std::max(0.01, std::min(1.0,
+		std::min(decision.sourceAspect, decision.targetAspect) /
+		std::max(decision.sourceAspect, decision.targetAspect)));
+	constrained.reason += "; barred source delegated to madVR native fit";
+	return constrained;
 }
 
 
