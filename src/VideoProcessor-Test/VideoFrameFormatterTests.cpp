@@ -339,6 +339,121 @@ namespace Tests
 			expect(ySamples + 145, 601);
 		}
 
+		TEST_METHOD(CV210toP010VideoFrameFormatterPreservesPaddedTailSamples)
+		{
+			CV210toP010VideoFrameFormatter vff;
+			vff.SetConversionMethod(CV210toP010VideoFrameFormatter::ConversionMethod::STANDARD);
+
+			// 100 pixels ends four pixels into the final v210 pack. The rest of
+			// that pack and the DeckLink row alignment are sentinels.
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(100, 100, false, 24000, 1000);
+			vs->videoFrameEncoding = VideoFrameEncoding::V210;
+			vff.OnVideoState(vs);
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0xFF);
+			auto writeWord = [](BYTE* destination, uint16_t a, uint16_t b, uint16_t c)
+			{
+				const uint32_t word = static_cast<uint32_t>(a) |
+					(static_cast<uint32_t>(b) << 10) |
+					(static_cast<uint32_t>(c) << 20);
+				std::memcpy(destination, &word, sizeof(word));
+			};
+			for (uint32_t line = 0; line < 100; ++line)
+			{
+				BYTE* finalPack = input.data() + static_cast<size_t>(line) * vs->BytesPerRow() + 16 * 16;
+				writeWord(finalPack + 0, 101, 201, 301);
+				writeWord(finalPack + 4, 202, 102, 203);
+				writeWord(finalPack + 8, 302, 204, 1023); // U4 is padding.
+				writeWord(finalPack + 12, 1023, 1023, 1023); // Entire word is padding.
+			}
+
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+
+			const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
+			const size_t ySamples = 100 * 100;
+			Assert::AreEqual(201U << 6, static_cast<unsigned int>(samples[96]));
+			Assert::AreEqual(202U << 6, static_cast<unsigned int>(samples[97]));
+			Assert::AreEqual(203U << 6, static_cast<unsigned int>(samples[98]));
+			Assert::AreEqual(204U << 6, static_cast<unsigned int>(samples[99]));
+			Assert::AreEqual(101U << 6, static_cast<unsigned int>(samples[ySamples + 96]));
+			Assert::AreEqual(301U << 6, static_cast<unsigned int>(samples[ySamples + 97]));
+			Assert::AreEqual(102U << 6, static_cast<unsigned int>(samples[ySamples + 98]));
+			Assert::AreEqual(302U << 6, static_cast<unsigned int>(samples[ySamples + 99]));
+
+			const CV210toP010VideoFrameFormatter::ConversionMethod alternatives[] = {
+				CV210toP010VideoFrameFormatter::ConversionMethod::OPTIMIZED,
+				CV210toP010VideoFrameFormatter::ConversionMethod::SIMD
+			};
+			for (const auto method : alternatives)
+			{
+				CV210toP010VideoFrameFormatter alternative;
+				alternative.SetConversionMethod(method);
+				alternative.OnVideoState(vs);
+				std::vector<BYTE> alternativeOutput(alternative.GetOutFrameSize(), 0);
+				Assert::IsTrue(alternative.FormatVideoFrame(frame, alternativeOutput.data()));
+				Assert::IsTrue(output == alternativeOutput);
+			}
+		}
+
+		TEST_METHOD(CV210toP010VideoFrameFormatterDciWidthSmokeTest)
+		{
+			const uint32_t dimensions[][2] = { { 2048, 1080 }, { 4096, 2160 } };
+			for (const auto& dimension : dimensions)
+			{
+				CV210toP010VideoFrameFormatter vff;
+				VideoStateComPtr vs = new VideoState();
+				vs->valid = true;
+				vs->displayMode = std::make_shared<DisplayMode>(dimension[0], dimension[1], false, 60000, 1001);
+				vs->videoFrameEncoding = VideoFrameEncoding::V210;
+				vff.OnVideoState(vs);
+
+				std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+				std::vector<BYTE> output(vff.GetOutFrameSize(), 0xFF);
+				VideoFrame frame(input.data(), 1, 0, nullptr);
+				Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+				Assert::IsTrue(std::all_of(output.begin(), output.end(),
+					[](BYTE value) { return value == 0; }));
+			}
+		}
+
+		TEST_METHOD(CV210toP010VideoFrameFormatterAlignedPathsRemainEquivalent)
+		{
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(192, 100, false, 24000, 1000);
+			vs->videoFrameEncoding = VideoFrameEncoding::V210;
+
+			std::vector<BYTE> input(vs->BytesPerFrame());
+			for (size_t index = 0; index < input.size(); ++index)
+				input[index] = static_cast<BYTE>((index * 37U + 11U) & 0xFFU);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+
+			CV210toP010VideoFrameFormatter standard;
+			standard.SetConversionMethod(CV210toP010VideoFrameFormatter::ConversionMethod::STANDARD);
+			standard.OnVideoState(vs);
+			std::vector<BYTE> standardOutput(standard.GetOutFrameSize());
+			Assert::IsTrue(standard.FormatVideoFrame(frame, standardOutput.data()));
+
+			CV210toP010VideoFrameFormatter optimized;
+			optimized.SetConversionMethod(CV210toP010VideoFrameFormatter::ConversionMethod::OPTIMIZED);
+			optimized.OnVideoState(vs);
+			std::vector<BYTE> optimizedOutput(optimized.GetOutFrameSize());
+			Assert::IsTrue(optimized.FormatVideoFrame(frame, optimizedOutput.data()));
+
+			CV210toP010VideoFrameFormatter simd;
+			simd.SetConversionMethod(CV210toP010VideoFrameFormatter::ConversionMethod::SIMD);
+			simd.OnVideoState(vs);
+			std::vector<BYTE> simdOutput(simd.GetOutFrameSize());
+			Assert::IsTrue(simd.FormatVideoFrame(frame, simdOutput.data()));
+
+			Assert::IsTrue(standardOutput == optimizedOutput);
+			Assert::IsTrue(standardOutput == simdOutput);
+		}
+
 		TEST_METHOD(CV210toP210VideoFrameFormatterPreservesPaddedEdgeSamples)
 		{
 			CV210toP210VideoFrameFormatter vff;

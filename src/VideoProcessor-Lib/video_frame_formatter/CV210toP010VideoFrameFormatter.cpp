@@ -44,6 +44,61 @@
         (dst)[(width) - 2] = CHROMA_NEUTRAL; (dst)[(width) - 1] = CHROMA_NEUTRAL; \
     } while (0)
 
+namespace
+{
+    struct V210Pack
+    {
+        uint16_t y[PIXELS_PER_PACK];
+        uint16_t u[PIXELS_PER_PACK / 2];
+        uint16_t v[PIXELS_PER_PACK / 2];
+    };
+
+    inline V210Pack ReadV210Pack(const uint32_t*& source) noexcept
+    {
+        const uint32_t word0 = *source++;
+        const uint32_t word1 = *source++;
+        const uint32_t word2 = *source++;
+        const uint32_t word3 = *source++;
+        return {
+            {
+                static_cast<uint16_t>((word0 >> 10) & 0x3FF),
+                static_cast<uint16_t>(word1 & 0x3FF),
+                static_cast<uint16_t>((word1 >> 20) & 0x3FF),
+                static_cast<uint16_t>((word2 >> 10) & 0x3FF),
+                static_cast<uint16_t>(word3 & 0x3FF),
+                static_cast<uint16_t>((word3 >> 20) & 0x3FF)
+            },
+            {
+                static_cast<uint16_t>(word0 & 0x3FF),
+                static_cast<uint16_t>((word1 >> 10) & 0x3FF),
+                static_cast<uint16_t>((word2 >> 20) & 0x3FF)
+            },
+            {
+                static_cast<uint16_t>((word0 >> 20) & 0x3FF),
+                static_cast<uint16_t>(word2 & 0x3FF),
+                static_cast<uint16_t>((word3 >> 10) & 0x3FF)
+            }
+        };
+    }
+
+    inline void WriteV210PackToP010(const V210Pack& pack, uint32_t pixelCount,
+        uint16_t*& dstY, uint16_t*& dstUV) noexcept
+    {
+        for (uint32_t pixel = 0; pixel < pixelCount; ++pixel)
+            *dstY++ = static_cast<uint16_t>(pack.y[pixel] << 6);
+
+        if (dstUV)
+        {
+            for (uint32_t pair = 0; pair < pixelCount / 2; ++pair)
+            {
+                *dstUV++ = static_cast<uint16_t>(pack.u[pair] << 6);
+                *dstUV++ = static_cast<uint16_t>(pack.v[pair] << 6);
+            }
+        }
+
+    }
+}
+
 // =====================================================================
 // Constructor / Destructor
 // =====================================================================
@@ -399,50 +454,23 @@ void CV210toP010VideoFrameFormatter::ProcessLineSegment(
             }
         }
 
-        // Handle remainder (6 pixels) - use regular stores for small amounts
+        // Decode at most two terminal packs and write only active pixels. This
+        // is needed when the active width ends within DeckLink's padded v210 row.
         if (remainderPixels > 0)
         {
-            // Process even line remainder
+            uint32_t remaining = remainderPixels;
+            while (remaining > 0)
             {
-                const uint32_t* src = src_even;
-                uint16_t* lineY = lineY_even;
-                uint16_t* line_uv = lineUV;
-                uint32_t val;
-                uint16_t u, y1, y2, v;
-                
-                V210_READ_PACK_BLOCK(u, y1, v);
-                *line_uv++ = u << 6; *lineY++ = y1 << 6; *line_uv++ = v << 6;
-                
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                *lineY++ = y1 << 6; *line_uv++ = u << 6; *lineY++ = y2 << 6;
-                
-                V210_READ_PACK_BLOCK(v, y1, u);
-                *line_uv++ = v << 6; *lineY++ = y1 << 6; *line_uv++ = u << 6;
-                
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                *lineY++ = y1 << 6; *line_uv++ = v << 6; *lineY++ = y2 << 6;
-            }
-
-            // Process odd line remainder (Y only)
-            {
-                const uint32_t* src = src_odd;
-                uint16_t* lineY = lineY_odd;
-                uint32_t val;
-                uint16_t u, y1, y2, v;
-                
-                V210_READ_PACK_BLOCK(u, y1, v);
-                *lineY++ = y1 << 6;
-                
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                *lineY++ = y1 << 6; *lineY++ = y2 << 6;
-                
-                V210_READ_PACK_BLOCK(v, y1, u);
-                *lineY++ = y1 << 6;
-                
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                *lineY++ = y1 << 6; *lineY++ = y2 << 6;
+                const uint32_t pixelCount = std::min<uint32_t>(PIXELS_PER_PACK, remaining);
+                const V210Pack evenPack = ReadV210Pack(src_even);
+                const V210Pack oddPack = ReadV210Pack(src_odd);
+                WriteV210PackToP010(evenPack, pixelCount, lineY_even, lineUV);
+                uint16_t* noChroma = nullptr;
+                WriteV210PackToP010(oddPack, pixelCount, lineY_odd, noChroma);
+                remaining -= pixelCount;
             }
         }
+
     }
 }
 
@@ -569,24 +597,24 @@ void CV210toP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& videoState)
         throw std::runtime_error("Can only handle V210 input");
 
     m_height = videoState->displayMode->FrameHeight();
-    if (m_height % 2 != 0)
-        throw std::runtime_error("P010 output needs an even amount of input lines");
+    if (m_height == 0 || (m_height & 1) != 0)
+        throw std::runtime_error("P010 output requires a positive, even input height");
 
-    uint32_t origWidth = videoState->displayMode->FrameWidth();
+    const uint32_t origWidth = videoState->displayMode->FrameWidth();
+    if (origWidth == 0 || (origWidth & 1) != 0)
+        throw std::runtime_error("P010 output requires a positive, even width");
+
     bool special720 = (origWidth == 1280 && m_height == 720);
     m_special720 = special720;
 
-    if (!special720 && (origWidth % PIXELS_PER_PACK != 0))
-        throw std::runtime_error("Can only handle conversions which align with V210 boundary (6 pixels)");
+    m_stride = videoState->BytesPerRow();
+    const uint32_t packedBytes =
+        ((origWidth + PIXELS_PER_PACK - 1) / PIXELS_PER_PACK) * BYTES_PER_PACK;
+    if (m_stride < packedBytes)
+        throw std::runtime_error("v210 input row is smaller than the active frame width");
 
-    const uint32_t bytes = videoState->BytesPerFrame();
-    uint32_t expectedBytes;
     if (special720)
     {
-        const uint32_t aligned_width = ((1280 + 47) / 48) * 48;
-        const uint32_t src_stride = aligned_width * 8 / 3;
-        expectedBytes = m_height * src_stride;
-
         const uint32_t extraPixels = origWidth % PIXELS_PER_PACK;
         const uint32_t extraNeeded = (extraPixels == 0) ? 0 : (PIXELS_PER_PACK - extraPixels);
         const uint32_t fullDecodedWidth = origWidth + extraNeeded;
@@ -596,15 +624,11 @@ void CV210toP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& videoState)
     }
     else
     {
-        expectedBytes = m_height * ((origWidth / PIXELS_PER_PACK) * BYTES_PER_PACK);
         m_tempY.clear();
         m_tempUV.clear();
         m_tempY.shrink_to_fit();
         m_tempUV.shrink_to_fit();
     }
-
-    if (bytes != expectedBytes)
-        throw std::runtime_error("Unexpected amount of bytes for frame");
 
     m_width = origWidth;
 }
@@ -622,12 +646,9 @@ bool CV210toP010VideoFrameFormatter::FormatVideoFrame(
     uint16_t* dstY = reinterpret_cast<uint16_t*>(outBuffer);
     uint16_t* dstUV = reinterpret_cast<uint16_t*>(outBuffer + yPlaneSize);
 
-    const uint32_t alignedWidth = ((m_width + 47) / 48) * 48;
-    const uint32_t srcStride = alignedWidth * 8 / 3;
-
     const bool conversionSuccess = ConvertV210ToP010(
         static_cast<const uint8_t*>(inFrame.GetData()),
-        srcStride,
+        m_stride,
         dstY,
         dstUV,
         m_width,
@@ -933,48 +954,20 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMD(
             }
         }
 
-        // Handle remainder (6 pixels) - use regular stores for small amounts
+        // Decode at most two terminal packs and write only active pixels. This
+        // is needed when the active width ends within DeckLink's padded v210 row.
         if (remainderPixels > 0)
         {
-            // Process even line remainder
+            uint32_t remaining = remainderPixels;
+            while (remaining > 0)
             {
-                const uint32_t* src = src_even;
-                uint16_t* lineY = lineY_even;
-                uint16_t* line_uv = lineUV;
-                uint32_t val;
-                uint16_t u, y1, y2, v;
-                
-                V210_READ_PACK_BLOCK(u, y1, v);
-                *line_uv++ = u << 6; *lineY++ = y1 << 6; *line_uv++ = v << 6;
-                
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                *lineY++ = y1 << 6; *line_uv++ = u << 6; *lineY++ = y2 << 6;
-                
-                V210_READ_PACK_BLOCK(v, y1, u);
-                *line_uv++ = v << 6; *lineY++ = y1 << 6; *line_uv++ = u << 6;
-                
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                *lineY++ = y1 << 6; *line_uv++ = v << 6; *lineY++ = y2 << 6;
-            }
-
-            // Process odd line remainder (Y only)
-            {
-                const uint32_t* src = src_odd;
-                uint16_t* lineY = lineY_odd;
-                uint32_t val;
-                uint16_t u, y1, y2, v;
-                
-                V210_READ_PACK_BLOCK(u, y1, v);
-                *lineY++ = y1 << 6;
-                
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                *lineY++ = y1 << 6; *lineY++ = y2 << 6;
-                
-                V210_READ_PACK_BLOCK(v, y1, u);
-                *lineY++ = y1 << 6;
-                
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                *lineY++ = y1 << 6; *lineY++ = y2 << 6;
+                const uint32_t pixelCount = std::min<uint32_t>(PIXELS_PER_PACK, remaining);
+                const V210Pack evenPack = ReadV210Pack(src_even);
+                const V210Pack oddPack = ReadV210Pack(src_odd);
+                WriteV210PackToP010(evenPack, pixelCount, lineY_even, lineUV);
+                uint16_t* noChroma = nullptr;
+                WriteV210PackToP010(oddPack, pixelCount, lineY_odd, noChroma);
+                remaining -= pixelCount;
             }
         }
     }
@@ -1052,6 +1045,13 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Optimized(
                 *dstY_ptr++ = y2 << 6;
             }
         }
+
+        const uint32_t tailPixels = width % PIXELS_PER_PACK;
+        if (tailPixels > 0)
+        {
+            const V210Pack tail = ReadV210Pack(src);
+            WriteV210PackToP010(tail, tailPixels, dstY_ptr, dstUV_ptr);
+        }
     }
     
     return true;
@@ -1128,6 +1128,13 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Standard(
                 *dstY_ptr++ = y1 << 6;
                 *dstY_ptr++ = y2 << 6;
             }
+        }
+
+        const uint32_t tailPixels = width % PIXELS_PER_PACK;
+        if (tailPixels > 0)
+        {
+            const V210Pack tail = ReadV210Pack(src);
+            WriteV210PackToP010(tail, tailPixels, dstY_ptr, dstUV_ptr);
         }
     }
     
