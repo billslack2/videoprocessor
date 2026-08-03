@@ -195,6 +195,6 @@ Debug build or overwrite the user's configuration wholesale.
   hard-capacity behavior and protection against queue-limit reset loops.
 - [VP-0074](../done/VP-0074_alpha-latency-resilience-and-NLS-shader-cold-start-recovery.md)
   remains the independent, rate-scaled stall/age recovery backstop.
-- [VP-0078](../in-progress/VP-0078_alpha-refresh-transition-reprime.md)
+- [VP-0078](../review/VP-0078_alpha-refresh-transition-reprime.md)
   owns one-shot re-prime after a real output-refresh transition. Queue-profile
   re-prime must compose with, not duplicate, that action.
