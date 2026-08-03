@@ -266,6 +266,32 @@ namespace VideoProcessorTest
 			}
 		}
 
+		TEST_METHOD(WorkerRestartResetRepublishesUnchangedTrustedGeometry)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+
+			// Once stable, identical frames deliberately do not republish.
+			Assert::IsFalse(
+				Observe(model, ScopeBounds(), frame++).publish);
+
+			// A replacement conversion worker must reset its retained model when
+			// the output pin has cleared the externally published rectangle.
+			model.Reset();
+			for (uint8_t count = 1;
+				count < ActivePictureTransitionModel::INITIAL_CONFIRMATIONS;
+				++count)
+			{
+				Assert::IsFalse(
+					Observe(model, ScopeBounds(), frame++).publish);
+			}
+			const auto republished = Observe(model, ScopeBounds(), frame);
+			Assert::IsTrue(republished.publish);
+			Assert::IsTrue(republished.stable);
+			Assert::AreEqual(ScopeBounds().top, republished.bounds.top);
+			Assert::AreEqual(ScopeBounds().bottom, republished.bounds.bottom);
+		}
+
 		TEST_METHOD(FullRasterIsImmediateSafeStartupAuthority)
 		{
 			ActivePictureTransitionModel model;

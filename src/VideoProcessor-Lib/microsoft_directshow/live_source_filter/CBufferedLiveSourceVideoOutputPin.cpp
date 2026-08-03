@@ -3906,6 +3906,13 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 	uint64_t maxSlowConversionUs = 0;
 	SceneDetector sceneDetector;
 	uint64_t sceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
+	// FrameProcessor survives a DirectShow graph reset, but its conversion
+	// worker does not. Reset the worker-owned model unconditionally here so a
+	// replacement worker cannot race the generation increment in Reset() and
+	// inherit an already-stable model after the published rectangle was cleared.
+	// With identical paused frames that stale model would otherwise emit no new
+	// publication, leaving NLS in WAITING until the picture geometry changed.
+	m_frameProcessor.ResetActivePicture();
 	uint64_t activePictureDetectorGeneration =
 		m_activePictureDetectorGeneration.load(std::memory_order_acquire);
 
