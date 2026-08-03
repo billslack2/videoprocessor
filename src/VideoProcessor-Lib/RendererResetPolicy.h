@@ -8,6 +8,7 @@ enum class RendererResetReason
 	Manual,
 	PostRendererStart,
 	RefreshTransition,
+	HostTransition,
 	DisplayTransition,
 	Resize,
 	QueueSizeChange,
@@ -31,6 +32,7 @@ constexpr int RendererResetPriority(RendererResetReason reason)
 	case RendererResetReason::SourceGapRecovery: return 65;
 	case RendererResetReason::PostRendererStart: return 80;
 	case RendererResetReason::RefreshTransition: return 80;
+	case RendererResetReason::HostTransition: return 80;
 	case RendererResetReason::OutputReadiness: return 75;
 	case RendererResetReason::DisplayTransition: return 70;
 	case RendererResetReason::Resize: return 60;

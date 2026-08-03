@@ -34,6 +34,17 @@ namespace Tests
 				displayPriority, 35000));
 		}
 
+		TEST_METHOD(HostTransitionUsesTheSameQueueOnlyPriority)
+		{
+			Assert::AreEqual(
+				RendererResetPriority(RendererResetReason::RefreshTransition),
+				RendererResetPriority(RendererResetReason::HostTransition));
+			Assert::IsTrue(RendererResetShouldReplace(
+				RendererResetPriority(RendererResetReason::HostTransition), 5000,
+				RendererResetPriority(RendererResetReason::DisplayTransition),
+				35000));
+		}
+
 		TEST_METHOD(CriticalRecoveryPreemptsDisplaySettle)
 		{
 			Assert::IsTrue(RendererResetShouldReplace(

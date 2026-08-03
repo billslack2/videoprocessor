@@ -429,6 +429,7 @@ protected:
 	// material refresh family boundary; 59.94/60 and 23.976/24 remain families.
 	double m_lastAlphaTargetRefreshRateHz = 0.0;
 	bool m_alphaRefreshTransitionPending = false;
+	bool m_alphaHostTransitionPending = false;
 	double m_alphaRefreshTransitionPreviousRateHz = 0.0;
 	double m_alphaRefreshTransitionCurrentRateHz = 0.0;
 	// Initial DirectShow starts and backend handoffs need the proven madVR

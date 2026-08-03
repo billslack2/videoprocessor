@@ -73,6 +73,8 @@ const TCHAR* ToString(RendererResetReason reason)
 		return TEXT("post-renderer-start");
 	case RendererResetReason::RefreshTransition:
 		return TEXT("refresh-transition");
+	case RendererResetReason::HostTransition:
+		return TEXT("host-transition");
 	case RendererResetReason::OutputReadiness:
 		return TEXT("output-readiness");
 	case RendererResetReason::DisplayTransition: return TEXT("display-transition");
@@ -1977,6 +1979,16 @@ void CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()
 
 	if (TryStartFullscreenRetarget())
 		return;
+	if (m_videoRenderer && !m_activeRendererIsDirectShow)
+	{
+		// Alpha reconstructs its own swapchain for an HWND/fullscreen change.
+		// That can accept a first frame promptly while the new presentation path
+		// still absorbs a small reserve. Coalesce rapid toggles into the final
+		// renderer start, then re-prime it after the shared delay.
+		m_alphaHostTransitionPending = true;
+		DebugLog::Log(
+			"Alpha fullscreen host transition requested: state=timer-pending");
+	}
 
 	m_postRendererStartRequiresGraph = true;
 	m_wantToRestartRenderer = true;
@@ -1993,6 +2005,13 @@ void CVideoProcessorDlg::OnCbnSelchangeFullscreenmodeCombo()
 
 	if (m_fullScreenVideoWindow)
 	{
+		if (m_videoRenderer && !m_activeRendererIsDirectShow)
+		{
+			m_alphaHostTransitionPending = true;
+			DebugLog::Log(
+				"Alpha fullscreen presentation-mode transition requested: "
+				"state=timer-pending");
+		}
 		// The current or pending DirectShow graph can still own this HWND.
 		// Recreate it only after renderer teardown has reached a terminal point.
 		m_fullscreenModeChangePending = true;
@@ -2689,26 +2708,40 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 				static_cast<LPCTSTR>(m_activeRendererName),
 				postStartRequiresGraph ? 1 : 0, windowSettleDelayMs);
 		}
-		else if (m_alphaRefreshTransitionPending)
+		else if (m_alphaRefreshTransitionPending ||
+			m_alphaHostTransitionPending)
 		{
 			// Windows has confirmed a real cross-family output transition.  The
 			// fresh Alpha queue can show a first picture immediately, but its
 			// startup reserve is provisional until the shared renderer-change
 			// delay expires.  Replace the display-change fallback with one
 			// Alpha-native re-prime; never rebuild the DirectShow graph.
+			const bool refreshTransition = m_alphaRefreshTransitionPending;
 			const double previousRate = m_alphaRefreshTransitionPreviousRateHz;
 			const double currentRate = m_alphaRefreshTransitionCurrentRateHz;
 			m_alphaRefreshTransitionPending = false;
+			m_alphaHostTransitionPending = false;
 			RequestRendererReset(
-				RendererResetReason::RefreshTransition,
+				refreshTransition ? RendererResetReason::RefreshTransition :
+					RendererResetReason::HostTransition,
 				false,
 				static_cast<UINT>(m_queueResetDelaySeconds * 1000));
-			DebugLog::Log(
-				"Alpha refresh transition re-prime armed: previous=%.6fHz "
-				"configured=%.6fHz delay=%d seconds action=queue-only",
-				previousRate,
-				currentRate,
-				m_queueResetDelaySeconds);
+			if (refreshTransition)
+			{
+				DebugLog::Log(
+					"Alpha refresh transition re-prime armed: previous=%.6fHz "
+					"configured=%.6fHz delay=%d seconds action=queue-only",
+					previousRate,
+					currentRate,
+					m_queueResetDelaySeconds);
+			}
+			else
+			{
+				DebugLog::Log(
+					"Alpha fullscreen host transition re-prime armed: delay=%d "
+					"seconds action=queue-only",
+					m_queueResetDelaySeconds);
+			}
 		}
 		else if (windowSettleDelayMs != 0)
 		{
