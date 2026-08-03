@@ -2,25 +2,25 @@
 
 ## Status
 
-Backlog (critical picture-integrity defect, 2026-08-02). The deployed Alpha
-renderer repeatedly cropped and enlarged ordinary 16:9 World Cup pictures after
-mistaking scene content for encoded letterbox bars. The required experts are
-named below, but implementation cannot begin until their direct engineering and
-test participation is established and the pre-coding review is completed.
-Alpha scope playback should be treated as unsafe for important live viewing
-until a fail-safe increment is validated and deployed.
+In Progress (Phase A implementation started, 2026-08-02). Bill provided direct
+pre-coding geometry guidance: repair the existing implementation on the current
+`v1.1.015-beta` default branch, begin at the renderer-local Alpha crop path, and
+prefer the smallest practical, efficient fail-safe. Urvish must still
+participate in the image-analysis and unit-test work, and both experts must
+approve the result. Alpha scope playback should be treated as unsafe for
+important live viewing until the increment is independently reviewed,
+validated, and deployed.
 
 ## Pre-development readiness record (2026-08-02)
 
 ### Gate state
 
-Implementation is not yet authorized. The required participants,
-qualifications, and decision rule are recorded below, but the owner clarified
-that Bill and Urvish must work with the engineers on the implementation, review
-it, and write/review its unit tests. Their collaboration channel and concrete
-pre-coding design/test contributions are not yet recorded. A clean worktree and
-local branch, `codex/vp-0080-alpha-crop-failsafe`, remain code-clean until that
-gate is satisfied.
+Implementation is authorized for the practical Phase A scope. The required
+participants, qualifications, and decision rule are recorded below. Bill has
+worked directly with the implementer before coding; Urvish's image-analysis and
+unit-test contributions and both experts' final implementation approval remain
+required. The isolated source branch is
+`codex/vp-0080-alpha-crop-failsafe`.
 
 The operating context was re-established before that preparation:
 
@@ -52,13 +52,16 @@ guide on implementation practicality, but it cannot waive the unanimous gate
 or the source-pixel-preservation invariant; an unresolved critical objection
 from either participant still blocks coding.
 
-The participant qualification portion of the gate is satisfied. The
-pre-development and implementation-participation portions remain pending. Bill
-and Urvish must directly contribute to or review the proposed state/authority
-policy and test design before coding, remain engaged while the code and unit
-tests are written, and both approve the resulting implementation. Their actual
-decisions, test contributions, and unresolved objections must be recorded; a
-generic owner authorization is not a substitute for that evidence.
+The participant qualification and pre-development participation portions of
+the gate are satisfied. Bill's recorded direction is to fix the existing Alpha
+implementation on the current beta-015 default branch, starting at the known
+renderer-local promotion and `source.crop` write rather than designing a new
+detector in isolation. The implementation should be practical and efficient
+for this live-viewing use case while preserving the full-raster-on-uncertainty
+invariant. Urvish must still contribute to or review the image-analysis policy
+and unit tests during implementation. Both participants must approve the
+result, and their test contributions, decisions, and objections must be
+recorded before Review.
 
 ### Confirmed failure model
 
