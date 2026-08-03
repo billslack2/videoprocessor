@@ -113,7 +113,8 @@ namespace MainConfigSchema
 
 		const std::vector<ConfigSchema::KeyRule> recoveryRules = {
 			ConfigSchema::Integer("reset_after_render_restart_seconds", 1, INT_MAX),
-			ConfigSchema::Integer("reset_queue_too_large_percent", 1, 100)
+			ConfigSchema::Integer("reset_queue_too_large_percent", 1, 100),
+			ConfigSchema::Integer("reset_queue_sustained_level", 1, INT_MAX)
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "queue_recovery", recoveryRules, error))

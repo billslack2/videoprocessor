@@ -517,6 +517,9 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigStringOptionInSection(arguments, config, "queue_recovery",
 		{ "reset_queue_too_large_percent" },
 		L"/reset_queue_too_large_percent");
+	AppendConfigStringOptionInSection(arguments, config, "queue_recovery",
+		{ "reset_queue_sustained_level" },
+		L"/reset_queue_sustained_level");
 	AppendConfigStringOptionInSection(arguments, config, "lldv",
 		{ "max_cll" }, L"/lldv_max_cll");
 	AppendConfigStringOptionInSection(arguments, config, "lldv",
@@ -686,6 +689,7 @@ bool RequiresCommandLineValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/queue_size") ||
 		IsCommandLineOption(argument, L"/reset_after_render_restart_seconds") ||
 		IsCommandLineOption(argument, L"/reset_queue_too_large_percent") ||
+		IsCommandLineOption(argument, L"/reset_queue_sustained_level") ||
 		IsCommandLineOption(argument, L"/lldv_max_cll") ||
 		IsCommandLineOption(argument, L"/lldv_max_fall") ||
 		IsCommandLineOption(argument, L"/lldv_mastering_min_luminance") ||
@@ -795,6 +799,11 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 			 _wtoi(arguments[index + 1]) > 100))
 			throw std::runtime_error(
 				"Invalid /reset_queue_too_large_percent: expected an integer from 1 to 100");
+
+		if (IsCommandLineOption(argument, L"/reset_queue_sustained_level") &&
+			!IsPositiveInteger(arguments[index + 1]))
+			throw std::runtime_error(
+				"Invalid /reset_queue_sustained_level: expected a positive integer");
 
 		if (IsCommandLineOption(argument, L"/lldv_max_cll") ||
 			IsCommandLineOption(argument, L"/lldv_max_fall") ||
@@ -999,6 +1008,12 @@ BOOL CVideoProcessorApp::InitInstance()
 				(i + 1) < iNumOfArgs)
 			{
 				dlg.SetQueueResetHighWaterPercent(pArgs[i + 1]);
+			}
+
+			if (wcscmp(pArgs[i], L"/reset_queue_sustained_level") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				dlg.SetQueueSustainedResetLevel(pArgs[i + 1]);
 			}
 
 

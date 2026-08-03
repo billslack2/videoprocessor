@@ -126,6 +126,7 @@ public:
 	void SetQueueSize(const CString&);
 	void SetQueueResetDelaySeconds(const CString&);
 	void SetQueueResetHighWaterPercent(const CString&);
+	void SetQueueSustainedResetLevel(const CString&);
 	void SetCaptureDevice(const CString&);
 
 	void StartFrameOffsetAuto();
@@ -439,6 +440,9 @@ protected:
 	UINT_PTR m_rendererStartTime = 0;  // Tick count when renderer started rendering
 	int m_queueResetDelaySeconds = 5;
 	int m_queueResetHighWaterPercent = 75;
+	size_t m_queueSustainedResetLevel = 0;
+	ULONGLONG m_queueSustainedLevelSince = 0;
+	bool m_queueSustainedResetRequested = false;
 
 	// Frame offset by refresh data
 	std::vector<int> m_frameOffsetsByRefresh;

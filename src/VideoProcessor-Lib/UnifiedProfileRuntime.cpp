@@ -54,7 +54,9 @@ namespace
 			left.queue.hasQueueSize != right.queue.hasQueueSize ||
 			left.queue.queueSize != right.queue.queueSize ||
 			left.queue.hasTargetFrames != right.queue.hasTargetFrames ||
-			left.queue.targetFrames != right.queue.targetFrames)
+			left.queue.targetFrames != right.queue.targetFrames ||
+			left.queue.hasSustainedResetLevel != right.queue.hasSustainedResetLevel ||
+			left.queue.sustainedResetLevel != right.queue.sustainedResetLevel)
 			return false;
 
 		const auto& leftValues = left.variables.Values();

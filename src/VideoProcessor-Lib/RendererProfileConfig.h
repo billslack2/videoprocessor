@@ -130,6 +130,8 @@ namespace RendererProfileConfig
 		size_t queueSize = 0;
 		bool hasTargetFrames = false;
 		size_t targetFrames = 0;
+		bool hasSustainedResetLevel = false;
+		size_t sustainedResetLevel = 0;
 	};
 
 	inline bool ValidateExpressionVariables(
@@ -339,6 +341,7 @@ namespace RendererProfileConfig
 			int parsed = 0;
 			if (key == "queue_size") return ParseInteger(value, 1, INT_MAX, parsed);
 			if (key == "target_frames") return ParseInteger(value, 0, 16, parsed);
+			if (key == "reset_queue_sustained_level") return ParseInteger(value, 1, INT_MAX, parsed);
 			expected = "a queue-owned setting"; return false;
 		}
 		expected = "a known setting"; return false;
@@ -942,6 +945,18 @@ namespace RendererProfileConfig
 			}
 			queue.hasTargetFrames = true;
 			queue.targetFrames = static_cast<size_t>(value);
+		}
+		const auto sustainedLevel = profile->second.settings.find("reset_queue_sustained_level");
+		if (sustainedLevel != profile->second.settings.end())
+		{
+			int value = 0;
+			if (!ParseInteger(sustainedLevel->second, 1, INT_MAX, value))
+			{
+				error = "[profiles.queue." + profileName + "] reset_queue_sustained_level is invalid";
+				return false;
+			}
+			queue.hasSustainedResetLevel = true;
+			queue.sustainedResetLevel = static_cast<size_t>(value);
 		}
 		return true;
 	}

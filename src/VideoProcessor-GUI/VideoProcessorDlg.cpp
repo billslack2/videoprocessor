@@ -1582,6 +1582,13 @@ void CVideoProcessorDlg::SetQueueResetHighWaterPercent(const CString& value)
 		m_queueResetHighWaterPercent = percent;
 }
 
+void CVideoProcessorDlg::SetQueueSustainedResetLevel(const CString& value)
+{
+	const int level = _ttoi(value);
+	if (level > 0)
+		m_queueSustainedResetLevel = static_cast<size_t>(level);
+}
+
 void CVideoProcessorDlg::DefaultVideoConversionOverride(VideoConversionOverride videoConversionOverride)
 {
 	m_defaultVideoConversionOverride = videoConversionOverride;
@@ -6076,6 +6083,20 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	if (!snapshot || !m_videoRenderer)
 		return;
 
+	// Queue profiles own this opt-in safety valve. Returning to normal clears
+	// it immediately so the five-second observation cannot leak between modes.
+	if (!snapshot->queue.profile.empty())
+	{
+		m_queueSustainedResetLevel = snapshot->queue.hasSustainedResetLevel ?
+			snapshot->queue.sustainedResetLevel : 0;
+		m_queueSustainedLevelSince = 0;
+		m_queueSustainedResetRequested = false;
+		DebugLog::Log(
+			"Queue profile sustained-reset: profile=%s level=%zu enabled=%d",
+			snapshot->queue.profile.c_str(), m_queueSustainedResetLevel,
+			m_queueSustainedResetLevel != 0 ? 1 : 0);
+	}
+
 	CString activeState;
 	bool rendererRestartRequired = false;
 	if (!m_videoRenderer->ApplyApplicationState(
@@ -8388,6 +8409,8 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	{
 		m_consecutiveFullSeconds = 0;
 		m_consecutiveStuckSeconds = 0;
+		m_queueSustainedLevelSince = 0;
+		m_queueSustainedResetRequested = false;
 		return;
 	}
 
@@ -8398,6 +8421,34 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	const bool highWater = rawQueueSize * 100 >= queueMaxSize * highWaterPercent ||
 		convertedQueueSize * 100 >= queueMaxSize * highWaterPercent;
 	const ULONGLONG now = GetTickCount64();
+	const size_t combinedQueueSize = rawQueueSize + convertedQueueSize;
+	if (m_queueSustainedResetLevel != 0 &&
+		combinedQueueSize >= m_queueSustainedResetLevel)
+	{
+		if (m_queueSustainedLevelSince == 0)
+		{
+			m_queueSustainedLevelSince = now;
+			DebugLog::Log(
+				"Queue sustained-reset armed: combined=%zu level=%zu duration=5s",
+				combinedQueueSize, m_queueSustainedResetLevel);
+		}
+		else if (!m_queueSustainedResetRequested &&
+			now - m_queueSustainedLevelSince >= 5000)
+		{
+			m_queueSustainedResetRequested = true;
+			DebugLog::Log(
+				"Queue sustained-reset firing: combined=%zu level=%zu duration_ms=%llu action=r",
+				combinedQueueSize, m_queueSustainedResetLevel,
+				static_cast<unsigned long long>(now - m_queueSustainedLevelSince));
+			RequestRendererReset(RendererResetReason::Manual, true, 0);
+			return;
+		}
+	}
+	else
+	{
+		m_queueSustainedLevelSince = 0;
+		m_queueSustainedResetRequested = false;
+	}
 	const bool atCapacity =
 		rawQueueSize >= queueMaxSize ||
 		convertedQueueSize >= queueMaxSize;
