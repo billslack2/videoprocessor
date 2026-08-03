@@ -28,6 +28,10 @@ The operating context was re-established before that preparation:
 - the authoritative source checkout and deployed checkout both contain
   unrelated work, so neither was modified.
 
+The untouched integration commit has a clean x64 Release baseline: the full
+solution built with zero warnings/errors and all 487 native tests passed. This
+is an environment/readiness result, not validation of a VP-0080 fix.
+
 ### Confirmed failure model
 
 The incident transitions in `C:\Videoprocessor\vp\logs\vp_debug.log` were
