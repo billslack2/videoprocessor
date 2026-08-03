@@ -82,7 +82,7 @@ they must not contain requirements that are absent from this file.
 | VP-0054 | Done | DirectShow handoff queue saturation and UI-liveness recovery |
 | VP-0055 | Done | Display-rate outlier quarantine and transition warm-up |
 | VP-0057 | Done | Re-prime Alpha when it exceeds the configured queue limit |
-| VP-0058 | Backlog | ReShade compatibility prototype with madVR |
+| VP-0058 | Will Not Do | ReShade compatibility prototype with madVR |
 | VP-0059 | Will Not Do | Stable per-mode frame-offset policy and Alpha semantics (superseded by VP-0069) |
 | VP-0060 | Done | Reduce madVR fullscreen transition latency with stable target ownership |
 | VP-0061 | Blocked | DirectShow in-place reset re-prime with asymmetric madVR queues |

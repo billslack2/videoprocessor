@@ -2,13 +2,14 @@
 
 ## Status
 
-Backlog spike. The first local experiment exposed a VP-specific madVR
-window/input integration problem and was removed without changing VP source or
-configuration. Further work requires a focused render-host prototype before
-repeating the compatibility matrix.
+Will Not Do (2026-08-02). The first local experiment exposed a VP-specific
+madVR render-host/window/input integration problem and was removed without
+changing VP source or configuration. The developer has decided not to pursue a
+separate ReShade compatibility prototype at this time.
 
-This remains an experiment, not a committed renderer feature or distribution
-change.
+The investigation remains retained as evidence only. If external post-process
+injection is reconsidered, create a new story from the relevant host-contract
+findings below rather than reopening this experiment by default.
 
 ## Initial experiment result (2026-07-29)
 
