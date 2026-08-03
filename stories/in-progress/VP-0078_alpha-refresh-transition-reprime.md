@@ -50,6 +50,27 @@ unchanged. Recoverable pre-deployment backups are
 `VideoProcessor.exe.before-VP0078-rebase-20260802-203100.bak` and
 `vprenderer/VideoProcessorVPRenderer.dll.before-VP0078-rebase-20260802-203100.bak`.
 
+Fullscreen-host extension (2026-08-02): live Alpha evidence at 20:42:32
+showed a clean target reserve of two frames grow to five frames (about 74 ms
+oldest age) after the final windowed-to-fullscreen renderer reconstruction.
+The VP-0074 backstop correctly treated that as below its emergency threshold,
+then trimmed it only when it reached seven frames/107 ms at 20:42:54. Commit
+`a174477` adds an Alpha-only `host-transition` request for fullscreen and
+fullscreen-presentation-mode changes. It coalesces rapid toggles into one
+queue-only `ResetLiveQueue()` after the existing
+`/reset_after_render_restart_seconds` delay; a concurrent refresh transition
+shares that one request. The new focused x64 Release policy suite passed 8/8.
+
+madVR audit (2026-08-02): no behavioral change is recommended. Its supported
+fullscreen path already performs a serialized `graph-retarget`, followed by
+exactly one five-second LiveQueue reset without attempting to infer madVR's
+private occupancy. Recorded traces at 15:12:29/15:12:34 and
+16:08:06/16:08:11 show the configured second phase both armed and completed.
+Keyboard/API toggles during an already-pending madVR retarget could be
+hardened by a separately designed coalescing request, but normal UI controls
+are disabled during that interval and no incident evidence warrants changing
+the mature path as part of VP-0078.
+
 ## User story
 
 As an Alpha-renderer user, I want a menu-to-content refresh transition (for
