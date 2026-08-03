@@ -2,11 +2,12 @@
 
 ## Status
 
-In progress (2026-08-02). A source-only, un-deployed bounded native-RGB
-analysis path now feeds active-picture/NLS, scene analysis, and the existing
-scope subtitle/bar evidence; it remains validation-gated until reference-corpus
-and live-playback evidence is complete. Broader VP-0070 glyph/relocation
-behavior remains out of scope and is not enabled by this story.
+Done (2026-08-02). Merged by PR #31 to `v1.1.015-beta` as `8b8d900` after a
+successful x64 Release build and complete 487/487 test run. Direct hardware and
+live-playback validation was unavailable; the user explicitly accepted the
+automated Release evidence as the completion gate. No binaries were deployed.
+This story covers the existing `subtitle_fit` picture-shift behavior only;
+broader VP-0070 OCR/glyph relocation remains out of scope.
 
 ## Progress evidence
 
@@ -50,6 +51,12 @@ behavior remains out of scope and is not enabled by this story.
   and 13.6 ms maximum for R12B-to-P010; three consecutive 4K smoke runs and
   the complete x64 Release suite passed (487/487). Library, VPRenderer DLL,
   and GUI builds succeeded. No deployed binaries were changed.
+- 2026-08-02: Re-fetched the current GitHub default integration branch, verified
+  the feature branch was 0 commits behind, rebuilt the complete x64 Release
+  solution with 0 errors, and reran all 487 tests successfully. PR #31 was then
+  merged to `v1.1.015-beta` as `8b8d900`. GitHub had no required PR checks.
+  Direct hardware/live testing was not performed and was explicitly waived by
+  the user for story completion. No deployment was performed.
 
 ## User story
 
@@ -66,7 +73,8 @@ because their SMPTE-packed 12-bit layout cannot be represented by the generic
 four-byte RGB uploader. Before VP-0075, the direct regular-RGB path marked
 P010-oriented NLS, scene, and scope-subtitle analysis unavailable. This branch
 now supplies bounded native analysis for those direct formats without a
-full-frame conversion; live and corpus validation still gates the claim.
+full-frame conversion. The automated Release corpus is the accepted completion
+evidence; live hardware playback remains useful follow-up evidence, not a gate.
 
 The goal is **analysis parity without restoring unconditional full-frame P010
 conversion**. This is not a visual renderer change: direct RGB upload remains
@@ -135,9 +143,8 @@ the picture-delivery path.
 4. Add active-picture/NLS parity first. Enable it only after trusted-rectangle
    equivalence and false-positive rejection are demonstrated.
 5. Add scene-analysis parity next, with epoch/generation invalidation tests.
-6. Expose subtitle/glyph-region evidence to VP-0070 without beginning its
-   relocation behavior; prove single-line, multi-line, in-bar, and
-   bar-boundary detection evidence is usable.
+6. Feed the existing scope `subtitle_fit` bar-content analysis used for picture
+   shifting without beginning VP-0070 OCR or advanced relocation behavior.
 7. Enable each capability independently with a clearly logged availability
    state; do not require all consumers to ship atomically.
 
@@ -163,9 +170,9 @@ debug logs.
    restart, queue backlog, false stretch, or delayed stale decision.
 3. Validate scene analysis through renderer switch, format/raster change,
    display refresh change, HDR/SDR transition, reset, and epoch replacement.
-4. Validate subtitle/glyph-region evidence for single-line, multi-line,
-   entirely-in-bar, and bar-boundary examples; VP-0070 may consume the evidence
-   later, but this story must prove the contract.
+4. Validate the existing scope `subtitle_fit` bar-content evidence used to
+   shift the picture. OCR, glyph capture, and advanced relocation remain
+   VP-0070 work and are not acceptance gates for this story.
 5. Measure 23.976 and 59.94/60 native RGB playback in SDR and HDR where the
    source path supports it. No measurable new steady-state queue, dropped-frame,
    presentation-latency, or cold-path stall regression is permitted.
@@ -176,9 +183,9 @@ debug logs.
 
 - Native RGB Alpha ingress retains direct picture upload and gains trusted
   active-picture/NLS analysis without full-frame P010 conversion.
-- Scene and subtitle/glyph-region consumers receive a generation-safe,
-  coordinate-correct analysis contract, or remain clearly unavailable with a
-  precise reason.
+- Scene and existing `subtitle_fit` bar-content consumers receive a
+  generation-safe, coordinate-correct analysis contract, or remain clearly
+  unavailable with a precise reason.
 - Native RGB behavior matches P010/P210 reference decisions on the defined
   corpus without increasing false positives in dark/UI/fade content.
 - No hidden readback, full-frame copy, queue, renderer rebuild, or latency
