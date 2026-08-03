@@ -238,7 +238,8 @@
     <ClInclude Include="microsoft_directshow\live_source_filter\ILiveSource.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowEnhancedVideoRenderer.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGraphExecutor.h" />
-    <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGenericHDRVideoRenderer.h" />
+	<ClInclude Include="microsoft_directshow\video_renderers\DirectShowGenericHDRVideoRenderer.h" />
+	<ClInclude Include="microsoft_directshow\video_renderers\MadVRIngressPolicy.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGenericVideoRenderer.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowMPCVideoRenderer.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowVideoRenderer.h" />

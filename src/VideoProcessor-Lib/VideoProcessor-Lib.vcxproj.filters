@@ -252,6 +252,9 @@
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGenericHDRVideoRenderer.h">
       <Filter>Header Files\microsoft_directshow\video_renderers</Filter>
     </ClInclude>
+    <ClInclude Include="microsoft_directshow\video_renderers\MadVRIngressPolicy.h">
+      <Filter>Header Files\microsoft_directshow\video_renderers</Filter>
+    </ClInclude>
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGenericVideoRenderer.h">
       <Filter>Header Files\microsoft_directshow\video_renderers</Filter>
     </ClInclude>

@@ -14,6 +14,7 @@
 #include <video_frame_formatter/CUYVYtoP210VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
+#include <microsoft_directshow/video_renderers/MadVRIngressPolicy.h>
 #include <IntegerMath.h>
 #include <AspectRatio.h>
 #include <DisplayRuleExpression.h>
@@ -97,6 +98,28 @@ namespace Tests
 	TEST_CLASS(VideoFrameFormatterTests)
 	{
 	public:
+		TEST_METHOD(MadVRPackedTwelveBitIngressUsesP010Policy)
+		{
+			const auto automatic =
+				VideoConversionOverride::VIDEOCONVERSION_NONE;
+			const auto forcedP010 =
+				VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
+
+			Assert::IsTrue(MadVRUsesP010Ingress(
+				VideoFrameEncoding::R12B, automatic));
+			Assert::IsTrue(MadVRUsesP010Ingress(
+				VideoFrameEncoding::R12L, automatic));
+			Assert::IsFalse(MadVRUsesP010Ingress(
+				VideoFrameEncoding::R210, automatic));
+			Assert::IsTrue(MadVRUsesP010Ingress(
+				VideoFrameEncoding::R210, forcedP010));
+			Assert::IsTrue(IsDeckLinkPackedRgbP010Encoding(
+				VideoFrameEncoding::R12B));
+			Assert::IsTrue(IsDeckLinkPackedRgbP010Encoding(
+				VideoFrameEncoding::R12L));
+			Assert::IsFalse(IsDeckLinkPackedRgbP010Encoding(
+				VideoFrameEncoding::BGRA_8BIT));
+		}
 
 		TEST_METHOD(CNoopVideoFrameFormatterTest)
 		{
@@ -1341,6 +1364,41 @@ namespace Tests
 					Assert::AreEqual(1023U << 6, static_cast<unsigned int>(words[i + 1]));
 				}
 			}
+		}
+
+		TEST_METHOD(CDeckLinkRGBToP010R12BBlackWhiteContractTest)
+		{
+			CDeckLinkRGBToP010VideoFrameFormatter vff;
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(
+				104, 100, false, 60000, 1001);
+			vs->videoFrameEncoding = VideoFrameEncoding::R12B;
+			vs->colorspace = ColorSpace::REC_709;
+			vff.OnVideoState(vs);
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0xff);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			const uint16_t* words =
+				reinterpret_cast<const uint16_t*>(output.data());
+			const size_t lumaWords = 104ULL * 100;
+			const size_t totalWords = lumaWords + 104ULL * 50;
+			for (size_t i = 0; i < lumaWords; ++i)
+				Assert::AreEqual(0U, static_cast<unsigned int>(words[i]));
+			for (size_t i = lumaWords; i < totalWords; ++i)
+				Assert::AreEqual(512U << 6,
+					static_cast<unsigned int>(words[i]));
+
+			std::fill(input.begin(), input.end(), 0xff);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			for (size_t i = 0; i < lumaWords; ++i)
+				Assert::AreEqual(1023U << 6,
+					static_cast<unsigned int>(words[i]));
+			for (size_t i = lumaWords; i < totalWords; ++i)
+				Assert::AreEqual(512U << 6,
+					static_cast<unsigned int>(words[i]));
 		}
 
 		TEST_METHOD(CDeckLinkRGBToP010VideoFrameFormatter4KSmokeTest)
