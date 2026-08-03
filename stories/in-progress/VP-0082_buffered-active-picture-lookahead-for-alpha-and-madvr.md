@@ -12,6 +12,26 @@ testing with real watched content. Initial work is tracing the existing raw,
 converted, and renderer queues to prove the frame/epoch identity available to
 both Alpha and DirectShow/madVR before choosing the smallest implementation.
 
+Foundation commit `de1346f` adds the bounded renderer-neutral decision
+timeline, the validated `0..8` startup setting, renderer plumbing, public
+documentation, and safety/parity tests. Positive settings are deliberately
+retained but runtime-inactive at this checkpoint, so this is not yet an A/B
+build. The x64 Release solution builds and the native suite passes 543/543.
+
+Bill's practical review, Urvish's detector/cadence review, and renderer
+engineering approved this non-runtime foundation after inward backdating was
+restricted to outward-safe expansion, stale/duplicate identities were
+rejected, and the watermark was changed from presented to VP-consumed. Their
+approval does not cover runtime behavior, deployment, merge, or human
+acceptance.
+
+The next increment is exact Alpha queue integration: track every accepted,
+dequeued, dropped, reset, and discontinuous identity; inspect only existing
+safe future frames; preserve the current `ShouldAnalyze` cadence at value 0;
+and consume crop plus NLS atomically. DirectShow/madVR will first correlate
+the proposed source-frame decision with actual delivery/graph-application
+boundaries and remain diagnostic-only until shader-latching behavior is proven.
+
 ## User story
 
 As a CIH user watching mixed-aspect real-world video, I want VP to use the
