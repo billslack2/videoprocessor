@@ -11,19 +11,19 @@ behavior remains out of scope and is not enabled by this story.
 ## Progress evidence
 
 - 2026-08-02: Added the first bounded, non-owning analysis-input contract on
-  source branch `codex/vp-0075-native-rgb-analysis` at `4893e25`. It samples
+  source branch `codex/vp-0075-native-rgb-analysis` at `0f41173`. It samples
   P010 or direct native RGB in source coordinates and does not create a
   full-frame P010 buffer or GPU readback.
 - Native Alpha NLS active-picture evidence and scene detection now consume
   the contract. Direct DeckLink R210 is the primary test format; BGRA, R10b,
-  and R10l have layout coverage. Scope subtitle/glyph evidence remains
-  explicitly unavailable pending its denser corpus validation.
+  and R10l have layout coverage. Scope `subtitle_fit` follows in the next
+  milestone below; advanced subtitle OCR/relocation is not part of VP-0075.
 - Focused x64 Release verification passed: 21 P010 active-picture, scene, and
   native-RGB tests; library, VPRenderer DLL, and GUI builds all succeeded.
   No deployed binaries were changed. Live DeckLink R210 and reference-corpus
   playback/latency measurements are still required before parity is claimed.
 - 2026-08-02: Rebased onto the current `v1.1.015-beta` integration branch and
-  added `6bc3ff3`, which feeds the existing scope subtitle/bar evidence from
+  added `79f86c5`, which feeds the existing scope subtitle/bar evidence from
   the native source sampler and removes its recurring median-buffer heap
   allocation. The unit corpus now covers R210 scope bars, pillarbox, dark
   artwork, chromatic-dark rejection, and generation-safe scene input (23
@@ -41,11 +41,20 @@ behavior remains out of scope and is not enabled by this story.
   4:2:2 capture formats retain their full-height chroma rows rather than being
   sampled like 4:2:0. Focused x64 Release active-picture, scene, native-RGB,
   and P210-plane tests passed (25 total); no deployed binaries were changed.
+- 2026-08-02: Rebased onto integrated R12B and padded-v210 support, then made
+  MadVR automatically deliver both R12B and R12L through the proven P010
+  contract (`8bc062d`). R210 remains RGB48 by default and MPC's independent
+  R12B RGB48 policy is unchanged. Optimized the exact SMPTE 268M R12B decoder
+  byte mapping (`8dd3076`) after the first integrated benchmark left too
+  little 60 Hz headroom. The optimized 4K run measured about 9.9 ms average
+  and 13.6 ms maximum for R12B-to-P010; three consecutive 4K smoke runs and
+  the complete x64 Release suite passed (487/487). Library, VPRenderer DLL,
+  and GUI builds succeeded. No deployed binaries were changed.
 
 ## User story
 
 As an Alpha-renderer user with a direct/native RGB input path, I want NLS,
-active-picture/black-bar detection, scene analysis, and subtitle/glyph-region
+active-picture/black-bar detection, scene analysis, and scope subtitle-fit
 analysis to remain available and trustworthy, so using native RGB upload does
 not trade away the picture-aware behavior available on P010/P210 paths.
 
@@ -54,11 +63,10 @@ not trade away the picture-aware behavior available on P010/P210 paths.
 VP-0069-1 intentionally introduced direct libplacebo RGB upload for supported
 regular ARGB/BGRA/R210/R10b/R10l input. R12B/R12L use a reliable P010 fallback
 because their SMPTE-packed 12-bit layout cannot be represented by the generic
-four-byte RGB uploader. To avoid silently rebuilding a full-frame P010
-buffer, it currently marks P010-oriented NLS, scene, and scope-subtitle
-analysis unavailable on these paths. That preserves correctness and avoids a
-hidden latency/copy regression, but leaves native RGB functionally behind
-P010/P210 for real VP features.
+four-byte RGB uploader. Before VP-0075, the direct regular-RGB path marked
+P010-oriented NLS, scene, and scope-subtitle analysis unavailable. This branch
+now supplies bounded native analysis for those direct formats without a
+full-frame conversion; live and corpus validation still gates the claim.
 
 The goal is **analysis parity without restoring unconditional full-frame P010
 conversion**. This is not a visual renderer change: direct RGB upload remains
@@ -77,7 +85,8 @@ the picture-delivery path.
    - active-picture/black-bar detection and trusted active rectangle;
    - NLS aspect evidence and safe state transitions;
    - scene-detection input required by the Alpha path; and
-   - subtitle/glyph-region analysis needed by VP-0070.
+   - existing scope `subtitle_fit` bar-content analysis used to shift the
+     picture enough to keep captions visible.
 4. Preserve coordinate equivalence from source raster through crop, viewport,
    NLS, and final output. Consumers must not confuse rendered black, picture
    black, CIH bars, UI, or letterbox/pillarbox geometry.
@@ -88,8 +97,9 @@ the picture-delivery path.
 ## Non-goals
 
 - Do not route native RGB rendering through P010 merely to satisfy analysis.
-- Do not add OCR, subtitle relocation, or panel restoration; VP-0070 owns
-  those later actions.
+- Do not add OCR, advanced subtitle relocation, or panel restoration; VP-0070
+  owns those later actions. Existing `subtitle_fit` picture shifting remains
+  in scope.
 - Do not alter image color, tone mapping, LUT processing, output range,
   renderer queues, frame offset, or presentation scheduling.
 - Do not add per-frame GPU readback, a staging-resource stall, an unbounded
