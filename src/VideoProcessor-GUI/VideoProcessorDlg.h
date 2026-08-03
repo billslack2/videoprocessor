@@ -424,6 +424,13 @@ protected:
 	// reset only when a new renderer graph is constructed.
 	ULONGLONG m_queueResetIgnoreEventsUntil = 0;
 	bool m_displayTransitionAwaitingRenderer = false;
+	// The last configured Windows target rate seen while Alpha is active. A
+	// WM_DISPLAYCHANGE only earns a delayed Alpha re-prime when this crosses a
+	// material refresh family boundary; 59.94/60 and 23.976/24 remain families.
+	double m_lastAlphaTargetRefreshRateHz = 0.0;
+	bool m_alphaRefreshTransitionPending = false;
+	double m_alphaRefreshTransitionPreviousRateHz = 0.0;
+	double m_alphaRefreshTransitionCurrentRateHz = 0.0;
 	// Initial DirectShow starts and backend handoffs need the proven madVR
 	// stop/reset/run re-prime. Profile-only renderer replacements deliberately
 	// consume this as false so NLS/shader changes do not add a second blackout.

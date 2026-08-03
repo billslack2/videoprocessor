@@ -71,6 +71,8 @@ const TCHAR* ToString(RendererResetReason reason)
 	case RendererResetReason::Manual: return TEXT("manual");
 	case RendererResetReason::PostRendererStart:
 		return TEXT("post-renderer-start");
+	case RendererResetReason::RefreshTransition:
+		return TEXT("refresh-transition");
 	case RendererResetReason::OutputReadiness:
 		return TEXT("output-readiness");
 	case RendererResetReason::DisplayTransition: return TEXT("display-transition");
@@ -2686,6 +2688,27 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 				"awaiting output-readiness evidence",
 				static_cast<LPCTSTR>(m_activeRendererName),
 				postStartRequiresGraph ? 1 : 0, windowSettleDelayMs);
+		}
+		else if (m_alphaRefreshTransitionPending)
+		{
+			// Windows has confirmed a real cross-family output transition.  The
+			// fresh Alpha queue can show a first picture immediately, but its
+			// startup reserve is provisional until the shared renderer-change
+			// delay expires.  Replace the display-change fallback with one
+			// Alpha-native re-prime; never rebuild the DirectShow graph.
+			const double previousRate = m_alphaRefreshTransitionPreviousRateHz;
+			const double currentRate = m_alphaRefreshTransitionCurrentRateHz;
+			m_alphaRefreshTransitionPending = false;
+			RequestRendererReset(
+				RendererResetReason::RefreshTransition,
+				false,
+				static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+			DebugLog::Log(
+				"Alpha refresh transition re-prime armed: previous=%.6fHz "
+				"configured=%.6fHz delay=%d seconds action=queue-only",
+				previousRate,
+				currentRate,
+				m_queueResetDelaySeconds);
 		}
 		else if (windowSettleDelayMs != 0)
 		{
@@ -6689,6 +6712,38 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	// Display notifications can precede the capture/renderer replacement by
 	// many seconds. Do not flush the old madVR graph because its queues fill
 	// during that handshake; the replacement renderer owns recovery.
+	HWND displayWindow = nullptr;
+	if (m_fullScreenVideoWindow && IsWindow(m_fullScreenVideoWindow->GetHWND()))
+		displayWindow = m_fullScreenVideoWindow->GetHWND();
+	else if (m_windowedVideoWindow.GetSafeHwnd())
+		displayWindow = m_windowedVideoWindow.GetSafeHwnd();
+	const double configuredRefreshRate = GetActiveTargetRefreshRate(displayWindow);
+	const double previousRefreshRate = m_lastAlphaTargetRefreshRateHz;
+	const bool materiallyDifferentRefreshFamily =
+		previousRefreshRate > 0.0 && configuredRefreshRate > 0.0 &&
+		std::fabs(previousRefreshRate - configuredRefreshRate) /
+			std::max(previousRefreshRate, configuredRefreshRate) >= 0.01;
+	m_alphaRefreshTransitionPending =
+		m_videoRenderer && !m_activeRendererIsDirectShow &&
+		materiallyDifferentRefreshFamily;
+	if (m_alphaRefreshTransitionPending)
+	{
+		m_alphaRefreshTransitionPreviousRateHz = previousRefreshRate;
+		m_alphaRefreshTransitionCurrentRateHz = configuredRefreshRate;
+		DebugLog::Log(
+			"Alpha refresh transition requested: previous=%.6fHz configured=%.6fHz "
+			"state=timer-pending",
+			previousRefreshRate,
+			configuredRefreshRate);
+	}
+	else if (m_videoRenderer && !m_activeRendererIsDirectShow)
+	{
+		DebugLog::Log(
+			"Alpha display change does not require refresh re-prime: previous=%.6fHz "
+			"configured=%.6fHz",
+			previousRefreshRate,
+			configuredRefreshRate);
+	}
 	m_displayTransitionAwaitingRenderer = true;
 	m_queueResetIgnoreEventsUntil = GetTickCount64() + 30000;
 	DebugLog::Log(
@@ -7198,6 +7253,11 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	g_displayRefreshRateSampler->SetWindow(displayWindow);
 	const double activeTargetRefreshRate =
 		GetActiveTargetRefreshRate(displayWindow);
+	if (m_videoRenderer && !m_activeRendererIsDirectShow &&
+		activeTargetRefreshRate > 0.0)
+	{
+		m_lastAlphaTargetRefreshRateHz = activeTargetRefreshRate;
+	}
 	// Seed interval compensation from the configured path family. The selected
 	// value still comes only from measured DXGI samples after validation.
 	g_displayRefreshRateSampler->SetNominalRate(activeTargetRefreshRate);

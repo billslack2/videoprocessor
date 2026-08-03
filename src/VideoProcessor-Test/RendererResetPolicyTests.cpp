@@ -23,6 +23,17 @@ namespace Tests
 				postStartPriority, 5000));
 		}
 
+		TEST_METHOD(RefreshTransitionReplacesDelayedDisplayFallback)
+		{
+			const int refreshPriority = RendererResetPriority(
+				RendererResetReason::RefreshTransition);
+			const int displayPriority = RendererResetPriority(
+				RendererResetReason::DisplayTransition);
+			Assert::IsTrue(RendererResetShouldReplace(
+				refreshPriority, 5000,
+				displayPriority, 35000));
+		}
+
 		TEST_METHOD(CriticalRecoveryPreemptsDisplaySettle)
 		{
 			Assert::IsTrue(RendererResetShouldReplace(
