@@ -2,13 +2,23 @@
 
 ## Status
 
-Backlog. Created 2026-08-02 from the deployed Alpha incident recorded in
+In Progress. Began 2026-08-02 on `codex/vp-0078-alpha-refresh-transition`,
+based on confirmed current integration branch `origin/v1.1.015-beta`
+(`881f6f9b8417082394a092ef02bb050269138ace`), in worktree
+`C:\Users\bslac\vp\worktrees\vp-0078-alpha-refresh-transition`. Created
+2026-08-02 from the deployed Alpha incident recorded in
 `C:\Videoprocessor\vp\logs\vp_debug.log`. This is Alpha-only work. It must
 not change the DirectShow/madVR lifecycle, queue policy, or renderer selection
 path. The first implementation should re-use the existing configurable
-post-renderer-change reset delay used for madVR (expected default: five
-seconds; verify the exact key/default before implementation), rather than
+post-renderer-change reset delay used for madVR (verified key:
+`/reset_after_render_restart_seconds`; default: five seconds), rather than
 introduce a new Alpha-only timer or setting.
+
+Initial implementation audit: the current generic display-transition handler
+uses a graph reset and is therefore unsuitable for this Alpha-only operation.
+The Alpha renderer already provides `ResetLiveQueue()`; implementation will
+add a once-only refresh-transition owner that calls this Alpha-native path
+after the shared delay, while retaining VP-0074 as an independent backstop.
 
 ## User story
 
