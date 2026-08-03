@@ -14,11 +14,11 @@ deployed.
 
 ### Gate state
 
-Implementation is not yet authorized. The required named video-renderer and
-image/signal-analysis participants, their demonstrated experience, and their
-pre-coding review are still pending. No source code has been changed. A clean
-worktree and local branch, `codex/vp-0080-alpha-crop-failsafe`, were prepared
-solely to isolate later work after this gate is satisfied.
+Implementation is not yet authorized. The required participants and their
+experience are now named below, but their explicit pre-coding approval is still
+pending. No source code has been changed. A clean worktree and local branch,
+`codex/vp-0080-alpha-crop-failsafe`, were prepared solely to isolate later work
+after this gate is satisfied.
 
 The operating context was re-established before that preparation:
 
@@ -31,6 +31,30 @@ The operating context was re-established before that preparation:
 The untouched integration commit has a clean x64 Release baseline: the full
 solution built with zero warnings/errors and all 487 native tests passed. This
 is an environment/readiness result, not validation of a VP-0080 fix.
+
+### Participant and decision record
+
+- **Bill — video-renderer geometry participant.** Bill has 20 years of relevant
+  experience, including six years working on MPC. His role is to review the
+  source-crop, viewport, subtitle, NLS, and final-output geometry contracts and
+  keep the solution practical and efficient for this live-viewing use case.
+- **Urvish — image/signal-analysis participant.** Urvish is a Carnegie Mellon
+  University graduate with 30 years of relevant experience and is contributing
+  this review in support of the community. His role is to review black-bar,
+  boundary, visible-content, scene, temporal, format, and corpus evidence.
+
+Both Bill and Urvish must agree before implementation proceeds. Design choices
+should prefer a practical, efficient solution for the actual VP use case over
+unnecessary algorithmic complexity. Bill's production experience is the final
+guide on implementation practicality, but it cannot waive the unanimous gate
+or the source-pixel-preservation invariant; an unresolved critical objection
+from either participant still blocks coding.
+
+The participant qualification portion of the gate is satisfied. The
+pre-development review portion remains pending an explicit record that both
+participants reviewed the incident trace, confirmed failure model, proposed
+Phase A state/authority policy, corpus, false-positive bound, and withdrawal
+bound, and either approved them or recorded objections and resolutions.
 
 ### Confirmed failure model
 
