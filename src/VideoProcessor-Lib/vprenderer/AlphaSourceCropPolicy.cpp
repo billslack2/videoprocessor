@@ -41,6 +41,55 @@ namespace AlphaSourceCrop
 		}
 	}
 
+	void AmbiguityHold::Reset()
+	{
+		deadlineTick = 0;
+		ownerSourceGeneration = 0;
+		eligibleAfterTrustedCrop = false;
+	}
+
+	void AmbiguityHold::Observe(uint64_t currentTick,
+		uint64_t sourceGeneration, bool hadCurrentTrustedCrop,
+		bool trustedCropReaffirmed, ActivePictureClassification classification,
+		uint64_t maximumHoldMs)
+	{
+		if (trustedCropReaffirmed && hadCurrentTrustedCrop &&
+			classification == ActivePictureClassification::BAR_CROP_TRUSTED)
+		{
+			deadlineTick = 0;
+			ownerSourceGeneration = sourceGeneration;
+			eligibleAfterTrustedCrop = true;
+			return;
+		}
+		const bool ambiguous = classification ==
+			ActivePictureClassification::PROVISIONAL || classification ==
+			ActivePictureClassification::UNAVAILABLE;
+		if (hadCurrentTrustedCrop && ambiguous)
+		{
+			if (ownerSourceGeneration != sourceGeneration)
+			{
+				Reset();
+				return;
+			}
+			if (deadlineTick == 0 && eligibleAfterTrustedCrop)
+			{
+				const uint64_t remaining = UINT64_MAX - currentTick;
+				deadlineTick = currentTick + std::min(maximumHoldMs, remaining);
+				eligibleAfterTrustedCrop = false;
+			}
+			return;
+		}
+		if (!ambiguous)
+			Reset();
+	}
+
+	bool AmbiguityHold::IsActive(uint64_t currentTick,
+		uint64_t sourceGeneration) const
+	{
+		return deadlineTick != 0 && currentTick < deadlineTick &&
+			ownerSourceGeneration == sourceGeneration;
+	}
+
 	Decision Evaluate(const Input& input)
 	{
 		Decision decision;
@@ -70,10 +119,11 @@ namespace AlphaSourceCrop
 				: "shared geometry lacks crop authority";
 			return decision;
 		}
-		const bool boundedProvisionalHold =
-			input.sceneVerificationHoldActive &&
-			(input.latestObservationIsProvisional ||
-			 input.latestObservationIsUnavailable);
+		const bool ambiguousObservation =
+			input.latestObservationIsProvisional ||
+			input.latestObservationIsUnavailable;
+		const bool boundedAmbiguousRetention = ambiguousObservation &&
+			(input.sceneVerificationHoldActive || input.ambiguityHoldActive);
 		const bool boundedOutwardExpansion =
 			input.outwardPresentationActive &&
 			input.outwardExpansionAvailable &&
@@ -81,7 +131,7 @@ namespace AlphaSourceCrop
 			input.outwardExpansionSourceGeneration ==
 				input.frameSourceGeneration;
 		if (!input.latestObservationSupportsCrop &&
-			!boundedProvisionalHold && !boundedOutwardExpansion)
+			!boundedAmbiguousRetention && !boundedOutwardExpansion)
 		{
 			decision.reason =
 				"latest observation does not reaffirm crop authority";
@@ -141,7 +191,6 @@ namespace AlphaSourceCrop
 			decision.sourceBounds = input.outwardExpansion;
 			decision.applyCrop = true;
 			decision.outwardExpanded = true;
-			decision.nlsCompatible = false;
 			decision.reason =
 				"bounded outward presentation expansion accepted";
 			return decision;
@@ -151,7 +200,9 @@ namespace AlphaSourceCrop
 		decision.applyCrop = true;
 		decision.reason = input.latestObservationSupportsCrop
 			? "generation-current shared crop authority accepted"
-			: "bounded scene verification retained current trusted crop";
+			: (input.sceneVerificationHoldActive
+				? "bounded scene verification retained current trusted crop"
+				: "bounded ambiguity hold retained current trusted crop");
 		return decision;
 	}
 

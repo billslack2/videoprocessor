@@ -2489,7 +2489,9 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t scopePresentationEvidenceLastTick = 0;
 	uint64_t scopePresentationEvidenceSourceGeneration = 0;
 	static constexpr uint64_t ACTIVE_PICTURE_SCENE_VERIFICATION_MS = 500;
+	static constexpr uint64_t ACTIVE_PICTURE_AMBIGUITY_HOLD_MS = 2000;
 	uint64_t activePictureSceneVerificationDeadlineTick = 0;
+	AlphaSourceCrop::AmbiguityHold activePictureAmbiguityHold;
 	bool sceneVerificationGeometryAvailable = false;
 	ActivePictureBounds sceneVerificationGeometry;
 	uint64_t sceneVerificationGeometrySourceGeneration = 0;
@@ -3293,7 +3295,6 @@ struct LibplaceboVideoRenderer::Impl
 		scopeSubtitleOppositeCandidateSide = 0;
 		scopeSubtitleOppositeCandidateHits = 0;
 		scopeSubtitleEvidenceSourceGeneration = 0;
-		ClearScopePresentationEvidence();
 	}
 
 	float UpdateScopeSubtitleShift(
@@ -4765,6 +4766,7 @@ struct LibplaceboVideoRenderer::Impl
 			activePictureAnalysisSourceGeneration = 0;
 			ClearSceneVerificationSnapshot();
 			ClearScopeSubtitleEvidence();
+			ClearScopePresentationEvidence();
 			ClearLatestActivePictureEvidence();
 			nlsDecision = {};
 			renderParams.hooks = nullptr;
@@ -4773,6 +4775,7 @@ struct LibplaceboVideoRenderer::Impl
 			// parameters. Re-prime it lazily without dropping the live swapchain.
 			screenProfilesPrewarmed = false;
 			ClearScopeSubtitleEvidence();
+			ClearScopePresentationEvidence();
 			lastSourceCropPolicy.clear();
 		}
 	}
@@ -5000,47 +5003,9 @@ struct LibplaceboVideoRenderer::Impl
 		latestActivePictureEvidenceFrame = 0;
 	}
 
-	bool ApplyRetainedNlsDecisionForSceneHold()
-	{
-		renderParams.hooks = nullptr;
-		renderParams.num_hooks = 0;
-		if (!nlsRequested ||
-			nlsDecision.mode == MadVRNlsMappingMode::WAITING ||
-			nlsDecision.mode == MadVRNlsMappingMode::OFF)
-		{
-			return false;
-		}
-		if (nlsDecision.mode == MadVRNlsMappingMode::ACTIVE)
-		{
-			if (!nlsHook || !SetNlsHookMapping(nlsHook, nlsDecision))
-				return false;
-			renderParams.hooks = &nlsHook;
-			renderParams.num_hooks = 1;
-		}
-		MadVRShaderLoader::SetRuntimeShaderSelection(
-			requestedShaderSelector, requestedShaderSelector,
-			nlsDecision.mode);
-		switch (nlsDecision.mode)
-		{
-		case MadVRNlsMappingMode::ACTIVE:
-			SetShaderStatus("NLS: Active");
-			break;
-		case MadVRNlsMappingMode::SCOPE_PASSTHROUGH:
-			SetShaderStatus(nlsDecision.targetAspect > 2.2
-				? "NLS: Scope passthrough" : "NLS: Linear passthrough");
-			break;
-		case MadVRNlsMappingMode::SAFE_FIT:
-			SetShaderStatus("NLS: Safe fit");
-			break;
-		default:
-			return false;
-		}
-		return true;
-	}
-
 	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
 		uint64_t frameNumber,
-		double framesPerSecond, double targetAspect,
+		double framesPerSecond,
 		bool scopeScreenActive,
 		AlphaSourceCrop::SceneHoldDecision& sceneHold,
 		bool forceAnalysis = false)
@@ -5058,9 +5023,11 @@ struct LibplaceboVideoRenderer::Impl
 			latestActivePictureObservationSupportsCrop = false;
 			nlsGeometrySourceGeneration = 0;
 			activePictureAnalysisSourceGeneration = analysisSource.generation;
+			activePictureAmbiguityHold.Reset();
 			ClearSceneVerificationSnapshot();
 			ClearLatestActivePictureEvidence();
 			ClearScopeSubtitleEvidence();
+			ClearScopePresentationEvidence();
 			lastSourceCropPolicy.clear();
 			DebugLog::Log(
 				"Alpha active picture authority reset: source_generation=%llu",
@@ -5230,6 +5197,14 @@ struct LibplaceboVideoRenderer::Impl
 					ActivePictureClassification::BAR_CROP_TRUSTED;
 				nlsGeometrySourceGeneration = analysisSource.generation;
 			}
+			// A dark/ambiguous sample may bridge a normal cut or fade, but it
+			// cannot renew its own authority. Only a fresh trusted observation
+			// can rearm this source-generation-local budget.
+			activePictureAmbiguityHold.Observe(now, analysisSource.generation,
+				hadCurrentTrustedCropGeometry,
+				latestActivePictureObservationSupportsCrop,
+				latestActivePictureEvidenceClassification,
+				ACTIVE_PICTURE_AMBIGUITY_HOLD_MS);
 			if (transition.diagnostic)
 			{
 				DebugLog::Log(
@@ -5258,103 +5233,9 @@ struct LibplaceboVideoRenderer::Impl
 			 latestActivePictureEvidenceClassification ==
 				ActivePictureClassification::UNAVAILABLE))
 		{
-			if (ApplyRetainedNlsDecisionForSceneHold())
-				return;
-
-			// Hook restoration is part of the retained presentation. If it fails,
-			// withdraw the crop snapshot in this same frame as well.
-			sceneHold = {};
-			ClearSceneVerificationSnapshot();
-		}
-		if (!nlsRequested)
+			// The final presentation pass consumes this retained geometry and owns
+			// both crop and NLS. Analysis must not publish an independent hook state.
 			return;
-
-		MadVRShaderLoader::SetRuntimeNlsTargetAspect(targetAspect);
-		MadVRNlsMappingDecision decision = EvaluateMadVRNlsMapping(
-			nlsGeometryAvailable, nlsGeometry.aspectRatio,
-			targetAspect, nlsRule.aspectTolerancePercent,
-			nlsRule.activeAspectMinimum, nlsRule.narrowerOnly);
-		if (nlsGeometryAvailable &&
-			nlsGeometryClassification ==
-				ActivePictureClassification::BAR_CROP_TRUSTED &&
-			(!automaticSourceCrop ||
-				!latestActivePictureObservationSupportsCrop))
-		{
-			decision = {};
-			decision.targetAspect = targetAspect;
-			decision.reason = !automaticSourceCrop
-				? "automatic crop is off; preserving full raster"
-				: "latest observation does not reaffirm crop authority; preserving full raster";
-		}
-
-		if (decision.mode == MadVRNlsMappingMode::ACTIVE &&
-			!EnsureNlsHook(decision))
-		{
-			decision = {};
-			decision.targetAspect = targetAspect;
-			decision.reason =
-				"GLSL hook is unavailable; preserving safe passthrough";
-		}
-
-		if (decision.mode == MadVRNlsMappingMode::ACTIVE)
-		{
-			renderParams.hooks = &nlsHook;
-			renderParams.num_hooks = 1;
-		}
-
-		if (nlsGeometryAvailable &&
-			decision.mode != MadVRNlsMappingMode::WAITING)
-		{
-			const MadVRActivePictureGeometry geometry = {
-				nlsGeometry.aspectRatio,
-				static_cast<double>(nlsGeometry.left) / analysisSource.width,
-				static_cast<double>(nlsGeometry.top) / analysisSource.height,
-				static_cast<double>(nlsGeometry.right) / analysisSource.width,
-				static_cast<double>(nlsGeometry.bottom) / analysisSource.height,
-				nlsGeometryGeneration, nlsRendererGeneration, true
-			};
-			MadVRShaderLoader::SetRuntimeActivePictureGeometry(geometry);
-		}
-		MadVRShaderLoader::SetRuntimeShaderSelection(
-			requestedShaderSelector, requestedShaderSelector,
-			decision.mode);
-
-		if (decision.mode != nlsDecision.mode ||
-			std::abs(decision.sourceAspect -
-				nlsDecision.sourceAspect) > 0.01 ||
-			std::abs(decision.targetAspect -
-				nlsDecision.targetAspect) > 0.0001)
-		{
-			DebugLog::Log(
-				"Alpha NLS mapping: requested=%s applicable=%s mapping=%s rect=%d,%d-%d,%d source=%.4f target=%.4f stretch=%.5f renderer_generation=%llu reason=\"%s\"",
-				requestedShaderSelector.c_str(), nlsRule.name.c_str(),
-				MadVRNlsMappingModeName(decision.mode),
-				nlsGeometryAvailable ? nlsGeometry.left : 0,
-				nlsGeometryAvailable ? nlsGeometry.top : 0,
-				nlsGeometryAvailable ? nlsGeometry.right : 0,
-				nlsGeometryAvailable ? nlsGeometry.bottom : 0,
-				decision.sourceAspect, decision.targetAspect,
-				decision.stretchRatio,
-				static_cast<unsigned long long>(nlsRendererGeneration),
-				decision.reason.c_str());
-		}
-		nlsDecision = decision;
-		switch (decision.mode)
-		{
-		case MadVRNlsMappingMode::ACTIVE:
-			SetShaderStatus("NLS: Active");
-			break;
-		case MadVRNlsMappingMode::SCOPE_PASSTHROUGH:
-			SetShaderStatus(targetAspect > 2.2
-				? "NLS: Scope passthrough"
-				: "NLS: Linear passthrough");
-			break;
-		case MadVRNlsMappingMode::SAFE_FIT:
-			SetShaderStatus("NLS: Safe fit");
-			break;
-		default:
-			SetShaderStatus("NLS: Waiting");
-			break;
 		}
 	}
 
@@ -5421,6 +5302,7 @@ struct LibplaceboVideoRenderer::Impl
 			ClearSceneVerificationSnapshot();
 			ClearLatestActivePictureEvidence();
 			ClearScopeSubtitleEvidence();
+			ClearScopePresentationEvidence();
 			nlsDecision = {};
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
@@ -5623,7 +5505,7 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			UpdateNlsForFrame(analysisSource, sourceSequence,
 				state.displayMode->RefreshRateHz(),
-				frameNlsTargetAspect, scopeScreenActive, sceneHold,
+				scopeScreenActive, sceneHold,
 				!cadenceRepeat && sceneResult.safeBoundary);
 		}
 		if (!cadenceRepeat && sceneResult.safeBoundary)
@@ -5712,26 +5594,10 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometrySourceGeneration = 0;
 				if (retainBoundedSnapshot)
 				{
-					// Provisional cut evidence may retain the prior crop and its
-					// compatible mapping as one bounded presentation snapshot.
+					// Provisional cut evidence may retain the prior crop snapshot.
+					// The final presentation pass derives a fresh mapping from that
+					// exact rectangle instead of restoring an independent hook state.
 					nlsDecision = nlsDecisionBeforeSceneAnalysis;
-					if (nlsRequested &&
-						!ApplyRetainedNlsDecisionForSceneHold())
-					{
-						// Crop and mapping are one presentation snapshot. A hook
-						// failure withdraws both on the cut frame.
-						retainBoundedSnapshot = false;
-						sceneHold = {};
-						ClearSceneVerificationSnapshot();
-						nlsDecision = {};
-						nlsDecision.targetAspect = frameNlsTargetAspect;
-						nlsDecision.reason =
-							"retained NLS hook is unavailable; withdrawing scene snapshot";
-						MadVRShaderLoader::SetRuntimeShaderSelection(
-							requestedShaderSelector, requestedShaderSelector,
-							MadVRNlsMappingMode::WAITING);
-						SetShaderStatus("NLS: Waiting");
-					}
 				}
 				else
 				{
@@ -5796,31 +5662,39 @@ struct LibplaceboVideoRenderer::Impl
 				return true;
 			}
 		}
+		const bool ambiguityOverlayHoldActive =
+			activePictureAmbiguityHold.IsActive(
+				GetTickCount64(), frameGeneration);
 		const bool latestEvidenceAllowsBarOverlay =
 			latestActivePictureEvidenceAvailable &&
 			(latestActivePictureEvidenceClassification ==
 				ActivePictureClassification::BAR_CROP_TRUSTED ||
 			 (latestActivePictureEvidenceClassification ==
 				ActivePictureClassification::PROVISIONAL &&
-			  sceneHold.cropActive));
-		const bool currentVerticalBarAuthority =
+			  (sceneHold.cropActive || ambiguityOverlayHoldActive)));
+		auto hasCroppedEdge = [width, height](
+			const ActivePictureBounds& bounds)
+		{
+			return bounds.left > 0 || bounds.top > 0 ||
+				bounds.right < width || bounds.bottom < height;
+		};
+		const bool currentBarAuthority =
 			nlsGeometryAvailable &&
 			nlsGeometryClassification ==
 				ActivePictureClassification::BAR_CROP_TRUSTED &&
 			nlsGeometrySourceGeneration == frameGeneration &&
-			nlsGeometry.top > 0 && nlsGeometry.bottom < height &&
+			hasCroppedEdge(nlsGeometry) &&
 			latestEvidenceAllowsBarOverlay;
-		const bool sceneVerticalBarAuthority =
-			!currentVerticalBarAuthority &&
+		const bool sceneBarAuthority =
+			!currentBarAuthority &&
 			sceneHold.cropActive &&
 			sceneVerificationGeometryAvailable &&
 			sceneVerificationGeometrySourceGeneration == frameGeneration &&
-			sceneVerificationGeometry.top > 0 &&
-			sceneVerificationGeometry.bottom < height &&
+			hasCroppedEdge(sceneVerificationGeometry) &&
 			latestEvidenceAllowsBarOverlay;
 		const ActivePictureBounds* subtitleBarAuthority =
-			currentVerticalBarAuthority ? &nlsGeometry :
-			(sceneVerticalBarAuthority ? &sceneVerificationGeometry : nullptr);
+			currentBarAuthority ? &nlsGeometry :
+			(sceneBarAuthority ? &sceneVerificationGeometry : nullptr);
 		const float subtitleShiftSourcePixels =
 			UpdateScopeSubtitleShift(&analysisSource,
 				width, height, scopeScreenActive, subtitleBarAuthority);
@@ -6004,7 +5878,8 @@ struct LibplaceboVideoRenderer::Impl
 				struct pl_frame& target,
 				bool scopeActive,
 				float /* subtitleShift */,
-				bool* trustedActivePicture = nullptr)
+				bool* trustedActivePicture = nullptr,
+				bool publishFinalPresentation = false)
 		{
 			source = image;
 			if (trustedActivePicture)
@@ -6036,6 +5911,9 @@ struct LibplaceboVideoRenderer::Impl
 					? sceneVerificationGeometrySourceGeneration
 					: nlsGeometrySourceGeneration;
 			const uint64_t overlayNow = GetTickCount64();
+			const bool ambiguityHoldActive =
+				activePictureAmbiguityHold.IsActive(
+					overlayNow, frameGeneration);
 			const bool leftBarContentActive =
 				scopeSubtitleLeftLastDetectionTick != 0 &&
 				overlayNow - scopeSubtitleLeftLastDetectionTick <=
@@ -6141,6 +6019,7 @@ struct LibplaceboVideoRenderer::Impl
 				effectiveLatestSupportsCrop;
 			cropInput.sceneVerificationHoldActive =
 				sceneVerificationHoldActive;
+			cropInput.ambiguityHoldActive = ambiguityHoldActive;
 			cropInput.latestObservationIsProvisional =
 				latestObservationIsProvisional;
 			cropInput.latestObservationIsUnavailable =
@@ -6153,7 +6032,9 @@ struct LibplaceboVideoRenderer::Impl
 			cropInput.geometrySourceGeneration =
 				effectiveGeometrySourceGeneration;
 			cropInput.outwardExpansionSourceGeneration =
-				scopeSubtitleEvidenceSourceGeneration;
+				detectorEnvelopeActive
+					? scopePresentationEvidenceSourceGeneration
+					: scopeSubtitleEvidenceSourceGeneration;
 			cropInput.frameSourceGeneration = frameGeneration;
 			cropInput.rasterWidth = width;
 			cropInput.rasterHeight = height;
@@ -6165,6 +6046,7 @@ struct LibplaceboVideoRenderer::Impl
 				<< cropDecision.outwardExpanded << '|'
 				<< effectiveLatestSupportsCrop << '|'
 				<< sceneVerificationHoldActive << '|'
+				<< ambiguityHoldActive << '|'
 				<< latestObservationIsProvisional << '|'
 				<< cropDecision.sourceBounds.left << ','
 				<< cropDecision.sourceBounds.top << '-'
@@ -6177,12 +6059,13 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				lastSourceCropPolicy = cropPolicy.str();
 				DebugLog::Log(
-					"Alpha source crop: enabled=%d applied=%d expanded=%d latest_trusted=%d scene_hold=%d latest_evidence=%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s\"",
+					"Alpha source crop: enabled=%d applied=%d expanded=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d latest_evidence=%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s\"",
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
 					cropDecision.outwardExpanded ? 1 : 0,
 					effectiveLatestSupportsCrop ? 1 : 0,
 					sceneVerificationHoldActive ? 1 : 0,
+					ambiguityHoldActive ? 1 : 0,
 					static_cast<int>(
 						latestActivePictureEvidenceClassification),
 					cropDecision.sourceBounds.left,
@@ -6208,77 +6091,137 @@ struct LibplaceboVideoRenderer::Impl
 				if (trustedActivePicture)
 					*trustedActivePicture = true;
 			}
-			if (cropDecision.outwardExpanded)
+			if (!publishFinalPresentation)
 			{
-				// NLS parameters describe the trusted movie rectangle. A temporary
-				// outward presentation expansion has a different aspect and must use
-				// ordinary scaling until the overlay hold releases.
-				renderParams.hooks = nullptr;
-				renderParams.num_hooks = 0;
-			}
-			else if (!cropDecision.applyCrop && nlsGeometryClassification ==
-				ActivePictureClassification::BAR_CROP_TRUSTED)
-			{
-				// Never run a bar-derived nonlinear map against the full encoded
-				// raster. This also preserves subtitles by failing outward while a
-				// subtitle displacement is active.
-				renderParams.hooks = nullptr;
-				renderParams.num_hooks = 0;
-			}
-			if (nlsRequested &&
-				nlsDecision.mode == MadVRNlsMappingMode::WAITING)
-			{
-				// A clear transition or unavailable hook must never reuse the
-				// subtitle detector's older crop. Preserve the full current
-				// raster inside the viewport until trusted geometry returns.
-				pl_rect2df_aspect_set(
-					&target.crop,
-					static_cast<float>(
-						nlsDecision.targetAspect > 0.0
-							? nlsDecision.targetAspect
-							: (scopeActive
-								? scopeScreenAspect
-								: 16.0 / 9.0)),
-					0.0f);
-				pl_rect2df_aspect_copy(
-					&target.crop, &source.crop, 0.0f);
-				return;
-			}
-			const bool nlsMapped = nlsRequested &&
-				cropDecision.nlsCompatible &&
-				effectiveGeometryAvailable &&
-				(effectiveClassification !=
-					ActivePictureClassification::BAR_CROP_TRUSTED ||
-				 cropDecision.applyCrop) &&
-				(nlsDecision.mode == MadVRNlsMappingMode::ACTIVE ||
-				 nlsDecision.mode ==
-					MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
-				 nlsDecision.mode == MadVRNlsMappingMode::SAFE_FIT) &&
-				(nlsDecision.mode != MadVRNlsMappingMode::ACTIVE ||
-				 (renderParams.hooks != nullptr && renderParams.num_hooks > 0));
-			if (nlsMapped)
-			{
-				// Source contraction, if any, was authorized above by the shared
-				// generation-current crop policy. NLS consumes that exact decision.
-				pl_rect2df_aspect_set(
-					&target.crop,
-					static_cast<float>(nlsDecision.targetAspect),
-					0.0f);
-				if (nlsDecision.mode ==
-					MadVRNlsMappingMode::SAFE_FIT)
-				{
-					// Preserve extreme formats such as 4:3 inside the selected
-					// viewport instead of applying destructive NLS expansion.
-					pl_rect2df_aspect_copy(
-						&target.crop, &source.crop, 0.0f);
-				}
+				// Shader/profile prewarming must not publish per-frame presentation
+				// state. It only needs a valid, centered render geometry.
+				if (scopeActive)
+					pl_rect2df_aspect_set(&target.crop,
+						static_cast<float>(scopeScreenAspect), 0.0f);
+				pl_rect2df_aspect_copy(&target.crop, &source.crop, 0.0f);
 				return;
 			}
 
-			// Ordinary scaling and a retained NLS hook must never coexist. This is
-			// the final atomicity guard if crop authority expires or is withdrawn.
+			// This is the sole per-frame NLS authority. Derive every mapping input
+			// from the exact source rectangle selected above, then publish crop,
+			// hook, runtime geometry, status, and destination layout as one decision.
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
+			const double finalTargetAspect =
+				scopeActive ? scopeScreenAspect : 16.0 / 9.0;
+			const int finalSourceWidth =
+				cropDecision.sourceBounds.right - cropDecision.sourceBounds.left;
+			const int finalSourceHeight =
+				cropDecision.sourceBounds.bottom - cropDecision.sourceBounds.top;
+			const double finalSourceAspect = finalSourceHeight > 0
+				? static_cast<double>(finalSourceWidth) / finalSourceHeight : 0.0;
+			const bool currentFullRasterAuthority =
+				effectiveGeometryAvailable &&
+				effectiveClassification ==
+					ActivePictureClassification::FULL_RASTER_TRUSTED &&
+				effectiveGeometrySourceGeneration == frameGeneration &&
+				cropDecision.sourceBounds.left == 0 &&
+				cropDecision.sourceBounds.top == 0 &&
+				cropDecision.sourceBounds.right == width &&
+				cropDecision.sourceBounds.bottom == height;
+			const bool finalBoundsAuthoritative =
+				cropDecision.applyCrop || currentFullRasterAuthority;
+
+			if (nlsRequested)
+			{
+				MadVRShaderLoader::SetRuntimeNlsTargetAspect(finalTargetAspect);
+				MadVRNlsMappingDecision finalNlsDecision =
+					EvaluateMadVRNlsMapping(finalBoundsAuthoritative,
+						finalSourceAspect, finalTargetAspect,
+						nlsRule.aspectTolerancePercent,
+						nlsRule.activeAspectMinimum, nlsRule.narrowerOnly);
+				if (!finalBoundsAuthoritative)
+					finalNlsDecision.reason =
+						"final crop decision lacks current aspect authority";
+				if (finalNlsDecision.mode == MadVRNlsMappingMode::ACTIVE &&
+					!EnsureNlsHook(finalNlsDecision))
+				{
+					finalNlsDecision = {};
+					finalNlsDecision.sourceAspect = finalSourceAspect;
+					finalNlsDecision.targetAspect = finalTargetAspect;
+					finalNlsDecision.reason =
+						"GLSL hook is unavailable; preserving safe passthrough";
+				}
+				if (finalNlsDecision.mode == MadVRNlsMappingMode::ACTIVE)
+				{
+					renderParams.hooks = &nlsHook;
+					renderParams.num_hooks = 1;
+				}
+				if (finalBoundsAuthoritative &&
+					finalNlsDecision.mode != MadVRNlsMappingMode::WAITING)
+				{
+					const MadVRActivePictureGeometry geometry = {
+						finalSourceAspect,
+						static_cast<double>(cropDecision.sourceBounds.left) / width,
+						static_cast<double>(cropDecision.sourceBounds.top) / height,
+						static_cast<double>(cropDecision.sourceBounds.right) / width,
+						static_cast<double>(cropDecision.sourceBounds.bottom) / height,
+						nlsGeometryGeneration, nlsRendererGeneration, true
+					};
+					MadVRShaderLoader::SetRuntimeActivePictureGeometry(geometry);
+				}
+				MadVRShaderLoader::SetRuntimeShaderSelection(
+					requestedShaderSelector, requestedShaderSelector,
+					finalNlsDecision.mode);
+				if (finalNlsDecision.mode != nlsDecision.mode ||
+					std::abs(finalNlsDecision.sourceAspect -
+						nlsDecision.sourceAspect) > 0.01 ||
+					std::abs(finalNlsDecision.targetAspect -
+						nlsDecision.targetAspect) > 0.0001)
+				{
+					DebugLog::Log(
+						"Alpha final presentation: requested=%s applicable=%s mapping=%s rect=%d,%d-%d,%d source=%.4f target=%.4f stretch=%.5f renderer_generation=%llu reason=\"%s\"",
+						requestedShaderSelector.c_str(), nlsRule.name.c_str(),
+						MadVRNlsMappingModeName(finalNlsDecision.mode),
+						cropDecision.sourceBounds.left,
+						cropDecision.sourceBounds.top,
+						cropDecision.sourceBounds.right,
+						cropDecision.sourceBounds.bottom,
+						finalNlsDecision.sourceAspect,
+						finalNlsDecision.targetAspect,
+						finalNlsDecision.stretchRatio,
+						static_cast<unsigned long long>(nlsRendererGeneration),
+						finalNlsDecision.reason.c_str());
+				}
+				nlsDecision = finalNlsDecision;
+				switch (finalNlsDecision.mode)
+				{
+				case MadVRNlsMappingMode::ACTIVE:
+					SetShaderStatus("NLS: Active");
+					break;
+				case MadVRNlsMappingMode::SCOPE_PASSTHROUGH:
+					SetShaderStatus(finalTargetAspect > 2.2
+						? "NLS: Scope passthrough"
+						: "NLS: Linear passthrough");
+					break;
+				case MadVRNlsMappingMode::SAFE_FIT:
+					SetShaderStatus("NLS: Safe fit");
+					break;
+				default:
+					SetShaderStatus("NLS: Waiting");
+					break;
+				}
+
+				pl_rect2df_aspect_set(&target.crop,
+					static_cast<float>(finalTargetAspect), 0.0f);
+				if (finalNlsDecision.mode == MadVRNlsMappingMode::ACTIVE ||
+					finalNlsDecision.mode ==
+						MadVRNlsMappingMode::SCOPE_PASSTHROUGH)
+				{
+					return;
+				}
+				// WAITING and SAFE_FIT preserve the selected source rectangle with
+				// ordinary centered scaling inside the exact target viewport.
+				pl_rect2df_aspect_copy(&target.crop, &source.crop, 0.0f);
+				return;
+			}
+
+			// NLS is off: use the same final source rectangle with ordinary scaling.
 			if (scopeActive)
 			{
 				pl_rect2df_aspect_set(
@@ -6430,7 +6373,8 @@ struct LibplaceboVideoRenderer::Impl
 			target,
 			scopeScreenActive,
 			subtitleShiftSourcePixels,
-			&trustedActivePicture);
+			&trustedActivePicture,
+			true);
 		std::vector<uint8_t> overlayPixels;
 		int overlayWidth = 0;
 		int overlayHeight = 0;

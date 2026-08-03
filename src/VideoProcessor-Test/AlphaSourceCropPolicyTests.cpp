@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
+#include <microsoft_directshow/MadVRShaderRuntimeState.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 
 
@@ -41,6 +42,51 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+		TEST_METHOD(AmbiguityHoldIsBoundedNonRenewableAndGenerationLocal)
+		{
+			AmbiguityHold hold;
+			hold.Observe(900, 7, true, true,
+				ActivePictureClassification::BAR_CROP_TRUSTED, 2000);
+			hold.Observe(1000, 7, true, false,
+				ActivePictureClassification::UNAVAILABLE, 2000);
+			Assert::IsTrue(hold.IsActive(2999, 7));
+
+			// More ambiguity cannot renew the original deadline.
+			hold.Observe(2500, 7, true, false,
+				ActivePictureClassification::PROVISIONAL, 2000);
+			Assert::IsFalse(hold.IsActive(3000, 7));
+			Assert::IsFalse(hold.IsActive(2999, 8));
+
+			// Current trusted evidence rearms a later, independently bounded fade.
+			hold.Observe(3100, 7, true, true,
+				ActivePictureClassification::BAR_CROP_TRUSTED, 2000);
+			hold.Observe(3200, 7, true, false,
+				ActivePictureClassification::UNAVAILABLE, 2000);
+			Assert::IsTrue(hold.IsActive(5199, 7));
+			hold.Observe(4000, 7, true, false,
+				ActivePictureClassification::FULL_RASTER_TRUSTED, 2000);
+			Assert::IsFalse(hold.IsActive(4000, 7));
+
+			// A contradiction followed by darkness cannot rearm stale geometry.
+			hold.Observe(4100, 7, true, false,
+				ActivePictureClassification::UNAVAILABLE, 2000);
+			Assert::IsFalse(hold.IsActive(4100, 7));
+
+			// Fresh trusted crop evidence is required before another hold can arm.
+			hold.Observe(4200, 7, true, true,
+				ActivePictureClassification::BAR_CROP_TRUSTED, 2000);
+			hold.Observe(4300, 7, true, false,
+				ActivePictureClassification::PROVISIONAL, 2000);
+			Assert::IsTrue(hold.IsActive(4300, 7));
+
+			AmbiguityHold inconsistent;
+			inconsistent.Observe(5000, 7, true, true,
+				ActivePictureClassification::FULL_RASTER_TRUSTED, 2000);
+			inconsistent.Observe(5100, 7, true, false,
+				ActivePictureClassification::UNAVAILABLE, 2000);
+			Assert::IsFalse(inconsistent.IsActive(5100, 7));
+		}
+
 		TEST_METHOD(AutomaticCropDefaultsToFailSafeFullRaster)
 		{
 			Input input = TrustedScopeCrop();
@@ -84,11 +130,42 @@ namespace Tests
 			AssertFullRaster(Evaluate(input));
 		}
 
-		TEST_METHOD(AmbiguousLatestObservationWithdrawsToFullRaster)
+		TEST_METHOD(UnclassifiedLossOfAuthorityWithdrawsToFullRaster)
 		{
 			Input input = TrustedScopeCrop();
 			input.latestObservationSupportsCrop = false;
 			AssertFullRaster(Evaluate(input));
+		}
+
+		TEST_METHOD(AmbiguousDarkObservationRetainsTrustedPresentation)
+		{
+			Input input = TrustedScopeCrop();
+			input.latestObservationSupportsCrop = false;
+			input.latestObservationIsUnavailable = true;
+			input.ambiguityHoldActive = true;
+			const Decision dark = Evaluate(input);
+			Assert::IsTrue(dark.applyCrop);
+			Assert::AreEqual(274, dark.sourceBounds.top);
+			Assert::AreEqual(1884, dark.sourceBounds.bottom);
+			Assert::IsTrue(
+				dark.reason.find("ambiguity hold") != std::string::npos);
+
+			input.latestObservationIsUnavailable = false;
+			input.latestObservationIsProvisional = true;
+			const Decision provisional = Evaluate(input);
+			Assert::IsTrue(provisional.applyCrop);
+			Assert::AreEqual(274, provisional.sourceBounds.top);
+			Assert::AreEqual(1884, provisional.sourceBounds.bottom);
+
+			const double finalAspect = static_cast<double>(
+				provisional.sourceBounds.right - provisional.sourceBounds.left) /
+				(provisional.sourceBounds.bottom - provisional.sourceBounds.top);
+			const MadVRNlsMappingDecision mapping = EvaluateMadVRNlsMapping(
+				true, finalAspect, 2.35, 5.0, 1.0, false);
+			Assert::AreEqual(
+				static_cast<int>(MadVRNlsMappingMode::SCOPE_PASSTHROUGH),
+				static_cast<int>(mapping.mode));
+			Assert::AreEqual(finalAspect, mapping.sourceAspect, 0.000001);
 		}
 
 		TEST_METHOD(BoundedSceneVerificationRetainsOnlyExistingTrustedCrop)
@@ -147,9 +224,17 @@ namespace Tests
 			const Decision decision = Evaluate(input);
 			Assert::IsTrue(decision.applyCrop);
 			Assert::IsTrue(decision.outwardExpanded);
-			Assert::IsFalse(decision.nlsCompatible);
 			Assert::AreEqual(274, decision.sourceBounds.top);
 			Assert::AreEqual(2100, decision.sourceBounds.bottom);
+
+			const double finalAspect = static_cast<double>(
+				decision.sourceBounds.right - decision.sourceBounds.left) /
+				(decision.sourceBounds.bottom - decision.sourceBounds.top);
+			const MadVRNlsMappingDecision mapping = EvaluateMadVRNlsMapping(
+				true, finalAspect, 2.35, 5.0, 1.0, false);
+			Assert::AreEqual(static_cast<int>(MadVRNlsMappingMode::ACTIVE),
+				static_cast<int>(mapping.mode));
+			Assert::AreEqual(finalAspect, mapping.sourceAspect, 0.000001);
 		}
 
 		TEST_METHOD(BarContentFitExpandsOnlyTheDetectedEdges)
@@ -494,7 +579,7 @@ namespace Tests
 			Assert::IsFalse(decision.nlsActive);
 		}
 
-		TEST_METHOD(DarkFadeRetainsTrustedScopeUntilOneBoundedExpiry)
+		TEST_METHOD(DarkFadeHoldExpiresCropAndFinalNlsTogether)
 		{
 			SceneInput boundary;
 			boundary.geometryAvailable = true;

@@ -8,12 +8,30 @@
 
 namespace AlphaSourceCrop
 {
+	class AmbiguityHold
+	{
+	public:
+		void Reset();
+		void Observe(uint64_t currentTick, uint64_t sourceGeneration,
+			bool hadCurrentTrustedCrop, bool trustedCropReaffirmed,
+			ActivePictureClassification classification,
+			uint64_t maximumHoldMs);
+		bool IsActive(uint64_t currentTick,
+			uint64_t sourceGeneration) const;
+
+	private:
+		uint64_t deadlineTick = 0;
+		uint64_t ownerSourceGeneration = 0;
+		bool eligibleAfterTrustedCrop = false;
+	};
+
 	struct Input
 	{
 		bool automaticCropEnabled = false;
 		bool sharedGeometryAvailable = false;
 		bool latestObservationSupportsCrop = false;
 		bool sceneVerificationHoldActive = false;
+		bool ambiguityHoldActive = false;
 		bool latestObservationIsProvisional = false;
 		bool latestObservationIsUnavailable = false;
 		bool outwardPresentationActive = false;
@@ -34,7 +52,6 @@ namespace AlphaSourceCrop
 		ActivePictureBounds sourceBounds;
 		bool applyCrop = false;
 		bool outwardExpanded = false;
-		bool nlsCompatible = true;
 		std::string reason;
 	};
 
