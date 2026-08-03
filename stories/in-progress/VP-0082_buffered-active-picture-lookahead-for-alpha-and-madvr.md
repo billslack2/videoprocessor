@@ -32,6 +32,18 @@ and consume crop plus NLS atomically. DirectShow/madVR will first correlate
 the proposed source-frame decision with actual delivery/graph-application
 boundaries and remain diagnostic-only until shader-latching behavior is proven.
 
+Alpha diagnostic integration commit `238aad4` completes the queue-ownership
+portion of that work. It tracks enqueue, dequeue, overflow, resize, backlog
+recovery, cadence repeat, clear, discontinuity, and generation reset; analyzes
+only the existing safe future lead outside the queue lock; and attaches/logs
+proposed and consumed decision identities. Sparse native analysis now covers
+packed RGB, UYVY/HDYC, and v210, avoiding duplicate full-frame conversion.
+Positive values remain `runtime-apply=0`: they exercise diagnostics but do not
+yet control pixels. The x64 Release solution builds and 547/547 native tests
+pass. Next is the separately reviewed preview/presentation state split needed
+to consume the final crop and NLS decision atomically without allowing future
+evidence to mutate the current frame.
+
 ## User story
 
 As a CIH user watching mixed-aspect real-world video, I want VP to use the
