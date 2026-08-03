@@ -171,7 +171,7 @@ the crop oracle.
 
 ## Phase A implementation evidence (2026-08-02)
 
-Source commit `0dd3c9038843530dcf1abbe2d35c8d1b887afee0` on
+Source commit `ce9845d4920dfa4476be7c46dfab7ed799ff4820` on
 `codex/vp-0080-alpha-crop-failsafe` implements the first fail-safe increment:
 
 - `automatic_crop` is a documented viewport setting and defaults to false;
@@ -203,6 +203,13 @@ tests cover default Off, all six incident rectangles under repeated observation,
 provisional and asymmetric evidence, stale generations, raster mismatch,
 invalid/chroma-misaligned bounds, subtitle displacement, full-raster authority,
 and the tightly constrained trusted-On case.
+
+The implementation was subsequently rebased without conflict onto current
+`v1.1.015-beta` commit `063a541`. A full clean x64 Release rebuild succeeded.
+The first post-rebase test run exposed an unrelated canonical queue-size
+documentation-inventory mismatch introduced on the integration branch; source
+commit `dcd52da` corrects that one-token inventory error. The final post-rebase
+full suite again passed 502/502 tests.
 
 No deployed files or active configuration were changed. The real human Urvish
 independent image-analysis/test review, both human experts' final agreement,
