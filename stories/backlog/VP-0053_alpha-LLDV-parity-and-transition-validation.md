@@ -103,14 +103,49 @@ scope expansion.
 
 ## Diagnostics
 
-Log once per relevant transition:
+Existing logs are not sufficient to close this story. They show the color state
+that reached Alpha, but do not join the raw DeckLink state, shared VP decision,
+effective metadata, queued-frame boundary, and renderer action into one
+reconstructable transition.
 
-- raw EOTF, primaries, and static-HDR presence from the Quad;
-- LLDV classification result already produced by shared VP logic;
-- complete effective state sent to the selected renderer;
-- source/effective generation and renderer generation;
-- Alpha's in-place, history-flush, or rebuild decision; and
-- the final steady state.
+Add transition telemetry to
+`C:\Videoprocessor\vp\logs\vp_debug.log`. Use one stable event prefix and a
+monotonic transition/state generation so related records can be correlated.
+Log only on state changes and the first frame that applies a change; do not log
+per frame in steady state.
+
+Each transition record must contain:
+
+- raw DeckLink EOTF, colorspace, nominal range, frame encoding, and whether
+  valid static HDR data is present;
+- raw mastering min/max, MaxCLL, MaxFALL, and a stable metadata fingerprint
+  when HDR data is present;
+- the existing shared classification result: ordinary input, legacy LLDV, or
+  `newlldv`, including eligibility/confirmation/cancellation reason;
+- complete effective `VideoState`: EOTF, colorspace, range, encoding,
+  mastering min/max, MaxCLL, MaxFALL, metadata fingerprint, and effective-state
+  generation;
+- selected renderer and renderer generation;
+- Alpha's `OnVideoState` result: accepted in place or rebuild requested,
+  selected display rule, and reason;
+- the first Alpha frame rendered with the new effective-state generation,
+  including frame counter and whether tone/peak history was retained or
+  flushed, with the reason; and
+- final steady state plus queue depth, dropped-frame delta, and restart/reset
+  count for the transition.
+
+The shared raw/classification/effective records must be emitted before the
+renderer-specific record so the same evidence can be compared with a madVR
+baseline. A successful log sequence must make it possible to answer, without
+visual inference:
+
+1. What did DeckLink report?
+2. Did VP classify it as LLDV, and why?
+3. What exact state and HDR values did VP send?
+4. Which Alpha frame first used that state?
+5. Did Alpha update, flush history, or rebuild?
+6. Did the renderer reach steady state without a reset loop, queue failure, or
+   stale treatment?
 
 The OSD must reflect the effective input treatment. It must not show SDR while
 Alpha is processing VP's effective PQ state or retain PQ after return to SDR.
@@ -164,7 +199,13 @@ refresh, and generations.
   libplacebo tone/peak behavior.
 - Alpha rebuilds only when its existing display/output contract requires it;
   otherwise it updates in place.
-- Logs prove raw state, shared effective state, Alpha decision, and final state.
+- For every required transition, logs provide one correlated raw ->
+  classification -> effective state -> renderer decision -> first applied
+  frame -> steady-state chain with complete HDR values and bounded queue,
+  drop, restart, and reset evidence.
+- The evidence is sufficient to distinguish a metadata-only PQ/BT.2020 change
+  from no state change and to prove whether Alpha retained or flushed
+  tone/peak history.
 - Existing Quad + madVR LLDV behavior and values do not change.
 - Quad validation is sufficient to move VP-0053 to Done. Mini and other
   DeckLink validation is welcome follow-up evidence but is not a completion
