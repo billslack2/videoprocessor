@@ -21,6 +21,7 @@ namespace UnifiedProfileRuntime
 		std::map<std::string, std::string> manualSelections;
 		std::map<std::string, std::string> effectiveSelections;
 		RendererProfileConfig::ResolvedViewport viewport;
+		RendererProfileConfig::ResolvedQueue queue;
 		StateVariables::Snapshot variables;
 
 		bool LookupVariable(const std::string& name, std::string& value) const

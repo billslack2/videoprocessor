@@ -77,6 +77,7 @@ namespace MainConfigSchema
 		// a config typo cannot create an impractically deep live queue. The old
 		// names remain accepted for configuration-file compatibility.
 		const std::vector<ConfigSchema::KeyRule> queueRules = {
+			ConfigSchema::Integer("queue_size", 1, INT_MAX),
 			ConfigSchema::Integer("lead_frames", 0, 16),
 			ConfigSchema::Integer("target_frames", 0, 16),
 			ConfigSchema::Integer("startup_preroll_frames", 0, 16),

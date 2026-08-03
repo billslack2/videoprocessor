@@ -119,6 +119,19 @@ namespace RendererProfileConfig
 		uint64_t generation = 0;
 	};
 
+	// Queue is application-owned, unlike the renderer profile groups.  It is
+	// nevertheless parsed with the same strict profile grammar and key-chord
+	// expressions so selections compose across groups.
+	struct ResolvedQueue
+	{
+		std::string group = "queue";
+		std::string profile;
+		bool hasQueueSize = false;
+		size_t queueSize = 0;
+		bool hasTargetFrames = false;
+		size_t targetFrames = 0;
+	};
+
 	inline bool ValidateExpressionVariables(
 		const DisplayRuleExpression::Expression& expression,
 		const std::set<std::string>& allowed, const std::string& context,
@@ -321,6 +334,13 @@ namespace RendererProfileConfig
 			}
 			expected = "a viewport-owned setting"; return false;
 		}
+		if (group == "queue")
+		{
+			int parsed = 0;
+			if (key == "queue_size") return ParseInteger(value, 1, INT_MAX, parsed);
+			if (key == "target_frames") return ParseInteger(value, 0, 16, parsed);
+			expected = "a queue-owned setting"; return false;
+		}
 		expected = "a known setting"; return false;
 	}
 
@@ -463,7 +483,7 @@ namespace RendererProfileConfig
 				return false;
 		}
 
-		const std::vector<std::string> expectedGroups = { "input", "scaling", "display", "viewport" };
+		const std::vector<std::string> expectedGroups = { "input", "scaling", "display", "viewport", "queue" };
 		for (const std::string& groupName : expectedGroups)
 		{
 			const std::string section = "profile_groups." + groupName;
@@ -884,6 +904,44 @@ namespace RendererProfileConfig
 			error = "[profiles.viewport." + viewport.profile +
 				"] subtitle_padding_pixels is invalid";
 			return false;
+		}
+		return true;
+	}
+
+	inline bool ResolveQueue(const Model& model, const std::string& profileName,
+		ResolvedQueue& queue, std::string& error)
+	{
+		queue = {};
+		const auto profile = model.profiles.find("queue." + profileName);
+		if (profile == model.profiles.end())
+		{
+			error = "queue profile '" + profileName + "' is not defined";
+			return false;
+		}
+		queue.profile = profileName;
+		const auto queueSize = profile->second.settings.find("queue_size");
+		if (queueSize != profile->second.settings.end())
+		{
+			int value = 0;
+			if (!ParseInteger(queueSize->second, 1, INT_MAX, value))
+			{
+				error = "[profiles.queue." + profileName + "] queue_size is invalid";
+				return false;
+			}
+			queue.hasQueueSize = true;
+			queue.queueSize = static_cast<size_t>(value);
+		}
+		const auto targetFrames = profile->second.settings.find("target_frames");
+		if (targetFrames != profile->second.settings.end())
+		{
+			int value = 0;
+			if (!ParseInteger(targetFrames->second, 0, 16, value))
+			{
+				error = "[profiles.queue." + profileName + "] target_frames is invalid";
+				return false;
+			}
+			queue.hasTargetFrames = true;
+			queue.targetFrames = static_cast<size_t>(value);
 		}
 		return true;
 	}

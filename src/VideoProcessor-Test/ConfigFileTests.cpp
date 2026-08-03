@@ -275,6 +275,7 @@ namespace VideoProcessorTest
 					"scene_correction_basic: false\n"
 					"frame_offset: AUTO\n"
 					"[queue]\n"
+					"queue_size: 32\n"
 					"lead_frames: 1\n"
 					"target_frames: 2\n"
 					"[queue_recovery]\n"
@@ -404,6 +405,14 @@ namespace VideoProcessorTest
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[command_line]\nqueue_size: 0\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("queue_size") != std::string::npos);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue]\nqueue_size: 0\n";
 			}
 			Assert::IsTrue(config.Load(path));
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));

@@ -226,9 +226,9 @@ HACCEL CreateConfiguredAccelerators(
 		rendererConfig.Load(ConfigFile::RENDERER_FILENAME);
 	RendererProfileConfig::Model unifiedProfileModel;
 	std::string unifiedProfileError;
-	const bool hasUnifiedRendererConfig = hasRendererConfig &&
-		RendererProfileConfig::IsUnified(rendererConfig) &&
-		RendererProfileConfig::Read(rendererConfig, unifiedProfileModel, unifiedProfileError);
+	const bool hasUnifiedRendererConfig = hasMainConfig &&
+		RendererProfileConfig::IsUnified(mainConfig) &&
+		RendererProfileConfig::Read(mainConfig, unifiedProfileModel, unifiedProfileError);
 	std::vector<ACCEL> accelerators;
 	std::set<unsigned int> bindings;
 
@@ -1216,7 +1216,7 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 	LoadDisplayRefreshRateOverrides();
 
 	ConfigFile profileConfig;
-	if (profileConfig.Load(ConfigFile::RENDERER_FILENAME))
+	if (profileConfig.Load())
 	{
 		std::string profileError;
 		if (!m_profileRuntime.Initialize(profileConfig,
@@ -6076,6 +6076,38 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	if (!snapshot || !m_videoRenderer)
 		return;
 
+	bool queuePolicyChanged = false;
+	if (!snapshot->queue.profile.empty())
+	{
+		if (snapshot->queue.hasQueueSize &&
+			GetRendererVideoFrameQueueSizeMax() != snapshot->queue.queueSize)
+		{
+			CString queueSize;
+			queueSize.Format(TEXT("%zu"), snapshot->queue.queueSize);
+			m_defaultQueueSize = queueSize;
+			m_rendererVideoFrameQueueSizeMaxEdit.SetWindowText(queueSize);
+			m_videoRenderer->SetFrameQueueMaxSize(snapshot->queue.queueSize);
+			queuePolicyChanged = true;
+		}
+		if (snapshot->queue.hasTargetFrames &&
+			videoProcessorApp.GetQueueSteadyReserveFrames() !=
+				snapshot->queue.targetFrames)
+		{
+			videoProcessorApp.SetQueueSteadyReserveFrames(
+				snapshot->queue.targetFrames);
+			m_videoRenderer->SetQueueFramePolicy(
+				videoProcessorApp.GetQueueStartupPrerollFrames(),
+				videoProcessorApp.GetQueueSteadyReserveFrames(), true);
+			queuePolicyChanged = true;
+		}
+		if (queuePolicyChanged)
+			DebugLog::Log(
+				"Queue profile applied: profile=%s capacity=%zu target=%zu",
+				snapshot->queue.profile.c_str(),
+				GetRendererVideoFrameQueueSizeMax(),
+				videoProcessorApp.GetQueueSteadyReserveFrames());
+	}
+
 	CString activeState;
 	bool rendererRestartRequired = false;
 	if (!m_videoRenderer->ApplyApplicationState(
@@ -6099,6 +6131,10 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 		m_postRendererStartRequiresGraph = false;
 		m_wantToRestartRenderer = true;
 		UpdateState();
+	}
+	else if (allowRestart && queuePolicyChanged)
+	{
+		RequestRendererReset(RendererResetReason::QueueSizeChange, false, 0);
 	}
 }
 
@@ -8522,12 +8558,17 @@ void CVideoProcessorDlg::MonitorQueueHealth(size_t rawQueueSize,
 	const bool alphaQueueExceeded =
 		!m_activeRendererIsDirectShow &&
 		(rawQueueSize > queueMaxSize || convertedQueueSize > queueMaxSize);
-	if (autoReset && alphaQueueExceeded)
+	const bool alphaQueueSustainedAtCapacity =
+		!m_activeRendererIsDirectShow && atCapacity &&
+		m_consecutiveFullSeconds >= sustainedSeconds;
+	if (autoReset && (alphaQueueExceeded || alphaQueueSustainedAtCapacity))
 	{
 		DEBUGLOG(
-			"Alpha queue exceeded configured limit: raw=%zu/%zu converted=%zu/%zu; requesting live-queue reset",
+			"Alpha queue recovery: raw=%zu/%zu converted=%zu/%zu consecutive=%zu threshold=%zu reason=%s; requesting live-queue reset",
 			rawQueueSize, queueMaxSize,
-			convertedQueueSize, queueMaxSize);
+			convertedQueueSize, queueMaxSize,
+			m_consecutiveFullSeconds, sustainedSeconds,
+			alphaQueueExceeded ? "exceeded-capacity" : "sustained-at-capacity");
 		RequestRendererReset(RendererResetReason::QueuePressure, false, 0);
 		return;
 	}

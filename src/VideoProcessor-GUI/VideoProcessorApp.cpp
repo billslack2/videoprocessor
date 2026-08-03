@@ -456,12 +456,32 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 		videoProcessorApp.GetQueueSteadyReserveFrames(),
 		legacyStartupConfigured ? TEXT("legacy-configured") : TEXT("automatic")));
 
+	// [queue] is the canonical file location for the renderer hard capacity.
+	// The configured arguments precede the literal process command line, so a
+	// deliberate /queue_size always remains the highest-priority override.
+	std::string queueSize;
+	if (config.TryGetString("queue", "queue_size", queueSize))
+	{
+		arguments.emplace_back(L"/queue_size");
+		arguments.emplace_back(StringToWideString(queueSize));
+		DbgLog((LOG_TRACE, 1,
+			TEXT("VideoProcessor: Renderer queue control selected: hard capacity=%S source=[queue] queue_size"),
+			queueSize.c_str()));
+	}
+	else if (config.TryGetString("command_line", "queue_size", queueSize))
+	{
+		arguments.emplace_back(L"/queue_size");
+		arguments.emplace_back(StringToWideString(queueSize));
+		DbgLog((LOG_TRACE, 1,
+			TEXT("VideoProcessor: Renderer queue control selected: hard capacity=%S source=[command_line] queue_size compatibility fallback"),
+			queueSize.c_str()));
+	}
+
 	if (config.HasSection("command_line"))
 	{
 	AppendConfigBoolOption(arguments, config, { "fullscreen" }, L"/fullscreen");
 	AppendConfigBoolOption(arguments, config, { "windowedfullscreenmode", "windowed_fullscreen_mode" }, L"/windowedfullscreenmode");
 	AppendConfigStringOption(arguments, config, { "renderer" }, L"/renderer");
-	AppendConfigStringOption(arguments, config, { "queue_size" }, L"/queue_size");
 	AppendConfigStringOption(arguments, config, { "capture_device" }, L"/capture_device");
 	AppendConfigStringOption(arguments, config, { "frame_offset" }, L"/frame_offset");
 	AppendConfigStringOption(arguments, config, { "video_conversion" }, L"/video_conversion");
