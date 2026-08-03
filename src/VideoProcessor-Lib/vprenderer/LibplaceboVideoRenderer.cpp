@@ -40,6 +40,7 @@
 #include <nvapi.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cctype>
 #include <cmath>
@@ -2395,7 +2396,12 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t nlsRendererGeneration = 0;
 	uint64_t nlsGeometryGeneration = 0;
 	bool nlsRequested = false;
-	bool nativeRgbP010AnalysisUnavailable = false;
+	uint64_t nativeRgbAnalysisLoggedGeneration = 0;
+	VideoFrameEncoding nativeRgbAnalysisLoggedEncoding =
+		VideoFrameEncoding::UNKNOWN;
+	ColorSpace nativeRgbAnalysisLoggedColorspace = ColorSpace::UNKNOWN;
+	int nativeRgbAnalysisLoggedWidth = 0;
+	int nativeRgbAnalysisLoggedHeight = 0;
 	bool nlsGeometryAvailable = false;
 	bool nlsTransitionWithdrawn = false;
 	ActivePictureBounds nlsGeometry;
@@ -3209,13 +3215,14 @@ struct LibplaceboVideoRenderer::Impl
 	}
 
 	float UpdateScopeSubtitleShift(
-		const uint16_t* luma,
+		const AnalysisLumaSource* source,
 		int width,
 		int height,
 		bool scopeScreenActive)
 	{
 		const uint64_t now = GetTickCount64();
-		if (!scopeScreenActive || !luma ||
+		if (!scopeScreenActive || !source || !source->IsValid() ||
+			source->width != width || source->height != height ||
 			width < 320 || height < 180)
 		{
 			scopeSubtitleShiftSourcePixels = 0.0f;
@@ -3243,48 +3250,58 @@ struct LibplaceboVideoRenderer::Impl
 		// while still reacting in roughly 50-125 ms.
 		if (++scopeSubtitleAnalysisFrame % 3 == 0)
 		{
-			std::vector<uint16_t> blackSamples;
+			// This is intentionally fixed-capacity: no full-frame surface and no
+			// recurring heap allocation is needed to establish the black floor.
+			std::array<uint16_t, 8192> blackSamples{};
+			size_t blackSampleCount = 0;
+			auto lumaCode = [source](int x, int y)
+			{
+				AnalysisLumaSample sample;
+				return source->Sample(x, y, sample) ?
+					static_cast<int>(sample.luma) : 0;
+			};
+			auto appendBlackSample = [&blackSamples, &blackSampleCount](int value)
+			{
+				if (blackSampleCount < blackSamples.size())
+					blackSamples[blackSampleCount++] = static_cast<uint16_t>(value);
+			};
 			const int sampleStep = std::max(2, width / 256);
 			const int edgeWidth = std::max(16, width / 5);
 			const int edgeRows = std::max(3, std::min(10, height / 60));
-			blackSamples.reserve(static_cast<size_t>(edgeRows) *
-				(edgeWidth / sampleStep + 1) * 2);
 			for (int y = height - edgeRows; y < height; ++y)
 			{
-				const uint16_t* row =
-					luma + static_cast<size_t>(y) * width;
 				for (int x = 0; x < edgeWidth; x += sampleStep)
-					blackSamples.push_back(static_cast<uint16_t>(row[x] >> 6));
+					appendBlackSample(lumaCode(x, y));
 				for (int x = width - edgeWidth; x < width; x += sampleStep)
-					blackSamples.push_back(static_cast<uint16_t>(row[x] >> 6));
+					appendBlackSample(lumaCode(x, y));
 			}
 
-			const size_t median = blackSamples.size() / 2;
+			if (blackSampleCount == 0)
+				return 0.0f;
+			const size_t median = blackSampleCount / 2;
 			std::nth_element(
 				blackSamples.begin(),
 				blackSamples.begin() + median,
-				blackSamples.end());
+				blackSamples.begin() + blackSampleCount);
 			const int blackCode = blackSamples[median];
 			const int darkLimit = std::min(1023, blackCode + 36);
 
 			auto edgeRowIsBlack =
-				[=](int y)
+				[=, &lumaCode](int y)
 				{
-					const uint16_t* row =
-						luma + static_cast<size_t>(y) * width;
 					int dark = 0;
 					int count = 0;
 					uint64_t sum = 0;
 					for (int x = 0; x < edgeWidth; x += sampleStep)
 					{
-						const int code = row[x] >> 6;
+						const int code = lumaCode(x, y);
 						dark += code <= darkLimit;
 						sum += code;
 						++count;
 					}
 					for (int x = width - edgeWidth; x < width; x += sampleStep)
 					{
-						const int code = row[x] >> 6;
+						const int code = lumaCode(x, y);
 						dark += code <= darkLimit;
 						sum += code;
 						++count;
@@ -3458,14 +3475,12 @@ struct LibplaceboVideoRenderer::Impl
 						int contentRows = 0;
 						for (int y = searchTop; y < searchBottom; y += rowStep)
 						{
-							const uint16_t* row =
-								luma + static_cast<size_t>(y) * width;
 							int contentSamples = 0;
 							int left = width;
 							int right = 0;
 							for (int x = x0; x < x1; x += xStep)
 							{
-								if ((row[x] >> 6) <= contentLimit)
+								if (lumaCode(x, y) <= contentLimit)
 									continue;
 								++contentSamples;
 								left = std::min(left, x);
@@ -4891,8 +4906,8 @@ struct LibplaceboVideoRenderer::Impl
 		return true;
 	}
 
-	void UpdateNlsForFrame(const uint16_t* pixels, size_t dataBytes,
-		int width, int height, size_t rowBytes, uint64_t frameNumber,
+	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
+		uint64_t frameNumber,
 		double framesPerSecond, double targetAspect)
 	{
 		renderParams.hooks = nullptr;
@@ -4903,10 +4918,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (nlsTransition.ShouldAnalyze(frameNumber, framesPerSecond))
 		{
 			const P010ActivePictureEvidence evidence =
-				ExtractP010ActivePictureEvidence({
-					reinterpret_cast<const uint8_t*>(pixels),
-					dataBytes, width, height, rowBytes, rowBytes
-				});
+				ExtractActivePictureEvidence(analysisSource);
 			ActivePictureObservation observation;
 			observation.frameNumber = frameNumber;
 			observation.available = evidence.available;
@@ -4983,10 +4995,10 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			const MadVRActivePictureGeometry geometry = {
 				nlsGeometry.aspectRatio,
-				static_cast<double>(nlsGeometry.left) / width,
-				static_cast<double>(nlsGeometry.top) / height,
-				static_cast<double>(nlsGeometry.right) / width,
-				static_cast<double>(nlsGeometry.bottom) / height,
+				static_cast<double>(nlsGeometry.left) / analysisSource.width,
+				static_cast<double>(nlsGeometry.top) / analysisSource.height,
+				static_cast<double>(nlsGeometry.right) / analysisSource.width,
+				static_cast<double>(nlsGeometry.bottom) / analysisSource.height,
 				nlsGeometryGeneration, nlsRendererGeneration, true
 			};
 			MadVRShaderLoader::SetRuntimeActivePictureGeometry(geometry);
@@ -5091,8 +5103,6 @@ struct LibplaceboVideoRenderer::Impl
 
 		const int width = static_cast<int>(state.displayMode->FrameWidth());
 		const int height = static_cast<int>(state.displayMode->FrameHeight());
-		const bool p010AnalysisRequested = nlsRequested ||
-			sceneDetectionEnabled || scopeScreenActive;
 		AlphaNativeRgbLayout nativeRgbLayout;
 		const bool nativeRgbUpload =
 			videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE &&
@@ -5104,75 +5114,13 @@ struct LibplaceboVideoRenderer::Impl
 				state.videoFrameEncoding == VideoFrameEncoding::HDYC) &&
 			videoConversionOverride ==
 				VideoConversionOverride::VIDEOCONVERSION_NONE;
-		const bool nativeRgbAnalysisUnavailable = nativeRgbUpload &&
-			p010AnalysisRequested;
-		if (nativeRgbAnalysisUnavailable != nativeRgbP010AnalysisUnavailable)
-		{
-			nativeRgbP010AnalysisUnavailable = nativeRgbAnalysisUnavailable;
-			nlsTransition.Reset();
-			nlsGeometryAvailable = false;
-			nlsTransitionWithdrawn = false;
-			nlsGeometry = {};
-			nlsDecision = {};
-			renderParams.hooks = nullptr;
-			renderParams.num_hooks = 0;
-			pl_mpv_user_shader_destroy(&nlsHook);
-			nlsHookSignature.clear();
-			sceneDetector.Reset(sceneDetectorGeneration);
-			if (nativeRgbAnalysisUnavailable)
-			{
-				if (nlsRequested)
-				{
-					SetShaderStatus("NLS: unavailable (native RGB)");
-					MadVRShaderLoader::SetRuntimeShaderSelection(
-						requestedShaderSelector, requestedShaderSelector,
-						MadVRNlsMappingMode::OFF);
-				}
-				if (sceneDetectionEnabled)
-					sceneDetectionStatus.store(
-						static_cast<int>(SceneDetectorStatus::Failed),
-						std::memory_order_release);
-				DebugLog::Log(
-					"Alpha native RGB: P010-only analysis disabled (nls=%d scene=%d scope_subtitle=%d)",
-					nlsRequested ? 1 : 0, sceneDetectionEnabled ? 1 : 0,
-					scopeScreenActive ? 1 : 0);
-			}
-			else
-			{
-				if (nlsRequested)
-					SetShaderStatus("NLS: Waiting");
-				if (sceneDetectionEnabled)
-					sceneDetectionStatus.store(
-						static_cast<int>(SceneDetectorStatus::Warming),
-						std::memory_order_release);
-				DebugLog::Log("Alpha P010-only analysis restored");
-			}
-		}
-		if (nativeRgbAnalysisUnavailable)
-		{
-			// A configuration change can arm NLS or scene detection while native
-			// RGB is already active. Keep the unsupported state explicit and make
-			// certain a previously loaded hook cannot survive that change.
-			renderParams.hooks = nullptr;
-			renderParams.num_hooks = 0;
-			if (nlsRequested)
-			{
-				SetShaderStatus("NLS: unavailable (native RGB)");
-				MadVRShaderLoader::SetRuntimeShaderSelection(
-					requestedShaderSelector, requestedShaderSelector,
-					MadVRNlsMappingMode::OFF);
-			}
-			if (sceneDetectionEnabled)
-				sceneDetectionStatus.store(
-					static_cast<int>(SceneDetectorStatus::Failed),
-					std::memory_order_release);
-		}
 		const size_t p010RowBytes =
 			static_cast<size_t>(width) * sizeof(uint16_t);
 		const int chromaHeight = lossless422Upload ? height : (height + 1) / 2;
 		const BYTE* yPixels = nullptr;
 		const BYTE* uvPixels = nullptr;
 		VideoFrameFormatterOutputContract formattedContract;
+		AnalysisLumaSource analysisSource;
 		bool formatterStateChanged = false;
 		bool logFormatterContract = false;
 		if (!nativeRgbUpload)
@@ -5214,23 +5162,93 @@ struct LibplaceboVideoRenderer::Impl
 					state.videoFrameEncoding == VideoFrameEncoding::V210 &&
 						width == 1280 && height == 720 && !lossless422Upload);
 			}
-			UpdateNlsForFrame(
-				reinterpret_cast<const uint16_t*>(yPixels),
-				convertedFrame.size(), width, height, p010RowBytes,
-				sourceSequence, state.displayMode->RefreshRateHz(),
+		}
+		if (nativeRgbUpload)
+		{
+			analysisSource = {
+				reinterpret_cast<const uint8_t*>(videoFrame.GetData()),
+				static_cast<size_t>(state.BytesPerFrame()), width, height,
+				static_cast<size_t>(state.BytesPerRow()), 0,
+				AnalysisLumaFormat::NativeRgb, state.videoFrameEncoding,
+				state.colorspace, frameGeneration
+			};
+		}
+		else
+		{
+			analysisSource = {
+				yPixels, convertedFrame.size(), width, height, p010RowBytes,
+				p010RowBytes, lossless422Upload ? AnalysisLumaFormat::P210 :
+				AnalysisLumaFormat::P010,
+				state.videoFrameEncoding, state.colorspace, frameGeneration
+			};
+		}
+		if (!analysisSource.IsValid())
+		{
+			renderParams.hooks = nullptr;
+			renderParams.num_hooks = 0;
+			nlsTransition.Reset();
+			nlsGeometryAvailable = false;
+			nlsTransitionWithdrawn = true;
+			nlsGeometry = {};
+			nlsDecision = {};
+			pl_mpv_user_shader_destroy(&nlsHook);
+			nlsHookSignature.clear();
+			if (nlsRequested)
+			{
+				SetShaderStatus("NLS: unavailable (analysis input)");
+				MadVRShaderLoader::SetRuntimeShaderSelection(
+					requestedShaderSelector, requestedShaderSelector,
+					MadVRNlsMappingMode::OFF);
+			}
+			if (sceneDetectionEnabled)
+				sceneDetectionStatus.store(
+					static_cast<int>(SceneDetectorStatus::Failed),
+					std::memory_order_release);
+			DebugLog::Log("Alpha analysis unavailable: format=%d path=%s dimensions=%dx%d generation=%llu",
+				static_cast<int>(state.videoFrameEncoding),
+				AnalysisLumaFormatName(analysisSource), width, height,
+				static_cast<unsigned long long>(frameGeneration));
+		}
+		else
+		{
+			if (nativeRgbUpload &&
+				(nativeRgbAnalysisLoggedGeneration != frameGeneration ||
+					nativeRgbAnalysisLoggedEncoding != state.videoFrameEncoding ||
+					nativeRgbAnalysisLoggedColorspace != state.colorspace ||
+					nativeRgbAnalysisLoggedWidth != width ||
+					nativeRgbAnalysisLoggedHeight != height))
+			{
+				nativeRgbAnalysisLoggedGeneration = frameGeneration;
+				nativeRgbAnalysisLoggedEncoding = state.videoFrameEncoding;
+				nativeRgbAnalysisLoggedColorspace = state.colorspace;
+				nativeRgbAnalysisLoggedWidth = width;
+				nativeRgbAnalysisLoggedHeight = height;
+				DebugLog::Log(
+					"Alpha native RGB analysis: ingress=%s color_space=%d eotf=%d range=full representation=%s %dx%d source_transform=identity encoded_luma=BT.%s bounded_active_samples=<30000 scene_samples=576 generation=%llu consumers[nls=%s scene=%s scope_subtitle=%s]",
+					nativeRgbLayout.label,
+					static_cast<int>(state.colorspace), static_cast<int>(state.eotf),
+					AnalysisLumaFormatName(analysisSource), width, height,
+					state.colorspace == ColorSpace::BT_2020 ? "2020" : "709",
+					static_cast<unsigned long long>(frameGeneration),
+					nlsRequested ? "available" : "disabled",
+					sceneDetectionEnabled ? "available" : "disabled",
+					scopeScreenActive ? "available" : "disabled");
+			}
+			UpdateNlsForFrame(analysisSource, sourceSequence,
+				state.displayMode->RefreshRateHz(),
 				scopeScreenActive ? scopeScreenAspect : 16.0 / 9.0);
 		}
 		SceneDetectorResult sceneResult;
-		if (!cadenceRepeat && !nativeRgbUpload)
+		if (!cadenceRepeat && analysisSource.IsValid())
 		{
 			sceneResult = sceneDetector.Analyze({
 				reinterpret_cast<const uint16_t*>(yPixels),
 				static_cast<size_t>(width), static_cast<size_t>(height), p010RowBytes,
 				sourceSequence, videoFrame.GetTimingTimestamp(),
 				sceneDetectorGeneration, state.displayMode->FrameDuration(),
-				sceneDetectionEnabled });
+				sceneDetectionEnabled, &analysisSource });
 		}
-		if (!cadenceRepeat && !nativeRgbUpload)
+		if (!cadenceRepeat && analysisSource.IsValid())
 			sceneDetectionStatus.store(
 				static_cast<int>(sceneResult.status), std::memory_order_release);
 		if (!cadenceRepeat && sceneResult.safeBoundary)
@@ -5248,7 +5266,7 @@ struct LibplaceboVideoRenderer::Impl
 			const AlphaPresentationSnapshot presentation =
 				presentationTelemetry.Snapshot();
 			AlphaCadenceCorrectionInput correctionInput;
-			correctionInput.enabled = sceneDetectionEnabled && !nativeRgbUpload;
+			correctionInput.enabled = sceneDetectionEnabled && analysisSource.IsValid();
 			// Queue replacement and detector/source replacement are independent
 			// reset boundaries. Fold both into the policy epoch so neither can
 			// inherit a pending action or retained phase from the other.
@@ -5281,10 +5299,8 @@ struct LibplaceboVideoRenderer::Impl
 				return true;
 			}
 		}
-		const float subtitleShiftSourcePixels = nativeRgbUpload ?
-			UpdateScopeSubtitleShift(nullptr, width, height, scopeScreenActive) :
-			UpdateScopeSubtitleShift(
-				reinterpret_cast<const uint16_t*>(yPixels),
+		const float subtitleShiftSourcePixels =
+			UpdateScopeSubtitleShift(&analysisSource,
 				width, height, scopeScreenActive);
 
 		struct pl_frame image{};
@@ -5307,8 +5323,8 @@ struct LibplaceboVideoRenderer::Impl
 			image.planes[0].shift_y = 0.0f;
 			image.planes[0].flipped = state.invertedVertical;
 			ingressStatus = nativeRgbLayout.label;
-			if (nativeRgbAnalysisUnavailable)
-				ingressStatus += " (P010 analysis unavailable)";
+			if (!analysisSource.IsValid())
+				ingressStatus += " (analysis unavailable)";
 		}
 		else
 		{

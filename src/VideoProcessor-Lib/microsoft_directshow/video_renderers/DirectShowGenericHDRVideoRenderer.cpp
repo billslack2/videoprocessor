@@ -21,11 +21,11 @@
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CR210toRGB48VideoFrameFormatter.h>
-#include <video_frame_formatter/CR12BtoRGB48VideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowTranslations.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
 
 #include "DirectShowGenericHDRVideoRenderer.h"
+#include "MadVRIngressPolicy.h"
 
 
 DirectShowGenericHDRVideoRenderer::DirectShowGenericHDRVideoRenderer(
@@ -147,14 +147,10 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 
 	// Smart P010 conversion: Auto-detect input format and convert to P010
 	// User selects "YUV/RGB > P010" in UI, we intelligently pick the right converter
-	// Also auto-enable for ARGB/BGRA even without explicit selection (makes it "just work")
-	const bool needsP010Conversion = 
-		(m_videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010) ||
-		(m_videoState->videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT) ||
-		(m_videoState->videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT) ||
-		(m_videoState->videoFrameEncoding == VideoFrameEncoding::R10b) ||
-		(m_videoState->videoFrameEncoding == VideoFrameEncoding::R10l) ||
-		(m_videoState->videoFrameEncoding == VideoFrameEncoding::R12L);
+	// Automatically choose the proven P010 contract for formats that do not
+	// have a validated direct madVR media subtype, including packed R12B/R12L.
+	const bool needsP010Conversion = MadVRUsesP010Ingress(
+		m_videoState->videoFrameEncoding, m_videoConversionOverride);
 
 	if (needsP010Conversion)
 	{
@@ -167,7 +163,8 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 			// V210 (10-bit 4:2:2) ? P010 (10-bit 4:2:0)
 			m_videoFramFormatter = new CV210toP010VideoFrameFormatter();
 		}
-		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::UYVY)
+		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::UYVY ||
+			m_videoState->videoFrameEncoding == VideoFrameEncoding::HDYC)
 		{
 			// UYVY (8-bit 4:2:2) ? P010 (10-bit 4:2:0)
 			m_videoFramFormatter = new CUYVYtoP010VideoFrameFormatter();
@@ -178,9 +175,8 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 			// ARGB/BGRA (8-bit 4:4:4 RGB) ? P010 (10-bit 4:2:0 YUV)
 			m_videoFramFormatter = new CARGBtoP010VideoFrameFormatter();
 		}
-		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::R10b ||
-			m_videoState->videoFrameEncoding == VideoFrameEncoding::R10l ||
-			m_videoState->videoFrameEncoding == VideoFrameEncoding::R12L)
+		else if (IsDeckLinkPackedRgbP010Encoding(
+			m_videoState->videoFrameEncoding))
 		{
 			m_videoFramFormatter = new CDeckLinkRGBToP010VideoFrameFormatter();
 		}
@@ -203,16 +199,6 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 			heightMultiplier = -1;
 
 			m_videoFramFormatter = new CR210toRGB48VideoFrameFormatter();
-			break;
-
-			// RGB 12-bit to RGB48
-		case VideoFrameEncoding::R12B:
-
-			mediaSubType = MEDIASUBTYPE_RGB0;
-			bitCount = 48;
-			heightMultiplier = -1;
-
-			m_videoFramFormatter = new CR12BtoRGB48VideoFrameFormatter();
 			break;
 
 			// No conversion needed

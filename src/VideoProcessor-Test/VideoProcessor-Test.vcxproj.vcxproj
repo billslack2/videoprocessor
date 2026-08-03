@@ -198,6 +198,7 @@
     <ClCompile Include="ActivePictureTransitionModelTests.cpp" />
 	<ClCompile Include="ActivePictureAnalyzerTests.cpp" />
     <ClCompile Include="P010ActivePictureEvidenceTests.cpp" />
+    <ClCompile Include="NativeRgbAnalysisTests.cpp" />
     <ClCompile Include="RendererIdTests.cpp" />
     <ClCompile Include="RendererResetPolicyTests.cpp" />
     <ClCompile Include="RendererResetCoordinatorTests.cpp" />

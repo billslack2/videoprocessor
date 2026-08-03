@@ -213,6 +213,7 @@
     <ClInclude Include="vprenderer\\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
     <ClInclude Include="ActivePictureTransitionModel.h" />
+	<ClInclude Include="AnalysisLumaSource.h" />
 	<ClInclude Include="ActivePictureAnalyzer.h" />
     <ClInclude Include="P010ActivePictureEvidence.h" />
     <ClInclude Include="MainConfigSchema.h" />
@@ -237,7 +238,8 @@
     <ClInclude Include="microsoft_directshow\live_source_filter\ILiveSource.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowEnhancedVideoRenderer.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGraphExecutor.h" />
-    <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGenericHDRVideoRenderer.h" />
+	<ClInclude Include="microsoft_directshow\video_renderers\DirectShowGenericHDRVideoRenderer.h" />
+	<ClInclude Include="microsoft_directshow\video_renderers\MadVRIngressPolicy.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowGenericVideoRenderer.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowMPCVideoRenderer.h" />
     <ClInclude Include="microsoft_directshow\video_renderers\DirectShowVideoRenderer.h" />
@@ -277,6 +279,7 @@
   <ItemGroup>
     <ClCompile Include="ACaptureDevice.cpp" />
     <ClCompile Include="ActivePictureTransitionModel.cpp" />
+	<ClCompile Include="AnalysisLumaSource.cpp" />
 	<ClCompile Include="ActivePictureAnalyzer.cpp" />
     <ClCompile Include="P010ActivePictureEvidence.cpp" />
     <ClCompile Include="ACaptureDeviceDiscoverer.cpp" />

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 
+#include "AnalysisLumaSource.h"
 #include "ActivePictureTransitionModel.h"
 
 
@@ -56,3 +57,9 @@ struct P010ActivePictureEvidence
 // evidence. At 4K the fixed grids inspect fewer than 30,000 luma samples.
 P010ActivePictureEvidence ExtractP010ActivePictureEvidence(
 	const P010PlaneView& view);
+
+// The active-picture policy is format-neutral. The historical P010 entry
+// point remains above for callers with a planar frame; native RGB callers use
+// this bounded source sampler and retain source-raster coordinates.
+P010ActivePictureEvidence ExtractActivePictureEvidence(
+	const AnalysisLumaSource& source);

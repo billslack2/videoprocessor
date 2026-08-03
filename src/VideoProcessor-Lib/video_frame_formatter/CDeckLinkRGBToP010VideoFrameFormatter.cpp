@@ -59,12 +59,6 @@ namespace
 			static_cast<uint32_t>(source[3]);
 	}
 
-	inline uint8_t ReadR12BByte(const uint8_t* source, uint32_t byteIndex) noexcept
-	{
-		// R12B is the SMPTE 268M C4 byte stream stored big-endian in each
-		// 32-bit word.  Convert a logical C4 byte index to its physical byte.
-		return source[(byteIndex / 4U) * 4U + 3U - (byteIndex % 4U)];
-	}
 }
 
 
@@ -179,22 +173,49 @@ void CDeckLinkRGBToP010VideoFrameFormatter::ReadPixelPair(
 		// SMPTE 268M Annex C method C4: two consecutive RGB pixels occupy
 		// nine bytes. R12L stores the stream directly; R12B byte-swaps every
 		// 32-bit word, including words crossed by the pair boundary.
-		const uint32_t firstByte = m_encoding == VideoFrameEncoding::R12B ?
-			pixelPairIndex * 9U : 0U;
-		auto readByte = [this, source, firstByte](uint32_t byteOffset) noexcept
+		uint8_t byte0;
+		uint8_t byte1;
+		uint8_t byte2;
+		uint8_t byte3;
+		uint8_t byte4;
+		uint8_t byte5;
+		uint8_t byte6;
+		uint8_t byte7;
+		uint8_t byte8;
+		if (m_encoding == VideoFrameEncoding::R12B)
 		{
-			return m_encoding == VideoFrameEncoding::R12B ?
-				ReadR12BByte(source, firstByte + byteOffset) : source[byteOffset];
-		};
-		const uint8_t byte0 = readByte(0);
-		const uint8_t byte1 = readByte(1);
-		const uint8_t byte2 = readByte(2);
-		const uint8_t byte3 = readByte(3);
-		const uint8_t byte4 = readByte(4);
-		const uint8_t byte5 = readByte(5);
-		const uint8_t byte6 = readByte(6);
-		const uint8_t byte7 = readByte(7);
-		const uint8_t byte8 = readByte(8);
+			const uint8_t* block = source +
+				static_cast<size_t>(pixelPairIndex / 4U) * 36U;
+			switch (pixelPairIndex & 3U)
+			{
+			case 0:
+				byte0 = block[3]; byte1 = block[2]; byte2 = block[1];
+				byte3 = block[0]; byte4 = block[7]; byte5 = block[6];
+				byte6 = block[5]; byte7 = block[4]; byte8 = block[11];
+				break;
+			case 1:
+				byte0 = block[10]; byte1 = block[9]; byte2 = block[8];
+				byte3 = block[15]; byte4 = block[14]; byte5 = block[13];
+				byte6 = block[12]; byte7 = block[19]; byte8 = block[18];
+				break;
+			case 2:
+				byte0 = block[17]; byte1 = block[16]; byte2 = block[23];
+				byte3 = block[22]; byte4 = block[21]; byte5 = block[20];
+				byte6 = block[27]; byte7 = block[26]; byte8 = block[25];
+				break;
+			default:
+				byte0 = block[24]; byte1 = block[31]; byte2 = block[30];
+				byte3 = block[29]; byte4 = block[28]; byte5 = block[35];
+				byte6 = block[34]; byte7 = block[33]; byte8 = block[32];
+				break;
+			}
+		}
+		else
+		{
+			byte0 = source[0]; byte1 = source[1]; byte2 = source[2];
+			byte3 = source[3]; byte4 = source[4]; byte5 = source[5];
+			byte6 = source[6]; byte7 = source[7]; byte8 = source[8];
+		}
 		first.r = static_cast<uint16_t>(byte0 | ((byte1 & 0x0F) << 8));
 		first.g = static_cast<uint16_t>((byte1 >> 4) | (byte2 << 4));
 		first.b = static_cast<uint16_t>(byte3 | ((byte4 & 0x0F) << 8));

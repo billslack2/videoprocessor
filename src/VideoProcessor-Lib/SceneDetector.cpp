@@ -54,8 +54,15 @@ SceneDetectorResult SceneDetector::Analyze(const SceneDetectorInput& input)
 	result.generation = input.generation;
 	if (!input.enabled)
 		return result;
-	if (!input.p010Luma || input.width == 0 || input.height == 0 ||
-		input.strideBytes < input.width * sizeof(uint16_t))
+	const AnalysisLumaSource* source = input.analysisSource;
+	if (source && (!source->IsValid() || source->width != static_cast<int>(input.width) ||
+		source->height != static_cast<int>(input.height)))
+	{
+		result.status = SceneDetectorStatus::Failed;
+		return result;
+	}
+	if (!source && (!input.p010Luma || input.width == 0 || input.height == 0 ||
+		input.strideBytes < input.width * sizeof(uint16_t)))
 	{
 		result.status = SceneDetectorStatus::Failed;
 		return result;
@@ -69,12 +76,26 @@ SceneDetectorResult SceneDetector::Analyze(const SceneDetectorInput& input)
 	for (size_t row = 0; row < Signature::ROWS; ++row)
 	{
 		const size_t y = ((row * 2 + 1) * input.height) / (Signature::ROWS * 2);
-		const auto* line = reinterpret_cast<const uint16_t*>(
-			reinterpret_cast<const uint8_t*>(input.p010Luma) + y * input.strideBytes);
 		for (size_t column = 0; column < Signature::COLUMNS; ++column)
 		{
 			const size_t x = ((column * 2 + 1) * input.width) / (Signature::COLUMNS * 2);
-			const uint16_t luma = static_cast<uint16_t>(line[x] >> 6);
+			uint16_t luma = 0;
+			if (source)
+			{
+				AnalysisLumaSample sample;
+				if (!source->Sample(static_cast<int>(x), static_cast<int>(y), sample))
+				{
+					result.status = SceneDetectorStatus::Failed;
+					return result;
+				}
+				luma = sample.luma;
+			}
+			else
+			{
+				const auto* line = reinterpret_cast<const uint16_t*>(
+					reinterpret_cast<const uint8_t*>(input.p010Luma) + y * input.strideBytes);
+				luma = static_cast<uint16_t>(line[x] >> 6);
+			}
 			const size_t index = row * Signature::COLUMNS + column;
 			current.luma[index] = luma;
 			current.histogram[std::min<size_t>(luma / 64, Signature::HISTOGRAM_BINS - 1)]++;

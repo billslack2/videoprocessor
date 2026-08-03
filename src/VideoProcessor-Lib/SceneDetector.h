@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "AnalysisLumaSource.h"
+
 // Sparse P010 luma scene-boundary detector shared by renderer adapters.  It
 // owns no source buffer and only retains a bounded signature of prior frames.
 enum class SceneDetectorStatus
@@ -25,6 +27,9 @@ struct SceneDetectorInput
 	uint64_t generation = 0;
 	uint64_t frameDuration = 0;
 	bool enabled = false;
+	// Preferred format-neutral source. It is trailing to preserve existing
+	// positional P010 initializers while adapters migrate independently.
+	const AnalysisLumaSource* analysisSource = nullptr;
 };
 
 struct SceneDetectorResult
