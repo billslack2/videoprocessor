@@ -2,9 +2,15 @@
 
 ## Status
 
-Backlog. Proposed after VP-0080 live Alpha/madVR validation on 2026-08-03.
-No implementation branch has been created. The first increment must remain
-disabled by default and support direct A/B testing with real watched content.
+In Progress as of 2026-08-03. Implementation branch
+`codex/vp-0082-buffered-lookahead` starts from the current
+`v1.1.015-beta` integration commit `4fa0b6a`; its isolated worktree is
+`C:\Users\bslac\vp\worktrees\vp-0082-buffered-lookahead`.
+
+The first increment remains disabled by default and must support direct A/B
+testing with real watched content. Initial work is tracing the existing raw,
+converted, and renderer queues to prove the frame/epoch identity available to
+both Alpha and DirectShow/madVR before choosing the smallest implementation.
 
 ## User story
 
