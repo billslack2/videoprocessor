@@ -314,12 +314,6 @@ capture_device: Decklink Quad HDMI Recorder (1)</pre>
       <p class="meta"><strong>Type/default:</strong> integer 1–100; default 75.</p>
     </article>
 
-    <article class="field" id="queue-recovery-sustained-level" data-fields="queue_recovery.reset_queue_sustained_level">
-      <h4><code>[queue_recovery] reset_queue_sustained_level</code></h4>
-      <p>Optional, disabled when omitted. When the combined VP-owned raw and converted queue depth remains at or above this positive frame count for five continuous seconds, VP requests the same controlled reset as <code>r</code>. It does not inspect madVR's private queues. A low threshold can deliberately reset frequently; use it only for a low-latency workflow.</p>
-      <p class="meta"><strong>Type:</strong> positive integer. <strong>Duration:</strong> fixed at five seconds. The shipped low-latency queue profile uses <code>1</code>; the normal profile does not enable it.</p>
-    </article>
-
     <article class="field" id="display-refresh-rate-override-entry" data-fields="display_refresh_rate_override.&lt;nominal_hz&gt;">
       <h4><code>[display_refresh_rate_override] &lt;nominal_hz&gt;</code></h4>
       <p>Maps a nominal input rate to a known exact display rate. A truncated key is preferred—<code>23</code> matches 23.976—then a key within 0.5 Hz is considered. An active exact override appears with <code>*</code> in the OSD and is named in the log.</p>
@@ -812,7 +806,6 @@ delay_seconds: 2</pre>
       <li><a href="#queue-target-frames"><code>[queue] target_frames</code></a></li>
       <li><a href="#queue-recovery-reset-delay"><code>[queue_recovery] reset_after_render_restart_seconds</code></a></li>
       <li><a href="#queue-recovery-high-water"><code>[queue_recovery] reset_queue_too_large_percent</code></a></li>
-      <li><a href="#queue-recovery-sustained-level"><code>[queue_recovery] reset_queue_sustained_level</code></a></li>
       <li><a href="#display-refresh-rate-override-entry"><code>[display_refresh_rate_override] &lt;nominal_hz&gt;</code></a></li>
       <li><a href="#ppm-correction-entry"><code>[ppm_correction] &lt;nominal_hz&gt;</code></a></li>
       <li><a href="#lldv-max-cll"><code>[lldv] max_cll</code></a></li>
