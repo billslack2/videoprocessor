@@ -1053,7 +1053,8 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 	// The target output contract is exposed only after the exact, source-owned
 	// crop is current for this renderer generation. Merely arming NLS must not
 	// cause madVR to fit the raster as though a mapping already exists.
-	ResolveMadVRNlsOutputAspect(targetAspect, outputAspectX, outputAspectY);
+	ResolveMadVRNlsPresentationAspect(runtime.nlsMode,
+		activeAspect, targetAspect, outputAspectX, outputAspectY);
 	if (activeAspect <= 0.0 || !videoState.displayMode)
 		return true;
 
@@ -1410,7 +1411,8 @@ bool MadVRShaderLoader::GetRuntimeOutputAspectRatio(unsigned long& aspectX,
 		if (rule.nls && GetNlsTargetAspect(rule) > 0.0)
 		{
 			if (currentNlsGeometry)
-				ResolveMadVRNlsOutputAspect(
+				ResolveMadVRNlsPresentationAspect(runtime.nlsMode,
+					runtime.activeGeometry.aspectRatio,
 					GetNlsTargetAspect(rule), ruleX, ruleY);
 			else
 			{

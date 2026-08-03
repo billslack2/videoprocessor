@@ -158,6 +158,35 @@ namespace VideoProcessorTest
 			Assert::AreEqual(1ul, aspectY);
 		}
 
+		TEST_METHOD(PassthroughAdvertisesExactActiveAspectWithoutWarp)
+		{
+			unsigned long aspectX = 0;
+			unsigned long aspectY = 0;
+			Assert::IsTrue(ResolveMadVRNlsPresentationAspect(
+				MadVRNlsMappingMode::SCOPE_PASSTHROUGH,
+				2.3851, 2.35, aspectX, aspectY));
+			Assert::AreEqual(23851ul, aspectX);
+			Assert::AreEqual(10000ul, aspectY);
+
+			Assert::IsTrue(ResolveMadVRNlsPresentationAspect(
+				MadVRNlsMappingMode::ACTIVE,
+				2.3851, 2.35, aspectX, aspectY));
+			Assert::AreEqual(235ul, aspectX);
+			Assert::AreEqual(100ul, aspectY);
+
+			Assert::IsTrue(ResolveMadVRNlsPresentationAspect(
+				MadVRNlsMappingMode::SAFE_FIT,
+				4.0 / 3.0, 2.35, aspectX, aspectY));
+			Assert::AreEqual(235ul, aspectX);
+			Assert::AreEqual(100ul, aspectY);
+
+			Assert::IsFalse(ResolveMadVRNlsPresentationAspect(
+				MadVRNlsMappingMode::WAITING,
+				2.3851, 2.35, aspectX, aspectY));
+			Assert::AreEqual(0ul, aspectX);
+			Assert::AreEqual(0ul, aspectY);
+		}
+
 		TEST_METHOD(RestartOnlyWhenEffectiveScreenContractChanges)
 		{
 			const double nativeAspect = 16.0 / 9.0;

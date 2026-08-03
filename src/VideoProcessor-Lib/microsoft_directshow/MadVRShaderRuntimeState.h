@@ -69,6 +69,9 @@ MadVRNlsMappingDecision EvaluateMadVRNlsMapping(bool aspectAvailable,
 
 bool ResolveMadVRNlsOutputAspect(double targetAspect,
 	unsigned long& aspectX, unsigned long& aspectY);
+bool ResolveMadVRNlsPresentationAspect(MadVRNlsMappingMode mode,
+	double activeAspect, double targetAspect,
+	unsigned long& aspectX, unsigned long& aspectY);
 bool MadVROutputAspectRequiresRestart(unsigned long currentAspectX,
 	unsigned long currentAspectY, unsigned long desiredAspectX,
 	unsigned long desiredAspectY, double nativeAspect);
