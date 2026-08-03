@@ -6209,14 +6209,15 @@ struct LibplaceboVideoRenderer::Impl
 
 				pl_rect2df_aspect_set(&target.crop,
 					static_cast<float>(finalTargetAspect), 0.0f);
-				if (finalNlsDecision.mode == MadVRNlsMappingMode::ACTIVE ||
-					finalNlsDecision.mode ==
-						MadVRNlsMappingMode::SCOPE_PASSTHROUGH)
+				if (finalNlsDecision.mode == MadVRNlsMappingMode::ACTIVE)
 				{
 					return;
 				}
-				// WAITING and SAFE_FIT preserve the selected source rectangle with
-				// ordinary centered scaling inside the exact target viewport.
+				// Passthrough means geometry passthrough too. WAITING, SAFE_FIT, and
+				// SCOPE_PASSTHROUGH preserve the exact selected source aspect with
+				// ordinary centered scaling inside the target viewport. Otherwise a
+				// 2.39 movie classified within the 2.35 tolerance would still be
+				// stretched vertically despite having no active NLS hook.
 				pl_rect2df_aspect_copy(&target.crop, &source.crop, 0.0f);
 				return;
 			}

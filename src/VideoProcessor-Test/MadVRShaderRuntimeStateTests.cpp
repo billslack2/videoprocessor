@@ -37,6 +37,7 @@ namespace VideoProcessorTest
 				static_cast<int>(MadVRNlsMappingMode::SCOPE_PASSTHROUGH),
 				static_cast<int>(decision.mode));
 			Assert::AreEqual(1.0, decision.stretchRatio, 0.000001);
+			Assert::IsFalse(decision.verticalWarp);
 		}
 
 		TEST_METHOD(ImaxContentUsesNonlinearHorizontalMapping)
