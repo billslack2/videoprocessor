@@ -1055,6 +1055,22 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 	// cause madVR to fit the raster as though a mapping already exists.
 	ResolveMadVRNlsPresentationAspect(runtime.nlsMode,
 		activeAspect, targetAspect, outputAspectX, outputAspectY);
+	if (!MadVRNlsMappingUsesCustomShader(runtime.nlsMode))
+	{
+		// madVR already detects hard-coded bars and owns the final native
+		// crop/fit. Installing VP's active-rectangle shader in passthrough or
+		// safe-fit mode would crop the same bars a second time.
+		rule.preScale.clear();
+		rule.postScale.clear();
+		DebugLog::Log(
+			"Shaders: NLS mapping=%s delegated to madVR native crop/fit active_generation=%llu source=%.4f target=%.4f renderer_generation=%llu",
+			MadVRNlsMappingModeName(runtime.nlsMode),
+			static_cast<unsigned long long>(
+				runtime.activeGeometry.generation),
+			activeAspect, targetAspect,
+			static_cast<unsigned long long>(runtime.rendererGeneration));
+		return true;
+	}
 	if (activeAspect <= 0.0 || !videoState.displayMode)
 		return true;
 

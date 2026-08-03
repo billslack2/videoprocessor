@@ -140,25 +140,31 @@ bool ResolveMadVRNlsPresentationAspect(MadVRNlsMappingMode mode,
 	double activeAspect, double targetAspect,
 	unsigned long& aspectX, unsigned long& aspectY)
 {
+	(void)activeAspect;
 	aspectX = 0;
 	aspectY = 0;
 	switch (mode)
 	{
-	case MadVRNlsMappingMode::SCOPE_PASSTHROUGH:
-		// The shader extracts the exact active rectangle without warping it.
-		// Advertising the configured target here would still make madVR reshape
-		// tolerance-qualified content such as 2.39 into a 2.35 container.
-		return ResolveMadVRNlsOutputAspect(
-			activeAspect, aspectX, aspectY);
 	case MadVRNlsMappingMode::ACTIVE:
-	case MadVRNlsMappingMode::SAFE_FIT:
 		return ResolveMadVRNlsOutputAspect(
 			targetAspect, aspectX, aspectY);
+	case MadVRNlsMappingMode::SCOPE_PASSTHROUGH:
+	case MadVRNlsMappingMode::SAFE_FIT:
+		// These are geometry-preserving modes. Leave both the media DAR and
+		// bar removal native so madVR applies its own detected active rectangle
+		// exactly once. Advertising the active or target aspect here makes
+		// madVR apply that DAR and then derive another DAR from videoCropRect.
 	case MadVRNlsMappingMode::WAITING:
 	case MadVRNlsMappingMode::OFF:
 	default:
 		return false;
 	}
+}
+
+
+bool MadVRNlsMappingUsesCustomShader(MadVRNlsMappingMode mode)
+{
+	return mode == MadVRNlsMappingMode::ACTIVE;
 }
 
 

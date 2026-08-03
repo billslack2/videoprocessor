@@ -158,27 +158,33 @@ namespace VideoProcessorTest
 			Assert::AreEqual(1ul, aspectY);
 		}
 
-		TEST_METHOD(PassthroughAdvertisesExactActiveAspectWithoutWarp)
+		TEST_METHOD(NativeGeometryModesDoNotDoubleApplyMadVRCrop)
 		{
 			unsigned long aspectX = 0;
 			unsigned long aspectY = 0;
-			Assert::IsTrue(ResolveMadVRNlsPresentationAspect(
+			Assert::IsFalse(ResolveMadVRNlsPresentationAspect(
 				MadVRNlsMappingMode::SCOPE_PASSTHROUGH,
 				2.3851, 2.35, aspectX, aspectY));
-			Assert::AreEqual(23851ul, aspectX);
-			Assert::AreEqual(10000ul, aspectY);
+			Assert::AreEqual(0ul, aspectX);
+			Assert::AreEqual(0ul, aspectY);
+			Assert::IsFalse(MadVRNlsMappingUsesCustomShader(
+				MadVRNlsMappingMode::SCOPE_PASSTHROUGH));
 
 			Assert::IsTrue(ResolveMadVRNlsPresentationAspect(
 				MadVRNlsMappingMode::ACTIVE,
 				2.3851, 2.35, aspectX, aspectY));
 			Assert::AreEqual(235ul, aspectX);
 			Assert::AreEqual(100ul, aspectY);
+			Assert::IsTrue(MadVRNlsMappingUsesCustomShader(
+				MadVRNlsMappingMode::ACTIVE));
 
-			Assert::IsTrue(ResolveMadVRNlsPresentationAspect(
+			Assert::IsFalse(ResolveMadVRNlsPresentationAspect(
 				MadVRNlsMappingMode::SAFE_FIT,
 				4.0 / 3.0, 2.35, aspectX, aspectY));
-			Assert::AreEqual(235ul, aspectX);
-			Assert::AreEqual(100ul, aspectY);
+			Assert::AreEqual(0ul, aspectX);
+			Assert::AreEqual(0ul, aspectY);
+			Assert::IsFalse(MadVRNlsMappingUsesCustomShader(
+				MadVRNlsMappingMode::SAFE_FIT));
 
 			Assert::IsFalse(ResolveMadVRNlsPresentationAspect(
 				MadVRNlsMappingMode::WAITING,
