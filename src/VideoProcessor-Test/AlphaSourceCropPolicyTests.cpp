@@ -145,11 +145,12 @@ namespace Tests
 			Assert::AreEqual(2100, decision.sourceBounds.bottom);
 		}
 
-		TEST_METHOD(ProvisionalOverlayMayOnlyExpandExistingAuthority)
+		TEST_METHOD(ProvisionalOverlayWithinSceneHoldMayExpandExistingAuthority)
 		{
 			Input input = TrustedScopeCrop();
 			input.latestObservationSupportsCrop = false;
 			input.latestObservationIsProvisional = true;
+			input.sceneVerificationHoldActive = true;
 			input.subtitleDisplacementActive = true;
 			input.outwardExpansionAvailable = true;
 			input.outwardExpansion = input.geometry;
@@ -194,6 +195,24 @@ namespace Tests
 			input.outwardExpansionAvailable = true;
 			input.outwardExpansion = input.geometry;
 			input.outwardExpansion.bottom = 2100;
+			input.outwardExpansionSourceGeneration = 7;
+			AssertFullRaster(Evaluate(input));
+
+			input.latestObservationIsProvisional = true;
+			AssertFullRaster(Evaluate(input));
+			input.sceneVerificationHoldActive = true;
+			Assert::IsTrue(Evaluate(input).outwardExpanded);
+		}
+
+		TEST_METHOD(PillarboxOnlyAuthorityCannotDriveVerticalOverlayGeometry)
+		{
+			Input input = TrustedScopeCrop();
+			input.geometry = {
+				480, 0, 3360, 2160, 3840, 2160, 4.0 / 3.0, true };
+			input.subtitleDisplacementActive = true;
+			input.outwardExpansionAvailable = true;
+			input.outwardExpansion = input.geometry;
+			input.outwardExpansion.left = 400;
 			input.outwardExpansionSourceGeneration = 7;
 			AssertFullRaster(Evaluate(input));
 		}
@@ -275,6 +294,130 @@ namespace Tests
 			Assert::AreEqual(274, decision.sourceBounds.top);
 			Assert::AreEqual(1884, decision.sourceBounds.bottom);
 			Assert::IsTrue(decision.reason.find("accepted") != std::string::npos);
+		}
+
+		TEST_METHOD(SceneBoundaryKeepsMatchingBarAndFullRasterPresentation)
+		{
+			SceneInput bar;
+			bar.geometryAvailable = true;
+			bar.geometryIsCurrentGeneration = true;
+			bar.latestEvidenceIsCurrent = true;
+			bar.latestObservationSupportsCrop = true;
+			bar.geometryClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			bar.latestClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::KEEP_CURRENT),
+				static_cast<int>(EvaluateSceneBoundary(bar).action));
+
+			SceneInput full = bar;
+			full.latestObservationSupportsCrop = false;
+			full.geometryClassification =
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
+			full.latestClassification =
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::KEEP_CURRENT),
+				static_cast<int>(EvaluateSceneBoundary(full).action));
+		}
+
+		TEST_METHOD(SceneBoundaryHoldsOnlyProvisionalExistingSnapshot)
+		{
+			SceneInput provisional;
+			provisional.geometryAvailable = true;
+			provisional.geometryIsCurrentGeneration = true;
+			provisional.latestEvidenceIsCurrent = true;
+			provisional.existingCropCanBeSnapshotted = true;
+			provisional.geometryClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			provisional.latestClassification =
+				ActivePictureClassification::PROVISIONAL;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::HOLD_SNAPSHOT),
+				static_cast<int>(EvaluateSceneBoundary(provisional).action));
+
+			provisional.existingCropCanBeSnapshotted = false;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(EvaluateSceneBoundary(provisional).action));
+		}
+
+		TEST_METHOD(SceneBoundaryWithdrawsUnavailableContradictoryOrStaleState)
+		{
+			SceneInput input;
+			input.geometryAvailable = true;
+			input.geometryIsCurrentGeneration = true;
+			input.latestEvidenceIsCurrent = true;
+			input.geometryClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.latestClassification =
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(EvaluateSceneBoundary(input).action));
+
+			input.latestClassification =
+				ActivePictureClassification::UNAVAILABLE;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(EvaluateSceneBoundary(input).action));
+
+			input.latestClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.latestObservationSupportsCrop = true;
+			input.geometryIsCurrentGeneration = false;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(EvaluateSceneBoundary(input).action));
+		}
+
+		TEST_METHOD(SceneHoldExpiryWithdrawsCropAndNlsTogether)
+		{
+			SceneHoldInput input;
+			input.snapshotAvailable = true;
+			input.nlsRequested = true;
+			input.retainedMappingCompatible = true;
+			input.snapshotSourceGeneration = 23;
+			input.frameSourceGeneration = 23;
+			input.currentTick = 1499;
+			input.deadlineTick = 1500;
+
+			SceneHoldDecision decision = EvaluateSceneHold(input);
+			Assert::IsTrue(decision.cropActive);
+			Assert::IsTrue(decision.nlsActive);
+
+			input.currentTick = input.deadlineTick;
+			decision = EvaluateSceneHold(input);
+			Assert::IsFalse(decision.cropActive);
+			Assert::IsFalse(decision.nlsActive);
+
+			input.currentTick = 1499;
+			input.retainedMappingCompatible = false;
+			decision = EvaluateSceneHold(input);
+			Assert::IsFalse(decision.cropActive);
+			Assert::IsFalse(decision.nlsActive);
+		}
+
+		TEST_METHOD(SceneHoldWithoutNlsKeepsCropOnlyUntilDeadline)
+		{
+			SceneHoldInput input;
+			input.snapshotAvailable = true;
+			input.nlsRequested = false;
+			input.retainedMappingCompatible = false;
+			input.snapshotSourceGeneration = 31;
+			input.frameSourceGeneration = 31;
+			input.currentTick = 1999;
+			input.deadlineTick = 2000;
+
+			SceneHoldDecision decision = EvaluateSceneHold(input);
+			Assert::IsTrue(decision.cropActive);
+			Assert::IsFalse(decision.nlsActive);
+
+			input.currentTick = input.deadlineTick;
+			decision = EvaluateSceneHold(input);
+			Assert::IsFalse(decision.cropActive);
+			Assert::IsFalse(decision.nlsActive);
 		}
 	};
 }

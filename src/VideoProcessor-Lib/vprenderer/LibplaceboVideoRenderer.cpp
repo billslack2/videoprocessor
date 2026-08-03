@@ -2462,12 +2462,8 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t scopeSubtitleHoldMs = 2000;
 	int scopeSubtitlePaddingPixels = 20;
 	uint64_t scopeSubtitleAnalysisFrame = 0;
-	int scopeSubtitlePendingPictureTop = 0;
-	int scopeSubtitlePendingPictureBottom = 0;
 	int scopeSubtitlePictureTop = 0;
 	int scopeSubtitlePictureBottom = 0;
-	int scopeSubtitleBarHits = 0;
-	uint64_t scopeActivePictureLastConfirmedTick = 0;
 	int scopeSubtitleDetectedBottom = 0;
 	int scopeSubtitleDetectedTop = 0;
 	uint64_t scopeSubtitleLastDetectionTick = 0;
@@ -3260,12 +3256,8 @@ struct LibplaceboVideoRenderer::Impl
 		scopeSubtitleShiftSourcePixels = 0.0f;
 		scopeSubtitleWasActive = false;
 		scopeSubtitleWasTopActive = false;
-		scopeSubtitlePendingPictureTop = 0;
-		scopeSubtitlePendingPictureBottom = 0;
 		scopeSubtitlePictureTop = 0;
 		scopeSubtitlePictureBottom = 0;
-		scopeSubtitleBarHits = 0;
-		scopeActivePictureLastConfirmedTick = 0;
 		scopeSubtitleDetectedBottom = 0;
 		scopeSubtitleDetectedTop = 0;
 		scopeSubtitleLastDetectionTick = 0;
@@ -3279,31 +3271,47 @@ struct LibplaceboVideoRenderer::Impl
 		const AnalysisLumaSource* source,
 		int width,
 		int height,
-		bool scopeScreenActive)
+		bool scopeScreenActive,
+		const ActivePictureBounds* verticalBarAuthority)
 	{
 		const uint64_t now = GetTickCount64();
 		const bool sourceIsCurrent = source && source->IsValid() &&
 			source->width == width && source->height == height &&
 			width >= 320 && height >= 180;
-		if (sourceIsCurrent &&
-			scopeSubtitleEvidenceSourceGeneration != source->generation)
+		const bool authorityIsCurrentVerticalBars =
+			verticalBarAuthority &&
+			verticalBarAuthority->rasterWidth == width &&
+			verticalBarAuthority->rasterHeight == height &&
+			verticalBarAuthority->left >= 0 &&
+			verticalBarAuthority->right <= width &&
+			verticalBarAuthority->top > 0 &&
+			verticalBarAuthority->bottom < height &&
+			verticalBarAuthority->left < verticalBarAuthority->right &&
+			verticalBarAuthority->top < verticalBarAuthority->bottom;
+		if (!scopeScreenActive || !sourceIsCurrent ||
+			!authorityIsCurrentVerticalBars)
 		{
-			// A held receiver/streaming overlay is presentation evidence for one
-			// source only. It must never cross a source-generation boundary.
-			ClearScopeSubtitleEvidence();
-			scopeSubtitleEvidenceSourceGeneration = source->generation;
-		}
-		if (!scopeScreenActive || !source || !source->IsValid() ||
-			source->width != width || source->height != height ||
-			width < 320 || height < 180)
-		{
+			// Receiver controls and ordinary picture detail are in-picture UI
+			// unless shared authority proves the rows are encoded letterbox bars.
+			// They may never pan a full-raster or pillarbox-only presentation.
 			ClearScopeSubtitleEvidence();
 			return 0.0f;
 		}
+		if (sourceIsCurrent &&
+			(scopeSubtitleEvidenceSourceGeneration != source->generation ||
+			 scopeSubtitlePictureTop != verticalBarAuthority->top ||
+			 scopeSubtitlePictureBottom != verticalBarAuthority->bottom))
+		{
+			// Held bar content belongs to one exact authority rectangle and source.
+			ClearScopeSubtitleEvidence();
+			scopeSubtitleEvidenceSourceGeneration = source->generation;
+			scopeSubtitlePictureTop = verticalBarAuthority->top;
+			scopeSubtitlePictureBottom = verticalBarAuthority->bottom;
+		}
 
-		// This inexpensive geometry pass deliberately avoids OCR and models. It
-		// finds stable letterbox edges, then treats meaningful non-black content
-		// inside either encoded bar as content which must remain visible.
+		// This inexpensive pass deliberately avoids OCR and models. Shared crop
+		// authority supplies the bar edges; this code only finds meaningful
+		// non-black content inside those already-proven encoded bars.
 		// Sampling every third rendered frame keeps the 4K CPU cost negligible
 		// while still reacting in roughly 50-125 ms.
 		if (++scopeSubtitleAnalysisFrame % 3 == 0)
@@ -3342,167 +3350,7 @@ struct LibplaceboVideoRenderer::Impl
 				blackSamples.begin() + median,
 				blackSamples.begin() + blackSampleCount);
 			const int blackCode = blackSamples[median];
-			const int darkLimit = std::min(1023, blackCode + 36);
-
-			auto edgeRowIsBlack =
-				[=, &lumaCode](int y)
-				{
-					int dark = 0;
-					int count = 0;
-					uint64_t sum = 0;
-					for (int x = 0; x < edgeWidth; x += sampleStep)
-					{
-						const int code = lumaCode(x, y);
-						dark += code <= darkLimit;
-						sum += code;
-						++count;
-					}
-					for (int x = width - edgeWidth; x < width; x += sampleStep)
-					{
-						const int code = lumaCode(x, y);
-						dark += code <= darkLimit;
-						sum += code;
-						++count;
-					}
-					return count > 0 && dark * 100 >= count * 84 &&
-						sum <= static_cast<uint64_t>(count) *
-							static_cast<uint64_t>(blackCode + 28);
-				};
-
 			const int rowStep = std::max(1, height / 1080);
-			int topRows = 0;
-			while (topRows + rowStep < height / 3 &&
-				edgeRowIsBlack(topRows))
-			{
-				topRows += rowStep;
-			}
-			int bottomRows = 0;
-			while (bottomRows + rowStep < height / 3 &&
-				edgeRowIsBlack(height - 1 - bottomRows))
-			{
-				bottomRows += rowStep;
-			}
-
-			const int minimumBar = std::max(8, height / 35);
-			const int candidateTop =
-				topRows >= minimumBar ? topRows : 0;
-			const int candidateBottom =
-				bottomRows >= minimumBar ? height - bottomRows : 0;
-			const int tolerance = std::max(3, height / 240);
-			const int barSymmetryTolerance =
-				std::max(tolerance * 2, height / 60);
-			const int candidateActiveHeight =
-				std::max(1, candidateBottom - candidateTop);
-			const double candidateAspect =
-				static_cast<double>(width) / candidateActiveHeight;
-			const bool plausibleLetterbox =
-				candidateTop > 0 &&
-				candidateBottom > candidateTop &&
-				std::abs(candidateTop - (height - candidateBottom)) <=
-					barSymmetryTolerance &&
-				// Reject implausibly deep crops caused by a uniformly dark scene.
-				// This still covers common scope formats through 2.76:1.
-				candidateAspect >= 1.90 &&
-				candidateAspect <= 3.00;
-			const bool haveStablePicture =
-				scopeSubtitlePictureTop > 0 &&
-				scopeSubtitlePictureBottom > scopeSubtitlePictureTop;
-			const bool topConfirmsStable =
-				haveStablePicture && candidateTop > 0 &&
-				candidateTop >= scopeSubtitlePictureTop - tolerance;
-			const bool bottomConfirmsStable =
-				haveStablePicture && candidateBottom > 0 &&
-				candidateBottom <= scopeSubtitlePictureBottom + tolerance;
-			const bool stablePictureConfirmed =
-				topConfirmsStable || bottomConfirmsStable;
-			const bool candidateMatchesStable =
-				haveStablePicture &&
-				std::abs(candidateTop - scopeSubtitlePictureTop) <= tolerance &&
-				std::abs(candidateBottom -
-					scopeSubtitlePictureBottom) <= tolerance;
-			const bool candidateCanReplaceStable =
-				plausibleLetterbox &&
-				(!haveStablePicture || !candidateMatchesStable);
-
-			// This detector is presentation-only evidence for subtitle placement.
-			// It never owns source-crop authority. A temporary receiver/streaming
-			// OSD may cover one black bar, so keep a locked presentation candidate
-			// when the unobscured opposite edge still confirms it.
-			// A dark picture may also make a detected bar appear deeper; that
-			// supports the existing crop but does not immediately enlarge it.
-			if (stablePictureConfirmed)
-				scopeActivePictureLastConfirmedTick = now;
-
-			if (candidateCanReplaceStable &&
-				scopeSubtitlePendingPictureTop > 0 &&
-				scopeSubtitlePendingPictureBottom > 0 &&
-				std::abs(candidateTop -
-					scopeSubtitlePendingPictureTop) <= tolerance &&
-				std::abs(candidateBottom -
-					scopeSubtitlePendingPictureBottom) <= tolerance)
-			{
-				scopeSubtitleBarHits = std::min(8, scopeSubtitleBarHits + 1);
-			}
-			else if (candidateCanReplaceStable)
-			{
-				scopeSubtitleBarHits = 1;
-				scopeSubtitlePendingPictureTop = candidateTop;
-				scopeSubtitlePendingPictureBottom = candidateBottom;
-			}
-			else
-			{
-				scopeSubtitleBarHits = 0;
-				scopeSubtitlePendingPictureTop = 0;
-				scopeSubtitlePendingPictureBottom = 0;
-			}
-
-			// Require several matching analyses before adopting a new subtitle
-			// placement candidate.
-			// This filters short overlays and dark-scene excursions while staying
-			// responsive to a real source aspect change.
-			if (scopeSubtitleBarHits >= 8)
-			{
-				scopeSubtitlePictureTop = scopeSubtitlePendingPictureTop;
-				scopeSubtitlePictureBottom = scopeSubtitlePendingPictureBottom;
-				scopeActivePictureLastConfirmedTick = now;
-				scopeSubtitleBarHits = 0;
-				// A refined letterbox estimate must not cancel an active caption hold.
-				// Captions themselves can obscure a bar edge, and clearing the hold here
-				// made the picture snap back and forth during otherwise stable text.
-				const double activeAspect =
-					static_cast<double>(width) /
-					std::max(1,
-						scopeSubtitlePictureBottom -
-						scopeSubtitlePictureTop);
-				DebugLog::Log(
-					"libplacebo scope subtitle placement candidate: aspect %.4f bounds 0,%d-%d,%d raster %dx%d crop_authority=none",
-					activeAspect,
-					scopeSubtitlePictureTop,
-					width,
-					scopeSubtitlePictureBottom,
-					width,
-					height);
-			}
-
-			// A genuine switch back to full-raster content removes both bar
-			// confirmations. Hold briefly across fades and overlays, then release
-			// in one step instead of oscillating on dark frames.
-			if (scopeSubtitlePictureTop > 0 &&
-				!stablePictureConfirmed &&
-				scopeActivePictureLastConfirmedTick != 0 &&
-				now - scopeActivePictureLastConfirmedTick >= 1500)
-			{
-				DebugLog::Log(
-					"libplacebo scope active picture: letterbox released; using full raster");
-				scopeSubtitlePictureTop = 0;
-				scopeSubtitlePictureBottom = 0;
-				scopeActivePictureLastConfirmedTick = 0;
-				scopeSubtitleLastDetectionTick = 0;
-				scopeSubtitleTopLastDetectionTick = 0;
-				scopeSubtitleOppositeCandidateSide = 0;
-				scopeSubtitleOppositeCandidateHits = 0;
-				scopeSubtitleShiftSourcePixels = 0.0f;
-			}
 
 			// Subtitle fitting deliberately uses a simple, renderer-local rule:
 			// meaningful non-black content inside a confirmed encoded black bar
@@ -5012,9 +4860,48 @@ struct LibplaceboVideoRenderer::Impl
 		latestActivePictureEvidenceFrame = 0;
 	}
 
+	bool ApplyRetainedNlsDecisionForSceneHold()
+	{
+		renderParams.hooks = nullptr;
+		renderParams.num_hooks = 0;
+		if (!nlsRequested ||
+			nlsDecision.mode == MadVRNlsMappingMode::WAITING ||
+			nlsDecision.mode == MadVRNlsMappingMode::OFF)
+		{
+			return false;
+		}
+		if (nlsDecision.mode == MadVRNlsMappingMode::ACTIVE)
+		{
+			if (!nlsHook || !SetNlsHookMapping(nlsHook, nlsDecision))
+				return false;
+			renderParams.hooks = &nlsHook;
+			renderParams.num_hooks = 1;
+		}
+		MadVRShaderLoader::SetRuntimeShaderSelection(
+			requestedShaderSelector, requestedShaderSelector,
+			nlsDecision.mode);
+		switch (nlsDecision.mode)
+		{
+		case MadVRNlsMappingMode::ACTIVE:
+			SetShaderStatus("NLS: Active");
+			break;
+		case MadVRNlsMappingMode::SCOPE_PASSTHROUGH:
+			SetShaderStatus(nlsDecision.targetAspect > 2.2
+				? "NLS: Scope passthrough" : "NLS: Linear passthrough");
+			break;
+		case MadVRNlsMappingMode::SAFE_FIT:
+			SetShaderStatus("NLS: Safe fit");
+			break;
+		default:
+			return false;
+		}
+		return true;
+	}
+
 	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
 		uint64_t frameNumber,
 		double framesPerSecond, double targetAspect,
+		AlphaSourceCrop::SceneHoldDecision& sceneHold,
 		bool forceAnalysis = false)
 	{
 		renderParams.hooks = nullptr;
@@ -5138,6 +5025,24 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<int>(evidence.classification),
 					transition.reason.c_str(), evidence.reason.c_str());
 			}
+		}
+		const bool sceneNlsHoldActive = sceneHold.nlsActive &&
+			latestActivePictureEvidenceAvailable &&
+			(latestActivePictureEvidenceClassification ==
+				ActivePictureClassification::PROVISIONAL ||
+			 sceneVerificationLatestSupportsCrop);
+		if (sceneNlsHoldActive &&
+			(!nlsGeometryAvailable ||
+			 latestActivePictureEvidenceClassification ==
+				ActivePictureClassification::PROVISIONAL))
+		{
+			if (ApplyRetainedNlsDecisionForSceneHold())
+				return;
+
+			// Hook restoration is part of the retained presentation. If it fails,
+			// withdraw the crop snapshot in this same frame as well.
+			sceneHold = {};
+			ClearSceneVerificationSnapshot();
 		}
 		if (!nlsRequested)
 			return;
@@ -5468,11 +5373,35 @@ struct LibplaceboVideoRenderer::Impl
 			sceneDetectionEnabled)
 			sceneDetectionStatus.store(
 				static_cast<int>(sceneResult.status), std::memory_order_release);
+		const MadVRNlsMappingDecision nlsDecisionBeforeSceneAnalysis =
+			nlsDecision;
+		const double frameNlsTargetAspect =
+			scopeScreenActive ? scopeScreenAspect : 16.0 / 9.0;
+		const bool retainedNlsModeAvailable =
+			nlsDecisionBeforeSceneAnalysis.mode != MadVRNlsMappingMode::WAITING &&
+			nlsDecisionBeforeSceneAnalysis.mode != MadVRNlsMappingMode::OFF;
+		const bool retainedMappingCompatible = !nlsRequested ||
+			(retainedNlsModeAvailable &&
+			 std::abs(nlsDecisionBeforeSceneAnalysis.targetAspect -
+				frameNlsTargetAspect) <= 0.0001);
+		AlphaSourceCrop::SceneHoldInput sceneHoldInput;
+		sceneHoldInput.snapshotAvailable =
+			sceneVerificationGeometryAvailable;
+		sceneHoldInput.nlsRequested = nlsRequested;
+		sceneHoldInput.retainedMappingCompatible = retainedMappingCompatible;
+		sceneHoldInput.snapshotSourceGeneration =
+			sceneVerificationGeometrySourceGeneration;
+		sceneHoldInput.frameSourceGeneration = frameGeneration;
+		sceneHoldInput.deadlineTick =
+			activePictureSceneVerificationDeadlineTick;
+		sceneHoldInput.currentTick = GetTickCount64();
+		AlphaSourceCrop::SceneHoldDecision sceneHold =
+			AlphaSourceCrop::EvaluateSceneHold(sceneHoldInput);
 		if (analysisSource.IsValid())
 		{
 			UpdateNlsForFrame(analysisSource, sourceSequence,
 				state.displayMode->RefreshRateHz(),
-				scopeScreenActive ? scopeScreenAspect : 16.0 / 9.0,
+				frameNlsTargetAspect, sceneHold,
 				!cadenceRepeat && sceneResult.safeBoundary);
 		}
 		if (!cadenceRepeat && sceneResult.safeBoundary)
@@ -5494,7 +5423,27 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometryClassification ==
 					ActivePictureClassification::BAR_CROP_TRUSTED &&
 				nlsGeometrySourceGeneration == frameGeneration &&
-				latestEvidenceIsCurrent && latestEvidenceMayVerify;
+				latestEvidenceIsCurrent && latestEvidenceMayVerify &&
+				retainedMappingCompatible;
+			AlphaSourceCrop::SceneInput sceneInput;
+			sceneInput.geometryAvailable = nlsGeometryAvailable;
+			sceneInput.geometryIsCurrentGeneration =
+				nlsGeometrySourceGeneration == frameGeneration;
+			sceneInput.latestEvidenceIsCurrent = latestEvidenceIsCurrent;
+			sceneInput.latestObservationSupportsCrop =
+				latestActivePictureObservationSupportsCrop;
+			sceneInput.existingCropCanBeSnapshotted = canVerifyExistingCrop;
+			sceneInput.geometryClassification = nlsGeometryClassification;
+			sceneInput.latestClassification =
+				latestActivePictureEvidenceClassification;
+			const AlphaSourceCrop::SceneDecision sceneDecision =
+				AlphaSourceCrop::EvaluateSceneBoundary(sceneInput);
+			const bool retainCurrentTrustedPresentation =
+				sceneDecision.action ==
+					AlphaSourceCrop::ScenePresentationAction::KEEP_CURRENT;
+			bool retainBoundedSnapshot =
+				sceneDecision.action ==
+					AlphaSourceCrop::ScenePresentationAction::HOLD_SNAPSHOT;
 			if (canVerifyExistingCrop)
 			{
 				sceneVerificationGeometryAvailable = true;
@@ -5510,26 +5459,66 @@ struct LibplaceboVideoRenderer::Impl
 				activePictureSceneVerificationDeadlineTick =
 					GetTickCount64() +
 					ACTIVE_PICTURE_SCENE_VERIFICATION_MS;
+				sceneHold.cropActive = true;
+				sceneHold.nlsActive = nlsRequested;
 			}
 			else
 			{
 				ClearSceneVerificationSnapshot();
+				sceneHold = {};
 			}
 
-			nlsTransition.Reset();
-			nlsGeometryAvailable = false;
-			nlsTransitionWithdrawn = false;
-			nlsGeometry = {};
-			nlsGeometryClassification =
-				ActivePictureClassification::UNAVAILABLE;
-			latestActivePictureObservationSupportsCrop = false;
-			nlsGeometrySourceGeneration = 0;
-			nlsDecision = {};
-			renderParams.hooks = nullptr;
-			renderParams.num_hooks = 0;
-			lastSourceCropPolicy.clear();
+			if (retainCurrentTrustedPresentation)
+			{
+				// Candidate confirmations never cross an edit, but the cut frame has
+				// already reaffirmed this exact presentation. Reset only temporal
+				// acquisition proof; keep the crop, decision, and hook visible.
+				nlsTransition.Reset();
+				nlsTransitionWithdrawn = false;
+			}
+			else
+			{
+				nlsTransition.Reset();
+				nlsGeometryAvailable = false;
+				nlsTransitionWithdrawn = false;
+				nlsGeometry = {};
+				nlsGeometryClassification =
+					ActivePictureClassification::UNAVAILABLE;
+				latestActivePictureObservationSupportsCrop = false;
+				nlsGeometrySourceGeneration = 0;
+				if (retainBoundedSnapshot)
+				{
+					// Provisional cut evidence may retain the prior crop and its
+					// compatible mapping as one bounded presentation snapshot.
+					nlsDecision = nlsDecisionBeforeSceneAnalysis;
+					if (nlsRequested &&
+						!ApplyRetainedNlsDecisionForSceneHold())
+					{
+						// Crop and mapping are one presentation snapshot. A hook
+						// failure withdraws both on the cut frame.
+						retainBoundedSnapshot = false;
+						sceneHold = {};
+						ClearSceneVerificationSnapshot();
+						nlsDecision = {};
+						nlsDecision.targetAspect = frameNlsTargetAspect;
+						nlsDecision.reason =
+							"retained NLS hook is unavailable; withdrawing scene snapshot";
+						MadVRShaderLoader::SetRuntimeShaderSelection(
+							requestedShaderSelector, requestedShaderSelector,
+							MadVRNlsMappingMode::WAITING);
+						SetShaderStatus("NLS: Waiting");
+					}
+				}
+				else
+				{
+					nlsDecision = {};
+					renderParams.hooks = nullptr;
+					renderParams.num_hooks = 0;
+				}
+				lastSourceCropPolicy.clear();
+			}
 			sceneDetectedCount.fetch_add(1, std::memory_order_relaxed);
-			DebugLog::Log("libplacebo scene boundary: event=%llu sequence=%llu generation=%llu frames_back=%u luma=%u evidence=%d crop_verification_ms=%u",
+			DebugLog::Log("libplacebo scene boundary: event=%llu sequence=%llu generation=%llu frames_back=%u luma=%u evidence=%d crop_verification_ms=%u nls_retained=%d reason=\"%s\"",
 				static_cast<unsigned long long>(sceneResult.eventId),
 				static_cast<unsigned long long>(sceneResult.sourceSequence),
 				static_cast<unsigned long long>(sceneResult.generation),
@@ -5538,7 +5527,10 @@ struct LibplaceboVideoRenderer::Impl
 				static_cast<int>(
 					latestActivePictureEvidenceClassification),
 				canVerifyExistingCrop ? static_cast<unsigned>(
-					ACTIVE_PICTURE_SCENE_VERIFICATION_MS) : 0U);
+					ACTIVE_PICTURE_SCENE_VERIFICATION_MS) : 0U,
+				(retainCurrentTrustedPresentation || retainBoundedSnapshot)
+					? 1 : 0,
+				sceneDecision.reason.c_str());
 		}
 		if (!cadenceRepeat)
 		{
@@ -5580,9 +5572,34 @@ struct LibplaceboVideoRenderer::Impl
 				return true;
 			}
 		}
+		const bool latestEvidenceAllowsBarOverlay =
+			latestActivePictureEvidenceAvailable &&
+			(latestActivePictureEvidenceClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED ||
+			 (latestActivePictureEvidenceClassification ==
+				ActivePictureClassification::PROVISIONAL &&
+			  sceneHold.cropActive));
+		const bool currentVerticalBarAuthority =
+			nlsGeometryAvailable &&
+			nlsGeometryClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED &&
+			nlsGeometrySourceGeneration == frameGeneration &&
+			nlsGeometry.top > 0 && nlsGeometry.bottom < height &&
+			latestEvidenceAllowsBarOverlay;
+		const bool sceneVerticalBarAuthority =
+			!currentVerticalBarAuthority &&
+			sceneHold.cropActive &&
+			sceneVerificationGeometryAvailable &&
+			sceneVerificationGeometrySourceGeneration == frameGeneration &&
+			sceneVerificationGeometry.top > 0 &&
+			sceneVerificationGeometry.bottom < height &&
+			latestEvidenceAllowsBarOverlay;
+		const ActivePictureBounds* subtitleBarAuthority =
+			currentVerticalBarAuthority ? &nlsGeometry :
+			(sceneVerticalBarAuthority ? &sceneVerificationGeometry : nullptr);
 		const float subtitleShiftSourcePixels =
 			UpdateScopeSubtitleShift(&analysisSource,
-				width, height, scopeScreenActive);
+				width, height, scopeScreenActive, subtitleBarAuthority);
 
 		struct pl_frame image{};
 		if (nativeRgbUpload)
@@ -5758,7 +5775,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		auto configureScreenProfile =
-			[this, &image, width, height, frameGeneration](
+			[this, &image, width, height, frameGeneration, sceneHold](
 				struct pl_frame& source,
 				struct pl_frame& target,
 				bool scopeActive,
@@ -5768,12 +5785,7 @@ struct LibplaceboVideoRenderer::Impl
 			source = image;
 			if (trustedActivePicture)
 				*trustedActivePicture = false;
-			const bool sceneVerificationHoldActive =
-				sceneVerificationGeometryAvailable &&
-				sceneVerificationGeometrySourceGeneration == frameGeneration &&
-				activePictureSceneVerificationDeadlineTick != 0 &&
-				GetTickCount64() <
-					activePictureSceneVerificationDeadlineTick;
+			const bool sceneVerificationHoldActive = sceneHold.cropActive;
 			const bool useSceneVerificationGeometry =
 				sceneVerificationHoldActive && !nlsGeometryAvailable;
 			const bool effectiveGeometryAvailable =
@@ -5942,14 +5954,16 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			const bool nlsMapped = nlsRequested &&
 				cropDecision.nlsCompatible &&
-				nlsGeometryAvailable &&
-				(nlsGeometryClassification !=
+				effectiveGeometryAvailable &&
+				(effectiveClassification !=
 					ActivePictureClassification::BAR_CROP_TRUSTED ||
 				 cropDecision.applyCrop) &&
 				(nlsDecision.mode == MadVRNlsMappingMode::ACTIVE ||
 				 nlsDecision.mode ==
 					MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
-				 nlsDecision.mode == MadVRNlsMappingMode::SAFE_FIT);
+				 nlsDecision.mode == MadVRNlsMappingMode::SAFE_FIT) &&
+				(nlsDecision.mode != MadVRNlsMappingMode::ACTIVE ||
+				 (renderParams.hooks != nullptr && renderParams.num_hooks > 0));
 			if (nlsMapped)
 			{
 				// Source contraction, if any, was authorized above by the shared
@@ -5969,6 +5983,10 @@ struct LibplaceboVideoRenderer::Impl
 				return;
 			}
 
+			// Ordinary scaling and a retained NLS hook must never coexist. This is
+			// the final atomicity guard if crop authority expires or is withdrawn.
+			renderParams.hooks = nullptr;
+			renderParams.num_hooks = 0;
 			if (scopeActive)
 			{
 				pl_rect2df_aspect_set(
@@ -5977,17 +5995,10 @@ struct LibplaceboVideoRenderer::Impl
 					0.0f);
 			}
 			pl_rect2df_aspect_copy(&target.crop, &source.crop, 0.0f);
-			if (scopeActive &&
-				subtitleShift != 0.0f &&
-				!cropDecision.outwardExpanded)
-			{
-				const float targetHeight =
-					std::abs(target.crop.y1 - target.crop.y0);
-				const float outputShift =
-					subtitleShift * targetHeight / std::max(1, height);
-				target.crop.y0 -= outputShift;
-				target.crop.y1 -= outputShift;
-			}
+			// Never translate the fitted destination for source-baked UI. Moving
+			// target.crop cannot reveal source pixels; it only clips one edge and
+			// leaves an unequal gap at the other. Unsupported overlay evidence is
+			// therefore a centered geometry no-op.
 		};
 
 		if (!startupNlsPrewarmComplete)

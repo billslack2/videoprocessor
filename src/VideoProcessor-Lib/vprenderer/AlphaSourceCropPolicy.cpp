@@ -80,7 +80,8 @@ namespace AlphaSourceCrop
 			input.outwardExpansionSourceGeneration ==
 				input.frameSourceGeneration &&
 			(input.latestObservationSupportsCrop ||
-				input.latestObservationIsProvisional);
+				(input.sceneVerificationHoldActive &&
+				 input.latestObservationIsProvisional));
 		if (!input.latestObservationSupportsCrop &&
 			!boundedProvisionalHold && !boundedOutwardExpansion)
 		{
@@ -122,6 +123,20 @@ namespace AlphaSourceCrop
 					"subtitle outward expansion is invalid or not chroma aligned";
 				return decision;
 			}
+			const bool authorityHasVerticalBars =
+				input.geometry.top > 0 &&
+				input.geometry.bottom < input.rasterHeight;
+			const bool verticalOnlyExpansion =
+				input.outwardExpansion.left == input.geometry.left &&
+				input.outwardExpansion.right == input.geometry.right &&
+				(input.outwardExpansion.top < input.geometry.top ||
+				 input.outwardExpansion.bottom > input.geometry.bottom);
+			if (!authorityHasVerticalBars || !verticalOnlyExpansion)
+			{
+				decision.reason =
+					"overlay expansion requires trusted vertical letterbox bars";
+				return decision;
+			}
 			const bool containsAuthority =
 				input.outwardExpansion.left <= input.geometry.left &&
 				input.outwardExpansion.top <= input.geometry.top &&
@@ -153,6 +168,63 @@ namespace AlphaSourceCrop
 		decision.reason = input.latestObservationSupportsCrop
 			? "generation-current shared crop authority accepted"
 			: "bounded scene verification retained current trusted crop";
+		return decision;
+	}
+
+	SceneDecision EvaluateSceneBoundary(const SceneInput& input)
+	{
+		SceneDecision decision;
+		if (!input.geometryAvailable ||
+			!input.geometryIsCurrentGeneration ||
+			!input.latestEvidenceIsCurrent)
+		{
+			decision.reason =
+				"scene evidence or presentation geometry is not current";
+			return decision;
+		}
+		if (input.latestClassification ==
+				ActivePictureClassification::FULL_RASTER_TRUSTED &&
+			input.geometryClassification ==
+				ActivePictureClassification::FULL_RASTER_TRUSTED)
+		{
+			decision.action = ScenePresentationAction::KEEP_CURRENT;
+			decision.reason = "cut frame reaffirms full-raster presentation";
+			return decision;
+		}
+		if (input.latestClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED &&
+			input.geometryClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED &&
+			input.latestObservationSupportsCrop)
+		{
+			decision.action = ScenePresentationAction::KEEP_CURRENT;
+			decision.reason = "cut frame reaffirms current bar presentation";
+			return decision;
+		}
+		if (input.latestClassification ==
+				ActivePictureClassification::PROVISIONAL &&
+			input.existingCropCanBeSnapshotted)
+		{
+			decision.action = ScenePresentationAction::HOLD_SNAPSHOT;
+			decision.reason =
+				"provisional cut retains bounded crop and NLS snapshot";
+			return decision;
+		}
+		decision.reason = "cut frame contradicts or cannot verify presentation";
+		return decision;
+	}
+
+	SceneHoldDecision EvaluateSceneHold(const SceneHoldInput& input)
+	{
+		SceneHoldDecision decision;
+		const bool active = input.snapshotAvailable &&
+			(!input.nlsRequested || input.retainedMappingCompatible) &&
+			input.snapshotSourceGeneration != 0 &&
+			input.snapshotSourceGeneration == input.frameSourceGeneration &&
+			input.deadlineTick != 0 &&
+			input.currentTick < input.deadlineTick;
+		decision.cropActive = active;
+		decision.nlsActive = active && input.nlsRequested;
 		return decision;
 	}
 }
