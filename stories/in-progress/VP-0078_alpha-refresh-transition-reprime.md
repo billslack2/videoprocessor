@@ -38,6 +38,18 @@ completed successfully with zero warnings/errors. The x64 Release
 rapid coalescing/cancellation, HDR/LLDV, and Alpha-to-madVR validation remain
 before review.
 
+Rebase/deployment (2026-08-02): the confirmed integration branch advanced to
+`86981b3` (`feat(alpha): support DeckLink R12B fallback`), so VP-0078 was
+rebased cleanly and is now commit `49b7218` on
+`codex/vp-0078-alpha-refresh-transition`. A fresh x64 Release build completed
+successfully and the focused x64 `RendererResetPolicyTests` run again passed
+7/7. Deployed only `VideoProcessor.exe` and
+`vprenderer/VideoProcessorVPRenderer.dll` to `C:\Videoprocessor\vp`; their
+SHA-256 hashes match the release build. Active configuration and shaders were
+unchanged. Recoverable pre-deployment backups are
+`VideoProcessor.exe.before-VP0078-rebase-20260802-203100.bak` and
+`vprenderer/VideoProcessorVPRenderer.dll.before-VP0078-rebase-20260802-203100.bak`.
+
 ## User story
 
 As an Alpha-renderer user, I want a menu-to-content refresh transition (for
