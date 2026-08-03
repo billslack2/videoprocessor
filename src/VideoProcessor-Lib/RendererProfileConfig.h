@@ -663,7 +663,7 @@ namespace RendererProfileConfig
 						error = owner + " uses unregistrable key chord '" + chord + "'";
 						return false;
 					}
-					const std::string canonical = ConfigFile::NormalizeName(chord);
+					const std::string canonical = chord;
 					const auto existing = chordOwners.find(canonical);
 					if (existing != chordOwners.end() && existing->second != owner)
 					{
@@ -794,7 +794,7 @@ namespace RendererProfileConfig
 	{
 		selections.clear();
 		error.clear();
-		const std::string canonicalKey = ConfigFile::NormalizeName(key);
+		const std::string canonicalKey = key;
 		const DisplayRuleExpression::ValueLookup values =
 			[&](const std::string& name, std::string& value)
 			{
@@ -1017,10 +1017,9 @@ namespace RendererProfileConfig
 				if (!profile.when.empty()) collect(profile.whenExpression);
 			}
 		}
-		std::sort(chords.begin(), chords.end(), [](const std::string& left, const std::string& right)
-			{ return ConfigFile::NormalizeName(left) < ConfigFile::NormalizeName(right); });
+		std::sort(chords.begin(), chords.end());
 		chords.erase(std::unique(chords.begin(), chords.end(), [](const std::string& left, const std::string& right)
-			{ return ConfigFile::NormalizeName(left) == ConfigFile::NormalizeName(right); }), chords.end());
+			{ return left == right; }), chords.end());
 		return true;
 	}
 }

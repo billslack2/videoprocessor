@@ -138,7 +138,11 @@ namespace DisplayRuleExpression
 				value = false;
 				return true;
 			}
-			actual = ConfigFile::NormalizeName(actual);
+			// Chords use the accelerator spelling: an uppercase letter denotes
+			// Shift, so $key comparisons are deliberately case-sensitive.
+			// Other expression values remain case-insensitive.
+			if (variable != "key")
+				actual = ConfigFile::NormalizeName(actual);
 			if (type == ValueType::Number)
 			{
 				double actualNumber = 0.0;
@@ -392,7 +396,8 @@ namespace DisplayRuleExpression
 			std::vector<bool> quoted;
 			if (m_current.kind == TokenKind::Word)
 			{
-				expected.push_back(ConfigFile::NormalizeName(m_current.text));
+				expected.push_back(variable == "key" ?
+					m_current.text : ConfigFile::NormalizeName(m_current.text));
 				quoted.push_back(m_current.quoted);
 				Next();
 				while (m_current.kind == TokenKind::Alternative)
@@ -402,7 +407,8 @@ namespace DisplayRuleExpression
 					Next();
 					if (m_current.kind != TokenKind::Word)
 						return Fail("expected value after '|'", error);
-					expected.push_back(ConfigFile::NormalizeName(m_current.text));
+					expected.push_back(variable == "key" ?
+						m_current.text : ConfigFile::NormalizeName(m_current.text));
 					quoted.push_back(m_current.quoted);
 					Next();
 				}
@@ -494,10 +500,8 @@ namespace DisplayRuleExpression
 
 		bool DeclaresKeyChord(const std::string& chord) const
 		{
-			const std::string canonical = ConfigFile::NormalizeName(chord);
 			return std::any_of(m_keyChords.begin(), m_keyChords.end(),
-				[&canonical](const std::string& item)
-				{ return ConfigFile::NormalizeName(item) == canonical; });
+				[&chord](const std::string& item) { return item == chord; });
 		}
 
 	private:
