@@ -20,6 +20,24 @@ The Alpha renderer already provides `ResetLiveQueue()`; implementation will
 add a once-only refresh-transition owner that calls this Alpha-native path
 after the shared delay, while retaining VP-0074 as an independent backstop.
 
+Implementation progress (2026-08-02): commit `025f17d` adds a distinct
+`refresh-transition` reset reason. A real Windows display change records the
+previous/current configured target rates and only arms this path for a
+cross-family change (at least 1%; therefore 59.94/60 and 23.976/24 remain
+same-family). When the replacement Alpha renderer reaches Rendering, the
+shared `/reset_after_render_restart_seconds` delay (default five seconds)
+subsumes the existing 30-second display fallback and calls only
+`ResetLiveQueue()`. It never calls the DirectShow graph-reset path. A later
+same-family/cancelled display notification clears the pending Alpha action;
+reset arbitration preserves the higher priority VP-0074 liveness recovery.
+
+Validation: `MSBuild VideoProcessor.sln /m /p:Configuration=Release;Platform=x64`
+completed successfully with zero warnings/errors. The x64 Release
+`RendererResetPolicyTests` run passed all seven tests, including
+`RefreshTransitionReplacesDelayedDisplayFallback`. Live Apple TV transition,
+rapid coalescing/cancellation, HDR/LLDV, and Alpha-to-madVR validation remain
+before review.
+
 ## User story
 
 As an Alpha-renderer user, I want a menu-to-content refresh transition (for
