@@ -15,6 +15,7 @@ namespace AlphaSourceCrop
 		bool latestObservationSupportsCrop = false;
 		bool sceneVerificationHoldActive = false;
 		bool latestObservationIsProvisional = false;
+		bool latestObservationIsUnavailable = false;
 		bool subtitleDisplacementActive = false;
 		bool outwardExpansionAvailable = false;
 		ActivePictureClassification classification =
@@ -88,8 +89,9 @@ namespace AlphaSourceCrop
 	Decision Evaluate(const Input& input);
 
 	// A scene boundary resets candidate proof, but presentation is atomic:
-	// matching trusted geometry keeps crop and NLS together; ambiguous evidence
-	// may retain their existing snapshot briefly; contradiction withdraws both.
+	// matching trusted geometry keeps crop and NLS together; ambiguous or
+	// near-black unavailable cut evidence may retain their existing snapshot
+	// briefly; contradiction withdraws both.
 	SceneDecision EvaluateSceneBoundary(const SceneInput& input);
 
 	// Latch the bounded scene hold once per rendered frame. Crop and NLS consume

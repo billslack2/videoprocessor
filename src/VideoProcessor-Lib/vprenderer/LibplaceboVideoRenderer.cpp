@@ -5027,14 +5027,17 @@ struct LibplaceboVideoRenderer::Impl
 			}
 		}
 		const bool sceneNlsHoldActive = sceneHold.nlsActive &&
-			latestActivePictureEvidenceAvailable &&
 			(latestActivePictureEvidenceClassification ==
 				ActivePictureClassification::PROVISIONAL ||
+			 latestActivePictureEvidenceClassification ==
+				ActivePictureClassification::UNAVAILABLE ||
 			 sceneVerificationLatestSupportsCrop);
 		if (sceneNlsHoldActive &&
 			(!nlsGeometryAvailable ||
 			 latestActivePictureEvidenceClassification ==
-				ActivePictureClassification::PROVISIONAL))
+				ActivePictureClassification::PROVISIONAL ||
+			 latestActivePictureEvidenceClassification ==
+				ActivePictureClassification::UNAVAILABLE))
 		{
 			if (ApplyRetainedNlsDecisionForSceneHold())
 				return;
@@ -5409,15 +5412,17 @@ struct LibplaceboVideoRenderer::Impl
 			// Capture only the already-published crop for bounded presentation,
 			// then reset temporal proof. Confirmations for new geometry must never
 			// accumulate across an edit. The current cut frame is force-analyzed
-			// above, so unavailable or full-raster evidence cannot arm this hold.
+			// above. Trusted full-raster evidence must withdraw; a bounded
+			// unavailable fade may preserve only an existing trusted scope snapshot.
 			const bool latestEvidenceIsCurrent =
 				latestActivePictureEvidenceFrame == sourceSequence;
 			const bool latestEvidenceMayVerify =
-				latestActivePictureEvidenceAvailable &&
-				(latestActivePictureEvidenceClassification ==
+				latestActivePictureEvidenceClassification ==
 					ActivePictureClassification::BAR_CROP_TRUSTED ||
 				 latestActivePictureEvidenceClassification ==
-					ActivePictureClassification::PROVISIONAL);
+					ActivePictureClassification::PROVISIONAL ||
+				latestActivePictureEvidenceClassification ==
+					ActivePictureClassification::UNAVAILABLE;
 			const bool canVerifyExistingCrop = automaticSourceCrop &&
 				nlsGeometryAvailable &&
 				nlsGeometryClassification ==
@@ -5797,6 +5802,9 @@ struct LibplaceboVideoRenderer::Impl
 				latestActivePictureEvidenceAvailable &&
 				latestActivePictureEvidenceClassification ==
 					ActivePictureClassification::PROVISIONAL;
+			const bool latestObservationIsUnavailable =
+				latestActivePictureEvidenceClassification ==
+					ActivePictureClassification::UNAVAILABLE;
 			const ActivePictureClassification effectiveClassification =
 				useSceneVerificationGeometry
 					? ActivePictureClassification::BAR_CROP_TRUSTED
@@ -5853,6 +5861,8 @@ struct LibplaceboVideoRenderer::Impl
 				sceneVerificationHoldActive;
 			cropInput.latestObservationIsProvisional =
 				latestObservationIsProvisional;
+			cropInput.latestObservationIsUnavailable =
+				latestObservationIsUnavailable;
 			cropInput.subtitleDisplacementActive = subtitleShift != 0.0f;
 			cropInput.outwardExpansionAvailable = outwardExpansionAvailable;
 			cropInput.classification = effectiveClassification;

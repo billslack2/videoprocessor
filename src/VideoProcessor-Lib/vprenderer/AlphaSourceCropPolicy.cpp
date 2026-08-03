@@ -72,7 +72,8 @@ namespace AlphaSourceCrop
 		}
 		const bool boundedProvisionalHold =
 			input.sceneVerificationHoldActive &&
-			input.latestObservationIsProvisional;
+			(input.latestObservationIsProvisional ||
+			 input.latestObservationIsUnavailable);
 		const bool boundedOutwardExpansion =
 			input.subtitleDisplacementActive &&
 			input.outwardExpansionAvailable &&
@@ -201,13 +202,19 @@ namespace AlphaSourceCrop
 			decision.reason = "cut frame reaffirms current bar presentation";
 			return decision;
 		}
-		if (input.latestClassification ==
-				ActivePictureClassification::PROVISIONAL &&
+		if ((input.latestClassification ==
+				ActivePictureClassification::PROVISIONAL ||
+			 input.latestClassification ==
+				ActivePictureClassification::UNAVAILABLE) &&
+			input.geometryClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED &&
 			input.existingCropCanBeSnapshotted)
 		{
 			decision.action = ScenePresentationAction::HOLD_SNAPSHOT;
-			decision.reason =
-				"provisional cut retains bounded crop and NLS snapshot";
+			decision.reason = input.latestClassification ==
+				ActivePictureClassification::PROVISIONAL
+				? "provisional cut retains bounded crop and NLS snapshot"
+				: "near-black unavailable cut retains bounded crop and NLS snapshot";
 			return decision;
 		}
 		decision.reason = "cut frame contradicts or cannot verify presentation";

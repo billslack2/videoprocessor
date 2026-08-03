@@ -103,6 +103,13 @@ namespace Tests
 			Assert::AreEqual(1884, decision.sourceBounds.bottom);
 			Assert::IsTrue(
 				decision.reason.find("scene verification") != std::string::npos);
+
+			input.latestObservationIsProvisional = false;
+			input.latestObservationIsUnavailable = true;
+			const Decision darkFade = Evaluate(input);
+			Assert::IsTrue(darkFade.applyCrop);
+			Assert::AreEqual(274, darkFade.sourceBounds.top);
+			Assert::AreEqual(1884, darkFade.sourceBounds.bottom);
 		}
 
 		TEST_METHOD(SceneVerificationCannotOverrideFullRasterOrStaleAuthority)
@@ -322,7 +329,7 @@ namespace Tests
 				static_cast<int>(EvaluateSceneBoundary(full).action));
 		}
 
-		TEST_METHOD(SceneBoundaryHoldsOnlyProvisionalExistingSnapshot)
+		TEST_METHOD(SceneBoundaryHoldsOnlyExistingTrustedScopeSnapshot)
 		{
 			SceneInput provisional;
 			provisional.geometryAvailable = true;
@@ -337,10 +344,24 @@ namespace Tests
 				static_cast<int>(ScenePresentationAction::HOLD_SNAPSHOT),
 				static_cast<int>(EvaluateSceneBoundary(provisional).action));
 
+			SceneInput darkFade = provisional;
+			darkFade.latestClassification =
+				ActivePictureClassification::UNAVAILABLE;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::HOLD_SNAPSHOT),
+				static_cast<int>(EvaluateSceneBoundary(darkFade).action));
+
 			provisional.existingCropCanBeSnapshotted = false;
 			Assert::AreEqual(
 				static_cast<int>(ScenePresentationAction::WITHDRAW),
 				static_cast<int>(EvaluateSceneBoundary(provisional).action));
+
+			darkFade.existingCropCanBeSnapshotted = true;
+			darkFade.geometryClassification =
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(EvaluateSceneBoundary(darkFade).action));
 		}
 
 		TEST_METHOD(SceneBoundaryWithdrawsUnavailableContradictoryOrStaleState)
@@ -418,6 +439,51 @@ namespace Tests
 			decision = EvaluateSceneHold(input);
 			Assert::IsFalse(decision.cropActive);
 			Assert::IsFalse(decision.nlsActive);
+		}
+
+		TEST_METHOD(DarkFadeRetainsTrustedScopeUntilOneBoundedExpiry)
+		{
+			SceneInput boundary;
+			boundary.geometryAvailable = true;
+			boundary.geometryIsCurrentGeneration = true;
+			boundary.latestEvidenceIsCurrent = true;
+			boundary.existingCropCanBeSnapshotted = true;
+			boundary.geometryClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			boundary.latestClassification =
+				ActivePictureClassification::UNAVAILABLE;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::HOLD_SNAPSHOT),
+				static_cast<int>(EvaluateSceneBoundary(boundary).action));
+
+			Input crop = TrustedScopeCrop();
+			crop.latestObservationSupportsCrop = false;
+			crop.latestObservationIsUnavailable = true;
+			crop.sceneVerificationHoldActive = true;
+			Assert::IsTrue(Evaluate(crop).applyCrop);
+
+			SceneHoldInput nlsOn;
+			nlsOn.snapshotAvailable = true;
+			nlsOn.nlsRequested = true;
+			nlsOn.retainedMappingCompatible = true;
+			nlsOn.snapshotSourceGeneration = 41;
+			nlsOn.frameSourceGeneration = 41;
+			nlsOn.currentTick = 2499;
+			nlsOn.deadlineTick = 2500;
+			Assert::IsTrue(EvaluateSceneHold(nlsOn).cropActive);
+			Assert::IsTrue(EvaluateSceneHold(nlsOn).nlsActive);
+
+			SceneHoldInput nlsOff = nlsOn;
+			nlsOff.nlsRequested = false;
+			nlsOff.retainedMappingCompatible = false;
+			Assert::IsTrue(EvaluateSceneHold(nlsOff).cropActive);
+			Assert::IsFalse(EvaluateSceneHold(nlsOff).nlsActive);
+
+			crop.sceneVerificationHoldActive = false;
+			AssertFullRaster(Evaluate(crop));
+			nlsOn.currentTick = nlsOn.deadlineTick;
+			Assert::IsFalse(EvaluateSceneHold(nlsOn).cropActive);
+			Assert::IsFalse(EvaluateSceneHold(nlsOn).nlsActive);
 		}
 	};
 }
