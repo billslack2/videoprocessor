@@ -94,6 +94,19 @@ forced-stop requests. The prior deployed binaries were backed up successfully
 before the copy attempt, and no active binary, configuration, or shader was
 changed by that attempt. Resume deployment after the user exits VideoProcessor.
 
+DirectShow-to-Alpha handoff extension (2026-08-02): user testing found that a
+madVR-to-Alpha switch was classified as a fresh Alpha queue and therefore
+skipped the expected re-prime, leaving three queued frames rather than the
+one-frame steady result after a reset. The VP-0078 branch was rebased onto the
+open `codex/vp-0080-alpha-crop-failsafe` branch. The new Alpha-only handoff
+marker records a DirectShow-to-Alpha renderer replacement at construction and,
+when Alpha reaches Rendering, schedules exactly one queue-only
+`PostRendererStart` reset after the existing
+`/reset_after_render_restart_seconds` delay. It does not inspect queue depth,
+rebuild the retired madVR graph, or affect Alpha-to-Alpha or
+DirectShow-to-DirectShow starts. Focused x64 Release policy coverage is 11/11,
+including the backend-direction matrix.
+
 ## User story
 
 As an Alpha-renderer user, I want a menu-to-content refresh transition (for
