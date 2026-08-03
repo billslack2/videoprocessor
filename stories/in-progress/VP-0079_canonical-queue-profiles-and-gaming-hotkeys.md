@@ -81,10 +81,12 @@ aliases before adding new public examples.
 
    - `queue_size`: active renderer hard capacity; and
    - the canonical Alpha/VP-owned queue target field (currently observed as
-     `target_frames`; choose and document one canonical public name).
+     `target_frames`; choose and document one canonical public name); and
+   - `reset_queue_sustained_level`: an optional positive combined VP queue
+     depth threshold; it is disabled when absent.
 
-   Do not silently add DirectShow presentation lead, frame offset, recovery
-   thresholds, refresh switching, or picture-quality controls to this group.
+   Do not silently add DirectShow presentation lead, frame offset, refresh
+   switching, or picture-quality controls to this group.
 3. Ship these values in the user's deployed configuration:
 
    ```ini
@@ -106,6 +108,7 @@ aliases before adding new public examples.
    when: <normalized Shift+L chord>
    queue_size: 1
    target_frames: 1
+   reset_queue_sustained_level: 1
    ```
 
    Replace placeholders with exact parser-valid condition strings. The base
@@ -119,15 +122,21 @@ aliases before adding new public examples.
    update path. It must perform one serialized queue/renderer re-prime so
    entries admitted under the old capacity/target cannot persist. Coalesce a
    repeated same-profile selection and do not create a reset loop.
-5. The generic queue profile applies to the currently selected renderer;
+5. When a selected queue profile supplies
+   `reset_queue_sustained_level: N`, monitor the combined VP-owned queue depth.
+   If it remains at or above `N` continuously for five seconds, request the
+   existing controlled `r` reset path. Drop the timer as soon as the depth
+   falls below `N`; do not monitor madVR private queues. This opt-in setting is
+   intentionally absent from the normal profile and disabled by default.
+6. The generic queue profile applies to the currently selected renderer;
    DirectShow retains its own renderer internals and madVR private queues are
    never inferred or controlled. Alpha is the live-validation target.
-6. Log startup and each profile change with selected profile, base/profile/
+7. Log startup and each profile change with selected profile, base/profile/
    command-line sources, effective capacity and target, active renderer,
    pre/post queue depth, re-prime identity, and outcome. Keep the existing OSD
    effective queue display correct; add the concise active profile name only
    if it can be done without changing unrelated OSD layout.
-7. Update the sample `VideoProcessor.cfg` and `CONFIGURATION.html` with only
+8. Update the sample `VideoProcessor.cfg` and `CONFIGURATION.html` with only
    the canonical public names, precedence, value ranges, hotkeys, default, and
    low-latency trade-off. Do not describe compatibility aliases, hidden
    settings, or implementation history in the user-facing help.
@@ -155,7 +164,7 @@ Debug build or overwrite the user's configuration wholesale.
 1. Unit-test precedence for every combination of literal `/queue_size`,
    `[queue] queue_size`, legacy `[command_line] queue_size`, profile override,
    missing value, invalid value, and existing Alpha-specific override.
-2. Unit-test strict schema acceptance for the two permitted queue fields and
+2. Unit-test strict schema acceptance for the three permitted queue fields and
    rejection when they appear in non-queue profile groups.
 3. Unit-test normalized `l` and Shift+`L` profile expressions, duplicate-key
    rejection, normal default, and non-persistence of the low-latency choice
@@ -163,11 +172,14 @@ Debug build or overwrite the user's configuration wholesale.
 4. Integration-test changing 32/2 -> 1/1 -> 32/2 with Alpha. Prove exactly
    one re-prime per actual change, no retained old-capacity frame, no reset on
    a repeated same-profile key, and correct logs/OSD capacity and target.
-5. Live validate Alpha at 59.94/60 Hz with a game/capture source. Compare
+5. Unit- and integration-test the optional sustained reset: it is disabled
+   when absent, requests exactly one controlled reset after five continuous
+   seconds at/above its level, and clears its timer below the level.
+6. Live validate Alpha at 59.94/60 Hz with a game/capture source. Compare
    queue age and VP renderer latency in normal versus low latency, record
    dropped frames, and confirm the low-latency profile does not claim to
    measure or eliminate capture/display latency outside VP.
-6. Smoke-test the generic profile behavior with DirectShow selected, without
+7. Smoke-test the generic profile behavior with DirectShow selected, without
    asserting control of madVR's private queues or changing its settings.
 
 ## Non-goals
