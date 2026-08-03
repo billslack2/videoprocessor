@@ -12,7 +12,7 @@
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 
 
-/** Converts DeckLink r210, R10b, R10l, or R12L packed RGB to 10-bit P010. */
+/** Converts DeckLink r210, R10b/R10l, or SMPTE 268M R12B/R12L packed RGB to 10-bit P010. */
 class CDeckLinkRGBToP010VideoFrameFormatter : public IVideoFrameFormatter
 {
 public:
@@ -66,7 +66,8 @@ private:
 	void AddPerformanceSample(double timeUs);
 	void ConvertRowPairs(const uint8_t* sourceFrame, uint16_t* destinationY,
 		uint16_t* destinationUV, uint32_t firstPair, uint32_t pairCount) const;
-	void ReadPixelPair(const uint8_t* source, RGB10& first, RGB10& second) const noexcept;
+	void ReadPixelPair(const uint8_t* source, uint32_t pixelPairIndex,
+		RGB10& first, RGB10& second) const noexcept;
 	static void CALLBACK ConversionWorkCallback(
 		PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_WORK work);
 };

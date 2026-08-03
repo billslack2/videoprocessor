@@ -75,6 +75,23 @@ namespace Tests
 			destination[7] = static_cast<BYTE>((g1 >> 8) | (b1 << 4));
 			destination[8] = static_cast<BYTE>(b1 >> 4);
 		}
+
+		void WriteR12BBlock(BYTE* destination,
+			uint16_t red, uint16_t green, uint16_t blue)
+		{
+			BYTE logicalBytes[36] = {};
+			for (uint32_t pair = 0; pair < 4; ++pair)
+			{
+				WriteR12LPixelPair(logicalBytes + pair * 9U,
+					red, green, blue, red, green, blue);
+			}
+
+			// R12B is the same SMPTE 268M C4 byte stream as R12L with each
+			// 32-bit word stored big-endian.
+			for (uint32_t byteIndex = 0; byteIndex < 36; ++byteIndex)
+				destination[(byteIndex / 4U) * 4U + 3U - (byteIndex % 4U)] =
+					logicalBytes[byteIndex];
+		}
 	}
 
 	TEST_CLASS(VideoFrameFormatterTests)
@@ -1217,6 +1234,7 @@ namespace Tests
 				VideoFrameEncoding::R210,
 				VideoFrameEncoding::R10b,
 				VideoFrameEncoding::R10l,
+				VideoFrameEncoding::R12B,
 				VideoFrameEncoding::R12L
 			};
 			for (const auto encoding : encodings)
@@ -1252,6 +1270,82 @@ namespace Tests
 					ToString(encoding), currentUs, averageUs, maximumUs);
 				Logger::WriteMessage(message);
 			}
+		}
+
+		TEST_METHOD(CDeckLinkRGBToP010VideoFrameFormatterR12BGoldenTest)
+		{
+			CDeckLinkRGBToP010VideoFrameFormatter vff;
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(104, 100, false, 60000, 1001);
+			vs->videoFrameEncoding = VideoFrameEncoding::R12B;
+			vs->colorspace = ColorSpace::REC_709;
+			vff.OnVideoState(vs);
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+			for (uint32_t line = 0; line < 100; ++line)
+			{
+				BYTE* row = input.data() + static_cast<size_t>(line) * vs->BytesPerRow();
+				for (uint32_t x = 0; x < 104; x += 8)
+				{
+					WriteR12BBlock(row, 4095, 0, 0);
+					row += 36;
+				}
+			}
+
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			const uint16_t* words = reinterpret_cast<const uint16_t*>(output.data());
+			for (size_t i = 0; i < 104ULL * 100; ++i)
+				Assert::AreEqual(217U << 6, static_cast<unsigned int>(words[i]));
+			for (size_t i = 104ULL * 100; i < 104ULL * 150; i += 2)
+			{
+				Assert::AreEqual(395U << 6, static_cast<unsigned int>(words[i]));
+				Assert::AreEqual(1023U << 6, static_cast<unsigned int>(words[i + 1]));
+			}
+		}
+
+		TEST_METHOD(CDeckLinkRGBToP010VideoFrameFormatterR12BEndpointsAndWidthValidation)
+		{
+			CDeckLinkRGBToP010VideoFrameFormatter vff;
+			VideoStateComPtr vs = new VideoState();
+			vs->valid = true;
+			vs->displayMode = std::make_shared<DisplayMode>(104, 100, false, 60000, 1001);
+			vs->videoFrameEncoding = VideoFrameEncoding::R12B;
+			vs->colorspace = ColorSpace::REC_709;
+			vff.OnVideoState(vs);
+
+			std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+			std::vector<BYTE> output(vff.GetOutFrameSize(), 0);
+			VideoFrame black(input.data(), 1, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(black, output.data()));
+			const uint16_t* words = reinterpret_cast<const uint16_t*>(output.data());
+			const size_t ySamples = 104ULL * 100;
+			Assert::AreEqual(0U, static_cast<unsigned int>(words[0]));
+			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples]));
+			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1]));
+
+			for (uint32_t line = 0; line < 100; ++line)
+			{
+				BYTE* row = input.data() + static_cast<size_t>(line) * vs->BytesPerRow();
+				for (uint32_t x = 0; x < 104; x += 8)
+				{
+					WriteR12BBlock(row, 4095, 4095, 4095);
+					row += 36;
+				}
+			}
+			VideoFrame white(input.data(), 2, 0, nullptr);
+			Assert::IsTrue(vff.FormatVideoFrame(white, output.data()));
+			Assert::AreEqual(1023U << 6, static_cast<unsigned int>(words[0]));
+			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples]));
+			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1]));
+
+			VideoStateComPtr invalid = new VideoState();
+			invalid->valid = true;
+			invalid->displayMode = std::make_shared<DisplayMode>(100, 100, false, 60000, 1001);
+			invalid->videoFrameEncoding = VideoFrameEncoding::R12B;
+			Assert::ExpectException<std::runtime_error>([&]() { vff.OnVideoState(invalid); });
 		}
 
 		TEST_METHOD(CR12BtoRGB48VideoFrameFormatterGoldenBlockTest)

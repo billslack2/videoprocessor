@@ -58,6 +58,13 @@ namespace
 			(static_cast<uint32_t>(source[2]) << 8) |
 			static_cast<uint32_t>(source[3]);
 	}
+
+	inline uint8_t ReadR12BByte(const uint8_t* source, uint32_t byteIndex) noexcept
+	{
+		// R12B is the SMPTE 268M C4 byte stream stored big-endian in each
+		// 32-bit word.  Convert a logical C4 byte index to its physical byte.
+		return source[(byteIndex / 4U) * 4U + 3U - (byteIndex % 4U)];
+	}
 }
 
 
@@ -90,15 +97,18 @@ void CDeckLinkRGBToP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& video
 	if (videoState->videoFrameEncoding != VideoFrameEncoding::R210 &&
 		videoState->videoFrameEncoding != VideoFrameEncoding::R10b &&
 		videoState->videoFrameEncoding != VideoFrameEncoding::R10l &&
+		videoState->videoFrameEncoding != VideoFrameEncoding::R12B &&
 		videoState->videoFrameEncoding != VideoFrameEncoding::R12L)
-		throw std::runtime_error("Packed RGB to P010 conversion only supports r210, R10b, R10l, or R12L");
+		throw std::runtime_error("Packed RGB to P010 conversion only supports r210, R10b, R10l, R12B, or R12L");
 
 	const auto width = videoState->displayMode->FrameWidth();
 	const auto height = videoState->displayMode->FrameHeight();
 	if (width <= 0 || height <= 0 || (width & 1) != 0 || (height & 1) != 0)
 		throw std::runtime_error("P010 conversion requires positive, even frame dimensions");
-	if (videoState->videoFrameEncoding == VideoFrameEncoding::R12L && (width % 8) != 0)
-		throw std::runtime_error("R12L frame width must be divisible by 8");
+	if ((videoState->videoFrameEncoding == VideoFrameEncoding::R12B ||
+		videoState->videoFrameEncoding == VideoFrameEncoding::R12L) &&
+		(width % 8) != 0)
+		throw std::runtime_error("R12B/R12L frame width must be divisible by 8");
 
 	const uint64_t outputSize = static_cast<uint64_t>(width) * static_cast<uint64_t>(height) * 3ULL;
 	if (outputSize > static_cast<uint64_t>(std::numeric_limits<LONG>::max()))
@@ -108,7 +118,8 @@ void CDeckLinkRGBToP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& video
 	m_width = static_cast<uint32_t>(width);
 	m_height = static_cast<uint32_t>(height);
 	m_inputStride = videoState->BytesPerRow();
-	const uint32_t minimumStride = m_encoding == VideoFrameEncoding::R12L ?
+	const uint32_t minimumStride =
+		(m_encoding == VideoFrameEncoding::R12B || m_encoding == VideoFrameEncoding::R12L) ?
 		m_width * 36U / 8U : m_width * 4U;
 	if (m_inputStride < minimumStride)
 		throw std::runtime_error("Packed RGB input row is smaller than the frame width");
@@ -160,17 +171,36 @@ bool CDeckLinkRGBToP010VideoFrameFormatter::FormatVideoFrame(
 
 
 void CDeckLinkRGBToP010VideoFrameFormatter::ReadPixelPair(
-	const uint8_t* source, RGB10& first, RGB10& second) const noexcept
+	const uint8_t* source, uint32_t pixelPairIndex,
+	RGB10& first, RGB10& second) const noexcept
 {
-	if (m_encoding == VideoFrameEncoding::R12L)
+	if (m_encoding == VideoFrameEncoding::R12B || m_encoding == VideoFrameEncoding::R12L)
 	{
-		// SMPTE 268M Annex C method C4: two consecutive RGB pixels occupy nine bytes.
-		first.r = static_cast<uint16_t>(source[0] | ((source[1] & 0x0F) << 8));
-		first.g = static_cast<uint16_t>((source[1] >> 4) | (source[2] << 4));
-		first.b = static_cast<uint16_t>(source[3] | ((source[4] & 0x0F) << 8));
-		second.r = static_cast<uint16_t>((source[4] >> 4) | (source[5] << 4));
-		second.g = static_cast<uint16_t>(source[6] | ((source[7] & 0x0F) << 8));
-		second.b = static_cast<uint16_t>((source[7] >> 4) | (source[8] << 4));
+		// SMPTE 268M Annex C method C4: two consecutive RGB pixels occupy
+		// nine bytes. R12L stores the stream directly; R12B byte-swaps every
+		// 32-bit word, including words crossed by the pair boundary.
+		const uint32_t firstByte = m_encoding == VideoFrameEncoding::R12B ?
+			pixelPairIndex * 9U : 0U;
+		auto readByte = [this, source, firstByte](uint32_t byteOffset) noexcept
+		{
+			return m_encoding == VideoFrameEncoding::R12B ?
+				ReadR12BByte(source, firstByte + byteOffset) : source[byteOffset];
+		};
+		const uint8_t byte0 = readByte(0);
+		const uint8_t byte1 = readByte(1);
+		const uint8_t byte2 = readByte(2);
+		const uint8_t byte3 = readByte(3);
+		const uint8_t byte4 = readByte(4);
+		const uint8_t byte5 = readByte(5);
+		const uint8_t byte6 = readByte(6);
+		const uint8_t byte7 = readByte(7);
+		const uint8_t byte8 = readByte(8);
+		first.r = static_cast<uint16_t>(byte0 | ((byte1 & 0x0F) << 8));
+		first.g = static_cast<uint16_t>((byte1 >> 4) | (byte2 << 4));
+		first.b = static_cast<uint16_t>(byte3 | ((byte4 & 0x0F) << 8));
+		second.r = static_cast<uint16_t>((byte4 >> 4) | (byte5 << 4));
+		second.g = static_cast<uint16_t>(byte6 | ((byte7 & 0x0F) << 8));
+		second.b = static_cast<uint16_t>((byte7 >> 4) | (byte8 << 4));
 
 		// Round 12-bit full-range components to the 10-bit domain used by P010.
 		first.r = Clamp10((first.r + 2) >> 2);
@@ -212,7 +242,9 @@ void CDeckLinkRGBToP010VideoFrameFormatter::ConvertRowPairs(
 	uint32_t firstPair, uint32_t pairCount) const
 {
 	const RGBToYuvCoefficients& coefficients = m_useBT2020 ? BT2020 : BT709;
-	const uint32_t bytesPerPixelPair = m_encoding == VideoFrameEncoding::R12L ? 9U : 8U;
+	const bool r12b = m_encoding == VideoFrameEncoding::R12B;
+	const uint32_t bytesPerPixelPair =
+		(m_encoding == VideoFrameEncoding::R12B || m_encoding == VideoFrameEncoding::R12L) ? 9U : 8U;
 	const uint32_t endPair = firstPair + pairCount;
 
 	for (uint32_t pair = firstPair; pair < endPair; ++pair)
@@ -227,8 +259,8 @@ void CDeckLinkRGBToP010VideoFrameFormatter::ConvertRowPairs(
 		for (uint32_t x = 0; x < m_width; x += 2)
 		{
 			RGB10 p00, p01, p10, p11;
-			ReadPixelPair(source0, p00, p01);
-			ReadPixelPair(source1, p10, p11);
+			ReadPixelPair(source0, x / 2U, p00, p01);
+			ReadPixelPair(source1, x / 2U, p10, p11);
 
 			auto calculateY = [&coefficients](const RGB10& pixel) noexcept
 			{
@@ -250,8 +282,11 @@ void CDeckLinkRGBToP010VideoFrameFormatter::ConvertRowPairs(
 			uv[0] = static_cast<uint16_t>(Clamp10(cb) << 6);
 			uv[1] = static_cast<uint16_t>(Clamp10(cr) << 6);
 
-			source0 += bytesPerPixelPair;
-			source1 += bytesPerPixelPair;
+			if (!r12b)
+			{
+				source0 += bytesPerPixelPair;
+				source1 += bytesPerPixelPair;
+			}
 			y0 += 2;
 			y1 += 2;
 			uv += 2;

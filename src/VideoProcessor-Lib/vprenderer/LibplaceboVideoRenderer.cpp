@@ -732,6 +732,7 @@ namespace
 		case VideoFrameEncoding::R10b:
 		case VideoFrameEncoding::R10l:
 		case VideoFrameEncoding::R210:
+		case VideoFrameEncoding::R12B:
 		case VideoFrameEncoding::R12L:
 			return std::unique_ptr<IVideoFrameFormatter>(new CDeckLinkRGBToP010VideoFrameFormatter());
 		default:
