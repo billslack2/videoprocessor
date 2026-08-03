@@ -54,6 +54,7 @@ public:
 	void SetFrameQueueMaxSize(size_t size) override;
 	void SetQueueFramePolicy(size_t startupPrerollFrames,
 		size_t steadyReserveFrames, bool hasSteadyReserveFrames) override;
+	void SetActivePictureLookaheadFrames(size_t frames) override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	uint64_t SceneAwareCorrectionDropCount() const override;
 	uint64_t SceneAwareCorrectionRepeatCount() const override;
@@ -161,6 +162,7 @@ private:
 	std::atomic<double> m_presentationTargetLeadMs{0.0};
 	std::atomic<double> m_captureToPresentationTargetMs{0.0};
 	std::atomic<uint64_t> m_droppedFrames{0};
+	std::atomic<size_t> m_activePictureLookaheadFrames{0};
 	std::atomic<uint64_t> m_missingFrameStateDrops{0};
 	std::atomic<uint64_t> m_renderFailureDrops{0};
 	std::atomic_bool m_sceneDetectionEnabled{false};

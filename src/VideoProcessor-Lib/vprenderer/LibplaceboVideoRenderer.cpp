@@ -7781,6 +7781,17 @@ void LibplaceboVideoRenderer::SetQueueFramePolicy(
 }
 
 
+void LibplaceboVideoRenderer::SetActivePictureLookaheadFrames(size_t frames)
+{
+	const size_t boundedFrames = (std::min)(frames, size_t{ 8 });
+	m_activePictureLookaheadFrames.store(
+		boundedFrames, std::memory_order_release);
+	DebugLog::Log(
+		"Alpha active-picture look-ahead retained: configured=%zu queue-unchanged=1 runtime-active=0",
+		boundedFrames);
+}
+
+
 bool LibplaceboVideoRenderer::SetScreenProfile(
 	bool scopeScreen,
 	CString& activeProfile,

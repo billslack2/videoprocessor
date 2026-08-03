@@ -82,6 +82,10 @@ target_frames: 1</pre>
 <h3><code>target_frames</code></h3>
 <p>VP converted-frame queue target in frames.</p>
 </article>
+<article id="queue-active-picture-lookahead" data-fields="queue.active_picture_lookahead_frames">
+<h3><code>active_picture_lookahead_frames</code></h3>
+<p>Diagnostic Alpha preview depth from <code>0</code> through <code>8</code> queued future frames. The current implementation logs decisions without changing rendered crop or NLS pixels. Omit it or set it to <code>0</code> for normal viewing.</p>
+</article>
 <article id="queue-variant" data-fields="queue.&lt;variant&gt;.when">
 <h3>Queue variant <code>when</code></h3>
 <p>Each named queue child supplies its own expression and overlays only the queue values it declares.</p>

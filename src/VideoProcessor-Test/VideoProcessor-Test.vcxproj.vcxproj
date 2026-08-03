@@ -198,6 +198,7 @@
 	<ClCompile Include="DisplayRefreshRateWindowTests.cpp" />
     <ClCompile Include="AlphaQueuePolicyTests.cpp" />
     <ClCompile Include="MadVRShaderRuntimeStateTests.cpp" />
+    <ClCompile Include="ActivePictureDecisionTimelineTests.cpp" />
     <ClCompile Include="ActivePictureTransitionModelTests.cpp" />
 	<ClCompile Include="ActivePictureAnalyzerTests.cpp" />
     <ClCompile Include="P010ActivePictureEvidenceTests.cpp" />

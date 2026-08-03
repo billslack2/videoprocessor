@@ -639,6 +639,15 @@ namespace VideoProcessorTest
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue]\nactive_picture_lookahead_frames: 9\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("active_picture_lookahead_frames") !=
+				std::string::npos);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[queue]\nlead_frames: 17\n";
 			}
 			Assert::IsTrue(config.Load(path));

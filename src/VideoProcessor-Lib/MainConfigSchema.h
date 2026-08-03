@@ -94,6 +94,7 @@ namespace MainConfigSchema
 			ConfigSchema::Integer("queue_size", 1, INT_MAX),
 			ConfigSchema::Integer("lead_frames", 0, 16),
 			ConfigSchema::Integer("target_frames", 0, 16),
+			ConfigSchema::Integer("active_picture_lookahead_frames", 0, 8),
 			ConfigSchema::Integer("startup_preroll_frames", 0, 16),
 			ConfigSchema::Integer("steady_reserve_frames", 0, 16)
 		};

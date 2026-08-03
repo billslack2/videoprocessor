@@ -94,6 +94,7 @@ public:
 		size_t steadyReserveFrames, bool steadyReserveConfigured) override;
 	void SetPresentationLeadFrames(
 		size_t frames, bool configured) override;
+	void SetActivePictureLookaheadFrames(size_t frames) override;
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink) override;
 	void Retire() noexcept override;
@@ -205,6 +206,7 @@ protected:
 	std::atomic_bool m_queueSteadyTargetConfigured{false};
 	std::atomic<size_t> m_presentationLeadFrames{0};
 	std::atomic_bool m_presentationLeadFramesConfigured{false};
+	std::atomic<size_t> m_activePictureLookaheadFrames{0};
 	VideoConversionOverride m_videoConversionOverride;
 	DXVA_NominalRange m_forceNominalRange = DXVA_NominalRange::DXVA_NominalRange_Unknown;
 	DXVA_VideoTransferFunction m_forceVideoTransferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown;

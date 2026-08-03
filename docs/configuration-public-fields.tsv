@@ -16,6 +16,7 @@ queue.when	queue-baseline	VP queue	no
 queue.queue_size	queue-capacity	VP queue	no
 queue.lead_frames	queue-lead	DirectShow timing	no
 queue.target_frames	queue-target	VP queue	no
+queue.active_picture_lookahead_frames	queue-active-picture-lookahead	VP active-picture decision timing	no
 queue.<variant>.when	queue-variant	VP queue	no
 directshow.video_conversion	directshow-ingress	DirectShow	no
 directshow.renderer_start_stop_time_method	directshow-timing	DirectShow	no

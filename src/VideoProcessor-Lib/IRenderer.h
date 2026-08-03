@@ -163,6 +163,9 @@ public:
 	// DirectShow presentation scheduling margin in whole source frames. Omission
 	// preserves each timestamp mode's legacy behavior; explicit zero is valid.
 	virtual void SetPresentationLeadFrames(size_t, bool) {}
+	// Uses only frames already held by the existing renderer queue. Zero is the
+	// exact legacy decision-timing path and this setting must never add latency.
+	virtual void SetActivePictureLookaheadFrames(size_t) {}
 
 	// Installs the closeable asynchronous reset-request endpoint associated
 	// with this renderer instance. Backends must never call UI or graph control
