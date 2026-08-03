@@ -135,6 +135,33 @@ namespace VideoProcessorTest
 			Assert::IsTrue(evidence.lumaSamples < 30000);
 		}
 
+		TEST_METHOD(DarkCinematicScopeFrameKeepsTrustedBars)
+		{
+			P010Frame frame(3840, 2160);
+			// Model a low-key movie shot: most of the picture sits only slightly
+			// above encoded black, with uneven shadow color and a few localized
+			// practical lights. The bars themselves remain neutral and coherent.
+			frame.Fill(74, 476, 548);
+			frame.BlackOutside(0, 280, 3840, 1880);
+			frame.FillRectangle(240, 280, 1008, 1880, 96, 500, 524);
+			frame.FillRectangle(1512, 280, 2280, 1880, 112, 520, 504);
+			frame.FillRectangle(2784, 280, 3504, 1880, 92, 488, 536);
+			frame.FillRectangle(1752, 576, 2088, 1032, 640, 512, 512);
+
+			const auto evidence =
+				ExtractP010ActivePictureEvidence(frame.View());
+			Assert::IsTrue(evidence.available);
+			Assert::AreEqual(
+				static_cast<int>(
+					ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(evidence.classification));
+			Assert::IsTrue(evidence.top.trusted);
+			Assert::IsTrue(evidence.bottom.trusted);
+			Assert::AreEqual(280, evidence.trustedBounds.top);
+			Assert::AreEqual(1880, evidence.trustedBounds.bottom);
+			Assert::IsTrue(evidence.lumaSamples < 30000);
+		}
+
 		TEST_METHOD(FourByThreePillarboxIsTrusted)
 		{
 			P010Frame frame(320, 180);
@@ -149,6 +176,38 @@ namespace VideoProcessorTest
 			Assert::IsTrue(evidence.right.trusted);
 			Assert::IsTrue(evidence.trustedBounds.left >= 38);
 			Assert::IsTrue(evidence.trustedBounds.right <= 282);
+		}
+
+		TEST_METHOD(SourceBakedTopControlExpandsTheMeasuredScopeEnvelope)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(0, 22, 320, 158);
+			frame.FillRectangle(0, 8, 320, 18, 600);
+			const auto evidence =
+				ExtractP010ActivePictureEvidence(frame.View());
+			Assert::IsTrue(evidence.available);
+			Assert::IsTrue(evidence.proposedBounds.top <= 10);
+			Assert::IsTrue(evidence.proposedBounds.top < 22);
+			Assert::AreNotEqual(
+				static_cast<int>(
+					ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(evidence.classification));
+		}
+
+		TEST_METHOD(SourceBakedSideControlExpandsTheMeasuredPillarEnvelope)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(40, 0, 280, 180);
+			frame.FillRectangle(10, 0, 30, 180, 600);
+			const auto evidence =
+				ExtractP010ActivePictureEvidence(frame.View());
+			Assert::IsTrue(evidence.available);
+			Assert::IsTrue(evidence.proposedBounds.left <= 12);
+			Assert::IsTrue(evidence.proposedBounds.left < 40);
+			Assert::AreNotEqual(
+				static_cast<int>(
+					ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(evidence.classification));
 		}
 
 		TEST_METHOD(TrustedVerticalBarsIgnoreUntrustedHorizontalArtwork)

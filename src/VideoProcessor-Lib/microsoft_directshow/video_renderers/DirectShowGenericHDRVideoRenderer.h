@@ -73,6 +73,9 @@ private:
 		unsigned long desiredAspectY) const;
 	bool TryDynamicOutputAspect(
 		unsigned long desiredAspectX, unsigned long desiredAspectY);
+	bool PrepareOutputAspectForShaderInstall(
+		unsigned long desiredAspectX, unsigned long desiredAspectY,
+		bool& rendererRestartRequired);
 	MadVRActivePictureGeometry MakeRuntimeGeometry(
 		const ActivePictureRectangle& rectangle) const;
 

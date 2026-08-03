@@ -44,6 +44,7 @@ namespace
 				right.viewport.screenAspect.numerator &&
 			left.viewport.screenAspect.denominator ==
 				right.viewport.screenAspect.denominator &&
+			left.viewport.automaticCrop == right.viewport.automaticCrop &&
 			left.viewport.subtitleFit == right.viewport.subtitleFit &&
 			left.viewport.subtitleHoldMilliseconds ==
 				right.viewport.subtitleHoldMilliseconds &&
@@ -415,6 +416,8 @@ namespace UnifiedProfileRuntime
 			StateVariables::Value::Text(viewport.profile);
 		variables["screen_aspect"] =
 			StateVariables::Value::Aspect(viewport.screenAspect);
+		variables["automatic_crop"] =
+			StateVariables::Value::Boolean(viewport.automaticCrop);
 		variables["subtitle_fit"] =
 			StateVariables::Value::Boolean(viewport.subtitleFit);
 		variables["subtitle_hold_seconds"] =

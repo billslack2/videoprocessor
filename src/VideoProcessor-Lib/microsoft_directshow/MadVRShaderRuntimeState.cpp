@@ -136,6 +136,98 @@ bool ResolveMadVRNlsOutputAspect(double targetAspect,
 }
 
 
+MadVRNlsPresentationPlan ResolveMadVRNlsPresentationPlan(
+	const MadVRNlsMappingDecision& decision,
+	const MadVRActivePictureGeometry& geometry)
+{
+	MadVRNlsPresentationPlan plan;
+	plan.shaderGeometry = geometry;
+	if (decision.mode != MadVRNlsMappingMode::ACTIVE || !geometry.stable)
+		return plan;
+
+	const bool validBounds =
+		std::isfinite(geometry.aspectRatio) && geometry.aspectRatio > 0.0 &&
+		std::isfinite(geometry.left) && std::isfinite(geometry.top) &&
+		std::isfinite(geometry.right) && std::isfinite(geometry.bottom) &&
+		geometry.left >= 0.0 && geometry.top >= 0.0 &&
+		geometry.right <= 1.0 && geometry.bottom <= 1.0 &&
+		geometry.right > geometry.left && geometry.bottom > geometry.top;
+	if (!validBounds || !std::isfinite(decision.targetAspect) ||
+		decision.targetAspect <= 0.0)
+	{
+		return plan;
+	}
+
+	// madVR owns its independently detected videoCropRect. VP may safely add a
+	// nonlinear mapping when encoded bars are orthogonal to the warp: horizontal
+	// NLS requires full source width; vertical NLS requires full source height.
+	// One pixel is intentionally not considered full raster.
+	constexpr double fullEdgeEpsilon = 0.000001;
+	const bool fullWidth = geometry.left <= fullEdgeEpsilon &&
+		geometry.right >= 1.0 - fullEdgeEpsilon;
+	const bool fullHeight = geometry.top <= fullEdgeEpsilon &&
+		geometry.bottom >= 1.0 - fullEdgeEpsilon;
+	if ((decision.verticalWarp && !fullHeight) ||
+		(!decision.verticalWarp && !fullWidth))
+	{
+		return plan;
+	}
+
+	const double activeWidth = geometry.right - geometry.left;
+	const double activeHeight = geometry.bottom - geometry.top;
+	// The shader leaves the orthogonal bars untouched, then madVR removes them
+	// exactly once. This whole-raster DAR makes the resulting cropped DAR equal
+	// the target: rasterDAR * activeWidth / activeHeight = targetDAR.
+	const double rasterAspect =
+		decision.targetAspect * activeHeight / activeWidth;
+	if (!std::isfinite(rasterAspect) || rasterAspect < 0.25 ||
+		rasterAspect > 4.0 ||
+		!ResolveMadVRNlsOutputAspect(
+			rasterAspect, plan.aspectX, plan.aspectY))
+	{
+		return MadVRNlsPresentationPlan{};
+	}
+
+	plan.customShader = true;
+	plan.rasterAspect = rasterAspect;
+	// Retain the measured rectangle in runtime state and diagnostics, but make
+	// this shader sample the full encoded raster. madVR remains the sole owner
+	// of bar removal, preventing the double crop that caused zoom/fit errors.
+	plan.shaderGeometry.left = 0.0;
+	plan.shaderGeometry.top = 0.0;
+	plan.shaderGeometry.right = 1.0;
+	plan.shaderGeometry.bottom = 1.0;
+	return plan;
+}
+
+
+MadVRNlsMappingDecision ConstrainMadVRNlsMappingToGeometry(
+	const MadVRNlsMappingDecision& decision,
+	const MadVRActivePictureGeometry& geometry)
+{
+	MadVRNlsMappingDecision constrained = decision;
+	const MadVRNlsPresentationPlan plan =
+		ResolveMadVRNlsPresentationPlan(decision, geometry);
+	if (decision.mode != MadVRNlsMappingMode::ACTIVE ||
+		plan.customShader)
+	{
+		return constrained;
+	}
+
+	// Bars on the warp axis (or malformed geometry) cannot be safely remapped
+	// before madVR's independent crop. Preserve the complete picture instead.
+	constrained.mode = MadVRNlsMappingMode::SAFE_FIT;
+	constrained.safeFitVertical =
+		decision.sourceAspect > decision.targetAspect;
+	constrained.safeFitFraction = std::max(0.01, std::min(1.0,
+		std::min(decision.sourceAspect, decision.targetAspect) /
+		std::max(decision.sourceAspect, decision.targetAspect)));
+	constrained.reason +=
+		"; geometry cannot be mapped before madVR crop; using native safe fit";
+	return constrained;
+}
+
+
 bool MadVROutputAspectRequiresRestart(unsigned long currentAspectX,
 	unsigned long currentAspectY, unsigned long desiredAspectX,
 	unsigned long desiredAspectY, double nativeAspect)

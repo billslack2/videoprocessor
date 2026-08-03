@@ -113,5 +113,12 @@ namespace Tests
 			Assert::IsTrue(FullscreenRetargetRequiresCoveredRebuild(
 				true, true));
 		}
+
+		TEST_METHOD(DirectShowToAlphaBackendHandoffRequiresReprime)
+		{
+			Assert::IsTrue(AlphaBackendHandoffRequiresReprime(true, false));
+			Assert::IsFalse(AlphaBackendHandoffRequiresReprime(false, false));
+			Assert::IsFalse(AlphaBackendHandoffRequiresReprime(true, true));
+		}
 	};
 }

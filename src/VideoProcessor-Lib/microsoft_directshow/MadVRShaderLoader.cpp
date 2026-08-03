@@ -1033,8 +1033,7 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 	if (!rule.nls || targetAspect <= 0.0)
 		return true;
 
-	double activeAspect = runtime.activeGeometry.aspectRatio;
-	MadVRActivePictureGeometry activeGeometry = runtime.activeGeometry;
+	const double activeAspect = runtime.activeGeometry.aspectRatio;
 	const bool currentGeometry =
 		MadVRNlsOutputContractIsPrepared(runtime);
 	if (runtime.nlsMode == MadVRNlsMappingMode::WAITING ||
@@ -1053,15 +1052,37 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 	// The target output contract is exposed only after the exact, source-owned
 	// crop is current for this renderer generation. Merely arming NLS must not
 	// cause madVR to fit the raster as though a mapping already exists.
-	ResolveMadVRNlsOutputAspect(targetAspect, outputAspectX, outputAspectY);
+	outputAspectX = 0;
+	outputAspectY = 0;
+	MadVRNlsMappingDecision decision = runtime.nlsDecision;
+	decision.mode = runtime.nlsMode;
+	decision.sourceAspect = activeAspect;
+	decision.targetAspect = targetAspect;
+	decision.verticalWarp = activeAspect > targetAspect;
+	const MadVRNlsPresentationPlan plan =
+		ResolveMadVRNlsPresentationPlan(decision, runtime.activeGeometry);
+	if (!plan.customShader)
+	{
+		// madVR already detects hard-coded bars and owns the final native
+		// crop/fit. Installing VP's active-rectangle shader in passthrough or
+		// safe-fit mode would crop the same bars a second time.
+		rule.preScale.clear();
+		rule.postScale.clear();
+		DebugLog::Log(
+			"Shaders: NLS mapping=%s delegated to madVR native crop/fit active_generation=%llu source=%.4f target=%.4f renderer_generation=%llu",
+			MadVRNlsMappingModeName(runtime.nlsMode),
+			static_cast<unsigned long long>(
+				runtime.activeGeometry.generation),
+			activeAspect, targetAspect,
+			static_cast<unsigned long long>(runtime.rendererGeneration));
+		return true;
+	}
+	outputAspectX = plan.aspectX;
+	outputAspectY = plan.aspectY;
 	if (activeAspect <= 0.0 || !videoState.displayMode)
 		return true;
 
-	const double rasterAspect =
-		static_cast<double>(videoState.displayMode->FrameWidth()) /
-		std::max<long>(1, videoState.displayMode->FrameHeight());
-	const double heightFraction =
-		std::clamp(rasterAspect / activeAspect, 0.25, 1.0);
+	const MadVRActivePictureGeometry& activeGeometry = plan.shaderGeometry;
 	const bool verticalWarp =
 		runtime.nlsMode == MadVRNlsMappingMode::ACTIVE &&
 		activeAspect > targetAspect;
@@ -1083,7 +1104,7 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 		return text.str();
 	};
 	rule.parameters["active_height_fraction"] =
-		coordinateText(heightFraction);
+		coordinateText(activeGeometry.bottom - activeGeometry.top);
 	rule.parameters["active_left"] = coordinateText(activeGeometry.left);
 	rule.parameters["active_top"] = coordinateText(activeGeometry.top);
 	rule.parameters["active_right"] = coordinateText(activeGeometry.right);
@@ -1095,14 +1116,15 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 	rule.parameters["safe_fit_fraction"] =
 		coordinateText(safeFitFraction);
 	DebugLog::Log(
-		"Shaders: NLS mapping=%s rect=%.5f,%.5f-%.5f,%.5f active_generation=%llu source=%.4f target=%.4f axis=%s stretch=%.5f safe_fit_fraction=%.5f renderer_generation=%llu",
+		"Shaders: NLS mapping=%s measured_rect=%.5f,%.5f-%.5f,%.5f sample_rect=%.5f,%.5f-%.5f,%.5f active_generation=%llu source=%.4f target=%.4f raster_aspect=%.5f axis=%s stretch=%.5f renderer_generation=%llu",
 		MadVRNlsMappingModeName(runtime.nlsMode),
+		runtime.activeGeometry.left, runtime.activeGeometry.top,
+		runtime.activeGeometry.right, runtime.activeGeometry.bottom,
 		activeGeometry.left, activeGeometry.top,
 		activeGeometry.right, activeGeometry.bottom,
-		static_cast<unsigned long long>(activeGeometry.generation),
-		activeAspect, targetAspect,
+		static_cast<unsigned long long>(runtime.activeGeometry.generation),
+		activeAspect, targetAspect, plan.rasterAspect,
 		verticalWarp ? "vertical" : "horizontal", stretchRatio,
-		safeFitFraction,
 		static_cast<unsigned long long>(runtime.rendererGeneration));
 	return true;
 }
@@ -1410,8 +1432,20 @@ bool MadVRShaderLoader::GetRuntimeOutputAspectRatio(unsigned long& aspectX,
 		if (rule.nls && GetNlsTargetAspect(rule) > 0.0)
 		{
 			if (currentNlsGeometry)
-				ResolveMadVRNlsOutputAspect(
-					GetNlsTargetAspect(rule), ruleX, ruleY);
+			{
+				MadVRNlsMappingDecision decision = runtime.nlsDecision;
+				decision.mode = runtime.nlsMode;
+				decision.sourceAspect =
+					runtime.activeGeometry.aspectRatio;
+				decision.targetAspect = GetNlsTargetAspect(rule);
+				decision.verticalWarp =
+					decision.sourceAspect > decision.targetAspect;
+				const MadVRNlsPresentationPlan plan =
+					ResolveMadVRNlsPresentationPlan(
+						decision, runtime.activeGeometry);
+				ruleX = plan.aspectX;
+				ruleY = plan.aspectY;
+			}
 			else
 			{
 				ruleX = 0;
@@ -1554,6 +1588,13 @@ bool MadVRShaderLoader::SetRuntimeActivePictureGeometry(
 void MadVRShaderLoader::SetRuntimeNlsTargetAspect(double targetAspect)
 {
 	g_runtimeState.SetNlsTargetAspect(targetAspect);
+}
+
+
+void MadVRShaderLoader::SetRuntimeNlsDecision(
+	const MadVRNlsMappingDecision& decision)
+{
+	g_runtimeState.SetNlsDecision(decision);
 }
 
 

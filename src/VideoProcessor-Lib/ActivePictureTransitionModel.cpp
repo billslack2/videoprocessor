@@ -297,7 +297,10 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.bounds = m_candidate;
 		decision.stableBounds = m_stable;
 		decision.stable = true;
-		decision.clearTransition = true;
+		// Keep the last stable presentation while the known geometry is
+		// reacquired.  The renderer's outward presentation envelope guarantees
+		// visibility; withdrawing the stable rectangle here only creates a flash.
+		decision.clearTransition = false;
 		decision.matchingCandidates = m_matchingCandidates;
 		decision.confidence = std::min(
 			1.0, static_cast<double>(m_matchingCandidates) /
@@ -355,8 +358,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	}
 
 	if (observation.classification ==
-		ActivePictureClassification::FULL_RASTER_TRUSTED &&
-		(!m_hasStable || !SameBounds(m_stable, observation.bounds)))
+		ActivePictureClassification::FULL_RASTER_TRUSTED && !m_hasStable)
 	{
 		m_candidate = observation.bounds;
 		m_candidateClassification = observation.classification;
@@ -364,6 +366,35 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		m_firstContradictoryFrame = observation.frameNumber;
 		return CommitCandidate(
 			observation, "safe full-raster authority accepted");
+	}
+
+	if (observation.classification ==
+		ActivePictureClassification::FULL_RASTER_TRUSTED &&
+		!SameBounds(m_stable, observation.bounds))
+	{
+		const bool candidateChanged = m_matchingCandidates == 0 ||
+			m_candidateClassification != observation.classification ||
+			!SameBounds(m_candidate, observation.bounds);
+		if (candidateChanged)
+			StartCandidate(observation);
+		else if (m_matchingCandidates < 255)
+			++m_matchingCandidates;
+
+		decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
+		decision.bounds = m_candidate;
+		decision.stableBounds = m_stable;
+		decision.stable = true;
+		decision.diagnostic = candidateChanged;
+		decision.matchingCandidates = m_matchingCandidates;
+		decision.confidence = std::min(1.0,
+			static_cast<double>(m_matchingCandidates) /
+			CLEAR_TRANSITION_CONFIRMATIONS);
+		decision.reason =
+			"full-raster transition awaiting adjacent confirmation";
+		if (m_matchingCandidates >= CLEAR_TRANSITION_CONFIRMATIONS)
+			return CommitCandidate(
+				observation, "full-raster transition confirmed");
+		return decision;
 	}
 
 	if (!m_hasStable)
@@ -440,7 +471,10 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 	decision.bounds = m_candidate;
 	decision.stable = true;
-	decision.clearTransition = clearTransition;
+	// Candidate changes are presentation-safe in the outward direction and
+	// harmlessly conservative in the inward direction. Retain the stable
+	// mapping until adjacent evidence commits the new authority.
+	decision.clearTransition = false;
 	decision.matchingCandidates = m_matchingCandidates;
 	decision.contradictoryCandidates = m_contradictoryCandidates;
 	decision.candidateReversals = m_candidateReversals;

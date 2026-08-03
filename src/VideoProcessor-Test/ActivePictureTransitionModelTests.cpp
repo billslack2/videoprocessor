@@ -116,7 +116,7 @@ namespace VideoProcessorTest
 						Observe(model, after[direction], firstFrame);
 					Assert::IsFalse(probing.publish);
 					Assert::IsTrue(probing.stable);
-					Assert::IsTrue(probing.clearTransition);
+					Assert::IsFalse(probing.clearTransition);
 
 					const auto stable = Observe(
 						model, after[direction], firstFrame + interval);
@@ -266,6 +266,71 @@ namespace VideoProcessorTest
 			}
 		}
 
+		TEST_METHOD(WorkerRestartResetRepublishesUnchangedTrustedGeometry)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+
+			// Once stable, identical frames deliberately do not republish.
+			Assert::IsFalse(
+				Observe(model, ScopeBounds(), frame++).publish);
+
+			// A replacement conversion worker must reset its retained model when
+			// the output pin has cleared the externally published rectangle.
+			model.Reset();
+			for (uint8_t count = 1;
+				count < ActivePictureTransitionModel::INITIAL_CONFIRMATIONS;
+				++count)
+			{
+				Assert::IsFalse(
+					Observe(model, ScopeBounds(), frame++).publish);
+			}
+			const auto republished = Observe(model, ScopeBounds(), frame);
+			Assert::IsTrue(republished.publish);
+			Assert::IsTrue(republished.stable);
+			Assert::AreEqual(ScopeBounds().top, republished.bounds.top);
+			Assert::AreEqual(ScopeBounds().bottom, republished.bounds.bottom);
+		}
+
+		TEST_METHOD(ResetBetweenAnalysisAndPublicationRejectsOldGeneration)
+		{
+			ActivePicturePublicationGate gate;
+			const uint64_t analyzedGeneration = gate.Generation();
+			int visibleAuthority = 7;
+
+			gate.Reset([&visibleAuthority]()
+			{
+				visibleAuthority = 0;
+			});
+			const bool published = gate.TryPublish(
+				analyzedGeneration, [&visibleAuthority]()
+				{
+					visibleAuthority = 9;
+				});
+
+			Assert::IsFalse(published);
+			Assert::AreEqual(0, visibleAuthority);
+			Assert::AreEqual<uint64_t>(1, gate.Generation());
+		}
+
+		TEST_METHOD(ResetClearsAnAtomicCurrentGenerationPublication)
+		{
+			ActivePicturePublicationGate gate;
+			int visibleAuthority = 0;
+			Assert::IsTrue(gate.TryPublish(gate.Generation(),
+				[&visibleAuthority]()
+				{
+					visibleAuthority = 9;
+				}));
+			gate.Reset([&visibleAuthority]()
+			{
+				visibleAuthority = 0;
+			});
+
+			Assert::AreEqual(0, visibleAuthority);
+			Assert::AreEqual<uint64_t>(1, gate.Generation());
+		}
+
 		TEST_METHOD(FullRasterIsImmediateSafeStartupAuthority)
 		{
 			ActivePictureTransitionModel model;
@@ -279,6 +344,26 @@ namespace VideoProcessorTest
 			Assert::IsTrue(decision.stable);
 			Assert::AreEqual(0, decision.bounds.left);
 			Assert::AreEqual(3840, decision.bounds.right);
+		}
+
+		TEST_METHOD(FullRasterTransitionRetainsStableCropUntilConfirmed)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+			const ActivePictureBounds full = {
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false };
+			const auto probing = Observe(model, full, frame,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsFalse(probing.publish);
+			Assert::IsTrue(probing.stable);
+			Assert::IsFalse(probing.clearTransition);
+			Assert::AreEqual(ScopeBounds().top, probing.stableBounds.top);
+
+			const auto confirmed = Observe(model, full, frame + 1,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsTrue(confirmed.publish);
+			Assert::AreEqual(0, confirmed.bounds.top);
+			Assert::AreEqual(2160, confirmed.bounds.bottom);
 		}
 
 		TEST_METHOD(AsymmetricCandidateCannotCropEitherSide)

@@ -202,19 +202,23 @@ bool ALiveSourceVideoOutputPin::RequestDynamicPictureAspectRatio(
 		return false;
 	}
 
+	uint64_t queuedGeneration = 0;
 	{
 		CAutoLock mediaTypeLock(&m_mediaTypeLock);
 		m_pendingMediaType = candidate;
 		++m_pendingMediaTypeGeneration;
 		if (m_pendingMediaTypeGeneration == 0)
 			++m_pendingMediaTypeGeneration;
+		queuedGeneration = m_pendingMediaTypeGeneration;
 		m_hasPendingMediaType = true;
 		m_pendingAspectX = aspectX;
 		m_pendingAspectY = aspectY;
 	}
 	DebugLog::Log(
-		"Shaders: queued dynamic picture aspect %lu:%lu on next sample",
-		deliveredAspectX, deliveredAspectY);
+		"Shaders: queued dynamic picture aspect %lu:%lu on next sample "
+		"generation=%llu",
+		deliveredAspectX, deliveredAspectY,
+		static_cast<unsigned long long>(queuedGeneration));
 	return true;
 }
 
@@ -268,9 +272,11 @@ void ALiveSourceVideoOutputPin::CompletePendingMediaType(
 	}
 	m_hasPendingMediaType = false;
 	DebugLog::Log(
-		"Shaders: dynamic picture aspect accepted on sample (%lu:%lu)",
+		"Shaders: dynamic picture aspect accepted on sample (%lu:%lu) "
+		"generation=%llu",
 		accepted ? accepted->dwPictAspectRatioX : m_pendingAspectX,
-		accepted ? accepted->dwPictAspectRatioY : m_pendingAspectY);
+		accepted ? accepted->dwPictAspectRatioY : m_pendingAspectY,
+		static_cast<unsigned long long>(generation));
 }
 
 

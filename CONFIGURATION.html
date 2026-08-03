@@ -461,6 +461,7 @@ none: true</pre>
 
     <h3>Viewport profile fields</h3>
     <article class="field" id="viewport-screen-aspect" data-fields="profiles.viewport.*.screen_aspect"><h4><code>screen_aspect</code></h4><p>Physical viewport aspect, 1.0–4.0, as decimal or ratio (<code>16:9</code>, <code>2.35:1</code>). Omission is 16:9. This drives shared NLS and subtitle placement; the profile name itself has no geometric meaning.</p></article>
+    <article class="field" id="viewport-automatic-crop" data-fields="profiles.viewport.*.automatic_crop"><h4><code>automatic_crop</code></h4><p>Boolean, default false. When false, Alpha always presents the complete source raster. When true, Alpha may crop only from stable, generation-current geometry published by the shared active-picture authority. Provisional, stale, mismatched, or subtitle-only observations cannot create or replace crop authority; without prior trusted authority they remain full raster, while a bounded ambiguity or scene hold may retain the last trusted presentation.</p></article>
     <article class="field" id="viewport-subtitle-fit" data-fields="profiles.viewport.*.subtitle_fit"><h4><code>subtitle_fit</code></h4><p>Boolean, default false. When true, VP may reposition detected subtitles into the selected viewport. This requires the applicable subtitle processing path.</p></article>
     <article class="field" id="viewport-subtitle-hold-seconds" data-fields="profiles.viewport.*.subtitle_hold_seconds"><h4><code>subtitle_hold_seconds</code></h4><p>0–30 seconds, default 2. Retains a confirmed subtitle position through short detector gaps; too high can hold stale placement.</p></article>
     <article class="field" id="viewport-subtitle-padding-pixels" data-fields="profiles.viewport.*.subtitle_padding_pixels"><h4><code>subtitle_padding_pixels</code></h4><p>Whole pixels 0–500, default 20. Adds clearance from the viewport edge after repositioning.</p></article>
@@ -476,6 +477,7 @@ screen_aspect: 16:9
 [profiles.viewport.scope]
 when: $key=="F2"
 screen_aspect: 2.35:1
+automatic_crop: false
 subtitle_fit: true
 subtitle_hold_seconds: 2
 subtitle_padding_pixels: 30</pre>
@@ -852,6 +854,7 @@ delay_seconds: 2</pre>
       <li><a href="#profile-when"><code>[profiles.*.*] when</code></a></li>
       <li><a href="#profile-priority"><code>[profiles.*.*] priority</code></a></li>
       <li><a href="#viewport-screen-aspect"><code>[profiles.viewport.*] screen_aspect</code></a></li>
+      <li><a href="#viewport-automatic-crop"><code>[profiles.viewport.*] automatic_crop</code></a></li>
       <li><a href="#viewport-subtitle-fit"><code>[profiles.viewport.*] subtitle_fit</code></a></li>
       <li><a href="#viewport-subtitle-hold-seconds"><code>[profiles.viewport.*] subtitle_hold_seconds</code></a></li>
       <li><a href="#viewport-subtitle-padding-pixels"><code>[profiles.viewport.*] subtitle_padding_pixels</code></a></li>

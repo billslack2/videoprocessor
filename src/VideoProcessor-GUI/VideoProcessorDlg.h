@@ -430,6 +430,7 @@ protected:
 	double m_lastAlphaTargetRefreshRateHz = 0.0;
 	bool m_alphaRefreshTransitionPending = false;
 	bool m_alphaHostTransitionPending = false;
+	bool m_alphaBackendHandoffPending = false;
 	double m_alphaRefreshTransitionPreviousRateHz = 0.0;
 	double m_alphaRefreshTransitionCurrentRateHz = 0.0;
 	// Initial DirectShow starts and backend handoffs need the proven madVR

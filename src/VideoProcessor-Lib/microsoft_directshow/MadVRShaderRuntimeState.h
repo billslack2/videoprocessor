@@ -49,6 +49,16 @@ struct MadVRNlsMappingDecision
 };
 
 
+struct MadVRNlsPresentationPlan
+{
+	bool customShader = false;
+	MadVRActivePictureGeometry shaderGeometry;
+	double rasterAspect = 0.0;
+	unsigned long aspectX = 0;
+	unsigned long aspectY = 0;
+};
+
+
 struct MadVRShaderRuntimeSnapshot
 {
 	std::string requestedRule;
@@ -69,6 +79,12 @@ MadVRNlsMappingDecision EvaluateMadVRNlsMapping(bool aspectAvailable,
 
 bool ResolveMadVRNlsOutputAspect(double targetAspect,
 	unsigned long& aspectX, unsigned long& aspectY);
+MadVRNlsPresentationPlan ResolveMadVRNlsPresentationPlan(
+	const MadVRNlsMappingDecision& decision,
+	const MadVRActivePictureGeometry& geometry);
+MadVRNlsMappingDecision ConstrainMadVRNlsMappingToGeometry(
+	const MadVRNlsMappingDecision& decision,
+	const MadVRActivePictureGeometry& geometry);
 bool MadVROutputAspectRequiresRestart(unsigned long currentAspectX,
 	unsigned long currentAspectY, unsigned long desiredAspectX,
 	unsigned long desiredAspectY, double nativeAspect);

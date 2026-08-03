@@ -1090,14 +1090,14 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		m_sceneAwareCorrectionDropCount.store(0, std::memory_order_relaxed);
 		m_sceneAwareCorrectionRepeatCount.store(0, std::memory_order_relaxed);
 		ResetSubtitleAnalysis();
-		m_activePictureAspectRatio.store(0.0, std::memory_order_release);
-		m_activePictureAspectStable.store(false, std::memory_order_release);
+		m_activePicturePublicationGate.Reset([this]()
 		{
-			std::lock_guard<std::mutex> lock(m_activePictureRectangleMutex);
+			m_activePictureAspectStable.store(false, std::memory_order_release);
+			m_activePictureAspectRatio.store(0.0, std::memory_order_release);
 			m_activePictureRectangle = {};
-		}
-		m_activePictureRectangleGeneration.fetch_add(1, std::memory_order_acq_rel);
-		m_activePictureDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
+			m_activePictureRectangleGeneration.fetch_add(
+				1, std::memory_order_acq_rel);
+		});
 		m_subtitlePanelLumaInitialized.store(false, std::memory_order_relaxed);
 		m_sceneAwareDetectedCount.store(0, std::memory_order_relaxed);
 		m_sceneAwareLateCandidateCount.store(0, std::memory_order_relaxed);
@@ -3906,8 +3906,15 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 	uint64_t maxSlowConversionUs = 0;
 	SceneDetector sceneDetector;
 	uint64_t sceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
+	// FrameProcessor survives a DirectShow graph reset, but its conversion
+	// worker does not. Reset the worker-owned model unconditionally here so a
+	// replacement worker cannot race the generation increment in Reset() and
+	// inherit an already-stable model after the published rectangle was cleared.
+	// With identical paused frames that stale model would otherwise emit no new
+	// publication, leaving NLS in WAITING until the picture geometry changed.
+	m_frameProcessor.ResetActivePicture();
 	uint64_t activePictureDetectorGeneration =
-		m_activePictureDetectorGeneration.load(std::memory_order_acquire);
+		m_activePicturePublicationGate.Generation();
 
 	for (;;)
 	{
@@ -3964,7 +3971,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 				currentConvertedSize = m_processedFrameQueue.Size();
 			}
 			const uint64_t currentActivePictureGeneration =
-				m_activePictureDetectorGeneration.load(std::memory_order_acquire);
+				m_activePicturePublicationGate.Generation();
 			if (currentActivePictureGeneration != activePictureDetectorGeneration)
 			{
 				m_frameProcessor.ResetActivePicture();
@@ -4114,7 +4121,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 			// NLS/aspect-rule gating uses the same converted P010 image that reaches
 			// madVR. Sparse sampling every few frames is negligible beside conversion.
 			if (IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010))
-				UpdateActivePictureAspectRatio(pSample, videoFrame.GetCounter());
+				UpdateActivePictureAspectRatio(pSample, videoFrame.GetCounter(),
+					activePictureDetectorGeneration);
 
 			// Analyze the unmodified frame first. Subtitle relocation changes a
 			// small image region and must not become input to the cut detector.
@@ -4459,14 +4467,16 @@ bool CBufferedLiveSourceVideoOutputPin::GetActivePictureAspectRatio(
 bool CBufferedLiveSourceVideoOutputPin::GetActivePictureRectangle(
 	ActivePictureRectangle& rectangle) const
 {
-	std::lock_guard<std::mutex> lock(m_activePictureRectangleMutex);
-	rectangle = m_activePictureRectangle;
+	m_activePicturePublicationGate.Read([this, &rectangle]()
+	{
+		rectangle = m_activePictureRectangle;
+	});
 	return rectangle.stable;
 }
 
 
 void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
-	IMediaSample* sample, uint64_t frameNumber)
+	IMediaSample* sample, uint64_t frameNumber, uint64_t detectorGeneration)
 {
 	if (!sample)
 		return;
@@ -4533,63 +4543,71 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 				static_cast<unsigned long long>(decision.decisionLatencyFrames),
 				(decision.reason + "; " + evidence.reason).c_str());
 	}
-	PublishActivePictureTransition(decision);
+	PublishActivePictureTransition(decision, detectorGeneration);
 }
 
 
 void CBufferedLiveSourceVideoOutputPin::PublishActivePictureTransition(
-	const ActivePictureTransitionDecision& decision)
+	const ActivePictureTransitionDecision& decision,
+	uint64_t detectorGeneration)
 {
 	if (!decision.publish)
 		return;
 
-	const uint64_t generation =
-		m_activePictureRectangleGeneration.fetch_add(
-			1, std::memory_order_acq_rel) + 1;
-	if (!decision.stable)
+	const bool published = m_activePicturePublicationGate.TryPublish(
+		detectorGeneration, [this, &decision]()
 	{
-		m_activePictureAspectStable.store(false, std::memory_order_release);
+		const uint64_t generation =
+			m_activePictureRectangleGeneration.fetch_add(
+				1, std::memory_order_acq_rel) + 1;
+		if (!decision.stable)
 		{
-			std::lock_guard<std::mutex> lock(m_activePictureRectangleMutex);
+			m_activePictureAspectStable.store(false, std::memory_order_release);
 			m_activePictureRectangle = {
 				decision.bounds.left, decision.bounds.top,
 				decision.bounds.right, decision.bounds.bottom,
 				decision.bounds.rasterWidth, decision.bounds.rasterHeight,
 				decision.bounds.aspectRatio, generation, false
 			};
+			DebugLog::Log(
+				"ACTIVE PICTURE: publication generation=%llu state=transitioning "
+				"confidence=%.2f reason=\"%s\"",
+				static_cast<unsigned long long>(generation),
+				decision.confidence, decision.reason.c_str());
+			return;
 		}
-		DebugLog::Log(
-			"ACTIVE PICTURE: publication generation=%llu state=transitioning "
-			"confidence=%.2f reason=\"%s\"",
-			static_cast<unsigned long long>(generation),
-			decision.confidence, decision.reason.c_str());
-		return;
-	}
 
-	m_activePictureAspectRatio.store(
-		decision.bounds.aspectRatio, std::memory_order_release);
-	m_activePictureAspectStable.store(true, std::memory_order_release);
-	{
-		std::lock_guard<std::mutex> lock(m_activePictureRectangleMutex);
+		m_activePictureAspectRatio.store(
+			decision.bounds.aspectRatio, std::memory_order_release);
 		m_activePictureRectangle = {
 			decision.bounds.left, decision.bounds.top,
 			decision.bounds.right, decision.bounds.bottom,
 			decision.bounds.rasterWidth, decision.bounds.rasterHeight,
 			decision.bounds.aspectRatio, generation, true
 		};
+		m_activePictureAspectStable.store(true, std::memory_order_release);
+		DebugLog::Log(
+			"ACTIVE PICTURE: publication generation=%llu state=stable "
+			"aspect=%.4f bounds=%d,%d-%d,%d raster=%dx%d "
+			"confidence=%.2f latency_frames=%llu reason=\"%s\"",
+			static_cast<unsigned long long>(generation),
+			decision.bounds.aspectRatio,
+			decision.bounds.left, decision.bounds.top,
+			decision.bounds.right, decision.bounds.bottom,
+			decision.bounds.rasterWidth, decision.bounds.rasterHeight,
+			decision.confidence,
+			static_cast<unsigned long long>(decision.decisionLatencyFrames),
+			decision.reason.c_str());
+	});
+	if (!published)
+	{
+		DebugLog::Log(
+			"ACTIVE PICTURE: discarded stale publication expected_generation=%llu current_generation=%llu frame_reason=\"%s\"",
+			static_cast<unsigned long long>(detectorGeneration),
+			static_cast<unsigned long long>(
+				m_activePicturePublicationGate.Generation()),
+			decision.reason.c_str());
 	}
-	DebugLog::Log(
-		"ACTIVE PICTURE: publication generation=%llu state=stable "
-		"aspect=%.4f bounds=%d,%d-%d,%d raster=%dx%d "
-		"confidence=%.2f latency_frames=%llu reason=\"%s\"",
-		static_cast<unsigned long long>(generation),
-		decision.bounds.aspectRatio,
-		decision.bounds.left, decision.bounds.top,
-		decision.bounds.right, decision.bounds.bottom,
-		decision.bounds.rasterWidth, decision.bounds.rasterHeight,
-		decision.confidence,
-		static_cast<unsigned long long>(decision.decisionLatencyFrames),
-		decision.reason.c_str());
 }
 
 

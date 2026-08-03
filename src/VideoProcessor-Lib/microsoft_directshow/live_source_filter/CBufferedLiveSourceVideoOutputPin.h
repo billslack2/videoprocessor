@@ -477,18 +477,19 @@ private:
 	// is conversion-worker-owned and samples only sparse P010 luma positions.
 	std::atomic<double> m_activePictureAspectRatio = 0.0;
 	std::atomic_bool m_activePictureAspectStable = false;
-	std::atomic<uint64_t> m_activePictureDetectorGeneration = 0;
+	ActivePicturePublicationGate m_activePicturePublicationGate;
 	std::atomic<uint64_t> m_activePictureRectangleGeneration = 0;
-	mutable std::mutex m_activePictureRectangleMutex;
 	ActivePictureRectangle m_activePictureRectangle;
 
 	// Adapts the DirectShow P010 sample to the renderer-neutral detector.
 	bool AnalyzeSceneDetector(IMediaSample* sample, class SceneDetector& detector,
 		uint64_t sourceSequence, timingclocktime_t timestamp, uint64_t generation,
 		uint64_t& sceneEventId, uint8_t& eventFramesBack, uint16_t& averageLuma);
-	void UpdateActivePictureAspectRatio(IMediaSample* sample, uint64_t frameNumber);
+	void UpdateActivePictureAspectRatio(IMediaSample* sample, uint64_t frameNumber,
+		uint64_t detectorGeneration);
 	void PublishActivePictureTransition(
-		const ActivePictureTransitionDecision& decision);
+		const ActivePictureTransitionDecision& decision,
+		uint64_t detectorGeneration);
 	bool RelocateSubtitleInP010(IMediaSample* sample, uint64_t frameNumber);
 	void StartSubtitleAnalysisWorker();
 	void StopSubtitleAnalysisWorker();

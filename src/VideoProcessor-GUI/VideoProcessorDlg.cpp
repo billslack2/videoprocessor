@@ -2729,21 +2729,25 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 				postStartRequiresGraph ? 1 : 0, windowSettleDelayMs);
 		}
 		else if (m_alphaRefreshTransitionPending ||
-			m_alphaHostTransitionPending)
+			m_alphaHostTransitionPending ||
+			m_alphaBackendHandoffPending)
 		{
-			// Windows has confirmed a real cross-family output transition.  The
-			// fresh Alpha queue can show a first picture immediately, but its
-			// startup reserve is provisional until the shared renderer-change
-			// delay expires.  Replace the display-change fallback with one
-			// Alpha-native re-prime; never rebuild the DirectShow graph.
+			// A confirmed output, host, or DirectShow-to-Alpha transition can leave
+			// the fresh Alpha startup reserve provisional until the shared
+			// renderer-change delay expires. Replace the display-change fallback
+			// with one Alpha-native re-prime; never rebuild the DirectShow graph.
 			const bool refreshTransition = m_alphaRefreshTransitionPending;
+			const bool hostTransition = m_alphaHostTransitionPending;
+			const bool backendHandoff = m_alphaBackendHandoffPending;
 			const double previousRate = m_alphaRefreshTransitionPreviousRateHz;
 			const double currentRate = m_alphaRefreshTransitionCurrentRateHz;
 			m_alphaRefreshTransitionPending = false;
 			m_alphaHostTransitionPending = false;
+			m_alphaBackendHandoffPending = false;
 			RequestRendererReset(
 				refreshTransition ? RendererResetReason::RefreshTransition :
-					RendererResetReason::HostTransition,
+					hostTransition ? RendererResetReason::HostTransition :
+					RendererResetReason::PostRendererStart,
 				false,
 				static_cast<UINT>(m_queueResetDelaySeconds * 1000));
 			if (refreshTransition)
@@ -2755,11 +2759,18 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 					currentRate,
 					m_queueResetDelaySeconds);
 			}
-			else
+			else if (hostTransition)
 			{
 				DebugLog::Log(
 					"Alpha fullscreen host transition re-prime armed: delay=%d "
 					"seconds action=queue-only",
+					m_queueResetDelaySeconds);
+			}
+			else if (backendHandoff)
+			{
+				DebugLog::Log(
+					"Alpha backend handoff re-prime armed: previous_backend=DirectShow "
+					"delay=%d seconds action=queue-only",
 					m_queueResetDelaySeconds);
 			}
 		}
@@ -4180,9 +4191,21 @@ void CVideoProcessorDlg::RenderStart()
 	if (!selectedRenderer)
 		return;
 
+	const CString previousRendererName = m_activeRendererName;
+	const bool previousRendererWasDirectShow = m_activeRendererIsDirectShow;
 	m_activeRendererName = selectedRenderer->name;
 	m_activeRendererIsDirectShow =
 		selectedRenderer->backend == RendererBackend::DIRECTSHOW;
+	m_alphaBackendHandoffPending = AlphaBackendHandoffRequiresReprime(
+		previousRendererWasDirectShow, m_activeRendererIsDirectShow);
+	if (m_alphaBackendHandoffPending)
+	{
+		DebugLog::Log(
+			"Alpha backend handoff requested: previous_renderer=%S "
+			"next_renderer=%S state=timer-pending",
+			static_cast<LPCTSTR>(previousRendererName),
+			static_cast<LPCTSTR>(m_activeRendererName));
+	}
 	const uint32_t rendererGeneration =
 		m_rendererGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
 	const bool recoveryRecreation = m_nextRendererIsRecoveryRecreation;

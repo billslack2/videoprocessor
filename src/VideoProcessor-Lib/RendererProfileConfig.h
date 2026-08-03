@@ -113,6 +113,7 @@ namespace RendererProfileConfig
 		std::string group = "viewport";
 		std::string profile = "default";
 		AspectRatio screenAspect{ 16, 9, 16.0 / 9.0 };
+		bool automaticCrop = false;
 		bool subtitleFit = false;
 		uint64_t subtitleHoldMilliseconds = 2000;
 		int subtitlePaddingPixels = 20;
@@ -322,7 +323,8 @@ namespace RendererProfileConfig
 				return IsChoice(value, { "normal", "scope" });
 			if (key == "screen_aspect" || key == "scope_screen_aspect")
 				return IsAspectInRange(value, 1.0, 4.0);
-			if (key == "subtitle_fit" || key == "scope_subtitle_fit")
+			if (key == "automatic_crop" || key == "scope_automatic_crop" ||
+				key == "subtitle_fit" || key == "scope_subtitle_fit")
 				return IsBoolean(value);
 			if (key == "subtitle_hold_seconds" ||
 				key == "scope_subtitle_hold_seconds")
@@ -465,9 +467,9 @@ namespace RendererProfileConfig
 				"sdr_target_primaries", "report_bt2020_to_display",
 				"sdr_input_transfer", "output_diagnostics",
 				"diagnostic_disable_shader_cache", "screen_aspect",
-				"default_screen_profile", "subtitle_fit",
+				"default_screen_profile", "automatic_crop", "subtitle_fit",
 				"subtitle_hold_seconds", "subtitle_padding_pixels",
-				"scope_screen_aspect", "scope_subtitle_fit",
+				"scope_screen_aspect", "scope_automatic_crop", "scope_subtitle_fit",
 				"scope_subtitle_hold_seconds", "scope_subtitle_padding_pixels"
 			};
 			std::vector<ConfigSchema::KeyRule> displayRules;
@@ -581,6 +583,7 @@ namespace RendererProfileConfig
 				profile.name = profileName;
 				const std::map<std::string, std::string> viewportAliases = {
 					{ "scope_screen_aspect", "screen_aspect" },
+					{ "scope_automatic_crop", "automatic_crop" },
 					{ "scope_subtitle_fit", "subtitle_fit" },
 					{ "scope_subtitle_hold_seconds", "subtitle_hold_seconds" },
 					{ "scope_subtitle_padding_pixels", "subtitle_padding_pixels" }
@@ -871,6 +874,14 @@ namespace RendererProfileConfig
 		{
 			error = "[profiles.viewport." + viewport.profile +
 				"] screen_aspect: " + error;
+			return false;
+		}
+		value = settings.find("automatic_crop");
+		if (value != settings.end() &&
+			!ParseBoolean(value->second, viewport.automaticCrop))
+		{
+			error = "[profiles.viewport." + viewport.profile +
+				"] automatic_crop is invalid";
 			return false;
 		}
 		value = settings.find("subtitle_fit");
