@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (Phase A implementation started, 2026-08-02). Bill provided direct
+In Progress (Phase A deployed for local live validation, 2026-08-02). Bill provided direct
 pre-coding geometry guidance: repair the existing implementation on the current
 `v1.1.015-beta` default branch, begin at the renderer-local Alpha crop path, and
 prefer the smallest practical, efficient fail-safe. Urvish must still
@@ -211,10 +211,21 @@ documentation-inventory mismatch introduced on the integration branch; source
 commit `dcd52da` corrects that one-token inventory error. The final post-rebase
 full suite again passed 502/502 tests.
 
-No deployed files or active configuration were changed. The real human Urvish
-independent image-analysis/test review, both human experts' final agreement,
-and the approved live sports/genuine-letterbox validation remain required
-before Review, merge, or deployment under this story's gate.
+The owner subsequently recorded explicit human deployment approval from both
+Bill and Urvish. The verified Release artifacts were deployed to
+`C:\Videoprocessor\vp` for controlled local validation. The previous executable
+and Alpha renderer DLL are recoverable from
+`C:\Videoprocessor\vp\backups\VP-0080-before-ce9845d-20260802-225347`.
+The installed SHA-256 hashes exactly match the rebuilt artifacts:
+
+- `VideoProcessor.exe`:
+  `668CCA95BC5AAE036A7F5B92381874750E2090CBB1055A4A67C9FBF557E8EC56`;
+- `vprenderer\VideoProcessorVPRenderer.dll`:
+  `11147B8E3C2FFB6D179F35BEB76988BA7BC1A22917065604B87E0CB9EEEF40D5`.
+
+The active `VideoProcessor.cfg` was not modified and contains no automatic-crop
+override, so the deployed build inherits the safe Off default. The approved
+live sports/genuine-letterbox validation remains required before Done/merge.
 
 ## Incident evidence
 
