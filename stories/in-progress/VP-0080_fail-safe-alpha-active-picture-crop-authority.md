@@ -26,7 +26,7 @@ The operating context was re-established before that preparation:
 
 - `billslack2/videoprocessor` is the repository of record;
 - GitHub reported `v1.1.015-beta` as the current default integration branch;
-- the isolated branch starts at integration commit `8b8d900`; and
+- the isolated branch was updated to integration commit `35061d3`; and
 - the authoritative source checkout and deployed checkout both contain
   unrelated work, so neither was modified.
 
@@ -168,6 +168,46 @@ FFmpeg separates black from motion/edge modes, supports outliers, and can
 retain the largest observed area. These are design constraints and diagnostic
 comparators, not license to copy third-party code or treat another detector as
 the crop oracle.
+
+## Phase A implementation evidence (2026-08-02)
+
+Source commit `0dd3c9038843530dcf1abbe2d35c8d1b887afee0` on
+`codex/vp-0080-alpha-crop-failsafe` implements the first fail-safe increment:
+
+- `automatic_crop` is a documented viewport setting and defaults to false;
+- the renderer-local scope/subtitle candidate no longer writes `source.crop`
+  or marks itself trusted;
+- the only remaining source-crop write is behind a pure authority policy;
+- Off returns the current full raster before inspecting analyzer output;
+- On requires a generation-current shared `BAR_CROP_TRUSTED` snapshot, latest
+  trusted reaffirmation, opposing-edge symmetry, valid current-raster bounds,
+  and chroma-aligned edges;
+- unavailable, provisional, asymmetric, subtitle-displacement, invalid, stale,
+  source, renderer/shader, scene, viewport, and screen-profile transitions fail
+  outward to full raster and suppress bar-derived NLS mapping; and
+- logs distinguish Off, unavailable/rejected authority, accepted crop, source
+  and viewport generations, current reaffirmation, and the exact reason.
+
+The renderer, image-analysis, and practical-geometry AI reviews found and drove
+fixes for indefinite provisional retention, missing opposing-edge enforcement,
+subtitle pixels outside an accepted crop, current-trust reacquisition, scene
+analysis while automatic crop is enabled, and same-value viewport/profile
+epoch changes. Their final supplemental verdicts found no remaining blocking
+code issue. These are automated supplemental reviews and do **not** satisfy the
+mandatory human expert gate.
+
+The final x64 Release solution build completed successfully. The full native
+test DLL passed 502/502 tests, including 11 focused crop-policy tests and the
+existing shared P010/P210/native-RGB evidence and transition controls. The new
+tests cover default Off, all six incident rectangles under repeated observation,
+provisional and asymmetric evidence, stale generations, raster mismatch,
+invalid/chroma-misaligned bounds, subtitle displacement, full-raster authority,
+and the tightly constrained trusted-On case.
+
+No deployed files or active configuration were changed. The real human Urvish
+independent image-analysis/test review, both human experts' final agreement,
+and the approved live sports/genuine-letterbox validation remain required
+before Review, merge, or deployment under this story's gate.
 
 ## Incident evidence
 
