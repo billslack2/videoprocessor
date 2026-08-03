@@ -36,6 +36,7 @@ void ActivePictureDecisionTimeline::Reset(uint64_t transportGeneration)
 {
 	m_transition.Reset();
 	m_observed.clear();
+	m_accepted.clear();
 	m_transportGeneration = transportGeneration;
 	m_lastAcceptedSequence = 0;
 	m_lastConsumedSequence = 0;
@@ -74,6 +75,9 @@ bool ActivePictureDecisionTimeline::TrackAcceptedFrame(
 	m_lastAcceptedSequence = identity.acceptedSequence;
 	m_hasAcceptedSequence = true;
 	m_lastAcceptedIdentity = identity;
+	m_accepted.push_back(identity);
+	while (m_accepted.size() > MAX_RETAINED_IDENTITIES)
+		m_accepted.pop_front();
 	return true;
 }
 
@@ -88,6 +92,9 @@ void ActivePictureDecisionTimeline::MarkConsumed(
 	while (!m_observed.empty() &&
 		m_observed.front().identity.acceptedSequence <= m_lastConsumedSequence)
 		m_observed.pop_front();
+	while (!m_accepted.empty() &&
+		m_accepted.front().acceptedSequence <= m_lastConsumedSequence)
+		m_accepted.pop_front();
 }
 
 
@@ -150,6 +157,17 @@ bool ActivePictureDecisionTimeline::HasObservedSequence(
 }
 
 
+bool ActivePictureDecisionTimeline::HasAcceptedIdentity(
+	const ActivePictureFrameIdentity& identity) const
+{
+	return std::any_of(m_accepted.begin(), m_accepted.end(),
+		[&identity](const ActivePictureFrameIdentity& accepted)
+		{
+			return SameIdentity(accepted, identity);
+		});
+}
+
+
 bool ActivePictureDecisionTimeline::SubmitScheduledObservation(
 	const ActivePictureFrameIdentity& identity,
 	const ActivePictureObservation& observation,
@@ -158,7 +176,7 @@ bool ActivePictureDecisionTimeline::SubmitScheduledObservation(
 	ActivePictureFrameDecision& published,
 	const ActivePicturePresentationIntent& presentation)
 {
-	if (!TrackAcceptedFrame(identity))
+	if (!HasAcceptedIdentity(identity) && !TrackAcceptedFrame(identity))
 		return false;
 	if (HasObservedSequence(identity.acceptedSequence))
 		return false;

@@ -254,6 +254,37 @@ namespace VideoProcessorTest
 				candidate, Trusted(10, FullBounds()), 8, 8, published));
 		}
 
+		TEST_METHOD(OlderAcceptedFrameCanBeAnalyzedAfterNewerFramesArrive)
+		{
+			ActivePictureDecisionTimeline timeline;
+			timeline.Reset(17);
+			const auto first = Identity(17, 1, 1);
+			Assert::IsTrue(timeline.TrackAcceptedFrame(first));
+			Assert::IsTrue(timeline.TrackAcceptedFrame(Identity(17, 2, 2)));
+			Assert::IsTrue(timeline.TrackAcceptedFrame(Identity(17, 3, 3)));
+			ActivePictureFrameDecision published;
+			Assert::IsTrue(timeline.SubmitScheduledObservation(
+				first, Trusted(1, FullBounds()), 2, 2, published));
+			Assert::AreEqual<uint64_t>(1,
+				published.observationIdentity.acceptedSequence);
+		}
+
+		TEST_METHOD(DiscardedCandidateCannotReceiveFutureConfirmation)
+		{
+			ActivePictureDecisionTimeline timeline;
+			timeline.Reset(18);
+			uint64_t sequence = 1;
+			ActivePictureFrameDecision published;
+			EstablishScope(timeline, 18, sequence);
+			const auto candidate = Identity(18, sequence++, 10);
+			Assert::IsFalse(timeline.SubmitScheduledObservation(
+				candidate, Trusted(10, FullBounds()), 4, 4, published));
+			timeline.MarkDiscarded(candidate, 10);
+			Assert::IsFalse(timeline.SubmitScheduledObservation(
+				Identity(18, sequence++, 11), Trusted(11, FullBounds()),
+				4, 4, published));
+		}
+
 		TEST_METHOD(RequestIsClampedBySafeAvailabilityAndMaximum)
 		{
 			ActivePictureDecisionTimeline timeline;

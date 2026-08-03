@@ -285,5 +285,55 @@ namespace Tests
 			Assert::AreEqual(300, static_cast<int>(sample.chromaU));
 			Assert::AreEqual(400, static_cast<int>(sample.chromaV));
 		}
+
+		TEST_METHOD(UyvySparseSamplingPreservesStudioCodesAndSharedChroma)
+		{
+			const uint8_t row[] = { 64, 16, 192, 235 };
+			const AnalysisLumaSource source = {
+				row, sizeof(row), 2, 1, 4, 0,
+				AnalysisLumaFormat::NativeYuv422,
+				VideoFrameEncoding::UYVY, ColorSpace::REC_709, 1 };
+			AnalysisLumaSample first;
+			AnalysisLumaSample second;
+			Assert::IsTrue(source.Sample(0, 0, first));
+			Assert::IsTrue(source.Sample(1, 0, second));
+			Assert::AreEqual(64, static_cast<int>(first.luma));
+			Assert::AreEqual(940, static_cast<int>(second.luma));
+			Assert::AreEqual(256, static_cast<int>(first.chromaU));
+			Assert::AreEqual(768, static_cast<int>(first.chromaV));
+			Assert::AreEqual(static_cast<int>(first.chromaU),
+				static_cast<int>(second.chromaU));
+			Assert::AreEqual(static_cast<int>(first.chromaV),
+				static_cast<int>(second.chromaV));
+		}
+
+		TEST_METHOD(V210SparseSamplingDecodesAllSixPixels)
+		{
+			auto word = [](uint16_t first, uint16_t second, uint16_t third)
+			{
+				return static_cast<uint32_t>(first) |
+					(static_cast<uint32_t>(second) << 10) |
+					(static_cast<uint32_t>(third) << 20);
+			};
+			const uint32_t row[] = {
+				word(100, 10, 200), word(20, 300, 30),
+				word(400, 40, 500), word(50, 600, 60)
+			};
+			const AnalysisLumaSource source = {
+				reinterpret_cast<const uint8_t*>(row), sizeof(row), 6, 1,
+				sizeof(row), 0, AnalysisLumaFormat::NativeYuv422,
+				VideoFrameEncoding::V210, ColorSpace::REC_709, 1 };
+			const int expectedLuma[] = { 10, 20, 30, 40, 50, 60 };
+			const int expectedU[] = { 100, 100, 300, 300, 500, 500 };
+			const int expectedV[] = { 200, 200, 400, 400, 600, 600 };
+			for (int x = 0; x < 6; ++x)
+			{
+				AnalysisLumaSample sample;
+				Assert::IsTrue(source.Sample(x, 0, sample));
+				Assert::AreEqual(expectedLuma[x], static_cast<int>(sample.luma));
+				Assert::AreEqual(expectedU[x], static_cast<int>(sample.chromaU));
+				Assert::AreEqual(expectedV[x], static_cast<int>(sample.chromaV));
+			}
+		}
 	};
 }

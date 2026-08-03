@@ -15,6 +15,7 @@ enum class AnalysisLumaFormat
 	P010,
 	P210,
 	NativeRgb,
+	NativeYuv422,
 };
 
 struct AnalysisLumaSample

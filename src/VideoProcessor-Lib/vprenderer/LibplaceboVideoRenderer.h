@@ -3,6 +3,7 @@
 #include <IRenderer.h>
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
+#include <ActivePictureDecisionTimeline.h>
 
 #include <atomic>
 #include <condition_variable>
@@ -103,6 +104,10 @@ private:
 		VideoStateComPtr state;
 		uint64_t generation = 0;
 		uint64_t sourceSequence = 0;
+		ActivePictureFrameIdentity activePictureIdentity;
+		bool activePicturePreviewAnalyzed = false;
+		bool activePicturePreviewDecisionAvailable = false;
+		ActivePictureFrameDecision activePicturePreviewDecision;
 		int64_t enqueueQpc = 0;
 		bool cadenceRepeat = false;
 		uint64_t cadenceActionId = 0;
@@ -114,6 +119,9 @@ private:
 	};
 
 	void RenderLoop();
+	void AnalyzeActivePictureLookahead(
+		std::vector<QueuedFrame>& previewFrames,
+		uint8_t availableLookahead);
 	void ClearQueue(const char* reason = "queue clear");
 	void BeginQueueGeneration(const char* reason, bool clearStopRequest = false);
 	void ClearQueueLocked(const char* reason);
@@ -142,6 +150,7 @@ private:
 	mutable std::mutex m_queueMutex;
 	std::condition_variable m_queueChanged;
 	std::deque<QueuedFrame> m_frameQueue;
+	ActivePictureDecisionTimeline m_activePictureTimeline;
 	size_t m_frameQueueDesiredDepth = 1;
 	size_t m_frameQueueMaxSize = 1;
 	uint64_t m_queueGeneration = 0;
@@ -163,6 +172,8 @@ private:
 	std::atomic<double> m_captureToPresentationTargetMs{0.0};
 	std::atomic<uint64_t> m_droppedFrames{0};
 	std::atomic<size_t> m_activePictureLookaheadFrames{0};
+	uint64_t m_activePictureLookaheadLoggedGeneration = 0;
+	uint8_t m_activePictureLookaheadLoggedAvailable = 0xff;
 	std::atomic<uint64_t> m_missingFrameStateDrops{0};
 	std::atomic<uint64_t> m_renderFailureDrops{0};
 	std::atomic_bool m_sceneDetectionEnabled{false};

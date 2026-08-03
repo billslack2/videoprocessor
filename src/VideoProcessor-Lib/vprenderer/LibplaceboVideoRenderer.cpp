@@ -6796,6 +6796,34 @@ struct LibplaceboVideoRenderer::Impl
 };
 
 
+namespace
+{
+uint64_t AlphaSourceFormatKey(const VideoState& state)
+{
+	// This is an immutable format fingerprint, not a temporal authority key.
+	// FNV-1a keeps it compact while ensuring a queued decision cannot cross a
+	// material raster/encoding/color contract change.
+	uint64_t key = 1469598103934665603ULL;
+	auto mix = [&key](uint64_t value)
+	{
+		key ^= value;
+		key *= 1099511628211ULL;
+	};
+	mix(static_cast<uint64_t>(state.videoFrameEncoding));
+	mix(static_cast<uint64_t>(state.eotf));
+	mix(static_cast<uint64_t>(state.colorspace));
+	mix(state.invertedVertical ? 1ULL : 0ULL);
+	if (state.displayMode)
+	{
+		mix(static_cast<uint64_t>(state.displayMode->FrameWidth()));
+		mix(static_cast<uint64_t>(state.displayMode->FrameHeight()));
+		mix(static_cast<uint64_t>(state.displayMode->FrameDuration()));
+	}
+	return key;
+}
+}
+
+
 LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 	IRendererCallback& callback,
 	HWND videoHwnd,
@@ -7028,6 +7056,9 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 					queueLimit);
 				m_overflowLoggedGeneration = m_queueGeneration;
 			}
+			m_activePictureTimeline.MarkDiscarded(
+				dropCandidate->activePictureIdentity,
+				dropCandidate->frame.GetCounter());
 			dropCandidate->frame.SourceBufferRelease();
 			m_frameQueue.erase(dropCandidate);
 			m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
@@ -7037,12 +7068,39 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 		{
 			const uint64_t sourceSequence =
 				m_sourceSequence.fetch_add(1, std::memory_order_relaxed) + 1;
-			m_frameQueue.push_back({
-				videoFrame,
-				frameState,
-				enqueueGeneration,
-				sourceSequence,
-				PerformanceCounterNow() });
+			ActivePictureFrameIdentity activePictureIdentity;
+			activePictureIdentity.transportGeneration = enqueueGeneration;
+			activePictureIdentity.acceptedSequence = sourceSequence;
+			activePictureIdentity.sourceFrameNumber = videoFrame.GetCounter();
+			activePictureIdentity.captureTimestamp = static_cast<uint64_t>(
+				videoFrame.GetTimingTimestamp());
+			activePictureIdentity.sourceFormatGeneration =
+				AlphaSourceFormatKey(*frameState);
+			activePictureIdentity.viewportGeneration =
+				m_screenProfileRequestSerial.load(std::memory_order_acquire);
+			activePictureIdentity.rendererGeneration = enqueueGeneration;
+			if (videoFrame.IsSourceDiscontinuity())
+				m_activePictureTimeline.BreakContinuity(videoFrame.GetCounter());
+			if (!m_activePictureTimeline.TrackAcceptedFrame(
+				activePictureIdentity))
+			{
+				videoFrame.SourceBufferRelease();
+				m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+				DebugLog::Log(
+					"Alpha active-picture identity rejected: generation=%llu source=%llu counter=%llu",
+					static_cast<unsigned long long>(enqueueGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					static_cast<unsigned long long>(videoFrame.GetCounter()));
+				return;
+			}
+			QueuedFrame queuedFrame;
+			queuedFrame.frame = videoFrame;
+			queuedFrame.state = frameState;
+			queuedFrame.generation = enqueueGeneration;
+			queuedFrame.sourceSequence = sourceSequence;
+			queuedFrame.activePictureIdentity = activePictureIdentity;
+			queuedFrame.enqueueQpc = PerformanceCounterNow();
+			m_frameQueue.push_back(std::move(queuedFrame));
 		}
 		catch (const std::exception& e)
 		{
@@ -7732,6 +7790,9 @@ void LibplaceboVideoRenderer::SetFrameQueueMaxSize(size_t size)
 		size_t purgedFrames = 0;
 		while (m_frameQueue.size() > m_frameQueueMaxSize)
 		{
+			m_activePictureTimeline.MarkDiscarded(
+				m_frameQueue.front().activePictureIdentity,
+				m_frameQueue.front().frame.GetCounter());
 			m_frameQueue.front().frame.SourceBufferRelease();
 			m_frameQueue.pop_front();
 			++purgedFrames;
@@ -8027,6 +8088,133 @@ bool LibplaceboVideoRenderer::GetFrameRateAndPPM(
 }
 
 
+void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
+	std::vector<QueuedFrame>& previewFrames,
+	uint8_t availableLookahead)
+{
+	struct PreviewEvidence
+	{
+		ActivePictureFrameIdentity identity;
+		ActivePictureObservation observation;
+		double framesPerSecond = 0.0;
+	};
+	std::vector<PreviewEvidence> observations;
+	observations.reserve(previewFrames.size());
+	for (const QueuedFrame& queued : previewFrames)
+	{
+		if (!queued.state || !queued.state->displayMode ||
+			!queued.frame.GetData())
+			continue;
+		const VideoState& state = *queued.state;
+		AnalysisLumaFormat format;
+		AlphaNativeRgbLayout rgbLayout;
+		if (GetAlphaNativeRgbLayout(state.videoFrameEncoding, rgbLayout))
+			format = AnalysisLumaFormat::NativeRgb;
+		else if (state.videoFrameEncoding == VideoFrameEncoding::UYVY ||
+			state.videoFrameEncoding == VideoFrameEncoding::HDYC ||
+			state.videoFrameEncoding == VideoFrameEncoding::V210)
+			format = AnalysisLumaFormat::NativeYuv422;
+		else
+			continue;
+		AnalysisLumaSource source = {
+			reinterpret_cast<const uint8_t*>(queued.frame.GetData()),
+			static_cast<size_t>(state.BytesPerFrame()),
+			static_cast<int>(state.displayMode->FrameWidth()),
+			static_cast<int>(state.displayMode->FrameHeight()),
+			static_cast<size_t>(state.BytesPerRow()), 0, format,
+			state.videoFrameEncoding, state.colorspace,
+			queued.activePictureIdentity.sourceFormatGeneration
+		};
+		const P010ActivePictureEvidence evidence =
+			ExtractActivePictureEvidence(source);
+		PreviewEvidence preview;
+		preview.identity = queued.activePictureIdentity;
+		preview.observation.frameNumber = queued.sourceSequence;
+		preview.observation.available = evidence.available;
+		if (evidence.available)
+		{
+			preview.observation.bounds = evidence.classification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED
+				? evidence.trustedBounds : evidence.proposedBounds;
+			preview.observation.classification = evidence.classification;
+		}
+		preview.framesPerSecond = state.displayMode->RefreshRateHz();
+		observations.push_back(preview);
+	}
+
+	const uint8_t configured = static_cast<uint8_t>((std::min)(
+		m_activePictureLookaheadFrames.load(std::memory_order_acquire),
+		size_t{ ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES }));
+	{
+		std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+		if (m_activePictureLookaheadLoggedGeneration != m_queueGeneration ||
+			m_activePictureLookaheadLoggedAvailable != availableLookahead)
+		{
+			m_activePictureLookaheadLoggedGeneration = m_queueGeneration;
+			m_activePictureLookaheadLoggedAvailable = availableLookahead;
+			DebugLog::Log(
+				"Alpha active-picture look-ahead preview: generation=%llu configured=%u available=%u effective=%u runtime-apply=0",
+				static_cast<unsigned long long>(m_queueGeneration),
+				static_cast<unsigned>(configured),
+				static_cast<unsigned>(availableLookahead),
+				static_cast<unsigned>((std::min)(configured, availableLookahead)));
+		}
+		for (const PreviewEvidence& preview : observations)
+		{
+			auto queued = std::find_if(m_frameQueue.begin(), m_frameQueue.end(),
+				[&preview](const QueuedFrame& candidate)
+				{
+					return candidate.activePictureIdentity.transportGeneration ==
+						preview.identity.transportGeneration &&
+						candidate.activePictureIdentity.acceptedSequence ==
+						preview.identity.acceptedSequence;
+				});
+			if (queued == m_frameQueue.end() ||
+				queued->activePicturePreviewAnalyzed)
+				continue;
+			queued->activePicturePreviewAnalyzed = true;
+			if (!m_activePictureTimeline.ShouldAnalyze(
+				preview.observation.frameNumber, preview.framesPerSecond))
+				continue;
+			ActivePictureFrameDecision decision;
+			if (!m_activePictureTimeline.SubmitScheduledObservation(
+				preview.identity, preview.observation, configured,
+				availableLookahead, decision))
+				continue;
+			auto target = std::find_if(m_frameQueue.begin(), m_frameQueue.end(),
+				[&decision](const QueuedFrame& candidate)
+				{
+					return candidate.activePictureIdentity.transportGeneration ==
+						decision.effectiveIdentity.transportGeneration &&
+						candidate.activePictureIdentity.acceptedSequence ==
+						decision.effectiveIdentity.acceptedSequence;
+				});
+			if (target == m_frameQueue.end())
+				continue;
+			target->activePicturePreviewDecision = decision;
+			target->activePicturePreviewDecisionAvailable = true;
+			DebugLog::Log(
+				"Alpha active-picture look-ahead decision: generation=%llu observed=%llu effective=%llu configured=%u available=%u effective_lead=%u late=%d rect=%d,%d-%d,%d runtime-apply=0",
+				static_cast<unsigned long long>(
+					decision.observationIdentity.transportGeneration),
+				static_cast<unsigned long long>(
+					decision.observationIdentity.acceptedSequence),
+				static_cast<unsigned long long>(
+					decision.effectiveIdentity.acceptedSequence),
+				static_cast<unsigned>(decision.configuredLookahead),
+				static_cast<unsigned>(decision.availableLookahead),
+				static_cast<unsigned>(decision.effectiveLookahead),
+				decision.late ? 1 : 0,
+				decision.transition.bounds.left,
+				decision.transition.bounds.top,
+				decision.transition.bounds.right,
+				decision.transition.bounds.bottom);
+		}
+	}
+
+}
+
+
 void LibplaceboVideoRenderer::RenderLoop()
 {
 	unsigned int consecutiveFailures = 0;
@@ -8036,11 +8224,16 @@ void LibplaceboVideoRenderer::RenderLoop()
 		VideoStateComPtr state;
 		uint64_t frameGeneration = 0;
 		uint64_t sourceSequence = 0;
+		ActivePictureFrameIdentity activePictureIdentity;
+		bool activePicturePreviewDecisionAvailable = false;
+		ActivePictureFrameDecision activePicturePreviewDecision;
 		int64_t enqueueQpc = 0;
 		int64_t dequeueQpc = 0;
 		size_t queueDepthAfterDequeue = 0;
 		size_t desiredQueueDepth = 1;
 		double oldestQueuedAgeMs = 0.0;
+		std::vector<QueuedFrame> activePicturePreviewFrames;
+		uint8_t activePictureAvailableLookahead = 0;
 		bool cadenceRepeat = false;
 		uint64_t cadenceActionId = 0;
 		uint64_t cadencePolicyGeneration = 0;
@@ -8080,6 +8273,12 @@ void LibplaceboVideoRenderer::RenderLoop()
 			state = m_frameQueue.front().state;
 			frameGeneration = m_frameQueue.front().generation;
 			sourceSequence = m_frameQueue.front().sourceSequence;
+			activePictureIdentity =
+				m_frameQueue.front().activePictureIdentity;
+			activePicturePreviewDecisionAvailable =
+				m_frameQueue.front().activePicturePreviewDecisionAvailable;
+			activePicturePreviewDecision =
+				m_frameQueue.front().activePicturePreviewDecision;
 			enqueueQpc = m_frameQueue.front().enqueueQpc;
 			cadenceRepeat = m_frameQueue.front().cadenceRepeat;
 			cadenceActionId =
@@ -8094,7 +8293,30 @@ void LibplaceboVideoRenderer::RenderLoop()
 				m_frameQueue.front().cadencePresentId;
 			cadenceDeadlineSeconds =
 				m_frameQueue.front().cadenceDeadlineSeconds;
+			m_activePictureTimeline.MarkConsumed(
+				m_frameQueue.front().activePictureIdentity);
 			m_frameQueue.pop_front();
+
+			const size_t requestedLookahead = (std::min)(
+				m_activePictureLookaheadFrames.load(std::memory_order_acquire),
+				size_t{ ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES });
+			if (requestedLookahead > 0)
+			{
+				size_t sourceLead = 0;
+				for (const QueuedFrame& queued : m_frameQueue)
+				{
+					if (queued.cadenceRepeat)
+						continue;
+					if (sourceLead >= requestedLookahead)
+						break;
+					++sourceLead;
+					if (queued.activePicturePreviewAnalyzed)
+						continue;
+					activePicturePreviewFrames.push_back(queued);
+					activePicturePreviewFrames.back().frame.SourceBufferAddRef();
+				}
+				activePictureAvailableLookahead = static_cast<uint8_t>(sourceLead);
+			}
 
 			const size_t remainingDepth = m_frameQueue.size();
 			queueDepthAfterDequeue = remainingDepth;
@@ -8149,6 +8371,29 @@ void LibplaceboVideoRenderer::RenderLoop()
 			}
 		}
 
+		if (m_activePictureLookaheadFrames.load(std::memory_order_acquire) > 0)
+		{
+			try
+			{
+				AnalyzeActivePictureLookahead(
+					activePicturePreviewFrames,
+					activePictureAvailableLookahead);
+			}
+			catch (const std::exception& e)
+			{
+				DebugLog::Log(
+					"Alpha active-picture look-ahead preview failed: %s",
+					e.what());
+			}
+			catch (...)
+			{
+				DebugLog::Log(
+					"Alpha active-picture look-ahead preview failed: unknown exception");
+			}
+			for (QueuedFrame& preview : activePicturePreviewFrames)
+				preview.frame.SourceBufferRelease();
+		}
+
 		if (prefillReleased)
 		{
 			DebugLog::Log(
@@ -8156,6 +8401,17 @@ void LibplaceboVideoRenderer::RenderLoop()
 				static_cast<unsigned long long>(frameGeneration),
 				prefillDepth,
 				prefillTarget);
+		}
+		if (activePicturePreviewDecisionAvailable)
+		{
+			DebugLog::Log(
+				"Alpha active-picture look-ahead consumed: generation=%llu source=%llu observed=%llu effective=%llu runtime-apply=0",
+				static_cast<unsigned long long>(frameGeneration),
+				static_cast<unsigned long long>(sourceSequence),
+				static_cast<unsigned long long>(
+					activePicturePreviewDecision.observationIdentity.acceptedSequence),
+				static_cast<unsigned long long>(
+					activePicturePreviewDecision.effectiveIdentity.acceptedSequence));
 		}
 		if (depthSummaryReady)
 		{
@@ -8258,6 +8514,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 							{
 								if (m_frameQueue.front().cadenceRepeat)
 									++canceledRepeats;
+								m_activePictureTimeline.MarkDiscarded(
+									m_frameQueue.front().activePictureIdentity,
+									m_frameQueue.front().frame.GetCounter());
 								m_frameQueue.front().frame.SourceBufferRelease();
 								m_frameQueue.pop_front();
 								++droppedFrames;
@@ -8519,19 +8778,26 @@ void LibplaceboVideoRenderer::RenderLoop()
 				{
 					try
 					{
-						m_frameQueue.push_front({
-							frame,
-							state,
-							frameGeneration,
-							sourceSequence,
-							enqueueQpc,
-							true,
-							correctionDecision.actionId,
-							correctionDecision.diagnostic.policyGeneration,
-							correctionDecision.diagnostic.detectorGeneration,
-							correctionDecision.diagnostic.presentationDebt,
-							correctionDecision.diagnostic.lastPresentId,
-							correctionDecision.secondsUntilCorrection });
+						QueuedFrame repeatFrame;
+						repeatFrame.frame = frame;
+						repeatFrame.state = state;
+						repeatFrame.generation = frameGeneration;
+						repeatFrame.sourceSequence = sourceSequence;
+						repeatFrame.activePictureIdentity = activePictureIdentity;
+						repeatFrame.enqueueQpc = enqueueQpc;
+						repeatFrame.cadenceRepeat = true;
+						repeatFrame.cadenceActionId = correctionDecision.actionId;
+						repeatFrame.cadencePolicyGeneration =
+							correctionDecision.diagnostic.policyGeneration;
+						repeatFrame.cadenceDetectorGeneration =
+							correctionDecision.diagnostic.detectorGeneration;
+						repeatFrame.cadencePresentationDebt =
+							correctionDecision.diagnostic.presentationDebt;
+						repeatFrame.cadencePresentId =
+							correctionDecision.diagnostic.lastPresentId;
+						repeatFrame.cadenceDeadlineSeconds =
+							correctionDecision.secondsUntilCorrection;
+						m_frameQueue.push_front(std::move(repeatFrame));
 						repeatQueued = true;
 						repeatQueueDepth = m_frameQueue.size();
 						repeatOutcome = "queued";
@@ -8637,6 +8903,7 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 		ClearQueueLocked(reason);
 		if (++m_queueGeneration == 0)
 			++m_queueGeneration;
+		m_activePictureTimeline.Reset(m_queueGeneration);
 		m_overflowLoggedGeneration = 0;
 		m_startupPrefillPending = true;
 		m_queueDepthWindowStartNs = SteadyClockNowNs();
@@ -8660,8 +8927,15 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 
 void LibplaceboVideoRenderer::ClearQueueLocked(const char* reason)
 {
+	if (!m_frameQueue.empty())
+	{
+		m_activePictureTimeline.BreakContinuity(
+			m_frameQueue.front().frame.GetCounter());
+	}
 	for (QueuedFrame& queuedFrame : m_frameQueue)
 	{
+		m_activePictureTimeline.MarkConsumed(
+			queuedFrame.activePictureIdentity);
 		if (queuedFrame.cadenceRepeat)
 		{
 			DebugLog::Log(

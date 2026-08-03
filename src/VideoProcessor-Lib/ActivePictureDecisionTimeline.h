@@ -68,6 +68,10 @@ public:
 	void MarkDiscarded(const ActivePictureFrameIdentity& identity,
 		uint64_t detectorFrameNumber);
 	void BreakContinuity(uint64_t detectorFrameNumber);
+	bool ShouldAnalyze(uint64_t frameNumber, double framesPerSecond)
+	{
+		return m_transition.ShouldAnalyze(frameNumber, framesPerSecond);
+	}
 	bool SubmitScheduledObservation(
 		const ActivePictureFrameIdentity& identity,
 		const ActivePictureObservation& observation,
@@ -91,9 +95,11 @@ private:
 	bool FindRetainedIdentity(uint64_t detectorFrameNumber,
 		ActivePictureFrameIdentity& identity) const;
 	bool HasObservedSequence(uint64_t acceptedSequence) const;
+	bool HasAcceptedIdentity(const ActivePictureFrameIdentity& identity) const;
 
 	ActivePictureTransitionModel m_transition;
 	std::deque<ObservedIdentity> m_observed;
+	std::deque<ActivePictureFrameIdentity> m_accepted;
 	uint64_t m_transportGeneration = 0;
 	uint64_t m_lastAcceptedSequence = 0;
 	uint64_t m_lastConsumedSequence = 0;
