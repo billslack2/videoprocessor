@@ -65,3 +65,13 @@ constexpr bool FullscreenRetargetRequiresCoveredRebuild(
 	const bool retargetTargetsFullscreen = !retargetExitingFullscreen;
 	return desiredFullscreen != retargetTargetsFullscreen;
 }
+
+// A DirectShow graph can leave a short-lived delivery reserve while its
+// replacement Alpha swapchain is starting. Treat that backend boundary as a
+// known transition, rather than inferring it from the Alpha queue depth.
+constexpr bool AlphaBackendHandoffRequiresReprime(
+	bool previousRendererWasDirectShow,
+	bool nextRendererIsDirectShow)
+{
+	return previousRendererWasDirectShow && !nextRendererIsDirectShow;
+}
