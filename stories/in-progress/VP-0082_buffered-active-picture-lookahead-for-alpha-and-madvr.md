@@ -53,35 +53,57 @@ active_picture_lookahead_frames = 0
 ## Scope
 
 1. Identify the reliable shared frame identity available from capture through
-   active-picture analysis and each renderer's presentation boundary. Include
-   frame number, PTS, live-output epoch, input-format generation, viewport
-   generation, and renderer generation as required to reject stale decisions.
-2. Add a renderer-neutral timestamped final-geometry decision containing the
-   trusted active-picture rectangle, presentation fit/crop transform, NLS
-   mapping input, confidence/state, and the frame at which it becomes
-   effective.
+   active-picture analysis and each renderer's presentation boundary. Use the
+   monotonic source sequence plus queue/source epoch as authority; retain PTS
+   for diagnostics and use compact raster, viewport, and adapter generations
+   only where they are required to reject stale decisions.
+2. Add a renderer-neutral frame-associated semantic decision containing the
+   trusted active-picture bounds and classification, source aspect, NLS mode
+   and stretch intent, confidence/state, and the earliest source frame at
+   which it becomes effective. Do not share a literal renderer transform:
+   Alpha owns its explicit source crop and madVR owns native bar removal.
 3. Let Alpha and DirectShow/madVR consume the same decision. Renderer-specific
    code may translate it into libplacebo crop/transform or madVR DAR/shader
    controls, but may not independently choose geometry or NLS activation.
 4. Analyze the safely available buffered frames without increasing queue
    depth. When fewer frames are available than configured, use the available
    lead and log the effective value.
-5. On initial startup with no trusted decision, use safe pass-through until a
-   decision is ready. This expected initial limitation is acceptable and must
-   not block presentation.
-6. During ordinary ambiguous, dark, fade, overlay, or scene-transition
-   evidence, retain the last trusted decision until the shared transition
-   model confirms a replacement.
+5. On initial startup with no trusted decision, use full-raster centered fit
+   with NLS waiting/native until a decision is ready. Existing queue prefill
+   may make evidence available early, but this feature must not add a wait.
+6. During ordinary ambiguous, dark, fade, or scene-transition evidence,
+   retain the last trusted decision until the shared transition model confirms
+   a replacement. Any credible content or UI outside the old bounds expands
+   outward immediately for the affected frame; transient overlays never gain
+   symmetric inward-crop authority.
 7. Across a same-input queue flush or renderer re-prime, preserve only the
    validated source geometry needed for graceful reacquisition. Invalidate it
    for a real source, raster, pixel-format, viewport, or incompatible renderer
    generation change.
 8. Apply crop and NLS atomically for the effective frame. A frame must not use
    a new crop with an old NLS mapping, or vice versa.
-9. Add concise OSD/log telemetry for configured, safely available, and
-   effective look-ahead; decision frame/PTS and epoch; presentation lead; hold
-   reason; invalidation; and late or discarded decisions. Do not log per frame
-   during steady state.
+9. Add compact steady-state OSD telemetry such as `AP LA 4/8`. Log decision
+   frame/PTS and epoch, presentation lead, hold reason, invalidation, and late
+   or discarded decisions only on state changes, not per frame.
+
+## Temporal decision rules
+
+- Analyze each buffered frame at most once and retain only a bounded timeline.
+- Preserve the detector's existing frame-rate-normalized observation cadence;
+  unscheduled buffered evidence may veto or expand outward but must not become
+  an extra inward-crop confirmation vote.
+- A confirmed transition may be associated back to its first contradictory
+  candidate only while that source frame remains unpresented and all evidence
+  through confirmation is contiguous, same-epoch, and crop-trusted.
+- Dark, unavailable, provisional, asymmetric, discontinuous, raster-mismatched,
+  or outward-overlay evidence breaks inward-crop backdating.
+- If the intended source frame has already passed, apply at the earliest
+  surviving unpresented frame and log the decision as late.
+- A sequence gap or drop discards pending preview decisions but retains the
+  last committed geometry for safe reacquisition. A same-source re-prime does
+  the same; a real source/raster/format change invalidates to full raster.
+- A viewport or renderer change retains valid source geometry and rebuilds
+  only the renderer-specific presentation adapter.
 
 ## Practical implementation boundary
 
@@ -135,8 +157,10 @@ preserving source-pixel safety.
   through the same core implementation path.
 - Positive values use no more than the safely available buffered lead and
   never stall or silently enlarge the live queue.
-- Alpha and madVR consume the same frame-associated final geometry/NLS
-  decision and cannot visibly disagree about the transition frame.
+- Alpha and madVR consume the same source-frame-associated semantic
+  geometry/NLS decision. Alpha applies it with the corresponding rendered
+  frame; madVR applies it at the nearest safe delivery/graph boundary without
+  exposing an old-crop/new-NLS or new-crop/old-NLS mismatch.
 - Initial missing state is safe and graceful; ordinary uncertainty retains the
   last valid presentation unless a real invalidating boundary occurs.
 - Real-video A/B testing demonstrates a material reduction in scene-change
