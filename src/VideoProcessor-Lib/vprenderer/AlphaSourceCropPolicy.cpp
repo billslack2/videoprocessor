@@ -76,7 +76,11 @@ namespace AlphaSourceCrop
 				: "shared geometry lacks crop authority";
 			return decision;
 		}
-		if (!input.latestObservationSupportsCrop)
+		const bool boundedProvisionalHold =
+			input.sceneVerificationHoldActive &&
+			input.latestObservationIsProvisional;
+		if (!input.latestObservationSupportsCrop &&
+			!boundedProvisionalHold)
 		{
 			decision.reason =
 				"latest observation does not reaffirm crop authority";
@@ -102,7 +106,9 @@ namespace AlphaSourceCrop
 
 		decision.sourceBounds = input.geometry;
 		decision.applyCrop = true;
-		decision.reason = "generation-current shared crop authority accepted";
+		decision.reason = input.latestObservationSupportsCrop
+			? "generation-current shared crop authority accepted"
+			: "bounded scene verification retained current trusted crop";
 		return decision;
 	}
 }

@@ -91,6 +91,43 @@ namespace Tests
 			AssertFullRaster(Evaluate(input));
 		}
 
+		TEST_METHOD(BoundedSceneVerificationRetainsOnlyExistingTrustedCrop)
+		{
+			Input input = TrustedScopeCrop();
+			input.latestObservationSupportsCrop = false;
+			input.sceneVerificationHoldActive = true;
+			input.latestObservationIsProvisional = true;
+			const Decision decision = Evaluate(input);
+			Assert::IsTrue(decision.applyCrop);
+			Assert::AreEqual(274, decision.sourceBounds.top);
+			Assert::AreEqual(1884, decision.sourceBounds.bottom);
+			Assert::IsTrue(
+				decision.reason.find("scene verification") != std::string::npos);
+		}
+
+		TEST_METHOD(SceneVerificationCannotOverrideFullRasterOrStaleAuthority)
+		{
+			Input unavailable = TrustedScopeCrop();
+			unavailable.latestObservationSupportsCrop = false;
+			unavailable.sceneVerificationHoldActive = true;
+			AssertFullRaster(Evaluate(unavailable));
+
+			Input fullRaster = TrustedScopeCrop();
+			fullRaster.latestObservationSupportsCrop = false;
+			fullRaster.sceneVerificationHoldActive = true;
+			fullRaster.latestObservationIsProvisional = true;
+			fullRaster.classification =
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
+			AssertFullRaster(Evaluate(fullRaster));
+
+			Input stale = TrustedScopeCrop();
+			stale.latestObservationSupportsCrop = false;
+			stale.sceneVerificationHoldActive = true;
+			stale.latestObservationIsProvisional = true;
+			stale.frameSourceGeneration = 8;
+			AssertFullRaster(Evaluate(stale));
+		}
+
 		TEST_METHOD(SubtitleDisplacementCanOnlyExpandToFullRaster)
 		{
 			Input input = TrustedScopeCrop();

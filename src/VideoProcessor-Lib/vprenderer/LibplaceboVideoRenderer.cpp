@@ -2477,6 +2477,17 @@ struct LibplaceboVideoRenderer::Impl
 	float scopeSubtitleShiftSourcePixels = 0.0f;
 	bool scopeSubtitleWasActive = false;
 	bool scopeSubtitleWasTopActive = false;
+	static constexpr uint64_t ACTIVE_PICTURE_SCENE_VERIFICATION_MS = 500;
+	uint64_t activePictureSceneVerificationDeadlineTick = 0;
+	bool sceneVerificationGeometryAvailable = false;
+	ActivePictureBounds sceneVerificationGeometry;
+	uint64_t sceneVerificationGeometrySourceGeneration = 0;
+	bool sceneVerificationLatestSupportsCrop = false;
+	bool latestActivePictureEvidenceAvailable = false;
+	ActivePictureClassification latestActivePictureEvidenceClassification =
+		ActivePictureClassification::UNAVAILABLE;
+	ActivePictureBounds latestActivePictureEvidenceBounds;
+	uint64_t latestActivePictureEvidenceFrame = 0;
 	std::string lastSourceCropPolicy;
 	std::string activeDisplayRule;
 	std::string effectiveSettingsFingerprint;
@@ -4746,6 +4757,8 @@ struct LibplaceboVideoRenderer::Impl
 			latestActivePictureObservationSupportsCrop = false;
 			nlsGeometrySourceGeneration = 0;
 			activePictureAnalysisSourceGeneration = 0;
+			ClearSceneVerificationSnapshot();
+			ClearLatestActivePictureEvidence();
 			nlsDecision = {};
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
@@ -4789,6 +4802,8 @@ struct LibplaceboVideoRenderer::Impl
 		latestActivePictureObservationSupportsCrop = false;
 		nlsGeometrySourceGeneration = 0;
 		activePictureAnalysisSourceGeneration = 0;
+		ClearSceneVerificationSnapshot();
+		ClearLatestActivePictureEvidence();
 		nlsDecision = {};
 		nlsHookSignature.clear();
 		rejectedNlsHookSignature.clear();
@@ -4961,9 +4976,39 @@ struct LibplaceboVideoRenderer::Impl
 		return true;
 	}
 
+	static bool ActivePictureBoundsContain(
+		const ActivePictureBounds& outer,
+		const ActivePictureBounds& inner)
+	{
+		return outer.rasterWidth > 0 && outer.rasterHeight > 0 &&
+			outer.rasterWidth == inner.rasterWidth &&
+			outer.rasterHeight == inner.rasterHeight &&
+			outer.left <= inner.left && outer.top <= inner.top &&
+			outer.right >= inner.right && outer.bottom >= inner.bottom;
+	}
+
+	void ClearSceneVerificationSnapshot()
+	{
+		activePictureSceneVerificationDeadlineTick = 0;
+		sceneVerificationGeometryAvailable = false;
+		sceneVerificationGeometry = {};
+		sceneVerificationGeometrySourceGeneration = 0;
+		sceneVerificationLatestSupportsCrop = false;
+	}
+
+	void ClearLatestActivePictureEvidence()
+	{
+		latestActivePictureEvidenceAvailable = false;
+		latestActivePictureEvidenceClassification =
+			ActivePictureClassification::UNAVAILABLE;
+		latestActivePictureEvidenceBounds = {};
+		latestActivePictureEvidenceFrame = 0;
+	}
+
 	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
 		uint64_t frameNumber,
-		double framesPerSecond, double targetAspect)
+		double framesPerSecond, double targetAspect,
+		bool forceAnalysis = false)
 	{
 		renderParams.hooks = nullptr;
 		renderParams.num_hooks = 0;
@@ -4978,6 +5023,8 @@ struct LibplaceboVideoRenderer::Impl
 			latestActivePictureObservationSupportsCrop = false;
 			nlsGeometrySourceGeneration = 0;
 			activePictureAnalysisSourceGeneration = analysisSource.generation;
+			ClearSceneVerificationSnapshot();
+			ClearLatestActivePictureEvidence();
 			lastSourceCropPolicy.clear();
 			DebugLog::Log(
 				"Alpha active picture authority reset: source_generation=%llu",
@@ -4989,11 +5036,29 @@ struct LibplaceboVideoRenderer::Impl
 		if (!needsActivePictureAnalysis)
 			return;
 
-		if (nlsTransition.ShouldAnalyze(frameNumber, framesPerSecond))
+		const bool scheduledAnalysis =
+			nlsTransition.ShouldAnalyze(frameNumber, framesPerSecond);
+		if (scheduledAnalysis || forceAnalysis)
 		{
 			const P010ActivePictureEvidence evidence =
 				ExtractActivePictureEvidence(analysisSource);
 			latestActivePictureObservationSupportsCrop = false;
+			latestActivePictureEvidenceAvailable = evidence.available;
+			latestActivePictureEvidenceClassification = evidence.available
+				? evidence.classification
+				: ActivePictureClassification::UNAVAILABLE;
+			latestActivePictureEvidenceBounds = evidence.available
+				? (evidence.classification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED
+					? evidence.trustedBounds : evidence.proposedBounds)
+				: ActivePictureBounds{};
+			latestActivePictureEvidenceFrame = frameNumber;
+			sceneVerificationLatestSupportsCrop =
+				sceneVerificationGeometryAvailable && evidence.available &&
+				evidence.classification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED &&
+				ActivePictureBoundsContain(
+					sceneVerificationGeometry, evidence.trustedBounds);
 			ActivePictureObservation observation;
 			observation.frameNumber = frameNumber;
 			observation.available = evidence.available;
@@ -5219,6 +5284,8 @@ struct LibplaceboVideoRenderer::Impl
 			latestActivePictureObservationSupportsCrop = false;
 			nlsGeometrySourceGeneration = 0;
 			activePictureAnalysisSourceGeneration = 0;
+			ClearSceneVerificationSnapshot();
+			ClearLatestActivePictureEvidence();
 			nlsDecision = {};
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
@@ -5331,6 +5398,8 @@ struct LibplaceboVideoRenderer::Impl
 			latestActivePictureObservationSupportsCrop = false;
 			nlsGeometrySourceGeneration = 0;
 			activePictureAnalysisSourceGeneration = 0;
+			ClearSceneVerificationSnapshot();
+			ClearLatestActivePictureEvidence();
 			lastSourceCropPolicy.clear();
 			nlsDecision = {};
 			pl_mpv_user_shader_destroy(&nlsHook);
@@ -5376,9 +5445,6 @@ struct LibplaceboVideoRenderer::Impl
 					sceneDetectionEnabled ? "available" : "disabled",
 					scopeScreenActive ? "available" : "disabled");
 			}
-			UpdateNlsForFrame(analysisSource, sourceSequence,
-				state.displayMode->RefreshRateHz(),
-				scopeScreenActive ? scopeScreenAspect : 16.0 / 9.0);
 		}
 		SceneDetectorResult sceneResult;
 		if (!cadenceRepeat && analysisSource.IsValid())
@@ -5394,13 +5460,57 @@ struct LibplaceboVideoRenderer::Impl
 			sceneDetectionEnabled)
 			sceneDetectionStatus.store(
 				static_cast<int>(sceneResult.status), std::memory_order_release);
+		if (analysisSource.IsValid())
+		{
+			UpdateNlsForFrame(analysisSource, sourceSequence,
+				state.displayMode->RefreshRateHz(),
+				scopeScreenActive ? scopeScreenAspect : 16.0 / 9.0,
+				!cadenceRepeat && sceneResult.safeBoundary);
+		}
 		if (!cadenceRepeat && sceneResult.safeBoundary)
 		{
-			// Scene boundaries retire destructive authority before this frame is
-			// configured for presentation. A new scene must prove its own crop.
+			// Capture only the already-published crop for bounded presentation,
+			// then reset temporal proof. Confirmations for new geometry must never
+			// accumulate across an edit. The current cut frame is force-analyzed
+			// above, so unavailable or full-raster evidence cannot arm this hold.
+			const bool latestEvidenceIsCurrent =
+				latestActivePictureEvidenceFrame == sourceSequence;
+			const bool latestEvidenceMayVerify =
+				latestActivePictureEvidenceAvailable &&
+				(latestActivePictureEvidenceClassification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED ||
+				 latestActivePictureEvidenceClassification ==
+					ActivePictureClassification::PROVISIONAL);
+			const bool canVerifyExistingCrop = automaticSourceCrop &&
+				nlsGeometryAvailable &&
+				nlsGeometryClassification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED &&
+				nlsGeometrySourceGeneration == frameGeneration &&
+				latestEvidenceIsCurrent && latestEvidenceMayVerify;
+			if (canVerifyExistingCrop)
+			{
+				sceneVerificationGeometryAvailable = true;
+				sceneVerificationGeometry = nlsGeometry;
+				sceneVerificationGeometrySourceGeneration =
+					nlsGeometrySourceGeneration;
+				sceneVerificationLatestSupportsCrop =
+					latestActivePictureEvidenceClassification ==
+						ActivePictureClassification::BAR_CROP_TRUSTED &&
+					ActivePictureBoundsContain(
+						sceneVerificationGeometry,
+						latestActivePictureEvidenceBounds);
+				activePictureSceneVerificationDeadlineTick =
+					GetTickCount64() +
+					ACTIVE_PICTURE_SCENE_VERIFICATION_MS;
+			}
+			else
+			{
+				ClearSceneVerificationSnapshot();
+			}
+
 			nlsTransition.Reset();
 			nlsGeometryAvailable = false;
-			nlsTransitionWithdrawn = true;
+			nlsTransitionWithdrawn = false;
 			nlsGeometry = {};
 			nlsGeometryClassification =
 				ActivePictureClassification::UNAVAILABLE;
@@ -5411,12 +5521,16 @@ struct LibplaceboVideoRenderer::Impl
 			renderParams.num_hooks = 0;
 			lastSourceCropPolicy.clear();
 			sceneDetectedCount.fetch_add(1, std::memory_order_relaxed);
-			DebugLog::Log("libplacebo scene boundary: event=%llu sequence=%llu generation=%llu frames_back=%u luma=%u",
+			DebugLog::Log("libplacebo scene boundary: event=%llu sequence=%llu generation=%llu frames_back=%u luma=%u evidence=%d crop_verification_ms=%u",
 				static_cast<unsigned long long>(sceneResult.eventId),
 				static_cast<unsigned long long>(sceneResult.sourceSequence),
 				static_cast<unsigned long long>(sceneResult.generation),
 				static_cast<unsigned>(sceneResult.eventFramesBack),
-				static_cast<unsigned>(sceneResult.averageLuma));
+				static_cast<unsigned>(sceneResult.averageLuma),
+				static_cast<int>(
+					latestActivePictureEvidenceClassification),
+				canVerifyExistingCrop ? static_cast<unsigned>(
+					ACTIVE_PICTURE_SCENE_VERIFICATION_MS) : 0U);
 		}
 		if (!cadenceRepeat)
 		{
@@ -5646,44 +5760,79 @@ struct LibplaceboVideoRenderer::Impl
 			source = image;
 			if (trustedActivePicture)
 				*trustedActivePicture = false;
+			const bool sceneVerificationHoldActive =
+				sceneVerificationGeometryAvailable &&
+				sceneVerificationGeometrySourceGeneration == frameGeneration &&
+				activePictureSceneVerificationDeadlineTick != 0 &&
+				GetTickCount64() <
+					activePictureSceneVerificationDeadlineTick;
+			const bool useSceneVerificationGeometry =
+				sceneVerificationHoldActive && !nlsGeometryAvailable;
+			const bool effectiveGeometryAvailable =
+				nlsGeometryAvailable || useSceneVerificationGeometry;
+			const bool effectiveLatestSupportsCrop = nlsGeometryAvailable
+				? latestActivePictureObservationSupportsCrop
+				: sceneVerificationLatestSupportsCrop;
+			const bool latestObservationIsProvisional =
+				latestActivePictureEvidenceAvailable &&
+				latestActivePictureEvidenceClassification ==
+					ActivePictureClassification::PROVISIONAL;
+			const ActivePictureClassification effectiveClassification =
+				useSceneVerificationGeometry
+					? ActivePictureClassification::BAR_CROP_TRUSTED
+					: nlsGeometryClassification;
+			const ActivePictureBounds& effectiveGeometry =
+				useSceneVerificationGeometry
+					? sceneVerificationGeometry : nlsGeometry;
+			const uint64_t effectiveGeometrySourceGeneration =
+				useSceneVerificationGeometry
+					? sceneVerificationGeometrySourceGeneration
+					: nlsGeometrySourceGeneration;
 			const AlphaSourceCrop::Decision cropDecision =
 				AlphaSourceCrop::Evaluate({
 					automaticSourceCrop,
-					nlsGeometryAvailable,
-					latestActivePictureObservationSupportsCrop,
+					effectiveGeometryAvailable,
+					effectiveLatestSupportsCrop,
+					sceneVerificationHoldActive,
+					latestObservationIsProvisional,
 					subtitleShift != 0.0f,
-					nlsGeometryClassification,
-					nlsGeometry,
-					nlsGeometrySourceGeneration,
+					effectiveClassification,
+					effectiveGeometry,
+					effectiveGeometrySourceGeneration,
 					frameGeneration,
 					width,
 					height });
 			std::ostringstream cropPolicy;
 			cropPolicy << automaticSourceCrop << '|'
 				<< cropDecision.applyCrop << '|'
-				<< latestActivePictureObservationSupportsCrop << '|'
+				<< effectiveLatestSupportsCrop << '|'
+				<< sceneVerificationHoldActive << '|'
+				<< latestObservationIsProvisional << '|'
 				<< cropDecision.sourceBounds.left << ','
 				<< cropDecision.sourceBounds.top << '-'
 				<< cropDecision.sourceBounds.right << ','
 				<< cropDecision.sourceBounds.bottom << '|'
-				<< static_cast<int>(nlsGeometryClassification) << '|'
-				<< nlsGeometrySourceGeneration << '|'
+				<< static_cast<int>(effectiveClassification) << '|'
+				<< effectiveGeometrySourceGeneration << '|'
 				<< cropDecision.reason;
 			if (cropPolicy.str() != lastSourceCropPolicy)
 			{
 				lastSourceCropPolicy = cropPolicy.str();
 				DebugLog::Log(
-					"Alpha source crop: enabled=%d applied=%d latest_trusted=%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s\"",
+					"Alpha source crop: enabled=%d applied=%d latest_trusted=%d scene_hold=%d latest_evidence=%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s\"",
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
-					latestActivePictureObservationSupportsCrop ? 1 : 0,
+					effectiveLatestSupportsCrop ? 1 : 0,
+					sceneVerificationHoldActive ? 1 : 0,
+					static_cast<int>(
+						latestActivePictureEvidenceClassification),
 					cropDecision.sourceBounds.left,
 					cropDecision.sourceBounds.top,
 					cropDecision.sourceBounds.right,
 					cropDecision.sourceBounds.bottom,
-					static_cast<int>(nlsGeometryClassification),
+					static_cast<int>(effectiveClassification),
 					static_cast<unsigned long long>(
-						nlsGeometrySourceGeneration),
+						effectiveGeometrySourceGeneration),
 					static_cast<unsigned long long>(frameGeneration),
 					cropDecision.reason.c_str());
 			}

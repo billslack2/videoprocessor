@@ -13,6 +13,8 @@ namespace AlphaSourceCrop
 		bool automaticCropEnabled = false;
 		bool sharedGeometryAvailable = false;
 		bool latestObservationSupportsCrop = false;
+		bool sceneVerificationHoldActive = false;
+		bool latestObservationIsProvisional = false;
 		bool subtitleDisplacementActive = false;
 		ActivePictureClassification classification =
 			ActivePictureClassification::UNAVAILABLE;
