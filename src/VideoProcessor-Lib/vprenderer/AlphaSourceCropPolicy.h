@@ -16,10 +16,13 @@ namespace AlphaSourceCrop
 		bool sceneVerificationHoldActive = false;
 		bool latestObservationIsProvisional = false;
 		bool subtitleDisplacementActive = false;
+		bool outwardExpansionAvailable = false;
 		ActivePictureClassification classification =
 			ActivePictureClassification::UNAVAILABLE;
 		ActivePictureBounds geometry;
+		ActivePictureBounds outwardExpansion;
 		uint64_t geometrySourceGeneration = 0;
+		uint64_t outwardExpansionSourceGeneration = 0;
 		uint64_t frameSourceGeneration = 0;
 		int rasterWidth = 0;
 		int rasterHeight = 0;
@@ -29,6 +32,8 @@ namespace AlphaSourceCrop
 	{
 		ActivePictureBounds sourceBounds;
 		bool applyCrop = false;
+		bool outwardExpanded = false;
+		bool nlsCompatible = true;
 		std::string reason;
 	};
 

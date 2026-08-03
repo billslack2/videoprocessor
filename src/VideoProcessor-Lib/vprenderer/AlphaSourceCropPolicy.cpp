@@ -50,12 +50,6 @@ namespace AlphaSourceCrop
 			decision.reason = "automatic crop is off; preserving full raster";
 			return decision;
 		}
-		if (input.subtitleDisplacementActive)
-		{
-			decision.reason =
-				"subtitle displacement is active; expanding to full raster";
-			return decision;
-		}
 		if (!input.sharedGeometryAvailable)
 		{
 			decision.reason = "shared trusted geometry is unavailable";
@@ -79,8 +73,16 @@ namespace AlphaSourceCrop
 		const bool boundedProvisionalHold =
 			input.sceneVerificationHoldActive &&
 			input.latestObservationIsProvisional;
+		const bool boundedOutwardExpansion =
+			input.subtitleDisplacementActive &&
+			input.outwardExpansionAvailable &&
+			input.outwardExpansionSourceGeneration != 0 &&
+			input.outwardExpansionSourceGeneration ==
+				input.frameSourceGeneration &&
+			(input.latestObservationSupportsCrop ||
+				input.latestObservationIsProvisional);
 		if (!input.latestObservationSupportsCrop &&
-			!boundedProvisionalHold)
+			!boundedProvisionalHold && !boundedOutwardExpansion)
 		{
 			decision.reason =
 				"latest observation does not reaffirm crop authority";
@@ -101,6 +103,48 @@ namespace AlphaSourceCrop
 			input.geometry, input.rasterWidth, input.rasterHeight))
 		{
 			decision.reason = "shared crop bounds are not chroma aligned";
+			return decision;
+		}
+		if (input.subtitleDisplacementActive)
+		{
+			if (!boundedOutwardExpansion)
+			{
+				decision.reason =
+					"subtitle displacement lacks current bounded outward evidence";
+				return decision;
+			}
+			if (!ValidBounds(input.outwardExpansion,
+				input.rasterWidth, input.rasterHeight) ||
+				!CropEdgesAreChromaAligned(input.outwardExpansion,
+					input.rasterWidth, input.rasterHeight))
+			{
+				decision.reason =
+					"subtitle outward expansion is invalid or not chroma aligned";
+				return decision;
+			}
+			const bool containsAuthority =
+				input.outwardExpansion.left <= input.geometry.left &&
+				input.outwardExpansion.top <= input.geometry.top &&
+				input.outwardExpansion.right >= input.geometry.right &&
+				input.outwardExpansion.bottom >= input.geometry.bottom;
+			const bool actuallyExpands =
+				input.outwardExpansion.left < input.geometry.left ||
+				input.outwardExpansion.top < input.geometry.top ||
+				input.outwardExpansion.right > input.geometry.right ||
+				input.outwardExpansion.bottom > input.geometry.bottom;
+			if (!containsAuthority || !actuallyExpands)
+			{
+				decision.reason =
+					"subtitle bounds do not expand outward from crop authority";
+				return decision;
+			}
+
+			decision.sourceBounds = input.outwardExpansion;
+			decision.applyCrop = true;
+			decision.outwardExpanded = true;
+			decision.nlsCompatible = false;
+			decision.reason =
+				"bounded outward presentation expansion accepted";
 			return decision;
 		}
 

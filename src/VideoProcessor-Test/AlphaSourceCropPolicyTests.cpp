@@ -128,11 +128,109 @@ namespace Tests
 			AssertFullRaster(Evaluate(stale));
 		}
 
-		TEST_METHOD(SubtitleDisplacementCanOnlyExpandToFullRaster)
+		TEST_METHOD(SubtitleOverlayExpandsOnlyTheRequiredOuterEdge)
 		{
 			Input input = TrustedScopeCrop();
 			input.subtitleDisplacementActive = true;
+			input.outwardExpansionAvailable = true;
+			input.outwardExpansion = input.geometry;
+			input.outwardExpansion.bottom = 2100;
+			input.outwardExpansion.aspectRatio = 3840.0 / (2100 - 274);
+			input.outwardExpansionSourceGeneration = 7;
+			const Decision decision = Evaluate(input);
+			Assert::IsTrue(decision.applyCrop);
+			Assert::IsTrue(decision.outwardExpanded);
+			Assert::IsFalse(decision.nlsCompatible);
+			Assert::AreEqual(274, decision.sourceBounds.top);
+			Assert::AreEqual(2100, decision.sourceBounds.bottom);
+		}
+
+		TEST_METHOD(ProvisionalOverlayMayOnlyExpandExistingAuthority)
+		{
+			Input input = TrustedScopeCrop();
+			input.latestObservationSupportsCrop = false;
+			input.latestObservationIsProvisional = true;
+			input.subtitleDisplacementActive = true;
+			input.outwardExpansionAvailable = true;
+			input.outwardExpansion = input.geometry;
+			input.outwardExpansion.top = 100;
+			input.outwardExpansion.aspectRatio = 3840.0 / (1884 - 100);
+			input.outwardExpansionSourceGeneration = 7;
+			const Decision decision = Evaluate(input);
+			Assert::IsTrue(decision.applyCrop);
+			Assert::IsTrue(decision.outwardExpanded);
+			Assert::AreEqual(100, decision.sourceBounds.top);
+			Assert::AreEqual(1884, decision.sourceBounds.bottom);
+		}
+
+		TEST_METHOD(OverlayExpansionFailsSafeWhenMissingStaleOrInward)
+		{
+			Input missing = TrustedScopeCrop();
+			missing.subtitleDisplacementActive = true;
+			AssertFullRaster(Evaluate(missing));
+
+			Input stale = TrustedScopeCrop();
+			stale.subtitleDisplacementActive = true;
+			stale.outwardExpansionAvailable = true;
+			stale.outwardExpansion = stale.geometry;
+			stale.outwardExpansion.bottom = 2100;
+			stale.outwardExpansionSourceGeneration = 6;
+			AssertFullRaster(Evaluate(stale));
+
+			Input inward = TrustedScopeCrop();
+			inward.subtitleDisplacementActive = true;
+			inward.outwardExpansionAvailable = true;
+			inward.outwardExpansion = inward.geometry;
+			inward.outwardExpansion.top = 300;
+			inward.outwardExpansionSourceGeneration = 7;
+			AssertFullRaster(Evaluate(inward));
+		}
+
+		TEST_METHOD(OverlayExpansionRequiresCurrentTrustedOrProvisionalEvidence)
+		{
+			Input input = TrustedScopeCrop();
+			input.latestObservationSupportsCrop = false;
+			input.subtitleDisplacementActive = true;
+			input.outwardExpansionAvailable = true;
+			input.outwardExpansion = input.geometry;
+			input.outwardExpansion.bottom = 2100;
+			input.outwardExpansionSourceGeneration = 7;
 			AssertFullRaster(Evaluate(input));
+		}
+
+		TEST_METHOD(ProfileEpochRequiresFreshOverlayEvidence)
+		{
+			Input overlaid = TrustedScopeCrop();
+			overlaid.subtitleDisplacementActive = true;
+			overlaid.outwardExpansionAvailable = true;
+			overlaid.outwardExpansion = overlaid.geometry;
+			overlaid.outwardExpansion.bottom = 2100;
+			overlaid.outwardExpansionSourceGeneration = 7;
+			Assert::IsTrue(Evaluate(overlaid).outwardExpanded);
+
+			Input profileEpoch = overlaid;
+			profileEpoch.sharedGeometryAvailable = false;
+			AssertFullRaster(Evaluate(profileEpoch));
+
+			const Decision reacquired = Evaluate(TrustedScopeCrop());
+			Assert::IsTrue(reacquired.applyCrop);
+			Assert::IsFalse(reacquired.outwardExpanded);
+			Assert::AreEqual(274, reacquired.sourceBounds.top);
+			Assert::AreEqual(1884, reacquired.sourceBounds.bottom);
+		}
+
+		TEST_METHOD(OverlayReleaseReturnsDirectlyToTrustedCrop)
+		{
+			Input input = TrustedScopeCrop();
+			input.outwardExpansionAvailable = true;
+			input.outwardExpansion = input.geometry;
+			input.outwardExpansion.bottom = 2100;
+			input.outwardExpansionSourceGeneration = 7;
+			const Decision decision = Evaluate(input);
+			Assert::IsTrue(decision.applyCrop);
+			Assert::IsFalse(decision.outwardExpanded);
+			Assert::AreEqual(274, decision.sourceBounds.top);
+			Assert::AreEqual(1884, decision.sourceBounds.bottom);
 		}
 
 		TEST_METHOD(AsymmetricBoundsCannotAcquireCropAuthority)

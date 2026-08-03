@@ -2472,6 +2472,7 @@ struct LibplaceboVideoRenderer::Impl
 	int scopeSubtitleDetectedTop = 0;
 	uint64_t scopeSubtitleLastDetectionTick = 0;
 	uint64_t scopeSubtitleTopLastDetectionTick = 0;
+	uint64_t scopeSubtitleEvidenceSourceGeneration = 0;
 	int scopeSubtitleOppositeCandidateSide = 0;
 	int scopeSubtitleOppositeCandidateHits = 0;
 	float scopeSubtitleShiftSourcePixels = 0.0f;
@@ -3253,6 +3254,27 @@ struct LibplaceboVideoRenderer::Impl
 			scopeSubtitlePaddingPixels);
 	}
 
+	void ClearScopeSubtitleEvidence()
+	{
+		scopeSubtitleAnalysisFrame = 0;
+		scopeSubtitleShiftSourcePixels = 0.0f;
+		scopeSubtitleWasActive = false;
+		scopeSubtitleWasTopActive = false;
+		scopeSubtitlePendingPictureTop = 0;
+		scopeSubtitlePendingPictureBottom = 0;
+		scopeSubtitlePictureTop = 0;
+		scopeSubtitlePictureBottom = 0;
+		scopeSubtitleBarHits = 0;
+		scopeActivePictureLastConfirmedTick = 0;
+		scopeSubtitleDetectedBottom = 0;
+		scopeSubtitleDetectedTop = 0;
+		scopeSubtitleLastDetectionTick = 0;
+		scopeSubtitleTopLastDetectionTick = 0;
+		scopeSubtitleOppositeCandidateSide = 0;
+		scopeSubtitleOppositeCandidateHits = 0;
+		scopeSubtitleEvidenceSourceGeneration = 0;
+	}
+
 	float UpdateScopeSubtitleShift(
 		const AnalysisLumaSource* source,
 		int width,
@@ -3260,25 +3282,22 @@ struct LibplaceboVideoRenderer::Impl
 		bool scopeScreenActive)
 	{
 		const uint64_t now = GetTickCount64();
+		const bool sourceIsCurrent = source && source->IsValid() &&
+			source->width == width && source->height == height &&
+			width >= 320 && height >= 180;
+		if (sourceIsCurrent &&
+			scopeSubtitleEvidenceSourceGeneration != source->generation)
+		{
+			// A held receiver/streaming overlay is presentation evidence for one
+			// source only. It must never cross a source-generation boundary.
+			ClearScopeSubtitleEvidence();
+			scopeSubtitleEvidenceSourceGeneration = source->generation;
+		}
 		if (!scopeScreenActive || !source || !source->IsValid() ||
 			source->width != width || source->height != height ||
 			width < 320 || height < 180)
 		{
-			scopeSubtitleShiftSourcePixels = 0.0f;
-			scopeSubtitleWasActive = false;
-			scopeSubtitleWasTopActive = false;
-			scopeSubtitlePendingPictureTop = 0;
-			scopeSubtitlePendingPictureBottom = 0;
-			scopeSubtitlePictureTop = 0;
-			scopeSubtitlePictureBottom = 0;
-			scopeSubtitleBarHits = 0;
-			scopeActivePictureLastConfirmedTick = 0;
-			scopeSubtitleDetectedBottom = 0;
-			scopeSubtitleDetectedTop = 0;
-			scopeSubtitleLastDetectionTick = 0;
-			scopeSubtitleTopLastDetectionTick = 0;
-			scopeSubtitleOppositeCandidateSide = 0;
-			scopeSubtitleOppositeCandidateHits = 0;
+			ClearScopeSubtitleEvidence();
 			return 0.0f;
 		}
 
@@ -4765,12 +4784,7 @@ struct LibplaceboVideoRenderer::Impl
 			// The alternate profile was prewarmed with the previous crop/subtitle
 			// parameters. Re-prime it lazily without dropping the live swapchain.
 			screenProfilesPrewarmed = false;
-			scopeSubtitleAnalysisFrame = 0;
-			scopeSubtitlePendingPictureTop = 0;
-			scopeSubtitlePendingPictureBottom = 0;
-			scopeSubtitlePictureTop = 0;
-			scopeSubtitlePictureBottom = 0;
-			scopeSubtitleBarHits = 0;
+			ClearScopeSubtitleEvidence();
 			lastSourceCropPolicy.clear();
 		}
 	}
@@ -4791,19 +4805,12 @@ struct LibplaceboVideoRenderer::Impl
 		nlsRendererGeneration = rendererGeneration;
 		nlsRequested = false;
 		nlsRule = {};
-		nlsTransition.Reset();
 		ActivePictureTransitionModel::SetRuntimeStableGeometryDeadbandPercent(
 			ActivePictureTransitionModel::
 				DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT);
-		nlsGeometryAvailable = false;
-		nlsTransitionWithdrawn = false;
-		nlsGeometry = {};
-		nlsGeometryClassification = ActivePictureClassification::UNAVAILABLE;
-		latestActivePictureObservationSupportsCrop = false;
-		nlsGeometrySourceGeneration = 0;
-		activePictureAnalysisSourceGeneration = 0;
-		ClearSceneVerificationSnapshot();
-		ClearLatestActivePictureEvidence();
+		// Shader selection changes presentation, not the captured source. Keep
+		// generation-current active-picture authority and its transition history
+		// so toggling NLS cannot flash through full-raster/pillarbox geometry.
 		nlsDecision = {};
 		nlsHookSignature.clear();
 		rejectedNlsHookSignature.clear();
@@ -5286,6 +5293,7 @@ struct LibplaceboVideoRenderer::Impl
 			activePictureAnalysisSourceGeneration = 0;
 			ClearSceneVerificationSnapshot();
 			ClearLatestActivePictureEvidence();
+			ClearScopeSubtitleEvidence();
 			nlsDecision = {};
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
@@ -5788,23 +5796,69 @@ struct LibplaceboVideoRenderer::Impl
 				useSceneVerificationGeometry
 					? sceneVerificationGeometrySourceGeneration
 					: nlsGeometrySourceGeneration;
+			ActivePictureBounds outwardExpansion = effectiveGeometry;
+			bool outwardExpansionAvailable = false;
+			if (subtitleShift != 0.0f && effectiveGeometryAvailable &&
+				scopeSubtitleEvidenceSourceGeneration == frameGeneration)
+			{
+				const int margin = std::max(8, height / 90) +
+					scopeSubtitlePaddingPixels;
+				if (subtitleShift < 0.0f && scopeSubtitleDetectedTop > 0)
+				{
+					const int expandedTop = std::max(
+						0, scopeSubtitleDetectedTop - margin) & ~1;
+					outwardExpansion.top = std::min(
+						outwardExpansion.top, expandedTop);
+				}
+				else if (subtitleShift > 0.0f &&
+					scopeSubtitleDetectedBottom > 0)
+				{
+					const int expandedBottom = std::min(height,
+						(scopeSubtitleDetectedBottom + margin + 1) & ~1);
+					outwardExpansion.bottom = std::max(
+						outwardExpansion.bottom, expandedBottom);
+				}
+				outwardExpansion.rasterWidth = width;
+				outwardExpansion.rasterHeight = height;
+				outwardExpansion.aspectRatio =
+					static_cast<double>(outwardExpansion.right -
+						outwardExpansion.left) /
+					std::max(1, outwardExpansion.bottom -
+						outwardExpansion.top);
+				outwardExpansion.symmetricBars = false;
+				outwardExpansionAvailable =
+					outwardExpansion.left < effectiveGeometry.left ||
+					outwardExpansion.top < effectiveGeometry.top ||
+					outwardExpansion.right > effectiveGeometry.right ||
+					outwardExpansion.bottom > effectiveGeometry.bottom;
+			}
+			AlphaSourceCrop::Input cropInput;
+			cropInput.automaticCropEnabled = automaticSourceCrop;
+			cropInput.sharedGeometryAvailable = effectiveGeometryAvailable;
+			cropInput.latestObservationSupportsCrop =
+				effectiveLatestSupportsCrop;
+			cropInput.sceneVerificationHoldActive =
+				sceneVerificationHoldActive;
+			cropInput.latestObservationIsProvisional =
+				latestObservationIsProvisional;
+			cropInput.subtitleDisplacementActive = subtitleShift != 0.0f;
+			cropInput.outwardExpansionAvailable = outwardExpansionAvailable;
+			cropInput.classification = effectiveClassification;
+			cropInput.geometry = effectiveGeometry;
+			cropInput.outwardExpansion = outwardExpansion;
+			cropInput.geometrySourceGeneration =
+				effectiveGeometrySourceGeneration;
+			cropInput.outwardExpansionSourceGeneration =
+				scopeSubtitleEvidenceSourceGeneration;
+			cropInput.frameSourceGeneration = frameGeneration;
+			cropInput.rasterWidth = width;
+			cropInput.rasterHeight = height;
 			const AlphaSourceCrop::Decision cropDecision =
-				AlphaSourceCrop::Evaluate({
-					automaticSourceCrop,
-					effectiveGeometryAvailable,
-					effectiveLatestSupportsCrop,
-					sceneVerificationHoldActive,
-					latestObservationIsProvisional,
-					subtitleShift != 0.0f,
-					effectiveClassification,
-					effectiveGeometry,
-					effectiveGeometrySourceGeneration,
-					frameGeneration,
-					width,
-					height });
+				AlphaSourceCrop::Evaluate(cropInput);
 			std::ostringstream cropPolicy;
 			cropPolicy << automaticSourceCrop << '|'
 				<< cropDecision.applyCrop << '|'
+				<< cropDecision.outwardExpanded << '|'
 				<< effectiveLatestSupportsCrop << '|'
 				<< sceneVerificationHoldActive << '|'
 				<< latestObservationIsProvisional << '|'
@@ -5819,9 +5873,10 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				lastSourceCropPolicy = cropPolicy.str();
 				DebugLog::Log(
-					"Alpha source crop: enabled=%d applied=%d latest_trusted=%d scene_hold=%d latest_evidence=%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s\"",
+					"Alpha source crop: enabled=%d applied=%d expanded=%d latest_trusted=%d scene_hold=%d latest_evidence=%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s\"",
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
+					cropDecision.outwardExpanded ? 1 : 0,
 					effectiveLatestSupportsCrop ? 1 : 0,
 					sceneVerificationHoldActive ? 1 : 0,
 					static_cast<int>(
@@ -5849,7 +5904,15 @@ struct LibplaceboVideoRenderer::Impl
 				if (trustedActivePicture)
 					*trustedActivePicture = true;
 			}
-			else if (nlsGeometryClassification ==
+			if (cropDecision.outwardExpanded)
+			{
+				// NLS parameters describe the trusted movie rectangle. A temporary
+				// outward presentation expansion has a different aspect and must use
+				// ordinary scaling until the overlay hold releases.
+				renderParams.hooks = nullptr;
+				renderParams.num_hooks = 0;
+			}
+			else if (!cropDecision.applyCrop && nlsGeometryClassification ==
 				ActivePictureClassification::BAR_CROP_TRUSTED)
 			{
 				// Never run a bar-derived nonlinear map against the full encoded
@@ -5878,6 +5941,7 @@ struct LibplaceboVideoRenderer::Impl
 				return;
 			}
 			const bool nlsMapped = nlsRequested &&
+				cropDecision.nlsCompatible &&
 				nlsGeometryAvailable &&
 				(nlsGeometryClassification !=
 					ActivePictureClassification::BAR_CROP_TRUSTED ||
@@ -5914,7 +5978,8 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			pl_rect2df_aspect_copy(&target.crop, &source.crop, 0.0f);
 			if (scopeActive &&
-				subtitleShift != 0.0f)
+				subtitleShift != 0.0f &&
+				!cropDecision.outwardExpanded)
 			{
 				const float targetHeight =
 					std::abs(target.crop.y1 - target.crop.y0);
