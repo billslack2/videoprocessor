@@ -55,7 +55,8 @@ showed a clean target reserve of two frames grow to five frames (about 74 ms
 oldest age) after the final windowed-to-fullscreen renderer reconstruction.
 The VP-0074 backstop correctly treated that as below its emergency threshold,
 then trimmed it only when it reached seven frames/107 ms at 20:42:54. Commit
-`a174477` adds an Alpha-only `host-transition` request for fullscreen and
+`a174477` (rebased as `8eea070` onto integration tip `f64a6b6`) adds an
+Alpha-only `host-transition` request for fullscreen and
 fullscreen-presentation-mode changes. It coalesces rapid toggles into one
 queue-only `ResetLiveQueue()` after the existing
 `/reset_after_render_restart_seconds` delay; a concurrent refresh transition
@@ -70,6 +71,15 @@ Keyboard/API toggles during an already-pending madVR retarget could be
 hardened by a separately designed coalescing request, but normal UI controls
 are disabled during that interval and no incident evidence warrants changing
 the mature path as part of VP-0078.
+
+Latest validation/deployment status (2026-08-02): the rebased x64 Release
+build succeeded and the focused policy suite passed 8/8. Deployment is ready
+but deferred: the active `C:\Videoprocessor\vp\VideoProcessor.exe` process
+(PID 50456) holds both the executable and Alpha plugin DLL; Windows denied
+this session's normal close and forced-stop requests. The prior deployed
+binaries were backed up successfully before the copy attempt, and no active
+binary, configuration, or shader was changed by that attempt. Resume
+deployment after the user exits VideoProcessor.
 
 ## User story
 
