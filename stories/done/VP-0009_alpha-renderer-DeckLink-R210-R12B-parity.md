@@ -2,7 +2,26 @@
 
 ## Status
 
-Backlog.
+Done (2026-08-02).
+
+Alpha already accepted R210 through the packed-RGB-to-P010 formatter.  The
+remaining R12B selection and SMPTE 268M decoding were merged to the
+`v1.1.015-beta` integration branch in `86981b3`
+(`feat(alpha): support DeckLink R12B fallback`).  The change is intentionally
+limited to Alpha R12B ingress; established DirectShow/madVR R12B conversion
+continues to use its existing RGB48 formatter.
+
+Validation recorded before merge:
+
+- x64 Release solution build completed successfully.
+- Full `VideoProcessor-Test` suite passed: 473/473 tests.
+- Deterministic R210/R12B/R12L packed-RGB-to-P010 tests cover colour
+  primaries/endpoints, SMPTE 268M R12B word order, packed-width rejection, and
+  4K smoke conversion.
+
+A real R12B source was not available.  On 2026-08-02 the owner explicitly
+accepted closure on the synthetic evidence above and requested that the story
+be reopened if field feedback identifies an issue.
 
 ## Context
 

@@ -40,7 +40,7 @@ they must not contain requirements that are absent from this file.
 | VP-0006 | Will Not Do | Alpha renderer optional scene-safe queue-drop correction |
 | VP-0007 | Will Not Do | Alpha renderer controlled repeat correction |
 | VP-0008 | Will Not Do | Alpha renderer presentation-pacing assessment and refinement |
-| VP-0009 | Backlog | Alpha renderer DeckLink R210/R12B format parity |
+| VP-0009 | Done | Alpha renderer DeckLink R210/R12B format parity |
 | VP-0010 | Blocked | Strict opaque-panel OCR subtitle replacement |
 | VP-0011 | Done | Alpha renderer color-managed 3D LUT support |
 | VP-0012 | Done | Alpha renderer LUT pipeline contract spike |
