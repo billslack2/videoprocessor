@@ -217,6 +217,7 @@
 	<ClInclude Include="ActivePictureAnalyzer.h" />
     <ClInclude Include="P010ActivePictureEvidence.h" />
     <ClInclude Include="MainConfigSchema.h" />
+    <ClInclude Include="vprenderer\\AlphaSourceCropPolicy.h" />
     <ClInclude Include="vprenderer\\LibplaceboOutputPolicy.h" />
     <ClInclude Include="vprenderer\\LibplaceboPluginVideoRenderer.h" />
     <ClInclude Include="vprenderer\\LibplaceboRendererPluginApi.h" />
@@ -315,6 +316,9 @@
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="vprenderer\\AlphaPresentationTelemetry.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="vprenderer\\AlphaSourceCropPolicy.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="vprenderer\\LibplaceboOutputPolicy.cpp">

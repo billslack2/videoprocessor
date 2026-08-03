@@ -126,6 +126,7 @@ profiles.display.*.lut_reference_range	vpvr-display-lut-reference-range	Built-in
 vpvr.display.lut_reference_nits	vpvr-display-lut-reference-nits	Built-in renderer	yes
 profiles.display.*.lut_reference_nits	vpvr-display-lut-reference-nits	Built-in renderer display profile	yes
 profiles.viewport.*.screen_aspect	viewport-screen-aspect	Shared viewport	no
+profiles.viewport.*.automatic_crop	viewport-automatic-crop	Shared viewport	no
 profiles.viewport.*.subtitle_fit	viewport-subtitle-fit	Shared viewport	no
 profiles.viewport.*.subtitle_hold_seconds	viewport-subtitle-hold-seconds	Shared viewport	no
 profiles.viewport.*.subtitle_padding_pixels	viewport-subtitle-padding-pixels	Shared viewport	no

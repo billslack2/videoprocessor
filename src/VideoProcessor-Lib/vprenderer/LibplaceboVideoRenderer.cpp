@@ -17,6 +17,7 @@
 #include <vprenderer/LibplaceboDisplayLut.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
+#include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/NativeStatsOverlayPlacement.h>
 #include <SceneDetector.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
@@ -782,6 +783,7 @@ namespace
 		bool diagnosticDisableShaderCache = false;
 		double scopeScreenAspect = 2.35;
 		bool defaultScopeScreen = false;
+		bool automaticSourceCrop = false;
 		bool scopeSubtitleFit = false;
 		uint64_t scopeSubtitleHoldMs = 2000;
 		int scopeSubtitlePaddingPixels = 20;
@@ -823,6 +825,7 @@ namespace
 		{
 			stream
 				<< settings.scopeScreenAspect << '|' << settings.defaultScopeScreen << '|'
+				<< settings.automaticSourceCrop << '|'
 				<< settings.scopeSubtitleFit << '|' << settings.scopeSubtitleHoldMs << '|'
 				<< settings.scopeSubtitlePaddingPixels << '|';
 		}
@@ -1412,6 +1415,13 @@ namespace
 				config.TryGetBool(rule.section, deprecatedKey, value);
 		};
 		if (!readViewportBool(
+			"automatic_crop", "scope_automatic_crop",
+			settings.automaticSourceCrop) &&
+			readViewportString(
+				"automatic_crop", "scope_automatic_crop", raw))
+			DebugLog::Log("profile '%s': invalid automatic_crop '%s'",
+				rule.name.c_str(), raw.c_str());
+		if (!readViewportBool(
 			"subtitle_fit", "scope_subtitle_fit", settings.scopeSubtitleFit) &&
 			readViewportString(
 				"subtitle_fit", "scope_subtitle_fit", raw))
@@ -1604,6 +1614,15 @@ namespace
 				"libplacebo: invalid scope_subtitle_fit value '%s'; using false",
 				rawValue.c_str());
 			settings.scopeSubtitleFit = false;
+		}
+		if (TryGetDisplayString(config, "scope_automatic_crop", rawValue) &&
+			!TryGetDisplayBool(config, "scope_automatic_crop",
+				settings.automaticSourceCrop))
+		{
+			DebugLog::Log(
+				"libplacebo: invalid scope_automatic_crop value '%s'; using false",
+				rawValue.c_str());
+			settings.automaticSourceCrop = false;
 		}
 		if (TryGetDisplayString(config, "scope_subtitle_hold_seconds", rawValue))
 		{
@@ -2405,6 +2424,11 @@ struct LibplaceboVideoRenderer::Impl
 	bool nlsGeometryAvailable = false;
 	bool nlsTransitionWithdrawn = false;
 	ActivePictureBounds nlsGeometry;
+	ActivePictureClassification nlsGeometryClassification =
+		ActivePictureClassification::UNAVAILABLE;
+	bool latestActivePictureObservationSupportsCrop = false;
+	uint64_t nlsGeometrySourceGeneration = 0;
+	uint64_t activePictureAnalysisSourceGeneration = 0;
 	MadVRNlsMappingDecision nlsDecision;
 	const struct pl_hook* nlsHook = nullptr;
 	std::string nlsHookSignature;
@@ -2433,6 +2457,7 @@ struct LibplaceboVideoRenderer::Impl
 	enum pl_color_transfer sdrInputTransfer = PL_COLOR_TRC_UNKNOWN;
 	double scopeScreenAspect = 2.35;
 	bool defaultScopeScreen = false;
+	bool automaticSourceCrop = false;
 	bool scopeSubtitleFit = false;
 	uint64_t scopeSubtitleHoldMs = 2000;
 	int scopeSubtitlePaddingPixels = 20;
@@ -2452,6 +2477,7 @@ struct LibplaceboVideoRenderer::Impl
 	float scopeSubtitleShiftSourcePixels = 0.0f;
 	bool scopeSubtitleWasActive = false;
 	bool scopeSubtitleWasTopActive = false;
+	std::string lastSourceCropPolicy;
 	std::string activeDisplayRule;
 	std::string effectiveSettingsFingerprint;
 	std::string restartSettingsFingerprint;
@@ -2462,6 +2488,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t nextPresentationTelemetryLogTick = 0;
 	bool screenProfilesPrewarmed = false;
 	uint64_t lastSubmittedScreenProfileRequest = 0;
+	uint64_t activePictureScreenProfileRequestSerial = 0;
 	std::mutex renderMutex;
 	EOTF lastRenderedEotf = EOTF::UNKNOWN;
 	ColorSpace lastRenderedColorspace = ColorSpace::UNKNOWN;
@@ -3183,7 +3210,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		DebugLog::Log(
-			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u scope_aspect=%.4f default_screen_profile=%s scope_subtitle_fit=%d subtitle_hold=%llums subtitle_padding=%dpx",
+			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u scope_aspect=%.4f default_screen_profile=%s automatic_crop=%d scope_subtitle_fit=%d subtitle_hold=%llums subtitle_padding=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3209,6 +3236,7 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<unsigned int>(settings.refreshRateCommandRules.size()),
 			scopeScreenAspect,
 			defaultScopeScreen ? "scope" : "normal",
+			automaticSourceCrop ? 1 : 0,
 			scopeSubtitleFit ? 1 : 0,
 			static_cast<unsigned long long>(scopeSubtitleHoldMs),
 			scopeSubtitlePaddingPixels);
@@ -3366,8 +3394,10 @@ struct LibplaceboVideoRenderer::Impl
 				plausibleLetterbox &&
 				(!haveStablePicture || !candidateMatchesStable);
 
-			// A temporary receiver/streaming OSD may cover one black bar. Keep a
-			// locked aspect when the unobscured opposite edge still confirms it.
+			// This detector is presentation-only evidence for subtitle placement.
+			// It never owns source-crop authority. A temporary receiver/streaming
+			// OSD may cover one black bar, so keep a locked presentation candidate
+			// when the unobscured opposite edge still confirms it.
 			// A dark picture may also make a detected bar appear deeper; that
 			// supports the existing crop but does not immediately enlarge it.
 			if (stablePictureConfirmed)
@@ -3396,7 +3426,8 @@ struct LibplaceboVideoRenderer::Impl
 				scopeSubtitlePendingPictureBottom = 0;
 			}
 
-			// Require several matching analyses before adopting a new aspect.
+			// Require several matching analyses before adopting a new subtitle
+			// placement candidate.
 			// This filters short overlays and dark-scene excursions while staying
 			// responsive to a real source aspect change.
 			if (scopeSubtitleBarHits >= 8)
@@ -3414,7 +3445,7 @@ struct LibplaceboVideoRenderer::Impl
 						scopeSubtitlePictureBottom -
 						scopeSubtitlePictureTop);
 				DebugLog::Log(
-					"libplacebo scope active picture: stable aspect %.4f bounds 0,%d-%d,%d raster %dx%d",
+					"libplacebo scope subtitle placement candidate: aspect %.4f bounds 0,%d-%d,%d raster %dx%d crop_authority=none",
 					activeAspect,
 					scopeSubtitlePictureTop,
 					width,
@@ -4631,6 +4662,7 @@ struct LibplaceboVideoRenderer::Impl
 		sdrInputTransfer = TranslateOutputGamma(settings.sdrInputTransfer);
 		scopeScreenAspect = settings.scopeScreenAspect;
 		defaultScopeScreen = settings.defaultScopeScreen;
+		automaticSourceCrop = settings.automaticSourceCrop;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
 		scopeSubtitlePaddingPixels = settings.scopeSubtitlePaddingPixels;
@@ -4687,11 +4719,14 @@ struct LibplaceboVideoRenderer::Impl
 		std::lock_guard<std::mutex> guard(renderMutex);
 		const bool renderingBehaviorChanged =
 			scopeScreenAspect != settings.scopeScreenAspect ||
+			defaultScopeScreen != settings.defaultScopeScreen ||
+			automaticSourceCrop != settings.automaticSourceCrop ||
 			scopeSubtitleFit != settings.scopeSubtitleFit ||
 			scopeSubtitleHoldMs != settings.scopeSubtitleHoldMs ||
 			scopeSubtitlePaddingPixels != settings.scopeSubtitlePaddingPixels;
 		scopeScreenAspect = settings.scopeScreenAspect;
 		defaultScopeScreen = settings.defaultScopeScreen;
+		automaticSourceCrop = settings.automaticSourceCrop;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
 		scopeSubtitlePaddingPixels = settings.scopeSubtitlePaddingPixels;
@@ -4699,6 +4734,21 @@ struct LibplaceboVideoRenderer::Impl
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
 		if (renderingBehaviorChanged)
 		{
+			// A viewport/profile epoch cannot inherit crop proof. Reacquire from
+			// current-frame shared evidence even when the source generation did
+			// not change.
+			nlsTransition.Reset();
+			nlsGeometryAvailable = false;
+			nlsTransitionWithdrawn = false;
+			nlsGeometry = {};
+			nlsGeometryClassification =
+				ActivePictureClassification::UNAVAILABLE;
+			latestActivePictureObservationSupportsCrop = false;
+			nlsGeometrySourceGeneration = 0;
+			activePictureAnalysisSourceGeneration = 0;
+			nlsDecision = {};
+			renderParams.hooks = nullptr;
+			renderParams.num_hooks = 0;
 			// The alternate profile was prewarmed with the previous crop/subtitle
 			// parameters. Re-prime it lazily without dropping the live swapchain.
 			screenProfilesPrewarmed = false;
@@ -4708,6 +4758,7 @@ struct LibplaceboVideoRenderer::Impl
 			scopeSubtitlePictureTop = 0;
 			scopeSubtitlePictureBottom = 0;
 			scopeSubtitleBarHits = 0;
+			lastSourceCropPolicy.clear();
 		}
 	}
 
@@ -4734,6 +4785,10 @@ struct LibplaceboVideoRenderer::Impl
 		nlsGeometryAvailable = false;
 		nlsTransitionWithdrawn = false;
 		nlsGeometry = {};
+		nlsGeometryClassification = ActivePictureClassification::UNAVAILABLE;
+		latestActivePictureObservationSupportsCrop = false;
+		nlsGeometrySourceGeneration = 0;
+		activePictureAnalysisSourceGeneration = 0;
 		nlsDecision = {};
 		nlsHookSignature.clear();
 		rejectedNlsHookSignature.clear();
@@ -4912,13 +4967,33 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		renderParams.hooks = nullptr;
 		renderParams.num_hooks = 0;
-		if (!nlsRequested)
+		if (activePictureAnalysisSourceGeneration != analysisSource.generation)
+		{
+			nlsTransition.Reset();
+			nlsGeometryAvailable = false;
+			nlsTransitionWithdrawn = false;
+			nlsGeometry = {};
+			nlsGeometryClassification =
+				ActivePictureClassification::UNAVAILABLE;
+			latestActivePictureObservationSupportsCrop = false;
+			nlsGeometrySourceGeneration = 0;
+			activePictureAnalysisSourceGeneration = analysisSource.generation;
+			lastSourceCropPolicy.clear();
+			DebugLog::Log(
+				"Alpha active picture authority reset: source_generation=%llu",
+				static_cast<unsigned long long>(analysisSource.generation));
+		}
+
+		const bool needsActivePictureAnalysis =
+			nlsRequested || automaticSourceCrop || scopeSubtitleFit;
+		if (!needsActivePictureAnalysis)
 			return;
 
 		if (nlsTransition.ShouldAnalyze(frameNumber, framesPerSecond))
 		{
 			const P010ActivePictureEvidence evidence =
 				ExtractActivePictureEvidence(analysisSource);
+			latestActivePictureObservationSupportsCrop = false;
 			ActivePictureObservation observation;
 			observation.frameNumber = frameNumber;
 			observation.available = evidence.available;
@@ -4936,22 +5011,46 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				nlsGeometryAvailable = false;
 				nlsTransitionWithdrawn = true;
+				nlsGeometry = {};
+				nlsGeometryClassification =
+					ActivePictureClassification::UNAVAILABLE;
+				latestActivePictureObservationSupportsCrop = false;
+				nlsGeometrySourceGeneration = 0;
 			}
 			else if (transition.publish && transition.stable)
 			{
 				nlsGeometry = transition.bounds;
 				nlsGeometryAvailable = true;
 				nlsTransitionWithdrawn = false;
+				nlsGeometryClassification = evidence.classification;
+				nlsGeometrySourceGeneration = analysisSource.generation;
 				++nlsGeometryGeneration;
 			}
 			else if (transition.stable && !nlsTransitionWithdrawn)
 			{
-				// A candidate can coexist with a previously trusted stable mapping.
-				// Keep rendering that published geometry until the candidate earns
-				// crop authority; compiling provisional stretch ratios creates both
-				// visible geometry churn and avoidable shader cold starts.
+				// Retain the published geometry as temporal context for NLS. The
+				// source-crop policy independently requires the latest observation
+				// to reaffirm authority, so ambiguity expands to full raster.
 				nlsGeometry = transition.stableBounds;
 				nlsGeometryAvailable = true;
+			}
+			if (nlsGeometryAvailable && evidence.available &&
+				evidence.classification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED &&
+				evidence.trustedBounds.symmetricBars &&
+				nlsGeometry.rasterWidth == evidence.trustedBounds.rasterWidth &&
+				nlsGeometry.rasterHeight == evidence.trustedBounds.rasterHeight &&
+				// The retained crop may include extra bar pixels, but it must not
+				// exclude any area the latest trusted observation calls picture.
+				nlsGeometry.left <= evidence.trustedBounds.left &&
+				nlsGeometry.top <= evidence.trustedBounds.top &&
+				nlsGeometry.right >= evidence.trustedBounds.right &&
+				nlsGeometry.bottom >= evidence.trustedBounds.bottom)
+			{
+				latestActivePictureObservationSupportsCrop = true;
+				nlsGeometryClassification =
+					ActivePictureClassification::BAR_CROP_TRUSTED;
+				nlsGeometrySourceGeneration = analysisSource.generation;
 			}
 			if (transition.diagnostic)
 			{
@@ -4968,12 +5067,26 @@ struct LibplaceboVideoRenderer::Impl
 					transition.reason.c_str(), evidence.reason.c_str());
 			}
 		}
+		if (!nlsRequested)
+			return;
 
 		MadVRShaderLoader::SetRuntimeNlsTargetAspect(targetAspect);
 		MadVRNlsMappingDecision decision = EvaluateMadVRNlsMapping(
 			nlsGeometryAvailable, nlsGeometry.aspectRatio,
 			targetAspect, nlsRule.aspectTolerancePercent,
 			nlsRule.activeAspectMinimum, nlsRule.narrowerOnly);
+		if (nlsGeometryAvailable &&
+			nlsGeometryClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED &&
+			(!automaticSourceCrop ||
+				!latestActivePictureObservationSupportsCrop))
+		{
+			decision = {};
+			decision.targetAspect = targetAspect;
+			decision.reason = !automaticSourceCrop
+				? "automatic crop is off; preserving full raster"
+				: "latest observation does not reaffirm crop authority; preserving full raster";
+		}
 
 		if (decision.mode == MadVRNlsMappingMode::ACTIVE &&
 			!EnsureNlsHook(decision))
@@ -5092,6 +5205,29 @@ struct LibplaceboVideoRenderer::Impl
 		if (!swapchain)
 			return false;
 		const VideoState& state = *statePtr;
+		if (screenProfileRequestSerial !=
+			activePictureScreenProfileRequestSerial)
+		{
+			activePictureScreenProfileRequestSerial =
+				screenProfileRequestSerial;
+			nlsTransition.Reset();
+			nlsGeometryAvailable = false;
+			nlsTransitionWithdrawn = true;
+			nlsGeometry = {};
+			nlsGeometryClassification =
+				ActivePictureClassification::UNAVAILABLE;
+			latestActivePictureObservationSupportsCrop = false;
+			nlsGeometrySourceGeneration = 0;
+			activePictureAnalysisSourceGeneration = 0;
+			nlsDecision = {};
+			renderParams.hooks = nullptr;
+			renderParams.num_hooks = 0;
+			lastSourceCropPolicy.clear();
+			DebugLog::Log(
+				"Alpha active picture authority reset: screen_profile_request=%llu",
+				static_cast<unsigned long long>(
+					screenProfileRequestSerial));
+		}
 
 		if (lastRenderedEotf != EOTF::UNKNOWN &&
 			(lastRenderedEotf != state.eotf || lastRenderedColorspace != state.colorspace))
@@ -5190,6 +5326,12 @@ struct LibplaceboVideoRenderer::Impl
 			nlsGeometryAvailable = false;
 			nlsTransitionWithdrawn = true;
 			nlsGeometry = {};
+			nlsGeometryClassification =
+				ActivePictureClassification::UNAVAILABLE;
+			latestActivePictureObservationSupportsCrop = false;
+			nlsGeometrySourceGeneration = 0;
+			activePictureAnalysisSourceGeneration = 0;
+			lastSourceCropPolicy.clear();
 			nlsDecision = {};
 			pl_mpv_user_shader_destroy(&nlsHook);
 			nlsHookSignature.clear();
@@ -5246,13 +5388,28 @@ struct LibplaceboVideoRenderer::Impl
 				static_cast<size_t>(width), static_cast<size_t>(height), p010RowBytes,
 				sourceSequence, videoFrame.GetTimingTimestamp(),
 				sceneDetectorGeneration, state.displayMode->FrameDuration(),
-				sceneDetectionEnabled, &analysisSource });
+				sceneDetectionEnabled || automaticSourceCrop, &analysisSource });
 		}
-		if (!cadenceRepeat && analysisSource.IsValid())
+		if (!cadenceRepeat && analysisSource.IsValid() &&
+			sceneDetectionEnabled)
 			sceneDetectionStatus.store(
 				static_cast<int>(sceneResult.status), std::memory_order_release);
 		if (!cadenceRepeat && sceneResult.safeBoundary)
 		{
+			// Scene boundaries retire destructive authority before this frame is
+			// configured for presentation. A new scene must prove its own crop.
+			nlsTransition.Reset();
+			nlsGeometryAvailable = false;
+			nlsTransitionWithdrawn = true;
+			nlsGeometry = {};
+			nlsGeometryClassification =
+				ActivePictureClassification::UNAVAILABLE;
+			latestActivePictureObservationSupportsCrop = false;
+			nlsGeometrySourceGeneration = 0;
+			nlsDecision = {};
+			renderParams.hooks = nullptr;
+			renderParams.num_hooks = 0;
+			lastSourceCropPolicy.clear();
 			sceneDetectedCount.fetch_add(1, std::memory_order_relaxed);
 			DebugLog::Log("libplacebo scene boundary: event=%llu sequence=%llu generation=%llu frames_back=%u luma=%u",
 				static_cast<unsigned long long>(sceneResult.eventId),
@@ -5287,8 +5444,10 @@ struct LibplaceboVideoRenderer::Impl
 			correctionInput.presentationDebt =
 				presentation.sourceToPresentDebt;
 			correctionInput.lastPresentId = presentation.lastPresentId;
-			correctionInput.safeSceneBoundary = sceneResult.safeBoundary;
-			correctionInput.sceneEventId = sceneResult.eventId;
+			correctionInput.safeSceneBoundary =
+				sceneDetectionEnabled && sceneResult.safeBoundary;
+			correctionInput.sceneEventId = sceneDetectionEnabled
+				? sceneResult.eventId : 0;
 			correctionInput.sourceSequence = sourceSequence;
 			correctionDecision =
 				cadenceCorrectionPolicy.Evaluate(correctionInput);
@@ -5477,7 +5636,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		auto configureScreenProfile =
-			[this, &image, height](
+			[this, &image, width, height, frameGeneration](
 				struct pl_frame& source,
 				struct pl_frame& target,
 				bool scopeActive,
@@ -5487,6 +5646,69 @@ struct LibplaceboVideoRenderer::Impl
 			source = image;
 			if (trustedActivePicture)
 				*trustedActivePicture = false;
+			const AlphaSourceCrop::Decision cropDecision =
+				AlphaSourceCrop::Evaluate({
+					automaticSourceCrop,
+					nlsGeometryAvailable,
+					latestActivePictureObservationSupportsCrop,
+					subtitleShift != 0.0f,
+					nlsGeometryClassification,
+					nlsGeometry,
+					nlsGeometrySourceGeneration,
+					frameGeneration,
+					width,
+					height });
+			std::ostringstream cropPolicy;
+			cropPolicy << automaticSourceCrop << '|'
+				<< cropDecision.applyCrop << '|'
+				<< latestActivePictureObservationSupportsCrop << '|'
+				<< cropDecision.sourceBounds.left << ','
+				<< cropDecision.sourceBounds.top << '-'
+				<< cropDecision.sourceBounds.right << ','
+				<< cropDecision.sourceBounds.bottom << '|'
+				<< static_cast<int>(nlsGeometryClassification) << '|'
+				<< nlsGeometrySourceGeneration << '|'
+				<< cropDecision.reason;
+			if (cropPolicy.str() != lastSourceCropPolicy)
+			{
+				lastSourceCropPolicy = cropPolicy.str();
+				DebugLog::Log(
+					"Alpha source crop: enabled=%d applied=%d latest_trusted=%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s\"",
+					automaticSourceCrop ? 1 : 0,
+					cropDecision.applyCrop ? 1 : 0,
+					latestActivePictureObservationSupportsCrop ? 1 : 0,
+					cropDecision.sourceBounds.left,
+					cropDecision.sourceBounds.top,
+					cropDecision.sourceBounds.right,
+					cropDecision.sourceBounds.bottom,
+					static_cast<int>(nlsGeometryClassification),
+					static_cast<unsigned long long>(
+						nlsGeometrySourceGeneration),
+					static_cast<unsigned long long>(frameGeneration),
+					cropDecision.reason.c_str());
+			}
+			if (cropDecision.applyCrop)
+			{
+				source.crop.x0 = static_cast<float>(
+					cropDecision.sourceBounds.left);
+				source.crop.y0 = static_cast<float>(
+					cropDecision.sourceBounds.top);
+				source.crop.x1 = static_cast<float>(
+					cropDecision.sourceBounds.right);
+				source.crop.y1 = static_cast<float>(
+					cropDecision.sourceBounds.bottom);
+				if (trustedActivePicture)
+					*trustedActivePicture = true;
+			}
+			else if (nlsGeometryClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED)
+			{
+				// Never run a bar-derived nonlinear map against the full encoded
+				// raster. This also preserves subtitles by failing outward while a
+				// subtitle displacement is active.
+				renderParams.hooks = nullptr;
+				renderParams.num_hooks = 0;
+			}
 			if (nlsRequested &&
 				nlsDecision.mode == MadVRNlsMappingMode::WAITING)
 			{
@@ -5508,22 +5730,17 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			const bool nlsMapped = nlsRequested &&
 				nlsGeometryAvailable &&
+				(nlsGeometryClassification !=
+					ActivePictureClassification::BAR_CROP_TRUSTED ||
+				 cropDecision.applyCrop) &&
 				(nlsDecision.mode == MadVRNlsMappingMode::ACTIVE ||
 				 nlsDecision.mode ==
 					MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
 				 nlsDecision.mode == MadVRNlsMappingMode::SAFE_FIT);
 			if (nlsMapped)
 			{
-				// This rectangle has affirmative crop authority from the shared
-				// P010 detector. Never feed encoded bars into the nonlinear map.
-				source.crop.x0 =
-					static_cast<float>(nlsGeometry.left);
-				source.crop.y0 =
-					static_cast<float>(nlsGeometry.top);
-				source.crop.x1 =
-					static_cast<float>(nlsGeometry.right);
-				source.crop.y1 =
-					static_cast<float>(nlsGeometry.bottom);
+				// Source contraction, if any, was authorized above by the shared
+				// generation-current crop policy. NLS consumes that exact decision.
 				pl_rect2df_aspect_set(
 					&target.crop,
 					static_cast<float>(nlsDecision.targetAspect),
@@ -5536,28 +5753,7 @@ struct LibplaceboVideoRenderer::Impl
 					pl_rect2df_aspect_copy(
 						&target.crop, &source.crop, 0.0f);
 				}
-				if (trustedActivePicture)
-					*trustedActivePicture = true;
 				return;
-			}
-
-			bool croppedActivePicture = false;
-			if (scopeActive &&
-				scopeSubtitlePictureTop > 0 &&
-				scopeSubtitlePictureBottom > scopeSubtitlePictureTop)
-			{
-				const float cropHeight = static_cast<float>(
-					scopeSubtitlePictureBottom - scopeSubtitlePictureTop);
-				float cropTop =
-					static_cast<float>(scopeSubtitlePictureTop) + subtitleShift;
-				cropTop = std::max(
-					0.0f,
-					std::min(cropTop, static_cast<float>(height) - cropHeight));
-				source.crop.y0 = cropTop;
-				source.crop.y1 = cropTop + cropHeight;
-				croppedActivePicture = true;
-				if (trustedActivePicture)
-					*trustedActivePicture = true;
 			}
 
 			if (scopeActive)
@@ -5568,7 +5764,7 @@ struct LibplaceboVideoRenderer::Impl
 					0.0f);
 			}
 			pl_rect2df_aspect_copy(&target.crop, &source.crop, 0.0f);
-			if (scopeActive && !croppedActivePicture &&
+			if (scopeActive &&
 				subtitleShift != 0.0f)
 			{
 				const float targetHeight =

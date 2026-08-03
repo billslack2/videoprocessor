@@ -956,10 +956,11 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 		viewport.profile.c_str(),
 		viewport.screenAspect.Canonical().c_str());
 	DebugLog::Log(
-		"DirectShow application viewport profile=%s aspect=%s numeric=%.7f subtitle_fit=%d subtitle_hold_ms=%llu subtitle_padding=%d generation=%llu renderer_restart=%d",
+		"DirectShow application viewport profile=%s aspect=%s numeric=%.7f automatic_crop=%d subtitle_fit=%d subtitle_hold_ms=%llu subtitle_padding=%d generation=%llu renderer_restart=%d",
 		viewport.profile.c_str(),
 		viewport.screenAspect.Canonical().c_str(),
 		viewport.screenAspect.value,
+		viewport.automaticCrop ? 1 : 0,
 		viewport.subtitleFit ? 1 : 0,
 		static_cast<unsigned long long>(
 			viewport.subtitleHoldMilliseconds),

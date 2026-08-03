@@ -740,6 +740,7 @@ namespace Tests
 					file << "[profiles." << group << ".base]\n";
 					if (std::string(group) == "viewport")
 						file << "scope_screen_aspect: 2.35:1\n"
+							"scope_automatic_crop: true\n"
 							"scope_subtitle_fit: true\n";
 				}
 			}
@@ -750,11 +751,13 @@ namespace Tests
 			std::string error;
 			Assert::IsTrue(RendererProfileConfig::Read(
 				config, model, error));
-			Assert::AreEqual(static_cast<size_t>(2), model.warnings.size());
+			Assert::AreEqual(static_cast<size_t>(3), model.warnings.size());
 			const auto profile = model.profiles.find("viewport.base");
 			Assert::IsTrue(profile != model.profiles.end());
 			Assert::AreEqual("2.35:1",
 				profile->second.settings.at("screen_aspect").c_str());
+			Assert::AreEqual("true",
+				profile->second.settings.at("automatic_crop").c_str());
 			Assert::AreEqual("true",
 				profile->second.settings.at("subtitle_fit").c_str());
 			DeleteFileA(path.c_str());
@@ -804,6 +807,7 @@ namespace Tests
 			cinema.group = "viewport";
 			cinema.name = "cinema";
 			cinema.settings["screen_aspect"] = "2.35:1";
+			cinema.settings["automatic_crop"] = "true";
 			cinema.settings["subtitle_fit"] = "true";
 			cinema.settings["subtitle_hold_seconds"] = "2";
 			cinema.settings["subtitle_padding_pixels"] = "30";
@@ -815,11 +819,13 @@ namespace Tests
 				model, "normal", 1, viewport, error));
 			Assert::AreEqual<uint64_t>(16, viewport.screenAspect.numerator);
 			Assert::AreEqual<uint64_t>(9, viewport.screenAspect.denominator);
+			Assert::IsFalse(viewport.automaticCrop);
 			Assert::IsFalse(viewport.subtitleFit);
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
 				model, "cinema", 2, viewport, error));
 			Assert::AreEqual<uint64_t>(47, viewport.screenAspect.numerator);
 			Assert::AreEqual<uint64_t>(20, viewport.screenAspect.denominator);
+			Assert::IsTrue(viewport.automaticCrop);
 			Assert::IsTrue(viewport.subtitleFit);
 			Assert::AreEqual<uint64_t>(
 				2000, viewport.subtitleHoldMilliseconds);
@@ -856,6 +862,7 @@ namespace Tests
 					"[profiles.viewport.scope]\n"
 					"when: $key==\"F2\"\n"
 					"screen_aspect: 2.35:1\n"
+					"automatic_crop: true\n"
 					"subtitle_fit: true\n"
 					"subtitle_hold_seconds: 2\n"
 					"subtitle_padding_pixels: 30\n";
@@ -900,7 +907,14 @@ namespace Tests
 				47, snapshot->viewport.screenAspect.numerator);
 			Assert::AreEqual<uint64_t>(
 				20, snapshot->viewport.screenAspect.denominator);
+			Assert::IsTrue(snapshot->viewport.automaticCrop);
 			Assert::IsTrue(snapshot->viewport.subtitleFit);
+			const StateVariables::Value* automaticCrop =
+				snapshot->variables.Find("$automatic_crop");
+			Assert::IsNotNull(automaticCrop);
+			Assert::IsTrue(automaticCrop->type ==
+				StateVariables::ValueType::Boolean);
+			Assert::IsTrue(automaticCrop->boolean);
 			const StateVariables::Value* screenAspect =
 				snapshot->variables.Find("$screen_aspect");
 			Assert::IsNotNull(screenAspect);
