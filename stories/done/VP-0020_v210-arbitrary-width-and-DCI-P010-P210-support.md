@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-08-02).
+Done (2026-08-02).
 
 The remaining Alpha/P010 parity work is implemented on
 `codex/vp-0020-v210-p010-tail` at `f64a6b6`
@@ -23,7 +23,7 @@ Validation completed before review:
   P010 smoke conversions.
 
 No deployment or live DCI source validation was performed.  The implementation
-is ready to merge into `v1.1.015-beta`.
+was fast-forward merged into `v1.1.015-beta` at `f64a6b6` on 2026-08-02.
 
 ## Context
 
