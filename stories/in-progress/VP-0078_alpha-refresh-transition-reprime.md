@@ -72,14 +72,27 @@ hardened by a separately designed coalescing request, but normal UI controls
 are disabled during that interval and no incident evidence warrants changing
 the mature path as part of VP-0078.
 
-Latest validation/deployment status (2026-08-02): the rebased x64 Release
-build succeeded and the focused policy suite passed 8/8. Deployment is ready
-but deferred: the active `C:\Videoprocessor\vp\VideoProcessor.exe` process
-(PID 50456) holds both the executable and Alpha plugin DLL; Windows denied
-this session's normal close and forced-stop requests. The prior deployed
-binaries were backed up successfully before the copy attempt, and no active
-binary, configuration, or shader was changed by that attempt. Resume
-deployment after the user exits VideoProcessor.
+User-directed madVR fullscreen hardening (2026-08-02): commit `35061d3`, on
+the latest confirmed integration tip `8b8d900`, now coalesces keyboard/API
+fullscreen commands received while a madVR graph-retarget is pending. It never
+interrupts or replaces that in-flight graph transaction: if the final checkbox
+intent again matches the active target, the retarget reveals normally; if it is
+opposite, the existing first-current-frame boundary keeps both hosts covered
+and schedules exactly one renderer rebuild toward the final state. This does
+not alter madVR's five-second queue re-prime, infer its private queue depth, or
+change normal UI-control disabling. The focused x64 Release policy suite now
+passes 10/10, including both enter and exit intent symmetry, and a full x64
+Release solution build completed with zero warnings/errors.
+
+Latest validation/deployment status (2026-08-02): the rebase to integration
+tip `8b8d900` and the madVR coalescing hardening were validated by a full x64
+Release build with zero warnings/errors and the focused policy suite (10/10).
+Deployment is ready but deferred: the active
+`C:\Videoprocessor\vp\VideoProcessor.exe` process (PID 50456) holds both the
+executable and Alpha plugin DLL; Windows denied this session's normal close and
+forced-stop requests. The prior deployed binaries were backed up successfully
+before the copy attempt, and no active binary, configuration, or shader was
+changed by that attempt. Resume deployment after the user exits VideoProcessor.
 
 ## User story
 
