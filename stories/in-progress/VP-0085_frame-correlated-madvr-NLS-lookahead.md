@@ -25,6 +25,21 @@ crop/fit settings unchanged. The shipped configuration currently documents it
 as an Alpha diagnostic preview, so that wording must be updated before this
 madVR implementation is enabled for live use.
 
+## Implementation progress
+
+2026-08-04: `codex/vp-0085-madvr-lookahead` adds the DirectShow/madVR
+frame-correlated path. With `active_picture_lookahead_frames = 0`, the existing
+`FrameProcessor` decision and publication path is used unchanged. With a
+positive value, the conversion worker tracks source identity through the
+existing converted queue, retires identities at delivery, and publishes only a
+current-generation scheduled NLS geometry decision. The graph owner remains
+the only component that mutates madVR shader/output state through its existing
+refresh path; this change does not call renderer COM from a worker.
+
+The full x64 Release solution build passed on 2026-08-04. Native and live
+madVR A/B validation at `0`, `2`, `4`, and `8` remains required before
+deployment or completion.
+
 ## User story
 
 As a madVR CIH user watching mixed-aspect content, I want VP to use its
