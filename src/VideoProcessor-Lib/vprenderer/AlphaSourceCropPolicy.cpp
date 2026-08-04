@@ -41,6 +41,17 @@ namespace AlphaSourceCrop
 		}
 	}
 
+	BarContentEdge SelectVerticalBarContentEdge(
+		float upperRequiredShift, float lowerRequiredShift)
+	{
+		if (upperRequiredShift > lowerRequiredShift &&
+			upperRequiredShift > 0.5f)
+			return BarContentEdge::TOP;
+		if (lowerRequiredShift > 0.5f)
+			return BarContentEdge::BOTTOM;
+		return BarContentEdge::NONE;
+	}
+
 	void AmbiguityHold::Reset()
 	{
 		deadlineTick = 0;

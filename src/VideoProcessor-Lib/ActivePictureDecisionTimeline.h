@@ -18,6 +18,10 @@ struct ActivePictureFrameIdentity
 	uint64_t rendererGeneration = 0;
 };
 
+bool SameActivePictureFrameIdentity(
+	const ActivePictureFrameIdentity& left,
+	const ActivePictureFrameIdentity& right);
+
 
 enum class ActivePictureNlsIntentMode
 {

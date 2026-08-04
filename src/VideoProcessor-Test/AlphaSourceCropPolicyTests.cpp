@@ -42,6 +42,23 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+		TEST_METHOD(BarContentDetectorNeverManufacturesAnOppositeEdge)
+		{
+			Assert::AreEqual(static_cast<int>(BarContentEdge::TOP),
+				static_cast<int>(SelectVerticalBarContentEdge(170.0f, 0.0f)));
+			Assert::AreEqual(static_cast<int>(BarContentEdge::BOTTOM),
+				static_cast<int>(SelectVerticalBarContentEdge(0.0f, 116.0f)));
+
+			// A receiver/menu item can leave weaker noise on the other bar. Only
+			// the edge that actually determines the fit may acquire a hold timer.
+			Assert::AreEqual(static_cast<int>(BarContentEdge::TOP),
+				static_cast<int>(SelectVerticalBarContentEdge(170.0f, 116.0f)));
+			Assert::AreEqual(static_cast<int>(BarContentEdge::BOTTOM),
+				static_cast<int>(SelectVerticalBarContentEdge(42.0f, 116.0f)));
+			Assert::AreEqual(static_cast<int>(BarContentEdge::NONE),
+				static_cast<int>(SelectVerticalBarContentEdge(0.5f, 0.5f)));
+		}
+
 		TEST_METHOD(AmbiguityHoldIsBoundedNonRenewableAndGenerationLocal)
 		{
 			AmbiguityHold hold;

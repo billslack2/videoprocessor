@@ -493,3 +493,29 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 
 	return decision;
 }
+
+
+bool ActivePictureTransitionModel::AdoptPublishedDecision(
+	const ActivePictureTransitionDecision& decision,
+	ActivePictureClassification classification)
+{
+	ActivePictureObservation observation;
+	observation.available = true;
+	observation.bounds = decision.bounds;
+	observation.classification = classification;
+	if (!decision.publish || !decision.stable ||
+		!HasCropAuthority(observation))
+		return false;
+	if (m_hasStable && !SameBounds(m_stable, decision.bounds))
+	{
+		m_previousTrusted = m_stable;
+		m_previousTrustedClassification = m_stableClassification;
+		m_hasPreviousTrusted = true;
+	}
+	m_stable = decision.bounds;
+	m_stableClassification = classification;
+	m_hasStable = true;
+	m_unavailableCandidates = 0;
+	ClearCandidate();
+	return true;
+}

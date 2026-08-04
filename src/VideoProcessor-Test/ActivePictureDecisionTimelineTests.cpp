@@ -62,6 +62,30 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureDecisionTimelineTests)
 	{
 	public:
+		TEST_METHOD(RuntimeIdentityMatchRequiresEveryQueueEpochField)
+		{
+			ActivePictureFrameIdentity expected = {
+				7, 11, 13, 17000, 19, 23, 29 };
+			Assert::IsTrue(SameActivePictureFrameIdentity(expected, expected));
+
+			for (int field = 0; field < 7; ++field)
+			{
+				ActivePictureFrameIdentity changed = expected;
+				switch (field)
+				{
+				case 0: ++changed.transportGeneration; break;
+				case 1: ++changed.acceptedSequence; break;
+				case 2: ++changed.sourceFrameNumber; break;
+				case 3: ++changed.captureTimestamp; break;
+				case 4: ++changed.sourceFormatGeneration; break;
+				case 5: ++changed.viewportGeneration; break;
+				default: ++changed.rendererGeneration; break;
+				}
+				Assert::IsFalse(
+					SameActivePictureFrameIdentity(expected, changed));
+			}
+		}
+
 		TEST_METHOD(ZeroLookaheadPublishesAtObservationIdentity)
 		{
 			ActivePictureDecisionTimeline timeline;

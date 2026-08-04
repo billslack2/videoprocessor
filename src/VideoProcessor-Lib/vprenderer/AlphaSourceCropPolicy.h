@@ -8,6 +8,20 @@
 
 namespace AlphaSourceCrop
 {
+	enum class BarContentEdge
+	{
+		NONE,
+		TOP,
+		BOTTOM,
+	};
+
+	// Dense bar inspection is presentation evidence, not format authority. When
+	// both encoded bars contain samples, accept only the edge needing the larger
+	// displacement. The shared active-picture detector remains responsible for
+	// genuine two-edge format changes.
+	BarContentEdge SelectVerticalBarContentEdge(
+		float upperRequiredShift, float lowerRequiredShift);
+
 	class AmbiguityHold
 	{
 	public:

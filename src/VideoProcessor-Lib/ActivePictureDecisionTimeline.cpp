@@ -17,7 +17,10 @@ bool ContainsBounds(
 		outer.right >= inner.right && outer.bottom >= inner.bottom;
 }
 
-bool SameIdentity(
+}
+
+
+bool SameActivePictureFrameIdentity(
 	const ActivePictureFrameIdentity& left,
 	const ActivePictureFrameIdentity& right)
 {
@@ -28,7 +31,6 @@ bool SameIdentity(
 		left.sourceFormatGeneration == right.sourceFormatGeneration &&
 		left.viewportGeneration == right.viewportGeneration &&
 		left.rendererGeneration == right.rendererGeneration;
-}
 }
 
 
@@ -55,7 +57,8 @@ bool ActivePictureDecisionTimeline::TrackAcceptedFrame(
 	if (m_hasAcceptedSequence)
 	{
 		if (identity.acceptedSequence <= m_lastAcceptedSequence)
-			return SameIdentity(identity, m_lastAcceptedIdentity);
+			return SameActivePictureFrameIdentity(
+				identity, m_lastAcceptedIdentity);
 		if (identity.sourceFormatGeneration !=
 			m_lastAcceptedIdentity.sourceFormatGeneration)
 		{
@@ -163,7 +166,7 @@ bool ActivePictureDecisionTimeline::HasAcceptedIdentity(
 	return std::any_of(m_accepted.begin(), m_accepted.end(),
 		[&identity](const ActivePictureFrameIdentity& accepted)
 		{
-			return SameIdentity(accepted, identity);
+			return SameActivePictureFrameIdentity(accepted, identity);
 		});
 }
 

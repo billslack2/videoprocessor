@@ -131,6 +131,12 @@ public:
 	bool ShouldAnalyze(uint64_t frameNumber, double framesPerSecond);
 	ActivePictureTransitionDecision Observe(
 		const ActivePictureObservation& observation);
+	// Synchronize the live model with a stable decision produced by the bounded
+	// queue lookahead model. Invalid or non-authoritative publications fail
+	// closed and leave this model unchanged.
+	bool AdoptPublishedDecision(
+		const ActivePictureTransitionDecision& decision,
+		ActivePictureClassification classification);
 
 	static uint64_t AnalysisIntervalFrames(double framesPerSecond);
 
