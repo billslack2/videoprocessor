@@ -1006,8 +1006,27 @@ namespace
 				}
 				const auto profile = model.profiles.find(group.name + "." + profileName);
 				if (profile == model.profiles.end()) continue;
+				std::string section = "profiles." + group.name + "." + profileName;
+				if (RendererProfileConfig::IsTargetModel(config))
+				{
+					const std::string root = group.name == "display" ?
+						"vprenderer" :
+						(group.name == "input" ? "vprenderer.input" :
+							(group.name == "scaling" ? "vprenderer.scaling" :
+								(group.name == "viewport" ? "vprenderer.viewport" :
+									group.name)));
+					if (!config.HasSection(root) &&
+						group.defaultSelection != "base")
+					{
+						const DisplayRule baselineRule = {
+							group.name + "/" + group.defaultSelection,
+							root + "." + group.defaultSelection, 0, 0 };
+						ApplyDisplayRuleOverrides(config, baselineRule, settings);
+					}
+					section = profileName == "base" ? root : root + "." + profileName;
+				}
 				const DisplayRule rule = { group.name + "/" + profileName,
-					"profiles." + group.name + "." + profileName, profile->second.priority, 0 };
+					section, profile->second.priority, 0 };
 				ApplyDisplayRuleOverrides(config, rule, settings);
 				if (!activeProfiles.empty()) activeProfiles += ", ";
 				activeProfiles += rule.name;
@@ -2303,6 +2322,8 @@ namespace
 			}
 			for (const auto& action : model.actions)
 			{
+				if (action.scope != "vprenderer" && action.scope != "*")
+					continue;
 				if (std::find(action.events.begin(), action.events.end(), event) ==
 					action.events.end()) continue;
 				int specificity = 0;
@@ -4796,7 +4817,8 @@ struct LibplaceboVideoRenderer::Impl
 		const std::vector<ConfiguredShaderRule>& selection,
 		uint64_t rendererGeneration)
 	{
-		requestedShaderSelector = ConfigFile::NormalizeName(selector);
+		requestedShaderSelector =
+			MadVRShaderLoader::CanonicalizeRuleSelector(selector);
 		nlsRendererGeneration = rendererGeneration;
 		nlsRequested = false;
 		nlsRule = {};
@@ -7262,12 +7284,12 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 	CT2A selectorUtf8(ruleName, CP_UTF8);
 	const std::string selector =
 		static_cast<const char*>(selectorUtf8);
-	if (ConfigFile::NormalizeName(selector).empty())
+	if (MadVRShaderLoader::CanonicalizeRuleSelector(selector).empty())
 		return false;
 	{
 		std::lock_guard<std::mutex> guard(m_impl->renderMutex);
-		if (ConfigFile::NormalizeName(m_requestedShaderSelector) ==
-			ConfigFile::NormalizeName(selector))
+		if (MadVRShaderLoader::RuleSelectorsEqual(
+			m_requestedShaderSelector, selector))
 		{
 			activeRule = CString(
 				CStringA(m_impl->activeShaderStatus.c_str()));

@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+class ConfigFile;
+
 
 struct ActiveMadVRShader
 {
@@ -60,6 +62,11 @@ struct ConfiguredShaderRule
 class MadVRShaderLoader
 {
 public:
+	// Legacy rule names are case-insensitive, but target selectors encode the
+	// key chord after @shader-key: and must preserve case (N selects, n resets).
+	static std::string CanonicalizeRuleSelector(const std::string& selector);
+	static bool RuleSelectorsEqual(const std::string& left,
+		const std::string& right);
 	// Loads [shaders] from VideoProcessor.cfg and applies the configured shader
 	// chains when the selected renderer exposes an external shader interface.
 	// Configuration or compilation failures are logged and never abort renderer
@@ -106,6 +113,13 @@ public:
 	// renderer. Known incompatible source formats are not opened or compiled.
 	static bool GetConfiguredRuleSelection(const std::string& ruleName,
 		ShaderRendererBackend backend,
+		std::vector<ConfiguredShaderRule>& selection,
+		std::string& reason);
+	// Resolves a rule selection from an already-loaded configuration.  Keeping
+	// this separate from the active-file wrapper makes the target shader grammar
+	// directly testable and preserves an empty target selection as explicit OFF.
+	static bool ResolveConfiguredRuleSelection(const ConfigFile& config,
+		const std::string& ruleName, ShaderRendererBackend backend,
 		std::vector<ConfiguredShaderRule>& selection,
 		std::string& reason);
 	// Enumerates configured GLSL NLS rules so Alpha can qualify their current

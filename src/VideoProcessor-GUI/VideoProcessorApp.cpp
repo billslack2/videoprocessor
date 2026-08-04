@@ -205,6 +205,8 @@ bool TryGetFirstConfigString(const ConfigFile& config, const std::initializer_li
 {
 	for (const char* key : keys)
 	{
+		if (config.TryGetString("general", key, value))
+			return true;
 		if (config.TryGetString("command_line", key, value))
 			return true;
 	}
@@ -356,15 +358,16 @@ bool TryGetFirstConfigBool(const ConfigFile& config, const std::initializer_list
 	for (const char* key : keys)
 	{
 		std::string rawValue;
-		if (!config.TryGetString("command_line", key, rawValue))
-			continue;
-
-		if (config.TryGetBool("command_line", key, value))
-			return true;
-
-		throw std::runtime_error("Invalid boolean value in " + ConfigLocation(config) +
-			" [command_line] for " + key + ": " + rawValue +
-			" (expected true/false, yes/no, on/off, or 1/0)");
+		for (const char* section : { "general", "command_line" })
+		{
+			if (!config.TryGetString(section, key, rawValue))
+				continue;
+			if (config.TryGetBool(section, key, value))
+				return true;
+			throw std::runtime_error("Invalid boolean value in " + ConfigLocation(config) +
+				" [" + section + "] for " + key + ": " + rawValue +
+				" (expected true/false, yes/no, on/off, or 1/0)");
+		}
 	}
 
 	return false;
@@ -477,7 +480,7 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 			queueSize.c_str()));
 	}
 
-	if (config.HasSection("command_line"))
+	if (config.HasSection("general") || config.HasSection("command_line"))
 	{
 	AppendConfigBoolOption(arguments, config, { "fullscreen" }, L"/fullscreen");
 	AppendConfigBoolOption(arguments, config, { "windowedfullscreenmode", "windowed_fullscreen_mode" }, L"/windowedfullscreenmode");
@@ -510,6 +513,29 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigBoolOption(arguments, config, { "noui", "no_ui" }, L"/noui");
 	AppendConfigBoolOption(arguments, config, { "startminimized", "start_minimized" }, L"/startminimized");
 	}
+
+	// DirectShow timing/conversion controls are intentionally separated from
+	// general application startup choices in the VP-0079 layout.
+	AppendConfigStringOptionInSection(arguments, config, "directshow",
+		{ "frame_offset" }, L"/frame_offset");
+	AppendConfigStringOptionInSection(arguments, config, "directshow",
+		{ "video_conversion" }, L"/video_conversion");
+	AppendConfigStringOptionInSection(arguments, config, "directshow",
+		{ "container_colorspace" }, L"/container_colorspace");
+	AppendConfigStringOptionInSection(arguments, config, "directshow",
+		{ "hdr_colorspace" }, L"/hdr_colorspace");
+	AppendConfigStringOptionInSection(arguments, config, "directshow",
+		{ "hdr_luminance" }, L"/hdr_luminance");
+	AppendConfigStringOptionInSection(arguments, config, "directshow",
+		{ "renderer_start_stop_time_method" }, L"/renderer_start_stop_time_method");
+	AppendConfigStringOptionInSection(arguments, config, "directshow",
+		{ "renderer_nominal_range" }, L"/renderer_nominal_range");
+	AppendConfigStringOptionInSection(arguments, config, "directshow",
+		{ "renderer_transfer_function" }, L"/renderer_transfer_function");
+	AppendConfigStringOptionInSection(arguments, config, "directshow",
+		{ "renderer_transfer_matrix" }, L"/renderer_transfer_matrix");
+	AppendConfigStringOptionInSection(arguments, config, "directshow",
+		{ "renderer_primaries" }, L"/renderer_primaries");
 
 	AppendConfigStringOptionInSection(arguments, config, "queue_recovery",
 		{ "reset_after_render_restart_seconds" },

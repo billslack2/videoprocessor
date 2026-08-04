@@ -14,8 +14,13 @@ namespace MainConfigSchema
 	inline bool OwnsSection(const std::string& section)
 	{
 		return section == "command_line" ||
+			section == "general" ||
+			section == "renderer_alias" ||
 			section == "queue" ||
+			section.rfind("queue.", 0) == 0 ||
 			section == "directshow" ||
+			section == "directshow.conversion" ||
+			section == "directshow.ppm" ||
 			section == "queue_recovery" ||
 			section == "lldv" ||
 			section == "logging" ||
@@ -24,7 +29,8 @@ namespace MainConfigSchema
 			section == "ppm_correction" ||
 			section == "display_refresh_rate_override" ||
 			section == "shaders" ||
-			section.rfind("shaders.", 0) == 0;
+			section.rfind("shaders.", 0) == 0 ||
+			section.rfind("shader.", 0) == 0;
 	}
 
 	inline bool Validate(const ConfigFile& config, std::string& error)
@@ -72,11 +78,19 @@ namespace MainConfigSchema
 		if (!ConfigSchema::ValidateSection(
 			config, "command_line", commandLineRules, error))
 			return false;
+		// [general] was renderer-profile state in the old layout. It becomes
+		// application startup configuration only when the VP-0079 renderer root
+		// is present, so retain validation compatibility for old profile files.
+		if (config.HasSection("vprenderer") &&
+			!ConfigSchema::ValidateSection(
+				config, "general", commandLineRules, error))
+			return false;
 
 		// Queue policy is deliberately expressed in whole frames and capped so
 		// a config typo cannot create an impractically deep live queue. The old
 		// names remain accepted for configuration-file compatibility.
 		const std::vector<ConfigSchema::KeyRule> queueRules = {
+			ConfigSchema::Any("when"),
 			ConfigSchema::Integer("queue_size", 1, INT_MAX),
 			ConfigSchema::Integer("lead_frames", 0, 16),
 			ConfigSchema::Integer("target_frames", 0, 16),
@@ -87,10 +101,54 @@ namespace MainConfigSchema
 			return false;
 
 		const std::vector<ConfigSchema::KeyRule> directShowRules = {
-			ConfigSchema::Integer("presentation_lead_frames", 0, 16)
+			ConfigSchema::Integer("presentation_lead_frames", 0, 16),
+			commandLineRules[5],
+			commandLineRules[6], commandLineRules[7], commandLineRules[8],
+			commandLineRules[9], commandLineRules[10], commandLineRules[11],
+			commandLineRules[12], commandLineRules[13], commandLineRules[14],
+			commandLineRules[15]
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "directshow", directShowRules, error))
+			return false;
+		const std::vector<ConfigSchema::KeyRule> conversionRules = {
+			ConfigSchema::Choice("conversion_method",
+				{ "auto", "simd", "optimized", "standard" }),
+			ConfigSchema::Integer("min_core_count", 1, INT_MAX),
+			ConfigSchema::Integer("max_core_count", 1, INT_MAX)
+		};
+		if (!ConfigSchema::ValidateSection(
+			config, "directshow.conversion", conversionRules, error))
+			return false;
+		const std::vector<ConfigSchema::KeyRule> ppmRules = {
+			{
+				"ppm",
+				[](const std::string& value)
+				{
+					const std::string normalized = ConfigFile::NormalizeName(value);
+					if (normalized == "auto") return true;
+					try
+					{
+						size_t consumed = 0;
+						const long long parsed = std::stoll(
+							ConfigFile::Trim(value), &consumed);
+						return consumed == ConfigFile::Trim(value).size() &&
+							parsed >= -1000000 && parsed <= 1000000;
+					}
+					catch (const std::exception&) { return false; }
+				},
+				"AUTO or an integer from -1000000 to 1000000"
+			}
+		};
+		if (!ConfigSchema::ValidateSection(
+			config, "directshow.ppm", ppmRules, error))
+			return false;
+		const std::vector<ConfigSchema::KeyRule> aliasRules = {
+			ConfigSchema::Integer("vp", 1, INT_MAX),
+			ConfigSchema::Integer("madvr", 1, INT_MAX)
+		};
+		if (!ConfigSchema::ValidateSection(
+			config, "renderer_alias", aliasRules, error))
 			return false;
 
 		std::string value;

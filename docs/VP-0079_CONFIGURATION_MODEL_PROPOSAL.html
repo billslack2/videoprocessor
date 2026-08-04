@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VP-0079 Configuration Model Proposal</title>
+  <style>
+    :root { color-scheme: dark; --bg:#111827; --panel:#182235; --text:#e8eef8; --muted:#b7c3d6; --line:#32435e; --accent:#72d6ff; --warn:#ffd78a; --code:#0b1220; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { max-width:1180px; margin:auto; padding:36px 28px 72px; }
+    h1,h2,h3 { line-height:1.2; color:white; scroll-margin-top:24px; }
+    h1 { font-size:2.25rem; margin:0 0 8px; }
+    h2 { border-top:1px solid var(--line); padding-top:28px; margin-top:42px; }
+    a { color:var(--accent); }
+    .lede { color:var(--muted); font-size:1.12rem; margin-top:0; }
+    .notice { background:#342c19; border-left:4px solid var(--warn); padding:15px 18px; margin:24px 0; color:#fff3d1; }
+    nav { display:flex; flex-wrap:wrap; gap:8px 16px; margin:25px 0 8px; }
+    nav a { text-decoration:none; }
+    code { background:var(--code); padding:.12em .32em; border-radius:4px; }
+    pre { overflow:auto; padding:18px; background:var(--code); border:1px solid var(--line); border-radius:8px; }
+    pre code { padding:0; background:transparent; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; }
+    th,td { padding:10px; border:1px solid var(--line); vertical-align:top; text-align:left; }
+    th { background:var(--panel); }
+    .flow { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:18px; white-space:pre-wrap; }
+    .small { color:var(--muted); font-size:.93rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>VP-0079 configuration model proposal</h1>
+  <p class="lede">A single-file, namespace-based configuration model for VideoProcessor.</p>
+  <div class="notice"><strong>Design for review — not current runtime syntax.</strong> The current binary still uses profile groups, the legacy shader registry, and refresh-only event actions. Do not deploy this grammar until its implementation lands.</div>
+  <nav>
+    <a href="#goal">Goal</a><a href="#ownership">Ownership</a><a href="#profiles">Profiles</a><a href="#evaluation">Evaluation</a><a href="#shader">Shaders</a><a href="#ppm">PPM</a><a href="#actions">Actions</a><a href="#example">Example</a><a href="#work">Implementation work</a>
+  </nav>
+
+  <h2 id="goal">Goal</h2>
+  <p>VideoProcessor has one <code>VideoProcessor.cfg</code>. Settings live with the component that owns them. Named variants use the same <code>when:</code> expression language as other conditional behavior. There are no duplicate profile lists, disk-persisted profile selections, renderer side files, or shader-only shortcut grammar.</p>
+  <p>Separate <code>render.cfg</code>, <code>directshow.cfg</code>, and <code>videoprocessor.cfg</code> files are intentionally out of scope. Queue policy, source state, renderer transitions, shaders, and external actions must validate and deploy atomically. Includes can be considered later, but only as one merged configuration snapshot.</p>
+
+  <h2 id="ownership">Namespaces and ownership</h2>
+  <table>
+    <thead><tr><th>Namespace</th><th>Owner and purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>[general]</code></td><td>Application-wide startup and capture choices. No selectable profile settings.</td></tr>
+      <tr><td><code>[queue]</code></td><td>VP-owned queue policy, regardless of selected renderer.</td></tr>
+      <tr><td><code>[directshow]</code></td><td>DirectShow pipeline/timestamp/input-conversion configuration.</td></tr>
+      <tr><td><code>[directshow.ppm]</code></td><td>DirectShow source-timing PPM policy.</td></tr>
+      <tr><td><code>[vprenderer]</code></td><td>Alpha / VideoProcessor Renderer output, tone-mapping, scaling, and presentation settings.</td></tr>
+      <tr><td><code>[vprenderer.viewport]</code></td><td>Alpha viewport and subtitle-fit configuration.</td></tr>
+      <tr><td><code>[shader]</code></td><td>Common external-shader selector; variants may carry HLSL and/or GLSL files.</td></tr>
+      <tr><td><code>[actions.*]</code></td><td>External commands started for committed VP events.</td></tr>
+      <tr><td><code>[renderer_alias]</code></td><td>Friendly aliases for UI renderer indices; not an ownership namespace.</td></tr>
+    </tbody>
+  </table>
+  <p><code>[renderer_alias]</code> mappings must be checked against the resolved renderer order at startup. A stale mapping is a configuration error, not a silent change in action scope.</p>
+
+  <h2 id="profiles">Root and variant profiles</h2>
+  <p>An exact registered root is the baseline. A named child overlays values in the same domain. There is no <code>profiles:</code> list or <code>default:</code> field, and source-file order is never meaningful.</p>
+  <pre><code>[queue]
+when: $key=="l"
+queue_size: 32
+target_frames: 2
+
+[queue.low_latency]
+when: $key=="L"
+queue_size: 1
+target_frames: 1</code></pre>
+  <p>Registered domain roots may contain dots. One extra identifier names a variant, so <code>[directshow.ppm.film]</code> is a <code>directshow.ppm</code> variant and <code>[vprenderer.viewport.scope]</code> is a <code>vprenderer.viewport</code> variant. This is not arbitrary INI inheritance.</p>
+
+  <h2 id="evaluation">Selection and evaluation</h2>
+  <p>Rules are evaluated on source-state changes, component rebuild/start, and registered key events — never once per frame. A changed state is not automatically a rebuild.</p>
+  <div class="flow">source/key event
+  → immutable state snapshot
+  → resolve automatic rules and manual selections
+  → compare effective values
+  → apply live changes or request a rebuild only when required</div>
+  <p>A source-only rule is automatic. A key-qualified rule is evaluated with the current source snapshot and installs a manual in-memory selection when it matches. That selection survives refresh-rate transitions and renderer rebuilds, but is discarded when VP exits. Nothing is written to disk.</p>
+  <pre><code>[shader.nls_hdr]
+when: $key=="N" &amp;&amp; ($transfer=="PQ" || $transfer=="HLG")
+type: nls
+hlsl_file: NLS.hlsl
+glsl_file: NLS.glsl</code></pre>
+  <p>Source terms in a key-qualified expression are eligibility checks at key-press time. A manual selection wins over later automatic evaluation until a different key/root selection replaces it. A root key condition clears manual selection and returns to baseline plus any applicable automatic variant.</p>
+
+  <h2 id="shader">Shader model</h2>
+  <p><code>[shader]</code> is a valid empty baseline: it permits automatic matching but forces no manual shader. A logical shader configuration contains its selection rule and explicit backend files. Duplicate same-hotkey HLSL/GLSL rules disappear.</p>
+  <pre><code>[shader]
+
+[shader.off]
+when: $key=="n"
+selection: none
+
+[shader.nls]
+when: $key=="N"
+type: nls
+stage: pre_resize
+hlsl_file: NLS.hlsl
+glsl_file: NLS.glsl
+hlsl_quality: high
+geometry: classic
+strength: 1.0
+curve: 2.0</code></pre>
+  <p><code>selection: none</code> is a manual selector state, not a global shader capability switch. It suppresses automatic shader matching for the current VP process. Missing backend files are valid; that configuration simply has no implementation for the active backend.</p>
+
+  <h2 id="ppm">DirectShow PPM</h2>
+  <p>PPM correction comes from DirectShow source timing, not output display refresh. It uses <code>$source_rate</code>, not <code>$actual_refresh</code>.</p>
+  <pre><code>[directshow.ppm]
+ppm: AUTO
+
+[directshow.ppm.film]
+when: $source_rate&lt;=30
+ppm: -17
+
+[directshow.ppm.video]
+when: $source_rate&gt;30
+ppm: -14</code></pre>
+  <p>A changed PPM value starts a new DirectShow timing epoch; VP must never alter timestamp trim mid-epoch.</p>
+
+  <h2 id="actions">Actions</h2>
+  <p>Actions are external side effects, not profiles. Every <code>[actions.&lt;name&gt;]</code> section is discovered directly. <code>run:</code> is one Windows command line; relative paths resolve beside the configuration file.</p>
+  <pre><code>[actions.audio_delay_film]
+on: refresh.applied,refresh.confirmed
+when: $actual_refresh&lt;=30
+run: C:\Videoprocessor\audio\audio_delay.bat 100
+
+[actions.signal_lost]
+scope: *
+on: signal.lost
+run: C:\Videoprocessor\automation\signal-lost.cmd</code></pre>
+  <table>
+    <thead><tr><th>Scope</th><th>Meaning</th></tr></thead>
+    <tbody><tr><td><code>vprenderer</code></td><td>Alpha / VideoProcessor Renderer events; the documented default.</td></tr><tr><td><code>directshow</code></td><td>DirectShow pipeline events.</td></tr><tr><td><code>*</code></td><td>All matching scoped events. It runs once per emission, so multiple producers may launch it more than once.</td></tr></tbody>
+  </table>
+  <p>Target event families: <code>refresh.*</code>, <code>source.changed</code>, <code>picture.changed</code>, <code>profile.changed</code>, <code>renderer.*</code>, and <code>signal.*</code>. An event is published only after a committed transition and exposes one documented immutable variable context.</p>
+
+  <h2 id="example">Complete review example</h2>
+  <p>The complete example is maintained in the Markdown source beside this page: <a href="VP-0079_CONFIGURATION_MODEL_PROPOSAL.md#complete-review-example">open the configuration example</a>. It preserves the active policies while removing redundant registries and the unsupported <code>automatic_crop</code> setting.</p>
+  <p class="small">This page is intentionally a review companion. The Markdown document is the canonical editable specification.</p>
+
+  <h2 id="work">Required implementation work</h2>
+  <ol>
+    <li>Discover registered domain roots and variants, including dotted roots.</li>
+    <li>Resolve root plus selected variant values through one central runtime.</li>
+    <li>Retain manual selections only in memory across renderer transitions.</li>
+    <li>Move DirectShow PPM and shader selection onto the common resolver.</li>
+    <li>Make renderers consume a resolved snapshot rather than independently re-read raw configuration.</li>
+    <li>Replace refresh-only Alpha actions with a scoped VP event dispatcher.</li>
+    <li>Validate all sections, expressions, aliases, scopes, command targets, and typed values before capture starts.</li>
+  </ol>
+  <p>Until that work is complete, production configuration must continue using the current supported grammar.</p>
+</main>
+</body>
+</html>

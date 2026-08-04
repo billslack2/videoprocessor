@@ -379,6 +379,61 @@ HACCEL CreateConfiguredAccelerators(
 		}
 	}
 
+	// VP-0079 gives shader groups the same expression language as the other
+	// selectable configuration. A chord is registered once; the shader resolver
+	// applies every group member that chord selects (for example all members of
+	// a type=multi cleanup group).
+	if (hasMainConfig)
+	{
+		std::map<unsigned int, WORD> targetShaderBindings;
+		WORD nextCommand = ID_COMMAND_SHADER_RULE_FIRST;
+		for (const std::string& section : mainConfig.GetSectionNames())
+		{
+			if (section.rfind("shader.", 0) != 0)
+				continue;
+			std::string when;
+			if (!mainConfig.TryGetString(section, "when", when))
+				continue;
+			DisplayRuleExpression::Expression expression;
+			std::string error;
+			if (!expression.Compile(when, error, true))
+			{
+				DEBUGLOG("Invalid [%S] when ignored for accelerators: %S",
+					section.c_str(), error.c_str());
+				continue;
+			}
+			for (const std::string& chord : expression.KeyChords())
+			{
+				if (nextCommand > ID_COMMAND_SHADER_RULE_LAST)
+					break;
+				ACCEL accelerator = {};
+				if (!TryParseShortcut(chord, accelerator))
+				{
+					DEBUGLOG("Shader key '%S' in [%S] is not a supported accelerator",
+						chord.c_str(), section.c_str());
+					continue;
+				}
+				const unsigned int binding =
+					(static_cast<unsigned int>(accelerator.fVirt) << 16) |
+					accelerator.key;
+				if (targetShaderBindings.find(binding) != targetShaderBindings.end())
+					continue;
+				if (!bindings.insert(binding).second)
+				{
+					DEBUGLOG("Shader key '%S' conflicts with an existing command", chord.c_str());
+					continue;
+				}
+				accelerator.cmd = nextCommand;
+				accelerators.push_back(accelerator);
+				CString selector;
+				selector.Format(TEXT("@shader-key:%S"), chord.c_str());
+				shaderShortcutRules[nextCommand] = selector;
+				targetShaderBindings[binding] = nextCommand;
+				++nextCommand;
+			}
+		}
+	}
+
 	// Display-rule shortcuts are renderer-specific profiles.  They select a
 	// manual override; the renderer returns to automatic selection after a
 	// material source transition or when display_rules_auto is pressed.

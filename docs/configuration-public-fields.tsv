@@ -1,142 +1,73 @@
-# Public canonical VideoProcessor configuration inventory.
+# Public VP-0079 VideoProcessor configuration inventory.
 # field-token<TAB>help-anchor<TAB>owner<TAB>AUTO-explanation-required
-command_line.capture_device	command-line-capture-device	VP startup	no
-command_line.renderer	command-line-renderer	VP startup	no
-command_line.fullscreen	command-line-fullscreen	VP startup	no
-command_line.windowedfullscreenmode	command-line-windowedfullscreenmode	VP startup	no
-queue.queue_size	queue-size	VP queue	no
-queue.lead_frames	queue-lead-frames	VP DirectShow timing	no
-queue.target_frames	queue-target-frames	VP DirectShow converted-queue reserve	no
-command_line.scene_detect	command-line-scene-detect	VP cadence	no
-command_line.disable_detection_features	command-line-disable-detection-features	VP diagnostics	no
-command_line.scene_correction_basic	command-line-scene-correction-basic	VP DirectShow cadence	no
-command_line.subtitle_reposition	command-line-subtitle-reposition	VP DirectShow subtitle processing	no
-command_line.newlldv	command-line-newlldv	VP HDR metadata	no
-command_line.noui	command-line-noui	VP startup	no
-command_line.startminimized	command-line-startminimized	VP startup	no
-command_line.frame_offset	command-line-frame-offset	VP timing	yes
-command_line.video_conversion	command-line-video-conversion	VP conversion	no
-command_line.container_colorspace	command-line-container-colorspace	VP output metadata	no
-command_line.hdr_colorspace	command-line-hdr-colorspace	VP HDR metadata	no
-command_line.hdr_luminance	command-line-hdr-luminance	VP HDR metadata	no
-command_line.renderer_start_stop_time_method	command-line-renderer-start-stop-time-method	VP DirectShow timing	no
-command_line.renderer_nominal_range	command-line-renderer-nominal-range	VP DirectShow input metadata	yes
-command_line.renderer_transfer_function	command-line-renderer-transfer-function	VP DirectShow input metadata	yes
-command_line.renderer_transfer_matrix	command-line-renderer-transfer-matrix	VP DirectShow input metadata	yes
-command_line.renderer_primaries	command-line-renderer-primaries	VP DirectShow input metadata	yes
-logging.debug_log_retention	logging-debug-log-retention	VP logging	no
-queue_recovery.reset_after_render_restart_seconds	queue-recovery-reset-delay	VP queue	no
-queue_recovery.reset_queue_too_large_percent	queue-recovery-high-water	VP queue	no
-lldv.max_cll	lldv-max-cll	VP HDR metadata	no
-lldv.max_fall	lldv-max-fall	VP HDR metadata	no
-lldv.mastering_min_luminance	lldv-mastering-min-luminance	VP HDR metadata	no
-lldv.mastering_max_luminance	lldv-mastering-max-luminance	VP HDR metadata	no
-display_refresh_rate_override.<nominal_hz>	display-refresh-rate-override-entry	VP display timing	yes
-p010_conversion.conversionmethod	p010-conversion-method	VP conversion	yes
-p010_conversion.mincorecount	p010-min-core-count	VP conversion	no
-p010_conversion.maxcorecount	p010-max-core-count	VP conversion	no
-ppm_correction.<nominal_hz>	ppm-correction-entry	VP timing	yes
-shortcuts.auto_set	shortcuts-auto-set	VP UI	no
-shortcuts.fullscreen_exit	shortcuts-fullscreen-exit	VP UI	no
-shortcuts.fullscreen_toggle	shortcuts-fullscreen-toggle	VP UI	no
-shortcuts.toggle_stats_overlay	shortcuts-toggle-stats-overlay	VP UI	no
-shortcuts.pq_set	shortcuts-pq-set	VP UI	no
-shortcuts.renderer_restart	shortcuts-renderer-restart	VP renderer session	no
-shortcuts.renderer_reset	shortcuts-renderer-reset	VP queue and renderer session	no
-shortcuts.capture_1	shortcuts-capture	VP capture	no
-shortcuts.capture_2	shortcuts-capture	VP capture	no
-shortcuts.capture_3	shortcuts-capture	VP capture	no
-shortcuts.capture_4	shortcuts-capture	VP capture	no
-shortcuts.video_conversion_off	shortcuts-video-conversion	VP conversion	no
-shortcuts.video_conversion_p010	shortcuts-video-conversion	VP conversion	no
-shortcuts.render.<index>	shortcuts-render-index	VP renderer session	no
-shaders.enabled	shaders-enabled	VP shader selection	no
-shaders.rules	shaders-rules	VP shader selection	no
-shaders.default	shaders-default	VP shader selection	no
-shaders.fallback_shader_model	shaders-fallback-shader-model	VP madVR shader loading	no
-shaders.*.label	shader-rule-label	VP shader selection	no
-shaders.*.type	shader-rule-type	VP shader selection	no
-shaders.*.signal	shader-rule-signal	VP shader selection	no
-shaders.*.frame_rates	shader-rule-frame-rates	VP shader selection	no
-shaders.*.none	shader-rule-none	VP shader selection	no
-shaders.*.shortcut	shader-rule-shortcut	VP shader selection	no
-shaders.*.file	shader-rule-file	VP shader loading	no
-shaders.*.stage	shader-rule-stage	VP madVR shader loading	no
-shaders.*.output_aspect_ratio	shader-rule-output-aspect-ratio	VP DirectShow media contract	no
-shaders.*.param_<name>	shader-rule-param	VP shader loading	no
-shaders.*.geometry	shader-nls-geometry	VP NLS	no
-shaders.*.strength	shader-nls-strength	VP NLS	no
-shaders.*.center_protection	shader-nls-center-protection	VP NLS	no
-shaders.*.curve	shader-nls-curve	VP NLS	no
-shaders.*.quality	shader-nls-quality	VP madVR NLS	no
-shaders.*.tolerance_percent	shader-nls-tolerance	VP NLS	no
-shaders.*.stable_geometry_deadband_percent	shader-stable-geometry-deadband	VP NLS	no
-general.persist_profile_selection	general-persist-profile-selection	Shared profile state	no
-general.event_action_delay_seconds	general-event-action-delay	Shared event actions	no
-profile_groups.*.profiles	profile-group-profiles	Shared profile state	no
-profile_groups.*.default	profile-group-default	Shared profile state	yes
-profile_groups.*.when	profile-group-when	Shared profile state	no
-profile_groups.*.persist_profile_selection	profile-group-persist-profile-selection	Shared profile state	no
-profiles.*.*.when	profile-when	Shared profile state	no
-profiles.*.*.priority	profile-priority	Shared profile state	no
-vpvr.display.tone_mapping	vpvr-display-tone-mapping	Built-in renderer	yes
-profiles.input.*.tone_mapping	vpvr-display-tone-mapping	Built-in renderer input profile	yes
-vpvr.display.gamut_mapping	vpvr-display-gamut-mapping	Built-in renderer	yes
-profiles.input.*.gamut_mapping	vpvr-display-gamut-mapping	Built-in renderer input profile	yes
-vpvr.display.peak_detection	vpvr-display-peak-detection	Built-in renderer	yes
-profiles.input.*.peak_detection	vpvr-display-peak-detection	Built-in renderer input profile	yes
-vpvr.display.contrast_recovery	vpvr-display-contrast-recovery	Built-in renderer	yes
-profiles.input.*.contrast_recovery	vpvr-display-contrast-recovery	Built-in renderer input profile	yes
-vpvr.display.sdr_input_transfer	vpvr-display-sdr-input-transfer	Built-in renderer	yes
-profiles.input.*.sdr_input_transfer	vpvr-display-sdr-input-transfer	Built-in renderer input profile	yes
-vpvr.display.quality	vpvr-display-quality	Built-in renderer	no
-profiles.scaling.*.quality	vpvr-display-quality	Built-in renderer scaling profile	no
-vpvr.display.upscaler	vpvr-display-upscaler	Built-in renderer	yes
-profiles.scaling.*.upscaler	vpvr-display-upscaler	Built-in renderer scaling profile	yes
-vpvr.display.downscaler	vpvr-display-downscaler	Built-in renderer	yes
-profiles.scaling.*.downscaler	vpvr-display-downscaler	Built-in renderer scaling profile	yes
-vpvr.display.sigmoid	vpvr-display-sigmoid	Built-in renderer	yes
-profiles.scaling.*.sigmoid	vpvr-display-sigmoid	Built-in renderer scaling profile	yes
-vpvr.display.deband	vpvr-display-deband	Built-in renderer	yes
-profiles.scaling.*.deband_strength	vpvr-display-deband-strength	Built-in renderer scaling profile	no
-vpvr.display.dithering	vpvr-display-dithering	Built-in renderer	yes
-profiles.scaling.*.dithering	vpvr-display-dithering	Built-in renderer scaling profile	yes
-vpvr.display.sdr_target_nits	vpvr-display-sdr-target-nits	Built-in renderer	no
-profiles.display.*.sdr_target_nits	vpvr-display-sdr-target-nits	Built-in renderer display profile	no
-vpvr.display.sdr_black_nits	vpvr-display-sdr-black-nits	Built-in renderer	yes
-profiles.display.*.sdr_black_nits	vpvr-display-sdr-black-nits	Built-in renderer display profile	yes
-vpvr.display.output_presentation	vpvr-display-output-presentation	Built-in renderer	yes
-profiles.display.*.output_presentation	vpvr-display-output-presentation	Built-in renderer display profile	yes
-vpvr.display.output_range	vpvr-display-output-range	Built-in renderer	yes
-profiles.display.*.output_range	vpvr-display-output-range	Built-in renderer display profile	yes
-vpvr.display.output_gamma	vpvr-display-output-gamma	Built-in renderer	yes
-profiles.display.*.output_gamma	vpvr-display-output-gamma	Built-in renderer display profile	yes
-vpvr.display.sdr_target_primaries	vpvr-display-sdr-target-primaries	Built-in renderer	no
-profiles.display.*.sdr_target_primaries	vpvr-display-sdr-target-primaries	Built-in renderer display profile	no
-vpvr.display.report_bt2020_to_display	vpvr-display-report-bt2020-to-display	Built-in renderer	no
-profiles.display.*.report_bt2020_to_display	vpvr-display-report-bt2020-to-display	Built-in renderer display profile	no
-vpvr.display.lut	vpvr-display-lut	Built-in renderer	no
-profiles.display.*.lut	vpvr-display-lut	Built-in renderer display profile	no
-vpvr.display.lut_reference_primaries	vpvr-display-lut-reference-primaries	Built-in renderer	yes
-profiles.display.*.lut_reference_primaries	vpvr-display-lut-reference-primaries	Built-in renderer display profile	yes
-vpvr.display.lut_reference_transfer	vpvr-display-lut-reference-transfer	Built-in renderer	yes
-profiles.display.*.lut_reference_transfer	vpvr-display-lut-reference-transfer	Built-in renderer display profile	yes
-vpvr.display.lut_reference_range	vpvr-display-lut-reference-range	Built-in renderer	yes
-profiles.display.*.lut_reference_range	vpvr-display-lut-reference-range	Built-in renderer display profile	yes
-vpvr.display.lut_reference_nits	vpvr-display-lut-reference-nits	Built-in renderer	yes
-profiles.display.*.lut_reference_nits	vpvr-display-lut-reference-nits	Built-in renderer display profile	yes
-profiles.viewport.*.screen_aspect	viewport-screen-aspect	Shared viewport	no
-profiles.viewport.*.automatic_crop	viewport-automatic-crop	Shared viewport	no
-profiles.viewport.*.subtitle_fit	viewport-subtitle-fit	Shared viewport	no
-profiles.viewport.*.subtitle_hold_seconds	viewport-subtitle-hold-seconds	Shared viewport	no
-profiles.viewport.*.subtitle_padding_pixels	viewport-subtitle-padding-pixels	Shared viewport	no
-vpvr.general.switch_refresh_rate	vpvr-general-switch-refresh-rate	Built-in renderer session	no
-vpvr.general.output_diagnostics	vpvr-general-output-diagnostics	Built-in renderer diagnostics	no
-vpvr.general.diagnostic_disable_shader_cache	vpvr-general-disable-shader-cache	Built-in renderer diagnostics	no
-event_actions.actions	event-actions-actions	Shared event actions	no
-event_actions.*.on	event-action-on	Shared event actions	no
-event_actions.*.when	event-action-when	Shared event actions	no
-event_actions.*.program	event-action-program	Shared event actions	no
-event_actions.*.arguments	event-action-arguments	Shared event actions	no
-event_actions.*.working_directory	event-action-working-directory	Shared event actions	no
-event_actions.*.delay_seconds	event-action-delay-seconds	Shared event actions	no
+general.capture_device	general-startup	VP startup	no
+general.renderer	general-startup	VP startup	no
+general.fullscreen	general-startup	VP startup	no
+general.windowed_fullscreen_mode	general-startup	VP startup	no
+general.startminimized	general-startup	VP startup	no
+general.scene_detect	general-detection	VP cadence	no
+general.disable_detection_features	general-detection	VP diagnostics	no
+general.scene_correction_basic	general-detection	VP cadence	no
+general.hdr_colorspace	general-hdr	VP HDR	no
+general.hdr_luminance	general-hdr	VP HDR	no
+renderer_alias.vp	renderer-alias	VP renderer selection	no
+renderer_alias.madvr	renderer-alias	VP renderer selection	no
+queue.when	queue-baseline	VP queue	no
+queue.queue_size	queue-capacity	VP queue	no
+queue.lead_frames	queue-lead	DirectShow timing	no
+queue.target_frames	queue-target	VP queue	no
+queue.<variant>.when	queue-variant	VP queue	no
+directshow.video_conversion	directshow-ingress	DirectShow	no
+directshow.renderer_start_stop_time_method	directshow-timing	DirectShow	no
+directshow.frame_offset	directshow-timing	DirectShow	no
+directshow.renderer_nominal_range	directshow-ingress	DirectShow	no
+directshow.conversion.conversion_method	conversion-method	DirectShow conversion	no
+directshow.conversion.min_core_count	conversion-cores	DirectShow conversion	no
+directshow.conversion.max_core_count	conversion-cores	DirectShow conversion	no
+directshow.ppm.ppm	directshow-ppm	DirectShow timing	no
+shortcuts.render.<index>	render-shortcut	VP shortcut	no
+vprenderer.when	vprenderer-baseline	Alpha renderer	no
+vprenderer.quality	vprenderer-scaling	Alpha renderer	no
+vprenderer.tone_mapping	vprenderer-tone	Alpha renderer	no
+vprenderer.gamut_mapping	vprenderer-tone	Alpha renderer	no
+vprenderer.peak_detection	vprenderer-tone	Alpha renderer	no
+vprenderer.contrast_recovery	vprenderer-tone	Alpha renderer	no
+vprenderer.upscaler	vprenderer-scaling	Alpha renderer	no
+vprenderer.downscaler	vprenderer-scaling	Alpha renderer	no
+vprenderer.deband	vprenderer-scaling	Alpha renderer	no
+vprenderer.dithering	vprenderer-scaling	Alpha renderer	no
+vprenderer.sdr_target_nits	vprenderer-output	Alpha renderer	no
+vprenderer.sdr_black_nits	vprenderer-output	Alpha renderer	no
+vprenderer.output_presentation	vprenderer-output	Alpha renderer	no
+vprenderer.output_range	vprenderer-output	Alpha renderer	no
+vprenderer.output_gamma	vprenderer-output	Alpha renderer	no
+vprenderer.sdr_input_transfer	vprenderer-tone	Alpha renderer	no
+vprenderer.sdr_target_primaries	vprenderer-output	Alpha renderer	no
+vprenderer.report_bt2020_to_display	vprenderer-output	Alpha renderer	no
+vprenderer.switch_refresh_rate	vprenderer-output	Alpha renderer	no
+vprenderer.<variant>.when	vprenderer-variant	Alpha renderer	no
+vprenderer.viewport.when	viewport-baseline	Alpha viewport	no
+vprenderer.viewport.<variant>.when	viewport-variant	Alpha viewport	no
+vprenderer.viewport.<variant>.screen_aspect	viewport-layout	Alpha viewport	no
+vprenderer.viewport.<variant>.subtitle_fit	viewport-layout	Alpha viewport	no
+vprenderer.viewport.<variant>.subtitle_hold_seconds	viewport-layout	Alpha viewport	no
+vprenderer.viewport.<variant>.subtitle_padding_pixels	viewport-layout	Alpha viewport	no
+shader.<group>.type	shader-group	Shader selection	no
+shader.<group>.when	shader-group	Shader selection	no
+shader.<group>.<member>.when	shader-member	Shader selection	no
+shader.<group>.<member>.shader_type	shader-member	Shader selection	no
+shader.<group>.<member>.label	shader-member	Shader selection	no
+shader.<group>.<member>.stage	shader-order	Shader composition	no
+shader.<group>.<member>.order	shader-order	Shader composition	no
+shader.<group>.<member>.hlsl_file	shader-backend	Shader backend	no
+shader.<group>.<member>.glsl_file	shader-backend	Shader backend	no
+shader.<group>.<member>.geometry	shader-nls	Shader NLS	no
+shader.<group>.<member>.strength	shader-nls	Shader NLS	no
+shader.<group>.<member>.center_protection	shader-nls	Shader NLS	no
+shader.<group>.<member>.curve	shader-nls	Shader NLS	no
+shader.<group>.<member>.quality	shader-nls	Shader NLS	no
+shader.<group>.<member>.tolerance_percent	shader-nls	Shader NLS	no
+actions.<name>.scope	action-scope	Event action	no
+actions.<name>.on	action-event	Event action	no
+actions.<name>.when	action-event	Event action	no
+actions.<name>.run	action-run	Event action	no

@@ -2,8 +2,10 @@
 
 #include <ConfigFile.h>
 #include <MainConfigSchema.h>
+#include <microsoft_directshow/MadVRShaderLoader.h>
 #include <RendererConfigView.h>
 #include <RendererProfileConfig.h>
+#include <UnifiedProfileRuntime.h>
 #include "CppUnitTest.h"
 
 #include <fstream>
@@ -339,6 +341,215 @@ namespace VideoProcessorTest
 			Assert::AreEqual(
 				(path.substr(0, path.size() - 4) + ".state").c_str(),
 				RendererProfileConfig::StatePath(config).c_str());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(Vp0079OwnerVariantsResolveWithoutPersistedProfileState)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0079-config.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n"
+					"renderer: VideoProcessor Renderer (Alpha)\n"
+					"fullscreen: true\n"
+					"[renderer_alias]\nvp: 1\nmadvr: 2\n"
+					"[queue]\nwhen: $key==\"l\"\nqueue_size: 32\nlead_frames: 4\ntarget_frames: 2\n"
+					"[queue.low_latency]\nwhen: $key==\"L\"\nqueue_size: 1\ntarget_frames: 1\n"
+					"[directshow]\nvideo_conversion: V210_TO_P010\nframe_offset: 90\n"
+					"[directshow.conversion]\nconversion_method: SIMD\nmin_core_count: 1\nmax_core_count: 2\n"
+					"[directshow.ppm]\nppm: -17\n"
+					"[vprenderer]\nwhen: $key==\"F4\"\nquality: high\nswitch_refresh_rate: true\n"
+					"[vprenderer.rec709]\nwhen: $key==\"F5\"\ntone_mapping: spline\n"
+					"[vprenderer.viewport]\nwhen: $key==\"F3\"\n"
+					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\nscreen_aspect: 2.35:1\nsubtitle_fit: true\n"
+					"[actions.audio_delay_film]\non: refresh.applied,refresh.confirmed\nwhen: $actual_refresh<=30\nrun: C:\\Videoprocessor\\audio\\audio_delay.bat 100\n"
+					"[shader.nls]\nwhen: $key==\"n\"\n"
+					"[shader.nls.standard]\nwhen: $key==\"Shift+n\"\nshader_type: nls\nglsl_file: NLS.glsl\n"
+					"[shader.cleanup]\ntype: multi\nwhen: $key==\"d\"\n"
+					"[shader.cleanup.deband]\nwhen: $key==\"D\"\nshader_type: custom\nhlsl_file: Deband.hlsl\nstage: pre_resize\norder: 30\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsFalse(model.persistSelection);
+			Assert::AreEqual(static_cast<size_t>(3), model.groups.size());
+
+			std::vector<RendererProfileConfig::KeySelection> selections;
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "L",
+				[](const std::string&, std::string&) { return false; },
+				selections, error));
+			Assert::AreEqual(static_cast<size_t>(1), selections.size());
+			Assert::AreEqual("queue", selections.front().group.c_str());
+			Assert::AreEqual("low_latency", selections.front().profile.c_str());
+
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F2",
+				[](const std::string&, std::string&) { return false; },
+				selections, error));
+			Assert::AreEqual("viewport", selections.front().group.c_str());
+			Assert::AreEqual("scope", selections.front().profile.c_str());
+			RendererProfileConfig::ResolvedViewport viewport;
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(model,
+				"scope", 1, viewport, error));
+			Assert::AreEqual(47ull, viewport.screenAspect.numerator);
+			Assert::AreEqual(20ull, viewport.screenAspect.denominator);
+			Assert::IsTrue(viewport.subtitleFit);
+
+			UnifiedProfileRuntime::Runtime runtime;
+			Assert::IsTrue(runtime.Initialize(config,
+				[](const std::string&, std::string&) { return false; }, error));
+			Assert::IsTrue(runtime.StatePath().empty());
+			UnifiedProfileRuntime::SelectionResult result;
+			Assert::IsTrue(runtime.SelectKey("L",
+				[](const std::string&, std::string&) { return false; },
+				result, error));
+			Assert::IsTrue(result.changed);
+			Assert::IsTrue(result.snapshot->queue.hasQueueSize);
+			Assert::AreEqual(static_cast<size_t>(1),
+				result.snapshot->queue.queueSize);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(Vp0079FirstNamedVariantIsDefaultAndInheritedBaseline)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0079-first-variant.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+					"[vprenderer.rec709]\nwhen: $key==\"F4\"\nquality: high\n"
+					"sdr_target_primaries: REC709\nreport_bt2020_to_display: false\n"
+					"switch_refresh_rate: true\n"
+					"[vprenderer.bt2020]\nwhen: $key==\"F5\"\n"
+					"sdr_target_primaries: BT2020\nreport_bt2020_to_display: true\n"
+					"[directshow.ppm]\nppm: AUTO\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			const std::vector<std::string> sections = config.GetSectionNames();
+			Assert::AreEqual(static_cast<size_t>(4), sections.size());
+			Assert::AreEqual("general", sections[0].c_str());
+			Assert::AreEqual("vprenderer.rec709", sections[1].c_str());
+			Assert::AreEqual("vprenderer.bt2020", sections[2].c_str());
+			Assert::AreEqual("directshow.ppm", sections[3].c_str());
+
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), model.groups.size());
+			const RendererProfileConfig::Group& display = model.groups.front();
+			Assert::AreEqual("display", display.name.c_str());
+			Assert::AreEqual("rec709", display.defaultSelection.c_str());
+			Assert::AreEqual("rec709", display.profiles[0].c_str());
+			Assert::AreEqual("bt2020", display.profiles[1].c_str());
+
+			const auto bt2020 = model.profiles.find("display.bt2020");
+			Assert::IsTrue(bt2020 != model.profiles.end());
+			Assert::AreEqual("high", bt2020->second.settings.at("quality").c_str());
+			Assert::AreEqual("bt2020",
+				ConfigFile::NormalizeName(
+					bt2020->second.settings.at("sdr_target_primaries")).c_str());
+			Assert::AreEqual("true",
+				ConfigFile::NormalizeName(
+					bt2020->second.settings.at("report_bt2020_to_display")).c_str());
+
+			std::vector<RendererProfileConfig::AutomaticSelection> automatic;
+			Assert::IsTrue(RendererProfileConfig::SelectAutomatic(model,
+				[](const std::string&, std::string&) { return false; },
+				automatic, error));
+			Assert::AreEqual(static_cast<size_t>(1), automatic.size());
+			Assert::AreEqual("rec709", automatic.front().profile.c_str());
+			Assert::IsTrue(automatic.front().configuredDefault);
+
+			std::vector<RendererProfileConfig::KeySelection> selections;
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F4",
+				[](const std::string&, std::string&) { return false; },
+				selections, error));
+			Assert::AreEqual("rec709", selections.front().profile.c_str());
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F5",
+				[](const std::string&, std::string&) { return false; },
+				selections, error));
+			Assert::AreEqual("bt2020", selections.front().profile.c_str());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(CheckedInVp0079ConfigurationPassesStartupSchemas)
+		{
+			std::string path = __FILE__;
+			std::replace(path.begin(), path.end(), '/', '\\');
+			const std::string marker =
+				"\\src\\VideoProcessor-Test\\ConfigFileTests.cpp";
+			const size_t markerPosition = path.rfind(marker);
+			Assert::IsTrue(markerPosition != std::string::npos);
+			path.resize(markerPosition);
+			path += "\\VideoProcessor.cfg";
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			Assert::IsTrue(config.GetWarnings().empty());
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsFalse(model.persistSelection);
+			Assert::AreEqual(static_cast<size_t>(2), model.actions.size());
+		}
+
+		TEST_METHOD(Vp0079EmptyShaderRootResolvesAsExplicitOff)
+		{
+			Assert::IsFalse(MadVRShaderLoader::RuleSelectorsEqual(
+				"@shader-key:N", "@shader-key:n"));
+			Assert::IsFalse(MadVRShaderLoader::RuleSelectorsEqual(
+				"@shader-key:Shift+n", "@shader-key:n"));
+			Assert::IsTrue(MadVRShaderLoader::RuleSelectorsEqual(
+				"Legacy_NLS", "legacy_nls"));
+			Assert::AreEqual("@shader-key:P",
+				MadVRShaderLoader::CanonicalizeRuleSelector(
+					" @shader-key:P ").c_str());
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0079-empty-shader-root.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[shader.nls]\n"
+					"when: $key==\"n\"\n"
+					"[shader.nls.standard]\n"
+					"when: $key==\"Shift+n\"\n"
+					"shader_type: nls\n"
+					"glsl_file: NLS.glsl\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::vector<ConfiguredShaderRule> selection;
+			std::string error;
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				config, "@shader-key:n", ShaderRendererBackend::LIBPLACEBO,
+				selection, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), selection.size());
+			Assert::IsTrue(selection.front().none,
+				L"The empty shader root must explicitly turn Alpha NLS off");
 			DeleteFileA(path.c_str());
 		}
 
@@ -752,8 +963,8 @@ namespace VideoProcessorTest
 				inventory.push_back(
 					{ columns[0], columns[1], columns[3] == "yes" });
 			}
-			Assert::IsTrue(inventory.size() > 100,
-				L"The public inventory unexpectedly lost most fields");
+			Assert::IsTrue(inventory.size() > 50,
+				L"The public inventory unexpectedly lost the core VP-0079 fields");
 
 			std::set<std::string> documentedTokens;
 			size_t attribute = 0;
@@ -876,17 +1087,12 @@ namespace VideoProcessorTest
 				++exampleCount;
 				example = contentEnd + strlen("</pre>");
 			}
-			Assert::IsTrue(exampleCount >= 8,
-				L"Too few configuration examples are marked for validation");
+			Assert::IsTrue(exampleCount >= 1,
+				L"No configuration example is marked for validation");
 
 			for (const char* excluded :
-				{ "[display]", "[libplacebo]", "windowed_fullscreen_mode",
-				  "new_lldv", "no_ui", "start_minimized",
-				  "scene_correction_mode", "scope_screen_aspect",
-				  "scope_subtitle_fit", "scope_subtitle_hold_seconds",
-				  "scope_subtitle_padding_pixels", "display_rules",
-				  "refresh_rate_commands", "deprecated", "migration",
-				  "backward-compatibility" })
+				{ "[profile_groups", "[profiles.", "[event_actions]",
+				  "[shaders]" })
 				Assert::IsTrue(html.find(excluded) == std::string::npos,
 					std::wstring(excluded, excluded + strlen(excluded)).c_str());
 		}
