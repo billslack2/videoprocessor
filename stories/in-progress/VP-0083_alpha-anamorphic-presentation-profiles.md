@@ -14,7 +14,7 @@ from `v1.1.015-beta` on `codex/vp-0083-anamorphic`.
   rectangle; source crop authority, active-picture/NLS analysis, and color/HDR
   processing remain unchanged.
 - The checked-in and deployed profiles select Scope plus `16:15` scale on
-  `Ctrl+A`; the existing `F2` selects the ordinary Scope profile without the
+  `Shift+A`; the existing `F2` selects the ordinary Scope profile without the
   scale.
 - A clean x64 Release build succeeded and all 570 native tests passed.
 - Deployment replaced the matched `VideoProcessor.exe` and
