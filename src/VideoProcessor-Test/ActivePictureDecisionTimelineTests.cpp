@@ -41,6 +41,22 @@ namespace VideoProcessorTest
 			return { generation, sequence, frame, frame * 1000 };
 		}
 
+		ActivePictureFrameDecision ScheduledDecision(
+			const ActivePictureFrameIdentity& currentIdentity,
+			const ActivePictureBounds& bounds)
+		{
+			ActivePictureFrameDecision decision;
+			decision.effectiveIdentity = currentIdentity;
+			decision.observationIdentity = currentIdentity;
+			++decision.observationIdentity.acceptedSequence;
+			++decision.observationIdentity.sourceFrameNumber;
+			decision.observationIdentity.captureTimestamp += 1000;
+			decision.transition.publish = true;
+			decision.transition.stable = true;
+			decision.transition.bounds = bounds;
+			return decision;
+		}
+
 		void EstablishScope(ActivePictureDecisionTimeline& timeline,
 			uint64_t generation, uint64_t& sequence)
 		{
@@ -62,6 +78,79 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureDecisionTimelineTests)
 	{
 	public:
+		TEST_METHOD(ScheduledDecisionAcceptsOnlyCurrentTrustedContext)
+		{
+			const ActivePictureFrameIdentity current = {
+				17, 23, 29, 31000, 37, 41, 17 };
+			const ActivePictureFrameDecision decision =
+				ScheduledDecision(current, FullBounds());
+			Assert::AreEqual(
+				static_cast<int>(
+					ActivePictureScheduledDecisionValidation::ACCEPTED),
+				static_cast<int>(ValidateActivePictureScheduledDecision(
+					decision, current, FullBounds(),
+					ActivePictureClassification::FULL_RASTER_TRUSTED)));
+		}
+
+		TEST_METHOD(ScheduledDecisionRejectsStaleFormatViewportAndRenderer)
+		{
+			const ActivePictureFrameIdentity current = {
+				17, 23, 29, 31000, 37, 41, 17 };
+			for (int field = 0; field < 4; ++field)
+			{
+				ActivePictureFrameDecision decision =
+					ScheduledDecision(current, FullBounds());
+				auto changeContext = [field](
+					ActivePictureFrameIdentity& identity)
+				{
+					switch (field)
+					{
+					case 0: ++identity.transportGeneration; break;
+					case 1: ++identity.sourceFormatGeneration; break;
+					case 2: ++identity.viewportGeneration; break;
+					default: ++identity.rendererGeneration; break;
+					}
+				};
+
+				changeContext(decision.observationIdentity);
+				Assert::AreEqual(
+					static_cast<int>(ActivePictureScheduledDecisionValidation::
+						OBSERVATION_CONTEXT_MISMATCH),
+					static_cast<int>(ValidateActivePictureScheduledDecision(
+						decision, current, FullBounds(),
+						ActivePictureClassification::FULL_RASTER_TRUSTED)));
+
+				decision = ScheduledDecision(current, FullBounds());
+				changeContext(decision.effectiveIdentity);
+				Assert::AreEqual(
+					static_cast<int>(ActivePictureScheduledDecisionValidation::
+						EFFECTIVE_IDENTITY_MISMATCH),
+					static_cast<int>(ValidateActivePictureScheduledDecision(
+						decision, current, FullBounds(),
+						ActivePictureClassification::FULL_RASTER_TRUSTED)));
+			}
+		}
+
+		TEST_METHOD(ScheduledDecisionRejectsMismatchedOrProvisionalBounds)
+		{
+			const ActivePictureFrameIdentity current = {
+				17, 23, 29, 31000, 37, 41, 17 };
+			const ActivePictureFrameDecision decision =
+				ScheduledDecision(current, FullBounds());
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureScheduledDecisionValidation::
+					TRUSTED_BOUNDS_MISMATCH),
+				static_cast<int>(ValidateActivePictureScheduledDecision(
+					decision, current, ScopeBounds(),
+					ActivePictureClassification::BAR_CROP_TRUSTED)));
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureScheduledDecisionValidation::
+					NON_AUTHORITATIVE),
+				static_cast<int>(ValidateActivePictureScheduledDecision(
+					decision, current, FullBounds(),
+					ActivePictureClassification::PROVISIONAL)));
+		}
+
 		TEST_METHOD(RuntimeIdentityMatchRequiresEveryQueueEpochField)
 		{
 			ActivePictureFrameIdentity expected = {

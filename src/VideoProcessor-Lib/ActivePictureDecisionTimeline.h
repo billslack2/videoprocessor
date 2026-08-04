@@ -23,6 +23,16 @@ bool SameActivePictureFrameIdentity(
 	const ActivePictureFrameIdentity& right);
 
 
+enum class ActivePictureScheduledDecisionValidation
+{
+	ACCEPTED,
+	NON_AUTHORITATIVE,
+	EFFECTIVE_IDENTITY_MISMATCH,
+	OBSERVATION_CONTEXT_MISMATCH,
+	TRUSTED_BOUNDS_MISMATCH
+};
+
+
 enum class ActivePictureNlsIntentMode
 {
 	WAITING,
@@ -55,6 +65,15 @@ struct ActivePictureFrameDecision
 	uint8_t effectiveLookahead = 0;
 	bool late = false;
 };
+
+ActivePictureScheduledDecisionValidation
+ValidateActivePictureScheduledDecision(
+	const ActivePictureFrameDecision& decision,
+	const ActivePictureFrameIdentity& currentIdentity,
+	const ActivePictureBounds& currentTrustedBounds,
+	ActivePictureClassification currentClassification);
+const char* ActivePictureScheduledDecisionValidationName(
+	ActivePictureScheduledDecisionValidation validation);
 
 
 // Bounded source-order association layer for active-picture decisions. It

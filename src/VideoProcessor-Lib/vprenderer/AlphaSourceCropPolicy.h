@@ -22,6 +22,18 @@ namespace AlphaSourceCrop
 	BarContentEdge SelectVerticalBarContentEdge(
 		float upperRequiredShift, float lowerRequiredShift);
 
+	// Full raster is always outward-safe. Keep that presentation authority
+	// between sparse analysis samples, but withdraw it as soon as trusted bar
+	// evidence appears. Ambiguity cannot turn it into crop authority.
+	bool UpdateFullRasterPresentationAuthority(bool previouslyAuthoritative,
+		ActivePictureClassification currentClassification,
+		bool currentBoundsAreFullRaster);
+
+	bool RequiresPerFramePresentationInspection(
+		bool trustedCropIsCurrentGeneration,
+		bool sceneSnapshotIsCurrentGeneration,
+		bool pixelSafeRetentionActive);
+
 	class AmbiguityHold
 	{
 	public:
@@ -42,12 +54,18 @@ namespace AlphaSourceCrop
 	struct Input
 	{
 		bool automaticCropEnabled = false;
+		bool fullRasterPresentationAuthoritative = false;
 		bool sharedGeometryAvailable = false;
 		bool latestObservationSupportsCrop = false;
 		bool sceneVerificationHoldActive = false;
 		bool ambiguityHoldActive = false;
 		bool latestObservationIsProvisional = false;
 		bool latestObservationIsUnavailable = false;
+		// Positive, frame-local proof that retaining the prior presentation
+		// excludes no currently visible pixels. This preserves presentation only;
+		// it never grants or renews crop authority.
+		bool frameLocalPresentationRetentionEvaluated = false;
+		bool frameLocalPresentationRetentionSafe = false;
 		bool outwardPresentationActive = false;
 		bool outwardExpansionAvailable = false;
 		ActivePictureClassification classification =
@@ -83,6 +101,8 @@ namespace AlphaSourceCrop
 		bool latestEvidenceIsCurrent = false;
 		bool latestObservationSupportsCrop = false;
 		bool existingCropCanBeSnapshotted = false;
+		bool frameLocalPresentationRetentionEvaluated = false;
+		bool frameLocalPresentationRetentionSafe = false;
 		ActivePictureClassification geometryClassification =
 			ActivePictureClassification::UNAVAILABLE;
 		ActivePictureClassification latestClassification =

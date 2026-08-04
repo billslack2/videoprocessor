@@ -17,6 +17,26 @@ bool ContainsBounds(
 		outer.right >= inner.right && outer.bottom >= inner.bottom;
 }
 
+bool SameDecisionContext(
+	const ActivePictureFrameIdentity& identity,
+	const ActivePictureFrameIdentity& current)
+{
+	return identity.transportGeneration == current.transportGeneration &&
+		identity.sourceFormatGeneration == current.sourceFormatGeneration &&
+		identity.viewportGeneration == current.viewportGeneration &&
+		identity.rendererGeneration == current.rendererGeneration;
+}
+
+bool SameTrustedBounds(
+	const ActivePictureBounds& left,
+	const ActivePictureBounds& right)
+{
+	return left.left == right.left && left.top == right.top &&
+		left.right == right.right && left.bottom == right.bottom &&
+		left.rasterWidth == right.rasterWidth &&
+		left.rasterHeight == right.rasterHeight;
+}
+
 }
 
 
@@ -31,6 +51,66 @@ bool SameActivePictureFrameIdentity(
 		left.sourceFormatGeneration == right.sourceFormatGeneration &&
 		left.viewportGeneration == right.viewportGeneration &&
 		left.rendererGeneration == right.rendererGeneration;
+}
+
+
+ActivePictureScheduledDecisionValidation
+ValidateActivePictureScheduledDecision(
+	const ActivePictureFrameDecision& decision,
+	const ActivePictureFrameIdentity& currentIdentity,
+	const ActivePictureBounds& currentTrustedBounds,
+	ActivePictureClassification currentClassification)
+{
+	const bool trustedClassification = currentClassification ==
+		ActivePictureClassification::FULL_RASTER_TRUSTED ||
+		currentClassification ==
+			ActivePictureClassification::BAR_CROP_TRUSTED;
+	if (!decision.transition.publish || !decision.transition.stable ||
+		!trustedClassification)
+	{
+		return ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE;
+	}
+	if (!SameActivePictureFrameIdentity(
+		decision.effectiveIdentity, currentIdentity))
+	{
+		return ActivePictureScheduledDecisionValidation::
+			EFFECTIVE_IDENTITY_MISMATCH;
+	}
+	if (!SameDecisionContext(decision.observationIdentity, currentIdentity))
+	{
+		return ActivePictureScheduledDecisionValidation::
+			OBSERVATION_CONTEXT_MISMATCH;
+	}
+	if (!SameTrustedBounds(
+		decision.transition.bounds, currentTrustedBounds))
+	{
+		return ActivePictureScheduledDecisionValidation::
+			TRUSTED_BOUNDS_MISMATCH;
+	}
+	return ActivePictureScheduledDecisionValidation::ACCEPTED;
+}
+
+
+const char* ActivePictureScheduledDecisionValidationName(
+	ActivePictureScheduledDecisionValidation validation)
+{
+	switch (validation)
+	{
+	case ActivePictureScheduledDecisionValidation::ACCEPTED:
+		return "accepted";
+	case ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE:
+		return "non_authoritative";
+	case ActivePictureScheduledDecisionValidation::
+		EFFECTIVE_IDENTITY_MISMATCH:
+		return "effective_identity_mismatch";
+	case ActivePictureScheduledDecisionValidation::
+		OBSERVATION_CONTEXT_MISMATCH:
+		return "observation_context_mismatch";
+	case ActivePictureScheduledDecisionValidation::TRUSTED_BOUNDS_MISMATCH:
+		return "trusted_bounds_mismatch";
+	default:
+		return "unknown";
+	}
 }
 
 

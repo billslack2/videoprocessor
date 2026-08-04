@@ -52,6 +52,28 @@ namespace AlphaSourceCrop
 		return BarContentEdge::NONE;
 	}
 
+	bool UpdateFullRasterPresentationAuthority(bool previouslyAuthoritative,
+		ActivePictureClassification currentClassification,
+		bool currentBoundsAreFullRaster)
+	{
+		if (currentClassification ==
+			ActivePictureClassification::FULL_RASTER_TRUSTED)
+			return currentBoundsAreFullRaster;
+		if (currentClassification ==
+			ActivePictureClassification::BAR_CROP_TRUSTED)
+			return false;
+		return previouslyAuthoritative;
+	}
+
+	bool RequiresPerFramePresentationInspection(
+		bool trustedCropIsCurrentGeneration,
+		bool sceneSnapshotIsCurrentGeneration,
+		bool pixelSafeRetentionActive)
+	{
+		return trustedCropIsCurrentGeneration ||
+			sceneSnapshotIsCurrentGeneration || pixelSafeRetentionActive;
+	}
+
 	void AmbiguityHold::Reset()
 	{
 		deadlineTick = 0;
@@ -110,6 +132,12 @@ namespace AlphaSourceCrop
 			decision.reason = "automatic crop is off; preserving full raster";
 			return decision;
 		}
+		if (input.fullRasterPresentationAuthoritative)
+		{
+			decision.reason =
+				"generation-current full-raster presentation authority accepted";
+			return decision;
+		}
 		if (!input.sharedGeometryAvailable)
 		{
 			decision.reason = "shared trusted geometry is unavailable";
@@ -134,7 +162,10 @@ namespace AlphaSourceCrop
 			input.latestObservationIsProvisional ||
 			input.latestObservationIsUnavailable;
 		const bool boundedAmbiguousRetention = ambiguousObservation &&
+			!input.frameLocalPresentationRetentionEvaluated &&
 			(input.sceneVerificationHoldActive || input.ambiguityHoldActive);
+		const bool pixelSafeAmbiguousRetention = ambiguousObservation &&
+			input.frameLocalPresentationRetentionSafe;
 		const bool boundedOutwardExpansion =
 			input.outwardPresentationActive &&
 			input.outwardExpansionAvailable &&
@@ -142,7 +173,8 @@ namespace AlphaSourceCrop
 			input.outwardExpansionSourceGeneration ==
 				input.frameSourceGeneration;
 		if (!input.latestObservationSupportsCrop &&
-			!boundedAmbiguousRetention && !boundedOutwardExpansion)
+			!boundedAmbiguousRetention && !pixelSafeAmbiguousRetention &&
+			!boundedOutwardExpansion)
 		{
 			decision.reason =
 				"latest observation does not reaffirm crop authority";
@@ -211,9 +243,11 @@ namespace AlphaSourceCrop
 		decision.applyCrop = true;
 		decision.reason = input.latestObservationSupportsCrop
 			? "generation-current shared crop authority accepted"
-			: (input.sceneVerificationHoldActive
+			: (pixelSafeAmbiguousRetention
+				? "frame-local pixel-safe presentation retained prior crop"
+				: (input.sceneVerificationHoldActive
 				? "bounded scene verification retained current trusted crop"
-				: "bounded ambiguity hold retained current trusted crop");
+				: "bounded ambiguity hold retained current trusted crop"));
 		return decision;
 	}
 
@@ -255,6 +289,21 @@ namespace AlphaSourceCrop
 				ActivePictureClassification::BAR_CROP_TRUSTED &&
 			input.existingCropCanBeSnapshotted)
 		{
+			if (input.frameLocalPresentationRetentionEvaluated)
+			{
+				if (input.frameLocalPresentationRetentionSafe)
+				{
+					decision.action = ScenePresentationAction::KEEP_CURRENT;
+					decision.reason =
+						"cut frame positively revalidates retained presentation pixels";
+				}
+				else
+				{
+					decision.reason =
+						"cut frame has visible pixels outside retained presentation";
+				}
+				return decision;
+			}
 			decision.action = ScenePresentationAction::HOLD_SNAPSHOT;
 			decision.reason = input.latestClassification ==
 				ActivePictureClassification::PROVISIONAL
