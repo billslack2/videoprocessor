@@ -32,6 +32,8 @@ contracts`).
 
 Follow-up checkpoint: `e086634` (`docs: clarify manual shortcut syntax`).
 
+Follow-up checkpoint: `b8571b1` (`docs: add validated section examples`).
+
 Completed work:
 
 - Rewrote the canonical `CONFIGURATION.html` as a structured public
@@ -58,6 +60,15 @@ Completed work:
   `$key=="<shortcut>"` contract now defines it as one key with optional
   modifiers in VP's accelerator spelling, without embedding a user-specific
   key binding.
+- Added section-local, parser-validated examples: one startup example; two
+  queue examples; three Alpha examples (SDR Rec.709, HDR-to-SDR Rec.709, and
+  calibrated SDR BT.2020); three viewport examples; two bundled-NLS examples;
+  and a harmless refresh-action wiring test. The reference test now identifies
+  the numbered fragment and parser reason if a future marked example is
+  invalid.
+- Documented NLS as a bundled implementation whose rule selection and
+  parameters remain ordinary public configuration. Bundling or enabling its
+  shipped rule does not turn NLS into implicit fixed renderer behavior.
 - Added task-oriented SDR, HDR-to-SDR/projector, BT.2020, scaling, NLS, and
   generic profile/viewport/queue guidance, plus troubleshooting guidance.
 - Refined the public field inventory to map every field to its individual
