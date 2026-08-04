@@ -36,6 +36,8 @@ Follow-up checkpoint: `b8571b1` (`docs: add validated section examples`).
 
 Follow-up checkpoint: `ebd5562` (`docs: correct viewport-driven NLS examples`).
 
+Follow-up checkpoint: `3874a6b` (`docs: separate NLS shader guidance`).
+
 Completed work:
 
 - Rewrote the canonical `CONFIGURATION.html` as a structured public
@@ -77,6 +79,13 @@ Completed work:
   passthrough, and the 1.5x safe-fit limit. It also corrects `order`
   as an optional same-stage ordering control for all selected shader entries,
   not a requirement or a sample-specific cleanup-stack description.
+- Split the general shader-group contract from a dedicated NLS shader
+  section. The NLS section now explains selection, stable active-picture
+  measurement, viewport-target resolution, bounded mapping, safe fit, and
+  the runtime inputs supplied to the bundled shader. Scope examples use named
+  viewport sections (`scope` and `scope_anamorphic`), while the NLS scope
+  example reuses the named `scope` viewport. Added one backend-specific,
+  parser-validated custom-shader example to the general shader section.
 - Added task-oriented SDR, HDR-to-SDR/projector, BT.2020, scaling, NLS, and
   generic profile/viewport/queue guidance, plus troubleshooting guidance.
 - Refined the public field inventory to map every field to its individual
