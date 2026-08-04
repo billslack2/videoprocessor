@@ -2,7 +2,8 @@
 
 ## Status
 
-Review. PR [#34](https://github.com/billslack2/videoprocessor/pull/34)
+Done as of 2026-08-04. PR
+[#34](https://github.com/billslack2/videoprocessor/pull/34)
 merged source head `22b5293` into the `v1.1.015-beta` integration branch as
 merge commit `4fa0b6a` on 2026-08-03. The final clean x64 Release build
 completed with `VERSION_DIRTY=false`, and all 532 native tests passed.
@@ -10,7 +11,7 @@ completed with `VERSION_DIRTY=false`, and all 532 native tests passed.
 The reviewed follow-up work was merged through
 [videoprocessor PR #38](https://github.com/billslack2/videoprocessor/pull/38)
 as merge commit `40066ad` on 2026-08-04. The x64 Release build passed with
-all 536 native tests; the story remains in Review for live acceptance.
+all 536 native tests.
 
 Bill's final geometry review, Urvish's final image-analysis review, and the
 renderer/concurrency review all approved the merge. Review found and corrected
@@ -21,9 +22,18 @@ directions, unchanged-frame reacquisition, and final snapshot consistency.
 Local live Alpha and madVR validation used real Apple TV movie/series content,
 dark scenes, UI overlays, renderer switches, and paused-frame NLS toggles. The
 deployed `5facc44` build proved unchanged geometry reacquisition after an
-output-readiness worker restart. The final `22b5293` concurrency/snapshot
-review correction is merged but has not yet replaced that local deployment;
-an optional merged-build live smoke remains the only follow-up validation.
+output-readiness worker restart.
+
+The remaining merged-build smoke was subsequently completed with the matched
+x64 Release deployment at `ad5f777`, whose ancestry contains both VP-0080
+merge commits. That build passed all 573 native tests. Continued Alpha viewing
+exercised dark movie content, scene transitions, visible UI outside the movie
+bounds, NLS changes, and renderer handoffs; the user found crop/detection
+transitions materially improved and the final behavior solid. This satisfies
+the last recorded acceptance condition.
+
+Buffered Alpha look-ahead is closed separately by VP-0082. Frame-correlated
+madVR NLS look-ahead remains VP-0085 and does not keep VP-0080 open.
 
 ## VP-0079 configuration migration follow-up (2026-08-03)
 
