@@ -34,6 +34,8 @@ Follow-up checkpoint: `e086634` (`docs: clarify manual shortcut syntax`).
 
 Follow-up checkpoint: `b8571b1` (`docs: add validated section examples`).
 
+Follow-up checkpoint: `ebd5562` (`docs: correct viewport-driven NLS examples`).
+
 Completed work:
 
 - Rewrote the canonical `CONFIGURATION.html` as a structured public
@@ -69,6 +71,12 @@ Completed work:
 - Documented NLS as a bundled implementation whose rule selection and
   parameters remain ordinary public configuration. Bundling or enabling its
   shipped rule does not turn NLS into implicit fixed renderer behavior.
+- Corrected the NLS examples to avoid a false fixed-resolution selector.
+  Runtime active-picture geometry is compared with the selected viewport
+  target, so the reference now explains 4:3-to-16:9 mapping, scope
+  passthrough, and the 1.5x safe-fit limit. It also corrects `order`
+  as an optional same-stage ordering control for all selected shader entries,
+  not a requirement or a sample-specific cleanup-stack description.
 - Added task-oriented SDR, HDR-to-SDR/projector, BT.2020, scaling, NLS, and
   generic profile/viewport/queue guidance, plus troubleshooting guidance.
 - Refined the public field inventory to map every field to its individual
