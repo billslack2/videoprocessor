@@ -13,6 +13,9 @@ class RendererConfigView
 public:
 	static constexpr const char* DISPLAY_SECTION = "vpvr.display";
 	static constexpr const char* GENERAL_SECTION = "vpvr.general";
+	// VP-0079 keeps all built-in renderer settings below one owner namespace.
+	// Child sections are selectable variants; the root is the renderer baseline.
+	static constexpr const char* VPRENDERER_SECTION = "vprenderer";
 	static constexpr const char* LEGACY_DISPLAY_SECTION = "display";
 	static constexpr const char* HISTORICAL_DISPLAY_SECTION = "libplacebo";
 
@@ -22,6 +25,8 @@ public:
 	{
 		return section == DISPLAY_SECTION ||
 			section == GENERAL_SECTION ||
+			section == VPRENDERER_SECTION ||
+			section.rfind("vprenderer.", 0) == 0 ||
 			section == LEGACY_DISPLAY_SECTION ||
 			section == HISTORICAL_DISPLAY_SECTION;
 	}
@@ -37,6 +42,20 @@ public:
 		std::vector<std::string>& warnings) const
 	{
 		error.clear();
+		const bool hasTargetRenderer =
+			m_config.HasSection(VPRENDERER_SECTION);
+		if (hasTargetRenderer)
+		{
+			if (m_config.HasSection(DISPLAY_SECTION) ||
+				m_config.HasSection(GENERAL_SECTION) ||
+				m_config.HasSection(LEGACY_DISPLAY_SECTION) ||
+				m_config.HasSection(HISTORICAL_DISPLAY_SECTION))
+			{
+				error = "[vprenderer] cannot be combined with legacy built-in renderer sections";
+				return false;
+			}
+			return true;
+		}
 		const bool hasCanonicalDisplay =
 			m_config.HasSection(DISPLAY_SECTION);
 		if (hasCanonicalDisplay &&
@@ -101,6 +120,8 @@ public:
 	bool TryGetDisplayString(const std::string& key,
 		std::string& value) const
 	{
+		if (m_config.HasSection(VPRENDERER_SECTION))
+			return m_config.TryGetString(VPRENDERER_SECTION, key, value);
 		if (m_config.HasSection(DISPLAY_SECTION))
 			return m_config.TryGetString(DISPLAY_SECTION, key, value);
 		if (m_config.TryGetString(LEGACY_DISPLAY_SECTION, key, value))
@@ -167,6 +188,8 @@ private:
 
 	const char* DisplaySectionForKey(const std::string& key) const
 	{
+		if (m_config.HasSection(VPRENDERER_SECTION))
+			return HasKey(VPRENDERER_SECTION, key) ? VPRENDERER_SECTION : nullptr;
 		if (m_config.HasSection(DISPLAY_SECTION))
 			return HasKey(DISPLAY_SECTION, key) ?
 				DISPLAY_SECTION : nullptr;
@@ -179,6 +202,8 @@ private:
 
 	const char* PolicySectionForKey(const std::string& key) const
 	{
+		if (HasKey(VPRENDERER_SECTION, key))
+			return VPRENDERER_SECTION;
 		if (HasKey(GENERAL_SECTION, key))
 			return GENERAL_SECTION;
 		if (HasKey("general", key))

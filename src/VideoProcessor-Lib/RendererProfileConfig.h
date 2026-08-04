@@ -37,6 +37,7 @@ namespace RendererProfileConfig
 			section.rfind("profile_groups.", 0) == 0 ||
 			section.rfind("profiles.", 0) == 0 ||
 			section.rfind("event_actions.", 0) == 0 ||
+			section.rfind("actions.", 0) == 0 ||
 			section.rfind("display_rules.", 0) == 0;
 	}
 
@@ -89,6 +90,7 @@ namespace RendererProfileConfig
 			std::string program;
 			std::string arguments;
 			std::string workingDirectory;
+			std::string scope = "vprenderer";
 			int delaySeconds = 5;
 		};
 		std::vector<EventAction> actions;
@@ -149,6 +151,8 @@ namespace RendererProfileConfig
 
 	inline bool IsUnified(const ConfigFile& config)
 	{
+		if (config.HasSection(RendererConfigView::VPRENDERER_SECTION))
+			return true;
 		if (config.HasSection("profile_groups") || config.HasSection("general") ||
 			config.HasSection("event_actions") || config.HasSection("profiles.input") ||
 			config.HasSection("profiles.scaling") || config.HasSection("profiles.display") ||
@@ -392,11 +396,319 @@ namespace RendererProfileConfig
 						"' is not a valid built-in renderer base setting";
 					return false;
 				}
+		if (const auto* renderer = config.GetSectionValues(
+			RendererConfigView::VPRENDERER_SECTION))
+			for (const auto& value : *renderer)
+				if (value.first != "when" &&
+					!RendererConfigView::IsPolicyKey(value.first) &&
+					!ValidateCanonicalDisplaySetting(value.first, value.second))
+				{
+					error = "[vprenderer] key '" + value.first +
+						"' is not a valid built-in renderer base setting";
+					return false;
+				}
+		return true;
+	}
+
+	// VP-0079 deliberately keeps the old resolver as the runtime engine, but
+	// reads the concise owner/variant grammar into that engine's neutral model.
+	// There is no profile registry and selections never survive a process exit.
+	inline bool IsTargetModel(const ConfigFile& config)
+	{
+		return config.HasSection(RendererConfigView::VPRENDERER_SECTION);
+	}
+
+	inline bool ValidateTargetRendererSetting(const std::string& key,
+		const std::string& value)
+	{
+		// automatic_crop was an unfinished experimental policy. VP-0079 removes
+		// it instead of giving it another public spelling.
+		if (key == "automatic_crop") return false;
+		return ValidateBaseSetting(key, value);
+	}
+
+	inline bool ParseTargetActionRun(const std::string& value,
+		std::string& program, std::string& arguments)
+	{
+		const std::string run = ConfigFile::Trim(value);
+		if (run.empty()) return false;
+		const size_t separator = run.find_first_of(" \t");
+		program = separator == std::string::npos ? run :
+			run.substr(0, separator);
+		arguments = separator == std::string::npos ? std::string() :
+			ConfigFile::Trim(run.substr(separator + 1));
+		const std::string normalized = ConfigFile::NormalizeName(program);
+		return normalized.size() >= 4 &&
+			(normalized.substr(normalized.size() - 4) == ".exe" ||
+			 normalized.substr(normalized.size() - 4) == ".bat" ||
+			 normalized.substr(normalized.size() - 4) == ".cmd");
+	}
+
+	inline bool ReadTarget(const ConfigFile& config, Model& model,
+		std::string& error)
+	{
+		model = {};
+		model.persistSelection = false;
+		error.clear();
+		if (!config.GetWarnings().empty())
+		{
+			error = "VP-0079 configuration is not strict: " +
+				config.GetWarnings().front();
+			return false;
+		}
+
+		RendererConfigView rendererConfig(config);
+		if (!rendererConfig.Validate(error, model.warnings) ||
+			!ValidateCanonicalRendererSections(config, error))
+			return false;
+
+		for (const char* legacy : { "command_line", "profile_groups", "profiles",
+			"event_actions", "shaders", "display_rules", "refresh_rate_commands",
+			"vpvr.display", "vpvr.general", "display", "libplacebo" })
+			if (config.HasSection(legacy))
+			{
+				error = "VP-0079 configuration cannot include legacy [" +
+					std::string(legacy) + "]";
+				return false;
+			}
+
+		struct GroupSpec
+		{
+			const char* name;
+			const char* section;
+			bool inheritRoot;
+		};
+		const GroupSpec specs[] = {
+			{ "input", "vprenderer.input", true },
+			{ "scaling", "vprenderer.scaling", true },
+			{ "display", "vprenderer", false },
+			{ "viewport", "vprenderer.viewport", true },
+			{ "queue", "queue", true }
+		};
+		const std::set<std::string> expressionVariables = {
+			"eotf", "transfer", "colorspace", "primaries", "format",
+			"hdr_metadata", "interlaced", "scan", "source_rate", "cadence",
+			"width", "height", "resolution", "key"
+		};
+
+		for (const GroupSpec& spec : specs)
+		{
+			const std::string section(spec.section);
+			const auto* rootValues = config.GetSectionValues(section);
+			const std::string prefix = section + ".";
+			std::vector<std::string> variants;
+			for (const std::string& candidate : config.GetSectionNames())
+			{
+				if (candidate.rfind(prefix, 0) != 0)
+					continue;
+				const std::string name = candidate.substr(prefix.size());
+				// Nested roots owned by the built-in renderer are independent
+				// groups, rather than display variants.
+				if (std::string(spec.name) == "display" &&
+					(name == "input" || name == "scaling" || name == "viewport" ||
+					 name.rfind("input.", 0) == 0 ||
+					 name.rfind("scaling.", 0) == 0 ||
+					 name.rfind("viewport.", 0) == 0))
+					continue;
+				if (name.find('.') != std::string::npos || !IsIdentifier(name))
+				{
+					error = "[" + candidate + "] must be exactly one named variant";
+					return false;
+				}
+				variants.push_back(name);
+			}
+			if (!rootValues && variants.empty())
+				continue;
+
+			Group group;
+			group.name = spec.name;
+			group.defaultSelection = "base";
+			group.persistSelection = false;
+			group.profiles.push_back("base");
+			Profile base;
+			base.group = group.name;
+			base.name = "base";
+			if (rootValues)
+				for (const auto& entry : *rootValues)
+				{
+					if (entry.first == "when")
+					{
+						group.resetWhen = entry.second;
+						continue;
+					}
+					if (std::string(spec.name) == "queue")
+					{
+						std::string expected;
+						if (!ValidateProfileSetting("queue", entry.first,
+							entry.second, expected) && entry.first != "lead_frames")
+						{
+							error = "[" + section + "] key '" + entry.first +
+								"' is not a valid queue setting";
+							return false;
+						}
+					}
+					else if (std::string(spec.name) == "viewport")
+					{
+						std::string expected;
+						if (!ValidateProfileSetting("viewport", entry.first,
+							entry.second, expected))
+						{
+							error = "[" + section + "] key '" + entry.first +
+								"' is not a valid viewport setting";
+							return false;
+						}
+					}
+					else if (std::string(spec.name) == "display")
+					{
+						if (!RendererConfigView::IsPolicyKey(entry.first) &&
+							!ValidateTargetRendererSetting(entry.first, entry.second))
+						{
+							error = "[" + section + "] key '" + entry.first +
+								"' is not a valid built-in renderer setting";
+							return false;
+						}
+					}
+					else
+					{
+						std::string expected;
+						if (!ValidateProfileSetting(spec.name, entry.first,
+							entry.second, expected))
+						{
+							error = "[" + section + "] key '" + entry.first +
+								"' is not a valid " + spec.name + " setting";
+							return false;
+						}
+					}
+					if (spec.inheritRoot)
+						base.settings.emplace(entry.first, entry.second);
+				}
+			if (!group.resetWhen.empty() &&
+				(!group.resetExpression.Compile(group.resetWhen, error, true) ||
+				 !ValidateExpressionVariables(group.resetExpression, { "key" },
+					"[" + section + "] when=", error)))
+				return false;
+			model.profiles.emplace(group.name + ".base", base);
+
+			for (const std::string& variant : variants)
+			{
+				const std::string variantSection = prefix + variant;
+				const auto* values = config.GetSectionValues(variantSection);
+				Profile profile = base;
+				profile.name = variant;
+				profile.when.clear();
+				profile.whenExpression = {};
+				profile.priority = 0;
+				for (const auto& entry : *values)
+				{
+					if (entry.first == "when") { profile.when = entry.second; continue; }
+					if (entry.first == "priority" &&
+						ParseInteger(entry.second, -100000, 100000, profile.priority))
+						continue;
+					std::string expected;
+					const bool valid = std::string(spec.name) == "display" ?
+						(!RendererConfigView::IsPolicyKey(entry.first) &&
+							ValidateTargetRendererSetting(entry.first, entry.second)) :
+						ValidateProfileSetting(spec.name, entry.first,
+							entry.second, expected);
+					if (!valid)
+					{
+						error = "[" + variantSection + "] key '" + entry.first +
+							"' is not valid for " + spec.name;
+						return false;
+					}
+					profile.settings[entry.first] = entry.second;
+				}
+				if (!profile.when.empty() &&
+					(!profile.whenExpression.Compile(profile.when, error, true) ||
+					 !ValidateExpressionVariables(profile.whenExpression,
+						expressionVariables, "[" + variantSection + "] when=", error)))
+					return false;
+				group.profiles.push_back(variant);
+				model.profiles.emplace(group.name + "." + variant,
+					std::move(profile));
+			}
+			model.groups.push_back(std::move(group));
+		}
+
+		for (const std::string& section : config.GetSectionNames())
+		{
+			if (section.rfind("actions.", 0) != 0)
+				continue;
+			const std::string name = section.substr(8);
+			if (!IsIdentifier(name))
+			{
+				error = "[" + section + "] has an invalid action name";
+				return false;
+			}
+			const auto* values = config.GetSectionValues(section);
+			Model::EventAction action;
+			action.name = name;
+			std::string events;
+			if (!config.TryGetString(section, "on", events) ||
+				(action.events = SplitNames(events)).empty())
+			{
+				error = "[" + section + "] requires on="; return false;
+			}
+			for (const std::string& event : action.events)
+				if (event != "refresh.applied" && event != "refresh.confirmed" &&
+					event != "refresh.restored")
+				{
+					error = "[" + section + "] unsupported event '" + event + "'";
+					return false;
+				}
+			if (!config.TryGetString(section, "when", action.when) ||
+				!action.whenExpression.Compile(action.when, error, true) ||
+				!ValidateExpressionVariables(action.whenExpression,
+					{ "actual_refresh", "requested_refresh", "previous_refresh" },
+					"[" + section + "] when=", error))
+			{
+				if (error.empty()) error = "[" + section + "] requires when=";
+				return false;
+			}
+			std::string run;
+			if (!config.TryGetString(section, "run", run) ||
+				!ParseTargetActionRun(run, action.program, action.arguments))
+			{
+				error = "[" + section + "] run= must begin with an .exe, .bat, or .cmd path";
+				return false;
+			}
+			std::string scope;
+			if (config.TryGetString(section, "scope", scope))
+			{
+				action.scope = ConfigFile::NormalizeName(scope);
+				if (action.scope != "vprenderer" && action.scope != "directshow" &&
+					action.scope != "*")
+				{
+					error = "[" + section + "] scope must be vprenderer, directshow, or *";
+					return false;
+				}
+			}
+			for (const auto& entry : *values)
+				if (entry.first != "on" && entry.first != "when" &&
+					entry.first != "run" && entry.first != "scope")
+				{
+					error = "[" + section + "] unknown key '" + entry.first + "'";
+					return false;
+				}
+			model.actions.push_back(std::move(action));
+		}
+
+		for (const std::string& section : config.GetSectionNames())
+			if (!MainConfigSchema::OwnsSection(section) &&
+				!RendererConfigView::OwnsSection(section) &&
+				section.rfind("actions.", 0) != 0 &&
+				section.rfind("shader.", 0) != 0)
+			{
+				error = "VP-0079 configuration has unknown section [" + section + "]";
+				return false;
+			}
 		return true;
 	}
 
 	inline bool Read(const ConfigFile& config, Model& model, std::string& error)
 	{
+		if (IsTargetModel(config))
+			return ReadTarget(config, model, error);
 		model = {};
 		error.clear();
 		RendererConfigView rendererConfig(config);

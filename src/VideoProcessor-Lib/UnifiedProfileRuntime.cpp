@@ -147,9 +147,11 @@ namespace UnifiedProfileRuntime
 			return false;
 
 		m_model = std::move(model);
-		m_statePath = RendererProfileConfig::StatePath(config);
+		m_statePath = m_model.persistSelection ?
+			RendererProfileConfig::StatePath(config) : std::string();
 		std::map<std::string, std::string> restored;
-		if (!LoadPersistedSelections(restored, error))
+		if (m_model.persistSelection &&
+			!LoadPersistedSelections(restored, error))
 			return false;
 
 		std::shared_ptr<const Snapshot> initial;
@@ -216,7 +218,8 @@ namespace UnifiedProfileRuntime
 			result.snapshot = current;
 			return true;
 		}
-		if (!PersistSelections(manual, error))
+		if (m_model.persistSelection &&
+			!PersistSelections(manual, error))
 			return false;
 
 		++m_generation;

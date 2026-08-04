@@ -38,6 +38,36 @@ bool PPMCorrectionLoader::LoadCorrectionFile()
             return false;
         }
 
+        if (unifiedConfig.HasSection("directshow.ppm"))
+        {
+            std::string rawPpm;
+            if (!unifiedConfig.TryGetString("directshow.ppm", "ppm", rawPpm))
+            {
+                DbgLog((LOG_WARNING, 1, TEXT("PPMCorrectionLoader: VideoProcessor.cfg [directshow.ppm] requires ppm")));
+                return false;
+            }
+            try
+            {
+                size_t consumed = 0;
+                const int ppm = std::stoi(ConfigFile::Trim(rawPpm), &consumed);
+                if (consumed != ConfigFile::Trim(rawPpm).size() ||
+                    ppm < -1000000 || ppm > 1000000)
+                    throw std::out_of_range("ppm");
+                // The VP-0079 form is source-timing policy, not a brittle
+                // nominal-refresh lookup. Populate the legacy lookup domain
+                // so every actual cadence receives this one correction.
+                for (int rate = 1; rate <= 1000; ++rate)
+                    m_corrections[rate] = ppm;
+                DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: Loaded [directshow.ppm] ppm=%d for all source rates"), ppm));
+                return true;
+            }
+            catch (const std::exception&)
+            {
+                DbgLog((LOG_WARNING, 1, TEXT("PPMCorrectionLoader: Invalid [directshow.ppm] ppm: %S"), rawPpm.c_str()));
+                return false;
+            }
+        }
+
         if (!unifiedConfig.HasSection("ppm_correction"))
         {
             DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: VideoProcessor.cfg [ppm_correction] not found - using default PPM values")));

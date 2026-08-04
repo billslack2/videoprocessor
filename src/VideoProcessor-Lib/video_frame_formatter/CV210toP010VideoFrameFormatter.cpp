@@ -146,20 +146,25 @@ void CV210toP010VideoFrameFormatter::LoadConfigurationFile()
             return;
         }
 
-        if (!unifiedConfig.HasSection("p010_conversion"))
+        const bool targetConfiguration =
+            unifiedConfig.HasSection("directshow.conversion");
+        const char* conversionSection = targetConfiguration ?
+            "directshow.conversion" : "p010_conversion";
+        if (!unifiedConfig.HasSection(conversionSection))
         {
             useSmartDefaults();
             return;
         }
 
-        const auto* conversionSettings = unifiedConfig.GetSectionValues("p010_conversion");
+        const auto* conversionSettings = unifiedConfig.GetSectionValues(conversionSection);
         if (conversionSettings)
         {
             for (const auto& setting : *conversionSettings)
             {
                 try
                 {
-                    if (setting.first == "conversionmethod")
+                    if (setting.first == (targetConfiguration ?
+                        "conversion_method" : "conversionmethod"))
                     {
                         const std::string conversionMethod = ConfigFile::NormalizeName(setting.second);
                         if (conversionMethod == "auto")
@@ -173,12 +178,14 @@ void CV210toP010VideoFrameFormatter::LoadConfigurationFile()
                         else
                             DbgLog((LOG_WARNING, 1, TEXT("CV210toP010VideoFrameFormatter: Invalid ConversionMethod in VideoProcessor.cfg: %S"), setting.second.c_str()));
                     }
-                    else if (setting.first == "mincorecount")
+                    else if (setting.first == (targetConfiguration ?
+                        "min_core_count" : "mincorecount"))
                     {
                         uint32_t minCores = std::stoul(setting.second);
                         m_minCoreCount = std::max(1u, minCores);
                     }
-                    else if (setting.first == "maxcorecount")
+                    else if (setting.first == (targetConfiguration ?
+                        "max_core_count" : "maxcorecount"))
                     {
                         uint32_t maxCores = std::stoul(setting.second);
                         m_maxCoreCount = maxCores;
