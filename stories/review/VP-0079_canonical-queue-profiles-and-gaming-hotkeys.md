@@ -2,9 +2,27 @@
 
 ## Status
 
-Backlog. Created 2026-08-02. This story introduces a generic, typed queue
-profile group; it is not an Alpha-only latency special case. Its immediate
-deployment target is the user's Alpha gaming workflow.
+Review. Started 2026-08-02; implementation merged 2026-08-03 in
+[videoprocessor PR #35](https://github.com/billslack2/videoprocessor/pull/35)
+at merge commit `93532d0dda876f20daab039b74db3046056a093c`.
+
+The implementation review expanded this story from its original queue-only
+profile sketch into the unified owner/variant configuration model. Queue,
+DirectShow, VP renderer, shader, action, renderer-alias, and rule-based PPM
+configuration now share the reviewed grammar where applicable. In particular,
+the shipped low-latency queue variant uses the normal queue and Alpha
+auto-reset paths rather than a special latency-reset feature. The authoritative
+final contract and examples are `CONFIGURATION.html`, `VideoProcessor.cfg`,
+and `docs/VP-0079_CONFIGURATION_MODEL_PROPOSAL.md` in the merged source tree;
+the detailed sections below preserve the original implementation proposal for
+review history.
+
+Validation completed before merge: x64 Release build succeeded, all 535 tests
+passed, Release binaries and the minimally edited configuration were deployed
+with backups, and runtime logs confirmed distinct `n`, Shift+`N`, and Shift+`P`
+shader selections. Keep this story in Review for independent code/configuration
+review and additional Alpha playback observation. The stale duplicate Backlog
+record was removed as part of this state transition.
 
 ## User story
 
@@ -119,15 +137,21 @@ aliases before adding new public examples.
    update path. It must perform one serialized queue/renderer re-prime so
    entries admitted under the old capacity/target cannot persist. Coalesce a
    repeated same-profile selection and do not create a reset loop.
-5. The generic queue profile applies to the currently selected renderer;
+5. The existing auto-reset behavior must work with Alpha. When auto-reset is
+   enabled and either VP-owned Alpha queue remains at its hard capacity for the
+   configured sustained interval (five seconds by default), request one
+   serialized live-queue re-prime. A valid one-frame queue at `1/1` must count
+   as at capacity; do not require an impossible `> 1` overflow. Do not inspect
+   or control madVR private queues.
+6. The generic queue profile applies to the currently selected renderer;
    DirectShow retains its own renderer internals and madVR private queues are
    never inferred or controlled. Alpha is the live-validation target.
-6. Log startup and each profile change with selected profile, base/profile/
+7. Log startup and each profile change with selected profile, base/profile/
    command-line sources, effective capacity and target, active renderer,
    pre/post queue depth, re-prime identity, and outcome. Keep the existing OSD
    effective queue display correct; add the concise active profile name only
    if it can be done without changing unrelated OSD layout.
-7. Update the sample `VideoProcessor.cfg` and `CONFIGURATION.html` with only
+8. Update the sample `VideoProcessor.cfg` and `CONFIGURATION.html` with only
    the canonical public names, precedence, value ranges, hotkeys, default, and
    low-latency trade-off. Do not describe compatibility aliases, hidden
    settings, or implementation history in the user-facing help.
@@ -163,11 +187,15 @@ Debug build or overwrite the user's configuration wholesale.
 4. Integration-test changing 32/2 -> 1/1 -> 32/2 with Alpha. Prove exactly
    one re-prime per actual change, no retained old-capacity frame, no reset on
    a repeated same-profile key, and correct logs/OSD capacity and target.
-5. Live validate Alpha at 59.94/60 Hz with a game/capture source. Compare
+5. Unit- and integration-test Alpha auto-reset at capacity: a one-frame queue
+   held at `1/1` for the configured sustained interval requests exactly one
+   re-prime; a queue below capacity does not; and an impossible over-capacity
+   state remains an immediate recovery condition.
+6. Live validate Alpha at 59.94/60 Hz with a game/capture source. Compare
    queue age and VP renderer latency in normal versus low latency, record
    dropped frames, and confirm the low-latency profile does not claim to
    measure or eliminate capture/display latency outside VP.
-6. Smoke-test the generic profile behavior with DirectShow selected, without
+7. Smoke-test the generic profile behavior with DirectShow selected, without
    asserting control of madVR's private queues or changing its settings.
 
 ## Non-goals
