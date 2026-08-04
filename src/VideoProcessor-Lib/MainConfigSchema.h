@@ -121,7 +121,24 @@ namespace MainConfigSchema
 			config, "directshow.conversion", conversionRules, error))
 			return false;
 		const std::vector<ConfigSchema::KeyRule> ppmRules = {
-			ConfigSchema::NumberAtLeast("ppm", -1000.0)
+			{
+				"ppm",
+				[](const std::string& value)
+				{
+					const std::string normalized = ConfigFile::NormalizeName(value);
+					if (normalized == "auto") return true;
+					try
+					{
+						size_t consumed = 0;
+						const long long parsed = std::stoll(
+							ConfigFile::Trim(value), &consumed);
+						return consumed == ConfigFile::Trim(value).size() &&
+							parsed >= -1000000 && parsed <= 1000000;
+					}
+					catch (const std::exception&) { return false; }
+				},
+				"AUTO or an integer from -1000000 to 1000000"
+			}
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "directshow.ppm", ppmRules, error))

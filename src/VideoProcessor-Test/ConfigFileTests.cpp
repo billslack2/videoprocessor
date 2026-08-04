@@ -433,16 +433,18 @@ namespace VideoProcessorTest
 					"sdr_target_primaries: REC709\nreport_bt2020_to_display: false\n"
 					"switch_refresh_rate: true\n"
 					"[vprenderer.bt2020]\nwhen: $key==\"F5\"\n"
-					"sdr_target_primaries: BT2020\nreport_bt2020_to_display: true\n";
+					"sdr_target_primaries: BT2020\nreport_bt2020_to_display: true\n"
+					"[directshow.ppm]\nppm: AUTO\n";
 			}
 
 			ConfigFile config;
 			Assert::IsTrue(config.Load(path));
 			const std::vector<std::string> sections = config.GetSectionNames();
-			Assert::AreEqual(static_cast<size_t>(3), sections.size());
+			Assert::AreEqual(static_cast<size_t>(4), sections.size());
 			Assert::AreEqual("general", sections[0].c_str());
 			Assert::AreEqual("vprenderer.rec709", sections[1].c_str());
 			Assert::AreEqual("vprenderer.bt2020", sections[2].c_str());
+			Assert::AreEqual("directshow.ppm", sections[3].c_str());
 
 			std::string error;
 			Assert::IsTrue(MainConfigSchema::Validate(config, error),

@@ -85,12 +85,13 @@ min_core_count: 1
 max_core_count: 2
 
 [directshow.ppm]
-ppm: -17
+ppm: AUTO
 ```
 
 `ppm` is a source-timing correction, applied consistently at every source
-cadence. VP-0079 deliberately replaces the old nominal-refresh map with this
-one policy value.
+cadence. It accepts either a fixed integer or `AUTO`, which selects the
+existing internal automatic-calibration sentinel. VP-0079 deliberately
+replaces the old nominal-refresh map with this one policy value.
 
 ## Shaders
 
