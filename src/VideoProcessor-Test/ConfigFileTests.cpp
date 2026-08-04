@@ -9,6 +9,7 @@
 #include "CppUnitTest.h"
 
 #include <fstream>
+#include <map>
 #include <sstream>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -940,9 +941,12 @@ namespace VideoProcessorTest
 
 			const std::string inventoryText = readFile(
 				sourceRoot + "\\docs\\configuration-public-fields.tsv");
+			const std::string valueInventoryText = readFile(
+				sourceRoot + "\\docs\\configuration-public-values.tsv");
 			const std::string html = readFile(
 				sourceRoot + "\\CONFIGURATION.html");
 			Assert::IsFalse(inventoryText.empty());
+			Assert::IsFalse(valueInventoryText.empty());
 			Assert::IsFalse(html.empty());
 
 			struct InventoryField
@@ -954,6 +958,7 @@ namespace VideoProcessorTest
 			std::vector<InventoryField> inventory;
 			std::set<std::string> inventoryTokens;
 			std::set<std::string> inventoryAnchors;
+			std::map<std::string, std::string> inventoryAnchorsByToken;
 			std::istringstream inventoryStream(inventoryText);
 			std::string line;
 			while (std::getline(inventoryStream, line))
@@ -970,11 +975,40 @@ namespace VideoProcessorTest
 				Assert::IsTrue(inventoryTokens.insert(columns[0]).second,
 					std::wstring(columns[0].begin(), columns[0].end()).c_str());
 				inventoryAnchors.insert(columns[1]);
+				inventoryAnchorsByToken.emplace(columns[0], columns[1]);
 				inventory.push_back(
 					{ columns[0], columns[1], columns[3] == "yes" });
 			}
 			Assert::IsTrue(inventory.size() > 50,
 				L"The public inventory unexpectedly lost the core VP-0079 fields");
+
+			struct InventoryValue
+			{
+				std::string field;
+				std::string value;
+			};
+			std::vector<InventoryValue> valueInventory;
+			std::set<std::string> valueTokens;
+			std::istringstream valueInventoryStream(valueInventoryText);
+			while (std::getline(valueInventoryStream, line))
+			{
+				if (line.empty() || line.front() == '#')
+					continue;
+				const size_t separator = line.find('\t');
+				Assert::IsTrue(separator != std::string::npos &&
+					line.find('\t', separator + 1) == std::string::npos,
+					L"Every public-value inventory line needs two columns");
+				const std::string field = line.substr(0, separator);
+				const std::string value = line.substr(separator + 1);
+				Assert::IsTrue(inventoryTokens.find(field) != inventoryTokens.end(),
+					std::wstring(field.begin(), field.end()).c_str());
+				const std::string token = field + "\t" + value;
+				Assert::IsTrue(valueTokens.insert(token).second,
+					std::wstring(token.begin(), token.end()).c_str());
+				valueInventory.push_back({ field, value });
+			}
+			Assert::IsTrue(valueInventory.size() > 50,
+				L"The public-value inventory unexpectedly lost enum coverage");
 
 			std::set<std::string> documentedTokens;
 			size_t attribute = 0;
@@ -1031,6 +1065,22 @@ namespace VideoProcessorTest
 					html.substr(anchor, articleEnd - anchor).find(
 						"AUTO behavior:") != std::string::npos,
 					std::wstring(field.token.begin(), field.token.end()).c_str());
+			}
+			for (const InventoryValue& documentedValue : valueInventory)
+			{
+				const std::string& anchor =
+					inventoryAnchorsByToken.at(documentedValue.field);
+				const size_t article = html.find("id=\"" + anchor + "\"");
+				const size_t articleEnd = html.find("</article>", article);
+				const std::string expected = "<code>" + documentedValue.value +
+					"</code>";
+				const std::string diagnostic = documentedValue.field + "=" +
+					documentedValue.value;
+				Assert::IsTrue(article != std::string::npos &&
+					articleEnd != std::string::npos &&
+					html.substr(article, articleEnd - article).find(expected) !=
+						std::string::npos,
+					std::wstring(diagnostic.begin(), diagnostic.end()).c_str());
 			}
 
 			size_t link = 0;
