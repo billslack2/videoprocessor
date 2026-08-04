@@ -35,25 +35,24 @@ Keep the setting in the existing viewport profile group, for example:
 [profiles.viewport.scope]
 when: $key=="F2"
 screen_aspect: 2.35:1
-anamorphic_input_aspect: 5:4
-anamorphic_output_aspect: 4:3
+anamorphic_horizontal_scale: 16:15
 ```
 
-The proposed explicit pair avoids an ambiguous word such as `stretch`:
+The single scale is independent of the physical screen aspect:
 
-- `anamorphic_input_aspect` is the aspect of the image before VP's correction.
-- `anamorphic_output_aspect` is the intended aspect after correction.
-- VP derives the linear factor from the two values and reports both aspects and
-  the resulting scale in the OSD/log.
-- Omitting both settings means no anamorphic transform.
-- Supplying only one, an invalid ratio, or an unsupported transform must be a
-  validated configuration error with a clear log message and safe no-transform
-  fallback.
+- `anamorphic_horizontal_scale` is the final linear horizontal multiplier. A
+  value greater than `1` widens the image and a value below `1` squeezes it.
+- It accepts the same decimal or `W:H` ratio syntax as other ratios. `16:15`
+  means `1.066667`, i.e. a 6.667% horizontal expansion.
+- Omitting it means no anamorphic transform (`1:1`).
+- An invalid or unsupported scale is a validated configuration error with a
+  clear log message and safe no-transform fallback.
 
-The spike must confirm whether these names and the input/output direction match
-real-world lens use. It may replace them with one less error-prone canonical
-form only if the documentation gives an equally unambiguous worked example.
-Do not expose a raw unsigned scale factor as the only user-facing option.
+`screen_aspect: 2.35:1` remains the outer physical viewport; it does not tell
+VP the lens multiplier. Inferring a multiplier from it would wrongly treat a
+16:9 source on a 2.35 screen as needing a 2.35/1.777... horizontal stretch.
+The one explicit lens-scale value is the same independent piece of information
+madVR needs.
 
 ## Design review — configuration and renderer contract (2026-08-04)
 
@@ -77,44 +76,40 @@ screen_aspect: 16:9
 [profiles.viewport.scope_anamorphic]
 when: $key=="F2"
 screen_aspect: 2.35:1
-anamorphic_input_aspect: 5:4
-anamorphic_output_aspect: 4:3
+anamorphic_horizontal_scale: 16:15
 ```
 
-`anamorphic_input_aspect` and `anamorphic_output_aspect` use the same shared,
-strict ratio syntax as `screen_aspect`: positive decimal or `W:H` values,
-including whitespace around the separator. A pair describes a *linear
-horizontal presentation correction*, not a content-selection rule:
+`anamorphic_horizontal_scale` uses the same shared, strict ratio syntax as
+`screen_aspect`: a positive decimal or `W:H` value, including whitespace around
+the separator. It describes a *linear horizontal presentation correction*, not
+a content-selection rule:
 
 ```text
-horizontal_scale = anamorphic_output_aspect / anamorphic_input_aspect
+horizontal_scale = anamorphic_horizontal_scale
 ```
 
-The example therefore produces `1.333333 / 1.25 = 1.066667`: every rendered
-image is 6.667% wider at the final presentation stage. `input` is the named
-pre-correction reference and `output` is the named desired reference; VP does
-not require each incoming movie or detected active picture to equal the input
-ratio. That would make the lens correction incorrectly turn on and off during
-mixed-aspect content.
+The example produces `16 / 15 = 1.066667`: every rendered image is 6.667%
+wider at the final presentation stage. VP does not require an incoming movie
+or detected active picture to match a nominated input ratio; that would make
+the lens correction incorrectly turn on and off during mixed-aspect content.
 
-Omitting both settings resolves to `AnamorphicMode::Off` and a scale of `1.0`.
-Supplying exactly one setting, a malformed/non-finite/non-positive ratio, or a
-derived scale outside the deliberately supported `0.5..2.0` range is a strict
-profile validation error. A rejected profile must not change the selected
-viewport; if a previously valid profile is already active, its current
-no-transform or valid-transform presentation remains in effect. There is no
-`AUTO` mode in the first increment, no global `[display]` setting, no raw
-`anamorphic_scale` setting, and no per-shader or per-movie override.
+Omitting the setting resolves to `AnamorphicMode::Off` and a scale of `1.0`.
+A malformed/non-finite/non-positive ratio or a scale outside the deliberately
+supported `0.5..2.0` range is a strict profile validation error. A rejected
+profile must not change the selected viewport; if a previously valid profile is
+already active, its current no-transform or valid-transform presentation
+remains in effect. There is no `AUTO` mode in the first increment, no global
+`[display]` setting, and no per-shader or per-movie override.
 
 The resolved immutable viewport snapshot must contain the profile identity,
-screen aspect, subtitle settings, anamorphic enabled state, input/output
-ratios, horizontal scale, and selection generation. The application publishes
-one new snapshot on an F2/F3 (or equivalent) selection; the Alpha renderer
-consumes that complete snapshot at a render-frame boundary. A renderer change
-must restore the selected snapshot before its first presentation frame. The
-old Boolean `SetScreenProfile(scopeScreen, ...)` boundary is insufficient for
-this feature and must be replaced or adapted behind an aspect/settings-driven
-viewport-apply API.
+screen aspect, subtitle settings, anamorphic enabled state, horizontal scale,
+and selection generation. The application publishes one new snapshot on an
+F2/F3 (or equivalent) selection; the Alpha renderer consumes that complete
+snapshot at a render-frame boundary. A renderer change must restore the
+selected snapshot before its first presentation frame. The old Boolean
+`SetScreenProfile(scopeScreen, ...)` boundary is insufficient for this feature
+and must be replaced or adapted behind an aspect/settings-driven viewport-apply
+API.
 
 ### Geometry order and exact Alpha implementation
 
@@ -161,7 +156,7 @@ and justified before adding a restart path.
 ### Renderer behavior and observability
 
 Alpha is the only renderer that applies the transform. The profile parser may
-accept the pair regardless of the selected renderer so that profile selection
+accept the scale regardless of the selected renderer so that profile selection
 remains stable, but a non-Alpha renderer must explicitly report
 `Anamorphic: unavailable for this renderer; not applied` and must never pass
 the setting to madVR or emulate it by changing a DirectShow media type. Alpha
@@ -169,25 +164,25 @@ reports the selected profile once per change, for example:
 
 ```text
 Viewport: scope_anamorphic (screen 2.35:1)
-Anamorphic: 5:4 -> 4:3, horizontal scale 1.066667
+Anamorphic: horizontal scale 16:15 (1.066667)
 ```
 
 The OSD adds the `Anamorphic` line only while Alpha has an enabled, accepted
-transform. State-change logs record profile/generation, both normalized ratios,
-scale, source aspect, final inner rectangle, outer screen rectangle, and an
-explicit safe-fallback reason. They must not emit per-frame geometry logs.
+transform. State-change logs record profile/generation, normalized scale,
+source aspect, final inner rectangle, outer screen rectangle, and an explicit
+safe-fallback reason. They must not emit per-frame geometry logs.
 
 ### Required proof and tests
 
-1. Unit-test profile parsing for omitted pair, complete valid pair, only-input,
-   only-output, whitespace/decimal forms, invalid/zero/non-finite values, and
-   out-of-range derived scales.
+1. Unit-test profile parsing for an omitted setting, valid scales,
+   whitespace/decimal forms, invalid/zero/non-finite values, and out-of-range
+   scales.
 2. Unit-test the geometry helper with normal and Scope screens, 4:3, 16:9,
    1.90, and 2.35 sources, using scale `1.0`, `16/15`, and a squeeze factor.
    Prove the output is contained by the screen viewport and that a `16/15`
    factor changes only the presentation aspect.
-3. Add a deterministic `5:4 -> 4:3` reference-frame assertion: equal-height
-   source geometry becomes exactly 16/15 wider, with no source-crop mutation.
+3. Add a deterministic `16:15` reference-frame assertion: equal-height source
+   geometry becomes exactly 16/15 wider, with no source-crop mutation.
 4. Exercise profile changes while Alpha is rendering. Assert one coherent
    viewport generation per selection, no stale-factor frame, no restart, no
    queue discontinuity, and a no-op for a repeated same-profile selection.
@@ -221,11 +216,11 @@ explicit safe-fallback reason. They must not emit per-frame geometry logs.
    presentation scale -> final screen fit/present. The spike must prove or
    deliberately adjust this order.
 6. Extend the Alpha OSD with a compact `Anamorphic` line only when enabled,
-   showing the configured input/output aspects and calculated scale. Log
-   profile selection, validation result, applied transform, output rectangle,
-   and any safe fallback; do not log every rendered frame.
+   showing the configured horizontal scale. Log profile selection, validation
+   result, applied transform, output rectangle, and any safe fallback; do not
+   log every rendered frame.
 7. Document each setting, accepted ratio syntax, AUTO/omitted behavior if
-   supported, directionality, and a worked `5:4 -> 4:3` example in the
+   supported, directionality, and a worked `16:15` example in the
    canonical configuration help.
 
 ## Non-goals
@@ -247,8 +242,8 @@ explicit safe-fallback reason. They must not emit per-frame geometry logs.
 - A viewport profile can enable a validated, documented anamorphic transform
   for the Alpha renderer; a profile without it is visually and behaviorally
   unchanged.
-- The `5:4 -> 4:3` configuration has an unambiguous, tested visual result and
-  a clearly documented transform direction.
+- The `anamorphic_horizontal_scale: 16:15` configuration has an unambiguous,
+  tested visual result and a clearly documented transform direction.
 - Switching viewport profiles changes both screen fit and anamorphic state
   together without a stale transform, extra visible frame, or renderer restart
   unless libplacebo resource constraints demonstrably require one.
