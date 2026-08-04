@@ -259,6 +259,8 @@ namespace
 	public:
 		~NvidiaBt2020Reporter() { Restore(); }
 
+		bool IsReadbackVerified() const { return m_readbackVerified; }
+
 		bool Enable(const wchar_t* displayName)
 		{
 			const std::string name = NarrowDisplayName(displayName);
@@ -324,22 +326,32 @@ namespace
 			verified.cmd = NV_INFOFRAME_CMD_GET;
 			verified.type = INFOFRAME_TYPE_AVI;
 			status = NvAPI_Disp_InfoFrameControl(m_displayId, &verified);
-			const bool verifiedBt2020 =
+			const bool readbackMatches =
 				status == NVAPI_OK &&
 				verified.infoframe.video.colorimetry ==
 					NV_INFOFRAME_FIELD_VALUE_AVI_COLORIMETRY_USE_EXTENDED_COLORIMETRY &&
 				verified.infoframe.video.extendedColorimetry ==
 					NV_INFOFRAME_FIELD_VALUE_AVI_EXTENDEDCOLORIMETRY_RESERVED06;
-			if (!verifiedBt2020)
+			const LibplaceboOutput::OneShotSignalAcceptance acceptance =
+				LibplaceboOutput::ClassifyOneShotSignal(
+					true, status == NVAPI_OK, readbackMatches);
+			if (acceptance !=
+				LibplaceboOutput::OneShotSignalAcceptance::READBACK_VERIFIED)
 			{
-				DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame verification failed for %s status=%s colorimetry=%u extended=%u; restoring prior signal while BT.2020 rendering continues", name.c_str(), NvApiStatusText(status).c_str(), static_cast<unsigned int>(verified.infoframe.video.colorimetry), static_cast<unsigned int>(verified.infoframe.video.extendedColorimetry));
+				// NVAPI documents a successful SET as flushed to the monitor. Some
+				// drivers nevertheless return the driver's automatic value from GET
+				// instead of the one-shot value just transmitted. madVR-compatible
+				// signaling must therefore retain a successful SET and treat GET as
+				// useful diagnostic evidence, not as authority to undo the signal.
 				m_active = true;
+				m_readbackVerified = false;
 				m_displayName = name;
-				Restore();
-				return false;
+				DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame SET accepted for %s but GET did not echo the one-shot value status=%s colorimetry=%u extended=%u; retaining BT.2020 signal with unverified readback", name.c_str(), NvApiStatusText(status).c_str(), static_cast<unsigned int>(verified.infoframe.video.colorimetry), static_cast<unsigned int>(verified.infoframe.video.extendedColorimetry));
+				return true;
 			}
 
 			m_active = true;
+			m_readbackVerified = true;
 			m_displayName = name;
 			DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame enabled on %s display_id=0x%08X previous_colorimetry=%u previous_extended=%u verified_colorimetry=%u verified_extended=%u", name.c_str(), m_displayId, static_cast<unsigned int>(m_originalInfoFrame.infoframe.video.colorimetry), static_cast<unsigned int>(m_originalInfoFrame.infoframe.video.extendedColorimetry), static_cast<unsigned int>(verified.infoframe.video.colorimetry), static_cast<unsigned int>(verified.infoframe.video.extendedColorimetry));
 			return true;
@@ -357,6 +369,7 @@ namespace
 				DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame restore on %s display_id=0x%08X colorimetry=%u extended=%u result=%s", m_displayName.c_str(), m_displayId, static_cast<unsigned int>(restore.infoframe.video.colorimetry), static_cast<unsigned int>(restore.infoframe.video.extendedColorimetry), NvApiStatusText(status).c_str());
 			}
 			m_active = false;
+			m_readbackVerified = false;
 			m_displayName.clear();
 			Shutdown();
 		}
@@ -371,6 +384,7 @@ namespace
 
 		bool m_initialized = false;
 		bool m_active = false;
+		bool m_readbackVerified = false;
 		NvU32 m_displayId = 0;
 		std::string m_displayName;
 		NV_INFOFRAME_DATA m_originalInfoFrame{};
@@ -2470,6 +2484,7 @@ struct LibplaceboVideoRenderer::Impl
 	LibplaceboOutput::Actual actualOutput;
 	bool targetBt2020 = false;
 	bool reportBt2020ToDisplay = false;
+	bool bt2020SignalingFailed = false;
 	std::wstring negotiatedDisplayDeviceName;
 	NvidiaBt2020Reporter nvidiaBt2020Reporter;
 	bool swapchainBlit = true;
@@ -4247,29 +4262,16 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			if (!nvidiaBt2020Reporter.Enable(negotiatedDisplayDeviceName.c_str()))
 			{
-				// NVIDIA reporting is optional metadata, independent of the
-				// configured BT.2020 render target. Recreate the swapchain once
-				// with reporting disabled so a failed NVAPI attempt cannot leave
-				// windowed DirectFlip/MPO or the layered OSD mid-transition.
+				// This transport intentionally carries BT.2020 pixels over a P709
+				// DXGI swapchain and relies on the NVIDIA AVI InfoFrame for physical
+				// signaling. If SET itself fails, continuing with BT.2020 pixels would
+				// create a false Rec.709 wire contract. Fail closed atomically.
 				DebugLog::Log(
-					"libplacebo: NVIDIA BT.2020 reporting unsupported; ignoring report_bt2020_to_display and reapplying BT.2020 output");
+					"libplacebo: NVIDIA BT.2020 InfoFrame SET failed; falling back to a matched Rec.709 render and transport contract");
 				reportBt2020ToDisplay = false;
-				// ConfigureAndFallback still owns queried interfaces for the old
-				// native swapchain. Release them before destruction; otherwise
-				// DXGI cannot promote the replacement for this HWND to flip model
-				// and libplacebo falls back to an unusable BitBlt swapchain.
-				swapchain3.Release();
-				output.Release();
-				adapter.Release();
-				dxgiDevice.Release();
-				if (!RecreateSwapchain(
-					outputPlan.useBlit,
-					suppressLimitedNegotiation,
-					"nvidia-report-unsupported"))
-				{
-					DebugLog::Log(
-						"libplacebo: failed to reapply BT.2020 after disabling NVIDIA reporting");
-				}
+				targetBt2020 = false;
+				bt2020SignalingFailed = true;
+				SetSwapchainColorHint(actualOutput.encoding);
 				return;
 			}
 		}
@@ -4657,6 +4659,7 @@ struct LibplaceboVideoRenderer::Impl
 		outputRequest.range = LibplaceboOutput::ParseRange(settings.outputRange);
 		outputRequest.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
 		targetBt2020 = settings.sdrTargetPrimaries == "bt2020";
+		bt2020SignalingFailed = false;
 		// Preserve the proven F6 transport contract: render BT.2020 pixels, but
 		// retain the normal P709 DXGI swapchain and use the NVIDIA AVI InfoFrame
 		// for physical BT.2020 signaling. Requesting P2020 from both paths caused
@@ -7972,9 +7975,13 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 	CStringA value;
 	const char* outputTarget = m_impl->targetBt2020
 		? (m_impl->reportBt2020ToDisplay
-			? "SDR BT.2020 / HDMI BT.2020"
-			: "SDR BT.2020")
-		: "SDR Rec.709";
+			? (m_impl->nvidiaBt2020Reporter.IsReadbackVerified()
+				? "SDR BT.2020 / HDMI BT.2020 (verified)"
+				: "SDR BT.2020 / HDMI BT.2020 (SET)")
+			: "SDR BT.2020 / display manual")
+		: (m_impl->bt2020SignalingFailed
+			? "SDR Rec.709 (BT.2020 signal failed)"
+			: "SDR Rec.709");
 	value.Format(
 		"Target %s | Req %s/%s/%s/%s -> %s/%s/%s/%s",
 		outputTarget,

@@ -12,6 +12,26 @@ namespace Tests
 	TEST_CLASS(LibplaceboOutputPolicyTests)
 	{
 	public:
+		TEST_METHOD(OneShotInfoFrameSetIsAuthoritativeWhenReadbackDoesNotEcho)
+		{
+			Assert::AreEqual(
+				static_cast<int>(OneShotSignalAcceptance::SET_ACCEPTED),
+				static_cast<int>(ClassifyOneShotSignal(true, true, false)));
+			Assert::AreEqual(
+				static_cast<int>(OneShotSignalAcceptance::SET_ACCEPTED),
+				static_cast<int>(ClassifyOneShotSignal(true, false, false)));
+		}
+
+		TEST_METHOD(OneShotInfoFrameRequiresSuccessfulSet)
+		{
+			Assert::AreEqual(
+				static_cast<int>(OneShotSignalAcceptance::FAILED),
+				static_cast<int>(ClassifyOneShotSignal(false, true, true)));
+			Assert::AreEqual(
+				static_cast<int>(OneShotSignalAcceptance::READBACK_VERIFIED),
+				static_cast<int>(ClassifyOneShotSignal(true, true, true)));
+		}
+
 		TEST_METHOD(AutoBaselinePreservesComposedFullSrgb)
 		{
 			const Plan plan = MakePlan({});

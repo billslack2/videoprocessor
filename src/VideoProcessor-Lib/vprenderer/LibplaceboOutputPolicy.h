@@ -118,6 +118,13 @@ namespace LibplaceboOutput
 		uint64_t channelsAboveStudioWhite = 0;
 	};
 
+	enum class OneShotSignalAcceptance
+	{
+		FAILED,
+		SET_ACCEPTED,
+		READBACK_VERIFIED
+	};
+
 	template<typename CheckPresent, typename SetColorSpace>
 	VerifiedTransition ExecuteVerifiedTransition(
 		CheckPresent&& checkPresent,
@@ -146,6 +153,10 @@ namespace LibplaceboOutput
 		unsigned int width,
 		unsigned int height,
 		unsigned int sampleStep = 1);
+	OneShotSignalAcceptance ClassifyOneShotSignal(
+		bool setSucceeded,
+		bool readbackSucceeded,
+		bool readbackMatches);
 
 	const char* ToString(PresentationRequest value);
 	const char* ToString(PresentationModel value);
