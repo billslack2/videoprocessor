@@ -2,10 +2,28 @@
 
 ## Status
 
-Backlog documentation remediation. VP-0049 established the desired canonical
-reference structure and was marked Done, but the current HTML remains too
-compressed to let a user make informed renderer choices. No implementation
-branch has been chosen.
+In Progress — 2026-08-04.
+
+Readiness review completed against `billslack2/videoprocessor` default branch
+`v1.1.015-beta` at `0a19c5f`. The public-configuration model is recoverable
+from the active startup schemas, renderer settings readers, validation code,
+checked-in sample configuration, and the existing
+`VideoProcessor-Test::ConfigurationReferenceMatchesPublicFieldInventory`
+coverage test. The current HTML and a checked-in public-field inventory already
+provide stable anchors for a complete documentation pass; no pipeline, API,
+resource-lifetime, or platform unknown blocks this documentation-only change.
+
+Implementation branch/worktree:
+
+- Branch: `codex/vp-0086-comprehensive-configuration-reference`
+- Worktree: `C:\Users\bslac\vp\vp-0086-comprehensive-configuration-reference`
+- Base: `origin/v1.1.015-beta` (`0a19c5f`)
+
+Initial progress: reconciling the public inventory with the parser and the
+Alpha/libplacebo settings reader, then expanding the canonical HTML to one
+value-level entry per public setting. Validation will include the inventory
+coverage test, example parsing, link/anchor checks, and rendered desktop-width
+review.
 
 ## User story
 
