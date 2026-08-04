@@ -431,8 +431,8 @@ namespace RendererProfileConfig
 	inline bool ValidateTargetRendererSetting(const std::string& key,
 		const std::string& value)
 	{
-		// automatic_crop was an unfinished experimental policy. VP-0079 removes
-		// it instead of giving it another public spelling.
+		// automatic_crop is viewport-owned. Reject it from renderer/display
+		// variants so the same setting cannot acquire two owners.
 		if (key == "automatic_crop") return false;
 		return ValidateBaseSetting(key, value);
 	}

@@ -365,7 +365,7 @@ namespace VideoProcessorTest
 					"[vprenderer]\nwhen: $key==\"F4\"\nquality: high\nswitch_refresh_rate: true\n"
 					"[vprenderer.rec709]\nwhen: $key==\"F5\"\ntone_mapping: spline\n"
 					"[vprenderer.viewport]\nwhen: $key==\"F3\"\n"
-					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\nscreen_aspect: 2.35:1\nsubtitle_fit: true\n"
+					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\nscreen_aspect: 2.35:1\nautomatic_crop: true\nsubtitle_fit: true\n"
 					"[actions.audio_delay_film]\non: refresh.applied,refresh.confirmed\nwhen: $actual_refresh<=30\nrun: C:\\Videoprocessor\\audio\\audio_delay.bat 100\n"
 					"[shader.nls]\nwhen: $key==\"n\"\n"
 					"[shader.nls.standard]\nwhen: $key==\"Shift+n\"\nshader_type: nls\nglsl_file: NLS.glsl\n"
@@ -402,6 +402,7 @@ namespace VideoProcessorTest
 				"scope", 1, viewport, error));
 			Assert::AreEqual(47ull, viewport.screenAspect.numerator);
 			Assert::AreEqual(20ull, viewport.screenAspect.denominator);
+			Assert::IsTrue(viewport.automaticCrop);
 			Assert::IsTrue(viewport.subtitleFit);
 
 			UnifiedProfileRuntime::Runtime runtime;
