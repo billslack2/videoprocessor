@@ -24,6 +24,17 @@ shader selections. Keep this story in Review for independent code/configuration
 review and additional Alpha playback observation. The stale duplicate Backlog
 record was removed as part of this state transition.
 
+Review follow-up merged 2026-08-03 in
+[videoprocessor PR #36](https://github.com/billslack2/videoprocessor/pull/36)
+at merge commit `17024fcead48e2b80e94086fe967c2ae7aeaeeda`. It makes the
+first declared named section the deterministic startup baseline when no root
+exists, rebuilds later variants as baseline plus overlay, and accepts the
+existing `AUTO` PPM calibration sentinel in `[directshow.ppm]`. The combined
+VP-0079 plus in-progress VP-0082 x64 Release build passed all 552 tests and
+started successfully with the deployed look-ahead, automatic PPM, Rec.709 F4,
+and BT.2020 F5 configuration. The user confirmed the corrected configuration
+worked. Story state remains Review.
+
 ## User story
 
 As a VP user, I want to switch deliberately between normal and minimum-queue
