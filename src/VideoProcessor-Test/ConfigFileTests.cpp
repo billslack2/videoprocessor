@@ -357,7 +357,7 @@ namespace VideoProcessorTest
 					"renderer: VideoProcessor Renderer (Alpha)\n"
 					"fullscreen: true\n"
 					"[renderer_alias]\nvp: 1\nmadvr: 2\n"
-					"[queue]\nwhen: $key==\"l\"\nqueue_size: 32\nlead_frames: 4\ntarget_frames: 2\n"
+					"[queue]\nwhen: $key==\"l\"\nqueue_size: 32\nlead_frames: 4\ntarget_frames: 3\nactive_picture_lookahead_frames: 2\n"
 					"[queue.low_latency]\nwhen: $key==\"L\"\nqueue_size: 1\ntarget_frames: 1\n"
 					"[directshow]\nvideo_conversion: V210_TO_P010\nframe_offset: 90\n"
 					"[directshow.conversion]\nconversion_method: SIMD\nmin_core_count: 1\nmax_core_count: 2\n"

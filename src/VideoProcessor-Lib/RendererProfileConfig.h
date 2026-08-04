@@ -556,8 +556,9 @@ namespace RendererProfileConfig
 					if (std::string(spec.name) == "queue")
 					{
 						std::string expected;
-						if (!ValidateProfileSetting("queue", entry.first,
-							entry.second, expected) && entry.first != "lead_frames")
+					if (!ValidateProfileSetting("queue", entry.first,
+						entry.second, expected) && entry.first != "lead_frames" &&
+						entry.first != "active_picture_lookahead_frames")
 						{
 							error = "[" + section + "] key '" + entry.first +
 								"' is not a valid queue setting";
