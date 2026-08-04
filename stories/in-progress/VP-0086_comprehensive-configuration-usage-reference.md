@@ -30,6 +30,8 @@ Follow-up checkpoint: `3a50785` (`docs: publish canonical Boolean values`).
 Follow-up checkpoint: `30b69d7` (`docs: clarify public configuration
 contracts`).
 
+Follow-up checkpoint: `e086634` (`docs: clarify manual shortcut syntax`).
+
 Completed work:
 
 - Rewrote the canonical `CONFIGURATION.html` as a structured public
@@ -52,6 +54,10 @@ Completed work:
   `when` expression contract. The reference now describes variants, allowed
   variables, precedence, and group independence without prescribing a user's
   key map or profile names.
+- Replaced the unexplained `chord` term with `shortcut` throughout. The shared
+  `$key=="<shortcut>"` contract now defines it as one key with optional
+  modifiers in VP's accelerator spelling, without embedding a user-specific
+  key binding.
 - Added task-oriented SDR, HDR-to-SDR/projector, BT.2020, scaling, NLS, and
   generic profile/viewport/queue guidance, plus troubleshooting guidance.
 - Refined the public field inventory to map every field to its individual
