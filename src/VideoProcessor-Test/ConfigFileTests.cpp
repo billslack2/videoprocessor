@@ -1140,9 +1140,13 @@ namespace VideoProcessorTest
 					MainConfigSchema::Validate(config, error),
 					std::wstring(error.begin(), error.end()).c_str());
 				RendererProfileConfig::Model model;
-				Assert::IsTrue(
-					RendererProfileConfig::Read(config, model, error),
-					std::wstring(error.begin(), error.end()).c_str());
+				if (!RendererProfileConfig::Read(config, model, error))
+				{
+					Logger::WriteMessage((L"Configuration reference example " +
+						std::to_wstring(exampleCount) + L" is invalid: " +
+						std::wstring(error.begin(), error.end())).c_str());
+					Assert::Fail(std::wstring(error.begin(), error.end()).c_str());
+				}
 				DeleteFileA(path.c_str());
 				++exampleCount;
 				example = contentEnd + strlen("</pre>");

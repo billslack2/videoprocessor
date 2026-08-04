@@ -9,7 +9,7 @@
 * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--text); font:16px/1.58 system-ui,"Segoe UI",Arial,sans-serif; }
 main { max-width:1180px; margin:auto; padding:38px 28px 72px; } h1,h2,h3 { line-height:1.2; } h1 { margin:0 0 10px; font-size:2.35rem; } h2 { margin:54px 0 18px; border-bottom:1px solid var(--line); padding-bottom:9px; } h3 { margin:0 0 10px; font-size:1.13rem; }
 p,li { max-width:92ch; } .lead { font-size:1.12rem; color:var(--muted); } .note { margin:22px 0; padding:14px 17px; border-left:4px solid var(--accent); background:#18344d; } .warning { border-left-color:var(--warn); background:#3a3020; } .good { color:var(--good); }
-article h4 { margin:24px 0 8px; font-size:1rem; } article h4 + p { margin-top:0; }
+article h4 { margin:24px 0 8px; font-size:1rem; } article h4 + p { margin-top:0; } .section-examples { margin:22px 0 6px; padding:18px; border:1px solid var(--line); border-radius:8px; background:#182430; } .section-examples h3 { margin-bottom:14px; } .section-examples h4 { margin:20px 0 7px; font-size:1rem; } .section-examples h4:first-of-type { margin-top:0; } .section-examples p { margin:0 0 10px; color:var(--muted); }
 nav { display:flex; gap:8px 15px; flex-wrap:wrap; margin:23px 0 30px; } a { color:var(--accent); } code { background:var(--code); border-radius:4px; padding:1px 4px; overflow-wrap:anywhere; } pre { overflow:auto; margin:16px 0; padding:16px; background:var(--code); border:1px solid var(--line); border-radius:7px; line-height:1.42; }
 .group { display:grid; gap:14px; } article { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:18px; scroll-margin-top:16px; } .meta { color:var(--muted); margin:0 0 12px; } table { width:100%; border-collapse:collapse; margin:12px 0; } th,td { text-align:left; vertical-align:top; padding:8px 9px; border-bottom:1px solid var(--line); } th { color:#dbeafe; } .values th:first-child { width:24%; } .small { color:var(--muted); font-size:.94rem; } .toc { columns:2 260px; } .toc li { margin:4px 0; }
 @media (max-width:680px) { main { padding:25px 16px 48px; } h1 { font-size:1.9rem; } th,td { padding:7px 5px; } .toc { columns:1; } }
@@ -70,6 +70,17 @@ switch_refresh_rate: true</pre>
 <article id="renderer-alias-madvr" data-fields="renderer_alias.madvr"><h3><code>[renderer_alias] madvr</code></h3><p class="meta"><strong>Purpose:</strong> names madVR's one-based renderer-selector index for shortcut handling. <strong>Syntax:</strong> positive integer. <strong>Omitted:</strong> no portable <code>madvr</code> alias is defined.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>1</code> or higher</td><td>The matching one-based renderer-combo position for madVR in the local renderer list.</td></tr></tbody></table><p><strong>Effect and verification:</strong> This alias changes neither madVR settings nor Alpha settings. Confirm the renderer list in the UI after changing installed renderers.</p></article>
 </div>
 
+<section class="section-examples" aria-labelledby="startup-examples">
+<h3 id="startup-examples">Examples</h3>
+<h4>Start Alpha with the normal window policy</h4>
+<p>Use this when Alpha is the intended startup renderer. Device and window behavior are deliberately omitted so the installation retains its normal capture-device and UI choices.</p>
+<pre data-ini-example="startup-alpha">[general]
+renderer: VideoProcessor Renderer (Alpha)
+
+[vprenderer]
+quality: high</pre>
+</section>
+
 <h2 id="queue">Queue and DirectShow</h2>
 <div class="group">
 <article id="queue-when" data-fields="queue.when"><h3><code>[queue] when</code></h3><p class="meta"><strong>Purpose:</strong> optionally provides a direct selector for the root queue baseline. <strong>Syntax:</strong> <code>$key=="&lt;shortcut&gt;"</code> only; see the <a href="#when-contract">conditional selection contract</a>. <strong>Omitted:</strong> the root is still the normal queue baseline but has no direct reset shortcut.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td>Quoted key equality</td><td>Select the root queue baseline when that exact registered shortcut is pressed.</td></tr><tr><td>Omitted</td><td>Keep the root as the baseline without assigning it a direct manual selector.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Selecting the root replaces the active queue overlay with its complete baseline; it does not retain keys from the previous overlay. It is a selection rule, not a per-frame condition.</p></article>
@@ -88,6 +99,22 @@ switch_refresh_rate: true</pre>
 <article id="directshow-ppm" data-fields="directshow.ppm.ppm"><h3><code>[directshow.ppm] ppm</code></h3><p class="meta"><strong>Purpose:</strong> applies one source-timing correction in parts per million across cadences. <strong>Syntax:</strong> <code>AUTO</code> or an integer from -1,000,000 through 1,000,000. <strong>Omitted:</strong> automatic correction.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>AUTO</code></td><td>Use the automatic calibration sentinel.</td></tr><tr><td>Negative integer</td><td>Apply a measured negative source-rate correction.</td></tr><tr><td><code>0</code></td><td>Apply no fixed correction.</td></tr><tr><td>Positive integer</td><td>Apply a measured positive source-rate correction.</td></tr></tbody></table><p><strong>AUTO behavior:</strong> VP retains automatic timing calibration instead of a fixed PPM value. <strong>Effect and verification:</strong> use a fixed correction only from repeatable timing evidence.</p></article>
 <article id="render-shortcut" data-fields="shortcuts.render.&lt;index&gt;"><h3><code>[shortcuts] render.&lt;index&gt;</code></h3><p class="meta"><strong>Purpose:</strong> binds a shortcut to the one-based renderer selector index. <strong>Syntax:</strong> use <code>render.&lt;index&gt;: &lt;shortcut&gt;</code>, where index is positive and shortcut is a valid accelerator spelling. <strong>Omitted:</strong> no direct renderer shortcut.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td>Positive renderer index</td><td>Select the matching one-based position in the local renderer list.</td></tr><tr><td>Valid keyboard shortcut</td><td>Use that shortcut to select the associated renderer index.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Indices refer to the actual renderer UI order. This is an index-based binding, so confirm the local renderer list after renderer installation or removal.</p></article>
 </div>
+
+<section class="section-examples" aria-labelledby="queue-examples">
+<h3 id="queue-examples">Examples</h3>
+<h4>Balanced viewing buffer</h4>
+<p>A conservative baseline with enough converted-frame reserve for a normally stable renderer path. It is a starting point to measure, not a latency guarantee.</p>
+<pre data-ini-example="queue-balanced">[queue]
+queue_size: 16
+lead_frames: 3
+target_frames: 2</pre>
+<h4>Measured lower-latency buffer</h4>
+<p>Use only after checking that the actual renderer and source remain stable with less headroom. Lower values reduce queued latency but increase the chance that a late stage exposes a stall.</p>
+<pre data-ini-example="queue-low-latency">[queue]
+queue_size: 4
+lead_frames: 0
+target_frames: 1</pre>
+</section>
 
 <h2 id="alpha">VideoProcessor Renderer (Alpha)</h2>
 <p>These settings affect only <code>VideoProcessor Renderer (Alpha)</code>. Alpha feeds the bundled libplacebo renderer, but this page names only the values VP accepts. A root <code>[vprenderer]</code> is a baseline. If there is no root, the first named <code>[vprenderer.name]</code> section is the baseline and later names inherit it.</p>
@@ -132,6 +159,43 @@ switch_refresh_rate: true</pre>
 <article id="vprenderer-variant-when" data-fields="vprenderer.&lt;variant&gt;.when"><h3><code>[vprenderer.&lt;variant&gt;] when</code></h3><p class="meta"><strong>Purpose:</strong> selects a named Alpha display overlay. <strong>Syntax:</strong> a permitted source-state condition or <code>$key=="&lt;shortcut&gt;"</code>; see the <a href="#when-contract">conditional selection contract</a>. <strong>Omitted:</strong> the named section is not a matching override; the first named display section can instead serve as the baseline when no root exists.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td>Manual key condition</td><td>Select this display overlay only when its unique keyboard shortcut is pressed.</td></tr><tr><td>Source-state condition</td><td>Select this overlay when its supported source condition matches; settings it omits inherit from the display baseline.</td></tr></tbody></table><p><strong>Effect and verification:</strong> The source variables and expression operators are defined once in the shared contract. Alpha logs the selected display profile; a profile selection affects Alpha only, not queue, viewport, or another renderer.</p></article>
 </div>
 
+<section class="section-examples" aria-labelledby="alpha-examples">
+<h3 id="alpha-examples">Examples</h3>
+<h4>Conservative SDR Rec.709 output</h4>
+<p>Use this as a neutral Alpha baseline for a calibrated SDR Rec.709 path. It leaves color mapping and output negotiation at their documented AUTO resolutions.</p>
+<pre data-ini-example="alpha-sdr-rec709">[vprenderer]
+sdr_target_nits: 100
+quality: high
+tone_mapping: AUTO
+gamut_mapping: AUTO
+sdr_target_primaries: REC709
+output_range: AUTO
+output_gamma: AUTO</pre>
+<h4>HDR input mapped to calibrated SDR Rec.709</h4>
+<p>This makes the intentional HDR-to-SDR choices visible. Set the luminance, black level, transfer, and target primaries only to values measured for the actual display or LUT.</p>
+<pre data-ini-example="alpha-hdr-to-sdr-rec709">[vprenderer]
+sdr_target_nits: 100
+sdr_black_nits: AUTO
+quality: high
+tone_mapping: spline
+gamut_mapping: perceptual
+peak_detection: AUTO
+contrast_recovery: AUTO
+sdr_target_primaries: REC709
+output_gamma: bt1886</pre>
+<h4>Calibrated SDR BT.2020 output</h4>
+<p>Use only when the complete display chain is intentionally calibrated and signaled for SDR BT.2020. This is an explicit target choice, not a way to make an ordinary Rec.709 display wider-gamut.</p>
+<pre data-ini-example="alpha-sdr-bt2020">[vprenderer]
+sdr_target_nits: 100
+quality: high
+tone_mapping: AUTO
+gamut_mapping: AUTO
+sdr_target_primaries: BT2020
+report_bt2020_to_display: true
+output_range: AUTO
+output_gamma: AUTO</pre>
+</section>
+
 <h2 id="viewport">Alpha viewport and presentation geometry</h2>
 <div class="group">
 <article id="viewport-when" data-fields="vprenderer.viewport.when"><h3><code>[vprenderer.viewport] when</code></h3><p class="meta"><strong>Purpose:</strong> optionally provides a direct selector for the root viewport baseline. <strong>Syntax:</strong> <code>$key=="&lt;shortcut&gt;"</code> only; see the <a href="#when-contract">conditional selection contract</a>. <strong>Omitted:</strong> the root remains the default viewport without a direct reset shortcut.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td>Quoted key equality</td><td>Select the root viewport when that exact registered shortcut is pressed.</td></tr><tr><td>Omitted</td><td>Keep the root viewport as the ordinary baseline without assigning it a manual selector.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Viewport selection is independent from Alpha display-profile selection, so selecting one group never implicitly alters the other.</p></article>
@@ -144,8 +208,36 @@ switch_refresh_rate: true</pre>
 <article id="viewport-subtitle-padding-pixels" data-fields="vprenderer.viewport.&lt;variant&gt;.subtitle_padding_pixels"><h3><code>[vprenderer.viewport.&lt;variant&gt;] subtitle_padding_pixels</code></h3><p class="meta"><strong>Purpose:</strong> sets the viewport subtitle edge padding. <strong>Syntax:</strong> integer 0 through 500 pixels. <strong>Omitted:</strong> 20 pixels.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>0</code></td><td>No configured margin from the chosen viewport edge.</td></tr><tr><td><code>20</code> to <code>30</code></td><td>Conservative ordinary margin.</td></tr><tr><td>Above <code>30</code> through <code>500</code></td><td>Large margin for a measured screen/masking need.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Pixels are output-layout pixels, so re-evaluate after changing output resolution or viewport aspect.</p></article>
 </div>
 
+<section class="section-examples" aria-labelledby="viewport-examples">
+<h3 id="viewport-examples">Examples</h3>
+<h4>Conventional 16:9 display</h4>
+<p>Use this root viewport for a normal widescreen presentation with no active-picture crop. It is separate from Alpha color settings and from any shader selection.</p>
+<pre data-ini-example="viewport-16x9">[vprenderer.viewport]
+screen_aspect: 16:9
+automatic_crop: false
+subtitle_fit: false</pre>
+<h4>Scope screen with trusted active-picture bounds</h4>
+<p>Use this only when the physical screen is scope-shaped and active-picture detection has been verified on representative material. Subtitle fitting keeps subtitles in the configured presentation region.</p>
+<pre data-ini-example="viewport-scope">[vprenderer.viewport]
+screen_aspect: 2.35:1
+automatic_crop: true
+subtitle_fit: true
+subtitle_hold_seconds: 2
+subtitle_padding_pixels: 30</pre>
+<h4>Scope screen with a measured anamorphic correction</h4>
+<p>Use the final horizontal scale only for a measured optical or display correction. It is not a substitute for the physical screen aspect or for crop detection.</p>
+<pre data-ini-example="viewport-scope-anamorphic">[vprenderer.viewport]
+screen_aspect: 2.35:1
+anamorphic_scale: 16:15
+automatic_crop: true
+subtitle_fit: true
+subtitle_hold_seconds: 2
+subtitle_padding_pixels: 30</pre>
+</section>
+
 <h2 id="shaders">Shader groups and NLS</h2>
 <p>Shader groups are independent from Alpha color profiles. A root <code>[shader.group]</code> is an explicit off/baseline selection. A child is one shader member. For a single group, one matching member is selected; for <code>type: multi</code>, all matching children compose in stage/order sequence.</p>
+<div class="note"><strong>NLS is bundled, but still configuration.</strong> VP ships the NLS shader assets and a standard NLS rule in the shipped configuration. Even when that bundled rule is enabled, it is not an implicit, fixed renderer behavior: the rule's selection (<code>when</code>) and its geometry, strength, curve, quality, and tolerance remain public configuration. <code>shader_type: nls</code> selects VP's bundled NLS contract; <code>shader_type: custom</code> selects a separately named shader implementation. Configure, tune, or disable NLS through the normal shader group and member settings.</div>
 <div class="group">
 <article id="shader-group-type" data-fields="shader.&lt;group&gt;.type"><h3><code>[shader.&lt;group&gt;] type</code></h3><p class="meta"><strong>Purpose:</strong> chooses whether a group's matching children are exclusive or composited. <strong>Syntax:</strong> <code>single</code> or <code>multi</code>. <strong>Omitted:</strong> <code>single</code>.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>single</code></td><td>Select one matching member; use for alternate NLS modes.</td></tr><tr><td><code>multi</code></td><td>Compose every matching member in deterministic stage/order sequence; use for cleanup stacks.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Use <code>multi</code> only when the effects are intended to stack. A root with no child is the explicit off state.</p></article>
 <article id="shader-group-when" data-fields="shader.&lt;group&gt;.when"><h3><code>[shader.&lt;group&gt;] when</code></h3><p class="meta"><strong>Purpose:</strong> selects the shader group's root/baseline, which may intentionally contain no active member. <strong>Syntax:</strong> a permitted source-state condition or <code>$key=="&lt;shortcut&gt;"</code>; see the <a href="#when-contract">conditional selection contract</a>. <strong>Omitted:</strong> the root is the normal shader-group baseline.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td>Manual key condition</td><td>Select this group's root when its unique keyboard shortcut is pressed.</td></tr><tr><td>Source-state condition</td><td>Select this group's root when the declared source state matches.</td></tr></tbody></table><p><strong>Effect and verification:</strong> An empty root is a valid reversible off state for its group. It neither removes the configured shader files nor changes another shader group.</p></article>
@@ -164,6 +256,41 @@ switch_refresh_rate: true</pre>
 <article id="shader-nls-tolerance-percent" data-fields="shader.&lt;group&gt;.&lt;member&gt;.tolerance_percent"><h3><code>[shader.&lt;group&gt;.&lt;member&gt;] tolerance_percent</code></h3><p class="meta"><strong>Purpose:</strong> sets NLS aspect-tolerance threshold. <strong>Syntax:</strong> number 0 through 50 percent. <strong>Omitted:</strong> 5 percent.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>0</code></td><td>Require an exact aspect match before the rule is considered suitable.</td></tr><tr><td><code>5</code></td><td>Supplied conservative tolerance.</td></tr><tr><td>Above <code>5</code> through <code>50</code></td><td>Allow progressively larger aspect deviation; risk applying NLS where it does not fit.</td></tr></tbody></table><p><strong>Effect and verification:</strong> This is a suitability guard, not a scale factor. Keep it modest unless actual input aspect variation demands more.</p></article>
 </div>
 
+<section class="section-examples" aria-labelledby="shader-examples">
+<h3 id="shader-examples">Examples</h3>
+<h4>Bundled standard NLS for a measured 4:3 source</h4>
+<p>This automatic rule selects the bundled NLS implementation only for a known 1440×1080 input. The condition is illustrative: choose a selector that identifies the material for which nonlinear stretch is actually intended.</p>
+<pre data-ini-example="shader-nls-standard">[shader.nls.standard]
+when: $width==1440 &amp;&amp; $height==1080
+shader_type: nls
+label: Nonlinear Stretch
+stage: pre_resize
+order: 10
+hlsl_file: NLS.hlsl
+glsl_file: NLS.glsl
+quality: high
+geometry: classic
+strength: 1.0
+curve: 2.0
+tolerance_percent: 5</pre>
+<h4>Bundled protected NLS</h4>
+<p>Use protected geometry when preserving the central picture area is more important than maximum edge stretch. This is still a configuration choice even though both shader files are shipped with VP.</p>
+<pre data-ini-example="shader-nls-protected">[shader.nls.protected]
+when: $width==1440 &amp;&amp; $height==1080
+shader_type: nls
+label: Nonlinear Stretch Protected
+stage: pre_resize
+order: 10
+hlsl_file: NLS.hlsl
+glsl_file: NLS.glsl
+quality: high
+geometry: protected
+strength: 1.0
+center_protection: 0.35
+curve: 2.0
+tolerance_percent: 5</pre>
+</section>
+
 <h2 id="actions">Refresh event actions</h2>
 <div class="group">
 <article id="action-scope" data-fields="actions.&lt;name&gt;.scope"><h3><code>[actions.&lt;name&gt;] scope</code></h3><p class="meta"><strong>Purpose:</strong> limits an action to a renderer scope. <strong>Syntax:</strong> <code>vprenderer</code>, <code>directshow</code>, or <code>*</code>. <strong>Omitted:</strong> <code>vprenderer</code>.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>vprenderer</code></td><td>Run only for Alpha refresh transitions.</td></tr><tr><td><code>directshow</code></td><td>Run only for DirectShow refresh transitions.</td></tr><tr><td><code>*</code></td><td>Run for either supported scope.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Choose the narrowest scope that matches the external command. The default prevents Alpha-specific automation from running for other renderer paths.</p></article>
@@ -171,6 +298,17 @@ switch_refresh_rate: true</pre>
 <article id="action-when" data-fields="actions.&lt;name&gt;.when"><h3><code>[actions.&lt;name&gt;] when</code></h3><p class="meta"><strong>Purpose:</strong> narrows an action to a refresh-transition condition. <strong>Syntax:</strong> one or more comparisons over <code>$actual_refresh</code>, <code>$requested_refresh</code>, and <code>$previous_refresh</code>, using the <a href="#when-contract">conditional selection grammar</a>. <strong>Omitted:</strong> invalid for an actionable section; every action must declare its refresh condition.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td>Refresh comparison</td><td>Run only when a supported refresh variable satisfies the declared numeric comparison.</td></tr><tr><td>Combined refresh condition</td><td>Require several refresh facts with <code>&amp;&amp;</code>, <code>||</code>, <code>!</code>, or parentheses.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Keep the expression about the committed transition. The action log records the event, condition result, and command decision; it is the evidence that a condition matched.</p></article>
 <article id="action-run" data-fields="actions.&lt;name&gt;.run"><h3><code>[actions.&lt;name&gt;] run</code></h3><p class="meta"><strong>Purpose:</strong> supplies the program and arguments run by an accepted event action. <strong>Syntax:</strong> an absolute <code>.exe</code>, <code>.bat</code>, or <code>.cmd</code> path followed by optional arguments. <strong>Omitted:</strong> no runnable action.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td>Absolute executable/batch path plus arguments</td><td>Run that command only after the configured event and condition pass.</td></tr><tr><td>Omitted</td><td>No external command is associated with the action section.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Keep actions idempotent and short-lived. A path that does not end in a supported executable/batch extension is rejected by the configuration reader.</p></article>
 </div>
+
+<section class="section-examples" aria-labelledby="action-examples">
+<h3 id="action-examples">Example</h3>
+<h4>Harmless refresh-action test</h4>
+<p>This verifies the event, scope, and condition wiring without changing display state. Replace the no-op command only after confirming the action log records the expected committed transition.</p>
+<pre data-ini-example="action-refresh-test">[actions.test_refresh]
+scope: vprenderer
+on: refresh.confirmed
+when: $actual_refresh==60
+run: C:\Windows\System32\cmd.exe /c exit 0</pre>
+</section>
 
 <h2 id="guides">Practical starting points</h2>
 <h3>Conservative SDR input to SDR output</h3>
