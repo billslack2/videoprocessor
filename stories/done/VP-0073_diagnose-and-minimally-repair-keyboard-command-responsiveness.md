@@ -2,10 +2,34 @@
 
 ## Status
 
-Review. The implementation was merged into `v1.1.015-beta` through
+Done. Accepted by the user after live Alpha/madVR handoff testing and merged
+into `v1.1.015-beta` through
 [videoprocessor PR #37](https://github.com/billslack2/videoprocessor/pull/37)
-as merge commit `99df2db` on 2026-08-04. It preserves keyboard shortcuts
-across renderer handoff; acceptance review remains open.
+as merge commit `99df2db` on 2026-08-04 (feature commit `fcb80c3`).
+
+The confirmed defect was missing DirectShow child-window keyboard routing:
+the renderer video child had no `IVideoWindow::put_MessageDrain`, so VP's
+accelerator table could be bypassed while that child owned input during a
+renderer handoff. The repair routes DirectShow keyboard messages to the VP
+dialog and clears that route during teardown; it does not change renderer
+lifetime, queue, reset, epoch, or presentation policy.
+
+## Completion evidence (2026-08-04)
+
+- A clean x64 Release build on the current integration base succeeded and all
+  536 native tests passed.
+- Repeated live Alpha/madVR switches kept Ctrl+I responsive. Telemetry showed
+  every exercised Ctrl+I reaching VP and being consumed by its accelerator in
+  0-16 ms.
+- Live Alt+F4 reached the fullscreen host, forwarded to the main VP window,
+  and initiated shutdown without requiring Alt+Tab.
+- The instrumented DirectShow transitions completed graph stop and teardown
+  in 437-438 ms during acceptance; renderer retirement then completed
+  immediately. The earlier approximately eight-second transition did not
+  recur, and phase telemetry remains available if it does.
+- The user reported the repaired build worked much better and explicitly
+  accepted VP-0073 as done after the merged build passed the exercised
+  renderer-switch and command-routing scenarios.
 
 ## User story
 
