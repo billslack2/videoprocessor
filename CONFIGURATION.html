@@ -22,7 +22,7 @@ nav { display:flex; gap:8px 15px; flex-wrap:wrap; margin:23px 0 30px; } a { colo
 <p class="lead">The shipped <code>VideoProcessor.cfg</code> is one strict, startup-read configuration file. This reference describes the supported public settings for capture, DirectShow, the VideoProcessor Renderer (Alpha), shader selection, and refresh actions. It is deliberately value-level: use it to decide what a setting changes before editing your working configuration.</p>
 <div class="note"><strong>Start conservatively.</strong> Copy only the setting that solves a known problem, keep your prior value in a comment, and change calibration-related values only when they match the display or LUT you actually use. Configuration is read at startup; a renderer rebuild may apply a newly selected Alpha or viewport variant, but editing the file itself requires restarting VideoProcessor.</div>
 <div class="note warning"><strong>Strict syntax matters.</strong> A malformed public setting is rejected during startup validation or reported in <code>vp_debug.log</code>. Names are case-insensitive, but the spelling and section shown here are the supported contract. Every <code>AUTO</code> entry below names either its exact resolved value or the specific source/hardware condition that determines it; it never means "try every upstream library option."</div>
-<nav><a href="#reading">How selection works</a><a href="#when-contract">When expressions</a><a href="#startup">Startup and capture</a><a href="#queue">Queue and DirectShow</a><a href="#alpha">Alpha renderer</a><a href="#viewport">Viewport</a><a href="#shaders">Shaders</a><a href="#actions">Actions</a><a href="#guides">Practical guides</a><a href="#troubleshooting">Troubleshooting</a></nav>
+<nav><a href="#reading">How selection works</a><a href="#when-contract">When expressions</a><a href="#startup">Startup and capture</a><a href="#queue">Queue and DirectShow</a><a href="#alpha">Alpha renderer</a><a href="#viewport">Viewport</a><a href="#shaders">Shaders</a><a href="#nls">NLS shader</a><a href="#actions">Actions</a><a href="#guides">Practical guides</a><a href="#troubleshooting">Troubleshooting</a></nav>
 
 <h2 id="reading">How to read and compose the file</h2>
 <p>Sections own settings. A root section is the normal baseline. A named child section is a variant that inherits its group's baseline and replaces only the keys it declares. A matching <code>when</code> expression selects the variant in memory. Selecting a root expression returns that group to its baseline; it does not retain keys from the previous variant. Selections are process-local and disappear when VP exits.</p>
@@ -210,23 +210,24 @@ output_gamma: AUTO</pre>
 
 <section class="section-examples" aria-labelledby="viewport-examples">
 <h3 id="viewport-examples">Examples</h3>
+<p>Each fragment is standalone. In a complete configuration that also has a root viewport, give a named viewport its own permitted <code>when</code> selection rule before expecting it to overlay the root; the shared selection contract defines that rule.</p>
 <h4>Conventional 16:9 display</h4>
 <p>Use this root viewport for a normal widescreen presentation with no active-picture crop. It is separate from Alpha color settings and from any shader selection.</p>
 <pre data-ini-example="viewport-16x9">[vprenderer.viewport]
 screen_aspect: 16:9
 automatic_crop: false
 subtitle_fit: false</pre>
-<h4>Scope screen with trusted active-picture bounds</h4>
-<p>Use this only when the physical screen is scope-shaped and active-picture detection has been verified on representative material. Subtitle fitting keeps subtitles in the configured presentation region.</p>
-<pre data-ini-example="viewport-scope">[vprenderer.viewport]
+<h4>Named scope viewport with trusted active-picture bounds</h4>
+<p>Use this named viewport only when the physical screen is scope-shaped and active-picture detection has been verified on representative material. Subtitle fitting keeps subtitles in the configured presentation region.</p>
+<pre data-ini-example="viewport-scope">[vprenderer.viewport.scope]
 screen_aspect: 2.35:1
 automatic_crop: true
 subtitle_fit: true
 subtitle_hold_seconds: 2
 subtitle_padding_pixels: 30</pre>
-<h4>Scope screen with a measured anamorphic correction</h4>
+<h4>Named anamorphic scope viewport</h4>
 <p>Use the final horizontal scale only for a measured optical or display correction. It is not a substitute for the physical screen aspect or for crop detection.</p>
-<pre data-ini-example="viewport-scope-anamorphic">[vprenderer.viewport]
+<pre data-ini-example="viewport-scope-anamorphic">[vprenderer.viewport.scope_anamorphic]
 screen_aspect: 2.35:1
 anamorphic_scale: 16:15
 automatic_crop: true
@@ -235,10 +236,9 @@ subtitle_hold_seconds: 2
 subtitle_padding_pixels: 30</pre>
 </section>
 
-<h2 id="shaders">Shader groups and NLS</h2>
+<h2 id="shaders">Shader groups</h2>
 <p>Shader groups are independent from Alpha color profiles. A root <code>[shader.group]</code> is an explicit off/baseline selection. A child is one shader member. For a single group, one matching member is selected; for <code>type: multi</code>, all matching children compose in stage/order sequence.</p>
-<div class="note"><strong>NLS is bundled, but still configuration.</strong> VP ships the NLS shader assets and a standard NLS rule in the shipped configuration. Even when that bundled rule is enabled, it is not an implicit, fixed renderer behavior: the rule's selection (<code>when</code>) and its geometry, strength, curve, quality, and tolerance remain public configuration. <code>shader_type: nls</code> selects VP's bundled NLS contract; <code>shader_type: custom</code> selects a separately named shader implementation. Configure, tune, or disable NLS through the normal shader group and member settings.</div>
-<div class="note"><strong>NLS mapping is viewport-driven, not resolution-driven.</strong> A selected NLS rule does not decide that one fixed input resolution should stretch. Once VP has stable active-picture bounds, it compares their measured aspect with the selected viewport target, supplies the target aspect, warp axis, stretch ratio, and any safe-fit decision to the bundled shader, and the shader applies that decision. A 4:3 active picture can therefore map toward a 16:9 viewport; scope-shaped content can pass through on a scope viewport; and a ratio above the safe stretch limit keeps native geometry inside the target instead of forcing a destructive warp.</div>
+<p>A shader is a GPU program inserted at a configured stage. A <code>custom</code> member uses the selected backend file as-is; an <code>nls</code> member uses VP's bundled nonlinear-stretch shader and its additional NLS contract, documented separately below. Both are selected, ordered, and disabled through the same shader-group configuration model.</p>
 <div class="group">
 <article id="shader-group-type" data-fields="shader.&lt;group&gt;.type"><h3><code>[shader.&lt;group&gt;] type</code></h3><p class="meta"><strong>Purpose:</strong> chooses whether a group's matching children are exclusive or composited. <strong>Syntax:</strong> <code>single</code> or <code>multi</code>. <strong>Omitted:</strong> <code>single</code>.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>single</code></td><td>Select one matching member; use for alternate NLS modes.</td></tr><tr><td><code>multi</code></td><td>Compose every matching member in deterministic stage/order sequence; use for cleanup stacks.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Use <code>multi</code> only when the effects are intended to stack. A root with no child is the explicit off state.</p></article>
 <article id="shader-group-when" data-fields="shader.&lt;group&gt;.when"><h3><code>[shader.&lt;group&gt;] when</code></h3><p class="meta"><strong>Purpose:</strong> selects the shader group's root/baseline, which may intentionally contain no active member. <strong>Syntax:</strong> a permitted source-state condition or <code>$key=="&lt;shortcut&gt;"</code>; see the <a href="#when-contract">conditional selection contract</a>. <strong>Omitted:</strong> the root is the normal shader-group baseline.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td>Manual key condition</td><td>Select this group's root when its unique keyboard shortcut is pressed.</td></tr><tr><td>Source-state condition</td><td>Select this group's root when the declared source state matches.</td></tr></tbody></table><p><strong>Effect and verification:</strong> An empty root is a valid reversible off state for its group. It neither removes the configured shader files nor changes another shader group.</p></article>
@@ -249,6 +249,28 @@ subtitle_padding_pixels: 30</pre>
 <article id="shader-member-order" data-fields="shader.&lt;group&gt;.&lt;member&gt;.order"><h3><code>[shader.&lt;group&gt;.&lt;member&gt;] order</code></h3><p class="meta"><strong>Purpose:</strong> positions all selected shader entries within the same stage. <strong>Syntax:</strong> non-negative integer. <strong>Omitted:</strong> <code>0</code>.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>0</code> or omitted</td><td>Assign an automatic ordinal as selected entries are collected. Use this for a lone effect or when no relative placement is required.</td></tr><tr><td><code>1</code> or higher</td><td>Sort that entry in ascending numeric order against every other selected entry in the same stage.</td></tr><tr><td>Equal positive values</td><td>Allowed; the effective selected-entry order breaks the tie deterministically.</td></tr></tbody></table><p><strong>Effect and verification:</strong> It has no visible effect when only one shader is active in a stage. It never moves a shader between stages: <code>pre_resize</code> runs before resizing and <code>post_resize</code> after it. Use explicit values only when several concurrently selected effects need a deliberate relative order.</p></article>
 <article id="shader-member-hlsl-file" data-fields="shader.&lt;group&gt;.&lt;member&gt;.hlsl_file"><h3><code>[shader.&lt;group&gt;.&lt;member&gt;] hlsl_file</code></h3><p class="meta"><strong>Purpose:</strong> names the madVR/HLSL implementation for this logical member. <strong>Syntax:</strong> a shader file path/name available to the configured shader loader. <strong>Omitted:</strong> madVR ignores this logical member if no HLSL implementation exists.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>NLS.hlsl</code></td><td>HLSL implementation of the supplied NLS member.</td></tr><tr><td><code>Debanding mild.hlsl</code></td><td>HLSL implementation of a custom cleanup member.</td></tr></tbody></table><p><strong>Effect and verification:</strong> A missing/unreadable file invalidates that backend member. It does not make a GLSL implementation usable by madVR.</p></article>
 <article id="shader-member-glsl-file" data-fields="shader.&lt;group&gt;.&lt;member&gt;.glsl_file"><h3><code>[shader.&lt;group&gt;.&lt;member&gt;] glsl_file</code></h3><p class="meta"><strong>Purpose:</strong> names the Alpha/GLSL implementation for this logical member. <strong>Syntax:</strong> a GLSL shader file path/name available to Alpha. <strong>Omitted:</strong> Alpha ignores this logical member if no GLSL implementation exists.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>NLS.glsl</code></td><td>GLSL implementation of the supplied NLS member.</td></tr><tr><td>Another available GLSL file</td><td>Use that Alpha implementation for the logical member.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Keep HLSL and GLSL entries together only when they represent the same intended effect. Alpha logs shader loading/compilation failures.</p></article>
+</div>
+
+<section class="section-examples" aria-labelledby="shader-group-examples">
+<h3 id="shader-group-examples">Example</h3>
+<h4>One madVR post-resize custom shader</h4>
+<p>This one-member group activates a supplied HLSL finishing shader for SDR input. It intentionally has no GLSL implementation, so Alpha ignores the logical member; add a matching <code>glsl_file</code> only when an equivalent Alpha shader is available. The group and member names are chosen by the configuration author.</p>
+<pre data-ini-example="shader-custom-post-resize">[shader.finishing]
+type: single
+
+[shader.finishing.post_resize]
+when: $transfer=="SDR"
+shader_type: custom
+label: Post-resize finishing
+stage: post_resize
+hlsl_file: Adaptive sharpen.hlsl</pre>
+</section>
+
+<h2 id="nls">Nonlinear Stretch (NLS) shader</h2>
+<p>NLS is VP's bundled nonlinear-stretch shader, not a separate renderer feature. It is still an ordinary <code>shader_type: nls</code> member: a shader group selects it, a root selection can turn it off, and its settings control its behavior. What makes it special is that VP supplies the shader with a runtime active-picture and viewport contract rather than leaving it to guess from a fixed source resolution.</p>
+<table><thead><tr><th>Step</th><th>How NLS works</th></tr></thead><tbody><tr><td>1. Select</td><td>A normal shader-group rule selects the standard or protected NLS member, or its root/off state. The <code>when</code> rule selects a mode; it does not identify every input aspect that should stretch.</td></tr><tr><td>2. Measure</td><td>VP waits for trusted, stable active-picture bounds from the current renderer generation. Until then it leaves mapping in a waiting/safe state.</td></tr><tr><td>3. Resolve</td><td>VP compares the measured active-picture aspect with the selected viewport target. A near match passes through; a manageable mismatch uses horizontal or vertical nonlinear mapping; a ratio above the 1.5x safety limit uses safe fit instead.</td></tr><tr><td>4. Run</td><td>The bundled HLSL or GLSL shader receives the chosen axis, stretch ratio, active rectangle, and safe-fit inputs, then performs only that selected mapping. It does not choose the target aspect itself.</td></tr></tbody></table>
+<div class="note"><strong>Viewport-driven behavior.</strong> A 4:3 active picture can map toward a 16:9 viewport. Scope content can pass through on a scope viewport. A 4:3 picture on a 2.35:1 viewport exceeds the safe stretch limit and remains a safe fit instead of receiving a destructive warp. The selected viewport, not a hard-coded input resolution, supplies the target.</div>
+<div class="group">
 <article id="shader-nls-geometry" data-fields="shader.&lt;group&gt;.&lt;member&gt;.geometry"><h3><code>[shader.&lt;group&gt;.&lt;member&gt;] geometry</code></h3><p class="meta"><strong>Purpose:</strong> chooses the NLS geometry mode. <strong>Syntax:</strong> an NLS geometry token understood by the installed NLS shader. <strong>Omitted:</strong> the shader's default geometry.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>classic</code></td><td>Standard nonlinear-stretch geometry.</td></tr><tr><td><code>protected</code></td><td>Geometry intended for use with centre protection.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Treat geometry and <code>center_protection</code> as a pair. Use the shipped names unless the installed NLS shader explicitly supports another mode.</p></article>
 <article id="shader-nls-strength" data-fields="shader.&lt;group&gt;.&lt;member&gt;.strength"><h3><code>[shader.&lt;group&gt;.&lt;member&gt;] strength</code></h3><p class="meta"><strong>Purpose:</strong> sets NLS intensity. <strong>Syntax:</strong> finite numeric shader parameter. <strong>Omitted:</strong> shader default.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>0</code></td><td>No configured nonlinear-stretch intensity.</td></tr><tr><td><code>1.0</code></td><td>Standard supplied NLS intensity.</td></tr><tr><td>Other finite number</td><td>Shader-specific intensity; test carefully for geometric distortion.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Strength is not a color sharpness control. Test with geometry and titles, then return to the empty NLS root to compare.</p></article>
 <article id="shader-nls-center-protection" data-fields="shader.&lt;group&gt;.&lt;member&gt;.center_protection"><h3><code>[shader.&lt;group&gt;.&lt;member&gt;] center_protection</code></h3><p class="meta"><strong>Purpose:</strong> preserves the central image region during protected NLS. <strong>Syntax:</strong> finite numeric shader parameter. <strong>Omitted:</strong> shader default/no explicit protection.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>0</code></td><td>No configured central protection.</td></tr><tr><td><code>0.35</code></td><td>Supplied protected-NLS value; preserves a meaningful central region.</td></tr><tr><td>Other finite number</td><td>Shader-specific protection amount; tune with a geometry pattern.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Higher protection generally limits centre distortion but leaves less room for edge stretch. It matters primarily with protected geometry.</p></article>
@@ -257,8 +279,8 @@ subtitle_padding_pixels: 30</pre>
 <article id="shader-nls-tolerance-percent" data-fields="shader.&lt;group&gt;.&lt;member&gt;.tolerance_percent"><h3><code>[shader.&lt;group&gt;.&lt;member&gt;] tolerance_percent</code></h3><p class="meta"><strong>Purpose:</strong> sets NLS aspect-tolerance threshold. <strong>Syntax:</strong> number 0 through 50 percent. <strong>Omitted:</strong> 5 percent.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>0</code></td><td>Require an exact aspect match before the rule is considered suitable.</td></tr><tr><td><code>5</code></td><td>Supplied conservative tolerance.</td></tr><tr><td>Above <code>5</code> through <code>50</code></td><td>Allow progressively larger aspect deviation; risk applying NLS where it does not fit.</td></tr></tbody></table><p><strong>Effect and verification:</strong> This is a suitability guard, not a scale factor. Keep it modest unless actual input aspect variation demands more.</p></article>
 </div>
 
-<section class="section-examples" aria-labelledby="shader-examples">
-<h3 id="shader-examples">Examples</h3>
+<section class="section-examples" aria-labelledby="nls-examples">
+<h3 id="nls-examples">Examples</h3>
 <h4>Standard NLS with a normal 16:9 viewport</h4>
 <p>The rule selector merely activates NLS for the intended class of input; it does not identify a fixed 4:3 resolution. VP compares each stable active picture with the 16:9 viewport at runtime. A 4:3 active picture can use horizontal NLS toward 16:9, while material already near 16:9 passes through.</p>
 <pre data-ini-example="shader-nls-standard">[vprenderer.viewport]
@@ -277,9 +299,9 @@ geometry: classic
 strength: 1.0
 curve: 2.0
 tolerance_percent: 5</pre>
-<h4>Protected NLS with a scope viewport</h4>
-<p>The scope target comes from the viewport, not a source-resolution predicate. Scope content that already matches the target is passed through; a 16:9 active picture can use a bounded horizontal mapping; and a 4:3 picture exceeds the safe 1.5× limit and stays a safe fit rather than being aggressively stretched.</p>
-<pre data-ini-example="shader-nls-protected">[vprenderer.viewport]
+<h4>Protected NLS with a named scope viewport</h4>
+<p>The scope target comes from the named viewport, not a source-resolution predicate. Scope content that already matches the target is passed through; a 16:9 active picture can use a bounded horizontal mapping; and a 4:3 picture exceeds the safe 1.5× limit and stays a safe fit rather than being aggressively stretched.</p>
+<pre data-ini-example="shader-nls-protected">[vprenderer.viewport.scope]
 screen_aspect: 2.35:1
 automatic_crop: true
 subtitle_fit: true
