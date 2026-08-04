@@ -66,8 +66,9 @@ Validation completed:
 - x64 Release `VideoProcessor-Test` build succeeded.
 - All 31 `ConfigFileTests` passed, including the field/value coverage test and
   validation of the marked HTML configuration example.
-- Static inventory check found 74 documented fields, 74 unique anchors, 74
-  value tables, 100 documented enum/list values, and no missing internal links.
+- Static inventory check now finds 72 documented public fields, 72 unique
+  anchors, 72 value tables, 96 documented enum/list values, and no missing
+  internal links. The two removed entries are intentionally internal-only.
 
 Outstanding validation: the required desktop-width browser rendering review
 could not run because the available browser policy blocks navigation to local
