@@ -1,56 +1,35 @@
-# VP-0082: Buffered active-picture look-ahead for Alpha and madVR
+# VP-0082: Buffered active-picture look-ahead for Alpha
 
 ## Status
 
-Review. The implementation was merged into `v1.1.015-beta` through
+Done. The Alpha implementation was merged into `v1.1.015-beta` through
 [videoprocessor PR #39](https://github.com/billslack2/videoprocessor/pull/39)
-as merge commit `d21d3c9` on 2026-08-04. The implementation branch
-`codex/vp-0082-buffered-lookahead` began from integration commit `4fa0b6a`;
-the remaining work is acceptance review with real Alpha and madVR content.
+as merge commit `d21d3c9` on 2026-08-04. The implementation branch was
+`codex/vp-0082-buffered-lookahead`.
 
-The first increment remains disabled by default and must support direct A/B
-testing with real watched content. Initial work is tracing the existing raw,
-converted, and renderer queues to prove the frame/epoch identity available to
-both Alpha and DirectShow/madVR before choosing the smallest implementation.
+The merged work provides the bounded renderer-neutral decision timeline,
+validated `0..8` configuration, exact Alpha queue/source identity, sparse
+future-frame analysis, stale-generation rejection, and frame-associated
+runtime application. Alpha adopts an accepted scheduled transition into the
+same transition state that owns final crop and NLS, so those presentation
+decisions change together for the effective frame. It does not add queue
+depth or wait for unavailable future frames.
 
-Foundation commit `de1346f` adds the bounded renderer-neutral decision
-timeline, the validated `0..8` startup setting, renderer plumbing, public
-documentation, and safety/parity tests. Positive settings are deliberately
-retained but runtime-inactive at this checkpoint, so this is not yet an A/B
-build. The x64 Release solution builds and the native suite passes 543/543.
+Live Alpha viewing with positive look-ahead found scene transitions and
+active-picture detection materially improved and solid enough to close this
+renderer scope. Zero remains the disabled/default behavior.
 
-Bill's practical review, Urvish's detector/cadence review, and renderer
-engineering approved this non-runtime foundation after inward backdating was
-restricted to outward-safe expansion, stale/duplicate identities were
-rejected, and the watermark was changed from presented to VP-consumed. Their
-approval does not cover runtime behavior, deployment, merge, or human
-acceptance.
-
-The next increment is exact Alpha queue integration: track every accepted,
-dequeued, dropped, reset, and discontinuous identity; inspect only existing
-safe future frames; preserve the current `ShouldAnalyze` cadence at value 0;
-and consume crop plus NLS atomically. DirectShow/madVR will first correlate
-the proposed source-frame decision with actual delivery/graph-application
-boundaries and remain diagnostic-only until shader-latching behavior is proven.
-
-Alpha diagnostic integration commit `238aad4` completes the queue-ownership
-portion of that work. It tracks enqueue, dequeue, overflow, resize, backlog
-recovery, cadence repeat, clear, discontinuity, and generation reset; analyzes
-only the existing safe future lead outside the queue lock; and attaches/logs
-proposed and consumed decision identities. Sparse native analysis now covers
-packed RGB, UYVY/HDYC, and v210, avoiding duplicate full-frame conversion.
-Positive values remain `runtime-apply=0`: they exercise diagnostics but do not
-yet control pixels. The x64 Release solution builds and 547/547 native tests
-pass. Next is the separately reviewed preview/presentation state split needed
-to consume the final crop and NLS decision atomically without allowing future
-evidence to mutate the current frame.
+The original DirectShow/madVR goal was deliberately separated on 2026-08-04.
+The merged DirectShow path validates, propagates, and retains the setting but
+reports `runtime-active=0`; it does not consume scheduled decisions. That
+remaining work is VP-0085 and is not part of this story's completion claim.
 
 ## User story
 
-As a CIH user watching mixed-aspect real-world video, I want VP to use the
-frames it already buffers to prepare active-picture, fit, crop, and NLS
-decisions before the corresponding frame is presented, so scene changes are
-visually seamless without adding a fragile renderer-specific detector.
+As an Alpha-renderer CIH user watching mixed-aspect real-world video, I want VP
+to use the frames Alpha already buffers to prepare active-picture, fit, crop,
+and NLS decisions before the corresponding frame is presented, so scene
+changes are visually seamless without adding a second detector.
 
 ## Problem statement
 
@@ -59,12 +38,12 @@ decision is effectively consumed as soon as it becomes trusted. At a genuine
 scene or geometry transition, the rendered stream can therefore expose the
 detector's confirmation delay as a brief crop, pillarbox, or NLS change.
 
-The live-output pipeline already has a bounded queue and frame/epoch timing
-identity. VP should evaluate whether that existing lead can become practical
-look-ahead: analyze upcoming frames, associate the final geometry decision
-with the correct frame identity, and apply crop and NLS atomically when that
-frame reaches presentation. The feature must never wait for unavailable
-frames or increase buffering merely to satisfy a configured look-ahead value.
+Alpha already has a bounded queue and frame/epoch timing identity. VP uses
+that existing lead as practical look-ahead: analyze upcoming frames, associate
+the final geometry decision with the correct frame identity, and apply crop
+and NLS atomically when that frame reaches presentation. The feature never
+waits for unavailable frames or increases buffering merely to satisfy a
+configured look-ahead value.
 
 ## Configuration contract
 
@@ -86,18 +65,17 @@ active_picture_lookahead_frames = 0
 ## Scope
 
 1. Identify the reliable shared frame identity available from capture through
-   active-picture analysis and each renderer's presentation boundary. Use the
+   active-picture analysis and Alpha's presentation boundary. Use the
    monotonic source sequence plus queue/source epoch as authority; retain PTS
    for diagnostics and use compact raster, viewport, and adapter generations
    only where they are required to reject stale decisions.
-2. Add a renderer-neutral frame-associated semantic decision containing the
+2. Add a frame-associated semantic decision containing the
    trusted active-picture bounds and classification, source aspect, NLS mode
    and stretch intent, confidence/state, and the earliest source frame at
-   which it becomes effective. Do not share a literal renderer transform:
-   Alpha owns its explicit source crop and madVR owns native bar removal.
-3. Let Alpha and DirectShow/madVR consume the same decision. Renderer-specific
-   code may translate it into libplacebo crop/transform or madVR DAR/shader
-   controls, but may not independently choose geometry or NLS activation.
+   which it becomes effective. Alpha retains ownership of its explicit
+   libplacebo source crop and presentation transform.
+3. Let Alpha consume the scheduled decision at the matching queue/presentation
+   identity and atomically update crop plus NLS transition state.
 4. Analyze the safely available buffered frames without increasing queue
    depth. When fewer frames are available than configured, use the available
    lead and log the effective value.
@@ -115,9 +93,9 @@ active_picture_lookahead_frames = 0
    generation change.
 8. Apply crop and NLS atomically for the effective frame. A frame must not use
    a new crop with an old NLS mapping, or vice versa.
-9. Add compact steady-state OSD telemetry such as `AP LA 4/8`. Log decision
-   frame/PTS and epoch, presentation lead, hold reason, invalidation, and late
-   or discarded decisions only on state changes, not per frame.
+9. Log configured/available/effective lead, decision frame and epoch,
+   application, hold, invalidation, and late or discarded decisions only on
+   state changes, not per frame.
 
 ## Temporal decision rules
 
@@ -156,7 +134,6 @@ preserving source-pixel safety.
 ## Validation matrix
 
 - A/B the same Alpha content with values `0`, `2`, `4`, and `8`.
-- Repeat the same matrix through DirectShow/madVR.
 - Scope-to-scope dark cuts: no crop or NLS flash.
 - Scope-to-1.85/16:9/4:3 transitions: switch at the confirmed effective frame,
   remain centered, and preserve all visible content.
@@ -177,7 +154,7 @@ preserving source-pixel safety.
 - requested-versus-available clamping without presentation stall;
 - timestamped decision selection at the intended frame/PTS;
 - stale epoch, format, viewport, and renderer decision rejection;
-- atomic crop/NLS consumption by both Alpha and madVR adapters;
+- atomic crop/NLS consumption by Alpha;
 - initial unknown state and last-trusted hold behavior;
 - scene transition backdating within available look-ahead;
 - queue drop, flush, re-prime, and renderer-switch sequences;
@@ -190,10 +167,9 @@ preserving source-pixel safety.
   through the same core implementation path.
 - Positive values use no more than the safely available buffered lead and
   never stall or silently enlarge the live queue.
-- Alpha and madVR consume the same source-frame-associated semantic
-  geometry/NLS decision. Alpha applies it with the corresponding rendered
-  frame; madVR applies it at the nearest safe delivery/graph boundary without
-  exposing an old-crop/new-NLS or new-crop/old-NLS mismatch.
+- Alpha consumes the source-frame-associated geometry/NLS decision with the
+  corresponding rendered frame, without exposing an old-crop/new-NLS or
+  new-crop/old-NLS mismatch.
 - Initial missing state is safe and graceful; ordinary uncertainty retains the
   last valid presentation unless a real invalidating boundary occurs.
 - Real-video A/B testing demonstrates a material reduction in scene-change
@@ -209,3 +185,4 @@ preserving source-pixel safety.
 - VP-0066: Live-output pipeline, queue, identity, and epoch architecture.
 - VP-0080: Fail-safe Alpha active-picture crop authority and shared geometry.
 - VP-0081: Preserve madVR NLS geometry through output-readiness re-primes.
+- VP-0085: Frame-correlated madVR NLS look-ahead.
