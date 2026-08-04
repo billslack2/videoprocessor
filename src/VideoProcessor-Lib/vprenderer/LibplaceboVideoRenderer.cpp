@@ -784,6 +784,7 @@ namespace
 		bool diagnosticDisableShaderCache = false;
 		double scopeScreenAspect = 2.35;
 		bool defaultScopeScreen = false;
+		double anamorphicScale = 1.0;
 		bool automaticSourceCrop = false;
 		bool scopeSubtitleFit = false;
 		uint64_t scopeSubtitleHoldMs = 2000;
@@ -826,6 +827,7 @@ namespace
 		{
 			stream
 				<< settings.scopeScreenAspect << '|' << settings.defaultScopeScreen << '|'
+				<< settings.anamorphicScale << '|'
 				<< settings.automaticSourceCrop << '|'
 				<< settings.scopeSubtitleFit << '|' << settings.scopeSubtitleHoldMs << '|'
 				<< settings.scopeSubtitlePaddingPixels << '|';
@@ -1427,6 +1429,15 @@ namespace
 				settings.defaultScopeScreen =
 					std::abs(value - 16.0 / 9.0) > 0.0001;
 			}
+		}
+		if (config.TryGetString(rule.section, "anamorphic_scale", raw))
+		{
+			double value = 0.0;
+			if (ParseAspectRatio(raw, value) && value >= 0.5 && value <= 2.0)
+				settings.anamorphicScale = value;
+			else
+				DebugLog::Log("profile '%s': invalid anamorphic_scale '%s'",
+					rule.name.c_str(), raw.c_str());
 		}
 		const auto readViewportBool = [&](const char* genericKey,
 			const char* deprecatedKey, bool& value)
@@ -2480,6 +2491,7 @@ struct LibplaceboVideoRenderer::Impl
 	enum pl_color_transfer sdrInputTransfer = PL_COLOR_TRC_UNKNOWN;
 	double scopeScreenAspect = 2.35;
 	bool defaultScopeScreen = false;
+	double anamorphicScale = 1.0;
 	bool automaticSourceCrop = false;
 	bool scopeSubtitleFit = false;
 	uint64_t scopeSubtitleHoldMs = 2000;
@@ -4710,6 +4722,7 @@ struct LibplaceboVideoRenderer::Impl
 		sdrInputTransfer = TranslateOutputGamma(settings.sdrInputTransfer);
 		scopeScreenAspect = settings.scopeScreenAspect;
 		defaultScopeScreen = settings.defaultScopeScreen;
+		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCrop = settings.automaticSourceCrop;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
@@ -4768,12 +4781,14 @@ struct LibplaceboVideoRenderer::Impl
 		const bool renderingBehaviorChanged =
 			scopeScreenAspect != settings.scopeScreenAspect ||
 			defaultScopeScreen != settings.defaultScopeScreen ||
+			anamorphicScale != settings.anamorphicScale ||
 			automaticSourceCrop != settings.automaticSourceCrop ||
 			scopeSubtitleFit != settings.scopeSubtitleFit ||
 			scopeSubtitleHoldMs != settings.scopeSubtitleHoldMs ||
 			scopeSubtitlePaddingPixels != settings.scopeSubtitlePaddingPixels;
 		scopeScreenAspect = settings.scopeScreenAspect;
 		defaultScopeScreen = settings.defaultScopeScreen;
+		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCrop = settings.automaticSourceCrop;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
@@ -6327,7 +6342,9 @@ struct LibplaceboVideoRenderer::Impl
 				if (scopeActive)
 					pl_rect2df_aspect_set(&target.crop,
 						static_cast<float>(scopeScreenAspect), 0.0f);
-				pl_rect2df_aspect_copy(&target.crop, &source.crop, 0.0f);
+				pl_rect2df_aspect_set(&target.crop,
+					pl_rect2df_aspect(&source.crop) *
+					static_cast<float>(anamorphicScale), 0.0f);
 				return;
 			}
 
@@ -6461,7 +6478,9 @@ struct LibplaceboVideoRenderer::Impl
 				// ordinary centered scaling inside the target viewport. Otherwise a
 				// 2.39 movie classified within the 2.35 tolerance would still be
 				// stretched vertically despite having no active NLS hook.
-				pl_rect2df_aspect_copy(&target.crop, &source.crop, 0.0f);
+				pl_rect2df_aspect_set(&target.crop,
+					pl_rect2df_aspect(&source.crop) *
+					static_cast<float>(anamorphicScale), 0.0f);
 				return;
 			}
 
@@ -6473,7 +6492,9 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<float>(scopeScreenAspect),
 					0.0f);
 			}
-			pl_rect2df_aspect_copy(&target.crop, &source.crop, 0.0f);
+			pl_rect2df_aspect_set(&target.crop,
+				pl_rect2df_aspect(&source.crop) *
+				static_cast<float>(anamorphicScale), 0.0f);
 			// Never translate the fitted destination for source-baked UI. Moving
 			// target.crop cannot reveal source pixels; it only clips one edge and
 			// leaves an unequal gap at the other. Unsupported overlay evidence is

@@ -44,6 +44,10 @@ namespace
 				right.viewport.screenAspect.numerator &&
 			left.viewport.screenAspect.denominator ==
 				right.viewport.screenAspect.denominator &&
+			left.viewport.anamorphicScale.numerator ==
+				right.viewport.anamorphicScale.numerator &&
+			left.viewport.anamorphicScale.denominator ==
+				right.viewport.anamorphicScale.denominator &&
 			left.viewport.automaticCrop == right.viewport.automaticCrop &&
 			left.viewport.subtitleFit == right.viewport.subtitleFit &&
 			left.viewport.subtitleHoldMilliseconds ==
@@ -419,6 +423,8 @@ namespace UnifiedProfileRuntime
 			StateVariables::Value::Text(viewport.profile);
 		variables["screen_aspect"] =
 			StateVariables::Value::Aspect(viewport.screenAspect);
+		variables["anamorphic_scale"] =
+			StateVariables::Value::Aspect(viewport.anamorphicScale);
 		variables["automatic_crop"] =
 			StateVariables::Value::Boolean(viewport.automaticCrop);
 		variables["subtitle_fit"] =

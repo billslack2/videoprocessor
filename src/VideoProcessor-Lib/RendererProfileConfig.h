@@ -115,6 +115,7 @@ namespace RendererProfileConfig
 		std::string group = "viewport";
 		std::string profile = "default";
 		AspectRatio screenAspect{ 16, 9, 16.0 / 9.0 };
+		AspectRatio anamorphicScale{ 1, 1, 1.0 };
 		bool automaticCrop = false;
 		bool subtitleFit = false;
 		uint64_t subtitleHoldMilliseconds = 2000;
@@ -327,6 +328,8 @@ namespace RendererProfileConfig
 				return IsChoice(value, { "normal", "scope" });
 			if (key == "screen_aspect" || key == "scope_screen_aspect")
 				return IsAspectInRange(value, 1.0, 4.0);
+			if (key == "anamorphic_scale")
+				return IsAspectInRange(value, 0.5, 2.0);
 			if (key == "automatic_crop" || key == "scope_automatic_crop" ||
 				key == "subtitle_fit" || key == "scope_subtitle_fit")
 				return IsBoolean(value);
@@ -1211,6 +1214,15 @@ namespace RendererProfileConfig
 		{
 			error = "[profiles.viewport." + viewport.profile +
 				"] screen_aspect: " + error;
+			return false;
+		}
+		value = settings.find("anamorphic_scale");
+		if (value != settings.end() &&
+			!AspectRatioParser::Parse(value->second, 0.5, 2.0,
+				viewport.anamorphicScale, error))
+		{
+			error = "[profiles.viewport." + viewport.profile +
+				"] anamorphic_scale: " + error;
 			return false;
 		}
 		value = settings.find("automatic_crop");

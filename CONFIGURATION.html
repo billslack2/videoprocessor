@@ -136,8 +136,8 @@ target_frames: 1</pre>
 <article id="viewport-variant" data-fields="vprenderer.viewport.&lt;variant&gt;.when">
 <h3>Viewport variant <code>when</code></h3><p>Use a named child such as <code>scope</code> for a selectable layout.</p>
 </article>
-<article id="viewport-layout" data-fields="vprenderer.viewport.&lt;variant&gt;.screen_aspect vprenderer.viewport.&lt;variant&gt;.automatic_crop vprenderer.viewport.&lt;variant&gt;.subtitle_fit vprenderer.viewport.&lt;variant&gt;.subtitle_hold_seconds vprenderer.viewport.&lt;variant&gt;.subtitle_padding_pixels">
-<h3>Viewport layout</h3><p><code>screen_aspect</code> selects the target display aspect. <code>automatic_crop</code> lets Alpha apply trusted active-picture bounds for that viewport. Subtitle fit, hold time, and padding are Alpha-only layout controls.</p>
+<article id="viewport-layout" data-fields="vprenderer.viewport.&lt;variant&gt;.screen_aspect vprenderer.viewport.&lt;variant&gt;.anamorphic_scale vprenderer.viewport.&lt;variant&gt;.automatic_crop vprenderer.viewport.&lt;variant&gt;.subtitle_fit vprenderer.viewport.&lt;variant&gt;.subtitle_hold_seconds vprenderer.viewport.&lt;variant&gt;.subtitle_padding_pixels">
+<h3>Viewport layout</h3><p><code>screen_aspect</code> selects the target display aspect. Optional <code>anamorphic_scale</code> is Alpha-only and applies a final horizontal presentation scale; use a decimal or ratio such as <code>16:15</code> (1.066667x wider), omit it for 1:1, and use values from 0.5 through 2.0. It does not alter crop detection, NLS, or color processing. <code>automatic_crop</code> lets Alpha apply trusted active-picture bounds for that viewport. Subtitle fit, hold time, and padding are Alpha-only layout controls.</p>
 </article>
 </div>
 
