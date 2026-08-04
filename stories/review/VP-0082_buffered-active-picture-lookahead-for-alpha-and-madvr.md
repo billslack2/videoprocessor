@@ -2,10 +2,11 @@
 
 ## Status
 
-In Progress as of 2026-08-03. Implementation branch
-`codex/vp-0082-buffered-lookahead` starts from the current
-`v1.1.015-beta` integration commit `4fa0b6a`; its isolated worktree is
-`C:\Users\bslac\vp\worktrees\vp-0082-buffered-lookahead`.
+Review. The implementation was merged into `v1.1.015-beta` through
+[videoprocessor PR #39](https://github.com/billslack2/videoprocessor/pull/39)
+as merge commit `d21d3c9` on 2026-08-04. The implementation branch
+`codex/vp-0082-buffered-lookahead` began from integration commit `4fa0b6a`;
+the remaining work is acceptance review with real Alpha and madVR content.
 
 The first increment remains disabled by default and must support direct A/B
 testing with real watched content. Initial work is tracing the existing raw,

@@ -104,7 +104,7 @@ they must not contain requirements that are absent from this file.
 | VP-0070-5 | Backlog | Extract subtitle analysis and relocation pipeline |
 | VP-0071 | Backlog | Compose the VP diagnostics OSD through madVR |
 | VP-0072 | Backlog | Repair or explicitly constrain DirectShow no-stop timestamp modes |
-| VP-0073 | Backlog | Diagnose and minimally repair keyboard-command responsiveness |
+| VP-0073 | Review | Diagnose and minimally repair keyboard-command responsiveness |
 | VP-0074 | Done | Alpha latency resilience and NLS shader cold-start recovery |
 | VP-0075 | Backlog | Restore Alpha analysis parity on native RGB ingress |
 | VP-0076 | Backlog | Decompose the DirectShow live-output pin without behavioral change |
@@ -113,7 +113,7 @@ they must not contain requirements that are absent from this file.
 | VP-0079 | Review | Canonical queue profiles and gaming hotkeys |
 | VP-0080 | Review | Make Alpha active-picture cropping fail safe on live full-raster video |
 | VP-0081 | Backlog | Preserve madVR NLS geometry through output-readiness re-primes |
-| VP-0082 | In Progress | Buffered active-picture look-ahead for Alpha and madVR |
+| VP-0082 | Review | Buffered active-picture look-ahead for Alpha and madVR |
 | VP-0083 | Done | Alpha anamorphic presentation profiles |
 | VP-0084 | Backlog | Bound DirectShow total steady queue after reset |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |

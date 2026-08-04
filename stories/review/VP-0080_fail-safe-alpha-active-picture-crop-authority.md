@@ -7,6 +7,11 @@ merged source head `22b5293` into the `v1.1.015-beta` integration branch as
 merge commit `4fa0b6a` on 2026-08-03. The final clean x64 Release build
 completed with `VERSION_DIRTY=false`, and all 532 native tests passed.
 
+The reviewed follow-up work was merged through
+[videoprocessor PR #38](https://github.com/billslack2/videoprocessor/pull/38)
+as merge commit `40066ad` on 2026-08-04. The x64 Release build passed with
+all 536 native tests; the story remains in Review for live acceptance.
+
 Bill's final geometry review, Urvish's final image-analysis review, and the
 renderer/concurrency review all approved the merge. Review found and corrected
 one old-epoch active-picture publication race and one missing Alpha final-NLS

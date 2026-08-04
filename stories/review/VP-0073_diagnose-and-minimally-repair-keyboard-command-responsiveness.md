@@ -2,7 +2,10 @@
 
 ## Status
 
-Backlog. No implementation has started.
+Review. The implementation was merged into `v1.1.015-beta` through
+[videoprocessor PR #37](https://github.com/billslack2/videoprocessor/pull/37)
+as merge commit `99df2db` on 2026-08-04. It preserves keyboard shortcuts
+across renderer handoff; acceptance review remains open.
 
 ## User story
 
