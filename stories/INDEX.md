@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0082`
-- Next root story number: `VP-0083`
-- Total indexed items: 97
+- Last assigned root story: `VP-0083`
+- Next root story number: `VP-0084`
+- Total indexed items: 98
 
 ## Story locations
 
@@ -114,6 +114,7 @@ they must not contain requirements that are absent from this file.
 | VP-0080 | Review | Make Alpha active-picture cropping fail safe on live full-raster video |
 | VP-0081 | Backlog | Preserve madVR NLS geometry through output-readiness re-primes |
 | VP-0082 | In Progress | Buffered active-picture look-ahead for Alpha and madVR |
+| VP-0083 | Backlog | Alpha anamorphic presentation profiles |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
