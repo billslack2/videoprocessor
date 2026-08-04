@@ -2,8 +2,24 @@
 
 ## Status
 
-Backlog design and bounded feasibility spike. No implementation branch has
-been chosen.
+In Progress. Implementation and hardware validation were started on 2026-08-04
+from `v1.1.015-beta` on `codex/vp-0083-anamorphic`.
+
+## Implementation checkpoint (2026-08-04)
+
+- Source commit `681baa1bde90af09004152b153b812f599a33172` adds the typed,
+  viewport-owned `anamorphic_scale` field (decimal or ratio, range `0.5..2.0`)
+  and publishes it with the resolved viewport snapshot.
+- Alpha applies the scale only while fitting the final libplacebo destination
+  rectangle; source crop authority, active-picture/NLS analysis, and color/HDR
+  processing remain unchanged.
+- The checked-in and deployed profiles select Scope plus `16:15` scale on
+  `Alt+A`; `Ctrl+A` selects the ordinary Scope profile without the scale.
+- A clean x64 Release build succeeded and all 570 native tests passed.
+- Deployment replaced the matched `VideoProcessor.exe` and
+  `vprenderer\VideoProcessorVPRenderer.dll` pair. The live config was backed
+  up at `C:\Videoprocessor\vp\backup-before-vp0083-20260804-103630` before
+  the minimal hotkey/profile edit.
 
 ## User story
 
