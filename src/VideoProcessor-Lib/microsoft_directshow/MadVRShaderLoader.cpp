@@ -10,6 +10,7 @@
 
 #include <ConfigFile.h>
 #include <DebugLog.h>
+#include <DisplayRuleExpression.h>
 #include <AspectRatio.h>
 #include <ActivePictureTransitionModel.h>
 #include <microsoft_directshow/MadVRExternalPixelShaders.h>
@@ -24,6 +25,7 @@
 #include <iomanip>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <set>
 #include <sstream>
 
@@ -131,6 +133,21 @@ bool ParseBoundedDouble(const std::string& raw, double minimum,
 
 MadVRShaderRuntimeState g_runtimeState;
 
+// VP-0079 shader selections deliberately live only for this process. The
+// configuration names groups; a key selects one child (single) or all matching
+// children (multi), while the root selection clears that group back to empty.
+std::mutex g_targetShaderSelectionMutex;
+std::map<std::string, std::vector<std::string>> g_targetShaderSelections;
+
+struct TargetShaderGroup
+{
+	std::string name;
+	bool multi = false;
+	std::string resetWhen;
+	std::vector<std::pair<std::string, std::string>> members; // name, when
+	bool rootIsEffect = false;
+};
+
 double GetNlsTargetAspect(const ShaderRule& rule)
 {
 	const MadVRShaderRuntimeSnapshot runtime = g_runtimeState.GetSnapshot();
@@ -197,6 +214,194 @@ std::vector<std::string> SplitList(const std::string& value)
 			values.push_back(item);
 	}
 	return values;
+}
+
+
+bool IsTargetShaderConfiguration(const ConfigFile& config)
+{
+	for (const std::string& section : config.GetSectionNames())
+		if (section.rfind("shader.", 0) == 0)
+			return true;
+	return false;
+}
+
+
+bool ParseTargetShaderGroups(const ConfigFile& config,
+	std::vector<TargetShaderGroup>& groups, std::string& reason)
+{
+	groups.clear();
+	reason.clear();
+	for (const std::string& section : config.GetSectionNames())
+	{
+		if (section.rfind("shader.", 0) != 0)
+			continue;
+		const std::string tail = section.substr(7);
+		if (tail.empty() || tail.find('.') != std::string::npos)
+			continue;
+		const auto* root = config.GetSectionValues(section);
+		TargetShaderGroup group;
+		group.name = tail;
+		std::string type;
+		if (config.TryGetString(section, "type", type))
+		{
+			const std::string normalized = ConfigFile::NormalizeName(type);
+			if (normalized == "multi") group.multi = true;
+			else if (normalized != "single")
+			{
+				reason = "[" + section + "] type must be single or multi";
+				return false;
+			}
+		}
+		config.TryGetString(section, "when", group.resetWhen);
+		group.rootIsEffect = root &&
+			(root->find("shader_type") != root->end() ||
+			 root->find("hlsl_file") != root->end() ||
+			 root->find("glsl_file") != root->end());
+		for (const std::string& child : config.GetSectionNames())
+		{
+			const std::string prefix = section + ".";
+			if (child.rfind(prefix, 0) != 0)
+				continue;
+			const std::string name = child.substr(prefix.size());
+			if (name.empty() || name.find('.') != std::string::npos)
+			{
+				reason = "[" + child + "] must be exactly one shader member deep";
+				return false;
+			}
+			std::string when;
+			if (!config.TryGetString(child, "when", when))
+			{
+				reason = "[" + child + "] requires when=";
+				return false;
+			}
+			group.members.emplace_back(name, when);
+		}
+		if (group.rootIsEffect && !group.members.empty())
+		{
+			reason = "[" + section + "] cannot define an effect and child members";
+			return false;
+		}
+		if (group.multi && group.rootIsEffect)
+		{
+			reason = "[" + section + "] type=multi requires child members";
+			return false;
+		}
+		groups.push_back(std::move(group));
+	}
+	return true;
+}
+
+
+bool MatchesTargetShaderWhen(const std::string& rawWhen,
+	const std::string& key, const DisplayRuleExpression::ValueLookup& source,
+	bool& matches, std::string& reason)
+{
+	matches = false;
+	DisplayRuleExpression::Expression expression;
+	if (!expression.Compile(rawWhen, reason, true))
+		return false;
+	int specificity = 0;
+	matches = expression.Matches([&](const std::string& variable,
+		std::string& value)
+		{
+			if (variable == "key") { value = key; return true; }
+			return source && source(variable, value);
+		}, specificity, reason);
+	return reason.empty();
+}
+
+
+bool ResolveTargetShaderKey(const ConfigFile& config, const std::string& key,
+	const DisplayRuleExpression::ValueLookup& source,
+	std::vector<std::string>& names, std::string& reason)
+{
+	names.clear();
+	std::vector<TargetShaderGroup> groups;
+	if (!ParseTargetShaderGroups(config, groups, reason))
+		return false;
+
+	if (!key.empty())
+	{
+		bool consumed = false;
+		std::lock_guard<std::mutex> guard(g_targetShaderSelectionMutex);
+		for (const TargetShaderGroup& group : groups)
+		{
+			bool matches = false;
+			if (!group.resetWhen.empty() &&
+				!MatchesTargetShaderWhen(group.resetWhen, key, source,
+					matches, reason))
+				return false;
+			if (matches)
+			{
+				g_targetShaderSelections.erase(group.name);
+				consumed = true;
+				continue;
+			}
+			std::vector<std::string> selected;
+			for (const auto& member : group.members)
+			{
+				if (!MatchesTargetShaderWhen(member.second, key, source,
+					matches, reason)) return false;
+				if (matches) selected.push_back(member.first);
+			}
+			if (selected.empty()) continue;
+			if (!group.multi && selected.size() != 1)
+			{
+				reason = "key '" + key + "' selects multiple members of [shader." +
+					group.name + "]";
+				return false;
+			}
+			g_targetShaderSelections[group.name] = selected;
+			consumed = true;
+		}
+		if (!consumed)
+		{
+			reason = "key '" + key + "' does not select a shader group";
+			return false;
+		}
+	}
+
+	std::map<std::string, std::vector<std::string>> manual;
+	{
+		std::lock_guard<std::mutex> guard(g_targetShaderSelectionMutex);
+		manual = g_targetShaderSelections;
+	}
+	for (const TargetShaderGroup& group : groups)
+	{
+		const auto selected = manual.find(group.name);
+		if (selected != manual.end())
+		{
+			for (const std::string& member : selected->second)
+				names.push_back(group.name + "." + member);
+			continue;
+		}
+		if (group.rootIsEffect)
+		{
+			bool matches = group.resetWhen.empty();
+			if (!group.resetWhen.empty() && !MatchesTargetShaderWhen(
+				group.resetWhen, std::string(), source, matches, reason))
+				return false;
+			if (matches) names.push_back(group.name);
+			continue;
+		}
+		std::vector<std::string> automatic;
+		for (const auto& member : group.members)
+		{
+			bool matches = false;
+			if (!MatchesTargetShaderWhen(member.second, std::string(), source,
+				matches, reason)) return false;
+			if (matches) automatic.push_back(member.first);
+		}
+		if (!group.multi && automatic.size() > 1)
+		{
+			reason = "automatic state selects multiple members of [shader." +
+				group.name + "]";
+			return false;
+		}
+		for (const std::string& member : automatic)
+			names.push_back(group.name + "." + member);
+	}
+	return true;
 }
 
 
@@ -762,10 +967,183 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 }
 
 
+ShaderRule LoadTargetRule(const ConfigFile& config, const std::string& name,
+	ShaderRendererBackend backend)
+{
+	ShaderRule rule;
+	rule.name = ConfigFile::NormalizeName(name);
+	rule.label = name;
+	const std::string section = "shader." + rule.name;
+	const auto* settings = config.GetSectionValues(section);
+	if (!settings)
+	{
+		rule.valid = false;
+		return rule;
+	}
+	std::string value;
+	if (config.TryGetString(section, "label", value) &&
+		!ConfigFile::Trim(value).empty())
+		rule.label = ConfigFile::Trim(value);
+	if (!config.TryGetString(section, "shader_type", value))
+	{
+		DebugLog::Log("Shaders: [%s] requires shader_type", section.c_str());
+		rule.valid = false;
+		return rule;
+	}
+	rule.explicitType = true;
+	const std::string type = ConfigFile::NormalizeName(value);
+	if (type == "nls") rule.nls = true;
+	else if (type != "custom")
+	{
+		DebugLog::Log("Shaders: [%s] shader_type must be nls or custom", section.c_str());
+		rule.valid = false;
+		return rule;
+	}
+	if (rule.nls)
+	{
+		if (config.TryGetString(section, "tolerance_percent", value) &&
+			!ParseBoundedDouble(value, 0.0, 50.0,
+				rule.aspectTolerancePercent))
+		{
+			DebugLog::Log("Shaders: [%s] tolerance_percent is invalid", section.c_str());
+			rule.valid = false;
+		}
+		if (rule.aspectTolerancePercent < 0.0)
+			rule.aspectTolerancePercent = 5.0;
+		LoadTypedNlsSettings(config, section, rule);
+	}
+	std::string stage = "pre_resize";
+	config.TryGetString(section, "stage", stage);
+	stage = ConfigFile::NormalizeName(stage);
+	int order = 0;
+	if (config.TryGetString(section, "order", value))
+	{
+		try
+		{
+			size_t consumed = 0;
+			const long parsed = std::stol(ConfigFile::Trim(value), &consumed);
+			if (consumed != ConfigFile::Trim(value).size() || parsed < 0 ||
+				parsed > INT_MAX) throw std::out_of_range("order");
+			order = static_cast<int>(parsed);
+		}
+		catch (const std::exception&)
+		{
+			DebugLog::Log("Shaders: [%s] order must be a non-negative integer", section.c_str());
+			rule.valid = false;
+		}
+	}
+	const char* fileKey = backend == ShaderRendererBackend::MADVR ?
+		"hlsl_file" : "glsl_file";
+	std::string filename;
+	if (!config.TryGetString(section, fileKey, filename) ||
+		ConfigFile::Trim(filename).empty())
+	{
+		// An omitted backend file is deliberately valid: the logical shader is
+		// simply ignored by that renderer.
+		rule.sourceBackend = backend == ShaderRendererBackend::MADVR ?
+			ShaderSourceBackend::LIBPLACEBO : ShaderSourceBackend::MADVR;
+		return rule;
+	}
+	rule.filename = ConfigFile::Trim(filename);
+	rule.sourceBackend = backend == ShaderRendererBackend::MADVR ?
+		ShaderSourceBackend::MADVR : ShaderSourceBackend::LIBPLACEBO;
+	const std::filesystem::path path = ResolveShaderPath(rule.filename);
+	if (path.empty())
+	{
+		rule.valid = false;
+		return rule;
+	}
+	if (stage == "pre_resize" || stage == "pre")
+		rule.preScale.push_back({ static_cast<unsigned int>(order), path });
+	else if (stage == "post_resize" || stage == "post")
+		rule.postScale.push_back({ static_cast<unsigned int>(order), path });
+	else
+	{
+		DebugLog::Log("Shaders: [%s] stage must be pre_resize or post_resize", section.c_str());
+		rule.valid = false;
+	}
+	return rule;
+}
+
+
+DisplayRuleExpression::ValueLookup TargetVideoLookup(const VideoState& videoState)
+{
+	const double refreshRate = videoState.displayMode ?
+		videoState.displayMode->RefreshRateHz() : 0.0;
+	return [&videoState, refreshRate](const std::string& variable,
+		std::string& value)
+	{
+		if (variable == "transfer" || variable == "eotf")
+		{
+			value = SignalName(videoState.eotf);
+			return true;
+		}
+		if (variable == "source_rate")
+		{
+			std::ostringstream text;
+			text.imbue(std::locale::classic());
+			text << static_cast<int>(std::floor(refreshRate + 0.0001));
+			value = text.str();
+			return true;
+		}
+		return false;
+	};
+}
+
+
+bool LoadTargetRuleSelectionForBackend(const ConfigFile& config,
+	const std::string& key, const DisplayRuleExpression::ValueLookup& source,
+	ShaderRendererBackend backend, std::vector<ShaderRule>& rules,
+	std::string& reason)
+{
+	rules.clear();
+	std::vector<std::string> names;
+	if (!ResolveTargetShaderKey(config, key, source, names, reason))
+		return false;
+	std::set<std::string> seen;
+	for (const std::string& name : names)
+	{
+		if (!seen.insert(name).second) continue;
+		ShaderRule rule = LoadTargetRule(config, name, backend);
+		if (!rule.valid)
+		{
+			reason = "shader." + name + " is invalid";
+			return false;
+		}
+		if (RuleAppliesToBackend(rule, backend))
+			rules.push_back(std::move(rule));
+	}
+	// An empty target root is a deliberate baseline, not an invalid shader
+	// request.  Represent it as the legacy explicit NONE rule so every caller
+	// (including the DirectShow aspect guard) has one safe, renderer-neutral
+	// selection to inspect.
+	if (rules.empty())
+	{
+		ShaderRule off;
+		off.name = "off";
+		off.label = "Off";
+		off.none = true;
+		rules.push_back(std::move(off));
+	}
+	return true;
+}
+
+
 bool LoadRuleSelectionForBackend(const ConfigFile& config,
 	const std::string& selector, ShaderRendererBackend backend,
 	std::vector<ShaderRule>& rules)
 {
+	if (IsTargetShaderConfiguration(config))
+	{
+		constexpr const char* TARGET_KEY = "@shader-key:";
+		const std::string trimmed = ConfigFile::Trim(selector);
+		if (trimmed.rfind(TARGET_KEY, 0) != 0)
+			return false;
+		std::string reason;
+		return LoadTargetRuleSelectionForBackend(config,
+			trimmed.substr(std::char_traits<char>::length(TARGET_KEY)),
+			DisplayRuleExpression::ValueLookup(), backend, rules, reason);
+	}
 	rules.clear();
 	std::set<std::string> seen;
 	for (const std::string& name : SplitList(selector))
@@ -1012,7 +1390,8 @@ void AppendRuleEntries(const ShaderRule& rule,
 	{
 		for (ShaderEntry entry : source)
 		{
-			entry.order = static_cast<unsigned int>(target.size() + 1);
+			if (entry.order == 0)
+				entry.order = static_cast<unsigned int>(target.size() + 1);
 			entry.displayName = rule.label;
 			entry.parameters = rule.parameters;
 			target.push_back(std::move(entry));
@@ -1168,7 +1547,48 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 		ActivePictureTransitionModel::DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT);
 
 	ConfigFile config;
-	if (!config.Load() || !config.HasSection(CONFIG_SECTION))
+	if (!config.Load())
+		return selection;
+	if (IsTargetShaderConfiguration(config))
+	{
+		constexpr const char* TARGET_KEY = "@shader-key:";
+		const MadVRShaderRuntimeSnapshot runtime = g_runtimeState.GetSnapshot();
+		const std::string selector = runtime.effectiveRule;
+		const std::string key = selector.rfind(TARGET_KEY, 0) == 0 ?
+			selector.substr(std::char_traits<char>::length(TARGET_KEY)) :
+			std::string();
+		std::vector<ShaderRule> rules;
+		std::string reason;
+		if (!LoadTargetRuleSelectionForBackend(config, key,
+			TargetVideoLookup(videoState), ShaderRendererBackend::MADVR,
+			rules, reason))
+		{
+			DebugLog::Log("Shaders: VP-0079 selection failed: %s", reason.c_str());
+			return selection;
+		}
+		std::vector<ShaderEntry> preScale;
+		std::vector<ShaderEntry> postScale;
+		for (ShaderRule rule : rules)
+		{
+			bool waiting = false;
+			if (!ResolveNlsRuleForFrame(rule, runtime, videoState,
+				selection.outputAspectRatioX, selection.outputAspectRatioY,
+				waiting))
+				continue;
+			AppendLabel(selection.ruleLabel, rule.label);
+			AppendLabel(selection.ruleName, rule.name);
+			if (!waiting) AppendRuleEntries(rule, preScale, postScale);
+		}
+		std::stable_sort(preScale.begin(), preScale.end(),
+			[](const ShaderEntry& left, const ShaderEntry& right)
+			{ return left.order < right.order; });
+		std::stable_sort(postScale.begin(), postScale.end(),
+			[](const ShaderEntry& left, const ShaderEntry& right)
+			{ return left.order < right.order; });
+		ApplyShaderEntries(renderer, preScale, postScale, "ps_3_0", selection);
+		return selection;
+	}
+	if (!config.HasSection(CONFIG_SECTION))
 		return selection;
 
 	bool enabled = false;
@@ -1390,17 +1810,20 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaderRule(IBaseFilter* r
 	const VideoState& videoState, const std::string& ruleName,
 	bool updateRuntimeRequest)
 {
+	ConfigFile config;
+	const bool target = config.Load() && IsTargetShaderConfiguration(config);
+	const std::string runtimeName = target ? ruleName :
+		ConfigFile::NormalizeName(ruleName);
 	if (updateRuntimeRequest)
 	{
-		const std::string normalizedRule = ConfigFile::NormalizeName(ruleName);
-		g_runtimeState.SetRequestedRule(normalizedRule);
-		g_runtimeState.SetEffectiveRule(normalizedRule);
+		g_runtimeState.SetRequestedRule(runtimeName);
+		g_runtimeState.SetEffectiveRule(runtimeName);
 		DebugLog::Log("Shaders: manual runtime request changed to \"%s\"",
 			ruleName.empty() ? "automatic" : ruleName.c_str());
 	}
 	else
 	{
-		g_runtimeState.SetEffectiveRule(ConfigFile::NormalizeName(ruleName));
+		g_runtimeState.SetEffectiveRule(runtimeName);
 		DebugLog::Log("Shaders: applying temporary effective rule \"%s\" without changing manual request",
 			ruleName.c_str());
 	}
@@ -1494,6 +1917,11 @@ bool MadVRShaderLoader::ValidateActivePictureAspect(const std::string& ruleName,
 		reason = "an effect group may contain only one NLS effect";
 		return false;
 	}
+	if (rules.empty())
+	{
+		reason = "shader rule selects no effect applicable to this renderer";
+		return false;
+	}
 	const ShaderRule& rule = selected ? *selected : rules.front();
 	if (rule.aspectTolerancePercent < 0.0)
 		return true;
@@ -1533,6 +1961,24 @@ bool MadVRShaderLoader::ValidateActivePictureAspect(const std::string& ruleName,
 		reason = message.str();
 	}
 	return allowed;
+}
+
+
+std::string MadVRShaderLoader::CanonicalizeRuleSelector(
+	const std::string& selector)
+{
+	constexpr const char* TARGET_KEY = "@shader-key:";
+	const std::string trimmed = ConfigFile::Trim(selector);
+	if (trimmed.rfind(TARGET_KEY, 0) == 0)
+		return trimmed;
+	return ConfigFile::NormalizeName(trimmed);
+}
+
+
+bool MadVRShaderLoader::RuleSelectorsEqual(const std::string& left,
+	const std::string& right)
+{
+	return CanonicalizeRuleSelector(left) == CanonicalizeRuleSelector(right);
 }
 
 
@@ -1603,8 +2049,8 @@ void MadVRShaderLoader::SetRuntimeShaderSelection(
 	MadVRNlsMappingMode nlsMode)
 {
 	g_runtimeState.SetRuleSelection(
-		ConfigFile::NormalizeName(requestedRule),
-		ConfigFile::NormalizeName(effectiveRule), nlsMode);
+		CanonicalizeRuleSelector(requestedRule),
+		CanonicalizeRuleSelector(effectiveRule), nlsMode);
 }
 
 
@@ -1663,14 +2109,23 @@ bool MadVRShaderLoader::GetConfiguredRuleSelection(
 	const std::string& ruleName, ShaderRendererBackend backend,
 	std::vector<ConfiguredShaderRule>& selection, std::string& reason)
 {
-	selection.clear();
-	reason.clear();
 	ConfigFile config;
 	if (!config.Load())
 	{
 		reason = "configuration file is unavailable";
 		return false;
 	}
+	return ResolveConfiguredRuleSelection(config, ruleName, backend,
+		selection, reason);
+}
+
+
+bool MadVRShaderLoader::ResolveConfiguredRuleSelection(const ConfigFile& config,
+	const std::string& ruleName, ShaderRendererBackend backend,
+	std::vector<ConfiguredShaderRule>& selection, std::string& reason)
+{
+	selection.clear();
+	reason.clear();
 
 	std::vector<ShaderRule> rules;
 	if (!LoadRuleSelectionForBackend(config, ruleName, backend, rules))
@@ -1693,6 +2148,18 @@ bool MadVRShaderLoader::GetConfiguredRuleSelection(
 
 	for (const ShaderRule& rule : rules)
 		selection.push_back(ToConfiguredShaderRule(rule));
+	// A target root such as [shader.nls] may intentionally have no effect.
+	// It is the group's baseline selected by its reset shortcut (for example
+	// `n`).  Keep that meaning explicit for Alpha, whose NLS path otherwise
+	// interprets an empty vector as an invalid NLS request.
+	if (selection.empty() && IsTargetShaderConfiguration(config))
+	{
+		ConfiguredShaderRule off;
+		off.name = "off";
+		off.label = "Off";
+		off.none = true;
+		selection.push_back(std::move(off));
+	}
 	return true;
 }
 

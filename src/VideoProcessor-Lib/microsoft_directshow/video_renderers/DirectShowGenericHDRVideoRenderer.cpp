@@ -552,7 +552,10 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 	if (!MadVRShaderLoader::GetRuleActivationInfo(std::string(ruleUtf8),
 		label, inactiveRule, nlsMapping))
 		return false;
-	if (m_requestedShaderRule.CompareNoCase(ruleName) == 0)
+	CT2A requestedUtf8(m_requestedShaderRule, CP_UTF8);
+	if (MadVRShaderLoader::RuleSelectorsEqual(
+		static_cast<const char*>(requestedUtf8),
+		static_cast<const char*>(ruleUtf8)))
 	{
 		activeRule = m_activeShaderRule;
 		DebugLog::Log("Shaders: coalesced duplicate manual request for \"%s\"",
