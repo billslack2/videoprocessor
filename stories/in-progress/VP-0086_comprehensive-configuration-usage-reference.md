@@ -27,22 +27,33 @@ resolution`).
 
 Follow-up checkpoint: `3a50785` (`docs: publish canonical Boolean values`).
 
+Follow-up checkpoint: `30b69d7` (`docs: clarify public configuration
+contracts`).
+
 Completed work:
 
-- Rewrote the canonical `CONFIGURATION.html` as a structured 74-entry public
+- Rewrote the canonical `CONFIGURATION.html` as a structured public
   reference. Every field has its own anchor, syntax/default, value table,
   practical effect/trade-off, and verification guidance; AUTO-capable Alpha
   and DirectShow controls explain their exact VP resolution behavior.
-- Expanded the Alpha `quality` entry with the current bundled libplacebo
-  7.360.1 preset selected by `fast`, `balanced`, and `high`, then a
-  field-by-field matrix showing precisely what the related `AUTO` controls
-  retain for each preset. The checked-in Rec.709 profile's `high` selection is
-  called out explicitly.
+- Expanded the Alpha `quality` entry with the bundled libplacebo 7.360.1
+  preset selected by `fast`, `balanced`, and `high`. Reflowed the explanation
+  from squeezed multi-column tables into readable preset sections, and made
+  every determinable Alpha AUTO result name its concrete value. Genuinely
+  source/output-dependent AUTO behavior names the deciding condition and
+  diagnostic instead.
 - Restricted the public Boolean vocabulary to canonical `true` and `false`.
   Parser-compatible aliases such as `on`, `yes`, and numeric Boolean forms
   are intentionally not published as supported configuration values.
+- Removed internal-only `disable_detection_features` and
+  `scene_correction_basic` from the reference, public inventories, and sample
+  configuration while retaining their implementation support.
+- Replaced local-configuration profile/hotkey examples with a generic shared
+  `when` expression contract. The reference now describes variants, allowed
+  variables, precedence, and group independence without prescribing a user's
+  key map or profile names.
 - Added task-oriented SDR, HDR-to-SDR/projector, BT.2020, scaling, NLS, and
-  profile/viewport/queue examples, plus troubleshooting guidance.
+  generic profile/viewport/queue guidance, plus troubleshooting guidance.
 - Refined the public field inventory to map every field to its individual
   reference entry. Added `docs/configuration-public-values.tsv` and extended
   `ConfigurationReferenceMatchesPublicFieldInventory` so every tracked public
