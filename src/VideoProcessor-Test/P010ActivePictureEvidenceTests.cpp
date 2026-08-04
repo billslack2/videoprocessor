@@ -98,6 +98,13 @@ namespace VideoProcessorTest
 					width, height, pitch, pitch };
 			}
 		};
+
+		ActivePictureBounds ScopePresentation(int width, int height,
+			int top, int bottom)
+		{
+			return { 0, top, width, bottom, width, height,
+				static_cast<double>(width) / (bottom - top), true };
+		}
 	}
 
 	TEST_CLASS(P010ActivePictureEvidenceTests)
@@ -292,6 +299,96 @@ namespace VideoProcessorTest
 				static_cast<int>(
 					ActivePictureClassification::BAR_CROP_TRUSTED),
 				static_cast<int>(evidence.classification));
+		}
+
+		TEST_METHOD(CleanScopeBarsAreSafeForTrustedPresentationRetention)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(0, 22, 320, 158);
+			const auto retention =
+				EvaluateP010ActivePicturePresentationRetention(frame.View(),
+					ScopePresentation(320, 180, 22, 158));
+
+			Assert::IsTrue(retention.analysisValid);
+			Assert::IsTrue(retention.presentationValid);
+			Assert::IsTrue(retention.proposedBoundsAvailable);
+			Assert::IsTrue(retention.proposedBoundsContained);
+			Assert::IsTrue(retention.excludedBandsPixelSafe);
+			Assert::IsTrue(retention.currentlyPixelSafe);
+			Assert::IsFalse(retention.globalNearBlack);
+		}
+
+		TEST_METHOD(ContainedDarkProvisionalFrameRetainsWithoutInnerContrast)
+		{
+			P010Frame frame(320, 180);
+			frame.Fill(120, 512, 512);
+			// Six-line limited-range bars have safe pixels but only 16 codes of
+			// inner contrast, below the acquisition requirement for small bars.
+			frame.BlackOutside(0, 6, 320, 174, 104, 512, 512);
+			const auto retention =
+				EvaluateP010ActivePicturePresentationRetention(frame.View(),
+					ScopePresentation(320, 180, 6, 174));
+
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureClassification::PROVISIONAL),
+				static_cast<int>(retention.activePicture.classification));
+			Assert::IsFalse(retention.globalNearBlack);
+			Assert::IsTrue(retention.proposedBoundsContained);
+			Assert::IsFalse(retention.excludedTop.trusted);
+			Assert::IsTrue(retention.excludedBandsPixelSafe);
+			Assert::IsTrue(retention.currentlyPixelSafe);
+		}
+
+		TEST_METHOD(ColoredOrVisibleExcludedBandsRejectRetention)
+		{
+			const ActivePictureBounds presentation =
+				ScopePresentation(320, 180, 22, 158);
+			P010Frame colored(320, 180);
+			colored.BlackOutside(0, 22, 320, 158, 64, 400, 620);
+			auto retention =
+				EvaluateP010ActivePicturePresentationRetention(colored.View(),
+					presentation);
+			Assert::IsTrue(retention.proposedBoundsContained);
+			Assert::IsFalse(retention.excludedBandsPixelSafe);
+			Assert::IsFalse(retention.currentlyPixelSafe);
+
+			P010Frame visible(320, 180);
+			visible.BlackOutside(0, 22, 320, 158);
+			visible.FillRectangle(0, 8, 320, 18, 600);
+			retention = EvaluateP010ActivePicturePresentationRetention(
+				visible.View(), presentation);
+			Assert::IsFalse(retention.excludedBandsPixelSafe);
+			Assert::IsFalse(retention.currentlyPixelSafe);
+		}
+
+		TEST_METHOD(AllBlackFrameIsValidNearBlackWithoutGeometry)
+		{
+			P010Frame frame(320, 180);
+			frame.Fill(64, 512, 512);
+			const auto retention =
+				EvaluateP010ActivePicturePresentationRetention(frame.View(),
+					ScopePresentation(320, 180, 22, 158));
+
+			Assert::IsTrue(retention.analysisValid);
+			Assert::IsTrue(retention.globalNearBlack);
+			Assert::IsTrue(retention.globalLumaP90 <= 64.0);
+			Assert::IsFalse(retention.activePicture.available);
+			Assert::IsFalse(retention.proposedBoundsAvailable);
+			Assert::IsTrue(retention.excludedBandsPixelSafe);
+			Assert::IsTrue(retention.currentlyPixelSafe);
+		}
+
+		TEST_METHOD(InvalidSourceCannotProveNearBlackOrPixelSafety)
+		{
+			P010Frame frame(320, 180, 16);
+			const auto retention =
+				EvaluateP010ActivePicturePresentationRetention(frame.View(1),
+					ScopePresentation(320, 180, 22, 158));
+
+			Assert::IsFalse(retention.analysisValid);
+			Assert::IsFalse(retention.globalNearBlack);
+			Assert::IsFalse(retention.excludedBandsPixelSafe);
+			Assert::IsFalse(retention.currentlyPixelSafe);
 		}
 	};
 }

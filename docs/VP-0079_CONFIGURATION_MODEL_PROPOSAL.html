@@ -137,7 +137,7 @@ run: C:\Videoprocessor\automation\signal-lost.cmd</code></pre>
   <p>Target event families: <code>refresh.*</code>, <code>source.changed</code>, <code>picture.changed</code>, <code>profile.changed</code>, <code>renderer.*</code>, and <code>signal.*</code>. An event is published only after a committed transition and exposes one documented immutable variable context.</p>
 
   <h2 id="example">Complete review example</h2>
-  <p>The complete example is maintained in the Markdown source beside this page: <a href="VP-0079_CONFIGURATION_MODEL_PROPOSAL.md#complete-review-example">open the configuration example</a>. It preserves the active policies while removing redundant registries and the unsupported <code>automatic_crop</code> setting.</p>
+  <p>The complete example is maintained in the Markdown source beside this page: <a href="VP-0079_CONFIGURATION_MODEL_PROPOSAL.md#complete-review-example">open the configuration example</a>. It preserves active policies while removing redundant registries; scope <code>automatic_crop</code> belongs to the viewport variant that owns it.</p>
   <p class="small">This page is intentionally a review companion. The Markdown document is the canonical editable specification.</p>
 
   <h2 id="work">Required implementation work</h2>

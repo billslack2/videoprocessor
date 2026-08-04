@@ -146,7 +146,6 @@ namespace LibplaceboOutput
 		unsigned int width,
 		unsigned int height,
 		unsigned int sampleStep = 1);
-
 	const char* ToString(PresentationRequest value);
 	const char* ToString(PresentationModel value);
 	const char* ToString(RangeRequest value);

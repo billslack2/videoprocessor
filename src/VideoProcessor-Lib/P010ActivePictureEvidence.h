@@ -52,6 +52,36 @@ struct P010ActivePictureEvidence
 };
 
 
+// Per-frame pixel evidence for retaining an already trusted presentation
+// rectangle. This does not grant crop authority and does not apply temporal
+// policy. It only answers whether this frame is valid to inspect, whether the
+// detector's current proposal remains inside the trusted presentation, and
+// whether every pixel band that presentation would exclude still looks safe.
+//
+// A valid all-black/fade frame is intentionally distinct from an invalid
+// analysis source: it has analysisValid=true, globalNearBlack=true, and can be
+// currentlyPixelSafe even when no active-picture geometry can be proposed.
+struct P010PresentationRetentionEvidence
+{
+	bool analysisValid = false;
+	bool presentationValid = false;
+	double globalLumaP90 = 0.0;
+	bool globalNearBlack = false;
+	bool proposedBoundsAvailable = false;
+	bool proposedBoundsContained = false;
+	bool excludedBandsPixelSafe = false;
+	bool currentlyPixelSafe = false;
+	P010ActivePictureEvidence activePicture;
+	P010EdgeEvidence excludedLeft;
+	P010EdgeEvidence excludedTop;
+	P010EdgeEvidence excludedRight;
+	P010EdgeEvidence excludedBottom;
+	size_t lumaSamples = 0;
+	size_t chromaSamples = 0;
+	std::string reason;
+};
+
+
 // Pure, bounded P010 inspection. It has no renderer, DirectShow, configuration,
 // or mutable global dependencies, so identical bytes always produce identical
 // evidence. At 4K the fixed grids inspect fewer than 30,000 luma samples.
@@ -63,3 +93,17 @@ P010ActivePictureEvidence ExtractP010ActivePictureEvidence(
 // this bounded source sampler and retain source-raster coordinates.
 P010ActivePictureEvidence ExtractActivePictureEvidence(
 	const AnalysisLumaSource& source);
+
+// Bounded presentation-retention inspection. The excluded-band predicate uses
+// the same black, luma-dispersion, texture, neutral-chroma, and continuity
+// limits as bar acquisition, but deliberately does not require inner-boundary
+// contrast: an already trusted crop may be retained through a dark fade, while
+// visible or colored pixels outside it still fail open.
+P010PresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
+	const AnalysisLumaSource& source,
+	const ActivePictureBounds& trustedPresentation);
+
+P010PresentationRetentionEvidence
+	EvaluateP010ActivePicturePresentationRetention(
+		const P010PlaneView& view,
+		const ActivePictureBounds& trustedPresentation);

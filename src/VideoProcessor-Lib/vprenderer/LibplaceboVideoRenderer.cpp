@@ -59,6 +59,7 @@ namespace
 {
 	using SteadyClock = std::chrono::steady_clock;
 	constexpr size_t MAX_USER_SHADER_BYTES = 4 * 1024 * 1024;
+	uint64_t AlphaSourceFormatKey(const VideoState& state);
 
 	int64_t SteadyClockNowNs()
 	{
@@ -332,7 +333,7 @@ namespace
 					NV_INFOFRAME_FIELD_VALUE_AVI_EXTENDEDCOLORIMETRY_RESERVED06;
 			if (!verifiedBt2020)
 			{
-				DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame verification failed for %s status=%s colorimetry=%u extended=%u; restoring prior signal while BT.2020 rendering continues", name.c_str(), NvApiStatusText(status).c_str(), static_cast<unsigned int>(verified.infoframe.video.colorimetry), static_cast<unsigned int>(verified.infoframe.video.extendedColorimetry));
+				DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame verification failed for %s status=%s colorimetry=%u extended=%u; restoring prior signal", name.c_str(), NvApiStatusText(status).c_str(), static_cast<unsigned int>(verified.infoframe.video.colorimetry), static_cast<unsigned int>(verified.infoframe.video.extendedColorimetry));
 				m_active = true;
 				m_displayName = name;
 				Restore();
@@ -2470,6 +2471,7 @@ struct LibplaceboVideoRenderer::Impl
 	LibplaceboOutput::Actual actualOutput;
 	bool targetBt2020 = false;
 	bool reportBt2020ToDisplay = false;
+	bool bt2020SignalingFailed = false;
 	std::wstring negotiatedDisplayDeviceName;
 	NvidiaBt2020Reporter nvidiaBt2020Reporter;
 	bool swapchainBlit = true;
@@ -2526,7 +2528,13 @@ struct LibplaceboVideoRenderer::Impl
 		ActivePictureClassification::UNAVAILABLE;
 	ActivePictureBounds latestActivePictureEvidenceBounds;
 	uint64_t latestActivePictureEvidenceFrame = 0;
+	bool latestActivePicturePresentationRetentionSafe = false;
+	bool latestActivePicturePresentationRetentionEvaluated = false;
+	std::string latestActivePicturePresentationRetentionReason;
+	bool fullRasterPresentationAuthorityAvailable = false;
+	uint64_t fullRasterPresentationAuthoritySourceGeneration = 0;
 	std::string lastSourceCropPolicy;
+	std::string lastFinalPresentationPolicy;
 	std::string activeDisplayRule;
 	std::string effectiveSettingsFingerprint;
 	std::string restartSettingsFingerprint;
@@ -3526,11 +3534,18 @@ struct LibplaceboVideoRenderer::Impl
 				// and noisy letterbox-edge measurements without delaying a real subtitle
 				// by more than two analysis intervals.
 				int detectedSide = 0; // -1 top, +1 bottom
-				if (upperRequiredShift > lowerRequiredShift &&
-					upperRequiredShift > 0.5f)
+				switch (AlphaSourceCrop::SelectVerticalBarContentEdge(
+					upperRequiredShift, lowerRequiredShift))
+				{
+				case AlphaSourceCrop::BarContentEdge::TOP:
 					detectedSide = -1;
-				else if (lowerRequiredShift > 0.5f)
+					break;
+				case AlphaSourceCrop::BarContentEdge::BOTTOM:
 					detectedSide = 1;
+					break;
+				default:
+					break;
+				}
 
 				const bool lowerHoldActive =
 					scopeSubtitleLastDetectionTick != 0 &&
@@ -3582,18 +3597,6 @@ struct LibplaceboVideoRenderer::Impl
 					scopeSubtitleDetectedBottom = lowerContentBottom;
 					scopeSubtitleLastDetectionTick = now;
 					scopeSubtitleTopLastDetectionTick = 0;
-					scopeSubtitleOppositeCandidateSide = 0;
-					scopeSubtitleOppositeCandidateHits = 0;
-				}
-				if (upperRequiredShift > 0.5f && lowerRequiredShift > 0.5f)
-				{
-					// A real format change can expose picture in both prior bars. Keep
-					// both extents so the crop expands symmetrically enough to contain
-					// them; a one-edge intrusion still expands only its own edge.
-					scopeSubtitleDetectedTop = upperContentTop;
-					scopeSubtitleTopLastDetectionTick = now;
-					scopeSubtitleDetectedBottom = lowerContentBottom;
-					scopeSubtitleLastDetectionTick = now;
 					scopeSubtitleOppositeCandidateSide = 0;
 					scopeSubtitleOppositeCandidateHits = 0;
 				}
@@ -4243,38 +4246,40 @@ struct LibplaceboVideoRenderer::Impl
 			actualOutput.reason.c_str());
 
 		if (targetBt2020 &&
-			reportBt2020ToDisplay)
+			!EncodingUsesBt2020(actualOutput.encoding))
 		{
-			if (!nvidiaBt2020Reporter.Enable(negotiatedDisplayDeviceName.c_str()))
-			{
-				// NVIDIA reporting is optional metadata, independent of the
-				// configured BT.2020 render target. Recreate the swapchain once
-				// with reporting disabled so a failed NVAPI attempt cannot leave
-				// windowed DirectFlip/MPO or the layered OSD mid-transition.
-				DebugLog::Log(
-					"libplacebo: NVIDIA BT.2020 reporting unsupported; ignoring report_bt2020_to_display and reapplying BT.2020 output");
-				reportBt2020ToDisplay = false;
-				// ConfigureAndFallback still owns queried interfaces for the old
-				// native swapchain. Release them before destruction; otherwise
-				// DXGI cannot promote the replacement for this HWND to flip model
-				// and libplacebo falls back to an unusable BitBlt swapchain.
-				swapchain3.Release();
-				output.Release();
-				adapter.Release();
-				dxgiDevice.Release();
-				if (!RecreateSwapchain(
-					outputPlan.useBlit,
-					suppressLimitedNegotiation,
-					"nvidia-report-unsupported"))
-				{
-					DebugLog::Log(
-						"libplacebo: failed to reapply BT.2020 after disabling NVIDIA reporting");
-				}
-				return;
-			}
-		}
-		else
+			// BT.2020 rendering is valid only with the matching accepted DXGI
+			// P2020 transport. A P709 fallback would mute Rec.709 source colors
+			// after gamut conversion, so replace both halves of the contract.
+			DebugLog::Log(
+				"libplacebo: verified DXGI P2020 transport unavailable; falling back to a matched Rec.709 render and transport contract");
 			nvidiaBt2020Reporter.Restore();
+			reportBt2020ToDisplay = false;
+			targetBt2020 = false;
+			bt2020SignalingFailed = true;
+			LibplaceboOutput::Request fallbackRequest = outputPlan.request;
+			fallbackRequest.primaries =
+				LibplaceboOutput::PrimariesRequest::REC709;
+			outputPlan = LibplaceboOutput::MakePlan(fallbackRequest);
+			swapchain3.Release();
+			output.Release();
+			adapter.Release();
+			dxgiDevice.Release();
+			if (!RecreateSwapchain(
+				outputPlan.useBlit,
+				false,
+				"bt2020-dxgi-fallback"))
+			{
+				DebugLog::Log(
+					"libplacebo: failed to create Rec.709 swapchain after DXGI P2020 rejection");
+			}
+			return;
+		}
+
+		// DXGI P2020 is the single BT.2020 transport authority. Do not also
+		// override the NVIDIA AVI InfoFrame; the dual path caused inconsistent
+		// gamut handling across renderer and fullscreen transitions.
+		nvidiaBt2020Reporter.Restore();
 	}
 
 	bool RecreateSwapchain(
@@ -4657,16 +4662,16 @@ struct LibplaceboVideoRenderer::Impl
 		outputRequest.range = LibplaceboOutput::ParseRange(settings.outputRange);
 		outputRequest.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
 		targetBt2020 = settings.sdrTargetPrimaries == "bt2020";
-		// Preserve the proven F6 transport contract: render BT.2020 pixels, but
-		// retain the normal P709 DXGI swapchain and use the NVIDIA AVI InfoFrame
-		// for physical BT.2020 signaling. Requesting P2020 from both paths caused
-		// severe oversaturation on the deployed projector chain.
-		outputRequest.primaries = LibplaceboOutput::PrimariesRequest::REC709;
+		bt2020SignalingFailed = false;
+		// Use one coherent transport: libplacebo converts into BT.2020 only when
+		// the matching DXGI P2020 swapchain declaration can be advertised and
+		// accepted. NVIDIA InfoFrame override is deliberately not layered on top.
+		outputRequest.primaries = targetBt2020
+			? LibplaceboOutput::PrimariesRequest::BT2020
+			: LibplaceboOutput::PrimariesRequest::REC709;
 		reportBt2020ToDisplay = settings.reportBt2020ToDisplay;
-		if (targetBt2020 && reportBt2020ToDisplay)
-			DebugLog::Log("libplacebo: BT.2020 target with NVIDIA output reporting requested; proceed with caution");
-		else if (targetBt2020)
-			DebugLog::Log("libplacebo: BT.2020 target requested without NVIDIA reporting; display must be selected manually");
+		if (targetBt2020)
+			DebugLog::Log("libplacebo: BT.2020 target requested; using verified DXGI P2020 transport (NVIDIA override suppressed, configured_report=%d)", reportBt2020ToDisplay ? 1 : 0);
 		else if (reportBt2020ToDisplay)
 			DebugLog::Log("libplacebo: report_bt2020_to_display ignored because target primaries are Rec.709");
 		requestedOutputPlan = LibplaceboOutput::MakePlan(outputRequest);
@@ -4802,6 +4807,7 @@ struct LibplaceboVideoRenderer::Impl
 			ClearScopeSubtitleEvidence();
 			ClearScopePresentationEvidence();
 			lastSourceCropPolicy.clear();
+			lastFinalPresentationPolicy.clear();
 		}
 	}
 
@@ -5027,14 +5033,21 @@ struct LibplaceboVideoRenderer::Impl
 			ActivePictureClassification::UNAVAILABLE;
 		latestActivePictureEvidenceBounds = {};
 		latestActivePictureEvidenceFrame = 0;
+		latestActivePicturePresentationRetentionSafe = false;
+		latestActivePicturePresentationRetentionEvaluated = false;
+		latestActivePicturePresentationRetentionReason.clear();
+		fullRasterPresentationAuthorityAvailable = false;
+		fullRasterPresentationAuthoritySourceGeneration = 0;
 	}
 
 	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
 		uint64_t frameNumber,
+		const ActivePictureFrameIdentity& currentIdentity,
 		double framesPerSecond,
 		bool scopeScreenActive,
 		AlphaSourceCrop::SceneHoldDecision& sceneHold,
-		bool forceAnalysis = false)
+		bool forceAnalysis = false,
+		const ActivePictureFrameDecision* scheduledDecision = nullptr)
 	{
 		renderParams.hooks = nullptr;
 		renderParams.num_hooks = 0;
@@ -5055,6 +5068,7 @@ struct LibplaceboVideoRenderer::Impl
 			ClearScopeSubtitleEvidence();
 			ClearScopePresentationEvidence();
 			lastSourceCropPolicy.clear();
+			lastFinalPresentationPolicy.clear();
 			DebugLog::Log(
 				"Alpha active picture authority reset: source_generation=%llu",
 				static_cast<unsigned long long>(analysisSource.generation));
@@ -5067,16 +5081,58 @@ struct LibplaceboVideoRenderer::Impl
 
 		const bool scheduledAnalysis =
 			nlsTransition.ShouldAnalyze(frameNumber, framesPerSecond);
-		if (scheduledAnalysis || forceAnalysis)
+		const bool hasScheduledDecision = scheduledDecision &&
+			scheduledDecision->transition.publish &&
+			scheduledDecision->transition.stable;
+		const bool trustedCropIsCurrentGeneration =
+			nlsGeometryAvailable &&
+			nlsGeometryClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED &&
+			nlsGeometrySourceGeneration == analysisSource.generation;
+		const bool sceneSnapshotIsCurrentGeneration =
+			sceneVerificationGeometryAvailable &&
+			sceneVerificationGeometrySourceGeneration ==
+				analysisSource.generation;
+		// Inspect every rendered frame while any crop presentation is active.
+		// This catches a direct bars-to-live-raster cut on a non-scheduled frame;
+		// sparse acquisition cadence is still used when no pixels are excluded.
+		const bool forceRetentionSafetyAnalysis =
+			AlphaSourceCrop::RequiresPerFramePresentationInspection(
+				trustedCropIsCurrentGeneration,
+				sceneSnapshotIsCurrentGeneration,
+				latestActivePicturePresentationRetentionSafe);
+		if (scheduledAnalysis || forceAnalysis || hasScheduledDecision ||
+			forceRetentionSafetyAnalysis)
 		{
-			const ActivePictureBounds geometryBeforeObservation = nlsGeometry;
 			const bool hadCurrentTrustedCropGeometry =
-				nlsGeometryAvailable &&
-				nlsGeometryClassification ==
-					ActivePictureClassification::BAR_CROP_TRUSTED &&
-				nlsGeometrySourceGeneration == analysisSource.generation;
-			const P010ActivePictureEvidence evidence =
-				ExtractActivePictureEvidence(analysisSource);
+				trustedCropIsCurrentGeneration;
+			ActivePictureBounds presentationBeforeObservation;
+			bool hadCompatiblePresentation = false;
+			if (hadCurrentTrustedCropGeometry)
+			{
+				presentationBeforeObservation = nlsGeometry;
+				hadCompatiblePresentation = true;
+			}
+			else if (sceneVerificationGeometryAvailable &&
+				sceneVerificationGeometrySourceGeneration ==
+					analysisSource.generation)
+			{
+				presentationBeforeObservation = sceneVerificationGeometry;
+				hadCompatiblePresentation = true;
+			}
+			P010PresentationRetentionEvidence retentionEvidence;
+			P010ActivePictureEvidence evidence;
+			if (hadCompatiblePresentation)
+			{
+				retentionEvidence =
+					EvaluateActivePicturePresentationRetention(
+						analysisSource, presentationBeforeObservation);
+				evidence = retentionEvidence.activePicture;
+			}
+			else
+			{
+				evidence = ExtractActivePictureEvidence(analysisSource);
+			}
 			latestActivePictureObservationSupportsCrop = false;
 			latestActivePictureEvidenceAvailable = evidence.available;
 			latestActivePictureEvidenceClassification = evidence.available
@@ -5084,10 +5140,41 @@ struct LibplaceboVideoRenderer::Impl
 				: ActivePictureClassification::UNAVAILABLE;
 			latestActivePictureEvidenceBounds = evidence.available
 				? (evidence.classification ==
-					ActivePictureClassification::BAR_CROP_TRUSTED
-					? evidence.trustedBounds : evidence.proposedBounds)
+					ActivePictureClassification::PROVISIONAL
+					? evidence.proposedBounds : evidence.trustedBounds)
 				: ActivePictureBounds{};
 			latestActivePictureEvidenceFrame = frameNumber;
+			const bool currentBoundsAreFullRaster =
+				latestActivePictureEvidenceBounds.left == 0 &&
+				latestActivePictureEvidenceBounds.top == 0 &&
+				latestActivePictureEvidenceBounds.right == analysisSource.width &&
+				latestActivePictureEvidenceBounds.bottom == analysisSource.height &&
+				latestActivePictureEvidenceBounds.rasterWidth ==
+					analysisSource.width &&
+				latestActivePictureEvidenceBounds.rasterHeight ==
+					analysisSource.height;
+			fullRasterPresentationAuthorityAvailable =
+				AlphaSourceCrop::UpdateFullRasterPresentationAuthority(
+					fullRasterPresentationAuthorityAvailable,
+					latestActivePictureEvidenceClassification,
+					currentBoundsAreFullRaster);
+			fullRasterPresentationAuthoritySourceGeneration =
+				fullRasterPresentationAuthorityAvailable
+					? analysisSource.generation : 0;
+			const bool ambiguousEvidence = !evidence.available ||
+				evidence.classification ==
+					ActivePictureClassification::PROVISIONAL ||
+				evidence.classification ==
+					ActivePictureClassification::UNAVAILABLE;
+			latestActivePicturePresentationRetentionSafe =
+				hadCompatiblePresentation && ambiguousEvidence &&
+				retentionEvidence.currentlyPixelSafe;
+			latestActivePicturePresentationRetentionEvaluated =
+				hadCompatiblePresentation && retentionEvidence.analysisValid &&
+				retentionEvidence.presentationValid;
+			latestActivePicturePresentationRetentionReason =
+				hadCompatiblePresentation ? retentionEvidence.reason :
+					"no compatible retained presentation";
 			const uint64_t now = GetTickCount64();
 			auto sameBounds = [](const ActivePictureBounds& left,
 				const ActivePictureBounds& right)
@@ -5098,13 +5185,13 @@ struct LibplaceboVideoRenderer::Impl
 					left.rasterHeight == right.rasterHeight;
 			};
 			if (automaticSourceCrop && scopeScreenActive &&
-				hadCurrentTrustedCropGeometry && evidence.available)
+				hadCompatiblePresentation && evidence.available)
 			{
 				const ActivePictureBounds& observed =
 					evidence.classification ==
-						ActivePictureClassification::BAR_CROP_TRUSTED
-					? evidence.trustedBounds : evidence.proposedBounds;
-				ActivePictureBounds outward = geometryBeforeObservation;
+						ActivePictureClassification::PROVISIONAL
+					? evidence.proposedBounds : evidence.trustedBounds;
+				ActivePictureBounds outward = presentationBeforeObservation;
 				outward.left = std::min(outward.left, observed.left) & ~1;
 				outward.top = std::min(outward.top, observed.top) & ~1;
 				outward.right = std::min(analysisSource.width,
@@ -5118,20 +5205,21 @@ struct LibplaceboVideoRenderer::Impl
 					std::max(1, outward.bottom - outward.top);
 				outward.symmetricBars = false;
 				const bool expands =
-					outward.left < geometryBeforeObservation.left ||
-					outward.top < geometryBeforeObservation.top ||
-					outward.right > geometryBeforeObservation.right ||
-					outward.bottom > geometryBeforeObservation.bottom;
+					outward.left < presentationBeforeObservation.left ||
+					outward.top < presentationBeforeObservation.top ||
+					outward.right > presentationBeforeObservation.right ||
+					outward.bottom > presentationBeforeObservation.bottom;
 				if (expands)
 				{
 					const bool sameBase =
 						scopePresentationEvidenceSourceGeneration ==
 							analysisSource.generation &&
 						sameBounds(scopePresentationEvidenceBase,
-							geometryBeforeObservation);
+							presentationBeforeObservation);
 					if (!sameBase)
 					{
-						scopePresentationEvidenceBase = geometryBeforeObservation;
+						scopePresentationEvidenceBase =
+							presentationBeforeObservation;
 						scopePresentationEvidenceBounds = outward;
 					}
 					else
@@ -5171,13 +5259,49 @@ struct LibplaceboVideoRenderer::Impl
 			if (evidence.available)
 			{
 				observation.bounds = evidence.classification ==
-					ActivePictureClassification::BAR_CROP_TRUSTED
-					? evidence.trustedBounds
-					: evidence.proposedBounds;
+					ActivePictureClassification::PROVISIONAL
+					? evidence.proposedBounds
+					: evidence.trustedBounds;
 				observation.classification = evidence.classification;
 			}
+			ActivePictureScheduledDecisionValidation scheduledValidation =
+				hasScheduledDecision
+				? ValidateActivePictureScheduledDecision(
+					*scheduledDecision, currentIdentity,
+					latestActivePictureEvidenceBounds,
+					latestActivePictureEvidenceClassification)
+				: ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE;
+			const bool applyScheduledDecision = hasScheduledDecision &&
+				scheduledValidation ==
+					ActivePictureScheduledDecisionValidation::ACCEPTED &&
+				nlsTransition.AdoptPublishedDecision(
+					scheduledDecision->transition, evidence.classification);
+			if (hasScheduledDecision &&
+				scheduledValidation ==
+					ActivePictureScheduledDecisionValidation::ACCEPTED &&
+				!applyScheduledDecision)
+			{
+				scheduledValidation = ActivePictureScheduledDecisionValidation::
+					NON_AUTHORITATIVE;
+			}
 			const ActivePictureTransitionDecision transition =
+				applyScheduledDecision ? scheduledDecision->transition :
 				nlsTransition.Observe(observation);
+			if (hasScheduledDecision && !applyScheduledDecision)
+			{
+				DebugLog::Log(
+					"Alpha active-picture look-ahead rejected: generation=%llu observed=%llu effective=%llu frame=%llu classification=%d reason=%s runtime-apply=0",
+					static_cast<unsigned long long>(
+						scheduledDecision->effectiveIdentity.transportGeneration),
+					static_cast<unsigned long long>(
+						scheduledDecision->observationIdentity.acceptedSequence),
+					static_cast<unsigned long long>(
+						scheduledDecision->effectiveIdentity.acceptedSequence),
+					static_cast<unsigned long long>(frameNumber),
+					static_cast<int>(evidence.classification),
+					ActivePictureScheduledDecisionValidationName(
+						scheduledValidation));
+			}
 			if (transition.clearTransition)
 			{
 				nlsGeometryAvailable = false;
@@ -5231,10 +5355,25 @@ struct LibplaceboVideoRenderer::Impl
 				latestActivePictureObservationSupportsCrop,
 				latestActivePictureEvidenceClassification,
 				ACTIVE_PICTURE_AMBIGUITY_HOLD_MS);
+			if (applyScheduledDecision)
+			{
+				DebugLog::Log(
+					"Alpha active-picture look-ahead applied: generation=%llu observed=%llu effective=%llu frame=%llu rect=%d,%d-%d,%d classification=%d runtime-apply=1",
+					static_cast<unsigned long long>(
+						scheduledDecision->effectiveIdentity.transportGeneration),
+					static_cast<unsigned long long>(
+						scheduledDecision->observationIdentity.acceptedSequence),
+					static_cast<unsigned long long>(
+						scheduledDecision->effectiveIdentity.acceptedSequence),
+					static_cast<unsigned long long>(frameNumber),
+					transition.bounds.left, transition.bounds.top,
+					transition.bounds.right, transition.bounds.bottom,
+					static_cast<int>(evidence.classification));
+			}
 			if (transition.diagnostic)
 			{
 				DebugLog::Log(
-					"Alpha NLS active picture: state=%d frame=%llu rect=%d,%d-%d,%d aspect=%.4f stable=%d clear=%d classification=%d reason=\"%s; %s\"",
+					"Alpha NLS active picture: state=%d frame=%llu rect=%d,%d-%d,%d aspect=%.4f stable=%d clear=%d classification=%d retention_safe=%d reason=\"%s; %s; %s\"",
 					static_cast<int>(transition.state),
 					static_cast<unsigned long long>(frameNumber),
 					transition.bounds.left, transition.bounds.top,
@@ -5243,7 +5382,9 @@ struct LibplaceboVideoRenderer::Impl
 					transition.stable ? 1 : 0,
 					transition.clearTransition ? 1 : 0,
 					static_cast<int>(evidence.classification),
-					transition.reason.c_str(), evidence.reason.c_str());
+					latestActivePicturePresentationRetentionSafe ? 1 : 0,
+					transition.reason.c_str(), evidence.reason.c_str(),
+					latestActivePicturePresentationRetentionReason.c_str());
 			}
 		}
 		const bool sceneNlsHoldActive = sceneHold.nlsActive &&
@@ -5273,6 +5414,8 @@ struct LibplaceboVideoRenderer::Impl
 		VideoStateComPtr& statePtr,
 		uint64_t frameGeneration,
 		uint64_t sourceSequence,
+		const ActivePictureFrameIdentity& activePictureIdentity,
+		const ActivePictureFrameDecision* activePicturePreviewDecision,
 		int64_t enqueueQpc,
 		int64_t dequeueQpc,
 		size_t queueDepthAfterDequeue,
@@ -5333,6 +5476,7 @@ struct LibplaceboVideoRenderer::Impl
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
 			lastSourceCropPolicy.clear();
+			lastFinalPresentationPolicy.clear();
 			DebugLog::Log(
 				"Alpha active picture authority reset: screen_profile_request=%llu",
 				static_cast<unsigned long long>(
@@ -5444,6 +5588,7 @@ struct LibplaceboVideoRenderer::Impl
 			ClearSceneVerificationSnapshot();
 			ClearLatestActivePictureEvidence();
 			lastSourceCropPolicy.clear();
+			lastFinalPresentationPolicy.clear();
 			nlsDecision = {};
 			pl_mpv_user_shader_destroy(&nlsHook);
 			nlsHookSignature.clear();
@@ -5529,10 +5674,38 @@ struct LibplaceboVideoRenderer::Impl
 			AlphaSourceCrop::EvaluateSceneHold(sceneHoldInput);
 		if (analysisSource.IsValid())
 		{
+			ActivePictureFrameIdentity currentActivePictureIdentity =
+				activePictureIdentity;
+			currentActivePictureIdentity.transportGeneration = frameGeneration;
+			currentActivePictureIdentity.sourceFormatGeneration =
+				AlphaSourceFormatKey(state);
+			currentActivePictureIdentity.viewportGeneration =
+				screenProfileRequestSerial;
+			currentActivePictureIdentity.rendererGeneration = frameGeneration;
 			UpdateNlsForFrame(analysisSource, sourceSequence,
+				currentActivePictureIdentity,
 				state.displayMode->RefreshRateHz(),
 				scopeScreenActive, sceneHold,
-				!cadenceRepeat && sceneResult.safeBoundary);
+				!cadenceRepeat && sceneResult.safeBoundary,
+				activePicturePreviewDecision);
+		}
+		else
+		{
+			// An invalid analysis view is not a black frame. Publish an explicit
+			// unsafe result so neither a timer nor stale evidence can preserve crop.
+			latestActivePictureObservationSupportsCrop = false;
+			latestActivePictureEvidenceAvailable = false;
+			latestActivePictureEvidenceClassification =
+				ActivePictureClassification::UNAVAILABLE;
+			latestActivePictureEvidenceBounds = {};
+			latestActivePictureEvidenceFrame = sourceSequence;
+			latestActivePicturePresentationRetentionEvaluated = true;
+			latestActivePicturePresentationRetentionSafe = false;
+			latestActivePicturePresentationRetentionReason =
+				"analysis source is invalid";
+			fullRasterPresentationAuthorityAvailable = false;
+			fullRasterPresentationAuthoritySourceGeneration = 0;
+			activePictureAmbiguityHold.Reset();
 		}
 		if (!cadenceRepeat && sceneResult.safeBoundary)
 		{
@@ -5565,6 +5738,10 @@ struct LibplaceboVideoRenderer::Impl
 			sceneInput.latestObservationSupportsCrop =
 				latestActivePictureObservationSupportsCrop;
 			sceneInput.existingCropCanBeSnapshotted = canVerifyExistingCrop;
+			sceneInput.frameLocalPresentationRetentionSafe =
+				latestActivePicturePresentationRetentionSafe;
+			sceneInput.frameLocalPresentationRetentionEvaluated =
+				latestActivePicturePresentationRetentionEvaluated;
 			sceneInput.geometryClassification = nlsGeometryClassification;
 			sceneInput.latestClassification =
 				latestActivePictureEvidenceClassification;
@@ -5632,6 +5809,7 @@ struct LibplaceboVideoRenderer::Impl
 					renderParams.num_hooks = 0;
 				}
 				lastSourceCropPolicy.clear();
+				lastFinalPresentationPolicy.clear();
 			}
 			sceneDetectedCount.fetch_add(1, std::memory_order_relaxed);
 			DebugLog::Log("libplacebo scene boundary: event=%llu sequence=%llu generation=%llu frames_back=%u luma=%u evidence=%d crop_verification_ms=%u nls_retained=%d reason=\"%s\"",
@@ -5697,7 +5875,8 @@ struct LibplaceboVideoRenderer::Impl
 				ActivePictureClassification::BAR_CROP_TRUSTED ||
 			 (latestActivePictureEvidenceClassification ==
 				ActivePictureClassification::PROVISIONAL &&
-			  (sceneHold.cropActive || ambiguityOverlayHoldActive)));
+			  (sceneHold.cropActive || ambiguityOverlayHoldActive ||
+			   latestActivePicturePresentationRetentionSafe)));
 		auto hasCroppedEdge = [width, height](
 			const ActivePictureBounds& bounds)
 		{
@@ -5899,7 +6078,8 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		auto configureScreenProfile =
-			[this, &image, width, height, frameGeneration, sceneHold](
+			[this, &image, width, height, frameGeneration, sourceSequence,
+			 sceneHold](
 				struct pl_frame& source,
 				struct pl_frame& target,
 				bool scopeActive,
@@ -6040,6 +6220,10 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			AlphaSourceCrop::Input cropInput;
 			cropInput.automaticCropEnabled = automaticSourceCrop;
+			cropInput.fullRasterPresentationAuthoritative =
+				fullRasterPresentationAuthorityAvailable &&
+				fullRasterPresentationAuthoritySourceGeneration ==
+					frameGeneration;
 			cropInput.sharedGeometryAvailable = effectiveGeometryAvailable;
 			cropInput.latestObservationSupportsCrop =
 				effectiveLatestSupportsCrop;
@@ -6050,6 +6234,10 @@ struct LibplaceboVideoRenderer::Impl
 				latestObservationIsProvisional;
 			cropInput.latestObservationIsUnavailable =
 				latestObservationIsUnavailable;
+			cropInput.frameLocalPresentationRetentionSafe =
+				latestActivePicturePresentationRetentionSafe;
+			cropInput.frameLocalPresentationRetentionEvaluated =
+				latestActivePicturePresentationRetentionEvaluated;
 			cropInput.outwardPresentationActive = barContentFitActive;
 			cropInput.outwardExpansionAvailable = outwardExpansionAvailable;
 			cropInput.classification = effectiveClassification;
@@ -6074,6 +6262,10 @@ struct LibplaceboVideoRenderer::Impl
 				<< sceneVerificationHoldActive << '|'
 				<< ambiguityHoldActive << '|'
 				<< latestObservationIsProvisional << '|'
+				<< latestActivePicturePresentationRetentionSafe << '|'
+				<< detectorEnvelopeActive << '|'
+				<< leftBarContentActive << topBarContentActive
+				<< rightBarContentActive << bottomBarContentActive << '|'
 				<< cropDecision.sourceBounds.left << ','
 				<< cropDecision.sourceBounds.top << '-'
 				<< cropDecision.sourceBounds.right << ','
@@ -6085,15 +6277,25 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				lastSourceCropPolicy = cropPolicy.str();
 				DebugLog::Log(
-					"Alpha source crop: enabled=%d applied=%d expanded=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d latest_evidence=%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s\"",
+					"Alpha source crop: enabled=%d applied=%d expanded=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d edges=%c%c%c%c evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s; %s\"",
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
 					cropDecision.outwardExpanded ? 1 : 0,
 					effectiveLatestSupportsCrop ? 1 : 0,
 					sceneVerificationHoldActive ? 1 : 0,
 					ambiguityHoldActive ? 1 : 0,
+					latestActivePicturePresentationRetentionSafe ? 1 : 0,
 					static_cast<int>(
 						latestActivePictureEvidenceClassification),
+					detectorEnvelopeActive ? 1 : 0,
+					leftBarContentActive ? 'L' : '-',
+					topBarContentActive ? 'T' : '-',
+					rightBarContentActive ? 'R' : '-',
+					bottomBarContentActive ? 'B' : '-',
+					outwardExpansion.left,
+					outwardExpansion.top,
+					outwardExpansion.right,
+					outwardExpansion.bottom,
 					cropDecision.sourceBounds.left,
 					cropDecision.sourceBounds.top,
 					cropDecision.sourceBounds.right,
@@ -6102,7 +6304,8 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned long long>(
 						effectiveGeometrySourceGeneration),
 					static_cast<unsigned long long>(frameGeneration),
-					cropDecision.reason.c_str());
+					cropDecision.reason.c_str(),
+					latestActivePicturePresentationRetentionReason.c_str());
 			}
 			if (cropDecision.applyCrop)
 			{
@@ -6141,7 +6344,7 @@ struct LibplaceboVideoRenderer::Impl
 				cropDecision.sourceBounds.bottom - cropDecision.sourceBounds.top;
 			const double finalSourceAspect = finalSourceHeight > 0
 				? static_cast<double>(finalSourceWidth) / finalSourceHeight : 0.0;
-			const bool currentFullRasterAuthority =
+			const bool publishedFullRasterAuthority =
 				effectiveGeometryAvailable &&
 				effectiveClassification ==
 					ActivePictureClassification::FULL_RASTER_TRUSTED &&
@@ -6150,6 +6353,12 @@ struct LibplaceboVideoRenderer::Impl
 				cropDecision.sourceBounds.top == 0 &&
 				cropDecision.sourceBounds.right == width &&
 				cropDecision.sourceBounds.bottom == height;
+			const bool frameLocalFullRasterAuthority =
+				fullRasterPresentationAuthorityAvailable &&
+				fullRasterPresentationAuthoritySourceGeneration ==
+					frameGeneration;
+			const bool currentFullRasterAuthority =
+				publishedFullRasterAuthority || frameLocalFullRasterAuthority;
 			const bool finalBoundsAuthoritative =
 				cropDecision.applyCrop || currentFullRasterAuthority;
 
@@ -6195,12 +6404,19 @@ struct LibplaceboVideoRenderer::Impl
 				MadVRShaderLoader::SetRuntimeShaderSelection(
 					requestedShaderSelector, requestedShaderSelector,
 					finalNlsDecision.mode);
-				if (finalNlsDecision.mode != nlsDecision.mode ||
-					std::abs(finalNlsDecision.sourceAspect -
-						nlsDecision.sourceAspect) > 0.01 ||
-					std::abs(finalNlsDecision.targetAspect -
-						nlsDecision.targetAspect) > 0.0001)
+				std::ostringstream finalPresentationPolicy;
+				finalPresentationPolicy << requestedShaderSelector << '|'
+					<< static_cast<int>(finalNlsDecision.mode) << '|'
+					<< cropDecision.sourceBounds.left << ','
+					<< cropDecision.sourceBounds.top << '-'
+					<< cropDecision.sourceBounds.right << ','
+					<< cropDecision.sourceBounds.bottom << '|'
+					<< finalNlsDecision.reason;
+				if (finalPresentationPolicy.str() !=
+					lastFinalPresentationPolicy)
 				{
+					lastFinalPresentationPolicy =
+						finalPresentationPolicy.str();
 					DebugLog::Log(
 						"Alpha final presentation: requested=%s applicable=%s mapping=%s rect=%d,%d-%d,%d source=%.4f target=%.4f stretch=%.5f renderer_generation=%llu reason=\"%s\"",
 						requestedShaderSelector.c_str(), nlsRule.name.c_str(),
@@ -6796,6 +7012,34 @@ struct LibplaceboVideoRenderer::Impl
 };
 
 
+namespace
+{
+uint64_t AlphaSourceFormatKey(const VideoState& state)
+{
+	// This is an immutable format fingerprint, not a temporal authority key.
+	// FNV-1a keeps it compact while ensuring a queued decision cannot cross a
+	// material raster/encoding/color contract change.
+	uint64_t key = 1469598103934665603ULL;
+	auto mix = [&key](uint64_t value)
+	{
+		key ^= value;
+		key *= 1099511628211ULL;
+	};
+	mix(static_cast<uint64_t>(state.videoFrameEncoding));
+	mix(static_cast<uint64_t>(state.eotf));
+	mix(static_cast<uint64_t>(state.colorspace));
+	mix(state.invertedVertical ? 1ULL : 0ULL);
+	if (state.displayMode)
+	{
+		mix(static_cast<uint64_t>(state.displayMode->FrameWidth()));
+		mix(static_cast<uint64_t>(state.displayMode->FrameHeight()));
+		mix(static_cast<uint64_t>(state.displayMode->FrameDuration()));
+	}
+	return key;
+}
+}
+
+
 LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 	IRendererCallback& callback,
 	HWND videoHwnd,
@@ -7028,6 +7272,9 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 					queueLimit);
 				m_overflowLoggedGeneration = m_queueGeneration;
 			}
+			m_activePictureTimeline.MarkDiscarded(
+				dropCandidate->activePictureIdentity,
+				dropCandidate->frame.GetCounter());
 			dropCandidate->frame.SourceBufferRelease();
 			m_frameQueue.erase(dropCandidate);
 			m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
@@ -7037,12 +7284,39 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 		{
 			const uint64_t sourceSequence =
 				m_sourceSequence.fetch_add(1, std::memory_order_relaxed) + 1;
-			m_frameQueue.push_back({
-				videoFrame,
-				frameState,
-				enqueueGeneration,
-				sourceSequence,
-				PerformanceCounterNow() });
+			ActivePictureFrameIdentity activePictureIdentity;
+			activePictureIdentity.transportGeneration = enqueueGeneration;
+			activePictureIdentity.acceptedSequence = sourceSequence;
+			activePictureIdentity.sourceFrameNumber = videoFrame.GetCounter();
+			activePictureIdentity.captureTimestamp = static_cast<uint64_t>(
+				videoFrame.GetTimingTimestamp());
+			activePictureIdentity.sourceFormatGeneration =
+				AlphaSourceFormatKey(*frameState);
+			activePictureIdentity.viewportGeneration =
+				m_screenProfileRequestSerial.load(std::memory_order_acquire);
+			activePictureIdentity.rendererGeneration = enqueueGeneration;
+			if (videoFrame.IsSourceDiscontinuity())
+				m_activePictureTimeline.BreakContinuity(videoFrame.GetCounter());
+			if (!m_activePictureTimeline.TrackAcceptedFrame(
+				activePictureIdentity))
+			{
+				videoFrame.SourceBufferRelease();
+				m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+				DebugLog::Log(
+					"Alpha active-picture identity rejected: generation=%llu source=%llu counter=%llu",
+					static_cast<unsigned long long>(enqueueGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					static_cast<unsigned long long>(videoFrame.GetCounter()));
+				return;
+			}
+			QueuedFrame queuedFrame;
+			queuedFrame.frame = videoFrame;
+			queuedFrame.state = frameState;
+			queuedFrame.generation = enqueueGeneration;
+			queuedFrame.sourceSequence = sourceSequence;
+			queuedFrame.activePictureIdentity = activePictureIdentity;
+			queuedFrame.enqueueQpc = PerformanceCounterNow();
+			m_frameQueue.push_back(std::move(queuedFrame));
 		}
 		catch (const std::exception& e)
 		{
@@ -7732,6 +8006,9 @@ void LibplaceboVideoRenderer::SetFrameQueueMaxSize(size_t size)
 		size_t purgedFrames = 0;
 		while (m_frameQueue.size() > m_frameQueueMaxSize)
 		{
+			m_activePictureTimeline.MarkDiscarded(
+				m_frameQueue.front().activePictureIdentity,
+				m_frameQueue.front().frame.GetCounter());
 			m_frameQueue.front().frame.SourceBufferRelease();
 			m_frameQueue.pop_front();
 			++purgedFrames;
@@ -7778,6 +8055,17 @@ void LibplaceboVideoRenderer::SetQueueFramePolicy(
 			steadyReserveFrames, m_frameQueueDesiredDepth, m_frameQueueMaxSize);
 	}
 	m_queueChanged.notify_all();
+}
+
+
+void LibplaceboVideoRenderer::SetActivePictureLookaheadFrames(size_t frames)
+{
+	const size_t boundedFrames = (std::min)(frames, size_t{ 8 });
+	m_activePictureLookaheadFrames.store(
+		boundedFrames, std::memory_order_release);
+	DebugLog::Log(
+		"Alpha active-picture look-ahead retained: configured=%zu queue-unchanged=1 runtime-active=0",
+		boundedFrames);
 }
 
 
@@ -7899,10 +8187,10 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 	};
 	CStringA value;
 	const char* outputTarget = m_impl->targetBt2020
-		? (m_impl->reportBt2020ToDisplay
-			? "SDR BT.2020 / HDMI BT.2020"
-			: "SDR BT.2020")
-		: "SDR Rec.709";
+		? "SDR BT.2020 / DXGI BT.2020"
+		: (m_impl->bt2020SignalingFailed
+			? "SDR Rec.709 (BT.2020 signal failed)"
+			: "SDR Rec.709");
 	value.Format(
 		"Target %s | Req %s/%s/%s/%s -> %s/%s/%s/%s",
 		outputTarget,
@@ -8016,6 +8304,133 @@ bool LibplaceboVideoRenderer::GetFrameRateAndPPM(
 }
 
 
+void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
+	std::vector<QueuedFrame>& previewFrames,
+	uint8_t availableLookahead)
+{
+	struct PreviewEvidence
+	{
+		ActivePictureFrameIdentity identity;
+		ActivePictureObservation observation;
+		double framesPerSecond = 0.0;
+	};
+	std::vector<PreviewEvidence> observations;
+	observations.reserve(previewFrames.size());
+	for (const QueuedFrame& queued : previewFrames)
+	{
+		if (!queued.state || !queued.state->displayMode ||
+			!queued.frame.GetData())
+			continue;
+		const VideoState& state = *queued.state;
+		AnalysisLumaFormat format;
+		AlphaNativeRgbLayout rgbLayout;
+		if (GetAlphaNativeRgbLayout(state.videoFrameEncoding, rgbLayout))
+			format = AnalysisLumaFormat::NativeRgb;
+		else if (state.videoFrameEncoding == VideoFrameEncoding::UYVY ||
+			state.videoFrameEncoding == VideoFrameEncoding::HDYC ||
+			state.videoFrameEncoding == VideoFrameEncoding::V210)
+			format = AnalysisLumaFormat::NativeYuv422;
+		else
+			continue;
+		AnalysisLumaSource source = {
+			reinterpret_cast<const uint8_t*>(queued.frame.GetData()),
+			static_cast<size_t>(state.BytesPerFrame()),
+			static_cast<int>(state.displayMode->FrameWidth()),
+			static_cast<int>(state.displayMode->FrameHeight()),
+			static_cast<size_t>(state.BytesPerRow()), 0, format,
+			state.videoFrameEncoding, state.colorspace,
+			queued.activePictureIdentity.sourceFormatGeneration
+		};
+		const P010ActivePictureEvidence evidence =
+			ExtractActivePictureEvidence(source);
+		PreviewEvidence preview;
+		preview.identity = queued.activePictureIdentity;
+		preview.observation.frameNumber = queued.sourceSequence;
+		preview.observation.available = evidence.available;
+		if (evidence.available)
+		{
+			preview.observation.bounds = evidence.classification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED
+				? evidence.trustedBounds : evidence.proposedBounds;
+			preview.observation.classification = evidence.classification;
+		}
+		preview.framesPerSecond = state.displayMode->RefreshRateHz();
+		observations.push_back(preview);
+	}
+
+	const uint8_t configured = static_cast<uint8_t>((std::min)(
+		m_activePictureLookaheadFrames.load(std::memory_order_acquire),
+		size_t{ ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES }));
+	{
+		std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+		if (m_activePictureLookaheadLoggedGeneration != m_queueGeneration ||
+			m_activePictureLookaheadLoggedAvailable != availableLookahead)
+		{
+			m_activePictureLookaheadLoggedGeneration = m_queueGeneration;
+			m_activePictureLookaheadLoggedAvailable = availableLookahead;
+			DebugLog::Log(
+				"Alpha active-picture look-ahead preview: generation=%llu configured=%u available=%u effective=%u runtime-apply=pending",
+				static_cast<unsigned long long>(m_queueGeneration),
+				static_cast<unsigned>(configured),
+				static_cast<unsigned>(availableLookahead),
+				static_cast<unsigned>((std::min)(configured, availableLookahead)));
+		}
+		for (const PreviewEvidence& preview : observations)
+		{
+			auto queued = std::find_if(m_frameQueue.begin(), m_frameQueue.end(),
+				[&preview](const QueuedFrame& candidate)
+				{
+					return candidate.activePictureIdentity.transportGeneration ==
+						preview.identity.transportGeneration &&
+						candidate.activePictureIdentity.acceptedSequence ==
+						preview.identity.acceptedSequence;
+				});
+			if (queued == m_frameQueue.end() ||
+				queued->activePicturePreviewAnalyzed)
+				continue;
+			queued->activePicturePreviewAnalyzed = true;
+			if (!m_activePictureTimeline.ShouldAnalyze(
+				preview.observation.frameNumber, preview.framesPerSecond))
+				continue;
+			ActivePictureFrameDecision decision;
+			if (!m_activePictureTimeline.SubmitScheduledObservation(
+				preview.identity, preview.observation, configured,
+				availableLookahead, decision))
+				continue;
+			auto target = std::find_if(m_frameQueue.begin(), m_frameQueue.end(),
+				[&decision](const QueuedFrame& candidate)
+				{
+					return candidate.activePictureIdentity.transportGeneration ==
+						decision.effectiveIdentity.transportGeneration &&
+						candidate.activePictureIdentity.acceptedSequence ==
+						decision.effectiveIdentity.acceptedSequence;
+				});
+			if (target == m_frameQueue.end())
+				continue;
+			target->activePicturePreviewDecision = decision;
+			target->activePicturePreviewDecisionAvailable = true;
+			DebugLog::Log(
+				"Alpha active-picture look-ahead decision: generation=%llu observed=%llu effective=%llu configured=%u available=%u effective_lead=%u late=%d rect=%d,%d-%d,%d runtime-apply=pending",
+				static_cast<unsigned long long>(
+					decision.observationIdentity.transportGeneration),
+				static_cast<unsigned long long>(
+					decision.observationIdentity.acceptedSequence),
+				static_cast<unsigned long long>(
+					decision.effectiveIdentity.acceptedSequence),
+				static_cast<unsigned>(decision.configuredLookahead),
+				static_cast<unsigned>(decision.availableLookahead),
+				static_cast<unsigned>(decision.effectiveLookahead),
+				decision.late ? 1 : 0,
+				decision.transition.bounds.left,
+				decision.transition.bounds.top,
+				decision.transition.bounds.right,
+				decision.transition.bounds.bottom);
+		}
+	}
+
+}
+
+
 void LibplaceboVideoRenderer::RenderLoop()
 {
 	unsigned int consecutiveFailures = 0;
@@ -8025,11 +8440,16 @@ void LibplaceboVideoRenderer::RenderLoop()
 		VideoStateComPtr state;
 		uint64_t frameGeneration = 0;
 		uint64_t sourceSequence = 0;
+		ActivePictureFrameIdentity activePictureIdentity;
+		bool activePicturePreviewDecisionAvailable = false;
+		ActivePictureFrameDecision activePicturePreviewDecision;
 		int64_t enqueueQpc = 0;
 		int64_t dequeueQpc = 0;
 		size_t queueDepthAfterDequeue = 0;
 		size_t desiredQueueDepth = 1;
 		double oldestQueuedAgeMs = 0.0;
+		std::vector<QueuedFrame> activePicturePreviewFrames;
+		uint8_t activePictureAvailableLookahead = 0;
 		bool cadenceRepeat = false;
 		uint64_t cadenceActionId = 0;
 		uint64_t cadencePolicyGeneration = 0;
@@ -8069,6 +8489,12 @@ void LibplaceboVideoRenderer::RenderLoop()
 			state = m_frameQueue.front().state;
 			frameGeneration = m_frameQueue.front().generation;
 			sourceSequence = m_frameQueue.front().sourceSequence;
+			activePictureIdentity =
+				m_frameQueue.front().activePictureIdentity;
+			activePicturePreviewDecisionAvailable =
+				m_frameQueue.front().activePicturePreviewDecisionAvailable;
+			activePicturePreviewDecision =
+				m_frameQueue.front().activePicturePreviewDecision;
 			enqueueQpc = m_frameQueue.front().enqueueQpc;
 			cadenceRepeat = m_frameQueue.front().cadenceRepeat;
 			cadenceActionId =
@@ -8083,7 +8509,30 @@ void LibplaceboVideoRenderer::RenderLoop()
 				m_frameQueue.front().cadencePresentId;
 			cadenceDeadlineSeconds =
 				m_frameQueue.front().cadenceDeadlineSeconds;
+			m_activePictureTimeline.MarkConsumed(
+				m_frameQueue.front().activePictureIdentity);
 			m_frameQueue.pop_front();
+
+			const size_t requestedLookahead = (std::min)(
+				m_activePictureLookaheadFrames.load(std::memory_order_acquire),
+				size_t{ ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES });
+			if (requestedLookahead > 0)
+			{
+				size_t sourceLead = 0;
+				for (const QueuedFrame& queued : m_frameQueue)
+				{
+					if (queued.cadenceRepeat)
+						continue;
+					if (sourceLead >= requestedLookahead)
+						break;
+					++sourceLead;
+					if (queued.activePicturePreviewAnalyzed)
+						continue;
+					activePicturePreviewFrames.push_back(queued);
+					activePicturePreviewFrames.back().frame.SourceBufferAddRef();
+				}
+				activePictureAvailableLookahead = static_cast<uint8_t>(sourceLead);
+			}
 
 			const size_t remainingDepth = m_frameQueue.size();
 			queueDepthAfterDequeue = remainingDepth;
@@ -8138,6 +8587,29 @@ void LibplaceboVideoRenderer::RenderLoop()
 			}
 		}
 
+		if (m_activePictureLookaheadFrames.load(std::memory_order_acquire) > 0)
+		{
+			try
+			{
+				AnalyzeActivePictureLookahead(
+					activePicturePreviewFrames,
+					activePictureAvailableLookahead);
+			}
+			catch (const std::exception& e)
+			{
+				DebugLog::Log(
+					"Alpha active-picture look-ahead preview failed: %s",
+					e.what());
+			}
+			catch (...)
+			{
+				DebugLog::Log(
+					"Alpha active-picture look-ahead preview failed: unknown exception");
+			}
+			for (QueuedFrame& preview : activePicturePreviewFrames)
+				preview.frame.SourceBufferRelease();
+		}
+
 		if (prefillReleased)
 		{
 			DebugLog::Log(
@@ -8145,6 +8617,23 @@ void LibplaceboVideoRenderer::RenderLoop()
 				static_cast<unsigned long long>(frameGeneration),
 				prefillDepth,
 				prefillTarget);
+		}
+		const ActivePictureFrameIdentity& effectiveIdentity =
+			activePicturePreviewDecision.effectiveIdentity;
+		const bool activePicturePreviewIdentityMatches =
+			activePicturePreviewDecisionAvailable &&
+			SameActivePictureFrameIdentity(
+				effectiveIdentity, activePictureIdentity);
+		if (activePicturePreviewDecisionAvailable &&
+			!activePicturePreviewIdentityMatches)
+		{
+			DebugLog::Log(
+				"Alpha active-picture look-ahead rejected: generation=%llu source=%llu observed=%llu effective=%llu reason=identity_mismatch runtime-apply=0",
+				static_cast<unsigned long long>(frameGeneration),
+				static_cast<unsigned long long>(sourceSequence),
+				static_cast<unsigned long long>(
+					activePicturePreviewDecision.observationIdentity.acceptedSequence),
+				static_cast<unsigned long long>(effectiveIdentity.acceptedSequence));
 		}
 		if (depthSummaryReady)
 		{
@@ -8184,6 +8673,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 					state,
 					frameGeneration,
 					sourceSequence,
+					activePictureIdentity,
+					activePicturePreviewIdentityMatches
+						? &activePicturePreviewDecision : nullptr,
 					enqueueQpc,
 					dequeueQpc,
 					queueDepthAfterDequeue,
@@ -8247,6 +8739,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 							{
 								if (m_frameQueue.front().cadenceRepeat)
 									++canceledRepeats;
+								m_activePictureTimeline.MarkDiscarded(
+									m_frameQueue.front().activePictureIdentity,
+									m_frameQueue.front().frame.GetCounter());
 								m_frameQueue.front().frame.SourceBufferRelease();
 								m_frameQueue.pop_front();
 								++droppedFrames;
@@ -8508,19 +9003,26 @@ void LibplaceboVideoRenderer::RenderLoop()
 				{
 					try
 					{
-						m_frameQueue.push_front({
-							frame,
-							state,
-							frameGeneration,
-							sourceSequence,
-							enqueueQpc,
-							true,
-							correctionDecision.actionId,
-							correctionDecision.diagnostic.policyGeneration,
-							correctionDecision.diagnostic.detectorGeneration,
-							correctionDecision.diagnostic.presentationDebt,
-							correctionDecision.diagnostic.lastPresentId,
-							correctionDecision.secondsUntilCorrection });
+						QueuedFrame repeatFrame;
+						repeatFrame.frame = frame;
+						repeatFrame.state = state;
+						repeatFrame.generation = frameGeneration;
+						repeatFrame.sourceSequence = sourceSequence;
+						repeatFrame.activePictureIdentity = activePictureIdentity;
+						repeatFrame.enqueueQpc = enqueueQpc;
+						repeatFrame.cadenceRepeat = true;
+						repeatFrame.cadenceActionId = correctionDecision.actionId;
+						repeatFrame.cadencePolicyGeneration =
+							correctionDecision.diagnostic.policyGeneration;
+						repeatFrame.cadenceDetectorGeneration =
+							correctionDecision.diagnostic.detectorGeneration;
+						repeatFrame.cadencePresentationDebt =
+							correctionDecision.diagnostic.presentationDebt;
+						repeatFrame.cadencePresentId =
+							correctionDecision.diagnostic.lastPresentId;
+						repeatFrame.cadenceDeadlineSeconds =
+							correctionDecision.secondsUntilCorrection;
+						m_frameQueue.push_front(std::move(repeatFrame));
 						repeatQueued = true;
 						repeatQueueDepth = m_frameQueue.size();
 						repeatOutcome = "queued";
@@ -8626,6 +9128,7 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 		ClearQueueLocked(reason);
 		if (++m_queueGeneration == 0)
 			++m_queueGeneration;
+		m_activePictureTimeline.Reset(m_queueGeneration);
 		m_overflowLoggedGeneration = 0;
 		m_startupPrefillPending = true;
 		m_queueDepthWindowStartNs = SteadyClockNowNs();
@@ -8649,8 +9152,15 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 
 void LibplaceboVideoRenderer::ClearQueueLocked(const char* reason)
 {
+	if (!m_frameQueue.empty())
+	{
+		m_activePictureTimeline.BreakContinuity(
+			m_frameQueue.front().frame.GetCounter());
+	}
 	for (QueuedFrame& queuedFrame : m_frameQueue)
 	{
+		m_activePictureTimeline.MarkConsumed(
+			queuedFrame.activePictureIdentity);
 		if (queuedFrame.cadenceRepeat)
 		{
 			DebugLog::Log(

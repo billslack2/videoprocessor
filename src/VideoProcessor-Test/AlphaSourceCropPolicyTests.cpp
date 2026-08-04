@@ -42,6 +42,69 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+		TEST_METHOD(BarContentDetectorNeverManufacturesAnOppositeEdge)
+		{
+			Assert::AreEqual(static_cast<int>(BarContentEdge::TOP),
+				static_cast<int>(SelectVerticalBarContentEdge(170.0f, 0.0f)));
+			Assert::AreEqual(static_cast<int>(BarContentEdge::BOTTOM),
+				static_cast<int>(SelectVerticalBarContentEdge(0.0f, 116.0f)));
+
+			// A receiver/menu item can leave weaker noise on the other bar. Only
+			// the edge that actually determines the fit may acquire a hold timer.
+			Assert::AreEqual(static_cast<int>(BarContentEdge::TOP),
+				static_cast<int>(SelectVerticalBarContentEdge(170.0f, 116.0f)));
+			Assert::AreEqual(static_cast<int>(BarContentEdge::BOTTOM),
+				static_cast<int>(SelectVerticalBarContentEdge(42.0f, 116.0f)));
+			Assert::AreEqual(static_cast<int>(BarContentEdge::NONE),
+				static_cast<int>(SelectVerticalBarContentEdge(0.5f, 0.5f)));
+		}
+
+		TEST_METHOD(FullRasterAuthorityBridgesSparseAnalysisWithoutWaitingPulse)
+		{
+			bool authority = UpdateFullRasterPresentationAuthority(false,
+				ActivePictureClassification::FULL_RASTER_TRUSTED, true);
+			Assert::IsTrue(authority);
+
+			// Normal frames between detector samples carry no new classification.
+			for (int frame = 0; frame < 120; ++frame)
+			{
+				authority = UpdateFullRasterPresentationAuthority(authority,
+					ActivePictureClassification::UNAVAILABLE, false);
+				Assert::IsTrue(authority);
+			}
+			Input crop = TrustedScopeCrop();
+			crop.latestObservationSupportsCrop = false;
+			crop.latestObservationIsProvisional = true;
+			crop.frameLocalPresentationRetentionEvaluated = true;
+			crop.frameLocalPresentationRetentionSafe = true;
+			crop.fullRasterPresentationAuthoritative = authority;
+			AssertFullRaster(Evaluate(crop));
+
+			// A malformed full-raster claim and trusted bar evidence both revoke it.
+			authority = UpdateFullRasterPresentationAuthority(authority,
+				ActivePictureClassification::FULL_RASTER_TRUSTED, false);
+			Assert::IsFalse(authority);
+			authority = UpdateFullRasterPresentationAuthority(true,
+				ActivePictureClassification::BAR_CROP_TRUSTED, false);
+			Assert::IsFalse(authority);
+			crop.fullRasterPresentationAuthoritative = authority;
+			crop.latestObservationSupportsCrop = true;
+			crop.latestObservationIsProvisional = false;
+			Assert::IsTrue(Evaluate(crop).applyCrop);
+		}
+
+		TEST_METHOD(ActiveCropForcesInspectionOnNonScheduledFrames)
+		{
+			Assert::IsTrue(RequiresPerFramePresentationInspection(
+				true, false, false));
+			Assert::IsTrue(RequiresPerFramePresentationInspection(
+				false, true, false));
+			Assert::IsTrue(RequiresPerFramePresentationInspection(
+				false, false, true));
+			Assert::IsFalse(RequiresPerFramePresentationInspection(
+				false, false, false));
+		}
+
 		TEST_METHOD(AmbiguityHoldIsBoundedNonRenewableAndGenerationLocal)
 		{
 			AmbiguityHold hold;
@@ -166,6 +229,49 @@ namespace Tests
 				static_cast<int>(MadVRNlsMappingMode::SCOPE_PASSTHROUGH),
 				static_cast<int>(mapping.mode));
 			Assert::AreEqual(finalAspect, mapping.sourceAspect, 0.000001);
+		}
+
+		TEST_METHOD(PixelSafeUncertaintyRetainsPresentationWithoutATimer)
+		{
+			Input input = TrustedScopeCrop();
+			input.latestObservationSupportsCrop = false;
+			input.latestObservationIsProvisional = true;
+			input.frameLocalPresentationRetentionEvaluated = true;
+			input.frameLocalPresentationRetentionSafe = true;
+			Decision decision;
+			// Duration cannot withdraw a presentation that every current frame
+			// positively proves pixel-safe. This models a long dark movie passage.
+			for (int frame = 0; frame < 60 * 60; ++frame)
+			{
+				decision = Evaluate(input);
+				Assert::IsTrue(decision.applyCrop);
+				Assert::AreEqual(274, decision.sourceBounds.top);
+				Assert::AreEqual(1884, decision.sourceBounds.bottom);
+			}
+			Assert::IsTrue(decision.reason.find("pixel-safe") !=
+				std::string::npos);
+
+			input.latestObservationIsProvisional = false;
+			input.latestObservationIsUnavailable = true;
+			decision = Evaluate(input);
+			Assert::IsTrue(decision.applyCrop);
+			Assert::AreEqual(274, decision.sourceBounds.top);
+			Assert::AreEqual(1884, decision.sourceBounds.bottom);
+
+			input.frameLocalPresentationRetentionSafe = false;
+			AssertFullRaster(Evaluate(input));
+		}
+
+		TEST_METHOD(VisiblePixelsOverrideLegacyAmbiguityTimers)
+		{
+			Input input = TrustedScopeCrop();
+			input.latestObservationSupportsCrop = false;
+			input.latestObservationIsProvisional = true;
+			input.sceneVerificationHoldActive = true;
+			input.ambiguityHoldActive = true;
+			input.frameLocalPresentationRetentionEvaluated = true;
+			input.frameLocalPresentationRetentionSafe = false;
+			AssertFullRaster(Evaluate(input));
 		}
 
 		TEST_METHOD(BoundedSceneVerificationRetainsOnlyExistingTrustedCrop)
@@ -500,6 +606,54 @@ namespace Tests
 			Assert::AreEqual(
 				static_cast<int>(ScenePresentationAction::WITHDRAW),
 				static_cast<int>(EvaluateSceneBoundary(darkFade).action));
+		}
+
+		TEST_METHOD(PixelSafeCutKeepsPresentationWithoutSnapshotExpiry)
+		{
+			SceneInput input;
+			input.geometryAvailable = true;
+			input.geometryIsCurrentGeneration = true;
+			input.latestEvidenceIsCurrent = true;
+			input.existingCropCanBeSnapshotted = true;
+			input.frameLocalPresentationRetentionEvaluated = true;
+			input.frameLocalPresentationRetentionSafe = true;
+			input.geometryClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.latestClassification =
+				ActivePictureClassification::PROVISIONAL;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::KEEP_CURRENT),
+				static_cast<int>(EvaluateSceneBoundary(input).action));
+
+			input.latestClassification =
+				ActivePictureClassification::UNAVAILABLE;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::KEEP_CURRENT),
+				static_cast<int>(EvaluateSceneBoundary(input).action));
+
+			input.latestClassification =
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(EvaluateSceneBoundary(input).action));
+		}
+
+		TEST_METHOD(VisiblePixelsAtCutOverrideSnapshotTimer)
+		{
+			SceneInput input;
+			input.geometryAvailable = true;
+			input.geometryIsCurrentGeneration = true;
+			input.latestEvidenceIsCurrent = true;
+			input.existingCropCanBeSnapshotted = true;
+			input.frameLocalPresentationRetentionEvaluated = true;
+			input.frameLocalPresentationRetentionSafe = false;
+			input.geometryClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.latestClassification =
+				ActivePictureClassification::PROVISIONAL;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(EvaluateSceneBoundary(input).action));
 		}
 
 		TEST_METHOD(SceneBoundaryWithdrawsUnavailableContradictoryOrStaleState)

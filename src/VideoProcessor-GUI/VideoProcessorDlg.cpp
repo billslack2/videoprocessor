@@ -4386,6 +4386,8 @@ void CVideoProcessorDlg::RenderStart()
 				videoProcessorApp.GetQueueStartupPrerollFrames(),
 				videoProcessorApp.GetQueueSteadyReserveFrames(),
 				videoProcessorApp.HasQueueSteadyReserveFrames());
+			m_videoRenderer->SetActivePictureLookaheadFrames(
+				videoProcessorApp.GetActivePictureLookaheadFrames());
 			ApplyRequestedShaderSelection();
 			m_rendererTransitionWindow.KeepOnTop();
 			// Match the DirectShow startup contract. Alpha owns its detector and
@@ -4486,6 +4488,8 @@ void CVideoProcessorDlg::RenderStart()
 		m_videoRenderer->SetPresentationLeadFrames(
 			videoProcessorApp.GetPresentationLeadFrames(),
 			videoProcessorApp.HasPresentationLeadFrames());
+		m_videoRenderer->SetActivePictureLookaheadFrames(
+			videoProcessorApp.GetActivePictureLookaheadFrames());
 		ApplyRequestedShaderSelection();
 		m_rendererTransitionWindow.KeepOnTop();
 		m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
@@ -4571,6 +4575,8 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->SetPresentationLeadFrames(
 				videoProcessorApp.GetPresentationLeadFrames(),
 				videoProcessorApp.HasPresentationLeadFrames());
+			m_videoRenderer->SetActivePictureLookaheadFrames(
+				videoProcessorApp.GetActivePictureLookaheadFrames());
 			m_rendererTransitionWindow.KeepOnTop();
 			m_videoRenderer->SetSceneAwareTimingCorrection(m_sceneAwareTimingCorrection);
 			m_videoRenderer->SetSceneCorrectionUpstreamSample(

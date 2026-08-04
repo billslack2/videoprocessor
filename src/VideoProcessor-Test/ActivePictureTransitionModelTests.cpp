@@ -55,6 +55,40 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureTransitionModelTests)
 	{
 	public:
+		TEST_METHOD(LookaheadPublicationBecomesTheLiveStableGeometry)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+
+			ActivePictureTransitionModel preview;
+			Establish(preview, ScopeBounds());
+			Observe(preview, ImaxBounds(), frame++);
+			const ActivePictureTransitionDecision published =
+				Observe(preview, ImaxBounds(), frame++);
+			Assert::IsTrue(published.publish);
+			Assert::IsTrue(model.AdoptPublishedDecision(published,
+				ActivePictureClassification::BAR_CROP_TRUSTED));
+
+			const ActivePictureTransitionDecision next =
+				Observe(model, ImaxBounds(), frame);
+			Assert::IsFalse(next.publish);
+			Assert::IsTrue(next.stable);
+			Assert::AreEqual(ImaxBounds().top, next.bounds.top);
+			Assert::AreEqual(ImaxBounds().bottom, next.bounds.bottom);
+		}
+
+		TEST_METHOD(LookaheadCannotInjectProvisionalGeometry)
+		{
+			ActivePictureTransitionModel model;
+			ActivePictureTransitionDecision decision;
+			decision.publish = true;
+			decision.stable = true;
+			decision.bounds = ImaxBounds();
+			Assert::IsFalse(model.AdoptPublishedDecision(decision,
+				ActivePictureClassification::PROVISIONAL));
+			Assert::IsFalse(model.Observe({}).stable);
+		}
+
 		TEST_METHOD(AnalysisCadenceIsNormalizedAcrossFrameRateFamilies)
 		{
 			const double rates[] = {

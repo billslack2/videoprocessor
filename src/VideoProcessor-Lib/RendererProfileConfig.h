@@ -431,8 +431,8 @@ namespace RendererProfileConfig
 	inline bool ValidateTargetRendererSetting(const std::string& key,
 		const std::string& value)
 	{
-		// automatic_crop was an unfinished experimental policy. VP-0079 removes
-		// it instead of giving it another public spelling.
+		// automatic_crop is viewport-owned. Reject it from renderer/display
+		// variants so the same setting cannot acquire two owners.
 		if (key == "automatic_crop") return false;
 		return ValidateBaseSetting(key, value);
 	}
@@ -556,8 +556,9 @@ namespace RendererProfileConfig
 					if (std::string(spec.name) == "queue")
 					{
 						std::string expected;
-						if (!ValidateProfileSetting("queue", entry.first,
-							entry.second, expected) && entry.first != "lead_frames")
+					if (!ValidateProfileSetting("queue", entry.first,
+						entry.second, expected) && entry.first != "lead_frames" &&
+						entry.first != "active_picture_lookahead_frames")
 						{
 							error = "[" + section + "] key '" + entry.first +
 								"' is not a valid queue setting";

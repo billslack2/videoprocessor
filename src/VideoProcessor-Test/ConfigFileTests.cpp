@@ -357,7 +357,7 @@ namespace VideoProcessorTest
 					"renderer: VideoProcessor Renderer (Alpha)\n"
 					"fullscreen: true\n"
 					"[renderer_alias]\nvp: 1\nmadvr: 2\n"
-					"[queue]\nwhen: $key==\"l\"\nqueue_size: 32\nlead_frames: 4\ntarget_frames: 2\n"
+					"[queue]\nwhen: $key==\"l\"\nqueue_size: 32\nlead_frames: 4\ntarget_frames: 3\nactive_picture_lookahead_frames: 2\n"
 					"[queue.low_latency]\nwhen: $key==\"L\"\nqueue_size: 1\ntarget_frames: 1\n"
 					"[directshow]\nvideo_conversion: V210_TO_P010\nframe_offset: 90\n"
 					"[directshow.conversion]\nconversion_method: SIMD\nmin_core_count: 1\nmax_core_count: 2\n"
@@ -365,7 +365,7 @@ namespace VideoProcessorTest
 					"[vprenderer]\nwhen: $key==\"F4\"\nquality: high\nswitch_refresh_rate: true\n"
 					"[vprenderer.rec709]\nwhen: $key==\"F5\"\ntone_mapping: spline\n"
 					"[vprenderer.viewport]\nwhen: $key==\"F3\"\n"
-					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\nscreen_aspect: 2.35:1\nsubtitle_fit: true\n"
+					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\nscreen_aspect: 2.35:1\nautomatic_crop: true\nsubtitle_fit: true\n"
 					"[actions.audio_delay_film]\non: refresh.applied,refresh.confirmed\nwhen: $actual_refresh<=30\nrun: C:\\Videoprocessor\\audio\\audio_delay.bat 100\n"
 					"[shader.nls]\nwhen: $key==\"n\"\n"
 					"[shader.nls.standard]\nwhen: $key==\"Shift+n\"\nshader_type: nls\nglsl_file: NLS.glsl\n"
@@ -402,6 +402,7 @@ namespace VideoProcessorTest
 				"scope", 1, viewport, error));
 			Assert::AreEqual(47ull, viewport.screenAspect.numerator);
 			Assert::AreEqual(20ull, viewport.screenAspect.denominator);
+			Assert::IsTrue(viewport.automaticCrop);
 			Assert::IsTrue(viewport.subtitleFit);
 
 			UnifiedProfileRuntime::Runtime runtime;
@@ -636,6 +637,15 @@ namespace VideoProcessorTest
 			Assert::IsTrue(config.Load(path));
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));
 			Assert::IsTrue(error.find("target_frames") != std::string::npos);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue]\nactive_picture_lookahead_frames: 9\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("active_picture_lookahead_frames") !=
+				std::string::npos);
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);

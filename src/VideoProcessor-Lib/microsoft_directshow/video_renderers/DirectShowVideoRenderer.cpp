@@ -904,6 +904,26 @@ void DirectShowVideoRenderer::SetPresentationLeadFrames(
 }
 
 
+void DirectShowVideoRenderer::SetActivePictureLookaheadFrames(size_t frames)
+{
+	const size_t boundedFrames = (std::min)(frames, size_t{ 8 });
+	m_activePictureLookaheadFrames.store(
+		boundedFrames, std::memory_order_release);
+
+	std::shared_lock<std::shared_mutex> lock(m_liveSourceLifetimeMutex);
+	const bool sourceReady =
+		m_liveSource && m_liveSource->GetVideoOutputPin();
+	if (sourceReady)
+	{
+		m_liveSource->GetVideoOutputPin()->SetActivePictureLookaheadFrames(
+			boundedFrames);
+	}
+	DebugLog::Log(
+		"DirectShow active-picture look-ahead retained: configured=%zu source-ready=%d queue-unchanged=1 runtime-active=0",
+		boundedFrames, sourceReady ? 1 : 0);
+}
+
+
 bool DirectShowVideoRenderer::GetLatencySnapshot(
 	RendererLatencySnapshot& snapshot) const
 {
@@ -1796,6 +1816,8 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 			m_presentationLeadFramesConfigured.load(std::memory_order_acquire);
 		outputPin->SetPresentationLeadFrames(
 			presentationLeadFrames, presentationLeadConfigured);
+		outputPin->SetActivePictureLookaheadFrames(
+			m_activePictureLookaheadFrames.load(std::memory_order_acquire));
 		DebugLog::Log(
 			"DirectShow presentation lead applied to fresh graph: frames=%zu explicit=%d",
 			presentationLeadFrames,

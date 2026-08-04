@@ -212,6 +212,7 @@
     <ClInclude Include="RendererTransitionModel.h" />
     <ClInclude Include="vprenderer\\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
+    <ClInclude Include="ActivePictureDecisionTimeline.h" />
     <ClInclude Include="ActivePictureTransitionModel.h" />
 	<ClInclude Include="AnalysisLumaSource.h" />
 	<ClInclude Include="ActivePictureAnalyzer.h" />
@@ -279,6 +280,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ACaptureDevice.cpp" />
+    <ClCompile Include="ActivePictureDecisionTimeline.cpp" />
     <ClCompile Include="ActivePictureTransitionModel.cpp" />
 	<ClCompile Include="AnalysisLumaSource.cpp" />
 	<ClCompile Include="ActivePictureAnalyzer.cpp" />

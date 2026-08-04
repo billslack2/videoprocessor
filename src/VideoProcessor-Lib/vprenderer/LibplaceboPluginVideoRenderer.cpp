@@ -283,6 +283,13 @@ void LibplaceboPluginVideoRenderer::SetQueueFramePolicy(
 }
 
 
+void LibplaceboPluginVideoRenderer::SetActivePictureLookaheadFrames(
+	size_t frames)
+{
+	m_renderer->SetActivePictureLookaheadFrames(frames);
+}
+
+
 void LibplaceboPluginVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 {
 	m_renderer->SetSceneAwareTimingCorrection(enabled);

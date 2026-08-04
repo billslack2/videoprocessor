@@ -12,6 +12,9 @@ namespace
 {
 constexpr int kLineSamples = 48;
 constexpr int kEdgeDepthSamples = 6;
+constexpr int kGlobalGridWidth = 16;
+constexpr int kGlobalGridHeight = 16;
+constexpr int kGlobalNearBlackP90 = 96;
 
 template <typename T>
 T Bounded(T value, T minimum, T maximum)
@@ -27,6 +30,25 @@ double Percentile(std::vector<int> values, double fraction)
 		static_cast<size_t>(fraction * static_cast<double>(values.size() - 1)));
 	std::nth_element(values.begin(), values.begin() + index, values.end());
 	return static_cast<double>(values[index]);
+}
+
+bool IsValidBoundsForSource(const ActivePictureBounds& bounds,
+	const AnalysisLumaSource& source)
+{
+	return bounds.rasterWidth == source.width &&
+		bounds.rasterHeight == source.height &&
+		bounds.left >= 0 && bounds.top >= 0 &&
+		bounds.right > bounds.left && bounds.bottom > bounds.top &&
+		bounds.right <= source.width && bounds.bottom <= source.height;
+}
+
+bool Contains(const ActivePictureBounds& outside,
+	const ActivePictureBounds& inside)
+{
+	return outside.rasterWidth == inside.rasterWidth &&
+		outside.rasterHeight == inside.rasterHeight &&
+		inside.left >= outside.left && inside.top >= outside.top &&
+		inside.right <= outside.right && inside.bottom <= outside.bottom;
 }
 
 struct SampleContext
@@ -248,6 +270,22 @@ P010EdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
 		0.0, 1.0);
 	return evidence;
 }
+
+
+bool ExcludedBandPixelsAreSafe(const P010EdgeEvidence& evidence)
+{
+	if (evidence.barPixels <= 0)
+		return true;
+	// Retention is deliberately a pixel-safety test, not a second acquisition
+	// test. Inner-boundary contrast is therefore not part of this predicate.
+	return evidence.blackFraction >= 0.95 &&
+		evidence.lumaP90 <= evidence.lumaFloor + 24.0 &&
+		evidence.lumaP90 <= 104.0 &&
+		evidence.lumaDispersion <= 24.0 &&
+		evidence.texture <= 8.0 &&
+		evidence.neutralChromaFraction >= 0.90 &&
+		evidence.continuity >= 0.99;
+}
 }
 
 
@@ -420,4 +458,115 @@ P010ActivePictureEvidence ExtractP010ActivePictureEvidence(
 	source.chromaRowBytes = view.chromaPitchBytes;
 	source.format = AnalysisLumaFormat::P010;
 	return ExtractActivePictureEvidence(source);
+}
+
+
+P010PresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
+	const AnalysisLumaSource& source,
+	const ActivePictureBounds& trustedPresentation)
+{
+	P010PresentationRetentionEvidence result;
+	result.activePicture = ExtractActivePictureEvidence(source);
+	result.lumaSamples = result.activePicture.lumaSamples;
+	result.chromaSamples = result.activePicture.chromaSamples;
+	if (!source.IsValid() || source.width < 16 || source.height < 16)
+	{
+		result.reason = "invalid analysis source cannot prove presentation safety";
+		return result;
+	}
+	result.analysisValid = true;
+	if (!IsValidBoundsForSource(trustedPresentation, source))
+	{
+		result.reason = "trusted presentation does not match the analysis raster";
+		return result;
+	}
+	result.presentationValid = true;
+
+	SampleContext samples{ source };
+	std::vector<int> globalLuma;
+	globalLuma.reserve(kGlobalGridWidth * kGlobalGridHeight);
+	for (int row = 0; row < kGlobalGridHeight; ++row)
+	{
+		const int y = ((row * 2 + 1) * source.height) /
+			(kGlobalGridHeight * 2);
+		for (int column = 0; column < kGlobalGridWidth; ++column)
+		{
+			const int x = ((column * 2 + 1) * source.width) /
+				(kGlobalGridWidth * 2);
+			globalLuma.push_back(samples.Luma(x, y));
+		}
+	}
+	result.globalLumaP90 = Percentile(globalLuma, 0.90);
+	result.globalNearBlack = result.globalLumaP90 <= kGlobalNearBlackP90;
+
+	std::vector<int> perimeter;
+	perimeter.reserve(256);
+	for (int i = 0; i < 64; ++i)
+	{
+		const int x = ((i * 2 + 1) * source.width) / 128;
+		const int y = ((i * 2 + 1) * source.height) / 128;
+		perimeter.push_back(samples.Luma(x, 0));
+		perimeter.push_back(samples.Luma(x, source.height - 1));
+		perimeter.push_back(samples.Luma(0, y));
+		perimeter.push_back(samples.Luma(source.width - 1, y));
+	}
+	const int observedLow = static_cast<int>(Percentile(perimeter, 0.10));
+	const int blackFloor = observedLow < 32 ? 0 :
+		Bounded(observedLow, 48, 80);
+	const int blackThreshold = std::min(104, blackFloor + 24);
+
+	result.excludedTop = InspectHorizontalEdge(samples, true,
+		trustedPresentation.top, trustedPresentation.top,
+		blackFloor, blackThreshold);
+	result.excludedBottom = InspectHorizontalEdge(samples, false,
+		source.height - trustedPresentation.bottom,
+		trustedPresentation.bottom, blackFloor, blackThreshold);
+	result.excludedLeft = InspectVerticalEdge(samples, true,
+		trustedPresentation.left, trustedPresentation.left,
+		blackFloor, blackThreshold);
+	result.excludedRight = InspectVerticalEdge(samples, false,
+		source.width - trustedPresentation.right,
+		trustedPresentation.right, blackFloor, blackThreshold);
+
+	result.excludedBandsPixelSafe =
+		ExcludedBandPixelsAreSafe(result.excludedLeft) &&
+		ExcludedBandPixelsAreSafe(result.excludedTop) &&
+		ExcludedBandPixelsAreSafe(result.excludedRight) &&
+		ExcludedBandPixelsAreSafe(result.excludedBottom);
+	result.proposedBoundsAvailable = result.activePicture.available &&
+		IsValidBoundsForSource(result.activePicture.proposedBounds, source);
+	result.proposedBoundsContained = result.proposedBoundsAvailable &&
+		Contains(trustedPresentation, result.activePicture.proposedBounds);
+	result.currentlyPixelSafe = result.excludedBandsPixelSafe &&
+		(result.proposedBoundsContained || result.globalNearBlack);
+	result.lumaSamples += samples.lumaSamples;
+	result.chromaSamples += samples.chromaSamples;
+
+	if (!result.excludedBandsPixelSafe)
+		result.reason = "visible, textured, or colored excluded-band pixels reject retention";
+	else if (result.proposedBoundsContained)
+		result.reason = "current proposal is contained and excluded bands remain pixel-safe";
+	else if (result.globalNearBlack)
+		result.reason = "valid global near-black frame is pixel-safe without geometry";
+	else
+		result.reason = "non-contained active-picture evidence rejects retention";
+	return result;
+}
+
+
+P010PresentationRetentionEvidence
+	EvaluateP010ActivePicturePresentationRetention(
+		const P010PlaneView& view,
+		const ActivePictureBounds& trustedPresentation)
+{
+	AnalysisLumaSource source;
+	source.data = view.data;
+	source.dataBytes = view.dataBytes;
+	source.width = view.width;
+	source.height = view.height;
+	source.rowBytes = view.lumaPitchBytes;
+	source.chromaRowBytes = view.chromaPitchBytes;
+	source.format = AnalysisLumaFormat::P010;
+	return EvaluateActivePicturePresentationRetention(source,
+		trustedPresentation);
 }

@@ -459,6 +459,19 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 		videoProcessorApp.GetQueueSteadyReserveFrames(),
 		legacyStartupConfigured ? TEXT("legacy-configured") : TEXT("automatic")));
 
+	std::string activePictureLookaheadFrames;
+	if (config.TryGetString(
+		"queue", "active_picture_lookahead_frames",
+		activePictureLookaheadFrames))
+	{
+		const size_t frames = static_cast<size_t>(
+			std::stoul(activePictureLookaheadFrames));
+		videoProcessorApp.SetActivePictureLookaheadFrames(frames);
+		DbgLog((LOG_TRACE, 1,
+			TEXT("VideoProcessor: Active-picture look-ahead configured: frames=%zu"),
+			frames));
+	}
+
 	// [queue] is the canonical file location for the renderer hard capacity.
 	// The configured arguments precede the literal process command line, so a
 	// deliberate /queue_size always remains the highest-priority override.

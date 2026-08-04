@@ -36,6 +36,14 @@ public:
 		m_presentationLeadFrames = value;
 		m_hasPresentationLeadFrames = true;
 	}
+	size_t GetActivePictureLookaheadFrames() const
+	{
+		return m_activePictureLookaheadFrames;
+	}
+	void SetActivePictureLookaheadFrames(size_t value)
+	{
+		m_activePictureLookaheadFrames = value > 8 ? 8 : value;
+	}
 
 private:
 	size_t m_queueStartupPrerollFrames = 0;
@@ -43,6 +51,7 @@ private:
 	bool m_hasQueueSteadyReserveFrames = true;
 	size_t m_presentationLeadFrames = 1;
 	bool m_hasPresentationLeadFrames = true;
+	size_t m_activePictureLookaheadFrames = 0;
 
 	DECLARE_MESSAGE_MAP()
 };

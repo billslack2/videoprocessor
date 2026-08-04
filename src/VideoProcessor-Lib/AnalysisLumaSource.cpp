@@ -42,6 +42,58 @@ namespace
 		return static_cast<uint16_t>((static_cast<uint32_t>(value) * 1023 + 127) / 255);
 	}
 
+	bool ReadNativeYuv422(const AnalysisLumaSource& source, int x, int y,
+		AnalysisLumaSample& result)
+	{
+		const uint8_t* row = source.data +
+			static_cast<size_t>(y) * source.rowBytes;
+		if (source.encoding == VideoFrameEncoding::UYVY ||
+			source.encoding == VideoFrameEncoding::HDYC)
+		{
+			const uint8_t* pair = row + static_cast<size_t>(x / 2) * 4;
+			result.chromaU = static_cast<uint16_t>(pair[0]) << 2;
+			result.luma = static_cast<uint16_t>(pair[(x & 1) ? 3 : 1]) << 2;
+			result.chromaV = static_cast<uint16_t>(pair[2]) << 2;
+			return true;
+		}
+		if (source.encoding != VideoFrameEncoding::V210)
+			return false;
+
+		const uint8_t* group = row + static_cast<size_t>(x / 6) * 16;
+		const uint32_t words[4] = {
+			ReadLittleEndian32(group),
+			ReadLittleEndian32(group + 4),
+			ReadLittleEndian32(group + 8),
+			ReadLittleEndian32(group + 12)
+		};
+		auto component = [&words](int word, int shift)
+		{
+			return static_cast<uint16_t>((words[word] >> shift) & 0x3ff);
+		};
+		switch (x % 6)
+		{
+		case 0:
+			result = { component(0, 10), component(0, 0), component(0, 20) };
+			break;
+		case 1:
+			result = { component(1, 0), component(0, 0), component(0, 20) };
+			break;
+		case 2:
+			result = { component(1, 20), component(1, 10), component(2, 0) };
+			break;
+		case 3:
+			result = { component(2, 10), component(1, 10), component(2, 0) };
+			break;
+		case 4:
+			result = { component(3, 0), component(2, 20), component(3, 10) };
+			break;
+		default:
+			result = { component(3, 20), component(2, 20), component(3, 10) };
+			break;
+		}
+		return true;
+	}
+
 	uint16_t Clamp10(int value)
 	{
 		return static_cast<uint16_t>(std::max(0, std::min(1023, value)));
@@ -202,6 +254,16 @@ bool AnalysisLumaSource::IsValid() const
 				rowBytes >= static_cast<size_t>(width) * 36 / 8;
 		return rowBytes >= static_cast<size_t>(width) * 4;
 	}
+	if (format == AnalysisLumaFormat::NativeYuv422)
+	{
+		if ((width & 1) != 0)
+			return false;
+		if (encoding == VideoFrameEncoding::UYVY ||
+			encoding == VideoFrameEncoding::HDYC)
+			return rowBytes >= static_cast<size_t>(width) * 2;
+		return encoding == VideoFrameEncoding::V210 &&
+			rowBytes >= ((static_cast<size_t>(width) + 5) / 6) * 16;
+	}
 	if ((width & 1) != 0 ||
 		(format == AnalysisLumaFormat::P010 && (height & 1) != 0) ||
 		rowBytes < static_cast<size_t>(width) * 2 ||
@@ -221,6 +283,8 @@ bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 		return false;
 	if (format != AnalysisLumaFormat::NativeRgb)
 	{
+		if (format == AnalysisLumaFormat::NativeYuv422)
+			return ReadNativeYuv422(*this, x, y, result);
 		const uint8_t* luma = data + static_cast<size_t>(y) * rowBytes +
 			static_cast<size_t>(x) * 2;
 		const size_t lumaBytes = rowBytes * static_cast<size_t>(height);
@@ -258,5 +322,7 @@ const char* AnalysisLumaFormatName(const AnalysisLumaSource& source)
 {
 	if (source.format == AnalysisLumaFormat::NativeRgb)
 		return "native-rgb-sparse";
+	if (source.format == AnalysisLumaFormat::NativeYuv422)
+		return "native-yuv422-sparse";
 	return source.format == AnalysisLumaFormat::P210 ? "p210-plane" : "p010-plane";
 }

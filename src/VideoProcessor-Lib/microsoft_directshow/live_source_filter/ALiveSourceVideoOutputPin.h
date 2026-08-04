@@ -176,6 +176,11 @@ public:
 		m_presentationLeadFrames = frames > 16 ? 16 : frames;
 		m_presentationLeadFramesConfigured = configured;
 	}
+	void SetActivePictureLookaheadFrames(size_t frames)
+	{
+		m_activePictureLookaheadFrames.store(
+			frames > 8 ? 8 : frames, std::memory_order_release);
+	}
 
 	//
 	// Metrics
@@ -536,6 +541,7 @@ protected:
 	// startup; ramping is disabled by default.
 	size_t m_presentationLeadFrames = 0;
 	bool m_presentationLeadFramesConfigured = false;
+	std::atomic<size_t> m_activePictureLookaheadFrames{0};
 	
 	// Lead ramp duration configuration (in milliseconds)
 	// Specifies how long to ramp from 0 to the resolved target lead
