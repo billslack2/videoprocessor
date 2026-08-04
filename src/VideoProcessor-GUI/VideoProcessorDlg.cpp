@@ -8213,6 +8213,16 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	const bool nativeOverlay = m_statsOverlayRequestedVisible && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();
+	// A madVR OSD API failure is diagnostics-only.  On the following periodic
+	// refresh, make the existing window overlay visible rather than leaving the
+	// requested panel absent or attempting repeated failing submissions.
+	if (m_statsOverlayRequestedVisible && !nativeOverlay && m_statsOverlay &&
+		!m_statsOverlay->IsVisible())
+	{
+		if (!m_statsOverlay->IsCreated())
+			m_statsOverlay->Create(GetSafeHwnd());
+		m_statsOverlay->Show(m_statsOverlay->IsCreated());
+	}
 	if (!m_statsOverlay ||
 		(!m_statsOverlay->IsVisible() && !nativeOverlay) || !m_lastStatsData)
 		return;
@@ -8309,6 +8319,11 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			reinterpret_cast<const RendererId*>(m_rendererCombo.GetItemData(selectedRenderer)) : nullptr;
 		stats.isAlphaRenderer = renderer &&
 			renderer->backend == RendererBackend::LIBPLACEBO;
+		if (renderer)
+			stats.rendererName = renderer->name;
+		else
+			stats.rendererName = stats.isAlphaRenderer ?
+				TEXT("VideoProcessor Renderer (Alpha)") : TEXT("DirectShow");
 		stats.rawQueueSize = m_videoRenderer->GetFrameQueueSize();
 		stats.convertedQueueSize = m_videoRenderer->GetConvertedQueueSize();
 		stats.currentQueueSize = stats.rawQueueSize + stats.convertedQueueSize;

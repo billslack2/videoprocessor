@@ -97,8 +97,9 @@ bool StatsOverlayWindow::Create(HWND parentHwnd)
 		return false;
 	}
 
-	// Set up layered window for transparency
-	SetLayeredWindowAttributes(m_hwnd, RGB(0, 0, 0), 120, LWA_ALPHA); // 120/255 = ~47% opacity (50% more transparent than 240/255)
+	// Keep the legacy fallback visually aligned with the native Alpha/madVR
+	// bitmaps, which carry 220/255 per-pixel alpha.
+	SetLayeredWindowAttributes(m_hwnd, RGB(0, 0, 0), 220, LWA_ALPHA);
 
 	// Create fonts - match MadVR stats overlay style but 50% larger
 	HDC hdc = GetDC(m_hwnd);
@@ -109,8 +110,9 @@ bool StatsOverlayWindow::Create(HWND parentHwnd)
 		return false;
 	}
 	
-	// Reduce font size by 10%: 25 -> 23 pixels (25 * 0.9 = 22.5, rounded to 23)
-	int fontHeight = 23;
+	// One shared raster style for the legacy fallback and both native OSD
+	// backends. Alpha established 20 px as the readable in-frame size.
+	int fontHeight = ALPHA_LINE_HEIGHT;
 
 	m_font = CreateFont(
 		fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
@@ -381,6 +383,11 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 	// Fixed-width format with consistent spacing - use 18 chars for label, then value
 	CString line;
+	line.Format(TEXT("Renderer:         %-s"),
+		m_stats.rendererName.IsEmpty() ? TEXT("---") :
+		static_cast<LPCTSTR>(m_stats.rendererName));
+	DrawText(hdc, line, PADDING, y);
+	y += lineHeight;
 
 	// Resolution
 	line.Format(TEXT("Resolution:       %-s"), m_stats.resolution.IsEmpty() ? TEXT("---") : m_stats.resolution);
@@ -463,7 +470,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		m_stats.viewport.IsEmpty() ? TEXT("default (16:9)") :
 		static_cast<LPCTSTR>(m_stats.viewport));
 	DrawText(hdc, line, PADDING, y);
-	y += LINE_HEIGHT;
+	y += lineHeight;
 
 	if (!m_stats.outputMode.IsEmpty())
 	{
@@ -648,9 +655,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
-	line.Format(
-		m_stats.isAlphaRenderer ? TEXT("Scene:        %-s") :
-			TEXT("Scene Mode:       %-s"),
+	line.Format(TEXT("Scene Mode:       %-s"),
 		m_stats.sceneDetectMode.IsEmpty() ? TEXT("Off") :
 			static_cast<LPCTSTR>(m_stats.sceneDetectMode));
 	DrawText(hdc, line, PADDING, y);
@@ -659,22 +664,16 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	const bool sceneModeOff = m_stats.sceneDetectMode.IsEmpty() ||
 		m_stats.sceneDetectMode.CompareNoCase(TEXT("Off")) == 0;
 	if (sceneModeOff)
-		line.Format(m_stats.isAlphaRenderer ?
-			TEXT(" - State:     Off") : TEXT(" - Status:        None"));
+		line.Format(TEXT(" - Status:        None"));
 	else if (!m_stats.sceneTimingStatus.IsEmpty())
-		line.Format(m_stats.isAlphaRenderer ?
-			TEXT(" - State:     %-s") : TEXT(" - Status:        %-s"),
+		line.Format(TEXT(" - Status:        %-s"),
 			static_cast<LPCTSTR>(m_stats.sceneTimingStatus));
 	else if (!m_stats.sceneTimingReady)
-		line.Format(m_stats.isAlphaRenderer ?
-			TEXT(" - State:     Warming") : TEXT(" - Status:        Warming"));
+		line.Format(TEXT(" - Status:        Warming"));
 	else if (!m_stats.sceneTimingRatesCompatible)
-		line.Format(m_stats.isAlphaRenderer ?
-			TEXT(" - State:     Unavailable") :
-			TEXT(" - Status:        Unavailable"));
+		line.Format(TEXT(" - Status:        Unavailable"));
 	else
-		line.Format(m_stats.isAlphaRenderer ?
-			TEXT(" - State:     Ready") : TEXT(" - Status:        Ready"));
+		line.Format(TEXT(" - Status:        Ready"));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
@@ -701,18 +700,11 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		(nowTick - m_stats.sceneLastCorrectionTick) <= kCorrectionResultVisibilityMs;
 	if (showLastCorrection)
 	{
-		const TCHAR* action = m_stats.sceneLastCorrectionAction > 0
-			? (m_stats.isAlphaRenderer ? TEXT("R") : TEXT("Repeat"))
-			: (m_stats.isAlphaRenderer ? TEXT("D") : TEXT("Drop"));
+		const TCHAR* action = m_stats.sceneLastCorrectionAction > 0 ?
+			TEXT("Repeat") : TEXT("Drop");
 		const double timing = m_stats.sceneLastCorrectionSecondsFromDeadline;
 		if (std::fabs(timing) <= kOnTimeToleranceSeconds)
-			line.Format(m_stats.isAlphaRenderer ?
-				TEXT(" - Last:      %s on time") :
-				TEXT(" - Forecast:      %s On-Time"), action);
-		else if (m_stats.isAlphaRenderer)
-			line.Format(TEXT(" - Last:      %s %s %s"), action,
-				timing > 0.0 ? TEXT("early") : TEXT("late"),
-				static_cast<LPCTSTR>(FormatTime(std::fabs(timing))));
+			line.Format(TEXT(" - Forecast:      %s On-Time"), action);
 		else
 			line.Format(TEXT(" - Forecast:      %s %s (%s)"), action,
 				timing > 0.0 ? TEXT("Early") : TEXT("Late"),
@@ -721,46 +713,33 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	else if (m_stats.sceneCorrectionDue &&
 		m_stats.sceneCorrectionAction != 0)
 	{
-		line.Format(m_stats.isAlphaRenderer ?
-			TEXT(" - Next:      %s due: %s") :
-			TEXT(" - Forecast:      %s due - %s"),
-			m_stats.sceneCorrectionAction > 0
-				? (m_stats.isAlphaRenderer ? TEXT("R") : TEXT("Repeat"))
-				: (m_stats.isAlphaRenderer ? TEXT("D") : TEXT("Drop")),
+		line.Format(TEXT(" - Forecast:      %s due - %s"),
+			m_stats.sceneCorrectionAction > 0 ? TEXT("Repeat") : TEXT("Drop"),
 			m_stats.sceneCorrectionBlockReason.IsEmpty()
 				? TEXT("blocked")
 				: static_cast<LPCTSTR>(m_stats.sceneCorrectionBlockReason));
 	}
 	else if (hasActionablePlan)
 	{
-		line.Format(m_stats.isAlphaRenderer ?
-			TEXT(" - Next:      %s in %s") :
-			TEXT(" - Forecast:      %s in %s"),
-			m_stats.sceneCorrectionAction > 0
-				? (m_stats.isAlphaRenderer ? TEXT("R") : TEXT("Repeat"))
-				: (m_stats.isAlphaRenderer ? TEXT("D") : TEXT("Drop")),
+		line.Format(TEXT(" - Forecast:      %s in %s"),
+			m_stats.sceneCorrectionAction > 0 ? TEXT("Repeat") : TEXT("Drop"),
 			static_cast<LPCTSTR>(FormatTime(m_stats.sceneSecondsUntilCorrection)));
 	}
 	else
 	{
-		line.Format(m_stats.isAlphaRenderer ?
-			TEXT(" - Next:      --") : TEXT(" - Forecast:      None"));
+		line.Format(TEXT(" - Forecast:      None"));
 	}
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
 	// These are source-side actions at detected scene boundaries.
-	line.Format(m_stats.isAlphaRenderer ?
-		TEXT(" - Fix D/R:   %llu/%llu") :
-		TEXT(" - Action D/R:    %llu / %llu"),
+	line.Format(TEXT(" - Action D/R:    %llu / %llu"),
 		m_stats.sceneDetectCorrectionDrops,
 		m_stats.sceneDetectCorrectionRepeats);
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
-	line.Format(m_stats.isAlphaRenderer ?
-		TEXT(" - Scenes:    %llu") :
-		TEXT(" - Detected:      %llu"), m_stats.sceneDetectDetected);
+	line.Format(TEXT(" - Detected:      %llu"), m_stats.sceneDetectDetected);
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
@@ -769,10 +748,10 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 {
-	// Twenty-one rows are always rendered by DirectShow. Alpha omits the
-	// DirectShow-only Start/Stop method row. The remaining rows mirror the exact
+	// Alpha omits two DirectShow-only rows (sample timestamp method and frame
+	// offset). The remaining rows mirror the exact
 	// optional conditions in DrawStats so the background follows its content.
-	size_t lineCount = stats.isAlphaRenderer ? 20 : 21;
+	size_t lineCount = stats.isAlphaRenderer ? 22 : 24;
 	if (stats.measuredRefreshRate > 0.0)
 		lineCount += 2;
 	if (stats.hasPPMCorrection ||

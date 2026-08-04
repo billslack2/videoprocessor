@@ -23,6 +23,7 @@
 #include <video_frame_formatter/CR210toRGB48VideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowTranslations.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
+#include <vprenderer/NativeStatsOverlayPlacement.h>
 
 #include "DirectShowGenericHDRVideoRenderer.h"
 #include "MadVRIngressPolicy.h"
@@ -72,6 +73,8 @@ DirectShowGenericHDRVideoRenderer::DirectShowGenericHDRVideoRenderer(
 
 DirectShowGenericHDRVideoRenderer::~DirectShowGenericHDRVideoRenderer()
 {
+	if (IsGraphThread())
+		ClearNativeStatsOverlayOnGraphThread();
 }
 
 
@@ -135,6 +138,157 @@ void DirectShowGenericHDRVideoRenderer::RendererBuild()
 		IID_IBaseFilter,
 		(void**)&m_pRenderer)))
 		throw std::runtime_error("Failed to create renderer instance");
+
+	const HRESULT osdResult = m_pRenderer->QueryInterface(
+		__uuidof(IMadVROsdServices), reinterpret_cast<void**>(&m_osdServices));
+	if (SUCCEEDED(osdResult))
+		DebugLog::Log("madVR OSD: renderer generation %llu bitmap service available",
+			static_cast<unsigned long long>(m_rendererGeneration));
+	else
+		DebugLog::Log("madVR OSD: renderer generation %llu bitmap service unavailable (0x%08lX); using legacy overlay",
+			static_cast<unsigned long long>(m_rendererGeneration), osdResult);
+}
+
+bool DirectShowGenericHDRVideoRenderer::SetNativeStatsOverlay(
+	const uint8_t* pixels, size_t byteCount, int width, int height, int stride)
+{
+	if (!m_osdServices || (pixels && (width <= 0 || height <= 0 ||
+		stride < width * 4 || byteCount < static_cast<size_t>(stride) * height)))
+		return false;
+	{
+		std::lock_guard<std::mutex> guard(m_osdMutex);
+		if (pixels)
+			m_osdPixels.assign(pixels, pixels + byteCount);
+		else
+			m_osdPixels.clear();
+		m_osdWidth = pixels ? width : 0;
+		m_osdHeight = pixels ? height : 0;
+		m_osdStride = pixels ? stride : 0;
+	}
+	return PostCoalescedGraphCommand(GRAPH_COMMAND_MADVR_NATIVE_OSD, [this]()
+	{
+		ApplyNativeStatsOverlayOnGraphThread();
+	});
+}
+
+void DirectShowGenericHDRVideoRenderer::ApplyNativeStatsOverlayOnGraphThread()
+{
+	AssertGraphThread();
+	if (!m_osdServices)
+		return;
+	std::vector<uint8_t> pixels;
+	int width = 0;
+	int height = 0;
+	int stride = 0;
+	{
+		std::lock_guard<std::mutex> guard(m_osdMutex);
+		pixels = m_osdPixels;
+		width = m_osdWidth;
+		height = m_osdHeight;
+		stride = m_osdStride;
+	}
+	if (pixels.empty())
+	{
+		ClearNativeStatsOverlayOnGraphThread();
+		return;
+	}
+	RECT full{};
+	RECT active{};
+	const HRESULT rectResult = m_osdServices->OsdGetVideoRects(&full, &active);
+	if (FAILED(rectResult))
+	{
+		if (!m_osdFailureLogged)
+			DebugLog::Log("madVR OSD: OsdGetVideoRects failed (0x%08lX); falling back", rectResult);
+		m_osdFailureLogged = true;
+		return;
+	}
+	const NativeStatsOverlayPlacement::Rect output{
+		static_cast<float>(full.left), static_cast<float>(full.top),
+		static_cast<float>(full.right), static_cast<float>(full.bottom) };
+	const NativeStatsOverlayPlacement::Rect picture{
+		static_cast<float>(active.left), static_cast<float>(active.top),
+		static_cast<float>(active.right), static_cast<float>(active.bottom) };
+	const auto placement = NativeStatsOverlayPlacement::Place(
+		picture, output, static_cast<float>(width), static_cast<float>(height));
+	if (!placement.panel.IsValid())
+		return;
+	const int bitmapWidth = std::max(1, static_cast<int>(std::lround(placement.panel.Width())));
+	const int bitmapHeight = std::max(1, static_cast<int>(std::lround(placement.panel.Height())));
+	BITMAPINFO info{};
+	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	info.bmiHeader.biWidth = bitmapWidth;
+	info.bmiHeader.biHeight = -bitmapHeight;
+	info.bmiHeader.biPlanes = 1;
+	info.bmiHeader.biBitCount = 32;
+	info.bmiHeader.biCompression = BI_RGB;
+	BITMAPINFO sourceInfo{};
+	sourceInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	sourceInfo.bmiHeader.biWidth = width;
+	sourceInfo.bmiHeader.biHeight = -height;
+	sourceInfo.bmiHeader.biPlanes = 1;
+	sourceInfo.bmiHeader.biBitCount = 32;
+	sourceInfo.bmiHeader.biCompression = BI_RGB;
+	HDC screen = GetDC(nullptr);
+	HDC memory = CreateCompatibleDC(screen);
+	void* targetPixels = nullptr;
+	HBITMAP bitmap = CreateDIBSection(memory, &info, DIB_RGB_COLORS,
+		&targetPixels, nullptr, 0);
+	if (bitmap)
+	{
+		HGDIOBJ old = SelectObject(memory, bitmap);
+		StretchDIBits(memory, 0, 0, bitmapWidth, bitmapHeight,
+			0, 0, width, height, pixels.data(), &sourceInfo, DIB_RGB_COLORS, SRCCOPY);
+		SelectObject(memory, old);
+	}
+	DeleteDC(memory);
+	ReleaseDC(nullptr, screen);
+	if (!bitmap)
+		return;
+	const int x = static_cast<int>(std::lround(placement.panel.left - full.left));
+	const int y = static_cast<int>(std::lround(placement.panel.top - full.top));
+	const HRESULT setResult = m_osdServices->OsdSetBitmap("VideoProcessor.Diagnostics",
+		bitmap, nullptr, 0, x, y, false, 100, 0,
+		MADVR_BITMAP_INFO_DISPLAY | MADVR_BITMAP_MASKING_AWARE,
+		nullptr, nullptr, nullptr);
+	if (FAILED(setResult))
+	{
+		DeleteObject(bitmap);
+		if (!m_osdFailureLogged)
+			DebugLog::Log("madVR OSD: OsdSetBitmap failed (0x%08lX); falling back", setResult);
+		m_osdFailureLogged = true;
+		return;
+	}
+	if (m_osdBitmap)
+		DeleteObject(m_osdBitmap);
+	m_osdBitmap = bitmap;
+	const bool placementChanged = !m_hasLoggedOsdPlacement ||
+		std::memcmp(&full, &m_lastOsdFullRect, sizeof(RECT)) != 0 ||
+		std::memcmp(&active, &m_lastOsdActiveRect, sizeof(RECT)) != 0 ||
+		std::fabs(placement.scale - m_lastOsdScale) > 0.001f;
+	if (placementChanged)
+	{
+		DebugLog::Log("madVR OSD: gen=%llu full=%ld,%ld-%ld,%ld active=%ld,%ld-%ld,%ld bitmap=%dx%d scale=%.3f panel=%d,%d inset_clamped=%d",
+			static_cast<unsigned long long>(m_rendererGeneration), full.left, full.top,
+			full.right, full.bottom, active.left, active.top, active.right, active.bottom,
+			bitmapWidth, bitmapHeight, placement.scale, x, y, placement.insetClamped ? 1 : 0);
+		m_lastOsdFullRect = full;
+		m_lastOsdActiveRect = active;
+		m_lastOsdScale = placement.scale;
+		m_hasLoggedOsdPlacement = true;
+	}
+}
+
+void DirectShowGenericHDRVideoRenderer::ClearNativeStatsOverlayOnGraphThread()
+{
+	AssertGraphThread();
+	if (m_osdServices)
+		m_osdServices->OsdSetBitmap("VideoProcessor.Diagnostics", nullptr, nullptr,
+			0, 0, 0, false, 0, 0, 0, nullptr, nullptr, nullptr);
+	if (m_osdBitmap)
+	{
+		DeleteObject(m_osdBitmap);
+		m_osdBitmap = nullptr;
+	}
 }
 
 

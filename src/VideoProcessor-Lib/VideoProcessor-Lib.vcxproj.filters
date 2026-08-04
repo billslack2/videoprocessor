@@ -327,6 +327,9 @@
 	<ClInclude Include="microsoft_directshow\MadVRExternalPixelShaders.h">
 	  <Filter>Header Files\microsoft_directshow</Filter>
 	</ClInclude>
+	<ClInclude Include="microsoft_directshow\MadVROsdServices.h">
+	  <Filter>microsoft_directshow</Filter>
+	</ClInclude>
 	<ClInclude Include="microsoft_directshow\MadVRShaderLoader.h">
 	  <Filter>Header Files\microsoft_directshow</Filter>
 	</ClInclude>

@@ -6,7 +6,7 @@
 // makes the containment rules directly unit-testable.
 namespace NativeStatsOverlayPlacement
 {
-	constexpr float kDefaultInsetPixels = 25.0f;
+	constexpr float kDefaultInsetPixels = 40.0f;
 
 	struct Rect
 	{

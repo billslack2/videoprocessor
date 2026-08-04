@@ -26,6 +26,7 @@ struct StatsData
 	CString colorspace;        // e.g., "BT.2020"
 	CString pixelFormat;       // e.g., "P010"
 	CString viewport;          // e.g., "scope (2.35:1)"
+	CString rendererName;      // selected presentation backend
 
 	// Frame rate measurement and PPM tracking (NEW)
 	double theoreticalRefreshRate = 0.0;  // Expected refresh rate from display mode (Hz)
@@ -198,12 +199,12 @@ private:
 	std::mutex m_statsMutex;
 	StatsData m_stats;
 
-	// Window constants - adjusted for 23px font and additional lines
+	// Window constants - shared 20px native/fallback OSD typography.
 	static const int MARGIN_RIGHT = 500;
 	static const int MARGIN_BOTTOM = 320;    // Move up 20 pixels (was 300)
 	static const int WINDOW_WIDTH = 420;     // Keep width the same
 	static const int PADDING = 10;
-	static const int LINE_HEIGHT = 23;     // Match font size for better spacing
+	static const int LINE_HEIGHT = 20;
 	static const int ALPHA_LINE_HEIGHT = 20;
 
 	// Colors - MadVR style with 15% darker background and bright white text

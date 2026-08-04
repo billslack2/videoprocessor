@@ -164,7 +164,8 @@ protected:
 		GRAPH_COMMAND_HDR_STATE = 16,
 		// Low-rate, read-only madVR diagnostics must run in the graph owner's
 		// COM apartment. It is intentionally separate from graph control.
-		GRAPH_COMMAND_MADVR_RUNTIME_TELEMETRY = 17
+		GRAPH_COMMAND_MADVR_RUNTIME_TELEMETRY = 17,
+		GRAPH_COMMAND_MADVR_NATIVE_OSD = 18
 	};
 
 	template<typename Function>

@@ -230,6 +230,7 @@
 	<ClInclude Include="microsoft_directshow\DirectShowEpochPrimePolicy.h" />
     <ClInclude Include="microsoft_directshow\DirectShowTranslations.h" />
 	<ClInclude Include="microsoft_directshow\MadVRExternalPixelShaders.h" />
+	<ClInclude Include="microsoft_directshow\MadVROsdServices.h" />
 	<ClInclude Include="microsoft_directshow\MadVRRuntimeInterfaces.h" />
 	<ClInclude Include="microsoft_directshow\MadVRShaderLoader.h" />
 	<ClInclude Include="microsoft_directshow\MadVRShaderRuntimeState.h" />

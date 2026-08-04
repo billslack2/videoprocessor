@@ -11,6 +11,10 @@
 
 #include "DirectShowVideoRenderer.h"
 #include <microsoft_directshow/MadVRShaderLoader.h>
+#include <microsoft_directshow/MadVROsdServices.h>
+#include <atlbase.h>
+#include <atomic>
+#include <mutex>
 
 
 /**
@@ -56,6 +60,12 @@ public:
 		const UnifiedProfileRuntime::Snapshot& snapshot,
 		CString& activeState,
 		bool& rendererRestartRequired) override;
+	bool SupportsNativeStatsOverlay() const override
+	{
+		return m_osdServices != nullptr && !m_osdFailureLogged;
+	}
+	bool SetNativeStatsOverlay(const uint8_t* pixels, size_t byteCount,
+		int width, int height, int stride) override;
 
 protected:
 
@@ -78,6 +88,8 @@ private:
 		bool& rendererRestartRequired);
 	MadVRActivePictureGeometry MakeRuntimeGeometry(
 		const ActivePictureRectangle& rectangle) const;
+	void ApplyNativeStatsOverlayOnGraphThread();
+	void ClearNativeStatsOverlayOnGraphThread();
 
 	const GUID m_rendererCLSID;
 	const DXVA_NominalRange m_forceNominalRange;
@@ -101,4 +113,16 @@ private:
 	uint64_t m_rendererGeneration = 0;
 	uint64_t m_screenProfileGeneration = 0;
 	uint64_t m_appliedScreenProfileGeneration = 0;
+	CComPtr<IMadVROsdServices> m_osdServices;
+	std::mutex m_osdMutex;
+	std::vector<uint8_t> m_osdPixels;
+	int m_osdWidth = 0;
+	int m_osdHeight = 0;
+	int m_osdStride = 0;
+	HBITMAP m_osdBitmap = nullptr;
+	std::atomic_bool m_osdFailureLogged{ false };
+	bool m_hasLoggedOsdPlacement = false;
+	RECT m_lastOsdFullRect{};
+	RECT m_lastOsdActiveRect{};
+	float m_lastOsdScale = 0.0f;
 };

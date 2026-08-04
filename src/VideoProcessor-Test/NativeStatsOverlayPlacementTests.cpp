@@ -18,10 +18,10 @@ namespace Tests
 			const Result result = Place(
 				{ 0.0f, 0.0f, 3840.0f, 2160.0f },
 				{ 0.0f, 0.0f, 3840.0f, 2160.0f }, 420.0f, 600.0f);
-			Assert::IsTrue(std::fabs(result.panel.left - 3395.0f) < 0.01f);
-			Assert::IsTrue(std::fabs(result.panel.top - 1535.0f) < 0.01f);
-			Assert::IsTrue(std::fabs(result.panel.right - 3815.0f) < 0.01f);
-			Assert::IsTrue(std::fabs(result.panel.bottom - 2135.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.left - 3380.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.top - 1520.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.right - 3800.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.bottom - 2120.0f) < 0.01f);
 			Assert::IsFalse(result.insetClamped);
 		}
 
@@ -30,8 +30,8 @@ namespace Tests
 			const Result result = Place(
 				{ 0.0f, 283.0f, 3840.0f, 1917.0f },
 				{ 0.0f, 0.0f, 3840.0f, 2160.0f }, 420.0f, 600.0f);
-			Assert::IsTrue(std::fabs(result.panel.top - 1292.0f) < 0.01f);
-			Assert::IsTrue(std::fabs(result.panel.bottom - 1892.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.top - 1277.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.bottom - 1877.0f) < 0.01f);
 		}
 
 		TEST_METHOD(LetterboxAndPillarboxUseTheirActualPictureBounds)
@@ -39,14 +39,14 @@ namespace Tests
 			const Result letterbox = Place(
 				{ 0.0f, 420.0f, 3840.0f, 1740.0f },
 				{ 0.0f, 0.0f, 3840.0f, 2160.0f }, 420.0f, 600.0f);
-			Assert::IsTrue(std::fabs(letterbox.panel.top - 1115.0f) < 0.01f);
-			Assert::IsTrue(std::fabs(letterbox.panel.bottom - 1715.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(letterbox.panel.top - 1100.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(letterbox.panel.bottom - 1700.0f) < 0.01f);
 
 			const Result pillarbox = Place(
 				{ 480.0f, 0.0f, 3360.0f, 2160.0f },
 				{ 0.0f, 0.0f, 3840.0f, 2160.0f }, 420.0f, 600.0f);
-			Assert::IsTrue(std::fabs(pillarbox.panel.left - 2915.0f) < 0.01f);
-			Assert::IsTrue(std::fabs(pillarbox.panel.right - 3335.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(pillarbox.panel.left - 2900.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(pillarbox.panel.right - 3320.0f) < 0.01f);
 		}
 
 		TEST_METHOD(SmallPictureScalesUniformlyAndRemainsContained)
