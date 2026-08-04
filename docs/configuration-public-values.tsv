@@ -8,10 +8,6 @@ general.startminimized	true
 general.startminimized	false
 general.scene_detect	true
 general.scene_detect	false
-general.disable_detection_features	true
-general.disable_detection_features	false
-general.scene_correction_basic	true
-general.scene_correction_basic	false
 directshow.frame_offset	AUTO
 directshow.renderer_nominal_range	AUTO
 directshow.conversion.conversion_method	AUTO

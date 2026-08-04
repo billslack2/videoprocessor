@@ -6,8 +6,6 @@ general.fullscreen	general-fullscreen	VP startup	no
 general.windowed_fullscreen_mode	general-windowed-fullscreen-mode	VP startup	no
 general.startminimized	general-start-minimized	VP startup	no
 general.scene_detect	general-scene-detect	VP cadence	no
-general.disable_detection_features	general-disable-detection	VP diagnostics	no
-general.scene_correction_basic	general-scene-correction-basic	VP cadence	no
 general.hdr_colorspace	general-hdr-colorspace	VP HDR	no
 general.hdr_luminance	general-hdr-luminance	VP HDR	no
 renderer_alias.vp	renderer-alias-vp	VP renderer selection	no
