@@ -422,10 +422,29 @@ void DirectShowVideoRenderer::StopWithIngressDrain(
 {
 	if (IsGraphThread())
 	{
+		const ULONGLONG stopStarted = GetTickCount64();
+		ULONGLONG phaseStarted = stopStarted;
+		DebugLog::Log("DirectShow stop phase: phase=graph-stop-begin mode=inline thread=%lu",
+			GetCurrentThreadId());
 		GraphStop();
+		DebugLog::Log("DirectShow stop phase: phase=graph-stop-end duration_ms=%llu mode=inline",
+			static_cast<unsigned long long>(GetTickCount64() - phaseStarted));
 		if (drainAfterGraphStop)
+		{
+			phaseStarted = GetTickCount64();
+			DebugLog::Log("DirectShow stop phase: phase=ingress-drain-begin mode=inline");
 			drainAfterGraphStop();
+			DebugLog::Log("DirectShow stop phase: phase=ingress-drain-end duration_ms=%llu mode=inline",
+				static_cast<unsigned long long>(GetTickCount64() - phaseStarted));
+		}
+		phaseStarted = GetTickCount64();
+		DebugLog::Log("DirectShow stop phase: phase=graph-teardown-begin mode=inline");
 		GraphTeardownNoThrow();
+		DebugLog::Log(
+			"DirectShow stop phase: phase=graph-teardown-end duration_ms=%llu total_ms=%llu graph_complete=%d mode=inline",
+			static_cast<unsigned long long>(GetTickCount64() - phaseStarted),
+			static_cast<unsigned long long>(GetTickCount64() - stopStarted),
+			m_graphTeardownComplete.load(std::memory_order_acquire) ? 1 : 0);
 		if (m_graphTeardownComplete.load(std::memory_order_acquire))
 			SetState(RendererState::RENDERSTATE_STOPPED);
 		else
@@ -434,6 +453,10 @@ void DirectShowVideoRenderer::StopWithIngressDrain(
 	}
 	m_graphExecutor.PostWithCompletion([this, drainAfterGraphStop]()
 		{
+			const ULONGLONG stopStarted = GetTickCount64();
+			ULONGLONG phaseStarted = stopStarted;
+			DebugLog::Log("DirectShow stop phase: phase=graph-stop-begin mode=async thread=%lu",
+				GetCurrentThreadId());
 			try
 			{
 				GraphStop();
@@ -444,9 +467,24 @@ void DirectShowVideoRenderer::StopWithIngressDrain(
 					"DirectShow graph stop failed asynchronously: %s",
 					error.what());
 			}
+			DebugLog::Log("DirectShow stop phase: phase=graph-stop-end duration_ms=%llu mode=async",
+				static_cast<unsigned long long>(GetTickCount64() - phaseStarted));
 			if (drainAfterGraphStop)
+			{
+				phaseStarted = GetTickCount64();
+				DebugLog::Log("DirectShow stop phase: phase=ingress-drain-begin mode=async");
 				drainAfterGraphStop();
+				DebugLog::Log("DirectShow stop phase: phase=ingress-drain-end duration_ms=%llu mode=async",
+					static_cast<unsigned long long>(GetTickCount64() - phaseStarted));
+			}
+			phaseStarted = GetTickCount64();
+			DebugLog::Log("DirectShow stop phase: phase=graph-teardown-begin mode=async");
 			GraphTeardownNoThrow();
+			DebugLog::Log(
+				"DirectShow stop phase: phase=graph-teardown-end duration_ms=%llu total_ms=%llu graph_complete=%d mode=async",
+				static_cast<unsigned long long>(GetTickCount64() - phaseStarted),
+				static_cast<unsigned long long>(GetTickCount64() - stopStarted),
+				m_graphTeardownComplete.load(std::memory_order_acquire) ? 1 : 0);
 			if (m_graphTeardownComplete.load(std::memory_order_acquire))
 				SetState(RendererState::RENDERSTATE_STOPPED);
 			else
@@ -1515,6 +1553,18 @@ void DirectShowVideoRenderer::GraphTeardown()
 void DirectShowVideoRenderer::GraphTeardownNoThrow() noexcept
 {
 	AssertGraphThread();
+	const ULONGLONG teardownStarted = GetTickCount64();
+	auto logPhase = [teardownStarted](const char* phase,
+		ULONGLONG phaseStarted)
+		{
+			DebugLog::Log(
+				"DirectShow teardown phase: phase=%s duration_ms=%llu elapsed_ms=%llu thread=%lu",
+				phase,
+				static_cast<unsigned long long>(GetTickCount64() - phaseStarted),
+				static_cast<unsigned long long>(GetTickCount64() - teardownStarted),
+				GetCurrentThreadId());
+		};
+	ULONGLONG phaseStarted = GetTickCount64();
 	try
 	{
 		if (m_pEvent)
@@ -1523,6 +1573,8 @@ void DirectShowVideoRenderer::GraphTeardownNoThrow() noexcept
 	catch (...)
 	{
 	}
+	logPhase("clear-notify-window", phaseStarted);
+	phaseStarted = GetTickCount64();
 	try
 	{
 		WindowTeardown();
@@ -1530,6 +1582,8 @@ void DirectShowVideoRenderer::GraphTeardownNoThrow() noexcept
 	catch (...)
 	{
 	}
+	logPhase("window-teardown", phaseStarted);
+	phaseStarted = GetTickCount64();
 	try
 	{
 		FilterGraphDestroy();
@@ -1537,12 +1591,16 @@ void DirectShowVideoRenderer::GraphTeardownNoThrow() noexcept
 	catch (...)
 	{
 	}
+	logPhase("filter-graph-release", phaseStarted);
 
+	phaseStarted = GetTickCount64();
 	if (m_referenceClock)
 	{
 		m_referenceClock->Release();
 		m_referenceClock = nullptr;
 	}
+	logPhase("reference-clock-release", phaseStarted);
+	phaseStarted = GetTickCount64();
 	try
 	{
 		LiveSourceDestroy();
@@ -1550,6 +1608,8 @@ void DirectShowVideoRenderer::GraphTeardownNoThrow() noexcept
 	catch (...)
 	{
 	}
+	logPhase("live-source-destroy", phaseStarted);
+	phaseStarted = GetTickCount64();
 	try
 	{
 		RendererDestroy();
@@ -1557,6 +1617,8 @@ void DirectShowVideoRenderer::GraphTeardownNoThrow() noexcept
 	catch (...)
 	{
 	}
+	logPhase("renderer-release", phaseStarted);
+	phaseStarted = GetTickCount64();
 	if (m_videoFramFormatter)
 	{
 		std::unique_lock<std::shared_mutex> lock(
@@ -1564,13 +1626,21 @@ void DirectShowVideoRenderer::GraphTeardownNoThrow() noexcept
 		delete m_videoFramFormatter;
 		m_videoFramFormatter = nullptr;
 	}
+	logPhase("frame-formatter-destroy", phaseStarted);
+	phaseStarted = GetTickCount64();
 	if (m_pmt.pbFormat)
 	{
 		CoTaskMemFree(m_pmt.pbFormat);
 		m_pmt.pbFormat = nullptr;
 	}
+	logPhase("media-type-release", phaseStarted);
 	m_graphTeardownComplete.store(
 		GraphResourcesReleased(), std::memory_order_release);
+	DebugLog::Log(
+		"DirectShow teardown phase: phase=complete total_ms=%llu graph_complete=%d thread=%lu",
+		static_cast<unsigned long long>(GetTickCount64() - teardownStarted),
+		m_graphTeardownComplete.load(std::memory_order_acquire) ? 1 : 0,
+		GetCurrentThreadId());
 }
 
 
@@ -1735,6 +1805,18 @@ void DirectShowVideoRenderer::WindowSetup()
 	if (FAILED(m_videoWindow->put_Owner((OAHWND)m_videoHwnd)))
 		throw std::runtime_error("Failed to set owner of video window");
 
+	// DirectShow creates a child video HWND which can otherwise become the
+	// keyboard recipient. Drain its keyboard messages to the dialog so VP's
+	// accelerator table remains authoritative across renderer handoffs.
+	if (FAILED(m_videoWindow->put_MessageDrain((OAHWND)m_eventHwnd)))
+		throw std::runtime_error("Failed to set message drain for video window");
+	DebugLog::Log(
+		"DirectShow video message drain installed: video_host=%p command_target=%p foreground=%p focus=%p",
+		reinterpret_cast<void*>(m_videoHwnd),
+		reinterpret_cast<void*>(m_eventHwnd),
+		reinterpret_cast<void*>(GetForegroundWindow()),
+		reinterpret_cast<void*>(GetFocus()));
+
 	if (FAILED(m_videoWindow->put_WindowStyle(WS_CHILD | WS_CLIPSIBLINGS)))
 		throw std::runtime_error("Failed to set window style in video window");
 
@@ -1753,6 +1835,7 @@ void DirectShowVideoRenderer::WindowTeardown()
 	if (m_videoWindow)
 	{
 		m_videoWindow->put_Visible(OAFALSE);
+		m_videoWindow->put_MessageDrain(NULL);
 		m_videoWindow->put_Owner(NULL);
 		m_videoWindow->HideCursor(OAFALSE);
 	}
