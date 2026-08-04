@@ -19,11 +19,37 @@ Implementation branch/worktree:
 - Worktree: `C:\Users\bslac\vp\vp-0086-comprehensive-configuration-reference`
 - Base: `origin/v1.1.015-beta` (`0a19c5f`)
 
-Initial progress: reconciling the public inventory with the parser and the
-Alpha/libplacebo settings reader, then expanding the canonical HTML to one
-value-level entry per public setting. Validation will include the inventory
-coverage test, example parsing, link/anchor checks, and rendered desktop-width
-review.
+Implementation checkpoint: `9e200630de390232bb5b1a0b8ff803a5519b6db7`
+(`docs: expand VP configuration reference`).
+
+Completed work:
+
+- Rewrote the canonical `CONFIGURATION.html` as a structured 74-entry public
+  reference. Every field has its own anchor, syntax/default, value table,
+  practical effect/trade-off, and verification guidance; AUTO-capable Alpha
+  and DirectShow controls explain their exact VP resolution behavior.
+- Added task-oriented SDR, HDR-to-SDR/projector, BT.2020, scaling, NLS, and
+  profile/viewport/queue examples, plus troubleshooting guidance.
+- Refined the public field inventory to map every field to its individual
+  reference entry. Added `docs/configuration-public-values.tsv` and extended
+  `ConfigurationReferenceMatchesPublicFieldInventory` so every tracked public
+  enum/list value must occur in its own field article.
+- Aligned the concise shipped `VideoProcessor.cfg` comments with the reference
+  terminology and AUTO semantics.
+
+Validation completed:
+
+- x64 Release `VideoProcessor-Test` build succeeded.
+- All 31 `ConfigFileTests` passed, including the field/value coverage test and
+  validation of the marked HTML configuration example.
+- Static inventory check found 74 documented fields, 74 unique anchors, 74
+  value tables, 100 documented enum/list values, and no missing internal links.
+
+Outstanding validation: the required desktop-width browser rendering review
+could not run because the available browser policy blocks navigation to local
+`file:` URLs. No workaround or alternate browser surface was used. Review the
+committed `CONFIGURATION.html` in a desktop browser before moving this story to
+Review; record any layout correction or the successful visual result here.
 
 ## User story
 
