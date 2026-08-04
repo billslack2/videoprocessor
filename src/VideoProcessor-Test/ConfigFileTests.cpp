@@ -419,6 +419,74 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(Vp0079FirstNamedVariantIsDefaultAndInheritedBaseline)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0079-first-variant.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+					"[vprenderer.rec709]\nwhen: $key==\"F4\"\nquality: high\n"
+					"sdr_target_primaries: REC709\nreport_bt2020_to_display: false\n"
+					"switch_refresh_rate: true\n"
+					"[vprenderer.bt2020]\nwhen: $key==\"F5\"\n"
+					"sdr_target_primaries: BT2020\nreport_bt2020_to_display: true\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			const std::vector<std::string> sections = config.GetSectionNames();
+			Assert::AreEqual(static_cast<size_t>(3), sections.size());
+			Assert::AreEqual("general", sections[0].c_str());
+			Assert::AreEqual("vprenderer.rec709", sections[1].c_str());
+			Assert::AreEqual("vprenderer.bt2020", sections[2].c_str());
+
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), model.groups.size());
+			const RendererProfileConfig::Group& display = model.groups.front();
+			Assert::AreEqual("display", display.name.c_str());
+			Assert::AreEqual("rec709", display.defaultSelection.c_str());
+			Assert::AreEqual("rec709", display.profiles[0].c_str());
+			Assert::AreEqual("bt2020", display.profiles[1].c_str());
+
+			const auto bt2020 = model.profiles.find("display.bt2020");
+			Assert::IsTrue(bt2020 != model.profiles.end());
+			Assert::AreEqual("high", bt2020->second.settings.at("quality").c_str());
+			Assert::AreEqual("bt2020",
+				ConfigFile::NormalizeName(
+					bt2020->second.settings.at("sdr_target_primaries")).c_str());
+			Assert::AreEqual("true",
+				ConfigFile::NormalizeName(
+					bt2020->second.settings.at("report_bt2020_to_display")).c_str());
+
+			std::vector<RendererProfileConfig::AutomaticSelection> automatic;
+			Assert::IsTrue(RendererProfileConfig::SelectAutomatic(model,
+				[](const std::string&, std::string&) { return false; },
+				automatic, error));
+			Assert::AreEqual(static_cast<size_t>(1), automatic.size());
+			Assert::AreEqual("rec709", automatic.front().profile.c_str());
+			Assert::IsTrue(automatic.front().configuredDefault);
+
+			std::vector<RendererProfileConfig::KeySelection> selections;
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F4",
+				[](const std::string&, std::string&) { return false; },
+				selections, error));
+			Assert::AreEqual("rec709", selections.front().profile.c_str());
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F5",
+				[](const std::string&, std::string&) { return false; },
+				selections, error));
+			Assert::AreEqual("bt2020", selections.front().profile.c_str());
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(CheckedInVp0079ConfigurationPassesStartupSchemas)
 		{
 			std::string path = __FILE__;

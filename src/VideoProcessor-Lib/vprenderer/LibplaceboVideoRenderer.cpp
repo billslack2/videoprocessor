@@ -1015,8 +1015,15 @@ namespace
 							(group.name == "scaling" ? "vprenderer.scaling" :
 								(group.name == "viewport" ? "vprenderer.viewport" :
 									group.name)));
-					section = profileName == "base" ? root :
-						root + "." + profileName;
+					if (!config.HasSection(root) &&
+						group.defaultSelection != "base")
+					{
+						const DisplayRule baselineRule = {
+							group.name + "/" + group.defaultSelection,
+							root + "." + group.defaultSelection, 0, 0 };
+						ApplyDisplayRuleOverrides(config, baselineRule, settings);
+					}
+					section = profileName == "base" ? root : root + "." + profileName;
 				}
 				const DisplayRule rule = { group.name + "/" + profileName,
 					section, profile->second.priority, 0 };

@@ -53,6 +53,7 @@ public:
 
 private:
 	std::map<std::string, std::map<std::string, std::string>> m_sections;
+	std::vector<std::string> m_sectionOrder;
 	std::vector<std::string> m_warnings;
 	std::string m_loadedPath;
 	bool m_loaded = false;

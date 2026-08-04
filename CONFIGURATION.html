@@ -23,12 +23,12 @@ a { color:var(--accent); } nav { display:flex; gap:14px; flex-wrap:wrap; margin:
 <body>
 <main>
 <h1>VideoProcessor configuration</h1>
-<p class="lead">VP-0079 uses one <code>VideoProcessor.cfg</code>. A section belongs to the component that owns the setting; an exact root is its baseline and a named child is an overlay.</p>
+<p class="lead">VP-0079 uses one <code>VideoProcessor.cfg</code>. A section belongs to the component that owns the setting; an exact root is its baseline, or the first named section is the baseline when no root exists.</p>
 <div class="note"><strong>State is process-local.</strong> A key-selected child remains selected across renderer rebuilds and refresh transitions, but never survives a VP restart. There is no profile registry, disk state file, <code>enabled: false</code>, <code>off_when</code>, or <code>clear_when</code>.</div>
 <nav><a href="#selection">Selection</a><a href="#queue-baseline">Queue</a><a href="#vprenderer-baseline">Alpha renderer</a><a href="#shader-group">Shaders</a><a href="#action-event">Actions</a><a href="#example">Example</a></nav>
 
 <h2 id="selection">How roots and variants work</h2>
-<p>A root section holds baseline values. Its optional <code>when:</code> is the key that returns this domain to that root. A child section overlays the root and becomes the manual in-memory selection when its <code>when:</code> matches a key. Source-only expressions are re-evaluated after a source state change or rebuild. Rules are never evaluated per frame.</p>
+<p>A root section holds baseline values when present. Without a root, the first named section declared in the file is the startup baseline; later named sections inherit it and override only their listed values. A section becomes the manual in-memory selection when its <code>when:</code> matches a key. Each selection is rebuilt from the baseline, so switching back never retains values from the previously selected overlay. Source-only expressions are re-evaluated after a source state change or rebuild. Rules are never evaluated per frame.</p>
 <pre data-ini-example="queue-baseline">[queue]
 when: $key=="l"
 queue_size: 32
@@ -109,10 +109,10 @@ target_frames: 1</pre>
 </div>
 
 <h2>VideoProcessor Renderer (Alpha)</h2>
-<p>These settings apply only to VideoProcessor Renderer (Alpha). They do not configure madVR. The root <code>[vprenderer]</code> is the baseline. A child such as <code>[vprenderer.rec709]</code> overlays it.</p>
+<p>These settings apply only to VideoProcessor Renderer (Alpha). They do not configure madVR. Use either a root <code>[vprenderer]</code> baseline or named-only sections. With named-only sections, the first one&mdash;for example <code>[vprenderer.rec709]</code>&mdash;is active at startup and later sections overlay it.</p>
 <div class="grid">
 <article id="vprenderer-baseline" data-fields="vprenderer.when">
-<h3><code>[vprenderer] when</code></h3><p>The root reset key normally uses <code>F4</code>.</p>
+<h3>Alpha baseline <code>when</code></h3><p>The baseline may be <code>[vprenderer]</code> or the first named section. In the supplied configuration, <code>[vprenderer.rec709]</code> is first and F4 selects it.</p>
 </article>
 <article id="vprenderer-variant" data-fields="vprenderer.&lt;variant&gt;.when">
 <h3>Alpha variant <code>when</code></h3><p>A named child selects a process-local overlay such as <code>rec709</code> or <code>bt2020</code>.</p>
@@ -174,7 +174,7 @@ target_frames: 1</pre>
 <p>The complete working review configuration is <a href="VideoProcessor.cfg">VideoProcessor.cfg</a>. Its key behavior is:</p>
 <table><thead><tr><th>Key</th><th>Result</th></tr></thead><tbody>
 <tr><td><code>l</code> / <code>L</code></td><td>Root queue / one-frame low-latency queue.</td></tr>
-<tr><td><code>F4</code>, <code>F5</code>, <code>F6</code></td><td>Alpha root / Rec.709 / BT.2020 display policy.</td></tr>
+<tr><td><code>F4</code> / <code>F5</code></td><td>Rec.709 startup baseline / BT.2020 overlay.</td></tr>
 <tr><td><code>F3</code> / <code>F2</code></td><td>Normal viewport / scope viewport.</td></tr>
 <tr><td><code>n</code>, <code>Shift+n</code>, <code>Shift+p</code></td><td>NLS off / standard / protected.</td></tr>
 <tr><td><code>d</code> / <code>D</code></td><td>Cleanup off / composed cleanup stack.</td></tr>

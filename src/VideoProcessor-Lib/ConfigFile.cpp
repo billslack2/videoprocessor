@@ -127,6 +127,7 @@ const char* ConfigOverrideOption(const std::string& filename)
 bool ConfigFile::Load(const std::string& filename)
 {
 	m_sections.clear();
+	m_sectionOrder.clear();
 	m_warnings.clear();
 	m_loadedPath.clear();
 	m_loaded = false;
@@ -255,7 +256,10 @@ bool ConfigFile::Load(const std::string& filename)
 							currentSection + "] continues section from line " +
 							std::to_string(previous->second));
 					else
+					{
 						sectionLineNumbers[currentSection] = lineNumber;
+						m_sectionOrder.push_back(currentSection);
+					}
 					// Preserve intentionally empty sections. Unified default-only
 					// profiles are valid and must still participate in graph validation.
 					m_sections[currentSection];
@@ -410,11 +414,7 @@ const std::map<std::string, std::string>* ConfigFile::GetSectionValues(const std
 
 std::vector<std::string> ConfigFile::GetSectionNames() const
 {
-	std::vector<std::string> names;
-	names.reserve(m_sections.size());
-	for (const auto& section : m_sections)
-		names.push_back(section.first);
-	return names;
+	return m_sectionOrder;
 }
 
 
