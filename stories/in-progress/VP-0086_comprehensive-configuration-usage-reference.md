@@ -25,6 +25,8 @@ Implementation checkpoint: `9e200630de390232bb5b1a0b8ff803a5519b6db7`
 Follow-up checkpoint: `cb241b7` (`docs: detail Alpha quality preset
 resolution`).
 
+Follow-up checkpoint: `3a50785` (`docs: publish canonical Boolean values`).
+
 Completed work:
 
 - Rewrote the canonical `CONFIGURATION.html` as a structured 74-entry public
@@ -36,6 +38,9 @@ Completed work:
   field-by-field matrix showing precisely what the related `AUTO` controls
   retain for each preset. The checked-in Rec.709 profile's `high` selection is
   called out explicitly.
+- Restricted the public Boolean vocabulary to canonical `true` and `false`.
+  Parser-compatible aliases such as `on`, `yes`, and numeric Boolean forms
+  are intentionally not published as supported configuration values.
 - Added task-oriented SDR, HDR-to-SDR/projector, BT.2020, scaling, NLS, and
   profile/viewport/queue examples, plus troubleshooting guidance.
 - Refined the public field inventory to map every field to its individual
