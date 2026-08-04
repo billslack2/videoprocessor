@@ -20,6 +20,33 @@ output-readiness worker restart. The final `22b5293` concurrency/snapshot
 review correction is merged but has not yet replaced that local deployment;
 an optional merged-build live smoke remains the only follow-up validation.
 
+## VP-0079 configuration migration follow-up (2026-08-03)
+
+The VP-0079 owner/variant grammar deliberately rejects `automatic_crop` as a
+child Alpha-renderer setting. Do not weaken that schema or restore the removed
+key in VP-0079. VP-0080 owns the remaining crop-policy configuration migration
+because the value controls the crop-authority behavior introduced by this
+story.
+
+The follow-up must preserve the user's intentional manual crop setting through
+the supported model. The current candidate is canonical
+`scope_automatic_crop` on the first declared Alpha renderer variant, allowing
+later variants to inherit it through VP-0079's first-variant baseline rules.
+If implementation review instead assigns the control to
+`[vprenderer.viewport]`, that owner and its inheritance behavior must be made
+equally explicit. In either case:
+
+- the deprecated child `automatic_crop` spelling remains invalid;
+- the canonical replacement defaults safely and has one documented owner;
+- Rec.709 startup and BT.2020 overlay selection retain the same crop intent;
+- switching F4/F5 cannot accumulate or lose the crop-policy value;
+- schema, resolution, renderer-setting, and checked-in configuration tests
+  cover the migration and inheritance behavior; and
+- deployment backs up and minimally edits the active configuration rather
+  than copying the repository sample over it.
+
+This follow-up remains part of VP-0080 Review and is not a VP-0079 reopening.
+
 ## Pre-development readiness record (2026-08-02)
 
 ### Gate state
