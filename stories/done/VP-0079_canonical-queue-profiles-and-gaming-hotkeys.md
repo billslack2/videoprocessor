@@ -2,9 +2,12 @@
 
 ## Status
 
-Review. Started 2026-08-02; implementation merged 2026-08-03 in
+Done. Started 2026-08-02; implementation merged 2026-08-03 in
 [videoprocessor PR #35](https://github.com/billslack2/videoprocessor/pull/35)
 at merge commit `93532d0dda876f20daab039b74db3046056a093c`.
+
+Completion authorized by Bill on 2026-08-04. Future configuration refinements
+will be tracked as separate stories.
 
 The implementation review expanded this story from its original queue-only
 profile sketch into the unified owner/variant configuration model. Queue,
