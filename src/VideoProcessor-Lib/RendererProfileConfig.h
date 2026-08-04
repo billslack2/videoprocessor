@@ -415,7 +415,17 @@ namespace RendererProfileConfig
 	// There is no profile registry and selections never survive a process exit.
 	inline bool IsTargetModel(const ConfigFile& config)
 	{
-		return config.HasSection(RendererConfigView::VPRENDERER_SECTION);
+		if (config.HasSection(RendererConfigView::VPRENDERER_SECTION))
+			return true;
+		for (const std::string& section : config.GetSectionNames())
+			if (section.rfind("vprenderer.", 0) == 0 ||
+				section == "queue" || section.rfind("queue.", 0) == 0 ||
+				section == "directshow" || section.rfind("directshow.", 0) == 0 ||
+				section.rfind("shader.", 0) == 0 ||
+				section.rfind("actions.", 0) == 0 ||
+				section == "renderer_alias")
+				return true;
+		return false;
 	}
 
 	inline bool ValidateTargetRendererSetting(const std::string& key,
@@ -519,21 +529,28 @@ namespace RendererProfileConfig
 			}
 			if (!rootValues && variants.empty())
 				continue;
+			const bool namedBaseline = !rootValues && !variants.empty();
+			const std::string baselineName = namedBaseline ? variants.front() : "base";
+			const auto* baselineValues = namedBaseline ?
+				config.GetSectionValues(prefix + baselineName) : rootValues;
 
 			Group group;
 			group.name = spec.name;
-			group.defaultSelection = "base";
+			group.defaultSelection = baselineName;
 			group.persistSelection = false;
-			group.profiles.push_back("base");
+			group.profiles.push_back(baselineName);
 			Profile base;
 			base.group = group.name;
-			base.name = "base";
-			if (rootValues)
-				for (const auto& entry : *rootValues)
+			base.name = baselineName;
+			if (baselineValues)
+				for (const auto& entry : *baselineValues)
 				{
 					if (entry.first == "when")
 					{
-						group.resetWhen = entry.second;
+						if (namedBaseline)
+							base.when = entry.second;
+						else
+							group.resetWhen = entry.second;
 						continue;
 					}
 					if (std::string(spec.name) == "queue")
@@ -579,7 +596,7 @@ namespace RendererProfileConfig
 							return false;
 						}
 					}
-					if (spec.inheritRoot)
+					if (spec.inheritRoot || namedBaseline)
 						base.settings.emplace(entry.first, entry.second);
 				}
 			if (!group.resetWhen.empty() &&
@@ -587,10 +604,17 @@ namespace RendererProfileConfig
 				 !ValidateExpressionVariables(group.resetExpression, { "key" },
 					"[" + section + "] when=", error)))
 				return false;
-			model.profiles.emplace(group.name + ".base", base);
+			if (!base.when.empty() &&
+				(!base.whenExpression.Compile(base.when, error, true) ||
+				 !ValidateExpressionVariables(base.whenExpression,
+					expressionVariables, "[" + prefix + baselineName + "] when=", error)))
+				return false;
+			model.profiles.emplace(group.name + "." + baselineName, base);
 
 			for (const std::string& variant : variants)
 			{
+				if (namedBaseline && variant == baselineName)
+					continue;
 				const std::string variantSection = prefix + variant;
 				const auto* values = config.GetSectionValues(variantSection);
 				Profile profile = base;

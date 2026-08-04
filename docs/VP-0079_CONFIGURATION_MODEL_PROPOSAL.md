@@ -4,9 +4,10 @@ VP-0079 uses one `VideoProcessor.cfg`, organised by the component that owns a
 setting. It replaces profile registries, disk-persisted profile selections,
 the separate shader shortcut grammar, and the refresh-action registry.
 
-The root section of a selectable domain is its baseline. A named child is an
-overlay. There is no `profiles:`, `default:`, `persist_selection:`,
-`clear_when:`, `off_when:`, or state file.
+The exact root section is the baseline when it exists. If a domain has only
+named sections, the first one declared is its startup baseline and every later
+section overlays it. There is no `profiles:`, `default:`,
+`persist_selection:`, `clear_when:`, `off_when:`, or state file.
 
 ## Ownership
 
@@ -53,18 +54,21 @@ event—not for every video frame. A child selected by `$key` becomes the
 process-local manual choice; automatic source matches are reevaluated when
 their source values change.
 
-```ini
-[vprenderer]
+[vprenderer.rec709]
 when: $key=="F4"
 quality: high
-
-[vprenderer.rec709]
-when: $key=="F5"
 sdr_target_primaries: REC709
+
+[vprenderer.bt2020]
+when: $key=="F5"
+sdr_target_primaries: BT2020
+report_bt2020_to_display: true
 ```
 
-`F4` clears the display child and returns to the root. `F5` selects the
-`rec709` overlay. Omitted child values inherit the root value.
+Because `rec709` is declared first, it is active at startup and is also
+selected by `F4`. `F5` selects `bt2020`; its omitted values inherit from
+`rec709`. Repeated F4/F5 selections therefore reconstruct either complete
+effective configuration rather than accumulating changes.
 
 ## DirectShow
 
@@ -81,12 +85,13 @@ min_core_count: 1
 max_core_count: 2
 
 [directshow.ppm]
-ppm: -17
+ppm: AUTO
 ```
 
 `ppm` is a source-timing correction, applied consistently at every source
-cadence. VP-0079 deliberately replaces the old nominal-refresh map with this
-one policy value.
+cadence. It accepts either a fixed integer or `AUTO`, which selects the
+existing internal automatic-calibration sentinel. VP-0079 deliberately
+replaces the old nominal-refresh map with this one policy value.
 
 ## Shaders
 

@@ -41,12 +41,21 @@ bool PPMCorrectionLoader::LoadCorrectionFile()
         if (unifiedConfig.HasSection("directshow.ppm"))
         {
             std::string rawPpm;
-            if (!unifiedConfig.TryGetString("directshow.ppm", "ppm", rawPpm))
+			if (!unifiedConfig.TryGetString("directshow.ppm", "ppm", rawPpm))
             {
                 DbgLog((LOG_WARNING, 1, TEXT("PPMCorrectionLoader: VideoProcessor.cfg [directshow.ppm] requires ppm")));
-                return false;
-            }
-            try
+				return false;
+			}
+			if (ConfigFile::NormalizeName(rawPpm) == "auto")
+			{
+				// Preserve the established sentinel consumed by the timing path.
+				// A unified value applies the same automatic policy at every cadence.
+				for (int rate = 1; rate <= 1000; ++rate)
+					m_corrections[rate] = 999999;
+				DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: Loaded [directshow.ppm] ppm=AUTO for all source rates")));
+				return true;
+			}
+			try
             {
                 size_t consumed = 0;
                 const int ppm = std::stoi(ConfigFile::Trim(rawPpm), &consumed);
