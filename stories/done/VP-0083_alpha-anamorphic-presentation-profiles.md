@@ -2,8 +2,8 @@
 
 ## Status
 
-In Progress. Implementation and hardware validation were started on 2026-08-04
-from `v1.1.015-beta` on `codex/vp-0083-anamorphic`.
+Done. Integrated into `v1.1.015-beta` on 2026-08-04 as merge commit
+`8fcea10` (feature commits `681baa1` through `a4ae803`).
 
 ## Implementation checkpoint (2026-08-04)
 
@@ -21,6 +21,12 @@ from `v1.1.015-beta` on `codex/vp-0083-anamorphic`.
   `vprenderer\VideoProcessorVPRenderer.dll` pair. The live config was backed
   up at `C:\Videoprocessor\vp\backup-before-vp0083-20260804-103630` before
   the minimal hotkey/profile edit.
+- Live projector validation selected `scope_anamorphic` repeatedly with `F8`
+  and returned to ordinary Scope with `F2`. `vp_debug.log` records each
+  profile transition and normal libplacebo frame submission; it contains no
+  libplacebo or render failures during the validation window. The final
+  deployed profile uses `screen_aspect: 2.35:1` plus
+  `anamorphic_scale: 16:15`.
 
 ## User story
 
