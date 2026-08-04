@@ -35,13 +35,14 @@ Keep the setting in the existing viewport profile group, for example:
 [profiles.viewport.scope]
 when: $key=="F2"
 screen_aspect: 2.35:1
-anamorphic_horizontal_scale: 16:15
+anamorphic_scale: 16:15
 ```
 
 The single scale is independent of the physical screen aspect:
 
-- `anamorphic_horizontal_scale` is the final linear horizontal multiplier. A
-  value greater than `1` widens the image and a value below `1` squeezes it.
+- `anamorphic_scale` is the final linear horizontal multiplier. A value greater
+  than `1` widens the image and a value below `1` squeezes it. Vertical
+  anamorphic scaling is deliberately unsupported by this feature.
 - It accepts the same decimal or `W:H` ratio syntax as other ratios. `16:15`
   means `1.066667`, i.e. a 6.667% horizontal expansion.
 - Omitting it means no anamorphic transform (`1:1`).
@@ -76,16 +77,16 @@ screen_aspect: 16:9
 [profiles.viewport.scope_anamorphic]
 when: $key=="F2"
 screen_aspect: 2.35:1
-anamorphic_horizontal_scale: 16:15
+anamorphic_scale: 16:15
 ```
 
-`anamorphic_horizontal_scale` uses the same shared, strict ratio syntax as
-`screen_aspect`: a positive decimal or `W:H` value, including whitespace around
-the separator. It describes a *linear horizontal presentation correction*, not
-a content-selection rule:
+`anamorphic_scale` uses the same shared, strict ratio syntax as `screen_aspect`:
+a positive decimal or `W:H` value, including whitespace around the separator.
+It describes a *linear horizontal presentation correction*, not a
+content-selection rule:
 
 ```text
-horizontal_scale = anamorphic_horizontal_scale
+horizontal_scale = anamorphic_scale
 ```
 
 The example produces `16 / 15 = 1.066667`: every rendered image is 6.667%
@@ -242,8 +243,8 @@ safe-fallback reason. They must not emit per-frame geometry logs.
 - A viewport profile can enable a validated, documented anamorphic transform
   for the Alpha renderer; a profile without it is visually and behaviorally
   unchanged.
-- The `anamorphic_horizontal_scale: 16:15` configuration has an unambiguous,
-  tested visual result and a clearly documented transform direction.
+- The `anamorphic_scale: 16:15` configuration has an unambiguous, tested visual
+  result and a clearly documented transform direction.
 - Switching viewport profiles changes both screen fit and anamorphic state
   together without a stale transform, extra visible frame, or renderer restart
   unless libplacebo resource constraints demonstrably require one.
