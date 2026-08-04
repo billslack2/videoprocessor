@@ -2,7 +2,26 @@
 
 ## Status
 
-Backlog. No implementation has started.
+Done. Implemented in `billslack2/videoprocessor` integration branch
+`v1.1.015-beta` at `0a19c5f` on 2026-08-04.
+
+## Implementation evidence
+
+- Uses `IMadVROsdServices::OsdSetBitmap` with one named 32-bit BGRA element
+  (`VideoProcessor.Diagnostics`) and explicit removal during renderer teardown.
+- OSD bitmap updates are coalesced to the DirectShow graph thread; the capture
+  and delivery paths do not call madVR's OSD API.
+- Missing or failed madVR OSD support falls back to the existing VP overlay on
+  the next diagnostics refresh without restarting the renderer.
+- madVR uses the same `NativeStatsOverlayPlacement` lower-right policy as
+  Alpha: 40-pixel inset, uniform scaling, and visible-picture containment.
+- Alpha remains on its existing native libplacebo composition path. Both
+  backends now share a 20px Consolas style, 220/255 opacity, and a normalized
+  diagnostics layout with an explicit renderer line.
+- x64 Release builds of `VideoProcessor-GUI` and `VideoProcessor-Test`
+  completed successfully. `NativeStatsOverlayPlacementTests` passed 4/4.
+- Deployed the matching x64 Release executable to `C:\Videoprocessor\vp` with
+  SHA-256 verification; no configuration files were changed.
 
 ## User story
 
