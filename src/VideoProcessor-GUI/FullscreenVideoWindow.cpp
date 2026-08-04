@@ -155,6 +155,12 @@ void FullscreenVideoWindow::OnClose()
 {
 	// Redirect Alt-F4 to close the main application window instead
 	CWnd* pMainWindow = AfxGetApp()->GetMainWnd();
+	DebugLog::Log(
+		"Fullscreen keyboard route: action=close-forward host=%p main=%p foreground=%p focus=%p",
+		reinterpret_cast<void*>(m_hwnd),
+		reinterpret_cast<void*>(pMainWindow ? pMainWindow->GetSafeHwnd() : nullptr),
+		reinterpret_cast<void*>(GetForegroundWindow()),
+		reinterpret_cast<void*>(GetFocus()));
 	if (pMainWindow && IsWindow(pMainWindow->GetSafeHwnd()))
 	{
 		pMainWindow->PostMessage(WM_CLOSE);
@@ -164,6 +170,21 @@ void FullscreenVideoWindow::OnClose()
 
 LRESULT __forceinline FullscreenVideoWindow::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+	if ((uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) &&
+		(wParam == 'I' || wParam == VK_F4))
+	{
+		DebugLog::Log(
+			"Fullscreen keyboard route: message=0x%04x vk=0x%02x ctrl=%d alt=%d host=%p owner=%p root=%p foreground=%p focus=%p",
+			uMsg,
+			static_cast<unsigned int>(wParam),
+			(GetKeyState(VK_CONTROL) & 0x8000) ? 1 : 0,
+			(GetKeyState(VK_MENU) & 0x8000) ? 1 : 0,
+			reinterpret_cast<void*>(m_hwnd),
+			reinterpret_cast<void*>(GetWindow(m_hwnd, GW_OWNER)),
+			reinterpret_cast<void*>(GetAncestor(m_hwnd, GA_ROOT)),
+			reinterpret_cast<void*>(GetForegroundWindow()),
+			reinterpret_cast<void*>(GetFocus()));
+	}
     switch (uMsg)
     {
     case WM_ERASEBKGND:

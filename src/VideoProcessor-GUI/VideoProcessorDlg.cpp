@@ -3306,10 +3306,25 @@ void CVideoProcessorDlg::OnCommandAutoSet()
 
 void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
 {
+	DebugLog::Log(
+		"Keyboard command handler: command=toggle-stats requested_before=%d renderer_state=%d generation=%u retirement_pending=%d reset_active=%d foreground=%p focus=%p",
+		m_statsOverlayRequestedVisible ? 1 : 0,
+		static_cast<int>(m_rendererState),
+		m_rendererGeneration.load(std::memory_order_acquire),
+		m_rendererRetirementPending ? 1 : 0,
+		RendererResetOperationInProgress() ? 1 : 0,
+		reinterpret_cast<void*>(::GetForegroundWindow()),
+		reinterpret_cast<void*>(::GetFocus()));
 	if (!m_statsOverlay)
+	{
+		DebugLog::Log("Keyboard command handler: command=toggle-stats result=no-overlay");
 		return;
+	}
 	m_statsOverlayRequestedVisible = !m_statsOverlayRequestedVisible;
 	ApplyStatsOverlayForActiveRenderer();
+	DebugLog::Log(
+		"Keyboard command handler: command=toggle-stats result=applied requested_after=%d",
+		m_statsOverlayRequestedVisible ? 1 : 0);
 }
 
 void CVideoProcessorDlg::ApplyStatsOverlayForActiveRenderer()
@@ -4675,10 +4690,24 @@ void CVideoProcessorDlg::RenderStop()
 
 	const std::shared_ptr<RendererIngressState> ingress =
 		m_rendererIngressState;
+	const ULONGLONG stopQueuedTick = GetTickCount64();
+	DebugLog::Log(
+		"Renderer stop dispatch: phase=before-stop generation=%u renderer_state=%d foreground=%p focus=%p",
+		m_rendererGeneration.load(std::memory_order_acquire),
+		static_cast<int>(m_rendererState),
+		reinterpret_cast<void*>(::GetForegroundWindow()),
+		reinterpret_cast<void*>(::GetFocus()));
 	m_videoRenderer->StopWithIngressDrain([ingress]()
 		{
 			ingress->WaitForDrain();
 		});
+	DebugLog::Log(
+		"Renderer stop dispatch: phase=after-stop-call return_ms=%llu generation=%u renderer_state=%d foreground=%p focus=%p",
+		static_cast<unsigned long long>(GetTickCount64() - stopQueuedTick),
+		m_rendererGeneration.load(std::memory_order_acquire),
+		static_cast<int>(m_rendererState),
+		reinterpret_cast<void*>(::GetForegroundWindow()),
+		reinterpret_cast<void*>(::GetFocus()));
 
 	m_rendererStateText.SetWindowText(TEXT("Stopping"));
 
@@ -6594,12 +6623,41 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 {
 	m_lastUiMessageTick.store(GetTickCount64(), std::memory_order_release);
+	const bool diagnosticKey =
+		(pMsg->message == WM_KEYDOWN || pMsg->message == WM_SYSKEYDOWN) &&
+		(pMsg->wParam == 'I' || pMsg->wParam == VK_F4);
+	if (diagnosticKey)
+	{
+		DebugLog::Log(
+			"Keyboard message: phase=pretranslate message=0x%04x vk=0x%02x ctrl=%d alt=%d age_ms=%lu target=%p dialog=%p foreground=%p focus=%p renderer_state=%d generation=%u retirement_pending=%d reset_active=%d",
+			pMsg->message,
+			static_cast<unsigned int>(pMsg->wParam),
+			(GetKeyState(VK_CONTROL) & 0x8000) ? 1 : 0,
+			(GetKeyState(VK_MENU) & 0x8000) ? 1 : 0,
+			static_cast<unsigned long>(GetTickCount() - static_cast<DWORD>(GetMessageTime())),
+			reinterpret_cast<void*>(pMsg->hwnd),
+			reinterpret_cast<void*>(m_hWnd),
+			reinterpret_cast<void*>(::GetForegroundWindow()),
+			reinterpret_cast<void*>(::GetFocus()),
+			static_cast<int>(m_rendererState),
+			m_rendererGeneration.load(std::memory_order_acquire),
+			m_rendererRetirementPending ? 1 : 0,
+			RendererResetOperationInProgress() ? 1 : 0);
+	}
 	// Handle accelerator combinations
 	if (m_accelerator)
 	{
 		if (::TranslateAccelerator(m_hWnd, m_accelerator, pMsg))
+		{
+			if (diagnosticKey)
+				DebugLog::Log("Keyboard message: phase=pretranslate result=accelerator-consumed vk=0x%02x",
+					static_cast<unsigned int>(pMsg->wParam));
 			return TRUE;
+		}
 	}
+	if (diagnosticKey)
+		DebugLog::Log("Keyboard message: phase=pretranslate result=not-consumed vk=0x%02x",
+			static_cast<unsigned int>(pMsg->wParam));
 
 	return CDialog::PreTranslateMessage(pMsg);
 }
@@ -6941,9 +6999,21 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 void CVideoProcessorDlg::OnClose()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnClose()")));
+	DebugLog::Log(
+		"Keyboard close handler: phase=enter want_terminate=%d renderer_state=%d generation=%u retirement_pending=%d reset_active=%d foreground=%p focus=%p",
+		m_wantToTerminate ? 1 : 0,
+		static_cast<int>(m_rendererState),
+		m_rendererGeneration.load(std::memory_order_acquire),
+		m_rendererRetirementPending ? 1 : 0,
+		RendererResetOperationInProgress() ? 1 : 0,
+		reinterpret_cast<void*>(::GetForegroundWindow()),
+		reinterpret_cast<void*>(::GetFocus()));
 
 	if (m_wantToTerminate)
+	{
+		DebugLog::Log("Keyboard close handler: phase=exit result=already-terminating");
 		return;
+	}
 
 	// Set intent first, stopping the discoverer will lead to state update calls
 	m_desiredCaptureDevice = nullptr;
@@ -6960,6 +7030,7 @@ void CVideoProcessorDlg::OnClose()
 
 	// Remove all renderers
 	ClearRendererCombo();
+	DebugLog::Log("Keyboard close handler: phase=exit result=termination-requested");
 }
 
 void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
@@ -7120,8 +7191,20 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		if (m_fullScreenVideoWindow && IsWindow(m_fullScreenVideoWindow->GetHWND()))
 		{
 			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Grabbing focus")));
-			::SetForegroundWindow(m_fullScreenVideoWindow->GetHWND());
-			::SetFocus(m_fullScreenVideoWindow->GetHWND());
+			const HWND fullscreenHwnd = m_fullScreenVideoWindow->GetHWND();
+			const HWND foregroundBefore = ::GetForegroundWindow();
+			const HWND focusBefore = ::GetFocus();
+			const BOOL foregroundResult = ::SetForegroundWindow(fullscreenHwnd);
+			const HWND focusResult = ::SetFocus(fullscreenHwnd);
+			DebugLog::Log(
+				"Fullscreen focus timer: target=%p foreground_before=%p focus_before=%p set_foreground=%d set_focus_previous=%p foreground_after=%p focus_after=%p",
+				reinterpret_cast<void*>(fullscreenHwnd),
+				reinterpret_cast<void*>(foregroundBefore),
+				reinterpret_cast<void*>(focusBefore),
+				foregroundResult ? 1 : 0,
+				reinterpret_cast<void*>(focusResult),
+				reinterpret_cast<void*>(::GetForegroundWindow()),
+				reinterpret_cast<void*>(::GetFocus()));
 		}
 		return;
 	}
