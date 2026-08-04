@@ -22,12 +22,20 @@ Implementation branch/worktree:
 Implementation checkpoint: `9e200630de390232bb5b1a0b8ff803a5519b6db7`
 (`docs: expand VP configuration reference`).
 
+Follow-up checkpoint: `cb241b7` (`docs: detail Alpha quality preset
+resolution`).
+
 Completed work:
 
 - Rewrote the canonical `CONFIGURATION.html` as a structured 74-entry public
   reference. Every field has its own anchor, syntax/default, value table,
   practical effect/trade-off, and verification guidance; AUTO-capable Alpha
   and DirectShow controls explain their exact VP resolution behavior.
+- Expanded the Alpha `quality` entry with the current bundled libplacebo
+  7.360.1 preset selected by `fast`, `balanced`, and `high`, then a
+  field-by-field matrix showing precisely what the related `AUTO` controls
+  retain for each preset. The checked-in Rec.709 profile's `high` selection is
+  called out explicitly.
 - Added task-oriented SDR, HDR-to-SDR/projector, BT.2020, scaling, NLS, and
   profile/viewport/queue examples, plus troubleshooting guidance.
 - Refined the public field inventory to map every field to its individual
