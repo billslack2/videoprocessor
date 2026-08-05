@@ -54,6 +54,10 @@ namespace Tests
 		TEST_METHOD(Bt2020TargetRetainsProvenP709Transport)
 		{
 			Request transport;
+			// The player hosts Alpha in a child HWND. That can move presentation
+			// from flip/direct to composed/bitblt after F6 has been selected.
+			// The color target must not be demoted with that transport fallback.
+			transport.presentation = PresentationRequest::DIRECT;
 			transport.primaries = PrimariesRequest::BT2020;
 			const SdrOutputContract contract = MakeSdrOutputContract(
 				transport, SdrTargetPrimaries::BT2020, true);
@@ -65,6 +69,16 @@ namespace Tests
 			const Plan plan = MakePlan(contract.transport);
 			Assert::AreEqual(static_cast<int>(DxgiEncoding::FULL_G22_P709),
 				static_cast<int>(plan.desiredEncoding));
+			Assert::IsFalse(plan.requiresDxgiOverride);
+
+			Evidence embeddedPreview;
+			embeddedPreview.presentationModel = PresentationModel::BITBLT;
+			const Actual actual = Finalize(plan, embeddedPreview);
+			Assert::IsTrue(actual.safeToRender);
+			Assert::AreEqual(static_cast<int>(DxgiEncoding::FULL_G22_P709),
+				static_cast<int>(actual.encoding));
+			// `contract.target` remains BT.2020 above: target and transport are
+			// deliberately independent across this fallback.
 		}
 
 		TEST_METHOD(Rec709TargetCannotRequestBt2020AviSignaling)
