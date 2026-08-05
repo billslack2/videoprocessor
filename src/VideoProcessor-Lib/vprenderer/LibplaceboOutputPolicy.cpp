@@ -98,6 +98,19 @@ namespace LibplaceboOutput
 		return result;
 	}
 
+	SdrOutputContract MakeSdrOutputContract(
+		Request requestedTransport,
+		SdrTargetPrimaries target,
+		bool reportBt2020ToDisplay)
+	{
+		// P2020 DXGI was previously tried as the transport for F6. On VP's
+		// NVIDIA/projector path it produced BT.2020-target pixels interpreted as
+		// Rec.709. Keep transport representation and pixel target separate.
+		requestedTransport.primaries = PrimariesRequest::REC709;
+		return { target, requestedTransport,
+			target == SdrTargetPrimaries::BT2020 && reportBt2020ToDisplay };
+	}
+
 	Actual Finalize(const Plan& plan, const Evidence& evidence)
 	{
 		Actual result;

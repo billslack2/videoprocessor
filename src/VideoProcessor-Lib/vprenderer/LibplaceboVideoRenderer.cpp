@@ -4201,41 +4201,21 @@ struct LibplaceboVideoRenderer::Impl
 			actualOutput.safeToRender ? 1 : 0,
 			actualOutput.reason.c_str());
 
-		if (targetBt2020 &&
-			!EncodingUsesBt2020(actualOutput.encoding))
+		if (targetBt2020 && reportBt2020ToDisplay)
 		{
-			// BT.2020 rendering is valid only with the matching accepted DXGI
-			// P2020 transport. A P709 fallback would mute Rec.709 source colors
-			// after gamut conversion, so replace both halves of the contract.
-			DebugLog::Log(
-				"libplacebo: verified DXGI P2020 transport unavailable; falling back to a matched Rec.709 render and transport contract");
-			nvidiaBt2020Reporter.Restore();
-			reportBt2020ToDisplay = false;
-			targetBt2020 = false;
-			bt2020SignalingFailed = true;
-			LibplaceboOutput::Request fallbackRequest = outputPlan.request;
-			fallbackRequest.primaries =
-				LibplaceboOutput::PrimariesRequest::REC709;
-			outputPlan = LibplaceboOutput::MakePlan(fallbackRequest);
-			swapchain3.Release();
-			output.Release();
-			adapter.Release();
-			dxgiDevice.Release();
-			if (!RecreateSwapchain(
-				outputPlan.useBlit,
-				false,
-				"bt2020-dxgi-fallback"))
+			if (!nvidiaBt2020Reporter.Enable(negotiatedDisplayDeviceName.c_str()))
 			{
+				// HDMI reporting is optional metadata. Preserve the selected BT.2020
+				// render target and the proven P709 transport if it is unavailable.
 				DebugLog::Log(
-					"libplacebo: failed to create Rec.709 swapchain after DXGI P2020 rejection");
+					"libplacebo: NVIDIA BT.2020 reporting unsupported; retaining BT.2020 target with P709 transport");
+				reportBt2020ToDisplay = false;
 			}
-			return;
 		}
-
-		// DXGI P2020 is the single BT.2020 transport authority. Do not also
-		// override the NVIDIA AVI InfoFrame; the dual path caused inconsistent
-		// gamut handling across renderer and fullscreen transitions.
-		nvidiaBt2020Reporter.Restore();
+		else
+		{
+			nvidiaBt2020Reporter.Restore();
+		}
 	}
 
 	bool RecreateSwapchain(
@@ -4617,17 +4597,21 @@ struct LibplaceboVideoRenderer::Impl
 			settings.outputPresentation);
 		outputRequest.range = LibplaceboOutput::ParseRange(settings.outputRange);
 		outputRequest.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
-		targetBt2020 = settings.sdrTargetPrimaries == "bt2020";
+		const LibplaceboOutput::SdrTargetPrimaries requestedTarget =
+			settings.sdrTargetPrimaries == "bt2020"
+				? LibplaceboOutput::SdrTargetPrimaries::BT2020
+				: LibplaceboOutput::SdrTargetPrimaries::REC709;
 		bt2020SignalingFailed = false;
-		// Use one coherent transport: libplacebo converts into BT.2020 only when
-		// the matching DXGI P2020 swapchain declaration can be advertised and
-		// accepted. NVIDIA InfoFrame override is deliberately not layered on top.
-		outputRequest.primaries = targetBt2020
-			? LibplaceboOutput::PrimariesRequest::BT2020
-			: LibplaceboOutput::PrimariesRequest::REC709;
-		reportBt2020ToDisplay = settings.reportBt2020ToDisplay;
+		const LibplaceboOutput::SdrOutputContract outputContract =
+			LibplaceboOutput::MakeSdrOutputContract(
+				outputRequest, requestedTarget, settings.reportBt2020ToDisplay);
+		outputRequest = outputContract.transport;
+		targetBt2020 = outputContract.target ==
+			LibplaceboOutput::SdrTargetPrimaries::BT2020;
+		reportBt2020ToDisplay = outputContract.reportBt2020ToDisplay;
 		if (targetBt2020)
-			DebugLog::Log("libplacebo: BT.2020 target requested; using verified DXGI P2020 transport (NVIDIA override suppressed, configured_report=%d)", reportBt2020ToDisplay ? 1 : 0);
+			DebugLog::Log("libplacebo output contract: target=BT.2020 transform=BT.709-to-BT.2020 DXGI_transport=P709/sRGB NVIDIA_AVI=%s",
+				reportBt2020ToDisplay ? "requested" : "disabled");
 		else if (reportBt2020ToDisplay)
 			DebugLog::Log("libplacebo: report_bt2020_to_display ignored because target primaries are Rec.709");
 		requestedOutputPlan = LibplaceboOutput::MakePlan(outputRequest);
@@ -8152,7 +8136,9 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 	};
 	CStringA value;
 	const char* outputTarget = m_impl->targetBt2020
-		? "SDR BT.2020 / DXGI BT.2020"
+		? (m_impl->reportBt2020ToDisplay
+			? "SDR BT.2020 / HDMI BT.2020"
+			: "SDR BT.2020")
 		: (m_impl->bt2020SignalingFailed
 			? "SDR Rec.709 (BT.2020 signal failed)"
 			: "SDR Rec.709");

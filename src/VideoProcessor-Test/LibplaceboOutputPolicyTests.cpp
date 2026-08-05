@@ -31,6 +31,30 @@ namespace Tests
 				static_cast<int>(actual.targetTransfer));
 		}
 
+		TEST_METHOD(Bt2020TargetRetainsProvenP709Transport)
+		{
+			Request transport;
+			transport.primaries = PrimariesRequest::BT2020;
+			const SdrOutputContract contract = MakeSdrOutputContract(
+				transport, SdrTargetPrimaries::BT2020, true);
+			Assert::AreEqual(static_cast<int>(SdrTargetPrimaries::BT2020),
+				static_cast<int>(contract.target));
+			Assert::AreEqual(static_cast<int>(PrimariesRequest::REC709),
+				static_cast<int>(contract.transport.primaries));
+			Assert::IsTrue(contract.reportBt2020ToDisplay);
+		}
+
+		TEST_METHOD(Rec709TargetCannotRequestBt2020AviSignaling)
+		{
+			const SdrOutputContract contract = MakeSdrOutputContract(
+				{}, SdrTargetPrimaries::REC709, true);
+			Assert::AreEqual(static_cast<int>(SdrTargetPrimaries::REC709),
+				static_cast<int>(contract.target));
+			Assert::AreEqual(static_cast<int>(PrimariesRequest::REC709),
+				static_cast<int>(contract.transport.primaries));
+			Assert::IsFalse(contract.reportBt2020ToDisplay);
+		}
+
 		TEST_METHOD(DirectRequestsFlipButReportsActualModel)
 		{
 			Request request;

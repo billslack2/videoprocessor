@@ -67,6 +67,23 @@ namespace LibplaceboOutput
 		PrimariesRequest primaries = PrimariesRequest::REC709;
 	};
 
+	// The display target is independent of the DXGI transport.  In particular,
+	// VP's projector-compatible SDR BT.2020 mode renders BT.2020 pixels while
+	// deliberately retaining the P709/sRGB swapchain contract and using the
+	// NVIDIA AVI InfoFrame for HDMI BT.2020 signalling.
+	enum class SdrTargetPrimaries
+	{
+		REC709,
+		BT2020,
+	};
+
+	struct SdrOutputContract
+	{
+		SdrTargetPrimaries target = SdrTargetPrimaries::REC709;
+		Request transport;
+		bool reportBt2020ToDisplay = false;
+	};
+
 	struct Plan
 	{
 		Request request;
@@ -138,6 +155,10 @@ namespace LibplaceboOutput
 	RangeRequest ParseRange(const std::string& value);
 	GammaRequest ParseGamma(const std::string& value);
 	Plan MakePlan(const Request& request);
+	SdrOutputContract MakeSdrOutputContract(
+		Request requestedTransport,
+		SdrTargetPrimaries target,
+		bool reportBt2020ToDisplay);
 	Actual Finalize(const Plan& plan, const Evidence& evidence);
 	bool ShouldFallbackToComposed(const Plan& plan, const Actual& actual);
 	PackedR10Stats AnalyzePackedR10(
