@@ -74,6 +74,49 @@ namespace AlphaSourceCrop
 			sceneSnapshotIsCurrentGeneration || pixelSafeRetentionActive;
 	}
 
+	PresentationEnvelopeDecision EvaluatePresentationEnvelope(
+		const PresentationEnvelopeInput& input)
+	{
+		PresentationEnvelopeDecision decision;
+		if (!input.envelopeAvailable)
+			return decision;
+		if (!input.effectiveGeometryAvailable)
+		{
+			decision.reason = "trusted final geometry is unavailable";
+			return decision;
+		}
+		if (input.evidenceSourceGeneration == 0 ||
+			input.evidenceSourceGeneration != input.frameSourceGeneration)
+		{
+			decision.reason = "envelope belongs to a stale source generation";
+			return decision;
+		}
+		if (input.detectedSourceSequence != 0 &&
+			input.detectedSourceSequence == input.currentSourceSequence)
+		{
+			decision.active = true;
+			decision.currentFrame = true;
+			decision.reason =
+				"current-frame envelope follows final trusted geometry";
+			return decision;
+		}
+		if (!input.baseMatchesEffectiveGeometry)
+		{
+			decision.reason = "held envelope base no longer matches geometry";
+			return decision;
+		}
+		if (input.holdMs == 0 || input.lastDetectionTick == 0 ||
+			input.currentTick - input.lastDetectionTick > input.holdMs)
+		{
+			decision.reason = "held envelope expired";
+			return decision;
+		}
+		decision.active = true;
+		decision.held = true;
+		decision.reason = "matching envelope retained during release hold";
+		return decision;
+	}
+
 	void AmbiguityHold::Reset()
 	{
 		deadlineTick = 0;

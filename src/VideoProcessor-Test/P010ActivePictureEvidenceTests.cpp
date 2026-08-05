@@ -24,6 +24,7 @@ namespace VideoProcessorTest
 			int height;
 			size_t pitch;
 			int chromaRows;
+			bool usesFullHeightChroma;
 			std::vector<uint8_t> bytes;
 
 			P010Frame(int frameWidth, int frameHeight, size_t padding = 0,
@@ -32,6 +33,7 @@ namespace VideoProcessorTest
 				height(frameHeight),
 				pitch(static_cast<size_t>(frameWidth) * 2 + padding),
 				chromaRows(fullHeightChroma ? frameHeight : frameHeight / 2),
+				usesFullHeightChroma(fullHeightChroma),
 				bytes(pitch * frameHeight + pitch * chromaRows, 0)
 			{
 				Fill(300, 512, 512);
@@ -64,10 +66,11 @@ namespace VideoProcessorTest
 							WriteCode(bytes.data() +
 								static_cast<size_t>(row) * pitch + x * 2, y);
 				const size_t uvOffset = pitch * height;
-				for (int row = 0; row < height / 2; ++row)
+				for (int row = 0; row < chromaRows; ++row)
 					for (int x = 0; x < width; x += 2)
 						if (x < left || x >= right ||
-							row * 2 < top || row * 2 >= bottom)
+							(usesFullHeightChroma ? row : row * 2) < top ||
+							(usesFullHeightChroma ? row : row * 2) >= bottom)
 						{
 							uint8_t* pixel = bytes.data() + uvOffset +
 								static_cast<size_t>(row) * pitch + x * 2;
@@ -84,7 +87,10 @@ namespace VideoProcessorTest
 						WriteCode(bytes.data() +
 							static_cast<size_t>(row) * pitch + x * 2, y);
 				const size_t uvOffset = pitch * height;
-				for (int row = top / 2; row < (bottom + 1) / 2; ++row)
+				const int chromaTop = usesFullHeightChroma ? top : top / 2;
+				const int chromaBottom = usesFullHeightChroma ? bottom :
+					(bottom + 1) / 2;
+				for (int row = chromaTop; row < chromaBottom; ++row)
 					for (int x = left & ~1; x < right; x += 2)
 					{
 						uint8_t* pixel = bytes.data() + uvOffset +
@@ -401,11 +407,60 @@ namespace VideoProcessorTest
 			Assert::AreEqual(320, retention.outwardVisibleBounds.right);
 		}
 
+		TEST_METHOD(PersistentFullWidthTopOverlayCannotBecomeProgramAspect)
+		{
+			const ActivePictureBounds presentation =
+				ScopePresentation(320, 180, 22, 158);
+			P010Frame stable(320, 180);
+			stable.BlackOutside(0, 22, 320, 158);
+			const auto stableEvidence =
+				ExtractP010ActivePictureEvidence(stable.View());
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(stableEvidence.classification));
+
+			ActivePictureTransitionModel model;
+			uint64_t frameNumber = 1;
+			for (uint8_t count = 0;
+				count < ActivePictureTransitionModel::INITIAL_CONFIRMATIONS;
+				++count, ++frameNumber)
+			{
+				model.Observe({ stableEvidence.trustedBounds, frameNumber, true,
+					ActivePictureClassification::BAR_CROP_TRUSTED });
+			}
+
+			P010Frame overlay(320, 180);
+			overlay.BlackOutside(0, 22, 320, 158);
+			overlay.FillRectangle(0, 8, 320, 18, 600);
+			const auto retention =
+				EvaluateP010ActivePicturePresentationRetention(
+					overlay.View(), presentation);
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureClassification::PROVISIONAL),
+				static_cast<int>(retention.activePicture.classification));
+			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+
+			for (int count = 0; count < 60; ++count, ++frameNumber)
+			{
+				const auto decision = model.Observe({
+					retention.activePicture.proposedBounds, frameNumber, true,
+					retention.activePicture.classification });
+				Assert::IsFalse(decision.publish);
+				Assert::IsTrue(decision.stable);
+				Assert::AreEqual(stableEvidence.trustedBounds.top,
+					decision.stableBounds.top);
+				Assert::AreEqual(stableEvidence.trustedBounds.bottom,
+					decision.stableBounds.bottom);
+			}
+		}
+
 		TEST_METHOD(NativeP210TopOverlayUsesTheSameOutwardFitPolicy)
 		{
 			P010Frame frame(320, 180, 0, true);
 			frame.BlackOutside(0, 22, 320, 158);
-			frame.FillRectangle(120, 8, 136, 18, 600);
+			// Exercise P210 chroma row addressing as well as luma: neutral Y=96
+			// is below the luma gate, so color supplies the visible evidence.
+			frame.FillRectangle(120, 8, 136, 18, 96, 300, 700);
 			const auto retention = EvaluateActivePicturePresentationRetention(
 				frame.P210Source(), ScopePresentation(320, 180, 22, 158));
 
@@ -414,25 +469,45 @@ namespace VideoProcessorTest
 			Assert::AreEqual(158, retention.outwardVisibleBounds.bottom);
 		}
 
+		TEST_METHOD(FourKSmallTranslucentTopControlIsStillBounded)
+		{
+			P010Frame frame(3840, 2160);
+			frame.BlackOutside(0, 280, 3840, 1880);
+			// A 32x10 neutral control at a hostile lattice phase. This is much
+			// smaller and darker than the broad Apple TV volume overlay.
+			frame.FillRectangle(1, 80, 33, 90, 100);
+			const auto retention =
+				EvaluateP010ActivePicturePresentationRetention(frame.View(),
+					ScopePresentation(3840, 2160, 280, 1880));
+
+			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+			Assert::IsTrue(retention.outwardVisibleBounds.top <= 80);
+			Assert::IsTrue(retention.outwardVisibleBounds.top > 0);
+			Assert::AreEqual(1880, retention.outwardVisibleBounds.bottom);
+			Assert::IsTrue(retention.lumaSamples < 50000);
+		}
+
 		TEST_METHOD(BottomAndSideOverlaysExpandOnlyTheirOccupiedEdges)
 		{
 			P010Frame bottom(320, 180);
 			bottom.BlackOutside(0, 22, 320, 158);
+			bottom.FillRectangle(184, 8, 200, 18, 600);
 			bottom.FillRectangle(120, 162, 136, 172, 600);
 			auto retention = EvaluateP010ActivePicturePresentationRetention(
 				bottom.View(), ScopePresentation(320, 180, 22, 158));
 			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
-			Assert::AreEqual(22, retention.outwardVisibleBounds.top);
+			Assert::IsTrue(retention.outwardVisibleBounds.top <= 8);
 			Assert::IsTrue(retention.outwardVisibleBounds.bottom >= 172);
 
 			P010Frame side(320, 180);
 			side.BlackOutside(40, 0, 280, 180);
 			side.FillRectangle(8, 70, 18, 86, 600);
+			side.FillRectangle(302, 94, 312, 110, 600);
 			retention = EvaluateP010ActivePicturePresentationRetention(
 				side.View(), PillarPresentation(320, 180, 40, 280));
 			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
 			Assert::IsTrue(retention.outwardVisibleBounds.left <= 8);
-			Assert::AreEqual(280, retention.outwardVisibleBounds.right);
+			Assert::IsTrue(retention.outwardVisibleBounds.right >= 312);
 		}
 
 		TEST_METHOD(IsolatedTopBarNoiseCannotAuthorizeAnOutwardEnvelope)

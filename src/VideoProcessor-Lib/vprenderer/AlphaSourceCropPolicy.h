@@ -34,6 +34,34 @@ namespace AlphaSourceCrop
 		bool sceneSnapshotIsCurrentGeneration,
 		bool pixelSafeRetentionActive);
 
+	struct PresentationEnvelopeInput
+	{
+		bool envelopeAvailable = false;
+		bool effectiveGeometryAvailable = false;
+		bool baseMatchesEffectiveGeometry = false;
+		uint64_t detectedSourceSequence = 0;
+		uint64_t currentSourceSequence = 0;
+		uint64_t evidenceSourceGeneration = 0;
+		uint64_t frameSourceGeneration = 0;
+		uint64_t lastDetectionTick = 0;
+		uint64_t currentTick = 0;
+		uint64_t holdMs = 0;
+	};
+
+	struct PresentationEnvelopeDecision
+	{
+		bool active = false;
+		bool currentFrame = false;
+		bool held = false;
+		const char* reason = "envelope evidence is unavailable";
+	};
+
+	// A frame-local envelope is safe to union with whichever trusted geometry
+	// that same frame finally publishes. Historical envelopes remain tied to
+	// their exact base geometry and bounded release hold.
+	PresentationEnvelopeDecision EvaluatePresentationEnvelope(
+		const PresentationEnvelopeInput& input);
+
 	class AmbiguityHold
 	{
 	public:

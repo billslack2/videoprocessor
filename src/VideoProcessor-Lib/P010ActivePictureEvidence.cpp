@@ -15,8 +15,8 @@ constexpr int kEdgeDepthSamples = 6;
 constexpr int kGlobalGridWidth = 16;
 constexpr int kGlobalGridHeight = 16;
 constexpr int kGlobalNearBlackP90 = 96;
-constexpr int kVisibleExtentLineSamples = 96;
-constexpr int kVisibleExtentDepthSamples = 48;
+constexpr int kVisibleExtentLineSamples = 256;
+constexpr int kVisibleExtentDepthSamples = 64;
 
 template <typename T>
 T Bounded(T value, T minimum, T maximum)
@@ -303,7 +303,10 @@ bool IsCrediblyVisible(SampleContext& samples, int x, int y,
 		return false;
 	++samples.lumaSamples;
 	++samples.chromaSamples;
-	const bool elevatedLuma = sample.luma >= blackThreshold + 16;
+	// Match the denser renderer-local bar pass: blackThreshold already carries
+	// 24 codes above the measured floor, so this is floor + 32. The denser grid
+	// and 2x2 support rule retain noise rejection while covering small controls.
+	const bool elevatedLuma = sample.luma > blackThreshold + 8;
 	const bool colored = (std::abs(static_cast<int>(sample.chromaU) - 512) >= 64 ||
 		std::abs(static_cast<int>(sample.chromaV) - 512) >= 64) &&
 		sample.luma >= blackThreshold + 8;

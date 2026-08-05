@@ -2467,6 +2467,7 @@ struct LibplaceboVideoRenderer::Impl
 	ActivePictureBounds scopePresentationEvidenceBounds;
 	uint64_t scopePresentationEvidenceLastTick = 0;
 	uint64_t scopePresentationEvidenceSourceGeneration = 0;
+	uint64_t scopePresentationEvidenceSourceSequence = 0;
 	static constexpr uint64_t ACTIVE_PICTURE_AMBIGUITY_HOLD_MS = 2000;
 	// A recognized cut and an ordinary ambiguous fade are the same presentation
 	// problem once a last-known-good crop exists. Use one bounded interval so
@@ -3261,6 +3262,7 @@ struct LibplaceboVideoRenderer::Impl
 		scopePresentationEvidenceBounds = {};
 		scopePresentationEvidenceLastTick = 0;
 		scopePresentationEvidenceSourceGeneration = 0;
+		scopePresentationEvidenceSourceSequence = 0;
 	}
 
 	void ClearScopeSubtitleEvidence()
@@ -5189,6 +5191,11 @@ struct LibplaceboVideoRenderer::Impl
 							analysisSource.generation &&
 						sameBounds(scopePresentationEvidenceBase,
 							presentationBeforeObservation);
+					const bool envelopeChanged = !sameBase ||
+						outward.left < scopePresentationEvidenceBounds.left ||
+						outward.top < scopePresentationEvidenceBounds.top ||
+						outward.right > scopePresentationEvidenceBounds.right ||
+						outward.bottom > scopePresentationEvidenceBounds.bottom;
 					if (!sameBase)
 					{
 						scopePresentationEvidenceBase =
@@ -5217,7 +5224,31 @@ struct LibplaceboVideoRenderer::Impl
 					}
 					scopePresentationEvidenceSourceGeneration =
 						analysisSource.generation;
+					scopePresentationEvidenceSourceSequence = frameNumber;
 					scopePresentationEvidenceLastTick = now;
+					if (envelopeChanged)
+					{
+						const ActivePictureBounds& raw =
+							retentionEvidence.outwardVisibleBoundsAvailable
+							? retentionEvidence.outwardVisibleBounds : observed;
+						DebugLog::Log(
+							"Alpha presentation envelope: sequence=%llu generation=%llu base=%d,%d-%d,%d raw=%d,%d-%d,%d stored=%d,%d-%d,%d edges=%c%c%c%c reason=detected",
+							static_cast<unsigned long long>(frameNumber),
+							static_cast<unsigned long long>(analysisSource.generation),
+							presentationBeforeObservation.left,
+							presentationBeforeObservation.top,
+							presentationBeforeObservation.right,
+							presentationBeforeObservation.bottom,
+							raw.left, raw.top, raw.right, raw.bottom,
+							scopePresentationEvidenceBounds.left,
+							scopePresentationEvidenceBounds.top,
+							scopePresentationEvidenceBounds.right,
+							scopePresentationEvidenceBounds.bottom,
+							outward.left < presentationBeforeObservation.left ? 'L' : '-',
+							outward.top < presentationBeforeObservation.top ? 'T' : '-',
+							outward.right > presentationBeforeObservation.right ? 'R' : '-',
+							outward.bottom > presentationBeforeObservation.bottom ? 'B' : '-');
+					}
 				}
 			}
 			sceneVerificationLatestSupportsCrop =
@@ -6117,13 +6148,27 @@ struct LibplaceboVideoRenderer::Impl
 					left.rasterWidth == right.rasterWidth &&
 					left.rasterHeight == right.rasterHeight;
 			};
-			const bool detectorEnvelopeActive =
-				scopePresentationEvidenceLastTick != 0 &&
-				overlayNow - scopePresentationEvidenceLastTick <=
-					scopeSubtitleHoldMs &&
-				scopePresentationEvidenceSourceGeneration == frameGeneration &&
+			AlphaSourceCrop::PresentationEnvelopeInput envelopeInput;
+			envelopeInput.envelopeAvailable =
+				scopePresentationEvidenceSourceSequence != 0;
+			envelopeInput.effectiveGeometryAvailable =
+				effectiveGeometryAvailable;
+			envelopeInput.baseMatchesEffectiveGeometry =
 				effectiveGeometryAvailable &&
 				sameBounds(scopePresentationEvidenceBase, effectiveGeometry);
+			envelopeInput.detectedSourceSequence =
+				scopePresentationEvidenceSourceSequence;
+			envelopeInput.currentSourceSequence = sourceSequence;
+			envelopeInput.evidenceSourceGeneration =
+				scopePresentationEvidenceSourceGeneration;
+			envelopeInput.frameSourceGeneration = frameGeneration;
+			envelopeInput.lastDetectionTick =
+				scopePresentationEvidenceLastTick;
+			envelopeInput.currentTick = overlayNow;
+			envelopeInput.holdMs = scopeSubtitleHoldMs;
+			const AlphaSourceCrop::PresentationEnvelopeDecision envelopeDecision =
+				AlphaSourceCrop::EvaluatePresentationEnvelope(envelopeInput);
+			const bool detectorEnvelopeActive = envelopeDecision.active;
 			const bool barContentFitActive = detectorEnvelopeActive ||
 				leftBarContentActive || topBarContentActive ||
 				rightBarContentActive || bottomBarContentActive;
@@ -6250,7 +6295,8 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				lastSourceCropPolicy = cropPolicy.str();
 				DebugLog::Log(
-					"Alpha source crop: enabled=%d applied=%d expanded=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d edges=%c%c%c%c evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s; %s\"",
+					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d envelope_state=%s edges=%c%c%c%c evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s; %s; %s\"",
+					static_cast<unsigned long long>(sourceSequence),
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
 					cropDecision.outwardExpanded ? 1 : 0,
@@ -6261,6 +6307,8 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<int>(
 						latestActivePictureEvidenceClassification),
 					detectorEnvelopeActive ? 1 : 0,
+					envelopeDecision.currentFrame ? "current" :
+						(envelopeDecision.held ? "held" : "inactive"),
 					leftBarContentActive ? 'L' : '-',
 					topBarContentActive ? 'T' : '-',
 					rightBarContentActive ? 'R' : '-',
@@ -6278,6 +6326,7 @@ struct LibplaceboVideoRenderer::Impl
 						effectiveGeometrySourceGeneration),
 					static_cast<unsigned long long>(frameGeneration),
 					cropDecision.reason.c_str(),
+					envelopeDecision.reason,
 					latestActivePicturePresentationRetentionReason.c_str());
 			}
 			if (cropDecision.applyCrop)

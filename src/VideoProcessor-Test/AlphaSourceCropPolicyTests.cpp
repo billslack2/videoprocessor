@@ -105,6 +105,75 @@ namespace Tests
 				false, false, false));
 		}
 
+		TEST_METHOD(CurrentFrameEnvelopeSurvivesGeometryChangeAndZeroHold)
+		{
+			PresentationEnvelopeInput envelope;
+			envelope.envelopeAvailable = true;
+			envelope.effectiveGeometryAvailable = true;
+			envelope.baseMatchesEffectiveGeometry = false;
+			envelope.detectedSourceSequence = 91;
+			envelope.currentSourceSequence = 91;
+			envelope.evidenceSourceGeneration = 7;
+			envelope.frameSourceGeneration = 7;
+			envelope.lastDetectionTick = 1000;
+			envelope.currentTick = 1001;
+			envelope.holdMs = 0;
+			const PresentationEnvelopeDecision envelopeDecision =
+				EvaluatePresentationEnvelope(envelope);
+			Assert::IsTrue(envelopeDecision.active);
+			Assert::IsTrue(envelopeDecision.currentFrame);
+			Assert::IsFalse(envelopeDecision.held);
+
+			// Model a trusted geometry publication on the same frame. The final
+			// union contains both that new authority and the current overlay.
+			Input crop = TrustedScopeCrop();
+			crop.geometry.top = 300;
+			crop.geometry.bottom = 1860;
+			crop.geometry.aspectRatio = 3840.0 / 1560.0;
+			crop.outwardPresentationActive = envelopeDecision.active;
+			crop.outwardExpansionAvailable = true;
+			crop.outwardExpansion = crop.geometry;
+			crop.outwardExpansion.top = 100;
+			crop.outwardExpansion.bottom = 1884;
+			crop.outwardExpansion.aspectRatio = 3840.0 / 1784.0;
+			crop.outwardExpansionSourceGeneration = 7;
+			const Decision cropDecision = Evaluate(crop);
+			Assert::IsTrue(cropDecision.applyCrop);
+			Assert::IsTrue(cropDecision.outwardExpanded);
+			Assert::AreEqual(100, cropDecision.sourceBounds.top);
+			Assert::AreEqual(1884, cropDecision.sourceBounds.bottom);
+		}
+
+		TEST_METHOD(HeldEnvelopeRequiresMatchingBaseGenerationAndDeadline)
+		{
+			PresentationEnvelopeInput input;
+			input.envelopeAvailable = true;
+			input.effectiveGeometryAvailable = true;
+			input.baseMatchesEffectiveGeometry = true;
+			input.detectedSourceSequence = 90;
+			input.currentSourceSequence = 91;
+			input.evidenceSourceGeneration = 7;
+			input.frameSourceGeneration = 7;
+			input.lastDetectionTick = 1000;
+			input.currentTick = 2999;
+			input.holdMs = 2000;
+			auto decision = EvaluatePresentationEnvelope(input);
+			Assert::IsTrue(decision.active);
+			Assert::IsTrue(decision.held);
+
+			input.baseMatchesEffectiveGeometry = false;
+			Assert::IsFalse(EvaluatePresentationEnvelope(input).active);
+			input.baseMatchesEffectiveGeometry = true;
+			input.frameSourceGeneration = 8;
+			Assert::IsFalse(EvaluatePresentationEnvelope(input).active);
+			input.frameSourceGeneration = 7;
+			input.currentTick = 3001;
+			Assert::IsFalse(EvaluatePresentationEnvelope(input).active);
+			input.currentTick = 1000;
+			input.holdMs = 0;
+			Assert::IsFalse(EvaluatePresentationEnvelope(input).active);
+		}
+
 		TEST_METHOD(AmbiguityHoldIsBoundedNonRenewableAndGenerationLocal)
 		{
 			AmbiguityHold hold;
