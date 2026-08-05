@@ -213,6 +213,7 @@ namespace Tests
 				static_cast<int>(decision.action));
 			input.genericLowerExpansion = true;
 			input.genericVerticalFitConfirmed = true;
+			input.genericVerticalFitAuthoritative = true;
 			decision = ResolveVerticalBarPresentation(input);
 			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::FIT),
@@ -310,6 +311,12 @@ namespace Tests
 				VerticalBarPresentationAction::NONE),
 				static_cast<int>(staleAction.action));
 			input.genericVerticalFitConfirmed = true;
+			const auto provisionalTwoEdgeAction =
+				ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::NONE),
+				static_cast<int>(provisionalTwoEdgeAction.action));
+			input.genericVerticalFitAuthoritative = true;
 			const auto currentTwoEdgeAction =
 				ResolveVerticalBarPresentation(input);
 			Assert::AreEqual(static_cast<int>(

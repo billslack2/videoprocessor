@@ -6341,6 +6341,11 @@ struct LibplaceboVideoRenderer::Impl
 				currentDetectorBottomExpansion;
 			verticalResolutionInput.genericVerticalFitConfirmed =
 				currentDetectorTopExpansion && currentDetectorBottomExpansion;
+			verticalResolutionInput.genericVerticalFitAuthoritative =
+				verticalResolutionInput.genericVerticalFitConfirmed &&
+				effectiveClassification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED &&
+				effectiveLatestSupportsCrop;
 			verticalResolutionInput.genericUpperBound =
 				currentDetectorTopExpansion
 				? scopePresentationCurrentBounds.top : effectiveGeometry.top;

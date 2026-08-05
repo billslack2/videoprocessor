@@ -136,8 +136,11 @@ namespace AlphaSourceCrop
 		bool genericUpperExpansion = false;
 		bool genericLowerExpansion = false;
 		// A retained union of unrelated top/bottom overlays is not aspect-ratio
-		// authority. Generic vertical FIT requires both edges on this frame.
+		// authority. Generic vertical FIT requires both edges on this frame and
+		// current trusted active-picture authority; provisional evidence may only
+		// retain or fail open, never resize the picture.
 		bool genericVerticalFitConfirmed = false;
+		bool genericVerticalFitAuthoritative = false;
 		int genericUpperBound = 0;
 		int genericLowerBound = 0;
 		int authoritativeTop = 0;

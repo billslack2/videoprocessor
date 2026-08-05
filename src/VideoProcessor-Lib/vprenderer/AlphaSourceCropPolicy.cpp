@@ -404,6 +404,7 @@ namespace AlphaSourceCrop
 			return decision;
 		}
 		if (input.genericVerticalFitConfirmed &&
+			input.genericVerticalFitAuthoritative &&
 			input.genericUpperExpansion && input.genericLowerExpansion)
 			decision.action = VerticalBarPresentationAction::FIT;
 		return decision;
