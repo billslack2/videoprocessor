@@ -644,23 +644,23 @@ namespace Tests
 			std::string error;
 			int specificity = 0;
 			Assert::IsTrue(DisplayRuleExpression::Matches(
-				"($eotf == PQ || $eotf == HLG) && $source_rate >= 23 && $source_rate < 31",
+				"(${eotf} == PQ || ${eotf} == HLG) && ${source_rate} >= 23 && ${source_rate} < 31",
 				values, specificity, error));
 			Assert::AreEqual(3, specificity);
 			Assert::IsTrue(DisplayRuleExpression::Matches(
-				"$source_rate==23-24 && !$hdr_metadata==false", values, specificity, error));
+				"${source_rate}==23-24 && !${hdr_metadata}==false", values, specificity, error));
 			Assert::IsTrue(DisplayRuleExpression::Matches(
-				"$key == \"Ctrl+F4\" || $key == \"Ctrl+F5\"", values, specificity, error));
+				"${key} == \"Ctrl+F4\" || ${key} == \"Ctrl+F5\"", values, specificity, error));
 			Assert::IsFalse(DisplayRuleExpression::Matches(
-				"$key == \"Ctrl+F6\"", values, specificity, error));
-			Assert::IsFalse(DisplayRuleExpression::Validate("$eotf > PQ", error));
+				"${key} == \"Ctrl+F6\"", values, specificity, error));
+			Assert::IsFalse(DisplayRuleExpression::Validate("${eotf} > PQ", error));
 			Assert::IsTrue(error.find("supports only = and !=") != std::string::npos);
-			Assert::IsFalse(DisplayRuleExpression::Validate("$unknown == value", error));
+			Assert::IsFalse(DisplayRuleExpression::Validate("${unknown} == value", error));
 			Assert::IsTrue(error.find("unknown variable") != std::string::npos);
 
 			DisplayRuleExpression::Expression compiled;
 			Assert::IsTrue(compiled.Compile(
-				"$cadence==24000/1001 || $key==\"Ctrl+F5\"", error, true));
+				"${cadence}==24000/1001 || ${key}==\"Ctrl+F5\"", error, true));
 			Assert::AreEqual(static_cast<size_t>(1), compiled.KeyChords().size());
 			Assert::AreEqual("ctrl+f5",
 				ConfigFile::NormalizeName(compiled.KeyChords().front()).c_str());

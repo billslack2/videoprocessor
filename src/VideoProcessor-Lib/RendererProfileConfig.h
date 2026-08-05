@@ -1513,7 +1513,7 @@ namespace RendererProfileConfig
 	}
 
 	// Extract application-local accelerators from the same configuration
-	// expressions used for selection. `$key` is deliberately restricted to a
+	// expressions used for selection. `${key}` is deliberately restricted to a
 	// quoted equality literal so registration is finite and deterministic.
 	inline bool CollectKeyChords(const Model& model, std::vector<std::string>& chords,
 		std::string& error)
