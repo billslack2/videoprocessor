@@ -2,10 +2,13 @@
 
 ## Status
 
-In Progress — 2026-08-05.
+Review — 2026-08-05.
 
-Follow-up implementation is underway on
-`codex/vp-0086-action-variable-expansion`, based on the merged default branch.
+Follow-up implementation was completed on
+`codex/vp-0086-action-variable-expansion` and merged into the default
+integration branch `v1.1.015-beta` through
+https://github.com/billslack2/videoprocessor/pull/42 at merge commit
+`67daf773db38432b797058322cb94dd8d6c4f6f1`.
 The single public variable form is `${variable}` in both `when` expressions
 and `run` arguments: `when` compares the value, while `run` passes the same
 event-bound value to the command. Every event action can evaluate any current
@@ -18,7 +21,7 @@ arguments. Checkpoints: `63d8c16` (action argument expansion) and `6046c09`
 (braced variable standardization). x64 Release build and all 82 focused
 `ConfigFileTests`/`VideoFrameFormatterTests` pass. The matching Release
 executable/DLL pair has been deployed locally after backup and hash verification.
-The follow-up is not yet merged or ready for review.
+The remaining review focus is live validation of the migrated configuration.
 
 Merged to the current default integration branch `v1.1.015-beta` through
 https://github.com/billslack2/videoprocessor/pull/40 at merge commit
