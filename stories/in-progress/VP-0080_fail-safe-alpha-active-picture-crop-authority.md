@@ -2,7 +2,24 @@
 
 ## Status
 
-Done as of 2026-08-04. PR
+In Progress. Reopened on 2026-08-05 after live Alpha viewing reproduced a
+remaining asymmetric-overlay defect. At 01:48:59 in `vp_debug.log`, a stable
+scope crop at `0,208-3840,1952` observed visible excluded-band pixels
+consistent with a top volume overlay. The safety veto correctly rejected the
+old crop, but presentation fell all the way to `0,0-3840,2160` for roughly
+four seconds instead of expanding only enough to include the new content. A
+second full-raster expansion occurred at 01:52:23.
+
+The evidence rules out P010 conversion state as the sole cause. The first bad
+transition occurred with valid P010 analysis; later native P210 sessions
+correctly remained conservative. The implementation task is to preserve the
+existing immediate outward-safety veto while deriving a pixel-safe minimal
+outward envelope for asymmetric top/bottom/side content. Full raster remains
+the fallback when the visible extent cannot be bounded safely. Automated
+coverage must include a stable scope crop plus a transient top volume bar and
+must prove no inward authority is granted to the overlay.
+
+The previously accepted baseline was completed on 2026-08-04. PR
 [#34](https://github.com/billslack2/videoprocessor/pull/34)
 merged source head `22b5293` into the `v1.1.015-beta` integration branch as
 merge commit `4fa0b6a` on 2026-08-03. The final clean x64 Release build
@@ -29,8 +46,9 @@ x64 Release deployment at `ad5f777`, whose ancestry contains both VP-0080
 merge commits. That build passed all 573 native tests. Continued Alpha viewing
 exercised dark movie content, scene transitions, visible UI outside the movie
 bounds, NLS changes, and renderer handoffs; the user found crop/detection
-transitions materially improved and the final behavior solid. This satisfies
-the last recorded acceptance condition.
+transitions materially improved and the final behavior solid. This satisfied
+the prior acceptance condition before the asymmetric-overlay regression above
+was reproduced.
 
 Buffered Alpha look-ahead is closed separately by VP-0082. Frame-correlated
 madVR NLS look-ahead remains VP-0085 and does not keep VP-0080 open.

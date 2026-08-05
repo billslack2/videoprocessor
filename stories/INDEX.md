@@ -111,7 +111,7 @@ they must not contain requirements that are absent from this file.
 | VP-0077 | Review | VP-0066 merged-beta acceptance validation |
 | VP-0078 | Review | Re-prime Alpha after a real output refresh transition |
 | VP-0079 | Done | Canonical queue profiles and gaming hotkeys |
-| VP-0080 | Done | Make Alpha active-picture cropping fail safe on live full-raster video |
+| VP-0080 | In Progress | Make Alpha active-picture cropping fail safe on live full-raster video |
 | VP-0081 | Backlog | Preserve madVR NLS geometry through output-readiness re-primes |
 | VP-0082 | Done | Buffered active-picture look-ahead for Alpha |
 | VP-0083 | Done | Alpha anamorphic presentation profiles |
