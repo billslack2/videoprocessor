@@ -1289,7 +1289,9 @@ namespace VideoProcessorTest
 					line.find('\t', separator + 1) == std::string::npos,
 					L"Every public-value inventory line needs two columns");
 				const std::string field = line.substr(0, separator);
-				const std::string value = line.substr(separator + 1);
+				std::string value = line.substr(separator + 1);
+				if (!value.empty() && value.back() == '\r')
+					value.pop_back();
 				Assert::IsTrue(inventoryTokens.find(field) != inventoryTokens.end(),
 					std::wstring(field.begin(), field.end()).c_str());
 				const std::string token = field + "\t" + value;

@@ -12,6 +12,26 @@ namespace Tests
 	TEST_CLASS(LibplaceboOutputPolicyTests)
 	{
 	public:
+		TEST_METHOD(OneShotInfoFrameSetIsAuthoritativeWhenReadbackDoesNotEcho)
+		{
+			Assert::AreEqual(
+				static_cast<int>(OneShotSignalAcceptance::SET_ACCEPTED),
+				static_cast<int>(ClassifyOneShotSignal(true, true, false)));
+			Assert::AreEqual(
+				static_cast<int>(OneShotSignalAcceptance::SET_ACCEPTED),
+				static_cast<int>(ClassifyOneShotSignal(true, false, false)));
+		}
+
+		TEST_METHOD(OneShotInfoFrameRequiresSuccessfulSet)
+		{
+			Assert::AreEqual(
+				static_cast<int>(OneShotSignalAcceptance::FAILED),
+				static_cast<int>(ClassifyOneShotSignal(false, true, true)));
+			Assert::AreEqual(
+				static_cast<int>(OneShotSignalAcceptance::READBACK_VERIFIED),
+				static_cast<int>(ClassifyOneShotSignal(true, true, true)));
+		}
+
 		TEST_METHOD(AutoBaselinePreservesComposedFullSrgb)
 		{
 			const Plan plan = MakePlan({});
@@ -42,6 +62,9 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(PrimariesRequest::REC709),
 				static_cast<int>(contract.transport.primaries));
 			Assert::IsTrue(contract.reportBt2020ToDisplay);
+			const Plan plan = MakePlan(contract.transport);
+			Assert::AreEqual(static_cast<int>(DxgiEncoding::FULL_G22_P709),
+				static_cast<int>(plan.desiredEncoding));
 		}
 
 		TEST_METHOD(Rec709TargetCannotRequestBt2020AviSignaling)

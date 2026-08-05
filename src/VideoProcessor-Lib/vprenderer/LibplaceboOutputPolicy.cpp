@@ -6,6 +6,18 @@
 
 namespace LibplaceboOutput
 {
+	OneShotSignalAcceptance ClassifyOneShotSignal(
+		bool setSucceeded,
+		bool readbackSucceeded,
+		bool readbackMatches)
+	{
+		if (!setSucceeded)
+			return OneShotSignalAcceptance::FAILED;
+		return readbackSucceeded && readbackMatches
+			? OneShotSignalAcceptance::READBACK_VERIFIED
+			: OneShotSignalAcceptance::SET_ACCEPTED;
+	}
+
 	PresentationRequest ParsePresentation(const std::string& value)
 	{
 		if (value == "composed")

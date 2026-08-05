@@ -135,6 +135,15 @@ namespace LibplaceboOutput
 		uint64_t channelsAboveStudioWhite = 0;
 	};
 
+	// NvAPI documents an InfoFrame SET as a one-shot transmission to the
+	// display. Some drivers subsequently return their automatic state from GET.
+	enum class OneShotSignalAcceptance
+	{
+		FAILED,
+		SET_ACCEPTED,
+		READBACK_VERIFIED
+	};
+
 	template<typename CheckPresent, typename SetColorSpace>
 	VerifiedTransition ExecuteVerifiedTransition(
 		CheckPresent&& checkPresent,
@@ -167,6 +176,10 @@ namespace LibplaceboOutput
 		unsigned int width,
 		unsigned int height,
 		unsigned int sampleStep = 1);
+	OneShotSignalAcceptance ClassifyOneShotSignal(
+		bool setSucceeded,
+		bool readbackSucceeded,
+		bool readbackMatches);
 	const char* ToString(PresentationRequest value);
 	const char* ToString(PresentationModel value);
 	const char* ToString(RangeRequest value);
