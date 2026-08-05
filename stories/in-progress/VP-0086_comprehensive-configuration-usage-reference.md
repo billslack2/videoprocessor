@@ -38,6 +38,8 @@ Follow-up checkpoint: `ebd5562` (`docs: correct viewport-driven NLS examples`).
 
 Follow-up checkpoint: `3874a6b` (`docs: separate NLS shader guidance`).
 
+Follow-up checkpoint: `1573904` (`feat: add source and profile event actions`).
+
 Completed work:
 
 - Rewrote the canonical `CONFIGURATION.html` as a structured public
@@ -86,6 +88,22 @@ Completed work:
   viewport sections (`scope` and `scope_anamorphic`), while the NLS scope
   example reuses the named `scope` viewport. Added one backend-specific,
   parser-validated custom-shader example to the general shader section.
+- Extended public `actions.<name>` support beyond refresh transitions. Actions
+  can now react to committed source/profile state, individual source-property
+  changes, effective input/scaling/display/viewport/queue profile changes,
+  and Alpha readiness. The parser rejects value-encoded event names; values
+  such as PQ, SDR, REC709, `scope`, and `base` belong in `when` conditions.
+- Added a single immutable transition context for actions: current source and
+  profile values, `previous.<source-field>`, `previous_profile.<group>`,
+  `event`, and `event_reason`. The GUI schedules only matched Alpha-scope
+  actions after the snapshot is applied, while preserving existing refresh
+  action behavior. Shared process-launch handling keeps relative action paths
+  resolved beside `VideoProcessor.cfg`.
+- Added focused unit coverage for accepted source/profile/state/renderer
+  events, PQ/REC709 selection, named-scope entry and baseline exit, prior-state
+  conditions, renderer-ready matching, and rejection of value-encoded event
+  names. Added every new event token to the reference value inventory and
+  documented three generic action examples.
 - Added task-oriented SDR, HDR-to-SDR/projector, BT.2020, scaling, NLS, and
   generic profile/viewport/queue guidance, plus troubleshooting guidance.
 - Refined the public field inventory to map every field to its individual
@@ -98,10 +116,10 @@ Completed work:
 Validation completed:
 
 - x64 Release `VideoProcessor-Test` build succeeded.
-- All 31 `ConfigFileTests` passed, including the field/value coverage test and
-  validation of the marked HTML configuration example.
+- All 33 `ConfigFileTests` passed, including the action-transition tests,
+  field/value coverage test, and validation of every marked HTML example.
 - Static inventory check now finds 72 documented public fields, 72 unique
-  anchors, 72 value tables, 96 documented enum/list values, and no missing
+  anchors, 72 value tables, 117 documented enum/list values, and no missing
   internal links. The two removed entries are intentionally internal-only.
 
 Outstanding validation: the required desktop-width browser rendering review
