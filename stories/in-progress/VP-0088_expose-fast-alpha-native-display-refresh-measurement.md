@@ -10,8 +10,8 @@ authoritative, and removes the legacy generic display sampler.
 ## Implementation progress
 
 - Implemented on local feature branch `codex/vp-0088-native-refresh` at
-  `3286abd`, `c587910`, and `8bfc9d8` from the current default integration branch
-  `v1.1.015-beta`.
+  `3286abd`, `c587910`, `8bfc9d8`, and `53554db` from the current default
+  integration branch `v1.1.015-beta`.
 - Alpha now publishes a finite, plausible renderer-native rate after its second
   coherent current-generation frame-statistics sample. The later eight-sample,
   0.25-second `Stable` evidence gate remains separate for phase-sensitive Alpha
@@ -43,9 +43,10 @@ authoritative, and removes the legacy generic display sampler.
 - The full x64 Release solution builds successfully, including
   `VideoProcessor-GUI`, `VideoProcessor-Test`, and
   `VideoProcessorVPRenderer.dll`.
-- Focused Alpha presentation telemetry tests pass 16/16, including periodic
-  DXGI disjoints, 24-on-60 completion normalization, and explicit mode-family
-  epoch reset. The full suite passes 572/573; the unrelated
+- Focused Alpha presentation telemetry and plugin-proxy tests pass 18/18,
+  including periodic DXGI disjoints, 24-on-60 completion normalization,
+  explicit mode-family epoch reset, and forwarding the output-mode hint across
+  the Alpha plugin boundary. The full suite passes 573/574; the unrelated
   existing `ConfigurationReferenceMatchesPublicFieldInventory` test rejects
   the active `general.fullscreen=true` configuration entry.
 - Deployed the committed `c587910` x64 Release runtime pair to
