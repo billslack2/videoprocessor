@@ -7,6 +7,40 @@ measurement path, but it is not surfaced through `IRenderer` or used by the
 GUI/OSD. This story wires it through safely, makes the renderer-native paths
 authoritative, and removes the legacy generic display sampler.
 
+## Implementation progress
+
+- Implemented on local feature branch `codex/vp-0088-native-refresh` at
+  `3286abd` and `c587910` from the current default integration branch
+  `v1.1.015-beta`.
+- Alpha now publishes a finite, plausible renderer-native rate after its second
+  coherent current-generation frame-statistics sample. The later eight-sample,
+  0.25-second `Stable` evidence gate remains separate for phase-sensitive Alpha
+  cadence work.
+- The Alpha plugin proxy forwards `GetDetectedDisplayRefreshRate`. The
+  renderer-native value is averaged over a rolling 20-second window after its
+  initial two-sample publication.
+- Alpha now separates the display-timing epoch from queue, source, and scene
+  detector generations. Its correction phase integrates capture/display drift
+  using seconds since display synchronization; queue resets, backlog recovery,
+  source changes, and detector changes can invalidate transient action
+  ownership but do not restart that clock or withdraw the native rate.
+- A real display-timing discontinuity (including disjoint/regressing DXGI
+  statistics or a swap-chain/display reinitialization) withdraws the native
+  rate and starts a new display-timing epoch. Diagnostics expose
+  `display_sync_s` so continuity is live-verifiable.
+- GUI selection is now configuration override, then renderer-native madVR or
+  Alpha, then truthful `Warming`. The `WaitForVBlank` worker, estimator,
+  fallback, warm-up, comparison, and associated tests were removed.
+- The full x64 Release solution builds successfully, including
+  `VideoProcessor-GUI`, `VideoProcessor-Test`, and
+  `VideoProcessorVPRenderer.dll`.
+- Focused Alpha telemetry/cadence, native selection, output-readiness, and
+  plugin-proxy tests pass 59/59. The full suite passes 568/569; the unrelated
+  existing `ConfigurationReferenceMatchesPublicFieldInventory` test rejects
+  the active `general.fullscreen=true` configuration entry.
+- Live Alpha and madVR transition validation remains pending; no deployment was
+  performed.
+
 ## User story
 
 As an Alpha renderer user, I want VP to display and use the actual output
@@ -51,14 +85,22 @@ warm-up, or comparison value and must be removed.
    as a fallback, long-run phase reference, or diagnostic comparison. Do not
    replace it with `QueryDisplayConfig`; that is only a configured target-rate
    guardrail, not a physical timing measurement.
-5. Validate an Alpha-native measurement only against its own coherent telemetry
-   generation and the configured target refresh family. Quarantine and log an
-   implausible value rather than feeding it into timing, PPM, or OSD state.
-6. Clear the Alpha-native published value on renderer restart, swap-chain
-   rebuild, output-monitor change, refresh-family transition, telemetry
-   generation change, `DXGI_ERROR_FRAME_STATISTICS_DISJOINT`, and loss of frame
-   statistics. A prior-generation value must never survive a transition.
-7. Improve diagnostics without confusing the values: log source, generation,
+5. Average coherent Alpha-native display cadence over a rolling 20-second
+   window after the immediate two-sample publication. Validate it only against
+   its display-timing generation and the configured target refresh family.
+   Quarantine and log an implausible value rather than feeding it into timing,
+   PPM, or OSD state.
+6. Give display timing its own lifetime. Clear the Alpha-native value and
+   restart elapsed display-synchronization time only for an actual display
+   timing discontinuity: swap-chain/display initialization, output-monitor or
+   refresh transition, regressing/incoherent statistics, or
+   `DXGI_ERROR_FRAME_STATISTICS_DISJOINT`. A temporary unavailable sample must
+   not discard an otherwise coherent clock.
+7. Queue reset, backlog recovery, capture/source generation, scene-detector
+   generation, scene events, and UI/OSD activity must not restart the display
+   synchronization clock, rate window, or accumulated cadence phase. They may
+   cancel or detach unsafe pending action/verification ownership.
+8. Improve diagnostics without confusing the values: log source, generation,
    evidence state, sample count, native rate, configured target rate, and the
    reason whenever the selected source changes. The OSD must show `Warming`
    only until a valid renderer-native rate exists and identify a
@@ -68,9 +110,8 @@ warm-up, or comparison value and must be removed.
 
 - Do not use the capture/input frame rate as the display rate.
 - Do not trust a nominal Windows display-path rate as the actual measured rate.
-- Do not change refresh switching, queue policy, PPM configuration, or cadence
-  correction decisions beyond using a validated Alpha-native measurement where
-  the current code uses the selected display rate.
+- Do not derive cadence elapsed time from queue, capture, source, scene, or OSD
+  lifetimes.
 
 ## Validation
 
@@ -78,8 +119,10 @@ warm-up, or comparison value and must be removed.
    24, 50, 59.94, and 60 Hz synthetic frame-statistics sequences; require a
    current, plausible published rate as soon as two coherent samples exist,
    while separately retaining tests for the later stable-evidence state.
-2. Test disjoint, unavailable statistics, counter regression, generation
-   changes, and implausible rates; each must withdraw the published rate.
+2. Test disjoint statistics, counter/QPC regression, display-timing generation
+   changes, and implausible rates; each must withdraw the published rate. Test
+   that queue-generation changes and transient unavailable samples preserve the
+   display clock and published rate.
 3. Add selection-policy tests proving precedence is override, valid
    renderer-native measurement, then `Warming` when the selected renderer has
    no valid native measurement.
@@ -91,6 +134,9 @@ warm-up, or comparison value and must be removed.
 5. Confirm that the displayed rate clears during a mode change rather than
    showing a stale old rate, and that cadence correction, queue stability,
    latency, OSD, and SDR/HDR behavior do not regress.
+6. Confirm through `display_sync_s` and phase diagnostics that live queue reset,
+   backlog recovery, capture/source replacement, and scene-detector reset do
+   not restart display elapsed time or accumulated drop/repeat timing.
 
 ## Relevant code
 
