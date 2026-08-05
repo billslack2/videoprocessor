@@ -8,12 +8,13 @@ current friendly-name-only UI makes duplicated Windows registrations especially
 ambiguous.
 
 Implemented and deployed on 2026-08-05. The final deployment was rebuilt from
-`origin/v1.1.015-beta` commit `67daf773db38432b797058322cb94dd8d6c4f6f1`.
+the current `origin/v1.1.015-beta` tip and merged as commit
+`da1d725112602bfa72b50bc4c84b66458aea8c73`.
 Discovery now defaults to hiding
 registered in-process servers under the current Windows System32 directory,
 supports the documented opt-out, retains the independent DeckLink exclusion,
 and logs each candidate's friendly name, CLSID, server path, and decision.
-The x64 Release build succeeded and the native test suite passed 578 tests.
+The x64 Release build succeeded and the native test suite passed 582 tests.
 
 ## User story
 
