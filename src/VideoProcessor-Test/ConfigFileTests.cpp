@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include <ConfigFile.h>
+#include <EventActionLauncher.h>
 #include <MainConfigSchema.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
 #include <RendererConfigView.h>
@@ -443,6 +444,10 @@ namespace VideoProcessorTest
 					"on: source.eotf.changed\n"
 					"when: $eotf==\"pq\" && $previous.eotf==\"sdr\"\n"
 					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.eotf_context]\n"
+					"on: source.eotf.changed\n"
+					"when: $primaries==\"rec709\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe ${eotf} ${primaries} ${previous.eotf} ${profile.viewport} ${event} ${event_reason}\n"
 					"[actions.rec709]\n"
 					"on: source.primaries.changed\n"
 					"when: $primaries==\"rec709\"\n"
@@ -467,7 +472,7 @@ namespace VideoProcessorTest
 			RendererProfileConfig::Model model;
 			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
 				std::wstring(error.begin(), error.end()).c_str());
-			Assert::AreEqual(static_cast<size_t>(6), model.actions.size());
+			Assert::AreEqual(static_cast<size_t>(7), model.actions.size());
 
 			auto source = [](const char* eotf, const char* primaries)
 			{
@@ -511,6 +516,16 @@ namespace VideoProcessorTest
 				"committed_scope_pq", "state.committed"));
 			Assert::IsTrue(hasInvocation(entered.actions,
 				"eotf_pq", "source.eotf.changed"));
+			const auto context = std::find_if(entered.actions.begin(),
+				entered.actions.end(), [](const UnifiedProfileRuntime::ActionInvocation& action)
+				{
+					return action.action.name == "eotf_context" &&
+						action.event == "source.eotf.changed";
+				});
+			Assert::IsTrue(context != entered.actions.end());
+			Assert::AreEqual(
+				"pq rec709 sdr scope source.eotf.changed source",
+				context->action.arguments.c_str());
 			Assert::IsTrue(hasInvocation(entered.actions,
 				"rec709", "source.primaries.changed"));
 			Assert::IsTrue(hasInvocation(entered.actions,
@@ -530,6 +545,63 @@ namespace VideoProcessorTest
 			Assert::AreEqual("base", left.snapshot->viewport.profile.c_str());
 			Assert::IsTrue(hasInvocation(left.actions, "scope_left",
 				"profile.viewport.changed"));
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(EventActionArgumentsExpandAllSupportedValues)
+		{
+			RendererProfileConfig::Model::EventAction action;
+			action.arguments =
+				"${eotf}|${previous.eotf}|${profile.viewport}|${event}|${event_reason}";
+			RendererProfileConfig::Model::EventAction expanded;
+			std::string error;
+			Assert::IsTrue(EventActionLauncher::ExpandArgumentVariables(action,
+				[](const std::string& variable, std::string& value)
+				{
+					const std::map<std::string, std::string> values = {
+						{ "eotf", "pq" },
+						{ "previous.eotf", "sdr" },
+						{ "profile.viewport", "scope" },
+						{ "event", "source.eotf.changed" },
+						{ "event_reason", "source" }
+					};
+					const auto found = values.find(variable);
+					if (found == values.end()) return false;
+					value = found->second;
+					return true;
+				}, expanded, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual("pq|sdr|scope|source.eotf.changed|source",
+				expanded.arguments.c_str());
+
+			action.arguments = "${missing}";
+			Assert::IsFalse(EventActionLauncher::ExpandArgumentVariables(action,
+				[](const std::string&, std::string&) { return false; },
+				expanded, error));
+			Assert::IsTrue(error.find("unavailable") != std::string::npos);
+		}
+
+		TEST_METHOD(UnifiedActionsRejectArgumentVariableForWrongEvent)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-invalid-unified-action-argument.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[actions.invalid]\n"
+					"on: source.eotf.changed\n"
+					"when: $eotf==\"pq\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe ${actual_refresh}\n";
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("cannot expand variable") !=
+				std::string::npos);
 			DeleteFileA(path.c_str());
 		}
 

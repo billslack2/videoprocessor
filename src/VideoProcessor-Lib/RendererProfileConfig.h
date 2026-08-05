@@ -556,27 +556,62 @@ namespace RendererProfileConfig
 				IsActionSourceField(variable.substr(9)));
 	}
 
+	inline bool IsActionVariableAvailableForEvents(
+		const std::string& variable, const std::vector<std::string>& events)
+	{
+		for (const std::string& event : events)
+		{
+			const bool supported = IsRefreshActionEvent(event) ?
+				(variable == "event" || variable == "event_reason" ||
+					variable == "actual_refresh" ||
+					variable == "requested_refresh" ||
+					variable == "previous_refresh") :
+				IsActionSnapshotVariable(variable);
+			if (!supported)
+				return false;
+		}
+		return true;
+	}
+
 	inline bool ValidateTargetActionExpression(
 		const DisplayRuleExpression::Expression& expression,
 		const std::vector<std::string>& events, const std::string& context,
 		std::string& error)
 	{
 		for (const std::string& variable : expression.Variables())
-			for (const std::string& event : events)
+			if (!IsActionVariableAvailableForEvents(variable, events))
 			{
-				const bool supported = IsRefreshActionEvent(event) ?
-					(variable == "event" || variable == "event_reason" ||
-						variable == "actual_refresh" ||
-						variable == "requested_refresh" ||
-						variable == "previous_refresh") :
-					IsActionSnapshotVariable(variable);
-				if (!supported)
-				{
-					error = context + " cannot use variable '$" + variable +
-						"' with event '" + event + "'";
-					return false;
-				}
+				error = context + " cannot use variable '$" + variable +
+					"' with every event named by on=";
+				return false;
 			}
+		return true;
+	}
+
+	inline bool ValidateActionArgumentTemplates(const std::string& arguments,
+		const std::vector<std::string>& events, const std::string& context,
+		std::string& error)
+	{
+		size_t cursor = 0;
+		while ((cursor = arguments.find("${", cursor)) != std::string::npos)
+		{
+			const size_t close = arguments.find('}', cursor + 2);
+			if (close == std::string::npos)
+			{
+				error = context + " has an unterminated ${variable} reference";
+				return false;
+			}
+			const std::string variable = ConfigFile::NormalizeName(
+				arguments.substr(cursor + 2, close - cursor - 2));
+			if (variable.empty() ||
+				!IsActionVariableAvailableForEvents(variable, events))
+			{
+				error = context + " cannot expand variable '${" + variable +
+					"}' for every event named by on=";
+				return false;
+			}
+			cursor = close + 1;
+		}
 		return true;
 	}
 
@@ -821,6 +856,9 @@ namespace RendererProfileConfig
 				error = "[" + section + "] run= must begin with an .exe, .bat, or .cmd path";
 				return false;
 			}
+			if (!ValidateActionArgumentTemplates(action.arguments, action.events,
+				"[" + section + "] run=", error))
+				return false;
 			std::string renderer;
 			if (config.TryGetString(section, "renderer", renderer) &&
 				!ParseActionRenderer(config, section, renderer, action, error))
@@ -1207,6 +1245,9 @@ namespace RendererProfileConfig
 				}
 				config.TryGetString(section, "arguments", action.arguments);
 				config.TryGetString(section, "working_directory", action.workingDirectory);
+				if (!ValidateActionArgumentTemplates(action.arguments,
+					action.events, "[" + section + "] arguments=", error))
+					return false;
 				std::string renderer;
 				if (config.TryGetString(section, "renderer", renderer) &&
 					!ParseActionRenderer(config, section, renderer, action, error))
