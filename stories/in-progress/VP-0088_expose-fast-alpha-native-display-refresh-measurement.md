@@ -2,10 +2,12 @@
 
 ## Status
 
-In progress (2026-08-05). The current Alpha renderer has a fast, renderer-native
-measurement path, but it is not surfaced through `IRenderer` or used by the
-GUI/OSD. This story wires it through safely, makes the renderer-native paths
-authoritative, and removes the legacy generic display sampler.
+In progress (2026-08-05). Live validation rejected the deployed Alpha
+completion-clock fallback: it reported approximately 57 Hz during a composed
+swap-chain transition while madVR correctly reported 59.950622 Hz. The
+corrective candidate uses a target-bound physical vblank clock for Alpha and
+madVR's own runtime value for madVR. It is built and tested but **not deployed**
+pending user review.
 
 ## Implementation progress
 
@@ -24,19 +26,14 @@ authoritative, and removes the legacy generic display sampler.
   using seconds since display synchronization; queue resets, backlog recovery,
   source changes, and detector changes can invalidate transient action
   ownership but do not restart that clock or withdraw the native rate.
-- Alpha's persistent display clock now uses the QPC completion timestamp taken
-  immediately after `pl_swapchain_swap_buffers`. Coherent DXGI frame statistics
-  remain the preferred precision input, but a DXGI disjoint resets only that
-  local correlation; it does not withdraw the rate, restart elapsed display
-  time, or discard accumulated cadence phase.
-- When DXGI frame statistics are unavailable, swap-completion intervals use the
-  active output mode only to normalize likely vblank multiples. This permits a
-  renderer-owned physical cadence estimate without mistaking 24 fps delivery
-  for a 60 Hz display. The configured mode is never published as the measured
-  rate itself.
-- A swap-chain initialization/recreation or confirmed output-mode family change
-  withdraws the native rate and starts a new display-timing epoch. Diagnostics
-  expose `display_sync_s` so continuity is live-verifiable.
+- The deployed `53554db` revision used the QPC completion timestamp after
+  `pl_swapchain_swap_buffers`, with DXGI frame statistics as a preferred input
+  and configured-mode normalization as a fallback. Live logs disproved that
+  model: after a COMPOSED/BITBLT transition with zero frame statistics it
+  estimated 57 Hz from VP pacing. The corrective candidate replaces it.
+- The deployed revision also reset the display epoch at swap-chain recreation.
+  That is now treated as a bug: diagnostics and correction phase must remain
+  continuous across that renderer lifecycle event.
 - GUI selection is now configuration override, then renderer-native madVR or
   Alpha, then truthful `Warming`. The `WaitForVBlank` worker, estimator,
   fallback, warm-up, comparison, and associated tests were removed.
@@ -56,6 +53,29 @@ authoritative, and removes the legacy generic display sampler.
   `DA878990...A5CE`, renderer DLL `25061DC9...6E2`). Active configuration and
   state hashes were unchanged.
 - Live Alpha and madVR transition validation remains pending.
+- Corrective candidate (uncommitted on `codex/vp-0088-native-refresh`):
+  - removes completion-timestamp and nominal-mode normalization as refresh-rate
+    evidence completely; those values describe VP delivery/pacing, not the
+    physical display;
+  - adds a target-bound `IDXGIOutput::WaitForVBlank`/QPC clock with a rolling
+    20-second rate window. It becomes valid after eight physical waits spanning
+    0.25 seconds, persists across renderer/window/swap-chain/queue/scene
+    transitions, and starts a new epoch only when the output monitor or active
+    target refresh changes;
+  - uses the physical clock's rate, phase, and synchronized seconds in Alpha's
+    display telemetry and scene correction. DXGI frame statistics remain
+    present-correlation diagnostics only, and a missing physical measurement
+    fails closed rather than inventing a rate;
+  - polls madVR `IMadVRInfo::refreshRate` on the graph owner every second,
+    independently of the existing 30-second full diagnostics poll, while
+    retaining the last good rate through a transient COM read failure;
+  - corrects `DwmGetCompositionTimingInfo` to use `NULL` on modern Windows;
+    DWM remains diagnostic/DirectShow phase data rather than an Alpha rate
+    source.
+- The candidate has a successful x64 Release solution build and focused timing
+  tests 18/18. The full suite is 573/574; the only failure is the known,
+  unrelated `ConfigurationReferenceMatchesPublicFieldInventory` assertion on
+  `general.fullscreen=true`.
 
 ## User story
 
@@ -88,31 +108,27 @@ warm-up, or comparison value and must be removed.
 1. Define an Alpha renderer-native refresh-rate reporting contract through
    `IRenderer::GetDetectedDisplayRefreshRate`, backed by the current
    presentation telemetry.
-2. Publish the first finite, plausible Alpha-native rate as soon as coherent
-   current-generation presentation evidence permits a rate calculation; do not
-   wait for the legacy sampler, an arbitrary multi-second quarantine, or the
-   later `Stable` evidence threshold. Prefer coherent DXGI refresh/QPC pairs,
-   then use renderer completion intervals normalized by the configured mode.
+2. Publish the first finite, plausible Alpha-native rate from a target-bound
+   physical vblank observation after only a short, bounded sample interval; do
+   not wait for a multi-second quarantine or a 20-second averaging window. Do
+   not use renderer completion timestamps, input/capture cadence, or a nominal
+   mode rate as refresh-rate evidence.
 3. Make renderer-native values the only automatic selected-rate source:
    madVR uses `IMadVRInfo` and Alpha uses its presentation telemetry. An
    explicit `[display_refresh_rate_override]` remains authoritative.
-4. Remove `DisplayRefreshRateSampler` and its `WaitForVBlank` worker, state,
-   warm-up/quarantine policy, OSD inputs, and selection logic. Do not retain it
-   as a fallback, long-run phase reference, or diagnostic comparison. Do not
-   replace it with `QueryDisplayConfig`; that is only a configured target-rate
-   guardrail, not a physical timing measurement.
-5. Average coherent Alpha-native display cadence over a rolling 20-second
-   window after the immediate two-sample publication. Validate it only against
-   its display-timing generation and the configured target refresh family.
-   Quarantine and log an implausible value rather than feeding it into timing,
-   PPM, or OSD state.
-6. Give display timing its own lifetime. Clear the Alpha-native value and
-   restart elapsed display-synchronization time only for an actual display
-   timing discontinuity: swap-chain/display initialization, output-monitor, or
-   confirmed refresh-family transition. Regressing/incoherent DXGI statistics,
+4. Use a target-bound `WaitForVBlank` worker as Alpha's physical source. It is
+   not a generic fallback or a renderer-completion proxy; it must be keyed to
+   the output monitor and can use `QueryDisplayConfig` only to detect an actual
+   target mode transition.
+5. Average physical vblank intervals over a rolling 20-second window after the
+   short first publication. DXGI frame statistics may cross-check presentation
+   correlation but cannot replace the physical rate when a composed/bitblt
+   chain has no frame statistics.
+6. Give display timing its own lifetime. Restart elapsed display-synchronization
+   time only for an actual output-monitor or active refresh-mode change.
+   Swap-chain/window initialization, queue/capture/source/scene transitions,
    `DXGI_ERROR_FRAME_STATISTICS_DISJOINT`, and temporary unavailable samples
-   reset only the local DXGI correlation and must not discard the renderer
-   completion clock.
+   must not restart it.
 7. Queue reset, backlog recovery, capture/source generation, scene-detector
    generation, scene events, and UI/OSD activity must not restart the display
    synchronization clock, rate window, or accumulated cadence phase. They may
