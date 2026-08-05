@@ -445,6 +445,14 @@ namespace AlphaSourceCrop
 			sceneSnapshotIsCurrentGeneration || pixelSafeRetentionActive;
 	}
 
+	bool RequiresImmediateSubtitleBarAnalysis(bool currentBarAuthority,
+		bool frameLocalRetentionEvaluated, bool frameLocalRetentionSafe,
+		bool translationAlreadyActive)
+	{
+		return currentBarAuthority && frameLocalRetentionEvaluated &&
+			!frameLocalRetentionSafe && !translationAlreadyActive;
+	}
+
 	PresentationEnvelopeDecision EvaluatePresentationEnvelope(
 		const PresentationEnvelopeInput& input)
 	{

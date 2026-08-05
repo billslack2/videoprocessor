@@ -765,6 +765,20 @@ namespace Tests
 				false, false, false));
 		}
 
+		TEST_METHOD(UnsafeNewBarContentForcesOnlyTheInitialSubtitleScan)
+		{
+			Assert::IsTrue(RequiresImmediateSubtitleBarAnalysis(
+				true, true, false, false));
+			Assert::IsFalse(RequiresImmediateSubtitleBarAnalysis(
+				false, true, false, false));
+			Assert::IsFalse(RequiresImmediateSubtitleBarAnalysis(
+				true, false, false, false));
+			Assert::IsFalse(RequiresImmediateSubtitleBarAnalysis(
+				true, true, true, false));
+			Assert::IsFalse(RequiresImmediateSubtitleBarAnalysis(
+				true, true, false, true));
+		}
+
 		TEST_METHOD(CurrentFrameEnvelopeSurvivesGeometryChangeAndZeroHold)
 		{
 			PresentationEnvelopeInput envelope;

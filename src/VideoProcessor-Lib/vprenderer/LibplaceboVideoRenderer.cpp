@@ -3421,9 +3421,16 @@ struct LibplaceboVideoRenderer::Impl
 		// non-black content inside those already-proven encoded bars.
 		// Sampling every third rendered frame keeps the 4K CPU cost negligible
 		// while still reacting in roughly 50-125 ms.
+		const bool subtitleAnalysisScheduled = authorityIsCurrentBars &&
+			++scopeSubtitleAnalysisFrame % 3 == 0;
 		if (authorityIsCurrentBars &&
-			(forceAnalysis || ++scopeSubtitleAnalysisFrame % 3 == 0))
+			(forceAnalysis || subtitleAnalysisScheduled))
 		{
+			if (forceAnalysis && !subtitleAnalysisScheduled)
+			{
+				DebugLog::Log(
+					"libplacebo scope subtitle fit: forcing immediate bar scan after retained crop became pixel-unsafe");
+			}
 			// This is intentionally fixed-capacity: no full-frame surface and no
 			// recurring heap allocation is needed to establish the black floor.
 			std::array<uint16_t, 8192> blackSamples{};
@@ -6000,10 +6007,28 @@ struct LibplaceboVideoRenderer::Impl
 		const ActivePictureBounds* subtitleBarAuthority =
 			currentBarAuthority ? &nlsGeometry :
 			(sceneBarAuthority ? &sceneVerificationGeometry : nullptr);
+		// The first subtitle/UI frame may be the one that makes the retained crop
+		// pixel-unsafe. Do not wait for the normal three-frame subtitle scan in
+		// that case: inspect the already-proven bars on this frame so final
+		// presentation can translate immediately instead of flashing full raster
+		// (or a generic fit) for one frame.
+		const bool subtitleTranslationAlreadyActive =
+			scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
+			AlphaSourceCrop::IsVerticalBarPresentationActive(
+				scopeVerticalBarPresentation, GetTickCount64(),
+				scopeSubtitleHoldMs, sourceSequence) &&
+			scopeVerticalBarPresentation.action ==
+				AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
+		const bool forceSubtitleBarAnalysis =
+			AlphaSourceCrop::RequiresImmediateSubtitleBarAnalysis(
+				subtitleBarAuthority != nullptr,
+				latestActivePicturePresentationRetentionEvaluated,
+				latestActivePicturePresentationRetentionSafe,
+				subtitleTranslationAlreadyActive);
 		const float subtitleShiftSourcePixels =
 			UpdateScopeSubtitleShift(&analysisSource,
 				width, height, scopeScreenActive, subtitleBarAuthority,
-				sourceSequence);
+				sourceSequence, forceSubtitleBarAnalysis);
 
 		struct pl_frame image{};
 		if (nativeRgbUpload)

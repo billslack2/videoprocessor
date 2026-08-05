@@ -177,6 +177,13 @@ namespace AlphaSourceCrop
 		bool sceneSnapshotIsCurrentGeneration,
 		bool pixelSafeRetentionActive);
 
+	// A retained crop which has just become pixel-unsafe needs an immediate
+	// low-cost scan of its already-trusted bars. Once a translation is active,
+	// normal cadence resumes because the held placement already covers the cue.
+	bool RequiresImmediateSubtitleBarAnalysis(bool currentBarAuthority,
+		bool frameLocalRetentionEvaluated, bool frameLocalRetentionSafe,
+		bool translationAlreadyActive);
+
 	struct PresentationEnvelopeInput
 	{
 		bool envelopeAvailable = false;
