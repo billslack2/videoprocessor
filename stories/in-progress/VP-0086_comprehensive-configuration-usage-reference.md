@@ -40,6 +40,8 @@ Follow-up checkpoint: `3874a6b` (`docs: separate NLS shader guidance`).
 
 Follow-up checkpoint: `1573904` (`feat: add source and profile event actions`).
 
+Follow-up checkpoint: `0f4ac91` (`feat: route actions by renderer`).
+
 Completed work:
 
 - Rewrote the canonical `CONFIGURATION.html` as a structured public
@@ -91,19 +93,30 @@ Completed work:
 - Extended public `actions.<name>` support beyond refresh transitions. Actions
   can now react to committed source/profile state, individual source-property
   changes, effective input/scaling/display/viewport/queue profile changes,
-  and Alpha readiness. The parser rejects value-encoded event names; values
-  such as PQ, SDR, REC709, `scope`, and `base` belong in `when` conditions.
+  and active-renderer readiness. The parser rejects value-encoded event names;
+  values such as PQ, SDR, REC709, `scope`, and `base` belong in `when`
+  conditions.
 - Added a single immutable transition context for actions: current source and
   profile values, `previous.<source-field>`, `previous_profile.<group>`,
-  `event`, and `event_reason`. The GUI schedules only matched Alpha-scope
-  actions after the snapshot is applied, while preserving existing refresh
-  action behavior. Shared process-launch handling keeps relative action paths
+  `event`, and `event_reason`. The GUI schedules only matched renderer actions
+  after the snapshot is applied, while preserving existing refresh action
+  behavior. Shared process-launch handling keeps relative action paths
   resolved beside `VideoProcessor.cfg`.
 - Added focused unit coverage for accepted source/profile/state/renderer
   events, PQ/REC709 selection, named-scope entry and baseline exit, prior-state
   conditions, renderer-ready matching, and rejection of value-encoded event
   names. Added every new event token to the reference value inventory and
   documented three generic action examples.
+- Renamed the event-action routing key from `scope` to `renderer`. The omitted
+  target is the built-in `vprenderer`, which VP identifies directly by its
+  backend. A named target is resolved through a user-defined
+  `[renderer_alias]` identifier and its one-based renderer-selector index;
+  `*` applies to whichever renderer is active. Generalized aliases beyond the
+  formerly fixed names, rejected the old action key, added source/sample
+  comments and reference guidance, and documented that `refresh.*` events are
+  currently Alpha-published while source/profile/state/ready events can use
+  aliases. Unit coverage exercises built-in, alias, wildcard, unknown alias,
+  and rejected legacy-key cases.
 - Added task-oriented SDR, HDR-to-SDR/projector, BT.2020, scaling, NLS, and
   generic profile/viewport/queue guidance, plus troubleshooting guidance.
 - Refined the public field inventory to map every field to its individual
@@ -116,7 +129,7 @@ Completed work:
 Validation completed:
 
 - x64 Release `VideoProcessor-Test` build succeeded.
-- All 33 `ConfigFileTests` passed, including the action-transition tests,
+- All 35 `ConfigFileTests` passed, including the action-transition tests,
   field/value coverage test, and validation of every marked HTML example.
 - Static inventory check now finds 72 documented public fields, 72 unique
   anchors, 72 value tables, 117 documented enum/list values, and no missing
