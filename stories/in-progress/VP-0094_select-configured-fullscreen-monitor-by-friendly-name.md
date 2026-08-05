@@ -25,6 +25,17 @@ Epson, verified the created host on the requested `HMONITOR`, and subsequent
 display-timing diagnostics remained on `DISPLAY2`. Renderer/toggle/disconnect
 acceptance checks remain pending before moving the story to review.
 
+Startup testing then exposed a display-switch ordering issue specific to the
+existing borderless fullscreen path: the original Epson host remained logically
+visible, correctly placed, foreground, and focused, but the projector could
+continue composing its desktop until fullscreen was toggled and a fresh host was
+created. Follow-up commit `279cbf7` re-arms native fullscreen-host recovery after
+`WM_DISPLAYCHANGE`, then re-shows and reapplies the configured monitor bounds and
+z-order before focus. The x64 Release build and all 582 tests passed. The
+2026-08-05 deployment logged the madVR display change followed by successful
+placement recovery on `EPSON PJ`; physical startup confirmation and the remaining
+acceptance checks are still pending.
+
 ## User story
 
 As a VideoProcessor user with an Epson projector that is not always connected
