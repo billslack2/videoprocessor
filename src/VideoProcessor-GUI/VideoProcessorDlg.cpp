@@ -233,19 +233,26 @@ BOOL CALLBACK EnumerateActiveMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM param
 
 bool PopulateActiveMonitorFriendlyNames(std::vector<ActiveMonitorCandidate>& candidates)
 {
+	std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+	std::vector<DISPLAYCONFIG_MODE_INFO> modes;
 	UINT32 pathCount = 0;
 	UINT32 modeCount = 0;
-	LONG result = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, nullptr,
-		&modeCount, nullptr, nullptr);
+	LONG result = ERROR_SUCCESS;
+	do
+	{
+		result = GetDisplayConfigBufferSizes(
+			QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount);
+		if (result != ERROR_SUCCESS)
+			return false;
+		paths.resize(pathCount);
+		modes.resize(modeCount);
+		result = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount,
+			paths.data(), &modeCount, modes.data(), nullptr);
+	} while (result == ERROR_INSUFFICIENT_BUFFER);
 	if (result != ERROR_SUCCESS)
 		return false;
-
-	std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
-	std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
-	result = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(),
-		&modeCount, modes.data(), nullptr);
-	if (result != ERROR_SUCCESS)
-		return false;
+	paths.resize(pathCount);
+	modes.resize(modeCount);
 
 	for (UINT32 index = 0; index < pathCount; ++index)
 	{
@@ -1696,9 +1703,9 @@ void CVideoProcessorDlg::FullscreenMonitorName(const CString& name)
 {
 	m_fullscreenMonitorName = name;
 	m_fullscreenMonitorName.Trim();
-	DbgLog((LOG_TRACE, 1,
-		TEXT("Fullscreen monitor selection configured: requested='%s'"),
-		m_fullscreenMonitorName.GetString()));
+	DebugLog::Log(
+		"Fullscreen monitor selection configured: requested='%S'",
+		m_fullscreenMonitorName.GetString());
 }
 
 
@@ -5605,6 +5612,35 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 	if (m_windowedFullScreenMode == true)
 		m_fullScreenVideoWindow->CreateWindowedFullscreen(hmon, this->GetSafeHwnd());
 
+	const HWND fullscreenHwnd = m_fullScreenVideoWindow->GetHWND();
+	HMONITOR actualMonitor = MonitorFromWindow(
+		fullscreenHwnd, MONITOR_DEFAULTTONULL);
+	if (actualMonitor != hmon)
+	{
+		MONITORINFO monitorInfo = { sizeof(monitorInfo) };
+		if (GetMonitorInfo(hmon, &monitorInfo))
+		{
+			const RECT& rect = monitorInfo.rcMonitor;
+			const BOOL moved = ::SetWindowPos(fullscreenHwnd, nullptr,
+				rect.left, rect.top, rect.right - rect.left,
+				rect.bottom - rect.top,
+				SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER |
+				SWP_SHOWWINDOW);
+			actualMonitor = MonitorFromWindow(
+				fullscreenHwnd, MONITOR_DEFAULTTONULL);
+			DebugLog::Log(
+				"Fullscreen monitor placement correction: requested=%p before=%p moved=%d after=%p",
+				reinterpret_cast<void*>(hmon),
+				reinterpret_cast<void*>(MonitorFromWindow(
+					this->GetSafeHwnd(), MONITOR_DEFAULTTONEAREST)),
+				moved ? 1 : 0, reinterpret_cast<void*>(actualMonitor));
+		}
+	}
+	DebugLog::Log(
+		"Fullscreen monitor placement verified: requested=%p actual=%p matched=%d",
+		reinterpret_cast<void*>(hmon), reinterpret_cast<void*>(actualMonitor),
+		actualMonitor == hmon ? 1 : 0);
+
 	SetTimer(FULLSCREEN_FOCUS_TIMER_ID, 5000, nullptr);
 
 }
@@ -5626,9 +5662,9 @@ HMONITOR CVideoProcessorDlg::SelectFullscreenMonitor()
 			now - m_lastFullscreenMonitorSelectionLogTick >= 5000)
 		{
 			m_lastFullscreenMonitorSelectionLogTick = now;
-			DbgLog((LOG_TRACE, 1,
-				TEXT("Fullscreen monitor selection: requested='%s' fallback=existing reason=configured monitor unavailable (active monitor enumeration failed)"),
-				m_fullscreenMonitorName.GetString()));
+			DebugLog::Log(
+				"Fullscreen monitor selection: requested='%S' fallback=existing reason=configured monitor unavailable (active monitor enumeration failed)",
+				m_fullscreenMonitorName.GetString());
 		}
 		return fallback;
 	}
@@ -5646,16 +5682,16 @@ HMONITOR CVideoProcessorDlg::SelectFullscreenMonitor()
 		m_lastFullscreenMonitorSelectionLogTick = now;
 		const CString candidateDescription = DescribeMonitorCandidates(candidates);
 		if (matches.size() == 1)
-			DbgLog((LOG_TRACE, 1,
-				TEXT("Fullscreen monitor selection: requested='%s' candidates=[%s] selected=%s (%s)"),
+			DebugLog::Log(
+				"Fullscreen monitor selection: requested='%S' candidates=[%S] selected=%S (%S)",
 				m_fullscreenMonitorName.GetString(), candidateDescription.GetString(),
-				matches.front()->sourceName.GetString(), matches.front()->friendlyName.GetString()));
+				matches.front()->sourceName.GetString(), matches.front()->friendlyName.GetString());
 		else
-			DbgLog((LOG_TRACE, 1,
-				TEXT("Fullscreen monitor selection: requested='%s' candidates=[%s] fallback=existing reason=%s"),
+			DebugLog::Log(
+				"Fullscreen monitor selection: requested='%S' candidates=[%S] fallback=existing reason=%s",
 				m_fullscreenMonitorName.GetString(), candidateDescription.GetString(),
-				matches.empty() ? TEXT("configured monitor unavailable") :
-				TEXT("configured monitor name is ambiguous")));
+				matches.empty() ? "configured monitor unavailable" :
+				"configured monitor name is ambiguous");
 	}
 
 	return matches.size() == 1 ? matches.front()->monitor : fallback;
