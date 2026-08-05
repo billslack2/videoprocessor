@@ -39,6 +39,24 @@ namespace AlphaSourceCrop
 				(!verticalCrop ||
 				((bounds.top & 1) == 0 && (bounds.bottom & 1) == 0));
 		}
+
+		bool SameBounds(const ActivePictureBounds& left,
+			const ActivePictureBounds& right)
+		{
+			return left.left == right.left && left.top == right.top &&
+				left.right == right.right && left.bottom == right.bottom &&
+				left.rasterWidth == right.rasterWidth &&
+				left.rasterHeight == right.rasterHeight;
+		}
+
+		int ChromaAlignedDisplacement(int pixels)
+		{
+			if (pixels > 0)
+				return (pixels + 1) & ~1;
+			if (pixels < 0)
+				return -(((-pixels) + 1) & ~1);
+			return 0;
+		}
 	}
 
 	BarContentEdge SelectVerticalBarContentEdge(
@@ -50,6 +68,239 @@ namespace AlphaSourceCrop
 		if (lowerRequiredShift > 0.5f)
 			return BarContentEdge::BOTTOM;
 		return BarContentEdge::NONE;
+	}
+
+	VerticalBarContentDecision EvaluateVerticalBarContent(
+		const VerticalBarContentInput& input)
+	{
+		VerticalBarContentDecision decision;
+		auto overlayLike = [sampledColumns = input.sampledColumns](bool available,
+			int occupiedDepth, int barPixels, int peakSamples)
+		{
+			if (!available || barPixels <= 0 || sampledColumns <= 0)
+				return false;
+			// A receiver volume bar may be almost full-width but only a few rows
+			// deep. Conversely, compact UI may be tall but localized. Treat either
+			// shape as overlay-like; real picture fill is broad in both dimensions.
+			return occupiedDepth > 0 && peakSamples > 0 &&
+				(occupiedDepth <= std::max(8, barPixels * 45 / 100) ||
+				 peakSamples <= std::max(8, sampledColumns * 45 / 100));
+		};
+		decision.upperOverlayLike = overlayLike(input.upperContent,
+			input.upperOccupiedDepth, input.upperBarPixels,
+			input.upperPeakSamples);
+		decision.lowerOverlayLike = overlayLike(input.lowerContent,
+			input.lowerOccupiedDepth, input.lowerBarPixels,
+			input.lowerPeakSamples);
+
+		const bool upperRequiresPlacement = input.upperRequiredShift > 0.5f;
+		const bool lowerRequiresPlacement = input.lowerRequiredShift > 0.5f;
+		if ((upperRequiresPlacement &&
+			(input.upperOccupiedDepth <= 0 || input.upperPeakSamples <= 0 ||
+			 input.upperBarPixels <= 0 || input.sampledColumns <= 0)) ||
+			(lowerRequiresPlacement &&
+				(input.lowerOccupiedDepth <= 0 || input.lowerPeakSamples <= 0 ||
+				 input.lowerBarPixels <= 0 || input.sampledColumns <= 0)))
+		{
+			decision.action = VerticalBarPresentationAction::FAIL_OPEN;
+			return decision;
+		}
+		const bool forceFit =
+			(input.upperContent && input.lowerContent) ||
+			(input.upperContent && input.bottomTranslationHeld) ||
+			(input.lowerContent && input.topTranslationHeld) ||
+			(upperRequiresPlacement && !decision.upperOverlayLike) ||
+			(lowerRequiresPlacement && !decision.lowerOverlayLike);
+		if (forceFit)
+		{
+			decision.action = VerticalBarPresentationAction::FIT;
+			return decision;
+		}
+
+		switch (SelectVerticalBarContentEdge(
+			decision.upperOverlayLike ? input.upperRequiredShift : 0.0f,
+			decision.lowerOverlayLike ? input.lowerRequiredShift : 0.0f))
+		{
+		case BarContentEdge::TOP:
+			decision.action = VerticalBarPresentationAction::TRANSLATE;
+			decision.translationPixels = -input.upperRequiredShift;
+			break;
+		case BarContentEdge::BOTTOM:
+			decision.action = VerticalBarPresentationAction::TRANSLATE;
+			decision.translationPixels = input.lowerRequiredShift;
+			break;
+		default:
+			break;
+		}
+		return decision;
+	}
+
+	bool IsVerticalBarPresentationActive(
+		const VerticalBarPresentationState& state,
+		uint64_t currentTick, uint64_t holdMs,
+		uint64_t currentSourceSequence)
+	{
+		if (state.action == VerticalBarPresentationAction::NONE)
+			return false;
+		if (state.sourceSequence != 0 &&
+			state.sourceSequence == currentSourceSequence)
+		{
+			return true;
+		}
+		return holdMs != 0 && state.lastDetectionTick != 0 &&
+			currentTick >= state.lastDetectionTick &&
+			currentTick - state.lastDetectionTick <= holdMs;
+	}
+
+	VerticalBarPresentationState UpdateVerticalBarPresentation(
+		const VerticalBarPresentationUpdateInput& input)
+	{
+		const bool previousActive = IsVerticalBarPresentationActive(
+			input.previous, input.currentTick, input.holdMs,
+			input.currentSourceSequence);
+		VerticalBarPresentationState state = previousActive
+			? input.previous : VerticalBarPresentationState{};
+		VerticalBarContentDecision current = input.current;
+		if (!input.translationEnabled &&
+			current.action == VerticalBarPresentationAction::TRANSLATE)
+		{
+			current.action = VerticalBarPresentationAction::FIT;
+			current.translationPixels = 0.0f;
+		}
+		if (current.action == VerticalBarPresentationAction::NONE)
+		{
+			if (!input.translationEnabled &&
+				state.action == VerticalBarPresentationAction::TRANSLATE)
+			{
+				state.action = VerticalBarPresentationAction::FIT;
+				state.translationPixels = 0.0f;
+			}
+			return state;
+		}
+
+		// The hold is a release delay, not authority over fresh evidence. A new
+		// current-frame decision replaces the held action immediately; this lets a
+		// broad menu disappear into an ordinary one-edge subtitle without waiting.
+		if (current.action == VerticalBarPresentationAction::FAIL_OPEN)
+		{
+			state = {};
+			state.action = current.action;
+			state.lastDetectionTick = input.currentTick;
+			state.sourceSequence = input.currentSourceSequence;
+			return state;
+		}
+
+		if (current.action == VerticalBarPresentationAction::FIT)
+		{
+			const bool retainPrevious = previousActive;
+			const int retainedTop = retainPrevious ? state.detectedTop : 0;
+			const int retainedBottom = retainPrevious ? state.detectedBottom : 0;
+			state.action = current.action;
+			state.translationPixels = 0.0f;
+			state.detectedTop = input.upperContent
+				? (retainedTop > 0
+					? std::min(retainedTop, input.upperContentTop)
+					: input.upperContentTop)
+				: retainedTop;
+			state.detectedBottom = input.lowerContent
+				? std::max(retainedBottom, input.lowerContentBottom)
+				: retainedBottom;
+			state.lastDetectionTick = input.currentTick;
+			state.sourceSequence = input.currentSourceSequence;
+			return state;
+		}
+
+		const bool sameDirection = previousActive &&
+			state.action == VerticalBarPresentationAction::TRANSLATE &&
+			((state.translationPixels < 0.0f) ==
+			 (current.translationPixels < 0.0f));
+		if (!sameDirection)
+			state = {};
+		state.action = VerticalBarPresentationAction::TRANSLATE;
+		if (current.translationPixels < 0.0f)
+		{
+			state.detectedTop = sameDirection && state.detectedTop > 0
+				? std::min(state.detectedTop, input.upperContentTop)
+				: input.upperContentTop;
+			if (!sameDirection || current.translationPixels <
+				state.translationPixels - input.placementSnapThreshold)
+			{
+				state.translationPixels = current.translationPixels;
+			}
+		}
+		else
+		{
+			state.detectedBottom = sameDirection
+				? std::max(state.detectedBottom, input.lowerContentBottom)
+				: input.lowerContentBottom;
+			if (!sameDirection || current.translationPixels >
+				state.translationPixels + input.placementSnapThreshold)
+			{
+				state.translationPixels = current.translationPixels;
+			}
+		}
+		state.lastDetectionTick = input.currentTick;
+		state.sourceSequence = input.currentSourceSequence;
+		return state;
+	}
+
+	VerticalBarPresentationResolution ResolveVerticalBarPresentation(
+		const VerticalBarPresentationResolutionInput& input)
+	{
+		VerticalBarPresentationResolution decision;
+		decision.action = input.detailedAction;
+		decision.translationPixels = input.translationPixels;
+		if (input.detailedAction == VerticalBarPresentationAction::FAIL_OPEN)
+			return decision;
+		if (input.detailedAction == VerticalBarPresentationAction::FIT)
+		{
+			decision.translationPixels = 0.0f;
+			return decision;
+		}
+		if (input.detailedAction == VerticalBarPresentationAction::TRANSLATE)
+		{
+			if (std::abs(input.translationPixels) <= 0.5f)
+			{
+				decision.action = VerticalBarPresentationAction::FAIL_OPEN;
+				decision.translationPixels = 0.0f;
+				return decision;
+			}
+			if (input.authoritativeTop < 0 ||
+				input.authoritativeBottom <= input.authoritativeTop ||
+				input.authoritativeBottom > input.rasterHeight)
+			{
+				decision.action = VerticalBarPresentationAction::FAIL_OPEN;
+				decision.translationPixels = 0.0f;
+				return decision;
+			}
+			const int requestedShift = ChromaAlignedDisplacement(
+				static_cast<int>(input.translationPixels < 0.0f
+					? std::floor(input.translationPixels)
+					: std::ceil(input.translationPixels)));
+			const int appliedShift = std::max(-input.authoritativeTop,
+				std::min(requestedShift,
+					input.rasterHeight - input.authoritativeBottom));
+			const int translatedTop = input.authoritativeTop + appliedShift;
+			const int translatedBottom =
+				input.authoritativeBottom + appliedShift;
+			const bool oppositeGenericEvidence =
+				(input.translationPixels < 0.0f && input.genericLowerExpansion) ||
+				(input.translationPixels > 0.0f && input.genericUpperExpansion);
+			const bool uncoveredSameEdgeEvidence =
+				(input.translationPixels < 0.0f && input.genericUpperExpansion &&
+				 input.genericUpperBound < translatedTop) ||
+				(input.translationPixels > 0.0f && input.genericLowerExpansion &&
+				 input.genericLowerBound > translatedBottom);
+			if (oppositeGenericEvidence || uncoveredSameEdgeEvidence)
+			{
+				decision.action = VerticalBarPresentationAction::FIT;
+				decision.translationPixels = 0.0f;
+			}
+			return decision;
+		}
+		if (input.genericUpperExpansion || input.genericLowerExpansion)
+			decision.action = VerticalBarPresentationAction::FIT;
+		return decision;
 	}
 
 	bool UpdateFullRasterPresentationAuthority(bool previouslyAuthoritative,
@@ -72,6 +323,49 @@ namespace AlphaSourceCrop
 	{
 		return trustedCropIsCurrentGeneration ||
 			sceneSnapshotIsCurrentGeneration || pixelSafeRetentionActive;
+	}
+
+	PresentationEnvelopeDecision EvaluatePresentationEnvelope(
+		const PresentationEnvelopeInput& input)
+	{
+		PresentationEnvelopeDecision decision;
+		if (!input.envelopeAvailable)
+			return decision;
+		if (!input.effectiveGeometryAvailable)
+		{
+			decision.reason = "trusted final geometry is unavailable";
+			return decision;
+		}
+		if (input.evidenceSourceGeneration == 0 ||
+			input.evidenceSourceGeneration != input.frameSourceGeneration)
+		{
+			decision.reason = "envelope belongs to a stale source generation";
+			return decision;
+		}
+		if (input.detectedSourceSequence != 0 &&
+			input.detectedSourceSequence == input.currentSourceSequence)
+		{
+			decision.active = true;
+			decision.currentFrame = true;
+			decision.reason =
+				"current-frame envelope follows final trusted geometry";
+			return decision;
+		}
+		if (!input.baseMatchesEffectiveGeometry)
+		{
+			decision.reason = "held envelope base no longer matches geometry";
+			return decision;
+		}
+		if (input.holdMs == 0 || input.lastDetectionTick == 0 ||
+			input.currentTick - input.lastDetectionTick > input.holdMs)
+		{
+			decision.reason = "held envelope expired";
+			return decision;
+		}
+		decision.active = true;
+		decision.held = true;
+		decision.reason = "matching envelope retained during release hold";
+		return decision;
 	}
 
 	void AmbiguityHold::Reset()
@@ -127,6 +421,11 @@ namespace AlphaSourceCrop
 	{
 		Decision decision;
 		decision.sourceBounds = FullRaster(input.rasterWidth, input.rasterHeight);
+		if (input.presentationFailOpen)
+		{
+			decision.reason = "presentation evidence requested fail-open";
+			return decision;
+		}
 		if (!input.automaticCropEnabled)
 		{
 			decision.reason = "automatic crop is off; preserving full raster";
@@ -172,9 +471,16 @@ namespace AlphaSourceCrop
 			input.outwardExpansionSourceGeneration != 0 &&
 			input.outwardExpansionSourceGeneration ==
 				input.frameSourceGeneration;
+		const bool boundedVerticalTranslation =
+			input.verticalTranslationActive &&
+			input.verticalTranslationPixels != 0 &&
+			SameBounds(input.verticalTranslationBase, input.geometry) &&
+			input.verticalTranslationSourceGeneration != 0 &&
+			input.verticalTranslationSourceGeneration ==
+				input.frameSourceGeneration;
 		if (!input.latestObservationSupportsCrop &&
 			!boundedAmbiguousRetention && !pixelSafeAmbiguousRetention &&
-			!boundedOutwardExpansion)
+			!boundedOutwardExpansion && !boundedVerticalTranslation)
 		{
 			decision.reason =
 				"latest observation does not reaffirm crop authority";
@@ -197,6 +503,16 @@ namespace AlphaSourceCrop
 			decision.reason = "shared crop bounds are not chroma aligned";
 			return decision;
 		}
+		if (input.verticalTranslationActive &&
+			input.outwardPresentationActive &&
+			(input.outwardExpansion.top != input.geometry.top ||
+			 input.outwardExpansion.bottom != input.geometry.bottom))
+		{
+			decision.reason =
+				"vertical fit and presentation translation cannot be combined";
+			return decision;
+		}
+		ActivePictureBounds presentation = input.geometry;
 		if (input.outwardPresentationActive)
 		{
 			if (!boundedOutwardExpansion)
@@ -231,23 +547,60 @@ namespace AlphaSourceCrop
 				return decision;
 			}
 
-			decision.sourceBounds = input.outwardExpansion;
-			decision.applyCrop = true;
+			presentation = input.outwardExpansion;
 			decision.outwardExpanded = true;
-			decision.reason =
-				"bounded outward presentation expansion accepted";
-			return decision;
 		}
 
-		decision.sourceBounds = input.geometry;
+		if (input.verticalTranslationActive)
+		{
+			if (!boundedVerticalTranslation)
+			{
+				decision.reason =
+					"vertical presentation translation lacks current bounded evidence";
+				return decision;
+			}
+			const int alignedRequest = ChromaAlignedDisplacement(
+				input.verticalTranslationPixels);
+			const int minimumShift = -presentation.top;
+			const int maximumShift = input.rasterHeight - presentation.bottom;
+			const int appliedShift = std::max(minimumShift,
+				std::min(alignedRequest, maximumShift));
+			if (appliedShift == 0 || (appliedShift & 1) != 0)
+			{
+				decision.reason =
+					"vertical presentation translation cannot be applied safely";
+				return decision;
+			}
+			presentation.top += appliedShift;
+			presentation.bottom += appliedShift;
+			if (!ValidBounds(presentation,
+				input.rasterWidth, input.rasterHeight) ||
+				!CropEdgesAreChromaAligned(presentation,
+					input.rasterWidth, input.rasterHeight))
+			{
+				decision.reason =
+					"translated presentation bounds are invalid or not chroma aligned";
+				return decision;
+			}
+			decision.verticallyTranslated = true;
+			decision.verticalTranslationPixels = appliedShift;
+		}
+
+		decision.sourceBounds = presentation;
 		decision.applyCrop = true;
-		decision.reason = input.latestObservationSupportsCrop
+		decision.reason = decision.verticallyTranslated
+			? (decision.outwardExpanded
+				? "bounded outward fit and same-size vertical translation accepted"
+				: "same-size vertical presentation translation accepted")
+			: (decision.outwardExpanded
+				? "bounded outward presentation expansion accepted"
+				: (input.latestObservationSupportsCrop
 			? "generation-current shared crop authority accepted"
 			: (pixelSafeAmbiguousRetention
 				? "frame-local pixel-safe presentation retained prior crop"
 				: (input.sceneVerificationHoldActive
-				? "bounded scene verification retained current trusted crop"
-				: "bounded ambiguity hold retained current trusted crop"));
+					? "bounded scene verification retained current trusted crop"
+					: "bounded ambiguity hold retained current trusted crop"))));
 		return decision;
 	}
 

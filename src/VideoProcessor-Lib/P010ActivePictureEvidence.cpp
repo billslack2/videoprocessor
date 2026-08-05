@@ -15,6 +15,8 @@ constexpr int kEdgeDepthSamples = 6;
 constexpr int kGlobalGridWidth = 16;
 constexpr int kGlobalGridHeight = 16;
 constexpr int kGlobalNearBlackP90 = 96;
+constexpr int kVisibleExtentLineSamples = 256;
+constexpr int kVisibleExtentDepthSamples = 64;
 
 template <typename T>
 T Bounded(T value, T minimum, T maximum)
@@ -286,6 +288,110 @@ bool ExcludedBandPixelsAreSafe(const P010EdgeEvidence& evidence)
 		evidence.neutralChromaFraction >= 0.90 &&
 		evidence.continuity >= 0.99;
 }
+
+struct ExcludedBandVisibleExtent
+{
+	bool available = false;
+	int coordinate = 0;
+};
+
+bool IsCrediblyVisible(SampleContext& samples, int x, int y,
+	int blackThreshold)
+{
+	AnalysisLumaSample sample;
+	if (!samples.source.Sample(x, y, sample))
+		return false;
+	++samples.lumaSamples;
+	++samples.chromaSamples;
+	// Match the denser renderer-local bar pass: blackThreshold already carries
+	// 24 codes above the measured floor, so this is floor + 32. The denser grid
+	// and 2x2 support rule retain noise rejection while covering small controls.
+	const bool elevatedLuma = sample.luma > blackThreshold + 8;
+	const bool colored = (std::abs(static_cast<int>(sample.chromaU) - 512) >= 64 ||
+		std::abs(static_cast<int>(sample.chromaV) - 512) >= 64) &&
+		sample.luma >= blackThreshold + 8;
+	return elevatedLuma || colored;
+}
+
+ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
+	bool top, int barPixels, int blackThreshold)
+{
+	ExcludedBandVisibleExtent result;
+	if (barPixels <= 0)
+		return result;
+	const int depthSamples = std::min(kVisibleExtentDepthSamples, barPixels);
+	int previousOccupied = -2;
+	for (int d = 0; d < depthSamples; ++d)
+	{
+		const int depth = ((d * 2 + 1) * barPixels) / (depthSamples * 2);
+		const int y = top ? depth : samples.source.height - 1 - depth;
+		int visible = 0;
+		for (int i = 0; i < kVisibleExtentLineSamples; ++i)
+		{
+			const int x = ((i * 2 + 1) * samples.source.width) /
+				(kVisibleExtentLineSamples * 2);
+			visible += IsCrediblyVisible(samples, x, y, blackThreshold) ? 1 : 0;
+		}
+		// Two spatial samples are enough for a narrow glyph, but require the
+		// signal on adjacent depth rows below to reject isolated hot pixels.
+		if (visible < 2)
+			continue;
+		if (d != previousOccupied + 1)
+		{
+			previousOccupied = d;
+			continue;
+		}
+		const int outerDepthIndex = previousOccupied;
+		const int extentDepth = ((outerDepthIndex * 2 + 1) * barPixels) /
+			(depthSamples * 2);
+		const int sampleStep = std::max(1, barPixels / depthSamples);
+		result.available = true;
+		result.coordinate = top ? std::max(0, extentDepth - sampleStep) :
+			std::min(samples.source.height,
+				samples.source.height - extentDepth + sampleStep);
+		return result;
+	}
+	return result;
+}
+
+ExcludedBandVisibleExtent FindVerticalVisibleExtent(SampleContext& samples,
+	bool left, int barPixels, int blackThreshold)
+{
+	ExcludedBandVisibleExtent result;
+	if (barPixels <= 0)
+		return result;
+	const int depthSamples = std::min(kVisibleExtentDepthSamples, barPixels);
+	int previousOccupied = -2;
+	for (int d = 0; d < depthSamples; ++d)
+	{
+		const int depth = ((d * 2 + 1) * barPixels) / (depthSamples * 2);
+		const int x = left ? depth : samples.source.width - 1 - depth;
+		int visible = 0;
+		for (int i = 0; i < kVisibleExtentLineSamples; ++i)
+		{
+			const int y = ((i * 2 + 1) * samples.source.height) /
+				(kVisibleExtentLineSamples * 2);
+			visible += IsCrediblyVisible(samples, x, y, blackThreshold) ? 1 : 0;
+		}
+		if (visible < 2)
+			continue;
+		if (d != previousOccupied + 1)
+		{
+			previousOccupied = d;
+			continue;
+		}
+		const int outerDepthIndex = previousOccupied;
+		const int extentDepth = ((outerDepthIndex * 2 + 1) * barPixels) /
+			(depthSamples * 2);
+		const int sampleStep = std::max(1, barPixels / depthSamples);
+		result.available = true;
+		result.coordinate = left ? std::max(0, extentDepth - sampleStep) :
+			std::min(samples.source.width,
+				samples.source.width - extentDepth + sampleStep);
+		return result;
+	}
+	return result;
+}
 }
 
 
@@ -528,11 +634,57 @@ P010PresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 		source.width - trustedPresentation.right,
 		trustedPresentation.right, blackFloor, blackThreshold);
 
+	const auto topExtent = FindHorizontalVisibleExtent(samples, true,
+		trustedPresentation.top, blackThreshold);
+	const auto bottomExtent = FindHorizontalVisibleExtent(samples, false,
+		source.height - trustedPresentation.bottom, blackThreshold);
+	const auto leftExtent = FindVerticalVisibleExtent(samples, true,
+		trustedPresentation.left, blackThreshold);
+	const auto rightExtent = FindVerticalVisibleExtent(samples, false,
+		source.width - trustedPresentation.right, blackThreshold);
+	const bool unsafeTop = !ExcludedBandPixelsAreSafe(result.excludedTop) ||
+		topExtent.available;
+	const bool unsafeBottom = !ExcludedBandPixelsAreSafe(result.excludedBottom) ||
+		bottomExtent.available;
+	const bool unsafeLeft = !ExcludedBandPixelsAreSafe(result.excludedLeft) ||
+		leftExtent.available;
+	const bool unsafeRight = !ExcludedBandPixelsAreSafe(result.excludedRight) ||
+		rightExtent.available;
 	result.excludedBandsPixelSafe =
-		ExcludedBandPixelsAreSafe(result.excludedLeft) &&
-		ExcludedBandPixelsAreSafe(result.excludedTop) &&
-		ExcludedBandPixelsAreSafe(result.excludedRight) &&
-		ExcludedBandPixelsAreSafe(result.excludedBottom);
+		!unsafeLeft && !unsafeTop && !unsafeRight && !unsafeBottom;
+	if (!result.excludedBandsPixelSafe)
+	{
+		// Every unsafe edge must be bounded. Otherwise fail open exactly as
+		// before; a partial estimate must never hide unmeasured live pixels.
+		const bool allUnsafeEdgesBounded = (!unsafeTop || topExtent.available) &&
+			(!unsafeBottom || bottomExtent.available) &&
+			(!unsafeLeft || leftExtent.available) &&
+			(!unsafeRight || rightExtent.available);
+		if (allUnsafeEdgesBounded)
+		{
+			const int verticalMargin = std::max(2, source.height / 180);
+			const int horizontalMargin = std::max(2, source.width / 180);
+			result.outwardVisibleBounds = trustedPresentation;
+			if (unsafeTop)
+				result.outwardVisibleBounds.top = std::max(
+					0, topExtent.coordinate - verticalMargin);
+			if (unsafeBottom)
+				result.outwardVisibleBounds.bottom = std::min(source.height,
+					bottomExtent.coordinate + verticalMargin);
+			if (unsafeLeft)
+				result.outwardVisibleBounds.left = std::max(
+					0, leftExtent.coordinate - horizontalMargin);
+			if (unsafeRight)
+				result.outwardVisibleBounds.right = std::min(source.width,
+					rightExtent.coordinate + horizontalMargin);
+			result.outwardVisibleBounds.aspectRatio = static_cast<double>(
+				result.outwardVisibleBounds.right - result.outwardVisibleBounds.left) /
+				std::max(1, result.outwardVisibleBounds.bottom -
+					result.outwardVisibleBounds.top);
+			result.outwardVisibleBounds.symmetricBars = false;
+			result.outwardVisibleBoundsAvailable = true;
+		}
+	}
 	result.proposedBoundsAvailable = result.activePicture.available &&
 		IsValidBoundsForSource(result.activePicture.proposedBounds, source);
 	result.proposedBoundsContained = result.proposedBoundsAvailable &&
@@ -542,7 +694,9 @@ P010PresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 	result.lumaSamples += samples.lumaSamples;
 	result.chromaSamples += samples.chromaSamples;
 
-	if (!result.excludedBandsPixelSafe)
+	if (result.outwardVisibleBoundsAvailable)
+		result.reason = "bounded visible excluded-band content requires outward fit";
+	else if (!result.excludedBandsPixelSafe)
 		result.reason = "visible, textured, or colored excluded-band pixels reject retention";
 	else if (result.proposedBoundsContained)
 		result.reason = "current proposal is contained and excluded bands remain pixel-safe";

@@ -59,6 +59,438 @@ namespace Tests
 				static_cast<int>(SelectVerticalBarContentEdge(0.5f, 0.5f)));
 		}
 
+		TEST_METHOD(VerticalBarPolicyTranslatesOnlyOneOverlayLikeEdge)
+		{
+			VerticalBarContentInput input;
+			input.lowerContent = true;
+			input.lowerOccupiedDepth = 42;
+			input.lowerPeakSamples = 220;
+			input.lowerBarPixels = 280;
+			input.upperBarPixels = 280;
+			input.sampledColumns = 1800;
+			input.lowerRequiredShift = 75.0f;
+			auto decision = EvaluateVerticalBarContent(input);
+			Assert::IsTrue(decision.lowerOverlayLike);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(decision.action));
+			Assert::AreEqual(75.0f, decision.translationPixels, 0.001f);
+
+			input = {};
+			input.upperContent = true;
+			input.upperOccupiedDepth = 36;
+			input.upperPeakSamples = 180;
+			input.upperBarPixels = 280;
+			input.lowerBarPixels = 280;
+			input.sampledColumns = 1800;
+			input.upperRequiredShift = 91.0f;
+			decision = EvaluateVerticalBarContent(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(decision.action));
+			Assert::AreEqual(-91.0f, decision.translationPixels, 0.001f);
+		}
+
+		TEST_METHOD(VerticalBarPolicyTranslatesThinFullWidthVolumeButFitsPictureFill)
+		{
+			VerticalBarContentInput input;
+			input.upperContent = true;
+			input.upperOccupiedDepth = 42;
+			input.upperPeakSamples = 1000; // thin, almost full-width volume OSD
+			input.upperBarPixels = 280;
+			input.lowerBarPixels = 280;
+			input.sampledColumns = 1800;
+			input.upperRequiredShift = 75.0f;
+			auto decision = EvaluateVerticalBarContent(input);
+			Assert::IsTrue(decision.upperOverlayLike);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(decision.action));
+			Assert::AreEqual(-75.0f, decision.translationPixels, 0.001f);
+
+			input.upperOccupiedDepth = 150; // deep and full-width picture fill
+			decision = EvaluateVerticalBarContent(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(decision.action));
+		}
+
+		TEST_METHOD(VerticalBarPolicyFitsOpposingOrReversingContent)
+		{
+			VerticalBarContentInput input;
+			input.upperContent = true;
+			input.upperOccupiedDepth = 42;
+			input.upperPeakSamples = 220;
+			input.upperBarPixels = 280;
+			input.lowerBarPixels = 280;
+			input.sampledColumns = 1800;
+			input.upperRequiredShift = 75.0f;
+
+			input.lowerContent = true;
+			input.lowerOccupiedDepth = 42;
+			input.lowerPeakSamples = 220;
+			input.lowerRequiredShift = 75.0f;
+			auto decision = EvaluateVerticalBarContent(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(decision.action));
+
+			input.lowerContent = false;
+			input.lowerRequiredShift = 0.0f;
+			input.bottomTranslationHeld = true;
+			decision = EvaluateVerticalBarContent(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(decision.action));
+		}
+
+		TEST_METHOD(VerticalBarResolutionNeverCombinesTranslationWithOppositeFit)
+		{
+			VerticalBarPresentationResolutionInput input;
+			input.detailedAction = VerticalBarPresentationAction::TRANSLATE;
+			input.translationPixels = 75.0f;
+			input.authoritativeTop = 274;
+			input.authoritativeBottom = 1884;
+			input.rasterHeight = 2160;
+			input.genericLowerExpansion = true; // same lower edge
+			input.genericLowerBound = 1960;
+			auto decision = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(decision.action));
+			Assert::AreEqual(75.0f, decision.translationPixels, 0.001f);
+
+			input.genericLowerBound = 1988; // farther than translated lower edge
+			decision = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(decision.action));
+			Assert::AreEqual(0.0f, decision.translationPixels, 0.001f);
+
+			input.genericLowerBound = 1960;
+			input.genericUpperExpansion = true; // opposite current evidence
+			decision = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(decision.action));
+
+			input = {};
+			input.detailedAction = VerticalBarPresentationAction::TRANSLATE;
+			input.translationPixels = -75.0f;
+			input.authoritativeTop = 274;
+			input.authoritativeBottom = 1884;
+			input.rasterHeight = 2160;
+			input.genericUpperExpansion = true;
+			input.genericUpperBound = 198;
+			decision = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(decision.action));
+			input.genericUpperBound = 100;
+			decision = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(decision.action));
+
+			input = {};
+			input.genericUpperExpansion = true;
+			decision = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(decision.action));
+		}
+
+		TEST_METHOD(VerticalBarPresentationStoresTranslationAndRetainsFitUnion)
+		{
+			VerticalBarContentInput volume;
+			volume.upperBarPixels = 280;
+			volume.lowerContent = true;
+			volume.lowerOccupiedDepth = 42;
+			volume.lowerPeakSamples = 1000;
+			volume.lowerBarPixels = 280;
+			volume.sampledColumns = 1800;
+			volume.lowerRequiredShift = 75.0f;
+			VerticalBarPresentationUpdateInput update;
+			update.current = EvaluateVerticalBarContent(volume);
+			update.lowerContent = true;
+			update.lowerContentBottom = 1988;
+			update.currentTick = 1000;
+			update.currentSourceSequence = 10;
+			update.holdMs = 2000;
+			update.placementSnapThreshold = 12;
+			update.translationEnabled = true;
+			auto state = UpdateVerticalBarPresentation(update);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(state.action));
+			Assert::AreEqual(75.0f, state.translationPixels, 0.001f);
+			Assert::AreEqual(1988, state.detectedBottom);
+
+			// Current upper evidence opposite the held lower translation has already
+			// been normalized to FIT. Retain both extents through one held owner.
+			update.previous = state;
+			update.current = {};
+			update.current.action = VerticalBarPresentationAction::FIT;
+			update.upperContent = true;
+			update.lowerContent = false;
+			update.upperContentTop = 104;
+			update.currentTick = 1100;
+			update.currentSourceSequence = 11;
+			state = UpdateVerticalBarPresentation(update);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(state.action));
+			Assert::AreEqual(0.0f, state.translationPixels, 0.001f);
+			Assert::AreEqual(104, state.detectedTop);
+			Assert::AreEqual(1988, state.detectedBottom);
+			Assert::IsTrue(IsVerticalBarPresentationActive(
+				state, 3000, 2000, 12));
+			Assert::IsFalse(IsVerticalBarPresentationActive(
+				state, 3101, 2000, 12));
+		}
+
+		TEST_METHOD(VerticalBarCurrentFrameSurvivesZeroHoldAndThenReleases)
+		{
+			VerticalBarPresentationUpdateInput update;
+			update.current.action = VerticalBarPresentationAction::TRANSLATE;
+			update.current.translationPixels = -75.0f;
+			update.upperContent = true;
+			update.upperContentTop = 104;
+			update.currentTick = 1000;
+			update.currentSourceSequence = 42;
+			update.holdMs = 0;
+			update.translationEnabled = true;
+			const auto state = UpdateVerticalBarPresentation(update);
+			Assert::IsTrue(IsVerticalBarPresentationActive(
+				state, 1001, 0, 42));
+			Assert::IsFalse(IsVerticalBarPresentationActive(
+				state, 1001, 0, 43));
+		}
+
+		TEST_METHOD(FreshOneEdgeEvidenceIntentionallyReplacesHeldFit)
+		{
+			VerticalBarPresentationUpdateInput update;
+			update.previous.action = VerticalBarPresentationAction::FIT;
+			update.previous.detectedTop = 80;
+			update.previous.lastDetectionTick = 1000;
+			update.previous.sourceSequence = 40;
+			update.current.action = VerticalBarPresentationAction::TRANSLATE;
+			update.current.translationPixels = -75.0f;
+			update.upperContent = true;
+			update.upperContentTop = 104;
+			update.currentTick = 1100;
+			update.currentSourceSequence = 41;
+			update.holdMs = 2000;
+			update.translationEnabled = true;
+			const auto state = UpdateVerticalBarPresentation(update);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(state.action));
+			Assert::AreEqual(104, state.detectedTop);
+		}
+
+		TEST_METHOD(LiveOverlayAndAspectMetadataTimelineProducesStableFinalGeometry)
+		{
+			// Compressed replay of the 2026-08-05 live metadata. Ticks advance
+			// synthetically, so seconds of hold/release behavior execute instantly.
+			ActivePictureBounds geometry = {
+				0, 280, 3840, 1888, 3840, 2160,
+				3840.0 / 1608.0, true };
+			VerticalBarPresentationState state;
+			const uint64_t generation = 7;
+			const uint64_t holdMs = 2000;
+			auto update = [&](const VerticalBarContentDecision& current,
+				bool upper, bool lower, int upperTop, int lowerBottom,
+				uint64_t tick, uint64_t sequence)
+			{
+				VerticalBarPresentationUpdateInput input;
+				input.previous = state;
+				input.current = current;
+				input.upperContent = upper;
+				input.lowerContent = lower;
+				input.upperContentTop = upperTop;
+				input.lowerContentBottom = lowerBottom;
+				input.currentTick = tick;
+				input.currentSourceSequence = sequence;
+				input.holdMs = holdMs;
+				input.placementSnapThreshold = 12;
+				input.translationEnabled = true;
+				state = UpdateVerticalBarPresentation(input);
+			};
+			auto resolve = [&](bool genericTop, int genericTopBound,
+				bool genericBottom, int genericBottomBound)
+			{
+				VerticalBarPresentationResolutionInput input;
+				input.detailedAction = state.action;
+				input.translationPixels = state.translationPixels;
+				input.genericUpperExpansion = genericTop;
+				input.genericLowerExpansion = genericBottom;
+				input.genericUpperBound = genericTopBound;
+				input.genericLowerBound = genericBottomBound;
+				input.authoritativeTop = geometry.top;
+				input.authoritativeBottom = geometry.bottom;
+				input.rasterHeight = 2160;
+				return ResolveVerticalBarPresentation(input);
+			};
+			auto present = [&](const VerticalBarPresentationResolution& action,
+				const ActivePictureBounds& outward)
+			{
+				Input input;
+				input.automaticCropEnabled = true;
+				input.sharedGeometryAvailable = true;
+				input.latestObservationSupportsCrop = true;
+				input.classification =
+					ActivePictureClassification::BAR_CROP_TRUSTED;
+				input.geometry = geometry;
+				input.geometrySourceGeneration = generation;
+				input.frameSourceGeneration = generation;
+				input.rasterWidth = 3840;
+				input.rasterHeight = 2160;
+				input.presentationFailOpen = action.action ==
+					VerticalBarPresentationAction::FAIL_OPEN;
+				input.verticalTranslationActive = action.action ==
+					VerticalBarPresentationAction::TRANSLATE;
+				input.verticalTranslationPixels = action.translationPixels < 0.0f
+					? static_cast<int>(std::floor(action.translationPixels))
+					: static_cast<int>(std::ceil(action.translationPixels));
+				input.verticalTranslationBase = geometry;
+				input.verticalTranslationSourceGeneration = generation;
+				input.outwardPresentationActive = action.action ==
+					VerticalBarPresentationAction::FIT;
+				input.outwardExpansionAvailable =
+					input.outwardPresentationActive;
+				input.outwardExpansion = outward;
+				input.outwardExpansionSourceGeneration = generation;
+				return Evaluate(input);
+			};
+
+			// Stable scope authority: ordinary presentation, no overlay action.
+			auto action = resolve(false, geometry.top, false, geometry.bottom);
+			auto crop = present(action, geometry);
+			Assert::AreEqual(280, crop.sourceBounds.top);
+			Assert::AreEqual(1888, crop.sourceBounds.bottom);
+
+			// Bottom subtitle from the live log: +75, then +91 as its second line
+			// appears. Scale/aspect remain unchanged; only the source window moves.
+			VerticalBarContentInput content;
+			content.lowerContent = true;
+			content.lowerOccupiedDepth = 40;
+			content.lowerPeakSamples = 220;
+			content.upperBarPixels = 280;
+			content.lowerBarPixels = 272;
+			content.sampledColumns = 1800;
+			content.lowerRequiredShift = 75.0f;
+			update(EvaluateVerticalBarContent(content), false, true,
+				0, 1918, 1000, 101);
+			action = resolve(false, geometry.top, false, geometry.bottom);
+			crop = present(action, geometry);
+			Assert::IsTrue(crop.verticallyTranslated);
+			Assert::AreEqual(356, crop.sourceBounds.top);
+			Assert::AreEqual(1964, crop.sourceBounds.bottom);
+			Assert::AreEqual(1608, crop.sourceBounds.bottom -
+				crop.sourceBounds.top);
+
+			content.lowerRequiredShift = 91.0f;
+			update(EvaluateVerticalBarContent(content), false, true,
+				0, 1934, 1050, 102);
+			action = resolve(false, geometry.top, false, geometry.bottom);
+			crop = present(action, geometry);
+			Assert::AreEqual(372, crop.sourceBounds.top);
+			Assert::AreEqual(1980, crop.sourceBounds.bottom);
+			const double translatedAspect = 3840.0 / 1608.0;
+			const auto mapping = EvaluateMadVRNlsMapping(true,
+				translatedAspect, 2.35, 5.0, 1.0, false);
+			Assert::AreEqual(static_cast<int>(
+				MadVRNlsMappingMode::SCOPE_PASSTHROUGH),
+				static_cast<int>(mapping.mode));
+
+			// No new analysis inside the release hold: keep the exact placement.
+			update({}, false, false, 0, 0, 1500, 103);
+			action = resolve(false, geometry.top, false, geometry.bottom);
+			crop = present(action, geometry);
+			Assert::AreEqual(372, crop.sourceBounds.top);
+			// Once the accelerated hold expires, return directly to stable scope.
+			update({}, false, false, 0, 0, 3201, 104);
+			action = resolve(false, geometry.top, false, geometry.bottom);
+			crop = present(action, geometry);
+			Assert::AreEqual(280, crop.sourceBounds.top);
+
+			// Thin full-width top volume UI is overlay-like, not an aspect change.
+			content = {};
+			content.upperContent = true;
+			content.upperOccupiedDepth = 40;
+			content.upperPeakSamples = 1500;
+			content.upperBarPixels = 280;
+			content.lowerBarPixels = 272;
+			content.sampledColumns = 1800;
+			content.upperRequiredShift = 75.0f;
+			update(EvaluateVerticalBarContent(content), true, false,
+				220, 0, 3300, 105);
+			action = resolve(true, 220, false, geometry.bottom);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(action.action));
+			crop = present(action, geometry);
+			Assert::AreEqual(204, crop.sourceBounds.top);
+			Assert::AreEqual(1812, crop.sourceBounds.bottom);
+
+			// Coarse current evidence farther outward than that translated window
+			// cannot be hidden; the one final action becomes FIT, never FIT+shift.
+			action = resolve(true, 120, false, geometry.bottom);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(action.action));
+			ActivePictureBounds topFit = geometry;
+			topFit.top = 120;
+			topFit.aspectRatio = 3840.0 / (topFit.bottom - topFit.top);
+			crop = present(action, topFit);
+			Assert::IsTrue(crop.outwardExpanded);
+			Assert::IsFalse(crop.verticallyTranslated);
+			Assert::AreEqual(120, crop.sourceBounds.top);
+
+			// Broad/deep pixels on both bars are picture/aspect-like and FIT.
+			content.lowerContent = true;
+			content.upperOccupiedDepth = 220;
+			content.lowerOccupiedDepth = 220;
+			content.lowerPeakSamples = 1500;
+			content.lowerRequiredShift = 180.0f;
+			update(EvaluateVerticalBarContent(content), true, true,
+				60, 2100, 3350, 106);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(state.action));
+			action = resolve(true, 60, true, 2100);
+			ActivePictureBounds bothFit = geometry;
+			bothFit.top = 40;
+			bothFit.bottom = 2120;
+			bothFit.aspectRatio = 3840.0 / 2080.0;
+			crop = present(action, bothFit);
+			Assert::AreEqual(40, crop.sourceBounds.top);
+			Assert::AreEqual(2120, crop.sourceBounds.bottom);
+
+			// Invalid bar metadata is an explicit full-raster fail-open.
+			content = {};
+			content.lowerContent = true;
+			content.lowerRequiredShift = 75.0f;
+			update(EvaluateVerticalBarContent(content), false, true,
+				0, 1918, 3400, 107);
+			action = resolve(false, geometry.top, false, geometry.bottom);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FAIL_OPEN),
+				static_cast<int>(action.action));
+			AssertFullRaster(present(action, geometry));
+
+			// A genuine IMAX transition arrives as new trusted picture authority,
+			// not overlay metadata; clearing the old presentation state is immediate.
+			state = {};
+			geometry = { 0, 70, 3840, 2090, 3840, 2160,
+				3840.0 / 2020.0, true };
+			action = resolve(false, geometry.top, false, geometry.bottom);
+			crop = present(action, geometry);
+			Assert::AreEqual(70, crop.sourceBounds.top);
+			Assert::AreEqual(2090, crop.sourceBounds.bottom);
+		}
+
 		TEST_METHOD(FullRasterAuthorityBridgesSparseAnalysisWithoutWaitingPulse)
 		{
 			bool authority = UpdateFullRasterPresentationAuthority(false,
@@ -103,6 +535,75 @@ namespace Tests
 				false, false, true));
 			Assert::IsFalse(RequiresPerFramePresentationInspection(
 				false, false, false));
+		}
+
+		TEST_METHOD(CurrentFrameEnvelopeSurvivesGeometryChangeAndZeroHold)
+		{
+			PresentationEnvelopeInput envelope;
+			envelope.envelopeAvailable = true;
+			envelope.effectiveGeometryAvailable = true;
+			envelope.baseMatchesEffectiveGeometry = false;
+			envelope.detectedSourceSequence = 91;
+			envelope.currentSourceSequence = 91;
+			envelope.evidenceSourceGeneration = 7;
+			envelope.frameSourceGeneration = 7;
+			envelope.lastDetectionTick = 1000;
+			envelope.currentTick = 1001;
+			envelope.holdMs = 0;
+			const PresentationEnvelopeDecision envelopeDecision =
+				EvaluatePresentationEnvelope(envelope);
+			Assert::IsTrue(envelopeDecision.active);
+			Assert::IsTrue(envelopeDecision.currentFrame);
+			Assert::IsFalse(envelopeDecision.held);
+
+			// Model a trusted geometry publication on the same frame. The final
+			// union contains both that new authority and the current overlay.
+			Input crop = TrustedScopeCrop();
+			crop.geometry.top = 300;
+			crop.geometry.bottom = 1860;
+			crop.geometry.aspectRatio = 3840.0 / 1560.0;
+			crop.outwardPresentationActive = envelopeDecision.active;
+			crop.outwardExpansionAvailable = true;
+			crop.outwardExpansion = crop.geometry;
+			crop.outwardExpansion.top = 100;
+			crop.outwardExpansion.bottom = 1884;
+			crop.outwardExpansion.aspectRatio = 3840.0 / 1784.0;
+			crop.outwardExpansionSourceGeneration = 7;
+			const Decision cropDecision = Evaluate(crop);
+			Assert::IsTrue(cropDecision.applyCrop);
+			Assert::IsTrue(cropDecision.outwardExpanded);
+			Assert::AreEqual(100, cropDecision.sourceBounds.top);
+			Assert::AreEqual(1884, cropDecision.sourceBounds.bottom);
+		}
+
+		TEST_METHOD(HeldEnvelopeRequiresMatchingBaseGenerationAndDeadline)
+		{
+			PresentationEnvelopeInput input;
+			input.envelopeAvailable = true;
+			input.effectiveGeometryAvailable = true;
+			input.baseMatchesEffectiveGeometry = true;
+			input.detectedSourceSequence = 90;
+			input.currentSourceSequence = 91;
+			input.evidenceSourceGeneration = 7;
+			input.frameSourceGeneration = 7;
+			input.lastDetectionTick = 1000;
+			input.currentTick = 2999;
+			input.holdMs = 2000;
+			auto decision = EvaluatePresentationEnvelope(input);
+			Assert::IsTrue(decision.active);
+			Assert::IsTrue(decision.held);
+
+			input.baseMatchesEffectiveGeometry = false;
+			Assert::IsFalse(EvaluatePresentationEnvelope(input).active);
+			input.baseMatchesEffectiveGeometry = true;
+			input.frameSourceGeneration = 8;
+			Assert::IsFalse(EvaluatePresentationEnvelope(input).active);
+			input.frameSourceGeneration = 7;
+			input.currentTick = 3001;
+			Assert::IsFalse(EvaluatePresentationEnvelope(input).active);
+			input.currentTick = 1000;
+			input.holdMs = 0;
+			Assert::IsFalse(EvaluatePresentationEnvelope(input).active);
 		}
 
 		TEST_METHOD(AmbiguityHoldIsBoundedNonRenewableAndGenerationLocal)
@@ -318,29 +819,141 @@ namespace Tests
 			AssertFullRaster(Evaluate(stale));
 		}
 
-		TEST_METHOD(SubtitleOverlayExpandsOnlyTheRequiredOuterEdge)
+		TEST_METHOD(SparseSubtitleTranslatesSameSizeWindowWithoutChangingNlsAspect)
 		{
 			Input input = TrustedScopeCrop();
-			input.outwardPresentationActive = true;
-			input.outwardExpansionAvailable = true;
-			input.outwardExpansion = input.geometry;
-			input.outwardExpansion.bottom = 2100;
-			input.outwardExpansion.aspectRatio = 3840.0 / (2100 - 274);
-			input.outwardExpansionSourceGeneration = 7;
+			input.latestObservationSupportsCrop = false;
+			input.latestObservationIsProvisional = true;
+			input.verticalTranslationActive = true;
+			input.verticalTranslationPixels = 75;
+			input.verticalTranslationBase = input.geometry;
+			input.verticalTranslationSourceGeneration = 7;
 			const Decision decision = Evaluate(input);
 			Assert::IsTrue(decision.applyCrop);
-			Assert::IsTrue(decision.outwardExpanded);
-			Assert::AreEqual(274, decision.sourceBounds.top);
-			Assert::AreEqual(2100, decision.sourceBounds.bottom);
+			Assert::IsFalse(decision.outwardExpanded);
+			Assert::IsTrue(decision.verticallyTranslated);
+			Assert::AreEqual(76, decision.verticalTranslationPixels);
+			Assert::AreEqual(350, decision.sourceBounds.top);
+			Assert::AreEqual(1960, decision.sourceBounds.bottom);
+			Assert::AreEqual(1610, decision.sourceBounds.bottom -
+				decision.sourceBounds.top);
 
 			const double finalAspect = static_cast<double>(
 				decision.sourceBounds.right - decision.sourceBounds.left) /
 				(decision.sourceBounds.bottom - decision.sourceBounds.top);
 			const MadVRNlsMappingDecision mapping = EvaluateMadVRNlsMapping(
 				true, finalAspect, 2.35, 5.0, 1.0, false);
-			Assert::AreEqual(static_cast<int>(MadVRNlsMappingMode::ACTIVE),
+			Assert::AreEqual(
+				static_cast<int>(MadVRNlsMappingMode::SCOPE_PASSTHROUGH),
 				static_cast<int>(mapping.mode));
 			Assert::AreEqual(finalAspect, mapping.sourceAspect, 0.000001);
+			Assert::AreEqual(3840.0 / 1610.0, finalAspect, 0.000001);
+		}
+
+		TEST_METHOD(SparseTopSubtitleRoundsAwayFromZeroAndClampsBothDirections)
+		{
+			Input top = TrustedScopeCrop();
+			top.verticalTranslationActive = true;
+			top.verticalTranslationPixels = -75;
+			top.verticalTranslationBase = top.geometry;
+			top.verticalTranslationSourceGeneration = 7;
+			Decision decision = Evaluate(top);
+			Assert::AreEqual(-76, decision.verticalTranslationPixels);
+			Assert::AreEqual(198, decision.sourceBounds.top);
+			Assert::AreEqual(1808, decision.sourceBounds.bottom);
+
+			top.verticalTranslationPixels = -1000;
+			decision = Evaluate(top);
+			Assert::AreEqual(-274, decision.verticalTranslationPixels);
+			Assert::AreEqual(0, decision.sourceBounds.top);
+			Assert::AreEqual(1610, decision.sourceBounds.bottom);
+
+			Input bottom = TrustedScopeCrop();
+			bottom.verticalTranslationActive = true;
+			bottom.verticalTranslationPixels = 1000;
+			bottom.verticalTranslationBase = bottom.geometry;
+			bottom.verticalTranslationSourceGeneration = 7;
+			decision = Evaluate(bottom);
+			Assert::AreEqual(276, decision.verticalTranslationPixels);
+			Assert::AreEqual(550, decision.sourceBounds.top);
+			Assert::AreEqual(2160, decision.sourceBounds.bottom);
+		}
+
+		TEST_METHOD(SparseTranslationRequiresExactCurrentBaseAndGeneration)
+		{
+			Input input = TrustedScopeCrop();
+			input.latestObservationSupportsCrop = false;
+			input.latestObservationIsProvisional = true;
+			input.verticalTranslationActive = true;
+			input.verticalTranslationPixels = 75;
+			input.verticalTranslationBase = input.geometry;
+			input.verticalTranslationSourceGeneration = 7;
+
+			Input stale = input;
+			stale.verticalTranslationSourceGeneration = 6;
+			AssertFullRaster(Evaluate(stale));
+
+			Input changed = input;
+			changed.geometry.top += 2;
+			changed.geometry.bottom += 2;
+			AssertFullRaster(Evaluate(changed));
+		}
+
+		TEST_METHOD(HorizontalFitAndVerticalTranslationComposeWithoutChangingHeight)
+		{
+			Input input = TrustedScopeCrop();
+			input.geometry = {
+				200, 274, 3640, 1884, 3840, 2160,
+				3440.0 / 1610.0, true };
+			input.outwardPresentationActive = true;
+			input.outwardExpansionAvailable = true;
+			input.outwardExpansion = input.geometry;
+			input.outwardExpansion.left = 100;
+			input.outwardExpansion.right = 3700;
+			input.outwardExpansion.aspectRatio = 3600.0 / 1610.0;
+			input.outwardExpansionSourceGeneration = 7;
+			input.verticalTranslationActive = true;
+			input.verticalTranslationPixels = 75;
+			input.verticalTranslationBase = input.geometry;
+			input.verticalTranslationSourceGeneration = 7;
+
+			const Decision decision = Evaluate(input);
+			Assert::IsTrue(decision.outwardExpanded);
+			Assert::IsTrue(decision.verticallyTranslated);
+			Assert::AreEqual(100, decision.sourceBounds.left);
+			Assert::AreEqual(3700, decision.sourceBounds.right);
+			Assert::AreEqual(350, decision.sourceBounds.top);
+			Assert::AreEqual(1960, decision.sourceBounds.bottom);
+			Assert::AreEqual(1610, decision.sourceBounds.bottom -
+				decision.sourceBounds.top);
+		}
+
+		TEST_METHOD(VerticalFitCannotComposeWithVerticalTranslation)
+		{
+			Input input = TrustedScopeCrop();
+			input.outwardPresentationActive = true;
+			input.outwardExpansionAvailable = true;
+			input.outwardExpansion = input.geometry;
+			input.outwardExpansion.top = 100;
+			input.outwardExpansion.aspectRatio = 3840.0 /
+				(input.outwardExpansion.bottom - input.outwardExpansion.top);
+			input.outwardExpansionSourceGeneration = 7;
+			input.verticalTranslationActive = true;
+			input.verticalTranslationPixels = -75;
+			input.verticalTranslationBase = input.geometry;
+			input.verticalTranslationSourceGeneration = 7;
+			AssertFullRaster(Evaluate(input));
+		}
+
+		TEST_METHOD(FullRasterAuthorityOverridesHeldTranslation)
+		{
+			Input input = TrustedScopeCrop();
+			input.fullRasterPresentationAuthoritative = true;
+			input.verticalTranslationActive = true;
+			input.verticalTranslationPixels = 75;
+			input.verticalTranslationBase = input.geometry;
+			input.verticalTranslationSourceGeneration = 7;
+			AssertFullRaster(Evaluate(input));
 		}
 
 		TEST_METHOD(BarContentFitExpandsOnlyTheDetectedEdges)

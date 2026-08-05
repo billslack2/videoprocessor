@@ -201,6 +201,39 @@ namespace VideoProcessorTest
 			}
 		}
 
+		TEST_METHOD(PersistentLocalizedOverlayNeverBecomesProgramAspect)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+			ActivePictureBounds overlayEnvelope = ScopeBounds();
+			overlayEnvelope.top = 80;
+			overlayEnvelope.aspectRatio =
+				static_cast<double>(overlayEnvelope.right - overlayEnvelope.left) /
+				(overlayEnvelope.bottom - overlayEnvelope.top);
+			overlayEnvelope.symmetricBars = false;
+
+			// Duration alone cannot promote a localized/asymmetric overlay to
+			// program-aspect authority. The presentation layer may fit this
+			// envelope, while NLS retains the stable scope geometry.
+			for (int count = 0; count < 60; ++count, ++frame)
+			{
+				const auto decision = Observe(model, overlayEnvelope, frame,
+					ActivePictureClassification::PROVISIONAL);
+				Assert::IsFalse(decision.publish);
+				Assert::IsTrue(decision.stable);
+				Assert::AreEqual(ScopeBounds().top,
+					decision.stableBounds.top);
+				Assert::AreEqual(ScopeBounds().bottom,
+					decision.stableBounds.bottom);
+			}
+
+			const auto recovered = Observe(model, ScopeBounds(), frame);
+			Assert::IsFalse(recovered.publish);
+			Assert::IsTrue(recovered.stable);
+			Assert::AreEqual(ScopeBounds().top, recovered.bounds.top);
+			Assert::AreEqual(ScopeBounds().bottom, recovered.bounds.bottom);
+		}
+
 		TEST_METHOD(DarkCenterCreditsAndUnavailableFramesDoNotChangeMode)
 		{
 			ActivePictureTransitionModel model;

@@ -1293,6 +1293,8 @@ namespace VideoProcessorTest
 			std::string line;
 			while (std::getline(inventoryStream, line))
 			{
+				if (!line.empty() && line.back() == '\r')
+					line.pop_back();
 				if (line.empty() || line.front() == '#')
 					continue;
 				std::vector<std::string> columns;
@@ -1322,6 +1324,8 @@ namespace VideoProcessorTest
 			std::istringstream valueInventoryStream(valueInventoryText);
 			while (std::getline(valueInventoryStream, line))
 			{
+				if (!line.empty() && line.back() == '\r')
+					line.pop_back();
 				if (line.empty() || line.front() == '#')
 					continue;
 				const size_t separator = line.find('\t');
