@@ -38,8 +38,12 @@ authoritative, and removes the legacy generic display sampler.
   plugin-proxy tests pass 59/59. The full suite passes 568/569; the unrelated
   existing `ConfigurationReferenceMatchesPublicFieldInventory` test rejects
   the active `general.fullscreen=true` configuration entry.
-- Live Alpha and madVR transition validation remains pending; no deployment was
-  performed.
+- Deployed the committed `c587910` x64 Release runtime pair to
+  `C:\Videoprocessor\vp` on 2026-08-04. The prior host/plugin pair is backed up
+  at `backup-before-vp0088-20260804-234606`; deployed SHA-256 hashes match the
+  build artifacts (`VideoProcessor.exe` `AB116696...12342`, renderer DLL
+  `02AB6EA1...D3036`). Active configuration and state hashes were unchanged.
+- Live Alpha and madVR transition validation remains pending.
 
 ## User story
 
