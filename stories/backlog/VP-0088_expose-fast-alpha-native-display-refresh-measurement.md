@@ -4,8 +4,8 @@
 
 Backlog (2026-08-04). The current Alpha renderer has a fast, renderer-native
 measurement path, but it is not surfaced through `IRenderer` or used by the
-GUI/OSD. This story wires it through safely and validates it against the
-existing independent DXGI measurement.
+GUI/OSD. This story wires it through safely, makes the renderer-native paths
+authoritative, and removes the legacy generic display sampler.
 
 ## User story
 
@@ -17,19 +17,9 @@ timing diagnostics describe the renderer's real presentation cadence.
 ## Current behavior and evidence
 
 madVR reports its own settled rate through `IMadVRInfo`; VP exposes that through
-`DirectShowVideoRenderer::GetDetectedDisplayRefreshRate`, and the GUI prefers
-it over the generic measurement for a DirectShow/madVR graph.
+`DirectShowVideoRenderer::GetDetectedDisplayRefreshRate`.
 
 Alpha currently does not override `IRenderer::GetDetectedDisplayRefreshRate`.
-The GUI therefore uses the shared `DisplayRefreshRateSampler`, which measures
-the active monitor with `IDXGIOutput::WaitForVBlank` and QPC. That remains a
-valuable independent physical-vblank source, but its policy deliberately uses:
-
-- a five-second post-transition quarantine;
-- two seconds of startup evidence;
-- ten seconds of readiness evidence; and
-- thirty seconds before phase-sensitive confidence.
-
 The Alpha render loop already has a more direct source: after present it calls
 `IDXGISwapChain::GetFrameStatistics` and feeds `SyncRefreshCount` plus
 `SyncQPCTime` into `AlphaPresentationTelemetry`. That telemetry calculates
@@ -37,41 +27,46 @@ The Alpha render loop already has a more direct source: after present it calls
 samples spanning at least 0.25 seconds. It is presently used only by Alpha's
 cadence-correction/presentation-target logic and periodic debug logging.
 
+The legacy GUI `DisplayRefreshRateSampler` measures monitor vblank with
+`IDXGIOutput::WaitForVBlank` and QPC, but its multi-second quarantine and
+evidence policy makes it unsuitable for current VP use. With renderer-native
+madVR and Alpha measurements available, it provides no selected-rate, fallback,
+warm-up, or comparison value and must be removed.
+
 ## Scope
 
 1. Define an Alpha renderer-native refresh-rate reporting contract through
    `IRenderer::GetDetectedDisplayRefreshRate`, backed by the current
    presentation telemetry.
-2. Publish a rate only when its telemetry generation is current, evidence is
-   `Stable`, the value is finite and plausible, and no DXGI frame-statistics
-   disjoint condition is active.
-3. Make the GUI prefer that Alpha-native rate exactly as it already prefers the
-   madVR-native rate. An explicit `[display_refresh_rate_override]` remains
-   authoritative.
-4. Keep the common `WaitForVBlank` sampler alive as the independent fallback,
-   warm-up source, long-run phase reference, and diagnostic comparison. Do not
-   replace it with `QueryDisplayConfig`; the latter is only the configured
-   target-rate guardrail, not a physical timing measurement.
-5. Validate native measurements against the active target refresh family and
-   the fallback sampler once both are available. Quarantine and log a material
-   disagreement rather than feeding an implausible native value into timing,
-   PPM, or OSD state.
+2. Publish the first finite, plausible Alpha-native rate as soon as two coherent
+   current-generation frame-statistics samples permit a rate calculation; do
+   not wait for the legacy sampler, an arbitrary multi-second quarantine, or
+   the later `Stable` evidence threshold. Reject disjoint or regressing DXGI
+   statistics and implausible rates.
+3. Make renderer-native values the only automatic selected-rate source:
+   madVR uses `IMadVRInfo` and Alpha uses its presentation telemetry. An
+   explicit `[display_refresh_rate_override]` remains authoritative.
+4. Remove `DisplayRefreshRateSampler` and its `WaitForVBlank` worker, state,
+   warm-up/quarantine policy, OSD inputs, and selection logic. Do not retain it
+   as a fallback, long-run phase reference, or diagnostic comparison. Do not
+   replace it with `QueryDisplayConfig`; that is only a configured target-rate
+   guardrail, not a physical timing measurement.
+5. Validate an Alpha-native measurement only against its own coherent telemetry
+   generation and the configured target refresh family. Quarantine and log an
+   implausible value rather than feeding it into timing, PPM, or OSD state.
 6. Clear the Alpha-native published value on renderer restart, swap-chain
    rebuild, output-monitor change, refresh-family transition, telemetry
    generation change, `DXGI_ERROR_FRAME_STATISTICS_DISJOINT`, and loss of frame
    statistics. A prior-generation value must never survive a transition.
 7. Improve diagnostics without confusing the values: log source, generation,
-   evidence state, sample count, native rate, configured target rate, fallback
-   `WaitForVBlank` rate, agreement/mismatch in ppm, and the reason whenever the
-   selected source changes. The OSD must continue to show `Warming` until a
-   valid selected rate exists and identify a quarantined/unavailable result
-   truthfully.
+   evidence state, sample count, native rate, configured target rate, and the
+   reason whenever the selected source changes. The OSD must show `Warming`
+   only until a valid renderer-native rate exists and identify a
+   quarantined/unavailable result truthfully.
 
 ## Non-goals
 
 - Do not use the capture/input frame rate as the display rate.
-- Do not shorten the shared sampler's evidence requirements globally; they
-  protect DirectShow and long-term phase/cadence logic.
 - Do not trust a nominal Windows display-path rate as the actual measured rate.
 - Do not change refresh switching, queue policy, PPM configuration, or cadence
   correction decisions beyond using a validated Alpha-native measurement where
@@ -80,17 +75,19 @@ cadence-correction/presentation-target logic and periodic debug logging.
 ## Validation
 
 1. Add focused unit tests for `AlphaPresentationTelemetry` covering 23.976,
-   24, 50, 59.94, and 60 Hz synthetic frame-statistics sequences; require
-   stable output only after both the eight-sample and 0.25-second thresholds.
+   24, 50, 59.94, and 60 Hz synthetic frame-statistics sequences; require a
+   current, plausible published rate as soon as two coherent samples exist,
+   while separately retaining tests for the later stable-evidence state.
 2. Test disjoint, unavailable statistics, counter regression, generation
    changes, and implausible rates; each must withdraw the published rate.
 3. Add selection-policy tests proving precedence is override, valid
-   renderer-native measurement, then validated `WaitForVBlank` fallback.
+   renderer-native measurement, then `Warming` when the selected renderer has
+   no valid native measurement.
 4. Live validate windowed and fullscreen Alpha at 23.976 and 59.94/60 Hz,
    including an Alpha-driven refresh switch. After the first valid present,
-   native measurement should normally become available within one second (the
-   exact first-report time is logged); it must agree with sustained DXGI
-   `WaitForVBlank` evidence within the chosen documented tolerance.
+   native measurement should normally become available immediately after the
+   second coherent frame-statistics sample (the exact first-report time is
+   logged).
 5. Confirm that the displayed rate clears during a mode change rather than
    showing a stale old rate, and that cadence correction, queue stability,
    latency, OSD, and SDR/HDR behavior do not regress.
@@ -98,7 +95,7 @@ cadence-correction/presentation-target logic and periodic debug logging.
 ## Relevant code
 
 - `src\\VideoProcessor-GUI\\VideoProcessorDlg.cpp`:
-  `DisplayRefreshRateSampler`, selected-rate precedence, and OSD input.
+  selected-rate precedence, legacy sampler removal, and OSD input.
 - `src\\VideoProcessor-Lib\\vprenderer\\AlphaPresentationTelemetry.*`:
   existing swap-chain frame-statistics cadence measurement.
 - `src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp`:
