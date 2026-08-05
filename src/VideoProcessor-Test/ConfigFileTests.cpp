@@ -4,6 +4,7 @@
 #include <EventActionLauncher.h>
 #include <MainConfigSchema.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
+#include <microsoft_directshow/video_renderers/DirectShowVideoRenderers.h>
 #include <RendererConfigView.h>
 #include <RendererProfileConfig.h>
 #include <UnifiedProfileRuntime.h>
@@ -29,6 +30,43 @@ namespace VideoProcessorTest
 			Assert::AreEqual(12u, index);
 		}
 
+		TEST_METHOD(LegacyRendererPolicyDefaultsToHiddenAndAcceptsExplicitFalse)
+		{
+			ConfigFile missingConfiguration;
+			Assert::IsTrue(DirectShowHideLegacyRenderers(missingConfiguration));
+
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path =
+				std::string(temporaryDirectory) + "VideoProcessor-legacy-renderer-policy-test.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nhide_legacy_renderers: false\n";
+			}
+
+			ConfigFile configuration;
+			Assert::IsTrue(configuration.Load(path));
+			Assert::IsFalse(DirectShowHideLegacyRenderers(configuration));
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(LegacyRendererPolicyFallsBackToHiddenForMalformedValue)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path =
+				std::string(temporaryDirectory) + "VideoProcessor-legacy-renderer-invalid-policy-test.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nhide_legacy_renderers: unexpected\n";
+			}
+
+			ConfigFile configuration;
+			Assert::IsTrue(configuration.Load(path));
+			Assert::IsTrue(DirectShowHideLegacyRenderers(configuration));
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(IndexedShortcutKeyRejectsZeroAndMalformedValues)
 		{
 			unsigned int index = 99;
@@ -37,7 +75,7 @@ namespace VideoProcessorTest
 				"render",
 				index));
 			Assert::IsFalse(ConfigFile::TryParseIndexedKey(
-				"render.madvr",
+				"render.external",
 				"render",
 				index));
 			Assert::IsFalse(ConfigFile::TryParseIndexedKey(
@@ -1198,7 +1236,9 @@ namespace VideoProcessorTest
 				std::ifstream file(path, std::ios::in | std::ios::binary);
 				std::ostringstream contents;
 				contents << file.rdbuf();
-				return contents.str();
+				std::string text = contents.str();
+				text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+				return text;
 			};
 			auto sourceRoot = []()
 			{

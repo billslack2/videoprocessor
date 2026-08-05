@@ -2,6 +2,7 @@
 # field-token<TAB>help-anchor<TAB>owner<TAB>AUTO-explanation-required
 general.capture_device	general-capture-device	VP startup	no
 general.renderer	general-renderer	VP startup	no
+general.hide_legacy_renderers	general-hide-legacy-renderers	DirectShow discovery	no
 general.fullscreen	general-fullscreen	VP startup	no
 general.windowed_fullscreen_mode	general-windowed-fullscreen-mode	VP startup	no
 general.startminimized	general-start-minimized	VP startup	no

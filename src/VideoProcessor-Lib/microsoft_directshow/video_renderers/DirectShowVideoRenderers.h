@@ -11,9 +11,12 @@
 
 #include <vector>
 
+#include <ConfigFile.h>
 #include <RendererId.h>
 #include <IRenderer.h>
 
+
+bool DirectShowHideLegacyRenderers(const ConfigFile& config);
 
 // Get all DirectShow video renderers
 void DirectShowVideoRendererIds(std::vector<RendererId>& rendererIds);

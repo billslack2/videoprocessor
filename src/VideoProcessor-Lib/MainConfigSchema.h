@@ -52,6 +52,7 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("windowedfullscreenmode"),
 			ConfigSchema::Boolean("windowed_fullscreen_mode"),
 			ConfigSchema::Any("renderer"),
+			ConfigSchema::Any("hide_legacy_renderers"),
 			ConfigSchema::Integer("queue_size", 1, INT_MAX),
 			ConfigSchema::Any("capture_device"),
 			{
