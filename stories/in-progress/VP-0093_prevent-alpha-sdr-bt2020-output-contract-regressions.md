@@ -23,6 +23,33 @@ with tests preventing a BT.2020 target from requesting P2020 DXGI or from
 signalling BT.2020 for a Rec.709 target. `VideoProcessor-VPRenderer` x64
 Release and the output-policy tests build and pass.
 
+### Reproduction and corrective implementation (2026-08-05)
+
+Fresh Alpha F6 logs reproduced the wire-level defect. The selected
+`display/bt2020` profile requested a direct `RGB_FULL_G22_NONE_P2020`
+swapchain and DXGI accepted it, but the implementation explicitly logged
+`NVIDIA override suppressed`; the Epson did not enter BT.2020 mode. This proves
+that a successful `SetColorSpace1` call is not sufficient evidence for the
+projector's HDMI signalling path.
+
+Commit `b5eaa0c` restores the accepted VP-0019/VP-0064 contract on the current
+integration base:
+
+- F6 renders the SDR target in BT.2020 while retaining the proven P709/sRGB
+  DXGI transport;
+- it sends the NVIDIA AVI extended-colourimetry BT.2020 InfoFrame and restores
+  the saved InfoFrame on F5 or renderer teardown; and
+- it treats a successful one-shot NVAPI `SET` as physical signalling even when
+  a subsequent `GET` returns the driver's automatic state. OSD distinguishes
+  `verified`, `SET` (unverified readback), `display manual`, and `signal
+  unavailable` rather than claiming that every request reached the projector.
+
+The clean x64 Release build at `b5eaa0c` has `VERSION_DIRTY=false`; the complete
+test DLL passes 580/580 tests. It is pushed to
+`origin/codex/vp-0093-output-contract` and is not yet locally deployed. Live
+validation must use a controlled fullscreen F5 -> F6 -> F5 sequence on Alpha,
+checking both the Epson mode and the generation-scoped log entries.
+
 MPC Video Renderer review found a separate, broader source-metadata limitation:
 VP currently represents primaries and YCbCr matrix through one `ColorSpace`
 field, so BT.2020 non-constant and constant-luminance matrices cannot be
@@ -45,10 +72,10 @@ between Auto, Rec.709, and BT.2020 did not correct the picture. The visual
 failure resembles madVR producing BT.2020-target pixels while the projector is
 interpreting them as Rec.709.
 
-The currently available deployed `C:\Videoprocessor\vp\logs\vp_debug.log`
-predates this incident and cannot establish its cause. Preserve it as baseline
-context, but collect a fresh, timestamped reproducer log before drawing a
-conclusion from it.
+The fresh deployed `C:\Videoprocessor\vp\logs\vp_debug.log` now establishes
+the cause: Alpha's P2020-only build completed DXGI negotiation while suppressing
+the NVIDIA signalling path. Preserve that log as the failing baseline for the
+controlled VP-0093 validation.
 
 ## Prior work and required preservation
 
