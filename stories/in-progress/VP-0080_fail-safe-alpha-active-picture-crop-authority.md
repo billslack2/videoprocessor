@@ -19,6 +19,72 @@ the fallback when the visible extent cannot be bounded safely. Automated
 coverage must include a stable scope crop plus a transient top volume bar and
 must prove no inward authority is granted to the overlay.
 
+### Subtitle/UI translation correction (2026-08-05)
+
+Live recording `2026-08-05 10-18-28.mp4` and the matching
+`C:\Videoprocessor\vp\logs\vp_debug.log` isolated a second presentation
+defect. Stable scope authority was approximately `0,280-3840,1888`. The dense
+bar pass correctly requested bottom-subtitle shifts of about `+75..+91`
+pixels, but the outward-envelope path changed the final source rectangle to
+approximately `0,280-3840,1972..1988`. That changed the movie aspect and made
+the complete image shrink or oscillate instead of moving the same-size picture
+to expose the subtitle. The same crossing of responsibilities affected a top
+receiver volume/menu overlay.
+
+Source commit `9f0d79befd2bffca84be14b11bea65c4ecb1b3e7` on draft
+[videoprocessor PR #41](https://github.com/billslack2/videoprocessor/pull/41)
+restores the practical pre-`ce9845d` presentation behavior without restoring
+the old crop-authority bypass:
+
+- trusted active-picture geometry remains the sole program-aspect authority;
+- one held vertical decision owns presentation: `NONE`, `TRANSLATE`, `FIT`, or
+  `FAIL_OPEN`;
+- one shallow **or** localized bar object, including a thin nearly full-width
+  receiver volume display, translates the exact same-size source window with
+  the configured padding;
+- broad-and-deep, both-edge, opposite-edge, or translation-uncovered evidence
+  selects one bounded `FIT` decision;
+- detailed and generic bar evidence are reconciled before geometry changes, so
+  vertical fit and translation cannot be active together;
+- only horizontal outward expansion may compose with vertical translation;
+- source sequence makes current-frame evidence effective even when hold is
+  zero, while historical state requires the exact generation/base and a
+  nonzero unexpired release hold; and
+- final crop, NLS, runtime active-picture geometry, OSD, and transition logs
+  consume the same selected rectangle.
+
+Bill's practical geometry review approves the same-height signed translation,
+overlay-versus-picture rule, aligned/clamped coverage check, and fresh-evidence
+precedence. The renderer/lifecycle review approves the source-sequence,
+zero-hold, state-reset, fail-open, and atomic crop/NLS paths. Bill's requested
+simplification is implemented as one vertical state and one normalized final
+action; the obsolete two-hit opposite-edge reversal state is removed. These
+are automated technical reviews against the owner's stated criteria, not a
+claim of either person's direct signoff.
+
+The owner reassigned Urvish on 2026-08-05. Urvish is not to be used as a
+reviewer, participant, or approval gate for this or future work. Earlier story
+entries naming him are retained only as historical records of prior work and
+do not govern this reopened correction.
+
+No OCR or ML is part of this solution. Subtitle recognition/relocation remains
+separate blocked work (including VP-0010 and VP-0087) and cannot be pulled into
+VP-0080 as a prerequisite or fallback.
+
+A clean x64 Release solution rebuild completed with no warnings or errors and
+the freshly rebuilt root test DLL passed **598/598** tests. Coverage includes
+top/bottom same-edge reconciliation, zero-hold current-frame behavior, held
+FIT/translation lifecycle, exact base/generation binding, chroma-aligned
+clamping, and an accelerated metadata timeline: stable scope -> `+75/+91`
+subtitle -> held gap -> release -> shallow full-width top volume -> farther
+generic fit -> both-edge fit -> invalid fail-open -> trusted IMAX authority.
+The test uses synthetic sequence/tick metadata and therefore exercises seconds
+of transitions immediately without sleeping.
+
+Commit `9f0d79b` is pushed to the open draft PR. It is **not yet deployed**;
+the local installation still contains the prior `1ad727c` build pending an
+explicit deployment request and live Apple TV validation.
+
 ### Reopened implementation progress (2026-08-05)
 
 Draft [videoprocessor PR #41](https://github.com/billslack2/videoprocessor/pull/41)
@@ -139,16 +205,19 @@ equally explicit. In either case:
 
 This follow-up remains part of VP-0080 Review and is not a VP-0079 reopening.
 
-## Pre-development readiness record (2026-08-02)
+## Historical pre-development readiness record (2026-08-02)
 
-### Gate state
+### Historical gate state (superseded for reopened work)
 
-Implementation is authorized for the practical Phase A scope. The required
-participants, qualifications, and decision rule are recorded below. Bill has
-worked directly with the implementer before coding; Urvish's image-analysis and
-unit-test contributions and both experts' final implementation approval remain
-required. The isolated source branch is
+At that time, implementation was authorized for the practical Phase A scope
+under the participants, qualifications, and decision rule recorded below. The
+isolated source branch was
 `codex/vp-0080-alpha-crop-failsafe`.
+
+The 2026-08-05 owner decision in the current progress record supersedes the
+named-person gate below for all reopened and future work: Urvish is reassigned
+and must not be requested for review or approval. Bill's practical geometry
+criteria and independent renderer/lifecycle review govern the current repair.
 
 The operating context was re-established before that preparation:
 
@@ -162,7 +231,7 @@ The untouched integration commit has a clean x64 Release baseline: the full
 solution built with zero warnings/errors and all 487 native tests passed. This
 is an environment/readiness result, not validation of a VP-0080 fix.
 
-### Participant and decision record
+### Historical participant and decision record
 
 - **Bill — video-renderer geometry participant.** Bill has 20 years of relevant
   experience, including six years working on MPC. His role is to review the
@@ -173,12 +242,12 @@ is an environment/readiness result, not validation of a VP-0080 fix.
   this review in support of the community. His role is to review black-bar,
   boundary, visible-content, scene, temporal, format, and corpus evidence.
 
-Both Bill and Urvish must agree before implementation proceeds. Design choices
-should prefer a practical, efficient solution for the actual VP use case over
-unnecessary algorithmic complexity. Bill's production experience is the final
-guide on implementation practicality, but it cannot waive the unanimous gate
-or the source-pixel-preservation invariant; an unresolved critical objection
-from either participant still blocks coding.
+The original gate required both named participants to agree. That requirement
+is retained only to explain the 2026-08-02 Phase A record and is not active for
+the reopened correction. The enduring design direction is to prefer a
+practical, efficient solution for the actual VP use case over unnecessary
+algorithmic complexity, with Bill's production geometry criteria as the final
+guide on practicality and full-raster fail-open on unresolved safety evidence.
 
 The participant qualification and pre-development participation portions of
 the gate are satisfied. Bill's recorded direction is to fix the existing Alpha
@@ -186,10 +255,9 @@ implementation on the current beta-015 default branch, starting at the known
 renderer-local promotion and `source.crop` write rather than designing a new
 detector in isolation. The implementation should be practical and efficient
 for this live-viewing use case while preserving the full-raster-on-uncertainty
-invariant. Urvish must still contribute to or review the image-analysis policy
-and unit tests during implementation. Both participants must approve the
-result, and their test contributions, decisions, and objections must be
-recorded before Review.
+invariant. The original participant contributions and objections were recorded
+before that Phase A review; the current participant assignment is defined in
+the 2026-08-05 correction record above.
 
 ### Confirmed failure model
 
