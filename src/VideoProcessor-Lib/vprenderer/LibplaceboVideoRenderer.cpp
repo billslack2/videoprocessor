@@ -2508,6 +2508,7 @@ struct LibplaceboVideoRenderer::Impl
 	std::string activeDisplayRule;
 	std::string effectiveSettingsFingerprint;
 	std::string restartSettingsFingerprint;
+	RendererSettings activeSettings;
 	HWND videoHwnd = nullptr;
 	HMONITOR negotiatedMonitor = nullptr;
 	bool cursorPositioned = false;
@@ -4540,6 +4541,7 @@ struct LibplaceboVideoRenderer::Impl
 			*state, activeDisplayRule, manualRule, manualUnifiedProfiles);
 		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
+		activeSettings = settings;
 		outputDiagnostics = settings.outputDiagnostics;
 		shaderCacheEnabled = !settings.diagnosticDisableShaderCache;
 
@@ -4770,6 +4772,73 @@ struct LibplaceboVideoRenderer::Impl
 			lastSourceCropPolicy.clear();
 			lastFinalPresentationPolicy.clear();
 		}
+	}
+
+	// F5/F6 deliberately share the same P709/sRGB DXGI transport.  Switching
+	// only the SDR target gamut and its optional NVIDIA AVI InfoFrame therefore
+	// needs neither a device nor a swapchain transition.  Keeping that work
+	// live avoids a desktop re-sync/black frame on projectors.
+	bool ApplyBt2020TargetLive(const RendererSettings& settings)
+	{
+		std::lock_guard<std::mutex> guard(renderMutex);
+		RendererSettings currentTransport = activeSettings;
+		RendererSettings nextTransport = settings;
+		currentTransport.sdrTargetPrimaries = "rec709";
+		currentTransport.reportBt2020ToDisplay = false;
+		nextTransport.sdrTargetPrimaries = "rec709";
+		nextTransport.reportBt2020ToDisplay = false;
+		if (EffectiveSettingsFingerprint(currentTransport) !=
+			EffectiveSettingsFingerprint(nextTransport))
+		{
+			return false;
+		}
+
+		LibplaceboOutput::Request requestedTransport;
+		requestedTransport.presentation = LibplaceboOutput::ParsePresentation(
+			settings.outputPresentation);
+		requestedTransport.range = LibplaceboOutput::ParseRange(settings.outputRange);
+		requestedTransport.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
+		const auto target = settings.sdrTargetPrimaries == "bt2020"
+			? LibplaceboOutput::SdrTargetPrimaries::BT2020
+			: LibplaceboOutput::SdrTargetPrimaries::REC709;
+		const auto contract = LibplaceboOutput::MakeSdrOutputContract(
+			requestedTransport, target, settings.reportBt2020ToDisplay);
+		const auto plan = LibplaceboOutput::MakePlan(contract.transport);
+		if (plan.useBlit != outputPlan.useBlit ||
+			plan.valid != outputPlan.valid ||
+			plan.requiresDxgiOverride != outputPlan.requiresDxgiOverride ||
+			plan.desiredEncoding != outputPlan.desiredEncoding ||
+			plan.targetTransfer != outputPlan.targetTransfer)
+		{
+			return false;
+		}
+
+		activeSettings = settings;
+		targetBt2020 = contract.target ==
+			LibplaceboOutput::SdrTargetPrimaries::BT2020;
+		reportBt2020ToDisplay = contract.reportBt2020ToDisplay;
+		bt2020SignalingFailed = false;
+		ConfigureRenderParams(settings);
+		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
+		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
+
+		if (targetBt2020 && reportBt2020ToDisplay)
+		{
+			if (!nvidiaBt2020Reporter.Enable(negotiatedDisplayDeviceName.c_str()))
+			{
+				reportBt2020ToDisplay = false;
+				bt2020SignalingFailed = true;
+			}
+		}
+		else
+		{
+			nvidiaBt2020Reporter.Restore();
+		}
+		DebugLog::Log(
+			"libplacebo output target switched live: target=%s DXGI_transport=P709/sRGB NVIDIA_AVI=%s swapchain_recreated=0",
+			targetBt2020 ? "BT.2020" : "Rec.709",
+			reportBt2020ToDisplay ? "requested" : "disabled");
+		return true;
 	}
 
 	void SetShaderStatus(const std::string& status)
@@ -7635,6 +7704,11 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	rendererRestartRequired = m_impl != nullptr &&
 		(!state || EffectiveSettingsFingerprint(candidateSettings, false) !=
 			m_impl->restartSettingsFingerprint);
+	if (rendererRestartRequired && state && m_impl &&
+		m_impl->ApplyBt2020TargetLive(candidateSettings))
+	{
+		rendererRestartRequired = false;
+	}
 	m_manualUnifiedProfiles = next;
 
 	activeState.Format(TEXT("Viewport: %S (%S)"),
