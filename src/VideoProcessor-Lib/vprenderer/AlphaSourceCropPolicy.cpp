@@ -256,8 +256,11 @@ namespace AlphaSourceCrop
 			state.detectedTop = sameDirection && state.detectedTop > 0
 				? std::min(state.detectedTop, input.upperContentTop)
 				: input.upperContentTop;
+			// Safety is directional: a new cue needing even one more source
+			// pixel at this edge must apply immediately. Retaining a larger prior
+			// reveal on the reverse move is what removes harmless detector jitter.
 			if (!sameDirection || current.translationPixels <
-				state.translationPixels - input.placementSnapThreshold)
+				state.translationPixels)
 			{
 				state.translationPixels = current.translationPixels;
 			}
@@ -268,7 +271,7 @@ namespace AlphaSourceCrop
 				? std::max(state.detectedBottom, input.lowerContentBottom)
 				: input.lowerContentBottom;
 			if (!sameDirection || current.translationPixels >
-				state.translationPixels + input.placementSnapThreshold)
+				state.translationPixels)
 			{
 				state.translationPixels = current.translationPixels;
 			}
@@ -276,6 +279,51 @@ namespace AlphaSourceCrop
 		state.lastDetectionTick = input.currentTick;
 		state.sourceSequence = input.currentSourceSequence;
 		return state;
+	}
+
+	void VerticalTranslationReleaseDrift::Reset()
+	{
+		lastAppliedTranslationPixels = 0.0f;
+		releaseStartTranslationPixels = 0.0f;
+		releaseStartTick = 0;
+		releaseActive = false;
+	}
+
+	float VerticalTranslationReleaseDrift::Resolve(
+		float requestedTranslationPixels, uint64_t currentTick,
+		uint64_t releaseDurationMs)
+	{
+		if (std::abs(requestedTranslationPixels) > 0.5f)
+		{
+			// New subtitle or menu content always wins over a pending release.
+			releaseActive = false;
+			releaseStartTranslationPixels = 0.0f;
+			releaseStartTick = 0;
+			lastAppliedTranslationPixels = requestedTranslationPixels;
+			return requestedTranslationPixels;
+		}
+		if (releaseDurationMs == 0 ||
+			std::abs(lastAppliedTranslationPixels) <= 0.5f)
+		{
+			Reset();
+			return 0.0f;
+		}
+		if (!releaseActive)
+		{
+			releaseActive = true;
+			releaseStartTranslationPixels = lastAppliedTranslationPixels;
+			releaseStartTick = currentTick;
+		}
+		const uint64_t elapsed = currentTick >= releaseStartTick
+			? currentTick - releaseStartTick : 0;
+		if (elapsed >= releaseDurationMs)
+		{
+			Reset();
+			return 0.0f;
+		}
+		const float remaining = 1.0f - static_cast<float>(elapsed) /
+			static_cast<float>(releaseDurationMs);
+		return releaseStartTranslationPixels * remaining;
 	}
 
 	VerticalBarPresentationResolution ResolveVerticalBarPresentation(

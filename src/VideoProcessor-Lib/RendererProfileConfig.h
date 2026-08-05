@@ -123,6 +123,7 @@ namespace RendererProfileConfig
 		bool automaticCrop = false;
 		bool subtitleFit = false;
 		uint64_t subtitleHoldMilliseconds = 2000;
+		uint64_t subtitleReleaseDriftMilliseconds = 0;
 		int subtitlePaddingPixels = 20;
 		uint64_t generation = 0;
 	};
@@ -340,6 +341,9 @@ namespace RendererProfileConfig
 			if (key == "subtitle_hold_seconds" ||
 				key == "scope_subtitle_hold_seconds")
 				return IsNumberInRange(value, 0.0, 30.0);
+			if (key == "subtitle_release_drift_seconds" ||
+				key == "scope_subtitle_release_drift_seconds")
+				return IsNumberInRange(value, 0.0, 30.0);
 			if (key == "subtitle_padding_pixels" ||
 				key == "scope_subtitle_padding_pixels")
 			{
@@ -547,6 +551,7 @@ namespace RendererProfileConfig
 			variable == "viewport_profile" || variable == "screen_aspect" ||
 			variable == "anamorphic_scale" || variable == "automatic_crop" ||
 			variable == "subtitle_fit" || variable == "subtitle_hold_seconds" ||
+			variable == "subtitle_release_drift_seconds" ||
 			variable == "subtitle_padding_pixels" ||
 			variable == "viewport_generation" || IsActionSourceField(variable))
 			return true;
@@ -960,9 +965,12 @@ namespace RendererProfileConfig
 				"sdr_input_transfer", "output_diagnostics",
 				"diagnostic_disable_shader_cache", "screen_aspect",
 				"default_screen_profile", "automatic_crop", "subtitle_fit",
-				"subtitle_hold_seconds", "subtitle_padding_pixels",
+				"subtitle_hold_seconds", "subtitle_release_drift_seconds",
+				"subtitle_padding_pixels",
 				"scope_screen_aspect", "scope_automatic_crop", "scope_subtitle_fit",
-				"scope_subtitle_hold_seconds", "scope_subtitle_padding_pixels"
+				"scope_subtitle_hold_seconds",
+				"scope_subtitle_release_drift_seconds",
+				"scope_subtitle_padding_pixels"
 			};
 			std::vector<ConfigSchema::KeyRule> displayRules;
 			for (const std::string& key : baseKeys)
@@ -1078,6 +1086,8 @@ namespace RendererProfileConfig
 					{ "scope_automatic_crop", "automatic_crop" },
 					{ "scope_subtitle_fit", "subtitle_fit" },
 					{ "scope_subtitle_hold_seconds", "subtitle_hold_seconds" },
+					{ "scope_subtitle_release_drift_seconds",
+						"subtitle_release_drift_seconds" },
 					{ "scope_subtitle_padding_pixels", "subtitle_padding_pixels" }
 				};
 				for (const auto& value : *values)
@@ -1411,6 +1421,21 @@ namespace RendererProfileConfig
 				return false;
 			}
 			viewport.subtitleHoldMilliseconds =
+				static_cast<uint64_t>(std::llround(seconds * 1000.0));
+		}
+		value = settings.find("subtitle_release_drift_seconds");
+		if (value != settings.end())
+		{
+			double seconds = 0.0;
+			if (!DisplayRuleExpression::ParseNumber(
+				ConfigFile::Trim(value->second), seconds) ||
+				seconds < 0.0 || seconds > 30.0)
+			{
+				error = "[profiles.viewport." + viewport.profile +
+					"] subtitle_release_drift_seconds is invalid";
+				return false;
+			}
+			viewport.subtitleReleaseDriftMilliseconds =
 				static_cast<uint64_t>(std::llround(seconds * 1000.0));
 		}
 		value = settings.find("subtitle_padding_pixels");

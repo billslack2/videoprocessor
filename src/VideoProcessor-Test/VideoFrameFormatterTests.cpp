@@ -741,7 +741,8 @@ namespace Tests
 					if (std::string(group) == "viewport")
 						file << "scope_screen_aspect: 2.35:1\n"
 							"scope_automatic_crop: true\n"
-							"scope_subtitle_fit: true\n";
+							"scope_subtitle_fit: true\n"
+							"scope_subtitle_release_drift_seconds: 1.5\n";
 				}
 			}
 
@@ -751,7 +752,7 @@ namespace Tests
 			std::string error;
 			Assert::IsTrue(RendererProfileConfig::Read(
 				config, model, error));
-			Assert::AreEqual(static_cast<size_t>(3), model.warnings.size());
+			Assert::AreEqual(static_cast<size_t>(4), model.warnings.size());
 			const auto profile = model.profiles.find("viewport.base");
 			Assert::IsTrue(profile != model.profiles.end());
 			Assert::AreEqual("2.35:1",
@@ -760,6 +761,9 @@ namespace Tests
 				profile->second.settings.at("automatic_crop").c_str());
 			Assert::AreEqual("true",
 				profile->second.settings.at("subtitle_fit").c_str());
+			Assert::AreEqual("1.5",
+				profile->second.settings.at(
+					"subtitle_release_drift_seconds").c_str());
 			DeleteFileA(path.c_str());
 		}
 
@@ -810,6 +814,7 @@ namespace Tests
 			cinema.settings["automatic_crop"] = "true";
 			cinema.settings["subtitle_fit"] = "true";
 			cinema.settings["subtitle_hold_seconds"] = "2";
+			cinema.settings["subtitle_release_drift_seconds"] = "3";
 			cinema.settings["subtitle_padding_pixels"] = "30";
 			model.profiles.emplace("viewport.cinema", cinema);
 
@@ -829,6 +834,8 @@ namespace Tests
 			Assert::IsTrue(viewport.subtitleFit);
 			Assert::AreEqual<uint64_t>(
 				2000, viewport.subtitleHoldMilliseconds);
+			Assert::AreEqual<uint64_t>(
+				3000, viewport.subtitleReleaseDriftMilliseconds);
 			Assert::AreEqual(30, viewport.subtitlePaddingPixels);
 			Assert::AreEqual<uint64_t>(2, viewport.generation);
 		}

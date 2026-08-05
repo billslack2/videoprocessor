@@ -85,7 +85,6 @@ namespace AlphaSourceCrop
 		uint64_t currentTick = 0;
 		uint64_t currentSourceSequence = 0;
 		uint64_t holdMs = 0;
-		int placementSnapThreshold = 0;
 		bool translationEnabled = false;
 	};
 
@@ -109,6 +108,25 @@ namespace AlphaSourceCrop
 	// extents; TRANSLATE retains the farthest same-direction displacement.
 	VerticalBarPresentationState UpdateVerticalBarPresentation(
 		const VerticalBarPresentationUpdateInput& input);
+
+	// Subtitle appearance must be immediate so no text is cut off. On release,
+	// an optional renderer setting may linearly return the source window to its
+	// trusted base. A new non-zero placement always cancels that release and
+	// snaps to the newly required safe position.
+	class VerticalTranslationReleaseDrift
+	{
+	public:
+		void Reset();
+		float Resolve(float requestedTranslationPixels, uint64_t currentTick,
+			uint64_t releaseDurationMs);
+		bool IsActive() const { return releaseActive; }
+
+	private:
+		float lastAppliedTranslationPixels = 0.0f;
+		float releaseStartTranslationPixels = 0.0f;
+		uint64_t releaseStartTick = 0;
+		bool releaseActive = false;
+	};
 
 	struct VerticalBarPresentationResolutionInput
 	{

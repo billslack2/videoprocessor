@@ -53,6 +53,7 @@ namespace DisplayRuleExpression
 			name == "previous_refresh" || name == "screen_aspect" ||
 			name == "anamorphic_scale" ||
 			name == "subtitle_hold_seconds" ||
+			name == "subtitle_release_drift_seconds" ||
 			name == "subtitle_padding_pixels" ||
 			name == "viewport_generation")
 		{

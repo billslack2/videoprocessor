@@ -53,6 +53,7 @@ vprenderer.viewport.<variant>.anamorphic_scale	viewport-anamorphic-scale	Alpha v
 vprenderer.viewport.<variant>.automatic_crop	viewport-automatic-crop	Alpha viewport	no
 vprenderer.viewport.<variant>.subtitle_fit	viewport-subtitle-fit	Alpha viewport	no
 vprenderer.viewport.<variant>.subtitle_hold_seconds	viewport-subtitle-hold-seconds	Alpha viewport	no
+vprenderer.viewport.<variant>.subtitle_release_drift_seconds	viewport-subtitle-release-drift-seconds	Alpha viewport	no
 vprenderer.viewport.<variant>.subtitle_padding_pixels	viewport-subtitle-padding-pixels	Alpha viewport	no
 shader.<group>.type	shader-group-type	Shader selection	no
 shader.<group>.when	shader-group-when	Shader selection	no

@@ -236,16 +236,17 @@ namespace Tests
 			refreshedSubtitle.previous = state;
 			refreshedSubtitle.current.action =
 				VerticalBarPresentationAction::TRANSLATE;
-			refreshedSubtitle.current.translationPixels = 225.0f;
+			// A small change still needs to snap outward: retaining the old 197 px
+			// shift would cut off the newly lower subtitle.
+			refreshedSubtitle.current.translationPixels = 205.0f;
 			refreshedSubtitle.lowerContent = true;
 			refreshedSubtitle.lowerContentBottom = 2068;
 			refreshedSubtitle.currentTick = 1900;
 			refreshedSubtitle.currentSourceSequence = 102;
 			refreshedSubtitle.holdMs = 2000;
-			refreshedSubtitle.placementSnapThreshold = 12;
 			refreshedSubtitle.translationEnabled = true;
 			state = UpdateVerticalBarPresentation(refreshedSubtitle);
-			Assert::AreEqual(225.0f, state.translationPixels, 0.001f);
+			Assert::AreEqual(205.0f, state.translationPixels, 0.001f);
 			Assert::IsTrue(IsVerticalBarPresentationActive(
 				state, 3800, 2000, 103));
 
@@ -265,7 +266,7 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(state.action));
-			Assert::AreEqual(225.0f, state.translationPixels, 0.001f);
+			Assert::AreEqual(205.0f, state.translationPixels, 0.001f);
 			Assert::AreEqual(static_cast<unsigned long long>(1900),
 				static_cast<unsigned long long>(state.lastDetectionTick));
 
@@ -298,7 +299,7 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(heldAction.action));
-			Assert::AreEqual(226.0f, heldAction.translationPixels, 0.001f);
+			Assert::AreEqual(206.0f, heldAction.translationPixels, 0.001f);
 
 			// Once the dense release timer expires, a stale generic union still
 			// cannot Fit. Only current simultaneous two-edge content can do that.
@@ -314,6 +315,25 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::FIT),
 				static_cast<int>(currentTwoEdgeAction.action));
+		}
+
+		TEST_METHOD(SubtitleReleaseDriftSnapsOnAppearanceAndReturnsOnlyWhenEnabled)
+		{
+			VerticalTranslationReleaseDrift drift;
+			Assert::AreEqual(198.0f,
+				drift.Resolve(198.0f, 1000, 3000), 0.001f);
+			// Release begins at the exact safe subtitle placement, then returns
+			// smoothly. The zero-duration default remains an immediate restore.
+			Assert::AreEqual(198.0f,
+				drift.Resolve(0.0f, 2000, 3000), 0.001f);
+			Assert::AreEqual(99.0f,
+				drift.Resolve(0.0f, 3500, 3000), 0.001f);
+			// A new cue cancels the release and is never eased in.
+			Assert::AreEqual(226.0f,
+				drift.Resolve(226.0f, 3600, 3000), 0.001f);
+			Assert::AreEqual(0.0f,
+				drift.Resolve(0.0f, 4000, 0), 0.001f);
+			Assert::IsFalse(drift.IsActive());
 		}
 
 		TEST_METHOD(RecordedBottomSubtitleDoesNotBecomeAnAspectFit)
@@ -374,7 +394,6 @@ namespace Tests
 			update.currentTick = 1000;
 			update.currentSourceSequence = 10;
 			update.holdMs = 2000;
-			update.placementSnapThreshold = 12;
 			update.translationEnabled = true;
 			auto state = UpdateVerticalBarPresentation(update);
 			Assert::AreEqual(static_cast<int>(
@@ -507,7 +526,6 @@ namespace Tests
 				input.currentTick = tick;
 				input.currentSourceSequence = sequence;
 				input.holdMs = holdMs;
-				input.placementSnapThreshold = 12;
 				input.translationEnabled = true;
 				state = UpdateVerticalBarPresentation(input);
 			};

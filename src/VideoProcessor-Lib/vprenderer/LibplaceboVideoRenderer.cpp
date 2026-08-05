@@ -803,6 +803,7 @@ namespace
 		bool automaticSourceCrop = false;
 		bool scopeSubtitleFit = false;
 		uint64_t scopeSubtitleHoldMs = 2000;
+		uint64_t scopeSubtitleReleaseDriftMs = 0;
 		int scopeSubtitlePaddingPixels = 20;
 		uint64_t refreshRateCommandDelayMs = 5000;
 		std::vector<RefreshRateCommandRule> refreshRateCommandRules;
@@ -845,6 +846,7 @@ namespace
 				<< settings.anamorphicScale << '|'
 				<< settings.automaticSourceCrop << '|'
 				<< settings.scopeSubtitleFit << '|' << settings.scopeSubtitleHoldMs << '|'
+				<< settings.scopeSubtitleReleaseDriftMs << '|'
 				<< settings.scopeSubtitlePaddingPixels << '|';
 		}
 		stream
@@ -1480,6 +1482,14 @@ namespace
 			if (ParseDouble(raw, seconds) && seconds >= 0.0 && seconds <= 30.0)
 				settings.scopeSubtitleHoldMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
 		}
+		if (readViewportString("subtitle_release_drift_seconds",
+			"scope_subtitle_release_drift_seconds", raw))
+		{
+			double seconds = 0.0;
+			if (ParseDouble(raw, seconds) && seconds >= 0.0 && seconds <= 30.0)
+				settings.scopeSubtitleReleaseDriftMs =
+					static_cast<uint64_t>(std::llround(seconds * 1000.0));
+		}
 		if (readViewportString("subtitle_padding_pixels",
 			"scope_subtitle_padding_pixels", raw))
 		{
@@ -1677,6 +1687,16 @@ namespace
 				settings.scopeSubtitleHoldMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
 			else
 				DebugLog::Log("libplacebo: scope_subtitle_hold_seconds must be between 0 and 30; using 2.0");
+		}
+		if (TryGetDisplayString(config,
+			"scope_subtitle_release_drift_seconds", rawValue))
+		{
+			double seconds = 0.0;
+			if (ParseDouble(rawValue, seconds) && seconds >= 0.0 && seconds <= 30.0)
+				settings.scopeSubtitleReleaseDriftMs =
+					static_cast<uint64_t>(std::llround(seconds * 1000.0));
+			else
+				DebugLog::Log("libplacebo: scope_subtitle_release_drift_seconds must be between 0 and 30; using 0");
 		}
 		if (TryGetDisplayString(config, "scope_subtitle_padding_pixels", rawValue))
 		{
@@ -2453,6 +2473,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool automaticSourceCrop = false;
 	bool scopeSubtitleFit = false;
 	uint64_t scopeSubtitleHoldMs = 2000;
+	uint64_t scopeSubtitleReleaseDriftMs = 0;
 	int scopeSubtitlePaddingPixels = 20;
 	uint64_t scopeSubtitleAnalysisFrame = 0;
 	int scopeSubtitlePictureLeft = 0;
@@ -2466,6 +2487,9 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t scopeSubtitleEvidenceSourceGeneration = 0;
 	AlphaSourceCrop::VerticalBarPresentationState
 		scopeVerticalBarPresentation;
+	AlphaSourceCrop::VerticalTranslationReleaseDrift
+		scopeSubtitleReleaseDrift;
+	bool scopeSubtitleReleaseDriftWasActive = false;
 	bool scopeSubtitleAuthorityGapHeld = false;
 	bool scopeSubtitleWasActive = false;
 	bool scopeSubtitleWasTopActive = false;
@@ -3239,7 +3263,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		DebugLog::Log(
-			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u scope_aspect=%.4f default_screen_profile=%s automatic_crop=%d scope_subtitle_fit=%d subtitle_hold=%llums subtitle_padding=%dpx",
+		"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u scope_aspect=%.4f default_screen_profile=%s automatic_crop=%d scope_subtitle_fit=%d subtitle_hold=%llums subtitle_release_drift=%llums subtitle_padding=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3268,6 +3292,7 @@ struct LibplaceboVideoRenderer::Impl
 			automaticSourceCrop ? 1 : 0,
 			scopeSubtitleFit ? 1 : 0,
 			static_cast<unsigned long long>(scopeSubtitleHoldMs),
+			static_cast<unsigned long long>(scopeSubtitleReleaseDriftMs),
 			scopeSubtitlePaddingPixels);
 	}
 
@@ -3287,6 +3312,8 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		scopeSubtitleAnalysisFrame = 0;
 		scopeVerticalBarPresentation = {};
+		scopeSubtitleReleaseDrift.Reset();
+		scopeSubtitleReleaseDriftWasActive = false;
 		scopeSubtitleAuthorityGapHeld = false;
 		scopeSubtitleWasActive = false;
 		scopeSubtitleWasTopActive = false;
@@ -3587,8 +3614,6 @@ struct LibplaceboVideoRenderer::Impl
 				updateInput.currentTick = now;
 				updateInput.currentSourceSequence = sourceSequence;
 				updateInput.holdMs = scopeSubtitleHoldMs;
-				updateInput.placementSnapThreshold =
-					std::max(4, height / 180);
 				updateInput.translationEnabled = scopeSubtitleFit;
 				scopeVerticalBarPresentation =
 					AlphaSourceCrop::UpdateVerticalBarPresentation(updateInput);
@@ -4673,6 +4698,7 @@ struct LibplaceboVideoRenderer::Impl
 		automaticSourceCrop = settings.automaticSourceCrop;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
+		scopeSubtitleReleaseDriftMs = settings.scopeSubtitleReleaseDriftMs;
 		scopeSubtitlePaddingPixels = settings.scopeSubtitlePaddingPixels;
 		SetSwapchainColorHint(
 			outputPlan.valid ? outputPlan.desiredEncoding :
@@ -4732,6 +4758,7 @@ struct LibplaceboVideoRenderer::Impl
 			automaticSourceCrop != settings.automaticSourceCrop ||
 			scopeSubtitleFit != settings.scopeSubtitleFit ||
 			scopeSubtitleHoldMs != settings.scopeSubtitleHoldMs ||
+			scopeSubtitleReleaseDriftMs != settings.scopeSubtitleReleaseDriftMs ||
 			scopeSubtitlePaddingPixels != settings.scopeSubtitlePaddingPixels;
 		scopeScreenAspect = settings.scopeScreenAspect;
 		defaultScopeScreen = settings.defaultScopeScreen;
@@ -4739,6 +4766,7 @@ struct LibplaceboVideoRenderer::Impl
 		automaticSourceCrop = settings.automaticSourceCrop;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
+		scopeSubtitleReleaseDriftMs = settings.scopeSubtitleReleaseDriftMs;
 		scopeSubtitlePaddingPixels = settings.scopeSubtitlePaddingPixels;
 		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
@@ -6264,13 +6292,49 @@ struct LibplaceboVideoRenderer::Impl
 			const bool currentDetectorBottomExpansion = currentDetectorEnvelope &&
 				effectiveGeometryAvailable &&
 				scopePresentationCurrentBounds.bottom > effectiveGeometry.bottom;
+			const bool requestedSubtitleTranslation = detailedVerticalActive &&
+				scopeVerticalBarPresentation.action ==
+					AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
+				std::abs(subtitleShiftSourcePixels) > 0.5f;
+			float resolvedSubtitleTranslation = requestedSubtitleTranslation
+				? subtitleShiftSourcePixels : 0.0f;
+			if (publishFinalPresentation)
+			{
+				if (!storedVerticalBaseMatchesEffectiveGeometry)
+					scopeSubtitleReleaseDrift.Reset();
+				else
+					resolvedSubtitleTranslation =
+						scopeSubtitleReleaseDrift.Resolve(
+							resolvedSubtitleTranslation, overlayNow,
+							scopeSubtitleReleaseDriftMs);
+				const bool releaseDriftActive =
+					!requestedSubtitleTranslation &&
+					scopeSubtitleReleaseDrift.IsActive();
+				if (releaseDriftActive != scopeSubtitleReleaseDriftWasActive)
+				{
+					DebugLog::Log(
+						"libplacebo scope subtitle fit: release drift %s; duration=%llums shift=%.1f px",
+						releaseDriftActive ? "started" : "completed",
+						static_cast<unsigned long long>(
+							scopeSubtitleReleaseDriftMs),
+						resolvedSubtitleTranslation);
+					scopeSubtitleReleaseDriftWasActive = releaseDriftActive;
+				}
+			}
+			const bool releaseDriftTranslation =
+				!requestedSubtitleTranslation &&
+				std::abs(resolvedSubtitleTranslation) > 0.5f;
 			AlphaSourceCrop::VerticalBarPresentationResolutionInput
 				verticalResolutionInput;
-			verticalResolutionInput.detailedAction = detailedVerticalActive
-				? scopeVerticalBarPresentation.action
-				: AlphaSourceCrop::VerticalBarPresentationAction::NONE;
-			verticalResolutionInput.translationPixels = detailedVerticalActive
-				? subtitleShiftSourcePixels : 0.0f;
+			verticalResolutionInput.detailedAction =
+				requestedSubtitleTranslation
+				? AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE
+				: (releaseDriftTranslation
+					? AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE
+					: AlphaSourceCrop::VerticalBarPresentationAction::NONE);
+			verticalResolutionInput.translationPixels =
+				requestedSubtitleTranslation || releaseDriftTranslation
+				? resolvedSubtitleTranslation : 0.0f;
 			verticalResolutionInput.genericUpperExpansion =
 				currentDetectorTopExpansion;
 			verticalResolutionInput.genericLowerExpansion =
