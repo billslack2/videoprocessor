@@ -19,6 +19,29 @@ the fallback when the visible extent cannot be bounded safely. Automated
 coverage must include a stable scope crop plus a transient top volume bar and
 must prove no inward authority is granted to the overlay.
 
+### Reopened implementation progress (2026-08-05)
+
+Draft [videoprocessor PR #41](https://github.com/billslack2/videoprocessor/pull/41)
+implements the bounded outward-fit repair on branch
+`codex/vp-0080-overlay-fit`. Frame-local excluded-band inspection now derives
+the smallest credible top, bottom, left, or right extent, adds a small
+resolution-scaled safety margin, and merges it only with an existing trusted
+presentation. Two adjacent sampled rows/columns and at least two spatial
+samples are required, so an isolated hot pixel cannot manufacture an envelope.
+If any unsafe edge cannot be bounded, the prior full-raster fail-open behavior
+remains in force.
+
+The path is format-neutral and has synthetic coverage for P010 and native P210
+(the conversion-off case), asymmetric top/bottom/side overlays, clean scope
+bars, colored/visible excluded bands, and isolated noise. The x64 Release
+solution builds successfully; all 57 focused active-picture/crop-policy tests
+and all 578 native tests pass. Logs will identify the live path with
+`bounded visible excluded-band content requires outward fit`,
+`detector_envelope=1`, and the partially expanded evidence rectangle.
+
+The PR remains draft pending real Apple TV volume/menu-overlay validation. No
+deployment was performed in this overnight implementation pass.
+
 The previously accepted baseline was completed on 2026-08-04. PR
 [#34](https://github.com/billslack2/videoprocessor/pull/34)
 merged source head `22b5293` into the `v1.1.015-beta` integration branch as
