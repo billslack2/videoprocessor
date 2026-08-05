@@ -35,7 +35,11 @@ The path is format-neutral and has synthetic coverage for P010 and native P210
 (the conversion-off case), asymmetric top/bottom/side overlays, clean scope
 bars, colored/visible excluded bands, and isolated noise. The x64 Release
 solution builds successfully; all 57 focused active-picture/crop-policy tests
-and all 578 native tests pass. Logs will identify the live path with
+and all 579 native tests pass. A persistent-overlay regression proves that 60
+consecutive localized/provisional observations cannot replace the stable
+program aspect. Such content temporarily enlarges the final presentation like
+a subtitle; only coherent trusted geometry may change aspect authority. Logs
+will identify the live path with
 `bounded visible excluded-band content requires outward fit`,
 `detector_envelope=1`, and the partially expanded evidence rectangle.
 
