@@ -5,6 +5,11 @@
 In progress. Implementation branch: `codex/vp0094-fullscreen-monitor-name`, based on
 the current `origin/v1.1.015-beta` integration branch.
 
+Implementation commit `6b9d14c` completed a clean x64 Release build and all 582
+unit tests. Deployment runtime verification remains pending: it requires explicit
+approval to make the smallest active-configuration edit and replace the paired
+`VideoProcessor.exe`/`vprenderer\VideoProcessorVPRenderer.dll` build artifacts.
+
 ## User story
 
 As a VideoProcessor user with an Epson projector that is not always connected
