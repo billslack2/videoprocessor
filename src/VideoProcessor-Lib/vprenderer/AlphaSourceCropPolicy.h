@@ -22,6 +22,109 @@ namespace AlphaSourceCrop
 	BarContentEdge SelectVerticalBarContentEdge(
 		float upperRequiredShift, float lowerRequiredShift);
 
+	enum class VerticalBarPresentationAction
+	{
+		NONE,
+		TRANSLATE,
+		FIT,
+		FAIL_OPEN,
+	};
+
+	struct VerticalBarContentInput
+	{
+		bool upperContent = false;
+		bool lowerContent = false;
+		int upperOccupiedDepth = 0;
+		int lowerOccupiedDepth = 0;
+		int upperPeakSamples = 0;
+		int lowerPeakSamples = 0;
+		int upperBarPixels = 0;
+		int lowerBarPixels = 0;
+		int sampledColumns = 0;
+		bool topTranslationHeld = false;
+		bool bottomTranslationHeld = false;
+		float upperRequiredShift = 0.0f;
+		float lowerRequiredShift = 0.0f;
+	};
+
+	struct VerticalBarContentDecision
+	{
+		VerticalBarPresentationAction action =
+			VerticalBarPresentationAction::NONE;
+		// Negative reveals the upper bar; positive reveals the lower bar.
+		float translationPixels = 0.0f;
+		bool upperOverlayLike = false;
+		bool lowerOverlayLike = false;
+	};
+
+	// One shallow or localized occupied bar is subtitle/UI-like and may translate
+	// the stable source window. Opposing or broad-and-deep content belongs to the
+	// fit/aspect path. This is deliberately bounded geometry, not OCR or ML.
+	VerticalBarContentDecision EvaluateVerticalBarContent(
+		const VerticalBarContentInput& input);
+
+	struct VerticalBarPresentationState
+	{
+		VerticalBarPresentationAction action =
+			VerticalBarPresentationAction::NONE;
+		int detectedTop = 0;
+		int detectedBottom = 0;
+		float translationPixels = 0.0f;
+		uint64_t lastDetectionTick = 0;
+		uint64_t sourceSequence = 0;
+	};
+
+	struct VerticalBarPresentationUpdateInput
+	{
+		VerticalBarPresentationState previous;
+		VerticalBarContentDecision current;
+		bool upperContent = false;
+		bool lowerContent = false;
+		int upperContentTop = 0;
+		int lowerContentBottom = 0;
+		uint64_t currentTick = 0;
+		uint64_t currentSourceSequence = 0;
+		uint64_t holdMs = 0;
+		int placementSnapThreshold = 0;
+		bool translationEnabled = false;
+	};
+
+	bool IsVerticalBarPresentationActive(
+		const VerticalBarPresentationState& state,
+		uint64_t currentTick, uint64_t holdMs,
+		uint64_t currentSourceSequence);
+
+	// Store exactly one held vertical action. FIT retains the widest measured
+	// extents; TRANSLATE retains the farthest same-direction displacement.
+	VerticalBarPresentationState UpdateVerticalBarPresentation(
+		const VerticalBarPresentationUpdateInput& input);
+
+	struct VerticalBarPresentationResolutionInput
+	{
+		VerticalBarPresentationAction detailedAction =
+			VerticalBarPresentationAction::NONE;
+		float translationPixels = 0.0f;
+		bool genericUpperExpansion = false;
+		bool genericLowerExpansion = false;
+		int genericUpperBound = 0;
+		int genericLowerBound = 0;
+		int authoritativeTop = 0;
+		int authoritativeBottom = 0;
+		int rasterHeight = 0;
+	};
+
+	struct VerticalBarPresentationResolution
+	{
+		VerticalBarPresentationAction action =
+			VerticalBarPresentationAction::NONE;
+		float translationPixels = 0.0f;
+	};
+
+	// Reconcile the dense bar pass with the generic presentation envelope before
+	// changing geometry. TRANSLATE and vertical FIT are mutually exclusive.
+	VerticalBarPresentationResolution ResolveVerticalBarPresentation(
+		const VerticalBarPresentationResolutionInput& input);
+
 	// Full raster is always outward-safe. Keep that presentation authority
 	// between sparse analysis samples, but withdraw it as soon as trusted bar
 	// evidence appears. Ambiguity cannot turn it into crop authority.
@@ -94,6 +197,14 @@ namespace AlphaSourceCrop
 		// it never grants or renews crop authority.
 		bool frameLocalPresentationRetentionEvaluated = false;
 		bool frameLocalPresentationRetentionSafe = false;
+		bool presentationFailOpen = false;
+		// Sparse source-baked text/UI in one encoded bar is a presentation
+		// displacement, not a new aspect ratio. Translate the trusted source
+		// window without changing its dimensions so scale and NLS stay stable.
+		bool verticalTranslationActive = false;
+		int verticalTranslationPixels = 0;
+		ActivePictureBounds verticalTranslationBase;
+		uint64_t verticalTranslationSourceGeneration = 0;
 		bool outwardPresentationActive = false;
 		bool outwardExpansionAvailable = false;
 		ActivePictureClassification classification =
@@ -112,6 +223,8 @@ namespace AlphaSourceCrop
 		ActivePictureBounds sourceBounds;
 		bool applyCrop = false;
 		bool outwardExpanded = false;
+		bool verticallyTranslated = false;
+		int verticalTranslationPixels = 0;
 		std::string reason;
 	};
 

@@ -2446,19 +2446,15 @@ struct LibplaceboVideoRenderer::Impl
 	int scopeSubtitlePictureRight = 0;
 	int scopeSubtitlePictureBottom = 0;
 	int scopeSubtitleDetectedLeft = 0;
-	int scopeSubtitleDetectedBottom = 0;
-	int scopeSubtitleDetectedTop = 0;
 	int scopeSubtitleDetectedRight = 0;
 	uint64_t scopeSubtitleLeftLastDetectionTick = 0;
-	uint64_t scopeSubtitleLastDetectionTick = 0;
-	uint64_t scopeSubtitleTopLastDetectionTick = 0;
 	uint64_t scopeSubtitleRightLastDetectionTick = 0;
 	uint64_t scopeSubtitleEvidenceSourceGeneration = 0;
-	int scopeSubtitleOppositeCandidateSide = 0;
-	int scopeSubtitleOppositeCandidateHits = 0;
-	float scopeSubtitleShiftSourcePixels = 0.0f;
+	AlphaSourceCrop::VerticalBarPresentationState
+		scopeVerticalBarPresentation;
 	bool scopeSubtitleWasActive = false;
 	bool scopeSubtitleWasTopActive = false;
+	std::string lastScopeVerticalOverlayPolicy;
 	// The detector supplies a coarse four-edge envelope while the denser bar
 	// pass below catches smaller source-baked UI. Outward evidence is renewable
 	// for as long as it remains visible; the configured hold is used only as a
@@ -3268,23 +3264,18 @@ struct LibplaceboVideoRenderer::Impl
 	void ClearScopeSubtitleEvidence()
 	{
 		scopeSubtitleAnalysisFrame = 0;
-		scopeSubtitleShiftSourcePixels = 0.0f;
+		scopeVerticalBarPresentation = {};
 		scopeSubtitleWasActive = false;
 		scopeSubtitleWasTopActive = false;
+		lastScopeVerticalOverlayPolicy.clear();
 		scopeSubtitlePictureLeft = 0;
 		scopeSubtitlePictureTop = 0;
 		scopeSubtitlePictureRight = 0;
 		scopeSubtitlePictureBottom = 0;
 		scopeSubtitleDetectedLeft = 0;
-		scopeSubtitleDetectedBottom = 0;
-		scopeSubtitleDetectedTop = 0;
 		scopeSubtitleDetectedRight = 0;
 		scopeSubtitleLeftLastDetectionTick = 0;
-		scopeSubtitleLastDetectionTick = 0;
-		scopeSubtitleTopLastDetectionTick = 0;
 		scopeSubtitleRightLastDetectionTick = 0;
-		scopeSubtitleOppositeCandidateSide = 0;
-		scopeSubtitleOppositeCandidateHits = 0;
 		scopeSubtitleEvidenceSourceGeneration = 0;
 	}
 
@@ -3294,11 +3285,9 @@ struct LibplaceboVideoRenderer::Impl
 		int height,
 		bool scopeScreenActive,
 		const ActivePictureBounds* barAuthority,
-		bool forceAnalysis = false,
-		int* detectedBarSides = nullptr)
+		uint64_t sourceSequence,
+		bool forceAnalysis = false)
 	{
-		if (detectedBarSides)
-			*detectedBarSides = 0;
 		const uint64_t now = GetTickCount64();
 		const bool sourceIsCurrent = source && source->IsValid() &&
 			source->width == width && source->height == height &&
@@ -3405,10 +3394,12 @@ struct LibplaceboVideoRenderer::Impl
 
 				auto findBarContent =
 					[&](int searchTop, int searchBottom,
-						int& detectedTop, int& detectedBottom)
+						int& detectedTop, int& detectedBottom,
+						int& maximumContentSamples)
 					{
 						detectedTop = height;
 						detectedBottom = 0;
+						maximumContentSamples = 0;
 						int contentRows = 0;
 						for (int y = searchTop; y < searchBottom; y += rowStep)
 						{
@@ -3429,6 +3420,8 @@ struct LibplaceboVideoRenderer::Impl
 								continue;
 							}
 							++contentRows;
+							maximumContentSamples = std::max(
+								maximumContentSamples, contentSamples);
 							detectedTop = std::min(detectedTop, y);
 							detectedBottom =
 								std::max(detectedBottom, y + rowStep);
@@ -3446,21 +3439,24 @@ struct LibplaceboVideoRenderer::Impl
 				int upperContentBottom = 0;
 				int lowerContentTop = 0;
 				int lowerContentBottom = 0;
+				int upperMaximumContentSamples = 0;
+				int lowerMaximumContentSamples = 0;
 				const bool upperContent =
 					scopeSubtitlePictureTop > barInset * 2 &&
 					findBarContent(
 						barInset,
 						scopeSubtitlePictureTop - barInset,
 						upperContentTop,
-						upperContentBottom);
+						upperContentBottom,
+						upperMaximumContentSamples);
 				const bool lowerContent =
 					scopeSubtitlePictureBottom + barInset * 2 < height &&
 					findBarContent(
 						scopeSubtitlePictureBottom + barInset,
 						height - barInset,
 						lowerContentTop,
-						lowerContentBottom);
-
+						lowerContentBottom,
+						lowerMaximumContentSamples);
 				const float visibleHeight = std::min(
 					static_cast<float>(height),
 					static_cast<float>(width / scopeScreenAspect));
@@ -3477,86 +3473,97 @@ struct LibplaceboVideoRenderer::Impl
 					? std::max(0.0f,
 						lowerContentBottom + margin - visibleBottom)
 					: 0.0f;
-				if (detectedBarSides)
-				{
-					if (upperRequiredShift > 0.5f)
-						*detectedBarSides |= 1;
-					if (lowerRequiredShift > 0.5f)
-						*detectedBarSides |= 2;
-				}
 
-				// If both bars contain something, prefer the side requiring the larger
-				// displacement. Keep a current placement for its complete hold interval;
-				// an apparent caption on the opposite edge must be confirmed by a second
-				// analysis before it may reverse direction. This rejects transient OSDs
-				// and noisy letterbox-edge measurements without delaying a real subtitle
-				// by more than two analysis intervals.
-				int detectedSide = 0; // -1 top, +1 bottom
-				switch (AlphaSourceCrop::SelectVerticalBarContentEdge(
-					upperRequiredShift, lowerRequiredShift))
+				// Translation is reserved for one overlay-like vertical edge. A shallow
+				// full-width receiver OSD is still overlay-like. Content broad in both
+				// dimensions, two current edges, or evidence opposite a held translation
+				// is one FIT decision, never a competing translate-and-fit pair.
+				const bool verticalHoldActive =
+					AlphaSourceCrop::IsVerticalBarPresentationActive(
+						scopeVerticalBarPresentation, now, scopeSubtitleHoldMs,
+						sourceSequence);
+				if (!verticalHoldActive)
+					scopeVerticalBarPresentation = {};
+				const bool topHoldActive = verticalHoldActive &&
+					scopeVerticalBarPresentation.action ==
+						AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
+					scopeVerticalBarPresentation.translationPixels < -0.5f;
+				const bool lowerHoldActive = verticalHoldActive &&
+					scopeVerticalBarPresentation.action ==
+						AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
+					scopeVerticalBarPresentation.translationPixels > 0.5f;
+				AlphaSourceCrop::VerticalBarContentInput verticalInput;
+				verticalInput.upperContent = upperContent;
+				verticalInput.lowerContent = lowerContent;
+				verticalInput.upperOccupiedDepth =
+					upperContentBottom - upperContentTop;
+				verticalInput.lowerOccupiedDepth =
+					lowerContentBottom - lowerContentTop;
+				verticalInput.upperPeakSamples = upperMaximumContentSamples;
+				verticalInput.lowerPeakSamples = lowerMaximumContentSamples;
+				verticalInput.upperBarPixels = scopeSubtitlePictureTop;
+				verticalInput.lowerBarPixels =
+					height - scopeSubtitlePictureBottom;
+				verticalInput.sampledColumns = sampledColumns;
+				verticalInput.topTranslationHeld = topHoldActive;
+				verticalInput.bottomTranslationHeld = lowerHoldActive;
+				verticalInput.upperRequiredShift = upperRequiredShift;
+				verticalInput.lowerRequiredShift = lowerRequiredShift;
+				AlphaSourceCrop::VerticalBarContentDecision verticalDecision =
+					AlphaSourceCrop::EvaluateVerticalBarContent(verticalInput);
+				const bool upperOverlayLike = verticalDecision.upperOverlayLike;
+				const bool lowerOverlayLike = verticalDecision.lowerOverlayLike;
+				AlphaSourceCrop::VerticalBarPresentationUpdateInput updateInput;
+				updateInput.previous = scopeVerticalBarPresentation;
+				updateInput.current = verticalDecision;
+				updateInput.upperContent = upperContent;
+				updateInput.lowerContent = lowerContent;
+				updateInput.upperContentTop = upperContentTop;
+				updateInput.lowerContentBottom = lowerContentBottom;
+				updateInput.currentTick = now;
+				updateInput.currentSourceSequence = sourceSequence;
+				updateInput.holdMs = scopeSubtitleHoldMs;
+				updateInput.placementSnapThreshold =
+					std::max(4, height / 180);
+				updateInput.translationEnabled = scopeSubtitleFit;
+				scopeVerticalBarPresentation =
+					AlphaSourceCrop::UpdateVerticalBarPresentation(updateInput);
+				const auto action = verticalDecision.action ==
+					AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
+					!scopeSubtitleFit
+					? AlphaSourceCrop::VerticalBarPresentationAction::FIT
+					: verticalDecision.action;
+				const char* actionLabel =
+					action == AlphaSourceCrop::VerticalBarPresentationAction::FIT
+					? "fit" : (action ==
+						AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE
+						? (verticalDecision.translationPixels < 0.0f
+							? "translate-top" : "translate-bottom")
+						: (action ==
+							AlphaSourceCrop::VerticalBarPresentationAction::FAIL_OPEN
+							? "fail-open" : "none"));
 				{
-				case AlphaSourceCrop::BarContentEdge::TOP:
-					detectedSide = -1;
-					break;
-				case AlphaSourceCrop::BarContentEdge::BOTTOM:
-					detectedSide = 1;
-					break;
-				default:
-					break;
-				}
-
-				const bool lowerHoldActive =
-					scopeSubtitleLastDetectionTick != 0 &&
-					now - scopeSubtitleLastDetectionTick <= scopeSubtitleHoldMs;
-				const bool topHoldActive =
-					scopeSubtitleTopLastDetectionTick != 0 &&
-					now - scopeSubtitleTopLastDetectionTick <= scopeSubtitleHoldMs;
-				const int heldSide = topHoldActive ? -1 :
-					(lowerHoldActive ? 1 : 0);
-
-				if (detectedSide != 0)
-				{
-					const bool oppositeActive = heldSide != 0 &&
-						detectedSide != heldSide;
-					if (oppositeActive)
+					std::ostringstream policy;
+					policy << upperContent << upperOverlayLike << '|'
+						<< lowerContent << lowerOverlayLike << '|'
+						<< static_cast<int>(action) << '|'
+						<< upperContentTop << ',' << upperContentBottom << ','
+						<< upperMaximumContentSamples << '|'
+						<< lowerContentTop << ',' << lowerContentBottom << ','
+						<< lowerMaximumContentSamples;
+					if (policy.str() != lastScopeVerticalOverlayPolicy)
 					{
-						if (scopeSubtitleOppositeCandidateSide == detectedSide)
-							++scopeSubtitleOppositeCandidateHits;
-						else
-						{
-							scopeSubtitleOppositeCandidateSide = detectedSide;
-							scopeSubtitleOppositeCandidateHits = 1;
-						}
-						if (scopeSubtitleOppositeCandidateHits < 2)
-							detectedSide = 0;
+						lastScopeVerticalOverlayPolicy = policy.str();
+						DebugLog::Log(
+							"Alpha vertical bar content: top=%d overlay_top=%d top_extent=%d..%d top_peak=%d bottom=%d overlay_bottom=%d bottom_extent=%d..%d bottom_peak=%d decision=%s",
+							upperContent ? 1 : 0, upperOverlayLike ? 1 : 0,
+							upperContentTop, upperContentBottom,
+							upperMaximumContentSamples,
+							lowerContent ? 1 : 0, lowerOverlayLike ? 1 : 0,
+							lowerContentTop, lowerContentBottom,
+							lowerMaximumContentSamples,
+							actionLabel);
 					}
-					else
-					{
-						scopeSubtitleOppositeCandidateSide = 0;
-						scopeSubtitleOppositeCandidateHits = 0;
-					}
-				}
-				else
-				{
-					scopeSubtitleOppositeCandidateSide = 0;
-					scopeSubtitleOppositeCandidateHits = 0;
-				}
-
-				if (detectedSide == -1)
-				{
-					scopeSubtitleDetectedTop = upperContentTop;
-					scopeSubtitleTopLastDetectionTick = now;
-					scopeSubtitleLastDetectionTick = 0;
-					scopeSubtitleOppositeCandidateSide = 0;
-					scopeSubtitleOppositeCandidateHits = 0;
-				}
-				else if (detectedSide == 1)
-				{
-					scopeSubtitleDetectedBottom = lowerContentBottom;
-					scopeSubtitleLastDetectionTick = now;
-					scopeSubtitleTopLastDetectionTick = 0;
-					scopeSubtitleOppositeCandidateSide = 0;
-					scopeSubtitleOppositeCandidateHits = 0;
 				}
 			}
 
@@ -3632,121 +3639,62 @@ struct LibplaceboVideoRenderer::Impl
 				{
 					scopeSubtitleDetectedLeft = leftContentLeft;
 					scopeSubtitleLeftLastDetectionTick = now;
-					if (detectedBarSides)
-						*detectedBarSides |= 4;
 				}
 				if (rightContent)
 				{
 					scopeSubtitleDetectedRight = rightContentRight;
 					scopeSubtitleRightLastDetectionTick = now;
-					if (detectedBarSides)
-						*detectedBarSides |= 8;
 				}
 			}
 		}
 
-		if (!scopeSubtitleFit)
+		const bool verticalPresentationActive =
+			AlphaSourceCrop::IsVerticalBarPresentationActive(
+				scopeVerticalBarPresentation, now, scopeSubtitleHoldMs,
+				sourceSequence);
+		if (!verticalPresentationActive)
+			scopeVerticalBarPresentation = {};
+		if (!scopeSubtitleFit && verticalPresentationActive &&
+			scopeVerticalBarPresentation.action ==
+				AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE)
 		{
-			scopeSubtitleShiftSourcePixels = 0.0f;
-			scopeSubtitleWasActive = false;
-			scopeSubtitleWasTopActive = false;
-			return 0.0f;
+			AlphaSourceCrop::VerticalBarPresentationUpdateInput updateInput;
+			updateInput.previous = scopeVerticalBarPresentation;
+			updateInput.currentTick = now;
+			updateInput.currentSourceSequence = sourceSequence;
+			updateInput.holdMs = scopeSubtitleHoldMs;
+			updateInput.translationEnabled = false;
+			scopeVerticalBarPresentation =
+				AlphaSourceCrop::UpdateVerticalBarPresentation(updateInput);
 		}
+		const bool translationActive = scopeSubtitleFit &&
+			verticalPresentationActive &&
+			scopeVerticalBarPresentation.action ==
+				AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
+		const bool topTranslationActive = translationActive &&
+			scopeVerticalBarPresentation.translationPixels < -0.5f;
+		const float requestedShift = translationActive
+			? scopeVerticalBarPresentation.translationPixels : 0.0f;
 
-		const bool lowerSubtitleActive =
-			scopeSubtitleLastDetectionTick != 0 &&
-			now - scopeSubtitleLastDetectionTick <= scopeSubtitleHoldMs;
-		// Hold either edge for the configured duration. A confirmed detection on
-		// the opposite edge clears the previous timer and changes direction.
-		const bool topSubtitleActive =
-			scopeSubtitleTopLastDetectionTick != 0 &&
-			now - scopeSubtitleTopLastDetectionTick <= scopeSubtitleHoldMs;
-		const bool subtitleActive = topSubtitleActive || lowerSubtitleActive;
-		float requestedShift = 0.0f;
-		if (topSubtitleActive && scopeSubtitlePictureTop > 0)
-		{
-			const float visibleHeight = std::min(
-				static_cast<float>(height),
-				static_cast<float>(width / scopeScreenAspect));
-			const float visibleTop =
-				(static_cast<float>(height) - visibleHeight) * 0.5f;
-			const float margin = std::max(8.0f, height / 90.0f) +
-				static_cast<float>(scopeSubtitlePaddingPixels);
-			// Positive shifts move the picture up. Top-bar content needs the
-			// inverse: shift down until its first detected row is visible.
-			requestedShift = -std::max(
-				0.0f, visibleTop + margin - scopeSubtitleDetectedTop);
-		}
-		else if (lowerSubtitleActive && scopeSubtitlePictureTop > 0)
-		{
-			const float visibleHeight = std::min(
-				static_cast<float>(height),
-				static_cast<float>(width / scopeScreenAspect));
-			const float visibleBottom =
-				(static_cast<float>(height) + visibleHeight) * 0.5f;
-			const float margin = std::max(8.0f, height / 90.0f) +
-				static_cast<float>(scopeSubtitlePaddingPixels);
-			requestedShift = std::max(
-				0.0f,
-				scopeSubtitleDetectedBottom + margin - visibleBottom);
-		}
-
-		// Snap to a new placement and keep it fixed for the hold interval. It may
-		// move farther only when a newly detected extent differs materially;
-		// small detection changes are ignored so the picture does not stutter.
-		// A confirmed caption at the opposite edge changes direction immediately.
-		const float placementSnapThreshold =
-			static_cast<float>(std::max(4, height / 180));
-		if (topSubtitleActive)
-		{
-			if (scopeSubtitleShiftSourcePixels >= 0.0f ||
-				requestedShift <
-					scopeSubtitleShiftSourcePixels - placementSnapThreshold)
-			{
-				scopeSubtitleShiftSourcePixels = requestedShift;
-			}
-		}
-		else if (lowerSubtitleActive)
-		{
-			if (scopeSubtitleShiftSourcePixels <= 0.0f ||
-				requestedShift >
-					scopeSubtitleShiftSourcePixels + placementSnapThreshold)
-			{
-				scopeSubtitleShiftSourcePixels = requestedShift;
-			}
-		}
-		else
-		{
-			// When the configured hold expires, snap back to the normal crop.
-			// Slow easing made fixed subtitles appear to stutter or drift.
-			scopeSubtitleShiftSourcePixels = 0.0f;
-		}
-		// Subtitle placement is signed: positive moves the picture up for a
-		// lower caption, negative moves it down for an upper caption.  Clamp
-		// only the magnitude near zero or valid upper-caption shifts would be
-		// discarded entirely.
-		if (std::abs(scopeSubtitleShiftSourcePixels) < 0.5f)
-			scopeSubtitleShiftSourcePixels = 0.0f;
-
-		if (subtitleActive != scopeSubtitleWasActive)
+		if (translationActive != scopeSubtitleWasActive)
 		{
 			DebugLog::Log(
 				"libplacebo scope subtitle fit: %s picture=%d..%d subtitle_bottom=%d requested_shift=%.1f px",
-				subtitleActive ? "engaged" : "released",
+				translationActive ? "engaged" : "released",
 				scopeSubtitlePictureTop,
 				scopeSubtitlePictureBottom,
-				scopeSubtitleDetectedBottom,
+				scopeVerticalBarPresentation.detectedBottom,
 				requestedShift);
-			scopeSubtitleWasActive = subtitleActive;
+			scopeSubtitleWasActive = translationActive;
 		}
-		if (topSubtitleActive != scopeSubtitleWasTopActive)
+		if (topTranslationActive != scopeSubtitleWasTopActive)
 		{
 			DebugLog::Log("libplacebo scope subtitle fit: upper-edge placement %s; shift=%.1f px",
-				topSubtitleActive ? "active" : "released",
-				scopeSubtitleShiftSourcePixels);
-			scopeSubtitleWasTopActive = topSubtitleActive;
+				topTranslationActive ? "active" : "released",
+				requestedShift);
+			scopeSubtitleWasTopActive = topTranslationActive;
 		}
-		return scopeSubtitleShiftSourcePixels;
+		return requestedShift;
 	}
 
 	static bool EncodingUsesBt2020(LibplaceboOutput::DxgiEncoding encoding)
@@ -5906,7 +5854,8 @@ struct LibplaceboVideoRenderer::Impl
 			(sceneBarAuthority ? &sceneVerificationGeometry : nullptr);
 		const float subtitleShiftSourcePixels =
 			UpdateScopeSubtitleShift(&analysisSource,
-				width, height, scopeScreenActive, subtitleBarAuthority);
+				width, height, scopeScreenActive, subtitleBarAuthority,
+				sourceSequence);
 
 		struct pl_frame image{};
 		if (nativeRgbUpload)
@@ -6083,7 +6032,7 @@ struct LibplaceboVideoRenderer::Impl
 
 		auto configureScreenProfile =
 			[this, &image, width, height, frameGeneration, sourceSequence,
-			 sceneHold](
+			 sceneHold, subtitleShiftSourcePixels](
 				struct pl_frame& source,
 				struct pl_frame& target,
 				bool scopeActive,
@@ -6128,18 +6077,15 @@ struct LibplaceboVideoRenderer::Impl
 				scopeSubtitleLeftLastDetectionTick != 0 &&
 				overlayNow - scopeSubtitleLeftLastDetectionTick <=
 					scopeSubtitleHoldMs;
-			const bool topBarContentActive =
-				scopeSubtitleTopLastDetectionTick != 0 &&
-				overlayNow - scopeSubtitleTopLastDetectionTick <=
-					scopeSubtitleHoldMs;
-			const bool bottomBarContentActive =
-				scopeSubtitleLastDetectionTick != 0 &&
-				overlayNow - scopeSubtitleLastDetectionTick <=
-					scopeSubtitleHoldMs;
 			const bool rightBarContentActive =
 				scopeSubtitleRightLastDetectionTick != 0 &&
 				overlayNow - scopeSubtitleRightLastDetectionTick <=
 					scopeSubtitleHoldMs;
+			const bool detailedVerticalActive =
+				AlphaSourceCrop::IsVerticalBarPresentationActive(
+					scopeVerticalBarPresentation, overlayNow,
+					scopeSubtitleHoldMs, sourceSequence) &&
+				scopeSubtitleEvidenceSourceGeneration == frameGeneration;
 			auto sameBounds = [](const ActivePictureBounds& left,
 				const ActivePictureBounds& right)
 			{
@@ -6169,25 +6115,90 @@ struct LibplaceboVideoRenderer::Impl
 			const AlphaSourceCrop::PresentationEnvelopeDecision envelopeDecision =
 				AlphaSourceCrop::EvaluatePresentationEnvelope(envelopeInput);
 			const bool detectorEnvelopeActive = envelopeDecision.active;
-			const bool barContentFitActive = detectorEnvelopeActive ||
-				leftBarContentActive || topBarContentActive ||
-				rightBarContentActive || bottomBarContentActive;
+			const bool detectorLeftExpansion = detectorEnvelopeActive &&
+				effectiveGeometryAvailable && scopePresentationEvidenceBounds.left <
+					effectiveGeometry.left;
+			const bool detectorTopExpansion = detectorEnvelopeActive &&
+				effectiveGeometryAvailable && scopePresentationEvidenceBounds.top <
+					effectiveGeometry.top;
+			const bool detectorRightExpansion = detectorEnvelopeActive &&
+				effectiveGeometryAvailable && scopePresentationEvidenceBounds.right >
+					effectiveGeometry.right;
+			const bool detectorBottomExpansion = detectorEnvelopeActive &&
+				effectiveGeometryAvailable && scopePresentationEvidenceBounds.bottom >
+					effectiveGeometry.bottom;
+			AlphaSourceCrop::VerticalBarPresentationResolutionInput
+				verticalResolutionInput;
+			verticalResolutionInput.detailedAction = detailedVerticalActive
+				? scopeVerticalBarPresentation.action
+				: AlphaSourceCrop::VerticalBarPresentationAction::NONE;
+			verticalResolutionInput.translationPixels = detailedVerticalActive
+				? subtitleShiftSourcePixels : 0.0f;
+			verticalResolutionInput.genericUpperExpansion = detectorTopExpansion;
+			verticalResolutionInput.genericLowerExpansion = detectorBottomExpansion;
+			verticalResolutionInput.genericUpperBound = detectorTopExpansion
+				? scopePresentationEvidenceBounds.top : effectiveGeometry.top;
+			verticalResolutionInput.genericLowerBound = detectorBottomExpansion
+				? scopePresentationEvidenceBounds.bottom : effectiveGeometry.bottom;
+			verticalResolutionInput.authoritativeTop = effectiveGeometry.top;
+			verticalResolutionInput.authoritativeBottom = effectiveGeometry.bottom;
+			verticalResolutionInput.rasterHeight = height;
+			const AlphaSourceCrop::VerticalBarPresentationResolution
+				verticalResolution = AlphaSourceCrop::ResolveVerticalBarPresentation(
+					verticalResolutionInput);
+			const bool verticalTranslationActive =
+				verticalResolution.action ==
+					AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
+			const bool verticalFitActive = verticalResolution.action ==
+				AlphaSourceCrop::VerticalBarPresentationAction::FIT;
+			const bool verticalFailOpen = verticalResolution.action ==
+				AlphaSourceCrop::VerticalBarPresentationAction::FAIL_OPEN;
+			const bool topTranslationActive = verticalTranslationActive &&
+				verticalResolution.translationPixels < -0.5f;
+			const bool bottomTranslationActive = verticalTranslationActive &&
+				verticalResolution.translationPixels > 0.5f;
+			const int verticalTranslationPixels = topTranslationActive
+				? static_cast<int>(std::floor(
+					verticalResolution.translationPixels))
+				: (bottomTranslationActive
+					? static_cast<int>(std::ceil(
+						verticalResolution.translationPixels)) : 0);
+			const bool selectedDetectorTopExpansion = verticalFitActive &&
+				detectorTopExpansion;
+			const bool selectedDetectorBottomExpansion = verticalFitActive &&
+				detectorBottomExpansion;
+			const bool detectorFitActive = detectorLeftExpansion ||
+				selectedDetectorTopExpansion || detectorRightExpansion ||
+				selectedDetectorBottomExpansion;
+			const bool detailedVerticalFitEvidence = verticalFitActive &&
+				detailedVerticalActive &&
+				(scopeVerticalBarPresentation.detectedTop > 0 ||
+				 scopeVerticalBarPresentation.detectedBottom > 0);
+			const bool denseFitEvidenceActive = leftBarContentActive ||
+				rightBarContentActive || detailedVerticalFitEvidence;
+			const bool barContentFitActive = detectorFitActive ||
+				denseFitEvidenceActive;
 			ActivePictureBounds outwardExpansion = effectiveGeometry;
 			bool outwardExpansionAvailable = false;
 			if (barContentFitActive && effectiveGeometryAvailable &&
-				((scopeSubtitleEvidenceSourceGeneration == frameGeneration) ||
-				 detectorEnvelopeActive))
+				((denseFitEvidenceActive &&
+				  scopeSubtitleEvidenceSourceGeneration == frameGeneration) ||
+				 detectorFitActive))
 			{
-				if (detectorEnvelopeActive)
+				if (detectorFitActive)
 				{
-					outwardExpansion.left = std::min(outwardExpansion.left,
-						scopePresentationEvidenceBounds.left);
-					outwardExpansion.top = std::min(outwardExpansion.top,
-						scopePresentationEvidenceBounds.top);
-					outwardExpansion.right = std::max(outwardExpansion.right,
-						scopePresentationEvidenceBounds.right);
-					outwardExpansion.bottom = std::max(outwardExpansion.bottom,
-						scopePresentationEvidenceBounds.bottom);
+					if (detectorLeftExpansion)
+						outwardExpansion.left = std::min(outwardExpansion.left,
+							scopePresentationEvidenceBounds.left);
+					if (selectedDetectorTopExpansion)
+						outwardExpansion.top = std::min(outwardExpansion.top,
+							scopePresentationEvidenceBounds.top);
+					if (detectorRightExpansion)
+						outwardExpansion.right = std::max(outwardExpansion.right,
+							scopePresentationEvidenceBounds.right);
+					if (selectedDetectorBottomExpansion)
+						outwardExpansion.bottom = std::max(outwardExpansion.bottom,
+							scopePresentationEvidenceBounds.bottom);
 				}
 				const int verticalMargin = std::max(8, height / 90) +
 					scopeSubtitlePaddingPixels;
@@ -6200,18 +6211,21 @@ struct LibplaceboVideoRenderer::Impl
 					outwardExpansion.left = std::min(
 						outwardExpansion.left, expandedLeft);
 				}
-				if (topBarContentActive && scopeSubtitleDetectedTop > 0)
+				if (detailedVerticalFitEvidence &&
+					scopeVerticalBarPresentation.detectedTop > 0)
 				{
 					const int expandedTop = std::max(
-						0, scopeSubtitleDetectedTop - verticalMargin) & ~1;
+						0, scopeVerticalBarPresentation.detectedTop -
+							verticalMargin) & ~1;
 					outwardExpansion.top = std::min(
 						outwardExpansion.top, expandedTop);
 				}
-				if (bottomBarContentActive &&
-					scopeSubtitleDetectedBottom > 0)
+				if (detailedVerticalFitEvidence &&
+					scopeVerticalBarPresentation.detectedBottom > 0)
 				{
 					const int expandedBottom = std::min(height,
-						(scopeSubtitleDetectedBottom + verticalMargin + 1) & ~1);
+						(scopeVerticalBarPresentation.detectedBottom +
+							verticalMargin + 1) & ~1);
 					outwardExpansion.bottom = std::max(
 						outwardExpansion.bottom, expandedBottom);
 				}
@@ -6256,6 +6270,19 @@ struct LibplaceboVideoRenderer::Impl
 				latestActivePicturePresentationRetentionSafe;
 			cropInput.frameLocalPresentationRetentionEvaluated =
 				latestActivePicturePresentationRetentionEvaluated;
+			cropInput.presentationFailOpen = verticalFailOpen;
+			cropInput.verticalTranslationActive = verticalTranslationActive;
+			cropInput.verticalTranslationPixels = verticalTranslationPixels;
+			cropInput.verticalTranslationBase = {
+				scopeSubtitlePictureLeft, scopeSubtitlePictureTop,
+				scopeSubtitlePictureRight, scopeSubtitlePictureBottom,
+				width, height, scopeSubtitlePictureBottom > scopeSubtitlePictureTop
+					? static_cast<double>(scopeSubtitlePictureRight -
+						scopeSubtitlePictureLeft) /
+						(scopeSubtitlePictureBottom - scopeSubtitlePictureTop)
+					: 0.0, true };
+			cropInput.verticalTranslationSourceGeneration =
+				scopeSubtitleEvidenceSourceGeneration;
 			cropInput.outwardPresentationActive = barContentFitActive;
 			cropInput.outwardExpansionAvailable = outwardExpansionAvailable;
 			cropInput.classification = effectiveClassification;
@@ -6264,9 +6291,9 @@ struct LibplaceboVideoRenderer::Impl
 			cropInput.geometrySourceGeneration =
 				effectiveGeometrySourceGeneration;
 			cropInput.outwardExpansionSourceGeneration =
-				detectorEnvelopeActive
-					? scopePresentationEvidenceSourceGeneration
-					: scopeSubtitleEvidenceSourceGeneration;
+				denseFitEvidenceActive
+					? scopeSubtitleEvidenceSourceGeneration
+					: scopePresentationEvidenceSourceGeneration;
 			cropInput.frameSourceGeneration = frameGeneration;
 			cropInput.rasterWidth = width;
 			cropInput.rasterHeight = height;
@@ -6276,14 +6303,17 @@ struct LibplaceboVideoRenderer::Impl
 			cropPolicy << automaticSourceCrop << '|'
 				<< cropDecision.applyCrop << '|'
 				<< cropDecision.outwardExpanded << '|'
+				<< cropDecision.verticallyTranslated << '|'
+				<< cropDecision.verticalTranslationPixels << '|'
 				<< effectiveLatestSupportsCrop << '|'
 				<< sceneVerificationHoldActive << '|'
 				<< ambiguityHoldActive << '|'
 				<< latestObservationIsProvisional << '|'
 				<< latestActivePicturePresentationRetentionSafe << '|'
 				<< detectorEnvelopeActive << '|'
-				<< leftBarContentActive << topBarContentActive
-				<< rightBarContentActive << bottomBarContentActive << '|'
+				<< static_cast<int>(verticalResolution.action) << '|'
+				<< leftBarContentActive << detailedVerticalFitEvidence
+				<< rightBarContentActive << verticalTranslationActive << '|'
 				<< cropDecision.sourceBounds.left << ','
 				<< cropDecision.sourceBounds.top << '-'
 				<< cropDecision.sourceBounds.right << ','
@@ -6294,12 +6324,19 @@ struct LibplaceboVideoRenderer::Impl
 			if (cropPolicy.str() != lastSourceCropPolicy)
 			{
 				lastSourceCropPolicy = cropPolicy.str();
+				const char* verticalActionLabel = verticalTranslationActive
+					? "translate" : (verticalFitActive ? "fit" :
+						(verticalFailOpen ? "fail-open" : "none"));
 				DebugLog::Log(
-					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d envelope_state=%s edges=%c%c%c%c evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s; %s; %s\"",
+					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d envelope_state=%s edges=%c%c%c%c evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s; %s; %s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
 					cropDecision.outwardExpanded ? 1 : 0,
+					cropDecision.verticallyTranslated ? 1 : 0,
+					verticalActionLabel,
+					verticalTranslationPixels,
+					cropDecision.verticalTranslationPixels,
 					effectiveLatestSupportsCrop ? 1 : 0,
 					sceneVerificationHoldActive ? 1 : 0,
 					ambiguityHoldActive ? 1 : 0,
@@ -6308,11 +6345,15 @@ struct LibplaceboVideoRenderer::Impl
 						latestActivePictureEvidenceClassification),
 					detectorEnvelopeActive ? 1 : 0,
 					envelopeDecision.currentFrame ? "current" :
-						(envelopeDecision.held ? "held" : "inactive"),
+					(envelopeDecision.held ? "held" : "inactive"),
 					leftBarContentActive ? 'L' : '-',
-					topBarContentActive ? 'T' : '-',
+					((detailedVerticalActive &&
+					  scopeVerticalBarPresentation.detectedTop > 0) ||
+					 selectedDetectorTopExpansion) ? 'T' : '-',
 					rightBarContentActive ? 'R' : '-',
-					bottomBarContentActive ? 'B' : '-',
+					((detailedVerticalActive &&
+					  scopeVerticalBarPresentation.detectedBottom > 0) ||
+					 selectedDetectorBottomExpansion) ? 'B' : '-',
 					outwardExpansion.left,
 					outwardExpansion.top,
 					outwardExpansion.right,
