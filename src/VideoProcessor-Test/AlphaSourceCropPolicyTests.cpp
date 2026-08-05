@@ -312,6 +312,43 @@ namespace Tests
 				state, 1001, 0, 43));
 		}
 
+		TEST_METHOD(VerticalBarTranslationSurvivesSameGenerationAuthorityGap)
+		{
+			// The live Alpha path may classify a subtitle-bearing frame as
+			// provisional while validating the bar geometry. That temporary gap
+			// must not discard a current same-generation subtitle translation and
+			// hand authority to the coarse two-edge envelope.
+			VerticalBarPresentationState state;
+			state.action = VerticalBarPresentationAction::TRANSLATE;
+			state.translationPixels = 197.0f;
+			state.detectedBottom = 2040;
+			state.lastDetectionTick = 1000;
+			state.sourceSequence = 101;
+
+			Assert::IsTrue(CanRetainVerticalBarPresentationAcrossAuthorityGap(
+				state, 7, 7, 1100, 2000, 102));
+			Assert::IsFalse(CanRetainVerticalBarPresentationAcrossAuthorityGap(
+				state, 7, 8, 1100, 2000, 102));
+			Assert::IsFalse(CanRetainVerticalBarPresentationAcrossAuthorityGap(
+				state, 7, 7, 3001, 2000, 102));
+
+			VerticalBarPresentationResolutionInput input;
+			input.detailedAction = state.action;
+			input.translationPixels = state.translationPixels;
+			input.genericUpperExpansion = true;
+			input.genericUpperBound = 54;
+			input.genericLowerExpansion = true;
+			input.genericLowerBound = 2106;
+			input.authoritativeTop = 276;
+			input.authoritativeBottom = 1884;
+			input.rasterHeight = 2160;
+			const auto action = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(action.action));
+			Assert::AreEqual(222.0f, action.translationPixels, 0.001f);
+		}
+
 		TEST_METHOD(FreshOneEdgeEvidenceIntentionallyReplacesHeldFit)
 		{
 			VerticalBarPresentationUpdateInput update;

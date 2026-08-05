@@ -94,6 +94,17 @@ namespace AlphaSourceCrop
 		uint64_t currentTick, uint64_t holdMs,
 		uint64_t currentSourceSequence);
 
+	// A bar detector can briefly lose crop authority while the active-picture
+	// classifier verifies the same frame-local overlay. Preserve a known
+	// presentation action only within its source generation and bounded release
+	// hold; a new source generation must always reacquire authority first.
+	bool CanRetainVerticalBarPresentationAcrossAuthorityGap(
+		const VerticalBarPresentationState& state,
+		uint64_t evidenceSourceGeneration,
+		uint64_t currentSourceGeneration,
+		uint64_t currentTick, uint64_t holdMs,
+		uint64_t currentSourceSequence);
+
 	// Store exactly one held vertical action. FIT retains the widest measured
 	// extents; TRANSLATE retains the farthest same-direction displacement.
 	VerticalBarPresentationState UpdateVerticalBarPresentation(

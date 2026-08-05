@@ -2466,6 +2466,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t scopeSubtitleEvidenceSourceGeneration = 0;
 	AlphaSourceCrop::VerticalBarPresentationState
 		scopeVerticalBarPresentation;
+	bool scopeSubtitleAuthorityGapHeld = false;
 	bool scopeSubtitleWasActive = false;
 	bool scopeSubtitleWasTopActive = false;
 	std::string lastScopeVerticalOverlayPolicy;
@@ -3280,6 +3281,7 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		scopeSubtitleAnalysisFrame = 0;
 		scopeVerticalBarPresentation = {};
+		scopeSubtitleAuthorityGapHeld = false;
 		scopeSubtitleWasActive = false;
 		scopeSubtitleWasTopActive = false;
 		lastScopeVerticalOverlayPolicy.clear();
@@ -3317,15 +3319,55 @@ struct LibplaceboVideoRenderer::Impl
 			barAuthority->top < barAuthority->bottom &&
 			(barAuthority->left > 0 || barAuthority->top > 0 ||
 			 barAuthority->right < width || barAuthority->bottom < height);
-		if (!scopeScreenActive || !sourceIsCurrent ||
-			!authorityIsCurrentBars)
+		if (!scopeScreenActive || !sourceIsCurrent)
 		{
 			// Receiver controls and ordinary picture detail are in-picture UI unless
 			// shared authority proves one or more encoded bars around the picture.
 			ClearScopeSubtitleEvidence();
 			return 0.0f;
 		}
-		if (sourceIsCurrent &&
+		const bool retainAcrossAuthorityGap =
+			AlphaSourceCrop::CanRetainVerticalBarPresentationAcrossAuthorityGap(
+				scopeVerticalBarPresentation,
+				scopeSubtitleEvidenceSourceGeneration, source->generation,
+				now, scopeSubtitleHoldMs, sourceSequence);
+		if (!authorityIsCurrentBars && !retainAcrossAuthorityGap)
+		{
+			// No current bar authority and no same-generation presentation action
+			// left to release. Do not let an ordinary in-picture UI inherit stale
+			// subtitle placement.
+			if (scopeSubtitleAuthorityGapHeld)
+			{
+				DebugLog::Log(
+					"libplacebo scope subtitle fit: provisional bar-authority hold released; source_generation=%llu evidence_generation=%llu",
+					static_cast<unsigned long long>(source->generation),
+					static_cast<unsigned long long>(
+						scopeSubtitleEvidenceSourceGeneration));
+			}
+			ClearScopeSubtitleEvidence();
+			return 0.0f;
+		}
+		if (!authorityIsCurrentBars)
+		{
+			if (!scopeSubtitleAuthorityGapHeld)
+			{
+				DebugLog::Log(
+					"libplacebo scope subtitle fit: retaining same-generation action through provisional bar-authority gap; action=%d shift=%.1f px",
+					static_cast<int>(scopeVerticalBarPresentation.action),
+					scopeVerticalBarPresentation.translationPixels);
+				scopeSubtitleAuthorityGapHeld = true;
+			}
+		}
+		else
+		{
+			if (scopeSubtitleAuthorityGapHeld)
+			{
+				DebugLog::Log(
+					"libplacebo scope subtitle fit: bar authority reacquired; resuming dense analysis");
+			}
+			scopeSubtitleAuthorityGapHeld = false;
+		}
+		if (authorityIsCurrentBars &&
 			(scopeSubtitleEvidenceSourceGeneration != source->generation ||
 			 scopeSubtitlePictureLeft != barAuthority->left ||
 			 scopeSubtitlePictureTop != barAuthority->top ||
@@ -3346,7 +3388,8 @@ struct LibplaceboVideoRenderer::Impl
 		// non-black content inside those already-proven encoded bars.
 		// Sampling every third rendered frame keeps the 4K CPU cost negligible
 		// while still reacting in roughly 50-125 ms.
-		if (forceAnalysis || ++scopeSubtitleAnalysisFrame % 3 == 0)
+		if (authorityIsCurrentBars &&
+			(forceAnalysis || ++scopeSubtitleAnalysisFrame % 3 == 0))
 		{
 			// This is intentionally fixed-capacity: no full-frame surface and no
 			// recurring heap allocation is needed to establish the black floor.
@@ -6144,11 +6187,18 @@ struct LibplaceboVideoRenderer::Impl
 				scopeSubtitleRightLastDetectionTick != 0 &&
 				overlayNow - scopeSubtitleRightLastDetectionTick <=
 					scopeSubtitleHoldMs;
+			const bool storedVerticalBaseMatchesEffectiveGeometry =
+				effectiveGeometryAvailable &&
+				scopeSubtitlePictureLeft == effectiveGeometry.left &&
+				scopeSubtitlePictureTop == effectiveGeometry.top &&
+				scopeSubtitlePictureRight == effectiveGeometry.right &&
+				scopeSubtitlePictureBottom == effectiveGeometry.bottom;
 			const bool detailedVerticalActive =
 				AlphaSourceCrop::IsVerticalBarPresentationActive(
 					scopeVerticalBarPresentation, overlayNow,
 					scopeSubtitleHoldMs, sourceSequence) &&
-				scopeSubtitleEvidenceSourceGeneration == frameGeneration;
+				scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
+				storedVerticalBaseMatchesEffectiveGeometry;
 			auto sameBounds = [](const ActivePictureBounds& left,
 				const ActivePictureBounds& right)
 			{

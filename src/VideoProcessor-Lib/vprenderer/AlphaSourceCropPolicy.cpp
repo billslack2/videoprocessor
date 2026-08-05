@@ -152,6 +152,19 @@ namespace AlphaSourceCrop
 			currentTick - state.lastDetectionTick <= holdMs;
 	}
 
+	bool CanRetainVerticalBarPresentationAcrossAuthorityGap(
+		const VerticalBarPresentationState& state,
+		uint64_t evidenceSourceGeneration,
+		uint64_t currentSourceGeneration,
+		uint64_t currentTick, uint64_t holdMs,
+		uint64_t currentSourceSequence)
+	{
+		return evidenceSourceGeneration != 0 &&
+			evidenceSourceGeneration == currentSourceGeneration &&
+			IsVerticalBarPresentationActive(state, currentTick, holdMs,
+				currentSourceSequence);
+	}
+
 	VerticalBarPresentationState UpdateVerticalBarPresentation(
 		const VerticalBarPresentationUpdateInput& input)
 	{
