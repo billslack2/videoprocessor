@@ -30,11 +30,29 @@ namespace UnifiedProfileRuntime
 		}
 	};
 
+	// A resolved action launch request. Matching happens against the immutable
+	// snapshots at the transition boundary; the UI owns asynchronous process
+	// launch and cancellation.
+	struct ActionInvocation
+	{
+		RendererProfileConfig::Model::EventAction action;
+		std::string event;
+		std::string reason;
+	};
+
 	struct SelectionResult
 	{
 		bool changed = false;
 		std::vector<RendererProfileConfig::KeySelection> selections;
 		std::shared_ptr<const Snapshot> snapshot;
+		std::vector<ActionInvocation> actions;
+	};
+
+	struct RefreshResult
+	{
+		bool changed = false;
+		std::shared_ptr<const Snapshot> snapshot;
+		std::vector<ActionInvocation> actions;
 	};
 
 	// Application-owned coordinator for unified profile selection. Renderer
@@ -55,11 +73,20 @@ namespace UnifiedProfileRuntime
 		// Re-resolves automatic profiles after source state changes. Manual
 		// selections remain authoritative until reset by their group expression.
 		bool Refresh(const DisplayRuleExpression::ValueLookup& sourceValues,
-			bool& changed, std::string& error);
+			RefreshResult& result, std::string& error);
+
+		// Emits an event against the current committed snapshot. This is used for
+		// renderer-ready, which has no profile transition of its own.
+		bool CollectActionInvocations(const std::string& event,
+			const std::string& reason,
+			const std::shared_ptr<const Snapshot>& previous,
+			const std::shared_ptr<const Snapshot>& current,
+			std::vector<ActionInvocation>& actions, std::string& error) const;
 
 		std::shared_ptr<const Snapshot> GetSnapshot() const;
 		bool IsInitialized() const;
 		std::string StatePath() const;
+		std::string ConfigPath() const;
 
 	private:
 		bool LoadPersistedSelections(
@@ -73,12 +100,23 @@ namespace UnifiedProfileRuntime
 			const DisplayRuleExpression::ValueLookup& sourceValues,
 			uint64_t generation, std::shared_ptr<const Snapshot>& snapshot,
 			std::string& error) const;
+		bool CollectTransitionActionInvocations(
+			const std::shared_ptr<const Snapshot>& previous,
+			const std::shared_ptr<const Snapshot>& current,
+			const std::string& reason,
+			std::vector<ActionInvocation>& actions, std::string& error) const;
+		bool CollectActionInvocationsUnlocked(const std::string& event,
+			const std::string& reason,
+			const std::shared_ptr<const Snapshot>& previous,
+			const std::shared_ptr<const Snapshot>& current,
+			std::vector<ActionInvocation>& actions, std::string& error) const;
 		bool IsPersistedSelectionValid(const std::string& group,
 			const std::string& profile) const;
 
 		mutable std::mutex m_mutex;
 		RendererProfileConfig::Model m_model;
 		std::string m_statePath;
+		std::string m_configPath;
 		bool m_initialized = false;
 		uint64_t m_generation = 0;
 		std::shared_ptr<const Snapshot> m_snapshot;

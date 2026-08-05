@@ -250,6 +250,7 @@
     <ClInclude Include="pch.h" />
     <ClInclude Include="PixelValueRange.h" />
     <ClInclude Include="PPMCorrectionLoader.h" />
+	<ClInclude Include="EventActionLauncher.h" />
     <ClInclude Include="RendererId.h" />
     <ClInclude Include="StateVariables.h" />
     <ClInclude Include="UnifiedProfileRuntime.h" />
@@ -365,6 +366,7 @@
     </ClCompile>
     <ClCompile Include="PixelValueRange.cpp" />
     <ClCompile Include="PPMCorrectionLoader.cpp" />
+	<ClCompile Include="EventActionLauncher.cpp" />
     <ClCompile Include="RendererId.cpp" />
     <ClCompile Include="StateVariables.cpp" />
     <ClCompile Include="UnifiedProfileRuntime.cpp" />

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <windows.h>
 
@@ -124,6 +125,41 @@ namespace
 			}
 		}
 	}
+
+
+	bool SnapshotValueChanged(
+		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& previous,
+		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& current,
+		const std::string& name)
+	{
+		std::string before;
+		std::string after;
+		const bool hadBefore = previous && previous->LookupVariable(name, before);
+		const bool hasAfter = current && current->LookupVariable(name, after);
+		return hadBefore != hasAfter || (hadBefore && before != after);
+	}
+
+
+	bool LookupActionValue(const std::string& name, const std::string& event,
+		const std::string& reason,
+		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& previous,
+		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& current,
+		std::string& value)
+	{
+		if (name == "event") { value = event; return true; }
+		if (name == "event_reason") { value = reason; return true; }
+		const std::string previousProfile = "previous_profile.";
+		if (name.size() > previousProfile.size() &&
+			name.compare(0, previousProfile.size(), previousProfile) == 0)
+			return previous && previous->LookupVariable("profile." +
+				name.substr(previousProfile.size()), value);
+		const std::string previousValue = "previous.";
+		if (name.size() > previousValue.size() &&
+			name.compare(0, previousValue.size(), previousValue) == 0)
+			return previous && previous->LookupVariable(
+				name.substr(previousValue.size()), value);
+		return current && current->LookupVariable(name, value);
+	}
 }
 
 
@@ -151,6 +187,7 @@ namespace UnifiedProfileRuntime
 			return false;
 
 		m_model = std::move(model);
+		m_configPath = config.GetLoadedPath();
 		m_statePath = m_model.persistSelection ?
 			RendererProfileConfig::StatePath(config) : std::string();
 		std::map<std::string, std::string> restored;
@@ -222,6 +259,9 @@ namespace UnifiedProfileRuntime
 			result.snapshot = current;
 			return true;
 		}
+		if (!CollectTransitionActionInvocations(current, candidate, "manual",
+			result.actions, error))
+			return false;
 		if (m_model.persistSelection &&
 			!PersistSelections(manual, error))
 			return false;
@@ -241,10 +281,10 @@ namespace UnifiedProfileRuntime
 
 	bool Runtime::Refresh(
 		const DisplayRuleExpression::ValueLookup& sourceValues,
-		bool& changed, std::string& error)
+		RefreshResult& result, std::string& error)
 	{
 		std::lock_guard<std::mutex> guard(m_mutex);
-		changed = false;
+		result = {};
 		error.clear();
 		if (!m_initialized)
 		{
@@ -258,10 +298,17 @@ namespace UnifiedProfileRuntime
 			m_generation + 1, candidate, error))
 			return false;
 		if (SameEffectiveState(*current, *candidate))
+		{
+			result.snapshot = current;
 			return true;
+		}
+		if (!CollectTransitionActionInvocations(current, candidate, "source",
+			result.actions, error))
+			return false;
 		++m_generation;
 		std::atomic_store(&m_snapshot, candidate);
-		changed = true;
+		result.changed = true;
+		result.snapshot = candidate;
 		return true;
 	}
 
@@ -283,6 +330,118 @@ namespace UnifiedProfileRuntime
 	{
 		std::lock_guard<std::mutex> guard(m_mutex);
 		return m_statePath;
+	}
+
+
+	std::string Runtime::ConfigPath() const
+	{
+		std::lock_guard<std::mutex> guard(m_mutex);
+		return m_configPath;
+	}
+
+
+	bool Runtime::CollectActionInvocations(const std::string& event,
+		const std::string& reason,
+		const std::shared_ptr<const Snapshot>& previous,
+		const std::shared_ptr<const Snapshot>& current,
+		std::vector<ActionInvocation>& actions, std::string& error) const
+	{
+		std::lock_guard<std::mutex> guard(m_mutex);
+		actions.clear();
+		error.clear();
+		if (!m_initialized)
+		{
+			error = "unified profile runtime is not initialized";
+			return false;
+		}
+		return CollectActionInvocationsUnlocked(event, reason, previous,
+			current, actions, error);
+	}
+
+
+	bool Runtime::CollectActionInvocationsUnlocked(const std::string& event,
+		const std::string& reason,
+		const std::shared_ptr<const Snapshot>& previous,
+		const std::shared_ptr<const Snapshot>& current,
+		std::vector<ActionInvocation>& actions, std::string& error) const
+	{
+		if (!RendererProfileConfig::IsSupportedActionEvent(event))
+		{
+			error = "unsupported action event '" + event + "'";
+			return false;
+		}
+		for (const RendererProfileConfig::Model::EventAction& action :
+			m_model.actions)
+		{
+			if (std::find(action.events.begin(), action.events.end(), event) ==
+				action.events.end())
+				continue;
+			int specificity = 0;
+			std::string matchError;
+			const bool matches = action.whenExpression.Matches(
+				[&](const std::string& variable, std::string& value)
+				{
+					return LookupActionValue(variable, event, reason, previous,
+						current, value);
+				}, specificity, matchError);
+			if (!matches)
+			{
+				if (!matchError.empty())
+					DebugLog::Log("event action '%s' evaluation for %s failed: %s",
+						action.name.c_str(), event.c_str(), matchError.c_str());
+				continue;
+			}
+			actions.push_back({ action, event, reason });
+		}
+		return true;
+	}
+
+
+	bool Runtime::CollectTransitionActionInvocations(
+		const std::shared_ptr<const Snapshot>& previous,
+		const std::shared_ptr<const Snapshot>& current,
+		const std::string& reason,
+		std::vector<ActionInvocation>& actions, std::string& error) const
+	{
+		actions.clear();
+		if (!current)
+			return true;
+		for (const char* field :
+			{ "eotf", "transfer", "colorspace", "primaries", "format",
+			  "resolution", "scan", "hdr_metadata", "interlaced",
+			  "source_rate", "cadence", "width", "height" })
+			if (SnapshotValueChanged(previous, current, field) &&
+				!CollectActionInvocationsUnlocked("source." +
+					std::string(field) + ".changed", reason, previous, current,
+					actions, error))
+				return false;
+
+		std::set<std::string> groups;
+		if (previous)
+			for (const auto& selection : previous->effectiveSelections)
+				groups.insert(selection.first);
+		for (const auto& selection : current->effectiveSelections)
+			groups.insert(selection.first);
+		bool profileChanged = false;
+		for (const std::string& group : groups)
+		{
+			const std::string before = previous &&
+				previous->effectiveSelections.count(group) ?
+				previous->effectiveSelections.at(group) : std::string();
+			const std::string after = current->effectiveSelections.count(group) ?
+				current->effectiveSelections.at(group) : std::string();
+			if (before == after)
+				continue;
+			profileChanged = true;
+			if (!CollectActionInvocationsUnlocked("profile." + group +
+				".changed", reason, previous, current, actions, error))
+				return false;
+		}
+		if (profileChanged && !CollectActionInvocationsUnlocked(
+			"profile.changed", reason, previous, current, actions, error))
+			return false;
+		return CollectActionInvocationsUnlocked("state.committed", reason,
+			previous, current, actions, error);
 	}
 
 

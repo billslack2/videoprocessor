@@ -421,6 +421,142 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(UnifiedActionsPublishCommittedSourceAndProfileEvents)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-unified-actions.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+					"[vprenderer]\nquality: high\n"
+					"[vprenderer.viewport]\nscreen_aspect: 16:9\n"
+					"[vprenderer.viewport.scope]\nwhen: $eotf==\"pq\"\n"
+					"screen_aspect: 2.35:1\nautomatic_crop: true\n"
+					"[actions.committed_scope_pq]\n"
+					"on: state.committed\n"
+					"when: $eotf==\"pq\" && $profile.viewport==\"scope\" && $previous.eotf==\"sdr\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.eotf_pq]\n"
+					"on: source.eotf.changed\n"
+					"when: $eotf==\"pq\" && $previous.eotf==\"sdr\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.rec709]\n"
+					"on: source.primaries.changed\n"
+					"when: $primaries==\"rec709\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.scope_entered]\n"
+					"on: profile.viewport.changed\n"
+					"when: $profile.viewport==\"scope\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.scope_left]\n"
+					"on: profile.viewport.changed\n"
+					"when: $previous_profile.viewport==\"scope\" && $profile.viewport==\"base\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.renderer_scope_ready]\n"
+					"on: renderer.ready\n"
+					"when: $event_reason==\"renderer_ready\" && $profile.viewport==\"scope\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(6), model.actions.size());
+
+			auto source = [](const char* eotf, const char* primaries)
+			{
+				return [eotf, primaries](const std::string& name,
+					std::string& value)
+				{
+					if (name == "eotf" || name == "transfer")
+					{
+						value = eotf;
+						return true;
+					}
+					if (name == "primaries" || name == "colorspace")
+					{
+						value = primaries;
+						return true;
+					}
+					return false;
+				};
+			};
+			auto hasInvocation = [](const std::vector<
+				UnifiedProfileRuntime::ActionInvocation>& actions,
+				const char* actionName, const char* event)
+			{
+				return std::any_of(actions.begin(), actions.end(),
+					[actionName, event](const UnifiedProfileRuntime::ActionInvocation& action)
+					{
+						return action.action.name == actionName &&
+							action.event == event;
+					});
+			};
+
+			UnifiedProfileRuntime::Runtime runtime;
+			Assert::IsTrue(runtime.Initialize(config, source("sdr", "bt2020"), error),
+				std::wstring(error.begin(), error.end()).c_str());
+			UnifiedProfileRuntime::RefreshResult entered;
+			Assert::IsTrue(runtime.Refresh(source("pq", "rec709"), entered, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(entered.changed);
+			Assert::AreEqual("scope", entered.snapshot->viewport.profile.c_str());
+			Assert::IsTrue(hasInvocation(entered.actions,
+				"committed_scope_pq", "state.committed"));
+			Assert::IsTrue(hasInvocation(entered.actions,
+				"eotf_pq", "source.eotf.changed"));
+			Assert::IsTrue(hasInvocation(entered.actions,
+				"rec709", "source.primaries.changed"));
+			Assert::IsTrue(hasInvocation(entered.actions,
+				"scope_entered", "profile.viewport.changed"));
+
+			std::vector<UnifiedProfileRuntime::ActionInvocation> ready;
+			Assert::IsTrue(runtime.CollectActionInvocations("renderer.ready",
+				"renderer_ready", nullptr, entered.snapshot, ready, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(hasInvocation(ready, "renderer_scope_ready",
+				"renderer.ready"));
+
+			UnifiedProfileRuntime::RefreshResult left;
+			Assert::IsTrue(runtime.Refresh(source("sdr", "bt2020"), left, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(left.changed);
+			Assert::AreEqual("base", left.snapshot->viewport.profile.c_str());
+			Assert::IsTrue(hasInvocation(left.actions, "scope_left",
+				"profile.viewport.changed"));
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(UnifiedActionsRejectValueEncodedEventNames)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-invalid-unified-action.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+					"[actions.invalid]\n"
+					"on: source.eotf.pq\n"
+					"when: $eotf==\"pq\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n";
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("unsupported event") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(Vp0079FirstNamedVariantIsDefaultAndInheritedBaseline)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

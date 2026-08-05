@@ -3,6 +3,7 @@
 #include "LibplaceboVideoRenderer.h"
 
 #include <ConfigFile.h>
+#include <EventActionLauncher.h>
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
 #include <P010ActivePictureEvidence.h>
@@ -1959,86 +1960,6 @@ namespace
 		return std::abs(RefreshRateHz(first) - RefreshRateHz(second)) < 0.002;
 	}
 
-	std::string ParentPath(const std::string& path)
-	{
-		const size_t separator = path.find_last_of("\\/");
-		return separator == std::string::npos ? std::string() : path.substr(0, separator);
-	}
-
-	bool IsAbsoluteWindowsPath(const std::string& path)
-	{
-		return path.size() >= 3 && std::isalpha(static_cast<unsigned char>(path[0])) &&
-			path[1] == ':' && (path[2] == '\\' || path[2] == '/');
-	}
-
-	void LaunchUnifiedEventAction(const RendererProfileConfig::Model::EventAction& action,
-		const std::string& configPath)
-	{
-		const std::string configDirectory = ParentPath(configPath);
-		std::string program = ConfigFile::Trim(action.program);
-		if (!IsAbsoluteWindowsPath(program) && !configDirectory.empty())
-			program = configDirectory + "\\" + program;
-		std::string workingDirectory = ConfigFile::Trim(action.workingDirectory);
-		if (workingDirectory.empty()) workingDirectory = configDirectory;
-		else if (!IsAbsoluteWindowsPath(workingDirectory) && !configDirectory.empty())
-			workingDirectory = configDirectory + "\\" + workingDirectory;
-
-		const std::wstring wideProgram = Utf8ToWide(program);
-		const std::wstring wideArguments = Utf8ToWide(action.arguments);
-		const std::wstring wideWorkingDirectory = Utf8ToWide(workingDirectory);
-		if (wideProgram.empty())
-		{
-			DebugLog::Log("event action '%s' rejected: program is not valid UTF-8",
-				action.name.c_str());
-			return;
-		}
-
-		const std::string normalizedProgram = ConfigFile::NormalizeName(program);
-		const bool batch = normalizedProgram.size() >= 4 &&
-			(normalizedProgram.substr(normalizedProgram.size() - 4) == ".bat" ||
-			 normalizedProgram.substr(normalizedProgram.size() - 4) == ".cmd");
-		std::wstring application = wideProgram;
-		std::wstring commandLine;
-		if (batch)
-		{
-			wchar_t commandProcessor[MAX_PATH]{};
-			if (GetEnvironmentVariableW(L"ComSpec", commandProcessor,
-				static_cast<DWORD>(_countof(commandProcessor))) == 0)
-			{
-				DebugLog::Log("event action '%s' rejected: ComSpec is unavailable",
-					action.name.c_str());
-				return;
-			}
-			application = commandProcessor;
-			commandLine = L"\"" + application + L"\" /d /s /c \"\"" +
-				wideProgram + L"\"" +
-				(wideArguments.empty() ? L"" : L" " + wideArguments) + L"\"";
-		}
-		else
-		{
-			commandLine = L"\"" + wideProgram + L"\"" +
-				(wideArguments.empty() ? L"" : L" " + wideArguments);
-		}
-
-		STARTUPINFOW startupInfo{};
-		startupInfo.cb = sizeof(startupInfo);
-		startupInfo.dwFlags = STARTF_USESHOWWINDOW;
-		startupInfo.wShowWindow = SW_HIDE;
-		PROCESS_INFORMATION processInfo{};
-		if (!CreateProcessW(application.c_str(), &commandLine[0], nullptr, nullptr,
-			FALSE, CREATE_NO_WINDOW, nullptr,
-			wideWorkingDirectory.empty() ? nullptr : wideWorkingDirectory.c_str(),
-			&startupInfo, &processInfo))
-		{
-			DebugLog::Log("event action '%s' launch failed: error=%lu",
-				action.name.c_str(), GetLastError());
-			return;
-		}
-		CloseHandle(processInfo.hThread);
-		CloseHandle(processInfo.hProcess);
-		DebugLog::Log("event action '%s' launched", action.name.c_str());
-	}
-
 	std::wstring DisplayDeviceNameForWindow(HWND hwnd)
 	{
 		const HMONITOR monitor = hwnd
@@ -2341,10 +2262,20 @@ namespace
 				int specificity = 0;
 				std::string matchError;
 				const bool matches = action.whenExpression.Matches(
-					[actualRefresh, requestedRefresh, previousRefresh](
+					[&event, actualRefresh, requestedRefresh, previousRefresh](
 						const std::string& variable, std::string& value)
 					{
 						double number = 0.0;
+						if (variable == "event")
+						{
+							value = event;
+							return true;
+						}
+						if (variable == "event_reason")
+						{
+							value = "refresh";
+							return true;
+						}
 						if (variable == "actual_refresh") number = actualRefresh;
 						else if (variable == "requested_refresh") number = requestedRefresh;
 						else if (variable == "previous_refresh") number = previousRefresh;
@@ -2379,7 +2310,7 @@ namespace
 					{
 						if (!m_cancelEvent ||
 							WaitForSingleObject(m_cancelEvent, delayMs) == WAIT_TIMEOUT)
-							LaunchUnifiedEventAction(action, configPath);
+							EventActionLauncher::Launch(action, configPath);
 						else
 							DebugLog::Log("event action '%s' cancelled with renderer generation",
 								action.name.c_str());
