@@ -81,9 +81,18 @@ generic fit -> both-edge fit -> invalid fail-open -> trusted IMAX authority.
 The test uses synthetic sequence/tick metadata and therefore exercises seconds
 of transitions immediately without sleeping.
 
-Commit `9f0d79b` is pushed to the open draft PR. It is **not yet deployed**;
-the local installation still contains the prior `1ad727c` build pending an
-explicit deployment request and live Apple TV validation.
+Commit `9f0d79b` is pushed to the open draft PR. After an explicit deployment
+request, the clean x64 Release executable and Alpha renderer DLL were installed
+on 2026-08-05. Their hashes exactly match the build artifacts; configuration
+was not changed. The previous pair is recoverable from
+`C:\Videoprocessor\vp\backups\VP-0080-before-9f0d79b-20260805-113158`.
+
+- `VideoProcessor.exe`:
+  `058DA6CB6F0C119885ECC609ED44F375F7FD56F61CEF9A7DEF3CDB14399AE2FA`;
+- `vprenderer\VideoProcessorVPRenderer.dll`:
+  `521794DFB4F56E8E3AC3257EF97AD4EE54A9BD56EEA4378C05B09B590FF546DD`.
+
+The PR remains draft pending live Apple TV subtitle/volume/menu validation.
 
 ### Reopened implementation progress (2026-08-05)
 
