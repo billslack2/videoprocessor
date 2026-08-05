@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0087`
-- Next root story number: `VP-0088`
-- Total indexed items: 102
+- Last assigned root story: `VP-0088`
+- Next root story number: `VP-0089`
+- Total indexed items: 103
 
 ## Story locations
 
@@ -119,6 +119,7 @@ they must not contain requirements that are absent from this file.
 | VP-0085 | In Progress | Frame-correlated madVR NLS look-ahead |
 | VP-0086 | Review | Comprehensive configuration usage reference |
 | VP-0087 | Blocked | VP-managed subtitle fit with madVR presentation |
+| VP-0088 | Backlog | Expose fast Alpha-native display refresh measurement |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
