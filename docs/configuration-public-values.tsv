@@ -90,9 +90,8 @@ shader.<group>.<member>.shader_type	nls
 shader.<group>.<member>.shader_type	custom
 shader.<group>.<member>.stage	pre_resize
 shader.<group>.<member>.stage	post_resize
-actions.<name>.scope	vprenderer
-actions.<name>.scope	directshow
-actions.<name>.scope	*
+actions.<name>.renderer	vprenderer
+actions.<name>.renderer	*
 actions.<name>.on	refresh.applied
 actions.<name>.on	refresh.confirmed
 actions.<name>.on	refresh.restored

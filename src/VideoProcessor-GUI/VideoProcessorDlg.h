@@ -587,6 +587,8 @@ protected:
 	void SetVideoConversionP010();
 	bool IsP010VideoConversionSelected() const;
 	bool IsAlphaRendererSelected() const;
+	bool IsUnifiedActionRendererSelected(
+		const RendererProfileConfig::Model::EventAction& action) const;
 	void UpdateRendererQueueControl();
 	void UpdateSceneCorrectionModeUi();
 	void UpdateRendererBackendUi();

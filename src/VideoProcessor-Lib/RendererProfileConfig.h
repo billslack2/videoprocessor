@@ -90,7 +90,11 @@ namespace RendererProfileConfig
 			std::string program;
 			std::string arguments;
 			std::string workingDirectory;
-			std::string scope = "vprenderer";
+			// The built-in renderer is identified by backend. A named target is
+			// resolved through [renderer_alias] to this one-based UI selector
+			// index; zero is reserved for the built-in and wildcard targets.
+			std::string renderer = "vprenderer";
+			int rendererAliasIndex = 0;
 			int delaySeconds = 5;
 		};
 		std::vector<EventAction> actions;
@@ -457,6 +461,33 @@ namespace RendererProfileConfig
 			 normalized.substr(normalized.size() - 4) == ".cmd");
 	}
 
+	inline bool ParseActionRenderer(const ConfigFile& config,
+		const std::string& section, const std::string& value,
+		Model::EventAction& action, std::string& error)
+	{
+		action.renderer = ConfigFile::NormalizeName(value);
+		action.rendererAliasIndex = 0;
+		if (action.renderer == "vprenderer" || action.renderer == "*")
+			return true;
+
+		const auto* aliases = config.GetSectionValues("renderer_alias");
+		if (!aliases)
+		{
+			error = "[" + section + "] renderer '" + action.renderer +
+				"' is not defined in [renderer_alias]";
+			return false;
+		}
+		const auto alias = aliases->find(action.renderer);
+		if (alias == aliases->end() ||
+			!ParseInteger(alias->second, 1, INT_MAX,
+				action.rendererAliasIndex))
+		{
+			error = "[" + section + "] renderer must be vprenderer, *, or a valid [renderer_alias] name";
+			return false;
+		}
+		return true;
+	}
+
 	inline bool IsActionSourceField(const std::string& field)
 	{
 		return field == "eotf" || field == "transfer" ||
@@ -790,20 +821,13 @@ namespace RendererProfileConfig
 				error = "[" + section + "] run= must begin with an .exe, .bat, or .cmd path";
 				return false;
 			}
-			std::string scope;
-			if (config.TryGetString(section, "scope", scope))
-			{
-				action.scope = ConfigFile::NormalizeName(scope);
-				if (action.scope != "vprenderer" && action.scope != "directshow" &&
-					action.scope != "*")
-				{
-					error = "[" + section + "] scope must be vprenderer, directshow, or *";
-					return false;
-				}
-			}
+			std::string renderer;
+			if (config.TryGetString(section, "renderer", renderer) &&
+				!ParseActionRenderer(config, section, renderer, action, error))
+				return false;
 			for (const auto& entry : *values)
 				if (entry.first != "on" && entry.first != "when" &&
-					entry.first != "run" && entry.first != "scope")
+					entry.first != "run" && entry.first != "renderer")
 				{
 					error = "[" + section + "] unknown key '" + entry.first + "'";
 					return false;
@@ -1183,6 +1207,10 @@ namespace RendererProfileConfig
 				}
 				config.TryGetString(section, "arguments", action.arguments);
 				config.TryGetString(section, "working_directory", action.workingDirectory);
+				std::string renderer;
+				if (config.TryGetString(section, "renderer", renderer) &&
+					!ParseActionRenderer(config, section, renderer, action, error))
+					return false;
 				std::string delay;
 				if (config.TryGetString(section, "delay_seconds", delay) &&
 					!ParseInteger(delay, 0, 30, action.delaySeconds))
@@ -1192,7 +1220,7 @@ namespace RendererProfileConfig
 				for (const auto& value : *values)
 					if (value.first != "on" && value.first != "when" && value.first != "program" &&
 						value.first != "arguments" && value.first != "working_directory" &&
-						value.first != "delay_seconds")
+						value.first != "delay_seconds" && value.first != "renderer")
 					{
 						error = "[" + section + "] unknown key '" + value.first + "'"; return false;
 					}

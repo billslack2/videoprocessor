@@ -557,6 +557,88 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(UnifiedActionsRouteByBuiltInRendererAliasOrWildcard)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-unified-action-renderer.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[renderer_alias]\ncinema_renderer: 2\n"
+					"[actions.built_in]\n"
+					"on: renderer.ready\n"
+					"when: $event_reason==\"renderer_ready\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.named]\n"
+					"renderer: cinema_renderer\n"
+					"on: source.eotf.changed\n"
+					"when: $eotf==\"pq\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.all]\n"
+					"renderer: *\n"
+					"on: state.committed\n"
+					"when: $eotf==\"sdr\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(3), model.actions.size());
+			Assert::AreEqual("vprenderer", model.actions[0].renderer.c_str());
+			Assert::AreEqual(0, model.actions[0].rendererAliasIndex);
+			Assert::AreEqual("cinema_renderer", model.actions[1].renderer.c_str());
+			Assert::AreEqual(2, model.actions[1].rendererAliasIndex);
+			Assert::AreEqual("*", model.actions[2].renderer.c_str());
+			Assert::AreEqual(0, model.actions[2].rendererAliasIndex);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(UnifiedActionsRejectUnknownRendererAliasAndLegacyScope)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-invalid-unified-action-renderer.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[actions.unknown_renderer]\n"
+					"renderer: not_configured\n"
+					"on: renderer.ready\n"
+					"when: $event_reason==\"renderer_ready\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("renderer") != std::string::npos);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[actions.legacy_scope]\n"
+					"scope: vprenderer\n"
+					"on: renderer.ready\n"
+					"when: $event_reason==\"renderer_ready\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			error.clear();
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("unknown key 'scope'") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(Vp0079FirstNamedVariantIsDefaultAndInheritedBaseline)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

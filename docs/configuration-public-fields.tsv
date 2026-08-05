@@ -8,8 +8,7 @@ general.startminimized	general-start-minimized	VP startup	no
 general.scene_detect	general-scene-detect	VP cadence	no
 general.hdr_colorspace	general-hdr-colorspace	VP HDR	no
 general.hdr_luminance	general-hdr-luminance	VP HDR	no
-renderer_alias.vp	renderer-alias-vp	VP renderer selection	no
-renderer_alias.madvr	renderer-alias-madvr	VP renderer selection	no
+renderer_alias.<name>	renderer-alias-name	VP renderer selection	no
 queue.when	queue-when	VP queue	no
 queue.queue_size	queue-size	VP queue	no
 queue.lead_frames	queue-lead-frames	DirectShow timing	no
@@ -68,7 +67,7 @@ shader.<group>.<member>.center_protection	shader-nls-center-protection	Shader NL
 shader.<group>.<member>.curve	shader-nls-curve	Shader NLS	no
 shader.<group>.<member>.quality	shader-nls-quality	Shader NLS	no
 shader.<group>.<member>.tolerance_percent	shader-nls-tolerance-percent	Shader NLS	no
-actions.<name>.scope	action-scope	Event action	no
+actions.<name>.renderer	action-renderer	Event action	no
 actions.<name>.on	action-on	Event action	no
 actions.<name>.when	action-when	Event action	no
 actions.<name>.run	action-run	Event action	no

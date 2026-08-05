@@ -1868,6 +1868,18 @@ bool CVideoProcessorDlg::IsAlphaRendererSelected() const
 }
 
 
+bool CVideoProcessorDlg::IsUnifiedActionRendererSelected(
+	const RendererProfileConfig::Model::EventAction& action) const
+{
+	if (action.renderer == "*")
+		return true;
+	if (action.renderer == "vprenderer")
+		return IsAlphaRendererSelected();
+	const int selection = m_rendererCombo.GetCurSel();
+	return selection >= 0 && action.rendererAliasIndex == selection + 1;
+}
+
+
 void CVideoProcessorDlg::UpdateRendererQueueControl()
 {
 	if (m_queueRendererSelectionInitialized)
@@ -6283,8 +6295,7 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActions(
 	const std::string configPath = m_profileRuntime.ConfigPath();
 	for (const UnifiedProfileRuntime::ActionInvocation& invocation : actions)
 	{
-		if (invocation.action.scope != "vprenderer" &&
-			invocation.action.scope != "*")
+		if (!IsUnifiedActionRendererSelected(invocation.action))
 			continue;
 		const DWORD delayMs = static_cast<DWORD>(
 			invocation.action.delaySeconds * 1000);

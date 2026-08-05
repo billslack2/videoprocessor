@@ -2255,7 +2255,7 @@ namespace
 			}
 			for (const auto& action : model.actions)
 			{
-				if (action.scope != "vprenderer" && action.scope != "*")
+				if (action.renderer != "vprenderer" && action.renderer != "*")
 					continue;
 				if (std::find(action.events.begin(), action.events.end(), event) ==
 					action.events.end()) continue;
