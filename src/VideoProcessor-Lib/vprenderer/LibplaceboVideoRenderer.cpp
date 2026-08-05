@@ -2259,9 +2259,7 @@ namespace
 					continue;
 				if (std::find(action.events.begin(), action.events.end(), event) ==
 					action.events.end()) continue;
-				int specificity = 0;
-				std::string matchError;
-				const bool matches = action.whenExpression.Matches(
+				const EventActionLauncher::ActionValueLookup values =
 					[&event, actualRefresh, requestedRefresh, previousRefresh](
 						const std::string& variable, std::string& value)
 					{
@@ -2294,7 +2292,11 @@ namespace
 						text << number;
 						value = text.str();
 						return true;
-					}, specificity, matchError);
+					};
+				int specificity = 0;
+				std::string matchError;
+				const bool matches = action.whenExpression.Matches(
+					values, specificity, matchError);
 				if (!matches)
 				{
 					if (!matchError.empty())
@@ -2302,18 +2304,29 @@ namespace
 							action.name.c_str(), matchError.c_str());
 					continue;
 				}
+				RendererProfileConfig::Model::EventAction resolvedAction;
+				std::string expansionError;
+				if (!EventActionLauncher::ExpandArgumentVariables(action, values,
+					resolvedAction, expansionError))
+				{
+					DebugLog::Log("event action '%s' expansion failed: %s",
+						action.name.c_str(), expansionError.c_str());
+					continue;
+				}
 				const std::string configPath = config.GetLoadedPath();
-				const DWORD delayMs = static_cast<DWORD>(action.delaySeconds * 1000);
+				const DWORD delayMs = static_cast<DWORD>(
+					resolvedAction.delaySeconds * 1000);
 				DebugLog::Log("event action '%s' scheduled for %s in %d seconds",
-					action.name.c_str(), event.c_str(), action.delaySeconds);
-				m_actionWorkers.emplace_back([this, action, configPath, delayMs]()
+					resolvedAction.name.c_str(), event.c_str(),
+					resolvedAction.delaySeconds);
+				m_actionWorkers.emplace_back([this, resolvedAction, configPath, delayMs]()
 					{
 						if (!m_cancelEvent ||
 							WaitForSingleObject(m_cancelEvent, delayMs) == WAIT_TIMEOUT)
-							EventActionLauncher::Launch(action, configPath);
+							EventActionLauncher::Launch(resolvedAction, configPath);
 						else
 							DebugLog::Log("event action '%s' cancelled with renderer generation",
-								action.name.c_str());
+								resolvedAction.name.c_str());
 					});
 			}
 		}

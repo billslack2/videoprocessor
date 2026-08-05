@@ -152,7 +152,7 @@ namespace DisplayRuleExpression
 				return true;
 			}
 			// Chords use the accelerator spelling: an uppercase letter denotes
-			// Shift, so $key comparisons are deliberately case-sensitive.
+			// Shift, so ${key} comparisons are deliberately case-sensitive.
 			// Other expression values remain case-insensitive.
 			if (variable != "key")
 				actual = ConfigFile::NormalizeName(actual);
@@ -379,11 +379,21 @@ namespace DisplayRuleExpression
 		bool ParseComparison(std::shared_ptr<const Node>& node, std::string& error)
 		{
 			if (m_current.kind != TokenKind::Word) return Fail("expected a variable", error);
-			std::string variable = ConfigFile::NormalizeName(m_current.text);
-			if (!variable.empty() && variable.front() == '$') variable.erase(0, 1);
+			const std::string reference = m_current.text;
+			std::string variableText = reference;
+			if (variableText.size() >= 2 && variableText[0] == '$' &&
+				variableText[1] == '{')
+			{
+				if (variableText.size() < 4 || variableText.back() != '}')
+					return Fail("unterminated variable reference '" + reference + "'", error);
+				variableText = variableText.substr(2, variableText.size() - 3);
+			}
+			else if (!variableText.empty() && variableText.front() == '$')
+				variableText.erase(0, 1);
+			std::string variable = ConfigFile::NormalizeName(variableText);
 			ValueType type = ValueType::Text;
 			if (!GetVariableType(variable, type))
-				return Fail("unknown variable '$" + variable + "'", error);
+				return Fail("unknown variable '${" + variable + "}'", error);
 			m_variables->insert(variable);
 			Next();
 
@@ -399,7 +409,7 @@ namespace DisplayRuleExpression
 			case TokenKind::GreaterEqual: operation = Operation::GreaterEqual; Next(); break;
 			default:
 				if (type != ValueType::Boolean)
-					return Fail("expected comparison operator after '$" + variable + "'", error);
+					return Fail("expected comparison operator after '${" + variable + "}'", error);
 				break;
 			}
 			if (m_strict && operatorText == "=")
@@ -431,19 +441,19 @@ namespace DisplayRuleExpression
 				expected.push_back("true");
 				quoted.push_back(false);
 			}
-			else return Fail("expected comparison value for '$" + variable + "'", error);
+			else return Fail("expected comparison value for '${" + variable + "}'", error);
 
 			if (variable == "key")
 			{
 				if (operation != Operation::Equal || expected.size() != 1 || !quoted.front() ||
 					expected.front().empty())
-					return Fail("$key must use == with one non-empty quoted chord", error);
+					return Fail("${key} must use == with one non-empty quoted shortcut", error);
 				m_keyChords->push_back(expected.front());
 			}
 			if (type == ValueType::Boolean)
 				for (const std::string& item : expected)
 					if (item != "true" && item != "false")
-						return Fail("'$" + variable + "' accepts only true or false", error);
+						return Fail("'${" + variable + "}' accepts only true or false", error);
 			if (type == ValueType::Number)
 			{
 				if (operation != Operation::Equal && operation != Operation::NotEqual &&
@@ -453,14 +463,14 @@ namespace DisplayRuleExpression
 				{
 					double minimum = 0.0, maximum = 0.0;
 					if (!ParseNumberOrRange(item, minimum, maximum))
-						return Fail("'$" + variable + "' requires a numeric value", error);
+						return Fail("'${" + variable + "}' requires a numeric value", error);
 					if (operation != Operation::Equal && operation != Operation::NotEqual &&
 						minimum != maximum)
-						return Fail("'$" + variable + "' ranges are supported only with = or !=", error);
+						return Fail("'${" + variable + "}' ranges are supported only with = or !=", error);
 				}
 			}
 			else if (operation != Operation::Equal && operation != Operation::NotEqual)
-				return Fail("'$" + variable + "' supports only = and !=", error);
+				return Fail("'${" + variable + "}' supports only = and !=", error);
 
 			auto comparison = std::make_shared<Node>();
 			comparison->kind = Node::Kind::Comparison;

@@ -3,6 +3,7 @@
 #include "UnifiedProfileRuntime.h"
 
 #include <DebugLog.h>
+#include <EventActionLauncher.h>
 
 #include <algorithm>
 #include <atomic>
@@ -376,14 +377,17 @@ namespace UnifiedProfileRuntime
 			if (std::find(action.events.begin(), action.events.end(), event) ==
 				action.events.end())
 				continue;
-			int specificity = 0;
-			std::string matchError;
-			const bool matches = action.whenExpression.Matches(
-				[&](const std::string& variable, std::string& value)
+			const EventActionLauncher::ActionValueLookup values =
+				[&event, &reason, &previous, &current](
+					const std::string& variable, std::string& value)
 				{
 					return LookupActionValue(variable, event, reason, previous,
 						current, value);
-				}, specificity, matchError);
+				};
+			int specificity = 0;
+			std::string matchError;
+			const bool matches = action.whenExpression.Matches(
+				values, specificity, matchError);
 			if (!matches)
 			{
 				if (!matchError.empty())
@@ -391,7 +395,16 @@ namespace UnifiedProfileRuntime
 						action.name.c_str(), event.c_str(), matchError.c_str());
 				continue;
 			}
-			actions.push_back({ action, event, reason });
+			RendererProfileConfig::Model::EventAction expanded;
+			std::string expansionError;
+			if (!EventActionLauncher::ExpandArgumentVariables(action, values,
+				expanded, expansionError))
+			{
+				DebugLog::Log("event action '%s' expansion for %s failed: %s",
+					action.name.c_str(), event.c_str(), expansionError.c_str());
+				continue;
+			}
+			actions.push_back({ std::move(expanded), event, reason });
 		}
 		return true;
 	}

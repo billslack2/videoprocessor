@@ -5,6 +5,7 @@
 #include <ConfigFile.h>
 #include <DebugLog.h>
 
+#include <utility>
 #include <windows.h>
 
 
@@ -46,6 +47,48 @@ namespace
 
 namespace EventActionLauncher
 {
+	bool ExpandArgumentVariables(
+		const RendererProfileConfig::Model::EventAction& action,
+		const ActionValueLookup& values,
+		RendererProfileConfig::Model::EventAction& expanded,
+		std::string& error)
+	{
+		expanded = action;
+		error.clear();
+		std::string result;
+		result.reserve(action.arguments.size());
+		size_t cursor = 0;
+		while (cursor < action.arguments.size())
+		{
+			const size_t open = action.arguments.find("${", cursor);
+			if (open == std::string::npos)
+			{
+				result.append(action.arguments, cursor, std::string::npos);
+				break;
+			}
+			result.append(action.arguments, cursor, open - cursor);
+			const size_t close = action.arguments.find('}', open + 2);
+			if (close == std::string::npos)
+			{
+				error = "unterminated ${variable} reference";
+				return false;
+			}
+			const std::string variable = ConfigFile::NormalizeName(
+				action.arguments.substr(open + 2, close - open - 2));
+			std::string value;
+			if (variable.empty() || !values || !values(variable, value))
+			{
+				error = "argument variable '${" + variable +
+					"}' is unavailable for this event";
+				return false;
+			}
+			result += value;
+			cursor = close + 1;
+		}
+		expanded.arguments = std::move(result);
+		return true;
+	}
+
 	void Launch(const RendererProfileConfig::Model::EventAction& action,
 		const std::string& configPath)
 	{
