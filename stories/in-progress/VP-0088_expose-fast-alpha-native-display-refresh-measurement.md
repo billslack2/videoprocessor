@@ -2,7 +2,7 @@
 
 ## Status
 
-Backlog (2026-08-04). The current Alpha renderer has a fast, renderer-native
+In progress (2026-08-05). The current Alpha renderer has a fast, renderer-native
 measurement path, but it is not surfaced through `IRenderer` or used by the
 GUI/OSD. This story wires it through safely, makes the renderer-native paths
 authoritative, and removes the legacy generic display sampler.
