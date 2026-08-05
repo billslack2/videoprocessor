@@ -2,8 +2,27 @@
 
 ## Status
 
-In Progress. Source branch: `codex/vp-0093-output-contract`, based on the
-current `v1.1.015-beta` integration branch.
+Review. The repair is merged into `v1.1.015-beta` and deployed for final
+projector validation.
+
+## Review handoff (2026-08-05)
+
+- Merged commits: `b5eaa0c` (InfoFrame hardening), `c00e913`
+  (child-window fallback coverage), `2afa439` (live target switching), and
+  `772c9c4` (retain the child-window swapchain while switching the target).
+- `772c9c4` is present on both `origin/codex/vp-0093-output-contract` and
+  `origin/v1.1.015-beta`.
+- A forced x64 Release rebuild of `VideoProcessor-VPRenderer` succeeded and
+  the resulting DLL was deployed without modifying the active configuration.
+- The live-switch rejection was traced to comparing the embedded child
+  window's composed swapchain to the raw direct-profile request. The final
+  implementation preserves that existing swapchain and changes only the
+  BT.2020 render target plus optional NVIDIA AVI InfoFrame.
+
+Final review evidence remains the actual-projector F5 -> F6 -> F5 run. The
+expected log is `libplacebo output target switched live` with
+`swapchain_recreated=0`; the visible image should remain correct without an
+Alpha renderer teardown.
 
 ## Initial investigation (2026-08-05)
 
@@ -44,11 +63,11 @@ integration base:
   `verified`, `SET` (unverified readback), `display manual`, and `signal
   unavailable` rather than claiming that every request reached the projector.
 
-The clean x64 Release build at `b5eaa0c` has `VERSION_DIRTY=false`; the complete
-test DLL passes 580/580 tests. It is pushed to
-`origin/codex/vp-0093-output-contract` and is not yet locally deployed. Live
-validation must use a controlled fullscreen F5 -> F6 -> F5 sequence on Alpha,
-checking both the Epson mode and the generation-scoped log entries.
+The earlier clean x64 Release build at `b5eaa0c` had `VERSION_DIRTY=false` and
+the complete test DLL passed 580/580 tests. The final merged renderer was then
+forced through a clean x64 Release rebuild and deployed. Live validation must
+use a controlled fullscreen F5 -> F6 -> F5 sequence on Alpha, checking both
+the Epson mode and the generation-scoped log entries.
 
 MPC Video Renderer review found a separate, broader source-metadata limitation:
 VP currently represents primaries and YCbCr matrix through one `ColorSpace`
