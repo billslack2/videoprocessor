@@ -10,7 +10,7 @@ authoritative, and removes the legacy generic display sampler.
 ## Implementation progress
 
 - Implemented on local feature branch `codex/vp-0088-native-refresh` at
-  `3286abd` and `c587910` from the current default integration branch
+  `3286abd`, `c587910`, and `8bfc9d8` from the current default integration branch
   `v1.1.015-beta`.
 - Alpha now publishes a finite, plausible renderer-native rate after its second
   coherent current-generation frame-statistics sample. The later eight-sample,
@@ -24,18 +24,28 @@ authoritative, and removes the legacy generic display sampler.
   using seconds since display synchronization; queue resets, backlog recovery,
   source changes, and detector changes can invalidate transient action
   ownership but do not restart that clock or withdraw the native rate.
-- A real display-timing discontinuity (including disjoint/regressing DXGI
-  statistics or a swap-chain/display reinitialization) withdraws the native
-  rate and starts a new display-timing epoch. Diagnostics expose
-  `display_sync_s` so continuity is live-verifiable.
+- Alpha's persistent display clock now uses the QPC completion timestamp taken
+  immediately after `pl_swapchain_swap_buffers`. Coherent DXGI frame statistics
+  remain the preferred precision input, but a DXGI disjoint resets only that
+  local correlation; it does not withdraw the rate, restart elapsed display
+  time, or discard accumulated cadence phase.
+- When DXGI frame statistics are unavailable, swap-completion intervals use the
+  active output mode only to normalize likely vblank multiples. This permits a
+  renderer-owned physical cadence estimate without mistaking 24 fps delivery
+  for a 60 Hz display. The configured mode is never published as the measured
+  rate itself.
+- A swap-chain initialization/recreation or confirmed output-mode family change
+  withdraws the native rate and starts a new display-timing epoch. Diagnostics
+  expose `display_sync_s` so continuity is live-verifiable.
 - GUI selection is now configuration override, then renderer-native madVR or
   Alpha, then truthful `Warming`. The `WaitForVBlank` worker, estimator,
   fallback, warm-up, comparison, and associated tests were removed.
 - The full x64 Release solution builds successfully, including
   `VideoProcessor-GUI`, `VideoProcessor-Test`, and
   `VideoProcessorVPRenderer.dll`.
-- Focused Alpha telemetry/cadence, native selection, output-readiness, and
-  plugin-proxy tests pass 59/59. The full suite passes 568/569; the unrelated
+- Focused Alpha presentation telemetry tests pass 16/16, including periodic
+  DXGI disjoints, 24-on-60 completion normalization, and explicit mode-family
+  epoch reset. The full suite passes 572/573; the unrelated
   existing `ConfigurationReferenceMatchesPublicFieldInventory` test rejects
   the active `general.fullscreen=true` configuration entry.
 - Deployed the committed `c587910` x64 Release runtime pair to
@@ -76,11 +86,11 @@ warm-up, or comparison value and must be removed.
 1. Define an Alpha renderer-native refresh-rate reporting contract through
    `IRenderer::GetDetectedDisplayRefreshRate`, backed by the current
    presentation telemetry.
-2. Publish the first finite, plausible Alpha-native rate as soon as two coherent
-   current-generation frame-statistics samples permit a rate calculation; do
-   not wait for the legacy sampler, an arbitrary multi-second quarantine, or
-   the later `Stable` evidence threshold. Reject disjoint or regressing DXGI
-   statistics and implausible rates.
+2. Publish the first finite, plausible Alpha-native rate as soon as coherent
+   current-generation presentation evidence permits a rate calculation; do not
+   wait for the legacy sampler, an arbitrary multi-second quarantine, or the
+   later `Stable` evidence threshold. Prefer coherent DXGI refresh/QPC pairs,
+   then use renderer completion intervals normalized by the configured mode.
 3. Make renderer-native values the only automatic selected-rate source:
    madVR uses `IMadVRInfo` and Alpha uses its presentation telemetry. An
    explicit `[display_refresh_rate_override]` remains authoritative.
@@ -96,10 +106,11 @@ warm-up, or comparison value and must be removed.
    PPM, or OSD state.
 6. Give display timing its own lifetime. Clear the Alpha-native value and
    restart elapsed display-synchronization time only for an actual display
-   timing discontinuity: swap-chain/display initialization, output-monitor or
-   refresh transition, regressing/incoherent statistics, or
-   `DXGI_ERROR_FRAME_STATISTICS_DISJOINT`. A temporary unavailable sample must
-   not discard an otherwise coherent clock.
+   timing discontinuity: swap-chain/display initialization, output-monitor, or
+   confirmed refresh-family transition. Regressing/incoherent DXGI statistics,
+   `DXGI_ERROR_FRAME_STATISTICS_DISJOINT`, and temporary unavailable samples
+   reset only the local DXGI correlation and must not discard the renderer
+   completion clock.
 7. Queue reset, backlog recovery, capture/source generation, scene-detector
    generation, scene events, and UI/OSD activity must not restart the display
    synchronization clock, rate window, or accumulated cadence phase. They may
@@ -123,18 +134,19 @@ warm-up, or comparison value and must be removed.
    24, 50, 59.94, and 60 Hz synthetic frame-statistics sequences; require a
    current, plausible published rate as soon as two coherent samples exist,
    while separately retaining tests for the later stable-evidence state.
-2. Test disjoint statistics, counter/QPC regression, display-timing generation
-   changes, and implausible rates; each must withdraw the published rate. Test
-   that queue-generation changes and transient unavailable samples preserve the
-   display clock and published rate.
+2. Test disjoint statistics and counter/QPC regression as local DXGI resets
+   that preserve the renderer clock, rate, and display-timing generation. Test
+   that explicit swap-chain/mode-family changes withdraw the published rate,
+   while queue-generation changes and transient unavailable samples preserve
+   the display clock and published rate.
 3. Add selection-policy tests proving precedence is override, valid
    renderer-native measurement, then `Warming` when the selected renderer has
    no valid native measurement.
 4. Live validate windowed and fullscreen Alpha at 23.976 and 59.94/60 Hz,
-   including an Alpha-driven refresh switch. After the first valid present,
-   native measurement should normally become available immediately after the
-   second coherent frame-statistics sample (the exact first-report time is
-   logged).
+   including an Alpha-driven refresh switch. Native measurement should become
+   available from the first short coherent presentation interval, whether its
+   evidence comes from DXGI statistics or normalized renderer completions (the
+   exact first-report time is logged).
 5. Confirm that the displayed rate clears during a mode change rather than
    showing a stale old rate, and that cadence correction, queue stability,
    latency, OSD, and SDR/HDR behavior do not regress.
