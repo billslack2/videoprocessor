@@ -87,6 +87,9 @@
     <ClInclude Include="StateVariables.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+	<ClInclude Include="EventActionLauncher.h">
+	  <Filter>Header Files</Filter>
+	</ClInclude>
     <ClInclude Include="UnifiedProfileRuntime.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -434,6 +437,9 @@
     <ClCompile Include="StateVariables.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+	<ClCompile Include="EventActionLauncher.cpp">
+	  <Filter>Source Files</Filter>
+	</ClCompile>
     <ClCompile Include="UnifiedProfileRuntime.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

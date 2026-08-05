@@ -2,6 +2,8 @@
 
 #include "ConfigSchema.h"
 
+#include <algorithm>
+#include <cctype>
 #include <climits>
 #include <string>
 #include <vector>
@@ -11,6 +13,15 @@
 // dynamically selectable by renderer profile rules.
 namespace MainConfigSchema
 {
+	inline bool IsRendererAliasName(const std::string& name)
+	{
+		if (name.empty() || name.size() > 64 || name == "vprenderer" ||
+			!std::isalpha(static_cast<unsigned char>(name.front())))
+			return false;
+		return std::all_of(name.begin() + 1, name.end(), [](unsigned char c)
+			{ return std::isalnum(c) || c == '_' || c == '-'; });
+	}
+
 	inline bool OwnsSection(const std::string& section)
 	{
 		return section == "command_line" ||
@@ -144,13 +155,23 @@ namespace MainConfigSchema
 		if (!ConfigSchema::ValidateSection(
 			config, "directshow.ppm", ppmRules, error))
 			return false;
-		const std::vector<ConfigSchema::KeyRule> aliasRules = {
-			ConfigSchema::Integer("vp", 1, INT_MAX),
-			ConfigSchema::Integer("madvr", 1, INT_MAX)
-		};
-		if (!ConfigSchema::ValidateSection(
-			config, "renderer_alias", aliasRules, error))
-			return false;
+		if (const auto* aliases = config.GetSectionValues("renderer_alias"))
+			for (const auto& alias : *aliases)
+			{
+				if (!IsRendererAliasName(alias.first))
+				{
+					error = "[renderer_alias] alias '" + alias.first +
+						"' must be an identifier other than vprenderer";
+					return false;
+				}
+				if (!ConfigSchema::Integer("alias", 1, INT_MAX).validator(
+					alias.second))
+				{
+					error = "[renderer_alias] alias '" + alias.first +
+						"' must be a positive renderer-selector index";
+					return false;
+				}
+			}
 
 		std::string value;
 		std::string legacyValue;

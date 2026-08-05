@@ -1,76 +1,73 @@
 # Public VP-0079 VideoProcessor configuration inventory.
 # field-token<TAB>help-anchor<TAB>owner<TAB>AUTO-explanation-required
-general.capture_device	general-startup	VP startup	no
-general.renderer	general-startup	VP startup	no
-general.fullscreen	general-startup	VP startup	no
-general.windowed_fullscreen_mode	general-startup	VP startup	no
-general.startminimized	general-startup	VP startup	no
-general.scene_detect	general-detection	VP cadence	no
-general.disable_detection_features	general-detection	VP diagnostics	no
-general.scene_correction_basic	general-detection	VP cadence	no
-general.hdr_colorspace	general-hdr	VP HDR	no
-general.hdr_luminance	general-hdr	VP HDR	no
-renderer_alias.vp	renderer-alias	VP renderer selection	no
-renderer_alias.madvr	renderer-alias	VP renderer selection	no
-queue.when	queue-baseline	VP queue	no
-queue.queue_size	queue-capacity	VP queue	no
-queue.lead_frames	queue-lead	DirectShow timing	no
-queue.target_frames	queue-target	VP queue	no
-queue.active_picture_lookahead_frames	queue-active-picture-lookahead	VP active-picture decision timing	no
-queue.<variant>.when	queue-variant	VP queue	no
-directshow.video_conversion	directshow-ingress	DirectShow	no
-directshow.renderer_start_stop_time_method	directshow-timing	DirectShow	no
-directshow.frame_offset	directshow-timing	DirectShow	no
-directshow.renderer_nominal_range	directshow-ingress	DirectShow	no
-directshow.conversion.conversion_method	conversion-method	DirectShow conversion	no
-directshow.conversion.min_core_count	conversion-cores	DirectShow conversion	no
-directshow.conversion.max_core_count	conversion-cores	DirectShow conversion	no
+general.capture_device	general-capture-device	VP startup	no
+general.renderer	general-renderer	VP startup	no
+general.fullscreen	general-fullscreen	VP startup	no
+general.windowed_fullscreen_mode	general-windowed-fullscreen-mode	VP startup	no
+general.startminimized	general-start-minimized	VP startup	no
+general.scene_detect	general-scene-detect	VP cadence	no
+general.hdr_colorspace	general-hdr-colorspace	VP HDR	no
+general.hdr_luminance	general-hdr-luminance	VP HDR	no
+renderer_alias.<name>	renderer-alias-name	VP renderer selection	no
+queue.when	queue-when	VP queue	no
+queue.queue_size	queue-size	VP queue	no
+queue.lead_frames	queue-lead-frames	DirectShow timing	no
+queue.target_frames	queue-target-frames	VP queue	no
+queue.active_picture_lookahead_frames	queue-active-picture-lookahead-frames	VP active-picture decision timing	no
+queue.<variant>.when	queue-variant-when	VP queue	no
+directshow.video_conversion	directshow-video-conversion	DirectShow	no
+directshow.renderer_start_stop_time_method	directshow-start-stop-time-method	DirectShow	no
+directshow.frame_offset	directshow-frame-offset	DirectShow	no
+directshow.renderer_nominal_range	directshow-renderer-nominal-range	DirectShow	no
+directshow.conversion.conversion_method	directshow-conversion-method	DirectShow conversion	no
+directshow.conversion.min_core_count	directshow-conversion-min-cores	DirectShow conversion	no
+directshow.conversion.max_core_count	directshow-conversion-max-cores	DirectShow conversion	no
 directshow.ppm.ppm	directshow-ppm	DirectShow timing	no
 shortcuts.render.<index>	render-shortcut	VP shortcut	no
-vprenderer.when	vprenderer-baseline	Alpha renderer	no
-vprenderer.quality	vprenderer-scaling	Alpha renderer	no
-vprenderer.tone_mapping	vprenderer-tone	Alpha renderer	no
-vprenderer.gamut_mapping	vprenderer-tone	Alpha renderer	no
-vprenderer.peak_detection	vprenderer-tone	Alpha renderer	no
-vprenderer.contrast_recovery	vprenderer-tone	Alpha renderer	no
-vprenderer.upscaler	vprenderer-scaling	Alpha renderer	no
-vprenderer.downscaler	vprenderer-scaling	Alpha renderer	no
-vprenderer.deband	vprenderer-scaling	Alpha renderer	no
-vprenderer.dithering	vprenderer-scaling	Alpha renderer	no
-vprenderer.sdr_target_nits	vprenderer-output	Alpha renderer	no
-vprenderer.sdr_black_nits	vprenderer-output	Alpha renderer	no
-vprenderer.output_presentation	vprenderer-output	Alpha renderer	no
-vprenderer.output_range	vprenderer-output	Alpha renderer	no
-vprenderer.output_gamma	vprenderer-output	Alpha renderer	no
-vprenderer.sdr_input_transfer	vprenderer-tone	Alpha renderer	no
-vprenderer.sdr_target_primaries	vprenderer-output	Alpha renderer	no
-vprenderer.report_bt2020_to_display	vprenderer-output	Alpha renderer	no
-vprenderer.switch_refresh_rate	vprenderer-output	Alpha renderer	no
-vprenderer.<variant>.when	vprenderer-variant	Alpha renderer	no
-vprenderer.viewport.when	viewport-baseline	Alpha viewport	no
-vprenderer.viewport.<variant>.when	viewport-variant	Alpha viewport	no
-vprenderer.viewport.<variant>.screen_aspect	viewport-layout	Alpha viewport	no
-vprenderer.viewport.<variant>.anamorphic_scale	viewport-layout	Alpha viewport	no
-vprenderer.viewport.<variant>.automatic_crop	viewport-layout	Alpha viewport	no
-vprenderer.viewport.<variant>.subtitle_fit	viewport-layout	Alpha viewport	no
-vprenderer.viewport.<variant>.subtitle_hold_seconds	viewport-layout	Alpha viewport	no
-vprenderer.viewport.<variant>.subtitle_padding_pixels	viewport-layout	Alpha viewport	no
-shader.<group>.type	shader-group	Shader selection	no
-shader.<group>.when	shader-group	Shader selection	no
-shader.<group>.<member>.when	shader-member	Shader selection	no
-shader.<group>.<member>.shader_type	shader-member	Shader selection	no
-shader.<group>.<member>.label	shader-member	Shader selection	no
-shader.<group>.<member>.stage	shader-order	Shader composition	no
-shader.<group>.<member>.order	shader-order	Shader composition	no
-shader.<group>.<member>.hlsl_file	shader-backend	Shader backend	no
-shader.<group>.<member>.glsl_file	shader-backend	Shader backend	no
-shader.<group>.<member>.geometry	shader-nls	Shader NLS	no
-shader.<group>.<member>.strength	shader-nls	Shader NLS	no
-shader.<group>.<member>.center_protection	shader-nls	Shader NLS	no
-shader.<group>.<member>.curve	shader-nls	Shader NLS	no
-shader.<group>.<member>.quality	shader-nls	Shader NLS	no
-shader.<group>.<member>.tolerance_percent	shader-nls	Shader NLS	no
-actions.<name>.scope	action-scope	Event action	no
-actions.<name>.on	action-event	Event action	no
-actions.<name>.when	action-event	Event action	no
+vprenderer.when	vprenderer-when	Alpha renderer	no
+vprenderer.quality	vprenderer-quality	Alpha renderer	no
+vprenderer.tone_mapping	vprenderer-tone-mapping	Alpha renderer	no
+vprenderer.gamut_mapping	vprenderer-gamut-mapping	Alpha renderer	no
+vprenderer.peak_detection	vprenderer-peak-detection	Alpha renderer	no
+vprenderer.contrast_recovery	vprenderer-contrast-recovery	Alpha renderer	no
+vprenderer.upscaler	vprenderer-upscaler	Alpha renderer	no
+vprenderer.downscaler	vprenderer-downscaler	Alpha renderer	no
+vprenderer.deband	vprenderer-deband	Alpha renderer	no
+vprenderer.dithering	vprenderer-dithering	Alpha renderer	no
+vprenderer.sdr_target_nits	vprenderer-sdr-target-nits	Alpha renderer	no
+vprenderer.sdr_black_nits	vprenderer-sdr-black-nits	Alpha renderer	no
+vprenderer.output_presentation	vprenderer-output-presentation	Alpha renderer	no
+vprenderer.output_range	vprenderer-output-range	Alpha renderer	no
+vprenderer.output_gamma	vprenderer-output-gamma	Alpha renderer	no
+vprenderer.sdr_input_transfer	vprenderer-sdr-input-transfer	Alpha renderer	no
+vprenderer.sdr_target_primaries	vprenderer-sdr-target-primaries	Alpha renderer	no
+vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	Alpha renderer	no
+vprenderer.switch_refresh_rate	vprenderer-switch-refresh-rate	Alpha renderer	no
+vprenderer.<variant>.when	vprenderer-variant-when	Alpha renderer	no
+vprenderer.viewport.when	viewport-when	Alpha viewport	no
+vprenderer.viewport.<variant>.when	viewport-variant-when	Alpha viewport	no
+vprenderer.viewport.<variant>.screen_aspect	viewport-screen-aspect	Alpha viewport	no
+vprenderer.viewport.<variant>.anamorphic_scale	viewport-anamorphic-scale	Alpha viewport	no
+vprenderer.viewport.<variant>.automatic_crop	viewport-automatic-crop	Alpha viewport	no
+vprenderer.viewport.<variant>.subtitle_fit	viewport-subtitle-fit	Alpha viewport	no
+vprenderer.viewport.<variant>.subtitle_hold_seconds	viewport-subtitle-hold-seconds	Alpha viewport	no
+vprenderer.viewport.<variant>.subtitle_padding_pixels	viewport-subtitle-padding-pixels	Alpha viewport	no
+shader.<group>.type	shader-group-type	Shader selection	no
+shader.<group>.when	shader-group-when	Shader selection	no
+shader.<group>.<member>.when	shader-member-when	Shader selection	no
+shader.<group>.<member>.shader_type	shader-member-type	Shader selection	no
+shader.<group>.<member>.label	shader-member-label	Shader selection	no
+shader.<group>.<member>.stage	shader-member-stage	Shader composition	no
+shader.<group>.<member>.order	shader-member-order	Shader composition	no
+shader.<group>.<member>.hlsl_file	shader-member-hlsl-file	Shader backend	no
+shader.<group>.<member>.glsl_file	shader-member-glsl-file	Shader backend	no
+shader.<group>.<member>.geometry	shader-nls-geometry	Shader NLS	no
+shader.<group>.<member>.strength	shader-nls-strength	Shader NLS	no
+shader.<group>.<member>.center_protection	shader-nls-center-protection	Shader NLS	no
+shader.<group>.<member>.curve	shader-nls-curve	Shader NLS	no
+shader.<group>.<member>.quality	shader-nls-quality	Shader NLS	no
+shader.<group>.<member>.tolerance_percent	shader-nls-tolerance-percent	Shader NLS	no
+actions.<name>.renderer	action-renderer	Event action	no
+actions.<name>.on	action-on	Event action	no
+actions.<name>.when	action-when	Event action	no
 actions.<name>.run	action-run	Event action	no

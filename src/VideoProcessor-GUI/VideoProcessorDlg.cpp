@@ -42,6 +42,7 @@
 #endif
 #include <guid.h>
 #include <ConfigFile.h>
+#include <EventActionLauncher.h>
 #include <DisplayRefreshRateEstimator.h>
 #include <DisplayRefreshRatePolicy.h>
 #include <RendererProfileConfig.h>
@@ -1268,6 +1269,8 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 	m_livenessWatchdogStopEvent =
 		CreateEvent(nullptr, TRUE, FALSE, nullptr);
+	m_unifiedActionCancelEvent =
+		CreateEvent(nullptr, TRUE, FALSE, nullptr);
 	LoadDisplayRefreshRateOverrides();
 
 	ConfigFile profileConfig;
@@ -1422,6 +1425,16 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 	{
 		CloseHandle(m_livenessWatchdogStopEvent);
 		m_livenessWatchdogStopEvent = nullptr;
+	}
+	if (m_unifiedActionCancelEvent)
+		SetEvent(m_unifiedActionCancelEvent);
+	for (std::thread& worker : m_unifiedActionWorkers)
+		if (worker.joinable()) worker.join();
+	m_unifiedActionWorkers.clear();
+	if (m_unifiedActionCancelEvent)
+	{
+		CloseHandle(m_unifiedActionCancelEvent);
+		m_unifiedActionCancelEvent = nullptr;
 	}
 
 	if (m_accelerator)
@@ -1852,6 +1865,18 @@ bool CVideoProcessorDlg::IsAlphaRendererSelected() const
 	const RendererId* renderer = reinterpret_cast<const RendererId*>(
 		m_rendererCombo.GetItemData(selection));
 	return renderer && renderer->backend == RendererBackend::LIBPLACEBO;
+}
+
+
+bool CVideoProcessorDlg::IsUnifiedActionRendererSelected(
+	const RendererProfileConfig::Model::EventAction& action) const
+{
+	if (action.renderer == "*")
+		return true;
+	if (action.renderer == "vprenderer")
+		return IsAlphaRendererSelected();
+	const int selection = m_rendererCombo.GetCurSel();
+	return selection >= 0 && action.rendererAliasIndex == selection + 1;
 }
 
 
@@ -2688,6 +2713,12 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		m_restartQueuedBecauseEotf = false;
 
 		m_rendererStateText.SetWindowText(TEXT("Ready"));
+		if (m_profileRuntime.IsInitialized())
+		{
+			const auto snapshot = m_profileRuntime.GetSnapshot();
+			PublishUnifiedProfileEvent("renderer.ready", "renderer_ready",
+				nullptr, snapshot);
+		}
 		break;
 
 	// Renderer running, ready for frames
@@ -3225,7 +3256,10 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 		DebugLog::Log("Unified profile key selected: %s",
 			activeProfiles.str().c_str());
 		if (result.changed)
+		{
 			ApplyUnifiedProfileSnapshot(result.snapshot, true);
+			ScheduleUnifiedProfileActions(result.actions);
+		}
 		return;
 	}
 	const auto rule = m_displayRuleShortcutRules.find(static_cast<WORD>(commandId));
@@ -6040,19 +6074,20 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	m_builtVideoState = videoState;
 	m_lastEffectiveEotf = m_builtVideoState->eotf;
 
-	bool profilesChanged = false;
+	UnifiedProfileRuntime::RefreshResult profileRefresh;
 	std::string profileError;
 	if (m_profileRuntime.IsInitialized() &&
 		!m_profileRuntime.Refresh(GetUnifiedProfileSourceLookup(),
-			profilesChanged, profileError))
+			profileRefresh, profileError))
 	{
 		DebugLog::Log("Unified profile refresh failed: %s",
 			profileError.c_str());
 	}
-	else if (profilesChanged &&
+	else if (profileRefresh.changed &&
 		m_rendererState != RendererState::RENDERSTATE_STOPPING)
 	{
-		ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), true);
+		ApplyUnifiedProfileSnapshot(profileRefresh.snapshot, true);
+		ScheduleUnifiedProfileActions(profileRefresh.actions);
 	}
 	
 
@@ -6249,6 +6284,58 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	{
 		RequestRendererReset(RendererResetReason::QueueSizeChange, false, 0);
 	}
+}
+
+
+void CVideoProcessorDlg::ScheduleUnifiedProfileActions(
+	const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions)
+{
+	if (!m_unifiedActionCancelEvent || actions.empty())
+		return;
+	const std::string configPath = m_profileRuntime.ConfigPath();
+	for (const UnifiedProfileRuntime::ActionInvocation& invocation : actions)
+	{
+		if (!IsUnifiedActionRendererSelected(invocation.action))
+			continue;
+		const DWORD delayMs = static_cast<DWORD>(
+			invocation.action.delaySeconds * 1000);
+		DebugLog::Log("event action '%s' scheduled for %s (%s) in %d seconds",
+			invocation.action.name.c_str(), invocation.event.c_str(),
+			invocation.reason.c_str(), invocation.action.delaySeconds);
+		m_unifiedActionWorkers.emplace_back([this, invocation, configPath,
+			delayMs]()
+			{
+				if (m_unifiedActionCancelEvent &&
+					WaitForSingleObject(m_unifiedActionCancelEvent, delayMs) ==
+						WAIT_TIMEOUT)
+				{
+					EventActionLauncher::Launch(invocation.action, configPath);
+				}
+				else
+				{
+					DebugLog::Log("event action '%s' cancelled while waiting for %s",
+						invocation.action.name.c_str(), invocation.event.c_str());
+				}
+			});
+	}
+}
+
+
+void CVideoProcessorDlg::PublishUnifiedProfileEvent(const std::string& event,
+	const std::string& reason,
+	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& previous,
+	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& current)
+{
+	std::vector<UnifiedProfileRuntime::ActionInvocation> actions;
+	std::string error;
+	if (!m_profileRuntime.CollectActionInvocations(event, reason, previous,
+		current, actions, error))
+	{
+		DebugLog::Log("unified action event '%s' was not published: %s",
+			event.c_str(), error.c_str());
+		return;
+	}
+	ScheduleUnifiedProfileActions(actions);
 }
 
 

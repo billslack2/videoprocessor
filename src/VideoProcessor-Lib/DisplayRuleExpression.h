@@ -21,11 +21,23 @@ namespace DisplayRuleExpression
 
 	inline bool GetVariableType(const std::string& name, ValueType& type)
 	{
+		// Event actions evaluate a committed current/previous state pair. Keep
+		// the previous-state spelling explicit so profile exits can be matched
+		// without adding a separate event token for every profile value.
+		if (name.size() > 9 && name.compare(0, 9, "previous.") == 0)
+			return GetVariableType(name.substr(9), type);
 		if (name == "eotf" || name == "transfer" || name == "colorspace" ||
 			name == "primaries" || name == "format" || name == "resolution" ||
 			name == "range" || name == "scan" || name == "key" ||
-			name == "event" || name == "viewport_profile" ||
+			name == "event" || name == "event_reason" ||
+			name == "viewport_profile" ||
 			(name.size() > 8 && name.compare(0, 8, "profile.") == 0))
+		{
+			type = ValueType::Text;
+			return true;
+		}
+		if (name.size() > 17 && name.compare(0, 17,
+			"previous_profile.") == 0)
 		{
 			type = ValueType::Text;
 			return true;
@@ -39,6 +51,7 @@ namespace DisplayRuleExpression
 			name == "width" || name == "height" ||
 			name == "actual_refresh" || name == "requested_refresh" ||
 			name == "previous_refresh" || name == "screen_aspect" ||
+			name == "anamorphic_scale" ||
 			name == "subtitle_hold_seconds" ||
 			name == "subtitle_padding_pixels" ||
 			name == "viewport_generation")
@@ -46,7 +59,7 @@ namespace DisplayRuleExpression
 			type = ValueType::Number;
 			return true;
 		}
-		if (name == "subtitle_fit")
+		if (name == "automatic_crop" || name == "subtitle_fit")
 		{
 			type = ValueType::Boolean;
 			return true;

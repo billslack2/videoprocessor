@@ -9,6 +9,7 @@
 #include "CppUnitTest.h"
 
 #include <fstream>
+#include <map>
 #include <sstream>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -417,6 +418,224 @@ namespace VideoProcessorTest
 			Assert::IsTrue(result.snapshot->queue.hasQueueSize);
 			Assert::AreEqual(static_cast<size_t>(1),
 				result.snapshot->queue.queueSize);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(UnifiedActionsPublishCommittedSourceAndProfileEvents)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-unified-actions.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+					"[vprenderer]\nquality: high\n"
+					"[vprenderer.viewport]\nscreen_aspect: 16:9\n"
+					"[vprenderer.viewport.scope]\nwhen: $eotf==\"pq\"\n"
+					"screen_aspect: 2.35:1\nautomatic_crop: true\n"
+					"[actions.committed_scope_pq]\n"
+					"on: state.committed\n"
+					"when: $eotf==\"pq\" && $profile.viewport==\"scope\" && $previous.eotf==\"sdr\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.eotf_pq]\n"
+					"on: source.eotf.changed\n"
+					"when: $eotf==\"pq\" && $previous.eotf==\"sdr\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.rec709]\n"
+					"on: source.primaries.changed\n"
+					"when: $primaries==\"rec709\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.scope_entered]\n"
+					"on: profile.viewport.changed\n"
+					"when: $profile.viewport==\"scope\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.scope_left]\n"
+					"on: profile.viewport.changed\n"
+					"when: $previous_profile.viewport==\"scope\" && $profile.viewport==\"base\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.renderer_scope_ready]\n"
+					"on: renderer.ready\n"
+					"when: $event_reason==\"renderer_ready\" && $profile.viewport==\"scope\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(6), model.actions.size());
+
+			auto source = [](const char* eotf, const char* primaries)
+			{
+				return [eotf, primaries](const std::string& name,
+					std::string& value)
+				{
+					if (name == "eotf" || name == "transfer")
+					{
+						value = eotf;
+						return true;
+					}
+					if (name == "primaries" || name == "colorspace")
+					{
+						value = primaries;
+						return true;
+					}
+					return false;
+				};
+			};
+			auto hasInvocation = [](const std::vector<
+				UnifiedProfileRuntime::ActionInvocation>& actions,
+				const char* actionName, const char* event)
+			{
+				return std::any_of(actions.begin(), actions.end(),
+					[actionName, event](const UnifiedProfileRuntime::ActionInvocation& action)
+					{
+						return action.action.name == actionName &&
+							action.event == event;
+					});
+			};
+
+			UnifiedProfileRuntime::Runtime runtime;
+			Assert::IsTrue(runtime.Initialize(config, source("sdr", "bt2020"), error),
+				std::wstring(error.begin(), error.end()).c_str());
+			UnifiedProfileRuntime::RefreshResult entered;
+			Assert::IsTrue(runtime.Refresh(source("pq", "rec709"), entered, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(entered.changed);
+			Assert::AreEqual("scope", entered.snapshot->viewport.profile.c_str());
+			Assert::IsTrue(hasInvocation(entered.actions,
+				"committed_scope_pq", "state.committed"));
+			Assert::IsTrue(hasInvocation(entered.actions,
+				"eotf_pq", "source.eotf.changed"));
+			Assert::IsTrue(hasInvocation(entered.actions,
+				"rec709", "source.primaries.changed"));
+			Assert::IsTrue(hasInvocation(entered.actions,
+				"scope_entered", "profile.viewport.changed"));
+
+			std::vector<UnifiedProfileRuntime::ActionInvocation> ready;
+			Assert::IsTrue(runtime.CollectActionInvocations("renderer.ready",
+				"renderer_ready", nullptr, entered.snapshot, ready, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(hasInvocation(ready, "renderer_scope_ready",
+				"renderer.ready"));
+
+			UnifiedProfileRuntime::RefreshResult left;
+			Assert::IsTrue(runtime.Refresh(source("sdr", "bt2020"), left, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(left.changed);
+			Assert::AreEqual("base", left.snapshot->viewport.profile.c_str());
+			Assert::IsTrue(hasInvocation(left.actions, "scope_left",
+				"profile.viewport.changed"));
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(UnifiedActionsRejectValueEncodedEventNames)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-invalid-unified-action.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+					"[actions.invalid]\n"
+					"on: source.eotf.pq\n"
+					"when: $eotf==\"pq\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n";
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("unsupported event") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(UnifiedActionsRouteByBuiltInRendererAliasOrWildcard)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-unified-action-renderer.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[renderer_alias]\ncinema_renderer: 2\n"
+					"[actions.built_in]\n"
+					"on: renderer.ready\n"
+					"when: $event_reason==\"renderer_ready\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.named]\n"
+					"renderer: cinema_renderer\n"
+					"on: source.eotf.changed\n"
+					"when: $eotf==\"pq\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.all]\n"
+					"renderer: *\n"
+					"on: state.committed\n"
+					"when: $eotf==\"sdr\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(3), model.actions.size());
+			Assert::AreEqual("vprenderer", model.actions[0].renderer.c_str());
+			Assert::AreEqual(0, model.actions[0].rendererAliasIndex);
+			Assert::AreEqual("cinema_renderer", model.actions[1].renderer.c_str());
+			Assert::AreEqual(2, model.actions[1].rendererAliasIndex);
+			Assert::AreEqual("*", model.actions[2].renderer.c_str());
+			Assert::AreEqual(0, model.actions[2].rendererAliasIndex);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(UnifiedActionsRejectUnknownRendererAliasAndLegacyScope)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-invalid-unified-action-renderer.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[actions.unknown_renderer]\n"
+					"renderer: not_configured\n"
+					"on: renderer.ready\n"
+					"when: $event_reason==\"renderer_ready\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("renderer") != std::string::npos);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[actions.legacy_scope]\n"
+					"scope: vprenderer\n"
+					"on: renderer.ready\n"
+					"when: $event_reason==\"renderer_ready\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			error.clear();
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("unknown key 'scope'") != std::string::npos);
 			DeleteFileA(path.c_str());
 		}
 
@@ -940,9 +1159,12 @@ namespace VideoProcessorTest
 
 			const std::string inventoryText = readFile(
 				sourceRoot + "\\docs\\configuration-public-fields.tsv");
+			const std::string valueInventoryText = readFile(
+				sourceRoot + "\\docs\\configuration-public-values.tsv");
 			const std::string html = readFile(
 				sourceRoot + "\\CONFIGURATION.html");
 			Assert::IsFalse(inventoryText.empty());
+			Assert::IsFalse(valueInventoryText.empty());
 			Assert::IsFalse(html.empty());
 
 			struct InventoryField
@@ -954,6 +1176,7 @@ namespace VideoProcessorTest
 			std::vector<InventoryField> inventory;
 			std::set<std::string> inventoryTokens;
 			std::set<std::string> inventoryAnchors;
+			std::map<std::string, std::string> inventoryAnchorsByToken;
 			std::istringstream inventoryStream(inventoryText);
 			std::string line;
 			while (std::getline(inventoryStream, line))
@@ -970,11 +1193,40 @@ namespace VideoProcessorTest
 				Assert::IsTrue(inventoryTokens.insert(columns[0]).second,
 					std::wstring(columns[0].begin(), columns[0].end()).c_str());
 				inventoryAnchors.insert(columns[1]);
+				inventoryAnchorsByToken.emplace(columns[0], columns[1]);
 				inventory.push_back(
 					{ columns[0], columns[1], columns[3] == "yes" });
 			}
 			Assert::IsTrue(inventory.size() > 50,
 				L"The public inventory unexpectedly lost the core VP-0079 fields");
+
+			struct InventoryValue
+			{
+				std::string field;
+				std::string value;
+			};
+			std::vector<InventoryValue> valueInventory;
+			std::set<std::string> valueTokens;
+			std::istringstream valueInventoryStream(valueInventoryText);
+			while (std::getline(valueInventoryStream, line))
+			{
+				if (line.empty() || line.front() == '#')
+					continue;
+				const size_t separator = line.find('\t');
+				Assert::IsTrue(separator != std::string::npos &&
+					line.find('\t', separator + 1) == std::string::npos,
+					L"Every public-value inventory line needs two columns");
+				const std::string field = line.substr(0, separator);
+				const std::string value = line.substr(separator + 1);
+				Assert::IsTrue(inventoryTokens.find(field) != inventoryTokens.end(),
+					std::wstring(field.begin(), field.end()).c_str());
+				const std::string token = field + "\t" + value;
+				Assert::IsTrue(valueTokens.insert(token).second,
+					std::wstring(token.begin(), token.end()).c_str());
+				valueInventory.push_back({ field, value });
+			}
+			Assert::IsTrue(valueInventory.size() > 50,
+				L"The public-value inventory unexpectedly lost enum coverage");
 
 			std::set<std::string> documentedTokens;
 			size_t attribute = 0;
@@ -1031,6 +1283,22 @@ namespace VideoProcessorTest
 					html.substr(anchor, articleEnd - anchor).find(
 						"AUTO behavior:") != std::string::npos,
 					std::wstring(field.token.begin(), field.token.end()).c_str());
+			}
+			for (const InventoryValue& documentedValue : valueInventory)
+			{
+				const std::string& anchor =
+					inventoryAnchorsByToken.at(documentedValue.field);
+				const size_t article = html.find("id=\"" + anchor + "\"");
+				const size_t articleEnd = html.find("</article>", article);
+				const std::string expected = "<code>" + documentedValue.value +
+					"</code>";
+				const std::string diagnostic = documentedValue.field + "=" +
+					documentedValue.value;
+				Assert::IsTrue(article != std::string::npos &&
+					articleEnd != std::string::npos &&
+					html.substr(article, articleEnd - article).find(expected) !=
+						std::string::npos,
+					std::wstring(diagnostic.begin(), diagnostic.end()).c_str());
 			}
 
 			size_t link = 0;
@@ -1090,9 +1358,13 @@ namespace VideoProcessorTest
 					MainConfigSchema::Validate(config, error),
 					std::wstring(error.begin(), error.end()).c_str());
 				RendererProfileConfig::Model model;
-				Assert::IsTrue(
-					RendererProfileConfig::Read(config, model, error),
-					std::wstring(error.begin(), error.end()).c_str());
+				if (!RendererProfileConfig::Read(config, model, error))
+				{
+					Logger::WriteMessage((L"Configuration reference example " +
+						std::to_wstring(exampleCount) + L" is invalid: " +
+						std::wstring(error.begin(), error.end())).c_str());
+					Assert::Fail(std::wstring(error.begin(), error.end()).c_str());
+				}
 				DeleteFileA(path.c_str());
 				++exampleCount;
 				example = contentEnd + strlen("</pre>");

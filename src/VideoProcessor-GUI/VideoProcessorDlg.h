@@ -18,6 +18,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <blackmagic_decklink/BlackMagicDeckLinkCaptureDeviceDiscoverer.h>
 #include <PixelValueRange.h>
@@ -550,6 +551,8 @@ protected:
 	std::unique_ptr<RendererResetCoordinator> m_rendererResetCoordinator;
 	RendererBindingToken m_rendererResetBindingToken = 0;
 	UnifiedProfileRuntime::Runtime m_profileRuntime;
+	HANDLE m_unifiedActionCancelEvent = nullptr;
+	std::vector<std::thread> m_unifiedActionWorkers;
 	std::map<WORD, CString> m_unifiedProfileShortcutKeys;
 	WORD m_lastUnifiedProfileCommand = 0;
 	DWORD m_lastUnifiedProfileCommandTime = 0;
@@ -584,6 +587,8 @@ protected:
 	void SetVideoConversionP010();
 	bool IsP010VideoConversionSelected() const;
 	bool IsAlphaRendererSelected() const;
+	bool IsUnifiedActionRendererSelected(
+		const RendererProfileConfig::Model::EventAction& action) const;
 	void UpdateRendererQueueControl();
 	void UpdateSceneCorrectionModeUi();
 	void UpdateRendererBackendUi();
@@ -655,6 +660,12 @@ protected:
 	void ApplyUnifiedProfileSnapshot(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 		bool allowRestart);
+	void ScheduleUnifiedProfileActions(
+		const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions);
+	void PublishUnifiedProfileEvent(const std::string& event,
+		const std::string& reason,
+		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& previous,
+		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& current);
 
 	// Track effective EOTF the renderer is currently configured for (post-UI overrides)
 	EOTF m_lastEffectiveEotf = EOTF::UNKNOWN;

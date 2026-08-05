@@ -90,7 +90,11 @@ namespace RendererProfileConfig
 			std::string program;
 			std::string arguments;
 			std::string workingDirectory;
-			std::string scope = "vprenderer";
+			// The built-in renderer is identified by backend. A named target is
+			// resolved through [renderer_alias] to this one-based UI selector
+			// index; zero is reserved for the built-in and wildcard targets.
+			std::string renderer = "vprenderer";
+			int rendererAliasIndex = 0;
 			int delaySeconds = 5;
 		};
 		std::vector<EventAction> actions;
@@ -457,6 +461,125 @@ namespace RendererProfileConfig
 			 normalized.substr(normalized.size() - 4) == ".cmd");
 	}
 
+	inline bool ParseActionRenderer(const ConfigFile& config,
+		const std::string& section, const std::string& value,
+		Model::EventAction& action, std::string& error)
+	{
+		action.renderer = ConfigFile::NormalizeName(value);
+		action.rendererAliasIndex = 0;
+		if (action.renderer == "vprenderer" || action.renderer == "*")
+			return true;
+
+		const auto* aliases = config.GetSectionValues("renderer_alias");
+		if (!aliases)
+		{
+			error = "[" + section + "] renderer '" + action.renderer +
+				"' is not defined in [renderer_alias]";
+			return false;
+		}
+		const auto alias = aliases->find(action.renderer);
+		if (alias == aliases->end() ||
+			!ParseInteger(alias->second, 1, INT_MAX,
+				action.rendererAliasIndex))
+		{
+			error = "[" + section + "] renderer must be vprenderer, *, or a valid [renderer_alias] name";
+			return false;
+		}
+		return true;
+	}
+
+	inline bool IsActionSourceField(const std::string& field)
+	{
+		return field == "eotf" || field == "transfer" ||
+			field == "colorspace" || field == "primaries" ||
+			field == "format" || field == "resolution" ||
+			field == "scan" ||
+			field == "hdr_metadata" || field == "interlaced" ||
+			field == "source_rate" || field == "cadence" ||
+			field == "width" || field == "height";
+	}
+
+	inline bool IsActionProfileGroup(const std::string& group)
+	{
+		return group == "input" || group == "scaling" ||
+			group == "display" || group == "viewport" || group == "queue";
+	}
+
+	inline bool IsSupportedActionEvent(const std::string& event)
+	{
+		if (event == "refresh.applied" || event == "refresh.confirmed" ||
+			event == "refresh.restored" || event == "state.committed" ||
+			event == "profile.changed" || event == "renderer.ready")
+			return true;
+		const std::string changed = ".changed";
+		const std::string source = "source.";
+		if (event.size() > source.size() + changed.size() &&
+			event.compare(0, source.size(), source) == 0 &&
+			event.compare(event.size() - changed.size(), changed.size(), changed) == 0)
+			return IsActionSourceField(event.substr(source.size(),
+				event.size() - source.size() - changed.size()));
+		const std::string profile = "profile.";
+		if (event.size() > profile.size() + changed.size() &&
+			event.compare(0, profile.size(), profile) == 0 &&
+			event.compare(event.size() - changed.size(), changed.size(), changed) == 0)
+			return IsActionProfileGroup(event.substr(profile.size(),
+				event.size() - profile.size() - changed.size()));
+		return false;
+	}
+
+	inline bool IsRefreshActionEvent(const std::string& event)
+	{
+		return event == "refresh.applied" || event == "refresh.confirmed" ||
+			event == "refresh.restored";
+	}
+
+	inline bool IsActionProfileVariable(const std::string& variable,
+		const std::string& prefix)
+	{
+		return variable.size() > prefix.size() &&
+			variable.compare(0, prefix.size(), prefix) == 0 &&
+			IsActionProfileGroup(variable.substr(prefix.size()));
+	}
+
+	inline bool IsActionSnapshotVariable(const std::string& variable)
+	{
+		if (variable == "event" || variable == "event_reason" ||
+			variable == "viewport_profile" || variable == "screen_aspect" ||
+			variable == "anamorphic_scale" || variable == "automatic_crop" ||
+			variable == "subtitle_fit" || variable == "subtitle_hold_seconds" ||
+			variable == "subtitle_padding_pixels" ||
+			variable == "viewport_generation" || IsActionSourceField(variable))
+			return true;
+		return IsActionProfileVariable(variable, "profile.") ||
+			IsActionProfileVariable(variable, "previous_profile.") ||
+			(variable.size() > 9 && variable.compare(0, 9, "previous.") == 0 &&
+				IsActionSourceField(variable.substr(9)));
+	}
+
+	inline bool ValidateTargetActionExpression(
+		const DisplayRuleExpression::Expression& expression,
+		const std::vector<std::string>& events, const std::string& context,
+		std::string& error)
+	{
+		for (const std::string& variable : expression.Variables())
+			for (const std::string& event : events)
+			{
+				const bool supported = IsRefreshActionEvent(event) ?
+					(variable == "event" || variable == "event_reason" ||
+						variable == "actual_refresh" ||
+						variable == "requested_refresh" ||
+						variable == "previous_refresh") :
+					IsActionSnapshotVariable(variable);
+				if (!supported)
+				{
+					error = context + " cannot use variable '$" + variable +
+						"' with event '" + event + "'";
+					return false;
+				}
+			}
+		return true;
+	}
+
 	inline bool ReadTarget(const ConfigFile& config, Model& model,
 		std::string& error)
 	{
@@ -678,17 +801,15 @@ namespace RendererProfileConfig
 				error = "[" + section + "] requires on="; return false;
 			}
 			for (const std::string& event : action.events)
-				if (event != "refresh.applied" && event != "refresh.confirmed" &&
-					event != "refresh.restored")
+				if (!IsSupportedActionEvent(event))
 				{
 					error = "[" + section + "] unsupported event '" + event + "'";
 					return false;
 				}
 			if (!config.TryGetString(section, "when", action.when) ||
 				!action.whenExpression.Compile(action.when, error, true) ||
-				!ValidateExpressionVariables(action.whenExpression,
-					{ "actual_refresh", "requested_refresh", "previous_refresh" },
-					"[" + section + "] when=", error))
+				!ValidateTargetActionExpression(action.whenExpression,
+					action.events, "[" + section + "] when=", error))
 			{
 				if (error.empty()) error = "[" + section + "] requires when=";
 				return false;
@@ -700,20 +821,13 @@ namespace RendererProfileConfig
 				error = "[" + section + "] run= must begin with an .exe, .bat, or .cmd path";
 				return false;
 			}
-			std::string scope;
-			if (config.TryGetString(section, "scope", scope))
-			{
-				action.scope = ConfigFile::NormalizeName(scope);
-				if (action.scope != "vprenderer" && action.scope != "directshow" &&
-					action.scope != "*")
-				{
-					error = "[" + section + "] scope must be vprenderer, directshow, or *";
-					return false;
-				}
-			}
+			std::string renderer;
+			if (config.TryGetString(section, "renderer", renderer) &&
+				!ParseActionRenderer(config, section, renderer, action, error))
+				return false;
 			for (const auto& entry : *values)
 				if (entry.first != "on" && entry.first != "when" &&
-					entry.first != "run" && entry.first != "scope")
+					entry.first != "run" && entry.first != "renderer")
 				{
 					error = "[" + section + "] unknown key '" + entry.first + "'";
 					return false;
@@ -1067,16 +1181,14 @@ namespace RendererProfileConfig
 					error = "[" + section + "] requires non-empty on="; return false;
 				}
 				for (const std::string& event : action.events)
-					if (event != "refresh.applied" && event != "refresh.confirmed" &&
-						event != "refresh.restored")
+					if (!IsSupportedActionEvent(event))
 					{
 						error = "[" + section + "] unsupported event '" + event + "'"; return false;
 					}
 				if (!config.TryGetString(section, "when", action.when) ||
 					!action.whenExpression.Compile(action.when, error, true) ||
-					!ValidateExpressionVariables(action.whenExpression,
-						{ "actual_refresh", "requested_refresh", "previous_refresh" },
-						"[" + section + "] when=", error))
+					!ValidateTargetActionExpression(action.whenExpression,
+						action.events, "[" + section + "] when=", error))
 				{
 					if (error.empty()) error = "[" + section + "] requires when="; return false;
 				}
@@ -1095,6 +1207,10 @@ namespace RendererProfileConfig
 				}
 				config.TryGetString(section, "arguments", action.arguments);
 				config.TryGetString(section, "working_directory", action.workingDirectory);
+				std::string renderer;
+				if (config.TryGetString(section, "renderer", renderer) &&
+					!ParseActionRenderer(config, section, renderer, action, error))
+					return false;
 				std::string delay;
 				if (config.TryGetString(section, "delay_seconds", delay) &&
 					!ParseInteger(delay, 0, 30, action.delaySeconds))
@@ -1104,7 +1220,7 @@ namespace RendererProfileConfig
 				for (const auto& value : *values)
 					if (value.first != "on" && value.first != "when" && value.first != "program" &&
 						value.first != "arguments" && value.first != "working_directory" &&
-						value.first != "delay_seconds")
+						value.first != "delay_seconds" && value.first != "renderer")
 					{
 						error = "[" + section + "] unknown key '" + value.first + "'"; return false;
 					}
