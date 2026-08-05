@@ -2,8 +2,10 @@
 
 ## Status
 
-In progress. Implementation branch: `codex/vp0094-fullscreen-monitor-name`, based on
-the current `origin/v1.1.015-beta` integration branch.
+In review. Implementation branch `codex/vp0094-fullscreen-monitor-name` was based
+on the current `origin/v1.1.015-beta` integration branch and merged through
+[PR #43](https://github.com/billslack2/videoprocessor/pull/43) as merge commit
+`b182905`.
 
 Implementation commit `6b9d14c` completed a clean x64 Release build and all 582
 unit tests. Deployment runtime verification remains pending: it requires explicit
@@ -33,8 +35,10 @@ created. Follow-up commit `279cbf7` re-arms native fullscreen-host recovery afte
 `WM_DISPLAYCHANGE`, then re-shows and reapplies the configured monitor bounds and
 z-order before focus. The x64 Release build and all 582 tests passed. The
 2026-08-05 deployment logged the madVR display change followed by successful
-placement recovery on `EPSON PJ`; physical startup confirmation and the remaining
-acceptance checks are still pending.
+placement recovery on `EPSON PJ`; the user physically confirmed that cold startup
+worked correctly. Fullscreen off/on also targeted the Epson correctly. The story
+is ready for review; disconnected, ambiguous-name, Alpha, and renderer-swap cases
+remain useful broader regression coverage.
 
 ## User story
 
