@@ -3882,7 +3882,10 @@ void CVideoProcessorDlg::UpdateState()
 
 		// If the renderer failed we don't auto-start it again but wait for something to happen
 		if (m_rendererState == RendererState::RENDERSTATE_FAILED)
+		{
+			videoProcessorApp.RestoreDisplayTopology("renderer-start-failure");
 			return;
+		}
 
 		if (m_appliedCaptureVideoStateNotificationSequence !=
 			m_rendererIngressState->LatestCaptureSequence())
