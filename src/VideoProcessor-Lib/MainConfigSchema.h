@@ -52,6 +52,8 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("windowedfullscreenmode"),
 			ConfigSchema::Boolean("windowed_fullscreen_mode"),
 			ConfigSchema::Any("fullscreen_monitor_name"),
+			ConfigSchema::Choice("fullscreen_monitor_session_mode",
+				{ "existing", "target-only" }),
 			ConfigSchema::Any("renderer"),
 			ConfigSchema::Any("hide_legacy_renderers"),
 			ConfigSchema::Integer("queue_size", 1, INT_MAX),
@@ -116,11 +118,11 @@ namespace MainConfigSchema
 
 		const std::vector<ConfigSchema::KeyRule> directShowRules = {
 			ConfigSchema::Integer("presentation_lead_frames", 0, 16),
-			commandLineRules[5],
-			commandLineRules[6], commandLineRules[7], commandLineRules[8],
-			commandLineRules[9], commandLineRules[10], commandLineRules[11],
-			commandLineRules[12], commandLineRules[13], commandLineRules[14],
-			commandLineRules[15]
+			commandLineRules[6],
+			commandLineRules[7], commandLineRules[8], commandLineRules[9],
+			commandLineRules[10], commandLineRules[11], commandLineRules[12],
+			commandLineRules[13], commandLineRules[14], commandLineRules[15],
+			commandLineRules[16]
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "directshow", directShowRules, error))

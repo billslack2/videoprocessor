@@ -111,8 +111,10 @@ public:
 
 	// Option handlers
 	void StartFullScreen(bool enabled = true);
+	bool StartsFullScreen() const { return m_rendererFullScreenStart; }
 	void WindowedFullScreenMode(bool enabled = true);
 	void FullscreenMonitorName(const CString& name);
+	CString FullscreenMonitorName() const { return m_fullscreenMonitorName; }
 	void HideUI(bool enabled = true);
 	void StartMinimized(bool enabled = true);
 	void DisableDetectionFeatures(bool disabled = true);

@@ -510,6 +510,26 @@ namespace UnifiedProfileRuntime
 		std::string& error) const
 	{
 		error.clear();
+		// The state file is shared with durable application recovery records.
+		// Profile persistence owns only screen_profile/profile.* and must retain
+		// every other entry verbatim, especially a pending display transaction.
+		std::vector<std::string> preservedLines;
+		{
+			std::ifstream existing(m_statePath);
+			std::string line;
+			while (std::getline(existing, line))
+			{
+				std::string key;
+				std::string value;
+				if (ReadStateEntry(line, key, value) &&
+					(key == "screen_profile" ||
+					 key.compare(0, 8, "profile.") == 0))
+					continue;
+				if (line == "# Managed by VideoProcessor.")
+					continue;
+				preservedLines.push_back(line);
+			}
+		}
 		const std::string temporaryPath = m_statePath + ".tmp";
 		std::ofstream output(temporaryPath,
 			std::ios::out | std::ios::trunc);
@@ -520,6 +540,8 @@ namespace UnifiedProfileRuntime
 			return false;
 		}
 		output << "# Managed by VideoProcessor.\n";
+		for (const std::string& line : preservedLines)
+			output << line << "\n";
 		for (const RendererProfileConfig::Group& group : m_model.groups)
 		{
 			if (!group.persistSelection)

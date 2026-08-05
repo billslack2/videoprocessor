@@ -2178,6 +2178,8 @@ void CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()
 
 	if (TryStartFullscreenRetarget())
 		return;
+	if (!m_rendererFullscreenCheck.GetCheck() && !m_fullScreenVideoWindow)
+		videoProcessorApp.RestoreDisplayTopology("fullscreen-off");
 	if (m_videoRenderer && !m_activeRendererIsDirectShow)
 	{
 		// Alpha reconstructs its own swapchain for an HWND/fullscreen change.
@@ -3875,8 +3877,7 @@ void CVideoProcessorDlg::UpdateState()
 			!m_preserveFullscreenHostForProfileRestart)
 		{
 			FullScreenVideoWindowDestroy();
-
-			m_fullScreenVideoWindow = nullptr;
+			videoProcessorApp.RestoreDisplayTopology("fullscreen-off");
 		}
 
 		// If the renderer failed we don't auto-start it again but wait for something to happen
@@ -5513,6 +5514,8 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 		ClearFullscreenRetarget(false);
 		if (exitingFullscreen && m_fullScreenVideoWindow)
 			FullScreenVideoWindowDestroy();
+		if (exitingFullscreen)
+			videoProcessorApp.RestoreDisplayTopology("fullscreen-off");
 	}
 	// The renderer's successful submission can still be queued behind the
 	// compositor. Keep black above it through one composition boundary so

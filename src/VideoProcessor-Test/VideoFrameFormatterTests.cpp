@@ -877,7 +877,8 @@ namespace Tests
 			{
 				std::ofstream state(statePath,
 					std::ios::out | std::ios::trunc);
-				state << "profile.viewport: scope\n";
+				state << "profile.viewport: scope\n"
+					"display_recovery.v1: DEADBEEF\n";
 			}
 
 			ConfigFile config;
@@ -973,6 +974,9 @@ namespace Tests
 				std::istreambuf_iterator<char>());
 			Assert::IsTrue(contents.find(
 				"profile.viewport: normal") != std::string::npos);
+			Assert::IsTrue(contents.find(
+				"display_recovery.v1: DEADBEEF") != std::string::npos,
+				L"Profile persistence must preserve display recovery state");
 
 			DeleteFileA(configPath.c_str());
 			DeleteFileA(statePath.c_str());

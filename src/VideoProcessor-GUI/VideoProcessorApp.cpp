@@ -14,6 +14,7 @@
 #include <DebugLog.h>
 #include <ConfigFile.h>
 #include <DisplayRuleExpression.h>
+#include <DisplayTopologySession.h>
 #include <MainConfigSchema.h>
 #include <RendererProfileConfig.h>
 
@@ -35,6 +36,11 @@ const wchar_t COMMAND_LINE_HELP[] = LR"(VideoProcessor GUI command-line help
 Usage:
   VideoProcessor.exe /help
   VideoProcessor.exe help
+
+Recovery:
+  VideoProcessor.exe /fix_display
+      Restore a pending target-only display session from VideoProcessor.state
+      and exit without opening the VP user interface or renderer.
 
 Boolean switches:
   A bare switch enables the option. Append true or false to explicitly set it,
@@ -580,6 +586,29 @@ std::wstring LoadConfiguredFullscreenMonitorName()
 	return value.empty() ? std::wstring() : StringToWideString(value);
 }
 
+bool LoadTargetOnlyDisplaySessionMode()
+{
+	ConfigFile config;
+	std::string value;
+	if (!config.Load() || !config.TryGetString("general",
+		"fullscreen_monitor_session_mode", value))
+		return false;
+	value = ConfigFile::NormalizeName(value);
+	if (value.empty() || value == "existing")
+		return false;
+	if (value == "target-only")
+		return true;
+	throw std::runtime_error(
+		"Invalid fullscreen_monitor_session_mode: expected existing or target-only");
+}
+
+std::string CurrentStatePath()
+{
+	ConfigFile config;
+	config.Load();
+	return RendererProfileConfig::StatePath(config);
+}
+
 bool IsHelpArgument(const wchar_t* argument)
 {
 	return argument != nullptr &&
@@ -933,6 +962,7 @@ BOOL CVideoProcessorApp::InitInstance()
 		return FALSE;
 
 	bool helpRequested = false;
+	bool fixDisplayRequested = false;
 	for (int i = 1; i < argumentCount; ++i)
 	{
 		if (IsHelpArgument(arguments[i]))
@@ -940,6 +970,10 @@ BOOL CVideoProcessorApp::InitInstance()
 			helpRequested = true;
 			break;
 		}
+		if (IsCommandLineOption(arguments[i], L"/fix_display") ||
+			IsCommandLineOption(arguments[i], L"-fix_display") ||
+			IsCommandLineOption(arguments[i], L"--fix_display"))
+			fixDisplayRequested = true;
 	}
 	LocalFree(arguments);
 
@@ -955,6 +989,36 @@ BOOL CVideoProcessorApp::InitInstance()
 	DEBUGLOG_INIT(
 		debugLogRetention.count,
 		debugLogRetention.diagnostic);
+
+	m_displayRecoveryStatePath = CurrentStatePath();
+	if (fixDisplayRequested)
+	{
+		bool restored = false;
+		std::string error;
+		const bool success = DisplayTopologySession::RestorePending(
+			m_displayRecoveryStatePath, "/fix_display", restored, error);
+		DebugLog::Log("/fix_display complete: success=%d restored=%d error=%s",
+			success ? 1 : 0, restored ? 1 : 0,
+			error.empty() ? "none" : error.c_str());
+		m_startupExitCode = success ? 0 : 1;
+		DEBUGLOG_SHUTDOWN();
+		return FALSE;
+	}
+
+	if (DisplayTopologySession::HasPendingRecovery(m_displayRecoveryStatePath))
+	{
+		bool restored = false;
+		std::string error;
+		if (!DisplayTopologySession::RestorePending(m_displayRecoveryStatePath,
+			"startup-recovery", restored, error))
+		{
+			DebugLog::Log("Startup display recovery failed: %s",
+				error.c_str());
+			m_startupExitCode = 1;
+			DEBUGLOG_SHUTDOWN();
+			return FALSE;
+		}
+	}
 
 	CVideoProcessorDlg dlg;
 	m_pMainWnd = &dlg;
@@ -1563,16 +1627,35 @@ BOOL CVideoProcessorApp::InitInstance()
 
 		}
 
+		if (LoadTargetOnlyDisplaySessionMode() && dlg.StartsFullScreen())
+		{
+			std::string error;
+			const CString configuredTarget = dlg.FullscreenMonitorName();
+			if (DisplayTopologySession::BeginTargetOnly(
+				static_cast<LPCTSTR>(configuredTarget),
+				m_displayRecoveryStatePath, error))
+			{
+				m_targetOnlyDisplaySessionActive = true;
+			}
+			else
+			{
+				DebugLog::Log("Target-only display session skipped: %s; continuing with existing fullscreen fallback",
+					error.c_str());
+			}
+		}
+
 		// Set set ourselves to high prio.
 		if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS))
 			throw std::runtime_error("Failed to set process priority");
 
 		dlg.DoModal();
+		RestoreDisplayTopology("normal-exit");
 		
 	}
 	catch (std::runtime_error& e)
 	{
 		dlg.EndDialog(IDABORT);
+		RestoreDisplayTopology("startup-or-runtime-failure");
 
 		size_t size = strlen(e.what()) + 1;
 		wchar_t* wtext = new wchar_t[size];
@@ -1590,6 +1673,31 @@ BOOL CVideoProcessorApp::InitInstance()
 	DEBUGLOG_SHUTDOWN();
 
 	return FALSE;
+}
+
+
+int CVideoProcessorApp::ExitInstance()
+{
+	const int baseResult = CWinAppEx::ExitInstance();
+	return m_startupExitCode != 0 ? m_startupExitCode : baseResult;
+}
+
+
+bool CVideoProcessorApp::RestoreDisplayTopology(const char* reason)
+{
+	if (!m_targetOnlyDisplaySessionActive &&
+		!DisplayTopologySession::HasPendingRecovery(m_displayRecoveryStatePath))
+		return true;
+	bool restored = false;
+	std::string error;
+	const bool success = DisplayTopologySession::RestorePending(
+		m_displayRecoveryStatePath, reason, restored, error);
+	if (success)
+		m_targetOnlyDisplaySessionActive = false;
+	else
+		DebugLog::Log("Display topology restore remains pending: reason=%s error=%s",
+			reason, error.c_str());
+	return success;
 }
 
 // Function to check if a CString contains only numeric characters

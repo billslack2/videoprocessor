@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include <ConfigFile.h>
+#include <DisplayTopologySession.h>
 #include <EventActionLauncher.h>
 #include <MainConfigSchema.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
@@ -334,6 +335,58 @@ namespace VideoProcessorTest
 			std::string error;
 			Assert::IsTrue(MainConfigSchema::Validate(config, error));
 			Assert::IsTrue(error.empty());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(MainConfigSchemaValidatesTargetOnlyDisplaySessionMode)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-display-session-schema.cfg";
+			ConfigFile config;
+			std::string error;
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n"
+					"fullscreen_monitor_name: EPSON PJ\n"
+					"fullscreen_monitor_session_mode: target-only\n"
+					"[vprenderer]\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsTrue(MainConfigSchema::Validate(config, error));
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n"
+					"fullscreen_monitor_session_mode: dangerous\n"
+					"[vprenderer]\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("fullscreen_monitor_session_mode") !=
+				std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(DisplayRecoveryDetectionIsStateFileScoped)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-display-recovery-detection.state";
+			DeleteFileA(path.c_str());
+			Assert::IsFalse(
+				DisplayTopologySession::HasPendingRecovery(path));
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "# Managed by VideoProcessor.\n"
+					"profile.viewport: scope\n"
+					"display_recovery.v1: DEADBEEF\n";
+			}
+			Assert::IsTrue(
+				DisplayTopologySession::HasPendingRecovery(path));
 			DeleteFileA(path.c_str());
 		}
 
