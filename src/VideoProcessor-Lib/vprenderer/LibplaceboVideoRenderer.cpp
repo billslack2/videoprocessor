@@ -6296,6 +6296,7 @@ struct LibplaceboVideoRenderer::Impl
 				scopeVerticalBarPresentation.action ==
 					AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
 				std::abs(subtitleShiftSourcePixels) > 0.5f;
+			bool releaseDriftBaseRetention = false;
 			float resolvedSubtitleTranslation = requestedSubtitleTranslation
 				? subtitleShiftSourcePixels : 0.0f;
 			if (publishFinalPresentation)
@@ -6307,6 +6308,9 @@ struct LibplaceboVideoRenderer::Impl
 						scopeSubtitleReleaseDrift.Resolve(
 							resolvedSubtitleTranslation, overlayNow,
 							scopeSubtitleReleaseDriftMs);
+				releaseDriftBaseRetention =
+					!requestedSubtitleTranslation &&
+					scopeSubtitleReleaseDrift.ConsumeFinalBaseFrame();
 				const bool releaseDriftActive =
 					!requestedSubtitleTranslation &&
 					scopeSubtitleReleaseDrift.IsActive();
@@ -6478,6 +6482,8 @@ struct LibplaceboVideoRenderer::Impl
 				latestObservationIsProvisional;
 			cropInput.latestObservationIsUnavailable =
 				latestObservationIsUnavailable;
+			cropInput.latestObservationClassification =
+				latestActivePictureEvidenceClassification;
 			cropInput.frameLocalPresentationRetentionSafe =
 				latestActivePicturePresentationRetentionSafe;
 			cropInput.frameLocalPresentationRetentionEvaluated =
@@ -6495,6 +6501,8 @@ struct LibplaceboVideoRenderer::Impl
 					: 0.0, true };
 			cropInput.verticalTranslationSourceGeneration =
 				scopeSubtitleEvidenceSourceGeneration;
+			cropInput.verticalTranslationBaseRetentionActive =
+				releaseDriftBaseRetention;
 			cropInput.outwardPresentationActive = barContentFitActive;
 			cropInput.outwardExpansionAvailable = outwardExpansionAvailable;
 			cropInput.classification = effectiveClassification;
@@ -6523,6 +6531,7 @@ struct LibplaceboVideoRenderer::Impl
 				<< latestObservationIsProvisional << '|'
 				<< latestActivePicturePresentationRetentionSafe << '|'
 				<< detectorEnvelopeActive << '|'
+				<< releaseDriftBaseRetention << '|'
 				<< static_cast<int>(verticalResolution.action) << '|'
 				<< leftBarContentActive << detailedVerticalFitEvidence
 				<< rightBarContentActive << verticalTranslationActive << '|'
@@ -6540,7 +6549,7 @@ struct LibplaceboVideoRenderer::Impl
 					? "translate" : (verticalFitActive ? "fit" :
 						(verticalFailOpen ? "fail-open" : "none"));
 				DebugLog::Log(
-					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d envelope_state=%s edges=%c%c%c%c evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s; %s; %s\"",
+					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d release_settle=%d envelope_state=%s edges=%c%c%c%c evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s; %s; %s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
@@ -6556,6 +6565,7 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<int>(
 						latestActivePictureEvidenceClassification),
 					detectorEnvelopeActive ? 1 : 0,
+					releaseDriftBaseRetention ? 1 : 0,
 					envelopeDecision.currentFrame ? "current" :
 					(envelopeDecision.held ? "held" : "inactive"),
 					leftBarContentActive ? 'L' : '-',

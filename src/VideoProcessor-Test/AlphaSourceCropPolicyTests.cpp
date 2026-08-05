@@ -338,8 +338,15 @@ namespace Tests
 			// A new cue cancels the release and is never eased in.
 			Assert::AreEqual(226.0f,
 				drift.Resolve(226.0f, 3600, 3000), 0.001f);
+			Assert::AreEqual(226.0f,
+				drift.Resolve(0.0f, 4000, 3000), 0.001f);
 			Assert::AreEqual(0.0f,
-				drift.Resolve(0.0f, 4000, 0), 0.001f);
+				drift.Resolve(0.0f, 7000, 3000), 0.001f);
+			Assert::IsFalse(drift.IsActive());
+			Assert::IsTrue(drift.ConsumeFinalBaseFrame());
+			Assert::IsFalse(drift.ConsumeFinalBaseFrame());
+			Assert::AreEqual(0.0f,
+				drift.Resolve(0.0f, 7100, 0), 0.001f);
 			Assert::IsFalse(drift.IsActive());
 		}
 
@@ -1017,6 +1024,44 @@ namespace Tests
 			Assert::AreEqual(1884, darkFade.sourceBounds.bottom);
 		}
 
+		TEST_METHOD(SceneVerificationHoldsTrustedCropAcrossUnreaffirmedBarObservation)
+		{
+			// VP-0080: the detector can emit a current trusted bar observation
+			// whose bounds have not yet settled enough to reaffirm the retained
+			// geometry. During the short scene verification hold that must not
+			// flash full raster between otherwise identical scope frames.
+			Input input = TrustedScopeCrop();
+			input.latestObservationSupportsCrop = false;
+			input.sceneVerificationHoldActive = true;
+			input.latestObservationClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			Decision retained;
+			// Model the observed alternating current-authority gap. Every frame
+			// must retain the same known scope window rather than pulse full raster.
+			for (int frame = 0; frame < 100; ++frame)
+			{
+				input.latestObservationSupportsCrop = (frame & 1) == 0;
+				retained = Evaluate(input);
+				Assert::IsTrue(retained.applyCrop);
+				Assert::AreEqual(274, retained.sourceBounds.top);
+				Assert::AreEqual(1884, retained.sourceBounds.bottom);
+			}
+			Assert::IsTrue(retained.reason.find("scene verification") !=
+				std::string::npos);
+
+			// A frame-local visible-pixel conflict remains authoritative even in
+			// the same verification window.
+			input.frameLocalPresentationRetentionEvaluated = true;
+			input.frameLocalPresentationRetentionSafe = false;
+			AssertFullRaster(Evaluate(input));
+
+			// A current trusted full-raster observation also withdraws immediately.
+			input.frameLocalPresentationRetentionEvaluated = false;
+			input.latestObservationClassification =
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
+			AssertFullRaster(Evaluate(input));
+		}
+
 		TEST_METHOD(SceneVerificationCannotOverrideFullRasterOrStaleAuthority)
 		{
 			Input unavailable = TrustedScopeCrop();
@@ -1038,6 +1083,33 @@ namespace Tests
 			stale.latestObservationIsProvisional = true;
 			stale.frameSourceGeneration = 8;
 			AssertFullRaster(Evaluate(stale));
+		}
+
+		TEST_METHOD(SubtitleReleaseSettlesAtTrustedBaseWithoutAFullRasterFlash)
+		{
+			// The terminal zero-shift drift sample must still present its exact
+			// generation-current base while the next detector observation arrives.
+			Input input = TrustedScopeCrop();
+			input.latestObservationSupportsCrop = false;
+			input.verticalTranslationBaseRetentionActive = true;
+			input.verticalTranslationBase = input.geometry;
+			input.verticalTranslationSourceGeneration =
+				input.frameSourceGeneration;
+			const Decision settled = Evaluate(input);
+			Assert::IsTrue(settled.applyCrop);
+			Assert::IsFalse(settled.verticallyTranslated);
+			Assert::AreEqual(274, settled.sourceBounds.top);
+			Assert::AreEqual(1884, settled.sourceBounds.bottom);
+			Assert::IsTrue(settled.reason.find("release settled") !=
+				std::string::npos);
+
+			input.frameLocalPresentationRetentionEvaluated = true;
+			input.frameLocalPresentationRetentionSafe = false;
+			AssertFullRaster(Evaluate(input));
+
+			input.frameLocalPresentationRetentionEvaluated = false;
+			input.verticalTranslationSourceGeneration = 8;
+			AssertFullRaster(Evaluate(input));
 		}
 
 		TEST_METHOD(SparseSubtitleTranslatesSameSizeWindowWithoutChangingNlsAspect)

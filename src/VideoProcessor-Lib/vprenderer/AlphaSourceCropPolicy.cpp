@@ -287,6 +287,14 @@ namespace AlphaSourceCrop
 		releaseStartTranslationPixels = 0.0f;
 		releaseStartTick = 0;
 		releaseActive = false;
+		finalBaseFramePending = false;
+	}
+
+	bool VerticalTranslationReleaseDrift::ConsumeFinalBaseFrame()
+	{
+		const bool pending = finalBaseFramePending;
+		finalBaseFramePending = false;
+		return pending;
 	}
 
 	float VerticalTranslationReleaseDrift::Resolve(
@@ -297,6 +305,7 @@ namespace AlphaSourceCrop
 		{
 			// New subtitle or menu content always wins over a pending release.
 			releaseActive = false;
+			finalBaseFramePending = false;
 			releaseStartTranslationPixels = 0.0f;
 			releaseStartTick = 0;
 			lastAppliedTranslationPixels = requestedTranslationPixels;
@@ -318,7 +327,11 @@ namespace AlphaSourceCrop
 			? currentTick - releaseStartTick : 0;
 		if (elapsed >= releaseDurationMs)
 		{
-			Reset();
+			lastAppliedTranslationPixels = 0.0f;
+			releaseStartTranslationPixels = 0.0f;
+			releaseStartTick = 0;
+			releaseActive = false;
+			finalBaseFramePending = true;
 			return 0.0f;
 		}
 		const float remaining = 1.0f - static_cast<float>(elapsed) /
@@ -567,9 +580,21 @@ namespace AlphaSourceCrop
 		const bool ambiguousObservation =
 			input.latestObservationIsProvisional ||
 			input.latestObservationIsUnavailable;
+		// A scene cut may yield several individually trusted bar observations
+		// before the transition model can safely publish one as the next stable
+		// geometry. Do not toggle between the old crop and full raster during that
+		// bounded verification interval. This preserves only the already-trusted
+		// rectangle; a full-raster observation or a frame-local pixel conflict
+		// still withdraws immediately.
+		const bool boundedSceneVerificationRetention =
+			!input.frameLocalPresentationRetentionEvaluated &&
+			input.sceneVerificationHoldActive &&
+			(ambiguousObservation ||
+			 input.latestObservationClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED);
 		const bool boundedAmbiguousRetention = ambiguousObservation &&
 			!input.frameLocalPresentationRetentionEvaluated &&
-			(input.sceneVerificationHoldActive || input.ambiguityHoldActive);
+			input.ambiguityHoldActive;
 		const bool pixelSafeAmbiguousRetention = ambiguousObservation &&
 			input.frameLocalPresentationRetentionSafe;
 		const bool boundedOutwardExpansion =
@@ -585,9 +610,18 @@ namespace AlphaSourceCrop
 			input.verticalTranslationSourceGeneration != 0 &&
 			input.verticalTranslationSourceGeneration ==
 				input.frameSourceGeneration;
+		const bool boundedVerticalBaseRetention =
+			input.verticalTranslationBaseRetentionActive &&
+			!input.frameLocalPresentationRetentionEvaluated &&
+			SameBounds(input.verticalTranslationBase, input.geometry) &&
+			input.verticalTranslationSourceGeneration != 0 &&
+			input.verticalTranslationSourceGeneration ==
+				input.frameSourceGeneration;
 		if (!input.latestObservationSupportsCrop &&
+			!boundedSceneVerificationRetention &&
 			!boundedAmbiguousRetention && !pixelSafeAmbiguousRetention &&
-			!boundedOutwardExpansion && !boundedVerticalTranslation)
+			!boundedOutwardExpansion && !boundedVerticalTranslation &&
+			!boundedVerticalBaseRetention)
 		{
 			decision.reason =
 				"latest observation does not reaffirm crop authority";
@@ -699,15 +733,17 @@ namespace AlphaSourceCrop
 			? (decision.outwardExpanded
 				? "bounded outward fit and same-size vertical translation accepted"
 				: "same-size vertical presentation translation accepted")
-			: (decision.outwardExpanded
-				? "bounded outward presentation expansion accepted"
-				: (input.latestObservationSupportsCrop
+			: (boundedVerticalBaseRetention
+				? "subtitle release settled at current trusted base"
+				: (decision.outwardExpanded
+					? "bounded outward presentation expansion accepted"
+					: (input.latestObservationSupportsCrop
 			? "generation-current shared crop authority accepted"
 			: (pixelSafeAmbiguousRetention
 				? "frame-local pixel-safe presentation retained prior crop"
-				: (input.sceneVerificationHoldActive
+				: (boundedSceneVerificationRetention
 					? "bounded scene verification retained current trusted crop"
-					: "bounded ambiguity hold retained current trusted crop"))));
+					: "bounded ambiguity hold retained current trusted crop")))));
 		return decision;
 	}
 

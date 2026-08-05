@@ -120,12 +120,17 @@ namespace AlphaSourceCrop
 		float Resolve(float requestedTranslationPixels, uint64_t currentTick,
 			uint64_t releaseDurationMs);
 		bool IsActive() const { return releaseActive; }
+		// The sample which lands exactly on the trusted base needs one final
+		// generation-checked presentation decision. Consume this marker once so a
+		// lost current observation cannot cause a full-raster flash at release.
+		bool ConsumeFinalBaseFrame();
 
 	private:
 		float lastAppliedTranslationPixels = 0.0f;
 		float releaseStartTranslationPixels = 0.0f;
 		uint64_t releaseStartTick = 0;
 		bool releaseActive = false;
+		bool finalBaseFramePending = false;
 	};
 
 	struct VerticalBarPresentationResolutionInput
@@ -227,6 +232,13 @@ namespace AlphaSourceCrop
 		bool ambiguityHoldActive = false;
 		bool latestObservationIsProvisional = false;
 		bool latestObservationIsUnavailable = false;
+		// This is the current detector classification, distinct from the
+		// classification of the retained shared geometry below. During a bounded
+		// scene verification window, a trusted bar observation which has not yet
+		// reaffirmed the retained bounds may preserve that existing presentation.
+		// A trusted full-raster observation must always withdraw it.
+		ActivePictureClassification latestObservationClassification =
+			ActivePictureClassification::UNAVAILABLE;
 		// Positive, frame-local proof that retaining the prior presentation
 		// excludes no currently visible pixels. This preserves presentation only;
 		// it never grants or renews crop authority.
@@ -240,6 +252,10 @@ namespace AlphaSourceCrop
 		int verticalTranslationPixels = 0;
 		ActivePictureBounds verticalTranslationBase;
 		uint64_t verticalTranslationSourceGeneration = 0;
+		// A one-frame bridge when release drift reaches zero. It preserves the
+		// trusted base rectangle but never applies a displacement or grants new
+		// crop authority.
+		bool verticalTranslationBaseRetentionActive = false;
 		bool outwardPresentationActive = false;
 		bool outwardExpansionAvailable = false;
 		ActivePictureClassification classification =
