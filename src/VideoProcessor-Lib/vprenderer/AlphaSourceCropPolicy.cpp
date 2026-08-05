@@ -106,12 +106,23 @@ namespace AlphaSourceCrop
 			return decision;
 		}
 		const bool overlayOnlyOpposesHeldTranslation =
-			(input.upperContent && input.bottomTranslationHeld &&
+			(input.upperContent && !input.lowerContent &&
+				input.bottomTranslationHeld &&
 				decision.upperOverlayLike) ||
-			(input.lowerContent && input.topTranslationHeld &&
+			(input.lowerContent && !input.upperContent &&
+				input.topTranslationHeld &&
 				decision.lowerOverlayLike);
+		// Content on both bars is not, by itself, an aspect-ratio change. A
+		// bottom subtitle can coexist with a top volume/menu overlay, and sparse
+		// details near both edges can occur in the same frame. Only picture-like
+		// (broad and deep) evidence may turn a two-edge observation into Fit.
+		// When both edges are overlay-like, select the edge needing the larger
+		// reveal below while preserving any active translation hold.
+		const bool bothEdgesContainPicture =
+			input.upperContent && input.lowerContent &&
+			(!decision.upperOverlayLike || !decision.lowerOverlayLike);
 		const bool forceFit =
-			(input.upperContent && input.lowerContent) ||
+			bothEdgesContainPicture ||
 			(input.upperContent && input.bottomTranslationHeld &&
 				!decision.upperOverlayLike) ||
 			(input.lowerContent && input.topTranslationHeld &&
@@ -129,9 +140,21 @@ namespace AlphaSourceCrop
 		if (overlayOnlyOpposesHeldTranslation)
 			return decision;
 
-		switch (SelectVerticalBarContentEdge(
-			decision.upperOverlayLike ? input.upperRequiredShift : 0.0f,
-			decision.lowerOverlayLike ? input.lowerRequiredShift : 0.0f))
+		float upperCandidate = decision.upperOverlayLike
+			? input.upperRequiredShift : 0.0f;
+		float lowerCandidate = decision.lowerOverlayLike
+			? input.lowerRequiredShift : 0.0f;
+		// When the held edge is still present, a simultaneous overlay on the
+		// opposite edge must not reverse the picture translation. Continue to
+		// follow the held edge, including an immediately larger reveal requested
+		// by a new subtitle line. If the held edge has disappeared, the bounded
+		// hold above suppresses the isolated opposite-edge pulse instead.
+		if (input.bottomTranslationHeld && decision.lowerOverlayLike)
+			upperCandidate = 0.0f;
+		else if (input.topTranslationHeld && decision.upperOverlayLike)
+			lowerCandidate = 0.0f;
+
+		switch (SelectVerticalBarContentEdge(upperCandidate, lowerCandidate))
 		{
 		case BarContentEdge::TOP:
 			decision.action = VerticalBarPresentationAction::TRANSLATE;

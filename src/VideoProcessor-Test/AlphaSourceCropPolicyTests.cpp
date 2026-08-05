@@ -115,7 +115,83 @@ namespace Tests
 				static_cast<int>(decision.action));
 		}
 
-		TEST_METHOD(VerticalBarPolicyFitsOpposingOrReversingContent)
+		TEST_METHOD(VerticalBarPolicyChoosesDominantTwoEdgeOverlay)
+		{
+			VerticalBarContentInput input;
+			input.upperContent = true;
+			// Values reproduced from the Eternals trace: sparse top UI and a
+			// deeper bottom subtitle were both correctly classified as overlays.
+			input.upperOccupiedDepth = 70;
+			input.upperPeakSamples = 133;
+			input.upperBarPixels = 276;
+			input.lowerBarPixels = 276;
+			input.sampledColumns = 1800;
+			input.upperRequiredShift = 153.0f;
+
+			input.lowerContent = true;
+			input.lowerOccupiedDepth = 90;
+			input.lowerPeakSamples = 238;
+			input.lowerRequiredShift = 199.0f;
+			auto decision = EvaluateVerticalBarContent(input);
+			Assert::IsTrue(decision.upperOverlayLike);
+			Assert::IsTrue(decision.lowerOverlayLike);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(decision.action));
+			Assert::AreEqual(199.0f, decision.translationPixels, 0.001f);
+
+			// Direction selection is based on required visibility, not on a fixed
+			// preference for subtitles at the bottom.
+			input.upperRequiredShift = 205.0f;
+			decision = EvaluateVerticalBarContent(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(decision.action));
+			Assert::AreEqual(-205.0f, decision.translationPixels, 0.001f);
+
+			// Once the lower subtitle owns presentation, the top overlay cannot
+			// reverse it even if the top would otherwise request a larger shift.
+			input.bottomTranslationHeld = true;
+			decision = EvaluateVerticalBarContent(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(decision.action));
+			Assert::AreEqual(199.0f, decision.translationPixels, 0.001f);
+		}
+
+		TEST_METHOD(VerticalBarPolicyFitsTwoEdgePictureEvidence)
+		{
+			VerticalBarContentInput input;
+			input.upperContent = true;
+			input.upperOccupiedDepth = 150;
+			input.upperPeakSamples = 1500;
+			input.upperBarPixels = 280;
+			input.lowerContent = true;
+			input.lowerOccupiedDepth = 160;
+			input.lowerPeakSamples = 1500;
+			input.lowerBarPixels = 280;
+			input.sampledColumns = 1800;
+			input.upperRequiredShift = 75.0f;
+			input.lowerRequiredShift = 75.0f;
+			auto decision = EvaluateVerticalBarContent(input);
+			Assert::IsFalse(decision.upperOverlayLike);
+			Assert::IsFalse(decision.lowerOverlayLike);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(decision.action));
+
+			// One picture-like edge is enough to distinguish a real fill from two
+			// simultaneous sparse overlays.
+			input.lowerOccupiedDepth = 42;
+			input.lowerPeakSamples = 220;
+			decision = EvaluateVerticalBarContent(input);
+			Assert::IsTrue(decision.lowerOverlayLike);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(decision.action));
+		}
+
+		TEST_METHOD(VerticalBarPolicyPreservesHeldTranslationAgainstOppositeOverlay)
 		{
 			VerticalBarContentInput input;
 			input.upperContent = true;
@@ -126,19 +202,8 @@ namespace Tests
 			input.sampledColumns = 1800;
 			input.upperRequiredShift = 75.0f;
 
-			input.lowerContent = true;
-			input.lowerOccupiedDepth = 42;
-			input.lowerPeakSamples = 220;
-			input.lowerRequiredShift = 75.0f;
-			auto decision = EvaluateVerticalBarContent(input);
-			Assert::AreEqual(static_cast<int>(
-				VerticalBarPresentationAction::FIT),
-				static_cast<int>(decision.action));
-
-			input.lowerContent = false;
-			input.lowerRequiredShift = 0.0f;
 			input.bottomTranslationHeld = true;
-			decision = EvaluateVerticalBarContent(input);
+			auto decision = EvaluateVerticalBarContent(input);
 			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::NONE),
 				static_cast<int>(decision.action));
@@ -630,13 +695,44 @@ namespace Tests
 				MadVRNlsMappingMode::SCOPE_PASSTHROUGH),
 				static_cast<int>(mapping.mode));
 
+			// Reproduce the two-edge Eternals sequence: sparse top UI appears while
+			// the bottom subtitle grows. Keep the scope-sized source window, retain
+			// the subtitle direction, and reveal the larger lower cue immediately.
+			content.upperContent = true;
+			content.upperOccupiedDepth = 70;
+			content.upperPeakSamples = 133;
+			content.upperRequiredShift = 153.0f;
+			content.lowerOccupiedDepth = 90;
+			content.lowerPeakSamples = 238;
+			content.lowerRequiredShift = 199.0f;
+			content.bottomTranslationHeld = true;
+			const auto simultaneousOverlays =
+				EvaluateVerticalBarContent(content);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(simultaneousOverlays.action));
+			Assert::AreEqual(199.0f,
+				simultaneousOverlays.translationPixels, 0.001f);
+			update(simultaneousOverlays, true, true, 164, 2030, 1100, 103);
+			action = resolve(true, 164, true, 2030);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(action.action));
+			crop = present(action, geometry);
+			Assert::IsTrue(crop.verticallyTranslated);
+			Assert::IsFalse(crop.outwardExpanded);
+			Assert::AreEqual(480, crop.sourceBounds.top);
+			Assert::AreEqual(2088, crop.sourceBounds.bottom);
+			Assert::AreEqual(1608, crop.sourceBounds.bottom -
+				crop.sourceBounds.top);
+
 			// No new analysis inside the release hold: keep the exact placement.
-			update({}, false, false, 0, 0, 1500, 103);
+			update({}, false, false, 0, 0, 1500, 104);
 			action = resolve(false, geometry.top, false, geometry.bottom);
 			crop = present(action, geometry);
-			Assert::AreEqual(372, crop.sourceBounds.top);
+			Assert::AreEqual(480, crop.sourceBounds.top);
 			// Once the accelerated hold expires, return directly to stable scope.
-			update({}, false, false, 0, 0, 3201, 104);
+			update({}, false, false, 0, 0, 3201, 105);
 			action = resolve(false, geometry.top, false, geometry.bottom);
 			crop = present(action, geometry);
 			Assert::AreEqual(280, crop.sourceBounds.top);
@@ -651,7 +747,7 @@ namespace Tests
 			content.sampledColumns = 1800;
 			content.upperRequiredShift = 75.0f;
 			update(EvaluateVerticalBarContent(content), true, false,
-				220, 0, 3300, 105);
+				220, 0, 3300, 106);
 			action = resolve(true, 220, false, geometry.bottom);
 			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::TRANSLATE),
@@ -683,7 +779,7 @@ namespace Tests
 			content.lowerPeakSamples = 1500;
 			content.lowerRequiredShift = 180.0f;
 			update(EvaluateVerticalBarContent(content), true, true,
-				60, 2100, 3350, 106);
+				60, 2100, 3350, 107);
 			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(state.action));
@@ -701,7 +797,7 @@ namespace Tests
 			content.lowerContent = true;
 			content.lowerRequiredShift = 75.0f;
 			update(EvaluateVerticalBarContent(content), false, true,
-				0, 1918, 3400, 107);
+				0, 1918, 3400, 108);
 			action = resolve(false, geometry.top, false, geometry.bottom);
 			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::FAIL_OPEN),
