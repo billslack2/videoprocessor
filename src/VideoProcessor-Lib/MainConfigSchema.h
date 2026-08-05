@@ -51,6 +51,7 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("fullscreen"),
 			ConfigSchema::Boolean("windowedfullscreenmode"),
 			ConfigSchema::Boolean("windowed_fullscreen_mode"),
+			ConfigSchema::Any("fullscreen_monitor_name"),
 			ConfigSchema::Any("renderer"),
 			ConfigSchema::Any("hide_legacy_renderers"),
 			ConfigSchema::Integer("queue_size", 1, INT_MAX),

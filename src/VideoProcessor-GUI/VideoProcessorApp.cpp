@@ -497,6 +497,7 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	{
 	AppendConfigBoolOption(arguments, config, { "fullscreen" }, L"/fullscreen");
 	AppendConfigBoolOption(arguments, config, { "windowedfullscreenmode", "windowed_fullscreen_mode" }, L"/windowedfullscreenmode");
+	AppendConfigStringOption(arguments, config, { "fullscreen_monitor_name" }, L"/fullscreen_monitor_name");
 	AppendConfigStringOption(arguments, config, { "renderer" }, L"/renderer");
 	AppendConfigStringOption(arguments, config, { "capture_device" }, L"/capture_device");
 	AppendConfigStringOption(arguments, config, { "frame_offset" }, L"/frame_offset");
@@ -730,6 +731,7 @@ bool RequiresCommandLineValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/lldv_mastering_min_luminance") ||
 		IsCommandLineOption(argument, L"/lldv_mastering_max_luminance") ||
 		IsCommandLineOption(argument, L"/capture_device") ||
+		IsCommandLineOption(argument, L"/fullscreen_monitor_name") ||
 		IsCommandLineOption(argument, L"/frame_offset") ||
 		IsCommandLineOption(argument, L"/video_conversion") ||
 		IsCommandLineOption(argument, L"/container_colorspace") ||
@@ -1014,6 +1016,12 @@ BOOL CVideoProcessorApp::InitInstance()
 			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/windowedfullscreenmode", booleanValue))
 			{
 				dlg.WindowedFullScreenMode(booleanValue);
+			}
+
+			if (wcscmp(pArgs[i], L"/fullscreen_monitor_name") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				dlg.FullscreenMonitorName(pArgs[i + 1]);
 			}
 
 			// /renderer "name"

@@ -209,6 +209,89 @@ std::vector<std::string> SplitConfiguredList(const std::string& value)
 	return items;
 }
 
+struct ActiveMonitorCandidate
+{
+	HMONITOR monitor = nullptr;
+	CString sourceName;
+	CString friendlyName;
+};
+
+BOOL CALLBACK EnumerateActiveMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM parameter)
+{
+	auto* candidates = reinterpret_cast<std::vector<ActiveMonitorCandidate>*>(parameter);
+	MONITORINFOEXW monitorInfo = {};
+	monitorInfo.cbSize = sizeof(monitorInfo);
+	if (!GetMonitorInfoW(monitor, &monitorInfo))
+		return TRUE;
+
+	ActiveMonitorCandidate candidate;
+	candidate.monitor = monitor;
+	candidate.sourceName = monitorInfo.szDevice;
+	candidates->push_back(candidate);
+	return TRUE;
+}
+
+bool PopulateActiveMonitorFriendlyNames(std::vector<ActiveMonitorCandidate>& candidates)
+{
+	UINT32 pathCount = 0;
+	UINT32 modeCount = 0;
+	LONG result = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, nullptr,
+		&modeCount, nullptr, nullptr);
+	if (result != ERROR_SUCCESS)
+		return false;
+
+	std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
+	std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
+	result = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(),
+		&modeCount, modes.data(), nullptr);
+	if (result != ERROR_SUCCESS)
+		return false;
+
+	for (UINT32 index = 0; index < pathCount; ++index)
+	{
+		const DISPLAYCONFIG_PATH_INFO& path = paths[index];
+		DISPLAYCONFIG_SOURCE_DEVICE_NAME source = {};
+		source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+		source.header.size = sizeof(source);
+		source.header.adapterId = path.sourceInfo.adapterId;
+		source.header.id = path.sourceInfo.id;
+		if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS)
+			return false;
+
+		DISPLAYCONFIG_TARGET_DEVICE_NAME target = {};
+		target.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
+		target.header.size = sizeof(target);
+		target.header.adapterId = path.targetInfo.adapterId;
+		target.header.id = path.targetInfo.id;
+		if (DisplayConfigGetDeviceInfo(&target.header) != ERROR_SUCCESS)
+			return false;
+
+		for (ActiveMonitorCandidate& candidate : candidates)
+			if (_wcsicmp(candidate.sourceName, source.viewGdiDeviceName) == 0)
+			{
+				candidate.friendlyName = target.monitorFriendlyDeviceName;
+				break;
+			}
+	}
+
+	return true;
+}
+
+CString DescribeMonitorCandidates(const std::vector<ActiveMonitorCandidate>& candidates)
+{
+	CString description;
+	for (const ActiveMonitorCandidate& candidate : candidates)
+	{
+		if (!description.IsEmpty())
+			description += L"; ";
+		CString entry;
+		entry.Format(L"%s=%s", candidate.sourceName.GetString(),
+			candidate.friendlyName.IsEmpty() ? L"(unnamed)" : candidate.friendlyName.GetString());
+		description += entry;
+	}
+	return description.IsEmpty() ? CString(L"(none)") : description;
+}
+
 
 HACCEL CreateConfiguredAccelerators(
 	std::map<WORD, CString>& shaderShortcutRules,
@@ -1607,6 +1690,12 @@ void CVideoProcessorDlg::SetLldvMasteringMaxLuminance(double value)
 void CVideoProcessorDlg::WindowedFullScreenMode(bool enabled)
 {
 	m_windowedFullScreenMode = enabled;
+}
+
+void CVideoProcessorDlg::FullscreenMonitorName(const CString& name)
+{
+	m_fullscreenMonitorName = name;
+	m_fullscreenMonitorName.Trim();
 }
 
 
@@ -5503,7 +5592,7 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 {
 	assert(!m_fullScreenVideoWindow);
 
-	HMONITOR hmon = MonitorFromWindow(this->GetSafeHwnd(), MONITOR_DEFAULTTONEAREST);
+	HMONITOR hmon = SelectFullscreenMonitor();
 
 	m_fullScreenVideoWindow = new FullscreenVideoWindow();
 	if (!m_fullScreenVideoWindow)
@@ -5515,6 +5604,58 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 
 	SetTimer(FULLSCREEN_FOCUS_TIMER_ID, 5000, nullptr);
 
+}
+
+HMONITOR CVideoProcessorDlg::SelectFullscreenMonitor()
+{
+	const HMONITOR fallback = MonitorFromWindow(
+		this->GetSafeHwnd(), MONITOR_DEFAULTTONEAREST);
+	if (m_fullscreenMonitorName.IsEmpty())
+		return fallback;
+
+	std::vector<ActiveMonitorCandidate> candidates;
+	if (!EnumDisplayMonitors(nullptr, nullptr, EnumerateActiveMonitor,
+		reinterpret_cast<LPARAM>(&candidates)) ||
+		!PopulateActiveMonitorFriendlyNames(candidates))
+	{
+		const ULONGLONG now = GetTickCount64();
+		if (m_lastFullscreenMonitorSelectionLogTick == 0 ||
+			now - m_lastFullscreenMonitorSelectionLogTick >= 5000)
+		{
+			m_lastFullscreenMonitorSelectionLogTick = now;
+			DbgLog((LOG_TRACE, 1,
+				TEXT("Fullscreen monitor selection: requested='%s' fallback=existing reason=configured monitor unavailable (active monitor enumeration failed)"),
+				m_fullscreenMonitorName.GetString()));
+		}
+		return fallback;
+	}
+
+	std::vector<const ActiveMonitorCandidate*> matches;
+	for (const ActiveMonitorCandidate& candidate : candidates)
+		if (!candidate.friendlyName.IsEmpty() &&
+			_wcsicmp(candidate.friendlyName, m_fullscreenMonitorName) == 0)
+			matches.push_back(&candidate);
+
+	const ULONGLONG now = GetTickCount64();
+	if (m_lastFullscreenMonitorSelectionLogTick == 0 ||
+		now - m_lastFullscreenMonitorSelectionLogTick >= 5000)
+	{
+		m_lastFullscreenMonitorSelectionLogTick = now;
+		const CString candidateDescription = DescribeMonitorCandidates(candidates);
+		if (matches.size() == 1)
+			DbgLog((LOG_TRACE, 1,
+				TEXT("Fullscreen monitor selection: requested='%s' candidates=[%s] selected=%s (%s)"),
+				m_fullscreenMonitorName.GetString(), candidateDescription.GetString(),
+				matches.front()->sourceName.GetString(), matches.front()->friendlyName.GetString()));
+		else
+			DbgLog((LOG_TRACE, 1,
+				TEXT("Fullscreen monitor selection: requested='%s' candidates=[%s] fallback=existing reason=%s"),
+				m_fullscreenMonitorName.GetString(), candidateDescription.GetString(),
+				matches.empty() ? TEXT("configured monitor unavailable") :
+				TEXT("configured monitor name is ambiguous")));
+	}
+
+	return matches.size() == 1 ? matches.front()->monitor : fallback;
 }
 
 

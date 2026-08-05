@@ -112,6 +112,7 @@ public:
 	// Option handlers
 	void StartFullScreen(bool enabled = true);
 	void WindowedFullScreenMode(bool enabled = true);
+	void FullscreenMonitorName(const CString& name);
 	void HideUI(bool enabled = true);
 	void StartMinimized(bool enabled = true);
 	void DisableDetectionFeatures(bool disabled = true);
@@ -380,6 +381,8 @@ protected:
 	// Startup options
 	bool m_rendererFullScreenStart = false;
 	bool m_windowedFullScreenMode = false;
+	CString m_fullscreenMonitorName;
+	ULONGLONG m_lastFullscreenMonitorSelectionLogTick = 0;
 	bool m_hideUI = false;
 	bool m_startMinimized = false;
 
@@ -618,6 +621,7 @@ protected:
 	void ClearFullscreenRetarget(bool restorePreviousTarget);
 	void FullScreenVideoWindowConstruct();
 	void FullScreenVideoWindowDestroy();
+	HMONITOR SelectFullscreenMonitor();
 	HWND GetRenderWindow();
 	size_t GetRendererVideoFrameQueueSizeMax();
 	bool GetRendererVideoFrameUseQueue();
