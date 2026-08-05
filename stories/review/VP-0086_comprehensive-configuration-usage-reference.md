@@ -2,7 +2,13 @@
 
 ## Status
 
-In Progress — 2026-08-04.
+Review — 2026-08-04.
+
+Merged to the current default integration branch `v1.1.015-beta` through
+https://github.com/billslack2/videoprocessor/pull/40 at merge commit
+`ea7b7586be851ca02950c50b26d26d3e33306b63`. The matched x64 Release runtime
+pair was deployed locally without modifying `VideoProcessor.cfg` so the live
+configuration can be exercised during review.
 
 Readiness review completed against `billslack2/videoprocessor` default branch
 `v1.1.015-beta` at `0a19c5f`. The public-configuration model is recoverable
@@ -135,11 +141,10 @@ Validation completed:
   anchors, 72 value tables, 117 documented enum/list values, and no missing
   internal links. The two removed entries are intentionally internal-only.
 
-Outstanding validation: the required desktop-width browser rendering review
-could not run because the available browser policy blocks navigation to local
-`file:` URLs. No workaround or alternate browser surface was used. Review the
-committed `CONFIGURATION.html` in a desktop browser before moving this story to
-Review; record any layout correction or the successful visual result here.
+Outstanding review focus: perform the desktop-width browser rendering review
+against the deployed/local `CONFIGURATION.html` and exercise the existing live
+configuration after the runtime upgrade. Record any layout correction or the
+successful visual result here.
 
 ## User story
 
