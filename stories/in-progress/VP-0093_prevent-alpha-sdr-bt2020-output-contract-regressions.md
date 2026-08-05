@@ -2,8 +2,32 @@
 
 ## Status
 
-Backlog. This is a regression investigation and repair story. No source branch
-has been selected.
+In Progress. Source branch: `codex/vp-0093-output-contract`, based on the
+current `v1.1.015-beta` integration branch.
+
+## Initial investigation (2026-08-05)
+
+The regression is identified in the Alpha libplacebo renderer: later code
+replaced VP-0064's proven F6 contract with a DXGI P2020-only transport and
+suppressed the NVIDIA AVI InfoFrame override. That is explicitly incompatible
+with this projector path. The repair restores the separate contracts:
+
+- target pixels: SDR BT.2020, with the Rec.709-to-BT.2020 transform applied
+  once by libplacebo;
+- DXGI transport: the established P709/sRGB path; and
+- HDMI signalling: NVIDIA AVI InfoFrame reporting when configured, including
+  its existing set/readback/restore path.
+
+The output policy now represents the SDR target separately from the transport,
+with tests preventing a BT.2020 target from requesting P2020 DXGI or from
+signalling BT.2020 for a Rec.709 target. `VideoProcessor-VPRenderer` x64
+Release and the output-policy tests build and pass.
+
+MPC Video Renderer review found a separate, broader source-metadata limitation:
+VP currently represents primaries and YCbCr matrix through one `ColorSpace`
+field, so BT.2020 non-constant and constant-luminance matrices cannot be
+represented independently. This repair does not expand the metadata contract;
+track that work separately with matrix/primaries/range/transfer golden tests.
 
 ## User story
 
