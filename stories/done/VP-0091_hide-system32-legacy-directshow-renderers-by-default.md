@@ -2,10 +2,16 @@
 
 ## Status
 
-Backlog (2026-08-05). The DirectShow Filter Mapper discovers several Windows
+Done (2026-08-05). The DirectShow Filter Mapper discovers several Windows
 renderers alongside VP's Alpha renderer and optional third-party madVR. The
 current friendly-name-only UI makes duplicated Windows registrations especially
 ambiguous.
+
+Implemented and deployed on 2026-08-05. Discovery now defaults to hiding
+registered in-process servers under the current Windows System32 directory,
+supports the documented opt-out, retains the independent DeckLink exclusion,
+and logs each candidate's friendly name, CLSID, server path, and decision.
+The x64 Release build succeeded and the native test suite passed 74 tests.
 
 ## User story
 
