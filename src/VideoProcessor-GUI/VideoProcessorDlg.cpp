@@ -7265,6 +7265,16 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	if (m_videoRenderer &&
 		!RendererResetOperationInProgress())
 		m_videoRenderer->OnDisplayChange();
+	if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
+		IsWindow(m_fullScreenVideoWindow->GetHWND()))
+	{
+		// A renderer-initiated mode switch can leave an already-created popup
+		// logically visible and focused but no longer composed above the desktop.
+		// Coalesce the display-change burst, then reassert its monitor bounds and
+		// z-order after Windows has settled. This also replaces the construction
+		// timer when the mode switch takes longer than expected.
+		SetTimer(FULLSCREEN_FOCUS_TIMER_ID, 1000, nullptr);
+	}
 	CDialog::OnDisplayChange(bitsPerPixel, width, height);
 }
 
@@ -7465,13 +7475,55 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		{
 			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Grabbing focus")));
 			const HWND fullscreenHwnd = m_fullScreenVideoWindow->GetHWND();
+			const HMONITOR requestedMonitor = SelectFullscreenMonitor();
+			MONITORINFO monitorInfo = { sizeof(monitorInfo) };
+			RECT rectBefore = {};
+			::GetWindowRect(fullscreenHwnd, &rectBefore);
+			const BOOL visibleBefore = ::IsWindowVisible(fullscreenHwnd);
+			const BOOL iconicBefore = ::IsIconic(fullscreenHwnd);
+			if (iconicBefore)
+				::ShowWindow(fullscreenHwnd, SW_RESTORE);
+			else if (!visibleBefore)
+				::ShowWindow(fullscreenHwnd, SW_SHOWNA);
+
+			BOOL placementResult = FALSE;
+			if (::GetMonitorInfo(requestedMonitor, &monitorInfo))
+			{
+				const RECT& targetRect = monitorInfo.rcMonitor;
+				placementResult = ::SetWindowPos(
+					fullscreenHwnd,
+					m_windowedFullScreenMode ? HWND_TOP : HWND_TOPMOST,
+					targetRect.left,
+					targetRect.top,
+					targetRect.right - targetRect.left,
+					targetRect.bottom - targetRect.top,
+					SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW |
+					SWP_FRAMECHANGED);
+			}
 			const HWND foregroundBefore = ::GetForegroundWindow();
 			const HWND focusBefore = ::GetFocus();
 			const BOOL foregroundResult = ::SetForegroundWindow(fullscreenHwnd);
 			const HWND focusResult = ::SetFocus(fullscreenHwnd);
+			RECT rectAfter = {};
+			::GetWindowRect(fullscreenHwnd, &rectAfter);
+			const HMONITOR actualMonitor = ::MonitorFromWindow(
+				fullscreenHwnd, MONITOR_DEFAULTTONULL);
 			DebugLog::Log(
-				"Fullscreen focus timer: target=%p foreground_before=%p focus_before=%p set_foreground=%d set_focus_previous=%p foreground_after=%p focus_after=%p",
+				"Fullscreen focus timer: target=%p visible_before=%d iconic_before=%d "
+				"rect_before=%ld,%ld-%ld,%ld placement=%d requested_monitor=%p "
+				"actual_monitor=%p monitor_matched=%d visible_after=%d "
+				"rect_after=%ld,%ld-%ld,%ld foreground_before=%p focus_before=%p "
+				"set_foreground=%d set_focus_previous=%p foreground_after=%p focus_after=%p",
 				reinterpret_cast<void*>(fullscreenHwnd),
+				visibleBefore ? 1 : 0,
+				iconicBefore ? 1 : 0,
+				rectBefore.left, rectBefore.top, rectBefore.right, rectBefore.bottom,
+				placementResult ? 1 : 0,
+				reinterpret_cast<void*>(requestedMonitor),
+				reinterpret_cast<void*>(actualMonitor),
+				actualMonitor == requestedMonitor ? 1 : 0,
+				::IsWindowVisible(fullscreenHwnd) ? 1 : 0,
+				rectAfter.left, rectAfter.top, rectAfter.right, rectAfter.bottom,
 				reinterpret_cast<void*>(foregroundBefore),
 				reinterpret_cast<void*>(focusBefore),
 				foregroundResult ? 1 : 0,
