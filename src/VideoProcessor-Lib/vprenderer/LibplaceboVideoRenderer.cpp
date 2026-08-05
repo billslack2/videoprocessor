@@ -2476,9 +2476,12 @@ struct LibplaceboVideoRenderer::Impl
 	// slow-in release delay, never as a maximum lifetime.
 	ActivePictureBounds scopePresentationEvidenceBase;
 	ActivePictureBounds scopePresentationEvidenceBounds;
+	ActivePictureBounds scopePresentationCurrentBounds;
 	uint64_t scopePresentationEvidenceLastTick = 0;
 	uint64_t scopePresentationEvidenceSourceGeneration = 0;
 	uint64_t scopePresentationEvidenceSourceSequence = 0;
+	uint64_t scopePresentationCurrentSourceGeneration = 0;
+	uint64_t scopePresentationCurrentSourceSequence = 0;
 	static constexpr uint64_t ACTIVE_PICTURE_AMBIGUITY_HOLD_MS = 2000;
 	// A recognized cut and an ordinary ambiguous fade are the same presentation
 	// problem once a last-known-good crop exists. Use one bounded interval so
@@ -3272,9 +3275,12 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		scopePresentationEvidenceBase = {};
 		scopePresentationEvidenceBounds = {};
+		scopePresentationCurrentBounds = {};
 		scopePresentationEvidenceLastTick = 0;
 		scopePresentationEvidenceSourceGeneration = 0;
 		scopePresentationEvidenceSourceSequence = 0;
+		scopePresentationCurrentSourceGeneration = 0;
+		scopePresentationCurrentSourceSequence = 0;
 	}
 
 	void ClearScopeSubtitleEvidence()
@@ -5240,6 +5246,14 @@ struct LibplaceboVideoRenderer::Impl
 					outward.bottom > presentationBeforeObservation.bottom;
 				if (expands)
 				{
+					// The accumulated envelope is useful for its same-edge release
+					// hold. Keep the raw observation as well: top and bottom overlays
+					// observed at different moments must not later become one vertical
+					// aspect-fit decision.
+					scopePresentationCurrentBounds = outward;
+					scopePresentationCurrentSourceGeneration =
+						analysisSource.generation;
+					scopePresentationCurrentSourceSequence = frameNumber;
 					const bool sameBase =
 						scopePresentationEvidenceSourceGeneration ==
 							analysisSource.generation &&
@@ -6240,6 +6254,16 @@ struct LibplaceboVideoRenderer::Impl
 			const bool detectorBottomExpansion = detectorEnvelopeActive &&
 				effectiveGeometryAvailable && scopePresentationEvidenceBounds.bottom >
 					effectiveGeometry.bottom;
+			const bool currentDetectorEnvelope = detectorEnvelopeActive &&
+				envelopeDecision.currentFrame &&
+				scopePresentationCurrentSourceGeneration == frameGeneration &&
+				scopePresentationCurrentSourceSequence == sourceSequence;
+			const bool currentDetectorTopExpansion = currentDetectorEnvelope &&
+				effectiveGeometryAvailable &&
+				scopePresentationCurrentBounds.top < effectiveGeometry.top;
+			const bool currentDetectorBottomExpansion = currentDetectorEnvelope &&
+				effectiveGeometryAvailable &&
+				scopePresentationCurrentBounds.bottom > effectiveGeometry.bottom;
 			AlphaSourceCrop::VerticalBarPresentationResolutionInput
 				verticalResolutionInput;
 			verticalResolutionInput.detailedAction = detailedVerticalActive
@@ -6247,12 +6271,18 @@ struct LibplaceboVideoRenderer::Impl
 				: AlphaSourceCrop::VerticalBarPresentationAction::NONE;
 			verticalResolutionInput.translationPixels = detailedVerticalActive
 				? subtitleShiftSourcePixels : 0.0f;
-			verticalResolutionInput.genericUpperExpansion = detectorTopExpansion;
-			verticalResolutionInput.genericLowerExpansion = detectorBottomExpansion;
-			verticalResolutionInput.genericUpperBound = detectorTopExpansion
-				? scopePresentationEvidenceBounds.top : effectiveGeometry.top;
-			verticalResolutionInput.genericLowerBound = detectorBottomExpansion
-				? scopePresentationEvidenceBounds.bottom : effectiveGeometry.bottom;
+			verticalResolutionInput.genericUpperExpansion =
+				currentDetectorTopExpansion;
+			verticalResolutionInput.genericLowerExpansion =
+				currentDetectorBottomExpansion;
+			verticalResolutionInput.genericVerticalFitConfirmed =
+				currentDetectorTopExpansion && currentDetectorBottomExpansion;
+			verticalResolutionInput.genericUpperBound =
+				currentDetectorTopExpansion
+				? scopePresentationCurrentBounds.top : effectiveGeometry.top;
+			verticalResolutionInput.genericLowerBound =
+				currentDetectorBottomExpansion
+				? scopePresentationCurrentBounds.bottom : effectiveGeometry.bottom;
 			verticalResolutionInput.authoritativeTop = effectiveGeometry.top;
 			verticalResolutionInput.authoritativeBottom = effectiveGeometry.bottom;
 			verticalResolutionInput.rasterHeight = height;

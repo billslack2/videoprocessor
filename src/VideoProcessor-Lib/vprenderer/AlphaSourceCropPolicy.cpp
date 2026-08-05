@@ -105,10 +105,17 @@ namespace AlphaSourceCrop
 			decision.action = VerticalBarPresentationAction::FAIL_OPEN;
 			return decision;
 		}
+		const bool overlayOnlyOpposesHeldTranslation =
+			(input.upperContent && input.bottomTranslationHeld &&
+				decision.upperOverlayLike) ||
+			(input.lowerContent && input.topTranslationHeld &&
+				decision.lowerOverlayLike);
 		const bool forceFit =
 			(input.upperContent && input.lowerContent) ||
-			(input.upperContent && input.bottomTranslationHeld) ||
-			(input.lowerContent && input.topTranslationHeld) ||
+			(input.upperContent && input.bottomTranslationHeld &&
+				!decision.upperOverlayLike) ||
+			(input.lowerContent && input.topTranslationHeld &&
+				!decision.lowerOverlayLike) ||
 			(upperRequiresPlacement && !decision.upperOverlayLike) ||
 			(lowerRequiresPlacement && !decision.lowerOverlayLike);
 		if (forceFit)
@@ -116,6 +123,11 @@ namespace AlphaSourceCrop
 			decision.action = VerticalBarPresentationAction::FIT;
 			return decision;
 		}
+		// Preserve the current subtitle/volume placement across a short gap or a
+		// thin opposite-edge overlay. Only picture-like evidence may request the
+		// later fit that takes effect after the active subtitle hold releases.
+		if (overlayOnlyOpposesHeldTranslation)
+			return decision;
 
 		switch (SelectVerticalBarContentEdge(
 			decision.upperOverlayLike ? input.upperRequiredShift : 0.0f,
@@ -191,9 +203,12 @@ namespace AlphaSourceCrop
 			return state;
 		}
 
-		// The hold is a release delay, not authority over fresh evidence. A new
-		// current-frame decision replaces the held action immediately; this lets a
-		// broad menu disappear into an ordinary one-edge subtitle without waiting.
+		// A subtitle/overlay translation owns presentation until its bounded
+		// release timer expires. A fresh same-edge TRANSLATE below can re-arm the
+		// timer and grow the shift, but a competing FIT must not turn a subtitle
+		// change, a one-second gap, or a second overlay into an aspect decision.
+		// Delaying a genuine new fit by this short, configurable interval is less
+		// disruptive than visibly resizing picture geometry under text.
 		if (current.action == VerticalBarPresentationAction::FAIL_OPEN)
 		{
 			state = {};
@@ -205,6 +220,12 @@ namespace AlphaSourceCrop
 
 		if (current.action == VerticalBarPresentationAction::FIT)
 		{
+			if (previousActive &&
+				state.action == VerticalBarPresentationAction::TRANSLATE &&
+				input.translationEnabled)
+			{
+				return state;
+			}
 			const bool retainPrevious = previousActive;
 			const int retainedTop = retainPrevious ? state.detectedTop : 0;
 			const int retainedBottom = retainPrevious ? state.detectedBottom : 0;
@@ -334,7 +355,8 @@ namespace AlphaSourceCrop
 			decision.translationPixels = static_cast<float>(appliedShift);
 			return decision;
 		}
-		if (input.genericUpperExpansion || input.genericLowerExpansion)
+		if (input.genericVerticalFitConfirmed &&
+			input.genericUpperExpansion && input.genericLowerExpansion)
 			decision.action = VerticalBarPresentationAction::FIT;
 		return decision;
 	}

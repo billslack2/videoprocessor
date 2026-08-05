@@ -117,6 +117,9 @@ namespace AlphaSourceCrop
 		float translationPixels = 0.0f;
 		bool genericUpperExpansion = false;
 		bool genericLowerExpansion = false;
+		// A retained union of unrelated top/bottom overlays is not aspect-ratio
+		// authority. Generic vertical FIT requires both edges on this frame.
+		bool genericVerticalFitConfirmed = false;
 		int genericUpperBound = 0;
 		int genericLowerBound = 0;
 		int authoritativeTop = 0;

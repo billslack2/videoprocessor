@@ -140,6 +140,15 @@ namespace Tests
 			input.bottomTranslationHeld = true;
 			decision = EvaluateVerticalBarContent(input);
 			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::NONE),
+				static_cast<int>(decision.action));
+
+			// Picture-like evidence on the opposite bar still has immediate Fit
+			// authority; only a thin overlay is held.
+			input.upperOccupiedDepth = 150;
+			input.upperPeakSamples = 1500;
+			decision = EvaluateVerticalBarContent(input);
+			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::FIT),
 				static_cast<int>(decision.action));
 		}
@@ -200,8 +209,111 @@ namespace Tests
 			input.genericUpperExpansion = true;
 			decision = ResolveVerticalBarPresentation(input);
 			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::NONE),
+				static_cast<int>(decision.action));
+			input.genericLowerExpansion = true;
+			input.genericVerticalFitConfirmed = true;
+			decision = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::FIT),
 				static_cast<int>(decision.action));
+		}
+
+		TEST_METHOD(SubtitleHoldRejectsMixedFrameGenericAspectFit)
+		{
+			// The live trace accumulated a top volume envelope and lower subtitle
+			// envelope at different times. A subtitle can disappear briefly before
+			// its next cue, so retain its placement through the configured hold.
+			VerticalBarPresentationState state;
+			state.action = VerticalBarPresentationAction::TRANSLATE;
+			state.translationPixels = 197.0f;
+			state.detectedBottom = 2040;
+			state.lastDetectionTick = 1000;
+			state.sourceSequence = 101;
+			Assert::IsTrue(IsVerticalBarPresentationActive(
+				state, 1900, 2000, 102));
+			VerticalBarPresentationUpdateInput refreshedSubtitle;
+			refreshedSubtitle.previous = state;
+			refreshedSubtitle.current.action =
+				VerticalBarPresentationAction::TRANSLATE;
+			refreshedSubtitle.current.translationPixels = 225.0f;
+			refreshedSubtitle.lowerContent = true;
+			refreshedSubtitle.lowerContentBottom = 2068;
+			refreshedSubtitle.currentTick = 1900;
+			refreshedSubtitle.currentSourceSequence = 102;
+			refreshedSubtitle.holdMs = 2000;
+			refreshedSubtitle.placementSnapThreshold = 12;
+			refreshedSubtitle.translationEnabled = true;
+			state = UpdateVerticalBarPresentation(refreshedSubtitle);
+			Assert::AreEqual(225.0f, state.translationPixels, 0.001f);
+			Assert::IsTrue(IsVerticalBarPresentationActive(
+				state, 3800, 2000, 103));
+
+			// A competing fit must not undo the active subtitle placement. It is
+			// deliberately not a fresh subtitle detection, so it cannot extend the
+			// release timer indefinitely.
+			VerticalBarPresentationUpdateInput competingFit;
+			competingFit.previous = state;
+			competingFit.current.action = VerticalBarPresentationAction::FIT;
+			competingFit.upperContent = true;
+			competingFit.lowerContent = true;
+			competingFit.currentTick = 2000;
+			competingFit.currentSourceSequence = 103;
+			competingFit.holdMs = 2000;
+			competingFit.translationEnabled = true;
+			state = UpdateVerticalBarPresentation(competingFit);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(state.action));
+			Assert::AreEqual(225.0f, state.translationPixels, 0.001f);
+			Assert::AreEqual(static_cast<unsigned long long>(1900),
+				static_cast<unsigned long long>(state.lastDetectionTick));
+
+			VerticalBarContentInput oppositeOverlay;
+			oppositeOverlay.upperContent = true;
+			oppositeOverlay.upperOccupiedDepth = 42;
+			oppositeOverlay.upperPeakSamples = 220;
+			oppositeOverlay.upperBarPixels = 280;
+			oppositeOverlay.lowerBarPixels = 280;
+			oppositeOverlay.sampledColumns = 1800;
+			oppositeOverlay.upperRequiredShift = 91.0f;
+			oppositeOverlay.bottomTranslationHeld = true;
+			const auto overlayDecision =
+				EvaluateVerticalBarContent(oppositeOverlay);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::NONE),
+				static_cast<int>(overlayDecision.action));
+
+			VerticalBarPresentationResolutionInput input;
+			input.detailedAction = state.action;
+			input.translationPixels = state.translationPixels;
+			input.genericUpperExpansion = true;
+			input.genericLowerExpansion = true;
+			input.genericUpperBound = 140;
+			input.genericLowerBound = 2054;
+			input.authoritativeTop = 276;
+			input.authoritativeBottom = 1884;
+			input.rasterHeight = 2160;
+			const auto heldAction = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(heldAction.action));
+			Assert::AreEqual(226.0f, heldAction.translationPixels, 0.001f);
+
+			// Once the dense release timer expires, a stale generic union still
+			// cannot Fit. Only current simultaneous two-edge content can do that.
+			input.detailedAction = VerticalBarPresentationAction::NONE;
+			input.translationPixels = 0.0f;
+			const auto staleAction = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::NONE),
+				static_cast<int>(staleAction.action));
+			input.genericVerticalFitConfirmed = true;
+			const auto currentTwoEdgeAction =
+				ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(currentTwoEdgeAction.action));
 		}
 
 		TEST_METHOD(RecordedBottomSubtitleDoesNotBecomeAnAspectFit)
@@ -245,7 +357,7 @@ namespace Tests
 				presented.sourceBounds.bottom - presented.sourceBounds.top);
 		}
 
-		TEST_METHOD(VerticalBarPresentationStoresTranslationAndRetainsFitUnion)
+		TEST_METHOD(VerticalBarPresentationHoldsTranslationAgainstCompetingFit)
 		{
 			VerticalBarContentInput volume;
 			volume.upperBarPixels = 280;
@@ -271,8 +383,8 @@ namespace Tests
 			Assert::AreEqual(75.0f, state.translationPixels, 0.001f);
 			Assert::AreEqual(1988, state.detectedBottom);
 
-			// Current upper evidence opposite the held lower translation has already
-			// been normalized to FIT. Retain both extents through one held owner.
+			// A competing Fit during the active subtitle hold cannot change picture
+			// geometry. It is not a subtitle refresh, so it does not extend the hold.
 			update.previous = state;
 			update.current = {};
 			update.current.action = VerticalBarPresentationAction::FIT;
@@ -283,10 +395,10 @@ namespace Tests
 			update.currentSourceSequence = 11;
 			state = UpdateVerticalBarPresentation(update);
 			Assert::AreEqual(static_cast<int>(
-				VerticalBarPresentationAction::FIT),
+				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(state.action));
-			Assert::AreEqual(0.0f, state.translationPixels, 0.001f);
-			Assert::AreEqual(104, state.detectedTop);
+			Assert::AreEqual(75.0f, state.translationPixels, 0.001f);
+			Assert::AreEqual(0, state.detectedTop);
 			Assert::AreEqual(1988, state.detectedBottom);
 			Assert::IsTrue(IsVerticalBarPresentationActive(
 				state, 3000, 2000, 12));
@@ -530,7 +642,9 @@ namespace Tests
 			Assert::AreEqual(120, crop.sourceBounds.top);
 			Assert::AreEqual(1728, crop.sourceBounds.bottom);
 
-			// Broad/deep pixels on both bars are picture/aspect-like and FIT.
+			// Broad/deep pixels on both bars normally select FIT, but a currently
+			// active volume/subtitle placement has bounded presentation precedence.
+			// The next real aspect change must arrive as trusted source authority.
 			content.lowerContent = true;
 			content.upperOccupiedDepth = 220;
 			content.lowerOccupiedDepth = 220;
@@ -539,16 +653,16 @@ namespace Tests
 			update(EvaluateVerticalBarContent(content), true, true,
 				60, 2100, 3350, 106);
 			Assert::AreEqual(static_cast<int>(
-				VerticalBarPresentationAction::FIT),
+				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(state.action));
 			action = resolve(true, 60, true, 2100);
-			ActivePictureBounds bothFit = geometry;
-			bothFit.top = 40;
-			bothFit.bottom = 2120;
-			bothFit.aspectRatio = 3840.0 / 2080.0;
-			crop = present(action, bothFit);
-			Assert::AreEqual(40, crop.sourceBounds.top);
-			Assert::AreEqual(2120, crop.sourceBounds.bottom);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(action.action));
+			crop = present(action, geometry);
+			Assert::IsTrue(crop.verticallyTranslated);
+			Assert::AreEqual(1608,
+				crop.sourceBounds.bottom - crop.sourceBounds.top);
 
 			// Invalid bar metadata is an explicit full-raster fail-open.
 			content = {};
