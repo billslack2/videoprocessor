@@ -73,6 +73,7 @@ bool UpdateRecoveryEntry(const std::string& statePath,
 			continue;
 		lines.push_back(line);
 	}
+	input.close();
 
 	if (lines.empty())
 		lines.push_back("# Managed by VideoProcessor.");
