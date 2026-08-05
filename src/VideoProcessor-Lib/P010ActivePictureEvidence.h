@@ -71,6 +71,12 @@ struct P010PresentationRetentionEvidence
 	bool proposedBoundsContained = false;
 	bool excludedBandsPixelSafe = false;
 	bool currentlyPixelSafe = false;
+	// When excluded pixels are visibly occupied but remain spatially bounded,
+	// this is the smallest measured outward-only presentation envelope. It
+	// never grants inward crop authority; callers may only merge it with an
+	// already trusted presentation rectangle.
+	bool outwardVisibleBoundsAvailable = false;
+	ActivePictureBounds outwardVisibleBounds;
 	P010ActivePictureEvidence activePicture;
 	P010EdgeEvidence excludedLeft;
 	P010EdgeEvidence excludedTop;

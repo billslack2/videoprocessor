@@ -5144,12 +5144,26 @@ struct LibplaceboVideoRenderer::Impl
 					left.rasterHeight == right.rasterHeight;
 			};
 			if (automaticSourceCrop && scopeScreenActive &&
-				hadCompatiblePresentation && evidence.available)
+				hadCompatiblePresentation &&
+				(evidence.available ||
+					retentionEvidence.outwardVisibleBoundsAvailable))
 			{
-				const ActivePictureBounds& observed =
-					evidence.classification ==
+				ActivePictureBounds observed = presentationBeforeObservation;
+				if (evidence.available)
+					observed = evidence.classification ==
 						ActivePictureClassification::PROVISIONAL
 					? evidence.proposedBounds : evidence.trustedBounds;
+				if (retentionEvidence.outwardVisibleBoundsAvailable)
+				{
+					observed.left = std::min(observed.left,
+						retentionEvidence.outwardVisibleBounds.left);
+					observed.top = std::min(observed.top,
+						retentionEvidence.outwardVisibleBounds.top);
+					observed.right = std::max(observed.right,
+						retentionEvidence.outwardVisibleBounds.right);
+					observed.bottom = std::max(observed.bottom,
+						retentionEvidence.outwardVisibleBounds.bottom);
+				}
 				ActivePictureBounds outward = presentationBeforeObservation;
 				outward.left = std::min(outward.left, observed.left) & ~1;
 				outward.top = std::min(outward.top, observed.top) & ~1;

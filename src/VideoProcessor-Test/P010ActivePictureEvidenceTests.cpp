@@ -23,14 +23,16 @@ namespace VideoProcessorTest
 			int width;
 			int height;
 			size_t pitch;
+			int chromaRows;
 			std::vector<uint8_t> bytes;
 
-			P010Frame(int frameWidth, int frameHeight, size_t padding = 0) :
+			P010Frame(int frameWidth, int frameHeight, size_t padding = 0,
+				bool fullHeightChroma = false) :
 				width(frameWidth),
 				height(frameHeight),
 				pitch(static_cast<size_t>(frameWidth) * 2 + padding),
-				bytes(pitch * frameHeight +
-					pitch * (frameHeight / 2), 0)
+				chromaRows(fullHeightChroma ? frameHeight : frameHeight / 2),
+				bytes(pitch * frameHeight + pitch * chromaRows, 0)
 			{
 				Fill(300, 512, 512);
 			}
@@ -42,7 +44,7 @@ namespace VideoProcessorTest
 						WriteCode(bytes.data() + static_cast<size_t>(row) *
 							pitch + x * 2, y);
 				const size_t uvOffset = pitch * height;
-				for (int row = 0; row < height / 2; ++row)
+				for (int row = 0; row < chromaRows; ++row)
 					for (int x = 0; x < width; x += 2)
 					{
 						uint8_t* pixel = bytes.data() + uvOffset +
@@ -94,8 +96,16 @@ namespace VideoProcessorTest
 
 			P010PlaneView View(size_t lengthAdjustment = 0) const
 			{
-				return { bytes.data(), bytes.size() - lengthAdjustment,
+				const size_t p010Bytes = pitch * height + pitch * (height / 2);
+				return { bytes.data(), p010Bytes - lengthAdjustment,
 					width, height, pitch, pitch };
+			}
+
+			AnalysisLumaSource P210Source() const
+			{
+				return { bytes.data(), bytes.size(), width, height, pitch, pitch,
+					AnalysisLumaFormat::P210, VideoFrameEncoding::V210,
+					ColorSpace::REC_709, 1 };
 			}
 		};
 
@@ -359,6 +369,79 @@ namespace VideoProcessorTest
 				visible.View(), presentation);
 			Assert::IsFalse(retention.excludedBandsPixelSafe);
 			Assert::IsFalse(retention.currentlyPixelSafe);
+		}
+
+		ActivePictureBounds PillarPresentation(int width, int height,
+			int left, int right)
+		{
+			return { left, 0, right, height, width, height,
+				static_cast<double>(right - left) / height, true };
+		}
+
+		TEST_METHOD(NarrowTopOverlayProducesMinimalOutwardVisibleEnvelope)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(0, 22, 320, 158);
+			// Narrow enough that the whole-row bar detector still sees a black
+			// row, like sparse text/icons in a source-baked volume control.
+			frame.FillRectangle(120, 8, 136, 18, 600);
+			const auto retention =
+				EvaluateP010ActivePicturePresentationRetention(frame.View(),
+					ScopePresentation(320, 180, 22, 158));
+
+			Assert::IsFalse(retention.excludedBandsPixelSafe);
+			Assert::IsFalse(retention.currentlyPixelSafe);
+			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+			Assert::IsTrue(retention.outwardVisibleBounds.top <= 8);
+			Assert::AreEqual(158, retention.outwardVisibleBounds.bottom);
+			Assert::AreEqual(0, retention.outwardVisibleBounds.left);
+			Assert::AreEqual(320, retention.outwardVisibleBounds.right);
+		}
+
+		TEST_METHOD(NativeP210TopOverlayUsesTheSameOutwardFitPolicy)
+		{
+			P010Frame frame(320, 180, 0, true);
+			frame.BlackOutside(0, 22, 320, 158);
+			frame.FillRectangle(120, 8, 136, 18, 600);
+			const auto retention = EvaluateActivePicturePresentationRetention(
+				frame.P210Source(), ScopePresentation(320, 180, 22, 158));
+
+			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+			Assert::IsTrue(retention.outwardVisibleBounds.top <= 8);
+			Assert::AreEqual(158, retention.outwardVisibleBounds.bottom);
+		}
+
+		TEST_METHOD(BottomAndSideOverlaysExpandOnlyTheirOccupiedEdges)
+		{
+			P010Frame bottom(320, 180);
+			bottom.BlackOutside(0, 22, 320, 158);
+			bottom.FillRectangle(120, 162, 136, 172, 600);
+			auto retention = EvaluateP010ActivePicturePresentationRetention(
+				bottom.View(), ScopePresentation(320, 180, 22, 158));
+			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+			Assert::AreEqual(22, retention.outwardVisibleBounds.top);
+			Assert::IsTrue(retention.outwardVisibleBounds.bottom >= 172);
+
+			P010Frame side(320, 180);
+			side.BlackOutside(40, 0, 280, 180);
+			side.FillRectangle(8, 70, 18, 86, 600);
+			retention = EvaluateP010ActivePicturePresentationRetention(
+				side.View(), PillarPresentation(320, 180, 40, 280));
+			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+			Assert::IsTrue(retention.outwardVisibleBounds.left <= 8);
+			Assert::AreEqual(280, retention.outwardVisibleBounds.right);
+		}
+
+		TEST_METHOD(IsolatedTopBarNoiseCannotAuthorizeAnOutwardEnvelope)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(0, 22, 320, 158);
+			frame.FillRectangle(120, 8, 136, 9, 600);
+			const auto retention =
+				EvaluateP010ActivePicturePresentationRetention(frame.View(),
+					ScopePresentation(320, 180, 22, 158));
+
+			Assert::IsFalse(retention.outwardVisibleBoundsAvailable);
 		}
 
 		TEST_METHOD(AllBlackFrameIsValidNearBlackWithoutGeometry)
