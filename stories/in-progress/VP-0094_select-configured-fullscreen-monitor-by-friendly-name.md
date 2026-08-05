@@ -10,6 +10,12 @@ unit tests. Deployment runtime verification remains pending: it requires explici
 approval to make the smallest active-configuration edit and replace the paired
 `VideoProcessor.exe`/`vprenderer\VideoProcessorVPRenderer.dll` build artifacts.
 
+2026-08-05 deployment test failed acceptance: despite matching deployed Release
+hashes and `fullscreen_monitor_name: EPSON PJ`, the host remained on the LG/default
+monitor and emitted no VP-0094 selection diagnostic. The prior config and paired
+binaries were restored from the timestamped pre-VP0094 backups; implementation
+debugging remains required.
+
 ## User story
 
 As a VideoProcessor user with an Epson projector that is not always connected
