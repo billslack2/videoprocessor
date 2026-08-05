@@ -4790,6 +4790,8 @@ struct LibplaceboVideoRenderer::Impl
 		if (EffectiveSettingsFingerprint(currentTransport) !=
 			EffectiveSettingsFingerprint(nextTransport))
 		{
+			DebugLog::Log(
+				"libplacebo output target live switch rejected: a renderer setting other than SDR target primaries/NVIDIA AVI differs");
 			return false;
 		}
 
@@ -4803,16 +4805,6 @@ struct LibplaceboVideoRenderer::Impl
 			: LibplaceboOutput::SdrTargetPrimaries::REC709;
 		const auto contract = LibplaceboOutput::MakeSdrOutputContract(
 			requestedTransport, target, settings.reportBt2020ToDisplay);
-		const auto plan = LibplaceboOutput::MakePlan(contract.transport);
-		if (plan.useBlit != outputPlan.useBlit ||
-			plan.valid != outputPlan.valid ||
-			plan.requiresDxgiOverride != outputPlan.requiresDxgiOverride ||
-			plan.desiredEncoding != outputPlan.desiredEncoding ||
-			plan.targetTransfer != outputPlan.targetTransfer)
-		{
-			return false;
-		}
-
 		activeSettings = settings;
 		targetBt2020 = contract.target ==
 			LibplaceboOutput::SdrTargetPrimaries::BT2020;
