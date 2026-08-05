@@ -96,3 +96,30 @@ pre-session display topology when VP is done.
   exactly on normal completion.
 - `/fix_display` performs recovery and exits without launching VP.
 - Failed or ambiguous selection never disables a working display.
+
+## Implementation and test record
+
+- Source branch: `codex/vp0095-target-only-display-recovery`, based on the
+  discovered remote default `origin/v1.1.016-beta`.
+- Tested source commit: `c12e7fd`.
+- Clean x64 Release rebuild completed with `VERSION_DIRTY=false`.
+- Full native test suite passed: 606 of 606.
+- Deployed Release pair to `C:\Videoprocessor\vp` after backing up the EXE,
+  renderer DLL, active configuration, and state file.
+- With both LG and Epson paths initially active, VP persisted an 877-character
+  `display_recovery.v1` transaction containing two paths and four modes before
+  applying the target-only topology for `EPSON PJ`.
+- Normal-exit test restored the captured two-path/four-mode topology and cleared
+  the recovery record only after confirmation.
+- Controlled abnormal-exit test left the recovery transaction pending;
+  `VideoProcessor.exe /fix_display` restored the topology, cleared the record,
+  exited with code 0, and left no VP UI/process running.
+- `/fix_display` with no pending transaction also exited successfully without
+  launching VP or changing state.
+- An initial deployment exposed Windows error 5 in the atomic state replacement
+  because VP retained its own input stream. Commit `c12e7fd` closes that handle
+  before `MoveFileEx`; the fail-safe prevented topology mutation before the fix.
+- Live configuration contained an unmerged
+  `subtitle_release_drift_seconds` setting from a separate feature deployment.
+  Its two values remain preserved as comments for this default-branch VP-0095
+  test because `v1.1.016-beta` does not yet recognize that setting.
