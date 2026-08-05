@@ -92,6 +92,14 @@ was not changed. The previous pair is recoverable from
 - `vprenderer\VideoProcessorVPRenderer.dll`:
   `521794DFB4F56E8E3AC3257EF97AD4EE54A9BD56EEA4378C05B09B590FF546DD`.
 
+Later live-log review found that another local test deployment had replaced
+only the Alpha renderer DLL at 11:49, leaving a mixed runtime pair and restoring
+the obsolete BT.2020-over-P709 policy. After the application was stopped, the
+complete matched `9f0d79b` x64 Release pair was restored at 12:29 and both
+installed hashes were reverified. The displaced mixed pair is recoverable from
+`C:\Videoprocessor\vp\backups\VP-0080-repair-before-9f0d79b-20260805-122941`.
+Configuration was not changed.
+
 The PR remains draft pending live Apple TV subtitle/volume/menu validation.
 
 ### Reopened implementation progress (2026-08-05)
