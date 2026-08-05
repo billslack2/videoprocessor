@@ -16,6 +16,15 @@ monitor and emitted no VP-0094 selection diagnostic. The prior config and paired
 binaries were restored from the timestamped pre-VP0094 backups; implementation
 debugging remains required.
 
+Follow-up commit `1be83f2` fixed both causes: configuration now enters explicit
+dialog state instead of a synthesized command line, and active paths use
+`GetDisplayConfigBufferSizes` plus the documented `QueryDisplayConfig` retry.
+The 2026-08-05 redeployment passed the x64 Release build and all 582 tests. Live
+diagnostics resolved `DISPLAY1=LG HDR QHD`, `DISPLAY2=EPSON PJ`, selected the
+Epson, verified the created host on the requested `HMONITOR`, and subsequent
+display-timing diagnostics remained on `DISPLAY2`. Renderer/toggle/disconnect
+acceptance checks remain pending before moving the story to review.
+
 ## User story
 
 As a VideoProcessor user with an Epson projector that is not always connected
