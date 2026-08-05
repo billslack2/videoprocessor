@@ -33,18 +33,50 @@ remains in force.
 
 The path is format-neutral and has synthetic coverage for P010 and native P210
 (the conversion-off case), asymmetric top/bottom/side overlays, clean scope
-bars, colored/visible excluded bands, and isolated noise. The x64 Release
-solution builds successfully; all 57 focused active-picture/crop-policy tests
-and all 579 native tests pass. A persistent-overlay regression proves that 60
-consecutive localized/provisional observations cannot replace the stable
-program aspect. Such content temporarily enlarges the final presentation like
-a subtitle; only coherent trusted geometry may change aspect authority. Logs
-will identify the live path with
-`bounded visible excluded-band content requires outward fit`,
-`detector_envelope=1`, and the partially expanded evidence rectangle.
+bars, colored/visible excluded bands, isolated noise, simultaneous opposing
+edge overlays, and a sparse 32-by-10-pixel 4K control deliberately placed at a
+hostile sampling phase. The visible-extent grid is 256 by 64 and uses the same
+black-floor-plus-32 luma threshold as the dense evidence path. The clean x64
+Release solution rebuilds successfully and all 583 native tests pass. A
+persistent-overlay regression feeds extracted full-width top-band evidence
+through the transition model for 60 frames and proves that localized content
+remains provisional and cannot replace the stable program aspect.
 
-The PR remains draft pending real Apple TV volume/menu-overlay validation. No
-deployment was performed in this overnight implementation pass.
+Final expert review found and corrected a one-frame lifecycle defect: an
+envelope captured before a same-frame trusted or scheduled geometry change
+could be rejected against the newly published geometry. Envelope evidence is
+now stamped with the source sequence. Current-frame evidence is unioned with
+the actual final geometry even when the configured hold is zero; only
+historical held evidence requires an exact base rectangle, generation, and
+deadline match. Bill's final geometry review, Urvish's final image-analysis
+review, and the renderer/concurrency review all approve this implementation
+with no P0-P2 objections. The remaining non-blocking live checks are native
+RGB/packed-YUV outward-envelope integration and four-edge analysis cost under
+runtime telemetry.
+
+The local MPC-HC/MPC Video Renderer comparison supports the architecture:
+madVR's renderer contract may dynamically alter the target rectangle to keep
+hard-coded subtitles visible, while `videoCropRect`, `videoOutputRect`,
+`croppedVideoOutputRect`, and `subtitleTargetRect` remain distinct facts. VP
+now follows the same separation between stable program-aspect authority and a
+temporary presentation envelope. MPC Video Renderer consumes the supplied
+cropped/output geometry rather than providing an open-source detector oracle,
+so the comparison validates geometry ownership and composition, not VP's
+pixel thresholds.
+
+Such content temporarily enlarges the final presentation like a subtitle;
+only coherent trusted geometry may change aspect authority. Transition logs
+now include source sequence, generation, base, raw/stored envelope, affected
+edges, current/held state, and the final decision reason.
+
+After the default branch advanced to `67daf77`, the source branch was rebased
+without conflict and force-updated at commit `1ad727c`. A clean x64 Release
+solution rebuild succeeded and the rebased full suite passed 585/585 tests.
+The matched executable and Alpha renderer DLL were deployed for the requested
+live Apple TV volume/menu-overlay validation; their hashes exactly match the
+build artifacts. The previous runtime pair is recoverable from
+`C:\Videoprocessor\vp\backups\VP-0080-before-1ad727c-20260805-073000`.
+Configuration was not changed. The PR remains draft pending that live result.
 
 The previously accepted baseline was completed on 2026-08-04. PR
 [#34](https://github.com/billslack2/videoprocessor/pull/34)
