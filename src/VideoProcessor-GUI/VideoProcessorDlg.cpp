@@ -1696,6 +1696,9 @@ void CVideoProcessorDlg::FullscreenMonitorName(const CString& name)
 {
 	m_fullscreenMonitorName = name;
 	m_fullscreenMonitorName.Trim();
+	DbgLog((LOG_TRACE, 1,
+		TEXT("Fullscreen monitor selection configured: requested='%s'"),
+		m_fullscreenMonitorName.GetString()));
 }
 
 
