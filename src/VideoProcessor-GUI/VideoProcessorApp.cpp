@@ -568,6 +568,18 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	return arguments;
 }
 
+std::wstring LoadConfiguredFullscreenMonitorName()
+{
+	ConfigFile config;
+	std::string value;
+	if (!config.Load() ||
+		!config.TryGetString("general", "fullscreen_monitor_name", value))
+		return {};
+
+	value = ConfigFile::Trim(value);
+	return value.empty() ? std::wstring() : StringToWideString(value);
+}
+
 bool IsHelpArgument(const wchar_t* argument)
 {
 	return argument != nullptr &&
@@ -730,6 +742,7 @@ bool RequiresCommandLineValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/lldv_mastering_min_luminance") ||
 		IsCommandLineOption(argument, L"/lldv_mastering_max_luminance") ||
 		IsCommandLineOption(argument, L"/capture_device") ||
+		IsCommandLineOption(argument, L"/fullscreen_monitor_name") ||
 		IsCommandLineOption(argument, L"/frame_offset") ||
 		IsCommandLineOption(argument, L"/video_conversion") ||
 		IsCommandLineOption(argument, L"/container_colorspace") ||
@@ -963,6 +976,10 @@ BOOL CVideoProcessorApp::InitInstance()
 		// Parse command line
 		// https://docs.microsoft.com/en-us/cpp/c-runtime-library/argc-argv-wargv
 		std::vector<std::wstring> configuredArguments = LoadConfiguredCommandLineArguments();
+		const std::wstring configuredFullscreenMonitorName =
+			LoadConfiguredFullscreenMonitorName();
+		if (!configuredFullscreenMonitorName.empty())
+			dlg.FullscreenMonitorName(configuredFullscreenMonitorName.c_str());
 
 		int parsedArgumentCount = 0;
 		LPWSTR* parsedArguments = CommandLineToArgvW(GetCommandLine(), &parsedArgumentCount);
@@ -1014,6 +1031,12 @@ BOOL CVideoProcessorApp::InitInstance()
 			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/windowedfullscreenmode", booleanValue))
 			{
 				dlg.WindowedFullScreenMode(booleanValue);
+			}
+
+			if (wcscmp(pArgs[i], L"/fullscreen_monitor_name") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				dlg.FullscreenMonitorName(pArgs[i + 1]);
 			}
 
 			// /renderer "name"

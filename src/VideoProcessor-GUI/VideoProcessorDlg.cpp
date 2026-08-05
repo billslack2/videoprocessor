@@ -209,6 +209,96 @@ std::vector<std::string> SplitConfiguredList(const std::string& value)
 	return items;
 }
 
+struct ActiveMonitorCandidate
+{
+	HMONITOR monitor = nullptr;
+	CString sourceName;
+	CString friendlyName;
+};
+
+BOOL CALLBACK EnumerateActiveMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM parameter)
+{
+	auto* candidates = reinterpret_cast<std::vector<ActiveMonitorCandidate>*>(parameter);
+	MONITORINFOEXW monitorInfo = {};
+	monitorInfo.cbSize = sizeof(monitorInfo);
+	if (!GetMonitorInfoW(monitor, &monitorInfo))
+		return TRUE;
+
+	ActiveMonitorCandidate candidate;
+	candidate.monitor = monitor;
+	candidate.sourceName = monitorInfo.szDevice;
+	candidates->push_back(candidate);
+	return TRUE;
+}
+
+bool PopulateActiveMonitorFriendlyNames(std::vector<ActiveMonitorCandidate>& candidates)
+{
+	std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+	std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+	UINT32 pathCount = 0;
+	UINT32 modeCount = 0;
+	LONG result = ERROR_SUCCESS;
+	do
+	{
+		result = GetDisplayConfigBufferSizes(
+			QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount);
+		if (result != ERROR_SUCCESS)
+			return false;
+		paths.resize(pathCount);
+		modes.resize(modeCount);
+		result = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount,
+			paths.data(), &modeCount, modes.data(), nullptr);
+	} while (result == ERROR_INSUFFICIENT_BUFFER);
+	if (result != ERROR_SUCCESS)
+		return false;
+	paths.resize(pathCount);
+	modes.resize(modeCount);
+
+	for (UINT32 index = 0; index < pathCount; ++index)
+	{
+		const DISPLAYCONFIG_PATH_INFO& path = paths[index];
+		DISPLAYCONFIG_SOURCE_DEVICE_NAME source = {};
+		source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+		source.header.size = sizeof(source);
+		source.header.adapterId = path.sourceInfo.adapterId;
+		source.header.id = path.sourceInfo.id;
+		if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS)
+			return false;
+
+		DISPLAYCONFIG_TARGET_DEVICE_NAME target = {};
+		target.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
+		target.header.size = sizeof(target);
+		target.header.adapterId = path.targetInfo.adapterId;
+		target.header.id = path.targetInfo.id;
+		if (DisplayConfigGetDeviceInfo(&target.header) != ERROR_SUCCESS)
+			return false;
+
+		for (ActiveMonitorCandidate& candidate : candidates)
+			if (_wcsicmp(candidate.sourceName, source.viewGdiDeviceName) == 0)
+			{
+				candidate.friendlyName = target.monitorFriendlyDeviceName;
+				break;
+			}
+	}
+
+	return true;
+}
+
+CString DescribeMonitorCandidates(const std::vector<ActiveMonitorCandidate>& candidates)
+{
+	CString description;
+	for (const ActiveMonitorCandidate& candidate : candidates)
+	{
+		if (!description.IsEmpty())
+			description += L"; ";
+		CString entry;
+		entry.Format(L"%s=%s", candidate.sourceName.GetString(),
+			candidate.friendlyName.IsEmpty() ? L"(unnamed)" : candidate.friendlyName.GetString());
+		description += entry;
+	}
+	return description.IsEmpty() ? CString(L"(none)") : description;
+}
+
 
 HACCEL CreateConfiguredAccelerators(
 	std::map<WORD, CString>& shaderShortcutRules,
@@ -1607,6 +1697,15 @@ void CVideoProcessorDlg::SetLldvMasteringMaxLuminance(double value)
 void CVideoProcessorDlg::WindowedFullScreenMode(bool enabled)
 {
 	m_windowedFullScreenMode = enabled;
+}
+
+void CVideoProcessorDlg::FullscreenMonitorName(const CString& name)
+{
+	m_fullscreenMonitorName = name;
+	m_fullscreenMonitorName.Trim();
+	DebugLog::Log(
+		"Fullscreen monitor selection configured: requested='%S'",
+		m_fullscreenMonitorName.GetString());
 }
 
 
@@ -5503,7 +5602,7 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 {
 	assert(!m_fullScreenVideoWindow);
 
-	HMONITOR hmon = MonitorFromWindow(this->GetSafeHwnd(), MONITOR_DEFAULTTONEAREST);
+	HMONITOR hmon = SelectFullscreenMonitor();
 
 	m_fullScreenVideoWindow = new FullscreenVideoWindow();
 	if (!m_fullScreenVideoWindow)
@@ -5513,8 +5612,89 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 	if (m_windowedFullScreenMode == true)
 		m_fullScreenVideoWindow->CreateWindowedFullscreen(hmon, this->GetSafeHwnd());
 
+	const HWND fullscreenHwnd = m_fullScreenVideoWindow->GetHWND();
+	HMONITOR actualMonitor = MonitorFromWindow(
+		fullscreenHwnd, MONITOR_DEFAULTTONULL);
+	if (actualMonitor != hmon)
+	{
+		MONITORINFO monitorInfo = { sizeof(monitorInfo) };
+		if (GetMonitorInfo(hmon, &monitorInfo))
+		{
+			const RECT& rect = monitorInfo.rcMonitor;
+			const BOOL moved = ::SetWindowPos(fullscreenHwnd, nullptr,
+				rect.left, rect.top, rect.right - rect.left,
+				rect.bottom - rect.top,
+				SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER |
+				SWP_SHOWWINDOW);
+			actualMonitor = MonitorFromWindow(
+				fullscreenHwnd, MONITOR_DEFAULTTONULL);
+			DebugLog::Log(
+				"Fullscreen monitor placement correction: requested=%p before=%p moved=%d after=%p",
+				reinterpret_cast<void*>(hmon),
+				reinterpret_cast<void*>(MonitorFromWindow(
+					this->GetSafeHwnd(), MONITOR_DEFAULTTONEAREST)),
+				moved ? 1 : 0, reinterpret_cast<void*>(actualMonitor));
+		}
+	}
+	DebugLog::Log(
+		"Fullscreen monitor placement verified: requested=%p actual=%p matched=%d",
+		reinterpret_cast<void*>(hmon), reinterpret_cast<void*>(actualMonitor),
+		actualMonitor == hmon ? 1 : 0);
+
 	SetTimer(FULLSCREEN_FOCUS_TIMER_ID, 5000, nullptr);
 
+}
+
+HMONITOR CVideoProcessorDlg::SelectFullscreenMonitor()
+{
+	const HMONITOR fallback = MonitorFromWindow(
+		this->GetSafeHwnd(), MONITOR_DEFAULTTONEAREST);
+	if (m_fullscreenMonitorName.IsEmpty())
+		return fallback;
+
+	std::vector<ActiveMonitorCandidate> candidates;
+	if (!EnumDisplayMonitors(nullptr, nullptr, EnumerateActiveMonitor,
+		reinterpret_cast<LPARAM>(&candidates)) ||
+		!PopulateActiveMonitorFriendlyNames(candidates))
+	{
+		const ULONGLONG now = GetTickCount64();
+		if (m_lastFullscreenMonitorSelectionLogTick == 0 ||
+			now - m_lastFullscreenMonitorSelectionLogTick >= 5000)
+		{
+			m_lastFullscreenMonitorSelectionLogTick = now;
+			DebugLog::Log(
+				"Fullscreen monitor selection: requested='%S' fallback=existing reason=configured monitor unavailable (active monitor enumeration failed)",
+				m_fullscreenMonitorName.GetString());
+		}
+		return fallback;
+	}
+
+	std::vector<const ActiveMonitorCandidate*> matches;
+	for (const ActiveMonitorCandidate& candidate : candidates)
+		if (!candidate.friendlyName.IsEmpty() &&
+			_wcsicmp(candidate.friendlyName, m_fullscreenMonitorName) == 0)
+			matches.push_back(&candidate);
+
+	const ULONGLONG now = GetTickCount64();
+	if (m_lastFullscreenMonitorSelectionLogTick == 0 ||
+		now - m_lastFullscreenMonitorSelectionLogTick >= 5000)
+	{
+		m_lastFullscreenMonitorSelectionLogTick = now;
+		const CString candidateDescription = DescribeMonitorCandidates(candidates);
+		if (matches.size() == 1)
+			DebugLog::Log(
+				"Fullscreen monitor selection: requested='%S' candidates=[%S] selected=%S (%S)",
+				m_fullscreenMonitorName.GetString(), candidateDescription.GetString(),
+				matches.front()->sourceName.GetString(), matches.front()->friendlyName.GetString());
+		else
+			DebugLog::Log(
+				"Fullscreen monitor selection: requested='%S' candidates=[%S] fallback=existing reason=%s",
+				m_fullscreenMonitorName.GetString(), candidateDescription.GetString(),
+				matches.empty() ? "configured monitor unavailable" :
+				"configured monitor name is ambiguous");
+	}
+
+	return matches.size() == 1 ? matches.front()->monitor : fallback;
 }
 
 
@@ -7085,6 +7265,16 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	if (m_videoRenderer &&
 		!RendererResetOperationInProgress())
 		m_videoRenderer->OnDisplayChange();
+	if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
+		IsWindow(m_fullScreenVideoWindow->GetHWND()))
+	{
+		// A renderer-initiated mode switch can leave an already-created popup
+		// logically visible and focused but no longer composed above the desktop.
+		// Coalesce the display-change burst, then reassert its monitor bounds and
+		// z-order after Windows has settled. This also replaces the construction
+		// timer when the mode switch takes longer than expected.
+		SetTimer(FULLSCREEN_FOCUS_TIMER_ID, 1000, nullptr);
+	}
 	CDialog::OnDisplayChange(bitsPerPixel, width, height);
 }
 
@@ -7285,13 +7475,55 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		{
 			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Grabbing focus")));
 			const HWND fullscreenHwnd = m_fullScreenVideoWindow->GetHWND();
+			const HMONITOR requestedMonitor = SelectFullscreenMonitor();
+			MONITORINFO monitorInfo = { sizeof(monitorInfo) };
+			RECT rectBefore = {};
+			::GetWindowRect(fullscreenHwnd, &rectBefore);
+			const BOOL visibleBefore = ::IsWindowVisible(fullscreenHwnd);
+			const BOOL iconicBefore = ::IsIconic(fullscreenHwnd);
+			if (iconicBefore)
+				::ShowWindow(fullscreenHwnd, SW_RESTORE);
+			else if (!visibleBefore)
+				::ShowWindow(fullscreenHwnd, SW_SHOWNA);
+
+			BOOL placementResult = FALSE;
+			if (::GetMonitorInfo(requestedMonitor, &monitorInfo))
+			{
+				const RECT& targetRect = monitorInfo.rcMonitor;
+				placementResult = ::SetWindowPos(
+					fullscreenHwnd,
+					m_windowedFullScreenMode ? HWND_TOP : HWND_TOPMOST,
+					targetRect.left,
+					targetRect.top,
+					targetRect.right - targetRect.left,
+					targetRect.bottom - targetRect.top,
+					SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW |
+					SWP_FRAMECHANGED);
+			}
 			const HWND foregroundBefore = ::GetForegroundWindow();
 			const HWND focusBefore = ::GetFocus();
 			const BOOL foregroundResult = ::SetForegroundWindow(fullscreenHwnd);
 			const HWND focusResult = ::SetFocus(fullscreenHwnd);
+			RECT rectAfter = {};
+			::GetWindowRect(fullscreenHwnd, &rectAfter);
+			const HMONITOR actualMonitor = ::MonitorFromWindow(
+				fullscreenHwnd, MONITOR_DEFAULTTONULL);
 			DebugLog::Log(
-				"Fullscreen focus timer: target=%p foreground_before=%p focus_before=%p set_foreground=%d set_focus_previous=%p foreground_after=%p focus_after=%p",
+				"Fullscreen focus timer: target=%p visible_before=%d iconic_before=%d "
+				"rect_before=%ld,%ld-%ld,%ld placement=%d requested_monitor=%p "
+				"actual_monitor=%p monitor_matched=%d visible_after=%d "
+				"rect_after=%ld,%ld-%ld,%ld foreground_before=%p focus_before=%p "
+				"set_foreground=%d set_focus_previous=%p foreground_after=%p focus_after=%p",
 				reinterpret_cast<void*>(fullscreenHwnd),
+				visibleBefore ? 1 : 0,
+				iconicBefore ? 1 : 0,
+				rectBefore.left, rectBefore.top, rectBefore.right, rectBefore.bottom,
+				placementResult ? 1 : 0,
+				reinterpret_cast<void*>(requestedMonitor),
+				reinterpret_cast<void*>(actualMonitor),
+				actualMonitor == requestedMonitor ? 1 : 0,
+				::IsWindowVisible(fullscreenHwnd) ? 1 : 0,
+				rectAfter.left, rectAfter.top, rectAfter.right, rectAfter.bottom,
 				reinterpret_cast<void*>(foregroundBefore),
 				reinterpret_cast<void*>(focusBefore),
 				foregroundResult ? 1 : 0,
