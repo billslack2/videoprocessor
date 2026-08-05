@@ -144,7 +144,7 @@ namespace Tests
 				static_cast<int>(decision.action));
 		}
 
-		TEST_METHOD(VerticalBarResolutionNeverCombinesTranslationWithOppositeFit)
+		TEST_METHOD(VerticalBarResolutionKeepsOneEdgeTranslationStable)
 		{
 			VerticalBarPresentationResolutionInput input;
 			input.detailedAction = VerticalBarPresentationAction::TRANSLATE;
@@ -158,21 +158,24 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(decision.action));
-			Assert::AreEqual(75.0f, decision.translationPixels, 0.001f);
+			Assert::AreEqual(76.0f, decision.translationPixels, 0.001f);
 
 			input.genericLowerBound = 1988; // farther than translated lower edge
 			decision = ResolveVerticalBarPresentation(input);
 			Assert::AreEqual(static_cast<int>(
-				VerticalBarPresentationAction::FIT),
+				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(decision.action));
-			Assert::AreEqual(0.0f, decision.translationPixels, 0.001f);
+			Assert::AreEqual(104.0f, decision.translationPixels, 0.001f);
 
-			input.genericLowerBound = 1960;
-			input.genericUpperExpansion = true; // opposite current evidence
+			// A generic top envelope accompanied this real lower subtitle in the
+			// live trace. It cannot turn the dense one-edge subtitle into Fit.
+			input.genericUpperExpansion = true;
+			input.genericUpperBound = 54;
 			decision = ResolveVerticalBarPresentation(input);
 			Assert::AreEqual(static_cast<int>(
-				VerticalBarPresentationAction::FIT),
+				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(decision.action));
+			Assert::AreEqual(104.0f, decision.translationPixels, 0.001f);
 
 			input = {};
 			input.detailedAction = VerticalBarPresentationAction::TRANSLATE;
@@ -189,8 +192,9 @@ namespace Tests
 			input.genericUpperBound = 100;
 			decision = ResolveVerticalBarPresentation(input);
 			Assert::AreEqual(static_cast<int>(
-				VerticalBarPresentationAction::FIT),
+				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(decision.action));
+			Assert::AreEqual(-174.0f, decision.translationPixels, 0.001f);
 
 			input = {};
 			input.genericUpperExpansion = true;
@@ -198,6 +202,47 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::FIT),
 				static_cast<int>(decision.action));
+		}
+
+		TEST_METHOD(RecordedBottomSubtitleDoesNotBecomeAnAspectFit)
+		{
+			// VP-0080 live trace: dense analysis found one lower subtitle and
+			// requested +197 px, while the coarse envelope reported 54..2106.
+			// The extra same-edge envelope extent becomes padding; the unconfirmed
+			// top extent must not turn this into a scale-changing Fit.
+			VerticalBarPresentationResolutionInput input;
+			input.detailedAction = VerticalBarPresentationAction::TRANSLATE;
+			input.translationPixels = 197.0f;
+			input.genericUpperExpansion = true;
+			input.genericUpperBound = 54;
+			input.genericLowerExpansion = true;
+			input.genericLowerBound = 2106;
+			input.authoritativeTop = 276;
+			input.authoritativeBottom = 1884;
+			input.rasterHeight = 2160;
+
+			const auto decision = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(decision.action));
+			Assert::AreEqual(222.0f, decision.translationPixels, 0.001f);
+
+			Input crop = TrustedScopeCrop();
+			crop.geometry.top = input.authoritativeTop;
+			crop.geometry.bottom = input.authoritativeBottom;
+			crop.verticalTranslationActive = true;
+			crop.verticalTranslationPixels =
+				static_cast<int>(decision.translationPixels);
+			crop.verticalTranslationBase = crop.geometry;
+			crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
+			const Decision presented = Evaluate(crop);
+			Assert::IsTrue(presented.applyCrop);
+			Assert::IsTrue(presented.verticallyTranslated);
+			Assert::IsFalse(presented.outwardExpanded);
+			Assert::AreEqual(498, presented.sourceBounds.top);
+			Assert::AreEqual(2106, presented.sourceBounds.bottom);
+			Assert::AreEqual(1608,
+				presented.sourceBounds.bottom - presented.sourceBounds.top);
 		}
 
 		TEST_METHOD(VerticalBarPresentationStoresTranslationAndRetainsFitUnion)
@@ -434,19 +479,19 @@ namespace Tests
 			Assert::AreEqual(204, crop.sourceBounds.top);
 			Assert::AreEqual(1812, crop.sourceBounds.bottom);
 
-			// Coarse current evidence farther outward than that translated window
-			// cannot be hidden; the one final action becomes FIT, never FIT+shift.
+			// Coarse current evidence farther outward on the same edge extends the
+			// translation. It must not shrink the picture just because the coarse
+			// envelope has a less precise extent than the dense volume/UI pass.
 			action = resolve(true, 120, false, geometry.bottom);
 			Assert::AreEqual(static_cast<int>(
-				VerticalBarPresentationAction::FIT),
+				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(action.action));
-			ActivePictureBounds topFit = geometry;
-			topFit.top = 120;
-			topFit.aspectRatio = 3840.0 / (topFit.bottom - topFit.top);
-			crop = present(action, topFit);
-			Assert::IsTrue(crop.outwardExpanded);
-			Assert::IsFalse(crop.verticallyTranslated);
+			Assert::AreEqual(-160.0f, action.translationPixels, 0.001f);
+			crop = present(action, geometry);
+			Assert::IsFalse(crop.outwardExpanded);
+			Assert::IsTrue(crop.verticallyTranslated);
 			Assert::AreEqual(120, crop.sourceBounds.top);
+			Assert::AreEqual(1728, crop.sourceBounds.bottom);
 
 			// Broad/deep pixels on both bars are picture/aspect-like and FIT.
 			content.lowerContent = true;

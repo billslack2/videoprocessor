@@ -273,29 +273,52 @@ namespace AlphaSourceCrop
 				decision.translationPixels = 0.0f;
 				return decision;
 			}
-			const int requestedShift = ChromaAlignedDisplacement(
+			int requestedShift = ChromaAlignedDisplacement(
 				static_cast<int>(input.translationPixels < 0.0f
 					? std::floor(input.translationPixels)
 					: std::ceil(input.translationPixels)));
-			const int appliedShift = std::max(-input.authoritativeTop,
-				std::min(requestedShift,
-					input.rasterHeight - input.authoritativeBottom));
-			const int translatedTop = input.authoritativeTop + appliedShift;
-			const int translatedBottom =
-				input.authoritativeBottom + appliedShift;
-			const bool oppositeGenericEvidence =
-				(input.translationPixels < 0.0f && input.genericLowerExpansion) ||
-				(input.translationPixels > 0.0f && input.genericUpperExpansion);
-			const bool uncoveredSameEdgeEvidence =
-				(input.translationPixels < 0.0f && input.genericUpperExpansion &&
-				 input.genericUpperBound < translatedTop) ||
-				(input.translationPixels > 0.0f && input.genericLowerExpansion &&
-				 input.genericLowerBound > translatedBottom);
-			if (oppositeGenericEvidence || uncoveredSameEdgeEvidence)
+			// The dense bar pass has established this as a one-edge overlay. The
+			// coarse envelope has enough information to extend that same edge, but
+			// not enough specificity to manufacture an opposite picture edge. Its
+			// previous opposite-edge veto turned a subtitle into an aspect fit and
+			// caused the visible zoom-out. Genuine two-edge/picture evidence has
+			// already selected FIT in the dense pass before reaching this resolver.
+			if (requestedShift < 0 && input.genericUpperExpansion)
+			{
+				requestedShift = std::min(requestedShift,
+					ChromaAlignedDisplacement(
+						input.genericUpperBound - input.authoritativeTop));
+			}
+			else if (requestedShift > 0 && input.genericLowerExpansion)
+			{
+				requestedShift = std::max(requestedShift,
+					ChromaAlignedDisplacement(
+						input.genericLowerBound - input.authoritativeBottom));
+			}
+
+			const int minimumShift = -input.authoritativeTop;
+			const int maximumShift =
+				input.rasterHeight - input.authoritativeBottom;
+			// Do not apply a partial translation which would still cut the declared
+			// same-edge content. When the full translation cannot fit in the raster,
+			// preserving all visible pixels takes the bounded Fit path.
+			if (requestedShift < minimumShift || requestedShift > maximumShift)
 			{
 				decision.action = VerticalBarPresentationAction::FIT;
 				decision.translationPixels = 0.0f;
+				return decision;
 			}
+			const int appliedShift = requestedShift;
+			const int translatedTop = input.authoritativeTop + appliedShift;
+			const int translatedBottom =
+				input.authoritativeBottom + appliedShift;
+			if (translatedTop < 0 || translatedBottom > input.rasterHeight)
+			{
+				decision.action = VerticalBarPresentationAction::FAIL_OPEN;
+				decision.translationPixels = 0.0f;
+				return decision;
+			}
+			decision.translationPixels = static_cast<float>(appliedShift);
 			return decision;
 		}
 		if (input.genericUpperExpansion || input.genericLowerExpansion)
