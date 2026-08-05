@@ -2,7 +2,21 @@
 
 ## Status
 
-Review — 2026-08-04.
+In Progress — 2026-08-05.
+
+Follow-up implementation is underway on
+`codex/vp-0086-action-variable-expansion`, based on the merged default branch.
+Actions now support `${variable}` interpolation in `run` arguments while
+retaining `$variable` expression references in `when`: the first passes the
+committed transition value to the process and the second evaluates whether the
+action should run. Every event action can evaluate any current source/profile
+snapshot variable available to its event family, rather than only the field
+that caused the event. Argument templates are validated against every named
+event, expanded before asynchronous launch, and do not alter the executable
+path. New coverage exercises multi-field conditions, current/prior/profile and
+event argument values, and invalid cross-family references. x64 Release build
+and all 37 `ConfigFileTests` pass. The follow-up is not yet merged, deployed,
+or ready for review.
 
 Merged to the current default integration branch `v1.1.015-beta` through
 https://github.com/billslack2/videoprocessor/pull/40 at merge commit
