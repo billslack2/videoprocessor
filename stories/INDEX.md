@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0089`
-- Next root story number: `VP-0090`
-- Total indexed items: 104
+- Last assigned root story: `VP-0091`
+- Next root story number: `VP-0092`
+- Total indexed items: 105
 
 ## Story locations
 
@@ -121,6 +121,7 @@ they must not contain requirements that are absent from this file.
 | VP-0087 | Blocked | VP-managed subtitle fit with madVR presentation |
 | VP-0088 | In Progress | Expose fast Alpha-native display refresh measurement |
 | VP-0089 | Backlog | Alpha two-axis balanced non-linear stretch |
+| VP-0091 | Backlog | Hide System32 DirectShow renderers by default |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
