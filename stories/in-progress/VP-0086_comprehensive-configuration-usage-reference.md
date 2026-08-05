@@ -6,17 +6,19 @@ In Progress — 2026-08-05.
 
 Follow-up implementation is underway on
 `codex/vp-0086-action-variable-expansion`, based on the merged default branch.
-Actions now support `${variable}` interpolation in `run` arguments while
-retaining `$variable` expression references in `when`: the first passes the
-committed transition value to the process and the second evaluates whether the
-action should run. Every event action can evaluate any current source/profile
-snapshot variable available to its event family, rather than only the field
-that caused the event. Argument templates are validated against every named
-event, expanded before asynchronous launch, and do not alter the executable
-path. New coverage exercises multi-field conditions, current/prior/profile and
-event argument values, and invalid cross-family references. x64 Release build
-and all 37 `ConfigFileTests` pass. The follow-up is not yet merged, deployed,
-or ready for review.
+The single public variable form is `${variable}` in both `when` expressions
+and `run` arguments: `when` compares the value, while `run` passes the same
+event-bound value to the command. Every event action can evaluate any current
+source/profile snapshot variable available to its event family, rather than
+only the field that caused the event. Argument templates are validated against
+every named event, expanded before asynchronous launch, and do not alter the
+executable path. The active configuration and checked-in sample have been
+converted to the public braced form without changing the active audio-delay
+arguments. Checkpoints: `63d8c16` (action argument expansion) and `6046c09`
+(braced variable standardization). x64 Release build and all 82 focused
+`ConfigFileTests`/`VideoFrameFormatterTests` pass. The matching Release
+executable/DLL pair has been deployed locally after backup and hash verification.
+The follow-up is not yet merged or ready for review.
 
 Merged to the current default integration branch `v1.1.015-beta` through
 https://github.com/billslack2/videoprocessor/pull/40 at merge commit
