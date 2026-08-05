@@ -2,15 +2,15 @@
 
 ## Status
 
-Will Not Do (2026-08-04). VP will not implement its own whole-picture
-subtitle-fit repositioning when madVR is the selected renderer.
+Blocked (2026-08-04). VP-managed whole-picture subtitle-fit repositioning for
+madVR cannot proceed until we identify a supported, no-resample presentation
+placement control.
 
-The decision is intentional, not a claim that VP cannot detect the relevant
-black-bar/subtitle evidence. The current shared analysis path is format-neutral
-and supports native RGB and planar sources. The missing capability is a
-documented, no-resample madVR presentation-placement control that can move the
-already-rendered picture vertically while retaining madVR's chosen scaling,
-tone mapping, and presentation behavior.
+This is not blocked by detection. The current shared analysis path is
+format-neutral and supports native RGB and planar sources. The exact blocker is
+the absence of a known documented madVR presentation-placement control that can
+move the already-rendered picture vertically while retaining madVR's chosen
+scaling, tone mapping, and presentation behavior.
 
 VP's madVR shader support is not that control. It installs external D3D9 HLSL
 effects at madVR's pre-scale or post-scale stages. That is appropriate for NLS,
@@ -19,14 +19,14 @@ for display placement. A shader-based vertical remap would risk resampling,
 cropping, black-fill artifacts, transition flashes, or interaction with madVR
 scaling/tone-mapping decisions merely to gain a subtitle offset.
 
-Alpha owns VP-managed `subtitle_fit` because it controls the complete
-libplacebo viewport and presentation geometry. When madVR is selected, use
-madVR's native subtitle/viewport handling instead.
+Until resolved, Alpha owns VP-managed `subtitle_fit` because it controls the
+complete libplacebo viewport and presentation geometry. When madVR is
+selected, use madVR's native subtitle/viewport handling instead.
 
-Reopen only if a supported madVR API or contract is identified that supplies a
-runtime presentation/viewport offset with no pixel remap or renderer restart,
-and a bounded prototype can prove correct SDR/HDR, fullscreen, refresh-change,
-NLS, and subtitle-transition behavior.
+This story resumes only if a supported madVR API or contract is identified that
+supplies a runtime presentation/viewport offset with no pixel remap or renderer
+restart, and a bounded prototype can prove correct SDR/HDR, fullscreen,
+refresh-change, NLS, and subtitle-transition behavior.
 
 ## Context retained for a future revisit
 
@@ -43,7 +43,7 @@ NLS, and subtitle-transition behavior.
   renderer-owned viewport has been calculated. It is not OCR or per-glyph
   relocation and must remain renderer-local.
 
-## Non-goals
+## Boundaries while blocked
 
 - Do not add a generated translation shader to madVR.
 - Do not alter captured frame pixels or force P010 solely to implement a
