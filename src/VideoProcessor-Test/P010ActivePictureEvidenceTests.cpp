@@ -391,6 +391,9 @@ namespace VideoProcessorTest
 
 			Assert::IsFalse(retention.excludedBandsPixelSafe);
 			Assert::IsFalse(retention.currentlyPixelSafe);
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureClassification::PROVISIONAL),
+				static_cast<int>(retention.activePicture.classification));
 			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
 			Assert::IsTrue(retention.outwardVisibleBounds.top <= 8);
 			Assert::AreEqual(158, retention.outwardVisibleBounds.bottom);
