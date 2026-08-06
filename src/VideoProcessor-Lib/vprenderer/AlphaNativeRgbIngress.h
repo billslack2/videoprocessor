@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include <VideoConversionOverride.h>
 #include <VideoFrameEncoding.h>
 
 // A regular packed RGB layout is safe to hand to libplacebo's generic image
@@ -77,4 +78,14 @@ inline bool AlphaCanUseNativeRgbUpload(VideoFrameEncoding encoding)
 	// normalize it through the range-aware P010 formatter instead.
 	return encoding != VideoFrameEncoding::R210 &&
 		GetAlphaNativeRgbLayout(encoding, layout);
+}
+
+inline bool AlphaUsesP210Ingress(VideoFrameEncoding encoding,
+	VideoConversionOverride conversionOverride) noexcept
+{
+	return conversionOverride ==
+			VideoConversionOverride::VIDEOCONVERSION_NONE &&
+		(encoding == VideoFrameEncoding::UYVY ||
+			encoding == VideoFrameEncoding::HDYC ||
+			encoding == VideoFrameEncoding::V210);
 }

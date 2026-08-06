@@ -606,8 +606,7 @@ namespace
 			// v210 is 10-bit 4:2:2. When P010 has not been explicitly
 			// requested, retain its vertical chroma resolution in P210 rather
 			// than silently reducing it to P010's 4:2:0 representation.
-			if (videoConversionOverride ==
-				VideoConversionOverride::VIDEOCONVERSION_NONE)
+			if (AlphaUsesP210Ingress(encoding, videoConversionOverride))
 			{
 				return std::unique_ptr<IVideoFrameFormatter>(
 					new CV210toP210VideoFrameFormatter());
@@ -617,8 +616,7 @@ namespace
 		case VideoFrameEncoding::HDYC:
 			// UYVY/HDYC are 8-bit 4:2:2. Keep every captured chroma row in
 			// P210 unless the user explicitly selects the P010 conversion.
-			if (videoConversionOverride ==
-				VideoConversionOverride::VIDEOCONVERSION_NONE)
+			if (AlphaUsesP210Ingress(encoding, videoConversionOverride))
 			{
 				return std::unique_ptr<IVideoFrameFormatter>(
 					new CUYVYtoP210VideoFrameFormatter());

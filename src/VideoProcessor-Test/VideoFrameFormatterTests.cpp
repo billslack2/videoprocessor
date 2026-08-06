@@ -338,6 +338,7 @@ namespace Tests
 			{
 				VideoFrameEncoding encoding;
 				bool alphaNativeIngress;
+				bool alphaAutomaticP210;
 				bool madvrAutomaticP010;
 				bool packedRgbP010;
 				bool mpcAutomaticP010;
@@ -345,22 +346,27 @@ namespace Tests
 			};
 
 			const Case cases[] = {
-				{ VideoFrameEncoding::ARGB_8BIT, true,  true,  false, true,  true  },
-				{ VideoFrameEncoding::BGRA_8BIT, true,  true,  false, true,  true  },
-				{ VideoFrameEncoding::UYVY,      false, false, false, false, false },
-				{ VideoFrameEncoding::HDYC,      false, false, false, false, false },
-				{ VideoFrameEncoding::V210,      false, false, false, false, false },
-				{ VideoFrameEncoding::R210,      false, false, true,  false, false },
-				{ VideoFrameEncoding::R10b,      true,  true,  true,  true,  true  },
-				{ VideoFrameEncoding::R10l,      true,  true,  true,  true,  true  },
-				{ VideoFrameEncoding::R12B,      false, true,  true,  false, false },
-				{ VideoFrameEncoding::R12L,      false, true,  true,  true,  true  },
+				{ VideoFrameEncoding::ARGB_8BIT, true,  false, true,  false, true,  true  },
+				{ VideoFrameEncoding::BGRA_8BIT, true,  false, true,  false, true,  true  },
+				{ VideoFrameEncoding::UYVY,      false, true,  false, false, false, false },
+				{ VideoFrameEncoding::HDYC,      false, true,  false, false, false, false },
+				{ VideoFrameEncoding::V210,      false, true,  false, false, false, false },
+				{ VideoFrameEncoding::R210,      false, false, false, true,  false, false },
+				{ VideoFrameEncoding::R10b,      true,  false, true,  true,  true,  true  },
+				{ VideoFrameEncoding::R10l,      true,  false, true,  true,  true,  true  },
+				{ VideoFrameEncoding::R12B,      false, false, true,  true,  false, false },
+				{ VideoFrameEncoding::R12L,      false, false, true,  true,  true,  true  },
 			};
 
 			for (const Case& test : cases)
 			{
 				Assert::AreEqual(test.alphaNativeIngress,
 					AlphaCanUseNativeRgbUpload(test.encoding));
+				Assert::AreEqual(test.alphaAutomaticP210,
+					AlphaUsesP210Ingress(test.encoding,
+						VideoConversionOverride::VIDEOCONVERSION_NONE));
+				Assert::IsFalse(AlphaUsesP210Ingress(test.encoding,
+					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010));
 				Assert::AreEqual(test.madvrAutomaticP010,
 					MadVRUsesP010Ingress(test.encoding,
 						VideoConversionOverride::VIDEOCONVERSION_NONE));
@@ -1355,6 +1361,163 @@ namespace Tests
 				Assert::IsTrue(scalarOutput == avx2Output,
 					L"UYVY/HDYC P210 AVX2 output must match scalar bit-for-bit");
 			}
+		}
+
+		TEST_METHOD(CUYVYtoP010AVX2MatchesScalarBitExactlyIncludingRowTails)
+		{
+			const uint32_t widths[] = { 100, 110, 112, 114, 126, 128, 130, 142 };
+			for (const auto encoding : {
+				VideoFrameEncoding::UYVY, VideoFrameEncoding::HDYC })
+			{
+				for (const uint32_t width : widths)
+				{
+					VideoStateComPtr state = new VideoState();
+					state->valid = true;
+					state->displayMode = std::make_shared<DisplayMode>(
+						width, 100, false, 60000, 1001);
+					state->videoFrameEncoding = encoding;
+					std::vector<BYTE> input(state->BytesPerFrame());
+					FillBenchmarkPattern(input,
+						0x6d2b79f5U ^ width ^ static_cast<uint32_t>(encoding));
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+
+					CUYVYtoP010VideoFrameFormatter scalar;
+					scalar.SetConversionMethod(
+						CUYVYtoP010VideoFrameFormatter::ConversionMethod::SCALAR);
+					scalar.OnVideoState(state);
+					std::vector<BYTE> scalarOutput(scalar.GetOutFrameSize(), 0x55);
+					Assert::IsTrue(scalar.FormatVideoFrame(
+						frame, scalarOutput.data()));
+
+					CUYVYtoP010VideoFrameFormatter avx2;
+					avx2.SetConversionMethod(
+						CUYVYtoP010VideoFrameFormatter::ConversionMethod::AVX2);
+					avx2.OnVideoState(state);
+					std::vector<BYTE> avx2Output(avx2.GetOutFrameSize(), 0xaa);
+					Assert::IsTrue(avx2.FormatVideoFrame(frame, avx2Output.data()));
+					Assert::IsTrue(scalarOutput == avx2Output,
+						L"UYVY/HDYC P010 AVX2 output must match scalar at SIMD tails and row boundaries");
+				}
+			}
+		}
+
+		TEST_METHOD(UYVYAndHDYCProduceByteIdenticalP010AndP210Frames)
+		{
+			auto makeState = [](VideoFrameEncoding encoding)
+			{
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					130, 100, false, 60000, 1001);
+				state->videoFrameEncoding = encoding;
+				state->colorspace = encoding == VideoFrameEncoding::HDYC ?
+					ColorSpace::REC_709 : ColorSpace::REC_601_525;
+				return state;
+			};
+
+			VideoStateComPtr uyvyState = makeState(VideoFrameEncoding::UYVY);
+			VideoStateComPtr hdycState = makeState(VideoFrameEncoding::HDYC);
+			Assert::AreEqual(uyvyState->BytesPerRow(), hdycState->BytesPerRow());
+			Assert::AreEqual(260U, uyvyState->BytesPerRow());
+			std::vector<BYTE> input(uyvyState->BytesPerFrame());
+			FillBenchmarkPattern(input, 0xa511e9b3U);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+
+			CUYVYtoP010VideoFrameFormatter uyvyP010;
+			uyvyP010.OnVideoState(uyvyState);
+			CUYVYtoP010VideoFrameFormatter hdycP010;
+			hdycP010.OnVideoState(hdycState);
+			std::vector<BYTE> uyvyP010Output(uyvyP010.GetOutFrameSize());
+			std::vector<BYTE> hdycP010Output(hdycP010.GetOutFrameSize());
+			Assert::IsTrue(uyvyP010.FormatVideoFrame(frame, uyvyP010Output.data()));
+			Assert::IsTrue(hdycP010.FormatVideoFrame(frame, hdycP010Output.data()));
+			Assert::IsTrue(uyvyP010Output == hdycP010Output);
+
+			CUYVYtoP210VideoFrameFormatter uyvyP210;
+			uyvyP210.OnVideoState(uyvyState);
+			CUYVYtoP210VideoFrameFormatter hdycP210;
+			hdycP210.OnVideoState(hdycState);
+			std::vector<BYTE> uyvyP210Output(uyvyP210.GetOutFrameSize());
+			std::vector<BYTE> hdycP210Output(hdycP210.GetOutFrameSize());
+			Assert::IsTrue(uyvyP210.FormatVideoFrame(frame, uyvyP210Output.data()));
+			Assert::IsTrue(hdycP210.FormatVideoFrame(frame, hdycP210Output.data()));
+			Assert::IsTrue(uyvyP210Output == hdycP210Output);
+		}
+
+		TEST_METHOD(OptionalCapturedDeckLink8BitYuvFrameReplay)
+		{
+			const auto environment = [](const char* name)
+			{
+				const DWORD required = GetEnvironmentVariableA(name, nullptr, 0);
+				if (required == 0) return std::string();
+				std::string value(required, '\0');
+				GetEnvironmentVariableA(name, &value[0], required);
+				value.resize(required - 1);
+				return value;
+			};
+			const std::string path = environment("VP_DECKLINK_HDYC_FIXTURE");
+			if (path.empty())
+			{
+				Logger::WriteMessage(
+					L"Optional DeckLink replay skipped: VP_DECKLINK_HDYC_FIXTURE is not set");
+				return;
+			}
+
+			const std::string widthText = environment("VP_DECKLINK_FIXTURE_WIDTH");
+			const std::string heightText = environment("VP_DECKLINK_FIXTURE_HEIGHT");
+			Assert::IsFalse(widthText.empty());
+			Assert::IsFalse(heightText.empty());
+			const uint32_t width = static_cast<uint32_t>(std::stoul(widthText));
+			const uint32_t height = static_cast<uint32_t>(std::stoul(heightText));
+			Assert::IsTrue(width > 0 && (width & 1U) == 0);
+			Assert::IsTrue(height > 0 && (height & 1U) == 0);
+
+			std::ifstream stream(path, std::ios::binary | std::ios::ate);
+			Assert::IsTrue(stream.good(), L"Could not open DeckLink raw frame fixture");
+			const size_t fileBytes = static_cast<size_t>(stream.tellg());
+			const size_t expectedBytes = static_cast<size_t>(width) * height * 2U;
+			Assert::AreEqual(expectedBytes, fileBytes,
+				L"Raw bmdFormat8BitYUV fixture must contain exactly one tight UYVY frame");
+			std::vector<BYTE> input(fileBytes);
+			stream.seekg(0);
+			stream.read(reinterpret_cast<char*>(input.data()), input.size());
+			Assert::IsTrue(stream.good());
+
+			VideoStateComPtr state = new VideoState();
+			state->valid = true;
+			state->displayMode = std::make_shared<DisplayMode>(
+				width, height, false, 60000, 1001);
+			state->videoFrameEncoding = VideoFrameEncoding::HDYC;
+			state->colorspace = ColorSpace::REC_709;
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+
+			CUYVYtoP010VideoFrameFormatter p010Scalar;
+			p010Scalar.SetConversionMethod(
+				CUYVYtoP010VideoFrameFormatter::ConversionMethod::SCALAR);
+			p010Scalar.OnVideoState(state);
+			CUYVYtoP010VideoFrameFormatter p010Avx2;
+			p010Avx2.SetConversionMethod(
+				CUYVYtoP010VideoFrameFormatter::ConversionMethod::AVX2);
+			p010Avx2.OnVideoState(state);
+			std::vector<BYTE> scalarOutput(p010Scalar.GetOutFrameSize());
+			std::vector<BYTE> avx2Output(p010Avx2.GetOutFrameSize());
+			Assert::IsTrue(p010Scalar.FormatVideoFrame(frame, scalarOutput.data()));
+			Assert::IsTrue(p010Avx2.FormatVideoFrame(frame, avx2Output.data()));
+			Assert::IsTrue(scalarOutput == avx2Output);
+
+			CUYVYtoP210VideoFrameFormatter p210Scalar;
+			p210Scalar.SetConversionMethod(
+				CUYVYtoP210VideoFrameFormatter::ConversionMethod::SCALAR);
+			p210Scalar.OnVideoState(state);
+			CUYVYtoP210VideoFrameFormatter p210Avx2;
+			p210Avx2.SetConversionMethod(
+				CUYVYtoP210VideoFrameFormatter::ConversionMethod::AVX2);
+			p210Avx2.OnVideoState(state);
+			scalarOutput.assign(p210Scalar.GetOutFrameSize(), 0);
+			avx2Output.assign(p210Avx2.GetOutFrameSize(), 0);
+			Assert::IsTrue(p210Scalar.FormatVideoFrame(frame, scalarOutput.data()));
+			Assert::IsTrue(p210Avx2.FormatVideoFrame(frame, avx2Output.data()));
+			Assert::IsTrue(scalarOutput == avx2Output);
 		}
 
 		TEST_METHOD(AlphaNativeRgbLayoutPreservesComponentBitfields)

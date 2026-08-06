@@ -124,7 +124,7 @@ coefficient tables.
 - Native sparse RGB analysis uses the same limited-range reference conversion
   as displayed R10/r210 content and normalized R12 downconversion.
 
-The clean x64 Release suite passes 648/648 tests. A sustained performance test
+The clean x64 Release suite passes 651/651 tests. A sustained performance test
 now compares the former 30-frame hot-zero-buffer workload with three runs of
 120 measured frames rotating across four patterned 4K buffers. The regression
 gate uses the median-of-three average and p95; both must remain below the
@@ -167,7 +167,7 @@ routes was:
 | r210 / R12B to RGB48 | 3.70 / 4.13 ms | 4.01 / 4.68 ms |
 | v210 no-op delivery copy | 1.40 ms | 1.61 ms |
 
-When the benchmark ran inside the complete 648-test suite, the most conservative
+When the benchmark ran inside the complete 651-test suite, the most conservative
 RGB48 p95 was 4.79 ms and every other conversion p95 remained below 5.39 ms.
 This loaded-system run still leaves more than 2x headroom against the 16.67 ms
 4K60 frame period.
@@ -250,3 +250,39 @@ resolution matrix. Dedicated pattern hardware is not required for these
 software contracts. Physical validation remains useful to prove that a given
 driver/device reports the expected colorspace and that downstream renderers
 honor the negotiated subtype and extended color metadata.
+
+The additional HDYC contracts explicitly prove that:
+
+- UYVY and HDYC use DeckLink's documented tight two-byte-per-pixel row layout;
+  unlike v210 and packed RGB, this format has no per-row alignment padding.
+- Synthetic row-varying data produces byte-identical P010 and P210 pixels for
+  UYVY and HDYC; only colorspace/media-subtype semantics differ.
+- Forced scalar and AVX2 P010 conversions match bit-for-bit before, at, and
+  after SIMD boundaries, including non-multiple tail widths. P210 has the same
+  scalar/AVX2 equivalence contract.
+
+### Optional captured-frame replay
+
+`OptionalCapturedDeckLink8BitYuvFrameReplay` can ingest one unmodified
+`bmdFormat8BitYUV` frame without requiring DeckLink hardware on the test host.
+Set these variables before running that test:
+
+```powershell
+$env:VP_DECKLINK_HDYC_FIXTURE='C:\captures\frame.uyvy'
+$env:VP_DECKLINK_FIXTURE_WIDTH='1920'
+$env:VP_DECKLINK_FIXTURE_HEIGHT='1080'
+```
+
+The fixture must be exactly `width * height * 2` bytes. The replay validates
+frame size and runs the captured bytes through both the P010 and P210 scalar
+and AVX2 implementations, requiring bit-exact agreement. If the fixture is not
+configured, the optional replay reports that fact and returns without making a
+hardware-derived claim; all deterministic synthetic contracts still run.
+
+The final post-contract sustained 4K rotating-buffer run measured HDYC to P010
+at 2.34 ms average / 2.65 ms p95 and HDYC to P210 at 2.77 ms average / 3.28 ms
+p95. Both retain wide margin below the 16.67 ms 60 fps frame period. A separate
+run under heavier host load reached 8.20 ms p95, demonstrating why the suite
+records distributions rather than relying on one frame; it still met the 60
+fps gate. The new conversion-method selector is a test control; automatic
+production dispatch and the per-frame pixel loops are unchanged.
