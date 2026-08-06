@@ -2,9 +2,12 @@
 
 ## Status
 
-Backlog (2026-08-06). Investigation and implementation must start from the
-current VideoProcessor integration branch. At story creation, GitHub reports
-`v1.1.016-beta` as the default branch at `b6e2892`.
+In Progress (2026-08-06). Test-first range and routing analysis is active on
+`codex/vp-0096-range-conversion-tests` in
+`C:\Users\bslac\vp\vp-0096-range-conversion-tests`, based on the current
+GitHub default branch `v1.1.016-beta` at `b6e2892`. Initial work is limited to
+documentation review, route characterization, and tests that expose current
+assumptions; no conversion policy change has yet been selected.
 
 ## User story
 
