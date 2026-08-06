@@ -147,6 +147,11 @@ editor executable and its configuration safety boundary are validated.
   examples now explain screen aspect, anamorphic correction, subtitle fields,
   naming rules, and the formerly unexplained `when` expression as an
   **Activation condition**.
+- Reflowed the viewport detail form after visual feedback: full-width
+  checkbox labels no longer collide with a second column, subtitle inputs use
+  one readable vertical sequence, the activation explanation is explicitly
+  two lines, and footer actions retain usable widths at the initial window
+  size.
 - Reduced the window to a compact work-area-safe size while retaining smaller
   typography and minimum resize bounds. The x64 Release target completed, the
   redesigned process stayed running against the disposable three-viewport
