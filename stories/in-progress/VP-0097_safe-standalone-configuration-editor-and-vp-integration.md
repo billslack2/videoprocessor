@@ -13,6 +13,27 @@ read-only configuration preview, notification-area behavior, and a small set
 of safe structured edits. VP launch/shortcut integration will follow once the
 editor executable and its configuration safety boundary are validated.
 
+2026-08-06 first increment implemented (uncommitted source work):
+
+- Added the standalone `VideoProcessorConfig.exe` Win32 project with a
+  notification-area icon, single-instance activation, direct `--config` launch,
+  optional VP owner-window handle, config summary, Validate/Reload/Save actions,
+  and a deliberately narrow structured surface for General, Alpha output, and
+  queue size.
+- The editor works from a line-preserving document, so its structured save
+  changes only an existing selected value and leaves comments, profiles,
+  actions, shaders, unknown content, ordering, and assignment spelling alone.
+  It validates candidate text through `ConfigFile`, `MainConfigSchema`, and
+  `RendererProfileConfig`, then makes a timestamped backup and atomically
+  replaces the file.
+- Added the configurable `[shortcuts] config_editor` VP command (Ctrl+S by
+  default). VP launches the editor beside its executable with the resolved
+  primary config path and its main dialog as owner.
+- x64 Release solution build succeeded. The focused `ConfigFileTests` run
+  passed 41/41. The editor startup smoke test passed against the checked-in
+  config. A visible instance is running against the disposable build-output
+  config for developer feedback; it does not use the deployed configuration.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
