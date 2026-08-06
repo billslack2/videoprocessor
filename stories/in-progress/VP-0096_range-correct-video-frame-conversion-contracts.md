@@ -292,7 +292,9 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
 - Draft PR [#45](https://github.com/billslack2/videoprocessor/pull/45)
   targets the latest `v1.1.016-beta` tip (`b6e2892`) from
   `codex/vp-0096-range-conversion-tests`; it remains open, draft, and unmerged.
-  Final clean-version x64 Release build and 651/651 suite passed. The final
-  sustained rotating 4K run's slowest path was R12B-to-P010 at 5.27 ms average
-  / 5.60 ms p95, retaining nearly 3x headroom against the 16.67 ms 60 fps
-  frame period.
+  DirectShow no-op paths now preserve encoding-specific range/depth contracts;
+  automatic madVR UYVY/HDYC/v210 therefore signal limited nominal range rather
+  than unknown. All ten DeckLink no-op encodings and those three madVR routes
+  have explicit tests. Final x64 Release rebuild and 653/653 suite passed. The
+  final sustained rotating 4K run's slowest path was R12B-to-P010 at 4.99 ms
+  average / 5.50 ms p95; no-op copy measured 1.51/1.81 ms average/p95.
