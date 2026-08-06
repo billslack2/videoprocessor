@@ -68,6 +68,17 @@ editor executable and its configuration safety boundary are validated.
   feedback executable must exit before the directly launchable Release copy
   can be refreshed, because Windows locks an executing `.exe`.
 
+2026-08-06 notification callback correction (uncommitted source work):
+
+- User testing found that the visible tray icon still ignored every click. The
+  first implementation compared the entire version-4 notification payload to
+  the mouse event; Windows stores the event in its low word and the icon ID in
+  its high word. The handler now reads the event correctly and supports click,
+  double-click, right-click/context-menu, and keyboard notifications.
+- The locked disposable feedback process was stopped, the solution-targeted
+  x64 Release build passed, and the corrected editor was restarted from
+  `x64\\Release` for immediate testing.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
