@@ -415,6 +415,32 @@ editor executable and its configuration safety boundary are validated.
   `ConfigFileTests` suite passed 44/44. No deployment or active configuration
   edit occurred.
 
+2026-08-06 ordered-rule and consistent-profile correction (uncommitted source work):
+
+- Removed the Priority editor. The root profile is the default when present;
+  otherwise the first named profile is the default. VP checks later profiles
+  in file order and stops at the first matching rule. Existing handwritten
+  `priority:` values remain readable and preserved but are deprecated and
+  ignored, with file order now the single precedence model.
+- A default/root shortcut now manually selects the default profile rather than
+  briefly returning to automatic selection. Named shortcuts remain manual
+  per-group selectors. Added a regression covering ordered overlapping rules,
+  ignored legacy priority, and explicit default-profile shortcut selection.
+- Queue, VP Renderer, and Viewports now share the same profile interaction:
+  side-by-side sticky profile list and selected-profile detail at the same
+  breakpoint; Add/Rename/Remove/Move controls all live on the list side. Only
+  the detail side moves during vertical scrolling. Advanced renderer settings
+  start expanded.
+- Renamed the optional condition toggle to **Use rule**, removed the empty
+  one-line rule box and obsolete Priority row, and explicitly applied the UI
+  font to native combo popup list windows. The x64 Release solution succeeded
+  and focused `ConfigFileTests` passed 45/45.
+- A schema audit found no missing modern viewport controls. Next safe coverage
+  should add Startup device/renderer/monitor selectors, Queue lookahead and
+  still-active recovery settings, then renderer luminance/transfer/contrast
+  controls and root refresh switching. Runtime-enumerated Startup values need
+  typed schema choices before the editor exposes them.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
