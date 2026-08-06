@@ -117,7 +117,7 @@ they must not contain requirements that are absent from this file.
 | VP-0083 | Done | Alpha anamorphic presentation profiles |
 | VP-0084 | Backlog | Bound DirectShow total steady queue after reset |
 | VP-0085 | In Progress | Frame-correlated madVR NLS look-ahead |
-| VP-0086 | Review | Comprehensive configuration usage reference |
+| VP-0086 | Done | Comprehensive configuration usage reference |
 | VP-0087 | Blocked | VP-managed subtitle fit with madVR presentation |
 | VP-0088 | In Progress | Expose fast Alpha-native display refresh measurement |
 | VP-0089 | Backlog | Alpha two-axis balanced non-linear stretch |

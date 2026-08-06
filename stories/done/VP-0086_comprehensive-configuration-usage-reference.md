@@ -2,7 +2,7 @@
 
 ## Status
 
-Review — 2026-08-05.
+Done — 2026-08-05.
 
 Follow-up implementation was completed on
 `codex/vp-0086-action-variable-expansion` and merged into the default
@@ -21,7 +21,9 @@ arguments. Checkpoints: `63d8c16` (action argument expansion) and `6046c09`
 (braced variable standardization). x64 Release build and all 82 focused
 `ConfigFileTests`/`VideoFrameFormatterTests` pass. The matching Release
 executable/DLL pair has been deployed locally after backup and hash verification.
-The remaining review focus is live validation of the migrated configuration.
+The public reference, action-variable contract, sample configuration, and
+deployed configuration migration are complete. Any later configuration or
+action enhancement should be recorded as a new follow-up story.
 
 Merged to the current default integration branch `v1.1.015-beta` through
 https://github.com/billslack2/videoprocessor/pull/40 at merge commit
