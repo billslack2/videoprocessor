@@ -244,6 +244,33 @@ editor executable and its configuration safety boundary are validated.
   root section. The latest standalone x64 Release build and focused suite
   passed 43/43; the editor was reopened from that build for feedback.
 
+2026-08-06 ordered viewport and expanded safe-controls increment (uncommitted source work):
+
+- Replaced the one-off **Make default** action with drag-to-reorder for named
+  viewports. The editor moves whole source sections, retaining their comments,
+  rules, manual settings, and relative content. The first named viewport in
+  literal file order remains the fallback. A legacy root remains deliberately
+  non-reorderable until the user uses the explicit, explained **Name legacy**
+  migration action.
+- Changed anamorphic correction from an always-present ratio override to an
+  explicit **Enable anamorphic stretch** checkbox plus a ratio field. Leaving
+  it off removes the setting rather than inventing a false value; the disabled
+  field explains that the unconfigured default is `1:1`.
+- Expanded the General & output surface with the safe, production-schema
+  bounded controls: start minimized; quality, presentation, range, gamma,
+  SDR primaries, tone/gamut mapping, peak detection, up/downscalers,
+  debanding, dithering; and queue depth/lead/target frame counts. Finite
+  contracts use selectors; ratio and bounded numeric inputs remain text/numeric
+  fields. Device discovery, HDR calibration, shaders, actions, and arbitrary
+  rules remain manual/advanced rather than receiving unsafe free-form UI.
+- The standalone x64 Release build and focused `ConfigFileTests` suite passed
+  43/43. No deployment or active-configuration edit occurred.
+- A follow-up UI review kept the new surface progressive: basic presentation
+  and queue controls remain visible, while color/scaling controls live behind
+  a reversible **Show advanced rendering** action. All selectors now use the
+  normal compact field height. Reordering adds Ctrl+Up/Ctrl+Down, Escape
+  cancellation, and captured edge autoscroll alongside drag-and-drop.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
