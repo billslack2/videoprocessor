@@ -560,7 +560,20 @@ namespace DisplayTopologySession
 			statePath.c_str());
 
 		Topology targetOnly;
-		if (!BuildExactSinglePathTopology(all, *selected, targetOnly) ||
+		const DISPLAYCONFIG_PATH_INFO* activeSelected = nullptr;
+		for (const auto& path : current.paths)
+		{
+			if (path.targetInfo.id == selectedIdentity.id &&
+				path.targetInfo.adapterId.HighPart == selectedIdentity.adapter.HighPart &&
+				path.targetInfo.adapterId.LowPart == selectedIdentity.adapter.LowPart)
+			{
+				activeSelected = &path;
+				break;
+			}
+		}
+		const Topology& selectedTopology = activeSelected ? current : all;
+		const DISPLAYCONFIG_PATH_INFO& selectedPath = activeSelected ? *activeSelected : *selected;
+		if (!BuildExactSinglePathTopology(selectedTopology, selectedPath, targetOnly) ||
 			targetOnly.modes.empty())
 		{
 			error = "configured target has no complete display mode; refusing Windows best-mode fallback";
