@@ -2,11 +2,7 @@
 
 ## Status
 
-In progress. Reopened on August 5, 2026 after live validation of the
-total-reservoir experiment showed repeated readiness/display-transition resets,
-raw-overflow drops, and a post-reset PTS-lead spike. The experiment is being
-removed from deployment in favor of the current origin beta while this story
-is re-evaluated against the established working live path.
+Blocked. Reason: its hard.
 
 The creation audit found 98 canonical story files and 98 index rows through
 `VP-0083`, with no duplicate or missing IDs. Nine pre-existing index states do
