@@ -2,7 +2,11 @@
 #include "CppUnitTest.h"
 
 #include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
 #include <fstream>
+#include <numeric>
 
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
@@ -30,6 +34,191 @@ namespace Tests
 {
 	namespace
 	{
+		struct ConverterBenchmarkStatistics
+		{
+			double averageUs = 0.0;
+			double medianUs = 0.0;
+			double p95Us = 0.0;
+			double p99Us = 0.0;
+			double maximumUs = 0.0;
+			double framesPerSecond = 0.0;
+		};
+
+		struct ConverterBenchmarkComparison
+		{
+			ConverterBenchmarkStatistics hotBuffer;
+			ConverterBenchmarkStatistics rotatingBuffers;
+		};
+
+		double BenchmarkPercentile(const std::vector<double>& sortedSamples,
+			double percentile)
+		{
+			const size_t index = static_cast<size_t>(std::ceil(
+				percentile * static_cast<double>(sortedSamples.size()))) - 1;
+			return sortedSamples[std::min(index, sortedSamples.size() - 1)];
+		}
+
+		ConverterBenchmarkStatistics MeasureFormatterPerformance(
+			IVideoFrameFormatter& formatter,
+			const std::vector<VideoFrame>& frames,
+			std::vector<std::vector<BYTE>>& outputs,
+			size_t warmupFrames,
+			size_t measuredFrames)
+		{
+			for (size_t i = 0; i < warmupFrames; ++i)
+			{
+				const size_t bufferIndex = i % frames.size();
+				Assert::IsTrue(formatter.FormatVideoFrame(
+					frames[bufferIndex], outputs[bufferIndex].data()));
+			}
+
+			std::vector<double> samples;
+			samples.reserve(measuredFrames);
+			for (size_t i = 0; i < measuredFrames; ++i)
+			{
+				const size_t bufferIndex = i % frames.size();
+				const auto start = std::chrono::steady_clock::now();
+				const bool succeeded = formatter.FormatVideoFrame(
+					frames[bufferIndex], outputs[bufferIndex].data());
+				const auto finish = std::chrono::steady_clock::now();
+				Assert::IsTrue(succeeded);
+				samples.push_back(std::chrono::duration<double, std::micro>(
+					finish - start).count());
+			}
+
+			ConverterBenchmarkStatistics result;
+			result.averageUs = std::accumulate(samples.begin(), samples.end(), 0.0) /
+				static_cast<double>(samples.size());
+			std::sort(samples.begin(), samples.end());
+			result.medianUs = BenchmarkPercentile(samples, 0.50);
+			result.p95Us = BenchmarkPercentile(samples, 0.95);
+			result.p99Us = BenchmarkPercentile(samples, 0.99);
+			result.maximumUs = samples.back();
+			result.framesPerSecond = 1000000.0 / result.averageUs;
+			return result;
+		}
+
+		void FillBenchmarkPattern(std::vector<BYTE>& buffer, uint32_t seed)
+		{
+			uint32_t value = seed;
+			for (BYTE& sample : buffer)
+			{
+				value = value * 1664525U + 1013904223U;
+				sample = static_cast<BYTE>(value >> 24);
+			}
+		}
+
+		void LogBenchmarkResult(const wchar_t* converter,
+			const wchar_t* workload,
+			const ConverterBenchmarkStatistics& result)
+		{
+			wchar_t message[320];
+			swprintf_s(message,
+				L"PERF|%s|%s|avg=%.0f|median=%.0f|p95=%.0f|p99=%.0f|max=%.0f|fps=%.1f",
+				converter, workload, result.averageUs, result.medianUs,
+				result.p95Us, result.p99Us, result.maximumUs,
+				result.framesPerSecond);
+			Logger::WriteMessage(message);
+		}
+
+		double MedianBenchmarkValue(std::vector<double> values)
+		{
+			std::sort(values.begin(), values.end());
+			return values[values.size() / 2];
+		}
+
+		ConverterBenchmarkStatistics MedianBenchmarkStatistics(
+			const std::vector<ConverterBenchmarkStatistics>& runs)
+		{
+			std::vector<double> averages;
+			std::vector<double> medians;
+			std::vector<double> p95s;
+			std::vector<double> p99s;
+			std::vector<double> maxima;
+			for (const auto& run : runs)
+			{
+				averages.push_back(run.averageUs);
+				medians.push_back(run.medianUs);
+				p95s.push_back(run.p95Us);
+				p99s.push_back(run.p99Us);
+				maxima.push_back(run.maximumUs);
+			}
+
+			ConverterBenchmarkStatistics result;
+			result.averageUs = MedianBenchmarkValue(averages);
+			result.medianUs = MedianBenchmarkValue(medians);
+			result.p95Us = MedianBenchmarkValue(p95s);
+			result.p99Us = MedianBenchmarkValue(p99s);
+			result.maximumUs = MedianBenchmarkValue(maxima);
+			result.framesPerSecond = 1000000.0 / result.averageUs;
+			return result;
+		}
+
+		ConverterBenchmarkComparison CompareFormatterPerformanceOnce(
+			IVideoFrameFormatter& formatter,
+			size_t inputBytes,
+			size_t outputBytes)
+		{
+			std::vector<std::vector<BYTE>> hotInputs(1,
+				std::vector<BYTE>(inputBytes, 0));
+			std::vector<std::vector<BYTE>> hotOutputs(1,
+				std::vector<BYTE>(outputBytes, 0));
+			std::vector<VideoFrame> hotFrames;
+			hotFrames.emplace_back(hotInputs[0].data(), 1, 0, nullptr);
+
+			ConverterBenchmarkComparison comparison;
+			comparison.hotBuffer = MeasureFormatterPerformance(formatter,
+				hotFrames, hotOutputs, 5, 30);
+
+			constexpr size_t rotatingBufferCount = 4;
+			std::vector<std::vector<BYTE>> rotatingInputs;
+			std::vector<std::vector<BYTE>> rotatingOutputs;
+			std::vector<VideoFrame> rotatingFrames;
+			rotatingInputs.reserve(rotatingBufferCount);
+			rotatingOutputs.reserve(rotatingBufferCount);
+			rotatingFrames.reserve(rotatingBufferCount);
+			for (size_t i = 0; i < rotatingBufferCount; ++i)
+			{
+				rotatingInputs.emplace_back(inputBytes);
+				FillBenchmarkPattern(rotatingInputs.back(),
+					0x9e3779b9U ^ static_cast<uint32_t>(i * 0x45d9f3bU));
+				rotatingOutputs.emplace_back(outputBytes,
+					static_cast<BYTE>(0x31U + i));
+				rotatingFrames.emplace_back(rotatingInputs.back().data(),
+					static_cast<uint64_t>(i + 1), 0, nullptr);
+			}
+
+			comparison.rotatingBuffers = MeasureFormatterPerformance(formatter,
+				rotatingFrames, rotatingOutputs, 10, 120);
+			return comparison;
+		}
+
+		ConverterBenchmarkComparison CompareFormatterPerformance(
+			const wchar_t* converter,
+			IVideoFrameFormatter& formatter,
+			size_t inputBytes,
+			size_t outputBytes)
+		{
+			constexpr size_t runCount = 3;
+			std::vector<ConverterBenchmarkStatistics> hotRuns;
+			std::vector<ConverterBenchmarkStatistics> rotatingRuns;
+			for (size_t run = 0; run < runCount; ++run)
+			{
+				const auto result = CompareFormatterPerformanceOnce(formatter,
+					inputBytes, outputBytes);
+				hotRuns.push_back(result.hotBuffer);
+				rotatingRuns.push_back(result.rotatingBuffers);
+			}
+
+			ConverterBenchmarkComparison result;
+			result.hotBuffer = MedianBenchmarkStatistics(hotRuns);
+			result.rotatingBuffers = MedianBenchmarkStatistics(rotatingRuns);
+			LogBenchmarkResult(converter, L"hot-zero-30-median3", result.hotBuffer);
+			LogBenchmarkResult(converter, L"rotating-pattern-120-median3",
+				result.rotatingBuffers);
+			return result;
+		}
+
 		void WriteR10Pixel(BYTE* destination, VideoFrameEncoding encoding,
 			uint16_t red, uint16_t green, uint16_t blue)
 		{
@@ -838,6 +1027,83 @@ namespace Tests
 			Logger::WriteMessage(message);
 			Assert::IsTrue(averageUs < 16667.0,
 				L"Average v210 conversion time exceeds one 60 fps frame period");
+		}
+
+		TEST_METHOD(DeckLinkConvertersSustained4K60PerformanceComparison)
+		{
+			bool allAveragesMeet60Fps = true;
+			bool allP95sMeet60Fps = true;
+			const auto recordResult = [&](const ConverterBenchmarkComparison& result)
+			{
+				allAveragesMeet60Fps = allAveragesMeet60Fps &&
+					result.rotatingBuffers.averageUs < 16667.0;
+				allP95sMeet60Fps = allP95sMeet60Fps &&
+					result.rotatingBuffers.p95Us < 16667.0;
+			};
+
+			{
+				CV210toP010VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					3840, 2160, false, 60000, 1001);
+				state->videoFrameEncoding = VideoFrameEncoding::V210;
+				formatter.OnVideoState(state);
+				recordResult(CompareFormatterPerformance(L"v210-to-P010", formatter,
+					state->BytesPerFrame(), formatter.GetOutFrameSize()));
+			}
+
+			{
+				CR210toRGB48VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					3840, 2160, false, 60000, 1001);
+				state->videoFrameEncoding = VideoFrameEncoding::R210;
+				formatter.OnVideoState(state);
+				recordResult(CompareFormatterPerformance(L"r210-to-RGB48", formatter,
+					state->BytesPerFrame(), formatter.GetOutFrameSize()));
+			}
+
+			{
+				CR12BtoRGB48VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					3840, 2160, false, 60000, 1001);
+				state->videoFrameEncoding = VideoFrameEncoding::R12B;
+				formatter.OnVideoState(state);
+				recordResult(CompareFormatterPerformance(L"R12B-to-RGB48", formatter,
+					state->BytesPerFrame(), formatter.GetOutFrameSize()));
+			}
+
+			const VideoFrameEncoding packedRgbEncodings[] = {
+				VideoFrameEncoding::R210,
+				VideoFrameEncoding::R10b,
+				VideoFrameEncoding::R10l,
+				VideoFrameEncoding::R12B,
+				VideoFrameEncoding::R12L
+			};
+			for (const auto encoding : packedRgbEncodings)
+			{
+				CDeckLinkRGBToP010VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					3840, 2160, false, 60000, 1001);
+				state->videoFrameEncoding = encoding;
+				state->colorspace = ColorSpace::BT_2020;
+				formatter.OnVideoState(state);
+				std::wstring converterName = ToString(encoding);
+				converterName += L"-to-P010";
+				recordResult(CompareFormatterPerformance(converterName.c_str(), formatter,
+					state->BytesPerFrame(), formatter.GetOutFrameSize()));
+			}
+
+			Assert::IsTrue(allAveragesMeet60Fps,
+				L"A sustained converter average exceeds one 60 fps frame period");
+			Assert::IsTrue(allP95sMeet60Fps,
+				L"A sustained converter p95 exceeds one 60 fps frame period");
 		}
 
 		TEST_METHOD(P010ConvertersUseOneVerticalChromaDownsamplingPolicy)

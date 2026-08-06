@@ -124,8 +124,13 @@ coefficient tables.
 - Native sparse RGB analysis uses the same limited-range reference conversion
   as displayed R10/r210 content and normalized R12 downconversion.
 
-The clean x64 Release suite passes 633/633 tests. Representative 4K averages
-on the development system are approximately 2.1 ms for v210-to-P010, 4.4 ms
-for r210-to-RGB48, 5.8 ms for R12B-to-RGB48, 8.6-9.0 ms for limited packed
-RGB-to-P010, and 10.0-11.0 ms for R12-to-P010. The performance smoke tests
-require each average to remain below the 16.67 ms 60 fps frame period.
+The clean x64 Release suite passes 634/634 tests. A sustained performance test
+now compares the former 30-frame hot-zero-buffer workload with three runs of
+120 measured frames rotating across four patterned 4K buffers. The regression
+gate uses the median-of-three average and p95; both must remain below the
+16.67 ms 60 fps frame period. Median sustained averages on the development
+system were 2.2 ms for v210-to-P010, 4.6 ms for r210-to-RGB48, 5.6 ms for
+R12B-to-RGB48, 11.0-12.7 ms for limited packed RGB-to-P010, and 9.8-11.1 ms
+for R12-to-P010. The patterned rotating workload exposed a 20-39% cost hidden
+by the hot-buffer test for R10b/R10l, while all median sustained p95 values
+remained below 14.4 ms.
