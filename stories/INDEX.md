@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0094`
-- Next root story number: `VP-0095`
-- Total indexed items: 108
+- Last assigned root story: `VP-0096`
+- Next root story number: `VP-0097`
+- Total indexed items: 110
 
 ## Story locations
 
@@ -125,6 +125,8 @@ they must not contain requirements that are absent from this file.
 | VP-0092 | Backlog | Discover madVR shortcuts and control its native statistics OSD |
 | VP-0093 | Done | Prevent Alpha SDR BT.2020 output-contract regressions |
 | VP-0094 | In progress | Select the configured fullscreen monitor by friendly name |
+| VP-0095 | In progress | Target-only fullscreen display session and recovery |
+| VP-0096 | Backlog | Establish range-correct video-frame conversion contracts |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
