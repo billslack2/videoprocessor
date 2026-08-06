@@ -220,7 +220,7 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
   explicitly overridden. MPC/Generic forced P010 covers every supported input.
 - Related native sparse-analysis math was corrected for limited 10-bit RGB and
   normalized R12, with reference-vector tests.
-- Clean x64 Release build: passed. Complete test suite: 635/635 passed.
+- Clean x64 Release rebuild: passed. Complete test suite: 639/639 passed.
 - The performance regression test now uses median-of-three runs, each with 120
   measured frames rotating across four patterned 4K buffers, and gates both
   average and p95 below 16.67 ms. AVX2 limited packed RGB-to-P010 now averages
@@ -228,3 +228,19 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
   11.0-12.7 ms before vectorization. Scalar and AVX2 outputs are bit-exact for
   BT.709/BT.2020 reference values, randomized full-code-range inputs, explicit
   excursions, scalar tails, and threaded segment boundaries.
+- Sustained coverage now includes every CPU formatter route selected by Alpha,
+  madVR/GenericHDR, MPC, and Generic DirectShow: P010, P210, RGB48, and no-op
+  copy. New byte-exact AVX2 paths reduce v210-to-P210 from about 8.9 ms to
+  3.30 ms and UYVY/HDYC-to-P210 from 8.0-8.4 ms to 2.66-2.78 ms.
+- ARGB/BGRA-to-P010 combines byte-exact AVX2 conversion with reusable workers
+  at 1080p and above. Sustained rotating 4K averages fell from 38.2-38.3 ms to
+  2.73-2.78 ms, with 3.06-3.07 ms p95. Worker creation is outside the frame
+  path, and a threaded 1080p BT.2020 comparison matches scalar output exactly.
+- R12B/R12L-to-P010 now decodes each complete eight-pixel C4 block once before
+  its exact lookup and AVX2 matrix conversion. Sustained 4K averages are
+  4.57/4.28 ms with 5.41/4.80 ms p95, down from 9.9-10.4 ms. Threaded R12B
+  BT.2020 output is byte-identical to scalar at the production split boundary.
+- RGB48 conversion is the remaining highest-cost family (worst sustained
+  average 5.94 ms, p95 7.66 ms), but it is memory-bandwidth-heavy and already
+  has more than 2x 4K60 headroom. Retaining its two-worker cap avoids spending
+  additional capture CPU for low practical latency benefit.
