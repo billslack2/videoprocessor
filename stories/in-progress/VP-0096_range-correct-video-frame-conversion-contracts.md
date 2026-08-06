@@ -9,6 +9,11 @@ GitHub default branch `v1.1.016-beta` at `b6e2892`. Initial work is limited to
 documentation review, route characterization, and tests that expose current
 assumptions; no conversion policy change has yet been selected.
 
+DeckLink documentation and independent engineering review are complete for
+the initial matrix. An x64 Release build succeeds. The focused formatter run
+has 47 passing tests and 7 intentionally failing characterization tests; the
+failures are recorded below and are not yet production fixes.
+
 ## User story
 
 As a VideoProcessor user capturing limited- or full-range RGB and YUV sources,
@@ -27,22 +32,30 @@ Forum review of `CR12BtoRGB48VideoFrameFormatter` challenged this operation:
 return static_cast<uint16_t>((value << 4) | (value >> 8));
 ```
 
-Bit replication is a full-code-range expansion. It is not neutral padding for
-a limited-range signal. If a 12-bit limited-range code is meant to retain its
-numeric video level in a 16-bit container, `value << 4` produces the exact
-mapping: nominal black/white `0x100/0xEB0` become `0x1000/0xEB00`. The current
-replication produces `0x1001/0xEB0E`.
+The bundled DeckLink SDK declaration resolves the premise: R12B and R12L are
+explicitly full range 0-4095. Bit replication is therefore directionally
+correct full-range precision scaling, maps both endpoints exactly, and is much
+more accurate than `value << 4`. The reported `0x1001/0xEB0E` results are not a
+limited-range padding defect. Bit replication is still an approximation to
+exact `round(value * 65535 / 4095)` for intermediate codes.
+
+The analogous 10-bit paths contain the real range error. The same SDK
+declaration defines r210 as SMPTE-range RGB 64-960 and R10b/R10l as SMPTE-range
+RGB 64-940. VP currently treats those three formats as full range in multiple
+converter and renderer paths.
 
 Review of `b6e2892` found related assumptions that must be decided together:
 
 | Path | Current behavior | Required review |
 | --- | --- | --- |
-| `CR12BtoRGB48VideoFrameFormatter` | Replicates 12-bit high bits into the low four bits | Establish captured R12B range and the RGB48 consumer contract; preserve limited codes or scale full-range values accordingly |
-| `CR210toRGB48VideoFrameFormatter` | Replicates 10-bit high bits into the low six bits | Apply the same decision to r210; do not let the two RGB48 paths disagree |
+| `CR12BtoRGB48VideoFrameFormatter` | Correctly performs full-range bit replication, but formerly exposed no output contract | Preserve full-range expansion and declare a full-range 16-bit RGB48 contract |
+| `CR210toRGB48VideoFrameFormatter` | Replicates 10-bit high bits into the low six bits as though r210 were full range | Select explicit limited-code preservation or deliberate range expansion, then match RGB48 metadata to that operation |
 | `CDeckLinkRGBToP010VideoFrameFormatter` | Treats R210/R10b/R10l/R12B/R12L as full-range RGB, rounds 12-bit components to 10 bits, performs a full-range RGB-to-YUV matrix, and declares full-range P010 output | Prove or correct the input-range assumption, 12-to-10 rounding, matrix/offset, clipping, legal-excursion, and output-signaling behavior for every packed RGB encoding |
 | `CARGBtoP010VideoFrameFormatter` | Maps 8-bit RGB endpoints to 10-bit full range and declares full-range P010 | Verify that ARGB/BGRA ingress is contractually full range and keep it distinct from limited-range packed capture RGB |
 | UYVY/v210 to P010/P210 formatters | Shift samples into the high bits and declare limited range | Use these as preservation controls; verify scalar/SIMD and special-width paths agree and do not clamp legal excursions |
 | No-op and native Alpha ingress paths | May avoid a CPU conversion while still relying on range metadata | Verify that bypassing a formatter preserves the same input-range authority and renderer interpretation |
+| Direct R12B media type | Reports `36 / 8`, which evaluates to 4 bits per pixel | Report the documented 36-bit packed format accurately |
+| UYVY/v210 to P010 | UYVY averages chroma vertically; v210 selects the even row | Choose one explicit 4:2:2-to-4:2:0 siting/filter policy and test all implementations |
 
 `VideoState` currently carries encoding, EOTF, and colorspace but no captured
 sample-range field. `VideoFrameFormatterOutputContract` describes only
@@ -73,10 +86,10 @@ the input and downstream interpretation are first made unambiguous.
    from capture/configuration, but it must not be guessed from frame pixels,
    EOTF, colorspace, resolution, or the user's renderer-output range setting.
    Unknown range must fail safely with a documented default and diagnostic.
-4. Correct `CR12BtoRGB48VideoFrameFormatter` and
-   `CR210toRGB48VideoFrameFormatter` to implement the chosen limited/full
-   policy. Add truthful output contracts and ensure the negotiated RGB48 media
-   type and DirectShow nominal-range signaling agree with the bytes written.
+4. Preserve `CR12BtoRGB48VideoFrameFormatter` full-range expansion and add its
+   truthful output contract. Correct `CR210toRGB48VideoFrameFormatter` to
+   implement the chosen limited-range policy. Ensure the negotiated RGB48
+   media type and DirectShow nominal-range signaling agree with the bytes.
 5. Correct any equivalent defect found in
    `CDeckLinkRGBToP010VideoFrameFormatter`, including R12B/R12L unpacking,
    12-to-10 conversion, RGB-to-YUV coefficients/offsets, clipping, and output
@@ -103,9 +116,9 @@ the input and downstream interpretation are first made unambiguous.
   include zero, full-code maximum, midpoint, nominal limited black/white,
   chroma center/minimum/maximum where applicable, below-black/above-white
   excursions, and adjacent values that expose rounding differences.
-- Limited-range preservation tests prove exact mappings such as 12-to-16
-  `code << 4`, 10-to-16 `code << 6`, and existing 8/10-bit P010/P210 container
-  alignment wherever preservation is the selected contract.
+- Limited-range preservation tests prove exact mappings such as r210 10-to-16
+  `code << 6` and existing 8/10-bit P010/P210 container alignment wherever
+  preservation is the selected contract.
 - Full-range scaling tests prove exact endpoints, monotonicity, bounded error,
   and the documented rounding rule across the entire 8-, 10-, or 12-bit input
   domain. Endpoint-only black/white tests are insufficient.
@@ -129,9 +142,9 @@ the input and downstream interpretation are first made unambiguous.
 - The range of every supported formatter input and output is explicit,
   testable, and propagated to its consumer; no active route depends on an
   undocumented full-range assumption or an unknown RGB48 output contract.
-- Limited-range R12B and r210 samples, if supported by the established ingress
-  contract, retain their exact nominal codes during precision/container
-  widening rather than receiving replicated low bits.
+- Full-range R12B/R12L retain full-range scaling. Limited-range r210/R10b/R10l
+  receive explicit input normalization or code-preserving widening rather than
+  being silently processed as full range.
 - Full-range samples, when selected by the established contract, map endpoints
   exactly with a documented monotonic scaling rule.
 - Packed RGB-to-P010 produces the intended nominal range with correct matrix,
@@ -139,9 +152,9 @@ the input and downstream interpretation are first made unambiguous.
   signaling for every supported packed RGB encoding.
 - Existing UYVY/v210 limited-range preservation remains byte-exact unless a
   test and authoritative contract prove a current defect.
-- Tests detect the original `0x100 -> 0x1001` / `0xEB0 -> 0xEB0E` R12B issue
-  and the analogous 10-bit behavior; black/white endpoint tests alone cannot
-  pass the story.
+- Tests guard the correct R12B mappings `0x100 -> 0x1001` and
+  `0xEB0 -> 0xEB0E`, while detecting the incorrect analogous behavior in
+  limited-range r210; black/white endpoint tests alone cannot pass the story.
 - Diagnostics allow a captured frame's range decision to be traced from
   DeckLink ingress through formatter output to renderer interpretation.
 
@@ -167,3 +180,21 @@ the input and downstream interpretation are first made unambiguous.
 - `src/VideoProcessor-Lib/VideoState.h`
 - `src/VideoProcessor-Lib/microsoft_directshow/video_renderers/`
 - `src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp`
+- `docs/VP-0096_RANGE_CONVERSION_TEST_PLAN.md`
+
+## Initial red-test inventory (2026-08-06)
+
+The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
+
+1. `CDeckLinkR12BToP010UsesNormalizedFullRangeRounding`: current shift/clamp
+   disagrees with normalized 12-to-10 rounding.
+2. `CDeckLinkLimitedRgbToP010MatchesBT709ReferenceCodes`: current 10-bit packed
+   RGB conversion treats limited inputs as full-range values.
+3. `P010ConvertersUseOneVerticalChromaDownsamplingPolicy`: v210 selects even-row
+   chroma while UYVY uses a rounded two-row average.
+4. `CR210toRGB48VideoFrameFormatterGoldenTest`: r210 is widened using full-range
+   replication rather than the test's candidate code-preserving alignment.
+5. `DeckLinkR12BDirectMediaTypeUsesThirtySixBitsPerPixel`: returns 4, not 36.
+6. `DeckLinkR210Rgb48ContractIsLimitedRange`: RGB48 output contract is unknown.
+7. `DeckLinkPackedRgbFormatterContractsMatchDocumentedRanges`: the shared P010
+   formatter always declares full range, including r210/R10b/R10l.
