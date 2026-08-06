@@ -126,3 +126,6 @@ pre-session display topology when VP is done.
 - Rebased cleanly onto the later `origin/v1.1.016-beta` commit `4d1d3bc`,
   which includes subtitle translation and recognizes that setting. The rebased
   x64 Release build passed the expanded native suite: 619 of 619.
+- Deployed the rebased Release EXE/renderer pair on 2026-08-05. The deployed
+  build reports `ge9251a2`; its no-op `/fix_display` check exited 0, then the
+  normal launch persisted recovery state and activated `EPSON PJ` target-only.
