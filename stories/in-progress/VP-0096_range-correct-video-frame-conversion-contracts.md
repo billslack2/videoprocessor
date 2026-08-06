@@ -289,3 +289,10 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
   exercised with a generated binary fixture. The clean x64 Release suite passes
   651/651. Final rotating 4K HDYC average/p95 was 2.34/2.65 ms to P010 and
   2.77/3.28 ms to P210; all recorded runs remained within the 60 fps budget.
+- Draft PR [#45](https://github.com/billslack2/videoprocessor/pull/45)
+  targets the latest `v1.1.016-beta` tip (`b6e2892`) from
+  `codex/vp-0096-range-conversion-tests`; it remains open, draft, and unmerged.
+  Final clean-version x64 Release build and 651/651 suite passed. The final
+  sustained rotating 4K run's slowest path was R12B-to-P010 at 5.27 ms average
+  / 5.60 ms p95, retaining nearly 3x headroom against the 16.67 ms 60 fps
+  frame period.
