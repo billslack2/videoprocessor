@@ -219,7 +219,7 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
   explicitly overridden. MPC/Generic forced P010 covers every supported input.
 - Related native sparse-analysis math was corrected for limited 10-bit RGB and
   normalized R12, with reference-vector tests.
-- Clean x64 Release rebuild: passed. Complete test suite: 643/643 passed.
+- Clean x64 Release rebuild: passed. Complete test suite: 647/647 passed.
 - The performance regression test now uses median-of-three runs, each with 120
   measured frames rotating across four patterned 4K buffers, and gates both
   average and p95 below 16.67 ms. AVX2 limited packed RGB-to-P010 now averages
@@ -262,3 +262,13 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
   now uses the common stride-checked tail implementation; AUTO, Standard,
   Optimized, and SIMD match the independent oracle and each other. Alpha input
   diagnostics likewise inspect all 1280 active columns.
+- Live DeckLink RGB packing selection is now exposed through startup-only
+  `[decklink]` preferences for 8-bit ARGB/BGRA, 10-bit r210/R10b/R10l, and
+  12-bit R12B/R12L. AUTO preserves the established ARGB/r210/R12B defaults.
+  Alternate choices are validated with `IDeckLinkInput::DoesSupportVideoMode`
+  for the active connection/display mode and safely fall back to the canonical
+  packing with requested/effective diagnostics when unsupported.
+- Selection-policy tests cover all variants, defaults, invalid cross-depth
+  values, supported alternatives, and device-rejection fallback. Selection is
+  outside the per-frame path. Final rotating 4K average/p95 results were BGRA
+  2.73/3.14 ms, R10b 2.60/2.99 ms, R10l 2.58/2.89 ms, and R12L 3.96/4.63 ms.
