@@ -124,7 +124,7 @@ coefficient tables.
 - Native sparse RGB analysis uses the same limited-range reference conversion
   as displayed R10/r210 content and normalized R12 downconversion.
 
-The clean x64 Release suite passes 647/647 tests. A sustained performance test
+The clean x64 Release suite passes 648/648 tests. A sustained performance test
 now compares the former 30-frame hot-zero-buffer workload with three runs of
 120 measured frames rotating across four patterned 4K buffers. The regression
 gate uses the median-of-three average and p95; both must remain below the
@@ -167,7 +167,7 @@ routes was:
 | r210 / R12B to RGB48 | 3.70 / 4.13 ms | 4.01 / 4.68 ms |
 | v210 no-op delivery copy | 1.40 ms | 1.61 ms |
 
-When the benchmark ran inside the complete 647-test suite, the most conservative
+When the benchmark ran inside the complete 648-test suite, the most conservative
 RGB48 p95 was 4.79 ms and every other conversion p95 remained below 5.39 ms.
 This loaded-system run still leaves more than 2x headroom against the 16.67 ms
 4K60 frame period.
@@ -233,3 +233,20 @@ and capability policy adds no per-frame conversion stage:
 | R10b to P010 | 2.60 ms | 2.99 ms |
 | R10l to P010 | 2.58 ms | 2.89 ms |
 | R12L to P010 | 3.96 ms | 4.63 ms |
+
+### HDYC / Rec.709 classification
+
+DeckLink exposes one `bmdFormat8BitYUV` byte packing for 8-bit 4:2:2, while
+VP's DirectShow surface distinguishes UYVY and HDYC semantics. Translation now
+uses the already-resolved DeckLink colorspace: Rec.709 becomes HDYC and receives
+`MEDIASUBTYPE_HDYC`; Rec.601, BT.2020, and unknown matrices remain UYVY and
+continue carrying their separate colorspace metadata. This changes only
+format-state construction and media negotiation, not captured bytes or the
+per-frame converter.
+
+Tests prove the colorspace classification, media subtype, renderer-ingress
+coverage, and identical UYVY/HDYC conversion behavior across the standard
+resolution matrix. Dedicated pattern hardware is not required for these
+software contracts. Physical validation remains useful to prove that a given
+driver/device reports the expected colorspace and that downstream renderers
+honor the negotiated subtype and extended color metadata.

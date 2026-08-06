@@ -312,8 +312,11 @@ VideoFrameEncoding Translate(BMDPixelFormat bmdPixelFormat, ColorSpace colorSpac
 	switch (bmdPixelFormat)
 	{
 	case bmdFormat8BitYUV:
-		// Note this can also be HDYC depending on colorspace (REC709), not implemented
-		return VideoFrameEncoding::UYVY;
+		// DeckLink uses the same 8-bit 4:2:2 byte packing for SD and HD.
+		// Preserve Rec.709 semantics through the HDYC DirectShow subtype; other
+		// matrices remain UYVY and continue carrying colorspace separately.
+		return colorSpace == ColorSpace::REC_709 ?
+			VideoFrameEncoding::HDYC : VideoFrameEncoding::UYVY;
 
 	case bmdFormat10BitYUV:
 		return VideoFrameEncoding::V210;

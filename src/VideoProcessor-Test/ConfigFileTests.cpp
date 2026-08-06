@@ -8,6 +8,8 @@
 #include <MainConfigSchema.h>
 #include <QueueConfiguration.h>
 #include <blackmagic_decklink/BlackMagicDeckLinkTranslate.h>
+#include <guid.h>
+#include <microsoft_directshow/DirectShowTranslations.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
 #include <microsoft_directshow/video_renderers/DirectShowVideoRenderers.h>
 #include <RendererConfigView.h>
@@ -198,6 +200,27 @@ namespace VideoProcessorTest
 			Assert::AreEqual(540, NoUiLayout::DefaultClientHeight);
 			Assert::AreEqual(320, NoUiLayout::MinimumClientWidth);
 			Assert::AreEqual(180, NoUiLayout::MinimumClientHeight);
+		}
+
+		TEST_METHOD(DeckLinkEightBitYuvUsesHdycOnlyForRec709)
+		{
+			Assert::AreEqual(static_cast<int>(VideoFrameEncoding::HDYC),
+				static_cast<int>(Translate(
+					bmdFormat8BitYUV, ColorSpace::REC_709)));
+			for (const ColorSpace colorSpace : {
+				ColorSpace::UNKNOWN, ColorSpace::REC_601_525,
+				ColorSpace::REC_601_576, ColorSpace::REC_601_625,
+				ColorSpace::BT_2020 })
+			{
+				Assert::AreEqual(static_cast<int>(VideoFrameEncoding::UYVY),
+					static_cast<int>(Translate(bmdFormat8BitYUV, colorSpace)));
+			}
+			Assert::IsTrue(IsEqualGUID(
+				TranslateToMediaSubType(VideoFrameEncoding::HDYC),
+				MEDIASUBTYPE_HDYC));
+			Assert::IsTrue(IsEqualGUID(
+				TranslateToMediaSubType(VideoFrameEncoding::UYVY),
+				MEDIASUBTYPE_UYVY));
 		}
 
 		TEST_METHOD(DeckLinkCapturePackingDefaultsRemainCanonical)
