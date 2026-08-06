@@ -7,6 +7,7 @@
 
 #include <pch.h>
 
+#include <array>
 #include <limits>
 
 #include "CDeckLinkRGBToP010VideoFrameFormatter.h"
@@ -15,6 +16,19 @@
 namespace
 {
 	struct RGBToYuvCoefficients
+	{
+		int32_t yR;
+		int32_t yG;
+		int32_t yB;
+		int32_t cbR;
+		int32_t cbG;
+		int32_t cbB;
+		int32_t crR;
+		int32_t crG;
+		int32_t crB;
+	};
+
+	struct LimitedRGBToYuvCoefficients
 	{
 		int32_t yR;
 		int32_t yG;
@@ -39,9 +53,62 @@ namespace
 		32768, -30134, -2634
 	};
 
+	// Q20 coefficients map DeckLink's documented limited RGB intervals to
+	// limited P010: Y 64-940 and Cb/Cr 64-960. r210 uses a distinct 64-960
+	// input span; R10b/R10l use 64-940.
+	constexpr LimitedRGBToYuvCoefficients BT709_R10 = {
+		222927, 749942, 75707,
+		-122880, -413378, 536258,
+		536258, -487086, -49172
+	};
+	constexpr LimitedRGBToYuvCoefficients BT709_R210 = {
+		217951, 733202, 74017,
+		-120138, -404150, 524288,
+		524288, -476214, -48074
+	};
+	constexpr LimitedRGBToYuvCoefficients BT2020_R10 = {
+		275461, 710935, 62181,
+		-149755, -386503, 536258,
+		536258, -493128, -43130
+	};
+	constexpr LimitedRGBToYuvCoefficients BT2020_R210 = {
+		269312, 695065, 60793,
+		-146413, -377875, 524288,
+		524288, -482120, -42168
+	};
+
+	inline int32_t RoundQ20(int64_t value) noexcept
+	{
+		constexpr int64_t half = 1LL << 19;
+		return value >= 0 ?
+			static_cast<int32_t>((value + half) >> 20) :
+			-static_cast<int32_t>(((-value) + half) >> 20);
+	}
+
 	inline uint16_t Clamp10(int32_t value) noexcept
 	{
 		return static_cast<uint16_t>(value < 0 ? 0 : value > 1023 ? 1023 : value);
+	}
+
+	std::array<uint16_t, 4096> BuildScale12To10Table()
+	{
+		std::array<uint16_t, 4096> result{};
+		for (uint32_t value = 0; value < result.size(); ++value)
+		{
+			result[value] = static_cast<uint16_t>(
+				(value * 1023U + 2047U) / 4095U);
+		}
+		return result;
+	}
+
+	const std::array<uint16_t, 4096> SCALE_12_TO_10 =
+		BuildScale12To10Table();
+
+	inline uint16_t Scale12To10(uint16_t value) noexcept
+	{
+		// The immutable 8 KiB table retains exact normalized round-to-nearest
+		// while avoiding six constant divisions for every pair of R12 pixels.
+		return SCALE_12_TO_10[value];
 	}
 
 	inline uint32_t ReadLittleEndian32(const uint8_t* source) noexcept
@@ -119,6 +186,20 @@ void CDeckLinkRGBToP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& video
 		throw std::runtime_error("Packed RGB input row is smaller than the frame width");
 	m_outFrameSize = static_cast<LONG>(outputSize);
 	m_useBT2020 = videoState->colorspace == ColorSpace::BT_2020;
+}
+
+
+VideoFrameFormatterOutputContract
+CDeckLinkRGBToP010VideoFrameFormatter::GetOutputContract() const
+{
+	if (m_encoding == VideoFrameEncoding::R12B ||
+		m_encoding == VideoFrameEncoding::R12L)
+		return { VideoFrameSampleRange::FULL, 10, 6 };
+	if (m_encoding == VideoFrameEncoding::R210 ||
+		m_encoding == VideoFrameEncoding::R10b ||
+		m_encoding == VideoFrameEncoding::R10l)
+		return { VideoFrameSampleRange::LIMITED, 10, 6 };
+	return {};
 }
 
 
@@ -223,13 +304,12 @@ void CDeckLinkRGBToP010VideoFrameFormatter::ReadPixelPair(
 		second.g = static_cast<uint16_t>(byte6 | ((byte7 & 0x0F) << 8));
 		second.b = static_cast<uint16_t>((byte7 >> 4) | (byte8 << 4));
 
-		// Round 12-bit full-range components to the 10-bit domain used by P010.
-		first.r = Clamp10((first.r + 2) >> 2);
-		first.g = Clamp10((first.g + 2) >> 2);
-		first.b = Clamp10((first.b + 2) >> 2);
-		second.r = Clamp10((second.r + 2) >> 2);
-		second.g = Clamp10((second.g + 2) >> 2);
-		second.b = Clamp10((second.b + 2) >> 2);
+		first.r = Scale12To10(first.r);
+		first.g = Scale12To10(first.g);
+		first.b = Scale12To10(first.b);
+		second.r = Scale12To10(second.r);
+		second.g = Scale12To10(second.g);
+		second.b = Scale12To10(second.b);
 		return;
 	}
 
@@ -263,6 +343,12 @@ void CDeckLinkRGBToP010VideoFrameFormatter::ConvertRowPairs(
 	uint32_t firstPair, uint32_t pairCount) const
 {
 	const RGBToYuvCoefficients& coefficients = m_useBT2020 ? BT2020 : BT709;
+	const bool limitedInput = m_encoding == VideoFrameEncoding::R210 ||
+		m_encoding == VideoFrameEncoding::R10b ||
+		m_encoding == VideoFrameEncoding::R10l;
+	const LimitedRGBToYuvCoefficients& limitedCoefficients = m_useBT2020 ?
+		(m_encoding == VideoFrameEncoding::R210 ? BT2020_R210 : BT2020_R10) :
+		(m_encoding == VideoFrameEncoding::R210 ? BT709_R210 : BT709_R10);
 	const bool r12b = m_encoding == VideoFrameEncoding::R12B;
 	const uint32_t bytesPerPixelPair =
 		(m_encoding == VideoFrameEncoding::R12B || m_encoding == VideoFrameEncoding::R12L) ? 9U : 8U;
@@ -283,8 +369,19 @@ void CDeckLinkRGBToP010VideoFrameFormatter::ConvertRowPairs(
 			ReadPixelPair(source0, x / 2U, p00, p01);
 			ReadPixelPair(source1, x / 2U, p10, p11);
 
-			auto calculateY = [&coefficients](const RGB10& pixel) noexcept
+			auto calculateY = [&coefficients, &limitedCoefficients,
+				limitedInput](const RGB10& pixel) noexcept
 			{
+				if (limitedInput)
+				{
+					const int32_t r = static_cast<int32_t>(pixel.r) - 64;
+					const int32_t g = static_cast<int32_t>(pixel.g) - 64;
+					const int32_t b = static_cast<int32_t>(pixel.b) - 64;
+					return Clamp10(64 + RoundQ20(
+						static_cast<int64_t>(limitedCoefficients.yR) * r +
+						static_cast<int64_t>(limitedCoefficients.yG) * g +
+						static_cast<int64_t>(limitedCoefficients.yB) * b));
+				}
 				return Clamp10((coefficients.yR * pixel.r + coefficients.yG * pixel.g +
 					coefficients.yB * pixel.b + 32768) >> 16);
 			};
@@ -296,10 +393,29 @@ void CDeckLinkRGBToP010VideoFrameFormatter::ConvertRowPairs(
 			const int32_t r = (p00.r + p01.r + p10.r + p11.r + 2) >> 2;
 			const int32_t g = (p00.g + p01.g + p10.g + p11.g + 2) >> 2;
 			const int32_t b = (p00.b + p01.b + p10.b + p11.b + 2) >> 2;
-			const int32_t cb = ((coefficients.cbR * r + coefficients.cbG * g +
-				coefficients.cbB * b + 32768) >> 16) + 512;
-			const int32_t cr = ((coefficients.crR * r + coefficients.crG * g +
-				coefficients.crB * b + 32768) >> 16) + 512;
+			int32_t cb;
+			int32_t cr;
+			if (limitedInput)
+			{
+				const int32_t rOffset = r - 64;
+				const int32_t gOffset = g - 64;
+				const int32_t bOffset = b - 64;
+				cb = 512 + RoundQ20(
+					static_cast<int64_t>(limitedCoefficients.cbR) * rOffset +
+					static_cast<int64_t>(limitedCoefficients.cbG) * gOffset +
+					static_cast<int64_t>(limitedCoefficients.cbB) * bOffset);
+				cr = 512 + RoundQ20(
+					static_cast<int64_t>(limitedCoefficients.crR) * rOffset +
+					static_cast<int64_t>(limitedCoefficients.crG) * gOffset +
+					static_cast<int64_t>(limitedCoefficients.crB) * bOffset);
+			}
+			else
+			{
+				cb = ((coefficients.cbR * r + coefficients.cbG * g +
+					coefficients.cbB * b + 32768) >> 16) + 512;
+				cr = ((coefficients.crR * r + coefficients.crG * g +
+					coefficients.crB * b + 32768) >> 16) + 512;
+			}
 			uv[0] = static_cast<uint16_t>(Clamp10(cb) << 6);
 			uv[1] = static_cast<uint16_t>(Clamp10(cr) << 6);
 

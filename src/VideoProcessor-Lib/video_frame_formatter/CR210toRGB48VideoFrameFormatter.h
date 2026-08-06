@@ -25,6 +25,12 @@ public:
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
 	LONG GetOutFrameSize() const override;
+	VideoFrameFormatterOutputContract GetOutputContract() const override
+	{
+		// DeckLink r210 carries SMPTE-range 10-bit RGB codes 64-960. RGB48
+		// preserves those codes in the most-significant bits of each word.
+		return { VideoFrameSampleRange::LIMITED, 10, 6 };
+	}
 	void GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override;
 
 private:

@@ -5,6 +5,7 @@
 #include <SceneDetector.h>
 #include "CppUnitTest.h"
 
+#include <array>
 #include <vector>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -237,6 +238,49 @@ namespace Tests
 			Assert::IsTrue(bigSample.luma > 200);
 		}
 
+		TEST_METHOD(PackedTenBitLimitedAnalysisMatchesRendererReferenceCodes)
+		{
+			auto bytes = [](uint32_t word, bool littleEndian)
+			{
+				std::array<uint8_t, 4> result{};
+				for (size_t index = 0; index < result.size(); ++index)
+				{
+					const size_t shiftIndex = littleEndian ? index : 3 - index;
+					result[index] = static_cast<uint8_t>(word >> (shiftIndex * 8));
+				}
+				return result;
+			};
+
+			const uint32_t r10Word = (940U << 22) | (64U << 12) | (64U << 2);
+			const uint32_t r210Word = (960U << 20) | (64U << 10) | 64U;
+			const auto r10b = bytes(r10Word, false);
+			const auto r10l = bytes(r10Word, true);
+			const auto r210 = bytes(r210Word, false);
+			const struct Case
+			{
+				VideoFrameEncoding encoding;
+				const std::array<uint8_t, 4>* data;
+			} cases[] = {
+				{ VideoFrameEncoding::R10b, &r10b },
+				{ VideoFrameEncoding::R10l, &r10l },
+				{ VideoFrameEncoding::R210, &r210 },
+			};
+
+			for (const Case& test : cases)
+			{
+				const AnalysisLumaSource source = {
+					test.data->data(), test.data->size(), 1, 1, 4, 0,
+					AnalysisLumaFormat::NativeRgb, test.encoding,
+					ColorSpace::REC_709, 1
+				};
+				AnalysisLumaSample sample;
+				Assert::IsTrue(source.Sample(0, 0, sample));
+				Assert::AreEqual(250, static_cast<int>(sample.luma));
+				Assert::AreEqual(409, static_cast<int>(sample.chromaU));
+				Assert::AreEqual(960, static_cast<int>(sample.chromaV));
+			}
+		}
+
 		TEST_METHOD(PackedTwelveBitLayoutsDecodeSmpteComponentPacking)
 		{
 			const uint8_t r12b[] = {
@@ -263,6 +307,31 @@ namespace Tests
 			Assert::AreEqual(63, static_cast<int>(sample.luma));
 			Assert::IsTrue(little.Sample(7, 0, sample));
 			Assert::AreEqual(1023, static_cast<int>(sample.luma));
+			Assert::AreEqual(512, static_cast<int>(sample.chromaU));
+			Assert::AreEqual(512, static_cast<int>(sample.chromaV));
+		}
+
+		TEST_METHOD(PackedTwelveBitAnalysisUsesNormalizedFullRangeRounding)
+		{
+			std::array<uint8_t, 36> row{};
+			for (size_t pair = 0; pair < 4; ++pair)
+			{
+				uint8_t* destination = row.data() + pair * 9;
+				destination[0] = 2;
+				destination[1] = 2 << 4;
+				destination[3] = 2;
+				destination[4] = 2 << 4;
+				destination[6] = 2;
+				destination[7] = 2 << 4;
+			}
+			const AnalysisLumaSource source = {
+				row.data(), row.size(), 8, 1, row.size(), 0,
+				AnalysisLumaFormat::NativeRgb, VideoFrameEncoding::R12L,
+				ColorSpace::REC_709, 1
+			};
+			AnalysisLumaSample sample;
+			Assert::IsTrue(source.Sample(0, 0, sample));
+			Assert::AreEqual(0, static_cast<int>(sample.luma));
 			Assert::AreEqual(512, static_cast<int>(sample.chromaU));
 			Assert::AreEqual(512, static_cast<int>(sample.chromaV));
 		}

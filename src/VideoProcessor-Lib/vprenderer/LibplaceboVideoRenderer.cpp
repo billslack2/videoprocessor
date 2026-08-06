@@ -591,10 +591,9 @@ namespace
 	bool IsNativeRgbUpload(VideoFrameEncoding encoding,
 		VideoConversionOverride videoConversionOverride)
 	{
-		AlphaNativeRgbLayout layout;
 		return videoConversionOverride ==
 			VideoConversionOverride::VIDEOCONVERSION_NONE &&
-			GetAlphaNativeRgbLayout(encoding, layout);
+			AlphaCanUseNativeRgbUpload(encoding);
 	}
 
 	std::unique_ptr<IVideoFrameFormatter> CreateAlphaFormatter(
@@ -5451,6 +5450,7 @@ struct LibplaceboVideoRenderer::Impl
 		AlphaNativeRgbLayout nativeRgbLayout;
 		const bool nativeRgbUpload =
 			videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE &&
+			AlphaCanUseNativeRgbUpload(state.videoFrameEncoding) &&
 			GetAlphaNativeRgbLayout(state.videoFrameEncoding, nativeRgbLayout);
 		const bool nativeRgb8Upload = nativeRgbLayout.bitDepth == 8;
 		const bool lossless422Upload =
@@ -6025,7 +6025,9 @@ struct LibplaceboVideoRenderer::Impl
 
 		image.repr.sys = nativeRgbUpload ? PL_COLOR_SYSTEM_RGB :
 			TranslateSystem(state.colorspace);
-		image.repr.levels = nativeRgbUpload ? PL_COLOR_LEVELS_FULL :
+		image.repr.levels = nativeRgbUpload ?
+			(nativeRgbLayout.limitedRange ? PL_COLOR_LEVELS_LIMITED :
+				PL_COLOR_LEVELS_FULL) :
 			(formattedContract.sampleRange == VideoFrameSampleRange::FULL ?
 				PL_COLOR_LEVELS_FULL : PL_COLOR_LEVELS_LIMITED);
 		image.repr.alpha = PL_ALPHA_NONE;

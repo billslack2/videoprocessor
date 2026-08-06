@@ -11,6 +11,7 @@ struct AlphaNativeRgbLayout
 {
 	uint64_t masks[4]{};
 	bool swapped = false;
+	bool limitedRange = false;
 	int bitDepth = 0;
 	const char* label = nullptr;
 };
@@ -42,6 +43,7 @@ inline bool GetAlphaNativeRgbLayout(VideoFrameEncoding encoding,
 		layout.masks[1] = 0x000FFC00;
 		layout.masks[2] = 0x000003FF;
 		layout.swapped = true;
+		layout.limitedRange = true;
 		layout.bitDepth = 10;
 		layout.label = "Native r210 -> RGB";
 		return true;
@@ -50,6 +52,7 @@ inline bool GetAlphaNativeRgbLayout(VideoFrameEncoding encoding,
 		layout.masks[1] = 0x003FF000;
 		layout.masks[2] = 0x00000FFC;
 		layout.swapped = true;
+		layout.limitedRange = true;
 		layout.bitDepth = 10;
 		layout.label = "Native R10b -> RGB";
 		return true;
@@ -57,10 +60,21 @@ inline bool GetAlphaNativeRgbLayout(VideoFrameEncoding encoding,
 		layout.masks[0] = 0xFFC00000; // [R10 G10 B10 00], little endian
 		layout.masks[1] = 0x003FF000;
 		layout.masks[2] = 0x00000FFC;
+		layout.limitedRange = true;
 		layout.bitDepth = 10;
 		layout.label = "Native R10l -> RGB";
 		return true;
 	default:
 		return false;
 	}
+}
+
+inline bool AlphaCanUseNativeRgbUpload(VideoFrameEncoding encoding)
+{
+	AlphaNativeRgbLayout layout;
+	// libplacebo's generic limited-RGB representation uses conventional
+	// 10-bit 64-940 levels. DeckLink r210 has a distinct 64-960 interval, so
+	// normalize it through the range-aware P010 formatter instead.
+	return encoding != VideoFrameEncoding::R210 &&
+		GetAlphaNativeRgbLayout(encoding, layout);
 }

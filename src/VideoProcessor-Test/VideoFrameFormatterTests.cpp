@@ -15,6 +15,8 @@
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
 #include <microsoft_directshow/video_renderers/MadVRIngressPolicy.h>
+#include <microsoft_directshow/video_renderers/DirectShowIngressPolicy.h>
+#include <microsoft_directshow/DirectShowTranslations.h>
 #include <IntegerMath.h>
 #include <AspectRatio.h>
 #include <DisplayRuleExpression.h>
@@ -146,29 +148,30 @@ namespace Tests
 			struct Case
 			{
 				VideoFrameEncoding encoding;
-				bool alphaNativeRgb;
+				bool alphaNativeIngress;
 				bool madvrAutomaticP010;
 				bool packedRgbP010;
+				bool mpcAutomaticP010;
+				bool genericAutomaticP010;
 			};
 
 			const Case cases[] = {
-				{ VideoFrameEncoding::ARGB_8BIT, true,  true,  false },
-				{ VideoFrameEncoding::BGRA_8BIT, true,  true,  false },
-				{ VideoFrameEncoding::UYVY,      false, false, false },
-				{ VideoFrameEncoding::HDYC,      false, false, false },
-				{ VideoFrameEncoding::V210,      false, false, false },
-				{ VideoFrameEncoding::R210,      true,  false, true  },
-				{ VideoFrameEncoding::R10b,      true,  true,  true  },
-				{ VideoFrameEncoding::R10l,      true,  true,  true  },
-				{ VideoFrameEncoding::R12B,      false, true,  true  },
-				{ VideoFrameEncoding::R12L,      false, true,  true  },
+				{ VideoFrameEncoding::ARGB_8BIT, true,  true,  false, true,  true  },
+				{ VideoFrameEncoding::BGRA_8BIT, true,  true,  false, true,  true  },
+				{ VideoFrameEncoding::UYVY,      false, false, false, false, false },
+				{ VideoFrameEncoding::HDYC,      false, false, false, false, false },
+				{ VideoFrameEncoding::V210,      false, false, false, false, false },
+				{ VideoFrameEncoding::R210,      false, false, true,  false, false },
+				{ VideoFrameEncoding::R10b,      true,  true,  true,  true,  true  },
+				{ VideoFrameEncoding::R10l,      true,  true,  true,  true,  true  },
+				{ VideoFrameEncoding::R12B,      false, true,  true,  false, false },
+				{ VideoFrameEncoding::R12L,      false, true,  true,  true,  true  },
 			};
 
 			for (const Case& test : cases)
 			{
-				AlphaNativeRgbLayout layout;
-				Assert::AreEqual(test.alphaNativeRgb,
-					GetAlphaNativeRgbLayout(test.encoding, layout));
+				Assert::AreEqual(test.alphaNativeIngress,
+					AlphaCanUseNativeRgbUpload(test.encoding));
 				Assert::AreEqual(test.madvrAutomaticP010,
 					MadVRUsesP010Ingress(test.encoding,
 						VideoConversionOverride::VIDEOCONVERSION_NONE));
@@ -176,6 +179,19 @@ namespace Tests
 					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010));
 				Assert::AreEqual(test.packedRgbP010,
 					IsDeckLinkPackedRgbP010Encoding(test.encoding));
+				Assert::IsTrue(DirectShowCanConvertToP010(test.encoding));
+				Assert::AreEqual(test.mpcAutomaticP010,
+					DirectShowUsesP010Ingress(DirectShowIngressFamily::MPC,
+						test.encoding, VideoConversionOverride::VIDEOCONVERSION_NONE));
+				Assert::AreEqual(test.genericAutomaticP010,
+					DirectShowUsesP010Ingress(DirectShowIngressFamily::GENERIC,
+						test.encoding, VideoConversionOverride::VIDEOCONVERSION_NONE));
+				Assert::IsTrue(DirectShowUsesP010Ingress(
+					DirectShowIngressFamily::MPC, test.encoding,
+					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010));
+				Assert::IsTrue(DirectShowUsesP010Ingress(
+					DirectShowIngressFamily::GENERIC, test.encoding,
+					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010));
 			}
 		}
 
@@ -237,6 +253,31 @@ namespace Tests
 		{
 			Assert::AreEqual(36U,
 				VideoFrameEncodingBitsPerPixel(VideoFrameEncoding::R12B));
+		}
+
+		TEST_METHOD(DirectShowNominalRangeFollowsFormatterContractUnlessForced)
+		{
+			const VideoFrameFormatterOutputContract full = {
+				VideoFrameSampleRange::FULL, 10, 6
+			};
+			const VideoFrameFormatterOutputContract limited = {
+				VideoFrameSampleRange::LIMITED, 10, 6
+			};
+			const VideoFrameFormatterOutputContract unknown;
+			const auto automatic = DXVA_NominalRange::DXVA_NominalRange_Unknown;
+
+			Assert::AreEqual(
+				static_cast<int>(DXVA_NominalRange::DXVA_NominalRange_0_255),
+				static_cast<int>(ResolveDirectShowNominalRange(automatic, full)));
+			Assert::AreEqual(
+				static_cast<int>(DXVA_NominalRange::DXVA_NominalRange_16_235),
+				static_cast<int>(ResolveDirectShowNominalRange(automatic, limited)));
+			Assert::AreEqual(static_cast<int>(automatic),
+				static_cast<int>(ResolveDirectShowNominalRange(automatic, unknown)));
+
+			const auto forcedFull = DXVA_NominalRange::DXVA_NominalRange_0_255;
+			Assert::AreEqual(static_cast<int>(forcedFull),
+				static_cast<int>(ResolveDirectShowNominalRange(forcedFull, limited)));
 		}
 
 		TEST_METHOD(CNoopVideoFrameFormatterTest)
@@ -688,6 +729,8 @@ namespace Tests
 			AlphaNativeRgbLayout layout;
 			Assert::IsTrue(GetAlphaNativeRgbLayout(VideoFrameEncoding::R210, layout));
 			Assert::IsTrue(layout.swapped);
+			Assert::IsTrue(layout.limitedRange);
+			Assert::IsFalse(AlphaCanUseNativeRgbUpload(VideoFrameEncoding::R210));
 			Assert::AreEqual(10, layout.bitDepth);
 			const uint32_t r210 = (1U << 20) | (2U << 10) | 3U;
 			Assert::AreEqual(1U, static_cast<uint32_t>((r210 & layout.masks[0]) >> 20));
@@ -696,6 +739,8 @@ namespace Tests
 
 			Assert::IsTrue(GetAlphaNativeRgbLayout(VideoFrameEncoding::R10l, layout));
 			Assert::IsFalse(layout.swapped);
+			Assert::IsTrue(layout.limitedRange);
+			Assert::IsTrue(AlphaCanUseNativeRgbUpload(VideoFrameEncoding::R10l));
 			const uint32_t r10 = (1U << 22) | (2U << 12) | (3U << 2);
 			Assert::AreEqual(1U, static_cast<uint32_t>((r10 & layout.masks[0]) >> 22));
 			Assert::AreEqual(2U, static_cast<uint32_t>((r10 & layout.masks[1]) >> 12));
@@ -703,6 +748,8 @@ namespace Tests
 
 			Assert::IsTrue(GetAlphaNativeRgbLayout(VideoFrameEncoding::R10b, layout));
 			Assert::IsTrue(layout.swapped);
+			Assert::IsTrue(layout.limitedRange);
+			Assert::IsTrue(AlphaCanUseNativeRgbUpload(VideoFrameEncoding::R10b));
 			Assert::AreEqual(10, layout.bitDepth);
 			Assert::IsFalse(GetAlphaNativeRgbLayout(VideoFrameEncoding::R12L, layout));
 		}
@@ -750,6 +797,47 @@ namespace Tests
 				static_cast<unsigned int>(components[1]));
 			Assert::AreEqual(static_cast<unsigned int>(512U << 6),
 				static_cast<unsigned int>(components[2]));
+
+			// Preserve out-of-nominal-range codes without clipping or full-range
+			// replication so downstream range handling can make that decision.
+			WriteR210Pixel(input.data(), 0, 1023, 63);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			Assert::AreEqual(0U, static_cast<unsigned int>(components[0]));
+			Assert::AreEqual(static_cast<unsigned int>(1023U << 6),
+				static_cast<unsigned int>(components[1]));
+			Assert::AreEqual(static_cast<unsigned int>(63U << 6),
+				static_cast<unsigned int>(components[2]));
+		}
+
+		TEST_METHOD(CV210toP010VideoFrameFormatter4K60PerformanceSmokeTest)
+		{
+			CV210toP010VideoFrameFormatter formatter;
+			VideoStateComPtr state = new VideoState();
+			state->valid = true;
+			state->displayMode = std::make_shared<DisplayMode>(
+				3840, 2160, false, 60000, 1001);
+			state->videoFrameEncoding = VideoFrameEncoding::V210;
+			formatter.OnVideoState(state);
+
+			std::vector<BYTE> input(state->BytesPerFrame(), 0);
+			std::vector<BYTE> output(formatter.GetOutFrameSize(), 0xFF);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			for (int iteration = 0; iteration < 3; ++iteration)
+				Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+			for (int iteration = 0; iteration < 30; ++iteration)
+				Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+
+			double currentUs = 0.0;
+			double averageUs = 0.0;
+			double maximumUs = 0.0;
+			formatter.GetConversionPerformance(currentUs, averageUs, maximumUs);
+			wchar_t message[160];
+			swprintf_s(message,
+				L"v210 4K60 to P010 current/avg/max: %.0f / %.0f / %.0f us",
+				currentUs, averageUs, maximumUs);
+			Logger::WriteMessage(message);
+			Assert::IsTrue(averageUs < 16667.0,
+				L"Average v210 conversion time exceeds one 60 fps frame period");
 		}
 
 		TEST_METHOD(P010ConvertersUseOneVerticalChromaDownsamplingPolicy)
@@ -1521,6 +1609,8 @@ namespace Tests
 			swprintf_s(message, L"Native R210 4K conversion current/avg/max: %.0f / %.0f / %.0f us",
 				currentUs, averageUs, maximumUs);
 			Logger::WriteMessage(message);
+			Assert::IsTrue(averageUs < 16667.0,
+				L"Average r210 RGB48 conversion exceeds one 60 fps frame period");
 		}
 
 		TEST_METHOD(CDeckLinkRGBToP010VideoFrameFormatterGoldenTest)
@@ -1553,13 +1643,13 @@ namespace Tests
 							WriteR12LPixelPair(row, 4095, 0, 0, 4095, 0, 0);
 						else if (encoding == VideoFrameEncoding::R210)
 						{
-							WriteR210Pixel(row, 1023, 0, 0);
-							WriteR210Pixel(row + 4, 1023, 0, 0);
+							WriteR210Pixel(row, 960, 64, 64);
+							WriteR210Pixel(row + 4, 960, 64, 64);
 						}
 						else
 						{
-							WriteR10Pixel(row, encoding, 1023, 0, 0);
-							WriteR10Pixel(row + 4, encoding, 1023, 0, 0);
+							WriteR10Pixel(row, encoding, 940, 64, 64);
+							WriteR10Pixel(row + 4, encoding, 940, 64, 64);
 						}
 						row += encoding == VideoFrameEncoding::R12L ? 9 : 8;
 					}
@@ -1569,12 +1659,16 @@ namespace Tests
 				VideoFrame frame(input.data(), 1, 0, nullptr);
 				Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
 				const uint16_t* words = reinterpret_cast<const uint16_t*>(output.data());
+				const bool fullRange = encoding == VideoFrameEncoding::R12L;
+				const unsigned int expectedY = (fullRange ? 217U : 250U) << 6;
+				const unsigned int expectedCb = (fullRange ? 395U : 409U) << 6;
+				const unsigned int expectedCr = (fullRange ? 1023U : 960U) << 6;
 				for (size_t i = 0; i < 104ULL * 100; ++i)
-					Assert::AreEqual(217U << 6, static_cast<unsigned int>(words[i]));
+					Assert::AreEqual(expectedY, static_cast<unsigned int>(words[i]));
 				for (size_t i = 104ULL * 100; i < 104ULL * 150; i += 2)
 				{
-					Assert::AreEqual(395U << 6, static_cast<unsigned int>(words[i]));
-					Assert::AreEqual(1023U << 6, static_cast<unsigned int>(words[i + 1]));
+					Assert::AreEqual(expectedCb, static_cast<unsigned int>(words[i]));
+					Assert::AreEqual(expectedCr, static_cast<unsigned int>(words[i + 1]));
 				}
 			}
 		}
@@ -1669,6 +1763,79 @@ namespace Tests
 				_countof(r210Colors));
 		}
 
+		TEST_METHOD(CDeckLinkLimitedRgbToP010MatchesBT2020ReferenceCodes)
+		{
+			struct ExpectedColor
+			{
+				uint16_t red;
+				uint16_t green;
+				uint16_t blue;
+				uint16_t y;
+				uint16_t cb;
+				uint16_t cr;
+			};
+
+			const auto verify = [](VideoFrameEncoding encoding,
+				const ExpectedColor* colors, size_t colorCount)
+			{
+				CDeckLinkRGBToP010VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					128, 100, false, 24000, 1000);
+				state->videoFrameEncoding = encoding;
+				state->colorspace = ColorSpace::BT_2020;
+				formatter.OnVideoState(state);
+
+				std::vector<BYTE> input(state->BytesPerFrame(), 0);
+				std::vector<BYTE> output(formatter.GetOutFrameSize(), 0);
+				VideoFrame frame(input.data(), 1, 0, nullptr);
+				for (size_t colorIndex = 0; colorIndex < colorCount; ++colorIndex)
+				{
+					const ExpectedColor& color = colors[colorIndex];
+					for (uint32_t line = 0; line < 100; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						for (uint32_t x = 0; x < 128; ++x)
+						{
+							if (encoding == VideoFrameEncoding::R210)
+								WriteR210Pixel(row + x * 4U,
+									color.red, color.green, color.blue);
+							else
+								WriteR10Pixel(row + x * 4U, encoding,
+									color.red, color.green, color.blue);
+						}
+					}
+
+					Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+					const auto* samples =
+						reinterpret_cast<const uint16_t*>(output.data());
+					const size_t chromaStart = 128ULL * 100ULL;
+					Assert::AreEqual(static_cast<unsigned int>(color.y << 6),
+						static_cast<unsigned int>(samples[0]));
+					Assert::AreEqual(static_cast<unsigned int>(color.cb << 6),
+						static_cast<unsigned int>(samples[chromaStart]));
+					Assert::AreEqual(static_cast<unsigned int>(color.cr << 6),
+						static_cast<unsigned int>(samples[chromaStart + 1]));
+				}
+			};
+
+			const ExpectedColor r10Colors[] = {
+				{ 940, 64, 64, 294, 387, 960 },
+				{ 64, 940, 64, 658, 189, 100 },
+				{ 64, 64, 940, 116, 960, 476 },
+			};
+			const ExpectedColor r210Colors[] = {
+				{ 960, 64, 64, 294, 387, 960 },
+				{ 64, 960, 64, 658, 189, 100 },
+				{ 64, 64, 960, 116, 960, 476 },
+			};
+			verify(VideoFrameEncoding::R10b, r10Colors, _countof(r10Colors));
+			verify(VideoFrameEncoding::R10l, r10Colors, _countof(r10Colors));
+			verify(VideoFrameEncoding::R210, r210Colors, _countof(r210Colors));
+		}
+
 		TEST_METHOD(CDeckLinkRGBToP010R12BBlackWhiteContractTest)
 		{
 			CDeckLinkRGBToP010VideoFrameFormatter vff;
@@ -1724,6 +1891,24 @@ namespace Tests
 				vff.OnVideoState(vs);
 
 				std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+				const bool limitedInput = encoding == VideoFrameEncoding::R210 ||
+					encoding == VideoFrameEncoding::R10b ||
+					encoding == VideoFrameEncoding::R10l;
+				if (limitedInput)
+				{
+					for (uint32_t line = 0; line < 2160; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * vs->BytesPerRow();
+						for (uint32_t x = 0; x < 3840; ++x)
+						{
+							if (encoding == VideoFrameEncoding::R210)
+								WriteR210Pixel(row + x * 4U, 64, 64, 64);
+							else
+								WriteR10Pixel(row + x * 4U, encoding, 64, 64, 64);
+						}
+					}
+				}
 				std::vector<BYTE> output(vff.GetOutFrameSize(), 0xFF);
 				VideoFrame frame(input.data(), 1, 0, nullptr);
 				for (int i = 0; i < 3; ++i)
@@ -1732,8 +1917,10 @@ namespace Tests
 					Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
 
 				const uint16_t* words = reinterpret_cast<const uint16_t*>(output.data());
-				Assert::AreEqual(0U, static_cast<unsigned int>(words[0]));
-				Assert::AreEqual(0U, static_cast<unsigned int>(words[3840ULL * 2160 - 1]));
+				const unsigned int expectedBlack = (limitedInput ? 64U : 0U) << 6;
+				Assert::AreEqual(expectedBlack, static_cast<unsigned int>(words[0]));
+				Assert::AreEqual(expectedBlack,
+					static_cast<unsigned int>(words[3840ULL * 2160 - 1]));
 				Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[3840ULL * 2160]));
 				Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[3840ULL * 2160 + 1]));
 
@@ -1745,6 +1932,8 @@ namespace Tests
 				swprintf_s(message, L"Packed RGB %s 4K to P010 current/avg/max: %.0f / %.0f / %.0f us",
 					ToString(encoding), currentUs, averageUs, maximumUs);
 				Logger::WriteMessage(message);
+				Assert::IsTrue(averageUs < 16667.0,
+					L"Average packed RGB conversion exceeds one 60 fps frame period");
 			}
 		}
 
@@ -1997,6 +2186,8 @@ namespace Tests
 			swprintf_s(message, L"Native R12B 4K conversion current/avg/max: %.0f / %.0f / %.0f us",
 				currentUs, averageUs, maximumUs);
 			Logger::WriteMessage(message);
+			Assert::IsTrue(averageUs < 16667.0,
+				L"Average R12B RGB48 conversion exceeds one 60 fps frame period");
 		}
 	};
 

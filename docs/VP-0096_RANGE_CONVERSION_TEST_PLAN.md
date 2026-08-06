@@ -102,10 +102,30 @@ coefficient tables.
 
 - Confirm DeckLink ARGB/BGRA nominal range with hardware/vendor evidence before
   changing the current VP full-range assumption.
-- Choose and document the 4:2:2-to-4:2:0 vertical chroma filter/siting policy.
-- Decide whether r210-to-RGB48 preserves the limited codes or expands to full
-  range, then ensure DirectShow metadata describes that exact choice.
-- Verify how libplacebo represents r210's unusual 64-960 limited RGB interval;
-  setting a generic limited flag may incorrectly assume 64-940.
 - Define whether super-black/super-white excursions are preserved or clipped
   in each conversion path.
+
+## Implemented result
+
+- R12B/R12L-to-P010 uses exact normalized round-to-nearest through an immutable
+  4,096-entry lookup table. This preserves correctness while avoiding repeated
+  division in the 4K hot path.
+- r210/R10b/R10l use limited-range BT.709 or BT.2020 conversion with their
+  documented, distinct input intervals. Output P010 is explicitly limited.
+- r210-to-RGB48 preserves all 10-bit codes in the high bits (`code << 6`) and
+  declares limited 10-bit data with a six-bit container shift.
+- UYVY and every v210 P010 implementation use the same rounded two-row vertical
+  chroma average. P210 paths continue preserving every 4:2:2 chroma row.
+- Alpha keeps R10b/R10l native with limited-range signaling. r210 uses the
+  normalized P010 path because generic limited RGB cannot describe 64-960.
+- madVR and MPC derive automatic nominal-range signaling from the formatter
+  output contract. Generic and MPC forced-P010 selection covers all supported
+  capture encodings.
+- Native sparse RGB analysis uses the same limited-range reference conversion
+  as displayed R10/r210 content and normalized R12 downconversion.
+
+The clean x64 Release suite passes 633/633 tests. Representative 4K averages
+on the development system are approximately 2.1 ms for v210-to-P010, 4.4 ms
+for r210-to-RGB48, 5.8 ms for R12B-to-RGB48, 8.6-9.0 ms for limited packed
+RGB-to-P010, and 10.0-11.0 ms for R12-to-P010. The performance smoke tests
+require each average to remain below the 16.67 ms 60 fps frame period.

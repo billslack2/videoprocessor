@@ -14,10 +14,11 @@
 
 namespace
 {
-	inline uint16_t Expand10To16(uint16_t value)
+	inline uint16_t Align10To16(uint16_t value)
 	{
-		// Bit replication maps both endpoints exactly: 0x000 -> 0x0000, 0x3FF -> 0xFFFF.
-		return static_cast<uint16_t>((value << 6) | (value >> 4));
+		// Preserve documented limited-range codes and legal excursions in the
+		// most-significant ten bits of the RGB48 component.
+		return static_cast<uint16_t>(value << 6);
 	}
 
 	inline uint32_t ReadBigEndian32(const uint8_t* source)
@@ -126,9 +127,9 @@ void CR210toRGB48VideoFrameFormatter::ConvertRows(
 		for (uint32_t pixel = 0; pixel < m_width; ++pixel)
 		{
 			const uint32_t packed = ReadBigEndian32(source);
-			*destination++ = Expand10To16(static_cast<uint16_t>((packed >> 20) & 0x3FF));
-			*destination++ = Expand10To16(static_cast<uint16_t>((packed >> 10) & 0x3FF));
-			*destination++ = Expand10To16(static_cast<uint16_t>(packed & 0x3FF));
+			*destination++ = Align10To16(static_cast<uint16_t>((packed >> 20) & 0x3FF));
+			*destination++ = Align10To16(static_cast<uint16_t>((packed >> 10) & 0x3FF));
+			*destination++ = Align10To16(static_cast<uint16_t>(packed & 0x3FF));
 			source += 4;
 		}
 	}

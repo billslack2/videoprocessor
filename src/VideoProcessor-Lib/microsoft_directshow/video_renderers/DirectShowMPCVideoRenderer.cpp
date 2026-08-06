@@ -21,6 +21,7 @@
 #include <video_frame_formatter/CV210toP210VideoFrameFormatter.h>
 #include <video_frame_formatter/CR210toRGB48VideoFrameFormatter.h>
 #include <video_frame_formatter/CR12BtoRGB48VideoFrameFormatter.h>
+#include "DirectShowIngressPolicy.h"
 #include <microsoft_directshow/DirectShowTranslations.h>
 
 
@@ -199,13 +200,9 @@ void DirectShowMPCVideoRenderer::MediaTypeGenerate()
 	// Smart P010 conversion: Auto-detect input format and convert to P010
 	// User selects "YUV/RGB > P010" in UI, we intelligently pick the right converter
 	// Also auto-enable for ARGB/BGRA even without explicit selection (makes it "just work")
-	const bool needsP010Conversion = 
-		(m_videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010) ||
-		(m_videoState->videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT) ||
-		(m_videoState->videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT) ||
-		(m_videoState->videoFrameEncoding == VideoFrameEncoding::R10b) ||
-		(m_videoState->videoFrameEncoding == VideoFrameEncoding::R10l) ||
-		(m_videoState->videoFrameEncoding == VideoFrameEncoding::R12L);
+	const bool needsP010Conversion = DirectShowUsesP010Ingress(
+		DirectShowIngressFamily::MPC, m_videoState->videoFrameEncoding,
+		m_videoConversionOverride);
 
 	if (needsP010Conversion)
 	{
@@ -218,7 +215,8 @@ void DirectShowMPCVideoRenderer::MediaTypeGenerate()
 			// V210 (10-bit 4:2:2) ? P010 (10-bit 4:2:0)
 			m_videoFramFormatter = new CV210toP010VideoFrameFormatter();
 		}
-		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::UYVY)
+		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::UYVY ||
+			m_videoState->videoFrameEncoding == VideoFrameEncoding::HDYC)
 		{
 			// UYVY (8-bit 4:2:2) ? P010 (10-bit 4:2:0)
 			m_videoFramFormatter = new CUYVYtoP010VideoFrameFormatter();
@@ -229,9 +227,8 @@ void DirectShowMPCVideoRenderer::MediaTypeGenerate()
 			// ARGB/BGRA (8-bit 4:4:4 RGB) ? P010 (10-bit 4:2:0 YUV)
 			m_videoFramFormatter = new CARGBtoP010VideoFrameFormatter();
 		}
-		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::R10b ||
-			m_videoState->videoFrameEncoding == VideoFrameEncoding::R10l ||
-			m_videoState->videoFrameEncoding == VideoFrameEncoding::R12L)
+		else if (IsDeckLinkPackedRgbP010Encoding(
+			m_videoState->videoFrameEncoding))
 		{
 			m_videoFramFormatter = new CDeckLinkRGBToP010VideoFrameFormatter();
 		}
@@ -336,10 +333,8 @@ void DirectShowMPCVideoRenderer::MediaTypeGenerate()
 		m_forceVideoTransferFunction :
 		TranslateVideoTranferFunction(m_videoState->eotf, m_videoState->colorspace);
 
-	colorimetry->NominalRange =
-		(m_forceNominalRange != DXVA_NominalRange::DXVA_NominalRange_Unknown) ?
-		m_forceNominalRange :
-		DXVA_NominalRange::DXVA_NominalRange_Unknown;  // = Let renderer guess
+	colorimetry->NominalRange = ResolveDirectShowNominalRange(
+		m_forceNominalRange, m_videoFramFormatter->GetOutputContract());
 
 	pvi2->dwControlFlags += AMCONTROL_USED;
 	pvi2->dwControlFlags += AMCONTROL_COLORINFO_PRESENT;
