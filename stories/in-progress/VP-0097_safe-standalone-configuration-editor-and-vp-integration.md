@@ -58,6 +58,16 @@ editor executable and its configuration safety boundary are validated.
   disposable feedback process was stopped so the next direct launch uses the
   corrected build.
 
+2026-08-06 tray interaction refinement (uncommitted source work):
+
+- The tray interaction now follows the normal Windows convention: left-click,
+  double-click, and keyboard selection open the editor; right-click opens a
+  menu containing **Open configuration** and **Exit**. The tooltip documents
+  those actions and the menu dismisses cleanly after selection.
+- The standalone x64 Release project build passed. The currently running
+  feedback executable must exit before the directly launchable Release copy
+  can be refreshed, because Windows locks an executing `.exe`.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
