@@ -123,3 +123,6 @@ pre-session display topology when VP is done.
   `subtitle_release_drift_seconds` setting from a separate feature deployment.
   Its two values remain preserved as comments for this default-branch VP-0095
   test because `v1.1.016-beta` does not yet recognize that setting.
+- Rebased cleanly onto the later `origin/v1.1.016-beta` commit `4d1d3bc`,
+  which includes subtitle translation and recognizes that setting. The rebased
+  x64 Release build passed the expanded native suite: 619 of 619.
