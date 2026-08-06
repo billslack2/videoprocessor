@@ -124,7 +124,7 @@ coefficient tables.
 - Native sparse RGB analysis uses the same limited-range reference conversion
   as displayed R10/r210 content and normalized R12 downconversion.
 
-The clean x64 Release suite passes 639/639 tests. A sustained performance test
+The clean x64 Release suite passes 641/641 tests. A sustained performance test
 now compares the former 30-frame hot-zero-buffer workload with three runs of
 120 measured frames rotating across four patterned 4K buffers. The regression
 gate uses the median-of-three average and p95; both must remain below the
@@ -149,3 +149,22 @@ exact 4,096-entry 12-to-10 lookup. The RGB48 routes remain intentionally at
 two helper workers: their 5.9 ms worst average and 7.7 ms p95 already provide
 more than 2x 4K60 headroom, while adding workers would consume more capture
 CPU for a memory-bandwidth-bound copy/unpack path.
+
+### Flexible-resolution verification
+
+The converter suite treats active resolution as data, not as a signal for
+format-specific image modification. Resolution-matrix tests cover 640x360,
+720x480, 1280x720, 1920x1080, and 3840x2160 across ARGB, BGRA, UYVY, HDYC,
+v210, r210, R10b, R10l, R12B, and R12L routes. They validate first and last
+active samples as well as successful P010, P210, and RGB48 output. Existing
+tests separately cover v210 padded tails at a synthetic 100-pixel width and
+2048x1080/4096x2160 DCI rasters.
+
+The legacy v210-to-P010 1280x720 path was removed. It forced the first and last
+two active luma columns to zero, forced their chroma neutral, and bypassed the
+selected Standard/Optimized/SIMD implementation. 720p now uses the same
+stride-checked, padded-tail conversion as every other even width. An
+independent uniform-code oracle and full-output comparisons prove that AUTO,
+Standard, Optimized, and SIMD agree at every resolution in the matrix. Alpha's
+formatter diagnostics now inspect the complete 720p active width instead of
+excluding the formerly concealed columns.

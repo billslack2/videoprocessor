@@ -39,8 +39,6 @@ public:
 private:
     uint32_t m_height = 0;
     uint32_t m_width = 0;
-    bool m_special720 = false;
-
     // Pre-allocated buffers
     std::vector<uint16_t> m_tempY;
     std::vector<uint16_t> m_tempUV;

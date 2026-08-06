@@ -2886,11 +2886,8 @@ struct LibplaceboVideoRenderer::Impl
 
 	void LogFormatterInputDiagnostics(
 		const uint16_t* luma, const uint16_t* chroma, int width, int height,
-		int chromaHeight, const VideoFrameFormatterOutputContract& contract,
-		bool concealedPaddedEdges) const
+		int chromaHeight, const VideoFrameFormatterOutputContract& contract) const
 	{
-		const int firstSample = concealedPaddedEdges ? 2 : 0;
-		const int lastSample = concealedPaddedEdges ? width - 2 : width;
 		uint16_t minimumLuma = std::numeric_limits<uint16_t>::max();
 		uint16_t maximumLuma = 0;
 		uint16_t minimumChroma = std::numeric_limits<uint16_t>::max();
@@ -2900,7 +2897,7 @@ struct LibplaceboVideoRenderer::Impl
 		for (int y = 0; y < height; ++y)
 		{
 			const uint16_t* const row = luma + static_cast<size_t>(y) * width;
-			for (int x = firstSample; x < lastSample; ++x)
+			for (int x = 0; x < width; ++x)
 			{
 				const uint16_t sample = static_cast<uint16_t>(row[x] >> contract.bitShift);
 				minimumLuma = std::min(minimumLuma, sample);
@@ -2911,7 +2908,7 @@ struct LibplaceboVideoRenderer::Impl
 		for (int y = 0; y < chromaHeight; ++y)
 		{
 			const uint16_t* const row = chroma + static_cast<size_t>(y) * width;
-			for (int x = firstSample; x < lastSample; ++x)
+			for (int x = 0; x < width; ++x)
 			{
 				const uint16_t sample = static_cast<uint16_t>(row[x] >> contract.bitShift);
 				minimumChroma = std::min(minimumChroma, sample);
@@ -2920,12 +2917,11 @@ struct LibplaceboVideoRenderer::Impl
 			}
 		}
 		DebugLog::Log(
-			"Alpha formatter input diagnostic: luma=%u..%u (%llu samples) chroma=%u..%u (%llu samples) concealed_edge_columns=%d",
+			"Alpha formatter input diagnostic: luma=%u..%u (%llu samples) chroma=%u..%u (%llu samples)",
 			minimumLuma, maximumLuma,
 			static_cast<unsigned long long>(lumaSamples),
 			minimumChroma, maximumChroma,
-			static_cast<unsigned long long>(chromaSamples),
-			concealedPaddedEdges ? 2 : 0);
+			static_cast<unsigned long long>(chromaSamples));
 	}
 
 	void LogOutputReadback()
@@ -5503,9 +5499,7 @@ struct LibplaceboVideoRenderer::Impl
 				LogFormatterInputDiagnostics(
 					reinterpret_cast<const uint16_t*>(yPixels),
 					reinterpret_cast<const uint16_t*>(uvPixels), width, height,
-					chromaHeight, formattedContract,
-					state.videoFrameEncoding == VideoFrameEncoding::V210 &&
-						width == 1280 && height == 720 && !lossless422Upload);
+					chromaHeight, formattedContract);
 			}
 		}
 		if (nativeRgbUpload)

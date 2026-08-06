@@ -698,7 +698,7 @@ namespace Tests
 			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1]));
 		}
 
-		TEST_METHOD(CV210toP010VideoFrameFormatter720pConcealsOnlyPaddedEdges)
+		TEST_METHOD(CV210toP010VideoFrameFormatter720pPreservesAllActivePixels)
 		{
 			CV210toP010VideoFrameFormatter vff;
 			VideoStateComPtr vs = new VideoState();
@@ -728,20 +728,304 @@ namespace Tests
 			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
 			const auto* words = reinterpret_cast<const uint16_t*>(output.data());
 			const size_t ySamples = 1280ULL * 720;
-			// The 720p path intentionally hides two padded edge pixels. They are
-			// excluded from range validation; the neighboring active sample remains
-			// nominal limited-range black.
-			Assert::AreEqual(0U, static_cast<unsigned int>(words[0]));
-			Assert::AreEqual(0U, static_cast<unsigned int>(words[1]));
+			// 1280 is not divisible by v210's six-pixel pack size, but all 1280
+			// active pixels remain image data. Packing padding exists only after
+			// the active tail and must not conceal either edge.
+			Assert::AreEqual(64U << 6, static_cast<unsigned int>(words[0]));
+			Assert::AreEqual(64U << 6, static_cast<unsigned int>(words[1]));
 			Assert::AreEqual(64U << 6, static_cast<unsigned int>(words[2]));
 			Assert::AreEqual(0U, static_cast<unsigned int>(words[1278]));
 			Assert::AreEqual(0U, static_cast<unsigned int>(words[1279]));
-			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples]));
-			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1]));
+			Assert::AreEqual(128U << 6, static_cast<unsigned int>(words[ySamples]));
+			Assert::AreEqual(128U << 6, static_cast<unsigned int>(words[ySamples + 1]));
 			Assert::AreEqual(128U << 6, static_cast<unsigned int>(words[ySamples + 2]));
 			Assert::AreEqual(128U << 6, static_cast<unsigned int>(words[ySamples + 3]));
-			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1278]));
-			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1279]));
+			Assert::AreEqual(0U, static_cast<unsigned int>(words[ySamples + 1278]));
+			Assert::AreEqual(0U, static_cast<unsigned int>(words[ySamples + 1279]));
+		}
+
+		TEST_METHOD(V210P010AndP210SupportStandardResolutionMatrix)
+		{
+			const uint32_t dimensions[][2] = {
+				{ 640, 360 },
+				{ 720, 480 },
+				{ 1280, 720 },
+				{ 1920, 1080 },
+				{ 3840, 2160 },
+			};
+			auto writeWord = [](BYTE* destination,
+				uint16_t a, uint16_t b, uint16_t c)
+			{
+				const uint32_t word = static_cast<uint32_t>(a) |
+					(static_cast<uint32_t>(b) << 10) |
+					(static_cast<uint32_t>(c) << 20);
+				std::memcpy(destination, &word, sizeof(word));
+			};
+			auto writePack = [&writeWord](BYTE* destination)
+			{
+				constexpr uint16_t u = 129;
+				constexpr uint16_t y = 321;
+				constexpr uint16_t v = 777;
+				writeWord(destination + 0, u, y, v);
+				writeWord(destination + 4, y, u, y);
+				writeWord(destination + 8, v, y, u);
+				writeWord(destination + 12, y, v, y);
+			};
+
+			for (const auto& dimension : dimensions)
+			{
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					dimension[0], dimension[1], false, 60000, 1001);
+				state->videoFrameEncoding = VideoFrameEncoding::V210;
+				std::vector<BYTE> input(state->BytesPerFrame(), 0xff);
+				const uint32_t packsPerRow = (dimension[0] + 5U) / 6U;
+				for (uint32_t line = 0; line < dimension[1]; ++line)
+				{
+					BYTE* row = input.data() +
+						static_cast<size_t>(line) * state->BytesPerRow();
+					for (uint32_t pack = 0; pack < packsPerRow; ++pack)
+						writePack(row + static_cast<size_t>(pack) * 16U);
+				}
+				VideoFrame frame(input.data(), 1, 0, nullptr);
+
+				CV210toP010VideoFrameFormatter scalar;
+				scalar.SetConversionMethod(
+					CV210toP010VideoFrameFormatter::ConversionMethod::STANDARD);
+				scalar.OnVideoState(state);
+				std::vector<BYTE> scalarOutput(scalar.GetOutFrameSize());
+				Assert::IsTrue(scalar.FormatVideoFrame(frame, scalarOutput.data()));
+				const auto* p010 = reinterpret_cast<const uint16_t*>(
+					scalarOutput.data());
+				const size_t ySamples =
+					static_cast<size_t>(dimension[0]) * dimension[1];
+				Assert::AreEqual(321U << 6, static_cast<unsigned int>(p010[0]));
+				Assert::AreEqual(321U << 6,
+					static_cast<unsigned int>(p010[ySamples - 1]));
+				Assert::AreEqual(129U << 6,
+					static_cast<unsigned int>(p010[ySamples]));
+				Assert::AreEqual(777U << 6,
+					static_cast<unsigned int>(p010[ySamples + dimension[0] - 1]));
+
+				const CV210toP010VideoFrameFormatter::ConversionMethod methods[] = {
+					CV210toP010VideoFrameFormatter::ConversionMethod::AUTO,
+					CV210toP010VideoFrameFormatter::ConversionMethod::OPTIMIZED,
+					CV210toP010VideoFrameFormatter::ConversionMethod::SIMD,
+				};
+				for (const auto method : methods)
+				{
+					CV210toP010VideoFrameFormatter candidate;
+					candidate.SetConversionMethod(method);
+					candidate.OnVideoState(state);
+					std::vector<BYTE> candidateOutput(candidate.GetOutFrameSize());
+					Assert::IsTrue(candidate.FormatVideoFrame(
+						frame, candidateOutput.data()));
+					Assert::IsTrue(candidateOutput == scalarOutput,
+						L"Every v210 P010 method must match at every standard resolution");
+				}
+
+				CV210toP210VideoFrameFormatter p210Formatter;
+				p210Formatter.OnVideoState(state);
+				std::vector<BYTE> p210Output(p210Formatter.GetOutFrameSize());
+				Assert::IsTrue(p210Formatter.FormatVideoFrame(
+					frame, p210Output.data()));
+				const auto* p210 = reinterpret_cast<const uint16_t*>(
+					p210Output.data());
+				Assert::AreEqual(321U << 6, static_cast<unsigned int>(p210[0]));
+				Assert::AreEqual(321U << 6,
+					static_cast<unsigned int>(p210[ySamples - 1]));
+				Assert::AreEqual(129U << 6,
+					static_cast<unsigned int>(p210[ySamples]));
+				Assert::AreEqual(777U << 6,
+					static_cast<unsigned int>(p210[ySamples + dimension[0] - 1]));
+			}
+		}
+
+		TEST_METHOD(DeckLinkRgbAndUyvyConvertersSupportStandardResolutionMatrix)
+		{
+			const uint32_t dimensions[][2] = {
+				{ 640, 360 },
+				{ 720, 480 },
+				{ 1280, 720 },
+				{ 1920, 1080 },
+				{ 3840, 2160 },
+			};
+			for (const auto& dimension : dimensions)
+			{
+				auto makeState = [&dimension](VideoFrameEncoding encoding)
+				{
+					VideoStateComPtr state = new VideoState();
+					state->valid = true;
+					state->displayMode = std::make_shared<DisplayMode>(
+						dimension[0], dimension[1], false, 60000, 1001);
+					state->videoFrameEncoding = encoding;
+					state->colorspace = ColorSpace::BT_2020;
+					return state;
+				};
+
+				for (const auto encoding : {
+					VideoFrameEncoding::UYVY, VideoFrameEncoding::HDYC })
+				{
+					VideoStateComPtr state = makeState(encoding);
+					std::vector<BYTE> input(state->BytesPerFrame());
+					for (uint32_t line = 0; line < dimension[1]; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						for (uint32_t x = 0; x < dimension[0]; x += 2)
+						{
+							row[0] = 129; row[1] = 64;
+							row[2] = 201; row[3] = 65;
+							row += 4;
+						}
+					}
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+
+					CUYVYtoP010VideoFrameFormatter p010Formatter;
+					p010Formatter.OnVideoState(state);
+					std::vector<BYTE> p010Output(p010Formatter.GetOutFrameSize());
+					Assert::IsTrue(p010Formatter.FormatVideoFrame(
+						frame, p010Output.data()));
+					const auto* p010 = reinterpret_cast<const uint16_t*>(
+						p010Output.data());
+					const size_t ySamples =
+						static_cast<size_t>(dimension[0]) * dimension[1];
+					Assert::AreEqual(64U << 8,
+						static_cast<unsigned int>(p010[0]));
+					Assert::AreEqual(65U << 8,
+						static_cast<unsigned int>(p010[ySamples - 1]));
+
+					CUYVYtoP210VideoFrameFormatter p210Formatter;
+					p210Formatter.OnVideoState(state);
+					std::vector<BYTE> p210Output(p210Formatter.GetOutFrameSize());
+					Assert::IsTrue(p210Formatter.FormatVideoFrame(
+						frame, p210Output.data()));
+					const auto* p210 = reinterpret_cast<const uint16_t*>(
+						p210Output.data());
+					Assert::AreEqual(64U << 8,
+						static_cast<unsigned int>(p210[0]));
+					Assert::AreEqual(65U << 8,
+						static_cast<unsigned int>(p210[ySamples - 1]));
+				}
+
+				for (const auto encoding : {
+					VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+				{
+					VideoStateComPtr state = makeState(encoding);
+					std::vector<BYTE> input(state->BytesPerFrame(), 64);
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+					CARGBtoP010VideoFrameFormatter formatter;
+					formatter.OnVideoState(state);
+					std::vector<BYTE> output(formatter.GetOutFrameSize());
+					Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+					const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
+					const size_t ySamples =
+						static_cast<size_t>(dimension[0]) * dimension[1];
+					Assert::IsTrue(samples[0] != 0);
+					Assert::AreEqual(static_cast<unsigned int>(samples[0]),
+						static_cast<unsigned int>(samples[ySamples - 1]));
+				}
+
+				for (const auto encoding : {
+					VideoFrameEncoding::R210, VideoFrameEncoding::R10b,
+					VideoFrameEncoding::R10l, VideoFrameEncoding::R12B,
+					VideoFrameEncoding::R12L })
+				{
+					VideoStateComPtr state = makeState(encoding);
+					std::vector<BYTE> input(state->BytesPerFrame());
+					for (uint32_t line = 0; line < dimension[1]; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						if (encoding == VideoFrameEncoding::R12B)
+						{
+							for (uint32_t x = 0; x < dimension[0]; x += 8)
+								WriteR12BBlock(row + static_cast<size_t>(x / 8) * 36U,
+									2048, 2048, 2048);
+						}
+						else if (encoding == VideoFrameEncoding::R12L)
+						{
+							for (uint32_t x = 0; x < dimension[0]; x += 2)
+								WriteR12LPixelPair(row + static_cast<size_t>(x / 2) * 9U,
+									2048, 2048, 2048, 2048, 2048, 2048);
+						}
+						else
+						{
+							for (uint32_t x = 0; x < dimension[0]; ++x)
+							{
+								if (encoding == VideoFrameEncoding::R210)
+									WriteR210Pixel(row + static_cast<size_t>(x) * 4U,
+										512, 512, 512);
+								else
+									WriteR10Pixel(row + static_cast<size_t>(x) * 4U,
+										encoding, 512, 512, 512);
+							}
+						}
+					}
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+					CDeckLinkRGBToP010VideoFrameFormatter formatter;
+					formatter.OnVideoState(state);
+					std::vector<BYTE> output(formatter.GetOutFrameSize());
+					Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+					const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
+					const size_t ySamples =
+						static_cast<size_t>(dimension[0]) * dimension[1];
+					Assert::IsTrue(samples[0] != 0);
+					Assert::AreEqual(static_cast<unsigned int>(samples[0]),
+						static_cast<unsigned int>(samples[ySamples - 1]));
+				}
+
+				{
+					VideoStateComPtr state = makeState(VideoFrameEncoding::R210);
+					std::vector<BYTE> input(state->BytesPerFrame());
+					for (uint32_t line = 0; line < dimension[1]; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						for (uint32_t x = 0; x < dimension[0]; ++x)
+							WriteR210Pixel(row + static_cast<size_t>(x) * 4U,
+								512, 512, 512);
+					}
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+					CR210toRGB48VideoFrameFormatter formatter;
+					formatter.OnVideoState(state);
+					std::vector<BYTE> output(formatter.GetOutFrameSize());
+					Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+					const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
+					const size_t componentCount =
+						static_cast<size_t>(dimension[0]) * dimension[1] * 3U;
+					Assert::AreEqual(512U << 6,
+						static_cast<unsigned int>(samples[0]));
+					Assert::AreEqual(512U << 6,
+						static_cast<unsigned int>(samples[componentCount - 1]));
+				}
+
+				{
+					VideoStateComPtr state = makeState(VideoFrameEncoding::R12B);
+					std::vector<BYTE> input(state->BytesPerFrame());
+					for (uint32_t line = 0; line < dimension[1]; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						for (uint32_t x = 0; x < dimension[0]; x += 8)
+							WriteR12BBlock(row + static_cast<size_t>(x / 8) * 36U,
+								2048, 2048, 2048);
+					}
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+					CR12BtoRGB48VideoFrameFormatter formatter;
+					formatter.OnVideoState(state);
+					std::vector<BYTE> output(formatter.GetOutFrameSize());
+					Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+					const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
+					const size_t componentCount =
+						static_cast<size_t>(dimension[0]) * dimension[1] * 3U;
+					Assert::AreEqual(32776U,
+						static_cast<unsigned int>(samples[0]));
+					Assert::AreEqual(32776U,
+						static_cast<unsigned int>(samples[componentCount - 1]));
+				}
+			}
 		}
 
 		TEST_METHOD(CV210toP210VideoFrameFormatterPreservesEvery422Sample)
