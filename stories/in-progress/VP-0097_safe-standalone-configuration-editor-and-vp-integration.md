@@ -94,6 +94,17 @@ editor executable and its configuration safety boundary are validated.
   rules, shaders, profiles, comments, and unknown settings. Standalone x64
   Release build passed; focused `ConfigFileTests` passed 41/41.
 
+2026-08-06 user-feedback correction (uncommitted source work):
+
+- Fixed the first presentation pass issues revealed by live feedback: an
+  encoding-dependent header glyph, clipped overlong help text, a Win32
+  accelerator marker in the Output & queue caption, and known-value combo
+  controls that did not select their loaded value.
+- The viewport selector now always puts the root base viewport first and
+  explicitly labels it **Default (base viewport)**. When no root exists, the
+  parser-compatible first named viewport is labeled as the default; remaining
+  named viewport variants are listed in configuration-file order.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
