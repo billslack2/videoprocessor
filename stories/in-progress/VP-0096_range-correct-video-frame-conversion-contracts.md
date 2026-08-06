@@ -131,9 +131,8 @@ the input and downstream interpretation are first made unambiguous.
 - Packed-format golden tests independently verify R210, R10b, R10l, R12B, and
   R12L component/byte ordering for multiple non-symmetric pixel patterns,
   block boundaries, source stride padding, and first/last pixels of a row.
-- Scalar, SIMD, threaded, optimized, 720p-special, arbitrary-width, and DCI
-  paths that implement the same conversion produce identical active samples,
-  except for an explicitly documented and tested edge-concealment policy.
+- Scalar, SIMD, threaded, optimized, arbitrary-width, standard-raster, and DCI
+  paths that implement the same conversion produce identical active samples.
 - Output-contract and media-type tests prove Alpha/libplacebo, MPC Video
   Renderer, and madVR receive range metadata matching the actual buffer.
 - Representative SDR and HDR hardware captures validate black floor, white
@@ -214,13 +213,13 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
 - Limited r210/R10b/R10l BT.709 and BT.2020 reference vectors pass. r210-to-
   RGB48 preserves its 10-bit codes with a six-bit container shift.
 - UYVY and all v210 P010 paths use the same rounded vertical chroma average;
-  standard, optimized, threaded/SIMD, tail, and 720p-special tests agree.
+  standard, optimized, threaded/SIMD, tail, and standard-raster tests agree.
 - Alpha keeps R10b/R10l native with limited signaling and routes r210 through
   range-aware P010. DirectShow nominal range follows formatter output unless
   explicitly overridden. MPC/Generic forced P010 covers every supported input.
 - Related native sparse-analysis math was corrected for limited 10-bit RGB and
   normalized R12, with reference-vector tests.
-- Clean x64 Release rebuild: passed. Complete test suite: 639/639 passed.
+- Clean x64 Release rebuild: passed. Complete test suite: 641/641 passed.
 - The performance regression test now uses median-of-three runs, each with 120
   measured frames rotating across four patterned 4K buffers, and gates both
   average and p95 below 16.67 ms. AVX2 limited packed RGB-to-P010 now averages
@@ -244,3 +243,12 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
   average 5.94 ms, p95 7.66 ms), but it is memory-bandwidth-heavy and already
   has more than 2x 4K60 headroom. Retaining its two-worker cap avoids spending
   additional capture CPU for low practical latency benefit.
+- Flexible-resolution matrices now cover 640x360, 720x480, 1280x720,
+  1920x1080, and 3840x2160 for every CPU converter format, with first/last
+  active-sample assertions. Existing tests retain synthetic padded-tail and
+  2048/4096-wide DCI coverage.
+- The legacy v210-to-P010 1280x720 branch was removed. It concealed the first
+  and last two active columns and bypassed configured method selection. 720p
+  now uses the common stride-checked tail implementation; AUTO, Standard,
+  Optimized, and SIMD match the independent oracle and each other. Alpha input
+  diagnostics likewise inspect all 1280 active columns.
