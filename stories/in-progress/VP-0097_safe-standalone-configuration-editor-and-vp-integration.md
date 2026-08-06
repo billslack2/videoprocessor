@@ -517,6 +517,16 @@ editor executable and its configuration safety boundary are validated.
   same renderer ordering; toggling Hide legacy renderers refreshes the list
   without discarding the selected configured value. This keeps the editor a
   separate executable without duplicating device/runtime enumeration logic.
+- Corrected Startup omission semantics after live feedback: blank
+  `capture_device` and `renderer` remain visibly unselected rather than
+  displaying an invented automatic/default item. Omitted
+  `hide_legacy_renderers` displays checked because the production default is
+  true, while an explicit false remains respected.
+- Made side-by-side list/detail presentation an explicit invariant for every
+  ordered profile page—not only Viewports—and added it to the UI review gate.
+  Queue, VP Renderer, LLDV, and Viewports now use the same normal-width
+  breakpoint. Queue recovery and LLDV rows reflow inside a narrow detail pane
+  without changing to a stacked profile page or clipping long labels.
 - A final independent UI review found and fixed stacked-page clipping,
   premature profile-column breakpoints, long-list-label buffer overflow,
   long detail-heading clipping, and stale enabled fields for empty profile
