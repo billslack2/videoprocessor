@@ -893,7 +893,8 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
 				std::wstring(error.begin(), error.end()).c_str());
 			Assert::IsFalse(model.persistSelection);
-			Assert::AreEqual(static_cast<size_t>(2), model.actions.size());
+			// The shipped sample must not invoke machine-local commands.
+			Assert::AreEqual(static_cast<size_t>(0), model.actions.size());
 		}
 
 		TEST_METHOD(Vp0079EmptyShaderRootResolvesAsExplicitOff)
