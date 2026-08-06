@@ -204,6 +204,34 @@ editor executable and its configuration safety boundary are validated.
   `ConfigFileTests` passed 41/41. The feedback editor continues to use a
   disposable copy of the active configuration; nothing was deployed.
 
+2026-08-06 ordered viewport identity increment (uncommitted source work):
+
+- Defined the forward viewport format: every new viewport has a stable named
+  section ID and an optional human-facing `label:`. The first named section in
+  file order is the default/fallback; later named sections are rules. Labels
+  support spaces and are accepted as UI-only metadata by startup validation;
+  they never affect runtime selection, inherited settings, or action
+  variables.
+- The editor derives IDs without making the label lossy: spaces become `_`, a
+  literal underscore becomes `__`, and duplicate generated IDs receive a
+  numeric suffix. Existing named sections without a label display a readable
+  form of their ID.
+- A legacy `[vprenderer.viewport]` root remains fully readable and retains
+  historical root precedence. The new **Name legacy** action is the only
+  migration path: it renames the section, adds its label, preserves comments
+  and manual settings, and places it first so it stays the fallback. A legacy
+  `when` is explicitly explained as becoming the new default's direct
+  selection rule rather than silently treated as an equivalent root reset.
+- The checked-in sample now demonstrates the named-first format. The public
+  field reference documents `label` and the identifier convention. New parser
+  tests cover file-order default selection, label isolation, legacy-root
+  precedence even when it appears later in the file, and rejection of the
+  reserved `default` ID. The direct-launch path now uses the checked-in sample
+  only for recognized local development builds; installed and VP-launched
+  editors still use the installed or explicitly supplied configuration path.
+- Standalone x64 Release and the rebuilt focused `ConfigFileTests` suite passed
+  43/43. No deployment and no active-configuration edit occurred.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
