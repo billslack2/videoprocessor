@@ -47,6 +47,21 @@ editor executable and its configuration safety boundary are validated.
   provides Open and Exit. The rebuilt x64 Release solution completed
   successfully. The visible feedback instance was restarted from that build.
 
+2026-08-06 configuration-surface refinement (uncommitted source work):
+
+- Flattened the editor navigation into four direct pages: **Startup**,
+  **Queue**, **VP Renderer**, and **Viewports**. Queue and renderer controls
+  are now deliberately separate rather than hidden together under a vague
+  General page.
+- The Queue page presents queue depth, lead frames, and target frames. The VP
+  Renderer page presents output selectors and an optional advanced rendering
+  section; controls are not present on the wrong page when navigating or when
+  advanced rendering is expanded.
+- A UI-quality review caught and corrected the advanced-section visibility
+  regression introduced by the split. The x64 Release build succeeded and the
+  focused ConfigFileTests suite passed 43/43. A fresh disposable-config editor
+  instance was started for feedback; no deployed configuration was changed.
+
 2026-08-06 tray regression correction (uncommitted source work):
 
 - Feedback exposed that the icon was absent after closing. The cause was a
