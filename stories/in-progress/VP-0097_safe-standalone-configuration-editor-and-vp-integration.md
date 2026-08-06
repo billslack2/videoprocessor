@@ -47,6 +47,17 @@ editor executable and its configuration safety boundary are validated.
   provides Open and Exit. The rebuilt x64 Release solution completed
   successfully. The visible feedback instance was restarted from that build.
 
+2026-08-06 tray regression correction (uncommitted source work):
+
+- Feedback exposed that the icon was absent after closing. The cause was a
+  Win32 initialization-order bug: the notification-area registration occurred
+  during `WM_CREATE`, before the editor stored its own window handle. The
+  handle is now assigned during `WM_NCCREATE`, before tray registration.
+- A fresh x64 Release solution build including the corrected launchable
+  `x64\\Release\\VideoProcessorConfig.exe` completed successfully. The old
+  disposable feedback process was stopped so the next direct launch uses the
+  corrected build.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
