@@ -2102,6 +2102,108 @@ namespace Tests
 			verify(VideoFrameEncoding::R210, r210Colors, _countof(r210Colors));
 		}
 
+		TEST_METHOD(CDeckLinkLimitedRgbAVX2MatchesScalarBitExactly)
+		{
+			const VideoFrameEncoding encodings[] = {
+				VideoFrameEncoding::R210,
+				VideoFrameEncoding::R10b,
+				VideoFrameEncoding::R10l,
+			};
+			const ColorSpace colorSpaces[] = {
+				ColorSpace::REC_709,
+				ColorSpace::BT_2020,
+			};
+
+			for (const auto colorSpace : colorSpaces)
+			{
+				for (const auto encoding : encodings)
+				{
+					// 130 exercises sixteen AVX2 blocks plus the two-pixel scalar tail.
+					VideoStateComPtr state = new VideoState();
+					state->valid = true;
+					state->displayMode = std::make_shared<DisplayMode>(
+						130, 100, false, 60000, 1001);
+					state->videoFrameEncoding = encoding;
+					state->colorspace = colorSpace;
+
+					std::vector<BYTE> input(state->BytesPerFrame());
+					FillBenchmarkPattern(input,
+						0x13579bdfU ^ static_cast<uint32_t>(encoding) ^
+						(static_cast<uint32_t>(colorSpace) << 16));
+					for (uint32_t line = 0; line < 2; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						const uint16_t excursionCodes[][3] = {
+							{ 0, 0, 0 }, { 1023, 1023, 1023 },
+							{ 0, 1023, 63 }, { 1023, 0, 1023 },
+							{ 64, 940, 960 }, { 960, 64, 940 },
+							{ 1, 1022, 65 }, { 1022, 1, 959 },
+						};
+						for (uint32_t x = 0; x < _countof(excursionCodes); ++x)
+						{
+							if (encoding == VideoFrameEncoding::R210)
+								WriteR210Pixel(row + x * 4U,
+									excursionCodes[x][0], excursionCodes[x][1],
+									excursionCodes[x][2]);
+							else
+								WriteR10Pixel(row + x * 4U, encoding,
+									excursionCodes[x][0], excursionCodes[x][1],
+									excursionCodes[x][2]);
+						}
+					}
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+
+					CDeckLinkRGBToP010VideoFrameFormatter scalar;
+					scalar.SetConversionMethod(
+						CDeckLinkRGBToP010VideoFrameFormatter::ConversionMethod::SCALAR);
+					scalar.OnVideoState(state);
+					std::vector<BYTE> scalarOutput(scalar.GetOutFrameSize(), 0x55);
+					Assert::IsTrue(scalar.FormatVideoFrame(frame, scalarOutput.data()));
+
+					CDeckLinkRGBToP010VideoFrameFormatter avx2;
+					avx2.SetConversionMethod(
+						CDeckLinkRGBToP010VideoFrameFormatter::ConversionMethod::AVX2);
+					avx2.OnVideoState(state);
+					std::vector<BYTE> avx2Output(avx2.GetOutFrameSize(), 0xaa);
+					Assert::IsTrue(avx2.FormatVideoFrame(frame, avx2Output.data()));
+					Assert::IsTrue(scalarOutput == avx2Output,
+						L"AVX2 packed RGB conversion must match scalar output bit-for-bit");
+				}
+			}
+
+			// Cross the production thread-pool threshold and its row-pair segment
+			// boundaries with one full-size randomized frame.
+			VideoStateComPtr threadedState = new VideoState();
+			threadedState->valid = true;
+			threadedState->displayMode = std::make_shared<DisplayMode>(
+				1920, 1080, false, 60000, 1001);
+			threadedState->videoFrameEncoding = VideoFrameEncoding::R10b;
+			threadedState->colorspace = ColorSpace::BT_2020;
+			std::vector<BYTE> threadedInput(threadedState->BytesPerFrame());
+			FillBenchmarkPattern(threadedInput, 0x2468ace0U);
+			VideoFrame threadedFrame(threadedInput.data(), 1, 0, nullptr);
+
+			CDeckLinkRGBToP010VideoFrameFormatter threadedScalar;
+			threadedScalar.SetConversionMethod(
+				CDeckLinkRGBToP010VideoFrameFormatter::ConversionMethod::SCALAR);
+			threadedScalar.OnVideoState(threadedState);
+			std::vector<BYTE> threadedScalarOutput(
+				threadedScalar.GetOutFrameSize());
+			Assert::IsTrue(threadedScalar.FormatVideoFrame(
+				threadedFrame, threadedScalarOutput.data()));
+
+			CDeckLinkRGBToP010VideoFrameFormatter threadedAVX2;
+			threadedAVX2.SetConversionMethod(
+				CDeckLinkRGBToP010VideoFrameFormatter::ConversionMethod::AVX2);
+			threadedAVX2.OnVideoState(threadedState);
+			std::vector<BYTE> threadedAVX2Output(threadedAVX2.GetOutFrameSize());
+			Assert::IsTrue(threadedAVX2.FormatVideoFrame(
+				threadedFrame, threadedAVX2Output.data()));
+			Assert::IsTrue(threadedScalarOutput == threadedAVX2Output,
+				L"Threaded AVX2 conversion must match threaded scalar output bit-for-bit");
+		}
+
 		TEST_METHOD(CDeckLinkRGBToP010R12BBlackWhiteContractTest)
 		{
 			CDeckLinkRGBToP010VideoFrameFormatter vff;

@@ -124,13 +124,14 @@ coefficient tables.
 - Native sparse RGB analysis uses the same limited-range reference conversion
   as displayed R10/r210 content and normalized R12 downconversion.
 
-The clean x64 Release suite passes 634/634 tests. A sustained performance test
+The clean x64 Release suite passes 635/635 tests. A sustained performance test
 now compares the former 30-frame hot-zero-buffer workload with three runs of
 120 measured frames rotating across four patterned 4K buffers. The regression
 gate uses the median-of-three average and p95; both must remain below the
 16.67 ms 60 fps frame period. Median sustained averages on the development
-system were 2.2 ms for v210-to-P010, 4.6 ms for r210-to-RGB48, 5.6 ms for
-R12B-to-RGB48, 11.0-12.7 ms for limited packed RGB-to-P010, and 9.8-11.1 ms
-for R12-to-P010. The patterned rotating workload exposed a 20-39% cost hidden
-by the hot-buffer test for R10b/R10l, while all median sustained p95 values
-remained below 14.4 ms.
+system were 2.3 ms for v210-to-P010, 5.3 ms for r210-to-RGB48, 5.8 ms for
+R12B-to-RGB48, 2.6 ms for AVX2 limited packed RGB-to-P010, and 10.8-11.2 ms
+for R12-to-P010. Before AVX2, the same sustained limited-RGB workloads took
+11.0-12.7 ms. The new implementation is bit-exact with the scalar oracle for
+BT.709 and BT.2020, nominal endpoints, excursions, randomized inputs, scalar
+tails, and threaded segment boundaries. Median sustained p95 is below 3.0 ms.
