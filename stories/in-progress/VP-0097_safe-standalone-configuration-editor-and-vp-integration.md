@@ -280,6 +280,23 @@ editor executable and its configuration safety boundary are validated.
   minimum eight-item dropdown. DPI changes reapply those metrics. The Release
   editor rebuilt successfully and focused `ConfigFileTests` remained 43/43.
 
+2026-08-06 native dropdown and strict UI-review correction (uncommitted source work):
+
+- Screenshot feedback proved the first popup correction still produced only
+  a one-pixel horizontal list. Raw `CBS_DROPDOWNLIST` controls require their
+  full hidden popup height in the control rectangle; the face remains compact
+  automatically. Layout now supplies a 240-DIP popup height, retains measured
+  26-DIP rows and a wider popup, and no longer uses non-integral sizing.
+- Startup and Output cards now size independently when Advanced rendering is
+  expanded, eliminating the large blank Startup column. Owner-drawn controls
+  gained hover states and system-color high-contrast fallbacks.
+- Validation now routes only bare `[general]`, `[vprenderer]`, and `[queue]`
+  errors to their corresponding structured controls. Named/manual rule errors
+  remain document-level. Routed fields are focused, scrolled into view, and
+  visibly outlined across edits, selectors, and checkboxes.
+- The x64 Release editor rebuilt successfully and focused `ConfigFileTests`
+  remained 43/43. No deployment or active configuration edit occurred.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
