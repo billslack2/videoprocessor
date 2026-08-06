@@ -441,6 +441,31 @@ editor executable and its configuration safety boundary are validated.
   controls and root refresh switching. Runtime-enumerated Startup values need
   typed schema choices before the editor exposes them.
 
+2026-08-06 uniformly ordered and named profile correction (uncommitted source work):
+
+- Removed the root-profile exception from the editor's working model. On load,
+  legacy unnamed Queue, VP Renderer, and Viewport roots are migrated in memory
+  to a unique readable name such as **Profile 1**, moved ahead of existing
+  named siblings, and marked as an unsaved change. Existing viewport labels,
+  settings, comments, and ordering are preserved. Save persists the migration
+  through the existing timestamped-backup path.
+- File order is now the only default indicator in all three profile editors:
+  any profile can move into or out of the first/default position. Name is the
+  first field in the selected profile's right-hand detail form; the separate
+  Rename action is no longer part of the list controls.
+- Editor validation now requires every profile name to be non-empty and unique
+  case-insensitively. Named viewport sections missing a label receive a unique
+  generated label during load, duplicate viewport labels are rejected at Add,
+  and a validation error navigates to the offending page and row.
+- Typography now follows the current Windows message font with regular body
+  text and semibold hierarchy, including native combo popup lists. The final
+  reviewer pass also corrected stale list text after inline renames and
+  preserved existing unique legacy labels during automatic migration.
+- The complete x64 Release solution build succeeded and focused
+  `ConfigFileTests` passed 45/45. The editor was relaunched from the feature
+  worktree against its checked-in configuration; no deployment or active
+  configuration edit occurred.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
