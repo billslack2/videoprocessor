@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0096`
-- Next root story number: `VP-0097`
-- Total indexed items: 110
+- Last assigned root story: `VP-0097`
+- Next root story number: `VP-0098`
+- Total indexed items: 111
 
 ## Story locations
 
@@ -59,16 +59,16 @@ they must not contain requirements that are absent from this file.
 | VP-0031 | Done | Make debug-log retention configurable |
 | VP-0032 | Backlog | Alpha renderer field-aware GPU deinterlacing |
 | VP-0033 | Backlog | Alpha renderer libplacebo frame-mixing smooth motion |
-| VP-0034 | Review | Restart-free mixed-aspect NLS |
-| VP-0035 | Review | Robust low-latency active-aspect transitions |
+| VP-0034 | Done | Restart-free mixed-aspect NLS |
+| VP-0035 | Done | Robust low-latency active-aspect transitions |
 | VP-0036 | Done | Consolidate application and renderer settings into one configuration file |
 | VP-0037 | Done | Fix Alpha windowed-preview composition regression |
-| VP-0038 | Review | Generic viewport state and screen-aware NLS configuration |
-| VP-0039 | In Progress | Alpha cadence due-forecast liveness and diagnostics |
-| VP-0040 | Backlog | Trusted active-picture detection and stable NLS engagement |
+| VP-0038 | Done | Generic viewport state and screen-aware NLS configuration |
+| VP-0039 | Done | Alpha cadence due-forecast liveness and diagnostics |
+| VP-0040 | Done | Trusted active-picture detection and stable NLS engagement |
 | VP-0041 | Done | Eliminate stale-frame flashes across renderer rebuilds |
-| VP-0042 | Backlog | Indexed debug-log rotation filenames |
-| VP-0043 | Backlog | madVR graph re-prime after lifecycle and queue pressure |
+| VP-0042 | Done | Indexed debug-log rotation filenames |
+| VP-0043 | Done | madVR graph re-prime after lifecycle and queue pressure |
 | VP-0044 | Done | Alpha native OSD visible-picture anchoring and scaling |
 | VP-0045 | Done | Namespace built-in renderer configuration as vpvr |
 | VP-0046 | Backlog | DirectShow event plumbing and passive health diagnostics |
@@ -86,7 +86,7 @@ they must not contain requirements that are absent from this file.
 | VP-0059 | Will Not Do | Stable per-mode frame-offset policy and Alpha semantics (superseded by VP-0069) |
 | VP-0060 | Done | Reduce madVR fullscreen transition latency with stable target ownership |
 | VP-0061 | Blocked | DirectShow in-place reset re-prime with asymmetric madVR queues |
-| VP-0062 | Backlog | NLS safe full-raster fallback for high-black UI and artwork |
+| VP-0062 | Done | NLS safe full-raster fallback for high-black UI and artwork |
 | VP-0063 | Backlog | Automatic Alpha-to-madVR handoff re-prime |
 | VP-0064 | Done | Persisted Alpha SDR BT.2020 output and clear OSD reporting |
 | VP-0065 | Done | Invalidate stale frames during channel and stream transitions |
@@ -106,7 +106,7 @@ they must not contain requirements that are absent from this file.
 | VP-0072 | Backlog | Repair or explicitly constrain DirectShow no-stop timestamp modes |
 | VP-0073 | Done | Diagnose and minimally repair keyboard-command responsiveness |
 | VP-0074 | Done | Alpha latency resilience and NLS shader cold-start recovery |
-| VP-0075 | Backlog | Restore Alpha analysis parity on native RGB ingress |
+| VP-0075 | Done | Restore Alpha analysis parity on native RGB ingress |
 | VP-0076 | Backlog | Decompose the DirectShow live-output pin without behavioral change |
 | VP-0077 | Review | VP-0066 merged-beta acceptance validation |
 | VP-0078 | Review | Re-prime Alpha after a real output refresh transition |
@@ -115,7 +115,7 @@ they must not contain requirements that are absent from this file.
 | VP-0081 | Backlog | Preserve madVR NLS geometry through output-readiness re-primes |
 | VP-0082 | Done | Buffered active-picture look-ahead for Alpha |
 | VP-0083 | Done | Alpha anamorphic presentation profiles |
-| VP-0084 | Backlog | Bound DirectShow total steady queue after reset |
+| VP-0084 | Blocked | Bound DirectShow total steady queue after reset |
 | VP-0085 | In Progress | Frame-correlated madVR NLS look-ahead |
 | VP-0086 | Done | Comprehensive configuration usage reference |
 | VP-0087 | Blocked | VP-managed subtitle fit with madVR presentation |
@@ -124,9 +124,10 @@ they must not contain requirements that are absent from this file.
 | VP-0091 | Done | Hide System32 DirectShow renderers by default |
 | VP-0092 | Backlog | Discover madVR shortcuts and control its native statistics OSD |
 | VP-0093 | Done | Prevent Alpha SDR BT.2020 output-contract regressions |
-| VP-0094 | In progress | Select the configured fullscreen monitor by friendly name |
+| VP-0094 | Review | Select the configured fullscreen monitor by friendly name |
 | VP-0095 | In progress | Target-only fullscreen display session and recovery |
 | VP-0096 | In Progress | Establish range-correct video-frame conversion contracts |
+| VP-0097 | Backlog | Safe standalone configuration editor and VP integration |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
