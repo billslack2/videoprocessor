@@ -297,6 +297,27 @@ editor executable and its configuration safety boundary are validated.
 - The x64 Release editor rebuilt successfully and focused `ConfigFileTests`
   remained 43/43. No deployment or active configuration edit occurred.
 
+2026-08-06 recorded resize and repaint correction (uncommitted source work):
+
+- Frame-by-frame review of a fresh OBS recording confirmed real Win32 repaint
+  damage rather than a recording artifact: expanding Advanced rendering and
+  live-resizing left repeated combo faces, card-border trails, and ghosted
+  footer buttons from intermediate nested-child layouts.
+- Relayout now freezes painting until child rectangles are final, invalidates
+  the complete hierarchy once, and uses top-level Win32 composition so the
+  finished control tree is presented as one buffered frame. Card painting no
+  longer excludes the intentionally tall hidden popup areas used by native
+  dropdown-list controls.
+- The responsive column decision is stable across scrollbar state, and the
+  vertical scrollbar gutter remains reserved (disabled when unused). Enabling
+  Advanced therefore changes vertical content without stealing client width
+  or shifting both cards horizontally.
+- UI quality review found no P0 issue and its two P1 findings—breakpoint
+  oscillation and duplicate synchronous full-tree redraws—were corrected.
+  The standalone x64 Release build succeeded and focused `ConfigFileTests`
+  remained 43/43. The feedback process still edits only the worktree config;
+  nothing was deployed.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
