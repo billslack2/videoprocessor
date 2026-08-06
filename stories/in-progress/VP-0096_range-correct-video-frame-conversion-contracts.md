@@ -219,7 +219,7 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
   explicitly overridden. MPC/Generic forced P010 covers every supported input.
 - Related native sparse-analysis math was corrected for limited 10-bit RGB and
   normalized R12, with reference-vector tests.
-- Clean x64 Release rebuild: passed. Complete test suite: 641/641 passed.
+- Clean x64 Release rebuild: passed. Complete test suite: 643/643 passed.
 - The performance regression test now uses median-of-three runs, each with 120
   measured frames rotating across four patterned 4K buffers, and gates both
   average and p95 below 16.67 ms. AVX2 limited packed RGB-to-P010 now averages
@@ -239,10 +239,20 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
   its exact lookup and AVX2 matrix conversion. Sustained 4K averages are
   4.57/4.28 ms with 5.41/4.80 ms p95, down from 9.9-10.4 ms. Threaded R12B
   BT.2020 output is byte-identical to scalar at the production split boundary.
-- RGB48 conversion is the remaining highest-cost family (worst sustained
-  average 5.94 ms, p95 7.66 ms), but it is memory-bandwidth-heavy and already
-  has more than 2x 4K60 headroom. Retaining its two-worker cap avoids spending
-  additional capture CPU for low practical latency benefit.
+- R12B-to-RGB48 now converts two documented 36-byte C4 blocks per AVX2 unit:
+  16 pixels, 48 components, 72 bytes, or nine 64-bit words. Its scalar
+  eight-pixel tail retains format-valid flexible widths. Exhaustive 0-4095
+  code tests, randomized tail coverage, and a threaded 1080p comparison are
+  bit-exact with scalar. Sustained rotating 4K improved from 6.55/7.95 ms
+  average/p95 to 4.13/4.68 ms (37.0%/41.2%).
+- r210-to-RGB48 now unpacks eight big-endian pixels per AVX2 load and uses a
+  scalar pixel tail. Exhaustive 0-1023 code/lane checks and threaded randomized
+  comparisons prove exact limited-range `code << 6` preservation. Sustained
+  rotating 4K improved from 4.81/5.77 ms to 3.70/4.01 ms (23.1%/30.4%). Both
+  paths retain runtime CPU/OS AVX detection and portable scalar fallback.
+- The clean full-suite performance run also passed its 60 fps gates under
+  load: the most conservative RGB48 p95 was 8.06 ms and every other converter
+  p95 was below 6.91 ms, leaving more than 2x headroom against 16.67 ms.
 - Flexible-resolution matrices now cover 640x360, 720x480, 1280x720,
   1920x1080, and 3840x2160 for every CPU converter format, with first/last
   active-sample assertions. Existing tests retain synthetic padded-tail and
