@@ -34,6 +34,19 @@ editor executable and its configuration safety boundary are validated.
   config. A visible instance is running against the disposable build-output
   config for developer feedback; it does not use the deployed configuration.
 
+2026-08-06 polish follow-up (uncommitted source work):
+
+- Replaced the generic application/tray image with the embedded VideoProcessor
+  icon. The editor now uses the VP icon in its title bar, task switcher, and
+  notification-area icon.
+- Refined the initial visual hierarchy with a VP-branded heading, quieter
+  background, clearer category labels, more breathing room, and an explicit
+  Advanced/read-only boundary.
+- Closing the editor now visibly confirms that it remains in the notification
+  area; it uses the current notification-area protocol and the tray menu still
+  provides Open and Exit. The rebuilt x64 Release solution completed
+  successfully. The visible feedback instance was restarted from that build.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
