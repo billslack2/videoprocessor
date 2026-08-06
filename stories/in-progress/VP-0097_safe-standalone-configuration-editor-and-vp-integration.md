@@ -469,6 +469,66 @@ editor executable and its configuration safety boundary are validated.
   worktree against its checked-in configuration; no deployment or active
   configuration edit occurred.
 
+2026-08-06 LLDV, shortcuts, and Queue recovery increment (uncommitted source work):
+
+- Added dedicated **LLDV metadata** and **Shortcuts** pages. LLDV exposes the
+  four optional public luminance overrides with numeric inputs and omission as
+  VP default. Shortcuts exposes active fixed VP commands and checks their chord
+  syntax and collisions with profile/shader bindings. Legacy renderer-only
+  commands remain hidden.
+- PPM and `[directshow.conversion]` are explicit permanent exclusions from the
+  structured editor. Their source text and comments continue to round-trip
+  untouched; no general DirectShow or unrestricted K/V page will expose them.
+- Moved recovery keys canonically into the first/default Queue profile. Shared
+  startup resolution uses `[queue]` when present or the first direct
+  `[queue.<name>]` otherwise. Legacy `[queue_recovery]` remains readable, the
+  editor migrates its active values, ambiguous duplicate definitions fail,
+  and non-default profiles reject recovery keys. Reordering Queue profiles
+  transfers recovery settings to the new default so safeguards do not change.
+- Action renderer targeting will use a one-based renderer-list index selected
+  from the UI, with `vprenderer` as the default and `*` for all renderers.
+  Numeric targets are now accepted directly; aliases remain compatibility-only
+  and will not be required or shown by the editor.
+- The complete x64 Release solution build succeeded and focused
+  `ConfigFileTests` passed 46/46. The updated editor was relaunched from the
+  feature worktree; no deployment or active configuration edit occurred.
+
+2026-08-06 ordered LLDV and expanded Startup increment (uncommitted source work):
+
+- Converted LLDV from a singleton editor into the same ordered profile model
+  used by Queue, VP Renderer, and Viewports. The first named profile is the
+  default; later profiles support Shortcut and Rule, inherit omitted metadata,
+  can be named/reordered/removed, and use shared runtime defaults without
+  persisting a field merely because its effective default is displayed. The
+  legacy exact `[lldv]` baseline remains readable and is migrated in the
+  editor's working copy like other unnamed roots.
+- Added production runtime selection for `[lldv.<name>]`, LLDV shortcut
+  registration and `profile.lldv.changed` state, mode-aware resolved metadata,
+  and safe live application with renderer restart only when the active
+  renderer rejects the update. Updated the sample, public inventory, and HTML
+  reference with the ordered LLDV contract.
+- Expanded Startup to cover capture device, renderer, fullscreen monitor and
+  session mode, start minimized, scene/detection controls, and HDR colorspace
+  and luminance policy. It now uses three focused cards and friendly selector
+  labels while preserving the exact stored tokens and any configured value
+  that is not currently discoverable.
+- Added shared read-only discovery for DeckLink capture devices, installed
+  renderers, and active monitor friendly names. VP and the editor can reuse the
+  same renderer ordering; toggling Hide legacy renderers refreshes the list
+  without discarding the selected configured value. This keeps the editor a
+  separate executable without duplicating device/runtime enumeration logic.
+- A final independent UI review found and fixed stacked-page clipping,
+  premature profile-column breakpoints, long-list-label buffer overflow,
+  long detail-heading clipping, and stale enabled fields for empty profile
+  groups. The reviewer reported no remaining P0/P1 blocker in the scoped UI.
+- The complete x64 Release solution build succeeded. Focused
+  `ConfigFileTests` passed 48/48, including ordered LLDV selection/default
+  inheritance and public-reference coverage. The build emitted only existing
+  incremental-link PDB type-record warnings. No deployment or active
+  configuration edit occurred. Actions and shader-selection pages remain the
+  next structured UI increments; numeric/all-renderer action targeting is
+  already accepted by the runtime and documented.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
@@ -519,11 +579,9 @@ must close:
 4. Several startup fields are currently accepted as `Any` and validated later
    or resolved by runtime code. A UI must not invent a second, weaker list of
    accepted values.
-5. The checked-in sample contains supported `[queue_recovery]`, `[lldv]`, and
-   `[logging]` settings that are absent from the current public-field inventory
-   and `CONFIGURATION.html`. The editor schema/reference coverage must either
-   classify and document them as public or deliberately classify them as
-   advanced/internal; they must not silently disappear.
+5. The checked-in sample historically used separate `[queue_recovery]` and
+   `[lldv]` settings. Recovery is now canonical in the default Queue profile;
+   LLDV is public and structured; logging remains preserved but advanced.
 6. The parser treats `#` or `;` preceded by whitespace as a comment delimiter
    and has no general quoting/escaping layer. Structured edits must preserve
    untouched action commands and other advanced values byte-for-byte rather
@@ -563,8 +621,8 @@ and future drift rather than a known failure of the shipped sample.
   range, units, applicability, and restart/rebuild behavior.
 - Use that schema for controls, validation, and documentation/inventory
   coverage. Do not maintain an untested duplicate list in the editor.
-- Reconcile the current `[queue_recovery]`, `[lldv]`, and `[logging]` inventory
-  gap and tighten `Any` fields where VP has a known public value contract.
+- Keep Queue recovery and LLDV in the public inventory, preserve logging as
+  advanced, and tighten `Any` fields where VP has a known public contract.
 - Keep machine-specific names such as capture devices, renderers, monitors,
   LUTs, and paths discoverable where practical and editable when discovery
   cannot prove the complete set.
@@ -614,8 +672,8 @@ and future drift rather than a known failure of the shipped sample.
 ### 5. Structured editing surface
 
 - Organize known settings by task/category rather than exposing a flat INI
-  grid: General/startup, Queue/timing, DirectShow/conversion, HDR/LLDV,
-  Alpha/display, Profiles/viewports, Shortcuts/shaders, Actions, and Advanced.
+  grid: Startup, Queue, VP Renderer, Viewports, LLDV metadata, Shortcuts,
+  Shaders, and Actions. Never expose PPM or `[directshow.conversion]`.
 - Render Booleans as check boxes, enums as selectors, bounded numbers as
   numeric controls with units/ranges, paths as browse controls, and discovered
   devices/renderers/monitors as selectors with an explicit custom-value path
