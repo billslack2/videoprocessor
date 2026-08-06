@@ -386,6 +386,35 @@ editor executable and its configuration safety boundary are validated.
   remained 43/43. UI quality review found no layout/reordering P0/P1 after the
   contrast correction.
 
+2026-08-06 conditional profile and shortcut increment (uncommitted source work):
+
+- Queue and VP Renderer now use the same file-ordered profile list/detail
+  pattern as Viewports, including add, remove, rename, and reorder controls.
+  Root sections remain explicit baselines; when no root exists, the first
+  named profile is the default. Omitted named-profile settings retain their
+  inherited state instead of being rewritten.
+- Added a separate public `shortcut:` field beside the optional `when:` field
+  for queue, renderer, viewport, and shader root/member sections. The raw file
+  keeps both keys separate. Runtime canonicalizes the key chord and internally
+  evaluates `(<when>) || ${key}=="<shortcut>"`; the editor never has to parse or
+  rewrite a key clause inside the user's rule. Full shader editing remains
+  manual and is preserved.
+- Shortcut-first profile forms now hide the advanced rule editor behind a
+  **Use automatic activation rule** checkbox. Existing `when:` content opens
+  expanded automatically, and the rule field provides three editable lines.
+  Viewport configuration entries are consistently presented as **Profiles**;
+  their literal file order identifies the default.
+- UI review findings were addressed with measured wrapping heights, wider
+  responsive breakpoints that stack narrow detail cards, grayscale font
+  antialiasing compatible with the composed Win32 window, and shorter copy.
+  Runtime review also corrected command-ID collisions between legacy and
+  unified profile shortcuts, queue override rollback, and viewport
+  release-drift-only updates. Shortcut aliases/case are canonicalized before
+  collision and selection handling.
+- The complete x64 Release solution build succeeded and the focused
+  `ConfigFileTests` suite passed 44/44. No deployment or active configuration
+  edit occurred.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
