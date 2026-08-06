@@ -265,6 +265,8 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
 - Live DeckLink RGB packing selection is now exposed through startup-only
   `[decklink]` preferences for 8-bit ARGB/BGRA, 10-bit r210/R10b/R10l, and
   12-bit R12B/R12L. AUTO preserves the established ARGB/r210/R12B defaults.
+  The shipped configuration now enables all three AUTO settings explicitly so
+  live installations use the validated compatibility-first policy by default.
   Alternate choices are validated with `IDeckLinkInput::DoesSupportVideoMode`
   for the active connection/display mode and safely fall back to the canonical
   packing with requested/effective diagnostics when unsupported.
