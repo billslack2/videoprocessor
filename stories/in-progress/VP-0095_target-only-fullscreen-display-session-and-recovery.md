@@ -2,8 +2,9 @@
 
 ## Status
 
-In progress. Base new implementation work on the current remote default VP
-integration branch, `origin/v1.1.016-beta`.
+Merged baseline on `origin/v1.1.016-beta` as `3dc792e` (2026-08-05).
+The active deployment configuration remains on `existing` while a follow-up
+resolves Windows rejecting the supplied one-path CCD topology on this hardware.
 
 ## User story
 
