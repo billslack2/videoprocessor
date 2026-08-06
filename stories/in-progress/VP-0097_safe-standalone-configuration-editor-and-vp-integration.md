@@ -318,6 +318,21 @@ editor executable and its configuration safety boundary are validated.
   remained 43/43. The feedback process still edits only the worktree config;
   nothing was deployed.
 
+2026-08-06 recorded scrolling and responsive-state correction (uncommitted source work):
+
+- A second OBS review showed that the shared General-page scroll moved the
+  short Startup card offscreen while scrolling the tall Advanced Output card.
+  Startup is now sticky in the two-column layout; stacked layouts retain one
+  natural document flow and reset to the top when crossing the responsive
+  breakpoint so Startup cannot disappear during reflow.
+- Scrollbar dragging now reads the native 32-bit track position and presents
+  each tracked composed frame immediately, avoiding coarse delayed jumps.
+  Enabling anamorphic stretch also repaints its ratio field immediately so its
+  disabled gray value becomes visibly active black text.
+- UI quality review found no P0/P1 issue in the sticky coordinates, transition
+  reset, thumb-tracking path, or targeted anamorphic repaint. The standalone
+  x64 Release build succeeded and focused `ConfigFileTests` remained 43/43.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
