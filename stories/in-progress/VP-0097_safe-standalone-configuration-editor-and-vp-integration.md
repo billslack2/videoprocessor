@@ -333,6 +333,26 @@ editor executable and its configuration safety boundary are validated.
   reset, thumb-tracking path, or targeted anamorphic repaint. The standalone
   x64 Release build succeeded and focused `ConfigFileTests` remained 43/43.
 
+2026-08-06 copy, state, and viewport-order controls (uncommitted source work):
+
+- Removed the configuration-path banner, renamed the navigation/page from the
+  raw-looking General/output spelling to **General**, and standardized normal
+  control text to black with muted gray disabled states. The action blue was
+  darkened after accessibility review so selected and hovered small text meets
+  normal-text contrast.
+- Added visible **Move up** and **Move down** viewport controls with correct
+  legacy/first/last disabled states. Drag ordering and Ctrl+Up/Ctrl+Down remain
+  available, and all paths preserve pending viewport edits before moving whole
+  source sections.
+- The next audited structured surfaces are **Shortcuts**, followed by
+  **Queues & recovery**. Shortcut capture requires shared grammar/conflict
+  validation before it is considered safe. Queue recovery remains active and
+  must include its reset delay and high-water percentage rather than being
+  treated as obsolete.
+- The standalone x64 Release build succeeded and focused `ConfigFileTests`
+  remained 43/43. UI quality review found no layout/reordering P0/P1 after the
+  contrast correction.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
