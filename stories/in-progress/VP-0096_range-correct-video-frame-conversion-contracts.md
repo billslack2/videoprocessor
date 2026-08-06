@@ -17,7 +17,7 @@ tests; the implementation checkpoint below records their resolution.
 Implementation checkpoint (2026-08-06): all seven characterization failures
 are resolved on the feature branch, renderer routing/signaling and native
 analysis are covered, a clean x64 Release build succeeds, and the complete
-suite passes 633/633 tests. The story remains in progress for hardware-path
+suite passes 634/634 tests. The story remains in progress for hardware-path
 validation and final integration review.
 
 ## User story
@@ -220,7 +220,11 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
   explicitly overridden. MPC/Generic forced P010 covers every supported input.
 - Related native sparse-analysis math was corrected for limited 10-bit RGB and
   normalized R12, with reference-vector tests.
-- Clean x64 Release build: passed. Complete test suite: 633/633 passed.
-- Representative 4K Release averages: v210-to-P010 2.1 ms, r210-to-RGB48
-  4.4 ms, R12B-to-RGB48 5.8 ms, limited packed RGB-to-P010 8.6-9.0 ms, and
-  R12-to-P010 10.0-11.0 ms. Tests enforce a 16.67 ms average ceiling.
+- Clean x64 Release build: passed. Complete test suite: 634/634 passed.
+- The performance regression test now uses median-of-three runs, each with 120
+  measured frames rotating across four patterned 4K buffers, and gates both
+  average and p95 below 16.67 ms. Sustained averages were 2.2 ms for
+  v210-to-P010, 4.6 ms for r210-to-RGB48, 5.6 ms for R12B-to-RGB48,
+  11.0-12.7 ms for limited packed RGB-to-P010, and 9.8-11.1 ms for
+  R12-to-P010. This exposed a 20-39% cost hidden by hot-buffer measurements
+  for R10b/R10l; all median sustained p95 values remained below 14.4 ms.
