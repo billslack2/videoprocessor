@@ -2,8 +2,8 @@
 
 ## Status
 
-Review. The repair is merged into `v1.1.015-beta` and deployed for final
-projector validation.
+Done (2026-08-05). The repair is merged and deployed; final projector use
+confirmed the corrected BT.2020 picture path is practical for normal use.
 
 ## Review handoff (2026-08-05)
 

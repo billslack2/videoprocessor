@@ -123,7 +123,7 @@ they must not contain requirements that are absent from this file.
 | VP-0089 | Backlog | Alpha two-axis balanced non-linear stretch |
 | VP-0091 | Done | Hide System32 DirectShow renderers by default |
 | VP-0092 | Backlog | Discover madVR shortcuts and control its native statistics OSD |
-| VP-0093 | Review | Prevent Alpha SDR BT.2020 output-contract regressions |
+| VP-0093 | Done | Prevent Alpha SDR BT.2020 output-contract regressions |
 | VP-0094 | In progress | Select the configured fullscreen monitor by friendly name |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
