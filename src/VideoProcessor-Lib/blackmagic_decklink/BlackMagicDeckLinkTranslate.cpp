@@ -12,10 +12,124 @@
 
 
 #include <map>
+#include <stdexcept>
 
 #include <DeckLinkAPI_h.h>
 
 #include "BlackMagicDeckLinkTranslate.h"
+
+
+namespace
+{
+	constexpr BMDPixelFormat INVALID_PIXEL_FORMAT =
+		static_cast<BMDPixelFormat>(0);
+
+	bool ReadPacking(const ConfigFile& config, const char* key,
+		BMDPixelFormat& value, const std::initializer_list<
+			std::pair<const char*, BMDPixelFormat>>& choices,
+		std::string& error)
+	{
+		std::string configured;
+		if (!config.TryGetString("decklink", key, configured))
+			return true;
+		const std::string normalized = ConfigFile::NormalizeName(configured);
+		if (normalized == "auto")
+			return true;
+		for (const auto& choice : choices)
+			if (normalized == ConfigFile::NormalizeName(choice.first))
+			{
+				value = choice.second;
+				return true;
+			}
+		error = std::string("Invalid [decklink] ") + key + "='" +
+			configured + "'";
+		return false;
+	}
+}
+
+
+bool ReadDeckLinkCaptureFormatPreferences(const ConfigFile& config,
+	DeckLinkCaptureFormatPreferences& preferences, std::string& error)
+{
+	preferences = {};
+	error.clear();
+	return ReadPacking(config, "rgb_8bit_packing", preferences.rgb8,
+		{ { "ARGB", bmdFormat8BitARGB }, { "BGRA", bmdFormat8BitBGRA } }, error) &&
+		ReadPacking(config, "rgb_10bit_packing", preferences.rgb10,
+		{ { "R210", bmdFormat10BitRGB }, { "R10B", bmdFormat10BitRGBX },
+			{ "R10L", bmdFormat10BitRGBXLE } }, error) &&
+		ReadPacking(config, "rgb_12bit_packing", preferences.rgb12,
+		{ { "R12B", bmdFormat12BitRGB }, { "R12L", bmdFormat12BitRGBLE } }, error);
+}
+
+
+BMDPixelFormat CanonicalDeckLinkCapturePixelFormat(
+	BMDDetectedVideoInputFormatFlags flags)
+{
+	if (flags & bmdDetectedVideoInputRGB444)
+	{
+		if (flags & bmdDetectedVideoInput8BitDepth) return bmdFormat8BitARGB;
+		if (flags & bmdDetectedVideoInput10BitDepth) return bmdFormat10BitRGB;
+		if (flags & bmdDetectedVideoInput12BitDepth) return bmdFormat12BitRGB;
+	}
+	if (flags & bmdDetectedVideoInputYCbCr422)
+	{
+		if (flags & bmdDetectedVideoInput8BitDepth) return bmdFormat8BitYUV;
+		if (flags & bmdDetectedVideoInput10BitDepth) return bmdFormat10BitYUV;
+	}
+	return INVALID_PIXEL_FORMAT;
+}
+
+
+BMDPixelFormat PreferredDeckLinkCapturePixelFormat(
+	BMDDetectedVideoInputFormatFlags flags,
+	const DeckLinkCaptureFormatPreferences& preferences)
+{
+	if (flags & bmdDetectedVideoInputRGB444)
+	{
+		if (flags & bmdDetectedVideoInput8BitDepth) return preferences.rgb8;
+		if (flags & bmdDetectedVideoInput10BitDepth) return preferences.rgb10;
+		if (flags & bmdDetectedVideoInput12BitDepth) return preferences.rgb12;
+	}
+	return CanonicalDeckLinkCapturePixelFormat(flags);
+}
+
+
+BMDPixelFormat ResolveDeckLinkCapturePixelFormat(
+	BMDDetectedVideoInputFormatFlags flags,
+	const DeckLinkCaptureFormatPreferences& preferences,
+	const std::function<bool(BMDPixelFormat)>& isSupported,
+	bool& usedFallback)
+{
+	usedFallback = false;
+	const BMDPixelFormat canonical = CanonicalDeckLinkCapturePixelFormat(flags);
+	const BMDPixelFormat preferred = PreferredDeckLinkCapturePixelFormat(
+		flags, preferences);
+	if (preferred == INVALID_PIXEL_FORMAT || preferred == canonical)
+		return preferred;
+	if (isSupported && isSupported(preferred))
+		return preferred;
+	usedFallback = true;
+	return canonical;
+}
+
+
+const char* DeckLinkPixelFormatName(BMDPixelFormat pixelFormat)
+{
+	switch (pixelFormat)
+	{
+	case bmdFormat8BitYUV: return "UYVY";
+	case bmdFormat10BitYUV: return "v210";
+	case bmdFormat8BitARGB: return "ARGB";
+	case bmdFormat8BitBGRA: return "BGRA";
+	case bmdFormat10BitRGB: return "r210";
+	case bmdFormat10BitRGBX: return "R10b";
+	case bmdFormat10BitRGBXLE: return "R10l";
+	case bmdFormat12BitRGB: return "R12B";
+	case bmdFormat12BitRGBLE: return "R12L";
+	default: return "unknown";
+	}
+}
 
 
 //

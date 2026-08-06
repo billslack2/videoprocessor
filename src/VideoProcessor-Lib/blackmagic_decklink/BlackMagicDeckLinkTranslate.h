@@ -17,6 +17,36 @@
 #include <EOTF.h>
 #include <ColorSpace.h>
 #include <DisplayMode.h>
+#include <ConfigFile.h>
+
+#include <functional>
+#include <string>
+
+
+struct DeckLinkCaptureFormatPreferences
+{
+	BMDPixelFormat rgb8 = bmdFormat8BitARGB;
+	BMDPixelFormat rgb10 = bmdFormat10BitRGB;
+	BMDPixelFormat rgb12 = bmdFormat12BitRGB;
+};
+
+bool ReadDeckLinkCaptureFormatPreferences(const ConfigFile& config,
+	DeckLinkCaptureFormatPreferences& preferences, std::string& error);
+
+BMDPixelFormat CanonicalDeckLinkCapturePixelFormat(
+	BMDDetectedVideoInputFormatFlags detectedSignalFlags);
+
+BMDPixelFormat PreferredDeckLinkCapturePixelFormat(
+	BMDDetectedVideoInputFormatFlags detectedSignalFlags,
+	const DeckLinkCaptureFormatPreferences& preferences);
+
+BMDPixelFormat ResolveDeckLinkCapturePixelFormat(
+	BMDDetectedVideoInputFormatFlags detectedSignalFlags,
+	const DeckLinkCaptureFormatPreferences& preferences,
+	const std::function<bool(BMDPixelFormat)>& isSupported,
+	bool& usedFallback);
+
+const char* DeckLinkPixelFormatName(BMDPixelFormat pixelFormat);
 
 
 ColorFormat TranslateColorFormat(BMDDetectedVideoInputFormatFlags detectedVideoInputFormatFlagsValue);

@@ -30,14 +30,17 @@ static const timingclocktime_t DECKLINK_CLOCK_MAX_TICKS_SECOND = 1000000LL;  // 
 //
 
 
-BlackMagicDeckLinkCaptureDevice::BlackMagicDeckLinkCaptureDevice(const IDeckLinkComPtr& deckLinkDevice) :
+BlackMagicDeckLinkCaptureDevice::BlackMagicDeckLinkCaptureDevice(
+	const IDeckLinkComPtr& deckLinkDevice,
+	const DeckLinkCaptureFormatPreferences& formatPreferences) :
 	m_deckLink(deckLinkDevice),
 	m_deckLinkConfiguration(deckLinkDevice),
 	m_deckLinkAttributes(deckLinkDevice),
 	m_deckLinkProfileManager(deckLinkDevice),
 	m_deckLinkNotification(deckLinkDevice),
 	m_deckLinkStatus(deckLinkDevice),
-	m_deckLinkHDMIInputEDID(deckLinkDevice)
+	m_deckLinkHDMIInputEDID(deckLinkDevice),
+	m_formatPreferences(formatPreferences)
 {
 	if (!deckLinkDevice)
 		throw std::runtime_error("No DeckLink device given in constructor");
@@ -474,39 +477,47 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFormatChang
 	//
 	// Determine pixel format
 	//
-	BMDPixelFormat bmdPixelFormat;
-	if (detectedSignalFlags & bmdDetectedVideoInputRGB444)
+	const BMDPixelFormat canonicalPixelFormat =
+		CanonicalDeckLinkCapturePixelFormat(detectedSignalFlags);
+	if (canonicalPixelFormat == BMD_PIXEL_FORMAT_INVALID)
 	{
-		if (detectedSignalFlags & bmdDetectedVideoInput8BitDepth)
-			bmdPixelFormat = bmdFormat8BitARGB;
-		else if (detectedSignalFlags & bmdDetectedVideoInput10BitDepth)
-			bmdPixelFormat = bmdFormat10BitRGB;
-		else if (detectedSignalFlags & bmdDetectedVideoInput12BitDepth)
-			bmdPixelFormat = bmdFormat12BitRGB;
-		else
-			throw std::runtime_error("Unknown pixel format for RGB444");
-	}
-	else if (detectedSignalFlags & bmdDetectedVideoInputYCbCr422)
-	{
-		if (detectedSignalFlags & bmdDetectedVideoInput8BitDepth)
-			bmdPixelFormat = bmdFormat8BitYUV;
-		else if (detectedSignalFlags & bmdDetectedVideoInput10BitDepth)
-			bmdPixelFormat = bmdFormat10BitYUV;
-		else if (detectedSignalFlags & bmdDetectedVideoInput12BitDepth)
-		{
+		if ((detectedSignalFlags & bmdDetectedVideoInputYCbCr422) &&
+			(detectedSignalFlags & bmdDetectedVideoInput12BitDepth))
 			Error(TEXT("DeckLink does not support YCbCr422 12bit input"));
-			return E_FAIL;
-		}
 		else
+			Error(TEXT("Failed to determine supported input pixel format"));
+		return E_FAIL;
+	}
+
+	const BMDPixelFormat preferredPixelFormat =
+		PreferredDeckLinkCapturePixelFormat(
+			detectedSignalFlags, m_formatPreferences);
+	bool usedPackingFallback = false;
+	const BMDPixelFormat bmdPixelFormat = ResolveDeckLinkCapturePixelFormat(
+		detectedSignalFlags, m_formatPreferences,
+		[this, newMode](BMDPixelFormat candidate)
 		{
-			Error(TEXT("Unknown bit depth for YCbCr422"));
-			return E_FAIL;
-		}
+			BOOL supported = FALSE;
+			BMDDisplayMode actualMode = newMode->GetDisplayMode();
+			const HRESULT result = m_deckLinkInput->DoesSupportVideoMode(
+				m_captureInputId, newMode->GetDisplayMode(), candidate,
+				bmdNoVideoInputConversion, bmdSupportedVideoModeDefault,
+				&actualMode, &supported);
+			return SUCCEEDED(result) && supported;
+		}, usedPackingFallback);
+	if (usedPackingFallback)
+	{
+		DebugLog::Log(
+			"BlackMagic: requested capture packing %s is unsupported for the active mode; falling back to %s",
+			DeckLinkPixelFormatName(preferredPixelFormat),
+			DeckLinkPixelFormatName(bmdPixelFormat));
 	}
 	else
 	{
-		Error(TEXT("Failed to determine input (not RGB or YCbCr422)"));
-		return E_FAIL;
+		DebugLog::Log(
+			"BlackMagic: capture packing selected requested=%s effective=%s",
+			DeckLinkPixelFormatName(preferredPixelFormat),
+			DeckLinkPixelFormatName(bmdPixelFormat));
 	}
 
 	// CRITICAL FIX: ALWAYS reset when VideoInputFormatChanged is called

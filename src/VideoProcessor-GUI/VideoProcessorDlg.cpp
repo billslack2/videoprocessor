@@ -1417,7 +1417,18 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 		}
 	}
 
-	m_blackMagicDeviceDiscoverer = new BlackMagicDeckLinkCaptureDeviceDiscoverer(*this);
+	DeckLinkCaptureFormatPreferences deckLinkFormatPreferences;
+	std::string deckLinkFormatError;
+	if (profileConfig.IsLoaded() && !ReadDeckLinkCaptureFormatPreferences(
+		profileConfig, deckLinkFormatPreferences, deckLinkFormatError))
+		throw std::runtime_error(deckLinkFormatError);
+	DebugLog::Log(
+		"DeckLink capture packing preferences: rgb8=%s rgb10=%s rgb12=%s",
+		DeckLinkPixelFormatName(deckLinkFormatPreferences.rgb8),
+		DeckLinkPixelFormatName(deckLinkFormatPreferences.rgb10),
+		DeckLinkPixelFormatName(deckLinkFormatPreferences.rgb12));
+	m_blackMagicDeviceDiscoverer = new BlackMagicDeckLinkCaptureDeviceDiscoverer(
+		*this, deckLinkFormatPreferences);
 	
 	// Initialize stats overlay
 	m_statsOverlay = new StatsOverlayWindow();

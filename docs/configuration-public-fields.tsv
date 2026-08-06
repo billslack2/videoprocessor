@@ -15,6 +15,9 @@ general.container_colorspace	general-container-colorspace	VP input metadata	no
 general.hdr_colorspace	general-hdr-colorspace	VP HDR	no
 general.hdr_luminance	general-hdr-luminance	VP HDR	no
 general.newlldv	general-newlldv	VP HDR detection	no
+decklink.rgb_8bit_packing	decklink-rgb-8bit-packing	DeckLink capture	yes
+decklink.rgb_10bit_packing	decklink-rgb-10bit-packing	DeckLink capture	yes
+decklink.rgb_12bit_packing	decklink-rgb-12bit-packing	DeckLink capture	yes
 renderer_alias.<name>	renderer-alias-name	VP renderer selection	no
 queue.when	queue-when	VP queue	no
 queue.shortcut	queue-shortcut	VP queue	no

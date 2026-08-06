@@ -17,6 +17,7 @@
 #include <VideoFrame.h>
 #include <ACaptureDevice.h>
 #include <ITimingClock.h>
+#include <blackmagic_decklink/BlackMagicDeckLinkTranslate.h>
 
 
 typedef CComPtr<IDeckLink> IDeckLinkComPtr;
@@ -42,7 +43,8 @@ class BlackMagicDeckLinkCaptureDevice:
 {
 public:
 
-	BlackMagicDeckLinkCaptureDevice(const IDeckLinkComPtr& deckLinkDevice);
+	BlackMagicDeckLinkCaptureDevice(const IDeckLinkComPtr& deckLinkDevice,
+		const DeckLinkCaptureFormatPreferences& formatPreferences = {});
 	virtual ~BlackMagicDeckLinkCaptureDevice();
 
 	// ACaptureDevice
@@ -91,6 +93,7 @@ private:
 	CComQIPtr<IDeckLinkStatus> m_deckLinkStatus;
 	CComQIPtr<IDeckLinkHDMIInputEDID> m_deckLinkHDMIInputEDID;
 	bool m_canCapture = true;
+	DeckLinkCaptureFormatPreferences m_formatPreferences;
 	std::vector<CaptureInput> m_captureInputSet;
 
 	timingclocktime_t m_frameOffsetTicks = 0;

@@ -124,7 +124,7 @@ coefficient tables.
 - Native sparse RGB analysis uses the same limited-range reference conversion
   as displayed R10/r210 content and normalized R12 downconversion.
 
-The clean x64 Release suite passes 643/643 tests. A sustained performance test
+The clean x64 Release suite passes 647/647 tests. A sustained performance test
 now compares the former 30-frame hot-zero-buffer workload with three runs of
 120 measured frames rotating across four patterned 4K buffers. The regression
 gate uses the median-of-three average and p95; both must remain below the
@@ -167,8 +167,8 @@ routes was:
 | r210 / R12B to RGB48 | 3.70 / 4.13 ms | 4.01 / 4.68 ms |
 | v210 no-op delivery copy | 1.40 ms | 1.61 ms |
 
-When the benchmark ran inside the complete 643-test suite, the most conservative
-RGB48 p95 was 8.06 ms and every other conversion p95 remained below 6.91 ms.
+When the benchmark ran inside the complete 647-test suite, the most conservative
+RGB48 p95 was 4.79 ms and every other conversion p95 remained below 5.39 ms.
 This loaded-system run still leaves more than 2x headroom against the 16.67 ms
 4K60 frame period.
 
@@ -199,3 +199,37 @@ independent uniform-code oracle and full-output comparisons prove that AUTO,
 Standard, Optimized, and SIMD agree at every resolution in the matrix. Alpha's
 formatter diagnostics now inspect the complete 720p active width instead of
 excluding the formerly concealed columns.
+
+### Live DeckLink RGB packing selection
+
+DeckLink format detection reports signal family and bit depth; the application
+chooses the host-memory packing requested from the card. VP now exposes three
+startup-only preferences under `[decklink]`:
+
+| Setting | Values | AUTO/default |
+|---|---|---|
+| `rgb_8bit_packing` | `AUTO`, `ARGB`, `BGRA` | ARGB |
+| `rgb_10bit_packing` | `AUTO`, `R210`, `R10B`, `R10L` | r210 |
+| `rgb_12bit_packing` | `AUTO`, `R12B`, `R12L` | R12B |
+
+The defaults retain existing behavior. An alternate is checked with DeckLink's
+`IDeckLinkInput::DoesSupportVideoMode` for the active connection and display
+mode before capture restarts. Unsupported alternatives fall back to the
+canonical packing, and diagnostics record the configured, requested, and
+effective formats. Selection and capability checking occur only on startup or
+a DeckLink format-change callback; no work is added to the per-frame path.
+
+Policy tests cover all exposed alternatives, unchanged defaults, invalid
+cross-depth values, supported selection, and device-rejection fallback.
+Existing formatter, renderer-ingress, range, resolution, and sustained 4K
+tests now also serve as reachability guards for the newly selectable formats.
+
+The post-exposure rotating-pattern checkpoint confirms that the configuration
+and capability policy adds no per-frame conversion stage:
+
+| Newly selectable route | 4K average | 4K p95 |
+|---|---:|---:|
+| BGRA to P010 | 2.73 ms | 3.14 ms |
+| R10b to P010 | 2.60 ms | 2.99 ms |
+| R10l to P010 | 2.58 ms | 2.89 ms |
+| R12L to P010 | 3.96 ms | 4.63 ms |
