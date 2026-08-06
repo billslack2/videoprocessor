@@ -105,6 +105,23 @@ editor executable and its configuration safety boundary are validated.
   parser-compatible first named viewport is labeled as the default; remaining
   named viewport variants are listed in configuration-file order.
 
+2026-08-06 viewport-management follow-up (uncommitted source work):
+
+- Corrected the test assumption after inspecting the active deployment
+  configuration: it has the base, `scope`, and `scope_anamorphic` viewport
+  variants. The previous UI showed one only because it was launched against
+  the checked-in sample, which has only the root section.
+- Added New viewport and Remove selected actions, protected the required base
+  viewport, and exposed the activation rule as a validated advanced field.
+  New variants start with safe viewport defaults and remain pending until
+  saved; removal requires in-app confirmation and saving retains a backup.
+- Changed aspect, anamorphic, subtitle timing, and padding values to
+  selector-first controls. A configured nonstandard value remains selectable
+  and unchanged rather than being forced to a listed standard value.
+- Reduced the initial UI type scale and launched the x64 Release editor
+  against a disposable copy of the active configuration for safe multi-
+  viewport feedback. The active deployed config was not modified.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
