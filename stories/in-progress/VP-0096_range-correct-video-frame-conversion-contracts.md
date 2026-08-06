@@ -5,14 +5,20 @@
 In Progress (2026-08-06). Test-first range and routing analysis is active on
 `codex/vp-0096-range-conversion-tests` in
 `C:\Users\bslac\vp\vp-0096-range-conversion-tests`, based on the current
-GitHub default branch `v1.1.016-beta` at `b6e2892`. Initial work is limited to
-documentation review, route characterization, and tests that expose current
-assumptions; no conversion policy change has yet been selected.
+GitHub default branch `v1.1.016-beta` at `b6e2892`. Documentation review,
+route characterization, converter corrections, renderer signaling, and
+performance verification are implemented on the feature branch.
 
 DeckLink documentation and independent engineering review are complete for
 the initial matrix. An x64 Release build succeeds. The focused formatter run
-has 47 passing tests and 7 intentionally failing characterization tests; the
-failures are recorded below and are not yet production fixes.
+initial run had 47 passing tests and 7 intentionally failing characterization
+tests; the implementation checkpoint below records their resolution.
+
+Implementation checkpoint (2026-08-06): all seven characterization failures
+are resolved on the feature branch, renderer routing/signaling and native
+analysis are covered, a clean x64 Release build succeeds, and the complete
+suite passes 633/633 tests. The story remains in progress for hardware-path
+validation and final integration review.
 
 ## User story
 
@@ -198,3 +204,23 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
 6. `DeckLinkR210Rgb48ContractIsLimitedRange`: RGB48 output contract is unknown.
 7. `DeckLinkPackedRgbFormatterContractsMatchDocumentedRanges`: the shared P010
    formatter always declares full range, including r210/R10b/R10l.
+
+## Implementation checkpoint (2026-08-06)
+
+- All seven red tests above now pass.
+- R12-to-P010 uses exact normalized rounding backed by an immutable 8 KiB
+  lookup table, reducing its measured 4K average from roughly 13.3-15.0 ms to
+  roughly 10.0-11.0 ms.
+- Limited r210/R10b/R10l BT.709 and BT.2020 reference vectors pass. r210-to-
+  RGB48 preserves its 10-bit codes with a six-bit container shift.
+- UYVY and all v210 P010 paths use the same rounded vertical chroma average;
+  standard, optimized, threaded/SIMD, tail, and 720p-special tests agree.
+- Alpha keeps R10b/R10l native with limited signaling and routes r210 through
+  range-aware P010. DirectShow nominal range follows formatter output unless
+  explicitly overridden. MPC/Generic forced P010 covers every supported input.
+- Related native sparse-analysis math was corrected for limited 10-bit RGB and
+  normalized R12, with reference-vector tests.
+- Clean x64 Release build: passed. Complete test suite: 633/633 passed.
+- Representative 4K Release averages: v210-to-P010 2.1 ms, r210-to-RGB48
+  4.4 ms, R12B-to-RGB48 5.8 ms, limited packed RGB-to-P010 8.6-9.0 ms, and
+  R12-to-P010 10.0-11.0 ms. Tests enforce a 16.67 ms average ceiling.
