@@ -157,6 +157,24 @@ editor executable and its configuration safety boundary are validated.
   redesigned process stayed running against the disposable three-viewport
   configuration, and focused `ConfigFileTests` passed 41/41.
 
+2026-08-06 UI-foundation gate (uncommitted source design work):
+
+- New visual feedback correctly identified that the prototype is still an
+  unthemed, coordinate-driven raw Win32 form, not a foundation for more
+  configuration pages. Its current screenshot also exposes selector-height
+  clipping and label/control reflow defects, so no further configuration
+  surface will be added until the shell is rebuilt.
+- A UI designer and Windows UI engineering review produced the source design
+  contract at `docs/VP-0097_CONFIGURATION_EDITOR_UI_DESIGN.md`: VP theme
+  tokens, typography, navigation, page/card/form/footer primitives, field
+  control policy, viewport interaction design, DPI/accessibility requirements,
+  and a review gate for the first two pages.
+- The selected default direction retains the existing native C++ config and
+  integration behavior while replacing direct child-control coordinates with
+  a measured, DPI-aware native presentation layer. WinUI 3/C++/WinRT remains
+  an explicit alternative only if its deployment/runtime decision is approved
+  before implementation.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
