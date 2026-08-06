@@ -271,6 +271,15 @@ editor executable and its configuration safety boundary are validated.
   normal compact field height. Reordering adds Ctrl+Up/Ctrl+Down, Escape
   cancellation, and captured edge autoscroll alongside drag-and-drop.
 
+2026-08-06 selector popup correction (uncommitted source work):
+
+- Live feedback found that compact raw Win32 dropdown-list controls could be
+  focused and scrolled but did not present a usable popup. The editor now
+  keeps the visible selector at the normal compact field height while
+  explicitly configuring native item height, non-integral list sizing, and a
+  minimum eight-item dropdown. DPI changes reapply those metrics. The Release
+  editor rebuilt successfully and focused `ConfigFileTests` remained 43/43.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
