@@ -122,6 +122,15 @@ editor executable and its configuration safety boundary are validated.
   against a disposable copy of the active configuration for safe multi-
   viewport feedback. The active deployed config was not modified.
 
+2026-08-06 validation and placement correction (uncommitted source work):
+
+- Live testing found that loading queue size used a combo-box selection message
+  on an Edit control, blanking the value and causing validation to reject an
+  otherwise valid configuration. The edit control now receives its text
+  directly; this does not alter the test or deployed configuration.
+- The editor now clamps its opening position to the monitor work area so its
+  branded header is not created partly above the visible desktop.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
