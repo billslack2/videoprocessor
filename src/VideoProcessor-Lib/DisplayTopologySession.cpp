@@ -350,15 +350,16 @@ bool CopyReferencedMode(const Topology& source, UINT32& modeIndex,
 bool BuildExactSinglePathTopology(const Topology& source,
 	const DISPLAYCONFIG_PATH_INFO& selected, Topology& destination)
 {
-	destination = {};
+	// Keep the mode table exactly as CCD returned it.  A path's mode indices
+	// are defined against this table; reducing or remapping it caused Windows
+	// to reject the otherwise valid active path with ERROR_INVALID_PARAMETER.
+	destination = source;
+	destination.paths.clear();
 	destination.paths.push_back(selected);
 	auto& path = destination.paths.front();
 	path.flags |= DISPLAYCONFIG_PATH_ACTIVE;
-	std::map<UINT32, UINT32> remapped;
-	return CopyReferencedMode(source, path.sourceInfo.modeInfoIdx,
-		destination, remapped) &&
-		CopyReferencedMode(source, path.targetInfo.modeInfoIdx,
-			destination, remapped);
+	return path.sourceInfo.modeInfoIdx != DISPLAYCONFIG_PATH_MODE_IDX_INVALID &&
+		path.targetInfo.modeInfoIdx != DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
 }
 
 bool SourceGdiName(const DISPLAYCONFIG_PATH_INFO& path, std::wstring& name)
@@ -395,8 +396,8 @@ bool ApplyMaximumMode(const DISPLAYCONFIG_PATH_INFO& path, std::string& error)
 			continue;
 		const uint64_t area = static_cast<uint64_t>(candidate.dmPelsWidth) * candidate.dmPelsHeight;
 		const uint64_t bestArea = static_cast<uint64_t>(best.dmPelsWidth) * best.dmPelsHeight;
-		if (!found || area > bestArea ||
-			(area == bestArea && candidate.dmDisplayFrequency > best.dmDisplayFrequency))
+		if (!found || candidate.dmDisplayFrequency > best.dmDisplayFrequency ||
+			(candidate.dmDisplayFrequency == best.dmDisplayFrequency && area > bestArea))
 		{
 			best = candidate;
 			found = true;
