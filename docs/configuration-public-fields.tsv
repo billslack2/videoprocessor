@@ -5,6 +5,7 @@ general.renderer	general-renderer	VP startup	no
 general.hide_legacy_renderers	general-hide-legacy-renderers	DirectShow discovery	no
 general.fullscreen	general-fullscreen	VP startup	no
 general.fullscreen_monitor_name	general-fullscreen-monitor-name	Fullscreen host placement	no
+general.fullscreen_monitor_session_mode	general-fullscreen-monitor-session-mode	Temporary target-only display session	no
 general.windowed_fullscreen_mode	general-windowed-fullscreen-mode	VP startup	no
 general.startminimized	general-start-minimized	VP startup	no
 general.scene_detect	general-scene-detect	VP cadence	no

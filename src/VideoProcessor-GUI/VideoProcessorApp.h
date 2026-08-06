@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstddef>
+#include <string>
 
 
 class CVideoProcessorApp:
@@ -16,6 +17,8 @@ class CVideoProcessorApp:
 {
 public:
 	virtual BOOL InitInstance();
+	virtual int ExitInstance();
+	bool RestoreDisplayTopology(const char* reason);
 
 	// DirectShow startup priming remains automatic. The public queue controls
 	// are the timestamp lead and maintained VP queue target, both expressed as
@@ -52,6 +55,9 @@ private:
 	size_t m_presentationLeadFrames = 1;
 	bool m_hasPresentationLeadFrames = true;
 	size_t m_activePictureLookaheadFrames = 0;
+	std::string m_displayRecoveryStatePath;
+	bool m_targetOnlyDisplaySessionActive = false;
+	int m_startupExitCode = 0;
 
 	DECLARE_MESSAGE_MAP()
 };

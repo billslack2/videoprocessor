@@ -184,6 +184,7 @@
     <ClInclude Include="DisplayRefreshRatePolicy.h" />
 	<ClInclude Include="DisplayRefreshRateEstimator.h" />
 	<ClInclude Include="DisplayRefreshRateWindow.h" />
+	<ClInclude Include="DisplayTopologySession.h" />
 	<ClInclude Include="DirectShowFrameDeliverer.h" />
 	<ClInclude Include="DirectShowDeliveryOutcome.h" />
 	<ClInclude Include="DirectShowSegmentTransition.h" />
@@ -309,6 +310,7 @@
 	<ClCompile Include="OutputReadinessController.cpp" />
 	<ClCompile Include="RationalLiveOutputSequencer.cpp" />
     <ClCompile Include="ConfigFile.cpp" />
+	<ClCompile Include="DisplayTopologySession.cpp" />
     <ClCompile Include="EOTF.cpp" />
     <ClCompile Include="guid.cpp" />
     <ClCompile Include="HDRData.cpp" />
