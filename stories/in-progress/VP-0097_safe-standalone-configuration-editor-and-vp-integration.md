@@ -232,6 +232,18 @@ editor executable and its configuration safety boundary are validated.
 - Standalone x64 Release and the rebuilt focused `ConfigFileTests` suite passed
   43/43. No deployment and no active-configuration edit occurred.
 
+2026-08-06 direct-launch correction (uncommitted source work):
+
+- Live direct-launch testing found the development executable trying to load a
+  nonexistent `VideoProcessor.cfg` beside its build output. The fallback now
+  recognizes only the local project layout, resolves the checked-in sample to
+  a canonical path, and never applies that parent-directory fallback to an
+  installed editor. Explicit VP `--config` paths remain authoritative.
+- Validation diagnostics now identify the actual named viewport section and
+  received value instead of reporting every named-baseline error as the legacy
+  root section. The latest standalone x64 Release build and focused suite
+  passed 43/43; the editor was reopened from that build for feedback.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
