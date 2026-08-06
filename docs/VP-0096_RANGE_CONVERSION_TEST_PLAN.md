@@ -124,14 +124,28 @@ coefficient tables.
 - Native sparse RGB analysis uses the same limited-range reference conversion
   as displayed R10/r210 content and normalized R12 downconversion.
 
-The clean x64 Release suite passes 635/635 tests. A sustained performance test
+The clean x64 Release suite passes 639/639 tests. A sustained performance test
 now compares the former 30-frame hot-zero-buffer workload with three runs of
 120 measured frames rotating across four patterned 4K buffers. The regression
 gate uses the median-of-three average and p95; both must remain below the
-16.67 ms 60 fps frame period. Median sustained averages on the development
-system were 2.3 ms for v210-to-P010, 5.3 ms for r210-to-RGB48, 5.8 ms for
-R12B-to-RGB48, 2.6 ms for AVX2 limited packed RGB-to-P010, and 10.8-11.2 ms
-for R12-to-P010. Before AVX2, the same sustained limited-RGB workloads took
-11.0-12.7 ms. The new implementation is bit-exact with the scalar oracle for
+16.67 ms 60 fps frame period. The benchmark now covers every CPU formatter
+route used by the renderer selection matrix, including P010, P210, RGB48, and
+the no-op delivery copy.
+
+| Sustained rotating 4K route | Before (average) | After average | After p95 |
+|---|---:|---:|---:|
+| v210 to P210 | 8.9 ms | 3.30 ms | 3.89 ms |
+| UYVY/HDYC to P210 | 8.0-8.4 ms | 2.66-2.78 ms | 3.07-3.26 ms |
+| ARGB/BGRA to P010 | 38.2-38.3 ms | 2.73-2.78 ms | 3.06-3.07 ms |
+| r210/R10b/R10l to P010 | 11.0-12.7 ms | 2.63-2.77 ms | 2.92-3.22 ms |
+| R12B/R12L to P010 | 9.9-10.4 ms | 4.57/4.28 ms | 5.41/4.80 ms |
+
+The optimized implementations remain bit-exact with their scalar oracles for
 BT.709 and BT.2020, nominal endpoints, excursions, randomized inputs, scalar
-tails, and threaded segment boundaries. Median sustained p95 is below 3.0 ms.
+tails, and threaded segment boundaries. ARGB/BGRA uses reusable thread-pool
+work items at 1080p and above; no threads are created in the per-frame hot
+path. R12 normalizes each complete eight-pixel C4 block once and retains the
+exact 4,096-entry 12-to-10 lookup. The RGB48 routes remain intentionally at
+two helper workers: their 5.9 ms worst average and 7.7 ms p95 already provide
+more than 2x 4K60 headroom, while adding workers would consume more capture
+CPU for a memory-bandwidth-bound copy/unpack path.

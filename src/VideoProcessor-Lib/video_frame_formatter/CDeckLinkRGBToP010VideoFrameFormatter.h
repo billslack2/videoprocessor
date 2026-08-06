@@ -77,6 +77,9 @@ private:
 	void ConvertLimited10RowPairsAVX2(const uint8_t* sourceFrame,
 		uint16_t* destinationY, uint16_t* destinationUV,
 		uint32_t firstPair, uint32_t pairCount) const;
+	void ConvertR12RowPairsAVX2(const uint8_t* sourceFrame,
+		uint16_t* destinationY, uint16_t* destinationUV,
+		uint32_t firstPair, uint32_t pairCount) const;
 	void ReadPixelPair(const uint8_t* source, uint32_t pixelPairIndex,
 		RGB10& first, RGB10& second) const noexcept;
 	static void CALLBACK ConversionWorkCallback(
