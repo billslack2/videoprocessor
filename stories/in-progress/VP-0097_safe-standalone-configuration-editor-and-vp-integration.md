@@ -517,11 +517,21 @@ editor executable and its configuration safety boundary are validated.
   same renderer ordering; toggling Hide legacy renderers refreshes the list
   without discarding the selected configured value. This keeps the editor a
   separate executable without duplicating device/runtime enumeration logic.
-- Corrected Startup omission semantics after live feedback: blank
-  `capture_device` and `renderer` remain visibly unselected rather than
-  displaying an invented automatic/default item. Omitted
-  `hide_legacy_renderers` displays checked because the production default is
-  true, while an explicit false remains respected.
+- Corrected Startup omission semantics after follow-up live feedback: omitted
+  `capture_device` and `renderer` display the first discovered list item as
+  their effective default, but remain absent from the file unless the operator
+  chooses a different value. An explicit configured value always wins, even
+  when currently unavailable. Omitted `hide_legacy_renderers` displays checked
+  because the production default is true, while an explicit false remains
+  respected.
+- Exposed the existing global `newlldv` policy as **Use new LLDV detection
+  heuristic** on Startup's Source analysis and HDR card; the `new_lldv`
+  compatibility spelling still loads correctly. Runtime review determined
+  that safe per-LLDV-profile support requires a separate raw-capture lookup:
+  evaluating selection from synthesized PQ state can make a BT.2020/SDR rule
+  select and immediately deselect itself. The future precedence contract is
+  explicit process CLI, selected LLDV profile, legacy global setting, then
+  false; profile-specific exposure is deferred until that runtime refactor.
 - Made side-by-side list/detail presentation an explicit invariant for every
   ordered profile page—not only Viewports—and added it to the UI review gate.
   Queue, VP Renderer, LLDV, and Viewports now use the same normal-width
