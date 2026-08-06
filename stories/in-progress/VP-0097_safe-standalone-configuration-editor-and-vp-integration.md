@@ -175,6 +175,35 @@ editor executable and its configuration safety boundary are validated.
   an explicit alternative only if its deployment/runtime decision is approved
   before implementation.
 
+2026-08-06 native UI-foundation implementation (uncommitted source work):
+
+- Rebuilt the editor shell using a Per-Monitor-V2 manifest/runtime, scaled
+  fonts, a measured content host with vertical scrolling, custom painted
+  surfaces, sidebar navigation, VP-colored action buttons, a sticky footer,
+  and a compact modal Add viewport dialog. The General and Viewports pages no
+  longer use group boxes or independently positioned field labels.
+- Applied user visual feedback: short ratio/number inputs use compact fields
+  with explicit units; condition input has a reasonable maximum width; the
+  viewport list displays configuration names and neutral type text rather
+  than `$key` expressions; and constrained width stacks cards vertically
+  instead of clipping or horizontally shifting them. The stacked list fits
+  three configured viewport rows, and the complete viewport detail card
+  scrolls without clipping its final Padding field.
+- Fixed configuration-editor safety behavior exposed by UI review: Validate
+  and failed Save now retain pending text and selection. Save remains blocked
+  until the existing VP schemas validate the candidate configuration.
+- Default handling now follows the runtime format exactly: an explicit
+  `[vprenderer.viewport]` root is the base/default when it exists; otherwise
+  the first named viewport is default and the editor can safely make another
+  named viewport first. Root-backed promotion is disabled rather than
+  performing an unsafe header swap that would change `when` semantics.
+- The UI quality reviewer completed a source-based layout sign-off after the
+  final release rebuild: no horizontal overflow at the responsive breakpoint,
+  card/detail bounds are complete, and the current three-viewport feedback
+  configuration is fully visible. Standalone x64 Release build and focused
+  `ConfigFileTests` passed 41/41. The feedback editor continues to use a
+  disposable copy of the active configuration; nothing was deployed.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
