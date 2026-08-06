@@ -62,6 +62,24 @@ editor executable and its configuration safety boundary are validated.
   focused ConfigFileTests suite passed 43/43. A fresh disposable-config editor
   instance was started for feedback; no deployed configuration was changed.
 
+2026-08-06 profile-model correction (next editor increment):
+
+- Viewports are not the only conditional configuration domain. The current
+  VP-0079 runtime treats `[queue]` / `[queue.<name>]` and `[vprenderer]` /
+  `[vprenderer.<name>]` as baseline-plus-named-variant groups using the same
+  `when:` expression model. The editor must expose their baseline and named
+  variants rather than editing only the root sections.
+- The Queue and VP Renderer pages will therefore use the same operator-facing
+  pattern as Viewports: a selected profile list, readable name, condition
+  field with expression help, add/remove/reorder lifecycle, and structured
+  fields for the selected profile. A named-only group follows file order for
+  its fallback; an exact root remains its explicit baseline. Existing manual
+  keys are preserved when a structured field is changed.
+- `[general]` / Startup remains a single application-wide page. Shader groups
+  also use conditional variants, but full shader editing remains manual for
+  this first structured surface; their contents must continue to round-trip
+  untouched.
+
 2026-08-06 tray regression correction (uncommitted source work):
 
 - Feedback exposed that the icon was absent after closing. The cause was a
