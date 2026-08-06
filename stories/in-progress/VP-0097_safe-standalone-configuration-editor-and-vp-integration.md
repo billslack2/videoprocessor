@@ -2,13 +2,16 @@
 
 ## Status
 
-Backlog. Story created 2026-08-06 after reviewing the current
-`billslack2/videoprocessor` default branch `v1.1.016-beta` at
-`b6e28923dc0ceb2f4786e048bb8119fb0dd46b42`.
+In Progress. On 2026-08-06 the developer confirmed the freshly discovered
+`billslack2/videoprocessor` default branch `v1.1.016-beta` as the implementation
+base. Implementation is on `codex/vp-0097-config-editor` in
+`C:\Users\bslac\vp\vp-0097-config-editor`, based on
+`origin/v1.1.016-beta` at `b6e28923dc0ceb2f4786e048bb8119fb0dd46b42`.
 
-The implementation-base confirmation gate has not been performed. Before
-implementation begins, rediscover the repository default branch and ask the
-developer to confirm it or name another base.
+The first increment is intentionally limited to a runnable standalone editor:
+read-only configuration preview, notification-area behavior, and a small set
+of safe structured edits. VP launch/shortcut integration will follow once the
+editor executable and its configuration safety boundary are validated.
 
 ## User story
 
