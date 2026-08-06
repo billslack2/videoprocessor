@@ -2,7 +2,21 @@
 
 ## Status
 
-In Progress. Reopened on 2026-08-05 after live Alpha viewing reproduced a
+Review. The latest corrective series through source commit `16baceb` was
+merged into `v1.1.016-beta` by
+[videoprocessor PR #44](https://github.com/billslack2/videoprocessor/pull/44)
+at merge commit `4d1d3bc` on 2026-08-05. The clean x64 Release build passed
+**617/617** tests and was deployed as a matched executable/renderer pair.
+Repeated Eternals live viewing was materially improved: subtitle translation
+remained active through provisional crop-verification gaps, sparse two-edge
+overlays no longer became aspect fits, and the former repeated full-raster
+fallback did not recur. The story remains in Review for practical live-video
+validation; remaining isolated fail-open or trusted aspect-change events are
+not treated as defects without a visible, repeatable viewing problem.
+
+### Reopening context (2026-08-05)
+
+Reopened after live Alpha viewing reproduced a
 remaining asymmetric-overlay defect. At 01:48:59 in `vp_debug.log`, a stable
 scope crop at `0,208-3840,1952` observed visible excluded-band pixels
 consistent with a top volume overlay. The safety veto correctly rejected the
