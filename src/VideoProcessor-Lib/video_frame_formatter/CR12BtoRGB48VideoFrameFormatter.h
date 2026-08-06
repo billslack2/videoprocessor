@@ -30,6 +30,12 @@ public:
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
 	LONG GetOutFrameSize() const override;
+	VideoFrameFormatterOutputContract GetOutputContract() const override
+	{
+		// DeckLink defines R12B as full-range RGB. Bit replication makes all
+		// sixteen output bits meaningful while preserving both endpoints.
+		return { VideoFrameSampleRange::FULL, 16, 0 };
+	}
 	void GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override;
 
 private:
