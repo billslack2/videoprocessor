@@ -604,6 +604,9 @@ namespace UnifiedProfileRuntime
 		variables["subtitle_hold_seconds"] =
 			StateVariables::Value::Number(
 				viewport.subtitleHoldMilliseconds / 1000.0);
+		variables["subtitle_release_drift_seconds"] =
+			StateVariables::Value::Number(
+				viewport.subtitleReleaseDriftMilliseconds / 1000.0);
 		variables["subtitle_padding_pixels"] =
 			StateVariables::Value::Number(
 				static_cast<double>(viewport.subtitlePaddingPixels));

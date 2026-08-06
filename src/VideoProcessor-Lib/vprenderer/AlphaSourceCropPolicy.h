@@ -85,7 +85,6 @@ namespace AlphaSourceCrop
 		uint64_t currentTick = 0;
 		uint64_t currentSourceSequence = 0;
 		uint64_t holdMs = 0;
-		int placementSnapThreshold = 0;
 		bool translationEnabled = false;
 	};
 
@@ -94,10 +93,70 @@ namespace AlphaSourceCrop
 		uint64_t currentTick, uint64_t holdMs,
 		uint64_t currentSourceSequence);
 
+	// A bar detector can briefly lose crop authority while the active-picture
+	// classifier verifies the same frame-local overlay. Preserve a known
+	// presentation action only within its source generation and bounded release
+	// hold; a new source generation must always reacquire authority first.
+	bool CanRetainVerticalBarPresentationAcrossAuthorityGap(
+		const VerticalBarPresentationState& state,
+		uint64_t evidenceSourceGeneration,
+		uint64_t currentSourceGeneration,
+		uint64_t currentTick, uint64_t holdMs,
+		uint64_t currentSourceSequence);
+
+	struct HeldBarAnalysisInput
+	{
+		bool currentBarAuthority = false;
+		bool trustedBarGeometryAvailable = false;
+		bool storedBaseMatchesTrustedGeometry = false;
+		bool currentEnvelopeAvailable = false;
+		ActivePictureClassification latestClassification =
+			ActivePictureClassification::UNAVAILABLE;
+		ActivePictureBounds trustedGeometry;
+		ActivePictureBounds currentEnvelope;
+		VerticalBarPresentationState presentation;
+		uint64_t evidenceSourceGeneration = 0;
+		uint64_t currentSourceGeneration = 0;
+		uint64_t currentTick = 0;
+		uint64_t holdMs = 0;
+		uint64_t currentSourceSequence = 0;
+	};
+
+	// Provisional pixels may be inspected against a previously trusted bar
+	// rectangle without acquiring crop authority. This bridge exists only while
+	// the current envelope expands the same edge as an active, same-generation
+	// translation; contradictory or unavailable evidence must reacquire normally.
+	bool CanAnalyzeHeldVerticalBarGeometry(
+		const HeldBarAnalysisInput& input);
+
 	// Store exactly one held vertical action. FIT retains the widest measured
 	// extents; TRANSLATE retains the farthest same-direction displacement.
 	VerticalBarPresentationState UpdateVerticalBarPresentation(
 		const VerticalBarPresentationUpdateInput& input);
+
+	// Subtitle appearance must be immediate so no text is cut off. On release,
+	// an optional renderer setting may linearly return the source window to its
+	// trusted base. A new non-zero placement always cancels that release and
+	// snaps to the newly required safe position.
+	class VerticalTranslationReleaseDrift
+	{
+	public:
+		void Reset();
+		float Resolve(float requestedTranslationPixels, uint64_t currentTick,
+			uint64_t releaseDurationMs);
+		bool IsActive() const { return releaseActive; }
+		// The sample which lands exactly on the trusted base needs one final
+		// generation-checked presentation decision. Consume this marker once so a
+		// lost current observation cannot cause a full-raster flash at release.
+		bool ConsumeFinalBaseFrame();
+
+	private:
+		float lastAppliedTranslationPixels = 0.0f;
+		float releaseStartTranslationPixels = 0.0f;
+		uint64_t releaseStartTick = 0;
+		bool releaseActive = false;
+		bool finalBaseFramePending = false;
+	};
 
 	struct VerticalBarPresentationResolutionInput
 	{
@@ -106,6 +165,12 @@ namespace AlphaSourceCrop
 		float translationPixels = 0.0f;
 		bool genericUpperExpansion = false;
 		bool genericLowerExpansion = false;
+		// A retained union of unrelated top/bottom overlays is not aspect-ratio
+		// authority. Generic vertical FIT requires both edges on this frame and
+		// current trusted active-picture authority; provisional evidence may only
+		// retain or fail open, never resize the picture.
+		bool genericVerticalFitConfirmed = false;
+		bool genericVerticalFitAuthoritative = false;
 		int genericUpperBound = 0;
 		int genericLowerBound = 0;
 		int authoritativeTop = 0;
@@ -136,6 +201,14 @@ namespace AlphaSourceCrop
 		bool trustedCropIsCurrentGeneration,
 		bool sceneSnapshotIsCurrentGeneration,
 		bool pixelSafeRetentionActive);
+
+	// A retained crop which has just become pixel-unsafe needs an immediate
+	// low-cost scan of its already-trusted bars. Once a translation is active,
+	// normal cadence resumes because the held placement already covers the cue.
+	bool RequiresImmediateSubtitleBarAnalysis(bool currentBarAuthority,
+		bool retentionJustBecameUnsafe,
+		bool frameLocalRetentionEvaluated, bool frameLocalRetentionSafe,
+		bool translationAlreadyActive);
 
 	struct PresentationEnvelopeInput
 	{
@@ -192,6 +265,13 @@ namespace AlphaSourceCrop
 		bool ambiguityHoldActive = false;
 		bool latestObservationIsProvisional = false;
 		bool latestObservationIsUnavailable = false;
+		// This is the current detector classification, distinct from the
+		// classification of the retained shared geometry below. During a bounded
+		// scene verification window, a trusted bar observation which has not yet
+		// reaffirmed the retained bounds may preserve that existing presentation.
+		// A trusted full-raster observation must always withdraw it.
+		ActivePictureClassification latestObservationClassification =
+			ActivePictureClassification::UNAVAILABLE;
 		// Positive, frame-local proof that retaining the prior presentation
 		// excludes no currently visible pixels. This preserves presentation only;
 		// it never grants or renews crop authority.
@@ -205,6 +285,10 @@ namespace AlphaSourceCrop
 		int verticalTranslationPixels = 0;
 		ActivePictureBounds verticalTranslationBase;
 		uint64_t verticalTranslationSourceGeneration = 0;
+		// A one-frame bridge when release drift reaches zero. It preserves the
+		// trusted base rectangle but never applies a displacement or grants new
+		// crop authority.
+		bool verticalTranslationBaseRetentionActive = false;
 		bool outwardPresentationActive = false;
 		bool outwardExpansionAvailable = false;
 		ActivePictureClassification classification =

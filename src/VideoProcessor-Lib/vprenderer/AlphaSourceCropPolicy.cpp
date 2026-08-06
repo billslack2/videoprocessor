@@ -105,10 +105,28 @@ namespace AlphaSourceCrop
 			decision.action = VerticalBarPresentationAction::FAIL_OPEN;
 			return decision;
 		}
+		const bool overlayOnlyOpposesHeldTranslation =
+			(input.upperContent && !input.lowerContent &&
+				input.bottomTranslationHeld &&
+				decision.upperOverlayLike) ||
+			(input.lowerContent && !input.upperContent &&
+				input.topTranslationHeld &&
+				decision.lowerOverlayLike);
+		// Content on both bars is not, by itself, an aspect-ratio change. A
+		// bottom subtitle can coexist with a top volume/menu overlay, and sparse
+		// details near both edges can occur in the same frame. Only picture-like
+		// (broad and deep) evidence may turn a two-edge observation into Fit.
+		// When both edges are overlay-like, select the edge needing the larger
+		// reveal below while preserving any active translation hold.
+		const bool bothEdgesContainPicture =
+			input.upperContent && input.lowerContent &&
+			(!decision.upperOverlayLike || !decision.lowerOverlayLike);
 		const bool forceFit =
-			(input.upperContent && input.lowerContent) ||
-			(input.upperContent && input.bottomTranslationHeld) ||
-			(input.lowerContent && input.topTranslationHeld) ||
+			bothEdgesContainPicture ||
+			(input.upperContent && input.bottomTranslationHeld &&
+				!decision.upperOverlayLike) ||
+			(input.lowerContent && input.topTranslationHeld &&
+				!decision.lowerOverlayLike) ||
 			(upperRequiresPlacement && !decision.upperOverlayLike) ||
 			(lowerRequiresPlacement && !decision.lowerOverlayLike);
 		if (forceFit)
@@ -116,10 +134,27 @@ namespace AlphaSourceCrop
 			decision.action = VerticalBarPresentationAction::FIT;
 			return decision;
 		}
+		// Preserve the current subtitle/volume placement across a short gap or a
+		// thin opposite-edge overlay. Only picture-like evidence may request the
+		// later fit that takes effect after the active subtitle hold releases.
+		if (overlayOnlyOpposesHeldTranslation)
+			return decision;
 
-		switch (SelectVerticalBarContentEdge(
-			decision.upperOverlayLike ? input.upperRequiredShift : 0.0f,
-			decision.lowerOverlayLike ? input.lowerRequiredShift : 0.0f))
+		float upperCandidate = decision.upperOverlayLike
+			? input.upperRequiredShift : 0.0f;
+		float lowerCandidate = decision.lowerOverlayLike
+			? input.lowerRequiredShift : 0.0f;
+		// When the held edge is still present, a simultaneous overlay on the
+		// opposite edge must not reverse the picture translation. Continue to
+		// follow the held edge, including an immediately larger reveal requested
+		// by a new subtitle line. If the held edge has disappeared, the bounded
+		// hold above suppresses the isolated opposite-edge pulse instead.
+		if (input.bottomTranslationHeld && decision.lowerOverlayLike)
+			upperCandidate = 0.0f;
+		else if (input.topTranslationHeld && decision.upperOverlayLike)
+			lowerCandidate = 0.0f;
+
+		switch (SelectVerticalBarContentEdge(upperCandidate, lowerCandidate))
 		{
 		case BarContentEdge::TOP:
 			decision.action = VerticalBarPresentationAction::TRANSLATE;
@@ -152,6 +187,62 @@ namespace AlphaSourceCrop
 			currentTick - state.lastDetectionTick <= holdMs;
 	}
 
+	bool CanRetainVerticalBarPresentationAcrossAuthorityGap(
+		const VerticalBarPresentationState& state,
+		uint64_t evidenceSourceGeneration,
+		uint64_t currentSourceGeneration,
+		uint64_t currentTick, uint64_t holdMs,
+		uint64_t currentSourceSequence)
+	{
+		return evidenceSourceGeneration != 0 &&
+			evidenceSourceGeneration == currentSourceGeneration &&
+			IsVerticalBarPresentationActive(state, currentTick, holdMs,
+				currentSourceSequence);
+	}
+
+	bool CanAnalyzeHeldVerticalBarGeometry(
+		const HeldBarAnalysisInput& input)
+	{
+		if (input.currentBarAuthority ||
+			!input.trustedBarGeometryAvailable ||
+			!input.storedBaseMatchesTrustedGeometry ||
+			!input.currentEnvelopeAvailable ||
+			input.latestClassification !=
+				ActivePictureClassification::PROVISIONAL ||
+			input.evidenceSourceGeneration == 0 ||
+			input.evidenceSourceGeneration != input.currentSourceGeneration ||
+			!IsVerticalBarPresentationActive(input.presentation,
+				input.currentTick, input.holdMs,
+				input.currentSourceSequence) ||
+			input.presentation.action !=
+				VerticalBarPresentationAction::TRANSLATE ||
+			!ValidBounds(input.trustedGeometry,
+				input.trustedGeometry.rasterWidth,
+				input.trustedGeometry.rasterHeight) ||
+			!ValidBounds(input.currentEnvelope,
+				input.trustedGeometry.rasterWidth,
+				input.trustedGeometry.rasterHeight))
+		{
+			return false;
+		}
+
+		// The current evidence must be an outward envelope of the exact trusted
+		// base, never a replacement or inward crop proposal.
+		const bool outwardEnvelope =
+			input.currentEnvelope.left <= input.trustedGeometry.left &&
+			input.currentEnvelope.top <= input.trustedGeometry.top &&
+			input.currentEnvelope.right >= input.trustedGeometry.right &&
+			input.currentEnvelope.bottom >= input.trustedGeometry.bottom;
+		if (!outwardEnvelope)
+			return false;
+
+		if (input.presentation.translationPixels < -0.5f)
+			return input.currentEnvelope.top < input.trustedGeometry.top;
+		if (input.presentation.translationPixels > 0.5f)
+			return input.currentEnvelope.bottom > input.trustedGeometry.bottom;
+		return false;
+	}
+
 	VerticalBarPresentationState UpdateVerticalBarPresentation(
 		const VerticalBarPresentationUpdateInput& input)
 	{
@@ -178,9 +269,12 @@ namespace AlphaSourceCrop
 			return state;
 		}
 
-		// The hold is a release delay, not authority over fresh evidence. A new
-		// current-frame decision replaces the held action immediately; this lets a
-		// broad menu disappear into an ordinary one-edge subtitle without waiting.
+		// A subtitle/overlay translation owns presentation until its bounded
+		// release timer expires. A fresh same-edge TRANSLATE below can re-arm the
+		// timer and grow the shift, but a competing FIT must not turn a subtitle
+		// change, a one-second gap, or a second overlay into an aspect decision.
+		// Delaying a genuine new fit by this short, configurable interval is less
+		// disruptive than visibly resizing picture geometry under text.
 		if (current.action == VerticalBarPresentationAction::FAIL_OPEN)
 		{
 			state = {};
@@ -192,6 +286,12 @@ namespace AlphaSourceCrop
 
 		if (current.action == VerticalBarPresentationAction::FIT)
 		{
+			if (previousActive &&
+				state.action == VerticalBarPresentationAction::TRANSLATE &&
+				input.translationEnabled)
+			{
+				return state;
+			}
 			const bool retainPrevious = previousActive;
 			const int retainedTop = retainPrevious ? state.detectedTop : 0;
 			const int retainedBottom = retainPrevious ? state.detectedBottom : 0;
@@ -222,8 +322,11 @@ namespace AlphaSourceCrop
 			state.detectedTop = sameDirection && state.detectedTop > 0
 				? std::min(state.detectedTop, input.upperContentTop)
 				: input.upperContentTop;
+			// Safety is directional: a new cue needing even one more source
+			// pixel at this edge must apply immediately. Retaining a larger prior
+			// reveal on the reverse move is what removes harmless detector jitter.
 			if (!sameDirection || current.translationPixels <
-				state.translationPixels - input.placementSnapThreshold)
+				state.translationPixels)
 			{
 				state.translationPixels = current.translationPixels;
 			}
@@ -234,7 +337,7 @@ namespace AlphaSourceCrop
 				? std::max(state.detectedBottom, input.lowerContentBottom)
 				: input.lowerContentBottom;
 			if (!sameDirection || current.translationPixels >
-				state.translationPixels + input.placementSnapThreshold)
+				state.translationPixels)
 			{
 				state.translationPixels = current.translationPixels;
 			}
@@ -242,6 +345,64 @@ namespace AlphaSourceCrop
 		state.lastDetectionTick = input.currentTick;
 		state.sourceSequence = input.currentSourceSequence;
 		return state;
+	}
+
+	void VerticalTranslationReleaseDrift::Reset()
+	{
+		lastAppliedTranslationPixels = 0.0f;
+		releaseStartTranslationPixels = 0.0f;
+		releaseStartTick = 0;
+		releaseActive = false;
+		finalBaseFramePending = false;
+	}
+
+	bool VerticalTranslationReleaseDrift::ConsumeFinalBaseFrame()
+	{
+		const bool pending = finalBaseFramePending;
+		finalBaseFramePending = false;
+		return pending;
+	}
+
+	float VerticalTranslationReleaseDrift::Resolve(
+		float requestedTranslationPixels, uint64_t currentTick,
+		uint64_t releaseDurationMs)
+	{
+		if (std::abs(requestedTranslationPixels) > 0.5f)
+		{
+			// New subtitle or menu content always wins over a pending release.
+			releaseActive = false;
+			finalBaseFramePending = false;
+			releaseStartTranslationPixels = 0.0f;
+			releaseStartTick = 0;
+			lastAppliedTranslationPixels = requestedTranslationPixels;
+			return requestedTranslationPixels;
+		}
+		if (releaseDurationMs == 0 ||
+			std::abs(lastAppliedTranslationPixels) <= 0.5f)
+		{
+			Reset();
+			return 0.0f;
+		}
+		if (!releaseActive)
+		{
+			releaseActive = true;
+			releaseStartTranslationPixels = lastAppliedTranslationPixels;
+			releaseStartTick = currentTick;
+		}
+		const uint64_t elapsed = currentTick >= releaseStartTick
+			? currentTick - releaseStartTick : 0;
+		if (elapsed >= releaseDurationMs)
+		{
+			lastAppliedTranslationPixels = 0.0f;
+			releaseStartTranslationPixels = 0.0f;
+			releaseStartTick = 0;
+			releaseActive = false;
+			finalBaseFramePending = true;
+			return 0.0f;
+		}
+		const float remaining = 1.0f - static_cast<float>(elapsed) /
+			static_cast<float>(releaseDurationMs);
+		return releaseStartTranslationPixels * remaining;
 	}
 
 	VerticalBarPresentationResolution ResolveVerticalBarPresentation(
@@ -273,32 +434,57 @@ namespace AlphaSourceCrop
 				decision.translationPixels = 0.0f;
 				return decision;
 			}
-			const int requestedShift = ChromaAlignedDisplacement(
+			int requestedShift = ChromaAlignedDisplacement(
 				static_cast<int>(input.translationPixels < 0.0f
 					? std::floor(input.translationPixels)
 					: std::ceil(input.translationPixels)));
-			const int appliedShift = std::max(-input.authoritativeTop,
-				std::min(requestedShift,
-					input.rasterHeight - input.authoritativeBottom));
-			const int translatedTop = input.authoritativeTop + appliedShift;
-			const int translatedBottom =
-				input.authoritativeBottom + appliedShift;
-			const bool oppositeGenericEvidence =
-				(input.translationPixels < 0.0f && input.genericLowerExpansion) ||
-				(input.translationPixels > 0.0f && input.genericUpperExpansion);
-			const bool uncoveredSameEdgeEvidence =
-				(input.translationPixels < 0.0f && input.genericUpperExpansion &&
-				 input.genericUpperBound < translatedTop) ||
-				(input.translationPixels > 0.0f && input.genericLowerExpansion &&
-				 input.genericLowerBound > translatedBottom);
-			if (oppositeGenericEvidence || uncoveredSameEdgeEvidence)
+			// The dense bar pass has established this as a one-edge overlay. The
+			// coarse envelope has enough information to extend that same edge, but
+			// not enough specificity to manufacture an opposite picture edge. Its
+			// previous opposite-edge veto turned a subtitle into an aspect fit and
+			// caused the visible zoom-out. Genuine two-edge/picture evidence has
+			// already selected FIT in the dense pass before reaching this resolver.
+			if (requestedShift < 0 && input.genericUpperExpansion)
+			{
+				requestedShift = std::min(requestedShift,
+					ChromaAlignedDisplacement(
+						input.genericUpperBound - input.authoritativeTop));
+			}
+			else if (requestedShift > 0 && input.genericLowerExpansion)
+			{
+				requestedShift = std::max(requestedShift,
+					ChromaAlignedDisplacement(
+						input.genericLowerBound - input.authoritativeBottom));
+			}
+
+			const int minimumShift = -input.authoritativeTop;
+			const int maximumShift =
+				input.rasterHeight - input.authoritativeBottom;
+			// Do not apply a partial translation which would still cut the declared
+			// same-edge content. When the full translation cannot fit in the raster,
+			// preserving all visible pixels takes the bounded Fit path.
+			if (requestedShift < minimumShift || requestedShift > maximumShift)
 			{
 				decision.action = VerticalBarPresentationAction::FIT;
 				decision.translationPixels = 0.0f;
+				return decision;
 			}
+			const int appliedShift = requestedShift;
+			const int translatedTop = input.authoritativeTop + appliedShift;
+			const int translatedBottom =
+				input.authoritativeBottom + appliedShift;
+			if (translatedTop < 0 || translatedBottom > input.rasterHeight)
+			{
+				decision.action = VerticalBarPresentationAction::FAIL_OPEN;
+				decision.translationPixels = 0.0f;
+				return decision;
+			}
+			decision.translationPixels = static_cast<float>(appliedShift);
 			return decision;
 		}
-		if (input.genericUpperExpansion || input.genericLowerExpansion)
+		if (input.genericVerticalFitConfirmed &&
+			input.genericVerticalFitAuthoritative &&
+			input.genericUpperExpansion && input.genericLowerExpansion)
 			decision.action = VerticalBarPresentationAction::FIT;
 		return decision;
 	}
@@ -323,6 +509,16 @@ namespace AlphaSourceCrop
 	{
 		return trustedCropIsCurrentGeneration ||
 			sceneSnapshotIsCurrentGeneration || pixelSafeRetentionActive;
+	}
+
+	bool RequiresImmediateSubtitleBarAnalysis(bool currentBarAuthority,
+		bool retentionJustBecameUnsafe,
+		bool frameLocalRetentionEvaluated, bool frameLocalRetentionSafe,
+		bool translationAlreadyActive)
+	{
+		return currentBarAuthority && retentionJustBecameUnsafe &&
+			frameLocalRetentionEvaluated &&
+			!frameLocalRetentionSafe && !translationAlreadyActive;
 	}
 
 	PresentationEnvelopeDecision EvaluatePresentationEnvelope(
@@ -460,9 +656,21 @@ namespace AlphaSourceCrop
 		const bool ambiguousObservation =
 			input.latestObservationIsProvisional ||
 			input.latestObservationIsUnavailable;
+		// A scene cut may yield several individually trusted bar observations
+		// before the transition model can safely publish one as the next stable
+		// geometry. Do not toggle between the old crop and full raster during that
+		// bounded verification interval. This preserves only the already-trusted
+		// rectangle; a full-raster observation or a frame-local pixel conflict
+		// still withdraws immediately.
+		const bool boundedSceneVerificationRetention =
+			!input.frameLocalPresentationRetentionEvaluated &&
+			input.sceneVerificationHoldActive &&
+			(ambiguousObservation ||
+			 input.latestObservationClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED);
 		const bool boundedAmbiguousRetention = ambiguousObservation &&
 			!input.frameLocalPresentationRetentionEvaluated &&
-			(input.sceneVerificationHoldActive || input.ambiguityHoldActive);
+			input.ambiguityHoldActive;
 		const bool pixelSafeAmbiguousRetention = ambiguousObservation &&
 			input.frameLocalPresentationRetentionSafe;
 		const bool boundedOutwardExpansion =
@@ -478,9 +686,18 @@ namespace AlphaSourceCrop
 			input.verticalTranslationSourceGeneration != 0 &&
 			input.verticalTranslationSourceGeneration ==
 				input.frameSourceGeneration;
+		const bool boundedVerticalBaseRetention =
+			input.verticalTranslationBaseRetentionActive &&
+			!input.frameLocalPresentationRetentionEvaluated &&
+			SameBounds(input.verticalTranslationBase, input.geometry) &&
+			input.verticalTranslationSourceGeneration != 0 &&
+			input.verticalTranslationSourceGeneration ==
+				input.frameSourceGeneration;
 		if (!input.latestObservationSupportsCrop &&
+			!boundedSceneVerificationRetention &&
 			!boundedAmbiguousRetention && !pixelSafeAmbiguousRetention &&
-			!boundedOutwardExpansion && !boundedVerticalTranslation)
+			!boundedOutwardExpansion && !boundedVerticalTranslation &&
+			!boundedVerticalBaseRetention)
 		{
 			decision.reason =
 				"latest observation does not reaffirm crop authority";
@@ -592,15 +809,17 @@ namespace AlphaSourceCrop
 			? (decision.outwardExpanded
 				? "bounded outward fit and same-size vertical translation accepted"
 				: "same-size vertical presentation translation accepted")
-			: (decision.outwardExpanded
-				? "bounded outward presentation expansion accepted"
-				: (input.latestObservationSupportsCrop
+			: (boundedVerticalBaseRetention
+				? "subtitle release settled at current trusted base"
+				: (decision.outwardExpanded
+					? "bounded outward presentation expansion accepted"
+					: (input.latestObservationSupportsCrop
 			? "generation-current shared crop authority accepted"
 			: (pixelSafeAmbiguousRetention
 				? "frame-local pixel-safe presentation retained prior crop"
-				: (input.sceneVerificationHoldActive
+				: (boundedSceneVerificationRetention
 					? "bounded scene verification retained current trusted crop"
-					: "bounded ambiguity hold retained current trusted crop"))));
+					: "bounded ambiguity hold retained current trusted crop")))));
 		return decision;
 	}
 

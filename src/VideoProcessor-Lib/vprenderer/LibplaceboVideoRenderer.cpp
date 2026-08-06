@@ -803,6 +803,7 @@ namespace
 		bool automaticSourceCrop = false;
 		bool scopeSubtitleFit = false;
 		uint64_t scopeSubtitleHoldMs = 2000;
+		uint64_t scopeSubtitleReleaseDriftMs = 0;
 		int scopeSubtitlePaddingPixels = 20;
 		uint64_t refreshRateCommandDelayMs = 5000;
 		std::vector<RefreshRateCommandRule> refreshRateCommandRules;
@@ -845,6 +846,7 @@ namespace
 				<< settings.anamorphicScale << '|'
 				<< settings.automaticSourceCrop << '|'
 				<< settings.scopeSubtitleFit << '|' << settings.scopeSubtitleHoldMs << '|'
+				<< settings.scopeSubtitleReleaseDriftMs << '|'
 				<< settings.scopeSubtitlePaddingPixels << '|';
 		}
 		stream
@@ -1480,6 +1482,14 @@ namespace
 			if (ParseDouble(raw, seconds) && seconds >= 0.0 && seconds <= 30.0)
 				settings.scopeSubtitleHoldMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
 		}
+		if (readViewportString("subtitle_release_drift_seconds",
+			"scope_subtitle_release_drift_seconds", raw))
+		{
+			double seconds = 0.0;
+			if (ParseDouble(raw, seconds) && seconds >= 0.0 && seconds <= 30.0)
+				settings.scopeSubtitleReleaseDriftMs =
+					static_cast<uint64_t>(std::llround(seconds * 1000.0));
+		}
 		if (readViewportString("subtitle_padding_pixels",
 			"scope_subtitle_padding_pixels", raw))
 		{
@@ -1677,6 +1687,16 @@ namespace
 				settings.scopeSubtitleHoldMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
 			else
 				DebugLog::Log("libplacebo: scope_subtitle_hold_seconds must be between 0 and 30; using 2.0");
+		}
+		if (TryGetDisplayString(config,
+			"scope_subtitle_release_drift_seconds", rawValue))
+		{
+			double seconds = 0.0;
+			if (ParseDouble(rawValue, seconds) && seconds >= 0.0 && seconds <= 30.0)
+				settings.scopeSubtitleReleaseDriftMs =
+					static_cast<uint64_t>(std::llround(seconds * 1000.0));
+			else
+				DebugLog::Log("libplacebo: scope_subtitle_release_drift_seconds must be between 0 and 30; using 0");
 		}
 		if (TryGetDisplayString(config, "scope_subtitle_padding_pixels", rawValue))
 		{
@@ -2453,6 +2473,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool automaticSourceCrop = false;
 	bool scopeSubtitleFit = false;
 	uint64_t scopeSubtitleHoldMs = 2000;
+	uint64_t scopeSubtitleReleaseDriftMs = 0;
 	int scopeSubtitlePaddingPixels = 20;
 	uint64_t scopeSubtitleAnalysisFrame = 0;
 	int scopeSubtitlePictureLeft = 0;
@@ -2466,6 +2487,12 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t scopeSubtitleEvidenceSourceGeneration = 0;
 	AlphaSourceCrop::VerticalBarPresentationState
 		scopeVerticalBarPresentation;
+	AlphaSourceCrop::VerticalTranslationReleaseDrift
+		scopeSubtitleReleaseDrift;
+	bool scopeSubtitleReleaseDriftWasActive = false;
+	bool scopeSubtitleAuthorityGapHeld = false;
+	bool scopeSubtitleRetentionWasUnsafe = false;
+	uint64_t scopeSubtitleRetentionGeneration = 0;
 	bool scopeSubtitleWasActive = false;
 	bool scopeSubtitleWasTopActive = false;
 	std::string lastScopeVerticalOverlayPolicy;
@@ -2475,9 +2502,12 @@ struct LibplaceboVideoRenderer::Impl
 	// slow-in release delay, never as a maximum lifetime.
 	ActivePictureBounds scopePresentationEvidenceBase;
 	ActivePictureBounds scopePresentationEvidenceBounds;
+	ActivePictureBounds scopePresentationCurrentBounds;
 	uint64_t scopePresentationEvidenceLastTick = 0;
 	uint64_t scopePresentationEvidenceSourceGeneration = 0;
 	uint64_t scopePresentationEvidenceSourceSequence = 0;
+	uint64_t scopePresentationCurrentSourceGeneration = 0;
+	uint64_t scopePresentationCurrentSourceSequence = 0;
 	static constexpr uint64_t ACTIVE_PICTURE_AMBIGUITY_HOLD_MS = 2000;
 	// A recognized cut and an ordinary ambiguous fade are the same presentation
 	// problem once a last-known-good crop exists. Use one bounded interval so
@@ -3235,7 +3265,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		DebugLog::Log(
-			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u scope_aspect=%.4f default_screen_profile=%s automatic_crop=%d scope_subtitle_fit=%d subtitle_hold=%llums subtitle_padding=%dpx",
+		"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u scope_aspect=%.4f default_screen_profile=%s automatic_crop=%d scope_subtitle_fit=%d subtitle_hold=%llums subtitle_release_drift=%llums subtitle_padding=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3264,6 +3294,7 @@ struct LibplaceboVideoRenderer::Impl
 			automaticSourceCrop ? 1 : 0,
 			scopeSubtitleFit ? 1 : 0,
 			static_cast<unsigned long long>(scopeSubtitleHoldMs),
+			static_cast<unsigned long long>(scopeSubtitleReleaseDriftMs),
 			scopeSubtitlePaddingPixels);
 	}
 
@@ -3271,15 +3302,21 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		scopePresentationEvidenceBase = {};
 		scopePresentationEvidenceBounds = {};
+		scopePresentationCurrentBounds = {};
 		scopePresentationEvidenceLastTick = 0;
 		scopePresentationEvidenceSourceGeneration = 0;
 		scopePresentationEvidenceSourceSequence = 0;
+		scopePresentationCurrentSourceGeneration = 0;
+		scopePresentationCurrentSourceSequence = 0;
 	}
 
 	void ClearScopeSubtitleEvidence()
 	{
 		scopeSubtitleAnalysisFrame = 0;
 		scopeVerticalBarPresentation = {};
+		scopeSubtitleReleaseDrift.Reset();
+		scopeSubtitleReleaseDriftWasActive = false;
+		scopeSubtitleAuthorityGapHeld = false;
 		scopeSubtitleWasActive = false;
 		scopeSubtitleWasTopActive = false;
 		lastScopeVerticalOverlayPolicy.clear();
@@ -3301,7 +3338,8 @@ struct LibplaceboVideoRenderer::Impl
 		bool scopeScreenActive,
 		const ActivePictureBounds* barAuthority,
 		uint64_t sourceSequence,
-		bool forceAnalysis = false)
+		bool forceAnalysis = false,
+		bool heldBarAnalysisAuthority = false)
 	{
 		const uint64_t now = GetTickCount64();
 		const bool sourceIsCurrent = source && source->IsValid() &&
@@ -3317,15 +3355,64 @@ struct LibplaceboVideoRenderer::Impl
 			barAuthority->top < barAuthority->bottom &&
 			(barAuthority->left > 0 || barAuthority->top > 0 ||
 			 barAuthority->right < width || barAuthority->bottom < height);
-		if (!scopeScreenActive || !sourceIsCurrent ||
-			!authorityIsCurrentBars)
+		if (!scopeScreenActive || !sourceIsCurrent)
 		{
 			// Receiver controls and ordinary picture detail are in-picture UI unless
 			// shared authority proves one or more encoded bars around the picture.
 			ClearScopeSubtitleEvidence();
 			return 0.0f;
 		}
-		if (sourceIsCurrent &&
+		const bool retainAcrossAuthorityGap =
+			AlphaSourceCrop::CanRetainVerticalBarPresentationAcrossAuthorityGap(
+				scopeVerticalBarPresentation,
+				scopeSubtitleEvidenceSourceGeneration, source->generation,
+				now, scopeSubtitleHoldMs, sourceSequence);
+		if (!authorityIsCurrentBars && !retainAcrossAuthorityGap)
+		{
+			// No current bar authority and no same-generation presentation action
+			// left to release. Do not let an ordinary in-picture UI inherit stale
+			// subtitle placement.
+			if (scopeSubtitleAuthorityGapHeld)
+			{
+				DebugLog::Log(
+					"libplacebo scope subtitle fit: provisional bar-authority hold released; source_generation=%llu evidence_generation=%llu",
+					static_cast<unsigned long long>(source->generation),
+					static_cast<unsigned long long>(
+						scopeSubtitleEvidenceSourceGeneration));
+			}
+			ClearScopeSubtitleEvidence();
+			return 0.0f;
+		}
+		if (heldBarAnalysisAuthority)
+		{
+			if (!scopeSubtitleAuthorityGapHeld)
+			{
+				DebugLog::Log(
+					"libplacebo scope subtitle fit: continuing dense analysis on same-generation trusted base during provisional authority gap");
+				scopeSubtitleAuthorityGapHeld = true;
+			}
+		}
+		else if (!authorityIsCurrentBars)
+		{
+			if (!scopeSubtitleAuthorityGapHeld)
+			{
+				DebugLog::Log(
+					"libplacebo scope subtitle fit: retaining same-generation action through provisional bar-authority gap; action=%d shift=%.1f px",
+					static_cast<int>(scopeVerticalBarPresentation.action),
+					scopeVerticalBarPresentation.translationPixels);
+				scopeSubtitleAuthorityGapHeld = true;
+			}
+		}
+		else
+		{
+			if (scopeSubtitleAuthorityGapHeld)
+			{
+				DebugLog::Log(
+					"libplacebo scope subtitle fit: bar authority reacquired; resuming dense analysis");
+			}
+			scopeSubtitleAuthorityGapHeld = false;
+		}
+		if (authorityIsCurrentBars &&
 			(scopeSubtitleEvidenceSourceGeneration != source->generation ||
 			 scopeSubtitlePictureLeft != barAuthority->left ||
 			 scopeSubtitlePictureTop != barAuthority->top ||
@@ -3346,8 +3433,16 @@ struct LibplaceboVideoRenderer::Impl
 		// non-black content inside those already-proven encoded bars.
 		// Sampling every third rendered frame keeps the 4K CPU cost negligible
 		// while still reacting in roughly 50-125 ms.
-		if (forceAnalysis || ++scopeSubtitleAnalysisFrame % 3 == 0)
+		const bool subtitleAnalysisScheduled = authorityIsCurrentBars &&
+			++scopeSubtitleAnalysisFrame % 3 == 0;
+		if (authorityIsCurrentBars &&
+			(forceAnalysis || subtitleAnalysisScheduled))
 		{
+			if (forceAnalysis && !subtitleAnalysisScheduled)
+			{
+				DebugLog::Log(
+					"libplacebo scope subtitle fit: forcing immediate bar scan after retained crop became pixel-unsafe");
+			}
 			// This is intentionally fixed-capacity: no full-frame surface and no
 			// recurring heap allocation is needed to establish the black floor.
 			std::array<uint16_t, 8192> blackSamples{};
@@ -3538,8 +3633,6 @@ struct LibplaceboVideoRenderer::Impl
 				updateInput.currentTick = now;
 				updateInput.currentSourceSequence = sourceSequence;
 				updateInput.holdMs = scopeSubtitleHoldMs;
-				updateInput.placementSnapThreshold =
-					std::max(4, height / 180);
 				updateInput.translationEnabled = scopeSubtitleFit;
 				scopeVerticalBarPresentation =
 					AlphaSourceCrop::UpdateVerticalBarPresentation(updateInput);
@@ -4624,6 +4717,7 @@ struct LibplaceboVideoRenderer::Impl
 		automaticSourceCrop = settings.automaticSourceCrop;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
+		scopeSubtitleReleaseDriftMs = settings.scopeSubtitleReleaseDriftMs;
 		scopeSubtitlePaddingPixels = settings.scopeSubtitlePaddingPixels;
 		SetSwapchainColorHint(
 			outputPlan.valid ? outputPlan.desiredEncoding :
@@ -4683,6 +4777,7 @@ struct LibplaceboVideoRenderer::Impl
 			automaticSourceCrop != settings.automaticSourceCrop ||
 			scopeSubtitleFit != settings.scopeSubtitleFit ||
 			scopeSubtitleHoldMs != settings.scopeSubtitleHoldMs ||
+			scopeSubtitleReleaseDriftMs != settings.scopeSubtitleReleaseDriftMs ||
 			scopeSubtitlePaddingPixels != settings.scopeSubtitlePaddingPixels;
 		scopeScreenAspect = settings.scopeScreenAspect;
 		defaultScopeScreen = settings.defaultScopeScreen;
@@ -4690,6 +4785,7 @@ struct LibplaceboVideoRenderer::Impl
 		automaticSourceCrop = settings.automaticSourceCrop;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
+		scopeSubtitleReleaseDriftMs = settings.scopeSubtitleReleaseDriftMs;
 		scopeSubtitlePaddingPixels = settings.scopeSubtitlePaddingPixels;
 		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
@@ -5197,6 +5293,14 @@ struct LibplaceboVideoRenderer::Impl
 					outward.bottom > presentationBeforeObservation.bottom;
 				if (expands)
 				{
+					// The accumulated envelope is useful for its same-edge release
+					// hold. Keep the raw observation as well: top and bottom overlays
+					// observed at different moments must not later become one vertical
+					// aspect-fit decision.
+					scopePresentationCurrentBounds = outward;
+					scopePresentationCurrentSourceGeneration =
+						analysisSource.generation;
+					scopePresentationCurrentSourceSequence = frameNumber;
 					const bool sameBase =
 						scopePresentationEvidenceSourceGeneration ==
 							analysisSource.generation &&
@@ -5912,13 +6016,85 @@ struct LibplaceboVideoRenderer::Impl
 			sceneVerificationGeometrySourceGeneration == frameGeneration &&
 			hasCroppedEdge(sceneVerificationGeometry) &&
 			latestEvidenceAllowsBarOverlay;
+		const uint64_t subtitleNow = GetTickCount64();
+		const bool trustedNlsBarGeometry =
+			nlsGeometryAvailable &&
+			nlsGeometryClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED &&
+			nlsGeometrySourceGeneration == frameGeneration &&
+			hasCroppedEdge(nlsGeometry);
+		AlphaSourceCrop::HeldBarAnalysisInput heldAnalysisInput;
+		heldAnalysisInput.currentBarAuthority =
+			currentBarAuthority || sceneBarAuthority;
+		heldAnalysisInput.trustedBarGeometryAvailable =
+			trustedNlsBarGeometry;
+		heldAnalysisInput.storedBaseMatchesTrustedGeometry =
+			trustedNlsBarGeometry &&
+			scopeSubtitlePictureLeft == nlsGeometry.left &&
+			scopeSubtitlePictureTop == nlsGeometry.top &&
+			scopeSubtitlePictureRight == nlsGeometry.right &&
+			scopeSubtitlePictureBottom == nlsGeometry.bottom &&
+			scopePresentationEvidenceBase.left == nlsGeometry.left &&
+			scopePresentationEvidenceBase.top == nlsGeometry.top &&
+			scopePresentationEvidenceBase.right == nlsGeometry.right &&
+			scopePresentationEvidenceBase.bottom == nlsGeometry.bottom;
+		heldAnalysisInput.currentEnvelopeAvailable =
+			scopePresentationCurrentSourceGeneration == frameGeneration &&
+			scopePresentationCurrentSourceSequence == sourceSequence;
+		heldAnalysisInput.latestClassification =
+			latestActivePictureEvidenceClassification;
+		heldAnalysisInput.trustedGeometry = nlsGeometry;
+		heldAnalysisInput.currentEnvelope = scopePresentationCurrentBounds;
+		heldAnalysisInput.presentation = scopeVerticalBarPresentation;
+		heldAnalysisInput.evidenceSourceGeneration =
+			scopeSubtitleEvidenceSourceGeneration;
+		heldAnalysisInput.currentSourceGeneration = frameGeneration;
+		heldAnalysisInput.currentTick = subtitleNow;
+		heldAnalysisInput.holdMs = scopeSubtitleHoldMs;
+		heldAnalysisInput.currentSourceSequence = sourceSequence;
+		const bool heldBarAnalysisAuthority =
+			AlphaSourceCrop::CanAnalyzeHeldVerticalBarGeometry(
+				heldAnalysisInput);
 		const ActivePictureBounds* subtitleBarAuthority =
 			currentBarAuthority ? &nlsGeometry :
-			(sceneBarAuthority ? &sceneVerificationGeometry : nullptr);
+			(sceneBarAuthority ? &sceneVerificationGeometry :
+				(heldBarAnalysisAuthority ? &nlsGeometry : nullptr));
+		// The first subtitle/UI frame may be the one that makes the retained crop
+		// pixel-unsafe. Do not wait for the normal three-frame subtitle scan in
+		// that case: inspect the already-proven bars on this frame so final
+		// presentation can translate immediately instead of flashing full raster
+		// (or a generic fit) for one frame.
+		const bool subtitleTranslationAlreadyActive =
+			scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
+			AlphaSourceCrop::IsVerticalBarPresentationActive(
+				scopeVerticalBarPresentation, subtitleNow,
+				scopeSubtitleHoldMs, sourceSequence) &&
+			scopeVerticalBarPresentation.action ==
+				AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
+		if (scopeSubtitleRetentionGeneration != frameGeneration)
+		{
+			scopeSubtitleRetentionGeneration = frameGeneration;
+			scopeSubtitleRetentionWasUnsafe = false;
+		}
+		const bool retentionUnsafeNow =
+			latestActivePicturePresentationRetentionEvaluated &&
+			!latestActivePicturePresentationRetentionSafe;
+		const bool retentionJustBecameUnsafe =
+			retentionUnsafeNow && !scopeSubtitleRetentionWasUnsafe;
+		if (latestActivePicturePresentationRetentionEvaluated)
+			scopeSubtitleRetentionWasUnsafe = retentionUnsafeNow;
+		const bool forceSubtitleBarAnalysis =
+			AlphaSourceCrop::RequiresImmediateSubtitleBarAnalysis(
+				subtitleBarAuthority != nullptr,
+				retentionJustBecameUnsafe,
+				latestActivePicturePresentationRetentionEvaluated,
+				latestActivePicturePresentationRetentionSafe,
+				subtitleTranslationAlreadyActive);
 		const float subtitleShiftSourcePixels =
 			UpdateScopeSubtitleShift(&analysisSource,
 				width, height, scopeScreenActive, subtitleBarAuthority,
-				sourceSequence);
+				sourceSequence, forceSubtitleBarAnalysis,
+				heldBarAnalysisAuthority);
 
 		struct pl_frame image{};
 		if (nativeRgbUpload)
@@ -6144,11 +6320,18 @@ struct LibplaceboVideoRenderer::Impl
 				scopeSubtitleRightLastDetectionTick != 0 &&
 				overlayNow - scopeSubtitleRightLastDetectionTick <=
 					scopeSubtitleHoldMs;
+			const bool storedVerticalBaseMatchesEffectiveGeometry =
+				effectiveGeometryAvailable &&
+				scopeSubtitlePictureLeft == effectiveGeometry.left &&
+				scopeSubtitlePictureTop == effectiveGeometry.top &&
+				scopeSubtitlePictureRight == effectiveGeometry.right &&
+				scopeSubtitlePictureBottom == effectiveGeometry.bottom;
 			const bool detailedVerticalActive =
 				AlphaSourceCrop::IsVerticalBarPresentationActive(
 					scopeVerticalBarPresentation, overlayNow,
 					scopeSubtitleHoldMs, sourceSequence) &&
-				scopeSubtitleEvidenceSourceGeneration == frameGeneration;
+				scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
+				storedVerticalBaseMatchesEffectiveGeometry;
 			auto sameBounds = [](const ActivePictureBounds& left,
 				const ActivePictureBounds& right)
 			{
@@ -6190,19 +6373,80 @@ struct LibplaceboVideoRenderer::Impl
 			const bool detectorBottomExpansion = detectorEnvelopeActive &&
 				effectiveGeometryAvailable && scopePresentationEvidenceBounds.bottom >
 					effectiveGeometry.bottom;
+			const bool currentDetectorEnvelope = detectorEnvelopeActive &&
+				envelopeDecision.currentFrame &&
+				scopePresentationCurrentSourceGeneration == frameGeneration &&
+				scopePresentationCurrentSourceSequence == sourceSequence;
+			const bool currentDetectorTopExpansion = currentDetectorEnvelope &&
+				effectiveGeometryAvailable &&
+				scopePresentationCurrentBounds.top < effectiveGeometry.top;
+			const bool currentDetectorBottomExpansion = currentDetectorEnvelope &&
+				effectiveGeometryAvailable &&
+				scopePresentationCurrentBounds.bottom > effectiveGeometry.bottom;
+			const bool requestedSubtitleTranslation = detailedVerticalActive &&
+				scopeVerticalBarPresentation.action ==
+					AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
+				std::abs(subtitleShiftSourcePixels) > 0.5f;
+			bool releaseDriftBaseRetention = false;
+			float resolvedSubtitleTranslation = requestedSubtitleTranslation
+				? subtitleShiftSourcePixels : 0.0f;
+			if (publishFinalPresentation)
+			{
+				if (!storedVerticalBaseMatchesEffectiveGeometry)
+					scopeSubtitleReleaseDrift.Reset();
+				else
+					resolvedSubtitleTranslation =
+						scopeSubtitleReleaseDrift.Resolve(
+							resolvedSubtitleTranslation, overlayNow,
+							scopeSubtitleReleaseDriftMs);
+				releaseDriftBaseRetention =
+					!requestedSubtitleTranslation &&
+					scopeSubtitleReleaseDrift.ConsumeFinalBaseFrame();
+				const bool releaseDriftActive =
+					!requestedSubtitleTranslation &&
+					scopeSubtitleReleaseDrift.IsActive();
+				if (releaseDriftActive != scopeSubtitleReleaseDriftWasActive)
+				{
+					DebugLog::Log(
+						"libplacebo scope subtitle fit: release drift %s; duration=%llums shift=%.1f px",
+						releaseDriftActive ? "started" : "completed",
+						static_cast<unsigned long long>(
+							scopeSubtitleReleaseDriftMs),
+						resolvedSubtitleTranslation);
+					scopeSubtitleReleaseDriftWasActive = releaseDriftActive;
+				}
+			}
+			const bool releaseDriftTranslation =
+				!requestedSubtitleTranslation &&
+				std::abs(resolvedSubtitleTranslation) > 0.5f;
 			AlphaSourceCrop::VerticalBarPresentationResolutionInput
 				verticalResolutionInput;
-			verticalResolutionInput.detailedAction = detailedVerticalActive
-				? scopeVerticalBarPresentation.action
-				: AlphaSourceCrop::VerticalBarPresentationAction::NONE;
-			verticalResolutionInput.translationPixels = detailedVerticalActive
-				? subtitleShiftSourcePixels : 0.0f;
-			verticalResolutionInput.genericUpperExpansion = detectorTopExpansion;
-			verticalResolutionInput.genericLowerExpansion = detectorBottomExpansion;
-			verticalResolutionInput.genericUpperBound = detectorTopExpansion
-				? scopePresentationEvidenceBounds.top : effectiveGeometry.top;
-			verticalResolutionInput.genericLowerBound = detectorBottomExpansion
-				? scopePresentationEvidenceBounds.bottom : effectiveGeometry.bottom;
+			verticalResolutionInput.detailedAction =
+				requestedSubtitleTranslation
+				? AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE
+				: (releaseDriftTranslation
+					? AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE
+					: AlphaSourceCrop::VerticalBarPresentationAction::NONE);
+			verticalResolutionInput.translationPixels =
+				requestedSubtitleTranslation || releaseDriftTranslation
+				? resolvedSubtitleTranslation : 0.0f;
+			verticalResolutionInput.genericUpperExpansion =
+				currentDetectorTopExpansion;
+			verticalResolutionInput.genericLowerExpansion =
+				currentDetectorBottomExpansion;
+			verticalResolutionInput.genericVerticalFitConfirmed =
+				currentDetectorTopExpansion && currentDetectorBottomExpansion;
+			verticalResolutionInput.genericVerticalFitAuthoritative =
+				verticalResolutionInput.genericVerticalFitConfirmed &&
+				effectiveClassification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED &&
+				effectiveLatestSupportsCrop;
+			verticalResolutionInput.genericUpperBound =
+				currentDetectorTopExpansion
+				? scopePresentationCurrentBounds.top : effectiveGeometry.top;
+			verticalResolutionInput.genericLowerBound =
+				currentDetectorBottomExpansion
+				? scopePresentationCurrentBounds.bottom : effectiveGeometry.bottom;
 			verticalResolutionInput.authoritativeTop = effectiveGeometry.top;
 			verticalResolutionInput.authoritativeBottom = effectiveGeometry.bottom;
 			verticalResolutionInput.rasterHeight = height;
@@ -6329,6 +6573,8 @@ struct LibplaceboVideoRenderer::Impl
 				latestObservationIsProvisional;
 			cropInput.latestObservationIsUnavailable =
 				latestObservationIsUnavailable;
+			cropInput.latestObservationClassification =
+				latestActivePictureEvidenceClassification;
 			cropInput.frameLocalPresentationRetentionSafe =
 				latestActivePicturePresentationRetentionSafe;
 			cropInput.frameLocalPresentationRetentionEvaluated =
@@ -6346,6 +6592,8 @@ struct LibplaceboVideoRenderer::Impl
 					: 0.0, true };
 			cropInput.verticalTranslationSourceGeneration =
 				scopeSubtitleEvidenceSourceGeneration;
+			cropInput.verticalTranslationBaseRetentionActive =
+				releaseDriftBaseRetention;
 			cropInput.outwardPresentationActive = barContentFitActive;
 			cropInput.outwardExpansionAvailable = outwardExpansionAvailable;
 			cropInput.classification = effectiveClassification;
@@ -6374,6 +6622,7 @@ struct LibplaceboVideoRenderer::Impl
 				<< latestObservationIsProvisional << '|'
 				<< latestActivePicturePresentationRetentionSafe << '|'
 				<< detectorEnvelopeActive << '|'
+				<< releaseDriftBaseRetention << '|'
 				<< static_cast<int>(verticalResolution.action) << '|'
 				<< leftBarContentActive << detailedVerticalFitEvidence
 				<< rightBarContentActive << verticalTranslationActive << '|'
@@ -6391,7 +6640,7 @@ struct LibplaceboVideoRenderer::Impl
 					? "translate" : (verticalFitActive ? "fit" :
 						(verticalFailOpen ? "fail-open" : "none"));
 				DebugLog::Log(
-					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d envelope_state=%s edges=%c%c%c%c evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s; %s; %s\"",
+					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d release_settle=%d envelope_state=%s edges=%c%c%c%c evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s; %s; %s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
@@ -6407,6 +6656,7 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<int>(
 						latestActivePictureEvidenceClassification),
 					detectorEnvelopeActive ? 1 : 0,
+					releaseDriftBaseRetention ? 1 : 0,
 					envelopeDecision.currentFrame ? "current" :
 					(envelopeDecision.held ? "held" : "inactive"),
 					leftBarContentActive ? 'L' : '-',

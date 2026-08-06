@@ -315,6 +315,69 @@ namespace VideoProcessorTest
 					reacquired.decisionLatencyFrames));
 		}
 
+		TEST_METHOD(RecentTrustedGeometryRecursAcrossThreeAspectModes)
+		{
+			// Feature content commonly alternates among a small set of real modes.
+			// A short, generation-local history lets a dark/provisional return to a
+			// known scope mode confirm promptly without treating novel geometry as
+			// a guess.
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds(), 2);
+			Assert::IsFalse(Observe(model, ImaxBounds(), frame).publish);
+			frame += 2;
+			Assert::IsTrue(Observe(model, ImaxBounds(), frame).publish);
+			frame += 2;
+			Assert::IsFalse(Observe(model, FourByThreeBounds(), frame).publish);
+			frame += 2;
+			Assert::IsTrue(Observe(model, FourByThreeBounds(), frame).publish);
+			frame += 2;
+
+			const auto recall = Observe(model, ScopeBounds(), frame,
+				ActivePictureClassification::PROVISIONAL);
+			Assert::IsFalse(recall.publish);
+			Assert::IsTrue(recall.stable);
+			Assert::AreEqual(std::string("recent trusted geometry candidate"),
+				recall.reason);
+			Assert::IsTrue(model.ShouldAnalyze(frame + 1, 23.976));
+
+			const auto confirmed = Observe(model, ScopeBounds(), frame + 1,
+				ActivePictureClassification::PROVISIONAL);
+			Assert::IsTrue(confirmed.publish);
+			Assert::AreEqual(ScopeBounds().top, confirmed.bounds.top);
+			Assert::AreEqual(ScopeBounds().bottom, confirmed.bounds.bottom);
+		}
+
+		TEST_METHOD(RecentTrustedGeometryExpiresAfterThreeNewModes)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+			const ActivePictureBounds full = {
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false };
+			auto switchTo = [&](const ActivePictureBounds& bounds,
+				ActivePictureClassification classification =
+					ActivePictureClassification::BAR_CROP_TRUSTED)
+			{
+				Assert::IsFalse(Observe(model, bounds, frame++, classification).publish);
+				Assert::IsTrue(Observe(model, bounds, frame++, classification).publish);
+			};
+
+			switchTo(ImaxBounds());
+			switchTo(FourByThreeBounds());
+			switchTo(full, ActivePictureClassification::FULL_RASTER_TRUSTED);
+			switchTo(ImaxBounds());
+
+			// Scope is now more than three real modes old. A provisional sample
+			// must stay an ordinary untrusted candidate rather than reviving a
+			// stale assumption from much earlier in the feature.
+			const auto stale = Observe(model, ScopeBounds(), frame,
+				ActivePictureClassification::PROVISIONAL);
+			Assert::IsFalse(stale.publish);
+			Assert::IsTrue(stale.stable);
+			Assert::AreEqual(std::string(
+				"provisional geometry lacks affirmative crop authority"),
+				stale.reason);
+		}
+
 		TEST_METHOD(ResetDiscardsPreviouslyTrustedGeometry)
 		{
 			ActivePictureTransitionModel model;

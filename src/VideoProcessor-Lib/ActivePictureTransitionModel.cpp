@@ -18,10 +18,8 @@ void ActivePictureTransitionModel::Reset()
 	m_hasStable = false;
 	m_stable = {};
 	m_stableClassification = ActivePictureClassification::UNAVAILABLE;
-	m_hasPreviousTrusted = false;
-	m_previousTrusted = {};
-	m_previousTrustedClassification =
-		ActivePictureClassification::UNAVAILABLE;
+	m_recentTrusted = {};
+	m_recentTrustedCount = 0;
 	ClearCandidate();
 	m_unavailableCandidates = 0;
 	m_lastAnalyzedFrame = 0;
@@ -174,6 +172,57 @@ bool ActivePictureTransitionModel::IsFullRaster(
 }
 
 
+void ActivePictureTransitionModel::RememberTrustedGeometry(
+	const ActivePictureBounds& bounds,
+	ActivePictureClassification classification)
+{
+	if (classification == ActivePictureClassification::UNAVAILABLE)
+		return;
+	for (size_t index = 0; index < m_recentTrustedCount; ++index)
+	{
+		if (!SameBounds(m_recentTrusted[index].bounds, bounds))
+			continue;
+		// Promote a returning geometry to the front instead of retaining a
+		// duplicate, so recency remains meaningful for a three-mode feature.
+		const TrustedGeometry known = m_recentTrusted[index];
+		for (size_t move = index; move > 0; --move)
+			m_recentTrusted[move] = m_recentTrusted[move - 1];
+		m_recentTrusted[0] = known;
+		return;
+	}
+	const size_t retained = std::min(
+		m_recentTrustedCount, RECENT_TRUSTED_GEOMETRIES - 1);
+	for (size_t move = retained; move > 0; --move)
+		m_recentTrusted[move] = m_recentTrusted[move - 1];
+	m_recentTrusted[0] = { bounds, classification };
+	m_recentTrustedCount = std::min(
+		RECENT_TRUSTED_GEOMETRIES, m_recentTrustedCount + 1);
+}
+
+
+bool ActivePictureTransitionModel::FindRecentTrustedGeometry(
+	const ActivePictureObservation& observation,
+	ActivePictureBounds& bounds,
+	ActivePictureClassification& classification) const
+{
+	if (!m_hasStable ||
+		!MateriallyDifferent(m_stable, observation.bounds))
+	{
+		return false;
+	}
+	for (size_t index = 0; index < m_recentTrustedCount; ++index)
+	{
+		const TrustedGeometry& known = m_recentTrusted[index];
+		if (!SameBounds(known.bounds, observation.bounds))
+			continue;
+		bounds = known.bounds;
+		classification = known.classification;
+		return true;
+	}
+	return false;
+}
+
+
 void ActivePictureTransitionModel::StartCandidate(
 	const ActivePictureObservation& observation)
 {
@@ -223,9 +272,7 @@ ActivePictureTransitionModel::CommitCandidate(
 	decision.reason = reason;
 	if (m_hasStable && !SameBounds(m_stable, m_candidate))
 	{
-		m_previousTrusted = m_stable;
-		m_previousTrustedClassification = m_stableClassification;
-		m_hasPreviousTrusted = true;
+		RememberTrustedGeometry(m_stable, m_stableClassification);
 	}
 	m_stable = m_candidate;
 	m_stableClassification = m_candidateClassification;
@@ -270,22 +317,22 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	}
 	m_unavailableCandidates = 0;
 
-	const bool matchesPreviousTrusted =
-		m_hasStable && m_hasPreviousTrusted &&
-		MateriallyDifferent(m_stable, observation.bounds) &&
-		SameBounds(m_previousTrusted, observation.bounds);
-	if (matchesPreviousTrusted)
+	ActivePictureBounds recentTrustedBounds;
+	ActivePictureClassification recentTrustedClassification =
+		ActivePictureClassification::UNAVAILABLE;
+	const bool matchesRecentTrusted = FindRecentTrustedGeometry(
+		observation, recentTrustedBounds, recentTrustedClassification);
+	if (matchesRecentTrusted)
 	{
 		if (!m_candidateUsesKnownTrustedGeometry ||
 			!SameBounds(m_candidate, observation.bounds))
 		{
 			StartCandidate(observation);
-			m_candidateClassification =
-				m_previousTrustedClassification;
+			m_candidateClassification = recentTrustedClassification;
 			m_candidateUsesKnownTrustedGeometry = true;
 			decision.diagnostic = true;
 			decision.reason =
-				"previously trusted geometry candidate";
+				"recent trusted geometry candidate";
 		}
 		else if (m_matchingCandidates < 255)
 		{
@@ -311,7 +358,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 			observation.frameNumber - m_firstContradictoryFrame : 0;
 		if (m_matchingCandidates >= CLEAR_TRANSITION_CONFIRMATIONS)
 			return CommitCandidate(
-				observation, "previously trusted geometry reacquired");
+				observation, "recent trusted geometry reacquired");
 		return decision;
 	}
 
@@ -508,9 +555,7 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 		return false;
 	if (m_hasStable && !SameBounds(m_stable, decision.bounds))
 	{
-		m_previousTrusted = m_stable;
-		m_previousTrustedClassification = m_stableClassification;
-		m_hasPreviousTrusted = true;
+		RememberTrustedGeometry(m_stable, m_stableClassification);
 	}
 	m_stable = decision.bounds;
 	m_stableClassification = classification;

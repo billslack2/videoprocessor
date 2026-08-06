@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <mutex>
@@ -141,6 +142,13 @@ public:
 	static uint64_t AnalysisIntervalFrames(double framesPerSecond);
 
 private:
+	struct TrustedGeometry
+	{
+		ActivePictureBounds bounds;
+		ActivePictureClassification classification =
+			ActivePictureClassification::UNAVAILABLE;
+	};
+
 	static bool SameBounds(
 		const ActivePictureBounds& left,
 		const ActivePictureBounds& right);
@@ -154,6 +162,11 @@ private:
 		const ActivePictureObservation& observation);
 	static bool IsFullRaster(
 		const ActivePictureBounds& bounds);
+	void RememberTrustedGeometry(const ActivePictureBounds& bounds,
+		ActivePictureClassification classification);
+	bool FindRecentTrustedGeometry(const ActivePictureObservation& observation,
+		ActivePictureBounds& bounds,
+		ActivePictureClassification& classification) const;
 	ActivePictureTransitionDecision CommitCandidate(
 		const ActivePictureObservation& observation,
 		const char* reason);
@@ -164,10 +177,12 @@ private:
 	ActivePictureBounds m_stable;
 	ActivePictureClassification m_stableClassification =
 		ActivePictureClassification::UNAVAILABLE;
-	bool m_hasPreviousTrusted = false;
-	ActivePictureBounds m_previousTrusted;
-	ActivePictureClassification m_previousTrustedClassification =
-		ActivePictureClassification::UNAVAILABLE;
+	// Real feature presentations generally cycle among a small number of
+	// aspect modes. Keep only the immediately recent trusted modes within the
+	// current source generation; a novel observation receives no history boost.
+	static constexpr size_t RECENT_TRUSTED_GEOMETRIES = 3;
+	std::array<TrustedGeometry, RECENT_TRUSTED_GEOMETRIES> m_recentTrusted;
+	size_t m_recentTrustedCount = 0;
 	ActivePictureBounds m_candidate;
 	ActivePictureClassification m_candidateClassification =
 		ActivePictureClassification::UNAVAILABLE;
