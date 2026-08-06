@@ -274,3 +274,10 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
   values, supported alternatives, and device-rejection fallback. Selection is
   outside the per-frame path. Final rotating 4K average/p95 results were BGRA
   2.73/3.14 ms, R10b 2.60/2.99 ms, R10l 2.58/2.89 ms, and R12L 3.96/4.63 ms.
+- DeckLink 8-bit YCbCr classification now uses the resolved input colorspace:
+  Rec.709 is exposed as HDYC/`MEDIASUBTYPE_HDYC`, while Rec.601, BT.2020, and
+  unknown remain UYVY with their separate metadata. Focused classification,
+  subtype, renderer-ingress, and resolution/conversion tests pass; the change
+  adds no per-frame processing. The clean x64 Release suite passes 648/648;
+  sustained rotating-pattern 4K HDYC conversion measured 2.60 ms average to
+  P010 and 2.97 ms average to P210 (384 and 337 fps respectively).
