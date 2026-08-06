@@ -26,6 +26,7 @@ public:
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
 	LONG GetOutFrameSize() const override;
+	VideoFrameFormatterOutputContract GetOutputContract() const override;
 
 	// Public method to get conversion performance metrics
 	void GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const
@@ -37,6 +38,7 @@ public:
 
 private:
 	int m_bytesPerVideoFrame = 0;
+	VideoFrameEncoding m_encoding = VideoFrameEncoding::UNKNOWN;
 
 	// Rolling window performance tracking (for stats overlay)
 	struct RollingPerformanceWindow

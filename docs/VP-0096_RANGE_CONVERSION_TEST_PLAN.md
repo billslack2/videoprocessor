@@ -44,15 +44,15 @@ coverage; a converter-only test cannot validate renderer selection or metadata.
 
 | Renderer | Automatic path | Forced P010 path / concern |
 |---|---|---|
-| Alpha/libplacebo | ARGB, BGRA, r210, R10b, and R10l upload as native RGB. R12B/L convert to P010. UYVY, HDYC, and v210 convert to P210. | All inputs use conversion helpers. Native 10-bit RGB is currently labeled full range; r210's 960 endpoint may not fit a generic limited-RGB model. |
-| madVR / GenericHDR DirectShow | ARGB/BGRA, R10b/l, and R12B/L convert to P010; r210 converts to RGB48; UYVY/HDYC/v210 normally pass through. | All formats convert to P010. Nominal-range metadata currently follows only a user override and can remain unknown despite an explicit formatter contract. |
-| MPC DirectShow | ARGB/BGRA, R10b/l, and R12L use P010; r210/R12B use RGB48; v210 uses P210; UYVY/HDYC pass through. | HDYC, r210, and R12B are not selected correctly by the current forced-P010 branch. |
-| Generic DirectShow / EVR | R10b/l and R12L use P010; most other inputs pass through. | The override is honored only for v210. Direct R12B uses an incorrect 4-bit media-type bit count. |
+| Alpha/libplacebo | ARGB/BGRA and R10b/R10l upload as native RGB; r210 and R12B/L convert to P010; UYVY/HDYC/v210 convert losslessly to P210. | All inputs use the same validated P010 conversion helpers as DirectShow. |
+| madVR / GenericHDR DirectShow | ARGB/BGRA, R10b/l, and R12B/L convert to P010; r210 converts to RGB48; UYVY/HDYC/v210 pass through with explicit limited-range contracts. | All formats convert to P010. Forced range remains an intentional user override. |
+| MPC DirectShow | ARGB/BGRA, R10b/l, and R12L use P010; r210/R12B use RGB48; v210 uses P210; UYVY/HDYC pass through. | All supported formats convert to P010. |
+| Generic DirectShow / EVR | ARGB/BGRA, R10b/l, and R12L use P010; other inputs pass through with encoding-specific contracts. | All supported formats convert to P010; direct R12B reports 36 bits per pixel. |
 
-The next policy seam should be a pure `IngressPlan` mapping tested across every
-format, renderer, and automatic/forced mode. Each result should specify the
-formatter, media subtype, nominal range, meaningful depth, bit shift, and
-whether 4:2:2 chroma is preserved.
+Pure ingress-policy helpers are tested across every format, renderer family,
+and automatic/forced mode. Formatter contracts specify nominal range,
+meaningful depth, and bit alignment, while dedicated tests cover media subtype
+and whether 4:2:2 chroma is preserved.
 
 ## Initial tests and expected state
 
@@ -124,7 +124,7 @@ coefficient tables.
 - Native sparse RGB analysis uses the same limited-range reference conversion
   as displayed R10/r210 content and normalized R12 downconversion.
 
-The clean x64 Release suite passes 651/651 tests. A sustained performance test
+The clean x64 Release suite passes 653/653 tests. A sustained performance test
 now compares the former 30-frame hot-zero-buffer workload with three runs of
 120 measured frames rotating across four patterned 4K buffers. The regression
 gate uses the median-of-three average and p95; both must remain below the
@@ -167,7 +167,7 @@ routes was:
 | r210 / R12B to RGB48 | 3.70 / 4.13 ms | 4.01 / 4.68 ms |
 | v210 no-op delivery copy | 1.40 ms | 1.61 ms |
 
-When the benchmark ran inside the complete 651-test suite, the most conservative
+When the benchmark ran inside the complete 653-test suite, the most conservative
 RGB48 p95 was 4.79 ms and every other conversion p95 remained below 5.39 ms.
 This loaded-system run still leaves more than 2x headroom against the 16.67 ms
 4K60 frame period.
@@ -286,3 +286,17 @@ run under heavier host load reached 8.20 ms p95, demonstrating why the suite
 records distributions rather than relying on one frame; it still met the 60
 fps gate. The new conversion-method selector is a test control; automatic
 production dispatch and the per-frame pixel loops are unchanged.
+
+### DirectShow pass-through range contracts
+
+The no-op formatter now retains the source encoding and reports the same range
+and meaningful precision as the copied bytes. UYVY/HDYC are limited 8-bit,
+v210/r210/R10b/R10l are limited 10-bit, R12B/R12L are full 12-bit, and
+ARGB/BGRA follow VP's existing full 8-bit assumption. Consequently madVR's
+automatic UYVY, HDYC, and v210 pass-through media types resolve to
+`DXVA_NominalRange_16_235` instead of unknown. Table-driven tests cover every
+DeckLink no-op encoding and the three automatic madVR YUV routes.
+
+This is state-construction metadata only: the copy loop is unchanged. The
+post-change sustained 4K no-op benchmark measured 1.51 ms average / 1.81 ms
+p95, and all conversion routes remained below the 16.67 ms 60 fps gate.

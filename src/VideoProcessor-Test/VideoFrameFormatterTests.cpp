@@ -490,6 +490,70 @@ namespace Tests
 			Assert::AreEqual(5529600L, vff.GetOutFrameSize());
 		}
 
+		TEST_METHOD(NoopFormatterPreservesEveryDeckLinkInputRangeContract)
+		{
+			struct Case
+			{
+				VideoFrameEncoding encoding;
+				VideoFrameSampleRange range;
+				uint8_t depth;
+			};
+			const Case cases[] = {
+				{ VideoFrameEncoding::UYVY, VideoFrameSampleRange::LIMITED, 8 },
+				{ VideoFrameEncoding::HDYC, VideoFrameSampleRange::LIMITED, 8 },
+				{ VideoFrameEncoding::V210, VideoFrameSampleRange::LIMITED, 10 },
+				{ VideoFrameEncoding::ARGB_8BIT, VideoFrameSampleRange::FULL, 8 },
+				{ VideoFrameEncoding::BGRA_8BIT, VideoFrameSampleRange::FULL, 8 },
+				{ VideoFrameEncoding::R210, VideoFrameSampleRange::LIMITED, 10 },
+				{ VideoFrameEncoding::R10b, VideoFrameSampleRange::LIMITED, 10 },
+				{ VideoFrameEncoding::R10l, VideoFrameSampleRange::LIMITED, 10 },
+				{ VideoFrameEncoding::R12B, VideoFrameSampleRange::FULL, 12 },
+				{ VideoFrameEncoding::R12L, VideoFrameSampleRange::FULL, 12 },
+			};
+
+			for (const Case& test : cases)
+			{
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					128, 100, false, 24000, 1000);
+				state->videoFrameEncoding = test.encoding;
+				CNoopVideoFrameFormatter formatter;
+				formatter.OnVideoState(state);
+				const auto contract = formatter.GetOutputContract();
+				Assert::IsTrue(contract.IsValid());
+				Assert::AreEqual(static_cast<int>(test.range),
+					static_cast<int>(contract.sampleRange));
+				Assert::AreEqual(static_cast<int>(test.depth),
+					static_cast<int>(contract.colorDepth));
+				Assert::AreEqual(0, static_cast<int>(contract.bitShift));
+			}
+		}
+
+		TEST_METHOD(MadVRAutomaticYuvPassThroughDeclaresLimitedNominalRange)
+		{
+			for (const auto encoding : {
+				VideoFrameEncoding::UYVY,
+				VideoFrameEncoding::HDYC,
+				VideoFrameEncoding::V210 })
+			{
+				Assert::IsFalse(MadVRUsesP010Ingress(encoding,
+					VideoConversionOverride::VIDEOCONVERSION_NONE));
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					1920, 1080, false, 60000, 1001);
+				state->videoFrameEncoding = encoding;
+				CNoopVideoFrameFormatter formatter;
+				formatter.OnVideoState(state);
+				Assert::AreEqual(
+					static_cast<int>(DXVA_NominalRange::DXVA_NominalRange_16_235),
+					static_cast<int>(ResolveDirectShowNominalRange(
+						DXVA_NominalRange::DXVA_NominalRange_Unknown,
+						formatter.GetOutputContract())));
+			}
+		}
+
 		TEST_METHOD(CV210toP010VideoFrameFormatterTest)
 		{
 			CV210toP010VideoFrameFormatter vff;

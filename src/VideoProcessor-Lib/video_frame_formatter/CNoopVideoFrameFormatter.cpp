@@ -17,6 +17,7 @@ void CNoopVideoFrameFormatter::OnVideoState(VideoStateComPtr& videoState)
 		throw std::runtime_error("Null video state is not allowed");
 
 	m_bytesPerVideoFrame = videoState->BytesPerFrame();
+	m_encoding = videoState->videoFrameEncoding;
 	assert(m_bytesPerVideoFrame > 0);
 }
 
@@ -44,4 +45,29 @@ LONG CNoopVideoFrameFormatter::GetOutFrameSize() const
 {
 	assert(m_bytesPerVideoFrame > 0);
 	return m_bytesPerVideoFrame;
+}
+
+
+VideoFrameFormatterOutputContract
+CNoopVideoFrameFormatter::GetOutputContract() const
+{
+	switch (m_encoding)
+	{
+	case VideoFrameEncoding::UYVY:
+	case VideoFrameEncoding::HDYC:
+		return { VideoFrameSampleRange::LIMITED, 8, 0 };
+	case VideoFrameEncoding::V210:
+	case VideoFrameEncoding::R210:
+	case VideoFrameEncoding::R10b:
+	case VideoFrameEncoding::R10l:
+		return { VideoFrameSampleRange::LIMITED, 10, 0 };
+	case VideoFrameEncoding::ARGB_8BIT:
+	case VideoFrameEncoding::BGRA_8BIT:
+		return { VideoFrameSampleRange::FULL, 8, 0 };
+	case VideoFrameEncoding::R12B:
+	case VideoFrameEncoding::R12L:
+		return { VideoFrameSampleRange::FULL, 12, 0 };
+	default:
+		return {};
+	}
 }
