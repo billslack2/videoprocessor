@@ -79,6 +79,21 @@ editor executable and its configuration safety boundary are validated.
   x64 Release build passed, and the corrected editor was restarted from
   `x64\\Release` for immediate testing.
 
+2026-08-06 viewport and presentation increment (uncommitted source work):
+
+- Reworked the prototype layout into a VP-branded header and grouped General,
+  Output & queue, and Viewport configurations areas. The help text now states
+  the actual safety boundary rather than presenting a placeholder/advanced
+  sidebar.
+- Added selector-driven support for the canonical `[vprenderer.viewport]` root
+  and every `[vprenderer.viewport.<name>]` variant in file order. The selected
+  viewport exposes supported aspect, anamorphic, crop, subtitle-fit, timing,
+  and padding controls; its activation rule remains visible but manual.
+- The editor updates only changed viewport settings and can add a selected
+  known setting to an existing viewport section. It preserves unedited manual
+  rules, shaders, profiles, comments, and unknown settings. Standalone x64
+  Release build passed; focused `ConfigFileTests` passed 41/41.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
