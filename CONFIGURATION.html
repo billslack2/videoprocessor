@@ -257,7 +257,7 @@ subtitle_padding_pixels: 30</pre>
 <section class="section-examples" aria-labelledby="shader-group-examples">
 <h3 id="shader-group-examples">Example</h3>
 <h4>One madVR post-resize custom shader</h4>
-<p>This one-member group activates a supplied HLSL finishing shader for SDR input. It intentionally has no GLSL implementation, so Alpha ignores the logical member; add a matching <code>glsl_file</code> only when an equivalent Alpha shader is available. The group and member names are chosen by the configuration author.</p>
+<p>This one-member group activates a custom HLSL finishing shader for SDR input. It intentionally has no GLSL implementation, so Alpha ignores the logical member; add a matching <code>glsl_file</code> only when an equivalent Alpha shader is available. The group and member names are chosen by the configuration author.</p>
 <pre data-ini-example="shader-custom-post-resize">[shader.finishing]
 type: single
 
