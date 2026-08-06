@@ -124,7 +124,7 @@ coefficient tables.
 - Native sparse RGB analysis uses the same limited-range reference conversion
   as displayed R10/r210 content and normalized R12 downconversion.
 
-The clean x64 Release suite passes 641/641 tests. A sustained performance test
+The clean x64 Release suite passes 643/643 tests. A sustained performance test
 now compares the former 30-frame hot-zero-buffer workload with three runs of
 120 measured frames rotating across four patterned 4K buffers. The regression
 gate uses the median-of-three average and p95; both must remain below the
@@ -140,15 +140,46 @@ the no-op delivery copy.
 | r210/R10b/R10l to P010 | 11.0-12.7 ms | 2.63-2.77 ms | 2.92-3.22 ms |
 | R12B/R12L to P010 | 9.9-10.4 ms | 4.57/4.28 ms | 5.41/4.80 ms |
 
+The final direct RGB48 optimization follows the documented packing units rather
+than assuming a specific video mode. R12B processes two 36-byte C4 blocks at a
+time: 16 pixels, 48 components, 72 bytes, or nine 64-bit words. An eight-pixel
+scalar tail keeps every width divisible by the format's native eight-pixel
+packing valid. r210 processes eight pixels per AVX2 load and retains a scalar
+pixel tail. AUTO selection checks both CPU and OS AVX state; scalar remains the
+portable fallback.
+
+| Sustained rotating 4K direct route | Scalar baseline average/p95 | Final AVX2 average/p95 | Average improvement | p95 improvement |
+|---|---:|---:|---:|---:|
+| r210 to RGB48 | 4.81 / 5.77 ms | 3.70 / 4.01 ms | 23.1% | 30.4% |
+| R12B to RGB48 | 6.55 / 7.95 ms | 4.13 / 4.68 ms | 37.0% | 41.2% |
+
+The final isolated median-of-three rotating-buffer checkpoint for all CPU
+routes was:
+
+| Route | Average | p95 |
+|---|---:|---:|
+| v210 to P010 / P210 | 2.23 / 3.05 ms | 2.46 / 3.48 ms |
+| UYVY to P010 / P210 | 2.39 / 2.81 ms | 2.66 / 3.23 ms |
+| HDYC to P010 / P210 | 2.35 / 2.67 ms | 2.62 / 3.13 ms |
+| ARGB / BGRA to P010 | 2.67 / 2.68 ms | 3.00 / 3.01 ms |
+| r210 / R10b / R10l to P010 | 2.50 / 2.46 / 2.53 ms | 2.72 / 2.72 / 2.81 ms |
+| R12B / R12L to P010 | 4.66 / 4.06 ms | 5.38 / 4.65 ms |
+| r210 / R12B to RGB48 | 3.70 / 4.13 ms | 4.01 / 4.68 ms |
+| v210 no-op delivery copy | 1.40 ms | 1.61 ms |
+
+When the benchmark ran inside the complete 643-test suite, the most conservative
+RGB48 p95 was 8.06 ms and every other conversion p95 remained below 6.91 ms.
+This loaded-system run still leaves more than 2x headroom against the 16.67 ms
+4K60 frame period.
+
 The optimized implementations remain bit-exact with their scalar oracles for
 BT.709 and BT.2020, nominal endpoints, excursions, randomized inputs, scalar
 tails, and threaded segment boundaries. ARGB/BGRA uses reusable thread-pool
 work items at 1080p and above; no threads are created in the per-frame hot
 path. R12 normalizes each complete eight-pixel C4 block once and retains the
-exact 4,096-entry 12-to-10 lookup. The RGB48 routes remain intentionally at
-two helper workers: their 5.9 ms worst average and 7.7 ms p95 already provide
-more than 2x 4K60 headroom, while adding workers would consume more capture
-CPU for a memory-bandwidth-bound copy/unpack path.
+exact 4,096-entry 12-to-10 lookup. The direct RGB48 routes now use AVX2
+unpacking and remain at two helper workers; adding workers would consume more
+capture CPU for already-sub-frame, memory-bandwidth-sensitive paths.
 
 ### Flexible-resolution verification
 

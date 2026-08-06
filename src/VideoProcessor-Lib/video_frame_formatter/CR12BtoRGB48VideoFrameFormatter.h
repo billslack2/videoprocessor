@@ -21,6 +21,13 @@
 class CR12BtoRGB48VideoFrameFormatter : public IVideoFrameFormatter
 {
 public:
+	enum class ConversionMethod
+	{
+		AUTO,
+		SCALAR,
+		AVX2,
+	};
+
 	CR12BtoRGB48VideoFrameFormatter();
 	~CR12BtoRGB48VideoFrameFormatter() override;
 
@@ -37,6 +44,7 @@ public:
 		return { VideoFrameSampleRange::FULL, 16, 0 };
 	}
 	void GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override;
+	void SetConversionMethod(ConversionMethod method) { m_conversionMethod = method; }
 
 private:
 	static constexpr size_t PERFORMANCE_WINDOW_SIZE = 600;
@@ -45,6 +53,8 @@ private:
 	uint32_t m_height = 0;
 	uint32_t m_inputStride = 0;
 	LONG m_outFrameSize = 0;
+	bool m_hasAVX2 = false;
+	ConversionMethod m_conversionMethod = ConversionMethod::AUTO;
 	double m_conversionTimes[PERFORMANCE_WINDOW_SIZE] = {};
 	size_t m_conversionTimeIndex = 0;
 	size_t m_conversionTimeCount = 0;

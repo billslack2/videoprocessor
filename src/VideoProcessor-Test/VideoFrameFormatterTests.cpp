@@ -1442,6 +1442,99 @@ namespace Tests
 				static_cast<unsigned int>(components[2]));
 		}
 
+		TEST_METHOD(CR210toRGB48AVX2MatchesScalarBitExactly)
+		{
+			// A non-multiple-of-eight width exercises both the SIMD body and the
+			// scalar tail while retaining DeckLink's aligned r210 row stride.
+			VideoStateComPtr tailState = new VideoState();
+			tailState->valid = true;
+			tailState->displayMode = std::make_shared<DisplayMode>(
+				102, 100, false, 60000, 1001);
+			tailState->videoFrameEncoding = VideoFrameEncoding::R210;
+			std::vector<BYTE> tailInput(tailState->BytesPerFrame());
+			FillBenchmarkPattern(tailInput, 0x21048a52U);
+			VideoFrame tailFrame(tailInput.data(), 1, 0, nullptr);
+
+			CR210toRGB48VideoFrameFormatter tailScalar;
+			tailScalar.SetConversionMethod(
+				CR210toRGB48VideoFrameFormatter::ConversionMethod::SCALAR);
+			tailScalar.OnVideoState(tailState);
+			std::vector<BYTE> tailScalarOutput(tailScalar.GetOutFrameSize());
+			Assert::IsTrue(tailScalar.FormatVideoFrame(
+				tailFrame, tailScalarOutput.data()));
+
+			CR210toRGB48VideoFrameFormatter tailAVX2;
+			tailAVX2.SetConversionMethod(
+				CR210toRGB48VideoFrameFormatter::ConversionMethod::AVX2);
+			tailAVX2.OnVideoState(tailState);
+			std::vector<BYTE> tailAVX2Output(tailAVX2.GetOutFrameSize());
+			Assert::IsTrue(tailAVX2.FormatVideoFrame(
+				tailFrame, tailAVX2Output.data()));
+			Assert::IsTrue(tailScalarOutput == tailAVX2Output,
+				L"r210 RGB48 AVX2 must match scalar through its pixel tail");
+
+			// Exhaust all source codes in every channel and SIMD lane. The output
+			// is limited-range code preservation: the low six bits remain zero.
+			VideoStateComPtr exhaustiveState = new VideoState();
+			exhaustiveState->valid = true;
+			exhaustiveState->displayMode = std::make_shared<DisplayMode>(
+				104, 100, false, 60000, 1001);
+			exhaustiveState->videoFrameEncoding = VideoFrameEncoding::R210;
+			std::vector<BYTE> exhaustiveInput(exhaustiveState->BytesPerFrame());
+			CR210toRGB48VideoFrameFormatter exhaustiveAVX2;
+			exhaustiveAVX2.SetConversionMethod(
+				CR210toRGB48VideoFrameFormatter::ConversionMethod::AVX2);
+			exhaustiveAVX2.OnVideoState(exhaustiveState);
+			std::vector<BYTE> exhaustiveOutput(exhaustiveAVX2.GetOutFrameSize());
+			VideoFrame exhaustiveFrame(exhaustiveInput.data(), 2, 0, nullptr);
+			for (uint16_t code = 0; code <= 1023U; ++code)
+			{
+				for (uint32_t line = 0; line < 100; ++line)
+				{
+					BYTE* row = exhaustiveInput.data() +
+						static_cast<size_t>(line) * exhaustiveState->BytesPerRow();
+					for (uint32_t pixel = 0; pixel < 8; ++pixel)
+						WriteR210Pixel(row + pixel * 4U, code, code, code);
+				}
+				Assert::IsTrue(exhaustiveAVX2.FormatVideoFrame(
+					exhaustiveFrame, exhaustiveOutput.data()));
+				const auto* samples = reinterpret_cast<const uint16_t*>(
+					exhaustiveOutput.data());
+				const uint16_t expected = static_cast<uint16_t>(code << 6);
+				for (uint32_t component = 0; component < 24; ++component)
+					Assert::AreEqual(static_cast<unsigned int>(expected),
+						static_cast<unsigned int>(samples[component]));
+			}
+
+			VideoStateComPtr threadedState = new VideoState();
+			threadedState->valid = true;
+			threadedState->displayMode = std::make_shared<DisplayMode>(
+				1920, 1080, false, 60000, 1001);
+			threadedState->videoFrameEncoding = VideoFrameEncoding::R210;
+			std::vector<BYTE> threadedInput(threadedState->BytesPerFrame());
+			FillBenchmarkPattern(threadedInput, 0x8457c210U);
+			VideoFrame threadedFrame(threadedInput.data(), 3, 0, nullptr);
+
+			CR210toRGB48VideoFrameFormatter threadedScalar;
+			threadedScalar.SetConversionMethod(
+				CR210toRGB48VideoFrameFormatter::ConversionMethod::SCALAR);
+			threadedScalar.OnVideoState(threadedState);
+			std::vector<BYTE> threadedScalarOutput(
+				threadedScalar.GetOutFrameSize());
+			Assert::IsTrue(threadedScalar.FormatVideoFrame(
+				threadedFrame, threadedScalarOutput.data()));
+
+			CR210toRGB48VideoFrameFormatter threadedAVX2;
+			threadedAVX2.SetConversionMethod(
+				CR210toRGB48VideoFrameFormatter::ConversionMethod::AVX2);
+			threadedAVX2.OnVideoState(threadedState);
+			std::vector<BYTE> threadedAVX2Output(threadedAVX2.GetOutFrameSize());
+			Assert::IsTrue(threadedAVX2.FormatVideoFrame(
+				threadedFrame, threadedAVX2Output.data()));
+			Assert::IsTrue(threadedScalarOutput == threadedAVX2Output,
+				L"Threaded r210 RGB48 AVX2 must match scalar output bit-for-bit");
+		}
+
 		TEST_METHOD(CV210toP010VideoFrameFormatter4K60PerformanceSmokeTest)
 		{
 			CV210toP010VideoFrameFormatter formatter;
@@ -3073,6 +3166,101 @@ namespace Tests
 				static_cast<unsigned int>((0x100U << 4) | (0x100U >> 8)));
 			Assert::AreEqual(0xEB0EU,
 				static_cast<unsigned int>((0xEB0U << 4) | (0xEB0U >> 8)));
+		}
+
+		TEST_METHOD(CR12BtoRGB48AVX2MatchesScalarBitExactly)
+		{
+			VideoStateComPtr tailState = new VideoState();
+			tailState->valid = true;
+			tailState->displayMode = std::make_shared<DisplayMode>(
+				104, 100, false, 60000, 1001);
+			tailState->videoFrameEncoding = VideoFrameEncoding::R12B;
+			std::vector<BYTE> tailInput(tailState->BytesPerFrame());
+			FillBenchmarkPattern(tailInput, 0x12b48a52U);
+			VideoFrame tailFrame(tailInput.data(), 1, 0, nullptr);
+
+			CR12BtoRGB48VideoFrameFormatter tailScalar;
+			tailScalar.SetConversionMethod(
+				CR12BtoRGB48VideoFrameFormatter::ConversionMethod::SCALAR);
+			tailScalar.OnVideoState(tailState);
+			std::vector<BYTE> tailScalarOutput(tailScalar.GetOutFrameSize());
+			Assert::IsTrue(tailScalar.FormatVideoFrame(
+				tailFrame, tailScalarOutput.data()));
+
+			CR12BtoRGB48VideoFrameFormatter tailAVX2;
+			tailAVX2.SetConversionMethod(
+				CR12BtoRGB48VideoFrameFormatter::ConversionMethod::AVX2);
+			tailAVX2.OnVideoState(tailState);
+			std::vector<BYTE> tailAVX2Output(tailAVX2.GetOutFrameSize());
+			Assert::IsTrue(tailAVX2.FormatVideoFrame(
+				tailFrame, tailAVX2Output.data()));
+			Assert::IsTrue(tailScalarOutput == tailAVX2Output,
+				L"R12B RGB48 AVX2 must match scalar through its eight-pixel tail");
+
+			// Exhaust every source code in both documented eight-pixel blocks of
+			// one SIMD unit and prove exact endpoint-preserving bit replication.
+			VideoStateComPtr exhaustiveState = new VideoState();
+			exhaustiveState->valid = true;
+			exhaustiveState->displayMode = std::make_shared<DisplayMode>(
+				112, 100, false, 60000, 1001);
+			exhaustiveState->videoFrameEncoding = VideoFrameEncoding::R12B;
+			std::vector<BYTE> exhaustiveInput(exhaustiveState->BytesPerFrame());
+			CR12BtoRGB48VideoFrameFormatter exhaustiveAVX2;
+			exhaustiveAVX2.SetConversionMethod(
+				CR12BtoRGB48VideoFrameFormatter::ConversionMethod::AVX2);
+			exhaustiveAVX2.OnVideoState(exhaustiveState);
+			std::vector<BYTE> exhaustiveOutput(exhaustiveAVX2.GetOutFrameSize());
+			VideoFrame exhaustiveFrame(exhaustiveInput.data(), 2, 0, nullptr);
+			for (uint32_t code = 0; code <= 0xfffU; ++code)
+			{
+				for (uint32_t line = 0; line < 100; ++line)
+				{
+					BYTE* row = exhaustiveInput.data() +
+						static_cast<size_t>(line) * exhaustiveState->BytesPerRow();
+					WriteR12BBlock(row, static_cast<uint16_t>(code),
+						static_cast<uint16_t>(code), static_cast<uint16_t>(code));
+					WriteR12BBlock(row + 36, static_cast<uint16_t>(code),
+						static_cast<uint16_t>(code), static_cast<uint16_t>(code));
+				}
+				Assert::IsTrue(exhaustiveAVX2.FormatVideoFrame(
+					exhaustiveFrame, exhaustiveOutput.data()));
+				const auto* samples = reinterpret_cast<const uint16_t*>(
+					exhaustiveOutput.data());
+				const uint16_t expected = static_cast<uint16_t>(
+					(code << 4) | (code >> 8));
+				Assert::AreEqual(static_cast<unsigned int>(expected),
+					static_cast<unsigned int>(samples[0]));
+				Assert::AreEqual(static_cast<unsigned int>(expected),
+					static_cast<unsigned int>(samples[47]));
+			}
+
+			VideoStateComPtr threadedState = new VideoState();
+			threadedState->valid = true;
+			threadedState->displayMode = std::make_shared<DisplayMode>(
+				1920, 1080, false, 60000, 1001);
+			threadedState->videoFrameEncoding = VideoFrameEncoding::R12B;
+			std::vector<BYTE> threadedInput(threadedState->BytesPerFrame());
+			FillBenchmarkPattern(threadedInput, 0x8457c129U);
+			VideoFrame threadedFrame(threadedInput.data(), 3, 0, nullptr);
+
+			CR12BtoRGB48VideoFrameFormatter threadedScalar;
+			threadedScalar.SetConversionMethod(
+				CR12BtoRGB48VideoFrameFormatter::ConversionMethod::SCALAR);
+			threadedScalar.OnVideoState(threadedState);
+			std::vector<BYTE> threadedScalarOutput(
+				threadedScalar.GetOutFrameSize());
+			Assert::IsTrue(threadedScalar.FormatVideoFrame(
+				threadedFrame, threadedScalarOutput.data()));
+
+			CR12BtoRGB48VideoFrameFormatter threadedAVX2;
+			threadedAVX2.SetConversionMethod(
+				CR12BtoRGB48VideoFrameFormatter::ConversionMethod::AVX2);
+			threadedAVX2.OnVideoState(threadedState);
+			std::vector<BYTE> threadedAVX2Output(threadedAVX2.GetOutFrameSize());
+			Assert::IsTrue(threadedAVX2.FormatVideoFrame(
+				threadedFrame, threadedAVX2Output.data()));
+			Assert::IsTrue(threadedScalarOutput == threadedAVX2Output,
+				L"Threaded R12B RGB48 AVX2 must match scalar output bit-for-bit");
 		}
 
 		TEST_METHOD(CDeckLinkR12BToP010UsesNormalizedFullRangeRounding)
