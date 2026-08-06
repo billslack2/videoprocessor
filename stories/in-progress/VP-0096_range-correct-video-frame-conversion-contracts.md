@@ -17,7 +17,7 @@ tests; the implementation checkpoint below records their resolution.
 Implementation checkpoint (2026-08-06): all seven characterization failures
 are resolved on the feature branch, renderer routing/signaling and native
 analysis are covered, a clean x64 Release build succeeds, and the complete
-suite passes 634/634 tests. The story remains in progress for hardware-path
+suite passes 635/635 tests. The story remains in progress for hardware-path
 validation and final integration review.
 
 ## User story
@@ -220,11 +220,11 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
   explicitly overridden. MPC/Generic forced P010 covers every supported input.
 - Related native sparse-analysis math was corrected for limited 10-bit RGB and
   normalized R12, with reference-vector tests.
-- Clean x64 Release build: passed. Complete test suite: 634/634 passed.
+- Clean x64 Release build: passed. Complete test suite: 635/635 passed.
 - The performance regression test now uses median-of-three runs, each with 120
   measured frames rotating across four patterned 4K buffers, and gates both
-  average and p95 below 16.67 ms. Sustained averages were 2.2 ms for
-  v210-to-P010, 4.6 ms for r210-to-RGB48, 5.6 ms for R12B-to-RGB48,
-  11.0-12.7 ms for limited packed RGB-to-P010, and 9.8-11.1 ms for
-  R12-to-P010. This exposed a 20-39% cost hidden by hot-buffer measurements
-  for R10b/R10l; all median sustained p95 values remained below 14.4 ms.
+  average and p95 below 16.67 ms. AVX2 limited packed RGB-to-P010 now averages
+  approximately 2.6 ms with median sustained p95 below 3.0 ms, down from
+  11.0-12.7 ms before vectorization. Scalar and AVX2 outputs are bit-exact for
+  BT.709/BT.2020 reference values, randomized full-code-range inputs, explicit
+  excursions, scalar tails, and threaded segment boundaries.
