@@ -281,3 +281,11 @@ The focused `VideoFrameFormatterTests` run built and executed from x64 Release:
   adds no per-frame processing. The clean x64 Release suite passes 648/648;
   sustained rotating-pattern 4K HDYC conversion measured 2.60 ms average to
   P010 and 2.97 ms average to P210 (384 and 337 fps respectively).
+- Hardware-independent HDYC validation is now explicit rather than incidental:
+  UYVY/HDYC pixel identity, tight two-byte-per-pixel rows, SIMD tail widths,
+  P010 and P210 scalar/AVX2 bit equivalence, and Alpha P210 versus forced-P010
+  renderer policy all have named contracts. An optional raw
+  `bmdFormat8BitYUV` replay test accepts an external one-frame dump and was
+  exercised with a generated binary fixture. The clean x64 Release suite passes
+  651/651. Final rotating 4K HDYC average/p95 was 2.34/2.65 ms to P010 and
+  2.77/3.28 ms to P210; all recorded runs remained within the 60 fps budget.
