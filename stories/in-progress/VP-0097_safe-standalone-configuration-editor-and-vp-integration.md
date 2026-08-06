@@ -461,6 +461,9 @@ editor executable and its configuration safety boundary are validated.
   text and semibold hierarchy, including native combo popup lists. The final
   reviewer pass also corrected stale list text after inline renames and
   preserved existing unique legacy labels during automatic migration.
+- Removed the renderer's advanced-settings disclosure entirely. All supported
+  renderer values are always visible in one continuous profile form, with no
+  mode-dependent resize or hidden state.
 - The complete x64 Release solution build succeeded and focused
   `ConfigFileTests` passed 45/45. The editor was relaunched from the feature
   worktree against its checked-in configuration; no deployment or active
