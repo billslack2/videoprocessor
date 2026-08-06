@@ -559,6 +559,99 @@ namespace Tests
 			Assert::AreEqual(222.0f, action.translationPixels, 0.001f);
 		}
 
+		TEST_METHOD(PersistentSubtitleMayBeRescannedOnHeldTrustedBarGeometry)
+		{
+			HeldBarAnalysisInput input;
+			input.trustedBarGeometryAvailable = true;
+			input.storedBaseMatchesTrustedGeometry = true;
+			input.currentEnvelopeAvailable = true;
+			input.latestClassification =
+				ActivePictureClassification::PROVISIONAL;
+			input.trustedGeometry = {
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, true };
+			input.currentEnvelope = input.trustedGeometry;
+			input.currentEnvelope.bottom = 2042;
+			input.currentEnvelope.aspectRatio = 3840.0 / 1766.0;
+			input.presentation.action =
+				VerticalBarPresentationAction::TRANSLATE;
+			input.presentation.translationPixels = 199.0f;
+			input.presentation.lastDetectionTick = 1000;
+			input.presentation.sourceSequence = 101;
+			input.evidenceSourceGeneration = 7;
+			input.currentSourceGeneration = 7;
+			input.currentTick = 2999;
+			input.holdMs = 2000;
+			input.currentSourceSequence = 220;
+			Assert::IsTrue(CanAnalyzeHeldVerticalBarGeometry(input));
+
+			// A scheduled dense scan refreshes the same subtitle before its release
+			// lease expires, allowing a persistent cue to remain active indefinitely
+			// without granting provisional geometry crop authority.
+			VerticalBarPresentationUpdateInput refresh;
+			refresh.previous = input.presentation;
+			refresh.current.action =
+				VerticalBarPresentationAction::TRANSLATE;
+			refresh.current.translationPixels = 199.0f;
+			refresh.lowerContent = true;
+			refresh.lowerContentBottom = 2042;
+			refresh.currentTick = 2999;
+			refresh.currentSourceSequence = 220;
+			refresh.holdMs = 2000;
+			refresh.translationEnabled = true;
+			const auto refreshed = UpdateVerticalBarPresentation(refresh);
+			Assert::IsTrue(IsVerticalBarPresentationActive(
+				refreshed, 4998, 2000, 221));
+			Assert::IsFalse(IsVerticalBarPresentationActive(
+				refreshed, 5000, 2000, 221));
+		}
+
+		TEST_METHOD(HeldBarAnalysisRejectsContradictoryOrStaleEvidence)
+		{
+			HeldBarAnalysisInput input;
+			input.trustedBarGeometryAvailable = true;
+			input.storedBaseMatchesTrustedGeometry = true;
+			input.currentEnvelopeAvailable = true;
+			input.latestClassification =
+				ActivePictureClassification::PROVISIONAL;
+			input.trustedGeometry = {
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, true };
+			input.currentEnvelope = input.trustedGeometry;
+			input.currentEnvelope.bottom = 2042;
+			input.presentation.action =
+				VerticalBarPresentationAction::TRANSLATE;
+			input.presentation.translationPixels = 199.0f;
+			input.presentation.lastDetectionTick = 1000;
+			input.presentation.sourceSequence = 101;
+			input.evidenceSourceGeneration = 7;
+			input.currentSourceGeneration = 7;
+			input.currentTick = 1100;
+			input.holdMs = 2000;
+			input.currentSourceSequence = 102;
+			Assert::IsTrue(CanAnalyzeHeldVerticalBarGeometry(input));
+
+			input.currentEnvelopeAvailable = false; // subtitle disappeared
+			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
+			input.currentEnvelopeAvailable = true;
+			input.currentEnvelope = input.trustedGeometry;
+			input.currentEnvelope.top = 150; // only the opposite edge changed
+			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
+			input.currentEnvelope = input.trustedGeometry;
+			input.currentEnvelope.bottom = 2042;
+			input.currentSourceGeneration = 8; // source replacement
+			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
+			input.currentSourceGeneration = 7;
+			input.latestClassification =
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
+			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
+			input.latestClassification =
+				ActivePictureClassification::UNAVAILABLE;
+			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
+			input.latestClassification =
+				ActivePictureClassification::PROVISIONAL;
+			input.currentBarAuthority = true; // fallback is unnecessary
+			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
+		}
+
 		TEST_METHOD(FreshOneEdgeEvidenceIntentionallyReplacesHeldFit)
 		{
 			VerticalBarPresentationUpdateInput update;
@@ -864,15 +957,17 @@ namespace Tests
 		TEST_METHOD(UnsafeNewBarContentForcesOnlyTheInitialSubtitleScan)
 		{
 			Assert::IsTrue(RequiresImmediateSubtitleBarAnalysis(
-				true, true, false, false));
+				true, true, true, false, false));
 			Assert::IsFalse(RequiresImmediateSubtitleBarAnalysis(
-				false, true, false, false));
+				false, true, true, false, false));
 			Assert::IsFalse(RequiresImmediateSubtitleBarAnalysis(
-				true, false, false, false));
+				true, false, true, false, false));
 			Assert::IsFalse(RequiresImmediateSubtitleBarAnalysis(
-				true, true, true, false));
+				true, true, false, false, false));
 			Assert::IsFalse(RequiresImmediateSubtitleBarAnalysis(
-				true, true, false, true));
+				true, true, true, true, false));
+			Assert::IsFalse(RequiresImmediateSubtitleBarAnalysis(
+				true, true, true, false, true));
 		}
 
 		TEST_METHOD(CurrentFrameEnvelopeSurvivesGeometryChangeAndZeroHold)

@@ -200,6 +200,49 @@ namespace AlphaSourceCrop
 				currentSourceSequence);
 	}
 
+	bool CanAnalyzeHeldVerticalBarGeometry(
+		const HeldBarAnalysisInput& input)
+	{
+		if (input.currentBarAuthority ||
+			!input.trustedBarGeometryAvailable ||
+			!input.storedBaseMatchesTrustedGeometry ||
+			!input.currentEnvelopeAvailable ||
+			input.latestClassification !=
+				ActivePictureClassification::PROVISIONAL ||
+			input.evidenceSourceGeneration == 0 ||
+			input.evidenceSourceGeneration != input.currentSourceGeneration ||
+			!IsVerticalBarPresentationActive(input.presentation,
+				input.currentTick, input.holdMs,
+				input.currentSourceSequence) ||
+			input.presentation.action !=
+				VerticalBarPresentationAction::TRANSLATE ||
+			!ValidBounds(input.trustedGeometry,
+				input.trustedGeometry.rasterWidth,
+				input.trustedGeometry.rasterHeight) ||
+			!ValidBounds(input.currentEnvelope,
+				input.trustedGeometry.rasterWidth,
+				input.trustedGeometry.rasterHeight))
+		{
+			return false;
+		}
+
+		// The current evidence must be an outward envelope of the exact trusted
+		// base, never a replacement or inward crop proposal.
+		const bool outwardEnvelope =
+			input.currentEnvelope.left <= input.trustedGeometry.left &&
+			input.currentEnvelope.top <= input.trustedGeometry.top &&
+			input.currentEnvelope.right >= input.trustedGeometry.right &&
+			input.currentEnvelope.bottom >= input.trustedGeometry.bottom;
+		if (!outwardEnvelope)
+			return false;
+
+		if (input.presentation.translationPixels < -0.5f)
+			return input.currentEnvelope.top < input.trustedGeometry.top;
+		if (input.presentation.translationPixels > 0.5f)
+			return input.currentEnvelope.bottom > input.trustedGeometry.bottom;
+		return false;
+	}
+
 	VerticalBarPresentationState UpdateVerticalBarPresentation(
 		const VerticalBarPresentationUpdateInput& input)
 	{
@@ -469,10 +512,12 @@ namespace AlphaSourceCrop
 	}
 
 	bool RequiresImmediateSubtitleBarAnalysis(bool currentBarAuthority,
+		bool retentionJustBecameUnsafe,
 		bool frameLocalRetentionEvaluated, bool frameLocalRetentionSafe,
 		bool translationAlreadyActive)
 	{
-		return currentBarAuthority && frameLocalRetentionEvaluated &&
+		return currentBarAuthority && retentionJustBecameUnsafe &&
+			frameLocalRetentionEvaluated &&
 			!frameLocalRetentionSafe && !translationAlreadyActive;
 	}
 

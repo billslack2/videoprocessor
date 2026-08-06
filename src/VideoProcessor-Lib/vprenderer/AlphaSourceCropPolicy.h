@@ -104,6 +104,31 @@ namespace AlphaSourceCrop
 		uint64_t currentTick, uint64_t holdMs,
 		uint64_t currentSourceSequence);
 
+	struct HeldBarAnalysisInput
+	{
+		bool currentBarAuthority = false;
+		bool trustedBarGeometryAvailable = false;
+		bool storedBaseMatchesTrustedGeometry = false;
+		bool currentEnvelopeAvailable = false;
+		ActivePictureClassification latestClassification =
+			ActivePictureClassification::UNAVAILABLE;
+		ActivePictureBounds trustedGeometry;
+		ActivePictureBounds currentEnvelope;
+		VerticalBarPresentationState presentation;
+		uint64_t evidenceSourceGeneration = 0;
+		uint64_t currentSourceGeneration = 0;
+		uint64_t currentTick = 0;
+		uint64_t holdMs = 0;
+		uint64_t currentSourceSequence = 0;
+	};
+
+	// Provisional pixels may be inspected against a previously trusted bar
+	// rectangle without acquiring crop authority. This bridge exists only while
+	// the current envelope expands the same edge as an active, same-generation
+	// translation; contradictory or unavailable evidence must reacquire normally.
+	bool CanAnalyzeHeldVerticalBarGeometry(
+		const HeldBarAnalysisInput& input);
+
 	// Store exactly one held vertical action. FIT retains the widest measured
 	// extents; TRANSLATE retains the farthest same-direction displacement.
 	VerticalBarPresentationState UpdateVerticalBarPresentation(
@@ -181,6 +206,7 @@ namespace AlphaSourceCrop
 	// low-cost scan of its already-trusted bars. Once a translation is active,
 	// normal cadence resumes because the held placement already covers the cue.
 	bool RequiresImmediateSubtitleBarAnalysis(bool currentBarAuthority,
+		bool retentionJustBecameUnsafe,
 		bool frameLocalRetentionEvaluated, bool frameLocalRetentionSafe,
 		bool translationAlreadyActive);
 

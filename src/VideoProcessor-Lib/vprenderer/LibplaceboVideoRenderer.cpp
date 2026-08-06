@@ -2491,6 +2491,8 @@ struct LibplaceboVideoRenderer::Impl
 		scopeSubtitleReleaseDrift;
 	bool scopeSubtitleReleaseDriftWasActive = false;
 	bool scopeSubtitleAuthorityGapHeld = false;
+	bool scopeSubtitleRetentionWasUnsafe = false;
+	uint64_t scopeSubtitleRetentionGeneration = 0;
 	bool scopeSubtitleWasActive = false;
 	bool scopeSubtitleWasTopActive = false;
 	std::string lastScopeVerticalOverlayPolicy;
@@ -3336,7 +3338,8 @@ struct LibplaceboVideoRenderer::Impl
 		bool scopeScreenActive,
 		const ActivePictureBounds* barAuthority,
 		uint64_t sourceSequence,
-		bool forceAnalysis = false)
+		bool forceAnalysis = false,
+		bool heldBarAnalysisAuthority = false)
 	{
 		const uint64_t now = GetTickCount64();
 		const bool sourceIsCurrent = source && source->IsValid() &&
@@ -3380,7 +3383,16 @@ struct LibplaceboVideoRenderer::Impl
 			ClearScopeSubtitleEvidence();
 			return 0.0f;
 		}
-		if (!authorityIsCurrentBars)
+		if (heldBarAnalysisAuthority)
+		{
+			if (!scopeSubtitleAuthorityGapHeld)
+			{
+				DebugLog::Log(
+					"libplacebo scope subtitle fit: continuing dense analysis on same-generation trusted base during provisional authority gap");
+				scopeSubtitleAuthorityGapHeld = true;
+			}
+		}
+		else if (!authorityIsCurrentBars)
 		{
 			if (!scopeSubtitleAuthorityGapHeld)
 			{
@@ -6004,9 +6016,49 @@ struct LibplaceboVideoRenderer::Impl
 			sceneVerificationGeometrySourceGeneration == frameGeneration &&
 			hasCroppedEdge(sceneVerificationGeometry) &&
 			latestEvidenceAllowsBarOverlay;
+		const uint64_t subtitleNow = GetTickCount64();
+		const bool trustedNlsBarGeometry =
+			nlsGeometryAvailable &&
+			nlsGeometryClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED &&
+			nlsGeometrySourceGeneration == frameGeneration &&
+			hasCroppedEdge(nlsGeometry);
+		AlphaSourceCrop::HeldBarAnalysisInput heldAnalysisInput;
+		heldAnalysisInput.currentBarAuthority =
+			currentBarAuthority || sceneBarAuthority;
+		heldAnalysisInput.trustedBarGeometryAvailable =
+			trustedNlsBarGeometry;
+		heldAnalysisInput.storedBaseMatchesTrustedGeometry =
+			trustedNlsBarGeometry &&
+			scopeSubtitlePictureLeft == nlsGeometry.left &&
+			scopeSubtitlePictureTop == nlsGeometry.top &&
+			scopeSubtitlePictureRight == nlsGeometry.right &&
+			scopeSubtitlePictureBottom == nlsGeometry.bottom &&
+			scopePresentationEvidenceBase.left == nlsGeometry.left &&
+			scopePresentationEvidenceBase.top == nlsGeometry.top &&
+			scopePresentationEvidenceBase.right == nlsGeometry.right &&
+			scopePresentationEvidenceBase.bottom == nlsGeometry.bottom;
+		heldAnalysisInput.currentEnvelopeAvailable =
+			scopePresentationCurrentSourceGeneration == frameGeneration &&
+			scopePresentationCurrentSourceSequence == sourceSequence;
+		heldAnalysisInput.latestClassification =
+			latestActivePictureEvidenceClassification;
+		heldAnalysisInput.trustedGeometry = nlsGeometry;
+		heldAnalysisInput.currentEnvelope = scopePresentationCurrentBounds;
+		heldAnalysisInput.presentation = scopeVerticalBarPresentation;
+		heldAnalysisInput.evidenceSourceGeneration =
+			scopeSubtitleEvidenceSourceGeneration;
+		heldAnalysisInput.currentSourceGeneration = frameGeneration;
+		heldAnalysisInput.currentTick = subtitleNow;
+		heldAnalysisInput.holdMs = scopeSubtitleHoldMs;
+		heldAnalysisInput.currentSourceSequence = sourceSequence;
+		const bool heldBarAnalysisAuthority =
+			AlphaSourceCrop::CanAnalyzeHeldVerticalBarGeometry(
+				heldAnalysisInput);
 		const ActivePictureBounds* subtitleBarAuthority =
 			currentBarAuthority ? &nlsGeometry :
-			(sceneBarAuthority ? &sceneVerificationGeometry : nullptr);
+			(sceneBarAuthority ? &sceneVerificationGeometry :
+				(heldBarAnalysisAuthority ? &nlsGeometry : nullptr));
 		// The first subtitle/UI frame may be the one that makes the retained crop
 		// pixel-unsafe. Do not wait for the normal three-frame subtitle scan in
 		// that case: inspect the already-proven bars on this frame so final
@@ -6015,20 +6067,34 @@ struct LibplaceboVideoRenderer::Impl
 		const bool subtitleTranslationAlreadyActive =
 			scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
 			AlphaSourceCrop::IsVerticalBarPresentationActive(
-				scopeVerticalBarPresentation, GetTickCount64(),
+				scopeVerticalBarPresentation, subtitleNow,
 				scopeSubtitleHoldMs, sourceSequence) &&
 			scopeVerticalBarPresentation.action ==
 				AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
+		if (scopeSubtitleRetentionGeneration != frameGeneration)
+		{
+			scopeSubtitleRetentionGeneration = frameGeneration;
+			scopeSubtitleRetentionWasUnsafe = false;
+		}
+		const bool retentionUnsafeNow =
+			latestActivePicturePresentationRetentionEvaluated &&
+			!latestActivePicturePresentationRetentionSafe;
+		const bool retentionJustBecameUnsafe =
+			retentionUnsafeNow && !scopeSubtitleRetentionWasUnsafe;
+		if (latestActivePicturePresentationRetentionEvaluated)
+			scopeSubtitleRetentionWasUnsafe = retentionUnsafeNow;
 		const bool forceSubtitleBarAnalysis =
 			AlphaSourceCrop::RequiresImmediateSubtitleBarAnalysis(
 				subtitleBarAuthority != nullptr,
+				retentionJustBecameUnsafe,
 				latestActivePicturePresentationRetentionEvaluated,
 				latestActivePicturePresentationRetentionSafe,
 				subtitleTranslationAlreadyActive);
 		const float subtitleShiftSourcePixels =
 			UpdateScopeSubtitleShift(&analysisSource,
 				width, height, scopeScreenActive, subtitleBarAuthority,
-				sourceSequence, forceSubtitleBarAnalysis);
+				sourceSequence, forceSubtitleBarAnalysis,
+				heldBarAnalysisAuthority);
 
 		struct pl_frame image{};
 		if (nativeRgbUpload)
