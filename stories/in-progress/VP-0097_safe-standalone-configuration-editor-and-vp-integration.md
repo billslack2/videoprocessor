@@ -131,6 +131,27 @@ editor executable and its configuration safety boundary are validated.
 - The editor now clamps its opening position to the monitor work area so its
   branded header is not created partly above the visible desktop.
 
+2026-08-06 scalable UI redesign (uncommitted source work):
+
+- Replaced the single growing settings canvas with category navigation and
+  separate **General & output** and **Viewports** pages. The page/control
+  grouping is designed to accept additional renderer, queue, shortcut,
+  shader-selection, and advanced categories without extending one long form.
+- Replaced the viewport combo with a persistent default-first viewport list
+  and a separate detail editor. Named viewport add/remove actions live with
+  that list; the selected viewport's condition and settings remain on the
+  detail side.
+- Corrected the viewport control semantics: aspect ratio, anamorphic scale,
+  subtitle timing, padding, and activation condition are text/numeric inputs;
+  only genuinely finite contracts remain dropdowns. Inline explanations and
+  examples now explain screen aspect, anamorphic correction, subtitle fields,
+  naming rules, and the formerly unexplained `when` expression as an
+  **Activation condition**.
+- Reduced the window to a compact work-area-safe size while retaining smaller
+  typography and minimum resize bounds. The x64 Release target completed, the
+  redesigned process stayed running against the disposable three-viewport
+  configuration, and focused `ConfigFileTests` passed 41/41.
+
 ## User story
 
 As a VideoProcessor operator, I want a selector-driven Windows configuration
