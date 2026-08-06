@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <fstream>
 #include <iomanip>
+#include <map>
 #include <set>
 #include <sstream>
 #include <vector>
@@ -326,6 +327,95 @@ bool ApplyTopology(const Topology& topology, bool validate,
 	return result == ERROR_SUCCESS;
 }
 
+bool CopyReferencedMode(const Topology& source, UINT32& modeIndex,
+	Topology& destination, std::map<UINT32, UINT32>& remapped)
+{
+	if (modeIndex == DISPLAYCONFIG_PATH_MODE_IDX_INVALID)
+		return true;
+	if (modeIndex >= source.modes.size())
+		return false;
+	const auto existing = remapped.find(modeIndex);
+	if (existing != remapped.end())
+	{
+		modeIndex = existing->second;
+		return true;
+	}
+	const UINT32 newIndex = static_cast<UINT32>(destination.modes.size());
+	destination.modes.push_back(source.modes[modeIndex]);
+	remapped.emplace(modeIndex, newIndex);
+	modeIndex = newIndex;
+	return true;
+}
+
+bool BuildExactSinglePathTopology(const Topology& source,
+	const DISPLAYCONFIG_PATH_INFO& selected, Topology& destination)
+{
+	destination = {};
+	destination.paths.push_back(selected);
+	auto& path = destination.paths.front();
+	path.flags |= DISPLAYCONFIG_PATH_ACTIVE;
+	std::map<UINT32, UINT32> remapped;
+	return CopyReferencedMode(source, path.sourceInfo.modeInfoIdx,
+		destination, remapped) &&
+		CopyReferencedMode(source, path.targetInfo.modeInfoIdx,
+			destination, remapped);
+}
+
+bool SourceGdiName(const DISPLAYCONFIG_PATH_INFO& path, std::wstring& name)
+{
+	DISPLAYCONFIG_SOURCE_DEVICE_NAME source = {};
+	source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+	source.header.size = sizeof(source);
+	source.header.adapterId = path.sourceInfo.adapterId;
+	source.header.id = path.sourceInfo.id;
+	if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS)
+		return false;
+	name = source.viewGdiDeviceName;
+	return !name.empty();
+}
+
+bool ApplyMaximumMode(const DISPLAYCONFIG_PATH_INFO& path, std::string& error)
+{
+	std::wstring device;
+	if (!SourceGdiName(path, device))
+	{
+		error = "cannot resolve display source name";
+		return false;
+	}
+	DEVMODEW best = {};
+	bool found = false;
+	for (DWORD index = 0;; ++index)
+	{
+		DEVMODEW candidate = {};
+		candidate.dmSize = sizeof(candidate);
+		if (!EnumDisplaySettingsExW(device.c_str(), index, &candidate, 0))
+			break;
+		if (candidate.dmBitsPerPel < 32 || candidate.dmPelsWidth == 0 ||
+			candidate.dmPelsHeight == 0 || candidate.dmDisplayFrequency == 0)
+			continue;
+		const uint64_t area = static_cast<uint64_t>(candidate.dmPelsWidth) * candidate.dmPelsHeight;
+		const uint64_t bestArea = static_cast<uint64_t>(best.dmPelsWidth) * best.dmPelsHeight;
+		if (!found || area > bestArea ||
+			(area == bestArea && candidate.dmDisplayFrequency > best.dmDisplayFrequency))
+		{
+			best = candidate;
+			found = true;
+		}
+	}
+	if (!found || ChangeDisplaySettingsExW(device.c_str(), &best, nullptr,
+		CDS_TEST, nullptr) != DISP_CHANGE_SUCCESSFUL ||
+		ChangeDisplaySettingsExW(device.c_str(), &best, nullptr, 0, nullptr) !=
+		DISP_CHANGE_SUCCESSFUL)
+	{
+		error = "cannot apply maximum compatible display mode";
+		return false;
+	}
+	DebugLog::Log("Display maximum mode applied: device=%S resolution=%lux%lu refresh=%luHz",
+		device.c_str(), best.dmPelsWidth, best.dmPelsHeight,
+		best.dmDisplayFrequency);
+	return true;
+}
+
 std::set<TargetIdentity> ActiveTargets(const Topology& topology)
 {
 	std::set<TargetIdentity> result;
@@ -389,6 +479,13 @@ namespace DisplayTopologySession
 			DebugLog::Log("Display topology restore failed: reason=%s windows_error=%ld record_retained=1",
 				reason, result);
 			return false;
+		}
+		for (const auto& path : topology.paths)
+		{
+			std::string modeError;
+			if (!ApplyMaximumMode(path, modeError))
+				DebugLog::Log("Display topology restored but maximum mode was not applied: reason=%s error=%s",
+					reason, modeError.c_str());
 		}
 		if (!UpdateRecoveryEntry(statePath, nullptr, error))
 		{
@@ -463,15 +560,18 @@ namespace DisplayTopologySession
 			statePath.c_str());
 
 		Topology targetOnly;
-		targetOnly.paths.push_back(*selected);
-		auto& targetPath = targetOnly.paths.front();
-		targetPath.flags |= DISPLAYCONFIG_PATH_ACTIVE;
-		targetPath.sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
-		targetPath.targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
-		// No mode table asks CCD best-mode logic for this one connected path.
+		if (!BuildExactSinglePathTopology(all, *selected, targetOnly) ||
+			targetOnly.modes.empty())
+		{
+			error = "configured target has no complete display mode; refusing Windows best-mode fallback";
+			bool restored = false;
+			std::string restoreError;
+			RestorePending(statePath, "target-only-missing-mode", restored, restoreError);
+			return false;
+		}
 		result = ERROR_SUCCESS;
-		if (!ApplyTopology(targetOnly, true, true, result) ||
-			!ApplyTopology(targetOnly, false, true, result) ||
+		if (!ApplyTopology(targetOnly, true, false, result) ||
+			!ApplyTopology(targetOnly, false, false, result) ||
 			!WaitForOnlyTarget(selectedIdentity))
 		{
 			error = result == ERROR_SUCCESS ?
@@ -481,6 +581,17 @@ namespace DisplayTopologySession
 			bool restored = false;
 			std::string restoreError;
 			RestorePending(statePath, "target-only-failure", restored, restoreError);
+			if (!restoreError.empty())
+				error += "; restore: " + restoreError;
+			return false;
+		}
+		std::string maximumModeError;
+		if (!ApplyMaximumMode(targetOnly.paths.front(), maximumModeError))
+		{
+			error = maximumModeError;
+			bool restored = false;
+			std::string restoreError;
+			RestorePending(statePath, "target-only-maximum-mode-failure", restored, restoreError);
 			if (!restoreError.empty())
 				error += "; restore: " + restoreError;
 			return false;
