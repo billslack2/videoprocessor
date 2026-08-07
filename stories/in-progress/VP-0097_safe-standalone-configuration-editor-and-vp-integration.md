@@ -917,3 +917,22 @@ text.
   confirmed the generated profile name and edited value on disk, confirmed a
   timestamped backup, and reloaded the saved file showing the new value. The
   active user configuration was not touched.
+- Reorganized the Qt navigation around shared configuration followed by
+  collapsed renderer-specific groups: General, Queue, LLDV, Actions, and
+  Shortcuts are top-level; VP Renderer contains Rendering and Viewports; and
+  DirectShow contains General. This is a UI grouping only pending a guided
+  decision about whether the current renderer configuration ownership should
+  be refactored.
+- Added the first functional Actions editor with the same side-by-side
+  selection/detail model. Actions have no default or priority; the editor
+  supports add/remove/rename, renderer index or wildcard targeting, event
+  selection, rule text, and command line while retaining schema validation.
+- Expanded Shortcuts from six fields to all fourteen supported global VP
+  commands, populated unset fields with their compiled defaults, and limited
+  chord inputs to a compact width. Shortcut editing now preserves a present
+  empty value as an explicit disabled binding; an absent key continues to use
+  the compiled default. The VP accelerator loader implements the same
+  distinction at runtime.
+- Added a regression test for explicit empty shortcut serialization and
+  validation. The full x64 Release suite passes 633/633 tests, and both the Qt
+  editor and main VP application complete x64 Release builds.
