@@ -18,7 +18,7 @@ section overlays it. There is no `profiles:`, `default:`,
 | `[queue]` | VP queue policy for either renderer. |
 | `[directshow]`, `[directshow.conversion]`, `[directshow.ppm]` | DirectShow timing and conversion policy. |
 | `[vprenderer]` | VideoProcessor Renderer (Alpha) base and variants. |
-| `[vprenderer.viewport]` | Alpha viewport and subtitle layout. It is not shared. |
+| `[vprenderer.viewport]` | Alpha requested viewport, optional physical-screen boundary, and subtitle layout. It is not shared. |
 | `[shader.<group>]` | Shared shader group, with HLSL and GLSL alternatives. |
 | `[actions.<name>]` | Command run after a committed event. |
 | `[shortcuts]` | Fixed VP commands only. |

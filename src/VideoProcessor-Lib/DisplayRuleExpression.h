@@ -51,6 +51,7 @@ namespace DisplayRuleExpression
 			name == "width" || name == "height" ||
 			name == "actual_refresh" || name == "requested_refresh" ||
 			name == "previous_refresh" || name == "screen_aspect" ||
+			name == "physical_screen_aspect" ||
 			name == "anamorphic_scale" ||
 			name == "subtitle_hold_seconds" ||
 			name == "subtitle_release_drift_seconds" ||

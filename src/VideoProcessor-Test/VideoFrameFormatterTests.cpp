@@ -824,6 +824,10 @@ namespace Tests
 				model, "normal", 1, viewport, error));
 			Assert::AreEqual<uint64_t>(16, viewport.screenAspect.numerator);
 			Assert::AreEqual<uint64_t>(9, viewport.screenAspect.denominator);
+			Assert::AreEqual<uint64_t>(16,
+				viewport.physicalScreenAspect.numerator);
+			Assert::AreEqual<uint64_t>(9,
+				viewport.physicalScreenAspect.denominator);
 			Assert::IsFalse(viewport.automaticCrop);
 			Assert::IsFalse(viewport.subtitleFit);
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(

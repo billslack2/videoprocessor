@@ -119,6 +119,7 @@ namespace RendererProfileConfig
 		std::string group = "viewport";
 		std::string profile = "default";
 		AspectRatio screenAspect{ 16, 9, 16.0 / 9.0 };
+		AspectRatio physicalScreenAspect{ 16, 9, 16.0 / 9.0 };
 		AspectRatio anamorphicScale{ 1, 1, 1.0 };
 		bool automaticCrop = false;
 		bool subtitleFit = false;
@@ -331,7 +332,8 @@ namespace RendererProfileConfig
 		{
 			if (key == "mode")
 				return IsChoice(value, { "normal", "scope" });
-			if (key == "screen_aspect" || key == "scope_screen_aspect")
+			if (key == "screen_aspect" || key == "scope_screen_aspect" ||
+				key == "physical_screen_aspect")
 				return IsAspectInRange(value, 1.0, 4.0);
 			if (key == "anamorphic_scale")
 				return IsAspectInRange(value, 0.5, 2.0);
@@ -549,6 +551,7 @@ namespace RendererProfileConfig
 	{
 		if (variable == "event" || variable == "event_reason" ||
 			variable == "viewport_profile" || variable == "screen_aspect" ||
+			variable == "physical_screen_aspect" ||
 			variable == "anamorphic_scale" || variable == "automatic_crop" ||
 			variable == "subtitle_fit" || variable == "subtitle_hold_seconds" ||
 			variable == "subtitle_release_drift_seconds" ||
@@ -964,6 +967,7 @@ namespace RendererProfileConfig
 				"sdr_target_primaries", "report_bt2020_to_display",
 				"sdr_input_transfer", "output_diagnostics",
 				"diagnostic_disable_shader_cache", "screen_aspect",
+				"physical_screen_aspect",
 				"default_screen_profile", "automatic_crop", "subtitle_fit",
 				"subtitle_hold_seconds", "subtitle_release_drift_seconds",
 				"subtitle_padding_pixels",
@@ -1381,6 +1385,16 @@ namespace RendererProfileConfig
 		{
 			error = "[profiles.viewport." + viewport.profile +
 				"] screen_aspect: " + error;
+			return false;
+		}
+		viewport.physicalScreenAspect = viewport.screenAspect;
+		value = settings.find("physical_screen_aspect");
+		if (value != settings.end() &&
+			!AspectRatioParser::Parse(value->second, 1.0, 4.0,
+				viewport.physicalScreenAspect, error))
+		{
+			error = "[profiles.viewport." + viewport.profile +
+				"] physical_screen_aspect: " + error;
 			return false;
 		}
 		value = settings.find("anamorphic_scale");

@@ -46,6 +46,10 @@ namespace
 				right.viewport.screenAspect.numerator &&
 			left.viewport.screenAspect.denominator ==
 				right.viewport.screenAspect.denominator &&
+			left.viewport.physicalScreenAspect.numerator ==
+				right.viewport.physicalScreenAspect.numerator &&
+			left.viewport.physicalScreenAspect.denominator ==
+				right.viewport.physicalScreenAspect.denominator &&
 			left.viewport.anamorphicScale.numerator ==
 				right.viewport.anamorphicScale.numerator &&
 			left.viewport.anamorphicScale.denominator ==
@@ -617,6 +621,8 @@ namespace UnifiedProfileRuntime
 			StateVariables::Value::Text(viewport.profile);
 		variables["screen_aspect"] =
 			StateVariables::Value::Aspect(viewport.screenAspect);
+		variables["physical_screen_aspect"] =
+			StateVariables::Value::Aspect(viewport.physicalScreenAspect);
 		variables["anamorphic_scale"] =
 			StateVariables::Value::Aspect(viewport.anamorphicScale);
 		variables["automatic_crop"] =

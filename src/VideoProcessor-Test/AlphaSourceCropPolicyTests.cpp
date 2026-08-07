@@ -1161,6 +1161,35 @@ namespace Tests
 			}
 		}
 
+		TEST_METHOD(PhysicalScreenAndRequestedViewportAreNestedBeforePictureFit)
+		{
+			const PresentationRect panel = { 0.0, 0.0, 3840.0, 2160.0 };
+			const CenteredFitDecision physical =
+				FitCenteredAspect(2.35, panel);
+			const CenteredFitDecision requested =
+				FitCenteredAspect(32.0 / 15.0, physical.picture);
+			const CenteredFitDecision picture =
+				FitCenteredAspect(2.40, requested.picture);
+
+			Assert::IsTrue(physical.valid);
+			Assert::IsTrue(requested.valid);
+			Assert::IsTrue(picture.valid);
+			Assert::AreEqual(0.0, physical.picture.left, 0.001);
+			Assert::AreEqual(3840.0, physical.picture.right, 0.001);
+			Assert::IsTrue(requested.picture.left > physical.picture.left);
+			Assert::IsTrue(requested.picture.right < physical.picture.right);
+			Assert::AreEqual(physical.picture.top, requested.picture.top, 0.001);
+			Assert::AreEqual(physical.picture.bottom, requested.picture.bottom, 0.001);
+			Assert::AreEqual(requested.picture.left, picture.picture.left, 0.001);
+			Assert::AreEqual(requested.picture.right, picture.picture.right, 0.001);
+			Assert::IsTrue(picture.picture.top > requested.picture.top);
+			Assert::IsTrue(picture.picture.bottom < requested.picture.bottom);
+			Assert::AreEqual(static_cast<int>(UnusedSpaceAxis::HORIZONTAL),
+				static_cast<int>(requested.unusedAxis));
+			Assert::AreEqual(static_cast<int>(UnusedSpaceAxis::VERTICAL),
+				static_cast<int>(picture.unusedAxis));
+		}
+
 		TEST_METHOD(SourceEnvelopeIsIndependentOfScreenAndAnamorphicMapping)
 		{
 			PresentationEnvelopeGeometryInput source;
