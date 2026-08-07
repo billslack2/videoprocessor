@@ -128,7 +128,7 @@ they must not contain requirements that are absent from this file.
 | VP-0095 | In progress | Target-only fullscreen display session and recovery |
 | VP-0096 | In Progress | Establish range-correct video-frame conversion contracts |
 | VP-0097 | In Progress | Safe standalone configuration editor and VP integration |
-| VP-0098 | In Progress | Fit trusted active-picture envelopes correctly on arbitrary CIH screens |
+| VP-0098 | Done | Fit trusted active-picture envelopes correctly on arbitrary CIH screens |
 | VP-0099 | Backlog | Derive NLS geometry dynamically from panel, screen, and source envelope |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |

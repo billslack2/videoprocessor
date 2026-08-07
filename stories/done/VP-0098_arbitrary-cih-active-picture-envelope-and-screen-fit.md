@@ -2,16 +2,34 @@
 
 ## Status
 
-In Progress. On 2026-08-07 the developer confirmed the discovered GitHub
-default branch `v1.1.016-beta` as the implementation base and asked that the
-implementation continue with explicit review of negative impacts on other
-usage, especially NLS.
+Done (2026-08-07). The implementation was built, fully tested, deployed, and
+confirmed live on the customer's 2.35:1 CIH screen with a 32:15 requested
+presentation viewport. GitHub PR #46 merged the two implementation commits
+into the discovered default branch `v1.1.016-beta` as merge commit `a195ecc`.
+The local integration worktree was then fast-forwarded to that merge.
 
-Implementation is isolated on branch
-`codex/vp-0098-arbitrary-cih-envelope` in
-`C:\Users\bslac\vp\vp-0098-worktree`, based on remote commit `0dfcbf4`.
-The authoritative source checkout has unrelated uncommitted work and remains
-untouched.
+NLS was disabled during the decisive live geometry validation. Dynamic NLS
+shader geometry based on panel, physical-screen, requested-viewport, and
+source-envelope values remains explicitly tracked by VP-0099; it is not a
+completion dependency for VP-0098's linear CIH fit.
+
+## Completion evidence (2026-08-07)
+
+- Clean x64 Release build succeeded at source commit `75478cb`; embedded
+  version `v1.1.016-beta-3-g75478cb` reported `VERSION_DIRTY=false`.
+- Complete native suite passed: 624/624 tests.
+- The deployed executable/plugin pair was verified against the Release build,
+  and active configuration was preserved except for the required explicit
+  `physical_screen_aspect: 2.35:1` value.
+- Live telemetry resolved the physical screen to `0,263-3840,1897`, the 32:15
+  requested viewport to `177,263-3663,1897`, and kept content centered within
+  that viewport. The customer confirmed that both screen fit and content look
+  correct.
+- A reboot cleared an unrelated stale MadVR/DirectShow reference-clock state;
+  subsequent playback held 240 frames per 10 seconds at 23.976 fps with stable
+  VP scheduled latency around 213-217 ms.
+- PR #46 (`https://github.com/billslack2/videoprocessor/pull/46`) merged the
+  pinned validated head `75478cb` into `v1.1.016-beta` as `a195ecc`.
 
 Readiness review:
 
