@@ -878,3 +878,8 @@ text.
   rendering.
 - Product requirement remains that `[directshow.conversion]` and
   `[directshow.ppm]` are preserved but never exposed by this editor.
+- Main-window HDR metadata numbers are live/session-only overrides when User
+  luminance is selected, not persistent editor settings. Fullscreen controls
+  likewise change live state while the config values only seed startup.
+- Corrected frame-offset handling so the runtime accepts case-insensitive
+  `AUTO`, matching the case-insensitive schema validation contract.
