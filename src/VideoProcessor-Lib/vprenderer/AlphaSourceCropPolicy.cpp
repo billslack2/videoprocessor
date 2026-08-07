@@ -564,6 +564,137 @@ namespace AlphaSourceCrop
 		return decision;
 	}
 
+	PresentationEnvelopeGeometryDecision BuildPresentationEnvelope(
+		const PresentationEnvelopeGeometryInput& input)
+	{
+		PresentationEnvelopeGeometryDecision decision;
+		const int width = input.trustedPicture.rasterWidth;
+		const int height = input.trustedPicture.rasterHeight;
+		decision.bounds = FullRaster(width, height);
+		if (!ValidBounds(input.trustedPicture, width, height) ||
+			!CropEdgesAreChromaAligned(input.trustedPicture, width, height))
+		{
+			return decision;
+		}
+
+		decision.bounds = input.trustedPicture;
+		decision.valid = true;
+		decision.reason = "trusted picture selected without bounded expansion";
+		if (!input.observedContentAvailable)
+			return decision;
+		if (!ValidBounds(input.observedContent, width, height))
+		{
+			decision.valid = false;
+			decision.bounds = FullRaster(width, height);
+			decision.reason = "observed content is invalid or belongs to another raster";
+			return decision;
+		}
+		if (input.horizontalPadding < 0 || input.verticalPadding < 0)
+		{
+			decision.valid = false;
+			decision.bounds = FullRaster(width, height);
+			decision.reason = "presentation padding is invalid";
+			return decision;
+		}
+
+		auto alignDown = [](int value) { return value & ~1; };
+		auto alignUp = [](int value) { return (value + 1) & ~1; };
+		if (input.expandLeft &&
+			input.observedContent.left < input.trustedPicture.left)
+		{
+			decision.bounds.left = std::min(decision.bounds.left,
+				alignDown(std::max(0,
+					input.observedContent.left - input.horizontalPadding)));
+		}
+		if (input.expandTop &&
+			input.observedContent.top < input.trustedPicture.top)
+		{
+			decision.bounds.top = std::min(decision.bounds.top,
+				alignDown(std::max(0,
+					input.observedContent.top - input.verticalPadding)));
+		}
+		if (input.expandRight &&
+			input.observedContent.right > input.trustedPicture.right)
+		{
+			decision.bounds.right = std::max(decision.bounds.right,
+				std::min(width, alignUp(std::min(width,
+					input.observedContent.right + input.horizontalPadding))));
+		}
+		if (input.expandBottom &&
+			input.observedContent.bottom > input.trustedPicture.bottom)
+		{
+			decision.bounds.bottom = std::max(decision.bounds.bottom,
+				std::min(height, alignUp(std::min(height,
+					input.observedContent.bottom + input.verticalPadding))));
+		}
+
+		decision.bounds.rasterWidth = width;
+		decision.bounds.rasterHeight = height;
+		decision.bounds.aspectRatio = static_cast<double>(
+			decision.bounds.right - decision.bounds.left) /
+			std::max(1, decision.bounds.bottom - decision.bounds.top);
+		decision.bounds.symmetricBars = false;
+		decision.expanded = !SameBounds(
+			decision.bounds, input.trustedPicture);
+		decision.reason = decision.expanded
+			? "bounded content expanded trusted picture outward"
+			: "bounded content did not extend beyond trusted picture";
+		return decision;
+	}
+
+	CenteredFitDecision FitCenteredAspect(
+		double contentAspect, const PresentationRect& screen)
+	{
+		CenteredFitDecision decision;
+		const double screenWidth = screen.right - screen.left;
+		const double screenHeight = screen.bottom - screen.top;
+		if (!std::isfinite(contentAspect) || contentAspect <= 0.0 ||
+			!std::isfinite(screenWidth) || !std::isfinite(screenHeight) ||
+			screenWidth <= 0.0 || screenHeight <= 0.0)
+		{
+			return decision;
+		}
+
+		const double screenAspect = screenWidth / screenHeight;
+		const double centerX = (screen.left + screen.right) * 0.5;
+		const double centerY = (screen.top + screen.bottom) * 0.5;
+		double pictureWidth = screenWidth;
+		double pictureHeight = screenHeight;
+		const double epsilon = 1e-9;
+		if (contentAspect > screenAspect + epsilon)
+		{
+			pictureHeight = pictureWidth / contentAspect;
+			decision.unusedAxis = UnusedSpaceAxis::VERTICAL;
+		}
+		else if (contentAspect < screenAspect - epsilon)
+		{
+			pictureWidth = pictureHeight * contentAspect;
+			decision.unusedAxis = UnusedSpaceAxis::HORIZONTAL;
+		}
+		else
+		{
+			decision.unusedAxis = UnusedSpaceAxis::NONE;
+		}
+		decision.picture = {
+			centerX - pictureWidth * 0.5,
+			centerY - pictureHeight * 0.5,
+			centerX + pictureWidth * 0.5,
+			centerY + pictureHeight * 0.5 };
+		decision.valid = true;
+		return decision;
+	}
+
+	const char* UnusedSpaceAxisName(UnusedSpaceAxis axis)
+	{
+		switch (axis)
+		{
+		case UnusedSpaceAxis::NONE: return "none";
+		case UnusedSpaceAxis::HORIZONTAL: return "horizontal";
+		case UnusedSpaceAxis::VERTICAL: return "vertical";
+		default: return "invalid";
+		}
+	}
+
 	void AmbiguityHold::Reset()
 	{
 		deadlineTick = 0;

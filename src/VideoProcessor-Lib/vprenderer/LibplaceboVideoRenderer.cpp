@@ -2532,6 +2532,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t fullRasterPresentationAuthoritySourceGeneration = 0;
 	std::string lastSourceCropPolicy;
 	std::string lastFinalPresentationPolicy;
+	std::string lastFinalLayoutPolicy;
 	std::string activeDisplayRule;
 	std::string effectiveSettingsFingerprint;
 	std::string restartSettingsFingerprint;
@@ -3567,21 +3568,40 @@ struct LibplaceboVideoRenderer::Impl
 						lowerContentTop,
 						lowerContentBottom,
 						lowerMaximumContentSamples);
-				const float visibleHeight = std::min(
-					static_cast<float>(height),
-					static_cast<float>(width / scopeScreenAspect));
-				const float visibleTop =
-					(static_cast<float>(height) - visibleHeight) * 0.5f;
-				const float visibleBottom =
-					(static_cast<float>(height) + visibleHeight) * 0.5f;
-				const float margin = std::max(8.0f, height / 90.0f) +
-					static_cast<float>(scopeSubtitlePaddingPixels);
-				const float upperRequiredShift = upperContent
-					? std::max(0.0f, visibleTop + margin - upperContentTop)
+				// Source overlay extent is owned entirely by the trusted active
+				// picture and current bar pixels. In particular, screenAspect must
+				// never influence whether source pixels require accommodation.
+				const ActivePictureBounds trustedPicture = {
+					scopeSubtitlePictureLeft, scopeSubtitlePictureTop,
+					scopeSubtitlePictureRight, scopeSubtitlePictureBottom,
+					width, height,
+					scopeSubtitlePictureBottom > scopeSubtitlePictureTop
+						? static_cast<double>(scopeSubtitlePictureRight -
+							scopeSubtitlePictureLeft) /
+							(scopeSubtitlePictureBottom - scopeSubtitlePictureTop)
+						: 0.0,
+					true };
+				AlphaSourceCrop::PresentationEnvelopeGeometryInput envelopeInput;
+				envelopeInput.trustedPicture = trustedPicture;
+				envelopeInput.observedContent = trustedPicture;
+				envelopeInput.observedContentAvailable =
+					upperContent || lowerContent;
+				envelopeInput.expandTop = upperContent;
+				envelopeInput.expandBottom = lowerContent;
+				envelopeInput.verticalPadding =
+					std::max(8, height / 90) + scopeSubtitlePaddingPixels;
+				if (upperContent)
+					envelopeInput.observedContent.top = upperContentTop;
+				if (lowerContent)
+					envelopeInput.observedContent.bottom = lowerContentBottom;
+				const AlphaSourceCrop::PresentationEnvelopeGeometryDecision
+					envelope = AlphaSourceCrop::BuildPresentationEnvelope(envelopeInput);
+				const float upperRequiredShift = upperContent && envelope.valid
+					? static_cast<float>(trustedPicture.top - envelope.bounds.top)
 					: 0.0f;
-				const float lowerRequiredShift = lowerContent
-					? std::max(0.0f,
-						lowerContentBottom + margin - visibleBottom)
+				const float lowerRequiredShift = lowerContent && envelope.valid
+					? static_cast<float>(envelope.bounds.bottom -
+						trustedPicture.bottom)
 					: 0.0f;
 
 				// Translation is reserved for one overlay-like vertical edge. A shallow
@@ -4817,6 +4837,7 @@ struct LibplaceboVideoRenderer::Impl
 			ClearScopePresentationEvidence();
 			lastSourceCropPolicy.clear();
 			lastFinalPresentationPolicy.clear();
+			lastFinalLayoutPolicy.clear();
 		}
 	}
 
@@ -5137,6 +5158,7 @@ struct LibplaceboVideoRenderer::Impl
 			ClearScopePresentationEvidence();
 			lastSourceCropPolicy.clear();
 			lastFinalPresentationPolicy.clear();
+			lastFinalLayoutPolicy.clear();
 			DebugLog::Log(
 				"Alpha active picture authority reset: source_generation=%llu",
 				static_cast<unsigned long long>(analysisSource.generation));
@@ -5596,6 +5618,7 @@ struct LibplaceboVideoRenderer::Impl
 			renderParams.num_hooks = 0;
 			lastSourceCropPolicy.clear();
 			lastFinalPresentationPolicy.clear();
+			lastFinalLayoutPolicy.clear();
 			DebugLog::Log(
 				"Alpha active picture authority reset: screen_profile_request=%llu",
 				static_cast<unsigned long long>(
@@ -5708,6 +5731,7 @@ struct LibplaceboVideoRenderer::Impl
 			ClearLatestActivePictureEvidence();
 			lastSourceCropPolicy.clear();
 			lastFinalPresentationPolicy.clear();
+			lastFinalLayoutPolicy.clear();
 			nlsDecision = {};
 			pl_mpv_user_shader_destroy(&nlsHook);
 			nlsHookSignature.clear();
@@ -5929,6 +5953,7 @@ struct LibplaceboVideoRenderer::Impl
 				}
 				lastSourceCropPolicy.clear();
 				lastFinalPresentationPolicy.clear();
+				lastFinalLayoutPolicy.clear();
 			}
 			sceneDetectedCount.fetch_add(1, std::memory_order_relaxed);
 			DebugLog::Log("libplacebo scene boundary: event=%llu sequence=%llu generation=%llu frames_back=%u luma=%u evidence=%d crop_verification_ms=%u nls_retained=%d reason=\"%s\"",
@@ -6453,23 +6478,23 @@ struct LibplaceboVideoRenderer::Impl
 			const AlphaSourceCrop::VerticalBarPresentationResolution
 				verticalResolution = AlphaSourceCrop::ResolveVerticalBarPresentation(
 					verticalResolutionInput);
-			const bool verticalTranslationActive =
+			const bool boundedOverlayExpansion =
 				verticalResolution.action ==
 					AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
-			const bool verticalFitActive = verticalResolution.action ==
-				AlphaSourceCrop::VerticalBarPresentationAction::FIT;
+			// Retain translation as detector/hold state only. Final source geometry
+			// must union the bounded edge so no trusted opposite-edge pixels are
+			// discarded by moving a same-size crop window.
+			const bool verticalTranslationActive = false;
+			const bool verticalFitActive =
+				boundedOverlayExpansion || verticalResolution.action ==
+					AlphaSourceCrop::VerticalBarPresentationAction::FIT;
 			const bool verticalFailOpen = verticalResolution.action ==
 				AlphaSourceCrop::VerticalBarPresentationAction::FAIL_OPEN;
-			const bool topTranslationActive = verticalTranslationActive &&
+			const bool topTranslationActive = boundedOverlayExpansion &&
 				verticalResolution.translationPixels < -0.5f;
-			const bool bottomTranslationActive = verticalTranslationActive &&
+			const bool bottomTranslationActive = boundedOverlayExpansion &&
 				verticalResolution.translationPixels > 0.5f;
-			const int verticalTranslationPixels = topTranslationActive
-				? static_cast<int>(std::floor(
-					verticalResolution.translationPixels))
-				: (bottomTranslationActive
-					? static_cast<int>(std::ceil(
-						verticalResolution.translationPixels)) : 0);
+			const int verticalTranslationPixels = 0;
 			const bool selectedDetectorTopExpansion = verticalFitActive &&
 				detectorTopExpansion;
 			const bool selectedDetectorBottomExpansion = verticalFitActive &&
@@ -6487,25 +6512,46 @@ struct LibplaceboVideoRenderer::Impl
 				denseFitEvidenceActive;
 			ActivePictureBounds outwardExpansion = effectiveGeometry;
 			bool outwardExpansionAvailable = false;
+			bool outwardExpansionInvalid = false;
 			if (barContentFitActive && effectiveGeometryAvailable &&
 				((denseFitEvidenceActive &&
 				  scopeSubtitleEvidenceSourceGeneration == frameGeneration) ||
 				 detectorFitActive))
 			{
+				AlphaSourceCrop::PresentationEnvelopeGeometryInput expansionInput;
+				expansionInput.trustedPicture = effectiveGeometry;
+				expansionInput.observedContent = effectiveGeometry;
+				expansionInput.observedContentAvailable = true;
 				if (detectorFitActive)
 				{
 					if (detectorLeftExpansion)
-						outwardExpansion.left = std::min(outwardExpansion.left,
+					{
+						expansionInput.expandLeft = true;
+						expansionInput.observedContent.left = std::min(
+							expansionInput.observedContent.left,
 							scopePresentationEvidenceBounds.left);
+					}
 					if (selectedDetectorTopExpansion)
-						outwardExpansion.top = std::min(outwardExpansion.top,
+					{
+						expansionInput.expandTop = true;
+						expansionInput.observedContent.top = std::min(
+							expansionInput.observedContent.top,
 							scopePresentationEvidenceBounds.top);
+					}
 					if (detectorRightExpansion)
-						outwardExpansion.right = std::max(outwardExpansion.right,
+					{
+						expansionInput.expandRight = true;
+						expansionInput.observedContent.right = std::max(
+							expansionInput.observedContent.right,
 							scopePresentationEvidenceBounds.right);
+					}
 					if (selectedDetectorBottomExpansion)
-						outwardExpansion.bottom = std::max(outwardExpansion.bottom,
+					{
+						expansionInput.expandBottom = true;
+						expansionInput.observedContent.bottom = std::max(
+							expansionInput.observedContent.bottom,
 							scopePresentationEvidenceBounds.bottom);
+					}
 				}
 				const int verticalMargin = std::max(8, height / 90) +
 					scopeSubtitlePaddingPixels;
@@ -6513,49 +6559,45 @@ struct LibplaceboVideoRenderer::Impl
 					scopeSubtitlePaddingPixels;
 				if (leftBarContentActive && scopeSubtitleDetectedLeft > 0)
 				{
-					const int expandedLeft = std::max(
-						0, scopeSubtitleDetectedLeft - horizontalMargin) & ~1;
-					outwardExpansion.left = std::min(
-						outwardExpansion.left, expandedLeft);
+					expansionInput.expandLeft = true;
+					expansionInput.observedContent.left = std::min(
+						expansionInput.observedContent.left,
+						scopeSubtitleDetectedLeft);
 				}
 				if (detailedVerticalFitEvidence &&
 					scopeVerticalBarPresentation.detectedTop > 0)
 				{
-					const int expandedTop = std::max(
-						0, scopeVerticalBarPresentation.detectedTop -
-							verticalMargin) & ~1;
-					outwardExpansion.top = std::min(
-						outwardExpansion.top, expandedTop);
+					expansionInput.expandTop = true;
+					expansionInput.observedContent.top = std::min(
+						expansionInput.observedContent.top,
+						scopeVerticalBarPresentation.detectedTop);
 				}
 				if (detailedVerticalFitEvidence &&
 					scopeVerticalBarPresentation.detectedBottom > 0)
 				{
-					const int expandedBottom = std::min(height,
-						(scopeVerticalBarPresentation.detectedBottom +
-							verticalMargin + 1) & ~1);
-					outwardExpansion.bottom = std::max(
-						outwardExpansion.bottom, expandedBottom);
+					expansionInput.expandBottom = true;
+					expansionInput.observedContent.bottom = std::max(
+						expansionInput.observedContent.bottom,
+						scopeVerticalBarPresentation.detectedBottom);
 				}
 				if (rightBarContentActive && scopeSubtitleDetectedRight > 0)
 				{
-					const int expandedRight = std::min(width,
-						(scopeSubtitleDetectedRight + horizontalMargin + 1) & ~1);
-					outwardExpansion.right = std::max(
-						outwardExpansion.right, expandedRight);
+					expansionInput.expandRight = true;
+					expansionInput.observedContent.right = std::max(
+						expansionInput.observedContent.right,
+						scopeSubtitleDetectedRight);
 				}
-				outwardExpansion.rasterWidth = width;
-				outwardExpansion.rasterHeight = height;
-				outwardExpansion.aspectRatio =
-					static_cast<double>(outwardExpansion.right -
-						outwardExpansion.left) /
-					std::max(1, outwardExpansion.bottom -
-						outwardExpansion.top);
-				outwardExpansion.symmetricBars = false;
-				outwardExpansionAvailable =
-					outwardExpansion.left < effectiveGeometry.left ||
-					outwardExpansion.top < effectiveGeometry.top ||
-					outwardExpansion.right > effectiveGeometry.right ||
-					outwardExpansion.bottom > effectiveGeometry.bottom;
+				expansionInput.horizontalPadding = horizontalMargin;
+				expansionInput.verticalPadding = verticalMargin;
+				const AlphaSourceCrop::PresentationEnvelopeGeometryDecision
+					expansion =
+					AlphaSourceCrop::BuildPresentationEnvelope(expansionInput);
+				outwardExpansionInvalid = !expansion.valid;
+				if (expansion.valid)
+				{
+					outwardExpansion = expansion.bounds;
+					outwardExpansionAvailable = expansion.expanded;
+				}
 			}
 			AlphaSourceCrop::Input cropInput;
 			cropInput.automaticCropEnabled = automaticSourceCrop;
@@ -6579,7 +6621,8 @@ struct LibplaceboVideoRenderer::Impl
 				latestActivePicturePresentationRetentionSafe;
 			cropInput.frameLocalPresentationRetentionEvaluated =
 				latestActivePicturePresentationRetentionEvaluated;
-			cropInput.presentationFailOpen = verticalFailOpen;
+			cropInput.presentationFailOpen =
+				verticalFailOpen || outwardExpansionInvalid;
 			cropInput.verticalTranslationActive = verticalTranslationActive;
 			cropInput.verticalTranslationPixels = verticalTranslationPixels;
 			cropInput.verticalTranslationBase = {
@@ -6696,16 +6739,30 @@ struct LibplaceboVideoRenderer::Impl
 				if (trustedActivePicture)
 					*trustedActivePicture = true;
 			}
+			auto fitTargetToAspect = [&target](double aspect)
+			{
+				const AlphaSourceCrop::PresentationRect available = {
+					target.crop.x0, target.crop.y0,
+					target.crop.x1, target.crop.y1 };
+				const AlphaSourceCrop::CenteredFitDecision fit =
+					AlphaSourceCrop::FitCenteredAspect(aspect, available);
+				if (fit.valid)
+				{
+					target.crop.x0 = static_cast<float>(fit.picture.left);
+					target.crop.y0 = static_cast<float>(fit.picture.top);
+					target.crop.x1 = static_cast<float>(fit.picture.right);
+					target.crop.y1 = static_cast<float>(fit.picture.bottom);
+				}
+				return fit;
+			};
 			if (!publishFinalPresentation)
 			{
 				// Shader/profile prewarming must not publish per-frame presentation
 				// state. It only needs a valid, centered render geometry.
 				if (scopeActive)
-					pl_rect2df_aspect_set(&target.crop,
-						static_cast<float>(scopeScreenAspect), 0.0f);
-				pl_rect2df_aspect_set(&target.crop,
-					pl_rect2df_aspect(&source.crop) *
-					static_cast<float>(anamorphicScale), 0.0f);
+					fitTargetToAspect(scopeScreenAspect);
+				fitTargetToAspect(pl_rect2df_aspect(&source.crop) *
+					anamorphicScale);
 				return;
 			}
 
@@ -6739,6 +6796,48 @@ struct LibplaceboVideoRenderer::Impl
 				publishedFullRasterAuthority || frameLocalFullRasterAuthority;
 			const bool finalBoundsAuthoritative =
 				cropDecision.applyCrop || currentFullRasterAuthority;
+			const double screenLayoutAspect = scopeActive || nlsRequested
+				? finalTargetAspect : pl_rect2df_aspect(&target.crop);
+			const AlphaSourceCrop::CenteredFitDecision screenFit =
+				fitTargetToAspect(screenLayoutAspect);
+			const AlphaSourceCrop::PresentationRect finalScreen = screenFit.picture;
+			auto publishFinalLayout = [&](AlphaSourceCrop::UnusedSpaceAxis axis,
+				const char* mapping)
+			{
+				std::ostringstream policy;
+				policy << width << 'x' << height << '|'
+					<< effectiveGeometry.left << ',' << effectiveGeometry.top << '-'
+					<< effectiveGeometry.right << ',' << effectiveGeometry.bottom << '|'
+					<< cropDecision.sourceBounds.left << ','
+					<< cropDecision.sourceBounds.top << '-'
+					<< cropDecision.sourceBounds.right << ','
+					<< cropDecision.sourceBounds.bottom << '|'
+					<< std::lround(finalTargetAspect * 100000.0) << '|'
+					<< std::lround(target.crop.x0 * 10.0f) << ','
+					<< std::lround(target.crop.y0 * 10.0f) << '-'
+					<< std::lround(target.crop.x1 * 10.0f) << ','
+					<< std::lround(target.crop.y1 * 10.0f) << '|'
+					<< static_cast<int>(axis) << '|' << mapping;
+				if (policy.str() == lastFinalLayoutPolicy)
+					return;
+				lastFinalLayoutPolicy = policy.str();
+				DebugLog::Log(
+					"Alpha final layout: raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s anamorphic=%.5f",
+					width, height,
+					effectiveGeometry.left, effectiveGeometry.top,
+					effectiveGeometry.right, effectiveGeometry.bottom,
+					cropDecision.sourceBounds.left,
+					cropDecision.sourceBounds.top,
+					cropDecision.sourceBounds.right,
+					cropDecision.sourceBounds.bottom,
+					finalTargetAspect,
+					finalScreen.left, finalScreen.top,
+					finalScreen.right, finalScreen.bottom,
+					target.crop.x0, target.crop.y0,
+					target.crop.x1, target.crop.y1,
+					AlphaSourceCrop::UnusedSpaceAxisName(axis), mapping,
+					anamorphicScale);
+			};
 
 			if (nlsRequested)
 			{
@@ -6828,10 +6927,10 @@ struct LibplaceboVideoRenderer::Impl
 					break;
 				}
 
-				pl_rect2df_aspect_set(&target.crop,
-					static_cast<float>(finalTargetAspect), 0.0f);
 				if (finalNlsDecision.mode == MadVRNlsMappingMode::ACTIVE)
 				{
+					publishFinalLayout(
+						AlphaSourceCrop::UnusedSpaceAxis::NONE, "nls");
 					return;
 				}
 				// Passthrough means geometry passthrough too. WAITING, SAFE_FIT, and
@@ -6839,23 +6938,18 @@ struct LibplaceboVideoRenderer::Impl
 				// ordinary centered scaling inside the target viewport. Otherwise a
 				// 2.39 movie classified within the 2.35 tolerance would still be
 				// stretched vertically despite having no active NLS hook.
-				pl_rect2df_aspect_set(&target.crop,
-					pl_rect2df_aspect(&source.crop) *
-					static_cast<float>(anamorphicScale), 0.0f);
+				const AlphaSourceCrop::CenteredFitDecision pictureFit =
+					fitTargetToAspect(pl_rect2df_aspect(&source.crop) *
+						anamorphicScale);
+				publishFinalLayout(pictureFit.unusedAxis, "linear-nls-fallback");
 				return;
 			}
 
 			// NLS is off: use the same final source rectangle with ordinary scaling.
-			if (scopeActive)
-			{
-				pl_rect2df_aspect_set(
-					&target.crop,
-					static_cast<float>(scopeScreenAspect),
-					0.0f);
-			}
-			pl_rect2df_aspect_set(&target.crop,
-				pl_rect2df_aspect(&source.crop) *
-				static_cast<float>(anamorphicScale), 0.0f);
+			const AlphaSourceCrop::CenteredFitDecision pictureFit =
+				fitTargetToAspect(pl_rect2df_aspect(&source.crop) *
+					anamorphicScale);
+			publishFinalLayout(pictureFit.unusedAxis, "linear");
 			// Never translate the fitted destination for source-baked UI. Moving
 			// target.crop cannot reveal source pixels; it only clips one edge and
 			// leaves an unequal gap at the other. Unsupported overlay evidence is

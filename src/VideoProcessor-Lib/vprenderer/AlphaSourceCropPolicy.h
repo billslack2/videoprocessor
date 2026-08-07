@@ -238,6 +238,63 @@ namespace AlphaSourceCrop
 	PresentationEnvelopeDecision EvaluatePresentationEnvelope(
 		const PresentationEnvelopeInput& input);
 
+	struct PresentationEnvelopeGeometryInput
+	{
+		ActivePictureBounds trustedPicture;
+		ActivePictureBounds observedContent;
+		bool observedContentAvailable = false;
+		bool expandLeft = false;
+		bool expandTop = false;
+		bool expandRight = false;
+		bool expandBottom = false;
+		int horizontalPadding = 0;
+		int verticalPadding = 0;
+	};
+
+	struct PresentationEnvelopeGeometryDecision
+	{
+		ActivePictureBounds bounds;
+		bool valid = false;
+		bool expanded = false;
+		const char* reason = "trusted picture is invalid";
+	};
+
+	// Source-space presentation is the immutable trusted picture unioned only
+	// with selected, bounded content edges and padding. Destination aspect is
+	// deliberately absent from this contract.
+	PresentationEnvelopeGeometryDecision BuildPresentationEnvelope(
+		const PresentationEnvelopeGeometryInput& input);
+
+	struct PresentationRect
+	{
+		double left = 0.0;
+		double top = 0.0;
+		double right = 0.0;
+		double bottom = 0.0;
+	};
+
+	enum class UnusedSpaceAxis
+	{
+		NONE,
+		HORIZONTAL,
+		VERTICAL,
+		INVALID,
+	};
+
+	struct CenteredFitDecision
+	{
+		PresentationRect picture;
+		UnusedSpaceAxis unusedAxis = UnusedSpaceAxis::INVALID;
+		bool valid = false;
+	};
+
+	// Perform the one ordinary centered aspect-preserving fit used after source
+	// envelope selection. The caller may pass anamorphic-adjusted contentAspect;
+	// that destination-only mapping never feeds back into source geometry.
+	CenteredFitDecision FitCenteredAspect(
+		double contentAspect, const PresentationRect& screen);
+	const char* UnusedSpaceAxisName(UnusedSpaceAxis axis);
+
 	class AmbiguityHold
 	{
 	public:
