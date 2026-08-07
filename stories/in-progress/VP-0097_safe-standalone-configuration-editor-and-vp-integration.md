@@ -937,3 +937,22 @@ text.
 - Added a regression test for explicit empty shortcut serialization and
   validation. The full x64 Release suite passes 633/633 tests, and both the Qt
   editor and main VP application complete x64 Release builds.
+- Corrected source-policy ownership after tracing the real consumers. Video
+  conversion, container colorspace, HDR colorspace, and HDR luminance are now
+  canonical `[general]` settings and appear under General / Input processing
+  because both Alpha and DirectShow consume them. Existing `[directshow]`
+  spellings remain readable and are migrated one field at a time when edited;
+  duplicate canonical/legacy definitions are rejected. DirectShow / General
+  now contains only its timing controls and renderer-specific color overrides.
+- Preserved profile and action header capitalization through document
+  enumeration, creation, and case-only renames while retaining
+  case-insensitive lookup and uniqueness. Added regression coverage for mixed
+  case and case-only renaming.
+- Enabled UTF-8 source compilation for the Qt editor and removed the two
+  encoding-sensitive UI punctuation strings that exposed mojibake in the
+  renderer-shortcut list.
+- Updated the release sample and public configuration reference for shared
+  input ownership. A scratch action that launched `test.bat` and an empty
+  scratch queue profile were retained as comments so the shipped sample cannot
+  invoke a machine-local command. The complete x64 Release unit-test run now
+  passes 634/634 tests.
