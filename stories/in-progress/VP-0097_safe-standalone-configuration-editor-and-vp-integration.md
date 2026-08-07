@@ -876,6 +876,10 @@ text.
 - Switched the Qt application to Fusion styling and added a restrained custom
   combo-box/dropdown treatment instead of the legacy native Windows selector
   rendering.
+- The x64 renderer selector always includes `VideoProcessor Renderer (Alpha)`;
+  it is a first-class configuration choice even when a development copy of the
+  editor is not running beside the Alpha plugin. Popup rows use the same
+  spacing, hover, focus, and selection treatment as the rest of the editor.
 - Product requirement remains that `[directshow.conversion]` and
   `[directshow.ppm]` are preserved but never exposed by this editor.
 - Main-window HDR metadata numbers are live/session-only overrides when User
