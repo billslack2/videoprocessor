@@ -194,6 +194,34 @@ Two-ratio correction and redeployment on 2026-08-07:
   confirmation of side bars and the new dual-rectangle telemetry remains
   required before Review.
 
+Post-reboot live validation on 2026-08-07:
+
+- The customer confirmed that the physical screen fit and displayed content
+  now look correct. Alpha telemetry resolves the 3840x2160 panel to the 2.35
+  physical screen `0,263-3840,1897`, then the requested 32:15 viewport
+  `177,263-3663,1897`. The current trusted 2.00 picture is centered at
+  approximately `286,263-3554,1897`, producing the expected side space.
+- A bounded bottom presentation expansion temporarily changed the selected
+  picture to approximately `364,263-3476,1897`, remained contained inside the
+  requested viewport, and returned to the trusted layout after release. The
+  mapping remained linear.
+- Before reboot, MadVR entered an external/stale DirectShow clock condition:
+  the reference-clock query returned `S_FALSE` with time zero after an
+  output-readiness reset, delivery fell to roughly 10 frames per 10 seconds,
+  and reported scheduled latency grew past 40 seconds. Repeated VP graph
+  recreation did not clear that process/system state.
+- A Windows reboot cleared the condition without changing VP binaries or
+  configuration. The subsequent MadVR reset reported `S_OK` with a nonzero,
+  advancing reference time; steady delivery is 240 frames per 10 seconds at
+  23.976 fps, queue depth is approximately `0/2/2`, VP scheduled latency is
+  stable around 213-217 ms, and MadVR OSD latency is 80 ms.
+- Branch comparison confirmed that the prior deployed build and VP-0098 base
+  share identical MadVR/timing source; the older build's additional commits
+  are DeckLink range/conversion work. No VP-0098 geometry path consumes or
+  modifies the MadVR reference clock. A future resilience story may reject a
+  graph reset as healthy while its reference clock remains zero, but this is
+  not part of the VP-0098 geometry correction.
+
 ## User story
 
 As an Alpha-renderer user with a constant-image-height screen of any practical
