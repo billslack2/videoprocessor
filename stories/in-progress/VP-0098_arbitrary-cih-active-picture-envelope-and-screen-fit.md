@@ -119,6 +119,24 @@ Observed compatibility effects and remaining validation:
   placement retain their existing policy paths and pass the complete native
   suite. Customer-class live input remains required before Review.
 
+Deployment checkpoint on 2026-08-07:
+
+- Rebuilt source commit `0198dd4` as a clean x64 Release build; embedded
+  version reports `v1.1.016-beta-2-g0198dd4` with `VERSION_DIRTY=false`.
+- Re-ran the complete native suite after the clean rebuild: 623/623 passed.
+- Preserved the active `C:\Videoprocessor\vp\VideoProcessor.cfg` unchanged.
+  It already contains the 32:15 viewport with `automatic_crop: true` and
+  `subtitle_fit: true`.
+- Backed up the previously deployed executable/plugin pair to
+  `C:\Videoprocessor\vp\backup-vp0098-20260807-151859`.
+- Deployed both artifacts from the same Release build and verified hashes:
+  `VideoProcessor.exe` SHA-256
+  `8C950AF27614CCB863D9D3A3E5EA0CA8BCEE258354FA3A109ECC2DDCD0F56217` and
+  `vprenderer\VideoProcessorVPRenderer.dll` SHA-256
+  `E12D66AC83756466FC176EE121E02EBD0D9284EBA7D61428F3C45CEA67A3FEF7`.
+- The application was not running before deployment and was not started
+  automatically. Customer-class live validation remains the next action.
+
 ## User story
 
 As an Alpha-renderer user with a constant-image-height screen of any practical
