@@ -13,6 +13,36 @@ read-only configuration preview, notification-area behavior, and a small set
 of safe structured edits. VP launch/shortcut integration will follow once the
 editor executable and its configuration safety boundary are validated.
 
+2026-08-06 Qt 6 Widgets migration started (uncommitted VP source work):
+
+- Approved Qt 6 Widgets as the replacement for the coordinate-driven Win32
+  presentation layer. The migration preserves the established VP header,
+  persistent left navigation, sticky action footer, and side-by-side ordered
+  profile list/detail structure while handing layout, scrolling, repainting,
+  DPI behavior, focus, and standard controls to Qt.
+- Added a parallel `VideoProcessorConfigQt.exe` x64 target rather than
+  replacing the working editor prematurely. Its first runnable shell includes
+  Startup, Queue, VP Renderer, Viewports, LLDV, and Shortcuts navigation; Qt
+  system-tray behavior; direct `--config` launch; `--owner` integration; the
+  embedded VP icon; independent page scrolling; and packaged Qt runtime DLLs.
+- Extracted `ConfigEditorCore`, a UI-independent lossless document and safe
+  persistence layer. It retains comments, unknown/manual content, original
+  line endings and terminal newline, validates the complete candidate through
+  VP schemas, creates a timestamped backup, and atomically replaces the file.
+  Three focused preservation/safe-save tests pass.
+- Startup and global Shortcuts are the first editable Qt surfaces and already
+  use the shared safe-save core. Ordered Queue, Renderer, Viewport, and LLDV
+  pages use the approved Qt profile layout and display real profile names,
+  order, shortcut, and rule data, but their detail editing remains read-only
+  for this migration slice. The Win32 editor remains the production fallback
+  until those pages, tray/activation integration, and regression coverage
+  reach parity.
+- Qt 6.8.3 is pinned as a repository-local ignored dependency with a
+  reproducible bootstrap script. The dedicated x64 Release Qt target builds
+  and `windeployqt` packages successfully. The complete solution could not
+  finish while the currently running VP and Qt executables locked their output
+  files; this is an environment lock, not a Qt compile/link failure.
+
 2026-08-06 first increment implemented (uncommitted source work):
 
 - Added the standalone `VideoProcessorConfig.exe` Win32 project with a
