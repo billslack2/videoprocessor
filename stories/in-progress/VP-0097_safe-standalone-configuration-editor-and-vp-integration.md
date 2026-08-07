@@ -849,3 +849,32 @@ text.
 - VP-0036: consolidated application and renderer settings into one file.
 - VP-0049 and VP-0086: canonical and comprehensive configuration reference.
 - VP-0079: canonical profile/queue/shortcut configuration model.
+
+## 2026-08-06 Qt discovery and main-window inventory update
+
+- Added a small v142 discovery bridge around VP's existing capture-device,
+  renderer, and monitor discovery code. The v143 Qt editor loads this bridge
+  dynamically, so its selectors use the same installed-hardware inventory as
+  VP without duplicating enumeration logic.
+- Unset capture device, renderer, and monitor settings remain unset and appear
+  as `Not configured`/`Default monitor`; discovery does not silently persist
+  the first detected item. Explicit configured values remain visible even if
+  they are not currently detected.
+- Added a structured DirectShow page for start/stop timing method, frame
+  offset, video conversion, container/HDR policy, and renderer color
+  overrides. Legacy DirectShow keys in `[general]` are displayed for
+  compatibility and migrate to `[directshow]` when edited.
+- Corrected `[directshow]` schema ownership: transfer-matrix and primaries are
+  accepted, while unrelated startup keys are no longer accidentally accepted
+  because of positional rule reuse.
+- Recorded the main VP UI/config boundary in
+  `docs/VP-0097_MAIN_UI_CONFIGURATION_INVENTORY.md`. Restart/reset commands,
+  counters, current signal properties, timing readouts, and the CIE plot remain
+  runtime UI state rather than configuration. Capture input, queue enable, and
+  queue auto-reset still need an explicit durable contract before the editor
+  can expose them.
+- Switched the Qt application to Fusion styling and added a restrained custom
+  combo-box/dropdown treatment instead of the legacy native Windows selector
+  rendering.
+- Product requirement remains that `[directshow.conversion]` and
+  `[directshow.ppm]` are preserved but never exposed by this editor.
