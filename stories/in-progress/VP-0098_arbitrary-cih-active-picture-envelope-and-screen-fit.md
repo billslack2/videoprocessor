@@ -2,16 +2,68 @@
 
 ## Status
 
-Backlog. Created 2026-08-07 from a reported Alpha-renderer failure on a
-physical 32:15 screen and a matching customer debug log. Investigation has
-identified a coordinate-ownership defect and established a proposed geometry
-contract, but production implementation has not started under this story.
+In Progress. On 2026-08-07 the developer confirmed the discovered GitHub
+default branch `v1.1.016-beta` as the implementation base and asked that the
+implementation continue with explicit review of negative impacts on other
+usage, especially NLS.
 
-The current source worktree contains an intentionally failing reproduction
-test created during diagnosis. Before implementation starts, discover the
-current `billslack2/videoprocessor` default branch, obtain developer
-confirmation of the implementation base, and create or designate a clean
-story-specific branch/worktree as required by the tracker workflow.
+Implementation is isolated on branch
+`codex/vp-0098-arbitrary-cih-envelope` in
+`C:\Users\bslac\vp\vp-0098-worktree`, based on remote commit `0dfcbf4`.
+The authoritative source checkout has unrelated uncommitted work and remains
+untouched.
+
+Readiness review:
+
+- The current configuration model already accepts generic `screen_aspect`
+  values from `1.0..4.0`, retains the deprecated `scope_screen_aspect` alias,
+  and keeps `automatic_crop`, `subtitle_fit`, hold, release, padding, and
+  anamorphic scale as separate settings. No configuration migration is
+  required.
+- The current pipeline and defect boundary are identified. The renderer's
+  vertical bar pass derives source-space `upperRequiredShift` and
+  `lowerRequiredShift` from `width / screenAspect`, then may translate a
+  same-size trusted source crop. Final NLS and linear layout consume that
+  altered crop. This violates source/destination ownership and can discard
+  trusted pixels from the opposite picture edge.
+- The shared active-picture transition model remains the only crop-authority
+  owner. VP-0098 will change presentation-envelope selection and final layout,
+  not detector acquisition, pixel-format analysis, or transition confirmation.
+- Resource lifetime is bounded to deterministic geometry values owned by the
+  existing source and renderer generations; no new GPU, queue, or capture
+  resource is required.
+- Validation can exercise a pure source-envelope/final-fit seam across the
+  required screen/content matrix, then run the native suite and x64 Release
+  solution build from the clean worktree.
+
+Compatibility impact watchlist:
+
+- **NLS:** the final NLS source aspect and stretch decision must be derived
+  from the same selected presentation envelope as linear fit. Removing
+  same-size translation may legitimately change an overlay frame's NLS ratio,
+  but screen aspect must not change the source envelope itself and crop/NLS
+  authority must still withdraw atomically.
+- **Anamorphic profiles:** anamorphic scale remains a destination mapping
+  multiplier after source-envelope selection. Tests must prove it cannot feed
+  back into detector or envelope geometry.
+- **Subtitle/UI behavior:** one-edge overlays will reveal bounded source pixels
+  by outward union rather than move a fixed-height window and lose trusted
+  pixels at the opposite edge. Existing hold/release timing should remain,
+  while translation-specific drift behavior may become obsolete and must not
+  cause a visible jump.
+- **Full-raster fallback and transitions:** broad/deep, contradictory, stale,
+  or unbounded evidence must retain existing fail-open behavior. Confirmed
+  full-raster content and source/viewport/renderer generation changes must not
+  inherit an old envelope.
+- **OSD and diagnostics:** native OSD placement must use the final fitted
+  picture rectangle. Final-layout telemetry must expose enough source and
+  destination geometry to distinguish authority, envelope, and fit failures.
+- **Normal/16:9 use:** automatic crop off and non-CIH profiles must preserve
+  their current full-raster behavior. Profile names remain semantically inert.
+
+First implementation slice: add a deterministic source-envelope and centered
+fit helper with the exact 3840x2160 / 32:15 reproduction and cross-ratio tests,
+then integrate that helper at the renderer's single final-presentation seam.
 
 ## User story
 
