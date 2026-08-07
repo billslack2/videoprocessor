@@ -932,7 +932,8 @@ text.
   chord inputs to a compact width. Shortcut editing now preserves a present
   empty value as an explicit disabled binding; an absent key continues to use
   the compiled default. The VP accelerator loader implements the same
-  distinction at runtime.
+  distinction at runtime. A separate discovered-renderer card exposes the
+  optional one-based `render.N` bindings without inventing defaults.
 - Added a regression test for explicit empty shortcut serialization and
   validation. The full x64 Release suite passes 633/633 tests, and both the Qt
   editor and main VP application complete x64 Release builds.
