@@ -17,7 +17,10 @@ float4 main(float2 tex : TEXCOORD0) : COLOR
 {
     const float strength = saturate({{strength}});
     // Limits keep the coordinate mapping monotonic for all accepted settings.
-	const float curve = clamp({{curve}}, 0.5, 4.0);
+	// A classic power curve needs an exponent of at least one to preserve a
+	// monotonic source-coordinate map. The upper bound also keeps its edge
+	// slope positive at the largest supported stretch ratio.
+	const float curve = clamp({{curve}}, 1.0, 2.9);
 	const float stretchRatio = clamp({{stretch_ratio}}, 1.0, 1.5);
 	const bool verticalWarp = {{warp_axis}} >= 0.5;
 	// VP publishes the sampling rectangle selected by the presentation plan.
@@ -70,13 +73,14 @@ float4 main(float2 tex : TEXCOORD0) : COLOR
 	const float centerProtection = clamp({{center_protection}}, 0.0, 0.45);
 	if (geometry == 0 || centerProtection <= 0.0)
 	{
-		// SickGreg/SuperView-style mapping. The half-to-one domain keeps some
-		// correction at the exact centre and returns to the source coordinate at
-		// both edges. A curve of 2 reproduces the established quadratic shape.
-		float edgeWeight = pow(0.5 + 0.5 * radius, curve);
-		float correction = strength * (1.0 - edgeWeight);
-		float localScale = lerp(1.0, stretchRatio, correction);
-		mappedRadius = radius * localScale;
+		// Preserve the centre after the presentation layer's required linear
+		// expansion, then return smoothly to the untouched source edge. The
+		// previous r * localScale formulation had a 0.356 edge slope for the
+		// default 16:9-to-scope ratio and curve=2, making the sides appear
+		// crushed. This normalized power curve gives 0.678 instead: plainly
+		// nonlinear while retaining believable edge geometry.
+		mappedRadius = effectiveRatio * radius -
+			(effectiveRatio - 1.0) * pow(radius, curve);
 	}
 	else if (radius <= centerProtection)
 	{

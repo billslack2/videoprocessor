@@ -15,6 +15,10 @@
 #include <ActivePictureTransitionModel.h>
 #include <microsoft_directshow/MadVRExternalPixelShaders.h>
 
+#include <d3dcompiler.h>
+#include <d3d9.h>
+#include <dxgi.h>
+
 #include "MadVRShaderLoader.h"
 
 #include <algorithm>
@@ -29,11 +33,193 @@
 #include <set>
 #include <sstream>
 
+#pragma comment(lib, "d3dcompiler.lib")
+#pragma comment(lib, "d3d9.lib")
+#pragma comment(lib, "dxgi.lib")
+
 
 namespace
 {
 constexpr const char* CONFIG_SECTION = "shaders";
 constexpr size_t MAX_SHADER_BYTES = 4 * 1024 * 1024;
+
+
+uint64_t ShaderSourceFingerprint(const std::string& source)
+{
+	// A short, stable identifier lets a field log establish exactly which
+	// fully-expanded shader reached madVR without exposing the whole source.
+	uint64_t hash = 1469598103934665603ull;
+	for (const unsigned char byte : source)
+	{
+		hash ^= byte;
+		hash *= 1099511628211ull;
+	}
+	return hash;
+}
+
+
+std::string CompactShaderDiagnostics(ID3DBlob* diagnostics)
+{
+	if (!diagnostics || !diagnostics->GetBufferPointer() ||
+		diagnostics->GetBufferSize() == 0)
+	{
+		return {};
+	}
+
+	std::string text(static_cast<const char*>(diagnostics->GetBufferPointer()),
+		diagnostics->GetBufferSize());
+	for (char& character : text)
+	{
+		if (character == '\r' || character == '\n' || character == '\t')
+			character = ' ';
+	}
+	while (!text.empty() && text.back() == '\0')
+		text.pop_back();
+	return text;
+}
+
+
+std::string Utf8FromWide(const wchar_t* text)
+{
+	if (!text || !*text)
+		return {};
+
+	const int bytes = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0,
+		nullptr, nullptr);
+	if (bytes <= 1)
+		return {};
+
+	std::string utf8(static_cast<size_t>(bytes), '\0');
+	WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8.data(), bytes, nullptr,
+		nullptr);
+	utf8.pop_back();
+	return utf8;
+}
+
+
+std::string DriverVersionText(const LARGE_INTEGER& version)
+{
+	std::ostringstream stream;
+	stream << HIWORD(version.HighPart) << '.' << LOWORD(version.HighPart)
+		<< '.' << HIWORD(version.LowPart) << '.' << LOWORD(version.LowPart);
+	return stream.str();
+}
+
+
+void LogMadVRShaderEnvironment()
+{
+	SYSTEM_INFO systemInfo{};
+	GetNativeSystemInfo(&systemInfo);
+	DebugLog::Log(
+		"Shaders: environment CPU architecture=%u type=%u level=%u revision=%u logical_processors=%u page_size=%u",
+		static_cast<unsigned int>(systemInfo.wProcessorArchitecture),
+		static_cast<unsigned int>(systemInfo.dwProcessorType),
+		static_cast<unsigned int>(systemInfo.wProcessorLevel),
+		static_cast<unsigned int>(systemInfo.wProcessorRevision),
+		static_cast<unsigned int>(systemInfo.dwNumberOfProcessors),
+		static_cast<unsigned int>(systemInfo.dwPageSize));
+
+	CComPtr<IDXGIFactory> factory;
+	const HRESULT factoryHr = CreateDXGIFactory(__uuidof(IDXGIFactory),
+		reinterpret_cast<void**>(&factory));
+	if (FAILED(factoryHr))
+	{
+		DebugLog::Log("Shaders: environment DXGI factory creation failed HRESULT=0x%08lx",
+			static_cast<unsigned long>(factoryHr));
+	}
+	else
+	{
+		for (UINT index = 0;; ++index)
+		{
+			CComPtr<IDXGIAdapter> adapter;
+			const HRESULT enumHr = factory->EnumAdapters(index, &adapter);
+			if (enumHr == DXGI_ERROR_NOT_FOUND)
+				break;
+			if (FAILED(enumHr))
+			{
+				DebugLog::Log("Shaders: environment DXGI adapter enumeration stopped at index=%u HRESULT=0x%08lx",
+					index, static_cast<unsigned long>(enumHr));
+				break;
+			}
+
+			DXGI_ADAPTER_DESC description{};
+			const HRESULT descHr = adapter->GetDesc(&description);
+			LARGE_INTEGER driverVersion{};
+			const HRESULT driverHr = adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice),
+				&driverVersion);
+			DebugLog::Log(
+				"Shaders: environment DXGI adapter=%u name=\"%s\" vendor=0x%04X device=0x%04X subsystem=0x%08X revision=%u dedicated_vram=%llu shared_memory=%llu desc_hr=0x%08lx driver=%s driver_hr=0x%08lx",
+				index, descHr == S_OK ? Utf8FromWide(description.Description).c_str() : "(unavailable)",
+				description.VendorId, description.DeviceId, description.SubSysId,
+				description.Revision,
+				static_cast<unsigned long long>(description.DedicatedVideoMemory),
+				static_cast<unsigned long long>(description.SharedSystemMemory),
+				static_cast<unsigned long>(descHr),
+				SUCCEEDED(driverHr) ? DriverVersionText(driverVersion).c_str() : "(unavailable)",
+				static_cast<unsigned long>(driverHr));
+		}
+	}
+
+	CComPtr<IDirect3D9> d3d9;
+	d3d9.Attach(Direct3DCreate9(D3D_SDK_VERSION));
+	if (!d3d9)
+	{
+		DebugLog::Log("Shaders: environment default D3D9 adapter creation failed");
+		return;
+	}
+
+	D3DCAPS9 caps{};
+	const HRESULT capsHr = d3d9->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
+		&caps);
+	if (FAILED(capsHr))
+	{
+		DebugLog::Log("Shaders: environment default D3D9 HAL capabilities unavailable HRESULT=0x%08lx",
+			static_cast<unsigned long>(capsHr));
+		return;
+	}
+
+	DebugLog::Log(
+		"Shaders: environment default D3D9 HAL caps vertex_shader=%u.%u pixel_shader=%u.%u max_texture=%ux%u simultaneous_textures=%u texture_caps=0x%08lx primitive_misc_caps=0x%08lx",
+		D3DSHADER_VERSION_MAJOR(caps.VertexShaderVersion),
+		D3DSHADER_VERSION_MINOR(caps.VertexShaderVersion),
+		D3DSHADER_VERSION_MAJOR(caps.PixelShaderVersion),
+		D3DSHADER_VERSION_MINOR(caps.PixelShaderVersion), caps.MaxTextureWidth,
+		caps.MaxTextureHeight, caps.MaxSimultaneousTextures,
+		static_cast<unsigned long>(caps.TextureCaps),
+		static_cast<unsigned long>(caps.PrimitiveMiscCaps));
+}
+
+
+void LogMadVRShaderPreflight(const std::string& source, const std::string& profile,
+	const std::filesystem::path& path, const char* stageName, unsigned int order)
+{
+	static std::once_flag environmentLogged;
+	std::call_once(environmentLogged, LogMadVRShaderEnvironment);
+
+	const uint64_t fingerprint = ShaderSourceFingerprint(source);
+	CComPtr<ID3DBlob> bytecode;
+	CComPtr<ID3DBlob> diagnostics;
+	const HRESULT hr = D3DCompile(source.data(), source.size(),
+		path.u8string().c_str(), nullptr, nullptr, "main", profile.c_str(),
+		0, 0, &bytecode, &diagnostics);
+	const std::string message = CompactShaderDiagnostics(diagnostics);
+	if (FAILED(hr))
+	{
+		DebugLog::Log(
+			"Shaders: local HLSL preflight failed for %s shader #%u \"%s\" profile=%s bytes=%zu fingerprint=%016llX HRESULT=0x%08lx diagnostic=\"%s\"",
+			stageName, order, path.u8string().c_str(), profile.c_str(), source.size(),
+			static_cast<unsigned long long>(fingerprint), static_cast<unsigned long>(hr),
+			message.empty() ? "(none)" : message.c_str());
+		return;
+	}
+
+	DebugLog::Log(
+		"Shaders: local HLSL preflight succeeded for %s shader #%u \"%s\" profile=%s bytes=%zu fingerprint=%016llX bytecode=%zu diagnostic=\"%s\"",
+		stageName, order, path.u8string().c_str(), profile.c_str(), source.size(),
+		static_cast<unsigned long long>(fingerprint),
+		bytecode ? bytecode->GetBufferSize() : 0,
+		message.empty() ? "(none)" : message.c_str());
+}
 
 enum class SignalMatch
 {
@@ -1335,14 +1521,15 @@ bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
 
 		DebugLog::Log("Shaders: applying %s shader #%u \"%s\" (profile=%s)",
 			stageName, entry.order, entry.path.u8string().c_str(), profile.c_str());
+		LogMadVRShaderPreflight(source, profile, entry.path, stageName, entry.order);
 		hr = shaderInterface->AddPixelShader(source.c_str(), profile.c_str(), stage, nullptr);
 		const auto installFinished = std::chrono::steady_clock::now();
 		if (FAILED(hr))
 		{
-			shaderInterface->ClearPixelShaders(stage);
-			DebugLog::Log("Shaders: compilation/install failed for %s shader #%u \"%s\" (HRESULT=0x%08lx); stage cleared",
+			const HRESULT clearHr = shaderInterface->ClearPixelShaders(stage);
+			DebugLog::Log("Shaders: compilation/install failed for %s shader #%u \"%s\" (HRESULT=0x%08lx); stage clear HRESULT=0x%08lx",
 				stageName, entry.order, entry.path.u8string().c_str(),
-				static_cast<unsigned long>(hr));
+				static_cast<unsigned long>(hr), static_cast<unsigned long>(clearHr));
 			return false;
 		}
 		const auto milliseconds = [](const auto& start, const auto& finish)

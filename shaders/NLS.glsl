@@ -34,7 +34,10 @@
 vec4 hook()
 {
     float strength = clamp(float({{strength}}), 0.0, 1.0);
-    float curve = clamp(float({{curve}}), 0.5, 4.0);
+    // A classic power curve needs an exponent of at least one to preserve a
+    // monotonic source-coordinate map. The upper bound also keeps its edge
+    // slope positive at the largest supported stretch ratio.
+    float curve = clamp(float({{curve}}), 1.0, 2.9);
     float active_stretch_ratio = clamp(stretch_ratio, 1.0, 1.5);
     bool vertical_warp = warp_axis >= 0.5;
     int geometry = int(clamp(float({{geometry}}), 0.0, 1.0));
@@ -49,10 +52,14 @@ vec4 hook()
     float mapped_radius;
 
     if (geometry == 0 || center_protection <= 0.0) {
-        float edge_weight = pow(0.5 + 0.5 * radius, curve);
-        float correction = strength * (1.0 - edge_weight);
-        float local_scale = mix(1.0, active_stretch_ratio, correction);
-        mapped_radius = radius * local_scale;
+        // Preserve the centre after the presentation layer's required linear
+        // expansion, then return smoothly to the untouched source edge. The
+        // previous r * localScale formulation had a 0.356 edge slope for the
+        // default 16:9-to-scope ratio and curve=2, making the sides appear
+        // crushed. This normalized power curve gives 0.678 instead: plainly
+        // nonlinear while retaining believable edge geometry.
+        mapped_radius = effective_ratio * radius -
+            (effective_ratio - 1.0) * pow(radius, curve);
     } else if (radius <= center_protection) {
         mapped_radius = radius * effective_ratio;
     } else {
