@@ -65,6 +65,60 @@ First implementation slice: add a deterministic source-envelope and centered
 fit helper with the exact 3840x2160 / 32:15 reproduction and cross-ratio tests,
 then integrate that helper at the renderer's single final-presentation seam.
 
+Implementation progress at source commit `0198dd4` (pushed to the recorded
+branch):
+
+- Added deterministic `BuildPresentationEnvelope` and `FitCenteredAspect`
+  production helpers. The source helper's inputs contain trusted picture,
+  bounded observed content, selected edges, raster, and padding only; there is
+  no screen ratio, viewport, NLS, profile name, or anamorphic input.
+- Removed the `width / screenAspect` visible-band calculation from the dense
+  vertical overlay pass. Required accommodation is now measured outward from
+  the trusted picture edge.
+- Preserved the existing overlay classification and hold state for transition
+  stability, but final rendering converts its legacy one-edge translation
+  request into a padded outward envelope. The final crop decision therefore
+  reports expansion and never removes the opposite trusted edge.
+- Routed linear layout, NLS mapping inputs, NLS fallback, native OSD placement,
+  and diagnostics through the same selected source rectangle and centered-fit
+  result.
+- Added final-layout telemetry containing raster, trusted picture, envelope,
+  configured screen aspect, screen rectangle, final picture rectangle, unused
+  axis, mapping mode, and anamorphic scale.
+- Added the exact customer reproduction plus a matrix covering 4:3, 16:9,
+  1.85, 2.0, 32:15, 2.35, and 2.40 screens against representative narrower,
+  equal, and wider content. Tests also prove source-envelope independence from
+  screen ratio and anamorphic destination mapping.
+
+Validation on 2026-08-07:
+
+- Clean x64 Release solution build passed with Visual Studio 18.7.8.
+- Complete native suite passed: 623/623 tests.
+- Focused Alpha crop/envelope suite passed: 66/66 tests.
+- The recorded 3840x2160 case selects `0,280-3840,1962`, contains the full
+  trusted `0,280-3840,1880` picture, and reports only vertical unused space
+  when centered inside a 32:15 screen.
+
+Observed compatibility effects and remaining validation:
+
+- NLS now receives the envelope aspect during bounded overlay frames instead
+  of a same-height translated-crop aspect. This is intentional and prevents
+  NLS from consuming geometry that discarded trusted pixels; the full NLS and
+  renderer-state regression suites pass. Live validation must still watch for
+  visible NLS-strength changes while subtitles/UI appear and release.
+- The existing internal `TRANSLATE` detector/hold label remains for temporal
+  compatibility, but the final renderer does not translate the crop. This
+  limits code churn and preserves current hold/release evidence ownership;
+  diagnostics expose the resulting final expansion explicitly.
+- The centered-fit helper reproduces the previous shrink-only layout and the
+  normal-profile/NLS-off path keeps its existing output rectangle. Automated
+  anamorphic and normal/full-raster tests pass, but live Alpha validation must
+  still cover anamorphic on/off and at least one non-32:15 CIH screen.
+- Broad/deep evidence, generation invalidation, confirmed full-raster
+  authority, provisional retention, P010/P210/native-RGB analysis, and OSD
+  placement retain their existing policy paths and pass the complete native
+  suite. Customer-class live input remains required before Review.
+
 ## User story
 
 As an Alpha-renderer user with a constant-image-height screen of any practical
