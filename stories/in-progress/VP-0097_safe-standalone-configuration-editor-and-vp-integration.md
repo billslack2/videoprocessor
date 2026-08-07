@@ -971,3 +971,26 @@ text.
   canonical/legacy duplicates. Custom 21:10 profile resolution and aspect
   normalization have focused coverage; the complete x64 Release suite remains
   green at 634/634 tests.
+
+## 2026-08-07 Qt round-trip and save-safety verification
+
+- Added a dedicated x64 Release Qt integration-test executable to the solution.
+  It constructs the real editor against a disposable copy of the current
+  deployed configuration and drives the actual widgets and signal bindings.
+- Verified edits and save/reload behavior across General, Queue, VP Renderer,
+  Viewports, DirectShow, LLDV, Shortcuts, Actions, and shipped NLS shaders.
+- Verified profile rename, add, remove, move/default ordering, and serialized
+  file order through the real side-by-side profile UI.
+- Verified that editor saves retain the manual `[directshow.conversion]` and
+  `[directshow.ppm]` blocks and unrelated comments exactly.
+- Added no-op byte-identity coverage for BOM, CRLF, comments, assignment style,
+  and empty manual sections.
+- `SaveSafely` now rejects a configuration changed on disk since it was loaded,
+  leaving the external edit untouched and requiring an explicit reload.
+- Added real Windows locked-file and read-only-file tests. Both prove a failed
+  save leaves the original bytes unchanged.
+- Fixed a failure found by the new tests: two saves within the same second now
+  receive unique backup names instead of failing on a timestamp collision.
+- Verification is green: the native x64 Release suite passes 642/642, the Qt
+  integration suite passes 3/3, and the configuration editor completes an
+  isolated x64 Release build.
