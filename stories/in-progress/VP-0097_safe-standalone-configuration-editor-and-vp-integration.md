@@ -961,3 +961,13 @@ text.
   renderer list are each queried once while the editor starts; General,
   Actions, and Shortcuts reuse the cached lists instead of repeatedly loading
   the discovery bridge and enumerating hardware while pages are constructed.
+- Removed the misleading Viewport mode selector: the legacy `mode` key is
+  deprecated and ignored by the runtime. The editor now presents one physical
+  screen/viewport aspect field accepting ratios, decimal aspects, or screen
+  dimensions (for example `2.1:1`, `2.1`, or `2100x1000`). `screen_aspect` is
+  the single target used by destination layout, crop/black-bar policy,
+  subtitle fitting, and NSL. Deprecated `scope_*` viewport aliases remain
+  loadable and are migrated field-by-field only when edited, avoiding
+  canonical/legacy duplicates. Custom 21:10 profile resolution and aspect
+  normalization have focused coverage; the complete x64 Release suite remains
+  green at 634/634 tests.
