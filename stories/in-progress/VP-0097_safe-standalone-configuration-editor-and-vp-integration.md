@@ -991,6 +991,6 @@ text.
   save leaves the original bytes unchanged.
 - Fixed a failure found by the new tests: two saves within the same second now
   receive unique backup names instead of failing on a timestamp collision.
-- Verification is green: the native x64 Release suite passes 642/642, the Qt
+- Verification is green: the native x64 Release suite passes 643/643, the Qt
   integration suite passes 3/3, and the configuration editor completes an
   isolated x64 Release build.
