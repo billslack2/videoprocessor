@@ -42,6 +42,11 @@ editor executable and its configuration safety boundary are validated.
   and `windeployqt` packages successfully. The complete solution could not
   finish while the currently running VP and Qt executables locked their output
   files; this is an environment lock, not a Qt compile/link failure.
+- Independent UI review approved the Qt shell as the continuing design basis
+  with no P0 blocker. Follow-up fixes made the profile preview explicitly
+  read-only, removed false reorder instructions, corrected viewport display
+  labels/default status, distinguished read-only fields and disabled primary
+  actions, and removed the unnecessary Startup scrollbar at the default size.
 
 2026-08-06 first increment implemented (uncommitted source work):
 
