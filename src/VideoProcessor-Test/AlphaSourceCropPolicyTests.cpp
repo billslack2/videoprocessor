@@ -1039,6 +1039,190 @@ namespace Tests
 			Assert::IsFalse(EvaluatePresentationEnvelope(input).active);
 		}
 
+		TEST_METHOD(Recorded32x15SubtitleBuildsBoundedSourceEnvelope)
+		{
+			PresentationEnvelopeGeometryInput input;
+			input.trustedPicture = {
+				0, 280, 3840, 1880, 3840, 2160, 2.4, true };
+			input.observedContent = input.trustedPicture;
+			input.observedContent.bottom = 1908;
+			input.observedContent.aspectRatio = 3840.0 / 1628.0;
+			input.observedContentAvailable = true;
+			input.expandBottom = true;
+			input.verticalPadding = 54;
+
+			const PresentationEnvelopeGeometryDecision decision =
+				BuildPresentationEnvelope(input);
+			Assert::IsTrue(decision.valid);
+			Assert::IsTrue(decision.expanded);
+			Assert::AreEqual(0, decision.bounds.left);
+			Assert::AreEqual(280, decision.bounds.top);
+			Assert::AreEqual(3840, decision.bounds.right);
+			Assert::AreEqual(1962, decision.bounds.bottom);
+			// The opposite trusted edge is immutable; a same-height translation
+			// would have discarded its 82 top rows in this reproduction.
+			Assert::IsTrue(decision.bounds.top <= input.trustedPicture.top);
+			Assert::IsTrue(decision.bounds.bottom >= input.trustedPicture.bottom);
+
+			Input crop;
+			crop.automaticCropEnabled = true;
+			crop.sharedGeometryAvailable = true;
+			crop.latestObservationSupportsCrop = true;
+			crop.outwardPresentationActive = true;
+			crop.outwardExpansionAvailable = true;
+			crop.classification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			crop.geometry = input.trustedPicture;
+			crop.outwardExpansion = decision.bounds;
+			crop.geometrySourceGeneration = 7;
+			crop.outwardExpansionSourceGeneration = 7;
+			crop.frameSourceGeneration = 7;
+			crop.rasterWidth = 3840;
+			crop.rasterHeight = 2160;
+			const Decision selected = Evaluate(crop);
+			Assert::IsTrue(selected.applyCrop);
+			Assert::IsTrue(selected.outwardExpanded);
+			Assert::IsFalse(selected.verticallyTranslated);
+			Assert::AreEqual(280, selected.sourceBounds.top);
+			Assert::AreEqual(1962, selected.sourceBounds.bottom);
+
+			const double selectedAspect = 3840.0 / (1962.0 - 280.0);
+			const PresentationRect screen = {
+				0.0, 0.0, (32.0 / 15.0) * 1000.0, 1000.0 };
+			const auto fit = FitCenteredAspect(selectedAspect, screen);
+			Assert::IsTrue(fit.valid);
+			Assert::AreEqual(static_cast<int>(UnusedSpaceAxis::VERTICAL),
+				static_cast<int>(fit.unusedAxis));
+		}
+
+		TEST_METHOD(PresentationEnvelopeExpandsOnlySelectedObservedEdges)
+		{
+			PresentationEnvelopeGeometryInput input;
+			input.trustedPicture = {
+				200, 280, 3640, 1880, 3840, 2160, 2.15, true };
+			input.observedContent = {
+				111, 121, 3711, 1937, 3840, 2160, 1.9824, false };
+			input.observedContentAvailable = true;
+			input.expandLeft = true;
+			input.expandBottom = true;
+			input.horizontalPadding = 9;
+			input.verticalPadding = 17;
+
+			auto decision = BuildPresentationEnvelope(input);
+			Assert::IsTrue(decision.valid);
+			Assert::AreEqual(102, decision.bounds.left);
+			Assert::AreEqual(280, decision.bounds.top);
+			Assert::AreEqual(3640, decision.bounds.right);
+			Assert::AreEqual(1954, decision.bounds.bottom);
+
+			input.expandTop = true;
+			input.expandRight = true;
+			decision = BuildPresentationEnvelope(input);
+			Assert::AreEqual(104, decision.bounds.top);
+			Assert::AreEqual(3720, decision.bounds.right);
+			Assert::AreEqual(0, decision.bounds.left & 1);
+			Assert::AreEqual(0, decision.bounds.top & 1);
+			Assert::AreEqual(0, decision.bounds.right & 1);
+			Assert::AreEqual(0, decision.bounds.bottom & 1);
+		}
+
+		TEST_METHOD(CenteredFitMatrixPreservesAspectAndOneUnusedAxis)
+		{
+			const double screenAspects[] = {
+				4.0 / 3.0, 16.0 / 9.0, 1.85, 2.0,
+				32.0 / 15.0, 2.35, 2.40 };
+			const double contentAspects[] = {
+				4.0 / 3.0, 16.0 / 9.0, 1.85, 2.0, 2.35, 2.40 };
+			for (double screenAspect : screenAspects)
+			{
+				const PresentationRect physicalScreen = {
+					100.0, 50.0, 100.0 + screenAspect * 900.0, 950.0 };
+				for (double contentAspect : contentAspects)
+				{
+					const CenteredFitDecision fit =
+						FitCenteredAspect(contentAspect, physicalScreen);
+					Assert::IsTrue(fit.valid);
+					Assert::IsTrue(fit.picture.left >= physicalScreen.left - 0.001);
+					Assert::IsTrue(fit.picture.top >= physicalScreen.top - 0.001);
+					Assert::IsTrue(fit.picture.right <= physicalScreen.right + 0.001);
+					Assert::IsTrue(fit.picture.bottom <= physicalScreen.bottom + 0.001);
+					const double fittedAspect =
+						(fit.picture.right - fit.picture.left) /
+						(fit.picture.bottom - fit.picture.top);
+					Assert::AreEqual(contentAspect, fittedAspect, 0.000001);
+					const UnusedSpaceAxis expected = contentAspect > screenAspect + 1e-9
+						? UnusedSpaceAxis::VERTICAL
+						: (contentAspect < screenAspect - 1e-9
+							? UnusedSpaceAxis::HORIZONTAL
+							: UnusedSpaceAxis::NONE);
+					Assert::AreEqual(static_cast<int>(expected),
+						static_cast<int>(fit.unusedAxis));
+				}
+			}
+		}
+
+		TEST_METHOD(PhysicalScreenAndRequestedViewportAreNestedBeforePictureFit)
+		{
+			const PresentationRect panel = { 0.0, 0.0, 3840.0, 2160.0 };
+			const CenteredFitDecision physical =
+				FitCenteredAspect(2.35, panel);
+			const CenteredFitDecision requested =
+				FitCenteredAspect(32.0 / 15.0, physical.picture);
+			const CenteredFitDecision picture =
+				FitCenteredAspect(2.40, requested.picture);
+
+			Assert::IsTrue(physical.valid);
+			Assert::IsTrue(requested.valid);
+			Assert::IsTrue(picture.valid);
+			Assert::AreEqual(0.0, physical.picture.left, 0.001);
+			Assert::AreEqual(3840.0, physical.picture.right, 0.001);
+			Assert::IsTrue(requested.picture.left > physical.picture.left);
+			Assert::IsTrue(requested.picture.right < physical.picture.right);
+			Assert::AreEqual(physical.picture.top, requested.picture.top, 0.001);
+			Assert::AreEqual(physical.picture.bottom, requested.picture.bottom, 0.001);
+			Assert::AreEqual(requested.picture.left, picture.picture.left, 0.001);
+			Assert::AreEqual(requested.picture.right, picture.picture.right, 0.001);
+			Assert::IsTrue(picture.picture.top > requested.picture.top);
+			Assert::IsTrue(picture.picture.bottom < requested.picture.bottom);
+			Assert::AreEqual(static_cast<int>(UnusedSpaceAxis::HORIZONTAL),
+				static_cast<int>(requested.unusedAxis));
+			Assert::AreEqual(static_cast<int>(UnusedSpaceAxis::VERTICAL),
+				static_cast<int>(picture.unusedAxis));
+		}
+
+		TEST_METHOD(SourceEnvelopeIsIndependentOfScreenAndAnamorphicMapping)
+		{
+			PresentationEnvelopeGeometryInput source;
+			source.trustedPicture = {
+				0, 280, 3840, 1880, 3840, 2160, 2.4, true };
+			source.observedContent = source.trustedPicture;
+			source.observedContent.bottom = 1908;
+			source.observedContentAvailable = true;
+			source.expandBottom = true;
+			source.verticalPadding = 54;
+			const auto envelope = BuildPresentationEnvelope(source);
+			Assert::IsTrue(envelope.valid);
+
+			const double sourceAspect = static_cast<double>(
+				envelope.bounds.right - envelope.bounds.left) /
+				(envelope.bounds.bottom - envelope.bounds.top);
+			const double screens[] = { 4.0 / 3.0, 16.0 / 9.0,
+				1.85, 2.0, 32.0 / 15.0, 2.35, 2.40 };
+			for (double screenAspect : screens)
+			{
+				const PresentationRect screen = {
+					0.0, 0.0, screenAspect * 1000.0, 1000.0 };
+				for (double anamorphicScale : { 1.0, 1.25 })
+				{
+					const auto fit = FitCenteredAspect(
+						sourceAspect * anamorphicScale, screen);
+					Assert::IsTrue(fit.valid);
+					Assert::AreEqual(280, envelope.bounds.top);
+					Assert::AreEqual(1962, envelope.bounds.bottom);
+				}
+			}
+		}
+
 		TEST_METHOD(AmbiguityHoldIsBoundedNonRenewableAndGenerationLocal)
 		{
 			AmbiguityHold hold;

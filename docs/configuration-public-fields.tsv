@@ -50,6 +50,7 @@ vprenderer.<variant>.when	vprenderer-variant-when	Alpha renderer	no
 vprenderer.viewport.when	viewport-when	Alpha viewport	no
 vprenderer.viewport.<variant>.when	viewport-variant-when	Alpha viewport	no
 vprenderer.viewport.<variant>.screen_aspect	viewport-screen-aspect	Alpha viewport	no
+vprenderer.viewport.<variant>.physical_screen_aspect	viewport-physical-screen-aspect	Alpha viewport	no
 vprenderer.viewport.<variant>.anamorphic_scale	viewport-anamorphic-scale	Alpha viewport	no
 vprenderer.viewport.<variant>.automatic_crop	viewport-automatic-crop	Alpha viewport	no
 vprenderer.viewport.<variant>.subtitle_fit	viewport-subtitle-fit	Alpha viewport	no
