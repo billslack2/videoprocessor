@@ -956,3 +956,8 @@ text.
   scratch queue profile were retained as comments so the shipped sample cannot
   invoke a machine-local command. The complete x64 Release unit-test run now
   passes 634/634 tests.
+- Centralized configuration discovery into one immutable startup snapshot.
+  Capture devices, active monitors, filtered renderers, and the complete
+  renderer list are each queried once while the editor starts; General,
+  Actions, and Shortcuts reuse the cached lists instead of repeatedly loading
+  the discovery bridge and enumerating hardware while pages are constructed.
