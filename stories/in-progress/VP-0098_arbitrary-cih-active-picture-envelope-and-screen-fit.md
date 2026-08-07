@@ -137,6 +137,63 @@ Deployment checkpoint on 2026-08-07:
 - The application was not running before deployment and was not started
   automatically. Customer-class live validation remains the next action.
 
+Live validation correction on 2026-08-07:
+
+- The installation's physical CIH screen is 2.35:1, not 32:15. The 32:15
+  value selected in the viewport profile is the requested presentation ratio
+  inside that physical screen.
+- The deployed build correctly reported `mapping=linear`; NLS was off. It
+  detected the 2.40 active picture at `0,280-3840,1880`, but resolved the
+  32:15 rectangle as `0,180-3840,1980`, using the full panel width. Because
+  the projector is zoomed so full panel width spans the 2.35 screen, the
+  result physically filled the screen instead of reserving the expected side
+  bars.
+- This exposes a missing configuration/input distinction rather than an NLS
+  failure: physical screen aspect (2.35) and requested presentation aspect
+  (32:15) must be separate facts. The destination pipeline must fit panel to
+  physical screen, then requested presentation to physical screen, then the
+  selected source envelope to the requested presentation rectangle.
+- A new optional `physical_screen_aspect` input will default to
+  `screen_aspect` so every existing one-ratio configuration remains behaviorally
+  unchanged. When explicitly configured, final-layout telemetry must report
+  both rectangles and ratios.
+
+Two-ratio correction and redeployment on 2026-08-07:
+
+- Source commit `75478cb` (pushed to
+  `codex/vp-0098-arbitrary-cih-envelope`) adds the optional
+  `physical_screen_aspect` viewport setting and resolves nested centered fits
+  in the order panel, physical screen, requested viewport, selected source
+  envelope.
+- The legacy single-ratio path is preserved exactly: when
+  `physical_screen_aspect` is absent it resolves to `screen_aspect`. Source
+  detection, crop authority, and presentation-envelope selection receive
+  neither destination ratio.
+- Added configuration/runtime publication, documentation inventory, and the
+  exact 3840x2160 panel / 2.35 physical screen / 32:15 requested viewport /
+  2.40 source regression. The requested viewport leaves horizontal space
+  inside the physical screen; the wider source then leaves vertical space
+  inside that viewport.
+- NLS remains separate. When NLS is off, the nested linear fit is complete.
+  If NLS is enabled with an explicit physical screen, its selected target is
+  now nested inside that physical rectangle; VP-0099 still owns verification
+  of hook coordinate space and dynamic shader math. MadVR/DirectShow does not
+  consume this Alpha-owned physical-screen setting.
+- A clean x64 Release rebuild passed with embedded version
+  `v1.1.016-beta-3-g75478cb` and `VERSION_DIRTY=false`; the complete native
+  suite passed 624/624 after the final documentation update.
+- Backed up the prior deployed binaries and active configuration to
+  `C:\Videoprocessor\vp\backup-vp0098-physical-screen-20260807-154017`.
+  Preserved every existing configuration line and added only
+  `physical_screen_aspect: 2.35:1` to the F2 32:15 viewport.
+- Deployed Release hashes: `VideoProcessor.exe`
+  `AC7E501AF2227271EF0193DB827876D6D6C51EEE5550737AE57FFCAA1E546811`;
+  `vprenderer\VideoProcessorVPRenderer.dll`
+  `C6242ED44DD5E4EDCC769A52982B2916EBB6AEB3F7D8C7BE52F9DD0A1848D884`.
+  VP was not running during replacement and was not auto-started. Live
+  confirmation of side bars and the new dual-rectangle telemetry remains
+  required before Review.
+
 ## User story
 
 As an Alpha-renderer user with a constant-image-height screen of any practical
@@ -147,11 +204,12 @@ combine with newly introduced bars to windowbox the image.
 
 ## Reported failure
 
-The customer has a 2.8 m wide screen whose measured ratio is 32:15 and uses an
-XGIMI Titan projector. The projector is zoomed so the screen surface is the
-physical presentation target. With Alpha automatic crop enabled, the customer
-reports that content never fills the screen and appears with black space on
-all four sides.
+The customer has a 2.35:1 physical screen and uses an XGIMI Titan projector.
+The projector is zoomed so the full panel width spans that screen. The
+requested presentation ratio for the reported run is 32:15. With only one
+configured aspect value, VP cannot represent both facts: it treats 32:15 as
+the physical target and consumes the full panel width, so the narrower
+presentation does not produce the expected side bars on the 2.35 screen.
 
 The supplied log contains a decisive 24 Hz movie interval:
 
@@ -180,21 +238,31 @@ Maintain three separate coordinate-space facts:
 3. **Presentation envelope**: the trusted active picture unioned with bounded
    subtitle or UI pixels that must remain visible, including configured
    padding.
+4. **Physical screen**: the portion of the output panel that lands on the
+   physical screen after the installation's fixed zoom/lens setup.
+5. **Requested presentation viewport**: the selected logical aspect fitted
+   inside the physical screen.
 
-The configured `screen_aspect` describes the physical presentation target.
-The final destination layout performs one centered, aspect-preserving fit of
-the presentation envelope inside that target.
+The configured `physical_screen_aspect` describes the physical presentation
+target. The configured `screen_aspect` describes the requested presentation
+viewport. The final destination layout performs nested centered,
+aspect-preserving fits: physical screen inside output panel, requested
+viewport inside physical screen, and presentation envelope inside requested
+viewport.
 
-For a valid nonempty source and target rectangle, ordinary aspect-preserving
-fit may leave unused space on only one axis:
+For a valid nonempty source and target rectangle, each individual
+aspect-preserving fit may leave unused space on only one axis:
 
 - source wider than screen: top/bottom space only;
 - source narrower than screen: left/right space only;
 - equal aspect: neither axis has unused space.
 
-Bars on both axes are therefore a diagnosable indication that encoded bars
-remain in the selected source rectangle, the destination was constrained
-twice, or explicitly configured screen insets require that result.
+Across the new nested contract, bars on both axes can be intentional: a
+requested viewport narrower than the physical screen leaves side space, while
+source content wider than that viewport leaves top/bottom space. When the two
+configured screen ratios are equal, bars on both axes remain a diagnosable
+indication that encoded bars remain in the selected source rectangle, the
+destination was constrained twice, or explicit screen insets require it.
 
 ## Source and destination separation
 
@@ -261,10 +329,14 @@ pixels from the opposite side of the trusted picture.
 
 ## Configuration boundary
 
-No new configuration is required for the core correction.
+The live validation established that one additional optional value is required
+when the requested presentation ratio differs from the physical screen ratio.
 
-- `screen_aspect` remains an arbitrary physical-screen ratio accepted by the
-  shared aspect parser over the existing practical range `1.0..4.0`.
+- `screen_aspect` remains an arbitrary requested presentation ratio accepted
+  by the shared aspect parser over the existing practical range `1.0..4.0`.
+- `physical_screen_aspect` is an optional physical-screen ratio over the same
+  range. When absent, it resolves to `screen_aspect`, preserving the exact
+  behavior of existing configurations.
 - Profile names such as `normal`, `scope`, or `32x15` have no geometry
   semantics.
 - `automatic_crop`, `subtitle_fit`, hold, release, and padding retain their
@@ -331,6 +403,8 @@ Transition coverage must include:
 
 - A trusted 2.40 active picture on a 32:15 screen produces only the expected
   top/bottom destination space, not a four-sided windowbox.
+- A 32:15 requested viewport inside a configured 2.35 physical screen is
+  pillarboxed inside the physical screen before source-envelope fitting.
 - The recorded lower-bar object produces a bounded envelope containing the
   full trusted picture and padded object without selecting full raster.
 - No screen-shape-specific constant or `scope` profile-name inference affects
