@@ -912,3 +912,8 @@ text.
   the complete x64 Release unit-test run passes 632/632 tests. Automated Qt
   screenshots also verify direct no-argument config discovery and populated
   Queue, VP Renderer, Viewports, and LLDV pages.
+- Completed a disposable end-to-end accessibility/UI round trip: opened the
+  Qt editor, selected Queue, changed `queue_size`, invoked Save changes,
+  confirmed the generated profile name and edited value on disk, confirmed a
+  timestamped backup, and reloaded the saved file showing the new value. The
+  active user configuration was not touched.
