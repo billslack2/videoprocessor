@@ -887,3 +887,11 @@ text.
   likewise change live state while the config values only seed startup.
 - Corrected frame-offset handling so the runtime accepts case-insensitive
   `AUTO`, matching the case-insensitive schema validation contract.
+- Removed `fullscreen_monitor_session_mode` from the editor because the
+  feature is currently broken. Runtime/parser compatibility remains and the
+  editor preserves an existing value without presenting or changing it.
+- Replaced the Qt profile previews with functional side-by-side editors for
+  Queue, VP Renderer, Viewports, and LLDV. The port supports profile naming,
+  shortcuts, optional rules, add/remove/reorder, per-page structured fields,
+  inherited/default display values, viewport anamorphic enablement, and moving
+  Queue recovery settings with the effective first/default profile.
