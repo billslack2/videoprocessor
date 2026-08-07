@@ -895,3 +895,20 @@ text.
   shortcuts, optional rules, add/remove/reorder, per-page structured fields,
   inherited/default display values, viewport anamorphic enablement, and moving
   Queue recovery settings with the effective first/default profile.
+- Completed the ordered-profile migration against the production schemas:
+  renderer color/scaling/LUT/policy fields, queue baseline-only policy,
+  viewport normal/scope geometry and subtitle behavior, and all LLDV metadata
+  fields now load from and write back to the pending document. Unsupported
+  compatibility fields remain preserved rather than being emitted into an
+  invalid profile.
+- Literal unnamed profile roots are assigned unique generated names in the
+  pending document so file order is the single default/precedence rule. The UI
+  clearly marks this as an unsaved migration and does not change disk until the
+  user saves. Default-only settings follow the new first profile.
+- Fixed direct Release-output launch: when no `--config` path is supplied, the
+  editor now walks upward to the checkout's `VideoProcessor.cfg` instead of
+  incorrectly looking only in `src/VideoProcessor-ConfigQt/x64/Release`.
+- Added ordered-profile lifecycle and full editable-surface validation tests;
+  the complete x64 Release unit-test run passes 632/632 tests. Automated Qt
+  screenshots also verify direct no-argument config discovery and populated
+  Queue, VP Renderer, Viewports, and LLDV pages.
