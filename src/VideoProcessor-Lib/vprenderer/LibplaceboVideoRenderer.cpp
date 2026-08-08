@@ -798,8 +798,6 @@ namespace
 		bool outputDiagnostics = false;
 		bool diagnosticDisableShaderCache = false;
 		double scopeScreenAspect = 2.35;
-		double physicalScreenAspect = 2.35;
-		bool physicalScreenAspectExplicit = false;
 		bool defaultScopeScreen = false;
 		double anamorphicScale = 1.0;
 		bool automaticSourceCrop = false;
@@ -844,8 +842,7 @@ namespace
 		if (includeViewportSettings)
 		{
 			stream
-				<< settings.scopeScreenAspect << '|' << settings.physicalScreenAspect << '|'
-				<< settings.defaultScopeScreen << '|'
+				<< settings.scopeScreenAspect << '|' << settings.defaultScopeScreen << '|'
 				<< settings.anamorphicScale << '|'
 				<< settings.automaticSourceCrop << '|'
 				<< settings.scopeSubtitleFit << '|' << settings.scopeSubtitleHoldMs << '|'
@@ -1446,22 +1443,10 @@ namespace
 			if (ParseAspectRatio(raw, value) && value >= 1.0 && value <= 4.0)
 			{
 				settings.scopeScreenAspect = value;
-				if (!settings.physicalScreenAspectExplicit)
-					settings.physicalScreenAspect = value;
+				settings.defaultScopeScreen =
+					std::abs(value - 16.0 / 9.0) > 0.0001;
 			}
 		}
-		if (config.TryGetString(rule.section, "physical_screen_aspect", raw))
-		{
-			double value = 0.0;
-			if (ParseAspectRatio(raw, value) && value >= 1.0 && value <= 4.0)
-			{
-				settings.physicalScreenAspect = value;
-				settings.physicalScreenAspectExplicit = true;
-			}
-		}
-		settings.defaultScopeScreen =
-			std::abs(settings.scopeScreenAspect - 16.0 / 9.0) > 0.0001 ||
-			std::abs(settings.physicalScreenAspect - 16.0 / 9.0) > 0.0001;
 		if (config.TryGetString(rule.section, "anamorphic_scale", raw))
 		{
 			double value = 0.0;
@@ -1647,26 +1632,10 @@ namespace
 		{
 			double parsed = 0.0;
 			if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.5 && parsed <= 4.0)
-			{
 				settings.scopeScreenAspect = parsed;
-				if (!settings.physicalScreenAspectExplicit)
-					settings.physicalScreenAspect = parsed;
-			}
 			else
 				DebugLog::Log(
 					"libplacebo: scope_screen_aspect must be a ratio or decimal between 1.5 and 4.0; using 2.35:1");
-		}
-		if (TryGetDisplayString(config, "physical_screen_aspect", rawValue))
-		{
-			double parsed = 0.0;
-			if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.0 && parsed <= 4.0)
-			{
-				settings.physicalScreenAspect = parsed;
-				settings.physicalScreenAspectExplicit = true;
-			}
-			else
-				DebugLog::Log(
-					"libplacebo: physical_screen_aspect must be a ratio or decimal between 1.0 and 4.0; following screen_aspect");
 		}
 
 		settings.defaultScopeScreen = ReadChoice(
@@ -2499,7 +2468,6 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t nextOutputRecoveryTick = 0;
 	enum pl_color_transfer sdrInputTransfer = PL_COLOR_TRC_UNKNOWN;
 	double scopeScreenAspect = 2.35;
-	double physicalScreenAspect = 2.35;
 	bool defaultScopeScreen = false;
 	double anamorphicScale = 1.0;
 	bool automaticSourceCrop = false;
@@ -3298,7 +3266,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		DebugLog::Log(
-		"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u screen_aspect=%.4f physical_screen_aspect=%.4f default_screen_profile=%s automatic_crop=%d scope_subtitle_fit=%d subtitle_hold=%llums subtitle_release_drift=%llums subtitle_padding=%dpx",
+		"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u screen_aspect=%.4f default_screen_profile=%s automatic_crop=%d scope_subtitle_fit=%d subtitle_hold=%llums subtitle_release_drift=%llums subtitle_padding=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3323,7 +3291,6 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<unsigned long long>(settings.refreshRateCommandDelayMs / 1000),
 			static_cast<unsigned int>(settings.refreshRateCommandRules.size()),
 			scopeScreenAspect,
-			physicalScreenAspect,
 			defaultScopeScreen ? "scope" : "normal",
 			automaticSourceCrop ? 1 : 0,
 			scopeSubtitleFit ? 1 : 0,
@@ -4765,7 +4732,6 @@ struct LibplaceboVideoRenderer::Impl
 		sdrBlackNits = settings.sdrBlackNits;
 		sdrInputTransfer = TranslateOutputGamma(settings.sdrInputTransfer);
 		scopeScreenAspect = settings.scopeScreenAspect;
-		physicalScreenAspect = settings.physicalScreenAspect;
 		defaultScopeScreen = settings.defaultScopeScreen;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCrop = settings.automaticSourceCrop;
@@ -4826,7 +4792,6 @@ struct LibplaceboVideoRenderer::Impl
 		std::lock_guard<std::mutex> guard(renderMutex);
 		const bool renderingBehaviorChanged =
 			scopeScreenAspect != settings.scopeScreenAspect ||
-			physicalScreenAspect != settings.physicalScreenAspect ||
 			defaultScopeScreen != settings.defaultScopeScreen ||
 			anamorphicScale != settings.anamorphicScale ||
 			automaticSourceCrop != settings.automaticSourceCrop ||
@@ -4835,7 +4800,6 @@ struct LibplaceboVideoRenderer::Impl
 			scopeSubtitleReleaseDriftMs != settings.scopeSubtitleReleaseDriftMs ||
 			scopeSubtitlePaddingPixels != settings.scopeSubtitlePaddingPixels;
 		scopeScreenAspect = settings.scopeScreenAspect;
-		physicalScreenAspect = settings.physicalScreenAspect;
 		defaultScopeScreen = settings.defaultScopeScreen;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCrop = settings.automaticSourceCrop;
@@ -6796,10 +6760,7 @@ struct LibplaceboVideoRenderer::Impl
 				// Shader/profile prewarming must not publish per-frame presentation
 				// state. It only needs a valid, centered render geometry.
 				if (scopeActive)
-				{
-					fitTargetToAspect(physicalScreenAspect);
 					fitTargetToAspect(scopeScreenAspect);
-				}
 				fitTargetToAspect(pl_rect2df_aspect(&source.crop) *
 					anamorphicScale);
 				return;
@@ -6813,8 +6774,6 @@ struct LibplaceboVideoRenderer::Impl
 			const double panelTargetAspect = pl_rect2df_aspect(&target.crop);
 			const double finalTargetAspect =
 				scopeActive ? scopeScreenAspect : panelTargetAspect;
-			const double finalPhysicalScreenAspect =
-				scopeActive ? physicalScreenAspect : panelTargetAspect;
 			const int finalSourceWidth =
 				cropDecision.sourceBounds.right - cropDecision.sourceBounds.left;
 			const int finalSourceHeight =
@@ -6840,12 +6799,8 @@ struct LibplaceboVideoRenderer::Impl
 				cropDecision.applyCrop || currentFullRasterAuthority;
 			const double screenLayoutAspect = scopeActive || nlsRequested
 				? finalTargetAspect : pl_rect2df_aspect(&target.crop);
-			const AlphaSourceCrop::CenteredFitDecision physicalScreenFit =
-				fitTargetToAspect(finalPhysicalScreenAspect);
 			const AlphaSourceCrop::CenteredFitDecision screenFit =
 				fitTargetToAspect(screenLayoutAspect);
-			const AlphaSourceCrop::PresentationRect finalPhysicalScreen =
-				physicalScreenFit.picture;
 			const AlphaSourceCrop::PresentationRect finalScreen = screenFit.picture;
 			auto publishFinalLayout = [&](AlphaSourceCrop::UnusedSpaceAxis axis,
 				const char* mapping)
@@ -6858,7 +6813,6 @@ struct LibplaceboVideoRenderer::Impl
 					<< cropDecision.sourceBounds.top << '-'
 					<< cropDecision.sourceBounds.right << ','
 					<< cropDecision.sourceBounds.bottom << '|'
-					<< std::lround(finalPhysicalScreenAspect * 100000.0) << '|'
 					<< std::lround(finalTargetAspect * 100000.0) << '|'
 					<< std::lround(target.crop.x0 * 10.0f) << ','
 					<< std::lround(target.crop.y0 * 10.0f) << '-'
@@ -6869,7 +6823,7 @@ struct LibplaceboVideoRenderer::Impl
 					return;
 				lastFinalLayoutPolicy = policy.str();
 				DebugLog::Log(
-					"Alpha final layout: raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d physical_screen_aspect=%.5f physical_screen=%.1f,%.1f-%.1f,%.1f screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s anamorphic=%.5f",
+					"Alpha final layout: raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s anamorphic=%.5f",
 					width, height,
 					effectiveGeometry.left, effectiveGeometry.top,
 					effectiveGeometry.right, effectiveGeometry.bottom,
@@ -6877,9 +6831,6 @@ struct LibplaceboVideoRenderer::Impl
 					cropDecision.sourceBounds.top,
 					cropDecision.sourceBounds.right,
 					cropDecision.sourceBounds.bottom,
-					finalPhysicalScreenAspect,
-					finalPhysicalScreen.left, finalPhysicalScreen.top,
-					finalPhysicalScreen.right, finalPhysicalScreen.bottom,
 					finalTargetAspect,
 					finalScreen.left, finalScreen.top,
 					finalScreen.right, finalScreen.bottom,

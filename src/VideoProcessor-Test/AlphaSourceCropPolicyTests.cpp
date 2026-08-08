@@ -1161,33 +1161,37 @@ namespace Tests
 			}
 		}
 
-		TEST_METHOD(PhysicalScreenAndRequestedViewportAreNestedBeforePictureFit)
+		TEST_METHOD(DetectedContentFitsConfiguredScreenWithoutASecondViewport)
 		{
 			const PresentationRect panel = { 0.0, 0.0, 3840.0, 2160.0 };
-			const CenteredFitDecision physical =
+			const CenteredFitDecision screen =
 				FitCenteredAspect(2.35, panel);
-			const CenteredFitDecision requested =
-				FitCenteredAspect(32.0 / 15.0, physical.picture);
-			const CenteredFitDecision picture =
-				FitCenteredAspect(2.40, requested.picture);
+			const CenteredFitDecision narrowerContent =
+				FitCenteredAspect(2.20, screen.picture);
+			const CenteredFitDecision widerContent =
+				FitCenteredAspect(2.40, screen.picture);
 
-			Assert::IsTrue(physical.valid);
-			Assert::IsTrue(requested.valid);
-			Assert::IsTrue(picture.valid);
-			Assert::AreEqual(0.0, physical.picture.left, 0.001);
-			Assert::AreEqual(3840.0, physical.picture.right, 0.001);
-			Assert::IsTrue(requested.picture.left > physical.picture.left);
-			Assert::IsTrue(requested.picture.right < physical.picture.right);
-			Assert::AreEqual(physical.picture.top, requested.picture.top, 0.001);
-			Assert::AreEqual(physical.picture.bottom, requested.picture.bottom, 0.001);
-			Assert::AreEqual(requested.picture.left, picture.picture.left, 0.001);
-			Assert::AreEqual(requested.picture.right, picture.picture.right, 0.001);
-			Assert::IsTrue(picture.picture.top > requested.picture.top);
-			Assert::IsTrue(picture.picture.bottom < requested.picture.bottom);
+			Assert::IsTrue(screen.valid);
+			Assert::IsTrue(narrowerContent.valid);
+			Assert::IsTrue(widerContent.valid);
+			Assert::AreEqual(0.0, screen.picture.left, 0.001);
+			Assert::AreEqual(3840.0, screen.picture.right, 0.001);
+			Assert::IsTrue(narrowerContent.picture.left > screen.picture.left);
+			Assert::IsTrue(narrowerContent.picture.right < screen.picture.right);
+			Assert::AreEqual(screen.picture.top,
+				narrowerContent.picture.top, 0.001);
+			Assert::AreEqual(screen.picture.bottom,
+				narrowerContent.picture.bottom, 0.001);
+			Assert::AreEqual(screen.picture.left,
+				widerContent.picture.left, 0.001);
+			Assert::AreEqual(screen.picture.right,
+				widerContent.picture.right, 0.001);
+			Assert::IsTrue(widerContent.picture.top > screen.picture.top);
+			Assert::IsTrue(widerContent.picture.bottom < screen.picture.bottom);
 			Assert::AreEqual(static_cast<int>(UnusedSpaceAxis::HORIZONTAL),
-				static_cast<int>(requested.unusedAxis));
+				static_cast<int>(narrowerContent.unusedAxis));
 			Assert::AreEqual(static_cast<int>(UnusedSpaceAxis::VERTICAL),
-				static_cast<int>(picture.unusedAxis));
+				static_cast<int>(widerContent.unusedAxis));
 		}
 
 		TEST_METHOD(SourceEnvelopeIsIndependentOfScreenAndAnamorphicMapping)

@@ -458,7 +458,7 @@ namespace VideoProcessorTest
 					"[vprenderer]\nwhen: $key==\"F4\"\nquality: high\nswitch_refresh_rate: true\n"
 					"[vprenderer.rec709]\nwhen: $key==\"F5\"\ntone_mapping: spline\n"
 					"[vprenderer.viewport]\nwhen: $key==\"F3\"\n"
-					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\nscreen_aspect: 32:15\nphysical_screen_aspect: 2.35:1\nautomatic_crop: true\nsubtitle_fit: true\n"
+					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\nscreen_aspect: 2.35:1\nautomatic_crop: true\nsubtitle_fit: true\n"
 					"[actions.audio_delay_film]\non: refresh.applied,refresh.confirmed\nwhen: $actual_refresh<=30\nrun: C:\\Videoprocessor\\audio\\audio_delay.bat 100\n"
 					"[shader.nls]\nwhen: $key==\"n\"\n"
 					"[shader.nls.standard]\nwhen: $key==\"Shift+n\"\nshader_type: nls\nglsl_file: NLS.glsl\n"
@@ -493,10 +493,8 @@ namespace VideoProcessorTest
 			RendererProfileConfig::ResolvedViewport viewport;
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(model,
 				"scope", 1, viewport, error));
-			Assert::AreEqual(32ull, viewport.screenAspect.numerator);
-			Assert::AreEqual(15ull, viewport.screenAspect.denominator);
-			Assert::AreEqual(47ull, viewport.physicalScreenAspect.numerator);
-			Assert::AreEqual(20ull, viewport.physicalScreenAspect.denominator);
+			Assert::AreEqual(47ull, viewport.screenAspect.numerator);
+			Assert::AreEqual(20ull, viewport.screenAspect.denominator);
 			Assert::IsTrue(viewport.automaticCrop);
 			Assert::IsTrue(viewport.subtitleFit);
 
@@ -512,6 +510,31 @@ namespace VideoProcessorTest
 			Assert::IsTrue(result.snapshot->queue.hasQueueSize);
 			Assert::AreEqual(static_cast<size_t>(1),
 				result.snapshot->queue.queueSize);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(Vp0098RejectsRemovedSecondScreenAspect)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0098-single-screen-aspect.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[vprenderer.viewport.scope]\n"
+					"when: $key==\"F2\"\n"
+					"screen_aspect: 2.35:1\n"
+					"physical_screen_aspect: 2.35:1\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("physical_screen_aspect") !=
+				std::string::npos);
 			DeleteFileA(path.c_str());
 		}
 
