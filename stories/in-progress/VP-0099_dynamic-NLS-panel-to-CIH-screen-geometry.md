@@ -344,6 +344,32 @@ output-readiness graph reset occurred during startup and should not be confused
 with an NLS transition restart; final visual validation should be performed
 after startup settles.
 
+### Settled last-intent shortcut switching (2026-08-08)
+
+The coherent delivery build was visibly better in the user's live madVR test,
+but dropping keyboard repeat messages was not the desired interaction model.
+Commit `6c08624` replaces that behavior with a 200 ms, physical-key-aware,
+last-intent-wins debounce for configured shader shortcuts. Each genuine
+`n`/`Shift+n`/`Shift+p` selection updates the pending mode and restarts the
+settle interval; only the final mode is applied after the physical key is up.
+An unmodified repeat emitted after Shift release retains the original modified
+intent instead of becoming an accidental off selection. Pending intent is
+also retained while the renderer is temporarily unavailable or restarting.
+
+The same commit routes deferred NLS activation and withdrawal caused by
+active-picture reacquisition through the coherent delivery transaction. This
+closes the startup edge observed at 10:55:39, where a pending DAR had otherwise
+become visible before the asynchronously refreshed shader chain.
+
+The exact committed x64 Release build is clean and passed 635/635 tests.
+Post-commit TRX: `TestResults\vp0099-debounce-postcommit.trx`. The executable
+and paired VP Renderer DLL were deployed with matching hashes; backups use
+suffix `.pre-vp0099-6c08624.20260808-110151.bak`. Configuration and shader
+files were unchanged. One initial launch faulted inside `ucrtbase.dll` during
+DirectShow filter enumeration and left a local crash dump; two subsequent
+launches completed enumeration and loaded VP Renderer API 8. The final test
+instance is responsive on PID 26356 with madVR running.
+
 ## Acceptance criteria
 
 - No production NLS path selects a target by `scope`/`normal` name or by a
