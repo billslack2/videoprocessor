@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0101`
-- Next root story number: `VP-0102`
-- Total indexed items: 115
+- Last assigned root story: `VP-0102`
+- Next root story number: `VP-0103`
+- Total indexed items: 116
 
 ## Story locations
 
@@ -132,6 +132,7 @@ they must not contain requirements that are absent from this file.
 | VP-0099 | Backlog | Derive NLS geometry dynamically from panel, screen, requested viewport, and source envelope |
 | VP-0100 | Backlog | Prove pixel-owned SDR presentation for Alpha |
 | VP-0101 | Backlog | Implement production pixel-owned calibrated output and 3D LUTs |
+| VP-0102 | Backlog | Dual-mode classic and modern operator UI |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
