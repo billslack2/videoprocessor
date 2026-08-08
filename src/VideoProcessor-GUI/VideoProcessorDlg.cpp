@@ -3468,9 +3468,19 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 			configPath.pop_back();
 		}
 	}
+	// Make the editor an owned window of the actual fullscreen host when one is
+	// active. Windows keeps an owned window above its owner, without making the
+	// editor globally topmost while VP is windowed.
+	HWND editorOwner = GetSafeHwnd();
+	if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
+		IsWindow(m_fullScreenVideoWindow->GetHWND()) &&
+		::IsWindowVisible(m_fullScreenVideoWindow->GetHWND()))
+	{
+		editorOwner = m_fullScreenVideoWindow->GetHWND();
+	}
 	wchar_t arguments[2 * MAX_PATH + 80] = {};
 	swprintf_s(arguments, L"--config \"%s\" --owner %llu", configPath.c_str(),
-		static_cast<unsigned long long>(reinterpret_cast<UINT_PTR>(GetSafeHwnd())));
+		static_cast<unsigned long long>(reinterpret_cast<UINT_PTR>(editorOwner)));
 	const HINSTANCE result = ShellExecuteW(GetSafeHwnd(), L"open", editorPath.c_str(),
 		arguments, executablePath.c_str(), SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR>(result) <= 32)

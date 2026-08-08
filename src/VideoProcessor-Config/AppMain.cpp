@@ -69,6 +69,24 @@ bool highContrastEnabled()
     return SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(settings),
         &settings, 0) != FALSE && (settings.dwFlags & HCF_HIGHCONTRASTON) != 0;
 }
+
+void centerOnOwnerScreen(QWidget& window, quintptr owner)
+{
+    const HWND ownerWindow = reinterpret_cast<HWND>(owner);
+    const HMONITOR monitor = ownerWindow && IsWindow(ownerWindow) ?
+        MonitorFromWindow(ownerWindow, MONITOR_DEFAULTTONEAREST) :
+        MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFO monitorInfo{};
+    monitorInfo.cbSize = sizeof(monitorInfo);
+    if (!monitor || !GetMonitorInfoW(monitor, &monitorInfo)) return;
+
+    const RECT& work = monitorInfo.rcWork;
+    const int width = window.frameGeometry().width();
+    const int height = window.frameGeometry().height();
+    const int x = work.left + ((work.right - work.left) - width) / 2;
+    const int y = work.top + ((work.bottom - work.top) - height) / 2;
+    window.move(x, y);
+}
 }
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
@@ -137,6 +155,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     }
     window.selectPage(initialPage);
     window.show();
+    QTimer::singleShot(0, &window, [&window, owner]
+    {
+        centerOnOwnerScreen(window, owner);
+    });
     if (!screenshotPath.isEmpty())
         QTimer::singleShot(400, &window, [&window, screenshotPath]
         {
