@@ -23,6 +23,7 @@
 #include <blackmagic_decklink/BlackMagicDeckLinkCaptureDeviceDiscoverer.h>
 #include <PixelValueRange.h>
 #include <OutputReadinessController.h>
+#include <ShortcutRepeatGuard.h>
 #include <CCie1931Control.h>
 #include <IRenderer.h>
 #include <RendererResetCoordinator.h>
@@ -357,6 +358,8 @@ protected:
 	HICON m_hIcon;
 	HACCEL m_accelerator = nullptr;
 	std::map<WORD, CString> m_shaderShortcutRules;
+	std::set<WORD> m_shaderShortcutKeys;
+	ShortcutRepeatGuard m_shaderShortcutRepeatGuard;
 	CString m_requestedShaderSelector;
 	std::map<WORD, CString> m_displayRuleShortcutRules;
 	std::map<WORD, unsigned int> m_rendererShortcutIndices;

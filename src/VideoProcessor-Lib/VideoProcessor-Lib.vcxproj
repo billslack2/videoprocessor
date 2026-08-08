@@ -236,6 +236,7 @@
 	<ClInclude Include="microsoft_directshow\MadVRShaderLoader.h" />
 	<ClInclude Include="microsoft_directshow\MadVRShaderRuntimeState.h" />
 	<ClInclude Include="NlsGeometryPolicy.h" />
+	<ClInclude Include="ShortcutRepeatGuard.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\CBufferedLiveSourceVideoOutputPin.h" />
     <ClInclude Include="microsoft_directshow\live_source_filter\CLiveSource.h" />

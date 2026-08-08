@@ -2,6 +2,7 @@
 
 #include <microsoft_directshow/MadVRShaderLoader.h>
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
+#include <ShortcutRepeatGuard.h>
 #include "CppUnitTest.h"
 
 #include <d3dcompiler.h>
@@ -547,6 +548,18 @@ namespace VideoProcessorTest
 					false, 0, 10, false, false, 0, 1, true);
 			Assert::IsTrue(preOnly.preScale);
 			Assert::IsFalse(preOnly.postScale);
+		}
+
+		TEST_METHOD(ShaderShortcutRepeatDoesNotFallThroughAfterModifierRelease)
+		{
+			ShortcutRepeatGuard guard;
+			Assert::IsFalse(guard.Process('N', true, false, false, true));
+			// The same physical key is still down after Shift is released. Windows
+			// emits an unmodified repeat, which must not select the plain-n reset.
+			Assert::IsTrue(guard.Process('N', true, false, true, true));
+			Assert::IsFalse(guard.Process('N', false, true, false, true));
+			// A distinct press after key-up remains an intentional reset.
+			Assert::IsFalse(guard.Process('N', true, false, false, true));
 		}
 
 		TEST_METHOD(RendererReplacementRebindsExactTrustedGeometry)

@@ -14,6 +14,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowRendererStartStopTimeMethod.h>
@@ -122,6 +123,14 @@ public:
 	virtual void SetSceneTimingPhase(int64_t, int64_t, int64_t) {}
 	virtual void SetOutputReadinessDeliveryReserve(size_t) {}
 	virtual void SetQueueFramePolicy(size_t, size_t, bool) {}
+	// Shader-chain replacement is not atomic in madVR. Buffered pins override
+	// this to hold downstream delivery across the aspect/shader transaction so
+	// no sample can be rendered against a half-applied presentation contract.
+	virtual bool RunWithDeliveryHeld(const std::function<void()>& operation)
+	{
+		operation();
+		return false;
+	}
 	// Returns a temporally stable estimate of the active picture (excluding
 	// encoded black bars). Buffered P010 sources override this.
 	virtual bool GetActivePictureAspectRatio(double& aspectRatio) const

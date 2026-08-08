@@ -300,11 +300,13 @@ CString DescribeMonitorCandidates(const std::vector<ActiveMonitorCandidate>& can
 
 HACCEL CreateConfiguredAccelerators(
 	std::map<WORD, CString>& shaderShortcutRules,
+	std::set<WORD>& shaderShortcutKeys,
 	std::map<WORD, CString>& displayRuleShortcutRules,
 	std::map<WORD, unsigned int>& rendererShortcutIndices,
 	std::map<WORD, CString>& unifiedProfileShortcutKeys)
 {
 	shaderShortcutRules.clear();
+	shaderShortcutKeys.clear();
 	displayRuleShortcutRules.clear();
 	rendererShortcutIndices.clear();
 	unifiedProfileShortcutKeys.clear();
@@ -463,6 +465,7 @@ HACCEL CreateConfiguredAccelerators(
 			CString ruleName;
 			ruleName.Format(TEXT("%S"), rule.c_str());
 			shaderShortcutRules[nextCommand] = ruleName;
+			shaderShortcutKeys.insert(accelerator.key);
 			shaderBindingCommands[binding] = nextCommand;
 			++nextCommand;
 		}
@@ -517,6 +520,7 @@ HACCEL CreateConfiguredAccelerators(
 				CString selector;
 				selector.Format(TEXT("@shader-key:%S"), chord.c_str());
 				shaderShortcutRules[nextCommand] = selector;
+				shaderShortcutKeys.insert(accelerator.key);
 				targetShaderBindings[binding] = nextCommand;
 				++nextCommand;
 			}
@@ -6794,6 +6798,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 
 	m_accelerator = CreateConfiguredAccelerators(
 		m_shaderShortcutRules,
+		m_shaderShortcutKeys,
 		m_displayRuleShortcutRules,
 		m_rendererShortcutIndices,
 		m_unifiedProfileShortcutKeys);
@@ -6852,8 +6857,28 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 {
 	m_lastUiMessageTick.store(GetTickCount64(), std::memory_order_release);
+	const bool keyDown = pMsg->message == WM_KEYDOWN ||
+		pMsg->message == WM_SYSKEYDOWN;
+	const bool keyUp = pMsg->message == WM_KEYUP ||
+		pMsg->message == WM_SYSKEYUP;
+	const WORD virtualKey = static_cast<WORD>(pMsg->wParam);
+	const bool guardedShaderShortcut = m_shaderShortcutKeys.find(virtualKey) !=
+		m_shaderShortcutKeys.end();
+	const bool repeat = (static_cast<ULONG_PTR>(pMsg->lParam) &
+		(1ull << 30)) != 0;
+	if (m_shaderShortcutRepeatGuard.Process(virtualKey, keyDown, keyUp,
+		repeat, guardedShaderShortcut))
+	{
+		DebugLog::Log(
+			"Keyboard shader shortcut auto-repeat suppressed vk=0x%02x shift=%d ctrl=%d alt=%d",
+			static_cast<unsigned int>(virtualKey),
+			(GetKeyState(VK_SHIFT) & 0x8000) ? 1 : 0,
+			(GetKeyState(VK_CONTROL) & 0x8000) ? 1 : 0,
+			(GetKeyState(VK_MENU) & 0x8000) ? 1 : 0);
+		return TRUE;
+	}
 	const bool diagnosticKey =
-		(pMsg->message == WM_KEYDOWN || pMsg->message == WM_SYSKEYDOWN) &&
+		keyDown &&
 		(pMsg->wParam == 'I' || pMsg->wParam == VK_F4);
 	if (diagnosticKey)
 	{

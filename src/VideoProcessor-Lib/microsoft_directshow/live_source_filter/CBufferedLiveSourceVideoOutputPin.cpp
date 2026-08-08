@@ -235,6 +235,23 @@ CBufferedLiveSourceVideoOutputPin::~CBufferedLiveSourceVideoOutputPin()
 }
 
 
+bool CBufferedLiveSourceVideoOutputPin::RunWithDeliveryHeld(
+	const std::function<void()>& operation)
+{
+	const auto started = std::chrono::steady_clock::now();
+	CAutoLock deliveryLock(&m_deliveryGate);
+	const auto acquired = std::chrono::steady_clock::now();
+	operation();
+	const auto completed = std::chrono::steady_clock::now();
+	DebugLog::Log(
+		"Shaders: coherent delivery hold wait=%.3fms hold=%.3fms total=%.3fms",
+		std::chrono::duration<double, std::milli>(acquired - started).count(),
+		std::chrono::duration<double, std::milli>(completed - acquired).count(),
+		std::chrono::duration<double, std::milli>(completed - started).count());
+	return true;
+}
+
+
 HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 {
 	if (m_frameQueueMaxSize.load(std::memory_order_relaxed) == 0)

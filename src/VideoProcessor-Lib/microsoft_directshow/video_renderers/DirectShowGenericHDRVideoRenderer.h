@@ -84,6 +84,10 @@ private:
 	bool PrepareOutputAspectForShaderInstall(
 		unsigned long desiredAspectX, unsigned long desiredAspectY,
 		bool& rendererRestartRequired);
+	bool ApplyConfiguredShaderRuleCoherently(const std::string& ruleName,
+		bool updateRuntimeRequest, unsigned long desiredAspectX,
+		unsigned long desiredAspectY, bool& rendererRestartRequired,
+		MadVRShaderSelection& selection);
 	MadVRActivePictureGeometry MakeRuntimeGeometry(
 		const ActivePictureRectangle& rectangle) const;
 	void ApplyNativeStatsOverlayOnGraphThread();

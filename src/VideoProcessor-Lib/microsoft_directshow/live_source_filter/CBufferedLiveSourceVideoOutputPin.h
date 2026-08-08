@@ -70,6 +70,7 @@ public:
 	void SetOutputReadinessDeliveryReserve(size_t) override;
 	void SetQueueFramePolicy(size_t startupPrerollFrames,
 		size_t steadyReserveFrames, bool steadyReserveConfigured) override;
+	bool RunWithDeliveryHeld(const std::function<void()>& operation) override;
 	LONG GetAllocatorBufferCount() const override;
 	void SetDownstreamPrimeTarget(size_t frames) override
 	{
