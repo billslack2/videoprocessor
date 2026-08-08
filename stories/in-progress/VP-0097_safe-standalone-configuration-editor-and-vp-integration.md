@@ -1139,3 +1139,14 @@ design-only improvements prioritized for a separate pass:
   event-only action without `when` is accepted and invoked; the focused native
   x64 Release test passes. The editor and native test projects both complete
   successful x64 Release builds.
+
+## 2026-08-08 consistent Auto presentation
+
+- Fixed editable choice controls, notably DirectShow Frame offset, so the
+  canonical on-disk token `AUTO` is always displayed as `Auto` in the UI.
+- Centralized the behavior in the shared choice binder. Known choices retain
+  their friendly display label when loaded, while custom editable values still
+  display exactly as entered.
+- Selecting or typing the friendly `Auto` label continues to save canonical
+  `AUTO`; integration coverage verifies both presentation and serialization.
+  The Qt editor suite remains green at 9/9 and the x64 Release build succeeds.
