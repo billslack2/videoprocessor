@@ -40,6 +40,7 @@
 #include <microsoft_directshow/DirectShowDefines.h>
 #include <microsoft_directshow/video_renderers/DirectShowVideoRenderer.h>
 #include <StatsOverlayWindow.h>
+#include <ApplicationInterface.h>
 
 #include "resource.h"
 
@@ -107,6 +108,8 @@ class CVideoProcessorDlg:
 public:
 	CVideoProcessorDlg();
 	virtual ~CVideoProcessorDlg();
+	void InterfaceMode(ApplicationInterface::Mode mode) { m_interfaceMode = mode; }
+	ApplicationInterface::Mode InterfaceMode() const { return m_interfaceMode; }
 
 	// Dialog Data
 	enum { IDD = IDD_VIDEOPROCESSOR_DIALOG };
@@ -361,6 +364,8 @@ protected:
 	CComboBox m_fullScreenModeCombo;
 
 	CSize m_minDialogSize;
+	ApplicationInterface::Mode m_interfaceMode =
+		ApplicationInterface::Mode::Classic;
 	struct FixedControlLayout
 	{
 		HWND hwnd = nullptr;

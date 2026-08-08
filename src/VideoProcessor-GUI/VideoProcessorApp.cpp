@@ -18,6 +18,7 @@
 #include <DisplayTopologySession.h>
 #include <MainConfigSchema.h>
 #include <RendererProfileConfig.h>
+#include <ApplicationInterface.h>
 
 #include "VideoProcessorApp.h"
 using namespace std;
@@ -49,6 +50,10 @@ Boolean switches:
   matching setting in VideoProcessor.cfg.
 
 Options:
+  /interface <classic|modern>
+      Select the control interface for this process. The persisted interface
+      setting applies when this option is omitted; Classic is the default.
+
   /config <path>
       Use this VideoProcessor.cfg file. Relative paths are resolved from the
       process working directory. The explicit file must exist. --config and
@@ -408,7 +413,8 @@ void AppendConfigStringOptionInSection(std::vector<std::wstring>& arguments,
 	}
 }
 
-std::vector<std::wstring> LoadConfiguredCommandLineArguments()
+std::vector<std::wstring> LoadConfiguredCommandLineArguments(
+	ApplicationInterface::Preference& interfacePreference)
 {
 	ConfigFile config;
 	std::vector<std::wstring> arguments;
@@ -431,6 +437,12 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 		return hasDefaultQueue && config.TryGetString(
 			defaultQueueSection, key, value);
 	};
+
+	std::string interfaceValue;
+	const bool interfaceSpecified = TryGetFirstConfigString(
+		config, { "interface" }, interfaceValue);
+	interfacePreference = ApplicationInterface::ParsePreference(
+		interfaceSpecified, interfaceValue, "configured");
 
 	// Compatibility only: startup priming is now automatic and is no longer a
 	// normal user-facing control. Existing files retain their prior behavior.
@@ -871,6 +883,16 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 				++index; // The shared config loader already validated the value.
 			continue;
 		}
+		if (IsCommandLineOption(argument, L"/interface"))
+		{
+			// Interface parsing is deliberately non-fatal. Its dedicated parser
+			// reports invalid, missing, and duplicate values and resolves the
+			// documented fallback without preventing capture startup.
+			if (index + 1 < static_cast<int>(arguments.size()) &&
+				!IsCommandLineSwitch(arguments[index + 1]))
+				++index;
+			continue;
+		}
 
 		if (IsCommandLineOption(argument, L"/subtitle_reposition"))
 		{
@@ -1088,7 +1110,9 @@ BOOL CVideoProcessorApp::InitInstance()
 
 		// Parse command line
 		// https://docs.microsoft.com/en-us/cpp/c-runtime-library/argc-argv-wargv
-		std::vector<std::wstring> configuredArguments = LoadConfiguredCommandLineArguments();
+		ApplicationInterface::Preference configuredInterface;
+		std::vector<std::wstring> configuredArguments =
+			LoadConfiguredCommandLineArguments(configuredInterface);
 		const std::wstring configuredFullscreenMonitorName =
 			LoadConfiguredFullscreenMonitorName();
 		if (!configuredFullscreenMonitorName.empty())
@@ -1130,6 +1154,9 @@ BOOL CVideoProcessorApp::InitInstance()
 		const int iNumOfArgs = static_cast<int>(pArgs.size());
 		LocalFree(parsedArguments);
 		ValidateCommandLineArguments(pArgs);
+		const ApplicationInterface::Preference commandLineInterface =
+			ApplicationInterface::ParseCommandLine(mergedArguments);
+		bool noUiSelected = false;
 
 		for (int i = 1; i < iNumOfArgs; i++)
 		{
@@ -1589,6 +1616,7 @@ BOOL CVideoProcessorApp::InitInstance()
 				ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/czeddie", booleanValue))
 			{
 				dlg.HideUI(booleanValue);
+				noUiSelected = booleanValue;
 			}
 
 			// Retain the legacy switch as a no-op so existing command lines remain
@@ -1683,6 +1711,17 @@ BOOL CVideoProcessorApp::InitInstance()
 			}
 
 		}
+
+		const ApplicationInterface::Selection interfaceSelection =
+			ApplicationInterface::Resolve(
+				noUiSelected, commandLineInterface, configuredInterface);
+		if (!interfaceSelection.warning.empty())
+			DebugLog::Log("interface selection warning: %s",
+				interfaceSelection.warning.c_str());
+		DebugLog::Log("interface selection: mode=%s source=%s",
+			ApplicationInterface::ModeName(interfaceSelection.mode),
+			ApplicationInterface::SourceName(interfaceSelection.source));
+		dlg.InterfaceMode(interfaceSelection.mode);
 
 		if (LoadTargetOnlyDisplaySessionMode() && dlg.StartsFullScreen())
 		{
