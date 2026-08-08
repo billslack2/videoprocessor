@@ -32,4 +32,24 @@ namespace ConfigurationLiveApply
 		return expectedControl == control && expectedAlt == alt &&
 			expectedShift == shift;
 	}
+
+	inline bool ShouldEnableBackgroundShortcuts(bool modernInterface,
+		bool noUi)
+	{
+		return modernInterface && !noUi;
+	}
+
+	inline bool ShouldSuppressFullscreenTopmost(bool activationPending,
+		bool configurationModal, bool editorVisible)
+	{
+		return activationPending || configurationModal || editorVisible;
+	}
+
+	inline bool MayEnterConfigurationModal(bool editorVisible,
+		bool editorIconic, uint32_t editorProcessId,
+		uint32_t foregroundProcessId)
+	{
+		return editorVisible && !editorIconic && editorProcessId != 0 &&
+			editorProcessId == foregroundProcessId;
+	}
 }

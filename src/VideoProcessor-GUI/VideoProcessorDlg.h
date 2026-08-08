@@ -76,6 +76,7 @@
 #define LLDV_PROFILE_APPLY_TIMER_ID 12
 #define CONFIGURATION_LIVE_APPLY_TIMER_ID 13
 #define CONFIGURATION_EDITOR_MODAL_TIMER_ID 14
+#define CONFIGURATION_EDITOR_HOTKEY_ID 0x5650
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 #define CONFIGURATION_LIVE_APPLY_INTERVAL_MS 250
 #define CONFIGURATION_EDITOR_MODAL_INTERVAL_MS 100
@@ -388,6 +389,11 @@ protected:
 	std::vector<ACCEL> m_configuredAccelerators;
 	bool m_configurationEditorModal = false;
 	bool m_configurationEditorActivationPending = false;
+	bool m_configurationEditorFullscreenWasTopmost = false;
+	unsigned int m_configurationEditorActivationAttempts = 0;
+	bool m_backgroundShortcutInputRegistered = false;
+	bool m_configurationEditorHotkeyRegistered = false;
+	std::set<WORD> m_backgroundShortcutPressedKeys;
 	HANDLE m_configurationChangedEvent = nullptr;
 	std::map<std::string, std::map<std::string, std::string>>
 		m_configurationSnapshot;
@@ -692,8 +698,11 @@ protected:
 	void ApplySavedConfiguration();
 	void ReloadConfiguredAccelerators();
 	void StartGlobalShortcutObserver();
+	void SuspendGlobalShortcutObserver();
 	void StopGlobalShortcutObserver();
 	void UpdateConfigurationEditorModal();
+	void DemoteFullscreenForConfigurationEditor();
+	void RestoreFullscreenAfterConfigurationEditor();
 	HWND ConfigurationEditorOwner() const;
 	bool TryGetDisplayRefreshRateOverride(double nominalRateHz,
 		double& overrideRateHz, int& matchedNominalRate) const;
@@ -750,6 +759,8 @@ protected:
 	afx_msg void OnSetFocus(CWnd* pOldWnd);
 	afx_msg void OnClose();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
+	afx_msg LRESULT OnBackgroundRawInput(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnConfigurationEditorHotkey(WPARAM wParam, LPARAM lParam);
 	afx_msg HCURSOR	OnQueryDragIcon();
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
 

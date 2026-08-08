@@ -53,6 +53,26 @@ namespace VideoProcessorTest
 				true, false, true, true, false, false));
 		}
 
+		TEST_METHOD(ModernBackgroundAndConfigurationModalPoliciesAreFailSafe)
+		{
+			Assert::IsTrue(
+				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(true, false));
+			Assert::IsFalse(
+				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(false, false));
+			Assert::IsFalse(
+				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(true, true));
+			Assert::IsTrue(
+				ConfigurationLiveApply::ShouldSuppressFullscreenTopmost(false, true, false));
+			Assert::IsTrue(
+				ConfigurationLiveApply::ShouldSuppressFullscreenTopmost(false, false, true));
+			Assert::IsTrue(ConfigurationLiveApply::MayEnterConfigurationModal(
+				true, false, 84, 84));
+			Assert::IsFalse(ConfigurationLiveApply::MayEnterConfigurationModal(
+				true, false, 84, 42));
+			Assert::IsFalse(ConfigurationLiveApply::MayEnterConfigurationModal(
+				true, true, 84, 84));
+		}
+
 		TEST_METHOD(ApplicationInterfaceDefaultsToModern)
 		{
 			const auto selection = ApplicationInterface::Resolve(

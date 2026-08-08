@@ -53,25 +53,27 @@ constexpr wchar_t ActivationEventName[] =
 void activateWindowFromCurrentForeground(HWND window)
 {
     if (!window || !IsWindow(window)) return;
-    const HWND foreground = GetForegroundWindow();
-    const DWORD foregroundThread = foreground ?
-        GetWindowThreadProcessId(foreground, nullptr) : 0;
-    const DWORD currentThread = GetCurrentThreadId();
-    const bool attached = foregroundThread && foregroundThread != currentThread &&
-        AttachThreadInput(currentThread, foregroundThread, TRUE) != FALSE;
     ShowWindowAsync(window, SW_RESTORE);
     BringWindowToTop(window);
     SetForegroundWindow(window);
-    if (attached)
-        AttachThreadInput(currentThread, foregroundThread, FALSE);
 }
 
-void allowExistingWindowToTakeFocus(quintptr owner)
+bool ownerBelongsToProcess(quintptr owner, DWORD expectedProcessId)
+{
+    const HWND ownerWindow = reinterpret_cast<HWND>(owner);
+    if (!ownerWindow || !IsWindow(ownerWindow) || expectedProcessId == 0)
+        return false;
+    DWORD actualProcessId = 0;
+    GetWindowThreadProcessId(ownerWindow, &actualProcessId);
+    return actualProcessId == expectedProcessId;
+}
+
+void allowExistingWindowToTakeFocus(quintptr owner, DWORD ownerProcessId)
 {
     if (HWND existing = FindWindowW(nullptr, L"VideoProcessor Configuration"))
     {
         const HWND ownerWindow = reinterpret_cast<HWND>(owner);
-        if (ownerWindow && IsWindow(ownerWindow))
+        if (ownerBelongsToProcess(owner, ownerProcessId))
             SetWindowLongPtrW(existing, GWLP_HWNDPARENT,
                 reinterpret_cast<LONG_PTR>(ownerWindow));
         DWORD processId = 0;
@@ -130,6 +132,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     QString screenshotPath;
     int initialPage = 0;
     quintptr owner = 0;
+    DWORD ownerProcessId = 0;
     QStringList arguments;
     int nativeArgumentCount = 0;
     LPWSTR* nativeArguments = CommandLineToArgvW(GetCommandLineW(), &nativeArgumentCount);
@@ -142,6 +145,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             configPath = arguments[++index];
         else if (arguments[index] == QStringLiteral("--owner") && index + 1 < arguments.size())
             owner = parseOwner(arguments[++index]);
+        else if (arguments[index] == QStringLiteral("--owner-process") && index + 1 < arguments.size())
+        {
+            bool processOk = false;
+            const qulonglong parsed = arguments[++index].toULongLong(&processOk, 0);
+            ownerProcessId = processOk && parsed <= MAXDWORD ?
+                static_cast<DWORD>(parsed) : 0;
+        }
         else if (arguments[index] == QStringLiteral("--screenshot") && index + 1 < arguments.size())
             screenshotPath = arguments[++index];
         else if (arguments[index] == QStringLiteral("--page") && index + 1 < arguments.size())
@@ -157,13 +167,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         CreateEventW(nullptr, FALSE, FALSE, ActivationEventName) : nullptr;
     if (activationEvent && GetLastError() == ERROR_ALREADY_EXISTS)
     {
-        allowExistingWindowToTakeFocus(owner);
+        allowExistingWindowToTakeFocus(owner, ownerProcessId);
         SetEvent(activationEvent);
         CloseHandle(activationEvent);
         if (SUCCEEDED(comResult)) CoUninitialize();
         return 0;
     }
 
+    if (!ownerBelongsToProcess(owner, ownerProcessId)) owner = 0;
     ConfigEditorWindow window(QFileInfo(configPath).absoluteFilePath(), owner);
     std::unique_ptr<QWinEventNotifier> activationNotifier;
     if (activationEvent)
