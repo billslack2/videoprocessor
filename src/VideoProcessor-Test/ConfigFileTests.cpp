@@ -1,5 +1,6 @@
 #include "pch.h"
 
+#include <ApplicationInterface.h>
 #include <ConfigFile.h>
 #include <DisplayTopologySession.h>
 #include <EventActionLauncher.h>
@@ -23,6 +24,80 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:
+		TEST_METHOD(ApplicationInterfaceDefaultsToClassic)
+		{
+			const auto selection = ApplicationInterface::Resolve(
+				false, {}, {});
+			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Classic);
+			Assert::IsTrue(selection.source ==
+				ApplicationInterface::Source::DefaultClassic);
+			Assert::IsTrue(selection.warning.empty());
+		}
+
+		TEST_METHOD(ApplicationInterfaceConfigurationSelectsEitherUi)
+		{
+			const auto classic = ApplicationInterface::Resolve(false, {},
+				ApplicationInterface::ParsePreference(
+					true, " CLASSIC ", "configured"));
+			const auto modern = ApplicationInterface::Resolve(false, {},
+				ApplicationInterface::ParsePreference(
+					true, "MoDeRn", "configured"));
+			Assert::IsTrue(classic.mode == ApplicationInterface::Mode::Classic);
+			Assert::IsTrue(modern.mode == ApplicationInterface::Mode::Modern);
+			Assert::IsTrue(modern.source ==
+				ApplicationInterface::Source::Configuration);
+		}
+
+		TEST_METHOD(ApplicationInterfaceCommandLineOverridesConfiguration)
+		{
+			const auto commandLine = ApplicationInterface::ParseCommandLine(
+				{ L"VideoProcessor.exe", L"/InTeRfAcE", L"modern" });
+			const auto configuration = ApplicationInterface::ParsePreference(
+				true, "classic", "configured");
+			const auto selection = ApplicationInterface::Resolve(
+				false, commandLine, configuration);
+			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Modern);
+			Assert::IsTrue(selection.source ==
+				ApplicationInterface::Source::CommandLine);
+		}
+
+		TEST_METHOD(ApplicationInterfaceInvalidCommandLineFallsBackToConfiguration)
+		{
+			const auto commandLine = ApplicationInterface::ParseCommandLine(
+				{ L"VideoProcessor.exe", L"/interface", L"future" });
+			const auto configuration = ApplicationInterface::ParsePreference(
+				true, "modern", "configured");
+			const auto selection = ApplicationInterface::Resolve(
+				false, commandLine, configuration);
+			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Modern);
+			Assert::IsTrue(selection.source ==
+				ApplicationInterface::Source::Configuration);
+			Assert::IsTrue(selection.warning.find("expected classic or modern") !=
+				std::string::npos);
+		}
+
+		TEST_METHOD(ApplicationInterfaceMissingCommandLineValueFallsBackToClassic)
+		{
+			const auto commandLine = ApplicationInterface::ParseCommandLine(
+				{ L"VideoProcessor.exe", L"/interface", L"/fullscreen" });
+			const auto selection = ApplicationInterface::Resolve(
+				false, commandLine, {});
+			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Classic);
+			Assert::IsTrue(selection.warning.find("missing value") !=
+				std::string::npos);
+		}
+
+		TEST_METHOD(ApplicationInterfaceNoUiAlwaysWins)
+		{
+			const auto commandLine = ApplicationInterface::ParseCommandLine(
+				{ L"VideoProcessor.exe", L"/interface", L"modern" });
+			const auto selection = ApplicationInterface::Resolve(
+				true, commandLine, ApplicationInterface::ParsePreference(
+					true, "classic", "configured"));
+			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::None);
+			Assert::IsTrue(selection.source == ApplicationInterface::Source::NoUi);
+		}
+
 		TEST_METHOD(IndexedShortcutKeyParsesOneBasedIndex)
 		{
 			unsigned int index = 0;

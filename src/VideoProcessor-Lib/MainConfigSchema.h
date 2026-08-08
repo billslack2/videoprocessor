@@ -87,6 +87,10 @@ namespace MainConfigSchema
 				{ "true", "false", "basic", "advanced", "on", "off", "1", "0" }),
 			ConfigSchema::Boolean("newlldv"),
 			ConfigSchema::Boolean("new_lldv"),
+			// Interface resolution deliberately validates this value non-fatally:
+			// malformed persisted values log and fall back to Classic rather than
+			// making capture startup fail.
+			ConfigSchema::Any("interface"),
 			ConfigSchema::Boolean("noui"),
 			ConfigSchema::Boolean("no_ui"),
 			ConfigSchema::Boolean("startminimized"),

@@ -132,6 +132,9 @@
     <ClInclude Include="ACaptureDevice.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ApplicationInterface.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="ACaptureDeviceDiscoverer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
