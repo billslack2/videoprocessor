@@ -2,10 +2,14 @@
 
 ## Status
 
-Backlog (2026-08-08). The requested behavior and configuration/UI contract are
-recorded. Implementation has not started. Before moving this story to In
-Progress, complete the tracker implementation-branch gate and confirm the
-current VideoProcessor integration base.
+In Progress (2026-08-08). The developer confirmed the discovered default
+integration branch `v1.2.001-beta` and also requested integration into
+`v1.2.001-formats-test-beta`. Implementation is active on
+`codex/vp-0103-vertical-alignment` in
+`C:\Users\bslac\vp\vp-0103-vertical-alignment`, based on
+`origin/v1.2.001-beta` at `b72da1e`. The first increment is inspecting the
+resolved viewport, Alpha final-layout/subtitle-fit, configuration editor, and
+test seams before changing production geometry.
 
 ## User story
 
