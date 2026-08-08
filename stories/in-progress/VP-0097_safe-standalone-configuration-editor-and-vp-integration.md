@@ -1164,6 +1164,10 @@ design-only improvements prioritized for a separate pass:
   `enabled: false`, but VP does not publish them into its runtime action model.
   Enabling an action restores the normal strict validation required for it to
   execute safely.
+- Save no longer blocks if an action was enabled before its setup was complete.
+  The editor automatically changes only the rejected action to a disabled
+  draft, updates its checkbox, and continues validating and saving the rest of
+  the configuration. Non-action configuration errors still block the save.
 - Documented the new field and added editor/runtime regression coverage. The
   Qt integration suite remains green at 9/9, the focused native action test
   passes, and both x64 Release projects build successfully.
