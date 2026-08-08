@@ -25,6 +25,36 @@ Cleanup implementation is assigned to
 `C:\Users\bslac\vp\vp-0098-screen-aspect-cleanup`, based on the discovered
 default branch `v1.1.017-beta`.
 
+## Single-ratio cleanup checkpoint (2026-08-08)
+
+- Source commit `3c7ebd5` is pushed to
+  `origin/codex/vp-0098-single-screen-aspect-cleanup` from the beta17 default
+  head `a195ecc`.
+- Removed `physical_screen_aspect` from public documentation, configuration
+  inventory and validation, viewport state, action variables, renderer
+  fingerprints/state, legacy reads, settings and final-layout diagnostics.
+  Configurations that attempt to use the removed key now fail validation
+  explicitly rather than being silently ignored.
+- Final linear geometry is one configured-screen fit followed by one detected-
+  content fit. The normal non-scope fallback continues to derive its target
+  from the actual output panel instead of restoring the former hard-coded
+  16:9 fallback.
+- Replaced the nested physical/requested-viewport regression with direct
+  coverage proving that detected 2.20 content pillarboxes and detected 2.40
+  content letterboxes inside one configured 2.35 screen. NLS production code
+  was not changed.
+- A clean x64 Release rebuild succeeded at `3c7ebd5`; embedded version is
+  `v1.1.016-beta-5-g3c7ebd5` with `VERSION_DIRTY=false`. The complete native
+  suite passes 625/625 tests.
+- No deployment or active-configuration edit has been made. The current
+  deployed F2 viewport still contains `screen_aspect: 32:15` plus the removed
+  `physical_screen_aspect: 2.35:1`. Before deploying this cleanup, back up that
+  configuration and minimally change it to the actual screen contract:
+  `screen_aspect: 2.35:1`, with the removed line deleted.
+- The previously generated VP-0098 sharing ZIP documents the superseded
+  two-ratio configuration and must not be treated as the final cleanup build.
+  Regenerate it only after merge and deployment validation.
+
 ## Previous completion evidence (2026-08-07)
 
 - Clean x64 Release build succeeded at source commit `75478cb`; embedded
