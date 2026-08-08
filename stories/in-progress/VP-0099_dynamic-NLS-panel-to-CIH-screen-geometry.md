@@ -146,6 +146,23 @@ madVR matrix above is exercised on real output hardware.
   explicit DirectShow base target `16:9` without configuration errors. The app
   was left running for live testing (startup PID 32016).
 
+### Live finding: madVR same-axis crop limitation
+
+The first live madVR test exposed a remaining parity gap. At 09:36:21 VP
+detected the trusted active picture as `2.0000` (`0,120-3840,2040`) against the
+F3 `16:9` target. The requested ratio was only `1.125`, below the configured
+`1.4` limit, but madVR selected `safe_fit` with reason `geometry cannot be
+mapped before madVR crop`. No shader was installed, matching the observed lack
+of a visual change.
+
+This was not a configuration/load failure: after selecting the F2 `2.35:1`
+target, the same `2.0000` source produced an active horizontal mapping at
+`1.175`; madVR accepted dynamic picture aspect `94:45` on the next sample for
+both standard and protected NLS. However, the same-axis restriction could also
+block the required 4:3 pillarbox-to-16:9 horizontal mapping. VP-0099 must remain
+open until DirectShow/madVR can safely perform that required case or the
+renderer-specific limitation is explicitly redesigned and accepted.
+
 ## Acceptance criteria
 
 - No production NLS path selects a target by `scope`/`normal` name or by a
