@@ -4,10 +4,73 @@
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
 #include "CppUnitTest.h"
 
+#include <d3dcompiler.h>
+#include <fstream>
+#include <iterator>
+#include <map>
+
+#pragma comment(lib, "d3dcompiler.lib")
+
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace VideoProcessorTest
 {
+	namespace
+	{
+		std::string LoadNlsHlsl()
+		{
+			std::string path = __FILE__;
+			for (int level = 0; level < 3; ++level)
+			{
+				const size_t separator = path.find_last_of("\\/");
+				if (separator == std::string::npos)
+					return {};
+				path.resize(separator);
+			}
+			path += "\\shaders\\NLS.hlsl";
+			std::ifstream input(path, std::ios::binary);
+			return std::string(std::istreambuf_iterator<char>(input),
+				std::istreambuf_iterator<char>());
+		}
+
+		void ReplaceAll(std::string& source, const std::string& token,
+			const std::string& value)
+		{
+			size_t position = 0;
+			while ((position = source.find(token, position)) !=
+				std::string::npos)
+			{
+				source.replace(position, token.size(), value);
+				position += value.size();
+			}
+		}
+
+		std::string ExpandNlsHlsl(int quality, bool vertical, int geometry)
+		{
+			std::string source = LoadNlsHlsl();
+			const std::map<std::string, std::string> parameters = {
+				{ "strength", "1.0" },
+				{ "curve", "2.0" },
+				{ "stretch_ratio", "1.33333333" },
+				{ "warp_axis", vertical ? "1" : "0" },
+				{ "active_left", "0.125" },
+				{ "active_top", "0.05" },
+				{ "active_right", "0.875" },
+				{ "active_bottom", "0.95" },
+				{ "geometry", std::to_string(geometry) },
+				{ "quality", std::to_string(quality) },
+				{ "safe_fit", "0" },
+				{ "safe_fit_axis", "0" },
+				{ "safe_fit_fraction", "1.0" },
+				{ "center_protection", geometry ? "0.25" : "0.0" }
+			};
+			for (const auto& parameter : parameters)
+				ReplaceAll(source, "{{" + parameter.first + "}}",
+					parameter.second);
+			return source;
+		}
+	}
+
 	TEST_CLASS(MadVRShaderRuntimeStateTests)
 	{
 	public:
@@ -283,10 +346,14 @@ namespace VideoProcessorTest
 				plan.rasterAspect, 0.000001);
 			Assert::AreEqual(plan.rasterAspect,
 				static_cast<double>(plan.aspectX) / plan.aspectY, 0.000001);
-			Assert::AreEqual(0.0, plan.shaderGeometry.left, 0.000001);
-			Assert::AreEqual(0.0, plan.shaderGeometry.top, 0.000001);
-			Assert::AreEqual(1.0, plan.shaderGeometry.right, 0.000001);
-			Assert::AreEqual(1.0, plan.shaderGeometry.bottom, 0.000001);
+			Assert::AreEqual(geometry.left,
+				plan.shaderGeometry.left, 0.000001);
+			Assert::AreEqual(geometry.top,
+				plan.shaderGeometry.top, 0.000001);
+			Assert::AreEqual(geometry.right,
+				plan.shaderGeometry.right, 0.000001);
+			Assert::AreEqual(geometry.bottom,
+				plan.shaderGeometry.bottom, 0.000001);
 			Assert::AreEqual(2.35,
 				plan.rasterAspect *
 				(geometry.right - geometry.left) /
@@ -297,7 +364,7 @@ namespace VideoProcessorTest
 					decision, geometry).mode));
 		}
 
-		TEST_METHOD(MadVRHybridNlsAllowsOnlyOrthogonalBars)
+		TEST_METHOD(MadVRHybridNlsSupportsBarsOnEitherAxis)
 		{
 			MadVRNlsMappingDecision horizontal;
 			horizontal.mode = MadVRNlsMappingMode::ACTIVE;
@@ -315,7 +382,7 @@ namespace VideoProcessorTest
 
 			const MadVRActivePictureGeometry onePixelSideCrop{
 				1.90, 1.0 / 3840.0, 0.03, 1.0, 0.97, 2, 1, true };
-			Assert::IsFalse(ResolveMadVRNlsPresentationPlan(
+			Assert::IsTrue(ResolveMadVRNlsPresentationPlan(
 				horizontal, onePixelSideCrop).customShader);
 
 			MadVRNlsMappingDecision vertical = horizontal;
@@ -328,19 +395,73 @@ namespace VideoProcessorTest
 				vertical, pillarbox).customShader);
 			const MadVRActivePictureGeometry letterbox{
 				2.60, 0.0, 0.03, 1.0, 0.97, 4, 1, true };
-			Assert::IsFalse(ResolveMadVRNlsPresentationPlan(
+			Assert::IsTrue(ResolveMadVRNlsPresentationPlan(
 				vertical, letterbox).customShader);
 
 			const MadVRActivePictureGeometry windowbox{
 				1.90, 0.05, 0.03, 0.95, 0.97, 5, 1, true };
-			Assert::IsFalse(ResolveMadVRNlsPresentationPlan(
+			Assert::IsTrue(ResolveMadVRNlsPresentationPlan(
 				horizontal, windowbox).customShader);
 			const MadVRNlsMappingDecision constrained =
 				ConstrainMadVRNlsMappingToGeometry(horizontal, windowbox);
-			Assert::AreEqual(static_cast<int>(MadVRNlsMappingMode::SAFE_FIT),
+			Assert::AreEqual(static_cast<int>(MadVRNlsMappingMode::ACTIVE),
 				static_cast<int>(constrained.mode));
-			Assert::IsTrue(constrained.reason.find(
-				"using native safe fit") != std::string::npos);
+			Assert::AreEqual(horizontal.reason.c_str(),
+				constrained.reason.c_str());
+		}
+
+		TEST_METHOD(FourByThreePillarboxCanMapToSixteenByNineInMadVR)
+		{
+			const MadVRNlsMappingDecision decision = EvaluateNlsMapping(
+				true, 4.0 / 3.0, 16.0 / 9.0, 5.0, 1.0, false, 1.4);
+			Assert::AreEqual(static_cast<int>(MadVRNlsMappingMode::ACTIVE),
+				static_cast<int>(decision.mode));
+			Assert::IsFalse(decision.verticalWarp);
+			const MadVRActivePictureGeometry geometry{
+				4.0 / 3.0, 0.125, 0.0, 0.875, 1.0, 9, 2, true };
+			const MadVRNlsPresentationPlan plan =
+				ResolveMadVRNlsPresentationPlan(decision, geometry);
+			Assert::IsTrue(plan.customShader);
+			Assert::AreEqual(geometry.left,
+				plan.shaderGeometry.left, 0.000001);
+			Assert::AreEqual(geometry.right,
+				plan.shaderGeometry.right, 0.000001);
+			Assert::AreEqual(16.0 / 9.0,
+				plan.rasterAspect * 0.75, 0.000001);
+		}
+
+		TEST_METHOD(BarPreservingNlsHlslCompilesEveryRuntimeVariant)
+		{
+			const std::string templateSource = LoadNlsHlsl();
+			Assert::IsFalse(templateSource.empty());
+			Assert::IsTrue(templateSource.find(
+				"if (!insideActivePicture)") != std::string::npos);
+			Assert::IsTrue(templateSource.find(
+				"return tex2D(s0, tex);") != std::string::npos);
+			Assert::IsTrue(templateSource.find(
+				"activeMinimum, activeMaximum") != std::string::npos);
+
+			for (int quality = 0; quality <= 3; ++quality)
+			{
+				for (int geometry = 0; geometry <= 1; ++geometry)
+				{
+					for (int vertical = 0; vertical <= 1; ++vertical)
+					{
+						const std::string source = ExpandNlsHlsl(
+							quality, vertical != 0, geometry);
+						Assert::IsTrue(source.find("{{") ==
+							std::string::npos);
+						CComPtr<ID3DBlob> bytecode;
+						CComPtr<ID3DBlob> diagnostics;
+						const HRESULT result = D3DCompile(source.data(),
+							source.size(), "NLS.hlsl", nullptr, nullptr,
+							"main", "ps_3_0", 0, 0,
+							&bytecode, &diagnostics);
+						Assert::IsTrue(SUCCEEDED(result));
+						Assert::IsNotNull(bytecode.p);
+					}
+				}
+			}
 		}
 
 		TEST_METHOD(MadVRHybridNlsRejectsInvalidOrInactiveGeometry)
