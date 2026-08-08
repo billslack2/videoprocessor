@@ -163,6 +163,86 @@ block the required 4:3 pillarbox-to-16:9 horizontal mapping. VP-0099 must remain
 open until DirectShow/madVR can safely perform that required case or the
 renderer-specific limitation is explicitly redesigned and accepted.
 
+### Same-axis madVR research and proposed correction (2026-08-08)
+
+The live failure is caused by the current HLSL sampling contract, not by the
+renderer-neutral safety policy or a missing madVR capability. Before commit
+`4cd3e44`, the madVR shader mapped the entire output texture through the trusted
+active rectangle. That removed encoded bars in VP while madVR independently
+applied its own `videoCropRect`, producing a double crop. The conservative fix
+made madVR the sole bar-removal owner by forcing the shader sample rectangle to
+the full raster, but a same-axis bar is then sampled through the nonlinear map.
+The current guard therefore rejects horizontal NLS with pillarbox bars and
+vertical NLS with letterbox bars.
+
+Primary-source comparison against MPC-BE `d2c7b28` and MPC Video Renderer
+`fd3a829` confirms the available rendering contracts:
+
+- MPC-BE maps frame-space and screen-space shader targets directly to madVR's
+  published pre-scale and post-scale shader stages.
+- MPC Video Renderer's release path accepts post-scale shaders; its pre-scale
+  shader method is debug-only and returns `E_NOTIMPL` in release builds.
+- MPC Video Renderer also returns `E_NOTIMPL` for
+  `IBasicVideo::SetSourcePosition`, so an upstream source-rectangle workaround
+  is not a portable DirectShow contract.
+- madVR's published API exposes both shader stages, the independently detected
+  `videoCropRect`, and transient zoom/aspect commands including
+  `setArOverride` (documented as applying before cropping). MPC therefore
+  confirms that shader-based stretch is supported, but it does not contain a
+  built-in NLS implementation that already solves this exact double-crop case.
+
+The preferred correction is a bar-preserving, active-local pre-scale shader:
+
+1. Keep the trusted active rectangle and the existing compensated whole-raster
+   aspect calculation
+   `raster DAR = target DAR * active height / active width`.
+2. Pass the measured active rectangle to the HLSL shader instead of replacing
+   it with full-raster bounds.
+3. For pixels outside that rectangle, return the original sample unchanged so
+   all encoded bars and their boundaries remain intact.
+4. For pixels inside it, normalize the selected axis within the active
+   rectangle, apply the existing monotonic NLS map, convert the mapped
+   coordinate back into the active rectangle, and clamp reconstruction taps to
+   that rectangle to prevent bar bleed.
+5. Let madVR apply its independently detected crop exactly once. Because the
+   active boundaries are unchanged and the shader maps both active edges back
+   to themselves, the compensated raster DAR yields the configured target DAR
+   after madVR's crop.
+6. Remove the same-axis full-width/full-height rejection. Retain stable-
+   generation, finite-bounds, target, ratio, and configured safety checks.
+
+This design preserves the current pre-resize quality path and does not require
+changing madVR profiles, disabling black-bar detection, using persistent
+madVR settings, or taking ownership of projector/screen geometry. Its steady-
+state cost is effectively unchanged: active pixels retain the configured tap
+count, bar pixels can exit after one sample, and only inexpensive coordinate
+normalization plus an active-boundary branch is added. The existing first-use
+shader compilation hitch is separate and remains observable in telemetry.
+
+A post-scale NLS shader is a viable diagnostic fallback because both madVR and
+MPC expose that stage, and it naturally operates after the renderer's resize.
+It is not the preferred production fix: it can perform the multi-tap warp at
+full output resolution, has renderer-specific screen-space semantics, and may
+reduce reconstruction quality compared with pre-scale mapping. Disabling
+madVR cropping or driving `setArOverride`/zoom state is also less desirable
+because it would make VP responsible for renderer-owned user/profile state.
+
+Required correction tests:
+
+- presentation-plan tests must accept horizontal NLS with pillarbox geometry,
+  vertical NLS with letterbox geometry, and windowbox geometry while retaining
+  the compensated-DAR identity;
+- shader-coordinate tests must prove exterior pixels are unchanged, active
+  edges map exactly to themselves, centre/edge monotonicity is preserved, and
+  all quality taps remain inside the active rectangle;
+- stale, unstable, malformed, and out-of-range geometry must still fail safe;
+- HLSL preflight must succeed for every quality and geometry variant; and
+- live madVR validation must cover native full-raster, encoded pillarbox,
+  letterbox, and windowbox samples for both warp axes, with logs comparing VP's
+  trusted rectangle to madVR `videoCropRect`, `videoOutputRect`, and
+  `croppedVideoOutputRect`. The required 4:3-to-16:9 case must report `active`
+  and visibly engage NLS, while 4:3-to-2.35/2.76 remains `safe_fit`.
+
 ## Acceptance criteria
 
 - No production NLS path selects a target by `scope`/`normal` name or by a
