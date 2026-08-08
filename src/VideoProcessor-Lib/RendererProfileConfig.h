@@ -369,10 +369,8 @@ namespace RendererProfileConfig
 		else if (key.size() == 1 &&
 			std::isalnum(static_cast<unsigned char>(key.front())) != 0)
 		{
-			if (std::isupper(static_cast<unsigned char>(key.front())) != 0)
-				shift = true;
 			canonicalKey.assign(1, static_cast<char>(
-				std::tolower(static_cast<unsigned char>(key.front()))));
+				std::toupper(static_cast<unsigned char>(key.front()))));
 		}
 		else return false;
 		if (control) canonical += "Ctrl+";

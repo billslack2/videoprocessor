@@ -330,10 +330,6 @@ bool TryParseShortcut(const std::string& value, ACCEL& accelerator)
 	else if (keyToken.size() == 1 && std::isalnum(static_cast<unsigned char>(keyToken[0])))
 	{
 		key = static_cast<WORD>(std::toupper(static_cast<unsigned char>(keyToken[0])));
-		// Letter case is meaningful only for the key itself: V means Shift+V,
-		// while v means V. Modifier names remain case-insensitive.
-		if (std::isupper(static_cast<unsigned char>(keyToken[0])))
-			modifiers |= FSHIFT;
 	}
 	else
 		return false;

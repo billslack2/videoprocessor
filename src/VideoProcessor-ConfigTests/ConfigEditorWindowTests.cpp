@@ -178,8 +178,7 @@ void testEveryPageRoundTrips()
         ->setText(QStringLiteral("Ctrl+f"));
     QLineEdit* configShortcut = requireControl<QLineEdit>(window,
         QStringLiteral("config.shortcuts.config_editor"));
-    require(configShortcut->text().compare(QStringLiteral("Ctrl+Shift+s"),
-        Qt::CaseInsensitive) == 0,
+    require(configShortcut->text() == QStringLiteral("Ctrl+Shift+S"),
         "Open configuration did not default to Ctrl+Shift+S");
     configShortcut->setText(QStringLiteral("Ctrl+e"));
 
@@ -250,11 +249,11 @@ void testEveryPageRoundTrips()
         "scene_detect: false",
         "fullscreen_monitor_name: Test Display", "container_colorspace: BT2020",
         "queue_size: 48", "lead_frames: 3", "reset_queue_too_large_percent: 200",
-        "shortcut: Ctrl+q", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
+        "shortcut: Ctrl+Q", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
         "screen_aspect: 21:10", "vertical_alignment: bottom", "anamorphic_scale: 4:3",
         "renderer_start_stop_time_method: RATIONAL_RATIONAL", "frame_offset: 75",
         "renderer_primaries: BT2020", "max_cll: 1200", "max_fall: 450",
-        "fullscreen_toggle: Ctrl+f", "config_editor: Ctrl+e",
+        "fullscreen_toggle: Ctrl+F", "config_editor: Ctrl+E",
         "renderer: *", "run: C:\\Tools\\verified-action.cmd 42",
         "enabled: false", "debug: false", "debug_log_retention: 25",
         "label: Verified Stretch", "order: 10", "strength: 0.85"

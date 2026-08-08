@@ -836,7 +836,7 @@ namespace VideoProcessorTest
 					"fullscreen: true\n"
 					"[renderer_alias]\nvp: 1\nmadvr: 2\n"
 					"[queue]\nwhen: $key==\"l\"\nqueue_size: 32\nlead_frames: 4\ntarget_frames: 3\nactive_picture_lookahead_frames: 2\n"
-					"[queue.low_latency]\nwhen: $key==\"L\"\nqueue_size: 1\ntarget_frames: 1\n"
+					"[queue.low_latency]\nwhen: $key==\"Shift+L\"\nqueue_size: 1\ntarget_frames: 1\n"
 					"[directshow]\nvideo_conversion: V210_TO_P010\nframe_offset: 90\n"
 					"[directshow.conversion]\nconversion_method: SIMD\nmin_core_count: 1\nmax_core_count: 2\n"
 					"[directshow.ppm]\nppm: -17\n"
@@ -848,7 +848,7 @@ namespace VideoProcessorTest
 					"[shader.nls]\nwhen: $key==\"n\"\n"
 					"[shader.nls.standard]\nwhen: $key==\"Shift+n\"\nshader_type: nls\nglsl_file: NLS.glsl\n"
 					"[shader.cleanup]\ntype: multi\nwhen: $key==\"d\"\n"
-					"[shader.cleanup.deband]\nwhen: $key==\"D\"\nshader_type: custom\nhlsl_file: Deband.hlsl\nstage: pre_resize\norder: 30\n";
+					"[shader.cleanup.deband]\nwhen: $key==\"Shift+D\"\nshader_type: custom\nhlsl_file: Deband.hlsl\nstage: pre_resize\norder: 30\n";
 			}
 
 			ConfigFile config;
@@ -863,7 +863,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<size_t>(3), model.groups.size());
 
 			std::vector<RendererProfileConfig::KeySelection> selections;
-			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "L",
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "Shift+L",
 				[](const std::string&, std::string&) { return false; },
 				selections, error));
 			Assert::AreEqual(static_cast<size_t>(1), selections.size());
@@ -1519,6 +1519,16 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::CanonicalizeKeyChord(
 				"Control+f2", canonical));
 			Assert::AreEqual("Ctrl+F2", canonical.c_str());
+			Assert::IsTrue(RendererProfileConfig::CanonicalizeKeyChord(
+				"ShIfT+l", canonical));
+			Assert::AreEqual("Shift+L", canonical.c_str());
+			Assert::IsTrue(RendererProfileConfig::CanonicalizeKeyChord("l", canonical));
+			Assert::AreEqual("L", canonical.c_str());
+			Assert::IsTrue(RendererProfileConfig::CanonicalizeKeyChord("L", canonical));
+			Assert::AreEqual("L", canonical.c_str());
+			Assert::IsTrue(RendererProfileConfig::CanonicalizeKeyChord(
+				"cTrL+sHiFt+l", canonical));
+			Assert::AreEqual("Ctrl+Shift+L", canonical.c_str());
 
 			std::vector<RendererProfileConfig::AutomaticSelection> automatic;
 			Assert::IsTrue(RendererProfileConfig::SelectAutomatic(model,
@@ -1660,7 +1670,7 @@ namespace VideoProcessorTest
 
 		TEST_METHOD(Vp0079EmptyShaderRootResolvesAsExplicitOff)
 		{
-			Assert::IsFalse(MadVRShaderLoader::RuleSelectorsEqual(
+			Assert::IsTrue(MadVRShaderLoader::RuleSelectorsEqual(
 				"@shader-key:N", "@shader-key:n"));
 			Assert::IsFalse(MadVRShaderLoader::RuleSelectorsEqual(
 				"@shader-key:Shift+n", "@shader-key:n"));
@@ -2055,7 +2065,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::CollectKeyChords(model,
 				chords, error),
 				std::wstring(error.begin(), error.end()).c_str());
-			Assert::IsTrue(std::find(chords.begin(), chords.end(), "Shift+l") !=
+			Assert::IsTrue(std::find(chords.begin(), chords.end(), "Shift+L") !=
 				chords.end());
 
 			UnifiedProfileRuntime::Runtime runtime;

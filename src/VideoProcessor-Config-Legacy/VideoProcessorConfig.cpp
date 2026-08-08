@@ -81,20 +81,20 @@ struct ShortcutFieldDefinition
 };
 
 constexpr ShortcutFieldDefinition kShortcutFields[] = {
-    { L"Auto-set", "auto_set", L"Ctrl+Shift+a" },
+    { L"Auto-set", "auto_set", L"Ctrl+Shift+A" },
     { L"Exit fullscreen", "fullscreen_exit", L"Esc" },
     { L"Toggle fullscreen", "fullscreen_toggle", L"Alt+Enter" },
-    { L"Toggle statistics", "toggle_stats_overlay", L"Ctrl+i" },
-    { L"Set PQ", "pq_set", L"Ctrl+Shift+p" },
-    { L"Restart renderer", "renderer_restart", L"Shift+r" },
-    { L"Reset renderer", "renderer_reset", L"r" },
+    { L"Toggle statistics", "toggle_stats_overlay", L"Ctrl+I" },
+    { L"Set PQ", "pq_set", L"Ctrl+Shift+P" },
+    { L"Restart renderer", "renderer_restart", L"Shift+R" },
+    { L"Reset renderer", "renderer_reset", L"R" },
     { L"Capture input 1", "capture_1", L"Ctrl+1" },
     { L"Capture input 2", "capture_2", L"Ctrl+2" },
     { L"Capture input 3", "capture_3", L"Ctrl+3" },
     { L"Capture input 4", "capture_4", L"Ctrl+4" },
-    { L"Disable video conversion", "video_conversion_off", L"v" },
-    { L"Use P010 conversion", "video_conversion_p010", L"Shift+v" },
-    { L"Open configuration", "config_editor", L"Ctrl+Shift+s" }
+    { L"Disable video conversion", "video_conversion_off", L"V" },
+    { L"Use P010 conversion", "video_conversion_p010", L"Shift+V" },
+    { L"Open configuration", "config_editor", L"Ctrl+Shift+S" }
 };
 
 std::wstring ToWide(const std::string& value)
@@ -808,8 +808,12 @@ public:
         for (size_t index = 0; index < ARRAYSIZE(kShortcutFields); ++index)
         {
             const std::string configured = document.Get("shortcuts", kShortcutFields[index].key);
-            SetWindowTextW(shortcutFields[index], configured.empty() ?
-                kShortcutFields[index].defaultValue : ToWide(configured).c_str());
+            const std::string raw = configured.empty() ?
+                ToNarrow(kShortcutFields[index].defaultValue) : configured;
+            std::string canonical;
+            SetWindowTextW(shortcutFields[index],
+                RendererProfileConfig::CanonicalizeKeyChord(raw, canonical) ?
+                ToWide(canonical).c_str() : ToWide(raw).c_str());
         }
     }
 
@@ -835,9 +839,15 @@ public:
         for (size_t index = 0; index < ARRAYSIZE(kShortcutFields); ++index)
         {
             const std::string value = ConfigFile::Trim(GetControlText(shortcutFields[index]));
-            const std::string defaultValue = ToNarrow(kShortcutFields[index].defaultValue);
+            std::string canonical;
+            const std::string persisted =
+                RendererProfileConfig::CanonicalizeKeyChord(value, canonical) ?
+                canonical : value;
+            std::string defaultCanonical;
+            RendererProfileConfig::CanonicalizeKeyChord(
+                ToNarrow(kShortcutFields[index].defaultValue), defaultCanonical);
             SetOptionalKnown("shortcuts", kShortcutFields[index].key,
-                ConfigFile::NormalizeName(value) == ConfigFile::NormalizeName(defaultValue) ? std::string() : value);
+                persisted == defaultCanonical ? std::string() : persisted);
         }
     }
 
