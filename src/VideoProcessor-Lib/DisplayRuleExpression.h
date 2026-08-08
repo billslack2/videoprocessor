@@ -30,7 +30,7 @@ namespace DisplayRuleExpression
 			name == "primaries" || name == "format" || name == "resolution" ||
 			name == "range" || name == "scan" || name == "key" ||
 			name == "event" || name == "event_reason" ||
-			name == "viewport_profile" ||
+			name == "viewport_profile" || name == "vertical_alignment" ||
 			(name.size() > 8 && name.compare(0, 8, "profile.") == 0))
 		{
 			type = ValueType::Text;

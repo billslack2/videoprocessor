@@ -1161,6 +1161,50 @@ namespace Tests
 			}
 		}
 
+		TEST_METHOD(VerticalAlignmentRedistributesOnlyUnusedVerticalSpace)
+		{
+			const PresentationRect screen = { 0.0, 0.0, 1920.0, 1080.0 };
+			const auto top = FitAspect(2.40, screen,
+				VerticalPictureAlignment::TOP);
+			const auto center = FitAspect(2.40, screen,
+				VerticalPictureAlignment::CENTER);
+			const auto bottom = FitAspect(2.40, screen,
+				VerticalPictureAlignment::BOTTOM);
+
+			Assert::IsTrue(top.valid && center.valid && bottom.valid);
+			Assert::AreEqual(0.0, top.picture.top, 0.001);
+			Assert::AreEqual(800.0, top.picture.bottom, 0.001);
+			Assert::AreEqual(140.0, center.picture.top, 0.001);
+			Assert::AreEqual(940.0, center.picture.bottom, 0.001);
+			Assert::AreEqual(280.0, bottom.picture.top, 0.001);
+			Assert::AreEqual(1080.0, bottom.picture.bottom, 0.001);
+			for (const auto& fit : { top, center, bottom })
+			{
+				Assert::AreEqual(0.0, fit.picture.left, 0.001);
+				Assert::AreEqual(1920.0, fit.picture.right, 0.001);
+				Assert::AreEqual(2.40,
+					(fit.picture.right - fit.picture.left) /
+					(fit.picture.bottom - fit.picture.top), 0.000001);
+				Assert::AreEqual(static_cast<int>(UnusedSpaceAxis::VERTICAL),
+					static_cast<int>(fit.unusedAxis));
+			}
+
+			// A narrower picture consumes the complete screen height, so vertical
+			// alignment cannot introduce movement or change its centered side bars.
+			const auto narrowTop = FitAspect(4.0 / 3.0, screen,
+				VerticalPictureAlignment::TOP);
+			const auto narrowBottom = FitAspect(4.0 / 3.0, screen,
+				VerticalPictureAlignment::BOTTOM);
+			Assert::AreEqual(narrowTop.picture.top,
+				narrowBottom.picture.top, 0.001);
+			Assert::AreEqual(narrowTop.picture.bottom,
+				narrowBottom.picture.bottom, 0.001);
+			Assert::AreEqual(narrowTop.picture.left,
+				narrowBottom.picture.left, 0.001);
+			Assert::AreEqual(narrowTop.picture.right,
+				narrowBottom.picture.right, 0.001);
+		}
+
 		TEST_METHOD(DetectedContentFitsConfiguredScreenWithoutASecondViewport)
 		{
 			const PresentationRect panel = { 0.0, 0.0, 3840.0, 2160.0 };

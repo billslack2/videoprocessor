@@ -636,7 +636,7 @@ namespace VideoProcessorTest
 					"[vprenderer]\nwhen: $key==\"F4\"\nquality: high\nswitch_refresh_rate: true\n"
 					"[vprenderer.rec709]\nwhen: $key==\"F5\"\ntone_mapping: spline\n"
 					"[vprenderer.viewport]\nwhen: $key==\"F3\"\n"
-					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\nscreen_aspect: 2.1:1\nautomatic_crop: true\nsubtitle_fit: true\n"
+					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\nscreen_aspect: 2.1:1\nvertical_alignment: TOP\nautomatic_crop: true\nsubtitle_fit: true\n"
 					"[actions.audio_delay_film]\non: refresh.applied,refresh.confirmed\nwhen: $actual_refresh<=30\nrun: C:\\Videoprocessor\\audio\\audio_delay.bat 100\n"
 					"[shader.nls]\nwhen: $key==\"n\"\n"
 					"[shader.nls.standard]\nwhen: $key==\"Shift+n\"\nshader_type: nls\nglsl_file: NLS.glsl\n"
@@ -674,6 +674,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(47ull, viewport.screenAspect.numerator);
 			Assert::AreEqual(20ull, viewport.screenAspect.denominator);
 			Assert::IsTrue(viewport.hasScreenAspect);
+			Assert::AreEqual("top", viewport.verticalAlignment.c_str());
 			Assert::IsTrue(viewport.automaticCrop);
 			Assert::IsTrue(viewport.subtitleFit);
 
@@ -689,6 +690,60 @@ namespace VideoProcessorTest
 			Assert::IsTrue(result.snapshot->queue.hasQueueSize);
 			Assert::AreEqual(static_cast<size_t>(1),
 				result.snapshot->queue.queueSize);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(Vp0103VerticalAlignmentDefaultsValidatesAndPublishes)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0103-vertical-alignment.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+					"[vprenderer.viewport]\nscreen_aspect: 16:9\n"
+					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\n"
+					"screen_aspect: 16:9\nvertical_alignment: BOTTOM\n"
+					"automatic_crop: true\nsubtitle_fit: true\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			RendererProfileConfig::ResolvedViewport base;
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, "base", 1, base, error));
+			Assert::AreEqual("center", base.verticalAlignment.c_str());
+			RendererProfileConfig::ResolvedViewport scope;
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, "scope", 2, scope, error));
+			Assert::AreEqual("bottom", scope.verticalAlignment.c_str());
+
+			UnifiedProfileRuntime::Runtime runtime;
+			Assert::IsTrue(runtime.Initialize(config,
+				[](const std::string&, std::string&) { return false; }, error));
+			UnifiedProfileRuntime::SelectionResult selected;
+			Assert::IsTrue(runtime.SelectKey("F2",
+				[](const std::string&, std::string&) { return false; },
+				selected, error));
+			std::string published;
+			Assert::IsTrue(selected.snapshot->variables.Lookup(
+				"vertical_alignment", published));
+			Assert::AreEqual("bottom", published.c_str());
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[vprenderer.viewport]\nvertical_alignment: diagonal\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			error.clear();
+			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+			Assert::IsTrue(error.find("vertical_alignment") != std::string::npos);
 			DeleteFileA(path.c_str());
 		}
 

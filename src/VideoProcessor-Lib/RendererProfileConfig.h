@@ -121,6 +121,7 @@ namespace RendererProfileConfig
 		std::string profile = "default";
 		AspectRatio screenAspect{ 16, 9, 16.0 / 9.0 };
 		bool hasScreenAspect = false;
+		std::string verticalAlignment = "center";
 		AspectRatio anamorphicScale{ 1, 1, 1.0 };
 		bool automaticCrop = false;
 		bool subtitleFit = false;
@@ -454,6 +455,8 @@ namespace RendererProfileConfig
 		{
 			if (key == "screen_aspect")
 				return IsAspectInRange(value, 1.0, 4.0);
+			if (key == "vertical_alignment")
+				return IsChoice(value, { "top", "center", "bottom" });
 			if (key == "anamorphic_scale")
 				return IsAspectInRange(value, 0.5, 2.0);
 			if (key == "automatic_crop" || key == "subtitle_fit")
@@ -691,6 +694,7 @@ namespace RendererProfileConfig
 	{
 		if (variable == "event" || variable == "event_reason" ||
 			variable == "viewport_profile" || variable == "screen_aspect" ||
+			variable == "vertical_alignment" ||
 			variable == "anamorphic_scale" || variable == "automatic_crop" ||
 			variable == "subtitle_fit" || variable == "subtitle_hold_seconds" ||
 			variable == "subtitle_release_drift_seconds" ||
@@ -1186,6 +1190,7 @@ namespace RendererProfileConfig
 				"sdr_target_primaries", "report_bt2020_to_display",
 				"sdr_input_transfer", "output_diagnostics",
 				"diagnostic_disable_shader_cache", "screen_aspect",
+				"vertical_alignment",
 				"automatic_crop", "subtitle_fit",
 				"subtitle_hold_seconds", "subtitle_release_drift_seconds",
 				"subtitle_padding_pixels"
@@ -1603,6 +1608,18 @@ namespace RendererProfileConfig
 				return false;
 			}
 			viewport.hasScreenAspect = true;
+		}
+		value = settings.find("vertical_alignment");
+		if (value != settings.end())
+		{
+			const std::string alignment = ConfigFile::NormalizeName(value->second);
+			if (!IsChoice(alignment, { "top", "center", "bottom" }))
+			{
+				error = "[profiles.viewport." + viewport.profile +
+					"] vertical_alignment must be top, center, or bottom";
+				return false;
+			}
+			viewport.verticalAlignment = alignment;
 		}
 		value = settings.find("anamorphic_scale");
 		if (value != settings.end() &&

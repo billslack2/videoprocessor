@@ -1410,10 +1410,11 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 		{
 			ApplyUnifiedProfileSnapshot(snapshot, false);
 			DebugLog::Log(
-				"Unified profile runtime restored generation %llu, viewport %s (%s)",
+				"Unified profile runtime restored generation %llu, viewport %s (%s, %s)",
 				static_cast<unsigned long long>(snapshot->generation),
 				snapshot->viewport.profile.c_str(),
-				snapshot->viewport.screenAspect.Canonical().c_str());
+				snapshot->viewport.screenAspect.Canonical().c_str(),
+				snapshot->viewport.verticalAlignment.c_str());
 		}
 	}
 
@@ -9147,11 +9148,12 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	if (const auto profileSnapshot = m_profileRuntime.GetSnapshot())
 	{
-		stats.viewport.Format(TEXT("%S (%S)"),
+		stats.viewport.Format(TEXT("%S (%S, %S)"),
 			profileSnapshot->viewport.profile.c_str(),
 			profileSnapshot->viewport.hasScreenAspect ?
 				profileSnapshot->viewport.screenAspect.Canonical().c_str() :
-				"renderer native");
+				"renderer native",
+			profileSnapshot->viewport.verticalAlignment.c_str());
 	}
 	else
 	{

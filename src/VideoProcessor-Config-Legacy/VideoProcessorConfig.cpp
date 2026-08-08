@@ -529,7 +529,9 @@ public:
     HWND viewportUnits[3] = {};
     int activePage = 0;
     HWND viewportSelector = nullptr;
-    HWND viewportFields[8] = {};
+    HWND viewportFields[9] = {};
+    HWND viewportAlignmentLabel = nullptr;
+    HWND viewportAlignmentHelp = nullptr;
     HWND viewportRule = nullptr;
     HWND viewportKeyLabel = nullptr;
     HWND viewportKey = nullptr;
@@ -659,6 +661,7 @@ public:
         SetFont(viewportLabels[1], smallFont);
         SetFont(viewportLabels[4], smallFont);
         SetFont(viewportLabels[6], smallFont);
+        SetFont(viewportAlignmentHelp, smallFont);
     }
 
     void SetDirty(bool value = true)
@@ -1744,6 +1747,11 @@ public:
         EnableWindow(moveViewportDownButton,
             canReorder && static_cast<size_t>(index + 1) < viewportSections.size() ? TRUE : FALSE);
         SetViewportValue(viewportFields[0], section, "screen_aspect", "16:9");
+        const std::string configuredAlignment = ConfigFile::NormalizeName(
+            document.Get(section.c_str(), "vertical_alignment"));
+        const LRESULT alignmentIndex = configuredAlignment == "top" ? 0 :
+            (configuredAlignment == "bottom" ? 2 : 1);
+        SendMessageW(viewportFields[8], CB_SETCURSEL, alignmentIndex, 0);
         const std::string anamorphic = document.Get(section.c_str(), "anamorphic_scale");
         SendMessageW(viewportFields[1], BM_SETCHECK, anamorphic.empty() ? BST_UNCHECKED : BST_CHECKED, 0);
         SetWindowTextW(viewportFields[2], ToWide(anamorphic.empty() ? "1:1" : anamorphic).c_str());
@@ -1778,6 +1786,13 @@ public:
             if (value != (original.empty() ? field.fallback : original))
                 document.SetKnown(section, field.key, value);
         }
+        const std::string originalAlignment = ConfigFile::NormalizeName(
+            document.Get(section.c_str(), "vertical_alignment"));
+        const std::string alignmentValue = ConfigFile::NormalizeName(
+            GetControlText(viewportFields[8]));
+        if (alignmentValue != (originalAlignment.empty() ?
+            "center" : originalAlignment))
+            document.SetKnown(section, "vertical_alignment", alignmentValue);
         const bool anamorphicEnabled = SendMessageW(viewportFields[1], BM_GETCHECK, 0, 0) == BST_CHECKED;
         const std::string originalAnamorphic = document.Get(section.c_str(), "anamorphic_scale");
         if (anamorphicEnabled)
@@ -1978,6 +1993,7 @@ public:
         }
         document.SetKnown(section, "label", ToNarrow(requestedName));
         document.SetKnown(section, "screen_aspect", "16:9");
+        document.SetKnown(section, "vertical_alignment", "center");
         document.SetKnown(section, "subtitle_hold_seconds", "2");
         document.SetKnown(section, "subtitle_release_drift_seconds", "0");
         document.SetKnown(section, "subtitle_padding_pixels", "20");
@@ -2391,7 +2407,8 @@ public:
                 const std::pair<const char*, int> viewportControls[] = {
                     { "when", -1 }, { "shortcut", -2 }, { "screen_aspect", 0 }, { "anamorphic_scale", 2 },
                     { "automatic_crop", 3 }, { "subtitle_fit", 4 }, { "subtitle_hold_seconds", 5 },
-                    { "subtitle_release_drift_seconds", 6 }, { "subtitle_padding_pixels", 7 } };
+                    { "subtitle_release_drift_seconds", 6 }, { "subtitle_padding_pixels", 7 },
+                    { "vertical_alignment", 8 } };
                 for (const auto& field : viewportControls)
                     if (key == field.first)
                     {
@@ -3037,23 +3054,26 @@ public:
             MoveWindow(viewportLabels[3], cardPadding, geometryTop + Px(30), fieldLabelWidth, Px(20), TRUE);
             MoveWindow(viewportFields[0], fieldLeft, geometryTop + Px(24), fieldWidth, inputHeight, TRUE);
             MoveWindow(viewportLabels[4], cardPadding, geometryTop + Px(60), detailTextWidth, Px(22), TRUE);
-            MoveWindow(viewportFields[1], cardPadding, geometryTop + Px(88), detailTextWidth, Px(26), TRUE);
-            MoveWindow(viewportLabels[5], cardPadding, geometryTop + Px(126), fieldLabelWidth, Px(20), TRUE);
-            MoveWindow(viewportFields[2], fieldLeft, geometryTop + Px(120), fieldWidth, inputHeight, TRUE);
-            MoveWindow(viewportLabels[6], cardPadding, geometryTop + Px(154), detailTextWidth, Px(22), TRUE);
-            MoveWindow(viewportFields[3], cardPadding, geometryTop + Px(184), detailTextWidth, Px(26), TRUE);
+            MoveWindow(viewportAlignmentLabel, cardPadding, geometryTop + Px(92), fieldLabelWidth, Px(20), TRUE);
+            MoveWindow(viewportFields[8], fieldLeft, geometryTop + Px(86), fieldWidth, Px(200), TRUE);
+            MoveWindow(viewportAlignmentHelp, cardPadding, geometryTop + Px(122), detailTextWidth, Px(38), TRUE);
+            MoveWindow(viewportFields[1], cardPadding, geometryTop + Px(166), detailTextWidth, Px(26), TRUE);
+            MoveWindow(viewportLabels[5], cardPadding, geometryTop + Px(204), fieldLabelWidth, Px(20), TRUE);
+            MoveWindow(viewportFields[2], fieldLeft, geometryTop + Px(198), fieldWidth, inputHeight, TRUE);
+            MoveWindow(viewportLabels[6], cardPadding, geometryTop + Px(232), detailTextWidth, Px(22), TRUE);
+            MoveWindow(viewportFields[3], cardPadding, geometryTop + Px(262), detailTextWidth, Px(26), TRUE);
 
-            MoveWindow(viewportLabels[7], cardPadding, geometryTop + Px(226), detailTextWidth, Px(20), TRUE);
-            MoveWindow(viewportFields[4], cardPadding, geometryTop + Px(252), detailTextWidth, Px(26), TRUE);
-            MoveWindow(viewportLabels[8], cardPadding, geometryTop + Px(288), fieldLabelWidth, Px(20), TRUE);
-            MoveWindow(viewportFields[5], fieldLeft, geometryTop + Px(282), Px(78), inputHeight, TRUE);
-            MoveWindow(viewportUnits[0], fieldLeft + Px(86), geometryTop + Px(288), Px(64), Px(20), TRUE);
-            MoveWindow(viewportLabels[9], cardPadding, geometryTop + Px(322), fieldLabelWidth, Px(20), TRUE);
-            MoveWindow(viewportFields[6], fieldLeft, geometryTop + Px(316), Px(78), inputHeight, TRUE);
-            MoveWindow(viewportUnits[1], fieldLeft + Px(86), geometryTop + Px(322), Px(64), Px(20), TRUE);
-            MoveWindow(viewportLabels[10], cardPadding, geometryTop + Px(356), fieldLabelWidth, Px(20), TRUE);
-            MoveWindow(viewportFields[7], fieldLeft, geometryTop + Px(350), Px(78), inputHeight, TRUE);
-            MoveWindow(viewportUnits[2], fieldLeft + Px(86), geometryTop + Px(356), Px(48), Px(20), TRUE);
+            MoveWindow(viewportLabels[7], cardPadding, geometryTop + Px(304), detailTextWidth, Px(20), TRUE);
+            MoveWindow(viewportFields[4], cardPadding, geometryTop + Px(330), detailTextWidth, Px(26), TRUE);
+            MoveWindow(viewportLabels[8], cardPadding, geometryTop + Px(366), fieldLabelWidth, Px(20), TRUE);
+            MoveWindow(viewportFields[5], fieldLeft, geometryTop + Px(360), Px(78), inputHeight, TRUE);
+            MoveWindow(viewportUnits[0], fieldLeft + Px(86), geometryTop + Px(366), Px(64), Px(20), TRUE);
+            MoveWindow(viewportLabels[9], cardPadding, geometryTop + Px(400), fieldLabelWidth, Px(20), TRUE);
+            MoveWindow(viewportFields[6], fieldLeft, geometryTop + Px(394), Px(78), inputHeight, TRUE);
+            MoveWindow(viewportUnits[1], fieldLeft + Px(86), geometryTop + Px(400), Px(64), Px(20), TRUE);
+            MoveWindow(viewportLabels[10], cardPadding, geometryTop + Px(434), fieldLabelWidth, Px(20), TRUE);
+            MoveWindow(viewportFields[7], fieldLeft, geometryTop + Px(428), Px(78), inputHeight, TRUE);
+            MoveWindow(viewportUnits[2], fieldLeft + Px(86), geometryTop + Px(434), Px(48), Px(20), TRUE);
         }
         else if (activePage == 4)
         {
@@ -3826,6 +3846,18 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
         SendMessageW(editor->viewportKey, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"e.g. F2"));
         editor->viewportFields[0] = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
             0, 0, 0, 0, editor->cards[2], reinterpret_cast<HMENU>(static_cast<INT_PTR>(kViewportFieldFirst)), nullptr, nullptr);
+        editor->viewportAlignmentLabel = text(editor->cards[2], L"Vertical alignment");
+        editor->viewportFields[8] = CreateWindowW(WC_COMBOBOXW, L"",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST,
+            0, 0, 0, 0, editor->cards[2],
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(kViewportFieldFirst + 8)), nullptr, nullptr);
+        SendMessageW(editor->viewportFields[8], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Top"));
+        SendMessageW(editor->viewportFields[8], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Center"));
+        SendMessageW(editor->viewportFields[8], CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Bottom"));
+        SendMessageW(editor->viewportFields[8], CB_SETCURSEL, 1, 0);
+        SetWindowTheme(editor->viewportFields[8], L"Explorer", nullptr);
+        editor->viewportAlignmentHelp = text(editor->cards[2],
+            L"Resting position for unused vertical space. Subtitle fitting may temporarily move the picture away from this edge.");
         editor->viewportFields[1] = CreateWindowW(L"BUTTON", L"Override anamorphic scale", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             0, 0, 0, 0, editor->cards[2], reinterpret_cast<HMENU>(static_cast<INT_PTR>(kViewportFieldFirst + 1)), nullptr, nullptr);
         editor->viewportFields[2] = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
@@ -3969,7 +4001,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                 LOWORD(wParam) < kQueueRecoveryFieldFirst + 2) ||
             (LOWORD(wParam) >= kStartupFieldFirst &&
                 LOWORD(wParam) < kStartupFieldFirst + 6) ||
-            (LOWORD(wParam) >= kViewportFieldFirst && LOWORD(wParam) < kViewportFieldFirst + 8))
+            (LOWORD(wParam) >= kViewportFieldFirst && LOWORD(wParam) < kViewportFieldFirst + 9))
         {
             if (HIWORD(wParam) == EN_CHANGE || HIWORD(wParam) == CBN_SELCHANGE || HIWORD(wParam) == BN_CLICKED)
                 editor->SetDirty();

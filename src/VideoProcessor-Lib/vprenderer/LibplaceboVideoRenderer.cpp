@@ -682,6 +682,7 @@ namespace
 		bool diagnosticDisableShaderCache = false;
 		double configuredScreenAspect = 1.0;
 		bool configuredScreenTarget = false;
+		std::string verticalAlignment = "center";
 		double anamorphicScale = 1.0;
 		bool automaticSourceCrop = false;
 		bool scopeSubtitleFit = false;
@@ -698,6 +699,16 @@ namespace
 		std::string lutReferenceRange = "auto";
 		double lutReferenceNits = 0.0;
 	};
+
+	AlphaSourceCrop::VerticalPictureAlignment ResolveVerticalPictureAlignment(
+		const std::string& alignment)
+	{
+		if (alignment == "top")
+			return AlphaSourceCrop::VerticalPictureAlignment::TOP;
+		if (alignment == "bottom")
+			return AlphaSourceCrop::VerticalPictureAlignment::BOTTOM;
+		return AlphaSourceCrop::VerticalPictureAlignment::CENTER;
+	}
 
 	std::string EffectiveSettingsFingerprint(
 		const RendererSettings& settings,
@@ -727,6 +738,7 @@ namespace
 		{
 			stream
 				<< settings.configuredScreenAspect << '|' << settings.configuredScreenTarget << '|'
+				<< settings.verticalAlignment << '|'
 				<< settings.anamorphicScale << '|'
 				<< settings.automaticSourceCrop << '|'
 				<< settings.scopeSubtitleFit << '|' << settings.scopeSubtitleHoldMs << '|'
@@ -1367,6 +1379,13 @@ namespace
 				settings.configuredScreenTarget = true;
 			}
 		}
+		if (readViewportString("vertical_alignment", raw))
+		{
+			const std::string alignment = ConfigFile::NormalizeName(raw);
+			if (alignment == "top" || alignment == "center" ||
+				alignment == "bottom")
+				settings.verticalAlignment = alignment;
+		}
 		if (config.TryGetString(rule.section, "anamorphic_scale", raw))
 		{
 			double value = 0.0;
@@ -1549,6 +1568,8 @@ namespace
 				DebugLog::Log(
 					"libplacebo: screen_aspect must be a ratio or decimal between 1.0 and 4.0; using output panel aspect");
 		}
+		settings.verticalAlignment = ReadChoice(config,
+			"vertical_alignment", "center", { "top", "center", "bottom" });
 		if (TryGetDisplayString(config, "lut", rawValue))
 			settings.lutPath = ResolveConfigRelativePath(
 				config, rawValue, &settings.lutPathRejected,
@@ -2380,6 +2401,7 @@ struct LibplaceboVideoRenderer::Impl
 	enum pl_color_transfer sdrInputTransfer = PL_COLOR_TRC_UNKNOWN;
 	double configuredScreenAspect = 1.0;
 	bool configuredScreenTarget = false;
+	std::string verticalAlignment = "center";
 	double anamorphicScale = 1.0;
 	bool automaticSourceCrop = false;
 	bool scopeSubtitleFit = false;
@@ -4547,6 +4569,7 @@ struct LibplaceboVideoRenderer::Impl
 		sdrInputTransfer = TranslateOutputGamma(settings.sdrInputTransfer);
 		configuredScreenAspect = settings.configuredScreenAspect;
 		configuredScreenTarget = settings.configuredScreenTarget;
+		verticalAlignment = settings.verticalAlignment;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCrop = settings.automaticSourceCrop;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
@@ -4607,6 +4630,7 @@ struct LibplaceboVideoRenderer::Impl
 		const bool renderingBehaviorChanged =
 			configuredScreenAspect != settings.configuredScreenAspect ||
 			configuredScreenTarget != settings.configuredScreenTarget ||
+			verticalAlignment != settings.verticalAlignment ||
 			anamorphicScale != settings.anamorphicScale ||
 			automaticSourceCrop != settings.automaticSourceCrop ||
 			scopeSubtitleFit != settings.scopeSubtitleFit ||
@@ -4615,6 +4639,7 @@ struct LibplaceboVideoRenderer::Impl
 			scopeSubtitlePaddingPixels != settings.scopeSubtitlePaddingPixels;
 		configuredScreenAspect = settings.configuredScreenAspect;
 		configuredScreenTarget = settings.configuredScreenTarget;
+		verticalAlignment = settings.verticalAlignment;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCrop = settings.automaticSourceCrop;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
@@ -6563,13 +6588,14 @@ struct LibplaceboVideoRenderer::Impl
 				if (trustedActivePicture)
 					*trustedActivePicture = true;
 			}
-			auto fitTargetToAspect = [&target](double aspect)
+			auto fitTargetToAspect = [&target](double aspect,
+				AlphaSourceCrop::VerticalPictureAlignment alignment)
 			{
 				const AlphaSourceCrop::PresentationRect available = {
 					target.crop.x0, target.crop.y0,
 					target.crop.x1, target.crop.y1 };
 				const AlphaSourceCrop::CenteredFitDecision fit =
-					AlphaSourceCrop::FitCenteredAspect(aspect, available);
+					AlphaSourceCrop::FitAspect(aspect, available, alignment);
 				if (fit.valid)
 				{
 					target.crop.x0 = static_cast<float>(fit.picture.left);
@@ -6582,11 +6608,13 @@ struct LibplaceboVideoRenderer::Impl
 			if (!publishFinalPresentation)
 			{
 				// Shader/profile prewarming must not publish per-frame presentation
-				// state. It only needs a valid, centered render geometry.
+				// state. It only needs valid geometry for the selected viewport.
 				if (configuredScreenActive)
-					fitTargetToAspect(configuredScreenAspect);
+					fitTargetToAspect(configuredScreenAspect,
+						AlphaSourceCrop::VerticalPictureAlignment::CENTER);
 				fitTargetToAspect(pl_rect2df_aspect(&source.crop) *
-					anamorphicScale);
+					anamorphicScale,
+					ResolveVerticalPictureAlignment(verticalAlignment));
 				return;
 			}
 
@@ -6624,7 +6652,8 @@ struct LibplaceboVideoRenderer::Impl
 			const double screenLayoutAspect = configuredScreenActive || nlsRequested
 				? finalTargetAspect : pl_rect2df_aspect(&target.crop);
 			const AlphaSourceCrop::CenteredFitDecision screenFit =
-				fitTargetToAspect(screenLayoutAspect);
+				fitTargetToAspect(screenLayoutAspect,
+					AlphaSourceCrop::VerticalPictureAlignment::CENTER);
 			const AlphaSourceCrop::PresentationRect finalScreen = screenFit.picture;
 			auto publishFinalLayout = [&](AlphaSourceCrop::UnusedSpaceAxis axis,
 				const char* mapping)
@@ -6642,12 +6671,14 @@ struct LibplaceboVideoRenderer::Impl
 					<< std::lround(target.crop.y0 * 10.0f) << '-'
 					<< std::lround(target.crop.x1 * 10.0f) << ','
 					<< std::lround(target.crop.y1 * 10.0f) << '|'
-					<< static_cast<int>(axis) << '|' << mapping;
+					<< static_cast<int>(axis) << '|' << mapping << '|'
+					<< verticalAlignment << '|'
+					<< cropDecision.verticalTranslationPixels;
 				if (policy.str() == lastFinalLayoutPolicy)
 					return;
 				lastFinalLayoutPolicy = policy.str();
 				DebugLog::Log(
-					"Alpha final layout: raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s anamorphic=%.5f",
+					"Alpha final layout: raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s subtitle_shift_source_pixels=%d anamorphic=%.5f",
 					width, height,
 					effectiveGeometry.left, effectiveGeometry.top,
 					effectiveGeometry.right, effectiveGeometry.bottom,
@@ -6661,6 +6692,8 @@ struct LibplaceboVideoRenderer::Impl
 					target.crop.x0, target.crop.y0,
 					target.crop.x1, target.crop.y1,
 					AlphaSourceCrop::UnusedSpaceAxisName(axis), mapping,
+					verticalAlignment.c_str(),
+					cropDecision.verticalTranslationPixels,
 					anamorphicScale);
 			};
 
@@ -6767,7 +6800,8 @@ struct LibplaceboVideoRenderer::Impl
 				// stretched vertically despite having no active NLS hook.
 				const AlphaSourceCrop::CenteredFitDecision pictureFit =
 					fitTargetToAspect(pl_rect2df_aspect(&source.crop) *
-						anamorphicScale);
+						anamorphicScale,
+						ResolveVerticalPictureAlignment(verticalAlignment));
 				publishFinalLayout(pictureFit.unusedAxis, "linear-nls-fallback");
 				return;
 			}
@@ -6775,9 +6809,10 @@ struct LibplaceboVideoRenderer::Impl
 			// NLS is off: use the same final source rectangle with ordinary scaling.
 			const AlphaSourceCrop::CenteredFitDecision pictureFit =
 				fitTargetToAspect(pl_rect2df_aspect(&source.crop) *
-					anamorphicScale);
+					anamorphicScale,
+					ResolveVerticalPictureAlignment(verticalAlignment));
 			publishFinalLayout(pictureFit.unusedAxis, "linear");
-			// Never translate the fitted destination for source-baked UI. Moving
+			// Never apply subtitle translation to the fitted destination. Moving
 			// target.crop cannot reveal source pixels; it only clips one edge and
 			// leaves an unequal gap at the other. Unsupported overlay evidence is
 			// therefore a centered geometry no-op.
@@ -7933,23 +7968,25 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	}
 	m_manualUnifiedProfiles = next;
 
-	activeState.Format(TEXT("Viewport: %S (%S)"),
+	activeState.Format(TEXT("Viewport: %S (%S, %S)"),
 		snapshot.viewport.profile.c_str(),
 		candidateSettings.configuredScreenTarget ?
 			snapshot.viewport.screenAspect.Canonical().c_str() :
-			"output panel");
+			"output panel",
+		candidateSettings.verticalAlignment.c_str());
 	if (!rendererRestartRequired && m_impl)
 	{
 		m_impl->ApplyViewportSettings(candidateSettings);
 		ApplyViewportTarget(candidateSettings.configuredScreenTarget,
 			candidateSettings.configuredScreenAspect, "application snapshot");
 		DebugLog::Log(
-			"application viewport state applied live: %s target=%s explicit=%d",
+			"application viewport state applied live: %s target=%s explicit=%d vertical_alignment=%s",
 			snapshot.viewport.profile.c_str(),
 			candidateSettings.configuredScreenTarget ?
 				snapshot.viewport.screenAspect.Canonical().c_str() :
 				"output-panel",
-			candidateSettings.configuredScreenTarget ? 1 : 0);
+			candidateSettings.configuredScreenTarget ? 1 : 0,
+			candidateSettings.verticalAlignment.c_str());
 	}
 	DebugLog::Log("application profile generation %llu applied (%s)",
 		static_cast<unsigned long long>(snapshot.generation),

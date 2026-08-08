@@ -642,8 +642,9 @@ namespace AlphaSourceCrop
 		return decision;
 	}
 
-	CenteredFitDecision FitCenteredAspect(
-		double contentAspect, const PresentationRect& screen)
+	CenteredFitDecision FitAspect(double contentAspect,
+		const PresentationRect& screen,
+		VerticalPictureAlignment verticalAlignment)
 	{
 		CenteredFitDecision decision;
 		const double screenWidth = screen.right - screen.left;
@@ -657,7 +658,6 @@ namespace AlphaSourceCrop
 
 		const double screenAspect = screenWidth / screenHeight;
 		const double centerX = (screen.left + screen.right) * 0.5;
-		const double centerY = (screen.top + screen.bottom) * 0.5;
 		double pictureWidth = screenWidth;
 		double pictureHeight = screenHeight;
 		const double epsilon = 1e-9;
@@ -675,13 +675,39 @@ namespace AlphaSourceCrop
 		{
 			decision.unusedAxis = UnusedSpaceAxis::NONE;
 		}
+		double pictureTop = screen.top;
+		if (verticalAlignment == VerticalPictureAlignment::CENTER)
+			pictureTop += (screenHeight - pictureHeight) * 0.5;
+		else if (verticalAlignment == VerticalPictureAlignment::BOTTOM)
+			pictureTop = screen.bottom - pictureHeight;
+		else if (verticalAlignment != VerticalPictureAlignment::TOP)
+			pictureTop += (screenHeight - pictureHeight) * 0.5;
 		decision.picture = {
 			centerX - pictureWidth * 0.5,
-			centerY - pictureHeight * 0.5,
+			pictureTop,
 			centerX + pictureWidth * 0.5,
-			centerY + pictureHeight * 0.5 };
+			pictureTop + pictureHeight };
 		decision.valid = true;
 		return decision;
+	}
+
+	CenteredFitDecision FitCenteredAspect(
+		double contentAspect, const PresentationRect& screen)
+	{
+		return FitAspect(contentAspect, screen,
+			VerticalPictureAlignment::CENTER);
+	}
+
+	const char* VerticalPictureAlignmentName(
+		VerticalPictureAlignment alignment)
+	{
+		switch (alignment)
+		{
+		case VerticalPictureAlignment::TOP: return "top";
+		case VerticalPictureAlignment::CENTER: return "center";
+		case VerticalPictureAlignment::BOTTOM: return "bottom";
+		default: return "invalid";
+		}
 	}
 
 	const char* UnusedSpaceAxisName(UnusedSpaceAxis axis)

@@ -149,6 +149,9 @@ void testEveryPageRoundTrips()
 
     requireControl<QLineEdit>(window,
         QStringLiteral("config.vprenderer.viewport.screen_aspect"))->setText(QStringLiteral("21:10"));
+    selectData(requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.viewport.vertical_alignment")),
+        QStringLiteral("bottom"));
     requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.viewport.automatic_crop"))->setCheckState(Qt::Checked);
     requireControl<QCheckBox>(window,
@@ -244,7 +247,7 @@ void testEveryPageRoundTrips()
         "fullscreen_monitor_name: Test Display", "container_colorspace: BT2020",
         "queue_size: 48", "lead_frames: 3", "reset_queue_too_large_percent: 200",
         "shortcut: Ctrl+q", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
-        "screen_aspect: 21:10", "anamorphic_scale: 4:3",
+        "screen_aspect: 21:10", "vertical_alignment: bottom", "anamorphic_scale: 4:3",
         "renderer_start_stop_time_method: RATIONAL_RATIONAL", "frame_offset: 75",
         "renderer_primaries: BT2020", "max_cll: 1200", "max_fall: 450",
         "fullscreen_toggle: Ctrl+f", "config_editor: Ctrl+e",
@@ -267,6 +270,9 @@ void testEveryPageRoundTrips()
     require(requireControl<QLineEdit>(reloaded,
         QStringLiteral("config.vprenderer.viewport.screen_aspect"))->text() ==
         QStringLiteral("21:10"), "Viewport value did not reload");
+    require(requireControl<QComboBox>(reloaded,
+        QStringLiteral("config.vprenderer.viewport.vertical_alignment"))->currentData().toString() ==
+        QStringLiteral("bottom"), "Vertical alignment did not reload");
 }
 
 void answerInputDialog(const QString& text)

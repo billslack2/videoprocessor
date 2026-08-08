@@ -1733,11 +1733,24 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         screenAspect->setToolTip(QStringLiteral(
             "The physical screen shape. Enter a ratio, decimal aspect, or "
             "screen dimensions. This same value controls destination layout, "
-            "black-bar cropping, subtitle fitting, and NSL's target aspect."));
+            "black-bar cropping, subtitle fitting, and NLS's target aspect."));
         form->addRow(QString(), helpLabel(QStringLiteral(
             "Enter the physical screen shape as a ratio (for example 2.1:1), "
             "a decimal (2.1), or dimensions (2100x1000). VP uses this value "
-            "consistently for black bars, cropping, subtitles, and NSL.")));
+            "consistently for black bars, cropping, subtitles, and NLS.")));
+        auto* verticalAlignment = addChoice(
+            QStringLiteral("Vertical picture alignment"),
+            QStringLiteral("vertical_alignment"),
+            { QStringLiteral("top"), QStringLiteral("center"),
+                QStringLiteral("bottom") });
+        verticalAlignment->setToolTip(QStringLiteral(
+            "Sets the picture's resting position when unused vertical screen "
+            "space remains. Subtitle fitting may temporarily move it away "
+            "from this edge to keep HDMI subtitle pixels visible."));
+        form->addRow(QString(), helpLabel(QStringLiteral(
+            "Top and Bottom support one-sided masking. Center preserves the "
+            "current presentation. Enabled subtitle fitting can still move "
+            "the picture upward or downward as required.")));
         anamorphicEnabled = new QCheckBox(QStringLiteral("Enable anamorphic stretch"));
         anamorphicEnabled->setObjectName(controlName(sectionPrefix,
             QStringLiteral("anamorphic_enabled")));
@@ -1821,6 +1834,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
             {
                 if (key == QStringLiteral("screen_aspect")) return QStringLiteral("16:9");
+                if (key == QStringLiteral("vertical_alignment")) return QStringLiteral("center");
                 if (key == QStringLiteral("subtitle_hold_seconds")) return QStringLiteral("2");
                 if (key == QStringLiteral("subtitle_release_drift_seconds")) return QStringLiteral("0");
                 if (key == QStringLiteral("subtitle_padding_pixels")) return QStringLiteral("20");
@@ -2074,7 +2088,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         while (existing.contains(section, Qt::CaseInsensitive)) section = base + QString::number(suffix++);
         if (!document_->AddSection(section.toStdString())) return;
         if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
+        {
             document_->SetKnown(section.toStdString(), "label", requested.toLocal8Bit().constData());
+            document_->SetKnown(section.toStdString(), "vertical_alignment", "center");
+        }
         markDirty();
         refresh(section);
     });
