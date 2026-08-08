@@ -345,6 +345,9 @@
     <ClInclude Include="MainConfigSchema.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ConfigurationLiveApply.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
 	<ClInclude Include="ShaderConfigValidation.h">
 	  <Filter>Header Files</Filter>
 	</ClInclude>

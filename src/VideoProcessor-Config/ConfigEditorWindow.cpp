@@ -5,6 +5,7 @@
 #include <objbase.h>
 
 #include "ConfigEditorWindow.h"
+#include <ConfigurationLiveApply.h>
 
 #include <ConfigEditorCore.h>
 #include <RendererProfileConfig.h>
@@ -738,6 +739,16 @@ void ConfigEditorWindow::saveChanges()
     }
     dirty_ = false;
     saveButton_->setEnabled(false);
+
+    // The editor is a separate process. Signal the running VP instance only
+    // after the atomic safe-save has committed the complete validated file.
+    // An auto-reset event also makes saves harmless when VP is not running.
+    if (HANDLE changedEvent = CreateEventW(nullptr, FALSE, FALSE,
+        ConfigurationLiveApply::ChangedEventName))
+    {
+        SetEvent(changedEvent);
+        CloseHandle(changedEvent);
+    }
     if (!draftedActions.isEmpty())
     {
         if (auto* actions = findChild<QListWidget*>(QStringLiteral("config.actions.items"));
@@ -750,14 +761,14 @@ void ConfigEditorWindow::saveChanges()
                 enabled->setChecked(false);
             }
         }
-        setStatus(QStringLiteral("Changes saved. Incomplete action%1 %2 saved as disabled draft%1. Backup: %3")
+        setStatus(QStringLiteral("Changes saved and sent to VideoProcessor. Incomplete action%1 %2 saved as disabled draft%1. Backup: %3")
             .arg(draftedActions.size() == 1 ? QString() : QStringLiteral("s"),
                 draftedActions.join(QStringLiteral(", ")),
                 QString::fromStdWString(result.backupPath)));
     }
     else
     {
-        setStatus(QStringLiteral("Changes saved safely. Backup: %1").arg(QString::fromStdWString(result.backupPath)));
+        setStatus(QStringLiteral("Changes saved safely and sent to VideoProcessor. Backup: %1").arg(QString::fromStdWString(result.backupPath)));
     }
 }
 
@@ -3424,7 +3435,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
             rendererContent));
     }
     return createPage(QStringLiteral("Shortcuts"),
-        QStringLiteral("Configure global keyboard shortcuts. Defaults are shown; clear a field and save to disable it. Restart VP after saving."),
+        QStringLiteral("Configure global keyboard shortcuts. Defaults are shown; clear a field and save to disable it. A running VP applies saved shortcuts immediately."),
         content);
 }
 

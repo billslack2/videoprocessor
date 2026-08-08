@@ -3,6 +3,7 @@
 #include <ApplicationInterface.h>
 #include <ModernOperatorLayout.h>
 #include <ConfigFile.h>
+#include <ConfigurationLiveApply.h>
 #include <DisplayTopologySession.h>
 #include <EventActionLauncher.h>
 #include <MainConfigSchema.h>
@@ -28,6 +29,16 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:
+		TEST_METHOD(FullscreenActivationNeverStealsAnotherProcessForeground)
+		{
+			Assert::IsTrue(ConfigurationLiveApply::MayActivateFullscreen(
+				42, 42, true));
+			Assert::IsTrue(ConfigurationLiveApply::MayActivateFullscreen(
+				42, 0, false));
+			Assert::IsFalse(ConfigurationLiveApply::MayActivateFullscreen(
+				42, 84, true));
+		}
+
 		TEST_METHOD(ApplicationInterfaceDefaultsToModern)
 		{
 			const auto selection = ApplicationInterface::Resolve(
@@ -839,6 +850,57 @@ namespace VideoProcessorTest
 			Assert::IsTrue(result.snapshot->queue.hasQueueSize);
 			Assert::AreEqual(static_cast<size_t>(1),
 				result.snapshot->queue.queueSize);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(UnifiedProfileRuntimeReloadsEditedViewportAndKeepsSelection)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-live-profile-reload.cfg";
+			auto writeConfiguration = [&path](const char* scopeAspect)
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[vprenderer.viewport]\n"
+					"when: $key==\"F3\"\n"
+					"screen_aspect: 16:9\n"
+					"[vprenderer.viewport.scope]\n"
+					"when: $key==\"F2\"\n"
+					"screen_aspect: " << scopeAspect << "\n";
+			};
+
+			writeConfiguration("2.35:1");
+			ConfigFile initialConfig;
+			Assert::IsTrue(initialConfig.Load(path));
+			std::string error;
+			UnifiedProfileRuntime::Runtime runtime;
+			Assert::IsTrue(runtime.Initialize(initialConfig,
+				[](const std::string&, std::string&) { return false; }, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			UnifiedProfileRuntime::SelectionResult selected;
+			Assert::IsTrue(runtime.SelectKey("F2",
+				[](const std::string&, std::string&) { return false; },
+				selected, error));
+			Assert::AreEqual("scope",
+				selected.snapshot->viewport.profile.c_str());
+
+			writeConfiguration("2.40:1");
+			ConfigFile editedConfig;
+			Assert::IsTrue(editedConfig.Load(path));
+			UnifiedProfileRuntime::RefreshResult reloaded;
+			Assert::IsTrue(runtime.Reload(editedConfig,
+				[](const std::string&, std::string&) { return false; },
+				reloaded, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(reloaded.changed);
+			Assert::AreEqual("scope",
+				reloaded.snapshot->viewport.profile.c_str());
+			Assert::AreEqual(12ull,
+				reloaded.snapshot->viewport.screenAspect.numerator);
+			Assert::AreEqual(5ull,
+				reloaded.snapshot->viewport.screenAspect.denominator);
 			DeleteFileA(path.c_str());
 		}
 

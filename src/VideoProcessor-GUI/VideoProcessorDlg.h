@@ -74,7 +74,9 @@
 #define SHADER_SHORTCUT_DEBOUNCE_TIMER_ID 11
 #define SHADER_SHORTCUT_DEBOUNCE_MS 200
 #define LLDV_PROFILE_APPLY_TIMER_ID 12
+#define CONFIGURATION_LIVE_APPLY_TIMER_ID 13
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
+#define CONFIGURATION_LIVE_APPLY_INTERVAL_MS 250
 
 
 
@@ -381,6 +383,9 @@ protected:
 	CRect m_initialVideoWindowRect;
 	HICON m_hIcon;
 	HACCEL m_accelerator = nullptr;
+	HANDLE m_configurationChangedEvent = nullptr;
+	std::map<std::string, std::map<std::string, std::string>>
+		m_configurationSnapshot;
 	std::map<WORD, CString> m_shaderShortcutRules;
 	std::set<WORD> m_shaderShortcutKeys;
 	ShortcutDebounceState m_shaderShortcutDebounce;
@@ -679,6 +684,8 @@ protected:
 	void LogDroppedCounterChanges(const StatsData& stats);
 	void ApplyStatsOverlayForActiveRenderer();
 	void LoadDisplayRefreshRateOverrides();
+	void ApplySavedConfiguration();
+	void ReloadConfiguredAccelerators();
 	bool TryGetDisplayRefreshRateOverride(double nominalRateHz,
 		double& overrideRateHz, int& matchedNominalRate) const;
 	void MonitorQueueHealth(size_t rawQueueSize, size_t convertedQueueSize,

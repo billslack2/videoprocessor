@@ -67,6 +67,13 @@ namespace UnifiedProfileRuntime
 			const DisplayRuleExpression::ValueLookup& sourceValues,
 			std::string& error);
 
+		// Replaces the parsed configuration while retaining valid manual profile
+		// selections. The newly resolved snapshot is published atomically only
+		// after the complete candidate configuration has resolved successfully.
+		bool Reload(const ConfigFile& config,
+			const DisplayRuleExpression::ValueLookup& sourceValues,
+			RefreshResult& result, std::string& error);
+
 		bool SelectKey(const std::string& key,
 			const DisplayRuleExpression::ValueLookup& sourceValues,
 			SelectionResult& result, std::string& error);

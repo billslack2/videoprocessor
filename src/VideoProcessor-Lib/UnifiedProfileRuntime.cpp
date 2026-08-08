@@ -248,6 +248,85 @@ namespace UnifiedProfileRuntime
 	}
 
 
+	bool Runtime::Reload(const ConfigFile& config,
+		const DisplayRuleExpression::ValueLookup& sourceValues,
+		RefreshResult& result, std::string& error)
+	{
+		std::lock_guard<std::mutex> guard(m_mutex);
+		result = {};
+		error.clear();
+		if (!m_initialized)
+		{
+			error = "unified profile runtime is not initialized";
+			return false;
+		}
+
+		RendererProfileConfig::Model candidateModel;
+		if (!RendererProfileConfig::Read(config, candidateModel, error))
+			return false;
+
+		const std::shared_ptr<const Snapshot> previous =
+			std::atomic_load(&m_snapshot);
+		RendererProfileConfig::Model previousModel = std::move(m_model);
+		const std::string previousConfigPath = m_configPath;
+		const std::string previousStatePath = m_statePath;
+		m_model = std::move(candidateModel);
+		m_configPath = config.GetLoadedPath();
+		m_statePath = m_model.persistSelection ?
+			RendererProfileConfig::StatePath(config) : std::string();
+
+		std::shared_ptr<const Snapshot> candidate;
+		std::map<std::string, std::string> manual = previous ?
+			previous->manualSelections :
+			std::map<std::string, std::string>();
+		for (auto selection = manual.begin(); selection != manual.end();)
+		{
+			const auto group = std::find_if(m_model.groups.begin(),
+				m_model.groups.end(), [&selection](
+					const RendererProfileConfig::Group& candidate)
+				{
+					return candidate.name == selection->first;
+				});
+			const bool valid = group != m_model.groups.end() &&
+				std::find(group->profiles.begin(), group->profiles.end(),
+					selection->second) != group->profiles.end();
+			if (!valid)
+				selection = manual.erase(selection);
+			else
+				++selection;
+		}
+		if (!BuildSnapshot(manual, sourceValues, m_generation + 1,
+			candidate, error))
+		{
+			m_model = std::move(previousModel);
+			m_configPath = previousConfigPath;
+			m_statePath = previousStatePath;
+			return false;
+		}
+		result.changed = !previous || !SameEffectiveState(*previous, *candidate);
+		if (result.changed && !CollectTransitionActionInvocations(previous,
+			candidate, "configuration", result.actions, error))
+		{
+			m_model = std::move(previousModel);
+			m_configPath = previousConfigPath;
+			m_statePath = previousStatePath;
+			return false;
+		}
+
+		++m_generation;
+		std::atomic_store(&m_snapshot, candidate);
+		result.snapshot = candidate;
+		DebugLog::Log(
+			"unified profile configuration reloaded viewport=%s aspect=%s generation=%llu changed=%d",
+			candidate->viewport.profile.c_str(),
+			candidate->viewport.hasScreenAspect ?
+				candidate->viewport.screenAspect.Canonical().c_str() : "native",
+			static_cast<unsigned long long>(candidate->generation),
+			result.changed ? 1 : 0);
+		return true;
+	}
+
+
 	bool Runtime::SelectKey(const std::string& key,
 		const DisplayRuleExpression::ValueLookup& sourceValues,
 		SelectionResult& result, std::string& error)
