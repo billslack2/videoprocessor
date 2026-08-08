@@ -8,7 +8,6 @@
 
 #include <pch.h>
 #include "CV210toP010VideoFrameFormatter.h"
-#include <vector>
 #include <immintrin.h>
 #include <intrin.h> // For __cpuid
 #include <iomanip>  // For std::setprecision
@@ -25,24 +24,6 @@
 
 #define PIXELS_PER_PACK 6
 #define BYTES_PER_PACK (4 * sizeof(uint32_t))
-
-// 720p special-case handling
-#define P010_WRITE_VALUE_720(dst, idx, val) ((dst)[(idx)] = (val) << 6)
-#define CHROMA_NEUTRAL (512 << 6)
-
-#define FAST_BORDER_COPY_Y(dst, src, width) \
-    do { \
-        (dst)[0] = 0; (dst)[1] = 0; \
-        memcpy((dst) + 2, (src) + 2, ((width) - 4) * sizeof(uint16_t)); \
-        (dst)[(width) - 2] = 0; (dst)[(width) - 1] = 0; \
-    } while (0)
-
-#define FAST_BORDER_COPY_UV(dst, src, width) \
-    do { \
-        (dst)[0] = CHROMA_NEUTRAL; (dst)[1] = CHROMA_NEUTRAL; \
-        memcpy((dst) + 2, (src) + 2, ((width) - 4) * sizeof(uint16_t)); \
-        (dst)[(width) - 2] = CHROMA_NEUTRAL; (dst)[(width) - 1] = CHROMA_NEUTRAL; \
-    } while (0)
 
 namespace
 {
@@ -96,6 +77,25 @@ namespace
             }
         }
 
+    }
+
+    inline uint16_t AverageP010Chroma(uint16_t evenValue,
+        uint16_t oddCode) noexcept
+    {
+        const uint16_t evenCode = static_cast<uint16_t>(evenValue >> 6);
+        return static_cast<uint16_t>(
+            ((static_cast<uint32_t>(evenCode) + oddCode + 1U) >> 1) << 6);
+    }
+
+    inline void AverageV210PackChromaIntoP010(const V210Pack& oddPack,
+        uint32_t pixelCount, uint16_t*& dstUV) noexcept
+    {
+        for (uint32_t pair = 0; pair < pixelCount / 2; ++pair)
+        {
+            dstUV[0] = AverageP010Chroma(dstUV[0], oddPack.u[pair]);
+            dstUV[1] = AverageP010Chroma(dstUV[1], oddPack.v[pair]);
+            dstUV += 2;
+        }
     }
 }
 
@@ -434,16 +434,28 @@ void CV210toP010VideoFrameFormatter::ProcessLineSegment(
                 lineY_odd += 12;
             }
 
-            // Process UV from even line only (UV0..UV7)
-            __m256i uv0 = _mm256_permutevar8x32_epi32(in_even, uv_idx0);
-            uv0 = _mm256_srlv_epi32(uv0, uv_shift0);
-            uv0 = _mm256_and_si256(uv0, mask_3ff);
+            // Downsample 4:2:2 to 4:2:0 using the same rounded vertical
+            // average as the UYVY converter.
+            __m256i uv0_even = _mm256_permutevar8x32_epi32(in_even, uv_idx0);
+            uv0_even = _mm256_and_si256(
+                _mm256_srlv_epi32(uv0_even, uv_shift0), mask_3ff);
+            __m256i uv0_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx0);
+            uv0_odd = _mm256_and_si256(
+                _mm256_srlv_epi32(uv0_odd, uv_shift0), mask_3ff);
+            __m256i uv0 = _mm256_srli_epi32(_mm256_add_epi32(
+                _mm256_add_epi32(uv0_even, uv0_odd),
+                _mm256_set1_epi32(1)), 1);
             uv0 = _mm256_slli_epi32(uv0, 6);
 
-            // Process UV from even line only (UV8..UV11)
-            __m256i uv1 = _mm256_permutevar8x32_epi32(in_even, uv_idx1);
-            uv1 = _mm256_srlv_epi32(uv1, uv_shift1);
-            uv1 = _mm256_and_si256(uv1, mask_3ff);
+            __m256i uv1_even = _mm256_permutevar8x32_epi32(in_even, uv_idx1);
+            uv1_even = _mm256_and_si256(
+                _mm256_srlv_epi32(uv1_even, uv_shift1), mask_3ff);
+            __m256i uv1_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx1);
+            uv1_odd = _mm256_and_si256(
+                _mm256_srlv_epi32(uv1_odd, uv_shift1), mask_3ff);
+            __m256i uv1 = _mm256_srli_epi32(_mm256_add_epi32(
+                _mm256_add_epi32(uv1_even, uv1_odd),
+                _mm256_set1_epi32(1)), 1);
             uv1 = _mm256_slli_epi32(uv1, 6);
 
             // Store UV
@@ -471,9 +483,11 @@ void CV210toP010VideoFrameFormatter::ProcessLineSegment(
                 const uint32_t pixelCount = std::min<uint32_t>(PIXELS_PER_PACK, remaining);
                 const V210Pack evenPack = ReadV210Pack(src_even);
                 const V210Pack oddPack = ReadV210Pack(src_odd);
+                uint16_t* tailUV = lineUV;
                 WriteV210PackToP010(evenPack, pixelCount, lineY_even, lineUV);
                 uint16_t* noChroma = nullptr;
                 WriteV210PackToP010(oddPack, pixelCount, lineY_odd, noChroma);
+                AverageV210PackChromaIntoP010(oddPack, pixelCount, tailUV);
                 remaining -= pixelCount;
             }
         }
@@ -611,31 +625,11 @@ void CV210toP010VideoFrameFormatter::OnVideoState(VideoStateComPtr& videoState)
     if (origWidth == 0 || (origWidth & 1) != 0)
         throw std::runtime_error("P010 output requires a positive, even width");
 
-    bool special720 = (origWidth == 1280 && m_height == 720);
-    m_special720 = special720;
-
     m_stride = videoState->BytesPerRow();
     const uint32_t packedBytes =
         ((origWidth + PIXELS_PER_PACK - 1) / PIXELS_PER_PACK) * BYTES_PER_PACK;
     if (m_stride < packedBytes)
         throw std::runtime_error("v210 input row is smaller than the active frame width");
-
-    if (special720)
-    {
-        const uint32_t extraPixels = origWidth % PIXELS_PER_PACK;
-        const uint32_t extraNeeded = (extraPixels == 0) ? 0 : (PIXELS_PER_PACK - extraPixels);
-        const uint32_t fullDecodedWidth = origWidth + extraNeeded;
-
-        m_tempY.resize(fullDecodedWidth);
-        m_tempUV.resize(fullDecodedWidth);
-    }
-    else
-    {
-        m_tempY.clear();
-        m_tempUV.clear();
-        m_tempY.shrink_to_fit();
-        m_tempUV.shrink_to_fit();
-    }
 
     m_width = origWidth;
 }
@@ -685,13 +679,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010(
     uint32_t width,
     uint32_t height) noexcept
 {
-    // 720p uses special-case handling regardless of method selection
-    if (m_special720)
-    {
-        return ConvertV210ToP010_720p(srcData, srcStride, dstY, dstUV, width, height);
-    }
-
-    // For non-720p, respect the configured conversion method
+    // Respect the configured conversion method at every resolution.
     ConversionMethod method = m_conversionMethod;
 
     // AUTO mode: select based on CPU features and frame size
@@ -735,98 +723,6 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010(
             // Standard scalar baseline
             return ConvertV210ToP010_Standard(srcData, srcStride, dstY, dstUV, width, height);
     }
-}
-
-// =====================================================================
-bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_720p(
-    const uint8_t* srcData,
-    uint32_t srcStride,
-    uint16_t* dstY, 
-    uint16_t* dstUV,
-    uint32_t width,
-    uint32_t height) noexcept
-{
-    const uint32_t extraPixels = width % PIXELS_PER_PACK;
-    const uint32_t extraNeeded = (extraPixels == 0) ? 0 : (PIXELS_PER_PACK - extraPixels);
-    const uint32_t fullDecodedWidth = width + extraNeeded;
-    const uint32_t fullPacks = fullDecodedWidth / PIXELS_PER_PACK;
-    
-    uint16_t* const tempYData = m_tempY.data();
-    uint16_t* const tempUVData = m_tempUV.data();
-    
-    for (uint32_t line = 0; line < height; line++)
-    {
-        const uint32_t* srcLine = reinterpret_cast<const uint32_t*>(
-            srcData + static_cast<ptrdiff_t>(line * srcStride));
-        const bool isEvenLine = (line & 1) == 0;
-
-        // Fill UV buffer for even lines
-        if (isEvenLine)
-        {
-            for (size_t i = 0; i < m_tempUV.size(); ++i) {
-                tempUVData[i] = CHROMA_NEUTRAL;
-            }
-        }
-
-        const uint32_t* src = srcLine;
-        for (uint32_t pack = 0; pack < fullPacks; ++pack) 
-        {
-            const uint32_t off = pack * PIXELS_PER_PACK;
-            uint32_t val;
-            uint16_t u, y1, y2, v;
-
-            if (isEvenLine)
-            {
-                V210_READ_PACK_BLOCK(u, y1, v);
-                P010_WRITE_VALUE_720(tempUVData, off + 0, u);
-                P010_WRITE_VALUE_720(tempYData, off + 0, y1);
-                P010_WRITE_VALUE_720(tempUVData, off + 1, v);
-
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                P010_WRITE_VALUE_720(tempYData, off + 1, y1);
-                P010_WRITE_VALUE_720(tempUVData, off + 2, u);
-                P010_WRITE_VALUE_720(tempYData, off + 2, y2);
-
-                V210_READ_PACK_BLOCK(v, y1, u);
-                P010_WRITE_VALUE_720(tempUVData, off + 3, v);
-                P010_WRITE_VALUE_720(tempYData, off + 3, y1);
-                P010_WRITE_VALUE_720(tempUVData, off + 4, u);
-
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                P010_WRITE_VALUE_720(tempYData, off + 4, y1);
-                P010_WRITE_VALUE_720(tempUVData, off + 5, v);
-                P010_WRITE_VALUE_720(tempYData, off + 5, y2);
-            }
-            else
-            {
-                V210_READ_PACK_BLOCK(u, y1, v);
-                P010_WRITE_VALUE_720(tempYData, off + 0, y1);
-
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                P010_WRITE_VALUE_720(tempYData, off + 1, y1);
-                P010_WRITE_VALUE_720(tempYData, off + 2, y2);
-
-                V210_READ_PACK_BLOCK(v, y1, u);
-                P010_WRITE_VALUE_720(tempYData, off + 3, y1);
-
-                V210_READ_PACK_BLOCK(y1, v, y2);
-                P010_WRITE_VALUE_720(tempYData, off + 4, y1);
-                P010_WRITE_VALUE_720(tempYData, off + 5, y2);
-            }
-        }
-        
-        uint16_t* lineDstY = dstY + line * width;
-        uint16_t* lineDstUV = isEvenLine ? (dstUV + (line / 2) * width) : nullptr;
-
-        FAST_BORDER_COPY_Y(lineDstY, tempYData, width);
-        
-        if (isEvenLine && lineDstUV)
-        {
-            FAST_BORDER_COPY_UV(lineDstUV, tempUVData, width);
-        }
-    }
-    
-    return true;
 }
 
 // =====================================================================
@@ -934,16 +830,27 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMD(
                 lineY_odd += 12;
             }
 
-            // Process UV from even line only (UV0..UV7)
-            __m256i uv0 = _mm256_permutevar8x32_epi32(in_even, uv_idx0);
-            uv0 = _mm256_srlv_epi32(uv0, uv_shift0);
-            uv0 = _mm256_and_si256(uv0, mask_3ff);
+            // Rounded vertical chroma average, matching UYVY->P010.
+            __m256i uv0_even = _mm256_permutevar8x32_epi32(in_even, uv_idx0);
+            uv0_even = _mm256_and_si256(
+                _mm256_srlv_epi32(uv0_even, uv_shift0), mask_3ff);
+            __m256i uv0_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx0);
+            uv0_odd = _mm256_and_si256(
+                _mm256_srlv_epi32(uv0_odd, uv_shift0), mask_3ff);
+            __m256i uv0 = _mm256_srli_epi32(_mm256_add_epi32(
+                _mm256_add_epi32(uv0_even, uv0_odd),
+                _mm256_set1_epi32(1)), 1);
             uv0 = _mm256_slli_epi32(uv0, 6);
 
-            // Process UV from even line only (UV8..UV11)
-            __m256i uv1 = _mm256_permutevar8x32_epi32(in_even, uv_idx1);
-            uv1 = _mm256_srlv_epi32(uv1, uv_shift1);
-            uv1 = _mm256_and_si256(uv1, mask_3ff);
+            __m256i uv1_even = _mm256_permutevar8x32_epi32(in_even, uv_idx1);
+            uv1_even = _mm256_and_si256(
+                _mm256_srlv_epi32(uv1_even, uv_shift1), mask_3ff);
+            __m256i uv1_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx1);
+            uv1_odd = _mm256_and_si256(
+                _mm256_srlv_epi32(uv1_odd, uv_shift1), mask_3ff);
+            __m256i uv1 = _mm256_srli_epi32(_mm256_add_epi32(
+                _mm256_add_epi32(uv1_even, uv1_odd),
+                _mm256_set1_epi32(1)), 1);
             uv1 = _mm256_slli_epi32(uv1, 6);
 
             // Store UV
@@ -971,9 +878,11 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMD(
                 const uint32_t pixelCount = std::min<uint32_t>(PIXELS_PER_PACK, remaining);
                 const V210Pack evenPack = ReadV210Pack(src_even);
                 const V210Pack oddPack = ReadV210Pack(src_odd);
+                uint16_t* tailUV = lineUV;
                 WriteV210PackToP010(evenPack, pixelCount, lineY_even, lineUV);
                 uint16_t* noChroma = nullptr;
                 WriteV210PackToP010(oddPack, pixelCount, lineY_odd, noChroma);
+                AverageV210PackChromaIntoP010(oddPack, pixelCount, tailUV);
                 remaining -= pixelCount;
             }
         }
@@ -1000,7 +909,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Optimized(
         const bool isEvenLine = (line & 1) == 0;
         
         uint16_t* lineY = dstY + static_cast<ptrdiff_t>(line) * width;
-        uint16_t* lineUV = isEvenLine ? (dstUV + static_cast<ptrdiff_t>(line >> 1) * width) : nullptr;
+        uint16_t* lineUV = dstUV + static_cast<ptrdiff_t>(line >> 1) * width;
         
         uint16_t* dstY_ptr = lineY;
         uint16_t* dstUV_ptr = lineUV;
@@ -1036,19 +945,26 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Optimized(
             }
             else
             {
-                // Odd line: Y only
+                // Odd line: write Y and complete the rounded vertical chroma
+                // average started by the preceding even line.
                 V210_READ_PACK_BLOCK(u, y1, v);
+                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr;
                 *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr;
                 
                 V210_READ_PACK_BLOCK(y1, u, y2);
                 *dstY_ptr++ = y1 << 6; 
+                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr;
                 *dstY_ptr++ = y2 << 6;
                 
                 V210_READ_PACK_BLOCK(v, y1, u);
+                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr;
                 *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr;
                 
                 V210_READ_PACK_BLOCK(y1, v, y2);
                 *dstY_ptr++ = y1 << 6; 
+                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr;
                 *dstY_ptr++ = y2 << 6;
             }
         }
@@ -1057,7 +973,14 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Optimized(
         if (tailPixels > 0)
         {
             const V210Pack tail = ReadV210Pack(src);
-            WriteV210PackToP010(tail, tailPixels, dstY_ptr, dstUV_ptr);
+            if (isEvenLine)
+                WriteV210PackToP010(tail, tailPixels, dstY_ptr, dstUV_ptr);
+            else
+            {
+                uint16_t* noChroma = nullptr;
+                WriteV210PackToP010(tail, tailPixels, dstY_ptr, noChroma);
+                AverageV210PackChromaIntoP010(tail, tailPixels, dstUV_ptr);
+            }
         }
     }
     
@@ -1075,7 +998,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Standard(
 {
     // Standard implementation matching the reference optimization level
     // Uses the same macros and logic flow as the original reference code
-    // but without 720p special casing or SIMD optimizations
+    // Portable scalar baseline without SIMD optimizations.
     
     const uint32_t packsPerLine = width / PIXELS_PER_PACK;
     
@@ -1087,7 +1010,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Standard(
         
         // Set destination pointers for this line (matches reference logic)
         uint16_t* dstY_ptr = dstY + static_cast<ptrdiff_t>(line) * width;
-        uint16_t* dstUV_ptr = isEvenLine ? (dstUV + static_cast<ptrdiff_t>(line >> 1) * width) : nullptr;
+        uint16_t* dstUV_ptr = dstUV + static_cast<ptrdiff_t>(line >> 1) * width;
         
         // Process each pack using the same macro-based approach as reference
         for (uint32_t pack = 0; pack < packsPerLine; pack++)
@@ -1120,19 +1043,25 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Standard(
             }
             else
             {
-                // Odd line: Y only (matches reference exactly)
+                // Odd line completes the rounded vertical chroma average.
                 V210_READ_PACK_BLOCK(u, y1, v);
+                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr;
                 *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr;
                 
                 V210_READ_PACK_BLOCK(y1, u, y2);
                 *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr;
                 *dstY_ptr++ = y2 << 6;
                 
                 V210_READ_PACK_BLOCK(v, y1, u);
+                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr;
                 *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr;
                 
                 V210_READ_PACK_BLOCK(y1, v, y2);
                 *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr;
                 *dstY_ptr++ = y2 << 6;
             }
         }
@@ -1141,7 +1070,14 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Standard(
         if (tailPixels > 0)
         {
             const V210Pack tail = ReadV210Pack(src);
-            WriteV210PackToP010(tail, tailPixels, dstY_ptr, dstUV_ptr);
+            if (isEvenLine)
+                WriteV210PackToP010(tail, tailPixels, dstY_ptr, dstUV_ptr);
+            else
+            {
+                uint16_t* noChroma = nullptr;
+                WriteV210PackToP010(tail, tailPixels, dstY_ptr, noChroma);
+                AverageV210PackChromaIntoP010(tail, tailPixels, dstUV_ptr);
+            }
         }
     }
     

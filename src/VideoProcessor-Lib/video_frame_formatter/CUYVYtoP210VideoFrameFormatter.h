@@ -8,6 +8,8 @@
 class CUYVYtoP210VideoFrameFormatter : public IVideoFrameFormatter
 {
 public:
+	enum class ConversionMethod { AUTO, SCALAR, AVX2 };
+	CUYVYtoP210VideoFrameFormatter();
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
 	LONG GetOutFrameSize() const override;
@@ -15,9 +17,16 @@ public:
 	{
 		return { VideoFrameSampleRange::LIMITED, 8, 8 };
 	}
+	void SetConversionMethod(ConversionMethod method) { m_conversionMethod = method; }
 
 private:
 	uint32_t m_width = 0;
 	uint32_t m_height = 0;
 	uint32_t m_sourceStride = 0;
+	bool m_hasAVX2 = false;
+	ConversionMethod m_conversionMethod = ConversionMethod::AUTO;
+	void ConvertScalar(const uint8_t* sourceFrame, uint16_t* destinationY,
+		uint16_t* destinationUV) const;
+	void ConvertAVX2(const uint8_t* sourceFrame, uint16_t* destinationY,
+		uint16_t* destinationUV) const;
 };

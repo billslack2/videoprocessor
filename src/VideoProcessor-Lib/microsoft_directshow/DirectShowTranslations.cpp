@@ -63,6 +63,25 @@ DXVA_NominalRange TranslatePixelValueRange(PixelValueRange pixelValueRange)
 }
 
 
+DXVA_NominalRange ResolveDirectShowNominalRange(
+	DXVA_NominalRange forcedRange,
+	const VideoFrameFormatterOutputContract& formatterContract)
+{
+	if (forcedRange != DXVA_NominalRange::DXVA_NominalRange_Unknown)
+		return forcedRange;
+
+	switch (formatterContract.sampleRange)
+	{
+	case VideoFrameSampleRange::FULL:
+		return DXVA_NominalRange::DXVA_NominalRange_0_255;
+	case VideoFrameSampleRange::LIMITED:
+		return DXVA_NominalRange::DXVA_NominalRange_16_235;
+	default:
+		return DXVA_NominalRange::DXVA_NominalRange_Unknown;
+	}
+}
+
+
 DXVA_VideoTransferMatrix TranslateVideoTransferMatrix(ColorSpace colorSpace)
 {
 	switch (colorSpace)

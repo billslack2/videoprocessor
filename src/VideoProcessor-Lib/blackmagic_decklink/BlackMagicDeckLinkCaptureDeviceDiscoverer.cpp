@@ -14,8 +14,11 @@
 #include "BlackMagicDeckLinkCaptureDevice.h"
 
 
-BlackMagicDeckLinkCaptureDeviceDiscoverer::BlackMagicDeckLinkCaptureDeviceDiscoverer(ICaptureDeviceDiscovererCallback& callback):
-	ACaptureDeviceDiscoverer(callback)
+BlackMagicDeckLinkCaptureDeviceDiscoverer::BlackMagicDeckLinkCaptureDeviceDiscoverer(
+	ICaptureDeviceDiscovererCallback& callback,
+	const DeckLinkCaptureFormatPreferences& formatPreferences):
+	ACaptureDeviceDiscoverer(callback),
+	m_formatPreferences(formatPreferences)
 {
 }
 
@@ -73,7 +76,8 @@ HRESULT	STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDeviceDiscoverer::DeckLinkDev
 
 	// Build device
 	ACaptureDeviceComPtr captureDevice;
-	captureDevice.Attach(new BlackMagicDeckLinkCaptureDevice(deckLinkDevice));
+	captureDevice.Attach(new BlackMagicDeckLinkCaptureDevice(
+		deckLinkDevice, m_formatPreferences));
 
 	m_captureDeviceMap[deckLinkDevice] = captureDevice;
 

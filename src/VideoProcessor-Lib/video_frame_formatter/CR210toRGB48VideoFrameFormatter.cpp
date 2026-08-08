@@ -7,6 +7,8 @@
 
 #include <pch.h>
 
+#include <immintrin.h>
+#include <intrin.h>
 #include <limits>
 
 #include "CR210toRGB48VideoFrameFormatter.h"
@@ -14,10 +16,11 @@
 
 namespace
 {
-	inline uint16_t Expand10To16(uint16_t value)
+	inline uint16_t Align10To16(uint16_t value)
 	{
-		// Bit replication maps both endpoints exactly: 0x000 -> 0x0000, 0x3FF -> 0xFFFF.
-		return static_cast<uint16_t>((value << 6) | (value >> 4));
+		// Preserve documented limited-range codes and legal excursions in the
+		// most-significant ten bits of the RGB48 component.
+		return static_cast<uint16_t>(value << 6);
 	}
 
 	inline uint32_t ReadBigEndian32(const uint8_t* source)
@@ -27,11 +30,85 @@ namespace
 			(static_cast<uint32_t>(source[2]) << 8) |
 			static_cast<uint32_t>(source[3]);
 	}
+
+	bool CpuSupportsAVX2() noexcept
+	{
+		int cpuInfo[4] = {};
+		__cpuid(cpuInfo, 0);
+		if (cpuInfo[0] < 7)
+			return false;
+		__cpuid(cpuInfo, 1);
+		constexpr int osxsave = 1 << 27;
+		constexpr int avx = 1 << 28;
+		if ((cpuInfo[2] & (osxsave | avx)) != (osxsave | avx))
+			return false;
+		if ((_xgetbv(0) & 0x6) != 0x6)
+			return false;
+		__cpuidex(cpuInfo, 7, 0);
+		return (cpuInfo[1] & (1 << 5)) != 0;
+	}
+
+	inline __m128i PackEightComponents(__m256i components) noexcept
+	{
+		return _mm_packus_epi32(_mm256_castsi256_si128(components),
+			_mm256_extracti128_si256(components, 1));
+	}
+
+	inline __m128i ShuffleRGB(__m128i red, __m128i green, __m128i blue,
+		__m128i redMask, __m128i greenMask, __m128i blueMask) noexcept
+	{
+		return _mm_or_si128(_mm_or_si128(
+			_mm_shuffle_epi8(red, redMask),
+			_mm_shuffle_epi8(green, greenMask)),
+			_mm_shuffle_epi8(blue, blueMask));
+	}
+
+	void ConvertEightPixelsAVX2(const uint8_t* source,
+		uint16_t* destination) noexcept
+	{
+		const __m256i reverseEachWord = _mm256_setr_epi8(
+			3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12,
+			3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12);
+		const __m256i mask10 = _mm256_set1_epi32(0x3ff);
+		const __m256i packed = _mm256_shuffle_epi8(
+			_mm256_loadu_si256(reinterpret_cast<const __m256i*>(source)),
+			reverseEachWord);
+		const __m256i red = _mm256_slli_epi32(
+			_mm256_and_si256(_mm256_srli_epi32(packed, 20), mask10), 6);
+		const __m256i green = _mm256_slli_epi32(
+			_mm256_and_si256(_mm256_srli_epi32(packed, 10), mask10), 6);
+		const __m256i blue = _mm256_slli_epi32(
+			_mm256_and_si256(packed, mask10), 6);
+
+		// Narrow each channel once, then form the continuous RGB triplet stream
+		// with byte shuffles. This preserves every 10-bit code exactly; no range
+		// scaling or clipping is performed.
+		const __m128i red16 = PackEightComponents(red);
+		const __m128i green16 = PackEightComponents(green);
+		const __m128i blue16 = PackEightComponents(blue);
+		const char z = static_cast<char>(-1);
+		const __m128i group0 = ShuffleRGB(red16, green16, blue16,
+			_mm_setr_epi8(0, 1, z, z, z, z, 2, 3, z, z, z, z, 4, 5, z, z),
+			_mm_setr_epi8(z, z, 0, 1, z, z, z, z, 2, 3, z, z, z, z, 4, 5),
+			_mm_setr_epi8(z, z, z, z, 0, 1, z, z, z, z, 2, 3, z, z, z, z));
+		const __m128i group1 = ShuffleRGB(red16, green16, blue16,
+			_mm_setr_epi8(z, z, 6, 7, z, z, z, z, 8, 9, z, z, z, z, 10, 11),
+			_mm_setr_epi8(z, z, z, z, 6, 7, z, z, z, z, 8, 9, z, z, z, z),
+			_mm_setr_epi8(4, 5, z, z, z, z, 6, 7, z, z, z, z, 8, 9, z, z));
+		const __m128i group2 = ShuffleRGB(red16, green16, blue16,
+			_mm_setr_epi8(z, z, z, z, 12, 13, z, z, z, z, 14, 15, z, z, z, z),
+			_mm_setr_epi8(10, 11, z, z, z, z, 12, 13, z, z, z, z, 14, 15, z, z),
+			_mm_setr_epi8(z, z, 10, 11, z, z, z, z, 12, 13, z, z, z, z, 14, 15));
+		_mm_storeu_si128(reinterpret_cast<__m128i*>(destination), group0);
+		_mm_storeu_si128(reinterpret_cast<__m128i*>(destination + 8), group1);
+		_mm_storeu_si128(reinterpret_cast<__m128i*>(destination + 16), group2);
+	}
 }
 
 
 CR210toRGB48VideoFrameFormatter::CR210toRGB48VideoFrameFormatter()
 {
+	m_hasAVX2 = CpuSupportsAVX2();
 	for (uint32_t i = 0; i < MAX_WORKERS; ++i)
 	{
 		m_conversionWork[i] = CreateThreadpoolWork(ConversionWorkCallback, this, nullptr);
@@ -123,12 +200,24 @@ void CR210toRGB48VideoFrameFormatter::ConvertRows(
 	{
 		const uint8_t* source = sourceFrame + static_cast<size_t>(line) * m_inputStride;
 		uint16_t* destination = destinationFrame + static_cast<size_t>(line) * m_width * 3;
-		for (uint32_t pixel = 0; pixel < m_width; ++pixel)
+		uint32_t pixel = 0;
+		const bool useAVX2 = m_conversionMethod == ConversionMethod::AVX2 ||
+			(m_conversionMethod == ConversionMethod::AUTO && m_hasAVX2);
+		if (useAVX2)
+		{
+			for (; pixel + 8U <= m_width; pixel += 8U)
+			{
+				ConvertEightPixelsAVX2(source, destination);
+				source += 32;
+				destination += 24;
+			}
+		}
+		for (; pixel < m_width; ++pixel)
 		{
 			const uint32_t packed = ReadBigEndian32(source);
-			*destination++ = Expand10To16(static_cast<uint16_t>((packed >> 20) & 0x3FF));
-			*destination++ = Expand10To16(static_cast<uint16_t>((packed >> 10) & 0x3FF));
-			*destination++ = Expand10To16(static_cast<uint16_t>(packed & 0x3FF));
+			*destination++ = Align10To16(static_cast<uint16_t>((packed >> 20) & 0x3FF));
+			*destination++ = Align10To16(static_cast<uint16_t>((packed >> 10) & 0x3FF));
+			*destination++ = Align10To16(static_cast<uint16_t>(packed & 0x3FF));
 			source += 4;
 		}
 	}

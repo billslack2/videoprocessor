@@ -16,11 +16,16 @@
 #include <ColorSpace.h>
 #include <EOTF.h>
 #include <PixelValueRange.h>
+#include <video_frame_formatter/IVideoFrameFormatter.h>
 
 
 const GUID TranslateToMediaSubType(VideoFrameEncoding);
 
 DXVA_NominalRange TranslatePixelValueRange(PixelValueRange);
+
+DXVA_NominalRange ResolveDirectShowNominalRange(
+	DXVA_NominalRange forcedRange,
+	const VideoFrameFormatterOutputContract& formatterContract);
 
 DXVA_VideoTransferMatrix TranslateVideoTransferMatrix(ColorSpace);
 

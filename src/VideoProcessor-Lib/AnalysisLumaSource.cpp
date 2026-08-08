@@ -99,9 +99,41 @@ namespace
 		return static_cast<uint16_t>(std::max(0, std::min(1023, value)));
 	}
 
+	struct LimitedRgbCoefficients
+	{
+		int32_t yR, yG, yB;
+		int32_t cbR, cbG, cbB;
+		int32_t crR, crG, crB;
+	};
+
+	constexpr LimitedRgbCoefficients BT709_R10 = {
+		222927, 749942, 75707, -122880, -413378, 536258,
+		536258, -487086, -49172
+	};
+	constexpr LimitedRgbCoefficients BT709_R210 = {
+		217951, 733202, 74017, -120138, -404150, 524288,
+		524288, -476214, -48074
+	};
+	constexpr LimitedRgbCoefficients BT2020_R10 = {
+		275461, 710935, 62181, -149755, -386503, 536258,
+		536258, -493128, -43130
+	};
+	constexpr LimitedRgbCoefficients BT2020_R210 = {
+		269312, 695065, 60793, -146413, -377875, 524288,
+		524288, -482120, -42168
+	};
+
+	int RoundQ20(int64_t value)
+	{
+		constexpr int64_t half = 1LL << 19;
+		return value >= 0 ? static_cast<int>((value + half) >> 20) :
+			-static_cast<int>(((-value) + half) >> 20);
+	}
+
 	uint16_t Round12To10(uint16_t value)
 	{
-		return static_cast<uint16_t>((value + 2) >> 2);
+		return static_cast<uint16_t>(
+			(static_cast<uint32_t>(value) * 1023U + 2047U) / 4095U);
 	}
 
 	bool ReadR12BPixel(const uint8_t* source, int x,
@@ -303,6 +335,31 @@ bool AnalysisLumaSource::Sample(int x, int y, AnalysisLumaSample& result) const
 	if (!ReadRgb10(*this, x, y, red, green, blue))
 		return false;
 	const bool bt2020 = colorspace == ColorSpace::BT_2020;
+	const bool limitedRgb = encoding == VideoFrameEncoding::R210 ||
+		encoding == VideoFrameEncoding::R10b ||
+		encoding == VideoFrameEncoding::R10l;
+	if (limitedRgb)
+	{
+		const LimitedRgbCoefficients& coefficients = bt2020 ?
+			(encoding == VideoFrameEncoding::R210 ? BT2020_R210 : BT2020_R10) :
+			(encoding == VideoFrameEncoding::R210 ? BT709_R210 : BT709_R10);
+		const int r = static_cast<int>(red) - 64;
+		const int g = static_cast<int>(green) - 64;
+		const int b = static_cast<int>(blue) - 64;
+		result.luma = Clamp10(64 + RoundQ20(
+			static_cast<int64_t>(coefficients.yR) * r +
+			static_cast<int64_t>(coefficients.yG) * g +
+			static_cast<int64_t>(coefficients.yB) * b));
+		result.chromaU = Clamp10(512 + RoundQ20(
+			static_cast<int64_t>(coefficients.cbR) * r +
+			static_cast<int64_t>(coefficients.cbG) * g +
+			static_cast<int64_t>(coefficients.cbB) * b));
+		result.chromaV = Clamp10(512 + RoundQ20(
+			static_cast<int64_t>(coefficients.crR) * r +
+			static_cast<int64_t>(coefficients.crG) * g +
+			static_cast<int64_t>(coefficients.crB) * b));
+		return true;
+	}
 	const int yRed = bt2020 ? 17218 : 13933;
 	const int yGreen = bt2020 ? 44444 : 46871;
 	const int yBlue = bt2020 ? 3886 : 4732;

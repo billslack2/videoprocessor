@@ -7,6 +7,9 @@
 #include <EventActionLauncher.h>
 #include <MainConfigSchema.h>
 #include <QueueConfiguration.h>
+#include <blackmagic_decklink/BlackMagicDeckLinkTranslate.h>
+#include <guid.h>
+#include <microsoft_directshow/DirectShowTranslations.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
 #include <microsoft_directshow/video_renderers/DirectShowVideoRenderers.h>
 #include <RendererConfigView.h>
@@ -197,6 +200,153 @@ namespace VideoProcessorTest
 			Assert::AreEqual(540, NoUiLayout::DefaultClientHeight);
 			Assert::AreEqual(320, NoUiLayout::MinimumClientWidth);
 			Assert::AreEqual(180, NoUiLayout::MinimumClientHeight);
+		}
+
+		TEST_METHOD(DeckLinkEightBitYuvUsesHdycOnlyForRec709)
+		{
+			Assert::AreEqual(static_cast<int>(VideoFrameEncoding::HDYC),
+				static_cast<int>(Translate(
+					bmdFormat8BitYUV, ColorSpace::REC_709)));
+			for (const ColorSpace colorSpace : {
+				ColorSpace::UNKNOWN, ColorSpace::REC_601_525,
+				ColorSpace::REC_601_576, ColorSpace::REC_601_625,
+				ColorSpace::BT_2020 })
+			{
+				Assert::AreEqual(static_cast<int>(VideoFrameEncoding::UYVY),
+					static_cast<int>(Translate(bmdFormat8BitYUV, colorSpace)));
+			}
+			Assert::IsTrue(IsEqualGUID(
+				TranslateToMediaSubType(VideoFrameEncoding::HDYC),
+				MEDIASUBTYPE_HDYC));
+			Assert::IsTrue(IsEqualGUID(
+				TranslateToMediaSubType(VideoFrameEncoding::UYVY),
+				MEDIASUBTYPE_UYVY));
+		}
+
+		TEST_METHOD(DeckLinkCapturePackingDefaultsRemainCanonical)
+		{
+			const DeckLinkCaptureFormatPreferences preferences;
+			const auto rgb8 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput8BitDepth);
+			const auto rgb10 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput10BitDepth);
+			const auto rgb12 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput12BitDepth);
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat8BitARGB),
+				static_cast<unsigned int>(PreferredDeckLinkCapturePixelFormat(
+					rgb8, preferences)));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat10BitRGB),
+				static_cast<unsigned int>(PreferredDeckLinkCapturePixelFormat(
+					rgb10, preferences)));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat12BitRGB),
+				static_cast<unsigned int>(PreferredDeckLinkCapturePixelFormat(
+					rgb12, preferences)));
+		}
+
+		TEST_METHOD(DeckLinkCapturePackingConfigurationExposesEveryRgbVariant)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-decklink-packing.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[decklink]\n"
+					"rgb_8bit_packing: BGRA\n"
+					"rgb_10bit_packing: R10L\n"
+					"rgb_12bit_packing: R12L\n";
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error));
+			DeckLinkCaptureFormatPreferences preferences;
+			Assert::IsTrue(ReadDeckLinkCaptureFormatPreferences(
+				config, preferences, error));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat8BitBGRA),
+				static_cast<unsigned int>(preferences.rgb8));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat10BitRGBXLE),
+				static_cast<unsigned int>(preferences.rgb10));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat12BitRGBLE),
+				static_cast<unsigned int>(preferences.rgb12));
+			Assert::AreEqual(static_cast<int>(VideoFrameEncoding::BGRA_8BIT),
+				static_cast<int>(Translate(preferences.rgb8, ColorSpace::REC_709)));
+			Assert::AreEqual(static_cast<int>(VideoFrameEncoding::R10l),
+				static_cast<int>(Translate(preferences.rgb10, ColorSpace::REC_709)));
+			Assert::AreEqual(static_cast<int>(VideoFrameEncoding::R12L),
+				static_cast<int>(Translate(preferences.rgb12, ColorSpace::REC_709)));
+			const auto rgb8 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput8BitDepth);
+			const auto rgb10 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput10BitDepth);
+			const auto rgb12 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput12BitDepth);
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat8BitBGRA),
+				static_cast<unsigned int>(PreferredDeckLinkCapturePixelFormat(
+					rgb8, preferences)));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat10BitRGBXLE),
+				static_cast<unsigned int>(PreferredDeckLinkCapturePixelFormat(
+					rgb10, preferences)));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat12BitRGBLE),
+				static_cast<unsigned int>(PreferredDeckLinkCapturePixelFormat(
+					rgb12, preferences)));
+
+			// The other 10-bit alternative is independently accepted.
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[decklink]\nrgb_10bit_packing: R10B\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsTrue(ReadDeckLinkCaptureFormatPreferences(
+				config, preferences, error));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat10BitRGBX),
+				static_cast<unsigned int>(preferences.rgb10));
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(DeckLinkCapturePackingFallsBackWhenDeviceRejectsPreference)
+		{
+			DeckLinkCaptureFormatPreferences preferences;
+			preferences.rgb8 = bmdFormat8BitBGRA;
+			preferences.rgb10 = bmdFormat10BitRGBX;
+			preferences.rgb12 = bmdFormat12BitRGBLE;
+			const auto rgb10 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput10BitDepth);
+
+			bool usedFallback = false;
+			BMDPixelFormat selected = ResolveDeckLinkCapturePixelFormat(
+				rgb10, preferences,
+				[](BMDPixelFormat format)
+					{ return format == bmdFormat10BitRGBX; }, usedFallback);
+			Assert::IsFalse(usedFallback);
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat10BitRGBX),
+				static_cast<unsigned int>(selected));
+
+			selected = ResolveDeckLinkCapturePixelFormat(rgb10, preferences,
+				[](BMDPixelFormat) { return false; }, usedFallback);
+			Assert::IsTrue(usedFallback);
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat10BitRGB),
+				static_cast<unsigned int>(selected));
+		}
+
+		TEST_METHOD(DeckLinkCapturePackingSchemaRejectsInvalidDepthVariant)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-decklink-invalid-packing.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[decklink]\nrgb_8bit_packing: R12L\n";
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("rgb_8bit_packing") != std::string::npos);
+			DeleteFileA(path.c_str());
 		}
 
 		TEST_METHOD(IndexedShortcutKeyParsesOneBasedIndex)

@@ -15,6 +15,7 @@
 #include <DeckLinkAPI_h.h>
 
 #include <ACaptureDeviceDiscoverer.h>
+#include <blackmagic_decklink/BlackMagicDeckLinkTranslate.h>
 
 
 /**
@@ -26,7 +27,8 @@ class BlackMagicDeckLinkCaptureDeviceDiscoverer:
 {
 public:
 
-	BlackMagicDeckLinkCaptureDeviceDiscoverer(ICaptureDeviceDiscovererCallback& callback);
+	BlackMagicDeckLinkCaptureDeviceDiscoverer(ICaptureDeviceDiscovererCallback& callback,
+		const DeckLinkCaptureFormatPreferences& formatPreferences = {});
 	virtual ~BlackMagicDeckLinkCaptureDeviceDiscoverer();
 
 	// ACaptureDeviceDiscoverer
@@ -48,6 +50,7 @@ private:
 
 	// Maps between the IDeckLink ptr and the capture device
 	std::map<IDeckLink*, ACaptureDeviceComPtr> m_captureDeviceMap;
+	DeckLinkCaptureFormatPreferences m_formatPreferences;
 
 	std::atomic<ULONG> m_refCount;
 };

@@ -37,6 +37,7 @@ namespace MainConfigSchema
 			section == "lldv" ||
 			section.rfind("lldv.", 0) == 0 ||
 			section == "logging" ||
+			section == "decklink" ||
 			section == "shortcuts" ||
 			section == "p010_conversion" ||
 			section == "ppm_correction" ||
@@ -172,6 +173,15 @@ namespace MainConfigSchema
 				return false;
 			}
 		}
+
+		const std::vector<ConfigSchema::KeyRule> deckLinkRules = {
+			ConfigSchema::Choice("rgb_8bit_packing", { "AUTO", "ARGB", "BGRA" }),
+			ConfigSchema::Choice("rgb_10bit_packing", { "AUTO", "R210", "R10B", "R10L" }),
+			ConfigSchema::Choice("rgb_12bit_packing", { "AUTO", "R12B", "R12L" })
+		};
+		if (!ConfigSchema::ValidateSection(
+			config, "decklink", deckLinkRules, error))
+			return false;
 		const std::vector<ConfigSchema::KeyRule> conversionRules = {
 			ConfigSchema::Choice("conversion_method",
 				{ "auto", "simd", "optimized", "standard" }),

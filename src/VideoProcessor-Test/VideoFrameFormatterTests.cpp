@@ -2,7 +2,11 @@
 #include "CppUnitTest.h"
 
 #include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
 #include <fstream>
+#include <numeric>
 
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
@@ -15,6 +19,8 @@
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
 #include <microsoft_directshow/video_renderers/MadVRIngressPolicy.h>
+#include <microsoft_directshow/video_renderers/DirectShowIngressPolicy.h>
+#include <microsoft_directshow/DirectShowTranslations.h>
 #include <IntegerMath.h>
 #include <AspectRatio.h>
 #include <DisplayRuleExpression.h>
@@ -28,6 +34,191 @@ namespace Tests
 {
 	namespace
 	{
+		struct ConverterBenchmarkStatistics
+		{
+			double averageUs = 0.0;
+			double medianUs = 0.0;
+			double p95Us = 0.0;
+			double p99Us = 0.0;
+			double maximumUs = 0.0;
+			double framesPerSecond = 0.0;
+		};
+
+		struct ConverterBenchmarkComparison
+		{
+			ConverterBenchmarkStatistics hotBuffer;
+			ConverterBenchmarkStatistics rotatingBuffers;
+		};
+
+		double BenchmarkPercentile(const std::vector<double>& sortedSamples,
+			double percentile)
+		{
+			const size_t index = static_cast<size_t>(std::ceil(
+				percentile * static_cast<double>(sortedSamples.size()))) - 1;
+			return sortedSamples[std::min(index, sortedSamples.size() - 1)];
+		}
+
+		ConverterBenchmarkStatistics MeasureFormatterPerformance(
+			IVideoFrameFormatter& formatter,
+			const std::vector<VideoFrame>& frames,
+			std::vector<std::vector<BYTE>>& outputs,
+			size_t warmupFrames,
+			size_t measuredFrames)
+		{
+			for (size_t i = 0; i < warmupFrames; ++i)
+			{
+				const size_t bufferIndex = i % frames.size();
+				Assert::IsTrue(formatter.FormatVideoFrame(
+					frames[bufferIndex], outputs[bufferIndex].data()));
+			}
+
+			std::vector<double> samples;
+			samples.reserve(measuredFrames);
+			for (size_t i = 0; i < measuredFrames; ++i)
+			{
+				const size_t bufferIndex = i % frames.size();
+				const auto start = std::chrono::steady_clock::now();
+				const bool succeeded = formatter.FormatVideoFrame(
+					frames[bufferIndex], outputs[bufferIndex].data());
+				const auto finish = std::chrono::steady_clock::now();
+				Assert::IsTrue(succeeded);
+				samples.push_back(std::chrono::duration<double, std::micro>(
+					finish - start).count());
+			}
+
+			ConverterBenchmarkStatistics result;
+			result.averageUs = std::accumulate(samples.begin(), samples.end(), 0.0) /
+				static_cast<double>(samples.size());
+			std::sort(samples.begin(), samples.end());
+			result.medianUs = BenchmarkPercentile(samples, 0.50);
+			result.p95Us = BenchmarkPercentile(samples, 0.95);
+			result.p99Us = BenchmarkPercentile(samples, 0.99);
+			result.maximumUs = samples.back();
+			result.framesPerSecond = 1000000.0 / result.averageUs;
+			return result;
+		}
+
+		void FillBenchmarkPattern(std::vector<BYTE>& buffer, uint32_t seed)
+		{
+			uint32_t value = seed;
+			for (BYTE& sample : buffer)
+			{
+				value = value * 1664525U + 1013904223U;
+				sample = static_cast<BYTE>(value >> 24);
+			}
+		}
+
+		void LogBenchmarkResult(const wchar_t* converter,
+			const wchar_t* workload,
+			const ConverterBenchmarkStatistics& result)
+		{
+			wchar_t message[320];
+			swprintf_s(message,
+				L"PERF|%s|%s|avg=%.0f|median=%.0f|p95=%.0f|p99=%.0f|max=%.0f|fps=%.1f",
+				converter, workload, result.averageUs, result.medianUs,
+				result.p95Us, result.p99Us, result.maximumUs,
+				result.framesPerSecond);
+			Logger::WriteMessage(message);
+		}
+
+		double MedianBenchmarkValue(std::vector<double> values)
+		{
+			std::sort(values.begin(), values.end());
+			return values[values.size() / 2];
+		}
+
+		ConverterBenchmarkStatistics MedianBenchmarkStatistics(
+			const std::vector<ConverterBenchmarkStatistics>& runs)
+		{
+			std::vector<double> averages;
+			std::vector<double> medians;
+			std::vector<double> p95s;
+			std::vector<double> p99s;
+			std::vector<double> maxima;
+			for (const auto& run : runs)
+			{
+				averages.push_back(run.averageUs);
+				medians.push_back(run.medianUs);
+				p95s.push_back(run.p95Us);
+				p99s.push_back(run.p99Us);
+				maxima.push_back(run.maximumUs);
+			}
+
+			ConverterBenchmarkStatistics result;
+			result.averageUs = MedianBenchmarkValue(averages);
+			result.medianUs = MedianBenchmarkValue(medians);
+			result.p95Us = MedianBenchmarkValue(p95s);
+			result.p99Us = MedianBenchmarkValue(p99s);
+			result.maximumUs = MedianBenchmarkValue(maxima);
+			result.framesPerSecond = 1000000.0 / result.averageUs;
+			return result;
+		}
+
+		ConverterBenchmarkComparison CompareFormatterPerformanceOnce(
+			IVideoFrameFormatter& formatter,
+			size_t inputBytes,
+			size_t outputBytes)
+		{
+			std::vector<std::vector<BYTE>> hotInputs(1,
+				std::vector<BYTE>(inputBytes, 0));
+			std::vector<std::vector<BYTE>> hotOutputs(1,
+				std::vector<BYTE>(outputBytes, 0));
+			std::vector<VideoFrame> hotFrames;
+			hotFrames.emplace_back(hotInputs[0].data(), 1, 0, nullptr);
+
+			ConverterBenchmarkComparison comparison;
+			comparison.hotBuffer = MeasureFormatterPerformance(formatter,
+				hotFrames, hotOutputs, 5, 30);
+
+			constexpr size_t rotatingBufferCount = 4;
+			std::vector<std::vector<BYTE>> rotatingInputs;
+			std::vector<std::vector<BYTE>> rotatingOutputs;
+			std::vector<VideoFrame> rotatingFrames;
+			rotatingInputs.reserve(rotatingBufferCount);
+			rotatingOutputs.reserve(rotatingBufferCount);
+			rotatingFrames.reserve(rotatingBufferCount);
+			for (size_t i = 0; i < rotatingBufferCount; ++i)
+			{
+				rotatingInputs.emplace_back(inputBytes);
+				FillBenchmarkPattern(rotatingInputs.back(),
+					0x9e3779b9U ^ static_cast<uint32_t>(i * 0x45d9f3bU));
+				rotatingOutputs.emplace_back(outputBytes,
+					static_cast<BYTE>(0x31U + i));
+				rotatingFrames.emplace_back(rotatingInputs.back().data(),
+					static_cast<uint64_t>(i + 1), 0, nullptr);
+			}
+
+			comparison.rotatingBuffers = MeasureFormatterPerformance(formatter,
+				rotatingFrames, rotatingOutputs, 10, 120);
+			return comparison;
+		}
+
+		ConverterBenchmarkComparison CompareFormatterPerformance(
+			const wchar_t* converter,
+			IVideoFrameFormatter& formatter,
+			size_t inputBytes,
+			size_t outputBytes)
+		{
+			constexpr size_t runCount = 3;
+			std::vector<ConverterBenchmarkStatistics> hotRuns;
+			std::vector<ConverterBenchmarkStatistics> rotatingRuns;
+			for (size_t run = 0; run < runCount; ++run)
+			{
+				const auto result = CompareFormatterPerformanceOnce(formatter,
+					inputBytes, outputBytes);
+				hotRuns.push_back(result.hotBuffer);
+				rotatingRuns.push_back(result.rotatingBuffers);
+			}
+
+			ConverterBenchmarkComparison result;
+			result.hotBuffer = MedianBenchmarkStatistics(hotRuns);
+			result.rotatingBuffers = MedianBenchmarkStatistics(rotatingRuns);
+			LogBenchmarkResult(converter, L"hot-zero-30-median3", result.hotBuffer);
+			LogBenchmarkResult(converter, L"rotating-pattern-120-median3",
+				result.rotatingBuffers);
+			return result;
+		}
+
 		void WriteR10Pixel(BYTE* destination, VideoFrameEncoding encoding,
 			uint16_t red, uint16_t green, uint16_t blue)
 		{
@@ -93,6 +284,26 @@ namespace Tests
 				destination[(byteIndex / 4U) * 4U + 3U - (byteIndex % 4U)] =
 					logicalBytes[byteIndex];
 		}
+
+		void WriteV210Pack(BYTE* destination,
+			uint16_t u0, uint16_t y0, uint16_t v0, uint16_t y1,
+			uint16_t u2, uint16_t y2, uint16_t v2, uint16_t y3,
+			uint16_t u4, uint16_t y4, uint16_t v4, uint16_t y5)
+		{
+			const auto writeWord = [](BYTE* target,
+				uint16_t a, uint16_t b, uint16_t c)
+			{
+				const uint32_t word = static_cast<uint32_t>(a) |
+					(static_cast<uint32_t>(b) << 10) |
+					(static_cast<uint32_t>(c) << 20);
+				std::memcpy(target, &word, sizeof(word));
+			};
+
+			writeWord(destination + 0, u0, y0, v0);
+			writeWord(destination + 4, y1, u2, y2);
+			writeWord(destination + 8, v2, y3, u4);
+			writeWord(destination + 12, y4, v4, y5);
+		}
 	}
 
 	TEST_CLASS(VideoFrameFormatterTests)
@@ -121,6 +332,149 @@ namespace Tests
 				VideoFrameEncoding::BGRA_8BIT));
 		}
 
+		TEST_METHOD(RendererIngressHelpersCoverEveryDeckLinkCaptureEncoding)
+		{
+			struct Case
+			{
+				VideoFrameEncoding encoding;
+				bool alphaNativeIngress;
+				bool alphaAutomaticP210;
+				bool madvrAutomaticP010;
+				bool packedRgbP010;
+				bool mpcAutomaticP010;
+				bool genericAutomaticP010;
+			};
+
+			const Case cases[] = {
+				{ VideoFrameEncoding::ARGB_8BIT, true,  false, true,  false, true,  true  },
+				{ VideoFrameEncoding::BGRA_8BIT, true,  false, true,  false, true,  true  },
+				{ VideoFrameEncoding::UYVY,      false, true,  false, false, false, false },
+				{ VideoFrameEncoding::HDYC,      false, true,  false, false, false, false },
+				{ VideoFrameEncoding::V210,      false, true,  false, false, false, false },
+				{ VideoFrameEncoding::R210,      false, false, false, true,  false, false },
+				{ VideoFrameEncoding::R10b,      true,  false, true,  true,  true,  true  },
+				{ VideoFrameEncoding::R10l,      true,  false, true,  true,  true,  true  },
+				{ VideoFrameEncoding::R12B,      false, false, true,  true,  false, false },
+				{ VideoFrameEncoding::R12L,      false, false, true,  true,  true,  true  },
+			};
+
+			for (const Case& test : cases)
+			{
+				Assert::AreEqual(test.alphaNativeIngress,
+					AlphaCanUseNativeRgbUpload(test.encoding));
+				Assert::AreEqual(test.alphaAutomaticP210,
+					AlphaUsesP210Ingress(test.encoding,
+						VideoConversionOverride::VIDEOCONVERSION_NONE));
+				Assert::IsFalse(AlphaUsesP210Ingress(test.encoding,
+					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010));
+				Assert::AreEqual(test.madvrAutomaticP010,
+					MadVRUsesP010Ingress(test.encoding,
+						VideoConversionOverride::VIDEOCONVERSION_NONE));
+				Assert::IsTrue(MadVRUsesP010Ingress(test.encoding,
+					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010));
+				Assert::AreEqual(test.packedRgbP010,
+					IsDeckLinkPackedRgbP010Encoding(test.encoding));
+				Assert::IsTrue(DirectShowCanConvertToP010(test.encoding));
+				Assert::AreEqual(test.mpcAutomaticP010,
+					DirectShowUsesP010Ingress(DirectShowIngressFamily::MPC,
+						test.encoding, VideoConversionOverride::VIDEOCONVERSION_NONE));
+				Assert::AreEqual(test.genericAutomaticP010,
+					DirectShowUsesP010Ingress(DirectShowIngressFamily::GENERIC,
+						test.encoding, VideoConversionOverride::VIDEOCONVERSION_NONE));
+				Assert::IsTrue(DirectShowUsesP010Ingress(
+					DirectShowIngressFamily::MPC, test.encoding,
+					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010));
+				Assert::IsTrue(DirectShowUsesP010Ingress(
+					DirectShowIngressFamily::GENERIC, test.encoding,
+					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010));
+			}
+		}
+
+		TEST_METHOD(DeckLinkPackedRgbFormatterContractsMatchDocumentedRanges)
+		{
+			const auto expect = [](VideoFrameEncoding encoding,
+				VideoFrameSampleRange expectedRange)
+			{
+				CDeckLinkRGBToP010VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					128, 100, false, 24000, 1000);
+				state->videoFrameEncoding = encoding;
+				state->colorspace = ColorSpace::REC_709;
+				formatter.OnVideoState(state);
+
+				const auto contract = formatter.GetOutputContract();
+				Assert::IsTrue(contract.IsValid());
+				Assert::AreEqual(static_cast<int>(expectedRange),
+					static_cast<int>(contract.sampleRange));
+				Assert::AreEqual(10, static_cast<int>(contract.colorDepth));
+				Assert::AreEqual(6, static_cast<int>(contract.bitShift));
+			};
+
+			// DeckLinkAPIModes.idl defines these three as SMPTE-range RGB.
+			expect(VideoFrameEncoding::R210, VideoFrameSampleRange::LIMITED);
+			expect(VideoFrameEncoding::R10b, VideoFrameSampleRange::LIMITED);
+			expect(VideoFrameEncoding::R10l, VideoFrameSampleRange::LIMITED);
+			// The same SDK declaration explicitly defines both 12-bit formats as
+			// full-range 0-4095.
+			expect(VideoFrameEncoding::R12B, VideoFrameSampleRange::FULL);
+			expect(VideoFrameEncoding::R12L, VideoFrameSampleRange::FULL);
+		}
+
+		TEST_METHOD(DeckLinkR12BAndRgb48ContractsRemainFullRange)
+		{
+			CR12BtoRGB48VideoFrameFormatter formatter;
+			const auto contract = formatter.GetOutputContract();
+			Assert::IsTrue(contract.IsValid());
+			Assert::AreEqual(static_cast<int>(VideoFrameSampleRange::FULL),
+				static_cast<int>(contract.sampleRange));
+			Assert::AreEqual(16, static_cast<int>(contract.colorDepth));
+			Assert::AreEqual(0, static_cast<int>(contract.bitShift));
+		}
+
+		TEST_METHOD(DeckLinkR210Rgb48ContractIsLimitedRange)
+		{
+			CR210toRGB48VideoFrameFormatter formatter;
+			const auto contract = formatter.GetOutputContract();
+			Assert::IsTrue(contract.IsValid());
+			Assert::AreEqual(static_cast<int>(VideoFrameSampleRange::LIMITED),
+				static_cast<int>(contract.sampleRange));
+			Assert::AreEqual(10, static_cast<int>(contract.colorDepth));
+			Assert::AreEqual(6, static_cast<int>(contract.bitShift));
+		}
+
+		TEST_METHOD(DeckLinkR12BDirectMediaTypeUsesThirtySixBitsPerPixel)
+		{
+			Assert::AreEqual(36U,
+				VideoFrameEncodingBitsPerPixel(VideoFrameEncoding::R12B));
+		}
+
+		TEST_METHOD(DirectShowNominalRangeFollowsFormatterContractUnlessForced)
+		{
+			const VideoFrameFormatterOutputContract full = {
+				VideoFrameSampleRange::FULL, 10, 6
+			};
+			const VideoFrameFormatterOutputContract limited = {
+				VideoFrameSampleRange::LIMITED, 10, 6
+			};
+			const VideoFrameFormatterOutputContract unknown;
+			const auto automatic = DXVA_NominalRange::DXVA_NominalRange_Unknown;
+
+			Assert::AreEqual(
+				static_cast<int>(DXVA_NominalRange::DXVA_NominalRange_0_255),
+				static_cast<int>(ResolveDirectShowNominalRange(automatic, full)));
+			Assert::AreEqual(
+				static_cast<int>(DXVA_NominalRange::DXVA_NominalRange_16_235),
+				static_cast<int>(ResolveDirectShowNominalRange(automatic, limited)));
+			Assert::AreEqual(static_cast<int>(automatic),
+				static_cast<int>(ResolveDirectShowNominalRange(automatic, unknown)));
+
+			const auto forcedFull = DXVA_NominalRange::DXVA_NominalRange_0_255;
+			Assert::AreEqual(static_cast<int>(forcedFull),
+				static_cast<int>(ResolveDirectShowNominalRange(forcedFull, limited)));
+		}
+
 		TEST_METHOD(CNoopVideoFrameFormatterTest)
 		{
 			CNoopVideoFrameFormatter vff;
@@ -134,6 +488,70 @@ namespace Tests
 			vff.OnVideoState(vs);
 
 			Assert::AreEqual(5529600L, vff.GetOutFrameSize());
+		}
+
+		TEST_METHOD(NoopFormatterPreservesEveryDeckLinkInputRangeContract)
+		{
+			struct Case
+			{
+				VideoFrameEncoding encoding;
+				VideoFrameSampleRange range;
+				uint8_t depth;
+			};
+			const Case cases[] = {
+				{ VideoFrameEncoding::UYVY, VideoFrameSampleRange::LIMITED, 8 },
+				{ VideoFrameEncoding::HDYC, VideoFrameSampleRange::LIMITED, 8 },
+				{ VideoFrameEncoding::V210, VideoFrameSampleRange::LIMITED, 10 },
+				{ VideoFrameEncoding::ARGB_8BIT, VideoFrameSampleRange::FULL, 8 },
+				{ VideoFrameEncoding::BGRA_8BIT, VideoFrameSampleRange::FULL, 8 },
+				{ VideoFrameEncoding::R210, VideoFrameSampleRange::LIMITED, 10 },
+				{ VideoFrameEncoding::R10b, VideoFrameSampleRange::LIMITED, 10 },
+				{ VideoFrameEncoding::R10l, VideoFrameSampleRange::LIMITED, 10 },
+				{ VideoFrameEncoding::R12B, VideoFrameSampleRange::FULL, 12 },
+				{ VideoFrameEncoding::R12L, VideoFrameSampleRange::FULL, 12 },
+			};
+
+			for (const Case& test : cases)
+			{
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					128, 100, false, 24000, 1000);
+				state->videoFrameEncoding = test.encoding;
+				CNoopVideoFrameFormatter formatter;
+				formatter.OnVideoState(state);
+				const auto contract = formatter.GetOutputContract();
+				Assert::IsTrue(contract.IsValid());
+				Assert::AreEqual(static_cast<int>(test.range),
+					static_cast<int>(contract.sampleRange));
+				Assert::AreEqual(static_cast<int>(test.depth),
+					static_cast<int>(contract.colorDepth));
+				Assert::AreEqual(0, static_cast<int>(contract.bitShift));
+			}
+		}
+
+		TEST_METHOD(MadVRAutomaticYuvPassThroughDeclaresLimitedNominalRange)
+		{
+			for (const auto encoding : {
+				VideoFrameEncoding::UYVY,
+				VideoFrameEncoding::HDYC,
+				VideoFrameEncoding::V210 })
+			{
+				Assert::IsFalse(MadVRUsesP010Ingress(encoding,
+					VideoConversionOverride::VIDEOCONVERSION_NONE));
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					1920, 1080, false, 60000, 1001);
+				state->videoFrameEncoding = encoding;
+				CNoopVideoFrameFormatter formatter;
+				formatter.OnVideoState(state);
+				Assert::AreEqual(
+					static_cast<int>(DXVA_NominalRange::DXVA_NominalRange_16_235),
+					static_cast<int>(ResolveDirectShowNominalRange(
+						DXVA_NominalRange::DXVA_NominalRange_Unknown,
+						formatter.GetOutputContract())));
+			}
 		}
 
 		TEST_METHOD(CV210toP010VideoFrameFormatterTest)
@@ -181,21 +599,21 @@ namespace Tests
 			};
 
 			CARGBtoP010VideoFrameFormatter argb;
-			CDeckLinkRGBToP010VideoFrameFormatter deckLinkRgb;
 			CUYVYtoP010VideoFrameFormatter uyvyP010;
 			CV210toP010VideoFrameFormatter v210P010;
 			CUYVYtoP210VideoFrameFormatter uyvyP210;
 			CV210toP210VideoFrameFormatter v210P210;
 			expect(argb.GetOutputContract(), VideoFrameSampleRange::FULL, 10, 6);
-			expect(deckLinkRgb.GetOutputContract(), VideoFrameSampleRange::FULL, 10, 6);
 			expect(uyvyP010.GetOutputContract(), VideoFrameSampleRange::LIMITED, 8, 8);
 			expect(v210P010.GetOutputContract(), VideoFrameSampleRange::LIMITED, 10, 6);
 			expect(uyvyP210.GetOutputContract(), VideoFrameSampleRange::LIMITED, 8, 8);
 			expect(v210P210.GetOutputContract(), VideoFrameSampleRange::LIMITED, 10, 6);
 		}
 
-		TEST_METHOD(CARGBtoP010VideoFrameFormatterUsesFullRangeP010Endpoints)
+		TEST_METHOD(CARGBtoP010VideoFrameFormatterUsesVpAssumedFullRangeEndpoints)
 		{
+			// DeckLink documents the ARGB memory layout but not its nominal range.
+			// This test records VP's existing full-range product assumption.
 			CARGBtoP010VideoFrameFormatter vff;
 			VideoStateComPtr vs = new VideoState();
 			vs->valid = true;
@@ -228,6 +646,102 @@ namespace Tests
 			Assert::AreEqual(1023U << 6, static_cast<unsigned int>(words[ySamples + 1]));
 		}
 
+		TEST_METHOD(CARGBtoP010AVX2MatchesScalarBitExactly)
+		{
+			const VideoFrameEncoding encodings[] = {
+				VideoFrameEncoding::ARGB_8BIT,
+				VideoFrameEncoding::BGRA_8BIT,
+			};
+			const ColorSpace colorSpaces[] = {
+				ColorSpace::REC_709,
+				ColorSpace::BT_2020,
+			};
+			for (const auto encoding : encodings)
+			{
+				for (const auto colorSpace : colorSpaces)
+				{
+					VideoStateComPtr state = new VideoState();
+					state->valid = true;
+					state->displayMode = std::make_shared<DisplayMode>(
+						128, 100, false, 60000, 1001);
+					state->videoFrameEncoding = encoding;
+					state->colorspace = colorSpace;
+					std::vector<BYTE> input(state->BytesPerFrame());
+					FillBenchmarkPattern(input,
+						0xabcdef01U ^ static_cast<uint32_t>(encoding) ^
+						(static_cast<uint32_t>(colorSpace) << 16));
+
+					// Cover every possible 8-bit component value in vectorized blocks,
+					// including all three exact 8-to-10 rounding transitions.
+					for (uint32_t value = 0; value < 256; ++value)
+					{
+						BYTE* pixel = input.data() +
+							static_cast<size_t>(value / 128) * state->BytesPerRow() +
+							static_cast<size_t>(value % 128) * 4U;
+						const BYTE red = static_cast<BYTE>(value);
+						const BYTE green = static_cast<BYTE>(255U - value);
+						const BYTE blue = static_cast<BYTE>((value * 73U) & 0xffU);
+						if (encoding == VideoFrameEncoding::BGRA_8BIT)
+						{
+							pixel[0] = blue; pixel[1] = green;
+							pixel[2] = red; pixel[3] = 0xff;
+						}
+						else
+						{
+							pixel[0] = 0xff; pixel[1] = red;
+							pixel[2] = green; pixel[3] = blue;
+						}
+					}
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+
+					CARGBtoP010VideoFrameFormatter scalar;
+					scalar.SetConversionMethod(
+						CARGBtoP010VideoFrameFormatter::ConversionMethod::SCALAR);
+					scalar.OnVideoState(state);
+					std::vector<BYTE> scalarOutput(scalar.GetOutFrameSize(), 0x55);
+					Assert::IsTrue(scalar.FormatVideoFrame(frame, scalarOutput.data()));
+
+					CARGBtoP010VideoFrameFormatter avx2;
+					avx2.SetConversionMethod(
+						CARGBtoP010VideoFrameFormatter::ConversionMethod::AVX2);
+					avx2.OnVideoState(state);
+					std::vector<BYTE> avx2Output(avx2.GetOutFrameSize(), 0xaa);
+					Assert::IsTrue(avx2.FormatVideoFrame(frame, avx2Output.data()));
+					Assert::IsTrue(scalarOutput == avx2Output,
+						L"ARGB/BGRA AVX2 output must match scalar output bit-for-bit");
+				}
+			}
+
+			VideoStateComPtr threadedState = new VideoState();
+			threadedState->valid = true;
+			threadedState->displayMode = std::make_shared<DisplayMode>(
+				1920, 1080, false, 60000, 1001);
+			threadedState->videoFrameEncoding = VideoFrameEncoding::BGRA_8BIT;
+			threadedState->colorspace = ColorSpace::BT_2020;
+			std::vector<BYTE> threadedInput(threadedState->BytesPerFrame());
+			FillBenchmarkPattern(threadedInput, 0x36bc17e2U);
+			VideoFrame threadedFrame(threadedInput.data(), 1, 0, nullptr);
+
+			CARGBtoP010VideoFrameFormatter threadedScalar;
+			threadedScalar.SetConversionMethod(
+				CARGBtoP010VideoFrameFormatter::ConversionMethod::SCALAR);
+			threadedScalar.OnVideoState(threadedState);
+			std::vector<BYTE> threadedScalarOutput(
+				threadedScalar.GetOutFrameSize());
+			Assert::IsTrue(threadedScalar.FormatVideoFrame(
+				threadedFrame, threadedScalarOutput.data()));
+
+			CARGBtoP010VideoFrameFormatter threadedAVX2;
+			threadedAVX2.SetConversionMethod(
+				CARGBtoP010VideoFrameFormatter::ConversionMethod::AVX2);
+			threadedAVX2.OnVideoState(threadedState);
+			std::vector<BYTE> threadedAVX2Output(threadedAVX2.GetOutFrameSize());
+			Assert::IsTrue(threadedAVX2.FormatVideoFrame(
+				threadedFrame, threadedAVX2Output.data()));
+			Assert::IsTrue(threadedScalarOutput == threadedAVX2Output,
+				L"Threaded BGRA AVX2 conversion must match scalar output bit-for-bit");
+		}
+
 		TEST_METHOD(CUYVYtoP010VideoFrameFormatterPreservesLimitedRangeCodes)
 		{
 			CUYVYtoP010VideoFrameFormatter vff;
@@ -254,7 +768,7 @@ namespace Tests
 			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1]));
 		}
 
-		TEST_METHOD(CV210toP010VideoFrameFormatter720pConcealsOnlyPaddedEdges)
+		TEST_METHOD(CV210toP010VideoFrameFormatter720pPreservesAllActivePixels)
 		{
 			CV210toP010VideoFrameFormatter vff;
 			VideoStateComPtr vs = new VideoState();
@@ -284,20 +798,304 @@ namespace Tests
 			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
 			const auto* words = reinterpret_cast<const uint16_t*>(output.data());
 			const size_t ySamples = 1280ULL * 720;
-			// The 720p path intentionally hides two padded edge pixels. They are
-			// excluded from range validation; the neighboring active sample remains
-			// nominal limited-range black.
-			Assert::AreEqual(0U, static_cast<unsigned int>(words[0]));
-			Assert::AreEqual(0U, static_cast<unsigned int>(words[1]));
+			// 1280 is not divisible by v210's six-pixel pack size, but all 1280
+			// active pixels remain image data. Packing padding exists only after
+			// the active tail and must not conceal either edge.
+			Assert::AreEqual(64U << 6, static_cast<unsigned int>(words[0]));
+			Assert::AreEqual(64U << 6, static_cast<unsigned int>(words[1]));
 			Assert::AreEqual(64U << 6, static_cast<unsigned int>(words[2]));
 			Assert::AreEqual(0U, static_cast<unsigned int>(words[1278]));
 			Assert::AreEqual(0U, static_cast<unsigned int>(words[1279]));
-			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples]));
-			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1]));
+			Assert::AreEqual(128U << 6, static_cast<unsigned int>(words[ySamples]));
+			Assert::AreEqual(128U << 6, static_cast<unsigned int>(words[ySamples + 1]));
 			Assert::AreEqual(128U << 6, static_cast<unsigned int>(words[ySamples + 2]));
 			Assert::AreEqual(128U << 6, static_cast<unsigned int>(words[ySamples + 3]));
-			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1278]));
-			Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[ySamples + 1279]));
+			Assert::AreEqual(0U, static_cast<unsigned int>(words[ySamples + 1278]));
+			Assert::AreEqual(0U, static_cast<unsigned int>(words[ySamples + 1279]));
+		}
+
+		TEST_METHOD(V210P010AndP210SupportStandardResolutionMatrix)
+		{
+			const uint32_t dimensions[][2] = {
+				{ 640, 360 },
+				{ 720, 480 },
+				{ 1280, 720 },
+				{ 1920, 1080 },
+				{ 3840, 2160 },
+			};
+			auto writeWord = [](BYTE* destination,
+				uint16_t a, uint16_t b, uint16_t c)
+			{
+				const uint32_t word = static_cast<uint32_t>(a) |
+					(static_cast<uint32_t>(b) << 10) |
+					(static_cast<uint32_t>(c) << 20);
+				std::memcpy(destination, &word, sizeof(word));
+			};
+			auto writePack = [&writeWord](BYTE* destination)
+			{
+				constexpr uint16_t u = 129;
+				constexpr uint16_t y = 321;
+				constexpr uint16_t v = 777;
+				writeWord(destination + 0, u, y, v);
+				writeWord(destination + 4, y, u, y);
+				writeWord(destination + 8, v, y, u);
+				writeWord(destination + 12, y, v, y);
+			};
+
+			for (const auto& dimension : dimensions)
+			{
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					dimension[0], dimension[1], false, 60000, 1001);
+				state->videoFrameEncoding = VideoFrameEncoding::V210;
+				std::vector<BYTE> input(state->BytesPerFrame(), 0xff);
+				const uint32_t packsPerRow = (dimension[0] + 5U) / 6U;
+				for (uint32_t line = 0; line < dimension[1]; ++line)
+				{
+					BYTE* row = input.data() +
+						static_cast<size_t>(line) * state->BytesPerRow();
+					for (uint32_t pack = 0; pack < packsPerRow; ++pack)
+						writePack(row + static_cast<size_t>(pack) * 16U);
+				}
+				VideoFrame frame(input.data(), 1, 0, nullptr);
+
+				CV210toP010VideoFrameFormatter scalar;
+				scalar.SetConversionMethod(
+					CV210toP010VideoFrameFormatter::ConversionMethod::STANDARD);
+				scalar.OnVideoState(state);
+				std::vector<BYTE> scalarOutput(scalar.GetOutFrameSize());
+				Assert::IsTrue(scalar.FormatVideoFrame(frame, scalarOutput.data()));
+				const auto* p010 = reinterpret_cast<const uint16_t*>(
+					scalarOutput.data());
+				const size_t ySamples =
+					static_cast<size_t>(dimension[0]) * dimension[1];
+				Assert::AreEqual(321U << 6, static_cast<unsigned int>(p010[0]));
+				Assert::AreEqual(321U << 6,
+					static_cast<unsigned int>(p010[ySamples - 1]));
+				Assert::AreEqual(129U << 6,
+					static_cast<unsigned int>(p010[ySamples]));
+				Assert::AreEqual(777U << 6,
+					static_cast<unsigned int>(p010[ySamples + dimension[0] - 1]));
+
+				const CV210toP010VideoFrameFormatter::ConversionMethod methods[] = {
+					CV210toP010VideoFrameFormatter::ConversionMethod::AUTO,
+					CV210toP010VideoFrameFormatter::ConversionMethod::OPTIMIZED,
+					CV210toP010VideoFrameFormatter::ConversionMethod::SIMD,
+				};
+				for (const auto method : methods)
+				{
+					CV210toP010VideoFrameFormatter candidate;
+					candidate.SetConversionMethod(method);
+					candidate.OnVideoState(state);
+					std::vector<BYTE> candidateOutput(candidate.GetOutFrameSize());
+					Assert::IsTrue(candidate.FormatVideoFrame(
+						frame, candidateOutput.data()));
+					Assert::IsTrue(candidateOutput == scalarOutput,
+						L"Every v210 P010 method must match at every standard resolution");
+				}
+
+				CV210toP210VideoFrameFormatter p210Formatter;
+				p210Formatter.OnVideoState(state);
+				std::vector<BYTE> p210Output(p210Formatter.GetOutFrameSize());
+				Assert::IsTrue(p210Formatter.FormatVideoFrame(
+					frame, p210Output.data()));
+				const auto* p210 = reinterpret_cast<const uint16_t*>(
+					p210Output.data());
+				Assert::AreEqual(321U << 6, static_cast<unsigned int>(p210[0]));
+				Assert::AreEqual(321U << 6,
+					static_cast<unsigned int>(p210[ySamples - 1]));
+				Assert::AreEqual(129U << 6,
+					static_cast<unsigned int>(p210[ySamples]));
+				Assert::AreEqual(777U << 6,
+					static_cast<unsigned int>(p210[ySamples + dimension[0] - 1]));
+			}
+		}
+
+		TEST_METHOD(DeckLinkRgbAndUyvyConvertersSupportStandardResolutionMatrix)
+		{
+			const uint32_t dimensions[][2] = {
+				{ 640, 360 },
+				{ 720, 480 },
+				{ 1280, 720 },
+				{ 1920, 1080 },
+				{ 3840, 2160 },
+			};
+			for (const auto& dimension : dimensions)
+			{
+				auto makeState = [&dimension](VideoFrameEncoding encoding)
+				{
+					VideoStateComPtr state = new VideoState();
+					state->valid = true;
+					state->displayMode = std::make_shared<DisplayMode>(
+						dimension[0], dimension[1], false, 60000, 1001);
+					state->videoFrameEncoding = encoding;
+					state->colorspace = ColorSpace::BT_2020;
+					return state;
+				};
+
+				for (const auto encoding : {
+					VideoFrameEncoding::UYVY, VideoFrameEncoding::HDYC })
+				{
+					VideoStateComPtr state = makeState(encoding);
+					std::vector<BYTE> input(state->BytesPerFrame());
+					for (uint32_t line = 0; line < dimension[1]; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						for (uint32_t x = 0; x < dimension[0]; x += 2)
+						{
+							row[0] = 129; row[1] = 64;
+							row[2] = 201; row[3] = 65;
+							row += 4;
+						}
+					}
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+
+					CUYVYtoP010VideoFrameFormatter p010Formatter;
+					p010Formatter.OnVideoState(state);
+					std::vector<BYTE> p010Output(p010Formatter.GetOutFrameSize());
+					Assert::IsTrue(p010Formatter.FormatVideoFrame(
+						frame, p010Output.data()));
+					const auto* p010 = reinterpret_cast<const uint16_t*>(
+						p010Output.data());
+					const size_t ySamples =
+						static_cast<size_t>(dimension[0]) * dimension[1];
+					Assert::AreEqual(64U << 8,
+						static_cast<unsigned int>(p010[0]));
+					Assert::AreEqual(65U << 8,
+						static_cast<unsigned int>(p010[ySamples - 1]));
+
+					CUYVYtoP210VideoFrameFormatter p210Formatter;
+					p210Formatter.OnVideoState(state);
+					std::vector<BYTE> p210Output(p210Formatter.GetOutFrameSize());
+					Assert::IsTrue(p210Formatter.FormatVideoFrame(
+						frame, p210Output.data()));
+					const auto* p210 = reinterpret_cast<const uint16_t*>(
+						p210Output.data());
+					Assert::AreEqual(64U << 8,
+						static_cast<unsigned int>(p210[0]));
+					Assert::AreEqual(65U << 8,
+						static_cast<unsigned int>(p210[ySamples - 1]));
+				}
+
+				for (const auto encoding : {
+					VideoFrameEncoding::ARGB_8BIT, VideoFrameEncoding::BGRA_8BIT })
+				{
+					VideoStateComPtr state = makeState(encoding);
+					std::vector<BYTE> input(state->BytesPerFrame(), 64);
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+					CARGBtoP010VideoFrameFormatter formatter;
+					formatter.OnVideoState(state);
+					std::vector<BYTE> output(formatter.GetOutFrameSize());
+					Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+					const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
+					const size_t ySamples =
+						static_cast<size_t>(dimension[0]) * dimension[1];
+					Assert::IsTrue(samples[0] != 0);
+					Assert::AreEqual(static_cast<unsigned int>(samples[0]),
+						static_cast<unsigned int>(samples[ySamples - 1]));
+				}
+
+				for (const auto encoding : {
+					VideoFrameEncoding::R210, VideoFrameEncoding::R10b,
+					VideoFrameEncoding::R10l, VideoFrameEncoding::R12B,
+					VideoFrameEncoding::R12L })
+				{
+					VideoStateComPtr state = makeState(encoding);
+					std::vector<BYTE> input(state->BytesPerFrame());
+					for (uint32_t line = 0; line < dimension[1]; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						if (encoding == VideoFrameEncoding::R12B)
+						{
+							for (uint32_t x = 0; x < dimension[0]; x += 8)
+								WriteR12BBlock(row + static_cast<size_t>(x / 8) * 36U,
+									2048, 2048, 2048);
+						}
+						else if (encoding == VideoFrameEncoding::R12L)
+						{
+							for (uint32_t x = 0; x < dimension[0]; x += 2)
+								WriteR12LPixelPair(row + static_cast<size_t>(x / 2) * 9U,
+									2048, 2048, 2048, 2048, 2048, 2048);
+						}
+						else
+						{
+							for (uint32_t x = 0; x < dimension[0]; ++x)
+							{
+								if (encoding == VideoFrameEncoding::R210)
+									WriteR210Pixel(row + static_cast<size_t>(x) * 4U,
+										512, 512, 512);
+								else
+									WriteR10Pixel(row + static_cast<size_t>(x) * 4U,
+										encoding, 512, 512, 512);
+							}
+						}
+					}
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+					CDeckLinkRGBToP010VideoFrameFormatter formatter;
+					formatter.OnVideoState(state);
+					std::vector<BYTE> output(formatter.GetOutFrameSize());
+					Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+					const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
+					const size_t ySamples =
+						static_cast<size_t>(dimension[0]) * dimension[1];
+					Assert::IsTrue(samples[0] != 0);
+					Assert::AreEqual(static_cast<unsigned int>(samples[0]),
+						static_cast<unsigned int>(samples[ySamples - 1]));
+				}
+
+				{
+					VideoStateComPtr state = makeState(VideoFrameEncoding::R210);
+					std::vector<BYTE> input(state->BytesPerFrame());
+					for (uint32_t line = 0; line < dimension[1]; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						for (uint32_t x = 0; x < dimension[0]; ++x)
+							WriteR210Pixel(row + static_cast<size_t>(x) * 4U,
+								512, 512, 512);
+					}
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+					CR210toRGB48VideoFrameFormatter formatter;
+					formatter.OnVideoState(state);
+					std::vector<BYTE> output(formatter.GetOutFrameSize());
+					Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+					const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
+					const size_t componentCount =
+						static_cast<size_t>(dimension[0]) * dimension[1] * 3U;
+					Assert::AreEqual(512U << 6,
+						static_cast<unsigned int>(samples[0]));
+					Assert::AreEqual(512U << 6,
+						static_cast<unsigned int>(samples[componentCount - 1]));
+				}
+
+				{
+					VideoStateComPtr state = makeState(VideoFrameEncoding::R12B);
+					std::vector<BYTE> input(state->BytesPerFrame());
+					for (uint32_t line = 0; line < dimension[1]; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						for (uint32_t x = 0; x < dimension[0]; x += 8)
+							WriteR12BBlock(row + static_cast<size_t>(x / 8) * 36U,
+								2048, 2048, 2048);
+					}
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+					CR12BtoRGB48VideoFrameFormatter formatter;
+					formatter.OnVideoState(state);
+					std::vector<BYTE> output(formatter.GetOutFrameSize());
+					Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+					const auto* samples = reinterpret_cast<const uint16_t*>(output.data());
+					const size_t componentCount =
+						static_cast<size_t>(dimension[0]) * dimension[1] * 3U;
+					Assert::AreEqual(32776U,
+						static_cast<unsigned int>(samples[0]));
+					Assert::AreEqual(32776U,
+						static_cast<unsigned int>(samples[componentCount - 1]));
+				}
+			}
 		}
 
 		TEST_METHOD(CV210toP210VideoFrameFormatterPreservesEvery422Sample)
@@ -524,6 +1322,34 @@ namespace Tests
 			expect(ySamples + 99, 0);
 		}
 
+		TEST_METHOD(CV210toP210AVX2MatchesScalarBitExactly)
+		{
+			VideoStateComPtr state = new VideoState();
+			state->valid = true;
+			state->displayMode = std::make_shared<DisplayMode>(
+				100, 100, false, 60000, 1001);
+			state->videoFrameEncoding = VideoFrameEncoding::V210;
+			std::vector<BYTE> input(state->BytesPerFrame());
+			FillBenchmarkPattern(input, 0x27182818U);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+
+			CV210toP210VideoFrameFormatter scalar;
+			scalar.SetConversionMethod(
+				CV210toP210VideoFrameFormatter::ConversionMethod::SCALAR);
+			scalar.OnVideoState(state);
+			std::vector<BYTE> scalarOutput(scalar.GetOutFrameSize(), 0x55);
+			Assert::IsTrue(scalar.FormatVideoFrame(frame, scalarOutput.data()));
+
+			CV210toP210VideoFrameFormatter avx2;
+			avx2.SetConversionMethod(
+				CV210toP210VideoFrameFormatter::ConversionMethod::AVX2);
+			avx2.OnVideoState(state);
+			std::vector<BYTE> avx2Output(avx2.GetOutFrameSize(), 0xaa);
+			Assert::IsTrue(avx2.FormatVideoFrame(frame, avx2Output.data()));
+			Assert::IsTrue(scalarOutput == avx2Output,
+				L"v210 P210 AVX2 output must match scalar output bit-for-bit");
+		}
+
 		TEST_METHOD(CUYVYtoP210VideoFrameFormatterPreservesEvery422Sample)
 		{
 			CUYVYtoP210VideoFrameFormatter vff;
@@ -565,11 +1391,206 @@ namespace Tests
 			expect(ySamples + 101, 61);
 		}
 
+		TEST_METHOD(CUYVYtoP210AVX2MatchesScalarBitExactly)
+		{
+			const VideoFrameEncoding encodings[] = {
+				VideoFrameEncoding::UYVY,
+				VideoFrameEncoding::HDYC,
+			};
+			for (const auto encoding : encodings)
+			{
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					130, 100, false, 60000, 1001);
+				state->videoFrameEncoding = encoding;
+				std::vector<BYTE> input(state->BytesPerFrame());
+				FillBenchmarkPattern(input,
+					0x31415926U ^ static_cast<uint32_t>(encoding));
+				VideoFrame frame(input.data(), 1, 0, nullptr);
+
+				CUYVYtoP210VideoFrameFormatter scalar;
+				scalar.SetConversionMethod(
+					CUYVYtoP210VideoFrameFormatter::ConversionMethod::SCALAR);
+				scalar.OnVideoState(state);
+				std::vector<BYTE> scalarOutput(scalar.GetOutFrameSize(), 0x55);
+				Assert::IsTrue(scalar.FormatVideoFrame(frame, scalarOutput.data()));
+
+				CUYVYtoP210VideoFrameFormatter avx2;
+				avx2.SetConversionMethod(
+					CUYVYtoP210VideoFrameFormatter::ConversionMethod::AVX2);
+				avx2.OnVideoState(state);
+				std::vector<BYTE> avx2Output(avx2.GetOutFrameSize(), 0xaa);
+				Assert::IsTrue(avx2.FormatVideoFrame(frame, avx2Output.data()));
+				Assert::IsTrue(scalarOutput == avx2Output,
+					L"UYVY/HDYC P210 AVX2 output must match scalar bit-for-bit");
+			}
+		}
+
+		TEST_METHOD(CUYVYtoP010AVX2MatchesScalarBitExactlyIncludingRowTails)
+		{
+			const uint32_t widths[] = { 100, 110, 112, 114, 126, 128, 130, 142 };
+			for (const auto encoding : {
+				VideoFrameEncoding::UYVY, VideoFrameEncoding::HDYC })
+			{
+				for (const uint32_t width : widths)
+				{
+					VideoStateComPtr state = new VideoState();
+					state->valid = true;
+					state->displayMode = std::make_shared<DisplayMode>(
+						width, 100, false, 60000, 1001);
+					state->videoFrameEncoding = encoding;
+					std::vector<BYTE> input(state->BytesPerFrame());
+					FillBenchmarkPattern(input,
+						0x6d2b79f5U ^ width ^ static_cast<uint32_t>(encoding));
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+
+					CUYVYtoP010VideoFrameFormatter scalar;
+					scalar.SetConversionMethod(
+						CUYVYtoP010VideoFrameFormatter::ConversionMethod::SCALAR);
+					scalar.OnVideoState(state);
+					std::vector<BYTE> scalarOutput(scalar.GetOutFrameSize(), 0x55);
+					Assert::IsTrue(scalar.FormatVideoFrame(
+						frame, scalarOutput.data()));
+
+					CUYVYtoP010VideoFrameFormatter avx2;
+					avx2.SetConversionMethod(
+						CUYVYtoP010VideoFrameFormatter::ConversionMethod::AVX2);
+					avx2.OnVideoState(state);
+					std::vector<BYTE> avx2Output(avx2.GetOutFrameSize(), 0xaa);
+					Assert::IsTrue(avx2.FormatVideoFrame(frame, avx2Output.data()));
+					Assert::IsTrue(scalarOutput == avx2Output,
+						L"UYVY/HDYC P010 AVX2 output must match scalar at SIMD tails and row boundaries");
+				}
+			}
+		}
+
+		TEST_METHOD(UYVYAndHDYCProduceByteIdenticalP010AndP210Frames)
+		{
+			auto makeState = [](VideoFrameEncoding encoding)
+			{
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					130, 100, false, 60000, 1001);
+				state->videoFrameEncoding = encoding;
+				state->colorspace = encoding == VideoFrameEncoding::HDYC ?
+					ColorSpace::REC_709 : ColorSpace::REC_601_525;
+				return state;
+			};
+
+			VideoStateComPtr uyvyState = makeState(VideoFrameEncoding::UYVY);
+			VideoStateComPtr hdycState = makeState(VideoFrameEncoding::HDYC);
+			Assert::AreEqual(uyvyState->BytesPerRow(), hdycState->BytesPerRow());
+			Assert::AreEqual(260U, uyvyState->BytesPerRow());
+			std::vector<BYTE> input(uyvyState->BytesPerFrame());
+			FillBenchmarkPattern(input, 0xa511e9b3U);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+
+			CUYVYtoP010VideoFrameFormatter uyvyP010;
+			uyvyP010.OnVideoState(uyvyState);
+			CUYVYtoP010VideoFrameFormatter hdycP010;
+			hdycP010.OnVideoState(hdycState);
+			std::vector<BYTE> uyvyP010Output(uyvyP010.GetOutFrameSize());
+			std::vector<BYTE> hdycP010Output(hdycP010.GetOutFrameSize());
+			Assert::IsTrue(uyvyP010.FormatVideoFrame(frame, uyvyP010Output.data()));
+			Assert::IsTrue(hdycP010.FormatVideoFrame(frame, hdycP010Output.data()));
+			Assert::IsTrue(uyvyP010Output == hdycP010Output);
+
+			CUYVYtoP210VideoFrameFormatter uyvyP210;
+			uyvyP210.OnVideoState(uyvyState);
+			CUYVYtoP210VideoFrameFormatter hdycP210;
+			hdycP210.OnVideoState(hdycState);
+			std::vector<BYTE> uyvyP210Output(uyvyP210.GetOutFrameSize());
+			std::vector<BYTE> hdycP210Output(hdycP210.GetOutFrameSize());
+			Assert::IsTrue(uyvyP210.FormatVideoFrame(frame, uyvyP210Output.data()));
+			Assert::IsTrue(hdycP210.FormatVideoFrame(frame, hdycP210Output.data()));
+			Assert::IsTrue(uyvyP210Output == hdycP210Output);
+		}
+
+		TEST_METHOD(OptionalCapturedDeckLink8BitYuvFrameReplay)
+		{
+			const auto environment = [](const char* name)
+			{
+				const DWORD required = GetEnvironmentVariableA(name, nullptr, 0);
+				if (required == 0) return std::string();
+				std::string value(required, '\0');
+				GetEnvironmentVariableA(name, &value[0], required);
+				value.resize(required - 1);
+				return value;
+			};
+			const std::string path = environment("VP_DECKLINK_HDYC_FIXTURE");
+			if (path.empty())
+			{
+				Logger::WriteMessage(
+					L"Optional DeckLink replay skipped: VP_DECKLINK_HDYC_FIXTURE is not set");
+				return;
+			}
+
+			const std::string widthText = environment("VP_DECKLINK_FIXTURE_WIDTH");
+			const std::string heightText = environment("VP_DECKLINK_FIXTURE_HEIGHT");
+			Assert::IsFalse(widthText.empty());
+			Assert::IsFalse(heightText.empty());
+			const uint32_t width = static_cast<uint32_t>(std::stoul(widthText));
+			const uint32_t height = static_cast<uint32_t>(std::stoul(heightText));
+			Assert::IsTrue(width > 0 && (width & 1U) == 0);
+			Assert::IsTrue(height > 0 && (height & 1U) == 0);
+
+			std::ifstream stream(path, std::ios::binary | std::ios::ate);
+			Assert::IsTrue(stream.good(), L"Could not open DeckLink raw frame fixture");
+			const size_t fileBytes = static_cast<size_t>(stream.tellg());
+			const size_t expectedBytes = static_cast<size_t>(width) * height * 2U;
+			Assert::AreEqual(expectedBytes, fileBytes,
+				L"Raw bmdFormat8BitYUV fixture must contain exactly one tight UYVY frame");
+			std::vector<BYTE> input(fileBytes);
+			stream.seekg(0);
+			stream.read(reinterpret_cast<char*>(input.data()), input.size());
+			Assert::IsTrue(stream.good());
+
+			VideoStateComPtr state = new VideoState();
+			state->valid = true;
+			state->displayMode = std::make_shared<DisplayMode>(
+				width, height, false, 60000, 1001);
+			state->videoFrameEncoding = VideoFrameEncoding::HDYC;
+			state->colorspace = ColorSpace::REC_709;
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+
+			CUYVYtoP010VideoFrameFormatter p010Scalar;
+			p010Scalar.SetConversionMethod(
+				CUYVYtoP010VideoFrameFormatter::ConversionMethod::SCALAR);
+			p010Scalar.OnVideoState(state);
+			CUYVYtoP010VideoFrameFormatter p010Avx2;
+			p010Avx2.SetConversionMethod(
+				CUYVYtoP010VideoFrameFormatter::ConversionMethod::AVX2);
+			p010Avx2.OnVideoState(state);
+			std::vector<BYTE> scalarOutput(p010Scalar.GetOutFrameSize());
+			std::vector<BYTE> avx2Output(p010Avx2.GetOutFrameSize());
+			Assert::IsTrue(p010Scalar.FormatVideoFrame(frame, scalarOutput.data()));
+			Assert::IsTrue(p010Avx2.FormatVideoFrame(frame, avx2Output.data()));
+			Assert::IsTrue(scalarOutput == avx2Output);
+
+			CUYVYtoP210VideoFrameFormatter p210Scalar;
+			p210Scalar.SetConversionMethod(
+				CUYVYtoP210VideoFrameFormatter::ConversionMethod::SCALAR);
+			p210Scalar.OnVideoState(state);
+			CUYVYtoP210VideoFrameFormatter p210Avx2;
+			p210Avx2.SetConversionMethod(
+				CUYVYtoP210VideoFrameFormatter::ConversionMethod::AVX2);
+			p210Avx2.OnVideoState(state);
+			scalarOutput.assign(p210Scalar.GetOutFrameSize(), 0);
+			avx2Output.assign(p210Avx2.GetOutFrameSize(), 0);
+			Assert::IsTrue(p210Scalar.FormatVideoFrame(frame, scalarOutput.data()));
+			Assert::IsTrue(p210Avx2.FormatVideoFrame(frame, avx2Output.data()));
+			Assert::IsTrue(scalarOutput == avx2Output);
+		}
+
 		TEST_METHOD(AlphaNativeRgbLayoutPreservesComponentBitfields)
 		{
 			AlphaNativeRgbLayout layout;
 			Assert::IsTrue(GetAlphaNativeRgbLayout(VideoFrameEncoding::R210, layout));
 			Assert::IsTrue(layout.swapped);
+			Assert::IsTrue(layout.limitedRange);
+			Assert::IsFalse(AlphaCanUseNativeRgbUpload(VideoFrameEncoding::R210));
 			Assert::AreEqual(10, layout.bitDepth);
 			const uint32_t r210 = (1U << 20) | (2U << 10) | 3U;
 			Assert::AreEqual(1U, static_cast<uint32_t>((r210 & layout.masks[0]) >> 20));
@@ -578,6 +1599,8 @@ namespace Tests
 
 			Assert::IsTrue(GetAlphaNativeRgbLayout(VideoFrameEncoding::R10l, layout));
 			Assert::IsFalse(layout.swapped);
+			Assert::IsTrue(layout.limitedRange);
+			Assert::IsTrue(AlphaCanUseNativeRgbUpload(VideoFrameEncoding::R10l));
 			const uint32_t r10 = (1U << 22) | (2U << 12) | (3U << 2);
 			Assert::AreEqual(1U, static_cast<uint32_t>((r10 & layout.masks[0]) >> 22));
 			Assert::AreEqual(2U, static_cast<uint32_t>((r10 & layout.masks[1]) >> 12));
@@ -585,6 +1608,8 @@ namespace Tests
 
 			Assert::IsTrue(GetAlphaNativeRgbLayout(VideoFrameEncoding::R10b, layout));
 			Assert::IsTrue(layout.swapped);
+			Assert::IsTrue(layout.limitedRange);
+			Assert::IsTrue(AlphaCanUseNativeRgbUpload(VideoFrameEncoding::R10b));
 			Assert::AreEqual(10, layout.bitDepth);
 			Assert::IsFalse(GetAlphaNativeRgbLayout(VideoFrameEncoding::R12L, layout));
 		}
@@ -619,14 +1644,372 @@ namespace Tests
 			Assert::AreEqual(static_cast<BYTE>(0xC0), output[4]);
 			Assert::AreEqual(static_cast<BYTE>(0x00), output[5]);
 
-			// Maximum channel values must map to the full 16-bit endpoint, not 0xFFC0.
-			input[0] = 0x3F;
-			input[1] = 0xFF;
-			input[2] = 0xFF;
-			input[3] = 0xFF;
+			// DeckLink defines r210 as SMPTE-range RGB: 64-960. Widening
+			// preserves those codes by padding the low six bits. It must not
+			// replicate high bits as though r210 were full-range 0-1023.
+			WriteR210Pixel(input.data(), 64, 960, 512);
 			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
-			for (size_t i = 0; i < 6; ++i)
-				Assert::AreEqual(static_cast<BYTE>(0xFF), output[i]);
+			const auto* components =
+				reinterpret_cast<const uint16_t*>(output.data());
+			Assert::AreEqual(static_cast<unsigned int>(64U << 6),
+				static_cast<unsigned int>(components[0]));
+			Assert::AreEqual(static_cast<unsigned int>(960U << 6),
+				static_cast<unsigned int>(components[1]));
+			Assert::AreEqual(static_cast<unsigned int>(512U << 6),
+				static_cast<unsigned int>(components[2]));
+
+			// Preserve out-of-nominal-range codes without clipping or full-range
+			// replication so downstream range handling can make that decision.
+			WriteR210Pixel(input.data(), 0, 1023, 63);
+			Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
+			Assert::AreEqual(0U, static_cast<unsigned int>(components[0]));
+			Assert::AreEqual(static_cast<unsigned int>(1023U << 6),
+				static_cast<unsigned int>(components[1]));
+			Assert::AreEqual(static_cast<unsigned int>(63U << 6),
+				static_cast<unsigned int>(components[2]));
+		}
+
+		TEST_METHOD(CR210toRGB48AVX2MatchesScalarBitExactly)
+		{
+			// A non-multiple-of-eight width exercises both the SIMD body and the
+			// scalar tail while retaining DeckLink's aligned r210 row stride.
+			VideoStateComPtr tailState = new VideoState();
+			tailState->valid = true;
+			tailState->displayMode = std::make_shared<DisplayMode>(
+				102, 100, false, 60000, 1001);
+			tailState->videoFrameEncoding = VideoFrameEncoding::R210;
+			std::vector<BYTE> tailInput(tailState->BytesPerFrame());
+			FillBenchmarkPattern(tailInput, 0x21048a52U);
+			VideoFrame tailFrame(tailInput.data(), 1, 0, nullptr);
+
+			CR210toRGB48VideoFrameFormatter tailScalar;
+			tailScalar.SetConversionMethod(
+				CR210toRGB48VideoFrameFormatter::ConversionMethod::SCALAR);
+			tailScalar.OnVideoState(tailState);
+			std::vector<BYTE> tailScalarOutput(tailScalar.GetOutFrameSize());
+			Assert::IsTrue(tailScalar.FormatVideoFrame(
+				tailFrame, tailScalarOutput.data()));
+
+			CR210toRGB48VideoFrameFormatter tailAVX2;
+			tailAVX2.SetConversionMethod(
+				CR210toRGB48VideoFrameFormatter::ConversionMethod::AVX2);
+			tailAVX2.OnVideoState(tailState);
+			std::vector<BYTE> tailAVX2Output(tailAVX2.GetOutFrameSize());
+			Assert::IsTrue(tailAVX2.FormatVideoFrame(
+				tailFrame, tailAVX2Output.data()));
+			Assert::IsTrue(tailScalarOutput == tailAVX2Output,
+				L"r210 RGB48 AVX2 must match scalar through its pixel tail");
+
+			// Exhaust all source codes in every channel and SIMD lane. The output
+			// is limited-range code preservation: the low six bits remain zero.
+			VideoStateComPtr exhaustiveState = new VideoState();
+			exhaustiveState->valid = true;
+			exhaustiveState->displayMode = std::make_shared<DisplayMode>(
+				104, 100, false, 60000, 1001);
+			exhaustiveState->videoFrameEncoding = VideoFrameEncoding::R210;
+			std::vector<BYTE> exhaustiveInput(exhaustiveState->BytesPerFrame());
+			CR210toRGB48VideoFrameFormatter exhaustiveAVX2;
+			exhaustiveAVX2.SetConversionMethod(
+				CR210toRGB48VideoFrameFormatter::ConversionMethod::AVX2);
+			exhaustiveAVX2.OnVideoState(exhaustiveState);
+			std::vector<BYTE> exhaustiveOutput(exhaustiveAVX2.GetOutFrameSize());
+			VideoFrame exhaustiveFrame(exhaustiveInput.data(), 2, 0, nullptr);
+			for (uint16_t code = 0; code <= 1023U; ++code)
+			{
+				for (uint32_t line = 0; line < 100; ++line)
+				{
+					BYTE* row = exhaustiveInput.data() +
+						static_cast<size_t>(line) * exhaustiveState->BytesPerRow();
+					for (uint32_t pixel = 0; pixel < 8; ++pixel)
+						WriteR210Pixel(row + pixel * 4U, code, code, code);
+				}
+				Assert::IsTrue(exhaustiveAVX2.FormatVideoFrame(
+					exhaustiveFrame, exhaustiveOutput.data()));
+				const auto* samples = reinterpret_cast<const uint16_t*>(
+					exhaustiveOutput.data());
+				const uint16_t expected = static_cast<uint16_t>(code << 6);
+				for (uint32_t component = 0; component < 24; ++component)
+					Assert::AreEqual(static_cast<unsigned int>(expected),
+						static_cast<unsigned int>(samples[component]));
+			}
+
+			VideoStateComPtr threadedState = new VideoState();
+			threadedState->valid = true;
+			threadedState->displayMode = std::make_shared<DisplayMode>(
+				1920, 1080, false, 60000, 1001);
+			threadedState->videoFrameEncoding = VideoFrameEncoding::R210;
+			std::vector<BYTE> threadedInput(threadedState->BytesPerFrame());
+			FillBenchmarkPattern(threadedInput, 0x8457c210U);
+			VideoFrame threadedFrame(threadedInput.data(), 3, 0, nullptr);
+
+			CR210toRGB48VideoFrameFormatter threadedScalar;
+			threadedScalar.SetConversionMethod(
+				CR210toRGB48VideoFrameFormatter::ConversionMethod::SCALAR);
+			threadedScalar.OnVideoState(threadedState);
+			std::vector<BYTE> threadedScalarOutput(
+				threadedScalar.GetOutFrameSize());
+			Assert::IsTrue(threadedScalar.FormatVideoFrame(
+				threadedFrame, threadedScalarOutput.data()));
+
+			CR210toRGB48VideoFrameFormatter threadedAVX2;
+			threadedAVX2.SetConversionMethod(
+				CR210toRGB48VideoFrameFormatter::ConversionMethod::AVX2);
+			threadedAVX2.OnVideoState(threadedState);
+			std::vector<BYTE> threadedAVX2Output(threadedAVX2.GetOutFrameSize());
+			Assert::IsTrue(threadedAVX2.FormatVideoFrame(
+				threadedFrame, threadedAVX2Output.data()));
+			Assert::IsTrue(threadedScalarOutput == threadedAVX2Output,
+				L"Threaded r210 RGB48 AVX2 must match scalar output bit-for-bit");
+		}
+
+		TEST_METHOD(CV210toP010VideoFrameFormatter4K60PerformanceSmokeTest)
+		{
+			CV210toP010VideoFrameFormatter formatter;
+			VideoStateComPtr state = new VideoState();
+			state->valid = true;
+			state->displayMode = std::make_shared<DisplayMode>(
+				3840, 2160, false, 60000, 1001);
+			state->videoFrameEncoding = VideoFrameEncoding::V210;
+			formatter.OnVideoState(state);
+
+			std::vector<BYTE> input(state->BytesPerFrame(), 0);
+			std::vector<BYTE> output(formatter.GetOutFrameSize(), 0xFF);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			for (int iteration = 0; iteration < 3; ++iteration)
+				Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+			for (int iteration = 0; iteration < 30; ++iteration)
+				Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+
+			double currentUs = 0.0;
+			double averageUs = 0.0;
+			double maximumUs = 0.0;
+			formatter.GetConversionPerformance(currentUs, averageUs, maximumUs);
+			wchar_t message[160];
+			swprintf_s(message,
+				L"v210 4K60 to P010 current/avg/max: %.0f / %.0f / %.0f us",
+				currentUs, averageUs, maximumUs);
+			Logger::WriteMessage(message);
+			Assert::IsTrue(averageUs < 16667.0,
+				L"Average v210 conversion time exceeds one 60 fps frame period");
+		}
+
+		TEST_METHOD(DeckLinkConvertersSustained4K60PerformanceComparison)
+		{
+			bool allAveragesMeet60Fps = true;
+			bool allP95sMeet60Fps = true;
+			const auto recordResult = [&](const ConverterBenchmarkComparison& result)
+			{
+				allAveragesMeet60Fps = allAveragesMeet60Fps &&
+					result.rotatingBuffers.averageUs < 16667.0;
+				allP95sMeet60Fps = allP95sMeet60Fps &&
+					result.rotatingBuffers.p95Us < 16667.0;
+			};
+
+			{
+				CV210toP010VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					3840, 2160, false, 60000, 1001);
+				state->videoFrameEncoding = VideoFrameEncoding::V210;
+				formatter.OnVideoState(state);
+				recordResult(CompareFormatterPerformance(L"v210-to-P010", formatter,
+					state->BytesPerFrame(), formatter.GetOutFrameSize()));
+			}
+
+			{
+				CV210toP210VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					3840, 2160, false, 60000, 1001);
+				state->videoFrameEncoding = VideoFrameEncoding::V210;
+				formatter.OnVideoState(state);
+				recordResult(CompareFormatterPerformance(L"v210-to-P210", formatter,
+					state->BytesPerFrame(), formatter.GetOutFrameSize()));
+			}
+
+			const VideoFrameEncoding uyvyEncodings[] = {
+				VideoFrameEncoding::UYVY,
+				VideoFrameEncoding::HDYC,
+			};
+			for (const auto encoding : uyvyEncodings)
+			{
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					3840, 2160, false, 60000, 1001);
+				state->videoFrameEncoding = encoding;
+
+				CUYVYtoP010VideoFrameFormatter p010;
+				p010.OnVideoState(state);
+				std::wstring p010Name = ToString(encoding);
+				p010Name += L"-to-P010";
+				recordResult(CompareFormatterPerformance(p010Name.c_str(), p010,
+					state->BytesPerFrame(), p010.GetOutFrameSize()));
+
+				CUYVYtoP210VideoFrameFormatter p210;
+				p210.OnVideoState(state);
+				std::wstring p210Name = ToString(encoding);
+				p210Name += L"-to-P210";
+				recordResult(CompareFormatterPerformance(p210Name.c_str(), p210,
+					state->BytesPerFrame(), p210.GetOutFrameSize()));
+			}
+
+			const VideoFrameEncoding argbEncodings[] = {
+				VideoFrameEncoding::ARGB_8BIT,
+				VideoFrameEncoding::BGRA_8BIT,
+			};
+			for (const auto encoding : argbEncodings)
+			{
+				CARGBtoP010VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					3840, 2160, false, 60000, 1001);
+				state->videoFrameEncoding = encoding;
+				state->colorspace = ColorSpace::BT_2020;
+				formatter.OnVideoState(state);
+				std::wstring converterName = ToString(encoding);
+				converterName += L"-to-P010";
+				recordResult(CompareFormatterPerformance(converterName.c_str(), formatter,
+					state->BytesPerFrame(), formatter.GetOutFrameSize()));
+			}
+
+			{
+				CNoopVideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					3840, 2160, false, 60000, 1001);
+				state->videoFrameEncoding = VideoFrameEncoding::V210;
+				formatter.OnVideoState(state);
+				recordResult(CompareFormatterPerformance(L"v210-noop-copy", formatter,
+					state->BytesPerFrame(), formatter.GetOutFrameSize()));
+			}
+
+			{
+				CR210toRGB48VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					3840, 2160, false, 60000, 1001);
+				state->videoFrameEncoding = VideoFrameEncoding::R210;
+				formatter.OnVideoState(state);
+				recordResult(CompareFormatterPerformance(L"r210-to-RGB48", formatter,
+					state->BytesPerFrame(), formatter.GetOutFrameSize()));
+			}
+
+			{
+				CR12BtoRGB48VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					3840, 2160, false, 60000, 1001);
+				state->videoFrameEncoding = VideoFrameEncoding::R12B;
+				formatter.OnVideoState(state);
+				recordResult(CompareFormatterPerformance(L"R12B-to-RGB48", formatter,
+					state->BytesPerFrame(), formatter.GetOutFrameSize()));
+			}
+
+			const VideoFrameEncoding packedRgbEncodings[] = {
+				VideoFrameEncoding::R210,
+				VideoFrameEncoding::R10b,
+				VideoFrameEncoding::R10l,
+				VideoFrameEncoding::R12B,
+				VideoFrameEncoding::R12L
+			};
+			for (const auto encoding : packedRgbEncodings)
+			{
+				CDeckLinkRGBToP010VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					3840, 2160, false, 60000, 1001);
+				state->videoFrameEncoding = encoding;
+				state->colorspace = ColorSpace::BT_2020;
+				formatter.OnVideoState(state);
+				std::wstring converterName = ToString(encoding);
+				converterName += L"-to-P010";
+				recordResult(CompareFormatterPerformance(converterName.c_str(), formatter,
+					state->BytesPerFrame(), formatter.GetOutFrameSize()));
+			}
+
+			Assert::IsTrue(allAveragesMeet60Fps,
+				L"A sustained converter average exceeds one 60 fps frame period");
+			Assert::IsTrue(allP95sMeet60Fps,
+				L"A sustained converter p95 exceeds one 60 fps frame period");
+		}
+
+		TEST_METHOD(P010ConvertersUseOneVerticalChromaDownsamplingPolicy)
+		{
+			// Both source formats are 4:2:2. This oracle records the existing UYVY
+			// rounded vertical average as the candidate common 4:2:0 policy. It is
+			// intentionally red for v210 until chroma siting is explicitly decided.
+			VideoStateComPtr uyvyState = new VideoState();
+			uyvyState->valid = true;
+			uyvyState->displayMode = std::make_shared<DisplayMode>(
+				192, 100, false, 24000, 1000);
+			uyvyState->videoFrameEncoding = VideoFrameEncoding::UYVY;
+			std::vector<BYTE> uyvyInput(uyvyState->BytesPerFrame(), 0);
+			for (uint32_t line = 0; line < 100; ++line)
+			{
+				BYTE* row = uyvyInput.data() +
+					static_cast<size_t>(line) * uyvyState->BytesPerRow();
+				const BYTE u = (line & 1U) == 0 ? 25 : 225;
+				const BYTE v = (line & 1U) == 0 ? 50 : 250;
+				for (uint32_t x = 0; x < 192; x += 2)
+				{
+					row[x * 2U + 0] = u;
+					row[x * 2U + 1] = 16;
+					row[x * 2U + 2] = v;
+					row[x * 2U + 3] = 16;
+				}
+			}
+			CUYVYtoP010VideoFrameFormatter uyvy;
+			uyvy.OnVideoState(uyvyState);
+			std::vector<BYTE> uyvyOutput(uyvy.GetOutFrameSize(), 0);
+			VideoFrame uyvyFrame(uyvyInput.data(), 1, 0, nullptr);
+			Assert::IsTrue(uyvy.FormatVideoFrame(uyvyFrame, uyvyOutput.data()));
+
+			VideoStateComPtr v210State = new VideoState();
+			v210State->valid = true;
+			v210State->displayMode = uyvyState->displayMode;
+			v210State->videoFrameEncoding = VideoFrameEncoding::V210;
+			std::vector<BYTE> v210Input(v210State->BytesPerFrame(), 0);
+			for (uint32_t line = 0; line < 100; ++line)
+			{
+				BYTE* row = v210Input.data() +
+					static_cast<size_t>(line) * v210State->BytesPerRow();
+				const uint16_t u = (line & 1U) == 0 ? 100 : 900;
+				const uint16_t v = (line & 1U) == 0 ? 200 : 1000;
+				for (uint32_t x = 0; x < 192; x += 6)
+					WriteV210Pack(row + (x / 6U) * 16U,
+						u, 64, v, 64, u, 64, v, 64, u, 64, v, 64);
+			}
+
+			const CV210toP010VideoFrameFormatter::ConversionMethod methods[] = {
+				CV210toP010VideoFrameFormatter::ConversionMethod::STANDARD,
+				CV210toP010VideoFrameFormatter::ConversionMethod::OPTIMIZED,
+				CV210toP010VideoFrameFormatter::ConversionMethod::SIMD,
+			};
+			for (const auto method : methods)
+			{
+				CV210toP010VideoFrameFormatter v210;
+				v210.SetConversionMethod(method);
+				v210.OnVideoState(v210State);
+				std::vector<BYTE> v210Output(v210.GetOutFrameSize(), 0);
+				VideoFrame v210Frame(v210Input.data(), 1, 0, nullptr);
+				Assert::IsTrue(v210.FormatVideoFrame(v210Frame, v210Output.data()));
+
+				const auto* samples = reinterpret_cast<const uint16_t*>(
+					v210Output.data());
+				const size_t chromaStart = 192ULL * 100ULL;
+				Assert::AreEqual(500U << 6,
+					static_cast<unsigned int>(samples[chromaStart]));
+				Assert::AreEqual(600U << 6,
+					static_cast<unsigned int>(samples[chromaStart + 1]));
+			}
 		}
 
 		TEST_METHOD(DisplayRuleExpressionTest)
@@ -1327,6 +2710,8 @@ namespace Tests
 			swprintf_s(message, L"Native R210 4K conversion current/avg/max: %.0f / %.0f / %.0f us",
 				currentUs, averageUs, maximumUs);
 			Logger::WriteMessage(message);
+			Assert::IsTrue(averageUs < 16667.0,
+				L"Average r210 RGB48 conversion exceeds one 60 fps frame period");
 		}
 
 		TEST_METHOD(CDeckLinkRGBToP010VideoFrameFormatterGoldenTest)
@@ -1359,13 +2744,13 @@ namespace Tests
 							WriteR12LPixelPair(row, 4095, 0, 0, 4095, 0, 0);
 						else if (encoding == VideoFrameEncoding::R210)
 						{
-							WriteR210Pixel(row, 1023, 0, 0);
-							WriteR210Pixel(row + 4, 1023, 0, 0);
+							WriteR210Pixel(row, 960, 64, 64);
+							WriteR210Pixel(row + 4, 960, 64, 64);
 						}
 						else
 						{
-							WriteR10Pixel(row, encoding, 1023, 0, 0);
-							WriteR10Pixel(row + 4, encoding, 1023, 0, 0);
+							WriteR10Pixel(row, encoding, 940, 64, 64);
+							WriteR10Pixel(row + 4, encoding, 940, 64, 64);
 						}
 						row += encoding == VideoFrameEncoding::R12L ? 9 : 8;
 					}
@@ -1375,14 +2760,360 @@ namespace Tests
 				VideoFrame frame(input.data(), 1, 0, nullptr);
 				Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
 				const uint16_t* words = reinterpret_cast<const uint16_t*>(output.data());
+				const bool fullRange = encoding == VideoFrameEncoding::R12L;
+				const unsigned int expectedY = (fullRange ? 217U : 250U) << 6;
+				const unsigned int expectedCb = (fullRange ? 395U : 409U) << 6;
+				const unsigned int expectedCr = (fullRange ? 1023U : 960U) << 6;
 				for (size_t i = 0; i < 104ULL * 100; ++i)
-					Assert::AreEqual(217U << 6, static_cast<unsigned int>(words[i]));
+					Assert::AreEqual(expectedY, static_cast<unsigned int>(words[i]));
 				for (size_t i = 104ULL * 100; i < 104ULL * 150; i += 2)
 				{
-					Assert::AreEqual(395U << 6, static_cast<unsigned int>(words[i]));
-					Assert::AreEqual(1023U << 6, static_cast<unsigned int>(words[i + 1]));
+					Assert::AreEqual(expectedCb, static_cast<unsigned int>(words[i]));
+					Assert::AreEqual(expectedCr, static_cast<unsigned int>(words[i + 1]));
 				}
 			}
+		}
+
+		TEST_METHOD(CDeckLinkLimitedRgbToP010MatchesBT709ReferenceCodes)
+		{
+			struct ExpectedColor
+			{
+				const char* name;
+				uint16_t red;
+				uint16_t green;
+				uint16_t blue;
+				uint16_t y;
+				uint16_t cb;
+				uint16_t cr;
+			};
+
+			const auto verify = [](VideoFrameEncoding encoding,
+				const ExpectedColor* colors,
+				size_t colorCount)
+			{
+				CDeckLinkRGBToP010VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					128, 100, false, 24000, 1000);
+				state->videoFrameEncoding = encoding;
+				state->colorspace = ColorSpace::REC_709;
+				formatter.OnVideoState(state);
+
+				std::vector<BYTE> input(state->BytesPerFrame(), 0);
+				std::vector<BYTE> output(formatter.GetOutFrameSize(), 0);
+				VideoFrame frame(input.data(), 1, 0, nullptr);
+				for (size_t colorIndex = 0; colorIndex < colorCount; ++colorIndex)
+				{
+					const ExpectedColor& color = colors[colorIndex];
+					for (uint32_t line = 0; line < 100; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						for (uint32_t x = 0; x < 128; ++x)
+						{
+							if (encoding == VideoFrameEncoding::R210)
+								WriteR210Pixel(row + x * 4U,
+									color.red, color.green, color.blue);
+							else
+								WriteR10Pixel(row + x * 4U, encoding,
+									color.red, color.green, color.blue);
+						}
+					}
+
+					Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+					const auto* samples =
+						reinterpret_cast<const uint16_t*>(output.data());
+					const size_t ySamples = 128ULL * 100ULL;
+					const std::wstring message(color.name,
+						color.name + strlen(color.name));
+					Assert::AreEqual(static_cast<unsigned int>(color.y << 6),
+						static_cast<unsigned int>(samples[0]), message.c_str());
+					Assert::AreEqual(static_cast<unsigned int>(color.cb << 6),
+						static_cast<unsigned int>(samples[ySamples]), message.c_str());
+					Assert::AreEqual(static_cast<unsigned int>(color.cr << 6),
+						static_cast<unsigned int>(samples[ySamples + 1]), message.c_str());
+				}
+			};
+
+			// R10b/R10l use SMPTE RGB 64-940. Expected values are an
+			// independent round-to-nearest BT.709 limited-range oracle.
+			const ExpectedColor r10Colors[] = {
+				{ "black", 64, 64, 64, 64, 512, 512 },
+				{ "white", 940, 940, 940, 940, 512, 512 },
+				{ "red",   940, 64, 64, 250, 409, 960 },
+				{ "green", 64, 940, 64, 691, 167, 105 },
+				{ "blue",  64, 64, 940, 127, 960, 471 },
+			};
+			verify(VideoFrameEncoding::R10b, r10Colors,
+				_countof(r10Colors));
+			verify(VideoFrameEncoding::R10l, r10Colors,
+				_countof(r10Colors));
+
+			// r210 has a distinct 64-960 RGB input span. It must normalize
+			// that span into limited P010 rather than treating 960 as full-range
+			// luma code 960.
+			const ExpectedColor r210Colors[] = {
+				{ "black", 64, 64, 64, 64, 512, 512 },
+				{ "white", 960, 960, 960, 940, 512, 512 },
+				{ "red",   960, 64, 64, 250, 409, 960 },
+				{ "green", 64, 960, 64, 691, 167, 105 },
+				{ "blue",  64, 64, 960, 127, 960, 471 },
+			};
+			verify(VideoFrameEncoding::R210, r210Colors,
+				_countof(r210Colors));
+		}
+
+		TEST_METHOD(CDeckLinkLimitedRgbToP010MatchesBT2020ReferenceCodes)
+		{
+			struct ExpectedColor
+			{
+				uint16_t red;
+				uint16_t green;
+				uint16_t blue;
+				uint16_t y;
+				uint16_t cb;
+				uint16_t cr;
+			};
+
+			const auto verify = [](VideoFrameEncoding encoding,
+				const ExpectedColor* colors, size_t colorCount)
+			{
+				CDeckLinkRGBToP010VideoFrameFormatter formatter;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(
+					128, 100, false, 24000, 1000);
+				state->videoFrameEncoding = encoding;
+				state->colorspace = ColorSpace::BT_2020;
+				formatter.OnVideoState(state);
+
+				std::vector<BYTE> input(state->BytesPerFrame(), 0);
+				std::vector<BYTE> output(formatter.GetOutFrameSize(), 0);
+				VideoFrame frame(input.data(), 1, 0, nullptr);
+				for (size_t colorIndex = 0; colorIndex < colorCount; ++colorIndex)
+				{
+					const ExpectedColor& color = colors[colorIndex];
+					for (uint32_t line = 0; line < 100; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						for (uint32_t x = 0; x < 128; ++x)
+						{
+							if (encoding == VideoFrameEncoding::R210)
+								WriteR210Pixel(row + x * 4U,
+									color.red, color.green, color.blue);
+							else
+								WriteR10Pixel(row + x * 4U, encoding,
+									color.red, color.green, color.blue);
+						}
+					}
+
+					Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+					const auto* samples =
+						reinterpret_cast<const uint16_t*>(output.data());
+					const size_t chromaStart = 128ULL * 100ULL;
+					Assert::AreEqual(static_cast<unsigned int>(color.y << 6),
+						static_cast<unsigned int>(samples[0]));
+					Assert::AreEqual(static_cast<unsigned int>(color.cb << 6),
+						static_cast<unsigned int>(samples[chromaStart]));
+					Assert::AreEqual(static_cast<unsigned int>(color.cr << 6),
+						static_cast<unsigned int>(samples[chromaStart + 1]));
+				}
+			};
+
+			const ExpectedColor r10Colors[] = {
+				{ 940, 64, 64, 294, 387, 960 },
+				{ 64, 940, 64, 658, 189, 100 },
+				{ 64, 64, 940, 116, 960, 476 },
+			};
+			const ExpectedColor r210Colors[] = {
+				{ 960, 64, 64, 294, 387, 960 },
+				{ 64, 960, 64, 658, 189, 100 },
+				{ 64, 64, 960, 116, 960, 476 },
+			};
+			verify(VideoFrameEncoding::R10b, r10Colors, _countof(r10Colors));
+			verify(VideoFrameEncoding::R10l, r10Colors, _countof(r10Colors));
+			verify(VideoFrameEncoding::R210, r210Colors, _countof(r210Colors));
+		}
+
+		TEST_METHOD(CDeckLinkLimitedRgbAVX2MatchesScalarBitExactly)
+		{
+			const VideoFrameEncoding encodings[] = {
+				VideoFrameEncoding::R210,
+				VideoFrameEncoding::R10b,
+				VideoFrameEncoding::R10l,
+			};
+			const ColorSpace colorSpaces[] = {
+				ColorSpace::REC_709,
+				ColorSpace::BT_2020,
+			};
+
+			for (const auto colorSpace : colorSpaces)
+			{
+				for (const auto encoding : encodings)
+				{
+					// 130 exercises sixteen AVX2 blocks plus the two-pixel scalar tail.
+					VideoStateComPtr state = new VideoState();
+					state->valid = true;
+					state->displayMode = std::make_shared<DisplayMode>(
+						130, 100, false, 60000, 1001);
+					state->videoFrameEncoding = encoding;
+					state->colorspace = colorSpace;
+
+					std::vector<BYTE> input(state->BytesPerFrame());
+					FillBenchmarkPattern(input,
+						0x13579bdfU ^ static_cast<uint32_t>(encoding) ^
+						(static_cast<uint32_t>(colorSpace) << 16));
+					for (uint32_t line = 0; line < 2; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * state->BytesPerRow();
+						const uint16_t excursionCodes[][3] = {
+							{ 0, 0, 0 }, { 1023, 1023, 1023 },
+							{ 0, 1023, 63 }, { 1023, 0, 1023 },
+							{ 64, 940, 960 }, { 960, 64, 940 },
+							{ 1, 1022, 65 }, { 1022, 1, 959 },
+						};
+						for (uint32_t x = 0; x < _countof(excursionCodes); ++x)
+						{
+							if (encoding == VideoFrameEncoding::R210)
+								WriteR210Pixel(row + x * 4U,
+									excursionCodes[x][0], excursionCodes[x][1],
+									excursionCodes[x][2]);
+							else
+								WriteR10Pixel(row + x * 4U, encoding,
+									excursionCodes[x][0], excursionCodes[x][1],
+									excursionCodes[x][2]);
+						}
+					}
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+
+					CDeckLinkRGBToP010VideoFrameFormatter scalar;
+					scalar.SetConversionMethod(
+						CDeckLinkRGBToP010VideoFrameFormatter::ConversionMethod::SCALAR);
+					scalar.OnVideoState(state);
+					std::vector<BYTE> scalarOutput(scalar.GetOutFrameSize(), 0x55);
+					Assert::IsTrue(scalar.FormatVideoFrame(frame, scalarOutput.data()));
+
+					CDeckLinkRGBToP010VideoFrameFormatter avx2;
+					avx2.SetConversionMethod(
+						CDeckLinkRGBToP010VideoFrameFormatter::ConversionMethod::AVX2);
+					avx2.OnVideoState(state);
+					std::vector<BYTE> avx2Output(avx2.GetOutFrameSize(), 0xaa);
+					Assert::IsTrue(avx2.FormatVideoFrame(frame, avx2Output.data()));
+					Assert::IsTrue(scalarOutput == avx2Output,
+						L"AVX2 packed RGB conversion must match scalar output bit-for-bit");
+				}
+			}
+
+			// Cross the production thread-pool threshold and its row-pair segment
+			// boundaries with one full-size randomized frame.
+			VideoStateComPtr threadedState = new VideoState();
+			threadedState->valid = true;
+			threadedState->displayMode = std::make_shared<DisplayMode>(
+				1920, 1080, false, 60000, 1001);
+			threadedState->videoFrameEncoding = VideoFrameEncoding::R10b;
+			threadedState->colorspace = ColorSpace::BT_2020;
+			std::vector<BYTE> threadedInput(threadedState->BytesPerFrame());
+			FillBenchmarkPattern(threadedInput, 0x2468ace0U);
+			VideoFrame threadedFrame(threadedInput.data(), 1, 0, nullptr);
+
+			CDeckLinkRGBToP010VideoFrameFormatter threadedScalar;
+			threadedScalar.SetConversionMethod(
+				CDeckLinkRGBToP010VideoFrameFormatter::ConversionMethod::SCALAR);
+			threadedScalar.OnVideoState(threadedState);
+			std::vector<BYTE> threadedScalarOutput(
+				threadedScalar.GetOutFrameSize());
+			Assert::IsTrue(threadedScalar.FormatVideoFrame(
+				threadedFrame, threadedScalarOutput.data()));
+
+			CDeckLinkRGBToP010VideoFrameFormatter threadedAVX2;
+			threadedAVX2.SetConversionMethod(
+				CDeckLinkRGBToP010VideoFrameFormatter::ConversionMethod::AVX2);
+			threadedAVX2.OnVideoState(threadedState);
+			std::vector<BYTE> threadedAVX2Output(threadedAVX2.GetOutFrameSize());
+			Assert::IsTrue(threadedAVX2.FormatVideoFrame(
+				threadedFrame, threadedAVX2Output.data()));
+			Assert::IsTrue(threadedScalarOutput == threadedAVX2Output,
+				L"Threaded AVX2 conversion must match threaded scalar output bit-for-bit");
+		}
+
+		TEST_METHOD(CDeckLinkR12AVX2MatchesScalarBitExactly)
+		{
+			const VideoFrameEncoding encodings[] = {
+				VideoFrameEncoding::R12B,
+				VideoFrameEncoding::R12L,
+			};
+			const ColorSpace colorSpaces[] = {
+				ColorSpace::REC_709,
+				ColorSpace::BT_2020,
+			};
+			for (const auto encoding : encodings)
+			{
+				for (const auto colorSpace : colorSpaces)
+				{
+					VideoStateComPtr state = new VideoState();
+					state->valid = true;
+					state->displayMode = std::make_shared<DisplayMode>(
+						104, 100, false, 60000, 1001);
+					state->videoFrameEncoding = encoding;
+					state->colorspace = colorSpace;
+					std::vector<BYTE> input(state->BytesPerFrame());
+					FillBenchmarkPattern(input,
+						0x5a5a1234U ^ static_cast<uint32_t>(encoding) ^
+						(static_cast<uint32_t>(colorSpace) << 16));
+					VideoFrame frame(input.data(), 1, 0, nullptr);
+
+					CDeckLinkRGBToP010VideoFrameFormatter scalar;
+					scalar.SetConversionMethod(
+						CDeckLinkRGBToP010VideoFrameFormatter::ConversionMethod::SCALAR);
+					scalar.OnVideoState(state);
+					std::vector<BYTE> scalarOutput(scalar.GetOutFrameSize(), 0x55);
+					Assert::IsTrue(scalar.FormatVideoFrame(frame, scalarOutput.data()));
+
+					CDeckLinkRGBToP010VideoFrameFormatter avx2;
+					avx2.SetConversionMethod(
+						CDeckLinkRGBToP010VideoFrameFormatter::ConversionMethod::AVX2);
+					avx2.OnVideoState(state);
+					std::vector<BYTE> avx2Output(avx2.GetOutFrameSize(), 0xaa);
+					Assert::IsTrue(avx2.FormatVideoFrame(frame, avx2Output.data()));
+					Assert::IsTrue(scalarOutput == avx2Output,
+						L"R12 AVX2 output must match scalar output bit-for-bit");
+				}
+			}
+
+			// Exercise the production thread-pool split at its 1080p threshold,
+			// including segment boundaries that the small exhaustive cases do
+			// not reach.
+			VideoStateComPtr threadedState = new VideoState();
+			threadedState->valid = true;
+			threadedState->displayMode = std::make_shared<DisplayMode>(
+				1920, 1080, false, 60000, 1001);
+			threadedState->videoFrameEncoding = VideoFrameEncoding::R12B;
+			threadedState->colorspace = ColorSpace::BT_2020;
+			std::vector<BYTE> threadedInput(threadedState->BytesPerFrame());
+			FillBenchmarkPattern(threadedInput, 0x7ca45129U);
+			VideoFrame threadedFrame(threadedInput.data(), 1, 0, nullptr);
+
+			CDeckLinkRGBToP010VideoFrameFormatter threadedScalar;
+			threadedScalar.SetConversionMethod(
+				CDeckLinkRGBToP010VideoFrameFormatter::ConversionMethod::SCALAR);
+			threadedScalar.OnVideoState(threadedState);
+			std::vector<BYTE> threadedScalarOutput(
+				threadedScalar.GetOutFrameSize());
+			Assert::IsTrue(threadedScalar.FormatVideoFrame(
+				threadedFrame, threadedScalarOutput.data()));
+
+			CDeckLinkRGBToP010VideoFrameFormatter threadedAVX2;
+			threadedAVX2.SetConversionMethod(
+				CDeckLinkRGBToP010VideoFrameFormatter::ConversionMethod::AVX2);
+			threadedAVX2.OnVideoState(threadedState);
+			std::vector<BYTE> threadedAVX2Output(threadedAVX2.GetOutFrameSize());
+			Assert::IsTrue(threadedAVX2.FormatVideoFrame(
+				threadedFrame, threadedAVX2Output.data()));
+			Assert::IsTrue(threadedScalarOutput == threadedAVX2Output,
+				L"Threaded R12 AVX2 conversion must match scalar output bit-for-bit");
 		}
 
 		TEST_METHOD(CDeckLinkRGBToP010R12BBlackWhiteContractTest)
@@ -1440,6 +3171,24 @@ namespace Tests
 				vff.OnVideoState(vs);
 
 				std::vector<BYTE> input(vs->BytesPerFrame(), 0);
+				const bool limitedInput = encoding == VideoFrameEncoding::R210 ||
+					encoding == VideoFrameEncoding::R10b ||
+					encoding == VideoFrameEncoding::R10l;
+				if (limitedInput)
+				{
+					for (uint32_t line = 0; line < 2160; ++line)
+					{
+						BYTE* row = input.data() +
+							static_cast<size_t>(line) * vs->BytesPerRow();
+						for (uint32_t x = 0; x < 3840; ++x)
+						{
+							if (encoding == VideoFrameEncoding::R210)
+								WriteR210Pixel(row + x * 4U, 64, 64, 64);
+							else
+								WriteR10Pixel(row + x * 4U, encoding, 64, 64, 64);
+						}
+					}
+				}
 				std::vector<BYTE> output(vff.GetOutFrameSize(), 0xFF);
 				VideoFrame frame(input.data(), 1, 0, nullptr);
 				for (int i = 0; i < 3; ++i)
@@ -1448,8 +3197,10 @@ namespace Tests
 					Assert::IsTrue(vff.FormatVideoFrame(frame, output.data()));
 
 				const uint16_t* words = reinterpret_cast<const uint16_t*>(output.data());
-				Assert::AreEqual(0U, static_cast<unsigned int>(words[0]));
-				Assert::AreEqual(0U, static_cast<unsigned int>(words[3840ULL * 2160 - 1]));
+				const unsigned int expectedBlack = (limitedInput ? 64U : 0U) << 6;
+				Assert::AreEqual(expectedBlack, static_cast<unsigned int>(words[0]));
+				Assert::AreEqual(expectedBlack,
+					static_cast<unsigned int>(words[3840ULL * 2160 - 1]));
 				Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[3840ULL * 2160]));
 				Assert::AreEqual(512U << 6, static_cast<unsigned int>(words[3840ULL * 2160 + 1]));
 
@@ -1461,6 +3212,8 @@ namespace Tests
 				swprintf_s(message, L"Packed RGB %s 4K to P010 current/avg/max: %.0f / %.0f / %.0f us",
 					ToString(encoding), currentUs, averageUs, maximumUs);
 				Logger::WriteMessage(message);
+				Assert::IsTrue(averageUs < 16667.0,
+					L"Average packed RGB conversion exceeds one 60 fps frame period");
 			}
 		}
 
@@ -1601,6 +3354,173 @@ namespace Tests
 				Assert::AreEqual(static_cast<BYTE>(0xFF), value);
 		}
 
+		TEST_METHOD(CR12BtoRGB48UsesDocumentedFullRangeScalingAtVideoCodePoints)
+		{
+			CR12BtoRGB48VideoFrameFormatter formatter;
+			VideoStateComPtr state = new VideoState();
+			state->valid = true;
+			state->displayMode = std::make_shared<DisplayMode>(
+				104, 100, false, 24000, 1000);
+			state->videoFrameEncoding = VideoFrameEncoding::R12B;
+			formatter.OnVideoState(state);
+
+			std::vector<BYTE> input(state->BytesPerFrame(), 0);
+			std::vector<BYTE> output(formatter.GetOutFrameSize(), 0);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			const uint16_t referenceCodes[] = {
+				0x000, 0x001, 0x089, 0x100, 0x800, 0xEB0, 0xFFE, 0xFFF
+			};
+
+			for (const uint16_t code : referenceCodes)
+			{
+				WriteR12BBlock(input.data(), code, code, code);
+				Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+				const auto* components =
+					reinterpret_cast<const uint16_t*>(output.data());
+				const uint16_t expected = static_cast<uint16_t>(
+					(code << 4) | (code >> 8));
+				Assert::AreEqual(static_cast<unsigned int>(expected),
+					static_cast<unsigned int>(components[0]));
+				Assert::AreEqual(static_cast<unsigned int>(expected),
+					static_cast<unsigned int>(components[1]));
+				Assert::AreEqual(static_cast<unsigned int>(expected),
+					static_cast<unsigned int>(components[2]));
+			}
+
+			// These values specifically distinguish documented full-range R12B
+			// scaling from limited-range zero padding.
+			Assert::AreEqual(0x1001U,
+				static_cast<unsigned int>((0x100U << 4) | (0x100U >> 8)));
+			Assert::AreEqual(0xEB0EU,
+				static_cast<unsigned int>((0xEB0U << 4) | (0xEB0U >> 8)));
+		}
+
+		TEST_METHOD(CR12BtoRGB48AVX2MatchesScalarBitExactly)
+		{
+			VideoStateComPtr tailState = new VideoState();
+			tailState->valid = true;
+			tailState->displayMode = std::make_shared<DisplayMode>(
+				104, 100, false, 60000, 1001);
+			tailState->videoFrameEncoding = VideoFrameEncoding::R12B;
+			std::vector<BYTE> tailInput(tailState->BytesPerFrame());
+			FillBenchmarkPattern(tailInput, 0x12b48a52U);
+			VideoFrame tailFrame(tailInput.data(), 1, 0, nullptr);
+
+			CR12BtoRGB48VideoFrameFormatter tailScalar;
+			tailScalar.SetConversionMethod(
+				CR12BtoRGB48VideoFrameFormatter::ConversionMethod::SCALAR);
+			tailScalar.OnVideoState(tailState);
+			std::vector<BYTE> tailScalarOutput(tailScalar.GetOutFrameSize());
+			Assert::IsTrue(tailScalar.FormatVideoFrame(
+				tailFrame, tailScalarOutput.data()));
+
+			CR12BtoRGB48VideoFrameFormatter tailAVX2;
+			tailAVX2.SetConversionMethod(
+				CR12BtoRGB48VideoFrameFormatter::ConversionMethod::AVX2);
+			tailAVX2.OnVideoState(tailState);
+			std::vector<BYTE> tailAVX2Output(tailAVX2.GetOutFrameSize());
+			Assert::IsTrue(tailAVX2.FormatVideoFrame(
+				tailFrame, tailAVX2Output.data()));
+			Assert::IsTrue(tailScalarOutput == tailAVX2Output,
+				L"R12B RGB48 AVX2 must match scalar through its eight-pixel tail");
+
+			// Exhaust every source code in both documented eight-pixel blocks of
+			// one SIMD unit and prove exact endpoint-preserving bit replication.
+			VideoStateComPtr exhaustiveState = new VideoState();
+			exhaustiveState->valid = true;
+			exhaustiveState->displayMode = std::make_shared<DisplayMode>(
+				112, 100, false, 60000, 1001);
+			exhaustiveState->videoFrameEncoding = VideoFrameEncoding::R12B;
+			std::vector<BYTE> exhaustiveInput(exhaustiveState->BytesPerFrame());
+			CR12BtoRGB48VideoFrameFormatter exhaustiveAVX2;
+			exhaustiveAVX2.SetConversionMethod(
+				CR12BtoRGB48VideoFrameFormatter::ConversionMethod::AVX2);
+			exhaustiveAVX2.OnVideoState(exhaustiveState);
+			std::vector<BYTE> exhaustiveOutput(exhaustiveAVX2.GetOutFrameSize());
+			VideoFrame exhaustiveFrame(exhaustiveInput.data(), 2, 0, nullptr);
+			for (uint32_t code = 0; code <= 0xfffU; ++code)
+			{
+				for (uint32_t line = 0; line < 100; ++line)
+				{
+					BYTE* row = exhaustiveInput.data() +
+						static_cast<size_t>(line) * exhaustiveState->BytesPerRow();
+					WriteR12BBlock(row, static_cast<uint16_t>(code),
+						static_cast<uint16_t>(code), static_cast<uint16_t>(code));
+					WriteR12BBlock(row + 36, static_cast<uint16_t>(code),
+						static_cast<uint16_t>(code), static_cast<uint16_t>(code));
+				}
+				Assert::IsTrue(exhaustiveAVX2.FormatVideoFrame(
+					exhaustiveFrame, exhaustiveOutput.data()));
+				const auto* samples = reinterpret_cast<const uint16_t*>(
+					exhaustiveOutput.data());
+				const uint16_t expected = static_cast<uint16_t>(
+					(code << 4) | (code >> 8));
+				Assert::AreEqual(static_cast<unsigned int>(expected),
+					static_cast<unsigned int>(samples[0]));
+				Assert::AreEqual(static_cast<unsigned int>(expected),
+					static_cast<unsigned int>(samples[47]));
+			}
+
+			VideoStateComPtr threadedState = new VideoState();
+			threadedState->valid = true;
+			threadedState->displayMode = std::make_shared<DisplayMode>(
+				1920, 1080, false, 60000, 1001);
+			threadedState->videoFrameEncoding = VideoFrameEncoding::R12B;
+			std::vector<BYTE> threadedInput(threadedState->BytesPerFrame());
+			FillBenchmarkPattern(threadedInput, 0x8457c129U);
+			VideoFrame threadedFrame(threadedInput.data(), 3, 0, nullptr);
+
+			CR12BtoRGB48VideoFrameFormatter threadedScalar;
+			threadedScalar.SetConversionMethod(
+				CR12BtoRGB48VideoFrameFormatter::ConversionMethod::SCALAR);
+			threadedScalar.OnVideoState(threadedState);
+			std::vector<BYTE> threadedScalarOutput(
+				threadedScalar.GetOutFrameSize());
+			Assert::IsTrue(threadedScalar.FormatVideoFrame(
+				threadedFrame, threadedScalarOutput.data()));
+
+			CR12BtoRGB48VideoFrameFormatter threadedAVX2;
+			threadedAVX2.SetConversionMethod(
+				CR12BtoRGB48VideoFrameFormatter::ConversionMethod::AVX2);
+			threadedAVX2.OnVideoState(threadedState);
+			std::vector<BYTE> threadedAVX2Output(threadedAVX2.GetOutFrameSize());
+			Assert::IsTrue(threadedAVX2.FormatVideoFrame(
+				threadedFrame, threadedAVX2Output.data()));
+			Assert::IsTrue(threadedScalarOutput == threadedAVX2Output,
+				L"Threaded R12B RGB48 AVX2 must match scalar output bit-for-bit");
+		}
+
+		TEST_METHOD(CDeckLinkR12BToP010UsesNormalizedFullRangeRounding)
+		{
+			CDeckLinkRGBToP010VideoFrameFormatter formatter;
+			VideoStateComPtr state = new VideoState();
+			state->valid = true;
+			state->displayMode = std::make_shared<DisplayMode>(
+				104, 100, false, 24000, 1000);
+			state->videoFrameEncoding = VideoFrameEncoding::R12B;
+			state->colorspace = ColorSpace::REC_709;
+			formatter.OnVideoState(state);
+
+			std::vector<BYTE> input(state->BytesPerFrame(), 0);
+			std::vector<BYTE> output(formatter.GetOutFrameSize(), 0);
+			VideoFrame frame(input.data(), 1, 0, nullptr);
+			const uint16_t referenceCodes[] = {
+				0x000, 0x001, 0x002, 0x089, 0x100, 0x800, 0xEB0, 0xFFE, 0xFFF
+			};
+
+			for (const uint16_t code : referenceCodes)
+			{
+				WriteR12BBlock(input.data(), code, code, code);
+				Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()));
+				const auto* samples =
+					reinterpret_cast<const uint16_t*>(output.data());
+				const uint16_t expected10 = static_cast<uint16_t>(
+					(static_cast<uint32_t>(code) * 1023U + 2047U) / 4095U);
+				Assert::AreEqual(static_cast<unsigned int>(expected10 << 6),
+					static_cast<unsigned int>(samples[0]));
+			}
+		}
+
 		TEST_METHOD(CR12BtoRGB48VideoFrameFormatterRejectsInvalidWidth)
 		{
 			CR12BtoRGB48VideoFrameFormatter vff;
@@ -1641,6 +3561,8 @@ namespace Tests
 			swprintf_s(message, L"Native R12B 4K conversion current/avg/max: %.0f / %.0f / %.0f us",
 				currentUs, averageUs, maximumUs);
 			Logger::WriteMessage(message);
+			Assert::IsTrue(averageUs < 16667.0,
+				L"Average R12B RGB48 conversion exceeds one 60 fps frame period");
 		}
 	};
 

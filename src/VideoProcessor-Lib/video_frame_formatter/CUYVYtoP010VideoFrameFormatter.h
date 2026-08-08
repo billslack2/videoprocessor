@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <stdexcept>
+
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 
 /**
@@ -23,6 +25,7 @@
 class CUYVYtoP010VideoFrameFormatter : public IVideoFrameFormatter
 {
 public:
+	enum class ConversionMethod { AUTO, SCALAR, AVX2 };
 	CUYVYtoP010VideoFrameFormatter();
 	virtual ~CUYVYtoP010VideoFrameFormatter() = default;
 
@@ -33,6 +36,22 @@ public:
 	VideoFrameFormatterOutputContract GetOutputContract() const override
 	{
 		return { VideoFrameSampleRange::LIMITED, 8, 8 };
+	}
+	void SetConversionMethod(ConversionMethod method)
+	{
+		if (method == ConversionMethod::SCALAR)
+			m_hasAVX2 = false;
+		else if (method == ConversionMethod::AVX2)
+		{
+			m_cpuFeaturesChecked = false;
+			if (!CheckCPUFeatures())
+				throw std::runtime_error("AVX2 was requested on an unsupported CPU");
+		}
+		else if (method == ConversionMethod::AUTO)
+		{
+			m_cpuFeaturesChecked = false;
+			CheckCPUFeatures();
+		}
 	}
 	
 	// Performance metrics (matches V210 interface)

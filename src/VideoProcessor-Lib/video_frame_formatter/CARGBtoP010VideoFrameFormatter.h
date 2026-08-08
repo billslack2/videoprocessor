@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <Windows.h>
+
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 
 /**
@@ -21,8 +23,17 @@
 class CARGBtoP010VideoFrameFormatter : public IVideoFrameFormatter
 {
 public:
-	CARGBtoP010VideoFrameFormatter() = default;
-	virtual ~CARGBtoP010VideoFrameFormatter() = default;
+	enum class ConversionMethod
+	{
+		AUTO,
+		SCALAR,
+		AVX2,
+	};
+
+	CARGBtoP010VideoFrameFormatter();
+	~CARGBtoP010VideoFrameFormatter() override;
+	CARGBtoP010VideoFrameFormatter(const CARGBtoP010VideoFrameFormatter&) = delete;
+	CARGBtoP010VideoFrameFormatter& operator=(const CARGBtoP010VideoFrameFormatter&) = delete;
 
 	// IVideoFrameFormatter
 	void OnVideoState(VideoStateComPtr& videoState) override;
@@ -40,12 +51,15 @@ public:
 		avg10s = m_performanceWindow.GetAverage();
 		max10s = m_performanceWindow.GetMax();
 	}
+	void SetConversionMethod(ConversionMethod method) { m_conversionMethod = method; }
 
 private:
 	uint32_t m_height = 0;
 	uint32_t m_width = 0;
 	uint32_t m_srcStride = 0;
 	bool m_isBGRA = false;  // true for BGRA, false for ARGB
+	bool m_hasAVX2 = false;
+	ConversionMethod m_conversionMethod = ConversionMethod::AUTO;
 	
 	// BT.709 vs BT.2020 selection based on colorspace
 	bool m_useBT2020 = false;
@@ -89,4 +103,21 @@ private:
 	};
 	
 	mutable RollingPerformanceWindow m_performanceWindow;
+	static constexpr uint32_t MAX_WORKERS = 5;
+	PTP_WORK m_conversionWork[MAX_WORKERS] = {};
+	uint32_t m_workerCount = 0;
+	const uint8_t* m_workerSource = nullptr;
+	uint16_t* m_workerDestinationY = nullptr;
+	uint16_t* m_workerDestinationUV = nullptr;
+	uint32_t m_workerFirstPair[MAX_WORKERS] = {};
+	uint32_t m_workerPairCount[MAX_WORKERS] = {};
+
+	void ConvertScalar(const uint8_t* source, uint16_t* destinationY,
+		uint16_t* destinationUV, uint32_t firstPair, uint32_t pairCount) const;
+	void ConvertAVX2(const uint8_t* source, uint16_t* destinationY,
+		uint16_t* destinationUV, uint32_t firstPair, uint32_t pairCount) const;
+	void ConvertRowPairs(const uint8_t* source, uint16_t* destinationY,
+		uint16_t* destinationUV, uint32_t firstPair, uint32_t pairCount) const;
+	static void CALLBACK ConversionWorkCallback(
+		PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_WORK work);
 };

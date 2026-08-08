@@ -10,6 +10,9 @@
 
 #include <video_frame_formatter/CNoopVideoFrameFormatter.h>
 #include <video_frame_formatter/CV210toP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
+#include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
+#include <microsoft_directshow/video_renderers/DirectShowIngressPolicy.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
 #include <microsoft_directshow/DirectShowTranslations.h>
 
@@ -68,22 +71,28 @@ void DirectShowGenericVideoRenderer::MediaTypeGenerate()
 	GUID mediaSubType;
 	int bitCount;
 
-	const bool packedRgbNeedsP010 =
-		m_videoState->videoFrameEncoding == VideoFrameEncoding::R10b ||
-		m_videoState->videoFrameEncoding == VideoFrameEncoding::R10l ||
-		m_videoState->videoFrameEncoding == VideoFrameEncoding::R12L;
+	const bool needsP010Conversion = DirectShowUsesP010Ingress(
+		DirectShowIngressFamily::GENERIC, m_videoState->videoFrameEncoding,
+		m_videoConversionOverride);
 
-	// These packed DeckLink RGB formats have no broadly supported DirectShow subtype,
-	// so convert them automatically. V210 conversion remains user-selectable.
-	if ((m_videoState->videoFrameEncoding == VideoFrameEncoding::V210 &&
-		m_videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010) ||
-		packedRgbNeedsP010)
+	if (needsP010Conversion)
 	{
 		mediaSubType = MEDIASUBTYPE_P010;
 		bitCount = 10;
-		m_videoFramFormatter = packedRgbNeedsP010 ?
-			static_cast<IVideoFrameFormatter*>(new CDeckLinkRGBToP010VideoFrameFormatter()) :
-			static_cast<IVideoFrameFormatter*>(new CV210toP010VideoFrameFormatter());
+		if (m_videoState->videoFrameEncoding == VideoFrameEncoding::V210)
+			m_videoFramFormatter = new CV210toP010VideoFrameFormatter();
+		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::UYVY ||
+			m_videoState->videoFrameEncoding == VideoFrameEncoding::HDYC)
+			m_videoFramFormatter = new CUYVYtoP010VideoFrameFormatter();
+		else if (m_videoState->videoFrameEncoding == VideoFrameEncoding::ARGB_8BIT ||
+			m_videoState->videoFrameEncoding == VideoFrameEncoding::BGRA_8BIT)
+			m_videoFramFormatter = new CARGBtoP010VideoFrameFormatter();
+		else if (IsDeckLinkPackedRgbP010Encoding(
+			m_videoState->videoFrameEncoding))
+			m_videoFramFormatter = new CDeckLinkRGBToP010VideoFrameFormatter();
+		else
+			throw std::runtime_error(
+				"P010 conversion does not support this input format");
 	}
 
 	// Default conversions
