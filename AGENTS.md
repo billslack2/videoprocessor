@@ -24,7 +24,7 @@
 ## Testing and diagnostics
 
 - For VideoProcessor testing and troubleshooting, inspect the debug log at
-  `C:\logs\vp_debug.log`.
+  `C:\logs\vp.log`.
 
 ## Deployment
 

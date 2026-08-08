@@ -311,7 +311,8 @@ void openValidationError(QWidget* parent, const QString& message)
 void openDiscardChangesConfirmation(QWidget* parent,
     std::function<void(bool)> completed)
 {
-    auto* dialog = new QDialog(parent);
+    auto* dialog = new QDialog(parent,
+        Qt::Dialog | Qt::MSWindowsFixedSizeDialogHint);
     dialog->setWindowTitle(QStringLiteral("Discard changes?"));
     dialog->setObjectName(QStringLiteral("confirmationDialog"));
     dialog->setAttribute(Qt::WA_DeleteOnClose);
@@ -340,6 +341,9 @@ void openDiscardChangesConfirmation(QWidget* parent,
     actions->addWidget(discard);
     actions->addWidget(cancel);
     layout->addLayout(actions);
+    layout->setSizeConstraint(QLayout::SetFixedSize);
+    dialog->adjustSize();
+    dialog->setFixedSize(dialog->sizeHint());
 
     QObject::connect(discard, &QPushButton::clicked, dialog, &QDialog::accept);
     QObject::connect(cancel, &QPushButton::clicked, dialog, &QDialog::reject);
@@ -780,7 +784,7 @@ QWidget* ConfigEditorWindow::createShell()
     brandLayout->setContentsMargins(5, 0, 0, 0);
     brandLayout->setSpacing(6);
     brand->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
-    auto* title = new QLabel(QStringLiteral("VideoProcessor"));
+    auto* title = new QLabel(QStringLiteral("VideoProcessor Configuration"));
     title->setObjectName(QStringLiteral("brandTitle"));
     // Profile detail pages can legitimately request more horizontal space than
     // the initial window. Keep the product identity intact rather than
@@ -789,20 +793,19 @@ QWidget* ConfigEditorWindow::createShell()
     brandLayout->addWidget(title);
     headerLayout->addWidget(brand);
     headerLayout->addStretch();
-    auto* windowMenuButton = new QToolButton;
-    windowMenuButton->setText(QStringLiteral("&Menu"));
-    windowMenuButton->setAccessibleDescription(
-        QStringLiteral("Window commands, including hiding the editor and exiting."));
-    windowMenuButton->setProperty("headerMenu", true);
-    windowMenuButton->setPopupMode(QToolButton::InstantPopup);
-    auto* windowMenu = new QMenu(windowMenuButton);
-    QAction* hideAction = windowMenu->addAction(QStringLiteral("Hide to notification area"));
-    windowMenu->addSeparator();
-    QAction* exitAction = windowMenu->addAction(QStringLiteral("Exit"));
-    windowMenuButton->setMenu(windowMenu);
-    connect(hideAction, &QAction::triggered, this, [this] { hide(); });
-    connect(exitAction, &QAction::triggered, this, [this] { exitApplication(); });
-    headerLayout->addWidget(windowMenuButton);
+    auto* hideButton = new QPushButton(QStringLiteral("Hide"));
+    hideButton->setObjectName(QStringLiteral("hideToTray"));
+    hideButton->setAccessibleDescription(
+        QStringLiteral("Hide the editor to the notification area."));
+    auto* exitButton = new QPushButton(QStringLiteral("Exit"));
+    exitButton->setObjectName(QStringLiteral("exitConfiguration"));
+    exitButton->setProperty("danger", true);
+    exitButton->setAccessibleDescription(
+        QStringLiteral("Exit the VideoProcessor Configuration editor."));
+    connect(hideButton, &QPushButton::clicked, this, [this] { hide(); });
+    connect(exitButton, &QPushButton::clicked, this, [this] { exitApplication(); });
+    headerLayout->addWidget(hideButton);
+    headerLayout->addWidget(exitButton);
     rootLayout->addWidget(header);
 
     auto* center = new QWidget;
@@ -932,13 +935,17 @@ QWidget* ConfigEditorWindow::createShell()
         // reloaded document. Suppress painting until the replacement tree is
         // fully installed so the old shell never visibly tears down beneath
         // the confirmation dialog.
+        const int currentPage = pages_ ? pages_->currentIndex() : 0;
         setUpdatesEnabled(false);
         loadConfiguration();
         dirty_ = false;
         QWidget* replacement = createShell();
+        replacement->setUpdatesEnabled(false);
         QWidget* previous = takeCentralWidget();
         setCentralWidget(replacement);
+        selectPage(currentPage);
         if (previous) previous->deleteLater();
+        replacement->setUpdatesEnabled(true);
         setUpdatesEnabled(true);
         replacement->update();
         update();
@@ -3194,12 +3201,19 @@ QWidget* ConfigEditorWindow::createLogsPage()
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(12);
 
-    auto* enabled = bindCheckField(QStringLiteral("Enable debug logging"),
+    auto* enabled = bindCheckField(QStringLiteral("Enable logging"),
         QStringLiteral("logging"), QStringLiteral("enabled"), true);
     enabled->setObjectName(QStringLiteral("config.logging.enabled"));
     enabled->setAccessibleDescription(QStringLiteral(
-        "Enable diagnostic logging. Logging is enabled by default."));
+        "Enable VP logging. Logging is enabled by default."));
     layout->addWidget(enabled);
+
+    auto* enhanced = bindCheckField(QStringLiteral("Enable enhanced logging"),
+        QStringLiteral("logging"), QStringLiteral("debug"), false);
+    enhanced->setObjectName(QStringLiteral("config.logging.debug"));
+    enhanced->setAccessibleDescription(QStringLiteral(
+        "Keep all VP logs and write additional live telemetry files for diagnosis."));
+    layout->addWidget(enhanced);
 
     auto* retention = new QSpinBox;
     retention->setObjectName(QStringLiteral("config.logging.debug_log_retention"));
@@ -3212,7 +3226,7 @@ QWidget* ConfigEditorWindow::createLogsPage()
     retention->setValue(value(QStringLiteral("logging"),
         QStringLiteral("debug_log_retention"), QStringLiteral("10")).toInt());
     retention->setToolTip(QStringLiteral(
-        "Keep 1 to 100 total files, including the active debug log. Default: 10."));
+        "Keep 1 to 100 total files, including the active VP log. Default: 10."));
     connect(retention, qOverload<int>(&QSpinBox::valueChanged), this,
         [this](int count)
     {
@@ -3221,10 +3235,20 @@ QWidget* ConfigEditorWindow::createLogsPage()
             std::to_string(count));
         markDirty();
     });
-    connect(enabled, &QCheckBox::toggled, retention, &QWidget::setEnabled);
-    retention->setEnabled(enabled->isChecked());
+    auto syncLoggingControls = [enabled, enhanced, retention]
+    {
+        const bool loggingEnabled = enabled->isChecked();
+        enhanced->setEnabled(loggingEnabled);
+        retention->setEnabled(loggingEnabled && !enhanced->isChecked());
+    };
+    connect(enabled, &QCheckBox::toggled, this, syncLoggingControls);
+    connect(enhanced, &QCheckBox::toggled, this, syncLoggingControls);
+    syncLoggingControls();
     layout->addWidget(fieldWithHelp(QStringLiteral("Log files to keep"), retention,
         QStringLiteral("1–100 total files, including the active log. Default: 10. Changes apply when VP next starts.")));
+
+    layout->addWidget(helpLabel(QStringLiteral(
+        "Enhanced logging keeps all logs and writes additional live telemetry files. Use it only while diagnosing an issue.")));
 
     QString logDirectory = QFileInfo(configPath_).absoluteDir().filePath(QStringLiteral("logs"));
     // Development copies of the editor often edit a source fixture while VP
@@ -3233,12 +3257,12 @@ QWidget* ConfigEditorWindow::createLogsPage()
     const QString deployedLogDirectory = QStringLiteral("C:/Videoprocessor/vp/logs");
     if (!QDir(logDirectory).exists() && QDir(deployedLogDirectory).exists())
         logDirectory = deployedLogDirectory;
-    const QString logPath = QDir(logDirectory).filePath(QStringLiteral("vp_debug.log"));
+    const QString logPath = QDir(logDirectory).filePath(QStringLiteral("vp.log"));
     auto* actions = new QHBoxLayout;
     auto* openFolder = new QPushButton(QStringLiteral("Open log folder"));
     auto* openLog = new QPushButton(QStringLiteral("Open current log"));
-    openFolder->setAccessibleDescription(QStringLiteral("Open the folder containing VideoProcessor debug logs."));
-    openLog->setAccessibleDescription(QStringLiteral("Open the current VideoProcessor debug log."));
+    openFolder->setAccessibleDescription(QStringLiteral("Open the folder containing VideoProcessor logs."));
+    openLog->setAccessibleDescription(QStringLiteral("Open the current VideoProcessor log."));
     actions->addWidget(openFolder);
     actions->addWidget(openLog);
     actions->addStretch();
@@ -3260,7 +3284,7 @@ QWidget* ConfigEditorWindow::createLogsPage()
         if (!QFileInfo::exists(logPath))
         {
             QMessageBox::information(this, QStringLiteral("Current log"),
-                QStringLiteral("No current VP debug log exists yet. Start VideoProcessor once, then try again."));
+                QStringLiteral("No current VP log exists yet. Start VideoProcessor once, then try again."));
             return;
         }
         if (!openPathExternally(logPath))
@@ -3270,9 +3294,7 @@ QWidget* ConfigEditorWindow::createLogsPage()
     layout->addStretch();
 
     return createPage(QStringLiteral("Logs"),
-        QStringLiteral("Control VideoProcessor diagnostic log files."),
-        createCard(QStringLiteral("Debug logging"),
-            QStringLiteral("Diagnostic logging is enabled by default and is written at VP startup."), content));
+        QStringLiteral("Control VideoProcessor log files and diagnostic detail."), content);
 }
 
 QWidget* ConfigEditorWindow::createShortcutsPage()

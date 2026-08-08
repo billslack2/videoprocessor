@@ -24,7 +24,7 @@
 
 
 /**
- * Async debug logger that writes to logs\vp_debug.log beneath the executable
+ * Async VP logger that writes to logs\vp.log beneath the executable
  * directory when that user-managed logs directory is available
  * Thread-safe file logging with timestamps - non-blocking for caller
  * 
@@ -44,7 +44,7 @@ public:
 	}
 
 	/**
-	 * Log a message to debug.log with timestamp (async, non-blocking)
+	 * Log a message to vp.log with timestamp (async, non-blocking)
 	 * Thread-safe
 	 */
 	template<typename... Args>
@@ -80,14 +80,14 @@ public:
 		char exePath[MAX_PATH];
 		DWORD result = GetModuleFileNameA(NULL, exePath, MAX_PATH);
 		if (result == 0)
-			return "logs\\vp_debug.log";
+			return "logs\\vp.log";
 
 		std::string exePathStr(exePath);
 		size_t lastSlash = exePathStr.find_last_of("\\/");
 		if (lastSlash != std::string::npos)
 			return exePathStr.substr(0, lastSlash + 1) +
-				"logs\\vp_debug.log";
-		return "logs\\vp_debug.log";
+				"logs\\vp.log";
+		return "logs\\vp.log";
 	}
 
 	/**
@@ -98,20 +98,39 @@ public:
 	static void Initialize(
 		size_t retentionCount = DebugLogRetention::DEFAULT_COUNT,
 		const std::string& retentionDiagnostic =
-			"Debug log retention: using default 10 total files")
+			"VP log retention: using default 10 total files",
+		bool enhancedLogging = false)
 	{
 		std::lock_guard<std::mutex> lock(GetQueueMutex());
 		if (!GetWriterThread().joinable())
 		{
+			GetEnhancedLoggingEnabled().store(
+				enhancedLogging, std::memory_order_release);
 			std::vector<std::string> initializationDiagnostics;
 			const std::string logPath = GetExecutableLogFilePath();
 			GetSelectedLogPath() = logPath;
-			auto rotation =
-				DebugLogRetention::Rotate(logPath, retentionCount);
-			initializationDiagnostics.insert(
-				initializationDiagnostics.end(),
-				rotation.diagnostics.begin(), rotation.diagnostics.end());
-			if (!rotation.activeReady)
+			bool activeReady = false;
+			if (enhancedLogging)
+			{
+				// Enhanced mode is intentionally forensic: leave the current log
+				// and every previous trace artifact intact until the user cleans up.
+				std::ofstream active(logPath, std::ios::out | std::ios::app);
+				activeReady = active.is_open();
+				if (activeReady)
+					active.close();
+				else
+					initializationDiagnostics.push_back(
+						"Enhanced logging: cannot open active log '" + logPath + "'");
+			}
+			else
+			{
+				auto rotation = DebugLogRetention::Rotate(logPath, retentionCount);
+				activeReady = rotation.activeReady;
+				initializationDiagnostics.insert(
+					initializationDiagnostics.end(),
+					rotation.diagnostics.begin(), rotation.diagnostics.end());
+			}
+			if (!activeReady)
 			{
 				// The logs directory is user-managed. Do not create it and do
 				// not write an alternate fallback log.
@@ -126,11 +145,15 @@ public:
 				struct tm tm;
 				auto now = std::time(nullptr);
 				localtime_s(&tm, &now);
-				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " | === DEBUG LOG SESSION START ===\n";
+				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " | === VP LOG SESSION START ===\n";
 				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
 					" | " << retentionDiagnostic << "\n";
-				file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
-					" | Debug log rotation: indexed archives use vp_debug.log.0 (newest), vp_debug.log.1, and so on\n";
+				if (enhancedLogging)
+					file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
+						" | Enhanced logging enabled: rotation disabled; live telemetry files enabled\n";
+				else
+					file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
+						" | VP log rotation: indexed archives use vp.log.0 (newest), vp.log.1, and so on\n";
 				for (const std::string& diagnostic : initializationDiagnostics)
 					file << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") <<
 						" | " << diagnostic << "\n";
@@ -166,6 +189,13 @@ public:
 		{
 			GetWriterThread().join();
 		}
+	}
+
+	// Extra telemetry artifacts are intentionally opt-in. Normal logging writes
+	// only vp.log and its bounded archives.
+	static bool IsEnhancedLoggingEnabled()
+	{
+		return GetEnhancedLoggingEnabled().load(std::memory_order_acquire);
 	}
 
 private:
@@ -330,6 +360,12 @@ private:
 	{
 		static std::atomic<bool> s_loggingEnabled(false);
 		return s_loggingEnabled;
+	}
+
+	static std::atomic<bool>& GetEnhancedLoggingEnabled()
+	{
+		static std::atomic<bool> s_enhancedLoggingEnabled(false);
+		return s_enhancedLoggingEnabled;
 	}
 };
 

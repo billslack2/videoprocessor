@@ -1402,6 +1402,9 @@ void CBufferedLiveSourceVideoOutputPin::PurgeConvertedQueue()
 
 void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace(const char* boundary)
 {
+	if (!DebugLog::IsEnhancedLoggingEnabled())
+		return;
+
 	const std::vector<LiveOutputTraceRecord> eventRecords =
 		m_liveOutputTrace.Snapshot();
 	const std::vector<LiveOutputTraceRecord> metricRecords =

@@ -178,12 +178,19 @@ void testEveryPageRoundTrips()
 
     window.selectPage(9);
     require(requireControl<QCheckBox>(window, QStringLiteral("config.logging.enabled"))->isChecked(),
-        "Debug logging did not default to enabled");
+        "Logging did not default to enabled");
+    require(!requireControl<QCheckBox>(window, QStringLiteral("config.logging.debug"))->isChecked(),
+        "Enhanced logging did not default to disabled");
     require(requireControl<QSpinBox>(window,
         QStringLiteral("config.logging.debug_log_retention"))->value() == 10,
         "Debug log retention did not default to 10 files");
     requireControl<QSpinBox>(window,
         QStringLiteral("config.logging.debug_log_retention"))->setValue(25);
+    requireControl<QCheckBox>(window, QStringLiteral("config.logging.debug"))->setChecked(true);
+    require(!requireControl<QSpinBox>(window,
+        QStringLiteral("config.logging.debug_log_retention"))->isEnabled(),
+        "Log retention remained editable while enhanced logging was enabled");
+    requireControl<QCheckBox>(window, QStringLiteral("config.logging.debug"))->setChecked(false);
     requireControl<QCheckBox>(window, QStringLiteral("config.logging.enabled"))->setChecked(false);
     require(!requireControl<QSpinBox>(window,
         QStringLiteral("config.logging.debug_log_retention"))->isEnabled(),
@@ -242,7 +249,7 @@ void testEveryPageRoundTrips()
         "renderer_primaries: BT2020", "max_cll: 1200", "max_fall: 450",
         "fullscreen_toggle: Ctrl+f", "config_editor: Ctrl+e",
         "renderer: *", "run: C:\\Tools\\verified-action.cmd 42",
-        "enabled: false", "debug_log_retention: 25",
+        "enabled: false", "debug: false", "debug_log_retention: 25",
         "label: Verified Stretch", "order: 10", "strength: 0.85"
     };
     for (const QByteArray& text : expected)

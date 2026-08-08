@@ -608,6 +608,16 @@ bool LoadDebugLoggingEnabled()
 	return enabled;
 }
 
+bool LoadEnhancedLoggingEnabled()
+{
+	ConfigFile config;
+	if (!config.Load()) return false;
+	bool enabled = false;
+	if (!config.TryGetBool("logging", "debug", enabled))
+		return false;
+	return enabled;
+}
+
 std::wstring LoadConfiguredFullscreenMonitorName()
 {
 	ConfigFile config;
@@ -1025,7 +1035,8 @@ BOOL CVideoProcessorApp::InitInstance()
 		const auto debugLogRetention = LoadDebugLogRetentionSetting();
 		DEBUGLOG_INIT(
 			debugLogRetention.count,
-			debugLogRetention.diagnostic);
+			debugLogRetention.diagnostic,
+			LoadEnhancedLoggingEnabled());
 	}
 
 	m_displayRecoveryStatePath = CurrentStatePath();

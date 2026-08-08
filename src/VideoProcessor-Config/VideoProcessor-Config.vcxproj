@@ -93,7 +93,10 @@
     <ClInclude Include="VpTheme.h" />
     <ClInclude Include="..\VideoProcessor-ConfigCore\ConfigEditorCore.h" />
   </ItemGroup>
-  <ItemGroup><ResourceCompile Include="VideoProcessorConfig.rc" /></ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="VideoProcessorConfig.rc" />
+    <Image Include="..\..\images\VideoProcessorConfig.ico" />
+  </ItemGroup>
   <ItemGroup><None Include="VideoProcessorConfig.manifest" /></ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\VideoProcessor-ConfigDiscovery\VideoProcessor-ConfigDiscovery.vcxproj">

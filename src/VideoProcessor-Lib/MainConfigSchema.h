@@ -285,6 +285,7 @@ namespace MainConfigSchema
 		// before logger startup; the schema still rejects unknown logging keys.
 		const std::vector<ConfigSchema::KeyRule> loggingRules = {
 			ConfigSchema::Boolean("enabled"),
+			ConfigSchema::Boolean("debug"),
 			ConfigSchema::Any("debug_log_retention")
 		};
 		return ConfigSchema::ValidateSection(

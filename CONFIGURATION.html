@@ -21,7 +21,7 @@ nav { display:flex; gap:8px 15px; flex-wrap:wrap; margin:23px 0 30px; } a { colo
 <h1>VideoProcessor configuration reference</h1>
 <p class="lead">The shipped <code>VideoProcessor.cfg</code> is one strict, startup-read configuration file. This reference describes the supported public settings for capture, DirectShow, the VP Renderer, shader selection, and refresh actions. It is deliberately value-level: use it to decide what a setting changes before editing your working configuration.</p>
 <div class="note"><strong>Start conservatively.</strong> Copy only the setting that solves a known problem, keep your prior value in a comment, and change calibration-related values only when they match the display or LUT you actually use. Configuration is read at startup; a renderer rebuild may apply a newly selected VP Renderer or viewport variant, but editing the file itself requires restarting VideoProcessor.</div>
-<div class="note warning"><strong>Strict syntax matters.</strong> A malformed public setting is rejected during startup validation or reported in <code>vp_debug.log</code>. Names are case-insensitive, but the spelling and section shown here are the supported contract. Every <code>AUTO</code> entry below names either its exact resolved value or the specific source/hardware condition that determines it; it never means "try every upstream library option."</div>
+<div class="note warning"><strong>Strict syntax matters.</strong> A malformed public setting is rejected during startup validation or reported in <code>vp.log</code>. Names are case-insensitive, but the spelling and section shown here are the supported contract. Every <code>AUTO</code> entry below names either its exact resolved value or the specific source/hardware condition that determines it; it never means "try every upstream library option."</div>
 <nav><a href="#reading">How selection works</a><a href="#when-contract">When expressions</a><a href="#startup">Startup and capture</a><a href="#queue">Queue and DirectShow</a><a href="#alpha">VP Renderer</a><a href="#viewport">Viewport</a><a href="#shaders">Shaders</a><a href="#nls">NLS shader</a><a href="#actions">Actions</a><a href="#guides">Practical guides</a><a href="#troubleshooting">Troubleshooting</a></nav>
 
 <h2 id="reading">How to read and compose the file</h2>
@@ -462,7 +462,7 @@ dithering: AUTO</pre>
 <tr><td>A change does not take effect immediately.</td><td>The file is startup-read, or a variant has not been selected.</td><td>Restart VP after editing, then invoke the documented hotkey and verify the selected profile/viewport in logs or OSD.</td></tr>
 <tr><td>Refresh action did not run.</td><td>No committed matching event, condition did not match, wrong scope, or invalid executable path.</td><td>Check the refresh/action log evidence and test the external command separately before broadening its scope.</td></tr>
 </tbody></table>
-<p class="small">For diagnostics, inspect <code>C:\Videoprocessor\vp\logs\vp_debug.log</code>. If the event predates a restart or rotation, inspect the numbered rotated logs in the same directory.</p>
+<p class="small">For diagnostics, inspect <code>C:\Videoprocessor\vp\logs\vp.log</code>. If the event predates a restart or rotation, inspect the numbered rotated logs in the same directory. Set <code>[logging] debug: true</code> only while diagnosing an issue; enhanced logging retains every log and writes additional live telemetry files.</p>
 </main>
 </body>
 </html>
