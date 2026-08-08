@@ -129,6 +129,23 @@ Safe-fit cases must retain the entire source without an extreme warp.
 The story intentionally remains in progress until the live VP Renderer and
 madVR matrix above is exercised on real output hardware.
 
+## Deployed test setup (2026-08-08)
+
+- Deployed source commit `e3ffc32` from its successful x64 Release build to
+  `C:\\Videoprocessor\\vp`; deployed executable and VP Renderer DLL hashes match
+  the verified build artifacts.
+- Preserved the active configuration and added only explicit
+  `max_stretch_ratio: 1.4` settings to both NLS variants plus an isolated F7
+  `2.76:1` safety-test viewport. Existing F3 `16:9`, F2 `2.35:1`, and F8
+  `2.53:1` targets and all other user settings remain intact.
+- Backups use suffix
+  `.pre-vp0099-e3ffc32.20260808-091424.bak` for the executable, VP Renderer
+  DLL, active configuration, and configuration reference.
+- Startup smoke passed: the deployed app remained responsive, loaded VP
+  Renderer plugin API 8, parsed the unified configuration, and applied the
+  explicit DirectShow base target `16:9` without configuration errors. The app
+  was left running for live testing (startup PID 32016).
+
 ## Acceptance criteria
 
 - No production NLS path selects a target by `scope`/`normal` name or by a
