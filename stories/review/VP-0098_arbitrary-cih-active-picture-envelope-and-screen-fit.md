@@ -2,7 +2,11 @@
 
 ## Status
 
-In Progress (reopened 2026-08-08). Final requirements review clarified that
+Review (2026-08-08). The single-screen-aspect cleanup was merged into the
+default `v1.1.017-beta` branch at `3c7ebd5`. The merged x64 Release build
+succeeded and is ready for live CIH validation before this story is closed.
+
+Final requirements review clarified that
 `screen_aspect` describes the actual CIH screen to which the user fits the
 projector lens. VP detects the content envelope dynamically and fits it inside
 that screen. There is no separately configured requested content viewport in
