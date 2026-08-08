@@ -1116,3 +1116,26 @@ design-only improvements prioritized for a separate pass:
 - Reviewed fresh x64 Release screenshots for General, VP Renderer profiles,
   DirectShow, Shortcuts, and Shaders. The compact presentation remains legible
   and the profile/shader panes retain the established side-by-side layout.
+
+## 2026-08-08 action-event usability correction
+
+- New actions now start genuinely unconfigured: the editor no longer silently
+  selects `state.committed` or fabricates the redundant condition
+  `${event}=="state.committed"`.
+- Made an action's `when` condition optional in both the current `[actions.*]`
+  model and the compatibility event-action reader. With no condition, the
+  action runs whenever any selected `on` event is published. Both the unified
+  application dispatcher and VP Renderer refresh dispatcher implement the
+  same behavior.
+- Replaced raw event-token labels with user-facing descriptions such as
+  `Any source or profile update`, `Renderer became ready`, and
+  `Refresh rate already matched`. Exact config tokens and detailed semantics
+  remain available in each entry's tooltip and in the configuration reference.
+- Existing actions automatically scroll the event list to their first checked
+  event, avoiding the misleading appearance that no event is selected when a
+  refresh event is below the visible portion of the list.
+- Added editor coverage proving a new action has no implicit events or rule;
+  the Qt integration suite is green at 9/9. Added runtime coverage proving an
+  event-only action without `when` is accepted and invoked; the focused native
+  x64 Release test passes. The editor and native test projects both complete
+  successful x64 Release builds.
