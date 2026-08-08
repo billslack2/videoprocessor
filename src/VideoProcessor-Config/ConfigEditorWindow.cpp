@@ -3310,7 +3310,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         const char* defaultValue;
     };
     const ShortcutField applicationFields[] = {
-        { "Open configuration", "config_editor", "Ctrl+s" },
+        { "Open configuration", "config_editor", "Ctrl+Shift+s" },
         { "Toggle fullscreen", "fullscreen_toggle", "Alt+Enter" },
         { "Exit fullscreen", "fullscreen_exit", "Esc" },
         { "Toggle statistics", "toggle_stats_overlay", "Ctrl+i" },

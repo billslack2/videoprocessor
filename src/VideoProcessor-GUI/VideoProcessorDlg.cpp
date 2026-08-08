@@ -270,7 +270,7 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 	{ "capture_4",             ID_COMMAND_CAPTURE_4,              '4',       FCONTROL },
 	{ "video_conversion_off",  ID_COMMAND_VC_NONE,                'V',       0 },
 	{ "video_conversion_p010", ID_COMMAND_VC_P010,                'V',       FSHIFT },
-	{ "config_editor",         ID_COMMAND_CONFIG_EDITOR,          'S',       FCONTROL },
+	{ "config_editor",         ID_COMMAND_CONFIG_EDITOR,          'S',       FCONTROL | FSHIFT },
 	{ "display_rules_auto",    ID_COMMAND_DISPLAY_RULE_AUTO,      VK_F4,     0, true },
 };
 

@@ -173,8 +173,12 @@ void testEveryPageRoundTrips()
 
     requireControl<QLineEdit>(window, QStringLiteral("config.shortcuts.fullscreen_toggle"))
         ->setText(QStringLiteral("Ctrl+f"));
-    requireControl<QLineEdit>(window, QStringLiteral("config.shortcuts.config_editor"))
-        ->setText(QStringLiteral("Ctrl+e"));
+    QLineEdit* configShortcut = requireControl<QLineEdit>(window,
+        QStringLiteral("config.shortcuts.config_editor"));
+    require(configShortcut->text().compare(QStringLiteral("Ctrl+Shift+s"),
+        Qt::CaseInsensitive) == 0,
+        "Open configuration did not default to Ctrl+Shift+S");
+    configShortcut->setText(QStringLiteral("Ctrl+e"));
 
     window.selectPage(9);
     require(requireControl<QCheckBox>(window, QStringLiteral("config.logging.enabled"))->isChecked(),
