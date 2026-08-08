@@ -43,6 +43,15 @@ struct MadVRNlsPresentationPlan
 };
 
 
+struct MadVRShaderChainUpdatePlan
+{
+	bool preScale = false;
+	bool postScale = false;
+
+	bool Any() const { return preScale || postScale; }
+};
+
+
 struct MadVRShaderRuntimeSnapshot
 {
 	std::string requestedRule;
@@ -69,6 +78,11 @@ bool MadVROutputAspectRequiresRestart(unsigned long currentAspectX,
 	unsigned long desiredAspectY, double nativeAspect);
 bool MadVRNlsOutputContractIsPrepared(
 	const MadVRShaderRuntimeSnapshot& snapshot);
+MadVRShaderChainUpdatePlan ResolveMadVRShaderChainUpdatePlan(
+	bool previousPreKnown, uint64_t previousPreFingerprint,
+	uint64_t desiredPreFingerprint, bool desiredPreEmpty,
+	bool previousPostKnown, uint64_t previousPostFingerprint,
+	uint64_t desiredPostFingerprint, bool desiredPostEmpty);
 
 class MadVRShaderRuntimeState
 {

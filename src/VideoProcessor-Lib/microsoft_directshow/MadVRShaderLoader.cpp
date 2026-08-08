@@ -58,6 +58,20 @@ uint64_t ShaderSourceFingerprint(const std::string& source)
 }
 
 
+void AppendShaderFingerprint(uint64_t& hash, const std::string& value)
+{
+	for (const unsigned char byte : value)
+	{
+		hash ^= byte;
+		hash *= 1099511628211ull;
+	}
+	// Keep adjacent chain members distinct even when their concatenated source
+	// text would otherwise be identical.
+	hash ^= 0xFF;
+	hash *= 1099511628211ull;
+}
+
+
 std::string CompactShaderDiagnostics(ID3DBlob* diagnostics)
 {
 	if (!diagnostics || !diagnostics->GetBufferPointer() ||
@@ -190,7 +204,7 @@ void LogMadVRShaderEnvironment()
 }
 
 
-void LogMadVRShaderPreflight(const std::string& source, const std::string& profile,
+bool LogMadVRShaderPreflight(const std::string& source, const std::string& profile,
 	const std::filesystem::path& path, const char* stageName, unsigned int order)
 {
 	static std::once_flag environmentLogged;
@@ -210,7 +224,7 @@ void LogMadVRShaderPreflight(const std::string& source, const std::string& profi
 			stageName, order, path.u8string().c_str(), profile.c_str(), source.size(),
 			static_cast<unsigned long long>(fingerprint), static_cast<unsigned long>(hr),
 			message.empty() ? "(none)" : message.c_str());
-		return;
+		return false;
 	}
 
 	DebugLog::Log(
@@ -219,6 +233,7 @@ void LogMadVRShaderPreflight(const std::string& source, const std::string& profi
 		static_cast<unsigned long long>(fingerprint),
 		bytecode ? bytecode->GetBufferSize() : 0,
 		message.empty() ? "(none)" : message.c_str());
+	return true;
 }
 
 enum class SignalMatch
@@ -241,6 +256,39 @@ struct ShaderEntry
 	std::filesystem::path path;
 	std::string displayName;
 	std::map<std::string, std::string> parameters;
+};
+
+
+struct PreparedShaderEntry
+{
+	unsigned int order = 0;
+	std::filesystem::path path;
+	std::string displayName;
+	std::string source;
+	std::string profile;
+};
+
+
+struct PreparedShaderStage
+{
+	uint64_t fingerprint = 1469598103934665603ull;
+	std::vector<PreparedShaderEntry> entries;
+	std::vector<ActiveMadVRShader> activeShaders;
+};
+
+
+struct InstalledShaderStage
+{
+	bool known = false;
+	PreparedShaderStage prepared;
+};
+
+
+struct InstalledShaderChain
+{
+	uint64_t rendererGeneration = 0;
+	InstalledShaderStage preScale;
+	InstalledShaderStage postScale;
 };
 
 struct ShaderRule
@@ -319,6 +367,8 @@ bool ParseBoundedDouble(const std::string& raw, double minimum,
 }
 
 MadVRShaderRuntimeState g_runtimeState;
+std::mutex g_installedShaderChainMutex;
+InstalledShaderChain g_installedShaderChain;
 
 // VP-0079 shader selections deliberately live only for this process. The
 // configuration names groups; a key selects one child (single) or all matching
@@ -1489,87 +1539,135 @@ std::string ShaderProfile(const std::string& source,
 }
 
 
-bool ApplyStage(IMadVRExternalPixelShaders* shaderInterface,
-	const std::vector<ShaderEntry>& entries, int stage,
-	const char* stageName, const std::string& defaultProfile,
-	std::vector<ActiveMadVRShader>& activeShaders)
+double ElapsedMilliseconds(const std::chrono::steady_clock::time_point& start,
+	const std::chrono::steady_clock::time_point& finish)
 {
-	if (entries.empty())
-		return false;
+	return std::chrono::duration<double, std::milli>(finish - start).count();
+}
 
-	HRESULT hr = shaderInterface->ClearPixelShaders(stage);
-	if (FAILED(hr))
-	{
-		DebugLog::Log("Shaders: failed to clear %s stage (HRESULT=0x%08lx)",
-			stageName, static_cast<unsigned long>(hr));
-		return false;
-	}
 
-	std::vector<ActiveMadVRShader> stageShaders;
+bool PrepareStage(const std::vector<ShaderEntry>& entries,
+	const char* stageName, const std::string& defaultProfile,
+	bool postResize, PreparedShaderStage& prepared)
+{
+	prepared = {};
 	for (const ShaderEntry& entry : entries)
 	{
-		const auto totalStarted = std::chrono::steady_clock::now();
-		std::string source;
-		if (!ReadShader(entry.path, source))
+		const auto started = std::chrono::steady_clock::now();
+		PreparedShaderEntry shader;
+		shader.order = entry.order;
+		shader.path = entry.path;
+		shader.displayName = entry.displayName;
+		if (!ReadShader(entry.path, shader.source))
 		{
-			shaderInterface->ClearPixelShaders(stage);
-			DebugLog::Log("Shaders: %s stage disabled because shader #%u could not be loaded",
+			DebugLog::Log(
+				"Shaders: preserving current %s stage because shader #%u could not be loaded",
 				stageName, entry.order);
 			return false;
 		}
 		const auto readFinished = std::chrono::steady_clock::now();
-		if (!ApplyShaderParameters(source, entry.parameters, entry.path))
-		{
-			shaderInterface->ClearPixelShaders(stage);
+		if (!ApplyShaderParameters(shader.source, entry.parameters, entry.path))
 			return false;
-		}
-
-		const std::string profile = ShaderProfile(source, defaultProfile);
-		if (profile.empty())
+		shader.profile = ShaderProfile(shader.source, defaultProfile);
+		if (shader.profile.empty())
 		{
-			shaderInterface->ClearPixelShaders(stage);
-			DebugLog::Log("Shaders: %s shader #%u has an unsupported D3D9 profile in \"%s\"",
+			DebugLog::Log(
+				"Shaders: preserving current %s stage because shader #%u has an unsupported D3D9 profile in \"%s\"",
 				stageName, entry.order, entry.path.u8string().c_str());
 			return false;
 		}
-		const auto prepareFinished = std::chrono::steady_clock::now();
-
-		DebugLog::Log("Shaders: applying %s shader #%u \"%s\" (profile=%s)",
-			stageName, entry.order, entry.path.u8string().c_str(), profile.c_str());
-		LogMadVRShaderPreflight(source, profile, entry.path, stageName, entry.order);
-		hr = shaderInterface->AddPixelShader(source.c_str(), profile.c_str(), stage, nullptr);
-		const auto installFinished = std::chrono::steady_clock::now();
-		if (FAILED(hr))
+		const auto expanded = std::chrono::steady_clock::now();
+		if (!LogMadVRShaderPreflight(shader.source, shader.profile,
+			entry.path, stageName, entry.order))
 		{
-			const HRESULT clearHr = shaderInterface->ClearPixelShaders(stage);
-			DebugLog::Log("Shaders: compilation/install failed for %s shader #%u \"%s\" (HRESULT=0x%08lx); stage clear HRESULT=0x%08lx",
-				stageName, entry.order, entry.path.u8string().c_str(),
-				static_cast<unsigned long>(hr), static_cast<unsigned long>(clearHr));
+			DebugLog::Log(
+				"Shaders: preserving current %s stage after local preflight failure",
+				stageName);
 			return false;
 		}
-		const auto milliseconds = [](const auto& start, const auto& finish)
-		{
-			return std::chrono::duration<double, std::milli>(
-				finish - start).count();
-		};
-		DebugLog::Log(
-			"Shaders: %s shader #%u timing read=%.3fms prepare=%.3fms install=%.3fms total=%.3fms",
-			stageName, entry.order,
-			milliseconds(totalStarted, readFinished),
-			milliseconds(readFinished, prepareFinished),
-			milliseconds(prepareFinished, installFinished),
-			milliseconds(totalStarted, installFinished));
+		const auto preflightFinished = std::chrono::steady_clock::now();
 
+		AppendShaderFingerprint(prepared.fingerprint,
+			std::to_string(entry.order));
+		AppendShaderFingerprint(prepared.fingerprint, shader.profile);
+		AppendShaderFingerprint(prepared.fingerprint, shader.source);
 		std::string displayName = entry.path.stem().u8string();
 		if (!entry.displayName.empty())
 			displayName = entry.displayName + " (" + displayName + ")";
-		stageShaders.push_back({ displayName,
-			stage == MADVR_SHADER_STAGE_POST_SCALE });
+		prepared.activeShaders.push_back({ displayName, postResize });
+		prepared.entries.push_back(std::move(shader));
+		DebugLog::Log(
+			"Shaders: %s shader #%u preparation timing read=%.3fms expand=%.3fms preflight=%.3fms total=%.3fms",
+			stageName, entry.order,
+			ElapsedMilliseconds(started, readFinished),
+			ElapsedMilliseconds(readFinished, expanded),
+			ElapsedMilliseconds(expanded, preflightFinished),
+			ElapsedMilliseconds(started, preflightFinished));
+	}
+	return true;
+}
+
+
+bool RestorePreparedStage(IMadVRExternalPixelShaders* shaderInterface,
+	const InstalledShaderStage& previous, int stage)
+{
+	if (FAILED(shaderInterface->ClearPixelShaders(stage)))
+		return false;
+	if (!previous.known)
+		return true;
+	for (const PreparedShaderEntry& shader : previous.prepared.entries)
+	{
+		if (FAILED(shaderInterface->AddPixelShader(shader.source.c_str(),
+			shader.profile.c_str(), stage, nullptr)))
+			return false;
+	}
+	return true;
+}
+
+
+bool InstallPreparedStage(IMadVRExternalPixelShaders* shaderInterface,
+	const PreparedShaderStage& desired, const InstalledShaderStage& previous,
+	int stage, const char* stageName, double& clearMilliseconds,
+	double& installMilliseconds)
+{
+	const auto clearStarted = std::chrono::steady_clock::now();
+	const HRESULT clearHr = shaderInterface->ClearPixelShaders(stage);
+	const auto clearFinished = std::chrono::steady_clock::now();
+	clearMilliseconds += ElapsedMilliseconds(clearStarted, clearFinished);
+	if (FAILED(clearHr))
+	{
+		DebugLog::Log("Shaders: failed to clear changed %s stage (HRESULT=0x%08lx)",
+			stageName, static_cast<unsigned long>(clearHr));
+		return false;
 	}
 
+	for (const PreparedShaderEntry& shader : desired.entries)
+	{
+		DebugLog::Log("Shaders: installing prepared %s shader #%u \"%s\" (profile=%s)",
+			stageName, shader.order, shader.path.u8string().c_str(),
+			shader.profile.c_str());
+		const auto installStarted = std::chrono::steady_clock::now();
+		const HRESULT hr = shaderInterface->AddPixelShader(shader.source.c_str(),
+			shader.profile.c_str(), stage, nullptr);
+		const auto installFinished = std::chrono::steady_clock::now();
+		const double duration = ElapsedMilliseconds(
+			installStarted, installFinished);
+		installMilliseconds += duration;
+		DebugLog::Log(
+			"Shaders: prepared %s shader #%u madVR install timing=%.3fms HRESULT=0x%08lx",
+			stageName, shader.order, duration, static_cast<unsigned long>(hr));
+		if (FAILED(hr))
+		{
+			const bool restored = RestorePreparedStage(
+				shaderInterface, previous, stage);
+			DebugLog::Log(
+				"Shaders: %s replacement failed; previous coherent stage restored=%d",
+				stageName, restored ? 1 : 0);
+			return false;
+		}
+	}
 	DebugLog::Log("Shaders: %s stage ACTIVE with %u shader(s)",
-		stageName, static_cast<unsigned int>(stageShaders.size()));
-	activeShaders.insert(activeShaders.end(), stageShaders.begin(), stageShaders.end());
+		stageName, static_cast<unsigned int>(desired.entries.size()));
 	return true;
 }
 
@@ -1719,6 +1817,7 @@ void ApplyShaderEntries(IBaseFilter* renderer, const std::vector<ShaderEntry>& p
 	const std::vector<ShaderEntry>& postScale, const std::string& defaultProfile,
 	MadVRShaderSelection& selection)
 {
+	const auto transitionStarted = std::chrono::steady_clock::now();
 	CComQIPtr<IMadVRExternalPixelShaders> shaderInterface(renderer);
 	if (!shaderInterface)
 	{
@@ -1726,17 +1825,101 @@ void ApplyShaderEntries(IBaseFilter* renderer, const std::vector<ShaderEntry>& p
 		return;
 	}
 
-	// A runtime rule change replaces the complete VP-managed shader chain. This
-	// also makes a none=true rule reliably turn a previously active shader off.
-	shaderInterface->ClearPixelShaders(MADVR_SHADER_STAGE_PRE_SCALE);
-	shaderInterface->ClearPixelShaders(MADVR_SHADER_STAGE_POST_SCALE);
+	// Expand and locally compile the complete desired chain while the previous
+	// coherent chain is still presenting. madVR exposes only clear/add, so the
+	// unavoidable visible mutation window begins after all fallible preparation.
+	const uint64_t rendererGeneration =
+		g_runtimeState.GetSnapshot().rendererGeneration;
+	PreparedShaderStage desiredPre;
+	PreparedShaderStage desiredPost;
+	if (!PrepareStage(preScale, "pre-resize", defaultProfile, false,
+		desiredPre) ||
+		!PrepareStage(postScale, "post-resize", defaultProfile, true,
+			desiredPost))
+	{
+		std::lock_guard<std::mutex> lock(g_installedShaderChainMutex);
+		if (g_installedShaderChain.rendererGeneration == rendererGeneration)
+		{
+			selection.activeShaders =
+				g_installedShaderChain.preScale.prepared.activeShaders;
+			selection.activeShaders.insert(selection.activeShaders.end(),
+				g_installedShaderChain.postScale.prepared.activeShaders.begin(),
+				g_installedShaderChain.postScale.prepared.activeShaders.end());
+		}
+		DebugLog::Log(
+			"Shaders: chain transition aborted during preparation; previous coherent chain retained");
+		return;
+	}
+	const auto preparationFinished = std::chrono::steady_clock::now();
+	std::lock_guard<std::mutex> lock(g_installedShaderChainMutex);
+	if (g_installedShaderChain.rendererGeneration != rendererGeneration)
+	{
+		g_installedShaderChain = {};
+		g_installedShaderChain.rendererGeneration = rendererGeneration;
+	}
 
-	const bool preActive = ApplyStage(shaderInterface, preScale,
-		MADVR_SHADER_STAGE_PRE_SCALE, "pre-resize", defaultProfile,
-		selection.activeShaders);
-	const bool postActive = ApplyStage(shaderInterface, postScale,
-		MADVR_SHADER_STAGE_POST_SCALE, "post-resize", defaultProfile,
-		selection.activeShaders);
+	const InstalledShaderChain previous = g_installedShaderChain;
+	const MadVRShaderChainUpdatePlan plan =
+		ResolveMadVRShaderChainUpdatePlan(
+			previous.preScale.known,
+			previous.preScale.prepared.fingerprint,
+			desiredPre.fingerprint, desiredPre.entries.empty(),
+			previous.postScale.known,
+			previous.postScale.prepared.fingerprint,
+			desiredPost.fingerprint, desiredPost.entries.empty());
+	double clearMilliseconds = 0.0;
+	double installMilliseconds = 0.0;
+	bool succeeded = true;
+	if (plan.preScale)
+		succeeded = InstallPreparedStage(shaderInterface, desiredPre,
+			previous.preScale, MADVR_SHADER_STAGE_PRE_SCALE, "pre-resize",
+			clearMilliseconds, installMilliseconds);
+	if (succeeded && plan.postScale)
+		succeeded = InstallPreparedStage(shaderInterface, desiredPost,
+			previous.postScale, MADVR_SHADER_STAGE_POST_SCALE, "post-resize",
+			clearMilliseconds, installMilliseconds);
+	if (!succeeded)
+	{
+		// InstallPreparedStage restored its own stage. If the other stage was
+		// already replaced, restore that too so a multi-stage request is atomic
+		// from VP's perspective.
+		if (plan.preScale && plan.postScale)
+		{
+			RestorePreparedStage(shaderInterface, previous.preScale,
+				MADVR_SHADER_STAGE_PRE_SCALE);
+			RestorePreparedStage(shaderInterface, previous.postScale,
+				MADVR_SHADER_STAGE_POST_SCALE);
+		}
+		selection.activeShaders = previous.preScale.prepared.activeShaders;
+		selection.activeShaders.insert(selection.activeShaders.end(),
+			previous.postScale.prepared.activeShaders.begin(),
+			previous.postScale.prepared.activeShaders.end());
+	}
+	else
+	{
+		g_installedShaderChain.preScale.known = true;
+		g_installedShaderChain.preScale.prepared = desiredPre;
+		g_installedShaderChain.postScale.known = true;
+		g_installedShaderChain.postScale.prepared = desiredPost;
+		selection.activeShaders = desiredPre.activeShaders;
+		selection.activeShaders.insert(selection.activeShaders.end(),
+			desiredPost.activeShaders.begin(), desiredPost.activeShaders.end());
+	}
+	const auto transitionFinished = std::chrono::steady_clock::now();
+	DebugLog::Log(
+		"Shaders: chain transition pre=%s post=%s coalesced=%d prepare=%.3fms clear=%.3fms install=%.3fms total=%.3fms result=%s",
+		plan.preScale ? "changed" : "unchanged",
+		plan.postScale ? "changed" : "unchanged", plan.Any() ? 0 : 1,
+		ElapsedMilliseconds(transitionStarted, preparationFinished),
+		clearMilliseconds, installMilliseconds,
+		ElapsedMilliseconds(transitionStarted, transitionFinished),
+		succeeded ? "active" : "previous-retained");
+	const bool preActive = !selection.activeShaders.empty() &&
+		std::any_of(selection.activeShaders.begin(), selection.activeShaders.end(),
+			[](const ActiveMadVRShader& shader) { return !shader.postResize; });
+	const bool postActive = !selection.activeShaders.empty() &&
+		std::any_of(selection.activeShaders.begin(), selection.activeShaders.end(),
+			[](const ActiveMadVRShader& shader) { return shader.postResize; });
 	DebugLog::Log("Shaders: configuration complete (pre-resize=%s, post-resize=%s)",
 		preActive ? "active" : "inactive", postActive ? "active" : "inactive");
 }

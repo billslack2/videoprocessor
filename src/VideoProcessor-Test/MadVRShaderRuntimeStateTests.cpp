@@ -516,6 +516,39 @@ namespace VideoProcessorTest
 				235, 100, 235, 100, nativeAspect));
 		}
 
+		TEST_METHOD(ShaderChainPlanMutatesOnlyChangedStages)
+		{
+			MadVRShaderChainUpdatePlan plan =
+				ResolveMadVRShaderChainUpdatePlan(
+					true, 11, 12, false, true, 21, 21, false);
+			Assert::IsTrue(plan.preScale);
+			Assert::IsFalse(plan.postScale);
+			Assert::IsTrue(plan.Any());
+
+			plan = ResolveMadVRShaderChainUpdatePlan(
+				true, 12, 12, false, true, 21, 22, false);
+			Assert::IsFalse(plan.preScale);
+			Assert::IsTrue(plan.postScale);
+
+			plan = ResolveMadVRShaderChainUpdatePlan(
+				true, 12, 12, false, true, 22, 22, false);
+			Assert::IsFalse(plan.Any());
+		}
+
+		TEST_METHOD(NewShaderChainDoesNotClearUnownedEmptyStages)
+		{
+			const MadVRShaderChainUpdatePlan empty =
+				ResolveMadVRShaderChainUpdatePlan(
+					false, 0, 1, true, false, 0, 1, true);
+			Assert::IsFalse(empty.Any());
+
+			const MadVRShaderChainUpdatePlan preOnly =
+				ResolveMadVRShaderChainUpdatePlan(
+					false, 0, 10, false, false, 0, 1, true);
+			Assert::IsTrue(preOnly.preScale);
+			Assert::IsFalse(preOnly.postScale);
+		}
+
 		TEST_METHOD(RendererReplacementRebindsExactTrustedGeometry)
 		{
 			MadVRShaderRuntimeState state;

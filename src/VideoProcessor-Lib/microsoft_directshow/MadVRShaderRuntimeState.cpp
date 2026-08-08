@@ -155,6 +155,24 @@ bool MadVRNlsOutputContractIsPrepared(
 }
 
 
+MadVRShaderChainUpdatePlan ResolveMadVRShaderChainUpdatePlan(
+	bool previousPreKnown, uint64_t previousPreFingerprint,
+	uint64_t desiredPreFingerprint, bool desiredPreEmpty,
+	bool previousPostKnown, uint64_t previousPostFingerprint,
+	uint64_t desiredPostFingerprint, bool desiredPostEmpty)
+{
+	MadVRShaderChainUpdatePlan plan;
+	// A newly created madVR instance has no VP-installed chain. Do not clear an
+	// empty stage merely to establish that fact; this also avoids disturbing an
+	// unrelated stage when only the other stage changes.
+	plan.preScale = previousPreKnown ?
+		previousPreFingerprint != desiredPreFingerprint : !desiredPreEmpty;
+	plan.postScale = previousPostKnown ?
+		previousPostFingerprint != desiredPostFingerprint : !desiredPostEmpty;
+	return plan;
+}
+
+
 MadVRShaderRuntimeSnapshot MadVRShaderRuntimeState::GetSnapshot() const
 {
 	std::lock_guard<std::mutex> lock(m_mutex);

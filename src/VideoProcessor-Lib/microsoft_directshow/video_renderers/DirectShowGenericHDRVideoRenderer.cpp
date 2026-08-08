@@ -713,6 +713,7 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 			static_cast<const char*>(ruleUtf8));
 		return true;
 	}
+	const bool previousRuleUsedNlsMapping = m_requestedRuleUsesNlsMapping;
 	m_requestedShaderRule = ruleName;
 	m_requestedShaderLabel.Format(TEXT("%S"), label.c_str());
 	m_inactiveShaderRule.Format(TEXT("%S"), inactiveRule.c_str());
@@ -814,6 +815,10 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 			rendererRestartRequired = DoesOutputAspectRequireRestart(
 				bypassSelection.outputAspectRatioX,
 				bypassSelection.outputAspectRatioY);
+			if (rendererRestartRequired && TryDynamicOutputAspect(
+				bypassSelection.outputAspectRatioX,
+				bypassSelection.outputAspectRatioY))
+				rendererRestartRequired = false;
 		}
 		m_requestedShaderApplied = false;
 		m_appliedShaderAspectRatio = 0.0;
@@ -822,6 +827,17 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		activeRule = m_activeShaderRule;
 		DebugLog::Log("Shaders: armed rule \"%s\"; waiting because %s",
 			static_cast<const char*>(ruleUtf8), reason.c_str());
+		return true;
+	}
+
+	unsigned long desiredAspectX = 0;
+	unsigned long desiredAspectY = 0;
+	MadVRShaderLoader::GetRuntimeOutputAspectRatio(
+		desiredAspectX, desiredAspectY);
+	if (!PrepareOutputAspectForShaderInstall(
+		desiredAspectX, desiredAspectY, rendererRestartRequired))
+	{
+		activeRule = m_activeShaderRule;
 		return true;
 	}
 
@@ -834,7 +850,7 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 	m_appliedActivePictureGeneration = activeRectangle.generation;
 	m_appliedViewportGeneration = m_viewportGeneration;
 	activeRule = m_activeShaderRule;
-	if (m_requestedShaderRule.CompareNoCase(TEXT("nls_off")) == 0)
+	if (previousRuleUsedNlsMapping && selection.activeShaders.empty())
 	{
 		UpdateNlsOsdMode(MadVRNlsMappingMode::OFF);
 		activeRule = m_activeShaderRule;
@@ -842,7 +858,6 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 	rendererRestartRequired = DoesOutputAspectRequireRestart(
 		selection.outputAspectRatioX, selection.outputAspectRatioY);
 	if (rendererRestartRequired &&
-		m_requestedShaderRule.CompareNoCase(TEXT("nls_off")) == 0 &&
 		TryDynamicOutputAspect(selection.outputAspectRatioX,
 			selection.outputAspectRatioY))
 		rendererRestartRequired = false;
@@ -1060,6 +1075,9 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 	activeRule = m_activeShaderRule;
 	rendererRestartRequired = DoesOutputAspectRequireRestart(
 		selection.outputAspectRatioX, selection.outputAspectRatioY);
+	if (rendererRestartRequired && TryDynamicOutputAspect(
+		selection.outputAspectRatioX, selection.outputAspectRatioY))
+		rendererRestartRequired = false;
 	DebugLog::Log("Shaders: armed rule \"%s\" %s at active aspect %.4f%s%s",
 		static_cast<const char*>(requestedUtf8),
 		shouldApply ? "engaged" : "bypassed",
