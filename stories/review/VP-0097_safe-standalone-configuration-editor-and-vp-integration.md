@@ -2,16 +2,19 @@
 
 ## Status
 
-In Progress. On 2026-08-06 the developer confirmed the freshly discovered
-`billslack2/videoprocessor` default branch `v1.1.016-beta` as the implementation
-base. Implementation is on `codex/vp-0097-config-editor` in
-`C:\Users\bslac\vp\vp-0097-config-editor`, based on
-`origin/v1.1.016-beta` at `b6e28923dc0ceb2f4786e048bb8119fb0dd46b42`.
+Ready for review. On 2026-08-08 VP-0097 was rebased onto
+`v1.1.017-beta` and fast-forwarded into that branch as `a360a27`
+(`feat(config): add Qt configuration editor`). The merge retained beta-17's
+current screen/NLS behavior and integrated the completed Qt configuration
+editor, safe persistence model, VP integration, configuration schema/runtime
+work, documentation, and regression coverage.
 
-The first increment is intentionally limited to a runnable standalone editor:
-read-only configuration preview, notification-area behavior, and a small set
-of safe structured edits. VP launch/shortcut integration will follow once the
-editor executable and its configuration safety boundary are validated.
+Verification completed after the rebase: the x64 Release editor builds, the
+x64 Release `VideoProcessorConfigTests` project builds, and all 14 focused
+editor tests pass, including round-trip persistence, profile lifecycle,
+unknown-content preservation, scene-detection defaults, virtual shader Off,
+LUT discovery, reload/confirmation behavior, action drafts, and DPI/keyboard/
+accessibility coverage.
 
 2026-08-06 Qt 6 Widgets migration started (uncommitted VP source work):
 
