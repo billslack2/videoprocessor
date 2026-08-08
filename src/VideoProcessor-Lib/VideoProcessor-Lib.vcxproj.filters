@@ -135,6 +135,9 @@
     <ClInclude Include="ApplicationInterface.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ModernOperatorLayout.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="ACaptureDeviceDiscoverer.h">
       <Filter>Header Files</Filter>
     </ClInclude>

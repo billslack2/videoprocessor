@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include <ApplicationInterface.h>
+#include <ModernOperatorLayout.h>
 #include <ConfigFile.h>
 #include <DisplayTopologySession.h>
 #include <EventActionLauncher.h>
@@ -96,6 +97,42 @@ namespace VideoProcessorTest
 					true, "classic", "configured"));
 			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::None);
 			Assert::IsTrue(selection.source == ApplicationInterface::Source::NoUi);
+		}
+
+		TEST_METHOD(ModernOperatorLayoutMatchesApprovedDefaultGeometry)
+		{
+			const auto layout = ModernOperatorLayout::Calculate(1680, 716);
+			Assert::AreEqual(16, layout.information.x);
+			Assert::AreEqual(70, layout.information.y);
+			Assert::AreEqual(512, layout.information.width);
+			Assert::AreEqual(544, layout.preview.x);
+			Assert::AreEqual(70, layout.preview.y);
+			Assert::AreEqual(1120, layout.preview.width);
+			Assert::AreEqual(630, layout.preview.height);
+		}
+
+		TEST_METHOD(ModernOperatorLayoutScalesApprovedGeometryWithDpi)
+		{
+			const auto layout = ModernOperatorLayout::Calculate(2520, 1074, 144);
+			Assert::AreEqual(24, layout.information.x);
+			Assert::AreEqual(105, layout.information.y);
+			Assert::AreEqual(768, layout.information.width);
+			Assert::AreEqual(816, layout.preview.x);
+			Assert::AreEqual(105, layout.preview.y);
+			Assert::AreEqual(1680, layout.preview.width);
+			Assert::AreEqual(945, layout.preview.height);
+		}
+
+		TEST_METHOD(ModernOperatorPreviewRemainsSixteenByNineWhenResized)
+		{
+			const auto layout = ModernOperatorLayout::Calculate(1900, 900);
+			Assert::IsTrue(layout.preview.x >= 544);
+			Assert::IsTrue(layout.preview.y >= 70);
+			Assert::IsTrue(layout.preview.x + layout.preview.width <= 1884);
+			Assert::IsTrue(layout.preview.y + layout.preview.height <= 884);
+			Assert::AreEqual(
+				layout.preview.width * 9,
+				layout.preview.height * 16);
 		}
 
 		TEST_METHOD(IndexedShortcutKeyParsesOneBasedIndex)

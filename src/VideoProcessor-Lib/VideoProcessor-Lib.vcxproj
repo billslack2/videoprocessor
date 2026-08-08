@@ -169,6 +169,7 @@
   <ItemGroup>
     <ClInclude Include="ACaptureDevice.h" />
     <ClInclude Include="ApplicationInterface.h" />
+    <ClInclude Include="ModernOperatorLayout.h" />
     <ClInclude Include="ACaptureDeviceDiscoverer.h" />
     <ClInclude Include="AutoPpmCalibrator.h" />
     <ClInclude Include="AspectRatio.h" />
