@@ -1007,7 +1007,13 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 		rule.explicitType = true;
 		const std::string type = ConfigFile::NormalizeName(rawValue);
 		if (type == "nls")
+		{
 			rule.nls = true;
+			// Typed NLS is expansion-only unless a rule explicitly opts into
+			// vertical warping. A vertical warp makes a wider picture fit a
+			// narrower target and can visibly shrink the presentation.
+			rule.narrowerOnly = true;
+		}
 		else if (type != "custom" && type != "shader")
 		{
 			DebugLog::Log(
@@ -1120,7 +1126,9 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 		const std::string direction = ConfigFile::NormalizeName(rawValue);
 		if (direction == "narrower_only")
 			rule.narrowerOnly = true;
-		else if (direction != "any")
+		else if (direction == "any")
+			rule.narrowerOnly = false;
+		else
 		{
 			DebugLog::Log("Shaders: rule \"%s\" has invalid aspect_direction \"%s\"; use ANY or NARROWER_ONLY",
 				rule.name.c_str(), rawValue.c_str());
@@ -1159,7 +1167,7 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 		{
 			for (const char* derived :
 				{ "output_aspect_ratio", "nls_target_aspect_ratio",
-				  "active_aspect_min", "aspect_direction", "inactive_rule" })
+				  "active_aspect_min", "inactive_rule" })
 			{
 				if (config.GetSectionValues(section)->find(derived) !=
 					config.GetSectionValues(section)->end())
@@ -1174,7 +1182,6 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 			rule.nlsTargetAspectRatioX = 0;
 			rule.nlsTargetAspectRatioY = 0;
 			rule.activeAspectMinimum = 0.0;
-			rule.narrowerOnly = false;
 			rule.inactiveRule.clear();
 		}
 	}
@@ -1242,7 +1249,14 @@ ShaderRule LoadTargetRule(const ConfigFile& config, const std::string& name,
 	}
 	rule.explicitType = true;
 	const std::string type = ConfigFile::NormalizeName(value);
-	if (type == "nls") rule.nls = true;
+	if (type == "nls")
+	{
+		rule.nls = true;
+		// NLS expands narrower content by default. Reverse-direction vertical
+		// warping is opt-in because fitting a wider picture to a narrower target
+		// visibly reduces its presentation size.
+		rule.narrowerOnly = true;
+	}
 	else if (type != "custom")
 	{
 		DebugLog::Log("Shaders: [%s] shader_type must be nls or custom", section.c_str());
@@ -1260,6 +1274,21 @@ ShaderRule LoadTargetRule(const ConfigFile& config, const std::string& name,
 		}
 		if (rule.aspectTolerancePercent < 0.0)
 			rule.aspectTolerancePercent = 5.0;
+		if (config.TryGetString(section, "aspect_direction", value))
+		{
+			const std::string direction = ConfigFile::NormalizeName(value);
+			if (direction == "narrower_only")
+				rule.narrowerOnly = true;
+			else if (direction == "any")
+				rule.narrowerOnly = false;
+			else
+			{
+				DebugLog::Log(
+					"Shaders: [%s] aspect_direction must be narrower_only or any",
+					section.c_str());
+				rule.valid = false;
+			}
+		}
 		LoadTypedNlsSettings(config, section, rule);
 	}
 	std::string stage = "pre_resize";

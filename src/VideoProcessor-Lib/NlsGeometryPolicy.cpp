@@ -78,7 +78,9 @@ NlsMappingDecision EvaluateNlsMapping(bool aspectAvailable,
 	}
 	if (narrowerOnly && signedDifferencePercent <= tolerancePercent)
 	{
-		decision.reason = "active picture is wider than the configured target";
+		decision.mode = NlsMappingMode::LINEAR_PASSTHROUGH;
+		decision.reason =
+			"active picture is wider than the configured target; preserving source geometry";
 		return decision;
 	}
 	if (decision.requestedRatio > maximumStretchRatio)

@@ -1023,6 +1023,52 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(Vp0099TypedNlsDefaultsToExpansionOnly)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0099-expansion-only.cfg";
+
+			auto resolve = [&](const char* direction, bool expectedNarrowerOnly)
+			{
+				{
+					std::ofstream file(path, std::ios::out | std::ios::trunc);
+					file << "[shader.nls]\n"
+						"when: $key==\"n\"\n"
+						"[shader.nls.standard]\n"
+						"when: $key==\"Shift+n\"\n"
+						"shader_type: nls\n"
+						"glsl_file: NLS.glsl\n"
+						"hlsl_file: NLS.hlsl\n";
+					if (direction)
+						file << "aspect_direction: " << direction << "\n";
+				}
+				ConfigFile config;
+				Assert::IsTrue(config.Load(path));
+				for (const ShaderRendererBackend backend : {
+					ShaderRendererBackend::LIBPLACEBO,
+					ShaderRendererBackend::MADVR })
+				{
+					std::vector<ConfiguredShaderRule> selection;
+					std::string error;
+					Assert::IsTrue(
+						MadVRShaderLoader::ResolveConfiguredRuleSelection(
+							config, "@shader-key:Shift+n", backend,
+							selection, error));
+					Assert::AreEqual(static_cast<size_t>(1), selection.size());
+					Assert::AreEqual(expectedNarrowerOnly,
+						selection.front().narrowerOnly);
+				}
+			};
+
+			resolve(nullptr, true);
+			resolve("narrower_only", true);
+			resolve("any", false);
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(MainConfigSchemaAcceptsLegacyQueueNamesButRejectsAmbiguousAliases)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

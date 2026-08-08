@@ -148,7 +148,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(2.35 / 1.90, decision.stretchRatio, 0.000001);
 		}
 
-		TEST_METHOD(WiderContentUsesNonlinearVerticalMapping)
+		TEST_METHOD(ExplicitAnyDirectionCanUseNonlinearVerticalMapping)
 		{
 			const MadVRNlsMappingDecision decision =
 				EvaluateNlsMapping(true, 2.55, 2.35, 5.0, 1.0, false);
@@ -157,6 +157,20 @@ namespace VideoProcessorTest
 				static_cast<int>(decision.mode));
 			Assert::IsTrue(decision.verticalWarp);
 			Assert::AreEqual(2.55 / 2.35, decision.stretchRatio, 0.000001);
+		}
+
+		TEST_METHOD(ExpansionOnlyNeverShrinksWiderContent)
+		{
+			const MadVRNlsMappingDecision decision =
+				EvaluateNlsMapping(true, 2.0, 16.0 / 9.0,
+					5.0, 1.0, true);
+			Assert::AreEqual(
+				static_cast<int>(MadVRNlsMappingMode::LINEAR_PASSTHROUGH),
+				static_cast<int>(decision.mode));
+			Assert::IsFalse(decision.verticalWarp);
+			Assert::AreEqual(1.0, decision.stretchRatio, 0.000001);
+			Assert::IsTrue(decision.reason.find("preserving source geometry") !=
+				std::string::npos);
 		}
 
 		TEST_METHOD(UnstableOrRejectedGeometryWaits)
