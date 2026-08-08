@@ -2,12 +2,11 @@
 
 ## Status
 
-Backlog. This is a user-interface and integration story; no source work has
-started. The current classic dialog remains the default and must remain fully
-functional throughout implementation. Before source work starts, query the
-current default branch of `billslack2/videoprocessor`, report it to the
-developer, and obtain explicit approval of the implementation base and a clean
-worktree under the tracker workflow.
+In Progress. Source work is authorized on `codex/vp-0102-modern-ui`, based on
+the latest approved GitHub default branch `v1.1.017-beta` at
+`3c7ebd5315cd7396669d1762822a94cfa358d490` when the worktree was created.
+The current classic dialog remains the effective default and must remain fully
+functional throughout implementation.
 
 VP-0097 is the dependency for exposing the persisted `interface` preference in
 the configuration editor. Design, read-only telemetry extraction, and toolkit
