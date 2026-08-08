@@ -2,18 +2,30 @@
 
 ## Status
 
-Done (2026-08-07). The implementation was built, fully tested, deployed, and
-confirmed live on the customer's 2.35:1 CIH screen with a 32:15 requested
-presentation viewport. GitHub PR #46 merged the two implementation commits
-into the discovered default branch `v1.1.016-beta` as merge commit `a195ecc`.
-The local integration worktree was then fast-forwarded to that merge.
+In Progress (reopened 2026-08-08). Final requirements review clarified that
+`screen_aspect` describes the actual CIH screen to which the user fits the
+projector lens. VP detects the content envelope dynamically and fits it inside
+that screen. There is no separately configured requested content viewport in
+the ordinary linear-fit contract.
 
-NLS was disabled during the decisive live geometry validation. Dynamic NLS
-shader geometry based on panel, physical-screen, requested-viewport, and
-source-envelope values remains explicitly tracked by VP-0099; it is not a
-completion dependency for VP-0098's linear CIH fit.
+The optional `physical_screen_aspect` and nested physical-screen/requested-
+viewport interpretation added at source commit `75478cb` solved an artificial
+fixed-lens/masked-viewport test rather than the stated arbitrary-CIH screen
+requirement. Cleanup will remove that public setting and redundant nested fit
+while retaining VP-0098's source-envelope correction and arbitrary centered
+screen/content fit. Existing configurations that never set the optional value
+already follow the required behavior because it defaults to `screen_aspect`.
 
-## Completion evidence (2026-08-07)
+NLS is explicitly out of scope for this correction. VP-0099 remains separate
+work and must use the configured screen plus the detected source envelope; it
+does not gate VP-0098's NLS-off linear geometry.
+
+Cleanup implementation is assigned to
+`codex/vp-0098-single-screen-aspect-cleanup` in
+`C:\Users\bslac\vp\vp-0098-screen-aspect-cleanup`, based on the discovered
+default branch `v1.1.017-beta`.
+
+## Previous completion evidence (2026-08-07)
 
 - Clean x64 Release build succeeded at source commit `75478cb`; embedded
   version `v1.1.016-beta-3-g75478cb` reported `VERSION_DIRTY=false`.
