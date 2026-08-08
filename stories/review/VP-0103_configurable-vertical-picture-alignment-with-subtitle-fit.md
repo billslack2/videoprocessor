@@ -2,14 +2,50 @@
 
 ## Status
 
-In Progress (2026-08-08). The developer confirmed the discovered default
-integration branch `v1.2.001-beta` and also requested integration into
-`v1.2.001-formats-test-beta`. Implementation is active on
-`codex/vp-0103-vertical-alignment` in
-`C:\Users\bslac\vp\vp-0103-vertical-alignment`, based on
-`origin/v1.2.001-beta` at `b72da1e`. The first increment is inspecting the
-resolved viewport, Alpha final-layout/subtitle-fit, configuration editor, and
-test seams before changing production geometry.
+Review (2026-08-08). VP-0103 is implemented and integrated into both requested
+beta branches. The default `v1.2.001-beta` branch is at `a40d992`; the divergent
+`v1.2.001-formats-test-beta` branch carries the same feature as `90600f1`.
+Automated verification and x64 Release builds pass with no new failures. Live
+Alpha validation with real HDMI top-, bottom-, and boundary-crossing subtitles
+remains required before closing the story.
+
+## Implementation checkpoint (2026-08-08)
+
+- Added per-viewport `vertical_alignment` with finite `top`, `center`, and
+  `bottom` values. Omission defaults to `center`, and invalid values fail with
+  a setting-specific validation error.
+- Alpha places the final fitted picture at the selected resting edge by
+  redistributing only unused vertical destination space. Source crop,
+  horizontal centering, picture scale, active-picture authority, anamorphic
+  mapping, NLS mapping, and existing HDMI subtitle source-pixel translation
+  remain independent.
+- The resolved value is published with viewport state and participates in
+  live renderer updates, state equality, renderer fingerprints, OSD, and
+  final-layout diagnostics. DirectShow/madVR explicitly reports non-center
+  placement as unsupported instead of applying a translation shader.
+- Both the modern Qt editor and legacy Win32 editor expose **Vertical picture
+  alignment** with **Top**, **Center**, and **Bottom**, default new viewports to
+  **Center**, explain temporary subtitle-fit movement, and preserve the value
+  across save/reload. The canonical configuration reference, sample config,
+  and public field/value inventories are updated.
+- Feature source commit `a40d992` was pushed on
+  `codex/vp-0103-vertical-alignment` and fast-forwarded into
+  `v1.2.001-beta`. Because the formats beta has intentionally divergent
+  history, that branch received only the verified VP-0103 change as commit
+  `90600f1`, preserving its formats and live-editor work.
+- Full x64 Release solution builds succeeded on the feature/default result and
+  the formats result. The VP-0103 geometry and configuration/publication tests,
+  checked-in configuration validation, and all 14 Qt editor tests pass on the
+  formats result.
+- Full native regression on the default feature result passed 684 of 689 tests;
+  its untouched default-beta baseline passed 682 of 687 with the same five
+  failures. The formats result passed 722 of 727 with those same five existing
+  configuration-suite failures:
+  `ConfigurationReferenceMatchesPublicFieldInventory`,
+  `Vp0097NamedViewportsUseFileOrderAndIgnoreLabels`,
+  `Vp0079OwnerVariantsResolveWithoutPersistedProfileState`,
+  `ConfigEditorCoreRoundTripsEveryEditorOwnedKey`, and
+  `ConfigEditorCoreValidatesEveryEditableOrderedProfileSurface`.
 
 ## User story
 
