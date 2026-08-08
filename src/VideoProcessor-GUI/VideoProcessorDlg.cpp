@@ -193,6 +193,24 @@ void RetargetConfigurationEditorOwner(HWND owner)
 		reinterpret_cast<void*>(owner));
 }
 
+void ActivateConfigurationEditor(HWND editor)
+{
+	if (!editor || !IsWindow(editor))
+		return;
+	const HWND foreground = GetForegroundWindow();
+	const DWORD foregroundThread = foreground ?
+		GetWindowThreadProcessId(foreground, nullptr) : 0;
+	const DWORD currentThread = GetCurrentThreadId();
+	const bool attached = foregroundThread && foregroundThread != currentThread &&
+		AttachThreadInput(currentThread, foregroundThread, TRUE) != FALSE;
+	ShowWindowAsync(editor, SW_RESTORE);
+	::SetWindowPos(editor, HWND_TOP, 0, 0, 0, 0,
+		SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+	::SetForegroundWindow(editor);
+	if (attached)
+		AttachThreadInput(currentThread, foregroundThread, FALSE);
+}
+
 const TCHAR* ToString(RendererResetReason reason)
 {
 	switch (reason)
@@ -1806,10 +1824,7 @@ void CVideoProcessorDlg::UpdateConfigurationEditorModal()
 		GetWindowThreadProcessId(editor, &editorProcessId);
 		if (editorProcessId)
 			AllowSetForegroundWindow(editorProcessId);
-		ShowWindowAsync(editor, SW_RESTORE);
-		::SetWindowPos(editor, HWND_TOP, 0, 0, 0, 0,
-			SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-		::SetForegroundWindow(editor);
+		ActivateConfigurationEditor(editor);
 		m_configurationEditorActivationPending = false;
 	}
 

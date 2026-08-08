@@ -50,6 +50,22 @@ quintptr parseOwner(const QString& value)
 constexpr wchar_t ActivationEventName[] =
     L"Local\\VideoProcessorConfigEditor.Activate.v1";
 
+void activateWindowFromCurrentForeground(HWND window)
+{
+    if (!window || !IsWindow(window)) return;
+    const HWND foreground = GetForegroundWindow();
+    const DWORD foregroundThread = foreground ?
+        GetWindowThreadProcessId(foreground, nullptr) : 0;
+    const DWORD currentThread = GetCurrentThreadId();
+    const bool attached = foregroundThread && foregroundThread != currentThread &&
+        AttachThreadInput(currentThread, foregroundThread, TRUE) != FALSE;
+    ShowWindowAsync(window, SW_RESTORE);
+    BringWindowToTop(window);
+    SetForegroundWindow(window);
+    if (attached)
+        AttachThreadInput(currentThread, foregroundThread, FALSE);
+}
+
 void allowExistingWindowToTakeFocus(quintptr owner)
 {
     if (HWND existing = FindWindowW(nullptr, L"VideoProcessor Configuration"))
@@ -61,8 +77,7 @@ void allowExistingWindowToTakeFocus(quintptr owner)
         DWORD processId = 0;
         GetWindowThreadProcessId(existing, &processId);
         if (processId != 0) AllowSetForegroundWindow(processId);
-        ShowWindowAsync(existing, SW_RESTORE);
-        SetForegroundWindow(existing);
+        activateWindowFromCurrentForeground(existing);
     }
 }
 
