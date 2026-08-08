@@ -994,3 +994,14 @@ text.
 - Verification is green: the native x64 Release suite passes 643/643, the Qt
   integration suite passes 3/3, and the configuration editor completes an
   isolated x64 Release build.
+
+## 2026-08-07 single-instance tray activation
+
+- Replaced the fragile second-launch mutex/window-title behavior with a named
+  Windows activation event observed by the existing Qt UI thread.
+- Launching `VideoProcessorConfig.exe` while an instance is hidden in the
+  notification area now restores and activates that existing window; the new
+  process hands off and exits successfully.
+- Added a process-level integration test that launches the editor, closes it
+  to the tray, launches the executable again, and verifies that the original
+  window becomes visible. The x64 Release scenario passes.
