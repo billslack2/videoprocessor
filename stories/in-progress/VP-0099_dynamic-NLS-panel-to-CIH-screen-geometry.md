@@ -396,8 +396,12 @@ VP Renderer DLL were deployed with matching hashes; binary backups use suffix
 `.pre-vp0099-e524332.20260808-111023.bak`. The active configuration received
 only the two explicit direction lines after backup to
 `VideoProcessor.cfg.pre-vp0099-e524332.20260808-111006.bak`. The app is
-responsive on PID 34152; live confirmation that base 16:9 stays native and
-scope 2.35 still expands horizontally remains pending.
+responsive on PID 34152. Live telemetry now confirms the exact safety split:
+base 16:9 reports `mapping=passthrough`, `axis=none`, native DAR, and
+`preserving source geometry`; scope 2.35 reports `mapping=active`,
+`axis=horizontal`, and accepted DAR `94:45`; exit restores native 3840:2160.
+All three paths report `renderer_restart=0`. User visual confirmation remains
+pending.
 
 ## Acceptance criteria
 
