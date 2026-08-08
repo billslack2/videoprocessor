@@ -370,6 +370,35 @@ DirectShow filter enumeration and left a local crash dump; two subsequent
 launches completed enumeration and loaded VP Renderer API 8. The final test
 instance is responsive on PID 26356 with madVR running.
 
+### Expansion-only NLS safety correction (2026-08-08)
+
+Live madVR testing exposed a real reverse-direction failure while the base
+16:9 viewport was active. For a trusted 2.00:1 picture, the omitted direction
+policy silently defaulted to `ANY`; VP selected a vertical 1.125 NLS warp and
+negotiated DAR `128:81`. madVR consequently reported an adjusted raster of
+3840x2430 and reduced the displayed width, so the result visibly shrank even
+though the shader described the operation as a stretch. After selecting the
+2.35 scope viewport, the same picture correctly used horizontal NLS and DAR
+`94:45`.
+
+Commit `e524332` makes typed NLS expansion-only by default in both the current
+`[shader.*]` loader and the legacy loader. A known picture wider than the target
+now resolves to linear passthrough with native geometry; reverse-direction
+vertical warping remains possible only through an explicit
+`aspect_direction: any`. The shipped standard and protected profiles state
+`aspect_direction: narrower_only` explicitly. New tests cover the exact
+2.00-to-16:9 no-shrink case and prove that omitted, explicit expansion-only,
+and explicit opt-in behavior resolve identically for madVR and VP Renderer.
+
+The exact committed x64 Release build passed 637/637 tests. Post-commit TRX:
+`TestResults\vp0099-expansion-only-postcommit.trx`. The executable and paired
+VP Renderer DLL were deployed with matching hashes; binary backups use suffix
+`.pre-vp0099-e524332.20260808-111023.bak`. The active configuration received
+only the two explicit direction lines after backup to
+`VideoProcessor.cfg.pre-vp0099-e524332.20260808-111006.bak`. The app is
+responsive on PID 34152; live confirmation that base 16:9 stays native and
+scope 2.35 still expands horizontally remains pending.
+
 ## Acceptance criteria
 
 - No production NLS path selects a target by `scope`/`normal` name or by a
