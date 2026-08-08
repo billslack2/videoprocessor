@@ -1078,3 +1078,17 @@ design-only improvements prioritized for a separate pass:
 - Renderer-group headers are keyboard accessible and retain their expansion
   state while the user switches profiles. Automated coverage proves hidden
   fields still round-trip and raises the Qt integration suite to 6/6.
+- Normalized automatic selector presentation to title-case `Auto`. DirectShow
+  controls no longer expose both `Default` and `Auto`: settings with a real
+  automatic policy show one `Auto` entry, while start/stop timing falls back to
+  its first real mode (`Clock Smart`). Profile-only `Inherited / not set`
+  remains distinct and continues to remove the profile override on disk.
+- Renamed the built-in renderer's public display name from
+  `VideoProcessor Renderer (Alpha)` to `VP Renderer` across discovery, VP
+  status/detail text, the editor, documentation, and the shipped sample. The
+  old full name and `libplacebo` remain accepted compatibility aliases; the
+  editor migrates the old full name to `VP Renderer` on its next save.
+- Added UI round-trip coverage for the Auto/Default rules and legacy renderer
+  name migration, raising the Qt integration suite to 7/7. The x64 Release
+  editor and discovery bridge build successfully, and a direct discovery probe
+  returns `VP Renderer` as the first renderer.
