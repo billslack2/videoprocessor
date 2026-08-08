@@ -342,6 +342,9 @@
 	<ClInclude Include="microsoft_directshow\MadVRShaderRuntimeState.h">
 	  <Filter>Header Files\microsoft_directshow</Filter>
 	</ClInclude>
+	<ClInclude Include="NlsGeometryPolicy.h">
+	  <Filter>Header Files</Filter>
+	</ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vprenderer\\LibplaceboPluginVideoRenderer.cpp">
@@ -553,6 +556,9 @@
 	</ClCompile>
 	<ClCompile Include="microsoft_directshow\MadVRShaderRuntimeState.cpp">
 	  <Filter>Source Files\microsoft_directshow</Filter>
+	</ClCompile>
+	<ClCompile Include="NlsGeometryPolicy.cpp">
+	  <Filter>Source Files</Filter>
 	</ClCompile>
   </ItemGroup>
   <ItemGroup>

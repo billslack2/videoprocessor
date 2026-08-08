@@ -193,8 +193,6 @@ public:
 	void OnCommandFullScreenExit();
 	void OnCommandRendererReset();
 	void OnCommandRendererRestart();
-	void OnCommandScreenProfileNormal();
-	void OnCommandScreenProfileScope();
 	void OnCommandDisplayRuleAuto();
 	afx_msg void OnCommandShaderRule(UINT commandId);
 	afx_msg void OnCommandDisplayRule(UINT commandId);

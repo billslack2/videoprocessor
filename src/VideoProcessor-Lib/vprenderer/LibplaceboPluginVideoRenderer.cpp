@@ -348,16 +348,6 @@ bool LibplaceboPluginVideoRenderer::GetSceneTimingDueStatus(
 }
 
 
-bool LibplaceboPluginVideoRenderer::SetScreenProfile(
-	bool scopeScreen,
-	CString& activeProfile,
-	bool& rendererRestartRequired)
-{
-	return m_renderer->SetScreenProfile(scopeScreen, activeProfile,
-		rendererRestartRequired);
-}
-
-
 bool LibplaceboPluginVideoRenderer::SelectDisplayRule(
 	const CString& ruleName,
 	CString& activeRule,

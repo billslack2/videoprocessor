@@ -15,85 +15,6 @@
 #include <sstream>
 
 
-MadVRNlsMappingDecision EvaluateMadVRNlsMapping(bool aspectAvailable,
-	double activeAspect, double targetAspect, double tolerancePercent,
-	double activeAspectMinimum, bool narrowerOnly, double maximumStretchRatio)
-{
-	MadVRNlsMappingDecision decision;
-	decision.sourceAspect = activeAspect;
-	decision.targetAspect = targetAspect;
-	if (!aspectAvailable || !std::isfinite(activeAspect) || activeAspect <= 0.0)
-	{
-		decision.reason = "active picture geometry is not stable";
-		return decision;
-	}
-	if (!std::isfinite(targetAspect) || targetAspect <= 0.0)
-	{
-		decision.reason = "NLS target aspect is unavailable";
-		return decision;
-	}
-	if (activeAspectMinimum > 0.0 && activeAspect < activeAspectMinimum)
-	{
-		std::ostringstream message;
-		message << "active picture " << activeAspect <<
-			" is below minimum " << activeAspectMinimum;
-		decision.reason = message.str();
-		return decision;
-	}
-
-	const double ratio = std::max(targetAspect / activeAspect,
-		activeAspect / targetAspect);
-	if (!std::isfinite(ratio))
-	{
-		std::ostringstream message;
-		message << "NLS ratio " << ratio << " is invalid";
-		decision.reason = message.str();
-		return decision;
-	}
-
-	const double signedDifferencePercent =
-		(targetAspect - activeAspect) * 100.0 / targetAspect;
-	if (std::abs(signedDifferencePercent) <= tolerancePercent)
-	{
-		decision.mode = MadVRNlsMappingMode::SCOPE_PASSTHROUGH;
-		decision.reason = "active picture matches the target within tolerance";
-		return decision;
-	}
-	if (narrowerOnly && signedDifferencePercent <= tolerancePercent)
-	{
-		decision.reason = "active picture is wider than the configured target";
-		return decision;
-	}
-	if (ratio > maximumStretchRatio)
-	{
-		// Excessive nonlinear expansion is visually destructive. Keep the
-		// complete active picture at its original geometry inside the selected
-		// viewport instead. Narrow content receives side pillars; wider content
-		// receives top and bottom bars.
-		decision.mode = MadVRNlsMappingMode::SAFE_FIT;
-		decision.safeFitVertical = activeAspect > targetAspect;
-		decision.safeFitFraction =
-			std::min(activeAspect, targetAspect) /
-			std::max(activeAspect, targetAspect);
-		std::ostringstream message;
-		message << "NLS ratio " << ratio << " exceeds the safe " <<
-			maximumStretchRatio << " limit; preserving source geometry with " <<
-			(decision.safeFitVertical ? "letterbox" : "pillarbox") <<
-			" safe fit";
-		decision.reason = message.str();
-		return decision;
-	}
-
-	decision.mode = MadVRNlsMappingMode::ACTIVE;
-	decision.stretchRatio = ratio;
-	decision.verticalWarp = activeAspect > targetAspect;
-	decision.reason = decision.verticalWarp ?
-		"active picture is wider than the target" :
-		"active picture is narrower than the target";
-	return decision;
-}
-
-
 bool ResolveMadVRNlsOutputAspect(double targetAspect,
 	unsigned long& aspectX, unsigned long& aspectY)
 {
@@ -101,37 +22,29 @@ bool ResolveMadVRNlsOutputAspect(double targetAspect,
 	aspectY = 0;
 	if (!std::isfinite(targetAspect) || targetAspect <= 0.0)
 		return false;
-	if (std::abs(targetAspect - 16.0 / 9.0) < 0.0001)
+	// Find the closest small rational without teaching the shader layer about
+	// named or conventional screen shapes. Exact ratios such as 16:9 and 47:20
+	// naturally resolve to their canonical representation.
+	double bestError = (std::numeric_limits<double>::max)();
+	for (unsigned long denominator = 1; denominator <= 10000; ++denominator)
 	{
-		aspectX = 16;
-		aspectY = 9;
-		return true;
+		const unsigned long numerator = static_cast<unsigned long>(
+			std::llround(targetAspect * denominator));
+		if (numerator == 0)
+			continue;
+		const double error = std::abs(
+			static_cast<double>(numerator) / denominator - targetAspect);
+		if (error < bestError)
+		{
+			bestError = error;
+			aspectX = numerator;
+			aspectY = denominator;
+			if (error < 1e-12)
+				break;
+		}
 	}
-	if (std::abs(targetAspect - 2.35) < 0.0001)
-	{
-		aspectX = 235;
-		aspectY = 100;
-		return true;
-	}
-
-	// Preserve arbitrary viewport contracts without teaching the shader layer
-	// about every possible screen shape. Four decimal places is substantially
-	// tighter than madVR's media-type aspect comparison tolerance.
-	unsigned long numerator = static_cast<unsigned long>(
-		std::llround(targetAspect * 10000.0));
-	unsigned long denominator = 10000;
-	if (numerator == 0)
+	if (aspectX == 0 || aspectY == 0)
 		return false;
-	unsigned long a = numerator;
-	unsigned long b = denominator;
-	while (b != 0)
-	{
-		const unsigned long remainder = a % b;
-		a = b;
-		b = remainder;
-	}
-	aspectX = numerator / a;
-	aspectY = denominator / a;
 	return true;
 }
 
@@ -248,25 +161,6 @@ bool MadVROutputAspectRequiresRestart(unsigned long currentAspectX,
 }
 
 
-const char* MadVRNlsMappingModeName(MadVRNlsMappingMode mode)
-{
-	switch (mode)
-	{
-	case MadVRNlsMappingMode::OFF:
-		return "off";
-	case MadVRNlsMappingMode::WAITING:
-		return "waiting";
-	case MadVRNlsMappingMode::SCOPE_PASSTHROUGH:
-		return "scope_passthrough";
-	case MadVRNlsMappingMode::ACTIVE:
-		return "active";
-	case MadVRNlsMappingMode::SAFE_FIT:
-		return "safe_fit";
-	default:
-		return "unknown";
-	}
-}
-
 bool MadVRNlsOutputContractIsPrepared(
 	const MadVRShaderRuntimeSnapshot& snapshot)
 {
@@ -304,7 +198,7 @@ uint64_t MadVRShaderRuntimeState::BeginRendererGeneration()
 	if (m_preserveGeometryOnNextRenderer &&
 		m_state.activeGeometry.stable &&
 		(m_state.nlsMode == MadVRNlsMappingMode::ACTIVE ||
-			m_state.nlsMode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
+			m_state.nlsMode == MadVRNlsMappingMode::LINEAR_PASSTHROUGH ||
 			m_state.nlsMode == MadVRNlsMappingMode::SAFE_FIT))
 	{
 		m_state.activeGeometry.rendererGeneration =
@@ -330,7 +224,7 @@ void MadVRShaderRuntimeState::SetRuleSelection(
 	m_state.effectiveRule = effectiveRule;
 	m_state.nlsMode = nlsMode;
 	if (nlsMode == MadVRNlsMappingMode::ACTIVE ||
-		nlsMode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ||
+		nlsMode == MadVRNlsMappingMode::LINEAR_PASSTHROUGH ||
 		nlsMode == MadVRNlsMappingMode::SAFE_FIT)
 	{
 		m_state.lastSafeNlsMode = nlsMode;

@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <NlsGeometryPolicy.h>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -26,27 +27,10 @@ struct MadVRActivePictureGeometry
 };
 
 
-enum class MadVRNlsMappingMode
-{
-	OFF,
-	WAITING,
-	SCOPE_PASSTHROUGH,
-	ACTIVE,
-	SAFE_FIT
-};
-
-
-struct MadVRNlsMappingDecision
-{
-	MadVRNlsMappingMode mode = MadVRNlsMappingMode::WAITING;
-	double sourceAspect = 0.0;
-	double targetAspect = 0.0;
-	double stretchRatio = 1.0;
-	bool verticalWarp = false;
-	double safeFitFraction = 1.0;
-	bool safeFitVertical = false;
-	std::string reason;
-};
+// Compatibility aliases keep DirectShow-specific runtime structures focused on
+// renderer lifecycle while the aspect decision itself is renderer-neutral.
+using MadVRNlsMappingMode = NlsMappingMode;
+using MadVRNlsMappingDecision = NlsMappingDecision;
 
 
 struct MadVRNlsPresentationPlan
@@ -72,11 +56,6 @@ struct MadVRShaderRuntimeSnapshot
 };
 
 
-MadVRNlsMappingDecision EvaluateMadVRNlsMapping(bool aspectAvailable,
-	double activeAspect, double targetAspect, double tolerancePercent,
-	double activeAspectMinimum, bool narrowerOnly,
-	double maximumStretchRatio = 1.5);
-
 bool ResolveMadVRNlsOutputAspect(double targetAspect,
 	unsigned long& aspectX, unsigned long& aspectY);
 MadVRNlsPresentationPlan ResolveMadVRNlsPresentationPlan(
@@ -90,9 +69,6 @@ bool MadVROutputAspectRequiresRestart(unsigned long currentAspectX,
 	unsigned long desiredAspectY, double nativeAspect);
 bool MadVRNlsOutputContractIsPrepared(
 	const MadVRShaderRuntimeSnapshot& snapshot);
-
-const char* MadVRNlsMappingModeName(MadVRNlsMappingMode mode);
-
 
 class MadVRShaderRuntimeState
 {

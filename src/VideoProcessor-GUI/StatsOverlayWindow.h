@@ -25,7 +25,7 @@ struct StatsData
 	CString eotf;              // e.g., "PQ"
 	CString colorspace;        // e.g., "BT.2020"
 	CString pixelFormat;       // e.g., "P010"
-	CString viewport;          // e.g., "scope (2.35:1)"
+	CString viewport;          // e.g., "cinema (2.35:1)"
 	CString rendererName;      // selected presentation backend
 
 	// Frame rate measurement and PPM tracking (NEW)

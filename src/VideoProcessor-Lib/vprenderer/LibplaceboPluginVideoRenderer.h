@@ -53,8 +53,6 @@ public:
 	bool SceneTimingRatesCompatible() const override;
 	bool GetSceneTimingStatus(CString& status) const override;
 	bool GetSceneTimingDueStatus(int& action, CString& reason) const override;
-	bool SetScreenProfile(bool scopeScreen, CString& activeProfile,
-		bool& rendererRestartRequired) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
 	bool SelectShaderRule(const CString& ruleName, CString& activeRule,

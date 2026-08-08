@@ -124,8 +124,6 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 	{ "capture_4",             ID_COMMAND_CAPTURE_4,              '4',       FCONTROL },
 	{ "video_conversion_off",  ID_COMMAND_VC_NONE,                'V',       0 },
 	{ "video_conversion_p010", ID_COMMAND_VC_P010,                'V',       FSHIFT },
-	{ "screen_profile_normal", ID_COMMAND_SCREEN_PROFILE_NORMAL,  VK_F3,     0, true },
-	{ "screen_profile_scope",  ID_COMMAND_SCREEN_PROFILE_SCOPE,   VK_F2,     0, true },
 	{ "display_rules_auto",    ID_COMMAND_DISPLAY_RULE_AUTO,      VK_F4,     0, true },
 };
 
@@ -1220,8 +1218,6 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_VC_NONE, &CVideoProcessorDlg::SetVideoConversionOff)
 	ON_COMMAND(ID_COMMAND_VC_P010, &CVideoProcessorDlg::SetVideoConversionP010)
 	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
-	ON_COMMAND(ID_COMMAND_SCREEN_PROFILE_NORMAL, &CVideoProcessorDlg::OnCommandScreenProfileNormal)
-	ON_COMMAND(ID_COMMAND_SCREEN_PROFILE_SCOPE, &CVideoProcessorDlg::OnCommandScreenProfileScope)
 	ON_COMMAND(ID_COMMAND_DISPLAY_RULE_AUTO, &CVideoProcessorDlg::OnCommandDisplayRuleAuto)
 	ON_COMMAND_RANGE(ID_COMMAND_SHADER_RULE_FIRST, ID_COMMAND_SHADER_RULE_LAST, &CVideoProcessorDlg::OnCommandShaderRule)
 	ON_COMMAND_RANGE(ID_COMMAND_DISPLAY_RULE_FIRST, ID_COMMAND_DISPLAY_RULE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
@@ -3192,52 +3188,6 @@ void CVideoProcessorDlg::OnCommandRendererRestart()
 	m_wantToRestartRenderer = true;
 	UpdateState();
 	
-}
-
-
-void CVideoProcessorDlg::OnCommandScreenProfileNormal()
-{
-	if (!m_videoRenderer)
-		return;
-
-	CString activeProfile;
-	bool rendererRestartRequired = false;
-	if (!m_videoRenderer->SetScreenProfile(false, activeProfile,
-		rendererRestartRequired))
-	{
-		DEBUGLOG("Normal screen profile ignored: selected renderer does not support screen profiles");
-		return;
-	}
-	if (rendererRestartRequired)
-	{
-		DEBUGLOG("Screen profile output aspect changed; restarting renderer to renegotiate media type");
-		m_postRendererStartRequiresGraph = false;
-		m_wantToRestartRenderer = true;
-		UpdateState();
-	}
-}
-
-
-void CVideoProcessorDlg::OnCommandScreenProfileScope()
-{
-	if (!m_videoRenderer)
-		return;
-
-	CString activeProfile;
-	bool rendererRestartRequired = false;
-	if (!m_videoRenderer->SetScreenProfile(true, activeProfile,
-		rendererRestartRequired))
-	{
-		DEBUGLOG("Scope screen profile ignored: selected renderer does not support screen profiles");
-		return;
-	}
-	if (rendererRestartRequired)
-	{
-		DEBUGLOG("Screen profile output aspect changed; restarting renderer to renegotiate media type");
-		m_postRendererStartRequiresGraph = false;
-		m_wantToRestartRenderer = true;
-		UpdateState();
-	}
 }
 
 
@@ -8620,11 +8570,13 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	{
 		stats.viewport.Format(TEXT("%S (%S)"),
 			profileSnapshot->viewport.profile.c_str(),
-			profileSnapshot->viewport.screenAspect.Canonical().c_str());
+			profileSnapshot->viewport.hasScreenAspect ?
+				profileSnapshot->viewport.screenAspect.Canonical().c_str() :
+				"renderer native");
 	}
 	else
 	{
-		stats.viewport = TEXT("default (16:9)");
+		stats.viewport = TEXT("default (renderer native)");
 	}
 
 	if (m_rendererSceneCorrectionModeCombo.GetCurSel() >= 0)

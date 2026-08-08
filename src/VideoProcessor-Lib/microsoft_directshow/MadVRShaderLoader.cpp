@@ -264,6 +264,7 @@ struct ShaderRule
 	unsigned long nlsTargetAspectRatioX = 0;
 	unsigned long nlsTargetAspectRatioY = 0;
 	double aspectTolerancePercent = -1.0;
+	double maximumStretchRatio = NLS_DEFAULT_MAXIMUM_STRETCH_RATIO;
 	double stableGeometryDeadbandPercent =
 		ActivePictureTransitionModel::DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT;
 	double activeAspectMinimum = 0.0;
@@ -342,8 +343,6 @@ double GetNlsTargetAspect(const ShaderRule& rule)
 	if (rule.nlsTargetAspectRatioX > 0 && rule.nlsTargetAspectRatioY > 0)
 		return static_cast<double>(rule.nlsTargetAspectRatioX) /
 			rule.nlsTargetAspectRatioY;
-	if (rule.nls)
-		return 16.0 / 9.0;
 	return 0.0;
 }
 
@@ -759,6 +758,21 @@ void LoadTypedNlsSettings(const ConfigFile& config,
 	const auto* settings = config.GetSectionValues(section);
 	if (!settings)
 		return;
+
+	const auto maximumRatio = settings->find("max_stretch_ratio");
+	if (maximumRatio != settings->end() &&
+		!ParseBoundedDouble(maximumRatio->second,
+			NLS_MINIMUM_STRETCH_RATIO,
+			NLS_SHADER_MAXIMUM_STRETCH_RATIO,
+			rule.maximumStretchRatio))
+	{
+		DebugLog::Log(
+			"Shaders: rule \"%s\" has invalid max_stretch_ratio \"%s\"; use %.1f through %.1f",
+			rule.name.c_str(), maximumRatio->second.c_str(),
+			NLS_MINIMUM_STRETCH_RATIO,
+			NLS_SHADER_MAXIMUM_STRETCH_RATIO);
+		rule.valid = false;
+	}
 
 	const std::map<std::string, std::string> defaults = {
 		{ "strength", "1" },
@@ -1382,6 +1396,7 @@ ConfiguredShaderRule ToConfiguredShaderRule(const ShaderRule& rule)
 	configured.none = rule.none;
 	configured.aspectTolerancePercent =
 		std::max(0.0, rule.aspectTolerancePercent);
+	configured.maximumStretchRatio = rule.maximumStretchRatio;
 	configured.stableGeometryDeadbandPercent =
 		rule.stableGeometryDeadbandPercent;
 	configured.activeAspectMinimum = rule.activeAspectMinimum;
@@ -1612,7 +1627,7 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 			"Shaders: NLS mapping waiting requested=%s effective=%s renderer_generation=%llu last_safe=%s",
 			runtime.requestedRule.c_str(), runtime.effectiveRule.c_str(),
 			static_cast<unsigned long long>(runtime.rendererGeneration),
-			MadVRNlsMappingModeName(runtime.lastSafeNlsMode));
+			NlsMappingModeName(runtime.lastSafeNlsMode));
 		return true;
 	}
 	// The target output contract is exposed only after the exact, source-owned
@@ -1624,6 +1639,9 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 	decision.mode = runtime.nlsMode;
 	decision.sourceAspect = activeAspect;
 	decision.targetAspect = targetAspect;
+	decision.requestedRatio = std::max(targetAspect / activeAspect,
+		activeAspect / targetAspect);
+	decision.maximumRatio = rule.maximumStretchRatio;
 	decision.verticalWarp = activeAspect > targetAspect;
 	const MadVRNlsPresentationPlan plan =
 		ResolveMadVRNlsPresentationPlan(decision, runtime.activeGeometry);
@@ -1636,7 +1654,7 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 		rule.postScale.clear();
 		DebugLog::Log(
 			"Shaders: NLS mapping=%s delegated to madVR native crop/fit active_generation=%llu source=%.4f target=%.4f renderer_generation=%llu",
-			MadVRNlsMappingModeName(runtime.nlsMode),
+			NlsMappingModeName(runtime.nlsMode),
 			static_cast<unsigned long long>(
 				runtime.activeGeometry.generation),
 			activeAspect, targetAspect,
@@ -1653,10 +1671,8 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 		runtime.nlsMode == MadVRNlsMappingMode::ACTIVE &&
 		activeAspect > targetAspect;
 	const double stretchRatio =
-		runtime.nlsMode == MadVRNlsMappingMode::SCOPE_PASSTHROUGH ?
-			1.0 : std::clamp(verticalWarp ?
-				activeAspect / targetAspect : targetAspect / activeAspect,
-				1.0, 1.5);
+		runtime.nlsMode == MadVRNlsMappingMode::LINEAR_PASSTHROUGH ?
+			1.0 : decision.stretchRatio;
 	const bool safeFit =
 		runtime.nlsMode == MadVRNlsMappingMode::SAFE_FIT;
 	const bool safeFitVertical = safeFit && activeAspect > targetAspect;
@@ -1682,16 +1698,19 @@ bool ResolveNlsRuleForFrame(ShaderRule& rule,
 	rule.parameters["safe_fit_fraction"] =
 		coordinateText(safeFitFraction);
 	DebugLog::Log(
-		"Shaders: NLS mapping=%s measured_rect=%.5f,%.5f-%.5f,%.5f sample_rect=%.5f,%.5f-%.5f,%.5f active_generation=%llu source=%.4f target=%.4f raster_aspect=%.5f axis=%s stretch=%.5f renderer_generation=%llu",
-		MadVRNlsMappingModeName(runtime.nlsMode),
+		"Shaders: NLS backend=madvr rule=%s mapping=%s measured_rect=%.5f,%.5f-%.5f,%.5f sample_rect=%.5f,%.5f-%.5f,%.5f active_generation=%llu source=%.4f target=%.4f requested_ratio=%.5f max_ratio=%.5f raster_aspect=%.5f axis=%s stretch=%.5f renderer_generation=%llu reason=\"%s\"",
+		rule.name.c_str(),
+		NlsMappingModeName(runtime.nlsMode),
 		runtime.activeGeometry.left, runtime.activeGeometry.top,
 		runtime.activeGeometry.right, runtime.activeGeometry.bottom,
 		activeGeometry.left, activeGeometry.top,
 		activeGeometry.right, activeGeometry.bottom,
 		static_cast<unsigned long long>(runtime.activeGeometry.generation),
-		activeAspect, targetAspect, plan.rasterAspect,
-		verticalWarp ? "vertical" : "horizontal", stretchRatio,
-		static_cast<unsigned long long>(runtime.rendererGeneration));
+		activeAspect, targetAspect, decision.requestedRatio,
+		decision.maximumRatio, plan.rasterAspect,
+		NlsMappingAxisName(decision), stretchRatio,
+		static_cast<unsigned long long>(runtime.rendererGeneration),
+		decision.reason.c_str());
 	return true;
 }
 
@@ -2201,12 +2220,15 @@ bool MadVRShaderLoader::EvaluateNlsMapping(const std::string& ruleName,
 	const double target = GetNlsTargetAspect(rule);
 	if (!rule.nls || target <= 0.0)
 	{
-		decision.reason = "shader rule does not define NLS mapping";
+		decision.reason = rule.nls ?
+			"madVR NLS requires an explicit viewport screen_aspect" :
+			"shader rule does not define NLS mapping";
 		return false;
 	}
-	decision = EvaluateMadVRNlsMapping(aspectAvailable, activeAspectRatio,
+	decision = ::EvaluateNlsMapping(aspectAvailable, activeAspectRatio,
 		target, std::max(0.0, rule.aspectTolerancePercent),
-		rule.activeAspectMinimum, rule.narrowerOnly);
+		rule.activeAspectMinimum, rule.narrowerOnly,
+		rule.maximumStretchRatio);
 	g_runtimeState.SetNlsDecision(decision);
 	return true;
 }

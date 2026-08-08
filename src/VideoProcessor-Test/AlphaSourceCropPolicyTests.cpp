@@ -782,10 +782,10 @@ namespace Tests
 			Assert::AreEqual(372, crop.sourceBounds.top);
 			Assert::AreEqual(1980, crop.sourceBounds.bottom);
 			const double translatedAspect = 3840.0 / 1608.0;
-			const auto mapping = EvaluateMadVRNlsMapping(true,
+			const auto mapping = EvaluateNlsMapping(true,
 				translatedAspect, 2.35, 5.0, 1.0, false);
 			Assert::AreEqual(static_cast<int>(
-				MadVRNlsMappingMode::SCOPE_PASSTHROUGH),
+				NlsMappingMode::LINEAR_PASSTHROUGH),
 				static_cast<int>(mapping.mode));
 
 			// Reproduce the two-edge Eternals sequence: sparse top UI appears while
@@ -1345,10 +1345,10 @@ namespace Tests
 			const double finalAspect = static_cast<double>(
 				provisional.sourceBounds.right - provisional.sourceBounds.left) /
 				(provisional.sourceBounds.bottom - provisional.sourceBounds.top);
-			const MadVRNlsMappingDecision mapping = EvaluateMadVRNlsMapping(
+			const NlsMappingDecision mapping = EvaluateNlsMapping(
 				true, finalAspect, 2.35, 5.0, 1.0, false);
 			Assert::AreEqual(
-				static_cast<int>(MadVRNlsMappingMode::SCOPE_PASSTHROUGH),
+				static_cast<int>(NlsMappingMode::LINEAR_PASSTHROUGH),
 				static_cast<int>(mapping.mode));
 			Assert::AreEqual(finalAspect, mapping.sourceAspect, 0.000001);
 		}
@@ -1527,10 +1527,10 @@ namespace Tests
 			const double finalAspect = static_cast<double>(
 				decision.sourceBounds.right - decision.sourceBounds.left) /
 				(decision.sourceBounds.bottom - decision.sourceBounds.top);
-			const MadVRNlsMappingDecision mapping = EvaluateMadVRNlsMapping(
+			const NlsMappingDecision mapping = EvaluateNlsMapping(
 				true, finalAspect, 2.35, 5.0, 1.0, false);
 			Assert::AreEqual(
-				static_cast<int>(MadVRNlsMappingMode::SCOPE_PASSTHROUGH),
+				static_cast<int>(NlsMappingMode::LINEAR_PASSTHROUGH),
 				static_cast<int>(mapping.mode));
 			Assert::AreEqual(finalAspect, mapping.sourceAspect, 0.000001);
 			Assert::AreEqual(3840.0 / 1610.0, finalAspect, 0.000001);

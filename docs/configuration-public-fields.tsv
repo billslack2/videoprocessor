@@ -71,6 +71,7 @@ shader.<group>.<member>.center_protection	shader-nls-center-protection	Shader NL
 shader.<group>.<member>.curve	shader-nls-curve	Shader NLS	no
 shader.<group>.<member>.quality	shader-nls-quality	Shader NLS	no
 shader.<group>.<member>.tolerance_percent	shader-nls-tolerance-percent	Shader NLS	no
+shader.<group>.<member>.max_stretch_ratio	shader-nls-max-stretch-ratio	Shader NLS	no
 actions.<name>.renderer	action-renderer	Event action	no
 actions.<name>.on	action-on	Event action	no
 actions.<name>.when	action-when	Event action	no

@@ -54,8 +54,6 @@ public:
 		bool& rendererRestartRequired) override;
 	bool RefreshShaderRule(CString& activeRule,
 		bool& rendererRestartRequired) override;
-	bool SetScreenProfile(bool scopeScreen, CString& activeProfile,
-		bool& rendererRestartRequired) override;
 	bool ApplyApplicationState(
 		const UnifiedProfileRuntime::Snapshot& snapshot,
 		CString& activeState,
@@ -111,8 +109,8 @@ private:
 	double m_appliedShaderAspectRatio = 0.0;
 	uint64_t m_appliedActivePictureGeneration = 0;
 	uint64_t m_rendererGeneration = 0;
-	uint64_t m_screenProfileGeneration = 0;
-	uint64_t m_appliedScreenProfileGeneration = 0;
+	uint64_t m_viewportGeneration = 0;
+	uint64_t m_appliedViewportGeneration = 0;
 	CComPtr<IMadVROsdServices> m_osdServices;
 	std::mutex m_osdMutex;
 	std::vector<uint8_t> m_osdPixels;

@@ -722,7 +722,7 @@ namespace Tests
 			}
 		}
 
-		TEST_METHOD(RendererProfileConfigNormalizesDeprecatedViewportAliases)
+		TEST_METHOD(RendererProfileConfigRejectsRemovedViewportAliases)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
 			Assert::IsTrue(GetTempPathA(
@@ -750,24 +750,14 @@ namespace Tests
 			Assert::IsTrue(config.Load(path));
 			RendererProfileConfig::Model model;
 			std::string error;
-			Assert::IsTrue(RendererProfileConfig::Read(
+			Assert::IsFalse(RendererProfileConfig::Read(
 				config, model, error));
-			Assert::AreEqual(static_cast<size_t>(4), model.warnings.size());
-			const auto profile = model.profiles.find("viewport.base");
-			Assert::IsTrue(profile != model.profiles.end());
-			Assert::AreEqual("2.35:1",
-				profile->second.settings.at("screen_aspect").c_str());
-			Assert::AreEqual("true",
-				profile->second.settings.at("automatic_crop").c_str());
-			Assert::AreEqual("true",
-				profile->second.settings.at("subtitle_fit").c_str());
-			Assert::AreEqual("1.5",
-				profile->second.settings.at(
-					"subtitle_release_drift_seconds").c_str());
+			Assert::IsTrue(error.find("scope_") != std::string::npos,
+				L"Any removed scope-era viewport key must be rejected");
 			DeleteFileA(path.c_str());
 		}
 
-		TEST_METHOD(RendererProfileConfigRejectsDuplicateViewportAliases)
+		TEST_METHOD(RendererProfileConfigRejectsRemovedAliasAlongsideCanonicalKey)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
 			Assert::IsTrue(GetTempPathA(
@@ -795,7 +785,7 @@ namespace Tests
 			std::string error;
 			Assert::IsFalse(RendererProfileConfig::Read(
 				config, model, error));
-			Assert::IsTrue(error.find("defines both deprecated") !=
+			Assert::IsTrue(error.find("scope_screen_aspect") !=
 				std::string::npos);
 			DeleteFileA(path.c_str());
 		}
@@ -824,12 +814,14 @@ namespace Tests
 				model, "normal", 1, viewport, error));
 			Assert::AreEqual<uint64_t>(16, viewport.screenAspect.numerator);
 			Assert::AreEqual<uint64_t>(9, viewport.screenAspect.denominator);
+			Assert::IsFalse(viewport.hasScreenAspect);
 			Assert::IsFalse(viewport.automaticCrop);
 			Assert::IsFalse(viewport.subtitleFit);
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
 				model, "cinema", 2, viewport, error));
 			Assert::AreEqual<uint64_t>(47, viewport.screenAspect.numerator);
 			Assert::AreEqual<uint64_t>(20, viewport.screenAspect.denominator);
+			Assert::IsTrue(viewport.hasScreenAspect);
 			Assert::IsTrue(viewport.automaticCrop);
 			Assert::IsTrue(viewport.subtitleFit);
 			Assert::AreEqual<uint64_t>(

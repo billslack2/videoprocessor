@@ -226,8 +226,6 @@ namespace
 		}
 	}
 
-	constexpr const char* RENDERER_STATE_FILENAME =
-		"VideoProcessorRenderer.state";
 	constexpr const char* SHADER_CACHE_RELATIVE_PATH =
 		"vprenderer\\VideoProcessorShaderCache.bin";
 	constexpr size_t MAX_SHADER_CACHE_FILE_SIZE =
@@ -393,23 +391,6 @@ namespace
 		static constexpr NvU8 INFOFRAME_TYPE_AVI = 2;
 	};
 
-	std::string RendererStatePath()
-	{
-		char modulePath[MAX_PATH] = {};
-		const DWORD length =
-			GetModuleFileNameA(nullptr, modulePath, ARRAYSIZE(modulePath));
-		if (length == 0 || length >= ARRAYSIZE(modulePath))
-			return RENDERER_STATE_FILENAME;
-
-		std::string path(modulePath, length);
-		const size_t separator = path.find_last_of("\\/");
-		if (separator == std::string::npos)
-			return RENDERER_STATE_FILENAME;
-		path.resize(separator + 1);
-		path += RENDERER_STATE_FILENAME;
-		return path;
-	}
-
 	std::string ShaderCachePath()
 	{
 		char modulePath[MAX_PATH] = {};
@@ -425,106 +406,6 @@ namespace
 		path.resize(separator + 1);
 		path += SHADER_CACHE_RELATIVE_PATH;
 		return path;
-	}
-
-	bool TryLoadPersistedScreenProfile(bool& scopeScreen)
-	{
-		const std::string path = RendererStatePath();
-		std::ifstream stateFile(path);
-		if (!stateFile.is_open())
-			return false;
-
-		std::string line;
-		while (std::getline(stateFile, line))
-		{
-			line = ConfigFile::Trim(line);
-			if (line.empty() || line.front() == '#' || line.front() == ';')
-				continue;
-
-			const size_t equals = line.find('=');
-			if (equals == std::string::npos ||
-				ConfigFile::NormalizeName(line.substr(0, equals)) !=
-					"screen_profile")
-			{
-				continue;
-			}
-
-			const std::string value =
-				ConfigFile::NormalizeName(line.substr(equals + 1));
-			if (value == "normal" || value == "scope")
-			{
-				scopeScreen = value == "scope";
-				DebugLog::Log(
-					"libplacebo screen profile restored from %s: %s",
-					path.c_str(),
-					scopeScreen ? "scope" : "normal");
-				return true;
-			}
-
-			DebugLog::Log(
-				"libplacebo: invalid persisted screen profile '%s' in %s; using configured default",
-				value.c_str(),
-				path.c_str());
-			return false;
-		}
-
-		DebugLog::Log(
-			"libplacebo: no screen_profile entry in %s; using configured default",
-			path.c_str());
-		return false;
-	}
-
-	void PersistScreenProfile(bool scopeScreen)
-	{
-		const std::string path = RendererStatePath();
-		const std::string temporaryPath = path + ".tmp";
-		{
-			std::ofstream stateFile(
-				temporaryPath,
-				std::ios::out | std::ios::trunc);
-			if (!stateFile.is_open())
-			{
-				DebugLog::Log(
-					"libplacebo: unable to save screen profile state to %s",
-					temporaryPath.c_str());
-				return;
-			}
-
-			stateFile
-				<< "# Managed by VideoProcessor. Delete this file to use "
-					"default_screen_profile.\n"
-				<< "screen_profile="
-				<< (scopeScreen ? "scope" : "normal")
-				<< "\n";
-			stateFile.close();
-			if (!stateFile)
-			{
-				DeleteFileA(temporaryPath.c_str());
-				DebugLog::Log(
-					"libplacebo: failed while saving screen profile state to %s",
-					temporaryPath.c_str());
-				return;
-			}
-		}
-
-		if (!MoveFileExA(
-			temporaryPath.c_str(),
-			path.c_str(),
-			MOVEFILE_REPLACE_EXISTING))
-		{
-			const DWORD error = GetLastError();
-			DeleteFileA(temporaryPath.c_str());
-			DebugLog::Log(
-				"libplacebo: unable to replace screen profile state %s error=%lu",
-				path.c_str(),
-				error);
-			return;
-		}
-
-		DebugLog::Log(
-			"libplacebo screen profile saved to %s: %s",
-			path.c_str(),
-			scopeScreen ? "scope" : "normal");
 	}
 
 	template<typename T>
@@ -797,8 +678,8 @@ namespace
 		std::string sdrInputTransfer = "auto";
 		bool outputDiagnostics = false;
 		bool diagnosticDisableShaderCache = false;
-		double scopeScreenAspect = 2.35;
-		bool defaultScopeScreen = false;
+		double configuredScreenAspect = 1.0;
+		bool configuredScreenTarget = false;
 		double anamorphicScale = 1.0;
 		bool automaticSourceCrop = false;
 		bool scopeSubtitleFit = false;
@@ -842,7 +723,7 @@ namespace
 		if (includeViewportSettings)
 		{
 			stream
-				<< settings.scopeScreenAspect << '|' << settings.defaultScopeScreen << '|'
+				<< settings.configuredScreenAspect << '|' << settings.configuredScreenTarget << '|'
 				<< settings.anamorphicScale << '|'
 				<< settings.automaticSourceCrop << '|'
 				<< settings.scopeSubtitleFit << '|' << settings.scopeSubtitleHoldMs << '|'
@@ -1431,20 +1312,17 @@ namespace
 			}
 		}
 		const auto readViewportString = [&](const char* genericKey,
-			const char* deprecatedKey, std::string& value)
+			std::string& value)
 		{
-			return config.TryGetString(rule.section, genericKey, value) ||
-				config.TryGetString(rule.section, deprecatedKey, value);
+			return config.TryGetString(rule.section, genericKey, value);
 		};
-		if (readViewportString(
-			"screen_aspect", "scope_screen_aspect", raw))
+		if (readViewportString("screen_aspect", raw))
 		{
 			double value = 0.0;
 			if (ParseAspectRatio(raw, value) && value >= 1.0 && value <= 4.0)
 			{
-				settings.scopeScreenAspect = value;
-				settings.defaultScopeScreen =
-					std::abs(value - 16.0 / 9.0) > 0.0001;
+				settings.configuredScreenAspect = value;
+				settings.configuredScreenTarget = true;
 			}
 		}
 		if (config.TryGetString(rule.section, "anamorphic_scale", raw))
@@ -1456,42 +1334,33 @@ namespace
 				DebugLog::Log("profile '%s': invalid anamorphic_scale '%s'",
 					rule.name.c_str(), raw.c_str());
 		}
-		const auto readViewportBool = [&](const char* genericKey,
-			const char* deprecatedKey, bool& value)
+		const auto readViewportBool = [&](const char* genericKey, bool& value)
 		{
-			return config.TryGetBool(rule.section, genericKey, value) ||
-				config.TryGetBool(rule.section, deprecatedKey, value);
+			return config.TryGetBool(rule.section, genericKey, value);
 		};
-		if (!readViewportBool(
-			"automatic_crop", "scope_automatic_crop",
+		if (!readViewportBool("automatic_crop",
 			settings.automaticSourceCrop) &&
-			readViewportString(
-				"automatic_crop", "scope_automatic_crop", raw))
+			readViewportString("automatic_crop", raw))
 			DebugLog::Log("profile '%s': invalid automatic_crop '%s'",
 				rule.name.c_str(), raw.c_str());
-		if (!readViewportBool(
-			"subtitle_fit", "scope_subtitle_fit", settings.scopeSubtitleFit) &&
-			readViewportString(
-				"subtitle_fit", "scope_subtitle_fit", raw))
+		if (!readViewportBool("subtitle_fit", settings.scopeSubtitleFit) &&
+			readViewportString("subtitle_fit", raw))
 			DebugLog::Log("profile '%s': invalid subtitle_fit '%s'",
 				rule.name.c_str(), raw.c_str());
-		if (readViewportString("subtitle_hold_seconds",
-			"scope_subtitle_hold_seconds", raw))
+		if (readViewportString("subtitle_hold_seconds", raw))
 		{
 			double seconds = 0.0;
 			if (ParseDouble(raw, seconds) && seconds >= 0.0 && seconds <= 30.0)
 				settings.scopeSubtitleHoldMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
 		}
-		if (readViewportString("subtitle_release_drift_seconds",
-			"scope_subtitle_release_drift_seconds", raw))
+		if (readViewportString("subtitle_release_drift_seconds", raw))
 		{
 			double seconds = 0.0;
 			if (ParseDouble(raw, seconds) && seconds >= 0.0 && seconds <= 30.0)
 				settings.scopeSubtitleReleaseDriftMs =
 					static_cast<uint64_t>(std::llround(seconds * 1000.0));
 		}
-		if (readViewportString("subtitle_padding_pixels",
-			"scope_subtitle_padding_pixels", raw))
+		if (readViewportString("subtitle_padding_pixels", raw))
 		{
 			double pixels = 0.0;
 			if (ParseDouble(raw, pixels) && pixels >= 0.0 && pixels <= 500.0)
@@ -1507,12 +1376,7 @@ namespace
 		activeRule.clear();
 		ConfigFile config;
 		if (!config.Load(ConfigFile::RENDERER_FILENAME))
-		{
-			bool persistedScopeScreen = false;
-			if (TryLoadPersistedScreenProfile(persistedScopeScreen))
-				settings.defaultScopeScreen = persistedScopeScreen;
 			return settings;
-		}
 		DebugLog::Log(
 			"libplacebo configuration loaded from %s",
 			config.GetLoadedPath().c_str());
@@ -1628,18 +1492,18 @@ namespace
 			settings.diagnosticDisableShaderCache = false;
 		}
 
-		if (TryGetDisplayString(config, "scope_screen_aspect", rawValue))
+		if (TryGetDisplayString(config, "screen_aspect", rawValue))
 		{
 			double parsed = 0.0;
-			if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.5 && parsed <= 4.0)
-				settings.scopeScreenAspect = parsed;
+			if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.0 && parsed <= 4.0)
+			{
+				settings.configuredScreenAspect = parsed;
+				settings.configuredScreenTarget = true;
+			}
 			else
 				DebugLog::Log(
-					"libplacebo: scope_screen_aspect must be a ratio or decimal between 1.5 and 4.0; using 2.35:1");
+					"libplacebo: screen_aspect must be a ratio or decimal between 1.0 and 4.0; using output panel aspect");
 		}
-
-		settings.defaultScopeScreen = ReadChoice(
-			config, "default_screen_profile", "normal", { "normal", "scope" }) == "scope";
 		if (TryGetDisplayString(config, "lut", rawValue))
 			settings.lutPath = ResolveConfigRelativePath(
 				config, rawValue, &settings.lutPathRejected,
@@ -1663,52 +1527,49 @@ namespace
 				DebugLog::Log(
 					"display: lut_reference_nits must be AUTO or between 40 and 500; using AUTO");
 		}
-		if (TryGetDisplayString(config, "scope_subtitle_fit", rawValue) &&
-			!TryGetDisplayBool(config, "scope_subtitle_fit", settings.scopeSubtitleFit))
+		if (TryGetDisplayString(config, "subtitle_fit", rawValue) &&
+			!TryGetDisplayBool(config, "subtitle_fit", settings.scopeSubtitleFit))
 		{
 			DebugLog::Log(
-				"libplacebo: invalid scope_subtitle_fit value '%s'; using false",
+				"libplacebo: invalid subtitle_fit value '%s'; using false",
 				rawValue.c_str());
 			settings.scopeSubtitleFit = false;
 		}
-		if (TryGetDisplayString(config, "scope_automatic_crop", rawValue) &&
-			!TryGetDisplayBool(config, "scope_automatic_crop",
+		if (TryGetDisplayString(config, "automatic_crop", rawValue) &&
+			!TryGetDisplayBool(config, "automatic_crop",
 				settings.automaticSourceCrop))
 		{
 			DebugLog::Log(
-				"libplacebo: invalid scope_automatic_crop value '%s'; using false",
+				"libplacebo: invalid automatic_crop value '%s'; using false",
 				rawValue.c_str());
 			settings.automaticSourceCrop = false;
 		}
-		if (TryGetDisplayString(config, "scope_subtitle_hold_seconds", rawValue))
+		if (TryGetDisplayString(config, "subtitle_hold_seconds", rawValue))
 		{
 			double seconds = 0.0;
 			if (ParseDouble(rawValue, seconds) && seconds >= 0.0 && seconds <= 30.0)
 				settings.scopeSubtitleHoldMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
 			else
-				DebugLog::Log("libplacebo: scope_subtitle_hold_seconds must be between 0 and 30; using 2.0");
+				DebugLog::Log("libplacebo: subtitle_hold_seconds must be between 0 and 30; using 2.0");
 		}
 		if (TryGetDisplayString(config,
-			"scope_subtitle_release_drift_seconds", rawValue))
+			"subtitle_release_drift_seconds", rawValue))
 		{
 			double seconds = 0.0;
 			if (ParseDouble(rawValue, seconds) && seconds >= 0.0 && seconds <= 30.0)
 				settings.scopeSubtitleReleaseDriftMs =
 					static_cast<uint64_t>(std::llround(seconds * 1000.0));
 			else
-				DebugLog::Log("libplacebo: scope_subtitle_release_drift_seconds must be between 0 and 30; using 0");
+				DebugLog::Log("libplacebo: subtitle_release_drift_seconds must be between 0 and 30; using 0");
 		}
-		if (TryGetDisplayString(config, "scope_subtitle_padding_pixels", rawValue))
+		if (TryGetDisplayString(config, "subtitle_padding_pixels", rawValue))
 		{
 			double pixels = 0.0;
 			if (ParseDouble(rawValue, pixels) && pixels >= 0.0 && pixels <= 500.0)
 				settings.scopeSubtitlePaddingPixels = static_cast<int>(std::llround(pixels));
 			else
-				DebugLog::Log("libplacebo: scope_subtitle_padding_pixels must be between 0 and 500; using 20");
+				DebugLog::Log("libplacebo: subtitle_padding_pixels must be between 0 and 500; using 20");
 		}
-		bool persistedScopeScreen = false;
-		if (TryLoadPersistedScreenProfile(persistedScopeScreen))
-			settings.defaultScopeScreen = persistedScopeScreen;
 
 		if (TryGetDisplayString(config, "contrast_recovery", rawValue) &&
 			ConfigFile::NormalizeName(rawValue) != "auto")
@@ -2440,7 +2301,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool latestActivePictureObservationSupportsCrop = false;
 	uint64_t nlsGeometrySourceGeneration = 0;
 	uint64_t activePictureAnalysisSourceGeneration = 0;
-	MadVRNlsMappingDecision nlsDecision;
+	NlsMappingDecision nlsDecision;
 	const struct pl_hook* nlsHook = nullptr;
 	std::string nlsHookSignature;
 	std::string rejectedNlsHookSignature;
@@ -2467,8 +2328,8 @@ struct LibplaceboVideoRenderer::Impl
 	bool suppressLimitedNegotiation = false;
 	uint64_t nextOutputRecoveryTick = 0;
 	enum pl_color_transfer sdrInputTransfer = PL_COLOR_TRC_UNKNOWN;
-	double scopeScreenAspect = 2.35;
-	bool defaultScopeScreen = false;
+	double configuredScreenAspect = 1.0;
+	bool configuredScreenTarget = false;
 	double anamorphicScale = 1.0;
 	bool automaticSourceCrop = false;
 	bool scopeSubtitleFit = false;
@@ -2542,7 +2403,6 @@ struct LibplaceboVideoRenderer::Impl
 	bool cursorPositioned = false;
 	bool hasPresentedFrame = false;
 	uint64_t nextPresentationTelemetryLogTick = 0;
-	bool screenProfilesPrewarmed = false;
 	uint64_t lastSubmittedScreenProfileRequest = 0;
 	uint64_t activePictureScreenProfileRequestSerial = 0;
 	std::mutex renderMutex;
@@ -3266,7 +3126,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		DebugLog::Log(
-		"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u screen_aspect=%.4f default_screen_profile=%s automatic_crop=%d scope_subtitle_fit=%d subtitle_hold=%llums subtitle_release_drift=%llums subtitle_padding=%dpx",
+		"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_release_drift=%llums subtitle_padding=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3290,8 +3150,8 @@ struct LibplaceboVideoRenderer::Impl
 			settings.switchRefreshRate ? 1 : 0,
 			static_cast<unsigned long long>(settings.refreshRateCommandDelayMs / 1000),
 			static_cast<unsigned int>(settings.refreshRateCommandRules.size()),
-			scopeScreenAspect,
-			defaultScopeScreen ? "scope" : "normal",
+			configuredScreenTarget ? "configured" : "output-panel",
+			configuredScreenTarget ? configuredScreenAspect : 0.0,
 			automaticSourceCrop ? 1 : 0,
 			scopeSubtitleFit ? 1 : 0,
 			static_cast<unsigned long long>(scopeSubtitleHoldMs),
@@ -3336,7 +3196,7 @@ struct LibplaceboVideoRenderer::Impl
 		const AnalysisLumaSource* source,
 		int width,
 		int height,
-		bool scopeScreenActive,
+		bool configuredScreenActive,
 		const ActivePictureBounds* barAuthority,
 		uint64_t sourceSequence,
 		bool forceAnalysis = false,
@@ -3356,7 +3216,7 @@ struct LibplaceboVideoRenderer::Impl
 			barAuthority->top < barAuthority->bottom &&
 			(barAuthority->left > 0 || barAuthority->top > 0 ||
 			 barAuthority->right < width || barAuthority->bottom < height);
-		if (!scopeScreenActive || !sourceIsCurrent)
+		if (!configuredScreenActive || !sourceIsCurrent)
 		{
 			// Receiver controls and ordinary picture detail are in-picture UI unless
 			// shared authority proves one or more encoded bars around the picture.
@@ -4731,8 +4591,8 @@ struct LibplaceboVideoRenderer::Impl
 		sdrTargetNits = settings.sdrTargetNits;
 		sdrBlackNits = settings.sdrBlackNits;
 		sdrInputTransfer = TranslateOutputGamma(settings.sdrInputTransfer);
-		scopeScreenAspect = settings.scopeScreenAspect;
-		defaultScopeScreen = settings.defaultScopeScreen;
+		configuredScreenAspect = settings.configuredScreenAspect;
+		configuredScreenTarget = settings.configuredScreenTarget;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCrop = settings.automaticSourceCrop;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
@@ -4791,16 +4651,16 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		std::lock_guard<std::mutex> guard(renderMutex);
 		const bool renderingBehaviorChanged =
-			scopeScreenAspect != settings.scopeScreenAspect ||
-			defaultScopeScreen != settings.defaultScopeScreen ||
+			configuredScreenAspect != settings.configuredScreenAspect ||
+			configuredScreenTarget != settings.configuredScreenTarget ||
 			anamorphicScale != settings.anamorphicScale ||
 			automaticSourceCrop != settings.automaticSourceCrop ||
 			scopeSubtitleFit != settings.scopeSubtitleFit ||
 			scopeSubtitleHoldMs != settings.scopeSubtitleHoldMs ||
 			scopeSubtitleReleaseDriftMs != settings.scopeSubtitleReleaseDriftMs ||
 			scopeSubtitlePaddingPixels != settings.scopeSubtitlePaddingPixels;
-		scopeScreenAspect = settings.scopeScreenAspect;
-		defaultScopeScreen = settings.defaultScopeScreen;
+		configuredScreenAspect = settings.configuredScreenAspect;
+		configuredScreenTarget = settings.configuredScreenTarget;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCrop = settings.automaticSourceCrop;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
@@ -4832,7 +4692,6 @@ struct LibplaceboVideoRenderer::Impl
 			renderParams.num_hooks = 0;
 			// The alternate profile was prewarmed with the previous crop/subtitle
 			// parameters. Re-prime it lazily without dropping the live swapchain.
-			screenProfilesPrewarmed = false;
 			ClearScopeSubtitleEvidence();
 			ClearScopePresentationEvidence();
 			lastSourceCropPolicy.clear();
@@ -4940,7 +4799,7 @@ struct LibplaceboVideoRenderer::Impl
 			SetShaderStatus("NLS: Off");
 			MadVRShaderLoader::SetRuntimeShaderSelection(
 				requestedShaderSelector, requestedShaderSelector,
-				MadVRNlsMappingMode::OFF);
+				NlsMappingMode::OFF);
 			DebugLog::Log(
 				"Alpha shaders: selected \"%s\" (off)",
 				requestedShaderSelector.c_str());
@@ -4967,7 +4826,7 @@ struct LibplaceboVideoRenderer::Impl
 		SetShaderStatus("NLS: Waiting");
 		MadVRShaderLoader::SetRuntimeShaderSelection(
 			requestedShaderSelector, requestedShaderSelector,
-			MadVRNlsMappingMode::WAITING);
+			NlsMappingMode::WAITING);
 		DebugLog::Log(
 			"Alpha shaders: armed \"%s\" with applicable rule \"%s\" file=%s renderer_generation=%llu",
 			requestedShaderSelector.c_str(), nlsRule.name.c_str(),
@@ -5023,7 +4882,7 @@ struct LibplaceboVideoRenderer::Impl
 	}
 
 	static bool SetNlsHookMapping(const struct pl_hook* hook,
-		const MadVRNlsMappingDecision& decision)
+		const NlsMappingDecision& decision)
 	{
 		bool stretchUpdated = false;
 		bool axisUpdated = false;
@@ -5051,7 +4910,7 @@ struct LibplaceboVideoRenderer::Impl
 		return stretchUpdated && axisUpdated;
 	}
 
-	bool EnsureNlsHook(const MadVRNlsMappingDecision& decision)
+	bool EnsureNlsHook(const NlsMappingDecision& decision)
 	{
 		const std::map<std::string, std::string> parameters =
 			FixedNlsParameters(nlsRule);
@@ -5133,7 +4992,7 @@ struct LibplaceboVideoRenderer::Impl
 		uint64_t frameNumber,
 		const ActivePictureFrameIdentity& currentIdentity,
 		double framesPerSecond,
-		bool scopeScreenActive,
+		bool configuredScreenActive,
 		AlphaSourceCrop::SceneHoldDecision& sceneHold,
 		bool forceAnalysis = false,
 		const ActivePictureFrameDecision* scheduledDecision = nullptr)
@@ -5274,7 +5133,7 @@ struct LibplaceboVideoRenderer::Impl
 					left.rasterWidth == right.rasterWidth &&
 					left.rasterHeight == right.rasterHeight;
 			};
-			if (automaticSourceCrop && scopeScreenActive &&
+			if (automaticSourceCrop && configuredScreenActive &&
 				hadCompatiblePresentation &&
 				(evidence.available ||
 					retentionEvidence.outwardVisibleBoundsAvailable))
@@ -5564,9 +5423,9 @@ struct LibplaceboVideoRenderer::Impl
 		double oldestQueuedAgeMs,
 		bool cadenceRepeat,
 		double captureRateHz,
-		bool scopeScreenActive,
-		uint64_t screenProfileRequestSerial,
-		int64_t screenProfileRequestNs,
+		bool configuredScreenActive,
+		uint64_t viewportRequestSerial,
+		int64_t viewportRequestNs,
 		bool sceneDetectionEnabled,
 		VideoConversionOverride videoConversionOverride,
 		uint64_t sceneDetectorGeneration,
@@ -5595,11 +5454,11 @@ struct LibplaceboVideoRenderer::Impl
 		if (!swapchain)
 			return false;
 		const VideoState& state = *statePtr;
-		if (screenProfileRequestSerial !=
+		if (viewportRequestSerial !=
 			activePictureScreenProfileRequestSerial)
 		{
 			activePictureScreenProfileRequestSerial =
-				screenProfileRequestSerial;
+				viewportRequestSerial;
 			nlsTransition.Reset();
 			nlsGeometryAvailable = false;
 			nlsTransitionWithdrawn = true;
@@ -5620,9 +5479,9 @@ struct LibplaceboVideoRenderer::Impl
 			lastFinalPresentationPolicy.clear();
 			lastFinalLayoutPolicy.clear();
 			DebugLog::Log(
-				"Alpha active picture authority reset: screen_profile_request=%llu",
+				"Alpha active picture authority reset: viewport_request=%llu",
 				static_cast<unsigned long long>(
-					screenProfileRequestSerial));
+					viewportRequestSerial));
 		}
 
 		if (lastRenderedEotf != EOTF::UNKNOWN &&
@@ -5740,7 +5599,7 @@ struct LibplaceboVideoRenderer::Impl
 				SetShaderStatus("NLS: unavailable (analysis input)");
 				MadVRShaderLoader::SetRuntimeShaderSelection(
 					requestedShaderSelector, requestedShaderSelector,
-					MadVRNlsMappingMode::OFF);
+					NlsMappingMode::OFF);
 			}
 			if (sceneDetectionEnabled)
 				sceneDetectionStatus.store(
@@ -5774,7 +5633,7 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned long long>(frameGeneration),
 					nlsRequested ? "available" : "disabled",
 					sceneDetectionEnabled ? "available" : "disabled",
-					scopeScreenActive ? "available" : "disabled");
+					configuredScreenActive ? "available" : "disabled");
 			}
 		}
 		SceneDetectorResult sceneResult;
@@ -5791,13 +5650,24 @@ struct LibplaceboVideoRenderer::Impl
 			sceneDetectionEnabled)
 			sceneDetectionStatus.store(
 				static_cast<int>(sceneResult.status), std::memory_order_release);
-		const MadVRNlsMappingDecision nlsDecisionBeforeSceneAnalysis =
+		const NlsMappingDecision nlsDecisionBeforeSceneAnalysis =
 			nlsDecision;
-		const double frameNlsTargetAspect =
-			scopeScreenActive ? scopeScreenAspect : 16.0 / 9.0;
+		RECT outputClient{};
+		double outputPanelAspect = 0.0;
+		if (GetClientRect(videoHwnd, &outputClient) &&
+			outputClient.right > outputClient.left &&
+			outputClient.bottom > outputClient.top)
+		{
+			outputPanelAspect = static_cast<double>(
+				outputClient.right - outputClient.left) /
+				(outputClient.bottom - outputClient.top);
+		}
+		const double frameNlsTargetAspect = ResolveNlsTargetAspect(
+			configuredScreenActive, configuredScreenAspect,
+			outputPanelAspect);
 		const bool retainedNlsModeAvailable =
-			nlsDecisionBeforeSceneAnalysis.mode != MadVRNlsMappingMode::WAITING &&
-			nlsDecisionBeforeSceneAnalysis.mode != MadVRNlsMappingMode::OFF;
+			nlsDecisionBeforeSceneAnalysis.mode != NlsMappingMode::WAITING &&
+			nlsDecisionBeforeSceneAnalysis.mode != NlsMappingMode::OFF;
 		const bool retainedMappingCompatible = !nlsRequested ||
 			(retainedNlsModeAvailable &&
 			 std::abs(nlsDecisionBeforeSceneAnalysis.targetAspect -
@@ -5823,12 +5693,12 @@ struct LibplaceboVideoRenderer::Impl
 			currentActivePictureIdentity.sourceFormatGeneration =
 				AlphaSourceFormatKey(state);
 			currentActivePictureIdentity.viewportGeneration =
-				screenProfileRequestSerial;
+				viewportRequestSerial;
 			currentActivePictureIdentity.rendererGeneration = frameGeneration;
 			UpdateNlsForFrame(analysisSource, sourceSequence,
 				currentActivePictureIdentity,
 				state.displayMode->RefreshRateHz(),
-				scopeScreenActive, sceneHold,
+				configuredScreenActive, sceneHold,
 				!cadenceRepeat && sceneResult.safeBoundary,
 				activePicturePreviewDecision);
 		}
@@ -6117,7 +5987,7 @@ struct LibplaceboVideoRenderer::Impl
 				subtitleTranslationAlreadyActive);
 		const float subtitleShiftSourcePixels =
 			UpdateScopeSubtitleShift(&analysisSource,
-				width, height, scopeScreenActive, subtitleBarAuthority,
+				width, height, configuredScreenActive, subtitleBarAuthority,
 				sourceSequence, forceSubtitleBarAnalysis,
 				heldBarAnalysisAuthority);
 
@@ -6294,12 +6164,12 @@ struct LibplaceboVideoRenderer::Impl
 			outputContractLogged = true;
 		}
 
-		auto configureScreenProfile =
+		auto configureViewport =
 			[this, &image, width, height, frameGeneration, sourceSequence,
 			 sceneHold, subtitleShiftSourcePixels](
 				struct pl_frame& source,
 				struct pl_frame& target,
-				bool scopeActive,
+				bool configuredScreenActive,
 				float /* subtitleShift */,
 				bool* trustedActivePicture = nullptr,
 				bool publishFinalPresentation = false)
@@ -6759,8 +6629,8 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				// Shader/profile prewarming must not publish per-frame presentation
 				// state. It only needs a valid, centered render geometry.
-				if (scopeActive)
-					fitTargetToAspect(scopeScreenAspect);
+				if (configuredScreenActive)
+					fitTargetToAspect(configuredScreenAspect);
 				fitTargetToAspect(pl_rect2df_aspect(&source.crop) *
 					anamorphicScale);
 				return;
@@ -6772,8 +6642,8 @@ struct LibplaceboVideoRenderer::Impl
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
 			const double panelTargetAspect = pl_rect2df_aspect(&target.crop);
-			const double finalTargetAspect =
-				scopeActive ? scopeScreenAspect : panelTargetAspect;
+			const double finalTargetAspect = ResolveNlsTargetAspect(
+				configuredScreenActive, configuredScreenAspect, panelTargetAspect);
 			const int finalSourceWidth =
 				cropDecision.sourceBounds.right - cropDecision.sourceBounds.left;
 			const int finalSourceHeight =
@@ -6797,7 +6667,7 @@ struct LibplaceboVideoRenderer::Impl
 				publishedFullRasterAuthority || frameLocalFullRasterAuthority;
 			const bool finalBoundsAuthoritative =
 				cropDecision.applyCrop || currentFullRasterAuthority;
-			const double screenLayoutAspect = scopeActive || nlsRequested
+			const double screenLayoutAspect = configuredScreenActive || nlsRequested
 				? finalTargetAspect : pl_rect2df_aspect(&target.crop);
 			const AlphaSourceCrop::CenteredFitDecision screenFit =
 				fitTargetToAspect(screenLayoutAspect);
@@ -6843,15 +6713,16 @@ struct LibplaceboVideoRenderer::Impl
 			if (nlsRequested)
 			{
 				MadVRShaderLoader::SetRuntimeNlsTargetAspect(finalTargetAspect);
-				MadVRNlsMappingDecision finalNlsDecision =
-					EvaluateMadVRNlsMapping(finalBoundsAuthoritative,
+				NlsMappingDecision finalNlsDecision =
+					EvaluateNlsMapping(finalBoundsAuthoritative,
 						finalSourceAspect, finalTargetAspect,
 						nlsRule.aspectTolerancePercent,
-						nlsRule.activeAspectMinimum, nlsRule.narrowerOnly);
+						nlsRule.activeAspectMinimum, nlsRule.narrowerOnly,
+						nlsRule.maximumStretchRatio);
 				if (!finalBoundsAuthoritative)
 					finalNlsDecision.reason =
 						"final crop decision lacks current aspect authority";
-				if (finalNlsDecision.mode == MadVRNlsMappingMode::ACTIVE &&
+				if (finalNlsDecision.mode == NlsMappingMode::ACTIVE &&
 					!EnsureNlsHook(finalNlsDecision))
 				{
 					finalNlsDecision = {};
@@ -6861,13 +6732,13 @@ struct LibplaceboVideoRenderer::Impl
 						"GLSL hook is unavailable; preserving safe passthrough";
 				}
 				MadVRShaderLoader::SetRuntimeNlsDecision(finalNlsDecision);
-				if (finalNlsDecision.mode == MadVRNlsMappingMode::ACTIVE)
+				if (finalNlsDecision.mode == NlsMappingMode::ACTIVE)
 				{
 					renderParams.hooks = &nlsHook;
 					renderParams.num_hooks = 1;
 				}
 				if (finalBoundsAuthoritative &&
-					finalNlsDecision.mode != MadVRNlsMappingMode::WAITING)
+					finalNlsDecision.mode != NlsMappingMode::WAITING)
 				{
 					const MadVRActivePictureGeometry geometry = {
 						finalSourceAspect,
@@ -6896,15 +6767,18 @@ struct LibplaceboVideoRenderer::Impl
 					lastFinalPresentationPolicy =
 						finalPresentationPolicy.str();
 					DebugLog::Log(
-						"Alpha final presentation: requested=%s applicable=%s mapping=%s rect=%d,%d-%d,%d source=%.4f target=%.4f stretch=%.5f renderer_generation=%llu reason=\"%s\"",
+						"Alpha NLS backend=vprenderer requested=%s applicable=%s mapping=%s rect=%d,%d-%d,%d source=%.4f target=%.4f requested_ratio=%.5f max_ratio=%.5f axis=%s stretch=%.5f renderer_generation=%llu reason=\"%s\"",
 						requestedShaderSelector.c_str(), nlsRule.name.c_str(),
-						MadVRNlsMappingModeName(finalNlsDecision.mode),
+						NlsMappingModeName(finalNlsDecision.mode),
 						cropDecision.sourceBounds.left,
 						cropDecision.sourceBounds.top,
 						cropDecision.sourceBounds.right,
 						cropDecision.sourceBounds.bottom,
 						finalNlsDecision.sourceAspect,
 						finalNlsDecision.targetAspect,
+						finalNlsDecision.requestedRatio,
+						finalNlsDecision.maximumRatio,
+						NlsMappingAxisName(finalNlsDecision),
 						finalNlsDecision.stretchRatio,
 						static_cast<unsigned long long>(nlsRendererGeneration),
 						finalNlsDecision.reason.c_str());
@@ -6912,15 +6786,13 @@ struct LibplaceboVideoRenderer::Impl
 				nlsDecision = finalNlsDecision;
 				switch (finalNlsDecision.mode)
 				{
-				case MadVRNlsMappingMode::ACTIVE:
+				case NlsMappingMode::ACTIVE:
 					SetShaderStatus("NLS: Active");
 					break;
-				case MadVRNlsMappingMode::SCOPE_PASSTHROUGH:
-					SetShaderStatus(finalTargetAspect > 2.2
-						? "NLS: Scope passthrough"
-						: "NLS: Linear passthrough");
+				case NlsMappingMode::LINEAR_PASSTHROUGH:
+					SetShaderStatus("NLS: Passthrough");
 					break;
-				case MadVRNlsMappingMode::SAFE_FIT:
+				case NlsMappingMode::SAFE_FIT:
 					SetShaderStatus("NLS: Safe fit");
 					break;
 				default:
@@ -6928,16 +6800,16 @@ struct LibplaceboVideoRenderer::Impl
 					break;
 				}
 
-				if (finalNlsDecision.mode == MadVRNlsMappingMode::ACTIVE)
+				if (finalNlsDecision.mode == NlsMappingMode::ACTIVE)
 				{
 					publishFinalLayout(
 						AlphaSourceCrop::UnusedSpaceAxis::NONE, "nls");
 					return;
 				}
 				// Passthrough means geometry passthrough too. WAITING, SAFE_FIT, and
-				// SCOPE_PASSTHROUGH preserve the exact selected source aspect with
+				// LINEAR_PASSTHROUGH preserves the exact selected source aspect with
 				// ordinary centered scaling inside the target viewport. Otherwise a
-				// 2.39 movie classified within the 2.35 tolerance would still be
+				// A source classified within target tolerance would otherwise still be
 				// stretched vertically despite having no active NLS hook.
 				const AlphaSourceCrop::CenteredFitDecision pictureFit =
 					fitTargetToAspect(pl_rect2df_aspect(&source.crop) *
@@ -6983,7 +6855,7 @@ struct LibplaceboVideoRenderer::Impl
 					continue;
 				}
 
-				MadVRNlsMappingDecision warmDecision;
+				NlsMappingDecision warmDecision;
 				warmDecision.stretchRatio = 1.2;
 				if (!SetNlsHookMapping(warmHook, warmDecision))
 				{
@@ -6995,13 +6867,10 @@ struct LibplaceboVideoRenderer::Impl
 					continue;
 				}
 
-				for (int profile = 0; profile < 2; ++profile)
-				{
-					const bool scopeProfile = profile != 0;
 					struct pl_frame warmImage{};
 					struct pl_frame warmTarget = baseTarget;
-					configureScreenProfile(
-						warmImage, warmTarget, scopeProfile, 0.0f);
+					configureViewport(
+						warmImage, warmTarget, configuredScreenActive, 0.0f);
 					struct pl_render_params warmParams = renderParams;
 					warmParams.hooks = &warmHook;
 					warmParams.num_hooks = 1;
@@ -7022,9 +6891,9 @@ struct LibplaceboVideoRenderer::Impl
 					const int warmOutputHeight = warmTarget.planes[0].texture
 						? warmTarget.planes[0].texture->params.h : 0;
 					DebugLog::Log(
-						"Alpha shader startup prewarm: shader=%s rule=%s profile=%s cache=%s renderer_generation=%llu input=%dx%d output=%dx%d glsl_ms=%.3f spirv_cross_ms=%.3f hlsl_ms=%.3f compile_ms=%.3f render_ms=%.3f result=%s",
+						"Alpha shader startup prewarm: shader=%s rule=%s target=%s cache=%s renderer_generation=%llu input=%dx%d output=%dx%d glsl_ms=%.3f spirv_cross_ms=%.3f hlsl_ms=%.3f compile_ms=%.3f render_ms=%.3f result=%s",
 						resolvedPath.c_str(), rule.name.c_str(),
-						scopeProfile ? "scope" : "normal",
+						configuredScreenActive ? "configured" : "output-panel",
 						compileSnapshot.Compiled() ? "cold" : "warm",
 						static_cast<unsigned long long>(nlsRendererGeneration),
 						width, height, warmOutputWidth, warmOutputHeight,
@@ -7034,7 +6903,6 @@ struct LibplaceboVideoRenderer::Impl
 						compileSnapshot.glslMs + compileSnapshot.spirvCrossMs +
 							compileSnapshot.hlslMs,
 						warmMs, warmed ? "success" : "failed");
-				}
 				pl_mpv_user_shader_destroy(&warmHook);
 			}
 			DebugLog::Log(
@@ -7045,54 +6913,13 @@ struct LibplaceboVideoRenderer::Impl
 				cache ? pl_cache_size(cache) : 0);
 		}
 
-		double prewarmMs = 0.0;
-		if (hasPresentedFrame && !screenProfilesPrewarmed &&
-			!nlsRequested)
-		{
-			struct pl_frame warmImage{};
-			struct pl_frame warmTarget = baseTarget;
-			configureScreenProfile(
-				warmImage,
-				warmTarget,
-				!scopeScreenActive,
-				0.0f);
-			const SteadyClock::time_point prewarmStart = SteadyClock::now();
-			const bool warmed =
-				pl_render_image(renderer, &warmImage, &warmTarget, &renderParams);
-			prewarmMs = std::chrono::duration<double, std::milli>(
-				SteadyClock::now() - prewarmStart).count();
-			if (warmed)
-			{
-				screenProfilesPrewarmed = true;
-				DebugLog::Log(
-					"libplacebo screen profiles prewarmed: alternate=%s render=%.2f ms cache=%d objects/%zu bytes",
-					scopeScreenActive ? "normal" : "scope",
-					prewarmMs,
-					cache ? pl_cache_objects(cache) : 0,
-					cache ? pl_cache_size(cache) : 0);
-			}
-			else
-			{
-				if (warmTarget.lut == displayLut &&
-					warmTarget.lut_type == PL_LUT_NATIVE)
-				{
-					RejectDisplayLutAfterRenderFailure();
-					baseTarget.lut = nullptr;
-					baseTarget.lut_type = PL_LUT_UNKNOWN;
-				}
-				DebugLog::Log(
-					"libplacebo screen profile prewarm failed after %.2f ms; normal rendering continues",
-					prewarmMs);
-			}
-		}
-
 		struct pl_frame renderImage{};
 		struct pl_frame target = baseTarget;
 		bool trustedActivePicture = false;
-		configureScreenProfile(
+		configureViewport(
 			renderImage,
 			target,
-			scopeScreenActive,
+			configuredScreenActive,
 			subtitleShiftSourcePixels,
 			&trustedActivePicture,
 			true);
@@ -7200,8 +7027,9 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(nlsGeometryGeneration),
 					dstWidth, dstHeight,
-					scopeScreenActive ? "scope" : "normal",
-					scopeScreenActive ? scopeScreenAspect : 16.0 / 9.0,
+					configuredScreenActive ? "configured" : "output-panel",
+					configuredScreenActive ? configuredScreenAspect :
+						static_cast<double>(dstWidth) / dstHeight,
 					placement.visiblePicture.left, placement.visiblePicture.top,
 					placement.visiblePicture.right, placement.visiblePicture.bottom,
 					trustedActivePicture ? 1 : 0,
@@ -7405,22 +7233,21 @@ struct LibplaceboVideoRenderer::Impl
 		if (rendered && submitted)
 		{
 			hasPresentedFrame = true;
-			if (screenProfileRequestSerial != 0 &&
-				screenProfileRequestSerial != lastSubmittedScreenProfileRequest)
+			if (viewportRequestSerial != 0 &&
+				viewportRequestSerial != lastSubmittedScreenProfileRequest)
 			{
 				const double commandToSubmitMs =
-					screenProfileRequestNs > 0
-					? static_cast<double>(SteadyClockNowNs() - screenProfileRequestNs) /
+					viewportRequestNs > 0
+					? static_cast<double>(SteadyClockNowNs() - viewportRequestNs) /
 						1000000.0
 					: 0.0;
 				DebugLog::Log(
-					"libplacebo screen profile frame submitted: profile=%s request=%llu command_to_submit=%.2f ms render=%.2f ms prewarm=%.2f ms",
-					scopeScreenActive ? "scope" : "normal",
-					static_cast<unsigned long long>(screenProfileRequestSerial),
+					"libplacebo viewport frame submitted: target=%s request=%llu command_to_submit=%.2f ms render=%.2f ms",
+					configuredScreenActive ? "configured" : "output-panel",
+					static_cast<unsigned long long>(viewportRequestSerial),
 					commandToSubmitMs,
-					renderMs,
-					prewarmMs);
-				lastSubmittedScreenProfileRequest = screenProfileRequestSerial;
+					renderMs);
+				lastSubmittedScreenProfileRequest = viewportRequestSerial;
 			}
 			if (!cursorPositioned)
 			{
@@ -7630,8 +7457,8 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 				m_impl->effectiveSettingsFingerprint)
 		{
 			m_impl->ApplyViewportSettings(nextSettings);
-			CString activeProfile;
-			ApplyScreenProfile(nextSettings.defaultScopeScreen, activeProfile, false);
+			ApplyViewportTarget(nextSettings.configuredScreenTarget,
+				nextSettings.configuredScreenAspect, "automatic profile refresh");
 			DebugLog::Log(
 				"profiles: applied automatic viewport settings live without renderer rebuild");
 		}
@@ -7770,7 +7597,7 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 			activePictureIdentity.sourceFormatGeneration =
 				AlphaSourceFormatKey(*frameState);
 			activePictureIdentity.viewportGeneration =
-				m_screenProfileRequestSerial.load(std::memory_order_acquire);
+				m_viewportRequestSerial.load(std::memory_order_acquire);
 			activePictureIdentity.rendererGeneration = enqueueGeneration;
 			if (videoFrame.IsSourceDiscontinuity())
 				m_activePictureTimeline.BreakContinuity(videoFrame.GetCounter());
@@ -7960,7 +7787,7 @@ void LibplaceboVideoRenderer::Build()
 	m_presentationTargetTimingKnown.store(false, std::memory_order_release);
 	m_presentationTargetLeadMs.store(0.0, std::memory_order_relaxed);
 	m_captureToPresentationTargetMs.store(0.0, std::memory_order_relaxed);
-	m_scopeScreenActive.store(impl->defaultScopeScreen, std::memory_order_release);
+	m_configuredScreenActive.store(impl->configuredScreenTarget, std::memory_order_release);
 	m_impl = std::move(impl);
 	SetState(RendererState::RENDERSTATE_READY);
 }
@@ -8154,16 +7981,21 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 
 	activeState.Format(TEXT("Viewport: %S (%S)"),
 		snapshot.viewport.profile.c_str(),
-		snapshot.viewport.screenAspect.Canonical().c_str());
+		candidateSettings.configuredScreenTarget ?
+			snapshot.viewport.screenAspect.Canonical().c_str() :
+			"output panel");
 	if (!rendererRestartRequired && m_impl)
 	{
 		m_impl->ApplyViewportSettings(candidateSettings);
-		CString activeProfile;
-		ApplyScreenProfile(candidateSettings.defaultScopeScreen, activeProfile, false);
+		ApplyViewportTarget(candidateSettings.configuredScreenTarget,
+			candidateSettings.configuredScreenAspect, "application snapshot");
 		DebugLog::Log(
-			"application viewport state applied live: %s (%s)",
+			"application viewport state applied live: %s target=%s explicit=%d",
 			snapshot.viewport.profile.c_str(),
-			snapshot.viewport.screenAspect.Canonical().c_str());
+			candidateSettings.configuredScreenTarget ?
+				snapshot.viewport.screenAspect.Canonical().c_str() :
+				"output-panel",
+			candidateSettings.configuredScreenTarget ? 1 : 0);
 	}
 	DebugLog::Log("application profile generation %llu applied (%s)",
 		static_cast<unsigned long long>(snapshot.generation),
@@ -8551,52 +8383,32 @@ void LibplaceboVideoRenderer::SetActivePictureLookaheadFrames(size_t frames)
 }
 
 
-bool LibplaceboVideoRenderer::SetScreenProfile(
-	bool scopeScreen,
-	CString& activeProfile,
-	bool& rendererRestartRequired)
-{
-	rendererRestartRequired = false;
-	return ApplyScreenProfile(scopeScreen, activeProfile, true);
-}
-
-
-bool LibplaceboVideoRenderer::ApplyScreenProfile(
-	bool scopeScreen,
-	CString& activeProfile,
-	bool persistLegacyState)
+void LibplaceboVideoRenderer::ApplyViewportTarget(
+	bool configured, double aspect, const char* reason)
 {
 	if (!m_impl)
-		return false;
+		return;
 
-	const int64_t requestNs = SteadyClockNowNs();
-	m_screenProfileRequestNs.store(requestNs, std::memory_order_relaxed);
+	m_viewportRequestNs.store(
+		SteadyClockNowNs(), std::memory_order_relaxed);
 	const uint64_t requestSerial =
-		m_screenProfileRequestSerial.fetch_add(1, std::memory_order_relaxed) + 1;
-	m_scopeScreenActive.store(scopeScreen, std::memory_order_release);
-
-	if (scopeScreen)
-	{
-		activeProfile.Format(TEXT("Scope (%.3f:1)"), m_impl->scopeScreenAspect);
-		DebugLog::Log(
-			"libplacebo screen profile selected: scope (%.4f:1) request=%llu",
-			m_impl->scopeScreenAspect,
-			static_cast<unsigned long long>(requestSerial));
-	}
-	else
-	{
-		activeProfile = TEXT("Normal");
-		DebugLog::Log(
-			"libplacebo screen profile selected: normal request=%llu",
-			static_cast<unsigned long long>(requestSerial));
-	}
+		m_viewportRequestSerial.fetch_add(
+			1, std::memory_order_relaxed) + 1;
+	m_configuredScreenActive.store(configured, std::memory_order_release);
+	DebugLog::Log(
+		"libplacebo viewport target selected: source=%s target=%s aspect=%.7f request=%llu",
+		reason ? reason : "unknown", configured ? "configured" : "output-panel",
+		configured ? aspect : 0.0,
+		static_cast<unsigned long long>(requestSerial));
 
 	CString details;
-	details.Format(TEXT("VideoProcessor Renderer (Alpha) - Screen: %s"), activeProfile.GetString());
+	if (configured)
+		details.Format(
+			TEXT("VideoProcessor Renderer (Alpha) - Viewport: %.4f:1"),
+			aspect);
+	else
+		details = TEXT("VideoProcessor Renderer (Alpha) - Viewport: output panel");
 	m_callback.OnRendererDetailString(details);
-	if (persistLegacyState)
-		PersistScreenProfile(scopeScreen);
-	return true;
 }
 
 
@@ -9171,9 +8983,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 					oldestQueuedAgeMs,
 					cadenceRepeat,
 					captureRateHz,
-					m_scopeScreenActive.load(std::memory_order_acquire),
-					m_screenProfileRequestSerial.load(std::memory_order_acquire),
-					m_screenProfileRequestNs.load(std::memory_order_relaxed),
+					m_configuredScreenActive.load(std::memory_order_acquire),
+					m_viewportRequestSerial.load(std::memory_order_acquire),
+					m_viewportRequestNs.load(std::memory_order_relaxed),
 					m_sceneDetectionEnabled.load(std::memory_order_acquire),
 					m_videoConversionOverride,
 					m_sceneDetectorGeneration.load(std::memory_order_acquire),
@@ -9275,7 +9087,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 							queueAfter,
 							oldestAfterMs,
 							shaderName.c_str(),
-							MadVRNlsMappingModeName(m_impl->nlsDecision.mode));
+							NlsMappingModeName(m_impl->nlsDecision.mode));
 						m_queueChanged.notify_all();
 					}
 				}

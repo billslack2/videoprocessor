@@ -38,7 +38,7 @@ enum class ActivePictureNlsIntentMode
 	WAITING,
 	NATIVE,
 	ACTIVE,
-	SCOPE_PASSTHROUGH,
+	LINEAR_PASSTHROUGH,
 	SAFE_FIT
 };
 

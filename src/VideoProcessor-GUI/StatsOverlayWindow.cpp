@@ -467,7 +467,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	y += lineHeight;
 
 	line.Format(TEXT("Viewport:         %-s"),
-		m_stats.viewport.IsEmpty() ? TEXT("default (16:9)") :
+		m_stats.viewport.IsEmpty() ? TEXT("default (renderer native)") :
 		static_cast<LPCTSTR>(m_stats.viewport));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;

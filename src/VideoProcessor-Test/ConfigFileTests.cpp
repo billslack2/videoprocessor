@@ -495,6 +495,7 @@ namespace VideoProcessorTest
 				"scope", 1, viewport, error));
 			Assert::AreEqual(47ull, viewport.screenAspect.numerator);
 			Assert::AreEqual(20ull, viewport.screenAspect.denominator);
+			Assert::IsTrue(viewport.hasScreenAspect);
 			Assert::IsTrue(viewport.automaticCrop);
 			Assert::IsTrue(viewport.subtitleFit);
 
@@ -959,6 +960,66 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<size_t>(1), selection.size());
 			Assert::IsTrue(selection.front().none,
 				L"The empty shader root must explicitly turn Alpha NLS off");
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(Vp0099MaximumStretchRatioIsValidatedAndPublished)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0099-max-stretch.cfg";
+
+			auto resolve = [&](const char* configured,
+				double expected, bool valid)
+			{
+				{
+					std::ofstream file(path, std::ios::out | std::ios::trunc);
+					file << "[shader.nls]\n"
+						"when: $key==\"n\"\n"
+						"[shader.nls.standard]\n"
+						"when: $key==\"Shift+n\"\n"
+						"shader_type: nls\n"
+						"glsl_file: NLS.glsl\n"
+						"hlsl_file: NLS.hlsl\n";
+					if (configured)
+						file << "max_stretch_ratio: " << configured << "\n";
+				}
+				ConfigFile config;
+				Assert::IsTrue(config.Load(path));
+				std::vector<ConfiguredShaderRule> selection;
+				std::string error;
+				const bool resolved =
+					MadVRShaderLoader::ResolveConfiguredRuleSelection(
+						config, "@shader-key:Shift+n", ShaderRendererBackend::LIBPLACEBO,
+						selection, error);
+				Assert::AreEqual(valid, resolved);
+				if (valid)
+				{
+					Assert::AreEqual(static_cast<size_t>(1), selection.size());
+					Assert::AreEqual(expected,
+						selection.front().maximumStretchRatio, 0.000001);
+					std::vector<ConfiguredShaderRule> madvrSelection;
+					Assert::IsTrue(
+						MadVRShaderLoader::ResolveConfiguredRuleSelection(
+							config, "@shader-key:Shift+n", ShaderRendererBackend::MADVR,
+							madvrSelection, error));
+					Assert::AreEqual(static_cast<size_t>(1),
+						madvrSelection.size());
+					Assert::AreEqual(
+						selection.front().maximumStretchRatio,
+						madvrSelection.front().maximumStretchRatio, 0.000001);
+				}
+			};
+
+			resolve(nullptr, NLS_DEFAULT_MAXIMUM_STRETCH_RATIO, true);
+			resolve("1.0", 1.0, true);
+			resolve("1.35", 1.35, true);
+			resolve("1.5", 1.5, true);
+			resolve("0.99", 0.0, false);
+			resolve("1.5001", 0.0, false);
+			resolve("not-a-number", 0.0, false);
 			DeleteFileA(path.c_str());
 		}
 

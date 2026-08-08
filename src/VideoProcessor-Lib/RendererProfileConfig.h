@@ -119,6 +119,7 @@ namespace RendererProfileConfig
 		std::string group = "viewport";
 		std::string profile = "default";
 		AspectRatio screenAspect{ 16, 9, 16.0 / 9.0 };
+		bool hasScreenAspect = false;
 		AspectRatio anamorphicScale{ 1, 1, 1.0 };
 		bool automaticCrop = false;
 		bool subtitleFit = false;
@@ -329,23 +330,17 @@ namespace RendererProfileConfig
 		}
 		if (group == "viewport")
 		{
-			if (key == "mode")
-				return IsChoice(value, { "normal", "scope" });
-			if (key == "screen_aspect" || key == "scope_screen_aspect")
+			if (key == "screen_aspect")
 				return IsAspectInRange(value, 1.0, 4.0);
 			if (key == "anamorphic_scale")
 				return IsAspectInRange(value, 0.5, 2.0);
-			if (key == "automatic_crop" || key == "scope_automatic_crop" ||
-				key == "subtitle_fit" || key == "scope_subtitle_fit")
+			if (key == "automatic_crop" || key == "subtitle_fit")
 				return IsBoolean(value);
-			if (key == "subtitle_hold_seconds" ||
-				key == "scope_subtitle_hold_seconds")
+			if (key == "subtitle_hold_seconds")
 				return IsNumberInRange(value, 0.0, 30.0);
-			if (key == "subtitle_release_drift_seconds" ||
-				key == "scope_subtitle_release_drift_seconds")
+			if (key == "subtitle_release_drift_seconds")
 				return IsNumberInRange(value, 0.0, 30.0);
-			if (key == "subtitle_padding_pixels" ||
-				key == "scope_subtitle_padding_pixels")
+			if (key == "subtitle_padding_pixels")
 			{
 				int parsed = 0; return ParseInteger(value, 0, 500, parsed);
 			}
@@ -369,7 +364,6 @@ namespace RendererProfileConfig
 		if (key == "switch_refresh_rate" || key == "output_diagnostics" ||
 			key == "diagnostic_disable_shader_cache") return IsBoolean(value);
 		if (key == "deband") return IsChoice(value, { "auto", "on", "off" });
-		if (key == "default_screen_profile") return IsChoice(value, { "normal", "scope" });
 		return false;
 	}
 
@@ -964,13 +958,9 @@ namespace RendererProfileConfig
 				"sdr_target_primaries", "report_bt2020_to_display",
 				"sdr_input_transfer", "output_diagnostics",
 				"diagnostic_disable_shader_cache", "screen_aspect",
-				"default_screen_profile", "automatic_crop", "subtitle_fit",
+				"automatic_crop", "subtitle_fit",
 				"subtitle_hold_seconds", "subtitle_release_drift_seconds",
-				"subtitle_padding_pixels",
-				"scope_screen_aspect", "scope_automatic_crop", "scope_subtitle_fit",
-				"scope_subtitle_hold_seconds",
-				"scope_subtitle_release_drift_seconds",
-				"scope_subtitle_padding_pixels"
+				"subtitle_padding_pixels"
 			};
 			std::vector<ConfigSchema::KeyRule> displayRules;
 			for (const std::string& key : baseKeys)
@@ -1081,15 +1071,6 @@ namespace RendererProfileConfig
 				Profile profile;
 				profile.group = groupName;
 				profile.name = profileName;
-				const std::map<std::string, std::string> viewportAliases = {
-					{ "scope_screen_aspect", "screen_aspect" },
-					{ "scope_automatic_crop", "automatic_crop" },
-					{ "scope_subtitle_fit", "subtitle_fit" },
-					{ "scope_subtitle_hold_seconds", "subtitle_hold_seconds" },
-					{ "scope_subtitle_release_drift_seconds",
-						"subtitle_release_drift_seconds" },
-					{ "scope_subtitle_padding_pixels", "subtitle_padding_pixels" }
-				};
 				for (const auto& value : *values)
 				{
 					if (value.first == "when") profile.when = value.second;
@@ -1105,39 +1086,6 @@ namespace RendererProfileConfig
 					{
 						std::string settingKey = value.first;
 						std::string expected;
-						if (groupName == "viewport")
-						{
-							if (settingKey == "mode")
-							{
-								if (!ValidateProfileSetting(groupName,
-									settingKey, value.second, expected))
-								{
-									error = "[" + profileSection +
-										"] key 'mode' has invalid value '" +
-										value.second +
-										"'; expected normal or scope";
-									return false;
-								}
-								model.warnings.push_back(
-									"[" + profileSection +
-									"] key 'mode' is deprecated and ignored; use screen_aspect");
-								continue;
-							}
-							const auto alias = viewportAliases.find(settingKey);
-							if (alias != viewportAliases.end())
-							{
-								if (values->find(alias->second) != values->end())
-								{
-									error = "[" + profileSection + "] defines both deprecated '" +
-										settingKey + "' and replacement '" + alias->second + "'";
-									return false;
-								}
-								model.warnings.push_back(
-									"[" + profileSection + "] key '" + settingKey +
-									"' is deprecated; use '" + alias->second + "'");
-								settingKey = alias->second;
-							}
-						}
 						if (!ValidateProfileSetting(groupName, settingKey, value.second, expected))
 						{
 							error = "[" + profileSection + "] key '" + settingKey +
@@ -1375,13 +1323,16 @@ namespace RendererProfileConfig
 		viewport.profile = profile->second.name;
 		const auto& settings = profile->second.settings;
 		auto value = settings.find("screen_aspect");
-		if (value != settings.end() &&
-			!AspectRatioParser::Parse(value->second, 1.0, 4.0,
-				viewport.screenAspect, error))
+		if (value != settings.end())
 		{
-			error = "[profiles.viewport." + viewport.profile +
-				"] screen_aspect: " + error;
-			return false;
+			if (!AspectRatioParser::Parse(value->second, 1.0, 4.0,
+				viewport.screenAspect, error))
+			{
+				error = "[profiles.viewport." + viewport.profile +
+					"] screen_aspect: " + error;
+				return false;
+			}
+			viewport.hasScreenAspect = true;
 		}
 		value = settings.find("anamorphic_scale");
 		if (value != settings.end() &&

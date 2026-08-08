@@ -53,6 +53,7 @@ struct ConfiguredShaderRule
 	bool nls = false;
 	bool none = false;
 	double aspectTolerancePercent = 5.0;
+	double maximumStretchRatio = NLS_DEFAULT_MAXIMUM_STRETCH_RATIO;
 	double stableGeometryDeadbandPercent = 2.0;
 	double activeAspectMinimum = 0.0;
 	bool narrowerOnly = false;

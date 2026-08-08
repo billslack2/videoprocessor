@@ -204,16 +204,6 @@ public:
 	// Prefer visually-safe scene boundaries when dropping a late queued frame.
 	// Disabled by default; enabled only by the renderer queue UI.
 	virtual void SetSceneAwareTimingCorrection(bool) = 0;
-	// Select the full output raster or an optional configured screen viewport
-	// (for example a constant-image-height scope screen). Renderers without
-	// screen-profile support return false.
-	virtual bool SetScreenProfile(bool scopeScreen, CString& activeProfile,
-		bool& rendererRestartRequired)
-	{
-		activeProfile.Empty();
-		rendererRestartRequired = false;
-		return false;
-	}
 	// Applies one coherent application-owned profile/runtime snapshot. Renderer
 	// backends consume this state but never resolve keys or persist profiles.
 	virtual bool ApplyApplicationState(

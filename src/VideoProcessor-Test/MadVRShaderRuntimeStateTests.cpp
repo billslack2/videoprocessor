@@ -32,9 +32,9 @@ namespace VideoProcessorTest
 		TEST_METHOD(ScopeContentUsesLinearPassthrough)
 		{
 			const MadVRNlsMappingDecision decision =
-				EvaluateMadVRNlsMapping(true, 2.35, 2.35, 5.0, 1.0, false);
+				EvaluateNlsMapping(true, 2.35, 2.35, 5.0, 1.0, false);
 			Assert::AreEqual(
-				static_cast<int>(MadVRNlsMappingMode::SCOPE_PASSTHROUGH),
+				static_cast<int>(MadVRNlsMappingMode::LINEAR_PASSTHROUGH),
 				static_cast<int>(decision.mode));
 			Assert::AreEqual(1.0, decision.stretchRatio, 0.000001);
 			Assert::IsFalse(decision.verticalWarp);
@@ -45,7 +45,7 @@ namespace VideoProcessorTest
 			const uint64_t rendererGeneration =
 				MadVRShaderLoader::BeginRendererGeneration();
 			const MadVRNlsMappingDecision decision =
-				EvaluateMadVRNlsMapping(
+				EvaluateNlsMapping(
 					true, 1.90, 2.35, 5.0, 1.0, false);
 			MadVRShaderLoader::SetRuntimeNlsTargetAspect(2.35);
 			MadVRShaderLoader::SetRuntimeNlsDecision(decision);
@@ -76,7 +76,7 @@ namespace VideoProcessorTest
 		TEST_METHOD(ImaxContentUsesNonlinearHorizontalMapping)
 		{
 			const MadVRNlsMappingDecision decision =
-				EvaluateMadVRNlsMapping(true, 1.90, 2.35, 5.0, 1.0, false);
+				EvaluateNlsMapping(true, 1.90, 2.35, 5.0, 1.0, false);
 			Assert::AreEqual(
 				static_cast<int>(MadVRNlsMappingMode::ACTIVE),
 				static_cast<int>(decision.mode));
@@ -87,7 +87,7 @@ namespace VideoProcessorTest
 		TEST_METHOD(WiderContentUsesNonlinearVerticalMapping)
 		{
 			const MadVRNlsMappingDecision decision =
-				EvaluateMadVRNlsMapping(true, 2.55, 2.35, 5.0, 1.0, false);
+				EvaluateNlsMapping(true, 2.55, 2.35, 5.0, 1.0, false);
 			Assert::AreEqual(
 				static_cast<int>(MadVRNlsMappingMode::ACTIVE),
 				static_cast<int>(decision.mode));
@@ -99,18 +99,18 @@ namespace VideoProcessorTest
 		{
 			Assert::AreEqual(
 				static_cast<int>(MadVRNlsMappingMode::WAITING),
-				static_cast<int>(EvaluateMadVRNlsMapping(
+				static_cast<int>(EvaluateNlsMapping(
 					false, 0.0, 2.35, 5.0, 1.0, false).mode));
 			Assert::AreEqual(
 				static_cast<int>(MadVRNlsMappingMode::WAITING),
-				static_cast<int>(EvaluateMadVRNlsMapping(
+				static_cast<int>(EvaluateNlsMapping(
 					true, 1.2, 2.35, 5.0, 1.3, false).mode));
 		}
 
 		TEST_METHOD(ExcessiveStretchUsesGeometryPreservingSafeFit)
 		{
 			const MadVRNlsMappingDecision pillarbox =
-				EvaluateMadVRNlsMapping(
+				EvaluateNlsMapping(
 					true, 4.0 / 3.0, 2.35, 5.0, 1.0, false);
 			Assert::AreEqual(
 				static_cast<int>(MadVRNlsMappingMode::SAFE_FIT),
@@ -121,7 +121,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(1.0, pillarbox.stretchRatio, 0.000001);
 
 			const MadVRNlsMappingDecision letterbox =
-				EvaluateMadVRNlsMapping(
+				EvaluateNlsMapping(
 					true, 4.0, 2.35, 5.0, 1.0, false);
 			Assert::AreEqual(
 				static_cast<int>(MadVRNlsMappingMode::SAFE_FIT),
@@ -129,6 +129,77 @@ namespace VideoProcessorTest
 			Assert::IsTrue(letterbox.safeFitVertical);
 			Assert::AreEqual(2.35 / 4.0,
 				letterbox.safeFitFraction, 0.000001);
+		}
+
+		TEST_METHOD(Vp0099DefaultSafetyAllowsUsefulAndRejectsExtremeMappings)
+		{
+			struct SafetyCase
+			{
+				double source;
+				double target;
+				NlsMappingMode mode;
+			};
+			const SafetyCase cases[] = {
+				{ 4.0 / 3.0, 16.0 / 9.0, NlsMappingMode::ACTIVE },
+				{ 16.0 / 9.0, 2.35, NlsMappingMode::ACTIVE },
+				{ 4.0 / 3.0, 2.35, NlsMappingMode::SAFE_FIT },
+				{ 4.0 / 3.0, 2.76, NlsMappingMode::SAFE_FIT },
+				{ 16.0 / 9.0, 2.76, NlsMappingMode::SAFE_FIT },
+			};
+			for (const SafetyCase& testCase : cases)
+			{
+				const NlsMappingDecision decision = EvaluateNlsMapping(
+					true, testCase.source, testCase.target,
+					0.0, 0.0, false);
+				Assert::AreEqual(static_cast<int>(testCase.mode),
+					static_cast<int>(decision.mode));
+				Assert::AreEqual(NLS_DEFAULT_MAXIMUM_STRETCH_RATIO,
+					decision.maximumRatio, 0.000001);
+				Assert::AreEqual(std::max(
+					testCase.target / testCase.source,
+					testCase.source / testCase.target),
+					decision.requestedRatio, 0.000001);
+			}
+		}
+
+		TEST_METHOD(Vp0099CustomSafetyLimitHasDeterministicBoundaries)
+		{
+			const NlsMappingDecision exact = EvaluateNlsMapping(
+				true, 1.0, 1.35, 0.0, 0.0, false, 1.35);
+			Assert::AreEqual(static_cast<int>(NlsMappingMode::ACTIVE),
+				static_cast<int>(exact.mode));
+			Assert::AreEqual(1.35, exact.stretchRatio, 0.000001);
+
+			const NlsMappingDecision above = EvaluateNlsMapping(
+				true, 1.0, 1.3501, 0.0, 0.0, false, 1.35);
+			Assert::AreEqual(static_cast<int>(NlsMappingMode::SAFE_FIT),
+				static_cast<int>(above.mode));
+
+			for (double invalid : { 0.99, 1.5001,
+				(std::numeric_limits<double>::quiet_NaN)() })
+			{
+				const NlsMappingDecision rejected = EvaluateNlsMapping(
+					true, 1.0, 1.2, 0.0, 0.0, false, invalid);
+				Assert::AreEqual(static_cast<int>(NlsMappingMode::WAITING),
+					static_cast<int>(rejected.mode));
+				Assert::IsTrue(rejected.reason.find("maximum stretch") !=
+					std::string::npos);
+			}
+		}
+
+		TEST_METHOD(Vp0099TargetResolutionUsesConfiguredOrExactPanelAspect)
+		{
+			Assert::AreEqual(2.35,
+				ResolveNlsTargetAspect(true, 2.35, 16.0 / 9.0),
+				0.000001);
+			for (double panel : { 16.0 / 9.0, 4096.0 / 2160.0, 2.20 })
+			{
+				Assert::AreEqual(panel,
+					ResolveNlsTargetAspect(false, 0.0, panel),
+					0.000001);
+			}
+			Assert::AreEqual(0.0,
+				ResolveNlsTargetAspect(false, 0.0, 0.0), 0.000001);
 		}
 
 		TEST_METHOD(ScreenAndContentMatrixUsesExpectedMappings)
@@ -145,7 +216,7 @@ namespace VideoProcessorTest
 				{ 4.0 / 3.0, 16.0 / 9.0, MadVRNlsMappingMode::ACTIVE,
 					false, 4.0 / 3.0 },
 				{ 16.0 / 9.0, 16.0 / 9.0,
-					MadVRNlsMappingMode::SCOPE_PASSTHROUGH, false, 1.0 },
+					MadVRNlsMappingMode::LINEAR_PASSTHROUGH, false, 1.0 },
 				{ 2.35, 16.0 / 9.0, MadVRNlsMappingMode::ACTIVE,
 					true, 2.35 / (16.0 / 9.0) },
 				{ 16.0 / 9.0, 2.35, MadVRNlsMappingMode::ACTIVE,
@@ -154,14 +225,14 @@ namespace VideoProcessorTest
 					false, 1.0 },
 				{ 1.90, 2.35, MadVRNlsMappingMode::ACTIVE,
 					false, 2.35 / 1.90 },
-				{ 2.35, 2.35, MadVRNlsMappingMode::SCOPE_PASSTHROUGH,
+				{ 2.35, 2.35, MadVRNlsMappingMode::LINEAR_PASSTHROUGH,
 					false, 1.0 }
 			};
 
 			for (const MatrixCase& testCase : cases)
 			{
 				const MadVRNlsMappingDecision decision =
-					EvaluateMadVRNlsMapping(true, testCase.source,
+					EvaluateNlsMapping(true, testCase.source,
 						testCase.target, 5.0, 1.0, false);
 				Assert::AreEqual(static_cast<int>(testCase.mode),
 					static_cast<int>(decision.mode));
@@ -182,8 +253,8 @@ namespace VideoProcessorTest
 
 			Assert::IsTrue(ResolveMadVRNlsOutputAspect(
 				2.35, aspectX, aspectY));
-			Assert::AreEqual(235ul, aspectX);
-			Assert::AreEqual(100ul, aspectY);
+			Assert::AreEqual(47ul, aspectX);
+			Assert::AreEqual(20ul, aspectY);
 
 			Assert::IsTrue(ResolveMadVRNlsOutputAspect(
 				2.0, aspectX, aspectY));
@@ -210,8 +281,8 @@ namespace VideoProcessorTest
 			Assert::IsTrue(plan.customShader);
 			Assert::AreEqual(2.35 * 2024.0 / 2160.0,
 				plan.rasterAspect, 0.000001);
-			Assert::AreEqual(1101ul, plan.aspectX);
-			Assert::AreEqual(500ul, plan.aspectY);
+			Assert::AreEqual(plan.rasterAspect,
+				static_cast<double>(plan.aspectX) / plan.aspectY, 0.000001);
 			Assert::AreEqual(0.0, plan.shaderGeometry.left, 0.000001);
 			Assert::AreEqual(0.0, plan.shaderGeometry.top, 0.000001);
 			Assert::AreEqual(1.0, plan.shaderGeometry.right, 0.000001);
@@ -239,7 +310,7 @@ namespace VideoProcessorTest
 				1.90, 0.0, 0.0, 1.0, 1.0, 1, 1, true };
 			Assert::IsTrue(ResolveMadVRNlsPresentationPlan(
 				horizontal, fullRaster).customShader);
-			Assert::AreEqual(235ul, ResolveMadVRNlsPresentationPlan(
+			Assert::AreEqual(47ul, ResolveMadVRNlsPresentationPlan(
 				horizontal, fullRaster).aspectX);
 
 			const MadVRActivePictureGeometry onePixelSideCrop{
@@ -382,7 +453,7 @@ namespace VideoProcessorTest
 			MadVRShaderRuntimeState state;
 			const uint64_t renderer = state.BeginRendererGeneration();
 			state.SetRuleSelection("nls", "nls",
-				MadVRNlsMappingMode::SCOPE_PASSTHROUGH);
+				MadVRNlsMappingMode::LINEAR_PASSTHROUGH);
 			Assert::IsTrue(state.SetActiveGeometry({
 				2.35, 0.0, 0.1, 1.0, 0.9, 2, renderer, true }));
 

@@ -46,6 +46,8 @@ namespace
 				right.viewport.screenAspect.numerator &&
 			left.viewport.screenAspect.denominator ==
 				right.viewport.screenAspect.denominator &&
+			left.viewport.hasScreenAspect ==
+				right.viewport.hasScreenAspect &&
 			left.viewport.anamorphicScale.numerator ==
 				right.viewport.anamorphicScale.numerator &&
 			left.viewport.anamorphicScale.denominator ==
@@ -468,7 +470,6 @@ namespace UnifiedProfileRuntime
 		if (!input.is_open())
 			return true;
 
-		std::string legacyScreenProfile;
 		std::string line;
 		while (std::getline(input, line))
 		{
@@ -478,7 +479,9 @@ namespace UnifiedProfileRuntime
 				continue;
 			if (key == "screen_profile")
 			{
-				legacyScreenProfile = value;
+				DebugLog::Log(
+					"unified profile state ignored removed screen_profile=%s",
+					value.c_str());
 				continue;
 			}
 			if (key.compare(0, 8, "profile.") != 0)
@@ -492,15 +495,6 @@ namespace UnifiedProfileRuntime
 					group.c_str(), value.c_str());
 		}
 
-		if (selections.find("viewport") == selections.end() &&
-			!legacyScreenProfile.empty() &&
-			IsPersistedSelectionValid("viewport", legacyScreenProfile))
-		{
-			selections["viewport"] = legacyScreenProfile;
-			DebugLog::Log(
-				"unified profile state imported deprecated screen_profile=%s",
-				legacyScreenProfile.c_str());
-		}
 		return true;
 	}
 
@@ -511,8 +505,8 @@ namespace UnifiedProfileRuntime
 	{
 		error.clear();
 		// The state file is shared with durable application recovery records.
-		// Profile persistence owns only screen_profile/profile.* and must retain
-		// every other entry verbatim, especially a pending display transaction.
+		// Profile persistence owns profile.* and removes the obsolete
+		// screen_profile entry while retaining every unrelated recovery record.
 		std::vector<std::string> preservedLines;
 		{
 			std::ifstream existing(m_statePath);

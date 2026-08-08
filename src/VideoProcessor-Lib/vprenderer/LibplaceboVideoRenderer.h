@@ -68,8 +68,6 @@ public:
 	bool SceneTimingRatesCompatible() const override;
 	bool GetSceneTimingStatus(CString& status) const override;
 	bool GetSceneTimingDueStatus(int& action, CString& reason) const override;
-	bool SetScreenProfile(bool scopeScreen, CString& activeProfile,
-		bool& rendererRestartRequired) override;
 	bool SelectDisplayRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
 	bool SelectShaderRule(const CString& ruleName, CString& activeRule,
@@ -128,11 +126,10 @@ private:
 	size_t PrefillTargetLocked() const;
 	bool CanDequeueLocked() const;
 	void SetState(RendererState state);
+	void ApplyViewportTarget(bool configured, double aspect,
+		const char* reason);
 	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp);
 	void ResetFrameRateAndPPM();
-	bool ApplyScreenProfile(bool scopeScreen, CString& activeProfile,
-		bool persistLegacyState);
-
 	IRendererCallback& m_callback;
 	HWND m_videoHwnd = nullptr;
 	ITimingClock* m_timingClock = nullptr;
@@ -210,9 +207,9 @@ private:
 	std::atomic<double> m_measuredFrameRate{0.0};
 	std::atomic<int> m_ppmDeviation{0};
 	std::atomic_bool m_hasPpmData{false};
-	std::atomic<bool> m_scopeScreenActive{false};
-	std::atomic<uint64_t> m_screenProfileRequestSerial{0};
-	std::atomic<int64_t> m_screenProfileRequestNs{0};
+	std::atomic<bool> m_configuredScreenActive{false};
+	std::atomic<uint64_t> m_viewportRequestSerial{0};
+	std::atomic<int64_t> m_viewportRequestNs{0};
 	// The automatic [display_rules] selection that built the current renderer.
 	// A change requests a normal renderer rebuild so output settings cannot change
 	// underneath queued frames.
