@@ -1150,3 +1150,20 @@ design-only improvements prioritized for a separate pass:
 - Selecting or typing the friendly `Auto` label continues to save canonical
   `AUTO`; integration coverage verifies both presentation and serialization.
   The Qt editor suite remains green at 9/9 and the x64 Release build succeeds.
+
+## 2026-08-08 incomplete action drafts
+
+- Added an explicit `enabled` setting for `[actions.*]` and compatibility
+  `[event_actions.*]` sections. The setting defaults to `true` when omitted,
+  so existing configurations retain their behavior.
+- New actions created by the editor begin disabled. A disabled action may be
+  saved with incomplete or temporarily invalid events, rule text, command, or
+  renderer target, allowing users to build a rule over several editing
+  sessions without save-time validation blocking their work.
+- Disabled actions remain fully editable and are preserved on disk with
+  `enabled: false`, but VP does not publish them into its runtime action model.
+  Enabling an action restores the normal strict validation required for it to
+  execute safely.
+- Documented the new field and added editor/runtime regression coverage. The
+  Qt integration suite remains green at 9/9, the focused native action test
+  passes, and both x64 Release projects build successfully.
