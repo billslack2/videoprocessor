@@ -1053,3 +1053,13 @@ design-only improvements prioritized for a separate pass:
 6. Normalize smaller details such as slash-separated labels, checkbox visual
    weight, section spacing, and the Menu button's dropdown treatment after the
    structural items above are settled.
+
+### Follow-up UI refinements
+
+- Capture-input discovery now removes case-insensitive duplicates. When the
+  selected device exposes exactly one connection, the editor shows only its
+  plain name (for example `HDMI`) and disables the selector. The control is
+  enabled only when two or more distinct connections are available.
+- Renamed the VP Renderer `Viewports` UI section to `Screen Config` in the
+  navigation and page heading. The on-disk `vprenderer.viewport` section name
+  remains unchanged for configuration compatibility.
