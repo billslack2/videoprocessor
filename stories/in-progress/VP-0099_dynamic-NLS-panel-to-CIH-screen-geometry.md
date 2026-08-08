@@ -243,6 +243,37 @@ Required correction tests:
   `croppedVideoOutputRect`. The required 4:3-to-16:9 case must report `active`
   and visibly engage NLS, while 4:3-to-2.35/2.76 remains `safe_fit`.
 
+### Same-axis madVR correction implemented and deployed (2026-08-08)
+
+- Source commit `e31e7ba` implements the preferred active-local pre-scale
+  design. The shader now returns the original sample outside the trusted
+  active rectangle, maps only the selected coordinate inside that rectangle,
+  and clamps every reconstruction tap to its active boundary. The presentation
+  plan retains the measured rectangle and no longer rejects bars on the warp
+  axis; malformed or stale geometry still resolves to native safe fit.
+- Added DirectShow/madVR coverage for horizontal pillarbox, vertical
+  letterbox, windowbox, and the required 4:3 pillarbox-to-16:9 compensated-DAR
+  case. A source-level HLSL test expands and compiles all 16 runtime combinations
+  of quality, geometry, and warp axis as `ps_3_0`.
+- The exact committed revision completed an x64 Release build and the full
+  `VideoProcessor-Test.dll` suite passed 631/631 twice. Post-commit TRX:
+  `TestResults\\vp0099-madvr-same-axis-postcommit.trx` in the implementation
+  worktree.
+- Deployed the verified executable, paired VP Renderer DLL, and `NLS.hlsl` to
+  `C:\\Videoprocessor\\vp`; SHA-256 hashes match the Release artifacts. Prior
+  files are backed up with suffix
+  `.pre-vp0099-e31e7ba.20260808-100742.bak`. The active configuration was not
+  rewritten and retains the `1.4` cap and F2/F3/F7/F8 test targets.
+- Startup smoke passed: the app remained responsive, discovered madVR, loaded
+  VP Renderer plugin API 8, restored the 16:9 viewport, and started the madVR
+  renderer without configuration or shader errors. It was left running as PID
+  19832 with NLS off, ready for the live `Shift+n` visual test.
+
+The story remains in progress until live same-axis output confirms the new log
+contract (`sample_rect` equals the measured active rectangle), correct visible
+stretch, and no double crop on madVR hardware. The VP Renderer regression path
+is covered by the same Release suite but should remain in the live matrix.
+
 ## Acceptance criteria
 
 - No production NLS path selects a target by `scope`/`normal` name or by a
