@@ -311,6 +311,39 @@ for the user-operated NLS standard/protected/off visual sequence; live
 confirmation of the reverse dynamic DAR acceptance and perceived stutter
 improvement remains required.
 
+### Coherent madVR transition delivery (2026-08-08)
+
+Live logs from `3c3df3b` proved that madVR accepted both forward and reverse
+dynamic picture-aspect changes without an NLS-requested renderer restart.
+They also isolated the remaining visible jump: on a cold standard/protected
+transition, local HLSL preparation took approximately 30-44 ms and madVR's
+non-atomic clear/add operation took approximately 41 ms while samples were
+still being delivered. Aspect negotiation could likewise become visible on a
+sample before the replacement chain was installed. Logs also showed rapid
+modified/unmodified `N` events, which can occur when a held shortcut repeats
+after Shift is released.
+
+Commit `932d51b` holds the buffered DirectShow delivery gate across the entire
+aspect-and-shader transaction. The last coherent frame therefore remains on
+screen until the new DAR and complete shader chain are ready; the first sample
+after release carries the pending media-type update. The implementation also
+adds physical-key-aware repeat suppression for configured shader shortcuts,
+while preserving a deliberate new unmodified key press after key-up. New
+telemetry reports gate wait/hold/total timing and identifies coherent
+transactions with `delivery_held=1`.
+
+The exact committed revision completed an x64 Release build and passed 634/634
+tests. Post-commit TRX:
+`TestResults\\vp0099-coherent-transition-postcommit.trx`. The paired executable
+and VP Renderer DLL were deployed with matching Release hashes; backups use
+suffix `.pre-vp0099-932d51b.20260808-105410.bak`. Configuration and shader
+files were unchanged. Startup smoke remained responsive on PID 34160. Live
+telemetry confirmed `delivery_held=1`, an accepted dynamic DAR only after the
+coherent transaction, and `renderer_restart=0`. A separate one-time
+output-readiness graph reset occurred during startup and should not be confused
+with an NLS transition restart; final visual validation should be performed
+after startup settles.
+
 ## Acceptance criteria
 
 - No production NLS path selects a target by `scope`/`normal` name or by a
