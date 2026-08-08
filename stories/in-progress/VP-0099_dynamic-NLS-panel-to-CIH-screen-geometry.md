@@ -122,7 +122,9 @@ Safe-fit cases must retain the entire source without an extreme warp.
 - Authoritative verification: `VideoProcessor.sln`, x64 Release, completed
   successfully; `x64\\Release\\VideoProcessor-Test.dll` passed 629/629 tests
   with zero failures or skips. TRX:
-  `TestResults\\vp0099-authoritative-final.trx` in the implementation worktree.
+  `TestResults\\vp0099-authoritative-final2.trx` in the implementation worktree.
+- Review candidate source commit: `e3ffc32` (`VP-0099 make NLS geometry
+  renderer neutral`) on the local implementation branch.
 
 The story intentionally remains in progress until the live VP Renderer and
 madVR matrix above is exercised on real output hardware.
