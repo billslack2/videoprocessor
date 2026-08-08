@@ -75,8 +75,10 @@
 #define SHADER_SHORTCUT_DEBOUNCE_MS 200
 #define LLDV_PROFILE_APPLY_TIMER_ID 12
 #define CONFIGURATION_LIVE_APPLY_TIMER_ID 13
+#define CONFIGURATION_EDITOR_MODAL_TIMER_ID 14
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 #define CONFIGURATION_LIVE_APPLY_INTERVAL_MS 250
+#define CONFIGURATION_EDITOR_MODAL_INTERVAL_MS 100
 
 
 
@@ -383,6 +385,9 @@ protected:
 	CRect m_initialVideoWindowRect;
 	HICON m_hIcon;
 	HACCEL m_accelerator = nullptr;
+	std::vector<ACCEL> m_configuredAccelerators;
+	bool m_configurationEditorModal = false;
+	bool m_configurationEditorActivationPending = false;
 	HANDLE m_configurationChangedEvent = nullptr;
 	std::map<std::string, std::map<std::string, std::string>>
 		m_configurationSnapshot;
@@ -686,6 +691,10 @@ protected:
 	void LoadDisplayRefreshRateOverrides();
 	void ApplySavedConfiguration();
 	void ReloadConfiguredAccelerators();
+	void StartGlobalShortcutObserver();
+	void StopGlobalShortcutObserver();
+	void UpdateConfigurationEditorModal();
+	HWND ConfigurationEditorOwner() const;
 	bool TryGetDisplayRefreshRateOverride(double nominalRateHz,
 		double& overrideRateHz, int& matchedNominalRate) const;
 	void MonitorQueueHealth(size_t rawQueueSize, size_t convertedQueueSize,

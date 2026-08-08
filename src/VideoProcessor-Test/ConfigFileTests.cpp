@@ -39,6 +39,20 @@ namespace VideoProcessorTest
 				42, 84, true));
 		}
 
+		TEST_METHOD(GlobalShortcutPolicyObservesOnlyExternalForeground)
+		{
+			Assert::IsTrue(ConfigurationLiveApply::MayDispatchGlobalShortcut(
+				42, 84, false));
+			Assert::IsFalse(ConfigurationLiveApply::MayDispatchGlobalShortcut(
+				42, 42, false));
+			Assert::IsFalse(ConfigurationLiveApply::MayDispatchGlobalShortcut(
+				42, 84, true));
+			Assert::IsTrue(ConfigurationLiveApply::ShortcutModifiersMatch(
+				true, false, true, true, false, true));
+			Assert::IsFalse(ConfigurationLiveApply::ShortcutModifiersMatch(
+				true, false, true, true, false, false));
+		}
+
 		TEST_METHOD(ApplicationInterfaceDefaultsToModern)
 		{
 			const auto selection = ApplicationInterface::Resolve(

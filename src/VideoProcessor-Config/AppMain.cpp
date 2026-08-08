@@ -50,10 +50,14 @@ quintptr parseOwner(const QString& value)
 constexpr wchar_t ActivationEventName[] =
     L"Local\\VideoProcessorConfigEditor.Activate.v1";
 
-void allowExistingWindowToTakeFocus()
+void allowExistingWindowToTakeFocus(quintptr owner)
 {
     if (HWND existing = FindWindowW(nullptr, L"VideoProcessor Configuration"))
     {
+        const HWND ownerWindow = reinterpret_cast<HWND>(owner);
+        if (ownerWindow && IsWindow(ownerWindow))
+            SetWindowLongPtrW(existing, GWLP_HWNDPARENT,
+                reinterpret_cast<LONG_PTR>(ownerWindow));
         DWORD processId = 0;
         GetWindowThreadProcessId(existing, &processId);
         if (processId != 0) AllowSetForegroundWindow(processId);
@@ -138,7 +142,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         CreateEventW(nullptr, FALSE, FALSE, ActivationEventName) : nullptr;
     if (activationEvent && GetLastError() == ERROR_ALREADY_EXISTS)
     {
-        allowExistingWindowToTakeFocus();
+        allowExistingWindowToTakeFocus(owner);
         SetEvent(activationEvent);
         CloseHandle(activationEvent);
         if (SUCCEEDED(comResult)) CoUninitialize();

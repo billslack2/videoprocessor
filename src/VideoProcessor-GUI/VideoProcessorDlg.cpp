@@ -432,7 +432,8 @@ HACCEL CreateConfiguredAccelerators(
 	std::set<WORD>& shaderShortcutKeys,
 	std::map<WORD, CString>& displayRuleShortcutRules,
 	std::map<WORD, unsigned int>& rendererShortcutIndices,
-	std::map<WORD, CString>& unifiedProfileShortcutKeys)
+	std::map<WORD, CString>& unifiedProfileShortcutKeys,
+	std::vector<ACCEL>& configuredAccelerators)
 {
 	shaderShortcutRules.clear();
 	shaderShortcutKeys.clear();
@@ -755,8 +756,101 @@ HACCEL CreateConfiguredAccelerators(
 		}
 	}
 
+	configuredAccelerators = accelerators;
 	return CreateAcceleratorTable(accelerators.data(), static_cast<int>(accelerators.size()));
 }
+
+class GlobalShortcutObserver
+{
+public:
+	static bool Start(HWND target, const std::vector<ACCEL>& accelerators)
+	{
+		Stop();
+		if (!target || accelerators.empty())
+			return false;
+		s_target = target;
+		s_accelerators = accelerators;
+		s_hook = SetWindowsHookExW(WH_KEYBOARD_LL, HookProcedure,
+			GetModuleHandleW(nullptr), 0);
+		if (!s_hook)
+		{
+			s_target = nullptr;
+			s_accelerators.clear();
+			return false;
+		}
+		return true;
+	}
+
+	static void Stop()
+	{
+		if (s_hook)
+			UnhookWindowsHookEx(s_hook);
+		s_hook = nullptr;
+		s_target = nullptr;
+		s_accelerators.clear();
+		s_pressedKeys.clear();
+	}
+
+	static bool IsRunning() { return s_hook != nullptr; }
+
+private:
+	static LRESULT CALLBACK HookProcedure(int code, WPARAM message,
+		LPARAM parameter)
+	{
+		if (code != HC_ACTION || !s_target)
+			return CallNextHookEx(s_hook, code, message, parameter);
+		const auto* key = reinterpret_cast<const KBDLLHOOKSTRUCT*>(parameter);
+		const WORD virtualKey = static_cast<WORD>(key->vkCode);
+		const bool keyUp = message == WM_KEYUP || message == WM_SYSKEYUP;
+		if (keyUp)
+		{
+			s_pressedKeys.erase(virtualKey);
+			return CallNextHookEx(s_hook, code, message, parameter);
+		}
+		if (message != WM_KEYDOWN && message != WM_SYSKEYDOWN)
+			return CallNextHookEx(s_hook, code, message, parameter);
+		if (!s_pressedKeys.insert(virtualKey).second)
+			return CallNextHookEx(s_hook, code, message, parameter);
+
+		const HWND foreground = GetForegroundWindow();
+		DWORD foregroundProcessId = 0;
+		if (foreground)
+			GetWindowThreadProcessId(foreground, &foregroundProcessId);
+		if (!ConfigurationLiveApply::MayDispatchGlobalShortcut(
+			GetCurrentProcessId(), foregroundProcessId, false))
+			return CallNextHookEx(s_hook, code, message, parameter);
+
+		const bool control = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+		const bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+		const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+		for (const ACCEL& accelerator : s_accelerators)
+		{
+			if (accelerator.key != virtualKey ||
+				!ConfigurationLiveApply::ShortcutModifiersMatch(
+					(accelerator.fVirt & FCONTROL) != 0,
+					(accelerator.fVirt & FALT) != 0,
+					(accelerator.fVirt & FSHIFT) != 0,
+					control, alt, shift))
+				continue;
+			PostMessageW(s_target, WM_COMMAND,
+				MAKEWPARAM(accelerator.cmd, 0), 0);
+			break;
+		}
+		// Observation is deliberately non-consuming: the foreground application
+		// receives the same key normally while VP also handles its shortcut.
+		return CallNextHookEx(s_hook, code, message, parameter);
+	}
+
+	static HHOOK s_hook;
+	static HWND s_target;
+	static std::vector<ACCEL> s_accelerators;
+	static std::set<WORD> s_pressedKeys;
+};
+
+HHOOK GlobalShortcutObserver::s_hook = nullptr;
+HWND GlobalShortcutObserver::s_target = nullptr;
+std::vector<ACCEL> GlobalShortcutObserver::s_accelerators;
+std::set<WORD> GlobalShortcutObserver::s_pressedKeys;
 
 struct DisplayTimingSnapshot
 {
@@ -1630,9 +1724,11 @@ void CVideoProcessorDlg::ReloadConfiguredAccelerators()
 	std::map<WORD, CString> displayRuleShortcutRules;
 	std::map<WORD, unsigned int> rendererShortcutIndices;
 	std::map<WORD, CString> unifiedProfileShortcutKeys;
+	std::vector<ACCEL> configuredAccelerators;
 	HACCEL candidate = CreateConfiguredAccelerators(shaderShortcutRules,
 		shaderShortcutKeys, displayRuleShortcutRules,
-		rendererShortcutIndices, unifiedProfileShortcutKeys);
+		rendererShortcutIndices, unifiedProfileShortcutKeys,
+		configuredAccelerators);
 	if (!candidate)
 	{
 		DebugLog::Log(
@@ -1647,9 +1743,87 @@ void CVideoProcessorDlg::ReloadConfiguredAccelerators()
 	m_displayRuleShortcutRules = std::move(displayRuleShortcutRules);
 	m_rendererShortcutIndices = std::move(rendererShortcutIndices);
 	m_unifiedProfileShortcutKeys = std::move(unifiedProfileShortcutKeys);
+	m_configuredAccelerators = std::move(configuredAccelerators);
 	if (previous)
 		DestroyAcceleratorTable(previous);
 	DebugLog::Log("Configuration shortcuts applied live");
+	if (!m_configurationEditorModal)
+		StartGlobalShortcutObserver();
+}
+
+void CVideoProcessorDlg::StartGlobalShortcutObserver()
+{
+	if (m_configurationEditorModal || !GetSafeHwnd())
+		return;
+	const bool started = GlobalShortcutObserver::Start(GetSafeHwnd(),
+		m_configuredAccelerators);
+	DebugLog::Log("Global shortcut observer %s (%zu bindings)",
+		started ? "started" : "unavailable",
+		m_configuredAccelerators.size());
+}
+
+void CVideoProcessorDlg::StopGlobalShortcutObserver()
+{
+	if (GlobalShortcutObserver::IsRunning())
+		DebugLog::Log("Global shortcut observer stopped");
+	GlobalShortcutObserver::Stop();
+}
+
+HWND CVideoProcessorDlg::ConfigurationEditorOwner() const
+{
+	if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
+		IsWindow(m_fullScreenVideoWindow->GetHWND()) &&
+		::IsWindowVisible(m_fullScreenVideoWindow->GetHWND()))
+		return m_fullScreenVideoWindow->GetHWND();
+	return GetSafeHwnd();
+}
+
+void CVideoProcessorDlg::UpdateConfigurationEditorModal()
+{
+	const HWND editor = FindConfigurationEditorForCurrentInstallation();
+	const bool visible = editor && IsWindow(editor) && ::IsWindowVisible(editor);
+	if (!visible)
+	{
+		if (!m_configurationEditorModal)
+			return;
+		if (m_fullScreenVideoWindow &&
+			IsWindow(m_fullScreenVideoWindow->GetHWND()))
+			::EnableWindow(m_fullScreenVideoWindow->GetHWND(), TRUE);
+		::EnableWindow(GetSafeHwnd(), TRUE);
+		m_configurationEditorModal = false;
+		m_configurationEditorActivationPending = false;
+		StartGlobalShortcutObserver();
+		DebugLog::Log("Configuration editor modal session ended");
+		return;
+	}
+
+	const HWND owner = ConfigurationEditorOwner();
+	if (::GetWindow(editor, GW_OWNER) != owner)
+		RetargetConfigurationEditorOwner(owner);
+	if (m_configurationEditorActivationPending || !m_configurationEditorModal)
+	{
+		DWORD editorProcessId = 0;
+		GetWindowThreadProcessId(editor, &editorProcessId);
+		if (editorProcessId)
+			AllowSetForegroundWindow(editorProcessId);
+		ShowWindowAsync(editor, SW_RESTORE);
+		::SetWindowPos(editor, HWND_TOP, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+		::SetForegroundWindow(editor);
+		m_configurationEditorActivationPending = false;
+	}
+
+	if (!m_configurationEditorModal)
+	{
+		m_configurationEditorModal = true;
+		StopGlobalShortcutObserver();
+		DebugLog::Log("Configuration editor modal session started owner=%p",
+			reinterpret_cast<void*>(owner));
+	}
+	::EnableWindow(GetSafeHwnd(), FALSE);
+	if (m_fullScreenVideoWindow &&
+		IsWindow(m_fullScreenVideoWindow->GetHWND()))
+		::EnableWindow(m_fullScreenVideoWindow->GetHWND(), FALSE);
 }
 
 void CVideoProcessorDlg::ApplySavedConfiguration()
@@ -1757,6 +1931,7 @@ bool CVideoProcessorDlg::TryGetDisplayRefreshRateOverride(
 
 CVideoProcessorDlg::~CVideoProcessorDlg()
 {
+	StopGlobalShortcutObserver();
 	if (m_rendererResetCoordinator)
 		m_rendererResetCoordinator->Close();
 	m_rendererRetirementService.RequestClose();
@@ -3704,20 +3879,23 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 	// Make the editor an owned window of the actual fullscreen host when one is
 	// active. Windows keeps an owned window above its owner, without making the
 	// editor globally topmost while VP is windowed.
-	HWND editorOwner = GetSafeHwnd();
-	if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
-		IsWindow(m_fullScreenVideoWindow->GetHWND()) &&
-		::IsWindowVisible(m_fullScreenVideoWindow->GetHWND()))
-	{
-		editorOwner = m_fullScreenVideoWindow->GetHWND();
-	}
+	const HWND editorOwner = ConfigurationEditorOwner();
 	wchar_t arguments[2 * MAX_PATH + 80] = {};
 	swprintf_s(arguments, L"--config \"%s\" --owner %llu", configPath.c_str(),
 		static_cast<unsigned long long>(reinterpret_cast<UINT_PTR>(editorOwner)));
+	m_configurationEditorActivationPending = true;
 	const HINSTANCE result = ShellExecuteW(GetSafeHwnd(), L"open", editorPath.c_str(),
 		arguments, executablePath.c_str(), SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR>(result) <= 32)
+	{
+		m_configurationEditorActivationPending = false;
 		AfxMessageBox(L"Could not launch VideoProcessorConfig.exe.");
+	}
+	else
+	{
+		SetTimer(CONFIGURATION_EDITOR_MODAL_TIMER_ID,
+			CONFIGURATION_EDITOR_MODAL_INTERVAL_MS, nullptr);
+	}
 }
 
 void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
@@ -7287,9 +7465,11 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 		m_shaderShortcutKeys,
 		m_displayRuleShortcutRules,
 		m_rendererShortcutIndices,
-		m_unifiedProfileShortcutKeys);
+		m_unifiedProfileShortcutKeys,
+		m_configuredAccelerators);
 	if (!m_accelerator)
 		FatalError(TEXT("Failed to create accelerator table"));
+	StartGlobalShortcutObserver();
 
 	CaptureGUIClear();
 	RenderGUIClear();
@@ -7326,6 +7506,8 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	if (m_configurationChangedEvent)
 		SetTimer(CONFIGURATION_LIVE_APPLY_TIMER_ID,
 			CONFIGURATION_LIVE_APPLY_INTERVAL_MS, nullptr);
+	SetTimer(CONFIGURATION_EDITOR_MODAL_TIMER_ID,
+		CONFIGURATION_EDITOR_MODAL_INTERVAL_MS, nullptr);
 	
 	// Stats overlay will be created lazily on first toggle (Ctrl+I)
 	// No initialization needed here
@@ -8345,6 +8527,12 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		if (m_configurationChangedEvent &&
 			WaitForSingleObject(m_configurationChangedEvent, 0) == WAIT_OBJECT_0)
 			ApplySavedConfiguration();
+		return;
+	}
+
+	if (nIDEvent == CONFIGURATION_EDITOR_MODAL_TIMER_ID)
+	{
+		UpdateConfigurationEditorModal();
 		return;
 	}
 

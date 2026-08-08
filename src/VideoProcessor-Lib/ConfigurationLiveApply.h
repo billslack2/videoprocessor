@@ -17,4 +17,19 @@ namespace ConfigurationLiveApply
 		return !hasForegroundWindow ||
 			foregroundProcessId == videoProcessorProcessId;
 	}
+
+	inline bool MayDispatchGlobalShortcut(uint32_t videoProcessorProcessId,
+		uint32_t foregroundProcessId, bool configurationModal)
+	{
+		return !configurationModal && foregroundProcessId != 0 &&
+			foregroundProcessId != videoProcessorProcessId;
+	}
+
+	inline bool ShortcutModifiersMatch(bool expectedControl,
+		bool expectedAlt, bool expectedShift, bool control, bool alt,
+		bool shift)
+	{
+		return expectedControl == control && expectedAlt == alt &&
+			expectedShift == shift;
+	}
 }
