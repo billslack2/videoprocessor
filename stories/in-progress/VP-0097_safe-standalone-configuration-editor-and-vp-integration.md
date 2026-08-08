@@ -1092,3 +1092,27 @@ design-only improvements prioritized for a separate pass:
   name migration, raising the Qt integration suite to 7/7. The x64 Release
   editor and discovery bridge build successfully, and a direct discovery probe
   returns `VP Renderer` as the first renderer.
+
+## 2026-08-08 legacy-renderer policy and compact layout
+
+- `hide_legacy_renderers` now remains a manual configuration setting and is no
+  longer exposed on the General page. Its effective default is `true`, matching
+  VP runtime behavior.
+- The effective setting now consistently filters renderer discovery choices,
+  action renderer targets, and renderer shortcut rows. When legacy renderers
+  are hidden, the editor does not expose their existing configuration, but it
+  preserves that raw configuration unchanged during unrelated saves.
+- Added an integration scenario covering the manual-only default, hidden
+  shortcut controls, exact preservation of hidden renderer shortcuts, and the
+  absence of a fabricated `hide_legacy_renderers` assignment on save. The Qt
+  integration suite is now green at 8/8.
+- Removed dashboard-card vertical expansion that created large empty interiors
+  as the window grew. General and DirectShow cards now keep their natural
+  content height and stay top-aligned; shortcut cards can have independent
+  heights instead of stretching the shorter form to match its neighbor.
+- Modestly reduced page margins, card padding, card-grid gaps, heading gaps,
+  and ordinary form-row spacing while retaining existing control heights,
+  keyboard focus treatment, responsive reflow, and accessible labels.
+- Reviewed fresh x64 Release screenshots for General, VP Renderer profiles,
+  DirectShow, Shortcuts, and Shaders. The compact presentation remains legible
+  and the profile/shader panes retain the established side-by-side layout.
