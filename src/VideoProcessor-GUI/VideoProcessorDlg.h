@@ -71,6 +71,7 @@
 #define TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID 10
 #define SHADER_SHORTCUT_DEBOUNCE_TIMER_ID 11
 #define SHADER_SHORTCUT_DEBOUNCE_MS 200
+#define LLDV_PROFILE_APPLY_TIMER_ID 12
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 
 
@@ -120,7 +121,6 @@ public:
 	CString FullscreenMonitorName() const { return m_fullscreenMonitorName; }
 	void HideUI(bool enabled = true);
 	void StartMinimized(bool enabled = true);
-	void DisableDetectionFeatures(bool disabled = true);
 	void SceneDetect(bool enabled = true);
 	void SceneCorrectionUpstreamSample(bool enabled);
 	void SubtitleRepositioning(SubtitleRepositionMode mode);
@@ -134,6 +134,7 @@ public:
 	void SetQueueResetDelaySeconds(const CString&);
 	void SetQueueResetHighWaterPercent(const CString&);
 	void SetCaptureDevice(const CString&);
+	void SetCaptureInput(const CString&);
 
 	void StartFrameOffsetAuto();
 	void StartFrameOffset(const CString&);
@@ -203,6 +204,7 @@ public:
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
 	void OnCommandToggleStatsOverlay();
+	void OnCommandConfigEditor();
 
 	// ICaptureDeviceDiscovererCallback
 	void OnCaptureDeviceFound(ACaptureDeviceComPtr& captureDevice) override;
@@ -245,12 +247,21 @@ protected:
 	// Optional LLDV heuristic.  DeckLink does not expose the HDMI VSIF, so
 	// BT.2020 + SDR + no static HDR metadata is only a best-effort signal.
 	bool m_useNewLldvHeuristic = false;
-	// Negative means "use the mode-specific built-in default".  Overrides
-	// intentionally apply to both the legacy and new LLDV detection paths.
+	// Negative means "use the profile/default fallback". Explicit command-line
+	// overrides intentionally win over a selected LLDV profile on both the
+	// legacy and new detection paths.
 	double m_lldvMaxCllOverride = -1.0;
 	double m_lldvMaxFallOverride = -1.0;
 	double m_lldvMasteringMinLuminanceOverride = -1.0;
 	double m_lldvMasteringMaxLuminanceOverride = -1.0;
+	// Resolved [lldv] / [lldv.name] values. These remain distinct from the
+	// explicit command-line overrides above so manual invocation precedence is
+	// preserved when a profile changes at runtime.
+	double m_profileLldvMaxCllOverride = -1.0;
+	double m_profileLldvMaxFallOverride = -1.0;
+	double m_profileLldvMasteringMinLuminanceOverride = -1.0;
+	double m_profileLldvMasteringMaxLuminanceOverride = -1.0;
+	bool m_lldvProfileApplyPending = false;
 	bool m_newLldvCandidateActive = false;
 	bool m_newLldvCandidateConfirmed = false;
 	DWORD m_newLldvCandidateSince = 0;
@@ -263,6 +274,7 @@ protected:
 
 	// Capture device group
 	CString m_initialCaptureDevice = TEXT("");
+	CString m_initialCaptureInput = TEXT("");
 
 	CComboBox m_captureDeviceCombo;
 	CComboBox m_captureInputCombo;
@@ -462,10 +474,17 @@ protected:
 	int m_directShowFrameOffsetMs = 90;
 	bool m_alphaFrameOffsetDisabled = false;
 	CString m_defaultQueueSize = TEXT("32");
+	size_t m_profileBaseQueueCapacity = 32;
+	size_t m_profileBaseLeadFrames = 1;
+	size_t m_profileBaseTargetFrames = 0;
+	size_t m_profileBaseActivePictureLookaheadFrames = 0;
+	size_t m_profileBaseStartupPrerollFrames = 0;
+	int m_profileBaseQueueResetDelaySeconds = 5;
+	int m_profileBaseQueueResetHighWaterPercent = 75;
+	bool m_profileQueueDefaultsCaptured = false;
 	size_t m_directShowQueueCapacity = 32;
 	bool m_queueRendererSelectionInitialized = false;
 	bool m_sceneAwareTimingCorrection = false;
-	bool m_detectionFeaturesDisabled = false;
 	// DirectShow defaults to the more robust upstream-sample correction.
 	// Basic remains available as a configuration-only compatibility override;
 	// Alpha has a single native correction path and ignores this value.

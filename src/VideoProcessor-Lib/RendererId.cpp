@@ -53,14 +53,15 @@ bool RendererId::MatchesConfiguredName(const CString& configuredName) const
 {
 	return name.CompareNoCase(configuredName) == 0 ||
 		(backend == RendererBackend::LIBPLACEBO &&
-		 configuredName.CompareNoCase(TEXT("libplacebo")) == 0);
+		 (configuredName.CompareNoCase(TEXT("libplacebo")) == 0 ||
+		  configuredName.CompareNoCase(TEXT("VideoProcessor Renderer (Alpha)")) == 0));
 }
 
 
 RendererId RendererId::Libplacebo()
 {
 	RendererId id;
-	id.name = TEXT("VideoProcessor Renderer (Alpha)");
+	id.name = TEXT("VP Renderer");
 	id.backend = RendererBackend::LIBPLACEBO;
 	return id;
 }

@@ -11,6 +11,7 @@
 #include <ConfigFile.h>
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
+#include <RendererProfileConfig.h>
 #include <AspectRatio.h>
 #include <ActivePictureTransitionModel.h>
 #include <microsoft_directshow/MadVRExternalPixelShaders.h>
@@ -20,6 +21,7 @@
 #include <dxgi.h>
 
 #include "MadVRShaderLoader.h"
+#include <ShaderConfigValidation.h>
 
 #include <algorithm>
 #include <chrono>
@@ -488,6 +490,11 @@ bool ParseTargetShaderGroups(const ConfigFile& config,
 			}
 		}
 		config.TryGetString(section, "when", group.resetWhen);
+		std::string resetShortcut;
+		config.TryGetString(section, "shortcut", resetShortcut);
+		if (!RendererProfileConfig::MergeShortcutIntoWhen(
+			resetShortcut, "[" + section + "]", group.resetWhen, reason))
+			return false;
 		group.rootIsEffect = root &&
 			(root->find("shader_type") != root->end() ||
 			 root->find("hlsl_file") != root->end() ||
@@ -504,11 +511,12 @@ bool ParseTargetShaderGroups(const ConfigFile& config,
 				return false;
 			}
 			std::string when;
-			if (!config.TryGetString(child, "when", when))
-			{
-				reason = "[" + child + "] requires when=";
+			std::string shortcut;
+			config.TryGetString(child, "when", when);
+			config.TryGetString(child, "shortcut", shortcut);
+			if (!RendererProfileConfig::MergeShortcutIntoWhen(
+				shortcut, "[" + child + "]", when, reason))
 				return false;
-			}
 			group.members.emplace_back(name, when);
 		}
 		if (group.rootIsEffect && !group.members.empty())
@@ -575,6 +583,7 @@ bool ResolveTargetShaderKey(const ConfigFile& config, const std::string& key,
 			std::vector<std::string> selected;
 			for (const auto& member : group.members)
 			{
+				if (member.second.empty()) continue;
 				if (!MatchesTargetShaderWhen(member.second, key, source,
 					matches, reason)) return false;
 				if (matches) selected.push_back(member.first);
@@ -622,6 +631,7 @@ bool ResolveTargetShaderKey(const ConfigFile& config, const std::string& key,
 		std::vector<std::string> automatic;
 		for (const auto& member : group.members)
 		{
+			if (member.second.empty()) continue;
 			bool matches = false;
 			if (!MatchesTargetShaderWhen(member.second, std::string(), source,
 				matches, reason)) return false;
@@ -1952,6 +1962,110 @@ void ApplyShaderEntries(IBaseFilter* renderer, const std::vector<ShaderEntry>& p
 	DebugLog::Log("Shaders: configuration complete (pre-resize=%s, post-resize=%s)",
 		preActive ? "active" : "inactive", postActive ? "active" : "inactive");
 }
+}
+
+
+static bool ValidateConfiguredShadersWithRuntimeParser(const ConfigFile& config,
+	std::string& reason)
+{
+	reason.clear();
+	if (!IsTargetShaderConfiguration(config))
+		return true;
+
+	std::vector<TargetShaderGroup> groups;
+	if (!ParseTargetShaderGroups(config, groups, reason))
+		return false;
+
+	for (const std::string& section : config.GetSectionNames())
+	{
+		if (section.rfind("shader.", 0) != 0)
+			continue;
+		const auto* settings = config.GetSectionValues(section);
+		if (!settings)
+			continue;
+		const std::string tail = section.substr(7);
+		const bool member = tail.find('.') != std::string::npos;
+		const bool rootEffect = settings->find("shader_type") != settings->end() ||
+			settings->find("hlsl_file") != settings->end() ||
+			settings->find("glsl_file") != settings->end();
+		if (!member && !rootEffect)
+			continue;
+
+		std::string rawType;
+		if (!config.TryGetString(section, "shader_type", rawType))
+		{
+			reason = "[" + section + "] requires shader_type";
+			return false;
+		}
+		const std::string type = ConfigFile::NormalizeName(rawType);
+		if (type != "nls" && type != "custom")
+		{
+			reason = "[" + section + "] shader_type must be nls or custom";
+			return false;
+		}
+		if (type == "nls")
+		{
+			for (const char* rawName :
+				{ "strength", "geometry", "center_protection", "curve", "quality" })
+			{
+				const std::string name(rawName);
+				const std::string alias = "param_" + name;
+				const auto typed = settings->find(name);
+				const auto legacy = settings->find(alias);
+				if (typed != settings->end() && legacy != settings->end())
+				{
+					reason = "[" + section + "] cannot define both " + name +
+						" and " + alias;
+					return false;
+				}
+				const auto selected = typed != settings->end() ? typed : legacy;
+				if (selected == settings->end()) continue;
+				std::string normalized;
+				if (!NormalizeNlsSetting(name, selected->second, normalized))
+				{
+					reason = "[" + section + "] has invalid NLS " + name +
+						" value '" + selected->second + "'";
+					return false;
+				}
+			}
+			double tolerance = 0.0;
+			std::string rawTolerance;
+			if (config.TryGetString(section, "tolerance_percent", rawTolerance) &&
+				!ParseBoundedDouble(rawTolerance, 0.0, 50.0, tolerance))
+			{
+				reason = "[" + section + "] tolerance_percent must be from 0 through 50";
+				return false;
+			}
+		}
+		std::string rawOrder;
+		if (config.TryGetString(section, "order", rawOrder))
+		{
+			try
+			{
+				size_t consumed = 0;
+				const long parsed = std::stol(ConfigFile::Trim(rawOrder), &consumed);
+				if (consumed != ConfigFile::Trim(rawOrder).size() || parsed < 0 ||
+					parsed > INT_MAX) throw std::out_of_range("order");
+			}
+			catch (...)
+			{
+				reason = "[" + section + "] order must be a non-negative integer";
+				return false;
+			}
+		}
+		std::string rawStage;
+		if (config.TryGetString(section, "stage", rawStage))
+		{
+			const std::string stage = ConfigFile::NormalizeName(rawStage);
+			if (stage != "pre_resize" && stage != "pre" &&
+				stage != "post_resize" && stage != "post")
+			{
+				reason = "[" + section + "] stage must be pre_resize or post_resize";
+				return false;
+			}
+		}
+	}
+	return true;
 }
 
 

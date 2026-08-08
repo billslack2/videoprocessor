@@ -1,0 +1,16 @@
+#include <windows.h>
+#include "Resource.h"
+
+IDI_VIDEOPROCESSOR_CONFIG ICON "..\\..\\images\\VideoProcessor.ico"
+
+IDD_ADD_VIEWPORT DIALOGEX 0, 0, 250, 142
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Add viewport"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "Give this viewport a display name", IDC_VIEWPORT_NAME_PROMPT, 12, 12, 226, 24
+    LTEXT "Spaces become _; a literal _ becomes __ in the internal identifier.", IDC_VIEWPORT_NAME_HINT, 12, 40, 226, 20
+    EDITTEXT IDC_VIEWPORT_NAME, 12, 66, 226, 16, ES_AUTOHSCROLL
+    DEFPUSHBUTTON "Create", IDOK, 124, 108, 54, 16
+    PUSHBUTTON "Cancel", IDCANCEL, 184, 108, 54, 16
+END

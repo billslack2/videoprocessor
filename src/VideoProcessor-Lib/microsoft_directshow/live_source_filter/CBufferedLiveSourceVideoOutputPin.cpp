@@ -20,6 +20,7 @@
 #include <numeric>
 
 #include <ConfigFile.h>
+#include <QueueConfiguration.h>
 #include <DirectShowDeliveryOutcome.h>
 #include <microsoft_directshow/DirectShowEpochPrimePolicy.h>
 #include <microsoft_directshow/DirectShowVideoTimingAdapter.h>
@@ -1505,10 +1506,8 @@ void CBufferedLiveSourceVideoOutputPin::WriteLiveOutputTrace(const char* boundar
 			configPath += ConfigFile::DEFAULT_FILENAME;
 			ConfigFile config;
 			if (config.Load(configPath))
-				(void)config.TryGetString(
-					"queue_recovery",
-					"reset_after_render_restart_seconds",
-					configuredResetDelay);
+				(void)QueueConfiguration::TryGetRecoveryString(config,
+					"reset_after_render_restart_seconds", configuredResetDelay);
 		}
 	}
 

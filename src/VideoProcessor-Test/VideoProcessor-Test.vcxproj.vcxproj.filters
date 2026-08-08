@@ -28,6 +28,9 @@
     <ClCompile Include="LibplaceboLutParserTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
+    <ClCompile Include="LibplaceboRenderParametersTests.cpp">
+      <Filter>Resource Files</Filter>
+    </ClCompile>
     <ClCompile Include="SceneDetectorTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>

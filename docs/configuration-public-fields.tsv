@@ -1,6 +1,7 @@
 # Public VP-0079 VideoProcessor configuration inventory.
 # field-token<TAB>help-anchor<TAB>owner<TAB>AUTO-explanation-required
 general.capture_device	general-capture-device	VP startup	no
+general.capture_input	general-capture-input	Capture connection routing	no
 general.renderer	general-renderer	VP startup	no
 general.hide_legacy_renderers	general-hide-legacy-renderers	DirectShow discovery	no
 general.fullscreen	general-fullscreen	VP startup	no
@@ -9,16 +10,22 @@ general.fullscreen_monitor_session_mode	general-fullscreen-monitor-session-mode	
 general.windowed_fullscreen_mode	general-windowed-fullscreen-mode	VP startup	no
 general.startminimized	general-start-minimized	VP startup	no
 general.scene_detect	general-scene-detect	VP cadence	no
+general.video_conversion	general-video-conversion	VP input processing	no
+general.container_colorspace	general-container-colorspace	VP input metadata	no
 general.hdr_colorspace	general-hdr-colorspace	VP HDR	no
 general.hdr_luminance	general-hdr-luminance	VP HDR	no
+general.newlldv	general-newlldv	VP HDR detection	no
 renderer_alias.<name>	renderer-alias-name	VP renderer selection	no
 queue.when	queue-when	VP queue	no
+queue.shortcut	queue-shortcut	VP queue	no
 queue.queue_size	queue-size	VP queue	no
 queue.lead_frames	queue-lead-frames	DirectShow timing	no
 queue.target_frames	queue-target-frames	VP queue	no
 queue.active_picture_lookahead_frames	queue-active-picture-lookahead-frames	VP active-picture decision timing	no
+queue.reset_after_render_restart_seconds	queue-reset-after-render-restart-seconds	VP queue recovery	no
+queue.reset_queue_too_large_percent	queue-reset-queue-too-large-percent	VP queue recovery	no
 queue.<variant>.when	queue-variant-when	VP queue	no
-directshow.video_conversion	directshow-video-conversion	DirectShow	no
+queue.<variant>.shortcut	queue-variant-shortcut	VP queue	no
 directshow.renderer_start_stop_time_method	directshow-start-stop-time-method	DirectShow	no
 directshow.frame_offset	directshow-frame-offset	DirectShow	no
 directshow.renderer_nominal_range	directshow-renderer-nominal-range	DirectShow	no
@@ -27,38 +34,51 @@ directshow.conversion.min_core_count	directshow-conversion-min-cores	DirectShow 
 directshow.conversion.max_core_count	directshow-conversion-max-cores	DirectShow conversion	no
 directshow.ppm.ppm	directshow-ppm	DirectShow timing	no
 shortcuts.render.<index>	render-shortcut	VP shortcut	no
-vprenderer.when	vprenderer-when	Alpha renderer	no
-vprenderer.quality	vprenderer-quality	Alpha renderer	no
-vprenderer.tone_mapping	vprenderer-tone-mapping	Alpha renderer	no
-vprenderer.gamut_mapping	vprenderer-gamut-mapping	Alpha renderer	no
-vprenderer.peak_detection	vprenderer-peak-detection	Alpha renderer	no
-vprenderer.contrast_recovery	vprenderer-contrast-recovery	Alpha renderer	no
-vprenderer.upscaler	vprenderer-upscaler	Alpha renderer	no
-vprenderer.downscaler	vprenderer-downscaler	Alpha renderer	no
-vprenderer.deband	vprenderer-deband	Alpha renderer	no
-vprenderer.dithering	vprenderer-dithering	Alpha renderer	no
-vprenderer.sdr_target_nits	vprenderer-sdr-target-nits	Alpha renderer	no
-vprenderer.sdr_black_nits	vprenderer-sdr-black-nits	Alpha renderer	no
-vprenderer.output_presentation	vprenderer-output-presentation	Alpha renderer	no
-vprenderer.output_range	vprenderer-output-range	Alpha renderer	no
-vprenderer.output_gamma	vprenderer-output-gamma	Alpha renderer	no
-vprenderer.sdr_input_transfer	vprenderer-sdr-input-transfer	Alpha renderer	no
-vprenderer.sdr_target_primaries	vprenderer-sdr-target-primaries	Alpha renderer	no
-vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	Alpha renderer	no
-vprenderer.switch_refresh_rate	vprenderer-switch-refresh-rate	Alpha renderer	no
-vprenderer.<variant>.when	vprenderer-variant-when	Alpha renderer	no
-vprenderer.viewport.when	viewport-when	Alpha viewport	no
-vprenderer.viewport.<variant>.when	viewport-variant-when	Alpha viewport	no
-vprenderer.viewport.<variant>.screen_aspect	viewport-screen-aspect	Alpha viewport	no
-vprenderer.viewport.<variant>.anamorphic_scale	viewport-anamorphic-scale	Alpha viewport	no
-vprenderer.viewport.<variant>.automatic_crop	viewport-automatic-crop	Alpha viewport	no
-vprenderer.viewport.<variant>.subtitle_fit	viewport-subtitle-fit	Alpha viewport	no
-vprenderer.viewport.<variant>.subtitle_hold_seconds	viewport-subtitle-hold-seconds	Alpha viewport	no
-vprenderer.viewport.<variant>.subtitle_release_drift_seconds	viewport-subtitle-release-drift-seconds	Alpha viewport	no
-vprenderer.viewport.<variant>.subtitle_padding_pixels	viewport-subtitle-padding-pixels	Alpha viewport	no
+vprenderer.when	vprenderer-when	VP Renderer	no
+vprenderer.shortcut	vprenderer-shortcut	VP Renderer	no
+vprenderer.quality	vprenderer-quality	VP Renderer	no
+vprenderer.tone_mapping	vprenderer-tone-mapping	VP Renderer	no
+vprenderer.gamut_mapping	vprenderer-gamut-mapping	VP Renderer	no
+vprenderer.peak_detection	vprenderer-peak-detection	VP Renderer	no
+vprenderer.contrast_recovery	vprenderer-contrast-recovery	VP Renderer	no
+vprenderer.upscaler	vprenderer-upscaler	VP Renderer	no
+vprenderer.downscaler	vprenderer-downscaler	VP Renderer	no
+vprenderer.deband	vprenderer-deband	VP Renderer	no
+vprenderer.dithering	vprenderer-dithering	VP Renderer	no
+vprenderer.sdr_target_nits	vprenderer-sdr-target-nits	VP Renderer	no
+vprenderer.sdr_black_nits	vprenderer-sdr-black-nits	VP Renderer	no
+vprenderer.output_presentation	vprenderer-output-presentation	VP Renderer	no
+vprenderer.output_range	vprenderer-output-range	VP Renderer	no
+vprenderer.output_gamma	vprenderer-output-gamma	VP Renderer	no
+vprenderer.sdr_input_transfer	vprenderer-sdr-input-transfer	VP Renderer	no
+vprenderer.sdr_target_primaries	vprenderer-sdr-target-primaries	VP Renderer	no
+vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	VP Renderer	no
+vprenderer.switch_refresh_rate	vprenderer-switch-refresh-rate	VP Renderer	no
+vprenderer.<variant>.when	vprenderer-variant-when	VP Renderer	no
+vprenderer.<variant>.shortcut	vprenderer-variant-shortcut	VP Renderer	no
+lldv.<profile>.when	lldv-profile-when	LLDV metadata	no
+lldv.<profile>.shortcut	lldv-profile-shortcut	LLDV metadata	no
+lldv.<profile>.max_cll	lldv-max-cll	LLDV metadata	no
+lldv.<profile>.max_fall	lldv-max-fall	LLDV metadata	no
+lldv.<profile>.mastering_min_luminance	lldv-mastering-min-luminance	LLDV metadata	no
+lldv.<profile>.mastering_max_luminance	lldv-mastering-max-luminance	LLDV metadata	no
+vprenderer.viewport.when	viewport-when	VP Renderer viewport	no
+vprenderer.viewport.shortcut	viewport-shortcut	VP Renderer viewport	no
+vprenderer.viewport.<variant>.when	viewport-variant-when	VP Renderer viewport	no
+vprenderer.viewport.<variant>.shortcut	viewport-variant-shortcut	VP Renderer viewport	no
+vprenderer.viewport.<variant>.label	viewport-label	VP Renderer viewport	no
+vprenderer.viewport.<variant>.screen_aspect	viewport-screen-aspect	VP Renderer viewport	no
+vprenderer.viewport.<variant>.anamorphic_scale	viewport-anamorphic-scale	VP Renderer viewport	no
+vprenderer.viewport.<variant>.automatic_crop	viewport-automatic-crop	VP Renderer viewport	no
+vprenderer.viewport.<variant>.subtitle_fit	viewport-subtitle-fit	VP Renderer viewport	no
+vprenderer.viewport.<variant>.subtitle_hold_seconds	viewport-subtitle-hold-seconds	VP Renderer viewport	no
+vprenderer.viewport.<variant>.subtitle_release_drift_seconds	viewport-subtitle-release-drift-seconds	VP Renderer viewport	no
+vprenderer.viewport.<variant>.subtitle_padding_pixels	viewport-subtitle-padding-pixels	VP Renderer viewport	no
 shader.<group>.type	shader-group-type	Shader selection	no
 shader.<group>.when	shader-group-when	Shader selection	no
+shader.<group>.shortcut	shader-group-shortcut	Shader selection	no
 shader.<group>.<member>.when	shader-member-when	Shader selection	no
+shader.<group>.<member>.shortcut	shader-member-shortcut	Shader selection	no
 shader.<group>.<member>.shader_type	shader-member-type	Shader selection	no
 shader.<group>.<member>.label	shader-member-label	Shader selection	no
 shader.<group>.<member>.stage	shader-member-stage	Shader composition	no
@@ -72,6 +92,7 @@ shader.<group>.<member>.curve	shader-nls-curve	Shader NLS	no
 shader.<group>.<member>.quality	shader-nls-quality	Shader NLS	no
 shader.<group>.<member>.tolerance_percent	shader-nls-tolerance-percent	Shader NLS	no
 shader.<group>.<member>.max_stretch_ratio	shader-nls-max-stretch-ratio	Shader NLS	no
+actions.<name>.enabled	action-enabled	Event action	no
 actions.<name>.renderer	action-renderer	Event action	no
 actions.<name>.on	action-on	Event action	no
 actions.<name>.when	action-when	Event action	no

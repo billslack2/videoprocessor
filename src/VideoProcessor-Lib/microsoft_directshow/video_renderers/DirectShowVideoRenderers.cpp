@@ -107,7 +107,6 @@ bool DirectShowHideLegacyRenderers(const ConfigFile& config)
 
 void DirectShowVideoRendererIds(std::vector<RendererId>& rendererIds)
 {
-	// https://docs.microsoft.com/en-us/windows/win32/directshow/using-the-filter-mapper
 	ConfigFile config;
 	const bool configLoaded = config.Load();
 	const bool hideLegacyRenderers = DirectShowHideLegacyRenderers(config);
@@ -116,6 +115,13 @@ void DirectShowVideoRendererIds(std::vector<RendererId>& rendererIds)
 	DEBUGLOG("DirectShow renderer discovery: hide_legacy_renderers=%s (%s)",
 		hideLegacyRenderers ? "true" : "false",
 		hasConfiguredValue ? "configured" : (configLoaded ? "default" : "configuration unavailable"));
+	DirectShowVideoRendererIds(rendererIds, hideLegacyRenderers);
+}
+
+void DirectShowVideoRendererIds(std::vector<RendererId>& rendererIds,
+	bool hideLegacyRenderers)
+{
+	// https://docs.microsoft.com/en-us/windows/win32/directshow/using-the-filter-mapper
 
 	IFilterMapper2* pMapper = nullptr;
 	IEnumMoniker* pEnum = nullptr;

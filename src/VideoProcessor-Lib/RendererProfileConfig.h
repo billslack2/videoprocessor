@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <set>
 #include <sstream>
@@ -94,7 +95,7 @@ namespace RendererProfileConfig
 			// resolved through [renderer_alias] to this one-based UI selector
 			// index; zero is reserved for the built-in and wildcard targets.
 			std::string renderer = "vprenderer";
-			int rendererAliasIndex = 0;
+			int rendererSelectorIndex = 0;
 			int delaySeconds = 5;
 		};
 		std::vector<EventAction> actions;
@@ -138,8 +139,68 @@ namespace RendererProfileConfig
 		std::string profile;
 		bool hasQueueSize = false;
 		size_t queueSize = 0;
+		bool hasLeadFrames = false;
+		size_t leadFrames = 0;
 		bool hasTargetFrames = false;
 		size_t targetFrames = 0;
+		bool hasActivePictureLookaheadFrames = false;
+		size_t activePictureLookaheadFrames = 0;
+		bool hasStartupPrerollFrames = false;
+		size_t startupPrerollFrames = 0;
+		bool hasResetAfterRendererRestartSeconds = false;
+		int resetAfterRendererRestartSeconds = 0;
+		bool hasResetQueueTooLargePercent = false;
+		int resetQueueTooLargePercent = 0;
+	};
+
+	// The source path reports LLDV metadata only when it synthesizes HDR data.
+	// These are VP's established fallbacks for that synthesis, centralized so
+	// configuration resolution and the dialog never drift between the legacy
+	// and opt-in detection modes.
+	struct LldvMetadata
+	{
+		double maxCll = 1000.0;
+		double maxFall = 1000.0;
+		double masteringMinLuminance = 0.0001;
+		double masteringMaxLuminance = 1000.0;
+	};
+
+	inline LldvMetadata DefaultLldvMetadata(bool useNewLldvHeuristic)
+	{
+		if (useNewLldvHeuristic)
+			return { 1000.0, 401.0, 0.001, 4000.0 };
+		return {};
+	}
+
+	// LLDV is application-owned metadata policy, but it follows the same
+	// ordered-profile selection model as queue. Values are optional so a
+	// profile can inherit a baseline field or preserve VP's mode-specific
+	// effective default when no profile field supplies it.
+	struct ResolvedLldv
+	{
+		std::string group = "lldv";
+		std::string profile;
+		bool hasMaxCll = false;
+		double maxCll = 0.0;
+		bool hasMaxFall = false;
+		double maxFall = 0.0;
+		bool hasMasteringMinLuminance = false;
+		double masteringMinLuminance = 0.0;
+		bool hasMasteringMaxLuminance = false;
+		double masteringMaxLuminance = 0.0;
+
+		LldvMetadata EffectiveMetadata(bool useNewLldvHeuristic) const
+		{
+			LldvMetadata effective = DefaultLldvMetadata(
+				useNewLldvHeuristic);
+			if (hasMaxCll) effective.maxCll = maxCll;
+			if (hasMaxFall) effective.maxFall = maxFall;
+			if (hasMasteringMinLuminance)
+				effective.masteringMinLuminance = masteringMinLuminance;
+			if (hasMasteringMaxLuminance)
+				effective.masteringMaxLuminance = masteringMaxLuminance;
+			return effective;
+		}
 	};
 
 	inline bool ValidateExpressionVariables(
@@ -208,6 +269,17 @@ namespace RendererProfileConfig
 			{ return std::isalnum(c) || c == '_' || c == '-'; });
 	}
 
+	// Viewport section identifiers are intentionally machine-facing.  The
+	// operator-facing label is separate metadata so it may contain spaces and
+	// never becomes part of a runtime profile selection.
+	inline bool IsReservedViewportIdentifier(const std::string& value)
+	{
+		// ResolveViewport("default") deliberately means the built-in fallback,
+		// so accepting a section with this name would make it impossible to
+		// resolve unambiguously.
+		return ConfigFile::NormalizeName(value) == "default";
+	}
+
 	inline bool IsChoice(const std::string& value,
 		std::initializer_list<const char*> choices)
 	{
@@ -256,9 +328,14 @@ namespace RendererProfileConfig
 			text, minimum, maximum, aspect, error);
 	}
 
-	inline bool IsRegistrableKeyChord(const std::string& chord)
+	inline bool CanonicalizeKeyChord(const std::string& chord,
+		std::string& canonical)
 	{
+		canonical.clear();
 		std::string key;
+		bool control = false;
+		bool alt = false;
+		bool shift = false;
 		size_t start = 0;
 		while (start <= chord.size())
 		{
@@ -266,8 +343,10 @@ namespace RendererProfileConfig
 			const std::string token = ConfigFile::Trim(chord.substr(start, end - start));
 			if (token.empty()) return false;
 			const std::string normalized = ConfigFile::NormalizeName(token);
-			if (normalized != "ctrl" && normalized != "control" &&
-				normalized != "alt" && normalized != "shift")
+			if (normalized == "ctrl" || normalized == "control") control = true;
+			else if (normalized == "alt") alt = true;
+			else if (normalized == "shift") shift = true;
+			else
 			{
 				if (!key.empty()) return false;
 				key = token;
@@ -277,15 +356,58 @@ namespace RendererProfileConfig
 		}
 		if (key.empty()) return false;
 		const std::string normalized = ConfigFile::NormalizeName(key);
-		if (normalized == "escape" || normalized == "esc" ||
-			normalized == "enter" || normalized == "return") return true;
-		if (normalized.size() >= 2 && normalized[0] == 'f')
+		std::string canonicalKey;
+		if (normalized == "escape" || normalized == "esc") canonicalKey = "Esc";
+		else if (normalized == "enter" || normalized == "return") canonicalKey = "Enter";
+		else if (normalized.size() >= 2 && normalized[0] == 'f')
 		{
 			int number = 0;
-			return ParseInteger(normalized.substr(1), 1, 24, number);
+			if (!ParseInteger(normalized.substr(1), 1, 24, number)) return false;
+			canonicalKey = "F" + std::to_string(number);
 		}
-		return key.size() == 1 &&
-			std::isalnum(static_cast<unsigned char>(key.front())) != 0;
+		else if (key.size() == 1 &&
+			std::isalnum(static_cast<unsigned char>(key.front())) != 0)
+		{
+			if (std::isupper(static_cast<unsigned char>(key.front())) != 0)
+				shift = true;
+			canonicalKey.assign(1, static_cast<char>(
+				std::tolower(static_cast<unsigned char>(key.front()))));
+		}
+		else return false;
+		if (control) canonical += "Ctrl+";
+		if (alt) canonical += "Alt+";
+		if (shift) canonical += "Shift+";
+		canonical += canonicalKey;
+		return true;
+	}
+
+	inline bool IsRegistrableKeyChord(const std::string& chord)
+	{
+		std::string canonical;
+		return CanonicalizeKeyChord(chord, canonical);
+	}
+
+	inline bool MergeShortcutIntoWhen(const std::string& shortcut,
+		const std::string& owner, std::string& when, std::string& error)
+	{
+		const std::string chord = ConfigFile::Trim(shortcut);
+		if (chord.empty()) return true;
+		std::string canonicalChord;
+		if (!CanonicalizeKeyChord(chord, canonicalChord))
+		{
+			error = owner + " shortcut must be one key with optional Ctrl, Alt, or Shift modifiers";
+			return false;
+		}
+		std::string escaped;
+		for (const char character : canonicalChord)
+		{
+			if (character == '\\' || character == '"') escaped.push_back('\\');
+			escaped.push_back(character);
+		}
+		const std::string shortcutExpression = "${key}==\"" + escaped + "\"";
+		when = ConfigFile::Trim(when);
+		when = when.empty() ? shortcutExpression : "(" + when + ") || " + shortcutExpression;
+		return true;
 	}
 
 	inline bool ValidateProfileSetting(const std::string& group, const std::string& key,
@@ -306,7 +428,7 @@ namespace RendererProfileConfig
 			if (key == "upscaler") return IsChoice(value, { "auto", "ewa_lanczossharp", "ewa_lanczos", "bicubic", "bilinear" });
 			if (key == "downscaler") return IsChoice(value, { "auto", "ewa_lanczos", "bicubic", "bilinear" });
 			if (key == "sigmoid" || key == "dithering") return IsChoice(value, { "auto", "on", "off" });
-			if (key == "deband_strength") return IsChoice(value, { "off", "light", "default" });
+			if (key == "deband_strength") return IsChoice(value, { "auto", "off", "light", "default" });
 			expected = "a scaling-owned setting"; return false;
 		}
 		if (group == "display")
@@ -350,8 +472,27 @@ namespace RendererProfileConfig
 		{
 			int parsed = 0;
 			if (key == "queue_size") return ParseInteger(value, 1, INT_MAX, parsed);
-			if (key == "target_frames") return ParseInteger(value, 0, 16, parsed);
+			if (key == "lead_frames" || key == "target_frames" ||
+				key == "startup_preroll_frames" || key == "steady_reserve_frames")
+				return ParseInteger(value, 0, 16, parsed);
+			if (key == "active_picture_lookahead_frames")
+				return ParseInteger(value, 0, 8, parsed);
+			if (key == "reset_after_render_restart_seconds")
+				return ParseInteger(value, 1, INT_MAX, parsed);
+			if (key == "reset_queue_too_large_percent")
+				return ParseInteger(value, 1, 200, parsed);
 			expected = "a queue-owned setting"; return false;
+		}
+		if (group == "lldv")
+		{
+			if (key == "max_cll" || key == "max_fall" ||
+				key == "mastering_min_luminance")
+				return IsNumberInRange(value, 0.0,
+					std::numeric_limits<double>::max());
+			if (key == "mastering_max_luminance")
+				return IsNumberInRange(value, 0.0,
+					std::numeric_limits<double>::max(), false);
+			expected = "an LLDV-owned setting"; return false;
 		}
 		expected = "a known setting"; return false;
 	}
@@ -404,7 +545,7 @@ namespace RendererProfileConfig
 		if (const auto* renderer = config.GetSectionValues(
 			RendererConfigView::VPRENDERER_SECTION))
 			for (const auto& value : *renderer)
-				if (value.first != "when" &&
+				if (value.first != "when" && value.first != "shortcut" &&
 					!RendererConfigView::IsPolicyKey(value.first) &&
 					!ValidateCanonicalDisplaySetting(value.first, value.second))
 				{
@@ -425,6 +566,7 @@ namespace RendererProfileConfig
 		for (const std::string& section : config.GetSectionNames())
 			if (section.rfind("vprenderer.", 0) == 0 ||
 				section == "queue" || section.rfind("queue.", 0) == 0 ||
+				section == "lldv" || section.rfind("lldv.", 0) == 0 ||
 				section == "directshow" || section.rfind("directshow.", 0) == 0 ||
 				section.rfind("shader.", 0) == 0 ||
 				section.rfind("actions.", 0) == 0 ||
@@ -464,23 +606,28 @@ namespace RendererProfileConfig
 		Model::EventAction& action, std::string& error)
 	{
 		action.renderer = ConfigFile::NormalizeName(value);
-		action.rendererAliasIndex = 0;
+		action.rendererSelectorIndex = 0;
 		if (action.renderer == "vprenderer" || action.renderer == "*")
+			return true;
+		// A positive one-based renderer selector index is the canonical local
+		// target used by the configuration editor. Aliases remain readable for
+		// compatibility, but are not required for ordinary action configuration.
+		if (ParseInteger(action.renderer, 1, INT_MAX,
+			action.rendererSelectorIndex))
 			return true;
 
 		const auto* aliases = config.GetSectionValues("renderer_alias");
 		if (!aliases)
 		{
-			error = "[" + section + "] renderer '" + action.renderer +
-				"' is not defined in [renderer_alias]";
+			error = "[" + section + "] renderer must be vprenderer, *, a positive renderer index, or a valid [renderer_alias] name";
 			return false;
 		}
 		const auto alias = aliases->find(action.renderer);
 		if (alias == aliases->end() ||
 			!ParseInteger(alias->second, 1, INT_MAX,
-				action.rendererAliasIndex))
+			action.rendererSelectorIndex))
 		{
-			error = "[" + section + "] renderer must be vprenderer, *, or a valid [renderer_alias] name";
+			error = "[" + section + "] renderer must be vprenderer, *, a positive renderer index, or a valid [renderer_alias] name";
 			return false;
 		}
 		return true;
@@ -500,7 +647,8 @@ namespace RendererProfileConfig
 	inline bool IsActionProfileGroup(const std::string& group)
 	{
 		return group == "input" || group == "scaling" ||
-			group == "display" || group == "viewport" || group == "queue";
+			group == "display" || group == "viewport" || group == "queue" ||
+			group == "lldv";
 	}
 
 	inline bool IsSupportedActionEvent(const std::string& event)
@@ -653,7 +801,8 @@ namespace RendererProfileConfig
 			{ "scaling", "vprenderer.scaling", true },
 			{ "display", "vprenderer", false },
 			{ "viewport", "vprenderer.viewport", true },
-			{ "queue", "queue", true }
+			{ "queue", "queue", true },
+			{ "lldv", "lldv", true }
 		};
 		const std::set<std::string> expressionVariables = {
 			"eotf", "transfer", "colorspace", "primaries", "format",
@@ -680,7 +829,9 @@ namespace RendererProfileConfig
 					 name.rfind("scaling.", 0) == 0 ||
 					 name.rfind("viewport.", 0) == 0))
 					continue;
-				if (name.find('.') != std::string::npos || !IsIdentifier(name))
+				if (name.find('.') != std::string::npos || !IsIdentifier(name) ||
+					(std::string(spec.name) == "viewport" &&
+						IsReservedViewportIdentifier(name)))
 				{
 					error = "[" + candidate + "] must be exactly one named variant";
 					return false;
@@ -702,9 +853,35 @@ namespace RendererProfileConfig
 			Profile base;
 			base.group = group.name;
 			base.name = baselineName;
+			std::string baseShortcut;
+			std::string resetShortcut;
 			if (baselineValues)
 				for (const auto& entry : *baselineValues)
 				{
+					// label is configuration-editor metadata.  It is intentionally
+					// accepted only for viewport sections and never participates in
+					// profile inheritance, runtime resolution, or action variables.
+					if (std::string(spec.name) == "viewport" && entry.first == "label")
+						continue;
+					// screen_aspect is the single source of truth for the physical
+					// screen shape. `mode` was a legacy normal/scope label and has
+					// never changed the runtime geometry, so retain compatibility
+					// without letting it masquerade as an applied profile setting.
+					if (std::string(spec.name) == "viewport" && entry.first == "mode")
+					{
+						std::string expected;
+						if (!ValidateProfileSetting("viewport", entry.first,
+							entry.second, expected))
+						{
+							error = "[" + (namedBaseline ? prefix + baselineName : section) +
+								"] key 'mode' must be normal or scope";
+							return false;
+						}
+						model.warnings.push_back(
+							"[" + (namedBaseline ? prefix + baselineName : section) +
+							"] key 'mode' is deprecated and ignored; use screen_aspect");
+						continue;
+					}
 					if (entry.first == "when")
 					{
 						if (namedBaseline)
@@ -713,12 +890,17 @@ namespace RendererProfileConfig
 							group.resetWhen = entry.second;
 						continue;
 					}
+					if (entry.first == "shortcut")
+					{
+						if (namedBaseline) baseShortcut = entry.second;
+						else resetShortcut = entry.second;
+						continue;
+					}
 					if (std::string(spec.name) == "queue")
 					{
 						std::string expected;
 					if (!ValidateProfileSetting("queue", entry.first,
-						entry.second, expected) && entry.first != "lead_frames" &&
-						entry.first != "active_picture_lookahead_frames")
+						entry.second, expected))
 						{
 							error = "[" + section + "] key '" + entry.first +
 								"' is not a valid queue setting";
@@ -731,7 +913,8 @@ namespace RendererProfileConfig
 						if (!ValidateProfileSetting("viewport", entry.first,
 							entry.second, expected))
 						{
-							error = "[" + section + "] key '" + entry.first +
+							error = "[" + (namedBaseline ? prefix + baselineName : section) +
+								"] key '" + entry.first + "' value '" + entry.second +
 								"' is not a valid viewport setting";
 							return false;
 						}
@@ -760,6 +943,9 @@ namespace RendererProfileConfig
 					if (spec.inheritRoot || namedBaseline)
 						base.settings.emplace(entry.first, entry.second);
 				}
+			if (!MergeShortcutIntoWhen(resetShortcut, "[" + section + "]", group.resetWhen, error) ||
+				!MergeShortcutIntoWhen(baseShortcut, "[" + prefix + baselineName + "]", base.when, error))
+				return false;
 			if (!group.resetWhen.empty() &&
 				(!group.resetExpression.Compile(group.resetWhen, error, true) ||
 				 !ValidateExpressionVariables(group.resetExpression, { "key" },
@@ -783,12 +969,38 @@ namespace RendererProfileConfig
 				profile.when.clear();
 				profile.whenExpression = {};
 				profile.priority = 0;
+				std::string profileShortcut;
 				for (const auto& entry : *values)
 				{
-					if (entry.first == "when") { profile.when = entry.second; continue; }
-					if (entry.first == "priority" &&
-						ParseInteger(entry.second, -100000, 100000, profile.priority))
+					if (std::string(spec.name) == "viewport" && entry.first == "label")
 						continue;
+					if (std::string(spec.name) == "viewport" && entry.first == "mode")
+					{
+						std::string expected;
+						if (!ValidateProfileSetting("viewport", entry.first,
+							entry.second, expected))
+						{
+							error = "[" + variantSection +
+								"] key 'mode' must be normal or scope";
+							return false;
+						}
+						model.warnings.push_back("[" + variantSection +
+							"] key 'mode' is deprecated and ignored; use screen_aspect");
+						continue;
+					}
+					if (entry.first == "when") { profile.when = entry.second; continue; }
+					if (entry.first == "shortcut") { profileShortcut = entry.second; continue; }
+					if (entry.first == "priority")
+					{
+						if (!ParseInteger(entry.second, -100000, 100000, profile.priority))
+						{
+							error = "[" + variantSection + "] priority must be an integer";
+							return false;
+						}
+						model.warnings.push_back("[" + variantSection +
+							"] priority is deprecated and ignored; file order is priority");
+						continue;
+					}
 					std::string expected;
 					const bool valid = std::string(spec.name) == "display" ?
 						(!RendererConfigView::IsPolicyKey(entry.first) &&
@@ -798,11 +1010,13 @@ namespace RendererProfileConfig
 					if (!valid)
 					{
 						error = "[" + variantSection + "] key '" + entry.first +
-							"' is not valid for " + spec.name;
+							"' value '" + entry.second + "' is not valid for " + spec.name;
 						return false;
 					}
 					profile.settings[entry.first] = entry.second;
 				}
+				if (!MergeShortcutIntoWhen(profileShortcut, "[" + variantSection + "]", profile.when, error))
+					return false;
 				if (!profile.when.empty() &&
 					(!profile.whenExpression.Compile(profile.when, error, true) ||
 					 !ValidateExpressionVariables(profile.whenExpression,
@@ -828,6 +1042,27 @@ namespace RendererProfileConfig
 			const auto* values = config.GetSectionValues(section);
 			Model::EventAction action;
 			action.name = name;
+			bool enabled = true;
+			std::string enabledText;
+			if (config.TryGetString(section, "enabled", enabledText) &&
+				!ParseBoolean(enabledText, enabled))
+			{
+				error = "[" + section + "] enabled must be true or false";
+				return false;
+			}
+			for (const auto& entry : *values)
+				if (entry.first != "enabled" && entry.first != "on" &&
+					entry.first != "when" && entry.first != "run" &&
+					entry.first != "renderer")
+				{
+					error = "[" + section + "] unknown key '" + entry.first + "'";
+					return false;
+				}
+			// Disabled actions are intentional drafts. Preserve their text in
+			// ConfigFile, but do not require or compile executable settings and
+			// do not publish them to either runtime dispatcher.
+			if (!enabled)
+				continue;
 			std::string events;
 			if (!config.TryGetString(section, "on", events) ||
 				(action.events = SplitNames(events)).empty())
@@ -840,12 +1075,12 @@ namespace RendererProfileConfig
 					error = "[" + section + "] unsupported event '" + event + "'";
 					return false;
 				}
-			if (!config.TryGetString(section, "when", action.when) ||
-				!action.whenExpression.Compile(action.when, error, true) ||
-				!ValidateTargetActionExpression(action.whenExpression,
-					action.events, "[" + section + "] when=", error))
+			if (config.TryGetString(section, "when", action.when) &&
+				!action.when.empty() &&
+				(!action.whenExpression.Compile(action.when, error, true) ||
+				 !ValidateTargetActionExpression(action.whenExpression,
+					action.events, "[" + section + "] when=", error)))
 			{
-				if (error.empty()) error = "[" + section + "] requires when=";
 				return false;
 			}
 			std::string run;
@@ -862,13 +1097,6 @@ namespace RendererProfileConfig
 			if (config.TryGetString(section, "renderer", renderer) &&
 				!ParseActionRenderer(config, section, renderer, action, error))
 				return false;
-			for (const auto& entry : *values)
-				if (entry.first != "on" && entry.first != "when" &&
-					entry.first != "run" && entry.first != "renderer")
-				{
-					error = "[" + section + "] unknown key '" + entry.first + "'";
-					return false;
-				}
 			model.actions.push_back(std::move(action));
 		}
 
@@ -1081,6 +1309,8 @@ namespace RendererProfileConfig
 							error = "[" + profileSection + "] priority must be an integer from -100000 to 100000";
 							return false;
 						}
+						model.warnings.push_back("[" + profileSection +
+							"] priority is deprecated and ignored; declared profile order is priority");
 					}
 					else
 					{
@@ -1116,7 +1346,12 @@ namespace RendererProfileConfig
 						error = owner + " uses unregistrable key chord '" + chord + "'";
 						return false;
 					}
-					const std::string canonical = chord;
+					std::string canonical;
+					if (!CanonicalizeKeyChord(chord, canonical))
+					{
+						error = owner + " uses unregistrable key chord '" + chord + "'";
+						return false;
+					}
 					const auto existing = chordOwners.find(canonical);
 					if (existing != chordOwners.end() && existing->second != owner)
 					{
@@ -1170,6 +1405,25 @@ namespace RendererProfileConfig
 				Model::EventAction action;
 				action.name = name;
 				action.delaySeconds = model.eventActionDelaySeconds;
+				bool enabled = true;
+				std::string enabledText;
+				if (config.TryGetString(section, "enabled", enabledText) &&
+					!ParseBoolean(enabledText, enabled))
+				{
+					error = "[" + section + "] enabled must be true or false";
+					return false;
+				}
+				for (const auto& value : *values)
+					if (value.first != "enabled" && value.first != "on" &&
+						value.first != "when" && value.first != "program" &&
+						value.first != "arguments" && value.first != "working_directory" &&
+						value.first != "delay_seconds" && value.first != "renderer")
+					{
+						error = "[" + section + "] unknown key '" + value.first + "'";
+						return false;
+					}
+				if (!enabled)
+					continue;
 				std::string events;
 				if (!config.TryGetString(section, "on", events) ||
 					(action.events = SplitNames(events)).empty())
@@ -1181,12 +1435,13 @@ namespace RendererProfileConfig
 					{
 						error = "[" + section + "] unsupported event '" + event + "'"; return false;
 					}
-				if (!config.TryGetString(section, "when", action.when) ||
-					!action.whenExpression.Compile(action.when, error, true) ||
-					!ValidateTargetActionExpression(action.whenExpression,
-						action.events, "[" + section + "] when=", error))
+				if (config.TryGetString(section, "when", action.when) &&
+					!action.when.empty() &&
+					(!action.whenExpression.Compile(action.when, error, true) ||
+					 !ValidateTargetActionExpression(action.whenExpression,
+						action.events, "[" + section + "] when=", error)))
 				{
-					if (error.empty()) error = "[" + section + "] requires when="; return false;
+					return false;
 				}
 				if (!config.TryGetString(section, "program", action.program) ||
 					ConfigFile::Trim(action.program).empty())
@@ -1216,13 +1471,6 @@ namespace RendererProfileConfig
 				{
 					error = "[" + section + "] delay_seconds must be a whole number from 0 to 30"; return false;
 				}
-				for (const auto& value : *values)
-					if (value.first != "on" && value.first != "when" && value.first != "program" &&
-						value.first != "arguments" && value.first != "working_directory" &&
-						value.first != "delay_seconds" && value.first != "renderer")
-					{
-						error = "[" + section + "] unknown key '" + value.first + "'"; return false;
-					}
 				model.actions.push_back(std::move(action));
 			}
 		}
@@ -1252,27 +1500,53 @@ namespace RendererProfileConfig
 	{
 		selections.clear();
 		error.clear();
-		const std::string canonicalKey = key;
-		const DisplayRuleExpression::ValueLookup values =
-			[&](const std::string& name, std::string& value)
+		std::string canonicalKey;
+		if (!CanonicalizeKeyChord(key, canonicalKey))
+		{
+			error = "key '" + key + "' is not a registrable shortcut";
+			return false;
+		}
+		auto matchingChord = [&](const DisplayRuleExpression::Expression& expression,
+			std::string& declaredChord)
+		{
+			for (const std::string& chord : expression.KeyChords())
 			{
-				if (name == "key") { value = canonicalKey; return true; }
-				return sourceValues(name, value);
-			};
+				std::string canonical;
+				if (CanonicalizeKeyChord(chord, canonical) && canonical == canonicalKey)
+				{
+					declaredChord = chord;
+					return true;
+				}
+			}
+			return false;
+		};
+		auto matches = [&](const DisplayRuleExpression::Expression& expression,
+			const std::string& declaredChord, int& specificity)
+		{
+			const DisplayRuleExpression::ValueLookup values =
+				[&](const std::string& name, std::string& value)
+				{
+					if (name == "key") { value = declaredChord; return true; }
+					return sourceValues(name, value);
+				};
+			return expression.Matches(values, specificity, error);
+		};
 
 		for (const Group& group : model.groups)
 		{
 			if (!group.resetWhen.empty())
 			{
-				if (group.resetExpression.DeclaresKeyChord(canonicalKey))
+				std::string declaredChord;
+				if (matchingChord(group.resetExpression, declaredChord))
 				{
 					int specificity = 0;
-					const bool matchesReset = group.resetExpression.Matches(
-						values, specificity, error);
+					const bool matchesReset = matches(group.resetExpression,
+						declaredChord, specificity);
 					if (!matchesReset && !error.empty()) return false;
 					if (matchesReset)
 					{
-						selections.push_back({ group.name, {}, true });
+						selections.push_back({ group.name,
+							group.defaultSelection, false });
 						continue;
 					}
 				}
@@ -1282,20 +1556,16 @@ namespace RendererProfileConfig
 			for (const std::string& profileName : group.profiles)
 			{
 				const Profile& profile = model.profiles.at(group.name + "." + profileName);
-				if (!profile.whenExpression.DeclaresKeyChord(canonicalKey)) continue;
+				std::string declaredChord;
+				if (!matchingChord(profile.whenExpression, declaredChord)) continue;
 				int specificity = 0;
-				const bool matchesProfile = profile.whenExpression.Matches(
-					values, specificity, error);
+				const bool matchesProfile = matches(profile.whenExpression,
+					declaredChord, specificity);
 				if (!matchesProfile && !error.empty()) return false;
 				if (!matchesProfile)
 					continue;
-				if (!selected.empty())
-				{
-					error = "key '" + key + "' selects both '" + selected + "' and '" +
-						profileName + "' in profile group '" + group.name + "'";
-					return false;
-				}
 				selected = profileName;
+				break;
 			}
 			if (!selected.empty())
 				selections.push_back({ group.name, selected, false });
@@ -1412,37 +1682,111 @@ namespace RendererProfileConfig
 			return false;
 		}
 		queue.profile = profileName;
-		const auto queueSize = profile->second.settings.find("queue_size");
-		if (queueSize != profile->second.settings.end())
+		const auto& settings = profile->second.settings;
+		auto resolveSize = [&](const char* key, int minimum, int maximum,
+			bool& configured, size_t& resolved) -> bool
 		{
+			const auto setting = settings.find(key);
+			if (setting == settings.end()) return true;
 			int value = 0;
-			if (!ParseInteger(queueSize->second, 1, INT_MAX, value))
+			if (!ParseInteger(setting->second, minimum, maximum, value))
 			{
-				error = "[profiles.queue." + profileName + "] queue_size is invalid";
+				error = "[profiles.queue." + profileName + "] " + key + " is invalid";
 				return false;
 			}
-			queue.hasQueueSize = true;
-			queue.queueSize = static_cast<size_t>(value);
-		}
-		const auto targetFrames = profile->second.settings.find("target_frames");
-		if (targetFrames != profile->second.settings.end())
+			configured = true;
+			resolved = static_cast<size_t>(value);
+			return true;
+		};
+		auto resolveInteger = [&](const char* key, int minimum, int maximum,
+			bool& configured, int& resolved) -> bool
 		{
-			int value = 0;
-			if (!ParseInteger(targetFrames->second, 0, 16, value))
+			const auto setting = settings.find(key);
+			if (setting == settings.end()) return true;
+			if (!ParseInteger(setting->second, minimum, maximum, resolved))
 			{
-				error = "[profiles.queue." + profileName + "] target_frames is invalid";
+				error = "[profiles.queue." + profileName + "] " + key + " is invalid";
 				return false;
 			}
-			queue.hasTargetFrames = true;
-			queue.targetFrames = static_cast<size_t>(value);
-		}
+			configured = true;
+			return true;
+		};
+		if (!resolveSize("queue_size", 1, INT_MAX,
+			queue.hasQueueSize, queue.queueSize) ||
+			!resolveSize("lead_frames", 0, 16,
+				queue.hasLeadFrames, queue.leadFrames) ||
+			!resolveSize("target_frames", 0, 16,
+				queue.hasTargetFrames, queue.targetFrames) ||
+			!resolveSize("active_picture_lookahead_frames", 0, 8,
+				queue.hasActivePictureLookaheadFrames,
+				queue.activePictureLookaheadFrames) ||
+			!resolveSize("startup_preroll_frames", 0, 16,
+				queue.hasStartupPrerollFrames, queue.startupPrerollFrames) ||
+			!resolveInteger("reset_after_render_restart_seconds", 1, INT_MAX,
+				queue.hasResetAfterRendererRestartSeconds,
+				queue.resetAfterRendererRestartSeconds) ||
+			!resolveInteger("reset_queue_too_large_percent", 1, 200,
+				queue.hasResetQueueTooLargePercent,
+				queue.resetQueueTooLargePercent))
+			return false;
+		// steady_reserve_frames remains a read-compatible alias. Canonical
+		// target_frames wins only after duplicate validation has rejected both.
+		if (!queue.hasTargetFrames && !resolveSize("steady_reserve_frames", 0, 16,
+			queue.hasTargetFrames, queue.targetFrames))
+			return false;
 		return true;
 	}
 
-	// Select every group from one immutable source snapshot. A matching profile
-	// wins by priority, then comparison specificity, then its declared list
-	// order. If nothing matches, a named default is selected; default=auto
-	// intentionally leaves that group without an override.
+	inline bool ResolveLldv(const Model& model, const std::string& profileName,
+		ResolvedLldv& lldv, std::string& error)
+	{
+		lldv = {};
+		error.clear();
+		if (profileName.empty())
+			return true;
+		const auto profile = model.profiles.find(
+			"lldv." + ConfigFile::NormalizeName(profileName));
+		if (profile == model.profiles.end())
+		{
+			error = "LLDV profile '" + profileName + "' is not defined";
+			return false;
+		}
+		lldv.profile = profile->second.name;
+		const auto& settings = profile->second.settings;
+		auto resolve = [&](const char* key, bool& configured,
+			double& destination, bool strictlyPositive) -> bool
+		{
+			const auto value = settings.find(key);
+			if (value == settings.end())
+				return true;
+			double parsed = 0.0;
+			if (!DisplayRuleExpression::ParseNumber(
+				ConfigFile::Trim(value->second), parsed) ||
+				!std::isfinite(parsed) || parsed < 0.0 ||
+				(strictlyPositive && parsed <= 0.0))
+			{
+				error = "[lldv." + lldv.profile + "] " + key +
+					" is invalid";
+				return false;
+			}
+			configured = true;
+			destination = parsed;
+			return true;
+		};
+		return resolve("max_cll", lldv.hasMaxCll, lldv.maxCll, false) &&
+			resolve("max_fall", lldv.hasMaxFall, lldv.maxFall, false) &&
+			resolve("mastering_min_luminance",
+				lldv.hasMasteringMinLuminance,
+				lldv.masteringMinLuminance, false) &&
+			resolve("mastering_max_luminance",
+				lldv.hasMasteringMaxLuminance,
+				lldv.masteringMaxLuminance, true);
+	}
+
+	// Select every group from one immutable source snapshot. The first matching
+	// non-default profile in declared/file order wins. If nothing matches, the
+	// configured first/default profile is selected; default=auto intentionally
+	// leaves that group without an override.
 	inline bool SelectAutomatic(const Model& model,
 		const DisplayRuleExpression::ValueLookup& sourceValues,
 		std::vector<AutomaticSelection>& selections, std::string& error)
@@ -1459,9 +1803,9 @@ namespace RendererProfileConfig
 		for (const Group& group : model.groups)
 		{
 			const Profile* selected = nullptr;
-			int selectedSpecificity = 0;
 			for (const std::string& profileName : group.profiles)
 			{
+				if (profileName == group.defaultSelection) continue;
 				const Profile& profile = model.profiles.at(group.name + "." + profileName);
 				if (profile.when.empty()) continue;
 				int specificity = 0;
@@ -1469,12 +1813,8 @@ namespace RendererProfileConfig
 					values, specificity, error);
 				if (!matches && !error.empty()) return false;
 				if (!matches) continue;
-				if (!selected || profile.priority > selected->priority ||
-					(profile.priority == selected->priority && specificity > selectedSpecificity))
-				{
-					selected = &profile;
-					selectedSpecificity = specificity;
-				}
+				selected = &profile;
+				break;
 			}
 			if (selected)
 			{
@@ -1498,8 +1838,12 @@ namespace RendererProfileConfig
 		error.clear();
 		auto collect = [&chords](const DisplayRuleExpression::Expression& expression)
 		{
-			chords.insert(chords.end(), expression.KeyChords().begin(),
-				expression.KeyChords().end());
+			for (const std::string& chord : expression.KeyChords())
+			{
+				std::string canonical;
+				if (CanonicalizeKeyChord(chord, canonical))
+					chords.push_back(canonical);
+			}
 		};
 		for (const Group& group : model.groups)
 		{

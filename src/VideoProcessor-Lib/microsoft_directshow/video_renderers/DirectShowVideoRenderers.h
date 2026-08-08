@@ -20,3 +20,5 @@ bool DirectShowHideLegacyRenderers(const ConfigFile& config);
 
 // Get all DirectShow video renderers
 void DirectShowVideoRendererIds(std::vector<RendererId>& rendererIds);
+void DirectShowVideoRendererIds(std::vector<RendererId>& rendererIds,
+	bool hideLegacyRenderers);

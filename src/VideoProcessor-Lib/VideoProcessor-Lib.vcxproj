@@ -155,6 +155,8 @@
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
+      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -177,6 +179,7 @@
     <ClInclude Include="cie.h" />
     <ClInclude Include="ColorSpace.h" />
     <ClInclude Include="ConfigFile.h" />
+    <ClInclude Include="ConfigurationDiscovery.h" />
     <ClInclude Include="ConfigSchema.h" />
     <ClInclude Include="DebugLog.h" />
     <ClInclude Include="DebugLogRetention.h" />
@@ -219,8 +222,10 @@
 	<ClInclude Include="ActivePictureAnalyzer.h" />
     <ClInclude Include="P010ActivePictureEvidence.h" />
     <ClInclude Include="MainConfigSchema.h" />
+    <ClInclude Include="ShaderConfigValidation.h" />
     <ClInclude Include="vprenderer\\AlphaSourceCropPolicy.h" />
     <ClInclude Include="vprenderer\\LibplaceboOutputPolicy.h" />
+    <ClInclude Include="vprenderer\\LibplaceboRenderParameters.h" />
     <ClInclude Include="vprenderer\\LibplaceboPluginVideoRenderer.h" />
     <ClInclude Include="vprenderer\\LibplaceboRendererPluginApi.h" />
     <ClInclude Include="ITimingClock.h" />
@@ -284,6 +289,9 @@
     <ClInclude Include="microsoft_directshow\live_source_filter\GpuSubtitleDetector.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="ShaderConfigValidation.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="ACaptureDevice.cpp" />
     <ClCompile Include="ActivePictureDecisionTimeline.cpp" />
     <ClCompile Include="ActivePictureTransitionModel.cpp" />
@@ -312,6 +320,7 @@
 	<ClCompile Include="OutputReadinessController.cpp" />
 	<ClCompile Include="RationalLiveOutputSequencer.cpp" />
     <ClCompile Include="ConfigFile.cpp" />
+    <ClCompile Include="ConfigurationDiscovery.cpp" />
 	<ClCompile Include="DisplayTopologySession.cpp" />
     <ClCompile Include="EOTF.cpp" />
     <ClCompile Include="guid.cpp" />

@@ -48,8 +48,8 @@
       <tr><td><code>[queue]</code></td><td>VP-owned queue policy, regardless of selected renderer.</td></tr>
       <tr><td><code>[directshow]</code></td><td>DirectShow pipeline/timestamp/input-conversion configuration.</td></tr>
       <tr><td><code>[directshow.ppm]</code></td><td>DirectShow source-timing PPM policy.</td></tr>
-      <tr><td><code>[vprenderer]</code></td><td>Alpha / VideoProcessor Renderer output, tone-mapping, scaling, and presentation settings.</td></tr>
-      <tr><td><code>[vprenderer.viewport]</code></td><td>Alpha viewport and subtitle-fit configuration.</td></tr>
+      <tr><td><code>[vprenderer]</code></td><td>VP Renderer / VideoProcessor Renderer output, tone-mapping, scaling, and presentation settings.</td></tr>
+      <tr><td><code>[vprenderer.viewport]</code></td><td>VP Renderer viewport and subtitle-fit configuration.</td></tr>
       <tr><td><code>[shader]</code></td><td>Common external-shader selector; variants may carry HLSL and/or GLSL files.</td></tr>
       <tr><td><code>[actions.*]</code></td><td>External commands started for committed VP events.</td></tr>
       <tr><td><code>[renderer_alias]</code></td><td>Friendly aliases for UI renderer indices; not an ownership namespace.</td></tr>
@@ -132,7 +132,7 @@ on: signal.lost
 run: C:\Videoprocessor\automation\signal-lost.cmd</code></pre>
   <table>
     <thead><tr><th>Scope</th><th>Meaning</th></tr></thead>
-    <tbody><tr><td><code>vprenderer</code></td><td>Alpha / VideoProcessor Renderer events; the documented default.</td></tr><tr><td><code>directshow</code></td><td>DirectShow pipeline events.</td></tr><tr><td><code>*</code></td><td>All matching scoped events. It runs once per emission, so multiple producers may launch it more than once.</td></tr></tbody>
+    <tbody><tr><td><code>vprenderer</code></td><td>VP Renderer / VideoProcessor Renderer events; the documented default.</td></tr><tr><td><code>directshow</code></td><td>DirectShow pipeline events.</td></tr><tr><td><code>*</code></td><td>All matching scoped events. It runs once per emission, so multiple producers may launch it more than once.</td></tr></tbody>
   </table>
   <p>Target event families: <code>refresh.*</code>, <code>source.changed</code>, <code>picture.changed</code>, <code>profile.changed</code>, <code>renderer.*</code>, and <code>signal.*</code>. An event is published only after a committed transition and exposes one documented immutable variable context.</p>
 
@@ -147,7 +147,7 @@ run: C:\Videoprocessor\automation\signal-lost.cmd</code></pre>
     <li>Retain manual selections only in memory across renderer transitions.</li>
     <li>Move DirectShow PPM and shader selection onto the common resolver.</li>
     <li>Make renderers consume a resolved snapshot rather than independently re-read raw configuration.</li>
-    <li>Replace refresh-only Alpha actions with a scoped VP event dispatcher.</li>
+    <li>Replace refresh-only VP Renderer actions with a scoped VP event dispatcher.</li>
     <li>Validate all sections, expressions, aliases, scopes, command targets, and typed values before capture starts.</li>
   </ol>
   <p>Until that work is complete, production configuration must continue using the current supported grammar.</p>

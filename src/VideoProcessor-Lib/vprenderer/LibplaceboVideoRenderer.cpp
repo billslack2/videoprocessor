@@ -22,6 +22,7 @@
 #include <vprenderer/NativeStatsOverlayPlacement.h>
 #include <SceneDetector.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
+#include <vprenderer/LibplaceboRenderParameters.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CUYVYtoP010VideoFrameFormatter.h>
@@ -667,6 +668,7 @@ namespace
 		float contrastRecovery = 0.0f;
 		std::string upscaler = "auto";
 		std::string downscaler = "auto";
+		std::string debandStrength = "auto";
 		AutoToggle deband = AutoToggle::AUTO;
 		AutoToggle sigmoid = AutoToggle::AUTO;
 		AutoToggle dithering = AutoToggle::AUTO;
@@ -713,6 +715,7 @@ namespace
 			<< static_cast<int>(settings.peakDetection) << '|'
 			<< settings.hasContrastRecovery << '|' << settings.contrastRecovery << '|'
 			<< settings.upscaler << '|' << settings.downscaler << '|'
+			<< settings.debandStrength << '|'
 			<< static_cast<int>(settings.deband) << '|'
 			<< static_cast<int>(settings.sigmoid) << '|'
 			<< static_cast<int>(settings.dithering) << '|'
@@ -1183,6 +1186,44 @@ namespace
 		return defaultValue;
 	}
 
+	bool ApplyDebandStrength(const std::string& rawValue,
+		RendererSettings& settings)
+	{
+		const std::string value = ConfigFile::NormalizeName(rawValue);
+		if (value == "auto")
+		{
+			settings.debandStrength = value;
+			settings.deband = AutoToggle::AUTO;
+			return true;
+		}
+		if (value == "off")
+		{
+			settings.debandStrength = value;
+			settings.deband = AutoToggle::OFF;
+			return true;
+		}
+		if (value == "light" || value == "default")
+		{
+			settings.debandStrength = value;
+			settings.deband = AutoToggle::ON;
+			return true;
+		}
+		return false;
+	}
+
+	void NormalizeSdrBlackLevel(RendererSettings& settings)
+	{
+		if (std::isfinite(settings.sdrBlackNits) && settings.sdrBlackNits >= 0.0 &&
+			settings.sdrBlackNits < settings.sdrTargetNits)
+		{
+			return;
+		}
+		settings.sdrBlackNits = settings.sdrTargetNits / PL_COLOR_SDR_CONTRAST;
+		DebugLog::Log(
+			"libplacebo: resolved sdr_black_nits conflicts with sdr_target_nits; using Auto (%.3f)",
+			settings.sdrBlackNits);
+	}
+
 	void ApplyDisplayRuleOverrides(
 		const ConfigFile& config,
 		const DisplayRule& rule,
@@ -1253,8 +1294,9 @@ namespace
 		readToggle("deband", settings.deband);
 		if (config.TryGetString(rule.section, "deband_strength", raw))
 		{
-			const std::string named = ConfigFile::NormalizeName(raw);
-			settings.deband = named == "off" ? AutoToggle::OFF : AutoToggle::ON;
+			if (!ApplyDebandStrength(raw, settings))
+				DebugLog::Log("display rule '%s': invalid deband_strength value '%s'; retaining base setting",
+					rule.name.c_str(), raw.c_str());
 		}
 		readToggle("sigmoid", settings.sigmoid);
 		readToggle("dithering", settings.dithering);
@@ -1449,8 +1491,11 @@ namespace
 			{ "auto", "ewa_lanczos", "bicubic", "bilinear" });
 		settings.deband = ReadAutoToggle(config, "deband");
 		if (TryGetDisplayString(config, "deband_strength", rawValue))
-			settings.deband = ConfigFile::NormalizeName(rawValue) == "off" ?
-				AutoToggle::OFF : AutoToggle::ON;
+		{
+			if (!ApplyDebandStrength(rawValue, settings))
+				DebugLog::Log(
+					"libplacebo: deband_strength must be Auto, off, light, or default; retaining the debanding setting");
+		}
 		settings.sigmoid = ReadAutoToggle(config, "sigmoid");
 		settings.dithering = ReadAutoToggle(config, "dithering");
 		settings.outputPresentation = ReadChoice(
@@ -1628,7 +1673,7 @@ namespace
 		{
 			DebugLog::Log("libplacebo: invalid diagnostic_disable_shader_cache policy '%s'; retaining display setting", rawValue.c_str());
 		}
-		else if (!activeProfiles.empty())
+		if (!activeProfiles.empty())
 		{
 			activeRule = activeProfiles;
 			DebugLog::Log("profiles: automatic selections: %s", activeProfiles.c_str());
@@ -1699,6 +1744,11 @@ namespace
 			}
 		}
 
+		// A selected profile can legitimately change the white target without
+		// repeating an inherited explicit black level. Resolve that cross-field
+		// dependency once all profiles have been applied, so it never reaches the
+		// output path in an invalid state.
+		NormalizeSdrBlackLevel(settings);
 		return settings;
 	}
 
@@ -2190,8 +2240,8 @@ namespace
 					};
 				int specificity = 0;
 				std::string matchError;
-				const bool matches = action.whenExpression.Matches(
-					values, specificity, matchError);
+				const bool matches = action.when.empty() ||
+					action.whenExpression.Matches(values, specificity, matchError);
 				if (!matches)
 				{
 					if (!matchError.empty())
@@ -2979,151 +3029,53 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ConfigureRenderParams(const RendererSettings& settings)
 	{
-		const char* presetExport = "pl_render_high_quality_params";
-		if (settings.quality == "fast")
-			presetExport = "pl_render_fast_params";
-		else if (settings.quality == "balanced")
-			presetExport = "pl_render_default_params";
-		renderParams = LibplaceboExportedData<pl_render_params>(presetExport);
-		// libplacebo 7.360's D3D11 compute implementation can generate
-		// colliding texture registers when error diffusion and a target 3D LUT
-		// are combined. Keep normal rendering and the target LUT intact, but
-		// drop this optional high-quality preset feature for a valid display LUT.
-		if (displayLutParsed && displayLut && renderParams.error_diffusion)
+		LibplaceboRenderParameters::Settings parameterSettings;
+		parameterSettings.quality = settings.quality;
+		parameterSettings.toneMapping = settings.toneMapping;
+		parameterSettings.gamutMapping = settings.gamutMapping;
+		parameterSettings.peakDetection =
+			static_cast<LibplaceboRenderParameters::Toggle>(settings.peakDetection);
+		parameterSettings.hasContrastRecovery = settings.hasContrastRecovery;
+		parameterSettings.contrastRecovery = settings.contrastRecovery;
+		parameterSettings.upscaler = settings.upscaler;
+		parameterSettings.downscaler = settings.downscaler;
+		parameterSettings.debandStrength = settings.debandStrength;
+		parameterSettings.deband =
+			static_cast<LibplaceboRenderParameters::Toggle>(settings.deband);
+		parameterSettings.sigmoid =
+			static_cast<LibplaceboRenderParameters::Toggle>(settings.sigmoid);
+		parameterSettings.dithering =
+			static_cast<LibplaceboRenderParameters::Toggle>(settings.dithering);
+
+		LibplaceboRenderParameters::Projection projection;
+		std::string projectionError;
+		if (!LibplaceboRenderParameters::Build(parameterSettings,
+			displayLutParsed && displayLut, projection, projectionError))
 		{
-			renderParams.error_diffusion = nullptr;
+			throw std::runtime_error(
+				"could not configure libplacebo render parameters: " + projectionError);
+		}
+		if (displayLutParsed && displayLut && projection.renderParams.error_diffusion == nullptr)
+		{
 			DebugLog::Log(
 				"display: disabled error-diffusion dithering while a 3D LUT is active; using the compatible target-LUT render path");
 		}
-		// Display calibration is attached only to the final target frame.
-		// Keeping the render-parameter/image LUT empty prevents a second,
-		// pre-target application in a different color domain.
-		renderParams.lut = nullptr;
-		renderParams.lut_type = PL_LUT_UNKNOWN;
 
-		if (renderParams.color_map_params)
-			colorMapParams = *renderParams.color_map_params;
-		else
-			colorMapParams =
-				LibplaceboExportedData<pl_color_map_params>("pl_color_map_default_params");
-
-		if (settings.toneMapping != "auto")
-		{
-			const char* toneMapExport = "pl_tone_map_spline";
-			if (settings.toneMapping == "bt2390")
-				toneMapExport = "pl_tone_map_bt2390";
-			else if (settings.toneMapping == "st2094-40")
-				toneMapExport = "pl_tone_map_st2094_40";
-			else if (settings.toneMapping == "reinhard")
-				toneMapExport = "pl_tone_map_reinhard";
-			colorMapParams.tone_mapping_function =
-				&LibplaceboExportedData<pl_tone_map_function>(toneMapExport);
-		}
-
-		if (settings.gamutMapping != "auto")
-		{
-			const char* gamutMapExport = "pl_gamut_map_perceptual";
-			if (settings.gamutMapping == "softclip")
-				gamutMapExport = "pl_gamut_map_softclip";
-			else if (settings.gamutMapping == "relative")
-				gamutMapExport = "pl_gamut_map_relative";
-			else if (settings.gamutMapping == "desaturate")
-				gamutMapExport = "pl_gamut_map_desaturate";
-			colorMapParams.gamut_mapping =
-				&LibplaceboExportedData<pl_gamut_map_function>(gamutMapExport);
-		}
-
-		if (settings.hasContrastRecovery)
-			colorMapParams.contrast_recovery = settings.contrastRecovery;
+		renderParams = projection.renderParams;
+		colorMapParams = projection.colorMapParams;
+		peakDetectParams = projection.peakDetectParams;
+		sigmoidParams = projection.sigmoidParams;
+		debandParams = projection.debandParams;
+		ditherParams = projection.ditherParams;
 		renderParams.color_map_params = &colorMapParams;
-
-		if (settings.sigmoid == AutoToggle::OFF)
-		{
-			renderParams.sigmoid_params = nullptr;
-		}
-		else if (settings.sigmoid == AutoToggle::ON)
-		{
-			sigmoidParams = LibplaceboExportedData<pl_sigmoid_params>(
-				"pl_sigmoid_default_params");
-			renderParams.sigmoid_params = &sigmoidParams;
-		}
-		else if (renderParams.sigmoid_params)
-		{
-			sigmoidParams = *renderParams.sigmoid_params;
-			renderParams.sigmoid_params = &sigmoidParams;
-		}
-
-		if (settings.peakDetection == AutoToggle::OFF)
-		{
-			renderParams.peak_detect_params = nullptr;
-		}
-		else if (settings.peakDetection == AutoToggle::ON)
-		{
-			peakDetectParams = LibplaceboExportedData<pl_peak_detect_params>(
-				"pl_peak_detect_high_quality_params");
-			renderParams.peak_detect_params = &peakDetectParams;
-		}
-		else if (renderParams.peak_detect_params)
-		{
-			peakDetectParams = *renderParams.peak_detect_params;
-			renderParams.peak_detect_params = &peakDetectParams;
-		}
-
-		if (settings.deband == AutoToggle::OFF)
-		{
-			renderParams.deband_params = nullptr;
-		}
-		else if (settings.deband == AutoToggle::ON)
-		{
-			debandParams = LibplaceboExportedData<pl_deband_params>(
-				"pl_deband_default_params");
-			renderParams.deband_params = &debandParams;
-		}
-		else if (renderParams.deband_params)
-		{
-			debandParams = *renderParams.deband_params;
-			renderParams.deband_params = &debandParams;
-		}
-
-		if (settings.dithering == AutoToggle::OFF)
-		{
-			renderParams.dither_params = nullptr;
-		}
-		else if (settings.dithering == AutoToggle::ON)
-		{
-			ditherParams = LibplaceboExportedData<pl_dither_params>(
-				"pl_dither_default_params");
-			renderParams.dither_params = &ditherParams;
-		}
-		else if (renderParams.dither_params)
-		{
-			ditherParams = *renderParams.dither_params;
-			renderParams.dither_params = &ditherParams;
-		}
-
-		if (settings.upscaler != "auto")
-		{
-			const char* filterExport = "pl_filter_ewa_lanczossharp";
-			if (settings.upscaler == "ewa_lanczos")
-				filterExport = "pl_filter_ewa_lanczos";
-			else if (settings.upscaler == "bicubic")
-				filterExport = "pl_filter_bicubic";
-			else if (settings.upscaler == "bilinear")
-				filterExport = "pl_filter_bilinear";
-			renderParams.upscaler =
-				&LibplaceboExportedData<pl_filter_config>(filterExport);
-		}
-
-		if (settings.downscaler != "auto")
-		{
-			const char* filterExport = "pl_filter_ewa_lanczos";
-			if (settings.downscaler == "bicubic")
-				filterExport = "pl_filter_bicubic";
-			else if (settings.downscaler == "bilinear")
-				filterExport = "pl_filter_bilinear";
-			renderParams.downscaler =
-				&LibplaceboExportedData<pl_filter_config>(filterExport);
-		}
+		renderParams.peak_detect_params =
+			projection.renderParams.peak_detect_params ? &peakDetectParams : nullptr;
+		renderParams.sigmoid_params =
+			projection.renderParams.sigmoid_params ? &sigmoidParams : nullptr;
+		renderParams.deband_params =
+			projection.renderParams.deband_params ? &debandParams : nullptr;
+		renderParams.dither_params =
+			projection.renderParams.dither_params ? &ditherParams : nullptr;
 
 		DebugLog::Log(
 		"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_release_drift=%llums subtitle_padding=%dpx",
@@ -3137,7 +3089,9 @@ struct LibplaceboVideoRenderer::Impl
 				? renderParams.upscaler->name : "built-in",
 			renderParams.downscaler && renderParams.downscaler->name
 				? renderParams.downscaler->name : "built-in",
-			renderParams.deband_params ? "on" : "off",
+			settings.debandStrength == "auto" ?
+				(renderParams.deband_params ? "auto/on" : "auto/off") :
+				settings.debandStrength.c_str(),
 			renderParams.dither_params ? "on" : "off",
 			settings.outputPresentation.c_str(),
 			settings.outputRange.c_str(),
@@ -7368,7 +7322,7 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 	if (!m_manualDisplayRule.empty())
 		DebugLog::Log("display: restored runtime manual rule '%s' for new renderer",
 			m_manualDisplayRule.c_str());
-	m_callback.OnRendererDetailString(TEXT("VideoProcessor Renderer (Alpha)"));
+	m_callback.OnRendererDetailString(TEXT("VP Renderer"));
 }
 
 
@@ -8055,20 +8009,20 @@ void LibplaceboVideoRenderer::Retire() noexcept
 			blackPresented = m_impl->PresentBlackFrame();
 		}
 		DebugLog::Log(
-			"Alpha renderer retirement: terminal black present=%d before swapchain release",
+			"VP Renderer retirement: terminal black present=%d before swapchain release",
 			blackPresented ? 1 : 0);
 		m_impl.reset();
 		m_hasPresentedLiveFrame.store(false, std::memory_order_release);
 		DebugLog::Log(
-			"Alpha renderer retired: render thread stopped and presentation swapchain released");
+			"VP Renderer retired: render thread stopped and presentation swapchain released");
 	}
 	catch (const std::exception& error)
 	{
-		DebugLog::Log("Alpha renderer retirement failed: %s", error.what());
+		DebugLog::Log("VP Renderer retirement failed: %s", error.what());
 	}
 	catch (...)
 	{
-		DebugLog::Log("Alpha renderer retirement failed with an unknown exception");
+		DebugLog::Log("VP Renderer retirement failed with an unknown exception");
 	}
 }
 
@@ -8403,11 +8357,9 @@ void LibplaceboVideoRenderer::ApplyViewportTarget(
 
 	CString details;
 	if (configured)
-		details.Format(
-			TEXT("VideoProcessor Renderer (Alpha) - Viewport: %.4f:1"),
-			aspect);
+		details.Format(TEXT("VP Renderer - Screen: %.4f:1"), aspect);
 	else
-		details = TEXT("VideoProcessor Renderer (Alpha) - Viewport: output panel");
+		details = TEXT("VP Renderer - Screen: output panel");
 	m_callback.OnRendererDetailString(details);
 }
 

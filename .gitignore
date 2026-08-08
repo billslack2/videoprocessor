@@ -46,6 +46,7 @@ bld/
 *.vspscc
 *.vssscc
 .builds
+.dependencies/
 *.pidb
 *.svclog
 *.scc

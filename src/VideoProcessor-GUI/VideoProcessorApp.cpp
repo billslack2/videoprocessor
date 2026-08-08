@@ -13,6 +13,7 @@
 #include <VideoConversionOverride.h>
 #include <DebugLog.h>
 #include <ConfigFile.h>
+#include <QueueConfiguration.h>
 #include <DisplayRuleExpression.h>
 #include <DisplayTopologySession.h>
 #include <MainConfigSchema.h>
@@ -62,6 +63,9 @@ Options:
   /capture_device "name"
       Select the capture device.
 
+  /capture_input "connection"
+      Select the capture connection type (for example HDMI or SDI).
+
   /renderer "name"
       Select the renderer.
 
@@ -71,7 +75,7 @@ Options:
   /reset_after_render_restart_seconds <positive integer>
       Delay the post-start/restart queue recovery reset (default: 5 seconds).
 
-  /reset_queue_too_large_percent <1-100>
+  /reset_queue_too_large_percent <1-200>
       Queue high-water threshold for recovery (default: 75 percent).
 
   /scene_detect
@@ -80,10 +84,6 @@ Options:
       A hard one-frame limit preserves queue and A/V alignment if no scene occurs.
       Used only with P010 output; otherwise the setting is retained but inactive.
       If omitted or disabled, the legacy timestamp/delivery path is unchanged.
-
-  /disable_detection_features
-      Force scene analysis and subtitle repositioning/OCR off and disable the
-      Scene Detect selector. Intended for performance and timing isolation.
 
   /newlldv
       Enable the opt-in BT.2020 + SDR LLDV heuristic (requires both LLDV follow modes).
@@ -422,42 +422,55 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	DbgLog((LOG_TRACE, 1, TEXT("VideoProcessor: Loading configuration from %S"), config.GetLoadedPath().c_str()));
 	ThrowIfConfigHasSyntaxWarnings(config);
 	ValidateCommandLineConfigKeys(config);
+	std::string defaultQueueSection;
+	const bool hasDefaultQueue = QueueConfiguration::ResolveDefaultSection(
+		config, defaultQueueSection);
+	auto tryGetDefaultQueueString = [&](const char* key,
+		std::string& value)
+	{
+		return hasDefaultQueue && config.TryGetString(
+			defaultQueueSection, key, value);
+	};
 
 	// Compatibility only: startup priming is now automatic and is no longer a
 	// normal user-facing control. Existing files retain their prior behavior.
 	std::string startupPrerollFrames;
-	const bool legacyStartupConfigured = config.TryGetString(
-		"queue", "startup_preroll_frames", startupPrerollFrames);
+	const bool legacyStartupConfigured = tryGetDefaultQueueString(
+		"startup_preroll_frames", startupPrerollFrames);
 	if (legacyStartupConfigured)
 	{
 		const size_t frames = static_cast<size_t>(
 			std::stoul(startupPrerollFrames));
 		videoProcessorApp.SetQueueStartupPrerollFrames(frames);
 		DbgLog((LOG_TRACE, 1,
-			TEXT("VideoProcessor: Using legacy [queue] startup_preroll_frames=%zu"),
-			frames));
+			TEXT("VideoProcessor: Using legacy [%S] startup_preroll_frames=%zu"),
+			defaultQueueSection.c_str(), frames));
 	}
 
 	std::string targetFrames;
-	if (config.TryGetString("queue", "target_frames", targetFrames) ||
-		config.TryGetString("queue", "steady_reserve_frames", targetFrames))
+	if (tryGetDefaultQueueString("target_frames", targetFrames) ||
+		tryGetDefaultQueueString("steady_reserve_frames", targetFrames))
 	{
 		const size_t frames = static_cast<size_t>(std::stoul(targetFrames));
 		videoProcessorApp.SetQueueSteadyReserveFrames(frames);
 		DbgLog((LOG_TRACE, 1,
-			TEXT("VideoProcessor: Using [queue] target_frames=%zu"),
-			frames));
+			TEXT("VideoProcessor: Using [%S] target_frames=%zu"),
+			defaultQueueSection.c_str(), frames));
 	}
 
 	std::string leadFrames;
-	if (config.TryGetString("queue", "lead_frames", leadFrames) ||
+	const bool queueLeadConfigured = tryGetDefaultQueueString(
+		"lead_frames", leadFrames);
+	if (queueLeadConfigured ||
 		config.TryGetString(
 			"directshow", "presentation_lead_frames", leadFrames))
 	{
 		const size_t frames = static_cast<size_t>(std::stoul(leadFrames));
 		videoProcessorApp.SetPresentationLeadFrames(frames);
 		DbgLog((LOG_TRACE, 1,
-			TEXT("VideoProcessor: Using [queue] lead_frames=%zu"), frames));
+			TEXT("VideoProcessor: Using [%S] lead_frames=%zu"),
+			(queueLeadConfigured ? defaultQueueSection.c_str() : "directshow"),
+			frames));
 	}
 	DbgLog((LOG_TRACE, 1,
 		TEXT("VideoProcessor: Effective queue policy lead_frames=%zu target_frames=%zu startup_preroll=%s"),
@@ -466,8 +479,7 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 		legacyStartupConfigured ? TEXT("legacy-configured") : TEXT("automatic")));
 
 	std::string activePictureLookaheadFrames;
-	if (config.TryGetString(
-		"queue", "active_picture_lookahead_frames",
+	if (tryGetDefaultQueueString("active_picture_lookahead_frames",
 		activePictureLookaheadFrames))
 	{
 		const size_t frames = static_cast<size_t>(
@@ -478,17 +490,17 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 			frames));
 	}
 
-	// [queue] is the canonical file location for the renderer hard capacity.
-	// The configured arguments precede the literal process command line, so a
-	// deliberate /queue_size always remains the highest-priority override.
+	// The default Queue profile owns the renderer hard capacity. The configured
+	// arguments precede the literal process command line, so a deliberate
+	// /queue_size always remains the highest-priority override.
 	std::string queueSize;
-	if (config.TryGetString("queue", "queue_size", queueSize))
+	if (tryGetDefaultQueueString("queue_size", queueSize))
 	{
 		arguments.emplace_back(L"/queue_size");
 		arguments.emplace_back(StringToWideString(queueSize));
 		DbgLog((LOG_TRACE, 1,
-			TEXT("VideoProcessor: Renderer queue control selected: hard capacity=%S source=[queue] queue_size"),
-			queueSize.c_str()));
+			TEXT("VideoProcessor: Renderer queue control selected: hard capacity=%S source=[%S] queue_size"),
+			queueSize.c_str(), defaultQueueSection.c_str()));
 	}
 	else if (config.TryGetString("command_line", "queue_size", queueSize))
 	{
@@ -505,6 +517,7 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigBoolOption(arguments, config, { "windowedfullscreenmode", "windowed_fullscreen_mode" }, L"/windowedfullscreenmode");
 	AppendConfigStringOption(arguments, config, { "renderer" }, L"/renderer");
 	AppendConfigStringOption(arguments, config, { "capture_device" }, L"/capture_device");
+	AppendConfigStringOption(arguments, config, { "capture_input" }, L"/capture_input");
 	AppendConfigStringOption(arguments, config, { "frame_offset" }, L"/frame_offset");
 	AppendConfigStringOption(arguments, config, { "video_conversion" }, L"/video_conversion");
 	AppendConfigStringOption(arguments, config, { "container_colorspace" }, L"/container_colorspace");
@@ -516,8 +529,6 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigStringOption(arguments, config, { "renderer_transfer_matrix" }, L"/renderer_transfer_matrix");
 	AppendConfigStringOption(arguments, config, { "renderer_primaries" }, L"/renderer_primaries");
 	AppendConfigBoolOption(arguments, config, { "scene_detect", "scene" }, L"/scene_detect");
-	AppendConfigBoolOption(arguments, config,
-		{ "disable_detection_features" }, L"/disable_detection_features");
 	// Retain the old spelling as a compatibility alias.  The clearer Boolean
 	// override below is appended last and therefore takes precedence if both
 	// are present in a configuration file.
@@ -526,8 +537,6 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	// config-only switch preserves a deliberate Basic override without exposing
 	// renderer implementation details in the UI.
 	AppendConfigBoolOption(arguments, config, { "scene_correction_basic" }, L"/scene_correction_basic");
-	AppendConfigStringOption(arguments, config,
-		{ "subtitle_reposition" }, L"/subtitle_reposition");
 	AppendConfigBoolOption(arguments, config, { "newlldv", "new_lldv" }, L"/newlldv");
 	AppendConfigBoolOption(arguments, config, { "noui", "no_ui" }, L"/noui");
 	AppendConfigBoolOption(arguments, config, { "startminimized", "start_minimized" }, L"/startminimized");
@@ -537,14 +546,22 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	// general application startup choices in the VP-0079 layout.
 	AppendConfigStringOptionInSection(arguments, config, "directshow",
 		{ "frame_offset" }, L"/frame_offset");
-	AppendConfigStringOptionInSection(arguments, config, "directshow",
-		{ "video_conversion" }, L"/video_conversion");
-	AppendConfigStringOptionInSection(arguments, config, "directshow",
-		{ "container_colorspace" }, L"/container_colorspace");
-	AppendConfigStringOptionInSection(arguments, config, "directshow",
-		{ "hdr_colorspace" }, L"/hdr_colorspace");
-	AppendConfigStringOptionInSection(arguments, config, "directshow",
-		{ "hdr_luminance" }, L"/hdr_luminance");
+	// These source-processing settings predate the Alpha renderer and were
+	// historically accepted under [directshow]. They now belong to [general]
+	// because both renderer backends consume them. Retain the old location only
+	// as a fallback; a canonical [general] value always wins.
+	for (const std::pair<const char*, const wchar_t*> sharedInputOption : {
+		std::pair<const char*, const wchar_t*>{ "video_conversion", L"/video_conversion" },
+		{ "container_colorspace", L"/container_colorspace" },
+		{ "hdr_colorspace", L"/hdr_colorspace" },
+		{ "hdr_luminance", L"/hdr_luminance" } })
+	{
+		std::string canonicalValue;
+		if (!TryGetFirstConfigString(config, { sharedInputOption.first },
+			canonicalValue))
+			AppendConfigStringOptionInSection(arguments, config, "directshow",
+				{ sharedInputOption.first }, sharedInputOption.second);
+	}
 	AppendConfigStringOptionInSection(arguments, config, "directshow",
 		{ "renderer_start_stop_time_method" }, L"/renderer_start_stop_time_method");
 	AppendConfigStringOptionInSection(arguments, config, "directshow",
@@ -556,22 +573,39 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments()
 	AppendConfigStringOptionInSection(arguments, config, "directshow",
 		{ "renderer_primaries" }, L"/renderer_primaries");
 
-	AppendConfigStringOptionInSection(arguments, config, "queue_recovery",
-		{ "reset_after_render_restart_seconds" },
-		L"/reset_after_render_restart_seconds");
-	AppendConfigStringOptionInSection(arguments, config, "queue_recovery",
-		{ "reset_queue_too_large_percent" },
-		L"/reset_queue_too_large_percent");
-	AppendConfigStringOptionInSection(arguments, config, "lldv",
-		{ "max_cll" }, L"/lldv_max_cll");
-	AppendConfigStringOptionInSection(arguments, config, "lldv",
-		{ "max_fall" }, L"/lldv_max_fall");
-	AppendConfigStringOptionInSection(arguments, config, "lldv",
-		{ "mastering_min_luminance" }, L"/lldv_mastering_min_luminance");
-	AppendConfigStringOptionInSection(arguments, config, "lldv",
-		{ "mastering_max_luminance" }, L"/lldv_mastering_max_luminance");
+	for (const std::pair<const char*, const wchar_t*> recoveryOption : {
+		std::pair<const char*, const wchar_t*>{
+			"reset_after_render_restart_seconds",
+			L"/reset_after_render_restart_seconds" },
+		{ "reset_queue_too_large_percent",
+			L"/reset_queue_too_large_percent" }
+	})
+	{
+		std::string value;
+		if (QueueConfiguration::TryGetRecoveryString(
+			config, recoveryOption.first, value) && !value.empty())
+		{
+			arguments.emplace_back(recoveryOption.second);
+			arguments.emplace_back(StringToWideString(value));
+		}
+	}
+	// [lldv] is now resolved by the unified profile runtime.  Do not inject its
+	// values as command-line overrides here: that would make the legacy root
+	// block appear explicit and prevent a later [lldv.<name>] profile from
+	// taking effect. Explicit /lldv_* command-line options remain supported and
+	// intentionally retain precedence over every profile.
 
 	return arguments;
+}
+
+bool LoadDebugLoggingEnabled()
+{
+	ConfigFile config;
+	if (!config.Load()) return true;
+	bool enabled = true;
+	if (!config.TryGetBool("logging", "enabled", enabled))
+		return true;
+	return enabled;
 }
 
 std::wstring LoadConfiguredFullscreenMonitorName()
@@ -771,6 +805,7 @@ bool RequiresCommandLineValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/lldv_mastering_min_luminance") ||
 		IsCommandLineOption(argument, L"/lldv_mastering_max_luminance") ||
 		IsCommandLineOption(argument, L"/capture_device") ||
+		IsCommandLineOption(argument, L"/capture_input") ||
 		IsCommandLineOption(argument, L"/fullscreen_monitor_name") ||
 		IsCommandLineOption(argument, L"/frame_offset") ||
 		IsCommandLineOption(argument, L"/video_conversion") ||
@@ -873,9 +908,9 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 
 		if (IsCommandLineOption(argument, L"/reset_queue_too_large_percent") &&
 			(!IsPositiveInteger(arguments[index + 1]) ||
-			 _wtoi(arguments[index + 1]) > 100))
+			 _wtoi(arguments[index + 1]) > 200))
 			throw std::runtime_error(
-				"Invalid /reset_queue_too_large_percent: expected an integer from 1 to 100");
+				"Invalid /reset_queue_too_large_percent: expected an integer from 1 to 200");
 
 		if (IsCommandLineOption(argument, L"/lldv_max_cll") ||
 			IsCommandLineOption(argument, L"/lldv_max_fall") ||
@@ -985,10 +1020,13 @@ BOOL CVideoProcessorApp::InitInstance()
 
 	// Resolve startup-only logging configuration before rotation and before
 	// any producer thread can enqueue a diagnostic.
-	const auto debugLogRetention = LoadDebugLogRetentionSetting();
-	DEBUGLOG_INIT(
-		debugLogRetention.count,
-		debugLogRetention.diagnostic);
+	if (LoadDebugLoggingEnabled())
+	{
+		const auto debugLogRetention = LoadDebugLogRetentionSetting();
+		DEBUGLOG_INIT(
+			debugLogRetention.count,
+			debugLogRetention.diagnostic);
+	}
 
 	m_displayRecoveryStatePath = CurrentStatePath();
 	if (fixDisplayRequested)
@@ -1135,11 +1173,16 @@ BOOL CVideoProcessorApp::InitInstance()
 				
 			}
 
+			if (wcscmp(pArgs[i], L"/capture_input") == 0 && (i + 1) < iNumOfArgs)
+			{
+				dlg.SetCaptureInput(pArgs[i + 1]);
+			}
+
 
 			// /frame_offset [value|"auto"]
 			if (wcscmp(pArgs[i], L"/frame_offset") == 0 && (i + 1) < iNumOfArgs)
 			{
-				if (wcscmp(pArgs[i + 1], L"AUTO") == 0)
+				if (_wcsicmp(pArgs[i + 1], L"AUTO") == 0)
 				{
 					dlg.StartFrameOffsetAuto();
 				}
@@ -1537,11 +1580,12 @@ BOOL CVideoProcessorApp::InitInstance()
 				dlg.HideUI(booleanValue);
 			}
 
-			// scene-aware timing correction
+			// Retain the legacy switch as a no-op so existing command lines remain
+			// accepted. Scene detection is now controlled solely by /scene_detect.
 			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs,
 				L"/disable_detection_features", booleanValue))
 			{
-				dlg.DisableDetectionFeatures(booleanValue);
+				DebugLog::Log("Legacy /disable_detection_features ignored; use /scene_detect instead");
 			}
 
 			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs, L"/scene_detect", booleanValue) ||
@@ -1565,7 +1609,9 @@ BOOL CVideoProcessorApp::InitInstance()
 							"true, false, basic, or advanced");
 					++i;
 				}
-				dlg.SubtitleRepositioning(subtitleMode);
+				// Accepted for command-line compatibility only. Subtitle repositioning
+				// is permanently disabled; Screen Config subtitle fitting is separate.
+				(void)subtitleMode;
 			}
 
 			if (wcscmp(pArgs[i], L"/scene_correction_mode") == 0 &&

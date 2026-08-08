@@ -690,6 +690,8 @@ namespace Tests
 				{ "16X9", 16, 9 },
 				{ " 16 : 9 ", 16, 9 },
 				{ "2:1", 2, 1 },
+				{ "2.1:1", 21, 10 },
+				{ "2100x1000", 21, 10 },
 				{ "2.2:1", 11, 5 },
 				{ "2.35:1", 47, 20 },
 				{ "1.7777778", 8888889, 5000000 },
@@ -1262,7 +1264,7 @@ namespace Tests
 			DeleteFileA(path.c_str());
 		}
 
-		TEST_METHOD(RendererProfileConfigResolvesAutomaticGroupsDeterministically)
+		TEST_METHOD(RendererProfileConfigUsesFirstMatchingProfileInFileOrder)
 		{
 			RendererProfileConfig::Model model;
 			RendererProfileConfig::Group input;
@@ -1294,7 +1296,7 @@ namespace Tests
 					return false;
 				}, selections, error));
 			Assert::AreEqual(static_cast<size_t>(1), selections.size());
-			Assert::AreEqual("pq_specific", selections[0].profile.c_str());
+			Assert::AreEqual("pq", selections[0].profile.c_str());
 			Assert::IsFalse(selections[0].configuredDefault);
 		}
 

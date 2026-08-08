@@ -1,0 +1,14 @@
+TITLE "VP Test Warm LUT - not for calibration"
+# Test fixture for the configuration editor's 3D LUT selector.
+LUT_3D_SIZE 2
+DOMAIN_MIN 0.0 0.0 0.0
+DOMAIN_MAX 1.0 1.0 1.0
+
+0.0 0.0 0.0
+0.04 0.0 1.0
+0.04 1.0 0.0
+0.04 1.0 1.0
+1.0 0.0 0.0
+1.0 0.0 1.0
+1.0 1.0 0.0
+1.0 1.0 1.0

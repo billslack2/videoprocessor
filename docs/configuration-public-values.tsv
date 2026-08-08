@@ -90,6 +90,8 @@ shader.<group>.<member>.shader_type	nls
 shader.<group>.<member>.shader_type	custom
 shader.<group>.<member>.stage	pre_resize
 shader.<group>.<member>.stage	post_resize
+actions.<name>.enabled	true
+actions.<name>.enabled	false
 actions.<name>.renderer	vprenderer
 actions.<name>.renderer	*
 actions.<name>.on	refresh.applied

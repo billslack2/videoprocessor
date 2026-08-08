@@ -13,12 +13,13 @@ section overlays it. There is no `profiles:`, `default:`,
 
 | Section | Owner |
 | --- | --- |
-| `[general]` | Application startup, capture, and detection choices. |
+| `[general]` | Application startup, capture, conversion, and input metadata choices shared by every renderer. |
 | `[renderer_alias]` | Readable aliases for renderer-combo indexes. |
 | `[queue]` | VP queue policy for either renderer. |
-| `[directshow]`, `[directshow.conversion]`, `[directshow.ppm]` | DirectShow timing and conversion policy. |
-| `[vprenderer]` | VideoProcessor Renderer (Alpha) base and variants. |
-| `[vprenderer.viewport]` | Alpha screen geometry and subtitle layout. It is not shared. |
+| `[directshow]`, `[directshow.conversion]`, `[directshow.ppm]` | DirectShow-only timing, renderer overrides, and legacy internal conversion tuning. |
+| `[lldv.<profile>]` | Ordered LLDV metadata profiles; the first is the default. |
+| `[vprenderer]` | VP Renderer base and variants. |
+| `[vprenderer.viewport]` | VP Renderer screen configuration and subtitle layout. It is not shared. |
 | `[shader.<group>]` | Shared shader group, with HLSL and GLSL alternatives. |
 | `[actions.<name>]` | Command run after a committed event. |
 | `[shortcuts]` | Fixed VP commands only. |
@@ -31,36 +32,38 @@ renderer order.
 
 ```ini
 [queue]
-when: $key=="l"
+shortcut: l
 queue_size: 32
 lead_frames: 4
 target_frames: 3
 
 [queue.low_latency]
-when: $key=="L"
+shortcut: Shift+l
 queue_size: 1
 target_frames: 1
 ```
 
 The exact root is the baseline. Pressing `L` selects `low_latency`; pressing
-`l` selects the root again. The manual choice lives in memory across Alpha
+`l` selects the root again. The manual choice lives in memory across VP Renderer
 rebuilds and refresh transitions, then disappears when VP exits. A one-frame
 queue is deliberately not the default: an underpowered renderer can trigger
 frequent reset/recovery work.
 
-`when:` uses the normal expression language. It may match source values,
-`$key`, or both. Evaluation occurs on a source state change, rebuild, or key
+`when:` uses the normal expression language for source-state rules.
+`shortcut:` is a separate readable key chord. If both are present, VP combines
+them internally as `(<entire when rule>) || ${key}=="<shortcut>"`; either may
+select the section. Evaluation occurs on a source state change, rebuild, or key
 event—not for every video frame. A child selected by `$key` becomes the
 process-local manual choice; automatic source matches are reevaluated when
 their source values change.
 
 [vprenderer.rec709]
-when: $key=="F4"
+shortcut: F4
 quality: high
 sdr_target_primaries: REC709
 
 [vprenderer.bt2020]
-when: $key=="F5"
+shortcut: F5
 sdr_target_primaries: BT2020
 report_bt2020_to_display: true
 ```
@@ -73,8 +76,12 @@ effective configuration rather than accumulating changes.
 ## DirectShow
 
 ```ini
-[directshow]
+[general]
 video_conversion: V210_TO_P010
+hdr_colorspace: FOLLOW_INPUT_LLDV
+hdr_luminance: FOLLOW_INPUT_LLDV
+
+[directshow]
 renderer_start_stop_time_method: RATIONAL_RATIONAL
 frame_offset: 90
 renderer_nominal_range: AUTO
@@ -104,10 +111,10 @@ that `type:` can mean **single versus multi group**.
 
 ```ini
 [shader.nls]
-when: $key=="n"
+shortcut: n
 
 [shader.nls.standard]
-when: $key=="Shift+n"
+shortcut: Shift+n
 shader_type: nls
 hlsl_file: NLS.hlsl
 glsl_file: NLS.glsl
@@ -115,7 +122,7 @@ stage: pre_resize
 order: 10
 
 [shader.nls.protected]
-when: $key=="Shift+p"
+shortcut: Shift+p
 shader_type: nls
 hlsl_file: NLS.hlsl
 glsl_file: NLS.glsl
@@ -163,8 +170,10 @@ it.
 
 Actions are discovered directly—there is no list section. `run:` is one
 command line: the executable or script first, then its arguments. The default
-scope is `vprenderer`; `directshow` and `*` are accepted scopes for the
-matching event producer.
+renderer target is `vprenderer`; `*` targets all renderers, and a positive
+one-based renderer-selector index targets that local renderer directly.
+Named `[renderer_alias]` targets remain readable for compatibility but are not
+required by the configuration editor.
 
 ```ini
 [actions.audio_delay_film]

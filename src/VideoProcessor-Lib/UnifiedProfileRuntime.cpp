@@ -56,14 +56,48 @@ namespace
 			left.viewport.subtitleFit == right.viewport.subtitleFit &&
 			left.viewport.subtitleHoldMilliseconds ==
 				right.viewport.subtitleHoldMilliseconds &&
+			left.viewport.subtitleReleaseDriftMilliseconds ==
+				right.viewport.subtitleReleaseDriftMilliseconds &&
 			left.viewport.subtitlePaddingPixels ==
 				right.viewport.subtitlePaddingPixels))
 			return false;
 		if (left.queue.profile != right.queue.profile ||
 			left.queue.hasQueueSize != right.queue.hasQueueSize ||
 			left.queue.queueSize != right.queue.queueSize ||
+			left.queue.hasLeadFrames != right.queue.hasLeadFrames ||
+			left.queue.leadFrames != right.queue.leadFrames ||
 			left.queue.hasTargetFrames != right.queue.hasTargetFrames ||
-			left.queue.targetFrames != right.queue.targetFrames)
+			left.queue.targetFrames != right.queue.targetFrames ||
+			left.queue.hasActivePictureLookaheadFrames !=
+				right.queue.hasActivePictureLookaheadFrames ||
+			left.queue.activePictureLookaheadFrames !=
+				right.queue.activePictureLookaheadFrames ||
+			left.queue.hasStartupPrerollFrames !=
+				right.queue.hasStartupPrerollFrames ||
+			left.queue.startupPrerollFrames !=
+				right.queue.startupPrerollFrames ||
+			left.queue.hasResetAfterRendererRestartSeconds !=
+				right.queue.hasResetAfterRendererRestartSeconds ||
+			left.queue.resetAfterRendererRestartSeconds !=
+				right.queue.resetAfterRendererRestartSeconds ||
+			left.queue.hasResetQueueTooLargePercent !=
+				right.queue.hasResetQueueTooLargePercent ||
+			left.queue.resetQueueTooLargePercent !=
+				right.queue.resetQueueTooLargePercent)
+			return false;
+		if (left.lldv.profile != right.lldv.profile ||
+			left.lldv.hasMaxCll != right.lldv.hasMaxCll ||
+			left.lldv.maxCll != right.lldv.maxCll ||
+			left.lldv.hasMaxFall != right.lldv.hasMaxFall ||
+			left.lldv.maxFall != right.lldv.maxFall ||
+			left.lldv.hasMasteringMinLuminance !=
+				right.lldv.hasMasteringMinLuminance ||
+			left.lldv.masteringMinLuminance !=
+				right.lldv.masteringMinLuminance ||
+			left.lldv.hasMasteringMaxLuminance !=
+				right.lldv.hasMasteringMaxLuminance ||
+			left.lldv.masteringMaxLuminance !=
+				right.lldv.masteringMaxLuminance)
 			return false;
 
 		const auto& leftValues = left.variables.Values();
@@ -388,8 +422,8 @@ namespace UnifiedProfileRuntime
 				};
 			int specificity = 0;
 			std::string matchError;
-			const bool matches = action.whenExpression.Matches(
-				values, specificity, matchError);
+			const bool matches = action.when.empty() ||
+				action.whenExpression.Matches(values, specificity, matchError);
 			if (!matches)
 			{
 				if (!matchError.empty())
@@ -604,6 +638,12 @@ namespace UnifiedProfileRuntime
 			!RendererProfileConfig::ResolveQueue(
 				m_model, selectedQueue->second, queue, error))
 			return false;
+		RendererProfileConfig::ResolvedLldv lldv;
+		const auto selectedLldv = effective.find("lldv");
+		if (selectedLldv != effective.end() &&
+			!RendererProfileConfig::ResolveLldv(
+				m_model, selectedLldv->second, lldv, error))
+			return false;
 
 		std::map<std::string, StateVariables::Value> variables;
 		PublishSourceVariables(values, variables);
@@ -639,6 +679,7 @@ namespace UnifiedProfileRuntime
 		next->effectiveSelections = effective;
 		next->viewport = viewport;
 		next->queue = queue;
+		next->lldv = lldv;
 		next->variables = StateVariables::Snapshot(
 			generation, variables);
 		snapshot = next;

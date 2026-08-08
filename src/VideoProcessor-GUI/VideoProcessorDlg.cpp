@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <dwmapi.h>
 #include <dxgi1_2.h>
+#include <shellapi.h>
 #include <wrl/client.h>
 #include <chrono>
 #include <cmath>
@@ -124,6 +125,9 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 	{ "capture_4",             ID_COMMAND_CAPTURE_4,              '4',       FCONTROL },
 	{ "video_conversion_off",  ID_COMMAND_VC_NONE,                'V',       0 },
 	{ "video_conversion_p010", ID_COMMAND_VC_P010,                'V',       FSHIFT },
+	{ "config_editor",         ID_COMMAND_CONFIG_EDITOR,          'S',       FCONTROL },
+	{ "screen_profile_normal", ID_COMMAND_SCREEN_PROFILE_NORMAL,  VK_F3,     0, true },
+	{ "screen_profile_scope",  ID_COMMAND_SCREEN_PROFILE_SCOPE,   VK_F2,     0, true },
 	{ "display_rules_auto",    ID_COMMAND_DISPLAY_RULE_AUTO,      VK_F4,     0, true },
 };
 
@@ -317,8 +321,18 @@ HACCEL CreateConfiguredAccelerators(
 		rendererConfig.Load(ConfigFile::RENDERER_FILENAME);
 	RendererProfileConfig::Model unifiedProfileModel;
 	std::string unifiedProfileError;
+	bool hasNamedLldvProfile = false;
+	if (hasMainConfig)
+		for (const std::string& section : mainConfig.GetSectionNames())
+			if (section.rfind("lldv.", 0) == 0)
+			{
+				hasNamedLldvProfile = true;
+				break;
+			}
 	const bool hasUnifiedRendererConfig = hasMainConfig &&
-		RendererProfileConfig::IsUnified(mainConfig) &&
+		(RendererProfileConfig::IsUnified(mainConfig) ||
+		 mainConfig.HasSection("lldv") ||
+		 hasNamedLldvProfile) &&
 		RendererProfileConfig::Read(mainConfig, unifiedProfileModel, unifiedProfileError);
 	std::vector<ACCEL> accelerators;
 	std::set<unsigned int> bindings;
@@ -336,6 +350,12 @@ HACCEL CreateConfiguredAccelerators(
 		if (hasConfig &&
 			config.TryGetString("shortcuts", definition.configKey, configuredValue))
 		{
+			// A present but empty value is an explicit opt-out.  This is
+			// intentionally different from an absent key, which keeps the
+			// compiled default shortcut.
+			if (ConfigFile::Trim(configuredValue).empty())
+				continue;
+
 			ACCEL configuredAccelerator = {};
 			if (TryParseShortcut(configuredValue, configuredAccelerator))
 			{
@@ -484,7 +504,18 @@ HACCEL CreateConfiguredAccelerators(
 			if (section.rfind("shader.", 0) != 0)
 				continue;
 			std::string when;
-			if (!mainConfig.TryGetString(section, "when", when))
+			std::string shortcut;
+			mainConfig.TryGetString(section, "when", when);
+			mainConfig.TryGetString(section, "shortcut", shortcut);
+			std::string mergeError;
+			if (!RendererProfileConfig::MergeShortcutIntoWhen(
+				shortcut, "[" + section + "]", when, mergeError))
+			{
+				DEBUGLOG("Invalid [%S] shortcut ignored for accelerators: %S",
+					section.c_str(), mergeError.c_str());
+				continue;
+			}
+			if (when.empty())
 				continue;
 			DisplayRuleExpression::Expression expression;
 			std::string error;
@@ -582,10 +613,10 @@ HACCEL CreateConfiguredAccelerators(
 		}
 		else
 		{
-			WORD nextCommand = ID_COMMAND_DISPLAY_RULE_FIRST;
+			WORD nextCommand = ID_COMMAND_UNIFIED_PROFILE_FIRST;
 			for (const std::string& chord : chords)
 			{
-				if (nextCommand > ID_COMMAND_DISPLAY_RULE_LAST) break;
+				if (nextCommand > ID_COMMAND_UNIFIED_PROFILE_LAST) break;
 				ACCEL accelerator = {};
 				if (!TryParseShortcut(chord, accelerator)) { DEBUGLOG("Invalid unified profile shortcut '%s'", chord.c_str()); continue; }
 				const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
@@ -1223,8 +1254,10 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_VC_P010, &CVideoProcessorDlg::SetVideoConversionP010)
 	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
 	ON_COMMAND(ID_COMMAND_DISPLAY_RULE_AUTO, &CVideoProcessorDlg::OnCommandDisplayRuleAuto)
+	ON_COMMAND(ID_COMMAND_CONFIG_EDITOR, &CVideoProcessorDlg::OnCommandConfigEditor)
 	ON_COMMAND_RANGE(ID_COMMAND_SHADER_RULE_FIRST, ID_COMMAND_SHADER_RULE_LAST, &CVideoProcessorDlg::OnCommandShaderRule)
 	ON_COMMAND_RANGE(ID_COMMAND_DISPLAY_RULE_FIRST, ID_COMMAND_DISPLAY_RULE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
+	ON_COMMAND_RANGE(ID_COMMAND_UNIFIED_PROFILE_FIRST, ID_COMMAND_UNIFIED_PROFILE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
 	ON_COMMAND_RANGE(ID_COMMAND_RENDERER_SELECT_FIRST, ID_COMMAND_RENDERER_SELECT_LAST, &CVideoProcessorDlg::OnCommandRendererSelect)
 	ON_COMMAND_RANGE(ID_COMMAND_CAPTURE_1, ID_COMMAND_CAPTURE_4, &CVideoProcessorDlg::OnSelectCaptureDevice)
 
@@ -1375,6 +1408,7 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 		}
 		else if (const auto snapshot = m_profileRuntime.GetSnapshot())
 		{
+			ApplyUnifiedProfileSnapshot(snapshot, false);
 			DebugLog::Log(
 				"Unified profile runtime restored generation %llu, viewport %s (%s)",
 				static_cast<unsigned long long>(snapshot->generation),
@@ -1614,6 +1648,11 @@ void CVideoProcessorDlg::SetCaptureDevice(const CString& initialCaptureDevice)
 	m_initialCaptureDevice = initialCaptureDevice;
 }
 
+void CVideoProcessorDlg::SetCaptureInput(const CString& initialCaptureInput)
+{
+	m_initialCaptureInput = initialCaptureInput;
+}
+
 void CVideoProcessorDlg::HideUI(bool enabled)
 {
 	m_hideUI = enabled;
@@ -1628,13 +1667,6 @@ void CVideoProcessorDlg::StartMinimized(bool enabled)
 
 void CVideoProcessorDlg::SceneDetect(bool enabled)
 {
-	if (m_detectionFeaturesDisabled && enabled)
-	{
-		DebugLog::Log(
-			"DETECTION FEATURES: ignoring Scene Detect enable while disabled by configuration");
-		m_sceneAwareTimingCorrection = false;
-		return;
-	}
 	m_sceneAwareTimingCorrection = enabled;
 }
 
@@ -1645,27 +1677,9 @@ void CVideoProcessorDlg::SceneCorrectionUpstreamSample(bool enabled)
 
 void CVideoProcessorDlg::SubtitleRepositioning(SubtitleRepositionMode mode)
 {
-	if (m_detectionFeaturesDisabled &&
-		mode != SubtitleRepositionMode::DISABLED)
-	{
-		DebugLog::Log(
-			"DETECTION FEATURES: ignoring subtitle reposition enable while disabled by configuration");
-		m_subtitleRepositionMode = SubtitleRepositionMode::DISABLED;
-		return;
-	}
-	m_subtitleRepositionMode = mode;
-}
-
-void CVideoProcessorDlg::DisableDetectionFeatures(bool disabled)
-{
-	m_detectionFeaturesDisabled = disabled;
-	if (disabled)
-	{
-		m_sceneAwareTimingCorrection = false;
-		m_subtitleRepositionMode = SubtitleRepositionMode::DISABLED;
-		DebugLog::Log(
-			"DETECTION FEATURES: scene analysis and subtitle repositioning disabled");
-	}
+	if (mode != SubtitleRepositionMode::DISABLED)
+		DebugLog::Log("Subtitle repositioning request ignored; feature is disabled");
+	m_subtitleRepositionMode = SubtitleRepositionMode::DISABLED;
 }
 
 void CVideoProcessorDlg::EnableNewLldvHeuristic(bool enabled)
@@ -1732,7 +1746,10 @@ void CVideoProcessorDlg::SetQueueSize(const CString& queueSize)
 	m_defaultQueueSize = queueSize;
 	const int capacity = _ttoi(queueSize);
 	if (capacity > 0)
+	{
 		m_directShowQueueCapacity = static_cast<size_t>(capacity);
+		m_profileBaseQueueCapacity = static_cast<size_t>(capacity);
+	}
 }
 
 void CVideoProcessorDlg::SetQueueResetDelaySeconds(const CString& value)
@@ -1745,7 +1762,7 @@ void CVideoProcessorDlg::SetQueueResetDelaySeconds(const CString& value)
 void CVideoProcessorDlg::SetQueueResetHighWaterPercent(const CString& value)
 {
 	const int percent = _ttoi(value);
-	if (percent > 0 && percent <= 100)
+	if (percent > 0 && percent <= 200)
 		m_queueResetHighWaterPercent = percent;
 }
 
@@ -1975,7 +1992,7 @@ bool CVideoProcessorDlg::IsUnifiedActionRendererSelected(
 	if (action.renderer == "vprenderer")
 		return IsAlphaRendererSelected();
 	const int selection = m_rendererCombo.GetCurSel();
-	return selection >= 0 && action.rendererAliasIndex == selection + 1;
+	return selection >= 0 && action.rendererSelectorIndex == selection + 1;
 }
 
 
@@ -1998,8 +2015,7 @@ void CVideoProcessorDlg::UpdateRendererQueueControl()
 void CVideoProcessorDlg::UpdateSceneCorrectionModeUi()
 {
 	const bool p010Selected = IsP010VideoConversionSelected();
-	m_rendererSceneCorrectionModeCombo.EnableWindow(
-		p010Selected && !m_detectionFeaturesDisabled);
+	m_rendererSceneCorrectionModeCombo.EnableWindow(p010Selected);
 
 	// Correction method is deliberately not a UI choice.  Alpha has one native
 	// method; DirectShow normally uses the advanced upstream-sample method and
@@ -2070,12 +2086,6 @@ void CVideoProcessorDlg::OnBnClickedRendererVideoFrameUseQueueCheck()
 
 void CVideoProcessorDlg::OnRendererSceneCorrectionModeSelected()
 {
-	if (m_detectionFeaturesDisabled)
-	{
-		m_sceneAwareTimingCorrection = false;
-		m_rendererSceneCorrectionModeCombo.SetCurSel(0);
-		return;
-	}
 	if (!IsP010VideoConversionSelected())
 		return;
 
@@ -3415,6 +3425,47 @@ void CVideoProcessorDlg::OnCommandAutoSet()
 	OnBnClickedRendererRestart();
 }
 
+void CVideoProcessorDlg::OnCommandConfigEditor()
+{
+	wchar_t modulePath[MAX_PATH] = {};
+	if (GetModuleFileNameW(nullptr, modulePath, ARRAYSIZE(modulePath)) == 0)
+		return;
+	std::wstring executablePath(modulePath);
+	const size_t separator = executablePath.find_last_of(L"\\/");
+	if (separator == std::wstring::npos)
+		return;
+	executablePath.resize(separator + 1);
+	const std::wstring editorPath = executablePath + L"VideoProcessorConfig.exe";
+	if (GetFileAttributesW(editorPath.c_str()) == INVALID_FILE_ATTRIBUTES)
+	{
+		DEBUGLOG("Configuration editor is not installed beside VideoProcessor.exe");
+		AfxMessageBox(L"VideoProcessorConfig.exe is not installed beside VideoProcessor.exe.");
+		return;
+	}
+
+	ConfigFile config;
+	std::wstring configPath = executablePath + L"VideoProcessor.cfg";
+	if (config.Load() && !config.GetLoadedPath().empty())
+	{
+		const int length = MultiByteToWideChar(CP_ACP, 0,
+			config.GetLoadedPath().c_str(), -1, nullptr, 0);
+		if (length > 1)
+		{
+			configPath.assign(static_cast<size_t>(length), L'\0');
+			MultiByteToWideChar(CP_ACP, 0, config.GetLoadedPath().c_str(), -1,
+				&configPath[0], length);
+			configPath.pop_back();
+		}
+	}
+	wchar_t arguments[2 * MAX_PATH + 80] = {};
+	swprintf_s(arguments, L"--config \"%s\" --owner %llu", configPath.c_str(),
+		static_cast<unsigned long long>(reinterpret_cast<UINT_PTR>(GetSafeHwnd())));
+	const HINSTANCE result = ShellExecuteW(GetSafeHwnd(), L"open", editorPath.c_str(),
+		arguments, executablePath.c_str(), SW_SHOWNORMAL);
+	if (reinterpret_cast<INT_PTR>(result) <= 32)
+		AfxMessageBox(L"Could not launch VideoProcessorConfig.exe.");
+}
+
 void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
 {
 	DebugLog::Log(
@@ -4166,15 +4217,43 @@ void CVideoProcessorDlg::RefreshInputConnectionCombo()
 	{
 		index = m_captureInputCombo.AddString(captureInput.name);
 		m_captureInputCombo.SetItemData(index, captureInput.id);
-
-		// If we're in a known state keep current selection
-		if(m_captureDeviceState != CaptureDeviceState::CAPTUREDEVICESTATE_UNKNOWN &&
-			captureInput.id == currentCaptureInputId)
-		{
-			m_captureInputCombo.SetCurSel(index);
-			OnCaptureInputSelected();
-		}
 	}
+
+	// An explicit startup connection takes precedence over the device's current
+	// preference. This selects a connection type (HDMI/SDI/etc.), not a port;
+	// multi-port DeckLink devices expose each port in the capture-device list.
+	if (!m_initialCaptureInput.IsEmpty())
+	{
+		for (int i = 0; i < m_captureInputCombo.GetCount(); ++i)
+		{
+			CString name;
+			m_captureInputCombo.GetLBText(i, name);
+			if (name.CompareNoCase(m_initialCaptureInput) == 0)
+			{
+				m_captureInputCombo.SetCurSel(i);
+				OnCaptureInputSelected();
+				return;
+			}
+		}
+		DEBUGLOG("Configured capture input connection is unavailable for %s: %s",
+			m_captureDevice->GetName().GetString(), m_initialCaptureInput.GetString());
+	}
+
+	// If we're in a known state keep the device's current selection.
+	if (m_captureDeviceState != CaptureDeviceState::CAPTUREDEVICESTATE_UNKNOWN)
+		for (const auto& captureInput : captureInputs)
+			if (captureInput.id == currentCaptureInputId)
+			{
+				for (int i = 0; i < m_captureInputCombo.GetCount(); ++i)
+					if (static_cast<CaptureInputId>(m_captureInputCombo.GetItemData(i)) ==
+						currentCaptureInputId)
+					{
+						m_captureInputCombo.SetCurSel(i);
+						OnCaptureInputSelected();
+						break;
+					}
+				break;
+			}
 
 	// If no input connection has been selected, select first index
 	if (m_captureInputCombo.GetCount() > 0)
@@ -4525,7 +4604,7 @@ void CVideoProcessorDlg::RenderStart()
 				m_sceneAwareTimingCorrection);
 			m_videoRenderer->Start();
 			m_rendererStateText.SetWindowText(
-				TEXT("Started VideoProcessor Renderer (Alpha), waiting for image..."));
+				TEXT("Started VP Renderer, waiting for image..."));
 		}
 		catch (const std::exception& e)
 		{
@@ -4771,8 +4850,10 @@ void CVideoProcessorDlg::RenderStop()
 	// Cancel any pending EOTF change restart timer - a restart is already happening
 	KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
 	KillTimer(LLDV_CHANGE_RESTART_TIMER_ID);
+	KillTimer(LLDV_PROFILE_APPLY_TIMER_ID);
 	m_eotfChangeRestartCooldownSeconds = -1;
 	m_lldvChangeRestartDelaySeconds = -1;
+	m_lldvProfileApplyPending = false;
 	m_lldvRestartPending = false;
 	// A renderer-only restart must preserve a confirmed LLDV candidate. The
 	// capture-state path clears it when the input genuinely returns to SDR.
@@ -6202,17 +6283,34 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 				if (!videoState->hdrData)
 					videoState->hdrData = std::make_shared<HDRData>();
 
-				const bool newLldv = m_useNewLldvHeuristic;
-				videoState->hdrData->maxCll = m_lldvMaxCllOverride >= 0.0
-					? m_lldvMaxCllOverride : 1000.0;
-				videoState->hdrData->maxFall = m_lldvMaxFallOverride >= 0.0
-					? m_lldvMaxFallOverride : (newLldv ? 401.0 : 1000.0);
+				const RendererProfileConfig::LldvMetadata lldvDefaults =
+					RendererProfileConfig::DefaultLldvMetadata(
+						m_useNewLldvHeuristic);
+				auto resolveLldvValue = [](double commandLineValue,
+					double profileValue, double fallback, bool strictlyPositive)
+				{
+					const bool hasCommandLineValue = strictlyPositive ?
+						commandLineValue > 0.0 : commandLineValue >= 0.0;
+					if (hasCommandLineValue)
+						return commandLineValue;
+					const bool hasProfileValue = strictlyPositive ?
+						profileValue > 0.0 : profileValue >= 0.0;
+					return hasProfileValue ? profileValue : fallback;
+				};
+				videoState->hdrData->maxCll = resolveLldvValue(
+					m_lldvMaxCllOverride, m_profileLldvMaxCllOverride,
+					lldvDefaults.maxCll, false);
+				videoState->hdrData->maxFall = resolveLldvValue(
+					m_lldvMaxFallOverride, m_profileLldvMaxFallOverride,
+					lldvDefaults.maxFall, false);
 				videoState->hdrData->masteringDisplayMinLuminance =
-					m_lldvMasteringMinLuminanceOverride >= 0.0
-					? m_lldvMasteringMinLuminanceOverride : (newLldv ? 0.001 : 0.0001);
+					resolveLldvValue(m_lldvMasteringMinLuminanceOverride,
+						m_profileLldvMasteringMinLuminanceOverride,
+						lldvDefaults.masteringMinLuminance, false);
 				videoState->hdrData->masteringDisplayMaxLuminance =
-					m_lldvMasteringMaxLuminanceOverride > 0.0
-					? m_lldvMasteringMaxLuminanceOverride : (newLldv ? 4000.0 : 1000.0);
+					resolveLldvValue(m_lldvMasteringMaxLuminanceOverride,
+						m_profileLldvMasteringMaxLuminanceOverride,
+						lldvDefaults.masteringMaxLuminance, true);
 			}
 			break;
 
@@ -6383,39 +6481,142 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 	bool allowRestart)
 {
-	if (!snapshot || !m_videoRenderer)
+	if (!snapshot)
 		return;
+
+	bool lldvPolicyChanged = false;
+	if (!snapshot->lldv.profile.empty())
+	{
+		auto applyLldvOverride = [&lldvPolicyChanged](double& destination,
+			bool configured, double value)
+		{
+			const double desired = configured ? value : -1.0;
+			if (destination != desired)
+			{
+				destination = desired;
+				lldvPolicyChanged = true;
+			}
+		};
+		applyLldvOverride(m_profileLldvMaxCllOverride,
+			snapshot->lldv.hasMaxCll, snapshot->lldv.maxCll);
+		applyLldvOverride(m_profileLldvMaxFallOverride,
+			snapshot->lldv.hasMaxFall, snapshot->lldv.maxFall);
+		applyLldvOverride(m_profileLldvMasteringMinLuminanceOverride,
+			snapshot->lldv.hasMasteringMinLuminance,
+			snapshot->lldv.masteringMinLuminance);
+		applyLldvOverride(m_profileLldvMasteringMaxLuminanceOverride,
+			snapshot->lldv.hasMasteringMaxLuminance,
+			snapshot->lldv.masteringMaxLuminance);
+		if (lldvPolicyChanged)
+			DebugLog::Log(
+				"LLDV profile applied: profile=%s max_cll=%g max_fall=%g mastering_min=%g mastering_max=%g",
+				snapshot->lldv.profile.c_str(),
+				m_profileLldvMaxCllOverride,
+				m_profileLldvMaxFallOverride,
+				m_profileLldvMasteringMinLuminanceOverride,
+				m_profileLldvMasteringMaxLuminanceOverride);
+	}
+
+	if (!m_videoRenderer)
+		return;
+	if (lldvPolicyChanged && allowRestart && m_captureDeviceVideoState &&
+		m_rendererState != RendererState::RENDERSTATE_STOPPING)
+	{
+		// A manual profile selection can arrive while BuildPushVideoState is
+		// refreshing automatic profiles. Defer the next state build instead of
+		// re-entering that path, so the selected metadata is pushed even when no
+		// new capture notification follows the shortcut.
+		m_lldvProfileApplyPending = true;
+		SetTimer(LLDV_PROFILE_APPLY_TIMER_ID, 1, nullptr);
+	}
 
 	bool queuePolicyChanged = false;
 	if (!snapshot->queue.profile.empty())
 	{
-		if (snapshot->queue.hasQueueSize &&
-			GetRendererVideoFrameQueueSizeMax() != snapshot->queue.queueSize)
+		if (!m_profileQueueDefaultsCaptured)
+		{
+			m_profileBaseLeadFrames =
+				videoProcessorApp.GetPresentationLeadFrames();
+			m_profileBaseTargetFrames =
+				videoProcessorApp.GetQueueSteadyReserveFrames();
+			m_profileBaseActivePictureLookaheadFrames =
+				videoProcessorApp.GetActivePictureLookaheadFrames();
+			m_profileBaseStartupPrerollFrames =
+				videoProcessorApp.GetQueueStartupPrerollFrames();
+			m_profileBaseQueueResetDelaySeconds = m_queueResetDelaySeconds;
+			m_profileBaseQueueResetHighWaterPercent =
+				m_queueResetHighWaterPercent;
+			m_profileQueueDefaultsCaptured = true;
+		}
+		const size_t desiredQueueSize = snapshot->queue.hasQueueSize ?
+			snapshot->queue.queueSize : m_profileBaseQueueCapacity;
+		if (GetRendererVideoFrameQueueSizeMax() != desiredQueueSize)
 		{
 			CString queueSize;
-			queueSize.Format(TEXT("%zu"), snapshot->queue.queueSize);
+			queueSize.Format(TEXT("%zu"), desiredQueueSize);
 			m_defaultQueueSize = queueSize;
 			m_rendererVideoFrameQueueSizeMaxEdit.SetWindowText(queueSize);
-			m_videoRenderer->SetFrameQueueMaxSize(snapshot->queue.queueSize);
+			m_videoRenderer->SetFrameQueueMaxSize(desiredQueueSize);
 			queuePolicyChanged = true;
 		}
-		if (snapshot->queue.hasTargetFrames &&
-			videoProcessorApp.GetQueueSteadyReserveFrames() !=
-				snapshot->queue.targetFrames)
+		const size_t desiredLeadFrames = snapshot->queue.hasLeadFrames ?
+			snapshot->queue.leadFrames : m_profileBaseLeadFrames;
+		if (videoProcessorApp.GetPresentationLeadFrames() != desiredLeadFrames)
 		{
-			videoProcessorApp.SetQueueSteadyReserveFrames(
-				snapshot->queue.targetFrames);
+			videoProcessorApp.SetPresentationLeadFrames(desiredLeadFrames);
+			m_videoRenderer->SetPresentationLeadFrames(desiredLeadFrames, true);
+			queuePolicyChanged = true;
+		}
+		const size_t desiredTargetFrames = snapshot->queue.hasTargetFrames ?
+			snapshot->queue.targetFrames : m_profileBaseTargetFrames;
+		const size_t desiredStartupPreroll =
+			snapshot->queue.hasStartupPrerollFrames ?
+			snapshot->queue.startupPrerollFrames :
+			m_profileBaseStartupPrerollFrames;
+		if (videoProcessorApp.GetQueueSteadyReserveFrames() != desiredTargetFrames ||
+			videoProcessorApp.GetQueueStartupPrerollFrames() != desiredStartupPreroll)
+		{
+			videoProcessorApp.SetQueueSteadyReserveFrames(desiredTargetFrames);
+			videoProcessorApp.SetQueueStartupPrerollFrames(desiredStartupPreroll);
 			m_videoRenderer->SetQueueFramePolicy(
-				videoProcessorApp.GetQueueStartupPrerollFrames(),
-				videoProcessorApp.GetQueueSteadyReserveFrames(), true);
+				desiredStartupPreroll, desiredTargetFrames, true);
+			queuePolicyChanged = true;
+		}
+		const size_t desiredLookahead =
+			snapshot->queue.hasActivePictureLookaheadFrames ?
+			snapshot->queue.activePictureLookaheadFrames :
+			m_profileBaseActivePictureLookaheadFrames;
+		if (videoProcessorApp.GetActivePictureLookaheadFrames() != desiredLookahead)
+		{
+			videoProcessorApp.SetActivePictureLookaheadFrames(desiredLookahead);
+			m_videoRenderer->SetActivePictureLookaheadFrames(desiredLookahead);
+			queuePolicyChanged = true;
+		}
+		const int desiredResetDelay =
+			snapshot->queue.hasResetAfterRendererRestartSeconds ?
+			snapshot->queue.resetAfterRendererRestartSeconds :
+			m_profileBaseQueueResetDelaySeconds;
+		const int desiredHighWater = snapshot->queue.hasResetQueueTooLargePercent ?
+			snapshot->queue.resetQueueTooLargePercent :
+			m_profileBaseQueueResetHighWaterPercent;
+		if (m_queueResetDelaySeconds != desiredResetDelay ||
+			m_queueResetHighWaterPercent != desiredHighWater)
+		{
+			m_queueResetDelaySeconds = desiredResetDelay;
+			m_queueResetHighWaterPercent = desiredHighWater;
 			queuePolicyChanged = true;
 		}
 		if (queuePolicyChanged)
 			DebugLog::Log(
-				"Queue profile applied: profile=%s capacity=%zu target=%zu",
+				"Queue profile applied: profile=%s capacity=%zu lead=%zu "
+				"startup=%zu target=%zu lookahead=%zu reset=%ds high_water=%d%%",
 				snapshot->queue.profile.c_str(),
 				GetRendererVideoFrameQueueSizeMax(),
-				videoProcessorApp.GetQueueSteadyReserveFrames());
+				videoProcessorApp.GetPresentationLeadFrames(),
+				videoProcessorApp.GetQueueStartupPrerollFrames(),
+				videoProcessorApp.GetQueueSteadyReserveFrames(),
+				videoProcessorApp.GetActivePictureLookaheadFrames(),
+				m_queueResetDelaySeconds, m_queueResetHighWaterPercent);
 	}
 
 	CString activeState;
@@ -7507,6 +7708,41 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				m_wantToRestartRenderer = true;
 				UpdateState();
 			}
+		}
+		return;
+	}
+
+	if (nIDEvent == LLDV_PROFILE_APPLY_TIMER_ID)
+	{
+		KillTimer(LLDV_PROFILE_APPLY_TIMER_ID);
+		if (!m_lldvProfileApplyPending)
+			return;
+		if (!m_videoRenderer || !m_captureDeviceVideoState ||
+			m_rendererState == RendererState::RENDERSTATE_STOPPING ||
+			m_rendererState == RendererState::RENDERSTATE_STOPPED ||
+			m_rendererState == RendererState::RENDERSTATE_FAILED)
+		{
+			m_lldvProfileApplyPending = false;
+			return;
+		}
+		if (m_rendererState != RendererState::RENDERSTATE_RENDERING)
+		{
+			// RenderStart applies the current snapshot before its first state push,
+			// but retain this coalesced request until an in-flight graph reaches
+			// its running state.
+			SetTimer(LLDV_PROFILE_APPLY_TIMER_ID, 25, nullptr);
+			return;
+		}
+
+		m_lldvProfileApplyPending = false;
+		const bool rendererAcceptedState = BuildPushVideoState();
+		if (!rendererAcceptedState && m_videoRenderer &&
+			m_rendererState == RendererState::RENDERSTATE_RENDERING)
+		{
+			DebugLog::Log(
+				"LLDV profile metadata was rejected by the renderer; restarting graph");
+			m_wantToRestartRenderer = true;
+			UpdateState();
 		}
 		return;
 	}
@@ -8697,7 +8933,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			stats.rendererName = renderer->name;
 		else
 			stats.rendererName = stats.isAlphaRenderer ?
-				TEXT("VideoProcessor Renderer (Alpha)") : TEXT("DirectShow");
+				TEXT("VP Renderer") : TEXT("DirectShow");
 		stats.rawQueueSize = m_videoRenderer->GetFrameQueueSize();
 		stats.convertedQueueSize = m_videoRenderer->GetConvertedQueueSize();
 		stats.currentQueueSize = stats.rawQueueSize + stats.convertedQueueSize;

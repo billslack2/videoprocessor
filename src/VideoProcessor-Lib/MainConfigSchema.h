@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ConfigSchema.h"
+#include "QueueConfiguration.h"
 
 #include <algorithm>
 #include <cctype>
@@ -34,6 +35,7 @@ namespace MainConfigSchema
 			section == "directshow.ppm" ||
 			section == "queue_recovery" ||
 			section == "lldv" ||
+			section.rfind("lldv.", 0) == 0 ||
 			section == "logging" ||
 			section == "shortcuts" ||
 			section == "p010_conversion" ||
@@ -88,7 +90,8 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("noui"),
 			ConfigSchema::Boolean("no_ui"),
 			ConfigSchema::Boolean("startminimized"),
-			ConfigSchema::Boolean("start_minimized")
+			ConfigSchema::Boolean("start_minimized"),
+			ConfigSchema::Any("capture_input")
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "command_line", commandLineRules, error))
@@ -96,7 +99,15 @@ namespace MainConfigSchema
 		// [general] was renderer-profile state in the old layout. It becomes
 		// application startup configuration only when the VP-0079 renderer root
 		// is present, so retain validation compatibility for old profile files.
-		if (config.HasSection("vprenderer") &&
+		bool hasUnifiedRenderer = config.HasSection("vprenderer");
+		if (!hasUnifiedRenderer)
+			for (const std::string& section : config.GetSectionNames())
+				if (section.rfind("vprenderer.", 0) == 0)
+				{
+					hasUnifiedRenderer = true;
+					break;
+				}
+		if (hasUnifiedRenderer &&
 			!ConfigSchema::ValidateSection(
 				config, "general", commandLineRules, error))
 			return false;
@@ -106,27 +117,57 @@ namespace MainConfigSchema
 		// names remain accepted for configuration-file compatibility.
 		const std::vector<ConfigSchema::KeyRule> queueRules = {
 			ConfigSchema::Any("when"),
+			ConfigSchema::Any("shortcut"),
 			ConfigSchema::Integer("queue_size", 1, INT_MAX),
 			ConfigSchema::Integer("lead_frames", 0, 16),
 			ConfigSchema::Integer("target_frames", 0, 16),
 			ConfigSchema::Integer("active_picture_lookahead_frames", 0, 8),
 			ConfigSchema::Integer("startup_preroll_frames", 0, 16),
-			ConfigSchema::Integer("steady_reserve_frames", 0, 16)
+			ConfigSchema::Integer("steady_reserve_frames", 0, 16),
+			ConfigSchema::Integer("reset_after_render_restart_seconds", 1, INT_MAX),
+			ConfigSchema::Integer("reset_queue_too_large_percent", 1, 200)
 		};
-		if (!ConfigSchema::ValidateSection(config, "queue", queueRules, error))
-			return false;
+		std::string defaultQueueSection;
+		const bool hasDefaultQueue = QueueConfiguration::ResolveDefaultSection(
+			config, defaultQueueSection);
+		for (const std::string& section : config.GetSectionNames())
+			if (section == "queue" ||
+				QueueConfiguration::IsDirectNamedQueueSection(section))
+			{
+				if (!ConfigSchema::ValidateSection(config, section, queueRules, error))
+					return false;
+			}
 
 		const std::vector<ConfigSchema::KeyRule> directShowRules = {
 			ConfigSchema::Integer("presentation_lead_frames", 0, 16),
-			commandLineRules[6],
-			commandLineRules[7], commandLineRules[8], commandLineRules[9],
-			commandLineRules[10], commandLineRules[11], commandLineRules[12],
-			commandLineRules[13], commandLineRules[14], commandLineRules[15],
-			commandLineRules[16]
+			commandLineRules[9],  // frame_offset
+			commandLineRules[10], // video_conversion
+			commandLineRules[11], // container_colorspace
+			commandLineRules[12], // hdr_colorspace
+			commandLineRules[13], // hdr_luminance
+			commandLineRules[14], // renderer_start_stop_time_method
+			commandLineRules[15], // renderer_nominal_range
+			commandLineRules[16], // renderer_transfer_function
+			commandLineRules[17], // renderer_transfer_matrix
+			commandLineRules[18]  // renderer_primaries
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "directshow", directShowRules, error))
 			return false;
+		for (const char* sharedInputKey : { "video_conversion",
+			"container_colorspace", "hdr_colorspace", "hdr_luminance" })
+		{
+			std::string canonicalValue;
+			std::string legacyValue;
+			if (config.TryGetString("general", sharedInputKey, canonicalValue) &&
+				config.TryGetString("directshow", sharedInputKey, legacyValue))
+			{
+				error = "cannot specify both [general] " +
+					std::string(sharedInputKey) + " and legacy [directshow] " +
+					sharedInputKey;
+				return false;
+			}
+		}
 		const std::vector<ConfigSchema::KeyRule> conversionRules = {
 			ConfigSchema::Choice("conversion_method",
 				{ "auto", "simd", "optimized", "standard" }),
@@ -179,43 +220,71 @@ namespace MainConfigSchema
 
 		std::string value;
 		std::string legacyValue;
-		if (config.TryGetString("queue", "target_frames", value) &&
-			config.TryGetString("queue", "steady_reserve_frames", legacyValue))
-		{
-			error = "cannot specify both [queue] target_frames and legacy "
-				"steady_reserve_frames";
-			return false;
-		}
-		if (config.TryGetString("queue", "lead_frames", value) &&
+		for (const std::string& section : config.GetSectionNames())
+			if ((section == "queue" ||
+				QueueConfiguration::IsDirectNamedQueueSection(section)) &&
+				config.TryGetString(section, "target_frames", value) &&
+				config.TryGetString(section, "steady_reserve_frames", legacyValue))
+			{
+				error = "cannot specify both [" + section +
+					"] target_frames and legacy steady_reserve_frames";
+				return false;
+			}
+		if (hasDefaultQueue && config.TryGetString(
+			defaultQueueSection, "lead_frames", value) &&
 			config.TryGetString(
 				"directshow", "presentation_lead_frames", legacyValue))
 		{
-			error = "cannot specify both [queue] lead_frames and legacy "
+			error = "cannot specify both [" + defaultQueueSection +
+				"] lead_frames and legacy "
 				"[directshow] presentation_lead_frames";
 			return false;
 		}
 
 		const std::vector<ConfigSchema::KeyRule> recoveryRules = {
 			ConfigSchema::Integer("reset_after_render_restart_seconds", 1, INT_MAX),
-			ConfigSchema::Integer("reset_queue_too_large_percent", 1, 100)
+			ConfigSchema::Integer("reset_queue_too_large_percent", 1, 200)
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "queue_recovery", recoveryRules, error))
 			return false;
+		for (const char* key : { "reset_after_render_restart_seconds",
+			"reset_queue_too_large_percent" })
+		{
+			std::string canonicalValue;
+			std::string legacyValue;
+			if (hasDefaultQueue && config.TryGetString(
+				defaultQueueSection, key, canonicalValue) &&
+				config.TryGetString("queue_recovery", key, legacyValue))
+			{
+				error = "cannot specify both [" + defaultQueueSection + "] " +
+					key + " and legacy [queue_recovery] " + key;
+				return false;
+			}
+		}
 
 		const std::vector<ConfigSchema::KeyRule> lldvRules = {
+			ConfigSchema::Any("when"),
+			ConfigSchema::Any("shortcut"),
 			ConfigSchema::NumberAtLeast("max_cll", 0.0),
 			ConfigSchema::NumberAtLeast("max_fall", 0.0),
 			ConfigSchema::NumberAtLeast("mastering_min_luminance", 0.0),
 			ConfigSchema::NumberAtLeast("mastering_max_luminance", 0.0, false)
 		};
-		if (!ConfigSchema::ValidateSection(config, "lldv", lldvRules, error))
-			return false;
+		for (const std::string& section : config.GetSectionNames())
+			if (section == "lldv" ||
+				(section.rfind("lldv.", 0) == 0 &&
+				 section.size() > sizeof("lldv.") - 1 &&
+				 section.find('.', sizeof("lldv.") - 1) == std::string::npos))
+				if (!ConfigSchema::ValidateSection(config, section, lldvRules,
+					error))
+					return false;
 
 		// Debug-log retention deliberately defaults safely instead of making an
-		// otherwise usable configuration fatal. Resolution validates 1-100
+		// otherwise usable configuration fatal. Resolution validates 1-200
 		// before logger startup; the schema still rejects unknown logging keys.
 		const std::vector<ConfigSchema::KeyRule> loggingRules = {
+			ConfigSchema::Boolean("enabled"),
 			ConfigSchema::Any("debug_log_retention")
 		};
 		return ConfigSchema::ValidateSection(

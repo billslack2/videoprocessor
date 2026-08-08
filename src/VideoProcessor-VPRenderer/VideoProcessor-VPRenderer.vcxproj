@@ -96,6 +96,7 @@
   <ItemGroup>
     <ClCompile Include="LibplaceboPluginExports.cpp" />
     <ClCompile Include="..\VideoProcessor-Lib\vprenderer\LibplaceboDisplayLut.cpp" />
+    <ClCompile Include="..\VideoProcessor-Lib\vprenderer\LibplaceboRenderParameters.cpp" />
     <ClCompile Include="..\VideoProcessor-Lib\vprenderer\LibplaceboVideoRenderer.cpp" />
   </ItemGroup>
   <ItemGroup>

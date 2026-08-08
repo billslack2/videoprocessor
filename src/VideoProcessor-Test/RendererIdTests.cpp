@@ -21,10 +21,17 @@ namespace VideoProcessorTest
 			});
 
 			Assert::AreEqual(static_cast<size_t>(4), ordered.size());
-			Assert::AreEqual(TEXT("VideoProcessor Renderer (Alpha)"), ordered[0].name.GetString());
+			Assert::AreEqual(TEXT("VP Renderer"), ordered[0].name.GetString());
 			Assert::AreEqual(TEXT("alpha external renderer"), ordered[1].name.GetString());
 			Assert::AreEqual(TEXT("Gamma Renderer"), ordered[2].name.GetString());
 			Assert::AreEqual(TEXT("Beta Renderer"), ordered[3].name.GetString());
+		}
+
+		TEST_METHOD(LegacyAlphaNameStillSelectsVpRenderer)
+		{
+			const RendererId renderer = RendererId::Libplacebo();
+			Assert::IsTrue(renderer.MatchesConfiguredName(
+				TEXT("VideoProcessor Renderer (Alpha)")));
 		}
 
 		TEST_METHOD(DisplayOrderWithoutAlphaContainsOnlyReversedEligibleExternalRenderers)
