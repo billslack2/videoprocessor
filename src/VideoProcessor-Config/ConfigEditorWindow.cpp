@@ -3251,12 +3251,6 @@ QWidget* ConfigEditorWindow::createLogsPage()
         "Enhanced logging keeps all logs and writes additional live telemetry files. Use it only while diagnosing an issue.")));
 
     QString logDirectory = QFileInfo(configPath_).absoluteDir().filePath(QStringLiteral("logs"));
-    // Development copies of the editor often edit a source fixture while VP
-    // itself runs from the deployed directory. Prefer the configured folder,
-    // but make that normal local workflow useful without inventing a log file.
-    const QString deployedLogDirectory = QStringLiteral("C:/Videoprocessor/vp/logs");
-    if (!QDir(logDirectory).exists() && QDir(deployedLogDirectory).exists())
-        logDirectory = deployedLogDirectory;
     const QString logPath = QDir(logDirectory).filePath(QStringLiteral("vp.log"));
     auto* actions = new QHBoxLayout;
     auto* openFolder = new QPushButton(QStringLiteral("Open log folder"));
