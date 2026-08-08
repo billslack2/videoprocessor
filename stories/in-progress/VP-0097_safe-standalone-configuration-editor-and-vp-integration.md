@@ -1063,3 +1063,11 @@ design-only improvements prioritized for a separate pass:
 - Renamed the VP Renderer `Viewports` UI section to `Screen Config` in the
   navigation and page heading. The on-disk `vprenderer.viewport` section name
   remains unchanged for configuration compatibility.
+- Replaced centered navigation tool buttons with genuinely left-aligned menu
+  buttons and reduced window, sidebar, header/footer, page, card, control, and
+  list spacing for a denser interface without changing the responsive layout.
+- `Off` is now a permanent special Shader UI entry, not labeled as the default.
+  It appears even when `[shader.nls]` is absent, starts without a shortcut or
+  rule in that case, and creates/maintains the root section only when the user
+  configures Off. Existing Off shortcuts/rules continue to load and save.
+  Dedicated virtual-Off coverage raises the Qt integration suite to 5/5.
