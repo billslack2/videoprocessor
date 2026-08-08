@@ -1171,3 +1171,36 @@ design-only improvements prioritized for a separate pass:
 - Documented the new field and added editor/runtime regression coverage. The
   Qt integration suite remains green at 9/9, the focused native action test
   passes, and both x64 Release projects build successfully.
+
+## 2026-08-08 full visible-copy and control-semantics audit
+
+- Completed an independent, line-by-line review of headings, field labels,
+  selector entries, help text, action events, status messages, and dialogs.
+  Centralized friendly display labels so canonical tokens such as `AUTO`,
+  `BT2020_CONST`, `high_quality`, `ewa_lanczossharp`, and shader stages remain
+  unchanged on disk but appear as `Auto`, `BT.2020 constant luminance`,
+  `High quality`, `EWA Lanczos sharp`, and `Before resize` in the UI.
+- Fixed case-insensitive choice matching so existing `auto`, `Auto`, or `AUTO`
+  values cannot be reinserted into a selector with inconsistent casing.
+  Inherited summaries now use `Inherited: <value>` while unresolved overrides
+  retain the required `Inherited / not set` label.
+- Replaced remaining config-oriented wording and identifiers with user-facing
+  copy, including `Scaling and cleanup`, `Screen aspect ratio`, consistent
+  `color space`, list-order default explanations, action event descriptions,
+  and clearer VP Renderer/DirectShow page titles.
+- Removed `Default screen profile` from the editor. VP-0098 still carries the
+  legacy normal/scope state machinery internally, but the unified editor's
+  ordered Screen Config model uses the first profile as its default and the
+  profile's `screen_aspect` for geometry; the legacy renderer setting is not a
+  valid named-profile selector and remains preserved only for compatibility.
+- Converted profile Boolean controls from Qt tri-state widgets to ordinary
+  On/Off checkboxes. An omitted override can still inherit internally until
+  touched, while the UI displays the effective Boolean value and writes an
+  explicit value when changed.
+- Replaced DirectShow Frame offset's editable combo with an ordinary `Auto`
+  checkbox and numeric millisecond field. Auto disables the numeric field;
+  fixed mode enables it and writes a non-negative integer.
+- Expanded automated copy/control coverage to reject visible all-caps `AUTO`,
+  raw underscored known choice tokens, any remaining tri-state checkbox, the
+  obsolete screen-profile selector, and raw shader-stage labels. The Qt
+  integration suite remains green at 9/9 and the x64 Release editor builds.
