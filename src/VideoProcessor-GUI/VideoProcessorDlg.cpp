@@ -7,6 +7,7 @@
  */
 
 #include <pch.h>
+#include <ModernOperatorLayout.h>
 
 #include <atlstr.h>
 #include <algorithm>
@@ -126,8 +127,6 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 	{ "video_conversion_off",  ID_COMMAND_VC_NONE,                'V',       0 },
 	{ "video_conversion_p010", ID_COMMAND_VC_P010,                'V',       FSHIFT },
 	{ "config_editor",         ID_COMMAND_CONFIG_EDITOR,          'S',       FCONTROL },
-	{ "screen_profile_normal", ID_COMMAND_SCREEN_PROFILE_NORMAL,  VK_F3,     0, true },
-	{ "screen_profile_scope",  ID_COMMAND_SCREEN_PROFILE_SCOPE,   VK_F2,     0, true },
 	{ "display_rules_auto",    ID_COMMAND_DISPLAY_RULE_AUTO,      VK_F4,     0, true },
 };
 
@@ -1240,6 +1239,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RETIRED, &CVideoProcessorDlg::OnMessageRendererRetired)
+	ON_MESSAGE(WM_MODERN_OPERATOR_ACTION, &CVideoProcessorDlg::OnMessageModernOperatorAction)
 
 	// Command handlers (from accelerator)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_TOGGLE, &CVideoProcessorDlg::OnCommandFullScreenToggle)
@@ -5629,35 +5629,42 @@ void CVideoProcessorDlg::ApplyNoUiLayout()
 	if (!m_windowedVideoWindow.GetSafeHwnd())
 		return;
 
-	CRect videoScreenRect;
-	m_windowedVideoWindow.GetWindowRect(&videoScreenRect);
-
 	for (CWnd* child = GetWindow(GW_CHILD); child; child = child->GetNextWindow())
 	{
 		if (child->GetSafeHwnd() != m_windowedVideoWindow.GetSafeHwnd())
 			child->ShowWindow(SW_HIDE);
 	}
 
-	const int videoWidth = videoScreenRect.Width();
-	const int videoHeight = videoScreenRect.Height();
-
-	CRect adjustedWindowRect(0, 0, videoWidth, videoHeight);
+	CRect currentWindowRect;
+	GetWindowRect(&currentWindowRect);
+	CRect adjustedWindowRect(0, 0,
+		NoUiLayout::DefaultClientWidth, NoUiLayout::DefaultClientHeight);
 	AdjustWindowRectEx(
 		&adjustedWindowRect,
 		static_cast<DWORD>(GetWindowLongPtr(GetSafeHwnd(), GWL_STYLE)),
 		FALSE,
 		static_cast<DWORD>(GetWindowLongPtr(GetSafeHwnd(), GWL_EXSTYLE)));
+	CRect minimumWindowRect(0, 0,
+		NoUiLayout::MinimumClientWidth, NoUiLayout::MinimumClientHeight);
+	AdjustWindowRectEx(
+		&minimumWindowRect,
+		static_cast<DWORD>(GetWindowLongPtr(GetSafeHwnd(), GWL_STYLE)),
+		FALSE,
+		static_cast<DWORD>(GetWindowLongPtr(GetSafeHwnd(), GWL_EXSTYLE)));
+	m_minDialogSize = minimumWindowRect.Size();
 
 	SetWindowPos(
 		nullptr,
-		videoScreenRect.left + adjustedWindowRect.left,
-		videoScreenRect.top + adjustedWindowRect.top,
+		currentWindowRect.left,
+		currentWindowRect.top,
 		adjustedWindowRect.Width(),
 		adjustedWindowRect.Height(),
 		SWP_NOZORDER | SWP_NOACTIVATE);
 
 	m_windowedVideoWindow.ShowWindow(SW_SHOW);
-	m_windowedVideoWindow.MoveWindow(0, 0, videoWidth, videoHeight, TRUE);
+	m_windowedVideoWindow.MoveWindow(0, 0,
+		NoUiLayout::DefaultClientWidth,
+		NoUiLayout::DefaultClientHeight, TRUE);
 }
 
 
@@ -7067,6 +7074,8 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	
 	if (m_hideUI)
 		ApplyNoUiLayout();
+	else if (m_interfaceMode == ApplicationInterface::Mode::Modern)
+		InitializeModernInterface();
 
 	// If requested, minimize after the startup layout is applied.
 	if (m_startMinimized) {
@@ -7136,22 +7145,25 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 			m_rendererRetirementPending ? 1 : 0,
 			RendererResetOperationInProgress() ? 1 : 0);
 	}
-	// Handle accelerator combinations
-	if (m_accelerator)
+	// Handle accelerator combinations.
+	if (TranslateConfiguredAccelerator(pMsg))
 	{
-		if (::TranslateAccelerator(m_hWnd, m_accelerator, pMsg))
-		{
-			if (diagnosticKey)
-				DebugLog::Log("Keyboard message: phase=pretranslate result=accelerator-consumed vk=0x%02x",
-					static_cast<unsigned int>(pMsg->wParam));
-			return TRUE;
-		}
+		if (diagnosticKey)
+			DebugLog::Log("Keyboard message: phase=pretranslate result=accelerator-consumed vk=0x%02x",
+				static_cast<unsigned int>(pMsg->wParam));
+		return TRUE;
 	}
 	if (diagnosticKey)
 		DebugLog::Log("Keyboard message: phase=pretranslate result=not-consumed vk=0x%02x",
 			static_cast<unsigned int>(pMsg->wParam));
 
 	return CDialog::PreTranslateMessage(pMsg);
+}
+
+BOOL CVideoProcessorDlg::TranslateConfiguredAccelerator(MSG* message)
+{
+	return m_accelerator &&
+		::TranslateAccelerator(m_hWnd, m_accelerator, message);
 }
 
 void CVideoProcessorDlg::OnOK()
@@ -7268,10 +7280,226 @@ void CVideoProcessorDlg::CaptureFixedDialogLayout()
 	}
 }
 
+void CVideoProcessorDlg::InitializeModernInterface()
+{
+	// The Classic resource and all of its handlers remain intact. Modern is a
+	// presentation overlay created only after the existing runtime/controller
+	// initialization has completed.
+	const HWND videoWindow = m_windowedVideoWindow.GetSafeHwnd();
+	for (HWND child = ::GetWindow(GetSafeHwnd(), GW_CHILD);
+		child != nullptr; child = ::GetWindow(child, GW_HWNDNEXT))
+	{
+		if (child != videoWindow)
+			::ShowWindow(child, SW_HIDE);
+	}
+
+	CRect desiredClient(0, 0,
+		ModernOperatorLayout::DefaultClientWidth,
+		ModernOperatorLayout::DefaultClientHeight);
+	AdjustWindowRectEx(&desiredClient, GetStyle(), FALSE, GetExStyle());
+	SetWindowPos(nullptr, 0, 0, desiredClient.Width(), desiredClient.Height(),
+		SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER |
+		SWP_FRAMECHANGED);
+	CenterWindow();
+	m_minDialogSize = desiredClient.Size();
+
+	if (!m_modernOperatorView.Create(this))
+		FatalError(TEXT("Failed to create the Modern operator interface"));
+	ApplyModernLayout();
+	RefreshModernStatus();
+}
+
+void CVideoProcessorDlg::ApplyModernLayout()
+{
+	if (!m_modernOperatorView.GetSafeHwnd())
+		return;
+	CRect client;
+	GetClientRect(&client);
+	CClientDC screen(this);
+	const auto layout = ModernOperatorLayout::Calculate(
+		client.Width(), client.Height(), screen.GetDeviceCaps(LOGPIXELSX));
+	m_modernOperatorView.SetWindowPos(&wndBottom, 0, 0,
+		client.Width(), client.Height(), SWP_NOACTIVATE);
+	m_windowedVideoWindow.SetWindowPos(&wndTop,
+		layout.preview.x, layout.preview.y,
+		layout.preview.width, layout.preview.height,
+		SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+}
+
+void CVideoProcessorDlg::RefreshModernStatus()
+{
+	if (!m_modernOperatorView.GetSafeHwnd())
+		return;
+	auto text = [](CWnd& window)
+	{
+		CString value;
+		window.GetWindowText(value);
+		return value.IsEmpty() ? CString(TEXT("---")) : value;
+	};
+	auto selected = [](CComboBox& combo)
+	{
+		CString value;
+		const int index = combo.GetCurSel();
+		if (index >= 0)
+			combo.GetLBText(index, value);
+		return value.IsEmpty() ? CString(TEXT("---")) : value;
+	};
+	auto compactState = [](const CString& raw)
+	{
+		CString normalized(raw);
+		normalized.MakeLower();
+		if (normalized.Find(TEXT("fail")) >= 0 ||
+			normalized.Find(TEXT("error")) >= 0)
+			return CString(TEXT("Failed"));
+		if (normalized.Find(TEXT("rendering")) >= 0)
+			return CString(TEXT("Rendering"));
+		if (normalized.Find(TEXT("waiting")) >= 0 ||
+			normalized.Find(TEXT("start")) >= 0)
+			return CString(TEXT("Starting"));
+		if (normalized.Find(TEXT("stop")) >= 0)
+			return CString(TEXT("Stopping"));
+		if (normalized.Find(TEXT("ready")) >= 0)
+			return CString(TEXT("Ready"));
+		return raw.IsEmpty() ? CString(TEXT("---")) : raw;
+	};
+	auto refreshRate = [](const VideoStateComPtr& videoState)
+	{
+		CString value(TEXT("---"));
+		if (videoState && videoState->valid && videoState->displayMode)
+			value.Format(TEXT("%.3f fps"),
+				videoState->displayMode->RefreshRateHz());
+		return value;
+	};
+	auto displaySummary = [](const VideoStateComPtr& videoState,
+		const CString& fallback)
+	{
+		if (!videoState || !videoState->valid || !videoState->displayMode)
+			return fallback;
+
+		const auto& mode = videoState->displayMode;
+		CString value;
+		value.Format(TEXT("%ux%u%c"), mode->FrameWidth(), mode->FrameHeight(),
+			mode->IsInterlaced() ? TEXT('i') : TEXT('p'));
+		if (mode->FrameWidth() == 1280 && mode->FrameHeight() == 720)
+			value += TEXT(" - HD");
+		else if (mode->FrameWidth() == 1920 && mode->FrameHeight() == 1080)
+			value += TEXT(" - Full HD");
+		else if (mode->FrameWidth() == 2048 && mode->FrameHeight() == 1556)
+			value += TEXT(" - 2K FullFrame");
+		else if (mode->FrameWidth() == 2048 && mode->FrameHeight() == 1080)
+			value += TEXT(" - 2K DCI");
+		else if (mode->FrameWidth() == 3840 && mode->FrameHeight() == 2160)
+			value += TEXT(" - 4K UHDTV");
+		else if (mode->FrameWidth() == 4096 && mode->FrameHeight() == 2160)
+			value += TEXT(" - 4K DCI");
+		return value;
+	};
+	auto hardwareValue = [](CString value)
+	{
+		const int separator = value.Find(TEXT(':'));
+		if (separator >= 0)
+			value = value.Mid(separator + 1);
+		value.Trim();
+		return value.IsEmpty() ? CString(TEXT("---")) : value;
+	};
+
+	ModernOperatorStatus status;
+	status.captureDevice = selected(m_captureDeviceCombo);
+	status.captureState = text(m_captureDeviceStateText);
+	status.inputLock = text(m_inputLockedText);
+	status.inputMode = displaySummary(
+		m_captureDeviceVideoState, text(m_inputDisplayModeText));
+	status.inputRate = refreshRate(m_captureDeviceVideoState);
+	status.inputFormat = text(m_inputEncodingText);
+	status.inputBitDepth = text(m_inputBitDepthText);
+	status.inputFrames = text(m_inputVideoFrameCountText);
+	status.inputMissed = text(m_inputVideoFrameMissedText);
+	status.capturedValid = text(m_videoValidText);
+	status.capturedMode = displaySummary(
+		m_builtVideoState, text(m_videoDisplayModeText));
+	status.capturedRate = refreshRate(m_builtVideoState);
+	status.capturedPixelFormat = text(m_videoPixelFormatText);
+	status.capturedPrimaries = text(m_videoColorSpaceText);
+	status.capturedTransfer = text(m_videoEotfText);
+	status.captureLatency = text(m_inputLatencyMsText);
+	for (int index = 0; index < 4 && index < m_captureDeviceOtherList.GetCount(); ++index)
+	{
+		CString value;
+		m_captureDeviceOtherList.GetText(index, value);
+		status.hardware[index] = hardwareValue(value);
+	}
+	if (status.hardware[1] != TEXT("---") &&
+		status.hardware[1].Left(1).CompareNoCase(TEXT("x")) != 0)
+		status.hardware[1] = TEXT("x") + status.hardware[1];
+	status.maxCll = text(m_hdrLuminanceMaxCll);
+	status.maxFall = text(m_hdrLuminanceMaxFall);
+	status.masteringMin = text(m_hdrLuminanceMasterMin);
+	status.masteringMax = text(m_hdrLuminanceMasterMax);
+	status.rendererName = selected(m_rendererCombo);
+	status.rendererState = compactState(text(m_rendererStateText));
+	// Queue getters enforce the renderer lifecycle contract and may only be
+	// queried after the graph has reached RENDERING. The Modern view is also
+	// refreshed during startup, so keep its initial placeholders until then.
+	if (m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING)
+	{
+		const size_t rawQueueSize = m_videoRenderer->GetFrameQueueSize();
+		const size_t convertedQueueSize = m_videoRenderer->GetConvertedQueueSize();
+		status.queueRaw.Format(TEXT("%zu"), rawQueueSize);
+		status.queueConverted.Format(TEXT("%zu"), convertedQueueSize);
+		status.queueTotal.Format(TEXT("%zu"),
+			rawQueueSize + convertedQueueSize);
+		status.queueCapacity.Format(TEXT("%zu"),
+			GetRendererVideoFrameQueueSizeMax());
+
+		const int selectedRenderer = m_rendererCombo.GetCurSel();
+		const RendererId* renderer = selectedRenderer >= 0 ?
+			reinterpret_cast<const RendererId*>(
+				m_rendererCombo.GetItemData(selectedRenderer)) : nullptr;
+		status.singleQueue = renderer &&
+			renderer->backend == RendererBackend::LIBPLACEBO;
+	}
+	status.dropped = text(m_rendererDroppedFrameCountText);
+	status.vpLatency = text(m_rendererLatencyToVPText);
+	status.ptsLead = text(m_rendererLatencyDsLeadText);
+	status.outputLatency = text(m_rendererLatencyToDSText);
+	m_modernOperatorView.SetStatus(status);
+}
+
+LRESULT CVideoProcessorDlg::OnMessageModernOperatorAction(WPARAM wParam, LPARAM)
+{
+	const auto action = static_cast<ModernOperatorAction>(wParam);
+	DebugLog::Log("Modern operator action: id=%u",
+		static_cast<unsigned int>(action));
+	switch (action)
+	{
+	case ModernOperatorAction::CaptureRestart:
+		OnBnClickedCaptureRestart();
+		break;
+	case ModernOperatorAction::RendererRestart:
+		OnBnClickedRendererRestart();
+		break;
+	case ModernOperatorAction::QueueReset:
+		OnBnClickedRendererReset();
+		break;
+	case ModernOperatorAction::OpenConfiguration:
+		OnCommandConfigEditor();
+		break;
+	case ModernOperatorAction::ExitApplication:
+		PostMessage(WM_CLOSE);
+		break;
+	default:
+		return 0;
+	}
+	RefreshModernStatus();
+	return 0;
+}
+
 
 void CVideoProcessorDlg::RestoreFixedDialogLayout()
 {
-	if (m_hideUI || !GetSafeHwnd() || m_fixedControlLayout.empty())
+	if (m_hideUI || m_interfaceMode == ApplicationInterface::Mode::Modern ||
+		!GetSafeHwnd() || m_fixedControlLayout.empty())
 		return;
 
 	HDWP positions = ::BeginDeferWindowPos(
@@ -7340,6 +7568,11 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 		if (m_windowedVideoWindow.GetSafeHwnd())
 			m_windowedVideoWindow.MoveWindow(0, 0, cx, cy, TRUE);
 	}
+	else if (m_interfaceMode == ApplicationInterface::Mode::Modern &&
+		m_modernOperatorView.GetSafeHwnd())
+	{
+		ApplyModernLayout();
+	}
 	else if (m_windowedVideoWindow.GetSafeHwnd() &&
 		m_initialClientSize.cx > 0 && m_initialClientSize.cy > 0)
 	{
@@ -7359,7 +7592,7 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 	// Some windowed DirectShow renderers finish processing WM_SIZE after this
 	// handler returns.  Restore the fixed UI now and once more after that work
 	// completes, without affecting the renderer graph or its media timeline.
-	if (!m_hideUI)
+	if (!m_hideUI && m_interfaceMode != ApplicationInterface::Mode::Modern)
 	{
 		RestoreFixedDialogLayout();
 		SetTimer(UI_LAYOUT_RESTORE_TIMER_ID, 75, nullptr);
@@ -7406,8 +7639,10 @@ void CVideoProcessorDlg::OnGetMinMaxInfo(MINMAXINFO* minMaxInfo)
 	CDialog::OnGetMinMaxInfo(minMaxInfo);
 
 	if (m_hideUI) {
-		minMaxInfo->ptMinTrackSize.x = 100;
-		minMaxInfo->ptMinTrackSize.y = 100;
+		minMaxInfo->ptMinTrackSize.x = std::max(
+			minMaxInfo->ptMinTrackSize.x, m_minDialogSize.cx);
+		minMaxInfo->ptMinTrackSize.y = std::max(
+			minMaxInfo->ptMinTrackSize.y, m_minDialogSize.cy);
 	}
 	else {
 		// Guarantee minimum size of window
@@ -8098,6 +8333,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		}
 
 		UpdateStatsOverlay();
+		RefreshModernStatus();
 
 
 		++m_timerSeconds;

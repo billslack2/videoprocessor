@@ -2,7 +2,9 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/NativeStatsOverlayPlacement.h>
+#include <vprenderer/NativeStatsOverlayBitmap.h>
 
+#include <array>
 #include <cmath>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -62,6 +64,44 @@ namespace Tests
 			Assert::IsTrue(result.panel.bottom <= result.visiblePicture.bottom);
 			Assert::IsTrue(std::fabs(result.panel.Width() / result.panel.Height() -
 				420.0f / 600.0f) < 0.001f);
+		}
+
+		TEST_METHOD(HalftoneTargetReceivesSourceAlphaAfterScaling)
+		{
+			std::array<uint8_t, 16> source = {
+				0, 0, 0, 10, 0, 0, 0, 20,
+				0, 0, 0, 30, 0, 0, 0, 40 };
+			std::array<uint8_t, 64> target{};
+			Assert::IsTrue(
+				NativeStatsOverlayBitmap::RestoreScaledAlphaNearest(
+					source.data(), 2, 2, 8, target.data(), 4, 4, 16));
+			Assert::AreEqual(static_cast<unsigned char>(10), target[3]);
+			Assert::AreEqual(static_cast<unsigned char>(20), target[15]);
+			Assert::AreEqual(static_cast<unsigned char>(30), target[51]);
+			Assert::AreEqual(static_cast<unsigned char>(40), target[63]);
+		}
+
+		TEST_METHOD(AlphaRestorationHonorsPaddingAndRejectsInvalidBuffers)
+		{
+			std::array<uint8_t, 24> source{};
+			source[3] = 90;
+			source[7] = 100;
+			source[15] = 110;
+			source[19] = 120;
+			std::array<uint8_t, 40> target;
+			target.fill(0xEE);
+			Assert::IsTrue(
+				NativeStatsOverlayBitmap::RestoreScaledAlphaNearest(
+					source.data(), 2, 2, 12, target.data(), 4, 2, 20));
+			Assert::AreEqual(static_cast<unsigned char>(90), target[3]);
+			Assert::AreEqual(static_cast<unsigned char>(100), target[15]);
+			Assert::AreEqual(static_cast<unsigned char>(110), target[23]);
+			Assert::AreEqual(static_cast<unsigned char>(120), target[35]);
+			Assert::AreEqual(static_cast<unsigned char>(0xEE), target[16]);
+			Assert::AreEqual(static_cast<unsigned char>(0xEE), target[36]);
+			Assert::IsFalse(
+				NativeStatsOverlayBitmap::RestoreScaledAlphaNearest(
+					nullptr, 2, 2, 8, target.data(), 4, 2, 16));
 		}
 	};
 }

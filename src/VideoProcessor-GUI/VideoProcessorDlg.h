@@ -41,6 +41,7 @@
 #include <microsoft_directshow/video_renderers/DirectShowVideoRenderer.h>
 #include <StatsOverlayWindow.h>
 #include <ApplicationInterface.h>
+#include "ModernOperatorView.h"
 
 #include "resource.h"
 
@@ -110,6 +111,7 @@ public:
 	virtual ~CVideoProcessorDlg();
 	void InterfaceMode(ApplicationInterface::Mode mode) { m_interfaceMode = mode; }
 	ApplicationInterface::Mode InterfaceMode() const { return m_interfaceMode; }
+	BOOL TranslateConfiguredAccelerator(MSG* message);
 
 	// Dialog Data
 	enum { IDD = IDD_VIDEOPROCESSOR_DIALOG };
@@ -193,6 +195,8 @@ public:
 	afx_msg LRESULT OnMessageRendererResetRequest(
 		WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererRetired(
+		WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageModernOperatorAction(
 		WPARAM wParam, LPARAM lParam);
 
 	// Command handlers
@@ -366,6 +370,7 @@ protected:
 	CSize m_minDialogSize;
 	ApplicationInterface::Mode m_interfaceMode =
 		ApplicationInterface::Mode::Classic;
+	ModernOperatorView m_modernOperatorView;
 	struct FixedControlLayout
 	{
 		HWND hwnd = nullptr;
@@ -627,6 +632,9 @@ protected:
 	void UpdateSceneCorrectionModeUi();
 	void UpdateRendererBackendUi();
 	void CaptureFixedDialogLayout();
+	void InitializeModernInterface();
+	void ApplyModernLayout();
+	void RefreshModernStatus();
 	void RestoreFixedDialogLayout();
 	void RestoreFrameOffsetEditLayout();
 	void RefreshInputConnectionCombo();

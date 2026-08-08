@@ -24,6 +24,7 @@
 #include <microsoft_directshow/DirectShowTranslations.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
 #include <vprenderer/NativeStatsOverlayPlacement.h>
+#include <vprenderer/NativeStatsOverlayBitmap.h>
 
 #include "DirectShowGenericHDRVideoRenderer.h"
 #include "MadVRIngressPolicy.h"
@@ -236,8 +237,18 @@ void DirectShowGenericHDRVideoRenderer::ApplyNativeStatsOverlayOnGraphThread()
 	if (bitmap)
 	{
 		HGDIOBJ old = SelectObject(memory, bitmap);
+		// The native OSD is sometimes reduced to remain inside a windowed
+		// picture. HALFTONE avoids the jagged, broken glyphs produced by the
+		// default color-on-color bitmap shrink while leaving 1:1 OSD rendering
+		// and placement unchanged.
+		SetStretchBltMode(memory, HALFTONE);
+		SetBrushOrgEx(memory, 0, 0, nullptr);
 		StretchDIBits(memory, 0, 0, bitmapWidth, bitmapHeight,
 			0, 0, width, height, pixels.data(), &sourceInfo, DIB_RGB_COLORS, SRCCOPY);
+		NativeStatsOverlayBitmap::RestoreScaledAlphaNearest(
+			pixels.data(), width, height, stride,
+			static_cast<uint8_t*>(targetPixels), bitmapWidth, bitmapHeight,
+			bitmapWidth * 4);
 		SelectObject(memory, old);
 	}
 	DeleteDC(memory);

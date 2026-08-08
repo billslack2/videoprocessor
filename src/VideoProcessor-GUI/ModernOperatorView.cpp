@@ -1,0 +1,357 @@
+#include <pch.h>
+
+#include "ModernOperatorView.h"
+#include "resource.h"
+#include "version.h"
+
+namespace
+{
+	constexpr UINT IDC_MODERN_CONFIGURATION = 12001;
+	constexpr UINT IDC_MODERN_CAPTURE_RESTART = 12002;
+	constexpr UINT IDC_MODERN_RENDERER_RESTART = 12003;
+	constexpr UINT IDC_MODERN_QUEUE_RESET = 12004;
+	constexpr UINT IDC_MODERN_EXIT = 12005;
+
+	const COLORREF Background = RGB(6, 13, 20);
+	const COLORREF Header = RGB(15, 26, 37);
+	const COLORREF Card = RGB(16, 31, 43);
+	const COLORREF Border = RGB(35, 56, 72);
+	const COLORREF Text = RGB(238, 246, 255);
+	const COLORREF Muted = RGB(139, 176, 205);
+	const COLORREF Accent = RGB(56, 215, 162);
+}
+
+BEGIN_MESSAGE_MAP(ModernOperatorView, CWnd)
+	ON_WM_PAINT()
+	ON_WM_ERASEBKGND()
+	ON_WM_SIZE()
+	ON_WM_DRAWITEM()
+	ON_BN_CLICKED(IDC_MODERN_CONFIGURATION, &ModernOperatorView::OnConfiguration)
+	ON_BN_CLICKED(IDC_MODERN_EXIT, &ModernOperatorView::OnExit)
+	ON_BN_CLICKED(IDC_MODERN_CAPTURE_RESTART, &ModernOperatorView::OnCaptureRestart)
+	ON_BN_CLICKED(IDC_MODERN_RENDERER_RESTART, &ModernOperatorView::OnRendererRestart)
+	ON_BN_CLICKED(IDC_MODERN_QUEUE_RESET, &ModernOperatorView::OnQueueReset)
+END_MESSAGE_MAP()
+
+bool ModernOperatorView::Create(CWnd* parent)
+{
+	const CString className = AfxRegisterWndClass(
+		CS_HREDRAW | CS_VREDRAW, LoadCursor(nullptr, IDC_ARROW), nullptr, nullptr);
+	if (!CreateEx(WS_EX_CONTROLPARENT, className, TEXT("Modern operator view"),
+		WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+		CRect(0, 0, 1, 1), parent, 0))
+		return false;
+
+	CClientDC screen(this);
+	const int dpi = screen.GetDeviceCaps(LOGPIXELSX);
+	m_regularFont.CreateFont(-MulDiv(12, dpi, 96), 0, 0, 0, FW_NORMAL,
+		FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+		CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, TEXT("Segoe UI"));
+	m_boldFont.CreateFont(-MulDiv(13, dpi, 96), 0, 0, 0, FW_SEMIBOLD,
+		FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+		CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, TEXT("Segoe UI"));
+	m_titleFont.CreateFont(-MulDiv(18, dpi, 96), 0, 0, 0, FW_BOLD,
+		FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+		CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, TEXT("Segoe UI"));
+
+	CreateButton(m_configuration, IDC_MODERN_CONFIGURATION, TEXT("Config"));
+	CreateButton(m_exit, IDC_MODERN_EXIT, TEXT("Exit"));
+	CreateButton(m_captureRestart, IDC_MODERN_CAPTURE_RESTART, TEXT("Restart capture"));
+	CreateButton(m_rendererRestart, IDC_MODERN_RENDERER_RESTART, TEXT("Restart"));
+	CreateButton(m_queueReset, IDC_MODERN_QUEUE_RESET, TEXT("Reset queues"));
+	LayoutControls();
+	return true;
+}
+
+void ModernOperatorView::CreateButton(CButton& button, UINT id,
+	const CString& text)
+{
+	button.Create(text, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+		CRect(0, 0, 1, 1), this, id);
+	button.SetFont(&m_regularFont);
+}
+
+int ModernOperatorView::Px(int logicalPixels) const
+{
+	CClientDC screen(const_cast<ModernOperatorView*>(this));
+	return MulDiv(logicalPixels, screen.GetDeviceCaps(LOGPIXELSX), 96);
+}
+
+void ModernOperatorView::LayoutControls()
+{
+	if (!GetSafeHwnd())
+		return;
+	CRect client;
+	GetClientRect(&client);
+	m_configuration.MoveWindow(
+		std::max(Px(16), static_cast<int>(client.right) - Px(146)),
+		Px(13), Px(69), Px(29));
+	m_exit.MoveWindow(
+		std::max(Px(89), static_cast<int>(client.right) - Px(69)),
+		Px(13), Px(53), Px(29));
+	m_captureRestart.MoveWindow(Px(390), Px(116), Px(127), Px(29));
+	m_rendererRestart.MoveWindow(Px(179), Px(526), Px(77), Px(29));
+	m_queueReset.MoveWindow(Px(394), Px(615), Px(117), Px(29));
+}
+
+void ModernOperatorView::DrawWideValue(CDC& dc, int x, int y, int width,
+	const CString& value)
+{
+	dc.SetTextColor(Text);
+	dc.SelectObject(&m_regularFont);
+	CRect valueRect(Px(x), Px(y), Px(x + width), Px(y + 17));
+	dc.DrawText(value, valueRect,
+		DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+}
+
+void ModernOperatorView::DrawQueueMetric(CDC& dc, int x,
+	const CString& label, const CString& value)
+{
+	dc.SelectObject(&m_regularFont);
+	dc.SetTextColor(Muted);
+	dc.TextOut(Px(x), Px(613), label);
+	dc.SetTextColor(Text);
+	dc.SelectObject(&m_boldFont);
+	dc.TextOut(Px(x), Px(630), value);
+}
+
+void ModernOperatorView::SetStatus(const ModernOperatorStatus& status)
+{
+	m_status = status;
+	// Live telemetry changes once per second. Keep that repaint strictly inside
+	// the information column so the renderer child and custom caption never
+	// participate in the periodic redraw.
+	CRect client;
+	GetClientRect(&client);
+	InvalidateRect(CRect(0, Px(70), Px(536), client.bottom), FALSE);
+}
+
+BOOL ModernOperatorView::OnEraseBkgnd(CDC*)
+{
+	return TRUE;
+}
+
+void ModernOperatorView::OnSize(UINT type, int width, int height)
+{
+	CWnd::OnSize(type, width, height);
+	LayoutControls();
+}
+
+void ModernOperatorView::DrawCard(CDC& dc, const CRect& rect,
+	const CString& eyebrow, const CString& title, const CString& state)
+{
+	CPen pen(PS_SOLID, 1, Border);
+	CBrush brush(Card);
+	const auto oldPen = dc.SelectObject(&pen);
+	const auto oldBrush = dc.SelectObject(&brush);
+	dc.RoundRect(rect, CPoint(Px(10), Px(10)));
+	dc.SelectObject(oldBrush);
+	dc.SelectObject(oldPen);
+
+	dc.SetBkMode(TRANSPARENT);
+	dc.SetTextColor(Muted);
+	dc.SelectObject(&m_regularFont);
+	dc.TextOut(rect.left + Px(11), rect.top + Px(4), eyebrow);
+	dc.SetTextColor(Text);
+	dc.SelectObject(&m_boldFont);
+	dc.TextOut(rect.left + Px(11), rect.top + Px(18), title);
+	if (!state.IsEmpty())
+	{
+		dc.SetTextColor(Accent);
+		CRect stateRect(
+			rect.left + rect.Width() / 2,
+			rect.top + Px(17),
+			rect.right - Px(11),
+			rect.top + Px(36));
+		dc.DrawText(state, stateRect,
+			DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+	}
+}
+
+void ModernOperatorView::DrawRows(CDC& dc, int x, int y, int width,
+	const std::initializer_list<std::pair<CString, CString>>& rows)
+{
+	dc.SelectObject(&m_regularFont);
+	for (const auto& row : rows)
+	{
+		dc.SetTextColor(Muted);
+		dc.TextOut(Px(x), Px(y), row.first);
+		dc.SetTextColor(Text);
+		CRect valueRect(Px(x + width / 2), Px(y),
+			Px(x + width), Px(y + 17));
+		dc.DrawText(row.second, valueRect,
+			DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+		y += 18;
+	}
+}
+
+void ModernOperatorView::OnPaint()
+{
+	CPaintDC paintDc(this);
+	CRect paintRect;
+	paintDc.GetClipBox(&paintRect);
+	CDC dc;
+	dc.CreateCompatibleDC(&paintDc);
+	CBitmap buffer;
+	buffer.CreateCompatibleBitmap(&paintDc,
+		std::max(1, paintRect.Width()), std::max(1, paintRect.Height()));
+	const auto oldBitmap = dc.SelectObject(&buffer);
+	dc.SetViewportOrg(-paintRect.left, -paintRect.top);
+	CRect client;
+	GetClientRect(&client);
+	dc.FillSolidRect(client, Background);
+	dc.FillSolidRect(0, 0, client.Width(), Px(55), Header);
+	dc.FillSolidRect(0, Px(54), client.Width(), 1, Border);
+	dc.SetBkMode(TRANSPARENT);
+
+	const HICON appIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
+	if (appIcon)
+	{
+		::DrawIconEx(dc.GetSafeHdc(), Px(18), Px(13), appIcon,
+			Px(29), Px(29), 0, nullptr, DI_NORMAL);
+	}
+	dc.SetTextColor(Text);
+	dc.SelectObject(&m_titleFont);
+	dc.TextOut(Px(58), Px(17), TEXT("VideoProcessor"));
+	dc.SetTextColor(Muted);
+	dc.SelectObject(&m_regularFont);
+	// Config is right-anchored; give the build identifier all remaining header
+	// space instead of retaining the narrow placeholder used by the mock-up.
+	const int versionRight = std::max(
+		Px(289), static_cast<int>(client.right) - Px(162));
+	CRect versionRect(Px(207), Px(20), versionRight, Px(40));
+	dc.DrawText(VERSION_DESCRIBE, versionRect,
+		DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+	DrawCard(dc, CRect(Px(16), Px(70), Px(528), Px(158)),
+		TEXT(""), TEXT("Input source"), m_status.captureState);
+	CRect sourceIcon(Px(27), Px(112), Px(59), Px(144));
+	CPen sourcePen(PS_SOLID, 1, RGB(40, 117, 158));
+	CBrush sourceBrush(RGB(17, 48, 65));
+	const auto oldSourcePen = dc.SelectObject(&sourcePen);
+	const auto oldSourceBrush = dc.SelectObject(&sourceBrush);
+	dc.RoundRect(sourceIcon, CPoint(Px(7), Px(7)));
+	dc.SelectObject(oldSourceBrush);
+	dc.SelectObject(oldSourcePen);
+	dc.FillSolidRect(Px(39), Px(124), Px(8), Px(8), RGB(35, 194, 246));
+	dc.FillSolidRect(Px(41), Px(126), Px(4), Px(4), Card);
+	dc.SetTextColor(Text); dc.SelectObject(&m_regularFont);
+	dc.TextOut(Px(69), Px(121), m_status.captureDevice);
+
+	DrawCard(dc, CRect(Px(16), Px(166), Px(268), Px(318)),
+		TEXT(""), TEXT("Input"), m_status.inputLock);
+	DrawWideValue(dc, 27, 208, 230, m_status.inputMode);
+	DrawRows(dc, 27, 226, 230, {
+		{ TEXT("Frame rate"), m_status.inputRate },
+		{ TEXT("Format"), m_status.inputFormat }, { TEXT("Bit depth"), m_status.inputBitDepth },
+		{ TEXT("Frames"), m_status.inputFrames }, { TEXT("Missed"), m_status.inputMissed } });
+
+	DrawCard(dc, CRect(Px(276), Px(166), Px(528), Px(318)),
+		TEXT(""), TEXT("Captured video"), m_status.capturedValid);
+	DrawWideValue(dc, 287, 208, 230, m_status.capturedMode);
+	DrawRows(dc, 287, 226, 230, {
+		{ TEXT("Rate"), m_status.capturedRate },
+		{ TEXT("Pixel format"), m_status.capturedPixelFormat },
+		{ TEXT("Primaries"), m_status.capturedPrimaries },
+		{ TEXT("Transfer"), m_status.capturedTransfer } });
+
+	DrawCard(dc, CRect(Px(16), Px(326), Px(268), Px(442)),
+		TEXT(""), TEXT("Hardware link"));
+	DrawRows(dc, 27, 368, 230, {
+		{ TEXT("PCIe speed"), m_status.hardware[0] },
+		{ TEXT("PCIe width"), m_status.hardware[1] } });
+
+	DrawCard(dc, CRect(Px(276), Px(326), Px(528), Px(442)),
+		TEXT(""), TEXT("HDR luminance"));
+	DrawRows(dc, 287, 368, 230, {
+		{ TEXT("MaxCLL"), m_status.maxCll }, { TEXT("MaxFALL"), m_status.maxFall },
+		{ TEXT("Mastering min"), m_status.masteringMin }, { TEXT("Mastering max"), m_status.masteringMax } });
+
+	DrawCard(dc, CRect(Px(16), Px(450), Px(268), Px(569)),
+		TEXT(""), TEXT("Renderer"), m_status.rendererState);
+	dc.SetTextColor(Text); dc.SelectObject(&m_regularFont);
+	dc.TextOut(Px(27), Px(497), m_status.rendererName);
+
+	DrawCard(dc, CRect(Px(276), Px(450), Px(528), Px(569)),
+		TEXT(""), TEXT("Latency"));
+	DrawRows(dc, 287, 492, 230, {
+		{ TEXT("VP Processing"), m_status.vpLatency },
+		{ TEXT("Presentation"), m_status.ptsLead },
+		{ TEXT("Total"), m_status.outputLatency } });
+
+	DrawCard(dc, CRect(Px(16), Px(577), Px(528), Px(655)),
+		TEXT(""), TEXT("Queue health"));
+	if (m_status.singleQueue)
+	{
+		DrawQueueMetric(dc, 27, TEXT("Queued"), m_status.queueTotal);
+		DrawQueueMetric(dc, 112, TEXT("Capacity"), m_status.queueCapacity);
+		DrawQueueMetric(dc, 207, TEXT("Drops"), m_status.dropped);
+	}
+	else
+	{
+		DrawQueueMetric(dc, 27, TEXT("Raw"), m_status.queueRaw);
+		DrawQueueMetric(dc, 78, TEXT("Converted"), m_status.queueConverted);
+		DrawQueueMetric(dc, 163, TEXT("Total"), m_status.queueTotal);
+		DrawQueueMetric(dc, 218, TEXT("Max"), m_status.queueCapacity);
+		DrawQueueMetric(dc, 267, TEXT("Drops"), m_status.dropped);
+	}
+
+	paintDc.BitBlt(paintRect.left, paintRect.top,
+		paintRect.Width(), paintRect.Height(), &dc,
+		paintRect.left, paintRect.top, SRCCOPY);
+	dc.SelectObject(oldBitmap);
+}
+
+void ModernOperatorView::OnDrawItem(int, LPDRAWITEMSTRUCT item)
+{
+	CDC dc;
+	dc.Attach(item->hDC);
+	CRect rect(item->rcItem);
+	const bool pressed = (item->itemState & ODS_SELECTED) != 0;
+	COLORREF fill = RGB(20, 42, 58);
+	if (pressed)
+		fill = RGB(30, 65, 82);
+	dc.FillSolidRect(rect, fill);
+	CPen border(PS_SOLID, 1, Border);
+	const auto oldPen = dc.SelectObject(&border);
+	dc.SelectStockObject(NULL_BRUSH);
+	dc.RoundRect(rect, CPoint(Px(7), Px(7)));
+	dc.SelectObject(oldPen);
+	CString text;
+	GetDlgItem(item->CtlID)->GetWindowText(text);
+	dc.SetBkMode(TRANSPARENT);
+	dc.SetTextColor(Text);
+	dc.SelectObject(&m_regularFont);
+	dc.DrawText(text, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+	dc.Detach();
+}
+
+void ModernOperatorView::OnCaptureRestart()
+{
+	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
+		static_cast<WPARAM>(ModernOperatorAction::CaptureRestart));
+}
+
+void ModernOperatorView::OnRendererRestart()
+{
+	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
+		static_cast<WPARAM>(ModernOperatorAction::RendererRestart));
+}
+
+void ModernOperatorView::OnQueueReset()
+{
+	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
+		static_cast<WPARAM>(ModernOperatorAction::QueueReset));
+}
+
+void ModernOperatorView::OnConfiguration()
+{
+	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
+		static_cast<WPARAM>(ModernOperatorAction::OpenConfiguration));
+}
+
+void ModernOperatorView::OnExit()
+{
+	GetParent()->PostMessage(WM_MODERN_OPERATOR_ACTION,
+		static_cast<WPARAM>(ModernOperatorAction::ExitApplication));
+}

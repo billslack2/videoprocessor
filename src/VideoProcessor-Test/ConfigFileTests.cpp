@@ -99,28 +99,69 @@ namespace VideoProcessorTest
 			Assert::IsTrue(selection.source == ApplicationInterface::Source::NoUi);
 		}
 
+		TEST_METHOD(ApplicationInterfaceValuesAreCaseInsensitiveAndTrimmed)
+		{
+			const auto classic = ApplicationInterface::ParsePreference(
+				true, "  ClAsSiC\t", "configured");
+			const auto modern = ApplicationInterface::ParseCommandLine(
+				{ L"VideoProcessor.exe", L"/INTERFACE", L"MoDeRn" });
+			Assert::IsTrue(classic.valid);
+			Assert::IsTrue(classic.mode == ApplicationInterface::Mode::Classic);
+			Assert::IsTrue(modern.valid);
+			Assert::IsTrue(modern.mode == ApplicationInterface::Mode::Modern);
+		}
+
+		TEST_METHOD(ApplicationInterfaceDuplicateOptionWarnsAndUsesConfiguration)
+		{
+			const auto commandLine = ApplicationInterface::ParseCommandLine(
+				{ L"VideoProcessor.exe", L"/interface", L"modern",
+				  L"/interface", L"classic" });
+			const auto selection = ApplicationInterface::Resolve(false,
+				commandLine, ApplicationInterface::ParsePreference(
+					true, "modern", "configured"));
+			Assert::IsFalse(commandLine.valid);
+			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Modern);
+			Assert::IsTrue(selection.source ==
+				ApplicationInterface::Source::Configuration);
+			Assert::IsFalse(selection.warning.empty());
+		}
+
+		TEST_METHOD(ApplicationInterfaceNoUiSuppressesInvalidSelection)
+		{
+			const auto commandLine = ApplicationInterface::ParseCommandLine(
+				{ L"VideoProcessor.exe", L"/interface", L"future" });
+			const auto selection = ApplicationInterface::Resolve(true,
+				commandLine, ApplicationInterface::ParsePreference(
+					true, "modern", "configured"));
+			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::None);
+			Assert::IsTrue(selection.source == ApplicationInterface::Source::NoUi);
+			Assert::IsFalse(selection.warning.empty());
+		}
+
 		TEST_METHOD(ModernOperatorLayoutMatchesApprovedDefaultGeometry)
 		{
-			const auto layout = ModernOperatorLayout::Calculate(1680, 716);
+			const auto layout = ModernOperatorLayout::Calculate(1600, 671);
 			Assert::AreEqual(16, layout.information.x);
 			Assert::AreEqual(70, layout.information.y);
 			Assert::AreEqual(512, layout.information.width);
 			Assert::AreEqual(544, layout.preview.x);
 			Assert::AreEqual(70, layout.preview.y);
-			Assert::AreEqual(1120, layout.preview.width);
-			Assert::AreEqual(630, layout.preview.height);
+			Assert::AreEqual(1040, layout.preview.width);
+			Assert::AreEqual(585, layout.preview.height);
+			Assert::AreEqual(655,
+				layout.preview.y + layout.preview.height);
 		}
 
 		TEST_METHOD(ModernOperatorLayoutScalesApprovedGeometryWithDpi)
 		{
-			const auto layout = ModernOperatorLayout::Calculate(2520, 1074, 144);
+			const auto layout = ModernOperatorLayout::Calculate(2400, 1007, 144);
 			Assert::AreEqual(24, layout.information.x);
 			Assert::AreEqual(105, layout.information.y);
 			Assert::AreEqual(768, layout.information.width);
-			Assert::AreEqual(816, layout.preview.x);
-			Assert::AreEqual(105, layout.preview.y);
-			Assert::AreEqual(1680, layout.preview.width);
-			Assert::AreEqual(945, layout.preview.height);
+			Assert::AreEqual(820, layout.preview.x);
+			Assert::AreEqual(107, layout.preview.y);
+			Assert::AreEqual(1552, layout.preview.width);
+			Assert::AreEqual(873, layout.preview.height);
 		}
 
 		TEST_METHOD(ModernOperatorPreviewRemainsSixteenByNineWhenResized)
@@ -133,6 +174,29 @@ namespace VideoProcessorTest
 			Assert::AreEqual(
 				layout.preview.width * 9,
 				layout.preview.height * 16);
+		}
+
+		TEST_METHOD(ModernOperatorPreviewStaysBoundedAtTwoHundredPercentDpi)
+		{
+			const auto layout = ModernOperatorLayout::Calculate(3200, 1342, 192);
+			Assert::AreEqual(layout.preview.width * 9,
+				layout.preview.height * 16);
+			Assert::IsTrue(layout.preview.x >= 1088);
+			Assert::IsTrue(layout.preview.y >= 140);
+			Assert::IsTrue(layout.preview.x + layout.preview.width <= 3168);
+			Assert::IsTrue(layout.preview.y + layout.preview.height <= 1310);
+		}
+
+		TEST_METHOD(NoUiVideoGeometryIsSixteenByNineAtDefaultAndMinimum)
+		{
+			Assert::AreEqual(NoUiLayout::DefaultClientWidth * 9,
+				NoUiLayout::DefaultClientHeight * 16);
+			Assert::AreEqual(NoUiLayout::MinimumClientWidth * 9,
+				NoUiLayout::MinimumClientHeight * 16);
+			Assert::AreEqual(960, NoUiLayout::DefaultClientWidth);
+			Assert::AreEqual(540, NoUiLayout::DefaultClientHeight);
+			Assert::AreEqual(320, NoUiLayout::MinimumClientWidth);
+			Assert::AreEqual(180, NoUiLayout::MinimumClientHeight);
 		}
 
 		TEST_METHOD(IndexedShortcutKeyParsesOneBasedIndex)

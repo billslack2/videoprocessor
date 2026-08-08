@@ -18,6 +18,7 @@ class CVideoProcessorApp:
 public:
 	virtual BOOL InitInstance();
 	virtual int ExitInstance();
+	BOOL PreTranslateMessage(MSG* message) override;
 	bool RestoreDisplayTopology(const char* reason);
 
 	// DirectShow startup priming remains automatic. The public queue controls

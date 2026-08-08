@@ -21,8 +21,10 @@ namespace ModernOperatorLayout
 	};
 
 	constexpr int BaseDpi = 96;
-	constexpr int DefaultClientWidth = 1680;
-	constexpr int DefaultClientHeight = 716;
+	// The approved default pairs a 1040x585 (exact 16:9) preview with the
+	// fixed-height operator cards. Both columns therefore finish at y=655.
+	constexpr int DefaultClientWidth = 1600;
+	constexpr int DefaultClientHeight = 671;
 	constexpr int HeaderHeight = 55;
 	constexpr int OuterMargin = 16;
 	constexpr int ContentTop = 70;
@@ -82,4 +84,14 @@ namespace ModernOperatorLayout
 		result.preview = FitSixteenByNine(previewBounds);
 		return result;
 	}
+}
+
+namespace NoUiLayout
+{
+	// No-ui is a video-only host. Keep both its startup and minimum client
+	// areas explicitly 16:9 instead of inheriting the Classic dialog resource.
+	constexpr int DefaultClientWidth = 960;
+	constexpr int DefaultClientHeight = 540;
+	constexpr int MinimumClientWidth = 320;
+	constexpr int MinimumClientHeight = 180;
 }
