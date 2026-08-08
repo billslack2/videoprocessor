@@ -20,7 +20,7 @@ namespace ApplicationInterface
 		NoUi,
 		CommandLine,
 		Configuration,
-		DefaultClassic
+		DefaultModern
 	};
 
 	struct Preference
@@ -33,8 +33,8 @@ namespace ApplicationInterface
 
 	struct Selection
 	{
-		Mode mode = Mode::Classic;
-		Source source = Source::DefaultClassic;
+		Mode mode = Mode::Modern;
+		Source source = Source::DefaultModern;
 		std::string warning;
 	};
 
@@ -162,8 +162,8 @@ namespace ApplicationInterface
 			return result;
 		}
 
-		result.mode = Mode::Classic;
-		result.source = Source::DefaultClassic;
+		result.mode = Mode::Modern;
+		result.source = Source::DefaultModern;
 		return result;
 	}
 

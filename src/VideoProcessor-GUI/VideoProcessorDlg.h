@@ -369,7 +369,7 @@ protected:
 
 	CSize m_minDialogSize;
 	ApplicationInterface::Mode m_interfaceMode =
-		ApplicationInterface::Mode::Classic;
+		ApplicationInterface::Mode::Modern;
 	ModernOperatorView m_modernOperatorView;
 	struct FixedControlLayout
 	{

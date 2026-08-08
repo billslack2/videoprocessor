@@ -28,13 +28,13 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:
-		TEST_METHOD(ApplicationInterfaceDefaultsToClassic)
+		TEST_METHOD(ApplicationInterfaceDefaultsToModern)
 		{
 			const auto selection = ApplicationInterface::Resolve(
 				false, {}, {});
-			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Classic);
+			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Modern);
 			Assert::IsTrue(selection.source ==
-				ApplicationInterface::Source::DefaultClassic);
+				ApplicationInterface::Source::DefaultModern);
 			Assert::IsTrue(selection.warning.empty());
 		}
 
@@ -80,13 +80,13 @@ namespace VideoProcessorTest
 				std::string::npos);
 		}
 
-		TEST_METHOD(ApplicationInterfaceMissingCommandLineValueFallsBackToClassic)
+		TEST_METHOD(ApplicationInterfaceMissingCommandLineValueFallsBackToModern)
 		{
 			const auto commandLine = ApplicationInterface::ParseCommandLine(
 				{ L"VideoProcessor.exe", L"/interface", L"/fullscreen" });
 			const auto selection = ApplicationInterface::Resolve(
 				false, commandLine, {});
-			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Classic);
+			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Modern);
 			Assert::IsTrue(selection.warning.find("missing value") !=
 				std::string::npos);
 		}
