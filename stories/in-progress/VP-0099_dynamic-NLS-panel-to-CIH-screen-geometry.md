@@ -403,6 +403,43 @@ base 16:9 reports `mapping=passthrough`, `axis=none`, native DAR, and
 All three paths report `renderer_restart=0`. User visual confirmation remains
 pending.
 
+### Alpha fresh-start transition correction (2026-08-08)
+
+Live Alpha testing showed a one-time bounce that was not shader compilation:
+the persistent cache was warm and all recorded NLS compile stages took
+`0.000 ms`. The interruption came from VP-0078's unconditional delayed
+queue-only re-prime after DirectShow-to-Alpha handoff and again after Alpha
+fullscreen-host reconstruction. The current Alpha queue policy already treats
+the observed two-to-three-frame reserve as healthy, and the retired DirectShow
+queue cannot cross into the newly constructed Alpha renderer.
+
+Commit `bb1932f` records backend and host fresh-start causes for diagnostics but
+does not schedule a second delayed queue generation for either cause. The new
+Alpha renderer reveals on its first verified live frame. A genuine cross-family
+refresh transition retains its existing one-shot delayed re-prime, as do the
+separate display-settle and already-covered transition-rebind safety paths.
+Telemetry now reports the skipped transition cause and
+`action=reveal-on-first-live-frame`; refresh diagnostics report any coalesced
+host or backend-handoff marker.
+
+The exact committed x64 Release build is clean (`VERSION_DIRTY=false`) and the
+full native suite passed 638/638. Post-commit TRX:
+`TestResults\vp0099-alpha-start-postcommit.trx`. The executable and paired VP
+Renderer DLL were deployed with matching hashes; backups are
+`VideoProcessor.exe.pre-vp0099-bb1932f.20260808-113531.bak` and
+`vprenderer\VideoProcessorVPRenderer.dll.pre-vp0099-bb1932f.20260808-113531.bak`.
+Configuration was unchanged.
+
+Post-deployment live confirmation is blocked before renderer selection by the
+pre-existing intermittent DirectShow filter-enumeration fast-fail. Three
+consecutive launches failed in `ucrtbase.dll` with exception `0xc0000409`,
+subtype 7, at the same enumeration point observed before this change. Dumps
+`VideoProcessor.exe.17404.dmp`, `VideoProcessor.exe.29488.dmp`, and
+`VideoProcessor.exe.13932.dmp` are preserved under
+`C:\Users\bslac\AppData\Local\CrashDumps`. This failure occurs before the
+modified Alpha start policy executes, so automated validation is complete but
+the no-bounce live result must not yet be claimed.
+
 ## Acceptance criteria
 
 - No production NLS path selects a target by `scope`/`normal` name or by a
