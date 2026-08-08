@@ -114,11 +114,23 @@ namespace Tests
 				true, true));
 		}
 
-		TEST_METHOD(DirectShowToAlphaBackendHandoffRequiresReprime)
+		TEST_METHOD(DirectShowToAlphaBackendHandoffIsDetected)
 		{
-			Assert::IsTrue(AlphaBackendHandoffRequiresReprime(true, false));
-			Assert::IsFalse(AlphaBackendHandoffRequiresReprime(false, false));
-			Assert::IsFalse(AlphaBackendHandoffRequiresReprime(true, true));
+			Assert::IsTrue(IsDirectShowToAlphaBackendHandoff(true, false));
+			Assert::IsFalse(IsDirectShowToAlphaBackendHandoff(false, false));
+			Assert::IsFalse(IsDirectShowToAlphaBackendHandoff(true, true));
+		}
+
+		TEST_METHOD(FreshAlphaQueueReprimesOnlyForRefreshTransition)
+		{
+			Assert::IsFalse(AlphaFreshStartRequiresDelayedReprime(
+				AlphaFreshStartTransition::None));
+			Assert::IsFalse(AlphaFreshStartRequiresDelayedReprime(
+				AlphaFreshStartTransition::BackendHandoff));
+			Assert::IsFalse(AlphaFreshStartRequiresDelayedReprime(
+				AlphaFreshStartTransition::HostTransition));
+			Assert::IsTrue(AlphaFreshStartRequiresDelayedReprime(
+				AlphaFreshStartTransition::RefreshTransition));
 		}
 	};
 }

@@ -438,6 +438,8 @@ protected:
 	// material refresh family boundary; 59.94/60 and 23.976/24 remain families.
 	double m_lastAlphaTargetRefreshRateHz = 0.0;
 	bool m_alphaRefreshTransitionPending = false;
+	// Fresh Alpha start causes retained until Rendering so reset policy can
+	// preserve refresh cleanup while logging host/backend skips explicitly.
 	bool m_alphaHostTransitionPending = false;
 	bool m_alphaBackendHandoffPending = false;
 	double m_alphaRefreshTransitionPreviousRateHz = 0.0;

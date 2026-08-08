@@ -2183,12 +2183,12 @@ void CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()
 	if (m_videoRenderer && !m_activeRendererIsDirectShow)
 	{
 		// Alpha reconstructs its own swapchain for an HWND/fullscreen change.
-		// That can accept a first frame promptly while the new presentation path
-		// still absorbs a small reserve. Coalesce rapid toggles into the final
-		// renderer start, then re-prime it after the shared delay.
+		// Coalesce rapid toggles into the final renderer start. The replacement
+		// owns a fresh queue, so the host boundary is diagnostic rather than a
+		// reason for a second delayed queue generation.
 		m_alphaHostTransitionPending = true;
 		DebugLog::Log(
-			"Alpha fullscreen host transition requested: state=timer-pending");
+			"Alpha fullscreen host transition requested: state=fresh-start-pending");
 	}
 
 	m_postRendererStartRequiresGraph = true;
@@ -2211,7 +2211,7 @@ void CVideoProcessorDlg::OnCbnSelchangeFullscreenmodeCombo()
 			m_alphaHostTransitionPending = true;
 			DebugLog::Log(
 				"Alpha fullscreen presentation-mode transition requested: "
-				"state=timer-pending");
+				"state=fresh-start-pending");
 		}
 		// The current or pending DirectShow graph can still own this HWND.
 		// Recreate it only after renderer teardown has reached a terminal point.
@@ -2915,14 +2915,8 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 				static_cast<LPCTSTR>(m_activeRendererName),
 				postStartRequiresGraph ? 1 : 0, windowSettleDelayMs);
 		}
-		else if (m_alphaRefreshTransitionPending ||
-			m_alphaHostTransitionPending ||
-			m_alphaBackendHandoffPending)
+		else
 		{
-			// A confirmed output, host, or DirectShow-to-Alpha transition can leave
-			// the fresh Alpha startup reserve provisional until the shared
-			// renderer-change delay expires. Replace the display-change fallback
-			// with one Alpha-native re-prime; never rebuild the DirectShow graph.
 			const bool refreshTransition = m_alphaRefreshTransitionPending;
 			const bool hostTransition = m_alphaHostTransitionPending;
 			const bool backendHandoff = m_alphaBackendHandoffPending;
@@ -2931,69 +2925,71 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			m_alphaRefreshTransitionPending = false;
 			m_alphaHostTransitionPending = false;
 			m_alphaBackendHandoffPending = false;
-			RequestRendererReset(
-				refreshTransition ? RendererResetReason::RefreshTransition :
-					hostTransition ? RendererResetReason::HostTransition :
-					RendererResetReason::PostRendererStart,
-				false,
-				static_cast<UINT>(m_queueResetDelaySeconds * 1000));
-			if (refreshTransition)
+			const AlphaFreshStartTransition freshStartTransition =
+				refreshTransition ? AlphaFreshStartTransition::RefreshTransition :
+				hostTransition ? AlphaFreshStartTransition::HostTransition :
+				backendHandoff ? AlphaFreshStartTransition::BackendHandoff :
+				AlphaFreshStartTransition::None;
+
+			if (AlphaFreshStartRequiresDelayedReprime(freshStartTransition))
 			{
+				// A real cross-family refresh change is asynchronous outside Alpha.
+				// Preserve its one delayed queue-only cleanup so transition-era
+				// frames cannot survive the Windows/DXGI settling boundary.
+				RequestRendererReset(
+					RendererResetReason::RefreshTransition,
+					false,
+					static_cast<UINT>(m_queueResetDelaySeconds * 1000));
 				DebugLog::Log(
 					"Alpha refresh transition re-prime armed: previous=%.6fHz "
-					"configured=%.6fHz delay=%d seconds action=queue-only",
+					"configured=%.6fHz delay=%d seconds action=queue-only "
+					"coalesced_host=%d coalesced_backend_handoff=%d",
 					previousRate,
 					currentRate,
-					m_queueResetDelaySeconds);
+					m_queueResetDelaySeconds,
+					hostTransition ? 1 : 0,
+					backendHandoff ? 1 : 0);
 			}
-			else if (hostTransition)
+			else if (windowSettleDelayMs != 0)
 			{
+				// A real display-mode transition still needs its bounded hardware
+				// settle interval even though the Alpha queue itself is fresh.
+				RequestRendererReset(
+					RendererResetReason::PostRendererStart,
+					false, windowSettleDelayMs);
 				DebugLog::Log(
-					"Alpha fullscreen host transition re-prime armed: delay=%d "
-					"seconds action=queue-only",
-					m_queueResetDelaySeconds);
+					"Post-start reset retained: renderer=%S backend=Alpha "
+					"reason=display-settle delay=%u",
+					static_cast<LPCTSTR>(m_activeRendererName),
+					windowSettleDelayMs);
 			}
-			else if (backendHandoff)
+			else if (m_rendererResetTransitionActive)
 			{
+				// A replacement created inside an already-covered reset must still
+				// acknowledge the rebound target and advance the transition model.
+				// Its fresh queue needs no settling delay.
+				RequestRendererReset(
+					RendererResetReason::PostRendererStart,
+					false, 0);
 				DebugLog::Log(
-					"Alpha backend handoff re-prime armed: previous_backend=DirectShow "
-					"delay=%d seconds action=queue-only",
-					m_queueResetDelaySeconds);
+					"Post-start reset retained: renderer=%S backend=Alpha "
+					"reason=covered-transition-rebind delay=0",
+					static_cast<LPCTSTR>(m_activeRendererName));
 			}
-		}
-		else if (windowSettleDelayMs != 0)
-		{
-			// A fresh Alpha queue does not need the configured post-start
-			// delay, but a real display-mode transition still needs its
-			// hardware settle interval before the shield can be released.
-			RequestRendererReset(
-				RendererResetReason::PostRendererStart,
-				false, windowSettleDelayMs);
-			DebugLog::Log(
-				"Post-start reset retained: renderer=%S backend=Alpha "
-				"reason=display-settle delay=%u",
-				static_cast<LPCTSTR>(m_activeRendererName),
-				windowSettleDelayMs);
-		}
-		else if (m_rendererResetTransitionActive)
-		{
-			// A replacement created inside an already-covered reset must still
-			// acknowledge the rebound target and advance the transition model.
-			// Its fresh queue needs no settling delay.
-			RequestRendererReset(
-				RendererResetReason::PostRendererStart,
-				false, 0);
-			DebugLog::Log(
-				"Post-start reset retained: renderer=%S backend=Alpha "
-				"reason=covered-transition-rebind delay=0",
-				static_cast<LPCTSTR>(m_activeRendererName));
-		}
-		else
-		{
-			DebugLog::Log(
-				"Post-start reset skipped: renderer=%S backend=Alpha "
-				"reason=fresh-queue-and-swapchain",
-				static_cast<LPCTSTR>(m_activeRendererName));
+			else
+			{
+				const char* transitionName =
+					freshStartTransition == AlphaFreshStartTransition::HostTransition ?
+						"host-transition" :
+					freshStartTransition == AlphaFreshStartTransition::BackendHandoff ?
+						"backend-handoff" : "routine-start";
+				DebugLog::Log(
+					"Post-start reset skipped: renderer=%S backend=Alpha "
+					"reason=fresh-queue-and-swapchain transition=%s "
+					"action=reveal-on-first-live-frame",
+					static_cast<LPCTSTR>(m_activeRendererName),
+					transitionName);
+			}
 		}
 		if (m_rendererFullscreenCheck.GetCheck())
 		{
@@ -4383,13 +4379,13 @@ void CVideoProcessorDlg::RenderStart()
 	m_activeRendererName = selectedRenderer->name;
 	m_activeRendererIsDirectShow =
 		selectedRenderer->backend == RendererBackend::DIRECTSHOW;
-	m_alphaBackendHandoffPending = AlphaBackendHandoffRequiresReprime(
+	m_alphaBackendHandoffPending = IsDirectShowToAlphaBackendHandoff(
 		previousRendererWasDirectShow, m_activeRendererIsDirectShow);
 	if (m_alphaBackendHandoffPending)
 	{
 		DebugLog::Log(
 			"Alpha backend handoff requested: previous_renderer=%S "
-			"next_renderer=%S state=timer-pending",
+			"next_renderer=%S state=fresh-start-pending",
 			static_cast<LPCTSTR>(previousRendererName),
 			static_cast<LPCTSTR>(m_activeRendererName));
 	}

@@ -66,12 +66,31 @@ constexpr bool FullscreenRetargetRequiresCoveredRebuild(
 	return desiredFullscreen != retargetTargetsFullscreen;
 }
 
-// A DirectShow graph can leave a short-lived delivery reserve while its
-// replacement Alpha swapchain is starting. Treat that backend boundary as a
-// known transition, rather than inferring it from the Alpha queue depth.
-constexpr bool AlphaBackendHandoffRequiresReprime(
+enum class AlphaFreshStartTransition
+{
+	None,
+	BackendHandoff,
+	HostTransition,
+	RefreshTransition,
+};
+
+// Record the backend boundary for diagnostics, but do not treat it as proof
+// that Alpha needs a second queue generation. The retired DirectShow queue
+// cannot cross into the newly constructed Alpha renderer.
+constexpr bool IsDirectShowToAlphaBackendHandoff(
 	bool previousRendererWasDirectShow,
 	bool nextRendererIsDirectShow)
 {
 	return previousRendererWasDirectShow && !nextRendererIsDirectShow;
+}
+
+// A fresh Alpha renderer already owns a new queue and swapchain. Re-prime it
+// only when a real refresh-family transition can admit frames while Windows
+// and DXGI still describe different output modes. Backend and HWND changes do
+// not carry queue contents into the new renderer and therefore must not cause
+// a delayed visible reset.
+constexpr bool AlphaFreshStartRequiresDelayedReprime(
+	AlphaFreshStartTransition transition)
+{
+	return transition == AlphaFreshStartTransition::RefreshTransition;
 }
