@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress (2026-08-08). The implementation branch is
+Implementation complete; live renderer review remains (2026-08-08). The implementation branch is
 `codex/vp-0099-dynamic-nls-safety`, based on the discovered default integration
 branch `v1.1.017-beta` at VP-0098 review head `3c7ebd5`.
 
@@ -95,6 +95,37 @@ Validate both VP Renderer and madVR with NLS on/off across:
 
 Logs must identify the same source envelope and target decision seen on screen.
 Safe-fit cases must retain the entire source without an extreme warp.
+
+## Implementation evidence (2026-08-08)
+
+- Added renderer-neutral `NlsGeometryPolicy`, consumed by VP Renderer and
+  DirectShow/madVR, with `ACTIVE`, target-neutral passthrough, and geometry-
+  preserving `SAFE_FIT` decisions.
+- Added validated typed-NLS `max_stretch_ratio` configuration (`1.0` through
+  shader hard bound `1.5`, shipped default `1.4`) and published the same rule
+  value to both backends.
+- Removed the application `SetScreenProfile`, normal/scope shortcuts,
+  accelerator commands, persisted screen-profile choice, 16:9/2.35 selection
+  branches, and scope-era viewport aliases. `screen_aspect` is the only
+  explicit application target.
+- VP Renderer resolves an omitted target from the current output client/
+  swapchain aspect; DirectShow reports NLS unavailable until the selected
+  viewport explicitly supplies `screen_aspect`, because madVR owns its display
+  geometry.
+- Change-only NLS diagnostics now identify backend, rule, source/target,
+  requested ratio, configured limit, warp axis, mode, generation, and fallback
+  reason. OSD passthrough language is target-neutral.
+- Added policy matrices and representative safety examples, limit boundaries,
+  malformed/range configuration cases, backend publication parity, arbitrary
+  panel target resolution, rational output aspects, safe-fit continuity, and
+  removed-alias regression coverage.
+- Authoritative verification: `VideoProcessor.sln`, x64 Release, completed
+  successfully; `x64\\Release\\VideoProcessor-Test.dll` passed 629/629 tests
+  with zero failures or skips. TRX:
+  `TestResults\\vp0099-authoritative-final.trx` in the implementation worktree.
+
+The story intentionally remains in progress until the live VP Renderer and
+madVR matrix above is exercised on real output hardware.
 
 ## Acceptance criteria
 
