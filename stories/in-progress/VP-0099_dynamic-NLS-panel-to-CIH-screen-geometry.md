@@ -274,6 +274,43 @@ contract (`sample_rect` equals the measured active rectangle), correct visible
 stretch, and no double crop on madVR hardware. The VP Renderer regression path
 is covered by the same Release suite but should remain in the live matrix.
 
+### madVR transition churn and NLS-exit restart correction (2026-08-08)
+
+Live switching exposed two additional DirectShow issues. The unified off
+selector is `@shader-key:n`, but dynamic native-DAR restoration was still
+guarded by the removed legacy name `nls_off`; exit therefore cleared NLS and
+requested a renderer replacement while entry used accepted dynamic media-type
+renegotiation. Repeated standard/protected switches also showed synchronous
+madVR shader installation taking approximately 18-69 ms while VP cleared both
+stages and then cleared the target stage again.
+
+Commit `3c3df3b` corrects both paths:
+
+- every effective output-aspect change now attempts `QueryAccept`-guarded
+  dynamic renegotiation, including restoration to native DAR, before changing
+  the active shader chain; renderer replacement remains the fallback only when
+  downstream rejects the candidate media type;
+- shader files are expanded and locally compiled while the prior coherent
+  chain remains active;
+- a fingerprinted per-renderer chain state mutates only changed stages, clears
+  each changed stage once, leaves unrelated stages untouched, and coalesces an
+  identical expanded chain without any madVR clear/add calls;
+- an installation failure attempts to restore the previous prepared stage; and
+- transition telemetry separates preparation, clear, madVR install, and total
+  time and reports changed/unchanged stages, coalescing, and rollback result.
+
+The exact commit completed an x64 Release build and passed 633/633 tests twice.
+Post-commit TRX:
+`TestResults\\vp0099-madvr-transition-postcommit.trx`. The paired executable
+and VP Renderer DLL were deployed to `C:\\Videoprocessor\\vp` with matching
+Release hashes; backups use suffix
+`.pre-vp0099-3c3df3b.20260808-102816.bak`. Configuration and shader files were
+unchanged. Startup telemetry proved an empty identical chain was coalesced with
+`clear=0.000ms` and `install=0.000ms`. The app was left running as PID 20252
+for the user-operated NLS standard/protected/off visual sequence; live
+confirmation of the reverse dynamic DAR acceptance and perceived stutter
+improvement remains required.
+
 ## Acceptance criteria
 
 - No production NLS path selects a target by `scope`/`normal` name or by a
