@@ -2,11 +2,17 @@
 
 ## Status
 
-Backlog. The implementation in `a3ecbd5`/`c6e251b`/`ccbc240` on
+Blocked 2026-08-08. The implementation in `a3ecbd5`/`c6e251b`/`ccbc240` on
 `codex/vp-0070-1-panel-detection` failed live validation and is rejected as the
 production basis. It must not be redeployed. Its single widest-dark-run panel,
 exact-pixel fingerprint, full-raster mask, and candidate painting are replaced
 by this task.
+
+The blocker is the absence of a detector architecture and representative
+corpus that can distinguish bar/boundary subtitle glyphs from picture text and
+dark artwork with the required recall and zero unsafe treatment. Resume when a
+candidate detector has reproducible offline benchmark evidence meeting this
+story's acceptance thresholds and the developer accepts it for live testing.
 
 The 2026-08-01 reproducible Sintel spike established:
 

@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0099`
-- Next root story number: `VP-0100`
-- Total indexed items: 113
+- Last assigned root story: `VP-0101`
+- Next root story number: `VP-0102`
+- Total indexed items: 115
 
 ## Story locations
 
@@ -72,8 +72,8 @@ they must not contain requirements that are absent from this file.
 | VP-0044 | Done | Alpha native OSD visible-picture anchoring and scaling |
 | VP-0045 | Done | Namespace built-in renderer configuration as vpvr |
 | VP-0046 | Backlog | DirectShow event plumbing and passive health diagnostics |
-| VP-0047 | Backlog | P3-D65 LUT-input and calibrated SDR output contract |
-| VP-0048 | Will Not Do | Explicit SDR LUT transfer and range contracts (superseded by VP-0047) |
+| VP-0047 | Will Not Do | P3-D65 LUT-input and calibrated SDR output contract |
+| VP-0048 | Will Not Do | Explicit SDR LUT transfer and range contracts (superseded by VP-0100/VP-0101) |
 | VP-0049 | Done | Complete canonical CONFIGURATION.html reference |
 | VP-0050 | Done | Put Alpha first and reverse renderer order |
 | VP-0051 | Backlog | Generic Alpha shader-chain support |
@@ -96,12 +96,12 @@ they must not contain requirements that are absent from this file.
 | VP-0069 | Done | Achieve and verify a 50 ms low-latency Alpha renderer path |
 | VP-0069-1 | Done | Native-format Alpha ingress and conditional P010 analysis |
 | VP-0069-2 | Will Not Do | Alpha end-to-end latency reduction investigation (superseded by VP-0074) |
-| VP-0070 | Backlog | CIH bar/boundary subtitle capture and relocation |
-| VP-0070-1 | Backlog | Bar/boundary CueSet architecture and detector benchmark |
-| VP-0070-2 | Backlog | Stable boundary-crossing diagnostic overlay |
-| VP-0070-3 | Backlog | Same-frame panel restoration and glyph relocation |
-| VP-0070-4 | Backlog | Panel subtitle live validation and performance |
-| VP-0070-5 | Backlog | Extract subtitle analysis and relocation pipeline |
+| VP-0070 | Blocked | CIH bar/boundary subtitle capture and relocation |
+| VP-0070-1 | Blocked | Bar/boundary CueSet architecture and detector benchmark |
+| VP-0070-2 | Blocked | Stable boundary-crossing diagnostic overlay |
+| VP-0070-3 | Blocked | Same-frame panel restoration and glyph relocation |
+| VP-0070-4 | Blocked | Panel subtitle live validation and performance |
+| VP-0070-5 | Blocked | Extract subtitle analysis and relocation pipeline |
 | VP-0071 | Done | Compose the VP diagnostics OSD through madVR |
 | VP-0072 | Backlog | Repair or explicitly constrain DirectShow no-stop timestamp modes |
 | VP-0073 | Done | Diagnose and minimally repair keyboard-command responsiveness |
@@ -130,6 +130,8 @@ they must not contain requirements that are absent from this file.
 | VP-0097 | In Progress | Safe standalone configuration editor and VP integration |
 | VP-0098 | Done | Fit trusted active-picture envelopes correctly on arbitrary CIH screens |
 | VP-0099 | Backlog | Derive NLS geometry dynamically from panel, screen, requested viewport, and source envelope |
+| VP-0100 | Backlog | Prove pixel-owned SDR presentation for Alpha |
+| VP-0101 | Backlog | Implement production pixel-owned calibrated output and 3D LUTs |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
@@ -144,7 +146,7 @@ they must not contain requirements that are absent from this file.
 | VP-0026 | Done | Alpha low-latency elastic queue |
 | VP-0027 | Done | Alpha display-verified scene-safe cadence correction |
 | VP-0028 | Done | Renderer configuration profile, hotkey, and event-action unification |
-| VP-0029 | Backlog | Alpha two-pass display LUT and final-dither pipeline spike |
+| VP-0029 | Will Not Do | Alpha two-pass display LUT and final-dither pipeline spike |
 
 ## Codex story workflow
 

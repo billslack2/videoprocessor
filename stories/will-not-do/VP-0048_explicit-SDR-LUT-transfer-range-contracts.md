@@ -2,11 +2,12 @@
 
 ## Status
 
-Will Not Do. Superseded by VP-0047 on 2026-08-02. Its transfer/range
-requirements were consolidated into the P3-D65 output and LUT-contract story,
-because implementing them separately could accept a P3 calibration LUT with an
-unproven input domain. Retain this record for its discovery evidence; do not
-implement it as an independent story.
+Will Not Do. Superseded by VP-0047 on 2026-08-02, then ultimately by VP-0100
+and VP-0101 on 2026-08-08 when the roadmap was separated into presentation
+proof and production implementation. Its transfer/range requirements now
+belong to VP-0101, gated by the pixel-preservation evidence required by
+VP-0100. Retain this record for discovery evidence; do not implement it as an
+independent story.
 
 ## User story
 

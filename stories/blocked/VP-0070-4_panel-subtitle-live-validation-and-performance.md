@@ -2,7 +2,10 @@
 
 ## Status
 
-Backlog. Depends on VP-0070-3.
+Blocked 2026-08-08. Depends on an accepted VP-0070-3 treatment path. Resume
+only when VP-0070-1 through VP-0070-3 have accepted detector, diagnostic, and
+same-frame restoration/relocation evidence ready for representative live
+validation.
 
 ## Parent
 

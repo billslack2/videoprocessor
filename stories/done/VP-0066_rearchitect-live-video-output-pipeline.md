@@ -43,7 +43,7 @@ class extractions:
    whole-pipeline regression validation.
 5. [VP-0066-5](../will-not-do/VP-0066-5_extract-subtitle-analysis-and-relocation.md)
    — retain the original ID as superseded; the separately-scoped subtitle
-   pipeline continues as [VP-0070-5](../backlog/VP-0070-5_extract-subtitle-analysis-and-relocation.md).
+   pipeline continues as [VP-0070-5](../blocked/VP-0070-5_extract-subtitle-analysis-and-relocation.md).
 6. [VP-0066-6](VP-0066-6_output-readiness-and-deterministic-prefill.md) -
    introduce the separately approved deterministic output-readiness and
    post-ready prefill policy after the behavior-preserving seams are proven.

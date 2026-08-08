@@ -2,10 +2,14 @@
 
 ## Status
 
-Backlog. Depends on the rebuilt VP-0070-1. The prior implementation in
+Blocked 2026-08-08. Depends on an accepted rebuilt VP-0070-1 detector contract.
+The prior implementation in
 `c6e251b`/`ccbc240` failed live validation: it painted unconfirmed candidates,
 missed the real two-panel subtitle, and marked a large dark picture region as
 glyphs. It must not be redeployed.
+
+Resume only after VP-0070-1 leaves Blocked with accepted offline detector
+evidence. Until then, diagnostic painting cannot be made semantically safe.
 
 Build/test success is retained as regression history only; it did not validate
 the detector's semantics.

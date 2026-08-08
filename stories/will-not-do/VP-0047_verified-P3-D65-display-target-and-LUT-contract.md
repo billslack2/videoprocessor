@@ -2,21 +2,18 @@
 
 ## Status
 
-Backlog. This work must not begin until the VP default integration branch is
-discovered, the output-contract design is reviewed, and a user-approved source
-branch is created from that default. It is a prerequisite for accepting a
-calibration LUT authored for P3-D65 encoded RGB at the renderer output.
+Will Not Do. Superseded on 2026-08-08 by the deliberately separated VP-0100
+pixel-owned-output proof and VP-0101 production calibrated-output
+implementation. This story correctly distinguished the P3-D65/gamma-2.2 LUT
+input from projector-native post-LUT values, but it still mixed the unknown
+presentation-path proof with production configuration and implementation.
 
-On 2026-08-02 this story absorbed VP-0048. Primaries, transfer, range, and
-the distinction between the LUT-input and presentation/wire contracts are one
-implementation boundary. VP-0048 is retained as a superseded record and must
-not be implemented separately.
-
-Design direction reviewed on 2026-08-02: P3-D65/gamma-2.2 is the verified
-pre-LUT reference domain. The calibration cube then produces the projector's
-expected native-output code values. VP must verify that internal LUT-input
-domain and the separately supported post-LUT presentation contract; it must
-not claim that generic Windows/DXGI output signals P3-D65 on the wire.
+Retain the research below as historical evidence. VP-0100 carries forward the
+unresolved requirement to prove that Windows, DXGI, the GPU driver, and the
+physical output preserve renderer-owned code values. VP-0101 carries forward
+the P3-D65 target, transfer/range, gamut-mapping, calibration-LUT, diagnostics,
+fallback, and real-projector requirements. VP-0048 and VP-0029 are also
+superseded and must not be implemented separately.
 
 ## User story
 

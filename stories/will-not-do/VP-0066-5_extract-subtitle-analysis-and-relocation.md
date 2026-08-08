@@ -3,14 +3,14 @@
 ## Status
 
 Will Not Do (2026-08-02). This ID is retained for lineage but is superseded by
-[VP-0070-5](../backlog/VP-0070-5_extract-subtitle-analysis-and-relocation.md),
+[VP-0070-5](../blocked/VP-0070-5_extract-subtitle-analysis-and-relocation.md),
 where subtitle extraction belongs under the existing CIH subtitle story.
 Subtitle OCR, tracking, and P010 relocation are substantial content-processing
 features, not prerequisites for the completed VP-0066 live timing pipeline.
 
 ## Parent and dependency
 
-Former parent: [VP-0066](../review/VP-0066_rearchitect-live-video-output-pipeline.md).
+Former parent: [VP-0066](../done/VP-0066_rearchitect-live-video-output-pipeline.md).
 
 Dependency: accepted VP-0066-3 transport and processing core.
 

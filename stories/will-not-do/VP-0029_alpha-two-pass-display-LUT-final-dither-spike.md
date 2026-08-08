@@ -2,15 +2,17 @@
 
 ## Status
 
-Backlog. This is a bounded design/validation spike, not a commitment to add a
-second render pass. VP-0011 currently keeps a valid target 3D LUT on the
-single-pass path and disables only error-diffusion dithering on D3D11 because
-libplacebo 7.360.1 generates an invalid compute shader for that combination.
-The safe fallback is implemented in `ccc3c06` on `VP0011+0012` and must remain
-the production baseline unless this story proves a better path.
+Will Not Do. Superseded on 2026-08-08 by VP-0100 and VP-0101. Final dithering
+is not useful as a separate architectural spike while Alpha's more fundamental
+post-render presentation contract remains unresolved. VP-0100 now owns proof
+of a pixel-preserving output path; VP-0101 owns the production LUT pipeline,
+including whether a two-pass identity stage is necessary to restore final
+error-diffusion dithering safely.
 
-The next action is a readiness review, then default-branch discovery and user
-confirmation before any VP source branch/worktree is created.
+Retain the investigation below as historical evidence. The current VP-0011
+single-pass behavior remains the safe production baseline: when the bundled
+D3D11/libplacebo path cannot combine a target 3D LUT with error diffusion, it
+disables only error diffusion and continues calibrated playback.
 
 ## User story
 

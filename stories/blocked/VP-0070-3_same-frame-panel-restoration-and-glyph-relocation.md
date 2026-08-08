@@ -2,7 +2,10 @@
 
 ## Status
 
-Backlog. Depends on VP-0070-2.
+Blocked 2026-08-08. Depends on an accepted VP-0070-2 diagnostic contract and
+therefore cannot progress while VP-0070-1 and VP-0070-2 are Blocked. Resume
+only after stable live-highlight evidence proves the exact glyph/source masks
+and destination geometry that this task would mutate.
 
 Build-only checkpoint (2026-08-01): `54f0e0f` implements explicit test mode
 `move` in both Alpha and DirectShow/madVR. On a stable cue it captures current

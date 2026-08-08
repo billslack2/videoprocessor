@@ -2,10 +2,12 @@
 
 ## Status
 
-Backlog (2026-08-02). This task supersedes VP-0066-5 and keeps the substantial
+Blocked 2026-08-08. This task supersedes VP-0066-5 and keeps the substantial
 subtitle content-processing extraction with the story that owns its behavior
-and acceptance contract. It must not reopen or alter the accepted VP-0066 live
-timing pipeline.
+and acceptance contract. It cannot define stable component boundaries until
+VP-0070-1 through VP-0070-4 establish an accepted detector, treatment, and live
+validation contract. Resume only after those dependencies are accepted. It
+must not reopen or alter the accepted VP-0066 live timing pipeline.
 
 ## Parent and dependencies
 

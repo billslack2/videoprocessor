@@ -13,8 +13,10 @@ and the verified DXGI/swapchain contract to match before activation. It rejects
 P3-D65 until a verified Windows P3 path exists, rejects 1D/malformed/unsafe
 files, and continues playback without a LUT on rejection or a render error.
 The D3D11 compatibility result is a safe single-pass fallback: disable only
-error-diffusion dithering for a valid target LUT. VP-0029 remains the separate
-spike for determining whether a two-pass final-dither path is worthwhile.
+error-diffusion dithering for a valid target LUT. On 2026-08-08 VP-0100 became
+the separate prerequisite for proving renderer-owned output code values, and
+VP-0101 became the remaining production LUT/output story. VP-0029 was closed
+as superseded and its final-dither question was absorbed into VP-0101.
 
 Final merge validation: `Release|x64` built with zero warnings/errors and
 `VideoProcessor-Test.dll` passed 79/79 tests, including all supplied 65^3

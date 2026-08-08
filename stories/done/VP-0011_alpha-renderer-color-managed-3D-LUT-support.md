@@ -17,9 +17,10 @@ other high-quality rendering remains enabled.
 The rebased merge candidate built `Release|x64` with zero warnings/errors and
 passed 79/79 tests, including supplied-cube parsing and deterministic WARP
 identity/non-identity target-LUT readback. Follow-up calibration work remains
-separately tracked: VP-0029 for a possible two-pass final-dither path, VP-0030
-for verified P3-D65 output targets, and VP-0031 for explicit SDR LUT
-transfer/range contracts.
+separately tracked by VP-0100 for pixel-owned presentation proof and VP-0101
+for the remaining calibrated-output implementation. On 2026-08-08 the older
+VP-0029, VP-0047, and VP-0048 follow-ups were retained as superseded records.
+VP-0011 remains the completed contract-locked Phase 1 baseline.
 
 <!-- Historical review record retained below. -->
 

@@ -2,14 +2,20 @@
 
 ## Status
 
-Backlog. The first diagnostic implementation failed live validation and must
-not be deployed again: it missed real compact Apple TV panels and classified a
-large dark picture region as a panel/glyph mask. VP-0070-1 and VP-0070-2 have
-returned to backlog for replacement behind a multi-panel CueSet architecture.
-Deployment is explicitly paused while the boundary-only detector is proven
-offline.
-The root closes only after the rebuilt path has representative Alpha and
-DirectShow/madVR live-capture evidence.
+Blocked 2026-08-08. The first diagnostic implementation failed live validation:
+it missed real compact Apple TV panels and classified a large dark picture
+region as a panel/glyph mask. The available classical and off-the-shelf OCR
+evidence does not yet provide a safe general glyph/subtitle classifier, so the
+root and VP-0070-1 through VP-0070-5 cannot make meaningful implementation
+progress. The feature remains fail-safe off and the rejected implementation
+must not be redeployed.
+
+Resume only after a detector architecture and representative offline corpus
+demonstrate the parent false-treatment and recall requirements, with stable
+active-picture/bar-boundary evidence, and the developer accepts that evidence
+as sufficient to restart live implementation. The root closes only after the
+rebuilt path has representative Alpha and DirectShow/madVR live-capture
+evidence.
 
 Build-only checkpoint (2026-08-01): `54f0e0f` on
 `codex/vp-0070-1-panel-detection`, rebased through local VP-0066 tip
