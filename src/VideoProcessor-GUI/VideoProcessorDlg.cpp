@@ -3222,6 +3222,32 @@ void CVideoProcessorDlg::OnCommandDisplayRuleAuto()
 void CVideoProcessorDlg::OnCommandShaderRule(UINT commandId)
 {
 	const auto rule = m_shaderShortcutRules.find(static_cast<WORD>(commandId));
+	if (rule == m_shaderShortcutRules.end())
+		return;
+
+	CString replacedSelector;
+	if (m_shaderShortcutDebounce.HasPending())
+	{
+		const auto replaced = m_shaderShortcutRules.find(
+			static_cast<WORD>(m_shaderShortcutDebounce.PendingCommand()));
+		if (replaced != m_shaderShortcutRules.end())
+			replacedSelector = replaced->second;
+	}
+	m_shaderShortcutDebounce.Queue(commandId, GetTickCount64());
+	KillTimer(SHADER_SHORTCUT_DEBOUNCE_TIMER_ID);
+	SetTimer(SHADER_SHORTCUT_DEBOUNCE_TIMER_ID,
+		SHADER_SHORTCUT_DEBOUNCE_MS, nullptr);
+	DEBUGLOG(
+		"Shader shortcut pending selector='%S' debounce=%ums replaced='%S'",
+		static_cast<LPCTSTR>(rule->second),
+		static_cast<unsigned int>(SHADER_SHORTCUT_DEBOUNCE_MS),
+		static_cast<LPCTSTR>(replacedSelector));
+}
+
+
+void CVideoProcessorDlg::ApplyShaderRuleCommand(UINT commandId)
+{
+	const auto rule = m_shaderShortcutRules.find(static_cast<WORD>(commandId));
 	if (rule == m_shaderShortcutRules.end() || !m_videoRenderer)
 		return;
 
@@ -6866,16 +6892,31 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 		m_shaderShortcutKeys.end();
 	const bool repeat = (static_cast<ULONG_PTR>(pMsg->lParam) &
 		(1ull << 30)) != 0;
-	if (m_shaderShortcutRepeatGuard.Process(virtualKey, keyDown, keyUp,
+	if (m_shaderShortcutDebounce.ProcessPhysicalKey(virtualKey, keyDown, keyUp,
 		repeat, guardedShaderShortcut))
 	{
+		m_shaderShortcutDebounce.Touch(GetTickCount64());
+		if (m_shaderShortcutDebounce.HasPending())
+		{
+			KillTimer(SHADER_SHORTCUT_DEBOUNCE_TIMER_ID);
+			SetTimer(SHADER_SHORTCUT_DEBOUNCE_TIMER_ID,
+				SHADER_SHORTCUT_DEBOUNCE_MS, nullptr);
+		}
 		DebugLog::Log(
-			"Keyboard shader shortcut auto-repeat suppressed vk=0x%02x shift=%d ctrl=%d alt=%d",
+			"Keyboard shader shortcut auto-repeat retained pending intent vk=0x%02x shift=%d ctrl=%d alt=%d",
 			static_cast<unsigned int>(virtualKey),
 			(GetKeyState(VK_SHIFT) & 0x8000) ? 1 : 0,
 			(GetKeyState(VK_CONTROL) & 0x8000) ? 1 : 0,
 			(GetKeyState(VK_MENU) & 0x8000) ? 1 : 0);
 		return TRUE;
+	}
+	if (keyUp && guardedShaderShortcut &&
+		m_shaderShortcutDebounce.HasPending())
+	{
+		m_shaderShortcutDebounce.Touch(GetTickCount64());
+		KillTimer(SHADER_SHORTCUT_DEBOUNCE_TIMER_ID);
+		SetTimer(SHADER_SHORTCUT_DEBOUNCE_TIMER_ID,
+			SHADER_SHORTCUT_DEBOUNCE_MS, nullptr);
 	}
 	const bool diagnosticKey =
 		keyDown &&
@@ -7413,6 +7454,41 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	{
 		KillTimer(UI_LAYOUT_RESTORE_TIMER_ID);
 		RestoreFixedDialogLayout();
+		return;
+	}
+
+	if (nIDEvent == SHADER_SHORTCUT_DEBOUNCE_TIMER_ID)
+	{
+		KillTimer(SHADER_SHORTCUT_DEBOUNCE_TIMER_ID);
+		if (!m_shaderShortcutDebounce.HasPending())
+			return;
+		if (!m_videoRenderer ||
+			m_rendererState != RendererState::RENDERSTATE_RENDERING ||
+			m_wantToRestartRenderer)
+		{
+			SetTimer(SHADER_SHORTCUT_DEBOUNCE_TIMER_ID,
+				SHADER_SHORTCUT_DEBOUNCE_MS, nullptr);
+			return;
+		}
+
+		uint32_t commandId = 0;
+		const ULONGLONG now = GetTickCount64();
+		if (!m_shaderShortcutDebounce.TryTake(now,
+			SHADER_SHORTCUT_DEBOUNCE_MS, commandId))
+		{
+			const uint32_t remaining =
+				m_shaderShortcutDebounce.DelayRemaining(
+					now, SHADER_SHORTCUT_DEBOUNCE_MS);
+			SetTimer(SHADER_SHORTCUT_DEBOUNCE_TIMER_ID,
+				remaining > 0 ? remaining : 1, nullptr);
+			return;
+		}
+		const auto rule = m_shaderShortcutRules.find(
+			static_cast<WORD>(commandId));
+		DEBUGLOG("Shader shortcut debounce settled selector='%S'",
+			rule != m_shaderShortcutRules.end() ?
+				static_cast<LPCTSTR>(rule->second) : TEXT("(missing)"));
+		ApplyShaderRuleCommand(commandId);
 		return;
 	}
 

@@ -966,10 +966,19 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 			MadVRShaderLoader::SetRuntimeShaderSelection(
 				std::string(requestedUtf8), std::string(requestedUtf8),
 				MadVRNlsMappingMode::WAITING);
-			const MadVRShaderSelection waitingSelection =
-				MadVRShaderLoader::ApplyConfiguredShaderRule(
-					m_pRenderer, *m_videoState,
-					std::string(requestedUtf8), false);
+			unsigned long desiredAspectX = 0;
+			unsigned long desiredAspectY = 0;
+			MadVRShaderLoader::GetRuntimeOutputAspectRatio(
+				desiredAspectX, desiredAspectY);
+			MadVRShaderSelection waitingSelection;
+			if (!ApplyConfiguredShaderRuleCoherently(
+					std::string(requestedUtf8), false,
+					desiredAspectX, desiredAspectY,
+					rendererRestartRequired, waitingSelection))
+			{
+				activeRule = m_activeShaderRule;
+				return true;
+			}
 			UpdateActiveShaderSelection(waitingSelection);
 			UpdateNlsOsdMode(MadVRNlsMappingMode::WAITING);
 			m_requestedShaderApplied = false;
@@ -977,7 +986,6 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 			m_appliedActivePictureGeneration = 0;
 			m_appliedViewportGeneration = m_viewportGeneration;
 			activeRule = m_activeShaderRule;
-			rendererRestartRequired = false;
 			DebugLog::Log(
 				"Shaders: NLS mapping change requested=%s effective=%s "
 				"mapping=waiting active_generation=%llu "
@@ -1013,15 +1021,15 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		unsigned long desiredAspectY = 0;
 		MadVRShaderLoader::GetRuntimeOutputAspectRatio(
 			desiredAspectX, desiredAspectY);
-		if (!PrepareOutputAspectForShaderInstall(
-			desiredAspectX, desiredAspectY, rendererRestartRequired))
+		MadVRShaderSelection selection;
+		if (!ApplyConfiguredShaderRuleCoherently(
+				std::string(requestedUtf8), false,
+				desiredAspectX, desiredAspectY,
+				rendererRestartRequired, selection))
 		{
 			activeRule = m_activeShaderRule;
 			return true;
 		}
-		const MadVRShaderSelection selection =
-			MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer,
-				*m_videoState, std::string(requestedUtf8), false);
 		UpdateActiveShaderSelection(selection);
 		m_nlsTargetAspect = decision.targetAspect;
 		UpdateNlsOsdMode(decision.mode);

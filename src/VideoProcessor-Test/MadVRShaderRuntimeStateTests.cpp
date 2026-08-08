@@ -552,14 +552,39 @@ namespace VideoProcessorTest
 
 		TEST_METHOD(ShaderShortcutRepeatDoesNotFallThroughAfterModifierRelease)
 		{
-			ShortcutRepeatGuard guard;
-			Assert::IsFalse(guard.Process('N', true, false, false, true));
+			ShortcutDebounceState state;
+			Assert::IsFalse(state.ProcessPhysicalKey(
+				'N', true, false, false, true));
+			state.Queue(101, 1000);
 			// The same physical key is still down after Shift is released. Windows
-			// emits an unmodified repeat, which must not select the plain-n reset.
-			Assert::IsTrue(guard.Process('N', true, false, true, true));
-			Assert::IsFalse(guard.Process('N', false, true, false, true));
+			// emits an unmodified repeat. It retains the pending modified intent and
+			// postpones application until the physical key is released.
+			Assert::IsTrue(state.ProcessPhysicalKey(
+				'N', true, false, true, true));
+			state.Touch(1100);
+			uint32_t command = 0;
+			Assert::IsFalse(state.TryTake(1400, 200, command));
+			Assert::IsFalse(state.ProcessPhysicalKey(
+				'N', false, true, false, true));
+			state.Touch(1400);
+			Assert::IsFalse(state.TryTake(1599, 200, command));
+			Assert::IsTrue(state.TryTake(1600, 200, command));
+			Assert::AreEqual(static_cast<uint32_t>(101), command);
 			// A distinct press after key-up remains an intentional reset.
-			Assert::IsFalse(guard.Process('N', true, false, false, true));
+			Assert::IsFalse(state.ProcessPhysicalKey(
+				'N', true, false, false, true));
+		}
+
+		TEST_METHOD(ShaderShortcutDebounceAppliesLastIntent)
+		{
+			ShortcutDebounceState state;
+			state.Queue(101, 1000);
+			state.Queue(102, 1100);
+			uint32_t command = 0;
+			Assert::IsFalse(state.TryTake(1299, 200, command));
+			Assert::IsTrue(state.TryTake(1300, 200, command));
+			Assert::AreEqual(static_cast<uint32_t>(102), command);
+			Assert::IsFalse(state.HasPending());
 		}
 
 		TEST_METHOD(RendererReplacementRebindsExactTrustedGeometry)

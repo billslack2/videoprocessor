@@ -69,6 +69,8 @@
 #define SHADER_RULE_REFRESH_TIMER_ID 8
 #define RENDERER_RESET_MAILBOX_TIMER_ID 9
 #define TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID 10
+#define SHADER_SHORTCUT_DEBOUNCE_TIMER_ID 11
+#define SHADER_SHORTCUT_DEBOUNCE_MS 200
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 
 
@@ -359,7 +361,7 @@ protected:
 	HACCEL m_accelerator = nullptr;
 	std::map<WORD, CString> m_shaderShortcutRules;
 	std::set<WORD> m_shaderShortcutKeys;
-	ShortcutRepeatGuard m_shaderShortcutRepeatGuard;
+	ShortcutDebounceState m_shaderShortcutDebounce;
 	CString m_requestedShaderSelector;
 	std::map<WORD, CString> m_displayRuleShortcutRules;
 	std::map<WORD, unsigned int> m_rendererShortcutIndices;
@@ -691,6 +693,7 @@ protected:
 	std::atomic<bool> m_needsRenderRestart = false;
 	std::atomic<bool> m_isRestartingRender = false;
 	BOOL PreTranslateMessage(MSG* pMsg) override;
+	void ApplyShaderRuleCommand(UINT commandId);
 	void OnOK() override;
 	afx_msg void OnPaint();
 	afx_msg void OnSize(UINT nType, int cx, int cy);
