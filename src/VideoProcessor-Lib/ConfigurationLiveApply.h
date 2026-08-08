@@ -52,4 +52,18 @@ namespace ConfigurationLiveApply
 		return editorVisible && !editorIconic && editorProcessId != 0 &&
 			editorProcessId == foregroundProcessId;
 	}
+
+	inline bool IsDuplicateBackgroundShortcut(uint16_t lastCommand,
+		uint16_t candidateCommand, uint64_t elapsedMilliseconds,
+		uint64_t duplicateWindowMilliseconds)
+	{
+		return lastCommand != 0 && lastCommand == candidateCommand &&
+			elapsedMilliseconds <= duplicateWindowMilliseconds;
+	}
+
+	inline bool MayDispatchWhileConfigurationModal(bool configurationModal,
+		bool configurationEditorCommand)
+	{
+		return !configurationModal || configurationEditorCommand;
+	}
 }

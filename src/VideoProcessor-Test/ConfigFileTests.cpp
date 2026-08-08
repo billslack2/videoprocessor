@@ -71,6 +71,18 @@ namespace VideoProcessorTest
 				true, false, 84, 42));
 			Assert::IsFalse(ConfigurationLiveApply::MayEnterConfigurationModal(
 				true, true, 84, 84));
+			Assert::IsTrue(ConfigurationLiveApply::IsDuplicateBackgroundShortcut(
+				33200, 33200, 100, 250));
+			Assert::IsFalse(ConfigurationLiveApply::IsDuplicateBackgroundShortcut(
+				33200, 33201, 100, 250));
+			Assert::IsFalse(ConfigurationLiveApply::IsDuplicateBackgroundShortcut(
+				33200, 33200, 251, 250));
+			Assert::IsTrue(
+				ConfigurationLiveApply::MayDispatchWhileConfigurationModal(
+					true, true));
+			Assert::IsFalse(
+				ConfigurationLiveApply::MayDispatchWhileConfigurationModal(
+					true, false));
 		}
 
 		TEST_METHOD(ApplicationInterfaceDefaultsToModern)

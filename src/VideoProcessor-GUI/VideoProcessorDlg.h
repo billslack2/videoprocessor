@@ -80,6 +80,7 @@
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 #define CONFIGURATION_LIVE_APPLY_INTERVAL_MS 250
 #define CONFIGURATION_EDITOR_MODAL_INTERVAL_MS 100
+#define BACKGROUND_SHORTCUT_DUPLICATE_WINDOW_MS 250
 
 
 
@@ -394,6 +395,8 @@ protected:
 	bool m_backgroundShortcutInputRegistered = false;
 	bool m_configurationEditorHotkeyRegistered = false;
 	std::set<WORD> m_backgroundShortcutPressedKeys;
+	WORD m_lastBackgroundShortcutCommand = 0;
+	ULONGLONG m_lastBackgroundShortcutTick = 0;
 	HANDLE m_configurationChangedEvent = nullptr;
 	std::map<std::string, std::map<std::string, std::string>>
 		m_configurationSnapshot;
@@ -700,6 +703,7 @@ protected:
 	void StartGlobalShortcutObserver();
 	void SuspendGlobalShortcutObserver();
 	void StopGlobalShortcutObserver();
+	void ToggleConfigurationEditor();
 	void UpdateConfigurationEditorModal();
 	void DemoteFullscreenForConfigurationEditor();
 	void RestoreFullscreenAfterConfigurationEditor();

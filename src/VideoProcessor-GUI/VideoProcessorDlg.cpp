@@ -1677,8 +1677,7 @@ void CVideoProcessorDlg::ReloadConfiguredAccelerators()
 	if (previous)
 		DestroyAcceleratorTable(previous);
 	DebugLog::Log("Configuration shortcuts applied live");
-	if (!m_configurationEditorModal)
-		StartGlobalShortcutObserver();
+	StartGlobalShortcutObserver();
 }
 
 void CVideoProcessorDlg::StartGlobalShortcutObserver()
@@ -1786,8 +1785,7 @@ LRESULT CVideoProcessorDlg::OnBackgroundRawInput(WPARAM wParam, LPARAM lParam)
 	if (foreground)
 		::GetWindowThreadProcessId(foreground, &foregroundProcessId);
 	if (!ConfigurationLiveApply::MayDispatchGlobalShortcut(
-		GetCurrentProcessId(), foregroundProcessId,
-		m_configurationEditorModal))
+		GetCurrentProcessId(), foregroundProcessId, false))
 		return ::DefWindowProc(GetSafeHwnd(), WM_INPUT, wParam, lParam);
 
 	auto pressed = [this](WORD generic, WORD left, WORD right)
@@ -1801,6 +1799,10 @@ LRESULT CVideoProcessorDlg::OnBackgroundRawInput(WPARAM wParam, LPARAM lParam)
 	const bool shift = pressed(VK_SHIFT, VK_LSHIFT, VK_RSHIFT);
 	for (const ACCEL& accelerator : m_configuredAccelerators)
 	{
+		if (!ConfigurationLiveApply::MayDispatchWhileConfigurationModal(
+			m_configurationEditorModal,
+			accelerator.cmd == ID_COMMAND_CONFIG_EDITOR))
+			continue;
 		if (accelerator.cmd == ID_COMMAND_CONFIG_EDITOR &&
 			m_configurationEditorHotkeyRegistered)
 			continue;
@@ -1811,6 +1813,13 @@ LRESULT CVideoProcessorDlg::OnBackgroundRawInput(WPARAM wParam, LPARAM lParam)
 				(accelerator.fVirt & FSHIFT) != 0,
 				control, alt, shift))
 			continue;
+		if (accelerator.cmd == ID_COMMAND_CONFIG_EDITOR)
+		{
+			ToggleConfigurationEditor();
+			break;
+		}
+		m_lastBackgroundShortcutCommand = accelerator.cmd;
+		m_lastBackgroundShortcutTick = GetTickCount64();
 		PostMessage(WM_COMMAND, MAKEWPARAM(accelerator.cmd, 0), 0);
 		break;
 	}
@@ -1821,8 +1830,17 @@ LRESULT CVideoProcessorDlg::OnConfigurationEditorHotkey(
 	WPARAM wParam, LPARAM)
 {
 	if (wParam == CONFIGURATION_EDITOR_HOTKEY_ID)
-		OnCommandConfigEditor();
+		ToggleConfigurationEditor();
 	return 0;
+}
+
+void CVideoProcessorDlg::ToggleConfigurationEditor()
+{
+	const HWND editor = FindConfigurationEditorForCurrentInstallation();
+	if (editor && ::IsWindowVisible(editor))
+		::PostMessage(editor, WM_CLOSE, 0, 0);
+	else
+		OnCommandConfigEditor();
 }
 
 HWND CVideoProcessorDlg::ConfigurationEditorOwner() const
@@ -1965,7 +1983,6 @@ void CVideoProcessorDlg::UpdateConfigurationEditorModal()
 		m_configurationEditorModal = true;
 		m_configurationEditorActivationPending = false;
 		m_configurationEditorActivationAttempts = 0;
-		SuspendGlobalShortcutObserver();
 		DebugLog::Log("Configuration editor modal session started owner=%p",
 			reinterpret_cast<void*>(owner));
 	}
@@ -7774,8 +7791,49 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 
 BOOL CVideoProcessorDlg::TranslateConfiguredAccelerator(MSG* message)
 {
-	return m_accelerator &&
-		::TranslateAccelerator(m_hWnd, m_accelerator, message);
+	if (!m_accelerator || !message)
+		return FALSE;
+
+	if (message->message == WM_KEYDOWN || message->message == WM_SYSKEYDOWN)
+	{
+		const WORD virtualKey = static_cast<WORD>(message->wParam);
+		const bool control = (::GetKeyState(VK_CONTROL) & 0x8000) != 0;
+		const bool alt = (::GetKeyState(VK_MENU) & 0x8000) != 0;
+		const bool shift = (::GetKeyState(VK_SHIFT) & 0x8000) != 0;
+		for (const ACCEL& accelerator : m_configuredAccelerators)
+		{
+			if (accelerator.key != virtualKey ||
+				!ConfigurationLiveApply::ShortcutModifiersMatch(
+					(accelerator.fVirt & FCONTROL) != 0,
+					(accelerator.fVirt & FALT) != 0,
+					(accelerator.fVirt & FSHIFT) != 0,
+					control, alt, shift))
+				continue;
+
+			const ULONGLONG now = GetTickCount64();
+			if (ConfigurationLiveApply::IsDuplicateBackgroundShortcut(
+				m_lastBackgroundShortcutCommand, accelerator.cmd,
+				now - m_lastBackgroundShortcutTick,
+				BACKGROUND_SHORTCUT_DUPLICATE_WINDOW_MS))
+			{
+				m_lastBackgroundShortcutCommand = 0;
+				m_lastBackgroundShortcutTick = 0;
+				DebugLog::Log(
+					"Keyboard message: suppressed duplicate background command=%u",
+					static_cast<unsigned int>(accelerator.cmd));
+				return TRUE;
+			}
+
+			if (accelerator.cmd == ID_COMMAND_CONFIG_EDITOR)
+			{
+				ToggleConfigurationEditor();
+				return TRUE;
+			}
+			break;
+		}
+	}
+
+	return ::TranslateAccelerator(m_hWnd, m_accelerator, message);
 }
 
 void CVideoProcessorDlg::OnOK()
