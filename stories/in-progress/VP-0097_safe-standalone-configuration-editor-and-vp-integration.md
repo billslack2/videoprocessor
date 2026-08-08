@@ -1071,3 +1071,10 @@ design-only improvements prioritized for a separate pass:
   rule in that case, and creates/maintains the root section only when the user
   configures Off. Existing Off shortcuts/rules continue to load and save.
   Dedicated virtual-Off coverage raises the Qt integration suite to 5/5.
+- Split each VP Renderer profile's settings into compact, collapsible groups:
+  `Basic` is open initially, while `Color & tone`, `Scaling & cleanup`,
+  `3D LUT`, and `Advanced` begin collapsed. This is a presentation-only
+  change; every value remains owned by and saved with the selected profile.
+- Renderer-group headers are keyboard accessible and retain their expansion
+  state while the user switches profiles. Automated coverage proves hidden
+  fields still round-trip and raises the Qt integration suite to 6/6.
