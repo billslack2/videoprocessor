@@ -1141,11 +1141,13 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 	if (!IsGraphThread())
 	{
 		const UnifiedProfileRuntime::Snapshot state(snapshot);
-		activeState.Format(TEXT("Viewport: %S (%S)"),
+		activeState.Format(TEXT("Viewport: %S (%S, alignment %S%s)"),
 			snapshot.viewport.profile.c_str(),
 			snapshot.viewport.hasScreenAspect ?
 				snapshot.viewport.screenAspect.Canonical().c_str() :
-				"native; NLS target unavailable");
+				"native; NLS target unavailable",
+			snapshot.viewport.verticalAlignment.c_str(),
+			snapshot.viewport.verticalAlignment == "center" ? "" : " unsupported");
 		rendererRestartRequired = false;
 		return PostCoalescedGraphCommand(
 			GRAPH_COMMAND_APPLICATION_STATE,
@@ -1186,18 +1188,22 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 				DoesOutputAspectRequireRestart(
 					desiredAspectX, desiredAspectY));
 	}
-	activeState.Format(TEXT("Viewport: %S (%S)"),
+	activeState.Format(TEXT("Viewport: %S (%S, alignment %S%s)"),
 		viewport.profile.c_str(),
 		viewport.hasScreenAspect ?
 			viewport.screenAspect.Canonical().c_str() :
-			"native; NLS target unavailable");
+			"native; NLS target unavailable",
+		viewport.verticalAlignment.c_str(),
+		viewport.verticalAlignment == "center" ? "" : " unsupported");
 	DebugLog::Log(
-		"DirectShow application viewport profile=%s target=%s numeric=%.7f explicit=%d automatic_crop=%d subtitle_fit=%d subtitle_hold_ms=%llu subtitle_padding=%d generation=%llu renderer_restart=%d",
+		"DirectShow application viewport profile=%s target=%s numeric=%.7f explicit=%d vertical_alignment=%s placement_supported=%d automatic_crop=%d subtitle_fit=%d subtitle_hold_ms=%llu subtitle_padding=%d generation=%llu renderer_restart=%d",
 		viewport.profile.c_str(),
 		viewport.hasScreenAspect ?
 			viewport.screenAspect.Canonical().c_str() : "unavailable",
 		m_nlsTargetAspect,
 		viewport.hasScreenAspect ? 1 : 0,
+		viewport.verticalAlignment.c_str(),
+		viewport.verticalAlignment == "center" ? 1 : 0,
 		viewport.automaticCrop ? 1 : 0,
 		viewport.subtitleFit ? 1 : 0,
 		static_cast<unsigned long long>(

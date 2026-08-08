@@ -288,6 +288,23 @@ namespace AlphaSourceCrop
 		bool valid = false;
 	};
 
+	enum class VerticalPictureAlignment
+	{
+		TOP,
+		CENTER,
+		BOTTOM,
+	};
+
+	const char* VerticalPictureAlignmentName(
+		VerticalPictureAlignment alignment);
+
+	// Preserve aspect while centering horizontally and choosing where any
+	// unused vertical destination space rests. Horizontal-only unused space is
+	// always centered, and an equal-height fit makes all three modes identical.
+	CenteredFitDecision FitAspect(double contentAspect,
+		const PresentationRect& screen,
+		VerticalPictureAlignment verticalAlignment);
+
 	// Perform the one ordinary centered aspect-preserving fit used after source
 	// envelope selection. The caller may pass anamorphic-adjusted contentAspect;
 	// that destination-only mapping never feeds back into source geometry.

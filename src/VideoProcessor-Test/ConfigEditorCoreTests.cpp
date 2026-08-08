@@ -496,6 +496,7 @@ namespace VideoProcessorTest
 				{ "vprenderer.viewport.scope", "shortcut", "Ctrl+V" },
 				{ "vprenderer.viewport.scope", "when", "${width} >= 1280" },
 				{ "vprenderer.viewport", "screen_aspect", "21:10" },
+				{ "vprenderer.viewport", "vertical_alignment", "bottom" },
 				{ "vprenderer.viewport", "anamorphic_scale", "4:3" },
 				{ "vprenderer.viewport", "automatic_crop", "true" },
 				{ "vprenderer.viewport", "subtitle_fit", "true" },

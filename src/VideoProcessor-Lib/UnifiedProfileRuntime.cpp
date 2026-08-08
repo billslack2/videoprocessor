@@ -48,6 +48,8 @@ namespace
 				right.viewport.screenAspect.denominator &&
 			left.viewport.hasScreenAspect ==
 				right.viewport.hasScreenAspect &&
+			left.viewport.verticalAlignment ==
+				right.viewport.verticalAlignment &&
 			left.viewport.anamorphicScale.numerator ==
 				right.viewport.anamorphicScale.numerator &&
 			left.viewport.anamorphicScale.denominator ==
@@ -730,6 +732,8 @@ namespace UnifiedProfileRuntime
 			StateVariables::Value::Text(viewport.profile);
 		variables["screen_aspect"] =
 			StateVariables::Value::Aspect(viewport.screenAspect);
+		variables["vertical_alignment"] =
+			StateVariables::Value::Text(viewport.verticalAlignment);
 		variables["anamorphic_scale"] =
 			StateVariables::Value::Aspect(viewport.anamorphicScale);
 		variables["automatic_crop"] =

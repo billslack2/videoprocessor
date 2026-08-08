@@ -92,6 +92,9 @@ vprenderer.switch_refresh_rate	true
 vprenderer.switch_refresh_rate	false
 vprenderer.viewport.<variant>.automatic_crop	true
 vprenderer.viewport.<variant>.automatic_crop	false
+vprenderer.viewport.<variant>.vertical_alignment	top
+vprenderer.viewport.<variant>.vertical_alignment	center
+vprenderer.viewport.<variant>.vertical_alignment	bottom
 vprenderer.viewport.<variant>.subtitle_fit	true
 vprenderer.viewport.<variant>.subtitle_fit	false
 shader.<group>.type	single
