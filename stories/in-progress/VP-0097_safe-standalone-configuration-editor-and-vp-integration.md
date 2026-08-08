@@ -1005,3 +1005,51 @@ text.
 - Added a process-level integration test that launches the editor, closes it
   to the tray, launches the executable again, and verifies that the original
   window becomes visible. The x64 Release scenario passes.
+
+## 2026-08-07 DPI, resizing, keyboard, and accessibility pass
+
+- Embedded and independently verified a Per-Monitor-V2 Windows manifest in the
+  x64 Release editor. Qt scaling screenshots were reviewed at 100%, 150%, and
+  200% for General and profile pages without clipped controls or lost content.
+- Reduced the usable minimum window size to 720x480. General and DirectShow
+  cards now reflow from two columns to one at compact widths; profile, action,
+  and shader panes switch from side-by-side to vertically stacked layouts and
+  return to side-by-side when space is restored.
+- Removed fixed header, footer, and sidebar widths/heights that could clip text
+  under scaling. Page containers permit horizontal scrolling as a final safety
+  fallback instead of silently hiding content.
+- Added visible keyboard-focus treatment, label/buddy associations, accessible
+  names and descriptions for structured controls and lists, and accessibility
+  notification when the configuration status changes. Windows High Contrast
+  bypasses the custom skin and retains the native system palette/style.
+- Added Ctrl+S for save, Ctrl+Shift+V for validation, Ctrl+Tab and
+  Ctrl+Shift+Tab for page navigation, plus footer/menu mnemonics. Automated
+  coverage checks compact/wide reflow, keyboard commands, tab focus, and the
+  accessible name of every enabled editor-owned focusable control on all nine
+  pages.
+- Verification is green: Qt integration tests pass 4/4, the single-instance
+  tray integration scenario remains green, the final x64 Release build
+  succeeds, and extraction from the built executable confirms PerMonitorV2.
+
+### Visual-design follow-up review
+
+The functional layout is coherent enough to continue, with the following
+design-only improvements prioritized for a separate pass:
+
+1. Simplify redundant page titles such as `VP Renderer / Rendering` and
+   `VP Renderer / Viewports`; the expanded navigation group already supplies
+   renderer context.
+2. Establish consistent field widths. Profile names and shortcut fields expand
+   across the entire details pane while shortcut-page controls are compact;
+   multiline rules and command paths should remain wide, but ordinary values
+   should share a predictable maximum width.
+3. Reduce nested scrolling on Actions. The long checkable event list competes
+   with page scrolling and pushes its explanation below the fold.
+4. Make the footer status more compact and responsive. Long migration/backup
+   messages currently compete visually with the primary action buttons.
+5. Clarify the shader Off state. Showing an Off selection together with an
+   active shortcut/rule and a disabled explanation is technically valid but
+   visually ambiguous.
+6. Normalize smaller details such as slash-separated labels, checkbox visual
+   weight, section spacing, and the Menu button's dropdown treatment after the
+   structural items above are settled.
