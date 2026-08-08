@@ -799,7 +799,6 @@ QWidget* ConfigEditorWindow::createShell()
         QStringLiteral("Hide the editor to the notification area."));
     auto* exitButton = new QPushButton(QStringLiteral("Exit"));
     exitButton->setObjectName(QStringLiteral("exitConfiguration"));
-    exitButton->setProperty("danger", true);
     exitButton->setAccessibleDescription(
         QStringLiteral("Exit the VideoProcessor Configuration editor."));
     connect(hideButton, &QPushButton::clicked, this, [this] { hide(); });
