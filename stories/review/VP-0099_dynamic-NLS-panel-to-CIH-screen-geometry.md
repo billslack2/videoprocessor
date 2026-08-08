@@ -2,9 +2,10 @@
 
 ## Status
 
-Implementation complete; live renderer review remains (2026-08-08). The implementation branch is
-`codex/vp-0099-dynamic-nls-safety`, based on the discovered default integration
-branch `v1.1.017-beta` at VP-0098 review head `3c7ebd5`.
+In Review (2026-08-08). The seven VP-0099 commits were integrated by clean
+fast-forward into the discovered default branch `v1.1.017-beta`, advancing it
+from VP-0098 head `3c7ebd5` to validated VP-0099 head `bb1932f`. The preserved
+implementation branch is `codex/vp-0099-dynamic-nls-safety`.
 
 The 2026-08-08 developer direction supersedes this story's earlier nested
 physical-screen/requested-viewport proposal. VP-0098 established one screen
@@ -430,15 +431,22 @@ Renderer DLL were deployed with matching hashes; backups are
 `vprenderer\VideoProcessorVPRenderer.dll.pre-vp0099-bb1932f.20260808-113531.bak`.
 Configuration was unchanged.
 
-Post-deployment live confirmation is blocked before renderer selection by the
-pre-existing intermittent DirectShow filter-enumeration fast-fail. Three
-consecutive launches failed in `ucrtbase.dll` with exception `0xc0000409`,
-subtype 7, at the same enumeration point observed before this change. Dumps
-`VideoProcessor.exe.17404.dmp`, `VideoProcessor.exe.29488.dmp`, and
-`VideoProcessor.exe.13932.dmp` are preserved under
-`C:\Users\bslac\AppData\Local\CrashDumps`. This failure occurs before the
-modified Alpha start policy executes, so automated validation is complete but
-the no-bounce live result must not yet be claimed.
+Three initial post-deployment launches encountered the pre-existing
+DirectShow filter-enumeration fast-fail in `ucrtbase.dll` (`0xc0000409`, subtype
+7) before renderer selection. Dumps `VideoProcessor.exe.17404.dmp`,
+`VideoProcessor.exe.29488.dmp`, and `VideoProcessor.exe.13932.dmp` remain under
+`C:\Users\bslac\AppData\Local\CrashDumps` for the separate startup defect.
+
+A later launch succeeded as PID 27304 and provided the required technical
+Alpha handoff evidence. At 12:15:14 madVR retired, Alpha generation 1 started,
+and telemetry reported `transition=backend-handoff`,
+`action=reveal-on-first-live-frame`, and `Post-start reset skipped`. The process
+remained responsive beyond the old five-second deadline; queue summaries stayed
+in the configured healthy `2..3` band and no delayed Alpha queue generation or
+`post-renderer-start`/`host-transition` reset occurred. Standard, protected,
+and off NLS shortcuts remained usable before the user returned to madVR.
+Technical live validation is therefore complete; perceived transition quality
+remains part of review.
 
 ## Acceptance criteria
 

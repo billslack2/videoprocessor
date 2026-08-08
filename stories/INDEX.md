@@ -129,7 +129,7 @@ they must not contain requirements that are absent from this file.
 | VP-0096 | In Progress | Establish range-correct video-frame conversion contracts |
 | VP-0097 | In Progress | Safe standalone configuration editor and VP integration |
 | VP-0098 | Review | Fit trusted active-picture envelopes correctly on arbitrary CIH screens |
-| VP-0099 | Backlog | Derive NLS geometry dynamically from panel, screen, requested viewport, and source envelope |
+| VP-0099 | Review | Dynamic, renderer-neutral NLS geometry and safety policy |
 | VP-0100 | Backlog | Prove pixel-owned SDR presentation for Alpha |
 | VP-0101 | Backlog | Implement production pixel-owned calibrated output and 3D LUTs |
 | VP-0102 | In Progress | Dual-mode classic and modern operator UI |
