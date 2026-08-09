@@ -392,9 +392,7 @@ protected:
 	bool m_configurationEditorActivationPending = false;
 	bool m_configurationEditorFullscreenWasTopmost = false;
 	unsigned int m_configurationEditorActivationAttempts = 0;
-	bool m_backgroundShortcutInputRegistered = false;
 	bool m_configurationEditorHotkeyRegistered = false;
-	std::set<WORD> m_backgroundShortcutPressedKeys;
 	WORD m_lastBackgroundShortcutCommand = 0;
 	ULONGLONG m_lastBackgroundShortcutTick = 0;
 	HANDLE m_configurationChangedEvent = nullptr;
@@ -701,7 +699,6 @@ protected:
 	void ApplySavedConfiguration();
 	void ReloadConfiguredAccelerators();
 	void StartGlobalShortcutObserver();
-	void SuspendGlobalShortcutObserver();
 	void StopGlobalShortcutObserver();
 	void ToggleConfigurationEditor();
 	void StartConfigurationEditorInTray();
@@ -764,7 +761,6 @@ protected:
 	afx_msg void OnSetFocus(CWnd* pOldWnd);
 	afx_msg void OnClose();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
-	afx_msg LRESULT OnBackgroundRawInput(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnConfigurationEditorHotkey(WPARAM wParam, LPARAM lParam);
 	afx_msg HCURSOR	OnQueryDragIcon();
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);

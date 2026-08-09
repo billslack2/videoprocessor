@@ -49,6 +49,8 @@ quintptr parseOwner(const QString& value)
 
 constexpr wchar_t ActivationEventName[] =
     L"Local\\VideoProcessorConfigEditor.Activate.v1";
+constexpr wchar_t DiscoveryRefreshEventName[] =
+    L"Local\\VideoProcessorConfigEditor.RefreshDiscovery.v1";
 
 void activateWindowFromCurrentForeground(HWND window)
 {
@@ -71,14 +73,10 @@ bool ownerBelongsToProcess(quintptr owner, DWORD expectedProcessId)
     return actualProcessId == expectedProcessId;
 }
 
-void allowExistingWindowToTakeFocus(quintptr owner, DWORD ownerProcessId)
+void allowExistingWindowToTakeFocus()
 {
     if (HWND existing = FindWindowW(nullptr, L"VideoProcessor Configuration"))
     {
-        const HWND ownerWindow = reinterpret_cast<HWND>(owner);
-        if (ownerBelongsToProcess(owner, ownerProcessId))
-            SetWindowLongPtrW(existing, GWLP_HWNDPARENT,
-                reinterpret_cast<LONG_PTR>(ownerWindow));
         DWORD processId = 0;
         GetWindowThreadProcessId(existing, &processId);
         if (processId != 0) AllowSetForegroundWindow(processId);
@@ -171,17 +169,26 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
     HANDLE activationEvent = screenshotPath.isEmpty() ?
         CreateEventW(nullptr, FALSE, FALSE, ActivationEventName) : nullptr;
-    if (activationEvent && GetLastError() == ERROR_ALREADY_EXISTS)
+    const bool existingInstance = activationEvent &&
+        GetLastError() == ERROR_ALREADY_EXISTS;
+    HANDLE discoveryRefreshEvent = screenshotPath.isEmpty() ?
+        CreateEventW(nullptr, FALSE, FALSE, DiscoveryRefreshEventName) : nullptr;
+    if (existingInstance)
     {
         // VP starts a hidden Config process opportunistically.  If one is
         // already running, leave its current visible/hidden state alone: a
         // background warm-up must never pull focus from the user.
         if (!startInTray)
         {
-            allowExistingWindowToTakeFocus(owner, ownerProcessId);
+            allowExistingWindowToTakeFocus();
             SetEvent(activationEvent);
         }
+        // VP launches the tray-resident editor opportunistically. Even when it
+        // stays hidden, refresh monitor discovery so the next reveal reflects
+        // the current Windows topology without discarding the configured name.
+        if (discoveryRefreshEvent) SetEvent(discoveryRefreshEvent);
         CloseHandle(activationEvent);
+        if (discoveryRefreshEvent) CloseHandle(discoveryRefreshEvent);
         if (SUCCEEDED(comResult)) CoUninitialize();
         return 0;
     }
@@ -189,11 +196,20 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     if (!ownerBelongsToProcess(owner, ownerProcessId)) owner = 0;
     ConfigEditorWindow window(QFileInfo(configPath).absoluteFilePath(), owner);
     std::unique_ptr<QWinEventNotifier> activationNotifier;
+    std::unique_ptr<QWinEventNotifier> discoveryRefreshNotifier;
     if (activationEvent)
     {
         activationNotifier = std::make_unique<QWinEventNotifier>(activationEvent, &window);
         QObject::connect(activationNotifier.get(), &QWinEventNotifier::activated,
             &window, [&window] { window.reveal(); });
+    }
+    if (discoveryRefreshEvent)
+    {
+        discoveryRefreshNotifier = std::make_unique<QWinEventNotifier>(
+            discoveryRefreshEvent, &window);
+        QObject::connect(discoveryRefreshNotifier.get(),
+            &QWinEventNotifier::activated, &window,
+            [&window] { window.refreshMonitorDiscovery(); });
     }
     window.selectPage(initialPage);
     if (!startInTray)
@@ -211,7 +227,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             QCoreApplication::quit();
         });
     const int result = app.exec();
+    discoveryRefreshNotifier.reset();
     activationNotifier.reset();
+    if (discoveryRefreshEvent) CloseHandle(discoveryRefreshEvent);
     if (activationEvent) CloseHandle(activationEvent);
     if (SUCCEEDED(comResult)) CoUninitialize();
     return result;

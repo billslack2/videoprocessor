@@ -539,6 +539,47 @@ void ConfigEditorWindow::loadDiscoveryCache()
     allRenderers_ = discoverValues("VPDiscoverRenderers", false);
 }
 
+void ConfigEditorWindow::refreshMonitorDiscovery()
+{
+    if (testMode_) return;
+    const QStringList discovered = discoverValues("VPDiscoverMonitors");
+    monitors_ = discovered;
+    if (!monitorChoice_) return;
+
+    QString selected = monitorChoice_->currentData().toString();
+    if (monitorChoice_->isEditable())
+    {
+        const int current = monitorChoice_->currentIndex();
+        if (current < 0 || monitorChoice_->currentText() !=
+            monitorChoice_->itemText(current))
+            selected = monitorChoice_->currentText().trimmed();
+    }
+    if (selected.isEmpty())
+        selected = value(QStringLiteral("general"),
+            QStringLiteral("fullscreen_monitor_name"));
+
+    const QSignalBlocker blocker(monitorChoice_);
+    monitorChoice_->clear();
+    monitorChoice_->addItem(QStringLiteral("Default monitor"), QString());
+    for (const QString& monitor : monitors_)
+        monitorChoice_->addItem(monitor, monitor);
+
+    int index = monitorChoice_->findData(selected, Qt::UserRole,
+        Qt::MatchFixedString);
+    if (!selected.isEmpty() && index < 0)
+    {
+        // A projector or secondary display can be offline while Config is
+        // open. Keep the configured/typed target intact and editable; active
+        // discovery is advisory, not validation.
+        monitorChoice_->addItem(selected, selected);
+        index = monitorChoice_->count() - 1;
+    }
+    monitorChoice_->setCurrentIndex(index >= 0 ? index : 0);
+    if (monitorChoice_->isEditable())
+        monitorChoice_->setEditText(monitorChoice_->itemText(
+            monitorChoice_->currentIndex()));
+}
+
 QString ConfigEditorWindow::value(const QString& section, const QString& key, const QString& fallback) const
 {
     if (!configurationLoaded_ || !document_) return fallback;
@@ -709,7 +750,45 @@ void ConfigEditorWindow::markDirty()
 {
     dirty_ = true;
     if (saveButton_) saveButton_->setEnabled(true);
+    if (applyButton_) applyButton_->setEnabled(true);
     setStatus(QStringLiteral("Unsaved changes. Validate before saving if you want to check the complete configuration."));
+}
+
+void ConfigEditorWindow::keepAboveVideo()
+{
+    if (!isVisible()) return;
+    SetWindowPos(reinterpret_cast<HWND>(winId()), HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER |
+        SWP_SHOWWINDOW);
+}
+
+bool ConfigEditorWindow::notifyVideoProcessor()
+{
+    HANDLE changedEvent = CreateEventW(nullptr, FALSE, FALSE,
+        ConfigurationLiveApply::ChangedEventName);
+    if (!changedEvent) return false;
+    const bool signaled = SetEvent(changedEvent) != FALSE;
+    CloseHandle(changedEvent);
+    return signaled;
+}
+
+void ConfigEditorWindow::applyChanges()
+{
+    if (dirty_)
+    {
+        saveChanges();
+        return;
+    }
+    if (!configurationLoaded_ || !document_)
+    {
+        setStatus(QStringLiteral("Cannot apply because the configuration was not loaded."), true);
+        return;
+    }
+    if (notifyVideoProcessor())
+        setStatus(QStringLiteral("Current saved configuration sent to VideoProcessor. Live-capable settings are applied without changing the selected renderer."));
+    else
+        setStatus(QStringLiteral("Could not notify VideoProcessor to apply the saved configuration."), true);
+    keepAboveVideo();
 }
 
 void ConfigEditorWindow::saveChanges()
@@ -773,16 +852,12 @@ void ConfigEditorWindow::saveChanges()
     }
     dirty_ = false;
     saveButton_->setEnabled(false);
+    if (applyButton_) applyButton_->setEnabled(true);
 
     // The editor is a separate process. Signal the running VP instance only
     // after the atomic safe-save has committed the complete validated file.
     // An auto-reset event also makes saves harmless when VP is not running.
-    if (HANDLE changedEvent = CreateEventW(nullptr, FALSE, FALSE,
-        ConfigurationLiveApply::ChangedEventName))
-    {
-        SetEvent(changedEvent);
-        CloseHandle(changedEvent);
-    }
+    const bool notified = notifyVideoProcessor();
     if (!draftedActions.isEmpty())
     {
         if (auto* actions = findChild<QListWidget*>(QStringLiteral("config.actions.items"));
@@ -795,15 +870,20 @@ void ConfigEditorWindow::saveChanges()
                 enabled->setChecked(false);
             }
         }
-        setStatus(QStringLiteral("Changes saved and sent to VideoProcessor. Incomplete action%1 %2 saved as disabled draft%1. Backup: %3")
+        setStatus(QStringLiteral("Changes saved%1. Incomplete action%2 %3 saved as disabled draft%2. Backup: %4")
+            .arg(notified ? QStringLiteral(" and sent to VideoProcessor") : QStringLiteral("; VideoProcessor could not be notified"))
             .arg(draftedActions.size() == 1 ? QString() : QStringLiteral("s"),
                 draftedActions.join(QStringLiteral(", ")),
                 QString::fromStdWString(result.backupPath)));
     }
     else
     {
-        setStatus(QStringLiteral("Changes saved safely and sent to VideoProcessor. Backup: %1").arg(QString::fromStdWString(result.backupPath)));
+        setStatus(QStringLiteral("Changes saved safely%1. Backup: %2")
+            .arg(notified ? QStringLiteral(" and sent to VideoProcessor") :
+                QStringLiteral("; VideoProcessor could not be notified"),
+                QString::fromStdWString(result.backupPath)), !notified);
     }
+    keepAboveVideo();
 }
 
 QWidget* ConfigEditorWindow::createShell()
@@ -950,14 +1030,18 @@ QWidget* ConfigEditorWindow::createShell()
     footerLayout->addWidget(status_, 1);
     auto* reload = new QPushButton(QStringLiteral("&Reload"));
     auto* validate = new QPushButton(QStringLiteral("&Validate"));
+    applyButton_ = new QPushButton(QStringLiteral("&Apply"));
     saveButton_ = new QPushButton(QStringLiteral("&Save changes"));
     reload->setObjectName(QStringLiteral("reloadConfiguration"));
     validate->setObjectName(QStringLiteral("validateConfiguration"));
+    applyButton_->setObjectName(QStringLiteral("applyConfiguration"));
     saveButton_->setObjectName(QStringLiteral("saveChanges"));
-    saveButton_->setProperty("primary", true);
+    applyButton_->setProperty("primary", true);
+    applyButton_->setEnabled(configurationLoaded_);
     saveButton_->setEnabled(dirty_);
     footerLayout->addWidget(reload);
     footerLayout->addWidget(validate);
+    footerLayout->addWidget(applyButton_);
     footerLayout->addWidget(saveButton_);
     rootLayout->addWidget(footer);
 
@@ -981,6 +1065,7 @@ QWidget* ConfigEditorWindow::createShell()
         setUpdatesEnabled(true);
         replacement->update();
         update();
+        keepAboveVideo();
         setStatus(configurationLoaded_ ? QStringLiteral("Configuration reloaded.") :
             QStringLiteral("The configuration could not be reloaded."), !configurationLoaded_);
     };
@@ -1014,6 +1099,7 @@ QWidget* ConfigEditorWindow::createShell()
         });
     });
     connect(saveButton_, &QPushButton::clicked, this, [this] { saveChanges(); });
+    connect(applyButton_, &QPushButton::clicked, this, [this] { applyChanges(); });
     connect(validate, &QPushButton::clicked, this, [this]
     {
         if (!configurationLoaded_ || !document_)
@@ -1241,9 +1327,10 @@ QWidget* ConfigEditorWindow::createStartupPage()
     auto* sourceForm = new QFormLayout(source);
     sourceForm->setContentsMargins(0, 0, 0, 0);
     sourceForm->setVerticalSpacing(8);
-    sourceForm->addRow(QStringLiteral("Monitor"), bindChoiceField(QStringLiteral("general"),
+    monitorChoice_ = bindChoiceField(QStringLiteral("general"),
         QStringLiteral("fullscreen_monitor_name"), withDefaultChoice(monitors_),
-        { QStringLiteral("Default monitor") }, true));
+        { QStringLiteral("Default monitor") }, true);
+    sourceForm->addRow(QStringLiteral("Monitor"), monitorChoice_);
 
     auto* input = new QWidget;
     auto* inputForm = new QFormLayout(input);
@@ -2949,6 +3036,7 @@ QWidget* ConfigEditorWindow::createActionsPage()
         "Leave disabled while setting up an incomplete action. VP ignores disabled drafts.")));
 
     auto* rendererTarget = new QComboBox;
+    actionRendererTarget_ = rendererTarget;
     rendererTarget->setObjectName(QStringLiteral("config.actions.renderer"));
     rendererTarget->setEditable(true);
     rendererTarget->setInsertPolicy(QComboBox::NoInsert);
@@ -2964,6 +3052,8 @@ QWidget* ConfigEditorWindow::createActionsPage()
             continue;
         rendererTarget->addItem(QStringLiteral("%1 - %2").arg(index + 1).arg(renderers[index]), QString::number(index + 1));
     }
+    rendererTarget->setCurrentIndex(0);
+    rendererTarget->setEditText(rendererTarget->itemText(0));
     detailLayout->addWidget(fieldWithHelp(QStringLiteral("Renderer target"), rendererTarget,
         QStringLiteral("Choose VP Renderer, a discovered renderer, or All renderers.")));
 
@@ -3075,6 +3165,7 @@ QWidget* ConfigEditorWindow::createActionsPage()
             rendererIndex = rendererTarget->count() - 1;
         }
         rendererTarget->setCurrentIndex(rendererIndex);
+        rendererTarget->setEditText(rendererTarget->itemText(rendererIndex));
         const QStringList configuredEvents = value(state->section, QStringLiteral("on")).split(u',', Qt::SkipEmptyParts);
         QListWidgetItem* firstChecked = nullptr;
         for (int index = 0; index < events->count(); ++index)
@@ -3502,10 +3593,7 @@ void ConfigEditorWindow::setupTray()
 void ConfigEditorWindow::reveal()
 {
     showNormal();
-    // Keep the editor above VP's exclusive/fullscreen presentation. The
-    // close-to-tray path removes this state before hiding it again.
-    SetWindowPos(reinterpret_cast<HWND>(winId()), HWND_TOPMOST, 0, 0, 0, 0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    keepAboveVideo();
     raise();
     activateWindow();
 }
@@ -3533,14 +3621,7 @@ void ConfigEditorWindow::closeEvent(QCloseEvent* event)
 void ConfigEditorWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
-    SetWindowPos(reinterpret_cast<HWND>(winId()), HWND_TOPMOST, 0, 0, 0, 0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-    if (!ownerApplied_ && ownerHandle_ != 0)
-    {
-        SetWindowLongPtrW(reinterpret_cast<HWND>(winId()), GWLP_HWNDPARENT,
-            static_cast<LONG_PTR>(ownerHandle_));
-        ownerApplied_ = true;
-    }
+    keepAboveVideo();
 }
 
 void ConfigEditorWindow::setStatus(const QString& message, bool error)

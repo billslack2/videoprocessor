@@ -215,6 +215,24 @@ bool ActivateConfigurationEditor(HWND editor)
 		editorProcessId, foregroundProcessId);
 }
 
+void KeepConfigurationEditorAboveVideo(HWND editor)
+{
+	if (!editor || !::IsWindow(editor) || !::IsWindowVisible(editor))
+		return;
+
+	// A fullscreen presenter can legitimately recover its own topmost placement.
+	// Config is the visible modal surface, so keep it above the video without
+	// taking input focus away from that presenter.
+	if (!::SetWindowPos(editor, HWND_TOPMOST, 0, 0, 0, 0,
+		SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER |
+		SWP_SHOWWINDOW))
+	{
+		DebugLog::Log(
+			"Configuration editor topmost placement failed hwnd=%p error=%lu",
+			reinterpret_cast<void*>(editor), GetLastError());
+	}
+}
+
 const TCHAR* ToString(RendererResetReason reason)
 {
 	switch (reason)
@@ -777,6 +795,171 @@ HACCEL CreateConfiguredAccelerators(
 	configuredAccelerators = accelerators;
 	return CreateAcceleratorTable(accelerators.data(), static_cast<int>(accelerators.size()));
 }
+
+// Modern needs to observe VP shortcuts while another application owns focus,
+// but keyboard Raw Input registration is process-wide and conflicts with
+// in-process renderers such as madVR. Keep the observer on its own message
+// thread, post VP commands without consuming the original key, and leave the
+// normal MFC/DirectShow message-drain route authoritative while VP owns focus.
+class GlobalShortcutObserver
+{
+public:
+	static bool Start(HWND target, const std::vector<ACCEL>& accelerators,
+		bool configurationHotkeyRegistered)
+	{
+		Stop();
+		if (!target || accelerators.empty())
+			return false;
+		s_target = target;
+		s_accelerators = accelerators;
+		s_configurationHotkeyRegistered = configurationHotkeyRegistered;
+		s_readyEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+		if (!s_readyEvent)
+		{
+			ClearState();
+			return false;
+		}
+		s_thread = ::CreateThread(nullptr, 0, ThreadProcedure, nullptr, 0,
+			&s_threadId);
+		if (!s_thread)
+		{
+			::CloseHandle(s_readyEvent);
+			s_readyEvent = nullptr;
+			ClearState();
+			return false;
+		}
+		const DWORD ready = ::WaitForSingleObject(s_readyEvent, 2000);
+		::CloseHandle(s_readyEvent);
+		s_readyEvent = nullptr;
+		if (ready != WAIT_OBJECT_0 || !s_hook)
+		{
+			Stop();
+			return false;
+		}
+		return true;
+	}
+
+	static void Stop()
+	{
+		if (s_thread)
+		{
+			if (s_threadId)
+				::PostThreadMessageW(s_threadId, WM_QUIT, 0, 0);
+			::WaitForSingleObject(s_thread, INFINITE);
+			::CloseHandle(s_thread);
+		}
+		s_thread = nullptr;
+		s_threadId = 0;
+		s_hook = nullptr;
+		ClearState();
+	}
+
+	static bool IsRunning() { return s_thread != nullptr && s_hook != nullptr; }
+
+private:
+	static void ClearState()
+	{
+		s_target = nullptr;
+		s_accelerators.clear();
+		s_pressedKeys.clear();
+		s_configurationHotkeyRegistered = false;
+	}
+
+	static DWORD WINAPI ThreadProcedure(void*)
+	{
+		MSG message = {};
+		::PeekMessageW(&message, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
+		s_hook = ::SetWindowsHookExW(WH_KEYBOARD_LL, HookProcedure,
+			::GetModuleHandleW(nullptr), 0);
+		if (s_readyEvent)
+			::SetEvent(s_readyEvent);
+		if (s_hook)
+		{
+			while (::GetMessageW(&message, nullptr, 0, 0) > 0)
+			{
+				::TranslateMessage(&message);
+				::DispatchMessageW(&message);
+			}
+			::UnhookWindowsHookEx(s_hook);
+			s_hook = nullptr;
+		}
+		return 0;
+	}
+
+	static LRESULT CALLBACK HookProcedure(int code, WPARAM message,
+		LPARAM parameter)
+	{
+		if (code != HC_ACTION || !s_target)
+			return ::CallNextHookEx(s_hook, code, message, parameter);
+		const auto* key = reinterpret_cast<const KBDLLHOOKSTRUCT*>(parameter);
+		const WORD virtualKey = static_cast<WORD>(key->vkCode);
+		const bool keyUp = message == WM_KEYUP || message == WM_SYSKEYUP;
+		if (keyUp)
+		{
+			s_pressedKeys.erase(virtualKey);
+			return ::CallNextHookEx(s_hook, code, message, parameter);
+		}
+		if (message != WM_KEYDOWN && message != WM_SYSKEYDOWN)
+			return ::CallNextHookEx(s_hook, code, message, parameter);
+		if (!s_pressedKeys.insert(virtualKey).second)
+			return ::CallNextHookEx(s_hook, code, message, parameter);
+
+		const HWND foreground = ::GetForegroundWindow();
+		DWORD foregroundProcessId = 0;
+		if (foreground)
+			::GetWindowThreadProcessId(foreground, &foregroundProcessId);
+		if (!ConfigurationLiveApply::MayDispatchGlobalShortcut(
+			::GetCurrentProcessId(), foregroundProcessId, false))
+		{
+			return ::CallNextHookEx(s_hook, code, message, parameter);
+		}
+
+		const bool control = (::GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+		const bool alt = (::GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+		const bool shift = (::GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+		for (const ACCEL& accelerator : s_accelerators)
+		{
+			if (accelerator.key != virtualKey ||
+				!ConfigurationLiveApply::ShortcutModifiersMatch(
+					(accelerator.fVirt & FCONTROL) != 0,
+					(accelerator.fVirt & FALT) != 0,
+					(accelerator.fVirt & FSHIFT) != 0,
+					control, alt, shift))
+				continue;
+			if (accelerator.cmd == ID_COMMAND_CONFIG_EDITOR)
+			{
+				if (!s_configurationHotkeyRegistered)
+					::PostMessageW(s_target, WM_HOTKEY,
+						CONFIGURATION_EDITOR_HOTKEY_ID, 0);
+				break;
+			}
+			::PostMessageW(s_target, WM_COMMAND,
+				MAKEWPARAM(accelerator.cmd, 0), 0);
+			break;
+		}
+		// Never consume the original. madVR/the foreground application receives
+		// the same keyboard event normally.
+		return ::CallNextHookEx(s_hook, code, message, parameter);
+	}
+
+	static HANDLE s_thread;
+	static DWORD s_threadId;
+	static HANDLE s_readyEvent;
+	static HHOOK s_hook;
+	static HWND s_target;
+	static std::vector<ACCEL> s_accelerators;
+	static std::set<WORD> s_pressedKeys;
+	static bool s_configurationHotkeyRegistered;
+};
+
+HANDLE GlobalShortcutObserver::s_thread = nullptr;
+DWORD GlobalShortcutObserver::s_threadId = 0;
+HANDLE GlobalShortcutObserver::s_readyEvent = nullptr;
+HHOOK GlobalShortcutObserver::s_hook = nullptr;
+HWND GlobalShortcutObserver::s_target = nullptr;
+std::vector<ACCEL> GlobalShortcutObserver::s_accelerators;
+std::set<WORD> GlobalShortcutObserver::s_pressedKeys;
+bool GlobalShortcutObserver::s_configurationHotkeyRegistered = false;
 
 struct DisplayTimingSnapshot
 {
@@ -1401,7 +1584,6 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
 	ON_COMMAND(ID_COMMAND_DISPLAY_RULE_AUTO, &CVideoProcessorDlg::OnCommandDisplayRuleAuto)
 	ON_COMMAND(ID_COMMAND_CONFIG_EDITOR, &CVideoProcessorDlg::OnCommandConfigEditor)
-	ON_MESSAGE(WM_INPUT, &CVideoProcessorDlg::OnBackgroundRawInput)
 	ON_MESSAGE(WM_HOTKEY, &CVideoProcessorDlg::OnConfigurationEditorHotkey)
 	ON_COMMAND_RANGE(ID_COMMAND_SHADER_RULE_FIRST, ID_COMMAND_SHADER_RULE_LAST, &CVideoProcessorDlg::OnCommandShaderRule)
 	ON_COMMAND_RANGE(ID_COMMAND_DISPLAY_RULE_FIRST, ID_COMMAND_DISPLAY_RULE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
@@ -1705,120 +1887,23 @@ void CVideoProcessorDlg::StartGlobalShortcutObserver()
 		break;
 	}
 
-	RAWINPUTDEVICE keyboard = {};
-	keyboard.usUsagePage = 0x01;
-	keyboard.usUsage = 0x06;
-	keyboard.dwFlags = RIDEV_INPUTSINK;
-	keyboard.hwndTarget = GetSafeHwnd();
-	m_backgroundShortcutInputRegistered =
-		::RegisterRawInputDevices(&keyboard, 1, sizeof(keyboard)) != FALSE;
+	const bool observerStarted = GlobalShortcutObserver::Start(GetSafeHwnd(),
+		m_configuredAccelerators, m_configurationEditorHotkeyRegistered);
 	DebugLog::Log(
-		"Background shortcut input %s (%zu bindings, config_hotkey=%d)",
-		m_backgroundShortcutInputRegistered ? "started" : "unavailable",
+		"Background shortcut observer %s (%zu bindings, config_hotkey=%d)",
+		observerStarted ? "started" : "unavailable",
 		m_configuredAccelerators.size(),
 		m_configurationEditorHotkeyRegistered ? 1 : 0);
 }
 
-void CVideoProcessorDlg::SuspendGlobalShortcutObserver()
-{
-	if (!m_backgroundShortcutInputRegistered)
-		return;
-	RAWINPUTDEVICE keyboard = {};
-	keyboard.usUsagePage = 0x01;
-	keyboard.usUsage = 0x06;
-	keyboard.dwFlags = RIDEV_REMOVE;
-	keyboard.hwndTarget = nullptr;
-	::RegisterRawInputDevices(&keyboard, 1, sizeof(keyboard));
-	m_backgroundShortcutInputRegistered = false;
-	m_backgroundShortcutPressedKeys.clear();
-	DebugLog::Log("Background shortcut input suspended");
-}
-
 void CVideoProcessorDlg::StopGlobalShortcutObserver()
 {
-	SuspendGlobalShortcutObserver();
+	if (GlobalShortcutObserver::IsRunning())
+		DebugLog::Log("Background shortcut observer stopped");
+	GlobalShortcutObserver::Stop();
 	if (m_configurationEditorHotkeyRegistered && GetSafeHwnd())
 		::UnregisterHotKey(GetSafeHwnd(), CONFIGURATION_EDITOR_HOTKEY_ID);
 	m_configurationEditorHotkeyRegistered = false;
-}
-
-LRESULT CVideoProcessorDlg::OnBackgroundRawInput(WPARAM wParam, LPARAM lParam)
-{
-	if (!m_backgroundShortcutInputRegistered)
-		return ::DefWindowProc(GetSafeHwnd(), WM_INPUT, wParam, lParam);
-	UINT size = 0;
-	if (::GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT,
-		nullptr, &size, sizeof(RAWINPUTHEADER)) != 0 || size < sizeof(RAWINPUT))
-		return ::DefWindowProc(GetSafeHwnd(), WM_INPUT, wParam, lParam);
-	std::vector<BYTE> data(size);
-	if (::GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT,
-		data.data(), &size, sizeof(RAWINPUTHEADER)) != size)
-		return ::DefWindowProc(GetSafeHwnd(), WM_INPUT, wParam, lParam);
-	const RAWINPUT* input = reinterpret_cast<const RAWINPUT*>(data.data());
-	if (input->header.dwType != RIM_TYPEKEYBOARD)
-		return ::DefWindowProc(GetSafeHwnd(), WM_INPUT, wParam, lParam);
-
-	const RAWKEYBOARD& keyboard = input->data.keyboard;
-	WORD virtualKey = keyboard.VKey;
-	if (virtualKey == 0 || virtualKey == 255)
-		return ::DefWindowProc(GetSafeHwnd(), WM_INPUT, wParam, lParam);
-	if (virtualKey == VK_SHIFT)
-		virtualKey = static_cast<WORD>(::MapVirtualKeyW(
-			keyboard.MakeCode, MAPVK_VSC_TO_VK_EX));
-	else if (virtualKey == VK_CONTROL)
-		virtualKey = (keyboard.Flags & RI_KEY_E0) ? VK_RCONTROL : VK_LCONTROL;
-	else if (virtualKey == VK_MENU)
-		virtualKey = (keyboard.Flags & RI_KEY_E0) ? VK_RMENU : VK_LMENU;
-
-	const bool keyUp = (keyboard.Flags & RI_KEY_BREAK) != 0;
-	if (keyUp)
-	{
-		m_backgroundShortcutPressedKeys.erase(virtualKey);
-		return ::DefWindowProc(GetSafeHwnd(), WM_INPUT, wParam, lParam);
-	}
-	if (!m_backgroundShortcutPressedKeys.insert(virtualKey).second)
-		return ::DefWindowProc(GetSafeHwnd(), WM_INPUT, wParam, lParam);
-
-	const HWND foreground = ::GetForegroundWindow();
-	DWORD foregroundProcessId = 0;
-	if (foreground)
-		::GetWindowThreadProcessId(foreground, &foregroundProcessId);
-	if (!ConfigurationLiveApply::MayDispatchGlobalShortcut(
-		GetCurrentProcessId(), foregroundProcessId, false))
-		return ::DefWindowProc(GetSafeHwnd(), WM_INPUT, wParam, lParam);
-
-	auto pressed = [this](WORD generic, WORD left, WORD right)
-	{
-		return m_backgroundShortcutPressedKeys.count(generic) != 0 ||
-			m_backgroundShortcutPressedKeys.count(left) != 0 ||
-			m_backgroundShortcutPressedKeys.count(right) != 0;
-	};
-	const bool control = pressed(VK_CONTROL, VK_LCONTROL, VK_RCONTROL);
-	const bool alt = pressed(VK_MENU, VK_LMENU, VK_RMENU);
-	const bool shift = pressed(VK_SHIFT, VK_LSHIFT, VK_RSHIFT);
-	for (const ACCEL& accelerator : m_configuredAccelerators)
-	{
-		if (accelerator.cmd == ID_COMMAND_CONFIG_EDITOR &&
-			m_configurationEditorHotkeyRegistered)
-			continue;
-		if (accelerator.key != virtualKey ||
-			!ConfigurationLiveApply::ShortcutModifiersMatch(
-				(accelerator.fVirt & FCONTROL) != 0,
-				(accelerator.fVirt & FALT) != 0,
-				(accelerator.fVirt & FSHIFT) != 0,
-				control, alt, shift))
-			continue;
-		if (accelerator.cmd == ID_COMMAND_CONFIG_EDITOR)
-		{
-			ToggleConfigurationEditor();
-			break;
-		}
-		m_lastBackgroundShortcutCommand = accelerator.cmd;
-		m_lastBackgroundShortcutTick = GetTickCount64();
-		PostMessage(WM_COMMAND, MAKEWPARAM(accelerator.cmd, 0), 0);
-		break;
-	}
-	return ::DefWindowProc(GetSafeHwnd(), WM_INPUT, wParam, lParam);
 }
 
 LRESULT CVideoProcessorDlg::OnConfigurationEditorHotkey(
@@ -1833,7 +1918,12 @@ void CVideoProcessorDlg::ToggleConfigurationEditor()
 {
 	const HWND editor = FindConfigurationEditorForCurrentInstallation();
 	if (editor && ::IsWindowVisible(editor))
+	{
+		// Config owns its close-to-tray behavior. Do not leave VP's explicit
+		// activation poll armed after the user has toggled it closed.
+		m_configurationEditorActivationPending = false;
 		::PostMessage(editor, WM_CLOSE, 0, 0);
+	}
 	else
 		OnCommandConfigEditor();
 }
@@ -1870,120 +1960,82 @@ void CVideoProcessorDlg::RestoreFullscreenAfterConfigurationEditor()
 {
 	if (!m_configurationEditorFullscreenWasTopmost)
 		return;
+	const bool wasTopmost = m_configurationEditorFullscreenWasTopmost;
 	m_configurationEditorFullscreenWasTopmost = false;
 	if (!m_fullScreenVideoWindow ||
 		!::IsWindow(m_fullScreenVideoWindow->GetHWND()) ||
 		m_windowedFullScreenMode)
 		return;
 	const HWND fullscreen = m_fullScreenVideoWindow->GetHWND();
+	const bool rendererHasLiveFrame =
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_videoRenderer && m_videoRenderer->HasPresentedLiveFrame();
+	if (!rendererHasLiveFrame)
+	{
+		DebugLog::Log(
+			"Configuration editor closed: fullscreen topmost restore deferred "
+			"until a verified live frame hwnd=%p renderer_state=%d",
+			reinterpret_cast<void*>(fullscreen),
+			static_cast<int>(m_rendererState));
+		return;
+	}
 	::SetWindowPos(fullscreen, HWND_TOPMOST, 0, 0, 0, 0,
 		SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
 	DebugLog::Log(
-		"Configuration editor closed: fullscreen topmost restored hwnd=%p",
-		reinterpret_cast<void*>(fullscreen));
+		"Configuration editor closed: fullscreen topmost restored hwnd=%p "
+		"was_topmost=%d",
+		reinterpret_cast<void*>(fullscreen), wasTopmost ? 1 : 0);
 }
 
 void CVideoProcessorDlg::UpdateConfigurationEditorModal()
 {
+	// Config is a separate Qt application with its own tray lifetime and
+	// topmost-on-show policy. VP must not repeatedly retarget, raise, or model
+	// every visible Config window as a cross-process modal dialog: the hidden
+	// warm instance can briefly be visible during startup, and that loop caused
+	// the reported activation/hang behavior. This timer performs one bounded
+	// activation only after an explicit VP command; VP itself remains enabled.
+	if (!m_configurationEditorActivationPending &&
+		!m_configurationEditorFullscreenWasTopmost)
+		return;
+
 	const HWND editor = FindConfigurationEditorForCurrentInstallation();
 	const bool visible = editor && IsWindow(editor) && ::IsWindowVisible(editor);
 	if (!visible)
 	{
-		if (!m_configurationEditorModal &&
-			!m_configurationEditorActivationPending &&
-			!m_configurationEditorFullscreenWasTopmost)
-			return;
-		// Recovery ordering is deliberate: no disabled VP HWND may remain in
-		// front while ownership/topmost state is repaired.
-		if (m_fullScreenVideoWindow &&
-			IsWindow(m_fullScreenVideoWindow->GetHWND()))
-			::EnableWindow(m_fullScreenVideoWindow->GetHWND(), TRUE);
-		::EnableWindow(GetSafeHwnd(), TRUE);
-		m_configurationEditorModal = false;
 		m_configurationEditorActivationPending = false;
 		m_configurationEditorActivationAttempts = 0;
 		RestoreFullscreenAfterConfigurationEditor();
-		StartGlobalShortcutObserver();
-		DebugLog::Log("Configuration editor modal session ended");
 		return;
 	}
 
-	DemoteFullscreenForConfigurationEditor();
-	const HWND owner = ConfigurationEditorOwner();
-	if (::GetWindow(editor, GW_OWNER) != owner)
-		RetargetConfigurationEditorOwner(owner);
-
-	const HWND fullscreen = m_fullScreenVideoWindow &&
-		::IsWindow(m_fullScreenVideoWindow->GetHWND()) ?
-		m_fullScreenVideoWindow->GetHWND() : nullptr;
-	const HWND foreground = ::GetForegroundWindow();
-	if (m_configurationEditorModal &&
-		(foreground == GetSafeHwnd() || foreground == fullscreen) &&
-		foreground && !::IsWindowEnabled(foreground))
-	{
-		if (fullscreen) ::EnableWindow(fullscreen, TRUE);
-		::EnableWindow(GetSafeHwnd(), TRUE);
-		m_configurationEditorModal = false;
-		StartGlobalShortcutObserver();
-		DebugLog::Log(
-			"Configuration editor modal invariant recovered: disabled VP foreground=%p",
-			reinterpret_cast<void*>(foreground));
-	}
+	if (!m_configurationEditorActivationPending)
+		return;
 
 	DWORD editorProcessId = 0;
-	DWORD foregroundProcessId = 0;
 	::GetWindowThreadProcessId(editor, &editorProcessId);
-	const HWND foregroundAfterRecovery = ::GetForegroundWindow();
-	if (foregroundAfterRecovery)
-		::GetWindowThreadProcessId(foregroundAfterRecovery,
-			&foregroundProcessId);
-	bool editorIsForeground =
-		ConfigurationLiveApply::MayEnterConfigurationModal(
-			::IsWindowVisible(editor) != FALSE,
-			::IsIconic(editor) != FALSE,
-			editorProcessId, foregroundProcessId);
-	if ((m_configurationEditorActivationPending ||
-		!m_configurationEditorModal) && !editorIsForeground &&
-		m_configurationEditorActivationAttempts < 10)
+	if (m_configurationEditorActivationAttempts < 10)
 	{
 		++m_configurationEditorActivationAttempts;
 		if (editorProcessId)
 			AllowSetForegroundWindow(editorProcessId);
-		editorIsForeground = ActivateConfigurationEditor(editor);
-		if (!editorIsForeground &&
-			m_configurationEditorActivationAttempts == 10)
+		if (ActivateConfigurationEditor(editor))
+		{
+			m_configurationEditorActivationPending = false;
+			m_configurationEditorActivationAttempts = 0;
+			DebugLog::Log("Configuration editor explicit activation completed");
+			return;
+		}
+		if (m_configurationEditorActivationAttempts == 10)
 		{
 			FLASHWINFO flash = { sizeof(flash), editor,
 				FLASHW_TRAY | FLASHW_TIMERNOFG, 3, 0 };
 			::FlashWindowEx(&flash);
 			DebugLog::Log(
-				"Configuration editor activation not granted; VP remains enabled");
+				"Configuration editor activation not granted; VP remains enabled and no retry loop will run");
+			m_configurationEditorActivationPending = false;
 		}
 	}
-	if (editorIsForeground && m_configurationEditorActivationPending)
-	{
-		m_configurationEditorActivationPending = false;
-		m_configurationEditorActivationAttempts = 0;
-	}
-
-	if (!m_configurationEditorModal && !editorIsForeground)
-	{
-		if (fullscreen) ::EnableWindow(fullscreen, TRUE);
-		::EnableWindow(GetSafeHwnd(), TRUE);
-		return;
-	}
-
-	if (!m_configurationEditorModal && editorIsForeground)
-	{
-		m_configurationEditorModal = true;
-		m_configurationEditorActivationPending = false;
-		m_configurationEditorActivationAttempts = 0;
-		DebugLog::Log("Configuration editor modal session started owner=%p",
-			reinterpret_cast<void*>(owner));
-	}
-	// Config is topmost while it is visible, which supplies the intended modal
-	// interaction.  Keep VP's HWNDs enabled underneath so the Raw Input target
-	// continues to receive configured shortcuts even while Config has focus.
 }
 
 void CVideoProcessorDlg::ApplySavedConfiguration()
@@ -3480,7 +3532,6 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		m_rendererTransitionWindow.KeepOnTop();
 		m_rendererStateText.SetWindowText(TEXT("Rendering"));
 		ApplyStatsOverlayForActiveRenderer();
-
 		m_rendererStartTime = GetTickCount();
 		const bool settlingDisplayTransition =
 			m_displayTransitionAwaitingRenderer;
@@ -4041,11 +4092,10 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 			configPath.pop_back();
 		}
 	}
-	// Use the stable main dialog as cross-process owner. The fullscreen host can
-	// be recreated during renderer changes and is deliberately demoted while
-	// Config is visible.
+	// Use the stable main dialog as the cross-process owner. Config manages its
+	// own topmost lifetime when it is shown; do not disturb the live fullscreen
+	// presenter while the editor is starting.
 	const HWND editorOwner = ConfigurationEditorOwner();
-	DemoteFullscreenForConfigurationEditor();
 	wchar_t arguments[2 * MAX_PATH + 120] = {};
 	swprintf_s(arguments,
 		L"--config \"%s\" --owner %llu --owner-process %lu",
@@ -5211,7 +5261,6 @@ void CVideoProcessorDlg::RenderStart()
 
 	m_windowedVideoWindow.SetWindowTextW(TEXT("Starting..."));
 	m_rendererState = RendererState::RENDERSTATE_STARTING;
-
 	// Internal renderers are deliberately listed beside registered renderers,
 	// but do not construct or register a DirectShow graph.
 #if defined(_WIN64)
@@ -5526,7 +5575,6 @@ void CVideoProcessorDlg::RenderStop()
 		return;
 	}
 	m_transitionRevealPosted.store(true, std::memory_order_release);
-
 	// Gate new callbacks first. DirectShow Stop/BeginFlush must run before the
 	// drain wait because an unbuffered callback can be blocked in Receive until
 	// downstream graph control releases it.
@@ -6126,7 +6174,6 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 	{
 		return;
 	}
-
 	const bool coordinatedReset = m_rendererResetTransitionActive;
 	// The UI timer also probes for a first frame. Once the shield has already
 	// been released there is no transition work left to perform; in particular,
@@ -6332,17 +6379,8 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 	const HWND fullscreenHwnd = m_fullScreenVideoWindow->GetHWND();
 	const HWND configurationEditor =
 		FindConfigurationEditorForCurrentInstallation();
-	if (ConfigurationLiveApply::ShouldSuppressFullscreenTopmost(
-		m_configurationEditorActivationPending,
-		m_configurationEditorModal,
-		configurationEditor && ::IsWindowVisible(configurationEditor)))
-	{
-		if (!m_windowedFullScreenMode)
-			m_configurationEditorFullscreenWasTopmost = true;
-		::SetWindowPos(fullscreenHwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
-			SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
-			SWP_NOOWNERZORDER);
-	}
+	if (configurationEditor && ::IsWindowVisible(configurationEditor))
+		DemoteFullscreenForConfigurationEditor();
 	HMONITOR actualMonitor = MonitorFromWindow(
 		fullscreenHwnd, MONITOR_DEFAULTTONULL);
 	if (actualMonitor != hmon)
@@ -6370,10 +6408,10 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 		"Fullscreen monitor placement verified: requested=%p actual=%p matched=%d",
 		reinterpret_cast<void*>(hmon), reinterpret_cast<void*>(actualMonitor),
 		actualMonitor == hmon ? 1 : 0);
-	RetargetConfigurationEditorOwner(GetSafeHwnd());
 
+	// One normal delayed focus pass gives the renderer and the shell time to
+	// finish fullscreen creation. It is not retried or coupled to Config.
 	SetTimer(FULLSCREEN_FOCUS_TIMER_ID, 5000, nullptr);
-
 }
 
 HMONITOR CVideoProcessorDlg::SelectFullscreenMonitor()
@@ -6437,7 +6475,6 @@ void CVideoProcessorDlg::FullScreenVideoWindowDestroy()
 		return;
 	if (m_rendererTargetHwnd == m_fullScreenVideoWindow->GetHWND())
 		m_rendererTargetHwnd = nullptr;
-	RetargetConfigurationEditorOwner(GetSafeHwnd());
 	delete m_fullScreenVideoWindow;
 	m_fullScreenVideoWindow = nullptr;
 }
@@ -7830,7 +7867,6 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 
 	return CDialog::PreTranslateMessage(pMsg);
 }
-
 BOOL CVideoProcessorDlg::TranslateConfiguredAccelerator(MSG* message)
 {
 	if (!m_accelerator || !message)
@@ -7877,7 +7913,6 @@ BOOL CVideoProcessorDlg::TranslateConfiguredAccelerator(MSG* message)
 
 	return ::TranslateAccelerator(m_hWnd, m_accelerator, message);
 }
-
 void CVideoProcessorDlg::OnOK()
 {
 	// Called if the user presses enter somewhere
@@ -8699,23 +8734,21 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 	
-	// Handle fullscreen focus grab
+	// Correct fullscreen placement after the shell/display settles. Renderer
+	// input activation belongs to the renderer's own lifecycle and HWND thread;
+	// this host-only timer must never take keyboard focus.
 	if (nIDEvent == FULLSCREEN_FOCUS_TIMER_ID)
 	{
 		KillTimer(FULLSCREEN_FOCUS_TIMER_ID);
 		const HWND configurationEditor =
 			FindConfigurationEditorForCurrentInstallation();
-		if (ConfigurationLiveApply::ShouldSuppressFullscreenTopmost(
-			m_configurationEditorActivationPending,
-			m_configurationEditorModal,
-			configurationEditor && ::IsWindowVisible(configurationEditor)))
+		if (configurationEditor && ::IsWindowVisible(configurationEditor))
 		{
 			DemoteFullscreenForConfigurationEditor();
 			DebugLog::Log(
-				"Fullscreen topmost/focus verification suppressed while configuration editor is active");
+				"Fullscreen focus pass skipped while configuration editor is visible");
 			return;
 		}
-
 		if (m_fullScreenVideoWindow && IsWindow(m_fullScreenVideoWindow->GetHWND()))
 		{
 			DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): FULLSCREEN_FOCUS - Verifying placement")));
@@ -8756,19 +8789,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					SWP_FRAMECHANGED);
 			}
 			const HWND focusBefore = ::GetFocus();
-			BOOL foregroundResult = FALSE;
-			HWND focusResult = nullptr;
-			if (mayActivate)
-			{
-				foregroundResult = ::SetForegroundWindow(fullscreenHwnd);
-				focusResult = ::SetFocus(fullscreenHwnd);
-			}
-			else
-			{
-				DebugLog::Log(
-					"Fullscreen activation skipped: foreground belongs to process %lu",
-					foregroundProcessId);
-			}
 			RECT rectAfter = {};
 			::GetWindowRect(fullscreenHwnd, &rectAfter);
 			const HMONITOR actualMonitor = ::MonitorFromWindow(
@@ -8778,8 +8798,8 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				"rect_before=%ld,%ld-%ld,%ld placement=%d requested_monitor=%p "
 				"actual_monitor=%p monitor_matched=%d visible_after=%d "
 				"rect_after=%ld,%ld-%ld,%ld foreground_before=%p foreground_pid=%lu "
-				"activation_allowed=%d focus_before=%p "
-				"set_foreground=%d set_focus_previous=%p foreground_after=%p focus_after=%p",
+				"activation_allowed=%d focus_before=%p focus_policy=preserve "
+				"foreground_after=%p focus_after=%p",
 				reinterpret_cast<void*>(fullscreenHwnd),
 				visibleBefore ? 1 : 0,
 				iconicBefore ? 1 : 0,
@@ -8794,8 +8814,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				foregroundProcessId,
 				mayActivate ? 1 : 0,
 				reinterpret_cast<void*>(focusBefore),
-				foregroundResult ? 1 : 0,
-				reinterpret_cast<void*>(focusResult),
 				reinterpret_cast<void*>(::GetForegroundWindow()),
 				reinterpret_cast<void*>(::GetFocus()));
 		}
