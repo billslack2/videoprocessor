@@ -3,8 +3,9 @@
 ## Status
 
 Done (2026-08-09). Implemented on `codex/vp-0105-toggle-noui` as commit
-`2354f22`, based on `v1.2.001-beta`; draft PR:
-`billslack2/videoprocessor#47`. Live validation confirmed that
+`2354f22` and merged through PR `billslack2/videoprocessor#47` into
+`v1.2.001-beta` as `016a50f`. That beta result was then merged into
+`v1.2.001-formats-test-beta` as `2992cdb`. Live validation confirmed that
 `Ctrl+Shift+U` toggles the runtime UI and that `Ctrl+Shift+S` hides Config
 Settings while it owns focus, then reveals it again through VideoProcessor.
 
@@ -84,4 +85,4 @@ its launch arguments.
 
 ## Integration target
 
-- `v1.2.001-beta` (repository default branch discovered 2026-08-09).
+- `v1.2.001-beta` and `v1.2.001-formats-test-beta` (integrated 2026-08-09).
