@@ -290,6 +290,11 @@ protected:
 	// Window management
 	virtual void WindowSetup();
 	virtual void WindowTeardown();
+	virtual void ResolveVideoWindowPlacement(LONG hostWidth,
+		LONG hostHeight, bool fullscreen, LONG& x, LONG& y,
+		LONG& width, LONG& height) const;
+	void ApplyVideoWindowPlacement();
+	bool IsVideoHostFullscreen() const;
 
 	// Live source filter management
 	virtual void LiveSourceBuildAndConnect();

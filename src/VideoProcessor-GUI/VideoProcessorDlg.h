@@ -72,7 +72,10 @@
 #define RENDERER_RESET_MAILBOX_TIMER_ID 9
 #define TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID 10
 #define SHADER_SHORTCUT_DEBOUNCE_TIMER_ID 11
-#define SHADER_SHORTCUT_DEBOUNCE_MS 200
+// Repeat keydowns are filtered by ShortcutDebounceState; retain a brief
+// settle window for key-up/modifier ordering without making live NLS toggles
+// feel delayed before VP even reaches madVR.
+#define SHADER_SHORTCUT_DEBOUNCE_MS 75
 #define LLDV_PROFILE_APPLY_TIMER_ID 12
 #define CONFIGURATION_LIVE_APPLY_TIMER_ID 13
 #define CONFIGURATION_EDITOR_MODAL_TIMER_ID 14

@@ -8,6 +8,8 @@
 
 #include <pch.h>
 
+#include "DirectShowViewportPlacement.h"
+
 #include <dvdmedia.h>
 
 #include <guid.h>
@@ -788,6 +790,7 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 	m_requestedShaderLabel.Format(TEXT("%S"), label.c_str());
 	m_inactiveShaderRule.Format(TEXT("%S"), inactiveRule.c_str());
 	m_requestedRuleUsesNlsMapping = nlsMapping;
+	ApplyVideoWindowPlacement();
 
 	ActivePictureRectangle activeRectangle;
 	bool aspectAvailable = GetActivePictureRectangle(activeRectangle);
@@ -1212,6 +1215,7 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 	m_nlsTargetAspect = viewport.hasScreenAspect ?
 		viewport.screenAspect.value : 0.0;
 	MadVRShaderLoader::SetRuntimeNlsTargetAspect(m_nlsTargetAspect);
+	ApplyVideoWindowPlacement();
 	m_viewportGeneration = viewport.generation;
 	if (!m_requestedShaderRule.IsEmpty())
 	{
@@ -1251,6 +1255,26 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 		static_cast<unsigned long long>(m_viewportGeneration),
 		rendererRestartRequired ? 1 : 0);
 	return true;
+}
+
+
+void DirectShowGenericHDRVideoRenderer::ResolveVideoWindowPlacement(
+	LONG hostWidth, LONG hostHeight, bool fullscreen, LONG& x, LONG& y,
+	LONG& width, LONG& height) const
+{
+	const DirectShowViewportPlacement placement =
+		ResolveDirectShowViewportPlacement(hostWidth, hostHeight, fullscreen,
+			m_requestedRuleUsesNlsMapping, m_nlsTargetAspect);
+	x = placement.x;
+	y = placement.y;
+	width = placement.width;
+	height = placement.height;
+	if (placement.usesWindowedScopeCanvas)
+	{
+		DebugLog::Log(
+			"DirectShow windowed NLS scope canvas host=%ldx%ld rect=%ld,%ld,%ld,%ld target=%.7f",
+			hostWidth, hostHeight, x, y, width, height, m_nlsTargetAspect);
+	}
 }
 
 
