@@ -5,9 +5,12 @@
 In Progress (2026-08-09). Reopened after live validation found that the
 default `Ctrl+Shift+U` chord was also delivered to the foreground
 configuration editor. The runtime command is dispatched, but the editor may
-hide before the result is visible. The shortcut observer is being updated to
-consume this VP-owned chord after it posts the toggle command, with focused
-dispatch and layout logs for further live diagnosis.
+hide before the result is visible. The shortcut observer now consumes this
+VP-owned chord after it posts the toggle command, with focused dispatch and
+layout logs for further live diagnosis. Live validation also found that the
+existing `Ctrl+Shift+S` Configuration Settings shortcut did not reliably hide
+and reveal the separate configuration-editor window, so both VP-owned global
+commands are now routed through the same observer.
 
 ## Implementation checkpoint (2026-08-09)
 
