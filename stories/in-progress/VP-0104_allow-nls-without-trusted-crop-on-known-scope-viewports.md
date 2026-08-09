@@ -2,10 +2,17 @@
 
 ## Status
 
-Done (2026-08-09). The focused repair is implemented as `0d2b7db`, built,
-deployed, and accepted in live madVR/projector use. It is merged and pushed to
-both requested beta branches: `9eeaa74` on `v1.2.001-beta` and `79e0c83` on
-`v1.2.001-formats-test-beta`.
+In Progress (reopened 2026-08-09). The initial Alpha-side repair in `0d2b7db`
+correctly used the known full source raster while crop evidence was unavailable,
+but the DirectShow/madVR path still treated the same temporary state as no
+geometry and could remain at `NLS: Waiting` after a renderer-generation reset.
+
+Follow-up implementation is `7196d29` (`Fix madVR NLS geometry
+reacquisition`). It gives madVR the same source-geometry contract: the selected
+numeric viewport remains the target, a stable applied crop remains authoritative
+when present, and the negotiated full raster is used while crop evidence is
+reacquiring. It is built, regression-tested, deployed, and accepted in live
+monitor/scope use; beta integrations are pending.
 
 ## Completion checkpoint (2026-08-09)
 
@@ -46,15 +53,27 @@ switch, while its native HLSL path also made the monitor preview look vertically
 compressed. On the actual CIH projector, the known numeric viewport geometry
 is sufficient and the accepted result is horizontal expansion.
 
+The live monitor test subsequently isolated the remaining madVR defect: scope
+placement itself was correct (16:9 content pillarboxed inside the 47:20
+viewport), but a renderer-generation reset cleared the active rectangle before
+the detector republished. Alpha had the numeric full-raster fallback; madVR
+passed `aspectAvailable=false` to its NLS decision and stayed `Waiting`.
+
 ## Implementation
 
 - Resolve NLS source geometry from a trusted applied crop when one exists.
 - Otherwise fall back to the complete numeric source raster rather than
   treating a provisional crop candidate as authority or a veto.
 - Feed the same resolved geometry into Alpha's final NLS mapping.
+- Make DirectShow/madVR resolve that same geometry before both initial NLS
+  selection and refresh. A detector reset therefore supplies normalized
+  full-raster bounds to the HLSL runtime, while a later stable detector
+  rectangle still replaces them.
 - Add a regression test for a provisional `76,0-3840,1968` crop candidate on
   a 3840x2160 raster mapped to a 47:20 viewport. The expected result is active
   horizontal NLS with a 1.321875 stretch, not `Waiting`.
+- Add a madVR output-contract regression that verifies full 3840x2160 source
+  geometry produces an active 47:20 custom-shader presentation contract.
 
 ## Verification
 
