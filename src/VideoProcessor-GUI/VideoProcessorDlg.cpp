@@ -125,6 +125,7 @@ struct ConfigurationEditorSearch
 {
 	std::wstring expectedPath;
 	HWND window = nullptr;
+	bool exactInstallationMatch = false;
 };
 
 BOOL CALLBACK FindConfigurationEditor(HWND window, LPARAM parameter)
@@ -146,10 +147,20 @@ BOOL CALLBACK FindConfigurationEditor(HWND window, LPARAM parameter)
 		&processPathLength) &&
 		_wcsicmp(processPath, search->expectedPath.c_str()) == 0;
 	CloseHandle(process);
-	if (!matches)
-		return TRUE;
-	search->window = window;
-	return FALSE;
+	if (matches)
+	{
+		search->window = window;
+		search->exactInstallationMatch = true;
+		return FALSE;
+	}
+	// The configuration editor has a deliberate per-user single-instance
+	// lifetime. A freshly-built or newly-installed VP can therefore launch an
+	// already-running editor from its previous installation directory. Keep it
+	// as a fallback so VP can still toggle the same visible singleton, while an
+	// exact sibling executable wins whenever it exists.
+	if (!search->window)
+		search->window = window;
+	return TRUE;
 }
 
 HWND FindConfigurationEditorForCurrentInstallation()
@@ -168,6 +179,8 @@ HWND FindConfigurationEditorForCurrentInstallation()
 	ConfigurationEditorSearch search{ expectedPath };
 	EnumWindows(FindConfigurationEditor,
 		reinterpret_cast<LPARAM>(&search));
+	if (search.window && !search.exactInstallationMatch)
+		DebugLog::Log("Configuration editor fallback selected from another installation");
 	return search.window;
 }
 
