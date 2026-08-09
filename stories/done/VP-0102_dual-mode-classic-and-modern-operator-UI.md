@@ -2,16 +2,34 @@
 
 ## Status
 
-In Progress. Source work is authorized on `codex/vp-0102-modern-ui`, based on
-the latest approved GitHub default branch `v1.1.017-beta` at
-`3c7ebd5315cd7396669d1762822a94cfa358d490` when the worktree was created.
-The current classic dialog remains the effective default and must remain fully
-functional throughout implementation.
+Done on 2026-08-09. The Modern operator interface was completed in `0d9e32b`,
+then refined and validated through the configuration-editor, fullscreen, and
+keyboard-routing follow-ups. The final non-consuming Modern shortcut routing
+that coexists with madVR is `f9c3c6a` on
+`v1.2.001-formats-test-beta` and `72f600d` on `v1.2.001-beta`.
 
-VP-0097 is the dependency for exposing the persisted `interface` preference in
-the configuration editor. Design, read-only telemetry extraction, and toolkit
-feasibility work may proceed independently, but this story cannot be accepted
-until the setting is safely editable through that editor.
+The final user-approved product decision supersedes the original default below:
+Modern is the default interface. Classic remains available through
+`/interface classic`, and `/noui` remains supported. VP-0097 exposes the
+persisted interface choice through the standalone configuration editor.
+
+### Completion evidence
+
+- The user visually reviewed and iterated the Modern layout against live
+  DeckLink input with both VP Renderer and DirectShow/madVR.
+- The right side is a dedicated 16:9 video host; the left cards, compact queue,
+  native window chrome, configuration gear, and responsive sizing were
+  accepted through live screenshots and use.
+- Capture restart, renderer restart, queue reset, renderer switching,
+  fullscreen/windowed transitions, configuration-editor activation/tray
+  behavior, and Modern keyboard shortcuts were exercised live.
+- Classic and `/noui` startup paths were retained and regression checked.
+- The final Release x64 GUI build succeeded and all 15 configuration-editor
+  tests passed.
+- The broader native run passed 722 of 727 tests. The same five failures were
+  reproduced unchanged on the untouched pre-merge `v1.2.001-beta` tip, so they
+  are recorded as pre-existing baseline failures rather than regressions from
+  VP-0102.
 
 ## User story
 
@@ -25,13 +43,12 @@ classic dialog exactly as a safe familiar interface.
 VP has two selectable application interfaces:
 
 - **Classic**: the existing dialog, unchanged in capability, behavior,
-  shortcuts, sizing behavior, and default startup selection.
+  shortcuts, and sizing behavior, and still selectable explicitly.
 - **Modern**: a separate, information-first operator UI with a left status and
   operational-actions column plus a right 16:9 video-preview area.
 
-Classic remains the effective default until the developer deliberately changes
-that policy in a future story. This story does not remove, hide, deprecate, or
-reimplement the classic UI.
+Modern is the effective default by final user approval. This story does not
+remove, hide, deprecate, or reimplement the classic UI.
 
 ## Interface selection contract
 
@@ -49,7 +66,7 @@ reimplement the classic UI.
    2. A valid `/interface` value overrides persisted configuration for that
       process only.
    3. The persisted `interface` value applies when valid.
-   4. Missing or invalid configuration resolves to `classic`.
+   4. Missing or invalid configuration resolves to `modern`.
 4. `noui` remains supported. Its video window defaults to a 16:9 client area
    and can be resized down to a minimum video area of 320x180. It must not
    instantiate Classic or Modern controls, create editable controls, or change
@@ -180,7 +197,7 @@ capture/renderer validation.
 ## Implementation increments
 
 1. Document the interface-selection/configuration contract and add parser/schema
-   tests. Keep the effective default Classic.
+   tests. The final approved effective default is Modern.
 2. Build/test a UI-neutral live-status snapshot plus shared operational-command
    adapter. Prove Classic behavior and update cadence are unchanged.
 3. Complete toolkit feasibility and the designer-approved modern layout before
@@ -210,7 +227,7 @@ capture/renderer validation.
 1. `classic`, `modern`, invalid `/interface`, persisted selection, command-line
    override, and `/noui` precedence have automated parser/configuration tests
    and concise startup logs showing the resolved mode and reason.
-2. Classic startup is the default with no new argument/configuration. A focused
+2. Modern startup is the default with no new argument/configuration. A focused
    Classic regression pass verifies capture restart, renderer restart, queue
    reset, all existing editable controls, keyboard shortcuts, fullscreen,
    renderer switching, timer cadence, and video output behave as before.
@@ -246,7 +263,7 @@ capture/renderer validation.
     already in the notification area. Its unavailable/failure state is clear
     and non-disruptive.
 11. VP-0097 exposes the persisted interface choice, and the shipped sample plus
-    `CONFIGURATION.html` clearly describe Classic default, Modern selection,
+    `CONFIGURATION.html` clearly describe Modern default, Classic selection,
     `/interface`, `/noui`, precedence, sizing behavior, and how to open the
     configuration editor.
 
