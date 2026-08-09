@@ -998,9 +998,7 @@ void DirectShowVideoRenderer::OnSize()
 	m_renderBoxWidth = rectWindow.right - rectWindow.left;
 	m_renderBoxHeight = rectWindow.bottom - rectWindow.top;
 
-	// TODO: Saw this blow up when resizing when the renderer is changing
-	if (FAILED(m_videoWindow->SetWindowPosition(0, 0, m_renderBoxWidth, m_renderBoxHeight)))
-		throw std::runtime_error("Failed to SetWindowPosition");
+	ApplyVideoWindowPlacement();
 }
 
 
@@ -1820,11 +1818,58 @@ void DirectShowVideoRenderer::WindowSetup()
 	if (FAILED(m_videoWindow->put_WindowStyle(WS_CHILD | WS_CLIPSIBLINGS)))
 		throw std::runtime_error("Failed to set window style in video window");
 
-	if (FAILED(m_videoWindow->SetWindowPosition(0, 0, m_renderBoxWidth, m_renderBoxHeight)))
-		throw std::runtime_error("Failed to SetWindowPosition in video window");
+	ApplyVideoWindowPlacement();
 
 	if (FAILED(m_videoWindow->HideCursor(OATRUE)))
 		throw std::runtime_error("Failed to HideCursor in video window");
+}
+
+
+void DirectShowVideoRenderer::ResolveVideoWindowPlacement(LONG hostWidth,
+	LONG hostHeight, bool /*fullscreen*/, LONG& x, LONG& y, LONG& width,
+	LONG& height) const
+{
+	x = 0;
+	y = 0;
+	width = hostWidth;
+	height = hostHeight;
+}
+
+
+bool DirectShowVideoRenderer::IsVideoHostFullscreen() const
+{
+	RECT window{};
+	if (!m_videoHwnd || !GetWindowRect(m_videoHwnd, &window))
+		return false;
+	const HMONITOR monitor = MonitorFromWindow(m_videoHwnd,
+		MONITOR_DEFAULTTONEAREST);
+	MONITORINFO monitorInfo{};
+	monitorInfo.cbSize = sizeof(monitorInfo);
+	if (!monitor || !GetMonitorInfo(monitor, &monitorInfo))
+		return false;
+	const RECT& bounds = monitorInfo.rcMonitor;
+	constexpr LONG tolerance = 2;
+	return abs(window.left - bounds.left) <= tolerance &&
+		abs(window.top - bounds.top) <= tolerance &&
+		abs(window.right - bounds.right) <= tolerance &&
+		abs(window.bottom - bounds.bottom) <= tolerance;
+}
+
+
+void DirectShowVideoRenderer::ApplyVideoWindowPlacement()
+{
+	AssertGraphThread();
+	if (!m_videoWindow)
+		return;
+	LONG x = 0;
+	LONG y = 0;
+	LONG width = m_renderBoxWidth;
+	LONG height = m_renderBoxHeight;
+	ResolveVideoWindowPlacement(m_renderBoxWidth, m_renderBoxHeight,
+		IsVideoHostFullscreen(), x, y, width, height);
+	if (width <= 0 || height <= 0 ||
+		FAILED(m_videoWindow->SetWindowPosition(x, y, width, height)))
+		throw std::runtime_error("Failed to SetWindowPosition in video window");
 }
 
 

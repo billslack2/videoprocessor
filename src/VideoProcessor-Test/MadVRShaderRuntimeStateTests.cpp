@@ -2,6 +2,7 @@
 
 #include <microsoft_directshow/MadVRShaderLoader.h>
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
+#include <microsoft_directshow/video_renderers/DirectShowViewportPlacement.h>
 #include <ShortcutRepeatGuard.h>
 #include "CppUnitTest.h"
 
@@ -823,6 +824,30 @@ namespace VideoProcessorTest
 				snapshot.nlsDecision.sourceAspect, 0.000001);
 			Assert::AreEqual(2.35,
 				snapshot.nlsDecision.targetAspect, 0.000001);
+		}
+
+		TEST_METHOD(WindowedNlsUsesConfiguredScopeCanvas)
+		{
+			const DirectShowViewportPlacement windowed =
+				ResolveDirectShowViewportPlacement(2560, 1440, false, true,
+					47.0 / 20.0);
+			Assert::IsTrue(windowed.usesWindowedScopeCanvas);
+			Assert::AreEqual(0L, windowed.x);
+			Assert::AreEqual(175L, windowed.y);
+			Assert::AreEqual(2560L, windowed.width);
+			Assert::AreEqual(1089L, windowed.height);
+
+			const DirectShowViewportPlacement fullscreen =
+				ResolveDirectShowViewportPlacement(2560, 1440, true, true,
+					47.0 / 20.0);
+			Assert::IsFalse(fullscreen.usesWindowedScopeCanvas);
+			Assert::AreEqual(1440L, fullscreen.height);
+
+			const DirectShowViewportPlacement native =
+				ResolveDirectShowViewportPlacement(2560, 1440, false, true,
+					16.0 / 9.0);
+			Assert::IsFalse(native.usesWindowedScopeCanvas);
+			Assert::AreEqual(1440L, native.height);
 		}
 	};
 }

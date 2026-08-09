@@ -72,6 +72,9 @@ protected:
 	void MediaTypeGenerate() override;
 	void RendererConnect() override;
 	void LiveSourceBuildAndConnect() override;
+	void ResolveVideoWindowPlacement(LONG hostWidth, LONG hostHeight,
+		bool fullscreen, LONG& x, LONG& y, LONG& width,
+		LONG& height) const override;
 
 private:
 	void UpdateActiveShaderSelection(const MadVRShaderSelection& selection);
