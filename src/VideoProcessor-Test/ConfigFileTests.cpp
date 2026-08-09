@@ -51,6 +51,12 @@ namespace VideoProcessorTest
 				true, false, true, true, false, true));
 			Assert::IsFalse(ConfigurationLiveApply::ShortcutModifiersMatch(
 				true, false, true, true, false, false));
+			Assert::IsTrue(ConfigurationLiveApply::MayDispatchInjectedShortcut(
+				true, 42, 84));
+			Assert::IsFalse(ConfigurationLiveApply::MayDispatchInjectedShortcut(
+				false, 42, 84));
+			Assert::IsFalse(ConfigurationLiveApply::MayDispatchInjectedShortcut(
+				true, 42, 42));
 		}
 
 		TEST_METHOD(ModernBackgroundAndConfigurationModalPoliciesAreFailSafe)
@@ -83,6 +89,21 @@ namespace VideoProcessorTest
 			Assert::IsTrue(
 				ConfigurationLiveApply::MayDispatchWhileConfigurationModal(
 					true, false));
+			Assert::IsFalse(
+				ConfigurationLiveApply::ShouldPromoteFullscreenAfterLiveFrame(
+					true, true, false, false));
+			Assert::IsTrue(
+				ConfigurationLiveApply::ShouldPromoteFullscreenAfterLiveFrame(
+					true, true, true, false));
+			Assert::IsFalse(
+				ConfigurationLiveApply::ShouldPromoteFullscreenAfterLiveFrame(
+					true, true, true, true));
+			Assert::IsTrue(
+				ConfigurationLiveApply::ShouldRecreateFullscreenHostForBackendHandoff(
+					true, false, true, true, false));
+			Assert::IsFalse(
+				ConfigurationLiveApply::ShouldRecreateFullscreenHostForBackendHandoff(
+					true, true, true, true, false));
 		}
 
 		TEST_METHOD(ApplicationInterfaceDefaultsToModern)

@@ -1773,18 +1773,10 @@ BOOL CVideoProcessorApp::InitInstance()
 
 BOOL CVideoProcessorApp::PreTranslateMessage(MSG* message)
 {
-	// madVR may place keyboard focus on a renderer-owned child HWND that MFC
-	// cannot walk back through its CWnd map. Route Modern accelerators once at
-	// the application message-pump boundary so VP shortcuts remain available
-	// wherever the operator last clicked. Classic retains its existing dialog
-	// PreTranslateMessage path unchanged.
-	if (m_pMainWnd && ::IsWindow(m_pMainWnd->GetSafeHwnd()))
-	{
-		auto* dialog = static_cast<CVideoProcessorDlg*>(m_pMainWnd);
-		if (dialog->InterfaceMode() == ApplicationInterface::Mode::Modern &&
-			dialog->TranslateConfiguredAccelerator(message))
-			return TRUE;
-	}
+	// DirectShow's IVideoWindow::put_MessageDrain delivers the VP copy to the
+	// main dialog.  Let normal MFC dialog routing translate that copy exactly
+	// once, as it does in Classic.  An application-wide Modern accelerator pass
+	// sees renderer-native input as well and steals madVR's own shortcuts.
 	return CWinAppEx::PreTranslateMessage(message);
 }
 

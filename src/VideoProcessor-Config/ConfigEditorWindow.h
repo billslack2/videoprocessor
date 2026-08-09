@@ -27,6 +27,7 @@ public:
     ~ConfigEditorWindow() override;
     void selectPage(int index);
     void reveal();
+    void refreshMonitorDiscovery();
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -56,7 +57,10 @@ private:
         const QStringList& values, const QStringList& labels = {}, bool editable = false);
     QCheckBox* bindCheckField(const QString& label, const QString& section, const QString& key, bool defaultValue = false);
     void markDirty();
+    void keepAboveVideo();
+    void applyChanges();
     void saveChanges();
+    bool notifyVideoProcessor();
     void loadConfiguration();
     void loadDiscoveryCache();
     void setupTray();
@@ -80,6 +84,9 @@ private:
     QStackedWidget* pages_ = nullptr;
     QWidget* navigation_ = nullptr;
     QLabel* status_ = nullptr;
+    QComboBox* monitorChoice_ = nullptr;
+    QComboBox* actionRendererTarget_ = nullptr;
+    QPushButton* applyButton_ = nullptr;
     QPushButton* saveButton_ = nullptr;
     QSystemTrayIcon* tray_ = nullptr;
 };

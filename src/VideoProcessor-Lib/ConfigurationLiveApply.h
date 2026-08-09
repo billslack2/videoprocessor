@@ -25,6 +25,13 @@ namespace ConfigurationLiveApply
 			foregroundProcessId != videoProcessorProcessId;
 	}
 
+	inline bool MayDispatchInjectedShortcut(bool injected,
+		uint32_t videoProcessorProcessId, uint32_t foregroundProcessId)
+	{
+		return injected && MayDispatchGlobalShortcut(videoProcessorProcessId,
+			foregroundProcessId, false);
+	}
+
 	inline bool ShortcutModifiersMatch(bool expectedControl,
 		bool expectedAlt, bool expectedShift, bool control, bool alt,
 		bool shift)
@@ -43,6 +50,24 @@ namespace ConfigurationLiveApply
 		bool configurationModal, bool editorVisible)
 	{
 		return activationPending || configurationModal || editorVisible;
+	}
+
+	inline bool ShouldPromoteFullscreenAfterLiveFrame(bool exclusiveFullscreen,
+		bool fullscreenRequested, bool liveFrameVerified,
+		bool suppressTopmost)
+	{
+		return exclusiveFullscreen && fullscreenRequested &&
+			liveFrameVerified && !suppressTopmost;
+	}
+
+	inline bool ShouldRecreateFullscreenHostForBackendHandoff(
+		bool hasPreviousRenderer, bool previousWasDirectShow,
+		bool nextIsDirectShow, bool fullscreenHostExists,
+		bool preserveHostForProfileRestart)
+	{
+		return hasPreviousRenderer && !previousWasDirectShow &&
+			nextIsDirectShow && fullscreenHostExists &&
+			!preserveHostForProfileRestart;
 	}
 
 	inline bool MayEnterConfigurationModal(bool editorVisible,
