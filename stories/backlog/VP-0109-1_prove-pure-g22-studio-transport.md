@@ -2,9 +2,11 @@
 
 ## Status
 
-Backlog (created from the VP-0109 readiness review on 2026-08-09). This is a
-bounded, non-production contract and measurement spike. No implementation
-branch/worktree has been selected and no deployment is permitted.
+In Progress as of 2026-08-09. The developer explicitly confirmed the current
+default integration branch `v1.2.001-beta` at
+`25f6203cfbef774110bcf3e0fbe7cba2c559c15f`. The bounded diagnostic work uses
+branch `codex/vp-0109-1-g22-spike` in the clean worktree
+`C:\Users\bslac\vp\worktrees\vp-0109-1-g22-spike`. No deployment is permitted.
 
 ## Parent
 
