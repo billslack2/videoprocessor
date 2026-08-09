@@ -22,6 +22,23 @@ lag instead comes from two VP mechanisms:
   waited 2411.660 ms, then coincided with a display/live-queue reset and a
   roughly 1.6 s re-prime.
 
+## Investigation checkpoint (2026-08-09)
+
+- A normal madVR NLS entry completed the entire coherent shader/aspect
+  transaction in 35.963 ms after the fixed 200 ms hotkey debounce.
+- The slow exit's actual shader removal took 3.533 ms. It waited 2411.660 ms
+  first for `m_deliveryGate`, which is held around a synchronous DirectShow
+  `Deliver()` into madVR. Releasing that gate early would permit a sample to
+  cross with a half-applied shader/aspect contract, so it is not a safe
+  optimization.
+- The queue reset logged immediately afterward is explicitly
+  `reason=display-transition`, not an NLS-requested renderer restart; the
+  NLS transaction reports `renderer_restart=0`.
+- The next safe improvement candidates are reducing the shortcut's
+  repeat-protection delay and adding per-delivery diagnostics/repro data to
+  determine why madVR occasionally blocks `Deliver()` for seconds. Neither
+  should alter NLS geometry or remove delivery serialization.
+
 ## Scope
 
 - Trace the delivery-lock holder and identify whether an NLS rule transition
