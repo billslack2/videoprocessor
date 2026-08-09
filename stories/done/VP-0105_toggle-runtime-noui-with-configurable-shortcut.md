@@ -2,15 +2,11 @@
 
 ## Status
 
-In Progress (2026-08-09). Reopened after live validation found that the
-default `Ctrl+Shift+U` chord was also delivered to the foreground
-configuration editor. The runtime command is dispatched, but the editor may
-hide before the result is visible. The shortcut observer now consumes this
-VP-owned chord after it posts the toggle command, with focused dispatch and
-layout logs for further live diagnosis. Live validation also found that the
-existing `Ctrl+Shift+S` Configuration Settings shortcut did not reliably hide
-and reveal the separate configuration-editor window, so both VP-owned global
-commands are now routed through the same observer.
+Done (2026-08-09). Implemented on `codex/vp-0105-toggle-noui` as commit
+`2354f22`, based on `v1.2.001-beta`; draft PR:
+`billslack2/videoprocessor#47`. Live validation confirmed that
+`Ctrl+Shift+U` toggles the runtime UI and that `Ctrl+Shift+S` hides Config
+Settings while it owns focus, then reveals it again through VideoProcessor.
 
 ## Implementation checkpoint (2026-08-09)
 
@@ -26,6 +22,9 @@ commands are now routed through the same observer.
   the public-field inventory, and the canonical configuration reference.
 - Added Qt editor coverage for the built-in default and configured round trip,
   plus the shortcut to shared editor-core round-trip coverage.
+- Made the focused configuration editor honor its configured
+  `[shortcuts] config_editor` binding through its existing close-to-tray
+  behavior. VP continues to reveal Config Settings after it is hidden.
 
 ## User story
 
@@ -48,6 +47,9 @@ its launch arguments.
 - When the configuration editor owns focus, the shortcut is handled by
   VideoProcessor and must not be delivered to the editor as an unrelated key
   chord or hide/close the editor.
+- When Config Settings owns focus, its own configured `config_editor`
+  shortcut hides it to the tray; the same binding reveals it again after focus
+  returns to VideoProcessor.
 - Toggling UI presentation must not restart capture or the renderer, change
   the configured/startup `noui` value on disk, or alter fullscreen state.
 - Invalid or duplicate configured bindings follow the existing shortcut
@@ -67,9 +69,9 @@ its launch arguments.
   `Vp0079OwnerVariantsResolveWithoutPersistedProfileState`,
   `ConfigEditorCoreRoundTripsEveryEditorOwnedKey`, and
   `ConfigEditorCoreValidatesEveryEditableOrderedProfileSurface`.
-- Remaining reviewer validation: confirm the shortcut hides and restores the
-  controls during active video from normal, startup `noui`, and fullscreen
-  ownership without interrupting presentation.
+- Live validation passed: the runtime UI shortcut toggled correctly with
+  Config Settings open, and repeated `Ctrl+Shift+S` hid and revealed Config
+  Settings as intended.
 
 ## Acceptance criteria
 
