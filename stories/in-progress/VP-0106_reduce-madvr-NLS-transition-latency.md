@@ -39,6 +39,15 @@ lag instead comes from two VP mechanisms:
   determine why madVR occasionally blocks `Deliver()` for seconds. Neither
   should alter NLS geometry or remove delivery serialization.
 
+## First implementation (2026-08-09)
+
+- Reduced the shader shortcut settle delay from 200 ms to 75 ms. The existing
+  physical-key state machine continues to consume auto-repeat and waits for a
+  brief key-up/modifier ordering window, but a normal NLS toggle reaches the
+  renderer 125 ms sooner.
+- The x64 Release GUI build passed. This change deliberately does not claim to
+  solve an in-flight madVR `Deliver()` stall.
+
 ## Scope
 
 - Trace the delivery-lock holder and identify whether an NLS rule transition
