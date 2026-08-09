@@ -6620,29 +6620,19 @@ struct LibplaceboVideoRenderer::Impl
 			const double panelTargetAspect = pl_rect2df_aspect(&target.crop);
 			const double finalTargetAspect = ResolveNlsTargetAspect(
 				configuredScreenActive, configuredScreenAspect, panelTargetAspect);
-			const int finalSourceWidth =
-				cropDecision.sourceBounds.right - cropDecision.sourceBounds.left;
-			const int finalSourceHeight =
-				cropDecision.sourceBounds.bottom - cropDecision.sourceBounds.top;
-			const double finalSourceAspect = finalSourceHeight > 0
-				? static_cast<double>(finalSourceWidth) / finalSourceHeight : 0.0;
-			const bool publishedFullRasterAuthority =
-				effectiveGeometryAvailable &&
-				effectiveClassification ==
-					ActivePictureClassification::FULL_RASTER_TRUSTED &&
-				effectiveGeometrySourceGeneration == frameGeneration &&
-				cropDecision.sourceBounds.left == 0 &&
-				cropDecision.sourceBounds.top == 0 &&
-				cropDecision.sourceBounds.right == width &&
-				cropDecision.sourceBounds.bottom == height;
-			const bool frameLocalFullRasterAuthority =
-				fullRasterPresentationAuthorityAvailable &&
-				fullRasterPresentationAuthoritySourceGeneration ==
-					frameGeneration;
-			const bool currentFullRasterAuthority =
-				publishedFullRasterAuthority || frameLocalFullRasterAuthority;
-			const bool finalBoundsAuthoritative =
-				cropDecision.applyCrop || currentFullRasterAuthority;
+			// Crop evidence decides whether bars may be removed. It must not veto
+			// NLS geometry when the crop policy is already presenting the complete
+			// raster. In that case the source aspect is known directly from the
+			// resolution, independent of profile names or provisional dark edges.
+			const NlsSourceGeometry finalSourceGeometry =
+				ResolveNlsSourceGeometry(cropDecision.applyCrop,
+					cropDecision.sourceBounds.left,
+					cropDecision.sourceBounds.top,
+					cropDecision.sourceBounds.right,
+					cropDecision.sourceBounds.bottom,
+					width, height);
+			const double finalSourceAspect = finalSourceGeometry.aspect;
+			const bool finalBoundsAuthoritative = finalSourceGeometry.valid;
 			const double screenLayoutAspect = configuredScreenActive || nlsRequested
 				? finalTargetAspect : pl_rect2df_aspect(&target.crop);
 			const AlphaSourceCrop::CenteredFitDecision screenFit =
@@ -6723,10 +6713,10 @@ struct LibplaceboVideoRenderer::Impl
 				{
 					const MadVRActivePictureGeometry geometry = {
 						finalSourceAspect,
-						static_cast<double>(cropDecision.sourceBounds.left) / width,
-						static_cast<double>(cropDecision.sourceBounds.top) / height,
-						static_cast<double>(cropDecision.sourceBounds.right) / width,
-						static_cast<double>(cropDecision.sourceBounds.bottom) / height,
+						static_cast<double>(finalSourceGeometry.left) / width,
+						static_cast<double>(finalSourceGeometry.top) / height,
+						static_cast<double>(finalSourceGeometry.right) / width,
+						static_cast<double>(finalSourceGeometry.bottom) / height,
 						nlsGeometryGeneration, nlsRendererGeneration, true
 					};
 					MadVRShaderLoader::SetRuntimeActivePictureGeometry(geometry);

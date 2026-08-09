@@ -42,6 +42,22 @@ struct NlsMappingDecision
 };
 
 
+struct NlsSourceGeometry
+{
+	int left = 0;
+	int top = 0;
+	int right = 0;
+	int bottom = 0;
+	double aspect = 0.0;
+	bool valid = false;
+};
+
+
+NlsSourceGeometry ResolveNlsSourceGeometry(bool trustedCropApplied,
+	int cropLeft, int cropTop, int cropRight, int cropBottom,
+	int rasterWidth, int rasterHeight);
+
+
 double ResolveNlsTargetAspect(bool configuredTarget,
 	double configuredAspect, double outputPanelAspect);
 

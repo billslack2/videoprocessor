@@ -280,6 +280,29 @@ namespace VideoProcessorTest
 				ResolveNlsTargetAspect(false, 0.0, 0.0), 0.000001);
 		}
 
+		TEST_METHOD(Vp0099ProvisionalCropFallsBackToNumericRasterGeometry)
+		{
+			// Reproduce a changing, one-sided dark candidate from the Apple TV
+			// home screen. Because no trusted crop is applied, NLS must use the
+			// known 3840x2160 raster instead of waiting for crop authority.
+			const NlsSourceGeometry geometry = ResolveNlsSourceGeometry(false,
+				76, 0, 3840, 1968, 3840, 2160);
+			Assert::IsTrue(geometry.valid);
+			Assert::AreEqual(0, geometry.left);
+			Assert::AreEqual(0, geometry.top);
+			Assert::AreEqual(3840, geometry.right);
+			Assert::AreEqual(2160, geometry.bottom);
+			Assert::AreEqual(16.0 / 9.0, geometry.aspect, 0.000001);
+
+			const NlsMappingDecision mapping = EvaluateNlsMapping(
+				geometry.valid, geometry.aspect, 47.0 / 20.0,
+				5.0, 1.0, false, 1.4);
+			Assert::AreEqual(static_cast<int>(NlsMappingMode::ACTIVE),
+				static_cast<int>(mapping.mode));
+			Assert::IsFalse(mapping.verticalWarp);
+			Assert::AreEqual(1.321875, mapping.stretchRatio, 0.000001);
+		}
+
 		TEST_METHOD(ScreenAndContentMatrixUsesExpectedMappings)
 		{
 			struct MatrixCase

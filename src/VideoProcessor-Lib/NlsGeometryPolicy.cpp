@@ -15,6 +15,30 @@
 #include <sstream>
 
 
+NlsSourceGeometry ResolveNlsSourceGeometry(bool trustedCropApplied,
+	int cropLeft, int cropTop, int cropRight, int cropBottom,
+	int rasterWidth, int rasterHeight)
+{
+	NlsSourceGeometry geometry;
+	if (rasterWidth <= 0 || rasterHeight <= 0)
+		return geometry;
+
+	geometry.left = trustedCropApplied ? cropLeft : 0;
+	geometry.top = trustedCropApplied ? cropTop : 0;
+	geometry.right = trustedCropApplied ? cropRight : rasterWidth;
+	geometry.bottom = trustedCropApplied ? cropBottom : rasterHeight;
+	if (geometry.left < 0 || geometry.top < 0 ||
+		geometry.right > rasterWidth || geometry.bottom > rasterHeight ||
+		geometry.right <= geometry.left || geometry.bottom <= geometry.top)
+		return {};
+
+	geometry.aspect = static_cast<double>(geometry.right - geometry.left) /
+		(geometry.bottom - geometry.top);
+	geometry.valid = std::isfinite(geometry.aspect) && geometry.aspect > 0.0;
+	return geometry;
+}
+
+
 double ResolveNlsTargetAspect(bool configuredTarget,
 	double configuredAspect, double outputPanelAspect)
 {
