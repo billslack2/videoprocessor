@@ -2,9 +2,27 @@
 
 ## Status
 
-In Progress (2026-08-09). The focused repair is implemented, built, deployed,
-and accepted in live madVR/projector use. Source commit and integration into
-`v1.2.001-beta` and `v1.2.001-formats-test-beta` are in progress.
+Done (2026-08-09). The focused repair is implemented as `0d2b7db`, built,
+deployed, and accepted in live madVR/projector use. It is merged and pushed to
+both requested beta branches: `9eeaa74` on `v1.2.001-beta` and `79e0c83` on
+`v1.2.001-formats-test-beta`.
+
+## Completion checkpoint (2026-08-09)
+
+- Source commit `0d2b7db` is pushed on
+  `origin/codex/v1.2.001-live-config`.
+- Merge commit `9eeaa74` is the verified remote tip of the default
+  `origin/v1.2.001-beta` branch.
+- Merge commit `79e0c83` is the verified remote tip of
+  `origin/v1.2.001-formats-test-beta`.
+- Both remote tips contain `0d2b7db` as an ancestor.
+- A fresh serial x64 Release solution build passed on the default-beta merge.
+  The clean worktree used the established shared Qt 6.8.3 dependency root for
+  the standalone configuration-editor projects.
+- The focused `Vp0099ProvisionalCropFallsBackToNumericRasterGeometry` test
+  passed from the default-beta merge.
+- The deployed formats-beta Release build and its unchanged active
+  configuration passed the user's live CIH projector validation.
 
 ## User story
 
@@ -56,7 +74,8 @@ is sufficient and the accepted result is horizontal expansion.
   from a viewport label.
 - A provisional or absent crop does not block safe full-raster NLS.
 - A trusted applied crop remains authoritative when available.
-- Alpha and madVR viewport switching do not retain a stale `Waiting` decision.
+- Viewport switching does not retain a stale NLS `Waiting` decision when the
+  full source raster and numeric viewport geometry are known.
 - The x64 Release build, focused regression test, and live CIH projector test
   pass.
 
@@ -64,4 +83,3 @@ is sufficient and the accepted result is horizontal expansion.
 
 - `v1.2.001-beta` (the repository default branch discovered 2026-08-09).
 - `v1.2.001-formats-test-beta` (the second user-requested 1.2 beta branch).
-

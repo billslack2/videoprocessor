@@ -134,7 +134,7 @@ they must not contain requirements that are absent from this file.
 | VP-0101 | Backlog | Implement production pixel-owned calibrated output and 3D LUTs |
 | VP-0102 | In Progress | Dual-mode classic and modern operator UI |
 | VP-0103 | In Progress | Configurable vertical picture alignment with subtitle-aware fit |
-| VP-0104 | In Progress | Allow NLS without trusted crop on known scope viewports |
+| VP-0104 | Done | Allow NLS without trusted crop on known scope viewports |
 | VP-0105 | In Progress | Toggle the runtime UI with a configurable shortcut |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
