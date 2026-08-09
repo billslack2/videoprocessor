@@ -536,6 +536,7 @@ namespace VideoProcessorTest
 				{ "actions.audio_delay_film", "run", "C:\\Tools\\verified-action.cmd 42" },
 
 				{ "shortcuts", "config_editor", "Ctrl+E" },
+				{ "shortcuts", "toggle_noui", "Alt+U" },
 				{ "shortcuts", "fullscreen_toggle", "Ctrl+F" },
 				{ "shortcuts", "fullscreen_exit", "Esc" },
 				{ "shortcuts", "toggle_stats_overlay", "Ctrl+I" },

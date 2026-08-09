@@ -3443,6 +3443,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
     };
     const ShortcutField applicationFields[] = {
         { "Open configuration", "config_editor", "Ctrl+Shift+S" },
+        { "Toggle video-only UI", "toggle_noui", "Ctrl+Shift+U" },
         { "Toggle fullscreen", "fullscreen_toggle", "Alt+Enter" },
         { "Exit fullscreen", "fullscreen_exit", "Esc" },
         { "Toggle statistics", "toggle_stats_overlay", "Ctrl+I" },

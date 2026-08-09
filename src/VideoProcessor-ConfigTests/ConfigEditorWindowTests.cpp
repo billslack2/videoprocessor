@@ -181,6 +181,11 @@ void testEveryPageRoundTrips()
     require(configShortcut->text() == QStringLiteral("Ctrl+Shift+S"),
         "Open configuration did not default to Ctrl+Shift+S");
     configShortcut->setText(QStringLiteral("Ctrl+e"));
+    QLineEdit* noUiShortcut = requireControl<QLineEdit>(window,
+        QStringLiteral("config.shortcuts.toggle_noui"));
+    require(noUiShortcut->text() == QStringLiteral("Ctrl+Shift+U"),
+        "Video-only UI toggle did not default to Ctrl+Shift+U");
+    noUiShortcut->setText(QStringLiteral("Alt+u"));
 
     window.selectPage(9);
     require(requireControl<QCheckBox>(window, QStringLiteral("config.logging.enabled"))->isChecked(),
@@ -253,7 +258,7 @@ void testEveryPageRoundTrips()
         "screen_aspect: 21:10", "vertical_alignment: bottom", "anamorphic_scale: 4:3",
         "renderer_start_stop_time_method: RATIONAL_RATIONAL", "frame_offset: 75",
         "renderer_primaries: BT2020", "max_cll: 1200", "max_fall: 450",
-        "fullscreen_toggle: Ctrl+F", "config_editor: Ctrl+E",
+        "fullscreen_toggle: Ctrl+F", "config_editor: Ctrl+E", "toggle_noui: Alt+U",
         "renderer: *", "run: C:\\Tools\\verified-action.cmd 42",
         "enabled: false", "debug: false", "debug_log_retention: 25",
         "label: Verified Stretch", "order: 10", "strength: 0.85"

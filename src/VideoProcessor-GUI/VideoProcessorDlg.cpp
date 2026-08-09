@@ -293,6 +293,7 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 	{ "video_conversion_off",  ID_COMMAND_VC_NONE,                'V',       0 },
 	{ "video_conversion_p010", ID_COMMAND_VC_P010,                'V',       FSHIFT },
 	{ "config_editor",         ID_COMMAND_CONFIG_EDITOR,          'S',       FCONTROL | FSHIFT },
+	{ "toggle_noui",           ID_COMMAND_TOGGLE_NO_UI,           'U',       FCONTROL | FSHIFT },
 	{ "display_rules_auto",    ID_COMMAND_DISPLAY_RULE_AUTO,      VK_F4,     0, true },
 };
 
@@ -1584,6 +1585,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
 	ON_COMMAND(ID_COMMAND_DISPLAY_RULE_AUTO, &CVideoProcessorDlg::OnCommandDisplayRuleAuto)
 	ON_COMMAND(ID_COMMAND_CONFIG_EDITOR, &CVideoProcessorDlg::OnCommandConfigEditor)
+	ON_COMMAND(ID_COMMAND_TOGGLE_NO_UI, &CVideoProcessorDlg::OnCommandToggleNoUi)
 	ON_MESSAGE(WM_HOTKEY, &CVideoProcessorDlg::OnConfigurationEditorHotkey)
 	ON_COMMAND_RANGE(ID_COMMAND_SHADER_RULE_FIRST, ID_COMMAND_SHADER_RULE_LAST, &CVideoProcessorDlg::OnCommandShaderRule)
 	ON_COMMAND_RANGE(ID_COMMAND_DISPLAY_RULE_FIRST, ID_COMMAND_DISPLAY_RULE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
@@ -4060,6 +4062,26 @@ void CVideoProcessorDlg::OnCommandAutoSet()
 	OnBnClickedRendererRestart();
 }
 
+void CVideoProcessorDlg::OnCommandToggleNoUi()
+{
+	if (m_hideUI)
+	{
+		m_hideUI = false;
+		RestoreNormalUiLayout();
+	}
+	else
+	{
+		m_hideUI = true;
+		ApplyNoUiLayout();
+	}
+
+	StartGlobalShortcutObserver();
+	DebugLog::Log("Runtime UI shortcut: noui=%d fullscreen=%d renderer_state=%d",
+		m_hideUI ? 1 : 0,
+		m_rendererFullscreenCheck.GetCheck() == BST_CHECKED ? 1 : 0,
+		static_cast<int>(m_rendererState));
+}
+
 void CVideoProcessorDlg::OnCommandConfigEditor()
 {
 	wchar_t modulePath[MAX_PATH] = {};
@@ -6322,6 +6344,20 @@ void CVideoProcessorDlg::ApplyNoUiLayout()
 {
 	if (!m_windowedVideoWindow.GetSafeHwnd())
 		return;
+	if (!m_noUiLayoutApplied)
+	{
+		m_normalUiChildVisibility.clear();
+		for (CWnd* child = GetWindow(GW_CHILD); child;
+			child = child->GetNextWindow())
+		{
+			m_normalUiChildVisibility.push_back({
+				child->GetSafeHwnd(), child->IsWindowVisible() != FALSE });
+		}
+		m_normalUiWindowPlacement.length = sizeof(m_normalUiWindowPlacement);
+		GetWindowPlacement(&m_normalUiWindowPlacement);
+		m_normalUiMinDialogSize = m_minDialogSize;
+		m_noUiLayoutApplied = true;
+	}
 
 	for (CWnd* child = GetWindow(GW_CHILD); child; child = child->GetNextWindow())
 	{
@@ -6359,6 +6395,56 @@ void CVideoProcessorDlg::ApplyNoUiLayout()
 	m_windowedVideoWindow.MoveWindow(0, 0,
 		NoUiLayout::DefaultClientWidth,
 		NoUiLayout::DefaultClientHeight, TRUE);
+}
+
+
+void CVideoProcessorDlg::RestoreNormalUiLayout()
+{
+	if (!m_noUiLayoutApplied || !GetSafeHwnd())
+		return;
+
+	const bool initializeModern =
+		m_interfaceMode == ApplicationInterface::Mode::Modern &&
+		!m_modernOperatorView.GetSafeHwnd();
+	if (initializeModern)
+	{
+		m_normalUiChildVisibility.clear();
+		m_noUiLayoutApplied = false;
+		InitializeModernInterface();
+		StartConfigurationEditorInTray();
+		return;
+	}
+
+	for (const ChildVisibility& child : m_normalUiChildVisibility)
+	{
+		if (::IsWindow(child.hwnd))
+			::ShowWindow(child.hwnd, child.visible ? SW_SHOWNA : SW_HIDE);
+	}
+	m_minDialogSize = m_normalUiMinDialogSize;
+	if (m_normalUiWindowPlacement.length == sizeof(WINDOWPLACEMENT))
+		SetWindowPlacement(&m_normalUiWindowPlacement);
+
+	if (m_interfaceMode == ApplicationInterface::Mode::Modern)
+	{
+		ApplyModernLayout();
+		RefreshModernStatus();
+	}
+	else
+	{
+		CRect client;
+		GetClientRect(&client);
+		CRect videoRect = m_initialVideoWindowRect;
+		videoRect.right += std::max<LONG>(0,
+			static_cast<LONG>(client.Width()) - m_initialClientSize.cx);
+		videoRect.bottom += std::max<LONG>(0,
+			static_cast<LONG>(client.Height()) - m_initialClientSize.cy);
+		m_windowedVideoWindow.MoveWindow(&videoRect, TRUE);
+		RestoreFixedDialogLayout();
+	}
+
+	m_normalUiChildVisibility.clear();
+	m_noUiLayoutApplied = false;
+	Invalidate(FALSE);
 }
 
 
