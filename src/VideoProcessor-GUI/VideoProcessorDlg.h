@@ -704,6 +704,7 @@ protected:
 	void SuspendGlobalShortcutObserver();
 	void StopGlobalShortcutObserver();
 	void ToggleConfigurationEditor();
+	void StartConfigurationEditorInTray();
 	void UpdateConfigurationEditorModal();
 	void DemoteFullscreenForConfigurationEditor();
 	void RestoreFullscreenAfterConfigurationEditor();

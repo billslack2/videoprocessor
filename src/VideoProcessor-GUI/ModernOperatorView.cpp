@@ -10,7 +10,6 @@ namespace
 	constexpr UINT IDC_MODERN_CAPTURE_RESTART = 12002;
 	constexpr UINT IDC_MODERN_RENDERER_RESTART = 12003;
 	constexpr UINT IDC_MODERN_QUEUE_RESET = 12004;
-	constexpr UINT IDC_MODERN_EXIT = 12005;
 
 	const COLORREF Background = RGB(6, 13, 20);
 	const COLORREF Header = RGB(15, 26, 37);
@@ -27,7 +26,6 @@ BEGIN_MESSAGE_MAP(ModernOperatorView, CWnd)
 	ON_WM_SIZE()
 	ON_WM_DRAWITEM()
 	ON_BN_CLICKED(IDC_MODERN_CONFIGURATION, &ModernOperatorView::OnConfiguration)
-	ON_BN_CLICKED(IDC_MODERN_EXIT, &ModernOperatorView::OnExit)
 	ON_BN_CLICKED(IDC_MODERN_CAPTURE_RESTART, &ModernOperatorView::OnCaptureRestart)
 	ON_BN_CLICKED(IDC_MODERN_RENDERER_RESTART, &ModernOperatorView::OnRendererRestart)
 	ON_BN_CLICKED(IDC_MODERN_QUEUE_RESET, &ModernOperatorView::OnQueueReset)
@@ -54,8 +52,8 @@ bool ModernOperatorView::Create(CWnd* parent)
 		FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
 		CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, TEXT("Segoe UI"));
 
-	CreateButton(m_configuration, IDC_MODERN_CONFIGURATION, TEXT("Config"));
-	CreateButton(m_exit, IDC_MODERN_EXIT, TEXT("Exit"));
+	CreateButton(m_configuration, IDC_MODERN_CONFIGURATION,
+		TEXT("Open configuration"));
 	CreateButton(m_captureRestart, IDC_MODERN_CAPTURE_RESTART, TEXT("Restart capture"));
 	CreateButton(m_rendererRestart, IDC_MODERN_RENDERER_RESTART, TEXT("Restart"));
 	CreateButton(m_queueReset, IDC_MODERN_QUEUE_RESET, TEXT("Reset queues"));
@@ -84,11 +82,8 @@ void ModernOperatorView::LayoutControls()
 	CRect client;
 	GetClientRect(&client);
 	m_configuration.MoveWindow(
-		std::max(Px(16), static_cast<int>(client.right) - Px(146)),
-		Px(13), Px(69), Px(29));
-	m_exit.MoveWindow(
-		std::max(Px(89), static_cast<int>(client.right) - Px(69)),
-		Px(13), Px(53), Px(29));
+		std::max(Px(16), static_cast<int>(client.right) - Px(48)),
+		Px(13), Px(32), Px(29));
 	m_captureRestart.MoveWindow(Px(390), Px(116), Px(127), Px(29));
 	m_rendererRestart.MoveWindow(Px(179), Px(526), Px(77), Px(29));
 	m_queueReset.MoveWindow(Px(394), Px(615), Px(117), Px(29));
@@ -215,10 +210,10 @@ void ModernOperatorView::OnPaint()
 	dc.TextOut(Px(58), Px(17), TEXT("VideoProcessor"));
 	dc.SetTextColor(Muted);
 	dc.SelectObject(&m_regularFont);
-	// Config is right-anchored; give the build identifier all remaining header
-	// space instead of retaining the narrow placeholder used by the mock-up.
+	// The compact configuration gear is right-anchored. Give the build
+	// identifier all remaining header space.
 	const int versionRight = std::max(
-		Px(289), static_cast<int>(client.right) - Px(162));
+		Px(289), static_cast<int>(client.right) - Px(60));
 	CRect versionRect(Px(207), Px(20), versionRight, Px(40));
 	dc.DrawText(VERSION_DESCRIBE, versionRect,
 		DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
@@ -317,6 +312,38 @@ void ModernOperatorView::OnDrawItem(int, LPDRAWITEMSTRUCT item)
 	dc.SelectStockObject(NULL_BRUSH);
 	dc.RoundRect(rect, CPoint(Px(7), Px(7)));
 	dc.SelectObject(oldPen);
+	if (item->CtlID == IDC_MODERN_CONFIGURATION)
+	{
+		// A compact, hand-drawn gear avoids a font-dependent glyph while keeping
+		// the same keyboard-accessible button and a sufficiently visible target.
+		const COLORREF gear = pressed ? Accent : RGB(190, 214, 232);
+		const CPoint center(rect.CenterPoint());
+		const int directions[8][2] = {
+			{ 0, -1 }, { 1, -1 }, { 1, 0 }, { 1, 1 },
+			{ 0, 1 }, { -1, 1 }, { -1, 0 }, { -1, -1 }
+		};
+		CPen gearPen(PS_SOLID, std::max(1, Px(2)), gear);
+		const auto oldGearPen = dc.SelectObject(&gearPen);
+		for (const auto& direction : directions)
+		{
+			dc.MoveTo(center.x + Px(direction[0] * 6),
+				center.y + Px(direction[1] * 6));
+			dc.LineTo(center.x + Px(direction[0] * 10),
+				center.y + Px(direction[1] * 10));
+		}
+		dc.Ellipse(center.x - Px(7), center.y - Px(7),
+			center.x + Px(7), center.y + Px(7));
+		dc.SelectObject(oldGearPen);
+		CBrush centerBrush(fill);
+		const auto oldBrush = dc.SelectObject(&centerBrush);
+		const auto oldCenterPen = dc.SelectStockObject(NULL_PEN);
+		dc.Ellipse(center.x - Px(2), center.y - Px(2),
+			center.x + Px(2), center.y + Px(2));
+		dc.SelectObject(oldCenterPen);
+		dc.SelectObject(oldBrush);
+		dc.Detach();
+		return;
+	}
 	CString text;
 	GetDlgItem(item->CtlID)->GetWindowText(text);
 	dc.SetBkMode(TRANSPARENT);
@@ -348,10 +375,4 @@ void ModernOperatorView::OnConfiguration()
 {
 	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
 		static_cast<WPARAM>(ModernOperatorAction::OpenConfiguration));
-}
-
-void ModernOperatorView::OnExit()
-{
-	GetParent()->PostMessage(WM_MODERN_OPERATOR_ACTION,
-		static_cast<WPARAM>(ModernOperatorAction::ExitApplication));
 }

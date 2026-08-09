@@ -838,18 +838,6 @@ QWidget* ConfigEditorWindow::createShell()
     brandLayout->addWidget(title);
     headerLayout->addWidget(brand);
     headerLayout->addStretch();
-    auto* hideButton = new QPushButton(QStringLiteral("Hide"));
-    hideButton->setObjectName(QStringLiteral("hideToTray"));
-    hideButton->setAccessibleDescription(
-        QStringLiteral("Hide the editor to the notification area."));
-    auto* exitButton = new QPushButton(QStringLiteral("Exit"));
-    exitButton->setObjectName(QStringLiteral("exitConfiguration"));
-    exitButton->setAccessibleDescription(
-        QStringLiteral("Exit the VideoProcessor Configuration editor."));
-    connect(hideButton, &QPushButton::clicked, this, [this] { hide(); });
-    connect(exitButton, &QPushButton::clicked, this, [this] { exitApplication(); });
-    headerLayout->addWidget(hideButton);
-    headerLayout->addWidget(exitButton);
     rootLayout->addWidget(header);
 
     auto* center = new QWidget;
@@ -3514,6 +3502,10 @@ void ConfigEditorWindow::setupTray()
 void ConfigEditorWindow::reveal()
 {
     showNormal();
+    // Keep the editor above VP's exclusive/fullscreen presentation. The
+    // close-to-tray path removes this state before hiding it again.
+    SetWindowPos(reinterpret_cast<HWND>(winId()), HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
     raise();
     activateWindow();
 }
@@ -3529,6 +3521,8 @@ void ConfigEditorWindow::closeEvent(QCloseEvent* event)
 {
     if (!exitRequested_ && tray_ && tray_->isVisible())
     {
+        SetWindowPos(reinterpret_cast<HWND>(winId()), HWND_NOTOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
         hide();
         event->ignore();
         return;
@@ -3539,6 +3533,8 @@ void ConfigEditorWindow::closeEvent(QCloseEvent* event)
 void ConfigEditorWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
+    SetWindowPos(reinterpret_cast<HWND>(winId()), HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
     if (!ownerApplied_ && ownerHandle_ != 0)
     {
         SetWindowLongPtrW(reinterpret_cast<HWND>(winId()), GWLP_HWNDPARENT,

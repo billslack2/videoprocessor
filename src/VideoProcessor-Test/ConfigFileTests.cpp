@@ -80,7 +80,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(
 				ConfigurationLiveApply::MayDispatchWhileConfigurationModal(
 					true, true));
-			Assert::IsFalse(
+			Assert::IsTrue(
 				ConfigurationLiveApply::MayDispatchWhileConfigurationModal(
 					true, false));
 		}
@@ -1708,6 +1708,16 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<size_t>(1), selection.size());
 			Assert::IsTrue(selection.front().none,
 				L"The empty shader root must explicitly turn Alpha NLS off");
+
+			selection.clear();
+			error.clear();
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				config, "@shader-key:Shift+N", ShaderRendererBackend::LIBPLACEBO,
+				selection, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), selection.size());
+			Assert::IsTrue(selection.front().nls,
+				L"A shader member shortcut must select its NLS effect");
 			DeleteFileA(path.c_str());
 		}
 

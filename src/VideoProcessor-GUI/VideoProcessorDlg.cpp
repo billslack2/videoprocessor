@@ -198,8 +198,10 @@ bool ActivateConfigurationEditor(HWND editor)
 	if (!editor || !IsWindow(editor))
 		return false;
 	ShowWindowAsync(editor, SW_RESTORE);
-	::SetWindowPos(editor, HWND_TOP, 0, 0, 0, 0,
-		SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+	// Fullscreen presentation is topmost. Config is modal while it is open,
+	// so HWND_TOP alone cannot keep it above a later fullscreen placement.
+	::SetWindowPos(editor, HWND_TOPMOST, 0, 0, 0, 0,
+		SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
 	::SetForegroundWindow(editor);
 	DWORD editorProcessId = 0;
 	DWORD foregroundProcessId = 0;
@@ -1796,10 +1798,6 @@ LRESULT CVideoProcessorDlg::OnBackgroundRawInput(WPARAM wParam, LPARAM lParam)
 	const bool shift = pressed(VK_SHIFT, VK_LSHIFT, VK_RSHIFT);
 	for (const ACCEL& accelerator : m_configuredAccelerators)
 	{
-		if (!ConfigurationLiveApply::MayDispatchWhileConfigurationModal(
-			m_configurationEditorModal,
-			accelerator.cmd == ID_COMMAND_CONFIG_EDITOR))
-			continue;
 		if (accelerator.cmd == ID_COMMAND_CONFIG_EDITOR &&
 			m_configurationEditorHotkeyRegistered)
 			continue;
@@ -1983,9 +1981,9 @@ void CVideoProcessorDlg::UpdateConfigurationEditorModal()
 		DebugLog::Log("Configuration editor modal session started owner=%p",
 			reinterpret_cast<void*>(owner));
 	}
-	::EnableWindow(GetSafeHwnd(), FALSE);
-	if (fullscreen)
-		::EnableWindow(fullscreen, FALSE);
+	// Config is topmost while it is visible, which supplies the intended modal
+	// interaction.  Keep VP's HWNDs enabled underneath so the Raw Input target
+	// continues to receive configured shortcuts even while Config has focus.
 }
 
 void CVideoProcessorDlg::ApplySavedConfiguration()
@@ -4068,6 +4066,51 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 		SetTimer(CONFIGURATION_EDITOR_MODAL_TIMER_ID,
 			CONFIGURATION_EDITOR_MODAL_INTERVAL_MS, nullptr);
 	}
+}
+
+void CVideoProcessorDlg::StartConfigurationEditorInTray()
+{
+	// Config's hardware discovery touches capture, display, and renderer
+	// registrations.  Keep that independent work out of VP's startup path so
+	// the editor is already warm in the notification area when it is needed.
+	wchar_t modulePath[MAX_PATH] = {};
+	if (GetModuleFileNameW(nullptr, modulePath, ARRAYSIZE(modulePath)) == 0)
+		return;
+	std::wstring executablePath(modulePath);
+	const size_t separator = executablePath.find_last_of(L"\\/");
+	if (separator == std::wstring::npos)
+		return;
+	executablePath.resize(separator + 1);
+	const std::wstring editorPath = executablePath + L"VideoProcessorConfig.exe";
+	if (GetFileAttributesW(editorPath.c_str()) == INVALID_FILE_ATTRIBUTES)
+	{
+		DEBUGLOG("Configuration editor warm start skipped: executable is not installed");
+		return;
+	}
+
+	ConfigFile config;
+	std::wstring configPath = executablePath + L"VideoProcessor.cfg";
+	if (config.Load() && !config.GetLoadedPath().empty())
+	{
+		const int length = MultiByteToWideChar(CP_ACP, 0,
+			config.GetLoadedPath().c_str(), -1, nullptr, 0);
+		if (length > 1)
+		{
+			configPath.assign(static_cast<size_t>(length), L'\0');
+			MultiByteToWideChar(CP_ACP, 0, config.GetLoadedPath().c_str(), -1,
+				&configPath[0], length);
+			configPath.pop_back();
+		}
+	}
+
+	wchar_t arguments[2 * MAX_PATH + 32] = {};
+	swprintf_s(arguments, L"--config \"%s\" --background", configPath.c_str());
+	const HINSTANCE result = ShellExecuteW(GetSafeHwnd(), L"open", editorPath.c_str(),
+		arguments, executablePath.c_str(), SW_HIDE);
+	if (reinterpret_cast<INT_PTR>(result) <= 32)
+		DEBUGLOG("Configuration editor warm start failed result=%p", result);
+	else
+		DEBUGLOG("Configuration editor warm start requested");
 }
 
 void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
@@ -7655,6 +7698,8 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	if (!m_accelerator)
 		FatalError(TEXT("Failed to create accelerator table"));
 	StartGlobalShortcutObserver();
+	if (!m_hideUI && m_interfaceMode == ApplicationInterface::Mode::Modern)
+		StartConfigurationEditorInTray();
 
 	CaptureGUIClear();
 	RenderGUIClear();
@@ -8151,9 +8196,6 @@ LRESULT CVideoProcessorDlg::OnMessageModernOperatorAction(WPARAM wParam, LPARAM)
 		break;
 	case ModernOperatorAction::OpenConfiguration:
 		OnCommandConfigEditor();
-		break;
-	case ModernOperatorAction::ExitApplication:
-		PostMessage(WM_CLOSE);
 		break;
 	default:
 		return 0;

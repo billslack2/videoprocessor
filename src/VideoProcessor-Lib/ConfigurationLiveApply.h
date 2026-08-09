@@ -61,9 +61,11 @@ namespace ConfigurationLiveApply
 			elapsedMilliseconds <= duplicateWindowMilliseconds;
 	}
 
-	inline bool MayDispatchWhileConfigurationModal(bool configurationModal,
-		bool configurationEditorCommand)
+	inline bool MayDispatchWhileConfigurationModal(bool,
+		bool)
 	{
-		return !configurationModal || configurationEditorCommand;
+	// Config disables VP's foreground controls while it is visible, but VP's
+	// configured background shortcuts must remain available.
+		return true;
 	}
 }

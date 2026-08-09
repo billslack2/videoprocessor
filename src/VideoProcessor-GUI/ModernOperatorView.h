@@ -9,8 +9,7 @@ enum class ModernOperatorAction : WPARAM
 	CaptureRestart = 1,
 	RendererRestart = 2,
 	QueueReset = 3,
-	OpenConfiguration = 4,
-	ExitApplication = 5
+	OpenConfiguration = 4
 };
 
 struct ModernOperatorStatus
@@ -65,7 +64,6 @@ protected:
 	afx_msg void OnRendererRestart();
 	afx_msg void OnQueueReset();
 	afx_msg void OnConfiguration();
-	afx_msg void OnExit();
 	afx_msg void OnDrawItem(int controlId, LPDRAWITEMSTRUCT drawItem);
 
 	DECLARE_MESSAGE_MAP()
@@ -84,7 +82,6 @@ private:
 
 	ModernOperatorStatus m_status;
 	CButton m_configuration;
-	CButton m_exit;
 	CButton m_captureRestart;
 	CButton m_rendererRestart;
 	CButton m_queueReset;

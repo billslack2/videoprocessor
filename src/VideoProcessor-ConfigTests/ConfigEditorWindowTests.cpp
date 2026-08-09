@@ -449,6 +449,39 @@ void testVirtualShaderOffOptionPersistsWhenConfigured()
         "Editing virtual Off did not persist its shortcut");
 }
 
+void testDisablingShaderRulePreservesShortcut()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    QListWidget* modes = requireControl<QListWidget>(window,
+        QStringLiteral("config.shader.nls.modes"));
+    require(modes->count() > 1, "NLS fixture did not load");
+    modes->setCurrentRow(1);
+
+    QLineEdit* shortcut = requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.nls.shortcut"));
+    QCheckBox* useRule = requireControl<QCheckBox>(window,
+        QStringLiteral("config.shader.nls.use_rule"));
+    QPlainTextEdit* rule = requireControl<QPlainTextEdit>(window,
+        QStringLiteral("config.shader.nls.when"));
+    shortcut->setText(QStringLiteral("Shift+N"));
+    rule->setPlainText(QStringLiteral("${eotf} == \"HDR\""));
+    require(useRule->isChecked(), "Entering a shader rule did not enable it");
+    useRule->setChecked(false);
+    save(window);
+
+    const QByteArray saved = readBytes(path);
+    const qsizetype start = saved.indexOf("[shader.nls.standard]");
+    const qsizetype end = saved.indexOf("[shader.nls.protected]", start);
+    require(start >= 0 && end > start, "Shader mode sections were not saved");
+    const QByteArray standard = saved.mid(start, end - start);
+    require(standard.contains("shortcut: Shift+N"),
+        "Disabling a shader rule removed its manual shortcut");
+    require(!standard.contains("when:"),
+        "Disabling a shader rule did not remove only its when expression");
+}
+
 void testRendererProfileSectionsCollapseAndPersist()
 {
     QTemporaryDir directory;
@@ -895,6 +928,7 @@ int main(int argc, char** argv)
     failures += run("scene detection defaults off and hides manual overrides",
         testSceneDetectionDefaultsOffAndHidesManualOverrides);
     failures += run("virtual shader Off option persists", testVirtualShaderOffOptionPersistsWhenConfigured);
+    failures += run("disabling shader rule preserves shortcut", testDisablingShaderRulePreservesShortcut);
     failures += run("renderer profile sections collapse and persist", testRendererProfileSectionsCollapseAndPersist);
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
     failures += run("Reload confirmation waits for an explicit choice", testReloadConfirmationRemainsOpenUntilExplicitChoice);
