@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0107`
-- Next root story number: `VP-0108`
-- Total indexed items: 121
+- Last assigned root story: `VP-0108`
+- Next root story number: `VP-0109`
+- Total indexed items: 122
 
 ## Story locations
 
@@ -132,12 +132,13 @@ they must not contain requirements that are absent from this file.
 | VP-0099 | Review | Dynamic, renderer-neutral NLS geometry and safety policy |
 | VP-0100 | Backlog | Prove pixel-owned SDR presentation for Alpha |
 | VP-0101 | Backlog | Implement production pixel-owned calibrated output and 3D LUTs |
-| VP-0102 | In Progress | Dual-mode classic and modern operator UI |
+| VP-0102 | Done | Dual-mode classic and modern operator UI |
 | VP-0103 | In Progress | Apply saved configuration safely to a running VideoProcessor |
 | VP-0104 | Done | Allow NLS without trusted crop on known scope viewports |
 | VP-0105 | Done | Toggle the runtime UI with a configurable shortcut |
 | VP-0106 | Done | Reduce madVR NLS transition latency |
 | VP-0107 | Backlog | Normalize runtime dependency layout and plugin-private libraries |
+| VP-0108 | Backlog | Make Modern UI unavailable values use the canonical `---` placeholder |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
