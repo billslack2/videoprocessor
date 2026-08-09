@@ -1,13 +1,17 @@
-# VP-0103: Configurable vertical picture alignment with subtitle-aware fit
+# VP-0103: Apply saved configuration safely to a running VideoProcessor
 
 ## Status
 
-Review (2026-08-08). VP-0103 is implemented and integrated into both requested
-beta branches. The default `v1.2.001-beta` branch is at `a40d992`; the divergent
-`v1.2.001-formats-test-beta` branch carries the same feature as `90600f1`.
-Automated verification and x64 Release builds pass with no new failures. Live
-Alpha validation with real HDMI top-, bottom-, and boundary-crossing subtitles
-remains required before closing the story.
+In Progress (expanded 2026-08-09). The original vertical-alignment implementation is
+integrated and remains subject to its outstanding live Alpha subtitle
+validation. This story is expanded to make the configuration editor's **OK**,
+**Cancel**, and **Apply** actions useful while VP is playing: validate and save
+the candidate configuration, classify its effects, and apply only the bounded
+restart/reset behavior required by that classification.
+
+This is deliberately a conservative first live-configuration contract. It is
+not a file watcher and it does not attempt arbitrary per-key hot reload. An
+editor save is the only configuration-application entry point in this story.
 
 ## Implementation checkpoint (2026-08-08)
 
@@ -47,7 +51,16 @@ remains required before closing the story.
   `ConfigEditorCoreRoundTripsEveryEditorOwnedKey`, and
   `ConfigEditorCoreValidatesEveryEditableOrderedProfileSurface`.
 
-## User story
+## Expanded user story
+
+As a VideoProcessor user editing the active configuration while video is
+playing, I want **Apply** to save valid changes and make their effect clear:
+VP either performs the necessary renderer restart, performs a delayed
+queue-only reset, or records the change for the next process start. I want a
+renderer restart to reload the complete saved configuration safely, including
+keyboard shortcuts, so it never resumes with a mixture of old and new state.
+
+The original story remains in scope:
 
 As a user displaying scope or other wide content on a taller screen, I want
 each viewport profile to place the fitted picture at the top, center, or bottom
@@ -55,6 +68,105 @@ of the visible screen so I can use one-sided physical masking, while the
 existing HDMI subtitle-fit behavior can still shift the whole picture in
 either direction when subtitle pixels appear in or across an encoded black
 bar.
+
+## Why an explicit reload transaction is required
+
+Today a renderer restart tears down and recreates the renderer from the
+already-loaded dialog/session values. It does not reload the main configuration
+or rebuild the accelerator table. Renderer-specific Alpha settings are read
+during renderer construction, but that is not a validated whole-configuration
+reload. Thus merely calling the existing restart path would give misleading
+partial behavior and can leave shortcuts stale.
+
+The implementation must stage a candidate configuration through the same
+production parsing and aggregate validation used at process start. It must
+construct a replacement shortcut/accelerator table and all selected-profile
+state before it changes a live binding, capture setting, renderer, or queue.
+On any load, parse, validation, discovery, or accelerator-conflict failure,
+retain the complete current runtime state and show the error; never leave VP
+without its previous shortcut table.
+
+On a successful renderer restart, atomically publish the staged configuration
+at the controlled UI-thread restart boundary, then construct the new renderer
+from that one coherent snapshot. The new keyboard table must replace the old
+one only after it has been created successfully. The first frame after restart
+must therefore observe either all old state or all new state, never a mix.
+
+## Configuration effect classes
+
+The editor must classify the *effective difference* between the running
+snapshot and the validated saved candidate. The classification is visible in
+the unsaved-change summary and is recomputed at Apply time.
+
+| Edited area | Apply result while rendering | Notes |
+| --- | --- | --- |
+| Startup / Hardware / Input processing / General behavior | renderer restart | Includes capture device, input connection, renderer selection, conversion, HDR/container policies, scene detection, and display/timing policies. A capture-device or input change may require the existing controlled capture stop/start as part of the restart transaction. |
+| DirectShow settings | renderer restart | Includes timing, offsets, queue delivery policy, and DirectShow sample metadata overrides. These values are construction/graph settings; do not try to mutate a live graph. |
+| Queue profile and queue capacity settings | delayed reset | Apply the validated queue policy only through the existing serialized reset/re-prime path. Coalesce repeated Apply requests, wait for an existing reset/transition to finish, and do not rebuild the renderer merely to alter a queue. |
+| LLDV metadata/profiles and LLDV policy | renderer restart | Do not assume that a live `OnVideoState` update is sufficient for every renderer. The existing LLDV live path may still be used for capture-driven metadata changes, but an editor configuration change uses the conservative restart contract. |
+| Shader definitions, shader profile/rule selection, and shader shortcuts | renderer restart | Rebuild shader resolution and renderer state from the new file; do not preserve old compiled or selected shader state. |
+| Viewport profiles, including `vertical_alignment` and subtitle-fit settings | renderer restart | The existing hotkey/profile path remains available for a runtime selection, but saved-file Apply uses the simple restart contract in this story. |
+| Logging settings | save only | Persist to the configuration, but do not reopen/reconfigure logging during playback. It takes effect on next process start. |
+| Keyboard shortcuts | save only | Persist them for next process start. They are also loaded as part of any renderer-restart configuration reload, but **Apply** with shortcut-only changes must not restart or replace the live accelerator table. |
+| Unknown, unsupported, or editor-preserved content | save only, with a clear notice | Preserve text exactly. Do not infer a runtime action from an unknown key. |
+
+If a candidate contains more than one class, perform the strongest required
+action once: renderer restart wins over delayed reset, and either wins over
+save-only. A save with no effective runtime difference must not interrupt
+playback.
+
+## Apply, OK, and Cancel contract
+
+Use the familiar madVR-style button names and order: **OK**, **Cancel**,
+**Apply**. Their semantic contract for VP is:
+
+- **OK**: validate, save, perform the classified action, and close the editor
+  only after the save succeeds and the action has been accepted/scheduled.
+- **Cancel**: discard only the editor's unsaved working copy and close. It
+  never changes the file or running VP.
+- **Apply**: validate, save, and perform the classified action while leaving
+  the editor open. It becomes enabled only when the working copy differs from
+  the last successfully saved version.
+
+This mirrors the common Windows/madVR meanings: OK commits and closes, Cancel
+abandons pending edits, and Apply commits without closing. It does not claim
+that every Apply is live/no-interruption; VP's effect summary must say
+**Restart renderer**, **Reset queues**, or **Takes effect next start** before
+the user commits.
+
+Saving retains VP-0097's backup, external-modification detection, full-file
+validation, rollback, and exact unknown-text preservation guarantees.
+
+## Restart reload contract
+
+Every intentional renderer restart, whether requested by Apply, the renderer
+Restart command, a renderer selection, or VP's existing automatic renderer
+restart paths, must first attempt a complete reload of the active config file.
+This includes automatic EOTF/LLDV recovery restarts. A failed reload must
+abort the pending configuration replacement, retain the last-known-good
+runtime snapshot and shortcuts, report the exact reason, and continue the
+already requested restart using that last-known-good snapshot when safe.
+
+The reload transaction must:
+
+1. Read one stable file snapshot (with bounded retry if an external editor is
+   replacing it), parse it, and run normal startup-equivalent validation.
+2. Resolve all profile/rule selections against current runtime facts without
+   changing live state.
+3. Build a complete replacement accelerator table, detecting duplicate and
+   invalid bindings before touching the current table.
+4. Classify differences against the current accepted snapshot and publish the
+   replacement only at a UI-thread lifecycle boundary.
+5. Tear down and reconstruct the renderer/capture graph only after the new
+   snapshot is accepted; keep DirectShow delivery/reset serialization and
+   current epoch guarantees intact.
+6. Emit one concise diagnostic containing config identity/hash, action,
+   affected categories, reload result, and fallback reason if the last-known-
+   good snapshot was retained.
+
+This requirement is intentionally stricter than reloading only
+`vprenderer.ini`: the main configuration, renderer configuration, profile
+rules, and keyboard table must be a coherent generation.
 
 ## Context
 
@@ -154,9 +266,10 @@ subtitle_padding_pixels: 30
 - Resolve the value into the same coherent viewport snapshot as
   `screen_aspect`, `subtitle_fit`, subtitle hold, padding, anamorphic scale, and
   viewport generation.
-- Viewport/profile changes must apply through the existing live selection path
-  without a renderer restart when the current renderer supports live final
-  placement.
+- Runtime hotkey/profile selection continues to use its existing live path.
+  Editing and applying the saved file follows this story's conservative
+  renderer-restart classification instead of adding a second partial reload
+  route.
 - Profile names remain labels and must not imply an alignment.
 - Document the setting in the canonical configuration reference and generated
   field inventory.
@@ -173,6 +286,27 @@ subtitle_padding_pixels: 30
   unrelated configuration text or values.
 - Preserve the existing safe-save, external-change detection, validation, and
   rollback guarantees owned by VP-0097.
+- Provide a persistent effect summary adjacent to the bottom buttons. It must
+  name the strongest pending action and list the category/key groups that
+  caused it. It must not label a renderer restart as a live update.
+- Disable **Apply** after a successful save until another edit is made.
+- If VP is absent, Apply and OK save normally and report **Takes effect when
+  VideoProcessor next starts**; they must never try to launch VP.
+- If VP is running but cannot accept an action, retain the saved config,
+  explain that it will take effect on its next eligible restart/process start,
+  and keep the editor responsive.
+
+## Queue reset requirements
+
+A queue-only Apply must not reconstruct capture or the renderer graph. It
+must enqueue a single reset request with the validated policy snapshot and
+apply it at the existing safe boundary. The queue transaction must preserve
+the DirectShow epoch, flush/re-prime, delivery serialization, bounded capacity,
+and liveness protections established by VP-0066 and VP-0084. The UI must show
+**Reset queues** while it is pending and the result when it completes.
+
+Do not use this lightweight path for a mixed queue-plus-restart edit: one
+controlled renderer restart is the only action in that case.
 
 ## Renderer boundary
 
@@ -203,6 +337,13 @@ Routine logs should report transitions rather than emit the same placement on
 every frame. Existing OSD geometry must follow the final presented picture
 rectangle where its current contract requires picture-relative placement.
 
+For saved-configuration application, provide diagnostics that let support
+distinguish: saved-file validation failure; external-conflict rejection;
+save-only success; queued reset accepted/completed/rejected; reload staged;
+shortcut-table staged/replaced/retained; renderer restart beginning/completed;
+and last-known-good fallback. Do not log shortcut text or an entire
+configuration file at normal verbosity.
+
 ## Verification
 
 Add deterministic geometry and configuration tests covering:
@@ -224,6 +365,24 @@ Add deterministic geometry and configuration tests covering:
 9. Parser acceptance/rejection, resolved viewport publication, configuration
    round trips, editor defaults, and preservation of unrelated configuration.
 10. Clear non-application under madVR with no generated translation shader.
+11. Every editor-owned field maps to exactly one documented effect class; a
+    multi-category edit selects the strongest action once.
+12. Invalid configuration, transient partial-file replacement, invalid profile
+    resolution, and accelerator collision preserve the complete old running
+    snapshot and shortcut table.
+13. Renderer Restart reloads main and renderer configuration and publishes
+    every changed restart-class value to the newly built renderer.
+14. A shortcut-only or logging-only Apply writes the file with no renderer
+    restart, reset, accelerator replacement, graph interruption, or changed
+    live shortcut behavior; the values load on the next restart/start.
+15. Queue-only Apply coalesces requests and completes a reset/re-prime without
+    renderer reconstruction, stale delivery, or an unbounded queue.
+16. Automatic EOTF/LLDV restart, manual renderer restart, and an Apply-driven
+    restart all use the same staged reload path and retain last-known-good
+    state on reload failure.
+17. OK/Cancel/Apply button enablement and semantics: Apply remains open and
+    disables after success; OK commits then closes; Cancel cannot save or
+    trigger a runtime action.
 
 Complete the native tests, focused configuration-editor tests, and a clean x64
 Release solution build. Live Alpha validation must include a scope program on
@@ -247,6 +406,15 @@ bottom, across a lower boundary, at the top, and across an upper boundary.
   subtitle settings without stale placement.
 - Unsupported madVR placement is explicit and does not use a translation
   shader or silently claim the Alpha behavior.
+- Apply reports and performs the documented strongest action exactly once;
+  save-only changes do not interrupt playback.
+- Every renderer restart rebuilds from one validated configuration generation.
+  A failed reload cannot alter the active shortcut table or leave VP with
+  mixed old/new state.
+- Queue-only changes reset safely without rebuilding the renderer, while
+  restart-class changes never attempt unsafe live mutation.
+- The editor exposes **OK**, **Cancel**, **Apply** in that order with the
+  defined commit/close/discard behavior and an honest effect summary.
 - Automated tests, the clean x64 Release build, and live Alpha validation pass.
 
 ## Dependencies and related work
@@ -256,6 +424,8 @@ bottom, across a lower boundary, at the top, and across an upper boundary.
 - VP-0080 owns fail-safe Alpha crop authority and subtitle evidence boundaries.
 - VP-0098 owns the trusted presentation envelope and arbitrary-screen fit.
 - VP-0097 owns the standalone configuration editor and safe round-trip edits.
+- VP-0066 and VP-0084 own DirectShow reset/re-prime and bounded live-queue
+  safety; this story consumes rather than changes their protocol.
 - VP-0087 remains blocked for equivalent VP-managed placement under madVR.
 - VP-0070 owns future subtitle capture/relocation and is not required here.
 
@@ -267,3 +437,7 @@ bottom, across a lower boundary, at the top, and across an upper boundary.
 - Reconfiguring madVR or implementing placement with a translation shader.
 - Changing active-picture detection thresholds or granting subtitle evidence
   crop authority.
+- A general file-system watcher, automatic application of arbitrary external
+  edits during playback, or live mutation of every setting.
+- Reconfiguring the logger or replacing keyboard bindings for a save-only
+  Apply.
