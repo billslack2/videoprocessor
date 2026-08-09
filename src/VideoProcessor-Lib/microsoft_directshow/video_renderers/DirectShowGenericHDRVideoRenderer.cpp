@@ -711,6 +711,35 @@ DirectShowGenericHDRVideoRenderer::MakeRuntimeGeometry(
 }
 
 
+bool DirectShowGenericHDRVideoRenderer::ResolveNlsSourceRectangle(
+	ActivePictureRectangle& rectangle, bool& usingFullRasterFallback) const
+{
+	usingFullRasterFallback = false;
+	if (GetActivePictureRectangle(rectangle))
+		return true;
+
+	// A detector reset temporarily withdraws crop authority, but the negotiated
+	// raster remains a valid, complete source geometry. Treat it exactly as the
+	// Alpha renderer does: use the full raster until a stable crop replaces it.
+	// This prevents madVR NLS from being stranded in WAITING after a graph or
+	// renderer-generation transition.
+	if (!m_videoState || !m_videoState->displayMode)
+		return false;
+	const int rasterWidth = m_videoState->displayMode->FrameWidth();
+	const int rasterHeight = m_videoState->displayMode->FrameHeight();
+	const NlsSourceGeometry geometry = ResolveNlsSourceGeometry(false,
+		0, 0, rasterWidth, rasterHeight, rasterWidth, rasterHeight);
+	if (!geometry.valid)
+		return false;
+
+	rectangle = { geometry.left, geometry.top, geometry.right,
+		geometry.bottom, rasterWidth, rasterHeight, geometry.aspect,
+		m_rendererGeneration, true };
+	usingFullRasterFallback = true;
+	return true;
+}
+
+
 bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName,
 	CString& activeRule, bool& rendererRestartRequired)
 {
@@ -761,10 +790,14 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 	m_requestedRuleUsesNlsMapping = nlsMapping;
 
 	ActivePictureRectangle activeRectangle;
-	const bool aspectAvailable = GetActivePictureRectangle(activeRectangle);
-	const double activeAspectRatio = activeRectangle.aspectRatio;
+	bool aspectAvailable = GetActivePictureRectangle(activeRectangle);
+	double activeAspectRatio = activeRectangle.aspectRatio;
 	if (nlsMapping)
 	{
+		bool usingFullRasterFallback = false;
+		aspectAvailable = ResolveNlsSourceRectangle(activeRectangle,
+			usingFullRasterFallback);
+		activeAspectRatio = activeRectangle.aspectRatio;
 		MadVRNlsMappingDecision decision;
 		if (!MadVRShaderLoader::EvaluateNlsMapping(std::string(ruleUtf8),
 			aspectAvailable, activeAspectRatio, decision))
@@ -818,7 +851,7 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 			MadVRShaderLoader::
 				PrepareNlsOutputContractRendererReplacement();
 		DebugLog::Log(
-			"Shaders: NLS backend=madvr mapping change requested=%s effective=%s mapping=%s rect=%d,%d-%d,%d active_generation=%llu source=%.4f target=%.4f requested_ratio=%.5f max_ratio=%.5f axis=%s renderer_generation=%llu reason=\"%s\" renderer_restart=%d",
+			"Shaders: NLS backend=madvr mapping change requested=%s effective=%s mapping=%s rect=%d,%d-%d,%d active_generation=%llu source=%.4f target=%.4f requested_ratio=%.5f max_ratio=%.5f axis=%s geometry=%s renderer_generation=%llu reason=\"%s\" renderer_restart=%d",
 			static_cast<const char*>(ruleUtf8),
 			selection.ruleName.c_str(),
 			NlsMappingModeName(decision.mode),
@@ -831,6 +864,7 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 			decision.sourceAspect, decision.targetAspect,
 			decision.requestedRatio, decision.maximumRatio,
 			NlsMappingAxisName(decision),
+			usingFullRasterFallback ? "full-raster-fallback" : "detected-crop",
 			static_cast<unsigned long long>(m_rendererGeneration),
 			decision.reason.c_str(), rendererRestartRequired ? 1 : 0);
 		return !selection.ruleName.empty();
@@ -930,10 +964,14 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 
 	CT2A requestedUtf8(m_requestedShaderRule, CP_UTF8);
 	ActivePictureRectangle activeRectangle;
-	const bool aspectAvailable = GetActivePictureRectangle(activeRectangle);
-	const double activeAspectRatio = activeRectangle.aspectRatio;
+	bool aspectAvailable = GetActivePictureRectangle(activeRectangle);
+	double activeAspectRatio = activeRectangle.aspectRatio;
 	if (m_requestedRuleUsesNlsMapping)
 	{
+		bool usingFullRasterFallback = false;
+		aspectAvailable = ResolveNlsSourceRectangle(activeRectangle,
+			usingFullRasterFallback);
+		activeAspectRatio = activeRectangle.aspectRatio;
 		// The refresh timer runs quickly while transitions are being acquired.
 		// Avoid reparsing shader configuration when detector state cannot
 		// possibly change the current mapping.
@@ -1057,7 +1095,7 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 			MadVRShaderLoader::
 				PrepareNlsOutputContractRendererReplacement();
 		DebugLog::Log(
-			"Shaders: NLS backend=madvr mapping change requested=%s effective=%s mapping=%s rect=%d,%d-%d,%d active_generation=%llu source=%.4f target=%.4f requested_ratio=%.5f max_ratio=%.5f axis=%s renderer_generation=%llu reason=\"%s\" renderer_restart=%d",
+			"Shaders: NLS backend=madvr mapping change requested=%s effective=%s mapping=%s rect=%d,%d-%d,%d active_generation=%llu source=%.4f target=%.4f requested_ratio=%.5f max_ratio=%.5f axis=%s geometry=%s renderer_generation=%llu reason=\"%s\" renderer_restart=%d",
 			static_cast<const char*>(requestedUtf8),
 			selection.ruleName.c_str(),
 			NlsMappingModeName(decision.mode),
@@ -1067,6 +1105,7 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 			decision.sourceAspect, decision.targetAspect,
 			decision.requestedRatio, decision.maximumRatio,
 			NlsMappingAxisName(decision),
+			usingFullRasterFallback ? "full-raster-fallback" : "detected-crop",
 			static_cast<unsigned long long>(m_rendererGeneration),
 			decision.reason.c_str(), rendererRestartRequired ? 1 : 0);
 		return true;

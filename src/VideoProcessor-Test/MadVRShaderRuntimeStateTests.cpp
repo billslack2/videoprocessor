@@ -303,6 +303,28 @@ namespace VideoProcessorTest
 			Assert::AreEqual(1.321875, mapping.stretchRatio, 0.000001);
 		}
 
+		TEST_METHOD(Vp0104MadVRFullRasterFallbackEstablishesNlsContract)
+		{
+			// DirectShow's detector may be reacquiring after a renderer reset. The
+			// negotiated raster is still complete geometry, so madVR must be able
+			// to install NLS instead of remaining in WAITING.
+			const NlsSourceGeometry source = ResolveNlsSourceGeometry(false,
+				0, 0, 3840, 2160, 3840, 2160);
+			const MadVRNlsMappingDecision decision = EvaluateNlsMapping(
+				source.valid, source.aspect, 47.0 / 20.0,
+				5.0, 1.0, false, 1.4);
+			Assert::AreEqual(static_cast<int>(MadVRNlsMappingMode::ACTIVE),
+				static_cast<int>(decision.mode));
+
+			const MadVRActivePictureGeometry geometry = {
+				source.aspect, 0.0, 0.0, 1.0, 1.0, 10, 7, true };
+			const MadVRNlsPresentationPlan plan =
+				ResolveMadVRNlsPresentationPlan(decision, geometry);
+			Assert::IsTrue(plan.customShader);
+			Assert::AreEqual(47ul, plan.aspectX);
+			Assert::AreEqual(20ul, plan.aspectY);
+		}
+
 		TEST_METHOD(ScreenAndContentMatrixUsesExpectedMappings)
 		{
 			struct MatrixCase
