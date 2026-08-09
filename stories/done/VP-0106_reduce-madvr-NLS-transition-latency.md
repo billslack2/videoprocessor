@@ -2,7 +2,21 @@
 
 ## Status
 
-In progress (2026-08-09).
+Done (2026-08-09).
+
+## Completion checkpoint (2026-08-09)
+
+- Source commits `1adb64f` (windowed madVR NLS scope canvas) and `63ff434`
+  (75 ms shader shortcut debounce) were pushed on
+  `origin/codex/vp-0106-madvr-nls-transition-latency`.
+- Merge commit `25f6203` is the verified remote tip of
+  `origin/v1.2.001-beta` and contains both source commits.
+- The focused scope-placement regression and x64 Release GUI build passed.
+- The x64 Release executable and renderer DLL were deployed together to
+  `C:\Videoprocessor\vp`, hash-verified, and successfully launched through
+  the existing `start.bat` command. Active configuration was not changed.
+- The previous deployed pair is retained under
+  `C:\Videoprocessor\vp\backups\vp0106-shortcut-debounce-20260809-135913`.
 
 ## User story
 
@@ -65,6 +79,18 @@ lag instead comes from two VP mechanisms:
   NLS shader rule is entered or exited.
 - Shader/aspect transaction coherence and existing renderer safety tests pass.
 - x64 Release build and a live madVR toggle test pass.
+
+## Delivered scope
+
+- madVR now receives a centered windowed scope canvas while NLS is requested,
+  aligning its windowed presentation with the already-correct fullscreen and
+  Alpha behavior.
+- NLS/shader shortcuts reach the renderer after a 75 ms settle period rather
+  than 200 ms, while physical auto-repeat remains guarded.
+- Multi-second delivery stalls are confirmed to be in-flight madVR
+  `Deliver()` waits, not shader compilation or an NLS-triggered reset. Further
+  changes require renderer-side stall reproduction and are intentionally out
+  of this completed safe responsiveness increment.
 
 ## Integration target
 
