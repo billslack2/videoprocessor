@@ -90,6 +90,8 @@ private:
 		MadVRShaderSelection& selection);
 	MadVRActivePictureGeometry MakeRuntimeGeometry(
 		const ActivePictureRectangle& rectangle) const;
+	bool ResolveNlsSourceRectangle(ActivePictureRectangle& rectangle,
+		bool& usingFullRasterFallback) const;
 	void ApplyNativeStatsOverlayOnGraphThread();
 	void ClearNativeStatsOverlayOnGraphThread();
 
