@@ -490,6 +490,17 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     if (!testMode_) loadDiscoveryCache();
     setCentralWidget(createShell());
     if (!testMode_) setupTray();
+    const QKeySequence configToggle(value(QStringLiteral("shortcuts"),
+        QStringLiteral("config_editor"), QStringLiteral("Ctrl+Shift+S")));
+    if (!configToggle.isEmpty())
+    {
+        auto* toggleShortcut = new QShortcut(configToggle, this);
+        toggleShortcut->setContext(Qt::ApplicationShortcut);
+        connect(toggleShortcut, &QShortcut::activated, this, [this]
+        {
+            close();
+        });
+    }
 }
 
 ConfigEditorWindow::~ConfigEditorWindow() = default;

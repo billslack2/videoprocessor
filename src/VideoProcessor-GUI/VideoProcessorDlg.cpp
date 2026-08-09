@@ -818,15 +818,13 @@ HACCEL CreateConfiguredAccelerators(
 class GlobalShortcutObserver
 {
 public:
-	static bool Start(HWND target, const std::vector<ACCEL>& accelerators,
-		bool configurationHotkeyRegistered)
+	static bool Start(HWND target, const std::vector<ACCEL>& accelerators)
 	{
 		Stop();
 		if (!target || accelerators.empty())
 			return false;
 		s_target = target;
 		s_accelerators = accelerators;
-		s_configurationHotkeyRegistered = configurationHotkeyRegistered;
 		s_readyEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
 		if (!s_readyEvent)
 		{
@@ -876,7 +874,6 @@ private:
 		s_target = nullptr;
 		s_accelerators.clear();
 		s_pressedKeys.clear();
-		s_configurationHotkeyRegistered = false;
 	}
 
 	static DWORD WINAPI ThreadProcedure(void*)
@@ -942,10 +939,13 @@ private:
 				continue;
 			if (accelerator.cmd == ID_COMMAND_CONFIG_EDITOR)
 			{
-				if (s_configurationHotkeyRegistered)
-					break;
-				const BOOL posted = ::PostMessageW(s_target, WM_HOTKEY,
-					CONFIGURATION_EDITOR_HOTKEY_ID, 0);
+				// The configuration editor owns this key while it has focus so
+				// its normal close-to-tray behavior handles the hide operation.
+				// VP remains responsible for the global reveal when Config is hidden.
+				if (foreground == FindConfigurationEditorForCurrentInstallation())
+					return ::CallNextHookEx(s_hook, code, message, parameter);
+				const BOOL posted = ::PostMessageW(s_target, WM_COMMAND,
+					MAKEWPARAM(accelerator.cmd, 0), 0);
 				DebugLog::Log(
 					"Background shortcut dispatch: command=%u foreground_pid=%lu posted=%d consume=1",
 					static_cast<unsigned>(accelerator.cmd), foregroundProcessId,
@@ -978,7 +978,6 @@ private:
 	static HWND s_target;
 	static std::vector<ACCEL> s_accelerators;
 	static std::set<WORD> s_pressedKeys;
-	static bool s_configurationHotkeyRegistered;
 };
 
 HANDLE GlobalShortcutObserver::s_thread = nullptr;
@@ -988,7 +987,6 @@ HHOOK GlobalShortcutObserver::s_hook = nullptr;
 HWND GlobalShortcutObserver::s_target = nullptr;
 std::vector<ACCEL> GlobalShortcutObserver::s_accelerators;
 std::set<WORD> GlobalShortcutObserver::s_pressedKeys;
-bool GlobalShortcutObserver::s_configurationHotkeyRegistered = false;
 
 struct DisplayTimingSnapshot
 {
@@ -1899,31 +1897,12 @@ void CVideoProcessorDlg::StartGlobalShortcutObserver()
 		!GetSafeHwnd())
 		return;
 
-	for (const ACCEL& accelerator : m_configuredAccelerators)
-	{
-		if (accelerator.cmd != ID_COMMAND_CONFIG_EDITOR)
-			continue;
-		UINT modifiers = MOD_NOREPEAT;
-		if (accelerator.fVirt & FCONTROL) modifiers |= MOD_CONTROL;
-		if (accelerator.fVirt & FALT) modifiers |= MOD_ALT;
-		if (accelerator.fVirt & FSHIFT) modifiers |= MOD_SHIFT;
-		m_configurationEditorHotkeyRegistered =
-			::RegisterHotKey(GetSafeHwnd(), CONFIGURATION_EDITOR_HOTKEY_ID,
-				modifiers, accelerator.key) != FALSE;
-		if (!m_configurationEditorHotkeyRegistered)
-			DebugLog::Log(
-				"Configuration editor global hotkey unavailable: error=%lu",
-				GetLastError());
-		break;
-	}
-
 	const bool observerStarted = GlobalShortcutObserver::Start(GetSafeHwnd(),
-		m_configuredAccelerators, m_configurationEditorHotkeyRegistered);
+		m_configuredAccelerators);
 	DebugLog::Log(
-		"Background shortcut observer %s (%zu bindings, config_hotkey=%d)",
+		"Background shortcut observer %s (%zu bindings)",
 		observerStarted ? "started" : "unavailable",
-		m_configuredAccelerators.size(),
-		m_configurationEditorHotkeyRegistered ? 1 : 0);
+		m_configuredAccelerators.size());
 }
 
 void CVideoProcessorDlg::StopGlobalShortcutObserver()
@@ -1931,9 +1910,6 @@ void CVideoProcessorDlg::StopGlobalShortcutObserver()
 	if (GlobalShortcutObserver::IsRunning())
 		DebugLog::Log("Background shortcut observer stopped");
 	GlobalShortcutObserver::Stop();
-	if (m_configurationEditorHotkeyRegistered && GetSafeHwnd())
-		::UnregisterHotKey(GetSafeHwnd(), CONFIGURATION_EDITOR_HOTKEY_ID);
-	m_configurationEditorHotkeyRegistered = false;
 }
 
 LRESULT CVideoProcessorDlg::OnConfigurationEditorHotkey(
