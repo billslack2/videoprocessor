@@ -94,7 +94,8 @@ constexpr ShortcutFieldDefinition kShortcutFields[] = {
     { L"Capture input 4", "capture_4", L"Ctrl+4" },
     { L"Disable video conversion", "video_conversion_off", L"V" },
     { L"Use P010 conversion", "video_conversion_p010", L"Shift+V" },
-    { L"Open configuration", "config_editor", L"Ctrl+Shift+S" }
+    { L"Open configuration", "config_editor", L"Ctrl+Shift+S" },
+    { L"Toggle video-only UI", "toggle_noui", L"Ctrl+Shift+U" }
 };
 
 std::wstring ToWide(const std::string& value)

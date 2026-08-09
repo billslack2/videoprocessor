@@ -490,6 +490,17 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     if (!testMode_) loadDiscoveryCache();
     setCentralWidget(createShell());
     if (!testMode_) setupTray();
+    const QKeySequence configToggle(value(QStringLiteral("shortcuts"),
+        QStringLiteral("config_editor"), QStringLiteral("Ctrl+Shift+S")));
+    if (!configToggle.isEmpty())
+    {
+        auto* toggleShortcut = new QShortcut(configToggle, this);
+        toggleShortcut->setContext(Qt::ApplicationShortcut);
+        connect(toggleShortcut, &QShortcut::activated, this, [this]
+        {
+            close();
+        });
+    }
 }
 
 ConfigEditorWindow::~ConfigEditorWindow() = default;
@@ -3443,6 +3454,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
     };
     const ShortcutField applicationFields[] = {
         { "Open configuration", "config_editor", "Ctrl+Shift+S" },
+        { "Toggle video-only UI", "toggle_noui", "Ctrl+Shift+U" },
         { "Toggle fullscreen", "fullscreen_toggle", "Alt+Enter" },
         { "Exit fullscreen", "fullscreen_exit", "Esc" },
         { "Toggle statistics", "toggle_stats_overlay", "Ctrl+I" },

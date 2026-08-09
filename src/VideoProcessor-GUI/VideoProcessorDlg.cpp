@@ -125,6 +125,7 @@ struct ConfigurationEditorSearch
 {
 	std::wstring expectedPath;
 	HWND window = nullptr;
+	bool exactInstallationMatch = false;
 };
 
 BOOL CALLBACK FindConfigurationEditor(HWND window, LPARAM parameter)
@@ -146,10 +147,20 @@ BOOL CALLBACK FindConfigurationEditor(HWND window, LPARAM parameter)
 		&processPathLength) &&
 		_wcsicmp(processPath, search->expectedPath.c_str()) == 0;
 	CloseHandle(process);
-	if (!matches)
-		return TRUE;
-	search->window = window;
-	return FALSE;
+	if (matches)
+	{
+		search->window = window;
+		search->exactInstallationMatch = true;
+		return FALSE;
+	}
+	// The configuration editor has a deliberate per-user single-instance
+	// lifetime. A freshly-built or newly-installed VP can therefore launch an
+	// already-running editor from its previous installation directory. Keep it
+	// as a fallback so VP can still toggle the same visible singleton, while an
+	// exact sibling executable wins whenever it exists.
+	if (!search->window)
+		search->window = window;
+	return TRUE;
 }
 
 HWND FindConfigurationEditorForCurrentInstallation()
@@ -168,6 +179,8 @@ HWND FindConfigurationEditorForCurrentInstallation()
 	ConfigurationEditorSearch search{ expectedPath };
 	EnumWindows(FindConfigurationEditor,
 		reinterpret_cast<LPARAM>(&search));
+	if (search.window && !search.exactInstallationMatch)
+		DebugLog::Log("Configuration editor fallback selected from another installation");
 	return search.window;
 }
 
@@ -293,6 +306,7 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 	{ "video_conversion_off",  ID_COMMAND_VC_NONE,                'V',       0 },
 	{ "video_conversion_p010", ID_COMMAND_VC_P010,                'V',       FSHIFT },
 	{ "config_editor",         ID_COMMAND_CONFIG_EDITOR,          'S',       FCONTROL | FSHIFT },
+	{ "toggle_noui",           ID_COMMAND_TOGGLE_NO_UI,           'U',       FCONTROL | FSHIFT },
 	{ "display_rules_auto",    ID_COMMAND_DISPLAY_RULE_AUTO,      VK_F4,     0, true },
 };
 
@@ -804,15 +818,13 @@ HACCEL CreateConfiguredAccelerators(
 class GlobalShortcutObserver
 {
 public:
-	static bool Start(HWND target, const std::vector<ACCEL>& accelerators,
-		bool configurationHotkeyRegistered)
+	static bool Start(HWND target, const std::vector<ACCEL>& accelerators)
 	{
 		Stop();
 		if (!target || accelerators.empty())
 			return false;
 		s_target = target;
 		s_accelerators = accelerators;
-		s_configurationHotkeyRegistered = configurationHotkeyRegistered;
 		s_readyEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
 		if (!s_readyEvent)
 		{
@@ -862,7 +874,6 @@ private:
 		s_target = nullptr;
 		s_accelerators.clear();
 		s_pressedKeys.clear();
-		s_configurationHotkeyRegistered = false;
 	}
 
 	static DWORD WINAPI ThreadProcedure(void*)
@@ -928,17 +939,35 @@ private:
 				continue;
 			if (accelerator.cmd == ID_COMMAND_CONFIG_EDITOR)
 			{
-				if (!s_configurationHotkeyRegistered)
-					::PostMessageW(s_target, WM_HOTKEY,
-						CONFIGURATION_EDITOR_HOTKEY_ID, 0);
+				// The configuration editor owns this key while it has focus so
+				// its normal close-to-tray behavior handles the hide operation.
+				// VP remains responsible for the global reveal when Config is hidden.
+				if (foreground == FindConfigurationEditorForCurrentInstallation())
+					return ::CallNextHookEx(s_hook, code, message, parameter);
+				const BOOL posted = ::PostMessageW(s_target, WM_COMMAND,
+					MAKEWPARAM(accelerator.cmd, 0), 0);
+				DebugLog::Log(
+					"Background shortcut dispatch: command=%u foreground_pid=%lu posted=%d consume=1",
+					static_cast<unsigned>(accelerator.cmd), foregroundProcessId,
+					posted ? 1 : 0);
+				if (posted)
+					return 1;
 				break;
 			}
-			::PostMessageW(s_target, WM_COMMAND,
+			const bool consumeOriginal =
+				accelerator.cmd == ID_COMMAND_TOGGLE_NO_UI;
+			const BOOL posted = ::PostMessageW(s_target, WM_COMMAND,
 				MAKEWPARAM(accelerator.cmd, 0), 0);
+			DebugLog::Log(
+				"Background shortcut dispatch: command=%u foreground_pid=%lu posted=%d consume=%d",
+				static_cast<unsigned>(accelerator.cmd), foregroundProcessId,
+				posted ? 1 : 0, consumeOriginal ? 1 : 0);
+			if (consumeOriginal && posted)
+				return 1;
 			break;
 		}
-		// Never consume the original. madVR/the foreground application receives
-		// the same keyboard event normally.
+		// Except for the VP-owned runtime UI toggle, do not consume the original.
+		// madVR/the foreground application receives its normal keyboard event.
 		return ::CallNextHookEx(s_hook, code, message, parameter);
 	}
 
@@ -949,7 +978,6 @@ private:
 	static HWND s_target;
 	static std::vector<ACCEL> s_accelerators;
 	static std::set<WORD> s_pressedKeys;
-	static bool s_configurationHotkeyRegistered;
 };
 
 HANDLE GlobalShortcutObserver::s_thread = nullptr;
@@ -959,7 +987,6 @@ HHOOK GlobalShortcutObserver::s_hook = nullptr;
 HWND GlobalShortcutObserver::s_target = nullptr;
 std::vector<ACCEL> GlobalShortcutObserver::s_accelerators;
 std::set<WORD> GlobalShortcutObserver::s_pressedKeys;
-bool GlobalShortcutObserver::s_configurationHotkeyRegistered = false;
 
 struct DisplayTimingSnapshot
 {
@@ -1584,6 +1611,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
 	ON_COMMAND(ID_COMMAND_DISPLAY_RULE_AUTO, &CVideoProcessorDlg::OnCommandDisplayRuleAuto)
 	ON_COMMAND(ID_COMMAND_CONFIG_EDITOR, &CVideoProcessorDlg::OnCommandConfigEditor)
+	ON_COMMAND(ID_COMMAND_TOGGLE_NO_UI, &CVideoProcessorDlg::OnCommandToggleNoUi)
 	ON_MESSAGE(WM_HOTKEY, &CVideoProcessorDlg::OnConfigurationEditorHotkey)
 	ON_COMMAND_RANGE(ID_COMMAND_SHADER_RULE_FIRST, ID_COMMAND_SHADER_RULE_LAST, &CVideoProcessorDlg::OnCommandShaderRule)
 	ON_COMMAND_RANGE(ID_COMMAND_DISPLAY_RULE_FIRST, ID_COMMAND_DISPLAY_RULE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
@@ -1869,31 +1897,12 @@ void CVideoProcessorDlg::StartGlobalShortcutObserver()
 		!GetSafeHwnd())
 		return;
 
-	for (const ACCEL& accelerator : m_configuredAccelerators)
-	{
-		if (accelerator.cmd != ID_COMMAND_CONFIG_EDITOR)
-			continue;
-		UINT modifiers = MOD_NOREPEAT;
-		if (accelerator.fVirt & FCONTROL) modifiers |= MOD_CONTROL;
-		if (accelerator.fVirt & FALT) modifiers |= MOD_ALT;
-		if (accelerator.fVirt & FSHIFT) modifiers |= MOD_SHIFT;
-		m_configurationEditorHotkeyRegistered =
-			::RegisterHotKey(GetSafeHwnd(), CONFIGURATION_EDITOR_HOTKEY_ID,
-				modifiers, accelerator.key) != FALSE;
-		if (!m_configurationEditorHotkeyRegistered)
-			DebugLog::Log(
-				"Configuration editor global hotkey unavailable: error=%lu",
-				GetLastError());
-		break;
-	}
-
 	const bool observerStarted = GlobalShortcutObserver::Start(GetSafeHwnd(),
-		m_configuredAccelerators, m_configurationEditorHotkeyRegistered);
+		m_configuredAccelerators);
 	DebugLog::Log(
-		"Background shortcut observer %s (%zu bindings, config_hotkey=%d)",
+		"Background shortcut observer %s (%zu bindings)",
 		observerStarted ? "started" : "unavailable",
-		m_configuredAccelerators.size(),
-		m_configurationEditorHotkeyRegistered ? 1 : 0);
+		m_configuredAccelerators.size());
 }
 
 void CVideoProcessorDlg::StopGlobalShortcutObserver()
@@ -1901,9 +1910,6 @@ void CVideoProcessorDlg::StopGlobalShortcutObserver()
 	if (GlobalShortcutObserver::IsRunning())
 		DebugLog::Log("Background shortcut observer stopped");
 	GlobalShortcutObserver::Stop();
-	if (m_configurationEditorHotkeyRegistered && GetSafeHwnd())
-		::UnregisterHotKey(GetSafeHwnd(), CONFIGURATION_EDITOR_HOTKEY_ID);
-	m_configurationEditorHotkeyRegistered = false;
 }
 
 LRESULT CVideoProcessorDlg::OnConfigurationEditorHotkey(
@@ -1917,12 +1923,16 @@ LRESULT CVideoProcessorDlg::OnConfigurationEditorHotkey(
 void CVideoProcessorDlg::ToggleConfigurationEditor()
 {
 	const HWND editor = FindConfigurationEditorForCurrentInstallation();
-	if (editor && ::IsWindowVisible(editor))
+	const bool visible = editor && ::IsWindowVisible(editor);
+	DebugLog::Log("Configuration editor toggle requested: editor=%p visible=%d",
+		reinterpret_cast<void*>(editor), visible ? 1 : 0);
+	if (visible)
 	{
 		// Config owns its close-to-tray behavior. Do not leave VP's explicit
 		// activation poll armed after the user has toggled it closed.
 		m_configurationEditorActivationPending = false;
-		::PostMessage(editor, WM_CLOSE, 0, 0);
+		const BOOL posted = ::PostMessage(editor, WM_CLOSE, 0, 0);
+		DebugLog::Log("Configuration editor toggle: close posted=%d", posted ? 1 : 0);
 	}
 	else
 		OnCommandConfigEditor();
@@ -4058,6 +4068,29 @@ void CVideoProcessorDlg::OnCommandAutoSet()
 {
 	m_rendererTransferFunctionCombo.SetCurSel(0);
 	OnBnClickedRendererRestart();
+}
+
+void CVideoProcessorDlg::OnCommandToggleNoUi()
+{
+	DebugLog::Log("Runtime UI shortcut requested: noui=%d layout_applied=%d",
+		m_hideUI ? 1 : 0, m_noUiLayoutApplied ? 1 : 0);
+	if (m_hideUI)
+	{
+		m_hideUI = false;
+		RestoreNormalUiLayout();
+	}
+	else
+	{
+		m_hideUI = true;
+		ApplyNoUiLayout();
+	}
+
+	StartGlobalShortcutObserver();
+	DebugLog::Log("Runtime UI shortcut complete: noui=%d layout_applied=%d fullscreen=%d renderer_state=%d",
+		m_hideUI ? 1 : 0,
+		m_noUiLayoutApplied ? 1 : 0,
+		m_rendererFullscreenCheck.GetCheck() == BST_CHECKED ? 1 : 0,
+		static_cast<int>(m_rendererState));
 }
 
 void CVideoProcessorDlg::OnCommandConfigEditor()
@@ -6322,6 +6355,20 @@ void CVideoProcessorDlg::ApplyNoUiLayout()
 {
 	if (!m_windowedVideoWindow.GetSafeHwnd())
 		return;
+	if (!m_noUiLayoutApplied)
+	{
+		m_normalUiChildVisibility.clear();
+		for (CWnd* child = GetWindow(GW_CHILD); child;
+			child = child->GetNextWindow())
+		{
+			m_normalUiChildVisibility.push_back({
+				child->GetSafeHwnd(), child->IsWindowVisible() != FALSE });
+		}
+		m_normalUiWindowPlacement.length = sizeof(m_normalUiWindowPlacement);
+		GetWindowPlacement(&m_normalUiWindowPlacement);
+		m_normalUiMinDialogSize = m_minDialogSize;
+		m_noUiLayoutApplied = true;
+	}
 
 	for (CWnd* child = GetWindow(GW_CHILD); child; child = child->GetNextWindow())
 	{
@@ -6359,6 +6406,56 @@ void CVideoProcessorDlg::ApplyNoUiLayout()
 	m_windowedVideoWindow.MoveWindow(0, 0,
 		NoUiLayout::DefaultClientWidth,
 		NoUiLayout::DefaultClientHeight, TRUE);
+}
+
+
+void CVideoProcessorDlg::RestoreNormalUiLayout()
+{
+	if (!m_noUiLayoutApplied || !GetSafeHwnd())
+		return;
+
+	const bool initializeModern =
+		m_interfaceMode == ApplicationInterface::Mode::Modern &&
+		!m_modernOperatorView.GetSafeHwnd();
+	if (initializeModern)
+	{
+		m_normalUiChildVisibility.clear();
+		m_noUiLayoutApplied = false;
+		InitializeModernInterface();
+		StartConfigurationEditorInTray();
+		return;
+	}
+
+	for (const ChildVisibility& child : m_normalUiChildVisibility)
+	{
+		if (::IsWindow(child.hwnd))
+			::ShowWindow(child.hwnd, child.visible ? SW_SHOWNA : SW_HIDE);
+	}
+	m_minDialogSize = m_normalUiMinDialogSize;
+	if (m_normalUiWindowPlacement.length == sizeof(WINDOWPLACEMENT))
+		SetWindowPlacement(&m_normalUiWindowPlacement);
+
+	if (m_interfaceMode == ApplicationInterface::Mode::Modern)
+	{
+		ApplyModernLayout();
+		RefreshModernStatus();
+	}
+	else
+	{
+		CRect client;
+		GetClientRect(&client);
+		CRect videoRect = m_initialVideoWindowRect;
+		videoRect.right += std::max<LONG>(0,
+			static_cast<LONG>(client.Width()) - m_initialClientSize.cx);
+		videoRect.bottom += std::max<LONG>(0,
+			static_cast<LONG>(client.Height()) - m_initialClientSize.cy);
+		m_windowedVideoWindow.MoveWindow(&videoRect, TRUE);
+		RestoreFixedDialogLayout();
+	}
+
+	m_normalUiChildVisibility.clear();
+	m_noUiLayoutApplied = false;
+	Invalidate(FALSE);
 }
 
 

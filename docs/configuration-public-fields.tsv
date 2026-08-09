@@ -37,6 +37,7 @@ directshow.conversion.min_core_count	directshow-conversion-min-cores	DirectShow 
 directshow.conversion.max_core_count	directshow-conversion-max-cores	DirectShow conversion	no
 directshow.ppm.ppm	directshow-ppm	DirectShow timing	no
 shortcuts.render.<index>	render-shortcut	VP shortcut	no
+shortcuts.toggle_noui	shortcut-toggle-noui	VP window presentation	no
 vprenderer.when	vprenderer-when	VP Renderer	no
 vprenderer.shortcut	vprenderer-shortcut	VP Renderer	no
 vprenderer.quality	vprenderer-quality	VP Renderer	no

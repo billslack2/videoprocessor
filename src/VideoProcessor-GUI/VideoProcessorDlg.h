@@ -383,6 +383,15 @@ protected:
 		CRect rect;
 	};
 	std::vector<FixedControlLayout> m_fixedControlLayout;
+	struct ChildVisibility
+	{
+		HWND hwnd = nullptr;
+		bool visible = false;
+	};
+	std::vector<ChildVisibility> m_normalUiChildVisibility;
+	WINDOWPLACEMENT m_normalUiWindowPlacement = { sizeof(WINDOWPLACEMENT) };
+	CSize m_normalUiMinDialogSize;
+	bool m_noUiLayoutApplied = false;
 	CSize m_initialClientSize;
 	CRect m_initialVideoWindowRect;
 	HICON m_hIcon;
@@ -392,7 +401,6 @@ protected:
 	bool m_configurationEditorActivationPending = false;
 	bool m_configurationEditorFullscreenWasTopmost = false;
 	unsigned int m_configurationEditorActivationAttempts = 0;
-	bool m_configurationEditorHotkeyRegistered = false;
 	WORD m_lastBackgroundShortcutCommand = 0;
 	ULONGLONG m_lastBackgroundShortcutTick = 0;
 	HANDLE m_configurationChangedEvent = nullptr;
@@ -652,6 +660,7 @@ protected:
 	void InitializeModernInterface();
 	void ApplyModernLayout();
 	void RefreshModernStatus();
+	void RestoreNormalUiLayout();
 	void RestoreFixedDialogLayout();
 	void RestoreFrameOffsetEditLayout();
 	void RefreshInputConnectionCombo();
@@ -762,6 +771,7 @@ protected:
 	afx_msg void OnClose();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg LRESULT OnConfigurationEditorHotkey(WPARAM wParam, LPARAM lParam);
+	afx_msg void OnCommandToggleNoUi();
 	afx_msg HCURSOR	OnQueryDragIcon();
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);
 
