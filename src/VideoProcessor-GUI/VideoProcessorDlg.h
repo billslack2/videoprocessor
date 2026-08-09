@@ -399,6 +399,7 @@ protected:
 	std::vector<ACCEL> m_configuredAccelerators;
 	bool m_configurationEditorModal = false;
 	bool m_configurationEditorActivationPending = false;
+	bool m_configurationEditorHotkeyRegistered = false;
 	bool m_configurationEditorFullscreenWasTopmost = false;
 	unsigned int m_configurationEditorActivationAttempts = 0;
 	WORD m_lastBackgroundShortcutCommand = 0;
