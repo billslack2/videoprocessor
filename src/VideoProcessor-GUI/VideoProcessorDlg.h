@@ -401,7 +401,6 @@ protected:
 	bool m_configurationEditorActivationPending = false;
 	bool m_configurationEditorFullscreenWasTopmost = false;
 	unsigned int m_configurationEditorActivationAttempts = 0;
-	bool m_configurationEditorHotkeyRegistered = false;
 	WORD m_lastBackgroundShortcutCommand = 0;
 	ULONGLONG m_lastBackgroundShortcutTick = 0;
 	HANDLE m_configurationChangedEvent = nullptr;
