@@ -2,11 +2,12 @@
 
 ## Status
 
-Review (2026-08-09). Implemented as commit `caa0710` on
-`codex/vp-0105-toggle-noui`, based on the repository default branch
-`v1.2.001-beta`. Draft PR: billslack2/videoprocessor#47. Automated tests and
-the complete x64 Release solution build pass at the established baseline.
-Live active-video validation remains for review.
+In Progress (2026-08-09). Reopened after live validation found that the
+default `Ctrl+Shift+U` chord was also delivered to the foreground
+configuration editor. The runtime command is dispatched, but the editor may
+hide before the result is visible. The shortcut observer is being updated to
+consume this VP-owned chord after it posts the toggle command, with focused
+dispatch and layout logs for further live diagnosis.
 
 ## Implementation checkpoint (2026-08-09)
 
@@ -41,6 +42,9 @@ its launch arguments.
   normal controls and usable prior window placement.
 - The shortcut works from the normal dialog, the video panel, and fullscreen
   ownership paths covered by the existing shortcut dispatcher.
+- When the configuration editor owns focus, the shortcut is handled by
+  VideoProcessor and must not be delivered to the editor as an unrelated key
+  chord or hide/close the editor.
 - Toggling UI presentation must not restart capture or the renderer, change
   the configured/startup `noui` value on disk, or alter fullscreen state.
 - Invalid or duplicate configured bindings follow the existing shortcut
