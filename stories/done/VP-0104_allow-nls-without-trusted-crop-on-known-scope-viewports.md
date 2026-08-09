@@ -2,17 +2,31 @@
 
 ## Status
 
-In Progress (reopened 2026-08-09). The initial Alpha-side repair in `0d2b7db`
-correctly used the known full source raster while crop evidence was unavailable,
-but the DirectShow/madVR path still treated the same temporary state as no
-geometry and could remain at `NLS: Waiting` after a renderer-generation reset.
+Done (2026-08-09). The initial Alpha-side repair in `0d2b7db` correctly used
+the known full source raster while crop evidence was unavailable, but the
+DirectShow/madVR path still treated the same temporary state as no geometry and
+could remain at `NLS: Waiting` after a renderer-generation reset.
 
-Follow-up implementation is `7196d29` (`Fix madVR NLS geometry
-reacquisition`). It gives madVR the same source-geometry contract: the selected
-numeric viewport remains the target, a stable applied crop remains authoritative
-when present, and the negotiated full raster is used while crop evidence is
-reacquiring. It is built, regression-tested, deployed, and accepted in live
-monitor/scope use; beta integrations are pending.
+Follow-up implementation `7196d29` (`Fix madVR NLS geometry reacquisition`)
+gives madVR the same source-geometry contract: the selected numeric viewport
+remains the target, a stable applied crop remains authoritative when present,
+and the negotiated full raster is used while crop evidence is reacquiring. It
+is built, regression-tested, deployed, accepted in live monitor/scope use, and
+merged to both requested beta branches.
+
+## Follow-up completion checkpoint (2026-08-09)
+
+- Source commit `7196d29` is pushed on
+  `origin/codex/v1.2.001-live-config`.
+- `5be29d3` is the verified remote tip of `origin/v1.2.001-beta` and contains
+  the source commit.
+- `3c99b77` is the verified remote tip of
+  `origin/v1.2.001-formats-test-beta` and contains the default-beta merge.
+- A fresh x64 Release test-project build passed from the formats-beta merge;
+  `Vp0104MadVRFullRasterFallbackEstablishesNlsContract` passed there.
+- The deployed x64 Release runtime was accepted live: Scope + NLS activates as
+  expected rather than remaining `Waiting`. The prior runtime pair is backed
+  up under `C:\Videoprocessor\vp\backups\vp0105-madvr-nls-20260809-114200`.
 
 ## Completion checkpoint (2026-08-09)
 
@@ -97,8 +111,13 @@ passed `aspectAvailable=false` to its NLS decision and stayed `Waiting`.
   full source raster and numeric viewport geometry are known.
 - The x64 Release build, focused regression test, and live CIH projector test
   pass.
+- DirectShow/madVR uses full negotiated raster geometry during detector
+  reacquisition, so a renderer-generation reset cannot strand NLS in
+  `Waiting` while the selected numeric viewport is known.
 
 ## Integration targets
 
 - `v1.2.001-beta` (the repository default branch discovered 2026-08-09).
 - `v1.2.001-formats-test-beta` (the second user-requested 1.2 beta branch).
+
+Both are complete: `5be29d3` and `3c99b77`, respectively.
