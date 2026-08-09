@@ -8,7 +8,7 @@ story may have ordered child-task IDs as defined below.
 
 - Last assigned root story: `VP-0109`
 - Next root story number: `VP-0110`
-- Total indexed items: 123
+- Total indexed items: 125
 
 ## Story locations
 
@@ -139,7 +139,9 @@ they must not contain requirements that are absent from this file.
 | VP-0106 | Done | Reduce madVR NLS transition latency |
 | VP-0107 | Backlog | Normalize runtime dependency layout and plugin-private libraries |
 | VP-0108 | Backlog | Make Modern UI unavailable values use the canonical `---` placeholder |
-| VP-0109 | Backlog | Support verified Alpha Studio/G22 limited output and rejection-safe fallback |
+| VP-0109 | Backlog | Validate and support Alpha pure-2.2 Studio limited output |
+| VP-0109-1 | Backlog | Prove the pure-2.2 renderer/Studio-G22 transport pairing |
+| VP-0109-2 | Backlog | Implement rejection-safe pure-2.2 Studio limited output |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
