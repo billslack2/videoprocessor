@@ -22,10 +22,11 @@ reducing the required extraction from the current dialog.
 - A valid process `/interface classic|modern` overrides persisted configuration
   for that process only.
 - A valid persisted `[general] interface` selection applies otherwise.
-- Missing or invalid configuration resolves to Classic.
+- Missing or invalid configuration resolves to Modern.
 - Invalid or incomplete `/interface` logs one actionable warning and falls back
-  through persisted configuration to Classic; it does not fail capture startup.
-- Classic is the effective default.
+  through persisted configuration to Modern; it does not fail capture startup.
+- Modern is the effective default. Classic remains available through persisted
+  configuration or `/interface classic`.
 - Classic and Modern have independent placement keys and minimum-size rules.
 
 The interface is resolved before constructing either concrete presentation.

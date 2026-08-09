@@ -591,10 +591,9 @@ namespace
 	bool IsNativeRgbUpload(VideoFrameEncoding encoding,
 		VideoConversionOverride videoConversionOverride)
 	{
-		AlphaNativeRgbLayout layout;
 		return videoConversionOverride ==
 			VideoConversionOverride::VIDEOCONVERSION_NONE &&
-			GetAlphaNativeRgbLayout(encoding, layout);
+			AlphaCanUseNativeRgbUpload(encoding);
 	}
 
 	std::unique_ptr<IVideoFrameFormatter> CreateAlphaFormatter(
@@ -607,8 +606,7 @@ namespace
 			// v210 is 10-bit 4:2:2. When P010 has not been explicitly
 			// requested, retain its vertical chroma resolution in P210 rather
 			// than silently reducing it to P010's 4:2:0 representation.
-			if (videoConversionOverride ==
-				VideoConversionOverride::VIDEOCONVERSION_NONE)
+			if (AlphaUsesP210Ingress(encoding, videoConversionOverride))
 			{
 				return std::unique_ptr<IVideoFrameFormatter>(
 					new CV210toP210VideoFrameFormatter());
@@ -618,8 +616,7 @@ namespace
 		case VideoFrameEncoding::HDYC:
 			// UYVY/HDYC are 8-bit 4:2:2. Keep every captured chroma row in
 			// P210 unless the user explicitly selects the P010 conversion.
-			if (videoConversionOverride ==
-				VideoConversionOverride::VIDEOCONVERSION_NONE)
+			if (AlphaUsesP210Ingress(encoding, videoConversionOverride))
 			{
 				return std::unique_ptr<IVideoFrameFormatter>(
 					new CUYVYtoP210VideoFrameFormatter());
@@ -2909,11 +2906,8 @@ struct LibplaceboVideoRenderer::Impl
 
 	void LogFormatterInputDiagnostics(
 		const uint16_t* luma, const uint16_t* chroma, int width, int height,
-		int chromaHeight, const VideoFrameFormatterOutputContract& contract,
-		bool concealedPaddedEdges) const
+		int chromaHeight, const VideoFrameFormatterOutputContract& contract) const
 	{
-		const int firstSample = concealedPaddedEdges ? 2 : 0;
-		const int lastSample = concealedPaddedEdges ? width - 2 : width;
 		uint16_t minimumLuma = std::numeric_limits<uint16_t>::max();
 		uint16_t maximumLuma = 0;
 		uint16_t minimumChroma = std::numeric_limits<uint16_t>::max();
@@ -2923,7 +2917,7 @@ struct LibplaceboVideoRenderer::Impl
 		for (int y = 0; y < height; ++y)
 		{
 			const uint16_t* const row = luma + static_cast<size_t>(y) * width;
-			for (int x = firstSample; x < lastSample; ++x)
+			for (int x = 0; x < width; ++x)
 			{
 				const uint16_t sample = static_cast<uint16_t>(row[x] >> contract.bitShift);
 				minimumLuma = std::min(minimumLuma, sample);
@@ -2934,7 +2928,7 @@ struct LibplaceboVideoRenderer::Impl
 		for (int y = 0; y < chromaHeight; ++y)
 		{
 			const uint16_t* const row = chroma + static_cast<size_t>(y) * width;
-			for (int x = firstSample; x < lastSample; ++x)
+			for (int x = 0; x < width; ++x)
 			{
 				const uint16_t sample = static_cast<uint16_t>(row[x] >> contract.bitShift);
 				minimumChroma = std::min(minimumChroma, sample);
@@ -2943,12 +2937,11 @@ struct LibplaceboVideoRenderer::Impl
 			}
 		}
 		DebugLog::Log(
-			"Alpha formatter input diagnostic: luma=%u..%u (%llu samples) chroma=%u..%u (%llu samples) concealed_edge_columns=%d",
+			"Alpha formatter input diagnostic: luma=%u..%u (%llu samples) chroma=%u..%u (%llu samples)",
 			minimumLuma, maximumLuma,
 			static_cast<unsigned long long>(lumaSamples),
 			minimumChroma, maximumChroma,
-			static_cast<unsigned long long>(chromaSamples),
-			concealedPaddedEdges ? 2 : 0);
+			static_cast<unsigned long long>(chromaSamples));
 	}
 
 	void LogOutputReadback()
@@ -5476,6 +5469,7 @@ struct LibplaceboVideoRenderer::Impl
 		AlphaNativeRgbLayout nativeRgbLayout;
 		const bool nativeRgbUpload =
 			videoConversionOverride == VideoConversionOverride::VIDEOCONVERSION_NONE &&
+			AlphaCanUseNativeRgbUpload(state.videoFrameEncoding) &&
 			GetAlphaNativeRgbLayout(state.videoFrameEncoding, nativeRgbLayout);
 		const bool nativeRgb8Upload = nativeRgbLayout.bitDepth == 8;
 		const bool lossless422Upload =
@@ -5528,9 +5522,7 @@ struct LibplaceboVideoRenderer::Impl
 				LogFormatterInputDiagnostics(
 					reinterpret_cast<const uint16_t*>(yPixels),
 					reinterpret_cast<const uint16_t*>(uvPixels), width, height,
-					chromaHeight, formattedContract,
-					state.videoFrameEncoding == VideoFrameEncoding::V210 &&
-						width == 1280 && height == 720 && !lossless422Upload);
+					chromaHeight, formattedContract);
 			}
 		}
 		if (nativeRgbUpload)
@@ -6050,7 +6042,9 @@ struct LibplaceboVideoRenderer::Impl
 
 		image.repr.sys = nativeRgbUpload ? PL_COLOR_SYSTEM_RGB :
 			TranslateSystem(state.colorspace);
-		image.repr.levels = nativeRgbUpload ? PL_COLOR_LEVELS_FULL :
+		image.repr.levels = nativeRgbUpload ?
+			(nativeRgbLayout.limitedRange ? PL_COLOR_LEVELS_LIMITED :
+				PL_COLOR_LEVELS_FULL) :
 			(formattedContract.sampleRange == VideoFrameSampleRange::FULL ?
 				PL_COLOR_LEVELS_FULL : PL_COLOR_LEVELS_LIMITED);
 		image.repr.alpha = PL_ALPHA_NONE;

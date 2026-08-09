@@ -50,15 +50,39 @@ quintptr parseOwner(const QString& value)
 constexpr wchar_t ActivationEventName[] =
     L"Local\\VideoProcessorConfigEditor.Activate.v1";
 
-void allowExistingWindowToTakeFocus()
+void activateWindowFromCurrentForeground(HWND window)
+{
+    if (!window || !IsWindow(window)) return;
+    ShowWindowAsync(window, SW_RESTORE);
+    // VP's exclusive fullscreen host is topmost. Configuration is modal for
+    // that host, so activation must promote it above the video surface.
+    SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    SetForegroundWindow(window);
+}
+
+bool ownerBelongsToProcess(quintptr owner, DWORD expectedProcessId)
+{
+    const HWND ownerWindow = reinterpret_cast<HWND>(owner);
+    if (!ownerWindow || !IsWindow(ownerWindow) || expectedProcessId == 0)
+        return false;
+    DWORD actualProcessId = 0;
+    GetWindowThreadProcessId(ownerWindow, &actualProcessId);
+    return actualProcessId == expectedProcessId;
+}
+
+void allowExistingWindowToTakeFocus(quintptr owner, DWORD ownerProcessId)
 {
     if (HWND existing = FindWindowW(nullptr, L"VideoProcessor Configuration"))
     {
+        const HWND ownerWindow = reinterpret_cast<HWND>(owner);
+        if (ownerBelongsToProcess(owner, ownerProcessId))
+            SetWindowLongPtrW(existing, GWLP_HWNDPARENT,
+                reinterpret_cast<LONG_PTR>(ownerWindow));
         DWORD processId = 0;
         GetWindowThreadProcessId(existing, &processId);
         if (processId != 0) AllowSetForegroundWindow(processId);
-        ShowWindowAsync(existing, SW_RESTORE);
-        SetForegroundWindow(existing);
+        activateWindowFromCurrentForeground(existing);
     }
 }
 
@@ -111,6 +135,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     QString screenshotPath;
     int initialPage = 0;
     quintptr owner = 0;
+    DWORD ownerProcessId = 0;
+    bool startInTray = false;
     QStringList arguments;
     int nativeArgumentCount = 0;
     LPWSTR* nativeArguments = CommandLineToArgvW(GetCommandLineW(), &nativeArgumentCount);
@@ -123,8 +149,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             configPath = arguments[++index];
         else if (arguments[index] == QStringLiteral("--owner") && index + 1 < arguments.size())
             owner = parseOwner(arguments[++index]);
+        else if (arguments[index] == QStringLiteral("--owner-process") && index + 1 < arguments.size())
+        {
+            bool processOk = false;
+            const qulonglong parsed = arguments[++index].toULongLong(&processOk, 0);
+            ownerProcessId = processOk && parsed <= MAXDWORD ?
+                static_cast<DWORD>(parsed) : 0;
+        }
         else if (arguments[index] == QStringLiteral("--screenshot") && index + 1 < arguments.size())
             screenshotPath = arguments[++index];
+        else if (arguments[index] == QStringLiteral("--background"))
+            startInTray = true;
         else if (arguments[index] == QStringLiteral("--page") && index + 1 < arguments.size())
         {
             bool pageOk = false;
@@ -138,13 +173,20 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         CreateEventW(nullptr, FALSE, FALSE, ActivationEventName) : nullptr;
     if (activationEvent && GetLastError() == ERROR_ALREADY_EXISTS)
     {
-        allowExistingWindowToTakeFocus();
-        SetEvent(activationEvent);
+        // VP starts a hidden Config process opportunistically.  If one is
+        // already running, leave its current visible/hidden state alone: a
+        // background warm-up must never pull focus from the user.
+        if (!startInTray)
+        {
+            allowExistingWindowToTakeFocus(owner, ownerProcessId);
+            SetEvent(activationEvent);
+        }
         CloseHandle(activationEvent);
         if (SUCCEEDED(comResult)) CoUninitialize();
         return 0;
     }
 
+    if (!ownerBelongsToProcess(owner, ownerProcessId)) owner = 0;
     ConfigEditorWindow window(QFileInfo(configPath).absoluteFilePath(), owner);
     std::unique_ptr<QWinEventNotifier> activationNotifier;
     if (activationEvent)
@@ -154,11 +196,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             &window, [&window] { window.reveal(); });
     }
     window.selectPage(initialPage);
-    window.show();
-    QTimer::singleShot(0, &window, [&window, owner]
+    if (!startInTray)
     {
-        centerOnOwnerScreen(window, owner);
-    });
+        window.show();
+        QTimer::singleShot(0, &window, [&window, owner]
+        {
+            centerOnOwnerScreen(window, owner);
+        });
+    }
     if (!screenshotPath.isEmpty())
         QTimer::singleShot(400, &window, [&window, screenshotPath]
         {

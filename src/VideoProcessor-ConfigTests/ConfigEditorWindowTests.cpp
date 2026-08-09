@@ -176,8 +176,11 @@ void testEveryPageRoundTrips()
 
     requireControl<QLineEdit>(window, QStringLiteral("config.shortcuts.fullscreen_toggle"))
         ->setText(QStringLiteral("Ctrl+f"));
-    requireControl<QLineEdit>(window, QStringLiteral("config.shortcuts.config_editor"))
-        ->setText(QStringLiteral("Ctrl+e"));
+    QLineEdit* configShortcut = requireControl<QLineEdit>(window,
+        QStringLiteral("config.shortcuts.config_editor"));
+    require(configShortcut->text() == QStringLiteral("Ctrl+Shift+S"),
+        "Open configuration did not default to Ctrl+Shift+S");
+    configShortcut->setText(QStringLiteral("Ctrl+e"));
 
     window.selectPage(9);
     require(requireControl<QCheckBox>(window, QStringLiteral("config.logging.enabled"))->isChecked(),
@@ -246,11 +249,11 @@ void testEveryPageRoundTrips()
         "scene_detect: false",
         "fullscreen_monitor_name: Test Display", "container_colorspace: BT2020",
         "queue_size: 48", "lead_frames: 3", "reset_queue_too_large_percent: 200",
-        "shortcut: Ctrl+q", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
+        "shortcut: Ctrl+Q", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
         "screen_aspect: 21:10", "vertical_alignment: bottom", "anamorphic_scale: 4:3",
         "renderer_start_stop_time_method: RATIONAL_RATIONAL", "frame_offset: 75",
         "renderer_primaries: BT2020", "max_cll: 1200", "max_fall: 450",
-        "fullscreen_toggle: Ctrl+f", "config_editor: Ctrl+e",
+        "fullscreen_toggle: Ctrl+F", "config_editor: Ctrl+E",
         "renderer: *", "run: C:\\Tools\\verified-action.cmd 42",
         "enabled: false", "debug: false", "debug_log_retention: 25",
         "label: Verified Stretch", "order: 10", "strength: 0.85"
@@ -444,6 +447,39 @@ void testVirtualShaderOffOptionPersistsWhenConfigured()
         "Editing virtual Off did not create its configuration section");
     require(saved.contains("shortcut: Ctrl+0"),
         "Editing virtual Off did not persist its shortcut");
+}
+
+void testDisablingShaderRulePreservesShortcut()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    QListWidget* modes = requireControl<QListWidget>(window,
+        QStringLiteral("config.shader.nls.modes"));
+    require(modes->count() > 1, "NLS fixture did not load");
+    modes->setCurrentRow(1);
+
+    QLineEdit* shortcut = requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.nls.shortcut"));
+    QCheckBox* useRule = requireControl<QCheckBox>(window,
+        QStringLiteral("config.shader.nls.use_rule"));
+    QPlainTextEdit* rule = requireControl<QPlainTextEdit>(window,
+        QStringLiteral("config.shader.nls.when"));
+    shortcut->setText(QStringLiteral("Shift+N"));
+    rule->setPlainText(QStringLiteral("${eotf} == \"HDR\""));
+    require(useRule->isChecked(), "Entering a shader rule did not enable it");
+    useRule->setChecked(false);
+    save(window);
+
+    const QByteArray saved = readBytes(path);
+    const qsizetype start = saved.indexOf("[shader.nls.standard]");
+    const qsizetype end = saved.indexOf("[shader.nls.protected]", start);
+    require(start >= 0 && end > start, "Shader mode sections were not saved");
+    const QByteArray standard = saved.mid(start, end - start);
+    require(standard.contains("shortcut: Shift+N"),
+        "Disabling a shader rule removed its manual shortcut");
+    require(!standard.contains("when:"),
+        "Disabling a shader rule did not remove only its when expression");
 }
 
 void testRendererProfileSectionsCollapseAndPersist()
@@ -892,6 +928,7 @@ int main(int argc, char** argv)
     failures += run("scene detection defaults off and hides manual overrides",
         testSceneDetectionDefaultsOffAndHidesManualOverrides);
     failures += run("virtual shader Off option persists", testVirtualShaderOffOptionPersistsWhenConfigured);
+    failures += run("disabling shader rule preserves shortcut", testDisablingShaderRulePreservesShortcut);
     failures += run("renderer profile sections collapse and persist", testRendererProfileSectionsCollapseAndPersist);
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
     failures += run("Reload confirmation waits for an explicit choice", testReloadConfirmationRemainsOpenUntilExplicitChoice);

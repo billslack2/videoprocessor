@@ -8,6 +8,16 @@ general.startminimized	true
 general.startminimized	false
 general.scene_detect	true
 general.scene_detect	false
+decklink.rgb_8bit_packing	AUTO
+decklink.rgb_8bit_packing	ARGB
+decklink.rgb_8bit_packing	BGRA
+decklink.rgb_10bit_packing	AUTO
+decklink.rgb_10bit_packing	R210
+decklink.rgb_10bit_packing	R10B
+decklink.rgb_10bit_packing	R10L
+decklink.rgb_12bit_packing	AUTO
+decklink.rgb_12bit_packing	R12B
+decklink.rgb_12bit_packing	R12L
 directshow.frame_offset	AUTO
 directshow.renderer_nominal_range	AUTO
 directshow.conversion.conversion_method	AUTO

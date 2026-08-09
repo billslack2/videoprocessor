@@ -3,10 +3,14 @@
 #include <ApplicationInterface.h>
 #include <ModernOperatorLayout.h>
 #include <ConfigFile.h>
+#include <ConfigurationLiveApply.h>
 #include <DisplayTopologySession.h>
 #include <EventActionLauncher.h>
 #include <MainConfigSchema.h>
 #include <QueueConfiguration.h>
+#include <blackmagic_decklink/BlackMagicDeckLinkTranslate.h>
+#include <guid.h>
+#include <microsoft_directshow/DirectShowTranslations.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
 #include <microsoft_directshow/video_renderers/DirectShowVideoRenderers.h>
 #include <RendererConfigView.h>
@@ -25,13 +29,69 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:
-		TEST_METHOD(ApplicationInterfaceDefaultsToClassic)
+		TEST_METHOD(FullscreenActivationNeverStealsAnotherProcessForeground)
+		{
+			Assert::IsTrue(ConfigurationLiveApply::MayActivateFullscreen(
+				42, 42, true));
+			Assert::IsTrue(ConfigurationLiveApply::MayActivateFullscreen(
+				42, 0, false));
+			Assert::IsFalse(ConfigurationLiveApply::MayActivateFullscreen(
+				42, 84, true));
+		}
+
+		TEST_METHOD(GlobalShortcutPolicyObservesOnlyExternalForeground)
+		{
+			Assert::IsTrue(ConfigurationLiveApply::MayDispatchGlobalShortcut(
+				42, 84, false));
+			Assert::IsFalse(ConfigurationLiveApply::MayDispatchGlobalShortcut(
+				42, 42, false));
+			Assert::IsFalse(ConfigurationLiveApply::MayDispatchGlobalShortcut(
+				42, 84, true));
+			Assert::IsTrue(ConfigurationLiveApply::ShortcutModifiersMatch(
+				true, false, true, true, false, true));
+			Assert::IsFalse(ConfigurationLiveApply::ShortcutModifiersMatch(
+				true, false, true, true, false, false));
+		}
+
+		TEST_METHOD(ModernBackgroundAndConfigurationModalPoliciesAreFailSafe)
+		{
+			Assert::IsTrue(
+				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(true, false));
+			Assert::IsFalse(
+				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(false, false));
+			Assert::IsFalse(
+				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(true, true));
+			Assert::IsTrue(
+				ConfigurationLiveApply::ShouldSuppressFullscreenTopmost(false, true, false));
+			Assert::IsTrue(
+				ConfigurationLiveApply::ShouldSuppressFullscreenTopmost(false, false, true));
+			Assert::IsTrue(ConfigurationLiveApply::MayEnterConfigurationModal(
+				true, false, 84, 84));
+			Assert::IsFalse(ConfigurationLiveApply::MayEnterConfigurationModal(
+				true, false, 84, 42));
+			Assert::IsFalse(ConfigurationLiveApply::MayEnterConfigurationModal(
+				true, true, 84, 84));
+			Assert::IsTrue(ConfigurationLiveApply::IsDuplicateBackgroundShortcut(
+				33200, 33200, 100, 250));
+			Assert::IsFalse(ConfigurationLiveApply::IsDuplicateBackgroundShortcut(
+				33200, 33201, 100, 250));
+			Assert::IsFalse(ConfigurationLiveApply::IsDuplicateBackgroundShortcut(
+				33200, 33200, 251, 250));
+			Assert::IsTrue(
+				ConfigurationLiveApply::MayDispatchWhileConfigurationModal(
+					true, true));
+			Assert::IsTrue(
+				ConfigurationLiveApply::MayDispatchWhileConfigurationModal(
+					true, false));
+		}
+
+		TEST_METHOD(ApplicationInterfaceDefaultsToModern)
 		{
 			const auto selection = ApplicationInterface::Resolve(
 				false, {}, {});
-			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Classic);
+			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Modern);
 			Assert::IsTrue(selection.source ==
-				ApplicationInterface::Source::DefaultClassic);
+				ApplicationInterface::Source::DefaultModern);
 			Assert::IsTrue(selection.warning.empty());
 		}
 
@@ -77,13 +137,13 @@ namespace VideoProcessorTest
 				std::string::npos);
 		}
 
-		TEST_METHOD(ApplicationInterfaceMissingCommandLineValueFallsBackToClassic)
+		TEST_METHOD(ApplicationInterfaceMissingCommandLineValueFallsBackToModern)
 		{
 			const auto commandLine = ApplicationInterface::ParseCommandLine(
 				{ L"VideoProcessor.exe", L"/interface", L"/fullscreen" });
 			const auto selection = ApplicationInterface::Resolve(
 				false, commandLine, {});
-			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Classic);
+			Assert::IsTrue(selection.mode == ApplicationInterface::Mode::Modern);
 			Assert::IsTrue(selection.warning.find("missing value") !=
 				std::string::npos);
 		}
@@ -197,6 +257,153 @@ namespace VideoProcessorTest
 			Assert::AreEqual(540, NoUiLayout::DefaultClientHeight);
 			Assert::AreEqual(320, NoUiLayout::MinimumClientWidth);
 			Assert::AreEqual(180, NoUiLayout::MinimumClientHeight);
+		}
+
+		TEST_METHOD(DeckLinkEightBitYuvUsesHdycOnlyForRec709)
+		{
+			Assert::AreEqual(static_cast<int>(VideoFrameEncoding::HDYC),
+				static_cast<int>(Translate(
+					bmdFormat8BitYUV, ColorSpace::REC_709)));
+			for (const ColorSpace colorSpace : {
+				ColorSpace::UNKNOWN, ColorSpace::REC_601_525,
+				ColorSpace::REC_601_576, ColorSpace::REC_601_625,
+				ColorSpace::BT_2020 })
+			{
+				Assert::AreEqual(static_cast<int>(VideoFrameEncoding::UYVY),
+					static_cast<int>(Translate(bmdFormat8BitYUV, colorSpace)));
+			}
+			Assert::IsTrue(IsEqualGUID(
+				TranslateToMediaSubType(VideoFrameEncoding::HDYC),
+				MEDIASUBTYPE_HDYC));
+			Assert::IsTrue(IsEqualGUID(
+				TranslateToMediaSubType(VideoFrameEncoding::UYVY),
+				MEDIASUBTYPE_UYVY));
+		}
+
+		TEST_METHOD(DeckLinkCapturePackingDefaultsRemainCanonical)
+		{
+			const DeckLinkCaptureFormatPreferences preferences;
+			const auto rgb8 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput8BitDepth);
+			const auto rgb10 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput10BitDepth);
+			const auto rgb12 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput12BitDepth);
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat8BitARGB),
+				static_cast<unsigned int>(PreferredDeckLinkCapturePixelFormat(
+					rgb8, preferences)));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat10BitRGB),
+				static_cast<unsigned int>(PreferredDeckLinkCapturePixelFormat(
+					rgb10, preferences)));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat12BitRGB),
+				static_cast<unsigned int>(PreferredDeckLinkCapturePixelFormat(
+					rgb12, preferences)));
+		}
+
+		TEST_METHOD(DeckLinkCapturePackingConfigurationExposesEveryRgbVariant)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-decklink-packing.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[decklink]\n"
+					"rgb_8bit_packing: BGRA\n"
+					"rgb_10bit_packing: R10L\n"
+					"rgb_12bit_packing: R12L\n";
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error));
+			DeckLinkCaptureFormatPreferences preferences;
+			Assert::IsTrue(ReadDeckLinkCaptureFormatPreferences(
+				config, preferences, error));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat8BitBGRA),
+				static_cast<unsigned int>(preferences.rgb8));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat10BitRGBXLE),
+				static_cast<unsigned int>(preferences.rgb10));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat12BitRGBLE),
+				static_cast<unsigned int>(preferences.rgb12));
+			Assert::AreEqual(static_cast<int>(VideoFrameEncoding::BGRA_8BIT),
+				static_cast<int>(Translate(preferences.rgb8, ColorSpace::REC_709)));
+			Assert::AreEqual(static_cast<int>(VideoFrameEncoding::R10l),
+				static_cast<int>(Translate(preferences.rgb10, ColorSpace::REC_709)));
+			Assert::AreEqual(static_cast<int>(VideoFrameEncoding::R12L),
+				static_cast<int>(Translate(preferences.rgb12, ColorSpace::REC_709)));
+			const auto rgb8 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput8BitDepth);
+			const auto rgb10 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput10BitDepth);
+			const auto rgb12 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput12BitDepth);
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat8BitBGRA),
+				static_cast<unsigned int>(PreferredDeckLinkCapturePixelFormat(
+					rgb8, preferences)));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat10BitRGBXLE),
+				static_cast<unsigned int>(PreferredDeckLinkCapturePixelFormat(
+					rgb10, preferences)));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat12BitRGBLE),
+				static_cast<unsigned int>(PreferredDeckLinkCapturePixelFormat(
+					rgb12, preferences)));
+
+			// The other 10-bit alternative is independently accepted.
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[decklink]\nrgb_10bit_packing: R10B\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsTrue(ReadDeckLinkCaptureFormatPreferences(
+				config, preferences, error));
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat10BitRGBX),
+				static_cast<unsigned int>(preferences.rgb10));
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(DeckLinkCapturePackingFallsBackWhenDeviceRejectsPreference)
+		{
+			DeckLinkCaptureFormatPreferences preferences;
+			preferences.rgb8 = bmdFormat8BitBGRA;
+			preferences.rgb10 = bmdFormat10BitRGBX;
+			preferences.rgb12 = bmdFormat12BitRGBLE;
+			const auto rgb10 = static_cast<BMDDetectedVideoInputFormatFlags>(
+				bmdDetectedVideoInputRGB444 | bmdDetectedVideoInput10BitDepth);
+
+			bool usedFallback = false;
+			BMDPixelFormat selected = ResolveDeckLinkCapturePixelFormat(
+				rgb10, preferences,
+				[](BMDPixelFormat format)
+					{ return format == bmdFormat10BitRGBX; }, usedFallback);
+			Assert::IsFalse(usedFallback);
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat10BitRGBX),
+				static_cast<unsigned int>(selected));
+
+			selected = ResolveDeckLinkCapturePixelFormat(rgb10, preferences,
+				[](BMDPixelFormat) { return false; }, usedFallback);
+			Assert::IsTrue(usedFallback);
+			Assert::AreEqual(static_cast<unsigned int>(bmdFormat10BitRGB),
+				static_cast<unsigned int>(selected));
+		}
+
+		TEST_METHOD(DeckLinkCapturePackingSchemaRejectsInvalidDepthVariant)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-decklink-invalid-packing.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[decklink]\nrgb_8bit_packing: R12L\n";
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("rgb_8bit_packing") != std::string::npos);
+			DeleteFileA(path.c_str());
 		}
 
 		TEST_METHOD(IndexedShortcutKeyParsesOneBasedIndex)
@@ -629,7 +836,7 @@ namespace VideoProcessorTest
 					"fullscreen: true\n"
 					"[renderer_alias]\nvp: 1\nmadvr: 2\n"
 					"[queue]\nwhen: $key==\"l\"\nqueue_size: 32\nlead_frames: 4\ntarget_frames: 3\nactive_picture_lookahead_frames: 2\n"
-					"[queue.low_latency]\nwhen: $key==\"L\"\nqueue_size: 1\ntarget_frames: 1\n"
+					"[queue.low_latency]\nwhen: $key==\"Shift+L\"\nqueue_size: 1\ntarget_frames: 1\n"
 					"[directshow]\nvideo_conversion: V210_TO_P010\nframe_offset: 90\n"
 					"[directshow.conversion]\nconversion_method: SIMD\nmin_core_count: 1\nmax_core_count: 2\n"
 					"[directshow.ppm]\nppm: -17\n"
@@ -641,7 +848,7 @@ namespace VideoProcessorTest
 					"[shader.nls]\nwhen: $key==\"n\"\n"
 					"[shader.nls.standard]\nwhen: $key==\"Shift+n\"\nshader_type: nls\nglsl_file: NLS.glsl\n"
 					"[shader.cleanup]\ntype: multi\nwhen: $key==\"d\"\n"
-					"[shader.cleanup.deband]\nwhen: $key==\"D\"\nshader_type: custom\nhlsl_file: Deband.hlsl\nstage: pre_resize\norder: 30\n";
+					"[shader.cleanup.deband]\nwhen: $key==\"Shift+D\"\nshader_type: custom\nhlsl_file: Deband.hlsl\nstage: pre_resize\norder: 30\n";
 			}
 
 			ConfigFile config;
@@ -656,7 +863,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<size_t>(3), model.groups.size());
 
 			std::vector<RendererProfileConfig::KeySelection> selections;
-			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "L",
+			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "Shift+L",
 				[](const std::string&, std::string&) { return false; },
 				selections, error));
 			Assert::AreEqual(static_cast<size_t>(1), selections.size());
@@ -690,6 +897,57 @@ namespace VideoProcessorTest
 			Assert::IsTrue(result.snapshot->queue.hasQueueSize);
 			Assert::AreEqual(static_cast<size_t>(1),
 				result.snapshot->queue.queueSize);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(UnifiedProfileRuntimeReloadsEditedViewportAndKeepsSelection)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-live-profile-reload.cfg";
+			auto writeConfiguration = [&path](const char* scopeAspect)
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[vprenderer.viewport]\n"
+					"when: $key==\"F3\"\n"
+					"screen_aspect: 16:9\n"
+					"[vprenderer.viewport.scope]\n"
+					"when: $key==\"F2\"\n"
+					"screen_aspect: " << scopeAspect << "\n";
+			};
+
+			writeConfiguration("2.35:1");
+			ConfigFile initialConfig;
+			Assert::IsTrue(initialConfig.Load(path));
+			std::string error;
+			UnifiedProfileRuntime::Runtime runtime;
+			Assert::IsTrue(runtime.Initialize(initialConfig,
+				[](const std::string&, std::string&) { return false; }, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			UnifiedProfileRuntime::SelectionResult selected;
+			Assert::IsTrue(runtime.SelectKey("F2",
+				[](const std::string&, std::string&) { return false; },
+				selected, error));
+			Assert::AreEqual("scope",
+				selected.snapshot->viewport.profile.c_str());
+
+			writeConfiguration("2.40:1");
+			ConfigFile editedConfig;
+			Assert::IsTrue(editedConfig.Load(path));
+			UnifiedProfileRuntime::RefreshResult reloaded;
+			Assert::IsTrue(runtime.Reload(editedConfig,
+				[](const std::string&, std::string&) { return false; },
+				reloaded, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(reloaded.changed);
+			Assert::AreEqual("scope",
+				reloaded.snapshot->viewport.profile.c_str());
+			Assert::AreEqual(12ull,
+				reloaded.snapshot->viewport.screenAspect.numerator);
+			Assert::AreEqual(5ull,
+				reloaded.snapshot->viewport.screenAspect.denominator);
 			DeleteFileA(path.c_str());
 		}
 
@@ -1261,6 +1519,16 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::CanonicalizeKeyChord(
 				"Control+f2", canonical));
 			Assert::AreEqual("Ctrl+F2", canonical.c_str());
+			Assert::IsTrue(RendererProfileConfig::CanonicalizeKeyChord(
+				"ShIfT+l", canonical));
+			Assert::AreEqual("Shift+L", canonical.c_str());
+			Assert::IsTrue(RendererProfileConfig::CanonicalizeKeyChord("l", canonical));
+			Assert::AreEqual("L", canonical.c_str());
+			Assert::IsTrue(RendererProfileConfig::CanonicalizeKeyChord("L", canonical));
+			Assert::AreEqual("L", canonical.c_str());
+			Assert::IsTrue(RendererProfileConfig::CanonicalizeKeyChord(
+				"cTrL+sHiFt+l", canonical));
+			Assert::AreEqual("Ctrl+Shift+L", canonical.c_str());
 
 			std::vector<RendererProfileConfig::AutomaticSelection> automatic;
 			Assert::IsTrue(RendererProfileConfig::SelectAutomatic(model,
@@ -1402,7 +1670,7 @@ namespace VideoProcessorTest
 
 		TEST_METHOD(Vp0079EmptyShaderRootResolvesAsExplicitOff)
 		{
-			Assert::IsFalse(MadVRShaderLoader::RuleSelectorsEqual(
+			Assert::IsTrue(MadVRShaderLoader::RuleSelectorsEqual(
 				"@shader-key:N", "@shader-key:n"));
 			Assert::IsFalse(MadVRShaderLoader::RuleSelectorsEqual(
 				"@shader-key:Shift+n", "@shader-key:n"));
@@ -1440,6 +1708,16 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<size_t>(1), selection.size());
 			Assert::IsTrue(selection.front().none,
 				L"The empty shader root must explicitly turn Alpha NLS off");
+
+			selection.clear();
+			error.clear();
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				config, "@shader-key:Shift+N", ShaderRendererBackend::LIBPLACEBO,
+				selection, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), selection.size());
+			Assert::IsTrue(selection.front().nls,
+				L"A shader member shortcut must select its NLS effect");
 			DeleteFileA(path.c_str());
 		}
 
@@ -1797,7 +2075,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::CollectKeyChords(model,
 				chords, error),
 				std::wstring(error.begin(), error.end()).c_str());
-			Assert::IsTrue(std::find(chords.begin(), chords.end(), "Shift+l") !=
+			Assert::IsTrue(std::find(chords.begin(), chords.end(), "Shift+L") !=
 				chords.end());
 
 			UnifiedProfileRuntime::Runtime runtime;

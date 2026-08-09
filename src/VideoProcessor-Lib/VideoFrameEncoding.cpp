@@ -80,7 +80,8 @@ uint32_t VideoFrameEncodingBitsPerPixel(const VideoFrameEncoding videoFrameEncod
 		return 30;
 
 	case VideoFrameEncoding::R12B:
-		return 36/8;  // Guess
+		// DeckLink R12B packs three 12-bit RGB components per pixel.
+		return 36;
 	}
 
 	throw std::runtime_error("Don't know how to bits per pixel for VideoFrameEncoding");

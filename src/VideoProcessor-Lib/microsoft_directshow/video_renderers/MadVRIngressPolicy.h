@@ -2,6 +2,7 @@
 
 #include <VideoConversionOverride.h>
 #include <VideoFrameEncoding.h>
+#include "DirectShowIngressPolicy.h"
 
 // madVR receives a small set of capture formats through VP-owned P010
 // conversion. Keep this decision independent of COM/media-type negotiation so
@@ -13,16 +14,6 @@ inline bool MadVRUsesP010Ingress(VideoFrameEncoding encoding,
 			VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010 ||
 		encoding == VideoFrameEncoding::ARGB_8BIT ||
 		encoding == VideoFrameEncoding::BGRA_8BIT ||
-		encoding == VideoFrameEncoding::R10b ||
-		encoding == VideoFrameEncoding::R10l ||
-		encoding == VideoFrameEncoding::R12B ||
-		encoding == VideoFrameEncoding::R12L;
-}
-
-inline bool IsDeckLinkPackedRgbP010Encoding(
-	VideoFrameEncoding encoding) noexcept
-{
-	return encoding == VideoFrameEncoding::R210 ||
 		encoding == VideoFrameEncoding::R10b ||
 		encoding == VideoFrameEncoding::R10l ||
 		encoding == VideoFrameEncoding::R12B ||

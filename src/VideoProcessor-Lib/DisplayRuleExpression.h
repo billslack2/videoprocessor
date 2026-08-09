@@ -152,8 +152,8 @@ namespace DisplayRuleExpression
 				value = false;
 				return true;
 			}
-			// Chords use the accelerator spelling: an uppercase letter denotes
-			// Shift, so ${key} comparisons are deliberately case-sensitive.
+			// Chords use a canonical spelling (for example Shift+L); letter
+			// casing alone never denotes Shift, so ${key} remains case-sensitive.
 			// Other expression values remain case-insensitive.
 			if (variable != "key")
 				actual = ConfigFile::NormalizeName(actual);

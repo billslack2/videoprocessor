@@ -63,8 +63,8 @@ struct ConfiguredShaderRule
 class MadVRShaderLoader
 {
 public:
-	// Legacy rule names are case-insensitive, but target selectors encode the
-	// key chord after @shader-key: and must preserve case (N selects, n resets).
+	// Legacy rule names are case-insensitive. Target selectors use the canonical
+	// chord after @shader-key: (N and n are equivalent; Shift+N is distinct).
 	static std::string CanonicalizeRuleSelector(const std::string& selector);
 	static bool RuleSelectorsEqual(const std::string& left,
 		const std::string& right);

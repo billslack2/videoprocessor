@@ -543,11 +543,28 @@ bool MatchesTargetShaderWhen(const std::string& rawWhen,
 	DisplayRuleExpression::Expression expression;
 	if (!expression.Compile(rawWhen, reason, true))
 		return false;
+	// Preserve the configured literal for the expression comparison, while
+	// comparing the physical chord canonically. This makes L and l equivalent
+	// and keeps Shift+L as the distinct shifted chord, including older manual
+	// ${key} expressions whose literal spelling has not been rewritten yet.
+	std::string expressionKey = key;
+	std::string canonicalKey;
+	if (RendererProfileConfig::CanonicalizeKeyChord(key, canonicalKey))
+		for (const std::string& chord : expression.KeyChords())
+		{
+			std::string canonicalChord;
+			if (RendererProfileConfig::CanonicalizeKeyChord(chord,
+				canonicalChord) && canonicalChord == canonicalKey)
+			{
+				expressionKey = chord;
+				break;
+			}
+		}
 	int specificity = 0;
 	matches = expression.Matches([&](const std::string& variable,
 		std::string& value)
 		{
-			if (variable == "key") { value = key; return true; }
+			if (variable == "key") { value = expressionKey; return true; }
 			return source && source(variable, value);
 		}, specificity, reason);
 	return reason.empty();
@@ -2502,7 +2519,13 @@ std::string MadVRShaderLoader::CanonicalizeRuleSelector(
 	constexpr const char* TARGET_KEY = "@shader-key:";
 	const std::string trimmed = ConfigFile::Trim(selector);
 	if (trimmed.rfind(TARGET_KEY, 0) == 0)
-		return trimmed;
+	{
+		std::string canonical;
+		const std::string key = trimmed.substr(
+			std::char_traits<char>::length(TARGET_KEY));
+		return RendererProfileConfig::CanonicalizeKeyChord(key, canonical) ?
+			std::string(TARGET_KEY) + canonical : trimmed;
+	}
 	return ConfigFile::NormalizeName(trimmed);
 }
 

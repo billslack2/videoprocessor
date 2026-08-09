@@ -442,10 +442,8 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 		m_forceVideoTransferFunction :
 		TranslateVideoTranferFunction(m_videoState->eotf, m_videoState->colorspace);
 
-	colorimetry->NominalRange =
-		(m_forceNominalRange != DXVA_NominalRange::DXVA_NominalRange_Unknown) ?
-		m_forceNominalRange :
-		DXVA_NominalRange::DXVA_NominalRange_Unknown;  // = Let renderer guess
+	colorimetry->NominalRange = ResolveDirectShowNominalRange(
+		m_forceNominalRange, m_videoFramFormatter->GetOutputContract());
 
 	pvi2->dwControlFlags += AMCONTROL_USED;
 	pvi2->dwControlFlags += AMCONTROL_COLORINFO_PRESENT;

@@ -10,7 +10,6 @@
 
 
 #include <video_frame_formatter/IVideoFrameFormatter.h>
-#include <vector>
 #include <thread>
 #include <atomic>
 #include <mutex>
@@ -29,7 +28,7 @@ public:
 	CV210toP010VideoFrameFormatter();
 	virtual ~CV210toP010VideoFrameFormatter();
 
-	// Conversion method enumeration for high-res (non-720p) paths
+	// Conversion method enumeration for every supported resolution
 	enum class ConversionMethod
 	{
 		AUTO,           // Automatically select based on CPU features and frame size
@@ -63,18 +62,12 @@ public:
 private:
 	uint32_t m_height = 0;
 	uint32_t m_width = 0;
-	uint32_t m_alignedWidth;
 	uint32_t m_stride;
-	bool m_special720 = false;
 
 	// Configuration for conversion method and threading
 	ConversionMethod m_conversionMethod = ConversionMethod::AUTO;
 	uint32_t m_minCoreCount = 1;    // Minimum cores to use (default: 1)
 	uint32_t m_maxCoreCount = 2;    // Maximum cores to use (default: 2, 0 = auto-detect)
-
-	// Pre-allocated buffers to avoid per-frame allocation
-	std::vector<uint16_t> m_tempY;
-	std::vector<uint16_t> m_tempUV;
 
 	// ========================================
 	// Thread pool for parallel processing
@@ -220,8 +213,6 @@ private:
 	// Conversion methods
 	bool ConvertV210ToP010(const uint8_t* srcData, uint32_t srcStride, 
 	                      uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
-	bool ConvertV210ToP010_720p(const uint8_t* srcData, uint32_t srcStride,
-	                           uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	bool ConvertV210ToP010_Standard(const uint8_t* srcData, uint32_t srcStride,
 	                               uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	bool ConvertV210ToP010_Optimized(const uint8_t* srcData, uint32_t srcStride,

@@ -5,6 +5,7 @@
 #include <objbase.h>
 
 #include "ConfigEditorWindow.h"
+#include <ConfigurationLiveApply.h>
 
 #include <ConfigEditorCore.h>
 #include <RendererProfileConfig.h>
@@ -191,6 +192,16 @@ QString profileIdentifier(const QString& name)
     while (result.contains(QStringLiteral("___"))) result.replace(QStringLiteral("___"), QStringLiteral("__"));
     if (result.isEmpty() || !result.front().isLetter()) result.prepend(QStringLiteral("profile_"));
     return result;
+}
+
+QString canonicalShortcutText(const QString& text)
+{
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty()) return trimmed;
+    std::string canonical;
+    return RendererProfileConfig::CanonicalizeKeyChord(
+        trimmed.toStdString(), canonical) ?
+        QString::fromStdString(canonical) : trimmed;
 }
 
 bool configuredBooleanValue(const QString& value, bool defaultValue)
@@ -705,6 +716,30 @@ void ConfigEditorWindow::saveChanges()
 {
     if (!configurationLoaded_ || !document_) return;
 
+    // Persist shortcut spelling in the same canonical form used by the
+    // accelerator parser. Case is not a modifier: L and l are both L, while
+    // Shift+L is the distinct shifted chord.
+    const QStringList shortcutRoots = {
+        QStringLiteral("shortcuts"), QStringLiteral("queue"),
+        QStringLiteral("lldv"), QStringLiteral("vprenderer"),
+        QStringLiteral("shader"), QStringLiteral("shaders") };
+    for (const QString& root : shortcutRoots)
+    {
+        for (const std::string& section : document_->SectionNamesWithPrefix(
+            root.toStdString()))
+        {
+            for (const auto& setting : document_->SectionSettings(section))
+            {
+                const bool isShortcut = root == QStringLiteral("shortcuts") ||
+                    ConfigFile::NormalizeName(setting.first) == "shortcut";
+                if (!isShortcut || ConfigFile::Trim(setting.second).empty()) continue;
+                std::string canonical;
+                if (RendererProfileConfig::CanonicalizeKeyChord(setting.second, canonical))
+                    document_->SetKnown(section, setting.first.c_str(), canonical);
+            }
+        }
+    }
+
     // Saving is also the boundary at which an unfinished enabled action becomes
     // a draft.  Do not make users discover every required action field merely
     // to persist work in progress; disable only the action rejected by the
@@ -738,6 +773,16 @@ void ConfigEditorWindow::saveChanges()
     }
     dirty_ = false;
     saveButton_->setEnabled(false);
+
+    // The editor is a separate process. Signal the running VP instance only
+    // after the atomic safe-save has committed the complete validated file.
+    // An auto-reset event also makes saves harmless when VP is not running.
+    if (HANDLE changedEvent = CreateEventW(nullptr, FALSE, FALSE,
+        ConfigurationLiveApply::ChangedEventName))
+    {
+        SetEvent(changedEvent);
+        CloseHandle(changedEvent);
+    }
     if (!draftedActions.isEmpty())
     {
         if (auto* actions = findChild<QListWidget*>(QStringLiteral("config.actions.items"));
@@ -750,14 +795,14 @@ void ConfigEditorWindow::saveChanges()
                 enabled->setChecked(false);
             }
         }
-        setStatus(QStringLiteral("Changes saved. Incomplete action%1 %2 saved as disabled draft%1. Backup: %3")
+        setStatus(QStringLiteral("Changes saved and sent to VideoProcessor. Incomplete action%1 %2 saved as disabled draft%1. Backup: %3")
             .arg(draftedActions.size() == 1 ? QString() : QStringLiteral("s"),
                 draftedActions.join(QStringLiteral(", ")),
                 QString::fromStdWString(result.backupPath)));
     }
     else
     {
-        setStatus(QStringLiteral("Changes saved safely. Backup: %1").arg(QString::fromStdWString(result.backupPath)));
+        setStatus(QStringLiteral("Changes saved safely and sent to VideoProcessor. Backup: %1").arg(QString::fromStdWString(result.backupPath)));
     }
 }
 
@@ -793,18 +838,6 @@ QWidget* ConfigEditorWindow::createShell()
     brandLayout->addWidget(title);
     headerLayout->addWidget(brand);
     headerLayout->addStretch();
-    auto* hideButton = new QPushButton(QStringLiteral("Hide"));
-    hideButton->setObjectName(QStringLiteral("hideToTray"));
-    hideButton->setAccessibleDescription(
-        QStringLiteral("Hide the editor to the notification area."));
-    auto* exitButton = new QPushButton(QStringLiteral("Exit"));
-    exitButton->setObjectName(QStringLiteral("exitConfiguration"));
-    exitButton->setAccessibleDescription(
-        QStringLiteral("Exit the VideoProcessor Configuration editor."));
-    connect(hideButton, &QPushButton::clicked, this, [this] { hide(); });
-    connect(exitButton, &QPushButton::clicked, this, [this] { exitApplication(); });
-    headerLayout->addWidget(hideButton);
-    headerLayout->addWidget(exitButton);
     rootLayout->addWidget(header);
 
     auto* center = new QWidget;
@@ -1813,7 +1846,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         const QString display = current->data(Qt::UserRole + 1).toString();
         selectedTitle->setText(display);
         name->setText(display);
-        shortcut->setText(value(section, QStringLiteral("shortcut")));
+        shortcut->setText(canonicalShortcutText(
+            value(section, QStringLiteral("shortcut"))));
         const QString expression = value(section, QStringLiteral("when"));
         rule->setPlainText(expression);
         useRule->setChecked(!expression.isEmpty());
@@ -2734,7 +2768,8 @@ QWidget* ConfigEditorWindow::createShadersPage()
             state->loading = false;
             return;
         }
-        shortcut->setText(value(state->section, QStringLiteral("shortcut")));
+        shortcut->setText(canonicalShortcutText(
+            value(state->section, QStringLiteral("shortcut"))));
         const QString expression = value(state->section, QStringLiteral("when"));
         useRule->setChecked(!expression.isEmpty());
         rule->setPlainText(expression);
@@ -3316,22 +3351,22 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         const char* defaultValue;
     };
     const ShortcutField applicationFields[] = {
-        { "Open configuration", "config_editor", "Ctrl+s" },
+        { "Open configuration", "config_editor", "Ctrl+Shift+S" },
         { "Toggle fullscreen", "fullscreen_toggle", "Alt+Enter" },
         { "Exit fullscreen", "fullscreen_exit", "Esc" },
-        { "Toggle statistics", "toggle_stats_overlay", "Ctrl+i" },
-        { "Automatic transfer", "auto_set", "Ctrl+Shift+a" },
-        { "PQ transfer", "pq_set", "Ctrl+Shift+p" }
+        { "Toggle statistics", "toggle_stats_overlay", "Ctrl+I" },
+        { "Automatic transfer", "auto_set", "Ctrl+Shift+A" },
+        { "PQ transfer", "pq_set", "Ctrl+Shift+P" }
     };
     const ShortcutField captureFields[] = {
-        { "Restart renderer", "renderer_restart", "Shift+r" },
-        { "Reset renderer", "renderer_reset", "r" },
+        { "Restart renderer", "renderer_restart", "Shift+R" },
+        { "Reset renderer", "renderer_reset", "R" },
         { "DeckLink input 1", "capture_1", "Ctrl+1" },
         { "DeckLink input 2", "capture_2", "Ctrl+2" },
         { "DeckLink input 3", "capture_3", "Ctrl+3" },
         { "DeckLink input 4", "capture_4", "Ctrl+4" },
-        { "Disable video conversion", "video_conversion_off", "v" },
-        { "V210 to P010 conversion", "video_conversion_p010", "Shift+v" }
+        { "Disable video conversion", "video_conversion_off", "V" },
+        { "V210 to P010 conversion", "video_conversion_p010", "Shift+V" }
     };
 
     auto makeEditor = [this](const QString& key, const QString& defaultValue)
@@ -3341,9 +3376,9 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         size_t line = 0, start = 0, end = 0;
         const bool explicitlyConfigured = document_ &&
             document_->Find(section, keyText.c_str(), line, start, end);
-        const QString initial = explicitlyConfigured ?
+        const QString initial = canonicalShortcutText(explicitlyConfigured ?
             QString::fromLocal8Bit(document_->Get(section.c_str(), keyText.c_str()).c_str()) :
-            defaultValue;
+            defaultValue);
         auto* edit = new QLineEdit(initial);
         edit->setObjectName(controlName(QStringLiteral("shortcuts"), key));
         edit->setAccessibleName(accessibleSettingName(key));
@@ -3372,7 +3407,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
                 edit->setProperty("invalid", true);
                 edit->style()->unpolish(edit);
                 edit->style()->polish(edit);
-                setStatus(QStringLiteral("%1 is not a valid shortcut. Use a chord such as Ctrl+Shift+a.").arg(entered), true);
+                setStatus(QStringLiteral("%1 is not a valid shortcut. Use a chord such as Ctrl+Shift+A.").arg(entered), true);
                 return;
             }
             edit->setProperty("invalid", false);
@@ -3441,7 +3476,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
             rendererContent));
     }
     return createPage(QStringLiteral("Shortcuts"),
-        QStringLiteral("Configure global keyboard shortcuts. Defaults are shown; clear a field and save to disable it. Restart VP after saving."),
+        QStringLiteral("Configure global keyboard shortcuts. Defaults are shown; clear a field and save to disable it. A running VP applies saved shortcuts immediately."),
         content);
 }
 
@@ -3467,6 +3502,10 @@ void ConfigEditorWindow::setupTray()
 void ConfigEditorWindow::reveal()
 {
     showNormal();
+    // Keep the editor above VP's exclusive/fullscreen presentation. The
+    // close-to-tray path removes this state before hiding it again.
+    SetWindowPos(reinterpret_cast<HWND>(winId()), HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
     raise();
     activateWindow();
 }
@@ -3482,6 +3521,8 @@ void ConfigEditorWindow::closeEvent(QCloseEvent* event)
 {
     if (!exitRequested_ && tray_ && tray_->isVisible())
     {
+        SetWindowPos(reinterpret_cast<HWND>(winId()), HWND_NOTOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
         hide();
         event->ignore();
         return;
@@ -3492,6 +3533,8 @@ void ConfigEditorWindow::closeEvent(QCloseEvent* event)
 void ConfigEditorWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
+    SetWindowPos(reinterpret_cast<HWND>(winId()), HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
     if (!ownerApplied_ && ownerHandle_ != 0)
     {
         SetWindowLongPtrW(reinterpret_cast<HWND>(winId()), GWLP_HWNDPARENT,
