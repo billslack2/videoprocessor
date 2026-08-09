@@ -934,12 +934,20 @@ private:
 						CONFIGURATION_EDITOR_HOTKEY_ID, 0);
 				break;
 			}
-			::PostMessageW(s_target, WM_COMMAND,
+			const bool consumeOriginal =
+				accelerator.cmd == ID_COMMAND_TOGGLE_NO_UI;
+			const BOOL posted = ::PostMessageW(s_target, WM_COMMAND,
 				MAKEWPARAM(accelerator.cmd, 0), 0);
+			DebugLog::Log(
+				"Background shortcut dispatch: command=%u foreground_pid=%lu posted=%d consume=%d",
+				static_cast<unsigned>(accelerator.cmd), foregroundProcessId,
+				posted ? 1 : 0, consumeOriginal ? 1 : 0);
+			if (consumeOriginal && posted)
+				return 1;
 			break;
 		}
-		// Never consume the original. madVR/the foreground application receives
-		// the same keyboard event normally.
+		// Except for the VP-owned runtime UI toggle, do not consume the original.
+		// madVR/the foreground application receives its normal keyboard event.
 		return ::CallNextHookEx(s_hook, code, message, parameter);
 	}
 
@@ -4064,6 +4072,8 @@ void CVideoProcessorDlg::OnCommandAutoSet()
 
 void CVideoProcessorDlg::OnCommandToggleNoUi()
 {
+	DebugLog::Log("Runtime UI shortcut requested: noui=%d layout_applied=%d",
+		m_hideUI ? 1 : 0, m_noUiLayoutApplied ? 1 : 0);
 	if (m_hideUI)
 	{
 		m_hideUI = false;
@@ -4076,8 +4086,9 @@ void CVideoProcessorDlg::OnCommandToggleNoUi()
 	}
 
 	StartGlobalShortcutObserver();
-	DebugLog::Log("Runtime UI shortcut: noui=%d fullscreen=%d renderer_state=%d",
+	DebugLog::Log("Runtime UI shortcut complete: noui=%d layout_applied=%d fullscreen=%d renderer_state=%d",
 		m_hideUI ? 1 : 0,
+		m_noUiLayoutApplied ? 1 : 0,
 		m_rendererFullscreenCheck.GetCheck() == BST_CHECKED ? 1 : 0,
 		static_cast<int>(m_rendererState));
 }
