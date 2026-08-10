@@ -185,6 +185,23 @@ full native testing reports 776 passed and the same six pre-existing fixture
 failures. Clean x64 Release rebuilds of the host, VP Renderer, and Qt editor
 succeeded at `d1ab1fe` with `VERSION_DIRTY=false`.
 
+Target-buffer deployment checkpoint (2026-08-10): after confirming the host,
+renderer, and configuration editor were stopped, backed up the prior matched
+runtime pair, Qt editor, configuration reference, and active configuration in
+`C:\Videoprocessor\vp\backup-vp0110-target-buffer-20260810-165254`.
+Added only `subtitle_target_buffer_pixels: 10` to the active Scope viewport and
+deployed the clean `d1ab1fe` x64 Release host, VP Renderer, Qt editor, and
+matching `CONFIGURATION.html`. Verified deployed SHA-256 hashes against their
+source artifacts: host
+`0A3FB0F6FE264FE6134CB8669B166B4F3B10BC3F952F0C863468A36711CA9DC1`,
+VP Renderer
+`2EE5BCE2C696766A262A9EC706512C8132BB310F516A611DB1BBE41DDB88774E`,
+Qt editor
+`F28F64952D6730C559FECAB66BDABC0C0332D408B4C4BC901549C01DEA95CBB4`,
+and configuration reference
+`5A447B29F680E1AEA18413BB9A3570A3BF37EA6D0FBBA300F554C61A65FC7E86`.
+All VP processes remain stopped for user testing.
+
 ## User story
 
 As a VideoProcessor user watching scope content with subtitle fitting enabled,
