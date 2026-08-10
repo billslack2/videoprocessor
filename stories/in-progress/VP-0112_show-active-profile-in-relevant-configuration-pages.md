@@ -7,9 +7,8 @@ In Progress (2026-08-10). Implementation started on
 branch `origin/v1.2.001-beta` at `109bc963`. Working tree:
 `C:\Users\bslac\vp\worktrees\vp-0112-active-profile`.
 
-Current work: locate the Qt configuration editor's profile-list delegates and
-the available runtime/effective-configuration state, then implement the chosen
-inline active/editing treatment without changing profile persistence.
+Current work: complete the remaining runtime/profile coverage and focused test
+work without changing profile persistence.
 
 2026-08-10 implementation checkpoint:
 
@@ -18,12 +17,12 @@ inline active/editing treatment without changing profile persistence.
   read-only status mapping. The attached configuration editor polls that
   mapping only for its validated VP owner process; offline or unrelated editor
   instances show no false marker.
-- VP Renderer: Rendering and Screen Config lists retain name-only rows, show a
-  compact blue **Editing** / green **Active** key, use green text for the
-  active row, and retain the normal blue selection independently. Queue,
-  Actions, and Shortcuts were not changed. The shader list has the same key
-  and safe no-marker behavior until its renderer-owned effective selection can
-  be represented unambiguously.
+- Follow-up implementation through `3226b7d` publishes status on each
+  successful unified-profile refresh, independently of alpha/non-alpha
+  renderer selection. Relevant profile lists retain normal selection behavior
+  and mark only the active row with a small green dot; there is no editing
+  treatment, key, extra explanation, or inline `when:` rule. Queue, Actions,
+  and Shortcuts remain unchanged.
 - Rebuilt x64 Release GUI, VP Renderer, and configuration editor from the
   feature commit. Deployed `VideoProcessor.exe` and
   `vprenderer\\VideoProcessorVPRenderer.dll` as a verified matching pair,
@@ -38,22 +37,28 @@ inline active/editing treatment without changing profile persistence.
   behavioral run currently reports broad Apply/effect-summary failures; these
   have not yet been isolated as baseline versus regression, so the story
   remains In Progress.
+- Rebuilt the x64 Release configuration editor and deployed the updated
+  `VideoProcessorConfig.exe` to `C:\Videoprocessor\vp`, SHA-256 verified;
+  backup: `C:\Videoprocessor\vp\backup-vp0112-dot-20260810-172943`.
+  Live screenshot validation against the deployed VP shows the selected
+  `16x9 (Default)` row with its normal blue selection and the independently
+  active `Scope` row with a green dot. Screenshot:
+  `C:\Users\bslac\AppData\Local\Temp\vp0112-active-profile-dot.png`.
 
 ## Chosen UI treatment
 
 Use the existing profile list only; do not add a separate current-profile
-summary, duplicate label, or explanatory text. Put one compact list key beside
-the `Profiles` heading: blue means **Editing** and green means **Active**.
+summary, duplicate label, key, or explanatory text. Mark the active profile
+with a small green dot beside its name.
 
 - Keep each profile-list row name-only. Do not show its `when:`/activation rule
   inline because real rules can be long; retain that rule in the selected
   profile's existing detail/editing surface instead.
-- The profile that is active at runtime uses a clear green inline treatment.
-- The profile selected for editing uses the existing blue selection/highlight
-  treatment.
-- These states are intentionally independent and may appear on different rows.
-  When they coincide, combine the green active treatment with the blue editing
-  highlight on that one row without adding another indicator.
+- The profile that is active at runtime uses a small green dot.
+- Editing uses only the list's normal selection behavior; it has no separate
+  state treatment.
+- The normal selected row and active dot are independent and may appear on
+  different rows.
 
 The visual distinction itself must be clear enough that extra explanation is
 unnecessary. Apply it only to the relevant profile-aware pages in this story's
