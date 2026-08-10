@@ -7,7 +7,9 @@
  */
 
 #include <pch.h>
+#include <ApplicationShutdownPolicy.h>
 #include <ModernOperatorLayout.h>
+#include <ModernOperatorStatusPolicy.h>
 
 #include <atlstr.h>
 #include <algorithm>
@@ -100,6 +102,43 @@ std::vector<std::string> ChangedConfigurationSections(
 	return changed;
 }
 
+std::vector<ConfigurationApplyPolicy::Change> ChangedConfigurationValues(
+	const ConfigurationSnapshot& previous,
+	const ConfigurationSnapshot& current)
+{
+	std::set<std::string> sections;
+	for (const auto& section : previous) sections.insert(section.first);
+	for (const auto& section : current) sections.insert(section.first);
+	std::vector<ConfigurationApplyPolicy::Change> changed;
+	for (const std::string& section : sections)
+	{
+		std::set<std::string> keys;
+		const auto beforeSection = previous.find(section);
+		const auto afterSection = current.find(section);
+		if (beforeSection != previous.end())
+			for (const auto& value : beforeSection->second) keys.insert(value.first);
+		if (afterSection != current.end())
+			for (const auto& value : afterSection->second) keys.insert(value.first);
+		for (const std::string& key : keys)
+		{
+			const auto before = beforeSection == previous.end() ?
+				std::map<std::string, std::string>::const_iterator() :
+				beforeSection->second.find(key);
+			const auto after = afterSection == current.end() ?
+				std::map<std::string, std::string>::const_iterator() :
+				afterSection->second.find(key);
+			const bool beforePresent = beforeSection != previous.end() &&
+				before != beforeSection->second.end();
+			const bool afterPresent = afterSection != current.end() &&
+				after != afterSection->second.end();
+			if (beforePresent != afterPresent ||
+				(beforePresent && before->second != after->second))
+				changed.push_back({ section, key });
+		}
+	}
+	return changed;
+}
+
 bool IsStartupOnlyConfigurationSection(const std::string& section)
 {
 	return section == "command_line" || section == "general" ||
@@ -126,14 +165,34 @@ struct ConfigurationEditorSearch
 	std::wstring expectedPath;
 	HWND window = nullptr;
 	bool exactInstallationMatch = false;
+	int score = -1;
 };
+
+bool IsConfigurationEditorTopLevel(HWND window, DWORD expectedProcessId,
+	bool requireVisible)
+{
+	if (!window || !::IsWindow(window) ||
+		::GetAncestor(window, GA_ROOT) != window ||
+		(requireVisible && !::IsWindowVisible(window)))
+		return false;
+	DWORD processId = 0;
+	::GetWindowThreadProcessId(window, &processId);
+	if (!processId || (expectedProcessId && processId != expectedProcessId))
+		return false;
+	wchar_t className[128] = {};
+	wchar_t title[128] = {};
+	if (::GetClassNameW(window, className, ARRAYSIZE(className)) <= 0 ||
+		_wcsnicmp(className, L"Qt", 2) != 0 ||
+		::GetWindowTextW(window, title, ARRAYSIZE(title)) <= 0 ||
+		wcscmp(title, L"VideoProcessor Configuration") != 0)
+		return false;
+	return true;
+}
 
 BOOL CALLBACK FindConfigurationEditor(HWND window, LPARAM parameter)
 {
 	auto* search = reinterpret_cast<ConfigurationEditorSearch*>(parameter);
-	wchar_t title[128] = {};
-	if (GetWindowTextW(window, title, ARRAYSIZE(title)) <= 0 ||
-		wcscmp(title, L"VideoProcessor Configuration") != 0)
+	if (!IsConfigurationEditorTopLevel(window, 0, false))
 		return TRUE;
 	DWORD processId = 0;
 	GetWindowThreadProcessId(window, &processId);
@@ -147,20 +206,54 @@ BOOL CALLBACK FindConfigurationEditor(HWND window, LPARAM parameter)
 		&processPathLength) &&
 		_wcsicmp(processPath, search->expectedPath.c_str()) == 0;
 	CloseHandle(process);
-	if (matches)
+	const int score = (matches ? 1000 : 0) +
+		(::IsWindowVisible(window) ? 100 : 0) +
+		(!::IsIconic(window) ? 10 : 0);
+	if (score > search->score)
 	{
 		search->window = window;
-		search->exactInstallationMatch = true;
-		return FALSE;
+		search->exactInstallationMatch = matches;
+		search->score = score;
 	}
 	// The configuration editor has a deliberate per-user single-instance
 	// lifetime. A freshly-built or newly-installed VP can therefore launch an
 	// already-running editor from its previous installation directory. Keep it
 	// as a fallback so VP can still toggle the same visible singleton, while an
 	// exact sibling executable wins whenever it exists.
-	if (!search->window)
-		search->window = window;
 	return TRUE;
+}
+
+struct ConfigurationEditorProcessSearch
+{
+	DWORD processId = 0;
+	HWND excluded = nullptr;
+	HWND window = nullptr;
+	int score = -1;
+};
+
+BOOL CALLBACK FindConfigurationEditorForProcessCallback(HWND window,
+	LPARAM parameter)
+{
+	auto* search = reinterpret_cast<ConfigurationEditorProcessSearch*>(parameter);
+	if (window == search->excluded ||
+		!IsConfigurationEditorTopLevel(window, search->processId, false))
+		return TRUE;
+	const int score = (::IsWindowVisible(window) ? 100 : 0) +
+		(!::IsIconic(window) ? 10 : 0);
+	if (score > search->score)
+	{
+		search->window = window;
+		search->score = score;
+	}
+	return TRUE;
+}
+
+HWND FindConfigurationEditorForProcess(DWORD processId, HWND excluded)
+{
+	ConfigurationEditorProcessSearch search{ processId, excluded };
+	::EnumWindows(FindConfigurationEditorForProcessCallback,
+		reinterpret_cast<LPARAM>(&search));
+	return search.window;
 }
 
 HWND FindConfigurationEditorForCurrentInstallation()
@@ -184,66 +277,60 @@ HWND FindConfigurationEditorForCurrentInstallation()
 	return search.window;
 }
 
-void RetargetConfigurationEditorOwner(HWND owner)
+bool SendConfigurationEditorRevealOnce(HWND editor, HWND owner,
+	DWORD ownerProcessId, bool& messageDelivered,
+	DWORD_PTR& acknowledgement)
 {
-	if (!owner || !IsWindow(owner))
-		return;
-	const HWND editor = FindConfigurationEditorForCurrentInstallation();
-	if (!editor || !IsWindow(editor))
-		return;
-	SetLastError(ERROR_SUCCESS);
-	const LONG_PTR previous = SetWindowLongPtrW(editor, GWLP_HWNDPARENT,
-		reinterpret_cast<LONG_PTR>(owner));
-	const DWORD error = GetLastError();
-	if (!previous && error != ERROR_SUCCESS)
-	{
-		DebugLog::Log(
-			"Configuration editor owner retarget failed owner=%p error=%lu",
-			reinterpret_cast<void*>(owner), error);
-		return;
-	}
-	DebugLog::Log("Configuration editor owner retargeted owner=%p",
-		reinterpret_cast<void*>(owner));
-}
-
-bool ActivateConfigurationEditor(HWND editor)
-{
-	if (!editor || !IsWindow(editor))
+	messageDelivered = false;
+	if (!editor || !::IsWindow(editor))
 		return false;
-	ShowWindowAsync(editor, SW_RESTORE);
-	// Fullscreen presentation is topmost. Config is modal while it is open,
-	// so HWND_TOP alone cannot keep it above a later fullscreen placement.
-	::SetWindowPos(editor, HWND_TOPMOST, 0, 0, 0, 0,
-		SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-	::SetForegroundWindow(editor);
 	DWORD editorProcessId = 0;
-	DWORD foregroundProcessId = 0;
-	GetWindowThreadProcessId(editor, &editorProcessId);
-	const HWND foreground = GetForegroundWindow();
-	if (foreground)
-		GetWindowThreadProcessId(foreground, &foregroundProcessId);
-	return ConfigurationLiveApply::MayEnterConfigurationModal(
-		::IsWindowVisible(editor) != FALSE,
-		::IsIconic(editor) != FALSE,
-		editorProcessId, foregroundProcessId);
+	::GetWindowThreadProcessId(editor, &editorProcessId);
+	if (editorProcessId)
+		::AllowSetForegroundWindow(editorProcessId);
+	static const UINT activateMessage = ::RegisterWindowMessageW(
+		L"VideoProcessor.ConfigEditor.Activate.v1");
+	if (!activateMessage)
+		return false;
+	acknowledgement = 0;
+	const LRESULT delivered = ::SendMessageTimeoutW(editor, activateMessage,
+		static_cast<WPARAM>(ownerProcessId),
+		reinterpret_cast<LPARAM>(owner),
+		SMTO_ABORTIFHUNG | SMTO_BLOCK, 400, &acknowledgement);
+	DebugLog::Log(
+		"Configuration editor reveal attempt: editor=%p pid=%lu owner=%p owner_pid=%lu delivered=%lld ack=%llu",
+		reinterpret_cast<void*>(editor), editorProcessId,
+		reinterpret_cast<void*>(owner), ownerProcessId,
+		static_cast<long long>(delivered),
+		static_cast<unsigned long long>(acknowledgement));
+	messageDelivered = delivered != 0;
+	return ConfigurationLiveApply::ConfigurationEditorRevealAcknowledged(
+		messageDelivered, acknowledgement);
 }
 
-void KeepConfigurationEditorAboveVideo(HWND editor)
+bool LaunchConfigurationEditorActivationFallback(HWND owner,
+	DWORD ownerProcessId)
 {
-	if (!editor || !::IsWindow(editor) || !::IsWindowVisible(editor))
-		return;
-
-	// A fullscreen presenter can legitimately recover its own topmost placement.
-	// Config is the visible modal surface, so keep it above the video without
-	// taking input focus away from that presenter.
-	if (!::SetWindowPos(editor, HWND_TOPMOST, 0, 0, 0, 0,
-		SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER |
-		SWP_SHOWWINDOW))
-	{
-		DebugLog::Log(
-			"Configuration editor topmost placement failed hwnd=%p error=%lu",
-			reinterpret_cast<void*>(editor), GetLastError());
-	}
+	wchar_t modulePath[32768] = {};
+	const DWORD length = ::GetModuleFileNameW(nullptr, modulePath,
+		ARRAYSIZE(modulePath));
+	if (!length || length >= ARRAYSIZE(modulePath))
+		return false;
+	std::wstring editorPath(modulePath, length);
+	const size_t separator = editorPath.find_last_of(L"\\/");
+	if (separator == std::wstring::npos)
+		return false;
+	const std::wstring workingDirectory = editorPath.substr(0, separator + 1);
+	editorPath = workingDirectory + L"VideoProcessorConfig.exe";
+	if (::GetFileAttributesW(editorPath.c_str()) == INVALID_FILE_ATTRIBUTES)
+		return false;
+	wchar_t arguments[160] = {};
+	swprintf_s(arguments, L"--owner %llu --owner-process %lu",
+		static_cast<unsigned long long>(
+			reinterpret_cast<UINT_PTR>(owner)), ownerProcessId);
+	const HINSTANCE result = ::ShellExecuteW(owner, L"open",
+		editorPath.c_str(), arguments, workingDirectory.c_str(), SW_SHOWNORMAL);
+	return reinterpret_cast<INT_PTR>(result) > 32;
 }
 
 const TCHAR* ToString(RendererResetReason reason)
@@ -294,7 +381,9 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 {
 	{ "auto_set",              ID_COMMAND_AUTO_SET,               'A',       FCONTROL | FSHIFT },
 	{ "fullscreen_exit",       ID_COMMAND_FULLSCREEN_EXIT,        VK_ESCAPE, 0 },
-	{ "fullscreen_toggle",     ID_COMMAND_FULLSCREEN_TOGGLE,      VK_RETURN, FALT },
+	{ "fullscreen_toggle",     ID_COMMAND_FULLSCREEN_TOGGLE,
+		ConfigurationLiveApply::ViewToggleDefaultKey,
+		ConfigurationLiveApply::ViewToggleDefaultModifiers },
 	{ "toggle_stats_overlay",  ID_COMMAND_TOGGLE_STATS_OVERLAY,   'I',       FCONTROL },
 	{ "pq_set",                ID_COMMAND_PQ_SET,                 'P',       FCONTROL | FSHIFT },
 	{ "renderer_restart",      ID_COMMAND_RENDERER_RESTART,       'R',       FSHIFT },
@@ -306,7 +395,9 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 	{ "video_conversion_off",  ID_COMMAND_VC_NONE,                'V',       0 },
 	{ "video_conversion_p010", ID_COMMAND_VC_P010,                'V',       FSHIFT },
 	{ "config_editor",         ID_COMMAND_CONFIG_EDITOR,          'S',       FCONTROL | FSHIFT },
-	{ "toggle_noui",           ID_COMMAND_TOGGLE_NO_UI,           'U',       FCONTROL | FSHIFT },
+	{ "toggle_noui",           ID_COMMAND_TOGGLE_NO_UI,
+		ConfigurationLiveApply::VideoOnlyToggleDefaultKey,
+		ConfigurationLiveApply::VideoOnlyToggleDefaultModifiers },
 	{ "display_rules_auto",    ID_COMMAND_DISPLAY_RULE_AUTO,      VK_F4,     0, true },
 };
 
@@ -483,18 +574,27 @@ HACCEL CreateConfiguredAccelerators(
 	std::map<WORD, CString>& displayRuleShortcutRules,
 	std::map<WORD, unsigned int>& rendererShortcutIndices,
 	std::map<WORD, CString>& unifiedProfileShortcutKeys,
-	std::vector<ACCEL>& configuredAccelerators)
+	std::vector<ACCEL>& configuredAccelerators,
+	const ConfigFile* stagedMainConfig = nullptr,
+	const ConfigFile* stagedRendererConfig = nullptr,
+	bool rejectInvalidBindings = false,
+	std::string* bindingError = nullptr)
 {
 	shaderShortcutRules.clear();
 	shaderShortcutKeys.clear();
 	displayRuleShortcutRules.clear();
 	rendererShortcutIndices.clear();
 	unifiedProfileShortcutKeys.clear();
-	ConfigFile mainConfig;
-	const bool hasMainConfig = mainConfig.Load();
-	ConfigFile rendererConfig;
-	const bool hasRendererConfig =
-		rendererConfig.Load(ConfigFile::RENDERER_FILENAME);
+	ConfigFile loadedMainConfig;
+	const bool hasMainConfig = stagedMainConfig != nullptr ||
+		loadedMainConfig.Load();
+	const ConfigFile& mainConfig = stagedMainConfig ?
+		*stagedMainConfig : loadedMainConfig;
+	ConfigFile loadedRendererConfig;
+	const bool hasRendererConfig = stagedRendererConfig != nullptr ||
+		loadedRendererConfig.Load(ConfigFile::RENDERER_FILENAME);
+	const ConfigFile& rendererConfig = stagedRendererConfig ?
+		*stagedRendererConfig : loadedRendererConfig;
 	RendererProfileConfig::Model unifiedProfileModel;
 	std::string unifiedProfileError;
 	bool hasNamedLldvProfile = false;
@@ -512,6 +612,11 @@ HACCEL CreateConfiguredAccelerators(
 		RendererProfileConfig::Read(mainConfig, unifiedProfileModel, unifiedProfileError);
 	std::vector<ACCEL> accelerators;
 	std::set<unsigned int> bindings;
+	auto failBinding = [bindingError](const std::string& error)
+	{
+		if (bindingError)
+			*bindingError = error;
+	};
 
 	for (const auto& definition : SHORTCUT_DEFINITIONS)
 	{
@@ -538,6 +643,12 @@ HACCEL CreateConfiguredAccelerators(
 				configuredAccelerator.cmd = definition.command;
 				accelerator = configuredAccelerator;
 			}
+			else if (rejectInvalidBindings)
+			{
+				failBinding(std::string("invalid [shortcuts] ") +
+					definition.configKey);
+				return nullptr;
+			}
 		}
 
 		const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
@@ -547,6 +658,12 @@ HACCEL CreateConfiguredAccelerators(
 		}
 		else
 		{
+			if (rejectInvalidBindings)
+			{
+				failBinding(std::string("duplicate [shortcuts] binding for ") +
+					definition.configKey);
+				return nullptr;
+			}
 			// A duplicate user binding is ambiguous, so retain the command's
 			// compiled default when it is still available.
 			accelerator = { static_cast<BYTE>(FVIRTKEY | definition.defaultModifiers), definition.defaultKey, definition.command };
@@ -582,6 +699,11 @@ HACCEL CreateConfiguredAccelerators(
 			ACCEL accelerator = {};
 			if (!TryParseShortcut(entry.second, accelerator))
 			{
+				if (rejectInvalidBindings)
+				{
+					failBinding("invalid renderer-selection shortcut " + entry.first);
+					return nullptr;
+				}
 				DEBUGLOG("Invalid shortcut '%s' for renderer index %u",
 					entry.second.c_str(),
 					rendererIndex);
@@ -592,6 +714,11 @@ HACCEL CreateConfiguredAccelerators(
 				accelerator.key;
 			if (!bindings.insert(binding).second)
 			{
+				if (rejectInvalidBindings)
+				{
+					failBinding("duplicate renderer-selection shortcut " + entry.first);
+					return nullptr;
+				}
 				DEBUGLOG("Duplicate shortcut '%s' ignored for renderer index %u",
 					entry.second.c_str(),
 					rendererIndex);
@@ -630,6 +757,11 @@ HACCEL CreateConfiguredAccelerators(
 			ACCEL accelerator = {};
 			if (!TryParseShortcut(shortcut, accelerator))
 			{
+				if (rejectInvalidBindings)
+				{
+					failBinding("invalid shader shortcut in [" + section + "]");
+					return nullptr;
+				}
 				DEBUGLOG("Invalid shortcut '%s' for shader rule '%s'", shortcut.c_str(), rule.c_str());
 				continue;
 			}
@@ -652,6 +784,11 @@ HACCEL CreateConfiguredAccelerators(
 			}
 			if (!bindings.insert(binding).second)
 			{
+				if (rejectInvalidBindings)
+				{
+					failBinding("shader shortcut conflicts with another command in [" + section + "]");
+					return nullptr;
+				}
 				DEBUGLOG("Shortcut '%s' for shader effect '%s' conflicts with a non-shader command and was ignored", shortcut.c_str(), rule.c_str());
 				continue;
 			}
@@ -687,6 +824,12 @@ HACCEL CreateConfiguredAccelerators(
 			if (!RendererProfileConfig::MergeShortcutIntoWhen(
 				shortcut, "[" + section + "]", when, mergeError))
 			{
+				if (rejectInvalidBindings)
+				{
+					failBinding("invalid shortcut in [" + section + "]: " +
+						mergeError);
+					return nullptr;
+				}
 				DEBUGLOG("Invalid [%S] shortcut ignored for accelerators: %S",
 					section.c_str(), mergeError.c_str());
 				continue;
@@ -697,6 +840,12 @@ HACCEL CreateConfiguredAccelerators(
 			std::string error;
 			if (!expression.Compile(when, error, true))
 			{
+				if (rejectInvalidBindings)
+				{
+					failBinding("invalid shortcut expression in [" + section +
+						"]: " + error);
+					return nullptr;
+				}
 				DEBUGLOG("Invalid [%S] when ignored for accelerators: %S",
 					section.c_str(), error.c_str());
 				continue;
@@ -708,6 +857,12 @@ HACCEL CreateConfiguredAccelerators(
 				ACCEL accelerator = {};
 				if (!TryParseShortcut(chord, accelerator))
 				{
+					if (rejectInvalidBindings)
+					{
+						failBinding("unsupported shortcut " + chord +
+							" in [" + section + "]");
+						return nullptr;
+					}
 					DEBUGLOG("Shader key '%S' in [%S] is not a supported accelerator",
 						chord.c_str(), section.c_str());
 					continue;
@@ -719,6 +874,12 @@ HACCEL CreateConfiguredAccelerators(
 					continue;
 				if (!bindings.insert(binding).second)
 				{
+					if (rejectInvalidBindings)
+					{
+						failBinding("shortcut " + chord +
+							" conflicts with another command in [" + section + "]");
+						return nullptr;
+					}
 					DEBUGLOG("Shader key '%S' conflicts with an existing command", chord.c_str());
 					continue;
 				}
@@ -757,6 +918,11 @@ HACCEL CreateConfiguredAccelerators(
 			ACCEL accelerator = {};
 			if (!TryParseShortcut(shortcut, accelerator))
 			{
+				if (rejectInvalidBindings)
+				{
+					failBinding("invalid display-rule shortcut " + rule);
+					return nullptr;
+				}
 				DEBUGLOG("Invalid shortcut '%s' for display rule '%s'", shortcut.c_str(), rule.c_str());
 				continue;
 			}
@@ -765,6 +931,11 @@ HACCEL CreateConfiguredAccelerators(
 				(static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
 			if (!bindings.insert(binding).second)
 			{
+				if (rejectInvalidBindings)
+				{
+					failBinding("duplicate display-rule shortcut " + rule);
+					return nullptr;
+				}
 				DEBUGLOG("Duplicate shortcut '%s' ignored for display rule '%s'", shortcut.c_str(), rule.c_str());
 				continue;
 			}
@@ -785,6 +956,12 @@ HACCEL CreateConfiguredAccelerators(
 		std::vector<std::string> chords;
 		if (!RendererProfileConfig::CollectKeyChords(unifiedProfileModel, chords, unifiedProfileError))
 		{
+			if (rejectInvalidBindings)
+			{
+				failBinding("unified shortcut discovery failed: " +
+					unifiedProfileError);
+				return nullptr;
+			}
 			DEBUGLOG("Unified renderer shortcut discovery failed: %s", unifiedProfileError.c_str());
 		}
 		else
@@ -794,9 +971,9 @@ HACCEL CreateConfiguredAccelerators(
 			{
 				if (nextCommand > ID_COMMAND_UNIFIED_PROFILE_LAST) break;
 				ACCEL accelerator = {};
-				if (!TryParseShortcut(chord, accelerator)) { DEBUGLOG("Invalid unified profile shortcut '%s'", chord.c_str()); continue; }
+				if (!TryParseShortcut(chord, accelerator)) { if (rejectInvalidBindings) { failBinding("invalid unified profile shortcut " + chord); return nullptr; } DEBUGLOG("Invalid unified profile shortcut '%s'", chord.c_str()); continue; }
 				const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
-				if (!bindings.insert(binding).second) { DEBUGLOG("Duplicate unified profile shortcut '%s' ignored", chord.c_str()); continue; }
+				if (!bindings.insert(binding).second) { if (rejectInvalidBindings) { failBinding("duplicate unified profile shortcut " + chord); return nullptr; } DEBUGLOG("Duplicate unified profile shortcut '%s' ignored", chord.c_str()); continue; }
 				accelerator.cmd = nextCommand;
 				accelerators.push_back(accelerator);
 				CString keyName; keyName.Format(TEXT("%S"), chord.c_str());
@@ -1543,6 +1720,8 @@ DisplayTimingSnapshot GetDisplayTimingSnapshot(HWND hwnd)
 }
 }
 
+static UINT WM_CONFIGURATION_EDITOR_ASSOCIATION =
+	::RegisterWindowMessageW(L"VideoProcessor.ConfigEditor.Association.v1");
 
 BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 
@@ -1553,6 +1732,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_WM_GETMINMAXINFO()
 	ON_WM_SETFOCUS()
 	ON_WM_CLOSE()
+	ON_WM_SYSCOMMAND()
 	ON_WM_TIMER()
 	ON_WM_DISPLAYCHANGE()
 
@@ -1613,6 +1793,8 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_CONFIG_EDITOR, &CVideoProcessorDlg::OnCommandConfigEditor)
 	ON_COMMAND(ID_COMMAND_TOGGLE_NO_UI, &CVideoProcessorDlg::OnCommandToggleNoUi)
 	ON_MESSAGE(WM_HOTKEY, &CVideoProcessorDlg::OnConfigurationEditorHotkey)
+	ON_REGISTERED_MESSAGE(WM_CONFIGURATION_EDITOR_ASSOCIATION,
+		&CVideoProcessorDlg::OnConfigurationEditorAssociation)
 	ON_COMMAND_RANGE(ID_COMMAND_SHADER_RULE_FIRST, ID_COMMAND_SHADER_RULE_LAST, &CVideoProcessorDlg::OnCommandShaderRule)
 	ON_COMMAND_RANGE(ID_COMMAND_DISPLAY_RULE_FIRST, ID_COMMAND_DISPLAY_RULE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
 	ON_COMMAND_RANGE(ID_COMMAND_UNIFIED_PROFILE_FIRST, ID_COMMAND_UNIFIED_PROFILE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
@@ -1922,200 +2104,1211 @@ LRESULT CVideoProcessorDlg::OnConfigurationEditorHotkey(
 
 void CVideoProcessorDlg::ToggleConfigurationEditor()
 {
-	const HWND editor = FindConfigurationEditorForCurrentInstallation();
-	const bool visible = editor && ::IsWindowVisible(editor);
-	DebugLog::Log("Configuration editor toggle requested: editor=%p visible=%d",
-		reinterpret_cast<void*>(editor), visible ? 1 : 0);
-	if (visible)
+	HWND editor = VisibleAssociatedConfigurationEditor();
+	if (!editor)
 	{
-		// Config owns its close-to-tray behavior. Do not leave VP's explicit
-		// activation poll armed after the user has toggled it closed.
-		m_configurationEditorActivationPending = false;
-		const BOOL posted = ::PostMessage(editor, WM_CLOSE, 0, 0);
-		DebugLog::Log("Configuration editor toggle: close posted=%d", posted ? 1 : 0);
+		editor = FindConfigurationEditorForCurrentInstallation();
+		TrackConfigurationEditor(editor);
+		editor = VisibleAssociatedConfigurationEditor();
+	}
+	const bool visible = editor && ::IsWindowVisible(editor);
+	DWORD foregroundProcessId = 0;
+	const HWND foreground = ::GetForegroundWindow();
+	if (foreground)
+		::GetWindowThreadProcessId(foreground, &foregroundProcessId);
+	const bool editorOwnsForeground = visible &&
+		m_configurationEditorProcessId != 0 &&
+		foregroundProcessId == m_configurationEditorProcessId;
+	const auto action = ConfigurationLiveApply::ResolveConfigurationEditorToggle(
+		visible, editorOwnsForeground,
+		m_configurationEditorActivationPending);
+	DebugLog::Log(
+		"Configuration editor toggle requested: editor=%p visible=%d foreground=%p foreground_pid=%lu editor_pid=%lu pending=%d action=%d",
+		reinterpret_cast<void*>(editor), visible ? 1 : 0,
+		reinterpret_cast<void*>(foreground), foregroundProcessId,
+		m_configurationEditorProcessId,
+		m_configurationEditorActivationPending ? 1 : 0,
+		static_cast<int>(action));
+	// This shortcut intentionally always reveals and activates Config. Closing
+	// the editor remains a direct editor/tray action, never a side effect of
+	// trying to bring it in front of a fullscreen video surface.
+	OnCommandConfigEditor();
+}
+
+HWND CVideoProcessorDlg::ConfigurationEditorOwner()
+{
+	HWND target = nullptr;
+	if (m_rendererFullscreenCheck.GetCheck() != FALSE &&
+		m_fullScreenVideoWindow &&
+		::IsWindow(m_fullScreenVideoWindow->GetHWND()))
+	{
+		target = m_fullScreenVideoWindow->GetHWND();
+	}
+	else if (::IsWindow(m_rendererTargetHwnd))
+	{
+		target = m_rendererTargetHwnd;
+	}
+	if (target)
+		target = ::GetAncestor(target, GA_ROOT);
+	return target && ::IsWindow(target) ? target : GetSafeHwnd();
+}
+
+void CVideoProcessorDlg::TrackConfigurationEditor(HWND editor)
+{
+	if (!editor || !::IsWindow(editor))
+	{
+		if (m_configurationEditorHwnd &&
+			!::IsWindow(m_configurationEditorHwnd))
+		{
+			DebugLog::Log(
+				"Configuration editor association cleared hwnd=%p pid=%lu",
+				reinterpret_cast<void*>(m_configurationEditorHwnd),
+				m_configurationEditorProcessId);
+			m_configurationEditorHwnd = nullptr;
+			m_configurationEditorProcessId = 0;
+		}
+		return;
+	}
+	DWORD processId = 0;
+	::GetWindowThreadProcessId(editor, &processId);
+	if (editor == m_configurationEditorHwnd &&
+		processId == m_configurationEditorProcessId)
+		return;
+	m_configurationEditorHwnd = editor;
+	m_configurationEditorProcessId = processId;
+	DebugLog::Log(
+		"Configuration editor associated hwnd=%p pid=%lu owner=%p",
+		reinterpret_cast<void*>(editor), processId,
+		reinterpret_cast<void*>(ConfigurationEditorOwner()));
+}
+
+HWND CVideoProcessorDlg::VisibleAssociatedConfigurationEditor() const
+{
+	if (!m_configurationEditorHwnd || !m_configurationEditorProcessId ||
+		!IsConfigurationEditorTopLevel(m_configurationEditorHwnd,
+			m_configurationEditorProcessId, false) ||
+		!::IsWindowVisible(m_configurationEditorHwnd))
+	{
+		return nullptr;
+	}
+	return m_configurationEditorHwnd;
+}
+
+LRESULT CVideoProcessorDlg::OnConfigurationEditorAssociation(
+	WPARAM wParam, LPARAM lParam)
+{
+	const DWORD advertisedProcessId = static_cast<DWORD>(wParam);
+	const HWND advertisedWindow = reinterpret_cast<HWND>(lParam);
+	if (!advertisedProcessId ||
+		!IsConfigurationEditorTopLevel(advertisedWindow,
+			advertisedProcessId, false))
+	{
+		DebugLog::Log(
+			"Configuration editor association rejected: hwnd=%p pid=%lu reason=invalid-top-level-or-class",
+			reinterpret_cast<void*>(advertisedWindow), advertisedProcessId);
+		return 0;
+	}
+	const HWND previousWindow = m_configurationEditorHwnd;
+	const DWORD previousProcessId = m_configurationEditorProcessId;
+	TrackConfigurationEditor(advertisedWindow);
+	PublishConfigurationEditorPresentationTarget(advertisedWindow);
+	DebugLog::Log(
+		"Configuration editor association advertised: previous=%p/%lu current=%p/%lu visible=%d ack=1",
+		reinterpret_cast<void*>(previousWindow), previousProcessId,
+		reinterpret_cast<void*>(advertisedWindow), advertisedProcessId,
+		::IsWindowVisible(advertisedWindow) ? 1 : 0);
+	if (ConfigurationLiveApply::ShouldRetryRevealForAssociation(
+		m_configurationEditorActivationPending, true) &&
+		!m_configurationEditorRevealAcknowledged)
+	{
+		// The editor is synchronously waiting for this Association acknowledgement.
+		// Queue the reciprocal Activate request so its UI thread can return to the
+		// native event loop before VP sends it.
+		::PostMessage(GetSafeHwnd(), WM_COMMAND,
+			MAKEWPARAM(ID_COMMAND_CONFIG_EDITOR, 0), 0);
+		DebugLog::Log(
+			"Configuration editor pending reveal resumed by current association: hwnd=%p pid=%lu",
+			reinterpret_cast<void*>(advertisedWindow), advertisedProcessId);
+	}
+	return 1;
+}
+
+bool CVideoProcessorDlg::PublishConfigurationEditorPresentationTarget(
+	HWND editor, bool synchronous)
+{
+	if (!editor || !::IsWindow(editor))
+		return false;
+	const HWND fullscreenTarget = m_fullScreenVideoWindow &&
+		::IsWindow(m_fullScreenVideoWindow->GetHWND()) ?
+		m_fullScreenVideoWindow->GetHWND() : nullptr;
+	const HWND windowedTarget =
+		::IsWindow(m_windowedVideoWindow.GetSafeHwnd()) ?
+		m_windowedVideoWindow.GetSafeHwnd() : nullptr;
+	HWND target = reinterpret_cast<HWND>(
+		ConfigurationLiveApply::SelectConfigurationEditorPresentationTarget(
+			m_rendererFullscreenCheck.GetCheck() != FALSE,
+			reinterpret_cast<uintptr_t>(fullscreenTarget),
+			::IsWindow(m_rendererTargetHwnd) ?
+				reinterpret_cast<uintptr_t>(m_rendererTargetHwnd) : 0,
+			reinterpret_cast<uintptr_t>(windowedTarget)));
+	if (target && ::IsWindow(target))
+		target = ::GetAncestor(target, GA_ROOT);
+	if (!target || !::IsWindow(target))
+		target = GetSafeHwnd();
+	DWORD targetProcessId = 0;
+	if (target)
+		::GetWindowThreadProcessId(target, &targetProcessId);
+	if (!ConfigurationLiveApply::IsValidatedPresentationTargetProcess(
+		GetCurrentProcessId(), targetProcessId,
+		target && ::IsWindow(target)))
+	{
+		DebugLog::Log(
+			"Configuration editor presentation target skipped: editor=%p target=%p target_pid=%lu vp_pid=%lu",
+			reinterpret_cast<void*>(editor), reinterpret_cast<void*>(target),
+			targetProcessId, GetCurrentProcessId());
+		return false;
+	}
+	static const UINT targetMessage = ::RegisterWindowMessageW(
+		L"VideoProcessor.ConfigEditor.PresentationTarget.v1");
+	if (!targetMessage)
+		return false;
+	DWORD_PTR acknowledgement = 0;
+	LRESULT delivered = 0;
+	bool accepted = false;
+	if (synchronous)
+	{
+		delivered = ::SendMessageTimeoutW(editor, targetMessage,
+			static_cast<WPARAM>(GetCurrentProcessId()),
+			reinterpret_cast<LPARAM>(target),
+			SMTO_ABORTIFHUNG | SMTO_BLOCK, 250, &acknowledgement);
+		accepted = delivered != 0 && acknowledgement == 1;
 	}
 	else
-		OnCommandConfigEditor();
-}
-
-HWND CVideoProcessorDlg::ConfigurationEditorOwner() const
-{
-	// The main dialog outlives renderer/fullscreen transitions. A cross-process
-	// modal owner must not disappear merely because the renderer recreates its
-	// presentation HWND.
-	return GetSafeHwnd();
-}
-
-void CVideoProcessorDlg::DemoteFullscreenForConfigurationEditor()
-{
-	if (!m_fullScreenVideoWindow ||
-		!::IsWindow(m_fullScreenVideoWindow->GetHWND()) ||
-		m_windowedFullScreenMode)
-		return;
-	const HWND fullscreen = m_fullScreenVideoWindow->GetHWND();
-	const LONG_PTR exStyle = ::GetWindowLongPtr(fullscreen, GWL_EXSTYLE);
-	if ((exStyle & WS_EX_TOPMOST) == 0)
-		return;
-	if (::SetWindowPos(fullscreen, HWND_NOTOPMOST, 0, 0, 0, 0,
-		SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER))
 	{
-		m_configurationEditorFullscreenWasTopmost = true;
-		DebugLog::Log(
-			"Configuration editor opening: fullscreen topmost suspended hwnd=%p",
-			reinterpret_cast<void*>(fullscreen));
+		delivered = ::PostMessageW(editor, targetMessage,
+			static_cast<WPARAM>(GetCurrentProcessId()),
+			reinterpret_cast<LPARAM>(target));
+		accepted = delivered != 0;
 	}
-}
-
-void CVideoProcessorDlg::RestoreFullscreenAfterConfigurationEditor()
-{
-	if (!m_configurationEditorFullscreenWasTopmost)
-		return;
-	const bool wasTopmost = m_configurationEditorFullscreenWasTopmost;
-	m_configurationEditorFullscreenWasTopmost = false;
-	if (!m_fullScreenVideoWindow ||
-		!::IsWindow(m_fullScreenVideoWindow->GetHWND()) ||
-		m_windowedFullScreenMode)
-		return;
-	const HWND fullscreen = m_fullScreenVideoWindow->GetHWND();
-	const bool rendererHasLiveFrame =
-		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
-		m_videoRenderer && m_videoRenderer->HasPresentedLiveFrame();
-	if (!rendererHasLiveFrame)
-	{
-		DebugLog::Log(
-			"Configuration editor closed: fullscreen topmost restore deferred "
-			"until a verified live frame hwnd=%p renderer_state=%d",
-			reinterpret_cast<void*>(fullscreen),
-			static_cast<int>(m_rendererState));
-		return;
-	}
-	::SetWindowPos(fullscreen, HWND_TOPMOST, 0, 0, 0, 0,
-		SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+	if (ConfigurationLiveApply::ShouldRequestConfigurationEditorOneShotReassert(
+		accepted, ::IsWindow(editor) != FALSE))
+		RequestConfigurationEditorOneShotReassert(editor, target);
 	DebugLog::Log(
-		"Configuration editor closed: fullscreen topmost restored hwnd=%p "
-		"was_topmost=%d",
-		reinterpret_cast<void*>(fullscreen), wasTopmost ? 1 : 0);
+		"Configuration editor presentation owner handoff: editor=%p target=%p target_pid=%lu monitor=%p mode=%s delivered=%lld ack=%llu accepted=%d",
+		reinterpret_cast<void*>(editor), reinterpret_cast<void*>(target),
+		targetProcessId,
+		reinterpret_cast<void*>(::MonitorFromWindow(
+			target, MONITOR_DEFAULTTONEAREST)),
+		synchronous ? "sync-before-reveal" : "async-target-change",
+		static_cast<long long>(delivered),
+		static_cast<unsigned long long>(acknowledgement),
+		accepted ? 1 : 0);
+	return accepted;
+}
+
+bool CVideoProcessorDlg::RequestConfigurationEditorOneShotReassert(
+	HWND editor, HWND presentationTarget)
+{
+	if (!editor || !::IsWindow(editor) || !presentationTarget ||
+		!::IsWindow(presentationTarget))
+	{
+		return false;
+	}
+	DWORD targetProcessId = 0;
+	::GetWindowThreadProcessId(presentationTarget, &targetProcessId);
+	if (!ConfigurationLiveApply::IsValidatedPresentationTargetProcess(
+		GetCurrentProcessId(), targetProcessId, true))
+	{
+		return false;
+	}
+	static const UINT reassertMessage = ::RegisterWindowMessageW(
+		L"VideoProcessor.ConfigEditor.Reassert.v1");
+	if (!reassertMessage)
+		return false;
+	const BOOL posted = ::PostMessageW(editor, reassertMessage,
+		static_cast<WPARAM>(GetCurrentProcessId()),
+		reinterpret_cast<LPARAM>(presentationTarget));
+	DebugLog::Log(
+		"Configuration editor one-shot reassert requested: editor=%p target=%p posted=%d",
+		reinterpret_cast<void*>(editor),
+		reinterpret_cast<void*>(presentationTarget), posted ? 1 : 0);
+	return posted != FALSE;
+}
+
+bool CVideoProcessorDlg::RequestConfigurationEditorReveal(HWND editor)
+{
+	DWORD editorProcessId = 0;
+	if (editor)
+		::GetWindowThreadProcessId(editor, &editorProcessId);
+	if (!editorProcessId)
+		return false;
+
+	HWND target = editor;
+	if (m_configurationEditorProcessId == editorProcessId &&
+		IsConfigurationEditorTopLevel(m_configurationEditorHwnd,
+			editorProcessId, false))
+		target = m_configurationEditorHwnd;
+
+	DWORD_PTR acknowledgement = 0;
+	bool messageDelivered = false;
+	PublishConfigurationEditorPresentationTarget(target, true);
+	if (SendConfigurationEditorRevealOnce(target,
+		ConfigurationEditorOwner(), GetCurrentProcessId(), messageDelivered,
+		acknowledgement))
+	{
+		TrackConfigurationEditor(target);
+		return true;
+	}
+
+	// Qt may recreate its native main-window HWND during transient-owner or
+	// popup transitions. An old HWND can remain valid and accept the message
+	// while no longer hosting ConfigEditorWindow::nativeEvent (ack=0). Rediscover
+	// a current same-process Qt top level and retry exactly once.
+	if (!ConfigurationLiveApply::ShouldRediscoverConfigurationEditor(
+		messageDelivered, acknowledgement, false))
+		return false;
+	const HWND rediscovered = FindConfigurationEditorForProcess(
+		editorProcessId, target);
+	if (!rediscovered)
+	{
+		DebugLog::Log(
+			"Configuration editor reveal rediscovery failed: stale=%p pid=%lu first_ack=%llu",
+			reinterpret_cast<void*>(target), editorProcessId,
+			static_cast<unsigned long long>(acknowledgement));
+		return false;
+	}
+	TrackConfigurationEditor(rediscovered);
+	PublishConfigurationEditorPresentationTarget(rediscovered, true);
+	DWORD_PTR retryAcknowledgement = 0;
+	bool retryDelivered = false;
+	const bool acknowledged = SendConfigurationEditorRevealOnce(rediscovered,
+		ConfigurationEditorOwner(), GetCurrentProcessId(),
+		retryDelivered, retryAcknowledgement);
+	DebugLog::Log(
+		"Configuration editor reveal rediscovered: stale=%p current=%p pid=%lu first_ack=%llu retry_ack=%llu success=%d",
+		reinterpret_cast<void*>(target),
+		reinterpret_cast<void*>(rediscovered), editorProcessId,
+		static_cast<unsigned long long>(acknowledgement),
+		static_cast<unsigned long long>(retryAcknowledgement),
+		acknowledged ? 1 : 0);
+	return acknowledged;
 }
 
 void CVideoProcessorDlg::UpdateConfigurationEditorModal()
 {
+	// Recurring Config lease/polling was removed. Cold-start reveal resumes once
+	// from Association.v1; explicit shortcut activation is dispatched once.
+	return;
+#if 0
 	// Config is a separate Qt application with its own tray lifetime and
-	// topmost-on-show policy. VP must not repeatedly retarget, raise, or model
+	// native owner association. VP must not repeatedly retarget, raise, or model
 	// every visible Config window as a cross-process modal dialog: the hidden
 	// warm instance can briefly be visible during startup, and that loop caused
 	// the reported activation/hang behavior. This timer performs one bounded
 	// activation only after an explicit VP command; VP itself remains enabled.
-	if (!m_configurationEditorActivationPending &&
-		!m_configurationEditorFullscreenWasTopmost)
-		return;
-
-	const HWND editor = FindConfigurationEditorForCurrentInstallation();
-	const bool visible = editor && IsWindow(editor) && ::IsWindowVisible(editor);
-	if (!visible)
+	constexpr ULONGLONG revealTimeoutMs = 20000;
+	constexpr ULONGLONG revealRetryIntervalMs = 500;
+	constexpr ULONGLONG foregroundFallbackDelayMs = 5000;
+	const ULONGLONG now = ::GetTickCount64();
+	const ULONGLONG elapsed = m_configurationEditorRevealStartedTick == 0 ? 0 :
+		now - m_configurationEditorRevealStartedTick;
+	HWND editor = VisibleAssociatedConfigurationEditor();
+	if (!editor)
 	{
+		editor = FindConfigurationEditorForCurrentInstallation();
+		TrackConfigurationEditor(editor);
+		editor = VisibleAssociatedConfigurationEditor();
+	}
+	const bool visible = editor && IsWindow(editor) && ::IsWindowVisible(editor);
+	if (!visible && m_fullscreenActivationDeferredForConfigurationEditor)
+	{
+		const HWND fullscreen = m_fullScreenVideoWindow ?
+			m_fullScreenVideoWindow->GetHWND() : nullptr;
+		DWORD foregroundProcessId = 0;
+		const HWND foreground = ::GetForegroundWindow();
+		if (foreground)
+			::GetWindowThreadProcessId(foreground, &foregroundProcessId);
+		const bool mayActivate = ConfigurationLiveApply::MayActivateFullscreen(
+			GetCurrentProcessId(), foregroundProcessId, foreground != nullptr);
+		const bool execute = ConfigurationLiveApply::
+			ShouldExecuteDeferredPresentationActivation(
+				true, false, m_rendererFullscreenCheck.GetCheck() != FALSE,
+				fullscreen && ::IsWindow(fullscreen),
+				fullscreen && ::IsIconic(fullscreen), mayActivate);
+		m_fullscreenActivationDeferredForConfigurationEditor = false;
+		m_configurationEditorOwnedForegroundBeforePresentation = false;
+		if (execute)
+			::ShowWindow(fullscreen, SW_RESTORE);
+		DebugLog::Log(
+			"Fullscreen activation deferred by Config resolved: execute=%d target=%p requested=%d iconic=%d foreground=%p",
+			execute ? 1 : 0, reinterpret_cast<void*>(fullscreen),
+			m_rendererFullscreenCheck.GetCheck() != FALSE ? 1 : 0,
+			fullscreen && ::IsIconic(fullscreen) ? 1 : 0,
+			reinterpret_cast<void*>(foreground));
+	}
+	if (!visible)
+		m_configurationEditorOwnedForegroundBeforePresentation = false;
+	if (!m_configurationEditorActivationPending &&
+		!m_configurationEditorFullscreenWasTopmost &&
+		!m_fullscreenActivationDeferredForConfigurationEditor)
+		return;
+	const auto outcome = ConfigurationLiveApply::
+		ResolveConfigurationEditorReveal(
+			m_configurationEditorActivationPending,
+			m_configurationEditorRevealAcknowledged, visible, elapsed,
+			revealTimeoutMs);
+	if (outcome == ConfigurationLiveApply::
+		ConfigurationEditorRevealOutcome::Complete)
+	{
+		DebugLog::Log(
+			"Configuration editor durable reveal complete: hwnd=%p pid=%lu elapsed_ms=%llu attempts=%u association_ack=1 visible=1",
+			reinterpret_cast<void*>(m_configurationEditorHwnd),
+			m_configurationEditorProcessId,
+			static_cast<unsigned long long>(elapsed),
+			m_configurationEditorActivationAttempts);
 		m_configurationEditorActivationPending = false;
 		m_configurationEditorActivationAttempts = 0;
-		RestoreFullscreenAfterConfigurationEditor();
+		m_configurationEditorFallbackLaunched = false;
+		m_configurationEditorRevealAcknowledged = false;
+		m_configurationEditorActivationAcknowledgedTick = 0;
+		m_configurationEditorForegroundFallbackAttempted = false;
+		m_configurationEditorRevealStartedTick = 0;
+		m_configurationEditorLastRevealAttemptTick = 0;
+		return;
+	}
+	if (outcome == ConfigurationLiveApply::
+		ConfigurationEditorRevealOutcome::Expired)
+	{
+		DebugLog::Log(
+			"Configuration editor durable reveal expired: hwnd=%p pid=%lu elapsed_ms=%llu attempts=%u acknowledged=%d visible=%d launch_attempted=%d foreground_fallback=%d",
+			reinterpret_cast<void*>(m_configurationEditorHwnd),
+			m_configurationEditorProcessId,
+			static_cast<unsigned long long>(elapsed),
+			m_configurationEditorActivationAttempts,
+			m_configurationEditorRevealAcknowledged ? 1 : 0,
+			visible ? 1 : 0,
+			m_configurationEditorFallbackLaunched ? 1 : 0,
+			m_configurationEditorForegroundFallbackAttempted ? 1 : 0);
+		m_configurationEditorActivationPending = false;
+		m_configurationEditorActivationAttempts = 0;
+		m_configurationEditorFallbackLaunched = false;
+		m_configurationEditorRevealAcknowledged = false;
+		m_configurationEditorActivationAcknowledgedTick = 0;
+		m_configurationEditorForegroundFallbackAttempted = false;
+		m_configurationEditorRevealStartedTick = 0;
+		m_configurationEditorLastRevealAttemptTick = 0;
+		return;
+	}
+	if (!m_configurationEditorActivationPending)
+	{
 		return;
 	}
 
-	if (!m_configurationEditorActivationPending)
-		return;
-
-	DWORD editorProcessId = 0;
-	::GetWindowThreadProcessId(editor, &editorProcessId);
-	if (m_configurationEditorActivationAttempts < 10)
+	constexpr ULONGLONG acknowledgementGraceMs = 1500;
+	const bool retryIntervalReady =
+		m_configurationEditorLastRevealAttemptTick == 0 ||
+		now - m_configurationEditorLastRevealAttemptTick >=
+			revealRetryIntervalMs;
+	const ULONGLONG elapsedSinceAcknowledgement =
+		m_configurationEditorActivationAcknowledgedTick == 0 ? 0 :
+		now - m_configurationEditorActivationAcknowledgedTick;
+	if (editor && ConfigurationLiveApply::
+		ShouldRetryConfigurationEditorActivate(
+			m_configurationEditorActivationPending,
+			m_configurationEditorRevealAcknowledged,
+			elapsedSinceAcknowledgement, acknowledgementGraceMs,
+			retryIntervalReady))
 	{
 		++m_configurationEditorActivationAttempts;
-		if (editorProcessId)
-			AllowSetForegroundWindow(editorProcessId);
-		if (ActivateConfigurationEditor(editor))
+		m_configurationEditorLastRevealAttemptTick = now;
+		if (RequestConfigurationEditorReveal(editor))
 		{
-			m_configurationEditorActivationPending = false;
-			m_configurationEditorActivationAttempts = 0;
-			DebugLog::Log("Configuration editor explicit activation completed");
-			return;
-		}
-		if (m_configurationEditorActivationAttempts == 10)
-		{
-			FLASHWINFO flash = { sizeof(flash), editor,
-				FLASHW_TRAY | FLASHW_TIMERNOFG, 3, 0 };
-			::FlashWindowEx(&flash);
-			DebugLog::Log(
-				"Configuration editor activation not granted; VP remains enabled and no retry loop will run");
-			m_configurationEditorActivationPending = false;
+			m_configurationEditorRevealAcknowledged = true;
+			m_configurationEditorActivationAcknowledgedTick = now;
 		}
 	}
+
+	// This is intentionally a one-shot last resort. Failure does not consume
+	// the durable intent; a later Association advertisement can still complete
+	// the original request before the overall deadline.
+	if (visible && !m_configurationEditorRevealAcknowledged &&
+		!m_configurationEditorForegroundFallbackAttempted &&
+		elapsed >= foregroundFallbackDelayMs)
+	{
+		m_configurationEditorForegroundFallbackAttempted = true;
+		DebugLog::Log(
+			"Configuration editor foreground fallback: editor=%p elapsed_ms=%llu action=nonactivating-flash pending_retained=1",
+			reinterpret_cast<void*>(editor),
+			static_cast<unsigned long long>(elapsed));
+	}
+#endif
 }
 
 void CVideoProcessorDlg::ApplySavedConfiguration()
 {
-	ConfigFile config;
-	if (!config.Load())
+	if (!StageSavedConfiguration("editor-apply", false))
+		return;
+
+	switch (m_stagedConfigurationAction)
+	{
+	case ConfigurationApplyPolicy::Action::RestartRenderer:
+		DebugLog::Log(
+			"Configuration transaction accepted: identity=%s action=restart-renderer state=staged",
+			m_stagedConfigurationIdentity.c_str());
+		m_postRendererStartRequiresGraph = true;
+		m_wantToRestartRenderer = true;
+		UpdateState();
+		break;
+	case ConfigurationApplyPolicy::Action::ResetQueues:
+	{
+		const bool replaceShortcuts = m_stagedShortcutsChanged;
+		if (PublishStagedConfiguration(replaceShortcuts))
+			DebugLog::Log(
+				"Configuration transaction accepted: action=reset-queues state=published shortcuts=%s",
+				replaceShortcuts ? "replaced" : "retained");
+		break;
+	}
+	case ConfigurationApplyPolicy::Action::ReloadShortcuts:
+		PublishStagedShortcutsOnly();
+		break;
+	default:
+		DebugLog::Log(
+			"Configuration transaction complete: identity=%s action=save-only runtime=retained shortcuts=retained",
+			m_stagedConfigurationIdentity.c_str());
+		ClearStagedConfiguration();
+		break;
+	}
+}
+
+bool CVideoProcessorDlg::StageSavedConfiguration(
+	const char* reason, bool stageAccelerators)
+{
+	ClearStagedConfiguration();
+	std::unique_ptr<ConfigFile> candidate;
+	ConfigurationSnapshot candidateSnapshot;
+	for (unsigned int attempt = 1; attempt <= 3; ++attempt)
+	{
+		auto first = std::make_unique<ConfigFile>();
+		if (!first->Load())
+		{
+			DebugLog::Log(
+				"Configuration reload rejected: reason=%s attempt=%u failure=load",
+				reason, attempt);
+			continue;
+		}
+		const ConfigurationSnapshot firstSnapshot =
+			CaptureConfigurationSnapshot(*first);
+		auto second = std::make_unique<ConfigFile>();
+		if (!second->Load() ||
+			CaptureConfigurationSnapshot(*second) != firstSnapshot)
+		{
+			DebugLog::Log(
+				"Configuration reload retry: reason=%s attempt=%u failure=unstable-file",
+				reason, attempt);
+			continue;
+		}
+		candidateSnapshot = firstSnapshot;
+		candidate = std::move(second);
+		break;
+	}
+	if (!candidate)
 	{
 		DebugLog::Log(
-			"Configuration live apply failed: VideoProcessor.cfg could not be loaded");
-		return;
-	}
-	std::string validationError;
-	if (!MainConfigSchema::Validate(config, validationError))
-	{
-		DebugLog::Log("Configuration live apply rejected: %s",
-			validationError.c_str());
-		return;
+			"Configuration reload retained last-known-good: reason=%s failure=stable-snapshot-unavailable",
+			reason);
+		return false;
 	}
 
-	const ConfigurationSnapshot candidate =
-		CaptureConfigurationSnapshot(config);
+	std::string error;
+	if (!MainConfigSchema::Validate(*candidate, error))
+	{
+		DebugLog::Log(
+			"Configuration reload retained last-known-good: reason=%s failure=validation detail=%s",
+			reason, error.c_str());
+		return false;
+	}
+	if (!StageRuntimeSettings(*candidate, error))
+	{
+		DebugLog::Log(
+			"Configuration reload retained last-known-good: reason=%s failure=runtime-settings detail=%s",
+			reason, error.c_str());
+		return false;
+	}
+	// Resolve against current source facts in an isolated runtime. This proves
+	// profile discovery and rule resolution before the live runtime is touched.
+	UnifiedProfileRuntime::Runtime candidateRuntime;
+	if (!candidateRuntime.Initialize(*candidate,
+		GetUnifiedProfileSourceLookup(), error))
+	{
+		DebugLog::Log(
+			"Configuration reload retained last-known-good: reason=%s failure=profile-resolution detail=%s",
+			reason, error.c_str());
+		return false;
+	}
+
 	const std::vector<std::string> changed =
-		ChangedConfigurationSections(m_configurationSnapshot, candidate);
-	if (changed.empty())
+		ChangedConfigurationSections(m_configurationSnapshot, candidateSnapshot);
+	const std::vector<ConfigurationApplyPolicy::Change> changedValues =
+		ChangedConfigurationValues(m_configurationSnapshot, candidateSnapshot);
+	m_stagedEditorApply = strcmp(reason, "editor-apply") == 0;
+	m_stagedRendererChanged = std::any_of(changedValues.begin(),
+		changedValues.end(), [](const ConfigurationApplyPolicy::Change& change)
+		{
+			const std::string section = ConfigFile::NormalizeName(change.section);
+			return (section == "general" || section == "command_line") &&
+				ConfigFile::NormalizeName(change.key) == "renderer";
+		});
+	const bool directShowActive = m_videoRenderer &&
+		m_activeRendererIsDirectShow;
+	m_stagedConfigurationAction =
+		ConfigurationApplyPolicy::ClassifyChanges(changedValues,
+			directShowActive);
+	m_stagedShortcutsChanged = std::any_of(changedValues.begin(),
+		changedValues.end(), ConfigurationApplyPolicy::IsShortcutAffectingChange);
+	stageAccelerators = stageAccelerators ||
+		ConfigurationLiveApply::ShouldStageShortcutTable(
+			m_stagedShortcutsChanged,
+			m_stagedConfigurationAction ==
+				ConfigurationApplyPolicy::Action::RestartRenderer);
+	if (stageAccelerators)
 	{
-		DebugLog::Log("Configuration live apply: saved content is unchanged");
-		return;
+		ConfigFile rendererConfig;
+		const ConfigFile* rendererConfigPtr = nullptr;
+		for (unsigned int attempt = 1; attempt <= 3; ++attempt)
+		{
+			ConfigFile firstRendererConfig;
+			if (!firstRendererConfig.Load(ConfigFile::RENDERER_FILENAME))
+				break; // Optional Alpha renderer override is absent.
+			ConfigFile secondRendererConfig;
+			if (secondRendererConfig.Load(ConfigFile::RENDERER_FILENAME) &&
+				CaptureConfigurationSnapshot(firstRendererConfig) ==
+					CaptureConfigurationSnapshot(secondRendererConfig))
+			{
+				rendererConfig = std::move(secondRendererConfig);
+				rendererConfigPtr = &rendererConfig;
+				break;
+			}
+			if (attempt == 3)
+			{
+				DebugLog::Log(
+					"Configuration reload retained last-known-good: reason=%s failure=unstable-renderer-config",
+					reason);
+				ClearStagedConfiguration();
+				return false;
+			}
+		}
+		if (rendererConfigPtr)
+		{
+			RendererProfileConfig::Model rendererModel;
+			if (!DisplayRuleExpression::ValidateConfig(*rendererConfigPtr,
+				error) ||
+				!RendererProfileConfig::Read(*rendererConfigPtr,
+					rendererModel, error))
+			{
+				DebugLog::Log(
+					"Configuration reload retained last-known-good: reason=%s failure=renderer-config-validation detail=%s",
+					reason, error.c_str());
+				ClearStagedConfiguration();
+				return false;
+			}
+		}
+		m_stagedAccelerator = CreateConfiguredAccelerators(
+			m_stagedShaderShortcutRules, m_stagedShaderShortcutKeys,
+			m_stagedDisplayRuleShortcutRules,
+			m_stagedRendererShortcutIndices,
+			m_stagedUnifiedProfileShortcutKeys,
+			m_stagedConfiguredAccelerators, candidate.get(),
+			rendererConfigPtr, true, &error);
+		if (!m_stagedAccelerator)
+		{
+			DebugLog::Log(
+				"Configuration reload retained last-known-good: reason=%s failure=accelerator-build detail=%s",
+				reason, error.empty() ? "CreateAcceleratorTable failed" :
+					error.c_str());
+			ClearStagedConfiguration();
+			return false;
+		}
 	}
 
+	uint64_t fingerprint = 1469598103934665603ull;
+	for (const auto& section : candidateSnapshot)
+	{
+		for (const unsigned char value : section.first)
+			fingerprint = (fingerprint ^ value) * 1099511628211ull;
+		for (const auto& setting : section.second)
+		{
+			for (const unsigned char value : setting.first)
+				fingerprint = (fingerprint ^ value) * 1099511628211ull;
+			for (const unsigned char value : setting.second)
+				fingerprint = (fingerprint ^ value) * 1099511628211ull;
+		}
+	}
+	std::ostringstream identity;
+	identity << candidate->GetLoadedPath() << "#" << std::hex << fingerprint;
+	m_stagedConfigurationIdentity = identity.str();
+	m_stagedConfiguration = std::move(candidate);
+	DebugLog::Log(
+		"Configuration reload staged: reason=%s identity=%s action=%s categories=%s directshow_active=%d shortcuts=%s shortcut_changes=%d editor_apply=%d renderer_changed=%d session_renderer=%S accepted_renderer=%S",
+		reason, m_stagedConfigurationIdentity.c_str(),
+		ConfigurationApplyPolicy::ActionLabel(m_stagedConfigurationAction),
+		changed.empty() ? "(none)" : JoinConfigurationSections(changed).c_str(),
+		directShowActive ? 1 : 0,
+		m_stagedAccelerator ? "staged" : "retained",
+		m_stagedShortcutsChanged ? 1 : 0,
+		m_stagedEditorApply ? 1 : 0,
+		m_stagedRendererChanged ? 1 : 0,
+		m_sessionRendererOverride.IsEmpty() ? L"(none)" :
+			m_sessionRendererOverride.GetString(),
+		m_acceptedRendererName.IsEmpty() ? L"(none)" :
+			m_acceptedRendererName.GetString());
+	return true;
+}
+
+bool CVideoProcessorDlg::StageRuntimeSettings(
+	const ConfigFile& config, std::string& error)
+{
+	m_stagedRuntimeSettings = StagedRuntimeSettings();
+	auto getApplicationValue = [&config](const char* key,
+		std::string& value)
+	{
+		return config.TryGetString("general", key, value) ||
+			config.TryGetString("command_line", key, value);
+	};
+	auto getSharedValue = [&config, &getApplicationValue](const char* key,
+		std::string& value)
+	{
+		return getApplicationValue(key, value) ||
+			config.TryGetString("directshow", key, value);
+	};
+	auto getDirectShowValue = [&config, &getApplicationValue](const char* key,
+		std::string& value)
+	{
+		return config.TryGetString("directshow", key, value) ||
+			getApplicationValue(key, value);
+	};
+	auto invalid = [&error](const char* key, const std::string& value)
+	{
+		error = std::string("unsupported value for ") + key + ": " + value;
+		return false;
+	};
+	std::string value;
+	if (getApplicationValue("renderer", value))
+	{
+		m_stagedRuntimeSettings.hasRenderer = true;
+		m_stagedRuntimeSettings.renderer = CString(value.c_str());
+		bool discovered = false;
+		for (int index = 0; index < m_rendererCombo.GetCount(); ++index)
+		{
+			const RendererId* renderer = reinterpret_cast<const RendererId*>(
+				m_rendererCombo.GetItemData(index));
+			if (renderer && renderer->MatchesConfiguredName(
+				m_stagedRuntimeSettings.renderer))
+			{
+				discovered = true;
+				break;
+			}
+		}
+		if (!discovered)
+			return invalid("renderer (not discovered)", value);
+	}
+	if (getDirectShowValue("frame_offset", value))
+	{
+		m_stagedRuntimeSettings.hasFrameOffset = true;
+		const std::string normalized = ConfigFile::NormalizeName(value);
+		m_stagedRuntimeSettings.frameOffsetAuto = normalized == "auto";
+		if (!m_stagedRuntimeSettings.frameOffsetAuto)
+		{
+			try
+			{
+				size_t parsed = 0;
+				const int offset = std::stoi(value, &parsed);
+				if (parsed != value.size() || offset < 0)
+					return invalid("frame_offset", value);
+				m_stagedRuntimeSettings.frameOffsetMs = offset;
+			}
+			catch (const std::exception&)
+			{
+				return invalid("frame_offset", value);
+			}
+		}
+	}
+	if (getSharedValue("video_conversion", value))
+	{
+		const std::string token = ConfigFile::NormalizeName(value);
+		m_stagedRuntimeSettings.hasVideoConversion = true;
+		if (token == "none" || token == "off")
+			m_stagedRuntimeSettings.videoConversion =
+				VideoConversionOverride::VIDEOCONVERSION_NONE;
+		else if (token == "v210_to_p010" || token == "uyvy_to_p010")
+			m_stagedRuntimeSettings.videoConversion =
+				VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
+		else return invalid("video_conversion", value);
+	}
+	if (getSharedValue("container_colorspace", value))
+	{
+		const std::string token = ConfigFile::NormalizeName(value);
+		const std::map<std::string, ColorSpace> values = {
+			{ "auto", ColorSpace::UNKNOWN }, { "follow_input", ColorSpace::UNKNOWN },
+			{ "bt2020", ColorSpace::BT_2020 }, { "p3_d65", ColorSpace::P3_D65 },
+			{ "p3_dci", ColorSpace::P3_DCI }, { "p3_d60", ColorSpace::P3_D60 },
+			{ "rec709", ColorSpace::REC_709 },
+			{ "rec601_525", ColorSpace::REC_601_525 },
+			{ "rec601_625", ColorSpace::REC_601_625 } };
+		const auto found = values.find(token);
+		if (found == values.end()) return invalid("container_colorspace", value);
+		m_stagedRuntimeSettings.hasContainerColorSpace = true;
+		m_stagedRuntimeSettings.containerColorSpace = found->second;
+	}
+	if (getSharedValue("hdr_colorspace", value))
+	{
+		const std::string token = ConfigFile::NormalizeName(value);
+		const std::map<std::string, HdrColorspaceOptions> values = {
+			{ "follow_input", HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT },
+			{ "follow_input_lldv", HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT_LLDV },
+			{ "follow_container", HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_CONTAINER },
+			{ "bt2020", HdrColorspaceOptions::HDR_COLORSPACE_BT2020 },
+			{ "p3", HdrColorspaceOptions::HDR_COLORSPACE_P3 },
+			{ "rec709", HdrColorspaceOptions::HDR_COLORSPACE_REC709 } };
+		const auto found = values.find(token);
+		if (found == values.end()) return invalid("hdr_colorspace", value);
+		m_stagedRuntimeSettings.hasHdrColorSpace = true;
+		m_stagedRuntimeSettings.hdrColorSpace = found->second;
+	}
+	if (getSharedValue("hdr_luminance", value))
+	{
+		const std::string token = ConfigFile::NormalizeName(value);
+		const std::map<std::string, HdrLuminanceOptions> values = {
+			{ "follow_input", HdrLuminanceOptions::HDR_LUMINANCE_FOLLOW_INPUT },
+			{ "follow_input_lldv", HdrLuminanceOptions::HDR_LUMINANCE_FOLLOW_INPUT_LLDV },
+			{ "hdr_luminance_user", HdrLuminanceOptions::HDR_LUMINANCE_USER },
+			{ "user", HdrLuminanceOptions::HDR_LUMINANCE_USER } };
+		const auto found = values.find(token);
+		if (found == values.end()) return invalid("hdr_luminance", value);
+		m_stagedRuntimeSettings.hasHdrLuminance = true;
+		m_stagedRuntimeSettings.hdrLuminance = found->second;
+	}
+	if (getDirectShowValue("renderer_start_stop_time_method", value))
+	{
+		const std::string token = ConfigFile::NormalizeName(value);
+		const std::map<std::string, DirectShowStartStopTimeMethod> values = {
+			{ "clock_smart", DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART },
+			{ "clock_smart2", DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2 },
+			{ "clock_theo", DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO },
+			{ "clock_clock", DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK },
+			{ "theo_theo", DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO },
+			{ "rational_rational", DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL },
+			{ "clock_rational", DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL },
+			{ "clock_none", DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE },
+			{ "theo_none", DirectShowStartStopTimeMethod::DS_SSTM_THEO_NONE },
+			{ "none", DirectShowStartStopTimeMethod::DS_SSTM_NONE } };
+		const auto found = values.find(token);
+		if (found == values.end()) return invalid("renderer_start_stop_time_method", value);
+		m_stagedRuntimeSettings.hasDirectShowTimeMethod = true;
+		m_stagedRuntimeSettings.directShowTimeMethod = found->second;
+	}
+	if (getDirectShowValue("renderer_nominal_range", value))
+	{
+		const std::string token = ConfigFile::NormalizeName(value);
+		const std::map<std::string, DXVA_NominalRange> values = {
+			{ "auto", DXVA_NominalRange::DXVA_NominalRange_Unknown },
+			{ "full", DXVA_NominalRange::DXVA_NominalRange_0_255 },
+			{ "limited", DXVA_NominalRange::DXVA_NominalRange_16_235 },
+			{ "small", DXVA_NominalRange::DXVA_NominalRange_48_208 } };
+		const auto found = values.find(token);
+		if (found == values.end()) return invalid("renderer_nominal_range", value);
+		m_stagedRuntimeSettings.hasNominalRange = true;
+		m_stagedRuntimeSettings.nominalRange = found->second;
+	}
+	if (getDirectShowValue("renderer_transfer_function", value))
+	{
+		const std::string token = ConfigFile::NormalizeName(value);
+		const std::map<std::string, DXVA_VideoTransferFunction> values = {
+			{ "auto", DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown },
+			{ "pq", DIRECTSHOW_VIDEOTRANSFUNC_2084 },
+			{ "rec709", DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_709 },
+			{ "bt2020_const", DIRECTSHOW_VIDEOTRANSFUNC_2020_const },
+			{ "gamma_1.8", DXVA_VideoTransferFunction::DXVA_VideoTransFunc_18 },
+			{ "gamma_2.0", DXVA_VideoTransferFunction::DXVA_VideoTransFunc_20 },
+			{ "gamma_2.2", DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22 },
+			{ "gamma_2.6", DIRECTSHOW_VIDEOTRANSFUNC_26 },
+			{ "gamma_2.8", DXVA_VideoTransferFunction::DXVA_VideoTransFunc_28 },
+			{ "linear_rgb", DXVA_VideoTransferFunction::DXVA_VideoTransFunc_10 },
+			{ "204m", DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_240M },
+			{ "8bit_gamma_2.2", DXVA_VideoTransferFunction::DXVA_VideoTransFunc_22_8bit_sRGB },
+			{ "log_100_1", DIRECTSHOW_VIDEOTRANSFUNC_Log_100 },
+			{ "log_316_1", DIRECTSHOW_VIDEOTRANSFUNC_Log_316 },
+			{ "bt2020", DIRECTSHOW_VIDEOTRANSFUNC_2020 },
+			{ "hybrid_log_gamma", DIRECTSHOW_VIDEOTRANSFUNC_HLG } };
+		const auto found = values.find(token);
+		if (found == values.end()) return invalid("renderer_transfer_function", value);
+		m_stagedRuntimeSettings.hasTransferFunction = true;
+		m_stagedRuntimeSettings.transferFunction = found->second;
+	}
+	if (getDirectShowValue("renderer_transfer_matrix", value))
+	{
+		const std::string token = ConfigFile::NormalizeName(value);
+		const std::map<std::string, DXVA_VideoTransferMatrix> values = {
+			{ "auto", DXVA_VideoTransferMatrix::DXVA_VideoTransferMatrix_Unknown },
+			{ "bt2020_10", DIRECTSHOW_VIDEOTRANSFERMATRIX_BT2020_10 },
+			{ "bt2020_12", DIRECTSHOW_VIDEOTRANSFERMATRIX_BT2020_12 },
+			{ "bt709", DXVA_VideoTransferMatrix::DXVA_VideoTransferMatrix_BT709 },
+			{ "bt601", DXVA_VideoTransferMatrix::DXVA_VideoTransferMatrix_BT601 },
+			{ "240m", DXVA_VideoTransferMatrix::DXVA_VideoTransferMatrix_SMPTE240M },
+			{ "fcc", DIRECTSHOW_VIDEOTRANSFERMATRIX_FCC },
+			{ "ycgco", DIRECTSHOW_VIDEOTRANSFERMATRIX_YCgCo } };
+		const auto found = values.find(token);
+		if (found == values.end()) return invalid("renderer_transfer_matrix", value);
+		m_stagedRuntimeSettings.hasTransferMatrix = true;
+		m_stagedRuntimeSettings.transferMatrix = found->second;
+	}
+	if (getDirectShowValue("renderer_primaries", value))
+	{
+		const std::string token = ConfigFile::NormalizeName(value);
+		const std::map<std::string, DXVA_VideoPrimaries> values = {
+			{ "auto", DXVA_VideoPrimaries::DXVA_VideoPrimaries_Unknown },
+			{ "bt2020", DIRECTSHOW_VIDEOPRIMARIES_BT2020 },
+			{ "dci-p3", DIRECTSHOW_VIDEOPRIMARIES_DCI_P3 },
+			{ "bt709", DXVA_VideoPrimaries::DXVA_VideoPrimaries_BT709 },
+			{ "ntsc_sysm", DXVA_VideoPrimaries::DXVA_VideoPrimaries_BT470_2_SysM },
+			{ "ntsc_sysbg", DXVA_VideoPrimaries::DXVA_VideoPrimaries_BT470_2_SysBG },
+			{ "cie1931_zyx", DIRECTSHOW_VIDEOPRIMARIES_XYZ },
+			{ "aces", DIRECTSHOW_VIDEOPRIMARIES_ACES } };
+		const auto found = values.find(token);
+		if (found == values.end()) return invalid("renderer_primaries", value);
+		m_stagedRuntimeSettings.hasPrimaries = true;
+		m_stagedRuntimeSettings.primaries = found->second;
+	}
+	for (const char* section : { "general", "command_line" })
+	{
+		if (!config.TryGetString(section, "scene_detect", value) &&
+			!config.TryGetString(section, "scene", value))
+			continue;
+		bool enabled = false;
+		if (!config.TryGetBool(section, config.TryGetString(section,
+			"scene_detect", value) ? "scene_detect" : "scene", enabled))
+			return invalid("scene_detect", value);
+		m_stagedRuntimeSettings.hasSceneDetect = true;
+		m_stagedRuntimeSettings.sceneDetect = enabled;
+		break;
+	}
+	return true;
+}
+
+void CVideoProcessorDlg::PublishStagedRuntimeSettings()
+{
+	const auto sessionPresentation =
+		ConfigurationLiveApply::PreserveSessionPresentation(
+			m_hideUI,
+			m_rendererFullscreenCheck.GetCheck() == BST_CHECKED);
+	auto selectData = [](CComboBox& combo, DWORD_PTR value)
+	{
+		for (int index = 0; index < combo.GetCount(); ++index)
+			if (combo.GetItemData(index) == value)
+			{
+				combo.SetCurSel(index);
+				return true;
+			}
+		return false;
+	};
+	const std::wstring savedRenderer = m_stagedRuntimeSettings.hasRenderer ?
+		std::wstring(m_stagedRuntimeSettings.renderer.GetString()) :
+		std::wstring();
+	const auto rendererDecision =
+		ConfigurationLiveApply::ResolveRendererPublication(
+			savedRenderer,
+			std::wstring(m_sessionRendererOverride.GetString()),
+			std::wstring(m_acceptedRendererName.GetString()),
+			m_stagedEditorApply, m_stagedRendererChanged);
+	bool rendererSelected = rendererDecision.renderer.empty();
+	if (!rendererDecision.renderer.empty())
+	{
+		for (int index = 0; index < m_rendererCombo.GetCount(); ++index)
+		{
+			const RendererId* renderer = reinterpret_cast<const RendererId*>(
+				m_rendererCombo.GetItemData(index));
+			if (renderer && renderer->MatchesConfiguredName(
+				CString(rendererDecision.renderer.c_str())))
+			{
+				m_rendererCombo.SetCurSel(index);
+				rendererSelected = true;
+				break;
+			}
+		}
+		if (!rendererSelected)
+			DebugLog::Log(
+				"Configuration runtime renderer retained: requested=%S source=%d failure=not-discovered",
+				rendererDecision.renderer.c_str(),
+				static_cast<int>(rendererDecision.source));
+	}
+	if (rendererSelected && m_stagedEditorApply &&
+		m_stagedRendererChanged && !rendererDecision.renderer.empty())
+	{
+		m_sessionRendererOverride = rendererDecision.renderer.c_str();
+		DebugLog::Log(
+			"Session renderer override replaced by editor apply: renderer=%S",
+			m_sessionRendererOverride.GetString());
+	}
+	if (m_stagedRuntimeSettings.hasFrameOffset)
+	{
+		m_timingClockFrameOffsetAutoCheck.SetCheck(
+			m_stagedRuntimeSettings.frameOffsetAuto ? BST_CHECKED : BST_UNCHECKED);
+		const int offset = m_stagedRuntimeSettings.frameOffsetAuto ?
+			CalculateAutoFrameOffset() : m_stagedRuntimeSettings.frameOffsetMs;
+		m_directShowFrameOffsetMs = offset;
+		SetTimingClockFrameOffsetMs(offset);
+		if (m_captureDevice)
+			m_captureDevice->SetFrameOffsetMs(IsAlphaRendererSelected() ? 0 : offset);
+	}
+	if (m_stagedRuntimeSettings.hasVideoConversion)
+		selectData(m_rendererVideoConversionCombo,
+			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.videoConversion));
+	if (m_stagedRuntimeSettings.hasContainerColorSpace)
+		selectData(m_colorspaceContainerCombo,
+			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.containerColorSpace));
+	if (m_stagedRuntimeSettings.hasHdrColorSpace)
+		selectData(m_hdrColorspaceCombo,
+			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.hdrColorSpace));
+	if (m_stagedRuntimeSettings.hasHdrLuminance)
+		selectData(m_hdrLuminanceCombo,
+			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.hdrLuminance));
+	if (m_stagedRuntimeSettings.hasDirectShowTimeMethod)
+		selectData(m_rendererDirectShowStartStopTimeMethodCombo,
+			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.directShowTimeMethod));
+	if (m_stagedRuntimeSettings.hasNominalRange)
+		selectData(m_rendererNominalRangeCombo,
+			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.nominalRange));
+	if (m_stagedRuntimeSettings.hasTransferFunction)
+		selectData(m_rendererTransferFunctionCombo,
+			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.transferFunction));
+	if (m_stagedRuntimeSettings.hasTransferMatrix)
+		selectData(m_rendererTransferMatrixCombo,
+			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.transferMatrix));
+	if (m_stagedRuntimeSettings.hasPrimaries)
+		selectData(m_rendererPrimariesCombo,
+			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.primaries));
+	if (m_stagedRuntimeSettings.hasSceneDetect)
+	{
+		m_sceneAwareTimingCorrection = m_stagedRuntimeSettings.sceneDetect;
+		m_rendererSceneCorrectionModeCombo.SetCurSel(
+			m_sceneAwareTimingCorrection ? 1 : 0);
+	}
+	UpdateRendererBackendUi();
+	UpdateTimingClockFrameOffsetAvailability();
+	UpdateSceneCorrectionModeUi();
+	// Live Apply publishes restart-class runtime settings, never presentation
+	// defaults. Retain the operator's current Video Only and View choices even
+	// if those fields are present in the newly accepted configuration.
+	m_hideUI = sessionPresentation.videoOnly;
+	m_rendererFullscreenCheck.SetCheck(
+		sessionPresentation.fullscreen ? BST_CHECKED : BST_UNCHECKED);
+	DebugLog::Log(
+		"Configuration runtime settings published: renderer=%S renderer_source=%d saved_renderer=%S session_renderer=%S accepted_renderer=%S alpha_selected=%d conversion=%d frame_offset=%d metadata=%d directshow=%d presentation_retained=1 video_only=%d fullscreen=%d",
+		rendererDecision.renderer.empty() ? L"(retained)" :
+			rendererDecision.renderer.c_str(),
+		static_cast<int>(rendererDecision.source),
+		savedRenderer.empty() ? L"(none)" : savedRenderer.c_str(),
+		m_sessionRendererOverride.IsEmpty() ? L"(none)" :
+			m_sessionRendererOverride.GetString(),
+		m_acceptedRendererName.IsEmpty() ? L"(none)" :
+			m_acceptedRendererName.GetString(),
+		IsAlphaRendererSelected() ? 1 : 0,
+		m_stagedRuntimeSettings.hasVideoConversion ? 1 : 0,
+		m_stagedRuntimeSettings.hasFrameOffset ? 1 : 0,
+		(m_stagedRuntimeSettings.hasContainerColorSpace ||
+			m_stagedRuntimeSettings.hasHdrColorSpace ||
+			m_stagedRuntimeSettings.hasHdrLuminance) ? 1 : 0,
+		(m_stagedRuntimeSettings.hasDirectShowTimeMethod ||
+			m_stagedRuntimeSettings.hasNominalRange ||
+			m_stagedRuntimeSettings.hasTransferFunction ||
+			m_stagedRuntimeSettings.hasTransferMatrix ||
+			m_stagedRuntimeSettings.hasPrimaries) ? 1 : 0,
+		m_hideUI ? 1 : 0,
+		m_rendererFullscreenCheck.GetCheck() == BST_CHECKED ? 1 : 0);
+}
+
+void CVideoProcessorDlg::RestoreAcceptedRendererSelectionAfterReloadFailure()
+{
+	const CString& fallbackRenderer = m_sessionRendererOverride.IsEmpty() ?
+		m_acceptedRendererName : m_sessionRendererOverride;
+	if (fallbackRenderer.IsEmpty())
+		return;
+	const int requestedIndex = m_rendererCombo.GetCurSel();
+	CString requestedName;
+	if (requestedIndex >= 0)
+		m_rendererCombo.GetLBText(requestedIndex, requestedName);
+	for (int index = 0; index < m_rendererCombo.GetCount(); ++index)
+	{
+		const RendererId* renderer = reinterpret_cast<const RendererId*>(
+			m_rendererCombo.GetItemData(index));
+		if (!renderer || !renderer->MatchesConfiguredName(fallbackRenderer))
+			continue;
+		const bool differs = index != requestedIndex;
+		if (!ConfigurationLiveApply::
+			ShouldRestoreAcceptedRendererAfterReload(
+				false, true, differs))
+			return;
+		m_rendererCombo.SetCurSel(index);
+		UpdateRendererBackendUi();
+		DebugLog::Log(
+			"Configuration reload fallback restored session renderer: requested=%S fallback=%S session_override=%d index=%d",
+			requestedName.IsEmpty() ? L"(none)" : requestedName.GetString(),
+			fallbackRenderer.GetString(),
+			m_sessionRendererOverride.IsEmpty() ? 0 : 1, index + 1);
+		return;
+	}
+	DebugLog::Log(
+		"Configuration reload fallback could not restore session renderer: fallback=%S failure=not-discovered",
+		fallbackRenderer.GetString());
+}
+
+bool CVideoProcessorDlg::ReplaceStagedAccelerators()
+{
+	if (!m_stagedAccelerator)
+		return false;
+	HACCEL previous = m_accelerator;
+	m_accelerator = m_stagedAccelerator;
+	m_stagedAccelerator = nullptr;
+	m_shaderShortcutRules = std::move(m_stagedShaderShortcutRules);
+	m_shaderShortcutKeys = std::move(m_stagedShaderShortcutKeys);
+	m_displayRuleShortcutRules =
+		std::move(m_stagedDisplayRuleShortcutRules);
+	m_rendererShortcutIndices =
+		std::move(m_stagedRendererShortcutIndices);
+	m_unifiedProfileShortcutKeys =
+		std::move(m_stagedUnifiedProfileShortcutKeys);
+	m_configuredAccelerators =
+		std::move(m_stagedConfiguredAccelerators);
+	if (previous)
+		DestroyAcceleratorTable(previous);
+	StartGlobalShortcutObserver();
+	return true;
+}
+
+bool CVideoProcessorDlg::PublishStagedShortcutsOnly()
+{
+	if (!m_stagedConfiguration || !m_stagedAccelerator)
+	{
+		DebugLog::Log(
+			"Configuration shortcut publication retained last-known-good: identity=%s failure=missing-staged-accelerators shortcuts=retained renderer=retained capture=retained queues=retained",
+			m_stagedConfigurationIdentity.c_str());
+		ClearStagedConfiguration();
+		return false;
+	}
+	// Profile shortcut commands are resolved by the runtime model after the
+	// accelerator dispatch. Refresh that model from the same staged file, but
+	// deliberately do not apply its renderer/queue snapshot on this path.
 	UnifiedProfileRuntime::RefreshResult profileResult;
+	std::string error;
+	const bool profileReady = m_profileRuntime.IsInitialized() ?
+		m_profileRuntime.Reload(*m_stagedConfiguration,
+			GetUnifiedProfileSourceLookup(), profileResult, error) :
+		m_profileRuntime.Initialize(*m_stagedConfiguration,
+			GetUnifiedProfileSourceLookup(), error);
+	if (!profileReady)
+	{
+		DebugLog::Log(
+			"Configuration shortcut publication retained last-known-good: identity=%s failure=profile-model-refresh detail=%s shortcuts=retained renderer=retained capture=retained queues=retained",
+			m_stagedConfigurationIdentity.c_str(), error.c_str());
+		ClearStagedConfiguration();
+		return false;
+	}
+	if (!ReplaceStagedAccelerators())
+	{
+		DebugLog::Log(
+			"Configuration shortcut publication retained last-known-good: identity=%s failure=accelerator-swap shortcuts=retained renderer=retained capture=retained queues=retained",
+			m_stagedConfigurationIdentity.c_str());
+		ClearStagedConfiguration();
+		return false;
+	}
+	m_configurationSnapshot =
+		CaptureConfigurationSnapshot(*m_stagedConfiguration);
+	DebugLog::Log(
+		"Configuration shortcut publication complete: identity=%s shortcuts=replaced renderer=retained capture=retained queues=retained",
+		m_stagedConfigurationIdentity.c_str());
+	ClearStagedConfiguration();
+	return true;
+}
+
+bool CVideoProcessorDlg::PublishStagedConfiguration(bool replaceAccelerators)
+{
+	if (!m_stagedConfiguration)
+		return true;
+	UnifiedProfileRuntime::RefreshResult result;
+	std::string error;
 	if (m_profileRuntime.IsInitialized())
 	{
-		if (!m_profileRuntime.Reload(config,
-			GetUnifiedProfileSourceLookup(), profileResult, validationError))
+		if (!m_profileRuntime.Reload(*m_stagedConfiguration,
+			GetUnifiedProfileSourceLookup(), result, error))
 		{
-			DebugLog::Log("Configuration live apply rejected: %s",
-				validationError.c_str());
-			return;
+			DebugLog::Log(
+				"Configuration publication retained last-known-good: identity=%s failure=%s shortcuts=retained",
+				m_stagedConfigurationIdentity.c_str(), error.c_str());
+			ClearStagedConfiguration();
+			return false;
 		}
+	}
+	else if (!m_profileRuntime.Initialize(*m_stagedConfiguration,
+		GetUnifiedProfileSourceLookup(), error))
+	{
+		DebugLog::Log(
+			"Configuration publication retained last-known-good: identity=%s failure=%s shortcuts=retained",
+			m_stagedConfigurationIdentity.c_str(), error.c_str());
+		ClearStagedConfiguration();
+		return false;
 	}
 	else
 	{
-		if (!m_profileRuntime.Initialize(config,
-			GetUnifiedProfileSourceLookup(), validationError))
-		{
-			DebugLog::Log("Configuration live apply rejected: %s",
-				validationError.c_str());
-			return;
-		}
-		profileResult.changed = true;
-		profileResult.snapshot = m_profileRuntime.GetSnapshot();
+		result.changed = true;
+		result.snapshot = m_profileRuntime.GetSnapshot();
 	}
 
-	ReloadConfiguredAccelerators();
-	LoadDisplayRefreshRateOverrides();
-	ApplyUnifiedProfileSnapshot(profileResult.snapshot, true);
-	if (profileResult.changed)
-		ScheduleUnifiedProfileActions(profileResult.actions);
+	if (replaceAccelerators)
+	{
+		if (!ReplaceStagedAccelerators())
+		{
+			DebugLog::Log(
+				"Configuration publication retained last-known-good: identity=%s failure=missing-staged-accelerators",
+				m_stagedConfigurationIdentity.c_str());
+			ClearStagedConfiguration();
+			return false;
+		}
+	}
 
-	std::vector<std::string> startupOnly;
-	for (const std::string& section : changed)
-		if (IsStartupOnlyConfigurationSection(section))
-			startupOnly.push_back(section);
-	m_configurationSnapshot = candidate;
-	DebugLog::Log("Configuration applied live; changed sections: %s",
-		JoinConfigurationSections(changed).c_str());
-	if (!startupOnly.empty())
-		DebugLog::Log(
-			"Configuration sections require VideoProcessor restart: %s",
-			JoinConfigurationSections(startupOnly).c_str());
+	PublishStagedRuntimeSettings();
+	m_configurationSnapshot =
+		CaptureConfigurationSnapshot(*m_stagedConfiguration);
+	ApplyUnifiedProfileSnapshot(result.snapshot ? result.snapshot :
+		m_profileRuntime.GetSnapshot(),
+		m_stagedConfigurationAction ==
+			ConfigurationApplyPolicy::Action::ResetQueues);
+	DebugLog::Log(
+		"Configuration publication complete: identity=%s action=%s shortcuts=%s",
+		m_stagedConfigurationIdentity.c_str(),
+		ConfigurationApplyPolicy::ActionLabel(m_stagedConfigurationAction),
+		replaceAccelerators ? "replaced" : "retained");
+	ClearStagedConfiguration();
+	return true;
+}
+
+void CVideoProcessorDlg::ClearStagedConfiguration()
+{
+	if (m_stagedAccelerator)
+		DestroyAcceleratorTable(m_stagedAccelerator);
+	m_stagedAccelerator = nullptr;
+	m_stagedConfiguration.reset();
+	m_stagedConfiguredAccelerators.clear();
+	m_stagedShaderShortcutRules.clear();
+	m_stagedShaderShortcutKeys.clear();
+	m_stagedDisplayRuleShortcutRules.clear();
+	m_stagedRendererShortcutIndices.clear();
+	m_stagedUnifiedProfileShortcutKeys.clear();
+	m_stagedConfigurationIdentity.clear();
+	m_stagedShortcutsChanged = false;
+	m_stagedEditorApply = false;
+	m_stagedRendererChanged = false;
+	m_stagedConfigurationAction =
+		ConfigurationApplyPolicy::Action::SaveOnly;
+	m_stagedRuntimeSettings = StagedRuntimeSettings();
 }
 
 bool CVideoProcessorDlg::TryGetDisplayRefreshRateOverride(
@@ -2153,11 +3346,11 @@ bool CVideoProcessorDlg::TryGetDisplayRefreshRateOverride(
 
 CVideoProcessorDlg::~CVideoProcessorDlg()
 {
+	ClearStagedConfiguration();
 	if (m_fullScreenVideoWindow &&
 		::IsWindow(m_fullScreenVideoWindow->GetHWND()))
 		::EnableWindow(m_fullScreenVideoWindow->GetHWND(), TRUE);
 	if (GetSafeHwnd()) ::EnableWindow(GetSafeHwnd(), TRUE);
-	RestoreFullscreenAfterConfigurationEditor();
 	StopGlobalShortcutObserver();
 	if (m_rendererResetCoordinator)
 		m_rendererResetCoordinator->Close();
@@ -2585,8 +3778,32 @@ void CVideoProcessorDlg::OnHdrLuminanceSelected()
 
 void CVideoProcessorDlg::OnRendererSelected()
 {
+	EstablishSessionRendererOverrideFromSelection("operator-selection");
 	UpdateRendererBackendUi();
 	OnBnClickedRendererRestart();
+}
+
+bool CVideoProcessorDlg::EstablishSessionRendererOverrideFromSelection(
+	const char* reason)
+{
+	const int selection = m_rendererCombo.GetCurSel();
+	if (selection < 0)
+		return false;
+	const RendererId* renderer = reinterpret_cast<const RendererId*>(
+		m_rendererCombo.GetItemData(selection));
+	if (!renderer)
+		return false;
+	CString rendererName;
+	m_rendererCombo.GetLBText(selection, rendererName);
+	if (rendererName.IsEmpty())
+		return false;
+	m_sessionRendererOverride = rendererName;
+	DebugLog::Log(
+		"Session renderer override established: reason=%s renderer=%S index=%d accepted=%S",
+		reason ? reason : "unknown", m_sessionRendererOverride.GetString(),
+		selection + 1, m_acceptedRendererName.IsEmpty() ? L"(none)" :
+			m_acceptedRendererName.GetString());
+	return true;
 }
 
 
@@ -3508,6 +4725,11 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			m_wantToRestartRenderer = true;
 			break;
 		}
+		m_acceptedRendererName = m_activeRendererName;
+		DebugLog::Log(
+			"Renderer accepted for configuration fallback: renderer=%S generation=%u",
+			m_acceptedRendererName.GetString(),
+			m_rendererGeneration.load(std::memory_order_acquire));
 		// EOTF TRACKING: Store the EOTF the renderer was started with
 		if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
 		{
@@ -3813,8 +5035,24 @@ LRESULT CVideoProcessorDlg::OnMessageRendererDetailString(WPARAM wParam, LPARAM 
 
 void CVideoProcessorDlg::OnCommandFullScreenToggle()
 {
+	const bool requested =
+		m_rendererFullscreenCheck.GetCheck() == BST_CHECKED;
+	const bool active = m_fullScreenVideoWindow &&
+		IsWindow(m_fullScreenVideoWindow->GetHWND()) &&
+		::IsWindowVisible(m_fullScreenVideoWindow->GetHWND());
+	const auto action = ConfigurationLiveApply::ResolveFullscreenToggle(
+		requested, active);
 	m_rendererFullscreenCheck.SetCheck(
-		m_rendererFullscreenCheck.GetCheck() ? 0 : 1);
+		ConfigurationLiveApply::FullscreenRequestedAfterToggle(action) ?
+		BST_CHECKED : BST_UNCHECKED);
+	DebugLog::Log(
+		"Fullscreen session toggle: requested_before=%d active=%d action=%s requested_after=%d",
+		requested ? 1 : 0, active ? 1 : 0,
+		action == ConfigurationLiveApply::FullscreenToggleAction::CancelPending ?
+			"cancel-pending" :
+			action == ConfigurationLiveApply::FullscreenToggleAction::ExitFullscreen ?
+				"exit" : "enter",
+		m_rendererFullscreenCheck.GetCheck() == BST_CHECKED ? 1 : 0);
 	OnBnClickedRendererFullScreenCheck();
 }
 
@@ -4041,6 +5279,8 @@ void CVideoProcessorDlg::OnCommandRendererSelect(UINT commandId)
 	m_rendererCombo.GetLBText(comboIndex, rendererName);
 	if (m_rendererCombo.GetCurSel() == comboIndex)
 	{
+		EstablishSessionRendererOverrideFromSelection(
+			"renderer-shortcut-already-selected");
 		DEBUGLOG("Renderer shortcut render.%u already selected: %s",
 			oneBasedIndex,
 			rendererName.GetString());
@@ -4048,6 +5288,7 @@ void CVideoProcessorDlg::OnCommandRendererSelect(UINT commandId)
 	}
 
 	m_rendererCombo.SetCurSel(comboIndex);
+	EstablishSessionRendererOverrideFromSelection("renderer-shortcut");
 	DEBUGLOG("Renderer shortcut render.%u selected: %s",
 		oneBasedIndex,
 		rendererName.GetString());
@@ -4095,6 +5336,52 @@ void CVideoProcessorDlg::OnCommandToggleNoUi()
 
 void CVideoProcessorDlg::OnCommandConfigEditor()
 {
+	const ULONGLONG now = ::GetTickCount64();
+	if (!m_configurationEditorActivationPending)
+	{
+		m_configurationEditorActivationPending = true;
+		m_configurationEditorFallbackLaunched = false;
+		m_configurationEditorRevealAcknowledged = false;
+		m_configurationEditorActivationAcknowledgedTick = 0;
+		m_configurationEditorForegroundFallbackAttempted = false;
+		m_configurationEditorActivationAttempts = 0;
+		m_configurationEditorRevealStartedTick = now;
+		m_configurationEditorLastRevealAttemptTick = 0;
+		DebugLog::Log(
+			"Configuration editor durable reveal intent started: timeout_ms=20000");
+	}
+	HWND existingEditor = FindConfigurationEditorForCurrentInstallation();
+	if (!existingEditor && IsConfigurationEditorTopLevel(
+		m_configurationEditorHwnd, m_configurationEditorProcessId, false))
+		existingEditor = m_configurationEditorHwnd;
+	TrackConfigurationEditor(existingEditor);
+	if (existingEditor && m_configurationEditorActivationAttempts == 0)
+	{
+		++m_configurationEditorActivationAttempts;
+		const bool acknowledged =
+			RequestConfigurationEditorReveal(existingEditor);
+		m_configurationEditorRevealAcknowledged = acknowledged;
+		m_configurationEditorActivationAcknowledgedTick = now;
+		m_configurationEditorLastRevealAttemptTick = now;
+		m_configurationEditorActivationPending = false;
+		DebugLog::Log(
+			"Configuration editor explicit reveal dispatched once: acknowledged=%d",
+			acknowledged ? 1 : 0);
+		return;
+	}
+	if (existingEditor)
+	{
+		DebugLog::Log(
+			"Configuration editor reveal coalesced: explicit activation already dispatched");
+		return;
+	}
+	if (m_configurationEditorFallbackLaunched)
+	{
+		DebugLog::Log(
+			"Configuration editor reveal still pending: launch already attempted association=%p",
+			reinterpret_cast<void*>(existingEditor));
+		return;
+	}
 	wchar_t modulePath[MAX_PATH] = {};
 	if (GetModuleFileNameW(nullptr, modulePath, ARRAYSIZE(modulePath)) == 0)
 		return;
@@ -4106,6 +5393,8 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 	const std::wstring editorPath = executablePath + L"VideoProcessorConfig.exe";
 	if (GetFileAttributesW(editorPath.c_str()) == INVALID_FILE_ATTRIBUTES)
 	{
+		m_configurationEditorActivationPending = false;
+		m_configurationEditorRevealStartedTick = 0;
 		DEBUGLOG("Configuration editor is not installed beside VideoProcessor.exe");
 		AfxMessageBox(L"VideoProcessorConfig.exe is not installed beside VideoProcessor.exe.");
 		return;
@@ -4125,9 +5414,8 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 			configPath.pop_back();
 		}
 	}
-	// Use the stable main dialog as the cross-process owner. Config manages its
-	// own topmost lifetime when it is shown; do not disturb the live fullscreen
-	// presenter while the editor is starting.
+	// Use the stable main dialog as the cross-process owner. Config remains in
+	// the normal z-order band; VP suspends exclusive fullscreen while it is open.
 	const HWND editorOwner = ConfigurationEditorOwner();
 	wchar_t arguments[2 * MAX_PATH + 120] = {};
 	swprintf_s(arguments,
@@ -4135,19 +5423,20 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 		configPath.c_str(),
 		static_cast<unsigned long long>(reinterpret_cast<UINT_PTR>(editorOwner)),
 		GetCurrentProcessId());
-	m_configurationEditorActivationPending = true;
-	m_configurationEditorActivationAttempts = 0;
 	const HINSTANCE result = ShellExecuteW(GetSafeHwnd(), L"open", editorPath.c_str(),
 		arguments, executablePath.c_str(), SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR>(result) <= 32)
 	{
 		m_configurationEditorActivationPending = false;
+		m_configurationEditorFallbackLaunched = false;
+		m_configurationEditorRevealAcknowledged = false;
+		m_configurationEditorActivationAcknowledgedTick = 0;
+		m_configurationEditorRevealStartedTick = 0;
 		AfxMessageBox(L"Could not launch VideoProcessorConfig.exe.");
 	}
 	else
 	{
-		SetTimer(CONFIGURATION_EDITOR_MODAL_TIMER_ID,
-			CONFIGURATION_EDITOR_MODAL_INTERVAL_MS, nullptr);
+		m_configurationEditorFallbackLaunched = true;
 	}
 }
 
@@ -4538,6 +5827,7 @@ void CVideoProcessorDlg::UpdateState()
 			m_rendererState == RendererState::RENDERSTATE_FAILED ||
 			m_rendererState == RendererState::RENDERSTATE_STOPPED);
 
+		CloseOwnedTopLevelWindowsForShutdown();
 		CDialog::EndDialog(S_OK);
 		return;
 	}
@@ -5076,9 +6366,31 @@ void CVideoProcessorDlg::CaptureStop()
 		m_captureVideoStateSourceEpoch = 0;
 	}
 
+	DebugLog::Log(
+		"Capture stop dispatch: phase=before-stop termination=%d renderer_retired=%d",
+		m_wantToTerminate ? 1 : 0,
+		(!m_videoRenderer && !m_rendererRetirementPending) ? 1 : 0);
 	m_captureDevice->StopCapture();
+	DebugLog::Log(
+		"Capture stop dispatch: phase=after-stop termination=%d",
+		m_wantToTerminate ? 1 : 0);
 
 	m_captureDeviceVideoState = nullptr;
+	if (ApplicationShutdownPolicy::MayFinalizeCaptureAfterStopReturns(
+		m_wantToTerminate,
+		!m_videoRenderer && !m_rendererRetirementPending))
+	{
+		// StopCapture completed synchronously. Do not make process termination
+		// depend on the optional DeckLink busy-state notification that normally
+		// advances CAPTURING -> READY during a live restart.
+		m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_READY;
+		CaptureGUIClear();
+		CaptureRemove();
+		DebugLog::Log(
+			"Capture stop dispatch: phase=termination-finalized notification=not-required");
+		UpdateState();
+		return;
+	}
 
 	// Update GUI
 	CaptureGUIClear();
@@ -5153,6 +6465,52 @@ void CVideoProcessorDlg::CaptureGUIClear()
 void CVideoProcessorDlg::RenderStart()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStart(): Begin")));
+	// Process startup has already parsed, validated, and published its complete
+	// configuration before capture begins. Do not perform a second synchronous
+	// reload during the first capture-state start: that widens the interval
+	// between UpdateState's ingress-sequence check and renderer construction.
+	// Apply-driven first starts may still arrive with an explicit staged
+	// candidate. Every actual reconstruction stages here after graph retirement.
+	const bool firstRendererConstruction =
+		m_rendererGeneration.load(std::memory_order_acquire) == 0;
+	if (!m_stagedConfiguration && !firstRendererConstruction &&
+		!StageSavedConfiguration("renderer-lifecycle", true))
+	{
+		RestoreAcceptedRendererSelectionAfterReloadFailure();
+	}
+	if (m_stagedConfiguration)
+	{
+		DebugLog::Log(
+			"Renderer restart beginning: configuration=%s publication=pending",
+			m_stagedConfigurationIdentity.c_str());
+		PublishStagedConfiguration(true);
+	}
+	else
+	{
+		DebugLog::Log(
+			"Renderer restart beginning: configuration=last-known-good publication=retained");
+	}
+
+	// Configuration staging can perform bounded file retries and renderer-rule
+	// discovery. A capture callback may publish a newer source generation while
+	// that UI-thread work is in progress. Never build a graph from the stale
+	// state that passed UpdateState's earlier check; the posted latest-state
+	// notification will call UpdateState and retry this start.
+	const uint64_t latestCaptureSequence =
+		m_rendererIngressState->LatestCaptureSequence();
+	if (!ConfigurationLiveApply::
+		MayConstructRendererAfterConfigurationBoundary(
+			m_appliedCaptureVideoStateNotificationSequence,
+			latestCaptureSequence))
+	{
+		DebugLog::Log(
+			"Renderer start deferred after configuration boundary: applied_sequence=%llu latest_sequence=%llu first_construction=%d action=wait-for-latest-state",
+			static_cast<unsigned long long>(
+				m_appliedCaptureVideoStateNotificationSequence),
+			static_cast<unsigned long long>(latestCaptureSequence),
+			firstRendererConstruction ? 1 : 0);
+		return;
+	}
 	m_rendererCaptureVideoStateNotificationSequence =
 		m_appliedCaptureVideoStateNotificationSequence;
 
@@ -5255,6 +6613,11 @@ void CVideoProcessorDlg::RenderStart()
 			rendererGeneration);
 		return;
 	}
+	// The fullscreen host itself displays its waiting surface when transitions
+	// run without the optional black popup. Track the reveal obligation by the
+	// exact renderer generation and target instead of popup visibility.
+	m_rendererFirstFrameRevealPendingGeneration = rendererGeneration;
+	m_rendererFirstFrameRevealTargetHwnd = m_rendererTargetHwnd;
 
 	// Get user-selectable options
 	i = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
@@ -6117,6 +7480,8 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 		}
 
 		m_transitionRevealPosted.store(false, std::memory_order_release);
+		m_rendererFirstFrameRevealPendingGeneration = currentGeneration;
+		m_rendererFirstFrameRevealTargetHwnd = m_rendererTargetHwnd;
 		m_queueResetIgnoreEventsUntil = now + 10000;
 		const RendererTransitionKey transitionKey =
 			m_rendererTransitionModel.Key();
@@ -6192,18 +7557,24 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			resetBlocksReveal = false;
 		}
 	}
-	const bool currentFrameReady =
-		generation == m_transitionGeneration &&
-		generation == m_rendererGeneration.load(std::memory_order_acquire) &&
-		m_videoRenderer &&
-		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+	const uint32_t currentGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	const bool rendererAvailable = m_videoRenderer != nullptr;
+	const bool rendererRunning =
+		m_rendererState == RendererState::RENDERSTATE_RENDERING;
+	const bool liveFramePresented = rendererAvailable &&
 		m_videoRenderer->HasPresentedLiveFrame();
-	if (generation != m_transitionGeneration ||
-		generation != m_rendererGeneration.load(std::memory_order_acquire) ||
-		!m_videoRenderer ||
-		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
-		resetBlocksReveal ||
-		!currentFrameReady)
+	const bool currentFrameReady =
+		ConfigurationLiveApply::ShouldRetireWaitingSurfaceAfterLiveFrame(
+			generation,
+			reinterpret_cast<uintptr_t>(m_rendererTargetHwnd),
+			m_rendererFirstFrameRevealPendingGeneration,
+			reinterpret_cast<uintptr_t>(m_rendererFirstFrameRevealTargetHwnd),
+			currentGeneration,
+			reinterpret_cast<uintptr_t>(m_rendererTargetHwnd),
+			rendererAvailable, rendererRunning, liveFramePresented,
+			resetBlocksReveal, false);
+	if (generation != m_transitionGeneration || !currentFrameReady)
 	{
 		return;
 	}
@@ -6212,7 +7583,8 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 	// been released there is no transition work left to perform; in particular,
 	// do not synchronize DWM and log another reveal on every timer tick.
 	if (!m_rendererTransitionWindow.IsVisible() &&
-		!m_fullscreenRetargetPending && !coordinatedReset)
+		!m_fullscreenRetargetPending && !coordinatedReset &&
+		m_rendererFirstFrameRevealPendingGeneration != generation)
 	{
 		return;
 	}
@@ -6319,6 +7691,19 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			: 0;
 	m_windowedVideoWindow.ShowLogo(false);
 	m_rendererTransitionWindow.Hide();
+	m_rendererFirstFrameRevealPendingGeneration = 0;
+	m_rendererFirstFrameRevealTargetHwnd = nullptr;
+	HWND configurationEditor = VisibleAssociatedConfigurationEditor();
+	if (!configurationEditor)
+	{
+		configurationEditor = FindConfigurationEditorForCurrentInstallation();
+		TrackConfigurationEditor(configurationEditor);
+		configurationEditor = VisibleAssociatedConfigurationEditor();
+	}
+	if (configurationEditor && ::IsWindowVisible(configurationEditor))
+	{
+		PublishConfigurationEditorPresentationTarget(configurationEditor);
+	}
 	if (coordinatedReset)
 	{
 		const RendererTransitionModel::Actions actions =
@@ -6355,6 +7740,8 @@ void CVideoProcessorDlg::ApplyNoUiLayout()
 {
 	if (!m_windowedVideoWindow.GetSafeHwnd())
 		return;
+	CRect outerBefore;
+	GetWindowRect(&outerBefore);
 	if (!m_noUiLayoutApplied)
 	{
 		m_normalUiChildVisibility.clear();
@@ -6376,36 +7763,35 @@ void CVideoProcessorDlg::ApplyNoUiLayout()
 			child->ShowWindow(SW_HIDE);
 	}
 
-	CRect currentWindowRect;
-	GetWindowRect(&currentWindowRect);
-	CRect adjustedWindowRect(0, 0,
-		NoUiLayout::DefaultClientWidth, NoUiLayout::DefaultClientHeight);
-	AdjustWindowRectEx(
-		&adjustedWindowRect,
-		static_cast<DWORD>(GetWindowLongPtr(GetSafeHwnd(), GWL_STYLE)),
-		FALSE,
-		static_cast<DWORD>(GetWindowLongPtr(GetSafeHwnd(), GWL_EXSTYLE)));
-	CRect minimumWindowRect(0, 0,
-		NoUiLayout::MinimumClientWidth, NoUiLayout::MinimumClientHeight);
-	AdjustWindowRectEx(
-		&minimumWindowRect,
-		static_cast<DWORD>(GetWindowLongPtr(GetSafeHwnd(), GWL_STYLE)),
-		FALSE,
-		static_cast<DWORD>(GetWindowLongPtr(GetSafeHwnd(), GWL_EXSTYLE)));
-	m_minDialogSize = minimumWindowRect.Size();
-
-	SetWindowPos(
-		nullptr,
-		currentWindowRect.left,
-		currentWindowRect.top,
-		adjustedWindowRect.Width(),
-		adjustedWindowRect.Height(),
-		SWP_NOZORDER | SWP_NOACTIVATE);
-
-	m_windowedVideoWindow.ShowWindow(SW_SHOW);
-	m_windowedVideoWindow.MoveWindow(0, 0,
-		NoUiLayout::DefaultClientWidth,
-		NoUiLayout::DefaultClientHeight, TRUE);
+	// Video Only is a presentation toggle, not a window-mode change. Keep the
+	// exact outer bounds and expand only the child video surface into the client
+	// area released by the hidden controls. When fullscreen is active, leave its
+	// popup/renderer target untouched.
+	CRect client;
+	GetClientRect(&client);
+	if (m_rendererFullscreenCheck.GetCheck() != BST_CHECKED)
+	{
+		const auto video = NoUiLayout::ResolveVideoBounds(
+			true, client.Width(), client.Height(), {});
+		m_windowedVideoWindow.ShowWindow(SW_SHOW);
+		m_windowedVideoWindow.MoveWindow(
+			video.x, video.y, video.width, video.height, TRUE);
+	}
+	RefreshPresentationLayoutAfterSessionToggle("enter");
+	CRect retainedWindowRect;
+	GetWindowRect(&retainedWindowRect);
+	const bool boundsRetained = NoUiLayout::PreservesOuterBounds(
+		{ outerBefore.left, outerBefore.top,
+			outerBefore.Width(), outerBefore.Height() },
+		{ retainedWindowRect.left, retainedWindowRect.top,
+			retainedWindowRect.Width(), retainedWindowRect.Height() });
+	DebugLog::Log(
+		"Video Only layout applied: outer=%ld,%ld %ldx%ld client=%dx%d fullscreen=%d window_bounds=%s",
+		retainedWindowRect.left, retainedWindowRect.top,
+		retainedWindowRect.Width(), retainedWindowRect.Height(),
+		client.Width(), client.Height(),
+		m_rendererFullscreenCheck.GetCheck() == BST_CHECKED ? 1 : 0,
+		boundsRetained ? "retained" : "changed-unexpectedly");
 }
 
 
@@ -6413,6 +7799,8 @@ void CVideoProcessorDlg::RestoreNormalUiLayout()
 {
 	if (!m_noUiLayoutApplied || !GetSafeHwnd())
 		return;
+	CRect outerBefore;
+	GetWindowRect(&outerBefore);
 
 	const bool initializeModern =
 		m_interfaceMode == ApplicationInterface::Mode::Modern &&
@@ -6421,8 +7809,14 @@ void CVideoProcessorDlg::RestoreNormalUiLayout()
 	{
 		m_normalUiChildVisibility.clear();
 		m_noUiLayoutApplied = false;
-		InitializeModernInterface();
+		InitializeModernInterface(true);
+		RefreshPresentationLayoutAfterSessionToggle("exit-initialize-modern");
 		StartConfigurationEditorInTray();
+		DebugLog::Log(
+			"Video Only layout restored: initialized=modern outer=%ld,%ld %ldx%ld window_bounds=retained fullscreen=%d",
+			outerBefore.left, outerBefore.top,
+			outerBefore.Width(), outerBefore.Height(),
+			m_rendererFullscreenCheck.GetCheck() == BST_CHECKED ? 1 : 0);
 		return;
 	}
 
@@ -6432,8 +7826,8 @@ void CVideoProcessorDlg::RestoreNormalUiLayout()
 			::ShowWindow(child.hwnd, child.visible ? SW_SHOWNA : SW_HIDE);
 	}
 	m_minDialogSize = m_normalUiMinDialogSize;
-	if (m_normalUiWindowPlacement.length == sizeof(WINDOWPLACEMENT))
-		SetWindowPlacement(&m_normalUiWindowPlacement);
+	// Do not restore the old WINDOWPLACEMENT here. The operator may have moved
+	// the Video Only window; exiting must preserve its current outer bounds too.
 
 	if (m_interfaceMode == ApplicationInterface::Mode::Modern)
 	{
@@ -6452,10 +7846,46 @@ void CVideoProcessorDlg::RestoreNormalUiLayout()
 		m_windowedVideoWindow.MoveWindow(&videoRect, TRUE);
 		RestoreFixedDialogLayout();
 	}
+	RefreshPresentationLayoutAfterSessionToggle("exit");
 
 	m_normalUiChildVisibility.clear();
 	m_noUiLayoutApplied = false;
+	CRect retainedWindowRect;
+	GetWindowRect(&retainedWindowRect);
+	const bool boundsRetained = NoUiLayout::PreservesOuterBounds(
+		{ outerBefore.left, outerBefore.top,
+			outerBefore.Width(), outerBefore.Height() },
+		{ retainedWindowRect.left, retainedWindowRect.top,
+			retainedWindowRect.Width(), retainedWindowRect.Height() });
+	DebugLog::Log(
+		"Video Only layout restored: outer=%ld,%ld %ldx%ld window_bounds=%s fullscreen=%d",
+		retainedWindowRect.left, retainedWindowRect.top,
+		retainedWindowRect.Width(), retainedWindowRect.Height(),
+		boundsRetained ? "retained" : "changed-unexpectedly",
+		m_rendererFullscreenCheck.GetCheck() == BST_CHECKED ? 1 : 0);
 	Invalidate(FALSE);
+}
+
+void CVideoProcessorDlg::RefreshPresentationLayoutAfterSessionToggle(
+	const char* phase)
+{
+	// A dialog WM_SIZE normally performs both host placement and the renderer's
+	// backend-specific presentation resize. Video Only deliberately preserves
+	// the outer window, so it does not receive WM_SIZE; complete the non-graph
+	// portion of that path explicitly after moving the child host.
+	const bool windowedTarget =
+		m_rendererTargetHwnd == m_windowedVideoWindow.GetSafeHwnd();
+	const bool rendererNotified = windowedTarget && m_videoRenderer &&
+		!RendererResetOperationInProgress();
+	if (rendererNotified)
+		m_videoRenderer->OnSize();
+	if (m_windowedVideoWindow.GetSafeHwnd())
+		m_windowedVideoWindow.RedrawWindow(nullptr, nullptr,
+			RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+	DebugLog::Log(
+		"Video Only presentation refresh: phase=%s target=%p windowed_target=%d renderer_notified=%d graph_reset=0 renderer_reconstruction=0",
+		phase ? phase : "unknown", m_rendererTargetHwnd,
+		windowedTarget ? 1 : 0, rendererNotified ? 1 : 0);
 }
 
 
@@ -6474,10 +7904,17 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 		m_fullScreenVideoWindow->CreateWindowedFullscreen(hmon, this->GetSafeHwnd());
 
 	const HWND fullscreenHwnd = m_fullScreenVideoWindow->GetHWND();
-	const HWND configurationEditor =
-		FindConfigurationEditorForCurrentInstallation();
+	HWND configurationEditor = VisibleAssociatedConfigurationEditor();
+	if (!configurationEditor)
+	{
+		configurationEditor = FindConfigurationEditorForCurrentInstallation();
+		TrackConfigurationEditor(configurationEditor);
+		configurationEditor = VisibleAssociatedConfigurationEditor();
+	}
 	if (configurationEditor && ::IsWindowVisible(configurationEditor))
-		DemoteFullscreenForConfigurationEditor();
+	{
+		PublishConfigurationEditorPresentationTarget(configurationEditor);
+	}
 	HMONITOR actualMonitor = MonitorFromWindow(
 		fullscreenHwnd, MONITOR_DEFAULTTONULL);
 	if (actualMonitor != hmon)
@@ -7448,7 +8885,14 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	}
 	else if (allowRestart && queuePolicyChanged)
 	{
-		RequestRendererReset(RendererResetReason::QueueSizeChange, false, 0);
+		const bool requiresGraph = QueuePolicyApplyRequiresGraphReset(
+			m_activeRendererIsDirectShow);
+		DebugLog::Log(
+			"Queue policy apply reset selected: backend=%s scope=%s renderer_reconstruction=0",
+			m_activeRendererIsDirectShow ? "DirectShow" : "Alpha",
+			requiresGraph ? "graph" : "live-queue");
+		RequestRendererReset(RendererResetReason::QueueSizeChange,
+			requiresGraph, 0);
 	}
 }
 
@@ -7870,8 +9314,6 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	if (m_configurationChangedEvent)
 		SetTimer(CONFIGURATION_LIVE_APPLY_TIMER_ID,
 			CONFIGURATION_LIVE_APPLY_INTERVAL_MS, nullptr);
-	SetTimer(CONFIGURATION_EDITOR_MODAL_TIMER_ID,
-		CONFIGURATION_EDITOR_MODAL_INTERVAL_MS, nullptr);
 	
 	// Stats overlay will be created lazily on first toggle (Ctrl+I)
 	// No initialization needed here
@@ -7966,7 +9408,8 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 }
 BOOL CVideoProcessorDlg::TranslateConfiguredAccelerator(MSG* message)
 {
-	if (!m_accelerator || !message)
+	if (!ConfigurationLiveApply::MayDispatchForegroundPresentationShortcut(
+		m_accelerator != nullptr, m_hideUI) || !message)
 		return FALSE;
 
 	if (message->message == WM_KEYDOWN || message->message == WM_SYSKEYDOWN)
@@ -8027,7 +9470,9 @@ void CVideoProcessorDlg::OnOK()
 			if (m_videoRenderer)
 			{
 				m_videoRenderer->SetFrameQueueMaxSize(GetRendererVideoFrameQueueSizeMax());
-				RequestRendererReset(RendererResetReason::QueueSizeChange, false, 0);
+				RequestRendererReset(RendererResetReason::QueueSizeChange,
+					QueuePolicyApplyRequiresGraphReset(
+						m_activeRendererIsDirectShow), 0);
 			}
 			break;
 
@@ -8124,7 +9569,7 @@ void CVideoProcessorDlg::CaptureFixedDialogLayout()
 	}
 }
 
-void CVideoProcessorDlg::InitializeModernInterface()
+void CVideoProcessorDlg::InitializeModernInterface(bool preserveWindowBounds)
 {
 	// The Classic resource and all of its handlers remain intact. Modern is a
 	// presentation overlay created only after the existing runtime/controller
@@ -8141,10 +9586,13 @@ void CVideoProcessorDlg::InitializeModernInterface()
 		ModernOperatorLayout::DefaultClientWidth,
 		ModernOperatorLayout::DefaultClientHeight);
 	AdjustWindowRectEx(&desiredClient, GetStyle(), FALSE, GetExStyle());
-	SetWindowPos(nullptr, 0, 0, desiredClient.Width(), desiredClient.Height(),
-		SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER |
-		SWP_FRAMECHANGED);
-	CenterWindow();
+	if (!preserveWindowBounds)
+	{
+		SetWindowPos(nullptr, 0, 0, desiredClient.Width(), desiredClient.Height(),
+			SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER |
+			SWP_FRAMECHANGED);
+		CenterWindow();
+	}
 	m_minDialogSize = desiredClient.Size();
 
 	if (!m_modernOperatorView.Create(this))
@@ -8187,6 +9635,15 @@ void CVideoProcessorDlg::RefreshModernStatus()
 		if (index >= 0)
 			combo.GetLBText(index, value);
 		return value.IsEmpty() ? CString(TEXT("---")) : value;
+	};
+	auto capturedText = [](CWnd& window)
+	{
+		CString value;
+		window.GetWindowText(value);
+		const std::wstring normalized =
+			ModernOperatorStatusPolicy::NormalizeCapturedValue(
+				std::wstring(value.GetString(), value.GetLength()));
+		return CString(normalized.c_str());
 	};
 	auto compactState = [](const CString& raw)
 	{
@@ -8260,11 +9717,11 @@ void CVideoProcessorDlg::RefreshModernStatus()
 	status.inputMissed = text(m_inputVideoFrameMissedText);
 	status.capturedValid = text(m_videoValidText);
 	status.capturedMode = displaySummary(
-		m_builtVideoState, text(m_videoDisplayModeText));
+		m_builtVideoState, capturedText(m_videoDisplayModeText));
 	status.capturedRate = refreshRate(m_builtVideoState);
-	status.capturedPixelFormat = text(m_videoPixelFormatText);
-	status.capturedPrimaries = text(m_videoColorSpaceText);
-	status.capturedTransfer = text(m_videoEotfText);
+	status.capturedPixelFormat = capturedText(m_videoPixelFormatText);
+	status.capturedPrimaries = capturedText(m_videoColorSpaceText);
+	status.capturedTransfer = capturedText(m_videoEotfText);
 	status.captureLatency = text(m_inputLatencyMsText);
 	for (int index = 0; index < 4 && index < m_captureDeviceOtherList.GetCount(); ++index)
 	{
@@ -8307,6 +9764,15 @@ void CVideoProcessorDlg::RefreshModernStatus()
 	status.vpLatency = text(m_rendererLatencyToVPText);
 	status.ptsLead = text(m_rendererLatencyDsLeadText);
 	status.outputLatency = text(m_rendererLatencyToDSText);
+	status.videoOnly = m_hideUI;
+	const bool fullscreenRequested =
+		m_rendererFullscreenCheck.GetCheck() == BST_CHECKED;
+	const bool fullscreenActive = m_fullScreenVideoWindow &&
+		IsWindow(m_fullScreenVideoWindow->GetHWND()) &&
+		::IsWindowVisible(m_fullScreenVideoWindow->GetHWND());
+	status.fullscreen = ConfigurationLiveApply::
+		EffectiveFullscreenToggleActive(
+			fullscreenRequested, fullscreenActive);
 	m_modernOperatorView.SetStatus(status);
 }
 
@@ -8328,6 +9794,12 @@ LRESULT CVideoProcessorDlg::OnMessageModernOperatorAction(WPARAM wParam, LPARAM)
 		break;
 	case ModernOperatorAction::OpenConfiguration:
 		OnCommandConfigEditor();
+		break;
+	case ModernOperatorAction::ToggleVideoOnly:
+		OnCommandToggleNoUi();
+		break;
+	case ModernOperatorAction::ToggleView:
+		OnCommandFullScreenToggle();
 		break;
 	default:
 		return 0;
@@ -8589,7 +10061,9 @@ void CVideoProcessorDlg::OnClose()
 
 	if (m_wantToTerminate)
 	{
-		DebugLog::Log("Keyboard close handler: phase=exit result=already-terminating");
+		DebugLog::Log(
+			"Keyboard close handler: phase=retry result=advance-existing-termination");
+		UpdateState();
 		return;
 	}
 
@@ -8609,6 +10083,55 @@ void CVideoProcessorDlg::OnClose()
 	// Remove all renderers
 	ClearRendererCombo();
 	DebugLog::Log("Keyboard close handler: phase=exit result=termination-requested");
+}
+
+void CVideoProcessorDlg::CloseOwnedTopLevelWindowsForShutdown()
+{
+	if (m_statsOverlay)
+		m_statsOverlay->Destroy();
+	if (m_fullscreenRetargetPending)
+		ClearFullscreenRetarget(false);
+	if (m_fullScreenVideoWindow)
+		FullScreenVideoWindowDestroy();
+	m_rendererTransitionWindow.Hide();
+
+	std::vector<HWND> topLevelWindows;
+	::EnumThreadWindows(GetCurrentThreadId(),
+		[](HWND hwnd, LPARAM parameter) -> BOOL
+		{
+			reinterpret_cast<std::vector<HWND>*>(parameter)->push_back(hwnd);
+			return TRUE;
+		}, reinterpret_cast<LPARAM>(&topLevelWindows));
+	for (const HWND hwnd : topLevelWindows)
+	{
+		if (hwnd == GetSafeHwnd() || !::IsWindow(hwnd))
+			continue;
+		wchar_t className[96] = {};
+		wchar_t title[128] = {};
+		::GetClassNameW(hwnd, className, ARRAYSIZE(className));
+		::GetWindowTextW(hwnd, title, ARRAYSIZE(title));
+		DebugLog::Log(
+			"Application shutdown closing owned top-level: hwnd=%p class=%S title=%S",
+			hwnd, className, title);
+		::DestroyWindow(hwnd);
+	}
+	DebugLog::Log(
+		"Application shutdown owned top-level cleanup complete: enumerated=%zu",
+		topLevelWindows.size());
+}
+
+void CVideoProcessorDlg::OnSysCommand(UINT command, LPARAM lParam)
+{
+	if (ApplicationShutdownPolicy::IsCloseSystemCommand(command))
+	{
+		DebugLog::Log(
+			"System close routed: command=0x%04x video_only=%d fullscreen=%d",
+			command, m_hideUI ? 1 : 0,
+			m_rendererFullscreenCheck.GetCheck() == BST_CHECKED ? 1 : 0);
+		OnClose();
+		return;
+	}
+	CDialog::OnSysCommand(command, lParam);
 }
 
 void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
@@ -8837,13 +10360,18 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	if (nIDEvent == FULLSCREEN_FOCUS_TIMER_ID)
 	{
 		KillTimer(FULLSCREEN_FOCUS_TIMER_ID);
-		const HWND configurationEditor =
-			FindConfigurationEditorForCurrentInstallation();
+		HWND configurationEditor = VisibleAssociatedConfigurationEditor();
+		if (!configurationEditor)
+		{
+			configurationEditor = FindConfigurationEditorForCurrentInstallation();
+			TrackConfigurationEditor(configurationEditor);
+			configurationEditor = VisibleAssociatedConfigurationEditor();
+		}
 		if (configurationEditor && ::IsWindowVisible(configurationEditor))
 		{
-			DemoteFullscreenForConfigurationEditor();
+			PublishConfigurationEditorPresentationTarget(configurationEditor);
 			DebugLog::Log(
-				"Fullscreen focus pass skipped while configuration editor is visible");
+				"Fullscreen focus pass skipped while configuration editor is visible: owner_hierarchy=1");
 			return;
 		}
 		if (m_fullScreenVideoWindow && IsWindow(m_fullScreenVideoWindow->GetHWND()))
@@ -8922,12 +10450,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		if (m_configurationChangedEvent &&
 			WaitForSingleObject(m_configurationChangedEvent, 0) == WAIT_OBJECT_0)
 			ApplySavedConfiguration();
-		return;
-	}
-
-	if (nIDEvent == CONFIGURATION_EDITOR_MODAL_TIMER_ID)
-	{
-		UpdateConfigurationEditorModal();
 		return;
 	}
 

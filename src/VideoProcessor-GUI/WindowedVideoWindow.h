@@ -35,7 +35,10 @@ protected:
 	// Handlers for ON_WM_* messages
 	afx_msg void OnPaint();
 	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnClose();
+	afx_msg void OnSysCommand(UINT command, LPARAM lParam);
 	afx_msg HBRUSH CtlColor(CDC* pDC, UINT nCtlColor);
 
 	DECLARE_MESSAGE_MAP()
+	void RouteApplicationClose(const char* source);
 };

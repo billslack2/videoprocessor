@@ -427,6 +427,18 @@ namespace ConfigEditorCore
 		return result;
 	}
 
+	std::vector<std::string> ConfigDocument::SectionNames() const
+	{
+		std::vector<std::string> result;
+		for (const std::string& raw : lines)
+		{
+			const std::string text = ConfigFile::Trim(StripComment(raw));
+			if (text.size() >= 2 && text.front() == '[' && text.back() == ']')
+				result.push_back(text.substr(1, text.size() - 2));
+		}
+		return result;
+	}
+
 	std::vector<std::pair<std::string, std::string>>
 	ConfigDocument::SectionSettings(const std::string& wantedSection) const
 	{

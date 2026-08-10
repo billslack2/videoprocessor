@@ -10,7 +10,11 @@
     <RootNamespace>VideoProcessorConfig</RootNamespace>
     <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
     <TargetName>VideoProcessorConfig</TargetName>
-    <QtRoot>$(ProjectDir)..\..\.dependencies\Qt\6.8.3\msvc2022_64</QtRoot>
+    <QtVersion>6.8.3</QtVersion>
+    <QtArchitecture>msvc2022_64</QtArchitecture>
+    <QtRoot Condition="'$(VP_QT_ROOT)' != ''">$(VP_QT_ROOT)</QtRoot>
+    <QtRoot Condition="'$(QtRoot)' == '' and Exists('$(LOCALAPPDATA)\VideoProcessor\dependencies\Qt\$(QtVersion)\$(QtArchitecture)\bin\qmake.exe')">$(LOCALAPPDATA)\VideoProcessor\dependencies\Qt\$(QtVersion)\$(QtArchitecture)</QtRoot>
+    <QtRoot Condition="'$(QtRoot)' == ''">$(ProjectDir)..\..\.dependencies\Qt\$(QtVersion)\$(QtArchitecture)</QtRoot>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">

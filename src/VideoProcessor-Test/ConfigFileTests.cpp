@@ -1,7 +1,10 @@
 #include "pch.h"
 
 #include <ApplicationInterface.h>
+#include <ApplicationShutdownPolicy.h>
+#include <BuildIdentityPolicy.h>
 #include <ModernOperatorLayout.h>
+#include <ModernOperatorStatusPolicy.h>
 #include <ConfigFile.h>
 #include <ConfigurationLiveApply.h>
 #include <DisplayTopologySession.h>
@@ -22,6 +25,7 @@
 #include <fstream>
 #include <map>
 #include <sstream>
+#include <vector>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace VideoProcessorTest
@@ -29,6 +33,22 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:
+		TEST_METHOD(ModernOperatorBuildIdentityUsesBranchAndCommit)
+		{
+			Assert::AreEqual(std::wstring(
+				L"codex/vp-0103-live-configuration @ 5be29d3"),
+				BuildIdentityPolicy::Format(
+					L" codex/vp-0103-live-configuration ",
+					L"5be29d3", L"v1.1.016-beta-60-g5be29d3"));
+			Assert::AreEqual(std::wstring(L"ci/merge @ abc1234"),
+				BuildIdentityPolicy::Format(L"ci/merge", L"abc1234", L"tag"));
+			Assert::AreEqual(std::wstring(L"v1.2.3-gabc1234 @ abc1234"),
+				BuildIdentityPolicy::Format(L"", L"abc1234",
+					L"v1.2.3-gabc1234"));
+			Assert::AreEqual(std::wstring(L"detached"),
+				BuildIdentityPolicy::Format(L"", L"", L""));
+		}
+
 		TEST_METHOD(FullscreenActivationNeverStealsAnotherProcessForeground)
 		{
 			Assert::IsTrue(ConfigurationLiveApply::MayActivateFullscreen(
@@ -37,6 +57,138 @@ namespace VideoProcessorTest
 				42, 0, false));
 			Assert::IsFalse(ConfigurationLiveApply::MayActivateFullscreen(
 				42, 84, true));
+			const auto editorPopup =
+				ConfigurationLiveApply::ResolvePresentationFocus(42, 84, true);
+			Assert::IsFalse(editorPopup.mayActivatePresentation);
+			Assert::IsTrue(editorPopup.preserveForeground);
+			Assert::IsFalse(editorPopup.consumeKeyboardMessage);
+			const auto vpForeground =
+				ConfigurationLiveApply::ResolvePresentationFocus(42, 42, true);
+			Assert::IsTrue(vpForeground.mayActivatePresentation);
+			Assert::IsFalse(vpForeground.preserveForeground);
+			Assert::IsFalse(vpForeground.consumeKeyboardMessage);
+			Assert::IsTrue(ConfigurationLiveApply::MayDispatchGlobalShortcut(
+				42, 84, false));
+			Assert::IsTrue(
+				ConfigurationLiveApply::MayDispatchForegroundPresentationShortcut(
+					true, true));
+		}
+
+		TEST_METHOD(ConfigurationEditorShortcutAlwaysRevealsAndCoalesces)
+		{
+			using Action = ConfigurationLiveApply::ConfigurationEditorToggleAction;
+			Assert::IsTrue(Action::RevealOrActivate ==
+				ConfigurationLiveApply::ResolveConfigurationEditorToggle(
+					true, true, false));
+			Assert::IsTrue(Action::RevealOrActivate ==
+				ConfigurationLiveApply::ResolveConfigurationEditorToggle(
+					true, false, false));
+			Assert::IsTrue(Action::RevealOrActivate ==
+				ConfigurationLiveApply::ResolveConfigurationEditorToggle(
+					false, false, false));
+			Assert::IsTrue(Action::CoalescePendingReveal ==
+				ConfigurationLiveApply::ResolveConfigurationEditorToggle(
+					false, false, true));
+		}
+
+		TEST_METHOD(ConfigurationEditorStaleHandleRediscoveryIsBounded)
+		{
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldRediscoverConfigurationEditor(true, 0, false));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldRediscoverConfigurationEditor(true, 0, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldRediscoverConfigurationEditor(true, 1, false));
+			Assert::IsTrue(ConfigurationLiveApply::
+				ConfigurationEditorRevealAcknowledged(true, 1));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ConfigurationEditorRevealAcknowledged(true, 0));
+			Assert::IsTrue(ConfigurationLiveApply::
+				ConfigurationEditorToggleAction::CoalescePendingReveal ==
+				ConfigurationLiveApply::ResolveConfigurationEditorToggle(
+					true, false, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ResolvePresentationFocus(42, 84, true).consumeKeyboardMessage);
+		}
+
+		TEST_METHOD(ConfigurationEditorRevealIntentSurvivesColdStartupTransitions)
+		{
+			using Outcome =
+				ConfigurationLiveApply::ConfigurationEditorRevealOutcome;
+			Assert::IsTrue(Outcome::Pending ==
+				ConfigurationLiveApply::ResolveConfigurationEditorReveal(
+					true, false, false, 1500, 20000));
+			// A denied foreground fallback and arbitrary renderer/fullscreen
+			// transitions do not alter the durable reveal state.
+			Assert::IsTrue(Outcome::Pending ==
+				ConfigurationLiveApply::ResolveConfigurationEditorReveal(
+					true, false, false, 5000, 20000));
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldRetryRevealForAssociation(true, true));
+			Assert::IsTrue(Outcome::Complete ==
+				ConfigurationLiveApply::ResolveConfigurationEditorReveal(
+					true, true, true, 7000, 20000));
+			Assert::IsTrue(Outcome::Expired ==
+				ConfigurationLiveApply::ResolveConfigurationEditorReveal(
+					true, false, false, 20000, 20000));
+			Assert::IsTrue(Outcome::Expired ==
+				ConfigurationLiveApply::ResolveConfigurationEditorReveal(
+					true, false, false, 10, 20000, true));
+		}
+
+		TEST_METHOD(ConfigurationEditorActivationAckBreaksReverseCallbackCycle)
+		{
+			Assert::IsFalse(ConfigurationLiveApply::
+				AssociationPublicationMayBlockActivateHandler());
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldRetryConfigurationEditorActivate(
+					true, true, 250, 1500, true));
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldRetryConfigurationEditorActivate(
+					true, true, 1500, 1500, true));
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldRetryConfigurationEditorActivate(
+					true, false, 0, 1500, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldRetryConfigurationEditorActivate(
+					false, false, 0, 1500, true));
+		}
+
+		TEST_METHOD(SessionRendererSelectionSurvivesLifecyclePublication)
+		{
+			using Source =
+				ConfigurationLiveApply::RendererPublicationSource;
+			auto decision = ConfigurationLiveApply::ResolveRendererPublication(
+				L"DirectShow - madVR", L"VP Renderer", L"DirectShow - madVR",
+				false, true);
+			Assert::AreEqual(std::wstring(L"VP Renderer"), decision.renderer);
+			Assert::IsTrue(Source::SessionOverride == decision.source);
+
+			decision = ConfigurationLiveApply::ResolveRendererPublication(
+				L"VP Renderer", L"DirectShow - madVR", L"VP Renderer",
+				false, true);
+			Assert::AreEqual(std::wstring(L"DirectShow - madVR"),
+				decision.renderer);
+			Assert::IsTrue(Source::SessionOverride == decision.source);
+
+			decision = ConfigurationLiveApply::ResolveRendererPublication(
+				L"VP Renderer", L"DirectShow - madVR", L"DirectShow - madVR",
+				false, false);
+			Assert::AreEqual(std::wstring(L"DirectShow - madVR"),
+				decision.renderer);
+			Assert::IsTrue(Source::SessionOverride == decision.source);
+
+			decision = ConfigurationLiveApply::ResolveRendererPublication(
+				L"VP Renderer", L"DirectShow - madVR", L"DirectShow - madVR",
+				true, true);
+			Assert::AreEqual(std::wstring(L"VP Renderer"), decision.renderer);
+			Assert::IsTrue(Source::SavedConfiguration == decision.source);
+
+			decision = ConfigurationLiveApply::ResolveRendererPublication(
+				L"VP Renderer", L"", L"DirectShow - madVR", false, false);
+			Assert::AreEqual(std::wstring(L"DirectShow - madVR"),
+				decision.renderer);
+			Assert::IsTrue(Source::AcceptedRuntime == decision.source);
 		}
 
 		TEST_METHOD(GlobalShortcutPolicyObservesOnlyExternalForeground)
@@ -104,6 +256,420 @@ namespace VideoProcessorTest
 			Assert::IsFalse(
 				ConfigurationLiveApply::ShouldRecreateFullscreenHostForBackendHandoff(
 					true, true, true, true, false));
+		}
+
+		TEST_METHOD(AlphaHostReconstructionRevealsOnlyCurrentGenerationAndTarget)
+		{
+			using ConfigurationLiveApply::
+				ShouldRetireWaitingSurfaceAfterLiveFrame;
+			constexpr uintptr_t windowedTarget = 0x1001;
+			constexpr uintptr_t fullscreenTarget = 0x2002;
+
+			Assert::IsFalse(ShouldRetireWaitingSurfaceAfterLiveFrame(
+				3, windowedTarget, 4, fullscreenTarget, 4, fullscreenTarget,
+				true, true, true, false, false));
+			Assert::IsFalse(ShouldRetireWaitingSurfaceAfterLiveFrame(
+				4, windowedTarget, 4, fullscreenTarget, 4, fullscreenTarget,
+				true, true, true, false, false));
+			Assert::IsTrue(ShouldRetireWaitingSurfaceAfterLiveFrame(
+				4, fullscreenTarget, 4, fullscreenTarget, 4, fullscreenTarget,
+				true, true, true, false, false));
+
+			// Editor visibility suppresses focus promotion, never retirement of a
+			// verified current waiting surface.
+			Assert::IsTrue(ShouldRetireWaitingSurfaceAfterLiveFrame(
+				4, fullscreenTarget, 4, fullscreenTarget, 4, fullscreenTarget,
+				true, true, true, false, true));
+			Assert::IsFalse(
+				ConfigurationLiveApply::ShouldPromoteFullscreenAfterLiveFrame(
+					true, true, true, true));
+
+			// The inverse fullscreen-to-windowed reconstruction uses the same
+			// generation/target contract.
+			Assert::IsFalse(ShouldRetireWaitingSurfaceAfterLiveFrame(
+				4, fullscreenTarget, 5, windowedTarget, 5, windowedTarget,
+				true, true, true, false, false));
+			Assert::IsTrue(ShouldRetireWaitingSurfaceAfterLiveFrame(
+				5, windowedTarget, 5, windowedTarget, 5, windowedTarget,
+				true, true, true, false, false));
+		}
+
+#if 0
+		TEST_METHOD(ConfigurationEditorPresentationLeaseUsesActualWindowZOrder)
+		{
+			struct Windows
+			{
+				HWND host = nullptr;
+				HWND editor = nullptr;
+				HWND popup = nullptr;
+				~Windows()
+				{
+					if (popup) DestroyWindow(popup);
+					if (editor) DestroyWindow(editor);
+					if (host) DestroyWindow(host);
+				}
+			} windows;
+			windows.host = CreateWindowExW(WS_EX_TOPMOST, L"STATIC",
+				L"VP fullscreen test host", WS_POPUP | WS_VISIBLE,
+				0, 0, 320, 180, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+			windows.editor = CreateWindowExW(0, L"STATIC",
+				L"VP configuration test editor", WS_POPUP | WS_VISIBLE,
+				16, 16, 160, 90, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+			Assert::IsNotNull(windows.host);
+			Assert::IsNotNull(windows.editor);
+			windows.popup = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC",
+				L"VP configuration combo popup", WS_POPUP | WS_VISIBLE,
+				32, 32, 120, 80, windows.editor, nullptr,
+				GetModuleHandleW(nullptr), nullptr);
+			Assert::IsNotNull(windows.popup);
+			std::vector<RECT> monitorRects;
+			EnumDisplayMonitors(nullptr, nullptr,
+				[](HMONITOR, HDC, LPRECT rect, LPARAM context) -> BOOL
+				{
+					reinterpret_cast<std::vector<RECT>*>(context)->push_back(*rect);
+					return TRUE;
+				}, reinterpret_cast<LPARAM>(&monitorRects));
+			if (monitorRects.size() > 1)
+			{
+				const RECT& second = monitorRects[1];
+				SetWindowPos(windows.host, nullptr, second.left, second.top,
+					320, 180, SWP_NOACTIVATE | SWP_NOZORDER);
+			}
+			RECT hostRectBefore = {};
+			GetWindowRect(windows.host, &hostRectBefore);
+			const LONG_PTR hostStyleBefore =
+				GetWindowLongPtrW(windows.host, GWL_STYLE);
+			constexpr bool fullscreenRequested = true;
+			constexpr uint32_t rendererGeneration = 17;
+			const uintptr_t selectedTarget = ConfigurationLiveApply::
+				SelectConfigurationEditorPresentationTarget(true,
+					reinterpret_cast<uintptr_t>(windows.host), 0, 0);
+			Assert::AreEqual(reinterpret_cast<uintptr_t>(windows.host),
+				selectedTarget);
+			Assert::AreEqual(
+				reinterpret_cast<uintptr_t>(MonitorFromWindow(windows.host,
+					MONITOR_DEFAULTTONEAREST)),
+				reinterpret_cast<uintptr_t>(MonitorFromWindow(
+					reinterpret_cast<HWND>(selectedTarget),
+					MONITOR_DEFAULTTONEAREST)));
+			Assert::IsTrue(ConfigurationLiveApply::
+				IsValidatedPresentationTargetProcess(42, 42, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				IsValidatedPresentationTargetProcess(42, 84, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ConfigurationEditorRuntimeUsesRecurringLease());
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldRequestConfigurationEditorOneShotReassert(true, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldRequestConfigurationEditorOneShotReassert(false, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldRequestConfigurationEditorOneShotReassert(true, false));
+			SetActiveWindow(windows.editor);
+			const bool editorBecameForeground =
+				SetForegroundWindow(windows.editor) != FALSE;
+
+			Assert::IsTrue(ConfigurationEditorZOrder::Apply(
+				windows.host, windows.editor));
+			Assert::AreEqual(reinterpret_cast<uintptr_t>(windows.editor),
+				reinterpret_cast<uintptr_t>(GetActiveWindow()));
+			if (editorBecameForeground)
+				Assert::AreEqual(reinterpret_cast<uintptr_t>(windows.editor),
+					reinterpret_cast<uintptr_t>(GetForegroundWindow()));
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldRestoreConfigurationEditorForeground(true, 42, 42));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldRestoreConfigurationEditorForeground(true, 42, 84));
+			Assert::IsTrue(ConfigurationEditorZOrder::IsAbove(
+				windows.editor, windows.host));
+			Assert::IsTrue((GetWindowLongPtrW(
+				windows.editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
+			Assert::IsTrue((GetWindowLongPtrW(
+				windows.host, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
+			RECT hostRectAfter = {};
+			GetWindowRect(windows.host, &hostRectAfter);
+			Assert::IsTrue(EqualRect(&hostRectBefore, &hostRectAfter) != FALSE);
+			Assert::AreEqual(hostStyleBefore,
+				GetWindowLongPtrW(windows.host, GWL_STYLE));
+			Assert::IsTrue(fullscreenRequested);
+			Assert::AreEqual<uint32_t>(17, rendererGeneration);
+
+			// A same-process combo popup owns Config interaction. Lease maintenance
+			// must not collapse it back to the main window; only a VP foreground
+			// takeover causes the main editor to be reasserted.
+			SetActiveWindow(windows.popup);
+			const LONG_PTR editorExStyleBeforeWatchdog =
+				GetWindowLongPtrW(windows.editor, GWL_EXSTYLE);
+			const LONG_PTR popupExStyleBeforeWatchdog =
+				GetWindowLongPtrW(windows.popup, GWL_EXSTYLE);
+			const bool popupAboveEditorBeforeWatchdog =
+				ConfigurationEditorZOrder::IsAbove(
+					windows.popup, windows.editor);
+			for (int tick = 0; tick < 5; ++tick)
+			{
+				Assert::IsTrue(ConfigurationEditorZOrder::
+					MaintainPresentationHost(windows.host));
+			}
+			Assert::AreEqual(reinterpret_cast<uintptr_t>(windows.popup),
+				reinterpret_cast<uintptr_t>(GetActiveWindow()));
+			Assert::AreEqual(editorExStyleBeforeWatchdog,
+				GetWindowLongPtrW(windows.editor, GWL_EXSTYLE));
+			Assert::AreEqual(popupExStyleBeforeWatchdog,
+				GetWindowLongPtrW(windows.popup, GWL_EXSTYLE));
+			Assert::AreEqual(popupAboveEditorBeforeWatchdog,
+				ConfigurationEditorZOrder::IsAbove(
+					windows.popup, windows.editor));
+			SetActiveWindow(windows.host);
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldRestoreConfigurationEditorForeground(true, 42, 42));
+			SetActiveWindow(windows.editor);
+			Assert::AreEqual(reinterpret_cast<uintptr_t>(windows.editor),
+				reinterpret_cast<uintptr_t>(GetActiveWindow()));
+
+			// Simulate renderer reconstruction or the delayed fullscreen pass
+			// attempting to reassert the presentation host.
+			SetWindowPos(windows.host, HWND_TOPMOST, 0, 0, 0, 0,
+				SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+			Assert::IsTrue(ConfigurationEditorZOrder::Apply(
+				windows.host, windows.editor));
+			Assert::IsTrue(ConfigurationEditorZOrder::IsAbove(
+				windows.editor, windows.host));
+			Assert::AreEqual(reinterpret_cast<uintptr_t>(windows.editor),
+				reinterpret_cast<uintptr_t>(GetActiveWindow()));
+			if (editorBecameForeground)
+				Assert::AreEqual(reinterpret_cast<uintptr_t>(windows.editor),
+					reinterpret_cast<uintptr_t>(GetForegroundWindow()));
+
+			ShowWindow(windows.host, SW_MINIMIZE);
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldExecuteDeferredPresentationActivation(
+					true, true, true, true, true, true));
+			ShowWindow(windows.editor, SW_HIDE);
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldExecuteDeferredPresentationActivation(
+					true, false, true, true, true, true));
+			ShowWindow(windows.host, SW_RESTORE);
+			SetActiveWindow(windows.host);
+			Assert::AreEqual(reinterpret_cast<uintptr_t>(windows.host),
+				reinterpret_cast<uintptr_t>(GetActiveWindow()));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldExecuteDeferredPresentationActivation(
+					false, false, true, true, true, true));
+
+			Assert::IsTrue(ConfigurationEditorZOrder::Release(windows.editor));
+			Assert::IsFalse((GetWindowLongPtrW(
+				windows.editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
+			RECT hostRectAfterHide = {};
+			GetWindowRect(windows.host, &hostRectAfterHide);
+			Assert::IsTrue(EqualRect(&hostRectBefore, &hostRectAfterHide) != FALSE);
+			Assert::AreEqual(hostStyleBefore,
+				GetWindowLongPtrW(windows.host, GWL_STYLE));
+			Assert::IsTrue((GetWindowLongPtrW(
+				windows.host, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
+			Assert::AreEqual<uint32_t>(17, rendererGeneration);
+		}
+#endif
+
+		TEST_METHOD(ConfigurationEditorUsesNativeOwnerWithoutRuntimePolling)
+		{
+			struct Windows
+			{
+				HWND host = nullptr;
+				HWND editor = nullptr;
+				HWND popup = nullptr;
+				~Windows()
+				{
+					if (popup) DestroyWindow(popup);
+					if (editor) DestroyWindow(editor);
+					if (host) DestroyWindow(host);
+				}
+			} windows;
+			windows.host = CreateWindowExW(WS_EX_TOPMOST, L"STATIC",
+				L"VP presentation owner", WS_POPUP | WS_VISIBLE,
+				0, 0, 320, 180, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+			windows.editor = CreateWindowExW(0, L"STATIC", L"Config",
+				WS_POPUP | WS_VISIBLE, 16, 16, 160, 90,
+				nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+			Assert::IsNotNull(windows.host);
+			Assert::IsNotNull(windows.editor);
+			SetWindowLongPtrW(windows.editor, GWLP_HWNDPARENT,
+				reinterpret_cast<LONG_PTR>(windows.host));
+			windows.popup = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC",
+				L"Config combo", WS_POPUP | WS_VISIBLE, 32, 32, 120, 80,
+				windows.editor, nullptr, GetModuleHandleW(nullptr), nullptr);
+			Assert::IsNotNull(windows.popup);
+
+			Assert::AreEqual(reinterpret_cast<uintptr_t>(windows.host),
+				reinterpret_cast<uintptr_t>(GetWindow(windows.editor, GW_OWNER)));
+			Assert::AreEqual(reinterpret_cast<uintptr_t>(windows.editor),
+				reinterpret_cast<uintptr_t>(GetWindow(windows.popup, GW_OWNER)));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ConfigurationEditorRuntimeUsesRecurringLease());
+
+			RECT hostBefore = {};
+			GetWindowRect(windows.host, &hostBefore);
+			const LONG_PTR hostStyle = GetWindowLongPtrW(windows.host, GWL_STYLE);
+			const LONG_PTR editorExStyle =
+				GetWindowLongPtrW(windows.editor, GWL_EXSTYLE);
+			const LONG_PTR popupExStyle =
+				GetWindowLongPtrW(windows.popup, GWL_EXSTYLE);
+			SetActiveWindow(windows.popup);
+			for (int formerWatchdogTick = 0; formerWatchdogTick < 5;
+				++formerWatchdogTick)
+			{
+				// Native-owner architecture intentionally performs no runtime call.
+			}
+			Assert::AreEqual(reinterpret_cast<uintptr_t>(windows.popup),
+				reinterpret_cast<uintptr_t>(GetActiveWindow()));
+			Assert::AreEqual(editorExStyle,
+				GetWindowLongPtrW(windows.editor, GWL_EXSTYLE));
+			Assert::AreEqual(popupExStyle,
+				GetWindowLongPtrW(windows.popup, GWL_EXSTYLE));
+			RECT hostAfter = {};
+			GetWindowRect(windows.host, &hostAfter);
+			Assert::IsTrue(EqualRect(&hostBefore, &hostAfter) != FALSE);
+			Assert::AreEqual(hostStyle,
+				GetWindowLongPtrW(windows.host, GWL_STYLE));
+			Assert::AreEqual(reinterpret_cast<uintptr_t>(windows.host),
+				ConfigurationLiveApply::SelectConfigurationEditorPresentationTarget(
+					true, reinterpret_cast<uintptr_t>(windows.host), 0, 0));
+			Assert::IsTrue(ConfigurationLiveApply::
+				IsValidatedPresentationTargetProcess(42, 42, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				IsValidatedPresentationTargetProcess(42, 84, true));
+		}
+
+		TEST_METHOD(ConfigurationBoundaryDefersRendererForNewerCaptureState)
+		{
+			Assert::IsTrue(ConfigurationLiveApply::
+				MayConstructRendererAfterConfigurationBoundary(41, 41));
+			Assert::IsFalse(ConfigurationLiveApply::
+				MayConstructRendererAfterConfigurationBoundary(41, 42));
+			Assert::IsFalse(ConfigurationLiveApply::
+				MayConstructRendererAfterConfigurationBoundary(0, 1));
+		}
+
+		TEST_METHOD(FailedReloadRestoresAcceptedRendererSelection)
+		{
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldRestoreAcceptedRendererAfterReload(false, true, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldRestoreAcceptedRendererAfterReload(true, true, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldRestoreAcceptedRendererAfterReload(false, false, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldRestoreAcceptedRendererAfterReload(false, true, false));
+		}
+
+		TEST_METHOD(ShortcutTableStagesWithoutRendererRestart)
+		{
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldStageShortcutTable(true, false));
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldStageShortcutTable(false, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldStageShortcutTable(false, false));
+		}
+
+		TEST_METHOD(ConfigurationPublicationPreservesTransientPresentation)
+		{
+			const auto windowedVideoOnly = ConfigurationLiveApply::
+				PreserveSessionPresentation(true, false);
+			Assert::IsTrue(windowedVideoOnly.videoOnly);
+			Assert::IsFalse(windowedVideoOnly.fullscreen);
+
+			const auto fullscreenWithUi = ConfigurationLiveApply::
+				PreserveSessionPresentation(false, true);
+			Assert::IsFalse(fullscreenWithUi.videoOnly);
+			Assert::IsTrue(fullscreenWithUi.fullscreen);
+			Assert::IsFalse(ConfigurationLiveApply::
+				SessionPresentationControlIsPersistent());
+		}
+
+		TEST_METHOD(FullscreenToggleUsesRequestedAndEffectiveState)
+		{
+			using Action = ConfigurationLiveApply::FullscreenToggleAction;
+			const auto pending = ConfigurationLiveApply::
+				ResolveFullscreenToggle(true, false);
+			const auto active = ConfigurationLiveApply::
+				ResolveFullscreenToggle(true, true);
+			const auto inactive = ConfigurationLiveApply::
+				ResolveFullscreenToggle(false, false);
+			Assert::IsTrue(pending == Action::CancelPending);
+			Assert::IsTrue(active == Action::ExitFullscreen);
+			Assert::IsTrue(inactive == Action::EnterFullscreen);
+			Assert::IsFalse(ConfigurationLiveApply::
+				FullscreenRequestedAfterToggle(pending));
+			Assert::IsFalse(ConfigurationLiveApply::
+				FullscreenRequestedAfterToggle(active));
+			Assert::IsTrue(ConfigurationLiveApply::
+				FullscreenRequestedAfterToggle(inactive));
+			Assert::IsTrue(ConfigurationLiveApply::
+				EffectiveFullscreenToggleActive(true, false));
+			Assert::IsTrue(ConfigurationLiveApply::
+				EffectiveFullscreenToggleActive(false, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				EffectiveFullscreenToggleActive(false, false));
+		}
+
+		TEST_METHOD(VideoOnlyRetainsForegroundEscapeShortcuts)
+		{
+			Assert::AreEqual(static_cast<int>('U'), static_cast<int>(
+				ConfigurationLiveApply::VideoOnlyToggleDefaultKey));
+			Assert::AreEqual(0x0c, static_cast<int>(
+				ConfigurationLiveApply::VideoOnlyToggleDefaultModifiers));
+			Assert::AreEqual(0x0d, static_cast<int>(
+				ConfigurationLiveApply::ViewToggleDefaultKey));
+			Assert::AreEqual(0x10, static_cast<int>(
+				ConfigurationLiveApply::ViewToggleDefaultModifiers));
+			Assert::IsTrue(ConfigurationLiveApply::
+				MayDispatchForegroundPresentationShortcut(true, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				MayDispatchForegroundPresentationShortcut(false, true));
+		}
+
+		TEST_METHOD(WindowCloseAlwaysAdvancesSafeShutdown)
+		{
+			Assert::IsTrue(ApplicationShutdownPolicy::
+				IsCloseSystemCommand(0xf060));
+			Assert::IsTrue(ApplicationShutdownPolicy::
+				IsCloseSystemCommand(0xf061));
+			Assert::IsFalse(ApplicationShutdownPolicy::
+				IsCloseSystemCommand(0xf020));
+			Assert::IsTrue(ApplicationShutdownPolicy::
+				MayFinalizeCaptureAfterStopReturns(true, true));
+			Assert::IsFalse(ApplicationShutdownPolicy::
+				MayFinalizeCaptureAfterStopReturns(false, true));
+			Assert::IsFalse(ApplicationShutdownPolicy::
+				MayFinalizeCaptureAfterStopReturns(true, false));
+
+			using Source = ApplicationShutdownPolicy::CloseSource;
+			using Lifecycle = ApplicationShutdownPolicy::Lifecycle;
+			for (const Source source : {
+				Source::MainDialog, Source::OperatorView,
+				Source::WindowedVideoHost, Source::FullscreenHost,
+				Source::RendererSurface, Source::StatsOverlay,
+				Source::OwnedTopLevel })
+			{
+				for (const Lifecycle lifecycle : {
+					Lifecycle::Running, Lifecycle::StoppingRenderer,
+					Lifecycle::RetiringRenderer, Lifecycle::Terminating })
+				{
+					const auto decision = ApplicationShutdownPolicy::
+						ResolveClose(source, lifecycle);
+					Assert::IsTrue(decision.routeToCoordinator);
+					Assert::IsTrue(decision.consumeOriginal);
+					Assert::IsTrue(decision.preserveSourceSurface);
+					Assert::AreEqual(
+						lifecycle == Lifecycle::Terminating,
+						decision.advanceExistingTermination);
+				}
+			}
+			Assert::IsTrue(ApplicationShutdownPolicy::
+				IsAltF4(0x0104, 0x73, true));
+			Assert::IsFalse(ApplicationShutdownPolicy::
+				IsAltF4(0x0104, 0x73, false));
+			Assert::IsFalse(ApplicationShutdownPolicy::
+				IsAltF4(0x0104, 'R', true));
 		}
 
 		TEST_METHOD(ApplicationInterfaceDefaultsToModern)
@@ -245,6 +811,48 @@ namespace VideoProcessorTest
 			Assert::AreEqual(873, layout.preview.height);
 		}
 
+		TEST_METHOD(ModernOperatorHeaderControlsAreCompactAndDpiAligned)
+		{
+			const auto normal = ModernOperatorLayout::
+				CalculateHeaderControls(1600);
+			Assert::AreEqual(16, 1600 -
+				(normal.configuration.x + normal.configuration.width));
+			Assert::AreEqual(8, normal.configuration.x -
+				(normal.fullscreen.x + normal.fullscreen.width));
+			Assert::AreEqual(8, normal.fullscreen.x -
+				(normal.videoOnly.x + normal.videoOnly.width));
+			Assert::AreEqual(32, normal.configuration.width);
+			Assert::AreEqual(90, normal.fullscreen.width);
+			Assert::AreEqual(86, normal.videoOnly.width);
+
+			const auto highDpi = ModernOperatorLayout::
+				CalculateHeaderControls(2400, 144);
+			Assert::AreEqual(24, 2400 -
+				(highDpi.configuration.x + highDpi.configuration.width));
+			Assert::AreEqual(12, highDpi.configuration.x -
+				(highDpi.fullscreen.x + highDpi.fullscreen.width));
+			Assert::AreEqual(highDpi.configuration.y, highDpi.fullscreen.y);
+			Assert::AreEqual(highDpi.fullscreen.y, highDpi.videoOnly.y);
+		}
+
+		TEST_METHOD(ModernCapturedVideoNeverLeaksTemplatePlaceholders)
+		{
+			for (const wchar_t* placeholder : {
+				L"", L"<display mode>", L"<pixel format>",
+				L"<color space>", L"<colorspace>", L"<eotf>" })
+			Assert::AreEqual(std::wstring(L"---"),
+				ModernOperatorStatusPolicy::NormalizeCapturedValue(placeholder));
+			Assert::AreEqual(std::wstring(L"3840x2160p - 4K UHDTV"),
+				ModernOperatorStatusPolicy::NormalizeCapturedValue(
+					L"3840x2160p - 4K UHDTV"));
+			Assert::AreEqual(std::wstring(L"P010"),
+				ModernOperatorStatusPolicy::NormalizeCapturedValue(L"P010"));
+			Assert::AreEqual(std::wstring(L"BT.2020"),
+				ModernOperatorStatusPolicy::NormalizeCapturedValue(L"BT.2020"));
+			Assert::AreEqual(std::wstring(L"PQ"),
+				ModernOperatorStatusPolicy::NormalizeCapturedValue(L"PQ"));
+		}
+
 		TEST_METHOD(ModernOperatorPreviewRemainsSixteenByNineWhenResized)
 		{
 			const auto layout = ModernOperatorLayout::Calculate(1900, 900);
@@ -278,6 +886,39 @@ namespace VideoProcessorTest
 			Assert::AreEqual(540, NoUiLayout::DefaultClientHeight);
 			Assert::AreEqual(320, NoUiLayout::MinimumClientWidth);
 			Assert::AreEqual(180, NoUiLayout::MinimumClientHeight);
+		}
+
+		TEST_METHOD(VideoOnlyFillsClientWithoutChangingOuterWindowBounds)
+		{
+			const ModernOperatorLayout::Rect outer = { 37, 52, 1600, 900 };
+			const auto video = NoUiLayout::FillClient(1584, 839);
+			Assert::AreEqual(0, video.x);
+			Assert::AreEqual(0, video.y);
+			Assert::AreEqual(1584, video.width);
+			Assert::AreEqual(839, video.height);
+			Assert::IsTrue(NoUiLayout::PreservesOuterBounds(outer, outer));
+			Assert::IsFalse(NoUiLayout::PreservesOuterBounds(
+				outer, { 37, 52, 960, 540 }));
+		}
+
+		TEST_METHOD(VideoOnlyImmediatelyReflowsVideoBoundsInBothDirections)
+		{
+			const ModernOperatorLayout::Rect outer = { 37, 52, 1600, 900 };
+			const ModernOperatorLayout::Rect operatorPreview = {
+				544, 70, 1040, 585 };
+			const auto videoOnly = NoUiLayout::ResolveVideoBounds(
+				true, 1600, 839, operatorPreview);
+			const auto operatorView = NoUiLayout::ResolveVideoBounds(
+				false, 1600, 839, operatorPreview);
+			Assert::AreEqual(0, videoOnly.x);
+			Assert::AreEqual(0, videoOnly.y);
+			Assert::AreEqual(1600, videoOnly.width);
+			Assert::AreEqual(839, videoOnly.height);
+			Assert::AreEqual(operatorPreview.x, operatorView.x);
+			Assert::AreEqual(operatorPreview.y, operatorView.y);
+			Assert::AreEqual(operatorPreview.width, operatorView.width);
+			Assert::AreEqual(operatorPreview.height, operatorView.height);
+			Assert::IsTrue(NoUiLayout::PreservesOuterBounds(outer, outer));
 		}
 
 		TEST_METHOD(DeckLinkEightBitYuvUsesHdycOnlyForRec709)

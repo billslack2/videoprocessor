@@ -5,19 +5,28 @@
 #include <QString>
 #include <QStringList>
 
+#include <map>
 #include <memory>
+#include <string>
 
 class QLabel;
 class QCheckBox;
 class QComboBox;
+class QHideEvent;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
+class QRect;
 class QStackedWidget;
 class QSystemTrayIcon;
 class QToolButton;
+class QWindow;
 
 namespace ConfigEditorCore { struct ConfigDocument; }
+namespace ConfigEditorPlacement
+{
+    QRect ClampFrameToWorkArea(const QRect& frame, const QRect& workArea);
+}
 
 class ConfigEditorWindow final : public QMainWindow
 {
@@ -30,8 +39,12 @@ public:
     void refreshMonitorDiscovery();
 
 protected:
+    bool event(QEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    bool nativeEvent(const QByteArray& eventType, void* message,
+        qintptr* result) override;
 
 private:
     QWidget* createShell();
@@ -57,33 +70,62 @@ private:
         const QStringList& values, const QStringList& labels = {}, bool editable = false);
     QCheckBox* bindCheckField(const QString& label, const QString& section, const QString& key, bool defaultValue = false);
     void markDirty();
-    void keepAboveVideo();
+	void updateEffectSummary();
+    bool validateCandidate(std::wstring& error,
+        bool allowActionDrafts = false) const;
+    QStringList validationErrors(QStringList& fields,
+        bool allowActionDrafts) const;
+    QString displayWarning() const;
+    bool updateValidationState();
+    void applyNativeOwner();
+    void clearNativeOwner();
+    void publishNativeAssociation();
+    void positionForReveal();
+    void applyScopedTopmost();
+    void removeScopedTopmost();
+    bool hasActiveOwnedPopup() const;
+    bool nativeOwnerIsValid() const;
     void applyChanges();
-    void saveChanges();
+	bool saveChanges();
     bool notifyVideoProcessor();
     void loadConfiguration();
     void loadDiscoveryCache();
     void setupTray();
     void exitApplication();
     void setStatus(const QString& message, bool error = false);
+    void setWarningStatus(const QString& message);
 
     QString configPath_;
     quintptr ownerHandle_ = 0;
+    quint32 ownerProcessId_ = 0;
     bool ownerApplied_ = false;
+    quintptr presentationTargetHandle_ = 0;
+    quint32 presentationTargetProcessId_ = 0;
+    bool pendingTopmostReassert_ = false;
+    bool scopedTopmost_ = false;
+    bool explicitRevealIntent_ = false;
+    bool scopedTopmostEligible_ = false;
+    bool popupActivationTransition_ = false;
     bool exitRequested_ = false;
     bool configurationLoaded_ = false;
     bool dirty_ = false;
     bool hasPendingMigrations_ = false;
     bool testMode_ = false;
     std::unique_ptr<ConfigEditorCore::ConfigDocument> document_;
+	std::unique_ptr<QWindow> nativeOwnerWindow_;
+	quintptr publishedWindowHandle_ = 0;
+	std::map<std::string, std::map<std::string, std::string>> savedSnapshot_;
     QStringList captureDevices_;
     QMap<QString, QStringList> captureConnections_;
+    QMap<QString, quint64> editOrder_;
+    quint64 editSerial_ = 0;
     QStringList filteredRenderers_;
     QStringList allRenderers_;
     QStringList monitors_;
     QStackedWidget* pages_ = nullptr;
     QWidget* navigation_ = nullptr;
     QLabel* status_ = nullptr;
+	QLabel* effectSummary_ = nullptr;
     QComboBox* monitorChoice_ = nullptr;
     QComboBox* actionRendererTarget_ = nullptr;
     QPushButton* applyButton_ = nullptr;

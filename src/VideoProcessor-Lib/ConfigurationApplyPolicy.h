@@ -1,0 +1,154 @@
+#pragma once
+
+#include <algorithm>
+#include <cctype>
+#include <string>
+#include <vector>
+
+// The configuration editor and the running application use this same
+// deliberately conservative policy.  It classifies persisted configuration
+// changes; it is not a per-key hot-reload allow list.
+namespace ConfigurationApplyPolicy
+{
+	enum class Action
+	{
+		SaveOnly,
+		ReloadShortcuts,
+		ResetQueues,
+		RestartRenderer
+	};
+
+	struct Change
+	{
+		std::string section;
+		std::string key;
+	};
+
+	inline bool HasPrefix(const std::string& value, const char* prefix)
+	{
+		const std::string needle(prefix);
+		return value == needle ||
+			(value.size() > needle.size() &&
+				value.compare(0, needle.size(), needle) == 0 &&
+				value[needle.size()] == '.');
+	}
+
+	inline std::string NormalizeSection(const std::string& section)
+	{
+		std::string normalized(section);
+		std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+			[](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+		return normalized;
+	}
+
+	inline bool IsShortcutAffectingChange(const Change& change)
+	{
+		const std::string section = NormalizeSection(change.section);
+		if (section == "shortcuts") return true;
+		if (NormalizeSection(change.key) != "shortcut") return false;
+
+		// Ordered profile shortcuts select live queue, LLDV, renderer,
+		// viewport, and shader profiles. Keep this list aligned with the profile
+		// families accepted by the configuration model; an unknown section that
+		// happens to contain a key named "shortcut" remains save-only.
+		return HasPrefix(section, "queue") || HasPrefix(section, "lldv") ||
+			HasPrefix(section, "vprenderer") || HasPrefix(section, "viewport") ||
+			HasPrefix(section, "shader") || HasPrefix(section, "shaders") ||
+			HasPrefix(section, "profiles.queue") ||
+			HasPrefix(section, "profiles.lldv") ||
+			HasPrefix(section, "profiles.renderer") ||
+			HasPrefix(section, "profiles.viewport") ||
+			HasPrefix(section, "profiles.shader");
+	}
+
+	inline bool IsStartupPresentationDefaultChange(const Change& change)
+	{
+		if (NormalizeSection(change.section) != "general") return false;
+		const std::string key = NormalizeSection(change.key);
+		return key == "noui" || key == "no_ui" || key == "fullscreen" ||
+			key == "windowedfullscreenmode" ||
+			key == "windowed_fullscreen_mode";
+	}
+
+	inline Action ClassifySection(const std::string& section,
+		bool directShowRendererActive = true)
+	{
+		const std::string normalized = NormalizeSection(section);
+		if (normalized == "logging")
+			return Action::SaveOnly;
+		if (normalized == "shortcuts")
+			return Action::ReloadShortcuts;
+		// Queue profiles exist in both the current [queue.<name>] spelling and
+		// the unified/legacy [profiles.queue.<name>] spelling. Match both before
+		// the generic profiles family below so a queue-only edit never rebuilds
+		// the renderer.
+		if (HasPrefix(normalized, "queue") ||
+			HasPrefix(normalized, "profiles.queue") ||
+			normalized == "queue_recovery")
+			return Action::ResetQueues;
+		// Graph-construction settings are irrelevant while Alpha owns the
+		// presentation. Persist them for the next DirectShow/madVR graph rather
+		// than interrupting an unrelated renderer.
+		if (HasPrefix(normalized, "directshow"))
+			return directShowRendererActive ? Action::RestartRenderer :
+				Action::SaveOnly;
+
+		// Every known renderer, input, profile, shader, LLDV, presentation, and
+		// completed-event action section follows the coherent renderer-restart
+		// contract. Unknown text intentionally stays save-only so we never guess
+		// its runtime meaning.
+		if (normalized == "command_line" || normalized == "general" ||
+			normalized == "renderer_alias" ||
+			normalized == "decklink" || normalized == "p010_conversion" ||
+			normalized == "ppm_correction" ||
+			normalized == "display_refresh_rate_override" ||
+			HasPrefix(normalized, "lldv") || HasPrefix(normalized, "shader") ||
+			HasPrefix(normalized, "shaders") || HasPrefix(normalized, "vprenderer") ||
+			HasPrefix(normalized, "profiles") || HasPrefix(normalized, "viewport") ||
+			HasPrefix(normalized, "actions") || HasPrefix(normalized, "event_actions"))
+			return Action::RestartRenderer;
+		return Action::SaveOnly;
+	}
+
+	inline Action ClassifyChange(const Change& change,
+		bool directShowRendererActive = true)
+	{
+		// These values seed the process presentation state. Applying them to a
+		// running session would unexpectedly override the user's current UI and
+		// fullscreen choices, so they are deliberately next-start only.
+		if (IsStartupPresentationDefaultChange(change)) return Action::SaveOnly;
+		if (IsShortcutAffectingChange(change)) return Action::ReloadShortcuts;
+		return ClassifySection(change.section, directShowRendererActive);
+	}
+
+	inline Action ClassifyChanges(const std::vector<Change>& changes,
+		bool directShowRendererActive = true)
+	{
+		Action result = Action::SaveOnly;
+		for (const Change& change : changes)
+			result = std::max(result, ClassifyChange(change,
+				directShowRendererActive));
+		return result;
+	}
+
+	inline Action ClassifySections(const std::vector<std::string>& sections,
+		bool directShowRendererActive = true)
+	{
+		Action result = Action::SaveOnly;
+		for (const std::string& section : sections)
+			result = std::max(result, ClassifySection(section,
+				directShowRendererActive));
+		return result;
+	}
+
+	inline const char* ActionLabel(Action action)
+	{
+		switch (action)
+		{
+		case Action::RestartRenderer: return "Restart renderer";
+		case Action::ResetQueues: return "Reset queues";
+		case Action::ReloadShortcuts: return "Apply shortcuts live";
+		default: return "Takes effect next start";
+		}
+	}
+}

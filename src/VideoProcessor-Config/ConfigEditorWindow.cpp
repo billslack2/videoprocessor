@@ -5,6 +5,7 @@
 #include <objbase.h>
 
 #include "ConfigEditorWindow.h"
+#include <ConfigurationApplyPolicy.h>
 #include <ConfigurationLiveApply.h>
 
 #include <ConfigEditorCore.h>
@@ -14,6 +15,7 @@
 #include <QAbstractItemModel>
 #include <QAbstractSpinBox>
 #include <QAccessible>
+#include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -21,6 +23,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QDialog>
+#include <QEvent>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QFormLayout>
@@ -29,6 +32,7 @@
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QHash>
+#include <QHideEvent>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
@@ -41,6 +45,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QRect>
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QShortcut>
@@ -55,15 +60,123 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QWindow>
 
+#include <algorithm>
 #include <functional>
+#include <cctype>
 #include <limits>
+#include <map>
+#include <set>
 
 namespace
 {
 constexpr int kPageMargin = 16;
 constexpr int kCardPadding = 12;
 constexpr int kResponsiveContentWidth = 720;
+
+using DocumentSnapshot = std::map<std::string,
+    std::map<std::string, std::string>>;
+
+DocumentSnapshot captureDocumentSnapshot(
+    const ConfigEditorCore::ConfigDocument& document)
+{
+    DocumentSnapshot snapshot;
+    for (const std::string& section : document.SectionNames())
+        for (const auto& setting : document.SectionSettings(section))
+            snapshot[section][setting.first] = setting.second;
+    return snapshot;
+}
+
+std::vector<ConfigurationApplyPolicy::Change> changedDocumentValues(
+    const DocumentSnapshot& previous, const DocumentSnapshot& current)
+{
+    std::set<std::string> names;
+    for (const auto& entry : previous) names.insert(entry.first);
+    for (const auto& entry : current) names.insert(entry.first);
+    std::vector<ConfigurationApplyPolicy::Change> changed;
+    for (const std::string& name : names)
+    {
+        const auto before = previous.find(name);
+        const auto after = current.find(name);
+        if (before == previous.end())
+        {
+            if (after->second.empty()) changed.push_back({ name, {} });
+            for (const auto& setting : after->second)
+                changed.push_back({ name, setting.first });
+            continue;
+        }
+        if (after == current.end())
+        {
+            if (before->second.empty()) changed.push_back({ name, {} });
+            for (const auto& setting : before->second)
+                changed.push_back({ name, setting.first });
+            continue;
+        }
+        for (const auto& setting : before->second)
+        {
+            const auto replacement = after->second.find(setting.first);
+            if (replacement == after->second.end() ||
+                replacement->second != setting.second)
+                changed.push_back({ name, setting.first });
+        }
+        for (const auto& setting : after->second)
+            if (before->second.find(setting.first) == before->second.end())
+                changed.push_back({ name, setting.first });
+    }
+    return changed;
+}
+
+bool snapshotUsesDirectShowRenderer(const DocumentSnapshot& snapshot)
+{
+    for (const auto& section : snapshot)
+    {
+        if (ConfigurationApplyPolicy::NormalizeSection(section.first) != "general")
+            continue;
+        for (const auto& setting : section.second)
+        {
+            if (ConfigFile::NormalizeName(setting.first) != "renderer") continue;
+            std::string normalized = setting.second;
+            std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+            return normalized.find("vp renderer") == std::string::npos &&
+                normalized.find("videoprocessor renderer") == std::string::npos;
+        }
+    }
+    return true;
+}
+
+QString effectCategory(const std::string& section)
+{
+    const std::string normalized = ConfigurationApplyPolicy::NormalizeSection(section);
+    if (ConfigurationApplyPolicy::HasPrefix(normalized, "queue") ||
+        normalized == "queue_recovery") return QStringLiteral("Queue");
+    if (ConfigurationApplyPolicy::HasPrefix(normalized, "directshow"))
+        return QStringLiteral("DirectShow");
+    if (ConfigurationApplyPolicy::HasPrefix(normalized, "vprenderer"))
+        return QStringLiteral("VP Renderer");
+    if (ConfigurationApplyPolicy::HasPrefix(normalized, "viewport") ||
+        ConfigurationApplyPolicy::HasPrefix(normalized, "profiles.viewport"))
+        return QStringLiteral("Viewport");
+    if (ConfigurationApplyPolicy::HasPrefix(normalized, "profiles"))
+        return QStringLiteral("Profiles");
+    if (ConfigurationApplyPolicy::HasPrefix(normalized, "lldv"))
+        return QStringLiteral("LLDV");
+    if (ConfigurationApplyPolicy::HasPrefix(normalized, "shader") ||
+        ConfigurationApplyPolicy::HasPrefix(normalized, "shaders"))
+        return QStringLiteral("Shaders");
+    if (ConfigurationApplyPolicy::HasPrefix(normalized, "actions") ||
+        ConfigurationApplyPolicy::HasPrefix(normalized, "event_actions"))
+        return QStringLiteral("Actions");
+    if (normalized == "shortcuts") return QStringLiteral("Shortcuts");
+    if (normalized == "logging") return QStringLiteral("Logging");
+    if (normalized == "general" || normalized == "command_line" ||
+        normalized == "renderer_alias" || normalized == "decklink" ||
+        normalized == "p010_conversion" || normalized == "ppm_correction" ||
+        normalized == "display_refresh_rate_override")
+        return QStringLiteral("Startup / input");
+    return QStringLiteral("Preserved content");
+}
 
 class ResponsiveCardGrid final : public QWidget
 {
@@ -319,53 +432,6 @@ void openValidationError(QWidget* parent, const QString& message)
     dialog->open();
 }
 
-void openDiscardChangesConfirmation(QWidget* parent,
-    std::function<void(bool)> completed)
-{
-    auto* dialog = new QDialog(parent,
-        Qt::Dialog | Qt::MSWindowsFixedSizeDialogHint);
-    dialog->setWindowTitle(QStringLiteral("Discard changes?"));
-    dialog->setObjectName(QStringLiteral("confirmationDialog"));
-    dialog->setAttribute(Qt::WA_DeleteOnClose);
-    dialog->setModal(true);
-    dialog->setMinimumWidth(400);
-
-    auto* layout = new QVBoxLayout(dialog);
-    layout->setContentsMargins(22, 20, 22, 18);
-    layout->setSpacing(14);
-    auto* title = new QLabel(QStringLiteral("Discard unsaved changes?"));
-    title->setProperty("cardTitle", true);
-    layout->addWidget(title);
-    auto* message = new QLabel(QStringLiteral(
-        "Reloading will discard all edits that have not been saved."));
-    message->setWordWrap(true);
-    message->setProperty("help", true);
-    layout->addWidget(message);
-
-    auto* actions = new QHBoxLayout;
-    actions->addStretch();
-    auto* discard = new QPushButton(QStringLiteral("Discard changes"));
-    discard->setProperty("danger", true);
-    discard->setAutoDefault(false);
-    auto* cancel = new QPushButton(QStringLiteral("Cancel"));
-    cancel->setDefault(true);
-    actions->addWidget(discard);
-    actions->addWidget(cancel);
-    layout->addLayout(actions);
-    layout->setSizeConstraint(QLayout::SetFixedSize);
-    dialog->adjustSize();
-    dialog->setFixedSize(dialog->sizeHint());
-
-    QObject::connect(discard, &QPushButton::clicked, dialog, &QDialog::accept);
-    QObject::connect(cancel, &QPushButton::clicked, dialog, &QDialog::reject);
-    QObject::connect(dialog, &QDialog::finished, dialog,
-        [completed = std::move(completed)](int result)
-    {
-        completed(result == QDialog::Accepted);
-    });
-    dialog->open();
-}
-
 bool isSharedInputSetting(const QString& key)
 {
     return key == QStringLiteral("video_conversion") ||
@@ -473,15 +539,41 @@ QString friendlyChoiceLabel(const QString& raw)
 }
 }
 
+QRect ConfigEditorPlacement::ClampFrameToWorkArea(const QRect& frame,
+    const QRect& workArea)
+{
+    if (!frame.isValid() || !workArea.isValid()) return frame;
+    const int maximumX = workArea.right() - frame.width() + 1;
+    const int maximumY = workArea.bottom() - frame.height() + 1;
+    const int x = frame.width() <= workArea.width() ?
+        std::max(workArea.left(), std::min(frame.left(), maximumX)) :
+        workArea.left();
+    const int y = frame.height() <= workArea.height() ?
+        std::max(workArea.top(), std::min(frame.top(), maximumY)) :
+        workArea.top();
+    return QRect(x, y, frame.width(), frame.height());
+}
+
 ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     bool testMode)
     : configPath_(std::move(configPath)), ownerHandle_(ownerHandle),
       testMode_(testMode),
       document_(std::make_unique<ConfigEditorCore::ConfigDocument>())
 {
+    if (ownerHandle_)
+    {
+        DWORD processId = 0;
+        if (IsWindow(reinterpret_cast<HWND>(ownerHandle_)))
+            GetWindowThreadProcessId(reinterpret_cast<HWND>(ownerHandle_), &processId);
+        ownerProcessId_ = processId;
+    }
     setWindowTitle(QStringLiteral("VideoProcessor Configuration"));
     setAccessibleName(QStringLiteral("VideoProcessor Configuration"));
     setObjectName(QStringLiteral("root"));
+    // This must be a Qt-owned flag, not only a later SetWindowPos call: the
+    // QWindows backend can otherwise recreate or restyle the native HWND and
+    // silently remove WS_EX_TOPMOST after Config has been revealed.
+    setWindowFlag(Qt::WindowStaysOnTopHint, true);
     // This is the smallest dashboard layout that keeps both card columns,
     // navigation, and the fixed action footer usable without clipping.
     resize(1040, 700);
@@ -498,12 +590,29 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
         toggleShortcut->setContext(Qt::ApplicationShortcut);
         connect(toggleShortcut, &QShortcut::activated, this, [this]
         {
-            close();
+            // The Config shortcut is a reveal command everywhere, including
+            // when Qt itself owns the keyboard focus. It must not toggle the
+            // editor back into the tray.
+            reveal();
         });
+    }
+
+    if (ownerHandle_)
+    {
+        // A background/warm editor still needs a usable native receiver.  Do
+        // not wait for the first visible show cycle: VP may already have a
+        // pending reveal by the time it acknowledges this association.
+        (void)winId();
+        applyNativeOwner();
+        publishNativeAssociation();
     }
 }
 
-ConfigEditorWindow::~ConfigEditorWindow() = default;
+ConfigEditorWindow::~ConfigEditorWindow()
+{
+    removeScopedTopmost();
+    clearNativeOwner();
+}
 
 void ConfigEditorWindow::selectPage(int index)
 {
@@ -534,6 +643,8 @@ void ConfigEditorWindow::loadConfiguration()
     std::wstring error;
     configurationLoaded_ = document_->Load(QFileInfo(configPath_).absoluteFilePath().toStdWString(), error);
     hasPendingMigrations_ = false;
+    savedSnapshot_ = configurationLoaded_ ? captureDocumentSnapshot(*document_) :
+        DocumentSnapshot{};
 }
 
 void ConfigEditorWindow::loadDiscoveryCache()
@@ -759,52 +870,389 @@ QCheckBox* ConfigEditorWindow::bindCheckField(const QString& label, const QStrin
 
 void ConfigEditorWindow::markDirty()
 {
-    dirty_ = true;
-    if (saveButton_) saveButton_->setEnabled(true);
-    if (applyButton_) applyButton_->setEnabled(true);
-    setStatus(QStringLiteral("Unsaved changes. Validate before saving if you want to check the complete configuration."));
+    if (QObject* edited = sender(); edited &&
+        edited->objectName().startsWith(QStringLiteral("config.")))
+        editOrder_[edited->objectName()] = ++editSerial_;
+    dirty_ = document_ &&
+        captureDocumentSnapshot(*document_) != savedSnapshot_;
+    updateEffectSummary();
+    updateValidationState();
 }
 
-void ConfigEditorWindow::keepAboveVideo()
+void ConfigEditorWindow::updateEffectSummary()
 {
-    if (!isVisible()) return;
-    SetWindowPos(reinterpret_cast<HWND>(winId()), HWND_TOPMOST, 0, 0, 0, 0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER |
-        SWP_SHOWWINDOW);
+    if (!effectSummary_) return;
+    if (!configurationLoaded_ || !document_)
+    {
+        effectSummary_->setText(QStringLiteral("Configuration unavailable"));
+        return;
+    }
+    if (!dirty_)
+    {
+        effectSummary_->setText(QStringLiteral("No pending changes"));
+        return;
+    }
+    const std::vector<ConfigurationApplyPolicy::Change> changed = changedDocumentValues(
+        savedSnapshot_, captureDocumentSnapshot(*document_));
+    const auto action = ConfigurationApplyPolicy::ClassifyChanges(changed,
+        snapshotUsesDirectShowRenderer(savedSnapshot_));
+    QStringList sections;
+    for (const ConfigurationApplyPolicy::Change& change : changed)
+    {
+        const QString category = effectCategory(change.section);
+        if (!sections.contains(category)) sections.push_back(category);
+    }
+    effectSummary_->setText(QString::fromLatin1(
+        ConfigurationApplyPolicy::ActionLabel(action)) +
+        QStringLiteral(": ") + sections.join(QStringLiteral(", ")));
+}
+
+bool ConfigEditorWindow::validateCandidate(std::wstring& error,
+    bool allowActionDrafts) const
+{
+    QStringList fields;
+    const QStringList errors = validationErrors(fields, allowActionDrafts);
+    if (errors.isEmpty()) return true;
+    error = errors.front().toStdWString();
+    return false;
+}
+
+QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
+    bool allowActionDrafts) const
+{
+    QStringList errors;
+    fields.clear();
+    if (!configurationLoaded_ || !document_)
+    {
+        errors.push_back(QStringLiteral("The configuration was not loaded."));
+        fields.push_back(QString());
+        return errors;
+    }
+    ConfigEditorCore::ConfigDocument validationDocument = *document_;
+    std::wstring coreError;
+    bool coreValid = false;
+    if (allowActionDrafts)
+    {
+        const int maximumDrafts = static_cast<int>(
+            validationDocument.SectionNamesWithPrefix("actions").size());
+        for (int attempt = 0; attempt <= maximumDrafts; ++attempt)
+        {
+            if (ConfigEditorCore::ValidateCandidate(validationDocument, coreError))
+            {
+                coreValid = true;
+                break;
+            }
+            const QString message = QString::fromStdWString(coreError);
+            const QRegularExpression actionError(
+                QStringLiteral("^\\[(actions\\.[^\\]]+)\\] (?!enabled(?: |$))"));
+            const QRegularExpressionMatch match = actionError.match(message);
+            if (!match.hasMatch()) break;
+            const std::string section = match.captured(1).toStdString();
+            if (!configuredBooleanValue(QString::fromLocal8Bit(
+                validationDocument.Get(section.c_str(), "enabled").c_str()), true))
+                break;
+            validationDocument.SetKnown(section, "enabled", "false");
+        }
+        if (!coreValid)
+            coreValid = ConfigEditorCore::ValidateCandidate(
+                validationDocument, coreError);
+    }
+    else
+        coreValid = ConfigEditorCore::ValidateCandidate(
+            validationDocument, coreError);
+
+    if (!coreValid)
+    {
+        const QString message = QString::fromStdWString(coreError);
+        errors.push_back(message);
+        const QRegularExpression sectionError(
+            QStringLiteral("^\\[([^\\]]+)\\]"));
+        const QRegularExpressionMatch sectionMatch = sectionError.match(message);
+        const QRegularExpression quotedKey(
+            QStringLiteral("\\bkey ['\"]([A-Za-z0-9_.-]+)['\"]"));
+        const QRegularExpressionMatch quotedMatch = quotedKey.match(message);
+        const QRegularExpression plainKey(
+            QStringLiteral("^\\[[^\\]]+\\]\\s+([A-Za-z0-9_.-]+)"));
+        const QRegularExpressionMatch plainMatch = plainKey.match(message);
+        const QString key = quotedMatch.hasMatch() ? quotedMatch.captured(1) :
+            (plainMatch.hasMatch() ? plainMatch.captured(1) : QString());
+        fields.push_back(sectionMatch.hasMatch() && !key.isEmpty() ?
+            controlName(sectionMatch.captured(1), key) : QString());
+    }
+
+    auto discoveredContains = [](const QStringList& discovered,
+        const QString& candidate)
+    {
+        for (const QString& value : discovered)
+            if (value.trimmed().compare(candidate.trimmed(),
+                Qt::CaseInsensitive) == 0)
+                return true;
+        return false;
+    };
+
+    QString renderer = value(QStringLiteral("general"),
+        QStringLiteral("renderer")).trimmed();
+    if (renderer.compare(QStringLiteral("VideoProcessor Renderer (Alpha)"),
+        Qt::CaseInsensitive) == 0)
+        renderer = QStringLiteral("VP Renderer");
+    const QStringList acceptedRenderers = testMode_ && allRenderers_.isEmpty() ?
+        QStringList{ QStringLiteral("VP Renderer"),
+            QStringLiteral("DirectShow - madVR") } : allRenderers_;
+    if (renderer.isEmpty() || !discoveredContains(acceptedRenderers, renderer))
+    {
+        errors.push_back(QStringLiteral("[general] renderer '%1' was not discovered. Choose an available renderer.")
+            .arg(renderer.isEmpty() ? QStringLiteral("(empty)") : renderer));
+        fields.push_back(controlName(QStringLiteral("general"),
+            QStringLiteral("renderer")));
+    }
+
+    const QString captureDevice = value(QStringLiteral("general"),
+        QStringLiteral("capture_device")).trimmed();
+    if (!captureDevices_.isEmpty() &&
+        (captureDevice.isEmpty() ||
+            !discoveredContains(captureDevices_, captureDevice)))
+    {
+        errors.push_back(QStringLiteral("[general] capture_device '%1' was not discovered. Choose an available capture device.")
+            .arg(captureDevice.isEmpty() ? QStringLiteral("(empty)") : captureDevice));
+        fields.push_back(controlName(QStringLiteral("general"),
+            QStringLiteral("capture_device")));
+    }
+    return errors;
+}
+
+QString ConfigEditorWindow::displayWarning() const
+{
+    const QString display = value(QStringLiteral("general"),
+        QStringLiteral("fullscreen_monitor_name")).trimmed();
+    if (display.isEmpty()) return {};
+    for (const QString& discovered : monitors_)
+        if (discovered.trimmed().compare(display, Qt::CaseInsensitive) == 0)
+            return {};
+    return QStringLiteral("Warning: Display '%1' is not currently discovered. Displays are not strictly validated because they may be disconnected or offline.")
+        .arg(display);
+}
+
+bool ConfigEditorWindow::updateValidationState()
+{
+    QStringList fields;
+    const QStringList errors = validationErrors(fields, true);
+    const bool valid = errors.isEmpty();
+    if (saveButton_) saveButton_->setEnabled(configurationLoaded_ && valid);
+    if (applyButton_)
+        applyButton_->setEnabled(configurationLoaded_ && dirty_ && valid);
+    if (!valid)
+    {
+        int latest = 0;
+        quint64 latestOrder = 0;
+        for (int index = 0; index < fields.size(); ++index)
+        {
+            quint64 order = editOrder_.value(fields[index], 0);
+            if (order == 0 && !fields[index].isEmpty())
+            {
+                const QString keySuffix = fields[index].mid(
+                    fields[index].lastIndexOf(u'.'));
+                for (auto edited = editOrder_.cbegin(); edited != editOrder_.cend(); ++edited)
+                    if (edited.key().endsWith(keySuffix, Qt::CaseInsensitive))
+                        order = std::max(order, edited.value());
+            }
+            if (order >= latestOrder)
+            {
+                latest = index;
+                latestOrder = order;
+            }
+        }
+        QString message = errors[latest];
+        const int additional = errors.size() - 1;
+        if (additional > 0)
+            message += QStringLiteral(" And %1 additional error%2.")
+                .arg(additional).arg(additional == 1 ? QString() : QStringLiteral("s"));
+        setStatus(message, true);
+    }
+    else if (const QString warning = displayWarning(); !warning.isEmpty())
+        setWarningStatus(warning);
+    else if (dirty_)
+        setStatus(QStringLiteral("Unsaved changes. OK or Apply will validate again before saving."));
+    else
+        setStatus(QStringLiteral("Configuration loaded."));
+    return valid;
+}
+
+void ConfigEditorWindow::applyNativeOwner()
+{
+    HWND owner = reinterpret_cast<HWND>(ownerHandle_);
+    const HWND target = reinterpret_cast<HWND>(presentationTargetHandle_);
+    if (target && IsWindow(target) &&
+        presentationTargetProcessId_ == ownerProcessId_)
+    {
+        DWORD targetProcessId = 0;
+        GetWindowThreadProcessId(target, &targetProcessId);
+        if (targetProcessId == ownerProcessId_) owner = target;
+    }
+    QWindow* editorWindow = windowHandle();
+    if (!editorWindow || !owner || !IsWindow(owner) || !nativeOwnerIsValid())
+    {
+        ownerApplied_ = false;
+        return;
+    }
+
+    const quintptr nativeOwnerHandle = reinterpret_cast<quintptr>(owner);
+    if (!nativeOwnerWindow_ || nativeOwnerWindow_->winId() != nativeOwnerHandle)
+        nativeOwnerWindow_.reset(QWindow::fromWinId(nativeOwnerHandle));
+    if (!nativeOwnerWindow_) return;
+    if (editorWindow->transientParent() != nativeOwnerWindow_.get())
+        editorWindow->setTransientParent(nativeOwnerWindow_.get());
+    const HWND editor = reinterpret_cast<HWND>(effectiveWinId());
+    if (isVisible() && editor && IsWindow(editor) &&
+        GetWindow(editor, GW_OWNER) != owner)
+    {
+        SetLastError(ERROR_SUCCESS);
+        const LONG_PTR previous = SetWindowLongPtrW(editor, GWLP_HWNDPARENT,
+            reinterpret_cast<LONG_PTR>(owner));
+        ownerApplied_ = previous != 0 || GetLastError() == ERROR_SUCCESS;
+    }
+    else
+        ownerApplied_ = true;
+}
+
+void ConfigEditorWindow::clearNativeOwner()
+{
+    QWindow* editorWindow = windowHandle();
+    if (editorWindow && nativeOwnerWindow_ &&
+        editorWindow->transientParent() == nativeOwnerWindow_.get())
+        editorWindow->setTransientParent(nullptr);
+    const HWND editor = editorWindow ?
+        reinterpret_cast<HWND>(editorWindow->winId()) : nullptr;
+    if (editor && IsWindow(editor) && GetWindow(editor, GW_OWNER))
+        SetWindowLongPtrW(editor, GWLP_HWNDPARENT, 0);
+    nativeOwnerWindow_.reset();
+    ownerApplied_ = false;
+}
+
+bool ConfigEditorWindow::nativeOwnerIsValid() const
+{
+    const HWND owner = reinterpret_cast<HWND>(ownerHandle_);
+    if (!owner || !IsWindow(owner) || ownerProcessId_ == 0) return false;
+    DWORD actualProcessId = 0;
+    GetWindowThreadProcessId(owner, &actualProcessId);
+    return actualProcessId == ownerProcessId_;
+}
+
+void ConfigEditorWindow::publishNativeAssociation()
+{
+    const HWND owner = reinterpret_cast<HWND>(ownerHandle_);
+    const HWND editor = reinterpret_cast<HWND>(effectiveWinId());
+    if (!nativeOwnerIsValid() || !editor || !IsWindow(editor)) return;
+    const quintptr handle = reinterpret_cast<quintptr>(editor);
+    if (publishedWindowHandle_ == handle) return;
+
+    static const UINT associationMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigEditor.Association.v1");
+    // Association is an advertisement, not a request. Posting prevents a
+    // reverse SendMessage cycle when VP is itself synchronously activating us.
+    if (associationMessage && PostMessageW(owner, associationMessage,
+        GetCurrentProcessId(), reinterpret_cast<LPARAM>(editor)))
+        publishedWindowHandle_ = handle;
+}
+
+void ConfigEditorWindow::positionForReveal()
+{
+    const HWND target = reinterpret_cast<HWND>(presentationTargetHandle_);
+    if (!target || !IsWindow(target) ||
+        presentationTargetProcessId_ == 0 ||
+        presentationTargetProcessId_ != ownerProcessId_)
+        return;
+    DWORD actualProcessId = 0;
+    GetWindowThreadProcessId(target, &actualProcessId);
+    if (actualProcessId != presentationTargetProcessId_) return;
+    const HMONITOR monitor = MonitorFromWindow(target, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO monitorInfo{};
+    monitorInfo.cbSize = sizeof(monitorInfo);
+    if (!monitor || !GetMonitorInfoW(monitor, &monitorInfo)) return;
+    const HWND editor = reinterpret_cast<HWND>(effectiveWinId());
+    RECT current{};
+    if (!editor || !IsWindow(editor) || !GetWindowRect(editor, &current)) return;
+    const QRect frame(current.left, current.top,
+        current.right - current.left, current.bottom - current.top);
+    const RECT& work = monitorInfo.rcWork;
+    const QRect workArea(work.left, work.top,
+        work.right - work.left, work.bottom - work.top);
+    const QRect placed = ConfigEditorPlacement::ClampFrameToWorkArea(
+        frame, workArea);
+    SetWindowPos(editor, nullptr, placed.left(), placed.top(), 0, 0,
+        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+}
+
+void ConfigEditorWindow::applyScopedTopmost()
+{
+    if (!pendingTopmostReassert_ || !scopedTopmostEligible_ || !isVisible())
+        return;
+    // Config is an operator modal surface.  While it is visible, retain its
+    // topmost placement even after another application receives foreground.
+    // This deliberately matches madVR's configuration behavior and keeps the
+    // editor above VP's exclusive fullscreen host.
+    const HWND editor = reinterpret_cast<HWND>(effectiveWinId());
+    if (!editor || !IsWindow(editor)) return;
+    scopedTopmost_ = SetWindowPos(editor, HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW) != FALSE;
+    pendingTopmostReassert_ = false;
+}
+
+void ConfigEditorWindow::removeScopedTopmost()
+{
+    QWindow* editorWindow = windowHandle();
+    const HWND editor = editorWindow ?
+        reinterpret_cast<HWND>(editorWindow->winId()) : nullptr;
+    if (editor && IsWindow(editor) &&
+        (scopedTopmost_ ||
+            (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0))
+    {
+        SetWindowPos(editor, HWND_NOTOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+    }
+    scopedTopmost_ = false;
+}
+
+bool ConfigEditorWindow::hasActiveOwnedPopup() const
+{
+    QWidget* popup = QApplication::activePopupWidget();
+    if (!popup || !popup->isVisible()) return false;
+    for (QWidget* parent = popup->parentWidget(); parent;
+        parent = parent->parentWidget())
+        if (parent == this) return true;
+    QWindow* transient = popup->windowHandle() ?
+        popup->windowHandle()->transientParent() : nullptr;
+    return transient && transient == windowHandle();
 }
 
 bool ConfigEditorWindow::notifyVideoProcessor()
 {
+    // Test-mode editors represent the normal VP-absent standalone case. This
+    // also prevents a UI test from disturbing a developer's running VP.
+    if (testMode_) return false;
+    SetLastError(ERROR_SUCCESS);
     HANDLE changedEvent = CreateEventW(nullptr, FALSE, FALSE,
         ConfigurationLiveApply::ChangedEventName);
     if (!changedEvent) return false;
-    const bool signaled = SetEvent(changedEvent) != FALSE;
+    const bool videoProcessorWasListening = GetLastError() == ERROR_ALREADY_EXISTS;
+    const bool signaled = videoProcessorWasListening && SetEvent(changedEvent) != FALSE;
     CloseHandle(changedEvent);
     return signaled;
 }
 
 void ConfigEditorWindow::applyChanges()
 {
-    if (dirty_)
-    {
-        saveChanges();
-        return;
-    }
-    if (!configurationLoaded_ || !document_)
-    {
-        setStatus(QStringLiteral("Cannot apply because the configuration was not loaded."), true);
-        return;
-    }
-    if (notifyVideoProcessor())
-        setStatus(QStringLiteral("Current saved configuration sent to VideoProcessor. Live-capable settings are applied without changing the selected renderer."));
-    else
-        setStatus(QStringLiteral("Could not notify VideoProcessor to apply the saved configuration."), true);
-    keepAboveVideo();
+    if (!dirty_) return;
+    saveChanges();
 }
 
-void ConfigEditorWindow::saveChanges()
+bool ConfigEditorWindow::saveChanges()
 {
-    if (!configurationLoaded_ || !document_) return;
+    if (!configurationLoaded_ || !document_) return false;
+
+    const std::vector<ConfigurationApplyPolicy::Change> changed = changedDocumentValues(
+        savedSnapshot_, captureDocumentSnapshot(*document_));
+    const auto action = ConfigurationApplyPolicy::ClassifyChanges(changed,
+        snapshotUsesDirectShowRenderer(savedSnapshot_));
 
     // Persist shortcut spelling in the same canonical form used by the
     // accelerator parser. Case is not a modifier: L and l are both L, while
@@ -855,15 +1303,24 @@ void ConfigEditorWindow::saveChanges()
 
     ConfigEditorCore::SaveResult result;
     std::wstring error;
+    if (!validateCandidate(error))
+    {
+        setStatus(QString::fromStdWString(error), true);
+        if (saveButton_) saveButton_->setEnabled(false);
+        if (applyButton_) applyButton_->setEnabled(false);
+        return false;
+    }
     if (!ConfigEditorCore::SaveSafely(*document_, result, error))
     {
         setStatus(QString::fromStdWString(error), true);
         if (!testMode_) openValidationError(this, QString::fromStdWString(error));
-        return;
+        return false;
     }
     dirty_ = false;
-    saveButton_->setEnabled(false);
-    if (applyButton_) applyButton_->setEnabled(true);
+    saveButton_->setEnabled(true);
+    if (applyButton_) applyButton_->setEnabled(false);
+    savedSnapshot_ = captureDocumentSnapshot(*document_);
+    updateEffectSummary();
 
     // The editor is a separate process. Signal the running VP instance only
     // after the atomic safe-save has committed the complete validated file.
@@ -889,12 +1346,15 @@ void ConfigEditorWindow::saveChanges()
     }
     else
     {
-        setStatus(QStringLiteral("Changes saved safely%1. Backup: %2")
-            .arg(notified ? QStringLiteral(" and sent to VideoProcessor") :
-                QStringLiteral("; VideoProcessor could not be notified"),
-                QString::fromStdWString(result.backupPath)), !notified);
+        const QString effect = QString::fromLatin1(
+            ConfigurationApplyPolicy::ActionLabel(action));
+        setStatus(notified ?
+            QStringLiteral("Changes saved safely. %1 was requested. Backup: %2")
+                .arg(effect, QString::fromStdWString(result.backupPath)) :
+            QStringLiteral("Changes saved safely. Takes effect when VideoProcessor next starts. Backup: %1")
+                .arg(QString::fromStdWString(result.backupPath)), false);
     }
-    keepAboveVideo();
+    return true;
 }
 
 QWidget* ConfigEditorWindow::createShell()
@@ -1039,99 +1499,55 @@ QWidget* ConfigEditorWindow::createShell()
     status_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     status_->setWordWrap(true);
     footerLayout->addWidget(status_, 1);
-    auto* reload = new QPushButton(QStringLiteral("&Reload"));
-    auto* validate = new QPushButton(QStringLiteral("&Validate"));
+    effectSummary_ = new QLabel;
+    effectSummary_->setObjectName(QStringLiteral("configurationEffectSummary"));
+    effectSummary_->setAccessibleName(QStringLiteral("Pending configuration effect"));
+    effectSummary_->setWordWrap(true);
+    effectSummary_->setMinimumWidth(180);
+    footerLayout->addWidget(effectSummary_);
     applyButton_ = new QPushButton(QStringLiteral("&Apply"));
-    saveButton_ = new QPushButton(QStringLiteral("&Save changes"));
-    reload->setObjectName(QStringLiteral("reloadConfiguration"));
-    validate->setObjectName(QStringLiteral("validateConfiguration"));
+    saveButton_ = new QPushButton(QStringLiteral("&OK"));
+    auto* cancel = new QPushButton(QStringLiteral("&Cancel"));
     applyButton_->setObjectName(QStringLiteral("applyConfiguration"));
-    saveButton_->setObjectName(QStringLiteral("saveChanges"));
-    applyButton_->setProperty("primary", true);
-    applyButton_->setEnabled(configurationLoaded_);
-    saveButton_->setEnabled(dirty_);
-    footerLayout->addWidget(reload);
-    footerLayout->addWidget(validate);
-    footerLayout->addWidget(applyButton_);
+    saveButton_->setObjectName(QStringLiteral("okConfiguration"));
+    cancel->setObjectName(QStringLiteral("cancelConfiguration"));
+    saveButton_->setProperty("primary", true);
+    saveButton_->setDefault(true);
+    applyButton_->setEnabled(configurationLoaded_ && dirty_);
+    saveButton_->setEnabled(configurationLoaded_);
     footerLayout->addWidget(saveButton_);
+    footerLayout->addWidget(cancel);
+    footerLayout->addWidget(applyButton_);
     rootLayout->addWidget(footer);
+    updateEffectSummary();
 
-    const auto reloadConfiguration = [this]
+    connect(saveButton_, &QPushButton::clicked, this, [this]
     {
-        // Rebuilding the editor is necessary to rebind every page to the
-        // reloaded document. Suppress painting until the replacement tree is
-        // fully installed so the old shell never visibly tears down beneath
-        // the confirmation dialog.
+        // A clean OK is just a close. A dirty OK must remain open if validation
+        // or safe persistence fails, so the user can correct the candidate.
+        if (!dirty_ || saveChanges()) hide();
+    });
+    connect(cancel, &QPushButton::clicked, this, [this]
+    {
+        // Cancel is intentionally an editor-only operation: the working copy
+        // is discarded without touching the file or signaling VideoProcessor.
         const int currentPage = pages_ ? pages_->currentIndex() : 0;
-        setUpdatesEnabled(false);
-        loadConfiguration();
         dirty_ = false;
+        hide();
+        loadConfiguration();
         QWidget* replacement = createShell();
-        replacement->setUpdatesEnabled(false);
         QWidget* previous = takeCentralWidget();
         setCentralWidget(replacement);
         selectPage(currentPage);
         if (previous) previous->deleteLater();
-        replacement->setUpdatesEnabled(true);
-        setUpdatesEnabled(true);
-        replacement->update();
-        update();
-        keepAboveVideo();
-        setStatus(configurationLoaded_ ? QStringLiteral("Configuration reloaded.") :
-            QStringLiteral("The configuration could not be reloaded."), !configurationLoaded_);
-    };
-    const auto scheduleReload = [this, reload, reloadConfiguration]
-    {
-        reload->setEnabled(false);
-        QTimer::singleShot(0, this, [reloadConfiguration]
-        {
-            reloadConfiguration();
-        });
-    };
-    connect(reload, &QPushButton::clicked, this, [this, reload, scheduleReload]
-    {
-        if (!dirty_)
-        {
-            // A clean document already reflects the file we loaded. Rebuilding
-            // the entire shell here only causes a needless visible flash.
-            setStatus(QStringLiteral("No unsaved changes to discard."));
-            return;
-        }
-        reload->setEnabled(false);
-        openDiscardChangesConfirmation(this,
-            [this, reload, scheduleReload](bool discard)
-        {
-            if (discard)
-            {
-                scheduleReload();
-                return;
-            }
-            if (reload) reload->setEnabled(true);
-        });
     });
-    connect(saveButton_, &QPushButton::clicked, this, [this] { saveChanges(); });
     connect(applyButton_, &QPushButton::clicked, this, [this] { applyChanges(); });
-    connect(validate, &QPushButton::clicked, this, [this]
-    {
-        if (!configurationLoaded_ || !document_)
-        {
-            setStatus(QStringLiteral("Cannot validate because the configuration was not loaded."), true);
-            return;
-        }
-        std::wstring error;
-        const bool valid = ConfigEditorCore::ValidateCandidate(*document_, error);
-        setStatus(valid ? QStringLiteral("Configuration is valid.") : QString::fromStdWString(error), !valid);
-    });
-
     auto* saveShortcut = new QShortcut(QKeySequence::Save, root);
     saveShortcut->setContext(Qt::ApplicationShortcut);
-    connect(saveShortcut, &QShortcut::activated, saveButton_, [this]
+    connect(saveShortcut, &QShortcut::activated, applyButton_, [this]
     {
-        if (saveButton_ && saveButton_->isEnabled()) saveButton_->click();
+        if (applyButton_ && applyButton_->isEnabled()) applyButton_->click();
     });
-    auto* validateShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")), root);
-    validateShortcut->setContext(Qt::ApplicationShortcut);
-    connect(validateShortcut, &QShortcut::activated, validate, &QPushButton::click);
     auto selectAdjacentPage = [this](int direction)
     {
         if (!pages_ || pages_->count() == 0) return;
@@ -1146,11 +1562,7 @@ QWidget* ConfigEditorWindow::createShell()
     connect(previousPage, &QShortcut::activated, this,
         [selectAdjacentPage] { selectAdjacentPage(-1); });
 
-    setStatus(configurationLoaded_ ?
-        (hasPendingMigrations_ ?
-            QStringLiteral("Some older or unnamed entries were assigned editable profile names. Review and save these changes.") :
-            QStringLiteral("Configuration loaded.")) :
-        QStringLiteral("Cannot open %1").arg(configPath_), !configurationLoaded_);
+    updateValidationState();
     return root;
 }
 
@@ -1326,6 +1738,10 @@ QWidget* ConfigEditorWindow::createStartupPage()
     behaviorLayout->setSpacing(8);
     behaviorLayout->addWidget(bindCheckField(QStringLiteral("Start fullscreen"), QStringLiteral("general"), QStringLiteral("fullscreen")));
     behaviorLayout->addWidget(bindCheckField(QStringLiteral("Windowed fullscreen"), QStringLiteral("general"), QStringLiteral("windowed_fullscreen_mode")));
+    behaviorLayout->addWidget(bindCheckField(QStringLiteral("Video Only"),
+        QStringLiteral("general"), QStringLiteral("noui"),
+        configuredBooleanValue(value(QStringLiteral("general"),
+            QStringLiteral("no_ui")), false)));
     behaviorLayout->addWidget(bindCheckField(QStringLiteral("Start minimized"), QStringLiteral("general"), QStringLiteral("startminimized")));
     // Scene detection is the sole supported choice here. It is deliberately
     // opt-in: an absent value means off, and clearing the checkbox writes the
@@ -3604,10 +4020,21 @@ void ConfigEditorWindow::setupTray()
 
 void ConfigEditorWindow::reveal()
 {
+    // A reveal that arrived after an older queued close is the newer command.
+    // Remove only already-posted close requests; a subsequent user close is
+    // still delivered normally and returns the editor to the tray.
+    QCoreApplication::removePostedEvents(this, QEvent::Close);
+    positionForReveal();
     showNormal();
-    keepAboveVideo();
+    scopedTopmostEligible_ = true;
+    explicitRevealIntent_ = true;
+    pendingTopmostReassert_ = true;
+    applyScopedTopmost();
     raise();
     activateWindow();
+    // Ignore only activation churn caused by this reveal itself. A later,
+    // settled user transition away from Config disables lifecycle reasserts.
+    QTimer::singleShot(100, this, [this] { explicitRevealIntent_ = false; });
 }
 
 void ConfigEditorWindow::exitApplication()
@@ -3621,8 +4048,6 @@ void ConfigEditorWindow::closeEvent(QCloseEvent* event)
 {
     if (!exitRequested_ && tray_ && tray_->isVisible())
     {
-        SetWindowPos(reinterpret_cast<HWND>(winId()), HWND_NOTOPMOST, 0, 0, 0, 0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
         hide();
         event->ignore();
         return;
@@ -3630,10 +4055,154 @@ void ConfigEditorWindow::closeEvent(QCloseEvent* event)
     QMainWindow::closeEvent(event);
 }
 
+void ConfigEditorWindow::hideEvent(QHideEvent* event)
+{
+    pendingTopmostReassert_ = false;
+    explicitRevealIntent_ = false;
+    scopedTopmostEligible_ = false;
+    removeScopedTopmost();
+    clearNativeOwner();
+    QMainWindow::hideEvent(event);
+}
+
 void ConfigEditorWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
-    keepAboveVideo();
+    scopedTopmostEligible_ = true;
+    pendingTopmostReassert_ = true;
+    applyNativeOwner();
+    publishNativeAssociation();
+    // QWindows can finalize its native top-level style/owner after showEvent.
+    // Reapply once at the next event-loop turn so that finalization cannot
+    // clear the validated cross-process owner.
+    QTimer::singleShot(0, this, [this]
+    {
+        applyNativeOwner();
+        publishNativeAssociation();
+        applyScopedTopmost();
+    });
+}
+
+bool ConfigEditorWindow::nativeEvent(const QByteArray& eventType,
+    void* nativeMessage, qintptr* result)
+{
+    Q_UNUSED(eventType);
+    MSG* message = static_cast<MSG*>(nativeMessage);
+    static const UINT activationMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigEditor.Activate.v1");
+    static const UINT presentationTargetMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigEditor.PresentationTarget.v1");
+    static const UINT reassertMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigEditor.Reassert.v1");
+    if (!message)
+        return QMainWindow::nativeEvent(eventType, nativeMessage, result);
+
+    if (message->message == presentationTargetMessage)
+    {
+        const DWORD requestedProcessId = static_cast<DWORD>(message->wParam);
+        const HWND requestedTarget = reinterpret_cast<HWND>(message->lParam);
+        DWORD actualProcessId = 0;
+        if (requestedTarget && IsWindow(requestedTarget))
+            GetWindowThreadProcessId(requestedTarget, &actualProcessId);
+        const bool accepted = requestedProcessId != 0 &&
+            requestedProcessId == ownerProcessId_ &&
+            actualProcessId == requestedProcessId;
+        if (accepted)
+        {
+            presentationTargetHandle_ = reinterpret_cast<quintptr>(requestedTarget);
+            presentationTargetProcessId_ = requestedProcessId;
+            if (scopedTopmostEligible_)
+                pendingTopmostReassert_ = true;
+            QTimer::singleShot(0, this, [this]
+            {
+                clearNativeOwner();
+                if (isVisible()) applyNativeOwner();
+                publishNativeAssociation();
+                applyScopedTopmost();
+            });
+        }
+        if (result) *result = accepted ? 1 : 0;
+        return true;
+    }
+    if (message->message == reassertMessage)
+    {
+        const DWORD requestedProcessId = static_cast<DWORD>(message->wParam);
+        const HWND requestedTarget = reinterpret_cast<HWND>(message->lParam);
+        DWORD actualProcessId = 0;
+        if (requestedTarget && IsWindow(requestedTarget))
+            GetWindowThreadProcessId(requestedTarget, &actualProcessId);
+        const bool accepted = requestedProcessId != 0 &&
+            requestedProcessId == ownerProcessId_ &&
+            actualProcessId == requestedProcessId &&
+            reinterpret_cast<quintptr>(requestedTarget) ==
+                presentationTargetHandle_;
+        if (accepted && scopedTopmostEligible_)
+        {
+            pendingTopmostReassert_ = true;
+            QTimer::singleShot(0, this, [this] { applyScopedTopmost(); });
+        }
+        if (result) *result = accepted ? 1 : 0;
+        return true;
+    }
+    if (message->message != activationMessage)
+        return QMainWindow::nativeEvent(eventType, nativeMessage, result);
+
+    const DWORD requestedProcessId = static_cast<DWORD>(message->wParam);
+    const HWND requestedOwner = reinterpret_cast<HWND>(message->lParam);
+    if (requestedOwner && IsWindow(requestedOwner) && requestedProcessId != 0)
+    {
+        DWORD actualProcessId = 0;
+        GetWindowThreadProcessId(requestedOwner, &actualProcessId);
+        if (actualProcessId == requestedProcessId)
+        {
+            clearNativeOwner();
+            ownerHandle_ = reinterpret_cast<quintptr>(requestedOwner);
+            ownerProcessId_ = requestedProcessId;
+            if (presentationTargetProcessId_ != requestedProcessId)
+            {
+                presentationTargetHandle_ = 0;
+                presentationTargetProcessId_ = 0;
+            }
+            ownerApplied_ = false;
+            publishedWindowHandle_ = 0;
+            if (isVisible()) applyNativeOwner();
+        }
+    }
+
+    // Acknowledge the cross-process SendMessage immediately. Revealing can
+    // synchronously enter showEvent; doing it inside this handler used to send
+    // Association back to the VP UI thread while that thread was blocked here.
+    // Queue all UI work until this native call stack has unwound.
+    if (result) *result = 1;
+    QTimer::singleShot(0, this, [this]
+    {
+        // A popup from the hidden/previous editor state must not survive as an
+        // independently floating native window when VP reactivates Config.
+        if (QWidget* popup = QApplication::activePopupWidget()) popup->close();
+        reveal();
+    });
+    return true;
+}
+
+bool ConfigEditorWindow::event(QEvent* event)
+{
+    const bool handled = QMainWindow::event(event);
+    if (event->type() == QEvent::WinIdChange)
+    {
+        if (scopedTopmost_)
+        {
+            scopedTopmost_ = false;
+            pendingTopmostReassert_ = true;
+        }
+        publishedWindowHandle_ = 0;
+        QTimer::singleShot(0, this, [this]
+        {
+            if (isVisible()) applyNativeOwner();
+            publishNativeAssociation();
+            applyScopedTopmost();
+        });
+    }
+    return handled;
 }
 
 void ConfigEditorWindow::setStatus(const QString& message, bool error)
@@ -3641,6 +4210,15 @@ void ConfigEditorWindow::setStatus(const QString& message, bool error)
     if (!status_) return;
     status_->setText(message);
     status_->setStyleSheet(error ? QStringLiteral("color: #ff8d86;") : QStringLiteral("color: #9fb2c4;"));
+    QAccessibleEvent changed(status_, QAccessible::NameChanged);
+    QAccessible::updateAccessibility(&changed);
+}
+
+void ConfigEditorWindow::setWarningStatus(const QString& message)
+{
+    if (!status_) return;
+    status_->setText(message);
+    status_->setStyleSheet(QStringLiteral("color: #e0b45c;"));
     QAccessibleEvent changed(status_, QAccessible::NameChanged);
     QAccessible::updateAccessibility(&changed);
 }

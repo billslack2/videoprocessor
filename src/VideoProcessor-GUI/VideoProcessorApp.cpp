@@ -7,6 +7,7 @@
  */
 
 #include <pch.h>
+#include <ApplicationShutdownPolicy.h>
 
 #include <winnt.h>
 #include <VideoProcessorDlg.h>
@@ -1773,10 +1774,40 @@ BOOL CVideoProcessorApp::InitInstance()
 
 BOOL CVideoProcessorApp::PreTranslateMessage(MSG* message)
 {
+	if (message)
+	{
+		CWnd* mainWindow = GetMainWnd();
+		const HWND mainHwnd = mainWindow ? mainWindow->GetSafeHwnd() : nullptr;
+		const bool altF4 = ApplicationShutdownPolicy::IsAltF4(
+			message->message, message->wParam,
+			(::GetKeyState(VK_MENU) & 0x8000) != 0);
+		const bool systemClose = message->message == WM_SYSCOMMAND &&
+			ApplicationShutdownPolicy::IsCloseSystemCommand(message->wParam);
+		const bool surfaceClose = message->message == WM_CLOSE &&
+			message->hwnd != mainHwnd;
+		if ((altF4 || systemClose || surfaceClose) && mainHwnd &&
+			::IsWindow(mainHwnd))
+		{
+			DWORD sourceProcessId = 0;
+			if (message->hwnd)
+				::GetWindowThreadProcessId(message->hwnd, &sourceProcessId);
+			if (!message->hwnd || sourceProcessId == GetCurrentProcessId())
+			{
+				DebugLog::Log(
+					"Application close routed: message=0x%04x source=%p main=%p alt_f4=%d system_close=%d surface_close=%d consume_original=1",
+					message->message, message->hwnd, mainHwnd,
+					altF4 ? 1 : 0, systemClose ? 1 : 0,
+					surfaceClose ? 1 : 0);
+				::PostMessage(mainHwnd, WM_CLOSE, 0, 0);
+				return TRUE;
+			}
+		}
+	}
 	// DirectShow's IVideoWindow::put_MessageDrain delivers the VP copy to the
 	// main dialog.  Let normal MFC dialog routing translate that copy exactly
-	// once, as it does in Classic.  An application-wide Modern accelerator pass
-	// sees renderer-native input as well and steals madVR's own shortcuts.
+	// once, as it does in Classic. The only application-wide exception is the
+	// OS close gesture above: no renderer-owned surface may independently
+	// destroy itself and leave the controller/capture session alive.
 	return CWinAppEx::PreTranslateMessage(message);
 }
 

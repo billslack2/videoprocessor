@@ -7,6 +7,7 @@
  */
 
 #include <pch.h>
+#include <ApplicationShutdownPolicy.h>
 
 #include "FullscreenVideoWindow.h"
 
@@ -85,7 +86,7 @@ void FullscreenVideoWindow::CreateWindowedFullscreen(HMONITOR hmon, HWND parentW
         WS_EX_TOOLWINDOW | WS_EX_ACCEPTFILES | WS_EX_NOPARENTNOTIFY,
         FULLSCREEN_WINDOW_CLASS_NAME,
         TEXT("Waiting for renderer to start."),
-        WS_POPUP | WS_VISIBLE,
+        WS_POPUP,
         mi.rcMonitor.left,
         mi.rcMonitor.top,
         width,
@@ -98,6 +99,11 @@ void FullscreenVideoWindow::CreateWindowedFullscreen(HMONITOR hmon, HWND parentW
 
     if (!m_hwnd)
         throw std::runtime_error("Failed to create window");
+
+	// Renderer/fullscreen construction may occur seconds after the user opened
+	// Config (including while a combo popup owns foreground). Reveal the host
+	// without activation; normal mouse interaction may still activate it later.
+	ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
 
 }
 
@@ -135,7 +141,7 @@ void FullscreenVideoWindow::Create(HMONITOR hmon, HWND parentWindow)
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_ACCEPTFILES | WS_EX_NOPARENTNOTIFY,
         FULLSCREEN_WINDOW_CLASS_NAME,
         TEXT("Waiting for renderer to start."),
-        WS_POPUP | WS_VISIBLE,
+        WS_POPUP,
         mi.rcMonitor.left,
         mi.rcMonitor.top,
         width,
@@ -148,6 +154,8 @@ void FullscreenVideoWindow::Create(HMONITOR hmon, HWND parentWindow)
     
     if(!m_hwnd)
         throw std::runtime_error("Failed to create window");
+
+	ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
 }
 
 
@@ -201,6 +209,14 @@ LRESULT __forceinline FullscreenVideoWindow::HandleMessage(UINT uMsg, WPARAM wPa
 	case WM_CLOSE:
 		OnClose();
 		return 0;
+
+	case WM_SYSCOMMAND:
+		if (ApplicationShutdownPolicy::IsCloseSystemCommand(wParam))
+		{
+			OnClose();
+			return 0;
+		}
+		break;
 
     case WM_DESTROY:
         return 0;  // no PostQuitMessage, not it's own thread

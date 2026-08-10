@@ -48,6 +48,7 @@ namespace ConfigEditorCore
 			const std::string& afterSection);
 		std::vector<std::string> SectionNamesWithPrefix(
 			const std::string& prefix) const;
+		std::vector<std::string> SectionNames() const;
 		std::vector<std::pair<std::string, std::string>> SectionSettings(
 			const std::string& section) const;
 		std::string Serialize() const;

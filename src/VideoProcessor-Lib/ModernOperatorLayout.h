@@ -20,6 +20,13 @@ namespace ModernOperatorLayout
 		Rect preview;
 	};
 
+	struct HeaderControls
+	{
+		Rect videoOnly;
+		Rect fullscreen;
+		Rect configuration;
+	};
+
 	constexpr int BaseDpi = 96;
 	// The approved default pairs a 1040x585 (exact 16:9) preview with the
 	// fixed-height operator cards. Both columns therefore finish at y=655.
@@ -84,6 +91,30 @@ namespace ModernOperatorLayout
 		result.preview = FitSixteenByNine(previewBounds);
 		return result;
 	}
+
+	inline HeaderControls CalculateHeaderControls(int clientWidth,
+		unsigned int dpi = BaseDpi)
+	{
+		const int margin = Scale(16, dpi);
+		const int gap = Scale(8, dpi);
+		const int y = Scale(13, dpi);
+		const int height = Scale(29, dpi);
+		const int configurationWidth = Scale(32, dpi);
+		const int fullscreenWidth = Scale(90, dpi);
+		const int videoOnlyWidth = Scale(86, dpi);
+
+		HeaderControls controls;
+		controls.configuration = {
+			clientWidth - margin - configurationWidth,
+			y, configurationWidth, height };
+		controls.fullscreen = {
+			controls.configuration.x - gap - fullscreenWidth,
+			y, fullscreenWidth, height };
+		controls.videoOnly = {
+			controls.fullscreen.x - gap - videoOnlyWidth,
+			y, videoOnlyWidth, height };
+		return controls;
+	}
 }
 
 namespace NoUiLayout
@@ -94,4 +125,25 @@ namespace NoUiLayout
 	constexpr int DefaultClientHeight = 540;
 	constexpr int MinimumClientWidth = 320;
 	constexpr int MinimumClientHeight = 180;
+
+	inline ModernOperatorLayout::Rect FillClient(int clientWidth,
+		int clientHeight)
+	{
+		return { 0, 0, std::max(0, clientWidth), std::max(0, clientHeight) };
+	}
+
+	inline ModernOperatorLayout::Rect ResolveVideoBounds(bool videoOnly,
+		int clientWidth, int clientHeight,
+		const ModernOperatorLayout::Rect& operatorBounds)
+	{
+		return videoOnly ? FillClient(clientWidth, clientHeight) :
+			operatorBounds;
+	}
+
+	inline bool PreservesOuterBounds(const ModernOperatorLayout::Rect& before,
+		const ModernOperatorLayout::Rect& after)
+	{
+		return before.x == after.x && before.y == after.y &&
+			before.width == after.width && before.height == after.height;
+	}
 }

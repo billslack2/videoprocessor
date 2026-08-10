@@ -9,6 +9,8 @@
 #include <pch.h>
 
 #include <resource.h>
+#include <ApplicationShutdownPolicy.h>
+#include <DebugLog.h>
 
 #include "WindowedVideoWindow.h"
 
@@ -17,6 +19,8 @@ BEGIN_MESSAGE_MAP(WindowedVideoWindow, CStatic)
 	ON_WM_CTLCOLOR_REFLECT()
 	ON_WM_PAINT()
 	ON_WM_SIZE()
+	ON_WM_CLOSE()
+	ON_WM_SYSCOMMAND()
 END_MESSAGE_MAP()
 
 
@@ -130,4 +134,30 @@ HBRUSH WindowedVideoWindow::CtlColor(CDC* pDC, UINT nCtlColor)
 	pDC->SetTextColor(WHITE);
 
 	return m_brush;
+}
+
+void WindowedVideoWindow::RouteApplicationClose(const char* source)
+{
+	CWnd* mainWindow = AfxGetApp()->GetMainWnd();
+	const HWND mainHwnd = mainWindow ? mainWindow->GetSafeHwnd() : nullptr;
+	DebugLog::Log(
+		"Application close surface route: source=%s hwnd=%p main=%p consume_original=1",
+		source, GetSafeHwnd(), mainHwnd);
+	if (mainHwnd && ::IsWindow(mainHwnd))
+		::PostMessage(mainHwnd, WM_CLOSE, 0, 0);
+}
+
+void WindowedVideoWindow::OnClose()
+{
+	RouteApplicationClose("windowed-video-host");
+}
+
+void WindowedVideoWindow::OnSysCommand(UINT command, LPARAM lParam)
+{
+	if (ApplicationShutdownPolicy::IsCloseSystemCommand(command))
+	{
+		RouteApplicationClose("windowed-video-host-system-command");
+		return;
+	}
+	CStatic::OnSysCommand(command, lParam);
 }
