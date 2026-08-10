@@ -9,6 +9,7 @@
 #include "VpTheme.h"
 
 #include <QApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
@@ -47,12 +48,18 @@ quintptr parseOwner(const QString& value)
     return ok ? parsed : 0;
 }
 
-constexpr wchar_t ActivationEventName[] =
-    L"Local\\VideoProcessorConfigEditor.Activate.v1";
-constexpr wchar_t DiscoveryRefreshEventName[] =
-    L"Local\\VideoProcessorConfigEditor.RefreshDiscovery.v1";
 constexpr wchar_t ActivationMessageName[] =
     L"VideoProcessor.ConfigEditor.Activate.v1";
+
+std::wstring installationScopedEventName(const wchar_t* baseName)
+{
+    const QString installation = QDir::toNativeSeparators(
+        QCoreApplication::applicationDirPath()).toCaseFolded();
+    const QByteArray identity = QCryptographicHash::hash(
+        installation.toUtf8(), QCryptographicHash::Sha1).toHex();
+    return std::wstring(baseName) + L"." +
+        QString::fromLatin1(identity).toStdWString();
+}
 
 void activateWindowFromCurrentForeground(HWND window)
 {
@@ -164,12 +171,17 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     if (configPath.isEmpty()) configPath = defaultConfigPath();
     if (!ownerBelongsToProcess(owner, ownerProcessId)) owner = 0;
 
+    const std::wstring activationEventName = installationScopedEventName(
+        L"Local\\VideoProcessorConfigEditor.Activate.v1");
+    const std::wstring discoveryRefreshEventName = installationScopedEventName(
+        L"Local\\VideoProcessorConfigEditor.RefreshDiscovery.v1");
+
     HANDLE activationEvent = screenshotPath.isEmpty() ?
-        CreateEventW(nullptr, FALSE, FALSE, ActivationEventName) : nullptr;
+        CreateEventW(nullptr, FALSE, FALSE, activationEventName.c_str()) : nullptr;
     const bool existingInstance = activationEvent &&
         GetLastError() == ERROR_ALREADY_EXISTS;
     HANDLE discoveryRefreshEvent = screenshotPath.isEmpty() ?
-        CreateEventW(nullptr, FALSE, FALSE, DiscoveryRefreshEventName) : nullptr;
+        CreateEventW(nullptr, FALSE, FALSE, discoveryRefreshEventName.c_str()) : nullptr;
     if (existingInstance)
     {
         // VP starts a hidden Config process opportunistically.  If one is

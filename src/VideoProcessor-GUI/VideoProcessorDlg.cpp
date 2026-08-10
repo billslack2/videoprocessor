@@ -206,6 +206,12 @@ BOOL CALLBACK FindConfigurationEditor(HWND window, LPARAM parameter)
 		&processPathLength) &&
 		_wcsicmp(processPath, search->expectedPath.c_str()) == 0;
 	CloseHandle(process);
+	// A running Config from another checkout or deployment must never become
+	// this VP instance's editor.  Cross-installation fallback leaves the
+	// shortcut talking to stale Qt HWNDs, which is why the first press can be
+	// consumed by rediscovery and only the next one reveals the right editor.
+	if (!matches)
+		return TRUE;
 	const int score = (matches ? 1000 : 0) +
 		(::IsWindowVisible(window) ? 100 : 0) +
 		(!::IsIconic(window) ? 10 : 0);
@@ -215,12 +221,7 @@ BOOL CALLBACK FindConfigurationEditor(HWND window, LPARAM parameter)
 		search->exactInstallationMatch = matches;
 		search->score = score;
 	}
-	// The configuration editor has a deliberate per-user single-instance
-	// lifetime. A freshly-built or newly-installed VP can therefore launch an
-	// already-running editor from its previous installation directory. Keep it
-	// as a fallback so VP can still toggle the same visible singleton, while an
-	// exact sibling executable wins whenever it exists.
-	return TRUE;
+	return FALSE;
 }
 
 struct ConfigurationEditorProcessSearch
@@ -272,8 +273,6 @@ HWND FindConfigurationEditorForCurrentInstallation()
 	ConfigurationEditorSearch search{ expectedPath };
 	EnumWindows(FindConfigurationEditor,
 		reinterpret_cast<LPARAM>(&search));
-	if (search.window && !search.exactInstallationMatch)
-		DebugLog::Log("Configuration editor fallback selected from another installation");
 	return search.window;
 }
 
