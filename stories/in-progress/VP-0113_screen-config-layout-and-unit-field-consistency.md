@@ -8,13 +8,29 @@ the discovered default branch `v1.2.001-beta`. Worktree:
 `codex/vp-0113-screen-config-layout`, based on `origin/v1.2.001-beta` at
 `0e74e038` after the queue-update merge.
 
-Current work: inspect the Qt configuration editor's existing section-header,
-collapse-state, and inline unit-field patterns; apply the appropriate shared
-layout to Screen Config without changing its persistence or runtime behavior.
+Implementation checkpoint (2026-08-10):
 
-The user clarified that the section should be named **Subtitles**. Assess
-whether the remaining lower-frequency controls merit an Advanced section, but
-do not add one merely for symmetry.
+- Implemented `480688e` (`feat(config): organize Screen Config fields`). The
+  profile-page disclosure component is now reusable outside Renderer Setup,
+  and Screen Config has an expanded **Screen geometry** section plus a
+  collapsed **Subtitles** section. There is no Advanced section: the remaining
+  controls fit these two operator-meaningful groups.
+- Fixed-unit text fields now use a bounded entry box followed immediately by
+  its unit label. This applies to Screen Config seconds/milliseconds/pixels
+  fields and the same shared fixed-unit field pattern used by applicable
+  renderer-profile controls.
+- Added focused UI coverage for initial collapse state, friendly headings,
+  inline seconds/ms/pixels labels, adjacent unit placement, and preservation
+  of the expanded state while switching profiles.
+- A clean x64 Release build of `VideoProcessorConfigTests` and
+  `VideoProcessorConfig` succeeded. The focused `Screen Config sections and
+  inline units` test passed. The full editor suite passed all layout,
+  persistence, and feature tests except the pre-existing/environment-sensitive
+  `native owner preserves Qt input and popup association` failure: `External
+  foreground did not remove scoped Config topmost state`.
+- Visual screenshot review confirmed the Screen Config geometry disclosure
+  in the built standalone editor. Screenshot:
+  `C:\\Users\\bslac\\vp\\worktrees\\vp-0113-screen-config-layout\\vp0113-screen-config-layout.png`.
 
 ## User story
 
