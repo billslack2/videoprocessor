@@ -2,13 +2,14 @@
 
 ## Status
 
-In Progress (2026-08-10). The developer confirmed `v1.2.001-beta` as the
-implementation base. Work has started on
-`codex/vp-0110-subtitle-placement` in
-`C:\Users\bslac\vp\vp-0110-subtitle-placement`, based on
-`origin/v1.2.001-beta` at `02a7543`. The current deployed configuration
-exposes `subtitle_release_drift_seconds`; the new contract will express both
-directions in milliseconds.
+Done on 2026-08-10. The developer accepted the final deployed behavior after
+live testing across multiple configurations. Pull request
+[#48](https://github.com/billslack2/videoprocessor/pull/48) merged the exact
+tested feature head `d1ab1fe` into the default `v1.2.001-beta` branch at merge
+commit `109bc96`. The remote default tip was verified to contain the feature
+head. Full native testing passed 776 tests with the same six pre-existing
+fixture/reference failures, and the clean x64 Release deployment remains
+backed up and hash-verified as recorded below.
 
 Implementation checkpoint (2026-08-10): the isolated source worktree now
 parses and publishes `subtitle_engage_drift_ms` and
