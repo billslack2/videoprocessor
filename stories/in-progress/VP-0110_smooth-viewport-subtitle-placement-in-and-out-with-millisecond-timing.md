@@ -38,6 +38,35 @@ closed that editor, replaced `VideoProcessorConfig.exe` from the same x64
 Release build, verified its SHA-256 hash against the build artifact, and
 reopened it for validation.
 
+Live-validation corrective checkpoint (2026-08-10): with the active Scope
+profile still configured for a 250 ms engage drift, the user observed the
+picture make several small movements while the dense bar detector refined a
+new subtitle target from approximately 192 to 210 source pixels. The developer
+approved a fixed internal confirmation rule rather than another configuration
+surface: a new or larger translation target must appear in two consecutive
+dense analysis samples with the same direction and within two source pixels
+before it reaches the existing millisecond interpolator. FIT/NONE evidence
+cancels the candidate immediately. During the bounded confirmation interval,
+the renderer retains the trusted crop instead of flashing full raster; the
+tradeoff is that the first edge pixels may remain clipped for approximately
+50-125 ms depending on cadence. This confirmation is based on analyzed
+observations, not wall-clock time or raw frame count.
+
+The corrective implementation is currently uncommitted on
+`codex/vp-0110-subtitle-placement` at source HEAD `73899b0`. The focused
+Alpha crop-policy suite passes 82/82. The full native suite reports 770 passed
+and the same six pre-existing configuration/reference failures reproduced on
+clean HEAD. A single-process clean x64 Release solution rebuild succeeded.
+The experimental host and VP Renderer pair was deployed to
+`C:\Videoprocessor\vp`, with matching SHA-256 hashes
+`28F1929E8E43212AF2CEBC4036A61F2A52508A9C48D1975EE8EC235490FAF139`
+and `B95EDF7D9C5DE64084B9C0F2506EA0F778695541ACA8C94A4CCF4C607B942351`.
+The prior pair is backed up in
+`C:\Videoprocessor\vp\backup-vp0110-confirmation-20260810-143053`.
+The active configuration was not edited and retains the 250 ms engage drift.
+User validation must select VP Renderer; the post-deployment startup defaulted
+to DirectShow-madVR, which does not execute this Alpha presentation policy.
+
 ## User story
 
 As a VideoProcessor user watching scope content with subtitle fitting enabled,
@@ -62,10 +91,11 @@ milliseconds, so the motion is deliberate and directly tunable. A duration of
    release condition occurs. A new target or direction change restarts from
    the current displayed shift without a discontinuity unless its configured
    duration is `0`.
-4. Preserve subtitle detection, bar analysis, confidence/hysteresis,
-   opposite-edge handling, hold/release eligibility, crop authority, and the
-   decision of *when* a subtitle placement applies. This story changes only
-   how an already-selected shift moves in or out.
+4. Preserve subtitle classification thresholds, opposite-edge handling,
+   hold/release eligibility, and crop authority. Add one bounded internal
+   stabilization rule at the detector-to-interpolator boundary: require two
+   stable dense analysis samples before publishing a new or larger translation
+   target, while retaining the trusted crop during that confirmation window.
 5. Add focused tests for zero-duration snapping, nonzero engage and release
    interpolation, retargeting during motion, and unchanged detection/hold
    decisions. Complete a clean x64 Release build and the relevant native test
@@ -77,6 +107,11 @@ milliseconds, so the motion is deliberate and directly tunable. A duration of
   translation.
 - `subtitle_engage_drift_ms=0` and `subtitle_release_drift_ms=0` snap to the
   corresponding target position.
+- A growing subtitle extent does not expose a sequence of intermediate motion
+  targets: two stable analyzed observations select one target, followed by one
+  configured snap or drift.
+- Confirmation never converts one-edge overlay evidence into a full-raster or
+  outward-Fit flash; genuine FIT/NONE evidence cancels pending confirmation.
 - The configuration and documentation contain no active seconds-based setting
   for these two movement durations.
 - Existing rules for detecting, holding, changing direction, and releasing
@@ -84,8 +119,9 @@ milliseconds, so the motion is deliberate and directly tunable. A duration of
 
 ## Non-goals
 
-- Altering subtitle detection thresholds, OCR, black-bar analysis, selection
-  confidence, hold duration, crop logic, or subtitle timing.
+- Altering subtitle classification thresholds, OCR, black-bar sampling,
+  hold duration, or subtitle timing beyond the bounded two-sample target
+  confirmation explicitly added above.
 - Deploying binaries or changing the active installation configuration.
 
 ## Implementation gate
