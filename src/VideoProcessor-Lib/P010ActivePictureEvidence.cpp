@@ -552,6 +552,73 @@ P010ActivePictureEvidence ExtractActivePictureEvidence(
 	return result;
 }
 
+P010ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
+	const AnalysisLumaSource& source,
+	const P010ActivePictureEvidence& observed)
+{
+	P010ActivePictureEvidence result = observed;
+	if (!source.IsValid() || !observed.available ||
+		observed.classification != ActivePictureClassification::PROVISIONAL ||
+		observed.proposedBounds.left != 0 ||
+		observed.proposedBounds.right != source.width)
+	{
+		return result;
+	}
+
+	const int step = std::max(2, source.height / 540);
+	const int observedTopBar = observed.proposedBounds.top;
+	const int observedBottomBar = source.height - observed.proposedBounds.bottom;
+	const bool cleanTop = observed.top.trusted &&
+		(!observed.bottom.trusted || observedTopBar > observedBottomBar + step);
+	const bool cleanBottom = observed.bottom.trusted &&
+		(!observed.top.trusted || observedBottomBar > observedTopBar + step);
+	if (cleanTop == cleanBottom)
+		return result;
+	const int barPixels = cleanTop ? observedTopBar : observedBottomBar;
+	if (barPixels <= step * 2 || barPixels >= source.height / 3)
+		return result;
+
+	const int inferredTop = barPixels;
+	const int inferredBottom = source.height - barPixels;
+	const bool oppositeExpanded = cleanTop
+		? observed.proposedBounds.bottom > inferredBottom + step
+		: observed.proposedBounds.top < inferredTop - step;
+	if (!oppositeExpanded || inferredBottom <= inferredTop)
+		return result;
+
+	SampleContext samples{ source };
+	const P010EdgeEvidence& clean = cleanTop ? observed.top : observed.bottom;
+	const int blackFloor = static_cast<int>(clean.lumaFloor);
+	const int blackThreshold = std::min(104, blackFloor + 24);
+	P010EdgeEvidence opposite = InspectHorizontalEdge(samples, !cleanTop,
+		barPixels, cleanTop ? inferredBottom : inferredTop,
+		blackFloor, blackThreshold);
+	// Sparse glyphs may occupy part of the bar, but most sampled bar pixels and
+	// several depth lines must remain coherent black. Broad/deep one-sided picture
+	// expansion therefore stays provisional instead of being cropped away.
+	const bool overlayCompatible = opposite.blackFraction >= 0.70 &&
+		opposite.neutralChromaFraction >= 0.70 &&
+		opposite.continuity >= 0.33 &&
+		opposite.innerBoundaryContrast >= 10.0;
+	if (!overlayCompatible)
+		return result;
+
+	opposite.trusted = true;
+	if (cleanTop)
+		result.bottom = opposite;
+	else
+		result.top = opposite;
+	result.trustedBounds = { 0, inferredTop, source.width, inferredBottom,
+		source.width, source.height,
+		static_cast<double>(source.width) / (inferredBottom - inferredTop), true };
+	result.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+	result.lumaSamples += samples.lumaSamples;
+	result.chromaSamples += samples.chromaSamples;
+	result.reason =
+		"one clean bar plus overlay-compatible opposite bar supports symmetric startup geometry";
+	return result;
+}
+
 P010ActivePictureEvidence ExtractP010ActivePictureEvidence(
 	const P010PlaneView& view)
 {

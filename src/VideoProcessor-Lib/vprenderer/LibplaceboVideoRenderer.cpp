@@ -2455,6 +2455,8 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t scopeSubtitleEvidenceSourceGeneration = 0;
 	AlphaSourceCrop::VerticalBarPresentationState
 		scopeVerticalBarPresentation;
+	AlphaSourceCrop::VerticalTranslationConfirmationState
+		scopeSubtitleTranslationConfirmation;
 	AlphaSourceCrop::VerticalTranslationDrift scopeSubtitleDrift;
 	bool scopeSubtitleDriftWasActive = false;
 	bool scopeSubtitleAuthorityGapHeld = false;
@@ -2492,6 +2494,8 @@ struct LibplaceboVideoRenderer::Impl
 		ActivePictureClassification::UNAVAILABLE;
 	ActivePictureBounds latestActivePictureEvidenceBounds;
 	uint64_t latestActivePictureEvidenceFrame = 0;
+	bool latestActivePictureEvidenceWasStartupHypothesis = false;
+	bool presentationOwnedGeometryTransitionDeferred = false;
 	bool latestActivePicturePresentationRetentionSafe = false;
 	bool latestActivePicturePresentationRetentionEvaluated = false;
 	std::string latestActivePicturePresentationRetentionReason;
@@ -3182,6 +3186,7 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		scopeSubtitleAnalysisFrame = 0;
 		scopeVerticalBarPresentation = {};
+		scopeSubtitleTranslationConfirmation = {};
 		scopeSubtitleDrift.Reset();
 		scopeSubtitleDriftWasActive = false;
 		scopeSubtitleAuthorityGapHeld = false;
@@ -3475,12 +3480,14 @@ struct LibplaceboVideoRenderer::Impl
 				// full-width receiver OSD is still overlay-like. Content broad in both
 				// dimensions, two current edges, or evidence opposite a held translation
 				// is one FIT decision, never a competing translate-and-fit pair.
-				const bool verticalHoldActive =
+				const bool previousOwnsCurrentAnalysis =
+					scopeSubtitleEvidenceSourceGeneration == source->generation &&
+					scopeVerticalBarPresentation.action !=
+						AlphaSourceCrop::VerticalBarPresentationAction::NONE;
+				const bool verticalHoldActive = previousOwnsCurrentAnalysis ||
 					AlphaSourceCrop::IsVerticalBarPresentationActive(
 						scopeVerticalBarPresentation, now, scopeSubtitleHoldMs,
 						sourceSequence);
-				if (!verticalHoldActive)
-					scopeVerticalBarPresentation = {};
 				const bool topHoldActive = verticalHoldActive &&
 					scopeVerticalBarPresentation.action ==
 						AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
@@ -3510,6 +3517,40 @@ struct LibplaceboVideoRenderer::Impl
 					AlphaSourceCrop::EvaluateVerticalBarContent(verticalInput);
 				const bool upperOverlayLike = verticalDecision.upperOverlayLike;
 				const bool lowerOverlayLike = verticalDecision.lowerOverlayLike;
+				AlphaSourceCrop::VerticalTranslationConfirmationInput
+					confirmationInput;
+				confirmationInput.previous =
+					scopeSubtitleTranslationConfirmation;
+				confirmationInput.observed = verticalDecision;
+				confirmationInput.acceptedTranslationActive =
+					previousOwnsCurrentAnalysis &&
+					scopeVerticalBarPresentation.action ==
+						AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
+				confirmationInput.acceptedTranslationPixels =
+					scopeVerticalBarPresentation.translationPixels;
+				const auto confirmation =
+					AlphaSourceCrop::ConfirmVerticalTranslation(confirmationInput);
+				scopeSubtitleTranslationConfirmation = confirmation.state;
+				if (confirmation.pending)
+				{
+					DebugLog::Log(
+						"Alpha vertical bar translation: candidate pending confirmation %u/%u target=%.1f px retained=%.1f px",
+						confirmation.state.confirmations,
+						AlphaSourceCrop::
+							VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED,
+						confirmation.state.candidateTranslationPixels,
+						confirmationInput.acceptedTranslationActive
+							? confirmationInput.acceptedTranslationPixels : 0.0f);
+				}
+				else if (confirmation.newlyAccepted)
+				{
+					DebugLog::Log(
+						"Alpha vertical bar translation: candidate accepted target=%.1f px after %u stable samples",
+						confirmation.effective.translationPixels,
+						AlphaSourceCrop::
+							VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED);
+				}
+				verticalDecision = confirmation.effective;
 				AlphaSourceCrop::VerticalBarPresentationUpdateInput updateInput;
 				updateInput.previous = scopeVerticalBarPresentation;
 				updateInput.current = verticalDecision;
@@ -3521,6 +3562,8 @@ struct LibplaceboVideoRenderer::Impl
 				updateInput.currentSourceSequence = sourceSequence;
 				updateInput.holdMs = scopeSubtitleHoldMs;
 				updateInput.translationEnabled = scopeSubtitleFit;
+				updateInput.previousOwnsCurrentAnalysis =
+					previousOwnsCurrentAnalysis;
 				scopeVerticalBarPresentation =
 					AlphaSourceCrop::UpdateVerticalBarPresentation(updateInput);
 				const auto action = verticalDecision.action ==
@@ -3643,10 +3686,14 @@ struct LibplaceboVideoRenderer::Impl
 			}
 		}
 
+		const bool subtitleAnalysisEvaluated = authorityIsCurrentBars &&
+			(forceAnalysis || subtitleAnalysisScheduled);
 		const bool verticalPresentationActive =
-			AlphaSourceCrop::IsVerticalBarPresentationActive(
+			AlphaSourceCrop::IsVerticalBarPresentationActiveForFrame(
 				scopeVerticalBarPresentation, now, scopeSubtitleHoldMs,
-				sourceSequence);
+				sourceSequence, subtitleAnalysisEvaluated,
+				authorityIsCurrentBars,
+				scopeSubtitleEvidenceSourceGeneration, source->generation);
 		if (!verticalPresentationActive)
 			scopeVerticalBarPresentation = {};
 		if (!scopeSubtitleFit && verticalPresentationActive &&
@@ -4994,6 +5041,8 @@ struct LibplaceboVideoRenderer::Impl
 			ActivePictureClassification::UNAVAILABLE;
 		latestActivePictureEvidenceBounds = {};
 		latestActivePictureEvidenceFrame = 0;
+		latestActivePictureEvidenceWasStartupHypothesis = false;
+		presentationOwnedGeometryTransitionDeferred = false;
 		latestActivePicturePresentationRetentionSafe = false;
 		latestActivePicturePresentationRetentionEvaluated = false;
 		latestActivePicturePresentationRetentionReason.clear();
@@ -5094,6 +5143,21 @@ struct LibplaceboVideoRenderer::Impl
 			else
 			{
 				evidence = ExtractActivePictureEvidence(analysisSource);
+			}
+			latestActivePictureEvidenceWasStartupHypothesis = false;
+			if (!hadCompatiblePresentation && evidence.available &&
+				evidence.classification ==
+					ActivePictureClassification::PROVISIONAL)
+			{
+				const P010ActivePictureEvidence hypothesis =
+					EvaluateSymmetricVerticalBarHypothesis(
+						analysisSource, evidence);
+				if (hypothesis.classification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED)
+				{
+					evidence = hypothesis;
+					latestActivePictureEvidenceWasStartupHypothesis = true;
+				}
 			}
 			latestActivePictureObservationSupportsCrop = false;
 			latestActivePictureEvidenceAvailable = evidence.available;
@@ -5269,20 +5333,46 @@ struct LibplaceboVideoRenderer::Impl
 			ActivePictureObservation observation;
 			observation.frameNumber = frameNumber;
 			observation.available = evidence.available;
+			const bool deferPresentationOwnedTransition = evidence.available &&
+				nlsGeometryAvailable &&
+				nlsGeometrySourceGeneration == analysisSource.generation &&
+				AlphaSourceCrop::ShouldDeferVerticalGeometryTransition(
+					nlsGeometry, evidence.trustedBounds, evidence.classification,
+					scopeVerticalBarPresentation, scopeSubtitleDrift.IsActive(),
+					scopeSubtitleEvidenceSourceGeneration,
+					analysisSource.generation);
+			if (deferPresentationOwnedTransition !=
+				presentationOwnedGeometryTransitionDeferred)
+			{
+				DebugLog::Log(
+					"Alpha active-picture transition: presentation-owned vertical expansion %s; stable=%d,%d-%d,%d candidate=%d,%d-%d,%d generation=%llu",
+					deferPresentationOwnedTransition ? "deferred" : "released",
+					nlsGeometry.left, nlsGeometry.top,
+					nlsGeometry.right, nlsGeometry.bottom,
+					evidence.trustedBounds.left, evidence.trustedBounds.top,
+					evidence.trustedBounds.right, evidence.trustedBounds.bottom,
+					static_cast<unsigned long long>(analysisSource.generation));
+				presentationOwnedGeometryTransitionDeferred =
+					deferPresentationOwnedTransition;
+			}
 			if (evidence.available)
 			{
 				observation.bounds = evidence.classification ==
 					ActivePictureClassification::PROVISIONAL
 					? evidence.proposedBounds
 					: evidence.trustedBounds;
-				observation.classification = evidence.classification;
+				observation.classification = deferPresentationOwnedTransition
+					? ActivePictureClassification::PROVISIONAL
+					: evidence.classification;
 			}
 			ActivePictureScheduledDecisionValidation scheduledValidation =
 				hasScheduledDecision
-				? ValidateActivePictureScheduledDecision(
+				? (deferPresentationOwnedTransition
+					? ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE
+					: ValidateActivePictureScheduledDecision(
 					*scheduledDecision, currentIdentity,
 					latestActivePictureEvidenceBounds,
-					latestActivePictureEvidenceClassification)
+					latestActivePictureEvidenceClassification))
 				: ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE;
 			const bool applyScheduledDecision = hasScheduledDecision &&
 				scheduledValidation ==
@@ -5953,6 +6043,10 @@ struct LibplaceboVideoRenderer::Impl
 		heldAnalysisInput.trustedGeometry = nlsGeometry;
 		heldAnalysisInput.currentEnvelope = scopePresentationCurrentBounds;
 		heldAnalysisInput.presentation = scopeVerticalBarPresentation;
+		heldAnalysisInput.translationConfirmationPending =
+			scopeSubtitleTranslationConfirmation.confirmations != 0;
+		heldAnalysisInput.pendingTranslationPixels =
+			scopeSubtitleTranslationConfirmation.candidateTranslationPixels;
 		heldAnalysisInput.evidenceSourceGeneration =
 			scopeSubtitleEvidenceSourceGeneration;
 		heldAnalysisInput.currentSourceGeneration = frameGeneration;
@@ -5973,9 +6067,6 @@ struct LibplaceboVideoRenderer::Impl
 		// (or a generic fit) for one frame.
 		const bool subtitleTranslationAlreadyActive =
 			scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
-			AlphaSourceCrop::IsVerticalBarPresentationActive(
-				scopeVerticalBarPresentation, subtitleNow,
-				scopeSubtitleHoldMs, sourceSequence) &&
 			scopeVerticalBarPresentation.action ==
 				AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
 		if (scopeSubtitleRetentionGeneration != frameGeneration)
@@ -5996,7 +6087,9 @@ struct LibplaceboVideoRenderer::Impl
 				retentionJustBecameUnsafe,
 				latestActivePicturePresentationRetentionEvaluated,
 				latestActivePicturePresentationRetentionSafe,
-				subtitleTranslationAlreadyActive);
+				subtitleTranslationAlreadyActive) ||
+			(latestActivePictureEvidenceWasStartupHypothesis &&
+			 subtitleBarAuthority != nullptr);
 		const float subtitleShiftSourcePixels =
 			UpdateScopeSubtitleShift(&analysisSource,
 				width, height, configuredScreenActive, subtitleBarAuthority,
@@ -6236,9 +6329,8 @@ struct LibplaceboVideoRenderer::Impl
 				scopeSubtitlePictureRight == effectiveGeometry.right &&
 				scopeSubtitlePictureBottom == effectiveGeometry.bottom;
 			const bool detailedVerticalActive =
-				AlphaSourceCrop::IsVerticalBarPresentationActive(
-					scopeVerticalBarPresentation, overlayNow,
-					scopeSubtitleHoldMs, sourceSequence) &&
+				scopeVerticalBarPresentation.action !=
+					AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
 				scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
 				storedVerticalBaseMatchesEffectiveGeometry;
 			auto sameBounds = [](const ActivePictureBounds& left,
@@ -6341,6 +6433,8 @@ struct LibplaceboVideoRenderer::Impl
 			verticalResolutionInput.translationPixels =
 				requestedSubtitleTranslation || subtitleDriftTranslation
 				? resolvedSubtitleTranslation : 0.0f;
+			verticalResolutionInput.zeroTranslationRetainsTrustedBase =
+				requestedSubtitleTranslation && scopeSubtitleDrift.IsActive();
 			verticalResolutionInput.genericUpperExpansion =
 				currentDetectorTopExpansion;
 			verticalResolutionInput.genericLowerExpansion =
@@ -6501,6 +6595,8 @@ struct LibplaceboVideoRenderer::Impl
 				latestActivePicturePresentationRetentionEvaluated;
 			cropInput.presentationFailOpen =
 				verticalFailOpen || outwardExpansionInvalid;
+			cropInput.verticalTranslationConfirmationPending =
+				scopeSubtitleTranslationConfirmation.confirmations != 0;
 			cropInput.verticalTranslationActive = verticalTranslationActive;
 			cropInput.verticalTranslationPixels = verticalTranslationPixels;
 			cropInput.verticalTranslationBase = {

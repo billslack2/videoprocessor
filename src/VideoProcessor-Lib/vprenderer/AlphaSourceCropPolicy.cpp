@@ -170,6 +170,74 @@ namespace AlphaSourceCrop
 		return decision;
 	}
 
+	VerticalTranslationConfirmationDecision ConfirmVerticalTranslation(
+		const VerticalTranslationConfirmationInput& input)
+	{
+		VerticalTranslationConfirmationDecision decision;
+		decision.effective = input.observed;
+		if (input.observed.action !=
+				VerticalBarPresentationAction::TRANSLATE ||
+			std::abs(input.observed.translationPixels) <= 0.5f)
+		{
+			return decision;
+		}
+
+		const bool acceptedSameDirection =
+			input.acceptedTranslationActive &&
+			std::abs(input.acceptedTranslationPixels) > 0.5f &&
+			((input.acceptedTranslationPixels < 0.0f) ==
+			 (input.observed.translationPixels < 0.0f));
+		const bool acceptedAlreadyCoversObservation = acceptedSameDirection &&
+			std::abs(input.observed.translationPixels) <=
+				std::abs(input.acceptedTranslationPixels) +
+				VERTICAL_TRANSLATION_STABILITY_PIXELS;
+		if (acceptedAlreadyCoversObservation)
+		{
+			// UpdateVerticalBarPresentation retains the farthest accepted reveal,
+			// so harmless inward detector jitter cannot shrink the placement.
+			return decision;
+		}
+
+		const bool candidateMatches = input.previous.confirmations != 0 &&
+			((input.previous.candidateTranslationPixels < 0.0f) ==
+			 (input.observed.translationPixels < 0.0f)) &&
+			std::abs(input.previous.candidateTranslationPixels -
+				input.observed.translationPixels) <=
+				VERTICAL_TRANSLATION_STABILITY_PIXELS;
+		decision.state.candidateTranslationPixels = candidateMatches
+			? (input.observed.translationPixels < 0.0f
+				? std::min(input.previous.candidateTranslationPixels,
+					input.observed.translationPixels)
+				: std::max(input.previous.candidateTranslationPixels,
+					input.observed.translationPixels))
+			: input.observed.translationPixels;
+		decision.state.confirmations = candidateMatches
+			? input.previous.confirmations + 1 : 1;
+		if (decision.state.confirmations >=
+			VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED)
+		{
+			decision.effective.translationPixels =
+				decision.state.candidateTranslationPixels;
+			decision.state = {};
+			decision.newlyAccepted = true;
+			return decision;
+		}
+
+		decision.pending = true;
+		if (acceptedSameDirection)
+		{
+			// Keep the already accepted target while a larger reveal settles. This
+			// refreshes ownership without exposing an intermediate motion target.
+			decision.effective.translationPixels =
+				input.acceptedTranslationPixels;
+		}
+		else
+		{
+			decision.effective = {};
+		}
+		return decision;
+	}
+
 	bool IsVerticalBarPresentationActive(
 		const VerticalBarPresentationState& state,
 		uint64_t currentTick, uint64_t holdMs,
@@ -187,6 +255,26 @@ namespace AlphaSourceCrop
 			currentTick - state.lastDetectionTick <= holdMs;
 	}
 
+	bool IsVerticalBarPresentationActiveForFrame(
+		const VerticalBarPresentationState& state,
+		uint64_t currentTick, uint64_t holdMs,
+		uint64_t currentSourceSequence,
+		bool analysisEvaluatedCurrentFrame,
+		bool currentBarAuthority,
+		uint64_t evidenceSourceGeneration,
+		uint64_t currentSourceGeneration)
+	{
+		if (IsVerticalBarPresentationActive(state, currentTick, holdMs,
+			currentSourceSequence))
+		{
+			return true;
+		}
+		return !analysisEvaluatedCurrentFrame && currentBarAuthority &&
+			state.action != VerticalBarPresentationAction::NONE &&
+			evidenceSourceGeneration != 0 &&
+			evidenceSourceGeneration == currentSourceGeneration;
+	}
+
 	bool CanRetainVerticalBarPresentationAcrossAuthorityGap(
 		const VerticalBarPresentationState& state,
 		uint64_t evidenceSourceGeneration,
@@ -196,13 +284,50 @@ namespace AlphaSourceCrop
 	{
 		return evidenceSourceGeneration != 0 &&
 			evidenceSourceGeneration == currentSourceGeneration &&
-			IsVerticalBarPresentationActive(state, currentTick, holdMs,
-				currentSourceSequence);
+			state.action != VerticalBarPresentationAction::NONE &&
+			(IsVerticalBarPresentationActive(state, currentTick, holdMs,
+				currentSourceSequence) || holdMs == 0);
+	}
+
+	bool ShouldDeferVerticalGeometryTransition(
+		const ActivePictureBounds& trustedGeometry,
+		const ActivePictureBounds& candidateGeometry,
+		ActivePictureClassification candidateClassification,
+		const VerticalBarPresentationState& presentation,
+		bool translationDriftActive,
+		uint64_t evidenceSourceGeneration,
+		uint64_t currentSourceGeneration)
+	{
+		if (candidateClassification !=
+				ActivePictureClassification::BAR_CROP_TRUSTED ||
+			evidenceSourceGeneration == 0 ||
+			evidenceSourceGeneration != currentSourceGeneration ||
+			(!translationDriftActive && presentation.action !=
+				VerticalBarPresentationAction::TRANSLATE) ||
+			!ValidBounds(trustedGeometry, trustedGeometry.rasterWidth,
+				trustedGeometry.rasterHeight) ||
+			!ValidBounds(candidateGeometry, trustedGeometry.rasterWidth,
+				trustedGeometry.rasterHeight))
+		{
+			return false;
+		}
+		return candidateGeometry.top < trustedGeometry.top ||
+			candidateGeometry.bottom > trustedGeometry.bottom;
 	}
 
 	bool CanAnalyzeHeldVerticalBarGeometry(
 		const HeldBarAnalysisInput& input)
 	{
+		const bool activeTranslation =
+			input.presentation.action ==
+				VerticalBarPresentationAction::TRANSLATE &&
+			(input.holdMs == 0 ||
+			 IsVerticalBarPresentationActive(input.presentation,
+				 input.currentTick, input.holdMs,
+				 input.currentSourceSequence));
+		const bool pendingTranslation =
+			input.translationConfirmationPending &&
+			std::abs(input.pendingTranslationPixels) > 0.5f;
 		if (input.currentBarAuthority ||
 			!input.trustedBarGeometryAvailable ||
 			!input.storedBaseMatchesTrustedGeometry ||
@@ -211,11 +336,7 @@ namespace AlphaSourceCrop
 				ActivePictureClassification::PROVISIONAL ||
 			input.evidenceSourceGeneration == 0 ||
 			input.evidenceSourceGeneration != input.currentSourceGeneration ||
-			!IsVerticalBarPresentationActive(input.presentation,
-				input.currentTick, input.holdMs,
-				input.currentSourceSequence) ||
-			input.presentation.action !=
-				VerticalBarPresentationAction::TRANSLATE ||
+			(!activeTranslation && !pendingTranslation) ||
 			!ValidBounds(input.trustedGeometry,
 				input.trustedGeometry.rasterWidth,
 				input.trustedGeometry.rasterHeight) ||
@@ -236,9 +357,12 @@ namespace AlphaSourceCrop
 		if (!outwardEnvelope)
 			return false;
 
-		if (input.presentation.translationPixels < -0.5f)
+		const float translationPixels = activeTranslation
+			? input.presentation.translationPixels
+			: input.pendingTranslationPixels;
+		if (translationPixels < -0.5f)
 			return input.currentEnvelope.top < input.trustedGeometry.top;
-		if (input.presentation.translationPixels > 0.5f)
+		if (translationPixels > 0.5f)
 			return input.currentEnvelope.bottom > input.trustedGeometry.bottom;
 		return false;
 	}
@@ -246,10 +370,12 @@ namespace AlphaSourceCrop
 	VerticalBarPresentationState UpdateVerticalBarPresentation(
 		const VerticalBarPresentationUpdateInput& input)
 	{
-		const bool previousActive = IsVerticalBarPresentationActive(
+		const bool previousActiveByHold = IsVerticalBarPresentationActive(
 			input.previous, input.currentTick, input.holdMs,
 			input.currentSourceSequence);
-		VerticalBarPresentationState state = previousActive
+		const bool previousOwnsSample = previousActiveByHold ||
+			input.previousOwnsCurrentAnalysis;
+		VerticalBarPresentationState state = previousOwnsSample
 			? input.previous : VerticalBarPresentationState{};
 		VerticalBarContentDecision current = input.current;
 		if (!input.translationEnabled &&
@@ -260,6 +386,8 @@ namespace AlphaSourceCrop
 		}
 		if (current.action == VerticalBarPresentationAction::NONE)
 		{
+			if (!previousActiveByHold)
+				return {};
 			if (!input.translationEnabled &&
 				state.action == VerticalBarPresentationAction::TRANSLATE)
 			{
@@ -286,13 +414,13 @@ namespace AlphaSourceCrop
 
 		if (current.action == VerticalBarPresentationAction::FIT)
 		{
-			if (previousActive &&
+			if (previousOwnsSample &&
 				state.action == VerticalBarPresentationAction::TRANSLATE &&
 				input.translationEnabled)
 			{
 				return state;
 			}
-			const bool retainPrevious = previousActive;
+			const bool retainPrevious = previousOwnsSample;
 			const int retainedTop = retainPrevious ? state.detectedTop : 0;
 			const int retainedBottom = retainPrevious ? state.detectedBottom : 0;
 			state.action = current.action;
@@ -310,7 +438,7 @@ namespace AlphaSourceCrop
 			return state;
 		}
 
-		const bool sameDirection = previousActive &&
+		const bool sameDirection = previousOwnsSample &&
 			state.action == VerticalBarPresentationAction::TRANSLATE &&
 			((state.translationPixels < 0.0f) ==
 			 (current.translationPixels < 0.0f));
@@ -375,6 +503,8 @@ namespace AlphaSourceCrop
 			const bool releasing = std::abs(requestedTranslationPixels) <= 0.5f &&
 				std::abs(lastAppliedTranslationPixels) > 0.5f;
 			Reset();
+			targetTranslationPixels = requestedTranslationPixels;
+			driftStartTranslationPixels = requestedTranslationPixels;
 			lastAppliedTranslationPixels = requestedTranslationPixels;
 			if (releasing)
 				finalBaseFramePending = true;
@@ -425,7 +555,11 @@ namespace AlphaSourceCrop
 		{
 			if (std::abs(input.translationPixels) <= 0.5f)
 			{
-				decision.action = VerticalBarPresentationAction::FAIL_OPEN;
+				// The first sample of a timed engage is intentionally still at the
+				// trusted base. Ordinary zero-shift metadata remains invalid/fail-open.
+				decision.action = input.zeroTranslationRetainsTrustedBase
+					? VerticalBarPresentationAction::NONE
+					: VerticalBarPresentationAction::FAIL_OPEN;
 				decision.translationPixels = 0.0f;
 				return decision;
 			}
@@ -882,11 +1016,19 @@ namespace AlphaSourceCrop
 			input.verticalTranslationSourceGeneration != 0 &&
 			input.verticalTranslationSourceGeneration ==
 				input.frameSourceGeneration;
+		const bool boundedVerticalConfirmationRetention =
+			input.verticalTranslationConfirmationPending &&
+			input.latestObservationIsProvisional &&
+			SameBounds(input.verticalTranslationBase, input.geometry) &&
+			input.verticalTranslationSourceGeneration != 0 &&
+			input.verticalTranslationSourceGeneration ==
+				input.frameSourceGeneration;
 		if (!input.latestObservationSupportsCrop &&
 			!boundedSceneVerificationRetention &&
 			!boundedAmbiguousRetention && !pixelSafeAmbiguousRetention &&
 			!boundedOutwardExpansion && !boundedVerticalTranslation &&
-			!boundedVerticalBaseRetention)
+			!boundedVerticalBaseRetention &&
+			!boundedVerticalConfirmationRetention)
 		{
 			decision.reason =
 				"latest observation does not reaffirm crop authority";
@@ -1000,6 +1142,8 @@ namespace AlphaSourceCrop
 				: "same-size vertical presentation translation accepted")
 			: (boundedVerticalBaseRetention
 				? "subtitle release settled at current trusted base"
+				: (boundedVerticalConfirmationRetention
+					? "trusted crop retained while subtitle translation target confirms"
 				: (decision.outwardExpanded
 					? "bounded outward presentation expansion accepted"
 					: (input.latestObservationSupportsCrop
@@ -1008,7 +1152,7 @@ namespace AlphaSourceCrop
 				? "frame-local pixel-safe presentation retained prior crop"
 				: (boundedSceneVerificationRetention
 					? "bounded scene verification retained current trusted crop"
-					: "bounded ambiguity hold retained current trusted crop")))));
+					: "bounded ambiguity hold retained current trusted crop"))))));
 		return decision;
 	}
 

@@ -411,6 +411,343 @@ namespace Tests
 			Assert::IsFalse(drift.IsActive());
 		}
 
+		TEST_METHOD(NewVerticalTranslationRequiresTwoStableAnalysisSamples)
+		{
+			VerticalTranslationConfirmationInput input;
+			input.observed.action =
+				VerticalBarPresentationAction::TRANSLATE;
+			input.observed.translationPixels = 192.0f;
+
+			auto decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
+			Assert::IsFalse(decision.newlyAccepted);
+			Assert::AreEqual(1u, decision.state.confirmations);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::NONE),
+				static_cast<int>(decision.effective.action));
+
+			input.previous = decision.state;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsFalse(decision.pending);
+			Assert::IsTrue(decision.newlyAccepted);
+			Assert::AreEqual(0u, decision.state.confirmations);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(decision.effective.action));
+			Assert::AreEqual(192.0f,
+				decision.effective.translationPixels, 0.001f);
+		}
+
+		TEST_METHOD(ChangingVerticalTranslationTargetRestartsConfirmation)
+		{
+			VerticalTranslationConfirmationInput input;
+			input.observed.action =
+				VerticalBarPresentationAction::TRANSLATE;
+			input.observed.translationPixels = 192.0f;
+			auto decision = ConfirmVerticalTranslation(input);
+
+			input.previous = decision.state;
+			input.observed.translationPixels = 210.0f;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
+			Assert::AreEqual(1u, decision.state.confirmations);
+			Assert::AreEqual(210.0f,
+				decision.state.candidateTranslationPixels, 0.001f);
+
+			input.previous = decision.state;
+			input.observed.translationPixels = 209.0f;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.newlyAccepted);
+			// Stable estimates within two pixels choose the farther reveal.
+			Assert::AreEqual(210.0f,
+				decision.effective.translationPixels, 0.001f);
+		}
+
+		TEST_METHOD(LargerTranslationConfirmsWithoutMovingAcceptedTargetEarly)
+		{
+			VerticalTranslationConfirmationInput input;
+			input.acceptedTranslationActive = true;
+			input.acceptedTranslationPixels = 192.0f;
+			input.observed.action =
+				VerticalBarPresentationAction::TRANSLATE;
+			input.observed.translationPixels = 210.0f;
+
+			auto decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
+			Assert::AreEqual(192.0f,
+				decision.effective.translationPixels, 0.001f);
+
+			input.previous = decision.state;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.newlyAccepted);
+			Assert::AreEqual(210.0f,
+				decision.effective.translationPixels, 0.001f);
+
+			input.previous = {};
+			input.acceptedTranslationPixels = 210.0f;
+			input.observed.translationPixels = 208.0f;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsFalse(decision.pending);
+			Assert::IsFalse(decision.newlyAccepted);
+		}
+
+		TEST_METHOD(NonTranslationObservationCancelsPendingConfirmation)
+		{
+			VerticalTranslationConfirmationInput input;
+			input.observed.action =
+				VerticalBarPresentationAction::TRANSLATE;
+			input.observed.translationPixels = -170.0f;
+			auto decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
+
+			input.previous = decision.state;
+			input.observed = {};
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsFalse(decision.pending);
+			Assert::AreEqual(0u, decision.state.confirmations);
+
+			input.previous.candidateTranslationPixels = -170.0f;
+			input.previous.confirmations = 1;
+			input.observed.action = VerticalBarPresentationAction::FIT;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsFalse(decision.pending);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(decision.effective.action));
+		}
+
+		TEST_METHOD(PendingTranslationRetainsTrustedCropWithoutFullRasterFlash)
+		{
+			Input input = TrustedScopeCrop();
+			input.latestObservationSupportsCrop = false;
+			input.latestObservationIsProvisional = true;
+			input.latestObservationClassification =
+				ActivePictureClassification::PROVISIONAL;
+			input.frameLocalPresentationRetentionEvaluated = true;
+			input.frameLocalPresentationRetentionSafe = false;
+			input.verticalTranslationConfirmationPending = true;
+			input.verticalTranslationBase = input.geometry;
+			input.verticalTranslationSourceGeneration = 7;
+
+			const Decision retained = Evaluate(input);
+			Assert::IsTrue(retained.applyCrop);
+			Assert::AreEqual(274, retained.sourceBounds.top);
+			Assert::AreEqual(1884, retained.sourceBounds.bottom);
+			Assert::IsTrue(retained.reason.find("confirms") !=
+				std::string::npos);
+
+			Input stale = input;
+			stale.verticalTranslationSourceGeneration = 6;
+			AssertFullRaster(Evaluate(stale));
+
+			Input picture = input;
+			picture.latestObservationIsProvisional = false;
+			picture.latestObservationClassification =
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
+			AssertFullRaster(Evaluate(picture));
+		}
+
+		TEST_METHOD(ZeroDurationEngageStillAllowsTimedRelease)
+		{
+			VerticalTranslationDrift drift;
+			Assert::AreEqual(192.0f,
+				drift.Resolve(192.0f, 1000, 0), 0.001f);
+			Assert::IsFalse(drift.IsActive());
+
+			Assert::AreEqual(192.0f,
+				drift.Resolve(0.0f, 2000, 2000), 0.001f);
+			Assert::IsTrue(drift.IsActive());
+			Assert::AreEqual(96.0f,
+				drift.Resolve(0.0f, 3000, 2000), 0.001f);
+			Assert::AreEqual(0.0f,
+				drift.Resolve(0.0f, 4000, 2000), 0.001f);
+			Assert::IsFalse(drift.IsActive());
+			Assert::IsTrue(drift.ConsumeFinalBaseFrame());
+		}
+
+		TEST_METHOD(ZeroHoldRetainsPresentationUntilNextAnalysisSample)
+		{
+			VerticalBarPresentationState state;
+			state.action = VerticalBarPresentationAction::TRANSLATE;
+			state.translationPixels = 192.0f;
+			state.lastDetectionTick = 1000;
+			state.sourceSequence = 100;
+
+			Assert::IsTrue(IsVerticalBarPresentationActiveForFrame(
+				state, 1040, 0, 101, false, true, 7, 7));
+			Assert::IsFalse(IsVerticalBarPresentationActiveForFrame(
+				state, 1080, 0, 102, true, true, 7, 7));
+			Assert::IsFalse(IsVerticalBarPresentationActiveForFrame(
+				state, 1040, 0, 101, false, false, 7, 7));
+			Assert::IsFalse(IsVerticalBarPresentationActiveForFrame(
+				state, 1040, 0, 101, false, true, 7, 8));
+		}
+
+		TEST_METHOD(ZeroHoldTranslationOwnsCompetingFitUntilAnalyzedNegative)
+		{
+			VerticalBarPresentationUpdateInput input;
+			input.previous.action = VerticalBarPresentationAction::TRANSLATE;
+			input.previous.translationPixels = 192.0f;
+			input.previous.detectedBottom = 2076;
+			input.previous.lastDetectionTick = 1000;
+			input.previous.sourceSequence = 100;
+			input.current.action = VerticalBarPresentationAction::FIT;
+			input.upperContent = true;
+			input.lowerContent = true;
+			input.upperContentTop = 68;
+			input.lowerContentBottom = 2092;
+			input.currentTick = 1040;
+			input.currentSourceSequence = 103;
+			input.holdMs = 0;
+			input.translationEnabled = true;
+			input.previousOwnsCurrentAnalysis = true;
+
+			auto state = UpdateVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(state.action));
+			Assert::AreEqual(192.0f, state.translationPixels, 0.001f);
+
+			// Only a scheduled negative observation releases a zero-hold action.
+			input.previous = state;
+			input.current = {};
+			input.upperContent = false;
+			input.lowerContent = false;
+			input.currentTick = 1080;
+			input.currentSourceSequence = 106;
+			state = UpdateVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::NONE),
+				static_cast<int>(state.action));
+		}
+
+		TEST_METHOD(SubtitleOwnedTwoEdgePixelsCannotPublishNovelAspect)
+		{
+			const ActivePictureBounds trusted = {
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, true };
+			const ActivePictureBounds overlayCandidate = {
+				0, 68, 3840, 2092, 3840, 2160, 3840.0 / 2024.0, true };
+			VerticalBarPresentationState presentation;
+			presentation.action = VerticalBarPresentationAction::TRANSLATE;
+			presentation.translationPixels = 198.0f;
+
+			Assert::IsTrue(ShouldDeferVerticalGeometryTransition(
+				trusted, overlayCandidate,
+				ActivePictureClassification::BAR_CROP_TRUSTED,
+				presentation, false, 7, 7));
+			presentation = {};
+			Assert::IsTrue(ShouldDeferVerticalGeometryTransition(
+				trusted, overlayCandidate,
+				ActivePictureClassification::BAR_CROP_TRUSTED,
+				presentation, true, 7, 7));
+			Assert::IsFalse(ShouldDeferVerticalGeometryTransition(
+				trusted, overlayCandidate,
+				ActivePictureClassification::BAR_CROP_TRUSTED,
+				presentation, false, 7, 7));
+			Assert::IsFalse(ShouldDeferVerticalGeometryTransition(
+				trusted, overlayCandidate,
+				ActivePictureClassification::BAR_CROP_TRUSTED,
+				presentation, true, 7, 8));
+		}
+
+		TEST_METHOD(ZeroHoldTimedEngageCadenceNeverAlternatesFullRaster)
+		{
+			VerticalBarPresentationState state;
+			VerticalTranslationDrift drift;
+			for (uint64_t frame = 0; frame < 80; ++frame)
+			{
+				const uint64_t sequence = 100 + frame;
+				const uint64_t tick = 1000 + frame * 40;
+				const bool analyzed = frame % 3 == 0;
+				if (analyzed)
+				{
+					VerticalBarPresentationUpdateInput update;
+					update.previous = state;
+					update.currentTick = tick;
+					update.currentSourceSequence = sequence;
+					update.holdMs = 0;
+					update.translationEnabled = true;
+					update.previousOwnsCurrentAnalysis =
+						state.action != VerticalBarPresentationAction::NONE;
+					if (frame < 12)
+					{
+						update.current.action =
+							VerticalBarPresentationAction::TRANSLATE;
+						update.current.translationPixels = 192.0f;
+						update.lowerContent = true;
+						update.lowerContentBottom = 2076;
+					}
+					state = UpdateVerticalBarPresentation(update);
+				}
+
+				const bool active = IsVerticalBarPresentationActiveForFrame(
+					state, tick, 0, sequence, analyzed, true, 7, 7);
+				const bool requested = active && state.action ==
+					VerticalBarPresentationAction::TRANSLATE;
+				const float resolved = drift.Resolve(requested ? 192.0f : 0.0f,
+					tick, requested ? 500 : 2000);
+
+				VerticalBarPresentationResolutionInput resolution;
+				resolution.detailedAction = requested || std::abs(resolved) > 0.5f
+					? VerticalBarPresentationAction::TRANSLATE
+					: VerticalBarPresentationAction::NONE;
+				resolution.translationPixels = resolved;
+				resolution.zeroTranslationRetainsTrustedBase =
+					requested && drift.IsActive();
+				resolution.authoritativeTop = 274;
+				resolution.authoritativeBottom = 1884;
+				resolution.rasterHeight = 2160;
+				const auto routing = ResolveVerticalBarRendererRouting(
+					ResolveVerticalBarPresentation(resolution));
+				Assert::IsFalse(routing.failOpen);
+				Assert::IsFalse(routing.fitActive);
+
+				Input crop = TrustedScopeCrop();
+				crop.verticalTranslationActive = routing.translationActive;
+				crop.verticalTranslationPixels = routing.translationPixels;
+				crop.verticalTranslationBase = crop.geometry;
+				crop.verticalTranslationSourceGeneration = 7;
+				const Decision selected = Evaluate(crop);
+				Assert::IsTrue(selected.applyCrop);
+				Assert::AreEqual(1610, selected.sourceBounds.bottom -
+					selected.sourceBounds.top);
+			}
+		}
+
+		TEST_METHOD(ZeroShiftTimedEngageKeepsTrustedBaseInsteadOfFailingOpen)
+		{
+			VerticalBarPresentationResolutionInput resolutionInput;
+			resolutionInput.detailedAction =
+				VerticalBarPresentationAction::TRANSLATE;
+			resolutionInput.translationPixels = 0.0f;
+			resolutionInput.zeroTranslationRetainsTrustedBase = true;
+			resolutionInput.authoritativeTop = 276;
+			resolutionInput.authoritativeBottom = 1884;
+			resolutionInput.rasterHeight = 2160;
+			const auto resolution = ResolveVerticalBarPresentation(
+				resolutionInput);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::NONE),
+				static_cast<int>(resolution.action));
+
+			Input crop = TrustedScopeCrop();
+			const auto routing = ResolveVerticalBarRendererRouting(resolution);
+			crop.presentationFailOpen = routing.failOpen;
+			crop.verticalTranslationActive = routing.translationActive;
+			const Decision selected = Evaluate(crop);
+			Assert::IsTrue(selected.applyCrop);
+			Assert::IsFalse(selected.verticallyTranslated);
+			Assert::AreEqual(274, selected.sourceBounds.top);
+			Assert::AreEqual(1884, selected.sourceBounds.bottom);
+
+			resolutionInput.zeroTranslationRetainsTrustedBase = false;
+			const auto invalidZero = ResolveVerticalBarPresentation(
+				resolutionInput);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FAIL_OPEN),
+				static_cast<int>(invalidZero.action));
+		}
+
 		TEST_METHOD(RecordedBottomSubtitleDoesNotBecomeAnAspectFit)
 		{
 			// VP-0080 live trace: dense analysis found one lower subtitle and
@@ -649,6 +986,38 @@ namespace Tests
 			input.latestClassification =
 				ActivePictureClassification::PROVISIONAL;
 			input.currentBarAuthority = true; // fallback is unnecessary
+			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
+		}
+
+		TEST_METHOD(PendingTranslationMayConfirmAcrossMatchingAuthorityGap)
+		{
+			HeldBarAnalysisInput input;
+			input.trustedBarGeometryAvailable = true;
+			input.storedBaseMatchesTrustedGeometry = true;
+			input.currentEnvelopeAvailable = true;
+			input.latestClassification =
+				ActivePictureClassification::PROVISIONAL;
+			input.trustedGeometry = {
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, true };
+			input.currentEnvelope = input.trustedGeometry;
+			input.currentEnvelope.bottom = 2022;
+			input.currentEnvelope.aspectRatio = 3840.0 / 1746.0;
+			input.translationConfirmationPending = true;
+			input.pendingTranslationPixels = 192.0f;
+			input.evidenceSourceGeneration = 7;
+			input.currentSourceGeneration = 7;
+			Assert::IsTrue(CanAnalyzeHeldVerticalBarGeometry(input));
+
+			input.currentEnvelope = input.trustedGeometry;
+			input.currentEnvelope.top = 100;
+			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
+			input.currentEnvelope = input.trustedGeometry;
+			input.currentEnvelope.bottom = 2022;
+			input.currentSourceGeneration = 8;
+			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
+			input.currentSourceGeneration = 7;
+			input.latestClassification =
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
 			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
 		}
 

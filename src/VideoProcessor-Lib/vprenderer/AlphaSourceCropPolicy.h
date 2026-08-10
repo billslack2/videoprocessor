@@ -63,6 +63,38 @@ namespace AlphaSourceCrop
 	VerticalBarContentDecision EvaluateVerticalBarContent(
 		const VerticalBarContentInput& input);
 
+	// Subtitle extent often grows over the first few decoded frames. Confirm a
+	// new or larger translation on two consecutive dense analysis samples before
+	// exposing it to the presentation interpolator. This is deliberately based
+	// on analyzed observations rather than wall-clock time or raw frame count.
+	static constexpr uint32_t VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED = 2;
+	static constexpr float VERTICAL_TRANSLATION_STABILITY_PIXELS = 2.0f;
+
+	struct VerticalTranslationConfirmationState
+	{
+		float candidateTranslationPixels = 0.0f;
+		uint32_t confirmations = 0;
+	};
+
+	struct VerticalTranslationConfirmationInput
+	{
+		VerticalTranslationConfirmationState previous;
+		VerticalBarContentDecision observed;
+		bool acceptedTranslationActive = false;
+		float acceptedTranslationPixels = 0.0f;
+	};
+
+	struct VerticalTranslationConfirmationDecision
+	{
+		VerticalTranslationConfirmationState state;
+		VerticalBarContentDecision effective;
+		bool pending = false;
+		bool newlyAccepted = false;
+	};
+
+	VerticalTranslationConfirmationDecision ConfirmVerticalTranslation(
+		const VerticalTranslationConfirmationInput& input);
+
 	struct VerticalBarPresentationState
 	{
 		VerticalBarPresentationAction action =
@@ -86,12 +118,28 @@ namespace AlphaSourceCrop
 		uint64_t currentSourceSequence = 0;
 		uint64_t holdMs = 0;
 		bool translationEnabled = false;
+		// The previous action owns classification of this scheduled sample even
+		// when holdMs is zero. An analyzed NONE still releases immediately.
+		bool previousOwnsCurrentAnalysis = false;
 	};
 
 	bool IsVerticalBarPresentationActive(
 		const VerticalBarPresentationState& state,
 		uint64_t currentTick, uint64_t holdMs,
 		uint64_t currentSourceSequence);
+
+	// A zero hold means release on the next negative analysis result, not on a
+	// rendered frame which was deliberately skipped by the bounded analyzer.
+	// Retention between scheduled samples is allowed only for the exact current
+	// bar authority and source generation.
+	bool IsVerticalBarPresentationActiveForFrame(
+		const VerticalBarPresentationState& state,
+		uint64_t currentTick, uint64_t holdMs,
+		uint64_t currentSourceSequence,
+		bool analysisEvaluatedCurrentFrame,
+		bool currentBarAuthority,
+		uint64_t evidenceSourceGeneration,
+		uint64_t currentSourceGeneration);
 
 	// A bar detector can briefly lose crop authority while the active-picture
 	// classifier verifies the same frame-local overlay. Preserve a known
@@ -104,6 +152,19 @@ namespace AlphaSourceCrop
 		uint64_t currentTick, uint64_t holdMs,
 		uint64_t currentSourceSequence);
 
+	// A subtitle/OSD presentation may make pixels in both encoded bars resemble
+	// a new symmetric picture. While a same-generation translation (including
+	// its release drift) owns those pixels, keep the trusted base and outward
+	// envelope. Once ownership ends, normal confirmations may publish the change.
+	bool ShouldDeferVerticalGeometryTransition(
+		const ActivePictureBounds& trustedGeometry,
+		const ActivePictureBounds& candidateGeometry,
+		ActivePictureClassification candidateClassification,
+		const VerticalBarPresentationState& presentation,
+		bool translationDriftActive,
+		uint64_t evidenceSourceGeneration,
+		uint64_t currentSourceGeneration);
+
 	struct HeldBarAnalysisInput
 	{
 		bool currentBarAuthority = false;
@@ -115,6 +176,8 @@ namespace AlphaSourceCrop
 		ActivePictureBounds trustedGeometry;
 		ActivePictureBounds currentEnvelope;
 		VerticalBarPresentationState presentation;
+		bool translationConfirmationPending = false;
+		float pendingTranslationPixels = 0.0f;
 		uint64_t evidenceSourceGeneration = 0;
 		uint64_t currentSourceGeneration = 0;
 		uint64_t currentTick = 0;
@@ -163,6 +226,7 @@ namespace AlphaSourceCrop
 		VerticalBarPresentationAction detailedAction =
 			VerticalBarPresentationAction::NONE;
 		float translationPixels = 0.0f;
+		bool zeroTranslationRetainsTrustedBase = false;
 		bool genericUpperExpansion = false;
 		bool genericLowerExpansion = false;
 		// A retained union of unrelated top/bottom overlays is not aspect-ratio
@@ -367,6 +431,11 @@ namespace AlphaSourceCrop
 		bool frameLocalPresentationRetentionEvaluated = false;
 		bool frameLocalPresentationRetentionSafe = false;
 		bool presentationFailOpen = false;
+		// A first dense subtitle observation is not yet a stable motion target.
+		// Retain the current trusted base for the bounded two-sample confirmation
+		// instead of flashing to full raster. This may briefly clip the newly seen
+		// bar pixels, but cannot establish or renew crop authority.
+		bool verticalTranslationConfirmationPending = false;
 		// Sparse source-baked text/UI in one encoded bar is a presentation
 		// displacement, not a new aspect ratio. Translate the trusted source
 		// window without changing its dimensions so scale and NLS stay stable.

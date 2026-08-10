@@ -52,6 +52,20 @@ namespace Tests
 						}
 			}
 
+			void FillRectangle(int left, int top, int right, int bottom,
+				uint8_t value)
+			{
+				for (int y = top; y < bottom; ++y)
+					for (int x = left; x < right; ++x)
+					{
+						const size_t offset =
+							(static_cast<size_t>(y) * width + x) * 4;
+						pixels[offset + 0] = value;
+						pixels[offset + 1] = value;
+						pixels[offset + 2] = value;
+					}
+			}
+
 			AnalysisLumaSource Source(uint64_t generation = 17) const
 			{
 				return { pixels.data(), pixels.size(), width, height,
@@ -138,6 +152,25 @@ namespace Tests
 			Assert::IsTrue(evidence.trustedBounds.top >= 20);
 			Assert::IsTrue(evidence.trustedBounds.bottom <= 160);
 			Assert::IsTrue(evidence.lumaSamples < 30000);
+		}
+
+		TEST_METHOD(BgraStartupSubtitleUsesTheSameSymmetricHypothesis)
+		{
+			BgraFrame frame(320, 180);
+			frame.BlackOutside(22, 158);
+			frame.FillRectangle(110, 162, 210, 172, 235);
+			const AnalysisLumaSource source = frame.Source();
+			const auto observed = ExtractActivePictureEvidence(source);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::PROVISIONAL),
+				static_cast<int>(observed.classification));
+			const auto hypothesis = EvaluateSymmetricVerticalBarHypothesis(
+				source, observed);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(hypothesis.classification));
+			Assert::AreEqual(hypothesis.trustedBounds.top,
+				180 - hypothesis.trustedBounds.bottom);
 		}
 
 		TEST_METHOD(R210BarsProduceTrustedSourceCoordinateEvidence)
