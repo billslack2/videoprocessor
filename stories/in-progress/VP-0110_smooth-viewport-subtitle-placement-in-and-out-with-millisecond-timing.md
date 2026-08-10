@@ -31,6 +31,13 @@ configuration content, the active Scope viewport now has
 `subtitle_engage_drift_ms: 0` and `subtitle_release_drift_ms: 1000` in place
 of `subtitle_release_drift_seconds: 1`.
 
+Follow-up deployment correction (2026-08-10): the initially deployed host and
+renderer pair was correct, but the separately packaged Qt configuration editor
+was still its prior build and therefore rejected the new keys. After the user
+closed that editor, replaced `VideoProcessorConfig.exe` from the same x64
+Release build, verified its SHA-256 hash against the build artifact, and
+reopened it for validation.
+
 ## User story
 
 As a VideoProcessor user watching scope content with subtitle fitting enabled,
