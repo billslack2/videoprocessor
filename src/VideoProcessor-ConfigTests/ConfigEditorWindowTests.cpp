@@ -805,6 +805,55 @@ void testRendererProfileSectionsCollapseAndPersist()
         "Saving the canonical debanding control left an overlapping legacy key");
 }
 
+void testScreenConfigSectionsAndInlineUnits()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    window.selectPage(4);
+    window.show();
+    QCoreApplication::processEvents();
+
+    QToolButton* geometry = requireControl<QToolButton>(window,
+        QStringLiteral("screenSection.geometry"));
+    QToolButton* subtitles = requireControl<QToolButton>(window,
+        QStringLiteral("screenSection.subtitles"));
+    require(geometry->isChecked() && !subtitles->isChecked(),
+        "Screen Config sections did not use the expected initial expansion state");
+    require(geometry->text() == QStringLiteral("Screen geometry") &&
+        subtitles->text() == QStringLiteral("Subtitles"),
+        "Screen Config does not use friendly section headings");
+    require(requireControl<QWidget>(window,
+        QStringLiteral("screenSection.geometry.content"))->isVisibleTo(&window) &&
+        !requireControl<QWidget>(window,
+        QStringLiteral("screenSection.subtitles.content"))->isVisibleTo(&window),
+        "Screen Config section content visibility does not follow its headers");
+
+    subtitles->click();
+    QCoreApplication::processEvents();
+    QLineEdit* hold = requireControl<QLineEdit>(window,
+        QStringLiteral("config.vprenderer.viewport.subtitle_hold_seconds"));
+    QLabel* holdUnit = requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.viewport.subtitle_hold_seconds.unit"));
+    QLabel* engageUnit = requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.viewport.subtitle_engage_drift_ms.unit"));
+    QLabel* paddingUnit = requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.viewport.subtitle_padding_pixels.unit"));
+    require(holdUnit->text() == QStringLiteral("seconds") &&
+        engageUnit->text() == QStringLiteral("ms") &&
+        paddingUnit->text() == QStringLiteral("pixels"),
+        "Screen Config fixed-unit inputs are missing inline unit labels");
+    require(hold->maximumWidth() == 210 && holdUnit->x() >= hold->x() + hold->width(),
+        "Screen Config unit label is not immediately beside its bounded value input");
+
+    QListWidget* profiles = requireControl<QListWidget>(window,
+        QStringLiteral("config.vprenderer.viewport.profiles"));
+    if (profiles->count() > 1) profiles->setCurrentRow(1);
+    QCoreApplication::processEvents();
+    require(subtitles->isChecked(),
+        "Screen Config section expansion state changed when selecting another profile");
+}
+
 void testLutSelectorDiscoversInstallationLutFiles()
 {
     QTemporaryDir directory;
@@ -2247,6 +2296,7 @@ int main(int argc, char** argv)
     failures += run("virtual shader Off option persists", testVirtualShaderOffOptionPersistsWhenConfigured);
     failures += run("disabling shader rule preserves shortcut", testDisablingShaderRulePreservesShortcut);
     failures += run("renderer profile sections collapse and persist", testRendererProfileSectionsCollapseAndPersist);
+    failures += run("Screen Config sections and inline units", testScreenConfigSectionsAndInlineUnits);
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
     failures += run("choice labels and VP Renderer name", testChoiceLabelsAndVpRendererName);
     failures += run("legacy renderer visibility remains manual and preserved", testLegacyRendererVisibilityRemainsManualAndPreserved);
