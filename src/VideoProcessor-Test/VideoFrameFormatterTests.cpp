@@ -2127,7 +2127,7 @@ namespace Tests
 						file << "scope_screen_aspect: 2.35:1\n"
 							"scope_automatic_crop: true\n"
 							"scope_subtitle_fit: true\n"
-							"scope_subtitle_release_drift_seconds: 1.5\n";
+							"scope_subtitle_release_drift_ms: 1500\n";
 				}
 			}
 
@@ -2189,8 +2189,10 @@ namespace Tests
 			cinema.settings["automatic_crop"] = "true";
 			cinema.settings["subtitle_fit"] = "true";
 			cinema.settings["subtitle_hold_seconds"] = "2";
-			cinema.settings["subtitle_release_drift_seconds"] = "3";
+			cinema.settings["subtitle_engage_drift_ms"] = "300";
+			cinema.settings["subtitle_release_drift_ms"] = "3000";
 			cinema.settings["subtitle_padding_pixels"] = "30";
+			cinema.settings["subtitle_target_buffer_pixels"] = "12";
 			model.profiles.emplace("viewport.cinema", cinema);
 
 			RendererProfileConfig::ResolvedViewport viewport;
@@ -2202,6 +2204,7 @@ namespace Tests
 			Assert::IsFalse(viewport.hasScreenAspect);
 			Assert::IsFalse(viewport.automaticCrop);
 			Assert::IsFalse(viewport.subtitleFit);
+			Assert::AreEqual(10, viewport.subtitleTargetBufferPixels);
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
 				model, "cinema", 2, viewport, error));
 			Assert::AreEqual<uint64_t>(47, viewport.screenAspect.numerator);
@@ -2212,9 +2215,58 @@ namespace Tests
 			Assert::AreEqual<uint64_t>(
 				2000, viewport.subtitleHoldMilliseconds);
 			Assert::AreEqual<uint64_t>(
+				300, viewport.subtitleEngageDriftMilliseconds);
+			Assert::AreEqual<uint64_t>(
 				3000, viewport.subtitleReleaseDriftMilliseconds);
 			Assert::AreEqual(30, viewport.subtitlePaddingPixels);
+			Assert::AreEqual(12, viewport.subtitleTargetBufferPixels);
 			Assert::AreEqual<uint64_t>(2, viewport.generation);
+		}
+
+		TEST_METHOD(RendererProfileConfigEnforcesSafeSubtitleHoldBoundary)
+		{
+			std::string expected;
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_hold_seconds", "0", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_hold_seconds", "0.249", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_hold_seconds", "0.25", expected));
+
+			// Motion durations retain their independent zero-means-snap contract.
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_engage_drift_ms", "0", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_release_drift_ms", "0", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_target_buffer_pixels", "0", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_target_buffer_pixels", "50", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_target_buffer_pixels", "-1", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_target_buffer_pixels", "51", expected));
+
+			RendererProfileConfig::Model model;
+			RendererProfileConfig::Profile scope;
+			scope.group = "viewport";
+			scope.name = "scope";
+			scope.settings["subtitle_hold_seconds"] = "0.25";
+			model.profiles.emplace("viewport.scope", scope);
+			RendererProfileConfig::ResolvedViewport viewport;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, "scope", 1, viewport, error));
+			Assert::AreEqual<uint64_t>(250,
+				viewport.subtitleHoldMilliseconds);
+			Assert::AreEqual(10, viewport.subtitleTargetBufferPixels);
+
+			model.profiles["viewport.scope"].settings[
+				"subtitle_hold_seconds"] = "0";
+			Assert::IsFalse(RendererProfileConfig::ResolveViewport(
+				model, "scope", 1, viewport, error));
+			Assert::IsTrue(error.find("subtitle_hold_seconds") !=
+				std::string::npos);
 		}
 
 		TEST_METHOD(UnifiedProfileRuntimeRestoresPublishesAndPersistsViewport)

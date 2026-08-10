@@ -63,6 +63,58 @@ namespace AlphaSourceCrop
 	VerticalBarContentDecision EvaluateVerticalBarContent(
 		const VerticalBarContentInput& input);
 
+	// Subtitle extent often grows over the first few decoded frames. Confirm a
+	// new or larger translation on two consecutive dense analysis samples before
+	// exposing it to the presentation interpolator. This is deliberately based
+	// on analyzed observations rather than wall-clock time or raw frame count.
+	static constexpr uint32_t VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED = 2;
+	static constexpr float VERTICAL_TRANSLATION_STABILITY_PIXELS = 2.0f;
+
+	struct VerticalTranslationConfirmationState
+	{
+		float candidateTranslationPixels = 0.0f;
+		uint32_t confirmations = 0;
+	};
+
+	struct VerticalTranslationConfirmationInput
+	{
+		VerticalTranslationConfirmationState previous;
+		VerticalBarContentDecision observed;
+		bool acceptedTranslationActive = false;
+		float acceptedTranslationPixels = 0.0f;
+		// A nonnegative outward reserve applied only when a target is accepted.
+		// The accepted reserve then absorbs later same-direction detector growth
+		// without exposing another presentation target.
+		float targetBufferPixels = 0.0f;
+		// Positive values cap the buffered magnitude at the source raster edge.
+		// Zero leaves the policy uncapped for callers without geometry context.
+		float maximumTranslationMagnitudePixels = 0.0f;
+	};
+
+	struct VerticalTranslationConfirmationDecision
+	{
+		VerticalTranslationConfirmationState state;
+		VerticalBarContentDecision effective;
+		bool pending = false;
+		bool newlyAccepted = false;
+	};
+
+	VerticalTranslationConfirmationDecision ConfirmVerticalTranslation(
+		const VerticalTranslationConfirmationInput& input);
+
+	// A current provisional envelope which expands exactly one vertical edge is
+	// eligible for the same trusted-base retention used by dense target
+	// confirmation. This closes the frame before the first dense sample without
+	// treating a horizontal or two-edge geometry change as subtitle motion.
+	bool ShouldRetainTrustedBaseForVerticalInspection(
+		bool subtitleFitEnabled,
+		bool currentEnvelope,
+		bool latestObservationIsProvisional,
+		bool leftExpansion,
+		bool topExpansion,
+		bool rightExpansion,
+		bool bottomExpansion);
+
 	struct VerticalBarPresentationState
 	{
 		VerticalBarPresentationAction action =
@@ -86,12 +138,28 @@ namespace AlphaSourceCrop
 		uint64_t currentSourceSequence = 0;
 		uint64_t holdMs = 0;
 		bool translationEnabled = false;
+		// The previous action owns classification of this scheduled sample even
+		// when holdMs is zero. An analyzed NONE still releases immediately.
+		bool previousOwnsCurrentAnalysis = false;
 	};
 
 	bool IsVerticalBarPresentationActive(
 		const VerticalBarPresentationState& state,
 		uint64_t currentTick, uint64_t holdMs,
 		uint64_t currentSourceSequence);
+
+	// A zero hold means release on the next negative analysis result, not on a
+	// rendered frame which was deliberately skipped by the bounded analyzer.
+	// Retention between scheduled samples is allowed only for the exact current
+	// bar authority and source generation.
+	bool IsVerticalBarPresentationActiveForFrame(
+		const VerticalBarPresentationState& state,
+		uint64_t currentTick, uint64_t holdMs,
+		uint64_t currentSourceSequence,
+		bool analysisEvaluatedCurrentFrame,
+		bool currentBarAuthority,
+		uint64_t evidenceSourceGeneration,
+		uint64_t currentSourceGeneration);
 
 	// A bar detector can briefly lose crop authority while the active-picture
 	// classifier verifies the same frame-local overlay. Preserve a known
@@ -104,6 +172,19 @@ namespace AlphaSourceCrop
 		uint64_t currentTick, uint64_t holdMs,
 		uint64_t currentSourceSequence);
 
+	// A subtitle/OSD presentation may make pixels in both encoded bars resemble
+	// a new symmetric picture. While a same-generation translation (including
+	// its release drift) owns those pixels, keep the trusted base and outward
+	// envelope. Once ownership ends, normal confirmations may publish the change.
+	bool ShouldDeferVerticalGeometryTransition(
+		const ActivePictureBounds& trustedGeometry,
+		const ActivePictureBounds& candidateGeometry,
+		ActivePictureClassification candidateClassification,
+		const VerticalBarPresentationState& presentation,
+		bool translationDriftActive,
+		uint64_t evidenceSourceGeneration,
+		uint64_t currentSourceGeneration);
+
 	struct HeldBarAnalysisInput
 	{
 		bool currentBarAuthority = false;
@@ -115,6 +196,8 @@ namespace AlphaSourceCrop
 		ActivePictureBounds trustedGeometry;
 		ActivePictureBounds currentEnvelope;
 		VerticalBarPresentationState presentation;
+		bool translationConfirmationPending = false;
+		float pendingTranslationPixels = 0.0f;
 		uint64_t evidenceSourceGeneration = 0;
 		uint64_t currentSourceGeneration = 0;
 		uint64_t currentTick = 0;
@@ -134,17 +217,16 @@ namespace AlphaSourceCrop
 	VerticalBarPresentationState UpdateVerticalBarPresentation(
 		const VerticalBarPresentationUpdateInput& input);
 
-	// Subtitle appearance must be immediate so no text is cut off. On release,
-	// an optional renderer setting may linearly return the source window to its
-	// trusted base. A new non-zero placement always cancels that release and
-	// snaps to the newly required safe position.
-	class VerticalTranslationReleaseDrift
+	// Interpolates only a translation which the existing subtitle policy has
+	// already selected. Callers supply the active or release duration; zero
+	// snaps to the target. Retargeting starts from the current applied position.
+	class VerticalTranslationDrift
 	{
 	public:
 		void Reset();
-		float Resolve(float requestedTranslationPixels, uint64_t currentTick,
-			uint64_t releaseDurationMs);
-		bool IsActive() const { return releaseActive; }
+		float Resolve(float targetTranslationPixels, uint64_t currentTick,
+			uint64_t durationMs);
+		bool IsActive() const { return driftActive; }
 		// The sample which lands exactly on the trusted base needs one final
 		// generation-checked presentation decision. Consume this marker once so a
 		// lost current observation cannot cause a full-raster flash at release.
@@ -152,9 +234,10 @@ namespace AlphaSourceCrop
 
 	private:
 		float lastAppliedTranslationPixels = 0.0f;
-		float releaseStartTranslationPixels = 0.0f;
-		uint64_t releaseStartTick = 0;
-		bool releaseActive = false;
+		float targetTranslationPixels = 0.0f;
+		float driftStartTranslationPixels = 0.0f;
+		uint64_t driftStartTick = 0;
+		bool driftActive = false;
 		bool finalBaseFramePending = false;
 	};
 
@@ -163,6 +246,7 @@ namespace AlphaSourceCrop
 		VerticalBarPresentationAction detailedAction =
 			VerticalBarPresentationAction::NONE;
 		float translationPixels = 0.0f;
+		bool zeroTranslationRetainsTrustedBase = false;
 		bool genericUpperExpansion = false;
 		bool genericLowerExpansion = false;
 		// A retained union of unrelated top/bottom overlays is not aspect-ratio
@@ -189,6 +273,21 @@ namespace AlphaSourceCrop
 	// changing geometry. TRANSLATE and vertical FIT are mutually exclusive.
 	VerticalBarPresentationResolution ResolveVerticalBarPresentation(
 		const VerticalBarPresentationResolutionInput& input);
+
+	struct VerticalBarRendererRouting
+	{
+		bool translationActive = false;
+		int translationPixels = 0;
+		bool fitActive = false;
+		bool failOpen = false;
+	};
+
+	// Convert the reconciled presentation action into the mutually exclusive
+	// renderer inputs consumed by Evaluate(). Keeping this seam shared by the
+	// renderer and tests prevents a valid TRANSLATE policy decision from being
+	// silently rewired into a scale-changing outward Fit.
+	VerticalBarRendererRouting ResolveVerticalBarRendererRouting(
+		const VerticalBarPresentationResolution& resolution);
 
 	// Full raster is always outward-safe. Keep that presentation authority
 	// between sparse analysis samples, but withdraw it as soon as trusted bar
@@ -352,6 +451,11 @@ namespace AlphaSourceCrop
 		bool frameLocalPresentationRetentionEvaluated = false;
 		bool frameLocalPresentationRetentionSafe = false;
 		bool presentationFailOpen = false;
+		// A first dense subtitle observation is not yet a stable motion target.
+		// Retain the current trusted base for the bounded two-sample confirmation
+		// instead of flashing to full raster. This may briefly clip the newly seen
+		// bar pixels, but cannot establish or renew crop authority.
+		bool verticalTranslationConfirmationPending = false;
 		// Sparse source-baked text/UI in one encoded bar is a presentation
 		// displacement, not a new aspect ratio. Translate the trusted source
 		// window without changing its dimensions so scale and NLS stay stable.
@@ -363,6 +467,11 @@ namespace AlphaSourceCrop
 		// trusted base rectangle but never applies a displacement or grants new
 		// crop authority.
 		bool verticalTranslationBaseRetentionActive = false;
+		// A timed engage begins at zero displacement. Preserve the same-generation
+		// trusted base on that first sample even when the provisional overlay has
+		// made frame-local retention pixel-unsafe; subsequent samples reveal it by
+		// translation rather than by a full-raster flash.
+		bool verticalTranslationEngageBaseRetentionActive = false;
 		bool outwardPresentationActive = false;
 		bool outwardExpansionAvailable = false;
 		ActivePictureClassification classification =

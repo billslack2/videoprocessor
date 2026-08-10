@@ -2017,7 +2017,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         if (key == QStringLiteral("automatic_crop")) return QStringLiteral("scope_automatic_crop");
         if (key == QStringLiteral("subtitle_fit")) return QStringLiteral("scope_subtitle_fit");
         if (key == QStringLiteral("subtitle_hold_seconds")) return QStringLiteral("scope_subtitle_hold_seconds");
-        if (key == QStringLiteral("subtitle_release_drift_seconds")) return QStringLiteral("scope_subtitle_release_drift_seconds");
+        if (key == QStringLiteral("subtitle_engage_drift_ms")) return QStringLiteral("scope_subtitle_engage_drift_ms");
+        if (key == QStringLiteral("subtitle_release_drift_ms")) return QStringLiteral("scope_subtitle_release_drift_ms");
         if (key == QStringLiteral("subtitle_padding_pixels")) return QStringLiteral("scope_subtitle_padding_pixels");
         return {};
     };
@@ -2317,9 +2318,22 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         });
         addBoolean(QStringLiteral("Automatically crop black bars"), QStringLiteral("automatic_crop"));
         addBoolean(QStringLiteral("Keep subtitles inside screen bounds"), QStringLiteral("subtitle_fit"));
-        addText(QStringLiteral("Subtitle hold"), QStringLiteral("subtitle_hold_seconds"), QStringLiteral("seconds"));
-        addText(QStringLiteral("Subtitle release drift"), QStringLiteral("subtitle_release_drift_seconds"), QStringLiteral("seconds"));
+		auto* subtitleHold = addText(QStringLiteral("Subtitle hold"),
+			QStringLiteral("subtitle_hold_seconds"), QStringLiteral("seconds"));
+		subtitleHold->setToolTip(QStringLiteral(
+			"Must be between 0.25 and 30 seconds. The minimum spans the "
+			"renderer's scheduled subtitle-analysis cadence."));
+        addText(QStringLiteral("Subtitle engage drift"), QStringLiteral("subtitle_engage_drift_ms"), QStringLiteral("ms"));
+        addText(QStringLiteral("Subtitle release drift"), QStringLiteral("subtitle_release_drift_ms"), QStringLiteral("ms"));
         addText(QStringLiteral("Subtitle padding"), QStringLiteral("subtitle_padding_pixels"), QStringLiteral("pixels"));
+        auto* subtitleTargetBuffer = addText(
+            QStringLiteral("Subtitle target buffer"),
+            QStringLiteral("subtitle_target_buffer_pixels"),
+            QStringLiteral("pixels"));
+        subtitleTargetBuffer->setToolTip(QStringLiteral(
+            "Must be between 0 and 50 pixels. Adds outward reserve to an "
+            "accepted subtitle target so small later extent changes do not "
+            "start another movement."));
     }
     else
     {
@@ -2384,8 +2398,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (key == QStringLiteral("screen_aspect")) return QStringLiteral("16:9");
                 if (key == QStringLiteral("vertical_alignment")) return QStringLiteral("center");
                 if (key == QStringLiteral("subtitle_hold_seconds")) return QStringLiteral("2");
-                if (key == QStringLiteral("subtitle_release_drift_seconds")) return QStringLiteral("0");
+                if (key == QStringLiteral("subtitle_engage_drift_ms")) return QStringLiteral("0");
+                if (key == QStringLiteral("subtitle_release_drift_ms")) return QStringLiteral("0");
                 if (key == QStringLiteral("subtitle_padding_pixels")) return QStringLiteral("20");
+                if (key == QStringLiteral("subtitle_target_buffer_pixels")) return QStringLiteral("10");
             }
             if (sectionPrefix == QStringLiteral("lldv"))
             {

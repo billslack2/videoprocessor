@@ -100,6 +100,14 @@ P010ActivePictureEvidence ExtractP010ActivePictureEvidence(
 P010ActivePictureEvidence ExtractActivePictureEvidence(
 	const AnalysisLumaSource& source);
 
+// Startup-only recovery for a scope frame whose subtitle/UI contaminates one
+// encoded bar before any trusted presentation exists. One clean bar is mirrored
+// and the opposite bar must still be predominantly coherent black with a broad
+// picture boundary. The ordinary extractor remains conservative/provisional.
+P010ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
+	const AnalysisLumaSource& source,
+	const P010ActivePictureEvidence& observed);
+
 // Bounded presentation-retention inspection. The excluded-band predicate uses
 // the same black, luma-dispersion, texture, neutral-chroma, and continuity
 // limits as bar acquisition, but deliberately does not require inner-boundary

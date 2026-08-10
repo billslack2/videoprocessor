@@ -23,6 +23,15 @@
 // validation and selection can be tested before a renderer is created.
 namespace RendererProfileConfig
 {
+	// Subtitle analysis is intentionally sampled every third rendered frame and
+	// may take up to roughly 125 ms to reaffirm a cue. A shorter hold is retained
+	// safely by the renderer for compatibility, but is too easy to misconfigure
+	// and makes cue release needlessly sensitive to individual samples.
+	constexpr double MIN_SUBTITLE_HOLD_SECONDS = 0.25;
+	constexpr double MAX_SUBTITLE_HOLD_SECONDS = 30.0;
+	constexpr int DEFAULT_SUBTITLE_TARGET_BUFFER_PIXELS = 10;
+	constexpr int MAX_SUBTITLE_TARGET_BUFFER_PIXELS = 50;
+
 	inline bool OwnsSection(const std::string& section)
 	{
 		return RendererConfigView::OwnsSection(section) ||
@@ -126,8 +135,11 @@ namespace RendererProfileConfig
 		bool automaticCrop = false;
 		bool subtitleFit = false;
 		uint64_t subtitleHoldMilliseconds = 2000;
+		uint64_t subtitleEngageDriftMilliseconds = 0;
 		uint64_t subtitleReleaseDriftMilliseconds = 0;
 		int subtitlePaddingPixels = 20;
+		int subtitleTargetBufferPixels =
+			DEFAULT_SUBTITLE_TARGET_BUFFER_PIXELS;
 		uint64_t generation = 0;
 	};
 
@@ -460,12 +472,21 @@ namespace RendererProfileConfig
 			if (key == "automatic_crop" || key == "subtitle_fit")
 				return IsBoolean(value);
 			if (key == "subtitle_hold_seconds")
-				return IsNumberInRange(value, 0.0, 30.0);
-			if (key == "subtitle_release_drift_seconds")
-				return IsNumberInRange(value, 0.0, 30.0);
+				return IsNumberInRange(value, MIN_SUBTITLE_HOLD_SECONDS,
+					MAX_SUBTITLE_HOLD_SECONDS);
+			if (key == "subtitle_engage_drift_ms" ||
+				key == "subtitle_release_drift_ms")
+			{
+				int parsed = 0; return ParseInteger(value, 0, 30000, parsed);
+			}
 			if (key == "subtitle_padding_pixels")
 			{
 				int parsed = 0; return ParseInteger(value, 0, 500, parsed);
+			}
+			if (key == "subtitle_target_buffer_pixels")
+			{
+				int parsed = 0; return ParseInteger(value, 0,
+					MAX_SUBTITLE_TARGET_BUFFER_PIXELS, parsed);
 			}
 			expected = "a viewport-owned setting"; return false;
 		}
@@ -695,8 +716,10 @@ namespace RendererProfileConfig
 			variable == "vertical_alignment" ||
 			variable == "anamorphic_scale" || variable == "automatic_crop" ||
 			variable == "subtitle_fit" || variable == "subtitle_hold_seconds" ||
-			variable == "subtitle_release_drift_seconds" ||
+			variable == "subtitle_engage_drift_ms" ||
+			variable == "subtitle_release_drift_ms" ||
 			variable == "subtitle_padding_pixels" ||
+			variable == "subtitle_target_buffer_pixels" ||
 			variable == "viewport_generation" || IsActionSourceField(variable))
 			return true;
 		return IsActionProfileVariable(variable, "profile.") ||
@@ -1190,8 +1213,9 @@ namespace RendererProfileConfig
 				"diagnostic_disable_shader_cache", "screen_aspect",
 				"vertical_alignment",
 				"automatic_crop", "subtitle_fit",
-				"subtitle_hold_seconds", "subtitle_release_drift_seconds",
-				"subtitle_padding_pixels"
+				"subtitle_hold_seconds", "subtitle_engage_drift_ms",
+				"subtitle_release_drift_ms",
+				"subtitle_padding_pixels", "subtitle_target_buffer_pixels"
 			};
 			std::vector<ConfigSchema::KeyRule> displayRules;
 			for (const std::string& key : baseKeys)
@@ -1650,7 +1674,8 @@ namespace RendererProfileConfig
 			double seconds = 0.0;
 			if (!DisplayRuleExpression::ParseNumber(
 				ConfigFile::Trim(value->second), seconds) ||
-				seconds < 0.0 || seconds > 30.0)
+				seconds < MIN_SUBTITLE_HOLD_SECONDS ||
+				seconds > MAX_SUBTITLE_HOLD_SECONDS)
 			{
 				error = "[profiles.viewport." + viewport.profile +
 					"] subtitle_hold_seconds is invalid";
@@ -1659,20 +1684,31 @@ namespace RendererProfileConfig
 			viewport.subtitleHoldMilliseconds =
 				static_cast<uint64_t>(std::llround(seconds * 1000.0));
 		}
-		value = settings.find("subtitle_release_drift_seconds");
+		value = settings.find("subtitle_engage_drift_ms");
 		if (value != settings.end())
 		{
-			double seconds = 0.0;
-			if (!DisplayRuleExpression::ParseNumber(
-				ConfigFile::Trim(value->second), seconds) ||
-				seconds < 0.0 || seconds > 30.0)
+			int milliseconds = 0;
+			if (!ParseInteger(value->second, 0, 30000, milliseconds))
 			{
 				error = "[profiles.viewport." + viewport.profile +
-					"] subtitle_release_drift_seconds is invalid";
+					"] subtitle_engage_drift_ms is invalid";
+				return false;
+			}
+			viewport.subtitleEngageDriftMilliseconds =
+				static_cast<uint64_t>(milliseconds);
+		}
+		value = settings.find("subtitle_release_drift_ms");
+		if (value != settings.end())
+		{
+			int milliseconds = 0;
+			if (!ParseInteger(value->second, 0, 30000, milliseconds))
+			{
+				error = "[profiles.viewport." + viewport.profile +
+					"] subtitle_release_drift_ms is invalid";
 				return false;
 			}
 			viewport.subtitleReleaseDriftMilliseconds =
-				static_cast<uint64_t>(std::llround(seconds * 1000.0));
+				static_cast<uint64_t>(milliseconds);
 		}
 		value = settings.find("subtitle_padding_pixels");
 		if (value != settings.end() &&
@@ -1681,6 +1717,16 @@ namespace RendererProfileConfig
 		{
 			error = "[profiles.viewport." + viewport.profile +
 				"] subtitle_padding_pixels is invalid";
+			return false;
+		}
+		value = settings.find("subtitle_target_buffer_pixels");
+		if (value != settings.end() &&
+			!ParseInteger(value->second, 0,
+				MAX_SUBTITLE_TARGET_BUFFER_PIXELS,
+				viewport.subtitleTargetBufferPixels))
+		{
+			error = "[profiles.viewport." + viewport.profile +
+				"] subtitle_target_buffer_pixels is invalid";
 			return false;
 		}
 		return true;

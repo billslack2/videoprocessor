@@ -53,8 +53,10 @@ namespace DisplayRuleExpression
 			name == "previous_refresh" || name == "screen_aspect" ||
 			name == "anamorphic_scale" ||
 			name == "subtitle_hold_seconds" ||
-			name == "subtitle_release_drift_seconds" ||
+			name == "subtitle_engage_drift_ms" ||
+			name == "subtitle_release_drift_ms" ||
 			name == "subtitle_padding_pixels" ||
+			name == "subtitle_target_buffer_pixels" ||
 			name == "viewport_generation")
 		{
 			type = ValueType::Number;

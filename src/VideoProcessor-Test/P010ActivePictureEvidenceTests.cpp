@@ -113,6 +113,14 @@ namespace VideoProcessorTest
 					AnalysisLumaFormat::P210, VideoFrameEncoding::V210,
 					ColorSpace::REC_709, 1 };
 			}
+
+			AnalysisLumaSource P010Source() const
+			{
+				const size_t p010Bytes = pitch * height + pitch * (height / 2);
+				return { bytes.data(), p010Bytes, width, height, pitch, pitch,
+					AnalysisLumaFormat::P010, VideoFrameEncoding::UNKNOWN,
+					ColorSpace::REC_709, 1 };
+			}
 		};
 
 		ActivePictureBounds ScopePresentation(int width, int height,
@@ -156,6 +164,52 @@ namespace VideoProcessorTest
 			Assert::IsTrue(evidence.trustedBounds.top >= 20);
 			Assert::IsTrue(evidence.trustedBounds.bottom <= 160);
 			Assert::IsTrue(evidence.lumaSamples < 30000);
+		}
+
+		TEST_METHOD(StartupBottomSubtitleRecoversSymmetricScopeHypothesis)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(0, 22, 320, 158);
+			frame.FillRectangle(110, 162, 210, 172, 700);
+			// Sparse colored receiver text in the other bar must not defeat the
+			// clean boundary consensus.
+			frame.FillRectangle(12, 8, 28, 14, 500, 300, 700);
+			const AnalysisLumaSource source = frame.P010Source();
+			const auto observed = ExtractActivePictureEvidence(source);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::PROVISIONAL),
+				static_cast<int>(observed.classification));
+			Assert::IsTrue(observed.top.trusted, L"top edge must remain clean");
+			Assert::IsTrue(observed.proposedBounds.top >
+				180 - observed.proposedBounds.bottom);
+
+			const auto hypothesis = EvaluateSymmetricVerticalBarHypothesis(
+				source, observed);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(hypothesis.classification));
+			Assert::AreEqual(hypothesis.trustedBounds.top,
+				180 - hypothesis.trustedBounds.bottom);
+			Assert::IsTrue(hypothesis.trustedBounds.top >= 20);
+			Assert::IsTrue(hypothesis.trustedBounds.bottom <= 160);
+		}
+
+		TEST_METHOD(StartupHypothesisRejectsBroadOneSidedPictureExpansion)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(0, 22, 320, 158);
+			frame.FillRectangle(0, 158, 320, 174, 300);
+			const AnalysisLumaSource source = frame.P010Source();
+			const auto observed = ExtractActivePictureEvidence(source);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::PROVISIONAL),
+				static_cast<int>(observed.classification));
+
+			const auto hypothesis = EvaluateSymmetricVerticalBarHypothesis(
+				source, observed);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::PROVISIONAL),
+				static_cast<int>(hypothesis.classification));
 		}
 
 		TEST_METHOD(DarkCinematicScopeFrameKeepsTrustedBars)
