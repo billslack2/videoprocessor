@@ -144,7 +144,7 @@ they must not contain requirements that are absent from this file.
 | VP-0109-2 | Backlog | Implement rejection-safe pure-2.2 Studio limited output |
 | VP-0110 | In Progress | Smooth viewport subtitle placement in and out with millisecond timing |
 | VP-0111 | Backlog | Prevent background shortcuts from hijacking normal typing |
-| VP-0112 | In Progress | Show the active profile in relevant configuration pages |
+| VP-0112 | Done | Show the active profile in relevant configuration pages |
 | VP-0113 | Backlog | Screen Config layout and unit-field consistency |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |

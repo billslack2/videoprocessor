@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-08-10). Implementation started on
+Done (2026-08-10). Implementation started on
 `codex/vp-0112-active-profile`, rebased from the current repository default
 branch `origin/v1.2.001-beta` at `109bc963`. Working tree:
 `C:\Users\bslac\vp\worktrees\vp-0112-active-profile`.
@@ -44,6 +44,8 @@ work without changing profile persistence.
   `16x9 (Default)` row with its normal blue selection and the independently
   active `Scope` row with a green dot. Screenshot:
   `C:\Users\bslac\AppData\Local\Temp\vp0112-active-profile-dot.png`.
+- Merged as [PR #49](https://github.com/billslack2/videoprocessor/pull/49)
+  into `v1.2.001-beta` at merge commit `95eee869`.
 
 ## Chosen UI treatment
 
