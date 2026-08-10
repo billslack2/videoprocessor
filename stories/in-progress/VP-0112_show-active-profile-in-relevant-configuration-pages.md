@@ -11,6 +11,34 @@ Current work: locate the Qt configuration editor's profile-list delegates and
 the available runtime/effective-configuration state, then implement the chosen
 inline active/editing treatment without changing profile persistence.
 
+2026-08-10 implementation checkpoint:
+
+- Implemented `e194c4e` on `codex/vp-0112-active-profile`. VP now publishes
+  its resolved display and screen-profile sections through a process-scoped
+  read-only status mapping. The attached configuration editor polls that
+  mapping only for its validated VP owner process; offline or unrelated editor
+  instances show no false marker.
+- VP Renderer: Rendering and Screen Config lists retain name-only rows, show a
+  compact blue **Editing** / green **Active** key, use green text for the
+  active row, and retain the normal blue selection independently. Queue,
+  Actions, and Shortcuts were not changed. The shader list has the same key
+  and safe no-marker behavior until its renderer-owned effective selection can
+  be represented unambiguously.
+- Rebuilt x64 Release GUI, VP Renderer, and configuration editor from the
+  feature commit. Deployed `VideoProcessor.exe` and
+  `vprenderer\\VideoProcessorVPRenderer.dll` as a verified matching pair,
+  plus `VideoProcessorConfig.exe` and its discovery DLL, to
+  `C:\Videoprocessor\vp`; backup:
+  `C:\Videoprocessor\vp\backup-vp0112-20260810-171405`.
+- Live screenshot validation against the deployed VP confirmed the active
+  `Scope` Screen Config row in green while `16x9 (Default)` remained selected
+  in blue. Screenshot:
+  `C:\Users\bslac\AppData\Local\Temp\vp0112-active-profile.png`.
+- The x64 Release builds succeeded. `VideoProcessorConfigTests` builds but its
+  behavioral run currently reports broad Apply/effect-summary failures; these
+  have not yet been isolated as baseline versus regression, so the story
+  remains In Progress.
+
 ## Chosen UI treatment
 
 Use the existing profile list only; do not add a separate current-profile
