@@ -2054,15 +2054,17 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         profileFieldsLayout->addWidget(content);
         return createForm(content);
     };
-    auto addRendererSection = [&](const QString& id, const QString& heading,
+    auto addCollapsibleSection = [&](const QString& id, const QString& heading,
         const QString& description, bool expanded)
     {
+        const QString sectionObjectPrefix = sectionPrefix == QStringLiteral("vprenderer.viewport") ?
+            QStringLiteral("screenSection") : QStringLiteral("rendererSection");
         auto* section = new QWidget;
         auto* sectionLayout = new QVBoxLayout(section);
         sectionLayout->setContentsMargins(0, 0, 0, 0);
         sectionLayout->setSpacing(5);
         auto* toggle = new QToolButton;
-        toggle->setObjectName(QStringLiteral("rendererSection.%1").arg(id));
+        toggle->setObjectName(QStringLiteral("%1.%2").arg(sectionObjectPrefix, id));
         toggle->setText(heading);
         toggle->setProperty("profileSection", true);
         toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -2071,10 +2073,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         toggle->setChecked(expanded);
         toggle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         toggle->setAccessibleDescription(
-            QStringLiteral("Expand or collapse the %1 renderer settings.").arg(heading));
+            QStringLiteral("Expand or collapse the %1 settings.").arg(heading));
         sectionLayout->addWidget(toggle);
         auto* content = new QWidget;
-        content->setObjectName(QStringLiteral("rendererSection.%1.content").arg(id));
+        content->setObjectName(QStringLiteral("%1.%2.content").arg(sectionObjectPrefix, id));
         auto* contentLayout = new QVBoxLayout(content);
         contentLayout->setContentsMargins(12, 4, 4, 8);
         contentLayout->setSpacing(7);
@@ -2092,7 +2094,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         profileFieldsLayout->addWidget(section);
         return sectionForm;
     };
-    if (sectionPrefix != QStringLiteral("vprenderer")) form = addPlainForm();
+    if (sectionPrefix != QStringLiteral("vprenderer") &&
+        sectionPrefix != QStringLiteral("vprenderer.viewport"))
+        form = addPlainForm();
     QCheckBox* anamorphicEnabled = nullptr;
     QLineEdit* anamorphicValue = nullptr;
     const auto deprecatedViewportAlias = [sectionPrefix](const QString& key) -> QString
@@ -2120,8 +2124,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             auto* row = new QWidget;
             auto* rowLayout = new QHBoxLayout(row);
             rowLayout->setContentsMargins(0, 0, 0, 0);
-            rowLayout->addWidget(edit, 1);
-            rowLayout->addWidget(new QLabel(unit));
+            rowLayout->setSpacing(8);
+            edit->setMaximumWidth(210);
+            rowLayout->addWidget(edit);
+            auto* unitLabel = new QLabel(unit);
+            unitLabel->setObjectName(controlName(sectionPrefix, key) + QStringLiteral(".unit"));
+            rowLayout->addWidget(unitLabel);
+            rowLayout->addStretch();
             control = row;
         }
         form->addRow(label, control);
@@ -2241,7 +2250,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Choose a policy for a complete queue baseline."));
         queuePolicySummary->setObjectName(QStringLiteral("config.queue.policy_summary"));
         form->addRow(QString(), queuePolicySummary);
-        form = addRendererSection(QStringLiteral("queueAdvanced"),
+        form = addCollapsibleSection(QStringLiteral("queueAdvanced"),
             QStringLiteral("Advanced"), QStringLiteral(
                 "Fine-tune individual queue values. Editing one switches this profile to Custom."), false);
         addInteger(QStringLiteral("Queue depth"), QStringLiteral("queue_size"),
@@ -2261,7 +2270,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     }
     else if (sectionPrefix == QStringLiteral("vprenderer"))
     {
-        form = addRendererSection(QStringLiteral("basic"), QStringLiteral("Basic"),
+        form = addCollapsibleSection(QStringLiteral("basic"), QStringLiteral("Basic"),
             QStringLiteral("Common presentation, output, and SDR target settings."), true);
         addChoice(QStringLiteral("Rendering quality"), QStringLiteral("quality"), { QStringLiteral("fast"), QStringLiteral("balanced"), QStringLiteral("high") });
         addChoice(QStringLiteral("Presentation mode"), QStringLiteral("output_presentation"), { QStringLiteral("AUTO"), QStringLiteral("direct"), QStringLiteral("composed") });
@@ -2274,7 +2283,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         addBoolean(QStringLiteral("Report BT.2020 to display"), QStringLiteral("report_bt2020_to_display"));
         addBoolean(QStringLiteral("Switch refresh rate"), QStringLiteral("switch_refresh_rate"));
 
-        form = addRendererSection(QStringLiteral("colorTone"), QStringLiteral("Color and tone"),
+        form = addCollapsibleSection(QStringLiteral("colorTone"), QStringLiteral("Color and tone"),
             QStringLiteral("Input interpretation, tone mapping, gamut mapping, and peak handling."), false);
         addChoice(QStringLiteral("SDR input transfer"), QStringLiteral("sdr_input_transfer"), { QStringLiteral("AUTO"), QStringLiteral("bt1886"), QStringLiteral("srgb"), QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"), QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
         addChoice(QStringLiteral("Tone mapping"), QStringLiteral("tone_mapping"), { QStringLiteral("AUTO"), QStringLiteral("spline"), QStringLiteral("bt2390"), QStringLiteral("st2094-40"), QStringLiteral("reinhard") });
@@ -2283,7 +2292,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* contrastRecovery = addText(QStringLiteral("Contrast recovery (0 to 1)"), QStringLiteral("contrast_recovery"));
         contrastRecovery->setPlaceholderText(QStringLiteral("Auto or a value from 0 to 1"));
 
-        form = addRendererSection(QStringLiteral("scalingCleanup"), QStringLiteral("Scaling and cleanup"),
+        form = addCollapsibleSection(QStringLiteral("scalingCleanup"), QStringLiteral("Scaling and cleanup"),
             QStringLiteral("Scaling algorithms, debanding, sigmoid processing, and dithering."), false);
         addChoice(QStringLiteral("Upscaler"), QStringLiteral("upscaler"), { QStringLiteral("AUTO"), QStringLiteral("ewa_lanczossharp"), QStringLiteral("ewa_lanczos"), QStringLiteral("bicubic"), QStringLiteral("bilinear") });
         addChoice(QStringLiteral("Downscaler"), QStringLiteral("downscaler"), { QStringLiteral("AUTO"), QStringLiteral("ewa_lanczos"), QStringLiteral("bicubic"), QStringLiteral("bilinear") });
@@ -2291,7 +2300,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         addChoice(QStringLiteral("Sigmoid scaling"), QStringLiteral("sigmoid"), { QStringLiteral("AUTO"), QStringLiteral("on"), QStringLiteral("off") });
         addChoice(QStringLiteral("Dithering"), QStringLiteral("dithering"), { QStringLiteral("AUTO"), QStringLiteral("on"), QStringLiteral("off") });
 
-        form = addRendererSection(QStringLiteral("lut"), QStringLiteral("3D LUT"),
+        form = addCollapsibleSection(QStringLiteral("lut"), QStringLiteral("3D LUT"),
             QStringLiteral("Optional lookup-table file and the signal reference used to interpret it."), false);
         const QString lutDirectoryPath = QFileInfo(configPath_).absoluteDir()
             .filePath(QStringLiteral("luts"));
@@ -2376,6 +2385,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     }
     else if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
     {
+        form = addCollapsibleSection(QStringLiteral("geometry"),
+            QStringLiteral("Screen geometry"), QStringLiteral(
+                "Physical screen shape, picture placement, and fitting controls."), true);
         auto* screenAspect = addText(
             QStringLiteral("Screen aspect ratio"),
             QStringLiteral("screen_aspect"));
@@ -2419,12 +2431,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             markDirty();
         });
         addBoolean(QStringLiteral("Automatically crop black bars"), QStringLiteral("automatic_crop"));
+
+        form = addCollapsibleSection(QStringLiteral("subtitles"),
+            QStringLiteral("Subtitles"), QStringLiteral(
+                "Keep subtitle content visible and control how VP moves it into the screen."), false);
         addBoolean(QStringLiteral("Keep subtitles inside screen bounds"), QStringLiteral("subtitle_fit"));
-		auto* subtitleHold = addText(QStringLiteral("Subtitle hold"),
-			QStringLiteral("subtitle_hold_seconds"), QStringLiteral("seconds"));
-		subtitleHold->setToolTip(QStringLiteral(
-			"Must be between 0.25 and 30 seconds. The minimum spans the "
-			"renderer's scheduled subtitle-analysis cadence."));
+        auto* subtitleHold = addText(QStringLiteral("Subtitle hold"),
+            QStringLiteral("subtitle_hold_seconds"), QStringLiteral("seconds"));
+        subtitleHold->setToolTip(QStringLiteral(
+            "Must be between 0.25 and 30 seconds. The minimum spans the "
+            "renderer's scheduled subtitle-analysis cadence."));
         addText(QStringLiteral("Subtitle engage drift"), QStringLiteral("subtitle_engage_drift_ms"), QStringLiteral("ms"));
         addText(QStringLiteral("Subtitle release drift"), QStringLiteral("subtitle_release_drift_ms"), QStringLiteral("ms"));
         addText(QStringLiteral("Subtitle padding"), QStringLiteral("subtitle_padding_pixels"), QStringLiteral("pixels"));
