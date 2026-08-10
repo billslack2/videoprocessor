@@ -23,6 +23,13 @@
 // validation and selection can be tested before a renderer is created.
 namespace RendererProfileConfig
 {
+	// Subtitle analysis is intentionally sampled every third rendered frame and
+	// may take up to roughly 125 ms to reaffirm a cue. A shorter hold is retained
+	// safely by the renderer for compatibility, but is too easy to misconfigure
+	// and makes cue release needlessly sensitive to individual samples.
+	constexpr double MIN_SUBTITLE_HOLD_SECONDS = 0.25;
+	constexpr double MAX_SUBTITLE_HOLD_SECONDS = 30.0;
+
 	inline bool OwnsSection(const std::string& section)
 	{
 		return RendererConfigView::OwnsSection(section) ||
@@ -461,7 +468,8 @@ namespace RendererProfileConfig
 			if (key == "automatic_crop" || key == "subtitle_fit")
 				return IsBoolean(value);
 			if (key == "subtitle_hold_seconds")
-				return IsNumberInRange(value, 0.0, 30.0);
+				return IsNumberInRange(value, MIN_SUBTITLE_HOLD_SECONDS,
+					MAX_SUBTITLE_HOLD_SECONDS);
 			if (key == "subtitle_engage_drift_ms" ||
 				key == "subtitle_release_drift_ms")
 			{
@@ -1656,7 +1664,8 @@ namespace RendererProfileConfig
 			double seconds = 0.0;
 			if (!DisplayRuleExpression::ParseNumber(
 				ConfigFile::Trim(value->second), seconds) ||
-				seconds < 0.0 || seconds > 30.0)
+				seconds < MIN_SUBTITLE_HOLD_SECONDS ||
+				seconds > MAX_SUBTITLE_HOLD_SECONDS)
 			{
 				error = "[profiles.viewport." + viewport.profile +
 					"] subtitle_hold_seconds is invalid";

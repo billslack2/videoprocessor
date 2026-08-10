@@ -2318,7 +2318,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         });
         addBoolean(QStringLiteral("Automatically crop black bars"), QStringLiteral("automatic_crop"));
         addBoolean(QStringLiteral("Keep subtitles inside screen bounds"), QStringLiteral("subtitle_fit"));
-        addText(QStringLiteral("Subtitle hold"), QStringLiteral("subtitle_hold_seconds"), QStringLiteral("seconds"));
+		auto* subtitleHold = addText(QStringLiteral("Subtitle hold"),
+			QStringLiteral("subtitle_hold_seconds"), QStringLiteral("seconds"));
+		subtitleHold->setToolTip(QStringLiteral(
+			"Must be between 0.25 and 30 seconds. The minimum spans the "
+			"renderer's scheduled subtitle-analysis cadence."));
         addText(QStringLiteral("Subtitle engage drift"), QStringLiteral("subtitle_engage_drift_ms"), QStringLiteral("ms"));
         addText(QStringLiteral("Subtitle release drift"), QStringLiteral("subtitle_release_drift_ms"), QStringLiteral("ms"));
         addText(QStringLiteral("Subtitle padding"), QStringLiteral("subtitle_padding_pixels"), QStringLiteral("pixels"));

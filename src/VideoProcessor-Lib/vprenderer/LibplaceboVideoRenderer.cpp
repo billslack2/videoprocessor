@@ -1430,7 +1430,9 @@ namespace
 		if (readViewportString("subtitle_hold_seconds", raw))
 		{
 			double seconds = 0.0;
-			if (ParseDouble(raw, seconds) && seconds >= 0.0 && seconds <= 30.0)
+			if (ParseDouble(raw, seconds) &&
+				seconds >= RendererProfileConfig::MIN_SUBTITLE_HOLD_SECONDS &&
+				seconds <= RendererProfileConfig::MAX_SUBTITLE_HOLD_SECONDS)
 				settings.scopeSubtitleHoldMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
 		}
 		if (readViewportString("subtitle_engage_drift_ms", raw))
@@ -1639,10 +1641,12 @@ namespace
 		if (TryGetDisplayString(config, "subtitle_hold_seconds", rawValue))
 		{
 			double seconds = 0.0;
-			if (ParseDouble(rawValue, seconds) && seconds >= 0.0 && seconds <= 30.0)
+			if (ParseDouble(rawValue, seconds) &&
+				seconds >= RendererProfileConfig::MIN_SUBTITLE_HOLD_SECONDS &&
+				seconds <= RendererProfileConfig::MAX_SUBTITLE_HOLD_SECONDS)
 				settings.scopeSubtitleHoldMs = static_cast<uint64_t>(std::llround(seconds * 1000.0));
 			else
-				DebugLog::Log("libplacebo: subtitle_hold_seconds must be between 0 and 30; using 2.0");
+				DebugLog::Log("libplacebo: subtitle_hold_seconds must be between 0.25 and 30; using 2.0");
 		}
 		if (TryGetDisplayString(config, "subtitle_engage_drift_ms", rawValue))
 		{

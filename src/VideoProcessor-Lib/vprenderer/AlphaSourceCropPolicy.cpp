@@ -575,24 +575,11 @@ namespace AlphaSourceCrop
 				static_cast<int>(input.translationPixels < 0.0f
 					? std::floor(input.translationPixels)
 					: std::ceil(input.translationPixels)));
-			// The dense bar pass has established this as a one-edge overlay. The
-			// coarse envelope has enough information to extend that same edge, but
-			// not enough specificity to manufacture an opposite picture edge. Its
-			// previous opposite-edge veto turned a subtitle into an aspect fit and
-			// caused the visible zoom-out. Genuine two-edge/picture evidence has
-			// already selected FIT in the dense pass before reaching this resolver.
-			if (requestedShift < 0 && input.genericUpperExpansion)
-			{
-				requestedShift = std::min(requestedShift,
-					ChromaAlignedDisplacement(
-						input.genericUpperBound - input.authoritativeTop));
-			}
-			else if (requestedShift > 0 && input.genericLowerExpansion)
-			{
-				requestedShift = std::max(requestedShift,
-					ChromaAlignedDisplacement(
-						input.genericLowerBound - input.authoritativeBottom));
-			}
+			// The dense bar pass owns the exact one-edge overlay extent and already
+			// includes configured padding in this request. A coarse current-frame
+			// envelope is classification evidence, not a second motion target. Using
+			// it here made the target alternate on sampled/non-sampled frames even
+			// after dense target confirmation had succeeded.
 
 			const int minimumShift = -input.authoritativeTop;
 			const int maximumShift =

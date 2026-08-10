@@ -2220,6 +2220,43 @@ namespace Tests
 			Assert::AreEqual<uint64_t>(2, viewport.generation);
 		}
 
+		TEST_METHOD(RendererProfileConfigEnforcesSafeSubtitleHoldBoundary)
+		{
+			std::string expected;
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_hold_seconds", "0", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_hold_seconds", "0.249", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_hold_seconds", "0.25", expected));
+
+			// Motion durations retain their independent zero-means-snap contract.
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_engage_drift_ms", "0", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_release_drift_ms", "0", expected));
+
+			RendererProfileConfig::Model model;
+			RendererProfileConfig::Profile scope;
+			scope.group = "viewport";
+			scope.name = "scope";
+			scope.settings["subtitle_hold_seconds"] = "0.25";
+			model.profiles.emplace("viewport.scope", scope);
+			RendererProfileConfig::ResolvedViewport viewport;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, "scope", 1, viewport, error));
+			Assert::AreEqual<uint64_t>(250,
+				viewport.subtitleHoldMilliseconds);
+
+			model.profiles["viewport.scope"].settings[
+				"subtitle_hold_seconds"] = "0";
+			Assert::IsFalse(RendererProfileConfig::ResolveViewport(
+				model, "scope", 1, viewport, error));
+			Assert::IsTrue(error.find("subtitle_hold_seconds") !=
+				std::string::npos);
+		}
+
 		TEST_METHOD(UnifiedProfileRuntimeRestoresPublishesAndPersistsViewport)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
