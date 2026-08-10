@@ -1995,6 +1995,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     if (showsActiveProfile)
     {
         list->setItemDelegate(new ProfileStateItemDelegate(list));
+        // Keep the key visible even when the adjacent details card is taller.
+        list->setMaximumHeight(320);
         auto* key = new QLabel(QStringLiteral(
             "<span style='color:#478bd5'>&#9633; Editing</span>&nbsp;&nbsp;"
             "<span style='color:#168447'>&#9633; Active</span>"));
@@ -3060,6 +3062,7 @@ QWidget* ConfigEditorWindow::createShadersPage()
     list->setDefaultDropAction(Qt::MoveAction);
     list->setDragDropOverwriteMode(false);
     list->setItemDelegate(new ProfileStateItemDelegate(list));
+    list->setMaximumHeight(320);
     auto* key = new QLabel(QStringLiteral(
         "<span style='color:#478bd5'>&#9633; Editing</span>&nbsp;&nbsp;"
         "<span style='color:#168447'>&#9633; Active</span>"));
