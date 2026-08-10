@@ -18,6 +18,17 @@ VP already uses `IMadVROsdServices` to compose and remove VP's own named
 diagnostic bitmap overlay. That is distinct from madVR's built-in Debug OSD and
 its internal statistics counters.
 
+### Installed-settings integration evidence (2026-08-09)
+
+The operator verified that the installed madVR settings application at
+`C:\madvr210\madHcCtrl.exe` works normally with VP. Its settings window is
+intentionally modal over the entire desktop, not just the VP window. This is
+accepted existing madVR behavior and must not be treated as a VP compatibility
+failure or an accessibility/focus regression. This story must not attempt to
+automate, re-parent, suppress, or change that native settings window; its
+scope remains in-process discovery and invocation of the relevant playback
+commands only.
+
 madVR exposes two relevant public interfaces to an in-process DirectShow host:
 
 - `IMadVRSettings2`, which can enumerate persisted madVR settings and profiles;
