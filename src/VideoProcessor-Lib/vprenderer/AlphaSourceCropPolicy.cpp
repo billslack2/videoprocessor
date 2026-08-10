@@ -193,8 +193,10 @@ namespace AlphaSourceCrop
 				VERTICAL_TRANSLATION_STABILITY_PIXELS;
 		if (acceptedAlreadyCoversObservation)
 		{
-			// UpdateVerticalBarPresentation retains the farthest accepted reveal,
-			// so harmless inward detector jitter cannot shrink the placement.
+			// Keep the buffered accepted placement explicit so harmless detector
+			// jitter cannot leak an exact raw target to the interpolator.
+			decision.effective.translationPixels =
+				input.acceptedTranslationPixels;
 			return decision;
 		}
 
@@ -216,8 +218,18 @@ namespace AlphaSourceCrop
 		if (decision.state.confirmations >=
 			VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED)
 		{
+			const float outwardBuffer = std::max(0.0f,
+				input.targetBufferPixels);
+			float bufferedMagnitude = std::abs(
+				decision.state.candidateTranslationPixels) + outwardBuffer;
+			if (input.maximumTranslationMagnitudePixels > 0.0f)
+			{
+				bufferedMagnitude = std::min(bufferedMagnitude,
+					input.maximumTranslationMagnitudePixels);
+			}
 			decision.effective.translationPixels =
-				decision.state.candidateTranslationPixels;
+				decision.state.candidateTranslationPixels < 0.0f
+				? -bufferedMagnitude : bufferedMagnitude;
 			decision.state = {};
 			decision.newlyAccepted = true;
 			return decision;

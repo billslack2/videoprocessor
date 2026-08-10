@@ -2192,6 +2192,7 @@ namespace Tests
 			cinema.settings["subtitle_engage_drift_ms"] = "300";
 			cinema.settings["subtitle_release_drift_ms"] = "3000";
 			cinema.settings["subtitle_padding_pixels"] = "30";
+			cinema.settings["subtitle_target_buffer_pixels"] = "12";
 			model.profiles.emplace("viewport.cinema", cinema);
 
 			RendererProfileConfig::ResolvedViewport viewport;
@@ -2203,6 +2204,7 @@ namespace Tests
 			Assert::IsFalse(viewport.hasScreenAspect);
 			Assert::IsFalse(viewport.automaticCrop);
 			Assert::IsFalse(viewport.subtitleFit);
+			Assert::AreEqual(10, viewport.subtitleTargetBufferPixels);
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
 				model, "cinema", 2, viewport, error));
 			Assert::AreEqual<uint64_t>(47, viewport.screenAspect.numerator);
@@ -2217,6 +2219,7 @@ namespace Tests
 			Assert::AreEqual<uint64_t>(
 				3000, viewport.subtitleReleaseDriftMilliseconds);
 			Assert::AreEqual(30, viewport.subtitlePaddingPixels);
+			Assert::AreEqual(12, viewport.subtitleTargetBufferPixels);
 			Assert::AreEqual<uint64_t>(2, viewport.generation);
 		}
 
@@ -2235,6 +2238,14 @@ namespace Tests
 				"viewport", "subtitle_engage_drift_ms", "0", expected));
 			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
 				"viewport", "subtitle_release_drift_ms", "0", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_target_buffer_pixels", "0", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_target_buffer_pixels", "50", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_target_buffer_pixels", "-1", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "subtitle_target_buffer_pixels", "51", expected));
 
 			RendererProfileConfig::Model model;
 			RendererProfileConfig::Profile scope;
@@ -2248,6 +2259,7 @@ namespace Tests
 				model, "scope", 1, viewport, error));
 			Assert::AreEqual<uint64_t>(250,
 				viewport.subtitleHoldMilliseconds);
+			Assert::AreEqual(10, viewport.subtitleTargetBufferPixels);
 
 			model.profiles["viewport.scope"].settings[
 				"subtitle_hold_seconds"] = "0";

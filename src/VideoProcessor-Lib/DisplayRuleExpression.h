@@ -56,6 +56,7 @@ namespace DisplayRuleExpression
 			name == "subtitle_engage_drift_ms" ||
 			name == "subtitle_release_drift_ms" ||
 			name == "subtitle_padding_pixels" ||
+			name == "subtitle_target_buffer_pixels" ||
 			name == "viewport_generation")
 		{
 			type = ValueType::Number;

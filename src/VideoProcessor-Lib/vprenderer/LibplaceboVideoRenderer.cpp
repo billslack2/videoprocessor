@@ -687,6 +687,8 @@ namespace
 		uint64_t scopeSubtitleEngageDriftMs = 0;
 		uint64_t scopeSubtitleReleaseDriftMs = 0;
 		int scopeSubtitlePaddingPixels = 20;
+		int scopeSubtitleTargetBufferPixels =
+			RendererProfileConfig::DEFAULT_SUBTITLE_TARGET_BUFFER_PIXELS;
 		uint64_t refreshRateCommandDelayMs = 5000;
 		std::vector<RefreshRateCommandRule> refreshRateCommandRules;
 		std::string lutPath;
@@ -742,7 +744,8 @@ namespace
 				<< settings.scopeSubtitleFit << '|' << settings.scopeSubtitleHoldMs << '|'
 				<< settings.scopeSubtitleEngageDriftMs << '|'
 				<< settings.scopeSubtitleReleaseDriftMs << '|'
-				<< settings.scopeSubtitlePaddingPixels << '|';
+				<< settings.scopeSubtitlePaddingPixels << '|'
+				<< settings.scopeSubtitleTargetBufferPixels << '|';
 		}
 		stream
 			<< settings.lutPath << '|'
@@ -1455,6 +1458,16 @@ namespace
 			if (ParseDouble(raw, pixels) && pixels >= 0.0 && pixels <= 500.0)
 				settings.scopeSubtitlePaddingPixels = static_cast<int>(std::llround(pixels));
 		}
+		if (readViewportString("subtitle_target_buffer_pixels", raw))
+		{
+			double pixels = 0.0;
+			if (ParseDouble(raw, pixels) && pixels >= 0.0 &&
+				pixels <= RendererProfileConfig::MAX_SUBTITLE_TARGET_BUFFER_PIXELS)
+			{
+				settings.scopeSubtitleTargetBufferPixels =
+					static_cast<int>(std::llround(pixels));
+			}
+		}
 	}
 
 	RendererSettings LoadRendererSettings(const VideoState& state, std::string& activeRule,
@@ -1673,6 +1686,21 @@ namespace
 				settings.scopeSubtitlePaddingPixels = static_cast<int>(std::llround(pixels));
 			else
 				DebugLog::Log("libplacebo: subtitle_padding_pixels must be between 0 and 500; using 20");
+		}
+		if (TryGetDisplayString(config, "subtitle_target_buffer_pixels", rawValue))
+		{
+			double pixels = 0.0;
+			if (ParseDouble(rawValue, pixels) && pixels >= 0.0 &&
+				pixels <= RendererProfileConfig::MAX_SUBTITLE_TARGET_BUFFER_PIXELS)
+			{
+				settings.scopeSubtitleTargetBufferPixels =
+					static_cast<int>(std::llround(pixels));
+			}
+			else
+			{
+				DebugLog::Log(
+					"libplacebo: subtitle_target_buffer_pixels must be between 0 and 50; using 10");
+			}
 		}
 
 		if (TryGetDisplayString(config, "contrast_recovery", rawValue) &&
@@ -2447,6 +2475,8 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t scopeSubtitleEngageDriftMs = 0;
 	uint64_t scopeSubtitleReleaseDriftMs = 0;
 	int scopeSubtitlePaddingPixels = 20;
+	int scopeSubtitleTargetBufferPixels =
+		RendererProfileConfig::DEFAULT_SUBTITLE_TARGET_BUFFER_PIXELS;
 	uint64_t scopeSubtitleAnalysisFrame = 0;
 	int scopeSubtitlePictureLeft = 0;
 	int scopeSubtitlePictureTop = 0;
@@ -3138,7 +3168,7 @@ struct LibplaceboVideoRenderer::Impl
 			projection.renderParams.dither_params ? &ditherParams : nullptr;
 
 		DebugLog::Log(
-		"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx",
+			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3171,7 +3201,8 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<unsigned long long>(scopeSubtitleHoldMs),
 			static_cast<unsigned long long>(scopeSubtitleEngageDriftMs),
 			static_cast<unsigned long long>(scopeSubtitleReleaseDriftMs),
-			scopeSubtitlePaddingPixels);
+			scopeSubtitlePaddingPixels,
+			scopeSubtitleTargetBufferPixels);
 	}
 
 	void ClearScopePresentationEvidence()
@@ -3532,6 +3563,12 @@ struct LibplaceboVideoRenderer::Impl
 						AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
 				confirmationInput.acceptedTranslationPixels =
 					scopeVerticalBarPresentation.translationPixels;
+				confirmationInput.targetBufferPixels = static_cast<float>(
+					scopeSubtitleTargetBufferPixels);
+				confirmationInput.maximumTranslationMagnitudePixels =
+					verticalDecision.translationPixels < 0.0f
+					? static_cast<float>(trustedPicture.top)
+					: static_cast<float>(height - trustedPicture.bottom);
 				const auto confirmation =
 					AlphaSourceCrop::ConfirmVerticalTranslation(confirmationInput);
 				scopeSubtitleTranslationConfirmation = confirmation.state;
@@ -3549,8 +3586,9 @@ struct LibplaceboVideoRenderer::Impl
 				else if (confirmation.newlyAccepted)
 				{
 					DebugLog::Log(
-						"Alpha vertical bar translation: candidate accepted target=%.1f px after %u stable samples",
+						"Alpha vertical bar translation: candidate accepted target=%.1f px buffer=%d px after %u stable samples",
 						confirmation.effective.translationPixels,
+						scopeSubtitleTargetBufferPixels,
 						AlphaSourceCrop::
 							VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED);
 				}
@@ -4659,6 +4697,8 @@ struct LibplaceboVideoRenderer::Impl
 		scopeSubtitleEngageDriftMs = settings.scopeSubtitleEngageDriftMs;
 		scopeSubtitleReleaseDriftMs = settings.scopeSubtitleReleaseDriftMs;
 		scopeSubtitlePaddingPixels = settings.scopeSubtitlePaddingPixels;
+		scopeSubtitleTargetBufferPixels =
+			settings.scopeSubtitleTargetBufferPixels;
 		SetSwapchainColorHint(
 			outputPlan.valid ? outputPlan.desiredEncoding :
 				LibplaceboOutput::DxgiEncoding::FULL_G22_P709);
@@ -4720,7 +4760,9 @@ struct LibplaceboVideoRenderer::Impl
 			scopeSubtitleHoldMs != settings.scopeSubtitleHoldMs ||
 			scopeSubtitleEngageDriftMs != settings.scopeSubtitleEngageDriftMs ||
 			scopeSubtitleReleaseDriftMs != settings.scopeSubtitleReleaseDriftMs ||
-			scopeSubtitlePaddingPixels != settings.scopeSubtitlePaddingPixels;
+			scopeSubtitlePaddingPixels != settings.scopeSubtitlePaddingPixels ||
+			scopeSubtitleTargetBufferPixels !=
+				settings.scopeSubtitleTargetBufferPixels;
 		configuredScreenAspect = settings.configuredScreenAspect;
 		configuredScreenTarget = settings.configuredScreenTarget;
 		verticalAlignment = settings.verticalAlignment;
@@ -4731,6 +4773,8 @@ struct LibplaceboVideoRenderer::Impl
 		scopeSubtitleEngageDriftMs = settings.scopeSubtitleEngageDriftMs;
 		scopeSubtitleReleaseDriftMs = settings.scopeSubtitleReleaseDriftMs;
 		scopeSubtitlePaddingPixels = settings.scopeSubtitlePaddingPixels;
+		scopeSubtitleTargetBufferPixels =
+			settings.scopeSubtitleTargetBufferPixels;
 		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
 		if (renderingBehaviorChanged)

@@ -491,6 +491,82 @@ namespace Tests
 			Assert::IsFalse(decision.newlyAccepted);
 		}
 
+		TEST_METHOD(TargetBufferOvershootsAndAbsorbsLaterGrowth)
+		{
+			VerticalTranslationConfirmationInput input;
+			input.targetBufferPixels = 10.0f;
+			input.observed.action =
+				VerticalBarPresentationAction::TRANSLATE;
+			input.observed.translationPixels = 206.0f;
+
+			auto decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
+
+			input.previous = decision.state;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.newlyAccepted);
+			Assert::AreEqual(216.0f,
+				decision.effective.translationPixels, 0.001f);
+
+			input.previous = {};
+			input.acceptedTranslationActive = true;
+			input.acceptedTranslationPixels = 216.0f;
+			input.observed.translationPixels = 210.0f;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsFalse(decision.pending);
+			Assert::IsFalse(decision.newlyAccepted);
+			Assert::AreEqual(216.0f,
+				decision.effective.translationPixels, 0.001f);
+		}
+
+		TEST_METHOD(TargetBufferMirrorsForUpperEdgeAndStillAllowsLargeGrowth)
+		{
+			VerticalTranslationConfirmationInput input;
+			input.targetBufferPixels = 10.0f;
+			input.observed.action =
+				VerticalBarPresentationAction::TRANSLATE;
+			input.observed.translationPixels = -206.0f;
+
+			auto decision = ConfirmVerticalTranslation(input);
+			input.previous = decision.state;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.newlyAccepted);
+			Assert::AreEqual(-216.0f,
+				decision.effective.translationPixels, 0.001f);
+
+			input.previous = {};
+			input.acceptedTranslationActive = true;
+			input.acceptedTranslationPixels = -216.0f;
+			input.observed.translationPixels = -228.0f;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
+			Assert::AreEqual(-216.0f,
+				decision.effective.translationPixels, 0.001f);
+
+			input.previous = decision.state;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.newlyAccepted);
+			Assert::AreEqual(-238.0f,
+				decision.effective.translationPixels, 0.001f);
+		}
+
+		TEST_METHOD(TargetBufferCannotTranslatePastTheSourceRaster)
+		{
+			VerticalTranslationConfirmationInput input;
+			input.targetBufferPixels = 10.0f;
+			input.maximumTranslationMagnitudePixels = 276.0f;
+			input.observed.action =
+				VerticalBarPresentationAction::TRANSLATE;
+			input.observed.translationPixels = 272.0f;
+
+			auto decision = ConfirmVerticalTranslation(input);
+			input.previous = decision.state;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.newlyAccepted);
+			Assert::AreEqual(276.0f,
+				decision.effective.translationPixels, 0.001f);
+		}
+
 		TEST_METHOD(NonTranslationObservationCancelsPendingConfirmation)
 		{
 			VerticalTranslationConfirmationInput input;

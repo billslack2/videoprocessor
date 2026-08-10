@@ -63,7 +63,9 @@ namespace
 			left.viewport.subtitleReleaseDriftMilliseconds ==
 				right.viewport.subtitleReleaseDriftMilliseconds &&
 			left.viewport.subtitlePaddingPixels ==
-				right.viewport.subtitlePaddingPixels))
+				right.viewport.subtitlePaddingPixels &&
+			left.viewport.subtitleTargetBufferPixels ==
+				right.viewport.subtitleTargetBufferPixels))
 			return false;
 		if (left.queue.profile != right.queue.profile ||
 			left.queue.hasQueueSize != right.queue.hasQueueSize ||
@@ -754,6 +756,9 @@ namespace UnifiedProfileRuntime
 		variables["subtitle_padding_pixels"] =
 			StateVariables::Value::Number(
 				static_cast<double>(viewport.subtitlePaddingPixels));
+		variables["subtitle_target_buffer_pixels"] =
+			StateVariables::Value::Number(
+				static_cast<double>(viewport.subtitleTargetBufferPixels));
 		variables["viewport_generation"] =
 			StateVariables::Value::Number(
 				static_cast<double>(generation));

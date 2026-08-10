@@ -29,6 +29,8 @@ namespace RendererProfileConfig
 	// and makes cue release needlessly sensitive to individual samples.
 	constexpr double MIN_SUBTITLE_HOLD_SECONDS = 0.25;
 	constexpr double MAX_SUBTITLE_HOLD_SECONDS = 30.0;
+	constexpr int DEFAULT_SUBTITLE_TARGET_BUFFER_PIXELS = 10;
+	constexpr int MAX_SUBTITLE_TARGET_BUFFER_PIXELS = 50;
 
 	inline bool OwnsSection(const std::string& section)
 	{
@@ -136,6 +138,8 @@ namespace RendererProfileConfig
 		uint64_t subtitleEngageDriftMilliseconds = 0;
 		uint64_t subtitleReleaseDriftMilliseconds = 0;
 		int subtitlePaddingPixels = 20;
+		int subtitleTargetBufferPixels =
+			DEFAULT_SUBTITLE_TARGET_BUFFER_PIXELS;
 		uint64_t generation = 0;
 	};
 
@@ -479,6 +483,11 @@ namespace RendererProfileConfig
 			{
 				int parsed = 0; return ParseInteger(value, 0, 500, parsed);
 			}
+			if (key == "subtitle_target_buffer_pixels")
+			{
+				int parsed = 0; return ParseInteger(value, 0,
+					MAX_SUBTITLE_TARGET_BUFFER_PIXELS, parsed);
+			}
 			expected = "a viewport-owned setting"; return false;
 		}
 		if (group == "queue")
@@ -710,6 +719,7 @@ namespace RendererProfileConfig
 			variable == "subtitle_engage_drift_ms" ||
 			variable == "subtitle_release_drift_ms" ||
 			variable == "subtitle_padding_pixels" ||
+			variable == "subtitle_target_buffer_pixels" ||
 			variable == "viewport_generation" || IsActionSourceField(variable))
 			return true;
 		return IsActionProfileVariable(variable, "profile.") ||
@@ -1205,7 +1215,7 @@ namespace RendererProfileConfig
 				"automatic_crop", "subtitle_fit",
 				"subtitle_hold_seconds", "subtitle_engage_drift_ms",
 				"subtitle_release_drift_ms",
-				"subtitle_padding_pixels"
+				"subtitle_padding_pixels", "subtitle_target_buffer_pixels"
 			};
 			std::vector<ConfigSchema::KeyRule> displayRules;
 			for (const std::string& key : baseKeys)
@@ -1707,6 +1717,16 @@ namespace RendererProfileConfig
 		{
 			error = "[profiles.viewport." + viewport.profile +
 				"] subtitle_padding_pixels is invalid";
+			return false;
+		}
+		value = settings.find("subtitle_target_buffer_pixels");
+		if (value != settings.end() &&
+			!ParseInteger(value->second, 0,
+				MAX_SUBTITLE_TARGET_BUFFER_PIXELS,
+				viewport.subtitleTargetBufferPixels))
+		{
+			error = "[profiles.viewport." + viewport.profile +
+				"] subtitle_target_buffer_pixels is invalid";
 			return false;
 		}
 		return true;

@@ -251,6 +251,7 @@ output_gamma: AUTO</pre>
 <article id="viewport-subtitle-engage-drift-ms" data-fields="vprenderer.viewport.&lt;variant&gt;.subtitle_engage_drift_ms"><h3><code>[vprenderer.viewport.&lt;variant&gt;] subtitle_engage_drift_ms</code></h3><p class="meta"><strong>Purpose:</strong> sets the movement duration into an already-selected safe subtitle position. <strong>Syntax:</strong> integer 0 through 30000 milliseconds. <strong>Omitted:</strong> <code>0</code>.</p><p><strong>Effect:</strong> <code>0</code> snaps; a positive value linearly moves from the current translation. It does not alter detection or hold logic.</p></article>
 <article id="viewport-subtitle-release-drift-ms" data-fields="vprenderer.viewport.&lt;variant&gt;.subtitle_release_drift_ms"><h3><code>[vprenderer.viewport.&lt;variant&gt;] subtitle_release_drift_ms</code></h3><p class="meta"><strong>Purpose:</strong> sets the movement duration back to trusted geometry after subtitle placement releases. <strong>Syntax:</strong> integer 0 through 30000 milliseconds. <strong>Omitted:</strong> <code>0</code>.</p><p><strong>Effect:</strong> <code>0</code> snaps; a positive value linearly returns from the current translation. It does not alter detection or release eligibility.</p></article>
 <article id="viewport-subtitle-padding-pixels" data-fields="vprenderer.viewport.&lt;variant&gt;.subtitle_padding_pixels"><h3><code>[vprenderer.viewport.&lt;variant&gt;] subtitle_padding_pixels</code></h3><p class="meta"><strong>Purpose:</strong> sets the viewport subtitle edge padding. <strong>Syntax:</strong> integer 0 through 500 pixels. <strong>Omitted:</strong> 20 pixels.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>0</code></td><td>No configured margin from the chosen viewport edge.</td></tr><tr><td><code>20</code> to <code>30</code></td><td>Conservative ordinary margin.</td></tr><tr><td>Above <code>30</code> through <code>500</code></td><td>Large margin for a measured screen/masking need.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Pixels are output-layout pixels, so re-evaluate after changing output resolution or viewport aspect.</p></article>
+<article id="viewport-subtitle-target-buffer-pixels" data-fields="vprenderer.viewport.&lt;variant&gt;.subtitle_target_buffer_pixels"><h3><code>[vprenderer.viewport.&lt;variant&gt;] subtitle_target_buffer_pixels</code></h3><p class="meta"><strong>Purpose:</strong> adds outward reserve to each confirmed subtitle translation target. <strong>Syntax:</strong> integer 0 through 50 pixels. <strong>Omitted:</strong> 10 pixels.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>0</code></td><td>Use the confirmed measured target exactly.</td></tr><tr><td><code>10</code></td><td>Default reserve; small later subtitle-extent growth is already covered and does not start another drift.</td></tr><tr><td>Above <code>10</code> through <code>50</code></td><td>Allow a wider stable target range at the cost of moving the picture farther than the measured minimum.</td></tr></tbody></table><p><strong>Effect and verification:</strong> The nonnegative magnitude is applied outward for either top- or bottom-edge subtitles. It is independent of subtitle padding and does not reduce required clearance, change detection, or change hold/release timing.</p></article>
 </div>
 
 <section class="section-examples" aria-labelledby="viewport-examples">
@@ -271,7 +272,8 @@ vertical_alignment: top
 automatic_crop: true
 subtitle_fit: true
 subtitle_hold_seconds: 2
-subtitle_padding_pixels: 30</pre>
+subtitle_padding_pixels: 30
+subtitle_target_buffer_pixels: 10</pre>
 <h4>Named scope viewport with trusted active-picture bounds</h4>
 <p>Use this named viewport only when the physical screen is scope-shaped and active-picture detection has been verified on representative material. Subtitle fitting keeps subtitles in the configured presentation region.</p>
 <pre data-ini-example="viewport-scope">[vprenderer.viewport.scope]
@@ -279,7 +281,8 @@ screen_aspect: 2.35:1
 automatic_crop: true
 subtitle_fit: true
 subtitle_hold_seconds: 2
-subtitle_padding_pixels: 30</pre>
+subtitle_padding_pixels: 30
+subtitle_target_buffer_pixels: 10</pre>
 <h4>Named anamorphic scope viewport</h4>
 <p>Use the final horizontal scale only for a measured optical or display correction. It is not a substitute for the physical screen aspect or for crop detection.</p>
 <pre data-ini-example="viewport-scope-anamorphic">[vprenderer.viewport.scope_anamorphic]
@@ -288,7 +291,8 @@ anamorphic_scale: 16:15
 automatic_crop: true
 subtitle_fit: true
 subtitle_hold_seconds: 2
-subtitle_padding_pixels: 30</pre>
+subtitle_padding_pixels: 30
+subtitle_target_buffer_pixels: 10</pre>
 </section>
 
 <h2 id="shaders">Shader groups</h2>
@@ -367,6 +371,7 @@ automatic_crop: true
 subtitle_fit: true
 subtitle_hold_seconds: 2
 subtitle_padding_pixels: 30
+subtitle_target_buffer_pixels: 10
 
 [shader.nls.protected]
 when: ${transfer}=="SDR"

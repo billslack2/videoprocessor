@@ -2326,6 +2326,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         addText(QStringLiteral("Subtitle engage drift"), QStringLiteral("subtitle_engage_drift_ms"), QStringLiteral("ms"));
         addText(QStringLiteral("Subtitle release drift"), QStringLiteral("subtitle_release_drift_ms"), QStringLiteral("ms"));
         addText(QStringLiteral("Subtitle padding"), QStringLiteral("subtitle_padding_pixels"), QStringLiteral("pixels"));
+        auto* subtitleTargetBuffer = addText(
+            QStringLiteral("Subtitle target buffer"),
+            QStringLiteral("subtitle_target_buffer_pixels"),
+            QStringLiteral("pixels"));
+        subtitleTargetBuffer->setToolTip(QStringLiteral(
+            "Must be between 0 and 50 pixels. Adds outward reserve to an "
+            "accepted subtitle target so small later extent changes do not "
+            "start another movement."));
     }
     else
     {
@@ -2393,6 +2401,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (key == QStringLiteral("subtitle_engage_drift_ms")) return QStringLiteral("0");
                 if (key == QStringLiteral("subtitle_release_drift_ms")) return QStringLiteral("0");
                 if (key == QStringLiteral("subtitle_padding_pixels")) return QStringLiteral("20");
+                if (key == QStringLiteral("subtitle_target_buffer_pixels")) return QStringLiteral("10");
             }
             if (sectionPrefix == QStringLiteral("lldv"))
             {

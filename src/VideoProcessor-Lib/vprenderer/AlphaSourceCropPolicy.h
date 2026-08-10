@@ -82,6 +82,13 @@ namespace AlphaSourceCrop
 		VerticalBarContentDecision observed;
 		bool acceptedTranslationActive = false;
 		float acceptedTranslationPixels = 0.0f;
+		// A nonnegative outward reserve applied only when a target is accepted.
+		// The accepted reserve then absorbs later same-direction detector growth
+		// without exposing another presentation target.
+		float targetBufferPixels = 0.0f;
+		// Positive values cap the buffered magnitude at the source raster edge.
+		// Zero leaves the policy uncapped for callers without geometry context.
+		float maximumTranslationMagnitudePixels = 0.0f;
 	};
 
 	struct VerticalTranslationConfirmationDecision

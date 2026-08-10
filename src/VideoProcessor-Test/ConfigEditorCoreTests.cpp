@@ -610,6 +610,7 @@ namespace VideoProcessorTest
 				"[vprenderer.viewport.viewport_16x9]\nlabel: 16x9\nmode: normal\nscreen_aspect: 16:9\n"
 				"automatic_crop: false\nsubtitle_fit: true\nsubtitle_hold_seconds: 2\n"
 				"subtitle_engage_drift_ms: 0\nsubtitle_release_drift_ms: 0\nsubtitle_padding_pixels: 20\n"
+				"subtitle_target_buffer_pixels: 10\n"
 				"scope_screen_aspect: 2.35:1\nscope_automatic_crop: true\nscope_subtitle_fit: true\n"
 				"scope_subtitle_hold_seconds: 2\nscope_subtitle_engage_drift_ms: 0\nscope_subtitle_release_drift_ms: 0\n"
 				"scope_subtitle_padding_pixels: 20\n"
@@ -804,6 +805,7 @@ namespace VideoProcessorTest
 				{ "vprenderer.viewport", "subtitle_engage_drift_ms", "100" },
 				{ "vprenderer.viewport", "subtitle_release_drift_ms", "1000" },
 				{ "vprenderer.viewport", "subtitle_padding_pixels", "24" },
+				{ "vprenderer.viewport", "subtitle_target_buffer_pixels", "10" },
 
 				{ "directshow", "renderer_start_stop_time_method", "RATIONAL_RATIONAL" },
 				{ "directshow", "frame_offset", "75" },
