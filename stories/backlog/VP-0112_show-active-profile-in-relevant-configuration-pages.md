@@ -15,6 +15,9 @@ or configuration persistence.
 Use the existing profile list only; do not add a separate current-profile
 summary, duplicate label, legend, key, or explanatory text.
 
+- Keep each profile-list row name-only. Do not show its `when:`/activation rule
+  inline because real rules can be long; retain that rule in the selected
+  profile's existing detail/editing surface instead.
 - The profile that is active at runtime uses a clear green inline treatment.
 - The profile selected for editing uses the existing blue selection/highlight
   treatment.
