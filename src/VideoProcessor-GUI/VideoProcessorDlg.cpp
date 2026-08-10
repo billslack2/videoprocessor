@@ -4962,9 +4962,19 @@ LRESULT CVideoProcessorDlg::OnMessageRendererResetRequest(
 
 LRESULT CVideoProcessorDlg::OnMessageRendererRetired(
 	WPARAM wParam,
-	LPARAM lParam)
+	LPARAM)
 {
 	const uint64_t token = static_cast<uint64_t>(wParam);
+	if (TryFinalizeRendererRetirement(token, "window-message"))
+		UpdateState();
+	return 0;
+}
+
+
+bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
+	uint64_t token,
+	const char* completionSource)
+{
 	if (!m_rendererRetirementPending ||
 		token != m_rendererRetirementToken)
 	{
@@ -4973,27 +4983,39 @@ LRESULT CVideoProcessorDlg::OnMessageRendererRetired(
 			static_cast<unsigned long long>(token),
 			static_cast<unsigned long long>(m_rendererRetirementToken),
 			m_rendererRetirementPending ? 1 : 0);
-		return 0;
+		return false;
+	}
+	RendererRetirementService::Completion completion;
+	if (!m_rendererRetirementService.TryTakeCompletion(token, completion))
+	{
+		DebugLog::Log(
+			"Renderer retirement wake arrived before durable completion: "
+			"token=%llu source=%s",
+			static_cast<unsigned long long>(token), completionSource);
+		return false;
 	}
 
 	m_rendererRetirementPending = false;
-	if (lParam != 0)
+	if (!completion.succeeded)
 	{
 		DebugLog::Log(
-			"Renderer retirement failed: token=%llu renderer=%S; replacement remains blocked",
+			"Renderer retirement failed: token=%llu renderer=%S source=%s; "
+			"replacement remains blocked",
 			static_cast<unsigned long long>(token),
-			static_cast<LPCTSTR>(m_retiringRendererName));
+			static_cast<LPCTSTR>(m_retiringRendererName), completionSource);
 		m_rendererState = RendererState::RENDERSTATE_FAILED;
 		m_rendererStateText.SetWindowText(TEXT("Retirement failed"));
-		return 0;
+		return true;
 	}
 	DebugLog::Log(
 		"Renderer transition: process=%lu generation=%u event=old-surface-retired "
-		"renderer=%S target=%p cover=%p token=%llu",
+		"renderer=%S target=%p cover=%p token=%llu source=%s "
+		"wake_posted=%d wake_error=%lu",
 		GetCurrentProcessId(), m_retiringRendererGeneration,
 		static_cast<LPCTSTR>(m_retiringRendererName),
 		m_rendererTargetHwnd, m_rendererTransitionWindow.GetHWND(),
-		static_cast<unsigned long long>(token));
+		static_cast<unsigned long long>(token), completionSource,
+		completion.wakePosted ? 1 : 0, completion.wakePostError);
 	m_retiringRendererName.Empty();
 	m_retiringRendererGeneration = 0;
 	if (m_rendererState == RendererState::RENDERSTATE_STOPPED)
@@ -5012,8 +5034,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererRetired(
 			m_rendererFullscreenCheck.SetCheck(FALSE);
 		}
 	}
-	UpdateState();
-	return 0;
+	return true;
 }
 
 
@@ -5756,6 +5777,11 @@ void CVideoProcessorDlg::OnRendererDetailString(const CString& details)
 void CVideoProcessorDlg::UpdateState()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::UpdateState()")));
+	if (m_rendererRetirementPending)
+	{
+		TryFinalizeRendererRetirement(
+			m_rendererRetirementToken, "state-reconciliation");
+	}
 	if (m_rendererRetirementPending)
 	{
 		DbgLog((LOG_TRACE, 1,
@@ -10181,6 +10207,12 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	const ULONGLONG uiNow = GetTickCount64();
 	m_lastUiMessageTick.store(uiNow, std::memory_order_release);
+	if (m_rendererRetirementPending &&
+		TryFinalizeRendererRetirement(
+			m_rendererRetirementToken, "ui-timer-reconciliation"))
+	{
+		UpdateState();
+	}
 	if (m_rendererResetCoordinator)
 	{
 		const RendererResetCoordinator::Diagnostics diagnostics =
