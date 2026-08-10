@@ -2447,14 +2447,19 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     detailLayout->addWidget(profileFields);
     detailLayout->addStretch();
 
-    const auto updateQueuePolicyPresentation = [queuePolicy, queuePolicySummary]()
+    const auto updateQueuePolicyPresentation = [queuePolicy, queuePolicySummary,
+        profileFields]()
     {
         if (!queuePolicy) return;
         const QString selectedId = queuePolicy->currentData().toString();
         if (selectedId.isEmpty())
         {
             queuePolicySummary->setText(QStringLiteral(
-                "Custom queue values. Expand Advanced to adjust them."));
+                "Custom queue values are shown in Advanced."));
+            if (auto* advanced = profileFields->findChild<QToolButton*>(
+                QStringLiteral("rendererSection.queueAdvanced")); advanced &&
+                !advanced->isChecked())
+                advanced->setChecked(true);
         }
         else
         {
@@ -2687,6 +2692,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
     if (queuePolicy)
     {
+        auto* advanced = profileFields->findChild<QToolButton*>(
+            QStringLiteral("rendererSection.queueAdvanced"));
+        connect(advanced, &QToolButton::toggled, this, [queuePolicy, advanced](bool open)
+        {
+            if (!open && queuePolicy->currentData().toString().isEmpty())
+                advanced->setChecked(true);
+        });
         connect(queuePolicy, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this, queuePolicy, state, fields, updateQueuePolicyPresentation](int index)
         {
