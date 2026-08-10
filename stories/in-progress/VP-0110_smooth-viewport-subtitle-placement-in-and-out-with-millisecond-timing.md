@@ -2,11 +2,13 @@
 
 ## Status
 
-Backlog (2026-08-10). Created from the request to make subtitle placement
-transition slowly into its safe position as well as slowly back out. The
-current deployed configuration exposes `subtitle_release_drift_seconds`; the
-new contract will express both directions in milliseconds. The required
-implementation-base confirmation is pending.
+In Progress (2026-08-10). The developer confirmed `v1.2.001-beta` as the
+implementation base. Work has started on
+`codex/vp-0110-subtitle-placement` in
+`C:\Users\bslac\vp\vp-0110-subtitle-placement`, based on
+`origin/v1.2.001-beta` at `02a7543`. The current deployed configuration
+exposes `subtitle_release_drift_seconds`; the new contract will express both
+directions in milliseconds.
 
 ## User story
 
@@ -60,10 +62,9 @@ milliseconds, so the motion is deliberate and directly tunable. A duration of
 
 ## Implementation gate
 
-`billslack2/videoprocessor` currently reports `v1.2.001-beta` as its GitHub
-default branch (queried 2026-08-10). Confirm that branch as the implementation
-base, or name a different base, before creating a source feature branch,
-worktree, or implementation commit.
+`billslack2/videoprocessor` reported `v1.2.001-beta` as its GitHub default
+branch on 2026-08-10, and the developer confirmed it as the implementation
+base.
 
 ## Related work
 
