@@ -95,6 +95,19 @@ namespace AlphaSourceCrop
 	VerticalTranslationConfirmationDecision ConfirmVerticalTranslation(
 		const VerticalTranslationConfirmationInput& input);
 
+	// A current provisional envelope which expands exactly one vertical edge is
+	// eligible for the same trusted-base retention used by dense target
+	// confirmation. This closes the frame before the first dense sample without
+	// treating a horizontal or two-edge geometry change as subtitle motion.
+	bool ShouldRetainTrustedBaseForVerticalInspection(
+		bool subtitleFitEnabled,
+		bool currentEnvelope,
+		bool latestObservationIsProvisional,
+		bool leftExpansion,
+		bool topExpansion,
+		bool rightExpansion,
+		bool bottomExpansion);
+
 	struct VerticalBarPresentationState
 	{
 		VerticalBarPresentationAction action =
@@ -447,6 +460,11 @@ namespace AlphaSourceCrop
 		// trusted base rectangle but never applies a displacement or grants new
 		// crop authority.
 		bool verticalTranslationBaseRetentionActive = false;
+		// A timed engage begins at zero displacement. Preserve the same-generation
+		// trusted base on that first sample even when the provisional overlay has
+		// made frame-local retention pixel-unsafe; subsequent samples reveal it by
+		// translation rather than by a full-raster flash.
+		bool verticalTranslationEngageBaseRetentionActive = false;
 		bool outwardPresentationActive = false;
 		bool outwardExpansionAvailable = false;
 		ActivePictureClassification classification =

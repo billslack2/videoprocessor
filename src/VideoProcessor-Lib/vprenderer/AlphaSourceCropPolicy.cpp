@@ -238,6 +238,21 @@ namespace AlphaSourceCrop
 		return decision;
 	}
 
+	bool ShouldRetainTrustedBaseForVerticalInspection(
+		bool subtitleFitEnabled,
+		bool currentEnvelope,
+		bool latestObservationIsProvisional,
+		bool leftExpansion,
+		bool topExpansion,
+		bool rightExpansion,
+		bool bottomExpansion)
+	{
+		return subtitleFitEnabled && currentEnvelope &&
+			latestObservationIsProvisional &&
+			!leftExpansion && !rightExpansion &&
+			(topExpansion != bottomExpansion);
+	}
+
 	bool IsVerticalBarPresentationActive(
 		const VerticalBarPresentationState& state,
 		uint64_t currentTick, uint64_t holdMs,
@@ -1003,6 +1018,13 @@ namespace AlphaSourceCrop
 			input.verticalTranslationSourceGeneration != 0 &&
 			input.verticalTranslationSourceGeneration ==
 				input.frameSourceGeneration;
+		const bool boundedVerticalEngageBaseRetention =
+			input.verticalTranslationEngageBaseRetentionActive &&
+			input.latestObservationIsProvisional &&
+			SameBounds(input.verticalTranslationBase, input.geometry) &&
+			input.verticalTranslationSourceGeneration != 0 &&
+			input.verticalTranslationSourceGeneration ==
+				input.frameSourceGeneration;
 		const bool boundedVerticalConfirmationRetention =
 			input.verticalTranslationConfirmationPending &&
 			input.latestObservationIsProvisional &&
@@ -1015,6 +1037,7 @@ namespace AlphaSourceCrop
 			!boundedAmbiguousRetention && !pixelSafeAmbiguousRetention &&
 			!boundedOutwardExpansion && !boundedVerticalTranslation &&
 			!boundedVerticalBaseRetention &&
+			!boundedVerticalEngageBaseRetention &&
 			!boundedVerticalConfirmationRetention)
 		{
 			decision.reason =
@@ -1127,7 +1150,9 @@ namespace AlphaSourceCrop
 			? (decision.outwardExpanded
 				? "bounded outward fit and same-size vertical translation accepted"
 				: "same-size vertical presentation translation accepted")
-			: (boundedVerticalBaseRetention
+			: (boundedVerticalEngageBaseRetention
+				? "trusted crop retained at timed subtitle engage origin"
+				: (boundedVerticalBaseRetention
 				? "subtitle release settled at current trusted base"
 				: (boundedVerticalConfirmationRetention
 					? "trusted crop retained while subtitle translation target confirms"
@@ -1139,7 +1164,7 @@ namespace AlphaSourceCrop
 				? "frame-local pixel-safe presentation retained prior crop"
 				: (boundedSceneVerificationRetention
 					? "bounded scene verification retained current trusted crop"
-					: "bounded ambiguity hold retained current trusted crop"))))));
+					: "bounded ambiguity hold retained current trusted crop")))))));
 		return decision;
 	}
 

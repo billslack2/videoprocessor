@@ -516,6 +516,24 @@ namespace Tests
 				static_cast<int>(decision.effective.action));
 		}
 
+		TEST_METHOD(OnlyProvisionalSingleVerticalEdgeStartsInspectionRetention)
+		{
+			Assert::IsTrue(ShouldRetainTrustedBaseForVerticalInspection(
+				true, true, true, false, false, false, true));
+			Assert::IsTrue(ShouldRetainTrustedBaseForVerticalInspection(
+				true, true, true, false, true, false, false));
+			Assert::IsFalse(ShouldRetainTrustedBaseForVerticalInspection(
+				false, true, true, false, false, false, true));
+			Assert::IsFalse(ShouldRetainTrustedBaseForVerticalInspection(
+				true, false, true, false, false, false, true));
+			Assert::IsFalse(ShouldRetainTrustedBaseForVerticalInspection(
+				true, true, false, false, false, false, true));
+			Assert::IsFalse(ShouldRetainTrustedBaseForVerticalInspection(
+				true, true, true, true, false, false, true));
+			Assert::IsFalse(ShouldRetainTrustedBaseForVerticalInspection(
+				true, true, true, false, true, false, true));
+		}
+
 		TEST_METHOD(PendingTranslationRetainsTrustedCropWithoutFullRasterFlash)
 		{
 			Input input = TrustedScopeCrop();
@@ -732,13 +750,28 @@ namespace Tests
 
 			Input crop = TrustedScopeCrop();
 			const auto routing = ResolveVerticalBarRendererRouting(resolution);
+			crop.latestObservationSupportsCrop = false;
+			crop.latestObservationIsProvisional = true;
+			crop.latestObservationClassification =
+				ActivePictureClassification::PROVISIONAL;
+			crop.frameLocalPresentationRetentionEvaluated = true;
+			crop.frameLocalPresentationRetentionSafe = false;
 			crop.presentationFailOpen = routing.failOpen;
 			crop.verticalTranslationActive = routing.translationActive;
+			crop.verticalTranslationBase = crop.geometry;
+			crop.verticalTranslationSourceGeneration =
+				crop.frameSourceGeneration;
+			crop.verticalTranslationEngageBaseRetentionActive = true;
 			const Decision selected = Evaluate(crop);
 			Assert::IsTrue(selected.applyCrop);
 			Assert::IsFalse(selected.verticallyTranslated);
 			Assert::AreEqual(274, selected.sourceBounds.top);
 			Assert::AreEqual(1884, selected.sourceBounds.bottom);
+			Assert::IsTrue(selected.reason.find("engage origin") !=
+				std::string::npos);
+
+			crop.verticalTranslationEngageBaseRetentionActive = false;
+			AssertFullRaster(Evaluate(crop));
 
 			resolutionInput.zeroTranslationRetainsTrustedBase = false;
 			const auto invalidZero = ResolveVerticalBarPresentation(
