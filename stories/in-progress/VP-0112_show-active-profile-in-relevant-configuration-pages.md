@@ -2,13 +2,14 @@
 
 ## Status
 
-Backlog (2026-08-10). Requested as a small configuration-editor clarity
-improvement. No implementation has started.
+In Progress (2026-08-10). Implementation started on
+`codex/vp-0112-active-profile`, rebased from the current repository default
+branch `origin/v1.2.001-beta` at `109bc963`. Working tree:
+`C:\Users\bslac\vp\worktrees\vp-0112-active-profile`.
 
-Next action: identify the editor's existing profile-list model and the
-available runtime/effective-configuration snapshot, then add the smallest
-shared active-profile presentation path that does not change profile selection
-or configuration persistence.
+Current work: locate the Qt configuration editor's profile-list delegates and
+the available runtime/effective-configuration state, then implement the chosen
+inline active/editing treatment without changing profile persistence.
 
 ## Chosen UI treatment
 
