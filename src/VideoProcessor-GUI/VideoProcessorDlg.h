@@ -204,6 +204,8 @@ public:
 		WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererRetired(
 		WPARAM wParam, LPARAM lParam);
+	bool TryFinalizeRendererRetirement(
+		uint64_t token, const char* completionSource);
 	afx_msg LRESULT OnMessageModernOperatorAction(
 		WPARAM wParam, LPARAM lParam);
 
