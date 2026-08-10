@@ -10,6 +10,15 @@ implementation base. Work has started on
 exposes `subtitle_release_drift_seconds`; the new contract will express both
 directions in milliseconds.
 
+Implementation checkpoint (2026-08-10): the isolated source worktree now
+parses and publishes `subtitle_engage_drift_ms` and
+`subtitle_release_drift_ms`, generalizes the renderer's release-only drift into
+one retargetable translation interpolator, and preserves the detector and hold
+decision path. The Qt configuration editor exposes both millisecond controls.
+Targeted x64 Release builds of VideoProcessor-Test, VP Renderer, and the Qt
+configuration editor pass; unit-test execution and legacy-editor parity remain
+in progress.
+
 ## User story
 
 As a VideoProcessor user watching scope content with subtitle fitting enabled,
