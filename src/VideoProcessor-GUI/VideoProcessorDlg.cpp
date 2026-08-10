@@ -8631,11 +8631,17 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 		DebugLog::Log("Unified profile refresh failed: %s",
 			profileError.c_str());
 	}
-	else if (profileRefresh.changed &&
-		m_rendererState != RendererState::RENDERSTATE_STOPPING)
+	else if (m_profileRuntime.IsInitialized())
 	{
-		ApplyUnifiedProfileSnapshot(profileRefresh.snapshot, true);
-		ScheduleUnifiedProfileActions(profileRefresh.actions);
+		// Status is published independently of the renderer backend. Display and
+		// viewport profiles apply to both alpha and non-alpha renderers.
+		PublishActiveProfileStatus();
+		if (profileRefresh.changed &&
+			m_rendererState != RendererState::RENDERSTATE_STOPPING)
+		{
+			ApplyUnifiedProfileSnapshot(profileRefresh.snapshot, true);
+			ScheduleUnifiedProfileActions(profileRefresh.actions);
+		}
 	}
 	
 
