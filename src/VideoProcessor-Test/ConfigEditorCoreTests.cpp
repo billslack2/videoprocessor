@@ -609,9 +609,9 @@ namespace VideoProcessorTest
 				"[vprenderer.bt2020]\nshortcut: F5\nsdr_target_primaries: bt2020\nreport_bt2020_to_display: true\n"
 				"[vprenderer.viewport.viewport_16x9]\nlabel: 16x9\nmode: normal\nscreen_aspect: 16:9\n"
 				"automatic_crop: false\nsubtitle_fit: true\nsubtitle_hold_seconds: 2\n"
-				"subtitle_release_drift_seconds: 0\nsubtitle_padding_pixels: 20\n"
+				"subtitle_engage_drift_ms: 0\nsubtitle_release_drift_ms: 0\nsubtitle_padding_pixels: 20\n"
 				"scope_screen_aspect: 2.35:1\nscope_automatic_crop: true\nscope_subtitle_fit: true\n"
-				"scope_subtitle_hold_seconds: 2\nscope_subtitle_release_drift_seconds: 0\n"
+				"scope_subtitle_hold_seconds: 2\nscope_subtitle_engage_drift_ms: 0\nscope_subtitle_release_drift_ms: 0\n"
 				"scope_subtitle_padding_pixels: 20\n"
 				"[lldv.standard]\nmax_cll: 1000\nmax_fall: 401\nmastering_min_luminance: 0.001\n"
 				"mastering_max_luminance: 4000\n");
@@ -801,7 +801,8 @@ namespace VideoProcessorTest
 				{ "vprenderer.viewport", "automatic_crop", "true" },
 				{ "vprenderer.viewport", "subtitle_fit", "true" },
 				{ "vprenderer.viewport", "subtitle_hold_seconds", "3" },
-				{ "vprenderer.viewport", "subtitle_release_drift_seconds", "1" },
+				{ "vprenderer.viewport", "subtitle_engage_drift_ms", "100" },
+				{ "vprenderer.viewport", "subtitle_release_drift_ms", "1000" },
 				{ "vprenderer.viewport", "subtitle_padding_pixels", "24" },
 
 				{ "directshow", "renderer_start_stop_time_method", "RATIONAL_RATIONAL" },

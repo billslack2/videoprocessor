@@ -347,62 +347,65 @@ namespace AlphaSourceCrop
 		return state;
 	}
 
-	void VerticalTranslationReleaseDrift::Reset()
+	void VerticalTranslationDrift::Reset()
 	{
 		lastAppliedTranslationPixels = 0.0f;
-		releaseStartTranslationPixels = 0.0f;
-		releaseStartTick = 0;
-		releaseActive = false;
+		targetTranslationPixels = 0.0f;
+		driftStartTranslationPixels = 0.0f;
+		driftStartTick = 0;
+		driftActive = false;
 		finalBaseFramePending = false;
 	}
 
-	bool VerticalTranslationReleaseDrift::ConsumeFinalBaseFrame()
+	bool VerticalTranslationDrift::ConsumeFinalBaseFrame()
 	{
 		const bool pending = finalBaseFramePending;
 		finalBaseFramePending = false;
 		return pending;
 	}
 
-	float VerticalTranslationReleaseDrift::Resolve(
+	float VerticalTranslationDrift::Resolve(
 		float requestedTranslationPixels, uint64_t currentTick,
-		uint64_t releaseDurationMs)
+		uint64_t durationMs)
 	{
-		if (std::abs(requestedTranslationPixels) > 0.5f)
+		const bool targetChanged =
+			std::abs(requestedTranslationPixels - targetTranslationPixels) > 0.5f;
+		if (durationMs == 0)
 		{
-			// New subtitle or menu content always wins over a pending release.
-			releaseActive = false;
-			finalBaseFramePending = false;
-			releaseStartTranslationPixels = 0.0f;
-			releaseStartTick = 0;
+			const bool releasing = std::abs(requestedTranslationPixels) <= 0.5f &&
+				std::abs(lastAppliedTranslationPixels) > 0.5f;
+			Reset();
 			lastAppliedTranslationPixels = requestedTranslationPixels;
+			if (releasing)
+				finalBaseFramePending = true;
 			return requestedTranslationPixels;
 		}
-		if (releaseDurationMs == 0 ||
-			std::abs(lastAppliedTranslationPixels) <= 0.5f)
+		if (targetChanged)
 		{
-			Reset();
-			return 0.0f;
+			targetTranslationPixels = requestedTranslationPixels;
+			driftStartTranslationPixels = lastAppliedTranslationPixels;
+			driftStartTick = currentTick;
+			driftActive = std::abs(targetTranslationPixels -
+				driftStartTranslationPixels) > 0.5f;
+			finalBaseFramePending = false;
 		}
-		if (!releaseActive)
+		if (!driftActive)
+			return targetTranslationPixels;
+		const uint64_t elapsed = currentTick >= driftStartTick
+			? currentTick - driftStartTick : 0;
+		if (elapsed >= durationMs)
 		{
-			releaseActive = true;
-			releaseStartTranslationPixels = lastAppliedTranslationPixels;
-			releaseStartTick = currentTick;
+			lastAppliedTranslationPixels = targetTranslationPixels;
+			driftStartTranslationPixels = targetTranslationPixels;
+			driftActive = false;
+			finalBaseFramePending = std::abs(targetTranslationPixels) <= 0.5f;
+			return targetTranslationPixels;
 		}
-		const uint64_t elapsed = currentTick >= releaseStartTick
-			? currentTick - releaseStartTick : 0;
-		if (elapsed >= releaseDurationMs)
-		{
-			lastAppliedTranslationPixels = 0.0f;
-			releaseStartTranslationPixels = 0.0f;
-			releaseStartTick = 0;
-			releaseActive = false;
-			finalBaseFramePending = true;
-			return 0.0f;
-		}
-		const float remaining = 1.0f - static_cast<float>(elapsed) /
-			static_cast<float>(releaseDurationMs);
-		return releaseStartTranslationPixels * remaining;
+		const float progress = static_cast<float>(elapsed) /
+			static_cast<float>(durationMs);
+		lastAppliedTranslationPixels = driftStartTranslationPixels +
+			(targetTranslationPixels - driftStartTranslationPixels) * progress;
+		return lastAppliedTranslationPixels;
 	}
 
 	VerticalBarPresentationResolution ResolveVerticalBarPresentation(

@@ -134,17 +134,16 @@ namespace AlphaSourceCrop
 	VerticalBarPresentationState UpdateVerticalBarPresentation(
 		const VerticalBarPresentationUpdateInput& input);
 
-	// Subtitle appearance must be immediate so no text is cut off. On release,
-	// an optional renderer setting may linearly return the source window to its
-	// trusted base. A new non-zero placement always cancels that release and
-	// snaps to the newly required safe position.
-	class VerticalTranslationReleaseDrift
+	// Interpolates only a translation which the existing subtitle policy has
+	// already selected. Callers supply the active or release duration; zero
+	// snaps to the target. Retargeting starts from the current applied position.
+	class VerticalTranslationDrift
 	{
 	public:
 		void Reset();
-		float Resolve(float requestedTranslationPixels, uint64_t currentTick,
-			uint64_t releaseDurationMs);
-		bool IsActive() const { return releaseActive; }
+		float Resolve(float targetTranslationPixels, uint64_t currentTick,
+			uint64_t durationMs);
+		bool IsActive() const { return driftActive; }
 		// The sample which lands exactly on the trusted base needs one final
 		// generation-checked presentation decision. Consume this marker once so a
 		// lost current observation cannot cause a full-raster flash at release.
@@ -152,9 +151,10 @@ namespace AlphaSourceCrop
 
 	private:
 		float lastAppliedTranslationPixels = 0.0f;
-		float releaseStartTranslationPixels = 0.0f;
-		uint64_t releaseStartTick = 0;
-		bool releaseActive = false;
+		float targetTranslationPixels = 0.0f;
+		float driftStartTranslationPixels = 0.0f;
+		uint64_t driftStartTick = 0;
+		bool driftActive = false;
 		bool finalBaseFramePending = false;
 	};
 

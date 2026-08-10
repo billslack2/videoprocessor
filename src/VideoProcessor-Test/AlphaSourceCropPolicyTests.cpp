@@ -389,24 +389,20 @@ namespace Tests
 				static_cast<int>(currentTwoEdgeAction.action));
 		}
 
-		TEST_METHOD(SubtitleReleaseDriftSnapsOnAppearanceAndReturnsOnlyWhenEnabled)
+		TEST_METHOD(SubtitleTranslationDriftEasesInAndOutAndZeroSnaps)
 		{
-			VerticalTranslationReleaseDrift drift;
+			VerticalTranslationDrift drift;
+			Assert::AreEqual(0.0f, drift.Resolve(198.0f, 1000, 3000), 0.001f);
+			Assert::AreEqual(99.0f, drift.Resolve(198.0f, 2500, 3000), 0.001f);
+			Assert::AreEqual(198.0f, drift.Resolve(198.0f, 4000, 3000), 0.001f);
 			Assert::AreEqual(198.0f,
-				drift.Resolve(198.0f, 1000, 3000), 0.001f);
-			// Release begins at the exact safe subtitle placement, then returns
-			// smoothly. The zero-duration default remains an immediate restore.
-			Assert::AreEqual(198.0f,
-				drift.Resolve(0.0f, 2000, 3000), 0.001f);
+				drift.Resolve(0.0f, 5000, 3000), 0.001f);
 			Assert::AreEqual(99.0f,
-				drift.Resolve(0.0f, 3500, 3000), 0.001f);
-			// A new cue cancels the release and is never eased in.
+				drift.Resolve(0.0f, 6500, 3000), 0.001f);
 			Assert::AreEqual(226.0f,
-				drift.Resolve(226.0f, 3600, 3000), 0.001f);
-			Assert::AreEqual(226.0f,
-				drift.Resolve(0.0f, 4000, 3000), 0.001f);
+				drift.Resolve(226.0f, 6600, 0), 0.001f);
 			Assert::AreEqual(0.0f,
-				drift.Resolve(0.0f, 7000, 3000), 0.001f);
+				drift.Resolve(0.0f, 6700, 0), 0.001f);
 			Assert::IsFalse(drift.IsActive());
 			Assert::IsTrue(drift.ConsumeFinalBaseFrame());
 			Assert::IsFalse(drift.ConsumeFinalBaseFrame());

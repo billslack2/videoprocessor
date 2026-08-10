@@ -58,6 +58,8 @@ namespace
 			left.viewport.subtitleFit == right.viewport.subtitleFit &&
 			left.viewport.subtitleHoldMilliseconds ==
 				right.viewport.subtitleHoldMilliseconds &&
+			left.viewport.subtitleEngageDriftMilliseconds ==
+				right.viewport.subtitleEngageDriftMilliseconds &&
 			left.viewport.subtitleReleaseDriftMilliseconds ==
 				right.viewport.subtitleReleaseDriftMilliseconds &&
 			left.viewport.subtitlePaddingPixels ==
@@ -743,9 +745,12 @@ namespace UnifiedProfileRuntime
 		variables["subtitle_hold_seconds"] =
 			StateVariables::Value::Number(
 				viewport.subtitleHoldMilliseconds / 1000.0);
-		variables["subtitle_release_drift_seconds"] =
+		variables["subtitle_engage_drift_ms"] =
 			StateVariables::Value::Number(
-				viewport.subtitleReleaseDriftMilliseconds / 1000.0);
+				static_cast<double>(viewport.subtitleEngageDriftMilliseconds));
+		variables["subtitle_release_drift_ms"] =
+			StateVariables::Value::Number(
+				static_cast<double>(viewport.subtitleReleaseDriftMilliseconds));
 		variables["subtitle_padding_pixels"] =
 			StateVariables::Value::Number(
 				static_cast<double>(viewport.subtitlePaddingPixels));

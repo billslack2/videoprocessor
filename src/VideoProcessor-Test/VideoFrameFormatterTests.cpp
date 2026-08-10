@@ -2127,7 +2127,7 @@ namespace Tests
 						file << "scope_screen_aspect: 2.35:1\n"
 							"scope_automatic_crop: true\n"
 							"scope_subtitle_fit: true\n"
-							"scope_subtitle_release_drift_seconds: 1.5\n";
+							"scope_subtitle_release_drift_ms: 1500\n";
 				}
 			}
 
@@ -2189,7 +2189,8 @@ namespace Tests
 			cinema.settings["automatic_crop"] = "true";
 			cinema.settings["subtitle_fit"] = "true";
 			cinema.settings["subtitle_hold_seconds"] = "2";
-			cinema.settings["subtitle_release_drift_seconds"] = "3";
+			cinema.settings["subtitle_engage_drift_ms"] = "300";
+			cinema.settings["subtitle_release_drift_ms"] = "3000";
 			cinema.settings["subtitle_padding_pixels"] = "30";
 			model.profiles.emplace("viewport.cinema", cinema);
 
@@ -2211,6 +2212,8 @@ namespace Tests
 			Assert::IsTrue(viewport.subtitleFit);
 			Assert::AreEqual<uint64_t>(
 				2000, viewport.subtitleHoldMilliseconds);
+			Assert::AreEqual<uint64_t>(
+				300, viewport.subtitleEngageDriftMilliseconds);
 			Assert::AreEqual<uint64_t>(
 				3000, viewport.subtitleReleaseDriftMilliseconds);
 			Assert::AreEqual(30, viewport.subtitlePaddingPixels);
