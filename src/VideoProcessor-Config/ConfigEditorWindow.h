@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 class QLabel;
 class QCheckBox;
@@ -94,6 +95,7 @@ private:
     void exitApplication();
     void setStatus(const QString& message, bool error = false);
     void setWarningStatus(const QString& message);
+    void refreshActiveProfileIndicators();
 
     QString configPath_;
     quintptr ownerHandle_ = 0;
@@ -131,4 +133,6 @@ private:
     QPushButton* applyButton_ = nullptr;
     QPushButton* saveButton_ = nullptr;
     QSystemTrayIcon* tray_ = nullptr;
+    struct ProfileListBinding { QListWidget* list; QString sectionPrefix; };
+    std::vector<ProfileListBinding> activeProfileLists_;
 };

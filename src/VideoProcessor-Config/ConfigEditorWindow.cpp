@@ -7,6 +7,7 @@
 #include "ConfigEditorWindow.h"
 #include <ConfigurationApplyPolicy.h>
 #include <ConfigurationLiveApply.h>
+#include <ActiveProfileStatus.h>
 
 #include <ConfigEditorCore.h>
 #include <RendererProfileConfig.h>
@@ -19,6 +20,7 @@
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QCloseEvent>
+#include <QColor>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDir>
@@ -581,6 +583,14 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     loadConfiguration();
     if (!testMode_) loadDiscoveryCache();
     setCentralWidget(createShell());
+    if (!testMode_)
+    {
+        auto* activeProfileTimer = new QTimer(this);
+        connect(activeProfileTimer, &QTimer::timeout, this,
+            &ConfigEditorWindow::refreshActiveProfileIndicators);
+        activeProfileTimer->start(500);
+        refreshActiveProfileIndicators();
+    }
     if (!testMode_) setupTray();
     const QKeySequence configToggle(value(QStringLiteral("shortcuts"),
         QStringLiteral("config_editor"), QStringLiteral("Ctrl+Shift+S")));
@@ -659,6 +669,34 @@ void ConfigEditorWindow::loadDiscoveryCache()
     monitors_ = discoverValues("VPDiscoverMonitors");
     filteredRenderers_ = discoverValues("VPDiscoverRenderers", true);
     allRenderers_ = discoverValues("VPDiscoverRenderers", false);
+}
+
+void ConfigEditorWindow::refreshActiveProfileIndicators()
+{
+    const uint32_t expectedProcessId = ownerProcessId_;
+    if (expectedProcessId == 0) return;
+    ActiveProfileStatus::Snapshot active;
+    const bool available = ActiveProfileStatus::Read(expectedProcessId, active);
+    const QString renderer = available ? QString::fromLocal8Bit(active.renderer) : QString();
+    const QString viewport = available ? QString::fromLocal8Bit(active.viewport) : QString();
+    const QString shader = available ? QString::fromLocal8Bit(active.shader) : QString();
+    for (const ProfileListBinding& binding : activeProfileLists_)
+    {
+        const QString activeSection = binding.sectionPrefix == QStringLiteral("vprenderer") ? renderer :
+            (binding.sectionPrefix == QStringLiteral("vprenderer.viewport") ? viewport : shader);
+        for (int index = 0; binding.list && index < binding.list->count(); ++index)
+        {
+            QListWidgetItem* item = binding.list->item(index);
+            const bool isActive = !activeSection.isEmpty() &&
+                item->data(Qt::UserRole).toString().compare(activeSection,
+                    Qt::CaseInsensitive) == 0;
+            item->setData(Qt::ForegroundRole, isActive ?
+                QColor(QStringLiteral("#168447")) : QVariant());
+            QFont font = item->font();
+            font.setBold(isActive);
+            item->setFont(font);
+        }
+    }
 }
 
 void ConfigEditorWindow::refreshMonitorDiscovery()
@@ -1920,6 +1958,18 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     list->setDragDropMode(QAbstractItemView::InternalMove);
     list->setDefaultDropAction(Qt::MoveAction);
     list->setDragDropOverwriteMode(false);
+    const bool showsActiveProfile = sectionPrefix == QStringLiteral("vprenderer") ||
+        sectionPrefix == QStringLiteral("vprenderer.viewport");
+    if (showsActiveProfile)
+    {
+        auto* key = new QLabel(QStringLiteral(
+            "<span style='color:#478bd5'>■ Editing</span>&nbsp;&nbsp;"
+            "<span style='color:#168447'>● Active</span>"));
+        key->setTextFormat(Qt::RichText);
+        key->setAccessibleName(QStringLiteral("Profile state key: blue is editing and green is active."));
+        listLayout->addWidget(key);
+        activeProfileLists_.push_back({ list, sectionPrefix });
+    }
     listLayout->addWidget(list, 1);
 
     auto* detail = new QWidget;
@@ -2551,6 +2601,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         }
         if (list->count() == 0) loadDetails(nullptr);
         else list->setCurrentRow(selected);
+        refreshActiveProfileIndicators();
     };
 
     connect(list, &QListWidget::currentItemChanged, this, [loadDetails](QListWidgetItem* current) { loadDetails(current); });
@@ -2971,6 +3022,13 @@ QWidget* ConfigEditorWindow::createShadersPage()
     list->setDragDropMode(QAbstractItemView::InternalMove);
     list->setDefaultDropAction(Qt::MoveAction);
     list->setDragDropOverwriteMode(false);
+    auto* key = new QLabel(QStringLiteral(
+        "<span style='color:#478bd5'>■ Editing</span>&nbsp;&nbsp;"
+        "<span style='color:#168447'>● Active</span>"));
+    key->setTextFormat(Qt::RichText);
+    key->setAccessibleName(QStringLiteral("Profile state key: blue is editing and green is active."));
+    selectionLayout->addWidget(key);
+    activeProfileLists_.push_back({ list, QStringLiteral("shader.nls") });
     auto* orderActions = new QHBoxLayout;
     auto* moveUp = new QPushButton(QStringLiteral("Move up"));
     auto* moveDown = new QPushButton(QStringLiteral("Move down"));
@@ -3408,6 +3466,7 @@ QWidget* ConfigEditorWindow::createShadersPage()
     });
     if (list->count() > 0) list->setCurrentRow(0);
     else load(nullptr);
+    refreshActiveProfileIndicators();
     updateMoveActions();
 
     splitter->addWidget(createCard(QStringLiteral("NLS modes"),

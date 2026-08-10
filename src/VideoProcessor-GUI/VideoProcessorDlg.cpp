@@ -47,6 +47,7 @@
 #include <guid.h>
 #include <ConfigFile.h>
 #include <ConfigurationLiveApply.h>
+#include <ActiveProfileStatus.h>
 #include <EventActionLauncher.h>
 #include <DisplayRefreshRateEstimator.h>
 #include <DisplayRefreshRatePolicy.h>
@@ -5170,6 +5171,7 @@ void CVideoProcessorDlg::ApplyShaderRuleCommand(UINT commandId)
 		return;
 	}
 	m_requestedShaderSelector = rule->second;
+	PublishActiveProfileStatus();
 	DEBUGLOG("Shader rule changed to '%S'", static_cast<LPCTSTR>(activeRule));
 	if (rendererRestartRequired)
 	{
@@ -8763,12 +8765,22 @@ CVideoProcessorDlg::GetUnifiedProfileSourceLookup() const
 	return StateVariables::VideoStateLookup(m_builtVideoState);
 }
 
+void CVideoProcessorDlg::PublishActiveProfileStatus()
+{
+	const auto snapshot = m_profileRuntime.GetSnapshot();
+	if (!snapshot) return;
+	ActiveProfileStatus::Publish(GetCurrentProcessId(), snapshot->generation,
+		snapshot->effectiveSelections,
+		CStringA(m_requestedShaderSelector).GetString());
+}
+
 void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 	bool allowRestart)
 {
 	if (!snapshot)
 		return;
+	PublishActiveProfileStatus();
 
 	bool lldvPolicyChanged = false;
 	if (!snapshot->lldv.profile.empty())

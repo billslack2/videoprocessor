@@ -821,6 +821,7 @@ protected:
 	void BuildPushRestartVideoState();
 	void ScheduleNewLldvRendererRestart();
 	DisplayRuleExpression::ValueLookup GetUnifiedProfileSourceLookup() const;
+	void PublishActiveProfileStatus();
 	void ApplyUnifiedProfileSnapshot(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 		bool allowRestart);
