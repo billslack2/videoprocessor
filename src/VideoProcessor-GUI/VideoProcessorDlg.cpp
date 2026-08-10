@@ -5312,6 +5312,20 @@ void CVideoProcessorDlg::OnCommandAutoSet()
 
 void CVideoProcessorDlg::OnCommandToggleNoUi()
 {
+	// TranslateAccelerator repeats WM_COMMAND while a shortcut is held. Video
+	// Only is a state toggle, so treat its keyboard shortcut as edge-triggered:
+	// one transition on key-down, then wait for the matching key-up below.
+	const bool videoOnlyKeyDown =
+		(::GetAsyncKeyState(
+			ConfigurationLiveApply::VideoOnlyToggleDefaultKey) & 0x8000) != 0;
+	if (videoOnlyKeyDown && m_noUiToggleShortcutLatched)
+	{
+		DebugLog::Log("Runtime UI shortcut suppressed: held key auto-repeat");
+		return;
+	}
+	if (videoOnlyKeyDown)
+		m_noUiToggleShortcutLatched = true;
+
 	DebugLog::Log("Runtime UI shortcut requested: noui=%d layout_applied=%d",
 		m_hideUI ? 1 : 0, m_noUiLayoutApplied ? 1 : 0);
 	if (m_hideUI)
@@ -5325,7 +5339,11 @@ void CVideoProcessorDlg::OnCommandToggleNoUi()
 		ApplyNoUiLayout();
 	}
 
-	StartGlobalShortcutObserver();
+	// Do not restart the low-level shortcut observer during the Ctrl+U command
+	// that it dispatched. Restarting clears its pressed-key set before Ctrl+U is
+	// released, causing the held key to be seen as a fresh command and rapidly
+	// re-entering this presentation toggle. The existing observer remains valid
+	// across Video Only; configuration changes still rebuild it separately.
 	DebugLog::Log("Runtime UI shortcut complete: noui=%d layout_applied=%d fullscreen=%d renderer_state=%d",
 		m_hideUI ? 1 : 0,
 		m_noUiLayoutApplied ? 1 : 0,
@@ -7768,14 +7786,17 @@ void CVideoProcessorDlg::ApplyNoUiLayout()
 	// popup/renderer target untouched.
 	CRect client;
 	GetClientRect(&client);
-	if (m_rendererFullscreenCheck.GetCheck() != BST_CHECKED)
-	{
-		const auto video = NoUiLayout::ResolveVideoBounds(
-			true, client.Width(), client.Height(), {});
-		m_windowedVideoWindow.ShowWindow(SW_SHOW);
-		m_windowedVideoWindow.MoveWindow(
-			video.x, video.y, video.width, video.height, TRUE);
-	}
+	// The fullscreen checkbox records the requested presentation mode, not the
+	// active renderer target.  During startup it can already be checked while
+	// the renderer is still windowed, which previously left this child at its
+	// old operator-preview bounds until the user manually resized the dialog.
+	// Always size the Video Only host now; an active fullscreen renderer owns a
+	// separate top-level target and is not affected by this child-window move.
+	const auto video = NoUiLayout::ResolveVideoBounds(
+		true, client.Width(), client.Height(), {});
+	m_windowedVideoWindow.ShowWindow(SW_SHOW);
+	m_windowedVideoWindow.MoveWindow(
+		video.x, video.y, video.width, video.height, TRUE);
 	RefreshPresentationLayoutAfterSessionToggle("enter");
 	CRect retainedWindowRect;
 	GetWindowRect(&retainedWindowRect);
@@ -9344,6 +9365,18 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 		m_shaderShortcutKeys.end();
 	const bool repeat = (static_cast<ULONG_PTR>(pMsg->lParam) &
 		(1ull << 30)) != 0;
+	if (keyUp)
+	{
+		for (const ACCEL& accelerator : m_configuredAccelerators)
+		{
+			if (accelerator.cmd == ID_COMMAND_TOGGLE_NO_UI &&
+				accelerator.key == virtualKey)
+			{
+				m_noUiToggleShortcutLatched = false;
+				break;
+			}
+		}
+	}
 	if (m_shaderShortcutDebounce.ProcessPhysicalKey(virtualKey, keyDown, keyUp,
 		repeat, guardedShaderShortcut))
 	{
@@ -9951,10 +9984,21 @@ void CVideoProcessorDlg::OnGetMinMaxInfo(MINMAXINFO* minMaxInfo)
 	CDialog::OnGetMinMaxInfo(minMaxInfo);
 
 	if (m_hideUI) {
-		minMaxInfo->ptMinTrackSize.x = std::max(
-			minMaxInfo->ptMinTrackSize.x, m_minDialogSize.cx);
-		minMaxInfo->ptMinTrackSize.y = std::max(
-			minMaxInfo->ptMinTrackSize.y, m_minDialogSize.cy);
+		// Video Only has no control chrome to preserve.  Keep it independently
+		// resizable down to the practical 16:9 video minimum, while restoring the
+		// larger normal-UI minimum as soon as the controls return.
+		CRect minimumWindow(0, 0,
+			NoUiLayout::MinimumClientWidth, NoUiLayout::MinimumClientHeight);
+		AdjustWindowRectEx(&minimumWindow,
+			static_cast<DWORD>(GetWindowLongPtr(GetSafeHwnd(), GWL_STYLE)),
+			FALSE,
+			static_cast<DWORD>(GetWindowLongPtr(GetSafeHwnd(), GWL_EXSTYLE)));
+		minMaxInfo->ptMinTrackSize.x = std::max<LONG>(
+			minMaxInfo->ptMinTrackSize.x,
+			static_cast<LONG>(minimumWindow.Width()));
+		minMaxInfo->ptMinTrackSize.y = std::max<LONG>(
+			minMaxInfo->ptMinTrackSize.y,
+			static_cast<LONG>(minimumWindow.Height()));
 	}
 	else {
 		// Guarantee minimum size of window

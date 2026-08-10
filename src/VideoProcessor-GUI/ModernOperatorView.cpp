@@ -392,36 +392,36 @@ void ModernOperatorView::OnDrawItem(int, LPDRAWITEMSTRUCT item)
 
 void ModernOperatorView::OnCaptureRestart()
 {
-	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
+	GetParent()->PostMessage(WM_MODERN_OPERATOR_ACTION,
 		static_cast<WPARAM>(ModernOperatorAction::CaptureRestart));
 }
 
 void ModernOperatorView::OnRendererRestart()
 {
-	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
+	GetParent()->PostMessage(WM_MODERN_OPERATOR_ACTION,
 		static_cast<WPARAM>(ModernOperatorAction::RendererRestart));
 }
 
 void ModernOperatorView::OnQueueReset()
 {
-	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
+	GetParent()->PostMessage(WM_MODERN_OPERATOR_ACTION,
 		static_cast<WPARAM>(ModernOperatorAction::QueueReset));
 }
 
 void ModernOperatorView::OnConfiguration()
 {
-	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
+	GetParent()->PostMessage(WM_MODERN_OPERATOR_ACTION,
 		static_cast<WPARAM>(ModernOperatorAction::OpenConfiguration));
 }
 
 void ModernOperatorView::OnToggleVideoOnly()
 {
-	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
+	GetParent()->PostMessage(WM_MODERN_OPERATOR_ACTION,
 		static_cast<WPARAM>(ModernOperatorAction::ToggleVideoOnly));
 }
 
 void ModernOperatorView::OnToggleView()
 {
-	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
+	GetParent()->PostMessage(WM_MODERN_OPERATOR_ACTION,
 		static_cast<WPARAM>(ModernOperatorAction::ToggleView));
 }

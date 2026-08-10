@@ -496,6 +496,7 @@ protected:
 	CString m_fullscreenMonitorName;
 	ULONGLONG m_lastFullscreenMonitorSelectionLogTick = 0;
 	bool m_hideUI = false;
+	bool m_noUiToggleShortcutLatched = false;
 	bool m_startMinimized = false;
 
 	// Queue health monitoring variables
