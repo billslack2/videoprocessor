@@ -43,10 +43,9 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
-#include <QPainter>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPlainTextEdit>
-#include <QPen>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRect>
@@ -194,25 +193,20 @@ public:
         const QModelIndex& index) const override
     {
         QStyleOptionViewItem base(option);
-        const bool editing = (base.state & QStyle::State_Selected) != 0;
         const bool active = index.data(ActiveProfileRole).toBool();
-        base.state &= ~QStyle::State_Selected;
+        // Keep the standard selection treatment; the active status is separate.
+        base.rect.adjust(14, 0, 0, 0);
         QStyledItemDelegate::paint(painter, base, index);
-
-        painter->save();
-        const QRect outer = option.rect.adjusted(1, 1, -2, -2);
-        if (editing)
-        {
-            painter->setPen(QPen(QColor(QStringLiteral("#478bd5")), 2));
-            painter->drawRect(outer);
-        }
         if (active)
         {
-            const QRect activeBorder = editing ? outer.adjusted(3, 3, -3, -3) : outer;
-            painter->setPen(QPen(QColor(QStringLiteral("#168447")), 2));
-            painter->drawRect(activeBorder);
+            painter->save();
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(QColor(QStringLiteral("#26b46b")));
+            constexpr int diameter = 8;
+            painter->drawEllipse(option.rect.left() + 4,
+                option.rect.center().y() - diameter / 2, diameter, diameter);
+            painter->restore();
         }
-        painter->restore();
     }
 };
 
@@ -1995,21 +1989,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     if (showsActiveProfile)
     {
         list->setItemDelegate(new ProfileStateItemDelegate(list));
-        // Keep the key visible even when the adjacent details card is taller.
-        list->setMaximumHeight(230);
-        auto* key = new QLabel(QStringLiteral(
-            "<span style='color:#478bd5'>&#9633; Editing</span>&nbsp;&nbsp;"
-            "<span style='color:#168447'>&#9633; Active</span>"));
-        key->setTextFormat(Qt::RichText);
-        key->setAccessibleName(QStringLiteral("Profile state key: blue is editing and green is active."));
         activeProfileLists_.push_back({ list, sectionPrefix });
-        listLayout->addWidget(list, 1);
-        listLayout->addWidget(key);
     }
-    else
-    {
-        listLayout->addWidget(list, 1);
-    }
+    listLayout->addWidget(list, 1);
 
     auto* detail = new QWidget;
     auto* detailLayout = new QVBoxLayout(detail);
@@ -3062,12 +3044,6 @@ QWidget* ConfigEditorWindow::createShadersPage()
     list->setDefaultDropAction(Qt::MoveAction);
     list->setDragDropOverwriteMode(false);
     list->setItemDelegate(new ProfileStateItemDelegate(list));
-    list->setMaximumHeight(230);
-    auto* key = new QLabel(QStringLiteral(
-        "<span style='color:#478bd5'>&#9633; Editing</span>&nbsp;&nbsp;"
-        "<span style='color:#168447'>&#9633; Active</span>"));
-    key->setTextFormat(Qt::RichText);
-    key->setAccessibleName(QStringLiteral("Profile state key: blue is editing and green is active."));
     activeProfileLists_.push_back({ list, QStringLiteral("shader.nls") });
     auto* orderActions = new QHBoxLayout;
     auto* moveUp = new QPushButton(QStringLiteral("Move up"));
@@ -3083,7 +3059,6 @@ QWidget* ConfigEditorWindow::createShadersPage()
     orderActions->addStretch();
     selectionLayout->addLayout(orderActions);
     selectionLayout->addWidget(list, 1);
-    selectionLayout->addWidget(key);
 
     QStringList manualSections;
     QStringList nlsSections;
