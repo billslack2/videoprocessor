@@ -412,6 +412,46 @@ namespace Tests
 			service.Join();
 		}
 
+		TEST_METHOD(RendererRetirementCompletionSurvivesLostWindowWake)
+		{
+			RendererRetirementService service;
+			auto renderer =
+				std::make_shared<BlockingRetirementRenderer>();
+			std::future<void> entered =
+				renderer->retireEntered.get_future();
+
+			// An invalid completion window guarantees that the best-effort wake
+			// cannot be delivered. The completion itself must remain available
+			// for the UI timer/state reconciliation paths.
+			const HWND invalidWindow = reinterpret_cast<HWND>(
+				static_cast<ULONG_PTR>(0x1234));
+			Assert::IsTrue(service.Retire(
+				renderer, 73, invalidWindow, WM_APP + 91));
+			Assert::IsTrue(entered.wait_for(
+				std::chrono::seconds(2)) == std::future_status::ready);
+			renderer->releaseRetire.set_value();
+
+			RendererRetirementService::Completion completion;
+			for (int attempt = 0; attempt < 200; ++attempt)
+			{
+				if (service.TryTakeCompletion(73, completion))
+					break;
+				std::this_thread::sleep_for(
+					std::chrono::milliseconds(5));
+			}
+			Assert::AreEqual(
+				static_cast<unsigned long long>(73),
+				static_cast<unsigned long long>(completion.token));
+			Assert::IsTrue(completion.succeeded);
+			Assert::IsFalse(completion.wakePosted);
+			Assert::AreNotEqual(
+				static_cast<unsigned long>(ERROR_SUCCESS),
+				static_cast<unsigned long>(completion.wakePostError));
+
+			service.RequestClose();
+			service.Join();
+		}
+
 		TEST_METHOD(BackendRequestIsReadyWithoutAnotherFrame)
 		{
 			FakeResetClock clock;

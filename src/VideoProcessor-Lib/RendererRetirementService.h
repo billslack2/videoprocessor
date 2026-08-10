@@ -16,6 +16,14 @@
 class RendererRetirementService
 {
 public:
+	struct Completion
+	{
+		uint64_t token = 0;
+		bool succeeded = false;
+		bool wakePosted = false;
+		DWORD wakePostError = ERROR_SUCCESS;
+	};
+
 	RendererRetirementService()
 	{
 		m_worker = std::thread([this]()
@@ -55,11 +63,17 @@ public:
 					{
 						std::lock_guard<std::mutex> lock(m_mutex);
 						m_active = false;
+						m_completions.push_back(
+							{ item.token, succeeded, false, ERROR_SUCCESS });
+						Completion& completion = m_completions.back();
+						completion.wakePosted = PostMessage(
+							item.completionWindow,
+							item.completionMessage,
+							static_cast<WPARAM>(item.token),
+							succeeded ? 0 : 1) != FALSE;
+						if (!completion.wakePosted)
+							completion.wakePostError = GetLastError();
 					}
-					PostMessage(item.completionWindow,
-						item.completionMessage,
-						static_cast<WPARAM>(item.token),
-						succeeded ? 0 : 1);
 				}
 				if (SUCCEEDED(initializeResult))
 					CoUninitialize();
@@ -117,6 +131,21 @@ public:
 		return !m_active && m_items.empty();
 	}
 
+	bool TryTakeCompletion(uint64_t token, Completion& completion)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		for (auto iterator = m_completions.begin();
+			iterator != m_completions.end(); ++iterator)
+		{
+			if (iterator->token != token)
+				continue;
+			completion = *iterator;
+			m_completions.erase(iterator);
+			return true;
+		}
+		return false;
+	}
+
 private:
 	struct Item
 	{
@@ -129,6 +158,7 @@ private:
 	mutable std::mutex m_mutex;
 	std::condition_variable m_workAvailable;
 	std::deque<Item> m_items;
+	std::deque<Completion> m_completions;
 	std::thread m_worker;
 	bool m_active = false;
 	bool m_closing = false;
