@@ -38,6 +38,21 @@ closed that editor, replaced `VideoProcessorConfig.exe` from the same x64
 Release build, verified its SHA-256 hash against the build artifact, and
 reopened it for validation.
 
+Regression correction (2026-08-10): live testing showed that a zero-duration
+engage lost the remembered nonzero target, so a later subtitle-evidence gap
+skipped the configured release interpolation and briefly fell back to full
+raster. Restored the known-good deployment first, preserving the failed-test
+configuration in `backup-vp0110-regression-20260810-143616`. To avoid mixing
+unrelated uncommitted crop work in the original worktree, created the clean
+`codex/vp-0110-subtitle-fix` worktree at
+`C:\Users\bslac\vp\vp-0110-subtitle-fix`. Commit `2e17c32` retains a snapped
+target so a zero target begins the configured release duration; its focused
+test covers that sequence. x64 Release test, host, and renderer builds passed.
+Deployed and hash-verified the corrected EXE/renderer pair, with the active
+configuration restored to `subtitle_engage_drift_ms: 0` and
+`subtitle_release_drift_ms: 1000`; the pre-fix deployment is preserved in
+`C:\Videoprocessor\vp\backup-vp0110-fixed-20260810-143832`.
+
 Live-validation corrective checkpoint (2026-08-10): with the active Scope
 profile still configured for a 250 ms engage drift, the user observed the
 picture make several small movements while the dense bar detector refined a
