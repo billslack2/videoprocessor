@@ -1,6 +1,8 @@
 #include "pch.h"
 
 #include <ConfigEditorCore.h>
+#include <ConfigurationApplyPolicy.h>
+#include <RendererResetPolicy.h>
 #include "CppUnitTest.h"
 
 #include <algorithm>
@@ -42,6 +44,304 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigEditorCoreTests)
 	{
 	public:
+		TEST_METHOD(ConfigurationApplyPolicyClassifiesEveryDocumentedRestartCategory)
+		{
+			using ConfigurationApplyPolicy::Action;
+			const char* restartSections[] = {
+				// Startup, hardware, input processing, and general behavior.
+				"command_line", "general", "renderer_alias", "decklink",
+				"p010_conversion", "ppm_correction",
+				"display_refresh_rate_override",
+				// LLDV metadata and policy.
+				"lldv", "lldv.cinema",
+				// Shader definitions, rules, and legacy shader sections.
+				"shader", "shader.nls.standard", "shaders", "shaders.legacy",
+				// Renderer and viewport profiles, including legacy profile roots.
+				"vprenderer", "vprenderer.rec709",
+				"vprenderer.viewport.scope", "profiles", "profiles.viewport.scope",
+				"viewport", "viewport.scope",
+				// Completed-event actions are part of the staged renderer model.
+				"actions.audio_delay_film", "event_actions.legacy"
+			};
+			for (const char* section : restartSections)
+			{
+				const Action actual = ConfigurationApplyPolicy::ClassifySection(section);
+				if (actual != Action::RestartRenderer) Logger::WriteMessage(section);
+				Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+					static_cast<int>(actual));
+			}
+		}
+
+		TEST_METHOD(ConfigurationApplyPolicyClassifiesNoOpAndSaveOnlyContent)
+		{
+			using ConfigurationApplyPolicy::Action;
+			Assert::AreEqual(static_cast<int>(Action::SaveOnly),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySections({})));
+			Assert::AreEqual(static_cast<int>(Action::SaveOnly),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges({})));
+			const char* saveOnlySections[] = {
+				"logging", "unrecognized", "unrecognized.extension"
+			};
+			for (const char* section : saveOnlySections)
+			{
+				const Action actual = ConfigurationApplyPolicy::ClassifySection(section);
+				if (actual != Action::SaveOnly) Logger::WriteMessage(section);
+				Assert::AreEqual(static_cast<int>(Action::SaveOnly),
+					static_cast<int>(actual));
+			}
+			// Section names are case-insensitive in the configuration parser.
+			Assert::AreEqual(static_cast<int>(Action::SaveOnly),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("LOGGING")));
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("GENERAL")));
+		}
+
+		TEST_METHOD(ConfigurationApplyPolicyClassifiesShortcutOnlyChangesForLiveReload)
+		{
+			using ConfigurationApplyPolicy::Action;
+			using ConfigurationApplyPolicy::Change;
+
+			Assert::AreEqual(static_cast<int>(Action::ReloadShortcuts),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("shortcuts")));
+			Assert::AreEqual(static_cast<int>(Action::ReloadShortcuts),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("SHORTCUTS")));
+			Assert::AreEqual(std::string("Apply shortcuts live"), std::string(
+				ConfigurationApplyPolicy::ActionLabel(Action::ReloadShortcuts)));
+
+			const Change profileShortcuts[] = {
+				{ "queue.low_latency", "shortcut" },
+				{ "lldv.cinema", "SHORTCUT" },
+				{ "vprenderer.rec709", "shortcut" },
+				{ "vprenderer.viewport.scope", "shortcut" },
+				{ "shader.nls.standard", "shortcut" },
+				{ "shaders.legacy", "shortcut" },
+				{ "profiles.queue.low_latency", "shortcut" },
+				{ "profiles.lldv.cinema", "shortcut" },
+				{ "profiles.renderer.madvr", "shortcut" },
+				{ "profiles.viewport.scope", "shortcut" },
+				{ "profiles.shader.nls", "shortcut" }
+			};
+			for (const Change& change : profileShortcuts)
+			{
+				Assert::IsTrue(ConfigurationApplyPolicy::IsShortcutAffectingChange(change));
+				Assert::AreEqual(static_cast<int>(Action::ReloadShortcuts),
+					static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(change)));
+			}
+
+			// A non-shortcut value in the same profile retains the profile's normal
+			// effect, and unknown content never becomes live merely by using this key.
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
+					{ "vprenderer.rec709", "quality" })));
+			Assert::AreEqual(static_cast<int>(Action::SaveOnly),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
+					{ "manual.extension", "shortcut" })));
+
+			Assert::AreEqual(static_cast<int>(Action::ReloadShortcuts),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					{ { "logging", "level" }, { "SHORTCUTS", "renderer_restart" } })));
+			Assert::AreEqual(static_cast<int>(Action::ResetQueues),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					{ { "queue", "queue_size" }, { "shortcuts", "renderer_restart" } })));
+		}
+
+		TEST_METHOD(ConfigurationApplyPolicyKeepsStartupPresentationDefaultsForNextStart)
+		{
+			using ConfigurationApplyPolicy::Action;
+			using ConfigurationApplyPolicy::Change;
+			const Change startupDefaults[] = {
+				{ "general", "noui" },
+				{ "GENERAL", "NO_UI" },
+				{ "general", "fullscreen" },
+				{ "General", "WindowedFullscreenMode" },
+				{ "GENERAL", "WINDOWED_FULLSCREEN_MODE" }
+			};
+			for (const Change& change : startupDefaults)
+			{
+				Assert::IsTrue(
+					ConfigurationApplyPolicy::IsStartupPresentationDefaultChange(change));
+				Assert::AreEqual(static_cast<int>(Action::SaveOnly),
+					static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(change)));
+			}
+
+			// Section-only callers remain conservative, and live-applicable General
+			// values still require a coherent renderer restart.
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("general")));
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
+					{ "general", "renderer" })));
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
+					{ "general", "fullscreen_monitor_name" })));
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
+					{ "general", "fullscreen_monitor_session_mode" })));
+
+			// Startup-only settings participate normally in strongest-action
+			// precedence without causing an action by themselves.
+			Assert::AreEqual(static_cast<int>(Action::SaveOnly),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					{ { "logging", "level" }, { "general", "no_ui" } })));
+			Assert::AreEqual(static_cast<int>(Action::ReloadShortcuts),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					{ { "general", "fullscreen" },
+						{ "shortcuts", "fullscreen_toggle" } })));
+			Assert::AreEqual(static_cast<int>(Action::ResetQueues),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					{ { "general", "windowed_fullscreen_mode" },
+						{ "queue", "queue_size" } })));
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					{ { "general", "noui" }, { "general", "renderer" } })));
+
+			Assert::AreEqual(static_cast<int>(Action::SaveOnly),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					{ { "general", "fullscreen" },
+						{ "directshow", "frame_offset" } }, false)));
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					{ { "general", "fullscreen" },
+						{ "directshow", "frame_offset" } }, true)));
+		}
+
+		TEST_METHOD(ConfigurationApplyPolicyClassifiesQueueOnlyChangesAsReset)
+		{
+			using ConfigurationApplyPolicy::Action;
+			const char* queueSections[] = {
+				"queue", "queue.low_latency", "queue_recovery",
+				"profiles.queue", "profiles.queue.low_latency"
+			};
+			for (const char* section : queueSections)
+			{
+				const Action actual = ConfigurationApplyPolicy::ClassifySection(section);
+				if (actual != Action::ResetQueues) Logger::WriteMessage(section);
+				Assert::AreEqual(static_cast<int>(Action::ResetQueues),
+					static_cast<int>(actual));
+			}
+			Assert::AreEqual(static_cast<int>(Action::ResetQueues),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySections(
+					{ "logging", "queue.low_latency", "shortcuts" })));
+			Assert::AreEqual(static_cast<int>(Action::ResetQueues),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySection(
+					"PROFILES.QUEUE.CINEMA")));
+		}
+
+		TEST_METHOD(ConfigurationApplyPolicyQueueActionUsesBackendOwnedResetScope)
+		{
+			using ConfigurationApplyPolicy::Action;
+			using ConfigurationApplyPolicy::Change;
+			const std::vector<Change> queuePolicy = {
+				{ "queue.low_latency", "queue_size" },
+				{ "queue.low_latency", "target_frames" }
+			};
+			Assert::AreEqual(static_cast<int>(Action::ResetQueues),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					queuePolicy, false)));
+			Assert::AreEqual(static_cast<int>(Action::ResetQueues),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					queuePolicy, true)));
+
+			// The action never reconstructs the renderer. Alpha flushes its owned
+			// live queue, while DirectShow/madVR serializes the reset across its
+			// downstream graph queues.
+			Assert::IsFalse(QueuePolicyApplyRequiresGraphReset(false));
+			Assert::IsTrue(QueuePolicyApplyRequiresGraphReset(true));
+		}
+
+		TEST_METHOD(ConfigurationApplyPolicyUsesTheActiveRendererForDirectShowChanges)
+		{
+			using ConfigurationApplyPolicy::Action;
+			const char* directShowSections[] = {
+				"directshow", "directshow.conversion", "directshow.ppm"
+			};
+			for (const char* section : directShowSections)
+			{
+				// Alpha owns presentation, so no DirectShow graph exists to rebuild.
+				Assert::AreEqual(static_cast<int>(Action::SaveOnly),
+					static_cast<int>(ConfigurationApplyPolicy::ClassifySection(
+						section, false)));
+				// DirectShow/madVR graph-construction changes require one rebuild.
+				Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+					static_cast<int>(ConfigurationApplyPolicy::ClassifySection(
+						section, true)));
+			}
+
+			// An irrelevant DirectShow edit must not hide the strongest eligible
+			// action for the renderer that is actually active.
+			Assert::AreEqual(static_cast<int>(Action::ResetQueues),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySections(
+					{ "directshow", "queue" }, false)));
+			Assert::AreEqual(static_cast<int>(Action::ResetQueues),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySections(
+					{ "directshow.conversion", "profiles.queue.low_latency" }, false)));
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySections(
+					{ "directshow", "queue" }, true)));
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySections(
+					{ "directshow.conversion", "profiles.queue.low_latency" }, true)));
+
+			// Shortcut replacement remains the eligible action under Alpha, while
+			// a live DirectShow/madVR graph still requires the stronger restart.
+			Assert::AreEqual(static_cast<int>(Action::ReloadShortcuts),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					{ { "directshow", "frame_offset" },
+						{ "shortcuts", "renderer_restart" } }, false)));
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					{ { "directshow", "frame_offset" },
+						{ "shortcuts", "renderer_restart" } }, true)));
+		}
+
+		TEST_METHOD(ConfigurationApplyPolicyChoosesTheStrongestMixedActionOnce)
+		{
+			using ConfigurationApplyPolicy::Action;
+			using ConfigurationApplyPolicy::Change;
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySections(
+					{ "logging", "queue", "vprenderer.primary", "shortcuts" })));
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySections(
+					{ "queue", "general", "lldv", "shader.nls" }, false)));
+
+			const Change representatives[] = {
+				{ "general", "no_ui" },                  // SaveOnly
+				{ "shortcuts", "renderer_restart" },     // ReloadShortcuts
+				{ "queue.low_latency", "queue_size" },   // ResetQueues
+				{ "vprenderer.rec709", "quality" }       // RestartRenderer
+			};
+			const Action expected[] = {
+				Action::SaveOnly, Action::ReloadShortcuts,
+				Action::ResetQueues, Action::RestartRenderer
+			};
+			for (size_t left = 0; left < ARRAYSIZE(representatives); ++left)
+			{
+				for (size_t right = 0; right < ARRAYSIZE(representatives); ++right)
+				{
+					const Action strongest = expected[std::max(left, right)];
+					Assert::AreEqual(static_cast<int>(strongest),
+						static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+							{ representatives[left], representatives[right] })));
+					Assert::AreEqual(static_cast<int>(strongest),
+						static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+							{ representatives[right], representatives[left] })));
+				}
+			}
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
+					{ representatives[0], representatives[1], representatives[2],
+						representatives[3], representatives[3] })));
+			Assert::AreEqual(std::string("Takes effect next start"),
+				std::string(ConfigurationApplyPolicy::ActionLabel(Action::SaveOnly)));
+			Assert::AreEqual(std::string("Apply shortcuts live"),
+				std::string(ConfigurationApplyPolicy::ActionLabel(Action::ReloadShortcuts)));
+			Assert::AreEqual(std::string("Reset queues"),
+				std::string(ConfigurationApplyPolicy::ActionLabel(Action::ResetQueues)));
+			Assert::AreEqual(std::string("Restart renderer"),
+				std::string(ConfigurationApplyPolicy::ActionLabel(Action::RestartRenderer)));
+		}
+
 		TEST_METHOD(ConfigEditorCoreLoadsAndValidatesCurrentDeployedFixture)
 		{
 			std::string sourcePath = __FILE__;

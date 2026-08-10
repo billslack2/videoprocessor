@@ -41,6 +41,7 @@
 #include <microsoft_directshow/video_renderers/DirectShowVideoRenderer.h>
 #include <StatsOverlayWindow.h>
 #include <ApplicationInterface.h>
+#include <ConfigurationApplyPolicy.h>
 #include "ModernOperatorView.h"
 
 #include "resource.h"
@@ -78,11 +79,9 @@
 #define SHADER_SHORTCUT_DEBOUNCE_MS 75
 #define LLDV_PROFILE_APPLY_TIMER_ID 12
 #define CONFIGURATION_LIVE_APPLY_TIMER_ID 13
-#define CONFIGURATION_EDITOR_MODAL_TIMER_ID 14
 #define CONFIGURATION_EDITOR_HOTKEY_ID 0x5650
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 #define CONFIGURATION_LIVE_APPLY_INTERVAL_MS 250
-#define CONFIGURATION_EDITOR_MODAL_INTERVAL_MS 100
 #define BACKGROUND_SHORTCUT_DUPLICATE_WINDOW_MS 250
 
 
@@ -402,13 +401,71 @@ protected:
 	std::vector<ACCEL> m_configuredAccelerators;
 	bool m_configurationEditorModal = false;
 	bool m_configurationEditorActivationPending = false;
-	bool m_configurationEditorFullscreenWasTopmost = false;
+	bool m_configurationEditorFallbackLaunched = false;
+	bool m_configurationEditorRevealAcknowledged = false;
+	bool m_configurationEditorForegroundFallbackAttempted = false;
 	unsigned int m_configurationEditorActivationAttempts = 0;
+	ULONGLONG m_configurationEditorRevealStartedTick = 0;
+	ULONGLONG m_configurationEditorLastRevealAttemptTick = 0;
+	ULONGLONG m_configurationEditorActivationAcknowledgedTick = 0;
+	HWND m_configurationEditorHwnd = nullptr;
+	DWORD m_configurationEditorProcessId = 0;
 	WORD m_lastBackgroundShortcutCommand = 0;
 	ULONGLONG m_lastBackgroundShortcutTick = 0;
 	HANDLE m_configurationChangedEvent = nullptr;
 	std::map<std::string, std::map<std::string, std::string>>
 		m_configurationSnapshot;
+	struct StagedRuntimeSettings
+	{
+		bool hasRenderer = false;
+		CString renderer;
+		bool hasFrameOffset = false;
+		bool frameOffsetAuto = false;
+		int frameOffsetMs = 0;
+		bool hasVideoConversion = false;
+		VideoConversionOverride videoConversion =
+			VideoConversionOverride::VIDEOCONVERSION_NONE;
+		bool hasContainerColorSpace = false;
+		ColorSpace containerColorSpace = ColorSpace::UNKNOWN;
+		bool hasHdrColorSpace = false;
+		HdrColorspaceOptions hdrColorSpace =
+			HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT;
+		bool hasHdrLuminance = false;
+		HdrLuminanceOptions hdrLuminance =
+			HdrLuminanceOptions::HDR_LUMINANCE_FOLLOW_INPUT;
+		bool hasDirectShowTimeMethod = false;
+		DirectShowStartStopTimeMethod directShowTimeMethod =
+			DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART;
+		bool hasNominalRange = false;
+		DXVA_NominalRange nominalRange =
+			DXVA_NominalRange::DXVA_NominalRange_Unknown;
+		bool hasTransferFunction = false;
+		DXVA_VideoTransferFunction transferFunction =
+			DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown;
+		bool hasTransferMatrix = false;
+		DXVA_VideoTransferMatrix transferMatrix =
+			DXVA_VideoTransferMatrix::DXVA_VideoTransferMatrix_Unknown;
+		bool hasPrimaries = false;
+		DXVA_VideoPrimaries primaries =
+			DXVA_VideoPrimaries::DXVA_VideoPrimaries_Unknown;
+		bool hasSceneDetect = false;
+		bool sceneDetect = false;
+	};
+	StagedRuntimeSettings m_stagedRuntimeSettings;
+	std::unique_ptr<ConfigFile> m_stagedConfiguration;
+	ConfigurationApplyPolicy::Action m_stagedConfigurationAction =
+		ConfigurationApplyPolicy::Action::SaveOnly;
+	std::string m_stagedConfigurationIdentity;
+	bool m_stagedShortcutsChanged = false;
+	bool m_stagedEditorApply = false;
+	bool m_stagedRendererChanged = false;
+	HACCEL m_stagedAccelerator = nullptr;
+	std::vector<ACCEL> m_stagedConfiguredAccelerators;
+	std::map<WORD, CString> m_stagedShaderShortcutRules;
+	std::set<WORD> m_stagedShaderShortcutKeys;
+	std::map<WORD, CString> m_stagedDisplayRuleShortcutRules;
+	std::map<WORD, unsigned int> m_stagedRendererShortcutIndices;
+	std::map<WORD, CString> m_stagedUnifiedProfileShortcutKeys;
 	std::map<WORD, CString> m_shaderShortcutRules;
 	std::set<WORD> m_shaderShortcutKeys;
 	ShortcutDebounceState m_shaderShortcutDebounce;
@@ -559,6 +616,8 @@ protected:
 	ULONGLONG m_fullscreenRetargetStartTick = 0;
 	bool m_fullscreenModeChangePending = false;
 	CString m_activeRendererName;
+	CString m_acceptedRendererName;
+	CString m_sessionRendererOverride;
 	bool m_activeRendererIsDirectShow = false;
 	std::atomic<uint32_t> m_rendererGeneration{0};
 	uint32_t m_transitionGeneration = 0;
@@ -594,6 +653,8 @@ protected:
 	uint64_t m_currentGraphPrimeQueueTransitionGeneration = 0;
 	uint64_t m_rendererTargetRevision = 0;
 	uint64_t m_transitionBlackStartTick = 0;
+	uint32_t m_rendererFirstFrameRevealPendingGeneration = 0;
+	HWND m_rendererFirstFrameRevealTargetHwnd = nullptr;
 	std::atomic_bool m_transitionRevealPosted{false};
 	RendererTransitionModel m_rendererTransitionModel;
 	bool m_rendererResetTransitionActive = false;
@@ -660,10 +721,12 @@ protected:
 	void UpdateSceneCorrectionModeUi();
 	void UpdateRendererBackendUi();
 	void CaptureFixedDialogLayout();
-	void InitializeModernInterface();
+	void InitializeModernInterface(bool preserveWindowBounds = false);
 	void ApplyModernLayout();
 	void RefreshModernStatus();
 	void RestoreNormalUiLayout();
+	void RefreshPresentationLayoutAfterSessionToggle(const char* phase);
+	void CloseOwnedTopLevelWindowsForShutdown();
 	void RestoreFixedDialogLayout();
 	void RestoreFrameOffsetEditLayout();
 	void RefreshInputConnectionCombo();
@@ -709,15 +772,31 @@ protected:
 	void ApplyStatsOverlayForActiveRenderer();
 	void LoadDisplayRefreshRateOverrides();
 	void ApplySavedConfiguration();
+	bool StageSavedConfiguration(const char* reason, bool stageAccelerators);
+	bool PublishStagedConfiguration(bool replaceAccelerators);
+	bool PublishStagedShortcutsOnly();
+	bool ReplaceStagedAccelerators();
+	bool StageRuntimeSettings(const ConfigFile& config, std::string& error);
+	void PublishStagedRuntimeSettings();
+	void RestoreAcceptedRendererSelectionAfterReloadFailure();
+	bool EstablishSessionRendererOverrideFromSelection(const char* reason);
+	void ClearStagedConfiguration();
 	void ReloadConfiguredAccelerators();
 	void StartGlobalShortcutObserver();
 	void StopGlobalShortcutObserver();
 	void ToggleConfigurationEditor();
 	void StartConfigurationEditorInTray();
+	// Legacy activation-intent cleanup retained for source compatibility only;
+	// no recurring timer schedules it under the native-owner architecture.
 	void UpdateConfigurationEditorModal();
-	void DemoteFullscreenForConfigurationEditor();
-	void RestoreFullscreenAfterConfigurationEditor();
-	HWND ConfigurationEditorOwner() const;
+	void TrackConfigurationEditor(HWND editor);
+	HWND VisibleAssociatedConfigurationEditor() const;
+	bool RequestConfigurationEditorReveal(HWND editor);
+	bool PublishConfigurationEditorPresentationTarget(HWND editor,
+		bool synchronous = false);
+	bool RequestConfigurationEditorOneShotReassert(HWND editor,
+		HWND presentationTarget);
+	HWND ConfigurationEditorOwner();
 	bool TryGetDisplayRefreshRateOverride(double nominalRateHz,
 		double& overrideRateHz, int& matchedNominalRate) const;
 	void MonitorQueueHealth(size_t rawQueueSize, size_t convertedQueueSize,
@@ -772,8 +851,11 @@ protected:
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnSetFocus(CWnd* pOldWnd);
 	afx_msg void OnClose();
+	afx_msg void OnSysCommand(UINT command, LPARAM lParam);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg LRESULT OnConfigurationEditorHotkey(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnConfigurationEditorAssociation(WPARAM wParam,
+		LPARAM lParam);
 	afx_msg void OnCommandToggleNoUi();
 	afx_msg HCURSOR	OnQueryDragIcon();
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);

@@ -67,6 +67,12 @@ namespace Tests
 				priority, 33000, priority, 5000));
 		}
 
+		TEST_METHOD(QueuePolicyApplyUsesBackendOwnedSafeResetScope)
+		{
+			Assert::IsTrue(QueuePolicyApplyRequiresGraphReset(true));
+			Assert::IsFalse(QueuePolicyApplyRequiresGraphReset(false));
+		}
+
 		TEST_METHOD(DisplayTransitionOwnsConcurrentSourceGapRecovery)
 		{
 			Assert::IsTrue(

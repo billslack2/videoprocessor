@@ -9,6 +9,7 @@
 #include "VpTheme.h"
 
 #include <QApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
@@ -47,18 +48,27 @@ quintptr parseOwner(const QString& value)
     return ok ? parsed : 0;
 }
 
-constexpr wchar_t ActivationEventName[] =
-    L"Local\\VideoProcessorConfigEditor.Activate.v1";
-constexpr wchar_t DiscoveryRefreshEventName[] =
-    L"Local\\VideoProcessorConfigEditor.RefreshDiscovery.v1";
+constexpr wchar_t ActivationMessageName[] =
+    L"VideoProcessor.ConfigEditor.Activate.v1";
+
+std::wstring installationScopedEventName(const wchar_t* baseName)
+{
+    const QString installation = QDir::toNativeSeparators(
+        QCoreApplication::applicationDirPath()).toCaseFolded();
+    const QByteArray identity = QCryptographicHash::hash(
+        installation.toUtf8(), QCryptographicHash::Sha1).toHex();
+    return std::wstring(baseName) + L"." +
+        QString::fromLatin1(identity).toStdWString();
+}
 
 void activateWindowFromCurrentForeground(HWND window)
 {
     if (!window || !IsWindow(window)) return;
     ShowWindowAsync(window, SW_RESTORE);
-    // VP's exclusive fullscreen host is topmost. Configuration is modal for
-    // that host, so activation must promote it above the video surface.
-    SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0,
+    // Config is a VP-owned transient, not a global always-on-top window. VP
+    // temporarily demotes its exclusive fullscreen surface while Config is
+    // visible, and native ownership keeps the two applications ordered.
+    SetWindowPos(window, HWND_TOP, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
     SetForegroundWindow(window);
 }
@@ -73,15 +83,25 @@ bool ownerBelongsToProcess(quintptr owner, DWORD expectedProcessId)
     return actualProcessId == expectedProcessId;
 }
 
-void allowExistingWindowToTakeFocus()
+bool activateExistingWindow(quintptr owner, DWORD ownerProcessId)
 {
     if (HWND existing = FindWindowW(nullptr, L"VideoProcessor Configuration"))
     {
         DWORD processId = 0;
         GetWindowThreadProcessId(existing, &processId);
         if (processId != 0) AllowSetForegroundWindow(processId);
+        DWORD_PTR acknowledged = 0;
+        const UINT activationMessage = RegisterWindowMessageW(
+            ActivationMessageName);
+        if (activationMessage && SendMessageTimeoutW(existing,
+            activationMessage, static_cast<WPARAM>(ownerProcessId),
+            static_cast<LPARAM>(owner), SMTO_ABORTIFHUNG | SMTO_BLOCK,
+            1500, &acknowledged) && acknowledged == 1)
+            return true;
         activateWindowFromCurrentForeground(existing);
+        return false;
     }
+    return false;
 }
 
 bool highContrastEnabled()
@@ -92,23 +112,6 @@ bool highContrastEnabled()
         &settings, 0) != FALSE && (settings.dwFlags & HCF_HIGHCONTRASTON) != 0;
 }
 
-void centerOnOwnerScreen(QWidget& window, quintptr owner)
-{
-    const HWND ownerWindow = reinterpret_cast<HWND>(owner);
-    const HMONITOR monitor = ownerWindow && IsWindow(ownerWindow) ?
-        MonitorFromWindow(ownerWindow, MONITOR_DEFAULTTONEAREST) :
-        MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
-    MONITORINFO monitorInfo{};
-    monitorInfo.cbSize = sizeof(monitorInfo);
-    if (!monitor || !GetMonitorInfoW(monitor, &monitorInfo)) return;
-
-    const RECT& work = monitorInfo.rcWork;
-    const int width = window.frameGeometry().width();
-    const int height = window.frameGeometry().height();
-    const int x = work.left + ((work.right - work.left) - width) / 2;
-    const int y = work.top + ((work.bottom - work.top) - height) / 2;
-    window.move(x, y);
-}
 }
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
@@ -166,13 +169,19 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         }
     }
     if (configPath.isEmpty()) configPath = defaultConfigPath();
+    if (!ownerBelongsToProcess(owner, ownerProcessId)) owner = 0;
+
+    const std::wstring activationEventName = installationScopedEventName(
+        L"Local\\VideoProcessorConfigEditor.Activate.v1");
+    const std::wstring discoveryRefreshEventName = installationScopedEventName(
+        L"Local\\VideoProcessorConfigEditor.RefreshDiscovery.v1");
 
     HANDLE activationEvent = screenshotPath.isEmpty() ?
-        CreateEventW(nullptr, FALSE, FALSE, ActivationEventName) : nullptr;
+        CreateEventW(nullptr, FALSE, FALSE, activationEventName.c_str()) : nullptr;
     const bool existingInstance = activationEvent &&
         GetLastError() == ERROR_ALREADY_EXISTS;
     HANDLE discoveryRefreshEvent = screenshotPath.isEmpty() ?
-        CreateEventW(nullptr, FALSE, FALSE, DiscoveryRefreshEventName) : nullptr;
+        CreateEventW(nullptr, FALSE, FALSE, discoveryRefreshEventName.c_str()) : nullptr;
     if (existingInstance)
     {
         // VP starts a hidden Config process opportunistically.  If one is
@@ -180,8 +189,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         // background warm-up must never pull focus from the user.
         if (!startInTray)
         {
-            allowExistingWindowToTakeFocus();
-            SetEvent(activationEvent);
+            const bool acknowledged = activateExistingWindow(
+                owner, ownerProcessId);
+            if (!acknowledged) SetEvent(activationEvent);
         }
         // VP launches the tray-resident editor opportunistically. Even when it
         // stays hidden, refresh monitor discovery so the next reveal reflects
@@ -193,7 +203,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         return 0;
     }
 
-    if (!ownerBelongsToProcess(owner, ownerProcessId)) owner = 0;
     ConfigEditorWindow window(QFileInfo(configPath).absoluteFilePath(), owner);
     std::unique_ptr<QWinEventNotifier> activationNotifier;
     std::unique_ptr<QWinEventNotifier> discoveryRefreshNotifier;
@@ -213,13 +222,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     }
     window.selectPage(initialPage);
     if (!startInTray)
-    {
         window.show();
-        QTimer::singleShot(0, &window, [&window, owner]
-        {
-            centerOnOwnerScreen(window, owner);
-        });
-    }
     if (!screenshotPath.isEmpty())
         QTimer::singleShot(400, &window, [&window, screenshotPath]
         {

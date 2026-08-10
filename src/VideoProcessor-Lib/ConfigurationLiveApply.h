@@ -1,11 +1,65 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 namespace ConfigurationLiveApply
 {
+	struct SessionPresentationState
+	{
+		bool videoOnly = false;
+		bool fullscreen = false;
+	};
+
+	enum class FullscreenToggleAction
+	{
+		CancelPending,
+		ExitFullscreen,
+		EnterFullscreen
+	};
+
+	enum class ConfigurationEditorToggleAction
+	{
+		HideForegroundEditor,
+		RevealOrActivate,
+		CoalescePendingReveal
+	};
+
+	struct PresentationFocusDecision
+	{
+		bool mayActivatePresentation = false;
+		bool preserveForeground = true;
+		bool consumeKeyboardMessage = false;
+	};
+
+	enum class RendererPublicationSource
+	{
+		SavedConfiguration,
+		SessionOverride,
+		AcceptedRuntime,
+		None
+	};
+
+	struct RendererPublicationDecision
+	{
+		std::wstring renderer;
+		RendererPublicationSource source = RendererPublicationSource::None;
+	};
+
+	enum class ConfigurationEditorRevealOutcome
+	{
+		Idle,
+		Pending,
+		Complete,
+		Expired
+	};
+
 	static const wchar_t ChangedEventName[] =
 		L"Local\\VideoProcessor.ConfigurationChanged.v1";
+	constexpr uint16_t VideoOnlyToggleDefaultKey = 'U';
+	constexpr uint8_t VideoOnlyToggleDefaultModifiers = 0x0c; // Ctrl+Shift
+	constexpr uint16_t ViewToggleDefaultKey = 0x0d; // Enter
+	constexpr uint8_t ViewToggleDefaultModifiers = 0x10; // Alt
 
 	// Delayed fullscreen placement may restore focus only while VideoProcessor
 	// already owns the foreground. This prevents a renderer transition from
@@ -16,6 +70,102 @@ namespace ConfigurationLiveApply
 	{
 		return !hasForegroundWindow ||
 			foregroundProcessId == videoProcessorProcessId;
+	}
+
+	inline PresentationFocusDecision ResolvePresentationFocus(
+		uint32_t videoProcessorProcessId, uint32_t foregroundProcessId,
+		bool hasForegroundWindow)
+	{
+		const bool mayActivate = MayActivateFullscreen(
+			videoProcessorProcessId, foregroundProcessId,
+			hasForegroundWindow);
+		// Presentation lifecycle code never owns keyboard dispatch. In particular,
+		// preserving an editor popup or another application's foreground must not
+		// consume or reroute VP accelerators/background shortcuts.
+		return { mayActivate, !mayActivate, false };
+	}
+
+	inline ConfigurationEditorToggleAction ResolveConfigurationEditorToggle(
+		bool, bool, bool revealPending)
+	{
+		if (revealPending)
+			return ConfigurationEditorToggleAction::CoalescePendingReveal;
+		// The configuration shortcut is an explicit reveal command.  It must
+		// never hide an editor the operator is actively using: the next press is
+		// expected to recover the editor from behind VP's video surface.
+		return ConfigurationEditorToggleAction::RevealOrActivate;
+	}
+
+	inline bool ConfigurationEditorRevealAcknowledged(bool delivered,
+		uint64_t acknowledgement)
+	{
+		return delivered && acknowledgement == 1;
+	}
+
+	inline bool ShouldRediscoverConfigurationEditor(bool delivered,
+		uint64_t acknowledgement, bool alreadyRetried)
+	{
+		return delivered && acknowledgement != 1 && !alreadyRetried;
+	}
+
+	inline ConfigurationEditorRevealOutcome ResolveConfigurationEditorReveal(
+		bool pending, bool activationAcknowledged, bool editorVisible,
+		uint64_t elapsedMilliseconds, uint64_t timeoutMilliseconds,
+		bool unrecoverableLaunchFailure = false)
+	{
+		if (!pending)
+			return ConfigurationEditorRevealOutcome::Idle;
+		if (activationAcknowledged && editorVisible)
+			return ConfigurationEditorRevealOutcome::Complete;
+		if (unrecoverableLaunchFailure ||
+			elapsedMilliseconds >= timeoutMilliseconds)
+			return ConfigurationEditorRevealOutcome::Expired;
+		return ConfigurationEditorRevealOutcome::Pending;
+	}
+
+	inline bool ShouldRetryRevealForAssociation(bool revealPending,
+		bool validAssociation)
+	{
+		return revealPending && validAssociation;
+	}
+
+	inline bool ShouldRetryConfigurationEditorActivate(bool revealPending,
+		bool activationAcknowledged, uint64_t elapsedSinceAcknowledgement,
+		uint64_t acknowledgementGraceMilliseconds, bool retryIntervalReady)
+	{
+		return revealPending && retryIntervalReady &&
+			(!activationAcknowledged ||
+				elapsedSinceAcknowledgement >=
+					acknowledgementGraceMilliseconds);
+	}
+
+	inline bool AssociationPublicationMayBlockActivateHandler()
+	{
+		// Association is an advertisement, not a request/response operation. It
+		// must be posted after Activate has returned to prevent a cross-process
+		// SendMessage cycle between the two UI threads.
+		return false;
+	}
+
+	inline RendererPublicationDecision ResolveRendererPublication(
+		const std::wstring& savedRenderer,
+		const std::wstring& sessionOverride,
+		const std::wstring& acceptedRuntime,
+		bool editorApply, bool savedRendererChanged)
+	{
+		if (editorApply && savedRendererChanged && !savedRenderer.empty())
+			return { savedRenderer,
+				RendererPublicationSource::SavedConfiguration };
+		if (!sessionOverride.empty())
+			return { sessionOverride,
+				RendererPublicationSource::SessionOverride };
+		if (!acceptedRuntime.empty())
+			return { acceptedRuntime,
+				RendererPublicationSource::AcceptedRuntime };
+		if (!savedRenderer.empty())
+			return { savedRenderer,
+				RendererPublicationSource::SavedConfiguration };
+		return {};
 	}
 
 	inline bool MayDispatchGlobalShortcut(uint32_t videoProcessorProcessId,
@@ -46,6 +196,70 @@ namespace ConfigurationLiveApply
 		return modernInterface && !noUi;
 	}
 
+	// Renderer construction must consume the same capture-state generation that
+	// UpdateState admitted. Configuration staging is synchronous and may widen
+	// that boundary long enough for capture ingress to publish a newer state.
+	inline bool MayConstructRendererAfterConfigurationBoundary(
+		uint64_t appliedCaptureSequence, uint64_t latestCaptureSequence)
+	{
+		return appliedCaptureSequence == latestCaptureSequence;
+	}
+
+	inline bool ShouldRestoreAcceptedRendererAfterReload(
+		bool reloadSucceeded, bool hasAcceptedRenderer,
+		bool selectionDiffers)
+	{
+		return !reloadSucceeded && hasAcceptedRenderer && selectionDiffers;
+	}
+
+	inline bool ShouldStageShortcutTable(bool shortcutsChanged,
+		bool rendererRestartAction)
+	{
+		return shortcutsChanged || rendererRestartAction;
+	}
+
+	// These controls are immediate session overrides. Configuration publication
+	// may update startup defaults, but must not change an already-running view.
+	inline SessionPresentationState PreserveSessionPresentation(
+		bool videoOnly, bool fullscreen)
+	{
+		return { videoOnly, fullscreen };
+	}
+
+	inline bool SessionPresentationControlIsPersistent()
+	{
+		return false;
+	}
+
+	inline FullscreenToggleAction ResolveFullscreenToggle(
+		bool fullscreenRequested, bool fullscreenActive)
+	{
+		if (fullscreenActive)
+			return FullscreenToggleAction::ExitFullscreen;
+		if (fullscreenRequested)
+			return FullscreenToggleAction::CancelPending;
+		return FullscreenToggleAction::EnterFullscreen;
+	}
+
+	inline bool FullscreenRequestedAfterToggle(FullscreenToggleAction action)
+	{
+		return action == FullscreenToggleAction::EnterFullscreen;
+	}
+
+	inline bool EffectiveFullscreenToggleActive(bool fullscreenRequested,
+		bool fullscreenActive)
+	{
+		return fullscreenRequested || fullscreenActive;
+	}
+
+	inline bool MayDispatchForegroundPresentationShortcut(
+		bool hasAcceleratorTable, bool)
+	{
+		// Video Only removes chrome, not the dialog's message pump. Its foreground
+		// accelerator table remains the authoritative path back to visible UI.
+		return hasAcceleratorTable;
+	}
+
 	inline bool ShouldSuppressFullscreenTopmost(bool activationPending,
 		bool configurationModal, bool editorVisible)
 	{
@@ -58,6 +272,76 @@ namespace ConfigurationLiveApply
 	{
 		return exclusiveFullscreen && fullscreenRequested &&
 			liveFrameVerified && !suppressTopmost;
+	}
+
+	inline bool ShouldExecuteDeferredPresentationActivation(
+		bool activationPending, bool configurationEditorVisible,
+		bool fullscreenRequested, bool hostValid, bool hostIconic,
+		bool foregroundPolicyAllowsActivation)
+	{
+		return activationPending && !configurationEditorVisible &&
+			fullscreenRequested && hostValid && hostIconic &&
+			foregroundPolicyAllowsActivation;
+	}
+
+	inline bool ShouldRestoreConfigurationEditorForeground(
+		bool editorOwnedForegroundBeforePresentation,
+		uint32_t videoProcessorProcessId, uint32_t currentForegroundProcessId)
+	{
+		// Restore only from VP itself. If the user moved to another application
+		// during the transition, that newer foreground choice wins.
+		return editorOwnedForegroundBeforePresentation &&
+			videoProcessorProcessId != 0 &&
+			currentForegroundProcessId == videoProcessorProcessId;
+	}
+
+	inline uintptr_t SelectConfigurationEditorPresentationTarget(
+		bool fullscreenRequested, uintptr_t fullscreenTarget,
+		uintptr_t currentRendererTarget, uintptr_t windowedVideoTarget)
+	{
+		if (fullscreenRequested && fullscreenTarget != 0)
+			return fullscreenTarget;
+		if (currentRendererTarget != 0)
+			return currentRendererTarget;
+		return windowedVideoTarget;
+	}
+
+	inline bool IsValidatedPresentationTargetProcess(
+		uint32_t videoProcessorProcessId, uint32_t targetProcessId,
+		bool targetWindowValid)
+	{
+		return targetWindowValid && videoProcessorProcessId != 0 &&
+			targetProcessId == videoProcessorProcessId;
+	}
+
+	inline bool ConfigurationEditorRuntimeUsesRecurringLease()
+	{
+		return false;
+	}
+
+	inline bool ShouldRequestConfigurationEditorOneShotReassert(
+		bool presentationTargetAccepted, bool editorWindowValid)
+	{
+		return presentationTargetAccepted && editorWindowValid;
+	}
+
+	// Renderer reconstruction owns an explicit reveal obligation. Do not use
+	// visibility of an optional transition HWND as that obligation: transitions
+	// may deliberately run without the popup to avoid stealing focus.
+	inline bool ShouldRetireWaitingSurfaceAfterLiveFrame(
+		uint32_t evidenceGeneration, uintptr_t evidenceTarget,
+		uint32_t pendingGeneration, uintptr_t pendingTarget,
+		uint32_t currentGeneration, uintptr_t currentTarget,
+		bool rendererAvailable, bool rendererRunning,
+		bool liveFramePresented, bool resetBlocksReveal,
+		bool /*configurationEditorVisible*/)
+	{
+		return pendingGeneration != 0 && pendingTarget != 0 &&
+			evidenceGeneration == pendingGeneration &&
+			evidenceGeneration == currentGeneration &&
+			evidenceTarget == pendingTarget &&
+			evidenceTarget == currentTarget && rendererAvailable &&
+			rendererRunning && liveFramePresented && !resetBlocksReveal;
 	}
 
 	inline bool ShouldRecreateFullscreenHostForBackendHandoff(

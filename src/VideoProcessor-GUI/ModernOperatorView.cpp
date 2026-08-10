@@ -3,6 +3,8 @@
 #include "ModernOperatorView.h"
 #include "resource.h"
 #include "version.h"
+#include "BuildIdentityPolicy.h"
+#include <ModernOperatorLayout.h>
 
 namespace
 {
@@ -10,6 +12,8 @@ namespace
 	constexpr UINT IDC_MODERN_CAPTURE_RESTART = 12002;
 	constexpr UINT IDC_MODERN_RENDERER_RESTART = 12003;
 	constexpr UINT IDC_MODERN_QUEUE_RESET = 12004;
+	constexpr UINT IDC_MODERN_VIDEO_ONLY = 12005;
+	constexpr UINT IDC_MODERN_VIEW = 12006;
 
 	const COLORREF Background = RGB(6, 13, 20);
 	const COLORREF Header = RGB(15, 26, 37);
@@ -29,6 +33,8 @@ BEGIN_MESSAGE_MAP(ModernOperatorView, CWnd)
 	ON_BN_CLICKED(IDC_MODERN_CAPTURE_RESTART, &ModernOperatorView::OnCaptureRestart)
 	ON_BN_CLICKED(IDC_MODERN_RENDERER_RESTART, &ModernOperatorView::OnRendererRestart)
 	ON_BN_CLICKED(IDC_MODERN_QUEUE_RESET, &ModernOperatorView::OnQueueReset)
+	ON_BN_CLICKED(IDC_MODERN_VIDEO_ONLY, &ModernOperatorView::OnToggleVideoOnly)
+	ON_BN_CLICKED(IDC_MODERN_VIEW, &ModernOperatorView::OnToggleView)
 END_MESSAGE_MAP()
 
 bool ModernOperatorView::Create(CWnd* parent)
@@ -51,14 +57,36 @@ bool ModernOperatorView::Create(CWnd* parent)
 	m_titleFont.CreateFont(-MulDiv(18, dpi, 96), 0, 0, 0, FW_BOLD,
 		FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
 		CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, TEXT("Segoe UI"));
+	m_settingsFont.CreateFont(-MulDiv(16, dpi, 96), 0, 0, 0, FW_NORMAL,
+		FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+		CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH,
+		TEXT("Segoe MDL2 Assets"));
 
 	CreateButton(m_configuration, IDC_MODERN_CONFIGURATION,
 		TEXT("Open configuration"));
+	CreateButton(m_videoOnly, IDC_MODERN_VIDEO_ONLY, TEXT("Video Only"));
+	CreateButton(m_view, IDC_MODERN_VIEW, TEXT("Fullscreen"));
 	CreateButton(m_captureRestart, IDC_MODERN_CAPTURE_RESTART, TEXT("Restart capture"));
 	CreateButton(m_rendererRestart, IDC_MODERN_RENDERER_RESTART, TEXT("Restart"));
 	CreateButton(m_queueReset, IDC_MODERN_QUEUE_RESET, TEXT("Reset queues"));
+	if (m_tooltips.Create(this, TTS_ALWAYSTIP))
+	{
+		m_tooltips.AddTool(&m_videoOnly,
+			TEXT("Hide the controls. Press Ctrl+Shift+U to return."));
+		m_tooltips.AddTool(&m_view,
+			TEXT("Switch Windowed / Fullscreen. Shortcut: Alt+Enter."));
+		m_tooltips.AddTool(&m_configuration, TEXT("Open configuration"));
+		m_tooltips.Activate(TRUE);
+	}
 	LayoutControls();
 	return true;
+}
+
+BOOL ModernOperatorView::PreTranslateMessage(MSG* message)
+{
+	if (m_tooltips.GetSafeHwnd())
+		m_tooltips.RelayEvent(message);
+	return CWnd::PreTranslateMessage(message);
 }
 
 void ModernOperatorView::CreateButton(CButton& button, UINT id,
@@ -81,9 +109,16 @@ void ModernOperatorView::LayoutControls()
 		return;
 	CRect client;
 	GetClientRect(&client);
-	m_configuration.MoveWindow(
-		std::max(Px(16), static_cast<int>(client.right) - Px(48)),
-		Px(13), Px(32), Px(29));
+	CClientDC screen(this);
+	const auto header = ModernOperatorLayout::CalculateHeaderControls(
+		client.Width(), screen.GetDeviceCaps(LOGPIXELSX));
+	auto place = [](CButton& button, const ModernOperatorLayout::Rect& rect)
+	{
+		button.MoveWindow(rect.x, rect.y, rect.width, rect.height);
+	};
+	place(m_configuration, header.configuration);
+	place(m_view, header.fullscreen);
+	place(m_videoOnly, header.videoOnly);
 	m_captureRestart.MoveWindow(Px(390), Px(116), Px(127), Px(29));
 	m_rendererRestart.MoveWindow(Px(179), Px(526), Px(77), Px(29));
 	m_queueReset.MoveWindow(Px(394), Px(615), Px(117), Px(29));
@@ -112,7 +147,15 @@ void ModernOperatorView::DrawQueueMetric(CDC& dc, int x,
 
 void ModernOperatorView::SetStatus(const ModernOperatorStatus& status)
 {
+	const bool presentationChanged =
+		m_status.videoOnly != status.videoOnly ||
+		m_status.fullscreen != status.fullscreen;
 	m_status = status;
+	if (presentationChanged)
+	{
+		m_videoOnly.Invalidate(FALSE);
+		m_view.Invalidate(FALSE);
+	}
 	// Live telemetry changes once per second. Keep that repaint strictly inside
 	// the information column so the renderer child and custom caption never
 	// participate in the periodic redraw.
@@ -213,9 +256,11 @@ void ModernOperatorView::OnPaint()
 	// The compact configuration gear is right-anchored. Give the build
 	// identifier all remaining header space.
 	const int versionRight = std::max(
-		Px(289), static_cast<int>(client.right) - Px(60));
+		Px(207), static_cast<int>(client.right) - Px(252));
 	CRect versionRect(Px(207), Px(20), versionRight, Px(40));
-	dc.DrawText(VERSION_DESCRIBE, versionRect,
+	const std::wstring buildIdentity = BuildIdentityPolicy::Format(
+		VERSION_BRANCH, VERSION_COMMIT_SHORT, VERSION_DESCRIBE);
+	dc.DrawText(buildIdentity.c_str(), versionRect,
 		DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
 	DrawCard(dc, CRect(Px(16), Px(70), Px(528), Px(158)),
@@ -303,7 +348,10 @@ void ModernOperatorView::OnDrawItem(int, LPDRAWITEMSTRUCT item)
 	dc.Attach(item->hDC);
 	CRect rect(item->rcItem);
 	const bool pressed = (item->itemState & ODS_SELECTED) != 0;
-	COLORREF fill = RGB(20, 42, 58);
+	const bool active =
+		(item->CtlID == IDC_MODERN_VIDEO_ONLY && m_status.videoOnly) ||
+		(item->CtlID == IDC_MODERN_VIEW && m_status.fullscreen);
+	COLORREF fill = active ? RGB(20, 82, 68) : RGB(20, 42, 58);
 	if (pressed)
 		fill = RGB(30, 65, 82);
 	dc.FillSolidRect(rect, fill);
@@ -314,33 +362,22 @@ void ModernOperatorView::OnDrawItem(int, LPDRAWITEMSTRUCT item)
 	dc.SelectObject(oldPen);
 	if (item->CtlID == IDC_MODERN_CONFIGURATION)
 	{
-		// A compact, hand-drawn gear avoids a font-dependent glyph while keeping
-		// the same keyboard-accessible button and a sufficiently visible target.
-		const COLORREF gear = pressed ? Accent : RGB(190, 214, 232);
-		const CPoint center(rect.CenterPoint());
-		const int directions[8][2] = {
-			{ 0, -1 }, { 1, -1 }, { 1, 0 }, { 1, 1 },
-			{ 0, 1 }, { -1, 1 }, { -1, 0 }, { -1, -1 }
-		};
-		CPen gearPen(PS_SOLID, std::max(1, Px(2)), gear);
-		const auto oldGearPen = dc.SelectObject(&gearPen);
-		for (const auto& direction : directions)
+		// E713 is the Windows Settings glyph. Segoe MDL2 Assets is DPI-aware and
+		// keeps the small toolbar mark cleaner than custom raster/GDI geometry.
+		dc.SetBkMode(TRANSPARENT);
+		dc.SetTextColor(pressed ? Accent : RGB(190, 214, 232));
+		if (m_settingsFont.GetSafeHandle())
 		{
-			dc.MoveTo(center.x + Px(direction[0] * 6),
-				center.y + Px(direction[1] * 6));
-			dc.LineTo(center.x + Px(direction[0] * 10),
-				center.y + Px(direction[1] * 10));
+			dc.SelectObject(&m_settingsFont);
+			dc.DrawText(CString(L"\xE713"), rect,
+				DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 		}
-		dc.Ellipse(center.x - Px(7), center.y - Px(7),
-			center.x + Px(7), center.y + Px(7));
-		dc.SelectObject(oldGearPen);
-		CBrush centerBrush(fill);
-		const auto oldBrush = dc.SelectObject(&centerBrush);
-		const auto oldCenterPen = dc.SelectStockObject(NULL_PEN);
-		dc.Ellipse(center.x - Px(2), center.y - Px(2),
-			center.x + Px(2), center.y + Px(2));
-		dc.SelectObject(oldCenterPen);
-		dc.SelectObject(oldBrush);
+		else
+		{
+			dc.SelectObject(&m_titleFont);
+			dc.DrawText(CString(L"\x2699"), rect,
+				DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+		}
 		dc.Detach();
 		return;
 	}
@@ -375,4 +412,16 @@ void ModernOperatorView::OnConfiguration()
 {
 	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
 		static_cast<WPARAM>(ModernOperatorAction::OpenConfiguration));
+}
+
+void ModernOperatorView::OnToggleVideoOnly()
+{
+	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
+		static_cast<WPARAM>(ModernOperatorAction::ToggleVideoOnly));
+}
+
+void ModernOperatorView::OnToggleView()
+{
+	GetParent()->SendMessage(WM_MODERN_OPERATOR_ACTION,
+		static_cast<WPARAM>(ModernOperatorAction::ToggleView));
 }

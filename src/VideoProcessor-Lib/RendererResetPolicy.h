@@ -54,6 +54,17 @@ constexpr bool RendererResetShouldReplace(
 			incomingDeadline < selectedDeadline);
 }
 
+// DirectShow/madVR owns additional downstream queues which a VP-only flush
+// cannot refill coherently after a policy change. Keep the renderer object and
+// generation, but run its serialized stop/flush/prime/new-segment graph reset.
+// Alpha's entire queue is VP-owned, so its lightweight live-queue reset is
+// sufficient.
+constexpr bool QueuePolicyApplyRequiresGraphReset(
+	bool directShowRendererActive)
+{
+	return directShowRendererActive;
+}
+
 // A graph retarget cannot be safely interrupted once madVR owns it. The
 // fullscreen control is still allowed to express the final intent while that
 // transaction is in flight; a covered rebuild is required only when that

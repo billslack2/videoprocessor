@@ -7,6 +7,8 @@
  */
 
 #include <pch.h>
+#include <ApplicationShutdownPolicy.h>
+#include <DebugLog.h>
 #include "StatsOverlayWindow.h"
 #include <algorithm>
 #include <cmath>
@@ -312,6 +314,26 @@ LRESULT StatsOverlayWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 {
 	switch (msg)
 	{
+	case WM_CLOSE:
+		DebugLog::Log(
+			"Application close surface route: source=stats-overlay hwnd=%p main=%p consume_original=1",
+			hwnd, m_parentHwnd);
+		if (m_parentHwnd && IsWindow(m_parentHwnd))
+			PostMessage(m_parentHwnd, WM_CLOSE, 0, 0);
+		return 0;
+
+	case WM_SYSCOMMAND:
+		if (ApplicationShutdownPolicy::IsCloseSystemCommand(wParam))
+		{
+			DebugLog::Log(
+				"Application close surface route: source=stats-overlay-system-command hwnd=%p main=%p consume_original=1",
+				hwnd, m_parentHwnd);
+			if (m_parentHwnd && IsWindow(m_parentHwnd))
+				PostMessage(m_parentHwnd, WM_CLOSE, 0, 0);
+			return 0;
+		}
+		break;
+
 	case WM_PAINT:
 	{
 		PAINTSTRUCT ps;
@@ -330,6 +352,7 @@ LRESULT StatsOverlayWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 	default:
 		return DefWindowProc(hwnd, msg, wParam, lParam);
 	}
+	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
 void StatsOverlayWindow::OnPaint(HDC hdc)

@@ -9,7 +9,9 @@ enum class ModernOperatorAction : WPARAM
 	CaptureRestart = 1,
 	RendererRestart = 2,
 	QueueReset = 3,
-	OpenConfiguration = 4
+	OpenConfiguration = 4,
+	ToggleVideoOnly = 5,
+	ToggleView = 6
 };
 
 struct ModernOperatorStatus
@@ -47,6 +49,8 @@ struct ModernOperatorStatus
 	CString vpLatency = TEXT("---");
 	CString ptsLead = TEXT("---");
 	CString outputLatency = TEXT("---");
+	bool videoOnly = false;
+	bool fullscreen = false;
 };
 
 class ModernOperatorView : public CWnd
@@ -55,6 +59,7 @@ public:
 	bool Create(CWnd* parent);
 	void SetStatus(const ModernOperatorStatus& status);
 	void LayoutControls();
+	BOOL PreTranslateMessage(MSG* message) override;
 
 protected:
 	afx_msg void OnPaint();
@@ -64,6 +69,8 @@ protected:
 	afx_msg void OnRendererRestart();
 	afx_msg void OnQueueReset();
 	afx_msg void OnConfiguration();
+	afx_msg void OnToggleVideoOnly();
+	afx_msg void OnToggleView();
 	afx_msg void OnDrawItem(int controlId, LPDRAWITEMSTRUCT drawItem);
 
 	DECLARE_MESSAGE_MAP()
@@ -82,10 +89,14 @@ private:
 
 	ModernOperatorStatus m_status;
 	CButton m_configuration;
+	CButton m_videoOnly;
+	CButton m_view;
 	CButton m_captureRestart;
 	CButton m_rendererRestart;
 	CButton m_queueReset;
+	CToolTipCtrl m_tooltips;
 	CFont m_regularFont;
 	CFont m_boldFont;
 	CFont m_titleFont;
+	CFont m_settingsFont;
 };

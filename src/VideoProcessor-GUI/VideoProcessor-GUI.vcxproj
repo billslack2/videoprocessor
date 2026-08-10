@@ -207,7 +207,7 @@
       <Command>powershell.exe -ExecutionPolicy RemoteSigned -File "$(ProjectDir)..\..\tools\generate_version.ps1" -Project "$(ProjectDir)." -GitRoot "$(ProjectDir)..\.."</Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>if exist "$(SolutionDir)VideoProcessor.cfg" copy /Y "$(SolutionDir)VideoProcessor.cfg" "$(OutDir)VideoProcessor.cfg" &amp; if exist "$(SolutionDir)CONFIGURATION.html" copy /Y "$(SolutionDir)CONFIGURATION.html" "$(OutDir)CONFIGURATION.html"</Command>
+      <Command>if not exist "$(OutDir)VideoProcessor.cfg" if exist "$(SolutionDir)VideoProcessor.cfg" copy "$(SolutionDir)VideoProcessor.cfg" "$(OutDir)VideoProcessor.cfg" &amp; if exist "$(SolutionDir)CONFIGURATION.html" copy /Y "$(SolutionDir)CONFIGURATION.html" "$(OutDir)CONFIGURATION.html"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -233,7 +233,7 @@
       <Command>powershell.exe -ExecutionPolicy RemoteSigned -File "$(ProjectDir)..\..\tools\generate_version.ps1" -Project "$(ProjectDir)." -GitRoot "$(ProjectDir)..\.."</Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>if exist "$(SolutionDir)VideoProcessor.cfg" copy /Y "$(SolutionDir)VideoProcessor.cfg" "$(OutDir)VideoProcessor.cfg" &amp; if exist "$(SolutionDir)CONFIGURATION.html" copy /Y "$(SolutionDir)CONFIGURATION.html" "$(OutDir)CONFIGURATION.html"</Command>
+      <Command>if not exist "$(OutDir)VideoProcessor.cfg" if exist "$(SolutionDir)VideoProcessor.cfg" copy "$(SolutionDir)VideoProcessor.cfg" "$(OutDir)VideoProcessor.cfg" &amp; if exist "$(SolutionDir)CONFIGURATION.html" copy /Y "$(SolutionDir)CONFIGURATION.html" "$(OutDir)CONFIGURATION.html"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

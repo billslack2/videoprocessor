@@ -9,7 +9,11 @@
     <RootNamespace>VideoProcessorConfigTests</RootNamespace>
     <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
     <TargetName>VideoProcessorConfigTests</TargetName>
-    <QtRoot>$(ProjectDir)..\..\.dependencies\Qt\6.8.3\msvc2022_64</QtRoot>
+    <QtVersion>6.8.3</QtVersion>
+    <QtArchitecture>msvc2022_64</QtArchitecture>
+    <QtRoot Condition="'$(VP_QT_ROOT)' != ''">$(VP_QT_ROOT)</QtRoot>
+    <QtRoot Condition="'$(QtRoot)' == '' and Exists('$(LOCALAPPDATA)\VideoProcessor\dependencies\Qt\$(QtVersion)\$(QtArchitecture)\bin\qmake.exe')">$(LOCALAPPDATA)\VideoProcessor\dependencies\Qt\$(QtVersion)\$(QtArchitecture)</QtRoot>
+    <QtRoot Condition="'$(QtRoot)' == ''">$(ProjectDir)..\..\.dependencies\Qt\$(QtVersion)\$(QtArchitecture)</QtRoot>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
@@ -41,7 +45,8 @@
       <AdditionalDependencies>Qt6Widgets.lib;Qt6Gui.lib;Qt6Core.lib;shell32.lib;user32.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>"$(QtRoot)\bin\windeployqt.exe" --release --no-translations --no-system-d3d-compiler "$(TargetPath)"</Command>
+      <Command>"$(QtRoot)\bin\windeployqt.exe" --release --no-translations --no-system-d3d-compiler "$(TargetPath)"
+copy /Y "$(QtRoot)\plugins\platforms\qoffscreen.dll" "$(TargetDir)platforms\qoffscreen.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

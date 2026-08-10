@@ -1,3 +1,7 @@
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
 #include "ConfigEditorWindow.h"
 #include "VpTheme.h"
 
@@ -10,12 +14,16 @@
 #include <QDir>
 #include <QFile>
 #include <QInputDialog>
+#include <QKeyEvent>
+#include <QMouseEvent>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRect>
 #include <QScrollArea>
 #include <QShortcut>
 #include <QSpinBox>
@@ -26,12 +34,245 @@
 #include <QTimer>
 #include <QToolButton>
 
+#include <atomic>
+#include <chrono>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
 
 namespace
 {
+QString testNameFilter;
+int selectedTestsRun = 0;
+
+WNDPROC testOwnerOriginalProcedure = nullptr;
+HWND testAdvertisedEditor = nullptr;
+bool testActivateOnAssociation = false;
+bool testAssociationActivationAcknowledged = false;
+
+bool appearsAbove(HWND first, HWND second)
+{
+    for (HWND window = GetTopWindow(nullptr); window;
+        window = GetWindow(window, GW_HWNDNEXT))
+    {
+        if (window == first) return true;
+        if (window == second) return false;
+    }
+    return false;
+}
+
+struct ReverseCallbackFixture
+{
+    std::atomic<HWND> owner = nullptr;
+    std::atomic<HWND> advertisedEditor = nullptr;
+    std::atomic<bool> activationReturned = false;
+    std::atomic<bool> activationAcknowledged = false;
+    std::atomic<ULONGLONG> activationElapsedMs = 0;
+};
+
+struct ExternalZOrderFixture
+{
+    HWND owner = nullptr;
+    HWND host = nullptr;
+    bool hostBecameForeground = false;
+};
+
+LRESULT CALLBACK externalFixtureReceiverProcedure(HWND window, UINT message,
+    WPARAM wParam, LPARAM lParam)
+{
+    auto* fixture = reinterpret_cast<ExternalZOrderFixture*>(
+        GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (message == WM_NCCREATE)
+    {
+        const auto* create = reinterpret_cast<const CREATESTRUCTW*>(lParam);
+        fixture = static_cast<ExternalZOrderFixture*>(create->lpCreateParams);
+        SetWindowLongPtrW(window, GWLP_USERDATA,
+            reinterpret_cast<LONG_PTR>(fixture));
+    }
+    static const UINT readyMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigTests.ZOrderFixture.Ready.v1");
+    static const UINT foregroundMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigTests.ZOrderFixture.Foreground.v1");
+    if (fixture && message == readyMessage)
+    {
+        fixture->owner = reinterpret_cast<HWND>(wParam);
+        fixture->host = reinterpret_cast<HWND>(lParam);
+        return 1;
+    }
+    if (fixture && message == foregroundMessage)
+    {
+        fixture->hostBecameForeground = wParam != 0;
+        return 1;
+    }
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+
+struct ExternalHostContext { HWND receiver = nullptr; };
+
+BOOL CALLBACK collectMonitorRects(HMONITOR monitor, HDC, LPRECT, LPARAM data)
+{
+    MONITORINFO info{};
+    info.cbSize = sizeof(info);
+    if (GetMonitorInfoW(monitor, &info))
+        reinterpret_cast<std::vector<RECT>*>(data)->push_back(info.rcMonitor);
+    return TRUE;
+}
+
+LRESULT CALLBACK externalHostProcedure(HWND window, UINT message,
+    WPARAM wParam, LPARAM lParam)
+{
+    auto* context = reinterpret_cast<ExternalHostContext*>(
+        GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (message == WM_NCCREATE)
+    {
+        const auto* create = reinterpret_cast<const CREATESTRUCTW*>(lParam);
+        context = static_cast<ExternalHostContext*>(create->lpCreateParams);
+        SetWindowLongPtrW(window, GWLP_USERDATA,
+            reinterpret_cast<LONG_PTR>(context));
+    }
+    static const UINT requestMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigTests.ZOrderFixture.RequestForeground.v1");
+    if (context && message == requestMessage)
+    {
+        const bool foregrounded = SetForegroundWindow(window) != FALSE &&
+            GetForegroundWindow() == window;
+        static const UINT foregroundMessage = RegisterWindowMessageW(
+            L"VideoProcessor.ConfigTests.ZOrderFixture.Foreground.v1");
+        PostMessageW(context->receiver, foregroundMessage, foregrounded, 0);
+        return 1;
+    }
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+
+int runExternalZOrderFixture(HWND receiver)
+{
+    const HINSTANCE instance = GetModuleHandleW(nullptr);
+    WNDCLASSW windowClass{};
+    windowClass.lpfnWndProc = externalHostProcedure;
+    windowClass.hInstance = instance;
+    windowClass.lpszClassName = L"VP.ConfigTests.ExternalHost.v1";
+    RegisterClassW(&windowClass);
+    ExternalHostContext context{ receiver };
+    HWND owner = CreateWindowExW(WS_EX_TOOLWINDOW, windowClass.lpszClassName,
+        L"VP external owner", WS_OVERLAPPEDWINDOW, 0, 0, 320, 200,
+        nullptr, nullptr, instance, &context);
+    std::vector<RECT> monitors;
+    EnumDisplayMonitors(nullptr, nullptr, collectMonitorRects,
+        reinterpret_cast<LPARAM>(&monitors));
+    RECT bounds{};
+    if (!monitors.empty()) bounds = monitors[monitors.size() > 1 ? 1 : 0];
+    else
+    {
+        bounds.right = GetSystemMetrics(SM_CXSCREEN);
+        bounds.bottom = GetSystemMetrics(SM_CYSCREEN);
+    }
+    HWND host = CreateWindowExW(WS_EX_TOPMOST, windowClass.lpszClassName,
+        L"VP external fullscreen host", WS_POPUP,
+        bounds.left, bounds.top, bounds.right - bounds.left,
+        bounds.bottom - bounds.top, nullptr, nullptr, instance, &context);
+    if (!owner || !host) return 2;
+    ShowWindow(owner, SW_SHOWNOACTIVATE);
+    SetWindowPos(owner, HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    SetWindowPos(host, HWND_TOPMOST, bounds.left, bounds.top,
+        bounds.right - bounds.left, bounds.bottom - bounds.top,
+        SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    static const UINT readyMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigTests.ZOrderFixture.Ready.v1");
+    PostMessageW(receiver, readyMessage, reinterpret_cast<WPARAM>(owner),
+        reinterpret_cast<LPARAM>(host));
+    MSG message{};
+    while (GetMessageW(&message, nullptr, 0, 0) > 0)
+    {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+    }
+    DestroyWindow(host);
+    DestroyWindow(owner);
+    return 0;
+}
+
+LRESULT CALLBACK reverseCallbackOwnerProcedure(HWND window, UINT message,
+    WPARAM wParam, LPARAM lParam)
+{
+    ReverseCallbackFixture* fixture = reinterpret_cast<ReverseCallbackFixture*>(
+        GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (message == WM_NCCREATE)
+    {
+        const auto* create = reinterpret_cast<const CREATESTRUCTW*>(lParam);
+        fixture = static_cast<ReverseCallbackFixture*>(create->lpCreateParams);
+        SetWindowLongPtrW(window, GWLP_USERDATA,
+            reinterpret_cast<LONG_PTR>(fixture));
+    }
+    static const UINT associationMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigEditor.Association.v1");
+    if (fixture && message == associationMessage)
+    {
+        const HWND editor = reinterpret_cast<HWND>(lParam);
+        fixture->advertisedEditor.store(editor);
+        static const UINT activationMessage = RegisterWindowMessageW(
+            L"VideoProcessor.ConfigEditor.Activate.v1");
+        DWORD_PTR acknowledged = 0;
+        const ULONGLONG start = GetTickCount64();
+        const bool delivered = activationMessage && SendMessageTimeoutW(editor,
+            activationMessage, wParam, reinterpret_cast<LPARAM>(window),
+            SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &acknowledged);
+        fixture->activationElapsedMs.store(GetTickCount64() - start);
+        fixture->activationAcknowledged.store(delivered && acknowledged == 1);
+        fixture->activationReturned.store(true);
+        return 1;
+    }
+    if (message == WM_CLOSE)
+    {
+        DestroyWindow(window);
+        return 0;
+    }
+    if (message == WM_DESTROY)
+    {
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+
+LRESULT CALLBACK testOwnerProcedure(HWND window, UINT message,
+    WPARAM wParam, LPARAM lParam)
+{
+    static const UINT associationMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigEditor.Association.v1");
+    if (message == associationMessage)
+    {
+        const HWND editor = reinterpret_cast<HWND>(lParam);
+        DWORD processId = 0;
+        if (editor && IsWindow(editor))
+            GetWindowThreadProcessId(editor, &processId);
+        if (processId == static_cast<DWORD>(wParam))
+        {
+            testAdvertisedEditor = editor;
+            if (testActivateOnAssociation)
+            {
+                testActivateOnAssociation = false;
+                static const UINT activationMessage = RegisterWindowMessageW(
+                    L"VideoProcessor.ConfigEditor.Activate.v1");
+                DWORD_PTR acknowledged = 0;
+                testAssociationActivationAcknowledged = activationMessage &&
+                    SendMessageTimeoutW(editor, activationMessage, wParam,
+                        reinterpret_cast<LPARAM>(window),
+                        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &acknowledged) &&
+                    acknowledged == 1;
+            }
+            return 1;
+        }
+        return 0;
+    }
+    return testOwnerOriginalProcedure ? CallWindowProcW(
+        testOwnerOriginalProcedure, window, message, wParam, lParam) :
+        DefWindowProcW(window, message, wParam, lParam);
+}
+
 QString repositoryPath(const QString& relative)
 {
     QString source = QString::fromUtf8(__FILE__);
@@ -103,11 +344,11 @@ void selectData(QComboBox* combo, const QString& value)
 
 void save(ConfigEditorWindow& window)
 {
-    QPushButton* button = requireControl<QPushButton>(window, QStringLiteral("saveChanges"));
-    require(button->isEnabled(), "Save button was not enabled after an edit");
+    QPushButton* button = requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"));
+    require(button->isEnabled(), "Apply button was not enabled after an edit");
     button->click();
     QCoreApplication::processEvents();
-    require(!button->isEnabled(), "Save did not complete successfully");
+    require(!button->isEnabled(), "Apply did not complete successfully");
 }
 
 void testEveryPageRoundTrips()
@@ -590,57 +831,6 @@ void testLutSelectorDiscoversInstallationLutFiles()
         "The LUT selector did not persist a configuration-relative path");
 }
 
-void testReloadConfirmationRemainsOpenUntilExplicitChoice()
-{
-    QTemporaryDir directory;
-    const QString path = copyFixture(directory);
-    ConfigEditorWindow window(path, 0, true);
-    window.show();
-    QCoreApplication::processEvents();
-
-    QCheckBox* sceneDetection = requireControl<QCheckBox>(window,
-        QStringLiteral("config.general.scene_detect"));
-    const bool initialSceneDetection = sceneDetection->isChecked();
-    sceneDetection->setChecked(!initialSceneDetection);
-    QPushButton* saveButton = requireControl<QPushButton>(window,
-        QStringLiteral("saveChanges"));
-    require(saveButton->isEnabled(), "The test configuration did not become dirty");
-
-    requireControl<QPushButton>(window, QStringLiteral("reloadConfiguration"))->click();
-    QCoreApplication::processEvents();
-    QCoreApplication::processEvents();
-    QDialog* confirmation = window.findChild<QDialog*>(
-        QStringLiteral("confirmationDialog"));
-    require(confirmation && confirmation->isVisible(),
-        "The Reload confirmation did not remain open for an explicit choice");
-    confirmation->reject();
-    QCoreApplication::processEvents();
-    require(sceneDetection->isChecked() != initialSceneDetection && saveButton->isEnabled(),
-        "Cancelling Reload discarded an unsaved setting");
-}
-
-void testCleanReloadDoesNotRebuildTheShell()
-{
-    QTemporaryDir directory;
-    const QString path = copyFixture(directory);
-    ConfigEditorWindow window(path, 0, true);
-    window.show();
-    QCoreApplication::processEvents();
-    save(window);
-
-    QWidget* originalShell = window.centralWidget();
-    requireControl<QPushButton>(window, QStringLiteral("reloadConfiguration"))->click();
-    QCoreApplication::processEvents();
-    QCoreApplication::processEvents();
-    require(window.centralWidget() == originalShell,
-        "Clean Reload rebuilt the editor shell instead of leaving it stable");
-    require(requireControl<QLabel>(window, QStringLiteral("configurationStatus"))->text() ==
-        QStringLiteral("No unsaved changes to discard."),
-        "Clean Reload did not explain that there was nothing to discard");
-    require(window.findChild<QDialog*>(QStringLiteral("confirmationDialog")) == nullptr,
-        "Clean Reload unexpectedly opened a confirmation dialog");
-}
-
 void testChoiceLabelsAndVpRendererName()
 {
     QTemporaryDir directory;
@@ -823,6 +1013,420 @@ void testEmptyActionsShowEmptyState()
         "An empty action list showed a disabled draft instead of the empty state");
 }
 
+void testApplyOkCancelContract()
+{
+    {
+        QTemporaryDir directory;
+        const QString path = copyFixture(directory);
+        ConfigEditorWindow window(path, 0, true);
+        window.show();
+        QCoreApplication::processEvents();
+
+        QPushButton* ok = requireControl<QPushButton>(window,
+            QStringLiteral("okConfiguration"));
+        QPushButton* cancel = requireControl<QPushButton>(window,
+            QStringLiteral("cancelConfiguration"));
+        QPushButton* apply = requireControl<QPushButton>(window,
+            QStringLiteral("applyConfiguration"));
+        QWidget* footer = requireControl<QWidget>(window, QStringLiteral("footer"));
+        QList<QPushButton*> footerButtons;
+        for (int index = 0; index < footer->layout()->count(); ++index)
+            if (auto* button = qobject_cast<QPushButton*>(
+                footer->layout()->itemAt(index)->widget()))
+                footerButtons.push_back(button);
+        require(footerButtons.size() == 3 && footerButtons[0] == ok &&
+            footerButtons[1] == cancel && footerButtons[2] == apply,
+            "The footer does not contain exactly OK, Cancel, Apply in order");
+        require(window.findChild<QPushButton*>(QStringLiteral("reloadConfiguration")) == nullptr &&
+            window.findChild<QPushButton*>(QStringLiteral("validateConfiguration")) == nullptr,
+            "Reload or Validate is still exposed in the editor footer");
+        // The deployed fixture intentionally exercises migrations; commit
+        // those first so this test begins at its last successfully saved form.
+        if (apply->isEnabled())
+        {
+            apply->click();
+            QCoreApplication::processEvents();
+        }
+        require(!apply->isEnabled(), "Apply was enabled for a clean document");
+
+        QCheckBox* fullscreen = requireControl<QCheckBox>(window,
+            QStringLiteral("config.general.fullscreen"));
+        fullscreen->setChecked(!fullscreen->isChecked());
+        require(apply->isEnabled(), "Apply was not enabled by an edit");
+        QLabel* effect = requireControl<QLabel>(window,
+            QStringLiteral("configurationEffectSummary"));
+        require(effect->text() == QStringLiteral(
+            "Takes effect next start: Startup / input"),
+            "The pending effect summary did not honestly classify the edit");
+
+        apply->click();
+        QCoreApplication::processEvents();
+        require(window.isVisible(), "Apply closed the editor");
+        require(!apply->isEnabled(), "Apply remained enabled after a successful save");
+        require(effect->text() == QStringLiteral("No pending changes"),
+            "The effect summary did not remain visible after Apply");
+        require(requireControl<QLabel>(window,
+            QStringLiteral("configurationStatus"))->text().contains(
+                QStringLiteral("Takes effect when VideoProcessor next starts")),
+            "VP-absent Apply did not report the next-start behavior");
+
+        // A clean OK closes without rewriting the file or creating another
+        // backup/runtime notification.
+        const QStringList backupsBefore = QDir(directory.path()).entryList(
+            { QStringLiteral("VideoProcessor.cfg.backup-*") }, QDir::Files);
+        ok->click();
+        QCoreApplication::processEvents();
+        require(!window.isVisible(), "Clean OK did not close the editor");
+        require(QDir(directory.path()).entryList({ QStringLiteral("VideoProcessor.cfg.backup-*") },
+            QDir::Files) == backupsBefore,
+            "Clean OK performed an unnecessary save");
+    }
+
+    {
+        QTemporaryDir directory;
+        const QString path = copyFixture(directory);
+        ConfigEditorWindow window(path, 0, true);
+        window.show();
+        QCoreApplication::processEvents();
+        QPushButton* apply = requireControl<QPushButton>(window,
+            QStringLiteral("applyConfiguration"));
+        if (apply->isEnabled())
+        {
+            apply->click();
+            QCoreApplication::processEvents();
+        }
+        const QByteArray original = readBytes(path);
+        QCheckBox* fullscreen = requireControl<QCheckBox>(window,
+            QStringLiteral("config.general.fullscreen"));
+        const bool initial = fullscreen->isChecked();
+        fullscreen->setChecked(!initial);
+        requireControl<QPushButton>(window,
+            QStringLiteral("cancelConfiguration"))->click();
+        QCoreApplication::processEvents();
+        require(!window.isVisible(), "Cancel did not close the editor");
+        require(readBytes(path) == original, "Cancel changed the configuration file");
+        window.show();
+        QCoreApplication::processEvents();
+        require(requireControl<QCheckBox>(window,
+            QStringLiteral("config.general.fullscreen"))->isChecked() == initial,
+            "Cancel retained the discarded working-copy value");
+        require(!requireControl<QPushButton>(window,
+            QStringLiteral("applyConfiguration"))->isEnabled(),
+            "Cancel retained a dirty working copy");
+    }
+
+    {
+        QTemporaryDir directory;
+        const QString path = copyFixture(directory);
+        ConfigEditorWindow window(path, 0, true);
+        window.show();
+        QCoreApplication::processEvents();
+        QPushButton* apply = requireControl<QPushButton>(window,
+            QStringLiteral("applyConfiguration"));
+        if (apply->isEnabled())
+        {
+            apply->click();
+            QCoreApplication::processEvents();
+        }
+        QCheckBox* fullscreen = requireControl<QCheckBox>(window,
+            QStringLiteral("config.general.fullscreen"));
+        fullscreen->setChecked(!fullscreen->isChecked());
+        QFile external(path);
+        require(external.open(QIODevice::Append), "Cannot create external-save conflict");
+        external.write("\n# external edit\n");
+        external.close();
+        const QByteArray externallyEdited = readBytes(path);
+        requireControl<QPushButton>(window,
+            QStringLiteral("okConfiguration"))->click();
+        QCoreApplication::processEvents();
+        require(window.isVisible(), "OK closed after a failed safe save");
+        require(readBytes(path) == externallyEdited,
+            "Failed OK overwrote the external configuration change");
+        require(requireControl<QPushButton>(window,
+            QStringLiteral("applyConfiguration"))->isEnabled(),
+            "Failed OK cleared the dirty state");
+    }
+
+    {
+        QTemporaryDir directory;
+        const QString path = copyFixture(directory);
+        ConfigEditorWindow window(path, 0, true);
+        window.show();
+        QCoreApplication::processEvents();
+        QPushButton* apply = requireControl<QPushButton>(window,
+            QStringLiteral("applyConfiguration"));
+        if (apply->isEnabled()) save(window);
+        const QByteArray before = readBytes(path);
+        QCheckBox* sceneDetection = requireControl<QCheckBox>(window,
+            QStringLiteral("config.general.scene_detect"));
+        sceneDetection->setChecked(!sceneDetection->isChecked());
+        requireControl<QPushButton>(window,
+            QStringLiteral("okConfiguration"))->click();
+        QCoreApplication::processEvents();
+        require(!window.isVisible() && readBytes(path) != before,
+            "Dirty OK did not commit successfully before closing");
+    }
+}
+
+void testDirectShowOnlyEffectDoesNotRestartAlpha()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QByteArray contents = readBytes(path);
+    contents.replace("renderer: DirectShow - madVR", "renderer: VP Renderer");
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly | QIODevice::Truncate),
+        "Cannot create Alpha renderer fixture");
+    require(file.write(contents) == contents.size(),
+        "Cannot write Alpha renderer fixture");
+    file.close();
+
+    ConfigEditorWindow window(path, 0, true);
+    QPushButton* apply = requireControl<QPushButton>(window,
+        QStringLiteral("applyConfiguration"));
+    if (apply->isEnabled())
+    {
+        apply->click();
+        QCoreApplication::processEvents();
+    }
+    QSpinBox* offset = requireControl<QSpinBox>(window,
+        QStringLiteral("config.directshow.frame_offset.value"));
+    offset->setValue(offset->value() + 1);
+    QLabel* effect = requireControl<QLabel>(window,
+        QStringLiteral("configurationEffectSummary"));
+    require(effect->text() == QStringLiteral("Takes effect next start: DirectShow"),
+        "A DirectShow-only edit incorrectly promised to restart Alpha");
+}
+
+void testInvalidRendererIsRejectedContinuously()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    window.reveal();
+    QCoreApplication::processEvents();
+
+    QPushButton* apply = requireControl<QPushButton>(window,
+        QStringLiteral("applyConfiguration"));
+    if (apply->isEnabled())
+    {
+        apply->click();
+        QCoreApplication::processEvents();
+    }
+    const QByteArray saved = readBytes(path);
+    QPushButton* ok = requireControl<QPushButton>(window,
+        QStringLiteral("okConfiguration"));
+    QComboBox* renderer = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.renderer"));
+    QLabel* status = requireControl<QLabel>(window,
+        QStringLiteral("configurationStatus"));
+
+    renderer->setEditText(QStringLiteral("DirectShow - madVR1a"));
+    QCoreApplication::processEvents();
+    require(status->text().contains(QStringLiteral("renderer 'DirectShow - madVR1a' was not discovered")) &&
+        status->styleSheet().contains(QStringLiteral("#ff8d86")),
+        "An invalid renderer did not immediately show the first validation error in red");
+    require(!ok->isEnabled() && !apply->isEnabled(),
+        "OK or Apply remained enabled for an invalid renderer");
+
+    ok->click();
+    apply->click();
+    QCoreApplication::processEvents();
+    require(window.isVisible() && readBytes(path) == saved,
+        "An invalid renderer candidate was saved or closed the editor");
+
+    renderer->setEditText(QStringLiteral("VP Renderer"));
+    QCoreApplication::processEvents();
+    require(ok->isEnabled() && apply->isEnabled(),
+        "Correcting the renderer did not restore OK and Apply");
+    require(!status->styleSheet().contains(QStringLiteral("#ff8d86")),
+        "Correcting the renderer did not clear the validation error styling");
+}
+
+void testShortcutEffectsAreClassifiedLive()
+{
+    {
+        QTemporaryDir directory;
+        const QString path = copyFixture(directory);
+        ConfigEditorWindow window(path, 0, true);
+        QPushButton* apply = requireControl<QPushButton>(window,
+            QStringLiteral("applyConfiguration"));
+        if (apply->isEnabled()) save(window);
+
+        requireControl<QLineEdit>(window,
+            QStringLiteral("config.shortcuts.fullscreen_toggle"))
+            ->setText(QStringLiteral("Ctrl+Alt+F11"));
+        QLabel* effect = requireControl<QLabel>(window,
+            QStringLiteral("configurationEffectSummary"));
+        require(effect->text() == QStringLiteral("Apply shortcuts live: Shortcuts"),
+            "A shortcut-only edit was not classified for live shortcut replacement");
+
+        QSpinBox* queueSize = requireControl<QSpinBox>(window,
+            QStringLiteral("config.queue.queue_size"));
+        queueSize->setValue(queueSize->value() + 1);
+        require(effect->text().startsWith(QStringLiteral("Reset queues:")) &&
+            effect->text().contains(QStringLiteral("Queue")) &&
+            effect->text().contains(QStringLiteral("Shortcuts")),
+            "A mixed queue and shortcut edit did not show the strongest action");
+    }
+
+    {
+        QTemporaryDir directory;
+        const QString path = copyFixture(directory);
+        ConfigEditorWindow window(path, 0, true);
+        QPushButton* apply = requireControl<QPushButton>(window,
+            QStringLiteral("applyConfiguration"));
+        if (apply->isEnabled()) save(window);
+
+        requireControl<QLineEdit>(window, QStringLiteral("config.queue.shortcut"))
+            ->setText(QStringLiteral("Ctrl+Alt+F10"));
+        require(requireControl<QLabel>(window,
+            QStringLiteral("configurationEffectSummary"))->text() ==
+                QStringLiteral("Apply shortcuts live: Queue"),
+            "A queue-profile shortcut-only edit was misclassified as a queue reset");
+    }
+}
+
+void testDisplayWarningAndErrorPrecedence()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    window.reveal();
+    QCoreApplication::processEvents();
+
+    QLabel* status = requireControl<QLabel>(window,
+        QStringLiteral("configurationStatus"));
+    QPushButton* ok = requireControl<QPushButton>(window,
+        QStringLiteral("okConfiguration"));
+    QPushButton* apply = requireControl<QPushButton>(window,
+        QStringLiteral("applyConfiguration"));
+    require(status->text().contains(QStringLiteral("Warning: Display 'EPSON PJ'")) &&
+        status->text().contains(QStringLiteral("disconnected or offline")) &&
+        status->styleSheet().contains(QStringLiteral("#e0b45c")) && ok->isEnabled(),
+        "An undiscovered display was not presented as a non-blocking advisory warning");
+
+    QComboBox* renderer = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.renderer"));
+    renderer->setEditText(QStringLiteral("DirectShow - invalid"));
+    QCoreApplication::processEvents();
+    require(status->text().contains(QStringLiteral("renderer 'DirectShow - invalid'")) &&
+        !status->text().contains(QStringLiteral("Warning: Display")) &&
+        status->styleSheet().contains(QStringLiteral("#ff8d86")) &&
+        !ok->isEnabled() && !apply->isEnabled(),
+        "A validation error did not override the display warning");
+
+    QLineEdit* aspect = requireControl<QLineEdit>(window,
+        QStringLiteral("config.vprenderer.viewport.screen_aspect"));
+    const QString originalAspect = aspect->text();
+    aspect->setText(QStringLiteral("not-an-aspect"));
+    QCoreApplication::processEvents();
+    if (!status->text().contains(QStringLiteral("screen_aspect")) ||
+        !status->text().contains(QStringLiteral("And 1 additional error.")))
+        throw std::runtime_error(QStringLiteral(
+            "Multiple errors did not show the latest error/count: %1")
+            .arg(status->text()).toStdString());
+
+    aspect->setText(originalAspect);
+    QCoreApplication::processEvents();
+    require(status->text().contains(QStringLiteral("renderer 'DirectShow - invalid'")) &&
+        !status->text().contains(QStringLiteral("additional error")),
+        "Fixing the latest error did not reveal the remaining current error");
+
+    renderer->setEditText(QStringLiteral("DirectShow - madVR"));
+    QCoreApplication::processEvents();
+    require(status->text().contains(QStringLiteral("Warning: Display 'EPSON PJ'")) &&
+        status->styleSheet().contains(QStringLiteral("#e0b45c")) &&
+        ok->isEnabled(),
+        "Fixing all errors did not resurface the advisory display warning");
+}
+
+void testVideoOnlyStartupDefaultRoundTrips()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    QPushButton* apply = requireControl<QPushButton>(window,
+        QStringLiteral("applyConfiguration"));
+    if (apply->isEnabled()) save(window);
+
+    QCheckBox* fullscreen = requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.fullscreen"));
+    QCheckBox* videoOnly = requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.noui"));
+    require(videoOnly->text() == QStringLiteral("Video Only") &&
+        videoOnly->parentWidget() == fullscreen->parentWidget(),
+        "Video Only is missing from the startup presentation controls");
+
+    videoOnly->setChecked(true);
+    QLabel* effect = requireControl<QLabel>(window,
+        QStringLiteral("configurationEffectSummary"));
+    require(effect->text() == QStringLiteral(
+        "Takes effect next start: Startup / input"),
+        "Video Only did not report next-start-only behavior");
+    save(window);
+    require(readBytes(path).contains("noui: true"),
+        "Video Only did not persist the canonical [general] noui key");
+
+    ConfigEditorWindow reopened(path, 0, true);
+    require(requireControl<QCheckBox>(reopened,
+        QStringLiteral("config.general.noui"))->isChecked(),
+        "Video Only did not round-trip through a reopened editor");
+}
+
+void testRemainingEffectSummaryPrecedence()
+{
+    {
+        QTemporaryDir directory;
+        const QString path = copyFixture(directory);
+        ConfigEditorWindow window(path, 0, true);
+        QPushButton* apply = requireControl<QPushButton>(window,
+            QStringLiteral("applyConfiguration"));
+        if (apply->isEnabled()) save(window);
+        QLabel* effect = requireControl<QLabel>(window,
+            QStringLiteral("configurationEffectSummary"));
+
+        QSpinBox* queueSize = requireControl<QSpinBox>(window,
+            QStringLiteral("config.queue.queue_size"));
+        const int originalQueueSize = queueSize->value();
+        queueSize->setValue(originalQueueSize + 1);
+        require(effect->text() == QStringLiteral("Reset queues: Queue"),
+            "A queue-only edit did not report a queue reset");
+        queueSize->setValue(originalQueueSize);
+        require(effect->text() == QStringLiteral("No pending changes") &&
+            !apply->isEnabled(),
+            "Reverting a queue edit did not clear its pending effect");
+
+        QCheckBox* logging = requireControl<QCheckBox>(window,
+            QStringLiteral("config.logging.enabled"));
+        logging->setChecked(!logging->isChecked());
+        require(effect->text() == QStringLiteral(
+            "Takes effect next start: Logging"),
+            "A logging-only edit did not report next-start behavior");
+    }
+
+    {
+        QTemporaryDir directory;
+        const QString path = copyFixture(directory);
+        ConfigEditorWindow window(path, 0, true);
+        QPushButton* apply = requireControl<QPushButton>(window,
+            QStringLiteral("applyConfiguration"));
+        if (apply->isEnabled()) save(window);
+        requireControl<QLineEdit>(window,
+            QStringLiteral("config.shortcuts.fullscreen_toggle"))
+            ->setText(QStringLiteral("Ctrl+Alt+F11"));
+        requireControl<QComboBox>(window,
+            QStringLiteral("config.general.renderer"))
+            ->setEditText(QStringLiteral("VP Renderer"));
+        QLabel* effect = requireControl<QLabel>(window,
+            QStringLiteral("configurationEffectSummary"));
+        require(effect->text().startsWith(QStringLiteral("Restart renderer:")) &&
+            effect->text().contains(QStringLiteral("Shortcuts")) &&
+            effect->text().contains(QStringLiteral("Startup / input")),
+            "A renderer plus shortcut edit did not report the strongest restart action");
+    }
+}
+
 QString accessibleName(QWidget* widget)
 {
     QAccessibleInterface* interface = QAccessible::queryAccessibleInterface(widget);
@@ -904,8 +1508,707 @@ void testDpiKeyboardAndAccessibilityBehavior()
     }
 }
 
+void testNativeOwnerPreservesQtInputAndPopupAssociation()
+{
+    if (QGuiApplication::platformName().compare(
+        QStringLiteral("windows"), Qt::CaseInsensitive) != 0)
+        return;
+
+    HWND owner = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC", L"VP test owner",
+        WS_OVERLAPPEDWINDOW, 0, 0, 320, 200, nullptr, nullptr,
+        GetModuleHandleW(nullptr), nullptr);
+    require(owner != nullptr, "Cannot create native VP owner fixture");
+    testAdvertisedEditor = nullptr;
+    testOwnerOriginalProcedure = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(
+        owner, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(testOwnerProcedure)));
+    require(testOwnerOriginalProcedure != nullptr,
+        "Cannot install native VP owner association fixture");
+    ShowWindow(owner, SW_SHOWNOACTIVATE);
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, reinterpret_cast<quintptr>(owner), true);
+    window.reveal();
+    QCoreApplication::processEvents();
+
+    HWND editor = reinterpret_cast<HWND>(window.effectiveWinId());
+    const HWND actualOwner = GetWindow(editor, GW_OWNER);
+    if (actualOwner != owner)
+        throw std::runtime_error(QStringLiteral(
+            "Config editor did not apply its VP native owner: editor=%1 expected=%2 actual=%3")
+            .arg(reinterpret_cast<quintptr>(editor), 0, 16)
+            .arg(reinterpret_cast<quintptr>(owner), 0, 16)
+            .arg(reinterpret_cast<quintptr>(actualOwner), 0, 16)
+            .toStdString());
+    require((GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0,
+        "Explicit reveal did not apply scoped topmost above fullscreen");
+    require(appearsAbove(editor, owner),
+        "Visible VP-associated Config was not above its video owner fixture");
+    require(testAdvertisedEditor == editor,
+        "Config editor did not advertise its current native top-level HWND");
+
+    QLineEdit* capture = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.capture_device"))->lineEdit();
+    require(capture != nullptr, "Capture device editor is not keyboard-editable");
+    capture->setFocus();
+    capture->selectAll();
+    QKeyEvent keyPress(QEvent::KeyPress, Qt::Key_Z, Qt::NoModifier,
+        QStringLiteral("z"));
+    QApplication::sendEvent(capture, &keyPress);
+    require(capture->text() == QStringLiteral("z"),
+        "Native association interfered with normal Qt edit keyboard input");
+
+    QComboBox* renderer = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.video_conversion"));
+    for (QWidget* ancestor = renderer->parentWidget(); ancestor;
+        ancestor = ancestor->parentWidget())
+    {
+        if (auto* scrollArea = qobject_cast<QScrollArea*>(ancestor))
+        {
+            scrollArea->ensureWidgetVisible(renderer);
+            break;
+        }
+    }
+    QCoreApplication::processEvents();
+    require(renderer->isVisibleTo(&window),
+        "Real Video conversion dropdown is not visible in Config");
+    SetForegroundWindow(editor);
+    window.raise();
+    window.activateWindow();
+    renderer->setFocus();
+    QCoreApplication::processEvents();
+    SetForegroundWindow(editor);
+    QCoreApplication::processEvents();
+    renderer->showPopup();
+    const ULONGLONG openDeadline = GetTickCount64() + 500;
+    while (!renderer->view()->window()->isVisible() &&
+        GetTickCount64() < openDeadline)
+    {
+        QCoreApplication::processEvents();
+        Sleep(10);
+    }
+    QWidget* popup = renderer->view()->window();
+    require(popup != nullptr,
+        "Native association did not preserve the Qt combo popup window");
+    require(popup->isVisible(), "Renderer popup did not open for lease test");
+    const ULONGLONG popupDeadline = GetTickCount64() + 1100;
+    while (GetTickCount64() < popupDeadline)
+    {
+        QCoreApplication::processEvents();
+        Sleep(20);
+    }
+    const HWND popupWindow = reinterpret_cast<HWND>(popup->effectiveWinId());
+    require(popup->isVisible() && popupWindow && IsWindow(popupWindow),
+        "Natural owner chain did not preserve the native combo popup");
+    require(renderer->count() > 1,
+        "Video conversion dropdown has no alternate mouse choice");
+    const int previousRenderer = renderer->currentIndex();
+    const int selectedRenderer = previousRenderer == 0 ? 1 : 0;
+    const QModelIndex selectedIndex = renderer->model()->index(selectedRenderer,
+        renderer->modelColumn(), renderer->rootModelIndex());
+    const QPoint clickPoint = renderer->view()->visualRect(selectedIndex).center();
+    QWidget* viewport = renderer->view()->viewport();
+    const HWND viewportWindow = reinterpret_cast<HWND>(viewport->winId());
+    SendMessageW(viewportWindow, WM_MOUSEMOVE, 0,
+        MAKELPARAM(clickPoint.x(), clickPoint.y()));
+    SendMessageW(viewportWindow, WM_LBUTTONDOWN, MK_LBUTTON,
+        MAKELPARAM(clickPoint.x(), clickPoint.y()));
+    SendMessageW(viewportWindow, WM_LBUTTONUP, 0,
+        MAKELPARAM(clickPoint.x(), clickPoint.y()));
+    QCoreApplication::processEvents();
+    require(renderer->currentIndex() == selectedRenderer && !popup->isVisible(),
+        "Mouse click could not select and close the real Video conversion dropdown");
+    require((GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0,
+        "Main editor lost scoped topmost during popup selection");
+
+    QComboBox* hdrColorspace = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.hdr_colorspace"));
+    require(hdrColorspace->isVisibleTo(&window),
+        "Real HDR color space dropdown was not accessible after mouse selection");
+    hdrColorspace->setFocus();
+    QKeyEvent openPopup(QEvent::KeyPress, Qt::Key_Down, Qt::AltModifier);
+    QApplication::sendEvent(hdrColorspace, &openPopup);
+    QCoreApplication::processEvents();
+    QWidget* hdrPopup = hdrColorspace->view()->window();
+    require(hdrPopup && hdrPopup->isVisible(),
+        "Keyboard could not open the real HDR color space dropdown");
+    QKeyEvent navigatePopup(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
+    QApplication::sendEvent(hdrColorspace->view(), &navigatePopup);
+    QKeyEvent escapePopup(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(hdrColorspace->view(), &escapePopup);
+    QCoreApplication::processEvents();
+    require(!hdrPopup->isVisible(),
+        "Keyboard Escape did not close the real HDR color space dropdown normally");
+    renderer->showPopup();
+    QCoreApplication::processEvents();
+    require(popup->isVisible(), "Renderer popup did not reopen for activation cleanup");
+    const UINT activationMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigEditor.Activate.v1");
+    DWORD_PTR acknowledged = 0;
+    require(SendMessageTimeoutW(editor, activationMessage,
+        GetCurrentProcessId(), reinterpret_cast<LPARAM>(owner),
+        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &acknowledged) &&
+        acknowledged == 1,
+        "Activation was not acknowledged before queuing reveal");
+    QCoreApplication::processEvents();
+    require(window.isVisible() && !popup->isVisible(),
+        "Queued activation did not close the stale combo popup and reveal");
+
+    window.hide();
+    require((GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0 &&
+        GetWindow(editor, GW_OWNER) == nullptr,
+        "Hiding Config did not clear its native owner and normal z-order state");
+    acknowledged = 0;
+    require(SendMessageTimeoutW(editor, activationMessage,
+        GetCurrentProcessId(), reinterpret_cast<LPARAM>(owner),
+        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &acknowledged) &&
+        acknowledged == 1 && !window.isVisible(),
+        "Repeated activation did not acknowledge before deferred reveal");
+    QCoreApplication::processEvents();
+    require(window.isVisible(), "Deferred repeated activation did not reveal the editor");
+    window.close();
+    require(!window.isVisible() &&
+        (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0,
+        "Closing Config did not remove its temporary topmost state");
+    window.reveal();
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+    editor = reinterpret_cast<HWND>(window.effectiveWinId());
+    require(window.isVisible() &&
+        (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0,
+        "Explicit reveal did not restore scoped topmost state");
+
+    // Force qwindows to destroy and recreate the native top level. VP must be
+    // told the effective replacement HWND before the next activation.
+    window.hide();
+    window.setWindowFlag(Qt::Tool, true);
+    window.show();
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+    editor = reinterpret_cast<HWND>(window.effectiveWinId());
+    require(editor && IsWindow(editor) && testAdvertisedEditor == editor,
+        "WinId recreation did not publish the replacement editor HWND");
+    acknowledged = 0;
+    require(SendMessageTimeoutW(testAdvertisedEditor, activationMessage,
+        GetCurrentProcessId(), reinterpret_cast<LPARAM>(owner),
+        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &acknowledged) &&
+        acknowledged == 1,
+        "Activation through the advertised replacement HWND was not acknowledged");
+    QCoreApplication::processEvents();
+    require(window.isVisible(),
+        "Activation through the advertised replacement HWND did not reveal");
+    capture->setFocus();
+    capture->selectAll();
+    QKeyEvent secondKeyPress(QEvent::KeyPress, Qt::Key_Y, Qt::NoModifier,
+        QStringLiteral("y"));
+    QApplication::sendEvent(capture, &secondKeyPress);
+    require(capture->text() == QStringLiteral("y"),
+        "Repeated activation interfered with normal Qt keyboard focus");
+
+    HWND replacementHost = CreateWindowExW(WS_EX_TOOLWINDOW,
+        L"STATIC", L"replacement VP fullscreen host", WS_OVERLAPPEDWINDOW,
+        0, 0, 320, 200, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    require(replacementHost != nullptr, "Cannot create replacement video host fixture");
+    ShowWindow(replacementHost, SW_SHOWNOACTIVATE);
+    acknowledged = 0;
+    require(SendMessageTimeoutW(editor, activationMessage,
+        GetCurrentProcessId(), reinterpret_cast<LPARAM>(replacementHost),
+        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &acknowledged) && acknowledged == 1,
+        "Config did not acknowledge replacement VP host association");
+    QCoreApplication::processEvents();
+    editor = reinterpret_cast<HWND>(window.effectiveWinId());
+    const UINT targetMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigEditor.PresentationTarget.v1");
+    DWORD_PTR targetAcknowledged = 0;
+    require(SendMessageTimeoutW(editor, targetMessage, GetCurrentProcessId(),
+        reinterpret_cast<LPARAM>(replacementHost),
+        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &targetAcknowledged) &&
+        targetAcknowledged == 1,
+        "Replacement presentation target was not accepted");
+    QCoreApplication::processEvents();
+    require(GetWindow(editor, GW_OWNER) == replacementHost &&
+        (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0,
+        "Config did not apply scoped topmost after host replacement");
+    SetWindowPos(replacementHost, HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    const UINT reassertMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigEditor.Reassert.v1");
+    PostMessageW(editor, reassertMessage, GetCurrentProcessId(),
+        reinterpret_cast<LPARAM>(replacementHost));
+    Sleep(250);
+    QCoreApplication::processEvents();
+    require(appearsAbove(editor, replacementHost),
+        "Natural owner chain did not retain Config above its video owner");
+    SetForegroundWindow(owner);
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+    require(GetForegroundWindow() == owner &&
+        (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0,
+        "External foreground did not remove scoped Config topmost state");
+
+    // Renderer/host lifecycle traffic can arrive after the user has returned
+    // to VP. It must not pull Config back into the topmost band until another
+    // explicit Config reveal is requested.
+    PostMessageW(editor, reassertMessage, GetCurrentProcessId(),
+        reinterpret_cast<LPARAM>(replacementHost));
+    Sleep(100);
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+    require(GetForegroundWindow() == owner &&
+        (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0,
+        "Lifecycle reassert after Config deactivation restored topmost or foreground");
+
+    window.reveal();
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+    editor = reinterpret_cast<HWND>(window.effectiveWinId());
+    require((GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0,
+        "Explicit reveal did not reapply scoped topmost after a gated lifecycle reassert");
+    window.hide();
+    QCoreApplication::processEvents();
+    require((GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0,
+        "Hiding Config after explicit reveal did not remove scoped topmost state");
+    DestroyWindow(replacementHost);
+    Sleep(250);
+    QCoreApplication::processEvents();
+    require((GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0,
+        "Destroyed VP owner left Config in the topmost band");
+    window.hide();
+    SetWindowLongPtrW(owner, GWLP_WNDPROC,
+        reinterpret_cast<LONG_PTR>(testOwnerOriginalProcedure));
+    testOwnerOriginalProcedure = nullptr;
+    testAdvertisedEditor = nullptr;
+    DestroyWindow(owner);
+}
+
+void testRealConfigurationDropdownRemainsClickable()
+{
+    const bool nativeWindows = QGuiApplication::platformName().compare(
+        QStringLiteral("windows"), Qt::CaseInsensitive) == 0;
+    HWND owner = nativeWindows ? CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC",
+        L"VP dropdown owner", WS_OVERLAPPEDWINDOW, 0, 0, 320, 200,
+        nullptr, nullptr, GetModuleHandleW(nullptr), nullptr) : nullptr;
+    require(!nativeWindows || owner != nullptr,
+        "Cannot create dropdown owner fixture");
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, reinterpret_cast<quintptr>(owner), true);
+    window.show();
+    QCoreApplication::processEvents();
+
+    QComboBox* conversion = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.video_conversion"));
+    for (QWidget* ancestor = conversion->parentWidget(); ancestor;
+        ancestor = ancestor->parentWidget())
+    {
+        if (auto* scrollArea = qobject_cast<QScrollArea*>(ancestor))
+        {
+            scrollArea->ensureWidgetVisible(conversion);
+            break;
+        }
+    }
+    QCoreApplication::processEvents();
+    require(conversion->isVisibleTo(&window) && conversion->count() > 1,
+        "Real Video conversion dropdown is unavailable");
+    conversion->showPopup();
+    QCoreApplication::processEvents();
+    QWidget* conversionPopup = conversion->view()->window();
+    require(conversionPopup && conversionPopup->isVisible(),
+        "Real Video conversion dropdown did not open");
+    const ULONGLONG openUntil = GetTickCount64() + 1100;
+    while (GetTickCount64() < openUntil)
+    {
+        QCoreApplication::processEvents();
+        Sleep(20);
+    }
+    require(conversionPopup->isVisible(),
+        "Real Video conversion dropdown could not remain open");
+
+    const int original = conversion->currentIndex();
+    const int alternate = original == 0 ? 1 : 0;
+    const QModelIndex alternateIndex = conversion->model()->index(alternate,
+        conversion->modelColumn(), conversion->rootModelIndex());
+    const QPoint point = conversion->view()->visualRect(alternateIndex).center();
+    QWidget* conversionViewport = conversion->view()->viewport();
+    if (nativeWindows)
+    {
+        const HWND viewport = reinterpret_cast<HWND>(conversionViewport->winId());
+        SendMessageW(viewport, WM_MOUSEMOVE, 0, MAKELPARAM(point.x(), point.y()));
+        SendMessageW(viewport, WM_LBUTTONDOWN, MK_LBUTTON,
+            MAKELPARAM(point.x(), point.y()));
+        SendMessageW(viewport, WM_LBUTTONUP, 0, MAKELPARAM(point.x(), point.y()));
+    }
+    else
+    {
+        const QPoint globalPoint = conversionViewport->mapToGlobal(point);
+        QMouseEvent move(QEvent::MouseMove, QPointF(point), QPointF(globalPoint),
+            Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(conversionViewport, &move);
+        QMouseEvent press(QEvent::MouseButtonPress, QPointF(point),
+            QPointF(globalPoint), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(conversionViewport, &press);
+        QMouseEvent release(QEvent::MouseButtonRelease, QPointF(point),
+            QPointF(globalPoint), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(conversionViewport, &release);
+    }
+    QCoreApplication::processEvents();
+    require(conversion->currentIndex() == alternate &&
+        !conversionPopup->isVisible(),
+        "A native mouse click could not select the real Video conversion dropdown");
+
+    QComboBox* hdr = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.hdr_colorspace"));
+    QKeyEvent openHdr(QEvent::KeyPress, Qt::Key_Down, Qt::AltModifier);
+    QApplication::sendEvent(hdr, &openHdr);
+    QCoreApplication::processEvents();
+    QWidget* hdrPopup = hdr->view()->window();
+    require(hdrPopup && hdrPopup->isVisible(),
+        "Real HDR color space dropdown was inaccessible after mouse selection");
+    QKeyEvent navigateHdr(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
+    QApplication::sendEvent(hdr->view(), &navigateHdr);
+    QKeyEvent closeHdr(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(hdr->view(), &closeHdr);
+    QCoreApplication::processEvents();
+    require(!hdrPopup->isVisible(),
+        "Real HDR color space dropdown did not close normally");
+
+    QComboBox* container = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.container_colorspace"));
+    container->showPopup();
+    QCoreApplication::processEvents();
+    require(container->view()->window()->isVisible(),
+        "A subsequent real dropdown was no longer accessible");
+    container->hidePopup();
+    window.close();
+    if (owner)
+        DestroyWindow(owner);
+}
+
+void testColdHiddenAssociationDeliversPendingReveal()
+{
+    if (QGuiApplication::platformName().compare(
+        QStringLiteral("windows"), Qt::CaseInsensitive) != 0)
+        return;
+
+    HWND owner = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC",
+        L"VP cold-start owner", WS_OVERLAPPEDWINDOW, 0, 0, 320, 200,
+        nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    require(owner != nullptr, "Cannot create cold-start VP owner fixture");
+    testAdvertisedEditor = nullptr;
+    testAssociationActivationAcknowledged = false;
+    testActivateOnAssociation = true;
+    testOwnerOriginalProcedure = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(
+        owner, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(testOwnerProcedure)));
+    require(testOwnerOriginalProcedure != nullptr,
+        "Cannot install cold-start association fixture");
+    ShowWindow(owner, SW_SHOWNOACTIVATE);
+
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, reinterpret_cast<quintptr>(owner), true);
+    for (int attempt = 0; attempt < 4; ++attempt)
+        QCoreApplication::processEvents();
+    HWND editor = reinterpret_cast<HWND>(window.effectiveWinId());
+    require(editor && IsWindow(editor) && testAdvertisedEditor == editor,
+        "Cold hidden editor did not advertise its first usable native HWND");
+    require(testAssociationActivationAcknowledged && window.isVisible(),
+        "Pending activation immediately after association was not acknowledged and revealed");
+
+    // Model an older tray-close already queued when the newer runtime reveal
+    // arrives. The newer reveal must remain the final visible state.
+    window.hide();
+    QCoreApplication::postEvent(&window, new QCloseEvent());
+    const UINT activationMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigEditor.Activate.v1");
+    DWORD_PTR acknowledged = 0;
+    require(SendMessageTimeoutW(editor, activationMessage,
+        GetCurrentProcessId(), reinterpret_cast<LPARAM>(owner),
+        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &acknowledged) &&
+        acknowledged == 1 && !window.isVisible(),
+        "New reveal did not acknowledge before superseding queued close");
+    QCoreApplication::processEvents();
+    require(window.isVisible(),
+        "An older queued close hid the editor after a successful reveal");
+
+    window.hide();
+    SetWindowLongPtrW(owner, GWLP_WNDPROC,
+        reinterpret_cast<LONG_PTR>(testOwnerOriginalProcedure));
+    testOwnerOriginalProcedure = nullptr;
+    testAdvertisedEditor = nullptr;
+    testActivateOnAssociation = false;
+    DestroyWindow(owner);
+}
+
+void testCrossThreadActivationHasNoReverseCallbackDeadlock()
+{
+    if (QGuiApplication::platformName().compare(
+        QStringLiteral("windows"), Qt::CaseInsensitive) != 0)
+        return;
+
+    ReverseCallbackFixture fixture;
+    std::thread ownerThread([&fixture]
+    {
+        const wchar_t* className = L"VP.ConfigEditor.ReverseCallbackTest";
+        WNDCLASSW windowClass{};
+        windowClass.lpfnWndProc = reverseCallbackOwnerProcedure;
+        windowClass.hInstance = GetModuleHandleW(nullptr);
+        windowClass.lpszClassName = className;
+        RegisterClassW(&windowClass);
+        HWND owner = CreateWindowExW(WS_EX_TOOLWINDOW, className,
+            L"VP reverse-callback owner", WS_OVERLAPPEDWINDOW,
+            0, 0, 320, 200, nullptr, nullptr, windowClass.hInstance, &fixture);
+        fixture.owner.store(owner);
+        if (!owner) return;
+        MSG message{};
+        while (GetMessageW(&message, nullptr, 0, 0) > 0)
+        {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+    });
+
+    const ULONGLONG ownerDeadline = GetTickCount64() + 2000;
+    while (!fixture.owner.load() && GetTickCount64() < ownerDeadline)
+        Sleep(1);
+    const HWND owner = fixture.owner.load();
+    bool advertisedCurrent = false;
+    bool becameVisible = false;
+    if (owner)
+    {
+        QTemporaryDir directory;
+        const QString path = copyFixture(directory);
+        ConfigEditorWindow window(path, reinterpret_cast<quintptr>(owner), true);
+        const ULONGLONG activationDeadline = GetTickCount64() + 2000;
+        while ((!fixture.activationReturned.load() || !window.isVisible()) &&
+            GetTickCount64() < activationDeadline)
+        {
+            QCoreApplication::processEvents();
+            Sleep(1);
+        }
+        advertisedCurrent = fixture.advertisedEditor.load() ==
+            reinterpret_cast<HWND>(window.effectiveWinId());
+        becameVisible = window.isVisible();
+        window.hide();
+        PostMessageW(owner, WM_CLOSE, 0, 0);
+    }
+    if (ownerThread.joinable()) ownerThread.join();
+
+    require(owner != nullptr, "Cannot create reverse-callback owner thread fixture");
+    require(fixture.activationReturned.load(),
+        "Cross-thread Activate timed out in a reverse Association callback cycle");
+    require(fixture.activationAcknowledged.load(),
+        "Cross-thread Activate did not return ack=1");
+    require(fixture.activationElapsedMs.load() < 250,
+        "Cross-thread Activate did not acknowledge promptly");
+    require(advertisedCurrent,
+        "Cross-thread association did not advertise the current editor HWND");
+    require(becameVisible,
+        "Queued reveal did not make the cross-thread activated editor visible");
+}
+
+void testExternalForegroundLeavesConfigTopmost()
+{
+    if (QGuiApplication::platformName().compare(
+        QStringLiteral("windows"), Qt::CaseInsensitive) != 0)
+        return;
+
+    const HINSTANCE instance = GetModuleHandleW(nullptr);
+    WNDCLASSW receiverClass{};
+    receiverClass.lpfnWndProc = externalFixtureReceiverProcedure;
+    receiverClass.hInstance = instance;
+    receiverClass.lpszClassName = L"VP.ConfigTests.FixtureReceiver.v1";
+    RegisterClassW(&receiverClass);
+    ExternalZOrderFixture fixture;
+    HWND receiver = CreateWindowExW(WS_EX_TOOLWINDOW,
+        receiverClass.lpszClassName, L"fixture receiver", WS_POPUP,
+        0, 0, 1, 1, nullptr, nullptr, instance, &fixture);
+    require(receiver != nullptr, "Cannot create external fixture receiver");
+
+    wchar_t executable[MAX_PATH]{};
+    GetModuleFileNameW(nullptr, executable, MAX_PATH);
+    std::wstring command = L"\"" + std::wstring(executable) +
+        L"\" --zorder-helper " +
+        std::to_wstring(reinterpret_cast<quintptr>(receiver));
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    const bool launched = CreateProcessW(nullptr, command.data(), nullptr,
+        nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process);
+    bool popupKeptForeground = false;
+    bool externalForegroundKeepsConfigTopmost = false;
+    bool hostUnchanged = false;
+    bool spoofedTargetRejected = false;
+    bool targetPlacementValid = false;
+    bool targetOwnerApplied = false;
+    bool targetMainIsScoped = false;
+    bool manualMovePreserved = false;
+    bool repeatRevealClamped = false;
+    if (launched)
+    {
+        const ULONGLONG readyDeadline = GetTickCount64() + 3000;
+        while ((!fixture.owner || !fixture.host) && GetTickCount64() < readyDeadline)
+        {
+            QCoreApplication::processEvents();
+            Sleep(1);
+        }
+        if (fixture.owner && fixture.host)
+        {
+            RECT hostBefore{};
+            GetWindowRect(fixture.host, &hostBefore);
+            const LONG_PTR styleBefore = GetWindowLongPtrW(fixture.host, GWL_STYLE);
+            const LONG_PTR exStyleBefore = GetWindowLongPtrW(fixture.host, GWL_EXSTYLE);
+            QTemporaryDir directory;
+            ConfigEditorWindow window(copyFixture(directory),
+                reinterpret_cast<quintptr>(fixture.owner), true);
+            HWND editor = reinterpret_cast<HWND>(window.effectiveWinId());
+            static const UINT targetMessage = RegisterWindowMessageW(
+                L"VideoProcessor.ConfigEditor.PresentationTarget.v1");
+            DWORD_PTR targetAck = 1;
+            spoofedTargetRejected = SendMessageTimeoutW(editor, targetMessage,
+                GetCurrentProcessId(), reinterpret_cast<LPARAM>(fixture.host),
+                SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &targetAck) && targetAck == 0;
+            targetAck = 0;
+            require(SendMessageTimeoutW(editor, targetMessage,
+                process.dwProcessId, reinterpret_cast<LPARAM>(fixture.host),
+                SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &targetAck) && targetAck == 1,
+                "Valid presentation target handoff was not acknowledged");
+            RECT hiddenFrame{};
+            GetWindowRect(editor, &hiddenFrame);
+            const int preservedWidth = hiddenFrame.right - hiddenFrame.left;
+            const int preservedHeight = hiddenFrame.bottom - hiddenFrame.top;
+            window.reveal();
+            QCoreApplication::processEvents();
+            QCoreApplication::processEvents();
+            editor = reinterpret_cast<HWND>(window.effectiveWinId());
+            RECT placedFrame{};
+            GetWindowRect(editor, &placedFrame);
+            MONITORINFO targetMonitor{};
+            targetMonitor.cbSize = sizeof(targetMonitor);
+            GetMonitorInfoW(MonitorFromWindow(fixture.host,
+                MONITOR_DEFAULTTONEAREST), &targetMonitor);
+            const RECT work = targetMonitor.rcWork;
+            targetPlacementValid = placedFrame.left >= work.left &&
+                placedFrame.top >= work.top && placedFrame.right <= work.right &&
+                placedFrame.bottom <= work.bottom &&
+                placedFrame.right - placedFrame.left == preservedWidth &&
+                placedFrame.bottom - placedFrame.top == preservedHeight;
+            targetOwnerApplied = GetWindow(editor, GW_OWNER) == fixture.host;
+            targetMainIsScoped =
+                (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+
+            SetForegroundWindow(editor);
+
+            QWidget popup(&window, Qt::Popup);
+            popup.resize(160, 80);
+            popup.show();
+            const HWND popupWindow = reinterpret_cast<HWND>(popup.winId());
+            SetForegroundWindow(popupWindow);
+            Sleep(250);
+            QCoreApplication::processEvents();
+            popupKeptForeground = popup.isVisible();
+
+            AllowSetForegroundWindow(process.dwProcessId);
+            static const UINT requestMessage = RegisterWindowMessageW(
+                L"VideoProcessor.ConfigTests.ZOrderFixture.RequestForeground.v1");
+            PostMessageW(fixture.host, requestMessage, 0, 0);
+            // A visible Config window is now intentionally system-topmost.
+            // The host may or may not receive foreground under Windows focus
+            // policy, but it must not demote Config from the topmost band.
+            Sleep(250);
+            Sleep(250);
+            QCoreApplication::processEvents();
+            externalForegroundKeepsConfigTopmost =
+                (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+            RECT hostAfter{};
+            GetWindowRect(fixture.host, &hostAfter);
+            hostUnchanged = EqualRect(&hostBefore, &hostAfter) &&
+                GetWindowLongPtrW(fixture.host, GWL_STYLE) == styleBefore &&
+                GetWindowLongPtrW(fixture.host, GWL_EXSTYLE) == exStyleBefore &&
+                (exStyleBefore & WS_EX_TOPMOST) != 0 &&
+                (styleBefore & WS_POPUP) != 0;
+            popup.hide();
+
+            SetWindowPos(editor, nullptr, work.right - 100, work.bottom - 100,
+                0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            RECT manuallyMoved{};
+            GetWindowRect(editor, &manuallyMoved);
+            Sleep(250);
+            QCoreApplication::processEvents();
+            RECT afterLease{};
+            GetWindowRect(editor, &afterLease);
+            manualMovePreserved = EqualRect(&manuallyMoved, &afterLease) != FALSE;
+            window.hide();
+            window.reveal();
+            QCoreApplication::processEvents();
+            QCoreApplication::processEvents();
+            GetWindowRect(editor, &placedFrame);
+            repeatRevealClamped = placedFrame.left >= work.left &&
+                placedFrame.top >= work.top && placedFrame.right <= work.right &&
+                placedFrame.bottom <= work.bottom;
+            window.hide();
+        }
+        PostThreadMessageW(process.dwThreadId, WM_QUIT, 0, 0);
+        WaitForSingleObject(process.hProcess, 3000);
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+    }
+    DestroyWindow(receiver);
+
+    require(launched, "Cannot launch external VP z-order fixture process");
+    require(fixture.owner && fixture.host,
+        "External VP z-order fixture did not publish its windows");
+    require(spoofedTargetRejected,
+        "Presentation target handoff accepted a spoofed process id");
+    require(targetPlacementValid,
+        "Reveal did not preserve size and fully clamp Config to target monitor work area");
+    require(targetOwnerApplied,
+        "Presentation target handoff did not become Config native owner");
+    require(targetMainIsScoped,
+        "Presentation-owned Config was not scoped above topmost fullscreen");
+    require(manualMovePreserved,
+        "Visible Config was pulled back after a manual move");
+    require(repeatRevealClamped,
+        "Re-hide/reveal did not return Config to the presentation target monitor");
+    require(popupKeptForeground,
+        "Natural Config ownership closed a same-process popup unexpectedly");
+    require(externalForegroundKeepsConfigTopmost,
+        "Visible Config lost topmost placement after external foreground activation");
+    require(hostUnchanged,
+        "Config foreground recovery changed fullscreen host rect or styles");
+}
+
+void testSyntheticPresentationTargetClamp()
+{
+    const QRect workArea(-1920, 40, 1920, 1040);
+    const QRect offscreenFrame(1700, 900, 1040, 700);
+    const QRect placed = ConfigEditorPlacement::ClampFrameToWorkArea(
+        offscreenFrame, workArea);
+    require(placed.size() == offscreenFrame.size(),
+        "Presentation placement changed the Config window size");
+    require(workArea.contains(placed),
+        "Presentation placement did not fully clamp to a synthetic monitor work area");
+    if (GetSystemMetrics(SM_CMONITORS) < 2)
+        std::cout << "INFO physical two-monitor placement skipped: only one monitor; "
+            "synthetic negative-origin clamp plus live target HWND coverage ran" << std::endl;
+}
+
+void testNormalWindowArchitectureHasNoLeasePolling()
+{
+    const QByteArray source = readBytes(repositoryPath(QStringLiteral(
+        "src/VideoProcessor-Config/ConfigEditorWindow.cpp")));
+    require(!source.contains("ownerMonitor_") &&
+        !source.contains("maintainForegroundLease") &&
+        !source.contains("maintainPopupZOrder") &&
+        !source.contains("setInterval(200)") &&
+        !source.contains("SetForegroundWindow"),
+        "Config editor still contains polling, popup, or foreground lease logic");
+}
+
 int run(const char* name, const std::function<void()>& test)
 {
+    if (!testNameFilter.isEmpty() &&
+        testNameFilter.compare(QString::fromUtf8(name), Qt::CaseInsensitive) != 0)
+        return 0;
+    ++selectedTestsRun;
     std::cerr << "START " << name << std::endl;
     try
     {
@@ -923,6 +2226,16 @@ int run(const char* name, const std::function<void()>& test)
 
 int main(int argc, char** argv)
 {
+    if (argc == 3 && QString::fromLocal8Bit(argv[1]) ==
+        QStringLiteral("--zorder-helper"))
+    {
+        bool ok = false;
+        const quintptr receiver = QString::fromLocal8Bit(argv[2]).toULongLong(&ok);
+        return ok ? runExternalZOrderFixture(reinterpret_cast<HWND>(receiver)) : 2;
+    }
+    if (argc == 3 && QString::fromLocal8Bit(argv[1]) ==
+        QStringLiteral("--test"))
+        testNameFilter = QString::fromLocal8Bit(argv[2]);
     QApplication application(argc, argv);
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
@@ -936,12 +2249,39 @@ int main(int argc, char** argv)
     failures += run("disabling shader rule preserves shortcut", testDisablingShaderRulePreservesShortcut);
     failures += run("renderer profile sections collapse and persist", testRendererProfileSectionsCollapseAndPersist);
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
-    failures += run("Reload confirmation waits for an explicit choice", testReloadConfirmationRemainsOpenUntilExplicitChoice);
-    failures += run("clean Reload keeps the editor stable", testCleanReloadDoesNotRebuildTheShell);
     failures += run("choice labels and VP Renderer name", testChoiceLabelsAndVpRendererName);
     failures += run("legacy renderer visibility remains manual and preserved", testLegacyRendererVisibilityRemainsManualAndPreserved);
     failures += run("new action starts unconfigured", testNewActionStartsUnconfigured);
     failures += run("empty actions show an empty state", testEmptyActionsShowEmptyState);
+    failures += run("Apply OK Cancel contract", testApplyOkCancelContract);
+    failures += run("DirectShow-only effect does not restart Alpha",
+        testDirectShowOnlyEffectDoesNotRestartAlpha);
+    failures += run("invalid renderer is rejected continuously",
+        testInvalidRendererIsRejectedContinuously);
+    failures += run("shortcut effects are classified live",
+        testShortcutEffectsAreClassifiedLive);
+    failures += run("display warning and error precedence",
+        testDisplayWarningAndErrorPrecedence);
+    failures += run("Video Only startup default round trips",
+        testVideoOnlyStartupDefaultRoundTrips);
+    failures += run("remaining effect summary precedence",
+        testRemainingEffectSummaryPrecedence);
     failures += run("DPI keyboard and accessibility behavior", testDpiKeyboardAndAccessibilityBehavior);
+    failures += run("native owner preserves Qt input and popup association",
+        testNativeOwnerPreservesQtInputAndPopupAssociation);
+    failures += run("real configuration dropdown remains clickable",
+        testRealConfigurationDropdownRemainsClickable);
+    failures += run("cold hidden association delivers pending reveal",
+        testColdHiddenAssociationDeliversPendingReveal);
+    failures += run("cross-thread activation avoids reverse callback deadlock",
+        testCrossThreadActivationHasNoReverseCallbackDeadlock);
+    failures += run("external foreground leaves Config topmost",
+        testExternalForegroundLeavesConfigTopmost);
+    failures += run("synthetic presentation target clamp",
+        testSyntheticPresentationTargetClamp);
+    failures += run("normal window architecture has no lease polling",
+        testNormalWindowArchitectureHasNoLeasePolling);
+    if (!testNameFilter.isEmpty() && selectedTestsRun == 0)
+        return 2;
     return failures == 0 ? 0 : 1;
 }
