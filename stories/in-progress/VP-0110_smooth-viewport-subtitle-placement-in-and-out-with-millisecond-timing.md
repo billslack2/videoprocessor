@@ -167,6 +167,24 @@ The deployment did not edit `VideoProcessor.cfg`; it preserves the user's
 current per-profile timing values, including Scope hold 2 seconds, engage snap
 (`0` ms), and 1000 ms release.
 
+Target-buffer refinement checkpoint (2026-08-10): quick live validation across
+multiple configurations showed the authority-boundary build working well and
+each hold/engage/release value behaving as configured. One trace exposed a
+small tail movement: a confirmed 206-pixel target completed its engage, then a
+later 210-pixel extent began another tiny drift. Commit `d1ab1fe` adds
+`subtitle_target_buffer_pixels`, a per-viewport nonnegative outward reserve
+with a default of 10 pixels and a validated range of 0 through 50. The reserve
+is applied symmetrically by direction for upper and lower subtitles, absorbs
+later extent growth already covered by the accepted placement, and is clamped
+at the source raster edge. A value of 0 restores exact-target behavior.
+Padding remains the required visual clearance; the target buffer only
+stabilizes movement and does not alter detection, confirmation, hold, or
+release eligibility. The Qt editor, unified configuration, and reference
+documentation expose the setting. Focused policy/configuration tests pass;
+full native testing reports 776 passed and the same six pre-existing fixture
+failures. Clean x64 Release rebuilds of the host, VP Renderer, and Qt editor
+succeeded at `d1ab1fe` with `VERSION_DIRTY=false`.
+
 ## User story
 
 As a VideoProcessor user watching scope content with subtitle fitting enabled,
@@ -198,7 +216,12 @@ milliseconds, so the motion is deliberate and directly tunable. A duration of
    target, while retaining the trusted crop during that confirmation window.
    Reject newly configured subtitle holds below 0.25 seconds so a user cannot
    select a hold shorter than the scheduled analysis cadence.
-5. Add focused tests for zero-duration snapping, nonzero engage and release
+5. Add `subtitle_target_buffer_pixels` as a separately configurable outward
+   target reserve. Accept 0 through 50 pixels, default to 10, mirror the
+   magnitude for upper/lower subtitles, and clamp it at the source raster.
+   Later measured growth already covered by the buffered target must not start
+   another movement; `0` must retain exact-target behavior.
+6. Add focused tests for zero-duration snapping, nonzero engage and release
    interpolation, retargeting during motion, and unchanged detection/hold
    decisions. Complete a clean x64 Release build and the relevant native test
    suite.
@@ -220,6 +243,9 @@ milliseconds, so the motion is deliberate and directly tunable. A duration of
 - `subtitle_hold_seconds` accepts 0.25 through 30 seconds; the editor and
   runtime share this validation, while zero remains valid for both drift
   durations.
+- `subtitle_target_buffer_pixels` accepts 0 through 50, defaults to 10, works
+  for both translation directions, and cannot move the source rectangle beyond
+  the raster edge.
 - The configuration and documentation contain no active seconds-based setting
   for these two movement durations.
 - Existing rules for detecting, holding, changing direction, and releasing
@@ -229,7 +255,8 @@ milliseconds, so the motion is deliberate and directly tunable. A duration of
 
 - Altering subtitle classification thresholds, OCR, black-bar sampling, or
   subtitle timing beyond the bounded two-sample target confirmation and the
-  explicit 0.25-second configuration floor added above.
+  explicit 0.25-second configuration floor added above. The target buffer may
+  stabilize a confirmed target but does not broaden subtitle classification.
 
 ## Implementation gate
 
