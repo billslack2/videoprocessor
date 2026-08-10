@@ -1952,6 +1952,19 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         enum Kind { Text, Boolean, Choice, Integer } kind = Text;
     };
     struct State { QString section; bool loading = false; };
+    struct QueuePolicy
+    {
+        const char* id;
+        const char* label;
+        int capacity;
+        int lead;
+        int target;
+    };
+    static constexpr QueuePolicy queuePolicies[] = {
+        { "low_latency", "Low latency", 4, 0, 1 },
+        { "balanced", "Balanced", 16, 3, 2 },
+        { "reliable", "Reliable", 32, 4, 3 },
+    };
     auto state = std::make_shared<State>();
     auto fields = std::make_shared<std::vector<Field>>();
 
@@ -2211,8 +2224,19 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         });
     };
 
+    QComboBox* queuePolicy = nullptr;
     if (sectionPrefix == QStringLiteral("queue"))
     {
+        queuePolicy = new QComboBox;
+        queuePolicy->setObjectName(QStringLiteral("config.queue.policy_preset"));
+        queuePolicy->setAccessibleName(QStringLiteral("Queue buffering policy"));
+        queuePolicy->addItem(QStringLiteral("Custom"), QString());
+        for (const QueuePolicy& policy : queuePolicies)
+            queuePolicy->addItem(QString::fromLatin1(policy.label),
+                QString::fromLatin1(policy.id));
+        form->addRow(QStringLiteral("Buffering policy"), queuePolicy);
+        form->addRow(QString(), helpLabel(QStringLiteral(
+            "Choose a policy to set the related queue values together, or use Custom to tune the advanced values below.")));
         addInteger(QStringLiteral("Queue depth"), QStringLiteral("queue_size"),
             1, INT_MAX, QStringLiteral(" frames"));
         addInteger(QStringLiteral("Lead frames"), QStringLiteral("lead_frames"),
@@ -2418,7 +2442,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
     auto loadDetails = [this, state, fields, selectedTitle, name, shortcut, rule, ruleField, useRule, remove, up, down, list,
         profileFields, sectionPrefix, anamorphicEnabled, anamorphicValue,
-        deprecatedViewportAlias](QListWidgetItem* current)
+        deprecatedViewportAlias, queuePolicy](QListWidgetItem* current)
     {
         state->loading = true;
         state->section = current ? current->data(Qt::UserRole).toString() : QString();
@@ -2601,8 +2625,83 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             anamorphicValue->setEnabled(!configured.isEmpty());
             if (configured.isEmpty()) anamorphicValue->setText(QStringLiteral("1:1"));
         }
+        if (queuePolicy)
+        {
+            const auto queueValue = [fields](const QString& key) -> int
+            {
+                for (const Field& field : *fields)
+                    if (field.key == key && field.kind == Field::Integer)
+                        return qobject_cast<QSpinBox*>(field.widget)->value();
+                return -1;
+            };
+            QString policyId;
+            for (const QueuePolicy& policy : queuePolicies)
+                if (queueValue(QStringLiteral("queue_size")) == policy.capacity &&
+                    queueValue(QStringLiteral("lead_frames")) == policy.lead &&
+                    queueValue(QStringLiteral("target_frames")) == policy.target &&
+                    queueValue(QStringLiteral("startup_preroll_frames")) == 0 &&
+                    queueValue(QStringLiteral("active_picture_lookahead_frames")) == 0 &&
+                    queueValue(QStringLiteral("reset_after_render_restart_seconds")) == 5 &&
+                    queueValue(QStringLiteral("reset_queue_too_large_percent")) == 75)
+                {
+                    policyId = QString::fromLatin1(policy.id);
+                    break;
+                }
+            const QSignalBlocker blocker(queuePolicy);
+            queuePolicy->setCurrentIndex(std::max(0, queuePolicy->findData(policyId)));
+        }
         state->loading = false;
     };
+
+    if (queuePolicy)
+    {
+        connect(queuePolicy, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this, queuePolicy, state, fields](int index)
+        {
+            if (state->loading || state->section.isEmpty() || !document_ || index < 0) return;
+            const QString selectedId = queuePolicy->itemData(index).toString();
+            if (selectedId.isEmpty()) return;
+            const QueuePolicy* selected = nullptr;
+            for (const QueuePolicy& policy : queuePolicies)
+                if (selectedId == QString::fromLatin1(policy.id)) { selected = &policy; break; }
+            if (!selected) return;
+            const std::string section = state->section.toStdString();
+            const auto setValue = [this, &section](const char* key, int value)
+            {
+                document_->SetKnown(section, key, std::to_string(value));
+            };
+            setValue("queue_size", selected->capacity);
+            setValue("lead_frames", selected->lead);
+            setValue("startup_preroll_frames", 0);
+            setValue("target_frames", selected->target);
+            setValue("active_picture_lookahead_frames", 0);
+            setValue("reset_after_render_restart_seconds", 5);
+            setValue("reset_queue_too_large_percent", 75);
+            for (const Field& field : *fields)
+                if (field.kind == Field::Integer)
+                {
+                    int value = 0;
+                    if (field.key == QStringLiteral("queue_size")) value = selected->capacity;
+                    else if (field.key == QStringLiteral("lead_frames")) value = selected->lead;
+                    else if (field.key == QStringLiteral("target_frames")) value = selected->target;
+                    else if (field.key == QStringLiteral("reset_after_render_restart_seconds")) value = 5;
+                    else if (field.key == QStringLiteral("reset_queue_too_large_percent")) value = 75;
+                    QSignalBlocker blocker(field.widget);
+                    qobject_cast<QSpinBox*>(field.widget)->setValue(value);
+                }
+            markDirty();
+        });
+        for (const Field& field : *fields)
+            if (field.kind == Field::Integer)
+                connect(qobject_cast<QSpinBox*>(field.widget),
+                    qOverload<int>(&QSpinBox::valueChanged), this,
+                    [state, queuePolicy](int)
+                {
+                    if (state->loading) return;
+                    const QSignalBlocker blocker(queuePolicy);
+                    queuePolicy->setCurrentIndex(0);
+                });
+    }
 
     std::function<void(const QString&)> refresh = [this, list, sectionPrefix, loadDetails](const QString& wanted)
     {
@@ -2841,118 +2940,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
 QWidget* ConfigEditorWindow::createQueuePage()
 {
-    struct QueuePreset
-    {
-        const char* id;
-        const char* label;
-        const char* summary;
-        int capacity;
-        int lead;
-        int target;
-    };
-    // These are complete, tested queue policies.  The individual values are
-    // intentionally not editable here: changing just one of them makes the
-    // latency/resilience trade-off ambiguous.
-    static constexpr QueuePreset presets[] = {
-        { "low_latency", "Low latency", "4-frame capacity with the smallest practical reserve. Choose this when staying current matters more than absorbing a late render.", 4, 0, 1 },
-        { "balanced", "Balanced", "16-frame capacity with a modest presentation reserve for typical viewing.", 16, 3, 2 },
-        { "reliable", "Reliable", "32-frame capacity and extra headroom to minimize drops; it can add more buffered latency.", 32, 4, 3 },
-    };
-
-    const QStringList profiles = profileSections(QStringLiteral("queue"));
-    const QString defaultProfile = profiles.isEmpty() ? QStringLiteral("queue") : profiles.front();
-    const auto valueOr = [this, &defaultProfile](const QString& key, int fallback)
-    {
-        bool ok = false;
-        const int parsed = value(defaultProfile, key).toInt(&ok);
-        return ok ? parsed : fallback;
-    };
-    const int capacity = valueOr(QStringLiteral("queue_size"), 16);
-    const int lead = valueOr(QStringLiteral("lead_frames"), 0);
-    const int target = valueOr(QStringLiteral("target_frames"), 0);
-    const int preRoll = valueOr(QStringLiteral("startup_preroll_frames"), 0);
-    const int lookahead = valueOr(QStringLiteral("active_picture_lookahead_frames"), 0);
-    const int resetDelay = valueOr(QStringLiteral("reset_after_render_restart_seconds"), 5);
-    const int resetThreshold = valueOr(QStringLiteral("reset_queue_too_large_percent"), 75);
-
-    QString selectedPreset;
-    for (const QueuePreset& preset : presets)
-        if (capacity == preset.capacity && lead == preset.lead && target == preset.target &&
-            preRoll == 0 && lookahead == 0 && resetDelay == 5 && resetThreshold == 75)
-        {
-            selectedPreset = QString::fromLatin1(preset.id);
-            break;
-        }
-
-    auto* content = new QWidget;
-    auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(12);
-    auto* choice = new QComboBox;
-    choice->setObjectName(QStringLiteral("config.queue.profile"));
-    choice->setAccessibleName(QStringLiteral("Queue buffering profile"));
-    choice->addItem(QStringLiteral("Custom (keep current settings)"), QString());
-    for (const QueuePreset& preset : presets)
-        choice->addItem(QString::fromLatin1(preset.label), QString::fromLatin1(preset.id));
-    choice->setCurrentIndex(std::max(0, choice->findData(selectedPreset)));
-    layout->addWidget(fieldWithHelp(QStringLiteral("Buffering profile"), choice,
-        QStringLiteral("Select a complete queue policy. VP applies all related queue values together.")));
-
-    QString initialSummary = QStringLiteral(
-        "This profile has custom queue settings. Select a policy to replace them with a supported baseline.");
-    for (const QueuePreset& preset : presets)
-        if (selectedPreset == QString::fromLatin1(preset.id))
-            initialSummary = QString::fromLatin1(preset.summary);
-    auto* summary = helpLabel(initialSummary);
-    summary->setObjectName(QStringLiteral("config.queue.profile_summary"));
-    layout->addWidget(summary);
-    if (profiles.size() > 1)
-        layout->addWidget(helpLabel(QStringLiteral(
-            "This changes the default queue profile (%1). Additional automatic or shortcut profiles are preserved in the configuration file.")
-            .arg(defaultProfile)));
-
-    connect(choice, qOverload<int>(&QComboBox::currentIndexChanged), this,
-        [this, choice, summary, defaultProfile](int index)
-    {
-        if (!document_ || index < 0) return;
-        const QString preset = choice->itemData(index).toString();
-        if (preset.isEmpty())
-        {
-            summary->setText(QStringLiteral("This profile has custom queue settings. Select a policy to replace them with a supported baseline."));
-            return;
-        }
-        const QueuePreset* selected = nullptr;
-        for (const QueuePreset& candidate : presets)
-            if (preset == QString::fromLatin1(candidate.id))
-            {
-                selected = &candidate;
-                break;
-        }
-        if (!selected) return;
-        const std::string section = defaultProfile.toStdString();
-        const auto setValue = [this, &section](const char* key, const std::string& value)
-        {
-            if (!document_->SetKnown(section, key, value))
-            {
-                document_->AddSection(section);
-                document_->SetKnown(section, key, value);
-            }
-        };
-        setValue("queue_size", std::to_string(selected->capacity));
-        setValue("lead_frames", std::to_string(selected->lead));
-        setValue("startup_preroll_frames", "0");
-        setValue("target_frames", std::to_string(selected->target));
-        setValue("active_picture_lookahead_frames", "0");
-        setValue("reset_after_render_restart_seconds", "5");
-        setValue("reset_queue_too_large_percent", "75");
-        summary->setText(QString::fromLatin1(selected->summary));
-        markDirty();
-    });
-
-    return createPage(QStringLiteral("Queue"),
-        QStringLiteral("Choose how much latency headroom VP should reserve. Advanced queue rules stay in the configuration file."),
-        createCard(QStringLiteral("Queue buffering"),
-            QStringLiteral("A profile adjusts capacity, presentation lead, reserve, and recovery together."), content));
+    return createProfilePage(QStringLiteral("Queue"),
+        QStringLiteral("Configure ordered queue profiles. Choose a buffering policy for a complete baseline, or tune its advanced values."),
+        QStringLiteral("queue"));
 }
 
 QWidget* ConfigEditorWindow::createRendererPage()

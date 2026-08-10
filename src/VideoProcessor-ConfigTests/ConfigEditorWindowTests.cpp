@@ -374,8 +374,12 @@ void testEveryPageRoundTrips()
     selectData(requireControl<QComboBox>(window, QStringLiteral("config.general.container_colorspace")),
         QStringLiteral("BT2020"));
 
-    selectData(requireControl<QComboBox>(window,
-        QStringLiteral("config.queue.profile")), QStringLiteral("balanced"));
+    requireControl<QSpinBox>(window, QStringLiteral("config.queue.queue_size"))->setValue(48);
+    requireControl<QSpinBox>(window, QStringLiteral("config.queue.lead_frames"))->setValue(3);
+    requireControl<QSpinBox>(window,
+        QStringLiteral("config.queue.reset_queue_too_large_percent"))->setValue(200);
+    requireControl<QLineEdit>(window, QStringLiteral("config.queue.shortcut"))
+        ->setText(QStringLiteral("Ctrl+q"));
 
     selectData(requireControl<QComboBox>(window, QStringLiteral("config.vprenderer.quality")),
         QStringLiteral("balanced"));
@@ -490,8 +494,8 @@ void testEveryPageRoundTrips()
         "renderer: VP Renderer", "fullscreen: false",
         "scene_detect: false",
         "fullscreen_monitor_name: Test Display", "container_colorspace: BT2020",
-        "queue_size: 16", "lead_frames: 3", "target_frames: 2",
-        "reset_queue_too_large_percent: 75", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
+        "queue_size: 48", "lead_frames: 3", "reset_queue_too_large_percent: 200",
+        "shortcut: Ctrl+Q", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
         "screen_aspect: 21:10", "vertical_alignment: bottom", "anamorphic_scale: 4:3",
         "renderer_start_stop_time_method: RATIONAL_RATIONAL", "frame_offset: 75",
         "renderer_primaries: BT2020", "max_cll: 1200", "max_fall: 450",
@@ -509,9 +513,9 @@ void testEveryPageRoundTrips()
     require(!requireControl<QCheckBox>(reloaded,
         QStringLiteral("config.general.fullscreen"))->isChecked(),
         "General Boolean did not reload");
-    require(requireControl<QComboBox>(reloaded,
-        QStringLiteral("config.queue.profile"))->currentData().toString() == QStringLiteral("balanced"),
-        "Queue profile did not reload");
+    require(requireControl<QSpinBox>(reloaded,
+        QStringLiteral("config.queue.queue_size"))->value() == 48,
+        "Queue value did not reload");
     require(requireControl<QLineEdit>(reloaded,
         QStringLiteral("config.vprenderer.viewport.screen_aspect"))->text() ==
         QStringLiteral("21:10"), "Viewport value did not reload");
@@ -566,20 +570,41 @@ void testProfileLifecycleThroughWidgets()
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
     ConfigEditorWindow window(path, 0, true);
-    QComboBox* profile = requireControl<QComboBox>(window,
-        QStringLiteral("config.queue.profile"));
-    require(profile->count() == 4, "Queue policy choices did not load");
-    require(window.findChild<QListWidget*>(QStringLiteral("config.queue.profiles")) == nullptr,
-        "Queue profile mechanics remain exposed in the simplified UI");
-    selectData(profile, QStringLiteral("balanced"));
+    QListWidget* list = requireControl<QListWidget>(window,
+        QStringLiteral("config.queue.profiles"));
+    require(list->count() == 2, "Queue profiles did not load");
+
+    list->setCurrentRow(1);
+    QLineEdit* name = requireControl<QLineEdit>(window,
+        QStringLiteral("config.queue.name"));
+    name->setText(QStringLiteral("Cinema Queue"));
+    QMetaObject::invokeMethod(name, "editingFinished", Qt::DirectConnection);
+    require(list->currentItem()->text().startsWith(QStringLiteral("Cinema Queue")),
+        "Profile rename did not update the list");
+
+    requireControl<QPushButton>(window, QStringLiteral("config.queue.move_up"))->click();
+    require(list->currentRow() == 0, "Move up did not reorder the profile");
+    require(list->item(0)->text().contains(QStringLiteral("Default")),
+        "First reordered profile was not marked default");
+
+    const int beforeAdd = list->count();
+    answerInputDialog(QStringLiteral("Temporary Profile"));
+    requireControl<QPushButton>(window, QStringLiteral("config.queue.add_profile"))->click();
+    require(list->count() == beforeAdd + 1, "Add profile did not create a profile");
+    require(list->currentItem()->text().startsWith(QStringLiteral("Temporary Profile")),
+        "Added profile was not selected");
+    QCoreApplication::processEvents();
+
+    answerMessageBox(QMessageBox::Yes);
+    requireControl<QPushButton>(window, QStringLiteral("config.queue.remove_profile"))->click();
+    require(list->count() == beforeAdd, "Remove profile did not remove the selected profile");
     save(window);
     const QByteArray saved = readBytes(path);
     const QByteArray lowerSaved = saved.toLower();
-    require(lowerSaved.contains("[queue]"), "Default queue profile was not preserved");
-    require(lowerSaved.contains("queue_size: 16") && lowerSaved.contains("target_frames: 2"),
-        "Balanced policy did not persist its complete queue values");
-    require(lowerSaved.contains("[queue.low_latency]") && lowerSaved.contains("queue_size: 1"),
-        "Additional queue profile was not preserved");
+    require(lowerSaved.contains("[queue.cinema_queue]"), "Renamed profile header was not saved");
+    require(lowerSaved.indexOf("[queue.cinema_queue]") < lowerSaved.indexOf("[queue.profile_1]"),
+        "Reordered profile file order was not saved");
+    require(!lowerSaved.contains("temporary_profile"), "Removed profile was serialized");
 }
 
 void testUnrelatedContentRemainsExact()
@@ -1236,12 +1261,29 @@ void testShortcutEffectsAreClassifiedLive()
         require(effect->text() == QStringLiteral("Apply shortcuts live: Shortcuts"),
             "A shortcut-only edit was not classified for live shortcut replacement");
 
-        selectData(requireControl<QComboBox>(window,
-            QStringLiteral("config.queue.profile")), QStringLiteral("balanced"));
+        QSpinBox* queueSize = requireControl<QSpinBox>(window,
+            QStringLiteral("config.queue.queue_size"));
+        queueSize->setValue(queueSize->value() + 1);
         require(effect->text().startsWith(QStringLiteral("Reset queues:")) &&
             effect->text().contains(QStringLiteral("Queue")) &&
             effect->text().contains(QStringLiteral("Shortcuts")),
             "A mixed queue and shortcut edit did not show the strongest action");
+    }
+
+    {
+        QTemporaryDir directory;
+        const QString path = copyFixture(directory);
+        ConfigEditorWindow window(path, 0, true);
+        QPushButton* apply = requireControl<QPushButton>(window,
+            QStringLiteral("applyConfiguration"));
+        if (apply->isEnabled()) save(window);
+
+        requireControl<QLineEdit>(window, QStringLiteral("config.queue.shortcut"))
+            ->setText(QStringLiteral("Ctrl+Alt+F10"));
+        require(requireControl<QLabel>(window,
+            QStringLiteral("configurationEffectSummary"))->text() ==
+                QStringLiteral("Apply shortcuts live: Queue"),
+            "A queue-profile shortcut-only edit was misclassified as a queue reset");
     }
 }
 
@@ -1343,13 +1385,13 @@ void testRemainingEffectSummaryPrecedence()
         QLabel* effect = requireControl<QLabel>(window,
             QStringLiteral("configurationEffectSummary"));
 
-        QComboBox* queueProfile = requireControl<QComboBox>(window,
-            QStringLiteral("config.queue.profile"));
-        const QString originalProfile = queueProfile->currentData().toString();
-        selectData(queueProfile, QStringLiteral("balanced"));
+        QSpinBox* queueSize = requireControl<QSpinBox>(window,
+            QStringLiteral("config.queue.queue_size"));
+        const int originalQueueSize = queueSize->value();
+        queueSize->setValue(originalQueueSize + 1);
         require(effect->text() == QStringLiteral("Reset queues: Queue"),
             "A queue-only edit did not report a queue reset");
-        selectData(queueProfile, originalProfile);
+        queueSize->setValue(originalQueueSize);
         require(effect->text() == QStringLiteral("No pending changes") &&
             !apply->isEnabled(),
             "Reverting a queue edit did not clear its pending effect");
@@ -1433,15 +1475,20 @@ void testDpiKeyboardAndAccessibilityBehavior()
 
     window.selectPage(1);
     QCoreApplication::processEvents();
-    QComboBox* queueProfile = requireControl<QComboBox>(window,
-        QStringLiteral("config.queue.profile"));
-    require(!accessibleName(queueProfile).isEmpty(),
-        "Queue profile selector has no accessible name");
+    QListWidget* queueProfiles = requireControl<QListWidget>(window,
+        QStringLiteral("config.queue.profiles"));
+    require(!accessibleName(queueProfiles).isEmpty(),
+        "Queue profile list has no accessible name");
+    QSplitter* queueSplitter = nullptr;
+    for (QSplitter* splitter : window.findChildren<QSplitter*>())
+        if (splitter->isVisible()) { queueSplitter = splitter; break; }
+    require(queueSplitter && queueSplitter->orientation() == Qt::Horizontal,
+        "Profile layout did not remain side-by-side at the supported minimum size");
 
     window.resize(1120, 760);
     QCoreApplication::processEvents();
-    require(queueProfile->isVisibleTo(&window),
-        "Queue profile selector did not remain visible at normal width");
+    require(queueSplitter->orientation() == Qt::Horizontal,
+        "Profile layout did not return to side-by-side at normal width");
 
     for (int page = 0; page < pages->count(); ++page)
     {
