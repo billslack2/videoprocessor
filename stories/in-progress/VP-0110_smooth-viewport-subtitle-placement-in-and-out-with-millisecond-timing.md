@@ -16,8 +16,7 @@ parses and publishes `subtitle_engage_drift_ms` and
 one retargetable translation interpolator, and preserves the detector and hold
 decision path. The Qt configuration editor exposes both millisecond controls.
 Targeted x64 Release builds of VideoProcessor-Test, VP Renderer, and the Qt
-configuration editor pass; unit-test execution remains in progress. The
-unused legacy-editor source module is explicitly outside this story's scope.
+configuration editor pass; unit-test execution remains in progress.
 
 Deployment checkpoint (2026-08-10): rebased source commit `c154917` onto the
 then-current `origin/v1.2.001-beta` commit `8218f1a`. Clean x64 Release builds
@@ -139,6 +138,34 @@ guardrails: `subtitle_hold_seconds` changed from 0 to 1 and
 `subtitle_engage_drift_ms` from 1 to 250;
 `subtitle_release_drift_ms` remains 1000. All VP processes remain stopped so
 the user can launch the verified deployment for testing.
+
+Authority-boundary correction and deployment checkpoint (2026-08-10): the
+15:52-15:54 live trace confirmed that the translation itself was now
+aspect-stable: every intermediate source rectangle retained the trusted 1608
+pixel crop height and the 250 ms engage and 1000 ms release paths were
+monotonic. The remaining visible defect was nine isolated full-raster frames
+at two authority boundaries: the provisional frame before the first dense
+confirmation sample, and the zero-displacement origin frame of a timed engage.
+Commit `b860fb9` retains the same-generation trusted base for exactly those
+two bounded states. It does not expand the subtitle classifier, accept
+horizontal/two-edge changes, or alter when engage/release decisions occur.
+Telemetry now distinguishes the inspection wait, engage base, and release
+settle states. New policy tests reproduce both boundary gaps and prove that
+unrelated geometry still fails open.
+
+Full native testing at `b860fb9` reports 773 passed and the same six
+pre-existing configuration/reference fixture failures. Clean x64 Release
+rebuilds of the host and VP Renderer succeeded with `VERSION_DIRTY=false`.
+After confirming all VP processes were stopped, backed up the previous matched
+binary pair and the untouched active configuration in
+`C:\Videoprocessor\vp\backup-vp0110-authority-boundaries-20260810-160929`.
+Deployed and hash-verified the new pair: host
+`59FB91ABF30ED7774F1BE1496B0EF124CB50E038DB152E3801D6467FD80165E0`
+and VP Renderer
+`ADAD9F8674BB63A7D6216B83C87F0A493EFE3101F6FCD240D2C5A776AAAD59F6`.
+The deployment did not edit `VideoProcessor.cfg`; it preserves the user's
+current per-profile timing values, including Scope hold 2 seconds, engage snap
+(`0` ms), and 1000 ms release.
 
 ## User story
 
