@@ -53,6 +53,15 @@ configuration restored to `subtitle_engage_drift_ms: 0` and
 `subtitle_release_drift_ms: 1000`; the pre-fix deployment is preserved in
 `C:\Videoprocessor\vp\backup-vp0110-fixed-20260810-143832`.
 
+Second live correction (2026-08-10): the corrected release drift retained the
+trusted crop, but diagnostics showed the first zero-shift frame of a timed
+engage was still classified fail-open and briefly presented full raster. Commit
+`f574507` marks that initial state as a valid retained trusted base; it does
+not change when subtitle placement is selected. Focused policy tests and x64
+Release test, host, and renderer builds passed. Deployed and hash-verified the
+updated EXE/renderer pair; the immediately preceding pair is backed up in
+`C:\Videoprocessor\vp\backup-vp0110-engage-base-20260810-145820`.
+
 Live-validation corrective checkpoint (2026-08-10): with the active Scope
 profile still configured for a 250 ms engage drift, the user observed the
 picture make several small movements while the dense bar detector refined a
