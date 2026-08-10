@@ -69,18 +69,27 @@ observations, not wall-clock time or raw frame count.
 
 The corrective implementation is currently uncommitted on
 `codex/vp-0110-subtitle-placement` at source HEAD `73899b0`. The focused
-Alpha crop-policy suite passes 82/82. The full native suite reports 770 passed
-and the same six pre-existing configuration/reference failures reproduced on
-clean HEAD. A single-process clean x64 Release solution rebuild succeeded.
-The experimental host and VP Renderer pair was deployed to
-`C:\Videoprocessor\vp`, with matching SHA-256 hashes
-`28F1929E8E43212AF2CEBC4036A61F2A52508A9C48D1975EE8EC235490FAF139`
-and `B95EDF7D9C5DE64084B9C0F2506EA0F778695541ACA8C94A4CCF4C607B942351`.
-The prior pair is backed up in
-`C:\Videoprocessor\vp\backup-vp0110-confirmation-20260810-143053`.
-The active configuration was not edited and retains the 250 ms engage drift.
-User validation must select VP Renderer; the post-deployment startup defaulted
-to DirectShow-madVR, which does not execute this Alpha presentation policy.
+Alpha crop-policy suite passes 83/83. The added integration case proves that a
+pending one-edge translation can cross the detector's provisional-authority
+gap, receive its second dense sample, and remain on the trusted crop instead
+of exposing full raster. Full native testing reports 770 passed and the same
+six pre-existing configuration/reference failures reproduced on clean HEAD.
+A single-process clean x64 Release solution rebuild succeeded.
+
+Final corrective deployment checkpoint (2026-08-10): after another VP-0110
+worktree briefly replaced the live binaries with its narrower snap-release
+fix, redeployed the complete confirmation build and verified the deployed
+artifacts against the final Release outputs. The host SHA-256 is
+`73ED6C19ACD0729E1FFC45B35A37DEA17BF97081944FCF948AC8E7740A0A98DE` and the
+VP Renderer SHA-256 is
+`EFDA5E439583CA4562D3DBEC13ACB1B2DEF0688C336FB8DFC3652CABE1635E36`.
+The immediately prior pair is backed up in
+`C:\Videoprocessor\vp\backup-vp0110-complete-confirmation-20260810-144104`.
+The active Scope profile preserves the user's surrounding values and now uses
+`subtitle_engage_drift_ms: 0` and `subtitle_release_drift_ms: 1000`. VP is
+running and responsive as `v1.1.016-beta-72-g73899b0`; startup selected
+DirectShow-madVR, so user validation must select VP Renderer to exercise this
+Alpha presentation policy.
 
 ## User story
 
