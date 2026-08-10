@@ -100,6 +100,32 @@ running and responsive as `v1.1.016-beta-72-g73899b0`; startup selected
 DirectShow-madVR, so user validation must select VP Renderer to exercise this
 Alpha presentation policy.
 
+Flashing-incident analysis and consolidated correction (2026-08-10): the
+15:04 live trace recorded 13 engage/release pairs in roughly two seconds while
+the Scope profile used `subtitle_hold_seconds: 0`. The renderer evaluated
+presentation every frame but sampled dense bar content every third frame, so
+the narrower deployed build expired the action on unsampled frames. It also
+routed the subtitle from trusted `0,276-3840,1884` geometry to an outward
+`0,276-3840,2090` Fit, changing aspect ratio. The simultaneous provisional
+active-picture candidates were visible in diagnostics but were not the direct
+cause of this repeatable cadence flash.
+
+The complete correction is now committed and synchronized on
+`codex/vp-0110-subtitle-placement`: `9d9db5c` preserves the existing
+two-sample target confirmation and zero-hold compatibility work, and
+`2a4f364` prevents coarse current-frame envelopes from retargeting a confirmed
+dense motion target. One-edge subtitle motion remains a same-height source
+translation and cannot become an outward Fit. New configurations enforce a
+minimum `subtitle_hold_seconds` of 0.25 seconds (maximum 30; default 2), while
+both transition durations retain independent `0`-means-snap behavior. The Qt
+editor exposes the limit in its tooltip and uses the shared validation rule.
+Native Release testing reports 772 passed and the same six pre-existing
+configuration/reference fixture failures. Clean x64 Release builds of the
+host, VP Renderer, and Qt configuration editor succeeded at `2a4f364` with
+`VERSION_DIRTY=false`. Deployment is waiting only for the currently open
+configuration editor to close so its executable and active configuration can
+be backed up and replaced safely.
+
 ## User story
 
 As a VideoProcessor user watching scope content with subtitle fitting enabled,
@@ -125,10 +151,12 @@ milliseconds, so the motion is deliberate and directly tunable. A duration of
    the current displayed shift without a discontinuity unless its configured
    duration is `0`.
 4. Preserve subtitle classification thresholds, opposite-edge handling,
-   hold/release eligibility, and crop authority. Add one bounded internal
+   release eligibility, and crop authority. Add one bounded internal
    stabilization rule at the detector-to-interpolator boundary: require two
    stable dense analysis samples before publishing a new or larger translation
    target, while retaining the trusted crop during that confirmation window.
+   Reject newly configured subtitle holds below 0.25 seconds so a user cannot
+   select a hold shorter than the scheduled analysis cadence.
 5. Add focused tests for zero-duration snapping, nonzero engage and release
    interpolation, retargeting during motion, and unchanged detection/hold
    decisions. Complete a clean x64 Release build and the relevant native test
@@ -145,6 +173,12 @@ milliseconds, so the motion is deliberate and directly tunable. A duration of
   configured snap or drift.
 - Confirmation never converts one-edge overlay evidence into a full-raster or
   outward-Fit flash; genuine FIT/NONE evidence cancels pending confirmation.
+- A confirmed one-edge target is not retargeted by coarse frame-local envelope
+  evidence; every intermediate source rectangle keeps the trusted crop height
+  and aspect ratio.
+- `subtitle_hold_seconds` accepts 0.25 through 30 seconds; the editor and
+  runtime share this validation, while zero remains valid for both drift
+  durations.
 - The configuration and documentation contain no active seconds-based setting
   for these two movement durations.
 - Existing rules for detecting, holding, changing direction, and releasing
@@ -152,10 +186,9 @@ milliseconds, so the motion is deliberate and directly tunable. A duration of
 
 ## Non-goals
 
-- Altering subtitle classification thresholds, OCR, black-bar sampling,
-  hold duration, or subtitle timing beyond the bounded two-sample target
-  confirmation explicitly added above.
-- Deploying binaries or changing the active installation configuration.
+- Altering subtitle classification thresholds, OCR, black-bar sampling, or
+  subtitle timing beyond the bounded two-sample target confirmation and the
+  explicit 0.25-second configuration floor added above.
 
 ## Implementation gate
 
