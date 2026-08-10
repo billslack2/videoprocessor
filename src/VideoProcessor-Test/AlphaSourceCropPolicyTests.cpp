@@ -433,13 +433,17 @@ namespace Tests
 				VerticalBarPresentationAction::TRANSLATE),
 				static_cast<int>(decision.action));
 			Assert::AreEqual(222.0f, decision.translationPixels, 0.001f);
+			const auto routing = ResolveVerticalBarRendererRouting(decision);
+			Assert::IsTrue(routing.translationActive);
+			Assert::IsFalse(routing.fitActive);
+			Assert::IsFalse(routing.failOpen);
+			Assert::AreEqual(222, routing.translationPixels);
 
 			Input crop = TrustedScopeCrop();
 			crop.geometry.top = input.authoritativeTop;
 			crop.geometry.bottom = input.authoritativeBottom;
-			crop.verticalTranslationActive = true;
-			crop.verticalTranslationPixels =
-				static_cast<int>(decision.translationPixels);
+			crop.verticalTranslationActive = routing.translationActive;
+			crop.verticalTranslationPixels = routing.translationPixels;
 			crop.verticalTranslationBase = crop.geometry;
 			crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
 			const Decision presented = Evaluate(crop);
@@ -1035,60 +1039,167 @@ namespace Tests
 			Assert::IsFalse(EvaluatePresentationEnvelope(input).active);
 		}
 
-		TEST_METHOD(Recorded32x15SubtitleBuildsBoundedSourceEnvelope)
+		TEST_METHOD(RendererWiringTranslatesOneEdgeSubtitleWithoutPillarboxing)
 		{
-			PresentationEnvelopeGeometryInput input;
-			input.trustedPicture = {
-				0, 280, 3840, 1880, 3840, 2160, 2.4, true };
-			input.observedContent = input.trustedPicture;
-			input.observedContent.bottom = 1908;
-			input.observedContent.aspectRatio = 3840.0 / 1628.0;
-			input.observedContentAvailable = true;
-			input.expandBottom = true;
-			input.verticalPadding = 54;
+			// Live failure: trusted movie 0,276-3840,1884 and one lower
+			// subtitle extending to 1978. The required +94 displacement fits
+			// completely in the raster and must not become 0,276-3840,1978.
+			VerticalBarPresentationResolutionInput input;
+			input.detailedAction = VerticalBarPresentationAction::TRANSLATE;
+			input.translationPixels = 94.0f;
+			input.genericLowerExpansion = true;
+			input.genericLowerBound = 1978;
+			input.authoritativeTop = 276;
+			input.authoritativeBottom = 1884;
+			input.rasterHeight = 2160;
+			const auto resolution = ResolveVerticalBarPresentation(input);
+			const auto routing = ResolveVerticalBarRendererRouting(resolution);
+			Assert::IsTrue(routing.translationActive);
+			Assert::IsFalse(routing.fitActive);
+			Assert::AreEqual(94, routing.translationPixels);
 
-			const PresentationEnvelopeGeometryDecision decision =
-				BuildPresentationEnvelope(input);
-			Assert::IsTrue(decision.valid);
-			Assert::IsTrue(decision.expanded);
-			Assert::AreEqual(0, decision.bounds.left);
-			Assert::AreEqual(280, decision.bounds.top);
-			Assert::AreEqual(3840, decision.bounds.right);
-			Assert::AreEqual(1962, decision.bounds.bottom);
-			// The opposite trusted edge is immutable; a same-height translation
-			// would have discarded its 82 top rows in this reproduction.
-			Assert::IsTrue(decision.bounds.top <= input.trustedPicture.top);
-			Assert::IsTrue(decision.bounds.bottom >= input.trustedPicture.bottom);
-
-			Input crop;
-			crop.automaticCropEnabled = true;
-			crop.sharedGeometryAvailable = true;
-			crop.latestObservationSupportsCrop = true;
-			crop.outwardPresentationActive = true;
-			crop.outwardExpansionAvailable = true;
-			crop.classification =
-				ActivePictureClassification::BAR_CROP_TRUSTED;
-			crop.geometry = input.trustedPicture;
-			crop.outwardExpansion = decision.bounds;
-			crop.geometrySourceGeneration = 7;
-			crop.outwardExpansionSourceGeneration = 7;
-			crop.frameSourceGeneration = 7;
-			crop.rasterWidth = 3840;
-			crop.rasterHeight = 2160;
+			Input crop = TrustedScopeCrop();
+			crop.geometry = {
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, true };
+			crop.verticalTranslationActive = routing.translationActive;
+			crop.verticalTranslationPixels = routing.translationPixels;
+			crop.verticalTranslationBase = crop.geometry;
+			crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
 			const Decision selected = Evaluate(crop);
 			Assert::IsTrue(selected.applyCrop);
-			Assert::IsTrue(selected.outwardExpanded);
-			Assert::IsFalse(selected.verticallyTranslated);
-			Assert::AreEqual(280, selected.sourceBounds.top);
-			Assert::AreEqual(1962, selected.sourceBounds.bottom);
+			Assert::IsTrue(selected.verticallyTranslated);
+			Assert::IsFalse(selected.outwardExpanded);
+			Assert::AreEqual(370, selected.sourceBounds.top);
+			Assert::AreEqual(1978, selected.sourceBounds.bottom);
+			Assert::AreEqual(1608,
+				selected.sourceBounds.bottom - selected.sourceBounds.top);
+			// Preserving scale necessarily trades the same number of rows at the
+			// opposite edge. Keep that trade bounded to exactly the subtitle depth;
+			// it must never become an outward aspect-changing union.
+			Assert::AreEqual(94,
+				selected.sourceBounds.top - crop.geometry.top);
+			Assert::AreEqual(94,
+				selected.sourceBounds.bottom - crop.geometry.bottom);
 
-			const double selectedAspect = 3840.0 / (1962.0 - 280.0);
+			const double trustedAspect = 3840.0 / 1608.0;
+			const double selectedAspect = 3840.0 /
+				(selected.sourceBounds.bottom - selected.sourceBounds.top);
+			Assert::AreEqual(trustedAspect, selectedAspect, 0.000001);
 			const PresentationRect screen = {
-				0.0, 0.0, (32.0 / 15.0) * 1000.0, 1000.0 };
-			const auto fit = FitCenteredAspect(selectedAspect, screen);
-			Assert::IsTrue(fit.valid);
+				0.0, 0.0, 2350.0, 1000.0 };
+			const auto top = FitAspect(selectedAspect, screen,
+				VerticalPictureAlignment::TOP);
+			const auto center = FitAspect(selectedAspect, screen,
+				VerticalPictureAlignment::CENTER);
+			const auto bottom = FitAspect(selectedAspect, screen,
+				VerticalPictureAlignment::BOTTOM);
+			Assert::IsTrue(top.valid && center.valid && bottom.valid);
 			Assert::AreEqual(static_cast<int>(UnusedSpaceAxis::VERTICAL),
-				static_cast<int>(fit.unusedAxis));
+				static_cast<int>(center.unusedAxis));
+			Assert::AreEqual(0.0, top.picture.left, 0.001);
+			Assert::AreEqual(2350.0, top.picture.right, 0.001);
+			Assert::AreEqual(top.picture.right - top.picture.left,
+				center.picture.right - center.picture.left, 0.001);
+			Assert::AreEqual(top.picture.bottom - top.picture.top,
+				bottom.picture.bottom - bottom.picture.top, 0.001);
+			Assert::IsTrue(top.picture.top < center.picture.top);
+			Assert::IsTrue(center.picture.top < bottom.picture.top);
+
+			const NlsSourceGeometry trustedNlsGeometry =
+				ResolveNlsSourceGeometry(true, 0, 276, 3840, 1884,
+					3840, 2160);
+			const NlsSourceGeometry translatedNlsGeometry =
+				ResolveNlsSourceGeometry(true, selected.sourceBounds.left,
+					selected.sourceBounds.top, selected.sourceBounds.right,
+					selected.sourceBounds.bottom, 3840, 2160);
+			Assert::IsTrue(trustedNlsGeometry.valid);
+			Assert::IsTrue(translatedNlsGeometry.valid);
+			Assert::AreEqual(370, translatedNlsGeometry.top);
+			Assert::AreEqual(1978, translatedNlsGeometry.bottom);
+			Assert::AreEqual(trustedNlsGeometry.aspect,
+				translatedNlsGeometry.aspect, 0.000001);
+			const auto trustedNls = EvaluateNlsMapping(
+				true, trustedNlsGeometry.aspect, 2.35, 5.0, 1.0, false);
+			const auto translatedNls = EvaluateNlsMapping(
+				true, translatedNlsGeometry.aspect, 2.35, 5.0, 1.0, false);
+			Assert::AreEqual(trustedNls.sourceAspect,
+				translatedNls.sourceAspect, 0.000001);
+			Assert::AreEqual(trustedNls.requestedRatio,
+				translatedNls.requestedRatio, 0.000001);
+
+			// The VP-0098 outward union changed the source to 2.256:1 and
+			// therefore selected horizontal unused space (pillarboxing).
+			const auto regressedFit = FitCenteredAspect(
+				3840.0 / (1978.0 - 276.0), screen);
+			Assert::AreEqual(static_cast<int>(UnusedSpaceAxis::HORIZONTAL),
+				static_cast<int>(regressedFit.unusedAxis));
+		}
+
+		TEST_METHOD(RendererWiringRetainsFitAndBoundarySafety)
+		{
+			VerticalBarPresentationResolution fit;
+			fit.action = VerticalBarPresentationAction::FIT;
+			const auto fitRouting = ResolveVerticalBarRendererRouting(fit);
+			Assert::IsFalse(fitRouting.translationActive);
+			Assert::IsTrue(fitRouting.fitActive);
+			Assert::IsFalse(fitRouting.failOpen);
+
+			VerticalBarPresentationResolutionInput blocked;
+			blocked.detailedAction = VerticalBarPresentationAction::TRANSLATE;
+			blocked.translationPixels = 300.0f;
+			blocked.genericLowerExpansion = true;
+			blocked.genericLowerBound = 2184;
+			blocked.authoritativeTop = 276;
+			blocked.authoritativeBottom = 1884;
+			blocked.rasterHeight = 2160;
+			const auto blockedResolution = ResolveVerticalBarPresentation(blocked);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(blockedResolution.action));
+			const auto blockedRouting =
+				ResolveVerticalBarRendererRouting(blockedResolution);
+			Assert::IsFalse(blockedRouting.translationActive);
+			Assert::IsTrue(blockedRouting.fitActive);
+
+			VerticalBarPresentationResolution invalid;
+			invalid.action = VerticalBarPresentationAction::FAIL_OPEN;
+			const auto invalidRouting = ResolveVerticalBarRendererRouting(invalid);
+			Assert::IsFalse(invalidRouting.translationActive);
+			Assert::IsFalse(invalidRouting.fitActive);
+			Assert::IsTrue(invalidRouting.failOpen);
+		}
+
+		TEST_METHOD(RendererWiringTranslatesTopEdgeAndRejectsStaleGeneration)
+		{
+			VerticalBarPresentationResolutionInput input;
+			input.detailedAction = VerticalBarPresentationAction::TRANSLATE;
+			input.translationPixels = -94.0f;
+			input.genericUpperExpansion = true;
+			input.genericUpperBound = 182;
+			input.authoritativeTop = 276;
+			input.authoritativeBottom = 1884;
+			input.rasterHeight = 2160;
+			const auto routing = ResolveVerticalBarRendererRouting(
+				ResolveVerticalBarPresentation(input));
+			Assert::IsTrue(routing.translationActive);
+			Assert::AreEqual(-94, routing.translationPixels);
+
+			Input crop = TrustedScopeCrop();
+			crop.geometry = {
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, true };
+			crop.verticalTranslationActive = routing.translationActive;
+			crop.verticalTranslationPixels = routing.translationPixels;
+			crop.verticalTranslationBase = crop.geometry;
+			crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
+			Decision selected = Evaluate(crop);
+			Assert::IsTrue(selected.verticallyTranslated);
+			Assert::AreEqual(182, selected.sourceBounds.top);
+			Assert::AreEqual(1790, selected.sourceBounds.bottom);
+
+			crop.verticalTranslationSourceGeneration =
+				crop.frameSourceGeneration - 1;
+			selected = Evaluate(crop);
+			AssertFullRaster(selected);
 		}
 
 		TEST_METHOD(PresentationEnvelopeExpandsOnlySelectedObservedEdges)
@@ -1545,6 +1656,83 @@ namespace Tests
 			AssertFullRaster(Evaluate(input));
 		}
 
+		TEST_METHOD(RendererReleaseTimelinePreservesAspectAndReturnsMonotonically)
+		{
+			VerticalTranslationDrift drift;
+			Assert::AreEqual(0.0f,
+				drift.Resolve(94.0f, 1000, 1000), 0.001f);
+			Assert::AreEqual(94.0f,
+				drift.Resolve(94.0f, 2000, 1000), 0.001f);
+
+			const uint64_t releaseTicks[] = { 3000, 3250, 3500, 3750 };
+			const int expectedShifts[] = { 94, 72, 48, 24 };
+			int previousTop = 2160;
+			for (size_t index = 0; index < _countof(releaseTicks); ++index)
+			{
+				const float driftShift = drift.Resolve(
+					0.0f, releaseTicks[index], 1000);
+				VerticalBarPresentationResolutionInput resolutionInput;
+				resolutionInput.detailedAction =
+					VerticalBarPresentationAction::TRANSLATE;
+				resolutionInput.translationPixels = driftShift;
+				resolutionInput.authoritativeTop = 276;
+				resolutionInput.authoritativeBottom = 1884;
+				resolutionInput.rasterHeight = 2160;
+				const auto routing = ResolveVerticalBarRendererRouting(
+					ResolveVerticalBarPresentation(resolutionInput));
+				Assert::IsTrue(routing.translationActive);
+				Assert::IsFalse(routing.fitActive);
+				Assert::AreEqual(expectedShifts[index],
+					routing.translationPixels);
+
+				Input crop = TrustedScopeCrop();
+				crop.geometry = {
+					0, 276, 3840, 1884, 3840, 2160,
+					3840.0 / 1608.0, true };
+				crop.verticalTranslationActive = routing.translationActive;
+				crop.verticalTranslationPixels = routing.translationPixels;
+				crop.verticalTranslationBase = crop.geometry;
+				crop.verticalTranslationSourceGeneration =
+					crop.frameSourceGeneration;
+				const Decision selected = Evaluate(crop);
+				Assert::IsTrue(selected.verticallyTranslated);
+				Assert::IsFalse(selected.outwardExpanded);
+				Assert::AreEqual(1608, selected.sourceBounds.bottom -
+					selected.sourceBounds.top);
+				Assert::AreEqual(expectedShifts[index],
+					selected.sourceBounds.top - 276);
+				Assert::IsTrue(selected.sourceBounds.top <= previousTop);
+				previousTop = selected.sourceBounds.top;
+				const NlsSourceGeometry nls = ResolveNlsSourceGeometry(
+					selected.applyCrop, selected.sourceBounds.left,
+					selected.sourceBounds.top, selected.sourceBounds.right,
+					selected.sourceBounds.bottom, 3840, 2160);
+				Assert::IsTrue(nls.valid);
+				Assert::AreEqual(3840.0 / 1608.0, nls.aspect, 0.000001);
+			}
+
+			Assert::AreEqual(0.0f,
+				drift.Resolve(0.0f, 4000, 1000), 0.001f);
+			Assert::IsFalse(drift.IsActive());
+			Input settled = TrustedScopeCrop();
+			settled.geometry = {
+				0, 276, 3840, 1884, 3840, 2160,
+				3840.0 / 1608.0, true };
+			settled.latestObservationSupportsCrop = false;
+			settled.verticalTranslationBaseRetentionActive =
+				drift.ConsumeFinalBaseFrame();
+			settled.verticalTranslationBase = settled.geometry;
+			settled.verticalTranslationSourceGeneration =
+				settled.frameSourceGeneration;
+			const Decision finalBase = Evaluate(settled);
+			Assert::IsTrue(finalBase.applyCrop);
+			Assert::IsFalse(finalBase.verticallyTranslated);
+			Assert::AreEqual(276, finalBase.sourceBounds.top);
+			Assert::AreEqual(1884, finalBase.sourceBounds.bottom);
+			Assert::AreEqual(1608, finalBase.sourceBounds.bottom -
+				finalBase.sourceBounds.top);
+		}
+
 		TEST_METHOD(SparseSubtitleTranslatesSameSizeWindowWithoutChangingNlsAspect)
 		{
 			Input input = TrustedScopeCrop();
@@ -1627,6 +1815,13 @@ namespace Tests
 
 		TEST_METHOD(HorizontalFitAndVerticalTranslationComposeWithoutChangingHeight)
 		{
+			VerticalBarPresentationResolution translation;
+			translation.action = VerticalBarPresentationAction::TRANSLATE;
+			translation.translationPixels = 75.0f;
+			const auto routing = ResolveVerticalBarRendererRouting(translation);
+			Assert::IsTrue(routing.translationActive);
+			Assert::IsFalse(routing.fitActive);
+
 			Input input = TrustedScopeCrop();
 			input.geometry = {
 				200, 274, 3640, 1884, 3840, 2160,
@@ -1638,8 +1833,8 @@ namespace Tests
 			input.outwardExpansion.right = 3700;
 			input.outwardExpansion.aspectRatio = 3600.0 / 1610.0;
 			input.outwardExpansionSourceGeneration = 7;
-			input.verticalTranslationActive = true;
-			input.verticalTranslationPixels = 75;
+			input.verticalTranslationActive = routing.translationActive;
+			input.verticalTranslationPixels = routing.translationPixels;
 			input.verticalTranslationBase = input.geometry;
 			input.verticalTranslationSourceGeneration = 7;
 

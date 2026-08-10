@@ -6364,23 +6364,15 @@ struct LibplaceboVideoRenderer::Impl
 			const AlphaSourceCrop::VerticalBarPresentationResolution
 				verticalResolution = AlphaSourceCrop::ResolveVerticalBarPresentation(
 					verticalResolutionInput);
-			const bool boundedOverlayExpansion =
-				verticalResolution.action ==
-					AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
-			// Retain translation as detector/hold state only. Final source geometry
-			// must union the bounded edge so no trusted opposite-edge pixels are
-			// discarded by moving a same-size crop window.
-			const bool verticalTranslationActive = false;
-			const bool verticalFitActive =
-				boundedOverlayExpansion || verticalResolution.action ==
-					AlphaSourceCrop::VerticalBarPresentationAction::FIT;
-			const bool verticalFailOpen = verticalResolution.action ==
-				AlphaSourceCrop::VerticalBarPresentationAction::FAIL_OPEN;
-			const bool topTranslationActive = boundedOverlayExpansion &&
-				verticalResolution.translationPixels < -0.5f;
-			const bool bottomTranslationActive = boundedOverlayExpansion &&
-				verticalResolution.translationPixels > 0.5f;
-			const int verticalTranslationPixels = 0;
+			const AlphaSourceCrop::VerticalBarRendererRouting verticalRouting =
+				AlphaSourceCrop::ResolveVerticalBarRendererRouting(
+					verticalResolution);
+			const bool verticalTranslationActive =
+				verticalRouting.translationActive;
+			const bool verticalFitActive = verticalRouting.fitActive;
+			const bool verticalFailOpen = verticalRouting.failOpen;
+			const int verticalTranslationPixels =
+				verticalRouting.translationPixels;
 			const bool selectedDetectorTopExpansion = verticalFitActive &&
 				detectorTopExpansion;
 			const bool selectedDetectorBottomExpansion = verticalFitActive &&

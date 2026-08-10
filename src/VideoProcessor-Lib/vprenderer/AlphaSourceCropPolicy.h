@@ -190,6 +190,21 @@ namespace AlphaSourceCrop
 	VerticalBarPresentationResolution ResolveVerticalBarPresentation(
 		const VerticalBarPresentationResolutionInput& input);
 
+	struct VerticalBarRendererRouting
+	{
+		bool translationActive = false;
+		int translationPixels = 0;
+		bool fitActive = false;
+		bool failOpen = false;
+	};
+
+	// Convert the reconciled presentation action into the mutually exclusive
+	// renderer inputs consumed by Evaluate(). Keeping this seam shared by the
+	// renderer and tests prevents a valid TRANSLATE policy decision from being
+	// silently rewired into a scale-changing outward Fit.
+	VerticalBarRendererRouting ResolveVerticalBarRendererRouting(
+		const VerticalBarPresentationResolution& resolution);
+
 	// Full raster is always outward-safe. Keep that presentation authority
 	// between sparse analysis samples, but withdraw it as soon as trusted bar
 	// evidence appears. Ambiguity cannot turn it into crop authority.

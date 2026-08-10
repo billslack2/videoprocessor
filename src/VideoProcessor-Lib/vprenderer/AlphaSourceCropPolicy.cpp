@@ -492,6 +492,35 @@ namespace AlphaSourceCrop
 		return decision;
 	}
 
+	VerticalBarRendererRouting ResolveVerticalBarRendererRouting(
+		const VerticalBarPresentationResolution& resolution)
+	{
+		VerticalBarRendererRouting routing;
+		switch (resolution.action)
+		{
+		case VerticalBarPresentationAction::TRANSLATE:
+			routing.translationPixels = static_cast<int>(
+				resolution.translationPixels < 0.0f
+					? std::floor(resolution.translationPixels)
+					: std::ceil(resolution.translationPixels));
+			if (routing.translationPixels == 0)
+				routing.failOpen = true;
+			else
+				routing.translationActive = true;
+			break;
+		case VerticalBarPresentationAction::FIT:
+			routing.fitActive = true;
+			break;
+		case VerticalBarPresentationAction::FAIL_OPEN:
+			routing.failOpen = true;
+			break;
+		case VerticalBarPresentationAction::NONE:
+		default:
+			break;
+		}
+		return routing;
+	}
+
 	bool UpdateFullRasterPresentationAuthority(bool previouslyAuthoritative,
 		ActivePictureClassification currentClassification,
 		bool currentBoundsAreFullRaster)
