@@ -122,9 +122,23 @@ editor exposes the limit in its tooltip and uses the shared validation rule.
 Native Release testing reports 772 passed and the same six pre-existing
 configuration/reference fixture failures. Clean x64 Release builds of the
 host, VP Renderer, and Qt configuration editor succeeded at `2a4f364` with
-`VERSION_DIRTY=false`. Deployment is waiting only for the currently open
-configuration editor to close so its executable and active configuration can
-be backed up and replaced safely.
+`VERSION_DIRTY=false`.
+
+Aspect-stable deployment checkpoint (2026-08-10): after the configuration
+editor closed, backed up the prior host, VP Renderer, Qt editor, and active
+configuration in
+`C:\Videoprocessor\vp\backup-vp0110-aspect-stable-20260810-155127`.
+Deployed the clean `2a4f364` x64 Release artifacts and verified each deployed
+SHA-256 against its build output: host
+`084943972756977BBC78499B86A517EAF25BD36B93A262013919BAD9877523E0`, VP
+Renderer `E598756936088AB2C491F09D78009219FC337217B612387C2EA0DE09A9D94809`,
+and Qt configuration editor
+`ABFE1527861BD7320D3C9DEAF33098192BDEE1538C111B4845ED7B5BDEBAB7F8`.
+The backed-up/current configuration diff contains only the requested Scope
+guardrails: `subtitle_hold_seconds` changed from 0 to 1 and
+`subtitle_engage_drift_ms` from 1 to 250;
+`subtitle_release_drift_ms` remains 1000. All VP processes remain stopped so
+the user can launch the verified deployment for testing.
 
 ## User story
 
