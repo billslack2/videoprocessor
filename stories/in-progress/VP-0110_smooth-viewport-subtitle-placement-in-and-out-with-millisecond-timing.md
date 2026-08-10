@@ -16,8 +16,20 @@ parses and publishes `subtitle_engage_drift_ms` and
 one retargetable translation interpolator, and preserves the detector and hold
 decision path. The Qt configuration editor exposes both millisecond controls.
 Targeted x64 Release builds of VideoProcessor-Test, VP Renderer, and the Qt
-configuration editor pass; unit-test execution and legacy-editor parity remain
-in progress.
+configuration editor pass; unit-test execution remains in progress. The
+unused legacy-editor source module is explicitly outside this story's scope.
+
+Deployment checkpoint (2026-08-10): rebased source commit `c154917` onto the
+then-current `origin/v1.2.001-beta` commit `8218f1a`. Clean x64 Release builds
+of the host and VP Renderer succeeded with `VERSION_DIRTY=false`. Deployed the
+matching `VideoProcessor.exe` and
+`vprenderer\\VideoProcessorVPRenderer.dll` pair to `C:\Videoprocessor\vp` and
+verified both deployed SHA-256 hashes match their build artifacts. Backed up
+the prior binary pair and active `VideoProcessor.cfg` in
+`C:\Videoprocessor\vp\backup-vp0110-20260810-105221`. Preserving all existing
+configuration content, the active Scope viewport now has
+`subtitle_engage_drift_ms: 0` and `subtitle_release_drift_ms: 1000` in place
+of `subtitle_release_drift_seconds: 1`.
 
 ## User story
 
