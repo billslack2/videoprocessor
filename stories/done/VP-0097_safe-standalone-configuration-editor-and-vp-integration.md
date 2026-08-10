@@ -2,7 +2,9 @@
 
 ## Status
 
-Ready for review. On 2026-08-08 VP-0097 was rebased onto
+Done (2026-08-10). User-directed closure after confirming that
+`billslack2/videoprocessor` has no open pull requests. Ready for review. On
+2026-08-08 VP-0097 was rebased onto
 `v1.1.017-beta` and fast-forwarded into that branch as `a360a27`
 (`feat(config): add Qt configuration editor`). The merge retained beta-17's
 current screen/NLS behavior and integrated the completed Qt configuration

@@ -108,10 +108,10 @@ they must not contain requirements that are absent from this file.
 | VP-0074 | Done | Alpha latency resilience and NLS shader cold-start recovery |
 | VP-0075 | Done | Restore Alpha analysis parity on native RGB ingress |
 | VP-0076 | Backlog | Decompose the DirectShow live-output pin without behavioral change |
-| VP-0077 | Review | VP-0066 merged-beta acceptance validation |
-| VP-0078 | Review | Re-prime Alpha after a real output refresh transition |
+| VP-0077 | Done | VP-0066 merged-beta acceptance validation |
+| VP-0078 | Done | Re-prime Alpha after a real output refresh transition |
 | VP-0079 | Done | Canonical queue profiles and gaming hotkeys |
-| VP-0080 | Review | Make Alpha active-picture cropping fail safe on live full-raster video |
+| VP-0080 | Done | Make Alpha active-picture cropping fail safe on live full-raster video |
 | VP-0081 | Backlog | Preserve madVR NLS geometry through output-readiness re-primes |
 | VP-0082 | Done | Buffered active-picture look-ahead for Alpha |
 | VP-0083 | Done | Alpha anamorphic presentation profiles |
@@ -124,11 +124,11 @@ they must not contain requirements that are absent from this file.
 | VP-0091 | Done | Hide System32 DirectShow renderers by default |
 | VP-0092 | Backlog | Discover madVR shortcuts and control its native statistics OSD |
 | VP-0093 | Done | Prevent Alpha SDR BT.2020 output-contract regressions |
-| VP-0094 | Review | Select the configured fullscreen monitor by friendly name |
+| VP-0094 | Done | Select the configured fullscreen monitor by friendly name |
 | VP-0095 | In progress | Target-only fullscreen display session and recovery |
 | VP-0096 | In Progress | Establish range-correct video-frame conversion contracts |
-| VP-0097 | In Progress | Safe standalone configuration editor and VP integration |
-| VP-0098 | Review | Fit trusted active-picture envelopes correctly on arbitrary CIH screens |
+| VP-0097 | Done | Safe standalone configuration editor and VP integration |
+| VP-0098 | Done | Fit trusted active-picture envelopes correctly on arbitrary CIH screens |
 | VP-0099 | Review | Dynamic, renderer-neutral NLS geometry and safety policy |
 | VP-0100 | Backlog | Prove pixel-owned SDR presentation for Alpha |
 | VP-0101 | Backlog | Implement production pixel-owned calibrated output and 3D LUTs |

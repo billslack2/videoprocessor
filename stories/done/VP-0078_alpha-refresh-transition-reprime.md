@@ -2,7 +2,9 @@
 
 ## Status
 
-In Review. Began 2026-08-02 on `codex/vp-0078-alpha-refresh-transition` and
+Done (2026-08-10). User-directed closure after confirming that
+`billslack2/videoprocessor` has no open pull requests. In Review. Began
+2026-08-02 on `codex/vp-0078-alpha-refresh-transition` and
 was fast-forwarded into the requested open
 `codex/vp-0080-alpha-crop-failsafe` branch at `b65c833`. Created 2026-08-02
 from the deployed Alpha incident recorded in `C:\Videoprocessor\vp\logs\vp_debug.log`.

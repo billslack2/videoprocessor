@@ -2,7 +2,9 @@
 
 ## Status
 
-Review. The latest corrective series through source commit `16baceb` was
+Done (2026-08-10). User-directed closure after confirming that
+`billslack2/videoprocessor` has no open pull requests. Review. The latest
+corrective series through source commit `16baceb` was
 merged into `v1.1.016-beta` by
 [videoprocessor PR #44](https://github.com/billslack2/videoprocessor/pull/44)
 at merge commit `4d1d3bc` on 2026-08-05. The clean x64 Release build passed

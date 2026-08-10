@@ -2,7 +2,9 @@
 
 ## Status
 
-Review (2026-08-08). The single-screen-aspect cleanup was merged into the
+Done (2026-08-10). User-directed closure after confirming that
+`billslack2/videoprocessor` has no open pull requests. Review (2026-08-08).
+The single-screen-aspect cleanup was merged into the
 default `v1.1.017-beta` branch at `3c7ebd5`. The merged x64 Release build
 succeeded and is ready for live CIH validation before this story is closed.
 

@@ -2,7 +2,9 @@
 
 ## Status
 
-Review (2026-08-02). VP-0066 and its completed implementation children are
+Done (2026-08-10). User-directed closure after confirming that
+`billslack2/videoprocessor` has no open pull requests. Review (2026-08-02).
+VP-0066 and its completed implementation children are
 closed based on the stable baseline, x64 Release build/test evidence, merge to
 `origin/v1.1.015-beta`, and prior live validation. This record owns the final
 user-facing beta acceptance pass and may reopen a referenced story if a

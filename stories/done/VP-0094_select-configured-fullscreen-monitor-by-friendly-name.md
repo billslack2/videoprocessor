@@ -2,7 +2,9 @@
 
 ## Status
 
-In review. Implementation branch `codex/vp0094-fullscreen-monitor-name` was based
+Done (2026-08-10). User-directed closure after confirming that
+`billslack2/videoprocessor` has no open pull requests. In review.
+Implementation branch `codex/vp0094-fullscreen-monitor-name` was based
 on the current `origin/v1.1.015-beta` integration branch and merged through
 [PR #43](https://github.com/billslack2/videoprocessor/pull/43) as merge commit
 `b182905`.
