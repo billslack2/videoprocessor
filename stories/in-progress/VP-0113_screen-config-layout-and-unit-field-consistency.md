@@ -2,12 +2,19 @@
 
 ## Status
 
-Backlog (2026-08-10). Requested from a visual review of the standalone Qt
-configuration editor's **Screen Config** page. No implementation has started.
+In Progress (2026-08-10). Implementation began after the developer confirmed
+the discovered default branch `v1.2.001-beta`. Worktree:
+`C:\\Users\\bslac\\vp\\worktrees\\vp-0113-screen-config-layout`, branch
+`codex/vp-0113-screen-config-layout`, based on `origin/v1.2.001-beta` at
+`0e74e038` after the queue-update merge.
 
-Next action: inspect the editor's existing Renderer Setup section-header and
-inline unit-input components, then complete the implementation-base gate
-before starting source work.
+Current work: inspect the Qt configuration editor's existing section-header,
+collapse-state, and inline unit-field patterns; apply the appropriate shared
+layout to Screen Config without changing its persistence or runtime behavior.
+
+The user clarified that the section should be named **Subtitles**. Assess
+whether the remaining lower-frequency controls merit an Advanced section, but
+do not add one merely for symmetry.
 
 ## User story
 
