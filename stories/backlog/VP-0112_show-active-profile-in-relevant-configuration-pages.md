@@ -10,6 +10,22 @@ available runtime/effective-configuration snapshot, then add the smallest
 shared active-profile presentation path that does not change profile selection
 or configuration persistence.
 
+## Chosen UI treatment
+
+Use the existing profile list only; do not add a separate current-profile
+summary, duplicate label, legend, key, or explanatory text.
+
+- The profile that is active at runtime uses a clear green inline treatment.
+- The profile selected for editing uses the existing blue selection/highlight
+  treatment.
+- These states are intentionally independent and may appear on different rows.
+  When they coincide, combine the green active treatment with the blue editing
+  highlight on that one row without adding another indicator.
+
+The visual distinction itself must be clear enough that extra explanation is
+unnecessary. Apply it only to the relevant profile-aware pages in this story's
+scope; do not add it to Actions or Shortcuts/keys.
+
 ## User story
 
 As a VideoProcessor operator editing conditional configuration, I want the
