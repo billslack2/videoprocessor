@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0110`
-- Next root story number: `VP-0111`
-- Total indexed items: 126
+- Last assigned root story: `VP-0111`
+- Next root story number: `VP-0112`
+- Total indexed items: 127
 
 ## Story locations
 
@@ -143,6 +143,7 @@ they must not contain requirements that are absent from this file.
 | VP-0109-1 | Backlog | Prove the pure-2.2 renderer/Studio-G22 transport pairing |
 | VP-0109-2 | Backlog | Implement rejection-safe pure-2.2 Studio limited output |
 | VP-0110 | In Progress | Smooth viewport subtitle placement in and out with millisecond timing |
+| VP-0111 | Backlog | Prevent background shortcuts from hijacking normal typing |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
