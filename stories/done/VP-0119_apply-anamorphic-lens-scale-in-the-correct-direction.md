@@ -12,6 +12,10 @@ Validation: a clean x64 Release rebuild passed; all 89 focused
 and the full native suite passed 793 tests with the same five pre-existing
 configuration/reference failures and no new failure.
 
+Live acceptance (2026-08-11): the operator tested the clean package built from
+merged commit `9ba40d4` with the preserved `2:1` lens configuration and
+confirmed that VP Renderer now produces the correct anamorphic geometry.
+
 ## User story
 
 As an anamorphic-lens operator, I want a configured lens ratio to produce the
