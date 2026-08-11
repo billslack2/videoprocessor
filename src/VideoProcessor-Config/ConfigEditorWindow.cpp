@@ -37,6 +37,7 @@
 #include <QHideEvent>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QIntValidator>
 #include <QLabel>
 #include <QLayout>
 #include <QLibrary>
@@ -1978,6 +1979,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         QString key;
         QWidget* widget = nullptr;
         enum Kind { Text, Boolean, Choice, Integer } kind = Text;
+        double displayScale = 1.0;
     };
     struct State { QString section; bool loading = false; };
     struct QueuePolicy
@@ -2128,6 +2130,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form = addPlainForm();
     QCheckBox* anamorphicEnabled = nullptr;
     QLineEdit* anamorphicValue = nullptr;
+    const int fixedUnitFieldWidth = QLineEdit().sizeHint().width();
     const auto deprecatedViewportAlias = [sectionPrefix](const QString& key) -> QString
     {
         if (sectionPrefix != QStringLiteral("vprenderer.viewport")) return {};
@@ -2140,7 +2143,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         if (key == QStringLiteral("subtitle_padding_pixels")) return QStringLiteral("scope_subtitle_padding_pixels");
         return {};
     };
-    auto addText = [&](const QString& label, const QString& key, const QString& unit = {})
+    auto addText = [&](const QString& label, const QString& key,
+        const QString& unit = {}, double displayScale = 1.0)
     {
         auto* edit = new QLineEdit;
         edit->setObjectName(controlName(sectionPrefix, key));
@@ -2154,7 +2158,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             auto* rowLayout = new QHBoxLayout(row);
             rowLayout->setContentsMargins(0, 0, 0, 0);
             rowLayout->setSpacing(8);
-            edit->setMaximumWidth(210);
+            edit->setFixedWidth(fixedUnitFieldWidth);
+            edit->setAlignment(Qt::AlignRight);
             rowLayout->addWidget(edit);
             auto* unitLabel = new QLabel(unit);
             unitLabel->setObjectName(controlName(sectionPrefix, key) + QStringLiteral(".unit"));
@@ -2163,9 +2168,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             control = row;
         }
         form->addRow(label, control);
-        fields->push_back({ key, edit, Field::Text });
+        fields->push_back({ key, edit, Field::Text, displayScale });
         connect(edit, &QLineEdit::textChanged, this,
-            [this, state, key, sectionPrefix, deprecatedViewportAlias](const QString& text)
+            [this, state, key, sectionPrefix, deprecatedViewportAlias,
+                displayScale](const QString& text)
         {
             if (state->loading || state->section.isEmpty() || !document_) return;
             const QString alias = deprecatedViewportAlias(key);
@@ -2174,9 +2180,17 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (text.trimmed().isEmpty()) document_->RemoveKnown(state->section.toStdString(), key.toStdString().c_str());
             else
             {
-                const QString stored = text.trimmed().compare(
+                QString stored = text.trimmed().compare(
                     QStringLiteral("Auto"), Qt::CaseInsensitive) == 0 ?
                     QStringLiteral("AUTO") : text;
+                if (displayScale != 1.0)
+                {
+                    bool ok = false;
+                    const double displayed = text.trimmed().toDouble(&ok);
+                    if (ok)
+                        stored = QString::number(displayed / displayScale,
+                            'g', 12);
+                }
                 document_->SetKnown(state->section.toStdString(), key.toStdString().c_str(), stored.toLocal8Bit().constData());
             }
             markDirty();
@@ -2207,6 +2221,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* combo = new QComboBox;
         combo->setObjectName(controlName(sectionPrefix, key));
         combo->setAccessibleName(label);
+        combo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         combo->addItem(QStringLiteral("Inherited / not set"), QString());
         for (const QString& choice : choices)
             combo->addItem(friendlyChoiceLabel(choice), choice);
@@ -2235,23 +2250,37 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         return combo;
     };
     auto addInteger = [&](const QString& label, const QString& key,
-        int minimum, int maximum, const QString& suffix)
+        int minimum, int maximum, const QString& unit)
     {
         auto* spin = new QSpinBox;
         spin->setObjectName(controlName(sectionPrefix, key));
         spin->setAccessibleName(label);
-        if (!suffix.isEmpty()) spin->setAccessibleDescription(
-            QStringLiteral("Value in %1.").arg(suffix.trimmed()));
+        if (!unit.isEmpty()) spin->setAccessibleDescription(
+            QStringLiteral("Value in %1.").arg(unit));
         spin->setRange(minimum, maximum);
-        spin->setSuffix(suffix);
         spin->setButtonSymbols(QAbstractSpinBox::NoButtons);
         spin->setAlignment(Qt::AlignRight);
-        spin->setMaximumWidth(210);
+        spin->setFixedWidth(fixedUnitFieldWidth);
         if (key == QStringLiteral("reset_queue_too_large_percent"))
             spin->setToolTip(QStringLiteral(
                 "Allowed range: 1-200%. Observed depth can exceed 100% because "
                 "the complete queue path includes work outside nominal capacity."));
-        form->addRow(label, spin);
+        QWidget* control = spin;
+        if (!unit.isEmpty())
+        {
+            auto* row = new QWidget;
+            auto* rowLayout = new QHBoxLayout(row);
+            rowLayout->setContentsMargins(0, 0, 0, 0);
+            rowLayout->setSpacing(8);
+            rowLayout->addWidget(spin);
+            auto* unitLabel = new QLabel(unit);
+            unitLabel->setObjectName(controlName(sectionPrefix, key) +
+                QStringLiteral(".unit"));
+            rowLayout->addWidget(unitLabel);
+            rowLayout->addStretch();
+            control = row;
+        }
+        form->addRow(label, control);
         fields->push_back({ key, spin, Field::Integer });
         connect(spin, qOverload<int>(&QSpinBox::valueChanged), this,
             [this, state, key](int selected)
@@ -2283,19 +2312,19 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("Advanced"), QStringLiteral(
                 "Fine-tune individual queue values. Editing one switches this profile to Custom."), false);
         addInteger(QStringLiteral("Queue depth"), QStringLiteral("queue_size"),
-            1, INT_MAX, QStringLiteral(" frames"));
+            1, INT_MAX, QStringLiteral("frames"));
         addInteger(QStringLiteral("Lead frames"), QStringLiteral("lead_frames"),
-            0, 16, QStringLiteral(" frames"));
+            0, 16, QStringLiteral("frames"));
         addInteger(QStringLiteral("Startup pre-roll"), QStringLiteral("startup_preroll_frames"),
-            0, 16, QStringLiteral(" frames"));
+            0, 16, QStringLiteral("frames"));
         addInteger(QStringLiteral("Target frames"), QStringLiteral("target_frames"),
-            0, 16, QStringLiteral(" frames"));
+            0, 16, QStringLiteral("frames"));
         addInteger(QStringLiteral("Active-picture lookahead"), QStringLiteral("active_picture_lookahead_frames"),
-            0, 8, QStringLiteral(" frames"));
+            0, 8, QStringLiteral("frames"));
         addInteger(QStringLiteral("Reset after renderer restart"), QStringLiteral("reset_after_render_restart_seconds"),
-            1, INT_MAX, QStringLiteral(" seconds"));
+            1, INT_MAX, QStringLiteral("seconds"));
         addInteger(QStringLiteral("Queue recovery threshold"), QStringLiteral("reset_queue_too_large_percent"),
-            1, 200, QStringLiteral(" %"));
+            1, 200, QStringLiteral("%"));
     }
     else if (sectionPrefix == QStringLiteral("vprenderer"))
     {
@@ -2403,8 +2432,18 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Put .cube files in the luts folder next to VideoProcessor.cfg (normally the VP installation). "
             "The selector refreshes automatically when the folder changes. If a selected file is removed, "
             "VP returns that profile to its inherited LUT setting; Reload also refreshes the list.")));
-        auto* lutReferenceLuminance = addText(QStringLiteral("LUT reference luminance (nits)"), QStringLiteral("lut_reference_nits"));
-        lutReferenceLuminance->setPlaceholderText(QStringLiteral("Auto or a numeric value"));
+        auto* lutReferenceLuminance = addChoice(
+            QStringLiteral("LUT reference luminance (nits)"),
+            QStringLiteral("lut_reference_nits"),
+            { QStringLiteral("AUTO"), QStringLiteral("40"),
+                QStringLiteral("80"),
+                QStringLiteral("100"), QStringLiteral("120"),
+                QStringLiteral("160"), QStringLiteral("203"),
+                QStringLiteral("250"), QStringLiteral("300"),
+                QStringLiteral("400"), QStringLiteral("500") });
+        lutReferenceLuminance->setToolTip(QStringLiteral(
+            "Choose Auto or a common reference luminance from 40 to 500 nits. "
+            "Existing custom values remain available in their profile."));
         addChoice(QStringLiteral("LUT reference range"), QStringLiteral("lut_reference_range"), { QStringLiteral("AUTO"), QStringLiteral("full"), QStringLiteral("limited") });
         addChoice(QStringLiteral("LUT reference transfer"), QStringLiteral("lut_reference_transfer"), { QStringLiteral("AUTO"), QStringLiteral("srgb"), QStringLiteral("bt1886"), QStringLiteral("2.2"), QStringLiteral("2.4") });
         addChoice(QStringLiteral("LUT reference primaries"), QStringLiteral("lut_reference_primaries"), { QStringLiteral("AUTO"), QStringLiteral("REC709"), QStringLiteral("P3_D65"), QStringLiteral("BT2020") });
@@ -2466,9 +2505,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 "Keep subtitle content visible and control how VP moves it into the screen."), false);
         addBoolean(QStringLiteral("Keep subtitles inside screen bounds"), QStringLiteral("subtitle_fit"));
         auto* subtitleHold = addText(QStringLiteral("Subtitle hold"),
-            QStringLiteral("subtitle_hold_seconds"), QStringLiteral("seconds"));
+            QStringLiteral("subtitle_hold_seconds"), QStringLiteral("ms"), 1000.0);
+        subtitleHold->setValidator(new QIntValidator(250, 30000, subtitleHold));
         subtitleHold->setToolTip(QStringLiteral(
-            "Must be between 0.25 and 30 seconds. The minimum spans the "
+            "Must be between 250 and 30000 ms. The minimum spans the "
             "renderer's scheduled subtitle-analysis cadence."));
         addText(QStringLiteral("Subtitle engage drift"), QStringLiteral("subtitle_engage_drift_ms"), QStringLiteral("ms"));
         addText(QStringLiteral("Subtitle release drift"), QStringLiteral("subtitle_release_drift_ms"), QStringLiteral("ms"));
@@ -2680,9 +2720,20 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             field.widget->style()->unpolish(field.widget);
             field.widget->style()->polish(field.widget);
             if (field.kind == Field::Text)
-                qobject_cast<QLineEdit*>(field.widget)->setText(
-                    configured.compare(QStringLiteral("AUTO"), Qt::CaseInsensitive) == 0 ?
-                        QStringLiteral("Auto") : configured);
+            {
+                QString displayed = configured.compare(
+                    QStringLiteral("AUTO"), Qt::CaseInsensitive) == 0 ?
+                    QStringLiteral("Auto") : configured;
+                if (field.displayScale != 1.0)
+                {
+                    bool ok = false;
+                    const double stored = configured.toDouble(&ok);
+                    if (ok)
+                        displayed = QString::number(stored * field.displayScale,
+                            'g', 12);
+                }
+                qobject_cast<QLineEdit*>(field.widget)->setText(displayed);
+            }
             else if (field.kind == Field::Integer)
                 qobject_cast<QSpinBox*>(field.widget)->setValue(configured.toInt());
             else if (field.kind == Field::Boolean)

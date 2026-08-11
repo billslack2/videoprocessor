@@ -840,12 +840,22 @@ void testScreenConfigSectionsAndInlineUnits()
         QStringLiteral("config.vprenderer.viewport.subtitle_engage_drift_ms.unit"));
     QLabel* paddingUnit = requireControl<QLabel>(window,
         QStringLiteral("config.vprenderer.viewport.subtitle_padding_pixels.unit"));
-    require(holdUnit->text() == QStringLiteral("seconds") &&
+    require(holdUnit->text() == QStringLiteral("ms") &&
         engageUnit->text() == QStringLiteral("ms") &&
         paddingUnit->text() == QStringLiteral("pixels"),
         "Screen Config fixed-unit inputs are missing inline unit labels");
-    require(hold->maximumWidth() == 210 && holdUnit->x() >= hold->x() + hold->width(),
-        "Screen Config unit label is not immediately beside its bounded value input");
+    require(hold->text() == QStringLiteral("2000"),
+        "Subtitle hold is not presented in milliseconds");
+    require(hold->minimumWidth() > 0 &&
+        hold->minimumWidth() == hold->maximumWidth() &&
+        hold->alignment() == Qt::AlignRight &&
+        holdUnit->x() >= hold->x() + hold->width(),
+        "Screen Config unit input is not consistently sized, aligned, and labeled");
+
+    hold->setText(QStringLiteral("1500"));
+    save(window);
+    require(readBytes(path).contains("subtitle_hold_seconds: 1.5"),
+        "Millisecond subtitle hold did not preserve the seconds-based config contract");
 
     QListWidget* profiles = requireControl<QListWidget>(window,
         QStringLiteral("config.vprenderer.viewport.profiles"));
@@ -853,6 +863,73 @@ void testScreenConfigSectionsAndInlineUnits()
     QCoreApplication::processEvents();
     require(subtitles->isChecked(),
         "Screen Config section expansion state changed when selecting another profile");
+}
+
+void testQueueUnitsAndLutControlsUseConsistentRows()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    window.selectPage(1);
+    window.show();
+    QCoreApplication::processEvents();
+
+    QSpinBox* queueDepth = requireControl<QSpinBox>(window,
+        QStringLiteral("config.queue.queue_size"));
+    QLabel* queueUnit = requireControl<QLabel>(window,
+        QStringLiteral("config.queue.queue_size.unit"));
+    QLabel* recoveryUnit = requireControl<QLabel>(window,
+        QStringLiteral("config.queue.reset_queue_too_large_percent.unit"));
+    const int fixedUnitFieldWidth = requireControl<QLineEdit>(window,
+        QStringLiteral("config.vprenderer.viewport.subtitle_hold_seconds"))->minimumWidth();
+    const QStringList queueValueKeys = {
+        QStringLiteral("queue_size"),
+        QStringLiteral("lead_frames"),
+        QStringLiteral("startup_preroll_frames"),
+        QStringLiteral("target_frames"),
+        QStringLiteral("active_picture_lookahead_frames"),
+        QStringLiteral("reset_after_render_restart_seconds"),
+        QStringLiteral("reset_queue_too_large_percent")
+    };
+    for (const QString& key : queueValueKeys)
+    {
+        QSpinBox* value = requireControl<QSpinBox>(window,
+            QStringLiteral("config.queue.") + key);
+        require(value->minimumWidth() == fixedUnitFieldWidth &&
+            value->maximumWidth() == fixedUnitFieldWidth &&
+            value->alignment() == Qt::AlignRight,
+            "Queue value controls do not use one consistent width and alignment");
+    }
+    require(queueDepth->suffix().isEmpty() &&
+        queueUnit->text() == QStringLiteral("frames") &&
+        recoveryUnit->text() == QStringLiteral("%"),
+        "Queue units are still embedded in their value controls");
+    require(queueUnit->x() >= queueDepth->x() + queueDepth->width(),
+        "Queue unit label is not aligned beside its bounded value input");
+
+    window.selectPage(3);
+    QToolButton* lutSection = requireControl<QToolButton>(window,
+        QStringLiteral("rendererSection.lut"));
+    if (!lutSection->isChecked()) lutSection->click();
+    QCoreApplication::processEvents();
+    QComboBox* luminance = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.lut_reference_nits"));
+    QComboBox* range = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.lut_reference_range"));
+    require(!luminance->isEditable() &&
+        luminance->findData(QStringLiteral("AUTO")) >= 0 &&
+        luminance->findData(QStringLiteral("203")) >= 0,
+        "LUT reference luminance is not a dropdown with common presets");
+    const QPoint luminancePosition = luminance->mapTo(&window, QPoint(0, 0));
+    const QPoint rangePosition = range->mapTo(&window, QPoint(0, 0));
+    require(luminancePosition.x() == rangePosition.x() &&
+        luminance->width() == range->width(),
+        "LUT reference controls do not share aligned dropdown geometry");
+
+    selectData(luminance, QStringLiteral("250"));
+    save(window);
+    require(readBytes(path).contains("lut_reference_nits: 250"),
+        "Custom LUT reference luminance did not persist");
 }
 
 void testActiveProfileMarkersCoverRelevantLists()
@@ -2344,6 +2421,8 @@ int main(int argc, char** argv)
     failures += run("disabling shader rule preserves shortcut", testDisablingShaderRulePreservesShortcut);
     failures += run("renderer profile sections collapse and persist", testRendererProfileSectionsCollapseAndPersist);
     failures += run("Screen Config sections and inline units", testScreenConfigSectionsAndInlineUnits);
+    failures += run("queue units and LUT controls use consistent rows",
+        testQueueUnitsAndLutControlsUseConsistentRows);
     failures += run("active profile markers cover relevant lists", testActiveProfileMarkersCoverRelevantLists);
     failures += run("standalone Config reads live active profile status", testStandaloneConfigAcceptsLiveActiveProfileStatus);
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
