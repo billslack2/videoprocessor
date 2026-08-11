@@ -38,6 +38,8 @@ public:
     void selectPage(int index);
     void reveal();
     void refreshMonitorDiscovery();
+    void setActiveProfileStatusForTesting(const QString& queue,
+        const QString& renderer, const QString& viewport, const QString& shader);
 
 protected:
     bool event(QEvent* event) override;
@@ -96,6 +98,8 @@ private:
     void setStatus(const QString& message, bool error = false);
     void setWarningStatus(const QString& message);
     void refreshActiveProfileIndicators();
+    void applyActiveProfileIndicators(bool available, const QString& queue,
+        const QString& renderer, const QString& viewport, const QString& shader);
 
     QString configPath_;
     quintptr ownerHandle_ = 0;

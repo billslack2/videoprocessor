@@ -714,6 +714,19 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     const QString viewport = available ? QString::fromLocal8Bit(active.viewport) : QString();
     const QString shader = available ? QString::fromLocal8Bit(active.shader) : QString();
     const QString queue = available ? QString::fromLocal8Bit(active.queue) : QString();
+    applyActiveProfileIndicators(available, queue, renderer, viewport, shader);
+}
+
+void ConfigEditorWindow::setActiveProfileStatusForTesting(const QString& queue,
+    const QString& renderer, const QString& viewport, const QString& shader)
+{
+    applyActiveProfileIndicators(true, queue, renderer, viewport, shader);
+}
+
+void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
+    const QString& queue, const QString& renderer, const QString& viewport,
+    const QString& shader)
+{
     for (const ProfileListBinding& binding : activeProfileLists_)
     {
         QString activeSection = binding.sectionPrefix == QStringLiteral("vprenderer") ? renderer :
