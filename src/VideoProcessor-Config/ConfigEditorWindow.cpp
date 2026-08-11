@@ -195,7 +195,10 @@ public:
         QStyleOptionViewItem base(option);
         const bool active = index.data(ActiveProfileRole).toBool();
         // Keep the standard selection treatment; the active status is separate.
-        base.rect.adjust(14, 0, 0, 0);
+        // Leave the selection background at its full list-row width.  Shift
+        // only the painted text when the active dot needs room, so the dot
+        // sits on top of the normal blue selection rather than in a gutter.
+        if (active) base.text.prepend(QStringLiteral("   "));
         QStyledItemDelegate::paint(painter, base, index);
         if (active)
         {
@@ -710,10 +713,17 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     const QString renderer = available ? QString::fromLocal8Bit(active.renderer) : QString();
     const QString viewport = available ? QString::fromLocal8Bit(active.viewport) : QString();
     const QString shader = available ? QString::fromLocal8Bit(active.shader) : QString();
+    const QString queue = available ? QString::fromLocal8Bit(active.queue) : QString();
     for (const ProfileListBinding& binding : activeProfileLists_)
     {
-        const QString activeSection = binding.sectionPrefix == QStringLiteral("vprenderer") ? renderer :
-            (binding.sectionPrefix == QStringLiteral("vprenderer.viewport") ? viewport : shader);
+        QString activeSection = binding.sectionPrefix == QStringLiteral("vprenderer") ? renderer :
+            (binding.sectionPrefix == QStringLiteral("vprenderer.viewport") ? viewport :
+                (binding.sectionPrefix == QStringLiteral("queue") ? queue : shader));
+        // An empty runtime shader selector means the built-in Off entry is in
+        // effect; it is not an unavailable or guessed shader state.
+        if (available && binding.sectionPrefix == QStringLiteral("shader.nls") &&
+            activeSection.isEmpty())
+            activeSection = QStringLiteral("shader.nls");
         for (int index = 0; binding.list && index < binding.list->count(); ++index)
         {
             QListWidgetItem* item = binding.list->item(index);
@@ -1998,7 +2008,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     list->setDragDropMode(QAbstractItemView::InternalMove);
     list->setDefaultDropAction(Qt::MoveAction);
     list->setDragDropOverwriteMode(false);
-    const bool showsActiveProfile = sectionPrefix == QStringLiteral("vprenderer") ||
+    const bool showsActiveProfile = sectionPrefix == QStringLiteral("queue") ||
+        sectionPrefix == QStringLiteral("vprenderer") ||
         sectionPrefix == QStringLiteral("vprenderer.viewport");
     if (showsActiveProfile)
     {
