@@ -8,7 +8,7 @@
 
 #include <cstdint>
 
-#include <P010ActivePictureEvidence.h>
+#include <ActivePictureEvidence.h>
 
 struct ActivePictureAnalyzerInput
 {
@@ -20,7 +20,7 @@ struct ActivePictureAnalyzerInput
 struct ActivePictureAnalyzerResult
 {
 	bool analyzed = false;
-	P010ActivePictureEvidence evidence;
+	ActivePictureEvidence evidence;
 	ActivePictureTransitionDecision decision;
 };
 

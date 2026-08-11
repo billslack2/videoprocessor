@@ -1,7 +1,7 @@
 #include "pch.h"
 
 #include <AnalysisLumaSource.h>
-#include <P010ActivePictureEvidence.h>
+#include <ActivePictureEvidence.h>
 #include <SceneDetector.h>
 #include "CppUnitTest.h"
 
@@ -141,7 +141,7 @@ namespace Tests
 		{
 			BgraFrame frame(320, 180);
 			frame.BlackOutside(22, 158);
-			const P010ActivePictureEvidence evidence =
+			const ActivePictureEvidence evidence =
 				ExtractActivePictureEvidence(frame.Source());
 			Assert::IsTrue(evidence.available);
 			Assert::AreEqual(static_cast<int>(
@@ -152,6 +152,9 @@ namespace Tests
 			Assert::IsTrue(evidence.trustedBounds.top >= 20);
 			Assert::IsTrue(evidence.trustedBounds.bottom <= 160);
 			Assert::IsTrue(evidence.lumaSamples < 30000);
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureBounds::BarAxes::TOP_BOTTOM),
+				static_cast<int>(evidence.trustedBounds.trustedBarAxes));
 		}
 
 		TEST_METHOD(BgraStartupSubtitleUsesTheSameSymmetricHypothesis)
@@ -177,7 +180,7 @@ namespace Tests
 		{
 			R210Frame frame(320, 180);
 			frame.BlackOutside(0, 22, 320, 158);
-			const P010ActivePictureEvidence evidence =
+			const ActivePictureEvidence evidence =
 				ExtractActivePictureEvidence(frame.Source());
 			Assert::IsTrue(evidence.available);
 			Assert::AreEqual(static_cast<int>(
@@ -187,13 +190,16 @@ namespace Tests
 			Assert::IsTrue(evidence.bottom.trusted);
 			Assert::IsTrue(evidence.trustedBounds.top >= 20);
 			Assert::IsTrue(evidence.trustedBounds.bottom <= 160);
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureBounds::BarAxes::TOP_BOTTOM),
+				static_cast<int>(evidence.trustedBounds.trustedBarAxes));
 		}
 
 		TEST_METHOD(R210ColoredDarkEdgesCannotAuthorizeCrop)
 		{
 			R210Frame frame(320, 180);
 			frame.DarkBlueOutside(0, 22, 320, 158);
-			const P010ActivePictureEvidence evidence =
+			const ActivePictureEvidence evidence =
 				ExtractActivePictureEvidence(frame.Source());
 			Assert::AreNotEqual(static_cast<int>(
 				ActivePictureClassification::BAR_CROP_TRUSTED),
@@ -204,7 +210,7 @@ namespace Tests
 		{
 			R210Frame frame(320, 180);
 			frame.BlackOutside(40, 0, 280, 180);
-			const P010ActivePictureEvidence evidence =
+			const ActivePictureEvidence evidence =
 				ExtractActivePictureEvidence(frame.Source());
 			Assert::AreEqual(static_cast<int>(
 				ActivePictureClassification::BAR_CROP_TRUSTED),
@@ -213,13 +219,16 @@ namespace Tests
 			Assert::IsTrue(evidence.right.trusted);
 			Assert::IsTrue(evidence.trustedBounds.left >= 38);
 			Assert::IsTrue(evidence.trustedBounds.right <= 282);
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureBounds::BarAxes::LEFT_RIGHT),
+				static_cast<int>(evidence.trustedBounds.trustedBarAxes));
 		}
 
 		TEST_METHOD(R210DarkArtworkDoesNotBecomeTrustedBars)
 		{
 			R210Frame frame(320, 180);
 			frame.Fill(80);
-			const P010ActivePictureEvidence evidence =
+			const ActivePictureEvidence evidence =
 				ExtractActivePictureEvidence(frame.Source());
 			Assert::AreNotEqual(static_cast<int>(
 				ActivePictureClassification::BAR_CROP_TRUSTED),

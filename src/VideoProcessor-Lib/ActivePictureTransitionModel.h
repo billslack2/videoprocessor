@@ -61,7 +61,14 @@ struct ActivePictureBounds
 	int rasterWidth = 0;
 	int rasterHeight = 0;
 	double aspectRatio = 0.0;
-	bool symmetricBars = false;
+	enum class BarAxes : uint8_t
+	{
+		NONE = 0,
+		TOP_BOTTOM = 1,
+		LEFT_RIGHT = 2,
+		BOTH = 3
+	};
+	BarAxes trustedBarAxes = BarAxes::NONE;
 };
 
 enum class ActivePictureClassification
@@ -80,6 +87,7 @@ struct ActivePictureObservation
 	bool available = false;
 	ActivePictureClassification classification =
 		ActivePictureClassification::UNAVAILABLE;
+	double framesPerSecond = 60.0;
 };
 
 
@@ -120,6 +128,7 @@ public:
 	static constexpr uint8_t INITIAL_CONFIRMATIONS = 4;
 	static constexpr uint8_t CLEAR_TRANSITION_CONFIRMATIONS = 2;
 	static constexpr double ANALYSIS_PERIOD_SECONDS = 0.080;
+	static constexpr double NESTED_CROP_CONFIRMATION_SECONDS = 4.0;
 	static constexpr double DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT = 2.0;
 	static constexpr double MAX_STABLE_GEOMETRY_DEADBAND_PERCENT = 5.0;
 
@@ -162,6 +171,11 @@ private:
 		const ActivePictureObservation& observation);
 	static bool IsFullRaster(
 		const ActivePictureBounds& bounds);
+	static bool HasAuthorityForCroppedAxes(
+		const ActivePictureBounds& bounds);
+	static bool IsNestedOrthogonalCrop(
+		const ActivePictureBounds& stable,
+		const ActivePictureBounds& candidate);
 	void RememberTrustedGeometry(const ActivePictureBounds& bounds,
 		ActivePictureClassification classification);
 	bool FindRecentTrustedGeometry(const ActivePictureObservation& observation,

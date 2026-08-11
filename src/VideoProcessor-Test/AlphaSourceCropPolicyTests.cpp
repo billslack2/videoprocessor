@@ -21,7 +21,7 @@ namespace Tests
 			input.classification =
 				ActivePictureClassification::BAR_CROP_TRUSTED;
 			input.geometry = {
-				0, 274, 3840, 1884, 3840, 2160, 2.3851, true };
+				0, 274, 3840, 1884, 3840, 2160, 2.3851, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			input.geometrySourceGeneration = 7;
 			input.frameSourceGeneration = 7;
 			input.rasterWidth = 3840;
@@ -718,9 +718,9 @@ namespace Tests
 		TEST_METHOD(SubtitleOwnedTwoEdgePixelsCannotPublishNovelAspect)
 		{
 			const ActivePictureBounds trusted = {
-				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, true };
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			const ActivePictureBounds overlayCandidate = {
-				0, 68, 3840, 2092, 3840, 2160, 3840.0 / 2024.0, true };
+				0, 68, 3840, 2092, 3840, 2160, 3840.0 / 2024.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			VerticalBarPresentationState presentation;
 			presentation.action = VerticalBarPresentationAction::TRANSLATE;
 			presentation.translationPixels = 198.0f;
@@ -1014,7 +1014,7 @@ namespace Tests
 			input.latestClassification =
 				ActivePictureClassification::PROVISIONAL;
 			input.trustedGeometry = {
-				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, true };
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			input.currentEnvelope = input.trustedGeometry;
 			input.currentEnvelope.bottom = 2042;
 			input.currentEnvelope.aspectRatio = 3840.0 / 1766.0;
@@ -1060,7 +1060,7 @@ namespace Tests
 			input.latestClassification =
 				ActivePictureClassification::PROVISIONAL;
 			input.trustedGeometry = {
-				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, true };
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			input.currentEnvelope = input.trustedGeometry;
 			input.currentEnvelope.bottom = 2042;
 			input.presentation.action =
@@ -1107,7 +1107,7 @@ namespace Tests
 			input.latestClassification =
 				ActivePictureClassification::PROVISIONAL;
 			input.trustedGeometry = {
-				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, true };
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			input.currentEnvelope = input.trustedGeometry;
 			input.currentEnvelope.bottom = 2022;
 			input.currentEnvelope.aspectRatio = 3840.0 / 1746.0;
@@ -1158,7 +1158,7 @@ namespace Tests
 			// synthetically, so seconds of hold/release behavior execute instantly.
 			ActivePictureBounds geometry = {
 				0, 280, 3840, 1888, 3840, 2160,
-				3840.0 / 1608.0, true };
+				3840.0 / 1608.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			VerticalBarPresentationState state;
 			const uint64_t generation = 7;
 			const uint64_t holdMs = 2000;
@@ -1378,7 +1378,7 @@ namespace Tests
 			// not overlay metadata; clearing the old presentation state is immediate.
 			state = {};
 			geometry = { 0, 70, 3840, 2090, 3840, 2160,
-				3840.0 / 2020.0, true };
+				3840.0 / 2020.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			action = resolve(false, geometry.top, false, geometry.bottom);
 			crop = present(action, geometry);
 			Assert::AreEqual(70, crop.sourceBounds.top);
@@ -1537,7 +1537,7 @@ namespace Tests
 
 			Input crop = TrustedScopeCrop();
 			crop.geometry = {
-				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, true };
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			crop.verticalTranslationActive = routing.translationActive;
 			crop.verticalTranslationPixels = routing.translationPixels;
 			crop.verticalTranslationBase = crop.geometry;
@@ -1663,7 +1663,7 @@ namespace Tests
 
 			Input crop = TrustedScopeCrop();
 			crop.geometry = {
-				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, true };
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			crop.verticalTranslationActive = routing.translationActive;
 			crop.verticalTranslationPixels = routing.translationPixels;
 			crop.verticalTranslationBase = crop.geometry;
@@ -1683,9 +1683,9 @@ namespace Tests
 		{
 			PresentationEnvelopeGeometryInput input;
 			input.trustedPicture = {
-				200, 280, 3640, 1880, 3840, 2160, 2.15, true };
+				200, 280, 3640, 1880, 3840, 2160, 2.15, ActivePictureBounds::BarAxes::BOTH };
 			input.observedContent = {
-				111, 121, 3711, 1937, 3840, 2160, 1.9824, false };
+				111, 121, 3711, 1937, 3840, 2160, 1.9824, ActivePictureBounds::BarAxes::NONE };
 			input.observedContentAvailable = true;
 			input.expandLeft = true;
 			input.expandBottom = true;
@@ -1826,7 +1826,7 @@ namespace Tests
 		{
 			PresentationEnvelopeGeometryInput source;
 			source.trustedPicture = {
-				0, 280, 3840, 1880, 3840, 2160, 2.4, true };
+				0, 280, 3840, 1880, 3840, 2160, 2.4, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			source.observedContent = source.trustedPicture;
 			source.observedContent.bottom = 1908;
 			source.observedContentAvailable = true;
@@ -2165,7 +2165,7 @@ namespace Tests
 				Input crop = TrustedScopeCrop();
 				crop.geometry = {
 					0, 276, 3840, 1884, 3840, 2160,
-					3840.0 / 1608.0, true };
+					3840.0 / 1608.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 				crop.verticalTranslationActive = routing.translationActive;
 				crop.verticalTranslationPixels = routing.translationPixels;
 				crop.verticalTranslationBase = crop.geometry;
@@ -2194,7 +2194,7 @@ namespace Tests
 			Input settled = TrustedScopeCrop();
 			settled.geometry = {
 				0, 276, 3840, 1884, 3840, 2160,
-				3840.0 / 1608.0, true };
+				3840.0 / 1608.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			settled.latestObservationSupportsCrop = false;
 			settled.verticalTranslationBaseRetentionActive =
 				drift.ConsumeFinalBaseFrame();
@@ -2302,7 +2302,7 @@ namespace Tests
 			Input input = TrustedScopeCrop();
 			input.geometry = {
 				200, 274, 3640, 1884, 3840, 2160,
-				3440.0 / 1610.0, true };
+				3440.0 / 1610.0, ActivePictureBounds::BarAxes::BOTH };
 			input.outwardPresentationActive = true;
 			input.outwardExpansionAvailable = true;
 			input.outwardExpansion = input.geometry;
@@ -2385,7 +2385,7 @@ namespace Tests
 			full.outwardPresentationActive = true;
 			full.outwardExpansionAvailable = true;
 			full.outwardExpansion = {
-				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false };
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, ActivePictureBounds::BarAxes::NONE };
 			full.outwardExpansionSourceGeneration = 7;
 			const Decision fullDecision = Evaluate(full);
 			Assert::IsTrue(fullDecision.outwardExpanded);
@@ -2394,12 +2394,12 @@ namespace Tests
 
 			Input pillar = TrustedScopeCrop();
 			pillar.geometry = {
-				480, 0, 3360, 2160, 3840, 2160, 4.0 / 3.0, true };
+				480, 0, 3360, 2160, 3840, 2160, 4.0 / 3.0, ActivePictureBounds::BarAxes::LEFT_RIGHT };
 			pillar.outwardPresentationActive = true;
 			pillar.outwardExpansionAvailable = true;
 			pillar.outwardExpansion = {
 				120, 0, 3700, 2160, 3840, 2160,
-				3580.0 / 2160.0, false };
+				3580.0 / 2160.0, ActivePictureBounds::BarAxes::NONE };
 			pillar.outwardExpansionSourceGeneration = 7;
 			const Decision pillarDecision = Evaluate(pillar);
 			Assert::IsTrue(pillarDecision.outwardExpanded);
@@ -2468,7 +2468,7 @@ namespace Tests
 		{
 			Input input = TrustedScopeCrop();
 			input.geometry = {
-				480, 0, 3360, 2160, 3840, 2160, 4.0 / 3.0, true };
+				480, 0, 3360, 2160, 3840, 2160, 4.0 / 3.0, ActivePictureBounds::BarAxes::LEFT_RIGHT };
 			input.outwardPresentationActive = true;
 			input.outwardExpansionAvailable = true;
 			input.outwardExpansion = input.geometry;
@@ -2514,10 +2514,19 @@ namespace Tests
 			Assert::AreEqual(1884, decision.sourceBounds.bottom);
 		}
 
-		TEST_METHOD(AsymmetricBoundsCannotAcquireCropAuthority)
+		TEST_METHOD(BoundsWithoutAxisAuthorityCannotAcquireCropAuthority)
 		{
 			Input input = TrustedScopeCrop();
-			input.geometry.symmetricBars = false;
+			input.geometry.trustedBarAxes =
+				ActivePictureBounds::BarAxes::NONE;
+			AssertFullRaster(Evaluate(input));
+		}
+
+		TEST_METHOD(WrongAxisAuthorityCannotAcquireCropAuthority)
+		{
+			Input input = TrustedScopeCrop();
+			input.geometry.trustedBarAxes =
+				ActivePictureBounds::BarAxes::LEFT_RIGHT;
 			AssertFullRaster(Evaluate(input));
 		}
 
@@ -2545,7 +2554,7 @@ namespace Tests
 			input.classification =
 				ActivePictureClassification::FULL_RASTER_TRUSTED;
 			input.geometry = {
-				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, true };
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, ActivePictureBounds::BarAxes::NONE };
 			AssertFullRaster(Evaluate(input));
 		}
 

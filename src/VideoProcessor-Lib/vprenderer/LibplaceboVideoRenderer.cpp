@@ -6,7 +6,7 @@
 #include <EventActionLauncher.h>
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
-#include <P010ActivePictureEvidence.h>
+#include <ActivePictureEvidence.h>
 #include <RendererConfigView.h>
 #include <RendererProfileConfig.h>
 #include <UnifiedProfileRuntime.h>
@@ -3487,7 +3487,7 @@ struct LibplaceboVideoRenderer::Impl
 							scopeSubtitlePictureLeft) /
 							(scopeSubtitlePictureBottom - scopeSubtitlePictureTop)
 						: 0.0,
-					true };
+					ActivePictureBounds::BarAxes::TOP_BOTTOM };
 				AlphaSourceCrop::PresentationEnvelopeGeometryInput envelopeInput;
 				envelopeInput.trustedPicture = trustedPicture;
 				envelopeInput.observedContent = trustedPicture;
@@ -5179,8 +5179,8 @@ struct LibplaceboVideoRenderer::Impl
 				presentationBeforeObservation = sceneVerificationGeometry;
 				hadCompatiblePresentation = true;
 			}
-			P010PresentationRetentionEvidence retentionEvidence;
-			P010ActivePictureEvidence evidence;
+			ActivePicturePresentationRetentionEvidence retentionEvidence;
+			ActivePictureEvidence evidence;
 			if (hadCompatiblePresentation)
 			{
 				retentionEvidence =
@@ -5197,7 +5197,7 @@ struct LibplaceboVideoRenderer::Impl
 				evidence.classification ==
 					ActivePictureClassification::PROVISIONAL)
 			{
-				const P010ActivePictureEvidence hypothesis =
+				const ActivePictureEvidence hypothesis =
 					EvaluateSymmetricVerticalBarHypothesis(
 						analysisSource, evidence);
 				if (hypothesis.classification ==
@@ -5291,7 +5291,7 @@ struct LibplaceboVideoRenderer::Impl
 				outward.aspectRatio = static_cast<double>(
 					outward.right - outward.left) /
 					std::max(1, outward.bottom - outward.top);
-				outward.symmetricBars = false;
+				outward.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 				const bool expands =
 					outward.left < presentationBeforeObservation.left ||
 					outward.top < presentationBeforeObservation.top ||
@@ -5381,6 +5381,7 @@ struct LibplaceboVideoRenderer::Impl
 			ActivePictureObservation observation;
 			observation.frameNumber = frameNumber;
 			observation.available = evidence.available;
+			observation.framesPerSecond = framesPerSecond;
 			const bool deferPresentationOwnedTransition = evidence.available &&
 				nlsGeometryAvailable &&
 				nlsGeometrySourceGeneration == analysisSource.generation &&
@@ -5483,7 +5484,8 @@ struct LibplaceboVideoRenderer::Impl
 			if (nlsGeometryAvailable && evidence.available &&
 				evidence.classification ==
 					ActivePictureClassification::BAR_CROP_TRUSTED &&
-				evidence.trustedBounds.symmetricBars &&
+				evidence.trustedBounds.trustedBarAxes !=
+					ActivePictureBounds::BarAxes::NONE &&
 				nlsGeometry.rasterWidth == evidence.trustedBounds.rasterWidth &&
 				nlsGeometry.rasterHeight == evidence.trustedBounds.rasterHeight &&
 				// The retained crop may include extra bar pixels, but it must not
@@ -6673,7 +6675,7 @@ struct LibplaceboVideoRenderer::Impl
 					? static_cast<double>(scopeSubtitlePictureRight -
 						scopeSubtitlePictureLeft) /
 						(scopeSubtitlePictureBottom - scopeSubtitlePictureTop)
-					: 0.0, true };
+					: 0.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
 			cropInput.verticalTranslationSourceGeneration =
 				scopeSubtitleEvidenceSourceGeneration;
 			cropInput.verticalTranslationBaseRetentionActive =
@@ -8818,12 +8820,14 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 			state.videoFrameEncoding, state.colorspace,
 			queued.activePictureIdentity.sourceFormatGeneration
 		};
-		const P010ActivePictureEvidence evidence =
+		const ActivePictureEvidence evidence =
 			ExtractActivePictureEvidence(source);
 		PreviewEvidence preview;
 		preview.identity = queued.activePictureIdentity;
 		preview.observation.frameNumber = queued.sourceSequence;
 		preview.observation.available = evidence.available;
+		preview.observation.framesPerSecond =
+			state.displayMode->RefreshRateHz();
 		if (evidence.available)
 		{
 			preview.observation.bounds = evidence.classification ==

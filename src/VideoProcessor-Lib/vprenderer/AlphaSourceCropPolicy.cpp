@@ -16,7 +16,7 @@ namespace AlphaSourceCrop
 			bounds.rasterHeight = height;
 			bounds.aspectRatio = width > 0 && height > 0
 				? static_cast<double>(width) / height : 0.0;
-			bounds.symmetricBars = true;
+			bounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 			return bounds;
 		}
 
@@ -27,6 +27,27 @@ namespace AlphaSourceCrop
 				bounds.left >= 0 && bounds.top >= 0 &&
 				bounds.right <= width && bounds.bottom <= height &&
 				bounds.left < bounds.right && bounds.top < bounds.bottom;
+		}
+
+		bool HasAuthorityForCroppedAxes(const ActivePictureBounds& bounds,
+			int width, int height)
+		{
+			const uint8_t axes = static_cast<uint8_t>(bounds.trustedBarAxes);
+			const bool cropsTop = bounds.top > 0;
+			const bool cropsBottom = bounds.bottom < height;
+			const bool cropsLeft = bounds.left > 0;
+			const bool cropsRight = bounds.right < width;
+			const bool cropsTopBottom = cropsTop || cropsBottom;
+			const bool cropsLeftRight = cropsLeft || cropsRight;
+			return (cropsTopBottom || cropsLeftRight) &&
+				(!cropsTopBottom || (cropsTop && cropsBottom)) &&
+				(!cropsLeftRight || (cropsLeft && cropsRight)) &&
+				(!cropsTopBottom ||
+					(axes & static_cast<uint8_t>(
+						ActivePictureBounds::BarAxes::TOP_BOTTOM)) != 0) &&
+				(!cropsLeftRight ||
+					(axes & static_cast<uint8_t>(
+						ActivePictureBounds::BarAxes::LEFT_RIGHT)) != 0);
 		}
 
 		bool CropEdgesAreChromaAligned(
@@ -813,7 +834,7 @@ namespace AlphaSourceCrop
 		decision.bounds.aspectRatio = static_cast<double>(
 			decision.bounds.right - decision.bounds.left) /
 			std::max(1, decision.bounds.bottom - decision.bounds.top);
-		decision.bounds.symmetricBars = false;
+		decision.bounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 		decision.expanded = !SameBounds(
 			decision.bounds, input.trustedPicture);
 		decision.reason = decision.expanded
@@ -1056,7 +1077,8 @@ namespace AlphaSourceCrop
 				"latest observation does not reaffirm crop authority";
 			return decision;
 		}
-		if (!input.geometry.symmetricBars)
+		if (!HasAuthorityForCroppedAxes(
+			input.geometry, input.rasterWidth, input.rasterHeight))
 		{
 			decision.reason =
 				"shared crop bounds lack opposing-edge authority";

@@ -13,12 +13,14 @@ namespace VideoProcessorTest
 	{
 		ActivePictureBounds ScopeBounds()
 		{
-			return { 0, 276, 3840, 1884, 3840, 2160, 2.388, true };
+			return { 0, 276, 3840, 1884, 3840, 2160, 2.388,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
 		}
 
 		ActivePictureBounds FullBounds()
 		{
-			return { 0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, true };
+			return { 0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0,
+				ActivePictureBounds::BarAxes::NONE };
 		}
 
 		ActivePictureObservation Trusted(
@@ -149,6 +151,18 @@ namespace VideoProcessorTest
 				static_cast<int>(ValidateActivePictureScheduledDecision(
 					decision, current, FullBounds(),
 					ActivePictureClassification::PROVISIONAL)));
+
+			ActivePictureBounds sameCoordinatesWithoutAuthority = ScopeBounds();
+			sameCoordinatesWithoutAuthority.trustedBarAxes =
+				ActivePictureBounds::BarAxes::NONE;
+			const ActivePictureFrameDecision scopeDecision =
+				ScheduledDecision(current, ScopeBounds());
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureScheduledDecisionValidation::
+					TRUSTED_BOUNDS_MISMATCH),
+				static_cast<int>(ValidateActivePictureScheduledDecision(
+					scopeDecision, current, sameCoordinatesWithoutAuthority,
+					ActivePictureClassification::BAR_CROP_TRUSTED)));
 		}
 
 		TEST_METHOD(RuntimeIdentityMatchRequiresEveryQueueEpochField)

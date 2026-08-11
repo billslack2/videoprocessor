@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -30,7 +30,7 @@
 #include "CBufferedLiveSourceVideoOutputPin.h"
 #include "WindowsOcrSubtitleDetector.h"
 #include "GpuSubtitleDetector.h"
-#include "../../P010ActivePictureEvidence.h"
+#include "../../ActivePictureEvidence.h"
 
 namespace
 {
@@ -4533,7 +4533,7 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 		return;
 
 	const ActivePictureTransitionDecision& decision = analysis.decision;
-	const P010ActivePictureEvidence& evidence = analysis.evidence;
+	const ActivePictureEvidence& evidence = analysis.evidence;
 	if (decision.diagnostic)
 	{
 		if (!evidence.available)
@@ -4549,7 +4549,9 @@ void CBufferedLiveSourceVideoOutputPin::UpdateActivePictureAspectRatio(
 				decision.stableBounds.top, decision.stableBounds.right, decision.stableBounds.bottom,
 				decision.stableBounds.aspectRatio, decision.bounds.rasterWidth,
 				decision.bounds.rasterHeight, decision.bounds.aspectRatio,
-				decision.bounds.symmetricBars ? 1 : 0, decision.matchingCandidates,
+				decision.bounds.trustedBarAxes !=
+					ActivePictureBounds::BarAxes::NONE ? 1 : 0,
+				decision.matchingCandidates,
 				decision.contradictoryCandidates, decision.candidateReversals,
 				decision.confidence, static_cast<int>(evidence.classification),
 				evidence.lumaSamples, evidence.chromaSamples,

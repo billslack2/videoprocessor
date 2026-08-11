@@ -1,6 +1,6 @@
 #include "pch.h"
 
-#include <P010ActivePictureEvidence.h>
+#include <ActivePictureEvidence.h>
 #include "CppUnitTest.h"
 
 #include <vector>
@@ -127,11 +127,12 @@ namespace VideoProcessorTest
 			int top, int bottom)
 		{
 			return { 0, top, width, bottom, width, height,
-				static_cast<double>(width) / (bottom - top), true };
+				static_cast<double>(width) / (bottom - top),
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
 		}
 	}
 
-	TEST_CLASS(P010ActivePictureEvidenceTests)
+	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
 		TEST_METHOD(FullRasterIsTrustedImmediately)
@@ -146,6 +147,9 @@ namespace VideoProcessorTest
 				static_cast<int>(evidence.classification));
 			Assert::AreEqual(0, evidence.trustedBounds.left);
 			Assert::AreEqual(180, evidence.trustedBounds.bottom);
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureBounds::BarAxes::NONE),
+				static_cast<int>(evidence.trustedBounds.trustedBarAxes));
 		}
 
 		TEST_METHOD(ScopeBarsHaveTrustedOpposingLumaAndChromaEvidence)
@@ -164,6 +168,9 @@ namespace VideoProcessorTest
 			Assert::IsTrue(evidence.trustedBounds.top >= 20);
 			Assert::IsTrue(evidence.trustedBounds.bottom <= 160);
 			Assert::IsTrue(evidence.lumaSamples < 30000);
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureBounds::BarAxes::TOP_BOTTOM),
+				static_cast<int>(evidence.trustedBounds.trustedBarAxes));
 		}
 
 		TEST_METHOD(StartupBottomSubtitleRecoversSymmetricScopeHypothesis)
@@ -253,6 +260,23 @@ namespace VideoProcessorTest
 			Assert::IsTrue(evidence.right.trusted);
 			Assert::IsTrue(evidence.trustedBounds.left >= 38);
 			Assert::IsTrue(evidence.trustedBounds.right <= 282);
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureBounds::BarAxes::LEFT_RIGHT),
+				static_cast<int>(evidence.trustedBounds.trustedBarAxes));
+		}
+
+		TEST_METHOD(WindowboxCarriesIndependentAuthorityForBothAxes)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(40, 22, 280, 158);
+			const auto evidence =
+				ExtractP010ActivePictureEvidence(frame.View());
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(evidence.classification));
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureBounds::BarAxes::BOTH),
+				static_cast<int>(evidence.trustedBounds.trustedBarAxes));
 		}
 
 		TEST_METHOD(SourceBakedTopControlExpandsTheMeasuredScopeEnvelope)
@@ -307,7 +331,9 @@ namespace VideoProcessorTest
 			Assert::AreNotEqual(0, evidence.proposedBounds.left);
 			Assert::AreEqual(0, evidence.trustedBounds.left);
 			Assert::AreEqual(320, evidence.trustedBounds.right);
-			Assert::IsTrue(evidence.trustedBounds.symmetricBars);
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureBounds::BarAxes::TOP_BOTTOM),
+				static_cast<int>(evidence.trustedBounds.trustedBarAxes));
 		}
 
 		TEST_METHOD(SmallImaxStyleBarsRequireAndPassBoundaryEvidence)
@@ -435,7 +461,8 @@ namespace VideoProcessorTest
 			int left, int right)
 		{
 			return { left, 0, right, height, width, height,
-				static_cast<double>(right - left) / height, true };
+				static_cast<double>(right - left) / height,
+				ActivePictureBounds::BarAxes::LEFT_RIGHT };
 		}
 
 		TEST_METHOD(NarrowTopOverlayProducesMinimalOutwardVisibleEnvelope)
@@ -521,6 +548,20 @@ namespace VideoProcessorTest
 			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
 			Assert::IsTrue(retention.outwardVisibleBounds.top <= 8);
 			Assert::AreEqual(158, retention.outwardVisibleBounds.bottom);
+		}
+
+		TEST_METHOD(NativeP210ScopeUsesTheSameAxisAuthorityContract)
+		{
+			P010Frame frame(320, 180, 0, true);
+			frame.BlackOutside(0, 22, 320, 158);
+			const auto evidence =
+				ExtractActivePictureEvidence(frame.P210Source());
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(evidence.classification));
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureBounds::BarAxes::TOP_BOTTOM),
+				static_cast<int>(evidence.trustedBounds.trustedBarAxes));
 		}
 
 		TEST_METHOD(FourKSmallTranslucentTopControlIsStillBounded)

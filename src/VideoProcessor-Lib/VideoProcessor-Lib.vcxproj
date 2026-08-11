@@ -222,7 +222,7 @@
     <ClInclude Include="ActivePictureTransitionModel.h" />
 	<ClInclude Include="AnalysisLumaSource.h" />
 	<ClInclude Include="ActivePictureAnalyzer.h" />
-    <ClInclude Include="P010ActivePictureEvidence.h" />
+    <ClInclude Include="ActivePictureEvidence.h" />
     <ClInclude Include="MainConfigSchema.h" />
     <ClInclude Include="ConfigurationLiveApply.h" />
     <ClInclude Include="ShaderConfigValidation.h" />
@@ -300,7 +300,7 @@
     <ClCompile Include="ActivePictureTransitionModel.cpp" />
 	<ClCompile Include="AnalysisLumaSource.cpp" />
 	<ClCompile Include="ActivePictureAnalyzer.cpp" />
-    <ClCompile Include="P010ActivePictureEvidence.cpp" />
+    <ClCompile Include="ActivePictureEvidence.cpp" />
     <ClCompile Include="ACaptureDeviceDiscoverer.cpp" />
     <ClCompile Include="AutoPpmCalibrator.cpp" />
     <ClCompile Include="BitDepth.cpp" />
