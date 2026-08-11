@@ -2,7 +2,7 @@
 
 ## Status
 
-Backlog regression. Reproduced on deployed `v1.2.001-beta` commit `b2e1956`
+In progress. Reproduced on deployed `v1.2.001-beta` commit `b2e1956`
 on 2026-08-11. With Start fullscreen configured and no visible fullscreen host,
 Alt+Enter logged:
 
@@ -14,6 +14,21 @@ action=cancel-pending requested_after=0
 The shortcut therefore cancelled the saved/startup request instead of bringing
 the application fullscreen. The failure was observed while testing the
 Windowed fullscreen presentation choice.
+
+## Progress
+
+- 2026-08-11: Implemented on `codex/vp-0118-fullscreen-toggle-state` at
+  `243ce86`, layered on the validated VP-0117 changes. Toggle resolution now
+  uses visible host state plus a proven enter/exit transition direction; the
+  saved startup request alone no longer counts as a cancellable transition.
+- Added the exact `requested=true, active=false, transition=none -> Enter`
+  regression assertion and expanded logging to distinguish configured
+  preference, session request, visible host state, and transition direction.
+- Clean x64 Release build succeeded. The focused regression test passed. The
+  complete native suite passed 794/799; the five failures are unrelated
+  configuration inventory/profile-fixture tests and reproduced on two runs.
+- Packaged for live validation at `VP0118-test-243ce86` with Start fullscreen
+  and Windowed fullscreen enabled.
 
 ## User story
 
