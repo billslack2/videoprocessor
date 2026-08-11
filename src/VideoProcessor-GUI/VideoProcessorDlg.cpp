@@ -9598,7 +9598,8 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 	}
 	const bool diagnosticKey =
 		keyDown &&
-		(pMsg->wParam == 'I' || pMsg->wParam == VK_F4);
+		(pMsg->wParam == 'I' || pMsg->wParam == VK_F4 ||
+			pMsg->wParam == VK_RETURN);
 	if (diagnosticKey)
 	{
 		DebugLog::Log(
