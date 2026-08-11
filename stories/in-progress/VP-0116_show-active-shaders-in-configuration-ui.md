@@ -2,7 +2,7 @@
 
 ## Status
 
-Backlog. Observed in the deployed `v1.2.001-beta` configuration editor on
+In progress. Observed in the deployed `v1.2.001-beta` configuration editor on
 2026-08-11: the Shaders page lists Off and the configured NLS modes, but none
 of the rows identifies the shader mode currently active in the attached VP
 runtime.
