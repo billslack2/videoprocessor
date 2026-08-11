@@ -1847,12 +1847,33 @@ namespace Tests
 				for (double anamorphicScale : { 1.0, 1.25 })
 				{
 					const auto fit = FitCenteredAspect(
-						sourceAspect * anamorphicScale, screen);
+						ApplyAnamorphicLensCompensation(
+							sourceAspect, anamorphicScale), screen);
 					Assert::IsTrue(fit.valid);
 					Assert::AreEqual(280, envelope.bounds.top);
 					Assert::AreEqual(1962, envelope.bounds.bottom);
 				}
 			}
+		}
+
+		TEST_METHOD(TwoToOneLensPrecompressesSixteenByNineToEightByNine)
+		{
+			const double sourceAspect = 16.0 / 9.0;
+			const double compensatedAspect =
+				ApplyAnamorphicLensCompensation(sourceAspect, 2.0);
+
+			Assert::AreEqual(8.0 / 9.0, compensatedAspect, 0.000001);
+			Assert::AreEqual(sourceAspect,
+				ApplyAnamorphicLensCompensation(sourceAspect, 1.0), 0.000001);
+
+			const PresentationRect screen = { 0.0, 0.0, 2350.0, 1000.0 };
+			const auto fit = FitCenteredAspect(compensatedAspect, screen);
+			Assert::IsTrue(fit.valid);
+			Assert::AreEqual(8.0 / 9.0,
+				(fit.picture.right - fit.picture.left) /
+				(fit.picture.bottom - fit.picture.top), 0.000001);
+			Assert::AreEqual(static_cast<int>(UnusedSpaceAxis::HORIZONTAL),
+				static_cast<int>(fit.unusedAxis));
 		}
 
 		TEST_METHOD(AmbiguityHoldIsBoundedNonRenewableAndGenerationLocal)

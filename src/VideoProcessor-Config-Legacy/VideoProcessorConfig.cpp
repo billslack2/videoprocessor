@@ -3869,7 +3869,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
         SetWindowTheme(editor->viewportFields[8], L"Explorer", nullptr);
         editor->viewportAlignmentHelp = text(editor->cards[2],
             L"Resting position for unused vertical space. Subtitle fitting may temporarily move the picture away from this edge.");
-        editor->viewportFields[1] = CreateWindowW(L"BUTTON", L"Override anamorphic scale", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+        editor->viewportFields[1] = CreateWindowW(L"BUTTON", L"Enable anamorphic lens compensation", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             0, 0, 0, 0, editor->cards[2], reinterpret_cast<HMENU>(static_cast<INT_PTR>(kViewportFieldFirst + 1)), nullptr, nullptr);
         editor->viewportFields[2] = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
             0, 0, 0, 0, editor->cards[2], reinterpret_cast<HMENU>(static_cast<INT_PTR>(kViewportFieldFirst + 2)), nullptr, nullptr);
