@@ -227,6 +227,24 @@ namespace
 		}
 	}
 
+	const char* AlphaPresentationTimingStatusText(
+		AlphaPresentationTimingStatus status)
+	{
+		switch (status)
+		{
+		case AlphaPresentationTimingStatus::Available:
+			return "available";
+		case AlphaPresentationTimingStatus::Disjoint:
+			return "disjoint";
+		case AlphaPresentationTimingStatus::FrameStatisticsUnavailable:
+			return "frame_statistics_unavailable";
+		case AlphaPresentationTimingStatus::FrameStatisticsFailed:
+			return "frame_statistics_failed";
+		default:
+			return "no_swapchain";
+		}
+	}
+
 	constexpr const char* SHADER_CACHE_RELATIVE_PATH =
 		"vprenderer\\VideoProcessorShaderCache.bin";
 	constexpr size_t MAX_SHADER_CACHE_FILE_SIZE =
@@ -7340,16 +7358,31 @@ struct LibplaceboVideoRenderer::Impl
 					nativeSwapchain->GetFrameStatistics(&statistics);
 				if (statisticsResult == DXGI_ERROR_FRAME_STATISTICS_DISJOINT)
 				{
+					sample.timingStatus =
+						AlphaPresentationTimingStatus::Disjoint;
+					sample.frameStatisticsResult =
+						static_cast<int32_t>(statisticsResult);
 					sample.disjoint = true;
 				}
 				else if (SUCCEEDED(statisticsResult))
 				{
+					sample.timingStatus =
+						AlphaPresentationTimingStatus::Available;
 					sample.available = true;
 					sample.presentCount = statistics.PresentCount;
 					sample.presentRefreshCount =
 						statistics.PresentRefreshCount;
 					sample.syncRefreshCount = statistics.SyncRefreshCount;
 					sample.syncQpc = statistics.SyncQPCTime.QuadPart;
+				}
+				else
+				{
+					sample.frameStatisticsResult =
+						static_cast<int32_t>(statisticsResult);
+					sample.timingStatus =
+						statisticsResult == DXGI_ERROR_UNSUPPORTED
+						? AlphaPresentationTimingStatus::FrameStatisticsUnavailable
+						: AlphaPresentationTimingStatus::FrameStatisticsFailed;
 				}
 			}
 			presentationTelemetry.RecordSubmission(record);
@@ -7388,9 +7421,11 @@ struct LibplaceboVideoRenderer::Impl
 				const AlphaPresentationSnapshot snapshot =
 					presentationTelemetry.Snapshot();
 				DebugLog::Log(
-					"Alpha presentation telemetry: generation=%llu evidence=%d retained=%zu source=%llu presented=%llu debt=%llu present_id=%u refresh=%u display_hz=%.5f cadence_samples=%u queue_after=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f",
+					"Alpha presentation telemetry: generation=%llu evidence=%d timing=%s frame_stats_hr=0x%08lX retained=%zu source=%llu presented=%llu debt=%llu present_id=%u refresh=%u display_hz=%.5f cadence_samples=%u queue_after=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f",
 					static_cast<unsigned long long>(snapshot.generation),
 					static_cast<int>(snapshot.evidence),
+					AlphaPresentationTimingStatusText(snapshot.timingStatus),
+					static_cast<unsigned long>(snapshot.frameStatisticsResult),
 					snapshot.retainedRecords,
 					static_cast<unsigned long long>(
 						snapshot.lastSubmittedSequence),

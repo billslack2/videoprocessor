@@ -25,6 +25,7 @@ namespace Tests
 		{
 			AlphaDxgiPresentationSample sample;
 			sample.generation = generation;
+			sample.timingStatus = AlphaPresentationTimingStatus::Available;
 			sample.available = true;
 			sample.presentCount = count;
 			sample.presentRefreshCount = count;
@@ -136,6 +137,44 @@ namespace Tests
 			Assert::AreEqual(
 				static_cast<int>(AlphaPresentationEvidence::Unavailable),
 				static_cast<int>(telemetry.Snapshot().evidence));
+		}
+
+		TEST_METHOD(ReportsUnavailableTimingApiSeparatelyFromWarming)
+		{
+			AlphaPresentationTelemetry telemetry;
+			telemetry.RecordSubmission(Record(1));
+			AlphaDxgiPresentationSample unavailable;
+			unavailable.generation = 1;
+			unavailable.timingStatus =
+				AlphaPresentationTimingStatus::FrameStatisticsUnavailable;
+			unavailable.frameStatisticsResult = static_cast<int32_t>(0x887A0004L);
+			telemetry.Observe(unavailable);
+
+			const AlphaPresentationSnapshot snapshot = telemetry.Snapshot();
+			Assert::AreEqual(static_cast<int>(AlphaPresentationEvidence::Unavailable),
+				static_cast<int>(snapshot.evidence));
+			Assert::AreEqual(
+				static_cast<int>(AlphaPresentationTimingStatus::FrameStatisticsUnavailable),
+				static_cast<int>(snapshot.timingStatus));
+			Assert::AreEqual(static_cast<int32_t>(0x887A0004L),
+				snapshot.frameStatisticsResult);
+		}
+
+		TEST_METHOD(ReportsTimingApiFailureSeparatelyFromUnsupportedMode)
+		{
+			AlphaPresentationTelemetry telemetry;
+			AlphaDxgiPresentationSample failed;
+			failed.generation = 1;
+			failed.timingStatus = AlphaPresentationTimingStatus::FrameStatisticsFailed;
+			failed.frameStatisticsResult = static_cast<int32_t>(0x80004005L);
+			telemetry.Observe(failed);
+
+			const AlphaPresentationSnapshot snapshot = telemetry.Snapshot();
+			Assert::AreEqual(
+				static_cast<int>(AlphaPresentationTimingStatus::FrameStatisticsFailed),
+				static_cast<int>(snapshot.timingStatus));
+			Assert::AreEqual(static_cast<int32_t>(0x80004005L),
+				snapshot.frameStatisticsResult);
 		}
 	};
 }

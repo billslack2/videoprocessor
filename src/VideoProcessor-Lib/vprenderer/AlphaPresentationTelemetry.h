@@ -12,6 +12,18 @@ enum class AlphaPresentationEvidence
 	Disjoint
 };
 
+// The evidence state answers whether timing can be used. This records why it
+// cannot, so a supported swapchain that is still warming is never conflated
+// with a timing API that is unavailable for the active presentation model.
+enum class AlphaPresentationTimingStatus
+{
+	NoSwapchain,
+	Available,
+	Disjoint,
+	FrameStatisticsUnavailable,
+	FrameStatisticsFailed
+};
+
 enum class AlphaSourceReleaseReason
 {
 	Unknown,
@@ -43,6 +55,9 @@ struct AlphaPresentationRecord
 struct AlphaDxgiPresentationSample
 {
 	uint64_t generation = 0;
+	AlphaPresentationTimingStatus timingStatus =
+		AlphaPresentationTimingStatus::NoSwapchain;
+	int32_t frameStatisticsResult = 0;
 	bool available = false;
 	bool disjoint = false;
 	uint32_t presentCount = 0;
@@ -55,6 +70,9 @@ struct AlphaDxgiPresentationSample
 struct AlphaPresentationSnapshot
 {
 	AlphaPresentationEvidence evidence = AlphaPresentationEvidence::Unavailable;
+	AlphaPresentationTimingStatus timingStatus =
+		AlphaPresentationTimingStatus::NoSwapchain;
+	int32_t frameStatisticsResult = 0;
 	uint64_t generation = 0;
 	size_t retainedRecords = 0;
 	uint64_t lastSubmittedSequence = 0;
@@ -88,6 +106,9 @@ private:
 	std::deque<AlphaPresentationRecord> m_records;
 	AlphaPresentationEvidence m_evidence =
 		AlphaPresentationEvidence::Unavailable;
+	AlphaPresentationTimingStatus m_timingStatus =
+		AlphaPresentationTimingStatus::NoSwapchain;
+	int32_t m_frameStatisticsResult = 0;
 	uint64_t m_lastSubmittedSequence = 0;
 	uint64_t m_lastPresentedSequence = 0;
 	uint32_t m_lastPresentId = 0;
