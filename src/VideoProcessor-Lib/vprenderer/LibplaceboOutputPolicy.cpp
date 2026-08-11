@@ -56,11 +56,13 @@ namespace LibplaceboOutput
 		// Advanced-color/BT.2020 presentation must use a flip-model swapchain.
 		// Do not let an explicit composed request silently put a calibrated target
 		// on the legacy BitBlt/DWM path.
+		// AUTO prefers the modern flip model. The renderer separately forces its
+		// embedded WS_CHILD preview to COMPOSED, so this changes only top-level
+		// windowed/fullscreen hosts. Flip preserves DWM composition when needed
+		// while making DXGI frame statistics available for presentation timing.
 		result.useBlit = request.primaries == PrimariesRequest::BT2020
 			? false
-			: request.presentation == PresentationRequest::COMPOSED ||
-				(request.presentation == PresentationRequest::AUTO &&
-					request.range != RangeRequest::LIMITED);
+			: request.presentation == PresentationRequest::COMPOSED;
 
 		if (request.range == RangeRequest::LIMITED)
 		{

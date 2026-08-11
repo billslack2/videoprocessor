@@ -633,22 +633,30 @@ namespace VideoProcessorTest
 		TEST_METHOD(FullscreenToggleUsesRequestedAndEffectiveState)
 		{
 			using Action = ConfigurationLiveApply::FullscreenToggleAction;
-			const auto pending = ConfigurationLiveApply::
-				ResolveFullscreenToggle(true, false);
+			using Direction = ConfigurationLiveApply::
+				FullscreenTransitionDirection;
+			const auto staleStartupRequest = ConfigurationLiveApply::
+				ResolveFullscreenToggle(true, false, Direction::None);
+			const auto pendingEnter = ConfigurationLiveApply::
+				ResolveFullscreenToggle(true, false, Direction::Entering);
+			const auto pendingExit = ConfigurationLiveApply::
+				ResolveFullscreenToggle(false, false, Direction::Exiting);
 			const auto active = ConfigurationLiveApply::
-				ResolveFullscreenToggle(true, true);
+				ResolveFullscreenToggle(true, true, Direction::None);
 			const auto inactive = ConfigurationLiveApply::
-				ResolveFullscreenToggle(false, false);
-			Assert::IsTrue(pending == Action::CancelPending);
+				ResolveFullscreenToggle(false, false, Direction::None);
+			Assert::IsTrue(staleStartupRequest == Action::EnterFullscreen);
+			Assert::IsTrue(pendingEnter == Action::CancelPending);
+			Assert::IsTrue(pendingExit == Action::EnterFullscreen);
 			Assert::IsTrue(active == Action::ExitFullscreen);
 			Assert::IsTrue(inactive == Action::EnterFullscreen);
 			Assert::IsFalse(ConfigurationLiveApply::
-				FullscreenRequestedAfterToggle(pending));
+				FullscreenRequestedAfterToggle(pendingEnter));
 			Assert::IsFalse(ConfigurationLiveApply::
 				FullscreenRequestedAfterToggle(active));
 			Assert::IsTrue(ConfigurationLiveApply::
 				FullscreenRequestedAfterToggle(inactive));
-			Assert::IsTrue(ConfigurationLiveApply::
+			Assert::IsFalse(ConfigurationLiveApply::
 				EffectiveFullscreenToggleActive(true, false));
 			Assert::IsTrue(ConfigurationLiveApply::
 				EffectiveFullscreenToggleActive(false, true));

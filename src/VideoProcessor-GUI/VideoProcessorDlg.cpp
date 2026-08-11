@@ -5131,14 +5131,34 @@ void CVideoProcessorDlg::OnCommandFullScreenToggle()
 	const bool active = m_fullScreenVideoWindow &&
 		IsWindow(m_fullScreenVideoWindow->GetHWND()) &&
 		::IsWindowVisible(m_fullScreenVideoWindow->GetHWND());
+	auto transitionDirection = ConfigurationLiveApply::
+		FullscreenTransitionDirection::None;
+	if (m_fullscreenRetargetPending)
+	{
+		transitionDirection = m_fullscreenRetargetExiting ?
+			ConfigurationLiveApply::FullscreenTransitionDirection::Exiting :
+			ConfigurationLiveApply::FullscreenTransitionDirection::Entering;
+	}
+	else if (m_alphaHostTransitionPending)
+	{
+		transitionDirection = requested ?
+			ConfigurationLiveApply::FullscreenTransitionDirection::Entering :
+			ConfigurationLiveApply::FullscreenTransitionDirection::Exiting;
+	}
 	const auto action = ConfigurationLiveApply::ResolveFullscreenToggle(
-		requested, active);
+		requested, active, transitionDirection);
 	m_rendererFullscreenCheck.SetCheck(
 		ConfigurationLiveApply::FullscreenRequestedAfterToggle(action) ?
 		BST_CHECKED : BST_UNCHECKED);
 	DebugLog::Log(
-		"Fullscreen session toggle: requested_before=%d active=%d action=%s requested_after=%d",
-		requested ? 1 : 0, active ? 1 : 0,
+		"Fullscreen session toggle: configured=%d requested_before=%d "
+		"active=%d transition=%s action=%s requested_after=%d",
+		m_rendererFullScreenStart ? 1 : 0, requested ? 1 : 0,
+		active ? 1 : 0,
+		transitionDirection == ConfigurationLiveApply::
+			FullscreenTransitionDirection::Entering ? "entering" :
+			transitionDirection == ConfigurationLiveApply::
+				FullscreenTransitionDirection::Exiting ? "exiting" : "none",
 		action == ConfigurationLiveApply::FullscreenToggleAction::CancelPending ?
 			"cancel-pending" :
 			action == ConfigurationLiveApply::FullscreenToggleAction::ExitFullscreen ?
@@ -9578,7 +9598,8 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 	}
 	const bool diagnosticKey =
 		keyDown &&
-		(pMsg->wParam == 'I' || pMsg->wParam == VK_F4);
+		(pMsg->wParam == 'I' || pMsg->wParam == VK_F4 ||
+			pMsg->wParam == VK_RETURN);
 	if (diagnosticKey)
 	{
 		DebugLog::Log(
@@ -11654,6 +11675,12 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	const bool nativeOverlay = m_statsOverlayRequestedVisible && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();
+	// Native-overlay support can appear after the renderer plugin finishes its
+	// handoff. Close the legacy window on that transition as well as in the
+	// immediate toggle path, otherwise both panels remain visible and the
+	// legacy copy contains only the pre-handoff empty snapshot.
+	if (nativeOverlay && m_statsOverlay && m_statsOverlay->IsVisible())
+		m_statsOverlay->Show(false);
 	// A madVR OSD API failure is diagnostics-only.  On the following periodic
 	// refresh, make the existing window overlay visible rather than leaving the
 	// requested panel absent or attempting repeated failing submissions.
@@ -11797,6 +11824,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				m_videoRenderer->GetPresentationTargetTiming(
 					stats.presentationTargetLeadMs,
 					stats.captureToPresentationTargetMs);
+			m_videoRenderer->GetPresentationTimingStatus(
+				stats.presentationTimingStatus);
 		}
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 		m_videoRenderer->GetOutputModeInfo(stats.outputMode);

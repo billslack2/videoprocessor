@@ -641,6 +641,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		if (m_stats.presentationTargetTimingKnown)
 			line.Format(TEXT("%-15s%.0f ms"), TEXT("- Present:"),
 				m_stats.presentationTargetLeadMs);
+		else if (!m_stats.presentationTimingStatus.IsEmpty())
+			line.Format(TEXT("%-15s--- (%s)"), TEXT("- Present:"),
+				static_cast<LPCTSTR>(m_stats.presentationTimingStatus));
 		else
 			line.Format(TEXT("%-15s---"), TEXT("- Present:"));
 	}

@@ -23,6 +23,8 @@ void AlphaPresentationTelemetry::Reset(uint64_t generation)
 	m_lastPresentedSequence = 0;
 	m_lastPresentId = 0;
 	m_lastPresentRefresh = 0;
+	m_timingStatus = AlphaPresentationTimingStatus::NoSwapchain;
+	m_frameStatisticsResult = 0;
 	ResetCadence(AlphaPresentationEvidence::Unavailable);
 }
 
@@ -45,6 +47,8 @@ void AlphaPresentationTelemetry::Observe(
 {
 	if (sample.generation != m_generation)
 		Reset(sample.generation);
+	m_timingStatus = sample.timingStatus;
+	m_frameStatisticsResult = sample.frameStatisticsResult;
 	if (sample.disjoint)
 	{
 		ResetCadence(AlphaPresentationEvidence::Disjoint);
@@ -111,6 +115,8 @@ AlphaPresentationSnapshot AlphaPresentationTelemetry::Snapshot() const
 {
 	AlphaPresentationSnapshot snapshot;
 	snapshot.evidence = m_evidence;
+	snapshot.timingStatus = m_timingStatus;
+	snapshot.frameStatisticsResult = m_frameStatisticsResult;
 	snapshot.generation = m_generation;
 	snapshot.retainedRecords = m_records.size();
 	snapshot.lastSubmittedSequence = m_lastSubmittedSequence;

@@ -32,15 +32,15 @@ namespace Tests
 				static_cast<int>(ClassifyOneShotSignal(true, true, true)));
 		}
 
-		TEST_METHOD(AutoBaselinePreservesComposedFullSrgb)
+		TEST_METHOD(AutoBaselineUsesFlipForPresentationTiming)
 		{
 			const Plan plan = MakePlan({});
-			Assert::IsTrue(plan.useBlit);
+			Assert::IsFalse(plan.useBlit);
 			Assert::IsTrue(plan.valid);
 			Assert::IsFalse(plan.requiresDxgiOverride);
 
 			Evidence evidence;
-			evidence.presentationModel = PresentationModel::BITBLT;
+			evidence.presentationModel = PresentationModel::FLIP;
 			const Actual actual = Finalize(plan, evidence);
 			Assert::IsTrue(actual.requestedEncodingActive);
 			Assert::AreEqual(

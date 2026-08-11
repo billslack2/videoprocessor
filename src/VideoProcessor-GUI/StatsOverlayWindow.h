@@ -64,6 +64,7 @@ struct StatsData
 	double dsScheduleLeadMs = 0.0;
 	double scheduledLatencyMs = 0.0;
 	bool presentationTargetTimingKnown = false;
+	CString presentationTimingStatus;
 	double presentationTargetLeadMs = 0.0;
 	double captureToPresentationTargetMs = 0.0;
 
