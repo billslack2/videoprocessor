@@ -151,7 +151,7 @@ they must not contain requirements that are absent from this file.
 | VP-0116 | Backlog | Show all active shaders in the configuration UI |
 | VP-0117 | In Progress | Restore VP Renderer presentation timing and mode truth |
 | VP-0118 | Backlog | Make Alt+Enter enter fullscreen from an inactive startup request |
-| VP-0119 | In Progress | Apply anamorphic lens scale in the correct direction |
+| VP-0119 | Done | Apply anamorphic lens scale in the correct direction |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |

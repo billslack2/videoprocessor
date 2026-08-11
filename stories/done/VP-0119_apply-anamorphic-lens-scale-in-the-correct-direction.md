@@ -2,10 +2,15 @@
 
 ## Status
 
-In Progress (2026-08-11). Live comparison with madVR showed that VP Renderer
-widens a `16:9` source to `32:9` for a configured `2:1` lens, while lens
-compensation must pre-compress it to `8:9`. Implementation branch:
-`codex/vp-0119-anamorphic-direction` from the current default branch.
+Done (2026-08-11). Implemented in `faaff88` and merged to the default
+`v1.2.001-beta` branch by PR #58 as merge commit `9ba40d4`. Live comparison
+with madVR showed that VP Renderer widened a `16:9` source to `32:9` for a
+configured `2:1` lens; the corrected renderer pre-compresses it to `8:9`.
+
+Validation: a clean x64 Release rebuild passed; all 89 focused
+`AlphaSourceCropPolicyTests` passed; all 34 configuration UI checks passed;
+and the full native suite passed 793 tests with the same five pre-existing
+configuration/reference failures and no new failure.
 
 ## User story
 
@@ -27,4 +32,3 @@ the intended picture proportions.
 - A `1:1` value remains a geometry no-op.
 - Existing supported decimal and ratio parsing remains unchanged.
 - Focused geometry tests and a clean x64 Release build/test run pass.
-
