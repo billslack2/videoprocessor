@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. Reproduced on deployed `v1.2.001-beta` commit `b2e1956` on
+Done. Reproduced on deployed `v1.2.001-beta` commit `b2e1956` on
 2026-08-11. VP Renderer used a 2560x1440 fullscreen host but reported
 `Transport Actual: Blt/F/sRGB/G22/709`. Its presentation telemetry remained
 `evidence=0`, `presented=0`, `present_id=0`, and `display_hz=0` across every
@@ -20,7 +20,11 @@ five-second sample. The OSD consequently showed a renderer delay while
   explicitly composed `WS_CHILD` preview, closes the duplicate-OSD race, and
   reports an explicit OSD reason when presentation timing is unavailable.
 - Focused output-policy and presentation-telemetry tests pass (39/39). Live
-  validation of advancing presentation evidence and latency is pending.
+  validation confirmed one authoritative OSD, advancing fullscreen
+  presentation evidence, and complete latency; the embedded BitBlt preview
+  correctly reports presentation timing as unavailable.
+- Merged to the default `v1.2.001-beta` branch in `58c5b6d` on 2026-08-11
+  after a successful merged x64 Release build and focused regression tests.
 
 ## User story
 

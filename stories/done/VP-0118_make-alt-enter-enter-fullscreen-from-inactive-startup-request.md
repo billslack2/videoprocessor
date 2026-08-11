@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. Reproduced on deployed `v1.2.001-beta` commit `b2e1956`
+Done. Reproduced on deployed `v1.2.001-beta` commit `b2e1956`
 on 2026-08-11. With Start fullscreen configured and no visible fullscreen host,
 Alt+Enter logged:
 
@@ -29,6 +29,12 @@ Windowed fullscreen presentation choice.
   configuration inventory/profile-fixture tests and reproduced on two runs.
 - Packaged for live validation at `VP0118-test-243ce86` with Start fullscreen
   and Windowed fullscreen enabled.
+- Live Alt+Enter validation from the focused video preview confirmed keyboard
+  receipt, accelerator consumption, fullscreen entry, and fullscreen exit
+  without a button event. The operator accepted VP-0118 as complete.
+- Merged with VP-0117 to the default `v1.2.001-beta` branch in `58c5b6d` on
+  2026-08-11 after a successful merged x64 Release build; all five focused
+  VP-0117/VP-0118 regression tests passed.
 
 ## User story
 
