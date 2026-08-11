@@ -268,6 +268,35 @@ namespace VideoProcessorTest
 				GetFileAttributesA(directory.Path(ArchiveName(0)).c_str()));
 		}
 
+		TEST_METHOD(SparseIndexedArchivesPruneTheOccupiedShiftDestination)
+		{
+			TemporaryLogDirectory directory;
+			const std::string active = directory.Path("vp_debug.log");
+			WriteFile(active, "prior session");
+			// Reproduce the deployed failure: a missing .0 left .9 present.
+			for (size_t index = 1; index <= 9; ++index)
+				WriteFile(directory.Path(ArchiveName(index)));
+
+			const auto result = DebugLogRetention::Rotate(active, 10);
+			Assert::IsTrue(result.activeReady);
+			Assert::AreEqual(static_cast<size_t>(10), result.retainedCount);
+			Assert::AreEqual(static_cast<size_t>(10), CountMatchingLogs(directory));
+			Assert::AreNotEqual(INVALID_FILE_ATTRIBUTES,
+				GetFileAttributesA(directory.Path(ArchiveName(0)).c_str()));
+			Assert::AreNotEqual(INVALID_FILE_ATTRIBUTES,
+				GetFileAttributesA(directory.Path(ArchiveName(9)).c_str()));
+			Assert::IsTrue(std::any_of(result.diagnostics.begin(), result.diagnostics.end(),
+				[](const std::string& diagnostic)
+				{
+					return diagnostic.find("pruned vp_debug.log.9") != std::string::npos;
+				}));
+			Assert::IsFalse(std::any_of(result.diagnostics.begin(), result.diagnostics.end(),
+				[](const std::string& diagnostic)
+				{
+					return diagnostic.find("could not shift") != std::string::npos;
+				}));
+		}
+
 		TEST_METHOD(ConfiguredCountsKeepExactIndexedBoundariesAndLegacyAgesOut)
 		{
 			for (const size_t retention : { static_cast<size_t>(2), static_cast<size_t>(10), DebugLogRetention::MAX_COUNT })

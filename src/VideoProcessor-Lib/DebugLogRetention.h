@@ -326,6 +326,28 @@ private:
 		}
 		const size_t limit = retentionCount - 1;
 		const size_t target = archiveActive && limit > 0 ? limit - 1 : limit;
+		// Indexed archives occupy fixed slots. A sparse sequence can otherwise
+		// have fewer than `target` files while still leaving the destination for
+		// a shift occupied (for example, .9 exists but .0 is missing). Remove
+		// every archive outside the available slots before shifting so stale
+		// files cannot permanently block rotation with ERROR_ALREADY_EXISTS.
+		for (auto it = archives.begin(); it != archives.end();)
+		{
+			if (!it->indexed || it->index < limit)
+			{
+				++it;
+				continue;
+			}
+
+			if (!DeleteFileA(it->path.c_str()))
+			{
+				diagnostics.push_back("Debug log rotation: could not prune '" + it->path +
+					"' (Windows error " + std::to_string(GetLastError()) + ")");
+				return false;
+			}
+			diagnostics.push_back("Debug log rotation: pruned " + FileName(it->path));
+			it = archives.erase(it);
+		}
 		std::sort(archives.begin(), archives.end(), [](const Archive& left, const Archive& right)
 		{
 			if (left.indexed != right.indexed)
