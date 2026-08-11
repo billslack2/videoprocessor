@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0116`
-- Next root story number: `VP-0117`
-- Total indexed items: 132
+- Last assigned root story: `VP-0118`
+- Next root story number: `VP-0119`
+- Total indexed items: 134
 
 ## Story locations
 
@@ -149,6 +149,8 @@ they must not contain requirements that are absent from this file.
 | VP-0114 | Backlog | Alpha conservative scaling and small-bar zoom controls |
 | VP-0115 | Backlog | Diagnose DeckLink delivery failures and renderer-transition drops |
 | VP-0116 | Backlog | Show all active shaders in the configuration UI |
+| VP-0117 | Backlog | Restore VP Renderer presentation timing and mode truth |
+| VP-0118 | Backlog | Make Alt+Enter enter fullscreen from an inactive startup request |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
