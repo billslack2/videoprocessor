@@ -4,6 +4,7 @@
 
 #include "ConfigEditorWindow.h"
 #include "VpTheme.h"
+#include <ActiveProfileStatus.h>
 
 #include <QApplication>
 #include <QAccessible>
@@ -886,6 +887,18 @@ void testActiveProfileMarkersCoverRelevantLists()
     require(selectedBackground.blue() > selectedBackground.red() &&
         selectedBackground.blue() > selectedBackground.green(),
         "The selected active row did not retain a full-width blue background");
+}
+
+void testStandaloneConfigAcceptsLiveActiveProfileStatus()
+{
+    ActiveProfileStatus::Publish(GetCurrentProcessId(), 1,
+        { { "queue", "low_latency" }, { "display", "rec709" } },
+        "shader.nls.nonlinear_stretch");
+    ActiveProfileStatus::Snapshot snapshot;
+    require(ActiveProfileStatus::Read(0, snapshot),
+        "Standalone Config did not accept the live VP active-profile status");
+    require(!ActiveProfileStatus::Read(GetCurrentProcessId() + 1, snapshot),
+        "Active-profile status was accepted for the wrong VP process");
 }
 
 void testLutSelectorDiscoversInstallationLutFiles()
@@ -2332,6 +2345,7 @@ int main(int argc, char** argv)
     failures += run("renderer profile sections collapse and persist", testRendererProfileSectionsCollapseAndPersist);
     failures += run("Screen Config sections and inline units", testScreenConfigSectionsAndInlineUnits);
     failures += run("active profile markers cover relevant lists", testActiveProfileMarkersCoverRelevantLists);
+    failures += run("standalone Config reads live active profile status", testStandaloneConfigAcceptsLiveActiveProfileStatus);
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
     failures += run("choice labels and VP Renderer name", testChoiceLabelsAndVpRendererName);
     failures += run("legacy renderer visibility remains manual and preserved", testLegacyRendererVisibilityRemainsManualAndPreserved);
