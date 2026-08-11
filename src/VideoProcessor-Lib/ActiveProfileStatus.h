@@ -72,7 +72,6 @@ namespace ActiveProfileStatus
 
     inline bool Read(uint32_t expectedProcessId, Snapshot& result)
     {
-        if (expectedProcessId == 0) return false;
         HANDLE mapping = OpenFileMappingW(FILE_MAP_READ, FALSE, MappingName);
         if (!mapping) return false;
         const auto* shared = static_cast<const Snapshot*>(MapViewOfFile(mapping,
@@ -82,6 +81,20 @@ namespace ActiveProfileStatus
         result = *shared;
         UnmapViewOfFile(shared);
         CloseHandle(mapping);
-        return result.version == Version && result.processId == expectedProcessId;
+        // Config may be launched directly, without a VP-owned HWND. In that
+        // case accept the only live publisher, but still require that its
+        // process is alive. An editor launched by VP continues to require an
+        // exact PID match.
+        if (result.version != Version || result.processId == 0 ||
+            (expectedProcessId != 0 && result.processId != expectedProcessId))
+            return false;
+        HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
+            result.processId);
+        if (!process) return false;
+        DWORD exitCode = 0;
+        const bool running = GetExitCodeProcess(process, &exitCode) &&
+            exitCode == STILL_ACTIVE;
+        CloseHandle(process);
+        return running;
     }
 }

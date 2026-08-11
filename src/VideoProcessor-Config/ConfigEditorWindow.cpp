@@ -53,6 +53,7 @@
 #include <QScrollArea>
 #include <QShortcut>
 #include <QSignalBlocker>
+#include <QStyle>
 #include <QShowEvent>
 #include <QSplitter>
 #include <QSpinBox>
@@ -193,13 +194,18 @@ public:
         const QModelIndex& index) const override
     {
         QStyleOptionViewItem base(option);
+        initStyleOption(&base, index);
         const bool active = index.data(ActiveProfileRole).toBool();
-        // Keep the standard selection treatment; the active status is separate.
-        // Leave the selection background at its full list-row width.  Shift
-        // only the painted text when the active dot needs room, so the dot
-        // sits on top of the normal blue selection rather than in a gutter.
-        if (active) base.text.prepend(QStringLiteral("   "));
-        QStyledItemDelegate::paint(painter, base, index);
+        // Keep the standard selection treatment, including its full-width
+        // background. Drawing the control ourselves is necessary because the
+        // base delegate re-initializes its option and would discard this text
+        // offset before it paints.
+        // Reserve the marker column for every profile row so names stay
+        // aligned as the active selection changes.
+        base.text.prepend(QStringLiteral("   "));
+        const QWidget* widget = base.widget;
+        QStyle* style = widget ? widget->style() : QApplication::style();
+        style->drawControl(QStyle::CE_ItemViewItem, &base, painter, widget);
         if (active)
         {
             painter->save();
@@ -707,7 +713,6 @@ void ConfigEditorWindow::loadDiscoveryCache()
 void ConfigEditorWindow::refreshActiveProfileIndicators()
 {
     const uint32_t expectedProcessId = ownerProcessId_;
-    if (expectedProcessId == 0) return;
     ActiveProfileStatus::Snapshot active;
     const bool available = ActiveProfileStatus::Read(expectedProcessId, active);
     const QString renderer = available ? QString::fromLocal8Bit(active.renderer) : QString();
