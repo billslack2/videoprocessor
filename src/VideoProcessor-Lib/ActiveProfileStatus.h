@@ -9,14 +9,15 @@
 
 namespace ActiveProfileStatus
 {
-    constexpr uint32_t Version = 1;
-    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v1";
+    constexpr uint32_t Version = 2;
+    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v2";
 
     struct Snapshot
     {
         uint32_t version = Version;
         uint32_t processId = 0;
         uint64_t generation = 0;
+        char queue[96]{};
         char renderer[96]{};
         char viewport[96]{};
         char shader[96]{};
@@ -53,7 +54,10 @@ namespace ActiveProfileStatus
         next.processId = processId;
         next.generation = generation;
         const auto renderer = selections.find("display");
+        const auto queue = selections.find("queue");
         const auto viewport = selections.find("viewport");
+        Copy(next.queue, sizeof(next.queue), queue == selections.end() ?
+            std::string() : SectionFor("queue", queue->second));
         Copy(next.renderer, sizeof(next.renderer), renderer == selections.end() ?
             std::string() : SectionFor("vprenderer", renderer->second));
         Copy(next.viewport, sizeof(next.viewport), viewport == selections.end() ?
