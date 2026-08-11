@@ -404,6 +404,15 @@ namespace AlphaSourceCrop
 		const PresentationRect& screen,
 		VerticalPictureAlignment verticalAlignment);
 
+	// anamorphicScale describes the physical lens's horizontal expansion. The
+	// renderer must pre-compress by its reciprocal so the projected picture
+	// returns to the source proportions after passing through the lens.
+	inline double ApplyAnamorphicLensCompensation(
+		double sourceAspect, double anamorphicScale)
+	{
+		return sourceAspect / anamorphicScale;
+	}
+
 	// Perform the one ordinary centered aspect-preserving fit used after source
 	// envelope selection. The caller may pass anamorphic-adjusted contentAspect;
 	// that destination-only mapping never feeds back into source geometry.

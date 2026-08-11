@@ -6811,8 +6811,9 @@ struct LibplaceboVideoRenderer::Impl
 				if (configuredScreenActive)
 					fitTargetToAspect(configuredScreenAspect,
 						AlphaSourceCrop::VerticalPictureAlignment::CENTER);
-				fitTargetToAspect(pl_rect2df_aspect(&source.crop) *
-					anamorphicScale,
+				fitTargetToAspect(
+					AlphaSourceCrop::ApplyAnamorphicLensCompensation(
+						pl_rect2df_aspect(&source.crop), anamorphicScale),
 					ResolveVerticalPictureAlignment(verticalAlignment));
 				return;
 			}
@@ -6988,8 +6989,9 @@ struct LibplaceboVideoRenderer::Impl
 				// A source classified within target tolerance would otherwise still be
 				// stretched vertically despite having no active NLS hook.
 				const AlphaSourceCrop::CenteredFitDecision pictureFit =
-					fitTargetToAspect(pl_rect2df_aspect(&source.crop) *
-						anamorphicScale,
+					fitTargetToAspect(
+						AlphaSourceCrop::ApplyAnamorphicLensCompensation(
+							pl_rect2df_aspect(&source.crop), anamorphicScale),
 						ResolveVerticalPictureAlignment(verticalAlignment));
 				publishFinalLayout(pictureFit.unusedAxis, "linear-nls-fallback");
 				return;
@@ -6997,8 +6999,9 @@ struct LibplaceboVideoRenderer::Impl
 
 			// NLS is off: use the same final source rectangle with ordinary scaling.
 			const AlphaSourceCrop::CenteredFitDecision pictureFit =
-				fitTargetToAspect(pl_rect2df_aspect(&source.crop) *
-					anamorphicScale,
+				fitTargetToAspect(
+					AlphaSourceCrop::ApplyAnamorphicLensCompensation(
+						pl_rect2df_aspect(&source.crop), anamorphicScale),
 					ResolveVerticalPictureAlignment(verticalAlignment));
 			publishFinalLayout(pictureFit.unusedAxis, "linear");
 			// Never apply subtitle translation to the fitted destination. Moving

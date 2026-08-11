@@ -2505,11 +2505,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Top and Bottom support one-sided masking. Center preserves the "
             "current presentation. Enabled subtitle fitting can still move "
             "the picture upward or downward as required.")));
-        anamorphicEnabled = new QCheckBox(QStringLiteral("Enable anamorphic stretch"));
+        anamorphicEnabled = new QCheckBox(QStringLiteral("Enable anamorphic lens compensation"));
         anamorphicEnabled->setObjectName(controlName(sectionPrefix,
             QStringLiteral("anamorphic_enabled")));
         form->addRow(QString(), anamorphicEnabled);
-        anamorphicValue = addText(QStringLiteral("Anamorphic scale"), QStringLiteral("anamorphic_scale"));
+        anamorphicValue = addText(QStringLiteral("Lens expansion ratio"), QStringLiteral("anamorphic_scale"));
         connect(anamorphicEnabled, &QCheckBox::toggled, this, [this, state, anamorphicValue](bool enabled)
         {
             anamorphicValue->setEnabled(enabled);
