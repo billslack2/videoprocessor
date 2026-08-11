@@ -57,6 +57,18 @@ if ([String]::IsNullOrWhiteSpace($VerBranch)) {
     Where-Object { -not [String]::IsNullOrWhiteSpace($_) } |
     Select-Object -First 1
 }
+# A clean detached checkout is the normal deployment form. If it points
+# exactly at the remote default branch, report that durable branch identity
+# rather than falling back to an older nearest tag from `git describe`.
+if ([String]::IsNullOrWhiteSpace($VerBranch)) {
+  $DefaultRemoteRef = Invoke-GitText -GitArguments @("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+  if (-not [String]::IsNullOrWhiteSpace($DefaultRemoteRef)) {
+    $PointsAtDefault = Invoke-GitText -GitArguments @("merge-base", "--is-ancestor", "HEAD", $DefaultRemoteRef)
+    if ($LASTEXITCODE -eq 0) {
+      $VerBranch = $DefaultRemoteRef
+    }
+  }
+}
 if (-not [String]::IsNullOrWhiteSpace($VerBranch)) {
   $VerBranch = $VerBranch.Trim()
   $VerBranch = $VerBranch -replace '^refs/heads/', ''
