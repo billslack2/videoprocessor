@@ -2,7 +2,7 @@
 
 ## Status
 
-Backlog (2026-08-10). Created from the request to provide Alpha equivalents of madVR's conservative small-resize and small-black-bar zoom behaviors. UX design is an explicit prerequisite to implementation; no UI, configuration, or rendering behavior has changed.
+Backlog (2026-08-10). Created from the request to provide Alpha equivalents of madVR's conservative small-resize and small-black-bar zoom behaviors. UX design and a review of existing configuration-control patterns are explicit prerequisites to implementation; no UI, configuration, or rendering behavior has changed.
 
 ## User story
 
@@ -30,7 +30,7 @@ Add two independent, per-screen-profile integer settings, expressed in destinati
 
 The 50-line maximum applies to each bar edge, not their combined height/width. It covers rounding and modest near-aspect mismatches (the reported 2.40:1-to-2.35:1 case is far below it) while avoiding a setting that silently treats substantial cinematic bars as "small." A 100-line maximum would allow materially larger content loss and is not recommended for the first release. Evaluate thresholds in final output-pixel/line coordinates after physical-screen and requested-viewport layout, not in source pixels or before nested physical-screen fitting.
 
-No separate enable checkbox is proposed: a value of `0` is the unambiguous persisted off state, and a nonzero value enables that policy. The UX designer must confirm this follows the established VP configuration pattern and decide whether a switch plus a disabled value field is more comprehensible in the final editor.
+The enablement interaction is deliberately undecided. A value of `0` can be a persisted off state, but it must not be adopted merely because it is compact. The UX review must first audit the established VP configuration patterns and select the consistent approach for these controls: `0 = off`, a separate enable checkbox/switch with an enabled value field, or another existing pattern. The selected design must have one unambiguous persisted disabled state and retain a configurable threshold without surprise cropping.
 
 If both values are nonzero, document and test the order explicitly:
 
@@ -43,7 +43,7 @@ Log the selected policy, configured thresholds, normal-fit rectangle, unused bar
 
 ## Scope
 
-1. Design and implement the two persisted per-profile settings, validation, defaults, configuration reference, safe live-apply behavior, diagnostics, and editor controls.
+1. Design and implement the two persisted per-profile settings, validation, defaults, configuration reference, safe live-apply behavior, diagnostics, and editor controls. The UX-approved work may include light refactoring of comparable configuration controls where necessary to make enablement, disabled fields, units, and validation treatment consistent; it must not broaden into a general editor redesign.
 2. Apply each policy only at Alpha's final destination-layout stage, after physical-screen/requested-viewport calculation and without changing source detector decisions.
 3. Preserve current default behavior exactly when both values are zero.
 4. For zoom, crop symmetrically on the axis opposite the small unused bars, subject to existing alignment requirements. If an odd pixel must be allocated, use one documented deterministic side/rounding rule.
@@ -56,7 +56,8 @@ Before implementation, review the present Screen Config information architecture
 
 - Exact section and labels, distinguishing no-crop scaling suppression from fill-and-crop bar zoom.
 - Whether the controls belong under Screen geometry, an advanced Geometry disclosure, or another established pattern from VP-0113.
-- Whether the `0 = off` numeric-control pattern is sufficient or a separate checkbox/switch is needed.
+- An audit of comparable existing controls, including how each expresses enabled/disabled state, zero/default values, bounded numeric values, units, validation, and profile persistence.
+- Whether `0 = off`, a separate checkbox/switch, or another established pattern is the consistent interaction for each new policy; do not presume the answer before the audit.
 - Visible unit wording (for example, `lines per edge`) and help text that makes zoom's crop consequence unmistakable.
 - Presentation of unavailable/non-Alpha renderer values and profile inheritance/default behavior.
 - An operator preview, confirmation, or diagnostic affordance if UX judges a crop-cap warning necessary.
@@ -71,7 +72,8 @@ Do not reuse madVR labels verbatim merely for familiarity. VP wording must state
 - A 2.40:1 active picture on a 2.35:1 physical screen with a qualifying zoom threshold fills the screen and reports its small symmetric horizontal crop; with zoom disabled it preserves the picture and reports the expected small top/bottom destination bars.
 - A bar larger than the configured per-edge threshold does not trigger zoom.
 - Zoom never changes trusted crop authority or loses a required subtitle/OSD presentation envelope; a blocked zoom has an explicit diagnostic reason.
-- The editor clearly conveys `0 = off`, the selected unit, and that zoom may crop picture edges, following the UX-approved layout.
+- The editor follows the UX-approved, established enablement pattern; it makes the selected unit and zoom's potential picture-edge crop clear, and its disabled state is unambiguous.
+- Any light refactoring required to align comparable controls is covered by focused UI and persistence tests and does not change the behavior of unrelated settings.
 - Profile persistence, validation, runtime reload/live apply, renderer switching, physical-screen fitting, requested viewports, NLS-off behavior, and Alpha diagnostics remain correct.
 - Focused unit/layout tests, geometry tests for wider/narrower/equal content, and a clean x64 Release build pass. Live validation includes the reported 2.40:1-to-2.35:1 case and confirms both settings independently.
 
@@ -89,4 +91,3 @@ Do not reuse madVR labels verbatim merely for familiarity. VP wording must state
 - VP-0099: renderer-neutral NLS geometry and safety policy.
 - VP-0113: Screen Config grouping and fixed-unit field presentation.
 - User-provided madVR Zoom Control screenshot and Alpha black-bar screenshot, 2026-08-10.
-
