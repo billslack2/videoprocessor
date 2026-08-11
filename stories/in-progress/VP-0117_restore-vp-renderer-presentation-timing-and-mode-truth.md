@@ -9,6 +9,19 @@ In progress. Reproduced on deployed `v1.2.001-beta` commit `b2e1956` on
 five-second sample. The OSD consequently showed a renderer delay while
 `Delay` and `Present` remained `---` indefinitely.
 
+## Progress
+
+- Commit `75d1940` distinguishes unavailable, disjoint, unsupported, and
+  failed DXGI presentation samples and records the frame-statistics HRESULT.
+- The first local test exposed two additional defects: `auto` still selected
+  windowed BitBlt for the top-level VP host, and a native-OSD ownership race
+  left the empty legacy overlay visible beside the renderer overlay.
+- Commit `be3ca74` makes top-level `auto` prefer Flip while preserving the
+  explicitly composed `WS_CHILD` preview, closes the duplicate-OSD race, and
+  reports an explicit OSD reason when presentation timing is unavailable.
+- Focused output-policy and presentation-telemetry tests pass (39/39). Live
+  validation of advancing presentation evidence and latency is pending.
+
 ## User story
 
 As a VideoProcessor operator, I want VP Renderer to use the correct
