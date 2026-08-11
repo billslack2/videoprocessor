@@ -158,7 +158,7 @@ bool ActivePictureTransitionModel::HasCropAuthority(
 		return IsFullRaster(bounds);
 	return observation.classification ==
 		ActivePictureClassification::BAR_CROP_TRUSTED &&
-		bounds.symmetricBars && !IsFullRaster(bounds);
+		HasAuthorityForCroppedAxes(bounds) && !IsFullRaster(bounds);
 }
 
 
@@ -169,6 +169,52 @@ bool ActivePictureTransitionModel::IsFullRaster(
 		bounds.left == 0 && bounds.top == 0 &&
 		bounds.right == bounds.rasterWidth &&
 		bounds.bottom == bounds.rasterHeight;
+}
+
+
+bool ActivePictureTransitionModel::HasAuthorityForCroppedAxes(
+	const ActivePictureBounds& bounds)
+{
+	const uint8_t axes = static_cast<uint8_t>(bounds.trustedBarAxes);
+	const bool cropsTop = bounds.top > 0;
+	const bool cropsBottom = bounds.bottom < bounds.rasterHeight;
+	const bool cropsLeft = bounds.left > 0;
+	const bool cropsRight = bounds.right < bounds.rasterWidth;
+	const bool cropsTopBottom = cropsTop || cropsBottom;
+	const bool cropsLeftRight = cropsLeft || cropsRight;
+	if (!cropsTopBottom && !cropsLeftRight)
+		return false;
+	if (cropsTopBottom && !(cropsTop && cropsBottom))
+		return false;
+	if (cropsLeftRight && !(cropsLeft && cropsRight))
+		return false;
+	if (cropsTopBottom &&
+		(axes & static_cast<uint8_t>(
+			ActivePictureBounds::BarAxes::TOP_BOTTOM)) == 0)
+		return false;
+	if (cropsLeftRight &&
+		(axes & static_cast<uint8_t>(
+			ActivePictureBounds::BarAxes::LEFT_RIGHT)) == 0)
+		return false;
+	return true;
+}
+
+
+bool ActivePictureTransitionModel::IsNestedOrthogonalCrop(
+	const ActivePictureBounds& stable,
+	const ActivePictureBounds& candidate)
+{
+	if (stable.rasterWidth != candidate.rasterWidth ||
+		stable.rasterHeight != candidate.rasterHeight)
+		return false;
+	if (candidate.left < stable.left || candidate.top < stable.top ||
+		candidate.right > stable.right || candidate.bottom > stable.bottom)
+		return false;
+	const uint8_t stableAxes = static_cast<uint8_t>(stable.trustedBarAxes);
+	const uint8_t candidateAxes = static_cast<uint8_t>(candidate.trustedBarAxes);
+	return stableAxes != 0 &&
+		(candidateAxes & stableAxes) == stableAxes &&
+		(candidateAxes & ~stableAxes) != 0;
 }
 
 
@@ -328,6 +374,11 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 			!SameBounds(m_candidate, observation.bounds))
 		{
 			StartCandidate(observation);
+			// Restore the complete trusted contract, not only its classification.
+			// A provisional recurrence carries proposed coordinates but no bar-axis
+			// authority; retaining that incomplete value could bypass directional
+			// hysteresis and later publish an internally inconsistent crop.
+			m_candidate = recentTrustedBounds;
 			m_candidateClassification = recentTrustedClassification;
 			m_candidateUsesKnownTrustedGeometry = true;
 			decision.diagnostic = true;
@@ -356,9 +407,30 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.decisionLatencyFrames =
 			observation.frameNumber >= m_firstContradictoryFrame ?
 			observation.frameNumber - m_firstContradictoryFrame : 0;
-		if (m_matchingCandidates >= CLEAR_TRANSITION_CONFIRMATIONS)
+		const bool nestedCrop =
+			IsNestedOrthogonalCrop(m_stable, m_candidate);
+		const double framesPerSecond =
+			std::isfinite(observation.framesPerSecond) &&
+			observation.framesPerSecond > 0.0 ?
+			observation.framesPerSecond : 60.0;
+		const uint64_t nestedFrames = static_cast<uint64_t>(std::ceil(
+			framesPerSecond * NESTED_CROP_CONFIRMATION_SECONDS));
+		const bool durationConfirmed = !nestedCrop ||
+			decision.decisionLatencyFrames >= nestedFrames;
+		if (nestedCrop)
+		{
+			decision.reason =
+				"recent nested crop awaiting sustained confirmation";
+			decision.confidence = std::min(1.0,
+				static_cast<double>(decision.decisionLatencyFrames) /
+				static_cast<double>(nestedFrames));
+		}
+		if (m_matchingCandidates >= CLEAR_TRANSITION_CONFIRMATIONS &&
+			durationConfirmed)
 			return CommitCandidate(
-				observation, "recent trusted geometry reacquired");
+				observation, nestedCrop ?
+				"recent nested crop sustained" :
+				"recent trusted geometry reacquired");
 		return decision;
 	}
 
@@ -511,9 +583,8 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 			observation.bounds.aspectRatio * 0.25;
 	}
 
-	const bool clearTransition =
-		MateriallyDifferent(m_stable, m_candidate) &&
-		m_stable.symmetricBars && m_candidate.symmetricBars;
+	const bool nestedCrop =
+		IsNestedOrthogonalCrop(m_stable, m_candidate);
 	const uint8_t required = CLEAR_TRANSITION_CONFIRMATIONS;
 	decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 	decision.bounds = m_candidate;
@@ -531,11 +602,25 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	decision.decisionLatencyFrames =
 		observation.frameNumber >= m_firstContradictoryFrame ?
 		observation.frameNumber - m_firstContradictoryFrame : 0;
+	const double framesPerSecond =
+		std::isfinite(observation.framesPerSecond) &&
+		observation.framesPerSecond > 0.0 ?
+		observation.framesPerSecond : 60.0;
+	const uint64_t nestedFrames = static_cast<uint64_t>(std::ceil(
+		framesPerSecond * NESTED_CROP_CONFIRMATION_SECONDS));
+	const bool durationConfirmed = !nestedCrop ||
+		decision.decisionLatencyFrames >= nestedFrames;
+	if (nestedCrop)
+	{
+		decision.reason = "nested crop awaiting sustained confirmation";
+		decision.confidence = std::min(1.0,
+			static_cast<double>(decision.decisionLatencyFrames) /
+			static_cast<double>(nestedFrames));
+	}
 
-	if (m_matchingCandidates >= required)
+	if (m_matchingCandidates >= required && durationConfirmed)
 		return CommitCandidate(observation,
-			clearTransition ?
-			"clear trusted transition confirmed" :
+			nestedCrop ? "nested crop sustained" :
 			"trusted transition confirmed");
 
 	return decision;

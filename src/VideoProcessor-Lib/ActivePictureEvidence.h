@@ -19,7 +19,7 @@ struct P010PlaneView
 };
 
 
-struct P010EdgeEvidence
+struct ActivePictureEdgeEvidence
 {
 	int barPixels = 0;
 	double blackFraction = 0.0;
@@ -35,17 +35,17 @@ struct P010EdgeEvidence
 };
 
 
-struct P010ActivePictureEvidence
+struct ActivePictureEvidence
 {
 	bool available = false;
 	ActivePictureClassification classification =
 		ActivePictureClassification::UNAVAILABLE;
 	ActivePictureBounds proposedBounds;
 	ActivePictureBounds trustedBounds;
-	P010EdgeEvidence left;
-	P010EdgeEvidence top;
-	P010EdgeEvidence right;
-	P010EdgeEvidence bottom;
+	ActivePictureEdgeEvidence left;
+	ActivePictureEdgeEvidence top;
+	ActivePictureEdgeEvidence right;
+	ActivePictureEdgeEvidence bottom;
 	size_t lumaSamples = 0;
 	size_t chromaSamples = 0;
 	std::string reason;
@@ -61,7 +61,7 @@ struct P010ActivePictureEvidence
 // A valid all-black/fade frame is intentionally distinct from an invalid
 // analysis source: it has analysisValid=true, globalNearBlack=true, and can be
 // currentlyPixelSafe even when no active-picture geometry can be proposed.
-struct P010PresentationRetentionEvidence
+struct ActivePicturePresentationRetentionEvidence
 {
 	bool analysisValid = false;
 	bool presentationValid = false;
@@ -77,11 +77,11 @@ struct P010PresentationRetentionEvidence
 	// already trusted presentation rectangle.
 	bool outwardVisibleBoundsAvailable = false;
 	ActivePictureBounds outwardVisibleBounds;
-	P010ActivePictureEvidence activePicture;
-	P010EdgeEvidence excludedLeft;
-	P010EdgeEvidence excludedTop;
-	P010EdgeEvidence excludedRight;
-	P010EdgeEvidence excludedBottom;
+	ActivePictureEvidence activePicture;
+	ActivePictureEdgeEvidence excludedLeft;
+	ActivePictureEdgeEvidence excludedTop;
+	ActivePictureEdgeEvidence excludedRight;
+	ActivePictureEdgeEvidence excludedBottom;
 	size_t lumaSamples = 0;
 	size_t chromaSamples = 0;
 	std::string reason;
@@ -91,33 +91,33 @@ struct P010PresentationRetentionEvidence
 // Pure, bounded P010 inspection. It has no renderer, DirectShow, configuration,
 // or mutable global dependencies, so identical bytes always produce identical
 // evidence. At 4K the fixed grids inspect fewer than 30,000 luma samples.
-P010ActivePictureEvidence ExtractP010ActivePictureEvidence(
+ActivePictureEvidence ExtractP010ActivePictureEvidence(
 	const P010PlaneView& view);
 
 // The active-picture policy is format-neutral. The historical P010 entry
 // point remains above for callers with a planar frame; native RGB callers use
 // this bounded source sampler and retain source-raster coordinates.
-P010ActivePictureEvidence ExtractActivePictureEvidence(
+ActivePictureEvidence ExtractActivePictureEvidence(
 	const AnalysisLumaSource& source);
 
 // Startup-only recovery for a scope frame whose subtitle/UI contaminates one
 // encoded bar before any trusted presentation exists. One clean bar is mirrored
 // and the opposite bar must still be predominantly coherent black with a broad
 // picture boundary. The ordinary extractor remains conservative/provisional.
-P010ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
+ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	const AnalysisLumaSource& source,
-	const P010ActivePictureEvidence& observed);
+	const ActivePictureEvidence& observed);
 
 // Bounded presentation-retention inspection. The excluded-band predicate uses
 // the same black, luma-dispersion, texture, neutral-chroma, and continuity
 // limits as bar acquisition, but deliberately does not require inner-boundary
 // contrast: an already trusted crop may be retained through a dark fade, while
 // visible or colored pixels outside it still fail open.
-P010PresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
+ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 	const AnalysisLumaSource& source,
 	const ActivePictureBounds& trustedPresentation);
 
-P010PresentationRetentionEvidence
+ActivePicturePresentationRetentionEvidence
 	EvaluateP010ActivePicturePresentationRetention(
 		const P010PlaneView& view,
 		const ActivePictureBounds& trustedPresentation);

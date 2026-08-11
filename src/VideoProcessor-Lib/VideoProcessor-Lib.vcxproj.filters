@@ -336,7 +336,7 @@
     <ClInclude Include="ActivePictureTransitionModel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="P010ActivePictureEvidence.h">
+    <ClInclude Include="ActivePictureEvidence.h">
       <Filter>Header Files</Filter>
     </ClInclude>
 	<ClInclude Include="AnalysisLumaSource.h">
@@ -413,7 +413,7 @@
     <ClCompile Include="ActivePictureTransitionModel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="P010ActivePictureEvidence.cpp">
+    <ClCompile Include="ActivePictureEvidence.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
 	<ClCompile Include="AnalysisLumaSource.cpp">

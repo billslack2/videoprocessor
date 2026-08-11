@@ -1,6 +1,6 @@
 #include "pch.h"
 
-#include "P010ActivePictureEvidence.h"
+#include "ActivePictureEvidence.h"
 
 #include <algorithm>
 #include <cmath>
@@ -109,10 +109,10 @@ bool IsBlackColumn(SampleContext& samples, int x, int threshold)
 	return black >= 44;
 }
 
-P010EdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top,
+ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top,
 	int barPixels, int boundary, int blackFloor, int blackThreshold)
 {
-	P010EdgeEvidence evidence;
+	ActivePictureEdgeEvidence evidence;
 	evidence.barPixels = barPixels;
 	if (barPixels <= 0)
 		return evidence;
@@ -191,10 +191,10 @@ P010EdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top,
 	return evidence;
 }
 
-P010EdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
+ActivePictureEdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
 	int barPixels, int boundary, int blackFloor, int blackThreshold)
 {
-	P010EdgeEvidence evidence;
+	ActivePictureEdgeEvidence evidence;
 	evidence.barPixels = barPixels;
 	if (barPixels <= 0)
 		return evidence;
@@ -274,7 +274,7 @@ P010EdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
 }
 
 
-bool ExcludedBandPixelsAreSafe(const P010EdgeEvidence& evidence)
+bool ExcludedBandPixelsAreSafe(const ActivePictureEdgeEvidence& evidence)
 {
 	if (evidence.barPixels <= 0)
 		return true;
@@ -395,10 +395,10 @@ ExcludedBandVisibleExtent FindVerticalVisibleExtent(SampleContext& samples,
 }
 
 
-P010ActivePictureEvidence ExtractActivePictureEvidence(
+ActivePictureEvidence ExtractActivePictureEvidence(
 	const AnalysisLumaSource& source)
 {
-	P010ActivePictureEvidence result;
+	ActivePictureEvidence result;
 	if (!source.IsValid() || source.width < 16 || source.height < 16)
 	{
 		result.reason = "invalid analysis source dimensions, layout, or data pointer";
@@ -478,9 +478,10 @@ P010ActivePictureEvidence ExtractActivePictureEvidence(
 
 	result.available = true;
 	result.proposedBounds = { left, top, right, bottom, source.width,
-		source.height, proposedAspect, false };
+		source.height, proposedAspect, ActivePictureBounds::BarAxes::NONE };
 	result.trustedBounds = { 0, 0, source.width, source.height, source.width,
-		source.height, static_cast<double>(source.width) / source.height, true };
+		source.height, static_cast<double>(source.width) / source.height,
+		ActivePictureBounds::BarAxes::NONE };
 	const int topBar = top;
 	const int bottomBar = source.height - bottom;
 	const int leftBar = left;
@@ -538,8 +539,12 @@ P010ActivePictureEvidence ExtractActivePictureEvidence(
 	// Each axis carries its own crop authority. An untrusted dark feature on
 	// the orthogonal axis must not veto an otherwise trusted opposing pair;
 	// that axis remains at the full-raster bounds assigned above.
-	result.trustedBounds.symmetricBars =
-		verticalTrusted || horizontalTrusted;
+	result.trustedBounds.trustedBarAxes = static_cast<
+		ActivePictureBounds::BarAxes>(
+		(verticalTrusted ? static_cast<uint8_t>(
+			ActivePictureBounds::BarAxes::TOP_BOTTOM) : 0) |
+		(horizontalTrusted ? static_cast<uint8_t>(
+			ActivePictureBounds::BarAxes::LEFT_RIGHT) : 0));
 	result.classification = verticalTrusted || horizontalTrusted ?
 		ActivePictureClassification::BAR_CROP_TRUSTED :
 		ActivePictureClassification::PROVISIONAL;
@@ -552,11 +557,11 @@ P010ActivePictureEvidence ExtractActivePictureEvidence(
 	return result;
 }
 
-P010ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
+ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	const AnalysisLumaSource& source,
-	const P010ActivePictureEvidence& observed)
+	const ActivePictureEvidence& observed)
 {
-	P010ActivePictureEvidence result = observed;
+	ActivePictureEvidence result = observed;
 	if (!source.IsValid() || !observed.available ||
 		observed.classification != ActivePictureClassification::PROVISIONAL ||
 		observed.proposedBounds.left != 0 ||
@@ -587,10 +592,10 @@ P010ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 		return result;
 
 	SampleContext samples{ source };
-	const P010EdgeEvidence& clean = cleanTop ? observed.top : observed.bottom;
+	const ActivePictureEdgeEvidence& clean = cleanTop ? observed.top : observed.bottom;
 	const int blackFloor = static_cast<int>(clean.lumaFloor);
 	const int blackThreshold = std::min(104, blackFloor + 24);
-	P010EdgeEvidence opposite = InspectHorizontalEdge(samples, !cleanTop,
+	ActivePictureEdgeEvidence opposite = InspectHorizontalEdge(samples, !cleanTop,
 		barPixels, cleanTop ? inferredBottom : inferredTop,
 		blackFloor, blackThreshold);
 	// Sparse glyphs may occupy part of the bar, but most sampled bar pixels and
@@ -610,7 +615,8 @@ P010ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 		result.top = opposite;
 	result.trustedBounds = { 0, inferredTop, source.width, inferredBottom,
 		source.width, source.height,
-		static_cast<double>(source.width) / (inferredBottom - inferredTop), true };
+		static_cast<double>(source.width) / (inferredBottom - inferredTop),
+		ActivePictureBounds::BarAxes::TOP_BOTTOM };
 	result.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
 	result.lumaSamples += samples.lumaSamples;
 	result.chromaSamples += samples.chromaSamples;
@@ -619,7 +625,7 @@ P010ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	return result;
 }
 
-P010ActivePictureEvidence ExtractP010ActivePictureEvidence(
+ActivePictureEvidence ExtractP010ActivePictureEvidence(
 	const P010PlaneView& view)
 {
 	AnalysisLumaSource source;
@@ -634,11 +640,11 @@ P010ActivePictureEvidence ExtractP010ActivePictureEvidence(
 }
 
 
-P010PresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
+ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 	const AnalysisLumaSource& source,
 	const ActivePictureBounds& trustedPresentation)
 {
-	P010PresentationRetentionEvidence result;
+	ActivePicturePresentationRetentionEvidence result;
 	result.activePicture = ExtractActivePictureEvidence(source);
 	result.lumaSamples = result.activePicture.lumaSamples;
 	result.chromaSamples = result.activePicture.chromaSamples;
@@ -748,7 +754,8 @@ P010PresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 				result.outwardVisibleBounds.right - result.outwardVisibleBounds.left) /
 				std::max(1, result.outwardVisibleBounds.bottom -
 					result.outwardVisibleBounds.top);
-			result.outwardVisibleBounds.symmetricBars = false;
+			result.outwardVisibleBounds.trustedBarAxes =
+				ActivePictureBounds::BarAxes::NONE;
 			result.outwardVisibleBoundsAvailable = true;
 		}
 	}
@@ -775,7 +782,7 @@ P010PresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 }
 
 
-P010PresentationRetentionEvidence
+ActivePicturePresentationRetentionEvidence
 	EvaluateP010ActivePicturePresentationRetention(
 		const P010PlaneView& view,
 		const ActivePictureBounds& trustedPresentation)

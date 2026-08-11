@@ -21,7 +21,9 @@ ActivePictureAnalyzerResult ActivePictureAnalyzer::Analyze(
 	if (!input.frame.data)
 	{
 		result.evidence.reason = "P010 sample pointer is unavailable";
-		result.decision = m_transition.Observe({ {}, input.frameNumber, false });
+		result.decision = m_transition.Observe(
+			{ {}, input.frameNumber, false,
+			ActivePictureClassification::UNAVAILABLE, input.framesPerSecond });
 		return result;
 	}
 
@@ -29,6 +31,7 @@ ActivePictureAnalyzerResult ActivePictureAnalyzer::Analyze(
 	ActivePictureObservation observation;
 	observation.frameNumber = input.frameNumber;
 	observation.available = result.evidence.available;
+	observation.framesPerSecond = input.framesPerSecond;
 	if (result.evidence.available)
 	{
 		observation.bounds = result.evidence.classification ==

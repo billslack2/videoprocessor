@@ -34,7 +34,8 @@ bool SameTrustedBounds(
 	return left.left == right.left && left.top == right.top &&
 		left.right == right.right && left.bottom == right.bottom &&
 		left.rasterWidth == right.rasterWidth &&
-		left.rasterHeight == right.rasterHeight;
+		left.rasterHeight == right.rasterHeight &&
+		left.trustedBarAxes == right.trustedBarAxes;
 }
 
 }

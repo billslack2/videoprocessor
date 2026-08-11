@@ -12,19 +12,36 @@ namespace VideoProcessorTest
 		ActivePictureBounds ScopeBounds()
 		{
 			return { 0, 264, 3840, 1896, 3840, 2160,
-				3840.0 / 1632.0, true };
+				3840.0 / 1632.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
 		}
 
 		ActivePictureBounds ImaxBounds()
 		{
 			return { 0, 48, 3840, 2112, 3840, 2160,
-				3840.0 / 2064.0, true };
+				3840.0 / 2064.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
 		}
 
 		ActivePictureBounds FourByThreeBounds()
 		{
 			return { 480, 0, 3360, 2160, 3840, 2160,
-				4.0 / 3.0, true };
+				4.0 / 3.0,
+				ActivePictureBounds::BarAxes::LEFT_RIGHT };
+		}
+
+		ActivePictureBounds LoggedScopeBounds()
+		{
+			return { 0, 276, 3840, 1884, 3840, 2160,
+				3840.0 / 1608.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+		}
+
+		ActivePictureBounds LoggedWindowboxBounds()
+		{
+			return { 492, 276, 3348, 1884, 3840, 2160,
+				2856.0 / 1608.0,
+				ActivePictureBounds::BarAxes::BOTH };
 		}
 
 		ActivePictureTransitionDecision Observe(
@@ -32,10 +49,11 @@ namespace VideoProcessorTest
 			const ActivePictureBounds& bounds,
 			uint64_t frameNumber,
 			ActivePictureClassification classification =
-				ActivePictureClassification::BAR_CROP_TRUSTED)
+				ActivePictureClassification::BAR_CROP_TRUSTED,
+			double framesPerSecond = 60.0)
 		{
 			return model.Observe({
-				bounds, frameNumber, true, classification });
+				bounds, frameNumber, true, classification, framesPerSecond });
 		}
 
 		uint64_t Establish(
@@ -164,6 +182,118 @@ namespace VideoProcessorTest
 			}
 		}
 
+		TEST_METHOD(ThreeSecondNestedWindowboxBlipRetainsScopeAtEveryFrameRate)
+		{
+			const double rates[] = {
+				23.976, 24.0, 25.0, 29.97, 30.0, 59.94, 60.0
+			};
+			for (const double rate : rates)
+			{
+				ActivePictureTransitionModel model;
+				uint64_t frame = Establish(model, LoggedScopeBounds());
+				const uint64_t blipFrames = static_cast<uint64_t>(
+					std::ceil(rate * 3.0));
+				for (uint64_t count = 0; count < blipFrames;
+					++count, ++frame)
+				{
+					const auto decision = Observe(model,
+						LoggedWindowboxBounds(), frame,
+						ActivePictureClassification::BAR_CROP_TRUSTED,
+						rate);
+					Assert::IsFalse(decision.publish);
+					Assert::IsTrue(decision.stable);
+					Assert::AreEqual(LoggedScopeBounds().left,
+						decision.stableBounds.left);
+					Assert::AreEqual(LoggedScopeBounds().right,
+						decision.stableBounds.right);
+				}
+
+				const auto recovered = Observe(model,
+					LoggedScopeBounds(), frame,
+					ActivePictureClassification::BAR_CROP_TRUSTED,
+					rate);
+				Assert::IsFalse(recovered.publish);
+				Assert::IsTrue(recovered.stable);
+
+				Assert::IsFalse(Observe(model, ImaxBounds(), ++frame,
+					ActivePictureClassification::BAR_CROP_TRUSTED,
+					rate).publish);
+				Assert::IsTrue(Observe(model, ImaxBounds(), ++frame,
+					ActivePictureClassification::BAR_CROP_TRUSTED,
+					rate).publish);
+				const auto recurrence = Observe(model,
+					LoggedWindowboxBounds(), ++frame,
+					ActivePictureClassification::PROVISIONAL, rate);
+				Assert::AreEqual(std::string(
+					"provisional geometry lacks affirmative crop authority"),
+					recurrence.reason);
+			}
+		}
+
+		TEST_METHOD(PersistentNestedWindowboxEventuallyCommitsByFourPointTwoSeconds)
+		{
+			const double rates[] = {
+				23.976, 24.0, 25.0, 29.97, 30.0, 59.94, 60.0
+			};
+			for (const double rate : rates)
+			{
+				ActivePictureTransitionModel model;
+				uint64_t frame = Establish(model, LoggedScopeBounds());
+				const uint64_t firstCandidate = frame;
+				bool published = false;
+				while (!published &&
+					frame - firstCandidate <= static_cast<uint64_t>(
+						std::ceil(rate * 4.2)))
+				{
+					const auto decision = Observe(model,
+						LoggedWindowboxBounds(), frame++,
+						ActivePictureClassification::BAR_CROP_TRUSTED,
+						rate);
+					published = decision.publish;
+				}
+				Assert::IsTrue(published);
+			}
+		}
+
+		TEST_METHOD(ProvisionalRecentWindowboxRestoresAuthorityAndStillWaits)
+		{
+			constexpr double rate = 60.0;
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, LoggedScopeBounds());
+			bool published = false;
+			while (!published)
+			{
+				published = Observe(model, LoggedWindowboxBounds(), frame++,
+					ActivePictureClassification::BAR_CROP_TRUSTED,
+					rate).publish;
+			}
+
+			Assert::IsFalse(Observe(model, LoggedScopeBounds(), frame++,
+				ActivePictureClassification::BAR_CROP_TRUSTED,
+				rate).publish);
+			Assert::IsTrue(Observe(model, LoggedScopeBounds(), frame++,
+				ActivePictureClassification::BAR_CROP_TRUSTED,
+				rate).publish);
+
+			ActivePictureBounds provisionalWindowbox =
+				LoggedWindowboxBounds();
+			provisionalWindowbox.trustedBarAxes =
+				ActivePictureBounds::BarAxes::NONE;
+			for (int count = 0; count < 180; ++count, ++frame)
+			{
+				const auto decision = Observe(model, provisionalWindowbox,
+					frame, ActivePictureClassification::PROVISIONAL, rate);
+				Assert::IsFalse(decision.publish);
+				Assert::AreEqual(LoggedScopeBounds().left,
+					decision.stableBounds.left);
+				Assert::AreEqual(LoggedScopeBounds().right,
+					decision.stableBounds.right);
+				Assert::AreEqual(std::string(
+					"recent nested crop awaiting sustained confirmation"),
+					decision.reason);
+			}
+		}
+
 		TEST_METHOD(BriefBlackFadePreservesLastStableMapping)
 		{
 			ActivePictureTransitionModel model;
@@ -189,7 +319,7 @@ namespace VideoProcessorTest
 			intrusion.aspectRatio =
 				static_cast<double>(intrusion.right - intrusion.left) /
 				(intrusion.bottom - intrusion.top);
-			intrusion.symmetricBars = false;
+			intrusion.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 
 			for (int count = 0; count < 12; ++count, ++frame)
 			{
@@ -210,7 +340,7 @@ namespace VideoProcessorTest
 			overlayEnvelope.aspectRatio =
 				static_cast<double>(overlayEnvelope.right - overlayEnvelope.left) /
 				(overlayEnvelope.bottom - overlayEnvelope.top);
-			overlayEnvelope.symmetricBars = false;
+			overlayEnvelope.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 
 			// Duration alone cannot promote a localized/asymmetric overlay to
 			// program-aspect authority. The presentation layer may fit this
@@ -244,7 +374,7 @@ namespace VideoProcessorTest
 			credits.aspectRatio =
 				static_cast<double>(credits.right - credits.left) /
 				(credits.bottom - credits.top);
-			credits.symmetricBars = false;
+			credits.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 
 			for (int count = 0; count < 60; ++count, ++frame)
 			{
@@ -270,7 +400,7 @@ namespace VideoProcessorTest
 			asymmetric.aspectRatio =
 				static_cast<double>(asymmetric.right - asymmetric.left) /
 				(asymmetric.bottom - asymmetric.top);
-			asymmetric.symmetricBars = false;
+			asymmetric.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 
 			for (uint8_t count = 1; count < 64; ++count, ++frame)
 			{
@@ -352,7 +482,7 @@ namespace VideoProcessorTest
 			ActivePictureTransitionModel model;
 			uint64_t frame = Establish(model, ScopeBounds());
 			const ActivePictureBounds full = {
-				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false };
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, ActivePictureBounds::BarAxes::NONE };
 			auto switchTo = [&](const ActivePictureBounds& bounds,
 				ActivePictureClassification classification =
 					ActivePictureClassification::BAR_CROP_TRUSTED)
@@ -465,7 +595,8 @@ namespace VideoProcessorTest
 		{
 			ActivePictureTransitionModel model;
 			ActivePictureBounds full = {
-				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0,
+				ActivePictureBounds::BarAxes::NONE
 			};
 			const auto decision = Observe(
 				model, full, 1,
@@ -481,7 +612,7 @@ namespace VideoProcessorTest
 			ActivePictureTransitionModel model;
 			uint64_t frame = Establish(model, ScopeBounds());
 			const ActivePictureBounds full = {
-				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false };
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, ActivePictureBounds::BarAxes::NONE };
 			const auto probing = Observe(model, full, frame,
 				ActivePictureClassification::FULL_RASTER_TRUSTED);
 			Assert::IsFalse(probing.publish);
@@ -500,13 +631,14 @@ namespace VideoProcessorTest
 		{
 			ActivePictureTransitionModel model;
 			ActivePictureBounds full = {
-				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0,
+				ActivePictureBounds::BarAxes::NONE
 			};
 			Observe(model, full, 1,
 				ActivePictureClassification::FULL_RASTER_TRUSTED);
 			ActivePictureBounds asymmetric = {
 				132, 0, 3724, 2160, 3840, 2160,
-				3592.0 / 2160.0, false
+				3592.0 / 2160.0, ActivePictureBounds::BarAxes::NONE
 			};
 			for (uint64_t frame = 2; frame < 64; ++frame)
 			{
@@ -524,7 +656,8 @@ namespace VideoProcessorTest
 		{
 			ActivePictureTransitionModel model;
 			ActivePictureBounds full = {
-				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0, false
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0,
+				ActivePictureBounds::BarAxes::NONE
 			};
 			Observe(model, full, 1,
 				ActivePictureClassification::FULL_RASTER_TRUSTED);
@@ -542,7 +675,7 @@ namespace VideoProcessorTest
 						3840, 2160,
 						static_cast<double>(
 							candidate[1] - candidate[0]) / 2160.0,
-						false
+						ActivePictureBounds::BarAxes::NONE
 					};
 					const auto decision = Observe(
 						model, bounds, frame++,
