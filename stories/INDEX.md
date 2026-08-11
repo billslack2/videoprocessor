@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0113`
-- Next root story number: `VP-0114`
-- Total indexed items: 129
+- Last assigned root story: `VP-0114`
+- Next root story number: `VP-0115`
+- Total indexed items: 130
 
 ## Story locations
 
@@ -146,6 +146,7 @@ they must not contain requirements that are absent from this file.
 | VP-0111 | Backlog | Prevent background shortcuts from hijacking normal typing |
 | VP-0112 | Done | Show the active profile in relevant configuration pages |
 | VP-0113 | In Progress | Screen Config layout and unit-field consistency |
+| VP-0114 | Backlog | Alpha conservative scaling and small-bar zoom controls |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
