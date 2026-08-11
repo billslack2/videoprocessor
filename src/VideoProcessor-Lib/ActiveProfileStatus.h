@@ -56,8 +56,11 @@ namespace ActiveProfileStatus
         const auto renderer = selections.find("display");
         const auto queue = selections.find("queue");
         const auto viewport = selections.find("viewport");
+        // Queue profiles use the first (root) profile whenever no conditional
+        // selection overrides it. Publish that resolved default explicitly so
+        // the editor can mark it active just like an explicitly selected one.
         Copy(next.queue, sizeof(next.queue), queue == selections.end() ?
-            std::string() : SectionFor("queue", queue->second));
+            std::string("queue") : SectionFor("queue", queue->second));
         Copy(next.renderer, sizeof(next.renderer), renderer == selections.end() ?
             std::string() : SectionFor("vprenderer", renderer->second));
         Copy(next.viewport, sizeof(next.viewport), viewport == selections.end() ?
