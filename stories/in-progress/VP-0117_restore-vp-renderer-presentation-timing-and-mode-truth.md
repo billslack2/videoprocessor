@@ -2,7 +2,7 @@
 
 ## Status
 
-Backlog. Reproduced on deployed `v1.2.001-beta` commit `b2e1956` on
+In progress. Reproduced on deployed `v1.2.001-beta` commit `b2e1956` on
 2026-08-11. VP Renderer used a 2560x1440 fullscreen host but reported
 `Transport Actual: Blt/F/sRGB/G22/709`. Its presentation telemetry remained
 `evidence=0`, `presented=0`, `present_id=0`, and `display_hz=0` across every

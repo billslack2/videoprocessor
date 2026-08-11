@@ -149,7 +149,7 @@ they must not contain requirements that are absent from this file.
 | VP-0114 | Backlog | Alpha conservative scaling and small-bar zoom controls |
 | VP-0115 | Backlog | Diagnose DeckLink delivery failures and renderer-transition drops |
 | VP-0116 | Backlog | Show all active shaders in the configuration UI |
-| VP-0117 | Backlog | Restore VP Renderer presentation timing and mode truth |
+| VP-0117 | In Progress | Restore VP Renderer presentation timing and mode truth |
 | VP-0118 | Backlog | Make Alt+Enter enter fullscreen from an inactive startup request |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
