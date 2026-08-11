@@ -18,6 +18,13 @@ namespace ConfigurationLiveApply
 		EnterFullscreen
 	};
 
+	enum class FullscreenTransitionDirection
+	{
+		None,
+		Entering,
+		Exiting
+	};
+
 	enum class ConfigurationEditorToggleAction
 	{
 		HideForegroundEditor,
@@ -263,12 +270,16 @@ namespace ConfigurationLiveApply
 	}
 
 	inline FullscreenToggleAction ResolveFullscreenToggle(
-		bool fullscreenRequested, bool fullscreenActive)
+		bool fullscreenRequested, bool fullscreenActive,
+		FullscreenTransitionDirection transitionDirection)
 	{
+		if (transitionDirection == FullscreenTransitionDirection::Entering)
+			return FullscreenToggleAction::CancelPending;
+		if (transitionDirection == FullscreenTransitionDirection::Exiting)
+			return FullscreenToggleAction::EnterFullscreen;
 		if (fullscreenActive)
 			return FullscreenToggleAction::ExitFullscreen;
-		if (fullscreenRequested)
-			return FullscreenToggleAction::CancelPending;
+		(void)fullscreenRequested;
 		return FullscreenToggleAction::EnterFullscreen;
 	}
 
@@ -280,7 +291,8 @@ namespace ConfigurationLiveApply
 	inline bool EffectiveFullscreenToggleActive(bool fullscreenRequested,
 		bool fullscreenActive)
 	{
-		return fullscreenRequested || fullscreenActive;
+		(void)fullscreenRequested;
+		return fullscreenActive;
 	}
 
 	inline bool MayDispatchForegroundPresentationShortcut(

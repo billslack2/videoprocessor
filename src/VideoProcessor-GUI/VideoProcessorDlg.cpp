@@ -5131,14 +5131,34 @@ void CVideoProcessorDlg::OnCommandFullScreenToggle()
 	const bool active = m_fullScreenVideoWindow &&
 		IsWindow(m_fullScreenVideoWindow->GetHWND()) &&
 		::IsWindowVisible(m_fullScreenVideoWindow->GetHWND());
+	auto transitionDirection = ConfigurationLiveApply::
+		FullscreenTransitionDirection::None;
+	if (m_fullscreenRetargetPending)
+	{
+		transitionDirection = m_fullscreenRetargetExiting ?
+			ConfigurationLiveApply::FullscreenTransitionDirection::Exiting :
+			ConfigurationLiveApply::FullscreenTransitionDirection::Entering;
+	}
+	else if (m_alphaHostTransitionPending)
+	{
+		transitionDirection = requested ?
+			ConfigurationLiveApply::FullscreenTransitionDirection::Entering :
+			ConfigurationLiveApply::FullscreenTransitionDirection::Exiting;
+	}
 	const auto action = ConfigurationLiveApply::ResolveFullscreenToggle(
-		requested, active);
+		requested, active, transitionDirection);
 	m_rendererFullscreenCheck.SetCheck(
 		ConfigurationLiveApply::FullscreenRequestedAfterToggle(action) ?
 		BST_CHECKED : BST_UNCHECKED);
 	DebugLog::Log(
-		"Fullscreen session toggle: requested_before=%d active=%d action=%s requested_after=%d",
-		requested ? 1 : 0, active ? 1 : 0,
+		"Fullscreen session toggle: configured=%d requested_before=%d "
+		"active=%d transition=%s action=%s requested_after=%d",
+		m_rendererFullScreenStart ? 1 : 0, requested ? 1 : 0,
+		active ? 1 : 0,
+		transitionDirection == ConfigurationLiveApply::
+			FullscreenTransitionDirection::Entering ? "entering" :
+			transitionDirection == ConfigurationLiveApply::
+				FullscreenTransitionDirection::Exiting ? "exiting" : "none",
 		action == ConfigurationLiveApply::FullscreenToggleAction::CancelPending ?
 			"cancel-pending" :
 			action == ConfigurationLiveApply::FullscreenToggleAction::ExitFullscreen ?
