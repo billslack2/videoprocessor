@@ -322,6 +322,13 @@ public:
 		captureToTargetMs = 0.0;
 		return false;
 	}
+	// Human-readable reason when direct-present timing is not yet usable.
+	// Empty means the renderer does not expose presentation timing.
+	virtual bool GetPresentationTimingStatus(CString& status) const
+	{
+		status.Empty();
+		return false;
+	}
 
 	// Optional renderer-native OSD. The renderer must deep-copy the BGRA pixels
 	// before returning; callers retain ownership of the supplied buffer.

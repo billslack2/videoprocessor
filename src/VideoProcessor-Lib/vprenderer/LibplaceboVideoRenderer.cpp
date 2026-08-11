@@ -4690,11 +4690,10 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		outputPlan = LibplaceboOutput::MakePlan(effectiveOutputRequest);
 		LogPresentationTarget("initialize");
-		// COMPOSED retains the known-stable bitblt/DWM path. AUTO uses it unless
-		// Limited requests a flip candidate; failed AUTO negotiation recreates
-		// this stable composed path. DIRECT always asks for the flip candidate.
-		// Windows decides whether a flip chain is composed, DirectFlip, MPO, or
-		// independent flip.
+		// COMPOSED retains the legacy bitblt/DWM path. AUTO and DIRECT ask for a
+		// flip candidate on top-level hosts; the WS_CHILD preview above is still
+		// explicitly composed. Windows decides whether a flip chain is composed,
+		// DirectFlip, MPO, or independent flip.
 		swapchainParams.blit = outputPlan.useBlit;
 		swapchainBlit = outputPlan.useBlit;
 		swapchain = pl_d3d11_create_swapchain(d3d11, &swapchainParams);
@@ -7380,7 +7379,9 @@ struct LibplaceboVideoRenderer::Impl
 					sample.frameStatisticsResult =
 						static_cast<int32_t>(statisticsResult);
 					sample.timingStatus =
-						statisticsResult == DXGI_ERROR_UNSUPPORTED
+						statisticsResult == DXGI_ERROR_UNSUPPORTED ||
+						actualOutput.presentationModel ==
+							LibplaceboOutput::PresentationModel::BITBLT
 						? AlphaPresentationTimingStatus::FrameStatisticsUnavailable
 						: AlphaPresentationTimingStatus::FrameStatisticsFailed;
 				}
@@ -8749,6 +8750,47 @@ bool LibplaceboVideoRenderer::GetPresentationTargetTiming(
 	captureToTargetMs = m_captureToPresentationTargetMs.load(
 		std::memory_order_relaxed);
 	return m_presentationTargetTimingKnown.load(std::memory_order_acquire);
+}
+
+bool LibplaceboVideoRenderer::GetPresentationTimingStatus(CString& status) const
+{
+	status.Empty();
+	if (!m_impl)
+		return false;
+
+	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	const AlphaPresentationSnapshot snapshot =
+		m_impl->presentationTelemetry.Snapshot();
+	CStringA value;
+	if (snapshot.evidence == AlphaPresentationEvidence::Stable)
+		value = "ready";
+	else if (snapshot.evidence == AlphaPresentationEvidence::Warming)
+		value = "warming";
+	else if (snapshot.evidence == AlphaPresentationEvidence::Disjoint)
+		value = "rewarming: disjoint";
+	else
+	{
+		switch (snapshot.timingStatus)
+		{
+		case AlphaPresentationTimingStatus::FrameStatisticsUnavailable:
+			value = m_impl->actualOutput.presentationModel ==
+				LibplaceboOutput::PresentationModel::BITBLT
+				? "unsupported: BitBlt" : "unsupported: frame stats";
+			break;
+		case AlphaPresentationTimingStatus::FrameStatisticsFailed:
+			value.Format("failed: 0x%08lX",
+				static_cast<unsigned long>(snapshot.frameStatisticsResult));
+			break;
+		case AlphaPresentationTimingStatus::Available:
+			value = "warming: incomplete sample";
+			break;
+		default:
+			value = "unsupported: no swapchain";
+			break;
+		}
+	}
+	status = CString(value);
+	return true;
 }
 
 bool LibplaceboVideoRenderer::SetNativeStatsOverlay(

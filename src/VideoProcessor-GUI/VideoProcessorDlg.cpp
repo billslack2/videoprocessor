@@ -11654,6 +11654,12 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	const bool nativeOverlay = m_statsOverlayRequestedVisible && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();
+	// Native-overlay support can appear after the renderer plugin finishes its
+	// handoff. Close the legacy window on that transition as well as in the
+	// immediate toggle path, otherwise both panels remain visible and the
+	// legacy copy contains only the pre-handoff empty snapshot.
+	if (nativeOverlay && m_statsOverlay && m_statsOverlay->IsVisible())
+		m_statsOverlay->Show(false);
 	// A madVR OSD API failure is diagnostics-only.  On the following periodic
 	// refresh, make the existing window overlay visible rather than leaving the
 	// requested panel absent or attempting repeated failing submissions.
@@ -11797,6 +11803,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				m_videoRenderer->GetPresentationTargetTiming(
 					stats.presentationTargetLeadMs,
 					stats.captureToPresentationTargetMs);
+			m_videoRenderer->GetPresentationTimingStatus(
+				stats.presentationTimingStatus);
 		}
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 		m_videoRenderer->GetOutputModeInfo(stats.outputMode);

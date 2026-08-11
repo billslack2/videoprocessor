@@ -447,6 +447,12 @@ bool LibplaceboPluginVideoRenderer::GetPresentationTargetTiming(
 		captureToTargetMs);
 }
 
+bool LibplaceboPluginVideoRenderer::GetPresentationTimingStatus(
+	CString& status) const
+{
+	return m_renderer && m_renderer->GetPresentationTimingStatus(status);
+}
+
 
 bool LibplaceboPluginVideoRenderer::GetConversionPerformance(
 	double& currentUs, double& avg10s, double& max10s) const
