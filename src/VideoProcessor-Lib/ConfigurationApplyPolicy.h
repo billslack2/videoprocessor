@@ -15,7 +15,8 @@ namespace ConfigurationApplyPolicy
 		SaveOnly,
 		ReloadShortcuts,
 		ResetQueues,
-		RestartRenderer
+		RestartRenderer,
+		RestartCapture
 	};
 
 	struct Change
@@ -118,6 +119,11 @@ namespace ConfigurationApplyPolicy
 		// fullscreen choices, so they are deliberately next-start only.
 		if (IsStartupPresentationDefaultChange(change)) return Action::SaveOnly;
 		if (IsShortcutAffectingChange(change)) return Action::ReloadShortcuts;
+		const std::string section = NormalizeSection(change.section);
+		const std::string key = NormalizeSection(change.key);
+		if ((section == "general" || section == "command_line") &&
+			(key == "capture_device" || key == "capture_input"))
+			return Action::RestartCapture;
 		return ClassifySection(change.section, directShowRendererActive);
 	}
 
@@ -145,6 +151,7 @@ namespace ConfigurationApplyPolicy
 	{
 		switch (action)
 		{
+		case Action::RestartCapture: return "Restart capture";
 		case Action::RestartRenderer: return "Restart renderer";
 		case Action::ResetQueues: return "Reset queues";
 		case Action::ReloadShortcuts: return "Apply shortcuts live";

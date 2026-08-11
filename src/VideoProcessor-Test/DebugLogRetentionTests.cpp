@@ -171,17 +171,30 @@ namespace VideoProcessorTest
 				INVALID_FILE_ATTRIBUTES, GetFileAttributesA(active.c_str()));
 		}
 
-		TEST_METHOD(MissingLogsDirectoryIsNotCreated)
+		TEST_METHOD(MissingLogsDirectoryIsCreatedOnFirstRun)
 		{
 			TemporaryLogDirectory directory;
 			const std::string missingDirectory =
 				directory.Path("logs");
+			const std::string active =
+				missingDirectory + "\\vp_debug.log";
 			const auto result = DebugLogRetention::Rotate(
-				missingDirectory + "\\vp_debug.log", 10);
-			Assert::IsFalse(result.activeReady);
-			Assert::AreEqual(
+				active, 10);
+			Assert::IsTrue(result.activeReady);
+			Assert::AreNotEqual(
 				INVALID_FILE_ATTRIBUTES,
 				GetFileAttributesA(missingDirectory.c_str()));
+			Assert::AreNotEqual(
+				INVALID_FILE_ATTRIBUTES,
+				GetFileAttributesA(active.c_str()));
+			Assert::IsTrue(std::any_of(
+				result.diagnostics.begin(), result.diagnostics.end(),
+				[](const std::string& diagnostic)
+				{
+					return diagnostic.find("created") != std::string::npos;
+				}));
+			DeleteFileA(active.c_str());
+			RemoveDirectoryA(missingDirectory.c_str());
 		}
 
 		TEST_METHOD(RepeatedRotationCreatesNewestFirstIndexedArchives)

@@ -44,6 +44,77 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigEditorCoreTests)
 	{
 	public:
+		TEST_METHOD(MissingConfigurationLoadsAsCreatableDocumentAndSavesAtomically)
+		{
+			const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+			ConfigEditorCore::ConfigDocument document;
+			std::wstring error;
+			Assert::IsTrue(document.Load(path, error), error.c_str());
+			Assert::IsFalse(document.existedAtLoad);
+			Assert::IsTrue(document.AddSection("vprenderer"));
+			Assert::IsTrue(document.AddSection("general"));
+			Assert::IsTrue(document.SetKnown(
+				"general", "renderer", "VP Renderer"));
+
+			ConfigEditorCore::SaveResult result;
+			const bool saved = ConfigEditorCore::SaveSafely(document, result, error);
+			const std::wstring saveMessage =
+				L"A valid missing configuration must be created: " + error;
+			Assert::IsTrue(saved, saveMessage.c_str());
+			Assert::IsTrue(result.backupPath.empty(),
+				L"The first save must not report a backup for a file that did not exist.");
+			Assert::IsTrue(document.existedAtLoad,
+				L"A successful first save must transition the document to existing.");
+			Assert::IsTrue(ReadBytes(path).find(
+				"renderer: VP Renderer") != std::string::npos);
+			DeleteFileW(path.c_str());
+		}
+
+		TEST_METHOD(MissingConfigurationCreationRefusesExternalCollision)
+		{
+			const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+			ConfigEditorCore::ConfigDocument document;
+			std::wstring error;
+			Assert::IsTrue(document.Load(path, error), error.c_str());
+			WriteBytes(path, "[general]\r\nrenderer: External\r\n");
+			ConfigEditorCore::SaveResult result;
+			Assert::IsFalse(ConfigEditorCore::SaveSafely(
+				document, result, error));
+			Assert::IsTrue(error.find(L"created outside") != std::wstring::npos);
+			Assert::AreEqual(std::string("[general]\r\nrenderer: External\r\n"),
+				ReadBytes(path));
+			DeleteFileW(path.c_str());
+		}
+
+		TEST_METHOD(EmptyConfigurationAcceptsDiscoveredStartupDefaults)
+		{
+			const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+			WriteBytes(path, "");
+			ConfigEditorCore::ConfigDocument document;
+			std::wstring error;
+			Assert::IsTrue(document.Load(path, error), error.c_str());
+			Assert::IsTrue(document.existedAtLoad);
+			Assert::IsTrue(document.loadedBytes.empty());
+			Assert::IsTrue(document.AddSection("vprenderer"));
+			Assert::IsTrue(document.AddSection("general"));
+			Assert::IsTrue(document.SetKnown(
+				"general", "capture_device", "DeckLink Test Device"));
+			Assert::IsTrue(document.SetKnown(
+				"general", "renderer", "VP Renderer"));
+
+			ConfigEditorCore::SaveResult result;
+			Assert::IsTrue(ConfigEditorCore::SaveSafely(
+				document, result, error), error.c_str());
+			Assert::IsFalse(result.backupPath.empty());
+			const std::string saved = ReadBytes(path);
+			Assert::IsTrue(saved.find("capture_device: DeckLink Test Device") !=
+				std::string::npos);
+			Assert::IsTrue(saved.find("renderer: VP Renderer") !=
+				std::string::npos);
+			DeleteFileW(result.backupPath.c_str());
+			DeleteFileW(path.c_str());
+		}
+
 		TEST_METHOD(ConfigurationApplyPolicyClassifiesEveryDocumentedRestartCategory)
 		{
 			using ConfigurationApplyPolicy::Action;
@@ -171,6 +242,12 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
 					{ "general", "renderer" })));
+			Assert::AreEqual(static_cast<int>(Action::RestartCapture),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
+					{ "general", "capture_device" })));
+			Assert::AreEqual(static_cast<int>(Action::RestartCapture),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
+					{ "command_line", "capture_input" })));
 			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
 					{ "general", "fullscreen_monitor_name" })));
@@ -340,6 +417,8 @@ namespace VideoProcessorTest
 				std::string(ConfigurationApplyPolicy::ActionLabel(Action::ResetQueues)));
 			Assert::AreEqual(std::string("Restart renderer"),
 				std::string(ConfigurationApplyPolicy::ActionLabel(Action::RestartRenderer)));
+			Assert::AreEqual(std::string("Restart capture"),
+				std::string(ConfigurationApplyPolicy::ActionLabel(Action::RestartCapture)));
 		}
 
 		TEST_METHOD(ConfigEditorCoreLoadsAndValidatesCurrentDeployedFixture)

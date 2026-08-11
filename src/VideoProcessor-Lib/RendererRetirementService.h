@@ -65,6 +65,8 @@ public:
 						m_active = false;
 						m_completions.push_back(
 							{ item.token, succeeded, false, ERROR_SUCCESS });
+						m_latestCompletionToken.store(
+							item.token, std::memory_order_release);
 						Completion& completion = m_completions.back();
 						completion.wakePosted = PostMessage(
 							item.completionWindow,
@@ -133,6 +135,12 @@ public:
 
 	bool TryTakeCompletion(uint64_t token, Completion& completion)
 	{
+		// Timer reconciliation is intentionally allowed to poll, but it must not
+		// contend with the worker before a completion exists. Under a busy UI
+		// timer this mutex used to starve the worker at the exact point where it
+		// needed to publish terminal retirement.
+		if (m_latestCompletionToken.load(std::memory_order_acquire) < token)
+			return false;
 		std::lock_guard<std::mutex> lock(m_mutex);
 		for (auto iterator = m_completions.begin();
 			iterator != m_completions.end(); ++iterator)
@@ -160,6 +168,7 @@ private:
 	std::deque<Item> m_items;
 	std::deque<Completion> m_completions;
 	std::thread m_worker;
+	std::atomic<uint64_t> m_latestCompletionToken{0};
 	bool m_active = false;
 	bool m_closing = false;
 };

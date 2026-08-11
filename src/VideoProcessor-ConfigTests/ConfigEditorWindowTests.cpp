@@ -5,6 +5,7 @@
 #include "ConfigEditorWindow.h"
 #include "VpTheme.h"
 #include <ActiveProfileStatus.h>
+#include <ConfigurationLiveApply.h>
 
 #include <QApplication>
 #include <QAccessible>
@@ -1186,6 +1187,36 @@ void testEmptyActionsShowEmptyState()
         "An empty action list showed a disabled draft instead of the empty state");
 }
 
+void testMissingConfigurationCanBeCreatedFromEditor()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("VideoProcessor.cfg"));
+    require(!QFileInfo::exists(path), "Missing-config fixture already exists");
+    ConfigEditorWindow window(path, 0, true);
+    window.show();
+    QCoreApplication::processEvents();
+
+    QPushButton* ok = requireControl<QPushButton>(window,
+        QStringLiteral("okConfiguration"));
+    QPushButton* apply = requireControl<QPushButton>(window,
+        QStringLiteral("applyConfiguration"));
+    QLabel* status = requireControl<QLabel>(window,
+        QStringLiteral("configurationStatus"));
+    require(ok->isEnabled() && apply->isEnabled(),
+        "Missing configuration was not exposed as a creatable document");
+    require(!status->text().contains(QStringLiteral("not loaded"),
+        Qt::CaseInsensitive), "Missing configuration still reports a load failure");
+
+    apply->click();
+    QCoreApplication::processEvents();
+    require(QFileInfo::exists(path),
+        "Apply did not create the missing VideoProcessor.cfg");
+    require(status->text().contains(QStringLiteral("created safely"),
+        Qt::CaseInsensitive), "First save did not report configuration creation");
+    require(!apply->isEnabled(),
+        "First save left the newly created configuration dirty");
+}
+
 void testApplyOkCancelContract()
 {
     {
@@ -1704,17 +1735,33 @@ void testNativeOwnerPreservesQtInputAndPopupAssociation()
 
     HWND editor = reinterpret_cast<HWND>(window.effectiveWinId());
     const HWND actualOwner = GetWindow(editor, GW_OWNER);
-    if (actualOwner != owner)
+    if (actualOwner != nullptr)
         throw std::runtime_error(QStringLiteral(
-            "Config editor did not apply its VP native owner: editor=%1 expected=%2 actual=%3")
+            "Config editor unexpectedly acquired a native owner: editor=%1 expected=%2 actual=%3")
             .arg(reinterpret_cast<quintptr>(editor), 0, 16)
-            .arg(reinterpret_cast<quintptr>(owner), 0, 16)
+            .arg(static_cast<quintptr>(0), 0, 16)
             .arg(reinterpret_cast<quintptr>(actualOwner), 0, 16)
             .toStdString());
     require((GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0,
         "Explicit reveal did not apply scoped topmost above fullscreen");
     require(appearsAbove(editor, owner),
         "Visible VP-associated Config was not above its video owner fixture");
+	HWND competingTopmost = CreateWindowExW(
+		WS_EX_TOPMOST | WS_EX_TOOLWINDOW, L"STATIC", L"VP fullscreen cover fixture",
+		WS_POPUP, 0, 0, 320, 200, nullptr, nullptr,
+		GetModuleHandleW(nullptr), nullptr);
+	require(competingTopmost != nullptr,
+		"Cannot create competing topmost renderer fixture");
+	ShowWindow(competingTopmost, SW_SHOWNOACTIVATE);
+	SetWindowPos(competingTopmost, HWND_TOPMOST, 0, 0, 0, 0,
+		SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+	require(appearsAbove(competingTopmost, editor),
+		"Competing topmost fixture did not cover Config before the retry");
+	window.reveal();
+	QCoreApplication::processEvents();
+	require(appearsAbove(editor, competingTopmost),
+		"Repeated explicit reveal did not force Config back to the top");
+	DestroyWindow(competingTopmost);
     require(testAdvertisedEditor == editor,
         "Config editor did not advertise its current native top-level HWND");
 
@@ -1897,37 +1944,38 @@ void testNativeOwnerPreservesQtInputAndPopupAssociation()
         targetAcknowledged == 1,
         "Replacement presentation target was not accepted");
     QCoreApplication::processEvents();
-    require(GetWindow(editor, GW_OWNER) == replacementHost &&
+    require(GetWindow(editor, GW_OWNER) == nullptr &&
         (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0,
-        "Config did not apply scoped topmost after host replacement");
+        "Config did not remain independently topmost after host replacement");
     SetWindowPos(replacementHost, HWND_TOPMOST, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    const UINT reassertMessage = RegisterWindowMessageW(
-        L"VideoProcessor.ConfigEditor.Reassert.v1");
-    PostMessageW(editor, reassertMessage, GetCurrentProcessId(),
-        reinterpret_cast<LPARAM>(replacementHost));
-    Sleep(250);
+	window.reveal();
     QCoreApplication::processEvents();
     require(appearsAbove(editor, replacementHost),
-        "Natural owner chain did not retain Config above its video owner");
-    SetForegroundWindow(owner);
+		"Explicit reveal did not restore Config above the video host");
+	const UINT reassertMessage = RegisterWindowMessageW(
+		L"VideoProcessor.ConfigEditor.Reassert.v1");
+	const BOOL foregroundChanged = SetForegroundWindow(owner);
     QCoreApplication::processEvents();
     QCoreApplication::processEvents();
-    require(GetForegroundWindow() == owner &&
-        (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0,
-        "External foreground did not remove scoped Config topmost state");
+	require((GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0,
+        "External foreground unexpectedly removed visible Config topmost state");
+	if (foregroundChanged)
+		require(GetForegroundWindow() == owner,
+			"Windows accepted the foreground change but Config immediately stole it back");
 
-    // Renderer/host lifecycle traffic can arrive after the user has returned
-    // to VP. It must not pull Config back into the topmost band until another
-    // explicit Config reveal is requested.
+    // Renderer/host lifecycle traffic may reassert z-order while Config is
+    // visible, but it must not steal foreground from the user's current app.
     PostMessageW(editor, reassertMessage, GetCurrentProcessId(),
         reinterpret_cast<LPARAM>(replacementHost));
     Sleep(100);
     QCoreApplication::processEvents();
     QCoreApplication::processEvents();
-    require(GetForegroundWindow() == owner &&
-        (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0,
-        "Lifecycle reassert after Config deactivation restored topmost or foreground");
+	require((GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0,
+        "Lifecycle reassert stole foreground or removed visible Config topmost state");
+	if (foregroundChanged)
+		require(GetForegroundWindow() == owner,
+			"Lifecycle reassert stole an established external foreground");
 
     window.reveal();
     QCoreApplication::processEvents();
@@ -1986,6 +2034,38 @@ void testRealConfigurationDropdownRemainsClickable()
     QWidget* conversionPopup = conversion->view()->window();
     require(conversionPopup && conversionPopup->isVisible(),
         "Real Video conversion dropdown did not open");
+	HWND firstPresentationTarget = nullptr;
+	HWND secondPresentationTarget = nullptr;
+	if (nativeWindows)
+	{
+		firstPresentationTarget = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC",
+			L"VP transient renderer one", WS_OVERLAPPEDWINDOW, 0, 0, 320, 200,
+			nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+		secondPresentationTarget = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC",
+			L"VP transient renderer two", WS_OVERLAPPEDWINDOW, 0, 0, 320, 200,
+			nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+		require(firstPresentationTarget && secondPresentationTarget,
+			"Cannot create transient renderer fixtures");
+		const UINT targetMessage = RegisterWindowMessageW(
+			L"VideoProcessor.ConfigEditor.PresentationTarget.v1");
+		for (const HWND target : { firstPresentationTarget,
+			secondPresentationTarget })
+		{
+			DWORD_PTR acknowledged = 0;
+			require(SendMessageTimeoutW(
+				reinterpret_cast<HWND>(window.effectiveWinId()), targetMessage,
+				GetCurrentProcessId(), reinterpret_cast<LPARAM>(target),
+				SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &acknowledged) &&
+				acknowledged == 1,
+				"Transient renderer target change was not acknowledged");
+			QCoreApplication::processEvents();
+			require(conversionPopup->isVisible(),
+				"Renderer target change closed an active Config dropdown");
+			require(GetWindow(reinterpret_cast<HWND>(window.effectiveWinId()),
+				GW_OWNER) == nullptr,
+				"Renderer target change assigned Config a native owner");
+		}
+	}
     const ULONGLONG openUntil = GetTickCount64() + 1100;
     while (GetTickCount64() < openUntil)
     {
@@ -2051,6 +2131,10 @@ void testRealConfigurationDropdownRemainsClickable()
         "A subsequent real dropdown was no longer accessible");
     container->hidePopup();
     window.close();
+	if (firstPresentationTarget)
+		DestroyWindow(firstPresentationTarget);
+	if (secondPresentationTarget)
+		DestroyWindow(secondPresentationTarget);
     if (owner)
         DestroyWindow(owner);
 }
@@ -2108,6 +2192,64 @@ void testColdHiddenAssociationDeliversPendingReveal()
     testAdvertisedEditor = nullptr;
     testActivateOnAssociation = false;
     DestroyWindow(owner);
+}
+
+void testStableRevealEndpointSurvivesHiddenQtWindow()
+{
+	if (QGuiApplication::platformName().compare(
+		QStringLiteral("windows"), Qt::CaseInsensitive) != 0)
+		return;
+
+	HWND owner = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC",
+		L"VP stable reveal owner", WS_OVERLAPPEDWINDOW, 0, 0, 320, 200,
+		nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+	require(owner != nullptr, "Cannot create stable reveal owner fixture");
+	QTemporaryDir directory;
+	ConfigEditorWindow window(copyFixture(directory),
+		reinterpret_cast<quintptr>(owner), true);
+	window.show();
+	QCoreApplication::processEvents();
+	window.hide();
+	QCoreApplication::processEvents();
+	require(!window.isVisible(), "Config did not enter its hidden tray state");
+
+	const std::wstring eventName =
+		ConfigurationLiveApply::ConfigurationEditorRevealEventName(
+			GetCurrentProcessId());
+	HANDLE revealEvent = OpenEventW(EVENT_MODIFY_STATE, FALSE,
+		eventName.c_str());
+	require(revealEvent != nullptr,
+		"Stable Config reveal endpoint was not created");
+	require(SetEvent(revealEvent) != FALSE,
+		"Stable Config reveal endpoint could not be signaled");
+	CloseHandle(revealEvent);
+	const ULONGLONG deadline = GetTickCount64() + 1000;
+	while (!window.isVisible() && GetTickCount64() < deadline)
+	{
+		QCoreApplication::processEvents();
+		Sleep(5);
+	}
+	require(window.isVisible(),
+		"Stable process endpoint did not reveal hidden Config");
+	const HWND revealedEditor = reinterpret_cast<HWND>(window.effectiveWinId());
+	const BOOL foregroundAccepted = SetForegroundWindow(revealedEditor);
+	const ULONGLONG stabilityDeadline = GetTickCount64() + 3500;
+	while (GetTickCount64() < stabilityDeadline)
+	{
+		QCoreApplication::processEvents();
+		Sleep(10);
+	}
+	require(reinterpret_cast<HWND>(window.effectiveWinId()) == revealedEditor &&
+		IsWindow(revealedEditor),
+		"Config recreated its native HWND after a settled reveal");
+	require((GetWindowLongPtrW(revealedEditor, GWL_EXSTYLE) &
+		WS_EX_TOPMOST) != 0,
+		"Config lost topmost placement after a settled reveal");
+	if (foregroundAccepted)
+		require(GetForegroundWindow() == revealedEditor,
+			"Config lost foreground without user input after a settled reveal");
+	window.hide();
+	DestroyWindow(owner);
 }
 
 void testCrossThreadActivationHasNoReverseCallbackDeadlock()
@@ -2210,7 +2352,7 @@ void testExternalForegroundLeavesConfigTopmost()
     bool hostUnchanged = false;
     bool spoofedTargetRejected = false;
     bool targetPlacementValid = false;
-    bool targetOwnerApplied = false;
+    bool independentOwnerPreserved = false;
     bool targetMainIsScoped = false;
     bool manualMovePreserved = false;
     bool repeatRevealClamped = false;
@@ -2263,7 +2405,7 @@ void testExternalForegroundLeavesConfigTopmost()
                 placedFrame.bottom <= work.bottom &&
                 placedFrame.right - placedFrame.left == preservedWidth &&
                 placedFrame.bottom - placedFrame.top == preservedHeight;
-            targetOwnerApplied = GetWindow(editor, GW_OWNER) == fixture.host;
+            independentOwnerPreserved = GetWindow(editor, GW_OWNER) == nullptr;
             targetMainIsScoped =
                 (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
 
@@ -2332,8 +2474,8 @@ void testExternalForegroundLeavesConfigTopmost()
         "Presentation target handoff accepted a spoofed process id");
     require(targetPlacementValid,
         "Reveal did not preserve size and fully clamp Config to target monitor work area");
-    require(targetOwnerApplied,
-        "Presentation target handoff did not become Config native owner");
+    require(independentOwnerPreserved,
+        "Presentation target handoff assigned Config a native owner");
     require(targetMainIsScoped,
         "Presentation-owned Config was not scoped above topmost fullscreen");
     require(manualMovePreserved,
@@ -2370,8 +2512,7 @@ void testNormalWindowArchitectureHasNoLeasePolling()
     require(!source.contains("ownerMonitor_") &&
         !source.contains("maintainForegroundLease") &&
         !source.contains("maintainPopupZOrder") &&
-        !source.contains("setInterval(200)") &&
-        !source.contains("SetForegroundWindow"),
+        !source.contains("setInterval(200)"),
         "Config editor still contains polling, popup, or foreground lease logic");
 }
 
@@ -2430,6 +2571,8 @@ int main(int argc, char** argv)
     failures += run("legacy renderer visibility remains manual and preserved", testLegacyRendererVisibilityRemainsManualAndPreserved);
     failures += run("new action starts unconfigured", testNewActionStartsUnconfigured);
     failures += run("empty actions show an empty state", testEmptyActionsShowEmptyState);
+    failures += run("missing configuration can be created from editor",
+        testMissingConfigurationCanBeCreatedFromEditor);
     failures += run("Apply OK Cancel contract", testApplyOkCancelContract);
     failures += run("DirectShow-only effect does not restart Alpha",
         testDirectShowOnlyEffectDoesNotRestartAlpha);
@@ -2450,6 +2593,8 @@ int main(int argc, char** argv)
         testRealConfigurationDropdownRemainsClickable);
     failures += run("cold hidden association delivers pending reveal",
         testColdHiddenAssociationDeliversPendingReveal);
+	failures += run("stable reveal endpoint survives hidden Qt window",
+		testStableRevealEndpointSurvivesHiddenQtWindow);
     failures += run("cross-thread activation avoids reverse callback deadlock",
         testCrossThreadActivationHasNoReverseCallbackDeadlock);
     failures += run("external foreground leaves Config topmost",

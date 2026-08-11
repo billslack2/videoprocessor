@@ -74,7 +74,7 @@ namespace VideoProcessorTest
 					true, true));
 		}
 
-		TEST_METHOD(ConfigurationEditorShortcutAlwaysRevealsAndCoalesces)
+		TEST_METHOD(ConfigurationEditorShortcutAlwaysStartsFreshReveal)
 		{
 			using Action = ConfigurationLiveApply::ConfigurationEditorToggleAction;
 			Assert::IsTrue(Action::RevealOrActivate ==
@@ -86,7 +86,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(Action::RevealOrActivate ==
 				ConfigurationLiveApply::ResolveConfigurationEditorToggle(
 					false, false, false));
-			Assert::IsTrue(Action::CoalescePendingReveal ==
+			Assert::IsTrue(Action::RevealOrActivate ==
 				ConfigurationLiveApply::ResolveConfigurationEditorToggle(
 					false, false, true));
 		}
@@ -104,7 +104,7 @@ namespace VideoProcessorTest
 			Assert::IsFalse(ConfigurationLiveApply::
 				ConfigurationEditorRevealAcknowledged(true, 0));
 			Assert::IsTrue(ConfigurationLiveApply::
-				ConfigurationEditorToggleAction::CoalescePendingReveal ==
+				ConfigurationEditorToggleAction::RevealOrActivate ==
 				ConfigurationLiveApply::ResolveConfigurationEditorToggle(
 					true, false, true));
 			Assert::IsFalse(ConfigurationLiveApply::
@@ -548,6 +548,51 @@ namespace VideoProcessorTest
 				MayConstructRendererAfterConfigurationBoundary(0, 1));
 		}
 
+		TEST_METHOD(ConfigurationEditorOwnerSurvivesMissingOrChangingRenderer)
+		{
+			constexpr uintptr_t host = 0x1000;
+			Assert::AreEqual(static_cast<uintptr_t>(0), ConfigurationLiveApply::
+				SelectConfigurationEditorNativeOwner(host, 0));
+			Assert::AreEqual(static_cast<uintptr_t>(0), ConfigurationLiveApply::
+				SelectConfigurationEditorNativeOwner(host, 0x2000));
+			Assert::AreEqual(static_cast<uintptr_t>(0), ConfigurationLiveApply::
+				SelectConfigurationEditorNativeOwner(host, 0x3000));
+		}
+
+		TEST_METHOD(FreshRendererConsumesLatchedRestartIntent)
+		{
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldConsumeRestartForFreshRenderer(false, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldConsumeRestartForFreshRenderer(true, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldConsumeRestartForFreshRenderer(false, false));
+		}
+
+		TEST_METHOD(AutoFrameOffsetWaitsForUsableCaptureMode)
+		{
+			Assert::IsFalse(ConfigurationLiveApply::
+				HasUsableCaptureModeForAutoOffset(false, false, false));
+			Assert::IsFalse(ConfigurationLiveApply::
+				HasUsableCaptureModeForAutoOffset(true, false, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				HasUsableCaptureModeForAutoOffset(true, true, false));
+			Assert::IsTrue(ConfigurationLiveApply::
+				HasUsableCaptureModeForAutoOffset(true, true, true));
+		}
+
+		TEST_METHOD(OmittedHardwareSelectionsUseFirstDiscoveredValues)
+		{
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldSelectFirstDiscoveredValue(false, -1, 2));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldSelectFirstDiscoveredValue(true, -1, 2));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldSelectFirstDiscoveredValue(false, 0, 2));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldSelectFirstDiscoveredValue(false, -1, 0));
+		}
+
 		TEST_METHOD(FailedReloadRestoresAcceptedRendererSelection)
 		{
 			Assert::IsTrue(ConfigurationLiveApply::
@@ -839,7 +884,8 @@ namespace VideoProcessorTest
 		{
 			for (const wchar_t* placeholder : {
 				L"", L"<display mode>", L"<pixel format>",
-				L"<color space>", L"<colorspace>", L"<eotf>" })
+				L"<color space>", L"<colorspace>", L"<eotf>",
+				L"<encoding>", L"<bd>" })
 			Assert::AreEqual(std::wstring(L"---"),
 				ModernOperatorStatusPolicy::NormalizeCapturedValue(placeholder));
 			Assert::AreEqual(std::wstring(L"3840x2160p - 4K UHDTV"),
@@ -2319,6 +2365,56 @@ namespace VideoProcessorTest
 			ConfigFile config;
 			Assert::IsTrue(config.Load(path));
 			Assert::IsTrue(config.GetWarnings().empty());
+			std::ifstream shippedFile(path, std::ios::in | std::ios::binary);
+			std::ostringstream shippedText;
+			shippedText << shippedFile.rdbuf();
+			const std::string shipped = shippedText.str();
+			Assert::IsTrue(shipped.find("\nwhen:") == std::string::npos);
+			Assert::IsTrue(shipped.find("[actions.") == std::string::npos);
+			Assert::IsTrue(shipped.find("[event_actions.") == std::string::npos);
+			Assert::IsTrue(shipped.find("[display_rules.") == std::string::npos);
+
+			std::string value;
+			Assert::IsTrue(config.TryGetString(
+				"general", "capture_device", value));
+			Assert::AreEqual(
+				"DeckLink Quad HDMI Recorder (1)", value.c_str());
+			Assert::IsTrue(config.TryGetString("general", "renderer", value));
+			Assert::AreEqual("VP Renderer", value.c_str());
+			bool enabled = true;
+			Assert::IsTrue(config.TryGetBool("general", "fullscreen", enabled));
+			Assert::IsFalse(enabled);
+			Assert::IsTrue(config.TryGetBool(
+				"general", "windowed_fullscreen_mode", enabled));
+			Assert::IsFalse(enabled);
+			Assert::IsTrue(config.TryGetBool("general", "noui", enabled));
+			Assert::IsFalse(enabled);
+			Assert::IsTrue(config.TryGetBool(
+				"general", "startminimized", enabled));
+			Assert::IsFalse(enabled);
+			Assert::IsTrue(config.TryGetBool(
+				"general", "scene_detect", enabled));
+			Assert::IsFalse(enabled);
+			const std::pair<const char*, const char*> shortcuts[] = {
+				{ "queue.normal", "Shift+Q" },
+				{ "queue.low_latency", "Shift+L" },
+				{ "vprenderer.rec709", "F5" },
+				{ "vprenderer.bt2020", "F6" },
+				{ "vprenderer.viewport.viewport_16x9", "F3" },
+				{ "vprenderer.viewport.scope", "F2" },
+				{ "shader.nls", "N" },
+				{ "shader.nls.standard", "Shift+N" },
+				{ "shader.nls.protected", "Shift+P" }
+			};
+			for (const auto& expected : shortcuts)
+			{
+				Assert::IsTrue(config.TryGetString(
+					expected.first, "shortcut", value));
+				Assert::AreEqual(expected.second, value.c_str());
+			}
+			Assert::IsTrue(config.TryGetString(
+				"shortcuts", "render.1", value));
+			Assert::AreEqual("Shift+A", value.c_str());
 			std::string error;
 			Assert::IsTrue(MainConfigSchema::Validate(config, error),
 				std::wstring(error.begin(), error.end()).c_str());
@@ -2328,6 +2424,31 @@ namespace VideoProcessorTest
 			Assert::IsFalse(model.persistSelection);
 			// The shipped sample must not invoke machine-local commands.
 			Assert::AreEqual(static_cast<size_t>(0), model.actions.size());
+
+			const auto viewportGroup = std::find_if(
+				model.groups.begin(), model.groups.end(),
+				[](const RendererProfileConfig::Group& group)
+				{
+					return group.name == "viewport";
+				});
+			Assert::IsTrue(viewportGroup != model.groups.end());
+			Assert::AreEqual("viewport_16x9",
+				viewportGroup->defaultSelection.c_str());
+			Assert::AreEqual("viewport_16x9",
+				viewportGroup->profiles.front().c_str());
+			RendererProfileConfig::ResolvedViewport viewport;
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, viewportGroup->defaultSelection, 1, viewport, error));
+			Assert::AreEqual(16ull, viewport.screenAspect.numerator);
+			Assert::AreEqual(9ull, viewport.screenAspect.denominator);
+			Assert::IsFalse(viewport.automaticCrop);
+			Assert::IsFalse(viewport.subtitleFit);
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, "scope", 2, viewport, error));
+			Assert::AreEqual(47ull, viewport.screenAspect.numerator);
+			Assert::AreEqual(20ull, viewport.screenAspect.denominator);
+			Assert::IsTrue(viewport.automaticCrop);
+			Assert::IsTrue(viewport.subtitleFit);
 		}
 
 		TEST_METHOD(Vp0079EmptyShaderRootResolvesAsExplicitOff)

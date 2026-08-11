@@ -419,6 +419,10 @@ protected:
 		m_configurationSnapshot;
 	struct StagedRuntimeSettings
 	{
+		bool hasCaptureDevice = false;
+		CString captureDevice;
+		bool hasCaptureInput = false;
+		CString captureInput;
 		bool hasRenderer = false;
 		CString renderer;
 		bool hasFrameOffset = false;
@@ -604,6 +608,7 @@ protected:
 	RendererRetirementService m_rendererRetirementService;
 	bool m_rendererRetirementPending = false;
 	uint64_t m_rendererRetirementToken = 0;
+	uint64_t m_rendererRetirementWaitLoggedToken = 0;
 	CString m_retiringRendererName;
 	uint32_t m_retiringRendererGeneration = 0;
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;

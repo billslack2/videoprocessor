@@ -87,6 +87,47 @@ public:
 		return setting;
 	}
 
+	static bool EnsureParentDirectory(
+		const std::string& activePath,
+		std::vector<std::string>& diagnostics)
+	{
+		const PathParts parts = SplitPath(activePath);
+		if (parts.directory.empty() || parts.directory == ".")
+			return true;
+
+		const DWORD attributes = GetFileAttributesA(parts.directory.c_str());
+		if (attributes != INVALID_FILE_ATTRIBUTES)
+		{
+			if ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+				return true;
+			diagnostics.push_back(
+				"Debug log directory path is not a directory: '" +
+				parts.directory + "'");
+			return false;
+		}
+
+		if (CreateDirectoryA(parts.directory.c_str(), nullptr))
+		{
+			diagnostics.push_back(
+				"Debug log directory: created '" + parts.directory + "'");
+			return true;
+		}
+
+		const DWORD error = GetLastError();
+		const DWORD retryAttributes = GetFileAttributesA(parts.directory.c_str());
+		if (error == ERROR_ALREADY_EXISTS &&
+			retryAttributes != INVALID_FILE_ATTRIBUTES &&
+			(retryAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+		{
+			return true;
+		}
+
+		diagnostics.push_back(
+			"Debug log directory: cannot create '" + parts.directory +
+			"' (Windows error " + std::to_string(error) + ")");
+		return false;
+	}
+
 	static RotationResult Rotate(
 		const std::string& activePath,
 		size_t retentionCount)
@@ -94,6 +135,8 @@ public:
 		RotationResult result;
 		if (retentionCount < MIN_COUNT || retentionCount > MAX_COUNT)
 			retentionCount = DEFAULT_COUNT;
+		if (!EnsureParentDirectory(activePath, result.diagnostics))
+			return result;
 
 		const PathParts parts = SplitPath(activePath);
 		bool archiveActive = false;

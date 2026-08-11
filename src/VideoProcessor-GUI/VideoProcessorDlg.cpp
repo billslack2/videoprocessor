@@ -278,6 +278,21 @@ HWND FindConfigurationEditorForCurrentInstallation()
 	return search.window;
 }
 
+bool SignalConfigurationEditorReveal(DWORD processId)
+{
+	if (!processId)
+		return false;
+	const std::wstring eventName =
+		ConfigurationLiveApply::ConfigurationEditorRevealEventName(processId);
+	HANDLE eventHandle = ::OpenEventW(EVENT_MODIFY_STATE, FALSE,
+		eventName.c_str());
+	if (!eventHandle)
+		return false;
+	const bool signaled = ::SetEvent(eventHandle) != FALSE;
+	::CloseHandle(eventHandle);
+	return signaled;
+}
+
 bool SendConfigurationEditorRevealOnce(HWND editor, HWND owner,
 	DWORD ownerProcessId, bool& messageDelivered,
 	DWORD_PTR& acknowledgement)
@@ -2138,20 +2153,9 @@ void CVideoProcessorDlg::ToggleConfigurationEditor()
 
 HWND CVideoProcessorDlg::ConfigurationEditorOwner()
 {
-	HWND target = nullptr;
-	if (m_rendererFullscreenCheck.GetCheck() != FALSE &&
-		m_fullScreenVideoWindow &&
-		::IsWindow(m_fullScreenVideoWindow->GetHWND()))
-	{
-		target = m_fullScreenVideoWindow->GetHWND();
-	}
-	else if (::IsWindow(m_rendererTargetHwnd))
-	{
-		target = m_rendererTargetHwnd;
-	}
-	if (target)
-		target = ::GetAncestor(target, GA_ROOT);
-	return target && ::IsWindow(target) ? target : GetSafeHwnd();
+	// Renderer targets are destroyed and recreated during capture and renderer
+	// switches. Config needs a stable owner even when no renderer exists.
+	return GetSafeHwnd();
 }
 
 void CVideoProcessorDlg::TrackConfigurationEditor(HWND editor)
@@ -2291,8 +2295,9 @@ bool CVideoProcessorDlg::PublishConfigurationEditorPresentationTarget(
 			reinterpret_cast<LPARAM>(target));
 		accepted = delivered != 0;
 	}
-	if (ConfigurationLiveApply::ShouldRequestConfigurationEditorOneShotReassert(
-		accepted, ::IsWindow(editor) != FALSE))
+	if (synchronous &&
+		ConfigurationLiveApply::ShouldRequestConfigurationEditorOneShotReassert(
+			accepted, ::IsWindow(editor) != FALSE))
 		RequestConfigurationEditorOneShotReassert(editor, target);
 	DebugLog::Log(
 		"Configuration editor presentation owner handoff: editor=%p target=%p target_pid=%lu monitor=%p mode=%s delivered=%lld ack=%llu accepted=%d",
@@ -2552,6 +2557,19 @@ void CVideoProcessorDlg::ApplySavedConfiguration()
 
 	switch (m_stagedConfigurationAction)
 	{
+	case ConfigurationApplyPolicy::Action::RestartCapture:
+	{
+		const bool replaceShortcuts = m_stagedShortcutsChanged;
+		if (PublishStagedConfiguration(replaceShortcuts))
+		{
+			DebugLog::Log(
+				"Configuration transaction accepted: action=restart-capture state=published shortcuts=%s",
+				replaceShortcuts ? "replaced" : "retained");
+			m_wantToRestartCapture = true;
+			OnCaptureDeviceSelected();
+		}
+		break;
+	}
 	case ConfigurationApplyPolicy::Action::RestartRenderer:
 		DebugLog::Log(
 			"Configuration transaction accepted: identity=%s action=restart-renderer state=staged",
@@ -2793,6 +2811,29 @@ bool CVideoProcessorDlg::StageRuntimeSettings(
 		return false;
 	};
 	std::string value;
+	if (getApplicationValue("capture_device", value))
+	{
+		m_stagedRuntimeSettings.hasCaptureDevice = true;
+		m_stagedRuntimeSettings.captureDevice = CString(value.c_str());
+		bool discovered = false;
+		for (int index = 0; index < m_captureDeviceCombo.GetCount(); ++index)
+		{
+			CString name;
+			m_captureDeviceCombo.GetLBText(index, name);
+			if (name.CompareNoCase(m_stagedRuntimeSettings.captureDevice) == 0)
+			{
+				discovered = true;
+				break;
+			}
+		}
+		if (!discovered)
+			return invalid("capture_device (not discovered)", value);
+	}
+	if (getApplicationValue("capture_input", value))
+	{
+		m_stagedRuntimeSettings.hasCaptureInput = true;
+		m_stagedRuntimeSettings.captureInput = CString(value.c_str());
+	}
 	if (getApplicationValue("renderer", value))
 	{
 		m_stagedRuntimeSettings.hasRenderer = true;
@@ -3011,6 +3052,29 @@ void CVideoProcessorDlg::PublishStagedRuntimeSettings()
 			}
 		return false;
 	};
+	if (m_stagedRuntimeSettings.hasCaptureDevice)
+	{
+		for (int index = 0; index < m_captureDeviceCombo.GetCount(); ++index)
+		{
+			CString name;
+			m_captureDeviceCombo.GetLBText(index, name);
+			if (name.CompareNoCase(m_stagedRuntimeSettings.captureDevice) != 0)
+				continue;
+			m_captureDeviceCombo.SetCurSel(index);
+			m_initialCaptureDevice = name;
+			DebugLog::Log(
+				"Configuration runtime capture selection published: device=%S index=%d",
+				name.GetString(), index + 1);
+			break;
+		}
+	}
+	if (m_stagedRuntimeSettings.hasCaptureInput)
+	{
+		m_initialCaptureInput = m_stagedRuntimeSettings.captureInput;
+		DebugLog::Log(
+			"Configuration runtime capture input published: input=%S",
+			m_initialCaptureInput.GetString());
+	}
 	const std::wstring savedRenderer = m_stagedRuntimeSettings.hasRenderer ?
 		std::wstring(m_stagedRuntimeSettings.renderer.GetString()) :
 		std::wstring();
@@ -4990,14 +5054,19 @@ bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 	RendererRetirementService::Completion completion;
 	if (!m_rendererRetirementService.TryTakeCompletion(token, completion))
 	{
-		DebugLog::Log(
-			"Renderer retirement wake arrived before durable completion: "
-			"token=%llu source=%s",
-			static_cast<unsigned long long>(token), completionSource);
+		if (m_rendererRetirementWaitLoggedToken != token)
+		{
+			m_rendererRetirementWaitLoggedToken = token;
+			DebugLog::Log(
+				"Renderer retirement awaiting durable completion: "
+				"token=%llu source=%s subsequent_polls=suppressed",
+				static_cast<unsigned long long>(token), completionSource);
+		}
 		return false;
 	}
 
 	m_rendererRetirementPending = false;
+	m_rendererRetirementWaitLoggedToken = 0;
 	if (!completion.succeeded)
 	{
 		DebugLog::Log(
@@ -5378,24 +5447,46 @@ void CVideoProcessorDlg::OnCommandToggleNoUi()
 void CVideoProcessorDlg::OnCommandConfigEditor()
 {
 	const ULONGLONG now = ::GetTickCount64();
-	if (!m_configurationEditorActivationPending)
+	// UpdateConfigurationEditorModal no longer polls or expires reveal state.
+	// Therefore an explicit shortcut must always begin a fresh attempt; otherwise
+	// one failed cold launch permanently coalesces every later user request.
+	m_configurationEditorActivationPending = true;
+	m_configurationEditorFallbackLaunched = false;
+	m_configurationEditorRevealAcknowledged = false;
+	m_configurationEditorActivationAcknowledgedTick = 0;
+	m_configurationEditorForegroundFallbackAttempted = false;
+	m_configurationEditorActivationAttempts = 0;
+	m_configurationEditorRevealStartedTick = now;
+	m_configurationEditorLastRevealAttemptTick = 0;
+	DebugLog::Log(
+		"Configuration editor fresh reveal intent started: timeout_ms=20000");
+	if (m_configurationEditorProcessId &&
+		SignalConfigurationEditorReveal(m_configurationEditorProcessId))
 	{
-		m_configurationEditorActivationPending = true;
-		m_configurationEditorFallbackLaunched = false;
-		m_configurationEditorRevealAcknowledged = false;
-		m_configurationEditorActivationAcknowledgedTick = 0;
-		m_configurationEditorForegroundFallbackAttempted = false;
-		m_configurationEditorActivationAttempts = 0;
-		m_configurationEditorRevealStartedTick = now;
-		m_configurationEditorLastRevealAttemptTick = 0;
+		m_configurationEditorActivationPending = false;
+		m_configurationEditorRevealAcknowledged = true;
+		m_configurationEditorActivationAcknowledgedTick = now;
 		DebugLog::Log(
-			"Configuration editor durable reveal intent started: timeout_ms=20000");
+			"Configuration editor reveal signaled through stable process endpoint: pid=%lu",
+			m_configurationEditorProcessId);
+		return;
 	}
 	HWND existingEditor = FindConfigurationEditorForCurrentInstallation();
 	if (!existingEditor && IsConfigurationEditorTopLevel(
 		m_configurationEditorHwnd, m_configurationEditorProcessId, false))
 		existingEditor = m_configurationEditorHwnd;
 	TrackConfigurationEditor(existingEditor);
+	if (existingEditor && m_configurationEditorProcessId &&
+		SignalConfigurationEditorReveal(m_configurationEditorProcessId))
+	{
+		m_configurationEditorActivationPending = false;
+		m_configurationEditorRevealAcknowledged = true;
+		m_configurationEditorActivationAcknowledgedTick = now;
+		DebugLog::Log(
+			"Configuration editor reveal signaled after process discovery: pid=%lu",
+			m_configurationEditorProcessId);
+		return;
+	}
 	if (existingEditor && m_configurationEditorActivationAttempts == 0)
 	{
 		++m_configurationEditorActivationAttempts;
@@ -6041,6 +6132,22 @@ int CVideoProcessorDlg::CalculateAutoFrameOffset() {
 	if (IsAlphaRendererSelected())
 		return 0;
 
+	const bool hasVideoState = m_captureDeviceVideoState != nullptr;
+	const bool videoStateValid = hasVideoState &&
+		m_captureDeviceVideoState->valid;
+	const bool hasDisplayMode = hasVideoState &&
+		m_captureDeviceVideoState->displayMode != nullptr;
+	if (!ConfigurationLiveApply::HasUsableCaptureModeForAutoOffset(
+			hasVideoState, videoStateValid, hasDisplayMode))
+	{
+		const int retainedOffset = GetTimingClockFrameOffsetMs();
+		DebugLog::Log(
+			"Auto frame offset deferred: capture video mode unavailable state=%d valid=%d display_mode=%d retained_ms=%d",
+			hasVideoState ? 1 : 0, videoStateValid ? 1 : 0,
+			hasDisplayMode ? 1 : 0, retainedOffset);
+		return retainedOffset;
+	}
+
 	size_t m_frameQueueMaxSize = GetRendererVideoFrameQueueSizeMax();
 
 
@@ -6535,6 +6642,14 @@ void CVideoProcessorDlg::RenderStart()
 	{
 		DebugLog::Log(
 			"Renderer restart beginning: configuration=last-known-good publication=retained");
+	}
+	if (ConfigurationLiveApply::ShouldConsumeRestartForFreshRenderer(
+			m_videoRenderer != nullptr, m_wantToRestartRenderer))
+	{
+		DebugLog::Log(
+			"Renderer restart intent consumed by fresh construction: first_construction=%d",
+			firstRendererConstruction ? 1 : 0);
+		m_wantToRestartRenderer = false;
 	}
 
 	// Configuration staging can perform bounded file retries and renderer-rule
@@ -8374,6 +8489,17 @@ void CVideoProcessorDlg::RebuildRendererCombo()
 		if (rendererEntry.MatchesConfiguredName(m_defaultRendererName))
 			m_rendererCombo.SetCurSel(comboIndex);
 	}
+	if (ConfigurationLiveApply::ShouldSelectFirstDiscoveredValue(
+			!m_defaultRendererName.IsEmpty(), m_rendererCombo.GetCurSel(),
+			m_rendererCombo.GetCount()))
+	{
+		m_rendererCombo.SetCurSel(0);
+		CString selected;
+		m_rendererCombo.GetLBText(0, selected);
+		DebugLog::Log(
+			"Renderer selection omitted: using first discovered renderer '%S'",
+			selected.GetString());
+	}
 }
 
 
@@ -9790,8 +9916,8 @@ void CVideoProcessorDlg::RefreshModernStatus()
 	status.inputMode = displaySummary(
 		m_captureDeviceVideoState, text(m_inputDisplayModeText));
 	status.inputRate = refreshRate(m_captureDeviceVideoState);
-	status.inputFormat = text(m_inputEncodingText);
-	status.inputBitDepth = text(m_inputBitDepthText);
+	status.inputFormat = capturedText(m_inputEncodingText);
+	status.inputBitDepth = capturedText(m_inputBitDepthText);
 	status.inputFrames = text(m_inputVideoFrameCountText);
 	status.inputMissed = text(m_inputVideoFrameMissedText);
 	status.capturedValid = text(m_videoValidText);
@@ -10184,30 +10310,10 @@ void CVideoProcessorDlg::CloseOwnedTopLevelWindowsForShutdown()
 	if (m_fullScreenVideoWindow)
 		FullScreenVideoWindowDestroy();
 	m_rendererTransitionWindow.Hide();
-
-	std::vector<HWND> topLevelWindows;
-	::EnumThreadWindows(GetCurrentThreadId(),
-		[](HWND hwnd, LPARAM parameter) -> BOOL
-		{
-			reinterpret_cast<std::vector<HWND>*>(parameter)->push_back(hwnd);
-			return TRUE;
-		}, reinterpret_cast<LPARAM>(&topLevelWindows));
-	for (const HWND hwnd : topLevelWindows)
-	{
-		if (hwnd == GetSafeHwnd() || !::IsWindow(hwnd))
-			continue;
-		wchar_t className[96] = {};
-		wchar_t title[128] = {};
-		::GetClassNameW(hwnd, className, ARRAYSIZE(className));
-		::GetWindowTextW(hwnd, title, ARRAYSIZE(title));
-		DebugLog::Log(
-			"Application shutdown closing owned top-level: hwnd=%p class=%S title=%S",
-			hwnd, className, title);
-		::DestroyWindow(hwnd);
-	}
-	DebugLog::Log(
-		"Application shutdown owned top-level cleanup complete: enumerated=%zu",
-		topLevelWindows.size());
+	// MFC and USER32 own combo-list, tooltip, and IME helper windows. Destroying
+	// every UI-thread top-level here re-enters their lifetime management and can
+	// fault in USER32. Only destroy the VP surfaces explicitly owned above.
+	DebugLog::Log("Application shutdown owned surface cleanup complete");
 }
 
 void CVideoProcessorDlg::OnSysCommand(UINT command, LPARAM lParam)

@@ -22,6 +22,7 @@ class QStackedWidget;
 class QSystemTrayIcon;
 class QToolButton;
 class QWindow;
+class QWinEventNotifier;
 
 namespace ConfigEditorCore { struct ConfigDocument; }
 namespace ConfigEditorPlacement
@@ -118,7 +119,6 @@ private:
     bool hasPendingMigrations_ = false;
     bool testMode_ = false;
     std::unique_ptr<ConfigEditorCore::ConfigDocument> document_;
-	std::unique_ptr<QWindow> nativeOwnerWindow_;
 	quintptr publishedWindowHandle_ = 0;
 	std::map<std::string, std::map<std::string, std::string>> savedSnapshot_;
     QStringList captureDevices_;
@@ -137,6 +137,8 @@ private:
     QPushButton* applyButton_ = nullptr;
     QPushButton* saveButton_ = nullptr;
     QSystemTrayIcon* tray_ = nullptr;
+	void* revealEvent_ = nullptr;
+	QWinEventNotifier* revealEventNotifier_ = nullptr;
     struct ProfileListBinding { QListWidget* list; QString sectionPrefix; };
     std::vector<ProfileListBinding> activeProfileLists_;
 };

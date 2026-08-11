@@ -67,6 +67,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWindow>
+#include <QWinEventNotifier>
 
 #include <algorithm>
 #include <functional>
@@ -394,8 +395,8 @@ QStringList discoverValues(const char* exportName, bool hideLegacyRenderers = tr
         auto discover = reinterpret_cast<DiscoverRenderers>(library.resolve(exportName));
         if (discover) values = discover(hideLegacyRenderers ? TRUE : FALSE);
     }
-    else
-    {
+	else
+	{
         auto discover = reinterpret_cast<DiscoverNoArgument>(library.resolve(exportName));
         if (discover) values = discover();
     }
@@ -632,6 +633,22 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
         refreshActiveProfileIndicators();
     }
     if (!testMode_) setupTray();
+	const std::wstring revealEventName =
+		ConfigurationLiveApply::ConfigurationEditorRevealEventName(
+			GetCurrentProcessId());
+	revealEvent_ = CreateEventW(nullptr, FALSE, FALSE,
+		revealEventName.c_str());
+	if (revealEvent_)
+	{
+		revealEventNotifier_ = new QWinEventNotifier(revealEvent_, this);
+		connect(revealEventNotifier_, &QWinEventNotifier::activated, this,
+			[this]
+		{
+			// Consume the auto-reset event through the notifier and route the
+			// command through the same current-window path as a tray click.
+			reveal();
+		});
+	}
     const QKeySequence configToggle(value(QStringLiteral("shortcuts"),
         QStringLiteral("config_editor"), QStringLiteral("Ctrl+Shift+S")));
     if (!configToggle.isEmpty())
@@ -660,6 +677,13 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
 
 ConfigEditorWindow::~ConfigEditorWindow()
 {
+	if (revealEventNotifier_)
+		revealEventNotifier_->setEnabled(false);
+	if (revealEvent_)
+	{
+		CloseHandle(revealEvent_);
+		revealEvent_ = nullptr;
+	}
     removeScopedTopmost();
     clearNativeOwner();
 }
@@ -691,10 +715,11 @@ void ConfigEditorWindow::loadConfiguration()
 {
     document_ = std::make_unique<ConfigEditorCore::ConfigDocument>();
     std::wstring error;
-    configurationLoaded_ = document_->Load(QFileInfo(configPath_).absoluteFilePath().toStdWString(), error);
-    hasPendingMigrations_ = false;
-    savedSnapshot_ = configurationLoaded_ ? captureDocumentSnapshot(*document_) :
-        DocumentSnapshot{};
+	configurationLoaded_ = document_->Load(QFileInfo(configPath_).absoluteFilePath().toStdWString(), error);
+	hasPendingMigrations_ = false;
+	savedSnapshot_ = configurationLoaded_ ? captureDocumentSnapshot(*document_) :
+		DocumentSnapshot{};
+	dirty_ = configurationLoaded_ && !document_->existedAtLoad;
 }
 
 void ConfigEditorWindow::loadDiscoveryCache()
@@ -1091,7 +1116,8 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
     const QStringList acceptedRenderers = testMode_ && allRenderers_.isEmpty() ?
         QStringList{ QStringLiteral("VP Renderer"),
             QStringLiteral("DirectShow - madVR") } : allRenderers_;
-    if (renderer.isEmpty() || !discoveredContains(acceptedRenderers, renderer))
+	if (!renderer.isEmpty() &&
+		!discoveredContains(acceptedRenderers, renderer))
     {
         errors.push_back(QStringLiteral("[general] renderer '%1' was not discovered. Choose an available renderer.")
             .arg(renderer.isEmpty() ? QStringLiteral("(empty)") : renderer));
@@ -1101,9 +1127,8 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
 
     const QString captureDevice = value(QStringLiteral("general"),
         QStringLiteral("capture_device")).trimmed();
-    if (!captureDevices_.isEmpty() &&
-        (captureDevice.isEmpty() ||
-            !discoveredContains(captureDevices_, captureDevice)))
+	if (!captureDevice.isEmpty() && !captureDevices_.isEmpty() &&
+		!discoveredContains(captureDevices_, captureDevice))
     {
         errors.push_back(QStringLiteral("[general] capture_device '%1' was not discovered. Choose an available capture device.")
             .arg(captureDevice.isEmpty() ? QStringLiteral("(empty)") : captureDevice));
@@ -1172,52 +1197,11 @@ bool ConfigEditorWindow::updateValidationState()
 
 void ConfigEditorWindow::applyNativeOwner()
 {
-    HWND owner = reinterpret_cast<HWND>(ownerHandle_);
-    const HWND target = reinterpret_cast<HWND>(presentationTargetHandle_);
-    if (target && IsWindow(target) &&
-        presentationTargetProcessId_ == ownerProcessId_)
-    {
-        DWORD targetProcessId = 0;
-        GetWindowThreadProcessId(target, &targetProcessId);
-        if (targetProcessId == ownerProcessId_) owner = target;
-    }
-    QWindow* editorWindow = windowHandle();
-    if (!editorWindow || !owner || !IsWindow(owner) || !nativeOwnerIsValid())
-    {
-        ownerApplied_ = false;
-        return;
-    }
-
-    const quintptr nativeOwnerHandle = reinterpret_cast<quintptr>(owner);
-    if (!nativeOwnerWindow_ || nativeOwnerWindow_->winId() != nativeOwnerHandle)
-        nativeOwnerWindow_.reset(QWindow::fromWinId(nativeOwnerHandle));
-    if (!nativeOwnerWindow_) return;
-    if (editorWindow->transientParent() != nativeOwnerWindow_.get())
-        editorWindow->setTransientParent(nativeOwnerWindow_.get());
-    const HWND editor = reinterpret_cast<HWND>(effectiveWinId());
-    if (isVisible() && editor && IsWindow(editor) &&
-        GetWindow(editor, GW_OWNER) != owner)
-    {
-        SetLastError(ERROR_SUCCESS);
-        const LONG_PTR previous = SetWindowLongPtrW(editor, GWLP_HWNDPARENT,
-            reinterpret_cast<LONG_PTR>(owner));
-        ownerApplied_ = previous != 0 || GetLastError() == ERROR_SUCCESS;
-    }
-    else
-        ownerApplied_ = true;
+	ownerApplied_ = false;
 }
 
 void ConfigEditorWindow::clearNativeOwner()
 {
-    QWindow* editorWindow = windowHandle();
-    if (editorWindow && nativeOwnerWindow_ &&
-        editorWindow->transientParent() == nativeOwnerWindow_.get())
-        editorWindow->setTransientParent(nullptr);
-    const HWND editor = editorWindow ?
-        reinterpret_cast<HWND>(editorWindow->winId()) : nullptr;
-    if (editor && IsWindow(editor) && GetWindow(editor, GW_OWNER))
-        SetWindowLongPtrW(editor, GWLP_HWNDPARENT, 0);
-    nativeOwnerWindow_.reset();
     ownerApplied_ = false;
 }
 
@@ -1394,8 +1378,9 @@ bool ConfigEditorWindow::saveChanges()
         draftedActions.push_back(displayName(section, QStringLiteral("actions")));
     }
 
-    ConfigEditorCore::SaveResult result;
-    std::wstring error;
+	ConfigEditorCore::SaveResult result;
+	std::wstring error;
+	const bool creatingConfiguration = !document_->existedAtLoad;
     if (!validateCandidate(error))
     {
         setStatus(QString::fromStdWString(error), true);
@@ -1436,6 +1421,16 @@ bool ConfigEditorWindow::saveChanges()
             .arg(draftedActions.size() == 1 ? QString() : QStringLiteral("s"),
                 draftedActions.join(QStringLiteral(", ")),
                 QString::fromStdWString(result.backupPath)));
+    }
+	else if (creatingConfiguration)
+    {
+        const QString effect = QString::fromLatin1(
+            ConfigurationApplyPolicy::ActionLabel(action));
+        setStatus(notified ?
+            QStringLiteral("Configuration created safely at %1. %2 was requested.")
+                .arg(configPath_, effect) :
+            QStringLiteral("Configuration created safely at %1. It will take effect when VideoProcessor next starts.")
+                .arg(configPath_), false);
     }
     else
     {
@@ -1730,14 +1725,42 @@ QWidget* ConfigEditorWindow::createStartupPage()
         hasPendingMigrations_ = true;
     }
 
-    auto* cards = new ResponsiveCardGrid;
+	auto* cards = new ResponsiveCardGrid;
+	auto persistDiscoveredDefault = [this](const QString& key,
+		const QStringList& choices)
+	{
+		if (!configurationLoaded_ || !document_ ||
+			!value(QStringLiteral("general"), key).trimmed().isEmpty())
+			return;
+		QString selected;
+		for (const QString& choice : choices)
+			if (!choice.trimmed().isEmpty())
+			{
+				selected = choice.trimmed();
+				break;
+			}
+		if (selected.isEmpty()) return;
+		// A missing or zero-byte file has no legacy renderer-profile layout to
+		// preserve. Mark the document as the unified format before adding startup
+		// hardware keys so [general] is validated with the application schema.
+		if (document_->loadedBytes.empty())
+			document_->AddSection("vprenderer");
+		document_->AddSection("general");
+		if (document_->SetKnown("general", key.toLocal8Bit().constData(),
+			selected.toLocal8Bit().constData()))
+		{
+			dirty_ = true;
+			hasPendingMigrations_ = true;
+		}
+	};
 
     auto* hardware = new QWidget;
     auto* hardwareForm = new QFormLayout(hardware);
     hardwareForm->setContentsMargins(0, 0, 0, 0);
     hardwareForm->setHorizontalSpacing(18);
     hardwareForm->setVerticalSpacing(8);
-    auto* captureDevice = bindChoiceField(QStringLiteral("general"),
+	persistDiscoveredDefault(QStringLiteral("capture_device"), captureDevices_);
+	auto* captureDevice = bindChoiceField(QStringLiteral("general"),
         QStringLiteral("capture_device"), captureDevices_.isEmpty() ?
             QStringList{ QString() } : captureDevices_,
         captureDevices_.isEmpty() ? QStringList{ QStringLiteral("No capture devices discovered") } : QStringList{}, true);
@@ -1817,9 +1840,10 @@ QWidget* ConfigEditorWindow::createStartupPage()
         markDirty();
     });
     hardwareForm->addRow(QStringLiteral("Input connection"), captureConnection);
-    const bool hideLegacy = configuredBooleanValue(value(QStringLiteral("general"),
-        QStringLiteral("hide_legacy_renderers")), true);
-    const QStringList availableRenderers = hideLegacy ? filteredRenderers_ : allRenderers_;
+	const bool hideLegacy = configuredBooleanValue(value(QStringLiteral("general"),
+		QStringLiteral("hide_legacy_renderers")), true);
+	const QStringList availableRenderers = hideLegacy ? filteredRenderers_ : allRenderers_;
+	persistDiscoveredDefault(QStringLiteral("renderer"), availableRenderers);
     hardwareForm->addRow(QStringLiteral("Renderer"), bindChoiceField(QStringLiteral("general"),
         QStringLiteral("renderer"), availableRenderers.isEmpty() ?
             QStringList{ QString() } : availableRenderers,
@@ -2177,8 +2201,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             const QString alias = deprecatedViewportAlias(key);
             if (!alias.isEmpty())
                 document_->RemoveKnown(state->section.toStdString(), alias.toStdString().c_str());
-            if (text.trimmed().isEmpty()) document_->RemoveKnown(state->section.toStdString(), key.toStdString().c_str());
-            else
+			if (text.trimmed().isEmpty()) document_->RemoveKnown(state->section.toStdString(), key.toStdString().c_str());
+			else
             {
                 QString stored = text.trimmed().compare(
                     QStringLiteral("Auto"), Qt::CaseInsensitive) == 0 ?
@@ -4364,9 +4388,25 @@ void ConfigEditorWindow::reveal()
     scopedTopmostEligible_ = true;
     explicitRevealIntent_ = true;
     pendingTopmostReassert_ = true;
-    applyScopedTopmost();
+    // Let Qt issue its activation/z-order requests first. The native placement
+    // below is authoritative and must run last; otherwise Qt can finalize a
+    // queued raise afterward and remove WS_EX_TOPMOST a few seconds later.
     raise();
     activateWindow();
+    applyScopedTopmost();
+	// Execute the native z-order/foreground request for every explicit reveal,
+	// even when our cached state already says the window is topmost. Renderer
+	// handoffs and exclusive fullscreen can reorder or cover the native window
+	// without changing Qt's visibility/topmost bookkeeping.
+	const HWND editor = reinterpret_cast<HWND>(effectiveWinId());
+	if (editor && IsWindow(editor))
+	{
+		ShowWindow(editor, SW_RESTORE);
+		SetWindowPos(editor, HWND_TOPMOST, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+		BringWindowToTop(editor);
+		SetForegroundWindow(editor);
+	}
     // Ignore only activation churn caused by this reveal itself. A later,
     // settled user transition away from Config disables lifecycle reasserts.
     QTimer::singleShot(100, this, [this] { explicitRevealIntent_ = false; });
@@ -4446,15 +4486,9 @@ bool ConfigEditorWindow::nativeEvent(const QByteArray& eventType,
         {
             presentationTargetHandle_ = reinterpret_cast<quintptr>(requestedTarget);
             presentationTargetProcessId_ = requestedProcessId;
-            if (scopedTopmostEligible_)
-                pendingTopmostReassert_ = true;
-            QTimer::singleShot(0, this, [this]
-            {
-                clearNativeOwner();
-                if (isVisible()) applyNativeOwner();
-                publishNativeAssociation();
-                applyScopedTopmost();
-            });
+			// The presentation target is placement metadata only. Re-parenting or
+			// reasserting z-order here disrupts a combo popup that the operator may
+			// be using while VP rebuilds its renderer.
         }
         if (result) *result = accepted ? 1 : 0;
         return true;

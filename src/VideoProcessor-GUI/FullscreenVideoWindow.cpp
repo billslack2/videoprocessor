@@ -195,6 +195,19 @@ LRESULT __forceinline FullscreenVideoWindow::HandleMessage(UINT uMsg, WPARAM wPa
 	}
     switch (uMsg)
     {
+    case WM_SETCURSOR:
+        // A fullscreen video surface should never display the pointer.  Handle
+        // this at the host-window boundary so every renderer gets the same
+        // behavior and Windows cannot restore the class cursor on mouse move.
+        // SetCursor is local to this message dispatch and avoids unbalancing
+        // the process-wide ShowCursor display counter.
+        if (LOWORD(lParam) == HTCLIENT)
+        {
+            ::SetCursor(nullptr);
+            return TRUE;
+        }
+        break;
+
     case WM_ERASEBKGND:
     {
         RECT client{};

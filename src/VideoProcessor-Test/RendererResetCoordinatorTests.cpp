@@ -452,6 +452,38 @@ namespace Tests
 			service.Join();
 		}
 
+		TEST_METHOD(RendererRetirementCompletionSurvivesAggressivePolling)
+		{
+			RendererRetirementService service;
+			auto renderer = std::make_shared<BlockingRetirementRenderer>();
+			BlockingRetirementRenderer* rendererLifetime = renderer.get();
+			std::future<void> entered =
+				renderer->retireEntered.get_future();
+			Assert::IsTrue(service.Retire(
+				renderer, 74, nullptr, WM_APP + 92));
+			renderer.reset();
+			Assert::IsTrue(entered.wait_for(
+				std::chrono::seconds(2)) == std::future_status::ready);
+
+			std::promise<RendererRetirementService::Completion> published;
+			std::future<RendererRetirementService::Completion> completion =
+				published.get_future();
+			std::thread poller([&service, &published]()
+				{
+					RendererRetirementService::Completion value;
+					while (!service.TryTakeCompletion(74, value))
+						std::this_thread::yield();
+					published.set_value(value);
+				});
+			rendererLifetime->releaseRetire.set_value();
+			Assert::IsTrue(completion.wait_for(
+				std::chrono::seconds(2)) == std::future_status::ready);
+			Assert::IsTrue(completion.get().succeeded);
+			poller.join();
+			service.RequestClose();
+			service.Join();
+		}
+
 		TEST_METHOD(BackendRequestIsReadyWithoutAnotherFrame)
 		{
 			FakeResetClock clock;

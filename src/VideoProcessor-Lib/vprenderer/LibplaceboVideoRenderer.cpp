@@ -2544,7 +2544,6 @@ struct LibplaceboVideoRenderer::Impl
 	RendererSettings activeSettings;
 	HWND videoHwnd = nullptr;
 	HMONITOR negotiatedMonitor = nullptr;
-	bool cursorPositioned = false;
 	bool hasPresentedFrame = false;
 	uint64_t nextPresentationTelemetryLogTick = 0;
 	uint64_t lastSubmittedScreenProfileRequest = 0;
@@ -7428,21 +7427,6 @@ struct LibplaceboVideoRenderer::Impl
 					renderMs);
 				lastSubmittedScreenProfileRequest = viewportRequestSerial;
 			}
-			if (!cursorPositioned)
-			{
-				// Move the pointer out of the picture once, but only if it is currently
-				// over this render window. The user remains free to move and use it.
-				POINT cursor{};
-				RECT window{};
-				if (GetCursorPos(&cursor) && GetWindowRect(videoHwnd, &window) &&
-					PtInRect(&window, cursor))
-				{
-					SetCursorPos(
-						std::max<LONG>(window.left, window.right - 2),
-						std::max<LONG>(window.top, window.bottom - 2));
-				}
-				cursorPositioned = true;
-			}
 			if (lastRenderedEotf != state.eotf ||
 				lastRenderedColorspace != state.colorspace)
 			{
@@ -7478,7 +7462,6 @@ struct LibplaceboVideoRenderer::Impl
 			DebugLog::Log("libplacebo: swapchain resize failed (%d x %d)", width, height);
 		else
 			ConfigureAndFallback("resize");
-		cursorPositioned = false;
 	}
 
 	void RenegotiateOutput()

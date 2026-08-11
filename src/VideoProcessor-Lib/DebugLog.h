@@ -25,7 +25,7 @@
 
 /**
  * Async VP logger that writes to logs\vp.log beneath the executable
- * directory when that user-managed logs directory is available
+ * directory and creates that directory on first run
  * Thread-safe file logging with timestamps - non-blocking for caller
  * 
  * OPTIMIZATION: Keeps file open in writer thread and batches writes to reduce I/O overhead
@@ -110,7 +110,10 @@ public:
 			const std::string logPath = GetExecutableLogFilePath();
 			GetSelectedLogPath() = logPath;
 			bool activeReady = false;
-			if (enhancedLogging)
+			const bool logDirectoryReady =
+				DebugLogRetention::EnsureParentDirectory(
+					logPath, initializationDiagnostics);
+			if (logDirectoryReady && enhancedLogging)
 			{
 				// Enhanced mode is intentionally forensic: leave the current log
 				// and every previous trace artifact intact until the user cleans up.
@@ -122,7 +125,7 @@ public:
 					initializationDiagnostics.push_back(
 						"Enhanced logging: cannot open active log '" + logPath + "'");
 			}
-			else
+			else if (logDirectoryReady)
 			{
 				auto rotation = DebugLogRetention::Rotate(logPath, retentionCount);
 				activeReady = rotation.activeReady;
@@ -132,8 +135,7 @@ public:
 			}
 			if (!activeReady)
 			{
-				// The logs directory is user-managed. Do not create it and do
-				// not write an alternate fallback log.
+				// Never redirect diagnostics into an unrelated working directory.
 				GetLoggingEnabled().store(false, std::memory_order_release);
 				return;
 			}

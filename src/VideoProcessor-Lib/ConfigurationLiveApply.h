@@ -56,6 +56,12 @@ namespace ConfigurationLiveApply
 
 	static const wchar_t ChangedEventName[] =
 		L"Local\\VideoProcessor.ConfigurationChanged.v1";
+
+	inline std::wstring ConfigurationEditorRevealEventName(uint32_t processId)
+	{
+		return L"Local\\VideoProcessor.ConfigEditor.Reveal." +
+			std::to_wstring(processId) + L".v1";
+	}
 	constexpr uint16_t VideoOnlyToggleDefaultKey = 'U';
 	constexpr uint8_t VideoOnlyToggleDefaultModifiers = 0x0c; // Ctrl+Shift
 	constexpr uint16_t ViewToggleDefaultKey = 0x0d; // Enter
@@ -86,13 +92,11 @@ namespace ConfigurationLiveApply
 	}
 
 	inline ConfigurationEditorToggleAction ResolveConfigurationEditorToggle(
-		bool, bool, bool revealPending)
+		bool, bool, bool)
 	{
-		if (revealPending)
-			return ConfigurationEditorToggleAction::CoalescePendingReveal;
 		// The configuration shortcut is an explicit reveal command.  It must
-		// never hide an editor the operator is actively using: the next press is
-		// expected to recover the editor from behind VP's video surface.
+		// never hide an editor or coalesce behind a stale launch attempt: every
+		// press is expected to recover it from renderer/fullscreen transitions.
 		return ConfigurationEditorToggleAction::RevealOrActivate;
 	}
 
@@ -205,6 +209,33 @@ namespace ConfigurationLiveApply
 		return appliedCaptureSequence == latestCaptureSequence;
 	}
 
+	// A restart request can be latched while no renderer exists (for example,
+	// when an editor apply and a capture-device transition overlap). Building a
+	// fresh renderer already fulfills that request; carrying it into the new
+	// generation would immediately stop the graph that was just constructed.
+	inline bool ShouldConsumeRestartForFreshRenderer(
+		bool hasRenderer, bool restartRequested)
+	{
+		return !hasRenderer && restartRequested;
+	}
+
+	// Capture-device changes are published before the old capture run is
+	// stopped. A no-signal device can legitimately have no video state (or no
+	// display mode), so automatic timing must not dereference either while the
+	// new selection is being applied.
+	inline bool HasUsableCaptureModeForAutoOffset(
+		bool hasVideoState, bool videoStateValid, bool hasDisplayMode)
+	{
+		return hasVideoState && videoStateValid && hasDisplayMode;
+	}
+
+	inline bool ShouldSelectFirstDiscoveredValue(
+		bool hasConfiguredValue, int currentSelection, int availableCount)
+	{
+		return !hasConfiguredValue && currentSelection < 0 &&
+			availableCount > 0;
+	}
+
 	inline bool ShouldRestoreAcceptedRendererAfterReload(
 		bool reloadSucceeded, bool hasAcceptedRenderer,
 		bool selectionDiffers)
@@ -304,6 +335,20 @@ namespace ConfigurationLiveApply
 		if (currentRendererTarget != 0)
 			return currentRendererTarget;
 		return windowedVideoTarget;
+	}
+
+	// Config must remain owned by the stable VP host. Renderer and fullscreen
+	// HWNDs are transient presentation targets used only for monitor placement;
+	// making either one the native owner recreates Qt's top-level HWND during a
+	// renderer/capture transition and interrupts active controls and popups.
+	inline uintptr_t SelectConfigurationEditorNativeOwner(
+		uintptr_t /*videoProcessorHost*/, uintptr_t /*presentationTarget*/)
+	{
+		// Config is a separate process with a tray lifetime. Cross-process native
+		// ownership makes Qt recreate its HWND after show/renderer transitions,
+		// dropping focus and invalidating reveal routing. Communication and monitor
+		// placement are carried separately, so no native owner is required.
+		return 0;
 	}
 
 	inline bool IsValidatedPresentationTargetProcess(

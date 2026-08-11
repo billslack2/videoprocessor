@@ -85,6 +85,16 @@ namespace
 		return static_cast<bool>(input) || input.eof();
 	}
 
+	bool ParentDirectoryExists(const std::wstring& path)
+	{
+		const size_t separator = path.find_last_of(L"\\/");
+		if (separator == std::wstring::npos) return true;
+		const std::wstring parent = path.substr(0, separator);
+		const DWORD attributes = GetFileAttributesW(parent.c_str());
+		return attributes != INVALID_FILE_ATTRIBUTES &&
+			(attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+	}
+
 	class DeleteOnExit
 	{
 	public:
@@ -107,6 +117,21 @@ namespace ConfigEditorCore
 		std::ifstream inputFile(ToNarrow(path), std::ios::binary);
 		if (!inputFile)
 		{
+			const DWORD attributes = GetFileAttributesW(path.c_str());
+			const DWORD failure = attributes == INVALID_FILE_ATTRIBUTES ?
+				GetLastError() : ERROR_SUCCESS;
+			if (attributes == INVALID_FILE_ATTRIBUTES &&
+				(failure == ERROR_FILE_NOT_FOUND ||
+					failure == ERROR_PATH_NOT_FOUND) &&
+				ParentDirectoryExists(path))
+			{
+				lines.clear();
+				loadedBytes.clear();
+				lineEnding = "\r\n";
+				hasTerminalLineEnding = true;
+				existedAtLoad = false;
+				return true;
+			}
 			error = L"Cannot open " + path;
 			return false;
 		}
@@ -114,6 +139,7 @@ namespace ConfigEditorCore
 		const std::string text((std::istreambuf_iterator<char>(inputFile)),
 			std::istreambuf_iterator<char>());
 		loadedBytes = text;
+		existedAtLoad = true;
 		lineEnding = text.find("\r\n") != std::string::npos ? "\r\n" : "\n";
 		hasTerminalLineEnding = !text.empty() &&
 			(text.back() == '\r' || text.back() == '\n');
@@ -520,34 +546,54 @@ namespace ConfigEditorCore
 	{
 		result = {};
 		if (!ValidateCandidate(document, error)) return false;
+		const bool creatingConfiguration = !document.existedAtLoad;
 
-		std::string currentBytes;
-		if (!ReadBytes(document.path, currentBytes))
+		if (document.existedAtLoad)
 		{
-			error = L"Could not re-read the configuration before saving. "
-				L"The configuration was not changed.";
-			return false;
-		}
-		if (currentBytes != document.loadedBytes)
-		{
-			error = L"The configuration changed outside this editor after it was "
-				L"loaded. Reload and review those changes before saving.";
-			return false;
-		}
+			std::string currentBytes;
+			if (!ReadBytes(document.path, currentBytes))
+			{
+				error = L"Could not re-read the configuration before saving. "
+					L"The configuration was not changed.";
+				return false;
+			}
+			if (currentBytes != document.loadedBytes)
+			{
+				error = L"The configuration changed outside this editor after it was "
+					L"loaded. Reload and review those changes before saving.";
+				return false;
+			}
 
-		const std::wstring backup = UniqueBackupPath(document.path);
-		if (backup.empty())
-		{
-			error = L"Could not choose a unique backup name. The configuration "
-				L"was not changed.";
-			return false;
+			const std::wstring backup = UniqueBackupPath(document.path);
+			if (backup.empty())
+			{
+				error = L"Could not choose a unique backup name. The configuration "
+					L"was not changed.";
+				return false;
+			}
+			if (!CopyFileW(document.path.c_str(), backup.c_str(), TRUE))
+			{
+				error = L"Could not create a backup. The configuration was not changed.";
+				return false;
+			}
+			result.backupPath = backup;
 		}
-		if (!CopyFileW(document.path.c_str(), backup.c_str(), TRUE))
+		else
 		{
-			error = L"Could not create a backup. The configuration was not changed.";
-			return false;
+			const DWORD attributes = GetFileAttributesW(document.path.c_str());
+			if (attributes != INVALID_FILE_ATTRIBUTES)
+			{
+				error = L"The configuration was created outside this editor after it "
+					L"was opened. Reload and review it before saving.";
+				return false;
+			}
+			const DWORD failure = GetLastError();
+			if (failure != ERROR_FILE_NOT_FOUND && failure != ERROR_PATH_NOT_FOUND)
+			{
+				error = L"Could not verify that the new configuration path is unused.";
+				return false;
+			}
 		}
-		result.backupPath = backup;
 
 		const std::wstring temporary = document.path + L".vpconfig-write.tmp";
 		DeleteOnExit removeTemporary(temporary);
@@ -559,11 +605,14 @@ namespace ConfigEditorCore
 		if (!MoveFileExW(temporary.c_str(), document.path.c_str(),
 			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 		{
-			error = L"Could not replace the configuration. Backup retained at:\n" +
-				backup;
+			error = creatingConfiguration ?
+				L"Could not create the configuration from the validated temporary file." :
+				L"Could not replace the configuration. Backup retained at:\n" +
+					result.backupPath;
 			return false;
 		}
 		document.loadedBytes = document.Serialize();
+		document.existedAtLoad = true;
 		return true;
 	}
 }

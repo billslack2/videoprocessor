@@ -21,6 +21,7 @@ namespace ConfigEditorCore
 		// current file immediately before writing so an external edit is never
 		// silently overwritten.
 		std::string loadedBytes;
+		bool existedAtLoad = false;
 
 		bool Load(const std::wstring& input, std::wstring& error);
 
