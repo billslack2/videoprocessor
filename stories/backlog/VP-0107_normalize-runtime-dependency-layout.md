@@ -2,10 +2,13 @@
 
 ## Status
 
-Backlog (2026-08-09). Deployment inspection found runtime DLLs both beside the
-executables and in the legacy `vprenderer\` directory. The active deployment
-uses DirectShow/madVR, but the optional renderer payload must remain launchable
-when selected. No implementation branch or worktree has been created.
+Backlog (updated 2026-08-11). Deployment inspection found runtime DLLs both
+beside the executables and in the legacy `vprenderer\` directory, plus duplicate
+shader asset trees under the VP Renderer payload. The deployed tree may also
+contain libraries left by older packaging passes that are no longer imported or
+loaded. The active deployment uses DirectShow/madVR, but the optional renderer
+payload must remain launchable when selected. No implementation branch or
+worktree has been created.
 
 ## User story
 
@@ -54,6 +57,17 @@ accidentally loading a wrong DLL.
    clean staging directory, preserve third-party license obligations, and
    avoid copying historical `.bak`, `.pdb`, `.lib`, `.exp`, or cache artifacts
    into a release.
+6. Inventory every shipped DLL, library, Qt plugin, shader file/tree, and other
+   runtime asset. Record its owner, source package/version, destination,
+   consumer, and proof that it is required at runtime; remove artifacts with no
+   demonstrated consumer instead of carrying them forward speculatively.
+7. Resolve the duplicate shader folders under `vprenderer\`. Establish one
+   canonical shader source and staged destination, update lookup paths as
+   needed, and prove that built-in and configured shaders still load without a
+   fallback duplicate copy.
+8. Make packaging deterministic and stale-file-safe: the packaged result must
+   come from an empty staging directory and be defined by an explicit manifest
+   or equivalent allowlist, not by copying the contents of a prior deployment.
 
 ## Non-goals
 
@@ -66,10 +80,17 @@ accidentally loading a wrong DLL.
 ## Acceptance criteria
 
 - A documented release-tree manifest classifies every shipped DLL and mutable
-  artifact by owner and load mechanism.
+  artifact by owner, source/version, consumer, destination, and load mechanism.
+- Every shipped DLL and library has positive import/load evidence or a
+  documented runtime reason to remain. Files found only in an old deployment,
+  build output, PATH, or developer machine are not silently included.
 - The root contains only executable-adjacent dependencies that Windows must
   resolve before application code runs; plugin-private libraries are present
   only in the canonical plugin directory.
+- Exactly one packaged copy of each VP Renderer shader asset exists. Shader
+  discovery and compilation succeed from a clean extracted package with no
+  source tree, build tree, prior deployment, or duplicate shader directory
+  available.
 - Selecting the optional renderer succeeds with its plugin installed and is
   safely unavailable when its entire directory is absent; loading never falls
   back to a same-named root/PATH DLL.
@@ -78,11 +99,18 @@ accidentally loading a wrong DLL.
 - A deployment dry run proves the active configuration remains untouched and
   release staging contains no historical DLL backups, build symbols, or stale
   duplicate private libraries.
+- A clean-machine-equivalent smoke test launches the main application and
+  configuration editor, discovers capture/render devices, and exercises both
+  DirectShow and VP Renderer selection from the packaged tree. Missing required
+  dependencies fail with an actionable file/path diagnostic rather than a dead
+  launch.
 - Focused loader/layout tests and an x64 Release build pass.
 
 ## Dependencies and next action
 
-Before implementation, inventory PE import tables for both executables and
-the renderer plugin, decide whether the canonical plugin directory is
-`vprenderer\` or `libplacebo\`, and confirm the default integration branch
-under the tracker workflow gate.
+Before implementation, inventory PE import tables for both executables and the
+renderer plugin; trace dynamic loads and asset lookup paths during launch and
+both renderer selections; compare the source staging rules, a fresh Release
+staging tree, and the deployed tree; decide whether the canonical plugin
+directory is `vprenderer\` or `libplacebo\`; and confirm the default integration
+branch under the tracker workflow gate.
