@@ -854,6 +854,40 @@ void testScreenConfigSectionsAndInlineUnits()
         "Screen Config section expansion state changed when selecting another profile");
 }
 
+void testActiveProfileMarkersCoverRelevantLists()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    auto* queue = requireControl<QListWidget>(window, QStringLiteral("config.queue.profiles"));
+    auto* renderer = requireControl<QListWidget>(window, QStringLiteral("config.vprenderer.profiles"));
+    auto* viewport = requireControl<QListWidget>(window, QStringLiteral("config.vprenderer.viewport.profiles"));
+    auto* shader = requireControl<QListWidget>(window, QStringLiteral("config.shader.nls.modes"));
+    window.setActiveProfileStatusForTesting(
+        queue->item(0)->data(Qt::UserRole).toString(),
+        renderer->item(0)->data(Qt::UserRole).toString(),
+        viewport->item(0)->data(Qt::UserRole).toString(), QString());
+    require(queue->item(0)->data(Qt::UserRole + 12).toBool() &&
+        renderer->item(0)->data(Qt::UserRole + 12).toBool() &&
+        viewport->item(0)->data(Qt::UserRole + 12).toBool() &&
+        shader->item(0)->data(Qt::UserRole + 12).toBool(),
+        "A resolved active profile did not receive its active marker");
+
+    window.selectPage(1);
+    window.show();
+    QCoreApplication::processEvents();
+    queue->setCurrentRow(0);
+    QCoreApplication::processEvents();
+    const QRect row = queue->visualItemRect(queue->item(0));
+    const QImage pixels = queue->viewport()->grab().toImage();
+    const QColor dot = pixels.pixelColor(8, row.center().y());
+    const QColor selectedBackground = pixels.pixelColor(2, row.center().y());
+    require(dot.green() > dot.red() && dot.green() > dot.blue(),
+        "The active marker was not painted as a green dot");
+    require(selectedBackground.blue() > selectedBackground.red() &&
+        selectedBackground.blue() > selectedBackground.green(),
+        "The selected active row did not retain a full-width blue background");
+}
+
 void testLutSelectorDiscoversInstallationLutFiles()
 {
     QTemporaryDir directory;
@@ -2297,6 +2331,7 @@ int main(int argc, char** argv)
     failures += run("disabling shader rule preserves shortcut", testDisablingShaderRulePreservesShortcut);
     failures += run("renderer profile sections collapse and persist", testRendererProfileSectionsCollapseAndPersist);
     failures += run("Screen Config sections and inline units", testScreenConfigSectionsAndInlineUnits);
+    failures += run("active profile markers cover relevant lists", testActiveProfileMarkersCoverRelevantLists);
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
     failures += run("choice labels and VP Renderer name", testChoiceLabelsAndVpRendererName);
     failures += run("legacy renderer visibility remains manual and preserved", testLegacyRendererVisibilityRemainsManualAndPreserved);
