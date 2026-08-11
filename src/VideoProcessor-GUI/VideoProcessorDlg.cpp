@@ -8,6 +8,7 @@
 
 #include <pch.h>
 #include <ApplicationShutdownPolicy.h>
+#include <BuildIdentityPolicy.h>
 #include <ModernOperatorLayout.h>
 #include <ModernOperatorStatusPolicy.h>
 
@@ -9197,7 +9198,9 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	EnableDynamicLayout(FALSE);
 
 	CString title;
-	title.Format(_T("VideoProcessor (%s)"), VERSION_DESCRIBE);
+	const std::wstring buildIdentity = BuildIdentityPolicy::Format(
+		VERSION_BRANCH, VERSION_COMMIT_SHORT, VERSION_DESCRIBE);
+	title.Format(_T("VideoProcessor (%s)"), buildIdentity.c_str());
 	SetWindowText(title.GetBuffer());
 
 	SetIcon(m_hIcon, FALSE);
