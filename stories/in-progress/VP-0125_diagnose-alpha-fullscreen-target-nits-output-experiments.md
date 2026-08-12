@@ -22,11 +22,11 @@ change has occurred.
 
 ## Implementation record: guarded first experiment slice
 
-`aa08b8c`, followed by the uncommitted UI/logging slice in the same clean
-worktree, adds a deliberately bounded source-level experiment without making
-the pair a normal output default. The completed local source commits are
-`aa08b8c` (guarded output path) and `d3d358b` (UI and output-capability
-logging):
+`aa08b8c`, `d3d358b`, and `eb73951` in the same clean worktree add a
+deliberately bounded source-level experiment without making the pair a normal
+output default. The completed local source commits are `aa08b8c` (guarded
+output path), `d3d358b` (UI and output-capability logging), and `eb73951`
+(profiles and the VP-owned DXGI swapchain beta):
 
 - `diagnostic_allow_limited_g22: true`, together with
   `output_range: limited` and `output_gamma: 2.2`, builds a pure
@@ -39,7 +39,8 @@ logging):
   compute shaders disabled. `diagnostic_force_8bit_sdr_swapchain` requests an
   8-bit SDR swapchain rather than the normal 10-bit preference. Both are
   developer experiments, never raw flag inputs.
-- All three settings participate in the restart fingerprint. The host follows
+- The diagnostic settings, including the VP-owned swapchain switch, participate
+  in the restart fingerprint. The host follows
   its existing complete renderer replacement path, which recreates device,
   renderer, swapchain, peak/cache state, and presentation generation before
   measurement. The code logs requested settings, D3D11 feature level/software
@@ -48,24 +49,42 @@ logging):
 - The Windows `IDXGISwapChain3` API used here has no `GetColorSpace1` getter.
   Therefore current evidence is explicitly labelled Check/Set/Check and
   `active_readback=unavailable`, not falsely reported as active DXGI state.
-  A future VP-owned swapchain must carry VP's applied state internally and
-  distinguish that logical state from wire/display confirmation.
+  The beta VP-owned swapchain path now carries VP's applied Check/Set/Check
+  record internally and still distinguishes that logical state from
+  wire/display confirmation.
 - VP Renderer: Rendering now exposes an independently collapsed **Output
   Experiments (beta)** section. Its controls are editable and saved with the
-  selected renderer profile. **Restore Recommended Defaults** turns off only
-  the experiment/diagnostic controls (Limited/Gamma-2.2, no-compute,
-  force-8-bit, output diagnostics, and shader-cache disablement), preserving
-  range, gamma, nits, presentation, and tone settings for a controlled A/B
-  return. A focused Qt test verifies save and reset persistence.
+  selected renderer profile. `legacy` writes the exact existing shipping
+  presentation/range/gamma/diagnostic values. `proposed` writes the controlled
+  candidate (`direct`, Limited, pure 2.2 with guarded G22, VP-owned 10-bit
+  flip swapchain, and detailed logging). `custom` exposes and persists those
+  same individual values; changing one converts the selected profile to
+  `custom`. **Restore Recommended Defaults** writes the complete `legacy`
+  output-path configuration, without changing nits, tone mapping, capture, or
+  geometry settings. A focused Qt test verifies proposed save, custom
+  transition, and legacy reset persistence.
+- `diagnostic_vp_owned_dxgi_presenter: true` is the first implementation
+  stage of the intended architecture, accurately labelled **VP-owned DXGI
+  swapchain (beta)** in the UI. VP creates the swapchain with
+  `IDXGIFactory2::CreateSwapChainForHwnd` (R10G10B10A2 by default, B8G8R8A8
+  only for the 8-bit experiment; flip-discard/three buffers or bitblt/one
+  buffer), applies the selected DXGI colour space itself, and records the
+  request, HRESULT, and post-check result. Libplacebo wraps that same
+  swapchain for rendering and still submits/presents in this stage. It is
+  therefore not yet the production VP-owned presentation loop; resize,
+  fullscreen, timing, and physical-display validation remain required.
 - Output logging now records `IDXGIOutput6::GetDesc1` capabilities when
   available: Windows-reported display colour space, bits per colour, and
   minimum, peak, and full-frame luminance. This remains evidence about the
   desktop/output, distinct from the swapchain colour-space request.
 
-Focused `LibplaceboOutputPolicyTests` passed 31/31. x64 Release
-`VideoProcessor-VPRenderer` and `VideoProcessor-ConfigTests` builds passed;
-the focused Output Experiments persistence/reset and renderer-section UI tests
-passed. The broader Config Editor test group
+Focused `LibplaceboOutputPolicyTests` passed 31/31 before this profile/swapchain
+slice. x64 Release `VideoProcessor-VPRenderer` and
+`VideoProcessor-ConfigTests` builds pass for the current slice; the focused
+Output Experiments profile persistence/reset test passes. The legacy
+`VideoProcessor-Test` executable currently cannot link because the toolchain
+reports corrupt debug information from an unrelated `VideoProcessor-Lib`
+object even after rebuilding that library. The broader Config Editor test group
 currently has two pre-existing failures around `default_screen_profile`; they
 do not exercise these output-policy tests. Physical display, fullscreen, HDR,
 and target-nits validation remain outstanding.
