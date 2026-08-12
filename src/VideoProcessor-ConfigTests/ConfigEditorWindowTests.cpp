@@ -760,11 +760,21 @@ void testRendererProfileSectionsCollapseAndPersist()
     require(window.findChild<QComboBox*>(
         QStringLiteral("config.vprenderer.deband")) == nullptr,
         "The overlapping legacy debanding toggle is still exposed");
-    require(window.findChild<QCheckBox*>(
-        QStringLiteral("config.vprenderer.output_diagnostics")) == nullptr &&
-        window.findChild<QCheckBox*>(
-        QStringLiteral("config.vprenderer.diagnostic_disable_shader_cache")) == nullptr,
-        "Diagnostic-only renderer switches are still exposed in the editor");
+    QToolButton* outputExperiments = requireControl<QToolButton>(window,
+        QStringLiteral("rendererSection.outputExperiments"));
+    require(!outputExperiments->isChecked(),
+        "Output experiments were expanded initially");
+    require(requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.output_diagnostics")) &&
+        requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.diagnostic_disable_shader_cache")) &&
+        requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.diagnostic_disable_compute")) &&
+        requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.diagnostic_force_8bit_sdr_swapchain")) &&
+        requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.diagnostic_allow_limited_g22")),
+        "Output experiment controls are missing from the editor");
     require(requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.report_bt2020_to_display")) &&
         requireControl<QCheckBox>(window,
@@ -805,6 +815,48 @@ void testRendererProfileSectionsCollapseAndPersist()
     require(saved.contains("deband_strength: light") &&
         !saved.contains("\ndeband:"),
         "Saving the canonical debanding control left an overlapping legacy key");
+}
+
+void testOutputExperimentsPersistAndRestoreDefaults()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    window.selectPage(2);
+    window.show();
+    QCoreApplication::processEvents();
+
+    QToolButton* section = requireControl<QToolButton>(window,
+        QStringLiteral("rendererSection.outputExperiments"));
+    section->click();
+    QCheckBox* limitedG22 = requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.diagnostic_allow_limited_g22"));
+    QCheckBox* noCompute = requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.diagnostic_disable_compute"));
+    QCheckBox* force8Bit = requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.diagnostic_force_8bit_sdr_swapchain"));
+    limitedG22->setChecked(true);
+    noCompute->setChecked(true);
+    force8Bit->setChecked(true);
+    save(window);
+    const QByteArray configured = readBytes(path);
+    require(configured.contains("diagnostic_allow_limited_g22: true") &&
+        configured.contains("diagnostic_disable_compute: true") &&
+        configured.contains("diagnostic_force_8bit_sdr_swapchain: true"),
+        "Output experiment controls did not persist with the renderer profile");
+
+    answerMessageBox(QMessageBox::Yes);
+    requireControl<QPushButton>(window,
+        QStringLiteral("config.vprenderer.output_experiments.reset_defaults"))->click();
+    require(!limitedG22->isChecked() && !noCompute->isChecked() &&
+        !force8Bit->isChecked(),
+        "Restore Recommended Defaults did not reset the output experiment controls");
+    save(window);
+    const QByteArray restored = readBytes(path);
+    require(restored.contains("diagnostic_allow_limited_g22: false") &&
+        restored.contains("diagnostic_disable_compute: false") &&
+        restored.contains("diagnostic_force_8bit_sdr_swapchain: false"),
+        "Restored output experiment defaults did not persist");
 }
 
 void testScreenConfigSectionsAndInlineUnits()
@@ -2619,6 +2671,8 @@ int main(int argc, char** argv)
     failures += run("virtual shader Off option persists", testVirtualShaderOffOptionPersistsWhenConfigured);
     failures += run("disabling shader rule preserves shortcut", testDisablingShaderRulePreservesShortcut);
     failures += run("renderer profile sections collapse and persist", testRendererProfileSectionsCollapseAndPersist);
+    failures += run("output experiments persist and restore defaults",
+        testOutputExperimentsPersistAndRestoreDefaults);
     failures += run("Screen Config sections and inline units", testScreenConfigSectionsAndInlineUnits);
     failures += run("queue units and LUT controls use consistent rows",
         testQueueUnitsAndLutControlsUseConsistentRows);

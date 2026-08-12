@@ -39,7 +39,7 @@
 #include <libplacebo/utils/upload.h>
 #pragma warning(pop)
 
-#include <dxgi1_4.h>
+#include <dxgi1_6.h>
 #include <nvapi.h>
 
 #include <algorithm>
@@ -4132,6 +4132,24 @@ struct LibplaceboVideoRenderer::Impl
 					haveMode ? mode.dmDisplayFrequency : 0,
 					haveMode ? mode.dmBitsPerPel : 0);
 			}
+			CComQIPtr<IDXGIOutput6> output6(output);
+			DXGI_OUTPUT_DESC1 outputDesc1{};
+			const HRESULT output6Result = output6 ? output6->GetDesc1(&outputDesc1) :
+				E_NOINTERFACE;
+			if (SUCCEEDED(output6Result))
+			{
+				DebugLog::Log(
+					"libplacebo DXGI output capabilities: color_space=%u bits_per_color=%u min_luminance=%.4f max_luminance=%.1f max_full_frame_luminance=%.1f",
+					static_cast<unsigned int>(outputDesc1.ColorSpace),
+					static_cast<unsigned int>(outputDesc1.BitsPerColor),
+					outputDesc1.MinLuminance,
+					outputDesc1.MaxLuminance,
+					outputDesc1.MaxFullFrameLuminance);
+			}
+			else
+				DebugLog::Log(
+					"libplacebo DXGI output capabilities unavailable: result=0x%08lX",
+					static_cast<unsigned long>(output6Result));
 		}
 
 		CComQIPtr<IDXGISwapChain3> swapchain3(nativeSwapchain);

@@ -2483,8 +2483,68 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         addChoice(QStringLiteral("LUT reference transfer"), QStringLiteral("lut_reference_transfer"), { QStringLiteral("AUTO"), QStringLiteral("srgb"), QStringLiteral("bt1886"), QStringLiteral("2.2"), QStringLiteral("2.4") });
         addChoice(QStringLiteral("LUT reference primaries"), QStringLiteral("lut_reference_primaries"), { QStringLiteral("AUTO"), QStringLiteral("REC709"), QStringLiteral("P3_D65"), QStringLiteral("BT2020") });
 
-        // Diagnostic-only renderer switches remain supported in manual config,
-        // but deliberately stay out of the normal configuration UI.
+        form = addCollapsibleSection(QStringLiteral("outputExperiments"),
+            QStringLiteral("Output Experiments (beta)"), QStringLiteral(
+                "Diagnostic output controls for repeatable renderer testing. "
+                "Changes are saved with this renderer profile; Apply recreates "
+                "the renderer before they take effect."), false);
+        form->addRow(QString(), helpLabel(QStringLiteral(
+            "The limited + pure Gamma 2.2 path is an experiment: use it only "
+            "with Output range set to Limited and Output gamma set to 2.2. "
+            "Restore Recommended Defaults turns off only the controls in this "
+            "section; it does not change presentation, range, gamma, or tone settings.")));
+        addBoolean(QStringLiteral("Enable limited + pure Gamma 2.2 experiment"),
+            QStringLiteral("diagnostic_allow_limited_g22"));
+        addBoolean(QStringLiteral("Disable D3D11 compute shaders"),
+            QStringLiteral("diagnostic_disable_compute"));
+        addBoolean(QStringLiteral("Force 8-bit SDR swapchain"),
+            QStringLiteral("diagnostic_force_8bit_sdr_swapchain"));
+        addBoolean(QStringLiteral("Capture detailed output diagnostics"),
+            QStringLiteral("output_diagnostics"));
+        addBoolean(QStringLiteral("Disable shader cache"),
+            QStringLiteral("diagnostic_disable_shader_cache"));
+        auto* resetOutputExperiments = new QPushButton(
+            QStringLiteral("Restore Recommended Defaults"));
+        resetOutputExperiments->setObjectName(
+            QStringLiteral("config.vprenderer.output_experiments.reset_defaults"));
+        resetOutputExperiments->setToolTip(QStringLiteral(
+            "Turn off this profile's output experiment and diagnostic controls."));
+        resetOutputExperiments->setAccessibleName(
+            QStringLiteral("Restore recommended output experiment defaults"));
+        connect(resetOutputExperiments, &QPushButton::clicked, this,
+            [this, state, fields]
+        {
+            if (state->section.isEmpty() || !document_) return;
+            if (QMessageBox::question(this,
+                QStringLiteral("Restore output experiment defaults"),
+                QStringLiteral("Turn off all output experiment and diagnostic "
+                    "controls for this renderer profile? Other renderer settings "
+                    "will not change."),
+                QMessageBox::Yes | QMessageBox::Cancel,
+                QMessageBox::Cancel) != QMessageBox::Yes) return;
+            static constexpr const char* keys[] = {
+                "diagnostic_allow_limited_g22",
+                "diagnostic_disable_compute",
+                "diagnostic_force_8bit_sdr_swapchain",
+                "output_diagnostics",
+                "diagnostic_disable_shader_cache"
+            };
+            const std::string section = state->section.toStdString();
+            for (const char* key : keys)
+            {
+                document_->SetKnown(section, key, "false");
+                for (const Field& field : *fields)
+                    if (field.key == QString::fromLatin1(key) &&
+                        field.kind == Field::Boolean)
+                    {
+                        const QSignalBlocker blocker(field.widget);
+                        qobject_cast<QCheckBox*>(field.widget)->setChecked(false);
+                        break;
+                    }
+            }
+            markDirty();
+        });
+        form->addRow(QString(), resetOutputExperiments);
     }
     else if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
     {
