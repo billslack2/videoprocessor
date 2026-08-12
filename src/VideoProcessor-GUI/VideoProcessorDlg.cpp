@@ -5275,8 +5275,13 @@ void CVideoProcessorDlg::ApplyShaderRuleCommand(UINT commandId)
 
 bool CVideoProcessorDlg::ApplyRequestedShaderSelection()
 {
-	if (!m_videoRenderer || m_requestedShaderSelector.IsEmpty())
+	if (!m_videoRenderer)
 		return true;
+	if (m_requestedShaderSelector.IsEmpty())
+	{
+		PublishActiveProfileStatus();
+		return true;
+	}
 
 	CString activeRule;
 	bool rendererRestartRequired = false;
@@ -5298,6 +5303,7 @@ bool CVideoProcessorDlg::ApplyRequestedShaderSelection()
 			"Restored shader selector requested an additional renderer negotiation");
 		m_wantToRestartRenderer = true;
 	}
+	PublishActiveProfileStatus();
 	return true;
 }
 
@@ -7222,6 +7228,7 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 			&m_videoRenderer,
 			std::shared_ptr<IVideoRenderer>(),
 			std::memory_order_acq_rel);
+	PublishActiveProfileStatus();
 	m_dropDiagnosticRenderer = nullptr;
 	m_dropDiagnosticInitialized = false;
 	rendererToDestroy->SetResetRequestSink({});
@@ -8885,6 +8892,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	{
 		const bool rendererAcceptedState =
 			m_videoRenderer->OnVideoState(m_builtVideoState);
+		PublishActiveProfileStatus();
 
 		if (!rendererAcceptedState)
 		{
@@ -8922,9 +8930,18 @@ void CVideoProcessorDlg::PublishActiveProfileStatus()
 {
 	const auto snapshot = m_profileRuntime.GetSnapshot();
 	if (!snapshot) return;
+	std::vector<CString> rendererSections;
+	const bool shaderAvailable = m_videoRenderer &&
+		m_videoRenderer->GetActiveShaderSections(rendererSections);
+	std::vector<std::string> shaderSections;
+	shaderSections.reserve(rendererSections.size());
+	for (const CString& section : rendererSections)
+		shaderSections.emplace_back(CStringA(section).GetString());
+	const uint64_t rendererGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
 	ActiveProfileStatus::Publish(GetCurrentProcessId(), snapshot->generation,
-		snapshot->effectiveSelections,
-		CStringA(m_requestedShaderSelector).GetString());
+		snapshot->effectiveSelections, rendererGeneration, shaderAvailable,
+		shaderSections);
 }
 
 void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(

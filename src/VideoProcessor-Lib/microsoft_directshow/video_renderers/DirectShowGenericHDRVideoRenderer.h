@@ -49,6 +49,11 @@ public:
 	bool OnVideoState(VideoStateComPtr&) override;
 	void OnPaint() override { /* not implemented */ }
 	std::vector<CString> ActiveShaders() const override { return m_activeShaders; }
+	bool GetActiveShaderSections(std::vector<CString>& sections) const override
+	{
+		sections = m_activeShaderSections;
+		return m_activeShaderSectionsAvailable;
+	}
 	CString ActiveShaderRule() const override { return m_activeShaderRule; }
 	bool SelectShaderRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
@@ -106,6 +111,8 @@ private:
 	CString m_activeShaderRule = TEXT("None");
 	CString m_activeShaderCompanionLabel;
 	std::vector<CString> m_activeShaders;
+	std::vector<CString> m_activeShaderSections;
+	bool m_activeShaderSectionsAvailable = false;
 	unsigned long m_outputAspectRatioX = 0;
 	unsigned long m_outputAspectRatioY = 0;
 	CString m_requestedShaderRule;

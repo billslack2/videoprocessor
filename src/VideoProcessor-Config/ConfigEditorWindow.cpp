@@ -743,37 +743,48 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     const bool available = ActiveProfileStatus::Read(expectedProcessId, active);
     const QString renderer = available ? QString::fromLocal8Bit(active.renderer) : QString();
     const QString viewport = available ? QString::fromLocal8Bit(active.viewport) : QString();
-    const QString shader = available ? QString::fromLocal8Bit(active.shader) : QString();
     const QString queue = available ? QString::fromLocal8Bit(active.queue) : QString();
-    applyActiveProfileIndicators(available, queue, renderer, viewport, shader);
+    const bool shaderAvailable = available &&
+        ActiveProfileStatus::ShaderSetIsCurrent(active);
+    QStringList shaders;
+    if (shaderAvailable)
+        for (uint32_t index = 0; index < active.shaderCount; ++index)
+            shaders.push_back(QString::fromLocal8Bit(active.shaders[index]));
+    applyActiveProfileIndicators(available, queue, renderer, viewport,
+        shaders, shaderAvailable);
 }
 
 void ConfigEditorWindow::setActiveProfileStatusForTesting(const QString& queue,
-    const QString& renderer, const QString& viewport, const QString& shader)
+    const QString& renderer, const QString& viewport,
+    const QStringList& shaders, bool shaderAvailable)
 {
-    applyActiveProfileIndicators(true, queue, renderer, viewport, shader);
+    applyActiveProfileIndicators(true, queue, renderer, viewport, shaders,
+        shaderAvailable);
 }
 
 void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
     const QString& queue, const QString& renderer, const QString& viewport,
-    const QString& shader)
+    const QStringList& shaders, bool shaderAvailable)
 {
     for (const ProfileListBinding& binding : activeProfileLists_)
     {
-        QString activeSection = binding.sectionPrefix == QStringLiteral("vprenderer") ? renderer :
+        const bool shaderList = binding.sectionPrefix.startsWith(
+            QStringLiteral("shader."));
+        const QString activeSection = binding.sectionPrefix == QStringLiteral("vprenderer") ? renderer :
             (binding.sectionPrefix == QStringLiteral("vprenderer.viewport") ? viewport :
-                (binding.sectionPrefix == QStringLiteral("queue") ? queue : shader));
-        // An empty runtime shader selector means the built-in Off entry is in
-        // effect; it is not an unavailable or guessed shader state.
-        if (available && binding.sectionPrefix == QStringLiteral("shader.nls") &&
-            activeSection.isEmpty())
-            activeSection = QStringLiteral("shader.nls");
+                (binding.sectionPrefix == QStringLiteral("queue") ? queue : QString()));
         for (int index = 0; binding.list && index < binding.list->count(); ++index)
         {
             QListWidgetItem* item = binding.list->item(index);
-            const bool isActive = !activeSection.isEmpty() &&
-                item->data(Qt::UserRole).toString().compare(activeSection,
-                    Qt::CaseInsensitive) == 0;
+            const QString section = item->data(Qt::UserRole).toString();
+            const bool isActive = shaderList ?
+                (shaderAvailable && std::any_of(shaders.cbegin(), shaders.cend(),
+                    [&section](const QString& shader)
+                    {
+                        return shader.compare(section, Qt::CaseInsensitive) == 0;
+                    })) :
+                (available && !activeSection.isEmpty() &&
+                    section.compare(activeSection, Qt::CaseInsensitive) == 0);
             item->setData(ActiveProfileRole, isActive);
         }
     }

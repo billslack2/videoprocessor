@@ -2491,24 +2491,31 @@ namespace VideoProcessorTest
 			ConfigFile config;
 			Assert::IsTrue(config.Load(path));
 			std::vector<ConfiguredShaderRule> selection;
+			std::vector<std::string> activeSections;
 			std::string error;
 			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
 				config, "@shader-key:n", ShaderRendererBackend::LIBPLACEBO,
-				selection, error),
+				selection, activeSections, error),
 				std::wstring(error.begin(), error.end()).c_str());
 			Assert::AreEqual(static_cast<size_t>(1), selection.size());
 			Assert::IsTrue(selection.front().none,
 				L"The empty shader root must explicitly turn Alpha NLS off");
+			Assert::AreEqual(static_cast<size_t>(1), activeSections.size());
+			Assert::AreEqual("shader.nls", activeSections.front().c_str());
 
 			selection.clear();
+			activeSections.clear();
 			error.clear();
 			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
 				config, "@shader-key:Shift+N", ShaderRendererBackend::LIBPLACEBO,
-				selection, error),
+				selection, activeSections, error),
 				std::wstring(error.begin(), error.end()).c_str());
 			Assert::AreEqual(static_cast<size_t>(1), selection.size());
 			Assert::IsTrue(selection.front().nls,
 				L"A shader member shortcut must select its NLS effect");
+			Assert::AreEqual(static_cast<size_t>(1), activeSections.size());
+			Assert::AreEqual("shader.nls.standard",
+				activeSections.front().c_str());
 			DeleteFileA(path.c_str());
 		}
 

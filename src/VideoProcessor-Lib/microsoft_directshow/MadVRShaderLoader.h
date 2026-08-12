@@ -33,6 +33,8 @@ struct MadVRShaderSelection
 	// with its current mapping mode.
 	std::string companionRuleLabel;
 	std::vector<ActiveMadVRShader> activeShaders;
+	std::vector<std::string> activeSections;
+	bool activeSectionsAvailable = false;
 	unsigned long outputAspectRatioX = 0;
 	unsigned long outputAspectRatioY = 0;
 };
@@ -116,12 +118,22 @@ public:
 		ShaderRendererBackend backend,
 		std::vector<ConfiguredShaderRule>& selection,
 		std::string& reason);
+	static bool GetConfiguredRuleSelection(const std::string& ruleName,
+		ShaderRendererBackend backend,
+		std::vector<ConfiguredShaderRule>& selection,
+		std::vector<std::string>& activeSections,
+		std::string& reason);
 	// Resolves a rule selection from an already-loaded configuration.  Keeping
 	// this separate from the active-file wrapper makes the target shader grammar
 	// directly testable and preserves an empty target selection as explicit OFF.
 	static bool ResolveConfiguredRuleSelection(const ConfigFile& config,
 		const std::string& ruleName, ShaderRendererBackend backend,
 		std::vector<ConfiguredShaderRule>& selection,
+		std::string& reason);
+	static bool ResolveConfiguredRuleSelection(const ConfigFile& config,
+		const std::string& ruleName, ShaderRendererBackend backend,
+		std::vector<ConfiguredShaderRule>& selection,
+		std::vector<std::string>& activeSections,
 		std::string& reason);
 	// Enumerates configured GLSL NLS rules so Alpha can qualify their current
 	// output-size variants behind the startup cover before live presentation.

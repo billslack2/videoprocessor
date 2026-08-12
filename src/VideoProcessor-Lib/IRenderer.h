@@ -353,6 +353,15 @@ public:
 	// Successfully installed renderer-native shader chain, formatted for display
 	// as entries such as "Pre: Debanding" or "Post: Adaptive sharpen".
 	virtual std::vector<CString> ActiveShaders() const { return {}; }
+	// Stable configuration section identities for the renderer-resolved shader
+	// set. False means this backend cannot report an authoritative set; an empty
+	// vector with true means a supported composable group has no active members.
+	virtual bool GetActiveShaderSections(
+		std::vector<CString>& sections) const
+	{
+		sections.clear();
+		return false;
+	}
 	// Human-readable label for the shader rule selected for this renderer run.
 	virtual CString ActiveShaderRule() const { return TEXT("None"); }
 	// Live prediction of the next scene-aware whole-frame correction.  action is
