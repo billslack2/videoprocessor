@@ -35,6 +35,16 @@ Windowed fullscreen presentation choice.
 - Merged with VP-0117 to the default `v1.2.001-beta` branch in `58c5b6d` on
   2026-08-11 after a successful merged x64 Release build; all five focused
   VP-0117/VP-0118 regression tests passed.
+- 2026-08-12 AltGr follow-up: deployed `b7de6a2` logs proved that Windows
+  reported Right Alt+Enter as `ctrl=1 alt=1`, so the exact Alt-only
+  accelerator rejected it and MFC subsequently treated the unconsumed Enter
+  as the dialog default action, restarting the renderer. Implemented the
+  narrow fix on `codex/vp-0118-altgr-fullscreen` at `aa12e0a`: exact
+  accelerators retain priority, Right Alt's synthetic Ctrl is ignored only for
+  the fullscreen command, and unmatched modified Enter is consumed rather
+  than reaching the dialog default. A clean x64 Release build, four focused
+  shortcut tests, and all 34 Config UI tests passed. The matched 55-file test
+  release was packaged and deployed without changing the active config.
 
 ## User story
 
