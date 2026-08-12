@@ -2,21 +2,21 @@
 
 ## Status
 
-In progress (started 2026-08-11); implementation is ready for operator testing.
-Commits `22654d1` and `5557a98` on `codex/vp-0107-runtime-layout` define a
-manifest-only clean release stage. The native host remains at root; the complete
-Qt configurator process is private under `config\`; the libplacebo stack is
-private under `vprenderer\`; and one shared root `shaders\` tree serves both
-renderers. Releases include an intentional empty `logs\` directory, while a
-focused test and runtime smoke prove the logger recreates the directory and
-`vp.log` when it is absent.
+Done (2026-08-11). Operator testing approved the release layout, and PR #59
+merged commits `22654d1` and `5557a98` into `v1.2.001-beta` as merge commit
+`4eb9614`. The manifest-only release keeps the native host at root, the complete
+Qt configurator process private under `config\`, the libplacebo stack private
+under `vprenderer\`, and one shared root `shaders\` tree. Releases include an
+intentional empty `logs\` directory, while a focused test and runtime smoke
+prove the logger recreates the directory and `vp.log` when it is absent.
 
-The exact-commit x64 Release build at `5557a98` completed with
+The exact-commit x64 Release build at merged beta tip `4eb9614` completed with
 `VERSION_DIRTY=false`. Packaging verified 55 immutable files, zero root Qt DLLs,
 zero root Qt plugin folders, six Config-private Qt DLLs, one empty logs
-directory, and no active configuration. Main-app smoke launched the private
-`config\VideoProcessorConfig.exe`; Config launched successfully with its moved
-Qt platform/plugins; and the active operator configuration remained unchanged.
+directory, and no active configuration. The clean package was deployed after
+moving the prior runtime into `_bak\20260811-220539`; the active configuration
+SHA-256 was preserved exactly and the deployed tree matched the manifest with
+no unexpected runtime files.
 
 ## User story
 
