@@ -107,7 +107,7 @@ Options:
       The active contract is shown in the native top-right OSD by default.
 
   /active_output_sweep_hold_ms <1000-600000>
-      Milliseconds per live contract in the active-output sweep (default: 5000 ms).
+      Milliseconds per live contract in the active-output sweep (default: 10000 ms).
 
   /active_output_sweep_tests <list>
       Run only the specified documented cases. Use comma-separated numbers and
@@ -1221,7 +1221,7 @@ BOOL CVideoProcessorApp::InitInstance()
 		bool activeOutputSweep = false;
 		bool activeOutputSweepShowInfo = true;
 		bool activeOutputSweepCaptureRestart = true;
-		DWORD activeOutputSweepHoldMs = 5000;
+		DWORD activeOutputSweepHoldMs = 10000;
 		CString activeOutputSweepTests;
 
 		for (int i = 1; i < iNumOfArgs; i++)

@@ -737,7 +737,7 @@ protected:
 	ULONGLONG m_activeOutputSweepSummaryStartedTick = 0;
 	bool m_activeOutputSweepShowInfo = true;
 	bool m_activeOutputSweepCaptureRestart = true;
-	DWORD m_activeOutputSweepHoldMs = 5000;
+	DWORD m_activeOutputSweepHoldMs = 10000;
 	CString m_activeOutputSweepRequestedTests;
 	size_t m_activeOutputSweepCaseIndex = 0;
 	ULONGLONG m_activeOutputSweepDeadlineTick = 0;
