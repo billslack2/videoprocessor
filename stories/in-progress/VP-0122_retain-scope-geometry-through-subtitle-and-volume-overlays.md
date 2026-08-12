@@ -2,7 +2,18 @@
 
 ## Status
 
-In Progress (2026-08-11).
+In Progress (updated 2026-08-12). Implementation commits `dcd2588` and
+`46aa1e5` are pushed on `codex/vp-0122-overlay-geometry`. The first deployed
+build reproduced a remaining scene-hold expiry at 23:52:44: an accepted held
+translation was still valid, but its older source sequence prevented the cut
+frame's direction-matched current envelope from attesting it. Commit `46aa1e5`
+uses the fresh same-generation envelope instead, restricted to the translated
+edge with unchanged horizontal and opposite-edge geometry. The exact commit
+built x64 Release, passed 94/94 focused policy tests and 802/807 full-suite
+tests; the five failures are the existing configuration/reference fixtures.
+The verified 55-file package is deployed to `C:\Videoprocessor\vp` with the
+active configuration preserved. Awaiting live operator validation of the same
+overlay/scene-transition sequence.
 
 ## User story
 
