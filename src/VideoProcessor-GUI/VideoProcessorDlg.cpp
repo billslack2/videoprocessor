@@ -3000,9 +3000,23 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 	m_activeOutputSweepAwaitingLiveFrame = true;
 	m_activeOutputSweepCaseFailed = false;
 	m_activeOutputSweepDeadlineTick = GetTickCount64() + 15000;
-	m_activeOutputSweepStatus.Format(L"%s\nRestarting %s for this test",
-		test.description,
-		m_activeOutputSweepCaptureRestart ? L"capture" : L"renderer");
+	if (hdrSuite)
+	{
+		const std::string targetPrimaries = document.Get("vprenderer",
+			"sdr_target_primaries");
+		const std::string reportBt2020 = document.Get("vprenderer",
+			"report_bt2020_to_display");
+		m_activeOutputSweepStatus.Format(
+			L"%s\nTarget primaries: %S; BT.2020 InfoFrame: %S\nRestarting %s for this test",
+			test.description, targetPrimaries.c_str(), reportBt2020.c_str(),
+			m_activeOutputSweepCaptureRestart ? L"capture" : L"renderer");
+	}
+	else
+	{
+		m_activeOutputSweepStatus.Format(L"%s\nRestarting %s for this test",
+			test.description,
+			m_activeOutputSweepCaptureRestart ? L"capture" : L"renderer");
+	}
 	DebugLog::Log(
 		"Active output sweep case: suite=%S index=%zu label=%S presentation=%s range=%s gamma=%s target_nits=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%s target_primaries=%s report_bt2020=%s force8=%d vp_owned=%d no_compute=%d no_shader_cache=%d action=%s-restart backup=%S",
 		m_activeOutputSweepSuite.GetString(),
