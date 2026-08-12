@@ -529,6 +529,9 @@ void DirectShowGenericHDRVideoRenderer::UpdateActiveShaderSelection(
 	const MadVRShaderSelection& shaderSelection)
 {
 	m_activeShaders.clear();
+	m_activeShaderSections.clear();
+	m_activeShaderSectionsAvailable =
+		shaderSelection.activeSectionsAvailable;
 	m_activeShaderRule = TEXT("None");
 	m_activeShaderCompanionLabel.Empty();
 	if (!shaderSelection.ruleLabel.empty())
@@ -544,6 +547,8 @@ void DirectShowGenericHDRVideoRenderer::UpdateActiveShaderSelection(
 			shader.name.c_str());
 		m_activeShaders.push_back(label);
 	}
+	for (const std::string& section : shaderSelection.activeSections)
+		m_activeShaderSections.emplace_back(CStringA(section.c_str()));
 }
 
 

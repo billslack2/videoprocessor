@@ -60,6 +60,8 @@ public:
 	bool RefreshShaderRule(CString& activeRule,
 		bool& rendererRestartRequired) override;
 	std::vector<CString> ActiveShaders() const override;
+	bool GetActiveShaderSections(
+		std::vector<CString>& sections) const override;
 	CString ActiveShaderRule() const override;
 	bool ApplyApplicationState(const UnifiedProfileRuntime::Snapshot& snapshot,
 		CString& activeState,

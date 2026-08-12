@@ -7990,6 +7990,21 @@ void LibplaceboVideoRenderer::Build()
 	m_captureToPresentationTargetMs.store(0.0, std::memory_order_relaxed);
 	m_configuredScreenActive.store(impl->configuredScreenTarget, std::memory_order_release);
 	m_impl = std::move(impl);
+	// Alpha has no implicit shader chain before a selector is applied. Resolve
+	// the validated target grammar only to publish that authoritative baseline
+	// (including the root/Off state of each single group); do not activate an
+	// editor selection or mutate configuration.
+	std::vector<ConfiguredShaderRule> baselineSelection;
+	std::vector<std::string> baselineSections;
+	std::string baselineReason;
+	if (MadVRShaderLoader::GetConfiguredRuleSelection(
+		"@shader-key:", ShaderRendererBackend::LIBPLACEBO,
+		baselineSelection, baselineSections, baselineReason))
+	{
+		std::lock_guard<std::mutex> guard(m_stateMutex);
+		m_activeShaderSections = std::move(baselineSections);
+		m_activeShaderSectionsAvailable = true;
+	}
 	SetState(RendererState::RENDERSTATE_READY);
 }
 
@@ -8080,10 +8095,11 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 	}
 
 	std::vector<ConfiguredShaderRule> selection;
+	std::vector<std::string> activeSections;
 	std::string reason;
 	if (!MadVRShaderLoader::GetConfiguredRuleSelection(
 		selector, ShaderRendererBackend::LIBPLACEBO,
-		selection, reason))
+		selection, activeSections, reason))
 	{
 		DebugLog::Log(
 			"Alpha shaders: rejected selector \"%s\": %s",
@@ -8092,6 +8108,12 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 	}
 
 	m_requestedShaderSelector = selector;
+	{
+		std::lock_guard<std::mutex> stateGuard(m_stateMutex);
+		m_activeShaderSections = activeSections;
+		m_activeShaderSectionsAvailable =
+			selector.rfind("@shader-key:", 0) == 0;
+	}
 	{
 		std::lock_guard<std::mutex> guard(m_impl->renderMutex);
 		m_impl->SetConfiguredShaderSelection(
@@ -8142,6 +8164,17 @@ std::vector<CString> LibplaceboVideoRenderer::ActiveShaders() const
 		shaders.push_back(label);
 	}
 	return shaders;
+}
+
+
+bool LibplaceboVideoRenderer::GetActiveShaderSections(
+	std::vector<CString>& sections) const
+{
+	sections.clear();
+	std::lock_guard<std::mutex> guard(m_stateMutex);
+	for (const std::string& section : m_activeShaderSections)
+		sections.emplace_back(CStringA(section.c_str()));
+	return m_activeShaderSectionsAvailable;
 }
 
 

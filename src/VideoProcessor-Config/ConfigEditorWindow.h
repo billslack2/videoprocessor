@@ -40,7 +40,8 @@ public:
     void reveal();
     void refreshMonitorDiscovery();
     void setActiveProfileStatusForTesting(const QString& queue,
-        const QString& renderer, const QString& viewport, const QString& shader);
+        const QString& renderer, const QString& viewport,
+        const QStringList& shaders, bool shaderAvailable = true);
 
 protected:
     bool event(QEvent* event) override;
@@ -100,7 +101,8 @@ private:
     void setWarningStatus(const QString& message);
     void refreshActiveProfileIndicators();
     void applyActiveProfileIndicators(bool available, const QString& queue,
-        const QString& renderer, const QString& viewport, const QString& shader);
+        const QString& renderer, const QString& viewport,
+        const QStringList& shaders, bool shaderAvailable);
 
     QString configPath_;
     quintptr ownerHandle_ = 0;

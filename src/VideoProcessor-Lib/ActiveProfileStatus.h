@@ -4,13 +4,16 @@
 
 #include <cstdint>
 #include <cstring>
+#include <algorithm>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace ActiveProfileStatus
 {
-    constexpr uint32_t Version = 2;
-    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v2";
+    constexpr uint32_t Version = 3;
+    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v3";
+    constexpr size_t MaximumActiveShaders = 16;
 
     struct Snapshot
     {
@@ -20,7 +23,11 @@ namespace ActiveProfileStatus
         char queue[96]{};
         char renderer[96]{};
         char viewport[96]{};
-        char shader[96]{};
+        uint64_t rendererGeneration = 0;
+        uint64_t shaderGeneration = 0;
+        uint32_t shaderAvailable = 0;
+        uint32_t shaderCount = 0;
+        char shaders[MaximumActiveShaders][96]{};
     };
 
     inline void Copy(char* destination, size_t count, const std::string& value)
@@ -34,9 +41,18 @@ namespace ActiveProfileStatus
         return profile == "base" ? root : std::string(root) + "." + profile;
     }
 
+    inline bool ShaderSetIsCurrent(const Snapshot& snapshot)
+    {
+        return snapshot.shaderAvailable != 0 &&
+            snapshot.rendererGeneration != 0 &&
+            snapshot.shaderGeneration == snapshot.rendererGeneration &&
+            snapshot.shaderCount <= MaximumActiveShaders;
+    }
+
     inline void Publish(uint32_t processId, uint64_t generation,
         const std::map<std::string, std::string>& selections,
-        const std::string& shader)
+        uint64_t rendererGeneration, bool shaderAvailable,
+        const std::vector<std::string>& shaders)
     {
         static HANDLE mapping = nullptr;
         static Snapshot* shared = nullptr;
@@ -65,7 +81,13 @@ namespace ActiveProfileStatus
             std::string() : SectionFor("vprenderer", renderer->second));
         Copy(next.viewport, sizeof(next.viewport), viewport == selections.end() ?
             std::string() : SectionFor("vprenderer.viewport", viewport->second));
-        Copy(next.shader, sizeof(next.shader), shader);
+        next.rendererGeneration = rendererGeneration;
+        next.shaderAvailable = shaderAvailable ? 1u : 0u;
+        next.shaderGeneration = shaderAvailable ? rendererGeneration : 0;
+        next.shaderCount = shaderAvailable ? static_cast<uint32_t>(
+            (std::min)(shaders.size(), MaximumActiveShaders)) : 0;
+        for (uint32_t index = 0; index < next.shaderCount; ++index)
+            Copy(next.shaders[index], sizeof(next.shaders[index]), shaders[index]);
         *shared = next;
         MemoryBarrier();
     }

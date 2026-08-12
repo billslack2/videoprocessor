@@ -384,6 +384,13 @@ LibplaceboPluginVideoRenderer::ActiveShaders() const
 }
 
 
+bool LibplaceboPluginVideoRenderer::GetActiveShaderSections(
+	std::vector<CString>& sections) const
+{
+	return m_renderer->GetActiveShaderSections(sections);
+}
+
+
 CString LibplaceboPluginVideoRenderer::ActiveShaderRule() const
 {
 	return m_renderer->ActiveShaderRule();

@@ -75,6 +75,8 @@ public:
 	bool RefreshShaderRule(CString& activeRule,
 		bool& rendererRestartRequired) override;
 	std::vector<CString> ActiveShaders() const override;
+	bool GetActiveShaderSections(
+		std::vector<CString>& sections) const override;
 	CString ActiveShaderRule() const override;
 	bool ApplyApplicationState(const UnifiedProfileRuntime::Snapshot& snapshot,
 		CString& activeState,
@@ -142,6 +144,8 @@ private:
 	VideoStateComPtr m_videoState;
 	std::atomic<RendererState> m_state{RendererState::RENDERSTATE_UNKNOWN};
 	std::string m_requestedShaderSelector;
+	std::vector<std::string> m_activeShaderSections;
+	bool m_activeShaderSectionsAvailable = false;
 	uint64_t m_shaderRendererGeneration = 0;
 	mutable uint64_t m_lastReportedShaderStatusSerial = 0;
 

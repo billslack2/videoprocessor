@@ -573,9 +573,11 @@ bool MatchesTargetShaderWhen(const std::string& rawWhen,
 
 bool ResolveTargetShaderKey(const ConfigFile& config, const std::string& key,
 	const DisplayRuleExpression::ValueLookup& source,
-	std::vector<std::string>& names, std::string& reason)
+	std::vector<std::string>& names, std::string& reason,
+	std::vector<std::string>* activeSections = nullptr)
 {
 	names.clear();
+	if (activeSections) activeSections->clear();
 	std::vector<TargetShaderGroup> groups;
 	if (!ParseTargetShaderGroups(config, groups, reason))
 		return false;
@@ -633,7 +635,12 @@ bool ResolveTargetShaderKey(const ConfigFile& config, const std::string& key,
 		if (selected != manual.end())
 		{
 			for (const std::string& member : selected->second)
+			{
 				names.push_back(group.name + "." + member);
+				if (activeSections)
+					activeSections->push_back(
+						"shader." + group.name + "." + member);
+			}
 			continue;
 		}
 		if (group.rootIsEffect)
@@ -642,7 +649,12 @@ bool ResolveTargetShaderKey(const ConfigFile& config, const std::string& key,
 			if (!group.resetWhen.empty() && !MatchesTargetShaderWhen(
 				group.resetWhen, std::string(), source, matches, reason))
 				return false;
-			if (matches) names.push_back(group.name);
+			if (matches)
+			{
+				names.push_back(group.name);
+				if (activeSections)
+					activeSections->push_back("shader." + group.name);
+			}
 			continue;
 		}
 		std::vector<std::string> automatic;
@@ -661,7 +673,14 @@ bool ResolveTargetShaderKey(const ConfigFile& config, const std::string& key,
 			return false;
 		}
 		for (const std::string& member : automatic)
+		{
 			names.push_back(group.name + "." + member);
+			if (activeSections)
+				activeSections->push_back(
+					"shader." + group.name + "." + member);
+		}
+		if (automatic.empty() && !group.multi && activeSections)
+			activeSections->push_back("shader." + group.name);
 	}
 	return true;
 }
@@ -1400,11 +1419,12 @@ DisplayRuleExpression::ValueLookup TargetVideoLookup(const VideoState& videoStat
 bool LoadTargetRuleSelectionForBackend(const ConfigFile& config,
 	const std::string& key, const DisplayRuleExpression::ValueLookup& source,
 	ShaderRendererBackend backend, std::vector<ShaderRule>& rules,
-	std::string& reason)
+	std::string& reason, std::vector<std::string>* activeSections = nullptr)
 {
 	rules.clear();
 	std::vector<std::string> names;
-	if (!ResolveTargetShaderKey(config, key, source, names, reason))
+	if (!ResolveTargetShaderKey(config, key, source, names, reason,
+		activeSections))
 		return false;
 	std::set<std::string> seen;
 	for (const std::string& name : names)
@@ -2110,11 +2130,12 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 		std::string reason;
 		if (!LoadTargetRuleSelectionForBackend(config, key,
 			TargetVideoLookup(videoState), ShaderRendererBackend::MADVR,
-			rules, reason))
+			rules, reason, &selection.activeSections))
 		{
 			DebugLog::Log("Shaders: VP-0079 selection failed: %s", reason.c_str());
 			return selection;
 		}
+		selection.activeSectionsAvailable = true;
 		std::vector<ShaderEntry> preScale;
 		std::vector<ShaderEntry> postScale;
 		for (ShaderRule rule : rules)
@@ -2666,6 +2687,18 @@ bool MadVRShaderLoader::GetRuleActivationInfo(const std::string& ruleName,
 bool MadVRShaderLoader::GetConfiguredRuleSelection(
 	const std::string& ruleName, ShaderRendererBackend backend,
 	std::vector<ConfiguredShaderRule>& selection, std::string& reason)
+
+{
+	std::vector<std::string> ignoredSections;
+	return GetConfiguredRuleSelection(ruleName, backend, selection,
+		ignoredSections, reason);
+}
+
+
+bool MadVRShaderLoader::GetConfiguredRuleSelection(
+	const std::string& ruleName, ShaderRendererBackend backend,
+	std::vector<ConfiguredShaderRule>& selection,
+	std::vector<std::string>& activeSections, std::string& reason)
 {
 	ConfigFile config;
 	if (!config.Load())
@@ -2674,19 +2707,47 @@ bool MadVRShaderLoader::GetConfiguredRuleSelection(
 		return false;
 	}
 	return ResolveConfiguredRuleSelection(config, ruleName, backend,
-		selection, reason);
+		selection, activeSections, reason);
 }
 
 
 bool MadVRShaderLoader::ResolveConfiguredRuleSelection(const ConfigFile& config,
 	const std::string& ruleName, ShaderRendererBackend backend,
 	std::vector<ConfiguredShaderRule>& selection, std::string& reason)
+
+{
+	std::vector<std::string> ignoredSections;
+	return ResolveConfiguredRuleSelection(config, ruleName, backend,
+		selection, ignoredSections, reason);
+}
+
+
+bool MadVRShaderLoader::ResolveConfiguredRuleSelection(const ConfigFile& config,
+	const std::string& ruleName, ShaderRendererBackend backend,
+	std::vector<ConfiguredShaderRule>& selection,
+	std::vector<std::string>& activeSections, std::string& reason)
 {
 	selection.clear();
+	activeSections.clear();
 	reason.clear();
 
 	std::vector<ShaderRule> rules;
-	if (!LoadRuleSelectionForBackend(config, ruleName, backend, rules))
+	if (IsTargetShaderConfiguration(config))
+	{
+		constexpr const char* TARGET_KEY = "@shader-key:";
+		const std::string trimmed = ConfigFile::Trim(ruleName);
+		if (trimmed.rfind(TARGET_KEY, 0) != 0)
+		{
+			reason = "target shader selector is invalid";
+			return false;
+		}
+		if (!LoadTargetRuleSelectionForBackend(config,
+			trimmed.substr(std::char_traits<char>::length(TARGET_KEY)),
+			DisplayRuleExpression::ValueLookup(), backend, rules, reason,
+			&activeSections))
+			return false;
+	}
+	else if (!LoadRuleSelectionForBackend(config, ruleName, backend, rules))
 	{
 		reason = "shader rule is invalid or not applicable to this renderer";
 		return false;

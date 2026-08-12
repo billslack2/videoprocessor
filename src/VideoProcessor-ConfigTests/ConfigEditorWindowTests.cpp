@@ -944,7 +944,8 @@ void testActiveProfileMarkersCoverRelevantLists()
     window.setActiveProfileStatusForTesting(
         queue->item(0)->data(Qt::UserRole).toString(),
         renderer->item(0)->data(Qt::UserRole).toString(),
-        viewport->item(0)->data(Qt::UserRole).toString(), QString());
+        viewport->item(0)->data(Qt::UserRole).toString(),
+        { shader->item(0)->data(Qt::UserRole).toString() });
     require(queue->item(0)->data(Qt::UserRole + 12).toBool() &&
         renderer->item(0)->data(Qt::UserRole + 12).toBool() &&
         viewport->item(0)->data(Qt::UserRole + 12).toBool() &&
@@ -967,14 +968,71 @@ void testActiveProfileMarkersCoverRelevantLists()
         "The selected active row did not retain a full-width blue background");
 }
 
+void testActiveShaderMarkersUseAuthoritativeSet()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    auto* shader = requireControl<QListWidget>(window,
+        QStringLiteral("config.shader.nls.modes"));
+    require(shader->count() >= 3,
+        "Shader fixture does not expose Off and two shader members");
+
+    shader->setCurrentRow(2);
+    const QString off = shader->item(0)->data(Qt::UserRole).toString();
+    const QString first = shader->item(1)->data(Qt::UserRole).toString();
+    const QString second = shader->item(2)->data(Qt::UserRole).toString();
+
+    window.setActiveProfileStatusForTesting({}, {}, {}, { off });
+    require(shader->currentRow() == 2 &&
+        shader->item(0)->data(Qt::UserRole + 12).toBool() &&
+        !shader->item(2)->data(Qt::UserRole + 12).toBool(),
+        "Off activity was confused with the selected editing row");
+
+    window.setActiveProfileStatusForTesting({}, {}, {}, { first });
+    require(!shader->item(0)->data(Qt::UserRole + 12).toBool() &&
+        shader->item(1)->data(Qt::UserRole + 12).toBool() &&
+        shader->currentRow() == 2,
+        "A single active shader did not move independently of selection");
+
+    window.setActiveProfileStatusForTesting({}, {}, {}, { first, second });
+    require(shader->item(1)->data(Qt::UserRole + 12).toBool() &&
+        shader->item(2)->data(Qt::UserRole + 12).toBool(),
+        "Multiple authoritative active shaders were collapsed to one row");
+
+    window.setActiveProfileStatusForTesting({}, {}, {}, { first }, false);
+    for (int index = 0; index < shader->count(); ++index)
+        require(!shader->item(index)->data(Qt::UserRole + 12).toBool(),
+            "Unavailable shader state retained a guessed active marker");
+}
+
+void testActiveShaderStatusRejectsStaleGeneration()
+{
+    ActiveProfileStatus::Snapshot snapshot{};
+    snapshot.rendererGeneration = 9;
+    snapshot.shaderGeneration = 8;
+    snapshot.shaderAvailable = 1;
+    snapshot.shaderCount = 1;
+    require(!ActiveProfileStatus::ShaderSetIsCurrent(snapshot),
+        "A stale shader set was accepted for a newer renderer generation");
+    snapshot.shaderGeneration = snapshot.rendererGeneration;
+    require(ActiveProfileStatus::ShaderSetIsCurrent(snapshot),
+        "A generation-current authoritative shader set was rejected");
+}
+
 void testStandaloneConfigAcceptsLiveActiveProfileStatus()
 {
     ActiveProfileStatus::Publish(GetCurrentProcessId(), 1,
         { { "queue", "low_latency" }, { "display", "rec709" } },
-        "shader.nls.nonlinear_stretch");
+        7, true, { "shader.nls.nonlinear_stretch",
+            "shader.future.member" });
     ActiveProfileStatus::Snapshot snapshot;
     require(ActiveProfileStatus::Read(0, snapshot),
         "Standalone Config did not accept the live VP active-profile status");
+    require(ActiveProfileStatus::ShaderSetIsCurrent(snapshot) &&
+        snapshot.shaderCount == 2 &&
+        std::string(snapshot.shaders[0]) == "shader.nls.nonlinear_stretch" &&
+        std::string(snapshot.shaders[1]) == "shader.future.member",
+        "Live status did not preserve the authoritative shader set");
     require(!ActiveProfileStatus::Read(GetCurrentProcessId() + 1, snapshot),
         "Active-profile status was accepted for the wrong VP process");
 }
@@ -2565,6 +2623,8 @@ int main(int argc, char** argv)
     failures += run("queue units and LUT controls use consistent rows",
         testQueueUnitsAndLutControlsUseConsistentRows);
     failures += run("active profile markers cover relevant lists", testActiveProfileMarkersCoverRelevantLists);
+    failures += run("active shader markers use authoritative set", testActiveShaderMarkersUseAuthoritativeSet);
+    failures += run("active shader status rejects stale generation", testActiveShaderStatusRejectsStaleGeneration);
     failures += run("standalone Config reads live active profile status", testStandaloneConfigAcceptsLiveActiveProfileStatus);
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
     failures += run("choice labels and VP Renderer name", testChoiceLabelsAndVpRendererName);
