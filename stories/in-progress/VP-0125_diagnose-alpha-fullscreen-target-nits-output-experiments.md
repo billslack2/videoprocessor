@@ -2,7 +2,7 @@
 
 ## Status
 
-Backlog (2026-08-12). A beta report identifies a fullscreen-only Alpha output
+In Progress (2026-08-12). A beta report identifies a fullscreen-only Alpha output
 failure that needs bounded diagnosis before any production tone-mapping change.
 With a BT.2020 SDR target, BT.2020 display reporting enabled, and output gamma
 2.2 selected, raising `sdr_target_nits` above 200 causes visibly crushed
@@ -10,15 +10,65 @@ colours in fullscreen. The same setting does not show the reported crushing in
 windowed mode. At 200 nits or below, the output still differs somewhat from
 the reporter's madVR and XGIMI tone-mapping references.
 
-No log, exact build identifier, source EOTF, source frame, active display-rule
+No reporter log, exact build identifier, source EOTF, source frame, active display-rule
 configuration, GPU/driver state, or measurement evidence accompanied this
 report. "Crushed colours" is a visual symptom, not yet a conclusion about
 tone mapping, gamut conversion, levels, transfer, signalling, or the display.
-No implementation branch/worktree has been selected.
+Implementation began from confirmed `origin/v1.2.001-beta` at
+`b7de6a2b9c99940e266d4144e52799e1253e6cb2` in clean worktree
+`work\vp-0125-dxgi-output`, branch `codex/vp-0125-dxgi-output`. Initial
+commit `aa08b8c` is local only; no deployment or active-user configuration
+change has occurred.
 
-Before source work starts, query the current default branch of
-`billslack2/videoprocessor`, report it to the developer, and obtain explicit
-confirmation of the implementation base under the tracker workflow.
+## Implementation record: guarded first experiment slice
+
+`aa08b8c`, followed by the uncommitted UI/logging slice in the same clean
+worktree, adds a deliberately bounded source-level experiment without making
+the pair a normal output default. The completed local source commits are
+`aa08b8c` (guarded output path) and `d3d358b` (UI and output-capability
+logging):
+
+- `diagnostic_allow_limited_g22: true`, together with
+  `output_range: limited` and `output_gamma: 2.2`, builds a pure
+  `PL_COLOR_TRC_GAMMA22` target and requests the matching DXGI Studio/G22
+  P709 transport. It uses the existing Check/Set/Check guardrail; a failed
+  request remains a failed experiment and is never rendered as if Studio/G22
+  had been accepted. With the diagnostic disabled, the existing protective
+  rejection remains.
+- `diagnostic_disable_compute` creates the D3D11 device with libplacebo
+  compute shaders disabled. `diagnostic_force_8bit_sdr_swapchain` requests an
+  8-bit SDR swapchain rather than the normal 10-bit preference. Both are
+  developer experiments, never raw flag inputs.
+- All three settings participate in the restart fingerprint. The host follows
+  its existing complete renderer replacement path, which recreates device,
+  renderer, swapchain, peak/cache state, and presentation generation before
+  measurement. The code logs requested settings, D3D11 feature level/software
+  state/no-compute/latency, swapchain descriptor, adapter/output, colour-space
+  probes, Set HRESULT, final VP contract, and R10 backbuffer statistics.
+- The Windows `IDXGISwapChain3` API used here has no `GetColorSpace1` getter.
+  Therefore current evidence is explicitly labelled Check/Set/Check and
+  `active_readback=unavailable`, not falsely reported as active DXGI state.
+  A future VP-owned swapchain must carry VP's applied state internally and
+  distinguish that logical state from wire/display confirmation.
+- VP Renderer: Rendering now exposes an independently collapsed **Output
+  Experiments (beta)** section. Its controls are editable and saved with the
+  selected renderer profile. **Restore Recommended Defaults** turns off only
+  the experiment/diagnostic controls (Limited/Gamma-2.2, no-compute,
+  force-8-bit, output diagnostics, and shader-cache disablement), preserving
+  range, gamma, nits, presentation, and tone settings for a controlled A/B
+  return. A focused Qt test verifies save and reset persistence.
+- Output logging now records `IDXGIOutput6::GetDesc1` capabilities when
+  available: Windows-reported display colour space, bits per colour, and
+  minimum, peak, and full-frame luminance. This remains evidence about the
+  desktop/output, distinct from the swapchain colour-space request.
+
+Focused `LibplaceboOutputPolicyTests` passed 31/31. x64 Release
+`VideoProcessor-VPRenderer` and `VideoProcessor-ConfigTests` builds passed;
+the focused Output Experiments persistence/reset and renderer-section UI tests
+passed. The broader Config Editor test group
+currently has two pre-existing failures around `default_screen_profile`; they
+do not exercise these output-policy tests. Physical display, fullscreen, HDR,
+and target-nits validation remain outstanding.
 
 ## User story
 
@@ -123,7 +173,8 @@ For every DXGI configuration/reconfiguration VP must log the full requested,
 supported, set, and active contract: adapter LUID/vendor/device/driver;
 feature level; monitor/output identity; `DXGI_SWAP_CHAIN_DESC1`; colour-space
 candidate list; `CheckColorSpaceSupport` flags and HRESULT; `SetColorSpace1`
-HRESULT; `GetColorSpace1` readback; HDR metadata request/set/readback where
+HRESULT; VP's own applied-state record (the present IDXGISwapChain3 API does
+not expose a colour-space getter); HDR metadata request/set/readback where
 available; resize/fullscreen/Present HRESULTs; and the correlated renderer and
 test-run generation. Treat a changed monitor, fullscreen transition, resize,
 or Windows HDR/display state as a new presentation configuration, because
@@ -148,8 +199,8 @@ colour overrides.
 - target primaries (Rec.709 or BT.2020) and the existing BT.2020 reporting
   request, with current NVIDIA save/set/restore safeguards intact;
 - policy-valid presentation request (`auto`, `composed`, or `direct`) and
-  policy-valid output range/gamma combinations, including VP-0109 diagnostic
-  modes only when that spike permits them; and
+  policy-valid output range/gamma combinations, including the explicit
+  Limited/Gamma-2.2 developer experiment; and
 - controlled fullscreen/windowed test selection plus an explicit clean
   renderer/swapchain recreation between runs; and
 - named DXGI diagnostic presets: SDR backbuffer depth (8-bit versus 10-bit),
@@ -260,8 +311,8 @@ correctness takes priority over incremental update performance:
    generations, complete requested/effective snapshots, normal rollback and
    display-signal restoration, per-profile explicit saving, and no invalid
    low-level override path.
-5. VP owns the flip-model DXGI presentation layer and validates the active
-   DXGI colour space and metadata after each recreation. Libplacebo receives
+5. VP owns the flip-model DXGI presentation layer and records its applied
+   colour space and metadata after each recreation. Libplacebo receives
    the same resolved destination contract; it is not allowed to silently
    become the final presentation-policy authority.
 6. The version-pinned capability inventory classifies every relevant
@@ -269,19 +320,19 @@ correctness takes priority over incremental update performance:
    behaviour, and assigns a rebuild scope. The initial UI exposes only the
    bounded named experiments; unsafe raw controls remain developer-only or
    unexposed.
-5. Output Experiments has a prominent Restore recommended defaults action that
+7. Output Experiments has a prominent Restore recommended defaults action that
    restores only that section's selected-profile overrides, resets the
    renderer/state safely, and leaves every unrelated configuration field
    unchanged.
-6. R10 application-code, DXGI/API, optional wire, photometric, and visual
+8. R10 application-code, DXGI/API, optional wire, photometric, and visual
    evidence remain distinct. The windowed preview is never presented as proof
    of the physical fullscreen output contract.
-7. Any eventual production repair has focused regression coverage for HDR and
+9. Any eventual production repair has focused regression coverage for HDR and
    SDR input; 100/190/200/201/203/250/300-nit cases; fixed and AUTO black;
    Rec.709/BT.2020 targets; reporting on/off; no-LUT/identity-LUT cases;
    fullscreen/windowed transitions; renderer recreation; and the established
    Auto/Full, Limited/2.4, VP-0109, VP-0093, and madVR paths.
-8. A clean x64 Release build and relevant tests pass before any deployment.
+10. A clean x64 Release build and relevant tests pass before any deployment.
    No deployment may overwrite active user configuration; any later deployment
    replaces `VideoProcessor.exe` and `vprenderer\VideoProcessorVPRenderer.dll`
    as the same successful Release-build pair and verifies their hashes.
