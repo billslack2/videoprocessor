@@ -45,6 +45,8 @@ Windowed fullscreen presentation choice.
   than reaching the dialog default. A clean x64 Release build, four focused
   shortcut tests, and all 34 Config UI tests passed. The matched 55-file test
   release was packaged and deployed without changing the active config.
+- 2026-08-12: Operator validated the deployed Right Alt+Enter behavior and
+  accepted the follow-up. VP-0118 remains Done.
 
 ## User story
 

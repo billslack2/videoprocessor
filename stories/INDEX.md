@@ -150,7 +150,7 @@ they must not contain requirements that are absent from this file.
 | VP-0115 | Backlog | Diagnose DeckLink delivery failures and renderer-transition drops |
 | VP-0116 | Backlog | Show all active shaders in the configuration UI |
 | VP-0117 | In Progress | Restore VP Renderer presentation timing and mode truth |
-| VP-0118 | Backlog | Make Alt+Enter enter fullscreen from an inactive startup request |
+| VP-0118 | Done | Make Alt+Enter enter fullscreen from an inactive startup request |
 | VP-0119 | Done | Apply anamorphic lens scale in the correct direction |
 | VP-0120 | Backlog | Retire owner-bound configuration tray processes |
 | VP-0121 | Backlog | Make configuration help UI-first with current screenshots |
