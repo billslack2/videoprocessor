@@ -7,6 +7,16 @@ namespace AlphaSourceCrop
 {
 	namespace
 	{
+		bool BroadPictureLike(const ActivePictureEdgeEvidence& edge)
+		{
+			return edge.barPixels > 0 && edge.blackFraction <= 0.80 &&
+				edge.continuity <= 0.85 &&
+				// Evidence luma/texture values are raw 10-bit code units. Require
+				// either pixels above the maximum bar threshold (104) plus margin,
+				// or substantial spatial texture for a genuinely dark picture.
+				(edge.lumaP90 >= 112.0 || edge.texture >= 12.0);
+		}
+
 		ActivePictureBounds FullRaster(int width, int height)
 		{
 			ActivePictureBounds bounds;
@@ -268,6 +278,56 @@ namespace AlphaSourceCrop
 		{
 			decision.effective = {};
 		}
+		return decision;
+	}
+
+	OutwardPictureConfirmationDecision ConfirmOutwardPictureTransition(
+		const OutwardPictureConfirmationState& previous,
+		const ActivePictureBounds& trustedGeometry,
+		const ActivePictureBounds& candidate,
+		const ActivePicturePresentationRetentionEvidence& evidence,
+		uint64_t sourceGeneration)
+	{
+		OutwardPictureConfirmationDecision decision;
+		const bool compatible = sourceGeneration != 0 &&
+			ValidBounds(trustedGeometry, trustedGeometry.rasterWidth,
+				trustedGeometry.rasterHeight) &&
+			ValidBounds(candidate, trustedGeometry.rasterWidth,
+				trustedGeometry.rasterHeight) &&
+			candidate.left <= trustedGeometry.left &&
+			candidate.top <= trustedGeometry.top &&
+			candidate.right >= trustedGeometry.right &&
+			candidate.bottom >= trustedGeometry.bottom &&
+			!SameBounds(candidate, trustedGeometry);
+		if (!compatible)
+			return decision;
+
+		decision.outwardTransition = true;
+		const bool expandsVertical = candidate.top < trustedGeometry.top ||
+			candidate.bottom > trustedGeometry.bottom;
+		const bool expandsHorizontal = candidate.left < trustedGeometry.left ||
+			candidate.right > trustedGeometry.right;
+		const bool verticalPicture = !expandsVertical ||
+			((trustedGeometry.top == 0 || BroadPictureLike(evidence.excludedTop)) &&
+			 (trustedGeometry.bottom == trustedGeometry.rasterHeight ||
+				BroadPictureLike(evidence.excludedBottom)));
+		const bool horizontalPicture = !expandsHorizontal ||
+			((trustedGeometry.left == 0 || BroadPictureLike(evidence.excludedLeft)) &&
+			 (trustedGeometry.right == trustedGeometry.rasterWidth ||
+				BroadPictureLike(evidence.excludedRight)));
+		decision.broadOpposingPicture = verticalPicture && horizontalPicture;
+		if (!decision.broadOpposingPicture)
+			return decision;
+
+		const bool continues = previous.sourceGeneration == sourceGeneration &&
+			previous.confirmations != 0 && SameBounds(previous.candidate, candidate);
+		decision.state.candidate = candidate;
+		decision.state.sourceGeneration = sourceGeneration;
+		decision.state.confirmations = continues
+			? std::min(OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED,
+				previous.confirmations + 1) : 1;
+		decision.authoritative = decision.state.confirmations >=
+			OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
 		return decision;
 	}
 
@@ -574,13 +634,23 @@ namespace AlphaSourceCrop
 
 		if (presentation.translationPixels < -0.5f)
 		{
+			const int shift = std::max(-trustedGeometry.top,
+				ChromaAlignedDisplacement(static_cast<int>(
+					std::lround(presentation.translationPixels))));
 			return currentEnvelope.top < trustedGeometry.top &&
-				currentEnvelope.bottom == trustedGeometry.bottom;
+				currentEnvelope.bottom == trustedGeometry.bottom &&
+				currentEnvelope.top >= trustedGeometry.top + shift;
 		}
 		if (presentation.translationPixels > 0.5f)
 		{
+			const int maximum = trustedGeometry.rasterHeight -
+				trustedGeometry.bottom;
+			const int shift = std::min(maximum,
+				ChromaAlignedDisplacement(static_cast<int>(
+					std::lround(presentation.translationPixels))));
 			return currentEnvelope.top == trustedGeometry.top &&
-				currentEnvelope.bottom > trustedGeometry.bottom;
+				currentEnvelope.bottom > trustedGeometry.bottom &&
+				currentEnvelope.bottom <= trustedGeometry.bottom + shift;
 		}
 		return false;
 	}
@@ -1318,8 +1388,10 @@ namespace AlphaSourceCrop
 				}
 				else
 				{
+					decision.action =
+						ScenePresentationAction::PRESERVE_REFERENCE;
 					decision.reason =
-						"cut frame has visible pixels outside retained presentation";
+						"cut frame expands presentation without replacing logical geometry";
 				}
 				return decision;
 			}
@@ -1330,6 +1402,14 @@ namespace AlphaSourceCrop
 				: "near-black unavailable cut retains bounded crop and NLS snapshot";
 			return decision;
 		}
+		if (input.geometryClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED)
+		{
+			decision.action = ScenePresentationAction::PRESERVE_REFERENCE;
+			decision.reason =
+				"cut changes current presentation without replacing logical geometry";
+			return decision;
+		}
 		decision.reason = "cut frame contradicts or cannot verify presentation";
 		return decision;
 	}
@@ -1338,13 +1418,13 @@ namespace AlphaSourceCrop
 	{
 		SceneHoldDecision decision;
 		const bool active = input.snapshotAvailable &&
-			(!input.nlsRequested || input.retainedMappingCompatible) &&
 			input.snapshotSourceGeneration != 0 &&
 			input.snapshotSourceGeneration == input.frameSourceGeneration &&
 			input.deadlineTick != 0 &&
 			input.currentTick < input.deadlineTick;
 		decision.cropActive = active;
-		decision.nlsActive = active && input.nlsRequested;
+		decision.nlsActive = active && input.nlsRequested &&
+			input.retainedMappingCompatible;
 		return decision;
 	}
 }

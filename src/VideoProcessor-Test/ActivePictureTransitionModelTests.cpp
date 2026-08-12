@@ -786,5 +786,29 @@ namespace VideoProcessorTest
 			const auto committed = Observe(model, ImaxBounds(), frame);
 			Assert::IsTrue(committed.publish);
 		}
+
+		TEST_METHOD(SceneCandidateResetPreservesStableButCannotBridgeConfirmation)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+			ActivePictureBounds full = {
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0,
+				ActivePictureBounds::BarAxes::NONE };
+
+			const auto beforeCut = Observe(model, full, frame++,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsFalse(beforeCut.publish);
+			model.ResetCandidateEvidence();
+
+			const auto firstAfterCut = Observe(model, full, frame++,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsFalse(firstAfterCut.publish);
+			Assert::IsTrue(firstAfterCut.stable);
+			Assert::AreEqual(ScopeBounds().top,
+				firstAfterCut.stableBounds.top);
+			const auto secondAfterCut = Observe(model, full, frame,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsTrue(secondAfterCut.publish);
+		}
 	};
 }

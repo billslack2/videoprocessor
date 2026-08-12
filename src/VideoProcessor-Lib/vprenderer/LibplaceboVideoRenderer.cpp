@@ -2511,6 +2511,8 @@ struct LibplaceboVideoRenderer::Impl
 		scopeSubtitleTranslationConfirmation;
 	AlphaSourceCrop::VerticalFitConfirmationState
 		scopeSubtitleFitConfirmation;
+	AlphaSourceCrop::OutwardPictureConfirmationState
+		outwardPictureConfirmation;
 	AlphaSourceCrop::VerticalTranslationDrift scopeSubtitleDrift;
 	bool scopeSubtitleDriftWasActive = false;
 	bool scopeSubtitleAuthorityGapHeld = false;
@@ -4822,6 +4824,7 @@ struct LibplaceboVideoRenderer::Impl
 			// current-frame shared evidence even when the source generation did
 			// not change.
 			nlsTransition.Reset();
+			outwardPictureConfirmation = {};
 			nlsGeometryAvailable = false;
 			nlsTransitionWithdrawn = false;
 			nlsGeometry = {};
@@ -5151,6 +5154,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (activePictureAnalysisSourceGeneration != analysisSource.generation)
 		{
 			nlsTransition.Reset();
+			outwardPictureConfirmation = {};
 			nlsGeometryAvailable = false;
 			nlsTransitionWithdrawn = false;
 			nlsGeometry = {};
@@ -5429,6 +5433,17 @@ struct LibplaceboVideoRenderer::Impl
 					scopeVerticalBarPresentation, scopeSubtitleDrift.IsActive(),
 					scopeSubtitleEvidenceSourceGeneration,
 					analysisSource.generation);
+			const AlphaSourceCrop::OutwardPictureConfirmationDecision
+				outwardConfirmation = hadCompatiblePresentation && evidence.available
+				? AlphaSourceCrop::ConfirmOutwardPictureTransition(
+					outwardPictureConfirmation, presentationBeforeObservation,
+					latestActivePictureEvidenceBounds, retentionEvidence,
+					analysisSource.generation)
+				: AlphaSourceCrop::OutwardPictureConfirmationDecision{};
+			outwardPictureConfirmation = outwardConfirmation.state;
+			const bool deferOutwardLogicalTransition =
+				outwardConfirmation.outwardTransition &&
+				!outwardConfirmation.authoritative;
 			if (deferPresentationOwnedTransition !=
 				presentationOwnedGeometryTransitionDeferred)
 			{
@@ -5449,13 +5464,16 @@ struct LibplaceboVideoRenderer::Impl
 					ActivePictureClassification::PROVISIONAL
 					? evidence.proposedBounds
 					: evidence.trustedBounds;
-				observation.classification = deferPresentationOwnedTransition
+				observation.classification =
+					(deferPresentationOwnedTransition ||
+						deferOutwardLogicalTransition)
 					? ActivePictureClassification::PROVISIONAL
 					: evidence.classification;
 			}
 			ActivePictureScheduledDecisionValidation scheduledValidation =
 				hasScheduledDecision
-				? (deferPresentationOwnedTransition
+				? ((deferPresentationOwnedTransition ||
+					deferOutwardLogicalTransition)
 					? ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE
 					: ValidateActivePictureScheduledDecision(
 					*scheduledDecision, currentIdentity,
@@ -5652,6 +5670,7 @@ struct LibplaceboVideoRenderer::Impl
 			activePictureScreenProfileRequestSerial =
 				viewportRequestSerial;
 			nlsTransition.Reset();
+			outwardPictureConfirmation = {};
 			nlsGeometryAvailable = false;
 			nlsTransitionWithdrawn = true;
 			nlsGeometry = {};
@@ -5769,6 +5788,7 @@ struct LibplaceboVideoRenderer::Impl
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
 			nlsTransition.Reset();
+			outwardPictureConfirmation = {};
 			nlsGeometryAvailable = false;
 			nlsTransitionWithdrawn = true;
 			nlsGeometry = {};
@@ -5876,6 +5896,15 @@ struct LibplaceboVideoRenderer::Impl
 		sceneHoldInput.currentTick = GetTickCount64();
 		AlphaSourceCrop::SceneHoldDecision sceneHold =
 			AlphaSourceCrop::EvaluateSceneHold(sceneHoldInput);
+		if (!cadenceRepeat && sceneResult.safeBoundary)
+		{
+			// A cut invalidates partial proof before the cut frame is analyzed.
+			// The stable geometry remains the last affirmative logical reference.
+			nlsTransition.ResetCandidateEvidence();
+			outwardPictureConfirmation = {};
+			scopeSubtitleTranslationConfirmation = {};
+			scopeSubtitleFitConfirmation = {};
+		}
 		if (analysisSource.IsValid())
 		{
 			ActivePictureFrameIdentity currentActivePictureIdentity =
@@ -5932,8 +5961,7 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometryClassification ==
 					ActivePictureClassification::BAR_CROP_TRUSTED &&
 				nlsGeometrySourceGeneration == frameGeneration &&
-				latestEvidenceIsCurrent && latestEvidenceMayVerify &&
-				retainedMappingCompatible;
+				latestEvidenceIsCurrent && latestEvidenceMayVerify;
 			AlphaSourceCrop::SceneInput sceneInput;
 			sceneInput.geometryAvailable = nlsGeometryAvailable;
 			sceneInput.geometryIsCurrentGeneration =
@@ -5970,6 +5998,9 @@ struct LibplaceboVideoRenderer::Impl
 			const bool retainCurrentTrustedPresentation =
 				sceneDecision.action ==
 					AlphaSourceCrop::ScenePresentationAction::KEEP_CURRENT;
+			const bool preserveLogicalReference =
+				sceneDecision.action ==
+					AlphaSourceCrop::ScenePresentationAction::PRESERVE_REFERENCE;
 			bool retainBoundedSnapshot =
 				sceneDecision.action ==
 					AlphaSourceCrop::ScenePresentationAction::HOLD_SNAPSHOT;
@@ -5988,8 +6019,9 @@ struct LibplaceboVideoRenderer::Impl
 				activePictureSceneVerificationDeadlineTick =
 					GetTickCount64() +
 					ACTIVE_PICTURE_SCENE_VERIFICATION_MS;
-				sceneHold.cropActive = true;
-				sceneHold.nlsActive = nlsRequested;
+				sceneHold.cropActive = !preserveLogicalReference;
+				sceneHold.nlsActive = !preserveLogicalReference && nlsRequested &&
+					retainedMappingCompatible;
 			}
 			else
 			{
@@ -5997,13 +6029,28 @@ struct LibplaceboVideoRenderer::Impl
 				sceneHold = {};
 			}
 
-			if (retainCurrentTrustedPresentation)
+			if (retainCurrentTrustedPresentation || preserveLogicalReference ||
+				retainBoundedSnapshot)
 			{
 				// Candidate confirmations never cross an edit, but the cut frame has
 				// already reaffirmed this exact presentation. Reset only temporal
 				// acquisition proof; keep the crop, decision, and hook visible.
-				nlsTransition.Reset();
+				nlsTransition.ResetCandidateEvidence();
 				nlsTransitionWithdrawn = false;
+				if (preserveLogicalReference)
+				{
+					latestActivePictureObservationSupportsCrop = false;
+					nlsDecision = {};
+					renderParams.hooks = nullptr;
+					renderParams.num_hooks = 0;
+				}
+				else if (retainBoundedSnapshot)
+				{
+					// The deadline bounds only the old hook snapshot. The stable logical
+					// geometry survives and current-frame pixel evidence decides crop.
+					latestActivePictureObservationSupportsCrop = false;
+					nlsDecision = nlsDecisionBeforeSceneAnalysis;
+				}
 			}
 			else
 			{
@@ -6015,19 +6062,9 @@ struct LibplaceboVideoRenderer::Impl
 					ActivePictureClassification::UNAVAILABLE;
 				latestActivePictureObservationSupportsCrop = false;
 				nlsGeometrySourceGeneration = 0;
-				if (retainBoundedSnapshot)
-				{
-					// Provisional cut evidence may retain the prior crop snapshot.
-					// The final presentation pass derives a fresh mapping from that
-					// exact rectangle instead of restoring an independent hook state.
-					nlsDecision = nlsDecisionBeforeSceneAnalysis;
-				}
-				else
-				{
-					nlsDecision = {};
-					renderParams.hooks = nullptr;
-					renderParams.num_hooks = 0;
-				}
+				nlsDecision = {};
+				renderParams.hooks = nullptr;
+				renderParams.num_hooks = 0;
 				lastSourceCropPolicy.clear();
 				lastFinalPresentationPolicy.clear();
 				lastFinalLayoutPolicy.clear();
@@ -6043,7 +6080,8 @@ struct LibplaceboVideoRenderer::Impl
 					latestActivePictureEvidenceClassification),
 				canVerifyExistingCrop ? static_cast<unsigned>(
 					ACTIVE_PICTURE_SCENE_VERIFICATION_MS) : 0U,
-				(retainCurrentTrustedPresentation || retainBoundedSnapshot)
+				(retainCurrentTrustedPresentation || preserveLogicalReference ||
+					retainBoundedSnapshot)
 					? 1 : 0,
 				sceneDecision.reason.c_str());
 		}

@@ -133,6 +133,10 @@ public:
 	static constexpr double MAX_STABLE_GEOMETRY_DEADBAND_PERCENT = 5.0;
 
 	void Reset();
+	// Scene edits invalidate in-flight proof, not the last affirmative geometry.
+	// This prevents confirmations from straddling a cut while keeping the stable
+	// same-generation reference available to the frame-local presentation policy.
+	void ResetCandidateEvidence();
 	// A bounded presentation hysteresis. This never grants crop authority; it
 	// only retains an already trusted rectangle through a small measured shift.
 	void SetStableGeometryDeadbandPercent(double percent);

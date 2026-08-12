@@ -1223,6 +1223,12 @@ namespace Tests
 			current.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 			Assert::IsTrue(CurrentTranslationEnvelopeSupportsGeometry(
 				held, trusted, current));
+			current.bottom = 2012;
+			Assert::IsTrue(CurrentTranslationEnvelopeSupportsGeometry(
+				held, trusted, current));
+			current.bottom = 2014;
+			Assert::IsFalse(CurrentTranslationEnvelopeSupportsGeometry(
+				held, trusted, current));
 
 			// Mixed/orthogonal expansion is not an overlay attestation.
 			current.top = 218;
@@ -1239,9 +1245,81 @@ namespace Tests
 			held.translationPixels = -128.0f;
 			Assert::IsTrue(CurrentTranslationEnvelopeSupportsGeometry(
 				held, trusted, current));
+			current.top = 148;
+			Assert::IsTrue(CurrentTranslationEnvelopeSupportsGeometry(
+				held, trusted, current));
+			current.top = 146;
+			Assert::IsFalse(CurrentTranslationEnvelopeSupportsGeometry(
+				held, trusted, current));
+			current.top = 218;
 			current.bottom = 1982;
 			Assert::IsFalse(CurrentTranslationEnvelopeSupportsGeometry(
 				held, trusted, current));
+		}
+
+		TEST_METHOD(OutwardLogicalGeometryRequiresBroadOpposingSameFramePicture)
+		{
+			const ActivePictureBounds scope = {
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const ActivePictureBounds full = {
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0,
+				ActivePictureBounds::BarAxes::NONE };
+			ActivePicturePresentationRetentionEvidence evidence;
+			evidence.excludedTop.barPixels = 276;
+			evidence.excludedBottom.barPixels = 276;
+
+			// Localized top/bottom UI may make both bars non-black, but its high
+			// continuity/black fraction is not broad replacement picture.
+			evidence.excludedTop.blackFraction = 0.92;
+			evidence.excludedTop.continuity = 0.95;
+			evidence.excludedTop.lumaP90 = 500.0;
+			evidence.excludedBottom = evidence.excludedTop;
+			auto decision = ConfirmOutwardPictureTransition({}, scope, full,
+				evidence, 7);
+			Assert::IsTrue(decision.outwardTransition);
+			Assert::IsFalse(decision.broadOpposingPicture);
+			Assert::IsFalse(decision.authoritative);
+
+			evidence.excludedTop.blackFraction = 0.30;
+			evidence.excludedTop.continuity = 0.40;
+			evidence.excludedBottom = evidence.excludedTop;
+			OutwardPictureConfirmationState state;
+			for (uint32_t sample = 1;
+				sample <= OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED; ++sample)
+			{
+				decision = ConfirmOutwardPictureTransition(state, scope, full,
+					evidence, 7);
+				state = decision.state;
+				Assert::AreEqual(sample, state.confirmations);
+				Assert::AreEqual(
+					sample == OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED,
+					decision.authoritative);
+			}
+
+			// Proof is same-generation and consecutive.
+			decision = ConfirmOutwardPictureTransition(state, scope, full,
+				evidence, 8);
+			Assert::AreEqual(1U, decision.state.confirmations);
+			Assert::IsFalse(decision.authoritative);
+
+			evidence.excludedBottom.blackFraction = 0.92;
+			evidence.excludedBottom.continuity = 0.95;
+			decision = ConfirmOutwardPictureTransition({}, scope, full,
+				evidence, 7);
+			Assert::IsFalse(decision.broadOpposingPicture);
+
+			evidence.excludedBottom = evidence.excludedTop;
+			evidence.excludedBottom.blackFraction = 0.30;
+			evidence.excludedBottom.continuity = 0.40;
+			ActivePictureBounds jittered = full;
+			jittered.top = 2;
+			jittered.aspectRatio = 3840.0 / 2158.0;
+			state = ConfirmOutwardPictureTransition({}, scope, jittered,
+				evidence, 7).state;
+			decision = ConfirmOutwardPictureTransition(state, scope, full,
+				evidence, 7);
+			Assert::AreEqual(1U, decision.state.confirmations);
 		}
 
 		TEST_METHOD(FreshOneEdgeEvidenceIntentionallyReplacesHeldFit)
@@ -2752,7 +2830,7 @@ namespace Tests
 
 			provisional.existingCropCanBeSnapshotted = false;
 			Assert::AreEqual(
-				static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(ScenePresentationAction::PRESERVE_REFERENCE),
 				static_cast<int>(EvaluateSceneBoundary(provisional).action));
 
 			darkFade.existingCropCanBeSnapshotted = true;
@@ -2789,7 +2867,7 @@ namespace Tests
 			input.latestClassification =
 				ActivePictureClassification::FULL_RASTER_TRUSTED;
 			Assert::AreEqual(
-				static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(ScenePresentationAction::PRESERVE_REFERENCE),
 				static_cast<int>(EvaluateSceneBoundary(input).action));
 		}
 
@@ -2844,11 +2922,11 @@ namespace Tests
 			input.latestClassification =
 				ActivePictureClassification::PROVISIONAL;
 			Assert::AreEqual(
-				static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(ScenePresentationAction::PRESERVE_REFERENCE),
 				static_cast<int>(EvaluateSceneBoundary(input).action));
 		}
 
-		TEST_METHOD(SceneBoundaryWithdrawsUnavailableContradictoryOrStaleState)
+		TEST_METHOD(SceneBoundaryPreservesCurrentLogicalReferenceButRejectsStaleState)
 		{
 			SceneInput input;
 			input.geometryAvailable = true;
@@ -2859,13 +2937,13 @@ namespace Tests
 			input.latestClassification =
 				ActivePictureClassification::FULL_RASTER_TRUSTED;
 			Assert::AreEqual(
-				static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(ScenePresentationAction::PRESERVE_REFERENCE),
 				static_cast<int>(EvaluateSceneBoundary(input).action));
 
 			input.latestClassification =
 				ActivePictureClassification::UNAVAILABLE;
 			Assert::AreEqual(
-				static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(ScenePresentationAction::PRESERVE_REFERENCE),
 				static_cast<int>(EvaluateSceneBoundary(input).action));
 
 			input.latestClassification =
@@ -2900,7 +2978,7 @@ namespace Tests
 			input.currentTick = 1499;
 			input.retainedMappingCompatible = false;
 			decision = EvaluateSceneHold(input);
-			Assert::IsFalse(decision.cropActive);
+			Assert::IsTrue(decision.cropActive);
 			Assert::IsFalse(decision.nlsActive);
 		}
 
@@ -2968,6 +3046,44 @@ namespace Tests
 			nlsOn.currentTick = nlsOn.deadlineTick;
 			Assert::IsFalse(EvaluateSceneHold(nlsOn).cropActive);
 			Assert::IsFalse(EvaluateSceneHold(nlsOn).nlsActive);
+		}
+
+		TEST_METHOD(SceneSnapshotDeadlineDoesNotWithdrawPixelSafeLogicalScope)
+		{
+			SceneInput boundary;
+			boundary.geometryAvailable = true;
+			boundary.geometryIsCurrentGeneration = true;
+			boundary.latestEvidenceIsCurrent = true;
+			boundary.existingCropCanBeSnapshotted = true;
+			boundary.geometryClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			boundary.latestClassification =
+				ActivePictureClassification::UNAVAILABLE;
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::HOLD_SNAPSHOT),
+				static_cast<int>(EvaluateSceneBoundary(boundary).action));
+
+			SceneHoldInput expired;
+			expired.snapshotAvailable = true;
+			expired.snapshotSourceGeneration = 7;
+			expired.frameSourceGeneration = 7;
+			expired.deadlineTick = 2000;
+			expired.currentTick = 2000;
+			Assert::IsFalse(EvaluateSceneHold(expired).cropActive);
+
+			// Snapshot expiry is not geometry authority. With the same retained
+			// logical scope and current pixel-safe evidence, presentation remains
+			// scope without reacquiring the initial four-sample model.
+			Input crop = TrustedScopeCrop();
+			crop.latestObservationSupportsCrop = false;
+			crop.latestObservationIsUnavailable = true;
+			crop.frameLocalPresentationRetentionEvaluated = true;
+			crop.frameLocalPresentationRetentionSafe = true;
+			crop.sceneVerificationHoldActive = false;
+			const Decision retained = Evaluate(crop);
+			Assert::IsTrue(retained.applyCrop);
+			Assert::AreEqual(crop.geometry.top, retained.sourceBounds.top);
+			Assert::AreEqual(crop.geometry.bottom, retained.sourceBounds.bottom);
 		}
 	};
 }

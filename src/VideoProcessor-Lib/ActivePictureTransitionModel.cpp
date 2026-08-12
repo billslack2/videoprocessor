@@ -26,6 +26,14 @@ void ActivePictureTransitionModel::Reset()
 }
 
 
+void ActivePictureTransitionModel::ResetCandidateEvidence()
+{
+	ClearCandidate();
+	m_unavailableCandidates = 0;
+	m_lastAnalyzedFrame = 0;
+}
+
+
 void ActivePictureTransitionModel::SetStableGeometryDeadbandPercent(
 	double percent)
 {

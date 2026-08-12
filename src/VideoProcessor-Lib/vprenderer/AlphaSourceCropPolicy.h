@@ -4,10 +4,39 @@
 #include <string>
 
 #include "ActivePictureTransitionModel.h"
+#include "ActivePictureEvidence.h"
 
 
 namespace AlphaSourceCrop
 {
+	static constexpr uint32_t OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED = 3;
+
+	struct OutwardPictureConfirmationState
+	{
+		ActivePictureBounds candidate;
+		uint32_t confirmations = 0;
+		uint64_t sourceGeneration = 0;
+	};
+
+	struct OutwardPictureConfirmationDecision
+	{
+		OutwardPictureConfirmationState state;
+		bool outwardTransition = false;
+		bool broadOpposingPicture = false;
+		bool authoritative = false;
+	};
+
+	// Expanding a trusted crop changes the logical aspect only after the same
+	// frame shows broad picture-like occupancy in every opposing excluded band.
+	// Localized UI/text still expands presentation immediately, but cannot build
+	// aspect authority by appearing on different edges at different times.
+	OutwardPictureConfirmationDecision ConfirmOutwardPictureTransition(
+		const OutwardPictureConfirmationState& previous,
+		const ActivePictureBounds& trustedGeometry,
+		const ActivePictureBounds& candidate,
+		const ActivePicturePresentationRetentionEvidence& evidence,
+		uint64_t sourceGeneration);
+
 	enum class BarContentEdge
 	{
 		NONE,
@@ -545,6 +574,9 @@ namespace AlphaSourceCrop
 		WITHDRAW,
 		KEEP_CURRENT,
 		HOLD_SNAPSHOT,
+		// Current pixels change presentation immediately, but do not erase the
+		// last affirmative same-generation logical geometry.
+		PRESERVE_REFERENCE,
 	};
 
 	struct SceneInput
@@ -599,8 +631,8 @@ namespace AlphaSourceCrop
 
 	// A scene boundary resets candidate proof, but presentation is atomic:
 	// matching trusted geometry keeps crop and NLS together; ambiguous or
-	// near-black unavailable cut evidence may retain their existing snapshot
-	// briefly; contradiction withdraws both.
+	// contradictory current pixels may change presentation immediately while
+	// preserving the last affirmative same-generation logical reference.
 	SceneDecision EvaluateSceneBoundary(const SceneInput& input);
 
 	// Latch the bounded scene hold once per rendered frame. Crop and NLS consume
