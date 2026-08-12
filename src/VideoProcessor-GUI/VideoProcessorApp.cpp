@@ -109,6 +109,10 @@ Options:
   /active_output_sweep_hold_ms <1000-600000>
       Milliseconds per live contract in the active-output sweep (default: 10000 ms).
 
+  /active_output_sweep_suite <sdr|hdr>
+      Select the SDR output-transport suite (default) or the HDR tone-mapping
+      suite. HDR refuses SDR input and requires a live HDR EOTF.
+
   /active_output_sweep_tests <list>
       Run only the specified documented cases. Use comma-separated numbers and
       ranges, for example 2,5 or 2-5,8. The default runs all cases.
@@ -863,6 +867,7 @@ bool RequiresCommandLineValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/renderer_transfer_matrix") ||
 		IsCommandLineOption(argument, L"/renderer_primaries") ||
 		IsCommandLineOption(argument, L"/active_output_sweep_hold_ms") ||
+		IsCommandLineOption(argument, L"/active_output_sweep_suite") ||
 		IsCommandLineOption(argument, L"/active_output_sweep_tests") ||
 		IsCommandLineOption(argument, L"/active_output_sweep_restart");
 }
@@ -879,7 +884,8 @@ bool HasCaseInsensitiveValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/renderer_nominal_range") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_function") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_matrix") ||
-		IsCommandLineOption(argument, L"/renderer_primaries");
+		IsCommandLineOption(argument, L"/renderer_primaries") ||
+		IsCommandLineOption(argument, L"/active_output_sweep_suite");
 }
 
 bool IsBooleanCommandLineOption(const wchar_t* argument)
@@ -977,6 +983,14 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 		{
 			throw std::runtime_error(
 				"Invalid /active_output_sweep_hold_ms: expected an integer from 1000 to 600000");
+		}
+
+		if (IsCommandLineOption(argument, L"/active_output_sweep_suite") &&
+			_wcsicmp(arguments[index + 1], L"sdr") != 0 &&
+			_wcsicmp(arguments[index + 1], L"hdr") != 0)
+		{
+			throw std::runtime_error(
+				"Invalid /active_output_sweep_suite: expected sdr or hdr");
 		}
 
 		if (IsCommandLineOption(argument, L"/active_output_sweep_tests"))
@@ -1222,6 +1236,7 @@ BOOL CVideoProcessorApp::InitInstance()
 		bool activeOutputSweepShowInfo = true;
 		bool activeOutputSweepCaptureRestart = true;
 		DWORD activeOutputSweepHoldMs = 10000;
+		CString activeOutputSweepSuite = L"sdr";
 		CString activeOutputSweepTests;
 
 		for (int i = 1; i < iNumOfArgs; i++)
@@ -1795,6 +1810,13 @@ BOOL CVideoProcessorApp::InitInstance()
 				++i;
 			}
 
+			if (wcscmp(pArgs[i], L"/active_output_sweep_suite") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				activeOutputSweepSuite = pArgs[i + 1];
+				++i;
+			}
+
 			if (wcscmp(pArgs[i], L"/active_output_sweep_tests") == 0 &&
 				(i + 1) < iNumOfArgs)
 			{
@@ -1815,7 +1837,7 @@ BOOL CVideoProcessorApp::InitInstance()
 		if (activeOutputSweep)
 			dlg.ConfigureActiveOutputSweep(true, activeOutputSweepHoldMs,
 				activeOutputSweepShowInfo, activeOutputSweepCaptureRestart,
-				activeOutputSweepTests);
+				activeOutputSweepSuite, activeOutputSweepTests);
 
 		const ApplicationInterface::Selection interfaceSelection =
 			ApplicationInterface::Resolve(

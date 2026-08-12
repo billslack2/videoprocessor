@@ -2645,13 +2645,15 @@ void CVideoProcessorDlg::ApplySavedConfiguration()
 
 void CVideoProcessorDlg::ConfigureActiveOutputSweep(
 	bool enabled, DWORD holdMs, bool showInfo, bool captureRestart,
-	const CString& requestedTests)
+	const CString& suite, const CString& requestedTests)
 {
 	m_activeOutputSweepRequested = enabled;
 	m_activeOutputSweepHoldMs = holdMs < 1000 ? 1000 :
 		(holdMs > 600000 ? 600000 : holdMs);
 	m_activeOutputSweepShowInfo = showInfo;
 	m_activeOutputSweepCaptureRestart = captureRestart;
+	m_activeOutputSweepSuite = suite;
+	m_activeOutputSweepSuite.MakeLower();
 	m_activeOutputSweepRequestedTests = requestedTests;
 	if (!enabled)
 		return;
@@ -2660,7 +2662,8 @@ void CVideoProcessorDlg::ConfigureActiveOutputSweep(
 	// call occurs while command-line settings are applied, before capture starts.
 	StartFullScreen(true);
 	DebugLog::Log(
-		"Active output sweep armed: fullscreen=required hold_ms=%lu show_info=%d reinitialize=%s requested_tests=%S",
+		"Active output sweep armed: suite=%S fullscreen=required hold_ms=%lu show_info=%d reinitialize=%s requested_tests=%S",
+		m_activeOutputSweepSuite.GetString(),
 		m_activeOutputSweepHoldMs, m_activeOutputSweepShowInfo ? 1 : 0,
 		m_activeOutputSweepCaptureRestart ? "capture" : "renderer",
 		m_activeOutputSweepRequestedTests.GetString());
@@ -2678,6 +2681,16 @@ bool CVideoProcessorDlg::StartActiveOutputSweep()
 	if (m_rendererFullscreenCheck.GetCheck() != BST_CHECKED)
 	{
 		CompleteActiveOutputSweep(L"refused: fullscreen target is not active");
+		return false;
+	}
+	const bool hdrSuite = m_activeOutputSweepSuite.CompareNoCase(L"hdr") == 0;
+	if (hdrSuite && (!m_captureDeviceVideoState || !m_captureDeviceVideoState->valid ||
+		(m_captureDeviceVideoState->eotf != EOTF::PQ &&
+			m_captureDeviceVideoState->eotf != EOTF::HLG &&
+			m_captureDeviceVideoState->eotf != EOTF::HDR)))
+	{
+		CompleteActiveOutputSweep(
+			L"refused: HDR suite requires live PQ, HLG, or HDR input");
 		return false;
 	}
 
@@ -2728,7 +2741,9 @@ bool CVideoProcessorDlg::StartActiveOutputSweep()
 		std::make_unique<ConfigEditorCore::ConfigDocument>(*m_activeOutputSweepDocument);
 	ClearActiveOutputSweepSummary("new-sweep");
 	m_activeOutputSweepResults.clear();
-	m_activeOutputSweepCases = {
+	if (!hdrSuite)
+	{
+		m_activeOutputSweepCases = {
 		{ L"1/17 legacy direct full/sRGB", "direct", "full", "srgb", false, false, false, false, false,
 			L"Test 1/17: Legacy presenter; Direct; Full range; sRGB transfer" },
 		{ L"2/17 direct auto/auto", "direct", "auto", "auto", false, false, false, false, false,
@@ -2764,6 +2779,51 @@ bool CVideoProcessorDlg::StartActiveOutputSweep()
 		{ L"17/17 composed VP-owned", "composed", "full", "srgb", false, false, true, false, false,
 			L"Test 17/17: VP-owned DXGI; Composed; Full range; sRGB transfer" },
 	};
+	}
+	else
+	{
+		// These use the HDR sweep template's documented display transport.  The
+		// cases deliberately vary one tone-map control at a time, with 300 nits
+		// the comparison anchor because the reported issue begins above 200 nits.
+		m_activeOutputSweepCases = {
+			{ L"1/12 HDR 100 nits", "direct", "auto", "auto", false, false, false, false, false,
+				L"HDR test 1/12: 100-nit target; automatic tone and gamut mapping",
+				"100", "auto", "auto", "auto", "auto", "bt2020", "true" },
+			{ L"2/12 HDR 200 nits", "direct", "auto", "auto", false, false, false, false, false,
+				L"HDR test 2/12: 200-nit target; reported safe-boundary comparison",
+				"200", "auto", "auto", "auto", "auto", "bt2020", "true" },
+			{ L"3/12 HDR 250 nits", "direct", "auto", "auto", false, false, false, false, false,
+				L"HDR test 3/12: 250-nit target; just above the reported boundary",
+				"250", "auto", "auto", "auto", "auto", "bt2020", "true" },
+			{ L"4/12 HDR 300 nits", "direct", "auto", "auto", false, false, false, false, false,
+				L"HDR test 4/12: 300-nit target; direct fullscreen baseline",
+				"300", "auto", "auto", "auto", "auto", "bt2020", "true" },
+			{ L"5/12 HDR 400 nits", "direct", "auto", "auto", false, false, false, false, false,
+				L"HDR test 5/12: 400-nit target; high-target stress comparison",
+				"400", "auto", "auto", "auto", "auto", "bt2020", "true" },
+			{ L"6/12 HDR 300 composed", "composed", "auto", "auto", false, false, false, false, false,
+				L"HDR test 6/12: 300-nit target; composed presentation comparison",
+				"300", "auto", "auto", "auto", "auto", "bt2020", "true" },
+			{ L"7/12 HDR 300 Rec709", "direct", "auto", "auto", false, false, false, false, false,
+				L"HDR test 7/12: 300-nit target; Rec.709 target and signaling comparison",
+				"300", "auto", "auto", "auto", "auto", "rec709", "false" },
+			{ L"8/12 HDR 300 BT2390", "direct", "auto", "auto", false, false, false, false, false,
+				L"HDR test 8/12: 300-nit target; BT.2390 tone mapping",
+				"300", "bt2390", "auto", "auto", "auto", "bt2020", "true" },
+			{ L"9/12 HDR 300 Reinhard", "direct", "auto", "auto", false, false, false, false, false,
+				L"HDR test 9/12: 300-nit target; Reinhard tone mapping",
+				"300", "reinhard", "auto", "auto", "auto", "bt2020", "true" },
+			{ L"10/12 HDR 300 softclip", "direct", "auto", "auto", false, false, false, false, false,
+				L"HDR test 10/12: 300-nit target; soft-clip gamut mapping",
+				"300", "auto", "softclip", "auto", "auto", "bt2020", "true" },
+			{ L"11/12 HDR 300 peak off", "direct", "auto", "auto", false, false, false, false, false,
+				L"HDR test 11/12: 300-nit target; peak detection disabled",
+				"300", "auto", "auto", "off", "auto", "bt2020", "true" },
+			{ L"12/12 HDR 300 recovery 0", "direct", "auto", "auto", false, false, false, false, false,
+				L"HDR test 12/12: 300-nit target; contrast recovery disabled",
+				"300", "auto", "auto", "auto", "0.0", "bt2020", "true" },
+		};
+	}
 	if (!m_activeOutputSweepRequestedTests.IsEmpty())
 	{
 		std::vector<bool> selected(m_activeOutputSweepCases.size(), false);
@@ -2856,6 +2916,48 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 		return false;
 	const ActiveOutputSweepCase& test = m_activeOutputSweepCases[index];
 	auto& document = *m_activeOutputSweepDocument;
+	const bool hdrSuite = m_activeOutputSweepSuite.CompareNoCase(L"hdr") == 0;
+	auto applyTestSettings = [&document, &test, hdrSuite](const std::string& section)
+	{
+		if (!hdrSuite)
+		{
+			document.SetKnown(section, "output_path_profile", "custom");
+			document.SetKnown(section, "output_presentation", test.presentation);
+			document.SetKnown(section, "output_range", test.range);
+			document.SetKnown(section, "output_gamma", test.gamma);
+			document.SetKnown(section, "diagnostic_force_8bit_sdr_swapchain",
+				test.force8Bit ? "true" : "false");
+			document.SetKnown(section, "diagnostic_allow_limited_g22",
+				test.allowLimitedG22 ? "true" : "false");
+			document.SetKnown(section, "diagnostic_vp_owned_dxgi_presenter",
+				test.vpOwnedPresenter ? "true" : "false");
+			document.SetKnown(section, "diagnostic_disable_compute",
+				test.disableCompute ? "true" : "false");
+			document.SetKnown(section, "diagnostic_disable_shader_cache",
+				test.disableShaderCache ? "true" : "false");
+		}
+		else
+		{
+			if (strcmp(test.presentation, "auto") != 0)
+				document.SetKnown(section, "output_presentation", test.presentation);
+			if (test.sdrTargetNits)
+				document.SetKnown(section, "sdr_target_nits", test.sdrTargetNits);
+			if (test.toneMapping)
+				document.SetKnown(section, "tone_mapping", test.toneMapping);
+			if (test.gamutMapping)
+				document.SetKnown(section, "gamut_mapping", test.gamutMapping);
+			if (test.peakDetection)
+				document.SetKnown(section, "peak_detection", test.peakDetection);
+			if (test.contrastRecovery)
+				document.SetKnown(section, "contrast_recovery", test.contrastRecovery);
+			if (test.targetPrimaries)
+				document.SetKnown(section, "sdr_target_primaries", test.targetPrimaries);
+			if (test.reportBt2020ToDisplay)
+				document.SetKnown(section, "report_bt2020_to_display",
+					test.reportBt2020ToDisplay);
+		}
+		document.SetKnown(section, "output_diagnostics", "true");
+	};
 	for (const std::string& section : document.SectionNames())
 	{
 		const std::string normalized = ConfigFile::NormalizeName(section);
@@ -2865,38 +2967,10 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 		{
 			continue;
 		}
-		document.SetKnown(section, "output_path_profile", "custom");
-		document.SetKnown(section, "output_presentation", test.presentation);
-		document.SetKnown(section, "output_range", test.range);
-		document.SetKnown(section, "output_gamma", test.gamma);
-		document.SetKnown(section, "output_diagnostics", "true");
-		document.SetKnown(section, "diagnostic_force_8bit_sdr_swapchain",
-			test.force8Bit ? "true" : "false");
-		document.SetKnown(section, "diagnostic_allow_limited_g22",
-			test.allowLimitedG22 ? "true" : "false");
-		document.SetKnown(section, "diagnostic_vp_owned_dxgi_presenter",
-			test.vpOwnedPresenter ? "true" : "false");
-		document.SetKnown(section, "diagnostic_disable_compute",
-			test.disableCompute ? "true" : "false");
-		document.SetKnown(section, "diagnostic_disable_shader_cache",
-			test.disableShaderCache ? "true" : "false");
+		applyTestSettings(section);
 	}
 	// Ensure there is a base display section even for a minimal profile file.
-	document.SetKnown("vprenderer", "output_path_profile", "custom");
-	document.SetKnown("vprenderer", "output_presentation", test.presentation);
-	document.SetKnown("vprenderer", "output_range", test.range);
-	document.SetKnown("vprenderer", "output_gamma", test.gamma);
-	document.SetKnown("vprenderer", "output_diagnostics", "true");
-	document.SetKnown("vprenderer", "diagnostic_force_8bit_sdr_swapchain",
-		test.force8Bit ? "true" : "false");
-	document.SetKnown("vprenderer", "diagnostic_allow_limited_g22",
-		test.allowLimitedG22 ? "true" : "false");
-	document.SetKnown("vprenderer", "diagnostic_vp_owned_dxgi_presenter",
-		test.vpOwnedPresenter ? "true" : "false");
-	document.SetKnown("vprenderer", "diagnostic_disable_compute",
-		test.disableCompute ? "true" : "false");
-	document.SetKnown("vprenderer", "diagnostic_disable_shader_cache",
-		test.disableShaderCache ? "true" : "false");
+	applyTestSettings("vprenderer");
 
 	ConfigEditorCore::SaveResult saveResult;
 	std::wstring error;
@@ -2917,8 +2991,16 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 		test.description,
 		m_activeOutputSweepCaptureRestart ? L"capture" : L"renderer");
 	DebugLog::Log(
-		"Active output sweep case: index=%zu label=%S presentation=%s range=%s gamma=%s force8=%d vp_owned=%d no_compute=%d no_shader_cache=%d action=%s-restart backup=%S",
+		"Active output sweep case: suite=%S index=%zu label=%S presentation=%s range=%s gamma=%s target_nits=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%s target_primaries=%s report_bt2020=%s force8=%d vp_owned=%d no_compute=%d no_shader_cache=%d action=%s-restart backup=%S",
+		m_activeOutputSweepSuite.GetString(),
 		index + 1, test.label, test.presentation, test.range, test.gamma,
+		test.sdrTargetNits ? test.sdrTargetNits : "(unchanged)",
+		test.toneMapping ? test.toneMapping : "(unchanged)",
+		test.gamutMapping ? test.gamutMapping : "(unchanged)",
+		test.peakDetection ? test.peakDetection : "(unchanged)",
+		test.contrastRecovery ? test.contrastRecovery : "(unchanged)",
+		test.targetPrimaries ? test.targetPrimaries : "(unchanged)",
+		test.reportBt2020ToDisplay ? test.reportBt2020ToDisplay : "(unchanged)",
 		test.force8Bit ? 1 : 0, test.vpOwnedPresenter ? 1 : 0,
 		test.disableCompute ? 1 : 0, test.disableShaderCache ? 1 : 0,
 		m_activeOutputSweepCaptureRestart ? "capture" : "renderer",

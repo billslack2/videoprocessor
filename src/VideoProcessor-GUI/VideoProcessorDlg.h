@@ -164,7 +164,7 @@ public:
 	// Diagnostic-only runner. It only accepts the explicitly generated temporary
 	// sweep configuration, leaving the user's normal config untouched.
 	void ConfigureActiveOutputSweep(bool enabled, DWORD holdMs, bool showInfo,
-		bool captureRestart, const CString& requestedTests);
+		bool captureRestart, const CString& suite, const CString& requestedTests);
 
 
 	// UI-related handlers
@@ -727,6 +727,16 @@ protected:
 		bool disableCompute = false;
 		bool disableShaderCache = false;
 		const wchar_t* description = L"";
+		// HDR-suite values are null for a transport-contract case.  Keeping them
+		// nullable lets the HDR suite preserve its dedicated output template and
+		// change only the color-mapping control being diagnosed.
+		const char* sdrTargetNits = nullptr;
+		const char* toneMapping = nullptr;
+		const char* gamutMapping = nullptr;
+		const char* peakDetection = nullptr;
+		const char* contrastRecovery = nullptr;
+		const char* targetPrimaries = nullptr;
+		const char* reportBt2020ToDisplay = nullptr;
 	};
 	bool m_activeOutputSweepRequested = false;
 	bool m_activeOutputSweepRunning = false;
@@ -738,6 +748,7 @@ protected:
 	bool m_activeOutputSweepShowInfo = true;
 	bool m_activeOutputSweepCaptureRestart = true;
 	DWORD m_activeOutputSweepHoldMs = 10000;
+	CString m_activeOutputSweepSuite = L"sdr";
 	CString m_activeOutputSweepRequestedTests;
 	size_t m_activeOutputSweepCaseIndex = 0;
 	ULONGLONG m_activeOutputSweepDeadlineTick = 0;
