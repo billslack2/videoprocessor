@@ -2,18 +2,20 @@
 
 ## Status
 
-In Progress (updated 2026-08-12). Implementation commits `dcd2588` and
-`46aa1e5` are pushed on `codex/vp-0122-overlay-geometry`. The first deployed
-build reproduced a remaining scene-hold expiry at 23:52:44: an accepted held
-translation was still valid, but its older source sequence prevented the cut
-frame's direction-matched current envelope from attesting it. Commit `46aa1e5`
-uses the fresh same-generation envelope instead, restricted to the translated
-edge with unchanged horizontal and opposite-edge geometry. The exact commit
-built x64 Release, passed 94/94 focused policy tests and 802/807 full-suite
-tests; the five failures are the existing configuration/reference fixtures.
-The verified 55-file package is deployed to `C:\Videoprocessor\vp` with the
-active configuration preserved. Awaiting live operator validation of the same
-overlay/scene-transition sequence.
+In Progress (updated 2026-08-12). Commits `dcd2588`, `46aa1e5`, and `3956115`
+are pushed on `codex/vp-0122-overlay-geometry`. The final follow-up separates
+the last affirmative same-generation logical geometry from current-frame
+presentation safety: a scene or snapshot deadline no longer erases scope by
+itself, while visible pixels still expand, translate, or fail open immediately.
+Changing logical scope to an outward/full-raster geometry now requires three
+consecutive frames with broad picture-like occupancy in both opposing excluded
+bands; localized subtitles and volume UI cannot accumulate that authority.
+Both senior reviews approved the hardened design. The exact commit built x64
+Release and passed 154/154 focused tests, including generated P010 evidence;
+the complete suite passed 806/811 with the same five pre-existing
+configuration/reference fixture failures. Commit `3956115` is deployed to
+`C:\Videoprocessor\vp` with the active configuration untouched. Awaiting live
+operator validation.
 
 ## User story
 
