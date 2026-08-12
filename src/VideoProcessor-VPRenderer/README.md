@@ -1,13 +1,13 @@
 # Optional libplacebo renderer plugin
 
-This project builds `VideoProcessorLibplacebo.dll` and stages it with its
-private runtime dependencies under `x64\<configuration>\libplacebo`.
+This project builds `VideoProcessorVPRenderer.dll` and stages it with its
+private runtime dependencies under `x64\<configuration>\vprenderer`.
 
 The normal VideoProcessor executable has no import from this plugin or from
 `libplacebo-360.dll`. At startup it checks for:
 
 ```text
-libplacebo\VideoProcessorLibplacebo.dll
+vprenderer\VideoProcessorVPRenderer.dll
 ```
 
 The renderer is listed only when the plugin loads successfully and reports the
