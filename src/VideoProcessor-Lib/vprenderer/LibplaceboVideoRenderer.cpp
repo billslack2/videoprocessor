@@ -2983,6 +2983,20 @@ struct LibplaceboVideoRenderer::Impl
 		if (!d3d11 || !d3d11->gpu || !swapchain)
 			return false;
 
+		// libplacebo guarantees a blit-capable FBO for the swapchains it creates
+		// itself.  That guarantee does not currently hold for the externally
+		// created DXGI swapchain that the VP-owned experiment wraps: clearing that
+		// FBO emits "dst->params.blit_dst" validation failures during every
+		// renderer restart.  The GUI already covers the old renderer while the
+		// replacement starts, so do not deliberately present an unsafe black frame
+		// on this diagnostic path.
+		if (vpOwnedSwapchain)
+		{
+			DebugLog::Log(
+				"VP-owned DXGI swapchain: terminal black clear skipped before release (external FBO is not guaranteed blit-capable)");
+			return false;
+		}
+
 		struct pl_swapchain_frame swapchainFrame{};
 		if (!pl_swapchain_start_frame(swapchain, &swapchainFrame))
 			return false;
