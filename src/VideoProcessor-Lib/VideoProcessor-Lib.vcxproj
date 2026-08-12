@@ -231,6 +231,7 @@
     <ClInclude Include="vprenderer\\LibplaceboRenderParameters.h" />
     <ClInclude Include="vprenderer\\LibplaceboPluginVideoRenderer.h" />
     <ClInclude Include="vprenderer\\LibplaceboRendererPluginApi.h" />
+    <ClInclude Include="vprenderer\\OptionalRendererLayout.h" />
     <ClInclude Include="ITimingClock.h" />
     <ClInclude Include="microsoft_directshow\DirectShowDefines.h" />
     <ClInclude Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.h" />

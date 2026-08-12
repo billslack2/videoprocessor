@@ -2,6 +2,7 @@
 
 #include "LibplaceboPluginVideoRenderer.h"
 #include "LibplaceboRendererPluginApi.h"
+#include "OptionalRendererLayout.h"
 
 #include <ConfigFile.h>
 #include <DebugLog.h>
@@ -47,14 +48,18 @@ namespace
 		if (executableDirectory.empty())
 			return result;
 
-		const std::wstring pluginPath = executableDirectory +
-			L"\\vprenderer\\VideoProcessorVPRenderer.dll";
+		const std::wstring pluginPath =
+			OptionalRendererLayout::PluginPath(executableDirectory);
 		DebugLog::Log(
 			"VP Renderer plugin probe: path=%ls",
 			pluginPath.c_str());
-		if (GetFileAttributesW(pluginPath.c_str()) == INVALID_FILE_ATTRIBUTES)
+		std::wstring missingPath;
+		if (OptionalRendererLayout::FindMissingRuntimeFile(
+			executableDirectory, missingPath))
 		{
-			DebugLog::Log("VP Renderer plugin unavailable at canonical path");
+			DebugLog::Log(
+				"VP Renderer plugin unavailable: missing required file path=%ls",
+				missingPath.c_str());
 			return result;
 		}
 

@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "layoutVersion": "VP-0107",
+  "canonicalPluginDirectory": "vprenderer",
+  "directories": [
+    {
+      "path": "logs",
+      "owner": "VideoProcessor",
+      "consumer": "VideoProcessor.exe",
+      "reason": "Intentionally empty release directory; the logger also recreates it when absent."
+    }
+  ],
+  "mutableArtifacts": [
+    {
+      "path": "vprenderer/VideoProcessorShaderCache.bin",
+      "owner": "VP Renderer",
+      "consumer": "VideoProcessorVPRenderer.dll",
+      "reason": "Runtime-created libplacebo shader cache; never shipped or copied from an existing deployment."
+    },
+    {
+      "path": "logs/",
+      "owner": "VideoProcessor",
+      "consumer": "VideoProcessor.exe",
+      "reason": "Runtime diagnostics are never release inputs; only their empty parent directory is shipped."
+    },
+    {
+      "path": "VideoProcessor.state",
+      "owner": "VideoProcessor",
+      "consumer": "VideoProcessor.exe",
+      "reason": "Operator state; preserved by deployment and never part of a release package."
+    }
+  ],
+  "externalRuntimeRequirements": [
+    {
+      "owner": "Microsoft Visual C++ runtime",
+      "sourceVersion": "VC v143 Redistributable",
+      "consumer": "VideoProcessor.exe, VideoProcessorConfig.exe, VideoProcessorConfigDiscovery.dll, and VideoProcessorVPRenderer.dll",
+      "loadMechanism": "Normal PE imports resolved by Windows",
+      "reason": "MSVCP140, VCRUNTIME140/140_1, and MFC140U are installed system runtimes and are not copied from a developer machine."
+    },
+    {
+      "owner": "Windows",
+      "sourceVersion": "Supported Windows installation",
+      "consumer": "All application binaries",
+      "loadMechanism": "System32 and API-set imports",
+      "reason": "Kernel, UI, COM, Direct3D, DXGI, DWM, Propsys, and CRT API-set libraries are operating-system components."
+    }
+  ],
+  "files": [
+    { "sourceRoot": "build", "source": "VideoProcessor-GUI.exe", "destination": "VideoProcessor.exe", "owner": "VideoProcessor", "sourceVersion": "Current x64 Release commit", "consumer": "Operator", "loadMechanism": "Process image", "reason": "Main application executable." },
+    { "sourceRoot": "build", "source": "VideoProcessorConfig.exe", "destination": "config/VideoProcessorConfig.exe", "owner": "VideoProcessor Config", "sourceVersion": "Qt 6.8.3 / current x64 Release commit", "consumer": "Operator and VideoProcessor.exe", "loadMechanism": "Process image launched by absolute installation-relative path", "reason": "Standalone and owner-associated configuration editor, isolated with its private Qt runtime." },
+    { "sourceRoot": "build", "source": "VideoProcessorConfigDiscovery.dll", "destination": "config/VideoProcessorConfigDiscovery.dll", "owner": "VideoProcessor Config", "sourceVersion": "Current x64 Release commit", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "QLibrary absolute application-directory path", "reason": "Discovers capture devices, connections, monitors, and renderers." },
+    { "sourceRoot": "repository", "source": "CONFIGURATION.html", "destination": "CONFIGURATION.html", "owner": "VideoProcessor", "sourceVersion": "Current source commit", "consumer": "Operator", "loadMechanism": "Documentation", "reason": "Shipped configuration reference." },
+    { "sourceRoot": "repository", "source": "VideoProcessor.cfg", "destination": "VideoProcessor.cfg.example", "owner": "VideoProcessor", "sourceVersion": "Current source commit", "consumer": "Operator", "loadMechanism": "Example only", "reason": "Example configuration; deliberately renamed so deployment cannot overwrite active user configuration." },
+    { "sourceRoot": "repository", "source": "packaging/release-manifest.json", "destination": "RELEASE-MANIFEST.json", "owner": "VideoProcessor packaging", "sourceVersion": "VP-0107 schema 1", "consumer": "Installer and operator", "loadMechanism": "Documentation", "reason": "Machine-readable inventory for the exact release layout." },
+    { "sourceRoot": "repository", "source": "docs/VP-0107_RELEASE_LAYOUT.md", "destination": "RELEASE-LAYOUT.md", "owner": "VideoProcessor packaging", "sourceVersion": "VP-0107", "consumer": "Installer and operator", "loadMechanism": "Documentation", "reason": "Human-readable layout, loading, deployment, and cache contract." },
+
+    { "sourceRoot": "build", "source": "Qt6Core.dll", "destination": "config/Qt6Core.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Normal executable import", "reason": "Qt core runtime required before Config startup and therefore private beside its consumer." },
+    { "sourceRoot": "build", "source": "Qt6Gui.dll", "destination": "config/Qt6Gui.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Normal executable import", "reason": "Qt GUI runtime required before Config startup and therefore private beside its consumer." },
+    { "sourceRoot": "build", "source": "Qt6Widgets.dll", "destination": "config/Qt6Widgets.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Normal executable import", "reason": "Qt widgets runtime required before Config startup and therefore private beside its consumer." },
+    { "sourceRoot": "build", "source": "Qt6Network.dll", "destination": "config/Qt6Network.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt runtime plugins", "loadMechanism": "Plugin transitive import", "reason": "Selected by windeployqt for the private Config plugin set." },
+    { "sourceRoot": "build", "source": "Qt6Svg.dll", "destination": "config/Qt6Svg.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "qsvg and qsvgicon plugins", "loadMechanism": "Plugin transitive import", "reason": "SVG support for the private Config plugin set." },
+    { "sourceRoot": "build", "source": "opengl32sw.dll", "destination": "config/opengl32sw.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt6Gui.dll", "loadMechanism": "Qt graphics backend dynamic load", "reason": "Software OpenGL fallback private to Config." },
+
+    { "sourceRoot": "build", "source": "generic/qtuiotouchplugin.dll", "destination": "config/generic/qtuiotouchplugin.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt generic plugin discovery", "reason": "Touch input plugin selected by windeployqt." },
+    { "sourceRoot": "build", "source": "iconengines/qsvgicon.dll", "destination": "config/iconengines/qsvgicon.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt icon engine discovery", "reason": "SVG icon support selected by windeployqt." },
+    { "sourceRoot": "build", "source": "imageformats/qgif.dll", "destination": "config/imageformats/qgif.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt image plugin discovery", "reason": "GIF support selected by windeployqt." },
+    { "sourceRoot": "build", "source": "imageformats/qico.dll", "destination": "config/imageformats/qico.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt image plugin discovery", "reason": "Windows icon support selected by windeployqt." },
+    { "sourceRoot": "build", "source": "imageformats/qjpeg.dll", "destination": "config/imageformats/qjpeg.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt image plugin discovery", "reason": "JPEG support selected by windeployqt." },
+    { "sourceRoot": "build", "source": "imageformats/qsvg.dll", "destination": "config/imageformats/qsvg.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt image plugin discovery", "reason": "SVG image support selected by windeployqt." },
+    { "sourceRoot": "build", "source": "networkinformation/qnetworklistmanager.dll", "destination": "config/networkinformation/qnetworklistmanager.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt6Network.dll", "loadMechanism": "Qt network-information plugin discovery", "reason": "Windows network information backend selected by windeployqt." },
+    { "sourceRoot": "build", "source": "platforms/qwindows.dll", "destination": "config/platforms/qwindows.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt platform plugin discovery", "reason": "Required Windows platform integration plugin." },
+    { "sourceRoot": "build", "source": "styles/qmodernwindowsstyle.dll", "destination": "config/styles/qmodernwindowsstyle.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt style plugin discovery", "reason": "Native Windows visual style selected by windeployqt." },
+    { "sourceRoot": "build", "source": "tls/qcertonlybackend.dll", "destination": "config/tls/qcertonlybackend.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt6Network.dll", "loadMechanism": "Qt TLS plugin discovery", "reason": "Certificate-only backend selected by windeployqt." },
+    { "sourceRoot": "build", "source": "tls/qschannelbackend.dll", "destination": "config/tls/qschannelbackend.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt6Network.dll", "loadMechanism": "Qt TLS plugin discovery", "reason": "Windows Schannel backend selected by windeployqt." },
+
+    { "sourceRoot": "repository", "source": "shaders/Adaptive sharpen.hlsl", "destination": "shaders/Adaptive sharpen.hlsl", "owner": "VideoProcessor shaders", "sourceVersion": "Current source commit", "consumer": "madVR", "loadMechanism": "Executable-relative shader lookup", "reason": "Built-in configurable HLSL shader." },
+    { "sourceRoot": "repository", "source": "shaders/Debanding mild.hlsl", "destination": "shaders/Debanding mild.hlsl", "owner": "VideoProcessor shaders", "sourceVersion": "Current source commit", "consumer": "madVR", "loadMechanism": "Executable-relative shader lookup", "reason": "Built-in configurable HLSL shader." },
+    { "sourceRoot": "repository", "source": "shaders/Denoise.hlsl", "destination": "shaders/Denoise.hlsl", "owner": "VideoProcessor shaders", "sourceVersion": "Current source commit", "consumer": "madVR", "loadMechanism": "Executable-relative shader lookup", "reason": "Built-in configurable HLSL shader." },
+    { "sourceRoot": "repository", "source": "shaders/Invert.hlsl", "destination": "shaders/Invert.hlsl", "owner": "VideoProcessor shaders", "sourceVersion": "Current source commit", "consumer": "madVR", "loadMechanism": "Executable-relative shader lookup", "reason": "Built-in configurable HLSL shader." },
+    { "sourceRoot": "repository", "source": "shaders/NLS.hlsl", "destination": "shaders/NLS.hlsl", "owner": "VideoProcessor shaders", "sourceVersion": "Current source commit", "consumer": "madVR", "loadMechanism": "Executable-relative shader lookup", "reason": "Built-in nonlinear-stretch HLSL shader." },
+    { "sourceRoot": "repository", "source": "shaders/NLS.glsl", "destination": "shaders/NLS.glsl", "owner": "VideoProcessor shaders", "sourceVersion": "Current source commit", "consumer": "VideoProcessorVPRenderer.dll", "loadMechanism": "Executable-relative shader lookup", "reason": "Built-in nonlinear-stretch GLSL shader shared with the optional renderer without a duplicate plugin copy." },
+
+    { "sourceRoot": "build", "source": "vprenderer/VideoProcessorVPRenderer.dll", "destination": "vprenderer/VideoProcessorVPRenderer.dll", "owner": "VP Renderer", "sourceVersion": "Current x64 Release commit", "consumer": "VideoProcessor.exe", "loadMechanism": "Absolute path with LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR and LOAD_LIBRARY_SEARCH_SYSTEM32", "reason": "Optional renderer plugin; versioned with the host executable." },
+    { "sourceRoot": "libplacebo", "source": "bin/libplacebo-360.dll", "destination": "vprenderer/libplacebo-360.dll", "owner": "libplacebo", "sourceVersion": "7.360.1", "consumer": "VideoProcessorVPRenderer.dll", "loadMechanism": "Normal plugin import resolved only from plugin directory or System32", "reason": "Primary optional-renderer runtime." },
+    { "sourceRoot": "libplacebo", "source": "bin/libdovi.dll", "destination": "vprenderer/libdovi.dll", "owner": "libdovi", "sourceVersion": "MSYS2 mingw64 package paired with libplacebo 7.360.1", "consumer": "libplacebo-360.dll", "loadMechanism": "Transitive private import", "reason": "Hard import of libplacebo-360.dll." },
+    { "sourceRoot": "libplacebo", "source": "bin/liblcms2-2.dll", "destination": "vprenderer/liblcms2-2.dll", "owner": "Little CMS", "sourceVersion": "MSYS2 mingw64 package paired with libplacebo 7.360.1", "consumer": "libplacebo-360.dll", "loadMechanism": "Transitive private import", "reason": "Hard import of libplacebo-360.dll." },
+    { "sourceRoot": "libplacebo", "source": "bin/libshaderc_shared.dll", "destination": "vprenderer/libshaderc_shared.dll", "owner": "Shaderc", "sourceVersion": "MSYS2 mingw64 package paired with libplacebo 7.360.1", "consumer": "libplacebo-360.dll", "loadMechanism": "Transitive private import", "reason": "Hard import used for shader compilation." },
+    { "sourceRoot": "libplacebo", "source": "bin/libspirv-cross-c-shared.dll", "destination": "vprenderer/libspirv-cross-c-shared.dll", "owner": "SPIRV-Cross", "sourceVersion": "MSYS2 mingw64 package paired with libplacebo 7.360.1", "consumer": "libplacebo-360.dll", "loadMechanism": "Transitive private import", "reason": "Hard import used for shader translation." },
+    { "sourceRoot": "libplacebo", "source": "bin/libgcc_s_seh-1.dll", "destination": "vprenderer/libgcc_s_seh-1.dll", "owner": "GCC runtime", "sourceVersion": "MSYS2 mingw64 package paired with libplacebo 7.360.1", "consumer": "libplacebo and SPIRV-Cross stack", "loadMechanism": "Transitive private import", "reason": "Required GCC exception runtime." },
+    { "sourceRoot": "libplacebo", "source": "bin/libstdc++-6.dll", "destination": "vprenderer/libstdc++-6.dll", "owner": "GCC runtime", "sourceVersion": "MSYS2 mingw64 package paired with libplacebo 7.360.1", "consumer": "libplacebo and SPIRV-Cross stack", "loadMechanism": "Transitive private import", "reason": "Required C++ runtime." },
+    { "sourceRoot": "libplacebo", "source": "bin/libwinpthread-1.dll", "destination": "vprenderer/libwinpthread-1.dll", "owner": "winpthreads", "sourceVersion": "MSYS2 mingw64 package paired with libplacebo 7.360.1", "consumer": "GCC runtime stack", "loadMechanism": "Transitive private import", "reason": "Required threading runtime." },
+    { "sourceRoot": "libplacebo", "source": "bin/vulkan-1.dll", "destination": "vprenderer/vulkan-1.dll", "owner": "Vulkan loader", "sourceVersion": "MSYS2 mingw64 package paired with libplacebo 7.360.1", "consumer": "libplacebo-360.dll", "loadMechanism": "Transitive private import", "reason": "Hard import even when the D3D11 backend is selected." },
+    { "sourceRoot": "libplacebo", "source": "README.txt", "destination": "vprenderer/README.txt", "owner": "libplacebo", "sourceVersion": "7.360.1", "consumer": "Installer and operator", "loadMechanism": "Documentation", "reason": "Upstream version and binary provenance." },
+    { "sourceRoot": "libplacebo", "source": "LICENSE.txt", "destination": "vprenderer/third_party_licenses/libplacebo-LICENSE.txt", "owner": "libplacebo", "sourceVersion": "7.360.1", "consumer": "Redistribution", "loadMechanism": "License", "reason": "libplacebo LGPL license obligation." },
+    { "sourceRoot": "nvapi", "source": "License.txt", "destination": "vprenderer/third_party_licenses/nvapi-LICENSE.txt", "owner": "NVIDIA NVAPI", "sourceVersion": "Bundled SDK", "consumer": "Redistribution", "loadMechanism": "License", "reason": "NVAPI is statically linked by the plugin." },
+    { "sourceRoot": "libplacebo", "source": "licenses/gcc-libs/COPYING.LIB", "destination": "vprenderer/third_party_licenses/gcc-libs/COPYING.LIB", "owner": "GCC runtime", "sourceVersion": "Bundled MSYS2 runtime", "consumer": "Redistribution", "loadMechanism": "License", "reason": "Runtime redistribution obligation." },
+    { "sourceRoot": "libplacebo", "source": "licenses/gcc-libs/COPYING.RUNTIME", "destination": "vprenderer/third_party_licenses/gcc-libs/COPYING.RUNTIME", "owner": "GCC runtime", "sourceVersion": "Bundled MSYS2 runtime", "consumer": "Redistribution", "loadMechanism": "License", "reason": "Runtime exception text." },
+    { "sourceRoot": "libplacebo", "source": "licenses/gcc-libs/COPYING3", "destination": "vprenderer/third_party_licenses/gcc-libs/COPYING3", "owner": "GCC runtime", "sourceVersion": "Bundled MSYS2 runtime", "consumer": "Redistribution", "loadMechanism": "License", "reason": "GPL license text." },
+    { "sourceRoot": "libplacebo", "source": "licenses/gcc-libs/README", "destination": "vprenderer/third_party_licenses/gcc-libs/README", "owner": "GCC runtime", "sourceVersion": "Bundled MSYS2 runtime", "consumer": "Redistribution", "loadMechanism": "License documentation", "reason": "Runtime license mapping." },
+    { "sourceRoot": "libplacebo", "source": "licenses/lcms2/LICENSE", "destination": "vprenderer/third_party_licenses/lcms2/LICENSE", "owner": "Little CMS", "sourceVersion": "Bundled MSYS2 runtime", "consumer": "Redistribution", "loadMechanism": "License", "reason": "Runtime redistribution obligation." },
+    { "sourceRoot": "libplacebo", "source": "licenses/lcms2/LICENSE-fast_float", "destination": "vprenderer/third_party_licenses/lcms2/LICENSE-fast_float", "owner": "Little CMS dependency", "sourceVersion": "Bundled MSYS2 runtime", "consumer": "Redistribution", "loadMechanism": "License", "reason": "Third-party license obligation." },
+    { "sourceRoot": "libplacebo", "source": "licenses/libdovi/LICENSE", "destination": "vprenderer/third_party_licenses/libdovi/LICENSE", "owner": "libdovi", "sourceVersion": "Bundled MSYS2 runtime", "consumer": "Redistribution", "loadMechanism": "License", "reason": "Runtime redistribution obligation." },
+    { "sourceRoot": "libplacebo", "source": "licenses/shaderc/LICENSE", "destination": "vprenderer/third_party_licenses/shaderc/LICENSE", "owner": "Shaderc", "sourceVersion": "Bundled MSYS2 runtime", "consumer": "Redistribution", "loadMechanism": "License", "reason": "Runtime redistribution obligation." },
+    { "sourceRoot": "libplacebo", "source": "licenses/spirv-cross/LICENSE", "destination": "vprenderer/third_party_licenses/spirv-cross/LICENSE", "owner": "SPIRV-Cross", "sourceVersion": "Bundled MSYS2 runtime", "consumer": "Redistribution", "loadMechanism": "License", "reason": "Runtime redistribution obligation." },
+    { "sourceRoot": "libplacebo", "source": "licenses/spirv-tools/LICENSE", "destination": "vprenderer/third_party_licenses/spirv-tools/LICENSE", "owner": "SPIRV-Tools", "sourceVersion": "Bundled MSYS2 runtime", "consumer": "Redistribution", "loadMechanism": "License", "reason": "Shaderc dependency license obligation." },
+    { "sourceRoot": "libplacebo", "source": "licenses/vulkan-loader/LICENSE", "destination": "vprenderer/third_party_licenses/vulkan-loader/LICENSE", "owner": "Vulkan loader", "sourceVersion": "Bundled MSYS2 runtime", "consumer": "Redistribution", "loadMechanism": "License", "reason": "Runtime redistribution obligation." },
+    { "sourceRoot": "libplacebo", "source": "licenses/winpthreads/COPYING", "destination": "vprenderer/third_party_licenses/winpthreads/COPYING", "owner": "winpthreads", "sourceVersion": "Bundled MSYS2 runtime", "consumer": "Redistribution", "loadMechanism": "License", "reason": "Runtime redistribution obligation." }
+  ]
+}

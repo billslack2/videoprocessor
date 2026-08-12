@@ -63,6 +63,35 @@ namespace
 {
 using Microsoft::WRL::ComPtr;
 
+constexpr wchar_t ConfigurationEditorRelativePath[] =
+	L"config\\VideoProcessorConfig.exe";
+
+bool GetApplicationDirectory(std::wstring& directory)
+{
+	wchar_t modulePath[32768] = {};
+	const DWORD length = ::GetModuleFileNameW(nullptr, modulePath,
+		ARRAYSIZE(modulePath));
+	if (!length || length >= ARRAYSIZE(modulePath))
+		return false;
+	directory.assign(modulePath, length);
+	const size_t separator = directory.find_last_of(L"\\/");
+	if (separator == std::wstring::npos)
+		return false;
+	directory.resize(separator + 1);
+	return true;
+}
+
+std::wstring ConfigurationEditorPath(const std::wstring& applicationDirectory)
+{
+	return applicationDirectory + ConfigurationEditorRelativePath;
+}
+
+std::wstring ConfigurationEditorDirectory(
+	const std::wstring& applicationDirectory)
+{
+	return applicationDirectory + L"config\\";
+}
+
 struct CaptureVideoStateNotification
 {
 	ACaptureDeviceComPtr source;
@@ -261,17 +290,11 @@ HWND FindConfigurationEditorForProcess(DWORD processId, HWND excluded)
 
 HWND FindConfigurationEditorForCurrentInstallation()
 {
-	wchar_t modulePath[32768] = {};
-	const DWORD length = GetModuleFileNameW(nullptr, modulePath,
-		ARRAYSIZE(modulePath));
-	if (!length || length >= ARRAYSIZE(modulePath))
+	std::wstring applicationDirectory;
+	if (!GetApplicationDirectory(applicationDirectory))
 		return nullptr;
-	std::wstring expectedPath(modulePath, length);
-	const size_t separator = expectedPath.find_last_of(L"\\/");
-	if (separator == std::wstring::npos)
-		return nullptr;
-	expectedPath.resize(separator + 1);
-	expectedPath += L"VideoProcessorConfig.exe";
+	const std::wstring expectedPath =
+		ConfigurationEditorPath(applicationDirectory);
 	ConfigurationEditorSearch search{ expectedPath };
 	EnumWindows(FindConfigurationEditor,
 		reinterpret_cast<LPARAM>(&search));
@@ -327,17 +350,13 @@ bool SendConfigurationEditorRevealOnce(HWND editor, HWND owner,
 bool LaunchConfigurationEditorActivationFallback(HWND owner,
 	DWORD ownerProcessId)
 {
-	wchar_t modulePath[32768] = {};
-	const DWORD length = ::GetModuleFileNameW(nullptr, modulePath,
-		ARRAYSIZE(modulePath));
-	if (!length || length >= ARRAYSIZE(modulePath))
+	std::wstring applicationDirectory;
+	if (!GetApplicationDirectory(applicationDirectory))
 		return false;
-	std::wstring editorPath(modulePath, length);
-	const size_t separator = editorPath.find_last_of(L"\\/");
-	if (separator == std::wstring::npos)
-		return false;
-	const std::wstring workingDirectory = editorPath.substr(0, separator + 1);
-	editorPath = workingDirectory + L"VideoProcessorConfig.exe";
+	const std::wstring editorPath =
+		ConfigurationEditorPath(applicationDirectory);
+	const std::wstring workingDirectory =
+		ConfigurationEditorDirectory(applicationDirectory);
 	if (::GetFileAttributesW(editorPath.c_str()) == INVALID_FILE_ATTRIBUTES)
 		return false;
 	wchar_t arguments[160] = {};
@@ -5540,21 +5559,18 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 			reinterpret_cast<void*>(existingEditor));
 		return;
 	}
-	wchar_t modulePath[MAX_PATH] = {};
-	if (GetModuleFileNameW(nullptr, modulePath, ARRAYSIZE(modulePath)) == 0)
+	std::wstring executablePath;
+	if (!GetApplicationDirectory(executablePath))
 		return;
-	std::wstring executablePath(modulePath);
-	const size_t separator = executablePath.find_last_of(L"\\/");
-	if (separator == std::wstring::npos)
-		return;
-	executablePath.resize(separator + 1);
-	const std::wstring editorPath = executablePath + L"VideoProcessorConfig.exe";
+	const std::wstring editorPath = ConfigurationEditorPath(executablePath);
+	const std::wstring editorDirectory =
+		ConfigurationEditorDirectory(executablePath);
 	if (GetFileAttributesW(editorPath.c_str()) == INVALID_FILE_ATTRIBUTES)
 	{
 		m_configurationEditorActivationPending = false;
 		m_configurationEditorRevealStartedTick = 0;
-		DEBUGLOG("Configuration editor is not installed beside VideoProcessor.exe");
-		AfxMessageBox(L"VideoProcessorConfig.exe is not installed beside VideoProcessor.exe.");
+		DEBUGLOG("Configuration editor is not installed at config\\VideoProcessorConfig.exe");
+		AfxMessageBox(L"config\\VideoProcessorConfig.exe is not installed.");
 		return;
 	}
 
@@ -5582,7 +5598,7 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 		static_cast<unsigned long long>(reinterpret_cast<UINT_PTR>(editorOwner)),
 		GetCurrentProcessId());
 	const HINSTANCE result = ShellExecuteW(GetSafeHwnd(), L"open", editorPath.c_str(),
-		arguments, executablePath.c_str(), SW_SHOWNORMAL);
+		arguments, editorDirectory.c_str(), SW_SHOWNORMAL);
 	if (reinterpret_cast<INT_PTR>(result) <= 32)
 	{
 		m_configurationEditorActivationPending = false;
@@ -5603,15 +5619,12 @@ void CVideoProcessorDlg::StartConfigurationEditorInTray()
 	// Config's hardware discovery touches capture, display, and renderer
 	// registrations.  Keep that independent work out of VP's startup path so
 	// the editor is already warm in the notification area when it is needed.
-	wchar_t modulePath[MAX_PATH] = {};
-	if (GetModuleFileNameW(nullptr, modulePath, ARRAYSIZE(modulePath)) == 0)
+	std::wstring executablePath;
+	if (!GetApplicationDirectory(executablePath))
 		return;
-	std::wstring executablePath(modulePath);
-	const size_t separator = executablePath.find_last_of(L"\\/");
-	if (separator == std::wstring::npos)
-		return;
-	executablePath.resize(separator + 1);
-	const std::wstring editorPath = executablePath + L"VideoProcessorConfig.exe";
+	const std::wstring editorPath = ConfigurationEditorPath(executablePath);
+	const std::wstring editorDirectory =
+		ConfigurationEditorDirectory(executablePath);
 	if (GetFileAttributesW(editorPath.c_str()) == INVALID_FILE_ATTRIBUTES)
 	{
 		DEBUGLOG("Configuration editor warm start skipped: executable is not installed");
@@ -5636,7 +5649,7 @@ void CVideoProcessorDlg::StartConfigurationEditorInTray()
 	wchar_t arguments[2 * MAX_PATH + 32] = {};
 	swprintf_s(arguments, L"--config \"%s\" --background", configPath.c_str());
 	const HINSTANCE result = ShellExecuteW(GetSafeHwnd(), L"open", editorPath.c_str(),
-		arguments, executablePath.c_str(), SW_HIDE);
+		arguments, editorDirectory.c_str(), SW_HIDE);
 	if (reinterpret_cast<INT_PTR>(result) <= 32)
 		DEBUGLOG("Configuration editor warm start failed result=%p", result);
 	else

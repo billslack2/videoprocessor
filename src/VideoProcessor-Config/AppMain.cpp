@@ -24,6 +24,19 @@ QString defaultConfigPath()
     const QString beside = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("VideoProcessor.cfg"));
     if (QFileInfo::exists(beside)) return QFileInfo(beside).absoluteFilePath();
 
+    // Release packages keep the Qt application and its runtime private under
+    // config\ while the operator configuration remains beside
+    // VideoProcessor.exe in the parent installation directory.
+    QDir installation(QCoreApplication::applicationDirPath());
+    if (installation.dirName().compare(QStringLiteral("config"),
+        Qt::CaseInsensitive) == 0 && installation.cdUp())
+    {
+        const QString installed = installation.filePath(
+            QStringLiteral("VideoProcessor.cfg"));
+        if (QFileInfo::exists(installed))
+            return QFileInfo(installed).absoluteFilePath();
+    }
+
     // A development build lives at src/VideoProcessor-Config/x64/<config>.
     // Walk upward instead of depending on that exact depth so direct launches
     // from Visual Studio and future output-layout changes still find the
