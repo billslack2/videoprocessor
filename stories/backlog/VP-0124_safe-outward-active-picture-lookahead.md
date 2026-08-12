@@ -47,28 +47,27 @@ not something this story is permitted to trade away.
 
 ## Configuration and UI
 
-Add an explicit mode beside the existing frame count:
+The first prototype exposes only the safe diagnostic modes beside the existing
+frame count:
 
 ```ini
-active_picture_lookahead_mode: off   # off | shadow | outward_apply
+active_picture_lookahead_mode: off   # off | shadow
 active_picture_lookahead_frames: 0   # 0..8
 ```
 
 - `off`: no preview work; current behavior.
 - `shadow`: analyze and report decisions, but never change presentation or
   logical geometry.
-- `outward_apply`: apply only a validated, current-frame-safe outward result.
-  This remains opt-in until the full acceptance gate passes.
 - Legacy configurations with only a nonzero frame value migrate to `shadow`,
   never silently to applied behavior.
 - VP Renderer queue `target_frames`, not DirectShow `lead_frames`, determines
   practical availability. Reliable lead `L` normally needs
-  `target_frames >= L + 1` and `queue_size >= target_frames`.
-- The UI should warn when requested lookahead exceeds `target_frames - 1`, but
-  it must not reject the configuration: runtime availability is dynamic and
-  safely clamps to `min(configured, available distinct non-repeat frames)`.
-- Initial applied rollout is limited to one frame. Values 4..8 remain
-  diagnostic/stress settings until performance data justifies them.
+  sufficient queued target depth and `queue_size >= target_frames`; runtime
+  telemetry, rather than a fixed formula, determines actual depth.
+- Runtime safely clamps to `min(configured, available distinct non-repeat
+  frames)` and never rejects a profile solely for dynamic queue shortfall.
+- Values 4..8 remain diagnostic/stress settings until performance data
+  justifies them.
 
 ## Prototype increments
 
@@ -77,12 +76,12 @@ active_picture_lookahead_frames: 0   # 0..8
 - Add the explicit mode to schema, runtime configuration, live profile
   application, Config UI, examples, and validation.
 - Move `ShouldAnalyze`/eligibility checks ahead of queued pixel extraction.
-- Cache immutable evidence once per frame identity and retention evidence once
-  per trusted-base signature; never cache source pointers.
+- Reject stale scans through a mode/depth policy epoch and clear partial proof
+  whenever either value changes.
 - In shadow mode, create and validate decisions but never call
   `AdoptPublishedDecision`.
-- Correct telemetry so it reports the real mode and whether application was
-  possible, vetoed, late, or depth-limited.
+- Report actual batch count, scheduled/analyzed samples, and average/maximum
+  preview time so the render-thread cost is measurable before field enablement.
 
 ### 2. Reveal-only certificate
 
@@ -124,8 +123,8 @@ active_picture_lookahead_frames: 0   # 0..8
 
 ## Acceptance criteria
 
-- Explicit Off/Shadow/Outward apply behavior is visible and round-trippable in
-  Config; old files cannot silently activate applied lookahead.
+- Explicit Off/Shadow behavior is visible and round-trippable in Config; old
+  files cannot silently activate pixel-changing lookahead.
 - Off is behaviorally identical to VP-0122.
 - Shadow performs no presentation or logical-state mutation.
 - Applied mode never backdates inward/mixed transitions and never excludes a
@@ -143,4 +142,3 @@ active_picture_lookahead_frames: 0   # 0..8
 - VP-0098: arbitrary CIH active-picture envelope and screen fit.
 - VP-0110: smooth subtitle translation and drift timing.
 - VP-0122: logical-geometry retention through subtitles and volume overlays.
-
