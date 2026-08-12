@@ -42,6 +42,7 @@
 #include <StatsOverlayWindow.h>
 #include <ApplicationInterface.h>
 #include <ConfigurationApplyPolicy.h>
+#include <ConfigEditorCore.h>
 #include "ModernOperatorView.h"
 
 #include "resource.h"
@@ -160,6 +161,10 @@ public:
 	void DefaultRendererTransferFunction(DXVA_VideoTransferFunction);
 	void DefaultRendererTransferMatrix(DXVA_VideoTransferMatrix);
 	void DefaultRendererPrimaries(DXVA_VideoPrimaries);
+	// Diagnostic-only runner. It only accepts the explicitly generated temporary
+	// sweep configuration, leaving the user's normal config untouched.
+	void ConfigureActiveOutputSweep(bool enabled, DWORD holdMs, bool showInfo,
+		bool captureRestart);
 
 
 	// UI-related handlers
@@ -710,6 +715,32 @@ protected:
 	StatsData* m_lastStatsData = nullptr;
 	bool m_statsOverlayRequestedVisible = false;
 
+	struct ActiveOutputSweepCase
+	{
+		const wchar_t* label = L"";
+		const char* presentation = "auto";
+		const char* range = "auto";
+		const char* gamma = "auto";
+		bool force8Bit = false;
+		bool allowLimitedG22 = false;
+		bool vpOwnedPresenter = false;
+		bool disableCompute = false;
+		bool disableShaderCache = false;
+	};
+	bool m_activeOutputSweepRequested = false;
+	bool m_activeOutputSweepRunning = false;
+	bool m_activeOutputSweepAwaitingLiveFrame = false;
+	bool m_activeOutputSweepRestorePending = false;
+	bool m_activeOutputSweepShowInfo = true;
+	bool m_activeOutputSweepCaptureRestart = true;
+	DWORD m_activeOutputSweepHoldMs = 5000;
+	size_t m_activeOutputSweepCaseIndex = 0;
+	ULONGLONG m_activeOutputSweepDeadlineTick = 0;
+	CString m_activeOutputSweepStatus;
+	std::vector<ActiveOutputSweepCase> m_activeOutputSweepCases;
+	std::unique_ptr<ConfigEditorCore::ConfigDocument> m_activeOutputSweepDocument;
+	std::unique_ptr<ConfigEditorCore::ConfigDocument> m_activeOutputSweepOriginalDocument;
+
 	void UpdateState();
 
 	// Helpers
@@ -780,6 +811,12 @@ protected:
 	void ApplyStatsOverlayForActiveRenderer();
 	void LoadDisplayRefreshRateOverrides();
 	void ApplySavedConfiguration();
+	void UpdateActiveOutputSweep(ULONGLONG now);
+	bool StartActiveOutputSweep();
+	bool ApplyActiveOutputSweepCase(size_t index);
+	bool ApplyActiveOutputSweepConfiguration();
+	void RestoreActiveOutputSweepConfiguration(const wchar_t* reason);
+	void CompleteActiveOutputSweep(const wchar_t* result);
 	bool StageSavedConfiguration(const char* reason, bool stageAccelerators);
 	bool PublishStagedConfiguration(bool replaceAccelerators);
 	bool PublishStagedShortcutsOnly();

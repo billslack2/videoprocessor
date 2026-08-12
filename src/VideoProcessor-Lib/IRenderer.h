@@ -337,6 +337,12 @@ public:
 	{
 		return false;
 	}
+	// A separate high-priority test banner. Unlike the normal stats panel, this
+	// is placed at the top-right of the active picture/scope rectangle.
+	virtual bool SetNativeSweepOverlay(const uint8_t*, size_t, int, int, int)
+	{
+		return false;
+	}
 
 	// Source-side whole-frame actions moved to a detected scene boundary.
 	virtual uint64_t SceneAwareCorrectionDropCount() const { return 0; }

@@ -79,6 +79,8 @@ public:
 	bool SupportsNativeStatsOverlay() const override;
 	bool SetNativeStatsOverlay(const uint8_t* pixels, size_t byteCount,
 		int width, int height, int stride) override;
+	bool SetNativeSweepOverlay(const uint8_t* pixels, size_t byteCount,
+		int width, int height, int stride) override;
 	bool GetConversionPerformance(
 		double& currentUs, double& avg10s, double& max10s) const override;
 	bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const override;

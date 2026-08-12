@@ -2643,6 +2643,311 @@ void CVideoProcessorDlg::ApplySavedConfiguration()
 	}
 }
 
+void CVideoProcessorDlg::ConfigureActiveOutputSweep(
+	bool enabled, DWORD holdMs, bool showInfo, bool captureRestart)
+{
+	m_activeOutputSweepRequested = enabled;
+	m_activeOutputSweepHoldMs = holdMs < 1000 ? 1000 :
+		(holdMs > 60000 ? 60000 : holdMs);
+	m_activeOutputSweepShowInfo = showInfo;
+	m_activeOutputSweepCaptureRestart = captureRestart;
+	if (!enabled)
+		return;
+
+	// A live output test is useful only on the actual fullscreen target. This
+	// call occurs while command-line settings are applied, before capture starts.
+	StartFullScreen(true);
+	DebugLog::Log(
+		"Active output sweep armed: fullscreen=required hold_ms=%lu show_info=%d reinitialize=%s",
+		m_activeOutputSweepHoldMs, m_activeOutputSweepShowInfo ? 1 : 0,
+		m_activeOutputSweepCaptureRestart ? "capture" : "renderer");
+}
+
+bool CVideoProcessorDlg::StartActiveOutputSweep()
+{
+	if (!m_activeOutputSweepRequested || m_activeOutputSweepRunning)
+		return false;
+	if (!IsAlphaRendererSelected())
+	{
+		CompleteActiveOutputSweep(L"refused: VP Renderer is not selected");
+		return false;
+	}
+	if (m_rendererFullscreenCheck.GetCheck() != BST_CHECKED)
+	{
+		CompleteActiveOutputSweep(L"refused: fullscreen target is not active");
+		return false;
+	}
+
+	ConfigFile rendererConfig;
+	if (!rendererConfig.Load(ConfigFile::RENDERER_FILENAME) ||
+		rendererConfig.GetLoadedPath().empty())
+	{
+		CompleteActiveOutputSweep(L"refused: active renderer config was not found");
+		return false;
+	}
+	const int wideLength = MultiByteToWideChar(CP_ACP, 0,
+		rendererConfig.GetLoadedPath().c_str(), -1, nullptr, 0);
+	if (wideLength <= 1)
+	{
+		CompleteActiveOutputSweep(L"refused: renderer config path is invalid");
+		return false;
+	}
+	std::wstring configPath(static_cast<size_t>(wideLength), L'\0');
+	MultiByteToWideChar(CP_ACP, 0, rendererConfig.GetLoadedPath().c_str(), -1,
+		&configPath[0], wideLength);
+	configPath.pop_back();
+	std::wstring normalizedPath = configPath;
+	std::transform(normalizedPath.begin(), normalizedPath.end(),
+		normalizedPath.begin(), towlower);
+	// The launch helper creates this isolated copy. Refusing every other path
+	// guarantees the live runner cannot rewrite a normal user configuration.
+	if (normalizedPath.find(L"active-output-sweep") == std::wstring::npos)
+	{
+		CompleteActiveOutputSweep(
+			L"refused: launch with generated active-output-sweep config");
+		DebugLog::Log(
+			"Active output sweep refused: renderer_config=%s reason=not-isolated-sweep-copy",
+			rendererConfig.GetLoadedPath().c_str());
+		return false;
+	}
+
+	auto document = std::make_unique<ConfigEditorCore::ConfigDocument>();
+	std::wstring error;
+	if (!document->Load(configPath, error))
+	{
+		CString status;
+		status.Format(L"refused: cannot load sweep config (%s)", error.c_str());
+		CompleteActiveOutputSweep(status);
+		return false;
+	}
+	m_activeOutputSweepDocument = std::move(document);
+	m_activeOutputSweepOriginalDocument =
+		std::make_unique<ConfigEditorCore::ConfigDocument>(*m_activeOutputSweepDocument);
+	m_activeOutputSweepCases = {
+		{ L"1/8 legacy direct full/sRGB", "direct", "full", "srgb", false, false, false, false, false },
+		{ L"2/8 direct limited/G22 policy", "direct", "limited", "2.2", false, false, false, false, false },
+		{ L"3/8 VP direct limited/G22", "direct", "limited", "2.2", false, true, true, false, false },
+		{ L"4/8 VP direct limited/G24", "direct", "limited", "2.4", false, false, true, false, false },
+		{ L"5/8 VP direct full/sRGB 8-bit", "direct", "full", "srgb", true, false, true, false, false },
+		{ L"6/8 VP direct compute off", "direct", "full", "srgb", false, false, true, true, false },
+		{ L"7/8 VP direct shader cache off", "direct", "full", "srgb", false, false, true, false, true },
+		{ L"8/8 composed full/sRGB", "composed", "full", "srgb", false, false, false, false, false },
+	};
+	m_activeOutputSweepCaseIndex = 0;
+	m_activeOutputSweepRunning = true;
+	// The live test owns a separate native top-right banner. Do not force the
+	// user's normal diagnostic panel on merely to identify the active contract.
+	DebugLog::Log(
+		"Active output sweep start: config=%S fullscreen_monitor=%S cases=%zu hold_ms=%lu",
+		configPath.c_str(), m_fullscreenMonitorName.GetString(),
+		m_activeOutputSweepCases.size(), m_activeOutputSweepHoldMs);
+	return ApplyActiveOutputSweepCase(0);
+}
+
+bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
+{
+	if (!m_activeOutputSweepDocument || index >= m_activeOutputSweepCases.size())
+		return false;
+	const ActiveOutputSweepCase& test = m_activeOutputSweepCases[index];
+	auto& document = *m_activeOutputSweepDocument;
+	for (const std::string& section : document.SectionNames())
+	{
+		const std::string normalized = ConfigFile::NormalizeName(section);
+		if (normalized != "vprenderer" &&
+			!(normalized.rfind("vprenderer.", 0) == 0 &&
+				normalized.substr(strlen("vprenderer.")).find('.') == std::string::npos))
+		{
+			continue;
+		}
+		document.SetKnown(section, "output_path_profile", "custom");
+		document.SetKnown(section, "output_presentation", test.presentation);
+		document.SetKnown(section, "output_range", test.range);
+		document.SetKnown(section, "output_gamma", test.gamma);
+		document.SetKnown(section, "output_diagnostics", "true");
+		document.SetKnown(section, "diagnostic_force_8bit_sdr_swapchain",
+			test.force8Bit ? "true" : "false");
+		document.SetKnown(section, "diagnostic_allow_limited_g22",
+			test.allowLimitedG22 ? "true" : "false");
+		document.SetKnown(section, "diagnostic_vp_owned_dxgi_presenter",
+			test.vpOwnedPresenter ? "true" : "false");
+		document.SetKnown(section, "diagnostic_disable_compute",
+			test.disableCompute ? "true" : "false");
+		document.SetKnown(section, "diagnostic_disable_shader_cache",
+			test.disableShaderCache ? "true" : "false");
+	}
+	// Ensure there is a base display section even for a minimal profile file.
+	document.SetKnown("vprenderer", "output_path_profile", "custom");
+	document.SetKnown("vprenderer", "output_presentation", test.presentation);
+	document.SetKnown("vprenderer", "output_range", test.range);
+	document.SetKnown("vprenderer", "output_gamma", test.gamma);
+	document.SetKnown("vprenderer", "output_diagnostics", "true");
+	document.SetKnown("vprenderer", "diagnostic_force_8bit_sdr_swapchain",
+		test.force8Bit ? "true" : "false");
+	document.SetKnown("vprenderer", "diagnostic_allow_limited_g22",
+		test.allowLimitedG22 ? "true" : "false");
+	document.SetKnown("vprenderer", "diagnostic_vp_owned_dxgi_presenter",
+		test.vpOwnedPresenter ? "true" : "false");
+	document.SetKnown("vprenderer", "diagnostic_disable_compute",
+		test.disableCompute ? "true" : "false");
+	document.SetKnown("vprenderer", "diagnostic_disable_shader_cache",
+		test.disableShaderCache ? "true" : "false");
+
+	ConfigEditorCore::SaveResult saveResult;
+	std::wstring error;
+	if (!ConfigEditorCore::SaveSafely(document, saveResult, error))
+	{
+		CString status;
+		status.Format(L"sweep save failed: %s", error.c_str());
+		DebugLog::Log("Active output sweep failed: case=%zu detail=%S", index + 1,
+			error.c_str());
+		RestoreActiveOutputSweepConfiguration(status);
+		return false;
+	}
+	m_activeOutputSweepCaseIndex = index;
+	m_activeOutputSweepAwaitingLiveFrame = true;
+	m_activeOutputSweepDeadlineTick = GetTickCount64() + 15000;
+	m_activeOutputSweepStatus.Format(L"%s — %s restart", test.label,
+		m_activeOutputSweepCaptureRestart ? L"capture" : L"renderer");
+	DebugLog::Log(
+		"Active output sweep case: index=%zu label=%S presentation=%s range=%s gamma=%s force8=%d vp_owned=%d no_compute=%d no_shader_cache=%d action=%s-restart backup=%S",
+		index + 1, test.label, test.presentation, test.range, test.gamma,
+		test.force8Bit ? 1 : 0, test.vpOwnedPresenter ? 1 : 0,
+		test.disableCompute ? 1 : 0, test.disableShaderCache ? 1 : 0,
+		m_activeOutputSweepCaptureRestart ? "capture" : "renderer",
+		saveResult.backupPath.c_str());
+	if (!ApplyActiveOutputSweepConfiguration())
+	{
+		RestoreActiveOutputSweepConfiguration(L"configuration application failed");
+		return false;
+	}
+	UpdateStatsOverlay();
+	return true;
+}
+
+bool CVideoProcessorDlg::ApplyActiveOutputSweepConfiguration()
+{
+	if (m_activeOutputSweepCaptureRestart)
+	{
+		ApplySavedConfiguration();
+		return true;
+	}
+	if (!StageSavedConfiguration("active-output-sweep-renderer-restart", true))
+	{
+		DebugLog::Log("Active output sweep failed: renderer-only configuration stage rejected");
+		return false;
+	}
+	// These options are constructed into the D3D11 device and swapchain. A
+	// renderer rebuild is still necessary, but capture remains live. This is the
+	// closest valid no-full-teardown experiment until the renderer exposes a
+	// transactional live output-contract API.
+	if (m_stagedConfigurationAction == ConfigurationApplyPolicy::Action::RestartCapture)
+	{
+		DebugLog::Log("Active output sweep override: policy=restart-capture action=restart-renderer reason=renderer-only experiment");
+		m_stagedConfigurationAction = ConfigurationApplyPolicy::Action::RestartRenderer;
+	}
+	if (m_stagedConfigurationAction != ConfigurationApplyPolicy::Action::RestartRenderer)
+	{
+		DebugLog::Log("Active output sweep failed: renderer-only action=%s is not restart-renderer",
+			ConfigurationApplyPolicy::ActionLabel(m_stagedConfigurationAction));
+		return false;
+	}
+	m_postRendererStartRequiresGraph = true;
+	m_wantToRestartRenderer = true;
+	UpdateState();
+	return true;
+}
+
+void CVideoProcessorDlg::RestoreActiveOutputSweepConfiguration(const wchar_t* reason)
+{
+	if (!m_activeOutputSweepDocument || !m_activeOutputSweepOriginalDocument)
+	{
+		CompleteActiveOutputSweep(reason);
+		return;
+	}
+	auto restore = std::make_unique<ConfigEditorCore::ConfigDocument>(
+		*m_activeOutputSweepDocument);
+	// Preserve the current loaded bytes for SafeSave's external-edit guard, but
+	// restore the original document byte-for-byte (including comments/order).
+	restore->lines = m_activeOutputSweepOriginalDocument->lines;
+	restore->lineEnding = m_activeOutputSweepOriginalDocument->lineEnding;
+	restore->hasTerminalLineEnding =
+		m_activeOutputSweepOriginalDocument->hasTerminalLineEnding;
+	ConfigEditorCore::SaveResult saveResult;
+	std::wstring error;
+	if (!ConfigEditorCore::SaveSafely(*restore, saveResult, error))
+	{
+		m_activeOutputSweepStatus.Format(
+			L"restore failed — test config retained (%s)", error.c_str());
+		DebugLog::Log("Active output sweep restore failed: detail=%S", error.c_str());
+		CompleteActiveOutputSweep(m_activeOutputSweepStatus);
+		return;
+	}
+	m_activeOutputSweepDocument = std::move(restore);
+	m_activeOutputSweepRestorePending = true;
+	m_activeOutputSweepAwaitingLiveFrame = false;
+	m_activeOutputSweepStatus.Format(L"%s — restoring test config", reason);
+	DebugLog::Log("Active output sweep restore: result=%S backup=%S action=%s-restart",
+		reason, saveResult.backupPath.c_str(),
+		m_activeOutputSweepCaptureRestart ? "capture" : "renderer");
+	if (!ApplyActiveOutputSweepConfiguration())
+	{
+		CompleteActiveOutputSweep(L"restore saved but renderer restart failed");
+		return;
+	}
+	UpdateStatsOverlay();
+}
+
+void CVideoProcessorDlg::CompleteActiveOutputSweep(const wchar_t* result)
+{
+	m_activeOutputSweepRequested = false;
+	m_activeOutputSweepRunning = false;
+	m_activeOutputSweepAwaitingLiveFrame = false;
+	m_activeOutputSweepRestorePending = false;
+	m_activeOutputSweepStatus = result;
+	DebugLog::Log("Active output sweep complete: result=%S", result);
+	if (m_videoRenderer)
+		m_videoRenderer->SetNativeSweepOverlay(nullptr, 0, 0, 0, 0);
+}
+
+void CVideoProcessorDlg::UpdateActiveOutputSweep(ULONGLONG now)
+{
+	if (m_activeOutputSweepRequested && !m_activeOutputSweepRunning)
+	{
+		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			m_videoRenderer)
+			StartActiveOutputSweep();
+		return;
+	}
+	if (!m_activeOutputSweepRunning)
+		return;
+	if (m_activeOutputSweepRestorePending)
+	{
+		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			m_videoRenderer)
+			CompleteActiveOutputSweep(L"complete — original test config restored");
+		return;
+	}
+	if (now < m_activeOutputSweepDeadlineTick)
+		return;
+	if (m_activeOutputSweepAwaitingLiveFrame)
+	{
+		DebugLog::Log("Active output sweep case timed out: index=%zu reason=no-live-frame timeout_ms=15000",
+			m_activeOutputSweepCaseIndex + 1);
+		m_activeOutputSweepStatus.Format(L"%s — no live frame after 15s",
+			m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].label);
+	}
+	else
+	{
+		DebugLog::Log("Active output sweep case passed live hold: index=%zu hold_ms=%lu",
+			m_activeOutputSweepCaseIndex + 1, m_activeOutputSweepHoldMs);
+	}
+	const size_t next = m_activeOutputSweepCaseIndex + 1;
+	if (next < m_activeOutputSweepCases.size())
+		ApplyActiveOutputSweepCase(next);
+	else
+		RestoreActiveOutputSweepConfiguration(L"all cases complete");
+}
+
 bool CVideoProcessorDlg::StageSavedConfiguration(
 	const char* reason, bool stageAccelerators)
 {
@@ -5057,6 +5362,19 @@ LRESULT CVideoProcessorDlg::OnMessageRendererLiveFrame(
 	LPARAM)
 {
 	TryRevealRendererTransition(static_cast<uint32_t>(wParam));
+	if (m_activeOutputSweepRunning && m_activeOutputSweepAwaitingLiveFrame &&
+		m_activeOutputSweepCaseIndex < m_activeOutputSweepCases.size())
+	{
+		m_activeOutputSweepAwaitingLiveFrame = false;
+		m_activeOutputSweepDeadlineTick = GetTickCount64() +
+			m_activeOutputSweepHoldMs;
+		m_activeOutputSweepStatus.Format(L"%s — live; holding %lus",
+			m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].label,
+			m_activeOutputSweepHoldMs / 1000);
+		DebugLog::Log("Active output sweep live frame: index=%zu hold_ms=%lu",
+			m_activeOutputSweepCaseIndex + 1, m_activeOutputSweepHoldMs);
+		UpdateStatsOverlay();
+	}
 	return 0;
 }
 
@@ -10835,6 +11153,8 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	// Handle regular 1-second timer for UI updates
 	if (nIDEvent == TIMER_ID_1SECOND)
 	{
+		UpdateActiveOutputSweep(uiNow);
+
 		// A source can publish its BT.2020/SDR state only once at startup.
 		// Re-evaluate the opt-in LLDV candidate here so confirmation does not
 		// depend on receiving a second video-state notification.
@@ -11776,6 +12096,9 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	const bool nativeOverlay = m_statsOverlayRequestedVisible && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();
+	const bool nativeSweepBanner = m_activeOutputSweepRunning &&
+		m_activeOutputSweepShowInfo && m_videoRenderer &&
+		m_videoRenderer->SupportsNativeStatsOverlay();
 	// Native-overlay support can appear after the renderer plugin finishes its
 	// handoff. Close the legacy window on that transition as well as in the
 	// immediate toggle path, otherwise both panels remain visible and the
@@ -11793,7 +12116,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_statsOverlay->Show(m_statsOverlay->IsCreated());
 	}
 	if (!m_statsOverlay ||
-		(!m_statsOverlay->IsVisible() && !nativeOverlay) || !m_lastStatsData)
+		(!m_statsOverlay->IsVisible() && !nativeOverlay && !nativeSweepBanner) ||
+		!m_lastStatsData)
 		return;
 
 	// Fullscreen/windowed changes can put a no-activate layered overlay behind
@@ -11803,6 +12127,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_statsOverlay->UpdatePosition(displayWindow ? displayWindow : GetSafeHwnd());
 
 	StatsData stats;
+	stats.outputSweep = m_activeOutputSweepStatus;
 
 	// Video format info
 	if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
@@ -12055,6 +12380,19 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		if (m_statsOverlay->RenderBgra(pixels, width, height, stride))
 			m_videoRenderer->SetNativeStatsOverlay(
 				pixels.data(), pixels.size(), width, height, stride);
+	}
+	if (nativeSweepBanner)
+	{
+		std::vector<uint8_t> pixels;
+		int width = 0;
+		int height = 0;
+		int stride = 0;
+		if (m_statsOverlay->RenderSweepBannerBgra(
+			m_activeOutputSweepStatus, pixels, width, height, stride))
+		{
+			m_videoRenderer->SetNativeSweepOverlay(
+				pixels.data(), pixels.size(), width, height, stride);
+		}
 	}
 
 	// Save current stats for next update

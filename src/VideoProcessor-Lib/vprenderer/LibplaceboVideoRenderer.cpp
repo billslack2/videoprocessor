@@ -2518,6 +2518,7 @@ struct LibplaceboVideoRenderer::Impl
 	LibplaceboCompileTelemetry compileTelemetry;
 	pl_tex textures[2] = { nullptr, nullptr };
 	pl_tex statsOverlayTexture = nullptr;
+	pl_tex sweepOverlayTexture = nullptr;
 	std::mutex statsOverlayMutex;
 	std::vector<uint8_t> statsOverlayPixels;
 	int statsOverlayWidth = 0;
@@ -2525,8 +2526,16 @@ struct LibplaceboVideoRenderer::Impl
 	int statsOverlayStride = 0;
 	uint64_t statsOverlaySerial = 0;
 	uint64_t appliedStatsOverlaySerial = 0;
+	std::vector<uint8_t> sweepOverlayPixels;
+	int sweepOverlayWidth = 0;
+	int sweepOverlayHeight = 0;
+	int sweepOverlayStride = 0;
+	uint64_t sweepOverlaySerial = 0;
+	uint64_t appliedSweepOverlaySerial = 0;
 	NativeStatsOverlayPlacement::Result lastStatsOverlayPlacement;
 	bool hasStatsOverlayPlacement = false;
+	NativeStatsOverlayPlacement::Result lastSweepOverlayPlacement;
+	bool hasSweepOverlayPlacement = false;
 	pl_custom_lut* displayLut = nullptr;
 	// Kept deliberately short for the Ctrl+I OSD: "Disabled",
 	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
@@ -2967,6 +2976,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (d3d11)
 		{
 			pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
+			pl_tex_destroy(d3d11->gpu, &sweepOverlayTexture);
 			for (pl_tex& texture : textures)
 				pl_tex_destroy(d3d11->gpu, &texture);
 		}
@@ -7565,10 +7575,63 @@ struct LibplaceboVideoRenderer::Impl
 			if (hadOverlay != (statsOverlayTexture != nullptr) || geometryChanged)
 				pl_renderer_flush_cache(renderer);
 		}
-		struct pl_overlay overlay{};
-		struct pl_overlay_part overlayPart{};
+		std::vector<uint8_t> sweepPixels;
+		int sweepWidth = 0;
+		int sweepHeight = 0;
+		int sweepStride = 0;
+		uint64_t sweepSerial = 0;
+		{
+			std::lock_guard<std::mutex> overlayGuard(statsOverlayMutex);
+			sweepSerial = sweepOverlaySerial;
+			if (sweepSerial != appliedSweepOverlaySerial)
+			{
+				sweepPixels = sweepOverlayPixels;
+				sweepWidth = sweepOverlayWidth;
+				sweepHeight = sweepOverlayHeight;
+				sweepStride = sweepOverlayStride;
+			}
+		}
+		if (sweepSerial != appliedSweepOverlaySerial)
+		{
+			const bool hadOverlay = sweepOverlayTexture != nullptr;
+			const bool geometryChanged = sweepOverlayTexture &&
+				(sweepOverlayTexture->params.w != sweepWidth ||
+				 sweepOverlayTexture->params.h != sweepHeight);
+			if (!sweepPixels.empty())
+			{
+				struct pl_plane_data plane{};
+				plane.type = PL_FMT_UNORM;
+				plane.width = sweepWidth;
+				plane.height = sweepHeight;
+				plane.pixel_stride = 4;
+				plane.row_stride = static_cast<size_t>(sweepStride);
+				plane.pixels = sweepPixels.data();
+				uint64_t masks[4] =
+				{
+					0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000
+				};
+				pl_plane_data_from_mask(&plane, masks);
+				if (!pl_upload_plane(
+					d3d11->gpu, nullptr, &sweepOverlayTexture, &plane))
+				{
+					DebugLog::Log("Alpha native output sweep banner texture upload failed");
+				}
+			}
+			else
+			{
+				pl_tex_destroy(d3d11->gpu, &sweepOverlayTexture);
+			}
+			appliedSweepOverlaySerial = sweepSerial;
+			if (hadOverlay != (sweepOverlayTexture != nullptr) || geometryChanged)
+				pl_renderer_flush_cache(renderer);
+		}
+		struct pl_overlay overlays[2]{};
+		struct pl_overlay_part overlayParts[2]{};
+		int overlayCount = 0;
 		if (statsOverlayTexture)
 		{
+			pl_overlay& overlay = overlays[overlayCount];
+			pl_overlay_part& overlayPart = overlayParts[overlayCount];
 			overlay.tex = statsOverlayTexture;
 			overlay.mode = PL_OVERLAY_NORMAL;
 			overlay.coords = PL_OVERLAY_COORDS_DST_FRAME;
@@ -7637,8 +7700,61 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			overlay.parts = &overlayPart;
 			overlay.num_parts = 1;
-			target.overlays = &overlay;
-			target.num_overlays = 1;
+			++overlayCount;
+		}
+		if (sweepOverlayTexture)
+		{
+			pl_overlay& overlay = overlays[overlayCount];
+			pl_overlay_part& overlayPart = overlayParts[overlayCount];
+			overlay.tex = sweepOverlayTexture;
+			overlay.mode = PL_OVERLAY_NORMAL;
+			overlay.coords = PL_OVERLAY_COORDS_DST_FRAME;
+			overlay.repr = pl_color_repr_rgb;
+			overlay.repr.levels = PL_COLOR_LEVELS_FULL;
+			overlay.repr.alpha = PL_ALPHA_INDEPENDENT;
+			overlay.color = pl_color_space_srgb;
+			overlayPart.src = { 0.0f, 0.0f,
+				static_cast<float>(sweepOverlayTexture->params.w),
+				static_cast<float>(sweepOverlayTexture->params.h) };
+			const float dstWidth = static_cast<float>(baseTarget.planes[0].texture->params.w);
+			const float dstHeight = static_cast<float>(baseTarget.planes[0].texture->params.h);
+			const NativeStatsOverlayPlacement::Rect outputRect{
+				0.0f, 0.0f, dstWidth, dstHeight };
+			const NativeStatsOverlayPlacement::Rect pictureRect{
+				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
+			const NativeStatsOverlayPlacement::Result placement =
+				NativeStatsOverlayPlacement::PlaceTopRight(
+					pictureRect, outputRect,
+					static_cast<float>(sweepOverlayTexture->params.w),
+					static_cast<float>(sweepOverlayTexture->params.h));
+			overlayPart.dst = { placement.panel.left, placement.panel.top,
+				placement.panel.right, placement.panel.bottom };
+			if (!hasSweepOverlayPlacement ||
+				std::fabs(lastSweepOverlayPlacement.panel.left - placement.panel.left) > 0.25f ||
+				std::fabs(lastSweepOverlayPlacement.panel.top - placement.panel.top) > 0.25f ||
+				std::fabs(lastSweepOverlayPlacement.panel.right - placement.panel.right) > 0.25f ||
+				std::fabs(lastSweepOverlayPlacement.panel.bottom - placement.panel.bottom) > 0.25f)
+			{
+				DebugLog::Log(
+					"Alpha native output sweep banner placement: renderer_gen=%llu source_seq=%llu picture=%.1f,%.1f-%.1f,%.1f banner=%.1f,%.1f-%.1f,%.1f scope_fit=%d",
+					static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					placement.visiblePicture.left, placement.visiblePicture.top,
+					placement.visiblePicture.right, placement.visiblePicture.bottom,
+					placement.panel.left, placement.panel.top,
+					placement.panel.right, placement.panel.bottom,
+					configuredScreenActive ? 1 : 0);
+				lastSweepOverlayPlacement = placement;
+				hasSweepOverlayPlacement = true;
+			}
+			overlay.parts = &overlayPart;
+			overlay.num_parts = 1;
+			++overlayCount;
+		}
+		if (overlayCount > 0)
+		{
+			target.overlays = overlays;
+			target.num_overlays = overlayCount;
 		}
 		const int outputWidth = baseTarget.planes[0].texture ?
 			baseTarget.planes[0].texture->params.w : 0;
@@ -9265,6 +9381,27 @@ bool LibplaceboVideoRenderer::SetNativeStatsOverlay(
 	m_impl->statsOverlayHeight = pixels ? height : 0;
 	m_impl->statsOverlayStride = pixels ? stride : 0;
 	++m_impl->statsOverlaySerial;
+	return true;
+}
+
+bool LibplaceboVideoRenderer::SetNativeSweepOverlay(
+	const uint8_t* pixels, size_t byteCount, int width, int height, int stride)
+{
+	if (!m_impl)
+		return false;
+	if (pixels && (width <= 0 || height <= 0 || stride < width * 4 ||
+		byteCount < static_cast<size_t>(stride) * height))
+		return false;
+
+	std::lock_guard<std::mutex> guard(m_impl->statsOverlayMutex);
+	if (pixels)
+		m_impl->sweepOverlayPixels.assign(pixels, pixels + byteCount);
+	else
+		m_impl->sweepOverlayPixels.clear();
+	m_impl->sweepOverlayWidth = pixels ? width : 0;
+	m_impl->sweepOverlayHeight = pixels ? height : 0;
+	m_impl->sweepOverlayStride = pixels ? stride : 0;
+	++m_impl->sweepOverlaySerial;
 	return true;
 }
 

@@ -100,6 +100,22 @@ Options:
   /startminimized
       Start the application minimized.
 
+  /active_output_sweep
+      Run the VP Renderer diagnostic contracts against real fullscreen capture
+      content. Requires a generated --config path containing
+      "active-output-sweep"; the normal user configuration is refused.
+      The active contract is shown in the native top-right OSD by default.
+
+  /active_output_sweep_hold_ms <1000-60000>
+      Milliseconds per live contract in the active-output sweep (default: 5000 ms).
+
+  /active_output_sweep_show_info <true|false>
+      Keep the top-right OSD visible during an active-output sweep (default: true).
+
+  /active_output_sweep_restart <capture|renderer>
+      Use a full capture restart (default) or a renderer-only restart. Renderer-only
+      keeps capture live, but still rebuilds the D3D11 device and swapchain.
+
   /frame_offset <milliseconds|auto>
       Set the timing-clock frame offset in milliseconds, or enable automatic offset.
 
@@ -841,7 +857,9 @@ bool RequiresCommandLineValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/renderer_nominal_range") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_function") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_matrix") ||
-		IsCommandLineOption(argument, L"/renderer_primaries");
+		IsCommandLineOption(argument, L"/renderer_primaries") ||
+		IsCommandLineOption(argument, L"/active_output_sweep_hold_ms") ||
+		IsCommandLineOption(argument, L"/active_output_sweep_restart");
 }
 
 bool HasCaseInsensitiveValue(const wchar_t* argument)
@@ -870,7 +888,9 @@ bool IsBooleanCommandLineOption(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/disable_detection_features") ||
 		IsCommandLineOption(argument, L"/scene_correction_basic") ||
 		IsCommandLineOption(argument, L"/newlldv") ||
-		IsCommandLineOption(argument, L"/startminimized");
+		IsCommandLineOption(argument, L"/startminimized") ||
+		IsCommandLineOption(argument, L"/active_output_sweep") ||
+		IsCommandLineOption(argument, L"/active_output_sweep_show_info");
 }
 
 void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
@@ -944,6 +964,23 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 			 _wtoi(arguments[index + 1]) > 200))
 			throw std::runtime_error(
 				"Invalid /reset_queue_too_large_percent: expected an integer from 1 to 200");
+
+		if (IsCommandLineOption(argument, L"/active_output_sweep_hold_ms") &&
+			(!IsPositiveInteger(arguments[index + 1]) ||
+			 _wtoi(arguments[index + 1]) < 1000 ||
+			 _wtoi(arguments[index + 1]) > 60000))
+		{
+			throw std::runtime_error(
+				"Invalid /active_output_sweep_hold_ms: expected an integer from 1000 to 60000");
+		}
+
+		if (IsCommandLineOption(argument, L"/active_output_sweep_restart") &&
+			_wcsicmp(arguments[index + 1], L"capture") != 0 &&
+			_wcsicmp(arguments[index + 1], L"renderer") != 0)
+		{
+			throw std::runtime_error(
+				"Invalid /active_output_sweep_restart: expected capture or renderer");
+		}
 
 		if (IsCommandLineOption(argument, L"/lldv_max_cll") ||
 			IsCommandLineOption(argument, L"/lldv_max_fall") ||
@@ -1158,6 +1195,10 @@ BOOL CVideoProcessorApp::InitInstance()
 		const ApplicationInterface::Preference commandLineInterface =
 			ApplicationInterface::ParseCommandLine(mergedArguments);
 		bool noUiSelected = false;
+		bool activeOutputSweep = false;
+		bool activeOutputSweepShowInfo = true;
+		bool activeOutputSweepCaptureRestart = true;
+		DWORD activeOutputSweepHoldMs = 5000;
 
 		for (int i = 1; i < iNumOfArgs; i++)
 		{
@@ -1711,7 +1752,38 @@ BOOL CVideoProcessorApp::InitInstance()
 				dlg.StartMinimized(booleanValue);
 			}
 
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs,
+				L"/active_output_sweep", booleanValue))
+			{
+				activeOutputSweep = booleanValue;
+			}
+
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs,
+				L"/active_output_sweep_show_info", booleanValue))
+			{
+				activeOutputSweepShowInfo = booleanValue;
+			}
+
+			if (wcscmp(pArgs[i], L"/active_output_sweep_hold_ms") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				activeOutputSweepHoldMs = static_cast<DWORD>(_wtol(pArgs[i + 1]));
+				++i;
+			}
+
+			if (wcscmp(pArgs[i], L"/active_output_sweep_restart") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				activeOutputSweepCaptureRestart =
+					_wcsicmp(pArgs[i + 1], L"capture") == 0;
+				++i;
+			}
+
 		}
+
+		if (activeOutputSweep)
+			dlg.ConfigureActiveOutputSweep(true, activeOutputSweepHoldMs,
+				activeOutputSweepShowInfo, activeOutputSweepCaptureRestart);
 
 		const ApplicationInterface::Selection interfaceSelection =
 			ApplicationInterface::Resolve(
@@ -1741,9 +1813,16 @@ BOOL CVideoProcessorApp::InitInstance()
 			}
 		}
 
-		// Set set ourselves to high prio.
+		// High priority is a latency preference, not a startup requirement. Some
+		// managed, remote, and diagnostic-launch contexts legitimately deny it;
+		// rendering at the normal process class is still functional and gives the
+		// operator a useful log rather than a startup-fatal dialog.
 		if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS))
-			throw std::runtime_error("Failed to set process priority");
+		{
+			DebugLog::Log(
+				"Process priority request denied: requested=high win32_error=%lu action=continue-normal-priority",
+				GetLastError());
+		}
 
 		dlg.DoModal();
 		RestoreDisplayTopology("normal-exit");

@@ -36,6 +36,10 @@ struct StatsData
 	// Renderer settings
 	CString method;            // e.g., "Rational-Rational"
 	CString outputMode;        // requested -> negotiated renderer output
+	// Non-empty only while the explicit active-output diagnostic is running.
+	// This is rendered inside the native Alpha overlay as well as the legacy
+	// desktop fallback, so a fullscreen test identifies its current contract.
+	CString outputSweep;
 	CString displayLut;        // Disabled, Active: name (N^3), or Rejected: reason
 	int frameOffsetMs = 0;
 	double hwLatencyMs = 0.0;  // Hardware latency
@@ -156,6 +160,8 @@ public:
 	void UpdateStats(const StatsData& stats);
 	bool RenderBgra(std::vector<uint8_t>& pixels, int& width,
 		int& height, int& stride);
+	bool RenderSweepBannerBgra(const CString& status,
+		std::vector<uint8_t>& pixels, int& width, int& height, int& stride);
 
 	// Position update
 	void UpdatePosition(HWND parentHwnd);

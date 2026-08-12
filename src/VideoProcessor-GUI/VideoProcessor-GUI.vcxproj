@@ -23,6 +23,9 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
     </ClCompile>
+	<ClCompile Include="..\VideoProcessor-ConfigCore\ConfigEditorCore.cpp">
+	  <PrecompiledHeader>NotUsing</PrecompiledHeader>
+	</ClCompile>
     <ClCompile Include="FullscreenVideoWindow.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
@@ -194,7 +197,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>.;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer;..\VideoProcessor-Lib</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;..\VideoProcessor-ConfigCore;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer;..\VideoProcessor-Lib</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
@@ -218,7 +221,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>.;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer;..\VideoProcessor-Lib</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.;..\VideoProcessor-ConfigCore;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer;..\VideoProcessor-Lib</AdditionalIncludeDirectories>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>

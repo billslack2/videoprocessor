@@ -21,6 +21,8 @@ namespace
     {
         HMONITOR monitor = nullptr;
         MONITORINFOEXW info{ sizeof(info) };
+		DISPLAY_DEVICEW device{ sizeof(device) };
+		std::wstring friendlyName;
     };
 
     struct ProbeCase
@@ -37,9 +39,52 @@ namespace
         auto* monitors = reinterpret_cast<std::vector<MonitorChoice>*>(context);
         MonitorChoice choice;
         choice.monitor = monitor;
-        if (GetMonitorInfoW(monitor, &choice.info)) monitors->push_back(choice);
+        if (GetMonitorInfoW(monitor, &choice.info))
+        {
+			EnumDisplayDevicesW(choice.info.szDevice, 0, &choice.device, 0);
+			monitors->push_back(choice);
+		}
         return TRUE;
     }
+
+	void PopulateFriendlyMonitorNames(std::vector<MonitorChoice>& monitors)
+	{
+		UINT32 pathCount = 0;
+		UINT32 modeCount = 0;
+		if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS,
+			&pathCount, &modeCount) != ERROR_SUCCESS)
+			return;
+		std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
+		std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
+		if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(),
+			&modeCount, modes.data(), nullptr) != ERROR_SUCCESS)
+			return;
+		paths.resize(pathCount);
+		for (const DISPLAYCONFIG_PATH_INFO& path : paths)
+		{
+			DISPLAYCONFIG_SOURCE_DEVICE_NAME source{};
+			source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+			source.header.size = sizeof(source);
+			source.header.adapterId = path.sourceInfo.adapterId;
+			source.header.id = path.sourceInfo.id;
+			if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS)
+				continue;
+			DISPLAYCONFIG_TARGET_DEVICE_NAME target{};
+			target.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
+			target.header.size = sizeof(target);
+			target.header.adapterId = path.targetInfo.adapterId;
+			target.header.id = path.targetInfo.id;
+			if (DisplayConfigGetDeviceInfo(&target.header) != ERROR_SUCCESS)
+				continue;
+			for (MonitorChoice& monitor : monitors)
+				if (_wcsicmp(monitor.info.szDevice,
+					source.viewGdiDeviceName) == 0)
+				{
+					monitor.friendlyName = target.monitorFriendlyDeviceName;
+					break;
+				}
+		}
+	}
 
     LRESULT CALLBACK ProbeWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
@@ -96,6 +141,7 @@ namespace
         std::wprintf(L"VP Active Output Probe\n\n");
         std::wprintf(L"Usage: VideoProcessorOutputProbe.exe --active [--monitor N] [--hold-ms N]\n");
         std::wprintf(L"  --active       Required acknowledgement: this opens a fullscreen test window.\n");
+		std::wprintf(L"  --list-monitors List display indices and identities; does not open a window.\n");
         std::wprintf(L"  --monitor N    One-based monitor number (default: primary monitor).\n");
         std::wprintf(L"  --hold-ms N    Pattern duration per case, 100..5000 ms (default: 700).\n");
         std::wprintf(L"\nThis verifies VP's D3D11/DXGI presenter contracts and Present calls.\n");
@@ -217,12 +263,14 @@ namespace
 int wmain(int argc, wchar_t** argv)
 {
     bool active = false;
+	bool listMonitors = false;
     unsigned monitorIndex = 0;
     unsigned holdMs = 700;
     for (int index = 1; index < argc; ++index)
     {
         const std::wstring argument(argv[index]);
         if (argument == L"--active") active = true;
+		else if (argument == L"--list-monitors") listMonitors = true;
         else if ((argument == L"--monitor" || argument == L"--hold-ms") && index + 1 < argc)
         {
             const unsigned value = static_cast<unsigned>(_wtoi(argv[++index]));
@@ -241,6 +289,30 @@ int wmain(int argc, wchar_t** argv)
             return 64;
         }
     }
+    std::vector<MonitorChoice> monitors;
+    EnumDisplayMonitors(nullptr, nullptr, CollectMonitor,
+        reinterpret_cast<LPARAM>(&monitors));
+	PopulateFriendlyMonitorNames(monitors);
+    if (monitors.empty())
+    {
+        std::fwprintf(stderr, L"No active monitors found.\n");
+        return 2;
+    }
+	if (listMonitors)
+	{
+		for (size_t index = 0; index < monitors.size(); ++index)
+		{
+			const MonitorChoice& choice = monitors[index];
+			std::wprintf(L"%zu: friendly=%s source=%s device=%s id=%s rect=%ld,%ld-%ld,%ld%s\n",
+				index + 1, choice.friendlyName.empty() ? choice.info.szDevice :
+				choice.friendlyName.c_str(), choice.info.szDevice, choice.device.DeviceString,
+				choice.device.DeviceID, choice.info.rcMonitor.left,
+				choice.info.rcMonitor.top, choice.info.rcMonitor.right,
+				choice.info.rcMonitor.bottom,
+				(choice.info.dwFlags & MONITORINFOF_PRIMARY) ? L" PRIMARY" : L"");
+		}
+		return 0;
+	}
     if (!active)
     {
         std::fwprintf(stderr, L"Refusing to open a fullscreen active test without --active.\n\n");
@@ -248,15 +320,6 @@ int wmain(int argc, wchar_t** argv)
         return 64;
     }
     holdMs = std::clamp(holdMs, 100u, 5000u);
-
-    std::vector<MonitorChoice> monitors;
-    EnumDisplayMonitors(nullptr, nullptr, CollectMonitor,
-        reinterpret_cast<LPARAM>(&monitors));
-    if (monitors.empty())
-    {
-        std::fwprintf(stderr, L"No active monitors found.\n");
-        return 2;
-    }
     if (monitorIndex == 0)
     {
         const auto primary = std::find_if(monitors.begin(), monitors.end(),

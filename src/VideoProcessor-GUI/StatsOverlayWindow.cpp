@@ -260,6 +260,72 @@ bool StatsOverlayWindow::RenderBgra(
 	return true;
 }
 
+bool StatsOverlayWindow::RenderSweepBannerBgra(const CString& status,
+	std::vector<uint8_t>& pixels, int& width, int& height, int& stride)
+{
+	if (status.IsEmpty())
+		return false;
+	width = 860;
+	height = 112;
+	stride = width * 4;
+	BITMAPINFO info{};
+	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	info.bmiHeader.biWidth = width;
+	info.bmiHeader.biHeight = -height;
+	info.bmiHeader.biPlanes = 1;
+	info.bmiHeader.biBitCount = 32;
+	info.bmiHeader.biCompression = BI_RGB;
+	void* bits = nullptr;
+	HDC screen = GetDC(nullptr);
+	HBITMAP bitmap = CreateDIBSection(
+		screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+	HDC memory = bitmap ? CreateCompatibleDC(screen) : nullptr;
+	ReleaseDC(nullptr, screen);
+	if (!bitmap || !memory || !bits)
+	{
+		if (memory) DeleteDC(memory);
+		if (bitmap) DeleteObject(bitmap);
+		return false;
+	}
+	HGDIOBJ oldBitmap = SelectObject(memory, bitmap);
+	RECT rect{ 0, 0, width, height };
+	HBRUSH background = CreateSolidBrush(RGB(15, 45, 68));
+	FillRect(memory, &rect, background);
+	DeleteObject(background);
+	HBRUSH border = CreateSolidBrush(RGB(255, 190, 0));
+	FrameRect(memory, &rect, border);
+	DeleteObject(border);
+	SetBkMode(memory, TRANSPARENT);
+	HFONT titleFont = CreateFont(27, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
+	HFONT valueFont = CreateFont(25, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
+	HFONT oldFont = static_cast<HFONT>(SelectObject(memory, titleFont));
+	SetTextColor(memory, RGB(255, 210, 40));
+	const CString title(TEXT("VP OUTPUT SWEEP - ACTIVE TEST"));
+	TextOut(memory, 18, 12, title, title.GetLength());
+	CString value(status);
+	constexpr int maximumCharacters = 52;
+	if (value.GetLength() > maximumCharacters)
+		value = value.Left(maximumCharacters - 3) + TEXT("...");
+	SelectObject(memory, valueFont);
+	SetTextColor(memory, RGB(255, 255, 255));
+	TextOut(memory, 18, 58, value, value.GetLength());
+	SelectObject(memory, oldFont);
+	DeleteObject(titleFont);
+	DeleteObject(valueFont);
+	SelectObject(memory, oldBitmap);
+	pixels.assign(static_cast<uint8_t*>(bits),
+		static_cast<uint8_t*>(bits) + static_cast<size_t>(stride) * height);
+	for (size_t i = 3; i < pixels.size(); i += 4)
+		pixels[i] = 242;
+	DeleteDC(memory);
+	DeleteObject(bitmap);
+	return true;
+}
+
 void StatsOverlayWindow::ForceRedraw()
 {
 	if (m_hwnd && m_isVisible)
@@ -411,6 +477,14 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		static_cast<LPCTSTR>(m_stats.rendererName));
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
+
+	if (!m_stats.outputSweep.IsEmpty())
+	{
+		line.Format(TEXT("OUTPUT SWEEP:     %-s"),
+			static_cast<LPCTSTR>(m_stats.outputSweep));
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+	}
 
 	// Resolution
 	line.Format(TEXT("Resolution:       %-s"), m_stats.resolution.IsEmpty() ? TEXT("---") : m_stats.resolution);
@@ -790,6 +864,8 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 	// offset). The remaining rows mirror the exact
 	// optional conditions in DrawStats so the background follows its content.
 	size_t lineCount = stats.isAlphaRenderer ? 22 : 24;
+	if (!stats.outputSweep.IsEmpty())
+		++lineCount;
 	if (stats.measuredRefreshRate > 0.0)
 		lineCount += 2;
 	if (stats.hasPPMCorrection ||
