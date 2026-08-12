@@ -261,12 +261,13 @@ bool StatsOverlayWindow::RenderBgra(
 }
 
 bool StatsOverlayWindow::RenderSweepBannerBgra(const CString& status,
+	SweepBannerState state,
 	std::vector<uint8_t>& pixels, int& width, int& height, int& stride)
 {
 	if (status.IsEmpty())
 		return false;
-	width = 860;
-	height = 112;
+	width = 1400;
+	height = 188;
 	stride = width * 4;
 	BITMAPINFO info{};
 	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -292,27 +293,126 @@ bool StatsOverlayWindow::RenderSweepBannerBgra(const CString& status,
 	HBRUSH background = CreateSolidBrush(RGB(15, 45, 68));
 	FillRect(memory, &rect, background);
 	DeleteObject(background);
-	HBRUSH border = CreateSolidBrush(RGB(255, 190, 0));
+	const COLORREF stateColor = state == SweepBannerState::Passed ? RGB(50, 230, 110) :
+		state == SweepBannerState::Failed ? RGB(255, 75, 75) : RGB(255, 190, 0);
+	const CString stateLabel = state == SweepBannerState::Passed ? L"PASS" :
+		state == SweepBannerState::Failed ? L"FAIL" : L"TESTING";
+	HBRUSH border = CreateSolidBrush(stateColor);
 	FrameRect(memory, &rect, border);
 	DeleteObject(border);
 	SetBkMode(memory, TRANSPARENT);
-	HFONT titleFont = CreateFont(27, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+	HFONT titleFont = CreateFont(36, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
-	HFONT valueFont = CreateFont(25, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+	HFONT stateFont = CreateFont(58, 0, 0, 0, FW_HEAVY, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
+	HFONT valueFont = CreateFont(32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
 	HFONT oldFont = static_cast<HFONT>(SelectObject(memory, titleFont));
-	SetTextColor(memory, RGB(255, 210, 40));
+	SetTextColor(memory, RGB(220, 235, 245));
 	const CString title(TEXT("VP OUTPUT SWEEP - ACTIVE TEST"));
-	TextOut(memory, 18, 12, title, title.GetLength());
+	TextOut(memory, 26, 16, title, title.GetLength());
+	SelectObject(memory, stateFont);
+	SetTextColor(memory, stateColor);
+	TextOut(memory, 26, 86, stateLabel, stateLabel.GetLength());
 	CString value(status);
-	constexpr int maximumCharacters = 52;
+	constexpr int maximumCharacters = 46;
 	if (value.GetLength() > maximumCharacters)
 		value = value.Left(maximumCharacters - 3) + TEXT("...");
 	SelectObject(memory, valueFont);
 	SetTextColor(memory, RGB(255, 255, 255));
-	TextOut(memory, 18, 58, value, value.GetLength());
+	TextOut(memory, 330, 104, value, value.GetLength());
+	SelectObject(memory, oldFont);
+	DeleteObject(titleFont);
+	DeleteObject(stateFont);
+	DeleteObject(valueFont);
+	SelectObject(memory, oldBitmap);
+	pixels.assign(static_cast<uint8_t*>(bits),
+		static_cast<uint8_t*>(bits) + static_cast<size_t>(stride) * height);
+	for (size_t i = 3; i < pixels.size(); i += 4)
+		pixels[i] = 255;
+	DeleteDC(memory);
+	DeleteObject(bitmap);
+	return true;
+}
+
+bool StatsOverlayWindow::RenderSweepSummaryBgra(
+	const std::vector<SweepSummaryItem>& items, size_t page, size_t itemsPerPage,
+	std::vector<uint8_t>& pixels, int& width, int& height, int& stride)
+{
+	if (items.empty() || itemsPerPage == 0)
+		return false;
+	const size_t pageCount = (items.size() + itemsPerPage - 1) / itemsPerPage;
+	page %= pageCount;
+	const size_t first = page * itemsPerPage;
+	const size_t count = (std::min)(itemsPerPage, items.size() - first);
+	width = 1400;
+	height = 168 + static_cast<int>(count) * 88;
+	stride = width * 4;
+	BITMAPINFO info{};
+	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	info.bmiHeader.biWidth = width;
+	info.bmiHeader.biHeight = -height;
+	info.bmiHeader.biPlanes = 1;
+	info.bmiHeader.biBitCount = 32;
+	info.bmiHeader.biCompression = BI_RGB;
+	void* bits = nullptr;
+	HDC screen = GetDC(nullptr);
+	HBITMAP bitmap = CreateDIBSection(screen, &info, DIB_RGB_COLORS, &bits,
+		nullptr, 0);
+	HDC memory = bitmap ? CreateCompatibleDC(screen) : nullptr;
+	ReleaseDC(nullptr, screen);
+	if (!bitmap || !memory || !bits)
+	{
+		if (memory) DeleteDC(memory);
+		if (bitmap) DeleteObject(bitmap);
+		return false;
+	}
+	HGDIOBJ oldBitmap = SelectObject(memory, bitmap);
+	RECT rect{ 0, 0, width, height };
+	HBRUSH background = CreateSolidBrush(RGB(15, 45, 68));
+	FillRect(memory, &rect, background);
+	DeleteObject(background);
+	HBRUSH border = CreateSolidBrush(RGB(115, 185, 230));
+	FrameRect(memory, &rect, border);
+	DeleteObject(border);
+	SetBkMode(memory, TRANSPARENT);
+	HFONT titleFont = CreateFont(36, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
+	HFONT valueFont = CreateFont(31, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
+	HFONT oldFont = static_cast<HFONT>(SelectObject(memory, titleFont));
+	SetTextColor(memory, RGB(220, 235, 245));
+	CString title;
+	title.Format(L"VP OUTPUT SWEEP SUMMARY - PAGE %zu/%zu", page + 1, pageCount);
+	TextOut(memory, 26, 16, title, title.GetLength());
+	const size_t passed = static_cast<size_t>(std::count_if(items.begin(), items.end(),
+		[](const SweepSummaryItem& item) { return item.passed; }));
+	CString totals;
+	totals.Format(L"%zu PASS / %zu FAIL", passed, items.size() - passed);
+	SetTextColor(memory, items.size() == passed ? RGB(50, 230, 110) : RGB(255, 190, 0));
+	TextOut(memory, 26, 70, totals, totals.GetLength());
+	SelectObject(memory, valueFont);
+	int y = 132;
+	for (size_t index = first; index < first + count; ++index)
+	{
+		const SweepSummaryItem& item = items[index];
+		const COLORREF color = item.passed ? RGB(50, 230, 110) : RGB(255, 75, 75);
+		const CString verdict = item.passed ? L"PASS" : L"FAIL";
+		SetTextColor(memory, color);
+		TextOut(memory, 26, y, verdict, verdict.GetLength());
+		CString label = item.label + L" - " + item.detail;
+		constexpr int maximumCharacters = 43;
+		if (label.GetLength() > maximumCharacters)
+			label = label.Left(maximumCharacters - 3) + TEXT("...");
+		SetTextColor(memory, RGB(255, 255, 255));
+		TextOut(memory, 210, y, label, label.GetLength());
+		y += 88;
+	}
 	SelectObject(memory, oldFont);
 	DeleteObject(titleFont);
 	DeleteObject(valueFont);
@@ -320,7 +420,7 @@ bool StatsOverlayWindow::RenderSweepBannerBgra(const CString& status,
 	pixels.assign(static_cast<uint8_t*>(bits),
 		static_cast<uint8_t*>(bits) + static_cast<size_t>(stride) * height);
 	for (size_t i = 3; i < pixels.size(); i += 4)
-		pixels[i] = 242;
+		pixels[i] = 255;
 	DeleteDC(memory);
 	DeleteObject(bitmap);
 	return true;

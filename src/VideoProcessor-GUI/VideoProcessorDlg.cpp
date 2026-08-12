@@ -2723,15 +2723,26 @@ bool CVideoProcessorDlg::StartActiveOutputSweep()
 	m_activeOutputSweepDocument = std::move(document);
 	m_activeOutputSweepOriginalDocument =
 		std::make_unique<ConfigEditorCore::ConfigDocument>(*m_activeOutputSweepDocument);
+	ClearActiveOutputSweepSummary("new-sweep");
+	m_activeOutputSweepResults.clear();
 	m_activeOutputSweepCases = {
-		{ L"1/8 legacy direct full/sRGB", "direct", "full", "srgb", false, false, false, false, false },
-		{ L"2/8 direct limited/G22 policy", "direct", "limited", "2.2", false, false, false, false, false },
-		{ L"3/8 VP direct limited/G22", "direct", "limited", "2.2", false, true, true, false, false },
-		{ L"4/8 VP direct limited/G24", "direct", "limited", "2.4", false, false, true, false, false },
-		{ L"5/8 VP direct full/sRGB 8-bit", "direct", "full", "srgb", true, false, true, false, false },
-		{ L"6/8 VP direct compute off", "direct", "full", "srgb", false, false, true, true, false },
-		{ L"7/8 VP direct shader cache off", "direct", "full", "srgb", false, false, true, false, true },
-		{ L"8/8 composed full/sRGB", "composed", "full", "srgb", false, false, false, false, false },
+		{ L"1/17 legacy direct full/sRGB", "direct", "full", "srgb", false, false, false, false, false },
+		{ L"2/17 direct auto/auto", "direct", "auto", "auto", false, false, false, false, false },
+		{ L"3/17 direct full/G22 policy", "direct", "full", "2.2", false, false, false, false, false },
+		{ L"4/17 VP direct full/G22", "direct", "full", "2.2", false, true, true, false, false },
+		{ L"5/17 direct limited/G22 policy", "direct", "limited", "2.2", false, false, false, false, false },
+		{ L"6/17 VP direct limited/G22", "direct", "limited", "2.2", false, true, true, false, false },
+		{ L"7/17 VP direct limited/G24", "direct", "limited", "2.4", false, false, true, false, false },
+		{ L"8/17 VP direct limited/auto", "direct", "limited", "auto", false, false, true, false, false },
+		{ L"9/17 VP direct full/G20", "direct", "full", "2.0", false, false, true, false, false },
+		{ L"10/17 VP direct limited/G20", "direct", "limited", "2.0", false, false, true, false, false },
+		{ L"11/17 VP direct full/sRGB 8-bit", "direct", "full", "srgb", true, false, true, false, false },
+		{ L"12/17 VP direct compute off", "direct", "full", "srgb", false, false, true, true, false },
+		{ L"13/17 VP direct shader cache off", "direct", "full", "srgb", false, false, true, false, true },
+		{ L"14/17 VP direct compute/cache off", "direct", "full", "srgb", false, false, true, true, true },
+		{ L"15/17 composed full/sRGB", "composed", "full", "srgb", false, false, false, false, false },
+		{ L"16/17 composed full/G20", "composed", "full", "2.0", false, false, false, false, false },
+		{ L"17/17 composed VP-owned", "composed", "full", "srgb", false, false, true, false, false },
 	};
 	m_activeOutputSweepCaseIndex = 0;
 	m_activeOutputSweepRunning = true;
@@ -2805,8 +2816,9 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 	}
 	m_activeOutputSweepCaseIndex = index;
 	m_activeOutputSweepAwaitingLiveFrame = true;
+	m_activeOutputSweepCaseFailed = false;
 	m_activeOutputSweepDeadlineTick = GetTickCount64() + 15000;
-	m_activeOutputSweepStatus.Format(L"%s — %s restart", test.label,
+	m_activeOutputSweepStatus.Format(L"%s - %s restart", test.label,
 		m_activeOutputSweepCaptureRestart ? L"capture" : L"renderer");
 	DebugLog::Log(
 		"Active output sweep case: index=%zu label=%S presentation=%s range=%s gamma=%s force8=%d vp_owned=%d no_compute=%d no_shader_cache=%d action=%s-restart backup=%S",
@@ -2877,7 +2889,7 @@ void CVideoProcessorDlg::RestoreActiveOutputSweepConfiguration(const wchar_t* re
 	if (!ConfigEditorCore::SaveSafely(*restore, saveResult, error))
 	{
 		m_activeOutputSweepStatus.Format(
-			L"restore failed — test config retained (%s)", error.c_str());
+			L"restore failed - test config retained (%s)", error.c_str());
 		DebugLog::Log("Active output sweep restore failed: detail=%S", error.c_str());
 		CompleteActiveOutputSweep(m_activeOutputSweepStatus);
 		return;
@@ -2885,7 +2897,8 @@ void CVideoProcessorDlg::RestoreActiveOutputSweepConfiguration(const wchar_t* re
 	m_activeOutputSweepDocument = std::move(restore);
 	m_activeOutputSweepRestorePending = true;
 	m_activeOutputSweepAwaitingLiveFrame = false;
-	m_activeOutputSweepStatus.Format(L"%s — restoring test config", reason);
+	m_activeOutputSweepCaseFailed = false;
+	m_activeOutputSweepStatus.Format(L"%s - restoring test config", reason);
 	DebugLog::Log("Active output sweep restore: result=%S backup=%S action=%s-restart",
 		reason, saveResult.backupPath.c_str(),
 		m_activeOutputSweepCaptureRestart ? "capture" : "renderer");
@@ -2902,9 +2915,49 @@ void CVideoProcessorDlg::CompleteActiveOutputSweep(const wchar_t* result)
 	m_activeOutputSweepRequested = false;
 	m_activeOutputSweepRunning = false;
 	m_activeOutputSweepAwaitingLiveFrame = false;
+	m_activeOutputSweepCaseFailed = false;
 	m_activeOutputSweepRestorePending = false;
 	m_activeOutputSweepStatus = result;
+	m_activeOutputSweepSummaryVisible = !m_activeOutputSweepResults.empty();
+	m_activeOutputSweepSummaryStartedTick = m_activeOutputSweepSummaryVisible ?
+		GetTickCount64() : 0;
 	DebugLog::Log("Active output sweep complete: result=%S", result);
+	if (m_activeOutputSweepSummaryVisible)
+	{
+		DebugLog::Log("Active output sweep summary retained: passed=%zu failed=%zu clear_on=renderer-reset-or-rebuild",
+			static_cast<size_t>(std::count_if(m_activeOutputSweepResults.begin(),
+				m_activeOutputSweepResults.end(),
+				[](const SweepSummaryItem& item) { return item.passed; })),
+			m_activeOutputSweepResults.size() - static_cast<size_t>(std::count_if(
+				m_activeOutputSweepResults.begin(), m_activeOutputSweepResults.end(),
+				[](const SweepSummaryItem& item) { return item.passed; })));
+		UpdateStatsOverlay();
+	}
+	else if (m_videoRenderer)
+		m_videoRenderer->SetNativeSweepOverlay(nullptr, 0, 0, 0, 0);
+}
+
+void CVideoProcessorDlg::RecordActiveOutputSweepResult(bool passed,
+	const wchar_t* detail)
+{
+	if (m_activeOutputSweepCaseIndex >= m_activeOutputSweepCases.size() ||
+		m_activeOutputSweepResults.size() > m_activeOutputSweepCaseIndex)
+		return;
+	SweepSummaryItem item;
+	item.label = m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].label;
+	item.detail = detail;
+	item.passed = passed;
+	m_activeOutputSweepResults.push_back(std::move(item));
+}
+
+void CVideoProcessorDlg::ClearActiveOutputSweepSummary(const char* reason)
+{
+	if (!m_activeOutputSweepSummaryVisible)
+		return;
+	m_activeOutputSweepSummaryVisible = false;
+	m_activeOutputSweepSummaryStartedTick = 0;
+	m_activeOutputSweepResults.clear();
+	DebugLog::Log("Active output sweep summary cleared: reason=%s", reason);
 	if (m_videoRenderer)
 		m_videoRenderer->SetNativeSweepOverlay(nullptr, 0, 0, 0, 0);
 }
@@ -2924,7 +2977,7 @@ void CVideoProcessorDlg::UpdateActiveOutputSweep(ULONGLONG now)
 	{
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 			m_videoRenderer)
-			CompleteActiveOutputSweep(L"complete — original test config restored");
+			CompleteActiveOutputSweep(L"complete - original test config restored");
 		return;
 	}
 	if (now < m_activeOutputSweepDeadlineTick)
@@ -2933,11 +2986,28 @@ void CVideoProcessorDlg::UpdateActiveOutputSweep(ULONGLONG now)
 	{
 		DebugLog::Log("Active output sweep case timed out: index=%zu reason=no-live-frame timeout_ms=15000",
 			m_activeOutputSweepCaseIndex + 1);
-		m_activeOutputSweepStatus.Format(L"%s — no live frame after 15s",
+		m_activeOutputSweepAwaitingLiveFrame = false;
+		m_activeOutputSweepCaseFailed = true;
+		const ULONGLONG failureHoldMs = m_activeOutputSweepHoldMs < 5000 ?
+			m_activeOutputSweepHoldMs : 5000;
+		m_activeOutputSweepDeadlineTick = now + failureHoldMs;
+		m_activeOutputSweepStatus.Format(L"%s - no live frame after 15s; holding failure",
 			m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].label);
+		DebugLog::Log("Active output sweep case failure hold: index=%zu hold_ms=%llu",
+			m_activeOutputSweepCaseIndex + 1,
+			m_activeOutputSweepDeadlineTick - now);
+		UpdateStatsOverlay();
+		return;
+	}
+	if (m_activeOutputSweepCaseFailed)
+	{
+		RecordActiveOutputSweepResult(false, L"no live frame after 15 seconds");
+		DebugLog::Log("Active output sweep case failed after visible hold: index=%zu",
+			m_activeOutputSweepCaseIndex + 1);
 	}
 	else
 	{
+		RecordActiveOutputSweepResult(true, L"live frame observed");
 		DebugLog::Log("Active output sweep case passed live hold: index=%zu hold_ms=%lu",
 			m_activeOutputSweepCaseIndex + 1, m_activeOutputSweepHoldMs);
 	}
@@ -5366,9 +5436,10 @@ LRESULT CVideoProcessorDlg::OnMessageRendererLiveFrame(
 		m_activeOutputSweepCaseIndex < m_activeOutputSweepCases.size())
 	{
 		m_activeOutputSweepAwaitingLiveFrame = false;
+		m_activeOutputSweepCaseFailed = false;
 		m_activeOutputSweepDeadlineTick = GetTickCount64() +
 			m_activeOutputSweepHoldMs;
-		m_activeOutputSweepStatus.Format(L"%s — live; holding %lus",
+		m_activeOutputSweepStatus.Format(L"%s - live; holding %lus",
 			m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].label,
 			m_activeOutputSweepHoldMs / 1000);
 		DebugLog::Log("Active output sweep live frame: index=%zu hold_ms=%lu",
@@ -7000,6 +7071,8 @@ void CVideoProcessorDlg::CaptureGUIClear()
 void CVideoProcessorDlg::RenderStart()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStart(): Begin")));
+	if (m_activeOutputSweepSummaryVisible && !m_activeOutputSweepRunning)
+		ClearActiveOutputSweepSummary("renderer-rebuild");
 	// Process startup has already parsed, validated, and published its complete
 	// configuration before capture begins. Do not perform a second synchronous
 	// reload during the first capture-state start: that widens the interval
@@ -12096,7 +12169,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	const bool nativeOverlay = m_statsOverlayRequestedVisible && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();
-	const bool nativeSweepBanner = m_activeOutputSweepRunning &&
+	const bool nativeSweepBanner = (m_activeOutputSweepRunning ||
+		m_activeOutputSweepSummaryVisible) &&
 		m_activeOutputSweepShowInfo && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();
 	// Native-overlay support can appear after the renderer plugin finishes its
@@ -12387,8 +12461,20 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		int width = 0;
 		int height = 0;
 		int stride = 0;
-		if (m_statsOverlay->RenderSweepBannerBgra(
-			m_activeOutputSweepStatus, pixels, width, height, stride))
+		const size_t summaryItemsPerPage = 4;
+		const size_t summaryPage = m_activeOutputSweepSummaryVisible &&
+			m_activeOutputSweepSummaryStartedTick != 0 ?
+			static_cast<size_t>((GetTickCount64() -
+				m_activeOutputSweepSummaryStartedTick) / 6000) : 0;
+		const bool rendered = m_activeOutputSweepSummaryVisible ?
+			m_statsOverlay->RenderSweepSummaryBgra(m_activeOutputSweepResults,
+				summaryPage, summaryItemsPerPage, pixels, width, height, stride) :
+			m_statsOverlay->RenderSweepBannerBgra(m_activeOutputSweepStatus,
+				m_activeOutputSweepAwaitingLiveFrame || m_activeOutputSweepRestorePending ?
+					SweepBannerState::Testing : m_activeOutputSweepCaseFailed ?
+					SweepBannerState::Failed : SweepBannerState::Passed,
+				pixels, width, height, stride);
+		if (rendered)
 		{
 			m_videoRenderer->SetNativeSweepOverlay(
 				pixels.data(), pixels.size(), width, height, stride);
@@ -12490,6 +12576,8 @@ void CVideoProcessorDlg::RequestRendererReset(RendererResetReason reason,
 		RendererResetPriority(reason),
 		requiresGraph ? "graph" : "live-queue",
 		delayMs);
+	if (accepted && m_activeOutputSweepSummaryVisible && !m_activeOutputSweepRunning)
+		ClearActiveOutputSweepSummary("renderer-reset");
 }
 
 

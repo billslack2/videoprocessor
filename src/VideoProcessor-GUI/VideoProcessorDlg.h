@@ -730,7 +730,10 @@ protected:
 	bool m_activeOutputSweepRequested = false;
 	bool m_activeOutputSweepRunning = false;
 	bool m_activeOutputSweepAwaitingLiveFrame = false;
+	bool m_activeOutputSweepCaseFailed = false;
 	bool m_activeOutputSweepRestorePending = false;
+	bool m_activeOutputSweepSummaryVisible = false;
+	ULONGLONG m_activeOutputSweepSummaryStartedTick = 0;
 	bool m_activeOutputSweepShowInfo = true;
 	bool m_activeOutputSweepCaptureRestart = true;
 	DWORD m_activeOutputSweepHoldMs = 5000;
@@ -738,6 +741,7 @@ protected:
 	ULONGLONG m_activeOutputSweepDeadlineTick = 0;
 	CString m_activeOutputSweepStatus;
 	std::vector<ActiveOutputSweepCase> m_activeOutputSweepCases;
+	std::vector<SweepSummaryItem> m_activeOutputSweepResults;
 	std::unique_ptr<ConfigEditorCore::ConfigDocument> m_activeOutputSweepDocument;
 	std::unique_ptr<ConfigEditorCore::ConfigDocument> m_activeOutputSweepOriginalDocument;
 
@@ -817,6 +821,8 @@ protected:
 	bool ApplyActiveOutputSweepConfiguration();
 	void RestoreActiveOutputSweepConfiguration(const wchar_t* reason);
 	void CompleteActiveOutputSweep(const wchar_t* result);
+	void RecordActiveOutputSweepResult(bool passed, const wchar_t* detail);
+	void ClearActiveOutputSweepSummary(const char* reason);
 	bool StageSavedConfiguration(const char* reason, bool stageAccelerators);
 	bool PublishStagedConfiguration(bool replaceAccelerators);
 	bool PublishStagedShortcutsOnly();

@@ -140,6 +140,20 @@ struct StatsData
 	}
 };
 
+enum class SweepBannerState
+{
+	Testing,
+	Passed,
+	Failed,
+};
+
+struct SweepSummaryItem
+{
+	CString label;
+	CString detail;
+	bool passed = false;
+};
+
 class StatsOverlayWindow
 {
 public:
@@ -160,8 +174,11 @@ public:
 	void UpdateStats(const StatsData& stats);
 	bool RenderBgra(std::vector<uint8_t>& pixels, int& width,
 		int& height, int& stride);
-	bool RenderSweepBannerBgra(const CString& status,
+	bool RenderSweepBannerBgra(const CString& status, SweepBannerState state,
 		std::vector<uint8_t>& pixels, int& width, int& height, int& stride);
+	bool RenderSweepSummaryBgra(const std::vector<SweepSummaryItem>& items,
+		size_t page, size_t itemsPerPage, std::vector<uint8_t>& pixels,
+		int& width, int& height, int& stride);
 
 	// Position update
 	void UpdatePosition(HWND parentHwnd);
