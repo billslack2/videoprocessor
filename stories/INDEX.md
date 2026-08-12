@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0119`
-- Next root story number: `VP-0120`
-- Total indexed items: 135
+- Last assigned root story: `VP-0120`
+- Next root story number: `VP-0121`
+- Total indexed items: 136
 
 ## Story locations
 
@@ -152,6 +152,7 @@ they must not contain requirements that are absent from this file.
 | VP-0117 | In Progress | Restore VP Renderer presentation timing and mode truth |
 | VP-0118 | Backlog | Make Alt+Enter enter fullscreen from an inactive startup request |
 | VP-0119 | Done | Apply anamorphic lens scale in the correct direction |
+| VP-0120 | Backlog | Retire owner-bound configuration tray processes |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
