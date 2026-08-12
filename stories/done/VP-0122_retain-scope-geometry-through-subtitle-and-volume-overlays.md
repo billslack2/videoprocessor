@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (updated 2026-08-12). Commits `dcd2588`, `46aa1e5`, and `3956115`
+Done (2026-08-12). Commits `dcd2588`, `46aa1e5`, and `3956115`
 are pushed on `codex/vp-0122-overlay-geometry`. The final follow-up separates
 the last affirmative same-generation logical geometry from current-frame
 presentation safety: a scene or snapshot deadline no longer erases scope by
@@ -15,7 +15,10 @@ Release and passed 154/154 focused tests, including generated P010 evidence;
 the complete suite passed 806/811 with the same five pre-existing
 configuration/reference fixture failures. Commit `3956115` is deployed to
 `C:\Videoprocessor\vp` with the active configuration untouched. Awaiting live
-operator validation.
+operator validation. Live validation found no subtitle/volume regressions or
+four-sided fallback. Mixed-IMAX transitions engaged correctly after the
+intentional sub-second confirmation interval. Merge commit `b7de6a2` is on the
+default `v1.2.001-beta` branch.
 
 ## User story
 
