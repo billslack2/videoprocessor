@@ -556,6 +556,35 @@ namespace AlphaSourceCrop
 		return state;
 	}
 
+	bool CurrentTranslationEnvelopeSupportsGeometry(
+		const VerticalBarPresentationState& presentation,
+		const ActivePictureBounds& trustedGeometry,
+		const ActivePictureBounds& currentEnvelope)
+	{
+		if (presentation.action != VerticalBarPresentationAction::TRANSLATE ||
+			!ValidBounds(trustedGeometry, trustedGeometry.rasterWidth,
+				trustedGeometry.rasterHeight) ||
+			!ValidBounds(currentEnvelope, trustedGeometry.rasterWidth,
+				trustedGeometry.rasterHeight) ||
+			currentEnvelope.left != trustedGeometry.left ||
+			currentEnvelope.right != trustedGeometry.right)
+		{
+			return false;
+		}
+
+		if (presentation.translationPixels < -0.5f)
+		{
+			return currentEnvelope.top < trustedGeometry.top &&
+				currentEnvelope.bottom == trustedGeometry.bottom;
+		}
+		if (presentation.translationPixels > 0.5f)
+		{
+			return currentEnvelope.top == trustedGeometry.top &&
+				currentEnvelope.bottom > trustedGeometry.bottom;
+		}
+		return false;
+	}
+
 	void VerticalTranslationDrift::Reset()
 	{
 		lastAppliedTranslationPixels = 0.0f;

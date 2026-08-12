@@ -244,6 +244,15 @@ namespace AlphaSourceCrop
 	VerticalBarPresentationState UpdateVerticalBarPresentation(
 		const VerticalBarPresentationUpdateInput& input);
 
+	// A held translation may legitimately predate the current frame when a
+	// competing dense Fit was rejected. Current-frame envelope evidence can
+	// still attest the overlay, but only when it expands exactly the translated
+	// edge and leaves both horizontal and the opposite vertical edge unchanged.
+	bool CurrentTranslationEnvelopeSupportsGeometry(
+		const VerticalBarPresentationState& presentation,
+		const ActivePictureBounds& trustedGeometry,
+		const ActivePictureBounds& currentEnvelope);
+
 	// Interpolates only a translation which the existing subtitle policy has
 	// already selected. Callers supply the active or release duration; zero
 	// snaps to the target. Retargeting starts from the current applied position.

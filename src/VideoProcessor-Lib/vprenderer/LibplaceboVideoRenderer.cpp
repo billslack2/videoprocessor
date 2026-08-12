@@ -5948,12 +5948,16 @@ struct LibplaceboVideoRenderer::Impl
 				scopeSubtitlePictureTop == nlsGeometry.top &&
 				scopeSubtitlePictureRight == nlsGeometry.right &&
 				scopeSubtitlePictureBottom == nlsGeometry.bottom;
+			const bool currentOverlayEnvelope =
+				scopePresentationCurrentSourceGeneration == frameGeneration &&
+				scopePresentationCurrentSourceSequence == sourceSequence;
 			sceneInput.currentOverlayEvidenceSupportsGeometry =
-				scopeVerticalBarPresentation.action ==
-					AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
-				scopeVerticalBarPresentation.sourceSequence == sourceSequence &&
+				currentOverlayEnvelope &&
 				scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
-				overlayBaseMatchesGeometry;
+				overlayBaseMatchesGeometry &&
+				AlphaSourceCrop::CurrentTranslationEnvelopeSupportsGeometry(
+					scopeVerticalBarPresentation, nlsGeometry,
+					scopePresentationCurrentBounds);
 			sceneInput.frameLocalPresentationRetentionSafe =
 				latestActivePicturePresentationRetentionSafe;
 			sceneInput.frameLocalPresentationRetentionEvaluated =

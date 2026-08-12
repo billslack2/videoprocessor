@@ -1208,6 +1208,42 @@ namespace Tests
 			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
 		}
 
+		TEST_METHOD(CurrentEnvelopeAttestsHeldTranslationWithoutRefreshingItsFrame)
+		{
+			const ActivePictureBounds trusted = {
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			VerticalBarPresentationState held;
+			held.action = VerticalBarPresentationAction::TRANSLATE;
+			held.translationPixels = 128.0f;
+			held.sourceSequence = 4590; // A rejected Fit must not refresh this.
+
+			ActivePictureBounds current = trusted;
+			current.bottom = 1982;
+			current.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+			Assert::IsTrue(CurrentTranslationEnvelopeSupportsGeometry(
+				held, trusted, current));
+
+			// Mixed/orthogonal expansion is not an overlay attestation.
+			current.top = 218;
+			Assert::IsFalse(CurrentTranslationEnvelopeSupportsGeometry(
+				held, trusted, current));
+			current.top = trusted.top;
+			current.left = 10;
+			Assert::IsFalse(CurrentTranslationEnvelopeSupportsGeometry(
+				held, trusted, current));
+
+			// Direction must match the one and only expanded edge.
+			current = trusted;
+			current.top = 218;
+			held.translationPixels = -128.0f;
+			Assert::IsTrue(CurrentTranslationEnvelopeSupportsGeometry(
+				held, trusted, current));
+			current.bottom = 1982;
+			Assert::IsFalse(CurrentTranslationEnvelopeSupportsGeometry(
+				held, trusted, current));
+		}
+
 		TEST_METHOD(FreshOneEdgeEvidenceIntentionallyReplacesHeldFit)
 		{
 			VerticalBarPresentationUpdateInput update;
