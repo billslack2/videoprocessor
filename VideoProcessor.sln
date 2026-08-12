@@ -25,6 +25,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VideoProcessor-ConfigDiscov
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VideoProcessor-ConfigTests", "src\VideoProcessor-ConfigTests\VideoProcessor-ConfigTests.vcxproj", "{C8CA4B71-E41A-45D2-88FC-E96724DF68E4}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "VideoProcessor-OutputProbe", "src\VideoProcessor-OutputProbe\VideoProcessor-OutputProbe.vcxproj", "{3F68A7E3-3B0B-4493-8DD0-FF33D51B15DB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -214,6 +216,11 @@ Global
 		{C8CA4B71-E41A-45D2-88FC-E96724DF68E4}.Release|x64.ActiveCfg = Release|x64
 		{C8CA4B71-E41A-45D2-88FC-E96724DF68E4}.Release|x64.Build.0 = Release|x64
 		{C8CA4B71-E41A-45D2-88FC-E96724DF68E4}.Release|x86.ActiveCfg = Release|x64
+		{3F68A7E3-3B0B-4493-8DD0-FF33D51B15DB}.Debug|x64.ActiveCfg = Release|x64
+		{3F68A7E3-3B0B-4493-8DD0-FF33D51B15DB}.Debug|x86.ActiveCfg = Release|x64
+		{3F68A7E3-3B0B-4493-8DD0-FF33D51B15DB}.Release|x64.ActiveCfg = Release|x64
+		{3F68A7E3-3B0B-4493-8DD0-FF33D51B15DB}.Release|x64.Build.0 = Release|x64
+		{3F68A7E3-3B0B-4493-8DD0-FF33D51B15DB}.Release|x86.ActiveCfg = Release|x64
 		{C72197B6-AFB1-4BF2-ABEA-6B63DE71389E}.Debug|x64.ActiveCfg = Debug|x64
 		{C72197B6-AFB1-4BF2-ABEA-6B63DE71389E}.Debug|x64.Build.0 = Debug|x64
 		{C72197B6-AFB1-4BF2-ABEA-6B63DE71389E}.PGO|x64.ActiveCfg = Release|x64
