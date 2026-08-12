@@ -285,6 +285,56 @@ namespace Tests
 				static_cast<int>(decision.action));
 		}
 
+		TEST_METHOD(DenseFitRequiresTwoConsecutiveAnalyzedSamples)
+		{
+			VerticalBarContentDecision fit;
+			fit.action = VerticalBarPresentationAction::FIT;
+
+			VerticalFitConfirmationState state;
+			auto decision = ConfirmVerticalFit(state, fit);
+			Assert::IsTrue(decision.pending);
+			Assert::AreEqual(1U, decision.state.confirmations);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::NONE),
+				static_cast<int>(decision.effective.action));
+
+			state = decision.state;
+			decision = ConfirmVerticalFit(state, fit);
+			Assert::IsFalse(decision.pending);
+			Assert::IsTrue(decision.newlyAccepted);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(decision.effective.action));
+
+			VerticalBarContentDecision overlay;
+			overlay.action = VerticalBarPresentationAction::TRANSLATE;
+			overlay.translationPixels = 100.0f;
+			decision = ConfirmVerticalFit(decision.state, overlay);
+			Assert::AreEqual(0U, decision.state.confirmations);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::TRANSLATE),
+				static_cast<int>(decision.effective.action));
+
+			decision = ConfirmVerticalFit(decision.state, fit);
+			Assert::IsTrue(decision.pending);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::NONE),
+				static_cast<int>(decision.effective.action));
+		}
+
+		TEST_METHOD(DenseFitConfirmationDoesNotDelayFailOpen)
+		{
+			VerticalFitConfirmationState pending;
+			pending.confirmations = 1;
+			VerticalBarContentDecision unsafe;
+			unsafe.action = VerticalBarPresentationAction::FAIL_OPEN;
+			const auto decision = ConfirmVerticalFit(pending, unsafe);
+			Assert::AreEqual(0U, decision.state.confirmations);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FAIL_OPEN),
+				static_cast<int>(decision.effective.action));
+		}
+
 		TEST_METHOD(SubtitleHoldRejectsMixedFrameGenericAspectFit)
 		{
 			// The live trace accumulated a top volume envelope and lower subtitle
@@ -1127,6 +1177,34 @@ namespace Tests
 			input.currentSourceGeneration = 7;
 			input.latestClassification =
 				ActivePictureClassification::FULL_RASTER_TRUSTED;
+			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
+		}
+
+		TEST_METHOD(PendingFitMayConfirmAcrossMatchingTwoEdgeAuthorityGap)
+		{
+			HeldBarAnalysisInput input;
+			input.trustedBarGeometryAvailable = true;
+			input.storedBaseMatchesTrustedGeometry = true;
+			input.currentEnvelopeAvailable = true;
+			input.latestClassification =
+				ActivePictureClassification::PROVISIONAL;
+			input.trustedGeometry = {
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			input.currentEnvelope = input.trustedGeometry;
+			input.currentEnvelope.top = 100;
+			input.currentEnvelope.bottom = 2040;
+			input.fitConfirmationPending = true;
+			input.evidenceSourceGeneration = 7;
+			input.currentSourceGeneration = 7;
+			Assert::IsTrue(CanAnalyzeHeldVerticalBarGeometry(input));
+
+			input.currentEnvelope.top = input.trustedGeometry.top;
+			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
+			input.currentEnvelope.top = 100;
+			input.currentEnvelope.left = 20;
+			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
+			input.currentEnvelope.left = 0;
+			input.currentSourceGeneration = 8;
 			Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input));
 		}
 
@@ -2677,6 +2755,43 @@ namespace Tests
 			Assert::AreEqual(
 				static_cast<int>(ScenePresentationAction::WITHDRAW),
 				static_cast<int>(EvaluateSceneBoundary(input).action));
+		}
+
+		TEST_METHOD(CurrentOverlayAtCutKeepsGeometryWithoutSnapshotExpiry)
+		{
+			SceneInput input;
+			input.geometryAvailable = true;
+			input.geometryIsCurrentGeneration = true;
+			input.latestEvidenceIsCurrent = true;
+			input.existingCropCanBeSnapshotted = true;
+			input.currentOverlayEvidenceSupportsGeometry = true;
+			input.frameLocalPresentationRetentionEvaluated = true;
+			input.frameLocalPresentationRetentionSafe = false;
+			input.geometryClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.latestClassification =
+				ActivePictureClassification::PROVISIONAL;
+
+			const SceneDecision scene = EvaluateSceneBoundary(input);
+			Assert::AreEqual(
+				static_cast<int>(ScenePresentationAction::KEEP_CURRENT),
+				static_cast<int>(scene.action));
+			Assert::IsTrue(scene.reason.find("overlay evidence") !=
+				std::string::npos);
+
+			// KEEP_CURRENT preserves the published geometry rather than creating a
+			// two-second scene snapshot whose expiry can flash full raster.
+			Input crop = TrustedScopeCrop();
+			crop.latestObservationSupportsCrop = false;
+			crop.latestObservationIsProvisional = true;
+			crop.verticalTranslationActive = true;
+			crop.verticalTranslationPixels = 100;
+			crop.verticalTranslationBase = crop.geometry;
+			crop.verticalTranslationSourceGeneration = 7;
+			const Decision presentation = Evaluate(crop);
+			Assert::IsTrue(presentation.applyCrop);
+			Assert::AreEqual(1610, presentation.sourceBounds.bottom -
+				presentation.sourceBounds.top);
 		}
 
 		TEST_METHOD(VisiblePixelsAtCutOverrideSnapshotTimer)

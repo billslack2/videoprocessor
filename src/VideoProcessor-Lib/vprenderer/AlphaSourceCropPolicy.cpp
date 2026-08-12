@@ -271,6 +271,31 @@ namespace AlphaSourceCrop
 		return decision;
 	}
 
+	VerticalFitConfirmationDecision ConfirmVerticalFit(
+		const VerticalFitConfirmationState& previous,
+		const VerticalBarContentDecision& observed)
+	{
+		VerticalFitConfirmationDecision decision;
+		decision.effective = observed;
+		if (observed.action != VerticalBarPresentationAction::FIT)
+			return decision;
+
+		decision.state.confirmations = std::min(
+			VERTICAL_FIT_CONFIRMATIONS_REQUIRED,
+			previous.confirmations + 1);
+		if (decision.state.confirmations <
+			VERTICAL_FIT_CONFIRMATIONS_REQUIRED)
+		{
+			decision.effective = {};
+			decision.pending = true;
+			return decision;
+		}
+
+		decision.newlyAccepted = previous.confirmations <
+			VERTICAL_FIT_CONFIRMATIONS_REQUIRED;
+		return decision;
+	}
+
 	bool ShouldRetainTrustedBaseForVerticalInspection(
 		bool subtitleFitEnabled,
 		bool currentEnvelope,
@@ -376,6 +401,7 @@ namespace AlphaSourceCrop
 		const bool pendingTranslation =
 			input.translationConfirmationPending &&
 			std::abs(input.pendingTranslationPixels) > 0.5f;
+		const bool pendingFit = input.fitConfirmationPending;
 		if (input.currentBarAuthority ||
 			!input.trustedBarGeometryAvailable ||
 			!input.storedBaseMatchesTrustedGeometry ||
@@ -384,7 +410,7 @@ namespace AlphaSourceCrop
 				ActivePictureClassification::PROVISIONAL ||
 			input.evidenceSourceGeneration == 0 ||
 			input.evidenceSourceGeneration != input.currentSourceGeneration ||
-			(!activeTranslation && !pendingTranslation) ||
+			(!activeTranslation && !pendingTranslation && !pendingFit) ||
 			!ValidBounds(input.trustedGeometry,
 				input.trustedGeometry.rasterWidth,
 				input.trustedGeometry.rasterHeight) ||
@@ -404,6 +430,13 @@ namespace AlphaSourceCrop
 			input.currentEnvelope.bottom >= input.trustedGeometry.bottom;
 		if (!outwardEnvelope)
 			return false;
+		if (pendingFit)
+		{
+			return input.currentEnvelope.left == input.trustedGeometry.left &&
+				input.currentEnvelope.right == input.trustedGeometry.right &&
+				input.currentEnvelope.top < input.trustedGeometry.top &&
+				input.currentEnvelope.bottom > input.trustedGeometry.bottom;
+		}
 
 		const float translationPixels = activeTranslation
 			? input.presentation.translationPixels
@@ -1247,6 +1280,12 @@ namespace AlphaSourceCrop
 					decision.action = ScenePresentationAction::KEEP_CURRENT;
 					decision.reason =
 						"cut frame positively revalidates retained presentation pixels";
+				}
+				else if (input.currentOverlayEvidenceSupportsGeometry)
+				{
+					decision.action = ScenePresentationAction::KEEP_CURRENT;
+					decision.reason =
+						"cut frame's excluded-band pixels are covered by current overlay evidence";
 				}
 				else
 				{

@@ -2509,6 +2509,8 @@ struct LibplaceboVideoRenderer::Impl
 		scopeVerticalBarPresentation;
 	AlphaSourceCrop::VerticalTranslationConfirmationState
 		scopeSubtitleTranslationConfirmation;
+	AlphaSourceCrop::VerticalFitConfirmationState
+		scopeSubtitleFitConfirmation;
 	AlphaSourceCrop::VerticalTranslationDrift scopeSubtitleDrift;
 	bool scopeSubtitleDriftWasActive = false;
 	bool scopeSubtitleAuthorityGapHeld = false;
@@ -3239,6 +3241,7 @@ struct LibplaceboVideoRenderer::Impl
 		scopeSubtitleAnalysisFrame = 0;
 		scopeVerticalBarPresentation = {};
 		scopeSubtitleTranslationConfirmation = {};
+		scopeSubtitleFitConfirmation = {};
 		scopeSubtitleDrift.Reset();
 		scopeSubtitleDriftWasActive = false;
 		scopeSubtitleAuthorityGapHeld = false;
@@ -3610,6 +3613,26 @@ struct LibplaceboVideoRenderer::Impl
 							VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED);
 				}
 				verticalDecision = confirmation.effective;
+				const auto fitConfirmation =
+					AlphaSourceCrop::ConfirmVerticalFit(
+						scopeSubtitleFitConfirmation, verticalDecision);
+				scopeSubtitleFitConfirmation = fitConfirmation.state;
+				if (fitConfirmation.pending)
+				{
+					DebugLog::Log(
+						"Alpha vertical bar fit: candidate pending confirmation %u/%u; retaining trusted presentation",
+						fitConfirmation.state.confirmations,
+						AlphaSourceCrop::
+							VERTICAL_FIT_CONFIRMATIONS_REQUIRED);
+				}
+				else if (fitConfirmation.newlyAccepted)
+				{
+					DebugLog::Log(
+						"Alpha vertical bar fit: candidate accepted after %u consecutive dense samples",
+						AlphaSourceCrop::
+							VERTICAL_FIT_CONFIRMATIONS_REQUIRED);
+				}
+				verticalDecision = fitConfirmation.effective;
 				AlphaSourceCrop::VerticalBarPresentationUpdateInput updateInput;
 				updateInput.previous = scopeVerticalBarPresentation;
 				updateInput.current = verticalDecision;
@@ -5919,6 +5942,18 @@ struct LibplaceboVideoRenderer::Impl
 			sceneInput.latestObservationSupportsCrop =
 				latestActivePictureObservationSupportsCrop;
 			sceneInput.existingCropCanBeSnapshotted = canVerifyExistingCrop;
+			const bool overlayBaseMatchesGeometry =
+				nlsGeometryAvailable &&
+				scopeSubtitlePictureLeft == nlsGeometry.left &&
+				scopeSubtitlePictureTop == nlsGeometry.top &&
+				scopeSubtitlePictureRight == nlsGeometry.right &&
+				scopeSubtitlePictureBottom == nlsGeometry.bottom;
+			sceneInput.currentOverlayEvidenceSupportsGeometry =
+				scopeVerticalBarPresentation.action ==
+					AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
+				scopeVerticalBarPresentation.sourceSequence == sourceSequence &&
+				scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
+				overlayBaseMatchesGeometry;
 			sceneInput.frameLocalPresentationRetentionSafe =
 				latestActivePicturePresentationRetentionSafe;
 			sceneInput.frameLocalPresentationRetentionEvaluated =
@@ -6113,6 +6148,10 @@ struct LibplaceboVideoRenderer::Impl
 			scopeSubtitleTranslationConfirmation.confirmations != 0;
 		heldAnalysisInput.pendingTranslationPixels =
 			scopeSubtitleTranslationConfirmation.candidateTranslationPixels;
+		heldAnalysisInput.fitConfirmationPending =
+			scopeSubtitleFitConfirmation.confirmations != 0 &&
+			scopeSubtitleFitConfirmation.confirmations <
+				AlphaSourceCrop::VERTICAL_FIT_CONFIRMATIONS_REQUIRED;
 		heldAnalysisInput.evidenceSourceGeneration =
 			scopeSubtitleEvidenceSourceGeneration;
 		heldAnalysisInput.currentSourceGeneration = frameGeneration;

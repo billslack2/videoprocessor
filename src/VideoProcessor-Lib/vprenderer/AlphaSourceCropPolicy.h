@@ -102,6 +102,30 @@ namespace AlphaSourceCrop
 	VerticalTranslationConfirmationDecision ConfirmVerticalTranslation(
 		const VerticalTranslationConfirmationInput& input);
 
+	// Dense picture-like evidence is deliberately conservative in the opposite
+	// direction from subtitle translation. One contradictory bar scan must not
+	// resize an established scope presentation; two consecutive analyzed scans
+	// are still fast enough to reveal genuine live pixels within a bounded delay.
+	// Trusted active-picture/full-raster authority does not use this path.
+	static constexpr uint32_t VERTICAL_FIT_CONFIRMATIONS_REQUIRED = 2;
+
+	struct VerticalFitConfirmationState
+	{
+		uint32_t confirmations = 0;
+	};
+
+	struct VerticalFitConfirmationDecision
+	{
+		VerticalFitConfirmationState state;
+		VerticalBarContentDecision effective;
+		bool pending = false;
+		bool newlyAccepted = false;
+	};
+
+	VerticalFitConfirmationDecision ConfirmVerticalFit(
+		const VerticalFitConfirmationState& previous,
+		const VerticalBarContentDecision& observed);
+
 	// A current provisional envelope which expands exactly one vertical edge is
 	// eligible for the same trusted-base retention used by dense target
 	// confirmation. This closes the frame before the first dense sample without
@@ -198,6 +222,7 @@ namespace AlphaSourceCrop
 		VerticalBarPresentationState presentation;
 		bool translationConfirmationPending = false;
 		float pendingTranslationPixels = 0.0f;
+		bool fitConfirmationPending = false;
 		uint64_t evidenceSourceGeneration = 0;
 		uint64_t currentSourceGeneration = 0;
 		uint64_t currentTick = 0;
@@ -208,7 +233,9 @@ namespace AlphaSourceCrop
 	// Provisional pixels may be inspected against a previously trusted bar
 	// rectangle without acquiring crop authority. This bridge exists only while
 	// the current envelope expands the same edge as an active, same-generation
-	// translation; contradictory or unavailable evidence must reacquire normally.
+	// translation, or while a two-edge dense Fit candidate awaits its second
+	// analyzed sample. Contradictory or unavailable evidence must reacquire
+	// normally.
 	bool CanAnalyzeHeldVerticalBarGeometry(
 		const HeldBarAnalysisInput& input);
 
@@ -518,6 +545,11 @@ namespace AlphaSourceCrop
 		bool latestEvidenceIsCurrent = false;
 		bool latestObservationSupportsCrop = false;
 		bool existingCropCanBeSnapshotted = false;
+		// Fresh dense evidence on this exact source frame identifies the pixels
+		// outside the trusted rectangle as an overlay whose bounded translation
+		// still owns presentation. It may preserve existing geometry at a cut but
+		// can never create geometry or cross a source generation.
+		bool currentOverlayEvidenceSupportsGeometry = false;
 		bool frameLocalPresentationRetentionEvaluated = false;
 		bool frameLocalPresentationRetentionSafe = false;
 		ActivePictureClassification geometryClassification =
